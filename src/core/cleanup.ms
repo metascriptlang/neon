@@ -1,24 +1,10 @@
-// Cleanup - Disposal Management
-// Register cleanup functions that run when effect is disposed
+// Cleanup — register a disposer that runs when the current computation re-runs or is
+// disposed. Registers into the owning computation's cleanup list (run by cleanNode),
+// replacing the old standalone scope stack that createEffect never pushed.
 
-let cleanupStack: (() => void)[][] = [];
+import { getOwner } from "./runtime";
 
 export function onCleanup(fn: () => void): void {
-	if (cleanupStack.length === 0) {
-		throw new Error("onCleanup called outside of effect");
-	}
-
-	const current = cleanupStack[cleanupStack.length - 1];
-	current.push(fn);
-}
-
-export function pushCleanupScope(): void {
-	cleanupStack.push([]);
-}
-
-export function popCleanupScope(): void {
-	const cleanups = cleanupStack.pop();
-	if (cleanups) {
-		cleanups.forEach(cleanup => cleanup());
-	}
+	const o = getOwner();
+	if (o !== null) { o.cleanups.push(fn); }
 }

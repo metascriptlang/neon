@@ -1,58 +1,69 @@
-// Signal - Reactive State Primitive
-// Solid.js-inspired fine-grained reactivity
+// Signal — reactive state cell. Solid.js-style fine-grained reactivity over the graph
+// engine in runtime.ms: reading inside a running computation links both ways; setting
+// marks observers Stale and drains the effect queue.
 
-// Global effect tracking context
-let currentEffect: (() => void) | null = null;
+import { Source, Computation, CompState } from "./types";
+import { getListener, registerDependency, enqueue, runQueue, getBatchDepth, setBatchDepth, setListener } from "./runtime";
 
 export class Signal<T> {
 	private value: T;
-	private subscribers: Set<() => void>;
+	private node: Source;
 
 	constructor(initialValue: T) {
 		this.value = initialValue;
-		this.subscribers = new Set();
+		this.node = { observers: [], observerSlots: [] };
 	}
 
-	// Get current value (auto-subscribes if in effect)
 	get(): T {
-		if (currentEffect !== null) {
-			this.subscribers.add(currentEffect);
-		}
+		const l = getListener();
+		if (l !== null) { registerDependency(this.node, l); }
 		return this.value;
 	}
 
-	// Set new value (triggers subscribers)
-	set(newValue: T): void {
-		if (this.value !== newValue) {
-			this.value = newValue;
-			this.notify();
-		}
+	peek(): T {
+		return this.value;
 	}
 
-	// Update with function
+	set(newValue: T): void {
+		if (this.value === newValue) return;
+		this.value = newValue;
+		const observers = this.node.observers;
+		for (let i = 0; i < observers.length; i += 1) {
+			const o = observers[i];
+			if (!o.disposed && o.state === CompState.Clean) {
+				o.state = CompState.Stale;
+				enqueue(o);
+			}
+		}
+		if (getBatchDepth() === 0) { runQueue(); }
+	}
+
 	update(fn: (current: T) => T): void {
 		this.set(fn(this.value));
 	}
-
-	private notify(): void {
-		this.subscribers.forEach(effect => effect());
-	}
 }
 
-// Factory function for convenience
 export function createSignal<T>(initialValue: T): [() => T, (v: T) => void] {
-	const signal = new Signal(initialValue);
+	const signal = new Signal<T>(initialValue);
 	return [
 		() => signal.get(),
-		(v: T) => signal.set(v)
+		(v: T) => signal.set(v),
 	];
 }
 
-// Export effect context for other modules
-export function setEffectContext(effect: (() => void) | null): void {
-	currentEffect = effect;
+// Read without subscribing.
+export function untrack<T>(fn: () => T): T {
+	const prev = getListener();
+	setListener(null);
+	const result = fn();
+	setListener(prev);
+	return result;
 }
 
-export function getEffectContext(): (() => void) | null {
-	return currentEffect;
+// Defer effect drain until the outermost batch completes.
+export function batch(fn: () => void): void {
+	setBatchDepth(getBatchDepth() + 1);
+	fn();
+	setBatchDepth(getBatchDepth() - 1);
+	if (getBatchDepth() === 0) { runQueue(); }
 }

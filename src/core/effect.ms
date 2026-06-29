@@ -1,19 +1,11 @@
-// Effect - Side Effect Primitive
-// Automatically tracks signal dependencies and re-runs when they change
+// Effect — a computation that auto-tracks signal reads and re-runs on change.
+// Returns a Dispose that unlinks it from every signal and runs its cleanups.
 
-import { setEffectContext, getEffectContext } from "./signal";
+import { Dispose } from "./types";
+import { createComputation, runComputation, cleanNode } from "./runtime";
 
-export function createEffect(fn: () => void): void {
-	// Save previous effect context
-	const prevEffect = getEffectContext();
-
-	// Create wrapper that can be subscribed to signals
-	function effectWrapper(): void {
-		setEffectContext(effectWrapper);
-		fn();
-		setEffectContext(prevEffect);
-	}
-
-	// Run immediately to establish dependencies
-	effectWrapper();
+export function createEffect(fn: () => void): Dispose {
+	const comp = createComputation(fn, false);
+	runComputation(comp);
+	return () => { cleanNode(comp, true); };
 }
