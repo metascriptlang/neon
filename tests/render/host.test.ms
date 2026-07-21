@@ -8,7 +8,7 @@ test "renderToHost builds tree and binds reactive text (push)" {
 	const vnode = element(<p>Hi {name()}</p>);
 	const root: MockNode = mockNode("root");
 	renderToHost(vnode, mockHost(), root as unknown as HostNode);
-	assert mockToString(root.children[0]) === "<p>Hi world</p>" : "initial host render";
+	assert mockToString(root.children[0]) === "<p>Hi world</p>", "initial host render";
 	setName("neon");
-	assert mockToString(root.children[0]) === "<p>Hi neon</p>" : "host text updated via effect";
+	assert mockToString(root.children[0]) === "<p>Hi neon</p>", "host text updated via effect";
 }

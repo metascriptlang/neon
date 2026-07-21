@@ -12,10 +12,10 @@ test "counter: onClick increments and reactive text updates" {
 	renderToHost(vnode, mockHost(), root as unknown as HostNode);
 	const div = root.children[0];
 
-	assert mockToString(div.children[0]) === "<p>0</p>" : "initial count 0";
+	assert mockToString(div.children[0]) === "<p>0</p>", "initial count 0";
 	const button = div.children[1];
 	fireEvent(button, "onClick");
-	assert mockToString(div.children[0]) === "<p>1</p>" : "count 1 after click";
+	assert mockToString(div.children[0]) === "<p>1</p>", "count 1 after click";
 	fireEvent(button, "onClick");
-	assert mockToString(div.children[0]) === "<p>2</p>" : "count 2 after second click";
+	assert mockToString(div.children[0]) === "<p>2</p>", "count 2 after second click";
 }

@@ -11,11 +11,11 @@ test "effect re-tracks and re-runs on signal change" {
 		lastSeen = count();
 		runs = runs + 1;
 	});
-	assert runs === 1 : "ran once on creation";
-	assert lastSeen === 0 : "saw initial 0";
+	assert runs === 1, "ran once on creation";
+	assert lastSeen === 0, "saw initial 0";
 	setCount(1);
-	assert runs === 2 : "re-ran on set(1)";
-	assert lastSeen === 1 : "saw 1";
+	assert runs === 2, "re-ran on set(1)";
+	assert lastSeen === 1, "saw 1";
 }
 
 test "onCleanup runs before each re-track and on dispose" {
@@ -27,9 +27,9 @@ test "onCleanup runs before each re-track and on dispose" {
 	});
 	setCount(1);
 	setCount(2);
-	assert cleanups === 2 : "cleanup ran before each re-track";
+	assert cleanups === 2, "cleanup ran before each re-track";
 	dispose();
-	assert cleanups === 3 : "cleanup ran on dispose";
+	assert cleanups === 3, "cleanup ran on dispose";
 }
 
 test "dispose severs the signal-to-computation edge" {
@@ -42,8 +42,8 @@ test "dispose severs the signal-to-computation edge" {
 	});
 	dispose();
 	setCount(3);
-	assert runs === 1 : "no re-run after dispose";
-	assert lastSeen === 0 : "never saw 3";
+	assert runs === 1, "no re-run after dispose";
+	assert lastSeen === 0, "never saw 3";
 }
 
 test "createRoot disposal cascades to owned effects" {
@@ -54,10 +54,10 @@ test "createRoot disposal cascades to owned effects" {
 		createEffect(() => { tick(); innerRuns = innerRuns + 1; });
 		disposers.push(d);
 	});
-	assert innerRuns === 1 : "owned effect ran once";
+	assert innerRuns === 1, "owned effect ran once";
 	setTick(1);
-	assert innerRuns === 2 : "owned effect re-ran";
+	assert innerRuns === 2, "owned effect re-ran";
 	disposers[0]();
 	setTick(2);
-	assert innerRuns === 2 : "owned effect disposed via root cascade";
+	assert innerRuns === 2, "owned effect disposed via root cascade";
 }
