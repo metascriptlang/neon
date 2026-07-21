@@ -111,8 +111,22 @@ generic-erasure family below), not fixed. f3751dd may still be correct for its o
   ⚠ **Landed in the recompiler tree, NOT yet deployed** (live tree holds a parallel session's WIP;
   rebuild/deploy deferred to avoid bundling it). The Neon R1 files stay RED on the OTHER sub-bugs
   the fix exposed underneath (closure-local scope `undeclared 'list'/'g'`, `as`-cast malformed C,
-  array-element `void*` erasure, `Maybe_fn… is not a function` nullable-call, and the still-open
-  `monoTypeKey Function=>"function"` generic-dedup collapse — see NIM-REF §1 sibling note).
+  array-element `void*` erasure, `Maybe_fn… is not a function` nullable-call).
+- **✅ SIBLING FIXED 2026-07-21 (`monoTypeKey`, recompiler `e771cb9`):** the same collapse at the
+  generic-monomorph dedup level — `Function => "function"` + anon `Union => "union"` fused distinct
+  instantiations to one mangled symbol. Proven via repro: fn-collapse (`Holder<()=>number>` vs
+  `Holder<(x)=>void>`) was BENIGN (ran correct — `msClosure` uniform, arity applied at call site),
+  but union-collapse (`Box<number|string>` vs `Box<boolean|number>`) was a REAL miscompile
+  (incompatible `msUnion` payloads fused). Structural key fixes both; battery 3323/14 clean. Path
+  back to Nim (`sameInstantiation`) confirmed SAFE. See NIM-REF §1 "Structural type-dedup keys".
+- **NEW sibling bugs found during the repro (independent, still open):**
+  - **union ctor-param proto/def indirection:** a generic class ctor with a union param emits
+    `_init(…, msUnion* v)` (definition, by-pointer) vs `msUnion v` (forward decl, by-value) →
+    `conflicting types`. Present pre-fix; unmasked by the monoTypeKey split. Repro `/tmp/mono_union.ms`.
+  - **arrow-in-`new`-arg not lowered:** `new Holder<…>(() => 42)` emits
+    `Holder__…_init(_new_, 0 /* unlowered ArrowFunction */)` → `passing 'int' to msClosure`. The
+    arrow literal in a constructor arg skips closure lowering. Repro `/tmp/mono_fn.ms`
+    (function-typed *var* args work — `/tmp/mono_fn2.ms`).
 - **Symptom:** array → `mapArray<number, number>: Too many arguments: expected at most 0, got 1`;
   region → `mapArray<number, unknown>: Argument 0: cannot pass value type number as unknown`;
   counter → `void* ← msString` via `msGenericArrayPush` (array-element erasure);
