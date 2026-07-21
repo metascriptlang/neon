@@ -92,13 +92,17 @@ generic-erasure family below), not fixed. f3751dd may still be correct for its o
   `msThrow(<first string arg>)`; add a minimal std `class Error { message: string }` so
   the checker resolves it (closes the non-fatal downgrade). Option 2 (later) = Nim-parity
   object-carrying catchable exceptions.
-- **Note:** `memo` needs C **AND R1** — besides `throw new Error`, it hits `Maybe_p22 is
-  not a function` on the nullable `equals()` call (R1 family below). bug E (`f3751dd`) does
-  NOT help it (clears 0/8). So memo stays red until both C and R1 land.
+- **Note:** `memo` needs C **AND R1** — besides `throw new Error`, it hits `Maybe_fn… is not a
+  function` on the nullable `equals()` call (R1 nullable-Maybe-call family below; the OLD
+  `Maybe_p22` name in earlier notes is FIXED — that was the type-identity collision, this is a
+  DISTINCT nullable-call unwrapping gap). bug E (`f3751dd`) does NOT help it (clears 0/8). So memo
+  stays red until both C and R1-nullable-call land.
 - **Repro:** isolated `function main(): void { throw new Error("x"); }` — or
   `msc test tests/core/memo.test.ms` once assert:msg lands.
 
 ### R1 — generic instantiation erases function/closure type-info → blocks `array`, `region`, `counter` (+ memo's 2nd error)
+**STATUS: PARTIAL — 2 of ~6 sub-bugs closed this session (2026-07-22). Type-identity root done; 5 open sub-bugs below + 2 new found.**
+
 - **✅ SUB-BUG FIXED 2026-07-21 (structural type-dedup keys):** the `probe/r1_arity_min.ms`
   "expected at most 0, got 1" was a **type-identity collision**, NOT a lambda-lifting bug — the
   KEY-CORRECTION note below was WRONG. `X | null` lowers to `Maybe<X>`; the cache key collapsed
@@ -139,16 +143,26 @@ generic-erasure family below), not fixed. f3751dd may still be correct for its o
   - `probe/r1_undeclared_s.ms` (10 lines) → a NEARBY-but-DISTINCT bug: same shape, destructure
     guarded differently → C references the closure-local `s` out of scope (`use of undeclared
     identifier 's'`).
-  - **KEY CORRECTION:** genericity of the enclosing fn is **NOT** required (non-generic repro
-    fails identically). So this is a **closure / lambda-lifting lowering bug** — a function
-    value from a destructured generic-tuple, stored in a nullable-fn field, shared across
-    SIBLING closures, loses its signature — NOT a generic-monomorph erasure. Closer to **bug
-    D**'s neighborhood than to CompState/bug-E. `createSignal` source is necessary: a plain-arrow
+  - **~~KEY CORRECTION (WRONG — superseded by the ✅ SUB-BUG FIXED note above):~~**
+    ~~genericity of the enclosing fn is **NOT** required (non-generic repro fails identically).~~
+    ~~So this is a **closure / lambda-lifting lowering bug** — a function value from a~~
+    ~~destructured generic-tuple, stored in a nullable-fn field, shared across SIBLING~~
+    ~~closures, loses its signature — NOT a generic-monomorph erasure. Closer to **bug D**'s~~
+    ~~neighborhood than to CompState/bug-E.~~ `createSignal` source is necessary: a plain-arrow
     setter (probe `m5`) PASSES; single-closure variants (q1-q3, r1, r3) PASS.
-- **Related but likely DISTINCT sub-bugs (same "type lost through closure/generic" theme):**
-  counter `void*` via `msGenericArrayPush` (array-element erasure), memo `Maybe not a function`
-  (nullable call), flow `Unresolved T`. ≥2-3 roots, not one. **f3751dd (method dispatch) clears
+- **~~Related but likely DISTINCT sub-bugs (STALE label — f3751dd note still valid):~~**
+  ~~counter `void*` via `msGenericArrayPush` (array-element erasure), memo `Maybe not a function`~~
+  ~~(nullable call), flow `Unresolved T`. ≥2-3 roots, not one.~~ **f3751dd (method dispatch) clears
   NONE — verified 0/8.** Old B1 (nested named fn) / B2 (`.slice` arity) labels are STALE.
+- **OPEN sub-bugs remaining (after this session's 2 fixes):**
+  - **closure-local scope loss** — `undeclared 'list'` (array), `undeclared 'g'` (region). The
+    nullable-fn fix exposed this underneath; likely a lambda-lifting/`$up` issue (bug-D neighborhood).
+  - **`as`-cast malformed C** — `(cell.getter as () => number)()` emits
+    `double (*(msClosure*)&(…getter))(void);` (expected `)`). Distinct codegen bug, pre-existing.
+  - **array-element `void*` erasure** — counter `void* ← msString` via `msGenericArrayPush`.
+  - **`Maybe_fn… is not a function` nullable-call** — memo's 2nd blocker (was mislabelled `Maybe_p22`
+    below; the `p22` collision is FIXED — this is a separate nullable-Maybe-call unwrapping gap).
+  - **`Unresolved T`** — flow (separate section below).
 - **Repro:** `/tmp/mrepro.ms` (isolated, reconstruct from shape above);
   `msc test tests/core/array.test.ms` · `tests/render/region.test.ms` · `tests/render/counter.test.ms`.
 
