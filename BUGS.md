@@ -62,8 +62,9 @@ was never a missing feature:** the assert syntax *changed* to `assert cond, "msg
 recompiler parser `743f446`/`2eb19c8`). The colon form was the STALE one. Neon's 14 test
 files were migrated (147 asserts colon→comma) + committed (`f61a059` — 4 tracked files;
 10 untracked new tests held back until green). **Suite ran 7 PASS / 8 FAIL** on msc v0.2.27
-when this was written; `terminal` (Neon-side) + `dispose` (bug D, up-chain) have since been
-FIXED → **now 9 PASS / 6 FAIL**.
+when this was written; `terminal` (Neon-side) + `dispose` (bug D) + **`memo`** have since been
+FIXED → **now 10 PASS / 5 FAIL** (memo GREEN 2026-07-22 via bug C + the nullable-fn-in-generic
+family — see the two ✅ sections directly below).
 
 **Verified (clean rebuild, no cache):** installed msc ≡ `rm -rf out` rebuild from HEAD —
 both 7/8, `/tmp/mrepro.ms` fails both, 8-byte size delta = build nondeterminism only.
@@ -79,9 +80,68 @@ generic-erasure family below), not fixed. f3751dd may still be correct for its o
 
 ---
 
+## ✅ Fixed 2026-07-22 — `memo` GREEN (bug C + nullable-fn-in-generic family)
+
+All traced via `/trace-nim`, battery **3330/7** no-regression. The recompiler checker/codegen
+fixes are **committed AND deployed** (msc v0.2.27 — `memo.test` 275/275 GREEN on the installed msc).
+NIM-REF.md §1 rows written (uncommitted per docs rule).
+
+- **bug C — `throw new Error(msg)`** (recompiler `7202674` feat + `3b57979` test). Not a Nim
+  divergence — MS's exception runtime is string-based by design. Added std `class Error { message }`
+  (checker-only aid) + `genThrowStmt` erases `new Error(arg)` → `msThrow(arg)`. Catch-side `e.message`
+  is a SEPARATE deferred gap (object-carrying exceptions); memo only throws, never catches.
+- **Root B — `substituteStruct` dropped Maybe identity** (recompiler `ba6b365`). Rebuilding a
+  substituted Maybe via generic `createStruct` lost `IsMaybe` + kept the stale `T` name → `isMaybeType`
+  false → guard `f !== null` folded constant-true + `f(x)` called a struct. Fix: route Maybe rebuilds
+  through `createMaybeType`. **DIVERGE-UNINTENTIONAL → SAME** (Union case already canonicalized; Struct
+  was the outlier). Guard `recompiler src/test/guard/maybeIdentitySubst.ms` (`2f039bd`).
+- **gap-1/gap-2 — call-site Maybe-coercion for Function args** (recompiler `f1061e0` + `b5977f8`
+  default-arg fix). Coercion loop skipped Function args; generic call-site wrap stamped the RAW formal.
+  Nim `implicitConv` (sigmatch.nim:2179) always uses the INSTANTIATED formal. Fix: defer generic Maybe
+  formals in the loop; reconciliation re-coerces with the substituted formal. **DIVERGE-INCOMPLETE → SAME.**
+  This closed R1's old `Maybe_fn… is not a function` nullable-call blocker (crossed out below).
+
+**⚠ SCOPE:** gap-2 proven for **memo's shape only** (optional `equals = null`, T bound from
+`fn: () => T`'s return, untyped arrow params). The GENERAL "pass an arrow to a generic `Maybe<fn>`
+param" is NOT solved — see the two open siblings under R1 (`nullfn_*` probes).
+
+## ✅ Fixed 2026-07-22 — inline arrow not lifted in wrapper positions (was mis-filed as `nullfn_generic_arg_notlowered`)
+
+**Reframe:** `probe/nullfn_generic_arg_notlowered.ms` was NOT a Maybe/generic bug. A bare
+non-nullable non-generic `g(x => …).toString()` fails identically. Root: lambda-lifting's `walkLift`
+had an ad-hoc arm list (Call/Binary/Unary/Object/Array) + a **no-op `_ => {}` default**, so an inline
+arrow inside a call held by ANY wrapper — MemberExpr (method chain), ternary, index, `as`-cast — was
+never walked → codegen `0 /* unlowered ArrowFunction */` → C `msClosure ← int`. (A variable-bound
+arrow escaped — VariableDecl WAS handled.)
+
+- **Fix** (recompiler `eafbc8b`): `walkLift` default now `mapChildren(node, walkOrLift)` — uniform
+  child traversal, the analog of Nim `liftCapturedVars` else `for i in 0..<n.len` (lambdalifting.nim:511).
+  Restores symmetry with MS's DETECTION pass, which was already uniform. **DIVERGE-UNINTENTIONAL → SAME.**
+  Guard `recompiler src/test/guard/inlineArrowMemberLift.ms` (`4e6733d`, proven RED on the deployed
+  pre-fix binary → build error). Battery 3323/14 = known-flake only. NIM-REF §1 "Lambda lifting:
+  uniform child traversal".
+- **⚠ NOT DEPLOYED YET** — recompiler HEAD is currently **broken to self-build** (parallel session's
+  actor I18/I19: `runtime/actor/actor.c` uses undefined `msPidSlot`/`msHazardRec`). `eafbc8b` is gated
+  green on base `2f039bd` (independent of actor) but can't be rebuilt/deployed until actor is fixed.
+- **Likely also fixes** the R1 "arrow-in-`new`-arg not lowered" sub-bug (same walk gap, NewExpr fell to
+  the no-op default) — verify after deploy.
+- **⚠ LAYER 2 revealed (NEW, open — next session, R1 family):** for the GENERIC probe, the arrow now
+  lifts but its `(a,b): T` params erase to `void*` → `dollarfn_main_1_(void* a, void* b)` → `void* != 0.0`
+  C error. This is generic arrow-arg param-type non-substitution (R1 erasure). `probe/nullfn_generic_arg_notlowered.ms`
+  still RED at this layer. Repro also: capturing-arrow variant.
+
 ## TODO — per-file compiler bugs (independent; take one per session)
 
-### bug C — `throw new Error(...)` / no `Error` type → blocks `memo`
+### open siblings of the nullfn family (checker; NOT on any Neon test's path; probes in `probe/`)
+- **`probe/nullfn_bindorder.ms`** — `apply((v:number)=>v+1, 10)` binds T=int32 from arg 1, overriding
+  the arg-0 arrow. Nim `paramTypesMatchAux` binds progressively IN ARG ORDER → T=number. Do NOT fix by
+  loosening the exact-match wrap gate (masks the divergence). Checker unify-order bug.
+- **`probe/nullfn_explicit_targ.ms`** — `apply<number>((v:number)=>v+1, 10.5)` → arrow checked against
+  the RAW pre-substitution formal → type degenerates. Needs check against the INSTANTIATED formal
+  (Nim `implicitConv`/`getInstantiatedType`). Checker.
+- **layer-2 void\* erasure** (above) — generic arrow-arg param-type not monomorphized. R1 family.
+
+### ~~bug C — `throw new Error(...)` / no `Error` type → blocks `memo`~~ ✅ FIXED 2026-07-22 (`7202674`+`3b57979`, deployed) — see ✅ section above. Historical detail kept below.
 - **Symptom:** `in instantiation of 'createMemo<int32>': Undefined variable 'Error'`;
   earlier surface `memo.ms:27 passing 'Error*' to param of incompatible type 'msString'`.
 - **Root:** MetaScript has no `Error` type. `genThrowStmt` (recompiler
@@ -100,7 +160,7 @@ generic-erasure family below), not fixed. f3751dd may still be correct for its o
 - **Repro:** isolated `function main(): void { throw new Error("x"); }` — or
   `msc test tests/core/memo.test.ms` once assert:msg lands.
 
-### R1 — generic instantiation erases function/closure type-info → blocks `array`, `region`, `counter` (+ memo's 2nd error)
+### R1 — generic instantiation erases function/closure type-info → blocks `array`, `region`, `counter` (~~+ memo's 2nd error~~ — memo GREEN 2026-07-22)
 **STATUS: PARTIAL — 2 of ~6 sub-bugs closed this session (2026-07-22). Type-identity root done; 5 open sub-bugs below + 2 new found.**
 
 - **✅ SUB-BUG FIXED 2026-07-21 (structural type-dedup keys):** the `probe/r1_arity_min.ms`
@@ -131,6 +191,9 @@ generic-erasure family below), not fixed. f3751dd may still be correct for its o
     `Holder__…_init(_new_, 0 /* unlowered ArrowFunction */)` → `passing 'int' to msClosure`. The
     arrow literal in a constructor arg skips closure lowering. Repro `/tmp/mono_fn.ms`
     (function-typed *var* args work — `/tmp/mono_fn2.ms`).
+    **→ LIKELY FIXED by `eafbc8b`** (uniform `walkLift` child traversal — NewExpr was another kind
+    falling to the old no-op default; same root as the inline-arrow-lift ✅ section above). VERIFY
+    after deploy; the generic case may still hit layer-2 void\* param erasure.
 - **Symptom:** array → `mapArray<number, number>: Too many arguments: expected at most 0, got 1`;
   region → `mapArray<number, unknown>: Argument 0: cannot pass value type number as unknown`;
   counter → `void* ← msString` via `msGenericArrayPush` (array-element erasure);
@@ -160,8 +223,8 @@ generic-erasure family below), not fixed. f3751dd may still be correct for its o
   - **`as`-cast malformed C** — `(cell.getter as () => number)()` emits
     `double (*(msClosure*)&(…getter))(void);` (expected `)`). Distinct codegen bug, pre-existing.
   - **array-element `void*` erasure** — counter `void* ← msString` via `msGenericArrayPush`.
-  - **`Maybe_fn… is not a function` nullable-call** — memo's 2nd blocker (was mislabelled `Maybe_p22`
-    below; the `p22` collision is FIXED — this is a separate nullable-Maybe-call unwrapping gap).
+  - ~~**`Maybe_fn… is not a function` nullable-call** — memo's 2nd blocker.~~ ✅ FIXED 2026-07-22
+    (Root B `substituteStruct` + gap-2 reconciliation — `ba6b365`/`f1061e0`; see ✅ section above).
   - **`Unresolved T`** — flow (separate section below).
 - **Repro:** `/tmp/mrepro.ms` (isolated, reconstruct from shape above);
   `msc test tests/core/array.test.ms` · `tests/render/region.test.ms` · `tests/render/counter.test.ms`.
@@ -213,4 +276,6 @@ generic-erasure family below), not fixed. f3751dd may still be correct for its o
 
 ## ✅ Passing — don't touch
 `signal`, `element`, `host`, `hostOps`, `reconcile`, `reconcileHard`, `renderToString`,
-`terminal`, `dispose` (9 files green). The reactive core + render layer are solid; guard them on every change.
+`terminal`, `dispose`, `memo` (10 files green). The reactive core + render layer are solid; guard them on every change.
+
+Remaining RED (5): `array`, `region`, `counter` (R1 generic-erasure family), `flow` (Unresolved T), `voidHost` (env/sokol).
