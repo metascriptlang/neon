@@ -573,6 +573,46 @@ return-type fallback on `expectedType.kind === TypeKind.Function`. A `fn | null`
   **Neon effect after deploy:** `reconcile.test` framework-pool pattern (`Map<string, HostNode>`)
   now compiles → suite should recover to **10/5** (verify).
 
+### `canRaise` missing Nim's `sfGeneratedOp` arm — raise-check after EVERY DRC hook call (NOT a live bug)
+**Found 2026-07-25 while tracing the try/finally fix. Deferred deliberately — investigate in its own session.**
+
+- **Empirical fact.** Every `msStringDecref`/destroy call gets a raise check. Repro `/tmp/craise.ms`
+  (5-line fn, two string locals) → emitted C:
+  ```c
+  msStringDecref(t_1_);         if (msErr) goto __finally_1;
+  msStringDecref(dollartmp_0_); if (msErr) goto __finally_1;
+  msStringDecref(s_1_);         if (msErr) goto __finally_1;
+  ```
+- **Nim's oracle has TWO arms; MS implements only one.** `canRaise` (`ast.nim:1562`):
+  ```nim
+  if fn.kind == nkSym and (… or sfGeneratedOp in fn.sym.flags): result = false   # ← arm A
+  …
+  result = (fn.typ.n[0].len < effectListLen) or (exceptionEffects.safeLen > 0)   # ← arm B
+  ```
+  **Arm B** (conservative when the effect list is absent) — MS has it, documented at
+  `codegen/c/statements.ms:206` "Conservative canRaise (every call) is the reference's documented fallback."
+  **Arm A** (a compiler-GENERATED lifecycle op can never raise, decided at the CALL SITE) — **MS does not have it.**
+  MS's `suppressRaiseCheck` (`declarations.ms:234` = `isDrcHookFn || isActorDispatch`) only fires while
+  emitting the *body of* a hook, never for a *call to* one.
+- **Consequence in Nim vs MS.** A DRC-cleanup finally in Nim is all `=destroy` calls → `canRaise` false each
+  → `bodyCanRaise` **false** → Nim takes the branch with **no** `oldNimErrFin` save/restore and **no** raise
+  checks inside. MS can't prove that, so it needs the save/restore (which the try/finally fix added).
+- **Three costs (in increasing interest):**
+  1. Code bloat — 2 extra C lines per decref, in every function with an owned local.
+  2. Forces the `__oldErr_<lab>` save/restore that Nim skips in the common cleanup case.
+  3. **Internal contradiction:** those checks are only harmless *because their premise is false*. If a decref
+     really could raise, the current codegen is **wrong** — a partially-run cleanup sequence jumps to
+     `__finally_1`, which decrefs the SAME variables again → double-decref → UAF.
+- **Verdict: DIVERGE-UNINTENTIONAL** (Nim's arm A is followable — MS already has `isDrcHookFn`; NIM-REF gives
+  no intentional reason). **But NOT a live bug today** — decrefs never set `msErr`, so no check ever fires.
+- **⚠ When fixing, do NOT delete the `__oldErr_<lab>` save/restore.** Nim keeps BOTH branches of
+  `bodyCanRaise`; the save/restore is the correct path whenever a finally body genuinely can raise.
+- **Open question to investigate first (do not assume):** `isDrcHookFn` currently classifies the function being
+  EMITTED. Whether the same predicate can be applied to a CALLEE at the call site (is the callee symbol/decl
+  reachable from `emitCallRaiseCheck`?) is unverified — that is the first thing the fix session must establish.
+- **Repro:** `/tmp/craise.ms` (recreate: a fn with two string locals, return the second).
+  Touchpoints: `codegen/c/statements.ms` `emitCallRaiseCheck`/`exprTopIsRaisingCall`, `declarations.ms:234`.
+
 ### loop + nested-closure snapshot broken (PRE-EXISTING — found during bug-D audit)
 - **Symptom:** a closure created **inside a loop** that BOTH captures a loop-body local
   AND contains a nested closure returns wrong counts. Repro `/tmp/loopesc.ms`
