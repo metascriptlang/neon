@@ -202,12 +202,16 @@ handoff REMAINS OPEN under #2 (real for `array`'s closure-array `.slice`).
 
 ## §4 — Uncommitted Neon work (do not confuse with bugs)
 
-The render feature WIP is **uncommitted in the Neon repo** and is real, coherent work:
-Components + For/Index/Show + list-region reconcile. Modified `src/render/{node,host}.ms`,
-`src/macros/ui/flow.ms`, `src/platform/browser/dom.ms` (insertBefore/removeChild/nextSibling),
-`src/core/memo.ms` (glitch-free memo + `equals`), `build.ms`; untracked `src/render/reconcile.ms`,
-`src/core/array.ms`, `tests/render/{region,flow,reconcile,reconcileHard,…}.test.ms`.
-**Preserve it.** It is blocked by roots #1-#5, not broken. Commit once green (needs review).
+**2026-07-26: the green render layer LANDED** (`cd4b535..4731735` — array/memo/reconcile/
+host+node+dom/render-tests/docs/build, 7 commits split by concern). Still uncommitted, ON PURPOSE:
+
+- `src/macros/ui/flow.ms` (M) + `tests/render/flow.test.ms` — bug #3/#4 WIP, next session's subject.
+- `src/platform/void/` + `tests/render/voidHost.test.ms` — void-host WIP, env-blocked (§3).
+- `probe/` — scratch probes (referenced by §5 entries; `macro_disambig`/`macro_lenval` keep
+  deliberate RED bracket-tests, `macro_narrow` N1 = Nhịp-2 marker).
+- `deps/` (vendored yoga clone — vendoring is its own task), `docs/EDITOR*.md` (design scratch).
+
+**Preserve these.** flow/void are blocked by open roots, not broken.
 
 ---
 
