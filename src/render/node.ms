@@ -13,6 +13,19 @@ export interface VEvent {
 	handler: () => void;
 }
 
+// A region produces a reactive list of host nodes (For/Show/Index). Typed loosely
+// (unknown) so this layer stays below the host: host.ms supplies the real Host and the
+// returned thunk yields host nodes that renderToHost reconciles into the DOM.
+export type RegionFn = (host: unknown) => () => unknown[];
+
+// A Component (function component) is a function from props to a VNode. Props values
+// are callables (signals/memos) or plain values — see Reactive<T> + read() in component.ms.
+// The producer form (() => VNode) is the deferred expansion of an already-bound call:
+// createComponent wraps Comp(props) in untrack and returns a VNode whose componentFn field
+// holds the deferred call. Renderer expands it lazily at mount.
+export type ComponentFn<P = unknown> = (props: P) => VNode;
+export type ComponentProducer = () => VNode;
+
 export interface VNode {
 	tag: string;           // "" marks a text node
 	children: VNode[];
@@ -21,6 +34,9 @@ export interface VNode {
 	dyn: () => string;
 	attrs: VAttr[];
 	events: VEvent[];
+	region: RegionFn | null;            // non-null → reactive list region (host reconciles it)
+	componentFn: ComponentProducer | null; // non-null → Component variant (renderer expands lazily)
+	componentProps: Map<string, unknown> | null; // attached for debug/introspection
 }
 
 export function attr(name: string, value: string): VAttr {
@@ -32,18 +48,35 @@ export function evt(name: string, handler: () => void): VEvent {
 }
 
 export function el(tag: string, attrs: VAttr[], events: VEvent[], children: VNode[]): VNode {
-	return { tag, children, text: "", isDyn: false, dyn: () => "", attrs, events };
+	return { tag, children, text: "", isDyn: false, dyn: () => "", attrs, events, region: null, componentFn: null, componentProps: null };
 }
 
 export function text(s: string): VNode {
-	return { tag: "", children: [], text: s, isDyn: false, dyn: () => "", attrs: [], events: [] };
+	return { tag: "", children: [], text: s, isDyn: false, dyn: () => "", attrs: [], events: [], region: null, componentFn: null, componentProps: null };
 }
 
 export function dynText(thunk: () => string): VNode {
-	return { tag: "", children: [], text: "", isDyn: true, dyn: thunk, attrs: [], events: [] };
+	return { tag: "", children: [], text: "", isDyn: true, dyn: thunk, attrs: [], events: [], region: null, componentFn: null, componentProps: null };
+}
+
+export function regionNode(fn: RegionFn): VNode {
+	return { tag: "", children: [], text: "", isDyn: false, dyn: () => "", attrs: [], events: [], region: fn, componentFn: null, componentProps: null };
+}
+
+export function componentNode(fn: ComponentProducer, props: Map<string, unknown>): VNode {
+	return { tag: "", children: [], text: "", isDyn: false, dyn: () => "", attrs: [], events: [], region: null, componentFn: fn, componentProps: props };
 }
 
 export function renderToString(n: VNode): string {
+	const comp = n.componentFn;
+	if (comp !== null) {
+		const producer = comp as ComponentProducer;
+		return renderToString(producer());
+	}
+	const reg = n.region;
+	if (reg !== null) {
+		throw "renderToString does not render reactive regions (For/Show/Index) — render via renderToHost with a host adapter";
+	}
 	if (n.tag === "") { return n.isDyn ? n.dyn() : n.text; }
 	let open = "<" + n.tag;
 	for (const a of n.attrs) { open = open + " " + a.name + "=\"" + a.value + "\""; }

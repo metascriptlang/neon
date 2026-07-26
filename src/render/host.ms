@@ -3,38 +3,69 @@
 // tree once, creating host nodes, binding reactive text, applying attrs/events.
 
 import { createEffect } from "../core/effect";
-import { VNode, VAttr, VEvent } from "./node";
+import { VNode, VAttr, VEvent, RegionFn, ComponentProducer } from "./node";
+import { reconcileArrays } from "./reconcile";
+import { Host, HostNode } from "./hostTypes";
 
-// Opaque per-host node handle. Each adapter casts it to its own node type.
-export type HostNode = unknown;
+export { Host, HostNode } from "./hostTypes";
 
-export interface Host {
-	createElement: (tag: string) => HostNode;
-	createText: (s: string) => HostNode;
-	setText: (node: HostNode, s: string) => void;
-	setAttr: (node: HostNode, name: string, value: string) => void;
-	addEvent: (node: HostNode, name: string, handler: () => void) => void;
-	append: (parent: HostNode, child: HostNode) => void;
-}
-
-export function renderToHost(vnode: VNode, host: Host, parent: HostNode): void {
+// Build a single host node from a vnode (recursing into children). dynText binds a
+// push-effect; a region child mounts an anchor + reconcile effect into this node.
+export function renderNode(vnode: VNode, host: Host): HostNode {
+	const comp = vnode.componentFn;
+	if (comp !== null) {
+		const producer = comp as ComponentProducer;
+		return renderNode(producer(), host);
+	}
 	if (vnode.tag === "") {
 		if (vnode.isDyn) {
 			const tn = host.createText("");
-			host.append(parent, tn);
-			// Push model: re-runs on signal change, writing straight into the host node.
 			createEffect(() => { host.setText(tn, vnode.dyn()); });
-		} else {
-			const tn = host.createText(vnode.text);
-			host.append(parent, tn);
+			return tn;
 		}
-		return;
+		return host.createText(vnode.text);
 	}
 	const node = host.createElement(vnode.tag);
 	for (const a of vnode.attrs) { host.setAttr(node, a.name, a.value); }
 	for (const e of vnode.events) { host.addEvent(node, e.name, e.handler); }
-	host.append(parent, node);
-	for (const k of vnode.children) { renderToHost(k, host, node); }
+	for (const k of vnode.children) {
+		const kRegion = k.region;
+		const kComp = k.componentFn;
+		if (kRegion !== null) { mountRegion(k, host, node); }
+		else if (kComp !== null) {
+			const producer = kComp as ComponentProducer;
+			host.append(node, renderNode(producer(), host));
+		}
+		else { host.append(node, renderNode(k, host)); }
+	}
+	return node;
+}
+
+// A region owns the span before its end anchor. The effect re-runs when the region's
+// list source changes, reconciling host nodes between the start of the span and anchor.
+function mountRegion(vnode: VNode, host: Host, parent: HostNode): void {
+	const anchor = host.createText("");
+	host.append(parent, anchor);
+	let current: HostNode[] = [];
+	const fn = vnode.region as RegionFn;
+	const memo = fn(host);
+	createEffect(() => {
+		const next = memo() as HostNode[];
+		reconcileArrays(host, parent, current, next, anchor);
+		current = next;
+	});
+}
+
+export function renderToHost(vnode: VNode, host: Host, parent: HostNode): void {
+	const comp = vnode.componentFn;
+	if (comp !== null) {
+		const producer = comp as ComponentProducer;
+		renderToHost(producer(), host, parent);
+		return;
+	}
+	const reg = vnode.region;
+	if (reg !== null) { mountRegion(vnode, host, parent); return; }
+	host.append(parent, renderNode(vnode, host));
 }
 
 // ---- Mock host: in-memory tree for tests/SSR (no browser needed) ----
@@ -45,10 +76,27 @@ export interface MockNode {
 	children: MockNode[];
 	attrs: VAttr[];
 	events: VEvent[];
+	parent: MockNode | null;
 }
 
 export function mockNode(tag: string): MockNode {
-	return { tag, text: "", children: [], attrs: [], events: [] };
+	return { tag, text: "", children: [], attrs: [], events: [], parent: null };
+}
+
+function childIndex(parent: MockNode, node: MockNode): number {
+	for (let i = 0; i < parent.children.length; i += 1) {
+		if (parent.children[i] === node) { return i; }
+	}
+	return -1;
+}
+
+// Mirror DOM move semantics: inserting a node already in the tree first detaches it.
+function detach(n: MockNode): void {
+	const p = n.parent;
+	if (p === null) { return; }
+	const idx = childIndex(p, n);
+	if (idx >= 0) { p.children.splice(idx, 1); }
+	n.parent = null;
 }
 
 export function mockHost(): Host {
@@ -69,7 +117,41 @@ export function mockHost(): Host {
 			(node as unknown as MockNode).events.push({ name, handler });
 		},
 		append: (parent: HostNode, child: HostNode): void => {
-			(parent as unknown as MockNode).children.push(child as unknown as MockNode);
+			const p = parent as unknown as MockNode;
+			const c = child as unknown as MockNode;
+			detach(c);
+			c.parent = p;
+			p.children.push(c);
+		},
+		insertBefore: (parent: HostNode, node: HostNode, ref: HostNode | null): void => {
+			const p = parent as unknown as MockNode;
+			const n = node as unknown as MockNode;
+			let target = ref === null ? p.children.length : childIndex(p, ref as unknown as MockNode);
+			if (target < 0) { target = p.children.length; }
+			const curIdx = childIndex(p, n);
+			if (curIdx >= 0) {
+				p.children.splice(curIdx, 1);
+				if (curIdx < target) { target -= 1; }
+			} else {
+				detach(n);
+			}
+			n.parent = p;
+			p.children.splice(target, 0, n);
+		},
+		removeChild: (parent: HostNode, node: HostNode): void => {
+			const p = parent as unknown as MockNode;
+			const n = node as unknown as MockNode;
+			const idx = childIndex(p, n);
+			if (idx >= 0) { p.children.splice(idx, 1); }
+			n.parent = null;
+		},
+		nextSibling: (node: HostNode): HostNode | null => {
+			const n = node as unknown as MockNode;
+			const p = n.parent;
+			if (p === null) { return null; }
+			const idx = childIndex(p, n);
+			if (idx < 0 || idx + 1 >= p.children.length) { return null; }
+			return p.children[idx + 1] as unknown as HostNode;
 		},
 	};
 }

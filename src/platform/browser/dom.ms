@@ -47,7 +47,10 @@ extern class DomNode {
 	textContent: cstring;
 	style: Style;
 	classList: ClassList;
+	nextSibling: DomNode;
 	extern appendChild(child: DomNode): void;
+	extern insertBefore(node: DomNode, ref: DomNode | null): void;
+	extern removeChild(child: DomNode): void;
 	extern setAttribute(name: cstring, value: cstring): void;
 	extern addEventListener(name: cstring, handler: () => void): void;
 }
@@ -82,6 +85,18 @@ export function domHost(): Host {
 		},
 		append: (parent: HostNode, child: HostNode): void => {
 			(parent as unknown as DomNode).appendChild(child as unknown as DomNode);
+		},
+		insertBefore: (parent: HostNode, node: HostNode, ref: HostNode | null): void => {
+			(parent as unknown as DomNode).insertBefore(
+				node as unknown as DomNode,
+				ref === null ? null : (ref as unknown as DomNode),
+			);
+		},
+		removeChild: (parent: HostNode, node: HostNode): void => {
+			(parent as unknown as DomNode).removeChild(node as unknown as DomNode);
+		},
+		nextSibling: (node: HostNode): HostNode | null => {
+			return (node as unknown as DomNode).nextSibling as unknown as HostNode;
 		},
 	};
 }
