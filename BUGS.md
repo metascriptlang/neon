@@ -189,14 +189,18 @@ function was needed, and the emitted C shows DRC injecting `msIncref` per copied
 **2026-07-26: the green render layer LANDED** (`cd4b535..4731735` — array/memo/reconcile/
 host+node+dom/render-tests/docs/build, 7 commits split by concern). Still uncommitted, ON PURPOSE:
 
-- ~~`src/macros/ui/flow.ms` + `tests/render/flow.test.ms`~~ — **COMMITTED 2026-07-26 late**
-  (`454eec7` feature, `df9a4d5` test) once its three blocking roots fell and the file went green.
-- `src/platform/void/` + `tests/render/voidHost.test.ms` — void-host WIP, env-blocked (§3).
-- `probe/` — scratch probes (referenced by §5 entries; `macro_disambig`/`macro_lenval` keep
-  deliberate RED bracket-tests, `macro_narrow` N1 = Nhịp-2 marker).
-- `deps/` (vendored yoga clone — vendoring is its own task), `docs/EDITOR*.md` (design scratch).
+**2026-07-27: the backlog is now EMPTY** — everything above was committed once it was either green
+or provably env-blocked:
 
-**Preserve these.** flow/void are blocked by open roots, not broken.
+- `src/macros/ui/flow.ms` + `tests/render/flow.test.ms` → `454eec7` + `df9a4d5` (green).
+- `src/platform/void/host.ms` → `54cb9c8`, `tests/render/voidHost.test.ms` → `167493d`.
+  ⚠ Committed while still RED — the blocker is the §3 environment gap, not the code.
+- `probe/` → `307ba0a`. These are the probes the §5 entries cite. Three assert deliberately WRONG
+  values (`macro_disambig`, `macro_lenval`, `macro_narrow` N1) — see §7 before reading them as
+  failures.
+
+Deliberately still untracked: `docs/EDITOR*.md` (design scratch) and `deps/` (empty — the yoga
+vendoring never landed; it remains its own task).
 
 ---
 
@@ -703,5 +707,5 @@ Each is cheap, none blocks anything, all were surfaced by the sessions that clos
 - **Neon `probe/` housekeeping** — `macro_disambig` / `macro_lenval` still assert the formerly-WRONG
   values (deliberate RED bracket-tests); `macro_narrow` N1 is red BY DESIGN (Nhịp-2 marker). Rewrite
   truth-only or delete at leisure, but do not read them as failures.
-- **Still uncommitted in Neon, on purpose:** `src/platform/void/` + `tests/render/voidHost.test.ms`
-  (env-blocked), `deps/` (vendored yoga — vendoring is its own task), `docs/EDITOR*.md`, `probe/`.
+- **Yoga vendoring never happened.** `deps/` exists but is EMPTY; the layout engine is still a
+  TODO in its own right (see CLAUDE.md's `src/yoga/`).
