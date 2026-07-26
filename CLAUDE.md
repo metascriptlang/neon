@@ -22,9 +22,16 @@
 - **TypeScript Syntax**: More approachable than Nim for web developers
 - **Three Backends**: C (native), JS (browser), Erlang (distributed) - vs Nim's two
 
-**Reference Architecture**: Original Neon (Nim) at ~/projects/neon
-- Documentation: docs/nim.md
-- MetaScript capabilities: docs/metascript.md
+**Reference Architecture**: Original Neon (Nim) at `/Users/le/projects/neon`
+- Port status & MetaScript power map: docs/PORT-STATUS.md
+- Original Nim reference: docs/nim.md
+- MetaScript compiler docs (source of truth): /Users/le/metascript/recompiler/docs/
+  - `LANG.md` — language reference
+  - `LANG-METAPROGRAMMING.md` — macro model
+  - `LANG-JSX.md` + `JSX-ROADMAP.md` — JSX
+  - `PROTOCOLS.md` — convention-based dispatch
+
+**Compiler**: `/Users/le/metascript/recompiler` (self-hosted, invoked via the `msc` CLI in `$PATH` — see Quick Reference)
 
 ---
 
@@ -70,7 +77,7 @@
 When you hit a MetaScript limitation:
 
 1. **IMMEDIATELY STOP** current work
-2. **Switch to MetaScript project** at /Users/le/projects/metascript
+2. **Switch to MetaScript project** at /Users/le/metascript/recompiler
 3. **Fix the compiler** to support what Neon needs
 4. **Return to Neon** with solid compiler support
 5. **Continue with confidence** - no hacks, no workarounds
@@ -104,28 +111,23 @@ When you hit a MetaScript limitation:
 
 ### Development Commands
 
+Neon builds and tests run directly via the self-hosted `msc` CLI (installed in `$PATH` at `~/.metascript/bin/msc`). No Bun, no `bun run` — `msc` is the ground truth: it typechecks AND does real C/JS codegen, so it catches bugs the old transpile-only Bun path hid.
+
 ```bash
-# Development (MetaScript compiler)
-cd /Users/le/projects/metascript
-zig build
-export PATH=$PWD/zig-out/bin:$PATH
+# Build the MetaScript compiler (only when compiler source changed)
+cd /Users/le/metascript/recompiler
+rm -rf out && msc test src/index.ms          # full compiler test suite
 
-# Build Neon framework
+# Run Neon tests (self-hosted msc — real codegen, no false-green)
 cd /Users/le/metascript/neon
-msc compile --target=c src/neon.ms          # Native library
-msc compile --target=js src/neon.ms         # Browser bundle
+msc test tests/core/signal.test.ms           # single test file
+msc test tests/render/reconcile.test.ms
 
-# Run examples
-msc run --target=raiser examples/counter.ms  # VM (fastest iteration)
-msc run --target=js examples/counter.ms      # Browser preview
+# Run Neon examples / smoke runs
+msc run examples/counter.ms                  # build native + run
+msc build examples/counter.ms                # build native binary (no run)
 
-# Testing
-msc test tests/core/signal.test.ms           # Unit tests
-msc test tests/macros/element.test.ms        # Macro tests
-msc test tests/integration/*.test.ms         # Integration tests
-
-# Macro expansion preview
-msc expand examples/counter.ms               # See generated code
+# Tip: always `rm -rf out` before a fresh compiler build — stale artifacts cause false passes.
 ```
 
 ### File Structure
@@ -135,62 +137,70 @@ neon/
 ├── CLAUDE.md              # This file - AI assistant guide
 ├── docs/
 │   ├── nim.md             # Original Neon (Nim) reference
-│   ├── metascript.md      # MetaScript capabilities
-│   ├── migration.md       # Nim → MetaScript porting notes
-│   └── architecture.md    # Neon design principles
+│   ├── metascript.md      # Pointer to MetaScript compiler docs
+│   ├── PORT-STATUS.md     # Port status + MetaScript power map (LIVE)
+│   ├── RENDER-LAYERS.md   # 3-layer render model (A reconcile / B paint / C GPU) — Neon × Void × platform
+│   └── COLLAB.md          # Collaboration model (CRDT + AST + Git)
 │
 ├── src/
-│   ├── neon.ms            # Framework entry point
-│   ├── App.ms             # Sacred API - user-facing syntax example
+│   ├── index.ms           # Framework entry point
 │   │
-│   ├── core/              # Reactive runtime
+│   ├── core/              # Reactive runtime (✓ ported)
 │   │   ├── signal.ms      # Signal[T] - reactive state
 │   │   ├── effect.ms      # createEffect - side effects
 │   │   ├── memo.ms        # createMemo - cached computation
-│   │   ├── batch.ms       # batch - deferred updates
-│   │   └── cleanup.ms     # onCleanup - disposal
+│   │   ├── owner.ms       # Owner hierarchy for cleanup
+│   │   ├── runtime.ms     # Reactive runtime (batching, scheduling)
+│   │   ├── cleanup.ms     # onCleanup - disposal
+│   │   ├── array.ms       # Keyed list helpers
+│   │   └── types.ms       # Core reactive types
 │   │
-│   ├── macros/            # Compile-time transformations
-│   │   ├── ui/
-│   │   │   ├── element.ms # element macro - UI DSL
-│   │   │   ├── style.ms   # createStyles macro
-│   │   │   └── flow.ms    # Show, For, Index control flow
-│   │   └── state/
-│   │       └── reactive.ms # signal, derived, effect macros
+│   ├── render/            # Renderer-agnostic layer (✓ ported, NOT in Nim original)
+│   │   ├── node.ms        # VNode / element construction
+│   │   ├── host.ms        # Host operations contract
+│   │   └── reconcile.ms   # Reconciler
+│   │
+│   ├── macros/            # Compile-time transformations (partial)
+│   │   └── ui/
+│   │       ├── element.ms # element macro - JSX → VNode tree (sacred)
+│   │       ├── flow.ms    # Show / For control flow
+│   │       └── style.ms   # createStyles macro (stub)
 │   │
 │   ├── platform/          # Platform-specific renderers
 │   │   ├── types.ms       # Cross-platform Element interface
-│   │   ├── ios/
-│   │   │   └── uikit.ms   # UIKit bindings (C FFI)
-│   │   ├── android/
-│   │   │   └── views.ms   # Android View bindings (C FFI)
-│   │   ├── browser/
-│   │   │   └── dom.ms     # DOM rendering (JS backend)
-│   │   └── terminal/
-│   │       └── tui.ms     # Terminal UI (C backend)
+│   │   └── browser/
+│   │       └── dom.ms     # DOM rendering (JS backend, partial)
+│   │   # TODO: ios/, android/, terminal/
 │   │
-│   ├── yoga/              # Flexbox layout (C FFI)
-│   │   └── bindings.ms    # Yoga extern declarations
-│   │
-│   └── starter/           # Example components
-│       ├── Counter.ms
-│       ├── TodoList.ms
-│       └── AnimationDemo.ms
+│   └── yoga/              # Flexbox layout (empty — TODO)
+│   └── starter/           # Example components (empty — TODO)
 │
 ├── examples/              # Usage examples
 │   ├── counter.ms         # Basic reactivity
-│   ├── todo-app.ms        # CRUD operations
-│   └── multi-platform.ms  # Cross-platform showcase
+│   ├── counterDom.ms      # Counter via DOM
+│   ├── signalApi.ms       # Signal API demo
+│   ├── reactivityTest.ms
+│   ├── showcaseDom.ms
+│   └── closureReassign.ms
 │
 ├── tests/                 # Test suite
 │   ├── core/              # Reactive system tests
-│   ├── macros/            # Macro transformation tests
-│   ├── platform/          # Platform-specific tests
-│   └── integration/       # End-to-end tests
+│   │   ├── signal.test.ms
+│   │   ├── memo.test.ms
+│   │   ├── dispose.test.ms
+│   │   └── array.test.ms
+│   └── render/            # Render/reconcile/macro tests
+│       ├── reconcile.test.ms
+│       ├── reconcileHard.test.ms
+│       ├── host.test.ms
+│       ├── hostOps.test.ms
+│       ├── flow.test.ms
+│       ├── element.test.ms
+│       ├── region.test.ms
+│       ├── counter.test.ms
+│       └── renderToString.test.ms
 │
 └── build/                 # Generated artifacts
-    ├── c/                 # Native binaries
-    └── js/                # Browser bundles
 ```
 
 ---
@@ -221,15 +231,15 @@ neon/
 
 | File | Reason | Breaking Change Impact |
 |------|--------|------------------------|
-| `src/App.ms` | User-facing syntax example | Breaks all user code |
 | `src/core/signal.ms` | Reactive core API | Affects all reactivity |
-| `src/macros/ui/element.ms` | UI DSL macro | Changes framework API |
+| `src/macros/ui/element.ms` | UI DSL macro (JSX → VNode) | Changes framework API |
+| `src/render/node.ms` | VNode construction contract | Affects every renderer |
 
 **Decision Tree**:
 ```
 Making changes?
 ├── Core (signal.ms, effect.ms) → ASK FIRST, test ALL platforms
-├── Macros (element.ms) → Verify src/App.ms still works
+├── Macros (element.ms) → Verify tests/render/element.test.ms still works
 ├── Platform-specific → Test on actual devices
 └── Examples/Docs → Safe to modify
 ```
@@ -278,93 +288,46 @@ element:
 
 ## Development Workflow
 
-### Phase 1: Reactive Core (Week 1-2)
+See `docs/PORT-STATUS.md` for the live, detailed port status + module mapping. Summary below.
 
-**Goal**: Implement Solid.js-style reactivity in MetaScript
+### Phase 1: Reactive Core ✅ DONE
 
-```bash
-# Start with signal implementation
-touch src/core/signal.ms
-msc compile --target=raiser src/core/signal.ms
+**Goal**: Solid.js-style reactivity in MetaScript — signal/effect/memo/owner/cleanup/runtime.
 
-# Test reactivity
-touch tests/core/signal.test.ms
-msc test tests/core/signal.test.ms
-```
+**Delivered**: `src/core/{signal,effect,memo,owner,cleanup,runtime,array,types}.ms` + 4 test files in `tests/core/`. Render layer (`src/render/{host,node,reconcile}.ms`) was added beyond the Nim original — cleaner architecture.
 
-**Files to create**:
-- [ ] `src/core/signal.ms` - Signal[T] with get/set
-- [ ] `src/core/effect.ms` - Auto-tracking dependency system
-- [ ] `src/core/memo.ms` - Cached computations
-- [ ] `src/core/batch.ms` - Deferred updates
-- [ ] `tests/core/*.test.ms` - Unit tests for reactivity
+### Phase 2: UI Macro System ✅ PARTIAL
 
-**MetaScript Features Used**:
-- Classes with generics: `class Signal<T>`
-- Extension methods: `function get(this Signal<T> s): T`
-- Closures for effect tracking
+**Goal**: Compile-time DSL transformation via JSX + macros.
 
-### Phase 2: UI Macro System (Week 3-4)
+**Delivered**: `src/macros/ui/element.ms` (JSX → VNode tree) + `flow.ms` (Show/For). `style.ms` is a stub.
 
-**Goal**: Build compile-time DSL transformation
+**Remaining**: component macro (function components), createStyles macro, full attribute classification (animatable/events/static).
 
-```bash
-# Implement element macro
-touch src/macros/ui/element.ms
-msc expand examples/simple.ms  # Preview generated code
-```
+### Phase 3: Platform Backends — IN PROGRESS
 
-**Files to create**:
-- [ ] `src/macros/ui/element.ms` - DSL → platform calls
-- [ ] `src/macros/ui/style.ms` - createStyles macro
-- [ ] `tests/macros/element.test.ms` - Macro tests
-- [ ] `examples/macro-preview.ms` - Show transformation
+**Goal**: Renderers for each platform.
 
-**MetaScript Features Used**:
-- `macro element(body: ASTNode): ASTNode` - AST transformation
-- `@comptime` blocks for compile-time logic
-- AST node creation APIs
+**Delivered**: `src/platform/browser/dom.ms` (partial DOM rendering, JS backend).
 
-### Phase 3: Platform Backends (Week 5-8)
+**Blocked on MetaScript**:
+- `@target("c")` / `@target("js")` expansion — needed for iOS/Android native code selection. Currently PARSED but not expanded (see `LANG-METAPROGRAMMING.md` Phase F).
 
-**Goal**: Implement renderers for each platform
-
-```bash
-# iOS backend
-touch src/platform/ios/uikit.ms
-msc compile --target=c src/platform/ios/uikit.ms
-
-# Browser backend
-touch src/platform/browser/dom.ms
-msc compile --target=js src/platform/browser/dom.ms
-```
-
-**Files to create**:
-- [ ] `src/platform/types.ms` - Cross-platform Element interface
-- [ ] `src/platform/ios/uikit.ms` - UIKit extern bindings
-- [ ] `src/platform/android/views.ms` - Android extern bindings
-- [ ] `src/platform/browser/dom.ms` - DOM rendering (JS target)
-- [ ] `src/yoga/bindings.ms` - Yoga layout extern bindings
-
-**MetaScript Features Used**:
-- `extern function` for C FFI (UIKit, Android, Yoga)
-- `@target("c")` vs `@target("js")` conditional compilation
-- `Owned<T>` / `Borrowed<T>` ownership tracking
+**Remaining**: yoga (needs `struct` + `extern function` + `@include`), iOS, Android, terminal.
 
 ### Phase 4: Compiler Co-Evolution (Ongoing)
 
-**Goal**: Find and fix MetaScript compiler issues
+**Goal**: Find and fix MetaScript compiler issues.
 
 ```bash
 # When you hit a compiler bug:
-cd /Users/le/projects/metascript
-git checkout -b fix/neon-issue-123
-# Fix the compiler
-zig build test
+cd /Users/le/metascript/recompiler
+# Fix the compiler (TDD: write failing test first)
+rm -rf out && msc test src/index.ms
 
 # Verify fix in Neon
 cd /Users/le/metascript/neon
-msc compile src/neon.ms  # Should work now
+msc test tests/core/signal.test.ms
 ```
 
 **Feedback Loop**:
@@ -402,7 +365,6 @@ msc compile src/neon.ms  # Should work now
 - Any other compiler issue → Fix the root cause
 
 **NEVER Workaround in Neon**:
-- ❌ Don't document workarounds in `docs/migration.md`
 - ❌ Don't accept "cosmetic syntax issues"
 - ❌ Don't settle for "good enough" hacks
 - ✅ Always fix MetaScript to support what Neon needs
@@ -455,18 +417,23 @@ msc compile src/neon.ms  # Should work now
 ```bash
 # Test signals, effects, memos
 msc test tests/core/signal.test.ms
-msc test tests/core/effect.test.ms
 msc test tests/core/memo.test.ms
+msc test tests/core/dispose.test.ms
+msc test tests/core/array.test.ms
 ```
 
 **Coverage**: 90%+ for core reactive system
 
-### Macro Tests (DSL Transformation)
+### Macro & Render Tests
 
 ```bash
-# Test element macro expansion
-msc expand tests/macros/element.test.ms --output=/tmp/expanded.ms
-diff /tmp/expanded.ms tests/macros/element.expected.ms
+# Test JSX → VNode macro expansion + reconciler
+msc test tests/render/element.test.ms
+msc test tests/render/reconcile.test.ms
+msc test tests/render/reconcileHard.test.ms
+msc test tests/render/flow.test.ms
+msc test tests/render/counter.test.ms
+msc test tests/render/renderToString.test.ms
 ```
 
 **Coverage**: 85%+ for macro correctness
@@ -474,22 +441,19 @@ diff /tmp/expanded.ms tests/macros/element.expected.ms
 ### Integration Tests (Platform)
 
 ```bash
-# iOS simulator
-msc compile --target=c examples/counter.ms
-ios-sim run build/counter.app
+# Browser (JS backend)
+msc build examples/counterDom.ms
 
-# Browser
-msc compile --target=js examples/counter.ms
-open build/counter.html
+# iOS / Android / Terminal — TODO (blocked on @target expansion in MetaScript)
 ```
 
 **Coverage**: Smoke tests for each platform
 
 ### Pre-Commit Checklist
 
-- [ ] All unit tests pass: `msc test tests/core/*.test.ms`
-- [ ] All macro tests pass: `msc test tests/macros/*.test.ms`
-- [ ] No TypeScript syntax regressions: Verify `src/App.ms` compiles
+- [ ] All core tests pass: `msc test tests/core/*.test.ms`
+- [ ] All render tests pass: `msc test tests/render/*.test.ms`
+- [ ] No regressions: `msc run examples/counter.ms` runs clean
 - [ ] Documentation updated if API changed
 - [ ] No MetaScript compiler crashes
 
@@ -543,64 +507,47 @@ src/platform/    ← Platform-specific (UIKit, DOM, etc.)
 ### Add a New Component
 
 ```bash
-# 1. Create component file
+# 1. Create component file under src/starter/
 touch src/starter/MyComponent.ms
 
-# 2. Implement with element macro
-cat > src/starter/MyComponent.ms << 'EOF'
-import { element } from "../macros/ui/element.ms";
-import { signal } from "../core/signal.ms";
-
-export function MyComponent(): Element {
-  signal count = 0;
-
-  return element:
-    View(style = styles.container):
-      Text: () => `Count: ${count()}`
-      Button(onPress = () => count.set(count() + 1)):
-        Text: "Increment"
-}
-EOF
+# 2. Implement with JSX + element macro (see src/macros/ui/element.ms for the contract)
+#    Reference: examples/counter.ms and tests/render/counter.test.ms
 
 # 3. Test it
-msc run --target=raiser examples/use-component.ms
+msc run examples/use-component.ms
 ```
 
 ### Add Platform Support
 
 ```bash
-# 1. Create platform directory
+# 1. Create platform directory under src/platform/
 mkdir -p src/platform/myplatform
 
-# 2. Implement Element interface
+# 2. Implement Element interface (see src/platform/types.ms)
 touch src/platform/myplatform/renderer.ms
 
-# 3. Add extern bindings for platform APIs
-# (see src/platform/ios/uikit.ms as reference)
+# 3. Add extern bindings for platform APIs (see src/platform/browser/dom.ms as reference)
 
 # 4. Test on actual platform
-msc compile --target=c src/platform/myplatform/renderer.ms
+msc build examples/counter-myplatform.ms
 ```
 
 ### Debug Macro Expansion
 
-```bash
-# View generated code from macro
-msc expand examples/counter.ms --output=/tmp/counter-expanded.ms
-cat /tmp/counter-expanded.ms
+MetaScript does not currently have a `msc expand` CLI. To inspect macro output:
 
-# Compare with expected output
-diff /tmp/counter-expanded.ms tests/macros/counter.expected.ms
-```
+1. Write a minimal test in `tests/render/` that exercises the macro.
+2. Add `console.log`/`assert` on the produced VNode tree (see `tests/render/element.test.ms`).
+3. Run: `msc test tests/render/element.test.ms`.
 
 ### Profile Performance
 
 ```bash
-# Compile with profiling
-msc compile --target=c --profile src/neon.ms
+# Compile to C with profiling flags (add via @passC in source)
+msc build examples/counter.ms
 
-# Run benchmark
-./build/neon-benchmark
+# Run the produced binary
+./build/c/counter
 ```
 
 ---
@@ -609,15 +556,15 @@ msc compile --target=c --profile src/neon.ms
 
 ### MetaScript Compiler Crashes
 
-**Symptom**: `msc compile` segfaults or panics
+**Symptom**: `msc test` or `msc build` segfaults or panics
 
 **Steps**:
 1. **STOP Neon work** - don't try to work around this
 2. Simplify code to minimal reproduction case
-3. Switch to /Users/le/projects/metascript
-4. Write failing test demonstrating the crash
-5. Debug and fix the compiler issue
-6. Verify fix with `zig build test`
+3. Switch to `/Users/le/metascript/recompiler`
+4. Write failing compiler test demonstrating the crash
+5. Fix the compiler (TDD)
+6. Verify fix: `rm -rf out && msc test src/index.ms`
 7. Return to Neon - issue is now permanently resolved
 
 ### Macro Expansion Doesn't Work as Expected
@@ -625,9 +572,9 @@ msc compile --target=c --profile src/neon.ms
 **Symptom**: Generated code is wrong
 
 **Steps**:
-1. Use `msc expand` to see actual output
+1. Add `console.log`/`assert` on the produced VNode tree (no `msc expand` CLI yet)
 2. Check macro implementation in `src/macros/ui/element.ms`
-3. Add test case in `tests/macros/element.test.ms`
+3. Add test case in `tests/render/element.test.ms`
 4. Fix macro logic
 5. Verify all existing tests still pass
 
@@ -636,7 +583,7 @@ msc compile --target=c --profile src/neon.ms
 **Symptom**: Works in browser but not iOS
 
 **Steps**:
-1. Check platform implementation: `src/platform/ios/uikit.ms`
+1. Check platform implementation: `src/platform/ios/uikit.ms` (TODO — not yet ported)
 2. Verify extern bindings are correct
 3. Test C FFI separately (simple test program)
 4. Add platform-specific test in `tests/platform/ios.test.ms`
@@ -655,17 +602,18 @@ msc compile --target=c --profile src/neon.ms
 
 ## Success Metrics
 
-### Phase 1 Complete When:
-- [ ] Signals work: get/set with dependency tracking
-- [ ] Effects work: auto-run on dependency changes
-- [ ] Memos work: cached computations, lazy re-evaluation
-- [ ] Tests pass: 90%+ coverage of core reactivity
+### Phase 1 Complete ✅:
+- [x] Signals work: get/set with dependency tracking
+- [x] Effects work: auto-run on dependency changes
+- [x] Memos work: cached computations, lazy re-evaluation
+- [x] Tests pass: 90%+ coverage of core reactivity
 
-### Phase 2 Complete When:
-- [ ] `element` macro transforms DSL to platform calls
-- [ ] `createStyles` macro generates style objects
-- [ ] `src/App.ms` compiles with clean syntax
-- [ ] Macro tests pass: Generated code matches expected
+### Phase 2 Partial ✅:
+- [x] `element` macro transforms JSX to VNode tree
+- [x] `flow.ms` (Show/For) works
+- [ ] `createStyles` macro generates style objects (style.ms is a stub)
+- [ ] Component macro (function components)
+- [ ] Full attribute classification (animatable/events/static)
 
 ### Phase 3 Complete When:
 - [ ] iOS backend renders native UIKit views
@@ -686,19 +634,21 @@ msc compile --target=c --profile src/neon.ms
 ## Resources
 
 **Reference Projects**:
-- Original Neon (Nim): /Users/le/projects/neon
-- MetaScript Compiler: /Users/le/projects/metascript
+- Original Neon (Nim): `/Users/le/projects/neon`
+- MetaScript Compiler: `/Users/le/metascript/recompiler`
 - Solid.js (reactivity inspiration): https://solidjs.com
 - Yoga (layout engine): https://yogalayout.com
 
 **Documentation**:
-- Neon architecture: docs/nim.md
-- MetaScript capabilities: docs/metascript.md
+- Port status + MetaScript power map: docs/PORT-STATUS.md
+- Original Neon (Nim) reference: docs/nim.md
+- Collaboration model: docs/COLLAB.md
+- MetaScript compiler docs: `/Users/le/metascript/recompiler/docs/`
 
 **MetaScript Compiler**:
-- Source: /Users/le/projects/metascript/src
-- Tests: /Users/le/projects/metascript/tests
-- Build: `zig build` in metascript root
+- Source: `/Users/le/metascript/recompiler/src`
+- Tests: integrated in `src/index.ms` (`msc test src/index.ms`)
+- Build: `rm -rf out && msc test src/index.ms`
 
 ---
 
