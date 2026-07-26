@@ -36,18 +36,20 @@ float-precision). 5 files total.
 
 ---
 
-## §1 — CURRENT STATE (measured 2026-07-25 late, `rm -rf out`, all 15 test files)
+## §1 — CURRENT STATE (measured 2026-07-26, `rm -rf out` PER FILE, all 15 test files)
 
-**Neon suite = 11 pass / 4 fail.** Command: `msc test <file>` per file, clean `out/`.
-⚠ Measured with the assert-raise fix **staged in the recompiler tree but NOT COMMITTED and NOT
-DEPLOYED** — the installed `msc` still gives 10/5. Rebuild + `sync-local-binary.sh` to reproduce,
-or use `/tmp/rc-testbound/msc`.
+**Neon suite = 12 pass / 3 fail.** Command: `msc test <file>` per file, clean `out/`.
+⚠ Measured with the macro-VM-typing fix **in worktree `/tmp/rc-macrotype` (base `a9c0ae6`), NOT
+COMMITTED, NOT DEPLOYED** — verified binary `/tmp/rc-macrotype/msc`. The installed `msc` still
+gives 10/5 (it predates both this fix and the 07-25 assert-raise fix, now committed `2a156ff..122949d`).
+⚠ Protocol: `rm -rf out` BETWEEN files is load-bearing — sequential `msc test` runs sharing `out/`
+produced spurious compile failures (reconcile/reconcileHard flip-flopped until cleaned).
 
 | file | result | file | result |
 |---|---|---|---|
 | `core/signal` | ✅ | `core/array` | ❌ |
 | `core/memo` | ✅ | `render/flow` | ❌ |
-| `core/dispose` | ✅ | `render/counter` | ❌ |
+| `core/dispose` | ✅ | `render/counter` | ✅ **NEW 2026-07-26** |
 | `render/element` | ✅ | `render/voidHost` | ❌ (env) |
 | `render/host` | ✅ | | |
 | `render/hostOps` | ✅ | | |
@@ -57,9 +59,9 @@ or use `/tmp/rc-testbound/msc`.
 | `render/region` | ✅ **NEW 2026-07-25** | | |
 | `platform/terminal` | ✅ | | |
 
-### Issue count: **4 compiler roots on Neon's path + 2 Neon-side + 6 compiler debts off-path = 12 open**
+### Issue count: **3 compiler roots on Neon's path + 2 Neon-side + 6 compiler debts off-path = 11 open**
 
-### The 4 roots blocking the 3 red compiler files
+### The 3 roots blocking the 2 red compiler files (voidHost is §3/env)
 
 | # | root | blocks | exact error (measured) |
 |---|---|---|---|
@@ -67,12 +69,12 @@ or use `/tmp/rc-testbound/msc`.
 | **2** | **`Array<function>` method surface** | `array` | `in instantiation of 'indexArray<number, function>': Property 'slice' does not exist on type 'Array'` |
 | **3** | **Unresolved-T through generic wrapper** | `flow` | `in instantiation of 'For<number>': Unresolved type 'T' - missing import?` (same for `Index<number>`) |
 | **4** | **optional field `fallback?` lowering** | `flow` | `'fallback' does not exist in type ''` · `Property 'fallback' does not exist on type 'object'. Available: when, children, fallback?` · C: `no member named 'fallback' in 'struct msAnon_1bgn5uf'` (flow.ms:71), `member reference base type 'void *' is not a structure or union` (flow.ms:72) |
-| **5** | **array-element `void*` erasure** | `counter` | `assigning to 'void *' from incompatible type 'msString'` (counter.test:33), via `msGenericArrayPush` |
+| ~~5~~ | ~~array-element `void*` erasure~~ | ~~`counter`~~ | ✅ **CLOSED 2026-07-26 — framing WRONG twice over.** Not an array bug, not codegen: the `element` MACRO spliced the literal string `"on"` (the ARGUMENT of `startsWith`) where the `<button>` subtree belonged, because macro bodies compiled with UNTYPED params and every flat Node-field read dispatched blind in the VM. The msString-into-`void*` clang error was where the corpse landed. See §5 2026-07-26. |
 
 **Roots 3 and 4 are both in `flow`** — likely one session, but they are distinct mechanisms
 (T substitution vs optional-field struct lowering); do not assume fixing one clears the other.
 
-**Recommended order:** **#3+#4 flow** (2 roots, 1 file, shared session) → **#2** → **#5**.
+**Recommended order:** **#3+#4 flow** (2 roots, 1 file, shared session) → **#2**.
 
 ### ⚠ On T = unknown → `void*` — real, but NOT a blocker (do not chase it)
 
@@ -124,12 +126,13 @@ renderNode(props.children(item, idx), host)); … })`. T flows `each: () => T[]`
   - Assignment-LHS narrowing gate: `checkExprPass.ms` `leftPartOfAsgn>0` suppresses narrowing on the
     assignment target; the index sub-read is exempted (`de158b0`). Reusable for "read-in-lvalue-position".
 
-### #5 — array-element `void*` erasure (`counter`)
+### ~~#5 — array-element `void*` erasure (`counter`)~~ ✅ CLOSED 2026-07-26
 
-`counter.test.ms:33` → `assigning to 'void *' from incompatible type 'msString'` via
-`msGenericArrayPush`. **Distinct from bug E** (`f3751dd`, generic instance-METHOD dispatch) — that fix
-is correct for its own case but clears 0 Neon files; this is the array-ELEMENT path.
-Repro: `msc test tests/render/counter.test.ms`.
+The `msGenericArrayPush(&T6_, MS_STRING_LIT("on"))` C error was downstream wreckage: `"on"` was the
+expansion-time value of `a.jsxAttrName.startsWith("on")` — the macro VM evaluated the chain to its
+own ARGUMENT because macro bodies compiled untyped. Root-caused + fixed in the macro engine
+(§5 2026-07-26); `counter` green. NOTE: the `msGenericArraySlice` ownership question from the 07-25
+handoff REMAINS OPEN under #2 (real for `array`'s closure-array `.slice`).
 
 ---
 
@@ -212,6 +215,68 @@ Components + For/Index/Show + list-region reconcile. Modified `src/render/{node,
 ---
 
 ## §5 — Fixed (history + root-cause ledger, append-only)
+
+### 2026-07-26 — `counter` GREEN: macro-VM flat Node reads were untyped ⚠ IN WORKTREE `/tmp/rc-macrotype`, NOT COMMITTED
+
+**§1 #5 "array-element void* erasure" was a mis-framing.** Real chain: `element.ms:20`
+`a.jsxAttrName.startsWith("on")` evaluated AT EXPANSION TIME to the literal `"on"` (its own argument)
+→ the macro spliced `"on"` where the `<button>` subtree belonged → clang saw `msString` pushed into a
+`void*` children array. Six neon probes (`probe/macro_*.test.ms`) isolated it: flat reads alone were
+correct, ANY chained call mis-dispatched, and the early "direct param fields work" conclusion was
+itself a false-green (`"p".length == 1 ==` attr count; a 2-attr disambiguation probe pinned EVERYTHING
+flat as untyped — `.length` chains returned the attr COUNT).
+
+**Root (3 layers, all in the macro-engine path):**
+1. `expand.ms getOrCompileMacro` built the `__macroBody` wrapper with `fnParamTypes` all `""`
+   (deliberate — "param types are never known"), so `n: Node` was Unknown BY CONSTRUCTION; every flat
+   read (the VM wire format flattens NodeData payload fields onto the Node object —
+   `nodeToASTLiteral`/`bridge.ms`, no `data` key) dispatched blind in the Raiser lowering.
+2. `transformForEngine` DROPPED `checkerCtx.errors` — the engine swallowed every checker error, so
+   LANG-METAPROGRAMMING.md's "checker validates Node access before macro ever runs" was unimplemented
+   on this path (`a.totallyBogusFieldXyz` compiled silently).
+3. Design (weighed Nim `macros.nim` NimNode-opaque accessors, Haxe ExprDef pattern-match, MS's own
+   idiom = 3297× `.data as XData` vs exactly 1 flat read in the compiler): the flat wire IS the
+   macro-layer representation for now; the checker types it by the **LANG.md:646 DU access rule**
+   (field name unique across variants → direct read, no cast; conflicting types → must narrow).
+   Long-term S1 roadmap: `NodeData` becomes a real `match (kind: NodeKind)` DU and the VM carries
+   nested `data` — probe `macro_narrow.test.ms` N1 (`.data as XData` reads empty inside a macro) is
+   the Nhịp-2 marker. Nhịp-2/3 NOT started.
+
+**Fix (worktree `/tmp/rc-macrotype`, base `a9c0ae6`, ~10 files):**
+- `macroParamTypesRegistry` + `macroDeclModuleRegistry` threaded collect → `ExportedSymInfo`
+  (`macroParamTypes`; `definingModule` reused) → both import stations (incl. re-export hub) →
+  `getOrCompileMacro` wrapper `fnParamTypes` (parser already kept `macroDeclParamTypes` — unused).
+- Engine seeds now UNION invoker scope + the macro's DECLARING module scope
+  (`lookupModuleCtx(declPath)`) — invoker-only seeds broke cross-module macros with
+  `Unresolved type 'Node'` whenever the CALLER didn't import Node (Neon's exact shape).
+- `setEngineCheckMode` slot spans check + refineTypes + transformForRaiser — restoring it before
+  refine re-broke lowering (the last "`.length` still returns attr count" mystery: refine re-inferred
+  without engine mode, so the Raiser host-fn dispatch saw Unknown again).
+- `checkExprPass`: `resolveEngineNodeVirtualProp` for member READS (universal `line/column/endLine/
+  endColumn` → number; payload fields via NodeData variant lookup mirroring `findVariantByFieldName`;
+  same-name-different-type → error demanding a kind-narrow or `.data as <Kind>Data`) +
+  `engineNodeHasVirtualKey` for object-literal CONSTRUCTION against class Node (existence-only —
+  building `{kind, line, column, value}` stays legal; `value` ambiguity applies to reads, not builds).
+- Engine errors now SURFACE: `EngineMacroResult.errors` → forwarded as
+  `Macro '<name>' body: <msg>` — **Severity.Error only** (the wrapper's unused-sweep hints on seeded
+  symbols are synthetic noise; first attempt forwarded a `'Box' is declared but never used` HINT as a
+  hard error and broke module-local-type macros).
+
+**Guards (both proven RED on installed pre-fix msc → GREEN on worktree msc):**
+- `src/test/handoff/macroNodeFieldTyped.ms` (battery-registered in `handoff/index.ms`): startsWith
+  chain classification (`evt;attr;`) + direct read, 2-attr disambiguating values. Pre-fix RED
+  signature: `AssertionError: got: on`.
+- `src/test/guard/macroNodeBogusField.ms` (GUARD-CHECK-FAIL × 2): bogus flat field must error;
+  unnarrowed `n.value` must demand narrowing. Pre-fix RED: compiled clean.
+
+**Gates:** worktree-msc self-hosted battery **3338/3338 (162/162 files, 0 fail)**; installed-msc
+battery on the modified tree 3337/1 (path.ms Windows-join only). Pristine-`a9c0ae6` baseline
+3328/10 = path ×1 + lifecycle ×9 (the lifecycle phase5/6 hover block is timing-flaky: present
+pristine, absent both later runs — NOT this session's doing either way). Neon 11/4 → **12/3**
+(`counter` green; array/flow/voidHost = #2/#3/#4/env, untouched by this fix). Neon probes:
+startswith/attrloop/fieldstr/chain/direct/evt_attr/narrow-N3 green; `macro_disambig`/`macro_lenval`
+keep deliberate RED bracket-tests (they assert the formerly-wrong values — rewrite truth-only or
+delete at leisure); `macro_narrow` N1 stays red BY DESIGN (Nhịp-2 marker).
 
 ### 2026-07-25 (late) — assert exited via `return;`; test boundary never observed `msErr` ⚠ STAGED, NOT COMMITTED
 
@@ -476,8 +541,8 @@ built from HEAD.)*
 ## §6 — Passing, don't break
 
 `signal`, `element`, `host`, `hostOps`, `reconcile`, `reconcileHard`, `renderToString`, `terminal`,
-`dispose`, `memo`, `region` — **11 files green** (`region` as of 2026-07-25 late, on the staged
-assert-raise fix; the installed `msc` still shows 10). The reactive core + render layer are solid;
+`dispose`, `memo`, `region`, `counter` — **12 files green** (`region` 2026-07-25, `counter`
+2026-07-26 — both on not-yet-deployed compiler fixes; the installed `msc` still shows 10). The reactive core + render layer are solid;
 re-run them on every compiler deploy. Two of the last three compiler fix attempts were caught by
 exactly this suite and not by the battery (the rejected void-callback inference fix regressed 7 of
 these while the battery stayed clean at 3330/7) — **the Neon suite is a stronger gate than the
