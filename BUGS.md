@@ -35,19 +35,20 @@ Diff any battery failure against these two groups before claiming regression.
 
 ## §1 — CURRENT STATE (measured 2026-07-26, `rm -rf out` PER FILE, all 15 test files)
 
-**Neon suite = 12 pass / 3 fail — on the INSTALLED `msc` ($PATH), re-verified after deploy.**
-Command: `msc test <file>` per file, clean `out/`. The macro-VM-typing fix is **committed
-`7158d9a..85519a2` (main) and DEPLOYED 2026-07-26** — no pinned worktree binary needed anymore
-(the fix worktree `/tmp/rc-macrotype` is removed; `/tmp/rc-testbound` is obsolete).
+**Neon suite = 14 pass / 1 fail — every compiler-blocked file is GREEN; the only red is `voidHost`,
+which is an ENVIRONMENT gap (`sokol_gfx.h` absent), not a compiler or framework bug.**
+⚠ Measured with the WORKTREE binary `/tmp/rc-flow/msc` (base `85519a2` + this session's five fixes),
+`msc test <file>` per file with a clean `out/`. The `$PATH` msc is still the Jul-26 20:32 build and
+will reproduce the OLD failures until `./tools/sync-local-binary.sh` runs — **deploy is owed**.
 ⚠ Protocol: `rm -rf out` BETWEEN files is load-bearing — sequential `msc test` runs sharing `out/`
 produced spurious compile failures (reconcile/reconcileHard flip-flopped until cleaned).
 
 | file | result | file | result |
 |---|---|---|---|
-| `core/signal` | ✅ | `core/array` | ❌ |
-| `core/memo` | ✅ | `render/flow` | ❌ |
+| `core/signal` | ✅ | `core/array` | ✅ **NEW 2026-07-26 (late)** |
+| `core/memo` | ✅ | `render/flow` | ✅ **NEW 2026-07-26 (late)** |
 | `core/dispose` | ✅ | `render/counter` | ✅ **NEW 2026-07-26** |
-| `render/element` | ✅ | `render/voidHost` | ❌ (env) |
+| `render/element` | ✅ | `render/voidHost` | ❌ (env — sokol) |
 | `render/host` | ✅ | | |
 | `render/hostOps` | ✅ | | |
 | `render/reconcile` | ✅ | | |
@@ -56,22 +57,39 @@ produced spurious compile failures (reconcile/reconcileHard flip-flopped until c
 | `render/region` | ✅ **NEW 2026-07-25** | | |
 | `platform/terminal` | ✅ | | |
 
-### Issue count: **3 compiler roots on Neon's path + 2 Neon-side + 6 compiler debts off-path = 11 open**
+### Issue count: **0 open on Neon's path + 1 env (voidHost) + 7 compiler debts off-path**
 
-### The 3 roots blocking the 2 red compiler files (voidHost is §3/env)
+Five roots closed on 2026-07-26 (late) in one session: #2 #3 #4 (+ the ref-truthiness layer under #4)
+#6 #7. Four were compiler bugs, #7 was Neon's own. Every one had been mis-framed in this file before
+it was traced — see §5 for the corrected mechanisms.
+
+### The roots that used to block `array` / `flow` — all closed (voidHost is §3/env)
 
 | # | root | blocks | exact error (measured) |
 |---|---|---|---|
 | ~~1~~ | ~~void-callback inference~~ | ~~`region`, `array`~~ | ✅ **CLOSED 2026-07-25 — and the framing was WRONG.** The root was never inference: `genAssertStmt` emitted a bare `return;`, ill-formed C in any non-void function. A concretely-typed **non-generic** arrow failed identically. See §5. |
-| **2** | **`Array<function>` method surface** | `array` | `in instantiation of 'indexArray<number, function>': Property 'slice' does not exist on type 'Array'` |
-| **3** | **Unresolved-T through generic wrapper** | `flow` | `in instantiation of 'For<number>': Unresolved type 'T' - missing import?` (same for `Index<number>`) |
-| **4** | **optional field `fallback?` lowering** | `flow` | `'fallback' does not exist in type ''` · `Property 'fallback' does not exist on type 'object'. Available: when, children, fallback?` · C: `no member named 'fallback' in 'struct msAnon_1bgn5uf'` (flow.ms:71), `member reference base type 'void *' is not a structure or union` (flow.ms:72) |
+| ~~2~~ | ~~`Array<function>` method surface~~ | ~~`array`, `flow`~~ | ✅ **CLOSED 2026-07-26 (late) — framing wrong AGAIN: nothing to do with generics or instantiation.** The C-backend array prelude (`std/core/array/index.cms`) hand-specialized the full 16-method surface for `number[]` and `string[]` but gave the generic `T[]` block only push/pop/at/setLength/capacity/splice — **`slice` (and indexOf/includes/concat/reverse/sort/fill/join/shift/count) simply did not exist for any other element type.** A bare non-generic `let ds: (() => void)[]` failed identically; `number[]`/`string[]` passed. The JS prelude (`index.jms`) had declared the whole surface generically all along, and std itself carried a workaround (`websocket/frame.ms:203` `sliceBytes`, comment "number[] doesn't have built-in slice"). Fixed `33dca18`. See §5. |
+| ~~6~~ | ~~generic ctor instance not emitted~~ | ~~`flow`~~ | ✅ **CLOSED 2026-07-26 (late).** Not a drain/ownership bug: `instantiateClassConstructor` bailed on `classSym.declNode.kind !== ClassDecl`, and an IMPORTED class symbol carries the **ImportDecl** — so EVERY cross-module `new Generic<T>()` was skipped silently, no instance ever queued, while codegen still emitted the call + a forward decl → `undefined symbol` at link. It only ever looked fine when the defining module happened to instantiate the same specialization itself (why `Signal<number>` linked and `Signal<boolean>` did not). See §5. |
+| ~~7~~ | ~~compiler internal error~~ | ~~`array`, `flow`~~ | ✅ **CLOSED 2026-07-26 (late) — NOT a compiler bug at all.** `msc build` succeeds; the error comes from the PRODUCED BINARY at runtime. `indexArray`'s `makeRowInto` did `mapped[pos] = …` into an empty array — index-store past the end RAISES in MetaScript (Nim `IndexDefect` semantics), it does not grow the array as JS would. Its sibling `mapArray` in the same file had always pre-sized with `new Array(newLen)`. Neon-side fix: append via `push`, stores passed as parameters (mapArray's shape). See §5. |
+| ~~3~~ | ~~Unresolved-T through generic wrapper~~ | ~~`flow`~~ | ✅ **CLOSED 2026-07-26 (late) — and instantiate.ms was the WRONG neighborhood: the root is the PARSER.** Explicit `<T, string>` lives in a single `state.pendingTypeArg` slot consumed by the NEXT CallExpr to FINISH parsing — a nested call in the argument list (`props.each()`) finishes first and steals it, so the outer call's AST `typeArg` stays empty forever. Checker re-checks of instantiated generic bodies then fall back to the location-keyed side channel (`findCallTypeArg` fallback), which still holds the PRE-substitution string → `resolveAnnotation("T")` in a scope with no T. Concrete-arg calls never noticed (the stale side-channel string is already concrete — "accidentally right"). Fix: capture the slot at parseCallExpr ENTRY. See §5. |
+| ~~4~~ | ~~optional field `fallback?` lowering~~ | ~~`flow`~~ | ✅ **CLOSED 2026-07-26 (late) — TWO pre-existing roots under one symptom, neither was "Maybe lowering".** (a) The anon-object-type STRING parse (`resolvePass.ms` `{...}` branch) kept the `?` glued to the field name (`"fallback?"`) — member reads missed, literal excess-key check missed, C anon struct had no `fallback`. The interface TOKEN path had discarded the `?` token all along (`?` is cosmetic: no missing-field check exists on ANY path; omitted field = zero-init/NULL). Fix: strip trailing `?`, parity with the token path. (b) LAYER 3, exposed the moment (a) cleared: `wrapTruthiness` (`stringTruthiness.ms`) had NO Ref arm — `if (fb)` on a class/interface value fell into the syntactic string fallback → C `->byteLength` on a non-string struct (`if (!fb)` was never affected: UnaryExpr short-circuits). Pre-existing and fully general (bare `const v: VN; if (v)` failed). Fix: Ref arm → `!== null`. See §5. |
 | ~~5~~ | ~~array-element `void*` erasure~~ | ~~`counter`~~ | ✅ **CLOSED 2026-07-26 — framing WRONG twice over.** Not an array bug, not codegen: the `element` MACRO spliced the literal string `"on"` (the ARGUMENT of `startsWith`) where the `<button>` subtree belonged, because macro bodies compiled with UNTYPED params and every flat Node-field read dispatched blind in the VM. The msString-into-`void*` clang error was where the corpse landed. See §5 2026-07-26. |
 
-**Roots 3 and 4 are both in `flow`** — likely one session, but they are distinct mechanisms
-(T substitution vs optional-field struct lowering); do not assume fixing one clears the other.
+**⚠ The #3/#4/truthiness fixes are COMMITTED on recompiler `main` (`bbc2e3c`, `c41f1a3`, `6422400` — one
+root + its guard each, ff-merged from worktree `/tmp/rc-flow`) but NOT YET DEPLOYED** — the installed
+`$PATH` msc is still the Jul-26 20:32 build of `85519a2` and still shows the old #3/#4 signatures.
+Until `./tools/sync-local-binary.sh` runs, reproduce with the worktree binary `/tmp/rc-flow/msc`.
+Measurements below are all worktree-msc with `rm -rf out` per file: guards 3× proven RED on installed → GREEN on worktree;
+battery `msc test src/index.ms` = **3338/3338 (162/162, 0 fail)**; Neon suite = **12/3** with `flow`'s
+error moved to #2 exactly. (`msc test src/test/index.ms` fails 74 type errors on BOTH installed-pristine
+and worktree — stale aggregator, pre-existing, not a session regression; handoff guards gate standalone.)
 
-**Recommended order:** **#3+#4 flow** (2 roots, 1 file, shared session) → **#2**.
+**Nothing left on Neon's path.** Next actions are (1) DEPLOY the five fixes (`./tools/sync-local-binary.sh`
+after rebuilding msc from main) and re-measure the suite on the `$PATH` binary, (2) the `voidHost`
+environment (§3), (3) the off-path compiler debts in §2 — which gained one sibling this session:
+**ctor-param proto/def indirection for struct/array type args** (`new GcCell<CmgTag>({…})` emits
+`_init(…, CmgTag*)` but passes the literal by value; same family as the known union-param mismatch,
+pre-existing, only reachable now that cross-module ctors instantiate at all).
 
 ### ⚠ On T = unknown → `void*` — real, but NOT a blocker (do not chase it)
 
@@ -91,7 +109,12 @@ descending into nested fn bodies) and (2) void-generic instantiation support —
 emits `const result = fn(dispose)` → C `void result = …`. Nim discards void here. Two features, zero
 current payoff.
 
-### #2 — `Array<function>` method surface (`array`)
+### ~~#2 — `Array<function>` method surface (`array`)~~ ✅ CLOSED 2026-07-26 (late), `33dca18` — see §5
+
+Historical framing below is superseded; the root was a std C-backend surface gap, not a generic-instantiation
+or method-resolution bug. Kept for the `b057320` lineage note only.
+
+
 
 Post-`b057320` a `U[]` annotation with U=function correctly stays an **Array** (see §5) — but that
 array's **method surface** is missing: `indexArray<number, function>` → `Property 'slice' does not
@@ -100,28 +123,14 @@ Repro: `msc test tests/core/array.test.ms`.
 (Historical note: the older `.slice(0)` **arity** complaint was NOT a compiler bug — std `slice`
 requires `(start,end)`; fixed Neon-side in `src/core/array.ms`. This is a different, real gap.)
 
-### #3/#4 — `flow` (`For<T>` / `Index<T>` / `Show`)
+### ~~#3/#4 — `flow` (`For<T>` / `Index<T>` / `Show`)~~ ✅ CLOSED 2026-07-26 (late) — see §5; `flow` now blocked by #2 only
 
-The Neon impl is `src/macros/ui/flow.ms` (uncommitted WIP):
-`For<T>` ≈ `regionNode((h) => { const mapped = mapArray<T, HostNode>(props.each, (item, idx) =>
-renderNode(props.children(item, idx), host)); … })`. T flows `each: () => T[]` →
-`mapArray<T, HostNode>` → region thunk, and does not survive.
-
-- **#3 status:** NOT root-caused. Neighborhood is `recompiler src/checker/instantiate.ms` (Nim
-  `seminst` analog), but the mechanism is the opposite of the CompState/bug-E fixes — a type param
-  not *substituted* (needs MORE resolution), not one *dropped* (needs preservation). Do not assume
-  those fixes cover it.
-- **#4 status:** `Show` props declare `fallback?`; the checker reports the field as available yet
-  absent from the anon struct (`msAnon_1bgn5uf`), and the sibling access lands on `void*`. That is
-  optional-field lowering on an anonymous props object, not T substitution.
-- **Repro:** `msc test tests/render/flow.test.ms`.
-- **Machinery map (if T-resolution turns out to touch Maybe/nullable):**
-  - `!== null` narrowing: `src/checker/flow.ms` → `narrowByLiteralEquality` → `removeNullFromType`
-    (peels Maybe via `unwrapMaybeType`, ~line 996); truthiness path ~line 839.
-  - Value-Maybe read unwrap (codegen): `src/transform/coercion/maybeReadMaterialize.ms`;
-    JS-strip in `src/transform/native/maybeUnwrap.ms`.
-  - Assignment-LHS narrowing gate: `checkExprPass.ms` `leftPartOfAsgn>0` suppresses narrowing on the
-    assignment target; the index sub-read is exempted (`de158b0`). Reusable for "read-in-lvalue-position".
+Three compiler roots fell in one session (parser typeArg steal, anon `?` parse, ref truthiness —
+details in the roots table above + §5). `flow`'s sole remaining error is #2's `.slice` surface via
+`indexArray<number, unknown>`. Repro unchanged: `msc test tests/render/flow.test.ms`.
+The old "instantiate.ms neighborhood" guess was wrong — nothing in instantiation needed fixing;
+`replaceTypeVars` had ALWAYS substituted AST-resident `typeArg` correctly (instantiate.ms:369) —
+the parser simply never put the string on the right node when args contained a nested call.
 
 ### ~~#5 — array-element `void*` erasure (`counter`)~~ ✅ CLOSED 2026-07-26
 
@@ -140,6 +149,7 @@ handoff REMAINS OPEN under #2 (real for `array`'s closure-array `.slice`).
 | **nullfn bind-order** | `probe/nullfn_bindorder.ms` | ❌ `passing 'msClosure' to parameter of incompatible type` (:78) |
 | **nullfn explicit type-arg** | `probe/nullfn_explicit_targ.ms` | ❌ `Argument type mismatch in 'apply' arg 0: got function, expected Maybe_fn_fnnumbernumber17` |
 | **union ctor-param proto/def** | `/tmp/mono_union.ms` | ❌ `conflicting types for 'Box__union_number_string_init'` |
+| **struct/array ctor-param indirection** (NEW 2026-07-26 late) | `new GcCell<CmgTag>({ label: "x" })` / `new GcCell<number[]>([1,2,3])` from an importing module | ❌ `passing '__anon1__label' to parameter of incompatible type 'CmgTag *'` — the ctor's declaration takes the type arg BY POINTER while the call site passes it by value. Same family as the union row above; pre-existing, but only reachable since #6 made cross-module ctors instantiate at all. Excluded from the #6 guard on purpose (documented inline there). |
 | **loop + nested-closure snapshot** | `/tmp/loopesc.ms` | ❌ **builds but MISCOMPILES** — c0 expected 51 → **800**, c1 expected 51 → **0** |
 | **`canRaise` missing Nim's `sfGeneratedOp` arm** | `/tmp/craise.ms` | latent (not a live bug) |
 | **latent `monoConcreteTypeName` siblings** | — | by inspection: anon `Union` / `Conditional` |
@@ -216,6 +226,155 @@ host+node+dom/render-tests/docs/build, 7 commits split by concern). Still uncomm
 ---
 
 ## §5 — Fixed (history + root-cause ledger, append-only)
+
+### 2026-07-26 (late) — #6 closed: cross-module `new Generic<T>()` never instantiated its constructor ⚠ NOT YET DEPLOYED
+
+**The symptom was a linker error; the cause was a silent `return` in the checker.** Probe ladder
+(`/tmp/p6*`): same-module `new Sig<T>()` GREEN; cross-module RED for **every** type argument
+(number/string/boolean/array/interface — so not a type-repr issue); cross-module generic **function**
+GREEN (so not the drain, not DCE, not the `HasConstructor` flag); and the decisive pair — cross-module
+RED **unless the defining module itself instantiates the same specialization**, in which case the
+importer links against the definer's copy. Instrumenting the compiler printed the mechanism directly:
+`[CTOR] Sig__boolean_new existingSym=N declNode=kindImportDecl` — `instantiateClassConstructor`
+(`instantiate.ms`) bails on `classSym.declNode.kind !== NodeKind.ClassDecl`, and an imported class
+symbol's `declNode` is the **ImportDecl**. No instance was ever queued (confirmed: the pending-instance
+drain printed nothing for the ctor while it printed the generic function), yet codegen still emitted
+the call plus a forward declaration — so the build "succeeded" and the linker took the blame.
+
+**Verdict: two divergences, one intentional and one not.** Dropping ClassDecl at the export boundary is
+DELIBERATE and documented (`checker/context.ms`: shipping class decls makes the importer re-resolve
+member types in its own scope and pollute the type registry). Nim has no such problem because
+`generateInstance` copies the AST straight off the generic symbol (`seminst.nim` `copyTree(fn.ast)`) and
+adds the producer as a friend module — the instantiator can always reach the source. MS kept the
+restriction but never wired the ctor path to the alternative route: **DIVERGE-UNINTENTIONAL**, fix
+inside the intentional constraint.
+
+**Fix (1 file, +14/−2):** ask the class's DEFINING module for the real declaration via
+`pickBodyCtx(classSym.modulePath, ctx)` — the `_moduleCtxMap` registry whose own comment cites Nim's
+`graph.ifaces[module]` lookup, and which **this same function already used 73 lines below** to re-check
+the constructor body. Renamed imports resolve through `originalName`. When the registry has no ctx
+(fallback returns the caller's), behaviour is exactly as before — no regression path.
+
+**Empirical confirmation in the emitted C:** the defining module's TU went from *nothing* to
+`void GcCell__boolean_init(GcCell__boolean* this, MS_BOOL v) { … }` (so the instance also survives that
+module's DCE — the one downstream risk worth checking), and the importer's forward declaration now
+carries `MS_BOOL` instead of `void*`.
+
+**Guard:** `src/test/handoff/crossModuleGenericCtor.ms` + `fixtures/genericCtorLib.ms` — a specialization
+only the importer asks for (boolean, string) plus the definer's own (number). RED pre-fix → GREEN.
+Two shapes are deliberately excluded with a comment (struct and array type args): they fail on the
+ctor-param proto/def indirection, a pre-existing sibling now reachable, tracked in §2.
+**Gates:** battery **3338/3338**; Neon 12/3 with `flow`'s link error gone.
+
+### 2026-07-26 (late) — #7 closed: NOT a compiler bug — `indexArray` index-stored past the end (Neon-side)
+
+`Error: index 0 out of bounds (length 0)` looked like an msc internal crash. It is not: `msc build`
+prints `Built 37 module(s)` and the message comes from the **produced binary**. `indexArray`'s
+`makeRowInto` did `mapped[pos] = createRoot(…)` / `disposers[pos] = d` with the stores still empty.
+**MetaScript follows Nim here: an index-store past the end raises (`IndexDefect`), it does not grow the
+array the way JS does.** The sibling engine `mapArray`, in the same file, had always pre-sized with
+`new Array(newLen)` before index-assigning — so the file itself contained the correct pattern.
+This is Neon's bug, not a compiler limitation, and it was only reachable once #2 gave `.slice` to
+closure arrays and the file got past the checker for the first time.
+
+**Fix (Neon `src/core/array.ms`):** rows are only ever created at the tail, so `makeRowInto` appends
+with `push` and takes the stores as parameters instead of capturing them — mirroring `mapArray`'s
+`makeRowInto(item, pos, mapStore, dispStore, idxStore)` signature.
+**Result:** `core/array` GREEN (280/280) and `render/flow` GREEN (278/278) — **Neon 14 pass / 1 fail**,
+the remaining red being `voidHost`'s missing `sokol_gfx.h` (§3, environment).
+
+### 2026-07-26 (late) — #2 closed: the C array prelude never had a generic `slice` ✅ COMMITTED `33dca18` (main) — ⚠ NOT YET DEPLOYED
+
+**Not a generics bug, not a method-resolution bug — a std surface gap.** Probe matrix
+(`/tmp/p2e`): `.slice` GREEN for `number[]` and `string[]`, RED for boolean/unknown/function/
+interface/class/nested-array; `push`/`pop`/`splice` GREEN everywhere; a **non-generic** bare
+`let ds: (() => void)[]` failed exactly like the generic case, killing the "instantiated
+`Array<function>`" framing. Cause: `std/core/array/index.cms` hand-specializes 16 methods for
+`number[]` and 16 for `string[]`, but its generic `T[]` block declares only push/pop/at/setLength/
+capacity/splice — `slice`, `indexOf`, `includes`, `concat`, `reverse`, `sort`, `fill`, `join`,
+`shift`, `count` exist for NO other element type. `index.jms` (JS backend) declares the full
+surface generically, and std itself had already worked around the hole
+(`std/core/websocket/frame.ms:203` `sliceBytes`, "number[] doesn't have built-in slice").
+
+**Verdict DIVERGE-INCOMPLETE → follow Nim.** Nim's slice is a **generic proc, monomorphized per T,
+copying element-wise via `=copy`** (`lib/system/indices.nim` HSlice family) — NOT hand-written
+per-element-type C. MS already had that exact pattern one function below the gap:
+`sortBy<T>(this arr: T[], cmp)` is an MS-bodied generic array extension in the same `.cms`.
+Fix mirrors it — `slice<T>` with an MS body (clamp semantics copied from `msNumberArraySlice`:
+negative counts from the end, `end` clamped to `len`, empty when `start >= end`), so **no new
+runtime C function is needed** and the number/string externs still bind first (proven by a guard
+assertion). **Runtime prerequisite confirmed empirically in the emitted C** — DRC injects Nim's
+`=copy` on the element read:
+`dollarborrow_0_ = msRefArrayAccess((*arr), i); msIncref(dollarborrow_0_); msGenericArrayPush(out_1_, dollarborrow_0_);`
+so the source array keeps its reference and nothing double-frees.
+
+**Guard:** `src/test/handoff/genericArraySlice.ms` — closure / interface / class / unknown /
+boolean / nested-array slices, out-of-range clamping, source-array survival, plus a
+number+string case pinning that the specialized externs still resolve. RED pre-fix (checker:
+`Property 'slice' does not exist on type 'Array'`) → GREEN 6/6.
+
+**Gates:** battery **3338/3338** (162/162); Neon suite **12/3** — `array` and `flow` now have
+**zero checker errors**, which uncovered two masked roots recorded as #6 (flow: `undefined symbol
+_Signal__boolean_init` at link) and #7 (array: msc internal `index 0 out of bounds`). An isolated
+`indexArray`-shaped probe (generic + `.slice` on a closure array) builds and runs clean, so
+neither new failure is caused by this fix. Changed: `std/core/array/index.cms` (+22),
+`src/test/handoff/genericArraySlice.ms`, one index import.
+
+### 2026-07-26 (late) — flow #3+#4 closed: THREE compiler roots, none where BUGS.md pointed ✅ COMMITTED `bbc2e3c`+`c41f1a3`+`6422400` (main) — ⚠ NOT YET DEPLOYED
+
+**#3 "Unresolved-T" was a PARSER bug, not instantiation.** Probe chain (`/tmp/flowprobe/p3a-f`):
+explicit-args + nested-call args RED; inferred GREEN; explicit CONCRETE args GREEN; no-call-site
+GREEN (generic bodies only check at instantiation); explicit-args + bare-identifier args **GREEN —
+the discriminator**. Mechanism: `state.pendingTypeArg` is a SINGLE parser slot consumed by the next
+CallExpr to FINISH parsing (`call.ms` consumed it AFTER `parseExprList`), so any nested call inside
+the argument list stole the outer call's `<T, string>`. The outer node's `typeArg` stayed empty; at
+plain check time `findCallTypeArg`'s location-keyed side-channel fallback returned the same string
+so concrete code was accidentally right; inside an INSTANTIATED generic body the side channel still
+holds the pre-substitution text (`replaceTypeVars` substitutes only AST-resident `typeArg`,
+instantiate.ms:369) → `resolveAnnotation("T")`, no T in scope (params are TEXT-substituted, not
+scope-injected) → the 3× duplicate errors = 3 checker sites resolving the same stale string
+(checkExprPass 2788/3013/3351). **Fix: capture the slot at `parseCallExpr` ENTRY** (before args) —
+nested calls with their own explicit args still bind correctly (slot is set immediately before each
+call's `(`). `f<T>(g<U>(x))` was double-broken pre-fix (inner overwrote, then consumed).
+
+**#4 was TWO pre-existing gaps; "Maybe lowering" fears dissolved on probing.** (a) The anon-object
+STRING parse (`resolvePass.ms` `{...}` branch) glued `?` to the field name → all three §1 error
+shapes from one line. The interface TOKEN path (`parseInterfaceLikeDecl`) has always discarded the
+`?` token — and probes proved the SEMANTICS already work end-to-end everywhere (literal may omit ANY
+field on ANY path — no missing-key check exists; omitted = zero-init: ref → NULL, Maybe carrier →
+present=false; `if (fb)` narrowing fine). Neon-Nim's own `fallback*: Option[string]` (types.nim:414)
+confirms the intended semantics. **Fix: strip trailing `?` in the anon parse** — string path ==
+token path. `?` remains cosmetic on both (de-facto spec; LANG.md silent — a docs line is owed).
+(b) **Ref-truthiness root exposed the instant (a) cleared** (guard's class-field case went
+`->byteLength` at C level): `wrapTruthiness` (`transform/coercion/stringTruthiness.ms`) had
+type-aware arms for boolean/Maybe/value-struct/array but **no Ref arm** — a bare ref-typed
+Identifier/MemberExpr condition fell into the legacy syntactic STRING fallback (`x.byteLength > 0`).
+Fully general pre-existing bug (`const v: VN = mk(); if (v)` failed on installed msc, no `?`, no
+anon type, no generics — probes p4g-j) that had simply never been written in compiler/battery code
+(`!x` was immune: UnaryExpr is isAlreadyBoolean, C `!ptr` valid — only the POSITIVE bare form died;
+Show's `if (fb)` on VNode is exactly that form). **Fix: Ref arm → `cond !== null`** before the
+fallback (null-sentinel refs, NIM-REF §57 pointer model).
+
+**Guards (all three proven RED on installed pre-fix msc → GREEN on worktree msc), registered in
+`src/test/handoff/index.ms`:** `explicitTargGenericBody.ms` (RED = 6× Unresolved-T; covers the
+nested-explicit steal too), `anonOptionalField.ms` (RED = 4 checker errors, value + ref-class
+shapes), `refTruthiness.ms` (RED = C `byteLength` on struct VN/RtBox; iface local + class param +
+anon-field read).
+
+**Gates (worktree msc `/tmp/rc-flow`, base `85519a2`, 3 files changed):** battery
+`rm -rf out && msc test src/index.ms` = **3338/3338, 162/162, 0 fail** (flakes absent); 14/14
+probes GREEN (all prior-green stay green); Neon full suite (`rm -rf out` per file) = **12/3**:
+same count as baseline but `flow`'s error MOVED to #2 (`indexArray<number, unknown>` `.slice`) —
+#2 is now the single root behind both remaining compiler-red files. `msc test src/test/index.ms`
+= 74 type errors on BOTH pristine-installed and worktree (stale aggregator, pre-existing).
+Changed: `src/parser/expressions/call.ms`, `src/checker/resolvePass.ms`,
+`src/transform/coercion/stringTruthiness.ms` (+3 guard files, +3 index imports).
+Committed one-root-per-commit: `bbc2e3c` (parser), `c41f1a3` (checker), `6422400` (transform + the
+three index registrations). **Deploy still owed** — run `./tools/sync-local-binary.sh` after a
+`rm -rf out && msc build src/index.ms --gc=drc --danger --cc=clang --output=msc` from main, then
+re-measure the Neon suite on the `$PATH` msc.
+Landed as one commit per root: `bbc2e3c` (parser typeArg), `c41f1a3` (anon `?`), `6422400` (ref
+truthiness + guard registrations). Deploy still pending — see the ⚠ note in §1.
 
 ### 2026-07-26 — `counter` GREEN: macro-VM flat Node reads were untyped ✅ COMMITTED `7158d9a`+`ed799b6`+`85519a2`, DEPLOYED same day
 
