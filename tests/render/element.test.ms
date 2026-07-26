@@ -1,5 +1,5 @@
 import { createSignal } from "../../src/core/signal";
-import { el, text, dynText, renderToString } from "../../src/render/node";
+import { el, attr, text, dynText, renderToString } from "../../src/render/node";
 import { element } from "../../src/macros/ui/element";
 
 test "reactive element renders and updates on signal change" {
@@ -17,6 +17,68 @@ test "JSX bound to a const is consumed by element()" {
 	assert renderToString(node) === "<p>Hi world</p>", "const-form initial render";
 	setName("neon");
 	assert renderToString(node) === "<p>Hi neon</p>", "const-form updates after set";
+}
+
+// JSX whitespace (Babel cleanJSXElementLiteralChild). Every other JSX test in
+// this suite is written on ONE line, so multi-line JSX went unexercised until
+// the Void host needed it — and both a dropped-text and a not-stripped bug hid
+// there. These pin the rule in both axes: newline-bearing whitespace is
+// insignificant, same-line whitespace is significant.
+
+test "whitespace-only children between elements are dropped" {
+	const node = element(
+		<div>
+			<p>x</p>
+			<b>y</b>
+		</div>
+	);
+	assert renderToString(node) === "<div><p>x</p><b>y</b></div>", "indentation between elements";
+}
+
+test "a same-line space between elements is significant and kept" {
+	const node = element(<p><b>a</b> <i>c</i></p>);
+	assert renderToString(node) === "<p><b>a</b> <i>c</i></p>", "single space has no newline";
+}
+
+test "text spanning lines is rejoined with single spaces" {
+	const node = element(
+		<p>
+			hello
+			world
+		</p>
+	);
+	assert renderToString(node) === "<p>hello world</p>", "indentation stripped, lines joined";
+}
+
+test "text alone on its own line keeps its content" {
+	const withAttr = element(
+		<p a="1">
+			hello
+		</p>
+	);
+	assert renderToString(withAttr) === "<p a=\"1\">hello</p>", "attributed element keeps text";
+	const noAttr = element(
+		<p>
+			hello
+		</p>
+	);
+	assert renderToString(noAttr) === "<p>hello</p>", "unattributed element keeps text";
+}
+
+test "single-line text passes through byte for byte" {
+	assert renderToString(element(<p>Count: </p>)) === "<p>Count: </p>", "trailing space kept";
+	assert renderToString(element(<p>  spaced  </p>)) === "<p>  spaced  </p>", "inner padding kept";
+}
+
+test "text around an element on separate lines keeps both runs" {
+	const node = element(
+		<div>
+			text before
+			<b>bold</b>
+			text after
+		</div>
+	);
+	assert renderToString(node) === "<div>text before<b>bold</b>text after</div>", "both text runs survive";
 }
 
 test "the same JSX const consumed twice yields independent trees" {
