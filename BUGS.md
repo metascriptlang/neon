@@ -12,23 +12,20 @@ on top of a stale claim. History lives in §5 and is append-only.
 
 ---
 
-## Toolchain — VERIFIED 2026-07-25 (late)
+## Toolchain — VERIFIED 2026-07-26 (post-deploy)
 
 | what | value | how verified |
 |---|---|---|
-| installed compiler | `~/.metascript/bin/msc` **v0.2.27**, built Jul-25 21:44 | `msc --version`, `ls -la` |
-| recompiler HEAD | `fb50e2b` — `src/` + `std/` **clean** (only `docs/*` + editor-plugin dirty) | `git status --porcelain -- src std` |
-| binary ≡ HEAD? | **yes, effectively** — binary predates the 21:56 commits by 12 min but carries their content (they were committed from the tree it was built from). Proof: `renderToString` is green, which ONLY the try/finally fix produces | Neon suite |
-| **battery** | **3330 pass / 7 fail** (3337 total; 157 files pass / 5 fail), **6m47s** | `cd ~/metascript/recompiler && rm -rf out && msc test src/index.ms` |
+| installed compiler | `~/.metascript/bin/msc` **v0.2.27**, built Jul-26 20:32 from `85519a2` (synced binary + std + runtime + vendor) | `msc --version`, `ls -la`, sync log |
+| recompiler HEAD | `85519a2` (main) — `src/` + `std/` clean of session work; pre-existing leftovers: `docs/*` + editor-plugin dirty, untracked `src/test/native/run.ms`, `std/process/*`, `ctorExtProtocol*` | `git status --porcelain -- src std` |
+| binary ≡ HEAD? | **yes** — built from HEAD post-merge, then `sync-local-binary.sh` | Neon suite 12/3 on `$PATH` msc |
+| **battery** | **3338 pass / 0 fail** (162/162 files, self-hosted gen-1 on `85519a2`, ~4.4m). Installed-msc measure pre-merge: 3337/1 (path.ms only) | `cd ~/metascript/recompiler && rm -rf out && msc test src/index.ms` |
 
-**Battery flake set (the 7 — no-regression means EXACTLY these):** `checker/suggest.ms` ×2
-(object properties / enum members, `candidates.length === 3`), `compiler/lsp/handlers/lifecycle.ms`
-(`elapsed < 200`, timing), plus `path.ms` / `literals.ms` / `expressions.ms` (Windows-path +
-float-precision). 5 files total.
-
-> ⚠ The 2026-07-24 note "true baseline is `3321/16`, don't trust 3330/7" is **REFUTED at this HEAD** —
-> re-measured clean above. If you get a different number, diff the `×` lines against this list before
-> concluding regression.
+**Battery flake reality (2026-07-26):** the old 7-flake set is GONE (suggest ×2 + literals/expressions
+fixed by `e7fdf29`/`22805ea`). Current intermittents seen on `a9c0ae6`-lineage: `std/fs/path.ms`
+"join Windows absolute b wins" ×1 and the `lifecycle.ms` phase5/6 hover/sig-help block ×9 (LSP
+timing — present on one pristine run, absent on the next two). Both hit ZERO in the final gate runs.
+Diff any battery failure against these two groups before claiming regression.
 
 - Rebuild compiler: `cd ~/metascript/recompiler && rm -rf out && msc build src/index.ms --gc=drc --danger --cc=clang --output=msc`
 - Deploy: `./tools/sync-local-binary.sh` (Neon consumes msc via `$PATH`)
@@ -38,10 +35,10 @@ float-precision). 5 files total.
 
 ## §1 — CURRENT STATE (measured 2026-07-26, `rm -rf out` PER FILE, all 15 test files)
 
-**Neon suite = 12 pass / 3 fail.** Command: `msc test <file>` per file, clean `out/`.
-⚠ Measured with the macro-VM-typing fix **in worktree `/tmp/rc-macrotype` (base `a9c0ae6`), NOT
-COMMITTED, NOT DEPLOYED** — verified binary `/tmp/rc-macrotype/msc`. The installed `msc` still
-gives 10/5 (it predates both this fix and the 07-25 assert-raise fix, now committed `2a156ff..122949d`).
+**Neon suite = 12 pass / 3 fail — on the INSTALLED `msc` ($PATH), re-verified after deploy.**
+Command: `msc test <file>` per file, clean `out/`. The macro-VM-typing fix is **committed
+`7158d9a..85519a2` (main) and DEPLOYED 2026-07-26** — no pinned worktree binary needed anymore
+(the fix worktree `/tmp/rc-macrotype` is removed; `/tmp/rc-testbound` is obsolete).
 ⚠ Protocol: `rm -rf out` BETWEEN files is load-bearing — sequential `msc test` runs sharing `out/`
 produced spurious compile failures (reconcile/reconcileHard flip-flopped until cleaned).
 
@@ -216,7 +213,7 @@ Components + For/Index/Show + list-region reconcile. Modified `src/render/{node,
 
 ## §5 — Fixed (history + root-cause ledger, append-only)
 
-### 2026-07-26 — `counter` GREEN: macro-VM flat Node reads were untyped ⚠ IN WORKTREE `/tmp/rc-macrotype`, NOT COMMITTED
+### 2026-07-26 — `counter` GREEN: macro-VM flat Node reads were untyped ✅ COMMITTED `7158d9a`+`ed799b6`+`85519a2`, DEPLOYED same day
 
 **§1 #5 "array-element void* erasure" was a mis-framing.** Real chain: `element.ms:20`
 `a.jsxAttrName.startsWith("on")` evaluated AT EXPANSION TIME to the literal `"on"` (its own argument)
@@ -278,7 +275,7 @@ startswith/attrloop/fieldstr/chain/direct/evt_attr/narrow-N3 green; `macro_disam
 keep deliberate RED bracket-tests (they assert the formerly-wrong values — rewrite truth-only or
 delete at leisure); `macro_narrow` N1 stays red BY DESIGN (Nhịp-2 marker).
 
-### 2026-07-25 (late) — assert exited via `return;`; test boundary never observed `msErr` ⚠ STAGED, NOT COMMITTED
+### 2026-07-25 (late) — assert exited via `return;`; test boundary never observed `msErr` ✅ (later committed `2a156ff`+`0d867fd`, deployed with the 2026-07-26 build)
 
 **Two bugs, one root: the test boundary was not the catch site.** Traced via `/trace-nim`.
 Changes are **staged in the recompiler working tree, uncommitted, NOT deployed** — the installed
@@ -541,8 +538,8 @@ built from HEAD.)*
 ## §6 — Passing, don't break
 
 `signal`, `element`, `host`, `hostOps`, `reconcile`, `reconcileHard`, `renderToString`, `terminal`,
-`dispose`, `memo`, `region`, `counter` — **12 files green** (`region` 2026-07-25, `counter`
-2026-07-26 — both on not-yet-deployed compiler fixes; the installed `msc` still shows 10). The reactive core + render layer are solid;
+`dispose`, `memo`, `region`, `counter` — **12 files green on the installed `msc`** (deployed
+2026-07-26, verified post-deploy sweep). The reactive core + render layer are solid;
 re-run them on every compiler deploy. Two of the last three compiler fix attempts were caught by
 exactly this suite and not by the battery (the rejected void-callback inference fix regressed 7 of
 these while the battery stayed clean at 3330/7) — **the Neon suite is a stronger gate than the
