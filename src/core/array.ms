@@ -161,13 +161,18 @@ export function indexArray<T, U>(list: () => T[], mapFn: (v: () => T, index: num
 	let valueSetters: ((v: T) => void)[] = [];
 	let len = 0;
 
-	function makeRowInto(item: T, pos: number): void {
-		mapped[pos] = createRoot((d) => {
-			disposers[pos] = d;
+	// Rows are only ever created at the tail (the caller walks i upward and stops at
+	// items.length), so each store grows by one. They are appended, not index-assigned:
+	// storing past the end raises here, it does not grow the array as it would in JS.
+	// Stores are parameters rather than captures, mirroring mapArray's makeRowInto.
+	function makeRowInto(item: T, pos: number, mapStore: U[], dispStore: (() => void)[], setStore: ((v: T) => void)[]): void {
+		const row = createRoot((d) => {
+			dispStore.push(d);
 			const [val, setVal] = createSignal(item);
-			valueSetters[pos] = setVal;
+			setStore.push(setVal);
 			return mapFn(val, pos);
 		});
+		mapStore.push(row);
 	}
 
 	onCleanup(() => { for (const d of disposers) { d(); } });
@@ -193,7 +198,7 @@ export function indexArray<T, U>(list: () => T[], mapFn: (v: () => T, index: num
 				if (i < items.length && items[i] !== newItems[i]) {
 					valueSetters[i](newItems[i]);
 				} else if (i >= items.length) {
-					makeRowInto(newItems[i], i);
+					makeRowInto(newItems[i], i, mapped, disposers, valueSetters);
 				}
 				i += 1;
 			}
