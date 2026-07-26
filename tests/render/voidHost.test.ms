@@ -27,9 +27,10 @@ test "counter renders into Node2D tree with parsed flex styles" {
 	const p = div.children[0];
 	const button = div.children[1];
 	assert p.kind === DrawKind.Group, "p is a group";
-	assert p.children.length === 1, "p has one text node";
+	assert p.children.length === 2, "p has a static and a dynamic text node";
 	assert p.children[0].kind === DrawKind.Label, "text is a label";
-	assert p.children[0].text === "Count: 0", "initial dyn text bound";
+	assert p.children[0].text === "Count: ", "static text";
+	assert p.children[1].text === "0", "initial dyn text bound";
 	assert button.children[0].text === "+", "button label";
 
 	assert div.layoutStyle !== null, "div style parsed";
@@ -55,26 +56,32 @@ test "clickAt hits the button and reactive text updates" {
 	const div = vh.root.children[0];
 	layoutPass(div, 200.0, 120.0);
 
-	const textNode = div.children[0].children[0];
+	const p = div.children[0];
 
 	vh.clickAt(40.0, 40.0);
-	assert textNode.text === "Count: 1", "click inside button increments";
+	assert p.children[1].text === "1", "click inside button increments";
 
 	vh.clickAt(150.0, 100.0);
-	assert textNode.text === "Count: 1", "click outside button is ignored";
+	assert p.children[1].text === "1", "click outside button is ignored";
 
 	vh.clickAt(1.0, 21.0);
 	vh.clickAt(79.0, 59.0);
-	assert textNode.text === "Count: 3", "edge clicks inside bounds count";
+	assert p.children[1].text === "3", "edge clicks inside bounds count";
 }
 
 test "parseFlexStyle maps numeric + enum keys and ignores junk" {
 	const st = parseFlexStyle("width:320;flexGrow:1;flexDirection:row;justifyContent:center;alignItems:stretch;position:absolute;nonsense:42;broken");
-	assert st.width === 320.0, "width parsed";
-	assert st.flexGrow === 1.0, "flexGrow parsed";
-	assert st.flexDirection === "row", "flexDirection parsed";
-	assert st.justifyContent === "center", "justifyContent parsed";
-	assert st.alignItems === "stretch", "alignItems parsed";
-	assert st.position === "absolute", "position parsed";
+	assert st.width !== null, "width present";
+	let w: float32 = 0.0 as float32;
+	if (st.width !== null) {
+		if (typeof st.width === "string") { w = -1.0 as float32; }
+		else { w = st.width as float32; }
+	}
+	assert w === 320.0, "width parsed as points";
+	assert (st.flexGrow ?? 0.0) === 1.0, "flexGrow parsed";
+	assert (st.flexDirection ?? "column") === "row", "flexDirection parsed";
+	assert (st.justifyContent ?? "flex-start") === "center", "justifyContent parsed";
+	assert (st.alignItems ?? "auto") === "stretch", "alignItems parsed";
+	assert (st.position ?? "static") === "absolute", "position parsed";
 	assert st.height === null, "unset stays null";
 }
