@@ -11,6 +11,63 @@
 
 import { Node, NodeKind } from "std/meta";
 
+function trimEdgeSpaces(s: string, fromStart: boolean, fromEnd: boolean): string {
+	let lo = 0;
+	let hi = s.length;
+	if (fromStart) {
+		while (lo < hi && s.charAt(lo) === " ") { lo = lo + 1; }
+	}
+	if (fromEnd) {
+		while (hi > lo && s.charAt(hi - 1) === " ") { hi = hi - 1; }
+	}
+	return s.slice(lo, hi);
+}
+
+// JSX whitespace rule (Babel cleanJSXElementLiteralChild): a text child that
+// spans lines has each line's indentation stripped and is rejoined with single
+// spaces; a whitespace-only one collapses to "" and is dropped by the caller.
+// Text with no newline is significant and passes through untouched.
+function cleanJsxText(raw: string): string {
+	let hasNewline = false;
+	let i = 0;
+	while (i < raw.length) {
+		const ch = raw.charAt(i);
+		if (ch === "\n" || ch === "\r") { hasNewline = true; break; }
+		i = i + 1;
+	}
+	if (!hasNewline) { return raw; }
+
+	const lines: string[] = [];
+	let cur = "";
+	i = 0;
+	while (i < raw.length) {
+		const ch = raw.charAt(i);
+		if (ch === "\n") { lines.push(cur); cur = ""; }
+		else if (ch === "\t") { cur = cur + " "; }
+		else if (ch !== "\r") { cur = cur + ch; }
+		i = i + 1;
+	}
+	lines.push(cur);
+
+	let lastNonEmpty = -1;
+	i = 0;
+	while (i < lines.length) {
+		if (trimEdgeSpaces(lines[i], true, true) !== "") { lastNonEmpty = i; }
+		i = i + 1;
+	}
+
+	let out = "";
+	i = 0;
+	while (i < lines.length) {
+		const line = trimEdgeSpaces(lines[i], i !== 0, i !== lines.length - 1);
+		if (line !== "") {
+			out = i !== lastNonEmpty ? out + line + " " : out + line;
+		}
+		i = i + 1;
+	}
+	return out;
+}
+
 export macro element(node: Node): Node {
 	let attrs: Node[] = [];
 	let events: Node[] = [];
@@ -30,11 +87,14 @@ export macro element(node: Node): Node {
 	let kids: Node[] = [];
 	for (const c of node.jsxChildren) {
 		if (c.kind === NodeKind.JSXText) {
-			kids.push({
-				kind: NodeKind.CallExpr, line: c.line, column: c.column,
-				callee: { kind: NodeKind.Identifier, line: c.line, column: c.column, name: "text" },
-				arguments: [{ kind: NodeKind.StringLiteral, line: c.line, column: c.column, value: c.jsxText }],
-			});
+			const cleaned = cleanJsxText(c.jsxText);
+			if (cleaned !== "") {
+				kids.push({
+					kind: NodeKind.CallExpr, line: c.line, column: c.column,
+					callee: { kind: NodeKind.Identifier, line: c.line, column: c.column, name: "text" },
+					arguments: [{ kind: NodeKind.StringLiteral, line: c.line, column: c.column, value: cleaned }],
+				});
+			}
 		} else if (c.kind === NodeKind.JSXExpressionContainer) {
 			kids.push({
 				kind: NodeKind.CallExpr, line: c.line, column: c.column,
