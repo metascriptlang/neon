@@ -308,12 +308,20 @@ See `docs/PORT-STATUS.md` for the live, detailed port status + module mapping. S
 
 **Goal**: Renderers for each platform.
 
-**Delivered**: `src/platform/browser/dom.ms` (partial DOM rendering, JS backend).
+**Delivered**: `src/platform/browser/dom.ms` (partial DOM, JS backend), `src/platform/terminal/`
+(host + paint, green), `src/platform/void/host.ms` (Node2D scene graph + yoga flexbox + hit-testing,
+green). Yoga is DONE — the binding lives in its own repo (`~/metascript/yoga`) and `deps/yoga`
+symlinks a real checkout; `src/yoga/` here is a vestigial empty dir, not a TODO.
 
-**Blocked on MetaScript**:
-- `@target("c")` / `@target("js")` expansion — needed for iOS/Android native code selection. Currently PARSED but not expanded (see `LANG-METAPROGRAMMING.md` Phase F).
+**NOT blocked.** An earlier revision claimed iOS/Android were blocked on `@target` expansion — that
+is **stale**. Platform-specific native code selection is done with `@platform("macos"|"ios"|"android")`,
+which works today: void ships all three that way (`void/src/sokol/gpu.ms`) by gating `@compile`/
+`@passC`/`@passL`/`@link` directives around ONE backend-agnostic extern surface. Copy that shape.
+⚠ `@platform` filters **directives only** — it does not gate arbitrary MS code, so keep the MS side
+backend-agnostic and vary the native bridge file. `@target("c")/@target("js")` is the separate
+backend axis, and Neon already handles it by shipping separate host modules per backend.
 
-**Remaining**: yoga (needs `struct` + `extern function` + `@include`), iOS, Android, terminal.
+**Remaining**: iOS host, Android host.
 
 ### Phase 4: Compiler Co-Evolution (Ongoing)
 
@@ -444,7 +452,8 @@ msc test tests/render/renderToString.test.ms
 # Browser (JS backend)
 msc build examples/counterDom.ms
 
-# iOS / Android / Terminal — TODO (blocked on @target expansion in MetaScript)
+# Terminal + Void hosts ship today — see tests/platform/terminal + tests/render/voidHost
+# iOS / Android — TODO, and NOT compiler-blocked: use @platform, as void/src/sokol/gpu.ms does
 ```
 
 **Coverage**: Smoke tests for each platform

@@ -1,6 +1,50 @@
 # Neon Port Status — Nim → MetaScript
 
-**Last Updated**: 2026-07-06
+**Last Updated**: 2026-07-27 (late)
+
+---
+
+## ⚡ CURRENT STATE (2026-07-27 late) — read this before the older sections below
+
+**The suite is 15/15 green for the first time. Neon has zero open bugs on its own path.**
+Recompiler battery 3340/3340 (163 files). Committed: recompiler `de322f8`, neon `4f97082`,
+void `5152755`. Bug detail + root-cause ledger: `BUGS.md` (§1 clean, §2 = 7 compiler debts that do
+NOT block Neon, §7 = small debts).
+
+⚠ Sections below this block predate 2026-07-26 and describe the port as "đang dở" with a ~546 LOC
+core. Treat them as history for the Nim→MS module mapping, not as current status.
+
+### What is DONE
+
+| area | state |
+|---|---|
+| reactive core | signal / effect / memo / owner / cleanup / runtime / array — green |
+| render layer | node / host / reconcile — green, and NOT in the Nim original (cleaner split) |
+| macros | `element` (JSX → VNode, incl. Babel whitespace rules) + `flow` (Show/For) |
+| hosts | browser DOM (JS, partial) · terminal (green) · **void / Node2D + yoga flexbox (green)** |
+| yoga | DONE — binding lives in `~/metascript/yoga`, `deps/yoga` symlinks a real checkout |
+
+### What is LEFT — none of it is compiler-blocked
+
+| # | work | state | size |
+|---|---|---|---|
+| 1 | `createStyles` macro | `src/macros/ui/style.ms` is a **6-line stub** | small |
+| 2 | component macro (function components) | not started | medium |
+| 3 | attribute classification (animatable / event / static) | not started | small–medium |
+| 4 | `src/starter/` example components | empty dir | small |
+| 5 | iOS host | empty dir | large |
+| 6 | Android host | empty dir | large |
+
+Suggested order: **1 → 2 → 4** unlocks "you can actually write an app", then 5/6.
+
+⚠ **`src/yoga/` and `src/platform/{ios,android}/` are empty dirs, not work-in-progress.**
+⚠ **iOS/Android are NOT blocked on `@target`** (an older claim in CLAUDE.md, now corrected): use
+`@platform("ios"|"android"|"macos")` around `@compile`/`@passC`/`@passL`/`@link` with one
+backend-agnostic extern surface — exactly what `void/src/sokol/gpu.ms` already ships. Note
+`@platform` filters **directives only**; it does not gate arbitrary MS code.
+
+---
+
 **Scope**: Báo cáo tình trạng port + cơ hội tận dụng MetaScript power
 
 ---
