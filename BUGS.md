@@ -12,15 +12,21 @@ on top of a stale claim. History lives in §5 and is append-only.
 
 ---
 
-## Toolchain — VERIFIED 2026-07-27 (post-deploy)
+## Toolchain — VERIFIED 2026-07-27 (late, post-voidHost)
 
 | what | value | how verified |
 |---|---|---|
-| installed compiler | `~/.metascript/bin/msc` **v0.2.27**, built **Jul-27 00:10 from `1e1db2a`** (synced binary + std + runtime + vendor) | `msc --version`, `ls -la ~/.metascript/bin/msc`, sync log |
-| recompiler HEAD | `1e1db2a` (main) — five session fixes landed on top of `85519a2`; pre-existing leftovers untouched: `docs/*` + editor-plugin dirty, untracked `src/test/native/run.ms`, `std/process/*`, `ctorExtProtocol*` | `git log --oneline`, `git status --porcelain -- src std` |
-| binary ≡ HEAD? | **yes** — `rm -rf out && msc build src/index.ms …` from main, then `./tools/sync-local-binary.sh` | post-deploy sweep below |
-| **battery (post-deploy, installed msc)** | **3338 pass / 0 fail** (162/162 files, ~4.5m) | `cd ~/metascript/recompiler && rm -rf out && msc test src/index.ms` |
-| **Neon suite (post-deploy, installed msc)** | **14 pass / 1 fail** — only `voidHost` (env) | `msc test <file>` per file, `rm -rf out` between |
+| installed compiler | `~/.metascript/bin/msc` **v0.2.27**, built **Jul-27 (late)** from `1e1db2a` **+ 2 uncommitted fixes** (passC module-relative, charAt/slice host bridges) | `msc --version`, `ls -la ~/.metascript/bin/msc`, sync log |
+| recompiler HEAD | `1e1db2a` (main). **This session's compiler work is UNCOMMITTED in the working tree**: `src/checker/checkPass.ms`, `src/codegen/raiser/expressions.ms`, `src/raiser/{bytecode,disasm,vm}.ms`, `runtime/core/system.h`, `std/core/struct.ms`, `src/test/lang/comptime.ms`, `src/test/handoff/{index.ms,passCModuleRelativeInclude.ms,fixtures/passCRel*}`. Pre-existing leftovers untouched: `docs/*` + editor-plugin dirty, `src/test/{CLAUDE.md,native/README.md}`, untracked `src/test/native/run.ms`, `std/process/*`, `ctorExtProtocol*` | `git log --oneline`, `git status --porcelain -- src std` |
+| binary ≡ working tree? | **yes** — `rm -rf out && msc build src/index.ms …`, then `./tools/sync-local-binary.sh` | post-deploy sweep below |
+| **battery (post-deploy, `./msc`)** | **3339 pass / 0 fail** (163/163 files, ~4.5m) | `cd ~/metascript/recompiler && rm -rf out && ./msc test src/index.ms` |
+| **Neon suite (post-deploy, installed msc)** | **15 pass / 0 fail** — the suite is fully green for the first time | `msc test <file>` per file, `rm -rf out` between |
+
+⚠ **The battery does NOT run the guards.** Its 162 files are compiler/std sources with *inline* tests;
+`src/test/**` is reached only through the broken `src/test/index.ms` aggregator (§7). Measured this
+session: adding a test to `src/test/lang/comptime.ms` left the battery count at 3338 unchanged, and
+neither `src/test/handoff/*` nor `src/compiler/meta/hostTable.ms` (18 inline tests) appears in the
+162. **Every guard must be run standalone** — a green battery says nothing about them.
 
 **Battery flake reality (2026-07-26):** the old 7-flake set is GONE (suggest ×2 + literals/expressions
 fixed by `e7fdf29`/`22805ea`). Current intermittents seen on `a9c0ae6`-lineage: `std/fs/path.ms`
@@ -34,12 +40,15 @@ Diff any battery failure against these two groups before claiming regression.
 
 ---
 
-## §1 — CURRENT STATE (measured 2026-07-27 post-deploy, `rm -rf out` PER FILE, all 15 test files)
+## §1 — CURRENT STATE (measured 2026-07-27 late, `rm -rf out` PER FILE, all 15 test files)
 
-**Neon suite = 14 pass / 1 fail — every compiler-blocked file is GREEN; the only red is `voidHost`,
-which is an ENVIRONMENT gap (`sokol_gfx.h` absent), not a compiler or framework bug.**
-✅ Measured on the INSTALLED `$PATH` msc (`1e1db2a`, deployed Jul-27 00:10) — no pinned worktree
-binary is needed any more; the fix worktree `/tmp/rc-flow` can be removed.
+**Neon suite = 15 pass / 0 fail. The suite is fully green for the first time.**
+✅ Measured on the INSTALLED `$PATH` msc (Jul-27 01:29 build) — no pinned worktree binary is needed.
+✅ **The long-standing `reconcile`/`reconcileHard` intermittent is SOLVED and was never a "flake"** —
+it was a signed-overflow UB trap in `msPtrHash`, firing only when the ASLR'd pointer folded high
+enough (§5 B). Measured `reconcileHard` 2-fail-in-6 before, 0-in-8 after; then 30 consecutive
+Neon file-runs clean. The old note blaming a shared `out/` was wrong: every measurement here used
+`rm -rf out`. **Chase intermittents — this one hid a real memory-model bug for weeks.**
 ⚠ Protocol: `rm -rf out` BETWEEN files is load-bearing — sequential `msc test` runs sharing `out/`
 produced spurious compile failures (reconcile/reconcileHard flip-flopped until cleaned).
 
@@ -48,7 +57,7 @@ produced spurious compile failures (reconcile/reconcileHard flip-flopped until c
 | `core/signal` | ✅ | `core/array` | ✅ **NEW 2026-07-26 (late)** |
 | `core/memo` | ✅ | `render/flow` | ✅ **NEW 2026-07-26 (late)** |
 | `core/dispose` | ✅ | `render/counter` | ✅ **NEW 2026-07-26** |
-| `render/element` | ✅ | `render/voidHost` | ❌ (env — sokol) |
+| `render/element` | ✅ | `render/voidHost` | ✅ **NEW 2026-07-27 (late)** |
 | `render/host` | ✅ | | |
 | `render/hostOps` | ✅ | | |
 | `render/reconcile` | ✅ | | |
@@ -57,7 +66,7 @@ produced spurious compile failures (reconcile/reconcileHard flip-flopped until c
 | `render/region` | ✅ **NEW 2026-07-25** | | |
 | `platform/terminal` | ✅ | | |
 
-### Issue count: **0 open on Neon's path + 1 env (voidHost) + 7 compiler debts off-path**
+### Issue count: **0 open on Neon's path + 7 compiler debts off-path**
 
 Five roots closed on 2026-07-26 (late) in one session: #2 #3 #4 (+ the ref-truthiness layer under #4)
 #6 #7. Four were compiler bugs, #7 was Neon's own. Every one had been mis-framed in this file before
@@ -171,13 +180,17 @@ function was needed, and the emitted C shows DRC injecting `msIncref` per copied
 
 ---
 
-## §3 — Neon-side / environment — THE ONLY RED FILE LEFT
+## §3 — Neon-side / environment — EMPTY, `voidHost` CLOSED 2026-07-27 (late)
 
-- **`voidHost`** — TWO independent problems, both Neon-side (this is the entire remaining `1 fail`):
-  1. **test-code type error** (fixable now, no compiler needed):
-     `Argument type mismatch in 'renderToHost' arg 0: got string, expected VNode` ×2.
-  2. **env:** `sokol_gfx.h file not found` at `/Users/le/metascript/void/src/sokol/bridgeEmbed.m:12`.
-     Native dependency (Void host + sokol) not present.
+- **`voidHost`** — ✅ **GREEN (3/3).** Both problems recorded here were MIS-DIAGNOSED; see §5 for the
+  four real roots. Corrections worth carrying forward:
+  - **"env: sokol_gfx.h not present" was WRONG.** `sokol_gfx.h` was on disk the whole time at
+    `void/deps/sokol/`. The header was unreachable because `@passC("-Ideps/sokol")` is resolved
+    against the **process CWD**, and Neon builds from its own root — a compiler bug, not a missing
+    dependency. **Nothing was ever installed to fix this.**
+  - **The `renderToHost arg 0: got string` type error no longer existed** when re-measured; it had
+    been fixed by an earlier session's compiler work and the row was never re-measured. Per this
+    file's own rule: re-measure before repeating a claim.
 - **`terminal`** — ✅ FIXED 2026-07-21, Neon-side, stays green (284/284). Was "two short texts in a row
   render as 1 line". Two fixes in `src/platform/terminal/paint.ms`: tag `"row"` now defaults
   flexDirection to row; `getAttr`/`getAttrNum` guard with `.has(name)`.
@@ -199,12 +212,194 @@ or provably env-blocked:
   values (`macro_disambig`, `macro_lenval`, `macro_narrow` N1) — see §7 before reading them as
   failures.
 
-Deliberately still untracked: `docs/EDITOR*.md` (design scratch) and `deps/` (empty — the yoga
-vendoring never landed; it remains its own task).
+**2026-07-27 (late), uncommitted and deliberate:** `src/macros/ui/element.ms` (JSX whitespace) +
+`tests/render/voidHost.test.ms` (corrected expectations) — both green, awaiting review because
+`element.ms` is a sacred file. The matching compiler fixes are uncommitted too (see toolchain table);
+**they must land together — Neon's `element.ms` is green only on a compiler carrying the charAt/slice
+bridges.**
+
+Still untracked: `docs/EDITOR*.md` (design scratch).
+⚠ **`deps/` is NOT empty** — the long-repeated "yoga vendoring never landed" claim is false:
+`deps/yoga -> ../../yoga/deps/yoga` exists and resolves to a real checkout (this is what
+`voidHost` links against). What is missing is only a *vendored copy*, not the dependency.
 
 ---
 
 ## §5 — Fixed (history + root-cause ledger, append-only)
+
+### 2026-07-27 (late, deep-probe pass) — two more roots the first "green" hid ⚠ UNCOMMITTED
+
+Both were found by probing the Root-2 fix rather than trusting it, and **neither was caused by it**.
+
+**A — Raiser: string `<` `>` `<=` `>=` compared HANDLES (silent wrong answer).**
+`compileBinaryExpr` (`codegen/raiser/expressions.ms:369`) computes
+`isStrCmp = isComparisonOp(op) && exprIsString(...)` — and `isComparisonOp` returns true for all eight
+operators — but only `==`/`===` (EqStr) and `!=`/`!==` (NeStr) had branches. The other four **fell
+through to the numeric tail** and compared the two string handles with `BxxI64`. So the code proved the
+operands were strings and then discarded that fact. Wrong in macros **and** `@comptime`; correct at
+runtime. `"abc" < "abd"` → **false**. ⚠ The trap that hides it: `<=`/`>=` on two EQUAL strings returned
+true even while broken (equal handles), so equality-only coverage looks fine.
+*Nim (read this session):* `<`/`<=` on strings are magics (`lib/system/comparisons.nim:42,85`
+LeStr/LtStr) → their own opcodes (`vmgen.nim:1216-1217`) → real lexicographic compare
+(`vm.nim:1250-1255`). `>`/`>=` need no opcode — Nim derives them by swapping operands. There is no
+path by which an unhandled string comparison becomes integer comparison. NIM-REF: **0 hits** for any of
+this, so nothing was intentional. **Verdict DIVERGE-INCOMPLETE → SAME** (the mechanism existed, only
+the equality half was ever built).
+*Fix:* append `LtStr`/`LeStr` to the opcode enum + disasm + VM handlers, and one codegen arm covering
+all four operators via operand swap. ⚠ **Appended at the END on purpose:** `src/raiser/vm_dispatch.c`
+hardcodes opcode NUMBERS (`#define OP_EQ_STR 29`), so a mid-enum insert would silently desync it —
+that file is currently INACTIVE (not `@include`d, already missing `CallHost`), which is what makes
+appending safe.
+*Guard:* `src/test/lang/comptime.ms` — 12 ordering cases including strictly-ordered `<=`/`>=`, param
+receivers, and `"Z" < "a"` / `"ab" < "abc"`. RED evidence: `/tmp/sc` on the pre-fix binary printed
+`lt=0;gt=0` and `CT_lt=0`.
+
+**B — hash mixing overflowed a signed int64 → UB trap. This was the `reconcile` "flake".**
+`msPtrHash` (`runtime/core/system.h:436`) did `(int64_t)folded * (int64_t)2654435761LL`. `folded` is a
+full 32-bit XOR-fold of the pointer, so the product reaches ~1.14e19 — past `INT64_MAX` (9.22e18) —
+which is undefined behaviour and **traps**: `thread panic: signed integer overflow: 3724608947 *
+2654435761`. It fired only when the ASLR'd pointer folded high enough, which is exactly why it looked
+like a flake. Measured on `reconcileHard`: **2 failures in 6 runs** before, **0 in 8** after; the whole
+Neon suite then ran 2×15 files with 0 failures. Chain:
+`reconcile.ms:72 map.has(...)` → `Map_set__unknown_number` → `struct.ms:99 hash()` → `msPtrHash`.
+`std/core/struct.ms:82` `hashNumber` had the **identical** bug and is reachable deterministically
+(`hashString` was already safe — it masks inside the loop).
+*Nim:* all hash mixing is unsigned — `hashWangYi1` uses `uint64` constants and `hiXorLo(a, b: uint64):
+uint64`, casting to the signed `Hash` only at the end (`lib/pure/hashes.nim:166-178`).
+**Verdict DIVERGE-UNINTENTIONAL → SAME.** *Fix:* do the multiply in `uint64` in both places (verified
+empirically that MS `uint64` wraps instead of trapping: `(2^32-1) * 2654435761 & 0xFFFFFFFF =
+1640531535`). Masked results are unchanged for every input that did not trap.
+*Guard:* an inline test in `std/core/struct.ms` pinning `hashNumber` at the 32-bit boundary + a
+`Map<number,_>` round-trip. **This one runs IN the battery** (163 files / 3339 tests, up from
+162/3338) — unlike the handoff guards, it cannot be silently skipped. Expected values were computed,
+not guessed (one of three was wrong on the first write).
+
+**DRY (the part that keeps B from coming back).** The two Knuth copies were the reason one got fixed
+and the other stayed wrong, so they are now one: the C side folds only (`msPtrHash` → **`msPtrFold`**,
+single caller) and `hash(this u: unknown)` routes through `hashNumber`. Exactly one mixing site exists,
+and `struct.ms`'s in-battery test asserts the routing (`a.hash() === hashNumber(msPtrFold(a))`) so a
+reintroduced second mixer drifts visibly instead of silently. Left alone deliberately: the djb2
+duplicated between `struct.ms` and `std/hash/index.ms` — they are independent layers with no import
+relation, and `struct.ms`'s own DRY note already tracks it (docs/GAP.md #7). Not a layering change to
+make mid-session.
+
+**Class audit (bounded, not a spot fix).** The hazard is exactly `32-bit-masked value × multiplier
+≥ 2^31`. Every candidate checked: djb2 `×33` → 1.4e11 ✅, FNV-1a `×16777619` → 7.2e16 ✅,
+`tv_sec × 1000` → 1.7e12 ✅. Only Knuth's 2654435761 crosses INT64_MAX. **Both instances fixed; no
+third exists.**
+
+**⚠ The crash was luck, and that matters more than the crash.** `msc test` defaults to **zig cc**
+(`cc.ms:141` auto-detect prefers it) whose debug UB checks trap signed overflow — that is the only
+reason this surfaced. Under `--danger`/release the same line is **silent UB**: the optimizer may assume
+no overflow, the hash degrades to garbage, Map lookups miss and reconciliation goes wrong **without a
+crash**. This bug was strictly more dangerous in production than in the test suite.
+
+**Gates:** battery **3340/3340 (163/163)**, exit 0; Neon **15/15 twice over, 0 failures in 30
+file-runs**; new guard `unknownKeyIsBorrowed` green under drc.
+⚠ `src/test/guard/run.sh` is **6/7 unbuildable in this environment** — zig cannot parse the macOS SDK
+`.tbd` stubs (`failed to parse TBD file: NotLibStub`), which is why the new guard could only be
+verified under drc. The 7th, `asyncRethrowPropagates`, builds and **deterministically aborts with
+DOUBLE-DESTROY of Error** — it is an UNTRACKED file from an earlier session, red before this one, and
+its own header points at `/trace-nim buildExcRouting`. **Neither is this session's doing; both are
+open debts.**
+
+### 2026-07-27 (late) — `voidHost` GREEN: FOUR roots, and the filed diagnosis was wrong on both counts ⚠ UNCOMMITTED
+
+**The row said "1 test-code type error + a missing native dependency". Neither was true.** The type
+error had already been fixed by an earlier session and never re-measured; `sokol_gfx.h` was present
+at `void/deps/sokol/` the entire time. Peeling the real blocker off exposed three more beneath it —
+each only reachable once the one above it cleared, which is why one "environment gap" hid four bugs.
+
+**Root 1 — `@passC` relative `-I` resolved against CWD, not the declaring module (COMPILER).**
+`@compile("./x.c")` resolves module-relative (`compile.ms` explicit `./`/`../` arm), `@include` adds
+`-iquote<moduleDir>` automatically, `@link` uses `getModuleDir` — **`@passC` alone had no
+module-relative path**, so `resolveIncludeDir` tried CWD then the global include search list. A
+module carrying `@passC("-Ideps/sokol")` therefore compiled **only while the process ran from its own
+project root**, and broke the instant a second project imported it. Neon → `void/src/sokol/gpu.ms` is
+exactly that shape, and it surfaced as `fatal error: 'sokol_gfx.h' file not found` — which reads as a
+missing dependency, hence the wrong diagnosis. Reproduced in **6 lines with zero Neon/void
+involvement** (`/tmp/passcrel`): GREEN when run from the module's own dir, RED from anywhere else.
+Fix: `collectOneDirective`'s passC arm (`checker/checkPass.ms`, +25) resolves a `./`- or
+`../`-prefixed `-I`/`-iquote`/`-isystem` against `getModuleDir(ctx.modulePath)`, mirroring the arm
+`@compile` already had. Bare dirs keep CWD-then-search so std's `-Ivendor/...` is untouched.
+Void-side: `gpu.ms` + `gpu.wms` now say `-I../../deps/sokol`.
+**Guard:** `src/test/handoff/passCModuleRelativeInclude.ms` + `fixtures/passCRel{Include,Shared}/`
+(covers both `./sub` and `../sibling`) — proven RED (`'passcRelDot.h' file not found`) → GREEN.
+
+**Root 2 — the Raiser inferred "is this a string?" from the AST instead of the resolved type
+(COMPILER).** ⚠ **This row originally recorded a SYMPTOM PATCH and was rewritten after `/trace-nim`;
+read the correction, it is the more useful lesson.**
+
+*First (wrong) diagnosis:* a macro body doing string work died on `Unknown host function:
+msStringCharAt`, so `charAt`/`slice` bridges were added to `compiler/meta/hostTable.ms`. That made the
+error go away and **it was not the root** — it was pattern-matching the failing idiom.
+
+*What the trace found.* `exprIsString` (`codegen/raiser/expressions.ms:142`) is headed
+*"String type inference (AST-based, no checker needed)"* and its Identifier arm is
+`return isLocalString(s, d.name)` — an **early return**. A function **parameter** is an Identifier that
+no local-string table knows, so it answered false and never reached the `node.nodeType` check sitting
+at the bottom of the same function. One short-circuit, two symptoms: `.length` on a string param
+emitted **ArrayLen** against a string handle (`array handle out of bounds: 0`) and `charAt`/`slice`
+missed their opcodes and fell to CallHost. The bridges only ever hid the second symptom.
+
+*Nim (`vmgen.nim:1122`, read this session).* Nim dispatches on the operand's **semantic type**:
+`case n[1].typ.skipTypes(abstractVarRange).kind` → `opcLenStr` / `opcLenCstring` / `raiseAssert` —
+`mHigh` (:1276) does the same. Nim has no AST-based guessing layer and **never silently falls back to
+the seq opcode**. NIM-REF row 70 makes the Raiser's standalone-Program VM DIVERGE-INTENTIONAL, but it
+also records that this pipeline runs `check + refineTypes`, so the resolved type **is** available —
+nothing licensed the AST-first order. **Verdict: DIVERGE-UNINTENTIONAL → SAME.**
+
+*Fix (1 file):* hoist the resolved-type check to the top of `exprIsString`, making the type the
+authority and the syntactic arms a fallback for genuinely untyped nodes.
+*And the symptom patch was REMOVED:* with the invariant restored the bridges are dead code — proven by
+rebuilding with the registrations deleted (`mscNB`) and watching the param ladder still print
+`len=5;loop=abc;slice=bcd`. They were deleted rather than left in, because a second dispatch path
+would silently absorb the next instance of exactly this bug instead of surfacing it.
+**Guard:** `src/test/lang/comptime.ms` — `@comptime` calling helpers whose receiver is a *parameter*,
+now anchored on `.length` and a `while (i < s.length)` scan, which have **no** CallHost fallback and so
+fail on the root alone. RED evidence: `/tmp/aud2` on the pre-fix binary, **with the bridges present**,
+`Macro 'mLen' failed: array handle out of bounds: 0`.
+
+⚠ **How Root 2 was actually caught — the first "15/15 green" was hollow.** With only the bridges in
+place the whole suite reported green, and it was WRONG: `element.ms`'s `cleanJsxText` ran on the broken
+`.length` dispatch and silently mangled its output. A dedicated whitespace test written afterwards
+showed `<p a="1">\n hello \n</p>` rendering as **`<p a="1"></p>` — the text destroyed**, which is worse
+than the bug being fixed. It passed only because **every pre-existing JSX test in this repo is written
+on one line**, so multi-line JSX was entirely unexercised. Two lessons worth keeping: a green suite
+proves nothing about a path no test walks, and the algorithm was exonerated by lifting it verbatim into
+a **runtime** test (5/5 pass) — which is what localised the fault to the macro VM rather than the code.
+
+**Root 3 — the `element` macro never applied JSX whitespace rules (NEON).** Multi-line JSX produced
+literal newline/indent text nodes: the div had **5** children instead of 2, and `p`/`button` were
+off by one, so `children[0]` indexed into whitespace and the binary died with
+`index 0 out of bounds (length 0)`. This is not a compiler bug — `LANG-JSX.md:92` and JSX-ROADMAP 2.3
+state the design explicitly: JSXText is emitted as the **raw slice**, "neither lexer nor parser trims,
+the **consuming macro** applies any whitespace rules, keeping the compiler opinion-free". Neon's macro
+simply never implemented its half. It went unnoticed because every other JSX test
+(`counter`, `element`, `renderToString`) is written on **one line**. Fix: `cleanJsxText` in
+`src/macros/ui/element.ms` implements Babel's `cleanJSXElementLiteralChild` — a text child spanning
+lines has each line's indentation stripped and is rejoined with single spaces; a whitespace-only one
+collapses to `""` and is dropped; text with no newline is significant and passes through untouched.
+⚠ `element.ms` is a **sacred file** — all 15 Neon files were re-run after this change.
+
+**Root 4 — the test's own expectations were never valid (NEON).** The file was committed RED (§4) and
+had therefore never executed a single assertion. Two were simply wrong: `<p>Count: {x}</p>` yields
+**two** host children (a static label + an independently-updatable dynamic one), not one merged
+`"Count: 0"` label — the DOM host behaves identically, and merging would defeat fine-grained updates.
+Also `FlexStyle.width` is `float32 | string | null` (yoga accepts `"50%"`), so it needs yoga's own
+proven `typeof`-guarded narrow, not `===` against a raw number. ⚠ **A probe of mine first concluded
+`as float32` was a compiler gap; that was wrong** — `as` narrows only inside a `typeof` branch, as
+`yoga/src/style.ms:167` already does. Checked before "fixing" the compiler; worth repeating.
+
+**Gates (re-run after the Root-2 root fix, all exit 0):** battery **3338/3338 (162/162)**; Neon
+**15/15**, `rm -rf out` per file; both guards standalone (`comptime.ms` 334, `passCModuleRelativeInclude`).
+⚠ Per the toolchain note **the battery does not run the guards** — run them standalone or they are skipped.
+`render/element` went 276 → **282**: +6 whitespace tests, the coverage whose absence let Root 2 hide.
+Changed: recompiler `src/codegen/raiser/expressions.ms` (the root), `src/checker/checkPass.ms`,
+`src/test/lang/comptime.ms`, `src/test/handoff/{index.ms,passCModuleRelativeInclude.ms,fixtures/…}`;
+void `src/sokol/gpu.{ms,wms}`; neon `src/macros/ui/element.ms`, `tests/render/{element,voidHost}.test.ms`.
+`src/compiler/meta/hostTable.ms` is back to its original content — the bridges added mid-session were
+removed once the root landed. **All of it is UNCOMMITTED.**
 
 ### 2026-07-26 (late) — #6 closed: cross-module `new Generic<T>()` never instantiated its constructor ✅ COMMITTED `1e1db2a` — DEPLOYED Jul-27
 
@@ -676,9 +871,9 @@ built from HEAD.)*
 ## §6 — Passing, don't break
 
 `signal`, `memo`, `dispose`, `array`, `element`, `host`, `hostOps`, `reconcile`, `reconcileHard`,
-`renderToString`, `region`, `counter`, `flow`, `terminal` — **14 files green on the installed `msc`**
-(deployed 2026-07-27, verified post-deploy sweep). The reactive core + render layer + control flow
-are solid;
+`renderToString`, `region`, `counter`, `flow`, `terminal`, `voidHost` — **all 15 files green on the
+installed `msc`** (deployed 2026-07-27 late, verified post-deploy sweep). The reactive core + render
+layer + control flow + the Void host are solid;
 re-run them on every compiler deploy. Two of the last three compiler fix attempts were caught by
 exactly this suite and not by the battery (the rejected void-callback inference fix regressed 7 of
 these while the battery stayed clean at 3330/7) — **the Neon suite is a stronger gate than the
@@ -707,5 +902,27 @@ Each is cheap, none blocks anything, all were surfaced by the sessions that clos
 - **Neon `probe/` housekeeping** — `macro_disambig` / `macro_lenval` still assert the formerly-WRONG
   values (deliberate RED bracket-tests); `macro_narrow` N1 is red BY DESIGN (Nhịp-2 marker). Rewrite
   truth-only or delete at leisure, but do not read them as failures.
-- **Yoga vendoring never happened.** `deps/` exists but is EMPTY; the layout engine is still a
-  TODO in its own right (see CLAUDE.md's `src/yoga/`).
+- **"Yoga vendoring never happened / `deps/` is EMPTY" was FALSE** (corrected 2026-07-27 late).
+  `deps/yoga -> ../../yoga/deps/yoga` exists and resolves to a real checkout — it is what `voidHost`
+  links against, and the yoga port in `~/metascript/yoga` is a working MS binding (`FlexStyle`,
+  `applyStyle`, `layoutPass`). What is missing is only a *vendored in-repo copy*; the dependency
+  itself is present and used. CLAUDE.md still lists `src/yoga/` as an empty TODO — also stale, the
+  layout engine lives in its own repo.
+- **`src/test/guard/run.sh` is 6/7 unbuildable here** — zig cannot parse the macOS SDK `.tbd` stubs
+  (`failed to parse TBD file: NotLibStub`), so most nim-guards cannot run in either gc mode and the
+  new one could only be verified under drc. Either pin a working SDK/zig pair or teach run.sh to fall
+  back to `--cc=clang`. Until then the guard suite reports environment noise, which is how a genuinely
+  red guard can hide in it.
+- **`src/test/guard/asyncRethrowPropagates.ms` is RED and UNTRACKED.** Deterministic
+  `DOUBLE-DESTROY of Error`; written by an earlier session, never committed, red before 2026-07-27.
+  Its header already names the trace target (`buildExcRouting` in generatorLower.ms + the ThrowStmt arm
+  of analyzer/inject.ms). Commit it or delete it — an uncommitted red guard is invisible to everyone.
+- **`Map<unknown, V>` does not own its keys, and nothing says so.** Row 57 makes `unknown` RC-inert by
+  design (Nim `pointer`), so this is correct — but `type HostNode = unknown` means Neon's whole host
+  layer relies on it silently. A cache keyed by `unknown` that outlives its keys dangles with no
+  diagnostic. Guarded now (`unknownKeyIsBorrowed`) + NIM-REF row added; still owed a line in LANG.md
+  and in Neon's `hostTypes.ms` stating the borrow contract.
+- **`@passC`/`@compile` project-root-relative paths are a trap for any cross-project import.**
+  Root 1 in §5 fixed `@passC`'s `./`+`../` forms, but `void/src/sokol/gpu.wms` still carries
+  `@compile("src/sokol/bridge.c")` (project-root-relative), which breaks identically from another
+  CWD. Not fixed here because the wasm path is unexercised — fix when it surfaces.
