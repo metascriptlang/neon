@@ -12,14 +12,15 @@ on top of a stale claim. History lives in §5 and is append-only.
 
 ---
 
-## Toolchain — VERIFIED 2026-07-26 (post-deploy)
+## Toolchain — VERIFIED 2026-07-27 (post-deploy)
 
 | what | value | how verified |
 |---|---|---|
-| installed compiler | `~/.metascript/bin/msc` **v0.2.27**, built Jul-26 20:32 from `85519a2` (synced binary + std + runtime + vendor) | `msc --version`, `ls -la`, sync log |
-| recompiler HEAD | `85519a2` (main) — `src/` + `std/` clean of session work; pre-existing leftovers: `docs/*` + editor-plugin dirty, untracked `src/test/native/run.ms`, `std/process/*`, `ctorExtProtocol*` | `git status --porcelain -- src std` |
-| binary ≡ HEAD? | **yes** — built from HEAD post-merge, then `sync-local-binary.sh` | Neon suite 12/3 on `$PATH` msc |
-| **battery** | **3338 pass / 0 fail** (162/162 files, self-hosted gen-1 on `85519a2`, ~4.4m). Installed-msc measure pre-merge: 3337/1 (path.ms only) | `cd ~/metascript/recompiler && rm -rf out && msc test src/index.ms` |
+| installed compiler | `~/.metascript/bin/msc` **v0.2.27**, built **Jul-27 00:10 from `1e1db2a`** (synced binary + std + runtime + vendor) | `msc --version`, `ls -la ~/.metascript/bin/msc`, sync log |
+| recompiler HEAD | `1e1db2a` (main) — five session fixes landed on top of `85519a2`; pre-existing leftovers untouched: `docs/*` + editor-plugin dirty, untracked `src/test/native/run.ms`, `std/process/*`, `ctorExtProtocol*` | `git log --oneline`, `git status --porcelain -- src std` |
+| binary ≡ HEAD? | **yes** — `rm -rf out && msc build src/index.ms …` from main, then `./tools/sync-local-binary.sh` | post-deploy sweep below |
+| **battery (post-deploy, installed msc)** | **3338 pass / 0 fail** (162/162 files, ~4.5m) | `cd ~/metascript/recompiler && rm -rf out && msc test src/index.ms` |
+| **Neon suite (post-deploy, installed msc)** | **14 pass / 1 fail** — only `voidHost` (env) | `msc test <file>` per file, `rm -rf out` between |
 
 **Battery flake reality (2026-07-26):** the old 7-flake set is GONE (suggest ×2 + literals/expressions
 fixed by `e7fdf29`/`22805ea`). Current intermittents seen on `a9c0ae6`-lineage: `std/fs/path.ms`
@@ -33,13 +34,12 @@ Diff any battery failure against these two groups before claiming regression.
 
 ---
 
-## §1 — CURRENT STATE (measured 2026-07-26, `rm -rf out` PER FILE, all 15 test files)
+## §1 — CURRENT STATE (measured 2026-07-27 post-deploy, `rm -rf out` PER FILE, all 15 test files)
 
 **Neon suite = 14 pass / 1 fail — every compiler-blocked file is GREEN; the only red is `voidHost`,
 which is an ENVIRONMENT gap (`sokol_gfx.h` absent), not a compiler or framework bug.**
-⚠ Measured with the WORKTREE binary `/tmp/rc-flow/msc` (base `85519a2` + this session's five fixes),
-`msc test <file>` per file with a clean `out/`. The `$PATH` msc is still the Jul-26 20:32 build and
-will reproduce the OLD failures until `./tools/sync-local-binary.sh` runs — **deploy is owed**.
+✅ Measured on the INSTALLED `$PATH` msc (`1e1db2a`, deployed Jul-27 00:10) — no pinned worktree
+binary is needed any more; the fix worktree `/tmp/rc-flow` can be removed.
 ⚠ Protocol: `rm -rf out` BETWEEN files is load-bearing — sequential `msc test` runs sharing `out/`
 produced spurious compile failures (reconcile/reconcileHard flip-flopped until cleaned).
 
@@ -75,21 +75,19 @@ it was traced — see §5 for the corrected mechanisms.
 | ~~4~~ | ~~optional field `fallback?` lowering~~ | ~~`flow`~~ | ✅ **CLOSED 2026-07-26 (late) — TWO pre-existing roots under one symptom, neither was "Maybe lowering".** (a) The anon-object-type STRING parse (`resolvePass.ms` `{...}` branch) kept the `?` glued to the field name (`"fallback?"`) — member reads missed, literal excess-key check missed, C anon struct had no `fallback`. The interface TOKEN path had discarded the `?` token all along (`?` is cosmetic: no missing-field check exists on ANY path; omitted field = zero-init/NULL). Fix: strip trailing `?`, parity with the token path. (b) LAYER 3, exposed the moment (a) cleared: `wrapTruthiness` (`stringTruthiness.ms`) had NO Ref arm — `if (fb)` on a class/interface value fell into the syntactic string fallback → C `->byteLength` on a non-string struct (`if (!fb)` was never affected: UnaryExpr short-circuits). Pre-existing and fully general (bare `const v: VN; if (v)` failed). Fix: Ref arm → `!== null`. See §5. |
 | ~~5~~ | ~~array-element `void*` erasure~~ | ~~`counter`~~ | ✅ **CLOSED 2026-07-26 — framing WRONG twice over.** Not an array bug, not codegen: the `element` MACRO spliced the literal string `"on"` (the ARGUMENT of `startsWith`) where the `<button>` subtree belonged, because macro bodies compiled with UNTYPED params and every flat Node-field read dispatched blind in the VM. The msString-into-`void*` clang error was where the corpse landed. See §5 2026-07-26. |
 
-**⚠ The #3/#4/truthiness fixes are COMMITTED on recompiler `main` (`bbc2e3c`, `c41f1a3`, `6422400` — one
-root + its guard each, ff-merged from worktree `/tmp/rc-flow`) but NOT YET DEPLOYED** — the installed
-`$PATH` msc is still the Jul-26 20:32 build of `85519a2` and still shows the old #3/#4 signatures.
-Until `./tools/sync-local-binary.sh` runs, reproduce with the worktree binary `/tmp/rc-flow/msc`.
-Measurements below are all worktree-msc with `rm -rf out` per file: guards 3× proven RED on installed → GREEN on worktree;
-battery `msc test src/index.ms` = **3338/3338 (162/162, 0 fail)**; Neon suite = **12/3** with `flow`'s
-error moved to #2 exactly. (`msc test src/test/index.ms` fails 74 type errors on BOTH installed-pristine
-and worktree — stale aggregator, pre-existing, not a session regression; handoff guards gate standalone.)
+**✅ All five compiler fixes are COMMITTED on recompiler `main` and DEPLOYED (Jul-27 00:10):**
+`bbc2e3c` parser typeArg · `c41f1a3` anon `?` · `6422400` ref truthiness · `33dca18` generic
+`slice<T>` · `1e1db2a` cross-module generic ctor. One root + its guard per commit. Neon-side:
+`f5824b7` (indexArray append) + `454eec7`/`df9a4d5` (flow feature + its test).
+Every guard was proven RED on the pre-fix binary before the fix landed.
+(⚠ `msc test src/test/index.ms` fails 74 type errors on a pristine tree too — stale aggregator,
+pre-existing, NOT a gate. The handoff guards are run standalone.)
 
-**Nothing left on Neon's path.** Next actions are (1) DEPLOY the five fixes (`./tools/sync-local-binary.sh`
-after rebuilding msc from main) and re-measure the suite on the `$PATH` binary, (2) the `voidHost`
-environment (§3), (3) the off-path compiler debts in §2 — which gained one sibling this session:
-**ctor-param proto/def indirection for struct/array type args** (`new GcCell<CmgTag>({…})` emits
-`_init(…, CmgTag*)` but passes the literal by value; same family as the known union-param mismatch,
-pre-existing, only reachable now that cross-module ctors instantiate at all).
+**Nothing left on Neon's path.** Remaining work, in the order it is worth doing: (1) the `voidHost`
+pair in §3 — a two-line Neon test-code type error plus the missing sokol dependency, (2) the
+off-path compiler debts in §2, where **loop + nested-closure snapshot is the only silent
+wrong-answer bug and therefore the highest severity item in this file**, (3) the small debts
+listed in §7.
 
 ### ⚠ On T = unknown → `void*` — real, but NOT a blocker (do not chase it)
 
@@ -109,40 +107,16 @@ descending into nested fn bodies) and (2) void-generic instantiation support —
 emits `const result = fn(dispose)` → C `void result = …`. Nim discards void here. Two features, zero
 current payoff.
 
-### ~~#2 — `Array<function>` method surface (`array`)~~ ✅ CLOSED 2026-07-26 (late), `33dca18` — see §5
+### Lineage note (kept from the closed rows)
 
-Historical framing below is superseded; the root was a std C-backend surface gap, not a generic-instantiation
-or method-resolution bug. Kept for the `b057320` lineage note only.
-
-
-
-Post-`b057320` a `U[]` annotation with U=function correctly stays an **Array** (see §5) — but that
-array's **method surface** is missing: `indexArray<number, function>` → `Property 'slice' does not
-exist on type 'Array'`. Direct sibling of the `b057320` fix, one layer further in.
-Repro: `msc test tests/core/array.test.ms`.
-(Historical note: the older `.slice(0)` **arity** complaint was NOT a compiler bug — std `slice`
-requires `(start,end)`; fixed Neon-side in `src/core/array.ms`. This is a different, real gap.)
-
-### ~~#3/#4 — `flow` (`For<T>` / `Index<T>` / `Show`)~~ ✅ CLOSED 2026-07-26 (late) — see §5; `flow` now blocked by #2 only
-
-Three compiler roots fell in one session (parser typeArg steal, anon `?` parse, ref truthiness —
-details in the roots table above + §5). `flow`'s sole remaining error is #2's `.slice` surface via
-`indexArray<number, unknown>`. Repro unchanged: `msc test tests/render/flow.test.ms`.
-The old "instantiate.ms neighborhood" guess was wrong — nothing in instantiation needed fixing;
-`replaceTypeVars` had ALWAYS substituted AST-resident `typeArg` correctly (instantiate.ms:369) —
-the parser simply never put the string on the right node when args contained a nested call.
-
-### ~~#5 — array-element `void*` erasure (`counter`)~~ ✅ CLOSED 2026-07-26
-
-The `msGenericArrayPush(&T6_, MS_STRING_LIT("on"))` C error was downstream wreckage: `"on"` was the
-expansion-time value of `a.jsxAttrName.startsWith("on")` — the macro VM evaluated the chain to its
-own ARGUMENT because macro bodies compiled untyped. Root-caused + fixed in the macro engine
-(§5 2026-07-26); `counter` green. NOTE: the `msGenericArraySlice` ownership question from the 07-25
-handoff REMAINS OPEN under #2 (real for `array`'s closure-array `.slice`).
+The `.slice(0)` **arity** complaint that predates #2 was never a compiler bug — std `slice` takes
+`(start, end)`; it was fixed Neon-side long before the real surface gap was found. The
+`msGenericArraySlice` ownership question from the 07-25 handoff is **answered**: no such runtime
+function was needed, and the emitted C shows DRC injecting `msIncref` per copied element (§5 #2).
 
 ---
 
-## §2 — Open compiler bugs OFF Neon's path (6) — all re-verified 2026-07-25 late
+## §2 — Open compiler bugs OFF Neon's path (7) — rows 1-3 + 5-7 re-verified 2026-07-25 late; row 4 added 2026-07-26 late
 
 | bug | repro | measured today |
 |---|---|---|
@@ -197,9 +171,9 @@ handoff REMAINS OPEN under #2 (real for `array`'s closure-array `.slice`).
 
 ---
 
-## §3 — Neon-side / environment (2)
+## §3 — Neon-side / environment — THE ONLY RED FILE LEFT
 
-- **`voidHost`** — TWO independent problems, both Neon-side:
+- **`voidHost`** — TWO independent problems, both Neon-side (this is the entire remaining `1 fail`):
   1. **test-code type error** (fixable now, no compiler needed):
      `Argument type mismatch in 'renderToHost' arg 0: got string, expected VNode` ×2.
   2. **env:** `sokol_gfx.h file not found` at `/Users/le/metascript/void/src/sokol/bridgeEmbed.m:12`.
@@ -215,7 +189,8 @@ handoff REMAINS OPEN under #2 (real for `array`'s closure-array `.slice`).
 **2026-07-26: the green render layer LANDED** (`cd4b535..4731735` — array/memo/reconcile/
 host+node+dom/render-tests/docs/build, 7 commits split by concern). Still uncommitted, ON PURPOSE:
 
-- `src/macros/ui/flow.ms` (M) + `tests/render/flow.test.ms` — bug #3/#4 WIP, next session's subject.
+- ~~`src/macros/ui/flow.ms` + `tests/render/flow.test.ms`~~ — **COMMITTED 2026-07-26 late**
+  (`454eec7` feature, `df9a4d5` test) once its three blocking roots fell and the file went green.
 - `src/platform/void/` + `tests/render/voidHost.test.ms` — void-host WIP, env-blocked (§3).
 - `probe/` — scratch probes (referenced by §5 entries; `macro_disambig`/`macro_lenval` keep
   deliberate RED bracket-tests, `macro_narrow` N1 = Nhịp-2 marker).
@@ -227,7 +202,7 @@ host+node+dom/render-tests/docs/build, 7 commits split by concern). Still uncomm
 
 ## §5 — Fixed (history + root-cause ledger, append-only)
 
-### 2026-07-26 (late) — #6 closed: cross-module `new Generic<T>()` never instantiated its constructor ⚠ NOT YET DEPLOYED
+### 2026-07-26 (late) — #6 closed: cross-module `new Generic<T>()` never instantiated its constructor ✅ COMMITTED `1e1db2a` — DEPLOYED Jul-27
 
 **The symptom was a linker error; the cause was a silent `return` in the checker.** Probe ladder
 (`/tmp/p6*`): same-module `new Sig<T>()` GREEN; cross-module RED for **every** type argument
@@ -266,7 +241,7 @@ Two shapes are deliberately excluded with a comment (struct and array type args)
 ctor-param proto/def indirection, a pre-existing sibling now reachable, tracked in §2.
 **Gates:** battery **3338/3338**; Neon 12/3 with `flow`'s link error gone.
 
-### 2026-07-26 (late) — #7 closed: NOT a compiler bug — `indexArray` index-stored past the end (Neon-side)
+### 2026-07-26 (late) — #7 closed: NOT a compiler bug — `indexArray` index-stored past the end (Neon-side) ✅ COMMITTED `f5824b7`
 
 `Error: index 0 out of bounds (length 0)` looked like an msc internal crash. It is not: `msc build`
 prints `Built 37 module(s)` and the message comes from the **produced binary**. `indexArray`'s
@@ -283,7 +258,7 @@ with `push` and takes the stores as parameters instead of capturing them — mir
 **Result:** `core/array` GREEN (280/280) and `render/flow` GREEN (278/278) — **Neon 14 pass / 1 fail**,
 the remaining red being `voidHost`'s missing `sokol_gfx.h` (§3, environment).
 
-### 2026-07-26 (late) — #2 closed: the C array prelude never had a generic `slice` ✅ COMMITTED `33dca18` (main) — ⚠ NOT YET DEPLOYED
+### 2026-07-26 (late) — #2 closed: the C array prelude never had a generic `slice` ✅ COMMITTED `33dca18` — DEPLOYED Jul-27
 
 **Not a generics bug, not a method-resolution bug — a std surface gap.** Probe matrix
 (`/tmp/p2e`): `.slice` GREEN for `number[]` and `string[]`, RED for boolean/unknown/function/
@@ -320,7 +295,7 @@ _Signal__boolean_init` at link) and #7 (array: msc internal `index 0 out of boun
 neither new failure is caused by this fix. Changed: `std/core/array/index.cms` (+22),
 `src/test/handoff/genericArraySlice.ms`, one index import.
 
-### 2026-07-26 (late) — flow #3+#4 closed: THREE compiler roots, none where BUGS.md pointed ✅ COMMITTED `bbc2e3c`+`c41f1a3`+`6422400` (main) — ⚠ NOT YET DEPLOYED
+### 2026-07-26 (late) — flow #3+#4 closed: THREE compiler roots, none where BUGS.md pointed ✅ COMMITTED `bbc2e3c`+`c41f1a3`+`6422400` — DEPLOYED Jul-27
 
 **#3 "Unresolved-T" was a PARSER bug, not instantiation.** Probe chain (`/tmp/flowprobe/p3a-f`):
 explicit-args + nested-call args RED; inferred GREEN; explicit CONCRETE args GREEN; no-call-site
@@ -369,12 +344,8 @@ same count as baseline but `flow`'s error MOVED to #2 (`indexArray<number, unkno
 = 74 type errors on BOTH pristine-installed and worktree (stale aggregator, pre-existing).
 Changed: `src/parser/expressions/call.ms`, `src/checker/resolvePass.ms`,
 `src/transform/coercion/stringTruthiness.ms` (+3 guard files, +3 index imports).
-Committed one-root-per-commit: `bbc2e3c` (parser), `c41f1a3` (checker), `6422400` (transform + the
-three index registrations). **Deploy still owed** — run `./tools/sync-local-binary.sh` after a
-`rm -rf out && msc build src/index.ms --gc=drc --danger --cc=clang --output=msc` from main, then
-re-measure the Neon suite on the `$PATH` msc.
-Landed as one commit per root: `bbc2e3c` (parser typeArg), `c41f1a3` (anon `?`), `6422400` (ref
-truthiness + guard registrations). Deploy still pending — see the ⚠ note in §1.
+Landed one commit per root: `bbc2e3c` (parser typeArg), `c41f1a3` (anon `?`), `6422400` (ref
+truthiness + the three guard registrations). Deployed Jul-27 with the rest of the session.
 
 ### 2026-07-26 — `counter` GREEN: macro-VM flat Node reads were untyped ✅ COMMITTED `7158d9a`+`ed799b6`+`85519a2`, DEPLOYED same day
 
@@ -700,10 +671,37 @@ built from HEAD.)*
 
 ## §6 — Passing, don't break
 
-`signal`, `element`, `host`, `hostOps`, `reconcile`, `reconcileHard`, `renderToString`, `terminal`,
-`dispose`, `memo`, `region`, `counter` — **12 files green on the installed `msc`** (deployed
-2026-07-26, verified post-deploy sweep). The reactive core + render layer are solid;
+`signal`, `memo`, `dispose`, `array`, `element`, `host`, `hostOps`, `reconcile`, `reconcileHard`,
+`renderToString`, `region`, `counter`, `flow`, `terminal` — **14 files green on the installed `msc`**
+(deployed 2026-07-27, verified post-deploy sweep). The reactive core + render layer + control flow
+are solid;
 re-run them on every compiler deploy. Two of the last three compiler fix attempts were caught by
 exactly this suite and not by the battery (the rejected void-callback inference fix regressed 7 of
 these while the battery stayed clean at 3330/7) — **the Neon suite is a stronger gate than the
 battery for closure/inference work.**
+
+---
+
+## §7 — Small debts (not bugs, but owed)
+
+Each is cheap, none blocks anything, all were surfaced by the sessions that closed §1.
+
+- **`instantiateClassConstructor` still fails silently.** #6 was invisible for weeks because the
+  function `return`s when it cannot reach the ClassDecl. With the fix the reachable path is correct,
+  but a genuinely unreachable declaration should be a loud checker error, not silence. Not done in
+  the #6 commit on purpose: the `pickBodyCtx` fallback also fires when the defining module's ctx is
+  not registered yet (import cycles), so a hard error could fire on shapes that work today —
+  **it needs a battery measurement before it is turned on**, not a guess.
+- **LANG.md never specifies optional fields.** `field?: T` is accepted on both the interface token
+  path and (since `c41f1a3`) the anon-object string path, and on both it is **cosmetic**: no
+  missing-key check exists anywhere, an omitted field is zero-init (`ref → NULL`, value-Maybe →
+  `present = false`). That de-facto rule should be written down, or deliberately tightened.
+- **`msc test src/test/index.ms` is broken on a pristine tree** (74 type errors, reproduced on
+  installed-pristine as well). It is a stale aggregator, not a regression — but while it is broken
+  the handoff guards only run standalone, so a future session can silently skip them. Either fix it
+  or delete it.
+- **Neon `probe/` housekeeping** — `macro_disambig` / `macro_lenval` still assert the formerly-WRONG
+  values (deliberate RED bracket-tests); `macro_narrow` N1 is red BY DESIGN (Nhịp-2 marker). Rewrite
+  truth-only or delete at leisure, but do not read them as failures.
+- **Still uncommitted in Neon, on purpose:** `src/platform/void/` + `tests/render/voidHost.test.ms`
+  (env-blocked), `deps/` (vendored yoga — vendoring is its own task), `docs/EDITOR*.md`, `probe/`.
