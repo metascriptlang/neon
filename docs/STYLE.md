@@ -139,6 +139,17 @@ forces **every** host to implement it and forces core to anticipate the projecti
 version is opt-in per host, keeps core blind to platforms, and gives N vocabularies × M hosts = **N+M**
 — the same ladder `recompiler/docs/PROTOCOLS.md` already shipped for serialization.
 
+> **CORRECTION (2026-07-28, S2).** The either/or above is wrong, and shipping it that way cost a
+> segfault. `renderNode` is generic over `Host` — at that call site there is no static host type, so
+> `asX` **cannot** dispatch. The two mechanisms are layers, not rivals:
+> **`Host.setStyle` is the seam** (dynamic, one entry point the renderer can call) and
+> **`asX` is the projection inside each host's `setStyle`** (`asFlexStyle` for void, `asTerminalStyle`
+> for terminal, `applyCss` for browser). The §5 objection — "the interface version forces every host
+> to implement it" — turned out to be the *feature*: S1 added `setStyle` to `Host`, terminal and
+> browser silently didn't implement it, and MS had no conformance check, so the omission became a
+> NULL function pointer (BUGS.md §5, 2026-07-28). The compiler now rejects a missing function-typed
+> field, which is what makes this layering safe to rely on.
+
 **Projection is cached per sheet entry.** A sheet entry is a constant, so each host projects it once
 and reuses it across every element that references it.
 

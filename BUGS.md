@@ -251,7 +251,7 @@ function was needed, and the emitted C shows DRC injecting `msIncref` per copied
 
 ---
 
-## §2 — Open compiler bugs OFF Neon's path (10) — rows 1-3 + 5-7 re-verified 2026-07-25 late; row 4 added 2026-07-26 late; row 8 added 2026-07-27 late; row 9 CLOSED 2026-07-28 (kept struck-through, its severity note is a lesson) and two rows were added the same day by the probes that closed it; the A4 "dual-Node" row was WITHDRAWN — misdiagnosis, see §5
+## §2 — Open compiler bugs (11) — rows 1-3 + 5-7 re-verified 2026-07-25 late; row 4 added 2026-07-26 late; row 8 added 2026-07-27 late; row 9 CLOSED 2026-07-28 (kept struck-through, its severity note is a lesson) and two rows were added the same day by the probes that closed it; the A4 "dual-Node" row was WITHDRAWN — misdiagnosis, see §5
 
 | bug | repro | measured today |
 |---|---|---|
@@ -265,6 +265,7 @@ function was needed, and the emitted C shows DRC injecting `msIncref` per copied
 | **object spread in object literal** (NEW 2026-07-27 late) | `/tmp/ns_spread/main.ms` (6 lines, `docs/STYLE.md` §7) | ❌ checker PASSES, C fails: `no member named 'dotdotdot_' in 'struct Style'`, emitted as `_lit4_->dotdotdot_ = /* spread */ base_1_;` |
 | ~~on-demand helper compile errors unreported~~ | `src/test/fixedbugs/bug057.ms` | ✅ **CLOSED 2026-07-28** — helper errors now queue in `eval.ms` and merge into the macro's result (`Macro 'X' body: helper 'y': …`). See §5 for the measured severity correction |
 | **`string = number` is not a checker error** (NEW 2026-07-28, found probing row 9) | `function f(n: number): number { const s: string = n; return n; }` | ❌ checker PASSES, C fails: `used type 'msString' where arithmetic or pointer type is required`, emitted as `s_1_ = ((msString)(n));`. Same shape as the object-spread row: a check the checker should own, deferred to the C compiler. NOT metaprogramming — plain assignment |
+| **an all-nullable interface accepts ANY object** (NEW 2026-07-28, found in S2) | `n.layoutStyle = style` in `src/platform/void/host.ms` — `layoutStyle: FlexStyle \| null`, `style: Style` (a DIFFERENT interface) | ❌ type-checks silently. Every `FlexStyle` field is nullable, and with no missing-field rule (Nim default-init, NIM-REF §1) an all-nullable interface is structurally satisfied by anything — so assignability stops discriminating. S1 shipped this: the void host stored a Neon `Style` where yoga expected a `FlexStyle`, and layout silently read garbage. Fixed Neon-side (`asFlexStyle(style)`), but the CHECKER hole is open. The bug058 rule does not cover it: no field is function-typed. |
 | **`async` helper called from a macro body** (NEW 2026-07-28, found probing row 9) | macro body does `value: bad(2)` where `async function bad(n: number): Promise<number>` | ❌ compiles clean — no diagnostic from the module check OR the engine check. The macro VM cannot run async, so the spliced value cannot be the awaited number. ⚠ **only the SILENCE is measured**; the emitted value was not inspected. Verify before assuming it is a wrong-answer bug |
 
 - **nullfn bind-order** — `apply((v:number)=>v+1, 10)` binds T=int32 from arg 1, overriding the arg-0
@@ -363,6 +364,44 @@ Still untracked: `docs/EDITOR*.md` (design scratch).
 ---
 
 ## §5 — Fixed (history + root-cause ledger, append-only)
+
+### 2026-07-28 — a missing function-typed field was a silent SIGSEGV (found starting S2) ⚠ UNCOMMITTED
+
+**Symptom.** `terminalHost()` never implemented `Host.setStyle`, which S1 had added to the `Host`
+interface. It type-checked, and `host.setStyle(node, st)` on a terminal node **segfaulted** (exit 139,
+"before setStyle" printed, nothing after). `domHost()` had the same hole. The Neon suite was 16/16
+green throughout because no test put a typed style on a terminal node.
+
+**Root — compiler, not Neon.** MS had no interface-conformance check of any kind. Measured, 8 lines:
+
+```
+interface I { a: number; b: number }
+const x: I = { a: 1 };              // compiles
+class C implements I { a = 1 }      // compiles — `implements` is decoration
+return { f: … } as H (no g)         // compiles → h.g(1) → SIGSEGV
+```
+
+**Fix — Nim parity, not a TS tightening** (`/trace-nim`). Nim `collectMissingFields`
+(semobjconstr.nim:160-173) default-initializes a missing field and errors ONLY when the field type
+`requiresInit`. MS's `requiresInit` set is exactly **function-typed fields**: their zero is NULL and
+calling NULL is a segfault, so there is no valid default. Value/nullable/array fields keep Nim's
+default-init. Opt out with `((…) => T) | null`. Implemented next to the excess-property check in
+`src/checker/checkExprPass.ms`; guard `src/test/fixedbugs/bug058.ms` (3 tests, two of which pin
+default-init so the rule cannot silently widen). NIM-REF.md §1 has the row, verdict **SAME**.
+
+**Blast radius, measured BEFORE enabling** (throwaway "every field required" build, then classify):
+167 missing-field sites in the recompiler + Neon — `Type.sym`, `Node.nodeType`, `FlexStyle.*`,
+`FetchOptions.timeout` … **none function-typed**. So the shipped rule broke exactly ONE thing: the
+terminal host, i.e. the bomb itself. Post-fix: battery **3346/3346**, Neon **16/16**.
+
+⚠ The full TypeScript rule (every non-`?` field required) was NOT adopted, and the reason is on the
+record: `?` is parsed and **discarded** (`parser/statements/declaration.ms:782`), so today it is a
+lie in the grammar. Turning it on means plumbing the flag through `InterfaceDeclData` → field symbols
+and fixing all 167 sites. That is a deliberate divergence to decide later, not a bug.
+
+⚠ Separately: **`msc build examples/counterDom.ms --target=js` is broken** — `Unresolved type 'Map'`
+×3 + `Undefined variable 'Map'`. **Pre-existing**, reproduced on the pre-fix binary. The browser
+host's new `setStyle`/`applyCss` therefore compiles under the C checker but has **never been run**.
 
 ### 2026-07-28 — §2 row 9 closed: on-demand macro helper errors reach the user ⚠ UNCOMMITTED
 
