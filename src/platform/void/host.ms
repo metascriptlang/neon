@@ -11,7 +11,8 @@
 // ancestor x/y — layout output is translation-only).
 
 import { Host, HostNode } from "../../render/host";
-import { Node2D, group, label, addChild, addChildAt, removeChild } from "../../../../void/src/void2d/node";
+import { Node2D, DrawKind, group, label, addChild, addChildAt, removeChild } from "../../../../void/src/void2d/node";
+import { Color } from "../../../../void/src/void2d/types";
 import { FlexStyle } from "../../../../yoga/src/index";
 import { Style } from "../../render/style";
 
@@ -139,8 +140,57 @@ function setDim(st: FlexStyle, key: string, v: number | string | null): void {
 	else { styleNum(st, key, v as number); }
 }
 
-// Style → FlexStyle projection (docs/STYLE.md §5). S1 projects the layout subset only;
-// paint and text fields of Style land in S2.
+function hexNibble(c: string): int32 {
+	if (c >= "0" && c <= "9") { return c.charCodeAt(0) - 48; }
+	if (c >= "a" && c <= "f") { return c.charCodeAt(0) - 87; }
+	if (c >= "A" && c <= "F") { return c.charCodeAt(0) - 55; }
+	return -1;
+}
+
+// "#rgb" / "#rrggbb" → normalized rgba. Returns null for anything else so the
+// caller leaves the node's existing colour alone.
+export function parseColor(css: string): Color | null {
+	if (css.length < 4 || css.charAt(0) !== "#") { return null; }
+	const body = css.substring(1, css.length);
+	let r = -1;
+	let g = -1;
+	let b = -1;
+	if (body.length === 3) {
+		r = hexNibble(body.charAt(0)) * 17;
+		g = hexNibble(body.charAt(1)) * 17;
+		b = hexNibble(body.charAt(2)) * 17;
+	} else if (body.length === 6) {
+		r = hexNibble(body.charAt(0)) * 16 + hexNibble(body.charAt(1));
+		g = hexNibble(body.charAt(2)) * 16 + hexNibble(body.charAt(3));
+		b = hexNibble(body.charAt(4)) * 16 + hexNibble(body.charAt(5));
+	}
+	if (r < 0 || g < 0 || b < 0) { return null; }
+	const scale = 255.0 as float32;
+	return { r: (r as float32) / scale, g: (g as float32) / scale, b: (b as float32) / scale, a: 1.0 };
+}
+
+// The paint half of the projection (docs/STYLE.md §5). A Group carrying a
+// background becomes a Rect — a Group draws nothing on its own.
+export function applyPaint(n: Node2D, s: Style): void {
+	if (s.opacity !== null) { n.alpha = s.opacity as float32; }
+	if (s.fontSize !== null && n.kind === DrawKind.Label) { n.size = s.fontSize as float32; }
+	const fg = s.color;
+	if (fg !== null && n.kind === DrawKind.Label) {
+		const c = parseColor(fg as string);
+		if (c !== null) { n.color = c; }
+	}
+	const bg = s.backgroundColor;
+	if (bg !== null) {
+		const c = parseColor(bg as string);
+		if (c !== null) {
+			if (n.kind === DrawKind.Group) { n.kind = DrawKind.Rect; }
+			n.color = c;
+		}
+	}
+}
+
+// Style → FlexStyle projection (docs/STYLE.md §5). The layout half; `applyPaint`
+// is the paint half.
 export function asFlexStyle(this s: Style): FlexStyle {
 	const st: FlexStyle = {};
 	if (s.flexDirection !== null) { styleEnum(st, "flexDirection", s.flexDirection as string); }
@@ -202,7 +252,9 @@ export function createVoidHost(): VoidHost {
 			}
 		},
 		setStyle: (node: HostNode, style: Style): void => {
-			(node as unknown as Node2D).layoutStyle = style;
+			const n = node as unknown as Node2D;
+			n.layoutStyle = asFlexStyle(style);
+			applyPaint(n, style);
 		},
 		addEvent: (node: HostNode, name: string, handler: () => void): void => {
 			events.push({ node: node as unknown as Node2D, name, handler });
