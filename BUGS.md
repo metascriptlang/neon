@@ -19,8 +19,123 @@ on top of a stale claim. History lives in §5 and is append-only.
 | installed compiler | `~/.metascript/bin/msc` **v0.2.27**, built **Jul-27 (late)** from `1e1db2a` **+ 2 uncommitted fixes** (passC module-relative, charAt/slice host bridges) | `msc --version`, `ls -la ~/.metascript/bin/msc`, sync log |
 | recompiler HEAD | `1e1db2a` (main). **This session's compiler work is UNCOMMITTED in the working tree**: `src/checker/checkPass.ms`, `src/codegen/raiser/expressions.ms`, `src/raiser/{bytecode,disasm,vm}.ms`, `runtime/core/system.h`, `std/core/struct.ms`, `src/test/lang/comptime.ms`, `src/test/handoff/{index.ms,passCModuleRelativeInclude.ms,fixtures/passCRel*}`. Pre-existing leftovers untouched: `docs/*` + editor-plugin dirty, `src/test/{CLAUDE.md,native/README.md}`, untracked `src/test/native/run.ms`, `std/process/*`, `ctorExtProtocol*` | `git log --oneline`, `git status --porcelain -- src std` |
 | binary ≡ working tree? | **yes** — `rm -rf out && msc build src/index.ms …`, then `./tools/sync-local-binary.sh` | post-deploy sweep below |
-| **battery (post-deploy, `./msc`)** | **3339 pass / 0 fail** (163/163 files, ~4.5m) | `cd ~/metascript/recompiler && rm -rf out && ./msc test src/index.ms` |
-| **Neon suite (post-deploy, installed msc)** | **15 pass / 0 fail** — the suite is fully green for the first time | `msc test <file>` per file, `rm -rf out` between |
+| **battery (post-deploy, `./msc`)** | **3340 pass / 0 fail** (163/163 files, ~4.5m) | `cd ~/metascript/recompiler && rm -rf out && ./msc test src/index.ms` |
+| **Neon suite (post-deploy, installed msc)** | **16 pass / 0 fail** — includes NEW `render/style` (S1) | `msc test <file>` per file, `rm -rf out` between |
+
+⚠ 2026-07-27 (night): installed msc is **gen-4 of this session** — adds the §5 2026-07-27-night checker
+fixes (Maybe payload identity, struct-field repr gate, as<X> at assignment/nullable). Uncommitted on
+top of the earlier uncommitted set: recompiler `src/checker/{types,compat,checkExprPass}.ms` + guards.
+
+⚠ 2026-07-27 (late night, S1b): installed msc is now **gen-5** — adds the bug051 fixes (§5
+2026-07-27-late-night): ObjectLiteral `keyLocations` survive the macro round-trip
+(`src/compiler/meta/bridge.ms` setLocs/readLocs) and excess-property/duplicate-key diagnostics fall
+back to the literal's location instead of being swallowed (`src/checker/checkExprPass.ms`). Gates on
+gen-5: battery **3341/3341 (163 files)** — +1 is the new in-battery bridge round-trip guard — and
+Neon **16/16** re-run file-by-file. New uncommitted on top: recompiler `src/compiler/meta/bridge.ms`,
+`src/checker/checkExprPass.ms`, `src/test/fixedbugs/{bug051.ms,index.ms}`; neon
+`src/macros/ui/style.ms` (real macro), `src/macros/ui/element.ms` (static-style guard, sacred),
+`tests/render/style.test.ms` (no more hand-written Sheet; 4 tests), `probe/style_*.ms`, `docs/STYLE.md`.
+
+⚠ 2026-07-28 (bindSym V2, same day): installed msc is **gen-13** — closes the remaining bindSym
+gaps: **bound MACROS** (`bindSym("cborValueOf")` — `expandMacroInvocation` fetches body/params from
+the DECLARING module's registries via a regCtx from `lookupModuleCtx(sym.modulePath)`; modulePath
+stamped at bake since `collectMacro` never sets it; compiled-macro cache key now carries the
+declaring module, closing a latent same-name collision) and **symHandle through nested expansion**
+(all THREE serializers — nodeToValue, readNodeFromObject, nodeToASTLiteral — carry it, so a bound
+identifier survives being passed as an ARG through a second macro). `encode` moved from cbor's index
+hub into encoder.ms (bindable without an encode↔index cycle). Net: `json.ms` CBOR user imports
+**7 → 1** (`cborEncode` only) — this differential IS the red/green proof: under gen-12 semantics a
+bound macro expansion finds no registry and fails. Guards: bug056 now **7 tests** (+ bound macro
+cross-module, user-scope same-name cannot hijack a bound macro, bound identifier through a second
+macro). ⚠ Root-caused a self-inflicted crash: stamping `node.resolvedSym` by reading `d.callee`
+AFTER `node.data = {...}` replacement — DRC destroys the old CallExprData, `d.callee` dangles
+(misaligned 0x5 panic). Rule: **read everything you need from old node.data into locals BEFORE
+mutating it.** ⚠ Session collision diagnosis: the "NIM-GUARD LEDGER" stray line + every link flake
+(TBD parse / dedup-literals / FileNotFound) came from a PARALLEL session running guard builds
+(`-DMS_DRC_LEDGER`) and `rm -rf out` in the SAME repo + shared `~/.metascript/cache` — verification
+moved to an rsync'd snapshot (`/tmp/bindsym-verify`) with its own `out/`. ⚠ gen-13 was built FROM
+that snapshot because the parallel session left in-flight edits to `src/checker/{compat,flow}.ms`
+in the main tree — those edits are NOT in the gen-13 binary; whoever rebuilds next inherits both
+change sets. Gates on gen-13: battery **3342/3342**, `json.ms` **14/14** (closure 2776), bug056
+**7/7** (closure 2769), Neon **16/16** file-by-file.
+
+⚠ 2026-07-28 (bindSym): installed msc is **gen-12** — adds `bindSym("name")` (Nim's static
+semBindSym model, traced in Nim source first: `opcNBindSym` is a copyTree from VM constants — bake,
+not runtime lookup; the scope-swapping dynamic variant is feature-gated experimental there and NOT
+built here). Macro bodies splice Identifiers PRE-BOUND in the macro's declaring module: checker sees
+`NodeFlag.BoundSym` (16384) + `Node.resolvedSym` and skips the user-scope lookup — call sites need
+no imports for macro-emitted helpers, user-local same-names cannot hijack them, private helpers
+bind. Pieces: bake branch in `bakeTypeIntrinsics` (expand.ms, resolves via `macroDeclModuleRegistry`
+→ `lookupModuleCtx(...).table`, `ensureShaped` at bake, generics rejected V1); append-only
+bound-symbol registry + `symHandle` read-back in bridge.ms (Symbol OBJECT IDENTITY preserved —
+flow.ms compares by reference, codegen mangles through it); BoundSym honored at checkExprPass
+Identifier branch AND checkCallExpr callee lookup (bound OVERRIDES lookup — the anti-hijack), then
+normal semantics continue (Nim re-runs semSym on nkSym — NOT the EnumMember early-return); survival
+exemptions in instantiate.ms `clearCheckerState` + clone.ms `copyNodeMeta`; `symHandle` accepted as
+engine-mode virtual key (the A4 `engineNodeHasVirtualKey` door — a typed `const x: Node = bindSym(…)`
+otherwise trips the bug051 excess-property check). Dogfood: `std/serialize/cbor/encode.ms` binds its
+builders — the dynamic `builderName` dispatch was restructured into static branches (bindSym is
+bake-time; dynamic names cannot bind) — `json.ms` CBOR user imports **7 names → 3** (`cborEncode,
+cborValueOf, encode`; still unqualified: emitted MACRO calls — bindSym V1 binds functions, not
+macros — and `encode`, hub index.ms, binding would cycle). Guard `src/test/fixedbugs/bug056.ms`
+(4: cross-module no-import, incompatible user-scope same-name no-hijack, function-local shadow,
+unresolvable name errors clearly) — proven RED by toggling the bake branch off (exactly 4 fail).
+New `compileProjectToCWithStd` in `src/test/helpers.ms` (project + std; expandMacros in BOTH
+alive-set and codegen loops so bound callees survive DCE). Gates on gen-12: battery **3342/3342**,
+`json.ms` **14/14**, bug056 closure **2766/2766**, Neon **16/16** re-run file-by-file, `rm -rf out`.
+⚠ Rule learned: a synced std that EMITS bindSym requires the gen-12+ binary — gen-11 cannot bake it;
+never leave `~/.metascript/std` ahead of `~/.metascript/bin/msc` (this rebuild restored binary ≡
+tree). ⚠ `msc run` and `msc test` corrupt each other's `out/debug/.cache` (link flakes: "failed to
+parse TBD file", "failed to deduplicate literals: InputOutput") — `rm -rf out` when switching modes.
+⚠ Seen ONCE on gen-11 during a cold `msc run`: a stray "NIM-GUARD LEDGER: DOUBLE-DESTROY of Node"
+line; `strings` shows NEITHER the installed msc nor the built probe contains that string (ledger is
+`-DMS_DRC_LEDGER`, off by default), 5+ re-runs + all gates clean — classified output contamination.
+
+⚠ 2026-07-27 (A4, cont. 2): installed msc is **gen-11** — adds `getTypeArg()`: the explicit `<T>`
+at a macro CALL SITE (`decode<User>(s)`) now reaches the macro body. **The gen-10 note below claiming
+type args are unreachable was WRONG** — the parser stores the type arg on the Node itself
+(`callNode.typeArg`, `parser/expressions/call.ms`) and the CallExpr→MacroInvocation rewrite replaces
+only `node.data`, so it already survived to `expandMacroInvocation`; `MacroInvocationData` never
+needed a slot. Implementation is small: resolve the name in the CALL SITE scope, peel Ref, splice the
+type-AST; bake into a CLONE of the body and key the compiled-macro cache by (macro name, type arg) —
+a name-only key lets the first instantiation poison the rest. Guard `src/test/fixedbugs/bug055.ms`
+(3: reads the type arg, TWO instantiations stay independent — proven RED under a name-only key,
+missing `<T>` is a clear compile error). V1 limits: exactly one type arg; a macro DECLARATION still
+cannot carry type params (`macro m<T>(x)` does not parse) — not needed, since `getTypeArg()` reads
+the call site. Gates on gen-11: battery **3342/3342**, `src/test/c/json.ms` **14/14**, Neon **16/16**
+re-run file-by-file.
+
+⚠ 2026-07-27 (A4, cont.): installed msc was **gen-10** — adds `getTypeImpl(TypeName)` for macro
+bodies (`src/compiler/meta/expand.ms` `bakeTypeIntrinsics`): resolves a type BY NAME in the macro's
+declaring module, peels Ref, splices the type-AST as a `Node`-asserted literal. This is what
+`createStyles({...})` needs — a bare object-literal argument has no contextual type at expand time,
+so `arg.nodeType` gives nothing and validating it against `Style` previously required a witness
+param. Guard `src/test/fixedbugs/bug054.ms` (3: unknown key rejected with the macro's own message +
+available list, valid sheet passes, unresolvable name is a compile error). Gates on gen-10: battery
+**3342/3342**, guards standalone green, `src/test/c/json.ms` **14/14**, Neon **16/16** re-run
+file-by-file. ⚠ (superseded by the gen-11 note above: `typeArg` DOES reach macros — `getTypeArg()`.)
+⚠ Test-cost model measured and documented in `recompiler/src/test/CLAUDE.md` §5.1: `msc test <file>`
+runs every inline test in the file's dependency CLOSURE, so one `src/test/**` guard (~240s) costs
+about the same as the whole battery (~280s), while a compiler-module test is ~11-13s. `out/` does
+NOT cache test runs (cold 240s vs warm 237s). `msc check` is unusable as a gate (fails to resolve
+relative imports, missed a planted type error). Both aggregators are RED: `src/test/index.ms`
+(74 type errors, pre-existing) and `src/test/fixedbugs/index.ms` (bug006/008/010/047 fail C codegen
+when bundled, each green standalone) — so guards must be run one at a time.
+
+⚠ 2026-07-27 (A4 session): installed msc was **gen-9** — SERIALIZE A4 read path: macro bodies
+typecheck `node.nodeType` as the type-AST **Node** (engine-mode view at exactly TWO sites in
+`src/checker/checkExprPass.ms` — member read + emitted-literal write, both handing back the Ref<Node>
+VALUE representation; class decl stays `nodeType: Type` — compiler truth), and TWO swallowed-error
+roots closed in `src/codegen/raiser/eval.ms` (§5). **No workarounds left in the tree**: the gen-7
+same-NAME call-arg exemption was removed once the real root (peeled-Struct vs Ref<Node>) was found.
+Gates on gen-9: battery **3342/3342 (163 files)** — +1 is the in-battery eval.ms slot-restore guard
+(proven RED by toggling the fix off) — Neon **16/16** re-run file-by-file, `bug052.ms` (4: fields,
+union, demo-B key validation, Ref-representation guard) + `bug053.ms` (1) green, all proven RED
+pre-fix, and `src/test/c/json.ms` **14/14** (no KNOWN-RED). New uncommitted on top: recompiler
+`src/checker/checkExprPass.ms`, `src/codegen/raiser/eval.ms`, `std/meta/node.ms` (comments only),
+`std/serialize/{json,cbor}/decode.ms` (push literal type-AST node directly — kills the `value`
+DU-conflict read), `src/test/helpers.ms` (`compileToCWithStd`), `src/test/fixedbugs/{bug052,bug053,
+index}.ms`, `src/test/c/json.ms` (4 stale tests modernized).
 
 ⚠ **The battery does NOT run the guards.** Its 162 files are compiler/std sources with *inline* tests;
 `src/test/**` is reached only through the broken `src/test/index.ms` aggregator (§7). Measured this
@@ -40,10 +155,10 @@ Diff any battery failure against these two groups before claiming regression.
 
 ---
 
-## §1 — CURRENT STATE (measured 2026-07-27 late, `rm -rf out` PER FILE, all 15 test files)
+## §1 — CURRENT STATE (measured 2026-07-27 night, `rm -rf out` PER FILE, all 16 test files)
 
-**Neon suite = 15 pass / 0 fail. The suite is fully green for the first time.**
-✅ Measured on the INSTALLED `$PATH` msc (Jul-27 01:29 build) — no pinned worktree binary is needed.
+**Neon suite = 16 pass / 0 fail** (15 + `render/style` NEW — S1 of `docs/STYLE.md` landed and green).
+✅ Measured on the INSTALLED `$PATH` msc (Jul-27 night build, gen-4 of this session — §5 2026-07-27-night).
 ✅ **The long-standing `reconcile`/`reconcileHard` intermittent is SOLVED and was never a "flake"** —
 it was a signed-overflow UB trap in `msPtrHash`, firing only when the ASLR'd pointer folded high
 enough (§5 B). Measured `reconcileHard` 2-fail-in-6 before, 0-in-8 after; then 30 consecutive
@@ -58,6 +173,7 @@ produced spurious compile failures (reconcile/reconcileHard flip-flopped until c
 | `core/memo` | ✅ | `render/flow` | ✅ **NEW 2026-07-26 (late)** |
 | `core/dispose` | ✅ | `render/counter` | ✅ **NEW 2026-07-26** |
 | `render/element` | ✅ | `render/voidHost` | ✅ **NEW 2026-07-27 (late)** |
+| `render/style` | ✅ **NEW 2026-07-27 (night)** | | |
 | `render/host` | ✅ | | |
 | `render/hostOps` | ✅ | | |
 | `render/reconcile` | ✅ | | |
@@ -125,7 +241,7 @@ function was needed, and the emitted C shows DRC injecting `msIncref` per copied
 
 ---
 
-## §2 — Open compiler bugs OFF Neon's path (7) — rows 1-3 + 5-7 re-verified 2026-07-25 late; row 4 added 2026-07-26 late
+## §2 — Open compiler bugs OFF Neon's path (9) — rows 1-3 + 5-7 re-verified 2026-07-25 late; row 4 added 2026-07-26 late; row 8 added 2026-07-27 late; row 9 added 2026-07-27 (A4); the A4 "dual-Node" row was WITHDRAWN — misdiagnosis, see §5
 
 | bug | repro | measured today |
 |---|---|---|
@@ -136,6 +252,8 @@ function was needed, and the emitted C shows DRC injecting `msIncref` per copied
 | **loop + nested-closure snapshot** | `/tmp/loopesc.ms` | ❌ **builds but MISCOMPILES** — c0 expected 51 → **800**, c1 expected 51 → **0** |
 | **`canRaise` missing Nim's `sfGeneratedOp` arm** | `/tmp/craise.ms` | latent (not a live bug) |
 | **latent `monoConcreteTypeName` siblings** | — | by inspection: anon `Union` / `Conditional` |
+| **object spread in object literal** (NEW 2026-07-27 late) | `/tmp/ns_spread/main.ms` (6 lines, `docs/STYLE.md` §7) | ❌ checker PASSES, C fails: `no member named 'dotdotdot_' in 'struct Style'`, emitted as `_lit4_->dotdotdot_ = /* spread */ base_1_;` |
+| **on-demand helper compile errors unreported** (NEW 2026-07-27 A4) | by inspection: `eval.ms ensureCompiledIntoEngine` returns funcIdx only | latent — a type-broken helper called from a macro body compiles to garbage bytecode silently (bug053 fixed the WRAPPER slot only) |
 
 - **nullfn bind-order** — `apply((v:number)=>v+1, 10)` binds T=int32 from arg 1, overriding the arg-0
   arrow. Nim `paramTypesMatchAux` binds progressively IN ARG ORDER → T=number. Do NOT fix by loosening
@@ -175,6 +293,15 @@ function was needed, and the emitted C shows DRC injecting `msIncref` per copied
 - **latent `monoConcreteTypeName` siblings** — anon `Union` (`A | B`) and `Conditional` literals are
   still emitted unparenthesized, so `U[]` with U=union/conditional collapses exactly like the function
   case did (§5, `b057320`). Fix when they surface.
+- **object spread in object literal** — `const merged: Style = { ...base, height: 20.0 as float32 };`
+  type-checks, then C codegen emits a literal field literally named `dotdotdot_` instead of copying the
+  spread operand's fields. **Blocks style composition at runtime (S3 in `docs/STYLE.md` §9)** — not
+  S1/S2. The style design picked array layering over spread for provenance reasons *independent* of
+  this bug, so it blocks a runtime-merge path, not the design.
+- **on-demand helper compile errors unreported** — `ensureCompiledIntoEngine` (eval.ms) ignores its
+  compile's `_lastEngineCheckErrors` entirely; only the WRAPPER's errors reach `getOrCompileMacro`
+  (bug053 fixed the wrapper slot being CLOBBERED by these on-demand compiles, not the helpers' own
+  silence). A helper with real type errors still becomes garbage bytecode without a diagnostic.
 - **deferred, not counted:** catch-side `e.message` (object-carrying exceptions) — MS's exception
   runtime is string-based by design; `throw` works, `catch (e) { e.message }` does not.
 
@@ -226,6 +353,186 @@ Still untracked: `docs/EDITOR*.md` (design scratch).
 ---
 
 ## §5 — Fixed (history + root-cause ledger, append-only)
+
+### 2026-07-28 — bindSym: macros emit pre-bound identifiers (Nim semBindSym) ⚠ UNCOMMITTED
+
+The gap bindSym closes is the last SERIALIZE §11 ergonomics row: macros emitted bare Identifiers
+resolved in the USER's scope — 7-name import lists, and a user-local `encode` could silently hijack
+a codec's callee. Traced Nim FIRST (semmagic.nim `semBindSym`/`opBindSym`, vm.nim `opcNBindSym`):
+Nim's shipped bindSym is STATIC — resolved during macro-body sem, stored in VM constants, replayed
+by copyTree; sem accepts the returned `nkSym` without re-binding but still re-checks semantics.
+MS already owned 90% of that machine from A4: the bake pass (`bakeTypeIntrinsics`), the
+declaring-module registry (`macroDeclModuleRegistry`), a real swappable scope
+(`lookupModuleCtx(path).table` with ORIGINAL Symbol objects), the EnumMember resolvedSym
+short-circuit precedent (checkExprPass:384), and the engine-mode virtual-key door. The ONE missing
+link was the bridge: `valueToNode` drops `resolvedSym` (forward-only by design, pinned by test) and
+`symbolToValue` is a lossy `{name, kind}` with no handle. Fix = append-only `_boundSyms: Symbol[]`
+registry (bridge.ms) + `symHandle` on the baked literal + rebind-on-read with `NodeFlag.BoundSym`.
+Checker honors the bound sym as a REPLACEMENT for lookup (flows into normal semantics; bound
+overrides at the callee site too — anti-hijack). Survival exemptions: `clearCheckerState`
+(instantiate.ms) and `copyNodeMeta` (clone.ms), both beside the existing EnumMember carve-out.
+Limits V1 (documented, not hidden): string-literal names only (dynamic dispatch → static branches),
+functions/values only (macro names still resolve via the caller's registry), generics rejected.
+V2 (same day, gen-13) removed the macro limit: MacroInvocation nodes carry the bound symbol
+(read into a LOCAL before `node.data` replacement — the old data's callee is destroyed by the
+assignment; violating this was a misaligned-0x5 panic), expansion resolves registries in the
+declaring module, and symHandle rides all three serializers so bound identifiers survive nested
+macro passage. Remaining, deliberately deferred: dynamic names (static branches; Nim parity),
+generics, gensym hygiene (no consumer emits locals yet).
+Files: `src/compiler/meta/{expand,bridge}.ms`, `src/checker/{checkExprPass,instantiate}.ms`,
+`src/monomorphize/clone.ms`, `std/meta/node.ms` (+1 enum bit), `std/serialize/cbor/encode.ms`
+(dogfood), `src/test/helpers.ms` (+`compileProjectToCWithStd`), `src/test/fixedbugs/bug056.ms`,
+`src/test/c/json.ms` (imports 7→3), docs `LANG-METAPROGRAMMING.md` ("Binding symbols" section) +
+`SERIALIZE.md` §11 row. All guards proven RED by toggling the bake branch off.
+
+### 2026-07-27 (A4) — nodeType readable from macro bodies + two swallowed-error roots ⚠ UNCOMMITTED
+
+SERIALIZE Phase A4 (read-only). The WIRE was never the gap — `mapTypeToAst` (bridge.ms, Days 1-7
+complete: struct/array/generic/union+disc/modifiers, visited-stack cycle guard) already ships the
+type-AST to the VM, and `jsonValueOf` already walks it. The gap was CHECKER-SIDE: the typed-macro-body
+regime typed `t.nodeType` by the class decl (`Type`), rejecting every Node-shaped flat read
+(`typExprFieldNames`, `discFieldName`, …) with "Property … does not exist on type 'Type'".
+
+**Why std codecs never showed it (root 1, bug053):** `_lastEngineCheckErrors` is a module-global slot;
+`appendProgramToImage` triggers on-demand helper compiles (`ensureCompiledIntoEngine` — e.g.
+`detectUnionDisc`) whose nested `transformForEngine` OVERWRITES the slot before `compileMacroIntoEngine`
+reads it. Any macro body that calls an imported helper had its check errors silently replaced by the
+helper's clean compile. Same lesson as bug051, new coat: never let an error's EXISTENCE depend on
+incidental sequencing. Fix: snapshot/restore around `appendProgramToImage` (recursion-safe).
+Found by additive bisect: full jsonValueOf copy green in /tmp, minimal clone red, shield isolated to
+the `detectUnionDisc(tt)` call. In-battery guard in eval.ms (58→59) proven RED by toggling the fix.
+
+**A4 typing (root 2, bug052):** engine-mode view, NOT a decl change — `nodeType: Node` in std/meta
+wedged the toolchain (src/ast/node.ms is a re-export of std/meta; the COMPILER reads
+`nodeType.typeChildren` as Type in ~859 places; caught only post-sync because msc resolves the
+compiler's own "std/meta" from INSTALLED std, so battery-under-gen-5 measured the OLD decl).
+Reverted; instead `checkExprPass.ms` gives engine mode three interceptions: member READ
+(`t.nodeType` → Node class type), literal WRITE (`nodeType: ft` key expects Node), call-arg
+same-name exemption (§2 row 9). `std/serialize/{json,cbor}/decode.ms` stopped reading `ftype.value`
+(NumberLiteral/StringLiteral `value` conflicts under the DU unique-field rule) — push the literal
+type-AST node into the emitted tree directly.
+
+Guards: `bug052.ms` (interface fields via nodeType; union members+disc; demo-B witness-pattern key
+validation with the macro's own message) + `bug053.ms`, both proven RED pre-fix;
+`compileToCWithStd` added to `src/test/helpers.ms` (plain compileToC leaves stdPath empty — std/
+entry imports NEVER resolved there, which is why no green macro+std/meta e2e existed before).
+Stale `src/test/c/json.ms` rows modernized (atomic arrays are V1.5-supported; discDetect + the CBOR
+pair now actually load std via `compileToCWithStd` + the unqualified-identifier import list) — file is
+**14/14**, nothing KNOWN-RED.
+
+**Misdiagnosis worth remembering (withdrawn §2 row):** the first shape of this fix returned
+`resolvedObjType` — the Ref-PEELED Struct — from the read override, so `detectUnionDisc(tt)` failed
+against its `Ref<Node>` parameter as `got Node, expected Node`. That message reads like two distinct
+Type instances of one class, and `loader.ms:456`'s real double-load warning made the story plausible;
+it was filed as a loader/module-identity debt and papered over with a same-NAME exemption. Measuring
+instead of reasoning killed it in one probe: printing `kind` on both sides showed **18 (Struct) vs 27
+(Ref)** with `sameSym=y` — one class, one Symbol, two REPRESENTATIONS. Rule: when a mismatch message
+names the same type twice, print the TypeKinds before blaming module identity. Guard: bug052 test 4
+(`nodeType` flows into a Node-typed parameter), proven RED against the peeled form.
+
+Facts for the next codec session:
+interface/class witnesses arrive Ref-wrapped (peel `TypeGeneric → typExprArgs[0]` first — kind 76
+vs TypeObject 80 cost this session a bisect); TS-style DU `discFieldName` is empty on the wire
+(checker stores no disc — compute via `detectUnionDisc`); bare object literals carry NO contextual
+nodeType pre-expansion (validate via a witness param, decode.ms:25 pattern).
+
+### 2026-07-27 (late night, S1b) — macro-emitted literals escaped the excess-property check ⚠ UNCOMMITTED
+
+S1b (createStyles as a real macro, `docs/STYLE.md` §4) surfaced it: a typo'd key in a sheet entry or
+an inline `style={{ widht: 200 }}` passed the checker CLEAN and died in C
+(`no member named 'widht' in 'struct Style'`) — same class the session prompt filed as "inline typo
+caught at the C layer". Repro'd in 18 lines with zero Neon (`/tmp/macdiag`): any macro that wraps its
+ObjectLiteral argument in a call to a function with a typed struct param.
+
+**Root (recompiler, two halves of one mechanism):** the checker HAD contextually typed the literal as
+`Style` (C emitted `_lit1_->widht = 200` — construction went through), only the REPORT vanished.
+(a) `bridge.ms` nodeToValue/valueToNode never carried ObjectLiteral `keyLocations` — every
+deserialize site reconstructed with `keyLocations: []`. (b) `checkExprPass.ms` gated the
+excess-property AND duplicate-key diagnostics on having a key location, with no fallback — no
+location meant the ERROR ITSELF was dropped, not just its range. (The field-type-mismatch check two
+branches up always had a location fallback; only these two could vanish.)
+
+**Fix:** (a) `setLocs`/`readLocs` serialize `keyLocations` as `{line, column}[]` under the real field
+name — passthrough macros (Neon's createStyles splices the user's literal) now report typos at the
+EXACT original key position; (b) both diagnostics fall back to the literal's own location, so no
+serialization path can ever swallow them again. Left alone deliberately: the six `keyLocations: []`
+sites in `expand.ms` (quote lowering / nodeToASTLiteral build synthetic literals with no source keys
+— the (b) fallback covers them).
+
+**Guards:** `src/test/fixedbugs/bug051.ms` (compileToC: excess + duplicate key through a
+macro-emitted call arg; proven RED pre-fix) and an inline round-trip test in `bridge.ms` — that one
+runs IN the battery (3341, up from 3340). Neon side: `probe/style_neg.ms` (deliberate-red, 2
+diagnostics) + `tests/render/style.test.ms` "inline style literal routes through the typed channel".
+
+**Neon S1b landed on top (all green):** `createStyles` rewrites entries to `styleOf(entry)` — checker
+does name validation + sheet typing, hand-written `Sheet` interface deleted from the test; static
+guards reject non-literal entries and any style field calling a function (sheet AND inline paths,
+`Macro 'x':` error at the exact node) until S4. `@comptime` fold deliberately skipped — it would
+strip the named typing (STYLE.md §4 note). Projection cache (S1b-4) NOT done — still owed.
+**Gates:** battery 3341/3341 ×1 + fixedbugs closure 2763/2763 ×1 (pre-battery); Neon 16/16
+file-by-file with `rm -rf out`, `render/style` now 4 tests.
+
+### 2026-07-27 (night, S1 style unblock) — two checker roots under one symptom (`msUnion_gddi8r`) ⚠ UNCOMMITTED
+
+S1 of `docs/STYLE.md` was code-complete but RED: the neon+yoga combined build died with
+`operand of type 'msUnion_gddi8r' where arithmetic or pointer type is required` across every
+yoga width/height/margin line. The prior session suspected a union C-name hash collision —
+**refuted by measurement**: `djb2("union(number|string)") = gddi8r` and
+`djb2("union(float32|string)") = 1n6fyl`, exactly the two names observed, so the Type object itself
+was corrupted upstream of codegen. Two independent checker roots, both fixed at root, no workarounds.
+
+**A — Maybe cache fused every anonymous composite payload (`checker/types.ms` `maybeCacheKey`).**
+Lowering `T | null` → `Maybe<T>` deduped by `"p" + (kind as number)` for any payload with an empty
+`typeName` — so ALL anonymous unions shared one key (and all anon arrays another, etc.). Whichever
+module checked first claimed the Maybe type; every later module's structurally-different payload
+inherited the winner's Type object wholesale. Neon's `Style.width: number|string|null` checked before
+yoga's `FlexStyle.width: float32|string|null` → yoga's field became `union(number|string)` → its
+`as float32` had no member to select → raw C cast on a struct. **Latent silent-miscompile class**:
+`Maybe<number[]>` vs `Maybe<string[]>` fused the same way.
+*Fix:* structural suffix for anon composite payloads — checker `typeKey` gained Union/Span/SizedArray
+arms and `maybeCacheKey` appends `identSafeKey(typeKey(inner))` for Union/Array/Tuple/Span/SizedArray.
+*Guard:* native tier `maybe-union-identity` (LibA `number|string|null` + LibB `float32|string|null`,
+main imports A-then-B; RED on pre-fix compiler with the exact neon+yoga signature, GREEN after).
+*Nim anchor:* Option[T] instantiation dedups by full type identity — a lossy cache key has no Nim
+counterpart to diverge from; this was an MS-side bug, no NIM-REF row involved.
+
+**B — Structural object compat ignored field REPR; `as<X>` synthesis missing at assignment + nullable formals.**
+Probe (`compatProbe`): `A{w: number|string|null}` was silently accepted where
+`B{w: float32|string|null}` was expected — call-arg AND assignment — and ran to garbage (read 0,
+stored 5): structural assign raw-casts the ref, no per-field conversion exists, and per-field
+`isAssignable` allowed `number→float32` inside the union. Same class as NIM-REF "Container element
+assignability" (Nim `typeRel` keeps elements INVARIANT, sigmatch.nim:1502; enforcement CENTRAL in
+fitNode, SCOPED to `isReinterpretUnsafe` — that scope was re-traced 2026-07-21 and is TERMINAL, so
+this fix EXTENDS the memory-safety class rather than flipping on general `!isAssignable`):
+- `compat.ms isObjectAssignable`: shared-name fields now also require repr match
+  (`fieldReprMismatch` — union fields member-for-member: C tag = member index, payload width = member
+  repr; numeric fields same C width; pure string-literal unions ≡ `string` ≡ literal — msString repr).
+- `compat.ms isReinterpretUnsafe`: Struct-vs-Struct arm walking SHARED fields only (disjoint names
+  ignored — `T|null→T` flows and Ref→Ptr cursor divergence untouched), plus `X | null` peels both
+  directions, plus depth guard.
+- `checkExprPass.ms trySynthesizeAsCoercion`: targets/receivers/returns peel `X | null` and unnamed
+  `Ref` wrappers (interface members sit behind kind=Ref, typeName="" — method naming and return-type
+  match previously bailed on them). Result: `layoutStyle = style` now auto-inserts `.asFlexStyle()`
+  exactly as `docs/STYLE.md` §5 designed — assignment joins var-decl/call-arg/return as a working
+  coercion context — and with no extension in scope it is a compile ERROR, never a raw store.
+*Guards:* `src/test/handoff/typeCoercion.ms` +9 unit (struct field repr) and NEW
+`src/test/c/asCoercionNullable.ms` 4 e2e (assignment synthesis, nullable-field error, var-decl error,
+call-arg-through-nullable synthesis). ⚠ Split from `protocols.ms` because that file is PRE-BROKEN
+(its 4 `compileProjectToC` call sites reject un-annotated `const entries = [{...}]` arrays — reproduced
+on the pre-session binary; NOT caused by this work; the battery never runs it — §7 family).
+*Neon side:* `setDim` restructured to the established `typeof`-guarded if/else with `v as number`
+member-select (symmetric with the `v as string` branch — the same idiom yoga uses; the earlier
+`(v as number) as float32` double-cast was dropped: number→float32 narrows implicitly at the call).
+`setStyle` stays exactly as designed — no manual projection call.
+
+**Gates (all on the gen-4 binary, `rm -rf out` per step):** recompiler battery **3340/3340 (163/163)**
+×2 (after A, after A+B); `typeCoercion.ms` 464/464; `asCoercionNullable.ms` closure 2764/2764; native
+`maybe-union-identity` green; **Neon 16/16 files** including NEW `render/style` (typed sheet → VNode →
+void host asFlexStyle projection → yoga layout, legacy string path, `withStyle`).
+Changed: recompiler `src/checker/{types,compat,checkExprPass}.ms`,
+`src/test/handoff/typeCoercion.ms`, `src/test/c/asCoercionNullable.ms`,
+`src/test/native/{manifest.ms,programs/maybeUnionIdentity*.ms}`; neon `src/platform/void/host.ms`
+(setDim narrowing shape only).
 
 ### 2026-07-27 (late, deep-probe pass) — two more roots the first "green" hid ⚠ UNCOMMITTED
 
