@@ -2,6 +2,7 @@ import { TerminalNode, createTerminalNode, createTerminalTextNode } from "../../
 import { terminalHost } from "../../src/platform/terminal/host";
 import { paintNode, paintTree } from "../../src/platform/terminal/paint";
 import { HostNode } from "../../src/render/hostTypes";
+import { Style } from "../../src/render/style";
 
 function tn(hostNode: HostNode): TerminalNode {
 	return hostNode as unknown as TerminalNode;
@@ -103,4 +104,46 @@ test "terminalHost: full tree build via Host ops" {
 	host.append(root, child);
 	const lines = paintTree(tn(root), 40);
 	assert lines.length === 3, "border + content + border = 3 lines";
+}
+
+// ===== S2: the portable Style IR reaches the terminal (docs/STYLE.md §5) =====
+
+test "terminalHost: setStyle projects colors onto the ansi palette" {
+	const host = terminalHost();
+	const node = host.createElement("text");
+	const st: Style = { color: "#cc0000", backgroundColor: "#0000ee" };
+	host.setStyle(node, st);
+	const n = tn(node);
+	assert n.style.color === "red", "hex fg snaps to the nearest ansi name";
+	assert n.style.bg === "blue", "hex bg snaps to the nearest ansi name";
+}
+
+test "terminalHost: setStyle carries text weight, not layout" {
+	const host = terminalHost();
+	const node = host.createElement("text");
+	const st: Style = { fontWeight: "bold", width: 40, flexDirection: "row" };
+	host.setStyle(node, st);
+	const n = tn(node);
+	assert n.style.bold === true, "fontWeight bold → ansi bold";
+	assert n.style.color === "", "unset paint fields stay empty";
+}
+
+test "terminalHost: a named color passes through untouched" {
+	const host = terminalHost();
+	const node = host.createElement("text");
+	const st: Style = { color: "cyan" };
+	host.setStyle(node, st);
+	assert tn(node).style.color === "cyan", "already an ansi name";
+}
+
+test "paint: a styled node emits its ansi prefix" {
+	const host = terminalHost();
+	const node = host.createElement("text");
+	host.setStyle(node, { color: "#cc0000", fontWeight: "bold" } as Style);
+	const n = tn(node);
+	n.text = "hi";
+	n.isText = true;
+	const lines = paintNode(n, 10);
+	assert lines[0].indexOf("\x1b[1m", 0) >= 0, "bold prefix present";
+	assert lines[0].indexOf("\x1b[31m", 0) >= 0, "red fg present";
 }

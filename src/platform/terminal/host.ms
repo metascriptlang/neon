@@ -14,10 +14,69 @@
 //   <gap>    — vertical spacer (height attribute = number of blank lines)
 
 import { Host, HostNode } from "../../render/hostTypes";
+import { Style } from "../../render/style";
 import {
-	TerminalNode, TerminalEvent,
+	TerminalNode, TerminalEvent, TerminalStyle,
 	createTerminalNode, createTerminalTextNode,
 } from "./types";
+
+function hexNibble(c: string): number {
+	if (c >= "0" && c <= "9") { return c.charCodeAt(0) - 48; }
+	if (c >= "a" && c <= "f") { return c.charCodeAt(0) - 87; }
+	if (c >= "A" && c <= "F") { return c.charCodeAt(0) - 55; }
+	return -1;
+}
+
+// "#rgb" / "#rrggbb" → the nearest of the 8 ANSI base colors, which is all a
+// terminal can render. Any other string is passed through as a colour name.
+function ansiNameFor(css: string): string {
+	if (css === "") { return ""; }
+	if (css.charAt(0) !== "#") { return css; }
+	const body = css.substring(1, css.length);
+	let r = -1;
+	let g = -1;
+	let b = -1;
+	if (body.length === 3) {
+		r = hexNibble(body.charAt(0)) * 17;
+		g = hexNibble(body.charAt(1)) * 17;
+		b = hexNibble(body.charAt(2)) * 17;
+	} else if (body.length === 6) {
+		r = hexNibble(body.charAt(0)) * 16 + hexNibble(body.charAt(1));
+		g = hexNibble(body.charAt(2)) * 16 + hexNibble(body.charAt(3));
+		b = hexNibble(body.charAt(4)) * 16 + hexNibble(body.charAt(5));
+	}
+	if (r < 0 || g < 0 || b < 0) { return ""; }
+
+	const names = ["black", "red", "green", "yellow", "blue", "magenta", "cyan", "white"];
+	const reds = [0, 205, 0, 205, 0, 205, 0, 229];
+	const greens = [0, 0, 205, 205, 0, 0, 205, 229];
+	const blues = [0, 0, 0, 0, 238, 205, 205, 229];
+	let best = 0;
+	let bestDist = -1;
+	for (let i = 0; i < names.length; i += 1) {
+		const dr = r - reds[i];
+		const dg = g - greens[i];
+		const db = b - blues[i];
+		const dist = dr * dr + dg * dg + db * db;
+		if (bestDist < 0 || dist < bestDist) { bestDist = dist; best = i; }
+	}
+	return names[best];
+}
+
+// docs/STYLE.md §5 — the terminal's projection of the portable Style IR.
+// A terminal has no flexbox, so the layout half is dropped on purpose.
+export function asTerminalStyle(this s: Style): TerminalStyle {
+	const color = s.color;
+	const bg = s.backgroundColor;
+	return {
+		color: color !== null ? ansiNameFor(color as string) : "",
+		bg: bg !== null ? ansiNameFor(bg as string) : "",
+		bold: s.fontWeight !== null && (s.fontWeight as string) === "bold",
+		dim: s.opacity !== null && (s.opacity as number) < 1.0,
+		italic: false,
+		underline: false,
+	};
+}
 
 function childIndex(parent: TerminalNode, node: TerminalNode): number {
 	for (let i = 0; i < parent.children.length; i += 1) {
@@ -63,6 +122,11 @@ export function terminalHost(): Host {
 		},
 		setAttr: (node: HostNode, name: string, value: string): void => {
 			applyAttr(node as unknown as TerminalNode, name, value);
+		},
+		setStyle: (node: HostNode, style: Style): void => {
+			const n = node as unknown as TerminalNode;
+			n.style = asTerminalStyle(style);
+			n.dirty = true;
 		},
 		addEvent: (node: HostNode, name: string, handler: () => void): void => {
 			const n = node as unknown as TerminalNode;
