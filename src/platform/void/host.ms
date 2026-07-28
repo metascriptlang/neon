@@ -13,6 +13,7 @@
 import { Host, HostNode } from "../../render/host";
 import { Node2D, group, label, addChild, addChildAt, removeChild } from "../../../../void/src/void2d/node";
 import { FlexStyle } from "../../../../yoga/src/index";
+import { Style } from "../../render/style";
 
 export { layoutPass, freeLayout } from "../../../../void/src/void2d/layout";
 export { Node2D, DrawKind, group } from "../../../../void/src/void2d/node";
@@ -120,6 +121,46 @@ export function parseFlexStyle(s: string): FlexStyle {
 	return st;
 }
 
+function setDimStr(st: FlexStyle, key: string, v: string): void {
+	if (key === "width") { st.width = v; }
+	else if (key === "height") { st.height = v; }
+	else if (key === "padding") { st.padding = v; }
+	else if (key === "margin") { st.margin = v; }
+	else if (key === "gap") { st.gap = v; }
+	else if (key === "left") { st.left = v; }
+	else if (key === "top") { st.top = v; }
+	else if (key === "right") { st.right = v; }
+	else if (key === "bottom") { st.bottom = v; }
+}
+
+function setDim(st: FlexStyle, key: string, v: number | string | null): void {
+	if (v === null) { return; }
+	if (typeof v === "string") { setDimStr(st, key, v as string); }
+	else { styleNum(st, key, v as number); }
+}
+
+// Style → FlexStyle projection (docs/STYLE.md §5). S1 projects the layout subset only;
+// paint and text fields of Style land in S2.
+export function asFlexStyle(this s: Style): FlexStyle {
+	const st: FlexStyle = {};
+	if (s.flexDirection !== null) { styleEnum(st, "flexDirection", s.flexDirection as string); }
+	if (s.justifyContent !== null) { styleEnum(st, "justifyContent", s.justifyContent as string); }
+	if (s.alignItems !== null) { styleEnum(st, "alignItems", s.alignItems as string); }
+	if (s.position !== null) { styleEnum(st, "position", s.position as string); }
+	if (s.flexGrow !== null) { styleNum(st, "flexGrow", s.flexGrow as float32); }
+	if (s.flexShrink !== null) { styleNum(st, "flexShrink", s.flexShrink as float32); }
+	setDim(st, "width", s.width);
+	setDim(st, "height", s.height);
+	setDim(st, "padding", s.padding);
+	setDim(st, "margin", s.margin);
+	setDim(st, "gap", s.gap);
+	setDim(st, "left", s.left);
+	setDim(st, "top", s.top);
+	setDim(st, "right", s.right);
+	setDim(st, "bottom", s.bottom);
+	return st;
+}
+
 function worldX(links: ParentLink[], n: Node2D): float32 {
 	let x = n.x;
 	let p = parentOf(links, n);
@@ -159,6 +200,9 @@ export function createVoidHost(): VoidHost {
 			if (name === "style") {
 				(node as unknown as Node2D).layoutStyle = parseFlexStyle(value);
 			}
+		},
+		setStyle: (node: HostNode, style: Style): void => {
+			(node as unknown as Node2D).layoutStyle = style;
 		},
 		addEvent: (node: HostNode, name: string, handler: () => void): void => {
 			events.push({ node: node as unknown as Node2D, name, handler });
