@@ -36,6 +36,16 @@ Neon **16/16** re-run file-by-file. New uncommitted on top: recompiler `src/comp
 `src/macros/ui/style.ms` (real macro), `src/macros/ui/element.ms` (static-style guard, sacred),
 `tests/render/style.test.ms` (no more hand-written Sheet; 4 tests), `probe/style_*.ms`, `docs/STYLE.md`.
 
+⚠ 2026-07-28 (row 9, same day): installed msc is **gen-15** — the on-demand macro-helper diagnostic
+queue PLUS the refusal to execute a macro whose body/helpers failed to check (§2 row 9 → §5; gen-14
+was the report-only half, superseded within the hour). Built from an rsync'd snapshot again
+(`/tmp/row9-verify`), so gen-15 = gen-13 + the parallel session's now-committed
+`e628ea9`/`76a7222` + this fix. Gates:
+battery **3342/3342** (163 files), `bug056` closure **2769**, `json.ms` closure **2776**, Neon
+**16/16** run with the pre-install binary. ⚠ `src/test/fixedbugs/index.ms` cannot compile
+bug006/008/010/047 when aggregated — **pre-existing**, identical set fails on `msc.bak-1785244527`
+(the gen-13 backup the sync script wrote), and all four pass standalone.
+
 ⚠ 2026-07-28 (bindSym V2, same day): installed msc is **gen-13** — closes the remaining bindSym
 gaps: **bound MACROS** (`bindSym("cborValueOf")` — `expandMacroInvocation` fetches body/params from
 the DECLARING module's registries via a regCtx from `lookupModuleCtx(sym.modulePath)`; modulePath
@@ -241,7 +251,7 @@ function was needed, and the emitted C shows DRC injecting `msIncref` per copied
 
 ---
 
-## §2 — Open compiler bugs OFF Neon's path (9) — rows 1-3 + 5-7 re-verified 2026-07-25 late; row 4 added 2026-07-26 late; row 8 added 2026-07-27 late; row 9 added 2026-07-27 (A4); the A4 "dual-Node" row was WITHDRAWN — misdiagnosis, see §5
+## §2 — Open compiler bugs OFF Neon's path (10) — rows 1-3 + 5-7 re-verified 2026-07-25 late; row 4 added 2026-07-26 late; row 8 added 2026-07-27 late; row 9 CLOSED 2026-07-28 (kept struck-through, its severity note is a lesson) and two rows were added the same day by the probes that closed it; the A4 "dual-Node" row was WITHDRAWN — misdiagnosis, see §5
 
 | bug | repro | measured today |
 |---|---|---|
@@ -253,7 +263,9 @@ function was needed, and the emitted C shows DRC injecting `msIncref` per copied
 | **`canRaise` missing Nim's `sfGeneratedOp` arm** | `/tmp/craise.ms` | latent (not a live bug) |
 | **latent `monoConcreteTypeName` siblings** | — | by inspection: anon `Union` / `Conditional` |
 | **object spread in object literal** (NEW 2026-07-27 late) | `/tmp/ns_spread/main.ms` (6 lines, `docs/STYLE.md` §7) | ❌ checker PASSES, C fails: `no member named 'dotdotdot_' in 'struct Style'`, emitted as `_lit4_->dotdotdot_ = /* spread */ base_1_;` |
-| **on-demand helper compile errors unreported** (NEW 2026-07-27 A4) | by inspection: `eval.ms ensureCompiledIntoEngine` returns funcIdx only | latent — a type-broken helper called from a macro body compiles to garbage bytecode silently (bug053 fixed the WRAPPER slot only) |
+| ~~on-demand helper compile errors unreported~~ | `src/test/fixedbugs/bug057.ms` | ✅ **CLOSED 2026-07-28** — helper errors now queue in `eval.ms` and merge into the macro's result (`Macro 'X' body: helper 'y': …`). See §5 for the measured severity correction |
+| **`string = number` is not a checker error** (NEW 2026-07-28, found probing row 9) | `function f(n: number): number { const s: string = n; return n; }` | ❌ checker PASSES, C fails: `used type 'msString' where arithmetic or pointer type is required`, emitted as `s_1_ = ((msString)(n));`. Same shape as the object-spread row: a check the checker should own, deferred to the C compiler. NOT metaprogramming — plain assignment |
+| **`async` helper called from a macro body** (NEW 2026-07-28, found probing row 9) | macro body does `value: bad(2)` where `async function bad(n: number): Promise<number>` | ❌ compiles clean — no diagnostic from the module check OR the engine check. The macro VM cannot run async, so the spliced value cannot be the awaited number. ⚠ **only the SILENCE is measured**; the emitted value was not inspected. Verify before assuming it is a wrong-answer bug |
 
 - **nullfn bind-order** — `apply((v:number)=>v+1, 10)` binds T=int32 from arg 1, overriding the arg-0
   arrow. Nim `paramTypesMatchAux` binds progressively IN ARG ORDER → T=number. Do NOT fix by loosening
@@ -298,10 +310,8 @@ function was needed, and the emitted C shows DRC injecting `msIncref` per copied
   spread operand's fields. **Blocks style composition at runtime (S3 in `docs/STYLE.md` §9)** — not
   S1/S2. The style design picked array layering over spread for provenance reasons *independent* of
   this bug, so it blocks a runtime-merge path, not the design.
-- **on-demand helper compile errors unreported** — `ensureCompiledIntoEngine` (eval.ms) ignores its
-  compile's `_lastEngineCheckErrors` entirely; only the WRAPPER's errors reach `getOrCompileMacro`
-  (bug053 fixed the wrapper slot being CLOBBERED by these on-demand compiles, not the helpers' own
-  silence). A helper with real type errors still becomes garbage bytecode without a diagnostic.
+- ~~**on-demand helper compile errors unreported**~~ — CLOSED 2026-07-28, see §5. The plumbing gap was
+  real; the *severity* filed here was overstated, and the correction is recorded in the ledger.
 - **deferred, not counted:** catch-side `e.message` (object-carrying exceptions) — MS's exception
   runtime is string-based by design; `throw` works, `catch (e) { e.message }` does not.
 
@@ -353,6 +363,55 @@ Still untracked: `docs/EDITOR*.md` (design scratch).
 ---
 
 ## §5 — Fixed (history + root-cause ledger, append-only)
+
+### 2026-07-28 — §2 row 9 closed: on-demand macro helper errors reach the user ⚠ UNCOMMITTED
+
+**Root.** `ensureCompiledIntoEngine` (`src/codegen/raiser/eval.ms`) compiles a helper a macro body
+calls, into the shared comptime engine. It ran a full check pass and returned only `funcIdx`;
+`_lastEngineCheckErrors` was deliberately restored to the wrapper's own list by
+`compileProgramIntoEngine` (bug053), so the helper's diagnostics were dropped on the floor.
+
+**Fix, part 1 — report.** A `_pendingHelperErrors` queue in `eval.ms`: `ensureCompiledIntoEngine`
+pushes its Error-severity diagnostics re-messaged as `helper '<name>': <msg>`, and
+`compileMacroIntoEngine` merges the queue into `EngineMacroResult.errors`, which `getOrCompileMacro`
+already reports as `Macro '<name>' body: …`.
+
+**Fix, part 2 — refuse.** Reporting alone was still wrong: `getOrCompileMacro` reported the errors
+and then **cached and executed the macro anyway**, so known-garbage bytecode ran in the VM. It now
+marks the macro in a `_failedMacros` set and returns null, which `expandMacroInvocation` already
+handles gracefully (`Macro 'X' evaluator unavailable`, node left unexpanded). The set means the
+diagnostic is emitted once, not once per call site. This turns a VM panic / silently-wrong AST into
+one precise error — the reason to prefer failing loud here is that the macro's output feeds the rest
+of the check, so a bad expansion is laundered into confusing downstream errors.
+
+Guard `src/test/fixedbugs/bug057.ms` (2 tests): a broken helper names itself AND the evaluator is
+refused; a healthy helper adds nothing and still folds (`good(21)` → `42` in the C output).
+**Proven RED** by commenting out the merge — exactly the diagnostic test fails, the healthy one stays
+green.
+
+**⚠ Severity correction — the filed claim was overstated.** The row said "a type-broken helper
+compiles to garbage bytecode silently". Measured, that shape could not be constructed: a helper is an
+ordinary module function, so every checker error it has is ALSO reported by the normal module check.
+Three probes:
+
+| probe | result |
+|---|---|
+| `const s: string = n` in the helper | **not a checker error at all** — it survives to C and dies there (`used type 'msString' where arithmetic or pointer type is required`). A separate, unfiled gap |
+| `noSuchFn(n)` in the helper | module check reports it; the engine ALSO reports it — post-fix the message carries both, which is what the guard asserts |
+| `async` helper called from a macro body | **compiles clean, no error from either path** — the fix does not catch it. Still an open silent-wrong-value shape, and NOT the one this row described |
+
+So the value delivered is defense-in-depth for engine-mode-only failures (a helper that checks fine
+normally but cannot compile into the VM), not a live wrong-answer fix. Do not re-file this as
+high-severity; if the `async`-in-macro-body shape matters, file THAT, with its own repro.
+
+**Gates (re-run after part 2 — refusing to expand is the riskier half).** Battery **3342/3342**
+(163 files); `bug056` **2769**; `src/test/c/json.ms` **2776**; Neon **16/16**. Nothing in either
+corpus was relying on a macro that expands despite reported errors, and no false-positive flood
+appeared — the point of risk, since the engine seeds a stripped context and could invent errors.
+
+⚠ `src/test/fixedbugs/index.ms` fails to compile 4 members (bug006/008/010/047) when aggregated.
+**Pre-existing** — the identical set fails on the pre-fix binary (`msc.bak-1785244527`), and each of
+them passes standalone. Same class as the §7 "stale aggregator" debt; not caused by this work.
 
 ### 2026-07-28 — bindSym: macros emit pre-bound identifiers (Nim semBindSym) ⚠ UNCOMMITTED
 
