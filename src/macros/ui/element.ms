@@ -8,6 +8,10 @@
 // el/attr/evt/text/dynText come from "../render/node" and must be in scope at the
 // call site. Attributes whose name starts with "on" become events; expression
 // containers become reactive (dynText); nested JSX re-expands through `element`.
+//
+// `style` is the one attribute with two channels: a string literal keeps the legacy
+// attr path (host parses it), while any other expression is a typed Style and routes
+// through withStyle() into VNode.style — which then also needs withStyle in scope.
 
 import { Node, NodeKind } from "std/meta";
 
@@ -71,8 +75,20 @@ function cleanJsxText(raw: string): string {
 export macro element(node: Node): Node {
 	let attrs: Node[] = [];
 	let events: Node[] = [];
+	let styleExpr: Node | null = null;
 	for (const a of node.jsxAttrs) {
 		if (a.kind === NodeKind.JSXAttribute) {
+			if (a.jsxAttrName === "style" && a.jsxAttrValue.kind !== NodeKind.StringLiteral) {
+				if (a.jsxAttrValue.kind === NodeKind.ObjectLiteral) {
+					for (const fv of a.jsxAttrValue.properties) {
+						if (fv.kind === NodeKind.CallExpr) {
+							error("a style field cannot call a function — a signal read here would be a frozen snapshot, not reactive (reactive style fields land in S4)", fv);
+						}
+					}
+				}
+				styleExpr = a.jsxAttrValue;
+				continue;
+			}
 			const nameLit: Node = { kind: NodeKind.StringLiteral, line: a.line, column: a.column, value: a.jsxAttrName };
 			const ctor = a.jsxAttrName.startsWith("on") ? "evt" : "attr";
 			const call: Node = {
@@ -113,7 +129,7 @@ export macro element(node: Node): Node {
 		}
 	}
 
-	return {
+	const elCall: Node = {
 		kind: NodeKind.CallExpr, line: node.line, column: node.column,
 		callee: { kind: NodeKind.Identifier, line: node.line, column: node.column, name: "el" },
 		arguments: [
@@ -122,5 +138,12 @@ export macro element(node: Node): Node {
 			{ kind: NodeKind.ArrayLiteral, line: node.line, column: node.column, elements: events },
 			{ kind: NodeKind.ArrayLiteral, line: node.line, column: node.column, elements: kids },
 		],
+	};
+
+	if (styleExpr === null) { return elCall; }
+	return {
+		kind: NodeKind.CallExpr, line: node.line, column: node.column,
+		callee: { kind: NodeKind.Identifier, line: node.line, column: node.column, name: "withStyle" },
+		arguments: [elCall, styleExpr as Node],
 	};
 }
