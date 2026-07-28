@@ -7,6 +7,7 @@ import { el, attr, evt, text, dynText } from "../../src/render/node";
 import { element } from "../../src/macros/ui/element";
 import { renderToHost, HostNode } from "../../src/render/host";
 import { createVoidHost, layoutPass, parseFlexStyle, DrawKind, Node2D } from "../../src/platform/void/host";
+import { Style } from "../../src/render/style";
 
 test "counter renders into Node2D tree with parsed flex styles" {
 	const [count, setCount] = createSignal(0);
@@ -84,4 +85,45 @@ test "parseFlexStyle maps numeric + enum keys and ignores junk" {
 	assert (st.alignItems ?? "auto") === "stretch", "alignItems parsed";
 	assert (st.position ?? "static") === "absolute", "position parsed";
 	assert st.height === null, "unset stays null";
+}
+
+// ===== S2: the paint half of the Style projection (docs/STYLE.md §5) =====
+
+test "setStyle: a background turns a group into a drawable rect" {
+	const vh = createVoidHost();
+	const node = vh.host.createElement("div");
+	const n = node as unknown as Node2D;
+	assert n.kind === DrawKind.Group, "elements start as groups";
+	vh.host.setStyle(node, { backgroundColor: "#3344ff", width: 100 } as Style);
+	assert n.kind === DrawKind.Rect, "a group with a background must draw";
+	assert n.color.b > 0.9, "blue channel came through";
+	assert n.color.r < 0.3, "red channel stayed low";
+}
+
+test "setStyle: layout and paint are both applied, not one or the other" {
+	const vh = createVoidHost();
+	const node = vh.host.createElement("div");
+	const n = node as unknown as Node2D;
+	vh.host.setStyle(node, { width: 64, opacity: 0.5, backgroundColor: "#ffffff" } as Style);
+	assert n.layoutStyle !== null, "layout half reached yoga";
+	assert n.alpha < 0.6, "paint half reached the node";
+}
+
+test "setStyle: text colour applies to labels" {
+	const vh = createVoidHost();
+	const node = vh.host.createText("hi");
+	const n = node as unknown as Node2D;
+	vh.host.setStyle(node, { color: "#ff0000", fontSize: 24 } as Style);
+	assert n.color.r > 0.9, "red text";
+	assert n.color.g < 0.1, "no green";
+	assert n.size > 23.0, "font size applied";
+}
+
+test "setStyle: a non-hex colour leaves the node untouched" {
+	const vh = createVoidHost();
+	const node = vh.host.createText("hi");
+	const n = node as unknown as Node2D;
+	const before = n.color.r;
+	vh.host.setStyle(node, { color: "rebeccapurple" } as Style);
+	assert n.color.r === before, "unparseable colour is ignored, not zeroed";
 }
