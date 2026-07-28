@@ -4,6 +4,7 @@
 
 import { createEffect } from "../core/effect";
 import { VNode, VAttr, VEvent, RegionFn, ComponentProducer } from "./node";
+import { Style } from "./style";
 import { reconcileArrays } from "./reconcile";
 import { Host, HostNode } from "./hostTypes";
 
@@ -27,6 +28,8 @@ export function renderNode(vnode: VNode, host: Host): HostNode {
 	}
 	const node = host.createElement(vnode.tag);
 	for (const a of vnode.attrs) { host.setAttr(node, a.name, a.value); }
+	const vstyle = vnode.style;
+	if (vstyle !== null) { host.setStyle(node, vstyle as Style); }
 	for (const e of vnode.events) { host.addEvent(node, e.name, e.handler); }
 	for (const k of vnode.children) {
 		const kRegion = k.region;
@@ -76,11 +79,12 @@ export interface MockNode {
 	children: MockNode[];
 	attrs: VAttr[];
 	events: VEvent[];
+	style: Style | null;
 	parent: MockNode | null;
 }
 
 export function mockNode(tag: string): MockNode {
-	return { tag, text: "", children: [], attrs: [], events: [], parent: null };
+	return { tag, text: "", children: [], attrs: [], events: [], style: null, parent: null };
 }
 
 function childIndex(parent: MockNode, node: MockNode): number {
@@ -112,6 +116,9 @@ export function mockHost(): Host {
 		},
 		setAttr: (node: HostNode, name: string, value: string): void => {
 			(node as unknown as MockNode).attrs.push({ name, value });
+		},
+		setStyle: (node: HostNode, style: Style): void => {
+			(node as unknown as MockNode).style = style;
 		},
 		addEvent: (node: HostNode, name: string, handler: () => void): void => {
 			(node as unknown as MockNode).events.push({ name, handler });

@@ -3,6 +3,8 @@
 // (static `text` or reactive `dyn` thunk). Renderers consume this: renderToString
 // pulls a snapshot; renderToHost (host.ms) pushes live updates into a host node.
 
+import { Style } from "./style";
+
 export interface VAttr {
 	name: string;
 	value: string;
@@ -34,6 +36,7 @@ export interface VNode {
 	dyn: () => string;
 	attrs: VAttr[];
 	events: VEvent[];
+	style: Style | null;                // typed style channel (docs/STYLE.md); host projects it
 	region: RegionFn | null;            // non-null → reactive list region (host reconciles it)
 	componentFn: ComponentProducer | null; // non-null → Component variant (renderer expands lazily)
 	componentProps: Map<string, unknown> | null; // attached for debug/introspection
@@ -48,23 +51,28 @@ export function evt(name: string, handler: () => void): VEvent {
 }
 
 export function el(tag: string, attrs: VAttr[], events: VEvent[], children: VNode[]): VNode {
-	return { tag, children, text: "", isDyn: false, dyn: () => "", attrs, events, region: null, componentFn: null, componentProps: null };
+	return { tag, children, text: "", isDyn: false, dyn: () => "", attrs, events, style: null, region: null, componentFn: null, componentProps: null };
+}
+
+export function withStyle(n: VNode, s: Style): VNode {
+	n.style = s;
+	return n;
 }
 
 export function text(s: string): VNode {
-	return { tag: "", children: [], text: s, isDyn: false, dyn: () => "", attrs: [], events: [], region: null, componentFn: null, componentProps: null };
+	return { tag: "", children: [], text: s, isDyn: false, dyn: () => "", attrs: [], events: [], style: null, region: null, componentFn: null, componentProps: null };
 }
 
 export function dynText(thunk: () => string): VNode {
-	return { tag: "", children: [], text: "", isDyn: true, dyn: thunk, attrs: [], events: [], region: null, componentFn: null, componentProps: null };
+	return { tag: "", children: [], text: "", isDyn: true, dyn: thunk, attrs: [], events: [], style: null, region: null, componentFn: null, componentProps: null };
 }
 
 export function regionNode(fn: RegionFn): VNode {
-	return { tag: "", children: [], text: "", isDyn: false, dyn: () => "", attrs: [], events: [], region: fn, componentFn: null, componentProps: null };
+	return { tag: "", children: [], text: "", isDyn: false, dyn: () => "", attrs: [], events: [], style: null, region: fn, componentFn: null, componentProps: null };
 }
 
 export function componentNode(fn: ComponentProducer, props: Map<string, unknown>): VNode {
-	return { tag: "", children: [], text: "", isDyn: false, dyn: () => "", attrs: [], events: [], region: null, componentFn: fn, componentProps: props };
+	return { tag: "", children: [], text: "", isDyn: false, dyn: () => "", attrs: [], events: [], style: null, region: null, componentFn: fn, componentProps: props };
 }
 
 export function renderToString(n: VNode): string {
