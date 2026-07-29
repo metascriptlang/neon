@@ -22,6 +22,15 @@ on top of a stale claim. History lives in §5 and is append-only.
 | **battery (post-deploy, `./msc`)** | **3340 pass / 0 fail** (163/163 files, ~4.5m) | `cd ~/metascript/recompiler && rm -rf out && ./msc test src/index.ms` |
 | **Neon suite (post-deploy, installed msc)** | **16 pass / 0 fail** — includes NEW `render/style` (S1) | `msc test <file>` per file, `rm -rf out` between |
 
+⚠ 2026-07-29 (evening): installed msc is **gen-20** — the JS backend now expands macros (two-phase
+cmdBuildJS/cmdRunJS + loud post-expansion errors on every backend; §5 entry below). Neon's browser
+path compiles end-to-end for the FIRST time: `element(<JSX/>)` expands into `el/withStyle` calls in
+the bundle, `examples/counterDom.ms` bundles 21 modules with 0 `unsupported`, and
+`probe/lspJsxStyleFixture.ms` node-runs printing `true`. Also in gen-20's std: `struct.jms` Map/Set
+gained the missing `export`, string jms renamed `toLower/toUpper` → `toLowerCase/toUpperCase` (cms
+parity), `toJSStr` passes non-arrays through. Battery **3356/3356** + Neon **16/16** re-verified
+under the INSTALLED binary (not a sibling build — see the corrupt-binary incident in §5).
+
 ⚠ 2026-07-29: installed msc is **gen-19** — LSP macro expansion actually works now, closing the two
 Neon MISS shapes from the object-completion table (`createStyles({ box: { | } })` and
 `<div style={{ | }}>` both return the full 45-field Style set, measured over a REAL `msc lsp` stdio
@@ -386,6 +395,53 @@ Still untracked: `docs/EDITOR*.md` (design scratch).
 ---
 
 ## §5 — Fixed (history + root-cause ledger, append-only)
+
+### 2026-07-29 (evening, gen-20) — JS backend: any macro calling a module-level helper silently no-ops ⚠ UNCOMMITTED
+
+**Symptom**: `msc build x.ms --target=js` prints a GREEN bundle line while the output contains
+`const app = /* unsupported: MacroInvocation */;` — Neon's `element(<div/>)` never expanded, so the
+whole browser path was dead (this, not `Unresolved type 'Map'`, is why S2's `applyCss` had never
+run; the Map error was a separate std bug hiding in front of it). Bisect matrix: object-arg +
+cross-module ✅, JSX + same-module ✅, JSX + cross-module ❌ → misleading; the REAL trigger is a
+**module-level helper called from the macro body** (`probe/jsxmacMod.ms` + `probe/jsxmacUse.ms`,
+2-file repro — must print `expanded-x!`).
+
+**Root 1 (ordering)**: cmdBuildJS/cmdRunJS ran check→expand→**transform** per module in load order.
+`transformProgram` mutates the checked AST in place, and the per-module re-check re-registers that
+same AST as the module's ctx (`registerModuleCtx`, checkPass.ms:2139). By the time a LATER module
+expands the macro, the engine's on-demand helper compile clones a body that is already
+native-lowered — `s + "!"` → `msStringConcat(s, "!")` (stringOpLower) — and the raiser check rejects
+it: `helper 'shout': Undefined variable 'msStringConcat'`. Fix: **two-phase** build (check + expand +
+comptime for EVERY module first, then transform + codegen) in both cmdBuildJS and cmdRunJS.
+
+**Root 2 (silence)**: every macro-machinery diagnostic (`Macro 'x' body: …`, `evaluator
+unavailable`) is severity-Error but **non-fatal**, and the build loops only called
+`exitOnFatalCheckerErrors` — the errors sat in `ctx.errors` unread. Fix: new `exitOnCheckerErrors`
+(non-fatal inclusive) after ALL FIVE `expandMacros` call sites (JS bundle, JS run, C ×2, raiser).
+Instrumentation ladder that found both: entry/exit prints in `expandMacroInvocation` +
+`getOrCompileMacro` narrowed it to `gocm-broken` in two rebuilds; the message itself was the root.
+
+**Std fixes riding along**: `struct.jms` declared `extern class Map/Set` WITHOUT `export` →
+`Unresolved type 'Map'` killed every JS build touching reconcile.ms; string jms exported Nim-style
+`toLower/toUpper` where cms exports `toLowerCase/toUpperCase` → renamed to the TS names
+(neon `dom.ms:67` updated); `toJSStr` now passes non-arrays through (console.log of a boolean
+emitted nothing).
+
+**Incident, recorded so nobody re-lives it**: the first gen-20 candidate (`/tmp` build, made while
+the parallel session held the machine at load 36) behaved DIFFERENTLY from the repo build of
+IDENTICAL source — probe red, battery green (battery has no cross-module JS-macro test). A 7-build
+flag bisect **refuted** the "drc+danger+clang miscompile" theory: singles green, pairs green, triple
+REBUILT green. The original binary was simply a corrupt build — the known parallel-session cache
+collision extends to produced BINARIES. Lesson: re-verify the fixed behavior under the EXACT binary
+you install; "same source, same flags" is not "same binary".
+
+**Verify**: battery 3356/3356 (165 files) under the shipped binary (`/tmp/msc-jsfix`, worktree
+recipe); Neon 16/16 under installed gen-20; `probe/jsxmacUse.ms` runs `expanded-x!`,
+`probe/lspJsxStyleFixture.ms` runs `true`, `examples/counterDom.ms` bundles 0-unsupported (node run
+stops at `document.body` — browser API, environmental).
+
+**Files**: recompiler `src/compiler/compile.ms` (two-phase ×2, `exitOnCheckerErrors` + 5 call
+sites), `std/core/string/index.jms`, `std/core/struct.jms`; neon `src/platform/browser/dom.ms`.
 
 ### 2026-07-29 — LSP object completion inside macro args: THREE stacked roots, none was the filed hypothesis ⚠ UNCOMMITTED
 
@@ -1369,6 +1425,19 @@ battery for closure/inference work.**
 
 Each is cheap, none blocks anything, all were surfaced by the sessions that closed §1.
 
+- **JS std string is ~19 exports behind cms** (padStart/padEnd/repeat/substring/trimStart/trimEnd/
+  parseInt/parseFloat/replaceAll/equalsIgnoreCase/…, measured by export diff 2026-07-29). Neon
+  browser code will keep tripping on these one name at a time — port the missing block in one
+  sitting instead.
+- **The gen-20 two-phase fix has NO automated guard.** There is no multi-module-JS-with-std test
+  harness; `compileProjectToJS` in `src/test/helpers.ms` is still the OLD interleaved shape and
+  never calls `expandMacros` at all (its own latent copy of root 1). Upgrade it to mirror
+  cmdBuildJS's two phases, then bake `probe/jsxmacMod.ms`+`jsxmacUse.ms` in as a guard. Until then
+  the repro is manual: the pair must print `expanded-x!` under `--target=js`.
+- **cmdRunRaiser and the C build loops still interleave transform with expansion** — same hazard
+  family as gen-20 root 1. C survives today because its expansion runs post-mono inside the same
+  iteration, before that module's OWN transform; whether the engine tolerates every C-transformed
+  helper body is unproven. Align on the two-phase shape when next touched.
 - **`instantiateClassConstructor` still fails silently.** #6 was invisible for weeks because the
   function `return`s when it cannot reach the ClassDecl. With the fix the reachable path is correct,
   but a genuinely unreachable declaration should be a loud checker error, not silence. Not done in
