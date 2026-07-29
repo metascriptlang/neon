@@ -64,7 +64,7 @@ extern class document {
 
 // "onClick" → "click" (DOM listener names are lowercase, no "on").
 function eventName(name: string): string {
-	return name.slice(2, name.length).toLower();
+	return name.slice(2, name.length).toLowerCase();
 }
 
 // docs/STYLE.md §5 — the browser's projection of the portable Style IR.
