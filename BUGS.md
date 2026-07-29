@@ -22,6 +22,27 @@ on top of a stale claim. History lives in §5 and is append-only.
 | **battery (post-deploy, `./msc`)** | **3340 pass / 0 fail** (163/163 files, ~4.5m) | `cd ~/metascript/recompiler && rm -rf out && ./msc test src/index.ms` |
 | **Neon suite (post-deploy, installed msc)** | **16 pass / 0 fail** — includes NEW `render/style` (S1) | `msc test <file>` per file, `rm -rf out` between |
 
+⚠ 2026-07-29: installed msc is **gen-19** — LSP macro expansion actually works now, closing the two
+Neon MISS shapes from the object-completion table (`createStyles({ box: { | } })` and
+`<div style={{ | }}>` both return the full 45-field Style set, measured over a REAL `msc lsp` stdio
+session). THREE stacked causes, all fixed in the recompiler (§5 2026-07-29): transam never imported
+`meta/expand` (subset builds silently no-op every macro — checkerCallbacks default returns the node
+unchanged), TransAm never full-checked macro-declaring deps (engine body compile missing the
+declaring module's imports → `body: Unresolved type 'Node'` → `_failedMacros`), and the macro-emitted
+callee stamped at the entry literal's position shadowed the contextual-type record
+(`sgQueryContextualTypeAt` now tried first). Hardening the guards then caught a FOURTH, pre-existing
+SHIPPING CRASH: `removeExportEntry` never updated `moduleIndex`, so ANY didChange that invalidated
+exports left stale indexes — edit a macro module, complete in a dependent → `index N out of bounds`
+kills the request (measured on gen-18), or silently serves ANOTHER module's exports when sizes line
+up. Fixed + guarded by the lifecycle-parity edit test. Guards: +5 in `completion.ms` (2 proven red
+for the roots, +3: JSX shape, edit-refresh via didOpen/didChange, macro-module import cycle
+termination). Gates: battery **3356/3356** (165 files) built+run in an isolated `/tmp/lsp-verify`
+snapshot (live repo `out/` was contended by a parallel native-suite session), Neon **16/16**, E2E
+LSP probes incl. didChange refresh (padX appears post-edit).
+New uncommitted on top: recompiler `src/compiler/transam/index.ms`, `src/checker/suggest.ms`,
+`src/compiler/lsp/handlers/completion.ms`; neon `probe/{lspStyleFixture,lspJsxStyleFixture,macmodMin,macuseMin}.ms`.
+Side find: same-scope redeclaration miscompiles (new §2 row).
+
 ⚠ 2026-07-27 (night): installed msc is **gen-4 of this session** — adds the §5 2026-07-27-night checker
 fixes (Maybe payload identity, struct-field repr gate, as<X> at assignment/nullable). Uncommitted on
 top of the earlier uncommitted set: recompiler `src/checker/{types,compat,checkExprPass}.ms` + guards.
@@ -251,7 +272,7 @@ function was needed, and the emitted C shows DRC injecting `msIncref` per copied
 
 ---
 
-## §2 — Open compiler bugs (11) — rows 1-3 + 5-7 re-verified 2026-07-25 late; row 4 added 2026-07-26 late; row 8 added 2026-07-27 late; row 9 CLOSED 2026-07-28 (kept struck-through, its severity note is a lesson) and two rows were added the same day by the probes that closed it; the A4 "dual-Node" row was WITHDRAWN — misdiagnosis, see §5
+## §2 — Open compiler bugs (12) — rows 1-3 + 5-7 re-verified 2026-07-25 late; row 4 added 2026-07-26 late; row 8 added 2026-07-27 late; row 9 CLOSED 2026-07-28 (kept struck-through, its severity note is a lesson) and two rows were added the same day by the probes that closed it; same-scope redeclaration row added 2026-07-29; the A4 "dual-Node" row was WITHDRAWN — misdiagnosis, see §5
 
 | bug | repro | measured today |
 |---|---|---|
@@ -267,6 +288,7 @@ function was needed, and the emitted C shows DRC injecting `msIncref` per copied
 | **`string = number` is not a checker error** (NEW 2026-07-28, found probing row 9) | `function f(n: number): number { const s: string = n; return n; }` | ❌ checker PASSES, C fails: `used type 'msString' where arithmetic or pointer type is required`, emitted as `s_1_ = ((msString)(n));`. Same shape as the object-spread row: a check the checker should own, deferred to the C compiler. NOT metaprogramming — plain assignment |
 | **an all-nullable interface accepts ANY object** (NEW 2026-07-28, found in S2) | `n.layoutStyle = style` in `src/platform/void/host.ms` — `layoutStyle: FlexStyle \| null`, `style: Style` (a DIFFERENT interface) | ❌ type-checks silently. Every `FlexStyle` field is nullable, and with no missing-field rule (Nim default-init, NIM-REF §1) an all-nullable interface is structurally satisfied by anything — so assignability stops discriminating. S1 shipped this: the void host stored a Neon `Style` where yoga expected a `FlexStyle`, and layout silently read garbage. Fixed Neon-side (`asFlexStyle(style)`), but the CHECKER hole is open. The bug058 rule does not cover it: no field is function-typed. |
 | **`async` helper called from a macro body** (NEW 2026-07-28, found probing row 9) | macro body does `value: bad(2)` where `async function bad(n: number): Promise<number>` | ❌ compiles clean — no diagnostic from the module check OR the engine check. The macro VM cannot run async, so the spliced value cannot be the awaited number. ⚠ **only the SILENCE is measured**; the emitted value was not inspected. Verify before assuming it is a wrong-answer bug |
+| **same-scope redeclaration is not a checker error → miscompile** (NEW 2026-07-29, found writing the LSP probe) | `let ei = 0; … const ei = findExportedSymbol(…);` in ONE scope | ❌ checker PASSES, C fails (when lucky): the second decl reuses the first's C slot with the FIRST type — `incompatible pointer to integer conversion assigning to 'int32_t' from 'ExportedSymInfo *'`. TS/Nim both reject redeclaration in the same scope. If the two types happen to be ABI-compatible the C compiles and reads garbage silently — same family as the `string = number` row |
 
 - **nullfn bind-order** — `apply((v:number)=>v+1, 10)` binds T=int32 from arg 1, overriding the arg-0
   arrow. Nim `paramTypesMatchAux` binds progressively IN ARG ORDER → T=number. Do NOT fix by loosening
@@ -364,6 +386,63 @@ Still untracked: `docs/EDITOR*.md` (design scratch).
 ---
 
 ## §5 — Fixed (history + root-cause ledger, append-only)
+
+### 2026-07-29 — LSP object completion inside macro args: THREE stacked roots, none was the filed hypothesis ⚠ UNCOMMITTED
+
+**Symptom** (from the gen-17 session's table): `createStyles({ box: { | } })` and `<div style={{ | }}>`
+returned empty completion; hypothesis on file was "post-expansion records don't map back to source
+positions." **Wrong** — locations DO survive the VM round-trip (bridge.ms preserves them exactly);
+the expansion never RAN in the LSP at all, and once it ran, a same-position record shadowed the
+result. Three roots, outermost first:
+
+1. **Subset builds silently disable all macros.** `expandMacroInvocation` reaches the checker through
+   `checkerCallbacks.ms`, whose DEFAULT callback returns the node unchanged — no error, no
+   "evaluator unavailable", nothing. Registration happens as a module-load side effect of
+   `meta/expand.ms:2113`, and NO LSP/transam module imported it — any binary that didn't happen to
+   link `compile.ms` (raw probes, per-file `msc test` subsets) had macros silently off. Fix: transam
+   side-effect-imports `meta/expand`, same as it already did for `codegen/raiser/eval`. The full
+   `msc` binary was immune (compile.ms pulls expand.ms in), which is why batch builds never showed it.
+2. **TransAm never registered macro-declaring modules' ctx.** The engine compiles a macro body with
+   seeds from the IMPORTER's scope + `lookupModuleCtx(declPath)` (`eval.ms:160-166`). Batch compile
+   registers every module ctx in dep order (`checkPass.ms:2139`); the db only tmp-collected dep
+   EXPORTS, so `lookupModuleCtx` missed and the body compiled without the declaring module's imports:
+   `Macro 'createStyles' body: Unresolved type 'Node'` ×2 → `_failedMacros` → "evaluator unavailable"
+   → silent `unknown`. Fix: `dbTypeCheck` pre-checks any direct dep whose exports contain a macro
+   (`checkInProgress` set breaks cycles). This is Haxe display-mode parity — macro modules get
+   `dms_full_typing` there for exactly this reason.
+3. **The macro-emitted callee shadows the literal's contextual record.** Neon-style macros stamp the
+   generated `styleOf` callee at the ENTRY LITERAL's position (`style.ms:41`), so re-checking the
+   expansion pushes a function record `[col,col+8)` before the literal's contextual record
+   `[col,col+1)` — and `sgQueryAtPosition` returns the FIRST record containing the column. Fix:
+   `sgQueryContextualTypeAt` (contextual records only: `sym === null`, `kind === Interface`) tried
+   first in the ObjectField branch, generic query as fallback.
+
+**Guards**: 2 tests in `completion.ms` — "cross-module macro body compiles in LSP db" (kills root 2;
+red form: `Unresolved type 'Node'` + `evaluator unavailable`) and "macro argument literal (Neon
+createStyles shape)" (kills roots 1+3; red form: empty items). Both proven red in sequence during
+the fix. ⚠ Probe lesson, twice burned: a raw `createTransAmDb` probe is NOT the real LSP — it needs
+`dbEnsureModuleExports` preloaded (didOpen parity) AND `meta/expand` linked, or it fails/greens for
+the WRONG reason. The decisive measurements came from driving the INSTALLED `msc lsp` over stdio.
+
+**Gates**: battery **3353/3353** (165 files, +2 guards) under both the building and the built binary;
+Neon **16/16**; E2E `msc lsp`: both Neon shapes return the full 45-field `Style` set with clean
+diagnostics. JSX needed NO extra fix — `element`'s expansion preserves the literal position and its
+callee lands elsewhere. Deployed as **gen-18** via `tools/sync-local-binary.sh`.
+
+**Side find**: same-scope redeclaration miscompile (new §2 row) — the probe itself was the repro.
+
+**Follow-up same day (gen-19)** — hardening the guards surfaced a FOURTH root, a pre-existing
+shipping crash: `removeExportEntry` (`transam/index.ms`) shifted `registry.entries` and popped but
+NEVER touched `registry.moduleIndex` — the removed path kept its mapping and every later entry's
+index went stale. `findModuleExports` then reads `entries[staleIdx]`: out of bounds (loud — measured
+`index 3 out of bounds (length 3)` killing a real `msc lsp` completion request on gen-18 after a
+didChange) or the WRONG module's exports (silent, when sizes line up). Reachable by ANY edit that
+invalidates exports, macros or not. Fix: drop the removed path from `moduleIndex` and re-point the
+shifted tail. Second lesson, measured three times this session: **raw-db probes lie** — a test
+driving `dbSetFileText` directly never records the dependent's import edges, so didChange
+invalidation can't reach it and the dependent stays green-stale; the guard test now drives
+`handleDidOpen`/`handleDidChange` (lifecycle parity) and the refresh works. Gates: battery
+**3356/3356**, E2E didChange probe (padX appears in completion after editing the macro module).
 
 ### 2026-07-28 — a missing function-typed field was a silent SIGSEGV (found starting S2) ⚠ UNCOMMITTED
 
