@@ -298,7 +298,7 @@ function was needed, and the emitted C shows DRC injecting `msIncref` per copied
 
 ---
 
-## §2 — Open compiler bugs (13) — rows 1-3 + 5-7 re-verified 2026-07-25 late; row 4 added 2026-07-26 late; row 8 added 2026-07-27 late; row 9 CLOSED 2026-07-28 (kept struck-through, its severity note is a lesson) and two rows were added the same day by the probes that closed it; same-scope redeclaration row added 2026-07-29; asBytes-on-C row added 2026-07-29 night; the A4 "dual-Node" row was WITHDRAWN — misdiagnosis, see §5
+## §2 — Open compiler bugs (15) — rows 1-3 + 5-7 re-verified 2026-07-25 late; row 4 added 2026-07-26 late; row 8 added 2026-07-27 late; row 9 CLOSED 2026-07-28 (kept struck-through, its severity note is a lesson) and two rows were added the same day by the probes that closed it; same-scope redeclaration row added 2026-07-29; asBytes-on-C row added 2026-07-29 night and CLOSED 2026-07-29 late night (kernel pair landed, see §5) — the probes that closed it added two rows (uint8[] method widening, bug006 standalone divergence) and the /trace-nim audit added a third (bridge ownership, 3 holes); the A4 "dual-Node" row was WITHDRAWN — misdiagnosis, see §5
 
 | bug | repro | measured today |
 |---|---|---|
@@ -315,7 +315,10 @@ function was needed, and the emitted C shows DRC injecting `msIncref` per copied
 | **an all-nullable interface accepts ANY object** (NEW 2026-07-28, found in S2) | `n.layoutStyle = style` in `src/platform/void/host.ms` — `layoutStyle: FlexStyle \| null`, `style: Style` (a DIFFERENT interface) | ❌ type-checks silently. Every `FlexStyle` field is nullable, and with no missing-field rule (Nim default-init, NIM-REF §1) an all-nullable interface is structurally satisfied by anything — so assignability stops discriminating. S1 shipped this: the void host stored a Neon `Style` where yoga expected a `FlexStyle`, and layout silently read garbage. Fixed Neon-side (`asFlexStyle(style)`), but the CHECKER hole is open. The bug058 rule does not cover it: no field is function-typed. |
 | **`async` helper called from a macro body** (NEW 2026-07-28, found probing row 9) | macro body does `value: bad(2)` where `async function bad(n: number): Promise<number>` | ❌ compiles clean — no diagnostic from the module check OR the engine check. The macro VM cannot run async, so the spliced value cannot be the awaited number. ⚠ **only the SILENCE is measured**; the emitted value was not inspected. Verify before assuming it is a wrong-answer bug |
 | **same-scope redeclaration is not a checker error → miscompile** (NEW 2026-07-29, found writing the LSP probe) | `let ei = 0; … const ei = findExportedSymbol(…);` in ONE scope | ❌ checker PASSES, C fails (when lucky): the second decl reuses the first's C slot with the FIRST type — `incompatible pointer to integer conversion assigning to 'int32_t' from 'ExportedSymInfo *'`. TS/Nim both reject redeclaration in the same scope. If the two types happen to be ABI-compatible the C compiles and reads garbage silently — same family as the `string = number` row |
-| **`asBytes` miscompiles on the C backend in every form** (NEW 2026-07-29 night, found probing single-source std string) | `const sb = s.asBytes()` AND chain `s.asBytes().length`, `msc run` | ❌ checker PASSES, C fails: `assigning to 'msUint8Array *' from incompatible type 'msUint8Array'` — emitted `(sb_1_ = *((msUint8Array*)&(s)))`. Declared `@builtin("AsBytes")` in index.cms since forever, but NO std/user code ever calls it on the C path (the whole jms string layer uses it on JS), so it was never exercised. **This is the single blocker for writing std string ONCE in MS for all backends** (Nim model: shared byte-loop algorithms + per-backend kernel — the 18 functions ported to jms 2026-07-29 would compile on C as-is). Companion gap, not a bug: `asString` (uint8[]→string) does not exist on cms at all |
+| ~~`asBytes` miscompiles on the C backend in every form~~ | `src/test/fixedbugs/bug063_asbytes_zero_copy_bridge.ms` | ✅ **CLOSED 2026-07-29 late night** — HiddenStdConv Cursor branch now picks the cast shape per direction (string = fat value, array = pointer). ⚠ the row's "asString does not exist on cms" claim was WRONG — `@builtin("AsString")` was in index.cms all along, same broken emission, fixed by the same patch. See §5 |
+| **uint8[] widens onto the 15 remaining number[] extern methods → silent byte corruption on C** (NEW 2026-07-29 late night, found by the probe that closed the asBytes row) | `const b: uint8[] = []; b.push(104); b[0]` was the proven case — `msNumberArrayPush(b, 104.0)` stores an 8-byte double in a 1-byte payload, reads give the double's LOW BYTE (104 → 0). push is FIXED (bug064: uint8[] overload in index.cms + exact-receiver tiebreak in checker), but at/pop/shift/indexOf/includes/slice/concat/reverse/sort/fill/count/join/setLength/capacity/splice still have NO uint8[] overloads and still bind number[] | ❌ silent wrong answers on C for every listed method on a uint8[] receiver; std's own `serialize/json/accessors.ms:168` pushed uint8 through the broken path before the fix. **Must close before shared.ms algorithms use anything beyond push + indexing.** Runtime only ships Push/At/Destroy/New for uint8 — the other 13 need C runtime fns too |
+| **bug006 fails standalone but battery is green — harness/mono path divergence** (NEW 2026-07-29 late night, pre-existing at gen-21) | `msc test src/test/fixedbugs/bug006.ms` under INSTALLED gen-21, zero local changes | ❌ C fails: `msArrayAccess((*(*arr)), 0)` — double deref of a generic indirect param after macro round-trip. Same file passes inside the full battery graph. Standalone-vs-graph compile takes a different mono/indirection path. Also true of bug062 in a worktree (needs its uncommitted checker half — that one is expected). Filed so the next person who runs fixedbugs standalone doesn't chase it as THEIR regression (this session lost ~30 min to exactly that) |
+| **zero-copy bridge ownership model incomplete — 3 measured holes** (NEW 2026-07-29 /trace-nim audit of the bug063 fix; probes `audit1-3` in /private/tmp/asbytes-probe) | (a) `(a + b).asBytes()` — rvalue receiver; (b) `function f() { const buf: uint8[] = []; …push…; return buf.asString(); }` then read after other allocations; (c) `const v = src.asBytes(); v.push(33)` | (a) ❌ C fail: `&` of a call result is not an lvalue — Nim materializes temps (NIM-REF row 49 says our `rvalueLower` receiver→temp transform is the sanctioned home; the bridge emission just isn't routed through it). (b) ❌ **UAF, measured**: audit3 prints heap garbage — `asString` result is Cursor-borrow but the OWNED array is destroyed at scope end; Nim's cast transfers ownership WITH the value ({len,p} bits move; source treated as moved). Staged Nim-faithful fix: copying kernel first (`cstrToNimstr` shape — Nim-sanctioned), zero-copy MOVE at analyzer last-use later. **Blocks shared.ms migration** — every algorithm's exit path returns a built string. (c) ❌ aliasing, measured: view = `&src` reinterpreted, push mutates the string's len AND data in place; on growth `msArrayPrepareAdd` reallocs a payload it doesn't own ("uniquely owned" comment = the precondition the bridge broke) and has NO MS_STRLIT_FLAG guard (Nim `prepareSeqAddUninit` checks the flag and COPIES) — a literal's view push = realloc on static memory. In-scope READ path (all 11 bug063/064 tests) is measured-correct and stays green |
 
 - **nullfn bind-order** — `apply((v:number)=>v+1, 10)` binds T=int32 from arg 1, overriding the arg-0
   arrow. Nim `paramTypesMatchAux` binds progressively IN ARG ORDER → T=number. Do NOT fix by loosening
@@ -413,6 +416,58 @@ Still untracked: `docs/EDITOR*.md` (design scratch).
 ---
 
 ## §5 — Fixed (history + root-cause ledger, append-only)
+
+### 2026-07-29 (late night) — asBytes/asString C kernels + uint8[].push wrote doubles ✅ COMMITTED `234f75b`+`446148e`+`d835512`+`9a3dc38`
+
+The §2 asBytes row is CLOSED; the probe that closed it found a second, worse bug. Verified in
+`/tmp/wt-asbytes` worktree (HEAD + only these patches): battery **3356/3356**, Neon sweep clean,
+dual-backend probe **16/16 identical** C vs JS, bug063 + bug064 both proven RED under installed
+gen-21.
+
+**Root 1 — one cast shape for two representations** (`src/codegen/c/expressions.ms` HiddenStdConv
+Cursor branch). Both bridge directions emitted `*((T*)&(inner))` — correct only for value→value.
+But string is a fat VALUE (`msString {len,p}`) while array locals are POINTERS (`msUint8Array*`):
+string→bytes needs `((msUint8Array*)&(inner))`, bytes→string needs `*((msString*)(inner))`. The
+branch now picks by `convType.kind`. ⚠ The filed row claimed "asString does not exist on cms" —
+WRONG: `@builtin("AsString")` sat in `std/core/array/index.cms:261` all along, broken the same way,
+fixed by the same patch. Guard: `bug063_asbytes_zero_copy_bridge.ms` (7 tests incl. the
+buildString exit path `[] → push → asString`).
+
+**Root 2 — uint8[].push dispatched to msNumberArrayPush** (std + checker). std declared push only
+for `number[]`/`string[]`/`T[]`; a uint8[] receiver WIDENED onto number[] → 8-byte doubles stored
+into a 1-byte payload → reads return the double's low byte (`104` → `0`). len right, data garbage,
+zero diagnostics — and std's own `serialize/json/accessors.ms:168` shipped through it on C. Fix in
+two halves: `push(this arr: uint8[], value: uint8) from "&msUint8ArrayPush"` in index.cms (runtime
+fn existed, was NEVER referenced anywhere in src/), plus an exact-receiver TIEBREAKER in
+`resolveExtensionOverloadCall` — adding the overload alone turned every uint8 push into "Ambiguous
+call" because scoring strips receivers, so `this uint8[]` vs `this number[]` tied. Guard:
+`bug064_uint8_push_number_dispatch.ms` (4 tests incl. 100-push growth).
+
+**Design lesson**: the first fix attempt PRE-FILTERED candidates to exact-receiver matches before
+scoring — rejected in favor of a tiebreak at `idx === -2` only. A tiebreak cannot change any call
+that already resolves; a pre-filter can. (bug006 going red mid-session looked like the pre-filter's
+fault and was actually the pre-existing standalone divergence now filed in §2 — but the tiebreak
+design is still the right one.)
+
+**Method note**: the dual-backend diff probe (one source, `msc run` + `node out/x.js`, diff) is
+what proved parity — same recipe as the jms parity session, now also covering the C kernels.
+
+**/trace-nim audit (same night, user-requested)** — verdicts per fix, Nim source read this session:
+(1) cast-shape emission = **SAME** (Nim `NimStringV2`/`NimSeqV2` are BOTH fat values — one cast
+shape suffices there; our two shapes are the correct adaptation to the documented
+DIVERGE-INTENTIONAL "MS arrays are reference types") **but INCOMPLETE at 3 edges** — now the §2
+"zero-copy bridge ownership" row (rvalue receiver, asString exit UAF, borrowed-view mutation; all
+three MEASURED, probes audit1-3). The bug063 "buildString exit path" test only proves the IN-SCOPE
+case — header comment amended. (2) uint8 push overload = SAME-in-spirit within the per-elem-type
+runtime repr divergence. (3) exact-receiver tiebreak = **DIVERGE-INCOMPLETE toward Nim**: Nim
+sigmatch scores the receiver as arg 0 (never strips it), so this bug class can't exist there; the
+tiebreak is a staged step using `sameType` as identity — exactly what NIM-REF row 76 prescribes
+("do NOT reuse typeRelation's Exact as identity") — and its lesson (a scoring-relation change
+broke overload selection) is why tiebreak-not-prefilter was right: the pre-filter variant was
+tried first and withdrawn. Full alignment (receiver participates in scoring) is a separate arc.
+
+Files: `src/codegen/c/expressions.ms`, `src/checker/checkExprPass.ms` (+`sameType` import),
+`std/core/array/index.cms`, `src/test/fixedbugs/{bug063,bug064,index}.ms`.
 
 ### 2026-07-29 (night) — jms string parity + four cross-backend divergences ✅ COMMITTED `5d7b0dc`+`80d12da`
 
