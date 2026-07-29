@@ -298,7 +298,7 @@ function was needed, and the emitted C shows DRC injecting `msIncref` per copied
 
 ---
 
-## §2 — Open compiler bugs (12) — rows 1-3 + 5-7 re-verified 2026-07-25 late; row 4 added 2026-07-26 late; row 8 added 2026-07-27 late; row 9 CLOSED 2026-07-28 (kept struck-through, its severity note is a lesson) and two rows were added the same day by the probes that closed it; same-scope redeclaration row added 2026-07-29; the A4 "dual-Node" row was WITHDRAWN — misdiagnosis, see §5
+## §2 — Open compiler bugs (13) — rows 1-3 + 5-7 re-verified 2026-07-25 late; row 4 added 2026-07-26 late; row 8 added 2026-07-27 late; row 9 CLOSED 2026-07-28 (kept struck-through, its severity note is a lesson) and two rows were added the same day by the probes that closed it; same-scope redeclaration row added 2026-07-29; asBytes-on-C row added 2026-07-29 night; the A4 "dual-Node" row was WITHDRAWN — misdiagnosis, see §5
 
 | bug | repro | measured today |
 |---|---|---|
@@ -315,6 +315,7 @@ function was needed, and the emitted C shows DRC injecting `msIncref` per copied
 | **an all-nullable interface accepts ANY object** (NEW 2026-07-28, found in S2) | `n.layoutStyle = style` in `src/platform/void/host.ms` — `layoutStyle: FlexStyle \| null`, `style: Style` (a DIFFERENT interface) | ❌ type-checks silently. Every `FlexStyle` field is nullable, and with no missing-field rule (Nim default-init, NIM-REF §1) an all-nullable interface is structurally satisfied by anything — so assignability stops discriminating. S1 shipped this: the void host stored a Neon `Style` where yoga expected a `FlexStyle`, and layout silently read garbage. Fixed Neon-side (`asFlexStyle(style)`), but the CHECKER hole is open. The bug058 rule does not cover it: no field is function-typed. |
 | **`async` helper called from a macro body** (NEW 2026-07-28, found probing row 9) | macro body does `value: bad(2)` where `async function bad(n: number): Promise<number>` | ❌ compiles clean — no diagnostic from the module check OR the engine check. The macro VM cannot run async, so the spliced value cannot be the awaited number. ⚠ **only the SILENCE is measured**; the emitted value was not inspected. Verify before assuming it is a wrong-answer bug |
 | **same-scope redeclaration is not a checker error → miscompile** (NEW 2026-07-29, found writing the LSP probe) | `let ei = 0; … const ei = findExportedSymbol(…);` in ONE scope | ❌ checker PASSES, C fails (when lucky): the second decl reuses the first's C slot with the FIRST type — `incompatible pointer to integer conversion assigning to 'int32_t' from 'ExportedSymInfo *'`. TS/Nim both reject redeclaration in the same scope. If the two types happen to be ABI-compatible the C compiles and reads garbage silently — same family as the `string = number` row |
+| **`asBytes` miscompiles on the C backend in every form** (NEW 2026-07-29 night, found probing single-source std string) | `const sb = s.asBytes()` AND chain `s.asBytes().length`, `msc run` | ❌ checker PASSES, C fails: `assigning to 'msUint8Array *' from incompatible type 'msUint8Array'` — emitted `(sb_1_ = *((msUint8Array*)&(s)))`. Declared `@builtin("AsBytes")` in index.cms since forever, but NO std/user code ever calls it on the C path (the whole jms string layer uses it on JS), so it was never exercised. **This is the single blocker for writing std string ONCE in MS for all backends** (Nim model: shared byte-loop algorithms + per-backend kernel — the 18 functions ported to jms 2026-07-29 would compile on C as-is). Companion gap, not a bug: `asString` (uint8[]→string) does not exist on cms at all |
 
 - **nullfn bind-order** — `apply((v:number)=>v+1, 10)` binds T=int32 from arg 1, overriding the arg-0
   arrow. Nim `paramTypesMatchAux` binds progressively IN ARG ORDER → T=number. Do NOT fix by loosening
@@ -412,6 +413,26 @@ Still untracked: `docs/EDITOR*.md` (design scratch).
 ---
 
 ## §5 — Fixed (history + root-cause ledger, append-only)
+
+### 2026-07-29 (night) — jms string parity + four cross-backend divergences ✅ COMMITTED `5d7b0dc`+`80d12da`
+
+Closed the §7 "~19 exports behind cms" debt: 18 functions ported as pure-MS byte loops with
+semantics read from `runtime/core/string.c` (not guessed), + `lastIndexOf` silent drift
+(missing `startIdx`, int32 return). **Root of the divergence class**: the old jms borrowed native
+JS behaviour via `@emit(toJSStr→native→fromJSStr)` round-trips where the C runtime is byte-based —
+so `toLowerCase` (Unicode vs ASCII `tolower`), `replace` (`$`-patterns vs literal), `split("")`
+(UTF-16 chars vs bytes) returned DIFFERENT answers per backend from the same source. Nim's rule
+(traced in `strutils.nim`, 3 `defined(js)` sites total): algorithms are pure byte loops shared by
+every backend; native emit ONLY at the C-library boundary (`c_snprintf` class) — so `parseFloat`/
+`parseInt` keep `Number.*`, everything else became byte loops. `slice`/`charAt`/`charCodeAt` also
+round-trip but were MEASURED equal to C (C's slice is UTF-16-char-indexed TS semantics by design) —
+left alone, perf-only. Two shipping bugs the surface guard could not see: `.jms` exports SHADOW JS
+globals (`parseFloat` called itself — stack overflow), and the with-std harness validates export
+signatures, NOT bodies (three int64/int32 mismatches passed a green suite; caught by probe build).
+Gates: battery 3356/3356, js/basic 2770/2770 (red-proven guard), js/result 2766/2766, Neon 16/16,
+dual-backend probe 59/59 identical. Feasibility probes for single-source std opened the §2 asBytes
+row (C codegen broken in every form; `asString` absent from cms) — that row is now the only blocker
+to writing std string once in MS for all backends.
 
 ### 2026-07-29 (late evening, gen-21) — JS backend: omitted struct-literal fields are `undefined`, not `null` ⚠ UNCOMMITTED
 
@@ -1492,10 +1513,20 @@ battery for closure/inference work.**
 
 Each is cheap, none blocks anything, all were surfaced by the sessions that closed §1.
 
-- **JS std string is ~19 exports behind cms** (padStart/padEnd/repeat/substring/trimStart/trimEnd/
-  parseInt/parseFloat/replaceAll/equalsIgnoreCase/…, measured by export diff 2026-07-29). Neon
-  browser code will keep tripping on these one name at a time — port the missing block in one
-  sitting instead.
+- ~~**JS std string is ~19 exports behind cms**~~ **CLOSED 2026-07-29 (night)**: 18 exports ported
+  as pure-MS byte loops matching `runtime/core/string.c` semantics + `lastIndexOf` gained
+  `startIdx`/int64 (silent signature drift). Same pass fixed FOUR cross-backend divergences —
+  same source, different answers per backend: `toLowerCase/toUpperCase` (JS Unicode vs C ASCII
+  `tolower`; `"ÉÀ"` repro), `replace` (JS interprets `$&`/`$1`/`$$`, C is literal), `split("")`
+  (UTF-16 chars vs BYTES), `byteLength` (int32 vs int64). Surface guard in `src/test/js/basic.ms`
+  (red-proven); semantics verified by dual-backend probe — one source under `./msc run` vs `node`,
+  59/59 values identical (the suite has no C-vs-JS runner, so the probe is the only guard for this
+  class). ⚠ Two traps for future `.jms` work: a `.jms` export SHADOWS the JS global of the same
+  name (`parseFloat` recursed into itself — use `Number.*`), and the with-std harness checks std
+  export signatures only, NOT bodies (three int64/int32 errors passed a green suite). Committed
+  recompiler `5d7b0dc`+`80d12da`. Still open: `String<T>` (`String(42)` is a type error on JS —
+  collides with `extern class String`; needs a design call, see the same-scope redeclaration row).
+  Follow-up: single-source std string blocked only by the §2 asBytes row.
 - ~~**The gen-20 two-phase fix has NO automated guard.**~~ **CLOSED 2026-07-29 (late evening,
   gen-21 session)**: `compileProjectToJS` refactored to two-phase (`emitJSTwoPhase` — expand ALL,
   then transform ALL, macro diags surfaced as `ERROR: expand [mod]`), new
