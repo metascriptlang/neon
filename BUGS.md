@@ -316,9 +316,9 @@ function was needed, and the emitted C shows DRC injecting `msIncref` per copied
 | **`async` helper called from a macro body** (NEW 2026-07-28, found probing row 9) | macro body does `value: bad(2)` where `async function bad(n: number): Promise<number>` | ❌ compiles clean — no diagnostic from the module check OR the engine check. The macro VM cannot run async, so the spliced value cannot be the awaited number. ⚠ **only the SILENCE is measured**; the emitted value was not inspected. Verify before assuming it is a wrong-answer bug |
 | **same-scope redeclaration is not a checker error → miscompile** (NEW 2026-07-29, found writing the LSP probe) | `let ei = 0; … const ei = findExportedSymbol(…);` in ONE scope | ❌ checker PASSES, C fails (when lucky): the second decl reuses the first's C slot with the FIRST type — `incompatible pointer to integer conversion assigning to 'int32_t' from 'ExportedSymInfo *'`. TS/Nim both reject redeclaration in the same scope. If the two types happen to be ABI-compatible the C compiles and reads garbage silently — same family as the `string = number` row |
 | ~~`asBytes` miscompiles on the C backend in every form~~ | `src/test/fixedbugs/bug063_asbytes_zero_copy_bridge.ms` | ✅ **CLOSED 2026-07-29 late night** — HiddenStdConv Cursor branch now picks the cast shape per direction (string = fat value, array = pointer). ⚠ the row's "asString does not exist on cms" claim was WRONG — `@builtin("AsString")` was in index.cms all along, same broken emission, fixed by the same patch. See §5 |
-| **uint8[] widens onto the 15 remaining number[] extern methods → silent byte corruption on C** (NEW 2026-07-29 late night, found by the probe that closed the asBytes row) | `const b: uint8[] = []; b.push(104); b[0]` was the proven case — `msNumberArrayPush(b, 104.0)` stores an 8-byte double in a 1-byte payload, reads give the double's LOW BYTE (104 → 0). push is FIXED (bug064: uint8[] overload in index.cms + exact-receiver tiebreak in checker), but at/pop/shift/indexOf/includes/slice/concat/reverse/sort/fill/count/join/setLength/capacity/splice still have NO uint8[] overloads and still bind number[] | ❌ silent wrong answers on C for every listed method on a uint8[] receiver; std's own `serialize/json/accessors.ms:168` pushed uint8 through the broken path before the fix. **Must close before shared.ms algorithms use anything beyond push + indexing.** Runtime only ships Push/At/Destroy/New for uint8 — the other 13 need C runtime fns too |
+| **uint8[] widens onto the 15 remaining number[] extern methods → silent byte corruption on C** (NEW 2026-07-29 late night, found by the probe that closed the asBytes row) | `const b: uint8[] = []; b.push(104); b[0]` was the proven case — `msNumberArrayPush(b, 104.0)` stores an 8-byte double in a 1-byte payload, reads give the double's LOW BYTE (104 → 0). push is FIXED (bug064: uint8[] overload in index.cms + exact-receiver tiebreak in checker), but at/pop/shift/indexOf/includes/slice/concat/reverse/sort/fill/count/join/setLength/capacity/splice still have NO uint8[] overloads and still bind number[] | ❌ silent wrong answers on C for every listed method on a uint8[] receiver; std's own `serialize/json/accessors.ms:168` pushed uint8 through the broken path before the fix. **Must close before shared.ms algorithms use anything beyond push + indexing.** Runtime only ships Push/At/Destroy/New for uint8 — the other 13 need C runtime fns too. **NEW facet (2026-07-30, found red-proving bug065):** even push still mis-dispatches when the arg is a NON-LITERAL number — `let x = 65; b.push(x)` reads back 0 silently (bug064's tiebreak fires only when the uint8 overload is a candidate; a number-typed arg disqualifies it). Byte-loop code must cast (`as uint8` — Nim-faithful, Nim requires `byte(x)` too), but the silent number[] fallback stays a trap until this row closes |
 | **bug006 fails standalone but battery is green — harness/mono path divergence** (NEW 2026-07-29 late night, pre-existing at gen-21) | `msc test src/test/fixedbugs/bug006.ms` under INSTALLED gen-21, zero local changes | ❌ C fails: `msArrayAccess((*(*arr)), 0)` — double deref of a generic indirect param after macro round-trip. Same file passes inside the full battery graph. Standalone-vs-graph compile takes a different mono/indirection path. Also true of bug062 in a worktree (needs its uncommitted checker half — that one is expected). Filed so the next person who runs fixedbugs standalone doesn't chase it as THEIR regression (this session lost ~30 min to exactly that) |
-| **zero-copy bridge ownership model incomplete — 3 measured holes** (NEW 2026-07-29 /trace-nim audit of the bug063 fix; probes `audit1-3` in /private/tmp/asbytes-probe) | (a) `(a + b).asBytes()` — rvalue receiver; (b) `function f() { const buf: uint8[] = []; …push…; return buf.asString(); }` then read after other allocations; (c) `const v = src.asBytes(); v.push(33)` | (a) ❌ C fail: `&` of a call result is not an lvalue — Nim materializes temps (NIM-REF row 49 says our `rvalueLower` receiver→temp transform is the sanctioned home; the bridge emission just isn't routed through it). (b) ❌ **UAF, measured**: audit3 prints heap garbage — `asString` result is Cursor-borrow but the OWNED array is destroyed at scope end; Nim's cast transfers ownership WITH the value ({len,p} bits move; source treated as moved). Staged Nim-faithful fix: copying kernel first (`cstrToNimstr` shape — Nim-sanctioned), zero-copy MOVE at analyzer last-use later. **Blocks shared.ms migration** — every algorithm's exit path returns a built string. (c) ❌ aliasing, measured: view = `&src` reinterpreted, push mutates the string's len AND data in place; on growth `msArrayPrepareAdd` reallocs a payload it doesn't own ("uniquely owned" comment = the precondition the bridge broke) and has NO MS_STRLIT_FLAG guard (Nim `prepareSeqAddUninit` checks the flag and COPIES) — a literal's view push = realloc on static memory. In-scope READ path (all 11 bug063/064 tests) is measured-correct and stays green |
+| ~~zero-copy bridge ownership model incomplete — 3 measured holes~~ | guards `src/test/fixedbugs/{bug065_asstring_exit_uaf,bug066_asbytes_rvalue_receiver,bug067_literal_view_push_static_clobber}.ms` — each proven RED against the exact hole | ✅ **CLOSED 2026-07-30** (see §5): (a) rvalue receiver → `lowerRvalueBridge` (AsBytes-gated receiver→temp hoist, flat splice) wired into the pipeline — discovery: `lowerRvalue` was NEVER wired despite the index.ms header listing it as pass #21; (b) asString exit UAF → interception removed, call falls to plain extern `msAsString` = COPYING kernel (cstrToNimstr shape) in `runtime/core/array.c`; zero-copy MOVE at analyzer last-use stays a later arc; (c) WORSE than filed — cap flag bits (STRLIT bit 62 + ASCII-cache bits 61/60) read RAW made push's room check see "infinite cap" → in-place writes to static memory that never even reached `msArrayPrepareAdd`; fix = masked compare + flag divert in `msUint8ArrayPush`, copy-on-flag in both `msArrayPrepareAdd/Uninit` (Nim `prepareSeqAddUninit` parity). STILL OPEN by design: heap-source view mutation writes through (Nim-faithful reinterpret semantics), and a mutated literal-view's copied payload may leak if the analyzer skips destroy on literal-init locals (bounded, noted) |
 
 - **nullfn bind-order** — `apply((v:number)=>v+1, 10)` binds T=int32 from arg 1, overriding the arg-0
   arrow. Nim `paramTypesMatchAux` binds progressively IN ARG ORDER → T=number. Do NOT fix by loosening
@@ -416,6 +416,56 @@ Still untracked: `docs/EDITOR*.md` (design scratch).
 ---
 
 ## §5 — Fixed (history + root-cause ledger, append-only)
+
+### 2026-07-30 — zero-copy bridge ownership: all 3 audit holes closed ⚠ UNCOMMITTED, verified in `/tmp/wt-asbytes`
+
+The §2 "zero-copy bridge ownership" row is CLOSED — guards bug065/066/067, each proven RED against
+its exact hole. Gates in the worktree (live HEAD `9a3dc38` + only these patches): battery
+**3364/3364** (166 files; 3356 + 7 new guard tests + 1 from the parallel session's corpus commits),
+Neon sweep clean (core/render/platform globs, 0 fail), dual-backend probe **16/16 identical** C vs
+JS. ⚠ Installed msc still gen-21 — NONE of gen-22-to-be is in the installed binary.
+
+**Hole (b), asString exit UAF — root & fix**: `@builtin("AsString")` lowered to HiddenStdConv +
+Cursor = zero-copy BORROW of the array payload; the owned array dies at scope end → returned
+string dangles. Fix per plan: interception deleted in `builtinLower.ms` (AsBytes keeps the borrow —
+read path measured-correct), so the call falls through to the plain extern and a new copying
+kernel `msAsString(msUint8Array*)` (`runtime/core/array.c`, `msStringNew` = cstrToNimstr shape)
+returns a fresh OWNED string. Zero-copy MOVE via analyzer last-use = later arc. JS untouched (jms
+has its own real asString).
+
+**Hole (a), rvalue receiver — root & fix**: `const rv = (a+b).asBytes()` emitted
+`(msUint8Array*)&(msStringConcat(...))` — `&` of a call result. DISCOVERY: `rvalueLower.ms` exists
+with green inline tests and a pipeline-header listing (#21) but was **never imported nor called**
+— the §2 row's "just isn't routed through it" understated it. Fix: new `lowerRvalueBridge` in
+`rvalueLower.ms` — AsBytes-gated (`resolvedSym.builtinKind === "AsBytes"`), hoists an rvalue
+receiver to a peer temp at VariableDecl-init and ExprStmt positions via `walkExpandBlocks` flat
+splice (callHoist shape — a BlockStmt wrap would scope the binding away). Wired `!jsBackend`
+before `lowerExtensionMethod`. The GENERAL all-methods hoist stays unwired (own battery-soak arc).
+
+**Hole (c), borrowed-view push — root WORSE than filed**: the filed row said `msArrayPrepareAdd`
+lacks a STRLIT guard; measured reality: prepareAdd was never even reached. String payload caps
+carry flag bits (STRLIT 62, ASCII_CHECKED 61, ASCII 60 — the last two set lazily by
+`msStringIsAscii` on HEAP strings too) and every push site compares cap RAW → flagged cap reads as
+astronomically large → "room available" → in-place write. A 40-push through `"abc".asBytes()`
+silently overwrote the NEXT static literal (macOS links the payload writable — no SIGBUS, probe
+printed the neighbor as `XXXXXXXXXXXXXX`). Fix (Nim `prepareSeqAddUninit` parity):
+`msUint8ArrayPush` masks the cap for its room check and diverts any flagged payload;
+`msArrayPrepareAdd/Uninit` copy a flagged payload to a fresh owned one (never realloc, never free
+the source; stale ASCII bits dropped with the copy — cache-coherence fix included).
+
+**Guard traps burned this session**: (1) the first bug065 red-proof was POLLUTED — audit3's
+measured garbage was TWO stacked bugs (push-arg mis-dispatch writing doubles + the UAF), and with
+the dispatch noise removed (`as uint8`) the original asserts went green under the OLD compiler
+(72-byte freed block simply not reused). Re-proved RED with a deterministic shape: grow-past-cap
+realloc frees the borrowed payload, then a same-size-class allocation reuses it (LIFO). (2) In
+bug067, `neighbor === "hello-neighbor"` stays TRUE under the bug — both sides read the same
+clobbered payload; assert via `charCodeAt`. (3) `msc run --target=js` doesn't build the bundle —
+use `msc build --target=js` + `node out/x.js` for dual-backend probes.
+
+Files: `src/transform/native/builtinLower.ms`, `src/transform/lowering/rvalueLower.ms`,
+`src/transform/index.ms`, `runtime/core/array.{c,h}`,
+`src/test/fixedbugs/{bug065,bug066,bug067,index}.ms`. New §2 facet filed: uint8[].push with a
+non-literal number arg still mis-dispatches (silent 0) — see the 15-methods row.
 
 ### 2026-07-29 (late night) — asBytes/asString C kernels + uint8[].push wrote doubles ✅ COMMITTED `234f75b`+`446148e`+`d835512`+`9a3dc38`
 
