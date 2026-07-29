@@ -319,6 +319,7 @@ function was needed, and the emitted C shows DRC injecting `msIncref` per copied
 | **uint8[] widens onto the 15 remaining number[] extern methods → silent byte corruption on C** (NEW 2026-07-29 late night, found by the probe that closed the asBytes row) | `const b: uint8[] = []; b.push(104); b[0]` was the proven case — `msNumberArrayPush(b, 104.0)` stores an 8-byte double in a 1-byte payload, reads give the double's LOW BYTE (104 → 0). push is FIXED (bug064: uint8[] overload in index.cms + exact-receiver tiebreak in checker), but at/pop/shift/indexOf/includes/slice/concat/reverse/sort/fill/count/join/setLength/capacity/splice still have NO uint8[] overloads and still bind number[] | ❌ silent wrong answers on C for every listed method on a uint8[] receiver; std's own `serialize/json/accessors.ms:168` pushed uint8 through the broken path before the fix. **Must close before shared.ms algorithms use anything beyond push + indexing.** Runtime only ships Push/At/Destroy/New for uint8 — the other 13 need C runtime fns too. **NEW facet (2026-07-30, found red-proving bug065):** even push still mis-dispatches when the arg is a NON-LITERAL number — `let x = 65; b.push(x)` reads back 0 silently (bug064's tiebreak fires only when the uint8 overload is a candidate; a number-typed arg disqualifies it). Byte-loop code must cast (`as uint8` — Nim-faithful, Nim requires `byte(x)` too), but the silent number[] fallback stays a trap until this row closes |
 | **bug006 fails standalone but battery is green — harness/mono path divergence** (NEW 2026-07-29 late night, pre-existing at gen-21) | `msc test src/test/fixedbugs/bug006.ms` under INSTALLED gen-21, zero local changes | ❌ C fails: `msArrayAccess((*(*arr)), 0)` — double deref of a generic indirect param after macro round-trip. Same file passes inside the full battery graph. Standalone-vs-graph compile takes a different mono/indirection path. Also true of bug062 in a worktree (needs its uncommitted checker half — that one is expected). Filed so the next person who runs fixedbugs standalone doesn't chase it as THEIR regression (this session lost ~30 min to exactly that) |
 | ~~zero-copy bridge ownership model incomplete — 3 measured holes~~ | guards `src/test/fixedbugs/{bug065_asstring_exit_uaf,bug066_asbytes_rvalue_receiver,bug067_literal_view_push_static_clobber}.ms` — each proven RED against the exact hole | ✅ **CLOSED 2026-07-30** (see §5): (a) rvalue receiver → `lowerRvalueBridge` (AsBytes-gated receiver→temp hoist, flat splice) wired into the pipeline — discovery: `lowerRvalue` was NEVER wired despite the index.ms header listing it as pass #21; (b) asString exit UAF → interception removed, call falls to plain extern `msAsString` = COPYING kernel (cstrToNimstr shape) in `runtime/core/array.c`; zero-copy MOVE at analyzer last-use stays a later arc; (c) WORSE than filed — cap flag bits (STRLIT bit 62 + ASCII-cache bits 61/60) read RAW made push's room check see "infinite cap" → in-place writes to static memory that never even reached `msArrayPrepareAdd`; fix = masked compare + flag divert in `msUint8ArrayPush`, copy-on-flag in both `msArrayPrepareAdd/Uninit` (Nim `prepareSeqAddUninit` parity). STILL OPEN by design: heap-source view mutation writes through (Nim-faithful reinterpret semantics), and a mutated literal-view's copied payload may leak if the analyzer skips destroy on literal-init locals (bounded, noted) |
+| **shared-std string byte-loops miscompile in the SELF-HOST build — "export" lexes as ex\|port** (NEW 2026-07-30 late, found attempting the shared.ms migration) | apply `/tmp/string-migration.patch` (re-derivable: `shared.ms` parked UNTRACKED at `std/core/string/shared.ms`; remove the 22 algorithm externs from index.cms + the bodies from index.jms, append the export-list re-export to both), rebuild msc with a GOOD compiler, then `msc run` ANY file | ❌ the produced compiler is broken: std loading dies with `Undefined variable 'ex' / 'port' / 'expo' / 'rt'` (identifier boundaries cut mid-word), `@include` paths garble to `*.h`, phantom "Parse: Unexpected token" errors. EVIDENCE CHAIN: (1) the SAME shared.ms compiled into small programs is byte-perfect — 36/36 dual-backend diff incl. UTF-8 + empty string; (2) still broken with CLEAN std + known-good builder → the orphan-JSDoc accident of attempt 1 is exonerated; (3) breakage exists only in the 287-module whole-compiler context → context-dependent miscompile (suspects: int64 params / default args / extension dispatch under mono+DCE at scale). Bisect recipe: wire ONE function's cms extern → shared re-export at a time (start byteSlice/byteAt — lexer-critical), rebuild with the good wt msc, probe `msc run` on a 1-line file |
 
 - **nullfn bind-order** — `apply((v:number)=>v+1, 10)` binds T=int32 from arg 1, overriding the arg-0
   arrow. Nim `paramTypesMatchAux` binds progressively IN ARG ORDER → T=number. Do NOT fix by loosening
@@ -417,7 +418,7 @@ Still untracked: `docs/EDITOR*.md` (design scratch).
 
 ## §5 — Fixed (history + root-cause ledger, append-only)
 
-### 2026-07-30 — zero-copy bridge ownership: all 3 audit holes closed ⚠ UNCOMMITTED, verified in `/tmp/wt-asbytes`
+### 2026-07-30 — zero-copy bridge ownership: all 3 audit holes closed ✅ COMMITTED `83832b9`+`292618c`+`d772074`+`2b7f0d5`+`0727619` (neon `c7f4900`)
 
 The §2 "zero-copy bridge ownership" row is CLOSED — guards bug065/066/067, each proven RED against
 its exact hole. Gates in the worktree (live HEAD `9a3dc38` + only these patches): battery
@@ -466,6 +467,19 @@ Files: `src/transform/native/builtinLower.ms`, `src/transform/lowering/rvalueLow
 `src/transform/index.ms`, `runtime/core/array.{c,h}`,
 `src/test/fixedbugs/{bug065,bug066,bug067,index}.ms`. New §2 facet filed: uint8[].push with a
 non-literal number arg still mis-dispatches (silent 0) — see the 15-methods row.
+
+**Same session, later — shared.ms migration attempted and BLOCKED.** `shared.ms` written (22
+algorithm-tier byte-loop fns + 3 private helpers, `as uint8` on every computed push), wired into
+BOTH index.cms (externs removed) and index.jms (bodies removed) via one export-list re-export.
+Small-program gate PASSED: 36-value dual-backend diff identical (trim/index/split/case/pad/UTF-8/
+empty-string). Self-host gate FAILED: the compiler rebuilt on the migrated std is BROKEN — filed
+as the new §2 row "shared-std self-host miscompile" (specimen evidence + bisect recipe there). wt
+restored to green (battery 3364/3364 re-verified); `shared.ms` parked UNTRACKED at
+`std/core/string/shared.ms`; index-wiring patch at `/tmp/string-migration.patch`. Trap for the
+record: the first failed build had TWO variables (a script accident left orphaned JSDoc blocks in
+cms AND the migration wiring) — and the "clean retry" was accidentally run under the BROKEN binary
+as builder, which proved nothing. Only a third cycle (clean std + known-good builder) isolated the
+root: the migration wiring itself. Always re-verify a suspect state under a KNOWN-GOOD builder.
 
 ### 2026-07-29 (late night) — asBytes/asString C kernels + uint8[].push wrote doubles ✅ COMMITTED `234f75b`+`446148e`+`d835512`+`9a3dc38`
 
