@@ -22,6 +22,17 @@ on top of a stale claim. History lives in §5 and is append-only.
 | **battery (post-deploy, `./msc`)** | **3340 pass / 0 fail** (163/163 files, ~4.5m) | `cd ~/metascript/recompiler && rm -rf out && ./msc test src/index.ms` |
 | **Neon suite (post-deploy, installed msc)** | **16 pass / 0 fail** — includes NEW `render/style` (S1) | `msc test <file>` per file, `rm -rf out` between |
 
+⚠ 2026-07-29 (late evening): installed msc is **gen-21** — JS backend now completes omitted
+struct-literal fields with their zero value (C zero-fill parity; Nim model: objects are always
+fully initialized). Found by the FIRST real-browser run of counterDom: `{ padding: 16, … }: Style`
+left `width` undefined, `v === null` strict-miss → `undefined.toString` crash in applyCss. New
+transform pass `src/transform/coercion/objectLiteralComplete.ms` (jsBackend-gated; skips extern
+types, function-typed fields, spread-desynced literals); guard in `src/test/js/basic.ms` proven
+red by toggling the pass off (exactly 1 fail in 2768). Gates: battery 3356/3356 (js/ not in that
+closure — it lives in `src/test/index.ms`), js/basic closure 2768/2768, Neon 16/16, browser E2E
+green (§1). ⚠ Side-find: unified `src/test/index.ms` has 4 PRE-EXISTING standalone-red files
+(syntax, bug006, classMemberElseIf, deepNesting) — fail identically under a no-fix binary.
+
 ⚠ 2026-07-29 (evening): installed msc is **gen-20** — the JS backend now expands macros (two-phase
 cmdBuildJS/cmdRunJS + loud post-expansion errors on every backend; §5 entry below). Neon's browser
 path compiles end-to-end for the FIRST time: `element(<JSX/>)` expands into `el/withStyle` calls in
@@ -206,6 +217,12 @@ Neon file-runs clean. The old note blaming a shared `out/` was wrong: every meas
 `rm -rf out`. **Chase intermittents — this one hid a real memory-model bug for weeks.**
 ⚠ Protocol: `rm -rf out` BETWEEN files is load-bearing — sequential `msc test` runs sharing `out/`
 produced spurious compile failures (reconcile/reconcileHard flip-flopped until cleaned).
+✅ 2026-07-29 (late evening, gen-21): **browser E2E VERIFIED in real Chrome (headless Blink+V8)** —
+`examples/counterDom.ms` + `examples/counterDom.html` host: 2 clicks → `Count: 2`, and
+`<div style={{…}}>` lands as inline CSS via `applyCss` (`padding: 16px; color: rgb(205, 214, 244);
+background-color: rgb(30, 30, 46); border-radius: 8px`). S2 browser projection CLOSED. Needed the
+gen-21 compiler fix (§5): omitted Style fields were `undefined` in JS, crashing `len()`. Suite
+re-measured 16/16 under installed gen-21, same file-by-file protocol.
 
 | file | result | file | result |
 |---|---|---|---|
@@ -395,6 +412,56 @@ Still untracked: `docs/EDITOR*.md` (design scratch).
 ---
 
 ## §5 — Fixed (history + root-cause ledger, append-only)
+
+### 2026-07-29 (late evening, gen-21) — JS backend: omitted struct-literal fields are `undefined`, not `null` ⚠ UNCOMMITTED
+
+**Symptom**: first real-browser run of `counterDom` (headless Chrome) died in
+`applyCss → len → msNumberToStringRadix: Cannot read properties of undefined` — misread twice
+before the stack trace corrected it (first guess "signal broken", then "closure capture"; both
+refuted by node probes `probe/jsSignalMin.ms` + `probe/jsClosureSignal.ms`, both green). Real root:
+`<div style={{ padding: 16, … }}>` emits a JS object with ONLY the written keys, so `s.width` is
+`undefined`; MS `v === null` compiles to strict `===` which misses it, falls into the number branch.
+C never sees this — struct literals zero-fill. 7-line repro: interface with `w: number | null`,
+literal omitting `w` → C `null-ok`, JS `NOT-NULL-BUG`.
+
+**Fix (Nim model: object construction always fully initializes)**: new transform pass
+`src/transform/coercion/objectLiteralComplete.ms`, registered jsBackend-only after constFold —
+ObjectLiteral whose nodeType unwraps (unwrapRef → typeReturn, NOT typeChildren; then peelThrough)
+to a Struct gets every missing field appended with `makeDefaultValue(fieldType)`. Skips: extern
+types (`SymbolFlag.ImportC` — real JS APIs distinguish absent vs null), function-typed fields
+(bug058 requires them explicitly), literals with keys/properties out of sync (spread — §2 row 8).
+
+**Guard**: `src/test/js/basic.ms` "object literal completes omitted fields" — proven RED by
+toggling the pass off: exactly 1 fail in the 2768-test closure. ⚠ `src/test/js/*` is NOT in the
+`src/index.ms` battery closure (3356 unchanged is correct); it lives in `src/test/index.ms`.
+
+**Traps re-confirmed**: (1) debug prints inside a transform pass that touch `.sym`/`.typeExtra` of
+arbitrary std literals can SEGFAULT the compiler silently — msc exits 0-output, looks like a no-op
+build; (2) `msc build --target=js` caches the bundle — `rm out/<name>.js && touch` the source or
+the transform never re-runs; (3) installed-msc `msc test` in the recompiler tree hit missing
+`_msUnregisterCycle` — repo std/runtime is AHEAD of the installed binary (parallel-session
+nullable-carrier stack); all recompiler gates must run under `./msc`, not `$PATH` msc.
+
+**Side-find (pre-existing, NOT this fix)**: unified `src/test/index.ms` has 4 files that fail
+STANDALONE under a no-fix binary built from the same tree (lang/syntax, fixedbugs/bug006,
+handoff/classMemberElseIf, checker3pass/stress/deepNesting — C-level `void*` member errors in
+closure env code). Inherited from the uncommitted parallel-session stack; needs its own session.
+
+**Verify**: battery 3356/3356 under `./msc`; js/basic closure 2768/2768; probe `null-ok` under the
+INSTALLED gen-21 (`tools/sync-local-binary.sh`, `msc version` OK — no codesign kill this time);
+Neon 16/16 file-by-file; browser E2E green (§1). **Files**: recompiler
+`src/transform/coercion/objectLiteralComplete.ms` (new), `src/transform/index.ms` (registration),
+`src/test/js/basic.ms` (guard); neon `examples/counterDom.ms` (style added),
+`examples/counterDom.html` (browser host, NEW).
+
+**Addendum (same session)** — §7 guard debt closed: `compileProjectToJS` → two-phase
+(`emitJSTwoPhase`), new `compileProjectToJSWithStd`, jsxmac guard baked into `src/test/js/basic.ms`.
+Red-proof finding worth keeping: skipping `expandMacros` alone stays GREEN — since gen-19 the
+checker expands macros at check time, so the two-phase ordering (all checks before any transform)
+is the load-bearing half; the explicit `expandMacros` + `hasErrors` after it is the loud-failure
+half (gen-20 root 2 parity). The red toggle is an interleaved `transformProgram` inside the check
+loop → `ERROR: expand` fires, exactly 1 fail in 2769. Extra helper files: recompiler
+`src/test/helpers.ms`.
 
 ### 2026-07-29 (evening, gen-20) — JS backend: any macro calling a module-level helper silently no-ops ⚠ UNCOMMITTED
 
@@ -1429,11 +1496,14 @@ Each is cheap, none blocks anything, all were surfaced by the sessions that clos
   parseInt/parseFloat/replaceAll/equalsIgnoreCase/…, measured by export diff 2026-07-29). Neon
   browser code will keep tripping on these one name at a time — port the missing block in one
   sitting instead.
-- **The gen-20 two-phase fix has NO automated guard.** There is no multi-module-JS-with-std test
-  harness; `compileProjectToJS` in `src/test/helpers.ms` is still the OLD interleaved shape and
-  never calls `expandMacros` at all (its own latent copy of root 1). Upgrade it to mirror
-  cmdBuildJS's two phases, then bake `probe/jsxmacMod.ms`+`jsxmacUse.ms` in as a guard. Until then
-  the repro is manual: the pair must print `expanded-x!` under `--target=js`.
+- ~~**The gen-20 two-phase fix has NO automated guard.**~~ **CLOSED 2026-07-29 (late evening,
+  gen-21 session)**: `compileProjectToJS` refactored to two-phase (`emitJSTwoPhase` — expand ALL,
+  then transform ALL, macro diags surfaced as `ERROR: expand [mod]`), new
+  `compileProjectToJSWithStd` (std from disk, `.jms`), and the jsxmacMod/jsxmacUse pair baked into
+  `src/test/js/basic.ms`. Guard proven RED the honest way: with expansion merely *skipped* it stays
+  green (gen-19 made check-time expansion cover the all-checks-first order) — the toggle that
+  reproduces gen-20 is re-adding an INTERLEAVED `transformProgram` inside the check loop (exactly
+  1 fail in 2769). js/basic closure 2769/2769, js/result closure 2766/2766.
 - **cmdRunRaiser and the C build loops still interleave transform with expansion** — same hazard
   family as gen-20 root 1. C survives today because its expansion runs post-mono inside the same
   iteration, before that module's OWN transform; whether the engine tolerates every C-transformed
