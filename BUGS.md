@@ -316,16 +316,16 @@ function was needed, and the emitted C shows DRC injecting `msIncref` per copied
 | **`async` helper called from a macro body** (NEW 2026-07-28, found probing row 9) | macro body does `value: bad(2)` where `async function bad(n: number): Promise<number>` | ❌ compiles clean — no diagnostic from the module check OR the engine check. The macro VM cannot run async, so the spliced value cannot be the awaited number. ⚠ **only the SILENCE is measured**; the emitted value was not inspected. Verify before assuming it is a wrong-answer bug |
 | **same-scope redeclaration is not a checker error → miscompile** (NEW 2026-07-29, found writing the LSP probe) | `let ei = 0; … const ei = findExportedSymbol(…);` in ONE scope | ❌ checker PASSES, C fails (when lucky): the second decl reuses the first's C slot with the FIRST type — `incompatible pointer to integer conversion assigning to 'int32_t' from 'ExportedSymInfo *'`. TS/Nim both reject redeclaration in the same scope. If the two types happen to be ABI-compatible the C compiles and reads garbage silently — same family as the `string = number` row |
 | ~~`asBytes` miscompiles on the C backend in every form~~ | `src/test/fixedbugs/bug063_asbytes_zero_copy_bridge.ms` | ✅ **CLOSED 2026-07-29 late night** — HiddenStdConv Cursor branch now picks the cast shape per direction (string = fat value, array = pointer). ⚠ the row's "asString does not exist on cms" claim was WRONG — `@builtin("AsString")` was in index.cms all along, same broken emission, fixed by the same patch. See §5 |
-| **uint8[] widens onto the 15 remaining number[] extern methods → silent byte corruption on C** (NEW 2026-07-29 late night, found by the probe that closed the asBytes row) | `const b: uint8[] = []; b.push(104); b[0]` was the proven case — `msNumberArrayPush(b, 104.0)` stores an 8-byte double in a 1-byte payload, reads give the double's LOW BYTE (104 → 0). push is FIXED (bug064: uint8[] overload in index.cms + exact-receiver tiebreak in checker), but at/pop/shift/indexOf/includes/slice/concat/reverse/sort/fill/count/join/setLength/capacity/splice still have NO uint8[] overloads and still bind number[] | ❌ silent wrong answers on C for every listed method on a uint8[] receiver; std's own `serialize/json/accessors.ms:168` pushed uint8 through the broken path before the fix. **Must close before shared.ms algorithms use anything beyond push + indexing.** Runtime only ships Push/At/Destroy/New for uint8 — the other 13 need C runtime fns too. **NEW facet (2026-07-30, found red-proving bug065):** even push still mis-dispatches when the arg is a NON-LITERAL number — `let x = 65; b.push(x)` reads back 0 silently (bug064's tiebreak fires only when the uint8 overload is a candidate; a number-typed arg disqualifies it). Byte-loop code must cast (`as uint8` — Nim-faithful, Nim requires `byte(x)` too), but the silent number[] fallback stays a trap until this row closes |
+| ~~uint8[] widens onto the 15 remaining number[] extern methods → silent byte corruption on C~~ ✅ **CLOSED 2026-07-31 via /trace-nim — root = ONE line, `isReceiverMatch` (checker/context.ms:590) compared array-receiver ELEMENTS with covariant `isAssignable` while Nim seq elements are invariant (sigmatch.nim:1502-1516) and MS's own container relation already rejects it (row-74 `sameElementRepr`, t13 proved assignment blocked while receiver leaked); fix = `isReinterpretUnsafe` gate at that site + generic T[] surface fill + cap-flag mask in msGenericArrayPush/SetLen; COMMITTED `70a220d`+`f5d32ca`+`66400b3`+`d01fb39` — see §5 2026-07-31** (NEW 2026-07-29 late night, found by the probe that closed the asBytes row) | `const b: uint8[] = []; b.push(104); b[0]` was the proven case — `msNumberArrayPush(b, 104.0)` stores an 8-byte double in a 1-byte payload, reads give the double's LOW BYTE (104 → 0). push is FIXED (bug064: uint8[] overload in index.cms + exact-receiver tiebreak in checker), but at/pop/shift/indexOf/includes/slice/concat/reverse/sort/fill/count/join/setLength/capacity/splice still have NO uint8[] overloads and still bind number[] | ❌ silent wrong answers on C for every listed method on a uint8[] receiver; std's own `serialize/json/accessors.ms:168` pushed uint8 through the broken path before the fix. **Must close before shared.ms algorithms use anything beyond push + indexing.** Runtime only ships Push/At/Destroy/New for uint8 — the other 13 need C runtime fns too. **NEW facet (2026-07-30, found red-proving bug065):** even push still mis-dispatches when the arg is a NON-LITERAL number — `let x = 65; b.push(x)` reads back 0 silently (bug064's tiebreak fires only when the uint8 overload is a candidate; a number-typed arg disqualifies it). Byte-loop code must cast (`as uint8` — Nim-faithful, Nim requires `byte(x)` too), but the silent number[] fallback stays a trap until this row closes |
 | **bug006 fails standalone but battery is green — harness/mono path divergence** (NEW 2026-07-29 late night, pre-existing at gen-21) | `msc test src/test/fixedbugs/bug006.ms` under INSTALLED gen-21, zero local changes | ❌ C fails: `msArrayAccess((*(*arr)), 0)` — double deref of a generic indirect param after macro round-trip. Same file passes inside the full battery graph. Standalone-vs-graph compile takes a different mono/indirection path. Also true of bug062 in a worktree (needs its uncommitted checker half — that one is expected). Filed so the next person who runs fixedbugs standalone doesn't chase it as THEIR regression (this session lost ~30 min to exactly that) |
 | ~~JS bundle: module-level decls are NOT namespaced — same-name decls collide across modules~~ ✅ **stage A CLOSED 2026-07-30 same day** (found by em's string corpus; exported-name axis = stage B, open) | `/tmp/jsdup`: `a.ms` + `b.ms` each declare private `function helper()`, `main.ms` calls both modules | ❌ duplicate `function` = hoisting, LAST WINS silently — C prints `a=1 b=2`, JS prints `a=2 b=2`; duplicate `const` = SyntaxError at load. C is immune: `codegen/names.ms` qualifies via `sym.modulePath` (stamped by defineOrError). The JS emitter is pure-syntax (`safeJsName(d.name)`, `codegen/js/expressions.ms:134`), the bundle is a flat concat into ONE scope, importers reference bare names (no destructure emitted for static imports), `__mod` registry is registration-only. Exported names collide the same way — not just private. Bit the std TODAY: `shared.ms` + `index.jms` both carried private `isSpaceByte` → any JS bundle reaching both `trim` and `stripInPlace` died at load (fixed std-side: shared owns the helper, jms imports it; my gates were green only because DCE never co-bundled the pair — coverage lesson). Fix direction (staged, mirror C): plumb symbols into the JS gen and qualify by `sym.modulePath` — stage A private top-level decls only (zero `@emit` fallout: `@emit` text only calls EXPORTED std runtime names, which must stay bare as the de-facto JS ABI); stage B exported names (needs import aliasing at reference sites + the @emit ABI boundary made explicit). **CLOSED same session via /trace-nim.** Verdict: DIVERGE-INCOMPLETE — Nim jsgen (jsgen.nim:228-281 mangleName) emits ONE flat scope where every name carries symbol identity, decl and refs agree because both read the same cached symbol name; bare names are reserved for the exportc/compilerproc ABI. MS-C already ported this (names.ms); MS-JS never built it. Fix: `jsSymbolName` (codegen/js/expressions.ms) = single naming oracle for decl AND ref sites (emitIdentifier + emitFunctionDeclInner + emitVariableDeclCore), reusing the C backend's mangledFunctionName/mangledGlobalName — JS private names now IDENTICAL to the C symbol names; bare iff sym null / nativeName / Exported / **Imported** (NEW SymbolFlag stamped by importSymFromRegistry + createSymFromExport). ⚠ First attempt stamped Exported on imported syms — that silently RE-EXPORTED every import (checkPass:1988 builds export registries from the flag; battery is GREEN-BLIND to registry membership; caught only by a registry-tightness grep on the emitted bundle). Guard "same-name private module decls" in src/test/js/basic.ms, proven red, incl. imported-ref-stays-bare asserts. Gates: battery 3364, js/basic 2779, corpus 1xx+627 C==JS, oracle 45/45×2, jsdup a=1 b=2 + c=10 d=20 (C parity), msc-s5 full self-host battery. STAGE B open: two modules EXPORTING the same name still last-wins (Nim analog: exportc-name uniqueness is the user's responsibility — needs a checker diagnostic); enum-member decls and synthesized no-resolvedSym helpers still bare |
 | ~~zero-copy bridge ownership model incomplete — 3 measured holes~~ | guards `src/test/fixedbugs/{bug065_asstring_exit_uaf,bug066_asbytes_rvalue_receiver,bug067_literal_view_push_static_clobber}.ms` — each proven RED against the exact hole | ✅ **CLOSED 2026-07-30** (see §5): (a) rvalue receiver → `lowerRvalueBridge` (AsBytes-gated receiver→temp hoist, flat splice) wired into the pipeline — discovery: `lowerRvalue` was NEVER wired despite the index.ms header listing it as pass #21; (b) asString exit UAF → interception removed, call falls to plain extern `msAsString` = COPYING kernel (cstrToNimstr shape) in `runtime/core/array.c`; zero-copy MOVE at analyzer last-use stays a later arc; (c) WORSE than filed — cap flag bits (STRLIT bit 62 + ASCII-cache bits 61/60) read RAW made push's room check see "infinite cap" → in-place writes to static memory that never even reached `msArrayPrepareAdd`; fix = masked compare + flag divert in `msUint8ArrayPush`, copy-on-flag in both `msArrayPrepareAdd/Uninit` (Nim `prepareSeqAddUninit` parity). STILL OPEN by design: heap-source view mutation writes through (Nim-faithful reinterpret semantics), and a mutated literal-view's copied payload may leak if the analyzer skips destroy on literal-init locals (bounded, noted) |
 | ~~shared-std string byte-loops miscompile in the SELF-HOST build — "export" lexes as ex\|port~~ ✅ **CLOSED 2026-07-30 — root-caused, NOT a compiler bug: index-space divergence (extern = UTF-16 code units, shared.ms = bytes). See §5 and the index-space row below** | apply `/tmp/string-migration.patch` (re-derivable: `shared.ms` parked UNTRACKED at `std/core/string/shared.ms`; remove the 22 algorithm externs from index.cms + the bodies from index.jms, append the export-list re-export to both), rebuild msc with a GOOD compiler, then `msc run` ANY file | ❌ the produced compiler is broken: std loading dies with `Undefined variable 'ex' / 'port' / 'expo' / 'rt'` (identifier boundaries cut mid-word), `@include` paths garble to `*.h`, phantom "Parse: Unexpected token" errors. EVIDENCE CHAIN: (1) the SAME shared.ms compiled into small programs is byte-perfect — 36/36 dual-backend diff incl. UTF-8 + empty string; (2) still broken with CLEAN std + known-good builder → the orphan-JSDoc accident of attempt 1 is exonerated; (3) breakage exists only in the 287-module whole-compiler context → context-dependent miscompile (suspects: int64 params / default args / extension dispatch under mono+DCE at scale). Bisect recipe: wire ONE function's cms extern → shared re-export at a time (start byteSlice/byteAt — lexer-critical), rebuild with the good wt msc, probe `msc run` on a 1-line file |
 | **string API has no single index space — C runtime = UTF-16 code units, jms = bytes, spec = TS** (NEW 2026-07-30, the root behind the self-host row) | `probe/stringSpecOracle.ms` — ONE file, 3 runners: `node` (= TS oracle; strip annotations via `sed 's/: string//g; s/: void//g'`), `msc run`, `msc build --target=js` + `node out/stringSpecOracle.js`; expected baked in `probe/stringSpecOracle.expected.txt` | ❌ 40-row matrix: **JS 18 red** (`length`/`indexOf`/`lastIndexOf`/`padStart` in byte space; astral `charAt(1)` = garbage glyph `𣐀`), **C 6 red** (`padStart` target counted in BYTES; astral `charAt(1)` returns whole `👍` instead of the low surrogate half; astral `slice(1,3)` empty), ascii 16/16 green on BOTH. CONTRACT DECIDED (user 2026-07-30, normative section added to LANG.md §"Index-Space Contract"): TS tier = code-unit TS-exact incl. `s[i]` ≡ `charAt(i)` returning `string`; byte tier = explicit `byte*` names (Nim surface); representation stays UTF-8 bytes + zero-copy asBytes. **JS HALF FIXED 2026-07-30 late (uncommitted): 40/40 vs oracle** — `fromJSStr` lone-surrogate WTF-8 fallback (root of astral garbage: charAt of an astral half fed a lone surrogate back through the pair branch → NaN bytes), `indexOf`/`lastIndexOf`/`padStart`/`padEnd` → native delegation via toJSStr, new `msStringLength` (code-unit byte-walk) + new jsBackend-gated pass `src/transform/coercion/stringLengthJS.ms` (`.length` on String → `msStringLength()`; JS path never ran nativeLower's rewrite — C-only call sites compile.ms:1088/:1479). Gates: battery 3364/3364, js/basic 2778/2778, C harness byte-identical pre/post. **`s[i]` JS also fixed same session** (same pass, `charAt(s,i)` rewrite; harness grew to 45 rows incl. `s[i]` — JS 45/45). **C HALF FIXED same session (uncommitted): 45/45 — BOTH BACKENDS NOW MATCH THE NODE ORACLE 45/45.** `runtime/core/string.c`: new `msWtf8EncodeSurrogate` helper; `msStringCharAt` returns the exact half for astral (was: whole 4-byte glyph for either unit index); `msStringSlice` non-ASCII walk rewritten in unit space with half-inclusion at boundaries (was: `charPos == start` never matches mid-pair → byteStart -1 → EMPTY); `msStringPadStart/PadEnd` target + pad now counted in UTF-16 units via `msStringLength` + `msPadEmitUnits` (was: bytes; astral pad truncation keeps the high half, TS parity — in-code, not fixture-covered). Astral harness rows refitted to `charCodeAt`-based numeric compare (printed-lone-surrogate trap: node writes U+FFFD, C writes raw WTF-8). Gates after C fix: battery 3364/3364, js/basic 2778/2778, stage-2 self-host rebuild green. **Guard bug068 BAKED same session** (`src/test/fixedbugs/bug068_string_index_space.ms`, 5 tests, imported in fixedbugs/index.ms, ported to live): green under fixed runtime (280/280 in the 14-file glob), **proven RED against pre-fix string.c** (3/5 fail: padStart/astral-half/slice — the length/indexOf tests guard the JS half, which fixedbugs cannot run; the neon `probe/stringSpecOracle.ms` 3-runner harness stays the JS-side gate). ⚠ TWO harness facts measured while baking: the BATTERY (`msc test src/index.ms`) contains ZERO fixedbugs tests — guards run ONLY via the per-file glob; and `src/test/fixedbugs/index.ms` as an ENTRY is unbuildable in a worktree without the parallel session's untracked bug062 file. REMAINING for this row: commit; documented deviations (charAt/s[i] out-of-range `""` not `undefined`; C stdout writes lone halves as raw WTF-8) |
 | **`s[i]` on JS backend read raw bytes — checker+C were ALWAYS coherent** (2026-07-30; the original "checker type lie" filing was a MISDIAGNOSIS — `checkExprPass.ms:866` `charType()` is the RANGE branch `s[a..b]` → `Span<char>` (byte tier, correct by design); plain `s[i]` was `stringType()` all along at :873, and C emits `msStringArrayAccess` returning a code-unit string) | `const c = "a—b"[1]; console.log(c)` — C prints `—` ✓, JS printed `226` | ✅ **JS HALF FIXED 2026-07-30 late (uncommitted)**: `stringLengthJS` pass also rewrites non-range `s[i]` on String → `charAt(s, i)`; harness `s[i]` rows 5/5 green on JS (45/45 total), js/basic 2778/2778 (no `s[i]=` assignment broke — none exists on the JS path). STILL REAL from the original filing: `char` maps to C `char` = **signed on arm64** (Nim char is unsigned; `> 127` latently broken) and `'é' as unknown as char` emits `(char)MS_STRING_LIT(...)` → clang error. Those two stay open |
-| **`number[].indexOf` returns -1 for present elements** (NEW 2026-07-30, found by the bisect control run) | `[10,20,30].indexOf(20)` — clean std, wt debug build | ❌ `-1` on C. `string[].indexOf` works. Same extern-dispatch family as the uint8[] widening row above |
+| ~~`number[].indexOf` returns -1 for present elements~~ ✅ **CLOSED 2026-07-31 — the filing was MIS-ATTRIBUTED: real `number[]` always worked (control t7 = 1 ✓); `[10,20,30]` unannotated infers `int32[]` which WIDENED onto `msNumberArrayIndexOf` (8-byte stride over 4-byte payload) → -1. Same single root as the uint8[] row above, closed by the same context.ms:590 fix (t14 = 1/1 post-fix). See §5 2026-07-31** | `[10,20,30].indexOf(20)` — clean std, wt debug build | was ❌ `-1` on C |
 | **C literal emission: `\xNN` escapes merge with following hex chars** (NEW 2026-07-30) | `const s = "\xC3\xA9abc";` | ❌ clang: `hex escape sequence out of range` — emitted verbatim, C parses `\xC3A` greedily. Needs escape-safe emission (`"\xC3" "\xA9" "abc"` or octal) |
-| **function-typed field initialized from a VARIABLE holding a closure → calls read garbage (SILENT)** (NEW 2026-07-30, found probing the component design) | `probe/thunkProps.ms` (T1: `const g = () => 42; readP({ count: g })` → `2.14e-314`; T2/S1: signal getter in the field, same garbage), `probe/thunkProps3.ms` (inline-arrow fields V1/V4 GREEN in the SAME module while variable-held T1/S1 read garbage), `probe/componentSemantics.ms` (component thunk-props test red) | ❌ silent wrong answers on C under installed gen-21, zero diagnostics. Inline arrow literals in the field work — ONLY variable-held closures corrupt (signal getters included). Blocks component thunk props outright (`{ count: n }` IS this shape); **latent in `Show`/`For` today** — every existing call site happens to use inline arrows (`when: () => …`); `when: someMemo` would silently read garbage. Same severity family as loop+nested-closure snapshot. JS backend NOT yet measured. **First item of the component arc (PORT-STATUS #2)** |
+| ~~function-typed field/param receiving a repr-mismatched closure → calls read garbage (SILENT)~~ ✅ **CLOSED 2026-07-30 late (worktree /tmp/wt-fnrepr, NOT yet in live tree/installed msc)** — the filed "variable-held" framing was WRONG twice: trigger = closure whose SIGNATURE carries int32 where the declared slot says number (unannotated `() => 42` arrows and generic `mkG(7)` instantiations both produce `() => int32`); the checker's arg loop had a Function CARVE-OUT skipping ALL closure args (checkExprPass:2992) so nothing was ever checked, and the C call site casts fn to the DECLARED ABI (int in eax, caller reads xmm0 → denormal). Fix = narrow carve-out (literal lambdas + generic-containing formals only) + repr gate in isFunctionAssignable + Function branch in isReinterpretUnsafe. Guard bug070 (6 tests, tree-toggle red-proof). Gates: battery clean (9 lifecycle fails = worktree missing UNTRACKED examples/*.ms — env, re-verified green after copy), Neon sweep 16/16, js/basic 2779/2779. See §5 | `probe/thunkProps.ms` (T1: `const g = () => 42; readP({ count: g })` → `2.14e-314`; T2/S1: signal getter in the field, same garbage), `probe/thunkProps3.ms` (inline-arrow fields V1/V4 GREEN in the SAME module while variable-held T1/S1 read garbage), `probe/componentSemantics.ms` (component thunk-props test red) | ❌ silent wrong answers on C under installed gen-21, zero diagnostics. Inline arrow literals in the field work — ONLY variable-held closures corrupt (signal getters included). Blocks component thunk props outright (`{ count: n }` IS this shape); **latent in `Show`/`For` today** — every existing call site happens to use inline arrows (`when: () => …`); `when: someMemo` would silently read garbage. Same severity family as loop+nested-closure snapshot. JS backend NOT yet measured. **First item of the component arc (PORT-STATUS #2)** |
 | **expression-bodied arrow whose nested arrow captures an outer binding → C `use of undeclared identifier '_env_…'`** (NEW 2026-07-30, same probe session) | `probe/na_n1.ms` (inner captures enclosing const), `probe/na_b4.ms` (inner captures the outer arrow's own param), boundary matrix `probe/nestedArrowEnv2.ms` (block-bodied B1/B2/B5 GREEN; no-capture B3 GREEN) | ❌ hard C compile error (not silent): the outer arrow's env struct is never emitted. `() => untrackish(() => x + 1)` dies; `() => { return untrackish(() => x + 1); }` compiles. Blocks the flat `componentNode(() => untrack(() => Comp(props)), …)` emission shape — probes use block body meanwhile, but policy = fix root, the block-body form is NOT the answer. Third item of the component arc |
 
 - **nullfn bind-order** — `apply((v:number)=>v+1, 10)` binds T=int32 from arg 1, overriding the arg-0
@@ -375,6 +375,18 @@ function was needed, and the emitted C shows DRC injecting `msIncref` per copied
   real; the *severity* filed here was overstated, and the correction is recorded in the ledger.
 - **deferred, not counted:** catch-side `e.message` (object-carrying exceptions) — MS's exception
   runtime is string-based by design; `throw` works, `catch (e) { e.message }` does not.
+- **`HashMap<K, V>.get` with a VALUE-typed V assigned straight into a scalar local — checker
+  SILENT, dies in C** (NEW 2026-07-31, hit TWICE building the converter arc: `HashMap<string,
+  string>.get` → `let s = m.get(k)` emitted `msStringSink(s, Maybe_p1)`, and `HashMap<string,
+  int32>.get` → `existingOrigin = m.get(k)` put a `Maybe_p10` in an `if (a === 1 && …)` operand).
+  Same family as the open "`string = number` is not a checker error" row. Workaround shape that
+  compiles correctly: `const v = m.get(k); if (v !== null) { local = v; }` (flow-narrow unwrap).
+  Pointer-shaped V (Node, string[]) passes through fine, which is why the neighboring
+  `macroBodyRegistry.get` pattern never surfaced it.
+- **a module whose only runtime content is a comptime-alias const emits no `Init000` yet the
+  dispatcher calls it → C link error** (NEW 2026-07-31, pre-existing, found by converter probes:
+  `const x = <a/>;` alone at module top → `call to undeclared function 'Z…__Init000'`). Off
+  Neon's path; filed so the next person probing JSX consts doesn't chase it as a fresh break.
 
 ---
 
@@ -424,6 +436,183 @@ Still untracked: `docs/EDITOR*.md` (design scratch).
 ---
 
 ## §5 — Fixed (history + root-cause ledger, append-only)
+
+### 2026-07-31 — JSX-ROADMAP Phase 9 `converter` routine kind IMPLEMENTED ⚠ IN WORKTREE /tmp/wt-converter (base 2c50927 + 11 files + new test file), NOT in live tree
+
+TDD arc, spec = LANG.md "Converter Declarations" (7 rules) + LANG-JSX "Boundary Lowering via
+Converter" + JSX-ROADMAP 9.1-9.5. **All gates green in the worktree**: 17 converter guards
+(proven red first: 15/17 red under gen-23, staged greens per layer), sibling suite 2787/2787
+(134 files incl. c/jsx.ms), battery 3364/3364, Neon sweep clean (core/render/platform globs,
+0 fail), runtime E2E `x=7 y=7 sum=14` (annotated-decl + return boundaries, real converter).
+Patch: `recompiler/.git/converter-phase9.patch` (404 lines, vendor excluded) + untracked test
+`converter-phase9-test-converter.ms` (→ `src/test/c/converter.ms`, + 1 import line in
+`src/test/index.ms`).
+
+Implementation shape (what a lander needs):
+- **Parse**: `converter` = hard keyword (`std/meta/token.ms`, inserted after `Template` INSIDE
+  the isIdentLike range — NOT at enum end, JSX tokens must stay outside that range);
+  `parseConverterDecl` → MacroDecl node + `NodeFlag.Converter` (32768) + return annotation in
+  `node.typeExpr`; rejects ≠1 param / non-`Node` source / missing return type at parse time.
+  MacroDeclData gained `macroDeclReturnType: string` (std/meta/node.ms union + alias + bridge
+  round-trip both directions; plain macros now capture their return annotation too).
+- **Registry (scope law)**: `registerConverter` in collectPass — 3 ctx maps (converterTargets
+  target→name, converterTargetOrigin 0-local/1-import, converterTargetByName name→target for
+  the export pipeline); local shadows import, two same-origin pairs = error; export carries
+  `ExportedSymInfo.converterTarget`; import side registers under the local alias.
+- **Application**: `tryConverterAtBoundary` in checkExprPass JSXElement/JSXFragment branches —
+  fires only when `expectedType !== null` (settled) and `jsxMacroArgDepth === 0`; rewrites the
+  JSX node IN PLACE into `MacroInvocation(convName, [jsxCopy])` and re-enters `checkExpr`,
+  riding the existing eager-expansion + re-check path (rules 2/5/6 come free: re-checked
+  against the same expectedType, depth limit bounds chains, overload scoring checks args with
+  null expectedType so the converter can NEVER fire during scoring — measured, not assumed).
+  Return position and resolved call args already flow expectedType → zero extra wiring.
+- **Diagnostics**: unconsumed-JSX message gains an import hint when a settled expected type
+  exists; ambiguous-overload site mentions calling the converter explicitly when an arg is JSX.
+- **Behavior change (deliberate, spec-conformant)**: `const x: T = <jsx/>` was SILENTLY
+  swallowed by the ComptimeNodeAlias branch (annotation ignored, initializer dropped, binary
+  built with x dead — measured hole). Now an annotation = settled boundary: converter applies
+  or error+hint. Unannotated const keeps the compile-time-Node alias feature (LANG-JSX:
+  "no boundary → stays a compile-time Node").
+
+Traps burned into this session:
+- **Bootstrap recipe when compiler source references a new std field**: installed msc resolves
+  `std/` by argv[0]-walk (`resolveRuntimeDir`) → worktree std is INVISIBLE to it. Break the
+  cycle: `cp ~/.metascript/bin/msc wt/msc-boot` (argv[0] now inside the worktree → picks up
+  worktree std) → `./msc-boot build src/index.ms --output=./msc` → run everything via `./msc`.
+  No install, no parallel-session interference.
+- **`msc test src/index.ms` (the "battery") = compiler INLINE tests ONLY** (166 files) — it
+  does NOT include src/test/c/*, fixedbugs, handoff, fmt (their hub src/test/index.ms is not
+  in src/index.ms's graph). The c/ suite rides sibling-glob runs (`msc test
+  src/test/c/<any>.ms` → 134 files). A full-coverage claim needs BOTH runs.
+- **c/jsx.ms E2E is bistable**: 3 of 4 tests FAIL standalone (`const x = <a/>` in-function →
+  ok=true via the alias path) but PASS in battery-graph runs — same order-dependence class as
+  the bug006 trap. compileToC results are process-state-dependent for const-JSX. Not chased.
+- vendor/ in a fresh worktree misses submodule content → swap for a symlink to the live
+  repo's vendor (excluded from the patch).
+
+Remaining Phase 9 scope (NOT in this worktree): build.ms global-import precedence tier, LSP
+parity guard (9.5, gen-19 behavior under a converter), docs status flips (JSX-ROADMAP/LANG/
+LANG-JSX carry uncommitted design text in the LIVE tree — flip at landing). Two Maybe-assign
+checker holes + comptime-alias-module link error filed in §2.
+
+### 2026-07-31 — /trace-nim uint8[] widening: receiver dispatch bypassed container invariance ✅ COMMITTED `70a220d`+`f5d32ca`+`66400b3`+`d01fb39` (on `2c50927`) + **DEPLOYED as gen-25** — built in the worktree and synced from THERE, not from the live tree (live working tree carries the parallel session's in-flight enum/checker work; building it would ship their unfinished code, the gen-13 trap). Content diff installed-vs-worktree was exactly the 2 changed files; guard re-verified 283/283 and probes value-correct UNDER the installed binary
+
+**Verdict DIVERGE-UNINTENTIONAL, one root, three §2 rows.** `isReceiverMatch`
+(`src/checker/context.ms:590`) unwrapped array receiver/object and compared ELEMENTS with
+covariant `isAssignable` — `isAssignable(uint8, number)` = true → a `uint8[]`/`int32[]` receiver
+bound `this number[]` externs (8-byte stride on 1/4-byte payloads). Nim cannot have this hole:
+the receiver is arg 0 through the same `typeRel`, and seq elements are INVARIANT
+(`sigmatch.nim:1502-1516`, element rel < isGeneric ⇒ isNone). MS's own central relation already
+enforces exactly this (NIM-REF row 74, `sameElementRepr`, compat.ms:204) — measured contrast:
+`const n2: number[] = d` REJECTED ("memory layout differs") while `d.indexOf(20)` bound number[]
+silently. The row-74 Nim column names the failure mode verbatim: enforcement is central "so no
+site can forget the relation" — this was the forgotten site. Boundary (14 probes,
+`/tmp/u8trace`): every method LACKING a matching-repr overload corrupted (indexOf −1, pop 1e-323,
+join "1.0153e-320", fill = heap-overflow crash before print, view.slice len-right/contents-0);
+every correctly-typed path was already right (push-uint8, indexing, length, literal-init, asBytes
+reads). Predictions held: fill, view-slice, and `[10,20,30]` (infers int32[]) → indexOf −1 = the
+"number[].indexOf" row's real mechanism (msNumberArrayIndexOf in emitted C, 2 sites).
+
+**Fix (return to Nim, staged):** (A) generic `T[]` surface filled in `std/core/array/index.cms` —
+indexOf/includes/count/fill/reverse/shift/concat as MS-level generic fns (slice<T>/sortBy<T>
+precedent = Nim strutils pure-loop shape); join/sort deliberately absent → loud "no matching
+overload" (Nim: no matching proc; join needs toString<T>, sort needs default compare).
+(B) `context.ms:590` gains `if (isReinterpretUnsafe(objT, recvT)) return false;` before element
+assignability — single-oracle reuse (canFormAcycle-unification precedent). (C) `runtime/core/
+array.h` `msGenericArrayPush`/`msGenericArraySetLen` cap checks gained the bug067 three-clause
+flag mask (raw cap compare read STRLIT/ASCII bits as "infinite room" — the bug067 class would
+have REOPENED through the generic path the moment narrow arrays routed there). Runtime
+prerequisite for Nim's model was ALREADY present: `msArrayPrepareAdd(..., elemSize)` +
+`sizeof(p->data[0])` in the generic macros = `prepareSeqAddUninit(..., sizeof(T))`. The BUGS.md
+row's proposed fix ("13 msUint8Array* C fns") was a convenience divergence — rejected per the
+trace-nim rule; zero new C functions needed.
+
+**Consequences by design:** `b.push(x)` with number-typed x is now a COMPILE ERROR demanding
+`as uint8` (Nim `byte(x)` parity) — closes the push facet; `u8.join/sort` = loud error until
+someone needs them. Guard `src/test/fixedbugs/bug071ElementNarrowArrayWidening.ms` (**12 tests**:
+8 runtime-value + 4 checker-negative/control) proven RED on BOTH halves, by two DIFFERENT
+mechanisms — the distinction matters for whoever maintains it. (i) The 8 value tests follow the
+BINARY: under installed gen-24 an isolated-dir run gave 6 assert-fails (silent class) + concat =
+C-compile fail (ABI class — `msNumberArrayConcat` takes `msNumberArray` BY VALUE, the only loud
+member of the 15). (ii) The 4 negative tests use `compileToCWithStd`, i.e. the checker AS A
+LIBRARY, so they follow the SOURCE TREE (bug070's rule): red-proved by commenting out the
+`isReinterpretUnsafe` line in a worktree — **exactly 2 fail (2780/2782)**, the two `!c.ok` rows,
+while both `c.ok` control rows stay green (proving the harness itself is not simply erroring).
+They cover the LOUD half the value tests structurally cannot see: `b.push(x)` with a number-typed
+arg must ERROR (not silently bind number[]), and `u8.join` must ERROR (no generic form) — with
+`push(x as uint8)` and `number[].join` as accept-side controls. Gates (all under wt msc): 14 probes = 11 value-correct + t2/t10 loud +
+t13 still rejected; battery 153 files / 3080 tests / 0 fail (this HEAD's graph; live-tree 165-file
+counts include the parallel session's extras); js/basic 2779/2779; Neon globs 282+276+290 / 0
+fail; string oracle C-half IDENTICAL to expected (byte tier untouched).
+
+**Residue (named, open):** `.rms` raiser prelude did NOT get the new generic fns. ⚠ CORRECTION to
+this row's first filing: that is a PRE-EXISTING parity gap, NOT a consequence of this fix —
+`std/core/array/index.rms` is 34 lines carrying ONLY push/pop/at/setLength/capacity/splice×2/sortBy,
+so `arr.indexOf(x)` at macro time was already an error for EVERY element type (measured, this
+session). The file's own header defines the obligation ("Mirrors index.cms minus C-only directives
++ the number[]/string[] specializations"), so Stage A's 7 generic fns are now owed to it. Mutating a LITERAL asBytes view via generic fill/shift writes element-stores in place —
+the pre-existing "view mutation writes through" edge (bug067 covered push/prepareAdd, not plain
+element assign); unchanged by this work. int32[]-family call sites that silently corrupted now
+compile-error — battery/Neon showed ZERO such sites in std/compiler/neon.
+
+**Worktree traps burned:** git worktree materializes submodule `vendor/` as EMPTY dirs — `@compile`
+died on psa_util.c; `ln -sfn` into an EXISTING dir silently nests the link inside it (created
+`vendor/vendor`, then `runtime/crypto/crypto`) — `rm -rf` the empty tree first, then symlink;
+`@compile` bare paths resolve CWD-then-`resolveRuntimeDir()` (walks up from argv0 to the dir
+holding `std/core/system/index.ms` — worktree root qualifies once vendor is linked).
+
+### 2026-07-30 (late night) — bug B closed: the checker never looked at closure args ⚠ IN WORKTREE /tmp/wt-fnrepr, NOT in live tree
+
+**Boundary (falsifiable, all measured):** a closure whose signature carries int32 in a slot the
+declared type says number, reaching ANY declared fn-type position. Producers of `() => int32`:
+unannotated arrows returning int literals (`const g = () => 42` — THE thunkProps3 T1 shape),
+generic instantiation from int literals (`mkG(7)`, `createSignal(7)`). Annotated `(): number =>`
+arrows are fine — that's why m1-m6/t1/r2/t3 stayed green and the "variable-held" framing was wrong.
+
+**Two stacked roots:**
+1. **Arg loop Function carve-out** (checkExprPass.ms:2992-2996): the ENTIRE arg-vs-param check
+   was skipped when param OR arg had kind Function — `want(mkN(7))` with `want(s: string)`
+   compiled (!), `wantF(f: () => string)` receiving `() => number` compiled AND RAN. Nim has no
+   such hole (paramTypesMatch checks every arg; lambdas are sem'd with the formal then still
+   relation-checked). Verdict DIVERGE-UNINTENTIONAL.
+2. **ABI truth**: closures are raw-copied msClosure; the call site casts `.fn` to the DECLARED
+   signature (`((double(*)(void*))f.fn)(f.env)`) — callee returns int32 in eax, caller reads
+   xmm0 → 9e-323/2.1e-314 denormals. Emitted-C diff gred vs ggreen pinned it.
+
+**Fix (staged toward Nim, in worktree):** carve-out narrowed — closure VALUES (identifier/call
+result) are now checked; literal lambdas (contextual typing) and generic-containing formals stay
+skipped (the ec38c20 false-positive family; full Nim parity = own arc). `isFunctionAssignable`
+gained a repr gate via new `fnSlotReprMismatch` (peels `X | null` — nullable-ref repr = pointer,
+the registry-callback shape `(Node) => RaiserContext|null` vs `(Node) => RaiserContext` must stay
+assignable; that FP was hit and fixed). `isReinterpretUnsafe` gained the Function branch (fitNode
+sites). Error message extended: "…or function signature repr".
+
+**Crash trap burned (cost 3 builds):** first carve-out version called
+`findFirstGenericParamName(paramType)` per arg — that walker has NO cycle guard and macro guards
+(bug051/bug055) carry cyclic types (`(n: Node) => Node`, Node self-referential) → silent SIGSEGV
+(exit 139, zero output) even in a checks-on build. Swapped to depth-capped `hasGenericParams`.
+Rule: never call an uncapped type-walker from a per-arg path.
+
+**Guard:** `src/test/fixedbugs/bug070_closure_sig_repr.ms` — 3 reject (int32-closure at number
+slot, closure at string param, wrong fn-vs-fn return) + 3 accept (exact match, nullable-union
+callback, literal lambda). ⚠ Red-proof is TREE-TOGGLE, not binary-toggle: the guard exercises the
+checker AS A LIBRARY (compileToCWithStd), so red/green follows the SOURCE TREE — 4 reject tests
+measured red on the pre-patch tree under installed msc.
+
+**Harness facet (named, unfixed):** compileToCWithStd leaves a generic call's `() => T` return
+UNSUBSTITUTED (probe70 ok=true while CLI rejects the same source) — the generic-source variant
+can't be guarded through the harness; family of the bug006 standalone/battery divergence row.
+
+**Gates (all under worktree msc, HEAD 675bfab + patch):** battery 3355/3364 where the 9 =
+lifecycle phase5/6 reading examples/*.ms that are UNTRACKED in the live repo (absent from any
+worktree — copied over, file re-runs 2959/2959; NOT a regression), Neon sweep 16/16 file-by-file,
+js/basic 2779/2779, matrix gred/t12/t13 reject + ggreen/p1 accept, thunkProps3 T1/S1 now compile
+errors at exactly the two ex-garbage lines. **Files:** src/checker/compat.ms,
+src/checker/checkExprPass.ms, src/test/fixedbugs/{bug070_closure_sig_repr,index}.ms.
+⚠ Live recompiler tree untouched (parallel session holds checkExprPass.ms edits); staging needs
+coordination. Neon-DX consequence to design around in the component arc: `createSignal(7)`
+getters are `() => int32` — thunk props typed `() => number` will now ERROR until the ergonomics
+arc (contextual generic binding / number literals) is decided.
 
 ### 2026-07-30 (unify-std session) — single-source std string LANDED ✅ COMMITTED `ab11745`+`d8fedf5`+`1ef6b0b`
 
