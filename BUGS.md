@@ -437,7 +437,31 @@ Still untracked: `docs/EDITOR*.md` (design scratch).
 
 ## §5 — Fixed (history + root-cause ledger, append-only)
 
-### 2026-07-31 — JSX-ROADMAP Phase 9 `converter` routine kind IMPLEMENTED ⚠ IN WORKTREE /tmp/wt-converter (base 2c50927 + 11 files + new test file), NOT in live tree
+### 2026-07-31 — JSX-ROADMAP Phase 9 `converter` routine kind ✅ MERGED TO MAIN `9ce47eb` (7 commits, rebased onto 0f0b8de; installed msc NOT yet rebuilt — converter needs a gen-26 deploy before Neon can use it under the installed binary)
+
+Merge maneuver (the "blocked" verdict was stale by one parallel-session commit): live dirt had
+shrunk to 7 src files; only checkExprPass+context intersected the branch. Parked EXACTLY those
+2 via `git stash push -- <2 files>` → `merge --ff-only` → pop → verified restored content
+byte-identical against a pre-merge snapshot (`/tmp/parallel-dirt-snapshot.patch` kept the full
+7-file dirt as belt-and-braces). Their hunks were point-insertions ≥15 lines from converter
+edits → 3-way pop merged clean. Post-merge gates on 9ce47eb content: c-suite 2787/2787, Neon
+core 278 + render 277 + platform 290, all green under the worktree-built msc.
+
+**Audit round (user-requested, pre-commit)**: full patch re-read; expand.ms addKindFields
+MacroDecl arm was missing `macroDeclReturnType` → fixed (macro bodies reading MacroDecl nodes
+now see the field); `createContext` confirmed the SOLE CheckerContext factory (no LSP null-map
+risk); hash.ms doesn't exist (stale memory ref — walkers are visitor/walker, child-only, safe).
+Noted, deliberately not expanded: overload NO-MATCH path lacks the JSX explicit-call hint (only
+the ambiguous path has it); registry target matching is nominal-simple-name textual (annotation
+text vs `typeDisplayName`) — generic/alias-spelled targets won't match, V1 limitation.
+**HEAD-crash differential**: `msc test src/index.ms` on PRISTINE d01fb39 dies exit-255 after
+exactly 153 ✓ files (last = lsp/format.ms, next = lsp handlers) — identical point with the
+converter patch applied (153 = 153, zero delta) and identical under gen-23 AND gen-25 boot
+binaries; green at 2c50927+patch. The crash arrived with the wt-u8 landing (or its window) and
+is the parallel session's to own — their stash "session-kill delta + never-fix (park for HEAD
+re-anchor)" suggests they know. Converter gates that DO hold on the committed tree: c-suite
+sibling run 2787/2787 (134 files, 17 converter guards + c/jsx.ms), runtime E2E, Neon sweep
+(ran pre-rebase; re-run post-merge). Installed msc was REPLACED mid-session (gen-25, 01:03).
 
 TDD arc, spec = LANG.md "Converter Declarations" (7 rules) + LANG-JSX "Boundary Lowering via
 Converter" + JSX-ROADMAP 9.1-9.5. **All gates green in the worktree**: 17 converter guards
@@ -490,9 +514,17 @@ Traps burned into this session:
 - vendor/ in a fresh worktree misses submodule content → swap for a symlink to the live
   repo's vendor (excluded from the patch).
 
-Remaining Phase 9 scope (NOT in this worktree): build.ms global-import precedence tier, LSP
-parity guard (9.5, gen-19 behavior under a converter), docs status flips (JSX-ROADMAP/LANG/
-LANG-JSX carry uncommitted design text in the LIVE tree — flip at landing). Two Maybe-assign
+Remaining Phase 9 scope: LSP parity guard (9.5) — planned with the Neon component arc.
+build.ms precedence tier: MEASURED 2026-07-31 — build.ms has NO globalImports field yet
+(BuildConfig schema in std/build/index.ms: entry/root/resolve.alias/fmt/cc/package/deps only;
+prelude.ms hardcodes the list with "Later: merge with build.ms" ×2; consumers compile.ms:350 +
+checkPass.ms:2019 read prelude only) — the converter tier hooks in when that wiring lands
+(needs origin=2 so a module import SHADOWS the build.ms inject instead of erroring).
+Post-merge closures: C runtime E2E re-verified on main content (`x=7 y=7 sum=14`); JS backend
+VERIFIED — converter expands identically (`const x = 7` in the bundle); note `msc build
+--target=js` emits main_ without invoking it for ALL programs (plain no-JSX differential),
+a pre-existing driver behavior, not the converter's. Docs status flipped 2026-07-31
+(LANG.md/LANG-JSX.md/JSX-ROADMAP.md, left uncommitted per repo docs rule). Two Maybe-assign
 checker holes + comptime-alias-module link error filed in §2.
 
 ### 2026-07-31 — /trace-nim uint8[] widening: receiver dispatch bypassed container invariance ✅ COMMITTED `70a220d`+`f5d32ca`+`66400b3`+`d01fb39` (on `2c50927`) + **DEPLOYED as gen-25** — built in the worktree and synced from THERE, not from the live tree (live working tree carries the parallel session's in-flight enum/checker work; building it would ship their unfinished code, the gen-13 trap). Content diff installed-vs-worktree was exactly the 2 changed files; guard re-verified 283/283 and probes value-correct UNDER the installed binary
