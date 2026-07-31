@@ -28,14 +28,57 @@ core. Treat them as history for the Nim→MS module mapping, not as current stat
 
 | # | work | state | size |
 |---|---|---|---|
-| 1 | `createStyles` macro | `src/macros/ui/style.ms` is a **6-line stub** | small |
-| 2 | component macro (function components) | not started | medium |
+| 1 | ~~`createStyles` macro~~ | **DONE (S1b)** — `style.ms` is a real styleOf-rewrite macro; checker validates each entry against `Style`. Remaining style work is S3 (spread, blocked by §2 row 8) + S4 (reactive fields) | — |
+| 2 | component macro (function components) | **half done** — see below | medium |
 | 3 | attribute classification (animatable / event / static) | not started | small–medium |
 | 4 | `src/starter/` example components | empty dir | small |
 | 5 | iOS host | empty dir | large |
 | 6 | Android host | empty dir | large |
 
-Suggested order: **1 → 2 → 4** unlocks "you can actually write an app", then 5/6.
+Suggested order: **2 → 4** unlocks "you can actually write an app", then 5/6.
+
+#### #2 component macro — what already exists vs what is missing (measured 2026-07-29)
+
+"not started" was misleading: the **render layer half is already built and green**.
+
+| piece | state |
+|---|---|
+| `VNode.componentFn` / `componentProps` fields | ✅ `src/render/node.ms` |
+| `ComponentFn<P>` / `ComponentProducer` types | ✅ `src/render/node.ms` |
+| `componentNode(fn, props)` constructor | ✅ `src/render/node.ms` |
+| lazy expansion at mount (host path) | ✅ `src/render/host.ms` (3 sites: mount, keyed child, region) |
+| lazy expansion in `renderToString` | ✅ `src/render/node.ms` |
+| **`src/render/component.ms`** — `createComponent` (wraps `Comp(props)` in `untrack`), `Reactive<T>`, `read()` | ❌ **file does not exist** — `node.ms:24` already references it in a comment |
+| **element macro emitting `componentNode` for capitalized JSX tags** | ❌ `element.ms` has no upper/lower-case tag branch at all — `<Foo/>` currently becomes an element with tag `"Foo"` |
+| tests | ❌ none (`grep -rl component tests/` is empty) |
+
+So the work is: write `component.ms`, teach `element.ms` the capitalized-tag branch,
+add tests. The VNode contract does **not** need to change — that is why this is
+medium and not large.
+
+**Design LOCKED 2026-07-30 (full design session with user) — the component/JSX contract:**
+
+- **User surface = React**: components are PLAIN functions `(props) => VNode`, bare JSX
+  everywhere, zero `element()` calls. Mechanism = new `converter` routine kind in MS
+  (compile-time body, compiler-invoked at settled type boundaries). Normative spec:
+  recompiler `docs/LANG.md` §"Converter Declarations" + `docs/LANG-JSX.md` §"Boundary
+  Lowering via Converter"; implementation plan `docs/JSX-ROADMAP.md` Phase 9.
+  `element.ms` only changes its declaration line to `export converter element(node: Node): VNode`.
+- **Props reactivity = thunks** (`count: () => number`); the converter wraps dynamic
+  attr exprs into arrows (same rule as dynText). Defer + untrack at the boundary via
+  `componentNode` — semantics MEASURED green in `probe/componentSemantics.ms`
+  (defer / body-runs-once / untrack / owner-inherit+cleanup all pass, block-bodied producer).
+- **Emission V1 = VNode layer** (host-agnostic: dom/terminal/void/mock + renderToString ride
+  free; smallest compiler-bug surface). Direct host-call emission (Nim-original / Solid-DOM
+  style) = named later optimization tier via a per-target converter in build.ms — zero
+  user-code change when it lands.
+- Nim-original `core/component.nim` ruled out as reference (ComponentContext threadvar +
+  `cast[pointer]` + React-style useEffect deps — all superseded by our Owner tree).
+- **ORDER (2 compiler prerequisites measured, filed as BUGS.md §2 rows 2026-07-30):**
+  bug "thunk-field closure garbage" (SILENT — also latent in Show/For) → converter arc
+  (Phase 9) → bug "expr-bodied-arrow env" → `src/render/component.ms` + element
+  capitalized-tag branch + tests.
+
 
 ⚠ **`src/yoga/` and `src/platform/{ios,android}/` are empty dirs, not work-in-progress.**
 ⚠ **iOS/Android are NOT blocked on `@target`** (an older claim in CLAUDE.md, now corrected): use
