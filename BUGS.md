@@ -514,6 +514,35 @@ Traps burned into this session:
 - vendor/ in a fresh worktree misses submodule content → swap for a symlink to the live
   repo's vendor (excluded from the patch).
 
+**Tooling round (2026-07-31, user asked "syntax/LSP đã solid chưa?") — found a DATA-LOSS bug:**
+`msc fmt` printed every MacroDecl as `"macro " + name` with the return annotation DROPPED, so
+formatting a converter file silently rewrote `export converter toNum(n: Node): number` into
+`export macro toNum(n: Node)` — routine kind AND target type gone (plain macros lost their
+`: Node` too; pre-existing since macros never printed returns). Fixed in
+`src/compiler/fmt/printer/declarations.ms` (NodeFlag.Converter → keyword, macroDeclReturnType →
+annotation); 2 guards in `src/test/c/converter.ms` red-proven under an unfixed build. ✅ LANDED
+main `c58af7a` (2 commits on 7dd8993). Trap worth keeping: the first version of the macro guard
+asserted `out.contains(": Node")` and passed BOTH ways — the param `n: Node` matched it; a
+return-position assertion must anchor on `"): Node"`.
+
+Editor tooling state (measured, NOT all solid):
+- vim syntax + vscode tmLanguage: `converter` added (regex-based, effective immediately) —
+  PARKED on branch `converter-editor`, NOT merged: the parallel session has those exact files
+  dirty (they are mid-regeneration on the nvim tree-sitter grammar).
+- tree-sitter: grammar.js rule written (also parked) but **parser.c CANNOT be regenerated** —
+  `tree-sitter generate` fails on PRISTINE HEAD with "Non-terminal symbol 'identifier' cannot be
+  used as the word token" (grammar.js:99 `word: $ => $.identifier` where identifier is a
+  `choice(...)` non-terminal), under BOTH the installed CLI 0.25.8 and the pinned 0.20.8. So
+  nvim tree-sitter highlighting cannot learn `converter` until that defect is fixed.
+  ⚠ Do NOT add `converter` to `queries/*/highlights.scm` before the parser is regenerated — a
+  query naming an unknown anonymous token errors the whole query file and kills highlighting
+  for the entire language.
+- LSP: there is NO keyword-completion list at all (no keyword path in completion.ms), so
+  `converter` is exactly as (un)completable as `macro`/`function` — systemic, not converter-
+  specific. Converter symbols are SymbolKind.Macro so they ride the macro symbol path;
+  UNMEASURED, and the handler tests that would prove it are inside the pre-existing lsp-handlers
+  crash (battery stops after 153 ✓ files). Ties into 9.5.
+
 Remaining Phase 9 scope: LSP parity guard (9.5) — planned with the Neon component arc.
 build.ms precedence tier: MEASURED 2026-07-31 — build.ms has NO globalImports field yet
 (BuildConfig schema in std/build/index.ms: entry/root/resolve.alias/fmt/cc/package/deps only;
