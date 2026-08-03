@@ -1,4 +1,4 @@
-// element macro — JSX → reactive VNode tree.
+// element macro — JSX → reactive NeonNode tree.
 //
 //   element(<div class="box"><p>Hi {name()}</p><button onClick={inc}>+</button></div>)
 // expands to el("div", [attr("class","box")], [],
@@ -11,7 +11,7 @@
 //
 // `style` is the one attribute with two channels: a string literal keeps the legacy
 // attr path (host parses it), while any other expression is a typed Style and routes
-// through withStyle() into VNode.style — which then also needs withStyle in scope.
+// through withStyle() into NeonNode.style — which then also needs withStyle in scope.
 
 import { Node, NodeKind } from "std/meta";
 
@@ -73,6 +73,63 @@ function cleanJsxText(raw: string): string {
 }
 
 export macro element(node: Node): Node {
+	// Capitalized tag → createComponent(Tag, { props }). V1 prop contract: a string
+	// literal passes through, every expression prop becomes a thunk (the component's
+	// props interface declares () => T); children stay structural — one child passes
+	// as written, several become an array, a lone expression container passes raw
+	// (For/Index row templates). Inline because node literals only type-check
+	// inside a macro body (engine-mode Node view).
+	const tagStart = node.jsxTag.charAt(0);
+	if (tagStart >= "A" && tagStart <= "Z") {
+		let keys: string[] = [];
+		let values: Node[] = [];
+		for (const a of node.jsxAttrs) {
+			if (a.kind === NodeKind.JSXAttribute) {
+				keys.push(a.jsxAttrName);
+				if (a.jsxAttrValue.kind === NodeKind.StringLiteral) {
+					values.push(a.jsxAttrValue);
+				} else {
+					values.push({ kind: NodeKind.ArrowFunction, line: a.line, column: a.column, arrowParams: [], arrowParamTypes: [], arrowBody: a.jsxAttrValue, arrowFlags: "", arrowReturnType: "" });
+				}
+			}
+		}
+		let compKids: Node[] = [];
+		for (const c of node.jsxChildren) {
+			if (c.kind === NodeKind.JSXText) {
+				const cleaned = cleanJsxText(c.jsxText);
+				if (cleaned !== "") {
+					compKids.push({
+						kind: NodeKind.CallExpr, line: c.line, column: c.column,
+						callee: { kind: NodeKind.Identifier, line: c.line, column: c.column, name: "text" },
+						arguments: [{ kind: NodeKind.StringLiteral, line: c.line, column: c.column, value: cleaned }],
+					});
+				}
+			} else if (c.kind === NodeKind.JSXExpressionContainer) {
+				compKids.push(c.jsxExpr);
+			} else if (c.kind === NodeKind.JSXElement) {
+				compKids.push({
+					kind: NodeKind.CallExpr, line: c.line, column: c.column,
+					callee: { kind: NodeKind.Identifier, line: c.line, column: c.column, name: "element" },
+					arguments: [c],
+				});
+			}
+		}
+		if (compKids.length === 1) {
+			keys.push("children");
+			values.push(compKids[0]);
+		} else if (compKids.length > 1) {
+			keys.push("children");
+			values.push({ kind: NodeKind.ArrayLiteral, line: node.line, column: node.column, elements: compKids });
+		}
+		return {
+			kind: NodeKind.CallExpr, line: node.line, column: node.column,
+			callee: { kind: NodeKind.Identifier, line: node.line, column: node.column, name: "createComponent" },
+			arguments: [
+				{ kind: NodeKind.Identifier, line: node.line, column: node.column, name: node.jsxTag },
+				{ kind: NodeKind.ObjectLiteral, line: node.line, column: node.column, properties: values, keys: keys },
+			],
+		};
+	}
 	let attrs: Node[] = [];
 	let events: Node[] = [];
 	let styleExpr: Node | null = null;
