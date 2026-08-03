@@ -68,10 +68,11 @@ medium and not large.
   attr exprs into arrows (same rule as dynText). Defer + untrack at the boundary via
   `componentNode` — semantics MEASURED green in `probe/componentSemantics.ms`
   (defer / body-runs-once / untrack / owner-inherit+cleanup all pass, block-bodied producer).
-- **Emission V1 = VNode layer** (host-agnostic: dom/terminal/void/mock + renderToString ride
-  free; smallest compiler-bug surface). Direct host-call emission (Nim-original / Solid-DOM
-  style) = named later optimization tier via a per-target converter in build.ms — zero
-  user-code change when it lands.
+- **Emission V1 = tree emission** (VNode layer — host-agnostic: dom/terminal/void/mock +
+  renderToString ride free; smallest compiler-bug surface). Direct host-call emission
+  (Nim-original / Solid-DOM style) = **direct emission**, a later per-target optimization
+  tier via build.ms — zero user-code change when it lands. Both tiers, the lifecycle, and
+  the invariants are specified in `docs/RENDER-MODEL.md`.
 - Nim-original `core/component.nim` ruled out as reference (ComponentContext threadvar +
   `cast[pointer]` + React-style useEffect deps — all superseded by our Owner tree).
 - **ORDER (2 compiler prerequisites measured, filed as BUGS.md §2 rows 2026-07-30):**
