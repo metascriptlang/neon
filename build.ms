@@ -1,21 +1,6 @@
 // Neon Build Configuration
-// MetaScript declarative build config (like vite.config.ts)
-
-import { BuildConfig } from "std/build";
-
-const config: BuildConfig = {
+const config = {
 	fmt: { useTabs: true },
+	globalImports: ["./src/converters"],
 };
-
-// export default defineConfig({
-// 	root: "src/index.ms",
-// 	fmt: {
-// 		useTabs: true,
-// 	},
-// 	build: {
-// 		targets: [
-// 			{ target: "native", outDir: "build/c" },
-// 			{ target: "js", outDir: "build/js" },
-// 		],
-// 	},
-// });
+export default config;
