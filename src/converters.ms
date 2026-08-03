@@ -11,6 +11,7 @@
 import { Node, NodeKind } from "std/meta";
 export { element } from "./macros/ui/element";
 export { NeonNode, VAttr, VEvent, el, attr, evt, text, dynText, withStyle, regionNode, componentNode, renderToString } from "./render/node";
+export { createComponent } from "./render/component";
 
 export converter jsxToNeonNode(n: Node): NeonNode {
 	return { kind: NodeKind.MacroInvocation, line: n.line, column: n.column, macroName: "element", macroArgs: [n] };
