@@ -1,4 +1,4 @@
-// Typed style sheet → VNode.style → void host projection → yoga layout.
+// Typed style sheet → NeonNode.style → void host projection → yoga layout.
 // S1 (docs/STYLE.md §9): static styles only — no variants, no layering, no
 // reactive fields. The legacy string-attr path must keep working alongside it.
 
@@ -60,7 +60,7 @@ test "inline style literal routes through the typed channel" {
 	assert div.w === 40.0, "inline width applies";
 }
 
-test "withStyle attaches a Style to a hand-built VNode" {
+test "withStyle attaches a Style to a hand-built NeonNode" {
 	const node = withStyle(el("div", [], [], []), sheet.btn);
 	assert node.style !== null, "style slot set";
 	assert el("div", [], [], []).style === null, "plain el has no style";

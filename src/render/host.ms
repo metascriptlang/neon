@@ -1,9 +1,9 @@
 // Host abstraction — the renderer is platform-neutral; each platform supplies a
-// Host adapter (DOM, native widgets, terminal, ...). renderToHost walks a VNode
+// Host adapter (DOM, native widgets, terminal, ...). renderToHost walks a NeonNode
 // tree once, creating host nodes, binding reactive text, applying attrs/events.
 
 import { createEffect } from "../core/effect";
-import { VNode, VAttr, VEvent, RegionFn, ComponentProducer } from "./node";
+import { NeonNode, VAttr, VEvent, RegionFn, ComponentProducer } from "./node";
 import { Style } from "./style";
 import { reconcileArrays } from "./reconcile";
 import { Host, HostNode } from "./hostTypes";
@@ -12,7 +12,7 @@ export { Host, HostNode } from "./hostTypes";
 
 // Build a single host node from a vnode (recursing into children). dynText binds a
 // push-effect; a region child mounts an anchor + reconcile effect into this node.
-export function renderNode(vnode: VNode, host: Host): HostNode {
+export function renderNode(vnode: NeonNode, host: Host): HostNode {
 	const comp = vnode.componentFn;
 	if (comp !== null) {
 		const producer = comp as ComponentProducer;
@@ -46,7 +46,7 @@ export function renderNode(vnode: VNode, host: Host): HostNode {
 
 // A region owns the span before its end anchor. The effect re-runs when the region's
 // list source changes, reconciling host nodes between the start of the span and anchor.
-function mountRegion(vnode: VNode, host: Host, parent: HostNode): void {
+function mountRegion(vnode: NeonNode, host: Host, parent: HostNode): void {
 	const anchor = host.createText("");
 	host.append(parent, anchor);
 	let current: HostNode[] = [];
@@ -59,7 +59,7 @@ function mountRegion(vnode: VNode, host: Host, parent: HostNode): void {
 	});
 }
 
-export function renderToHost(vnode: VNode, host: Host, parent: HostNode): void {
+export function renderToHost(vnode: NeonNode, host: Host, parent: HostNode): void {
 	const comp = vnode.componentFn;
 	if (comp !== null) {
 		const producer = comp as ComponentProducer;

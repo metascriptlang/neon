@@ -1,4 +1,4 @@
-// Void host — renders Neon VNode trees into a void2d Node2D scene graph.
+// Void host — renders Neon NeonNode trees into a void2d Node2D scene graph.
 // The same renderToHost(vnode, host, parent) that drives the DOM host drives
 // this; element tags all become group() containers, text nodes become label().
 // A "style" attr is a points-only string ("width:200;flexDirection:column")

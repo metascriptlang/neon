@@ -20,17 +20,17 @@ export interface VEvent {
 // returned thunk yields host nodes that renderToHost reconciles into the DOM.
 export type RegionFn = (host: unknown) => () => unknown[];
 
-// A Component (function component) is a function from props to a VNode. Props values
+// A Component (function component) is a function from props to a NeonNode. Props values
 // are callables (signals/memos) or plain values — see Reactive<T> + read() in component.ms.
-// The producer form (() => VNode) is the deferred expansion of an already-bound call:
-// createComponent wraps Comp(props) in untrack and returns a VNode whose componentFn field
+// The producer form (() => NeonNode) is the deferred expansion of an already-bound call:
+// createComponent wraps Comp(props) in untrack and returns a NeonNode whose componentFn field
 // holds the deferred call. Renderer expands it lazily at mount.
-export type ComponentFn<P = unknown> = (props: P) => VNode;
-export type ComponentProducer = () => VNode;
+export type ComponentFn<P = unknown> = (props: P) => NeonNode;
+export type ComponentProducer = () => NeonNode;
 
-export interface VNode {
+export interface NeonNode {
 	tag: string;           // "" marks a text node
-	children: VNode[];
+	children: NeonNode[];
 	text: string;          // static text
 	isDyn: boolean;        // true → `dyn` is the live text source
 	dyn: () => string;
@@ -50,32 +50,32 @@ export function evt(name: string, handler: () => void): VEvent {
 	return { name, handler };
 }
 
-export function el(tag: string, attrs: VAttr[], events: VEvent[], children: VNode[]): VNode {
+export function el(tag: string, attrs: VAttr[], events: VEvent[], children: NeonNode[]): NeonNode {
 	return { tag, children, text: "", isDyn: false, dyn: () => "", attrs, events, style: null, region: null, componentFn: null, componentProps: null };
 }
 
-export function withStyle(n: VNode, s: Style): VNode {
+export function withStyle(n: NeonNode, s: Style): NeonNode {
 	n.style = s;
 	return n;
 }
 
-export function text(s: string): VNode {
+export function text(s: string): NeonNode {
 	return { tag: "", children: [], text: s, isDyn: false, dyn: () => "", attrs: [], events: [], style: null, region: null, componentFn: null, componentProps: null };
 }
 
-export function dynText(thunk: () => string): VNode {
+export function dynText(thunk: () => string): NeonNode {
 	return { tag: "", children: [], text: "", isDyn: true, dyn: thunk, attrs: [], events: [], style: null, region: null, componentFn: null, componentProps: null };
 }
 
-export function regionNode(fn: RegionFn): VNode {
+export function regionNode(fn: RegionFn): NeonNode {
 	return { tag: "", children: [], text: "", isDyn: false, dyn: () => "", attrs: [], events: [], style: null, region: fn, componentFn: null, componentProps: null };
 }
 
-export function componentNode(fn: ComponentProducer, props: Map<string, unknown>): VNode {
+export function componentNode(fn: ComponentProducer, props: Map<string, unknown>): NeonNode {
 	return { tag: "", children: [], text: "", isDyn: false, dyn: () => "", attrs: [], events: [], style: null, region: null, componentFn: fn, componentProps: props };
 }
 
-export function renderToString(n: VNode): string {
+export function renderToString(n: NeonNode): string {
 	const comp = n.componentFn;
 	if (comp !== null) {
 		const producer = comp as ComponentProducer;

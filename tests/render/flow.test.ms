@@ -1,4 +1,4 @@
-import { el, text, dynText, VNode } from "../../src/render/node";
+import { el, text, dynText, NeonNode } from "../../src/render/node";
 import { MockNode, mockHost, renderToHost } from "../../src/render/host";
 import { For, Index, Show } from "../../src/macros/ui/flow";
 import { createSignal } from "../../src/core/signal";
