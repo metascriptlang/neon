@@ -31,7 +31,7 @@ function trimEdgeSpaces(s: string, fromStart: boolean, fromEnd: boolean): string
 // spans lines has each line's indentation stripped and is rejoined with single
 // spaces; a whitespace-only one collapses to "" and is dropped by the caller.
 // Text with no newline is significant and passes through untouched.
-function cleanJsxText(raw: string): string {
+export function cleanJsxText(raw: string): string {
 	let hasNewline = false;
 	let i = 0;
 	while (i < raw.length) {
