@@ -327,6 +327,7 @@ function was needed, and the emitted C shows DRC injecting `msIncref` per copied
 | **C literal emission: `\xNN` escapes merge with following hex chars** (NEW 2026-07-30) | `const s = "\xC3\xA9abc";` | ❌ clang: `hex escape sequence out of range` — emitted verbatim, C parses `\xC3A` greedily. Needs escape-safe emission (`"\xC3" "\xA9" "abc"` or octal) |
 | ~~function-typed field/param receiving a repr-mismatched closure → calls read garbage (SILENT)~~ ✅ **CLOSED 2026-07-30 late (worktree /tmp/wt-fnrepr, NOT yet in live tree/installed msc)** — the filed "variable-held" framing was WRONG twice: trigger = closure whose SIGNATURE carries int32 where the declared slot says number (unannotated `() => 42` arrows and generic `mkG(7)` instantiations both produce `() => int32`); the checker's arg loop had a Function CARVE-OUT skipping ALL closure args (checkExprPass:2992) so nothing was ever checked, and the C call site casts fn to the DECLARED ABI (int in eax, caller reads xmm0 → denormal). Fix = narrow carve-out (literal lambdas + generic-containing formals only) + repr gate in isFunctionAssignable + Function branch in isReinterpretUnsafe. Guard bug070 (6 tests, tree-toggle red-proof). Gates: battery clean (9 lifecycle fails = worktree missing UNTRACKED examples/*.ms — env, re-verified green after copy), Neon sweep 16/16, js/basic 2779/2779. See §5 | `probe/thunkProps.ms` (T1: `const g = () => 42; readP({ count: g })` → `2.14e-314`; T2/S1: signal getter in the field, same garbage), `probe/thunkProps3.ms` (inline-arrow fields V1/V4 GREEN in the SAME module while variable-held T1/S1 read garbage), `probe/componentSemantics.ms` (component thunk-props test red) | ❌ silent wrong answers on C under installed gen-21, zero diagnostics. Inline arrow literals in the field work — ONLY variable-held closures corrupt (signal getters included). Blocks component thunk props outright (`{ count: n }` IS this shape); **latent in `Show`/`For` today** — every existing call site happens to use inline arrows (`when: () => …`); `when: someMemo` would silently read garbage. Same severity family as loop+nested-closure snapshot. JS backend NOT yet measured. **First item of the component arc (PORT-STATUS #2)** |
 | **expression-bodied arrow whose nested arrow captures an outer binding → C `use of undeclared identifier '_env_…'`** (NEW 2026-07-30, same probe session) | `probe/na_n1.ms` (inner captures enclosing const), `probe/na_b4.ms` (inner captures the outer arrow's own param), boundary matrix `probe/nestedArrowEnv2.ms` (block-bodied B1/B2/B5 GREEN; no-capture B3 GREEN) | ❌ hard C compile error (not silent): the outer arrow's env struct is never emitted. `() => untrackish(() => x + 1)` dies; `() => { return untrackish(() => x + 1); }` compiles. Blocks the flat `componentNode(() => untrack(() => Comp(props)), …)` emission shape — probes use block body meanwhile, but policy = fix root, the block-body form is NOT the answer. Third item of the component arc |
+| **TypeInfo symbols collide across test modules in a multi-file link — full fixedbugs entry is RED** (NEW 2026-08-06, found landing UNKNOWN-BUG Phase 1+2; PRE-EXISTING — reproduces identically under the pre-split HEAD-built binary, so NOT the split's fallout) | `msc test src/test/fixedbugs/index.ms` (full suite). The ~15-file globs stay green — bug009's glob is 294/294 under both the pre- and post-split binary | ❌ link error: `duplicate symbol definition: _ItemTypeInfo` / `_dollarEnv_test1_shared_TypeInfo` / `_dollarEnv_test2_shared_TypeInfo` (bug009.o vs bug072ExternMethodLiftedEmit.o). Env-struct and struct TypeInfo symbol names carry NO module qualifier, so two test files with a same-named test block + same-named capture (`shared`) or same-named struct (`Item`) collide at link when the full graph links them together. Same family as the JS flat-scope row: `codegen/names.ms` qualifies functions/globals by `sym.modulePath`, TypeInfo emission doesn't. Per-glob runs remain the working fixedbugs gate |
 
 - **nullfn bind-order** — `apply((v:number)=>v+1, 10)` binds T=int32 from arg 1, overriding the arg-0
   arrow. Nim `paramTypesMatchAux` binds progressively IN ARG ORDER → T=number. Do NOT fix by loosening
@@ -387,6 +388,58 @@ function was needed, and the emitted C shows DRC injecting `msIncref` per copied
   dispatcher calls it → C link error** (NEW 2026-07-31, pre-existing, found by converter probes:
   `const x = <a/>;` alone at module top → `call to undeclared function 'Z…__Init000'`). Off
   Neon's path; filed so the next person probing JSX consts doesn't chase it as a fresh break.
+- **post-check diagnostics are dropped on the floor — analyzer errors never fail a build** (NEW
+  2026-08-05, found by the UNKNOWN-BUG seam arc): `compile.ms` counts checker errors, CLEARS
+  `ctx.errors` (:1023), and never reads the array again — anything transform/analyze pushes
+  afterwards vanishes. Interim landed (committed with the seam arc): both codegen loops +
+  test-helper C pipelines now fail on errors added DURING `generateCModule` (snapshot count) —
+  codegen can no longer error silently; analyze-phase errors still vanish (the compileToC helper
+  takes its snapshot AFTER `analyzeProgram`, so the class hides in the helpers too). Fixing the
+  class = triage every currently-dropped diagnostic. The promise dropped case is FIXED 2026-08-05
+  (`f86dbbe` + guard bug078 proven red): `needsReturnIncref` classified the RAW return node, so
+  `return x as unknown as T` (NodeKind 17) fell into the error arm and shipped C without incref —
+  member-under-cast was the real UAF (caller's decref stole a count from the field's owner).
+  /trace-nim verdict DIVERGE-INCOMPLETE: Nim's "ownership invariance" (conversions recurse with
+  the same mode, injectdestructors nkConv/nkCast) was in the walk (`processAssertionWrapper`) but
+  not the classifier; fix = `skipConversionWrappers` before classifying. Two SIBLINGS filed, not
+  fixed: (a) decl-site `const l = ownedCall() as unknown as Ref` emits msIncref on an owned value
+  (rc 0→1, only one decref exists → leak; measured in probe C 2026-08-05); (b) processReturn's
+  origKind deep-copy gates (ArrayAccess/MemberExpr/Identifier → passCopyToSink for non-Ref RC)
+  also classify the raw kind — `return globalArr as X` skips the copy the uncast form gets
+  (double-free class, same invariance, needs its own probe + guard).
+  **Fence landed 2026-08-05** (`9968280` compile.ms both loops + `c7a7fd1` the two Result-returning
+  C helpers): errors added DURING `analyzeProgram` now fail the build / return `Err`. Measured safe
+  — the analyzer has EXACTLY 2 error-push sites and 0 of them fire across a 291-module self-build
+  or the 3428-test battery. UNGUARDED on purpose: no proven-red guard exists because both producers
+  are currently DEAD (see next row), so the fence is insurance for future producers, not a live fix.
+- **`errFailedMove` was dead code — `move x` silently degraded to a copy** — FIXED 2026-08-05
+  (`b68f3b3` + guard bug081 proven red). NOT a memory-safety bug: the emitted C for
+  `b = move a; readIt(a)` is `$borrow_0 = a; msIncref($borrow_0); b = $borrow_0;
+  msPtrWasMoved($borrow_0)` — a balanced COPY with wasMoved landing on the sink temp, so `a` stays
+  valid and refcounts are correct (an earlier note in this file called it use-after-move; that was
+  wrong, corrected after reading the emitted C). The bug was that `move` became a silent no-op copy
+  instead of the compile error `docs/LANG-MOVE.md` (Phase 4, "Status: DONE") promises. Root:
+  `isLastReadSafe` short-circuits `SymbolFlag.SinkTemp → true` and the Consumed walk has ALREADY
+  rewritten the arg into that temp before the check runs. /trace-nim verdict DIVERGE-UNINTENTIONAL:
+  Nim raises errFailedMove at the COPY DECISION under an `inEnsureMove` depth flag
+  (injectdestructors `genCopy` + the sink-arg copy path), never from a last-read query. Fix mirrors
+  that: `inEnsureMove` on DrcContext, incremented around the move argument's walk, checked in
+  `passCopyToSink` + `genCopy`; the dead last-read block deleted. NIM-REF records this diagnostic as
+  "abandoned" because analyze-phase errors never printed — the fence above (`9968280`) is what made
+  reviving it possible. STILL OPEN, same family: the declaration form (`const b = move a`) never
+  reaches a copy decision through `processMove`, so it is not covered by this fix.
+- **flagless `TypeKind.Unknown` reaches C emission routinely — Nim-style "unresolved type reached
+  codegen" internal error is premature** (measured 2026-08-05, REFUTES the poison-probe
+  generalization recorded in memory/Phase 0): flipping the `gateFlaglessUnknown` seam
+  (`codegen/c/types.ms`) to addError aborts real user shapes (match exprs, try/Result unwrap,
+  toString, anonStructCast handoff files) and ~846 test-mode hits across ~30 modules (all
+  `proc=<toplevel>`, ask-and-discard benign today). Two producer families FIXED en route (Nim
+  `getSysType(tyPointer)` parity): DRC trace-hook `callback` param (both destructorLifting
+  synthesis sites) and every synthesized `"void*"` annotation (`resolveSimpleTypeStr`,
+  `transform/util.ms:413` — covered every lifted-lambda env param). Root-env `$up` stays Unknown
+  (Ptr<void> attempt reverted — no measured effect). The error becomes shippable exactly when
+  UNKNOWN-BUG.md §8 Phase 3 makes `pendingType()` unconstructible. Full story: recompiler
+  `docs/UNKNOWN-BUG.md` §8-§9.
 
 ---
 
@@ -436,6 +489,61 @@ Still untracked: `docs/EDITOR*.md` (design scratch).
 ---
 
 ## §5 — Fixed (history + root-cause ledger, append-only)
+
+### 2026-08-06 — UNKNOWN-BUG Phases 1+2: the kind split ✅ COMMITTED `c525037`+`8e7b31b`+`1b45823`+`2168357`+`a37ef0b` (installed msc still PRE-split; deploy of msc-p4 pending user approval)
+
+The docs/UNKNOWN-BUG.md arc's safe stop point, shipped as one arc because the bootstrap A/B proved
+std follows the BINARY (renamed source + installed msc dies at clang). `c525037` = mechanical
+rename (52 files, 433±, sole non-rename line = the enum member; TokenKind.Unknown/pendingTypeArg
+traps honoured). `8e7b31b` = the payoff: user `unknown` gets fresh end-of-enum `TypeKind.Unknown`
+(ordinal-stable, getSysType-fallback fresh-per-call), `TypeFlag.UserUnknown` + `userUnknownType()`
+deleted, `isUserUnknown` = kind check, 8 flag readers converted — plus a NINTH reader the doc's §1
+list missed: extension receiver match (context.ms:566/568/594) served `this: unknown` receivers
+via kind Pending; std's catch-all `hash(this u: unknown)` stopped resolving on Map until converted
+(battery caught it — the ONLY Phase 2 fallout). Both-meaning sites gained the Unknown arm
+(unwrapRefNullUnion, isMaybeWrappable, substituteType, isPrimitiveKind, typeDisplayName,
+compat 281/740/972, fitNode + call-arg cluster). `1b45823` = the Phase-0 DEBT disagreement cells
+inverted to assert agreement. Landing probe matrix (7 behaviours × {msc-base, msc-p4} × {C, JS})
+proved semantics preserved with two upgrades: `u.foo` now a clean checker error (was clang
+`member reference base type 'void'`), and `u + 1` — which compiled and CRASHED AT RUNTIME under
+BOTH binaries, pre-existing — closed by `2168357`+`a37ef0b` (bug084, 7 cells, 4 proven red:
+allowlist gate, equality/logical/`??`/`=` stay legal). Gates: battery 3429/3429 under
+p1/p2/p3(fixpoint)/p4, handoff at baseline (2 pre-existing), bug069 glob 2192 + bug076 glob 301,
+Neon 295+294+307+counter, dual-backend probe C==JS. Found + filed while landing: full-fixedbugs
+link RED = pre-existing TypeInfo symbol collision (§2 row). Design verdict recorded: MS `unknown`
+is a POINTER-shaped top type by row-58 design (Nim tyPointer model), not TS's universal top —
+value types need boxing/reinterpret on purpose; `(u as number)` erroring is CORRECT, don't "fix"
+it. Keyword-honesty question (keep `unknown` vs a more explicit spelling) left open with the user
+— `Ptr<void>` already exists as the explicit raw-pointer spelling.
+
+### 2026-08-06 — unknown enum member escaped the checker ✅ COMMITTED `9950b88` + `61b510d`
+
+`Color.Purple` on an enum without `Purple` type-checked CLEAN and blew up one layer down:
+C → clang `use of undeclared identifier 'Color_Purple'`, JS → `ReferenceError` at run time —
+wrong layer, mangled name, no source location. Root: `checkMemberExpr`
+(`checkExprPass.ms:4326`) computes `memberExists`, uses it ONLY to pick the returned type, then
+rewrites the node to a mangled Identifier either way. Isolation matrix: interface field (p2) and
+class static (p3) already errored correctly — enum was the only leaking shape.
+
+Nim parity measured by RUNNING nim, not reading it: `tryReadingTypeField` → nil → sem
+`Error: undeclared field: 'Purple'`. Verdict SPLIT — the `E.M` → mangled-Identifier rewrite stays
+(NIM-REF row 72, DIVERGE-INTENTIONAL, keeps enums out of every codegen backend); the missing
+"not found → error" arm is DIVERGE-UNINTENTIONAL. Fix = 3 lines, reusing the struct path's
+existing message format.
+
+Extern enums measured too (`extern enum Flags { A, B }` + `Flags.C`): nim rejects an `importc`
+enum member that the Nim declaration omits EVEN WHEN the C header defines it — the binding is the
+contract. Our new behaviour matches exactly; ecosystem has 0 hand-written `extern enum`
+declarations, so nothing broke. Pinned as guard cells 4–5.
+
+Guard bug083 = 5 cells, 2 proven red ("expected an error, compiled clean"). Gates: battery
+3428/3428 · self-build 291 modules · corpus leak 70/70 · Neon 4 files (295/294/294/301).
+
+⚠ COORDINATION TRAP (self-inflicted): I wrote my `import "./bug083…"` line into the parallel
+session's working-tree copy of `fixedbugs/index.ms` so their next commit wouldn't drop it — they
+then `git add`ed that file and committed a dangling import, leaving HEAD `7e80d83` RED for the
+fixedbugs suite until `61b510d` landed the file. Never write into a live file another session is
+staging; keep the line in the index only.
 
 ### 2026-07-31 — JSX-ROADMAP Phase 9 `converter` routine kind ✅ MERGED TO MAIN `9ce47eb` (7 commits, rebased onto 0f0b8de; installed msc NOT yet rebuilt — converter needs a gen-26 deploy before Neon can use it under the installed binary)
 
