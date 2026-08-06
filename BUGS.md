@@ -328,6 +328,7 @@ function was needed, and the emitted C shows DRC injecting `msIncref` per copied
 | ~~function-typed field/param receiving a repr-mismatched closure → calls read garbage (SILENT)~~ ✅ **CLOSED 2026-07-30 late (worktree /tmp/wt-fnrepr, NOT yet in live tree/installed msc)** — the filed "variable-held" framing was WRONG twice: trigger = closure whose SIGNATURE carries int32 where the declared slot says number (unannotated `() => 42` arrows and generic `mkG(7)` instantiations both produce `() => int32`); the checker's arg loop had a Function CARVE-OUT skipping ALL closure args (checkExprPass:2992) so nothing was ever checked, and the C call site casts fn to the DECLARED ABI (int in eax, caller reads xmm0 → denormal). Fix = narrow carve-out (literal lambdas + generic-containing formals only) + repr gate in isFunctionAssignable + Function branch in isReinterpretUnsafe. Guard bug070 (6 tests, tree-toggle red-proof). Gates: battery clean (9 lifecycle fails = worktree missing UNTRACKED examples/*.ms — env, re-verified green after copy), Neon sweep 16/16, js/basic 2779/2779. See §5 | `probe/thunkProps.ms` (T1: `const g = () => 42; readP({ count: g })` → `2.14e-314`; T2/S1: signal getter in the field, same garbage), `probe/thunkProps3.ms` (inline-arrow fields V1/V4 GREEN in the SAME module while variable-held T1/S1 read garbage), `probe/componentSemantics.ms` (component thunk-props test red) | ❌ silent wrong answers on C under installed gen-21, zero diagnostics. Inline arrow literals in the field work — ONLY variable-held closures corrupt (signal getters included). Blocks component thunk props outright (`{ count: n }` IS this shape); **latent in `Show`/`For` today** — every existing call site happens to use inline arrows (`when: () => …`); `when: someMemo` would silently read garbage. Same severity family as loop+nested-closure snapshot. JS backend NOT yet measured. **First item of the component arc (PORT-STATUS #2)** |
 | **expression-bodied arrow whose nested arrow captures an outer binding → C `use of undeclared identifier '_env_…'`** (NEW 2026-07-30, same probe session) | `probe/na_n1.ms` (inner captures enclosing const), `probe/na_b4.ms` (inner captures the outer arrow's own param), boundary matrix `probe/nestedArrowEnv2.ms` (block-bodied B1/B2/B5 GREEN; no-capture B3 GREEN) | ❌ hard C compile error (not silent): the outer arrow's env struct is never emitted. `() => untrackish(() => x + 1)` dies; `() => { return untrackish(() => x + 1); }` compiles. Blocks the flat `componentNode(() => untrack(() => Comp(props)), …)` emission shape — probes use block body meanwhile, but policy = fix root, the block-body form is NOT the answer. Third item of the component arc |
 | **TypeInfo symbols collide across test modules in a multi-file link — full fixedbugs entry is RED** (NEW 2026-08-06, found landing UNKNOWN-BUG Phase 1+2; PRE-EXISTING — reproduces identically under the pre-split HEAD-built binary, so NOT the split's fallout) | `msc test src/test/fixedbugs/index.ms` (full suite). The ~15-file globs stay green — bug009's glob is 294/294 under both the pre- and post-split binary | ❌ link error: `duplicate symbol definition: _ItemTypeInfo` / `_dollarEnv_test1_shared_TypeInfo` / `_dollarEnv_test2_shared_TypeInfo` (bug009.o vs bug072ExternMethodLiftedEmit.o). Env-struct and struct TypeInfo symbol names carry NO module qualifier, so two test files with a same-named test block + same-named capture (`shared`) or same-named struct (`Item`) collide at link when the full graph links them together. Same family as the JS flat-scope row: `codegen/names.ms` qualifies functions/globals by `sym.modulePath`, TypeInfo emission doesn't. Per-glob runs remain the working fixedbugs gate |
+| **predicate-narrowed `unknown` member access emits void* deref on C** (NEW 2026-08-06 late, found by the B4 audit probes; PRE-EXISTING — fails byte-identically under pre-B4 v0.2.32, both the direct `u.n` and the `(u as Box).n` spelling) | `function isBox(u: unknown): u is Box { … }` then `if (isBox(u)) console.log(u.n.toString())` — /tmp/b4probes/shapes.ms variant | ❌ C: `member reference base type 'void' is not a structure or union` — `(*u_1_).n` where `u_1_` is `void*`. The checker narrows u to Box inside the branch (flow is correct — the cast spelling is even consumed as a no-op by the narrow), but codegen never inserts the pointer cast on the narrowed local. Boolean-only use of the predicate works (isBox(u) ? … : … green, C+JS). bug084's control `(u as Box).n` in a NON-narrowed context works — the hole is narrow-then-member specifically |
 
 - **nullfn bind-order** — `apply((v:number)=>v+1, 10)` binds T=int32 from arg 1, overriding the arg-0
   arrow. Nim `paramTypesMatchAux` binds progressively IN ARG ORDER → T=number. Do NOT fix by loosening
@@ -489,6 +490,64 @@ Still untracked: `docs/EDITOR*.md` (design scratch).
 ---
 
 ## §5 — Fixed (history + root-cause ledger, append-only)
+
+### 2026-08-06 (late) — UNKNOWN-BUG Phase 3 batch 4 (FINAL): pendingType() deleted, emission gate ARMED ✅ UNCOMMITTED
+
+The kind-split debt is CLOSED end-to-end (doc §8.4 item 4, all sub-items). (a) Error-scrutiny:
+14 post-addError recovery sites (resolvePass any/unresolved-name/cyclic-extends, template
+depth/arity, checkExprPass dynamic-field compound-assign + 2 internal ArrayAccess + macro
+depth×2 + macro-sentinel×2) → `errorType()`; the SILENT probe paths (line===0) keep Inferred —
+flipping those would leak pointer-shaped Error into 0-diagnostic builds (§5 family). Guard
+`handoff/b4ErrorRecovery.ms` 4 cells proven red→green; cyclic-extends gained true Nim cascade
+suppression (parent-merge skips Error parents silently; was 2 errors, now 1). The enum-member
+site (662) is addWarning-only → stays Inferred BY VERDICT (Error would flow into a proceeding
+build). Template-depth cell dropped: 100-deep expansion overflows the TEST-RUNNER thread stack
+(standalone compile errors cleanly — worker threads have smaller stacks); site still flipped,
+battery-covered. Macro cells dropped: checkSource single-module never populates
+macroBodyRegistry (the known subset-build no-op) — macro sites battery-covered. (b)
+predicateSentinel rides kind=None now; TWO readers existed, not one (flow:906 kind check +
+checkExprPass:3284 `isUnresolvedType(typeExtra)` + "asserts:" prefix — the second would have
+silently died when isUnresolvedType shrank); proven by half-flip red (3 predicate tests) →
+both-flip green. (c) typeofString flag → None (pure rename, producer+caller). (d+e)
+`pendingType()` DELETED; `emptyType()` kind default Pending→None after a caller audit found
+exactly ONE non-overwriting caller (collectTypeAlias placeholder → now explicit
+`inferredType()`, fresh-per-call verified); hidden producer found OUTSIDE the plan:
+bridge.ms:3051 test scaffolding `makePrimType(TypeKind.Pending)` → None; promiseLower typeTag
+`Void|Pending` arm → Void-only (Inferred already fell to the int tag under B3, battery-green);
+isUnresolvedType → Inferred-only; compat gates + 8 leniency cells → inferredType();
+substituteType/isPrimitiveKind-list/typeDisplayName/anonFieldKey/unwrapRefNullUnion/
+isMaybeWrappable arms dropped; guard cells now compare `TypeKind.Pending` enum directly or
+construct adversarially via `createPrimitive`. (f) `gateFlaglessUnknown` ARMED = Nim
+ccgtypes else-branch internal error. Population re-measured BEFORE arming: battery 0, Neon
+sweep 0, self-build **1** — root: `cond ? m.nodeType.typeChildren : []` (3 sites in
+actorLower.ms) kept `Array<Inferred>` on the empty branch; ConditionalExpr with null expected
+never re-fit branch literals (Nim fits both to commonType). Fixed narrowly:
+`retypeEmptyArrayBranch` — an empty array literal branch adopts the other branch's concrete
+array type. Guard fixedbugs bug085, proven red by mutation UNDER THE ARMED SEAM (the mirrored
+`cond ? [] : xs` cell is the one that bites; `xs : []` alternate is masked by
+conditionalExprLower using the merged type). The 3 DEBT cells (unknownKindReaders §E,
+noneKindNoType, b3InferredKind) INVERTED to error cells per their in-file instructions.
+Identification method worth keeping: 6 caller-site instruments all missed (the Inferred was
+NESTED in a composite reached by getTypeDesc recursion) — lldb breakpoint on the seam +
+`bt 20` found genArrayLiteral→genArrayType in one shot. Gates: battery 3428/3428 (−1 =
+deleted suggest display cell, accounted), handoff 180/182 (same 2 pre-existing), fixedbugs
+glob green (bug085 file 135/135), Neon sweep signal/memo/element/reconcile/counter + counter
+example RUN under the fixpoint binary, self-build fixpoint **d3≡d4 at 0 bytes** (d2→d3 =
+transition gen, 5.3M drift, same B3 c2 pattern). Binary `msc-d3` kept at recompiler root =
+deploy candidate. NOT deployed; installed msc still v0.2.32 pre-B4.
+
+AUDIT PASS (same session, user-requested): full diff re-read hunk-by-hunk (zero stray
+instruments; `505-jsonBasics.ms` in the stat is the PARALLEL session's — exclude from commit);
+ALL gates re-run from `rm -rf out` clean state (battery 3428, fixedbugs 2813, handoff 180/182
+same 2, Neon sweep) and the fixpoint chain REBUILT clean — d3′≡d4′ at 0 bytes again; kept
+binary replaced with the clean-built one (2480/93.5M cross-chain byte delta = UUID/codesign
+noise, same size). Runtime probes under the armed seam: match expr, Result unwrap, anon
+struct, ternary-[] BOTH orientations, predicate boolean, `asserts` — compile AND run correct
+on C, and the JS bundle prints the IDENTICAL 6 lines under node (JS bundles don't auto-invoke
+main; same pre-B4 — appended call manually). Negative-path UX byte-identical to v0.2.32
+(`any` ×2, unresolved ×2 — pre-existing two-pass duplicate; cyclic = 1 with the new
+suppression). One NEW pre-existing bug found and filed in §2: predicate-narrowed `unknown`
+member access emits `(*void*).field` on C (fails identically under v0.2.32).
 
 ### 2026-08-06 — UNKNOWN-BUG Phase 3 batch 3: all ~182 production pendingType() sites classified ✅ COMMITTED + DEPLOYED
 
