@@ -490,6 +490,30 @@ Still untracked: `docs/EDITOR*.md` (design scratch).
 
 ## §5 — Fixed (history + root-cause ledger, append-only)
 
+### 2026-08-06 — UNKNOWN-BUG Phase 3 batches 1+2: cancelled→Error, no-type→None ✅ UNCOMMITTED, DEPLOYED
+
+Phase 3 opened (docs/UNKNOWN-BUG.md §8.4). B1: the single cancelled site (checkExprPass:184,
+LSP-cancel) → `errorType()` — a cancelled check's type is never read by codegen (§7); NOT
+proven-red (needs an LSP cancel context that no fixedbugs harness has), shipped battery-no-regress
+only. B2: new `TypeKind.None` for "no type for this node kind", appended at enum END
+(ordinal-stable, `getSysType` fresh-per-call like Unknown); consumers written BEFORE producers:
+compat gates 282/742/975 keep None lenient (JSX-as-macro-arg must keep matching — scoping waits
+for B4), `isPointerShapedForUnknown` None=>false as an EXPLICIT arm (the §5-family trap arm),
+`typeDisplayName` "<none>", `getTypeDesc` mirrors the Pending seam (gate + "void*" until Phase 3's
+exit criterion), substituteType/isPrimitiveKind passthrough, sumGeneric 1. `isPointerType` (ABI
+reader) untouched — None falls to default false, so checker and ABI readers agree by construction.
+Producers: the 8 no-type kinds = RegexLiteral|QuoteExpr|JSXText arm (:361) + 5 JSX statement
+sites (:371–:393) → `noneType()`. Guard `src/test/handoff/noneKindNoType.ms`, 7 cells, 2 proven
+red by targeted mutation (producer revert reddens the symbol-kind cell at :26; None=>true reddens
+the pointer-shape cell at :36). Gates: worktree gen chain (installed-copy gen0 → b2 → b3
+self-build fixpoint, 291 modules), battery 3429/3429 under BOTH msc-b2 and the installed binary
+post-deploy, handoff glob 2824, fixedbugs globs at baseline (294/295/297/295/2812/2192), Neon
+core 295 + render/JSX 301 + counter under both binaries. Deployed via sync-local-binary.sh
+(binary + std). pendingType() population: 262 → 255 production sites (grep reads 257; 2 are the
+guard's own Pending-vs-None cells). Remaining: B3 (~250 inference sites → new `TypeKind.Inferred`,
+per-file batches, each site read individually) then B4 (scope compat gates to Inferred, delete
+`pendingType()`). Worktree /tmp/wt-phase3 left in place with msc-b2/b3.
+
 ### 2026-08-06 — UNKNOWN-BUG Phases 1+2: the kind split ✅ COMMITTED `c525037`+`8e7b31b`+`1b45823`+`2168357`+`a37ef0b` (installed msc still PRE-split; deploy of msc-p4 pending user approval)
 
 The docs/UNKNOWN-BUG.md arc's safe stop point, shipped as one arc because the bootstrap A/B proved
