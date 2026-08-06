@@ -490,6 +490,25 @@ Still untracked: `docs/EDITOR*.md` (design scratch).
 
 ## §5 — Fixed (history + root-cause ledger, append-only)
 
+### 2026-08-06 — UNKNOWN-BUG Phase 3 batch 3: all ~182 production pendingType() sites classified ✅ COMMITTED + DEPLOYED
+
+COMMITTED recompiler `0440292..39c006d` (5 commits incl. version bump), neon `d979c38`; DEPLOYED
+v0.2.32 via sync-local-binary.sh (post-deploy smoke: Neon signal 295 + counter under installed
+msc). `TypeKind.Inferred` landed (enum END, ordinal-stable, fresh-per-call). Worktree
+/tmp/wt-phase3 kept, binaries msc-c1..c5 inside. The batch's discovery: sentinel kinds are
+a PROTOCOL between ~182 producers and ~100 readers — flipping producers first broke 17 tests
+(DU narrowing, extension resolution, LSP completion), reverted; the working order is one central
+predicate (`isUnresolvedType` = Pending‖Inferred, 87 reader sites) THEN producers per protocol.
+Distribution: inference/accessor-miss/bail-outs → Inferred; post-checker fallbacks + scaffolding
++ macro/module syms → None; deliberate-void* family → Ptr<void> (emission unchanged); matchLower
+`$matched` → boolean (real fix). Proofs: battery 3429/3429 every step; inferredReturn tightened
+to Inferred-only = measured no-Pending-flows; guard b3InferredKind 8 cells, 3 proven red ×2
+mutations + P3 mutation 4 cells red; self-build fixpoint c3≡c4 at 1 byte (c2 = transition gen,
+1.29M drift = singleton→fresh identity change, verified converged); fixedbugs glob 2823, handoff
+2824, Neon sweep 295+301+counter. B4 debts filed in doc §8.4 item 4: post-addError Error
+candidates, predicateSentinel's hand-built Pending marker, typeof enum-flag, Never candidate at
+flow 1205/1207, the four intentional Pending pins.
+
 ### 2026-08-06 — UNKNOWN-BUG Phase 3 batches 1+2: cancelled→Error, no-type→None ✅ UNCOMMITTED, DEPLOYED
 
 Phase 3 opened (docs/UNKNOWN-BUG.md §8.4). B1: the single cancelled site (checkExprPass:184,
