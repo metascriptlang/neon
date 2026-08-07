@@ -311,7 +311,7 @@ function was needed, and the emitted C shows DRC injecting `msIncref` per copied
 | ~~**loop + nested-closure snapshot**~~ | `/tmp/{q1,q2,q3,r1,r2,r3,alias}.ms` (loopesc.ms lost, matrix rebuilt) | ✅ **CLOSED 2026-08-07** — 3 stacked defects (OOB `$up` cast + insideLoop leak + per-call cell); see the §2 row + §5. The old c0:800 was OOB heap reuse — unstable by nature |
 | **`canRaise` missing Nim's `sfGeneratedOp` arm** | `/tmp/craise.ms` | latent (not a live bug) |
 | **latent `monoConcreteTypeName` siblings** | — | by inspection: anon `Union` / `Conditional` |
-| **object spread in object literal** (NEW 2026-07-27 late) | `/tmp/ns_spread/main.ms` (6 lines, `docs/STYLE.md` §7) | ❌ checker PASSES, C fails: `no member named 'dotdotdot_' in 'struct Style'`, emitted as `_lit4_->dotdotdot_ = /* spread */ base_1_;` |
+| ~~**object spread in object literal**~~ (NEW 2026-07-27 late) | `/tmp/ns_spread/main.ms` (6 lines, `docs/STYLE.md` §7), guard `src/test/fixedbugs/bug094ObjectSpreadLiteral.ms` (7 cells, proven red under pre-fix binary: 8 C errors) | ✅ **CLOSED 2026-08-07** — no pass ever lowered object-literal spread: parser stores key `"..."` + SpreadExpr, checker skips the key BY DESIGN, C mangled it to field `dotdotdot_`, and JS was ALSO broken (emitted `...:` = load-time SyntaxError, and objectLiteralComplete appended omitted fields AFTER the spread — would have clobbered them had the syntax been valid). Fix = new pass `transform/desugar/objectSpreadLower.ms` (both backends, before objectLiteralComplete): expands spread into explicit `f: base.f` member reads (analyzer sees real reads → DRC copies), hoists non-identifier operands to peer temps (evalOnce, `walkExpandBlocks` flat splice). SEMANTICS (diverges from TS knowingly, documented in the pass header + bug094): spread copies every field of the operand's STATIC type — structs have no absent-property state (Nim default-init), so `{...a, ...b}` lets b's null fields override a; array layering stays S3's merge design. Leftover corner (loud, not silent): impure operand inside an expr-bodied arrow can't be statement-hoisted — C error same as before. recompiler `dfd892c`+`d44fc9c`; see §5 |
 | ~~on-demand helper compile errors unreported~~ | `src/test/fixedbugs/bug057.ms` | ✅ **CLOSED 2026-07-28** — helper errors now queue in `eval.ms` and merge into the macro's result (`Macro 'X' body: helper 'y': …`). See §5 for the measured severity correction |
 | **`string = number` is not a checker error** (NEW 2026-07-28, found probing row 9) | `function f(n: number): number { const s: string = n; return n; }` | ❌ checker PASSES, C fails: `used type 'msString' where arithmetic or pointer type is required`, emitted as `s_1_ = ((msString)(n));`. Same shape as the object-spread row: a check the checker should own, deferred to the C compiler. NOT metaprogramming — plain assignment |
 | **an all-nullable interface accepts ANY object** (NEW 2026-07-28, found in S2) | `n.layoutStyle = style` in `src/platform/void/host.ms` — `layoutStyle: FlexStyle \| null`, `style: Style` (a DIFFERENT interface) | ❌ type-checks silently. Every `FlexStyle` field is nullable, and with no missing-field rule (Nim default-init, NIM-REF §1) an all-nullable interface is structurally satisfied by anything — so assignability stops discriminating. S1 shipped this: the void host stored a Neon `Style` where yoga expected a `FlexStyle`, and layout silently read garbage. Fixed Neon-side (`asFlexStyle(style)`), but the CHECKER hole is open. The bug058 rule does not cover it: no field is function-typed. |
@@ -410,11 +410,9 @@ function was needed, and the emitted C shows DRC injecting `msIncref` per copied
 - **latent `monoConcreteTypeName` siblings** — anon `Union` (`A | B`) and `Conditional` literals are
   still emitted unparenthesized, so `U[]` with U=union/conditional collapses exactly like the function
   case did (§5, `b057320`). Fix when they surface.
-- **object spread in object literal** — `const merged: Style = { ...base, height: 20.0 as float32 };`
-  type-checks, then C codegen emits a literal field literally named `dotdotdot_` instead of copying the
-  spread operand's fields. **Blocks style composition at runtime (S3 in `docs/STYLE.md` §9)** — not
-  S1/S2. The style design picked array layering over spread for provenance reasons *independent* of
-  this bug, so it blocks a runtime-merge path, not the design.
+- ~~**object spread in object literal**~~ — ✅ CLOSED 2026-08-07 via `transform/desugar/objectSpreadLower.ms`
+  (see the §2 row + §5). S3's runtime-merge path is unblocked; array layering remains the chosen
+  design for provenance, unaffected.
 - ~~**on-demand helper compile errors unreported**~~ — CLOSED 2026-07-28, see §5. The plumbing gap was
   real; the *severity* filed here was overstated, and the correction is recorded in the ledger.
 - **deferred, not counted:** catch-side `e.message` (object-carrying exceptions) — MS's exception
@@ -533,6 +531,33 @@ Still untracked: `docs/EDITOR*.md` (design scratch).
 ---
 
 ## §5 — Fixed (history + root-cause ledger, append-only)
+
+### 2026-08-07 — object spread in object literal: nobody ever lowered it ✅ COMMITTED recompiler `dfd892c`+`d44fc9c`
+
+Root was an ABSENCE, not a defect: parser stores the spread entry as key `"..."` + SpreadExpr,
+the checker special-cases the key (skips excess/dup checks — pass-through by design), and no
+transform pass ever expanded it, so BOTH codegens emitted it raw — C as a field assignment to
+`dotdotdot_` (hard clang error), JS as `{ ...: ...base }` (load-time SyntaxError; worse,
+`objectLiteralComplete` had already appended the omitted nullable fields AFTER the spread entry,
+so valid syntax would have silently zero-clobbered spread-provided fields on JS). Fix = new
+post-check pass `transform/desugar/objectSpreadLower.ms`, both backends, wired after constFold and
+BEFORE objectLiteralComplete: stage 1 hoists non-identifier operands to peer const temps
+(`walkExpandBlocks` flat splice, evalOnce, stops at fn/block boundaries); stage 2 expands each
+spread into explicit `f: op.f` MemberExprs with stamped nodeTypes — the analyzer then sees real
+member reads and inserts DRC copies (a codegen-only fix would have skipped increfs on managed
+fields = silent double-free). Fields overridden by a later explicit key or later spread are
+dropped at expansion (last-wins, never assigned twice — avoids leaking the overwritten managed
+value). Semantics decision: spread copies the operand's STATIC type fields — MS structs carry no
+absent-vs-null distinction (Nim default-init), so `{...a, ...b}` lets b's null fields override a;
+diverges from TS, documented in the pass header + bug094. Convergent with JS reality anyway:
+completion fills absent fields with null before any spread could run. Guard bug094 (7 cells:
+override, spread-alone, two-spread last-wins, explicit-before-spread, call-operand evalOnce,
+argument position, string-field copy-after-mutation) proven RED under the pre-fix binary (8 C
+errors, exact `dotdotdot_` shape). Gates: bug07* 2819 == pristine 2819 (the "2817" expectation
+was stale), bug09* 295, self-build 292 modules + runs, Neon sweep 18/18. Leftover corner filed in
+the struck §2 row: impure operand inside an expr-bodied arrow can't be statement-hoisted — stays
+a LOUD C error. Method note: `msc test` with multiple file args silently runs only the FIRST —
+the 18-file Neon sweep must loop per file (the "15 files" it prints are std inline-test modules).
 
 ### 2026-08-07 — loop + nested-closure snapshot: three stacked defects behind one late decision ✅ worktree /tmp/wt-loopesc, NOT committed
 
