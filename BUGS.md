@@ -269,7 +269,8 @@ pre-existing, NOT a gate. The handoff guards are run standalone.)
 pair in §3 — a two-line Neon test-code type error plus the missing sokol dependency, (2) the
 off-path compiler debts in §2 — **loop + nested-closure snapshot CLOSED 2026-08-07**; the silent
 wrong-answer debts now are the `FnN` void-arrow assignability row (new) and the uint8[] non-push
-methods, while the new void-generic-instantiation row is the loudest (blocks 4 Neon tests) —
+methods (the void-generic-instantiation row CLOSED 2026-08-07 late — the 4 blocked Neon tests
+are green) —
 (3) the small debts listed in §7.
 
 ### ⚠ On T = unknown → `void*` — real, but NOT a blocker (do not chase it)
@@ -365,14 +366,26 @@ function was needed, and the emitted C shows DRC injecting `msIncref` per copied
   `/tmp/loopesc.ms`'s `c0:800` came from OOB heap reuse, inherently unstable, which is why values
   "moved" between sessions. The 4 Neon reds this row was suspected of causing (array/dispose/flow/
   region) are actually the NEW void-generic row below.
-- **generic instantiated at `T=void` emits invalid C** (NEW 2026-08-07, exposed by the void-arrow
-  return fix — bug #1 of the loop-row session) — `createRoot<T>(fn: (d) => T): T` called with a
-  void-bodied arrow now instantiates at T=void (correct type), but codegen still emits
-  `result_1_ = (void-call…); return result_1_;` → clang: `assigning to 'void *' from incompatible
-  type 'void'` + `-Wreturn-mismatch`. Repro: neon `src/core/owner.ms` `createRoot(dispose => {…})`.
-  Blocks 4 Neon tests (core/array, core/dispose, render/flow, render/region — previously
-  mis-attributed to the loop row). Fix direction: mono/codegen void-instantiation = no result temp,
-  bare call, bare return. Build failure, NOT silent.
+- ~~**generic instantiated at `T=void` emits invalid C**~~ ✅ **CLOSED 2026-08-07 late** (NEW same
+  day, exposed by the void-arrow return fix) — the filed fix direction held, and the whole bug was
+  TWO sites in `codegen/c/statements.ms`, mono/signature side was already correct
+  (`void run__void__…(msClosure fn)` emitted fine, callers bare-called it): (1) `genVarDecl` had a
+  `cType === "void" → "void*"` guard written for null-literal inits that also swallowed genuinely
+  Void-typed locals, declaring `void* result_1_` storage and assigning the void call into it;
+  (2) `genReturnStmt` emitted `return <snippet>` unconditionally. Fix: a Void-typed VarDecl emits
+  its initializer for effect only (no storage/hoist, `emitCallRaiseCheck` kept); a void return
+  argument emits the expression as a statement (identifiers emit nothing — no storage exists) then
+  bare `return;` after `blockLeaveActions`. Reference parity: Nim discards void expressions
+  (`isEmptyType`); MS must handle it in CODEGEN because TS legally allows `const r = fn(); return r`
+  at T=void (DIVERGE-INTENTIONAL at sem, SAME at emission). Guard
+  `src/test/fixedbugs/bug093VoidGenericInstantiation.ms` (4 cells: identifier-return, direct-call
+  return, createRoot-with-dispose shape, T=number control) — proven RED on pristine (4 clang
+  errors, exactly the filed shapes). Gates: probe prints 7/42; fixedbugs globs 2817+295+296 green
+  under patched; self-build 291 modules and the produced binary runs; **Neon FULL sweep 18/18
+  files green — the 4 blocked tests (core/array 299, core/dispose 296, render/flow 297,
+  render/region 293) all pass**, and style + voidHost (the loop-session's "pre-existing SIGABRT")
+  are green too under the 2026-08-07 deployed gen. ⚠ UNCOMMITTED in /tmp/wt-deploy at close;
+  installed msc (deployed earlier same day, gen at `04ce98e`) does NOT include this fix yet.
 - **`const f: FnN = () => {}` with `type FnN = () => number` compiles, calls return 0** (NEW
   2026-08-07, pre-existing on pristine, found while probing the loop row) — TS errors on
   void-body→number-returning assignability; MS accepts silently. Same assignability family as the
