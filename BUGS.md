@@ -267,9 +267,10 @@ pre-existing, NOT a gate. The handoff guards are run standalone.)
 
 **Nothing left on Neon's path.** Remaining work, in the order it is worth doing: (1) the `voidHost`
 pair in §3 — a two-line Neon test-code type error plus the missing sokol dependency, (2) the
-off-path compiler debts in §2, where **loop + nested-closure snapshot is the only silent
-wrong-answer bug and therefore the highest severity item in this file**, (3) the small debts
-listed in §7.
+off-path compiler debts in §2 — **loop + nested-closure snapshot CLOSED 2026-08-07**; the silent
+wrong-answer debts now are the `FnN` void-arrow assignability row (new) and the uint8[] non-push
+methods, while the new void-generic-instantiation row is the loudest (blocks 4 Neon tests) —
+(3) the small debts listed in §7.
 
 ### ⚠ On T = unknown → `void*` — real, but NOT a blocker (do not chase it)
 
@@ -306,7 +307,7 @@ function was needed, and the emitted C shows DRC injecting `msIncref` per copied
 | **nullfn explicit type-arg** | `probe/nullfn_explicit_targ.ms` | ❌ `Argument type mismatch in 'apply' arg 0: got function, expected Maybe_fn_fnnumbernumber17` |
 | **union ctor-param proto/def** | `/tmp/mono_union.ms` | ❌ `conflicting types for 'Box__union_number_string_init'` |
 | **struct/array ctor-param indirection** (NEW 2026-07-26 late) | `new GcCell<CmgTag>({ label: "x" })` / `new GcCell<number[]>([1,2,3])` from an importing module | ❌ `passing '__anon1__label' to parameter of incompatible type 'CmgTag *'` — the ctor's declaration takes the type arg BY POINTER while the call site passes it by value. Same family as the union row above; pre-existing, but only reachable since #6 made cross-module ctors instantiate at all. Excluded from the #6 guard on purpose (documented inline there). |
-| **loop + nested-closure snapshot** | `/tmp/loopesc.ms` | ❌ **builds but MISCOMPILES** — c0 expected 51 → **800**, c1 expected 51 → **0** |
+| ~~**loop + nested-closure snapshot**~~ | `/tmp/{q1,q2,q3,r1,r2,r3,alias}.ms` (loopesc.ms lost, matrix rebuilt) | ✅ **CLOSED 2026-08-07** — 3 stacked defects (OOB `$up` cast + insideLoop leak + per-call cell); see the §2 row + §5. The old c0:800 was OOB heap reuse — unstable by nature |
 | **`canRaise` missing Nim's `sfGeneratedOp` arm** | `/tmp/craise.ms` | latent (not a live bug) |
 | **latent `monoConcreteTypeName` siblings** | — | by inspection: anon `Union` / `Conditional` |
 | **object spread in object literal** (NEW 2026-07-27 late) | `/tmp/ns_spread/main.ms` (6 lines, `docs/STYLE.md` §7) | ❌ checker PASSES, C fails: `no member named 'dotdotdot_' in 'struct Style'`, emitted as `_lit4_->dotdotdot_ = /* spread */ base_1_;` |
@@ -340,15 +341,42 @@ function was needed, and the emitted C shows DRC injecting `msIncref` per copied
 - **union ctor-param proto/def indirection** — generic class ctor with a union param emits
   `_init(…, msUnion* v)` (definition, by-pointer) vs `msUnion v` (forward decl, by-value).
   Pre-existing; unmasked by the `monoTypeKey` split.
-- **loop + nested-closure snapshot** — a closure created **inside a loop** that BOTH captures a
-  loop-body local AND contains a nested closure. `for i { let c=0; const step=()=>{ const
-  inc=()=>{c=c+1}; inc(); return c }; arr.push(step) }` → after 50 calls each counter should read 51.
-  **Values have MOVED since the 07-21 note (`c0:4 c1:0`) — now `c0:800 c1:0`, still wrong, now wildly
-  so.** Not a bug-D regression (verified against pre-fix `7a936b0`: `c0:4 c1:3`, also wrong). No UAF
-  (exit 0). Root (suspected): loop-escape wants a per-iteration SNAPSHOT of `c`, but a loop closure
-  containing a nested closure goes through `setupSharedEnv` → up-chain reaches a shared slot instead of
-  the per-iteration one. Needs per-iteration env identity. Compare `/tmp/loopsimple.ms` (non-nested,
-  correct). **This is a silent wrong-answer bug — highest severity of anything in §2.**
+- ~~**loop + nested-closure snapshot**~~ ✅ **CLOSED 2026-08-07** — the filed row was wrong on
+  trigger, mechanism AND severity. Trigger = **loop + nesting only** (no array/escape needed:
+  `function main(){ for(…){ let c=0; const step=()=>{ const inc=()=>{c=c+1}; inc(); return c };
+  step(); step(); } }` miscompiles identically). Severity was UNDERSTATED: not just wrong values —
+  the in-function shape was **memory corruption**, every `c` access going to offset 8 of an 8-byte
+  heap block (the "0" and the NaN-after-reuse both came from unowned heap). THREE stacked defects
+  behind one root ("env-kind decided AFTER the body walk"): **D1** `setupSharedEnv` wired the body's
+  `$up` by casting `_envP` to the enclosing fn's shared env, but at a loop site `_envP` is the
+  per-closure pair env (8B) → OOB cast (r3/alias shapes); **D2** `insideLoop` leaked into closure
+  bodies (never reset per frame) → the INNER closure was forced onto the per-closure snapshot path
+  and wrote a private copy while the outer read another cell → lost update (this, not D1, killed the
+  module-level shape); **D3** the captured cell lived in the closure's per-CALL shared env, so no
+  cell persisted across calls even with D1+D2 fixed. Fix (transform/lowering/lambdaLifting.ms):
+  pre-walk `createSnapshotPairEnv` — at a loop site the pair env is built BEFORE the body walk from
+  the full capture set (direct ∪ nested refs, both known pre-walk) and becomes the persistent
+  snapshot home; `setupSharedEnv` wires the body's `$up` against it with a correctly-typed cast;
+  `walkLiftBody` resets `insideLoop` (every call site is a function-frame boundary). Consistent with
+  the existing direct-capture snapshot semantics (q2 shape). Guard `fixedbugs/bug092` (3 shapes,
+  proven red on pristine). Gates: 7/7 repro matrix green with structural C proof; fixedbugs glob
+  batches 295+295+2817 identical pristine vs patched; Neon sweep +1 green (direct.test.ms), 0
+  regressions. NOTE: the old row blamed "shared slot via up-chain" — HALF-right for D1 only; and
+  `/tmp/loopesc.ms`'s `c0:800` came from OOB heap reuse, inherently unstable, which is why values
+  "moved" between sessions. The 4 Neon reds this row was suspected of causing (array/dispose/flow/
+  region) are actually the NEW void-generic row below.
+- **generic instantiated at `T=void` emits invalid C** (NEW 2026-08-07, exposed by the void-arrow
+  return fix — bug #1 of the loop-row session) — `createRoot<T>(fn: (d) => T): T` called with a
+  void-bodied arrow now instantiates at T=void (correct type), but codegen still emits
+  `result_1_ = (void-call…); return result_1_;` → clang: `assigning to 'void *' from incompatible
+  type 'void'` + `-Wreturn-mismatch`. Repro: neon `src/core/owner.ms` `createRoot(dispose => {…})`.
+  Blocks 4 Neon tests (core/array, core/dispose, render/flow, render/region — previously
+  mis-attributed to the loop row). Fix direction: mono/codegen void-instantiation = no result temp,
+  bare call, bare return. Build failure, NOT silent.
+- **`const f: FnN = () => {}` with `type FnN = () => number` compiles, calls return 0** (NEW
+  2026-08-07, pre-existing on pristine, found while probing the loop row) — TS errors on
+  void-body→number-returning assignability; MS accepts silently. Same assignability family as the
+  closure-sig-repr row (bug070) but the RETURN side. Silent wrong-answer on C.
 - **`canRaise` missing `sfGeneratedOp`** — every `msStringDecref`/destroy call gets a raise check:
   ```c
   msStringDecref(t_1_);         if (msErr) goto __finally_1;
@@ -492,6 +520,34 @@ Still untracked: `docs/EDITOR*.md` (design scratch).
 ---
 
 ## §5 — Fixed (history + root-cause ledger, append-only)
+
+### 2026-08-07 — loop + nested-closure snapshot: three stacked defects behind one late decision ✅ worktree /tmp/wt-loopesc, NOT committed
+
+Root: `liftClosure` decided shared-vs-per-closure env AFTER `walkLiftBody`, so `setupSharedEnv`
+wired the body's `$up` against the wrong runtime identity — at a loop site `_envP` is the 8-byte
+per-closure pair env, cast as the enclosing 16-byte shared env → **OOB read/write at offset 8**
+(D1, the r3/alias corruption; the "phantom counter" adjacent heap slot even produced correct-looking
+1/2 output once — structural C proof, not program output, was the deciding gate). Stacked on it:
+`insideLoop` never reset per function frame → inner closures inside a loop-closure's body forced
+onto the snapshot path → wrote private copies (D2 lost update — the ACTUAL killer of the
+module-level q3 shape, which has no OOB at all); and the captured cell lived in the closure's
+per-CALL shared env → nothing persisted across calls (D3). Fix, all in
+`transform/lowering/lambdaLifting.ms`: `createSnapshotPairEnv` pre-walk (pair env from the FULL
+capture set — `detectCaptures(raw body) ∪ detection's nested refs`, both computable pre-walk;
+fields complete in one `makeInterfaceDeclFromTypes` call, no append machinery), `setupSharedEnv`
+takes the pair env and wires `$up`/chain against it, `walkLiftBody` save/restore `insideLoop = 0`
+(all five call sites are function-frame boundaries). Semantics verdict: at a loop site the pair
+env is the persistent snapshot home (JS-let-per-iteration approximation, consistent with the
+direct-capture q2 behavior); chain walks terminate at the pair env; grandparent skip bypassed there
+(`noAncestorSkip`). Guard `fixedbugs/bug092` (3 shapes; red on pristine via the bug-#1 gate at
+build AND via measured 0/0/NaN runtime values on the bug#1-only intermediate). Gates: 7-shape
+matrix green + C structural proof; glob batches 295/295/2817 zero-delta pristine-vs-patched; Neon
+sweep +1 (direct.test.ms), 0 regressions. Session traps: the WORKTREE battery graph aborts on 3
+pre-existing bug042 'Person' errors under EVERY config (pristine ×3, cache-purged) — it never ran
+a single test there, so all verification moved to glob batches + saved differential binaries
+(`/tmp/msc-pristine`, `/tmp/msc-patched`); `msc test fixedbugs/index.ms` standalone crashes
+identically on pristine (unsupported harness path); the handoff's 4 red Neon tests were
+MIS-ATTRIBUTED to this row — they die on the new void-generic-instantiation row (see §2).
 
 ### 2026-08-06 (late) — UNKNOWN-BUG Phase 3 batch 4 (FINAL): pendingType() deleted, emission gate ARMED ✅ UNCOMMITTED
 
