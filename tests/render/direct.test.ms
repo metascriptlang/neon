@@ -12,6 +12,7 @@ import { createComponent } from "../../src/render/component";
 import { Show, For } from "../../src/macros/ui/flow";
 import { renderToHost, renderNode, mockHost, mockNode, mockToString, fireEvent, MockNode, Host, HostNode } from "../../src/render/host";
 import { createStyles, styleOf } from "../../src/macros/ui/style";
+import { createTemplate, mountTemplate, childOf, siblingOf } from "../../src/render/template";
 
 test "static + dynamic text + event: direct matches tree" {
 	const [name, setName] = createSignal("an");
@@ -309,6 +310,69 @@ test "deep interleave: dyn attr + dyn text + event across 4 levels" {
 	const btn = (directRoot as MockNode).children[0].children[0].children[0].children[1].children[0];
 	fireEvent(btn, "onClick");
 	assert hits === 1, "event at depth 4 fired, hits=" + hits.toString();
+}
+
+// ---- D4: template-clone emission mode ----
+
+// Counts element construction so a test can tell the template path (build once,
+// clone per mount) from the flat path (build every mount).
+function countingHost(counter: number[]): Host {
+	const h = mockHost();
+	return {
+		createElement: (tag: string): HostNode => {
+			counter[0] = counter[0] + 1;
+			return h.createElement(tag);
+		},
+		createText: h.createText, setText: h.setText, setAttr: h.setAttr,
+		setStyle: h.setStyle, addEvent: h.addEvent, append: h.append,
+		insertBefore: h.insertBefore, removeChild: h.removeChild,
+		nextSibling: h.nextSibling, firstChild: h.firstChild, cloneNode: h.cloneNode,
+	};
+}
+
+test "template mode: a pure subtree is built once and cloned per mount" {
+	const [v, setV] = createSignal("a");
+	const counter: number[] = [0];
+	const host = countingHost(counter);
+
+	const mount = direct(<div class="box"><span>s</span><em>{v()}</em></div>);
+	assert counter[0] === 0, "no work before the first mount, got " + counter[0].toString();
+
+	const root = mockNode("root");
+	host.append(root as unknown as HostNode, mount(host));
+	const afterFirst = counter[0];
+	assert afterFirst === 3, "template built once: div+span+em = 3 createElement, got " + afterFirst.toString();
+
+	host.append(root as unknown as HostNode, mount(host));
+	assert counter[0] === afterFirst, "second mount must CLONE, not rebuild — createElement went " + afterFirst.toString() + " -> " + counter[0].toString();
+
+	assert mockToString(root) === "<root><div class=\"box\"><span>s</span><em>a</em></div><div class=\"box\"><span>s</span><em>a</em></div></root>", "two independent instances: " + mockToString(root);
+	setV("b");
+	assert mockToString(root) === "<root><div class=\"box\"><span>s</span><em>b</em></div><div class=\"box\"><span>s</span><em>b</em></div></root>", "every clone stays reactive: " + mockToString(root);
+}
+
+test "template mode on a cloneNode:null host falls back and still matches tree" {
+	const [v, setV] = createSignal("a");
+	const base = mockHost();
+	const host: Host = {
+		createElement: base.createElement, createText: base.createText, setText: base.setText,
+		setAttr: base.setAttr, setStyle: base.setStyle, addEvent: base.addEvent,
+		append: base.append, insertBefore: base.insertBefore, removeChild: base.removeChild,
+		nextSibling: base.nextSibling, firstChild: base.firstChild,
+		cloneNode: null,
+	};
+
+	const treeRoot = mockNode("root");
+	const tv: NeonNode = element(<ul class="l"><li>{v()}</li><li>x</li></ul>);
+	renderToHost(tv, host, treeRoot as unknown as HostNode);
+
+	const directRoot = mockNode("root");
+	const mount = direct(<ul class="l"><li>{v()}</li><li>x</li></ul>);
+	host.append(directRoot as unknown as HostNode, mount(host));
+
+	assert mockToString(treeRoot) === mockToString(directRoot), "fallback initial: tree=" + mockToString(treeRoot) + " direct=" + mockToString(directRoot);
+	setV("z");
+	assert mockToString(treeRoot) === mockToString(directRoot), "fallback after set: tree=" + mockToString(treeRoot) + " direct=" + mockToString(directRoot);
 }
 
 test "For reorder through direct matches tree" {
