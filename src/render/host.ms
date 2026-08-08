@@ -3,7 +3,7 @@
 // tree once, creating host nodes, binding reactive text, applying attrs/events.
 
 import { createEffect } from "../core/effect";
-import { NeonNode, VAttr, VEvent, RegionFn, ComponentProducer } from "./node";
+import { NeonNode, VAttr, VEvent, RegionFn, ComponentProducer, attr } from "./node";
 import { Style } from "./style";
 import { reconcileArrays } from "./reconcile";
 import { Host, HostNode } from "./hostTypes";
@@ -30,7 +30,14 @@ export function renderNode(vnode: NeonNode, host: Host): HostNode {
 		return host.createText(vnode.text);
 	}
 	const node = host.createElement(vnode.tag);
-	for (const a of vnode.attrs) { host.setAttr(node, a.name, a.value); }
+	for (const a of vnode.attrs) {
+		if (a.isDyn) {
+			const da = a;
+			createEffect(() => { host.setAttr(node, da.name, da.dyn()); });
+		} else {
+			host.setAttr(node, a.name, a.value);
+		}
+	}
 	const vstyle = vnode.style;
 	if (vstyle !== null) { host.setStyle(node, vstyle as Style); }
 	for (const e of vnode.events) { host.addEvent(node, e.name, e.handler); }
@@ -117,7 +124,11 @@ export function mockHost(): Host {
 			(node as unknown as MockNode).text = s;
 		},
 		setAttr: (node: HostNode, name: string, value: string): void => {
-			(node as unknown as MockNode).attrs.push({ name, value });
+			const n = node as unknown as MockNode;
+			for (let i = 0; i < n.attrs.length; i += 1) {
+				if (n.attrs[i].name === name) { n.attrs[i].value = value; return; }
+			}
+			n.attrs.push(attr(name, value));
 		},
 		setStyle: (node: HostNode, style: Style): void => {
 			(node as unknown as MockNode).style = style;
