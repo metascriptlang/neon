@@ -9,17 +9,19 @@ per platform*); this doc answers *how mount code is produced and what runs when*
   the shared walker (`renderNode`, `src/render/host.ms`) mounts it at runtime.
   Default today, on every host.
 - **Direct emission** — the macro emits the *mount instructions themselves*,
-  specialized per JSX site. V1+D1 landed (`src/macros/ui/direct.ms`, differential-pinned
-  by `tests/render/direct.test.ms`): lowercase elements, attrs/events, static+dynamic
-  text, nested elements as nested mount closures, component tags + `Show`
-  interleaving — a capitalized tag emits the element.ms `createComponent` contract
-  and mounts through the runtime seam (`renderToHost(_k, host, _r)` in child
-  position = the renderNode child loop's peel/region/append dispatch;
-  `renderNode(_k, host)` in root position, which throws loudly if the component
-  expands to a region). Not yet: JSX `<For>`/`<Index>` (BUGS.md §2 2026-08-08 —
-  the inferred anon props type of a generic component fn gets no C lifecycle fns;
-  breaks BOTH emissions), typed style channel, flattening, template-clone,
-  `build.ms` selection (browser first).
+  specialized per JSX site. V1+D1+D2 landed (`src/macros/ui/direct.ms`, differential-pinned
+  by `tests/render/direct.test.ms`): lowercase elements, attr classification
+  (string literal → one setAttr, `on*` → addEvent, any other expr → one
+  setAttr effect per spot — D2, mirroring element.ms), the typed style channel
+  (`host.setStyle` behind a bound temp, same S4 field validation as element.ms),
+  static+dynamic text, nested elements as nested mount closures, component tags +
+  `Show`/`For` interleaving — a capitalized tag emits the element.ms
+  `createComponent` contract and mounts through the runtime seam
+  (`renderToHost(_k, host, _r)` in child position = the renderNode child loop's
+  peel/region/append dispatch; `renderNode(_k, host)` in root position, which
+  throws loudly if the component expands to a region). Not yet: `<Index>`
+  differential cells, flattening, template-clone, `build.ms` selection
+  (browser first).
 
 Do NOT call these "model A/B" — `RENDER-LAYERS.md` already uses Layer A/B/C for
 reconcile/paint/GPU and the letters collide.
@@ -144,13 +146,13 @@ mount. What that removal is worth depends on the platform:
 | Terminal / Void / iOS (C backend) | compiled C | **small** — the walk is already cheap native code; mount is dominated by layout/paint/GPU; the win is allocations only |
 | Embedded / IoT | compiled C | **possibly negative** — unrolled mount code at every JSX site grows the binary; one shared ~30-line walker is smaller and icache-friendlier |
 
-Policy: tree emission everywhere until, per target, (1) the compiler's closure
-codegen debts are closed (BUGS.md §2: loop+nested-closure snapshot,
-expr-bodied-arrow env — direct emission generates exactly that code shape),
-(2) attribute classification exists in the macro (without it, direct emission
-is just createElement chains — marginal), and (3) a benchmark on that target
-shows a real gap. Then direct emission lands behind a `build.ms` switch,
-browser first. User code and types change zero characters.
+Policy: tree emission everywhere until, per target, a benchmark shows a real
+gap. Gates (1) and (2) are CLOSED: the closure codegen debts direct emission
+leans on (loop+nested-closure snapshot, expr-bodied-arrow env) were fixed
+2026-08-07/08, and attribute classification landed in both emissions
+(D2, 2026-08-09). What remains per target is (3) the benchmark; then direct
+emission lands behind a `build.ms` switch, browser first. User code and types
+change zero characters.
 
 ## Invariants — the contract every emission must satisfy
 

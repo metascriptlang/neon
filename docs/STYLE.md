@@ -190,7 +190,7 @@ recorded in `BUGS.md` §1: isolate, or `rm -rf out` between runs.
 | **Missing field on `T \| null` interface** | ✅ accepted — absent field = unset | `const ok: S = { width: 5.0 as float32 };` with `height` omitted |
 | **Object spread `{...base, x}`** | ❌ **C codegen bug** — checker passes, C fails: `no member named 'dotdotdot_' in 'struct Style'` | `const merged: Style = { ...base, height: 20.0 as float32 };` |
 | `Partial<T>` / `Record<K,V>` / mapped types | ❌ not shipped — `LANG.md` marks them *(planned)* | — |
-| JSX attribute carries an expression Node | ✅ per `LANG-JSX.md` — `jsxAttrValue` is a `Node`; `style={s.box}` already parses | `src/macros/ui/element.ms:72-83` routes every attr to `attr(name, value)` |
+| JSX attribute carries an expression Node | ✅ per `LANG-JSX.md` — `jsxAttrValue` is a `Node`; `style={s.box}` already parses | `src/macros/ui/element.ms` classifies attrs since D2: string literal → `attr`, `on*` → `evt`, any other expr → `dynAttr` thunk |
 | **Excess-property check through a macro-emitted call** (2026-07-27 late night) | ✅ since recompiler bug051 — `keyLocations` survive the macro round-trip, and the excess/duplicate diagnostics fall back to the literal's location instead of being swallowed. Pre-fix this died at the C layer (`no member named 'widht'`) | `probe/style_neg.ms` (deliberate-red), recompiler `src/test/fixedbugs/bug051.ms` |
 | **Macro `error(msg, node)` diagnostics** | ✅ fires once, exact location, `Macro 'name':` prefix | `createStyles`/`element` static-style guards, `probe/style_neg.ms` |
 
