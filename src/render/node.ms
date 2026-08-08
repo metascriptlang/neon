@@ -7,7 +7,9 @@ import { Style } from "./style";
 
 export interface VAttr {
 	name: string;
-	value: string;
+	value: string;         // static value ("" when dynamic)
+	isDyn: boolean;        // true → `dyn` is the live value source
+	dyn: () => string;
 }
 
 export interface VEvent {
@@ -43,7 +45,11 @@ export interface NeonNode {
 }
 
 export function attr(name: string, value: string): VAttr {
-	return { name, value };
+	return { name, value, isDyn: false, dyn: () => "" };
+}
+
+export function dynAttr(name: string, thunk: () => string): VAttr {
+	return { name, value: "", isDyn: true, dyn: thunk };
 }
 
 export function evt(name: string, handler: () => void): VEvent {
@@ -87,7 +93,7 @@ export function renderToString(n: NeonNode): string {
 	}
 	if (n.tag === "") { return n.isDyn ? n.dyn() : n.text; }
 	let open = "<" + n.tag;
-	for (const a of n.attrs) { open = open + " " + a.name + "=\"" + a.value + "\""; }
+	for (const a of n.attrs) { open = open + " " + a.name + "=\"" + (a.isDyn ? a.dyn() : a.value) + "\""; }
 	let s = open + ">";
 	for (const k of n.children) { s = s + renderToString(k); }
 	return s + "</" + n.tag + ">";
