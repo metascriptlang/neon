@@ -12,6 +12,8 @@ import { Node, NodeKind } from "std/meta";
 export { element } from "./macros/ui/element";
 export { NeonNode, VAttr, VEvent, el, attr, dynAttr, evt, text, dynText, withStyle, regionNode, componentNode, renderToString } from "./render/node";
 export { createComponent } from "./render/component";
+// direct()'s template mode emits calls to these by NAME too (docs/RENDER-MODEL.md D4).
+export { Template, createTemplate, instantiate, mountTemplate, childOf, siblingOf } from "./render/template";
 
 export converter jsxToNeonNode(n: Node): NeonNode {
 	return { kind: NodeKind.MacroInvocation, line: n.line, column: n.column, macroName: "element", macroArgs: [n] };
