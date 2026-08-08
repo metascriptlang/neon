@@ -112,6 +112,22 @@ function detach(n: MockNode): void {
 	n.parent = null;
 }
 
+// Template instantiation copies structure + attrs + style, never event
+// listeners — DOM cloneNode(true) has the same rule, and the mock is the
+// differential oracle for it.
+function cloneMock(n: MockNode): MockNode {
+	const c = mockNode(n.tag);
+	c.text = n.text;
+	c.style = n.style;
+	for (const a of n.attrs) { c.attrs.push(attr(a.name, a.value)); }
+	for (const k of n.children) {
+		const kc = cloneMock(k);
+		kc.parent = c;
+		c.children.push(kc);
+	}
+	return c;
+}
+
 export function mockHost(): Host {
 	return {
 		createElement: (tag: string): HostNode => mockNode(tag) as unknown as HostNode,
@@ -172,6 +188,14 @@ export function mockHost(): Host {
 			const idx = childIndex(p, n);
 			if (idx < 0 || idx + 1 >= p.children.length) { return null; }
 			return p.children[idx + 1] as unknown as HostNode;
+		},
+		firstChild: (node: HostNode): HostNode | null => {
+			const n = node as unknown as MockNode;
+			if (n.children.length === 0) { return null; }
+			return n.children[0] as unknown as HostNode;
+		},
+		cloneNode: (node: HostNode): HostNode => {
+			return cloneMock(node as unknown as MockNode) as unknown as HostNode;
 		},
 	};
 }

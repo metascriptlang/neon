@@ -291,6 +291,12 @@ export function createVoidHost(): VoidHost {
 			if (idx < 0 || idx + 1 >= (p.children.length as int32)) { return null; }
 			return p.children[idx + 1] as unknown as HostNode;
 		},
+		firstChild: (node: HostNode): HostNode | null => {
+			const n = node as unknown as Node2D;
+			if ((n.children.length as int32) === 0) { return null; }
+			return n.children[0] as unknown as HostNode;
+		},
+		cloneNode: null,
 	};
 
 	const clickAt = (x: float32, y: float32): void => {

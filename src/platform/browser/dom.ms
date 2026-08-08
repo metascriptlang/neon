@@ -49,6 +49,8 @@ extern class DomNode {
 	style: CssStyle;
 	classList: ClassList;
 	nextSibling: DomNode;
+	firstChild: DomNode;
+	extern cloneNode(deep: boolean): DomNode;
 	extern appendChild(child: DomNode): void;
 	extern insertBefore(node: DomNode, ref: DomNode | null): void;
 	extern removeChild(child: DomNode): void;
@@ -144,6 +146,12 @@ export function domHost(): Host {
 		},
 		nextSibling: (node: HostNode): HostNode | null => {
 			return (node as unknown as DomNode).nextSibling as unknown as HostNode;
+		},
+		firstChild: (node: HostNode): HostNode | null => {
+			return (node as unknown as DomNode).firstChild as unknown as HostNode;
+		},
+		cloneNode: (node: HostNode): HostNode => {
+			return (node as unknown as DomNode).cloneNode(true) as unknown as HostNode;
 		},
 	};
 }

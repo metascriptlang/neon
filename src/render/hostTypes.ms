@@ -13,4 +13,10 @@ export interface Host {
 	insertBefore: (parent: HostNode, node: HostNode, ref: HostNode | null) => void;
 	removeChild: (parent: HostNode, node: HostNode) => void;
 	nextSibling: (node: HostNode) => HostNode | null;
+	firstChild: (node: HostNode) => HostNode | null;
+	// Optional capability: a host that can duplicate a built subtree cheaply
+	// (DOM cloneNode) advertises it here. `null` means "no cheap clone" and
+	// src/render/template.ms transparently rebuilds instead — same result,
+	// slower, so a host is never forced to implement it.
+	cloneNode: ((node: HostNode) => HostNode) | null;
 }

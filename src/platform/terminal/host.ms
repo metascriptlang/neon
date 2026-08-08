@@ -182,6 +182,12 @@ export function terminalHost(): Host {
 			if (idx < 0 || idx + 1 >= p.children.length) { return null; }
 			return p.children[idx + 1] as unknown as HostNode;
 		},
+		firstChild: (node: HostNode): HostNode | null => {
+			const n = node as unknown as TerminalNode;
+			if (n.children.length === 0) { return null; }
+			return n.children[0] as unknown as HostNode;
+		},
+		cloneNode: null,
 	};
 }
 
