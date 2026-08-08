@@ -29,7 +29,7 @@ core. Treat them as history for the Nim→MS module mapping, not as current stat
 | # | work | state | size |
 |---|---|---|---|
 | 1 | ~~`createStyles` macro~~ | **DONE (S1b)** — `style.ms` is a real styleOf-rewrite macro; checker validates each entry against `Style`. Remaining style work is S3 (spread, blocked by §2 row 8) + S4 (reactive fields) | — |
-| 2 | component macro (function components) | **half done** — see below | medium |
+| 2 | component macro (function components) | **runtime path DONE 2026-08-08** — capitalized-tag JSX through `element()` green E2E (reactive props, nested-arrow capture, cleanup via `<Show>`); remaining = converter surface (bare JSX, zero `element()` calls) | small–medium |
 | 3 | attribute classification (animatable / event / static) | not started | small–medium |
 | 4 | `src/starter/` example components | empty dir | small |
 | 5 | iOS host | empty dir | large |
@@ -48,13 +48,18 @@ Suggested order: **2 → 4** unlocks "you can actually write an app", then 5/6.
 | `componentNode(fn, props)` constructor | ✅ `src/render/node.ms` |
 | lazy expansion at mount (host path) | ✅ `src/render/host.ms` (3 sites: mount, keyed child, region) |
 | lazy expansion in `renderToString` | ✅ `src/render/node.ms` |
-| **`src/render/component.ms`** — `createComponent` (wraps `Comp(props)` in `untrack`), `Reactive<T>`, `read()` | ❌ **file does not exist** — `node.ms:24` already references it in a comment |
-| **element macro emitting `componentNode` for capitalized JSX tags** | ❌ `element.ms` has no upper/lower-case tag branch at all — `<Foo/>` currently becomes an element with tag `"Foo"` |
-| tests | ❌ none (`grep -rl component tests/` is empty) |
+| **`src/render/component.ms`** — `createComponent` (wraps `Comp(props)` in `untrack`) | ✅ landed 2026-08-03, 12 lines |
+| **element macro emitting `createComponent` for capitalized JSX tags** | ✅ `element.ms` capitalized branch: expression props → thunks, string literals pass through, children structural (1 child as written, n children as array) |
+| tests | ✅ `tests/render/component.test.ms` — 7 green: 4 static (defer / nest / children 1-n) + 3 reactive E2E (dynText updates + body-runs-once, prop expr with nested-arrow capture, `onCleanup` fires on `<Show>` unmount) |
 
-So the work is: write `component.ms`, teach `element.ms` the capitalized-tag branch,
-add tests. The VNode contract does **not** need to change — that is why this is
-medium and not large.
+**Runtime path CLOSED 2026-08-08** (msc v0.2.38 — both compiler prerequisites below are
+fixed and deployed). The E2E pass surfaced and fixed one renderer hole: `renderNode`'s
+child loop expanded `componentFn` blind — a component expanding to a REGION (`<Show>`
+behind `createComponent`) fell into the text branch and never mounted; the loop now peels
+the componentFn chain, then dispatches region vs node (`src/render/host.ms`). Probing the
+fix filed one new §2 row (calling a cast-of-nullable-closure expression in-place
+miscompiles C — `probe/closureCastCall.ms`). DX decision recorded in
+`docs/RENDER-MODEL.md` §"Props typing".
 
 **Design LOCKED 2026-07-30 (full design session with user) — the component/JSX contract:**
 

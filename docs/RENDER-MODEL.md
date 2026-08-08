@@ -163,6 +163,19 @@ The existing test suite is these invariants encoded; keep it that way — every
 new render feature should land with the invariant it preserves named in its
 test.
 
+## Props typing — DX decision (user, 2026-08-08)
+
+The component's props interface is the **single source of truth**; the macro
+inserts **no coercion**. `createSignal` stays generic — `createSignal(0)`
+inferring `Signal<int32>` is correct; want another type, annotate
+(`createSignal<number>(0)`, `0 as float32`, …). A repr mismatch — e.g. a
+`() => int32` getter into a `() => number` field — is a **checker error by
+design**, not a bug (function types are invariant). Note the asymmetry: the
+element macro wraps expression props in thunks (`count={n()}` → `() => n()`),
+so the returned VALUE widens and int32 signals flow into number fields fine
+through JSX; only passing a getter's function value directly
+(`{ count: n }`) trips invariance. Negative probe: `probe/thunkProps3.ms` S1.
+
 ## References
 
 - `src/render/node.ms` — NeonNode, `createComponent` seam (`component.ms`),
