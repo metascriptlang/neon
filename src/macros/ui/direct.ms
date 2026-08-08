@@ -7,8 +7,10 @@
 //
 // The emitted code calls createEffect / createComponent / renderNode /
 // renderToHost / element / text by name and types its param as Host, so all of
-// those must be in scope at the call site. The typed style channel is not
-// supported yet (macro error).
+// those must be in scope at the call site. Attr classification mirrors
+// element.ms: string literal → setAttr once, on* → addEvent, any other expr →
+// one createEffect around setAttr (1 dynamic spot = 1 effect); a non-literal
+// style routes through host.setStyle with the same S4 field validation.
 
 import { Node, NodeKind, DeclKind } from "std/meta";
 import { cleanJsxText } from "./element";
@@ -111,24 +113,94 @@ export macro direct(node: Node): Node {
 		},
 	});
 
+	let sIdx = 0;
 	for (const a of node.jsxAttrs) {
 		if (a.kind === NodeKind.JSXAttribute) {
 			if (a.jsxAttrName === "style" && a.jsxAttrValue.kind !== NodeKind.StringLiteral) {
-				error("direct emission does not support the typed style channel yet", a);
+				if (a.jsxAttrValue.kind === NodeKind.ObjectLiteral) {
+					for (const fv of a.jsxAttrValue.properties) {
+						if (fv.kind === NodeKind.CallExpr) {
+							error("a style field cannot call a function — a signal read here would be a frozen snapshot, not reactive (reactive style fields land in S4)", fv);
+						}
+					}
+				}
+				// Bind the style expr to a temp before the call: BUGS.md §2 call-result
+				// arg at an address-taken position (same reason as the _e child temps).
+				const sName = "_s" + sIdx.toString();
+				sIdx = sIdx + 1;
+				stmts.push({
+					kind: NodeKind.VariableDecl, line: a.line, column: a.column,
+					declName: sName, declType: "", declKind: DeclKind.Const,
+					initializer: a.jsxAttrValue,
+				});
+				stmts.push({
+					kind: NodeKind.ExprStmt, line: a.line, column: a.column,
+					expr: {
+						kind: NodeKind.CallExpr, line: a.line, column: a.column,
+						callee: { kind: NodeKind.MemberExpr, line: a.line, column: a.column, object: { kind: NodeKind.Identifier, line: a.line, column: a.column, name: "host" }, property: "setStyle", isOptional: false },
+						arguments: [
+							{ kind: NodeKind.Identifier, line: a.line, column: a.column, name: "_r" },
+							{ kind: NodeKind.Identifier, line: a.line, column: a.column, name: sName },
+						],
+					},
+				});
+				continue;
 			}
-			const op = a.jsxAttrName.startsWith("on") ? "addEvent" : "setAttr";
-			stmts.push({
-				kind: NodeKind.ExprStmt, line: a.line, column: a.column,
-				expr: {
-					kind: NodeKind.CallExpr, line: a.line, column: a.column,
-					callee: { kind: NodeKind.MemberExpr, line: a.line, column: a.column, object: { kind: NodeKind.Identifier, line: a.line, column: a.column, name: "host" }, property: op, isOptional: false },
-					arguments: [
-						{ kind: NodeKind.Identifier, line: a.line, column: a.column, name: "_r" },
-						{ kind: NodeKind.StringLiteral, line: a.line, column: a.column, value: a.jsxAttrName },
-						a.jsxAttrValue,
-					],
-				},
-			});
+			const nameLit: Node = { kind: NodeKind.StringLiteral, line: a.line, column: a.column, value: a.jsxAttrName };
+			if (a.jsxAttrName.startsWith("on")) {
+				stmts.push({
+					kind: NodeKind.ExprStmt, line: a.line, column: a.column,
+					expr: {
+						kind: NodeKind.CallExpr, line: a.line, column: a.column,
+						callee: { kind: NodeKind.MemberExpr, line: a.line, column: a.column, object: { kind: NodeKind.Identifier, line: a.line, column: a.column, name: "host" }, property: "addEvent", isOptional: false },
+						arguments: [
+							{ kind: NodeKind.Identifier, line: a.line, column: a.column, name: "_r" },
+							nameLit,
+							a.jsxAttrValue,
+						],
+					},
+				});
+			} else if (a.jsxAttrValue.kind === NodeKind.StringLiteral) {
+				stmts.push({
+					kind: NodeKind.ExprStmt, line: a.line, column: a.column,
+					expr: {
+						kind: NodeKind.CallExpr, line: a.line, column: a.column,
+						callee: { kind: NodeKind.MemberExpr, line: a.line, column: a.column, object: { kind: NodeKind.Identifier, line: a.line, column: a.column, name: "host" }, property: "setAttr", isOptional: false },
+						arguments: [
+							{ kind: NodeKind.Identifier, line: a.line, column: a.column, name: "_r" },
+							nameLit,
+							a.jsxAttrValue,
+						],
+					},
+				});
+			} else {
+				stmts.push({
+					kind: NodeKind.ExprStmt, line: a.line, column: a.column,
+					expr: {
+						kind: NodeKind.CallExpr, line: a.line, column: a.column,
+						callee: { kind: NodeKind.Identifier, line: a.line, column: a.column, name: "createEffect" },
+						arguments: [{
+							kind: NodeKind.ArrowFunction, line: a.line, column: a.column,
+							arrowParams: [], arrowParamTypes: [], arrowFlags: "", arrowReturnType: "",
+							arrowBody: {
+								kind: NodeKind.BlockStmt, line: a.line, column: a.column,
+								statements: [{
+									kind: NodeKind.ExprStmt, line: a.line, column: a.column,
+									expr: {
+										kind: NodeKind.CallExpr, line: a.line, column: a.column,
+										callee: { kind: NodeKind.MemberExpr, line: a.line, column: a.column, object: { kind: NodeKind.Identifier, line: a.line, column: a.column, name: "host" }, property: "setAttr", isOptional: false },
+										arguments: [
+											{ kind: NodeKind.Identifier, line: a.line, column: a.column, name: "_r" },
+											nameLit,
+											a.jsxAttrValue,
+										],
+									},
+								}],
+							},
+						}],
+					},
+				});
+			}
 		}
 	}
 
