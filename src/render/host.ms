@@ -32,14 +32,13 @@ export function renderNode(vnode: NeonNode, host: Host): HostNode {
 	if (vstyle !== null) { host.setStyle(node, vstyle as Style); }
 	for (const e of vnode.events) { host.addEvent(node, e.name, e.handler); }
 	for (const k of vnode.children) {
-		const kRegion = k.region;
-		const kComp = k.componentFn;
-		if (kRegion !== null) { mountRegion(k, host, node); }
-		else if (kComp !== null) {
-			const producer = kComp as ComponentProducer;
-			host.append(node, renderNode(producer(), host));
+		let kv = k;
+		while (kv.componentFn !== null) {
+			const producer = kv.componentFn as ComponentProducer;
+			kv = producer();
 		}
-		else { host.append(node, renderNode(k, host)); }
+		if (kv.region !== null) { mountRegion(kv, host, node); }
+		else { host.append(node, renderNode(kv, host)); }
 	}
 	return node;
 }
