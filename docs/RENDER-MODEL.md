@@ -23,8 +23,19 @@ per platform*); this doc answers *how mount code is produced and what runs when*
   the renderNode child loop's peel/region/append dispatch; `renderNode(_k,
   host)` in root position, which throws loudly if the component expands to a
   region). Components/`Show`/`For` do not flatten by design: their structure
-  changes at runtime. Not yet: `<Index>` differential cells, template-clone,
-  `build.ms` selection (browser first).
+  changes at runtime. **D4 landed — template-clone**: a subtree of nothing but
+  lowercase elements/text/attrs/events/style has a static skeleton, so the macro
+  emits `mountTemplate(createTemplate(build), wire)` — the skeleton is built once
+  and duplicated per mount (`host.cloneNode`), and each dynamic spot is reached
+  by a walk path computed at COMPILE time (`childOf`/`siblingOf` steps, pruned to
+  the branches that actually carry a dynamic spot). A subtree containing a
+  component tag or a region keeps the D3 flat emission unchanged. Two rules make
+  the differential hold: a dynamic attr keeps its SOURCE slot in the skeleton with
+  an empty value (the per-instance effect upserts it, so markup order matches tree
+  emission), and events/style are applied per instance, never baked into the
+  skeleton. Not yet: `<Index>` differential cells, HTML-string fast path for the
+  DOM skeleton (Solid's one-time `innerHTML` parse — the contract already allows
+  it), `build.ms` selection (browser first).
 
 Do NOT call these "model A/B" — `RENDER-LAYERS.md` already uses Layer A/B/C for
 reconcile/paint/GPU and the letters collide.
@@ -36,7 +47,7 @@ reconcile/paint/GPU and the letters collide.
 (2) RUNTIME CORE   signals, effects, memos, owner    ← shared, emission-agnostic
                    Show/For regions, reconcileArrays,
                    createComponent
-(3) HOST ADAPTERS  dom / terminal / void / mock      ← shared (Host contract, 9 ops)
+(3) HOST ADAPTERS  dom / terminal / void / mock      ← shared (Host contract, 12 ops)
 ```
 
 Tree-emission-specific code is small and permanent: the NeonNode structs
@@ -133,10 +144,41 @@ flip back:                        [core] calls children(host) again ──► [d
 Components, `Show`, `For` are runtime calls in BOTH emissions — structure that
 changes at runtime cannot be unrolled at compile time.
 
-**DOM-only extra:** static fragments can compile to an HTML template string,
-mounted via `template.cloneNode(true)` + direct pointers to the dynamic holes —
-one native parse instead of N `createElement` calls. This (Solid's core trick)
-is the main reason direct emission pays on the browser.
+**Template-clone (D4, landed).** A pure subtree is emitted as a skeleton built
+once plus a per-instance walk, so mount N costs one native copy instead of N
+create/append calls:
+
+```ts
+mountTemplate(
+  createTemplate((h) => {                  // built ONCE, lazily, per direct() site
+    const r0 = h.createElement("div");
+    h.setAttr(r0, "class", "box");
+    h.setAttr(r0, "title", "");            // dynamic attr keeps its SOURCE slot
+    h.append(r0, h.createText(""));        // dynamic text slot
+    return r0;
+  }),
+  (host, p0) => {                          // per instance
+    const p1 = childOf(host, p0);          // walk path resolved at COMPILE time
+    createEffect(() => host.setText(p1, name()));
+    createEffect(() => host.setAttr(p0, "title", t()));
+  },
+)
+```
+
+The skeleton carries structure, static attrs and placeholders only — events and
+style are applied per instance (DOM `cloneNode` does not copy listeners, and the
+mock oracle mirrors that rule exactly).
+
+`cloneNode` is an **optional capability** on the Host contract: a host that
+cannot duplicate a subtree cheaply sets it to `null` and `instantiate` runs the
+builder again — same markup, no clone, nothing for that host to implement
+(terminal and void ship exactly this). `firstChild` is required and trivial
+everywhere, mirroring the existing `nextSibling`.
+
+Still open for the DOM host: materialising the skeleton from an HTML string
+(Solid's one-time `innerHTML` parse). The contract already permits it — only the
+`createTemplate` builder body would change — and it buys startup cost, not
+per-mount cost, which is why it was not required to land D4.
 
 ## Per-platform economics — why direct is opt-in, not default
 
