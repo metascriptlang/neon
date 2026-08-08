@@ -81,6 +81,36 @@ test "text around an element on separate lines keeps both runs" {
 	assert renderToString(node) === "<div>text before<b>bold</b>text after</div>", "both text runs survive";
 }
 
+// D2 attr classification: string literal → static attr, on* → event, any other
+// expr → dynAttr thunk (same rule as dynText for expression children).
+
+test "dynamic attr tracks its signal" {
+	const [cls, setCls] = createSignal("red");
+	const node = element(<p class={cls()}>x</p>);
+	assert renderToString(node) === "<p class=\"red\">x</p>", "initial snapshot";
+	setCls("blue");
+	assert renderToString(node) === "<p class=\"blue\">x</p>", "snapshot follows set";
+	assert node.attrs.length === 1, "one attr entry";
+	assert node.attrs[0].isDyn, "expr attr classified dynamic";
+}
+
+test "string literal attr stays static, on* routes to events" {
+	const [n, setN] = createSignal<number>(0);
+	const node = element(<button type="button" onClick={() => setN(n() + 1)}>go</button>);
+	assert renderToString(node) === "<button type=\"button\">go</button>", "event attr does not render";
+	assert node.attrs.length === 1, "one attr entry";
+	assert node.attrs[0].isDyn === false, "literal attr classified static";
+	assert node.events.length === 1, "one event entry";
+}
+
+test "mixed static and dynamic attrs keep source order" {
+	const [x, setX] = createSignal("2");
+	const node = element(<div a="1" b={x()} c="3"></div>);
+	assert renderToString(node) === "<div a=\"1\" b=\"2\" c=\"3\"></div>", "source order preserved";
+	setX("9");
+	assert renderToString(node) === "<div a=\"1\" b=\"9\" c=\"3\"></div>", "middle attr updates in place";
+}
+
 test "the same JSX const consumed twice yields independent trees" {
 	const [a, setA] = createSignal("x");
 	const view = <p>{a()}</p>;
