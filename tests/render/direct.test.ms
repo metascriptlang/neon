@@ -11,6 +11,7 @@ import { NeonNode, el, attr } from "../../src/render/node";
 import { createComponent } from "../../src/render/component";
 import { Show, For } from "../../src/macros/ui/flow";
 import { renderToHost, renderNode, mockHost, mockNode, mockToString, fireEvent, MockNode, Host, HostNode } from "../../src/render/host";
+import { createStyles, styleOf } from "../../src/macros/ui/style";
 
 test "static + dynamic text + event: direct matches tree" {
 	const [name, setName] = createSignal("an");
@@ -213,6 +214,74 @@ test "single element child passes as the children prop through direct" {
 	host.append(directRoot as unknown as HostNode, dnode);
 
 	assert mockToString(treeRoot) === mockToString(directRoot), "tree=" + mockToString(treeRoot) + " direct=" + mockToString(directRoot);
+}
+
+// ---- D2: attr classification + typed style through direct emission ----
+
+const dsheet = createStyles({
+	box: { width: 40, height: 10 },
+});
+
+test "reactive attr through direct matches tree" {
+	const [cls, setCls] = createSignal("red");
+	const host = mockHost();
+
+	const treeRoot = mockNode("root");
+	const tv: NeonNode = element(<p class={cls()}>x</p>);
+	renderToHost(tv, host, treeRoot as unknown as HostNode);
+
+	const directRoot = mockNode("root");
+	const mount = direct(<p class={cls()}>x</p>);
+	const dnode = mount(host);
+	host.append(directRoot as unknown as HostNode, dnode);
+
+	assert mockToString(treeRoot) === mockToString(directRoot), "initial: tree=" + mockToString(treeRoot) + " direct=" + mockToString(directRoot);
+	setCls("blue");
+	assert mockToString(treeRoot) === mockToString(directRoot), "after set: tree=" + mockToString(treeRoot) + " direct=" + mockToString(directRoot);
+	assert mockToString(directRoot).includes("blue"), "value moved: " + mockToString(directRoot);
+	assert (directRoot as MockNode).children[0].attrs.length === 1, "upsert — no duplicate attr entries";
+}
+
+test "typed style channel through direct matches tree" {
+	const host = mockHost();
+
+	const treeRoot = mockNode("root");
+	const tv: NeonNode = element(<div style={dsheet.box}><p>a</p></div>);
+	renderToHost(tv, host, treeRoot as unknown as HostNode);
+
+	const directRoot = mockNode("root");
+	const mount = direct(<div style={dsheet.box}><p>a</p></div>);
+	const dnode = mount(host);
+	host.append(directRoot as unknown as HostNode, dnode);
+
+	assert mockToString(treeRoot) === mockToString(directRoot), "markup: tree=" + mockToString(treeRoot) + " direct=" + mockToString(directRoot);
+	const tDiv = (treeRoot as MockNode).children[0];
+	const dDiv = (directRoot as MockNode).children[0];
+	assert tDiv.style !== null, "tree style set";
+	assert dDiv.style !== null, "direct style set";
+	assert tDiv.style === dDiv.style, "same Style object through both channels";
+}
+
+test "static attr + reactive attr + event + style mixed on one element" {
+	const [n, setN] = createSignal<number>(0);
+	const host = mockHost();
+
+	const treeRoot = mockNode("root");
+	const tv: NeonNode = element(<button type="button" title={n().toString()} style={dsheet.box} onClick={() => setN(n() + 1)}>go</button>);
+	renderToHost(tv, host, treeRoot as unknown as HostNode);
+
+	const directRoot = mockNode("root");
+	const mount = direct(<button type="button" title={n().toString()} style={dsheet.box} onClick={() => setN(n() + 1)}>go</button>);
+	const dnode = mount(host);
+	host.append(directRoot as unknown as HostNode, dnode);
+
+	assert mockToString(treeRoot) === mockToString(directRoot), "initial: tree=" + mockToString(treeRoot) + " direct=" + mockToString(directRoot);
+	const dBtn = (directRoot as MockNode).children[0];
+	fireEvent(dBtn, "onClick");
+	assert mockToString(treeRoot) === mockToString(directRoot), "after click: tree=" + mockToString(treeRoot) + " direct=" + mockToString(directRoot);
+	assert mockToString(directRoot).includes("title=\"1\""), "reactive attr moved: " + mockToString(directRoot);
+	assert dBtn.style !== null, "style set on mixed element";
+	assert dBtn.attrs.length === 2, "type + title only, no dup, got " + dBtn.attrs.length.toString();
 }
 
 test "For reorder through direct matches tree" {
