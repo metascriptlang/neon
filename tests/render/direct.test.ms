@@ -9,7 +9,7 @@ import { element } from "../../src/macros/ui/element";
 import { direct } from "../../src/macros/ui/direct";
 import { NeonNode, el, attr } from "../../src/render/node";
 import { createComponent } from "../../src/render/component";
-import { Show } from "../../src/macros/ui/flow";
+import { Show, For } from "../../src/macros/ui/flow";
 import { renderToHost, renderNode, mockHost, mockNode, mockToString, fireEvent, MockNode, Host, HostNode } from "../../src/render/host";
 
 test "static + dynamic text + event: direct matches tree" {
@@ -213,4 +213,26 @@ test "single element child passes as the children prop through direct" {
 	host.append(directRoot as unknown as HostNode, dnode);
 
 	assert mockToString(treeRoot) === mockToString(directRoot), "tree=" + mockToString(treeRoot) + " direct=" + mockToString(directRoot);
+}
+
+test "For reorder through direct matches tree" {
+	const [items, setItems] = createSignal<number[]>([1, 2, 3]);
+	const host = mockHost();
+
+	const treeRoot = mockNode("root");
+	const tv: NeonNode = element(<ul><For each={items()}>{(item: number, i: () => number): NeonNode => element(<li>{item.toString()}</li>)}</For></ul>);
+	renderToHost(tv, host, treeRoot as unknown as HostNode);
+
+	const directRoot = mockNode("root");
+	const mount = direct(<ul><For each={items()}>{(item: number, i: () => number): NeonNode => element(<li>{item.toString()}</li>)}</For></ul>);
+	const dnode = mount(host);
+	host.append(directRoot as unknown as HostNode, dnode);
+
+	assert mockToString(treeRoot) === mockToString(directRoot), "initial: tree=" + mockToString(treeRoot) + " direct=" + mockToString(directRoot);
+	setItems([3, 1, 2]);
+	assert mockToString(treeRoot) === mockToString(directRoot), "after reorder: tree=" + mockToString(treeRoot) + " direct=" + mockToString(directRoot);
+	setItems([3, 1, 2, 4]);
+	assert mockToString(treeRoot) === mockToString(directRoot), "after append: tree=" + mockToString(treeRoot) + " direct=" + mockToString(directRoot);
+	setItems([2]);
+	assert mockToString(treeRoot) === mockToString(directRoot), "after shrink: tree=" + mockToString(treeRoot) + " direct=" + mockToString(directRoot);
 }
