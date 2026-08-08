@@ -9,19 +9,22 @@ per platform*); this doc answers *how mount code is produced and what runs when*
   the shared walker (`renderNode`, `src/render/host.ms`) mounts it at runtime.
   Default today, on every host.
 - **Direct emission** — the macro emits the *mount instructions themselves*,
-  specialized per JSX site. V1+D1+D2 landed (`src/macros/ui/direct.ms`, differential-pinned
+  specialized per JSX site. V1+D1+D2+D3 landed (`src/macros/ui/direct.ms`, differential-pinned
   by `tests/render/direct.test.ms`): lowercase elements, attr classification
   (string literal → one setAttr, `on*` → addEvent, any other expr → one
   setAttr effect per spot — D2, mirroring element.ms), the typed style channel
   (`host.setStyle` behind a bound temp, same S4 field validation as element.ms),
-  static+dynamic text, nested elements as nested mount closures, component tags +
-  `Show`/`For` interleaving — a capitalized tag emits the element.ms
-  `createComponent` contract and mounts through the runtime seam
-  (`renderToHost(_k, host, _r)` in child position = the renderNode child loop's
-  peel/region/append dispatch; `renderNode(_k, host)` in root position, which
-  throws loudly if the component expands to a region). Not yet: `<Index>`
-  differential cells, flattening, template-clone, `build.ms` selection
-  (browser first).
+  static+dynamic text, nested lowercase elements flattened INLINE into the one
+  mount block (D3 — a single statement list, temps numbered across the whole
+  tree `_r0/_r1/…`, child subtree emitted depth-first then appended; no
+  per-level closure or call), component tags + `Show`/`For` interleaving — a
+  capitalized tag emits the element.ms `createComponent` contract and mounts
+  through the runtime seam (`renderToHost(_k, host, _rN)` in child position =
+  the renderNode child loop's peel/region/append dispatch; `renderNode(_k,
+  host)` in root position, which throws loudly if the component expands to a
+  region). Components/`Show`/`For` do not flatten by design: their structure
+  changes at runtime. Not yet: `<Index>` differential cells, template-clone,
+  `build.ms` selection (browser first).
 
 Do NOT call these "model A/B" — `RENDER-LAYERS.md` already uses Layer A/B/C for
 reconcile/paint/GPU and the letters collide.
