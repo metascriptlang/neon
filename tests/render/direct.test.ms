@@ -284,6 +284,33 @@ test "static attr + reactive attr + event + style mixed on one element" {
 	assert dBtn.attrs.length === 2, "type + title only, no dup, got " + dBtn.attrs.length.toString();
 }
 
+test "deep interleave: dyn attr + dyn text + event across 4 levels" {
+	const [cls, setCls] = createSignal("a");
+	const [v, setV] = createSignal("t");
+	let hits = 0;
+	const bump = () => { hits = hits + 1; };
+	const host = mockHost();
+
+	const treeRoot = mockNode("root");
+	const tv: NeonNode = element(<div id="top"><section class={cls()}><ul><li>{v()}</li><li><button onClick={bump} title={cls()}>go {v()}</button></li></ul><p>tail</p></section></div>);
+	renderToHost(tv, host, treeRoot as unknown as HostNode);
+
+	const directRoot = mockNode("root");
+	const mount = direct(<div id="top"><section class={cls()}><ul><li>{v()}</li><li><button onClick={bump} title={cls()}>go {v()}</button></li></ul><p>tail</p></section></div>);
+	const dnode = mount(host);
+	host.append(directRoot as unknown as HostNode, dnode);
+
+	assert mockToString(treeRoot) === mockToString(directRoot), "initial: tree=" + mockToString(treeRoot) + " direct=" + mockToString(directRoot);
+	setCls("b");
+	assert mockToString(treeRoot) === mockToString(directRoot), "after setCls: tree=" + mockToString(treeRoot) + " direct=" + mockToString(directRoot);
+	setV("u");
+	assert mockToString(treeRoot) === mockToString(directRoot), "after setV: tree=" + mockToString(treeRoot) + " direct=" + mockToString(directRoot);
+	assert mockToString(directRoot).includes("title=\"b\"") && mockToString(directRoot).includes("go u"), "values moved: " + mockToString(directRoot);
+	const btn = (directRoot as MockNode).children[0].children[0].children[0].children[1].children[0];
+	fireEvent(btn, "onClick");
+	assert hits === 1, "event at depth 4 fired, hits=" + hits.toString();
+}
+
 test "For reorder through direct matches tree" {
 	const [items, setItems] = createSignal<number[]>([1, 2, 3]);
 	const host = mockHost();
