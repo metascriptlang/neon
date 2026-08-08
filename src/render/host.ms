@@ -18,6 +18,9 @@ export function renderNode(vnode: NeonNode, host: Host): HostNode {
 		const producer = comp as ComponentProducer;
 		return renderNode(producer(), host);
 	}
+	if (vnode.region !== null) {
+		throw "renderNode cannot mount a region (For/Show/Index) without a parent anchor — mount via renderToHost, or wrap the region in an element";
+	}
 	if (vnode.tag === "") {
 		if (vnode.isDyn) {
 			const tn = host.createText("");
