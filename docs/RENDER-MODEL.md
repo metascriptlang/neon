@@ -9,8 +9,17 @@ per platform*); this doc answers *how mount code is produced and what runs when*
   the shared walker (`renderNode`, `src/render/host.ms`) mounts it at runtime.
   Default today, on every host.
 - **Direct emission** — the macro emits the *mount instructions themselves*,
-  specialized per JSX site. Planned per-target optimization tier (browser first),
-  selected in `build.ms`. Not implemented yet.
+  specialized per JSX site. V1+D1 landed (`src/macros/ui/direct.ms`, differential-pinned
+  by `tests/render/direct.test.ms`): lowercase elements, attrs/events, static+dynamic
+  text, nested elements as nested mount closures, component tags + `Show`
+  interleaving — a capitalized tag emits the element.ms `createComponent` contract
+  and mounts through the runtime seam (`renderToHost(_k, host, _r)` in child
+  position = the renderNode child loop's peel/region/append dispatch;
+  `renderNode(_k, host)` in root position, which throws loudly if the component
+  expands to a region). Not yet: JSX `<For>`/`<Index>` (BUGS.md §2 2026-08-08 —
+  the inferred anon props type of a generic component fn gets no C lifecycle fns;
+  breaks BOTH emissions), typed style channel, flattening, template-clone,
+  `build.ms` selection (browser first).
 
 Do NOT call these "model A/B" — `RENDER-LAYERS.md` already uses Layer A/B/C for
 reconcile/paint/GPU and the letters collide.
