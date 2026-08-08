@@ -5,8 +5,9 @@
 // upgrade behind the same differential tests). Semantics must stay byte-identical
 // to tree emission — tests/render/direct.test.ms pins that differentially.
 //
-// The emitted code calls createEffect by name and types its param as Host, so
-// both must be in scope at the call site. Style and component tags are not
+// The emitted code calls createEffect / createComponent / renderNode /
+// renderToHost / element / text by name and types its param as Host, so all of
+// those must be in scope at the call site. The typed style channel is not
 // supported yet (macro error).
 
 import { Node, NodeKind, DeclKind } from "std/meta";
@@ -15,9 +16,87 @@ import { cleanJsxText } from "./element";
 export macro direct(node: Node): Node {
 	const L = node.line;
 	const C = node.column;
+	// Capitalized tag → createComponent(Tag, { props }), mirroring element.ms's prop
+	// contract byte for byte (string literals pass through, expression props become
+	// thunks, children stay structural NeonNode trees via element/text). The NeonNode
+	// then goes through the runtime mount seam instead of being returned as data:
+	// root position mounts via renderNode (loud throw if the component expands to a
+	// region — same contract as the tree walker), child position via renderToHost
+	// (which mirrors the renderNode child loop: peel componentFn chain, region →
+	// anchor + reconcile, node → append). Inline in both branches because node
+	// literals only type-check inside a macro body (engine-mode Node view).
 	const tagStart = node.jsxTag.charAt(0);
 	if (tagStart >= "A" && tagStart <= "Z") {
-		error("direct emission does not support component tags yet — use tree emission (element) for now", node);
+		let keys: string[] = [];
+		let values: Node[] = [];
+		for (const a of node.jsxAttrs) {
+			if (a.kind === NodeKind.JSXAttribute) {
+				keys.push(a.jsxAttrName);
+				if (a.jsxAttrValue.kind === NodeKind.StringLiteral) {
+					values.push(a.jsxAttrValue);
+				} else {
+					values.push({ kind: NodeKind.ArrowFunction, line: a.line, column: a.column, arrowParams: [], arrowParamTypes: [], arrowBody: a.jsxAttrValue, arrowFlags: "", arrowReturnType: "" });
+				}
+			}
+		}
+		let compKids: Node[] = [];
+		for (const c of node.jsxChildren) {
+			if (c.kind === NodeKind.JSXText) {
+				const cleaned = cleanJsxText(c.jsxText);
+				if (cleaned !== "") {
+					compKids.push({
+						kind: NodeKind.CallExpr, line: c.line, column: c.column,
+						callee: { kind: NodeKind.Identifier, line: c.line, column: c.column, name: "text" },
+						arguments: [{ kind: NodeKind.StringLiteral, line: c.line, column: c.column, value: cleaned }],
+					});
+				}
+			} else if (c.kind === NodeKind.JSXExpressionContainer) {
+				compKids.push(c.jsxExpr);
+			} else if (c.kind === NodeKind.JSXElement) {
+				compKids.push({
+					kind: NodeKind.CallExpr, line: c.line, column: c.column,
+					callee: { kind: NodeKind.Identifier, line: c.line, column: c.column, name: "element" },
+					arguments: [c],
+				});
+			}
+		}
+		if (compKids.length === 1) {
+			keys.push("children");
+			values.push(compKids[0]);
+		} else if (compKids.length > 1) {
+			keys.push("children");
+			values.push({ kind: NodeKind.ArrayLiteral, line: L, column: C, elements: compKids });
+		}
+		const rootStmts: Node[] = [
+			{
+				kind: NodeKind.VariableDecl, line: L, column: C,
+				declName: "_k0", declType: "", declKind: DeclKind.Const,
+				initializer: {
+					kind: NodeKind.CallExpr, line: L, column: C,
+					callee: { kind: NodeKind.Identifier, line: L, column: C, name: "createComponent" },
+					arguments: [
+						{ kind: NodeKind.Identifier, line: L, column: C, name: node.jsxTag },
+						{ kind: NodeKind.ObjectLiteral, line: L, column: C, properties: values, keys: keys },
+					],
+				},
+			},
+			{
+				kind: NodeKind.ReturnStmt, line: L, column: C,
+				argument: {
+					kind: NodeKind.CallExpr, line: L, column: C,
+					callee: { kind: NodeKind.Identifier, line: L, column: C, name: "renderNode" },
+					arguments: [
+						{ kind: NodeKind.Identifier, line: L, column: C, name: "_k0" },
+						{ kind: NodeKind.Identifier, line: L, column: C, name: "host" },
+					],
+				},
+			},
+		];
+		return {
+			kind: NodeKind.ArrowFunction, line: L, column: C,
+			arrowParams: ["host"], arrowParamTypes: ["Host"], arrowFlags: "", arrowReturnType: "",
+			arrowBody: { kind: NodeKind.BlockStmt, line: L, column: C, statements: rootStmts },
+		};
 	}
 
 	let stmts: Node[] = [];
@@ -55,6 +134,7 @@ export macro direct(node: Node): Node {
 
 	let tIdx = 0;
 	let cIdx = 0;
+	let kIdx = 0;
 	for (const c of node.jsxChildren) {
 		if (c.kind === NodeKind.JSXText) {
 			const cleaned = cleanJsxText(c.jsxText);
@@ -120,6 +200,73 @@ export macro direct(node: Node): Node {
 					arguments: [
 						{ kind: NodeKind.Identifier, line: c.line, column: c.column, name: "_r" },
 						{ kind: NodeKind.Identifier, line: c.line, column: c.column, name: tName },
+					],
+				},
+			});
+		} else if (c.kind === NodeKind.JSXElement && c.jsxTag.charAt(0) >= "A" && c.jsxTag.charAt(0) <= "Z") {
+			let ckeys: string[] = [];
+			let cvalues: Node[] = [];
+			for (const a of c.jsxAttrs) {
+				if (a.kind === NodeKind.JSXAttribute) {
+					ckeys.push(a.jsxAttrName);
+					if (a.jsxAttrValue.kind === NodeKind.StringLiteral) {
+						cvalues.push(a.jsxAttrValue);
+					} else {
+						cvalues.push({ kind: NodeKind.ArrowFunction, line: a.line, column: a.column, arrowParams: [], arrowParamTypes: [], arrowBody: a.jsxAttrValue, arrowFlags: "", arrowReturnType: "" });
+					}
+				}
+			}
+			let cKids: Node[] = [];
+			for (const gc of c.jsxChildren) {
+				if (gc.kind === NodeKind.JSXText) {
+					const gcleaned = cleanJsxText(gc.jsxText);
+					if (gcleaned !== "") {
+						cKids.push({
+							kind: NodeKind.CallExpr, line: gc.line, column: gc.column,
+							callee: { kind: NodeKind.Identifier, line: gc.line, column: gc.column, name: "text" },
+							arguments: [{ kind: NodeKind.StringLiteral, line: gc.line, column: gc.column, value: gcleaned }],
+						});
+					}
+				} else if (gc.kind === NodeKind.JSXExpressionContainer) {
+					cKids.push(gc.jsxExpr);
+				} else if (gc.kind === NodeKind.JSXElement) {
+					cKids.push({
+						kind: NodeKind.CallExpr, line: gc.line, column: gc.column,
+						callee: { kind: NodeKind.Identifier, line: gc.line, column: gc.column, name: "element" },
+						arguments: [gc],
+					});
+				}
+			}
+			if (cKids.length === 1) {
+				ckeys.push("children");
+				cvalues.push(cKids[0]);
+			} else if (cKids.length > 1) {
+				ckeys.push("children");
+				cvalues.push({ kind: NodeKind.ArrayLiteral, line: c.line, column: c.column, elements: cKids });
+			}
+			const kName = "_k" + kIdx.toString();
+			kIdx = kIdx + 1;
+			stmts.push({
+				kind: NodeKind.VariableDecl, line: c.line, column: c.column,
+				declName: kName, declType: "", declKind: DeclKind.Const,
+				initializer: {
+					kind: NodeKind.CallExpr, line: c.line, column: c.column,
+					callee: { kind: NodeKind.Identifier, line: c.line, column: c.column, name: "createComponent" },
+					arguments: [
+						{ kind: NodeKind.Identifier, line: c.line, column: c.column, name: c.jsxTag },
+						{ kind: NodeKind.ObjectLiteral, line: c.line, column: c.column, properties: cvalues, keys: ckeys },
+					],
+				},
+			});
+			stmts.push({
+				kind: NodeKind.ExprStmt, line: c.line, column: c.column,
+				expr: {
+					kind: NodeKind.CallExpr, line: c.line, column: c.column,
+					callee: { kind: NodeKind.Identifier, line: c.line, column: c.column, name: "renderToHost" },
+					arguments: [
+						{ kind: NodeKind.Identifier, line: c.line, column: c.column, name: kName },
+						{ kind: NodeKind.Identifier, line: c.line, column: c.column, name: "host" },
+						{ kind: NodeKind.Identifier, line: c.line, column: c.column, name: "_r" },
 					],
 				},
 			});
