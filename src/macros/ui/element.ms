@@ -5,9 +5,11 @@
 //                [ el("p", [], [], [text("Hi "), dynText(() => name())]),
 //                  el("button", [], [evt("onClick", inc)], [text("+")]) ])
 //
-// el/attr/evt/text/dynText come from "../render/node" and must be in scope at the
-// call site. Attributes whose name starts with "on" become events; expression
-// containers become reactive (dynText); nested JSX re-expands through `element`.
+// el/attr/dynAttr/evt/text/dynText come from "../render/node" and must be in scope
+// at the call site. Attributes whose name starts with "on" become events; a string
+// literal attr stays static (attr); any other attr expression becomes a reactive
+// thunk (dynAttr), mirroring how expression children become dynText; nested JSX
+// re-expands through `element`.
 //
 // `style` is the one attribute with two channels: a string literal keeps the legacy
 // attr path (host parses it), while any other expression is a typed Style and routes
@@ -147,13 +149,28 @@ export macro element(node: Node): Node {
 				continue;
 			}
 			const nameLit: Node = { kind: NodeKind.StringLiteral, line: a.line, column: a.column, value: a.jsxAttrName };
-			const ctor = a.jsxAttrName.startsWith("on") ? "evt" : "attr";
-			const call: Node = {
-				kind: NodeKind.CallExpr, line: a.line, column: a.column,
-				callee: { kind: NodeKind.Identifier, line: a.line, column: a.column, name: ctor },
-				arguments: [nameLit, a.jsxAttrValue],
-			};
-			if (ctor === "evt") { events.push(call); } else { attrs.push(call); }
+			if (a.jsxAttrName.startsWith("on")) {
+				events.push({
+					kind: NodeKind.CallExpr, line: a.line, column: a.column,
+					callee: { kind: NodeKind.Identifier, line: a.line, column: a.column, name: "evt" },
+					arguments: [nameLit, a.jsxAttrValue],
+				});
+			} else if (a.jsxAttrValue.kind === NodeKind.StringLiteral) {
+				attrs.push({
+					kind: NodeKind.CallExpr, line: a.line, column: a.column,
+					callee: { kind: NodeKind.Identifier, line: a.line, column: a.column, name: "attr" },
+					arguments: [nameLit, a.jsxAttrValue],
+				});
+			} else {
+				attrs.push({
+					kind: NodeKind.CallExpr, line: a.line, column: a.column,
+					callee: { kind: NodeKind.Identifier, line: a.line, column: a.column, name: "dynAttr" },
+					arguments: [nameLit, {
+						kind: NodeKind.ArrowFunction, line: a.line, column: a.column,
+						arrowParams: [], arrowParamTypes: [], arrowBody: a.jsxAttrValue, arrowFlags: "", arrowReturnType: "",
+					}],
+				});
+			}
 		}
 	}
 
