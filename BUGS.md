@@ -2306,6 +2306,16 @@ battery for closure/inference work.**
 
 Each is cheap, none blocks anything, all were surfaced by the sessions that closed §1.
 
+- **JSX fragment `<>…</>` is silently dropped by BOTH emissions** (NEW 2026-08-09, found
+  auditing D3 solidity before D4): `element(<><p>a</p><p>b</p></>)` AND
+  `direct(<>…</>)` both compile clean and mount NOTHING — `probe/fragProbe.ms` prints
+  `<root></root>` for both. Parity holds (differential can't catch it) but semantics are
+  wrong vs Solid, and there is zero diagnostic. Tree = spec is affected too, so per the
+  arc rule the fix goes tree-first through `element.ms` (sacred — needs design + approval):
+  either a real fragment branch (multi-root NeonNode) or a loud macro error rejecting
+  fragments until then. `direct.ms` mirrors afterward. Not a D4 blocker (template-clone
+  operates on elements).
+
 - ~~**JS std string is ~19 exports behind cms**~~ **CLOSED 2026-07-29 (night)**: 18 exports ported
   as pure-MS byte loops matching `runtime/core/string.c` semantics + `lastIndexOf` gained
   `startIdx`/int64 (silent signature drift). Same pass fixed FOUR cross-backend divergences —
