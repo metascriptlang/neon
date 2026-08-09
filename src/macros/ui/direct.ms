@@ -13,7 +13,7 @@
 // child position via createComponent + renderToHost (the same seam the tree
 // walker uses).
 //
-// The emitted code calls createEffect / createComponent / renderNode /
+// The emitted code calls bindText / bindAttr / createComponent / renderNode /
 // renderToHost / element / text by name and types its param as Host, so all of
 // those must be in scope at the call site. Attr classification mirrors
 // element.ms: string literal → setAttr once, on* → addEvent, any other expr →
@@ -244,18 +244,17 @@ export macro direct(node: Node): Node {
 							kind: NodeKind.ExprStmt, line: a.line, column: a.column,
 							expr: {
 								kind: NodeKind.CallExpr, line: a.line, column: a.column,
-								callee: ident("createEffect", a.line, a.column),
-								arguments: [{
-									kind: NodeKind.ArrowFunction, line: a.line, column: a.column,
-									arrowParams: [], arrowParamTypes: [], arrowFlags: "", arrowReturnType: "",
-									arrowBody: {
-										kind: NodeKind.BlockStmt, line: a.line, column: a.column,
-										statements: [{
-											kind: NodeKind.ExprStmt, line: a.line, column: a.column,
-											expr: hostCall("host", "setAttr", [ident(elVar, a.line, a.column), strLit(a.jsxAttrName, a.line, a.column), a.jsxAttrValue], a.line, a.column),
-										}],
+								callee: ident("bindAttr", a.line, a.column),
+								arguments: [
+									ident("host", a.line, a.column),
+									ident(elVar, a.line, a.column),
+									strLit(a.jsxAttrName, a.line, a.column),
+									{
+										kind: NodeKind.ArrowFunction, line: a.line, column: a.column,
+										arrowParams: [], arrowParamTypes: [], arrowFlags: "", arrowReturnType: "",
+										arrowBody: a.jsxAttrValue,
 									},
-								}],
+								],
 							},
 						});
 					}
@@ -317,18 +316,16 @@ export macro direct(node: Node): Node {
 							kind: NodeKind.ExprStmt, line: c.line, column: c.column,
 							expr: {
 								kind: NodeKind.CallExpr, line: c.line, column: c.column,
-								callee: ident("createEffect", c.line, c.column),
-								arguments: [{
-									kind: NodeKind.ArrowFunction, line: c.line, column: c.column,
-									arrowParams: [], arrowParamTypes: [], arrowFlags: "", arrowReturnType: "",
-									arrowBody: {
-										kind: NodeKind.BlockStmt, line: c.line, column: c.column,
-										statements: [{
-											kind: NodeKind.ExprStmt, line: c.line, column: c.column,
-											expr: hostCall("host", "setText", [ident(curVar, c.line, c.column), c.jsxExpr], c.line, c.column),
-										}],
+								callee: ident("bindText", c.line, c.column),
+								arguments: [
+									ident("host", c.line, c.column),
+									ident(curVar, c.line, c.column),
+									{
+										kind: NodeKind.ArrowFunction, line: c.line, column: c.column,
+										arrowParams: [], arrowParamTypes: [], arrowFlags: "", arrowReturnType: "",
+										arrowBody: c.jsxExpr,
 									},
-								}],
+								],
 							},
 						});
 					} else {
@@ -459,26 +456,17 @@ export macro direct(node: Node): Node {
 						kind: NodeKind.ExprStmt, line: a.line, column: a.column,
 						expr: {
 							kind: NodeKind.CallExpr, line: a.line, column: a.column,
-							callee: { kind: NodeKind.Identifier, line: a.line, column: a.column, name: "createEffect" },
-							arguments: [{
-								kind: NodeKind.ArrowFunction, line: a.line, column: a.column,
-								arrowParams: [], arrowParamTypes: [], arrowFlags: "", arrowReturnType: "",
-								arrowBody: {
-									kind: NodeKind.BlockStmt, line: a.line, column: a.column,
-									statements: [{
-										kind: NodeKind.ExprStmt, line: a.line, column: a.column,
-										expr: {
-											kind: NodeKind.CallExpr, line: a.line, column: a.column,
-											callee: { kind: NodeKind.MemberExpr, line: a.line, column: a.column, object: { kind: NodeKind.Identifier, line: a.line, column: a.column, name: "host" }, property: "setAttr", isOptional: false },
-											arguments: [
-												{ kind: NodeKind.Identifier, line: a.line, column: a.column, name: rName },
-												nameLit,
-												a.jsxAttrValue,
-											],
-										},
-									}],
+							callee: { kind: NodeKind.Identifier, line: a.line, column: a.column, name: "bindAttr" },
+							arguments: [
+								{ kind: NodeKind.Identifier, line: a.line, column: a.column, name: "host" },
+								{ kind: NodeKind.Identifier, line: a.line, column: a.column, name: rName },
+								nameLit,
+								{
+									kind: NodeKind.ArrowFunction, line: a.line, column: a.column,
+									arrowParams: [], arrowParamTypes: [], arrowFlags: "", arrowReturnType: "",
+									arrowBody: a.jsxAttrValue,
 								},
-							}],
+							],
 						},
 					});
 				}
@@ -521,25 +509,16 @@ export macro direct(node: Node): Node {
 					kind: NodeKind.ExprStmt, line: c.line, column: c.column,
 					expr: {
 						kind: NodeKind.CallExpr, line: c.line, column: c.column,
-						callee: { kind: NodeKind.Identifier, line: c.line, column: c.column, name: "createEffect" },
-						arguments: [{
-							kind: NodeKind.ArrowFunction, line: c.line, column: c.column,
-							arrowParams: [], arrowParamTypes: [], arrowFlags: "", arrowReturnType: "",
-							arrowBody: {
-								kind: NodeKind.BlockStmt, line: c.line, column: c.column,
-								statements: [{
-									kind: NodeKind.ExprStmt, line: c.line, column: c.column,
-									expr: {
-										kind: NodeKind.CallExpr, line: c.line, column: c.column,
-										callee: { kind: NodeKind.MemberExpr, line: c.line, column: c.column, object: { kind: NodeKind.Identifier, line: c.line, column: c.column, name: "host" }, property: "setText", isOptional: false },
-										arguments: [
-											{ kind: NodeKind.Identifier, line: c.line, column: c.column, name: tName },
-											c.jsxExpr,
-										],
-									},
-								}],
+						callee: { kind: NodeKind.Identifier, line: c.line, column: c.column, name: "bindText" },
+						arguments: [
+							{ kind: NodeKind.Identifier, line: c.line, column: c.column, name: "host" },
+							{ kind: NodeKind.Identifier, line: c.line, column: c.column, name: tName },
+							{
+								kind: NodeKind.ArrowFunction, line: c.line, column: c.column,
+								arrowParams: [], arrowParamTypes: [], arrowFlags: "", arrowReturnType: "",
+								arrowBody: c.jsxExpr,
 							},
-						}],
+						],
 					},
 				});
 				stmts.push({
