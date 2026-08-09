@@ -10,6 +10,35 @@ import { Host, HostNode } from "./hostTypes";
 
 export { Host, HostNode } from "./hostTypes";
 
+// A dynamic spot re-runs whenever a source signal changes, but a derived expression
+// often maps several source values onto the SAME output ("big"/"small", a formatted
+// count). Writing it again is a host touch that changes nothing, so the last written
+// value is kept and an identical one is dropped. Both emissions bind through these,
+// which is what keeps their host-op sequences identical.
+export function bindText(host: Host, node: HostNode, get: () => string): void {
+	let prev = "";
+	let bound = false;
+	createEffect(() => {
+		const v = get();
+		if (bound && v === prev) { return; }
+		bound = true;
+		prev = v;
+		host.setText(node, v);
+	});
+}
+
+export function bindAttr(host: Host, node: HostNode, name: string, get: () => string): void {
+	let prev = "";
+	let bound = false;
+	createEffect(() => {
+		const v = get();
+		if (bound && v === prev) { return; }
+		bound = true;
+		prev = v;
+		host.setAttr(node, name, v);
+	});
+}
+
 // Build a single host node from a vnode (recursing into children). dynText binds a
 // push-effect; a region child mounts an anchor + reconcile effect into this node.
 export function renderNode(vnode: NeonNode, host: Host): HostNode {
@@ -24,7 +53,7 @@ export function renderNode(vnode: NeonNode, host: Host): HostNode {
 	if (vnode.tag === "") {
 		if (vnode.isDyn) {
 			const tn = host.createText("");
-			createEffect(() => { host.setText(tn, vnode.dyn()); });
+			bindText(host, tn, () => vnode.dyn());
 			return tn;
 		}
 		return host.createText(vnode.text);
@@ -33,7 +62,7 @@ export function renderNode(vnode: NeonNode, host: Host): HostNode {
 	for (const a of vnode.attrs) {
 		if (a.isDyn) {
 			const da = a;
-			createEffect(() => { host.setAttr(node, da.name, da.dyn()); });
+			bindAttr(host, node, da.name, () => da.dyn());
 		} else {
 			host.setAttr(node, a.name, a.value);
 		}
