@@ -207,6 +207,14 @@ change zero characters.
    (`bodyRuns`-counter test pattern).
 3. **Every dynamic spot = one effect, created at mount, under the mounting
    owner** — never at build time.
+3b. **A spot writes the host only when its value actually changed.** The signal
+   already drops a set to an equal value, but a derived expression maps many
+   source values onto one output (`n() > 5 ? "big" : "small"`), so the last
+   written value is kept and an identical recomputation is dropped. Both
+   emissions bind through `bindText`/`bindAttr` (`src/render/host.ms`) — one
+   implementation is what keeps their host-op sequences identical, and
+   `mockToString` cannot see the difference, so the test for it counts writes
+   on a counting host.
 4. **Structural change goes through a region + anchor only** — nothing else
    inserts/removes host nodes except `reconcileArrays`.
 5. **Dispose is total** — after unmount, signal writes reach zero effects
