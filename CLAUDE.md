@@ -313,13 +313,20 @@ See `docs/PORT-STATUS.md` for the live, detailed port status + module mapping. S
 green). Yoga is DONE — the binding lives in its own repo (`~/metascript/yoga`) and `deps/yoga`
 symlinks a real checkout; `src/yoga/` here is a vestigial empty dir, not a TODO.
 
-**NOT blocked.** An earlier revision claimed iOS/Android were blocked on `@target` expansion — that
-is **stale**. Platform-specific native code selection is done with `@platform("macos"|"ios"|"android")`,
-which works today: void ships all three that way (`void/src/sokol/gpu.ms`) by gating `@compile`/
-`@passC`/`@passL`/`@link` directives around ONE backend-agnostic extern surface. Copy that shape.
-⚠ `@platform` filters **directives only** — it does not gate arbitrary MS code, so keep the MS side
-backend-agnostic and vary the native bridge file. `@target("c")/@target("js")` is the separate
-backend axis, and Neon already handles it by shipping separate host modules per backend.
+**NOT blocked.** Both the OS axis and the backend axis are `when` blocks (msc >= 0.2.42;
+`@platform`/`@target` were retired 2026-08-09 and now raise an error):
+
+```typescript
+when (macos) { @passL("-framework Metal"); @compile("./bridgeEmbed.m"); }
+when (js)    { /* browser-only code — never type-checked on a C build */ }
+```
+
+void ships macos/ios/android that way (`void/src/sokol/gpu.ms`) by gating
+`@compile`/`@passC`/`@passL`/`@link` around ONE backend-agnostic extern surface — copy that shape.
+Unlike the old `@platform`, `when` gates arbitrary code, not just directives: a dropped branch is
+never type-checked, so it may call APIs that do not exist on the other target. Flags come from the
+define table (`msc --help-defines`): backend `c`/`js`, OS `macos`/`ios`/`android`/…, `debug`/
+`release`/`danger`, plus anything passed as `-d:name[=value]`.
 
 **Remaining**: iOS host, Android host.
 
@@ -453,7 +460,7 @@ msc test tests/render/renderToString.test.ms
 msc build examples/counterDom.ms
 
 # Terminal + Void hosts ship today — see tests/platform/terminal + tests/render/voidHost
-# iOS / Android — TODO, and NOT compiler-blocked: use @platform, as void/src/sokol/gpu.ms does
+# iOS / Android — TODO, and NOT compiler-blocked: use `when (ios)`, as void/src/sokol/gpu.ms does
 ```
 
 **Coverage**: Smoke tests for each platform
