@@ -10,7 +10,7 @@ import { direct } from "../../src/macros/ui/direct";
 import { NeonNode, el, attr } from "../../src/render/node";
 import { createComponent } from "../../src/render/component";
 import { Show, For } from "../../src/macros/ui/flow";
-import { renderToHost, renderNode, mockHost, mockNode, mockToString, fireEvent, MockNode, Host, HostNode } from "../../src/render/host";
+import { renderToHost, renderNode, mockHost, mockNode, mockToString, fireEvent, bindText, bindAttr, MockNode, Host, HostNode } from "../../src/render/host";
 import { createStyles, styleOf } from "../../src/macros/ui/style";
 import { createTemplate, mountTemplate, childOf, siblingOf } from "../../src/render/template";
 
@@ -349,6 +349,58 @@ test "template mode: a pure subtree is built once and cloned per mount" {
 	assert mockToString(root) === "<root><div class=\"box\"><span>s</span><em>a</em></div><div class=\"box\"><span>s</span><em>a</em></div></root>", "two independent instances: " + mockToString(root);
 	setV("b");
 	assert mockToString(root) === "<root><div class=\"box\"><span>s</span><em>b</em></div><div class=\"box\"><span>s</span><em>b</em></div></root>", "every clone stays reactive: " + mockToString(root);
+}
+
+// Counts host text writes, so a test can separate a real update from a redundant
+// touch. mockToString cannot see this: the tree state is identical either way.
+function textCountingHost(counter: number[]): Host {
+	const h = mockHost();
+	return {
+		createElement: h.createElement, createText: h.createText,
+		setText: (node: HostNode, value: string): void => {
+			counter[0] = counter[0] + 1;
+			h.setText(node, value);
+		},
+		setAttr: h.setAttr, setStyle: h.setStyle, addEvent: h.addEvent,
+		append: h.append, insertBefore: h.insertBefore, removeChild: h.removeChild,
+		nextSibling: h.nextSibling, firstChild: h.firstChild, cloneNode: h.cloneNode,
+	};
+}
+
+test "a spot recomputing to the same string writes the host once — tree emission" {
+	const [n, setN] = createSignal<number>(1);
+	const counter: number[] = [0];
+	const host = textCountingHost(counter);
+	const root = mockNode("root");
+
+	const tv: NeonNode = element(<p>{n() > 5 ? "big" : "small"}</p>);
+	renderToHost(tv, host, root as unknown as HostNode);
+	assert counter[0] === 1, "one write at mount, got " + counter[0].toString();
+
+	setN(2);
+	assert counter[0] === 1, "source changed but the derived text did not — no host touch; got " + counter[0].toString();
+
+	setN(9);
+	assert counter[0] === 2, "a real change still writes, got " + counter[0].toString();
+	assert mockToString(root) === "<root><p>big</p></root>", "value: " + mockToString(root);
+}
+
+test "a spot recomputing to the same string writes the host once — direct emission" {
+	const [n, setN] = createSignal<number>(1);
+	const counter: number[] = [0];
+	const host = textCountingHost(counter);
+	const root = mockNode("root");
+
+	const mount = direct(<p>{n() > 5 ? "big" : "small"}</p>);
+	host.append(root as unknown as HostNode, mount(host));
+	assert counter[0] === 1, "one write at mount, got " + counter[0].toString();
+
+	setN(2);
+	assert counter[0] === 1, "source changed but the derived text did not — no host touch; got " + counter[0].toString();
+
+	setN(9);
+	assert counter[0] === 2, "a real change still writes, got " + counter[0].toString();
+	assert mockToString(root) === "<root><p>big</p></root>", "value: " + mockToString(root);
 }
 
 test "template mode on a cloneNode:null host falls back and still matches tree" {
