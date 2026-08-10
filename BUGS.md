@@ -492,6 +492,16 @@ function was needed, and the emitted C shows DRC injecting `msIncref` per copied
   `docs/NIM-REF.md` row 58 + the sentinel-kind map at `unknownType` (`src/checker/types.ms`);
   `docs/UNKNOWN-BUG.md` is retired.
 
+### Added 2026-08-10 by the implicit-stringify /trace-nim session (all measured on msc v0.2.42 AND v0.2.43 — pre-existing, none caused by that fix)
+
+| bug | repro | measured today |
+|---|---|---|
+| ~~implicit stringify of a user type never resolves — C clang error, JS silent `[object Object]`~~ | guard `recompiler/src/test/guard/stringifyProtocolResolved.ms` (13 cells), corpus `714-stringifyProtocol` | ✅ **CLOSED 2026-08-10 via /trace-nim** — the call was planted AFTER the checker by a C-only pass, so nothing bound it; now synthesized + resolved in `checkExprPass`. Committed `350b644`+`d0ce7a3`+`b6bf581`, deployed **v0.2.43**. Verdict + full trace: recompiler `docs/NIM-REF.md` "Implicit stringification" |
+| **`String(x)` is C-only and absent on JS** | `/tmp/protostr/t_strfn_{num,cm,ext}.ms` | ❌ JS: `Undefined variable 'String'` even for `String(42)`; C: works for primitives, `no member named 'toString'` for a user type. Same planted-call shape as the row above, in `transform/coercion/typeCoercion.ms` — un-migrated |
+| **a type with no (or a wrong-shaped) `toString` in a concat: backends disagree, C fallback prints null fields** | `/tmp/protostr/t_notostring.ms`, `adv_arity.ms`, `adv_retkind.ms` | ❌ no `toString`: C `{"v":null}` (JSON debug fallback — field is 1, prints null), JS `[object Object]`. Wrong-shaped `toString` (wrong arity/return): both fail at clang. Policy question attached: NIM-REF row 54 says TS-convention "always show something", but the two backends show different things |
+| **`extends` is broken independently on both backends** | `/tmp/protostr/adv_inherit_pure.ms` | ❌ C: an inherited method is not resolved even when called explicitly (`d.toString()` → JSON fallback), then `panic: member access within misaligned address 0xb for type 'const msTypeInfo'` at exit. JS: emits `class Derived… extends Base` with the base name UNMANGLED → `ReferenceError: Base is not defined` kills the whole bundle. Identical on v0.2.42 and v0.2.43 |
+| **`userType += "str"` reaches clang** | `/tmp/protostr/adv_lhsuser.ms` | ❌ `invalid operands to binary expression ('M *' …)` — no checker diagnostic for a compound-assign whose LHS is a struct |
+
 ---
 
 ## §3 — Neon-side / environment — EMPTY, `voidHost` CLOSED 2026-07-27 (late)
@@ -540,6 +550,39 @@ Still untracked: `docs/EDITOR*.md` (design scratch).
 ---
 
 ## §5 — Fixed (history + root-cause ledger, append-only)
+
+### 2026-08-10 — implicit stringification was planted after the checker, so nothing ever bound it ✅ COMMITTED `350b644`+`d0ce7a3`+`b6bf581`, DEPLOYED **v0.2.43**
+
+Found from a Neon question — "why does `<span>{n().toString()}</span>` need the explicit call?".
+The `toString` protocol that `PROTOCOLS.md` listed as DONE had no checker synthesis at all. The
+insertion lived in `stringConcatFlatten` (post-checker, C-only) and in `typeCoercion` for
+`String(x)`, both carrying a `// Follows reference *.zig` header — ported from the pre-self-hosted
+pipeline, where a backend lowering was the right home. The planted `x.toString()` never met the
+checker, so it had no `resolvedSym` and no `NF_ExtCall`, and `extensionMethodLower` — which keys
+off exactly those — skipped it. C printed it as a struct member call (`a->toString()` → clang
+error); JS never ran the pass and fell through to its own `+` coercion, which is right by luck for
+a class METHOD and silently `[object Object]` for an extension-declared `toString`. Primitives and
+hand-written calls always worked, which is why this survived so long.
+
+Fix follows Nim's phase: `synthStringify` plants the call at the `+`/`+=` site in
+`checkExprPass.ms` and CHECKS it, keeping the result only when the trial is diagnostic-free,
+string-typed, and bound to a symbol with a real `declNode`. Everything else keeps the builtin path
+untouched, so primitives, enums and the numeric-subtree atomicity are byte-identical.
+`stringConcatFlatten` needed no edit — a resolved operand is already a string leaf. Template
+literals ride the same `+` path.
+
+Two defects in the fix itself were caught by an adversarial matrix, not by the happy path: the
+trial `checkExpr` leaked diagnostics for a receiver it then declined, and it accepted a
+`toString(radix)` binding and emitted a 0-argument call. Both closed by making "the trial produced
+zero diagnostics" the acceptance criterion.
+
+Gates: guard proven RED (13 clang errors) → GREEN drc+orc; battery 3437/3437 (A/B against pristine
+HEAD); guard suite ALL GREEN; corpus 714 C≡JS; 12-cell parity matrix C≡JS; Neon 18/18 under the
+INSTALLED v0.2.43. Full verdict + Nim citations: recompiler `docs/NIM-REF.md` "Implicit
+stringification". Adjacent holes measured and filed in §2, none of them regressions.
+
+Neon follow-up (not done here): `element.ms`/`direct.ms` can now emit `"" + (expr)` for a dynamic
+spot, which is what lets JSX drop the explicit `.toString()` on both backends.
 
 ### 2026-08-07 (late) — expr-bodied arrow + nested capture: hoisted env decls dropped on non-block bodies ✅ UNCOMMITTED (worktree /tmp/wt-narrow, live tree staged, awaiting approval)
 
