@@ -20,7 +20,7 @@
 // one createEffect around setAttr (1 dynamic spot = 1 effect); a non-literal
 // style routes through host.setStyle with the same S4 field validation.
 
-import { Node, NodeKind, DeclKind } from "std/meta";
+import { Node, NodeKind, DeclKind, NodeFlag } from "std/meta";
 import { cleanJsxText } from "./element";
 
 export macro direct(node: Node): Node {
@@ -346,23 +346,36 @@ export macro direct(node: Node): Node {
 			argument: { kind: NodeKind.Identifier, line: L, column: C, name: tplRoot },
 		});
 
+		const tplName = "_tpl" + L.toString() + "_" + C.toString();
 		return {
-			kind: NodeKind.CallExpr, line: L, column: C,
-			callee: { kind: NodeKind.Identifier, line: L, column: C, name: "mountTemplate" },
-			arguments: [
+			kind: NodeKind.SpliceMany, line: L, column: C,
+			spliceNodes: [
 				{
-					kind: NodeKind.CallExpr, line: L, column: C,
-					callee: { kind: NodeKind.Identifier, line: L, column: C, name: "createTemplate" },
-					arguments: [{
-						kind: NodeKind.ArrowFunction, line: L, column: C,
-						arrowParams: ["h"], arrowParamTypes: ["Host"], arrowFlags: "", arrowReturnType: "HostNode",
-						arrowBody: { kind: NodeKind.BlockStmt, line: L, column: C, statements: bStmts },
-					}],
+					kind: NodeKind.VariableDecl, line: L, column: C,
+					flags: NodeFlag.StaticStorage,
+					declName: tplName, declType: "", declKind: DeclKind.Const,
+					nameLocation: { line: L, column: C },
+					initializer: {
+						kind: NodeKind.CallExpr, line: L, column: C,
+						callee: { kind: NodeKind.Identifier, line: L, column: C, name: "createTemplate" },
+						arguments: [{
+							kind: NodeKind.ArrowFunction, line: L, column: C,
+							arrowParams: ["h"], arrowParamTypes: ["Host"], arrowFlags: "", arrowReturnType: "HostNode",
+							arrowBody: { kind: NodeKind.BlockStmt, line: L, column: C, statements: bStmts },
+						}],
+					},
 				},
 				{
-					kind: NodeKind.ArrowFunction, line: L, column: C,
-					arrowParams: ["host", "_p0"], arrowParamTypes: ["Host", "HostNode"], arrowFlags: "", arrowReturnType: "void",
-					arrowBody: { kind: NodeKind.BlockStmt, line: L, column: C, statements: wStmts },
+					kind: NodeKind.CallExpr, line: L, column: C,
+					callee: { kind: NodeKind.Identifier, line: L, column: C, name: "mountTemplate" },
+					arguments: [
+						{ kind: NodeKind.Identifier, line: L, column: C, name: tplName },
+						{
+							kind: NodeKind.ArrowFunction, line: L, column: C,
+							arrowParams: ["host", "_p0"], arrowParamTypes: ["Host", "HostNode"], arrowFlags: "", arrowReturnType: "void",
+							arrowBody: { kind: NodeKind.BlockStmt, line: L, column: C, statements: wStmts },
+						},
+					],
 				},
 			],
 		};
