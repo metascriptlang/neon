@@ -199,6 +199,113 @@ leans on (loop+nested-closure snapshot, expr-bodied-arrow env) were fixed
 emission lands behind a `build.ms` switch, browser first. User code and types
 change zero characters.
 
+### Gate (3) — MEASURED 2026-08-11, and it changes the plan above
+
+The `build.ms` switch is **superseded**. Measurements below say the choice is
+per-JSX-SITE and fully decidable at compile time, so nothing should be exposed —
+not a build flag, and not a `direct()` call in user code.
+
+Prerequisite that made the benchmark meaningful at all: before template hoisting
+landed (recompiler `1840976`), the per-site cell was *slower than tree* (19.00 vs
+18.00 host-ops/mount), so gate (3) would have concluded "don't use direct". With
+hoisting it is 3.016, equal to the hand-hoisted cell. `probe/bench.ms`.
+
+**Real DOM, headless Chrome, ms per 1000 row mounts inside a real `For` region**
+(`probe/sweep6.ms`, `probe/sweep12.ms`; ratio = tree ÷ direct, >1 means direct wins):
+
+| dynamic spots | 6-cell row | 12-cell row |
+|---|---|---|
+| 0% | 2.31 | 2.57 / 2.50 / 2.56 |
+| 25% | — | 1.94 / 1.77 / 2.03 |
+| 33% | 1.95 | — |
+| 50% | 1.67 | 1.71 / 1.63 / 1.56 |
+| 75% | — | 1.60 / 1.51 / 1.38 |
+| 100% | 1.38 | 1.44 / 1.45 / 1.36 |
+
+Three things follow, and the first two were surprises:
+
+1. **There is no crossover.** Direct wins at every level, 2.5x on fully static
+   markup down to ~1.4x when every cell is dynamic. An earlier run of this same
+   sweep reported direct LOSING at 100% dynamic (0.74x); that was an artifact of
+   summing timed rounds, where one CPU-stolen round dominates a cell. Reported
+   here as the MIN across rounds. Do not reinstate a "mostly static only"
+   threshold on the strength of the retracted number.
+2. **The rule tracks the RATIO of dynamic spots, not row size.** At 50% dynamic a
+   6-cell row gives 1.67 and a 12-cell row 1.63. So no absolute static-cell count
+   is needed in the decision.
+3. **Rows are where this matters, and they cannot reach it today.** `For.children`
+   is typed `=> NeonNode` while `direct()` yields `(host) => HostNode`, and there
+   is no adapter — `tests/render/direct.test.ms:446` builds the row with
+   `element(...)` in BOTH of its cells. So the win currently applies to one shell
+   mount, not to the N rows under it. `probe/rowDirect.ms` measures the widened
+   form at **1.9x per row**, and `probe/rowDirectParity.ms` shows it produces a
+   byte-identical tree through initial → reorder → append → shrink on C and JS.
+
+Direction, therefore: keep both emissions (tree stays the substrate — the direct
+emitter itself calls `element`/`text`/`createComponent`/`renderNode`/
+`renderToHost` by name for components and regions), and make template+clone the
+DEFAULT inside `element` for any subtree `isPureSubtree` already accepts. That
+turns `direct()` from a user-facing macro into an internal emission strategy, and
+subsumes the row question: the region API needs to accept a mount closure, but no
+app code changes. Blocked on the C-backend defect in §2 — the region body is
+literally `f(x)(y)`, which that backend cannot emit.
+
+Caveats on the numbers, so they are not over-trusted: measured on a machine under
+load 4–54 from a parallel build (ratios were stable across runs, absolute values
+were not — the 6-cell runs 2 and 3 are inflated 3x and were discarded); rows are
+built into a DETACHED box, so layout and paint are excluded; a row carrying event
+handlers was not measured. Good enough to choose an architecture, not yet the
+number to publish.
+
+## Rows — the boundary type carries the emission (LANDED 2026-08-12)
+
+`For.children` used to be typed `=> NeonNode`, so a row was always a description
+the walker mounts — even under a direct-emitted shell. Rows are the hottest mount
+path in a real app, so the emission win applied to one shell and not to the N rows
+under it.
+
+`For` / `Index` / `Show` now take **`NeonView`** — the same boundary type the JSX
+converter selects on (`src/converters.ms`), defined per target in
+`src/render/host.ms`:
+
+| target | `NeonView` | `mountView` |
+|---|---|---|
+| js | `(host: Host) => HostNode` | calls it |
+| native | `NeonNode` | `renderNode` |
+
+Nothing is exposed and nothing is chosen by hand: a bare JSX row hits the
+converter at the `NeonView` boundary and lowers to the target's emission. The row
+callback is the only line that changed inside `For`:
+
+```ms
+- mapArray(..., (item, idx) => renderNode(props.children(item, idx), host))
++ mapArray(..., (item, idx) => mountView(props.children(item, idx), host))
+```
+
+`viewOf(node)` adapts a hand-built description (`el(...)`, `element(...)`) where a
+view is expected; bare JSX never needs it.
+
+**Measured through the public api** — `probe/rowSweep.ms`, real DOM in headless
+Chrome, 500 rows, 6 spans per row, **min of 3 runs** (a mean hides it: one run put
+`dyn=6` direct at 6.33 vs tree 5.67, i.e. slower, which averaging would have baked
+into the answer):
+
+| dynamic spots / 6 | tree | direct | ratio |
+|---|---|---|---|
+| 0 | 2.77 | 0.97 | **2.86x** |
+| 1 | 2.67 | 1.33 | 2.00x |
+| 3 | 3.03 | 1.87 | 1.63x |
+| 6 | 5.67 | 4.67 | 1.21x |
+
+Same numbers as the private `ForDirect` cell that measured this before the api
+could express it, so the widening delivers the win rather than a version of it.
+
+**Not widened, on purpose:** `createComponent` still takes and returns `NeonNode`,
+so a component's INTERNALS stay tree-emitted on every target. That is a separate
+arc with its own measurement — a component row written as bare JSX already reaches
+direct emission, because the macro lowers a capitalized tag to
+`createComponent` + `renderToHost` inside the mount closure.
+
 ## Invariants — the contract every emission must satisfy
 
 1. **Build is pure** — no signal reads while constructing the description
@@ -207,6 +314,17 @@ change zero characters.
    (`bodyRuns`-counter test pattern).
 3. **Every dynamic spot = one effect, created at mount, under the mounting
    owner** — never at build time.
+3a. **Only a spot that can observe something gets a computation.** Solid's rule
+   (`babel-plugin-jsx-dom-expressions`): an expression carrying a call or a
+   property read is reactive; a bare identifier or literal is resolved once at
+   mount, so wrapping it would allocate an effect that can never re-run.
+   `isReactiveExpr` (`src/macros/ui/element.ms`) is the single classifier both
+   emissions consult, and it is deliberately conservative — anything it does not
+   recognise as inert stays reactive, because a wasted computation is cheap and a
+   missed update is not. Tree emission pins the rule structurally (`isDyn` on the
+   NeonNode, `element.test.ms`); direct emission has no such surface and stays
+   pinned only by the shared differential until macro-expansion output can be
+   inspected the way Solid snapshots its compiled JSX.
 3b. **A spot writes the host only when its value actually changed.** The signal
    already drops a set to an equal value, but a derived expression maps many
    source values onto one output (`n() > 5 ? "big" : "small"`), so the last
