@@ -29,7 +29,7 @@ core. Treat them as history for the Nim→MS module mapping, not as current stat
 | # | work | state | size |
 |---|---|---|---|
 | 1 | ~~`createStyles` macro~~ | **DONE (S1b)** — `style.ms` is a real styleOf-rewrite macro; checker validates each entry against `Style`. Remaining style work is S3 (spread, blocked by §2 row 8) + S4 (reactive fields) | — |
-| 2 | component macro (function components) | **runtime path DONE 2026-08-08** — capitalized-tag JSX through `element()` green E2E (reactive props, nested-arrow capture, cleanup via `<Show>`); remaining = converter surface (bare JSX, zero `element()` calls) | small–medium |
+| 2 | component macro (function components) | **DONE 2026-08-12** — runtime path green E2E since 2026-08-08; converter surface closed: `jsxToNode` in the js branch of `src/converters.ms` lowers bare JSX at NeonNode boundaries (param/const/component return — native already covered via the NeonView alias). Measured: `msc build probe/bareCompJs.ms --target=js` + node prints the same tree as `msc run` on C, zero `element()` calls; pinned by `tests/render/converter.test.ms`; suite 19/19 files | — |
 | 3 | attribute classification | **DONE (D2, 2026-08-09)** — string literal → static `attr`, `on*` → `evt`, any other expr → `dynAttr` thunk + one setAttr effect at mount (`element.ms` + `renderNode`); mirrored in direct emission, which also gained the typed style channel. Remaining: animatable channel = S4 reactive style fields | — |
 | 4 | `src/starter/` example components | empty dir | small |
 | 5 | iOS host | empty dir | large |
