@@ -32,6 +32,14 @@ when (js) {
 		return { kind: NodeKind.MacroInvocation, line: n.line, column: n.column, macroName: "direct", macroArgs: [n] };
 	}
 
+	// Components keep the NeonNode contract (createComponent), so on js a bare
+	// JSX at a NeonNode boundary — a component's return, an annotated const —
+	// lowers through the tree macro. On native NeonView IS NeonNode; here the
+	// two targets need their own converter each.
+	export converter jsxToNode(n: Node): NeonNode {
+		return { kind: NodeKind.MacroInvocation, line: n.line, column: n.column, macroName: "element", macroArgs: [n] };
+	}
+
 	export function render(view: NeonView, host: Host, parent: HostNode): void {
 		host.append(parent, view(host));
 	}
