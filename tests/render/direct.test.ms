@@ -403,6 +403,22 @@ test "a spot recomputing to the same string writes the host once — direct emis
 	assert mockToString(root) === "<root><p>big</p></root>", "value: " + mockToString(root);
 }
 
+test "a spot with no call and no property access renders the same through both emissions" {
+	const label = "hi";
+	const host = mockHost();
+
+	const treeRoot = mockNode("root");
+	const tv: NeonNode = element(<p class={label}>{label}</p>);
+	renderToHost(tv, host, treeRoot as unknown as HostNode);
+
+	const directRoot = mockNode("root");
+	const mount = direct(<p class={label}>{label}</p>);
+	host.append(directRoot as unknown as HostNode, mount(host));
+
+	assert mockToString(treeRoot) === mockToString(directRoot), "same markup: tree=" + mockToString(treeRoot) + " direct=" + mockToString(directRoot);
+	assert mockToString(treeRoot) === "<root><p class=\"hi\">hi</p></root>", "value: " + mockToString(treeRoot);
+}
+
 test "template mode on a cloneNode:null host falls back and still matches tree" {
 	const [v, setV] = createSignal("a");
 	const base = mockHost();

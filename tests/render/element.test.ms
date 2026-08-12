@@ -103,6 +103,23 @@ test "string literal attr stays static, on* routes to events" {
 	assert node.events.length === 1, "one event entry";
 }
 
+test "an inert expression is classified static, a call stays dynamic" {
+	const label = "hi";
+	const inert = element(<p class={label}>{label}</p>);
+	assert inert.attrs.length === 1, "one attr entry";
+	assert inert.attrs[0].isDyn === false, "identifier attr needs no thunk";
+	assert inert.children.length === 1, "one child";
+	assert inert.children[0].isDyn === false, "identifier child needs no thunk";
+	assert renderToString(inert) === "<p class=\"hi\">hi</p>", "value: " + renderToString(inert);
+
+	const [n, setN] = createSignal("a");
+	const live = element(<p class={n()}>{n()}</p>);
+	assert live.attrs[0].isDyn, "call attr stays dynamic";
+	assert live.children[0].isDyn, "call child stays dynamic";
+	setN("b");
+	assert renderToString(live) === "<p class=\"b\">b</p>", "still reactive: " + renderToString(live);
+}
+
 test "mixed static and dynamic attrs keep source order" {
 	const [x, setX] = createSignal("2");
 	const node = element(<div a="1" b={x()} c="3"></div>);

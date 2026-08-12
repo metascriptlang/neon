@@ -17,6 +17,21 @@
 
 import { Node, NodeKind } from "std/meta";
 
+// Solid's wrap heuristic (babel-plugin-jsx-dom-expressions): only an expression that
+// can OBSERVE something — a call or a property read — earns a computation. An
+// identifier, a literal, or arithmetic over them is resolved once at mount and can
+// never change afterwards, so wrapping it allocates an effect that can never re-run.
+// Anything not on the known-inert list stays reactive: erring that way costs one idle
+// computation, erring the other way silently loses an update.
+export function isReactiveExpr(n: Node): boolean {
+	const k = n.kind;
+	if (k === NodeKind.Identifier) { return false; }
+	if (k === NodeKind.StringLiteral) { return false; }
+	if (k === NodeKind.NumberLiteral) { return false; }
+	if (k === NodeKind.BooleanLiteral) { return false; }
+	return true;
+}
+
 function trimEdgeSpaces(s: string, fromStart: boolean, fromEnd: boolean): string {
 	let lo = 0;
 	let hi = s.length;
@@ -161,6 +176,12 @@ export macro element(node: Node): Node {
 					callee: { kind: NodeKind.Identifier, line: a.line, column: a.column, name: "attr" },
 					arguments: [nameLit, a.jsxAttrValue],
 				});
+			} else if (!isReactiveExpr(a.jsxAttrValue)) {
+				attrs.push({
+					kind: NodeKind.CallExpr, line: a.line, column: a.column,
+					callee: { kind: NodeKind.Identifier, line: a.line, column: a.column, name: "attr" },
+					arguments: [nameLit, a.jsxAttrValue],
+				});
 			} else {
 				attrs.push({
 					kind: NodeKind.CallExpr, line: a.line, column: a.column,
@@ -186,7 +207,11 @@ export macro element(node: Node): Node {
 				});
 			}
 		} else if (c.kind === NodeKind.JSXExpressionContainer) {
-			kids.push({
+			kids.push(!isReactiveExpr(c.jsxExpr) ? {
+				kind: NodeKind.CallExpr, line: c.line, column: c.column,
+				callee: { kind: NodeKind.Identifier, line: c.line, column: c.column, name: "text" },
+				arguments: [c.jsxExpr],
+			} : {
 				kind: NodeKind.CallExpr, line: c.line, column: c.column,
 				callee: { kind: NodeKind.Identifier, line: c.line, column: c.column, name: "dynText" },
 				arguments: [{

@@ -21,7 +21,7 @@
 // style routes through host.setStyle with the same S4 field validation.
 
 import { Node, NodeKind, DeclKind, NodeFlag } from "std/meta";
-import { cleanJsxText } from "./element";
+import { cleanJsxText, isReactiveExpr } from "./element";
 
 export macro direct(node: Node): Node {
 	const L = node.line;
@@ -242,7 +242,7 @@ export macro direct(node: Node): Node {
 					} else if (a.jsxAttrValue.kind !== NodeKind.StringLiteral) {
 						wStmts.push({
 							kind: NodeKind.ExprStmt, line: a.line, column: a.column,
-							expr: {
+							expr: !isReactiveExpr(a.jsxAttrValue) ? hostCall("host", "setAttr", [ident(elVar, a.line, a.column), strLit(a.jsxAttrName, a.line, a.column), a.jsxAttrValue], a.line, a.column) : {
 								kind: NodeKind.CallExpr, line: a.line, column: a.column,
 								callee: ident("bindAttr", a.line, a.column),
 								arguments: [
@@ -314,7 +314,7 @@ export macro direct(node: Node): Node {
 					if (c.kind === NodeKind.JSXExpressionContainer) {
 						wStmts.push({
 							kind: NodeKind.ExprStmt, line: c.line, column: c.column,
-							expr: {
+							expr: !isReactiveExpr(c.jsxExpr) ? hostCall("host", "setText", [ident(curVar, c.line, c.column), c.jsxExpr], c.line, c.column) : {
 								kind: NodeKind.CallExpr, line: c.line, column: c.column,
 								callee: ident("bindText", c.line, c.column),
 								arguments: [
@@ -467,7 +467,15 @@ export macro direct(node: Node): Node {
 				} else {
 					stmts.push({
 						kind: NodeKind.ExprStmt, line: a.line, column: a.column,
-						expr: {
+						expr: !isReactiveExpr(a.jsxAttrValue) ? {
+							kind: NodeKind.CallExpr, line: a.line, column: a.column,
+							callee: { kind: NodeKind.MemberExpr, line: a.line, column: a.column, object: { kind: NodeKind.Identifier, line: a.line, column: a.column, name: "host" }, property: "setAttr", isOptional: false },
+							arguments: [
+								{ kind: NodeKind.Identifier, line: a.line, column: a.column, name: rName },
+								nameLit,
+								a.jsxAttrValue,
+							],
+						} : {
 							kind: NodeKind.CallExpr, line: a.line, column: a.column,
 							callee: { kind: NodeKind.Identifier, line: a.line, column: a.column, name: "bindAttr" },
 							arguments: [
@@ -509,31 +517,34 @@ export macro direct(node: Node): Node {
 			} else if (c.kind === NodeKind.JSXExpressionContainer) {
 				const tName = "_t" + tIdx.toString();
 				tIdx = tIdx + 1;
+				const liveSpot = isReactiveExpr(c.jsxExpr);
 				stmts.push({
 					kind: NodeKind.VariableDecl, line: c.line, column: c.column,
 					declName: tName, declType: "", declKind: DeclKind.Const,
 					initializer: {
 						kind: NodeKind.CallExpr, line: c.line, column: c.column,
 						callee: { kind: NodeKind.MemberExpr, line: c.line, column: c.column, object: { kind: NodeKind.Identifier, line: c.line, column: c.column, name: "host" }, property: "createText", isOptional: false },
-						arguments: [{ kind: NodeKind.StringLiteral, line: c.line, column: c.column, value: "" }],
+						arguments: [liveSpot ? { kind: NodeKind.StringLiteral, line: c.line, column: c.column, value: "" } : c.jsxExpr],
 					},
 				});
-				stmts.push({
-					kind: NodeKind.ExprStmt, line: c.line, column: c.column,
-					expr: {
-						kind: NodeKind.CallExpr, line: c.line, column: c.column,
-						callee: { kind: NodeKind.Identifier, line: c.line, column: c.column, name: "bindText" },
-						arguments: [
-							{ kind: NodeKind.Identifier, line: c.line, column: c.column, name: "host" },
-							{ kind: NodeKind.Identifier, line: c.line, column: c.column, name: tName },
-							{
-								kind: NodeKind.ArrowFunction, line: c.line, column: c.column,
-								arrowParams: [], arrowParamTypes: [], arrowFlags: "", arrowReturnType: "",
-								arrowBody: c.jsxExpr,
-							},
-						],
-					},
-				});
+				if (liveSpot) {
+					stmts.push({
+						kind: NodeKind.ExprStmt, line: c.line, column: c.column,
+						expr: {
+							kind: NodeKind.CallExpr, line: c.line, column: c.column,
+							callee: { kind: NodeKind.Identifier, line: c.line, column: c.column, name: "bindText" },
+							arguments: [
+								{ kind: NodeKind.Identifier, line: c.line, column: c.column, name: "host" },
+								{ kind: NodeKind.Identifier, line: c.line, column: c.column, name: tName },
+								{
+									kind: NodeKind.ArrowFunction, line: c.line, column: c.column,
+									arrowParams: [], arrowParamTypes: [], arrowFlags: "", arrowReturnType: "",
+									arrowBody: c.jsxExpr,
+								},
+							],
+						},
+					});
+				}
 				stmts.push({
 					kind: NodeKind.ExprStmt, line: c.line, column: c.column,
 					expr: {
