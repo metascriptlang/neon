@@ -93,9 +93,11 @@ export macro element(node: Node): Node {
 	// Capitalized tag → createComponent(Tag, { props }). V1 prop contract: a string
 	// literal passes through, every expression prop becomes a thunk (the component's
 	// props interface declares () => T); children stay structural — one child passes
-	// as written, several become an array, a lone expression container passes raw
-	// (For/Index row templates). Inline because node literals only type-check
-	// inside a macro body (engine-mode Node view).
+	// as written, several become an array, and a JSX child passes RAW so the
+	// converter lowers it against the prop's declared type (NeonView → the target's
+	// emission, NeonNode → tree). Wrapping it in element() here would pre-pick tree
+	// emission and break every view-typed child on js. Inline because node literals
+	// only type-check inside a macro body (engine-mode Node view).
 	const tagStart = node.jsxTag.charAt(0);
 	if (tagStart >= "A" && tagStart <= "Z") {
 		let keys: string[] = [];
@@ -124,11 +126,7 @@ export macro element(node: Node): Node {
 			} else if (c.kind === NodeKind.JSXExpressionContainer) {
 				compKids.push(c.jsxExpr);
 			} else if (c.kind === NodeKind.JSXElement) {
-				compKids.push({
-					kind: NodeKind.CallExpr, line: c.line, column: c.column,
-					callee: { kind: NodeKind.Identifier, line: c.line, column: c.column, name: "element" },
-					arguments: [c],
-				});
+				compKids.push(c);
 			}
 		}
 		if (compKids.length === 1) {
