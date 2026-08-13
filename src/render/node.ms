@@ -73,6 +73,20 @@ export function dynText(thunk: () => string): NeonNode {
 	return { tag: "", children: [], text: "", isDyn: true, dyn: thunk, attrs: [], events: [], style: null, region: null, componentFn: null, componentProps: null };
 }
 
+// A static {expr} child, routed by type: a string becomes a text node, a NeonNode
+// (a nested view, props.children) passes through unchanged. The macro picks this for
+// a child that isReactiveExpr rejects, so the branch is chosen by the value's type
+// rather than hard-lowered to text() — which is what let a node child reach text()
+// and fail. Overloaded on the argument value (string vs NeonNode), the form proven
+// to resolve on both backends; no thunk overload (return-type discrimination).
+export function insChild(s: string): NeonNode {
+	return text(s);
+}
+
+export function insChild(n: NeonNode): NeonNode {
+	return n;
+}
+
 export function regionNode(fn: RegionFn): NeonNode {
 	return { tag: "", children: [], text: "", isDyn: false, dyn: () => "", attrs: [], events: [], style: null, region: fn, componentFn: null, componentProps: null };
 }
