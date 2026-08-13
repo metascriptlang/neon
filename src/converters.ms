@@ -18,7 +18,7 @@ import { renderToHost } from "./render/host";
 
 export { element } from "./macros/ui/element";
 export { direct } from "./macros/ui/direct";
-export { NeonNode, VAttr, VEvent, el, attr, dynAttr, evt, text, dynText, withStyle, regionNode, componentNode, renderToString } from "./render/node";
+export * from "./render/node";
 export { createComponent } from "./render/component";
 export { Template, createTemplate, instantiate, mountTemplate, childOf, siblingOf } from "./render/template";
 export { renderNode, renderToHost, bindText, bindAttr, NeonView, mountView, viewOf } from "./render/host";
