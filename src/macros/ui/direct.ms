@@ -22,36 +22,11 @@
 
 import { Node, NodeKind, DeclKind, NodeFlag } from "std/meta";
 import { cleanJsxText } from "./element";
+import { isReactiveExpr } from "./reactive";
 
 export macro direct(node: Node): Node {
 	const L = node.line;
 	const C = node.column;
-	// Same call-based rule as element.ms (see the note there); duplicated because deep
-	// node fields read only through the engine's flat wire view inside a macro body.
-	// tests/render/direct.test.ms pins the two emissions to the same classification.
-	function peelHidden(e: Node): Node {
-		if (e.kind === NodeKind.HiddenDeref || e.kind === NodeKind.HiddenAddr) { return peelHidden(e.expr); }
-		if (e.kind === NodeKind.HiddenStdConv || e.kind === NodeKind.HiddenSubConv) { return peelHidden(e.convExpr); }
-		return e;
-	}
-	function isReactiveExpr(raw: Node): boolean {
-		const e = peelHidden(raw);
-		const k = e.kind;
-		if (k === NodeKind.Identifier) { return false; }
-		if (k === NodeKind.StringLiteral) { return false; }
-		if (k === NodeKind.NumberLiteral) { return false; }
-		if (k === NodeKind.BooleanLiteral) { return false; }
-		if (k === NodeKind.NullLiteral) { return false; }
-		if (k === NodeKind.MemberExpr) { return isReactiveExpr(e.object); }
-		if (k === NodeKind.BinaryExpr) { return isReactiveExpr(e.left) || isReactiveExpr(e.right); }
-		if (k === NodeKind.UnaryExpr) { return isReactiveExpr(e.operand); }
-		if (k === NodeKind.ArrayAccess) { return isReactiveExpr(e.array) || isReactiveExpr(e.index); }
-		if (k === NodeKind.TypeAssertion) { return isReactiveExpr(e.asExpr); }
-		if (k === NodeKind.ConditionalExpr) {
-			return isReactiveExpr(e.ternaryCondition) || isReactiveExpr(e.ternaryConsequent) || isReactiveExpr(e.ternaryAlternate);
-		}
-		return true;
-	}
 	// Capitalized tag → createComponent(Tag, { props }), mirroring element.ms's prop
 	// contract byte for byte (string literals pass through, expression props become
 	// thunks, children stay structural NeonNode trees via element/text). The NeonNode
