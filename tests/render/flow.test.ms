@@ -1,5 +1,5 @@
 import { el, text, dynText, NeonNode } from "../../src/render/node";
-import { MockNode, mockHost, renderToHost } from "../../src/render/host";
+import { MockNode, mockHost, renderToHost, viewOf } from "../../src/render/host";
 import { For, Index, Show } from "../../src/macros/ui/flow";
 import { createSignal } from "../../src/core/signal";
 import { createRoot } from "../../src/core/owner";
@@ -21,7 +21,7 @@ test "For reactive list reuses rows on reorder, creates only new" {
 		const ul = el("ul", [], [], [
 			For<number>({
 				each: () => items(),
-				children: (item, i) => { creates = creates + 1; return el("li", [], [], [text("" + item)]); },
+				children: (item, i) => { creates = creates + 1; return viewOf(el("li", [], [], [text("" + item)])); },
 			}),
 		]);
 		const host = mockHost();
@@ -49,8 +49,8 @@ test "For fallback shows when empty" {
 		const ul = el("ul", [], [], [
 			For<number>({
 				each: () => items(),
-				children: (item, i) => el("li", [], [], [text("" + item)]),
-				fallback: el("li", [], [], [text("empty")]),
+				children: (item, i) => viewOf(el("li", [], [], [text("" + item)])),
+				fallback: viewOf(el("li", [], [], [text("empty")])),
 			}),
 		]);
 		const host = mockHost();
@@ -73,7 +73,7 @@ test "Index updates row value in place, no recreate" {
 		const ul = el("ul", [], [], [
 			Index<number>({
 				each: () => items(),
-				children: (item, i) => { creates = creates + 1; return el("li", [], [], [dynText(() => "" + item())]); },
+				children: (item, i) => { creates = creates + 1; return viewOf(el("li", [], [], [dynText(() => "" + item())])); },
 			}),
 		]);
 		const host = mockHost();
@@ -95,8 +95,8 @@ test "Show swaps child/fallback and stays stable while true" {
 		const div = el("div", [], [], [
 			Show({
 				when: () => n() > 0,
-				children: el("span", [], [], [text("on")]),
-				fallback: el("span", [], [], [text("off")]),
+				children: viewOf(el("span", [], [], [text("on")])),
+				fallback: viewOf(el("span", [], [], [text("off")])),
 			}),
 		]);
 		const host = mockHost();
@@ -125,8 +125,8 @@ test "For fallback reactive scope is disposed when rows return" {
 		const ul = el("ul", [], [], [
 			For<number>({
 				each: () => items(),
-				children: (item, i) => el("li", [], [], [text("" + item)]),
-				fallback: el("li", [], [], [dynText(() => { fbRuns = fbRuns + 1; return label(); })]),
+				children: (item, i) => viewOf(el("li", [], [], [text("" + item)])),
+				fallback: viewOf(el("li", [], [], [dynText(() => { fbRuns = fbRuns + 1; return label(); })])),
 			}),
 		]);
 		const host = mockHost();
