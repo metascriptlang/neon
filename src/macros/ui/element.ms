@@ -15,7 +15,7 @@
 // attr path (host parses it), while any other expression is a typed Style and routes
 // through withStyle() into NeonNode.style — which then also needs withStyle in scope.
 
-import { Node, NodeKind } from "std/meta";
+import { Node, NodeKind, SourceLocation } from "std/meta";
 import { isReactiveExpr } from "./reactive";
 
 function trimEdgeSpaces(s: string, fromStart: boolean, fromEnd: boolean): string {
@@ -143,6 +143,49 @@ export macro element(node: Node): Node {
 							error("a style field cannot call a function — a signal read here would be a frozen snapshot, not reactive (reactive style fields land in S4)", fv);
 						}
 					}
+					styleExpr = a.jsxAttrValue;
+					continue;
+				}
+				if (a.jsxAttrValue.kind === NodeKind.ArrayLiteral) {
+					if (a.jsxAttrValue.elements.length === 0) {
+						error("a style layer array needs at least one layer: style={[base, override]}", a.jsxAttrValue);
+					}
+					let allStatic = true;
+					for (const layer of a.jsxAttrValue.elements) {
+						if (layer.kind !== NodeKind.ObjectLiteral) { allStatic = false; }
+					}
+					if (allStatic) {
+						const mergedKeys: string[] = [];
+						const mergedValues: Node[] = [];
+						for (const layer of a.jsxAttrValue.elements) {
+							for (let i = 0; i < layer.keys.length; i = i + 1) {
+								const fv = layer.properties[i];
+								if (fv.kind === NodeKind.CallExpr) {
+									error("a style field cannot call a function — a signal read here would be a frozen snapshot, not reactive (reactive style fields land in S4)", fv);
+								}
+								// mergeStyle treats null as unset, so a later null must
+								// not erase an earlier layer's value.
+								if (fv.kind === NodeKind.NullLiteral) { continue; }
+								const k = layer.keys[i];
+								let at = -1;
+								for (let j = 0; j < mergedKeys.length; j = j + 1) {
+									if (mergedKeys[j] === k) { at = j; }
+								}
+								if (at >= 0) { mergedValues[at] = fv; } else { mergedKeys.push(k); mergedValues.push(fv); }
+							}
+						}
+						styleExpr = {
+							kind: NodeKind.ObjectLiteral, line: a.line, column: a.column,
+							properties: mergedValues, keys: mergedKeys,
+						};
+						continue;
+					}
+					styleExpr = {
+						kind: NodeKind.CallExpr, line: a.line, column: a.column,
+						callee: { kind: NodeKind.Identifier, line: a.line, column: a.column, name: "layerStyles" },
+						arguments: [a.jsxAttrValue],
+					};
+					continue;
 				}
 				styleExpr = a.jsxAttrValue;
 				continue;
