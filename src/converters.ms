@@ -18,11 +18,12 @@ import { renderToHost } from "./render/host";
 
 export { element } from "./macros/ui/element";
 export { direct } from "./macros/ui/direct";
-export * from "./render/node";
+export { VAttr, VEvent, RegionFn, ComponentFn, ComponentProducer, NeonNode, attr, dynAttr, evt, el, withStyle, text, dynText, insChild, regionNode, componentNode, renderToString } from "./render/node";
 export { createComponent } from "./render/component";
 export { Template, createTemplate, instantiate, mountTemplate, childOf, siblingOf } from "./render/template";
 export { renderNode, renderToHost, bindText, bindAttr, NeonView, mountView, viewOf } from "./render/host";
 export { Host, HostNode } from "./render/hostTypes";
+export { Style, mergeStyle, layerStyles } from "./render/style";
 
 when (js) {
 	// Direct emission: the macro emits the mount code itself, so a view IS the mount
