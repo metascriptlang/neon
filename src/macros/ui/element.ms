@@ -15,7 +15,7 @@
 // attr path (host parses it), while any other expression is a typed Style and routes
 // through withStyle() into NeonNode.style — which then also needs withStyle in scope.
 
-import { Node, NodeKind, SourceLocation } from "std/meta";
+import { Node, NodeKind } from "std/meta";
 import { isReactiveExpr } from "./reactive";
 
 function trimEdgeSpaces(s: string, fromStart: boolean, fromEnd: boolean): string {
