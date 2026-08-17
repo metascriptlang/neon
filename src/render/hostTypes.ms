@@ -1,4 +1,4 @@
-import { Style } from "./style";
+import { Style, StyleValue } from "./style";
 
 export type HostNode = unknown;
 
@@ -8,6 +8,11 @@ export interface Host {
 	setText: (node: HostNode, s: string) => void;
 	setAttr: (node: HostNode, name: string, value: string) => void;
 	setStyle: (node: HostNode, style: Style) => void;
+	// Optional capability, like `cloneNode`: a host that can write ONE style
+	// property without touching the rest advertises it here (docs/STYLE.md §6).
+	// `null` means "no partial write" and src/render/host.ms folds the field into
+	// the node's own Style and re-applies — same result, coarser.
+	setStyleProp: ((node: HostNode, name: string, value: StyleValue) => void) | null;
 	addEvent: (node: HostNode, name: string, handler: () => void) => void;
 	append: (parent: HostNode, child: HostNode) => void;
 	insertBefore: (parent: HostNode, node: HostNode, ref: HostNode | null) => void;

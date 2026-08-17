@@ -2,7 +2,7 @@
 // drives this; here the host ops map to real document.* / Node APIs.
 
 import { Host, HostNode } from "../../render/host";
-import { Style } from "../../render/style";
+import { Style, StyleValue } from "../../render/style";
 
 extern class CssStyle {
 	color: cstring;
@@ -86,6 +86,33 @@ function word(v: string | null): string {
 	return v === null ? "" : v as string;
 }
 
+// One property, written straight through — the css object is already a
+// per-property surface, so the fine-grained path costs nothing here. Names the
+// browser has no slot for are dropped, same as applyCss ignores them.
+export function applyCssProp(css: CssStyle, name: string, v: StyleValue): void {
+	match (name) {
+		"flexDirection" => { css.flexDirection = word(v as string | null); },
+		"justifyContent" => { css.justifyContent = word(v as string | null); },
+		"alignItems" => { css.alignItems = word(v as string | null); },
+		"position" => { css.position = word(v as string | null); },
+		"display" => { css.display = word(v as string | null); },
+		"width" => { css.width = len(v); },
+		"height" => { css.height = len(v); },
+		"margin" => { css.margin = len(v); },
+		"padding" => { css.padding = len(v); },
+		"gap" => { css.gap = len(v); },
+		"top" => { css.top = len(v); },
+		"left" => { css.left = len(v); },
+		"right" => { css.right = len(v); },
+		"bottom" => { css.bottom = len(v); },
+		"color" => { css.color = word(v as string | null); },
+		"backgroundColor" => { css.backgroundColor = word(v as string | null); },
+		"borderRadius" => { css.borderRadius = v === null ? "" : `${v as number}px`; },
+		"opacity" => { css.opacity = num(v as number | null); },
+		_ => {},
+	};
+}
+
 export function applyCss(css: CssStyle, s: Style): void {
 	css.flexDirection = word(s.flexDirection as string | null);
 	css.justifyContent = word(s.justifyContent as string | null);
@@ -128,6 +155,9 @@ export function domHost(): Host {
 		},
 		setStyle: (node: HostNode, style: Style): void => {
 			applyCss((node as unknown as DomNode).style, style);
+		},
+		setStyleProp: (node: HostNode, name: string, value: StyleValue): void => {
+			applyCssProp((node as unknown as DomNode).style, name, value);
 		},
 		addEvent: (node: HostNode, name: string, handler: () => void): void => {
 			(node as unknown as DomNode).addEventListener(eventName(name), handler);

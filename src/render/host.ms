@@ -4,7 +4,7 @@
 
 import { createEffect } from "../core/effect";
 import { NeonNode, VAttr, VEvent, RegionFn, ComponentProducer, attr } from "./node";
-import { Style } from "./style";
+import { Style, StyleValue, emptyStyle, mergeStyle, setStyleField } from "./style";
 import { reconcileArrays } from "./reconcile";
 import { Host, HostNode } from "./hostTypes";
 
@@ -36,6 +36,21 @@ export function bindAttr(host: Host, node: HostNode, name: string, get: () => st
 		bound = true;
 		prev = v;
 		host.setAttr(node, name, v);
+	});
+}
+
+export function bindStyleProp(host: Host, node: HostNode, own: Style, name: string, get: () => StyleValue): void {
+	let prev: StyleValue = null;
+	let bound = false;
+	createEffect(() => {
+		const v = get();
+		if (bound && v === prev) { return; }
+		bound = true;
+		prev = v;
+		const setProp = host.setStyleProp;
+		if (setProp !== null) { setProp(node, name, v); return; }
+		setStyleField(own, name, v);
+		host.setStyle(node, own);
 	});
 }
 
@@ -97,7 +112,14 @@ export function renderNode(vnode: NeonNode, host: Host): HostNode {
 		}
 	}
 	const vstyle = vnode.style;
-	if (vstyle !== null) { host.setStyle(node, vstyle as Style); }
+	const dyns = vnode.dynStyle;
+	if (dyns !== null) {
+		// The static style may be a shared sheet constant (or a template-cloned
+		// pointer); per-property writes must land on a private copy, never on it.
+		const own = vstyle !== null ? mergeStyle(vstyle as Style, emptyStyle()) : emptyStyle();
+		host.setStyle(node, own);
+		for (const p of dyns) { bindStyleProp(host, node, own, p.name, p.get); }
+	} else if (vstyle !== null) { host.setStyle(node, vstyle as Style); }
 	for (const e of vnode.events) { host.addEvent(node, e.name, e.handler); }
 	for (const k of vnode.children) {
 		let kv = k;
@@ -206,6 +228,11 @@ export function mockHost(): Host {
 		},
 		setStyle: (node: HostNode, style: Style): void => {
 			(node as unknown as MockNode).style = style;
+		},
+		setStyleProp: (node: HostNode, name: string, value: StyleValue): void => {
+			const n = node as unknown as MockNode;
+			if (n.style === null) { n.style = emptyStyle(); }
+			setStyleField(n.style as Style, name, value);
 		},
 		addEvent: (node: HostNode, name: string, handler: () => void): void => {
 			(node as unknown as MockNode).events.push({ name, handler });

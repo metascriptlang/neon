@@ -128,6 +128,7 @@ export function terminalHost(): Host {
 			n.style = asTerminalStyle(style);
 			n.dirty = true;
 		},
+		setStyleProp: null,
 		addEvent: (node: HostNode, name: string, handler: () => void): void => {
 			const n = node as unknown as TerminalNode;
 			const ev: TerminalEvent = { name, handler };
