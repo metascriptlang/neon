@@ -134,16 +134,32 @@ export macro element(node: Node): Node {
 	let attrs: Node[] = [];
 	let events: Node[] = [];
 	let styleExpr: Node | null = null;
+	let dynStyleNames: string[] = [];
+	let dynStyleExprs: Node[] = [];
 	for (const a of node.jsxAttrs) {
 		if (a.kind === NodeKind.JSXAttribute) {
 			if (a.jsxAttrName === "style" && a.jsxAttrValue.kind !== NodeKind.StringLiteral) {
 				if (a.jsxAttrValue.kind === NodeKind.ObjectLiteral) {
-					for (const fv of a.jsxAttrValue.properties) {
-						if (fv.kind === NodeKind.CallExpr) {
-							error("a style field cannot call a function — a signal read here would be a frozen snapshot, not reactive (reactive style fields land in S4)", fv);
+					// S4: a reactive field peels off into its own per-property
+					// effect (withDynStyle); the rest stays one static constant.
+					const staticKeys: string[] = [];
+					const staticProps: Node[] = [];
+					for (let i = 0; i < a.jsxAttrValue.keys.length; i = i + 1) {
+						const fv = a.jsxAttrValue.properties[i];
+						if (isReactiveExpr(fv)) {
+							dynStyleNames.push(a.jsxAttrValue.keys[i]);
+							dynStyleExprs.push(fv);
+						} else {
+							staticKeys.push(a.jsxAttrValue.keys[i]);
+							staticProps.push(fv);
 						}
 					}
-					styleExpr = a.jsxAttrValue;
+					if (staticKeys.length > 0) {
+						styleExpr = {
+							kind: NodeKind.ObjectLiteral, line: a.line, column: a.column,
+							properties: staticProps, keys: staticKeys,
+						};
+					}
 					continue;
 				}
 				if (a.jsxAttrValue.kind === NodeKind.ArrayLiteral) {
@@ -160,8 +176,8 @@ export macro element(node: Node): Node {
 						for (const layer of a.jsxAttrValue.elements) {
 							for (let i = 0; i < layer.keys.length; i = i + 1) {
 								const fv = layer.properties[i];
-								if (fv.kind === NodeKind.CallExpr) {
-									error("a style field cannot call a function — a signal read here would be a frozen snapshot, not reactive (reactive style fields land in S4)", fv);
+								if (isReactiveExpr(fv)) {
+									error("a reactive style field inside a layer array is not supported yet — pass it in a plain object style: style={{ " + layer.keys[i] + ": ... }}", fv);
 								}
 								// mergeStyle treats null as unset, so a later null must
 								// not erase an earlier layer's value.
@@ -179,6 +195,17 @@ export macro element(node: Node): Node {
 							properties: mergedValues, keys: mergedKeys,
 						};
 						continue;
+					}
+					// Dynamic layers reach layerStyles at runtime, where a reactive
+					// field would freeze silently — reject it here instead.
+					for (const layer of a.jsxAttrValue.elements) {
+						if (layer.kind === NodeKind.ObjectLiteral) {
+							for (let i = 0; i < layer.keys.length; i = i + 1) {
+								if (isReactiveExpr(layer.properties[i])) {
+									error("a reactive style field inside a layer array is not supported yet — pass it in a plain object style: style={{ " + layer.keys[i] + ": ... }}", layer.properties[i]);
+								}
+							}
+						}
 					}
 					styleExpr = {
 						kind: NodeKind.CallExpr, line: a.line, column: a.column,
@@ -266,10 +293,25 @@ export macro element(node: Node): Node {
 		],
 	};
 
-	if (styleExpr === null) { return elCall; }
-	return {
-		kind: NodeKind.CallExpr, line: node.line, column: node.column,
-		callee: { kind: NodeKind.Identifier, line: node.line, column: node.column, name: "withStyle" },
-		arguments: [elCall, styleExpr as Node],
-	};
+	let acc: Node = elCall;
+	if (styleExpr !== null) {
+		acc = {
+			kind: NodeKind.CallExpr, line: node.line, column: node.column,
+			callee: { kind: NodeKind.Identifier, line: node.line, column: node.column, name: "withStyle" },
+			arguments: [acc, styleExpr as Node],
+		};
+	}
+	for (let i = 0; i < dynStyleNames.length; i = i + 1) {
+		acc = {
+			kind: NodeKind.CallExpr, line: node.line, column: node.column,
+			callee: { kind: NodeKind.Identifier, line: node.line, column: node.column, name: "withDynStyle" },
+			arguments: [acc,
+				{ kind: NodeKind.StringLiteral, line: node.line, column: node.column, value: dynStyleNames[i] },
+				{
+					kind: NodeKind.ArrowFunction, line: node.line, column: node.column,
+					arrowParams: [], arrowParamTypes: [], arrowBody: dynStyleExprs[i], arrowFlags: "", arrowReturnType: "",
+				}],
+		};
+	}
+	return acc;
 }
