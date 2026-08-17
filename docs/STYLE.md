@@ -165,13 +165,23 @@ thunk). Style follows the same shape rather than introducing a new concept:
 
 No re-render, no whole-style re-apply, no diffing.
 
-### Design commitment: dependency detection must be semantic
+### Design commitment: a dependency is never missed
 
 The macro decides "is this field dynamic?" by asking the **checker** whether the expression reads a
 signal — never by pattern-matching syntax. This is not a stylistic preference: it is the specific
 failure mode Unistyles 3.0 ships with (§8), documented on their own *"Why my view doesn't update?"*
 page — a Babel plugin outside the compiler must guess, and it guesses wrong on "custom syntax not
 covered by the plugin". A macro inside the compiler knows.
+
+> **S4a note (measured decision, 2026-08-17):** shipped detection is `isReactiveExpr` — a **call-based
+> syntactic** test, not a checker query. It is sound here for a reason specific to Neon: a signal is
+> read by CALLING it (`count()`), the same rule attributes and children already use, so a field that
+> reads a signal always contains a call. The test can therefore only produce false **positives** (a
+> pure call like `Math.round(4)` gets a needless effect — one wasted computation, never a wrong
+> pixel), never false negatives. What sinks Unistyles is the opposite error: a missed dependency, so
+> the view never updates. The semantic route (ask the checker via `nodeType`/A4) stays the escape
+> hatch and becomes REQUIRED the moment a signal can be read without a call — a props proxy, an
+> implicit getter, a `styleOf` alias. Revisit then, not before.
 
 ---
 
