@@ -3,7 +3,14 @@
 // (static `text` or reactive `dyn` thunk). Renderers consume this: renderToString
 // pulls a snapshot; renderToHost (host.ms) pushes live updates into a host node.
 
-import { Style } from "./style";
+import { Style, StyleValue } from "./style";
+
+// One reactive style field: `width: w()` becomes { name: "width", get: () => w() }.
+// The host layer binds each entry to one effect writing exactly that property.
+export interface VDynStyle {
+	name: string;
+	get: () => StyleValue;
+}
 
 export interface VAttr {
 	name: string;
@@ -39,6 +46,7 @@ export interface NeonNode {
 	attrs: VAttr[];
 	events: VEvent[];
 	style: Style | null;                // typed style channel (docs/STYLE.md); host projects it
+	dynStyle: VDynStyle[] | null;       // reactive style fields — one per-property effect each (§6)
 	region: RegionFn | null;            // non-null → reactive list region (host reconciles it)
 	componentFn: ComponentProducer | null; // non-null → Component variant (renderer expands lazily)
 	componentProps: Map<string, unknown> | null; // attached for debug/introspection
@@ -57,7 +65,7 @@ export function evt(name: string, handler: () => void): VEvent {
 }
 
 export function el(tag: string, attrs: VAttr[], events: VEvent[], children: NeonNode[]): NeonNode {
-	return { tag, children, text: "", isDyn: false, dyn: () => "", attrs, events, style: null, region: null, componentFn: null, componentProps: null };
+	return { tag, children, text: "", isDyn: false, dyn: () => "", attrs, events, style: null, dynStyle: null, region: null, componentFn: null, componentProps: null };
 }
 
 export function withStyle(n: NeonNode, s: Style): NeonNode {
@@ -65,12 +73,18 @@ export function withStyle(n: NeonNode, s: Style): NeonNode {
 	return n;
 }
 
+export function withDynStyle(n: NeonNode, name: string, get: () => StyleValue): NeonNode {
+	if (n.dynStyle === null) { n.dynStyle = []; }
+	(n.dynStyle as VDynStyle[]).push({ name, get });
+	return n;
+}
+
 export function text(s: string): NeonNode {
-	return { tag: "", children: [], text: s, isDyn: false, dyn: () => "", attrs: [], events: [], style: null, region: null, componentFn: null, componentProps: null };
+	return { tag: "", children: [], text: s, isDyn: false, dyn: () => "", attrs: [], events: [], style: null, dynStyle: null, region: null, componentFn: null, componentProps: null };
 }
 
 export function dynText(thunk: () => string): NeonNode {
-	return { tag: "", children: [], text: "", isDyn: true, dyn: thunk, attrs: [], events: [], style: null, region: null, componentFn: null, componentProps: null };
+	return { tag: "", children: [], text: "", isDyn: true, dyn: thunk, attrs: [], events: [], style: null, dynStyle: null, region: null, componentFn: null, componentProps: null };
 }
 
 // A static {expr} child, routed by type: a string becomes a text node, a NeonNode
@@ -88,11 +102,11 @@ export function insChild(n: NeonNode): NeonNode {
 }
 
 export function regionNode(fn: RegionFn): NeonNode {
-	return { tag: "", children: [], text: "", isDyn: false, dyn: () => "", attrs: [], events: [], style: null, region: fn, componentFn: null, componentProps: null };
+	return { tag: "", children: [], text: "", isDyn: false, dyn: () => "", attrs: [], events: [], style: null, dynStyle: null, region: fn, componentFn: null, componentProps: null };
 }
 
 export function componentNode(fn: ComponentProducer, props: Map<string, unknown>): NeonNode {
-	return { tag: "", children: [], text: "", isDyn: false, dyn: () => "", attrs: [], events: [], style: null, region: null, componentFn: fn, componentProps: props };
+	return { tag: "", children: [], text: "", isDyn: false, dyn: () => "", attrs: [], events: [], style: null, dynStyle: null, region: null, componentFn: fn, componentProps: props };
 }
 
 export function renderToString(n: NeonNode): string {
