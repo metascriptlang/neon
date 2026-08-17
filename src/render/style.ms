@@ -72,9 +72,72 @@ export interface Style {
 	textAlign: TextAlign | null;
 }
 
-// `style={[a, b, c]}` — later layers win. The macro cannot fold this at expansion:
-// the checker wraps each array element in a HiddenSubConv the macro bridge cannot
-// traverse, so the layers stay opaque until runtime.
+// Every style field's value fits this one union: string-literal unions are
+// strings at runtime, dimensions are number | string, null means unset. It is
+// the wire type of the per-property channel (setStyleProp / VDynStyle).
+export type StyleValue = number | string | null;
+
+export function emptyStyle(): Style {
+	return {};
+}
+
+// The per-property write behind reactive style fields (docs/STYLE.md §6). One
+// switch instead of 40 setters on every host; the enum-ish fields narrow from
+// the wire union with a cast because the checker cannot see which names carry
+// which member.
+export function setStyleField(s: Style, name: string, v: StyleValue): void {
+	match (name) {
+		"flexDirection" => { s.flexDirection = v as unknown as FlexDirection | null; },
+		"justifyContent" => { s.justifyContent = v as unknown as Justify | null; },
+		"alignItems" => { s.alignItems = v as unknown as Align | null; },
+		"alignSelf" => { s.alignSelf = v as unknown as Align | null; },
+		"alignContent" => { s.alignContent = v as unknown as Align | null; },
+		"position" => { s.position = v as unknown as PositionType | null; },
+		"flexWrap" => { s.flexWrap = v as unknown as Wrap | null; },
+		"display" => { s.display = v as unknown as Display | null; },
+		"flex" => { s.flex = v as unknown as number | null; },
+		"flexGrow" => { s.flexGrow = v as unknown as number | null; },
+		"flexShrink" => { s.flexShrink = v as unknown as number | null; },
+		"flexBasis" => { s.flexBasis = v; },
+		"width" => { s.width = v; },
+		"height" => { s.height = v; },
+		"minWidth" => { s.minWidth = v; },
+		"minHeight" => { s.minHeight = v; },
+		"maxWidth" => { s.maxWidth = v; },
+		"maxHeight" => { s.maxHeight = v; },
+		"aspectRatio" => { s.aspectRatio = v as unknown as number | null; },
+		"margin" => { s.margin = v; },
+		"marginTop" => { s.marginTop = v; },
+		"marginBottom" => { s.marginBottom = v; },
+		"marginLeft" => { s.marginLeft = v; },
+		"marginRight" => { s.marginRight = v; },
+		"padding" => { s.padding = v; },
+		"paddingTop" => { s.paddingTop = v; },
+		"paddingBottom" => { s.paddingBottom = v; },
+		"paddingLeft" => { s.paddingLeft = v; },
+		"paddingRight" => { s.paddingRight = v; },
+		"top" => { s.top = v; },
+		"left" => { s.left = v; },
+		"right" => { s.right = v; },
+		"bottom" => { s.bottom = v; },
+		"gap" => { s.gap = v; },
+		"rowGap" => { s.rowGap = v; },
+		"columnGap" => { s.columnGap = v; },
+		"backgroundColor" => { s.backgroundColor = v as unknown as string | null; },
+		"borderWidth" => { s.borderWidth = v as unknown as number | null; },
+		"borderColor" => { s.borderColor = v as unknown as string | null; },
+		"borderRadius" => { s.borderRadius = v as unknown as number | null; },
+		"opacity" => { s.opacity = v as unknown as number | null; },
+		"color" => { s.color = v as unknown as string | null; },
+		"fontSize" => { s.fontSize = v as unknown as number | null; },
+		"fontWeight" => { s.fontWeight = v as unknown as FontWeight | null; },
+		"textAlign" => { s.textAlign = v as unknown as TextAlign | null; },
+		_ => {},
+	};
+}
+
+// `style={[a, b, c]}` — later layers win at runtime when a layer is a sheet
+// reference; all-literal arrays merge at expansion instead (element macro, S3).
 export function layerStyles(layers: Style[]): Style {
 	let acc = layers[0];
 	for (let i = 1; i < layers.length; i += 1) {
