@@ -1,9 +1,8 @@
-// Platform blocks (docs/STYLE.md §4 job 5, S4c): underscore-prefixed platform
-// keys, ported from the `_web` key Unistyles 3.0 ships. Two differences from
-// theirs, both from having a compiler: the key set extends past web (`_ios`,
-// `_android`, `_macos` — Unistyles punts those to RN's runtime Platform.select),
-// and the non-target block is cut by `when` at parse time, so it never reaches
-// the binary.
+// Platform blocks (docs/STYLE.md §2, §4 job 5, S4c): a `when` key holding one
+// block per platform, spelled after the language keyword because the choice is
+// made at COMPILE time — the non-target block never reaches the binary. That is
+// the difference from Unistyles, whose ios/android selection is RN's runtime
+// Platform.select; only its web block (`_web`) is resolved by a compiler.
 //
 // Asserted on the sheet value rather than through a host, so both lanes run it.
 // The per-lane expectation is computed at module scope: `when` splices into a
@@ -15,9 +14,11 @@ const sheet = createStyles({
 	box: {
 		width: 200,
 		height: 120,
-		_web: { width: 100 },
-		_macos: { width: 300 },
-		_ios: { height: 999 },
+		when: {
+			web: { width: 100 },
+			macos: { width: 300 },
+			ios: { height: 999 },
+		},
 	},
 	plain: { width: 10 },
 });
@@ -35,11 +36,11 @@ test "the target's platform block overrides a base field" {
 }
 
 test "a base field the platform block does not set survives" {
-	assert sheet.box.height === 120, "height comes from the base, not from _ios";
+	assert sheet.box.height === 120, "height comes from the base, not from the ios block";
 }
 
 test "a non-target platform block never lands" {
-	assert sheet.box.height !== 999, "_ios must be cut on both the js and macos lanes";
+	assert sheet.box.height !== 999, "the ios block must be cut on both the js and macos lanes";
 }
 
 test "an entry with no platform block is untouched" {

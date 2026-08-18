@@ -77,15 +77,23 @@ Two composition forms, both preserving provenance:
 Plus one build-time axis, which is not a composition form because nothing survives to compose:
 
 ```ts
-btn: { padding: 8, _web: { padding: 10 }, _ios: { padding: 12 } }
+btn: { padding: 8, when: { web: { padding: 10 }, ios: { padding: 12 } } }
 ```
 
-- **platform blocks** — `_web` is Unistyles' own spelling; the set extends to `_ios`, `_android`,
-  `_macos` because a macro can do at compile time what their Babel plugin cannot, and Unistyles
-  therefore hands ios/android to RN's **runtime** `Platform.select`. The target's block merges over
-  the base fields, every other block is dropped at expansion (§4 job 5) — a non-target style is not
-  dead weight in the binary, it never exists. Shipped S4c; `_hover`/`_before`/`_classNames` inside
-  `_web` (their web-only nesting) is the natural place for the browser CSS work, not shipped.
+- **platform blocks** — the target's block merges over the base fields and every other block is
+  dropped at expansion (§4 job 5): a non-target style is not dead weight in the binary, it never
+  exists. Unistyles resolves only its web block at build time (`_web`) and hands ios/android to
+  RN's **runtime** `Platform.select`; a macro has no such limit.
+
+**Naming rule — the spelling follows the resolution time.** `when` is chosen by the compiler, so it
+borrows the language keyword that already means that; `variants` is chosen by a call at run time, so
+it stays a bare data key; `_hover` keeps the underscore Unistyles uses for a CSS `:`. A bare `ios:`
+was rejected for reading exactly like `Platform.select`, i.e. for implying the run-time semantics
+this does not have. The platform set is closed (`web`/`ios`/`android`/`macos`) and validated —
+`when: { iso: … }` reports *"unknown platform 'iso' … available: web, ios, android, macos"*. Opening
+it to arbitrary `-d:` flags needs the define table exposed to macro expansion, a compiler feature not
+built; `_hover`/`_before`/`_classNames` inside `web` is where the browser CSS work lands, also not
+built.
 
 ---
 

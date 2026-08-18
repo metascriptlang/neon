@@ -16,12 +16,22 @@
 // rejected at expansion. Reactive fields live on the JSX site instead (S4a,
 // element.ms → withDynStyle), where each one gets its own effect.
 //
-// Platform blocks (§4 job 5, S4c) are underscore-prefixed keys, the spelling
-// Unistyles 3.0 ships for `_web`. The target's block is merged over the base
-// fields and every other block is dropped, so a non-target style is not dead
-// weight in the binary — it never exists. `when` in a macro body is cut at parse
-// time against the CONSUMER's defines, which is what makes that possible here
-// and is why Unistyles has to resolve ios/android at runtime instead.
+// Platform blocks (§4 job 5, S4c) live under a `when` key, spelled after the
+// language keyword that does the same job, because the entry's spelling follows
+// its RESOLUTION TIME: `when` is chosen by the compiler and the other branches
+// never exist, while a runtime-selected feature (`variants`) stays a bare data
+// key. A bare `ios:` was rejected for reading exactly like RN's Platform.select,
+// which resolves at run time — the opposite of what happens here.
+//
+// The target's block merges over the base fields; every other block is dropped
+// at expansion. What makes that possible is that `when` in a MACRO BODY is cut
+// at parse time against the CONSUMER's defines, so the same macro source picks
+// a different branch per target. Unistyles has no such lever and hands ios and
+// android to RN's runtime Platform.select instead.
+//
+// The platform set is closed (`web`/`ios`/`android`/`macos`) because a macro
+// cannot enumerate defines today. Opening it to arbitrary `-d:` flags needs the
+// define table exposed to macro expansion — a compiler feature, filed not built.
 
 import { Node, NodeKind, SourceLocation } from "std/meta";
 import { Style } from "../../render/style";
@@ -30,8 +40,8 @@ export function styleOf(s: Style): Style {
 	return s;
 }
 
-function isPlatformKey(k: string): boolean {
-	return k === "_web" || k === "_ios" || k === "_android" || k === "_macos";
+function isPlatformName(k: string): boolean {
+	return k === "web" || k === "ios" || k === "android" || k === "macos";
 }
 
 export macro createStyles(node: Node): Node {
@@ -39,15 +49,15 @@ export macro createStyles(node: Node): Node {
 		error("createStyles takes an object literal: createStyles({ name: { ... } })", node);
 	}
 	when (js) {
-		const activeKey = "_web";
+		const activePlatform = "web";
 	} else when (ios) {
-		const activeKey = "_ios";
+		const activePlatform = "ios";
 	} else when (android) {
-		const activeKey = "_android";
+		const activePlatform = "android";
 	} else when (macos) {
-		const activeKey = "_macos";
+		const activePlatform = "macos";
 	} else {
-		const activeKey = "";
+		const activePlatform = "";
 	}
 
 	let entries: Node[] = [];
@@ -62,11 +72,21 @@ export macro createStyles(node: Node): Node {
 		for (let i = 0; i < v.properties.length; i += 1) {
 			const fv = v.properties[i];
 			const name = v.keys[i];
-			if (isPlatformKey(name)) {
+			if (name === "when") {
 				if (fv.kind !== NodeKind.ObjectLiteral) {
-					error("a platform block must be a style object literal: _web: { ... }", fv);
+					error("`when` takes a map of platform to style: when: { ios: { ... } }", fv);
 				}
-				if (name === activeKey) { overlay = fv; }
+				for (let p = 0; p < fv.properties.length; p += 1) {
+					const block = fv.properties[p];
+					const platform = fv.keys[p];
+					if (!isPlatformName(platform)) {
+						error("unknown platform '" + platform + "' in a `when` block — available: web, ios, android, macos", block);
+					}
+					if (block.kind !== NodeKind.ObjectLiteral) {
+						error("a platform block must be a style object literal", block);
+					}
+					if (platform === activePlatform) { overlay = block; }
+				}
 				continue;
 			}
 			if (fv.kind === NodeKind.CallExpr) {
