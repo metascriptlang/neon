@@ -70,9 +70,22 @@ const s = createStyles({
 Two composition forms, both preserving provenance:
 
 - **variants** — named groups selected by name. Borrowed from Unistyles 3.0 (§8); replaces the
-  ad-hoc `hover:`/`ios:` nested blocks of an earlier draft.
+  ad-hoc `hover:` state blocks of an earlier draft.
 - **array layering** — `[sheetEntry, override]`, later layer wins. This is the Figma model (shared
   style + instance override) and is what Neon Studio manipulates.
+
+Plus one build-time axis, which is not a composition form because nothing survives to compose:
+
+```ts
+btn: { padding: 8, _web: { padding: 10 }, _ios: { padding: 12 } }
+```
+
+- **platform blocks** — `_web` is Unistyles' own spelling; the set extends to `_ios`, `_android`,
+  `_macos` because a macro can do at compile time what their Babel plugin cannot, and Unistyles
+  therefore hands ios/android to RN's **runtime** `Platform.select`. The target's block merges over
+  the base fields, every other block is dropped at expansion (§4 job 5) — a non-target style is not
+  dead weight in the binary, it never exists. Shipped S4c; `_hover`/`_before`/`_classNames` inside
+  `_web` (their web-only nesting) is the natural place for the browser CSS work, not shipped.
 
 ---
 
@@ -238,7 +251,7 @@ Each stage ends green. TDD: red test first.
 | **S1** | flat `Style`; minimal `createStyles` macro (validate names, synthesize sheet type, fold constant); `VNode.style`; void host `asFlexStyle` reusing `yoga applyStyle`. Keep the legacy string path working. | — |
 | **S2** | paint + text: `backgroundColor` (void rect fill, terminal bg), text color/size. Cross-host test. | S1 |
 | **S3** | array layering + variants; compile-time merge when all layers are static. | spread codegen bug (§7) once runtime merge is needed |
-| **S4** | reactive style fields via the element macro's attribute classification (the Phase 2 debt — same feature); platform blocks; theme tokens. | S3 |
+| **S4** | ✅ reactive style fields via the element macro's attribute classification (the Phase 2 debt — same feature); ✅ platform blocks (§2); theme tokens still open. | S3 |
 
 Deferred, in rough priority order: breakpoints/media queries, runtime object (`rt`), pseudo-states
 beyond variants, animation (Nim had `AnimationDemo`), browser host emitting CSS classes.
