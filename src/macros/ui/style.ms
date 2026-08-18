@@ -16,12 +16,13 @@
 // rejected at expansion. Reactive fields live on the JSX site instead (S4a,
 // element.ms → withDynStyle), where each one gets its own effect.
 //
-// Platform blocks (§4 job 5, S4c) live under a `when` key, spelled after the
-// language keyword that does the same job, because the entry's spelling follows
-// its RESOLUTION TIME: `when` is chosen by the compiler and the other branches
-// never exist, while a runtime-selected feature (`variants`) stays a bare data
-// key. A bare `ios:` was rejected for reading exactly like RN's Platform.select,
-// which resolves at run time — the opposite of what happens here.
+// Platform blocks (§4 job 5, S4c) live under a `when` key, which holds every
+// override the ENVIRONMENT selects and the caller passes nothing for — build
+// target today, interaction states and breakpoints as they land. What the CALLER
+// selects (`variants`) stays a bare data key. Grouping rather than the `_web`
+// sigil of Panda/Chakra/Unistyles keeps the unconditional base style readable in
+// one piece; that some conditions are cut at build time and others are not is an
+// implementation fact and deliberately not visible in the spelling.
 //
 // The target's block merges over the base fields; every other block is dropped
 // at expansion. What makes that possible is that `when` in a MACRO BODY is cut

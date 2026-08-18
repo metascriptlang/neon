@@ -85,11 +85,22 @@ btn: { padding: 8, when: { web: { padding: 10 }, ios: { padding: 12 } } }
   exists. Unistyles resolves only its web block at build time (`_web`) and hands ios/android to
   RN's **runtime** `Platform.select`; a macro has no such limit.
 
-**Naming rule — the spelling follows the resolution time.** `when` is chosen by the compiler, so it
-borrows the language keyword that already means that; `variants` is chosen by a call at run time, so
-it stays a bare data key; `_hover` keeps the underscore Unistyles uses for a CSS `:`. A bare `ios:`
-was rejected for reading exactly like `Platform.select`, i.e. for implying the run-time semantics
-this does not have. The platform set is closed (`web`/`ios`/`android`/`macos`) and validated —
+**Naming rule — the grouping follows who decides.** `when` holds every override the ENVIRONMENT
+selects (build target today; `hover`, `focus`, `pressed`, dark mode, breakpoints as they land) and
+the caller passes nothing for; `variants` holds what the CALLER selects at the use site, so it stays
+a bare data key. That a platform is resolved at build time while `hover` is continuous is an
+implementation fact, not a spelling difference — which is why both live under one key.
+
+The surveyed alternative was the `_hover`/`_web` sigil of Panda, Chakra and Unistyles, where `_`
+marks "condition, not property" (Panda ships ~100 such names, including media queries and attribute
+selectors). It was rejected on reading: a sigil interleaves conditions with real properties in one
+flat list, so recovering the unconditional base style means classifying every key by its first
+character. Grouping keeps the base intact — the same reason every one of those libraries groups
+`variants` instead of spelling it flat. The cost is that a Panda-trained reflex types `_hover`; that
+is worth a suggestion in the diagnostic. Bare condition names also stay reusable if the value-position
+form (`padding: { base: 8, ios: 12 }`, Panda's concise form and StyleX's only form) is added later.
+
+The platform set is closed (`web`/`ios`/`android`/`macos`) and validated —
 `when: { iso: … }` reports *"unknown platform 'iso' … available: web, ios, android, macos"*. Opening
 it to arbitrary `-d:` flags needs the define table exposed to macro expansion, a compiler feature not
 built; `_hover`/`_before`/`_classNames` inside `web` is where the browser CSS work lands, also not
