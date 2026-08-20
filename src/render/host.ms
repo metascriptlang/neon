@@ -119,7 +119,14 @@ export function renderNode(vnode: NeonNode, host: Host): HostNode {
 		const own = vstyle !== null ? mergeStyle(vstyle as Style, emptyStyle()) : emptyStyle();
 		host.setStyle(node, own);
 		for (const p of dyns) { bindStyleProp(host, node, own, p.name, p.get); }
-	} else if (vstyle !== null) { host.setStyle(node, vstyle as Style); }
+	} else if (vstyle !== null) {
+		const s = vstyle as Style;
+		const setCls = host.setStyleClass;
+		const id = s.cssId;
+		if (id !== null && setCls !== null) {
+			setCls(node, id as string, s.css === null ? "" : s.css as string);
+		} else { host.setStyle(node, s); }
+	}
 	for (const e of vnode.events) { host.addEvent(node, e.name, e.handler); }
 	for (const k of vnode.children) {
 		let kv = k;
@@ -169,11 +176,12 @@ export interface MockNode {
 	attrs: VAttr[];
 	events: VEvent[];
 	style: Style | null;
+	className: string;
 	parent: MockNode | null;
 }
 
 export function mockNode(tag: string): MockNode {
-	return { tag, text: "", children: [], attrs: [], events: [], style: null, parent: null };
+	return { tag, text: "", children: [], attrs: [], events: [], style: null, className: "", parent: null };
 }
 
 function childIndex(parent: MockNode, node: MockNode): number {
@@ -234,6 +242,10 @@ export function mockHost(): Host {
 			if (n.style === null) { n.style = emptyStyle(); }
 			setStyleField(n.style as Style, name, value);
 		},
+		// The default mock stands in for a native host: no stylesheet, so a
+		// sheet entry lands through setStyle exactly as it does on void or
+		// terminal. A test that wants the browser's routing supplies its own.
+		setStyleClass: null,
 		addEvent: (node: HostNode, name: string, handler: () => void): void => {
 			(node as unknown as MockNode).events.push({ name, handler });
 		},

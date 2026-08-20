@@ -3,6 +3,7 @@
 
 import { Host, HostNode } from "../../render/host";
 import { Style, StyleValue } from "../../render/style";
+import { registerCss, collectCss } from "../../render/sheet";
 
 extern class CssStyle {
 	color: cstring;
@@ -60,8 +61,23 @@ extern class DomNode {
 
 extern class document {
 	static body: DomNode;
+	static head: DomNode;
 	static extern createElement(tag: cstring): DomNode;
 	static extern createTextNode(s: cstring): DomNode;
+}
+
+// One <style> element owns every rule the program registered. Rewriting its
+// whole text on each new rule is fine because registration happens as sheets
+// are first mounted, not per element, and the browser reparses one small block.
+let sheetNode: DomNode | null = null;
+
+function flushSheet(): void {
+	if (sheetNode === null) {
+		const n = document.createElement("style");
+		document.head.appendChild(n);
+		sheetNode = n;
+	}
+	(sheetNode as DomNode).textContent = collectCss();
 }
 
 // "onClick" → "click" (DOM listener names are lowercase, no "on").
@@ -158,6 +174,11 @@ export function domHost(): Host {
 		},
 		setStyleProp: (node: HostNode, name: string, value: StyleValue): void => {
 			applyCssProp((node as unknown as DomNode).style, name, value);
+		},
+		setStyleClass: (node: HostNode, id: string, css: string): void => {
+			registerCss(id, css);
+			flushSheet();
+			(node as unknown as DomNode).classList.add(id);
 		},
 		addEvent: (node: HostNode, name: string, handler: () => void): void => {
 			(node as unknown as DomNode).addEventListener(eventName(name), handler);

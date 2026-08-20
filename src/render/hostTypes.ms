@@ -13,6 +13,11 @@ export interface Host {
 	// `null` means "no partial write" and src/render/host.ms folds the field into
 	// the node's own Style and re-applies — same result, coarser.
 	setStyleProp: ((node: HostNode, name: string, value: StyleValue) => void) | null;
+	// Optional capability: a host with a stylesheet takes a shared style as a
+	// named rule plus a class instead of writing every field onto the node.
+	// `null` means "no stylesheet" (every native host) and src/render/host.ms
+	// applies the fields through setStyle — same pixels, more writes.
+	setStyleClass: ((node: HostNode, id: string, css: string) => void) | null;
 	addEvent: (node: HostNode, name: string, handler: () => void) => void;
 	append: (parent: HostNode, child: HostNode) => void;
 	insertBefore: (parent: HostNode, node: HostNode, ref: HostNode | null) => void;

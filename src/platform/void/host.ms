@@ -257,6 +257,7 @@ export function createVoidHost(): VoidHost {
 			applyPaint(n, style);
 		},
 		setStyleProp: null,
+		setStyleClass: null,
 		addEvent: (node: HostNode, name: string, handler: () => void): void => {
 			events.push({ node: node as unknown as Node2D, name, handler });
 		},
