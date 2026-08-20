@@ -34,7 +34,7 @@
 // cannot enumerate defines today. Opening it to arbitrary `-d:` flags needs the
 // define table exposed to macro expansion — a compiler feature, filed not built.
 
-import { Node, NodeKind, SourceLocation } from "std/meta";
+import { Node, NodeKind, SourceLocation, isFloatLiteral, intValue, floatValue, stringValue } from "std/meta";
 import { Style } from "../../render/style";
 
 export function styleOf(s: Style): Style {
@@ -43,6 +43,58 @@ export function styleOf(s: Style): Style {
 
 function isPlatformName(k: string): boolean {
 	return k === "web" || k === "ios" || k === "android" || k === "macos";
+}
+
+// CSS spelling of a style field. Kept beside applyCss (platform/browser/dom.ms)
+// rather than shared with it: that one writes into the CSSOM, which takes
+// camelCase names and per-property strings, while a stylesheet rule needs
+// kebab-case text. tests/render/styleCss.test.ms pins the two against each
+// other so the pair cannot drift apart silently.
+function kebabCase(name: string): string {
+	const lower = "abcdefghijklmnopqrstuvwxyz";
+	let out = "";
+	for (let i = 0; i < name.length; i += 1) {
+		const c = name.charCodeAt(i);
+		if (c >= 65 && c <= 90) {
+			out = out + "-" + lower.charAt(c - 65);
+		} else {
+			out = out + name.charAt(i);
+		}
+	}
+	return out;
+}
+
+// A bare number is points, which on the web is px — except for the ratios,
+// which are unitless in CSS too.
+function isUnitless(name: string): boolean {
+	return name === "flex" || name === "flexGrow" || name === "flexShrink"
+		|| name === "aspectRatio" || name === "opacity";
+}
+
+function cssDecl(name: string, v: Node): string {
+	if (v.kind === NodeKind.NumberLiteral) {
+		// Two accessors, not one: the macro VM picks typed opcodes from the static
+		// type, so a `number`-returning reader computes on the wrong field for
+		// whichever of int/float it wasn't compiled for.
+		const n = isFloatLiteral(v) ? floatValue(v).toString() : intValue(v).toString();
+		const unit = isUnitless(name) ? "" : "px";
+		return kebabCase(name) + ":" + n + unit + ";";
+	}
+	if (v.kind === NodeKind.StringLiteral) {
+		return kebabCase(name) + ":" + stringValue(v) + ";";
+	}
+	return "";
+}
+
+// djb2. The name must be stable across builds and identical on both backends,
+// so it is computed here at expansion — never at runtime, where the two lanes
+// could disagree on integer width.
+function hashText(s: string): number {
+	let h = 5381;
+	for (let i = 0; i < s.length; i += 1) {
+		h = (h * 33 + s.charCodeAt(i)) % 4294967296;
+	}
+	return h;
 }
 
 export macro createStyles(node: Node): Node {
@@ -61,8 +113,20 @@ export macro createStyles(node: Node): Node {
 		const activePlatform = "";
 	}
 
+	when (js) {
+		const emitCss = true;
+	} else {
+		const emitCss = false;
+	}
+	when (debug) {
+		const readableNames = true;
+	} else {
+		const readableNames = false;
+	}
+
 	let entries: Node[] = [];
-	for (const v of node.properties) {
+	for (let e = 0; e < node.properties.length; e += 1) {
+		const v = node.properties[e];
 		if (v.kind !== NodeKind.ObjectLiteral) {
 			error("a sheet entry must be a static style object literal", v);
 		}
@@ -117,6 +181,34 @@ export macro createStyles(node: Node): Node {
 					names.push(pname);
 					locs.push(ov.keyLocations[j]);
 				}
+			}
+		}
+		// A sheet entry is shared by every element that references it, so on a
+		// host with a stylesheet it becomes one rule plus a class instead of a
+		// field-by-field write per node. The rule text is baked here; the id is
+		// content-hashed, so an unchanged entry keeps its name across builds and
+		// an edited one lands under a new name (which is what lets a hot reload
+		// swap rules without a frame of wrong styling).
+		if (emitCss && fields.length > 0) {
+			let decls = "";
+			for (let b = 0; b < names.length; b += 1) {
+				decls = decls + cssDecl(names[b], fields[b]);
+			}
+			if (decls !== "") {
+				const readable = readableNames ? node.keys[e] + "_" : "";
+				const id = "n_" + readable + hashText(decls).toString();
+				const loc = locs[0];
+				fields.push({
+					kind: NodeKind.StringLiteral, line: v.line, column: v.column, value: id,
+				});
+				names.push("cssId");
+				locs.push(loc);
+				fields.push({
+					kind: NodeKind.StringLiteral, line: v.line, column: v.column,
+					value: "." + id + "{" + decls + "}",
+				});
+				names.push("css");
+				locs.push(loc);
 			}
 		}
 		const merged: Node = {
