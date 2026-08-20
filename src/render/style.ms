@@ -70,6 +70,16 @@ export interface Style {
 	fontSize: number | null;
 	fontWeight: FontWeight | null;
 	textAlign: TextAlign | null;
+
+	// Metadata, not style: the class a CSS-speaking host applies instead of
+	// writing these fields inline, and the rule text backing it. Filled by
+	// createStyles on the browser lane only — null everywhere else, and null on
+	// an inline `style={{...}}` literal, which has no shared identity to name.
+	// mergeStyle names every style field explicitly, so a merged layer drops
+	// these and falls back to the inline path — which is what a one-off
+	// combination should do.
+	cssId: string | null;
+	css: string | null;
 }
 
 // Every style field's value fits this one union: string-literal unions are
