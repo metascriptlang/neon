@@ -23,6 +23,7 @@
 - **Three Backends**: C (native), JS (browser), Erlang (distributed) - vs Nim's two
 
 **Reference Architecture**: Original Neon (Nim) at `/Users/le/projects/neon`
+- What we build next, in order: docs/ROADMAP.md
 - Port status & MetaScript power map: docs/PORT-STATUS.md
 - Original Nim reference: docs/nim.md
 - MetaScript compiler docs (source of truth): /Users/le/metascript/recompiler/docs/
@@ -656,6 +657,7 @@ msc build examples/counter.ms
 - Yoga (layout engine): https://yogalayout.com
 
 **Documentation**:
+- Roadmap (what's next, in order): docs/ROADMAP.md
 - Port status + MetaScript power map: docs/PORT-STATUS.md
 - Original Neon (Nim) reference: docs/nim.md
 - Collaboration model: docs/COLLAB.md
