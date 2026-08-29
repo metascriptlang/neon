@@ -17,20 +17,47 @@ command that proved it. Never layer a correction on a stale row — rewrite the 
 
 ## Now
 
-**1. Token categories — a token cannot be unitless.** A bare number always gets `px`, so
-`opacity: theme.o5` spells `0.5px` and `flex: theme.f1` spells `1px`. This is a hole inside the code
-that landed on 2026-08-29, it is cheap, and it has a red test in one line. Do it before anything
-builds on tokens.
-
-**2. Runtime theme switching.** The static half landed: `createTheme` bakes one `:root` rule and
-`createStyles(theme => …)` spells `var(--token)`. Switching is the half that makes it a feature.
+**1. A token cannot be unitless — the unit belongs to the PROPERTY, not to the token.** A bare number
+always gets `px`, so `opacity: theme.o5` spells `0.5px`, which is invalid CSS: the browser drops the
+declaration silently and the element renders fully opaque. Design settled 2026-08-30 by measurement:
+`:root` holds the RAW value and `createStyles` applies the unit at the use site, because the use site
+is the only place that knows the property. To choose between `calc(var(--x) * 1px)` and a bare
+`var(--x)` the macro must know whether the token is a number or a string, which it can read from the
+type — but only when `theme` is a real const, so the arrow marker goes away and recognition moves to
+a type brand (`themeOf` returns `Theme<T>`, `type Theme<T> = T`).
 
 ```
-landed        theme.sp2  →  var(--sp2)        :root{--sp2:8px}
-  1.          opacity: theme.o5  →  0.5px     ← wrong, fix first
-  2.          setTheme(dark)     →  rewrite :root, web repaints with no re-render
-                                 →  native: one signal per token, the S4a dynamic-field
-                                    path already carries it
+today         theme.sp2 → var(--sp2)         :root{--sp2:8px}      ← unit baked at DECL
+              theme.o5  → var(--o5)          :root{--o5:0.5px}     ← invalid for opacity
+
+target        createStyles({ card: { padding: theme.sp2, opacity: theme.o5, width: theme.w } })
+              :root{ --sp2:8; --o5:0.5; --w:50% }                  ← raw, one form per token
+              padding: calc(var(--sp2) * 1px)   number + sized property
+              opacity: var(--o5)                unitless property
+              width:   var(--w)                 string token, never calc-wrapped
+```
+
+Every branch is decided at expansion — no runtime `typeof`, nothing extra baked into the theme.
+`deg`/`ms` later cost one more unit string. Three alternatives were measured and rejected, do not
+re-open them: **token categories** (Panda's answer — forces a nested theme and still breaks when one
+token feeds both `padding` and `opacity`); **two baked forms** (`--x` plus a raw `--x-n` — duplicates
+in the theme what the use site already knows); **runtime `typeof` at sheet init** (works, but defers a
+compile-time fact to run time, against this repo's first principle).
+
+Compiler dependency, partly paid: a generic alias instantiation used to carry no identity and never
+peel — recompiler `b3907f8`+`d936a21`+`0898b5b` closed 5 of 7 measured cells (Nim parity:
+`typeof(v)` on `type Brand[T] = T` prints `Brand[t.Pt]`, so an alias keeps its name for inspection
+while staying structurally transparent). Still open: the call-site instantiation names the instance
+after the alias BODY, so a macro reads `T` where it needs `Theme`. Two red facets and the
+truncated-battery caveat are rows in `BUGS.md` §2.
+
+**2. Runtime theme switching.** The static half landed: `createTheme` bakes one `:root` rule and
+`createStyles` spells `var(--token)`. Switching is the half that makes it a feature.
+
+```
+setTheme(dark)  →  web:    replace the one :root rule by key, no re-render
+                →  native: one signal per token; S4a already emits exactly one
+                           effect per dynamic style field
 ```
 
 Web is nearly free (one rule replaced by key — `registerCss` already replaces by key). Native is the
