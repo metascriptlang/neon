@@ -10,7 +10,9 @@ value is a call (sheet OR inline `style={{...}}`), is a compile error until S4. 
 root fix (recompiler bug051): the macro round-trip dropped ObjectLiteral `keyLocations` and the
 excess/duplicate-key diagnostics were location-gated → silently swallowed, dying later in C.
 Value normalization (§4 job 3) waits for S2 paint; `@comptime` fold (§4 job 6) is deliberately NOT
-done — see the §4 note. Projection caching (§5) not yet.
+done — see the §4 note. Projection caching (§5) landed for the browser: a static sheet entry becomes
+one class + one rule (`src/render/sheet.ms`, `Host.setStyleClass`), and a theme token spells
+`var(--name)` so swapping a theme changes one variable instead of rewriting any rule.
 
 **Rule for this file** (same as `BUGS.md`): every compiler capability claimed in §7 is a MEASUREMENT
 with the command that produced it. If you can't reproduce it, re-measure and rewrite the row — do
@@ -270,10 +272,12 @@ Each stage ends green. TDD: red test first.
 | **S1** | flat `Style`; minimal `createStyles` macro (validate names, synthesize sheet type, fold constant); `VNode.style`; void host `asFlexStyle` reusing `yoga applyStyle`. Keep the legacy string path working. | — |
 | **S2** | paint + text: `backgroundColor` (void rect fill, terminal bg), text color/size. Cross-host test. | S1 |
 | **S3** | array layering + variants; compile-time merge when all layers are static. | spread codegen bug (§7) once runtime merge is needed |
-| **S4** | ✅ reactive style fields via the element macro's attribute classification (the Phase 2 debt — same feature); ✅ platform blocks (§2); theme tokens still open. | S3 |
+| **S4** | ✅ reactive style fields via the element macro's attribute classification (the Phase 2 debt — same feature); ✅ platform blocks (§2); ✅ theme tokens, static half — `createTheme` bakes one `:root` rule and `createStyles(theme => …)` spells each token `var(--name)`. Runtime theme switching still open. | S3 |
 
-Deferred, in rough priority order: breakpoints/media queries, runtime object (`rt`), pseudo-states
-beyond variants, animation (Nim had `AnimationDemo`), browser host emitting CSS classes.
+Deferred, in rough priority order: runtime theme switching (web overwrites `:root`, native needs the
+signal path), token categories so a token can be unitless (a bare number is always `px` today, so
+`opacity`/`flex` tokens cannot be expressed), `variants`, breakpoints/media queries, runtime object
+(`rt`), pseudo-states beyond variants, animation (Nim had `AnimationDemo`).
 
 ---
 
@@ -283,6 +287,8 @@ beyond variants, animation (Nim had `AnimationDemo`), browser host emitting CSS 
 |---|---|---|
 | `src/macros/ui/style.ms` | the macro — real since S1b (styleOf rewrite + static-sheet guards) | |
 | `src/render/style.ms` | **new** — the `Style` IR | must not import Yoga or any host |
+| `src/render/sheet.ms` | **new** — the CSS rule registry, replace-by-key | browser lane only; SSR mount still open |
+| `src/macros/ui/theme.ms` | **new** — `createTheme` bakes one `:root` rule; `themeOf` registers it | the arrow in `createStyles(theme => …)` is a marker, not a runtime fn |
 | `src/render/node.ms` | add `style` field to `VNode` | ⚠ **sacred file** — API change, needs sign-off |
 | `src/platform/void/host.ms` | add `asFlexStyle`; keep `parseFlexStyle` for the legacy string path | |
 | `src/platform/terminal/host.ms` | add `asTerminalStyle` | S2 |
