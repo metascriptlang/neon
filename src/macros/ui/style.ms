@@ -71,7 +71,17 @@ function isUnitless(name: string): boolean {
 		|| name === "aspectRatio" || name === "opacity";
 }
 
-function cssDecl(name: string, v: Node): string {
+function cssDecl(name: string, v: Node, token: string): string {
+	// A token stays a variable in the rule. That is the whole point of themes on
+	// the web: the value lives in the theme's :root rule, so swapping a theme
+	// changes one variable and never rewrites, re-hashes or re-registers this.
+	//
+	// The caller resolves the token name because a variant field (MemberExpr's
+	// `object`/`property`) reads only inside a macro body — in a top-level helper
+	// a Node exposes just the common fields.
+	if (token !== "") {
+		return kebabCase(name) + ":var(--" + token + ");";
+	}
 	if (v.kind === NodeKind.NumberLiteral) {
 		// Two accessors, not one: the macro VM picks typed opcodes from the static
 		// type, so a `number`-returning reader computes on the wrong field for
@@ -98,7 +108,21 @@ function hashText(s: string): number {
 }
 
 export macro createStyles(node: Node): Node {
-	if (node.kind !== NodeKind.ObjectLiteral) {
+	// `createStyles(theme => ({ ... }))`: the arrow is a MARKER, not a runtime
+	// function. It only names the identifier that stands for the theme, so a
+	// field can be recognized as a token; the body is then emitted as-is, which
+	// leaves `theme.sp2` binding to the const of that name in the enclosing
+	// scope — that is what keeps the token's real type on the native lane.
+	let sheet = node;
+	let themeName = "";
+	if (node.kind === NodeKind.ArrowFunction) {
+		if (node.arrowParams.length !== 1) {
+			error("createStyles takes one theme parameter: createStyles(theme => ({ ... }))", node);
+		}
+		themeName = node.arrowParams[0];
+		sheet = node.arrowBody;
+	}
+	if (sheet.kind !== NodeKind.ObjectLiteral) {
 		error("createStyles takes an object literal: createStyles({ name: { ... } })", node);
 	}
 	when (js) {
@@ -125,14 +149,15 @@ export macro createStyles(node: Node): Node {
 	}
 
 	let entries: Node[] = [];
-	for (let e = 0; e < node.properties.length; e += 1) {
-		const v = node.properties[e];
+	for (let e = 0; e < sheet.properties.length; e += 1) {
+		const v = sheet.properties[e];
 		if (v.kind !== NodeKind.ObjectLiteral) {
 			error("a sheet entry must be a static style object literal", v);
 		}
 		let fields: Node[] = [];
 		let names: string[] = [];
 		let locs: SourceLocation[] = [];
+		let tokens: string[] = [];
 		let overlay: Node | null = null;
 		for (let i = 0; i < v.properties.length; i += 1) {
 			const fv = v.properties[i];
@@ -157,9 +182,15 @@ export macro createStyles(node: Node): Node {
 			if (fv.kind === NodeKind.CallExpr) {
 				error("a style field cannot call a function — a signal read here would be a frozen snapshot, not reactive (put reactive fields on the element: style={{ width: w() }})", fv);
 			}
+			let tok = "";
+			if (themeName !== "" && fv.kind === NodeKind.MemberExpr) {
+				const ob = fv.object;
+				if (ob.kind === NodeKind.Identifier && ob.name === themeName) { tok = fv.property; }
+			}
 			fields.push(fv);
 			names.push(name);
 			locs.push(v.keyLocations[i]);
+			tokens.push(tok);
 		}
 		if (overlay !== null) {
 			const ov = overlay as Node;
@@ -169,10 +200,16 @@ export macro createStyles(node: Node): Node {
 				if (pv.kind === NodeKind.CallExpr) {
 					error("a style field cannot call a function — a signal read here would be a frozen snapshot, not reactive (put reactive fields on the element: style={{ width: w() }})", pv);
 				}
+				let ptok = "";
+				if (themeName !== "" && pv.kind === NodeKind.MemberExpr) {
+					const pob = pv.object;
+					if (pob.kind === NodeKind.Identifier && pob.name === themeName) { ptok = pv.property; }
+				}
 				let replaced = false;
 				for (let b = 0; b < names.length; b += 1) {
 					if (names[b] === pname) {
 						fields[b] = pv;
+						tokens[b] = ptok;
 						replaced = true;
 					}
 				}
@@ -180,6 +217,7 @@ export macro createStyles(node: Node): Node {
 					fields.push(pv);
 					names.push(pname);
 					locs.push(ov.keyLocations[j]);
+					tokens.push(ptok);
 				}
 			}
 		}
@@ -192,10 +230,10 @@ export macro createStyles(node: Node): Node {
 		if (emitCss && fields.length > 0) {
 			let decls = "";
 			for (let b = 0; b < names.length; b += 1) {
-				decls = decls + cssDecl(names[b], fields[b]);
+				decls = decls + cssDecl(names[b], fields[b], tokens[b]);
 			}
 			if (decls !== "") {
-				const readable = readableNames ? node.keys[e] + "_" : "";
+				const readable = readableNames ? sheet.keys[e] + "_" : "";
 				const id = "n_" + readable + hashText(decls).toString();
 				const loc = locs[0];
 				fields.push({
@@ -223,6 +261,6 @@ export macro createStyles(node: Node): Node {
 	}
 	return {
 		kind: NodeKind.ObjectLiteral, line: node.line, column: node.column,
-		properties: entries, keys: node.keys, keyLocations: node.keyLocations,
+		properties: entries, keys: sheet.keys, keyLocations: sheet.keyLocations,
 	};
 }
