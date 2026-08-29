@@ -12,11 +12,6 @@
 // A macro cannot resolve a value across modules (std/meta has node access, not
 // symbol resolution), which is why the token's value is baked HERE, at the one
 // site where it is written as a literal, rather than at each use.
-//
-// Known gap: a bare number becomes `px`, matching the style macro's rule for a
-// non-unitless property. A token meant for `opacity` or `flex` therefore cannot
-// be expressed yet — that needs token categories (Panda's answer) and is filed,
-// not built.
 
 import { Node, NodeKind, isFloatLiteral, intValue, floatValue, stringValue } from "std/meta";
 import { registerCss } from "../../render/sheet";
