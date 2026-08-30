@@ -71,16 +71,23 @@ function isUnitless(name: string): boolean {
 		|| name === "aspectRatio" || name === "opacity";
 }
 
-function cssDecl(name: string, v: Node, token: string): string {
+function cssDecl(name: string, v: Node, token: string, tokenIsText: boolean): string {
 	// A token stays a variable in the rule. That is the whole point of themes on
 	// the web: the value lives in the theme's :root rule, so swapping a theme
 	// changes one variable and never rewrites, re-hashes or re-registers this.
 	//
-	// The caller resolves the token name because a variant field (MemberExpr's
-	// `object`/`property`) reads only inside a macro body — in a top-level helper
-	// a Node exposes just the common fields.
+	// The caller resolves the token and its type because a member read
+	// (MemberExpr's `object`/`property`/`nodeType`) is visible only inside a
+	// macro body — in a top-level helper a Node exposes just the common fields.
+	//
+	// The :root value carries no unit, so a length property multiplies it by 1px
+	// here: CSS has no cast, and calc is the only way to give a bare number a
+	// unit at the site that needs one.
 	if (token !== "") {
-		return kebabCase(name) + ":var(--" + token + ");";
+		if (tokenIsText || isUnitless(name)) {
+			return kebabCase(name) + ":var(--" + token + ");";
+		}
+		return kebabCase(name) + ":calc(var(--" + token + ") * 1px);";
 	}
 	if (v.kind === NodeKind.NumberLiteral) {
 		// Two accessors, not one: the macro VM picks typed opcodes from the static
@@ -108,20 +115,7 @@ function hashText(s: string): number {
 }
 
 export macro createStyles(node: Node): Node {
-	// `createStyles(theme => ({ ... }))`: the arrow is a MARKER, not a runtime
-	// function. It only names the identifier that stands for the theme, so a
-	// field can be recognized as a token; the body is then emitted as-is, which
-	// leaves `theme.sp2` binding to the const of that name in the enclosing
-	// scope — that is what keeps the token's real type on the native lane.
-	let sheet = node;
-	let themeName = "";
-	if (node.kind === NodeKind.ArrowFunction) {
-		if (node.arrowParams.length !== 1) {
-			error("createStyles takes one theme parameter: createStyles(theme => ({ ... }))", node);
-		}
-		themeName = node.arrowParams[0];
-		sheet = node.arrowBody;
-	}
+	const sheet = node;
 	if (sheet.kind !== NodeKind.ObjectLiteral) {
 		error("createStyles takes an object literal: createStyles({ name: { ... } })", node);
 	}
@@ -158,6 +152,7 @@ export macro createStyles(node: Node): Node {
 		let names: string[] = [];
 		let locs: SourceLocation[] = [];
 		let tokens: string[] = [];
+		let tokenTexts: boolean[] = [];
 		let overlay: Node | null = null;
 		for (let i = 0; i < v.properties.length; i += 1) {
 			const fv = v.properties[i];
@@ -182,15 +177,27 @@ export macro createStyles(node: Node): Node {
 			if (fv.kind === NodeKind.CallExpr) {
 				error("a style field cannot call a function — a signal read here would be a frozen snapshot, not reactive (put reactive fields on the element: style={{ width: w() }})", fv);
 			}
+			// `theme.sp2` and `cfg.gap` are the same syntax, so a token is
+			// recognized by TYPE: themeOf brands its result Theme<T>, which is
+			// transparent everywhere else and survives here only as the name.
 			let tok = "";
-			if (themeName !== "" && fv.kind === NodeKind.MemberExpr) {
-				const ob = fv.object;
-				if (ob.kind === NodeKind.Identifier && ob.name === themeName) { tok = fv.property; }
+			let tokText = false;
+			if (fv.kind === NodeKind.MemberExpr) {
+				const obT = fv.object.nodeType;
+				if (obT !== null && obT.kind === NodeKind.TypeGeneric) {
+					const base = obT.typExprBase;
+					if (base.kind === NodeKind.Identifier && base.name === "Theme") {
+						tok = fv.property;
+						const fT = fv.nodeType;
+						if (fT !== null && fT.kind === NodeKind.Identifier && fT.name === "string") { tokText = true; }
+					}
+				}
 			}
 			fields.push(fv);
 			names.push(name);
 			locs.push(v.keyLocations[i]);
 			tokens.push(tok);
+			tokenTexts.push(tokText);
 		}
 		if (overlay !== null) {
 			const ov = overlay as Node;
@@ -201,15 +208,24 @@ export macro createStyles(node: Node): Node {
 					error("a style field cannot call a function — a signal read here would be a frozen snapshot, not reactive (put reactive fields on the element: style={{ width: w() }})", pv);
 				}
 				let ptok = "";
-				if (themeName !== "" && pv.kind === NodeKind.MemberExpr) {
-					const pob = pv.object;
-					if (pob.kind === NodeKind.Identifier && pob.name === themeName) { ptok = pv.property; }
+				let ptokText = false;
+				if (pv.kind === NodeKind.MemberExpr) {
+					const pobT = pv.object.nodeType;
+					if (pobT !== null && pobT.kind === NodeKind.TypeGeneric) {
+						const pbase = pobT.typExprBase;
+						if (pbase.kind === NodeKind.Identifier && pbase.name === "Theme") {
+							ptok = pv.property;
+							const pfT = pv.nodeType;
+							if (pfT !== null && pfT.kind === NodeKind.Identifier && pfT.name === "string") { ptokText = true; }
+						}
+					}
 				}
 				let replaced = false;
 				for (let b = 0; b < names.length; b += 1) {
 					if (names[b] === pname) {
 						fields[b] = pv;
 						tokens[b] = ptok;
+						tokenTexts[b] = ptokText;
 						replaced = true;
 					}
 				}
@@ -218,6 +234,7 @@ export macro createStyles(node: Node): Node {
 					names.push(pname);
 					locs.push(ov.keyLocations[j]);
 					tokens.push(ptok);
+					tokenTexts.push(ptokText);
 				}
 			}
 		}
@@ -230,7 +247,7 @@ export macro createStyles(node: Node): Node {
 		if (emitCss && fields.length > 0) {
 			let decls = "";
 			for (let b = 0; b < names.length; b += 1) {
-				decls = decls + cssDecl(names[b], fields[b], tokens[b]);
+				decls = decls + cssDecl(names[b], fields[b], tokens[b], tokenTexts[b]);
 			}
 			if (decls !== "") {
 				const readable = readableNames ? sheet.keys[e] + "_" : "";
