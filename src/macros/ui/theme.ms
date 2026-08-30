@@ -16,10 +16,15 @@
 import { Node, NodeKind, isFloatLiteral, intValue, floatValue, stringValue } from "std/meta";
 import { registerCss } from "../../render/sheet";
 
+// Transparent by design: a token keeps the arithmetic and the representation of
+// its own type, and the name survives only so createStyles can tell `theme.sp2`
+// from any other member read — the two are identical as syntax.
+type Theme<T> = T;
+
 // Registration happens at module init, not at first paint: a theme is a
 // constant, and the `:root` key means a re-executed module replaces its own
 // rule instead of growing the sheet.
-export function themeOf<T>(o: T, css: string): T {
+export function themeOf<T>(o: T, css: string): Theme<T> {
 	when (js) {
 		if (css !== "") { registerCss(":root", css); }
 	}
