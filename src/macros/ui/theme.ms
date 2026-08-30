@@ -31,10 +31,13 @@ export function themeOf<T>(o: T, css: string): Theme<T> {
 	return o;
 }
 
+// Baked without a unit. A unit here would pick one for every use site, which is
+// how `opacity: theme.o5` became `0.5px`; createStyles applies the unit at the
+// use site instead, so one token serves both `padding` and `opacity`.
 function tokenValue(v: Node): string {
 	if (v.kind === NodeKind.NumberLiteral) {
-		if (isFloatLiteral(v)) { return floatValue(v).toString() + "px"; }
-		return intValue(v).toString() + "px";
+		if (isFloatLiteral(v)) { return floatValue(v).toString(); }
+		return intValue(v).toString();
 	}
 	if (v.kind === NodeKind.StringLiteral) { return stringValue(v); }
 	return "";
