@@ -31,6 +31,18 @@ export function themeOf<T>(o: T, css: string): Theme<T> {
 	return o;
 }
 
+// The swap itself: one key, so it replaces the root rule rather than growing
+// the sheet, and every rule naming a variable keeps its text and its class.
+//
+// Off the browser lane this is a no-op. A native token was baked into the entry
+// as a value, so changing it needs the token to be read through a signal — a
+// separate arc (docs/STYLE.md §9), not something this call can fake.
+export function setThemeCss(css: string): void {
+	when (js) {
+		if (css !== "") { registerCss(":root", css); }
+	}
+}
+
 // Baked without a unit. A unit here would pick one for every use site, which is
 // how `opacity: theme.o5` became `0.5px`; createStyles applies the unit at the
 // use site instead, so one token serves both `padding` and `opacity`.
@@ -72,6 +84,42 @@ export macro createTheme(node: Node): Node {
 		callee: { kind: NodeKind.Identifier, line: node.line, column: node.column, name: "themeOf" },
 		arguments: [
 			node,
+			{ kind: NodeKind.StringLiteral, line: node.line, column: node.column, value: css },
+		],
+	};
+}
+
+// Same shape as createTheme, and the loop is repeated rather than shared: a
+// top-level helper sees only a Node's common fields, so `properties` and `keys`
+// can be read here in the macro body and nowhere else.
+export macro setTheme(node: Node): Node {
+	if (node.kind !== NodeKind.ObjectLiteral) {
+		error("setTheme takes an object literal: setTheme({ sp2: 8 }) — the values are baked at compile time, so they must be written at the call, not held in a variable", node);
+	}
+
+	when (js) {
+		const emitCss = true;
+	} else {
+		const emitCss = false;
+	}
+
+	let decls = "";
+	for (let i = 0; i < node.properties.length; i += 1) {
+		const v = node.properties[i];
+		const name = node.keys[i];
+		const text = tokenValue(v);
+		if (text === "") {
+			error("a theme token must be a number or string literal — its value is baked into one :root rule at compile time", v);
+		}
+		decls = decls + "--" + name + ":" + text + ";";
+	}
+
+	const css = emitCss && decls !== "" ? ":root{" + decls + "}" : "";
+
+	return {
+		kind: NodeKind.CallExpr, line: node.line, column: node.column,
+		callee: { kind: NodeKind.Identifier, line: node.line, column: node.column, name: "setThemeCss" },
+		arguments: [
 			{ kind: NodeKind.StringLiteral, line: node.line, column: node.column, value: css },
 		],
 	};
