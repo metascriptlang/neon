@@ -12,12 +12,26 @@
 let ids: string[] = [];
 let rules: string[] = [];
 
+// A theme swap replaces the `:root` rule with no node involved, so nothing on
+// the render path would tell a host to re-mount the sheet. The host leaves its
+// flush here and the registry calls it on every change.
+let changed: (() => void) | null = null;
+
+export function onCssChange(f: (() => void) | null): void {
+	changed = f;
+}
+
 export function registerCss(id: string, css: string): void {
 	for (let i = 0; i < ids.length; i += 1) {
-		if (ids[i] === id) { rules[i] = css; return; }
+		if (ids[i] === id) {
+			rules[i] = css;
+			if (changed !== null) { (changed as () => void)(); }
+			return;
+		}
 	}
 	ids.push(id);
 	rules.push(css);
+	if (changed !== null) { (changed as () => void)(); }
 }
 
 export function collectCss(): string {

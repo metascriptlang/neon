@@ -3,7 +3,7 @@
 
 import { Host, HostNode } from "../../render/host";
 import { Style, StyleValue } from "../../render/style";
-import { registerCss, collectCss } from "../../render/sheet";
+import { registerCss, collectCss, onCssChange } from "../../render/sheet";
 
 extern class CssStyle {
 	color: cstring;
@@ -160,6 +160,11 @@ export function documentBody(): HostNode {
 }
 
 export function domHost(): Host {
+	// The registry may already hold rules from module init — a theme's :root
+	// among them — and from here on every change mounts itself, including a
+	// swap that touches no node.
+	onCssChange(flushSheet);
+	flushSheet();
 	return {
 		createElement: (tag: string): HostNode => document.createElement(tag) as unknown as HostNode,
 		createText: (s: string): HostNode => document.createTextNode(s) as unknown as HostNode,
@@ -177,7 +182,6 @@ export function domHost(): Host {
 		},
 		setStyleClass: (node: HostNode, id: string, css: string): void => {
 			registerCss(id, css);
-			flushSheet();
 			(node as unknown as DomNode).classList.add(id);
 		},
 		addEvent: (node: HostNode, name: string, handler: () => void): void => {
