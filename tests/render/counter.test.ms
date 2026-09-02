@@ -2,10 +2,11 @@ import { createSignal } from "../../src/core/signal";
 import { el, evt, text, dynText } from "../../src/render/node";
 import { element } from "../../src/macros/ui/element";
 import { HostNode, MockNode, mockNode, mockHost, renderToHost, fireEvent, mockToString } from "../../src/render/host";
+import { NeonEvent } from "../../src/render/event";
 
 test "counter: onClick increments and reactive text updates" {
 	const [count, setCount] = createSignal(0);
-	const inc = () => setCount(count() + 1);
+	const inc: (e: NeonEvent) => void = () => { setCount(count() + 1); };
 	const vnode = element(<div><p>{count() + ""}</p><button onClick={inc}>+</button></div>);
 
 	const root: MockNode = mockNode("root");

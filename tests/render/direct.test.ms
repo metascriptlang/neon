@@ -13,11 +13,12 @@ import { Show, For } from "../../src/macros/ui/flow";
 import { renderToHost, renderNode, mockHost, mockNode, mockToString, fireEvent, bindText, bindAttr, MockNode, Host, HostNode, NeonView, viewOf } from "../../src/render/host";
 import { createStyles, styleOf } from "../../src/macros/ui/style";
 import { createTemplate, mountTemplate, childOf, siblingOf } from "../../src/render/template";
+import { NeonEvent } from "../../src/render/event";
 
 test "static + dynamic text + event: direct matches tree" {
 	const [name, setName] = createSignal("an");
 	let clicks = 0;
-	const inc = () => { clicks = clicks + 1; };
+	const inc: (e: NeonEvent) => void = () => { clicks = clicks + 1; };
 	const host = mockHost();
 
 	const treeRoot = mockNode("root");
@@ -289,7 +290,7 @@ test "deep interleave: dyn attr + dyn text + event across 4 levels" {
 	const [cls, setCls] = createSignal("a");
 	const [v, setV] = createSignal("t");
 	let hits = 0;
-	const bump = () => { hits = hits + 1; };
+	const bump: (e: NeonEvent) => void = () => { hits = hits + 1; };
 	const host = mockHost();
 
 	const treeRoot = mockNode("root");
