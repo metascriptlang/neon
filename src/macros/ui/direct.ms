@@ -29,7 +29,8 @@ export macro direct(node: Node): Node {
 	const C = node.column;
 	// Capitalized tag → createComponent(Tag, { props }), mirroring element.ms's prop
 	// contract byte for byte (string literals pass through, expression props become
-	// thunks, children stay structural NeonNode trees via element/text). The NeonNode
+	// thunks, a JSX child passes RAW so the converter picks the emission from the
+	// prop's declared type — wrapping it here would pre-pick tree). The NeonNode
 	// then goes through the runtime mount seam instead of being returned as data:
 	// root position mounts via renderNode (loud throw if the component expands to a
 	// region — same contract as the tree walker). Inline because node literals only
@@ -62,11 +63,7 @@ export macro direct(node: Node): Node {
 			} else if (c.kind === NodeKind.JSXExpressionContainer) {
 				compKids.push(c.jsxExpr);
 			} else if (c.kind === NodeKind.JSXElement) {
-				compKids.push({
-					kind: NodeKind.CallExpr, line: c.line, column: c.column,
-					callee: { kind: NodeKind.Identifier, line: c.line, column: c.column, name: "element" },
-					arguments: [c],
-				});
+				compKids.push(c);
 			}
 		}
 		if (compKids.length === 1) {
@@ -584,11 +581,7 @@ export macro direct(node: Node): Node {
 					} else if (gc.kind === NodeKind.JSXExpressionContainer) {
 						cKids.push(gc.jsxExpr);
 					} else if (gc.kind === NodeKind.JSXElement) {
-						cKids.push({
-							kind: NodeKind.CallExpr, line: gc.line, column: gc.column,
-							callee: { kind: NodeKind.Identifier, line: gc.line, column: gc.column, name: "element" },
-							arguments: [gc],
-						});
+						cKids.push(gc);
 					}
 				}
 				if (cKids.length === 1) {
