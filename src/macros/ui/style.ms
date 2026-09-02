@@ -154,6 +154,10 @@ export macro createStyles(node: Node): Node {
 		let tokens: string[] = [];
 		let tokenTexts: boolean[] = [];
 		let overlay: Node | null = null;
+		let vGroups: string[] = [];
+		let vGroupOf: string[] = [];
+		let vNames: string[] = [];
+		let vBlocks: Node[] = [];
 		for (let i = 0; i < v.properties.length; i += 1) {
 			const fv = v.properties[i];
 			const name = v.keys[i];
@@ -171,6 +175,38 @@ export macro createStyles(node: Node): Node {
 						error("a platform block must be a style object literal", block);
 					}
 					if (platform === activePlatform) { overlay = block; }
+				}
+				continue;
+			}
+			// `variants` is the caller-selected axis (§2): the entry becomes an
+			// arrow taking a selector, and each group merges its matched block
+			// over the base at runtime. Selection is a one-off combination, so
+			// the result takes the inline path like a merged layer array.
+			if (name === "variants") {
+				if (fv.kind !== NodeKind.ObjectLiteral) {
+					error("`variants` takes named groups of style blocks: variants: { size: { sm: { ... } } }", fv);
+				}
+				for (let g = 0; g < fv.properties.length; g += 1) {
+					const group = fv.properties[g];
+					const groupName = fv.keys[g];
+					if (group.kind !== NodeKind.ObjectLiteral) {
+						error("a variant group maps names to style blocks: " + groupName + ": { sm: { ... } }", group);
+					}
+					vGroups.push(groupName);
+					for (let m = 0; m < group.properties.length; m += 1) {
+						const block = group.properties[m];
+						if (block.kind !== NodeKind.ObjectLiteral) {
+							error("a variant must be a style object literal", block);
+						}
+						for (let f = 0; f < block.properties.length; f += 1) {
+							if (block.properties[f].kind === NodeKind.CallExpr) {
+								error("a style field cannot call a function — a signal read here would be a frozen snapshot, not reactive (drive the selection at the use site instead: s.entry({ " + groupName + ": ... }))", block.properties[f]);
+							}
+						}
+						vGroupOf.push(groupName);
+						vNames.push(group.keys[m]);
+						vBlocks.push(block);
+					}
 				}
 				continue;
 			}
@@ -244,7 +280,7 @@ export macro createStyles(node: Node): Node {
 		// content-hashed, so an unchanged entry keeps its name across builds and
 		// an edited one lands under a new name (which is what lets a hot reload
 		// swap rules without a frame of wrong styling).
-		if (emitCss && fields.length > 0) {
+		if (emitCss && fields.length > 0 && vGroups.length === 0) {
 			let decls = "";
 			for (let b = 0; b < names.length; b += 1) {
 				decls = decls + cssDecl(names[b], fields[b], tokens[b], tokenTexts[b]);
@@ -270,11 +306,63 @@ export macro createStyles(node: Node): Node {
 			kind: NodeKind.ObjectLiteral, line: v.line, column: v.column,
 			properties: fields, keys: names, keyLocations: locs,
 		};
-		entries.push({
+		let entry: Node = {
 			kind: NodeKind.CallExpr, line: v.line, column: v.column,
 			callee: { kind: NodeKind.Identifier, line: v.line, column: v.column, name: "styleOf" },
 			arguments: [merged],
-		});
+		};
+		if (vGroups.length > 0) {
+			// mergeStyle(mergeStyle(base, <size chain>), <state chain>) where each
+			// chain is sel.group === "name" ? styleOf({...}) : ... : emptyStyle().
+			// styleOf on every block keeps the checker's excess-property check on
+			// variant fields, at the block's own location.
+			for (let g = 0; g < vGroups.length; g += 1) {
+				const gname = vGroups[g];
+				let chain: Node = {
+					kind: NodeKind.CallExpr, line: v.line, column: v.column,
+					callee: { kind: NodeKind.Identifier, line: v.line, column: v.column, name: "emptyStyle" },
+					arguments: [],
+				};
+				for (let m = vNames.length - 1; m >= 0; m -= 1) {
+					if (vGroupOf[m] !== gname) { continue; }
+					const cond: Node = {
+						kind: NodeKind.BinaryExpr, line: v.line, column: v.column, operator: "===",
+						left: {
+							kind: NodeKind.MemberExpr, line: v.line, column: v.column,
+							object: { kind: NodeKind.Identifier, line: v.line, column: v.column, name: "sel" },
+							property: gname, isOptional: false,
+						},
+						right: { kind: NodeKind.StringLiteral, line: v.line, column: v.column, value: vNames[m] },
+					};
+					chain = {
+						kind: NodeKind.ConditionalExpr, line: v.line, column: v.column,
+						ternaryCondition: cond,
+						ternaryConsequent: {
+							kind: NodeKind.CallExpr, line: v.line, column: v.column,
+							callee: { kind: NodeKind.Identifier, line: v.line, column: v.column, name: "styleOf" },
+							arguments: [vBlocks[m]],
+						},
+						ternaryAlternate: chain,
+					};
+				}
+				entry = {
+					kind: NodeKind.CallExpr, line: v.line, column: v.column,
+					callee: { kind: NodeKind.Identifier, line: v.line, column: v.column, name: "mergeStyle" },
+					arguments: [entry, chain],
+				};
+			}
+			let selType = "{ ";
+			for (let g = 0; g < vGroups.length; g += 1) {
+				selType = selType + (g > 0 ? ", " : "") + vGroups[g] + "?: string";
+			}
+			selType = selType + " }";
+			entry = {
+				kind: NodeKind.ArrowFunction, line: v.line, column: v.column,
+				arrowParams: ["sel"], arrowParamTypes: [selType], arrowBody: entry,
+				arrowFlags: "", arrowReturnType: "",
+			};
+		}
+		entries.push(entry);
 	}
 	return {
 		kind: NodeKind.ObjectLiteral, line: node.line, column: node.column,
