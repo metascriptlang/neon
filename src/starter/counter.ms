@@ -21,9 +21,9 @@ export function Counter(): NeonNode {
 		<div style={styles.title}>Neon Counter</div>
 		<div style={styles.value}>{count().toString()}</div>
 		<div style={styles.row}>
-			<button style={styles.button} onClick={() => setCount(count() - 1)}>-</button>
-			<button style={styles.button} onClick={() => setCount(0)}>reset</button>
-			<button style={styles.button} onClick={() => setCount(count() + 1)}>+</button>
+			<button style={styles.button} onPress={() => setCount(count() - 1)}>-</button>
+			<button style={styles.button} onPress={() => setCount(0)}>reset</button>
+			<button style={styles.button} onPress={() => setCount(count() + 1)}>+</button>
 		</div>
 		<div style={styles.hint}>{count() % 2 === 0 ? "even" : "odd"}</div>
 	</div>;

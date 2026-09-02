@@ -75,7 +75,7 @@ export function TodoList(): NeonNode {
 
 	return <div style={styles.container}>
 		<div style={styles.title}>Todo</div>
-		<button style={styles.button} onClick={() => add()}>add</button>
+		<button style={styles.button} onPress={() => add()}>add</button>
 		<Show when={allDone()}>
 			<div style={styles.banner}>all done</div>
 		</Show>
@@ -85,8 +85,8 @@ export function TodoList(): NeonNode {
 		<For each={todos()}>
 			{(todo: Todo, i: () => int32): NeonView => <div style={styles.row}>
 				<div style={todo.done ? styles.labelDone : styles.label}>{todo.title}</div>
-				<button style={styles.button} onClick={() => toggle(todo.id)}>{todo.done ? "undo" : "done"}</button>
-				<button style={styles.button} onClick={() => remove(todo.id)}>x</button>
+				<button style={styles.button} onPress={() => toggle(todo.id)}>{todo.done ? "undo" : "done"}</button>
+				<button style={styles.button} onPress={() => remove(todo.id)}>x</button>
 			</div>}
 		</For>
 	</div>;

@@ -9,7 +9,7 @@ function main(): void {
 	const app = element(
 		<div style={{ padding: 16, backgroundColor: "#1e1e2e", color: "#cdd6f4", borderRadius: 8 }}>
 			<p>Counter: {count() + ""}</p>
-			<button onClick={() => setCount(count() + 1)}>+</button>
+			<button onPress={() => setCount(count() + 1)}>+</button>
 		</div>
 	);
 	renderToHost(app, domHost(), documentBody());

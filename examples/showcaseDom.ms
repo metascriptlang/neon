@@ -11,9 +11,9 @@ const view = <div class="card">
 	<div class="badge">{count() + ""}</div>
 	<p class="meta">square {count() * count() + ""} - {count() % 2 === 0 ? "even" : "odd"}</p>
 	<div class="row">
-		<button class="btn ghost" onClick={() => setCount(count() - 1)}>-</button>
-		<button class="btn" onClick={() => setCount(0)}>reset</button>
-		<button class="btn solid" onClick={() => setCount(count() + 1)}>+</button>
+		<button class="btn ghost" onPress={() => setCount(count() - 1)}>-</button>
+		<button class="btn" onPress={() => setCount(0)}>reset</button>
+		<button class="btn solid" onPress={() => setCount(count() + 1)}>+</button>
 	</div>
 </div>;
 
