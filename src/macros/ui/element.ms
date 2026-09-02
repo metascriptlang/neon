@@ -134,6 +134,7 @@ export macro element(node: Node): Node {
 	let attrs: Node[] = [];
 	let events: Node[] = [];
 	let styleExpr: Node | null = null;
+	let dynStyleAllExpr: Node | null = null;
 	let dynStyleNames: string[] = [];
 	let dynStyleExprs: Node[] = [];
 	for (const a of node.jsxAttrs) {
@@ -214,7 +215,15 @@ export macro element(node: Node): Node {
 					};
 					continue;
 				}
-				styleExpr = a.jsxAttrValue;
+				// A style expression that reads a signal (call-based rule, §6)
+				// must not freeze into withStyle's one-shot constant — it gets
+				// one whole-style effect instead. A static expression through
+				// here (a sheet entry) keeps the constant path and its class id.
+				if (isReactiveExpr(a.jsxAttrValue)) {
+					dynStyleAllExpr = a.jsxAttrValue;
+				} else {
+					styleExpr = a.jsxAttrValue;
+				}
 				continue;
 			}
 			const nameLit: Node = { kind: NodeKind.StringLiteral, line: a.line, column: a.column, value: a.jsxAttrName };
@@ -299,6 +308,17 @@ export macro element(node: Node): Node {
 			kind: NodeKind.CallExpr, line: node.line, column: node.column,
 			callee: { kind: NodeKind.Identifier, line: node.line, column: node.column, name: "withStyle" },
 			arguments: [acc, styleExpr as Node],
+		};
+	}
+	if (dynStyleAllExpr !== null) {
+		acc = {
+			kind: NodeKind.CallExpr, line: node.line, column: node.column,
+			callee: { kind: NodeKind.Identifier, line: node.line, column: node.column, name: "withDynStyleAll" },
+			arguments: [acc,
+				{
+					kind: NodeKind.ArrowFunction, line: node.line, column: node.column,
+					arrowParams: [], arrowParamTypes: [], arrowBody: dynStyleAllExpr as Node, arrowFlags: "", arrowReturnType: "",
+				}],
 		};
 	}
 	for (let i = 0; i < dynStyleNames.length; i = i + 1) {
