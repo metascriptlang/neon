@@ -7,6 +7,7 @@ import { NeonNode, VAttr, VEvent, RegionFn, ComponentProducer, attr } from "./no
 import { Style, StyleValue, emptyStyle, mergeStyle, setStyleField } from "./style";
 import { reconcileArrays } from "./reconcile";
 import { Host, HostNode } from "./hostTypes";
+import { NeonEvent, neonEvent, eventType } from "./event";
 
 export { Host, HostNode } from "./hostTypes";
 
@@ -249,7 +250,7 @@ export function mockHost(): Host {
 		// sheet entry lands through setStyle exactly as it does on void or
 		// terminal. A test that wants the browser's routing supplies its own.
 		setStyleClass: null,
-		addEvent: (node: HostNode, name: string, handler: () => void): void => {
+		addEvent: (node: HostNode, name: string, handler: (e: NeonEvent) => void): void => {
 			(node as unknown as MockNode).events.push({ name, handler });
 		},
 		append: (parent: HostNode, child: HostNode): void => {
@@ -302,8 +303,14 @@ export function mockHost(): Host {
 
 // Fire a recorded event by name (test helper — simulates a user interaction).
 export function fireEvent(node: MockNode, name: string): void {
-	for (const e of node.events) {
-		if (e.name === name) { e.handler(); }
+	fireEventWith(node, name, neonEvent(eventType(name)));
+}
+
+// The same dispatch, but the test supplies the event — how a handler reading
+// `e.value` or `e.x` is pinned without a real browser.
+export function fireEventWith(node: MockNode, name: string, e: NeonEvent): void {
+	for (const h of node.events) {
+		if (h.name === name) { h.handler(e); }
 	}
 }
 

@@ -1,4 +1,5 @@
 import { Style, StyleValue } from "./style";
+import { NeonEvent } from "./event";
 
 export type HostNode = unknown;
 
@@ -18,7 +19,7 @@ export interface Host {
 	// `null` means "no stylesheet" (every native host) and src/render/host.ms
 	// applies the fields through setStyle — same pixels, more writes.
 	setStyleClass: ((node: HostNode, id: string, css: string) => void) | null;
-	addEvent: (node: HostNode, name: string, handler: () => void) => void;
+	addEvent: (node: HostNode, name: string, handler: (e: NeonEvent) => void) => void;
 	append: (parent: HostNode, child: HostNode) => void;
 	insertBefore: (parent: HostNode, node: HostNode, ref: HostNode | null) => void;
 	removeChild: (parent: HostNode, node: HostNode) => void;

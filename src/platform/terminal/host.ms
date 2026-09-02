@@ -14,6 +14,7 @@
 //   <gap>    — vertical spacer (height attribute = number of blank lines)
 
 import { Host, HostNode } from "../../render/hostTypes";
+import { NeonEvent, neonEvent, eventType } from "../../render/event";
 import { Style } from "../../render/style";
 import {
 	TerminalNode, TerminalEvent, TerminalStyle,
@@ -130,7 +131,7 @@ export function terminalHost(): Host {
 		},
 		setStyleProp: null,
 		setStyleClass: null,
-		addEvent: (node: HostNode, name: string, handler: () => void): void => {
+		addEvent: (node: HostNode, name: string, handler: (e: NeonEvent) => void): void => {
 			const n = node as unknown as TerminalNode;
 			const ev: TerminalEvent = { name, handler };
 			n.events.push(ev);
@@ -194,7 +195,8 @@ export function terminalHost(): Host {
 }
 
 export function fireTerminalEvent(node: TerminalNode, name: string): void {
+	const ev = neonEvent(eventType(name));
 	for (const e of node.events) {
-		if (e.name === name) { e.handler(); }
+		if (e.name === name) { e.handler(ev); }
 	}
 }

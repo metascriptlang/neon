@@ -2,6 +2,8 @@
 // Same tree shape as MockNode (browser/dom.ms counterpart); the difference is
 // in the paint pass (paint.ms) which walks this tree and emits ANSI lines.
 
+import { NeonEvent } from "../../render/event";
+
 export interface TerminalStyle {
 	color: string;
 	bg: string;
@@ -13,7 +15,7 @@ export interface TerminalStyle {
 
 export interface TerminalEvent {
 	name: string;
-	handler: () => void;
+	handler: (e: NeonEvent) => void;
 }
 
 export interface TerminalNode {

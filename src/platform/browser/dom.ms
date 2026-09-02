@@ -4,6 +4,7 @@
 import { Host, HostNode } from "../../render/host";
 import { Style, StyleValue } from "../../render/style";
 import { registerCss, collectCss, onCssChange } from "../../render/sheet";
+import { NeonEvent, neonEvent, eventType } from "../../render/event";
 
 extern class CssStyle {
 	color: cstring;
@@ -56,7 +57,22 @@ extern class DomNode {
 	extern insertBefore(node: DomNode, ref: DomNode | null): void;
 	extern removeChild(child: DomNode): void;
 	extern setAttribute(name: cstring, value: cstring): void;
-	extern addEventListener(name: cstring, handler: () => void): void;
+	extern addEventListener(name: cstring, handler: (e: DomEvent) => void): void;
+}
+
+// Only the fields Neon projects onto NeonEvent. Each is read ONLY for the event
+// types that always carry it (`value` on input/change, `key` on the key events,
+// clientX/Y on the mouse ones) — a DOM event object simply lacks the others, and
+// there is no way to probe for absence across the extern boundary.
+extern class DomEventTarget {
+	value: string;
+}
+
+extern class DomEvent {
+	target: DomEventTarget;
+	clientX: number;
+	clientY: number;
+	key: string;
 }
 
 extern class document {
@@ -81,10 +97,6 @@ function flushSheet(): void {
 }
 
 // "onClick" → "click" (DOM listener names are lowercase, no "on").
-function eventName(name: string): string {
-	return name.slice(2, name.length).toLowerCase();
-}
-
 // docs/STYLE.md §5 — the browser's projection of the portable Style IR.
 // A bare number is points, which on the web means px; a string ("50%", "auto")
 // is already CSS.
@@ -184,8 +196,18 @@ export function domHost(): Host {
 			registerCss(id, css);
 			(node as unknown as DomNode).classList.add(id);
 		},
-		addEvent: (node: HostNode, name: string, handler: () => void): void => {
-			(node as unknown as DomNode).addEventListener(eventName(name), handler);
+		addEvent: (node: HostNode, name: string, handler: (e: NeonEvent) => void): void => {
+			const type = eventType(name);
+			(node as unknown as DomNode).addEventListener(type, (de: DomEvent): void => {
+				const ev = neonEvent(type);
+				if (type === "input" || type === "change") { ev.value = de.target.value; }
+				else if (type === "keydown" || type === "keyup" || type === "keypress") { ev.key = de.key; }
+				else if (type === "click" || type === "dblclick" || type === "mousedown" || type === "mouseup" || type === "mousemove") {
+					ev.x = de.clientX;
+					ev.y = de.clientY;
+				}
+				handler(ev);
+			});
 		},
 		append: (parent: HostNode, child: HostNode): void => {
 			(parent as unknown as DomNode).appendChild(child as unknown as DomNode);

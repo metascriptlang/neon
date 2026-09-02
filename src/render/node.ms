@@ -6,6 +6,7 @@
 import { Style, StyleValue, emptyStyle, mergeStyle, setStyleField } from "./style";
 import { styleToCss } from "./css";
 import { registerCss } from "./sheet";
+import { NeonEvent } from "./event";
 
 // One reactive style field: `width: w()` becomes { name: "width", get: () => w() }.
 // The host layer binds each entry to one effect writing exactly that property.
@@ -23,7 +24,7 @@ export interface VAttr {
 
 export interface VEvent {
 	name: string;          // raw JSX name, e.g. "onClick" (host maps to "click")
-	handler: () => void;
+	handler: (e: NeonEvent) => void;
 }
 
 // A region produces a reactive list of host nodes (For/Show/Index). Typed loosely
@@ -63,7 +64,7 @@ export function dynAttr(name: string, thunk: () => string): VAttr {
 	return { name, value: "", isDyn: true, dyn: thunk };
 }
 
-export function evt(name: string, handler: () => void): VEvent {
+export function evt(name: string, handler: (e: NeonEvent) => void): VEvent {
 	return { name, handler };
 }
 

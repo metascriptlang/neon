@@ -11,6 +11,7 @@
 // ancestor x/y — layout output is translation-only).
 
 import { Host, HostNode } from "../../render/host";
+import { NeonEvent, neonEvent, eventType } from "../../render/event";
 import { Node2D, DrawKind, group, label, addChild, addChildAt, removeChild } from "../../../../void/src/void2d/node";
 import { Color } from "../../../../void/src/void2d/types";
 import { FlexStyle } from "../../../../yoga/src/index";
@@ -27,7 +28,7 @@ interface ParentLink {
 interface EventEntry {
 	node: Node2D;
 	name: string;
-	handler: () => void;
+	handler: (e: NeonEvent) => void;
 }
 
 export interface VoidHost {
@@ -258,7 +259,7 @@ export function createVoidHost(): VoidHost {
 		},
 		setStyleProp: null,
 		setStyleClass: null,
-		addEvent: (node: HostNode, name: string, handler: () => void): void => {
+		addEvent: (node: HostNode, name: string, handler: (e: NeonEvent) => void): void => {
 			events.push({ node: node as unknown as Node2D, name, handler });
 		},
 		append: (parent: HostNode, child: HostNode): void => {
@@ -307,7 +308,10 @@ export function createVoidHost(): VoidHost {
 			const wx = worldX(links, e.node);
 			const wy = worldY(links, e.node);
 			if (x >= wx && x <= wx + e.node.w && y >= wy && y <= wy + e.node.h) {
-				e.handler();
+				const ev = neonEvent(eventType(e.name));
+				ev.x = x;
+				ev.y = y;
+				e.handler(ev);
 			}
 		}
 	};

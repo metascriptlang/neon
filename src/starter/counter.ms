@@ -1,6 +1,6 @@
 // Counter — the canonical first Neon component: own state, bare JSX, no macro call.
-// Buttons only, because the Host contract's addEvent handler takes no event object
-// (see docs/PORT-STATUS.md #4) — anything needing a typed value is not writable yet.
+// Handlers receive a typed NeonEvent since 2026-09-03 (src/render/event.ms) — inputs
+// reading e.value are writable now; this file predates the RN surface (onPress) rename.
 
 import { createSignal } from "../core/signal";
 import { createStyles, styleOf } from "../macros/ui/style";
