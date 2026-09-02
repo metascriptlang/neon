@@ -96,7 +96,7 @@ test "dynamic attr tracks its signal" {
 
 test "string literal attr stays static, on* routes to events" {
 	const [n, setN] = createSignal<number>(0);
-	const node = element(<button type="button" onClick={() => setN(n() + 1)}>go</button>);
+	const node = element(<button type="button" onPress={() => setN(n() + 1)}>go</button>);
 	assert renderToString(node) === "<button type=\"button\">go</button>", "event attr does not render";
 	assert node.attrs.length === 1, "one attr entry";
 	assert node.attrs[0].isDyn === false, "literal attr classified static";

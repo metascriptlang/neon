@@ -22,11 +22,11 @@ test "static + dynamic text + event: direct matches tree" {
 	const host = mockHost();
 
 	const treeRoot = mockNode("root");
-	const view: NeonNode = element(<div class="box"><p>hello {name()}</p><button onClick={inc}>+</button></div>);
+	const view: NeonNode = element(<div class="box"><p>hello {name()}</p><button onPress={inc}>+</button></div>);
 	renderToHost(view, host, treeRoot as unknown as HostNode);
 
 	const directRoot = mockNode("root");
-	const mount = direct(<div class="box"><p>hello {name()}</p><button onClick={inc}>+</button></div>);
+	const mount = direct(<div class="box"><p>hello {name()}</p><button onPress={inc}>+</button></div>);
 	const dnode = mount(host);
 	host.append(directRoot as unknown as HostNode, dnode);
 
@@ -35,7 +35,7 @@ test "static + dynamic text + event: direct matches tree" {
 	assert mockToString(treeRoot) === mockToString(directRoot), "after set: tree=" + mockToString(treeRoot) + " direct=" + mockToString(directRoot);
 
 	const btn = (directRoot as MockNode).children[0].children[1];
-	fireEvent(btn, "onClick");
+	fireEvent(btn, "onPress");
 	assert clicks === 1, "clicks=" + clicks.toString();
 }
 
@@ -269,17 +269,17 @@ test "static attr + reactive attr + event + style mixed on one element" {
 	const host = mockHost();
 
 	const treeRoot = mockNode("root");
-	const tv: NeonNode = element(<button type="button" title={n().toString()} style={dsheet.box} onClick={() => setN(n() + 1)}>go</button>);
+	const tv: NeonNode = element(<button type="button" title={n().toString()} style={dsheet.box} onPress={() => setN(n() + 1)}>go</button>);
 	renderToHost(tv, host, treeRoot as unknown as HostNode);
 
 	const directRoot = mockNode("root");
-	const mount = direct(<button type="button" title={n().toString()} style={dsheet.box} onClick={() => setN(n() + 1)}>go</button>);
+	const mount = direct(<button type="button" title={n().toString()} style={dsheet.box} onPress={() => setN(n() + 1)}>go</button>);
 	const dnode = mount(host);
 	host.append(directRoot as unknown as HostNode, dnode);
 
 	assert mockToString(treeRoot) === mockToString(directRoot), "initial: tree=" + mockToString(treeRoot) + " direct=" + mockToString(directRoot);
 	const dBtn = (directRoot as MockNode).children[0];
-	fireEvent(dBtn, "onClick");
+	fireEvent(dBtn, "onPress");
 	assert mockToString(treeRoot) === mockToString(directRoot), "after click: tree=" + mockToString(treeRoot) + " direct=" + mockToString(directRoot);
 	assert mockToString(directRoot).includes("title=\"1\""), "reactive attr moved: " + mockToString(directRoot);
 	assert dBtn.style !== null, "style set on mixed element";
@@ -294,11 +294,11 @@ test "deep interleave: dyn attr + dyn text + event across 4 levels" {
 	const host = mockHost();
 
 	const treeRoot = mockNode("root");
-	const tv: NeonNode = element(<div id="top"><section class={cls()}><ul><li>{v()}</li><li><button onClick={bump} title={cls()}>go {v()}</button></li></ul><p>tail</p></section></div>);
+	const tv: NeonNode = element(<div id="top"><section class={cls()}><ul><li>{v()}</li><li><button onPress={bump} title={cls()}>go {v()}</button></li></ul><p>tail</p></section></div>);
 	renderToHost(tv, host, treeRoot as unknown as HostNode);
 
 	const directRoot = mockNode("root");
-	const mount = direct(<div id="top"><section class={cls()}><ul><li>{v()}</li><li><button onClick={bump} title={cls()}>go {v()}</button></li></ul><p>tail</p></section></div>);
+	const mount = direct(<div id="top"><section class={cls()}><ul><li>{v()}</li><li><button onPress={bump} title={cls()}>go {v()}</button></li></ul><p>tail</p></section></div>);
 	const dnode = mount(host);
 	host.append(directRoot as unknown as HostNode, dnode);
 
@@ -309,7 +309,7 @@ test "deep interleave: dyn attr + dyn text + event across 4 levels" {
 	assert mockToString(treeRoot) === mockToString(directRoot), "after setV: tree=" + mockToString(treeRoot) + " direct=" + mockToString(directRoot);
 	assert mockToString(directRoot).includes("title=\"b\"") && mockToString(directRoot).includes("go u"), "values moved: " + mockToString(directRoot);
 	const btn = (directRoot as MockNode).children[0].children[0].children[0].children[1].children[0];
-	fireEvent(btn, "onClick");
+	fireEvent(btn, "onPress");
 	assert hits === 1, "event at depth 4 fired, hits=" + hits.toString();
 }
 

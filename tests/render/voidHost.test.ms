@@ -14,7 +14,7 @@ test "counter renders into Node2D tree with parsed flex styles" {
 	const app = element(
 		<div style="flexDirection:column;width:200;height:120">
 			<p style="height:20">Count: {count() + ""}</p>
-			<button style="width:80;height:40" onClick={() => setCount(count() + 1)}>+</button>
+			<button style="width:80;height:40" onPress={() => setCount(count() + 1)}>+</button>
 		</div>
 	);
 	const vh = createVoidHost();
@@ -49,7 +49,7 @@ test "clickAt hits the button and reactive text updates" {
 	const app = element(
 		<div style="flexDirection:column;width:200;height:120">
 			<p style="height:20">Count: {count() + ""}</p>
-			<button style="width:80;height:40" onClick={() => setCount(count() + 1)}>+</button>
+			<button style="width:80;height:40" onPress={() => setCount(count() + 1)}>+</button>
 		</div>
 	);
 	const vh = createVoidHost();
