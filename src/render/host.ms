@@ -67,33 +67,22 @@ export function bindStyleAll(host: Host, node: HostNode, get: () => Style): void
 
 // Build a single host node from a vnode (recursing into children). dynText binds a
 // push-effect; a region child mounts an anchor + reconcile effect into this node.
-// What a JSX expression becomes on this target. Direct emission makes a view the
-// mount closure itself, tree emission makes it a description the walker mounts, so
-// everything that accepts JSX takes `NeonView` and mounts it through `mountView` —
-// the row path in flow.ms is then the same one line on both.
-when (js) {
-	export type NeonView = (host: Host) => HostNode;
+// What a JSX expression becomes, on every target: the mount closure itself.
+// Everything that accepts JSX takes `NeonView` and mounts it through `mountView`,
+// so the row path in flow.ms is one line everywhere. Tree emission stays the
+// substrate underneath — the direct emitter calls renderNode for components and
+// regions, and `viewOf` adapts a description built by hand.
+export type NeonView = (host: Host) => HostNode;
 
-	export function mountView(view: NeonView, host: Host): HostNode {
-		return view(host);
-	}
+export function mountView(view: NeonView, host: Host): HostNode {
+	return view(host);
+}
 
-	// Escape hatch for a description built by hand (`el(...)`, `element(...)`) where
-	// a view is expected. Bare JSX never needs it — the converter already emits the
-	// right shape for the target.
-	export function viewOf(node: NeonNode): NeonView {
-		return (host: Host) => renderNode(node, host);
-	}
-} else {
-	export type NeonView = NeonNode;
-
-	export function mountView(view: NeonView, host: Host): HostNode {
-		return renderNode(view, host);
-	}
-
-	export function viewOf(node: NeonNode): NeonView {
-		return node;
-	}
+// Escape hatch for a description built by hand (`el(...)`, `element(...)`) where
+// a view is expected. Bare JSX never needs it — the converter already emits the
+// right shape.
+export function viewOf(node: NeonNode): NeonView {
+	return (host: Host) => renderNode(node, host);
 }
 
 export function renderNode(vnode: NeonNode, host: Host): HostNode {

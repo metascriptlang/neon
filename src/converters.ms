@@ -3,10 +3,11 @@
 //
 //   render(<App/>, host, parent);        // converter fires at the parameter boundary
 //
-// Which emission a bare <jsx/> lowers to is decided HERE, once, per target. A
-// converter is selected by the EXPECTED TYPE at the boundary, so `NeonView` — the
-// parameter type of the entry point — is what picks the macro. User source is
-// byte-identical on every target; only the `when` branch below differs.
+// Which emission a bare <jsx/> lowers to is decided by the BOUNDARY it crosses: a
+// converter is selected by the expected type, so `NeonView` (the entry point's
+// parameter) picks direct emission and `NeonNode` (a component's return, a server
+// render) picks the tree macro. Same on every target — the tier within direct
+// emission is then the per-site choice `direct.ms` makes.
 //
 // The emitted code calls its runtime helpers BY NAME, which is why this module
 // re-exports them: prelude injection puts them in scope of every file.
@@ -25,32 +26,20 @@ export { renderNode, renderToHost, bindText, bindAttr, NeonView, mountView, view
 export { Host, HostNode } from "./render/hostTypes";
 export { Style, StyleValue, mergeStyle, layerStyles } from "./render/style";
 
-when (js) {
-	// Direct emission: the macro emits the mount code itself, so a view IS the mount
-	// closure and rendering it is calling it. NeonView itself lives in render/host
-	// beside mountView — flow.ms needs it and must not depend on this surface.
-	export converter jsxToView(n: Node): NeonView {
-		return { kind: NodeKind.MacroInvocation, line: n.line, column: n.column, macroName: "direct", macroArgs: [n] };
-	}
+// Direct emission: the macro emits the mount code itself, so a view IS the mount
+// closure and rendering it is calling it. NeonView itself lives in render/host
+// beside mountView — flow.ms needs it and must not depend on this surface.
+export converter jsxToView(n: Node): NeonView {
+	return { kind: NodeKind.MacroInvocation, line: n.line, column: n.column, macroName: "direct", macroArgs: [n] };
+}
 
-	// Components keep the NeonNode contract (createComponent), so on js a bare
-	// JSX at a NeonNode boundary — a component's return, an annotated const —
-	// lowers through the tree macro. On native NeonView IS NeonNode; here the
-	// two targets need their own converter each.
-	export converter jsxToNode(n: Node): NeonNode {
-		return { kind: NodeKind.MacroInvocation, line: n.line, column: n.column, macroName: "element", macroArgs: [n] };
-	}
+// Components keep the NeonNode contract (createComponent), and renderToString
+// consumes a description, so a bare JSX at a NeonNode boundary — a component's
+// return, an annotated const, a server render — lowers through the tree macro.
+export converter jsxToNode(n: Node): NeonNode {
+	return { kind: NodeKind.MacroInvocation, line: n.line, column: n.column, macroName: "element", macroArgs: [n] };
+}
 
-	export function render(view: NeonView, host: Host, parent: HostNode): void {
-		host.append(parent, view(host));
-	}
-} else {
-	// Tree emission: the macro emits a description tree that the shared walker mounts.
-	export converter jsxToView(n: Node): NeonView {
-		return { kind: NodeKind.MacroInvocation, line: n.line, column: n.column, macroName: "element", macroArgs: [n] };
-	}
-
-	export function render(view: NeonView, host: Host, parent: HostNode): void {
-		renderToHost(view, host, parent);
-	}
+export function render(view: NeonView, host: Host, parent: HostNode): void {
+	host.append(parent, view(host));
 }
