@@ -10,7 +10,7 @@ import { direct } from "../../src/macros/ui/direct";
 import { NeonNode, el, attr } from "../../src/render/node";
 import { createComponent } from "../../src/render/component";
 import { Show, For } from "../../src/macros/ui/flow";
-import { renderToHost, renderNode, mockHost, mockNode, mockToString, fireEvent, bindText, bindAttr, MockNode, Host, HostNode } from "../../src/render/host";
+import { renderToHost, renderNode, mockHost, mockNode, mockToString, fireEvent, bindText, bindAttr, MockNode, Host, HostNode, NeonView, viewOf } from "../../src/render/host";
 import { createStyles, styleOf } from "../../src/macros/ui/style";
 import { createTemplate, mountTemplate, childOf, siblingOf } from "../../src/render/template";
 
@@ -448,11 +448,11 @@ test "For reorder through direct matches tree" {
 	const host = mockHost();
 
 	const treeRoot = mockNode("root");
-	const tv: NeonNode = element(<ul><For each={items()}>{(item: number, i: () => number): NeonNode => element(<li>{item.toString()}</li>)}</For></ul>);
+	const tv: NeonNode = element(<ul><For each={items()}>{(item: number, i: () => number): NeonView => viewOf(element(<li>{item.toString()}</li>))}</For></ul>);
 	renderToHost(tv, host, treeRoot as unknown as HostNode);
 
 	const directRoot = mockNode("root");
-	const mount = direct(<ul><For each={items()}>{(item: number, i: () => number): NeonNode => element(<li>{item.toString()}</li>)}</For></ul>);
+	const mount = direct(<ul><For each={items()}>{(item: number, i: () => number): NeonView => viewOf(element(<li>{item.toString()}</li>))}</For></ul>);
 	const dnode = mount(host);
 	host.append(directRoot as unknown as HostNode, dnode);
 
