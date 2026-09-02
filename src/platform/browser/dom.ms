@@ -96,7 +96,6 @@ function flushSheet(): void {
 	(sheetNode as DomNode).textContent = collectCss();
 }
 
-// "onClick" → "click" (DOM listener names are lowercase, no "on").
 // docs/STYLE.md §5 — the browser's projection of the portable Style IR.
 // A bare number is points, which on the web means px; a string ("50%", "auto")
 // is already CSS.
@@ -198,11 +197,16 @@ export function domHost(): Host {
 		},
 		addEvent: (node: HostNode, name: string, handler: (e: NeonEvent) => void): void => {
 			const type = eventType(name);
-			(node as unknown as DomNode).addEventListener(type, (de: DomEvent): void => {
+			// RN surface names project onto DOM listeners; e.type keeps the neon
+			// spelling so handlers compare one vocabulary on every host.
+			let domType = type;
+			if (type === "press") { domType = "click"; }
+			else if (type === "changetext") { domType = "input"; }
+			(node as unknown as DomNode).addEventListener(domType, (de: DomEvent): void => {
 				const ev = neonEvent(type);
-				if (type === "input" || type === "change") { ev.value = de.target.value; }
+				if (type === "changetext" || type === "input" || type === "change") { ev.value = de.target.value; }
 				else if (type === "keydown" || type === "keyup" || type === "keypress") { ev.key = de.key; }
-				else if (type === "click" || type === "dblclick" || type === "mousedown" || type === "mouseup" || type === "mousemove") {
+				else if (type === "press" || type === "click" || type === "dblclick" || type === "mousedown" || type === "mouseup" || type === "mousemove") {
 					ev.x = de.clientX;
 					ev.y = de.clientY;
 				}

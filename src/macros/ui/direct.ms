@@ -233,9 +233,14 @@ export macro direct(node: Node): Node {
 							expr: hostCall("host", "setStyle", [ident(elVar, a.line, a.column), ident(sName, a.line, a.column)], a.line, a.column),
 						});
 					} else if (a.jsxAttrName.startsWith("on")) {
+						// onChangeText text-unwrap — mirrors element.ms, see the comment there.
+						let hVal: Node = a.jsxAttrValue;
+						if (a.jsxAttrName === "onChangeText") {
+							hVal = { kind: NodeKind.ArrowFunction, line: a.line, column: a.column, arrowParams: ["__msCte"], arrowParamTypes: [""], arrowFlags: "", arrowReturnType: "", arrowBody: { kind: NodeKind.CallExpr, line: a.line, column: a.column, callee: a.jsxAttrValue, arguments: [{ kind: NodeKind.MemberExpr, line: a.line, column: a.column, object: { kind: NodeKind.Identifier, line: a.line, column: a.column, name: "__msCte" }, property: "value", isOptional: false }] } };
+						}
 						wStmts.push({
 							kind: NodeKind.ExprStmt, line: a.line, column: a.column,
-							expr: hostCall("host", "addEvent", [ident(elVar, a.line, a.column), strLit(a.jsxAttrName, a.line, a.column), a.jsxAttrValue], a.line, a.column),
+							expr: hostCall("host", "addEvent", [ident(elVar, a.line, a.column), strLit(a.jsxAttrName, a.line, a.column), hVal], a.line, a.column),
 						});
 					} else if (a.jsxAttrValue.kind !== NodeKind.StringLiteral) {
 						wStmts.push({
@@ -437,6 +442,11 @@ export macro direct(node: Node): Node {
 				}
 				const nameLit: Node = { kind: NodeKind.StringLiteral, line: a.line, column: a.column, value: a.jsxAttrName };
 				if (a.jsxAttrName.startsWith("on")) {
+					// onChangeText text-unwrap — mirrors element.ms, see the comment there.
+					let hVal: Node = a.jsxAttrValue;
+					if (a.jsxAttrName === "onChangeText") {
+						hVal = { kind: NodeKind.ArrowFunction, line: a.line, column: a.column, arrowParams: ["__msCte"], arrowParamTypes: [""], arrowFlags: "", arrowReturnType: "", arrowBody: { kind: NodeKind.CallExpr, line: a.line, column: a.column, callee: a.jsxAttrValue, arguments: [{ kind: NodeKind.MemberExpr, line: a.line, column: a.column, object: { kind: NodeKind.Identifier, line: a.line, column: a.column, name: "__msCte" }, property: "value", isOptional: false }] } };
+					}
 					stmts.push({
 						kind: NodeKind.ExprStmt, line: a.line, column: a.column,
 						expr: {
@@ -445,7 +455,7 @@ export macro direct(node: Node): Node {
 							arguments: [
 								{ kind: NodeKind.Identifier, line: a.line, column: a.column, name: rName },
 								nameLit,
-								a.jsxAttrValue,
+								hVal,
 							],
 						},
 					});

@@ -304,7 +304,7 @@ export function createVoidHost(): VoidHost {
 
 	const clickAt = (x: float32, y: float32): void => {
 		for (const e of events) {
-			if (e.name !== "onClick") { continue; }
+			if (e.name !== "onPress") { continue; }
 			const wx = worldX(links, e.node);
 			const wy = worldY(links, e.node);
 			if (x >= wx && x <= wx + e.node.w && y >= wy && y <= wy + e.node.h) {

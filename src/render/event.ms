@@ -23,7 +23,7 @@ export function neonEvent(type: string): NeonEvent {
 	return { type, value: "", x: 0, y: 0, key: "" };
 }
 
-// "onClick" → "click". Every host derives the type the same way, so a handler
+// "onPress" → "click". Every host derives the type the same way, so a handler
 // comparing `e.type` sees one spelling everywhere.
 export function eventType(name: string): string {
 	if (name.length > 2 && name.charAt(0) === "o" && name.charAt(1) === "n") {

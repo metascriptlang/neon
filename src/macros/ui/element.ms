@@ -1,9 +1,9 @@
 // element macro — JSX → reactive NeonNode tree.
 //
-//   element(<div class="box"><p>Hi {name()}</p><button onClick={inc}>+</button></div>)
+//   element(<div class="box"><p>Hi {name()}</p><button onPress={inc}>+</button></div>)
 // expands to el("div", [attr("class","box")], [],
 //                [ el("p", [], [], [text("Hi "), dynText(() => name())]),
-//                  el("button", [], [evt("onClick", inc)], [text("+")]) ])
+//                  el("button", [], [evt("onPress", inc)], [text("+")]) ])
 //
 // el/attr/dynAttr/evt/text/dynText come from "../render/node" and must be in scope
 // at the call site. Attributes whose name starts with "on" become events; a string
@@ -228,10 +228,18 @@ export macro element(node: Node): Node {
 			}
 			const nameLit: Node = { kind: NodeKind.StringLiteral, line: a.line, column: a.column, value: a.jsxAttrName };
 			if (a.jsxAttrName.startsWith("on")) {
+				// RN surface: onChangeText hands the handler the TEXT — wrap the user
+				// handler so the Host contract stays (e: NeonEvent) => void everywhere.
+				// Param is __msCte so a handler reading an outer `e` is never shadowed.
+				// Inline (not a helper): flat Node fields only type inside macro bodies.
+				let hVal: Node = a.jsxAttrValue;
+				if (a.jsxAttrName === "onChangeText") {
+					hVal = { kind: NodeKind.ArrowFunction, line: a.line, column: a.column, arrowParams: ["__msCte"], arrowParamTypes: [""], arrowFlags: "", arrowReturnType: "", arrowBody: { kind: NodeKind.CallExpr, line: a.line, column: a.column, callee: a.jsxAttrValue, arguments: [{ kind: NodeKind.MemberExpr, line: a.line, column: a.column, object: { kind: NodeKind.Identifier, line: a.line, column: a.column, name: "__msCte" }, property: "value", isOptional: false }] } };
+				}
 				events.push({
 					kind: NodeKind.CallExpr, line: a.line, column: a.column,
 					callee: { kind: NodeKind.Identifier, line: a.line, column: a.column, name: "evt" },
-					arguments: [nameLit, a.jsxAttrValue],
+					arguments: [nameLit, hVal],
 				});
 			} else if (a.jsxAttrValue.kind === NodeKind.StringLiteral) {
 				attrs.push({

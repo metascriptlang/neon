@@ -23,7 +23,7 @@ export interface VAttr {
 }
 
 export interface VEvent {
-	name: string;          // raw JSX name, e.g. "onClick" (host maps to "click")
+	name: string;          // raw JSX name, e.g. "onPress" (host maps to "click")
 	handler: (e: NeonEvent) => void;
 }
 
