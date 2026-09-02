@@ -40,6 +40,13 @@ export function collectCss(): string {
 	return s;
 }
 
+// Server rendering has no host to flush into: renderToString registers every
+// rule it meets, and the page emits the whole registry in one block.
+export function mountSheet(): string {
+	const css = collectCss();
+	return css === "" ? "" : "<style>" + css + "</style>";
+}
+
 export function cssRuleCount(): number {
 	return ids.length;
 }
