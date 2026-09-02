@@ -54,6 +54,17 @@ export function bindStyleProp(host: Host, node: HostNode, own: Style, name: stri
 	});
 }
 
+// One effect re-applying the whole style (reactive variant selection, layered
+// calls — any style EXPRESSION that reads a signal). Per-property precision is
+// impossible here: which fields the result carries is only known per run, and
+// a field can fall back to an earlier layer when deselected, so the effect
+// hands the fresh merge to setStyle each time.
+export function bindStyleAll(host: Host, node: HostNode, get: () => Style): void {
+	createEffect(() => {
+		host.setStyle(node, get());
+	});
+}
+
 // Build a single host node from a vnode (recursing into children). dynText binds a
 // push-effect; a region child mounts an anchor + reconcile effect into this node.
 // What a JSX expression becomes on this target. Direct emission makes a view the
@@ -113,7 +124,10 @@ export function renderNode(vnode: NeonNode, host: Host): HostNode {
 	}
 	const vstyle = vnode.style;
 	const dyns = vnode.dynStyle;
-	if (dyns !== null) {
+	const dynAll = vnode.dynStyleAll;
+	if (dynAll !== null) {
+		bindStyleAll(host, node, dynAll as () => Style);
+	} else if (dyns !== null) {
 		// The static style may be a shared sheet constant (or a template-cloned
 		// pointer); per-property writes must land on a private copy, never on it.
 		const own = vstyle !== null ? mergeStyle(vstyle as Style, emptyStyle()) : emptyStyle();

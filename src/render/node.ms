@@ -47,6 +47,7 @@ export interface NeonNode {
 	events: VEvent[];
 	style: Style | null;                // typed style channel (docs/STYLE.md); host projects it
 	dynStyle: VDynStyle[] | null;       // reactive style fields — one per-property effect each (§6)
+	dynStyleAll: (() => Style) | null;  // reactive whole-style thunk — one effect re-applying setStyle
 	region: RegionFn | null;            // non-null → reactive list region (host reconciles it)
 	componentFn: ComponentProducer | null; // non-null → Component variant (renderer expands lazily)
 	componentProps: Map<string, unknown> | null; // attached for debug/introspection
@@ -65,7 +66,7 @@ export function evt(name: string, handler: () => void): VEvent {
 }
 
 export function el(tag: string, attrs: VAttr[], events: VEvent[], children: NeonNode[]): NeonNode {
-	return { tag, children, text: "", isDyn: false, dyn: () => "", attrs, events, style: null, dynStyle: null, region: null, componentFn: null, componentProps: null };
+	return { tag, children, text: "", isDyn: false, dyn: () => "", attrs, events, style: null, dynStyle: null, dynStyleAll: null, region: null, componentFn: null, componentProps: null };
 }
 
 export function withStyle(n: NeonNode, s: Style): NeonNode {
@@ -79,12 +80,17 @@ export function withDynStyle(n: NeonNode, name: string, get: () => StyleValue): 
 	return n;
 }
 
+export function withDynStyleAll(n: NeonNode, get: () => Style): NeonNode {
+	n.dynStyleAll = get;
+	return n;
+}
+
 export function text(s: string): NeonNode {
-	return { tag: "", children: [], text: s, isDyn: false, dyn: () => "", attrs: [], events: [], style: null, dynStyle: null, region: null, componentFn: null, componentProps: null };
+	return { tag: "", children: [], text: s, isDyn: false, dyn: () => "", attrs: [], events: [], style: null, dynStyle: null, dynStyleAll: null, region: null, componentFn: null, componentProps: null };
 }
 
 export function dynText(thunk: () => string): NeonNode {
-	return { tag: "", children: [], text: "", isDyn: true, dyn: thunk, attrs: [], events: [], style: null, dynStyle: null, region: null, componentFn: null, componentProps: null };
+	return { tag: "", children: [], text: "", isDyn: true, dyn: thunk, attrs: [], events: [], style: null, dynStyle: null, dynStyleAll: null, region: null, componentFn: null, componentProps: null };
 }
 
 // A static {expr} child, routed by type: a string becomes a text node, a NeonNode
@@ -102,11 +108,11 @@ export function insChild(n: NeonNode): NeonNode {
 }
 
 export function regionNode(fn: RegionFn): NeonNode {
-	return { tag: "", children: [], text: "", isDyn: false, dyn: () => "", attrs: [], events: [], style: null, dynStyle: null, region: fn, componentFn: null, componentProps: null };
+	return { tag: "", children: [], text: "", isDyn: false, dyn: () => "", attrs: [], events: [], style: null, dynStyle: null, dynStyleAll: null, region: fn, componentFn: null, componentProps: null };
 }
 
 export function componentNode(fn: ComponentProducer, props: Map<string, unknown>): NeonNode {
-	return { tag: "", children: [], text: "", isDyn: false, dyn: () => "", attrs: [], events: [], style: null, dynStyle: null, region: null, componentFn: fn, componentProps: props };
+	return { tag: "", children: [], text: "", isDyn: false, dyn: () => "", attrs: [], events: [], style: null, dynStyle: null, dynStyleAll: null, region: null, componentFn: fn, componentProps: props };
 }
 
 export function renderToString(n: NeonNode): string {
