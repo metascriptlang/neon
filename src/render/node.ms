@@ -3,7 +3,9 @@
 // (static `text` or reactive `dyn` thunk). Renderers consume this: renderToString
 // pulls a snapshot; renderToHost (host.ms) pushes live updates into a host node.
 
-import { Style, StyleValue } from "./style";
+import { Style, StyleValue, emptyStyle, mergeStyle, setStyleField } from "./style";
+import { styleToCss } from "./css";
+import { registerCss } from "./sheet";
 
 // One reactive style field: `width: w()` becomes { name: "width", get: () => w() }.
 // The host layer binds each entry to one effect writing exactly that property.
@@ -127,7 +129,38 @@ export function renderToString(n: NeonNode): string {
 	}
 	if (n.tag === "") { return n.isDyn ? n.dyn() : n.text; }
 	let open = "<" + n.tag;
-	for (const a of n.attrs) { open = open + " " + a.name + "=\"" + (a.isDyn ? a.dyn() : a.value) + "\""; }
+	let cls = "";
+	let inline = "";
+	// The three style channels resolve exactly as renderNode (host.ms) resolves
+	// them, so the markup a server sends matches what the browser would build:
+	// a whole-style thunk wins, then per-property thunks over the static base,
+	// and only a purely static style can travel as a class.
+	const dynAll = n.dynStyleAll;
+	const dyns = n.dynStyle;
+	const base = n.style;
+	if (dynAll !== null) {
+		inline = styleToCss((dynAll as () => Style)());
+	} else if (dyns !== null) {
+		const own = base !== null ? mergeStyle(base as Style, emptyStyle()) : emptyStyle();
+		for (const p of (dyns as VDynStyle[])) { setStyleField(own, p.name, p.get()); }
+		inline = styleToCss(own);
+	} else if (base !== null) {
+		const st = base as Style;
+		const id = st.cssId;
+		if (id !== null) {
+			registerCss(id as string, st.css === null ? "" : st.css as string);
+			cls = id as string;
+		} else {
+			inline = styleToCss(st);
+		}
+	}
+	for (const a of n.attrs) {
+		let v = a.isDyn ? a.dyn() : a.value;
+		if (a.name === "class" && cls !== "") { v = v === "" ? cls : v + " " + cls; cls = ""; }
+		open = open + " " + a.name + "=\"" + v + "\"";
+	}
+	if (cls !== "") { open = open + " class=\"" + cls + "\""; }
+	if (inline !== "") { open = open + " style=\"" + inline + "\""; }
 	let s = open + ">";
 	for (const k of n.children) { s = s + renderToString(k); }
 	return s + "</" + n.tag + ">";
