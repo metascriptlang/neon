@@ -5,6 +5,7 @@ import { Host, HostNode } from "../../render/host";
 import { Style, StyleValue } from "../../render/style";
 import { registerCss, collectCss, onCssChange } from "../../render/sheet";
 import { NeonEvent, neonEvent, eventType } from "../../render/event";
+import { htmlTagFor } from "../../render/node";
 
 extern class CssStyle {
 	color: cstring;
@@ -177,7 +178,7 @@ export function domHost(): Host {
 	onCssChange(flushSheet);
 	flushSheet();
 	return {
-		createElement: (tag: string): HostNode => document.createElement(tag) as unknown as HostNode,
+		createElement: (tag: string): HostNode => document.createElement(htmlTagFor(tag)) as unknown as HostNode,
 		createText: (s: string): HostNode => document.createTextNode(s) as unknown as HostNode,
 		setText: (node: HostNode, s: string): void => {
 			(node as unknown as DomNode).textContent = s;

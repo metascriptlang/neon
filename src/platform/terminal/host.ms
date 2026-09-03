@@ -108,10 +108,18 @@ function applyAttr(node: TerminalNode, name: string, value: string): void {
 	};
 }
 
+// The universal vocabulary (view/text/textinput/pressable) lands on the
+// terminal's box — a container in every case, text arrives as text-node
+// children. Native terminal tags (box/row/hr) pass unchanged.
+function termTag(tag: string): string {
+	if (tag === "view" || tag === "text" || tag === "textinput" || tag === "pressable") { return "box"; }
+	return tag;
+}
+
 export function terminalHost(): Host {
 	return {
 		createElement: (tag: string): HostNode => {
-			return createTerminalNode(tag) as unknown as HostNode;
+			return createTerminalNode(termTag(tag)) as unknown as HostNode;
 		},
 		createText: (s: string): HostNode => {
 			return createTerminalTextNode(s) as unknown as HostNode;
