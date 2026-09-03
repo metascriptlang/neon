@@ -2,14 +2,16 @@
 // state edits that replace the array rather than mutate it (value-keyed rows are
 // reused by identity, so a fresh array is what drives the reconcile).
 //
-// Items are added from a preset ring, not typed: the Host contract's addEvent
-// handler takes no event object, so no component can read an input's value yet.
+// Items are added from a preset ring, not typed: TextInput's onChangeText works
+// on the browser host today, and the starter keeps one vocabulary for every
+// target — typed input joins when a native host carries it.
 
 import { createSignal } from "../core/signal";
 import { createStyles, styleOf } from "../macros/ui/style";
 import { NeonNode } from "../render/node";
 import { NeonView } from "../render/host";
 import { For, Show } from "../macros/ui/flow";
+import { View, Text, Pressable } from "./rn";
 
 export interface Todo {
 	id: int32;
@@ -73,21 +75,21 @@ export function TodoList(): NeonNode {
 		return true;
 	};
 
-	return <div style={styles.container}>
-		<div style={styles.title}>Todo</div>
-		<button style={styles.button} onPress={() => add()}>add</button>
+	return <View style={styles.container}>
+		<Text style={styles.title}>Todo</Text>
+		<Pressable style={styles.button} onPress={() => add()}>add</Pressable>
 		<Show when={allDone()}>
-			<div style={styles.banner}>all done</div>
+			<Text style={styles.banner}>all done</Text>
 		</Show>
 		<Show when={todos().length === 0}>
-			<div style={styles.empty}>nothing to do</div>
+			<Text style={styles.empty}>nothing to do</Text>
 		</Show>
 		<For each={todos()}>
-			{(todo: Todo, i: () => int32): NeonView => <div style={styles.row}>
-				<div style={todo.done ? styles.labelDone : styles.label}>{todo.title}</div>
-				<button style={styles.button} onPress={() => toggle(todo.id)}>{todo.done ? "undo" : "done"}</button>
-				<button style={styles.button} onPress={() => remove(todo.id)}>x</button>
-			</div>}
+			{(todo: Todo, i: () => int32): NeonView => <View style={styles.row}>
+				<Text style={todo.done ? styles.labelDone : styles.label}>{todo.title}</Text>
+				<Pressable style={styles.button} onPress={() => toggle(todo.id)}>{todo.done ? "undo" : "done"}</Pressable>
+				<Pressable style={styles.button} onPress={() => remove(todo.id)}>x</Pressable>
+			</View>}
 		</For>
-	</div>;
+	</View>;
 }

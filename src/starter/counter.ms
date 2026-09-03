@@ -1,10 +1,11 @@
-// Counter — the canonical first Neon component: own state, bare JSX, no macro call.
-// Handlers receive a typed NeonEvent since 2026-09-03 (src/render/event.ms) — inputs
-// reading e.value are writable now; this file predates the RN surface (onPress) rename.
+// Counter — the canonical first Neon component: own state, bare JSX, no macro
+// call, speaking the universal vocabulary (View/Text/Pressable — hosts translate
+// the wire tags; handlers receive a typed NeonEvent since 2026-09-03).
 
 import { createSignal } from "../core/signal";
 import { createStyles, styleOf } from "../macros/ui/style";
 import { NeonNode } from "../render/node";
+import { View, Text, Pressable } from "./rn";
 
 const styles = createStyles({
 	container: { flexDirection: "column", alignItems: "center", gap: 12, padding: 24 },
@@ -17,14 +18,14 @@ const styles = createStyles({
 
 export function Counter(): NeonNode {
 	const [count, setCount] = createSignal(0);
-	return <div style={styles.container}>
-		<div style={styles.title}>Neon Counter</div>
-		<div style={styles.value}>{count().toString()}</div>
-		<div style={styles.row}>
-			<button style={styles.button} onPress={() => setCount(count() - 1)}>-</button>
-			<button style={styles.button} onPress={() => setCount(0)}>reset</button>
-			<button style={styles.button} onPress={() => setCount(count() + 1)}>+</button>
-		</div>
-		<div style={styles.hint}>{count() % 2 === 0 ? "even" : "odd"}</div>
-	</div>;
+	return <View style={styles.container}>
+		<Text style={styles.title}>Neon Counter</Text>
+		<Text style={styles.value}>{count().toString()}</Text>
+		<View style={styles.row}>
+			<Pressable style={styles.button} onPress={() => setCount(count() - 1)}>-</Pressable>
+			<Pressable style={styles.button} onPress={() => setCount(0)}>reset</Pressable>
+			<Pressable style={styles.button} onPress={() => setCount(count() + 1)}>+</Pressable>
+		</View>
+		<Text style={styles.hint}>{count() % 2 === 0 ? "even" : "odd"}</Text>
+	</View>;
 }
