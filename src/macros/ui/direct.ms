@@ -44,12 +44,16 @@ export macro direct(node: Node): Node {
 				keys.push(a.jsxAttrName);
 				if (a.jsxAttrValue.kind === NodeKind.StringLiteral) {
 					values.push(a.jsxAttrValue);
+				} else if (a.jsxAttrValue.kind === NodeKind.ArrowFunction || a.jsxAttrValue.kind === NodeKind.FunctionExpr) {
+					values.push(a.jsxAttrValue);
 				} else {
 					values.push({ kind: NodeKind.ArrowFunction, line: a.line, column: a.column, arrowParams: [], arrowParamTypes: [], arrowBody: a.jsxAttrValue, arrowFlags: "", arrowReturnType: "" });
 				}
 			}
 		}
+		// Children rules mirror element.ms exactly — the two macros stay in lockstep.
 		let compKids: Node[] = [];
+		let singleNeedsArray = false;
 		for (const c of node.jsxChildren) {
 			if (c.kind === NodeKind.JSXText) {
 				const cleaned = cleanJsxText(c.jsxText);
@@ -59,14 +63,38 @@ export macro direct(node: Node): Node {
 						callee: { kind: NodeKind.Identifier, line: c.line, column: c.column, name: "text" },
 						arguments: [{ kind: NodeKind.StringLiteral, line: c.line, column: c.column, value: cleaned }],
 					});
+					if (node.jsxChildren.length === 1) { singleNeedsArray = true; }
 				}
 			} else if (c.kind === NodeKind.JSXExpressionContainer) {
-				compKids.push(c.jsxExpr);
+				const ex = c.jsxExpr;
+				if (ex.kind === NodeKind.ArrowFunction || ex.kind === NodeKind.FunctionExpr) {
+					compKids.push(ex);
+				} else {
+					compKids.push({
+						kind: NodeKind.CallExpr, line: c.line, column: c.column,
+						callee: { kind: NodeKind.Identifier, line: c.line, column: c.column, name: "dynText" },
+						arguments: [{ kind: NodeKind.ArrowFunction, line: c.line, column: c.column, arrowParams: [], arrowParamTypes: [], arrowBody: ex, arrowFlags: "", arrowReturnType: "" }],
+					});
+					if (node.jsxChildren.length === 1) { singleNeedsArray = true; }
+				}
 			} else if (c.kind === NodeKind.JSXElement) {
-				compKids.push(c);
+				const t = node.jsxTag;
+				const isStarterTag = t === "View" || t === "Text" || t === "Pressable" || t === "TextInput";
+				if (isStarterTag && node.jsxChildren.length === 1) {
+					compKids.push({
+						kind: NodeKind.MacroInvocation, line: c.line, column: c.column,
+						macroName: "element", macroArgs: [c],
+					});
+					singleNeedsArray = true;
+				} else {
+					compKids.push(c);
+				}
 			}
 		}
-		if (compKids.length === 1) {
+		if (compKids.length === 1 && singleNeedsArray) {
+			keys.push("children");
+			values.push({ kind: NodeKind.ArrayLiteral, line: L, column: C, elements: compKids });
+		} else if (compKids.length === 1) {
 			keys.push("children");
 			values.push(compKids[0]);
 		} else if (compKids.length > 1) {
@@ -572,12 +600,15 @@ export macro direct(node: Node): Node {
 						ckeys.push(a.jsxAttrName);
 						if (a.jsxAttrValue.kind === NodeKind.StringLiteral) {
 							cvalues.push(a.jsxAttrValue);
+						} else if (a.jsxAttrValue.kind === NodeKind.ArrowFunction || a.jsxAttrValue.kind === NodeKind.FunctionExpr) {
+							cvalues.push(a.jsxAttrValue);
 						} else {
 							cvalues.push({ kind: NodeKind.ArrowFunction, line: a.line, column: a.column, arrowParams: [], arrowParamTypes: [], arrowBody: a.jsxAttrValue, arrowFlags: "", arrowReturnType: "" });
 						}
 					}
 				}
 				let cKids: Node[] = [];
+				let cNeedsArray = false;
 				for (const gc of c.jsxChildren) {
 					if (gc.kind === NodeKind.JSXText) {
 						const gcleaned = cleanJsxText(gc.jsxText);
@@ -587,14 +618,38 @@ export macro direct(node: Node): Node {
 								callee: { kind: NodeKind.Identifier, line: gc.line, column: gc.column, name: "text" },
 								arguments: [{ kind: NodeKind.StringLiteral, line: gc.line, column: gc.column, value: gcleaned }],
 							});
+							if (c.jsxChildren.length === 1) { cNeedsArray = true; }
 						}
 					} else if (gc.kind === NodeKind.JSXExpressionContainer) {
-						cKids.push(gc.jsxExpr);
+						const gex = gc.jsxExpr;
+						if (gex.kind === NodeKind.ArrowFunction || gex.kind === NodeKind.FunctionExpr) {
+							cKids.push(gex);
+						} else {
+							cKids.push({
+								kind: NodeKind.CallExpr, line: gc.line, column: gc.column,
+								callee: { kind: NodeKind.Identifier, line: gc.line, column: gc.column, name: "dynText" },
+								arguments: [{ kind: NodeKind.ArrowFunction, line: gc.line, column: gc.column, arrowParams: [], arrowParamTypes: [], arrowBody: gex, arrowFlags: "", arrowReturnType: "" }],
+							});
+							if (c.jsxChildren.length === 1) { cNeedsArray = true; }
+						}
 					} else if (gc.kind === NodeKind.JSXElement) {
-						cKids.push(gc);
+						const ct = c.jsxTag;
+						const cIsStarter = ct === "View" || ct === "Text" || ct === "Pressable" || ct === "TextInput";
+						if (cIsStarter && c.jsxChildren.length === 1) {
+							cKids.push({
+								kind: NodeKind.MacroInvocation, line: gc.line, column: gc.column,
+								macroName: "element", macroArgs: [gc],
+							});
+							cNeedsArray = true;
+						} else {
+							cKids.push(gc);
+						}
 					}
 				}
-				if (cKids.length === 1) {
+				if (cKids.length === 1 && cNeedsArray) {
+					ckeys.push("children");
+					cvalues.push({ kind: NodeKind.ArrayLiteral, line: c.line, column: c.column, elements: cKids });
+				} else if (cKids.length === 1) {
 					ckeys.push("children");
 					cvalues.push(cKids[0]);
 				} else if (cKids.length > 1) {

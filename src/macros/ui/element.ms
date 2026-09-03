@@ -93,14 +93,26 @@ export macro element(node: Node): Node {
 				keys.push(a.jsxAttrName);
 				if (a.jsxAttrValue.kind === NodeKind.StringLiteral) {
 					values.push(a.jsxAttrValue);
+				} else if (a.jsxAttrValue.kind === NodeKind.ArrowFunction || a.jsxAttrValue.kind === NodeKind.FunctionExpr) {
+					// An arrow/function literal crosses RAW: the field's declared type
+					// contextually types it (and pads its arity — bug118), so handler
+					// props declare the FLAT handler type. Wrapping it in a synthesized
+					// thunk instead both double-wraps (a thunk-valued prop would arrive
+					// as a thunk OF a thunk) and miscompiles on C today (BUGS.md §2 —
+					// engine-synthesized expr-bodied arrow around a user arrow).
+					values.push(a.jsxAttrValue);
 				} else {
 					values.push({ kind: NodeKind.ArrowFunction, line: a.line, column: a.column, arrowParams: [], arrowParamTypes: [], arrowBody: a.jsxAttrValue, arrowFlags: "", arrowReturnType: "" });
 				}
 			}
 		}
 		let compKids: Node[] = [];
+		let singleNeedsArray = false;
 		for (const c of node.jsxChildren) {
 			if (c.kind === NodeKind.JSXText) {
+				// A raw JSXText does not survive the macro wire as a property value,
+				// so a text child lowers HERE to text() — and a SINGLE one arrives
+				// as [text()] (RN: strings live inside containers' children lists).
 				const cleaned = cleanJsxText(c.jsxText);
 				if (cleaned !== "") {
 					compKids.push({
@@ -108,14 +120,52 @@ export macro element(node: Node): Node {
 						callee: { kind: NodeKind.Identifier, line: c.line, column: c.column, name: "text" },
 						arguments: [{ kind: NodeKind.StringLiteral, line: c.line, column: c.column, value: cleaned }],
 					});
+					if (node.jsxChildren.length === 1) { singleNeedsArray = true; }
 				}
 			} else if (c.kind === NodeKind.JSXExpressionContainer) {
-				compKids.push(c.jsxExpr);
+				// An ARROW child crosses raw — flow components (For/Show) declare
+				// fn-typed children and the boundary types them. Any other
+				// expression is reactive TEXT exactly as in lowercase tags:
+				// dynText(() => expr) (Counter's count={n()} thunk shape, proven
+				// on C), so <Text>Count: {count()}</Text> just works.
+				const ex = c.jsxExpr;
+				if (ex.kind === NodeKind.ArrowFunction || ex.kind === NodeKind.FunctionExpr) {
+					compKids.push(ex);
+				} else {
+					compKids.push({
+						kind: NodeKind.CallExpr, line: c.line, column: c.column,
+						callee: { kind: NodeKind.Identifier, line: c.line, column: c.column, name: "dynText" },
+						arguments: [{ kind: NodeKind.ArrowFunction, line: c.line, column: c.column, arrowParams: [], arrowParamTypes: [], arrowBody: ex, arrowFlags: "", arrowReturnType: "" }],
+					});
+					if (node.jsxChildren.length === 1) { singleNeedsArray = true; }
+				}
 			} else if (c.kind === NodeKind.JSXElement) {
-				compKids.push(c);
+				// The starter RN vocabulary (View/Text/Pressable/TextInput) mounts
+				// children as NeonNode[], so a single element child arrives as
+				// [element(…)] — built HERE because nested element() calls from a
+				// MACRO re-expand (header) while ones nested in a converter result
+				// do not. Every OTHER capitalized component keeps its own children
+				// contract: a single element child crosses RAW and the boundary
+				// lowers it (NeonView → jsxToView, NeonNode → jsxToNode) — Show's
+				// element child, Card-style single-node props. Unifying these is
+				// gated on the converter registry matching array targets exactly.
+				const t = node.jsxTag;
+				const isStarterTag = t === "View" || t === "Text" || t === "Pressable" || t === "TextInput";
+				if (isStarterTag && node.jsxChildren.length === 1) {
+					compKids.push({
+						kind: NodeKind.MacroInvocation, line: c.line, column: c.column,
+						macroName: "element", macroArgs: [c],
+					});
+					singleNeedsArray = true;
+				} else {
+					compKids.push(c);
+				}
 			}
 		}
-		if (compKids.length === 1) {
+		if (compKids.length === 1 && singleNeedsArray) {
+			keys.push("children");
+			values.push({ kind: NodeKind.ArrayLiteral, line: node.line, column: node.column, elements: compKids });
+		} else if (compKids.length === 1) {
 			keys.push("children");
 			values.push(compKids[0]);
 		} else if (compKids.length > 1) {
