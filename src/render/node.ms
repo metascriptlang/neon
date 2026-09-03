@@ -118,6 +118,18 @@ export function componentNode(fn: ComponentProducer, props: Map<string, unknown>
 	return { tag: "", children: [], text: "", isDyn: false, dyn: () => "", attrs: [], events: [], style: null, dynStyle: null, dynStyleAll: null, region: null, componentFn: fn, componentProps: props };
 }
 
+// Universal wire tags → html. One table shared by SSR (renderToString) and the
+// browser host's createElement — the user-facing names (View/Text/…) are the
+// starter components in src/starter/rn.ms; hosts receive the lowercase wire
+// tag and translate (browser: this table; terminal: its boxes; void ignores).
+export function htmlTagFor(tag: string): string {
+	if (tag === "view") { return "div"; }
+	if (tag === "text") { return "span"; }
+	if (tag === "textinput") { return "input"; }
+	if (tag === "pressable") { return "button"; }
+	return tag;
+}
+
 export function renderToString(n: NeonNode): string {
 	const comp = n.componentFn;
 	if (comp !== null) {
@@ -129,7 +141,7 @@ export function renderToString(n: NeonNode): string {
 		throw "renderToString does not render reactive regions (For/Show/Index) — render via renderToHost with a host adapter";
 	}
 	if (n.tag === "") { return n.isDyn ? n.dyn() : n.text; }
-	let open = "<" + n.tag;
+	let open = "<" + htmlTagFor(n.tag);
 	let cls = "";
 	let inline = "";
 	// The three style channels resolve exactly as renderNode (host.ms) resolves
@@ -164,5 +176,5 @@ export function renderToString(n: NeonNode): string {
 	if (inline !== "") { open = open + " style=\"" + inline + "\""; }
 	let s = open + ">";
 	for (const k of n.children) { s = s + renderToString(k); }
-	return s + "</" + n.tag + ">";
+	return s + "</" + htmlTagFor(n.tag) + ">";
 }
