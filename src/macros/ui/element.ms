@@ -96,7 +96,8 @@ export macro element(node: Node): Node {
 					|| a.jsxAttrValue.kind === NodeKind.BooleanLiteral) {
 					values.push(a.jsxAttrValue);
 				} else if (a.jsxAttrValue.kind === NodeKind.ArrowFunction || a.jsxAttrValue.kind === NodeKind.FunctionExpr
-					|| a.jsxAttrName === "ref") {
+					|| a.jsxAttrName === "ref"
+					|| (a.jsxAttrName.startsWith("on") && a.jsxAttrName.charAt(2) >= "A" && a.jsxAttrName.charAt(2) <= "Z")) {
 					// An arrow/function literal crosses RAW: the field's declared type
 					// contextually types it (and pads its arity — bug118), so handler
 					// props declare the FLAT handler type. Wrapping it in a synthesized

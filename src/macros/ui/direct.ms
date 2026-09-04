@@ -625,7 +625,8 @@ export macro direct(node: Node): Node {
 						if (a.jsxAttrValue.kind === NodeKind.StringLiteral) {
 							cvalues.push(a.jsxAttrValue);
 						} else if (a.jsxAttrValue.kind === NodeKind.ArrowFunction || a.jsxAttrValue.kind === NodeKind.FunctionExpr
-							|| a.jsxAttrName === "ref") {
+							|| a.jsxAttrName === "ref"
+							|| (a.jsxAttrName.startsWith("on") && a.jsxAttrName.charAt(2) >= "A" && a.jsxAttrName.charAt(2) <= "Z")) {
 							cvalues.push(a.jsxAttrValue);
 						} else {
 							cvalues.push({ kind: NodeKind.ArrowFunction, line: a.line, column: a.column, arrowParams: [], arrowParamTypes: [], arrowBody: a.jsxAttrValue, arrowFlags: "", arrowReturnType: "" });

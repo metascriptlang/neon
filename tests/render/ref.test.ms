@@ -5,8 +5,9 @@ import { createSignal } from "../../src/core/signal";
 import { element } from "../../src/macros/ui/element";
 import { direct } from "../../src/macros/ui/direct";
 import { NeonNode } from "../../src/render/node";
-import { HostNode, MockNode, mockNode, mockHost, renderToHost, mockToString } from "../../src/render/host";
-import { View, TextInput } from "../../src/starter/rn";
+import { HostNode, MockNode, mockNode, mockHost, renderToHost, mockToString, fireEvent } from "../../src/render/host";
+import { View, TextInput, Pressable, Text } from "../../src/starter/rn";
+import { NeonEvent } from "../../src/render/event";
 
 test "ref hands the completed host node to the callback — tree emission" {
 	let seen = "";
@@ -76,6 +77,18 @@ test "ref fires after a reactive child is bound, on both emissions" {
 
 	assert treeSeen === "<p>7</p>", "tree ref saw the bound child, seen=" + treeSeen;
 	assert directSeen === "<p>7</p>", "direct ref saw the bound child, seen=" + directSeen;
+}
+
+test "a callback prop crosses raw when it is named, not only when it is a literal" {
+	let hits = 0;
+	const inc: (e: NeonEvent) => void = (e) => { hits = hits + 1; };
+	let seenTag = "";
+	const grab: (h: HostNode) => void = (h) => { seenTag = (h as unknown as MockNode).tag; };
+	const root: MockNode = mockNode("root");
+	renderToHost(element(<Pressable onPress={inc} ref={grab}><Text>+</Text></Pressable>), mockHost(), root as unknown as HostNode);
+	fireEvent(root.children[0], "onPress");
+	assert hits === 1, "named handler ran, hits=" + hits.toString();
+	assert seenTag === "pressable", "named ref ran, tag=" + seenTag;
 }
 
 test "an inline arrow ref crosses raw" {
