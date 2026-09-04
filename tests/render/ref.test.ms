@@ -61,7 +61,7 @@ test "ref reaches the universal vocabulary, not just raw tags" {
 }
 
 test "ref fires after a reactive child is bound, on both emissions" {
-	const [n, _setN] = createSignal("7");
+	const [n, _setN] = createSignal(7);
 	let treeSeen = "";
 	let directSeen = "";
 	const grabTree: (h: HostNode) => void = (h) => { treeSeen = mockToString(h as unknown as MockNode); };
@@ -69,10 +69,10 @@ test "ref fires after a reactive child is bound, on both emissions" {
 	const host = mockHost();
 
 	const treeRoot: MockNode = mockNode("root");
-	renderToHost(element(<p ref={grabTree}>{n()}</p>), host, treeRoot as unknown as HostNode);
+	renderToHost(element(<p ref={grabTree}>{n().toString()}</p>), host, treeRoot as unknown as HostNode);
 
 	const directRoot: MockNode = mockNode("root");
-	const mount = direct(<p ref={grabDirect}>{n()}</p>);
+	const mount = direct(<p ref={grabDirect}>{n().toString()}</p>);
 	host.append(directRoot as unknown as HostNode, mount(host));
 
 	assert treeSeen === "<p>7</p>", "tree ref saw the bound child, seen=" + treeSeen;
