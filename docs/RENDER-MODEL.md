@@ -3,11 +3,12 @@
 How JSX becomes live UI. Companion to `RENDER-LAYERS.md` (which answers *who paints,
 per platform*); this doc answers *how mount code is produced and what runs when*.
 
-**Naming.** The two ways the mount plan is produced:
+**Naming.** The two ways the mount plan is produced. Which one a given JSX site uses is
+decided at COMPILE time and exposed to nobody — see *Selection* below.
 
 - **Tree emission** — the `element` macro emits a NeonNode *description tree*;
   the shared walker (`renderNode`, `src/render/host.ms`) mounts it at runtime.
-  Default today, on every host.
+  The substrate: direct emission itself falls back to it for components and regions.
 - **Direct emission** — the macro emits the *mount instructions themselves*,
   specialized per JSX site. V1+D1+D2+D3 landed (`src/macros/ui/direct.ms`, differential-pinned
   by `tests/render/direct.test.ms`): lowercase elements, attr classification
@@ -35,10 +36,49 @@ per platform*); this doc answers *how mount code is produced and what runs when*
   emission), and events/style are applied per instance, never baked into the
   skeleton. Not yet: `<Index>` differential cells, HTML-string fast path for the
   DOM skeleton (Solid's one-time `innerHTML` parse — the contract already allows
-  it), `build.ms` selection (browser first).
+  it).
 
 Do NOT call these "model A/B" — `RENDER-LAYERS.md` already uses Layer A/B/C for
 reconcile/paint/GPU and the letters collide.
+
+## Selection — per site, at compile time, exposed to nobody
+
+**The axis is not static vs dynamic.** It is: *does the SHAPE of this subtree change
+while it runs?* Two different things get called "dynamic" and they select opposite
+emissions:
+
+| | what changes | how many nodes | emission |
+|---|---|---|---|
+| **dynamic value** | `{count()}`, `class={cls()}`, `style={s()}` | fixed — the spots are known at compile time | **direct** — one effect per spot, writing the host directly |
+| **dynamic structure** | `<For>`, `<Show>`, `<Index>`, a component body | changes at run time | **tree** — a description the walker mounts, reached through the runtime seam |
+
+So a fully reactive element is still direct-emitted: six changing text spots is six
+effects over a skeleton whose shape never moves (measured 1.5x faster than tree even
+at 6/6 dynamic, §Gate (3) — native). What direct emission never does is guess a node
+count — the moment a subtree contains a region or a component tag, that part goes to
+the seam.
+
+**Do not read this as "direct replaced tree".** Tree emission is the substrate and is
+permanent: it mounts every region and every component body, `createComponent` takes and
+returns `NeonNode` on every target, and `renderToString` (SSR) consumes a description
+because a mount closure cannot be serialized. The direct emitter calls `element`,
+`text`, `createComponent`, `renderNode` and `renderToHost` BY NAME to get there.
+
+There is no build flag, no `direct()` in user code, and no per-target policy to tune.
+A JSX site lowers by what its own shape can support:
+
+| the subtree is | emits as | where |
+|---|---|---|
+| lowercase elements, text, attrs, events, style — any number of them reactive (`isPureSubtree`) | template built once, `cloneNode` per mount, compile-time walk path to each hole | `direct.ms` D4 |
+| that, plus a component tag or a region anywhere inside | one flat inline mount block; the component/region parts become runtime calls | `direct.ms` D3 |
+| a component body, `Show`, `For`, `Index` | tree emission through the runtime seam | `element.ms` |
+
+Nothing about this is per-target any more (LANDED 2026-09-03). `src/converters.ms`
+used to select the macro by target — `js` → `direct`, native → `element` — so a native
+build reached neither template-clone nor flat emission. The C-lane measurement below
+retired that split: `NeonView` is a mount closure on every target, `jsxToView` picks
+`direct` and `jsxToNode` picks `element` everywhere, and both `when (js)` blocks
+(`render/host.ms`, `converters.ms`) are gone.
 
 ## The system is 3 parts; emissions differ in ONE
 
@@ -180,7 +220,7 @@ Still open for the DOM host: materialising the skeleton from an HTML string
 `createTemplate` builder body would change — and it buys startup cost, not
 per-mount cost, which is why it was not required to land D4.
 
-## Per-platform economics — why direct is opt-in, not default
+## Per-platform economics — what the removal is worth, per platform
 
 Direct emission removes description-tree allocation + the interpreter loop at
 mount. What that removal is worth depends on the platform:
@@ -191,19 +231,25 @@ mount. What that removal is worth depends on the platform:
 | Terminal / Void / iOS (C backend) | compiled C | **small** — the walk is already cheap native code; mount is dominated by layout/paint/GPU; the win is allocations only |
 | Embedded / IoT | compiled C | **possibly negative** — unrolled mount code at every JSX site grows the binary; one shared ~30-line walker is smaller and icache-friendlier |
 
-Policy: tree emission everywhere until, per target, a benchmark shows a real
-gap. Gates (1) and (2) are CLOSED: the closure codegen debts direct emission
-leans on (loop+nested-closure snapshot, expr-bodied-arrow env) were fixed
-2026-08-07/08, and attribute classification landed in both emissions
-(D2, 2026-08-09). What remains per target is (3) the benchmark; then direct
-emission lands behind a `build.ms` switch, browser first. User code and types
-change zero characters.
+This table was once read as a policy — "tree everywhere until a per-target benchmark
+shows a gap, then a `build.ms` switch, browser first." The measurements below retired
+that. Read the table as *how much a site gains*, never as *which tier a target picks*:
+the tier is a property of the SITE (see *Selection*), and the IoT row's binary-size
+concern applies to flat emission, not to template-clone, which shrinks per-site code.
 
-### Gate (3) — MEASURED 2026-08-11, and it changes the plan above
+Its C-lane prediction was also **wrong, and was never measured until 2026-09-03**. The
+row said "small — the walk is already cheap native code; the win is allocations only".
+Measured, the C lane tracks the browser curve almost exactly (§Gate (3) — native).
 
-The `build.ms` switch is **superseded**. Measurements below say the choice is
-per-JSX-SITE and fully decidable at compile time, so nothing should be exposed —
-not a build flag, and not a `direct()` call in user code.
+Three gates guarded the work; all three are closed. (1) and (2) were the closure
+codegen debts it leans on (loop+nested-closure snapshot, expr-bodied-arrow env, fixed
+2026-08-07/08) and attribute classification in both emissions (D2, 2026-08-09).
+
+### Gate (3) — MEASURED 2026-08-11
+
+The choice is per-JSX-SITE and fully decidable at compile time, so nothing is exposed —
+no build flag, no `direct()` call in user code. User code and types change zero
+characters either way.
 
 Prerequisite that made the benchmark meaningful at all: before template hoisting
 landed (recompiler `1840976`), the per-site cell was *slower than tree* (19.00 vs
@@ -245,10 +291,11 @@ Direction, therefore: keep both emissions (tree stays the substrate — the dire
 emitter itself calls `element`/`text`/`createComponent`/`renderNode`/
 `renderToHost` by name for components and regions), and make template+clone the
 DEFAULT inside `element` for any subtree `isPureSubtree` already accepts. That
-turns `direct()` from a user-facing macro into an internal emission strategy, and
-subsumes the row question: the region API needs to accept a mount closure, but no
-app code changes. Blocked on the C-backend defect in §2 — the region body is
-literally `f(x)(y)`, which that backend cannot emit.
+turns `direct()` from a user-facing macro into an internal emission strategy. The row
+half of it landed on 2026-08-12 — see *Rows* below, where the region API took a mount
+closure without any app code changing. The `f(x)(y)` C-backend defect (`BUGS.md` §2,
+still open) is the shape to watch when the fold reaches native: `mountView` sidesteps
+it on the row path, nothing guarantees the same inside `element`.
 
 Caveats on the numbers, so they are not over-trusted: measured on a machine under
 load 4–54 from a parallel build (ratios were stable across runs, absolute values
@@ -256,6 +303,31 @@ were not — the 6-cell runs 2 and 3 are inflated 3x and were discarded); rows a
 built into a DETACHED box, so layout and paint are excluded; a row carrying event
 handlers was not measured. Good enough to choose an architecture, not yet the
 number to publish.
+
+### Gate (3) — native, MEASURED 2026-09-03
+
+The 2026-08-11/12 sweeps all ran in headless Chrome, so every number above is a JS-lane
+number and the C lane went on being guessed at. `probe/nativeEmit_q4m.ms`, release build
+(`--danger --cc=clang`), 1000 mounts of a 6-cell row, min of 3 rounds, 3 runs — the host
+is mockHost with `cloneNode: null`, which is what terminal and void actually advertise,
+so template mode falls back to re-running the builder and emits exactly the ops tree
+emission does. Everything direct wins here is the NeonNode allocation and the walker's
+interpretation loop, nothing else:
+
+| dynamic spots / 6 | tree (ms) | direct (ms) | ratio |
+|---|---|---|---|
+| 0 | 3.81–4.46 | 1.44–1.60 | **2.6–2.8x** |
+| 3 | 4.59–5.28 | 2.27–2.59 | **2.0x** |
+| 6 | 6.14–7.24 | 4.04–4.57 | **1.5x** |
+
+Same shape as the browser (2.86 / 2.00 / 1.63 / 1.21), so "small — allocations only" is
+refuted: on this workload the allocations ARE the cost. Two caveats, so the number is
+not over-trusted: op counting cannot see any of this (with no cheap clone the two
+emissions issue identical host ops), and a real native host does more work per op than
+the mock, which dilutes the ratio — this is an upper bound, not a shipped-app figure.
+Debug builds read higher still (4.04 / 2.28 / 1.47); the table is release.
+
+That closed the last per-target branch — see *Selection*.
 
 ## Rows — the boundary type carries the emission (LANDED 2026-08-12)
 
