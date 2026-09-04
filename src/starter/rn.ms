@@ -122,7 +122,7 @@ export function Pressable(props: PressableProps): NeonNode {
 					outPending = null;
 					fireOut(held as NeonEvent);
 				}
-			}, MIN_PRESS_DURATION_MS);
+			}, MIN_PRESS_DURATION_MS) as int32;
 			if (onLongPress !== null) {
 				const d = props.delayLongPress;
 				const delay = d === null ? LONG_PRESS_DELAY_MS : (d as number);
@@ -130,7 +130,7 @@ export function Pressable(props: PressableProps): NeonNode {
 					if (state !== 1) { return; }
 					state = 2;
 					(onLongPress as (x: NeonEvent) => void)(e);
-				}, delay);
+				}, delay) as int32;
 			}
 		};
 		// RN: `isPressCanceledByLongPress` — a press that already fired
