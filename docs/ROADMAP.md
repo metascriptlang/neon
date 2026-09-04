@@ -6,7 +6,7 @@ What we build next, in order, and why that order. **Forward-looking only.**
 |---|---|
 | this file | the order of work across the whole framework |
 | `docs/STYLE.md` §9 | the style/theme stages (S1-S4) in detail |
-| `docs/RENDER-MODEL.md` | the two emission tiers and the lifecycle |
+| `docs/RENDER-MODEL.md` | the emission tiers, how a site picks one, and the lifecycle |
 | `docs/PORT-STATUS.md` | the Nim → MetaScript module map, and history |
 | `BUGS.md` | every open bug, compiler or framework |
 
@@ -17,52 +17,14 @@ command that proved it. Never layer a correction on a stale row — rewrite the 
 
 ## Now
 
-**1. A token cannot be unitless — the unit belongs to the PROPERTY, not to the token.** A bare number
-always gets `px`, so `opacity: theme.o5` spells `0.5px`, which is invalid CSS: the browser drops the
-declaration silently and the element renders fully opaque. Design settled 2026-08-30 by measurement:
-`:root` holds the RAW value and `createStyles` applies the unit at the use site, because the use site
-is the only place that knows the property. To choose between `calc(var(--x) * 1px)` and a bare
-`var(--x)` the macro must know whether the token is a number or a string, which it can read from the
-type — but only when `theme` is a real const, so the arrow marker goes away and recognition moves to
-a type brand (`themeOf` returns `Theme<T>`, `type Theme<T> = T`).
+**iOS host** — `src/platform/ios/` is empty, and it is the last platform between Neon and the claim
+on the tin. Not blocked on the compiler: gate with `when (ios) { … }` around
+`@compile`/`@passC`/`@passL`/`@link` over one backend-agnostic extern surface, the shape
+`void/src/sokol/gpu.ms` already ships. An untaken `when` branch is never type-checked, so it may call
+APIs that do not exist on the other target.
 
-```
-today         theme.sp2 → var(--sp2)         :root{--sp2:8px}      ← unit baked at DECL
-              theme.o5  → var(--o5)          :root{--o5:0.5px}     ← invalid for opacity
-
-target        createStyles({ card: { padding: theme.sp2, opacity: theme.o5, width: theme.w } })
-              :root{ --sp2:8; --o5:0.5; --w:50% }                  ← raw, one form per token
-              padding: calc(var(--sp2) * 1px)   number + sized property
-              opacity: var(--o5)                unitless property
-              width:   var(--w)                 string token, never calc-wrapped
-```
-
-Every branch is decided at expansion — no runtime `typeof`, nothing extra baked into the theme.
-`deg`/`ms` later cost one more unit string. Three alternatives were measured and rejected, do not
-re-open them: **token categories** (Panda's answer — forces a nested theme and still breaks when one
-token feeds both `padding` and `opacity`); **two baked forms** (`--x` plus a raw `--x-n` — duplicates
-in the theme what the use site already knows); **runtime `typeof` at sheet init** (works, but defers a
-compile-time fact to run time, against this repo's first principle).
-
-Compiler dependency, partly paid: a generic alias instantiation used to carry no identity and never
-peel — recompiler `b3907f8`+`d936a21`+`0898b5b` closed 5 of 7 measured cells (Nim parity:
-`typeof(v)` on `type Brand[T] = T` prints `Brand[t.Pt]`, so an alias keeps its name for inspection
-while staying structurally transparent). Still open: the call-site instantiation names the instance
-after the alias BODY, so a macro reads `T` where it needs `Theme`. Two red facets and the
-truncated-battery caveat are rows in `BUGS.md` §2.
-
-**2. Runtime theme switching.** The static half landed: `createTheme` bakes one `:root` rule and
-`createStyles` spells `var(--token)`. Switching is the half that makes it a feature.
-
-```
-setTheme(dark)  →  web:    replace the one :root rule by key, no re-render
-                →  native: one signal per token; S4a already emits exactly one
-                           effect per dynamic style field
-```
-
-Web is nearly free (one rule replaced by key — `registerCss` already replaces by key). Native is the
-real design question: a token becomes a signal, and every style field reading it becomes a dynamic
-field. S4a already emits exactly one effect per dynamic field, so the mechanism exists.
+Emission is finished and needs nothing further: the tier is picked per JSX site at compile time, on
+every target, and no build flag or user-visible knob exists (`RENDER-MODEL.md` §Selection).
 
 ---
 
@@ -70,16 +32,9 @@ field. S4a already emits exactly one effect per dynamic field, so the mechanism 
 
 | # | work | state | size |
 |---|---|---|---|
-| 3 | `variants` — the caller picks at the use site (`when` is for what the environment picks) | designed in `STYLE.md` §2, not implemented | medium |
-| 4 | sheet lifecycle: `mountSheet` for SSR, and `flushSheet` rewriting the whole `<style>` on every flush | `src/render/sheet.ms` | small |
-| 5 | direct emission D5 — the per-target switch in `build.ms` plus a benchmark against the tree tier | D1-D4 landed; `build.ms` has no switch yet | medium |
-| 6 | iOS host | `src/platform/ios/` empty | large |
-| 7 | Android host | `src/platform/android/` empty | large |
-
-**Not blocked on the compiler.** iOS/Android gate with `when (ios) { … }` around
-`@compile`/`@passC`/`@passL`/`@link` over one backend-agnostic extern surface — the shape
-`void/src/sokol/gpu.ms` already ships. An untaken `when` branch is never type-checked, so it may call
-APIs that do not exist on the other target.
+| 1 | Android host | `src/platform/android/` empty | large |
+| 2 | `_hover` / `_before` / `_classNames`, then the Animation API | user-chosen 2026-08-18 | large |
+| 3 | S1b projection caching, component macro, attribute classification, `src/starter/` | | medium |
 
 ---
 
@@ -96,9 +51,89 @@ In rough priority order, once the above is standing:
 
 ---
 
+## Recently done
+
+- **Pressable runs RN's gesture machine** (2026-09-03) — `onPressIn`/`onPressOut`/`onLongPress`
+  ported from `Libraries/Pressability/Pressability.js`: long press at 500ms (`delayLongPress`
+  overrides), a minimum 130ms held state so a fast tap still shows feedback, and RN's
+  `isPressCanceledByLongPress` rule — a gesture that fired `onLongPress` does NOT also fire
+  `onPress`. Two tiers picked from the props actually declared: `onPress` alone stays ONE click
+  listener (unchanged cost and behaviour), any gesture prop opts into pointer tracking
+  (down/up/leave/cancel) where the machine owns the press. Timing is the LANGUAGE's, not a host
+  capability: `Pressable` calls the std JS-shaped `setTimeout`/`clearTimeout` (std/core/system,
+  msc ≥ 7f3d58bd) directly — every lane has a clock, `Host` carries no timer seam, and the
+  earlier `Host.setTimer`/`NeonNode.mount` experiments were removed again. Tests use the real
+  timer with small delays + wide margins (`delayLongPress={120}`, await `sleepAsync`), pinned by
+  `tests/render/press.test.ms` (8 cells, both lanes). A fix fell out: both macros wrapped EVERY
+  non-string prop in a thunk, so `delayLongPress={200}` against a flat `number` field miscompiled
+  on C — constants now cross RAW, which is what the call-based reactive law already implied.
+  Native hosts have no clock yet, so long press does not fire there (BUGS.md §7).
+- **the universal component vocabulary** (2026-09-03, user decision — div/span are HTML-isms
+  users must not meet) — `View`/`Text`/`TextInput`/`Pressable` are real components
+  (`src/starter/rn.ms`, the createComponent seam) rendering lowercase WIRE tags; every host
+  translates in its own createElement (browser + SSR: `htmlTagFor` — view→div, text→span,
+  textinput→input, pressable→button; terminal: box; void ignores tags; mock records as
+  written; unknown tags pass through as the escape hatch). Two prop-contract rules landed with
+  them: arrow-literal attrs cross RAW and take the field's flat type (handlers declare
+  `(e: NeonEvent) => void`; withDynStyleAll keeps style thunks — the call-based law), and
+  children rules in BOTH macros (starter tags wrap a single child as `[element(…)]`/text
+  arrays; arrows stay raw for For/Show; non-arrow expressions are dynText). `class` is the
+  RN-web escape hatch. Starter counter/todoList + counterDom/showcaseDom migrated — no div in
+  the public surface. Sweep: C 29/29, JS 28/29 (same single pre-existing red). Two compiler
+  debts filed (BUGS.md §2): engine-synthesized thunks around user arrows, and the converter
+  registry's array-target gap.
+- **the event surface speaks React Native** (2026-09-03, user decision — mobile-first) —
+  `onPress` replaces `onClick` everywhere; `e.type` uses the neon spelling ("press",
+  "changetext") and the browser host alone projects it onto DOM listeners (press→click,
+  changetext→input). `onChangeText` hands the handler the TEXT, not the event: both macros wrap
+  the user handler at the emit site (`__msCte` param, inline in each macro body — flat Node
+  fields only type inside macro bodies), so the Host contract stays `(e: NeonEvent) => void` on
+  every host. Pressable semantics beyond the name (pressIn/Out/LongPress) come with the starter
+  RN components. Sweep: C 28/28, JS 27/28 (same single pre-existing red).
+- **events carry a typed object** (2026-09-03) — `Host.addEvent` handlers take `NeonEvent`
+  (flat v1: `type`/`value`/`x`/`y`/`key`, zero-filled where a host can't supply a field; built by
+  `neonEvent`/`eventType` in `src/render/event.ms`); all four hosts construct it, the browser host
+  maps `input`/`key*`/`mouse*` DOM fields, the mock host fires through `fireEventWith`. Shipping
+  this exposed a compiler miscompile: a zero-arg arrow into an `(e) => void` slot type-checked at
+  param position but called through the SLOT's ABI on C (garbage frame → double-free in the event's
+  destructor) and was rejected at field position. Fixed at the root in msc **v0.2.53**
+  (`padLiteralParams` — a literal lambda pads to its slot's arity at its own contextual-typing
+  site; recompiler bug118). Fn VALUES keep strict arity (BUGS.md §7 — annotate the decl). Sweep:
+  C 28/28, JS 27/28; the one JS red is a PRE-EXISTING int64→number return-conversion drop
+  (BUGS.md §2, A/B-proven against a self-built v0.2.52 control).
+- **the JSX boundary stopped being per-target** (2026-09-03) — `NeonView` is a mount closure
+  everywhere, `jsxToView` picks `direct` and `jsxToNode` picks `element`, and both `when (js)` blocks
+  (`render/host.ms`, `converters.ms`) are gone. This did **not** make everything direct-emitted: what
+  a site emits still depends on whether its SHAPE changes at run time, so regions, component bodies
+  and SSR stay tree-emitted on every target (`RENDER-MODEL.md` §Selection). Justified by the C-lane
+  measurement nobody had taken:
+  2.6-2.8x static, 2.0x half-dynamic, 1.5x all-dynamic (`probe/nativeEmit_q4m.ms`, release, min of 3
+  rounds × 3 runs), which refutes the "small — allocations only" prediction in `RENDER-MODEL.md`.
+  Two Neon bugs fell out and are fixed: `direct.ms` wrapped a component tag's JSX children in
+  `element(...)` — the exact thing `element.ms`'s own comment forbids, because it pre-picks tree
+  emission — and `direct.test.ms` typed its `For` row callbacks `NeonNode` where `For.children` is
+  `NeonView`. (The "27 files bad=0" sweep recorded here at the time was later found false-green —
+  broken zsh harness; the honest gate is the 2026-09-03 sweep above.)
+- **theme tokens, static and swapped** — `createTheme` bakes one `:root` rule, `createStyles` spells
+  `var(--token)` with the unit applied at the use site, `setTheme({…})` replaces the rule by key.
+- **`variants`** (2026-09-02) — the caller picks at the use site; `when` stays for what the
+  environment picks. `msc test tests/render/styleVariants.test.ms` + `styleVariantsDyn.test.ms`,
+  both lanes.
+- **sheet lifecycle** (2026-09-02) — `flushSheet` rewrites the whole `<style>` on every change
+  (browser), `renderToString` resolves the three style channels exactly as `renderNode` does and
+  registers the rule it uses, `mountSheet()` prints the registry as one block for SSR.
+  `msc test tests/render/ssrStyle.test.ms` and `--target=js`, both green, both `when` branches
+  proven live by mutation.
+
+---
+
 ## Not our queue
 
-Red results on the **JS lane are pre-existing** and belong to the compiler, not to Neon: value-copy
-treats `fn | null` as a struct, so a copied callback becomes a non-function. A parallel session has
-the fix staged. Measure the lane against the per-file baseline in `BUGS.md` before attributing a red
-to new Neon work.
+`tests/render/style.test.ms` and `voidHost.test.ms` do not link without zig/yoga/sokol present, and
+they **hang** rather than fail (measured 2026-09-03: 24 minutes, no progress) — exclude them from a
+sweep instead of waiting. Everything else in `tests/core`, `tests/render` and `tests/platform` is
+green on both lanes, 27 files each, so measure against that before attributing a red to new work.
+
+The long-standing "one JS-lane red that belongs to the compiler" claim was wrong and is gone: it was
+two Neon bugs, both fixed 2026-09-03 (`direct.ms` pre-picking tree emission for a component's JSX
+child, and a row callback in the test annotated `NeonNode` where `For.children` is `NeonView`).
