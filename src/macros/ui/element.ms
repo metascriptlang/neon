@@ -91,7 +91,9 @@ export macro element(node: Node): Node {
 		for (const a of node.jsxAttrs) {
 			if (a.kind === NodeKind.JSXAttribute) {
 				keys.push(a.jsxAttrName);
-				if (a.jsxAttrValue.kind === NodeKind.StringLiteral) {
+				if (a.jsxAttrValue.kind === NodeKind.StringLiteral
+					|| a.jsxAttrValue.kind === NodeKind.NumberLiteral
+					|| a.jsxAttrValue.kind === NodeKind.BooleanLiteral) {
 					values.push(a.jsxAttrValue);
 				} else if (a.jsxAttrValue.kind === NodeKind.ArrowFunction || a.jsxAttrValue.kind === NodeKind.FunctionExpr) {
 					// An arrow/function literal crosses RAW: the field's declared type
