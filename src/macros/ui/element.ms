@@ -95,7 +95,8 @@ export macro element(node: Node): Node {
 					|| a.jsxAttrValue.kind === NodeKind.NumberLiteral
 					|| a.jsxAttrValue.kind === NodeKind.BooleanLiteral) {
 					values.push(a.jsxAttrValue);
-				} else if (a.jsxAttrValue.kind === NodeKind.ArrowFunction || a.jsxAttrValue.kind === NodeKind.FunctionExpr) {
+				} else if (a.jsxAttrValue.kind === NodeKind.ArrowFunction || a.jsxAttrValue.kind === NodeKind.FunctionExpr
+					|| a.jsxAttrName === "ref") {
 					// An arrow/function literal crosses RAW: the field's declared type
 					// contextually types it (and pads its arity — bug118), so handler
 					// props declare the FLAT handler type. Wrapping it in a synthesized
@@ -186,11 +187,16 @@ export macro element(node: Node): Node {
 	let attrs: Node[] = [];
 	let events: Node[] = [];
 	let styleExpr: Node | null = null;
+	let refExpr: Node | null = null;
 	let dynStyleAllExpr: Node | null = null;
 	let dynStyleNames: string[] = [];
 	let dynStyleExprs: Node[] = [];
 	for (const a of node.jsxAttrs) {
 		if (a.kind === NodeKind.JSXAttribute) {
+			if (a.jsxAttrName === "ref") {
+				refExpr = a.jsxAttrValue;
+				continue;
+			}
 			if (a.jsxAttrName === "style" && a.jsxAttrValue.kind !== NodeKind.StringLiteral) {
 				if (a.jsxAttrValue.kind === NodeKind.ObjectLiteral) {
 					// S4: a reactive field peels off into its own per-property
@@ -363,6 +369,13 @@ export macro element(node: Node): Node {
 	};
 
 	let acc: Node = elCall;
+	if (refExpr !== null) {
+		acc = {
+			kind: NodeKind.CallExpr, line: node.line, column: node.column,
+			callee: { kind: NodeKind.Identifier, line: node.line, column: node.column, name: "withRef" },
+			arguments: [acc, refExpr as Node],
+		};
+	}
 	if (styleExpr !== null) {
 		acc = {
 			kind: NodeKind.CallExpr, line: node.line, column: node.column,

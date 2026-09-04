@@ -207,6 +207,7 @@ export macro direct(node: Node): Node {
 			for (const a of el.jsxAttrs) {
 				if (a.kind === NodeKind.JSXAttribute) {
 					if (a.jsxAttrName.startsWith("on")) { continue; }
+					if (a.jsxAttrName === "ref") { continue; }
 					if (a.jsxAttrName === "style" && a.jsxAttrValue.kind !== NodeKind.StringLiteral) { continue; }
 					const v = a.jsxAttrValue.kind === NodeKind.StringLiteral ? a.jsxAttrValue : strLit("", a.line, a.column);
 					bStmts.push({
@@ -243,8 +244,13 @@ export macro direct(node: Node): Node {
 		// Per-instance wiring: dynamic attrs (one effect each), events, style,
 		// then the walk into children that carry dynamic spots.
 		function emitWire(el: Node, elVar: string): void {
+			let wRef: Node | null = null;
 			for (const a of el.jsxAttrs) {
 				if (a.kind === NodeKind.JSXAttribute) {
+					if (a.jsxAttrName === "ref") {
+						wRef = a.jsxAttrValue;
+						continue;
+					}
 					if (a.jsxAttrName === "style" && a.jsxAttrValue.kind !== NodeKind.StringLiteral) {
 						if (a.jsxAttrValue.kind === NodeKind.ObjectLiteral) {
 							for (const fv of a.jsxAttrValue.properties) {
@@ -367,6 +373,17 @@ export macro direct(node: Node): Node {
 				}
 				slot = slot + 1;
 			}
+
+			if (wRef !== null) {
+				wStmts.push({
+					kind: NodeKind.ExprStmt, line: el.line, column: el.column,
+					expr: {
+						kind: NodeKind.CallExpr, line: el.line, column: el.column,
+						callee: wRef as Node,
+						arguments: [ident(elVar, el.line, el.column)],
+					},
+				});
+			}
 		}
 
 		const tplRoot = emitBuild(node);
@@ -427,6 +444,7 @@ export macro direct(node: Node): Node {
 
 	function emitEl(el: Node): string {
 		const rName = "_r" + rIdx.toString();
+		let refFor: Node | null = null;
 		rIdx = rIdx + 1;
 		stmts.push({
 			kind: NodeKind.VariableDecl, line: el.line, column: el.column,
@@ -440,6 +458,10 @@ export macro direct(node: Node): Node {
 
 		for (const a of el.jsxAttrs) {
 			if (a.kind === NodeKind.JSXAttribute) {
+				if (a.jsxAttrName === "ref") {
+					refFor = a.jsxAttrValue;
+					continue;
+				}
 				if (a.jsxAttrName === "style" && a.jsxAttrValue.kind !== NodeKind.StringLiteral) {
 					if (a.jsxAttrValue.kind === NodeKind.ObjectLiteral) {
 						for (const fv of a.jsxAttrValue.properties) {
@@ -602,7 +624,8 @@ export macro direct(node: Node): Node {
 						ckeys.push(a.jsxAttrName);
 						if (a.jsxAttrValue.kind === NodeKind.StringLiteral) {
 							cvalues.push(a.jsxAttrValue);
-						} else if (a.jsxAttrValue.kind === NodeKind.ArrowFunction || a.jsxAttrValue.kind === NodeKind.FunctionExpr) {
+						} else if (a.jsxAttrValue.kind === NodeKind.ArrowFunction || a.jsxAttrValue.kind === NodeKind.FunctionExpr
+							|| a.jsxAttrName === "ref") {
 							cvalues.push(a.jsxAttrValue);
 						} else {
 							cvalues.push({ kind: NodeKind.ArrowFunction, line: a.line, column: a.column, arrowParams: [], arrowParamTypes: [], arrowBody: a.jsxAttrValue, arrowFlags: "", arrowReturnType: "" });
@@ -698,6 +721,17 @@ export macro direct(node: Node): Node {
 					},
 				});
 			}
+		}
+
+		if (refFor !== null) {
+			stmts.push({
+				kind: NodeKind.ExprStmt, line: el.line, column: el.column,
+				expr: {
+					kind: NodeKind.CallExpr, line: el.line, column: el.column,
+					callee: refFor as Node,
+					arguments: [{ kind: NodeKind.Identifier, line: el.line, column: el.column, name: rName }],
+				},
+			});
 		}
 
 		return rName;

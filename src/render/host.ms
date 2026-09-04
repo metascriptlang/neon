@@ -3,7 +3,7 @@
 // tree once, creating host nodes, binding reactive text, applying attrs/events.
 
 import { createEffect } from "../core/effect";
-import { NeonNode, VAttr, VEvent, RegionFn, ComponentProducer, attr } from "./node";
+import { NeonNode, VAttr, VEvent, RegionFn, RefFn, ComponentProducer, attr } from "./node";
 import { Style, StyleValue, emptyStyle, mergeStyle, setStyleField } from "./style";
 import { reconcileArrays } from "./reconcile";
 import { Host, HostNode } from "./hostTypes";
@@ -141,6 +141,8 @@ export function renderNode(vnode: NeonNode, host: Host): HostNode {
 		if (kv.region !== null) { mountRegion(kv, host, node); }
 		else { host.append(node, renderNode(kv, host)); }
 	}
+	const r = vnode.ref;
+	if (r !== null) { (r as RefFn)(node); }
 	return node;
 }
 

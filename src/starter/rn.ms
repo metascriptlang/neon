@@ -23,11 +23,12 @@
 import { NeonEvent } from "../render/event";
 import { Style } from "../render/style";
 import { onCleanup } from "../core/cleanup";
-import { NeonNode, VAttr, VEvent, el, attr, evt, dynAttr, withDynStyleAll } from "../render/node";
+import { NeonNode, VAttr, VEvent, RefFn, el, attr, evt, dynAttr, withDynStyleAll, withRef } from "../render/node";
 
 interface ViewProps {
 	style?: () => Style | null;
 	class?: string | null;
+	ref?: RefFn | null;
 	children: NeonNode[];
 }
 
@@ -37,12 +38,14 @@ export function View(props: ViewProps): NeonNode {
 	if (props.class !== null) { attrs.push(attr("class", props.class as string)); }
 	const n = el("view", attrs, [], kids);
 	if (props.style !== null) { withDynStyleAll(n, props.style as () => Style); }
+	if (props.ref !== null) { withRef(n, props.ref as RefFn); }
 	return n;
 }
 
 interface TextProps {
 	style?: () => Style | null;
 	class?: string | null;
+	ref?: RefFn | null;
 	children: NeonNode[];
 }
 
@@ -52,6 +55,7 @@ export function Text(props: TextProps): NeonNode {
 	if (props.class !== null) { attrs.push(attr("class", props.class as string)); }
 	const n = el("text", attrs, [], kids);
 	if (props.style !== null) { withDynStyleAll(n, props.style as () => Style); }
+	if (props.ref !== null) { withRef(n, props.ref as RefFn); }
 	return n;
 }
 
@@ -69,6 +73,7 @@ interface PressableProps {
 	delayLongPress?: number | null;
 	style?: () => Style | null;
 	class?: string | null;
+	ref?: RefFn | null;
 	children: NeonNode[];
 }
 
@@ -167,6 +172,7 @@ export function Pressable(props: PressableProps): NeonNode {
 	if (props.class !== null) { attrs.push(attr("class", props.class as string)); }
 	const n = el("pressable", attrs, evts, kids);
 	if (props.style !== null) { withDynStyleAll(n, props.style as () => Style); }
+	if (props.ref !== null) { withRef(n, props.ref as RefFn); }
 	return n;
 }
 
@@ -175,6 +181,7 @@ interface TextInputProps {
 	onChangeText?: ((t: string) => void) | null;
 	style?: () => Style | null;
 	class?: string | null;
+	ref?: RefFn | null;
 }
 
 export function TextInput(props: TextInputProps): NeonNode {
@@ -190,5 +197,6 @@ export function TextInput(props: TextInputProps): NeonNode {
 	if (props.class !== null) { attrs.push(attr("class", props.class as string)); }
 	const n = el("textinput", attrs, evts, []);
 	if (props.style !== null) { withDynStyleAll(n, props.style as () => Style); }
+	if (props.ref !== null) { withRef(n, props.ref as RefFn); }
 	return n;
 }

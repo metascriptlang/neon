@@ -32,6 +32,10 @@ export interface VEvent {
 // returned thunk yields host nodes that renderToHost reconciles into the DOM.
 export type RegionFn = (host: unknown) => () => unknown[];
 
+// The host node is `unknown` here for the same reason a region's is: this layer
+// stays below the host. A caller casts to whatever its host really builds.
+export type RefFn = (node: unknown) => void;
+
 // A Component (function component) is a function from props to a NeonNode. Props values
 // are callables (signals/memos) or plain values — see Reactive<T> + read() in component.ms.
 // The producer form (() => NeonNode) is the deferred expansion of an already-bound call:
@@ -54,6 +58,7 @@ export interface NeonNode {
 	region: RegionFn | null;            // non-null → reactive list region (host reconciles it)
 	componentFn: ComponentProducer | null; // non-null → Component variant (renderer expands lazily)
 	componentProps: Map<string, unknown> | null; // attached for debug/introspection
+	ref: RefFn | null;                  // called once at mount with the host node
 }
 
 export function attr(name: string, value: string): VAttr {
@@ -69,7 +74,7 @@ export function evt(name: string, handler: (e: NeonEvent) => void): VEvent {
 }
 
 export function el(tag: string, attrs: VAttr[], events: VEvent[], children: NeonNode[]): NeonNode {
-	return { tag, children, text: "", isDyn: false, dyn: () => "", attrs, events, style: null, dynStyle: null, dynStyleAll: null, region: null, componentFn: null, componentProps: null };
+	return { tag, children, text: "", isDyn: false, dyn: () => "", attrs, events, style: null, dynStyle: null, dynStyleAll: null, region: null, componentFn: null, componentProps: null, ref: null };
 }
 
 export function withStyle(n: NeonNode, s: Style): NeonNode {
@@ -88,12 +93,17 @@ export function withDynStyleAll(n: NeonNode, get: () => Style): NeonNode {
 	return n;
 }
 
+export function withRef(n: NeonNode, f: RefFn): NeonNode {
+	n.ref = f;
+	return n;
+}
+
 export function text(s: string): NeonNode {
-	return { tag: "", children: [], text: s, isDyn: false, dyn: () => "", attrs: [], events: [], style: null, dynStyle: null, dynStyleAll: null, region: null, componentFn: null, componentProps: null };
+	return { tag: "", children: [], text: s, isDyn: false, dyn: () => "", attrs: [], events: [], style: null, dynStyle: null, dynStyleAll: null, region: null, componentFn: null, componentProps: null, ref: null };
 }
 
 export function dynText(thunk: () => string): NeonNode {
-	return { tag: "", children: [], text: "", isDyn: true, dyn: thunk, attrs: [], events: [], style: null, dynStyle: null, dynStyleAll: null, region: null, componentFn: null, componentProps: null };
+	return { tag: "", children: [], text: "", isDyn: true, dyn: thunk, attrs: [], events: [], style: null, dynStyle: null, dynStyleAll: null, region: null, componentFn: null, componentProps: null, ref: null };
 }
 
 // A static {expr} child, routed by type: a string becomes a text node, a NeonNode
@@ -111,11 +121,11 @@ export function insChild(n: NeonNode): NeonNode {
 }
 
 export function regionNode(fn: RegionFn): NeonNode {
-	return { tag: "", children: [], text: "", isDyn: false, dyn: () => "", attrs: [], events: [], style: null, dynStyle: null, dynStyleAll: null, region: fn, componentFn: null, componentProps: null };
+	return { tag: "", children: [], text: "", isDyn: false, dyn: () => "", attrs: [], events: [], style: null, dynStyle: null, dynStyleAll: null, region: fn, componentFn: null, componentProps: null, ref: null };
 }
 
 export function componentNode(fn: ComponentProducer, props: Map<string, unknown>): NeonNode {
-	return { tag: "", children: [], text: "", isDyn: false, dyn: () => "", attrs: [], events: [], style: null, dynStyle: null, dynStyleAll: null, region: null, componentFn: fn, componentProps: props };
+	return { tag: "", children: [], text: "", isDyn: false, dyn: () => "", attrs: [], events: [], style: null, dynStyle: null, dynStyleAll: null, region: null, componentFn: fn, componentProps: props, ref: null };
 }
 
 // Universal wire tags → html. One table shared by SSR (renderToString) and the
