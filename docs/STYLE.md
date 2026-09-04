@@ -271,13 +271,28 @@ Each stage ends green. TDD: red test first.
 |---|---|---|
 | **S1** | flat `Style`; minimal `createStyles` macro (validate names, synthesize sheet type, fold constant); `VNode.style`; void host `asFlexStyle` reusing `yoga applyStyle`. Keep the legacy string path working. | — |
 | **S2** | paint + text: `backgroundColor` (void rect fill, terminal bg), text color/size. Cross-host test. | S1 |
-| **S3** | array layering + variants; compile-time merge when all layers are static. | spread codegen bug (§7) once runtime merge is needed |
+| **S3** | ✅ array layering + ✅ variants; compile-time merge when all layers are static. | spread codegen bug (§7) once runtime merge is needed |
 | **S4** | ✅ reactive style fields via the element macro's attribute classification (the Phase 2 debt — same feature); ✅ platform blocks (§2); ✅ theme tokens, static half — `createTheme` bakes one `:root` rule and `createStyles(theme => …)` spells each token `var(--name)`. Runtime theme switching still open. | S3 |
 
-Deferred, in rough priority order: runtime theme switching (web overwrites `:root`, native needs the
-signal path), token categories so a token can be unitless (a bare number is always `px` today, so
-`opacity`/`flex` tokens cannot be expressed), `variants`, breakpoints/media queries, runtime object
-(`rt`), pseudo-states beyond variants, animation (Nim had `AnimationDemo`).
+Deferred, in rough priority order: token categories so a token can be unitless (a bare number is
+always `px` today, so `opacity`/`flex` tokens cannot be expressed), breakpoints/media queries,
+runtime object (`rt`), pseudo-states beyond variants, animation (Nim had `AnimationDemo`).
+
+> **variants LANDED 2026-09-02.** An entry carrying `variants` expands to an arrow taking a selector
+> (`s.btn({ size: "lg" })`); each group contributes one ternary chain merged over the base through
+> `mergeStyle`, so a selection drops `cssId` and takes the inline path — a one-off combination, the
+> same rule a merged layer array follows. A selector key or variant name that does not exist is a
+> checker error at the call site. Because a selection is a CALL, the element macro routes it through
+> the new whole-style channel (`withDynStyleAll` → one effect calling `host.setStyle`): per-property
+> precision is impossible when a deselected field must fall back to an earlier layer. A static
+> selection pays that same effect once and never re-fires — the §6 false-positive trade, by design,
+> and it means `vnode.style` is filled at MOUNT rather than at construction for a called style.
+>
+> The `pressed() && "on"` spelling in §2 is blocked by a C codegen bug (`boolean && string` emits a
+> bool-cast of the string, `BUGS.md` §2); use the ternary form until it closes. Wiring the reactive
+> selector also uncovered and fixed a compiler bug of its own — a fitted optional argument froze into
+> its Maybe carrier while crossing the macro wire, which C rejected at clang and JS silently
+> mis-evaluated (`NIM-REF` row 157, corpus `751-macroArgMaybeFit.ms`).
 
 ---
 
@@ -287,7 +302,8 @@ signal path), token categories so a token can be unitless (a bare number is alwa
 |---|---|---|
 | `src/macros/ui/style.ms` | the macro — real since S1b (styleOf rewrite + static-sheet guards) | |
 | `src/render/style.ms` | **new** — the `Style` IR | must not import Yoga or any host |
-| `src/render/sheet.ms` | **new** — the CSS rule registry, replace-by-key | browser lane only; SSR mount still open |
+| `src/render/sheet.ms` | **new** — the CSS rule registry, replace-by-key | `mountSheet()` prints it as one block for SSR |
+| `src/render/css.ms` | **new** — `styleToCss`, the runtime spelling for a `style="…"` attribute | pinned against the macro's baked rule in `ssrStyle.test.ms` |
 | `src/macros/ui/theme.ms` | **new** — `createTheme` bakes one `:root` rule; `themeOf` registers it | the arrow in `createStyles(theme => …)` is a marker, not a runtime fn |
 | `src/render/node.ms` | add `style` field to `VNode` | ⚠ **sacred file** — API change, needs sign-off |
 | `src/platform/void/host.ms` | add `asFlexStyle`; keep `parseFlexStyle` for the legacy string path | |
