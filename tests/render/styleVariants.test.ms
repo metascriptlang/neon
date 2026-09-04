@@ -8,7 +8,7 @@
 //
 // Asserted on the returned Style directly, so both lanes run it (no host).
 
-import { Style, mergeStyle, emptyStyle } from "../../src/render/style";
+import { mergeStyle, emptyStyle } from "../../src/render/style";
 import { createStyles, styleOf } from "../../src/macros/ui/style";
 
 const s = createStyles({

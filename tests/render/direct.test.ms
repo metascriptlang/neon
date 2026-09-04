@@ -3,7 +3,6 @@
 // signal updates (tree emission is the oracle — docs/RENDER-MODEL.md).
 
 import { createSignal } from "../../src/core/signal";
-import { createEffect } from "../../src/core/effect";
 import { onCleanup } from "../../src/core/cleanup";
 import { element } from "../../src/macros/ui/element";
 import { direct } from "../../src/macros/ui/direct";

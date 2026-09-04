@@ -6,7 +6,7 @@
 // Asserted on NeonNode.style rather than through a host, so both lanes run it.
 
 import { element } from "../../src/macros/ui/element";
-import { el, attr, evt, text, dynText, withStyle, NeonNode } from "../../src/render/node";
+import { el, withStyle, NeonNode } from "../../src/render/node";
 import { Style, mergeStyle, layerStyles } from "../../src/render/style";
 import { createStyles, styleOf } from "../../src/macros/ui/style";
 

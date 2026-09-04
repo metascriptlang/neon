@@ -5,10 +5,10 @@
 // frozen snapshot.
 
 import { element } from "../../src/macros/ui/element";
-import { NeonNode, withDynStyleAll } from "../../src/render/node";
+import { withDynStyleAll } from "../../src/render/node";
 import { Style, mergeStyle, emptyStyle } from "../../src/render/style";
 import { createStyles, styleOf } from "../../src/macros/ui/style";
-import { renderToHost, mockHost, mockNode, MockNode, HostNode } from "../../src/render/host";
+import { renderToHost, mockHost, mockNode, HostNode } from "../../src/render/host";
 import { createSignal } from "../../src/core/signal";
 
 const s = createStyles({

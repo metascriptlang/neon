@@ -2,7 +2,7 @@
 // engine in runtime.ms: reading inside a running computation links both ways; setting
 // marks observers Stale and drains the effect queue.
 
-import { Source, Computation, CompState } from "./types";
+import { Source, CompState } from "./types";
 import { getListener, registerDependency, enqueue, runQueue, getBatchDepth, setBatchDepth, setListener } from "./runtime";
 
 export class Signal<T> {

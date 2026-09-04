@@ -8,11 +8,10 @@
 import { createSignal } from "../../src/core/signal";
 import { element } from "../../src/macros/ui/element";
 import { direct } from "../../src/macros/ui/direct";
-import { NeonNode, el, attr, evt, text } from "../../src/render/node";
-import { createComponent } from "../../src/render/component";
+import { el, evt, text } from "../../src/render/node";
 import { NeonEvent, neonEvent, eventType } from "../../src/render/event";
-import { renderToHost, renderNode, mockHost, mockNode, mockToString, fireEvent, fireEventWith, bindText, bindAttr, MockNode, Host, HostNode, NeonView, viewOf } from "../../src/render/host";
-import { createTemplate, mountTemplate, childOf, siblingOf } from "../../src/render/template";
+import { renderToHost, mockHost, mockNode, fireEvent, fireEventWith, HostNode } from "../../src/render/host";
+import { createTemplate, mountTemplate } from "../../src/render/template";
 
 test "eventType strips the on prefix and lowercases" {
 	assert eventType("onPress") === "press", "onPress → " + eventType("onPress");

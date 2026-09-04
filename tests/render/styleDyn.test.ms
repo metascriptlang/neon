@@ -4,9 +4,8 @@
 // whole-style re-apply, no re-render — the Solid model, per-property.
 
 import { element } from "../../src/macros/ui/element";
-import { NeonNode } from "../../src/render/node";
 import { Style } from "../../src/render/style";
-import { renderToHost, mockHost, mockNode, MockNode, HostNode } from "../../src/render/host";
+import { renderToHost, mockHost, mockNode, HostNode } from "../../src/render/host";
 import { createSignal } from "../../src/core/signal";
 
 test "a dynamic style field tracks its signal" {
