@@ -44,6 +44,12 @@ export type RefFn = (node: unknown) => void;
 export type ComponentFn<P = unknown> = (props: P) => NeonNode;
 export type ComponentProducer = () => NeonNode;
 
+// A scoped node wraps the MOUNT of children[0] in an owner scope (Solid's
+// Provider is exactly this: a transparent component that sets context around
+// children resolution). Neon creates host nodes at mount, so the scope must
+// travel with the node and wrap mounting, not description building.
+export type ScopeFn = (body: () => unknown) => unknown;
+
 export interface NeonNode {
 	tag: string;           // "" marks a text node
 	children: NeonNode[];
@@ -59,6 +65,7 @@ export interface NeonNode {
 	componentFn: ComponentProducer | null; // non-null → Component variant (renderer expands lazily)
 	componentProps: Map<string, unknown> | null; // attached for debug/introspection
 	ref: RefFn | null;                  // called once at mount with the host node
+	scope: ScopeFn | null;              // non-null → mount children[0] inside this scope
 }
 
 export function attr(name: string, value: string): VAttr {
@@ -74,7 +81,7 @@ export function evt(name: string, handler: (e: NeonEvent) => void): VEvent {
 }
 
 export function el(tag: string, attrs: VAttr[], events: VEvent[], children: NeonNode[]): NeonNode {
-	return { tag, children, text: "", isDyn: false, dyn: () => "", attrs, events, style: null, dynStyle: null, dynStyleAll: null, region: null, componentFn: null, componentProps: null, ref: null };
+	return { tag, children, text: "", isDyn: false, dyn: () => "", attrs, events, style: null, dynStyle: null, dynStyleAll: null, region: null, componentFn: null, componentProps: null, ref: null, scope: null };
 }
 
 export function withStyle(n: NeonNode, s: Style): NeonNode {
@@ -99,11 +106,11 @@ export function withRef(n: NeonNode, f: RefFn): NeonNode {
 }
 
 export function text(s: string): NeonNode {
-	return { tag: "", children: [], text: s, isDyn: false, dyn: () => "", attrs: [], events: [], style: null, dynStyle: null, dynStyleAll: null, region: null, componentFn: null, componentProps: null, ref: null };
+	return { tag: "", children: [], text: s, isDyn: false, dyn: () => "", attrs: [], events: [], style: null, dynStyle: null, dynStyleAll: null, region: null, componentFn: null, componentProps: null, ref: null, scope: null };
 }
 
 export function dynText(thunk: () => string): NeonNode {
-	return { tag: "", children: [], text: "", isDyn: true, dyn: thunk, attrs: [], events: [], style: null, dynStyle: null, dynStyleAll: null, region: null, componentFn: null, componentProps: null, ref: null };
+	return { tag: "", children: [], text: "", isDyn: true, dyn: thunk, attrs: [], events: [], style: null, dynStyle: null, dynStyleAll: null, region: null, componentFn: null, componentProps: null, ref: null, scope: null };
 }
 
 // A static {expr} child, routed by type: a string becomes a text node, a NeonNode
@@ -121,11 +128,15 @@ export function insChild(n: NeonNode): NeonNode {
 }
 
 export function regionNode(fn: RegionFn): NeonNode {
-	return { tag: "", children: [], text: "", isDyn: false, dyn: () => "", attrs: [], events: [], style: null, dynStyle: null, dynStyleAll: null, region: fn, componentFn: null, componentProps: null, ref: null };
+	return { tag: "", children: [], text: "", isDyn: false, dyn: () => "", attrs: [], events: [], style: null, dynStyle: null, dynStyleAll: null, region: fn, componentFn: null, componentProps: null, ref: null, scope: null };
+}
+
+export function scopedNode(scope: ScopeFn, child: NeonNode): NeonNode {
+	return { tag: "", children: [child], text: "", isDyn: false, dyn: () => "", attrs: [], events: [], style: null, dynStyle: null, dynStyleAll: null, region: null, componentFn: null, componentProps: null, ref: null, scope };
 }
 
 export function componentNode(fn: ComponentProducer, props: Map<string, unknown>): NeonNode {
-	return { tag: "", children: [], text: "", isDyn: false, dyn: () => "", attrs: [], events: [], style: null, dynStyle: null, dynStyleAll: null, region: null, componentFn: fn, componentProps: props, ref: null };
+	return { tag: "", children: [], text: "", isDyn: false, dyn: () => "", attrs: [], events: [], style: null, dynStyle: null, dynStyleAll: null, region: null, componentFn: fn, componentProps: props, ref: null, scope: null };
 }
 
 // Universal wire tags → html. One table shared by SSR (renderToString) and the
@@ -145,6 +156,12 @@ export function renderToString(n: NeonNode): string {
 	if (comp !== null) {
 		const producer = comp as ComponentProducer;
 		return renderToString(producer());
+	}
+	const sc = n.scope;
+	if (sc !== null) {
+		let out = "";
+		(sc as ScopeFn)(() => { out = renderToString(n.children[0]); return null; });
+		return out;
 	}
 	const reg = n.region;
 	if (reg !== null) {
