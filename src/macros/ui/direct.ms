@@ -103,6 +103,17 @@ export macro direct(node: Node): Node {
 			keys.push("children");
 			values.push({ kind: NodeKind.ArrayLiteral, line: L, column: C, elements: compKids });
 		}
+		// A dotted tag (Ctx.Provider) resolves through member access, not a flat
+		// name: fold the parts so the checker sees Ctx.Provider and types the call
+		// through the field's declared component type.
+		let tagRef: Node = { kind: NodeKind.Identifier, line: L, column: C, name: node.jsxTag };
+		if (node.jsxTag.indexOf(".") >= 0) {
+			const parts: string[] = node.jsxTag.split(".");
+			tagRef = { kind: NodeKind.Identifier, line: L, column: C, name: parts[0] };
+			for (let i = 1; i < parts.length; i = i + 1) {
+				tagRef = { kind: NodeKind.MemberExpr, line: L, column: C, object: tagRef, property: parts[i], isOptional: false };
+			}
+		}
 		const rootStmts: Node[] = [
 			{
 				kind: NodeKind.VariableDecl, line: L, column: C,
@@ -111,7 +122,7 @@ export macro direct(node: Node): Node {
 					kind: NodeKind.CallExpr, line: L, column: C,
 					callee: { kind: NodeKind.Identifier, line: L, column: C, name: "createComponent" },
 					arguments: [
-						{ kind: NodeKind.Identifier, line: L, column: C, name: node.jsxTag },
+						tagRef,
 						{ kind: NodeKind.ObjectLiteral, line: L, column: C, properties: values, keys: keys },
 					],
 				},
@@ -682,6 +693,14 @@ export macro direct(node: Node): Node {
 					ckeys.push("children");
 					cvalues.push({ kind: NodeKind.ArrayLiteral, line: c.line, column: c.column, elements: cKids });
 				}
+				let tagRef: Node = { kind: NodeKind.Identifier, line: c.line, column: c.column, name: c.jsxTag };
+				if (c.jsxTag.indexOf(".") >= 0) {
+					const parts: string[] = c.jsxTag.split(".");
+					tagRef = { kind: NodeKind.Identifier, line: c.line, column: c.column, name: parts[0] };
+					for (let i = 1; i < parts.length; i = i + 1) {
+						tagRef = { kind: NodeKind.MemberExpr, line: c.line, column: c.column, object: tagRef, property: parts[i], isOptional: false };
+					}
+				}
 				const kName = "_k" + kIdx.toString();
 				kIdx = kIdx + 1;
 				stmts.push({
@@ -691,7 +710,7 @@ export macro direct(node: Node): Node {
 						kind: NodeKind.CallExpr, line: c.line, column: c.column,
 						callee: { kind: NodeKind.Identifier, line: c.line, column: c.column, name: "createComponent" },
 						arguments: [
-							{ kind: NodeKind.Identifier, line: c.line, column: c.column, name: c.jsxTag },
+							tagRef,
 							{ kind: NodeKind.ObjectLiteral, line: c.line, column: c.column, properties: cvalues, keys: ckeys },
 						],
 					},

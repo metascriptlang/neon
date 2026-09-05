@@ -176,11 +176,22 @@ export macro element(node: Node): Node {
 			keys.push("children");
 			values.push({ kind: NodeKind.ArrayLiteral, line: node.line, column: node.column, elements: compKids });
 		}
+		// A dotted tag (Ctx.Provider) resolves through member access, not a flat
+		// name: fold the parts so the checker sees Ctx.Provider and types the
+		// call through the field's declared component type.
+		let tagRef: Node = { kind: NodeKind.Identifier, line: node.line, column: node.column, name: node.jsxTag };
+		if (node.jsxTag.indexOf(".") >= 0) {
+			const parts: string[] = node.jsxTag.split(".");
+			tagRef = { kind: NodeKind.Identifier, line: node.line, column: node.column, name: parts[0] };
+			for (let i = 1; i < parts.length; i = i + 1) {
+				tagRef = { kind: NodeKind.MemberExpr, line: node.line, column: node.column, object: tagRef, property: parts[i], isOptional: false };
+			}
+		}
 		return {
 			kind: NodeKind.CallExpr, line: node.line, column: node.column,
 			callee: { kind: NodeKind.Identifier, line: node.line, column: node.column, name: "createComponent" },
 			arguments: [
-				{ kind: NodeKind.Identifier, line: node.line, column: node.column, name: node.jsxTag },
+				tagRef,
 				{ kind: NodeKind.ObjectLiteral, line: node.line, column: node.column, properties: values, keys: keys },
 			],
 		};
