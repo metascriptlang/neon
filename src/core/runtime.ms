@@ -97,7 +97,7 @@ export function createComputation(fn: EffectFn, pure: boolean): Computation {
 		fn, isRoot: false, state: CompState.Stale,
 		sources: [], sourceSlots: [],
 		pure, disposed: false,
-		owned: [], cleanups: [], owner: tlOwner,
+		owned: [], cleanups: [], owner: tlOwner, contexts: null,
 	};
 	if (tlOwner !== null) { tlOwner.owned.push(comp); }
 	return comp;

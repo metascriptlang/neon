@@ -12,7 +12,7 @@ export function createRoot<T>(fn: (dispose: Dispose) => T): T {
 		fn: noop, isRoot: true, state: CompState.Clean,
 		sources: [], sourceSlots: [],
 		pure: false, disposed: false,
-		owned: [], cleanups: [], owner: null,
+		owned: [], cleanups: [], owner: null, contexts: null,
 	};
 	const prevOwner = getOwner();
 	const prevListener = getListener();
