@@ -11,7 +11,7 @@ import { sleepAsync } from "std/core/promise";
 import { element } from "../../src/macros/ui/element";
 import { NeonEvent } from "../../src/render/event";
 import { HostNode, mockNode, mockHost, renderToHost, fireEvent } from "../../src/render/host";
-import { Pressable, Text } from "../../src/starter/rn";
+import { Pressable, Text } from "../../src/components/primitives";
 
 test "onPress alone stays on the cheap click path" {
 	const host = mockHost();

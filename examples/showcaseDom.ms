@@ -2,7 +2,7 @@ import { createSignal } from "../src/core/signal";
 import { element } from "../src/macros/ui/element";
 import { renderToHost } from "../src/render/host";
 import { domHost, documentBody } from "../src/platform/browser/dom";
-import { View, Text, Pressable } from "../src/starter/rn";
+import { View, Text, Pressable } from "../src/components/primitives";
 
 const [count, setCount] = createSignal(0);
 

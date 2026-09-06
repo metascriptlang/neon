@@ -5,7 +5,7 @@
 import { createSignal } from "../core/signal";
 import { createStyles, styleOf } from "../macros/ui/style";
 import { NeonNode } from "../render/node";
-import { View, Text, Pressable } from "./rn";
+import { View, Text, Pressable } from "../components/primitives";
 
 const styles = createStyles({
 	container: { flexDirection: "column", alignItems: "center", gap: 12, padding: 24 },

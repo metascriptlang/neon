@@ -144,7 +144,7 @@ export macro element(node: Node): Node {
 					if (node.jsxChildren.length === 1) { singleNeedsArray = true; }
 				}
 			} else if (c.kind === NodeKind.JSXElement) {
-				// The starter RN vocabulary (View/Text/Pressable/TextInput) mounts
+				// The component vocabulary (View/Text/Pressable/TextInput) mounts
 				// children as NeonNode[], so a single element child arrives as
 				// [element(…)] — built HERE because nested element() calls from a
 				// MACRO re-expand (header) while ones nested in a converter result

@@ -6,7 +6,7 @@
 // through the event surface, and the terminal's box translation.
 
 import { element } from "../../src/macros/ui/element";
-import { View, Text, TextInput, Pressable } from "../../src/starter/rn";
+import { View, Text, TextInput, Pressable } from "../../src/components/primitives";
 import { neonEvent } from "../../src/render/event";
 import { htmlTagFor, renderToString } from "../../src/render/node";
 import { HostNode, MockNode, mockHost, mockNode, renderToHost, fireEvent, fireEventWith, mockToString } from "../../src/render/host";

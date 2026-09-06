@@ -141,7 +141,7 @@ export function componentNode(fn: ComponentProducer, props: Map<string, unknown>
 
 // Universal wire tags → html. One table shared by SSR (renderToString) and the
 // browser host's createElement — the user-facing names (View/Text/…) are the
-// starter components in src/starter/rn.ms; hosts receive the lowercase wire
+// the component vocabulary in src/components/primitives.ms; hosts receive the lowercase wire
 // tag and translate (browser: this table; terminal: its boxes; void ignores).
 export function htmlTagFor(tag: string): string {
 	if (tag === "view") { return "div"; }

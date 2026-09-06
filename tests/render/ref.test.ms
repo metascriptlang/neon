@@ -6,7 +6,7 @@ import { element } from "../../src/macros/ui/element";
 import { direct } from "../../src/macros/ui/direct";
 import { NeonNode } from "../../src/render/node";
 import { HostNode, MockNode, mockNode, mockHost, renderToHost, mockToString, fireEvent } from "../../src/render/host";
-import { View, TextInput, Pressable, Text } from "../../src/starter/rn";
+import { View, TextInput, Pressable, Text } from "../../src/components/primitives";
 import { NeonEvent } from "../../src/render/event";
 
 test "ref hands the completed host node to the callback — tree emission" {

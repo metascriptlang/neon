@@ -11,7 +11,7 @@ import { createStyles, styleOf } from "../macros/ui/style";
 import { NeonNode } from "../render/node";
 import { NeonView } from "../render/host";
 import { For, Show } from "../macros/ui/flow";
-import { View, Text, Pressable } from "./rn";
+import { View, Text, Pressable } from "../components/primitives";
 
 export interface Todo {
 	id: int32;
