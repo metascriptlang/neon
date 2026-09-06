@@ -85,10 +85,7 @@ interface PressableProps {
 // is not a question the host's click event can answer.
 export function Pressable(props: PressableProps): NeonNode {
 	const evts: VEvent[] = [];
-	const onPress = props.onPress;
-	const onPressIn = props.onPressIn;
-	const onPressOut = props.onPressOut;
-	const onLongPress = props.onLongPress;
+	const { onPress, onPressIn, onPressOut, onLongPress, delayLongPress = LONG_PRESS_DELAY_MS } = props;
 	const wantsGestures = onPressIn !== null || onPressOut !== null || onLongPress !== null;
 
 	let state = 0;           // 0 idle · 1 pressing · 2 long-pressing
@@ -124,13 +121,11 @@ export function Pressable(props: PressableProps): NeonNode {
 				}
 			}, MIN_PRESS_DURATION_MS) as int32;
 			if (onLongPress !== null) {
-				const d = props.delayLongPress;
-				const delay = d === null ? LONG_PRESS_DELAY_MS : (d as number);
 				longId = setTimeout((): void => {
 					if (state !== 1) { return; }
 					state = 2;
 					(onLongPress as (x: NeonEvent) => void)(e);
-				}, delay) as int32;
+				}, delayLongPress) as int32;
 			}
 		};
 		// RN: `isPressCanceledByLongPress` — a press that already fired
