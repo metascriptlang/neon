@@ -2,10 +2,10 @@
 // call, speaking the universal vocabulary (View/Text/Pressable — hosts translate
 // the wire tags; handlers receive a typed NeonEvent since 2026-09-03).
 
-import { createSignal } from "../core/signal";
-import { createStyles, styleOf } from "../macros/ui/style";
-import { NeonNode } from "../render/node";
-import { View, Text, Pressable } from "../components/primitives";
+import { createSignal } from "../../src/core/signal";
+import { createStyles, styleOf } from "../../src/macros/ui/style";
+import { NeonNode } from "../../src/render/node";
+import { View, Text, Pressable } from "../../src/components/primitives";
 
 const styles = createStyles({
 	container: { flexDirection: "column", alignItems: "center", gap: 12, padding: 24 },

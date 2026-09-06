@@ -6,12 +6,12 @@
 // on the browser host today, and the starter keeps one vocabulary for every
 // target — typed input joins when a native host carries it.
 
-import { createSignal } from "../core/signal";
-import { createStyles, styleOf } from "../macros/ui/style";
-import { NeonNode } from "../render/node";
-import { NeonView } from "../render/host";
-import { For, Show } from "../macros/ui/flow";
-import { View, Text, Pressable } from "../components/primitives";
+import { createSignal } from "../../src/core/signal";
+import { createStyles, styleOf } from "../../src/macros/ui/style";
+import { NeonNode } from "../../src/render/node";
+import { NeonView } from "../../src/render/host";
+import { For, Show } from "../../src/macros/ui/flow";
+import { View, Text, Pressable } from "../../src/components/primitives";
 
 export interface Todo {
 	id: int32;
