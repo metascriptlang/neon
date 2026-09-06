@@ -17,7 +17,7 @@ command that proved it. Never layer a correction on a stale row — rewrite the 
 
 ## Now
 
-**iOS host** — `src/platform/ios/` is empty, and it is the last platform between Neon and the claim
+**iOS host** — not started, and it is the last platform between Neon and the claim
 on the tin. Not blocked on the compiler: gate with `when (ios) { … }` around
 `@compile`/`@passC`/`@passL`/`@link` over one backend-agnostic extern surface, the shape
 `void/src/sokol/gpu.ms` already ships. An untaken `when` branch is never type-checked, so it may call
@@ -32,9 +32,9 @@ every target, and no build flag or user-visible knob exists (`RENDER-MODEL.md` �
 
 | # | work | state | size |
 |---|---|---|---|
-| 1 | Android host | `src/platform/android/` empty | large |
+| 1 | Android host | not started | large |
 | 2 | `_hover` / `_before` / `_classNames`, then the Animation API | user-chosen 2026-08-18 | large |
-| 3 | S1b projection caching, component macro, attribute classification, `src/starter/` | | medium |
+| 3 | S1b projection caching, component macro, attribute classification | | medium |
 
 ---
 
@@ -70,7 +70,7 @@ In rough priority order, once the above is standing:
   Native hosts have no clock yet, so long press does not fire there (BUGS.md §7).
 - **the universal component vocabulary** (2026-09-03, user decision — div/span are HTML-isms
   users must not meet) — `View`/`Text`/`TextInput`/`Pressable` are real components
-  (`src/starter/rn.ms`, the createComponent seam) rendering lowercase WIRE tags; every host
+  (`src/components/primitives.ms`, the createComponent seam) rendering lowercase WIRE tags; every host
   translates in its own createElement (browser + SSR: `htmlTagFor` — view→div, text→span,
   textinput→input, pressable→button; terminal: box; void ignores tags; mock records as
   written; unknown tags pass through as the escape hatch). Two prop-contract rules landed with

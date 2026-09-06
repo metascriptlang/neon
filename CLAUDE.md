@@ -159,24 +159,39 @@ neon/
 │   ├── render/            # Renderer-agnostic layer (✓ ported, NOT in Nim original)
 │   │   ├── node.ms        # VNode / element construction
 │   │   ├── host.ms        # Host operations contract
-│   │   └── reconcile.ms   # Reconciler
+│   │   ├── hostTypes.ms   # Host-facing type surface
+│   │   ├── reconcile.ms   # Reconciler
+│   │   ├── component.ms   # createComponent seam
+│   │   ├── context.ms     # createContext / useContext
+│   │   ├── event.ms       # NeonEvent construction
+│   │   ├── template.ms    # Template cloning
+│   │   ├── style.ms       # Style merge + resolution
+│   │   ├── css.ms         # CSS text generation
+│   │   └── sheet.ms       # Stylesheet registry
 │   │
-│   ├── macros/            # Compile-time transformations (partial)
+│   ├── macros/            # Compile-time transformations
 │   │   └── ui/
-│   │       ├── element.ms # element macro - JSX → VNode tree (sacred)
-│   │       ├── flow.ms    # Show / For control flow
-│   │       └── style.ms   # createStyles macro (stub)
+│   │       ├── element.ms  # element macro - JSX → VNode tree (sacred)
+│   │       ├── direct.ms   # direct-emission macro
+│   │       ├── flow.ms     # Show / For control flow
+│   │       ├── reactive.ms # reactive-expression detection
+│   │       ├── style.ms    # createStyles macro
+│   │       └── theme.ms    # createTheme / setTheme macros
 │   │
-│   ├── platform/          # Platform-specific renderers
-│   │   ├── types.ms       # Cross-platform Element interface
-│   │   └── browser/
-│   │       └── dom.ms     # DOM rendering (JS backend, partial)
-│   │   # TODO: ios/, android/, terminal/
+│   ├── components/        # The vocabulary users write
+│   │   └── primitives.ms  # View / Text / TextInput / Pressable
 │   │
-│   └── yoga/              # Flexbox layout (empty — TODO)
-│   └── starter/           # Example components (empty — TODO)
+│   └── platform/          # Platform-specific renderers
+│       ├── types.ms       # Cross-platform Element interface
+│       ├── browser/
+│       │   └── dom.ms     # DOM rendering (JS backend)
+│       ├── terminal/      # host.ms · paint.ms · types.ms
+│       └── void/
+│           └── host.ms    # Void scene graph + yoga flexbox
+│       # TODO: ios/, android/ — gate with `when (ios)`, NOT blocked
 │
 ├── examples/              # Usage examples
+│   ├── components/        # Demo components (counter.ms, todoList.ms)
 │   ├── counter.ms         # Basic reactivity
 │   ├── counterDom.ms      # Counter via DOM
 │   ├── signalApi.ms       # Signal API demo
@@ -184,22 +199,12 @@ neon/
 │   ├── showcaseDom.ms
 │   └── closureReassign.ms
 │
-├── tests/                 # Test suite
-│   ├── core/              # Reactive system tests
-│   │   ├── signal.test.ms
-│   │   ├── memo.test.ms
-│   │   ├── dispose.test.ms
-│   │   └── array.test.ms
-│   └── render/            # Render/reconcile/macro tests
-│       ├── reconcile.test.ms
-│       ├── reconcileHard.test.ms
-│       ├── host.test.ms
-│       ├── hostOps.test.ms
-│       ├── flow.test.ms
-│       ├── element.test.ms
-│       ├── region.test.ms
-│       ├── counter.test.ms
-│       └── renderToString.test.ms
+├── tests/                 # Test suite — mirrors src/
+│   ├── core/              # Reactive system tests (4 files)
+│   ├── render/            # Render / reconcile / macro tests (18 files)
+│   ├── style/             # Style, variants and theme tests (10 files)
+│   ├── platform/          # terminal.test.ms · void.test.ms
+│   └── run.sh             # Full gate: every test native, then --target=js
 │
 └── build/                 # Generated artifacts
 ```
@@ -312,7 +317,7 @@ See `docs/PORT-STATUS.md` for the live, detailed port status + module mapping. S
 **Delivered**: `src/platform/browser/dom.ms` (partial DOM, JS backend), `src/platform/terminal/`
 (host + paint, green), `src/platform/void/host.ms` (Node2D scene graph + yoga flexbox + hit-testing,
 green). Yoga is DONE — the binding lives in its own repo (`~/metascript/yoga`) and `deps/yoga`
-symlinks a real checkout; `src/yoga/` here is a vestigial empty dir, not a TODO.
+symlinks a real checkout; Neon carries no `src/yoga/` of its own.
 
 **NOT blocked.** Both the OS axis and the backend axis are `when` blocks (msc >= 0.2.42;
 `@platform`/`@target` were retired 2026-08-09 and now raise an error):
@@ -460,7 +465,7 @@ msc test tests/render/renderToString.test.ms
 # Browser (JS backend)
 msc build examples/counterDom.ms
 
-# Terminal + Void hosts ship today — see tests/platform/terminal + tests/render/voidHost
+# Terminal + Void hosts ship today — see tests/platform/terminal + tests/platform/void
 # iOS / Android — TODO, and NOT compiler-blocked: use `when (ios)`, as void/src/sokol/gpu.ms does
 ```
 
@@ -524,8 +529,8 @@ src/platform/    ← Platform-specific (UIKit, DOM, etc.)
 ### Add a New Component
 
 ```bash
-# 1. Create component file under src/starter/
-touch src/starter/MyComponent.ms
+# 1. Create component file under src/components/
+touch src/components/MyComponent.ms
 
 # 2. Implement with JSX + element macro (see src/macros/ui/element.ms for the contract)
 #    Reference: examples/counter.ms and tests/render/counter.test.ms

@@ -23,13 +23,13 @@ msc run build.ms test
 ```
 src/
 ├── core/        # Reactive primitives (signal, effect, memo)
+├── render/      # Renderer-agnostic layer (VNode, reconciler, host contract)
 ├── macros/      # Compile-time DSL transformations
-├── platform/    # Platform-specific renderers
-├── yoga/        # Layout engine bindings
-└── starter/     # Example components
+├── components/  # The vocabulary users write (View / Text / Pressable / TextInput)
+└── platform/    # Platform-specific renderers (browser, terminal, void)
 
-examples/        # Usage examples
-tests/           # Test suite
+examples/        # Usage examples, incl. components/ demos
+tests/           # Test suite — core / render / style / platform
 ```
 
 ## Architecture

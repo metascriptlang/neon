@@ -34,9 +34,9 @@ Nim → MetaScript module map plus the design decisions taken along the way.
 | 1 | ~~`createStyles` macro~~ | **DONE (S1b)** — `style.ms` is a real styleOf-rewrite macro; checker validates each entry against `Style`. Remaining style work is S3 (spread, blocked by §2 row 8) + S4 (reactive fields) | — |
 | 2 | component macro (function components) | **DONE 2026-08-12** — runtime path green E2E since 2026-08-08; converter surface closed: `jsxToNode` in the js branch of `src/converters.ms` lowers bare JSX at NeonNode boundaries (param/const/component return — native already covered via the NeonView alias). Measured: `msc build probe/bareCompJs.ms --target=js` + node prints the same tree as `msc run` on C, zero `element()` calls; pinned by `tests/render/converter.test.ms`; suite 19/19 files | — |
 | 3 | attribute classification | **DONE (D2, 2026-08-09)** — string literal → static `attr`, `on*` → `evt`, any other expr → `dynAttr` thunk + one setAttr effect at mount (`element.ms` + `renderNode`); mirrored in direct emission, which also gained the typed style channel. Remaining: animatable channel = S4 reactive style fields | — |
-| 4 | `src/starter/` example components | **DONE** — `counter.ms` + `todoList.ms` | — |
-| 5 | iOS host | `src/platform/ios/` empty dir | large |
-| 6 | Android host | `src/platform/android/` empty dir | large |
+| 4 | demo components | **DONE** — `examples/components/{counter,todoList}.ms` | — |
+| 5 | iOS host | not started — add `src/platform/ios/` when it lands | large |
+| 6 | Android host | not started — add `src/platform/android/` when it lands | large |
 
 Current order lives in `docs/ROADMAP.md`; 5/6 sit behind the style/theme work there.
 
@@ -89,9 +89,9 @@ miscompiles C — `probe/closureCastCall.ms`). DX decision recorded in
   capitalized-tag branch + tests.
 
 
-⚠ **`src/yoga/` and `src/platform/{ios,android}/` are empty dirs, not work-in-progress.** Yoga
-itself is done — the binding lives in `~/metascript/yoga` and `deps/yoga` symlinks a real checkout,
-so `src/yoga/` here is vestigial.
+⚠ **Neon has no `src/yoga/` and no `src/platform/{ios,android}/`** — the empty placeholders were
+removed; absence means not started, not work-in-progress. Yoga itself is done: the binding lives in
+`~/metascript/yoga` and `deps/yoga` symlinks a real checkout.
 ⚠ **iOS/Android are NOT blocked on `@target`/`@platform`** — both were retired 2026-08-09 and now
 raise an error. Gate with `when (ios) { … }` around `@compile`/`@passC`/`@passL`/`@link` over one
 backend-agnostic extern surface, the shape `void/src/sokol/gpu.ms` already ships. Unlike the old
