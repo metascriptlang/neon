@@ -21,7 +21,7 @@ import {
 	createTerminalNode, createTerminalTextNode,
 } from "./types";
 
-function hexNibble(c: string): number {
+function hexNibble(c: string): int32 {
 	if (c >= "0" && c <= "9") { return c.charCodeAt(0) - 48; }
 	if (c >= "a" && c <= "f") { return c.charCodeAt(0) - 87; }
 	if (c >= "A" && c <= "F") { return c.charCodeAt(0) - 55; }
