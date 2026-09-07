@@ -1,0 +1,17 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>Neon browser test lane</title>
+<body>
+<script type="module">
+globalThis.process = { exitCode: 0 };
+const lines = [];
+const real = console.log;
+console.log = (...a) => { lines.push(a.join(" ")); real(...a); };
+try {
+	await import("./_test/main.js");
+	globalThis.__neonDone = { crashed: false, exitCode: globalThis.process.exitCode, lines };
+} catch (e) {
+	globalThis.__neonDone = { crashed: true, error: String(e && e.stack ? e.stack : e), lines };
+}
+</script>
+</body>
