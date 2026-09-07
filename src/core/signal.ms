@@ -55,15 +55,20 @@ export function createSignal<T>(initialValue: T): [() => T, (v: T) => void] {
 export function untrack<T>(fn: () => T): T {
 	const prev = getListener();
 	setListener(null);
-	const result = fn();
-	setListener(prev);
-	return result;
+	try {
+		return fn();
+	} finally {
+		setListener(prev);
+	}
 }
 
 // Defer effect drain until the outermost batch completes.
 export function batch(fn: () => void): void {
 	setBatchDepth(getBatchDepth() + 1);
-	fn();
-	setBatchDepth(getBatchDepth() - 1);
+	try {
+		fn();
+	} finally {
+		setBatchDepth(getBatchDepth() - 1);
+	}
 	if (getBatchDepth() === 0) { runQueue(); }
 }

@@ -111,9 +111,12 @@ export function runComputation(comp: Computation): void {
 	const prevOwner = tlOwner;
 	tlListener = comp;
 	tlOwner = comp;
-	comp.fn();
-	tlListener = prevListener;
-	tlOwner = prevOwner;
+	try {
+		comp.fn();
+	} finally {
+		tlListener = prevListener;
+		tlOwner = prevOwner;
+	}
 }
 
 export function updateComputation(comp: Computation): void {
@@ -133,17 +136,20 @@ export function runQueue(): void {
 	if (tlRunning) return;
 	tlRunning = true;
 	let guard = 0;
-	while ((tlUpdates.length > 0 || tlEffects.length > 0) && guard < 1000000) {
-		guard += 1;
-		if (tlUpdates.length > 0) {
-			const c = tlUpdates[tlUpdates.length - 1];
-			tlUpdates.pop();
-			updateComputation(c);
-		} else {
-			const c = tlEffects[tlEffects.length - 1];
-			tlEffects.pop();
-			updateComputation(c);
+	try {
+		while ((tlUpdates.length > 0 || tlEffects.length > 0) && guard < 1000000) {
+			guard += 1;
+			if (tlUpdates.length > 0) {
+				const c = tlUpdates[tlUpdates.length - 1];
+				tlUpdates.pop();
+				updateComputation(c);
+			} else {
+				const c = tlEffects[tlEffects.length - 1];
+				tlEffects.pop();
+				updateComputation(c);
+			}
 		}
+	} finally {
+		tlRunning = false;
 	}
-	tlRunning = false;
 }

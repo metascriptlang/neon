@@ -19,16 +19,20 @@ export function createRoot<T>(fn: (dispose: Dispose) => T): T {
 	setOwner(root);
 	setListener(null);
 	const dispose: Dispose = () => { cleanNode(root, true); };
-	const result = fn(dispose);
-	setOwner(prevOwner);
-	setListener(prevListener);
-	return result;
+	try {
+		return fn(dispose);
+	} finally {
+		setOwner(prevOwner);
+		setListener(prevListener);
+	}
 }
 
 export function runWithOwner<T>(owner: Computation | null, fn: () => T): T {
 	const prev = getOwner();
 	setOwner(owner);
-	const result = fn();
-	setOwner(prev);
-	return result;
+	try {
+		return fn();
+	} finally {
+		setOwner(prev);
+	}
 }
