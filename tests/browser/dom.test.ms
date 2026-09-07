@@ -4,22 +4,22 @@ import { Style, emptyStyle, setStyleField } from "../../src/render/style";
 import { NeonEvent } from "../../src/render/event";
 
 extern class ProbeStyle {
-	backgroundColor: cstring;
-	color: cstring;
-	width: cstring;
-	height: cstring;
-	padding: cstring;
-	paddingTop: cstring;
-	paddingLeft: cstring;
-	flex: cstring;
-	flexGrow: cstring;
-	flexShrink: cstring;
-	minWidth: cstring;
-	marginTop: cstring;
-	fontSize: cstring;
-	fontWeight: cstring;
-	textAlign: cstring;
-	overflow: cstring;
+	backgroundColor: string;
+	color: string;
+	width: string;
+	height: string;
+	padding: string;
+	paddingTop: string;
+	paddingLeft: string;
+	flex: string;
+	flexGrow: string;
+	flexShrink: string;
+	minWidth: string;
+	marginTop: string;
+	fontSize: string;
+	fontWeight: string;
+	textAlign: string;
+	overflow: string;
 }
 
 extern class ProbeClassList {
@@ -27,9 +27,9 @@ extern class ProbeClassList {
 }
 
 extern class ProbeNode {
-	textContent: cstring;
-	tagName: cstring;
-	value: cstring;
+	textContent: string;
+	tagName: string;
+	value: string;
 	style: ProbeStyle;
 	classList: ProbeClassList;
 	extern getAttribute(name: cstring): cstring | null;
