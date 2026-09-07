@@ -2485,6 +2485,14 @@ Each is cheap, none blocks anything, all were surfaced by the sessions that clos
   declares no macro, then re-sweep. Compiler-side fix would be to walk macro bodies in the same
   aliveness pass.
 
+  **That rule is not sufficient — TYPE-position uses are missed too** (2026-09-07, the barrel
+  sweep). `src/render/context.ms` declares no macro, yet the warning flags `Computation`, which is
+  used at `context.ms:43` as the annotation of `const scope: Computation = {…}`. Same shape in
+  `src/macros/ui/style.ms:153` (`let locs: SourceLocation[]`). So the aliveness pass counts only
+  VALUE positions: an import reachable solely through an annotation reads as dead. Removing on the
+  warning's word yields an unresolved type, not a cleanup. Until the pass walks type positions as
+  well as macro bodies, the warning is advisory only — grep the name before touching the import.
+
 - **fn VALUES don't get arity subsumption — only literals do** (2026-09-03, the event arc).
   msc v0.2.53 pads a LITERAL lambda to its slot's arity (`onClick={() => …}` works), but a 0-arg
   fn passed by NAME (`const inc = () => …; onClick={inc}`) is still a loud
