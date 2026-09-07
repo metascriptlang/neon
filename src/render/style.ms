@@ -142,7 +142,7 @@ export function setStyleField(s: Style, name: string, v: StyleValue): void {
 		"fontSize" => { s.fontSize = v as unknown as number | null; },
 		"fontWeight" => { s.fontWeight = v as unknown as FontWeight | null; },
 		"textAlign" => { s.textAlign = v as unknown as TextAlign | null; },
-		_ => {},
+		_ => { throw new Error(`no Style field named ${name}`); },
 	};
 }
 
