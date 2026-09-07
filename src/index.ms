@@ -5,6 +5,7 @@ export { Signal, createSignal, untrack, batch } from "./core/signal";
 export { createEffect } from "./core/effect";
 export { createMemo } from "./core/memo";
 export { createRoot, runWithOwner } from "./core/owner";
+export { getOwner } from "./core/runtime";
 export { onCleanup } from "./core/cleanup";
 export { mapArray, indexArray } from "./core/array";
 export { Dispose } from "./core/types";
