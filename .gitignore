@@ -6,6 +6,14 @@ out/
 *.so
 *.dylib
 *.exe
+*.rsp
+.vite/
+
+# Machine-local symlinks to sibling checkouts
+deps/
+
+# Scratch reproductions. Anything worth keeping is added with `git add -f`.
+probe/
 
 # MetaScript cache
 .metascript-cache/
