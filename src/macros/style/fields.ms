@@ -1,4 +1,4 @@
-import { Node, NodeKind, SourceLocation, createNodeAt } from "std/meta";
+import { Node, NodeKind, SourceLocation } from "std/meta";
 
 export const STYLE_FIELDS: string[] = [
 	"flexDirection", "justifyContent", "alignItems", "alignSelf", "alignContent", "position",
@@ -20,62 +20,147 @@ export const STYLE_PROJECTIONS: string[] = [
 export macro applyCssPropBody(node: Node): Node {
 	const L = node.line;
 	const C = node.column;
-	const loc: SourceLocation = { line: L, column: C };
-	const stmts: Node[] = [];
+	const cases: Node[] = [];
 	for (let i = 0; i < STYLE_FIELDS.length; i = i + 1) {
 		const fieldName = STYLE_FIELDS[i];
-		const assign: Node = {
-			kind: NodeKind.BinaryExpr, line: L, column: C, operator: "=",
-			left: {
-				kind: NodeKind.MemberExpr, line: L, column: C,
-				object: { kind: NodeKind.Identifier, line: L, column: C, name: "css" }, property: fieldName, isOptional: false,
-			},
-			right: {
-				kind: NodeKind.CallExpr, line: L, column: C,
-				callee: { kind: NodeKind.Identifier, line: L, column: C, name: STYLE_PROJECTIONS[i] },
-				arguments: [{ kind: NodeKind.Identifier, line: L, column: C, name: "v" }],
-				isDirectCall: false, resolvedOverloadIdx: -1,
-			},
-		};
-		stmts.push({
-			kind: NodeKind.IfStmt, line: L, column: C,
-			condition: {
-				kind: NodeKind.BinaryExpr, line: L, column: C, operator: "===",
-				left: { kind: NodeKind.Identifier, line: L, column: C, name: "name" },
-				right: { kind: NodeKind.StringLiteral, line: L, column: C, value: fieldName },
-			},
-			consequent: {
+		const proj = STYLE_PROJECTIONS[i];
+		const castType = proj === "word" ? "string | null" : (proj === "num" ? "number | null" : "");
+		const vRef: Node = { kind: NodeKind.Identifier, line: L, column: C, name: "v" };
+		const arg: Node = castType === "" ? vRef
+			: { kind: NodeKind.TypeAssertion, line: L, column: C, asExpr: vRef, asType: castType };
+		cases.push({
+			kind: NodeKind.MatchCase, line: L, column: C,
+			casePatterns: [{ kind: NodeKind.StringLiteral, line: L, column: C, value: fieldName }],
+			caseGuard: null,
+			caseBody: {
 				kind: NodeKind.BlockStmt, line: L, column: C,
-				statements: [
-					{ kind: NodeKind.ExprStmt, line: L, column: C, expr: assign },
-					{ kind: NodeKind.ReturnStmt, line: L, column: C, argument: null },
-				],
+				statements: [{
+					kind: NodeKind.ExprStmt, line: L, column: C,
+					expr: {
+						kind: NodeKind.BinaryExpr, line: L, column: C, operator: "=",
+						left: {
+							kind: NodeKind.MemberExpr, line: L, column: C,
+							object: { kind: NodeKind.Identifier, line: L, column: C, name: "css" },
+							property: fieldName, isOptional: false,
+						},
+						right: {
+							kind: NodeKind.CallExpr, line: L, column: C,
+							callee: { kind: NodeKind.Identifier, line: L, column: C, name: proj },
+							arguments: [arg], isDirectCall: false, resolvedOverloadIdx: -1,
+						},
+					},
+				}],
 			},
-			alternate: createNodeAt(NodeKind.BlockStmt, { statements: [] }, loc),
 		});
 	}
-	stmts.push({
-		kind: NodeKind.ThrowStmt, line: L, column: C,
-		throwArg: {
-			kind: NodeKind.NewExpr, line: L, column: C,
-			newCallee: { kind: NodeKind.Identifier, line: L, column: C, name: "Error" },
-			newArguments: [{
-				kind: NodeKind.BinaryExpr, line: L, column: C, operator: "+",
-				left: { kind: NodeKind.StringLiteral, line: L, column: C, value: "no browser projection for style field " },
-				right: { kind: NodeKind.Identifier, line: L, column: C, name: "name" },
+	cases.push({
+		kind: NodeKind.MatchCase, line: L, column: C,
+		casePatterns: [{ kind: NodeKind.Identifier, line: L, column: C, name: "_" }],
+		caseGuard: null,
+		caseBody: {
+			kind: NodeKind.BlockStmt, line: L, column: C,
+			statements: [{
+				kind: NodeKind.ThrowStmt, line: L, column: C,
+				throwArg: {
+					kind: NodeKind.NewExpr, line: L, column: C,
+					newCallee: { kind: NodeKind.Identifier, line: L, column: C, name: "Error" },
+					newArguments: [{
+						kind: NodeKind.BinaryExpr, line: L, column: C, operator: "+",
+						left: { kind: NodeKind.StringLiteral, line: L, column: C, value: "no browser projection for style field " },
+						right: { kind: NodeKind.Identifier, line: L, column: C, name: "name" },
+					}],
+				},
 			}],
 		},
 	});
 	return {
 		kind: NodeKind.SpliceMany, line: L, column: C,
 		spliceNodes: [{
-			kind: NodeKind.FunctionDecl, line: L, column: C,
-			fnName: "applyCssProp",
-			params: ["css", "name", "v"],
-			fnParamTypes: ["CssStyle", "string", "StyleValue"],
-			fnBody: { kind: NodeKind.BlockStmt, line: L, column: C, statements: stmts },
-			fnFlags: "", fnReturnType: "void", fnDefaults: [], nativeName: "",
-			nameLocation: { line: L, column: C },
+			kind: NodeKind.ExportDecl, line: L, column: C,
+			exportedDecl: {
+				kind: NodeKind.FunctionDecl, line: L, column: C,
+				fnName: "applyCssProp",
+				params: ["css", "name", "v"],
+				fnParamTypes: ["CssStyle", "string", "StyleValue"],
+				fnBody: {
+					kind: NodeKind.BlockStmt, line: L, column: C,
+					statements: [{
+						kind: NodeKind.MatchStmt, line: L, column: C,
+						matchStmtDisc: { kind: NodeKind.Identifier, line: L, column: C, name: "name" },
+						matchStmtCases: cases,
+					}],
+				},
+				fnFlags: "", fnReturnType: "void", fnDefaults: [], nativeName: "",
+				nameLocation: { line: L, column: C },
+			},
+		}],
+	};
+}
+
+export macro applyCssBody(node: Node): Node {
+	const L = node.line;
+	const C = node.column;
+	const stmts: Node[] = [{
+		kind: NodeKind.ExprStmt, line: L, column: C,
+		expr: {
+			kind: NodeKind.BinaryExpr, line: L, column: C, operator: "=",
+			left: {
+				kind: NodeKind.MemberExpr, line: L, column: C,
+				object: { kind: NodeKind.Identifier, line: L, column: C, name: "css" },
+				property: "cssText", isOptional: false,
+			},
+			right: { kind: NodeKind.StringLiteral, line: L, column: C, value: "" },
+		},
+	}];
+	for (let i = 0; i < STYLE_FIELDS.length; i = i + 1) {
+		const fieldName = STYLE_FIELDS[i];
+		const read: Node = {
+			kind: NodeKind.MemberExpr, line: L, column: C,
+			object: { kind: NodeKind.Identifier, line: L, column: C, name: "s" },
+			property: fieldName, isOptional: false,
+		};
+		stmts.push({
+			kind: NodeKind.IfStmt, line: L, column: C,
+			condition: {
+				kind: NodeKind.BinaryExpr, line: L, column: C, operator: "!==",
+				left: read,
+				right: { kind: NodeKind.NullLiteral, line: L, column: C },
+			},
+			consequent: {
+				kind: NodeKind.BlockStmt, line: L, column: C,
+				statements: [{
+					kind: NodeKind.ExprStmt, line: L, column: C,
+					expr: {
+						kind: NodeKind.CallExpr, line: L, column: C,
+						callee: { kind: NodeKind.Identifier, line: L, column: C, name: "applyCssProp" },
+						arguments: [
+							{ kind: NodeKind.Identifier, line: L, column: C, name: "css" },
+							{ kind: NodeKind.StringLiteral, line: L, column: C, value: fieldName },
+							{
+								kind: NodeKind.TypeAssertion, line: L, column: C, asType: "StyleValue",
+								asExpr: { kind: NodeKind.TypeAssertion, line: L, column: C, asType: "unknown", asExpr: read },
+							},
+						],
+						isDirectCall: false, resolvedOverloadIdx: -1,
+					},
+				}],
+			},
+			alternate: { kind: NodeKind.BlockStmt, line: L, column: C, statements: [] },
+		});
+	}
+	return {
+		kind: NodeKind.SpliceMany, line: L, column: C,
+		spliceNodes: [{
+			kind: NodeKind.ExportDecl, line: L, column: C,
+			exportedDecl: {
+				kind: NodeKind.FunctionDecl, line: L, column: C,
+				fnName: "applyCss",
+				params: ["css", "s"],
+				fnParamTypes: ["CssStyle", "Style"],
+				fnBody: { kind: NodeKind.BlockStmt, line: L, column: C, statements: stmts },
+				fnFlags: "", fnReturnType: "void", fnDefaults: [], nativeName: "",
+				nameLocation: { line: L, column: C },
+			},
 		}],
 	};
 }
