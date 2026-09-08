@@ -2,6 +2,9 @@ import { domHost, documentBody } from "../../src/platform/browser/dom";
 import { HostNode } from "../../src/render/hostTypes";
 import { Style, emptyStyle, setStyleField } from "../../src/render/style";
 import { NeonEvent } from "../../src/render/event";
+import { bindAttr } from "../../src/render/host";
+import { createSignal } from "../../src/core/signal";
+import { createRoot } from "../../src/core/owner";
 
 extern class ProbeStyle {
 	backgroundColor: string;
@@ -202,6 +205,29 @@ test "setStyle clears a field that is no longer set" {
 	probe(el).remove();
 }
 
+test "a controlled input is steered after the user types" {
+	const h = domHost();
+	const el = mount("textinput");
+	h.setAttr(el, "value", "first");
+	assert probe(el).value === "first", "the attribute seeds the field";
+	probe(el).value = "typed by user";
+	h.setAttr(el, "value", "second");
+	assert probe(el).value === "second", "the host must write the property, not the attribute";
+	probe(el).remove();
+}
+
+test "a bound value steers the input through the reactive path too" {
+	const h = domHost();
+	const el = mount("textinput");
+	const [v, setV] = createSignal("a");
+	createRoot(() => { bindAttr(h, el, "value", () => v()); });
+	assert probe(el).value === "a", "the bind seeds the field";
+	probe(el).value = "typed by user";
+	setV("b");
+	assert probe(el).value === "b", "a changed signal overwrites what the user typed";
+	probe(el).remove();
+}
+
 // ── Still red on purpose — the work items after this step.
 
 test "GAP: the Style IR has no overflow field, so no host can ever receive it" {
@@ -212,13 +238,3 @@ test "GAP: the Style IR has no overflow field, so no host can ever receive it" {
 	probe(el).remove();
 }
 
-test "GAP: a controlled input cannot be steered after the user types" {
-	const h = domHost();
-	const el = mount("textinput");
-	h.setAttr(el, "value", "first");
-	assert probe(el).value === "first", "the attribute seeds the field";
-	probe(el).value = "typed by user";
-	h.setAttr(el, "value", "second");
-	assert probe(el).value === "second", "the host must write the property, not the attribute";
-	probe(el).remove();
-}
