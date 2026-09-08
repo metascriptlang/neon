@@ -127,3 +127,46 @@ test "setStyle: a non-hex colour leaves the node untouched" {
 	vh.host.setStyle(node, { color: "rebeccapurple" } as Style);
 	assert n.color.r === before, "unparseable colour is ignored, not zeroed";
 }
+
+test "setStyle: per-edge margin and padding reach yoga" {
+	const vh = createVoidHost();
+	const node = vh.host.createElement("div");
+	const n = node as unknown as Node2D;
+	vh.host.setStyle(node, { marginTop: 8, marginLeft: 3, paddingLeft: 4, paddingBottom: 2 } as Style);
+	assert n.layoutStyle.marginTop === 8, "marginTop reached yoga";
+	assert n.layoutStyle.marginLeft === 3, "marginLeft reached yoga";
+	assert n.layoutStyle.paddingLeft === 4, "paddingLeft reached yoga";
+	assert n.layoutStyle.paddingBottom === 2, "paddingBottom reached yoga";
+}
+
+test "setStyle: min and max constraints reach yoga" {
+	const vh = createVoidHost();
+	const node = vh.host.createElement("div");
+	const n = node as unknown as Node2D;
+	vh.host.setStyle(node, { minWidth: 10, maxHeight: "50%", aspectRatio: 2 } as Style);
+	assert n.layoutStyle.minWidth === 10, "minWidth reached yoga";
+	assert n.layoutStyle.maxHeight === "50%", "maxHeight reached yoga";
+	assert n.layoutStyle.aspectRatio === 2, "aspectRatio reached yoga";
+}
+
+test "setStyle: flex shorthand, basis, wrap and self-alignment reach yoga" {
+	const vh = createVoidHost();
+	const node = vh.host.createElement("div");
+	const n = node as unknown as Node2D;
+	vh.host.setStyle(node, { flex: 1, flexBasis: 20, flexWrap: "wrap", alignSelf: "center", display: "none" } as Style);
+	assert n.layoutStyle.flex === 1, "flex reached yoga";
+	assert n.layoutStyle.flexBasis === 20, "flexBasis reached yoga";
+	assert n.layoutStyle.flexWrap === "wrap", "flexWrap reached yoga";
+	assert n.layoutStyle.alignSelf === "center", "alignSelf reached yoga";
+	assert n.layoutStyle.display === "none", "display reached yoga";
+}
+
+test "setStyle: gap axes and border width reach yoga" {
+	const vh = createVoidHost();
+	const node = vh.host.createElement("div");
+	const n = node as unknown as Node2D;
+	vh.host.setStyle(node, { rowGap: 6, columnGap: 9, borderWidth: 1 } as Style);
+	assert n.layoutStyle.rowGap === 6, "rowGap reached yoga";
+	assert n.layoutStyle.columnGap === 9, "columnGap reached yoga";
+	assert n.layoutStyle.borderWidth === 1, "borderWidth reached yoga";
+}
