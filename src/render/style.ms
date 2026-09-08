@@ -16,6 +16,8 @@ export type Display = "flex" | "none";
 export type Overflow = "visible" | "hidden" | "scroll";
 export type TextAlign = "left" | "center" | "right";
 export type FontWeight = "normal" | "bold";
+export type FontStyle = "normal" | "italic";
+export type TextDecorationLine = "none" | "underline" | "line-through" | "underline line-through";
 
 export interface Style {
 	flexDirection: FlexDirection | null;
@@ -78,6 +80,8 @@ export interface Style {
 	transform: string | null;
 	cursor: string | null;
 	boxShadow: string | null;
+	fontStyle: FontStyle | null;
+	textDecorationLine: TextDecorationLine | null;
 
 	// Metadata, not style: the class a CSS-speaking host applies instead of
 	// writing these fields inline, and the rule text backing it. Filled by
@@ -156,6 +160,8 @@ export function setStyleField(s: Style, name: string, v: StyleValue): void {
 		"transform" => { s.transform = v as unknown as string | null; },
 		"cursor" => { s.cursor = v as unknown as string | null; },
 		"boxShadow" => { s.boxShadow = v as unknown as string | null; },
+		"fontStyle" => { s.fontStyle = v as unknown as FontStyle | null; },
+		"textDecorationLine" => { s.textDecorationLine = v as unknown as TextDecorationLine | null; },
 		_ => { throw new Error(`no Style field named ${name}`); },
 	};
 }
@@ -235,5 +241,7 @@ export function mergeStyle(base: Style, over: Style): Style {
 		transform: over.transform !== null ? over.transform : base.transform,
 		cursor: over.cursor !== null ? over.cursor : base.cursor,
 		boxShadow: over.boxShadow !== null ? over.boxShadow : base.boxShadow,
+		fontStyle: over.fontStyle !== null ? over.fontStyle : base.fontStyle,
+		textDecorationLine: over.textDecorationLine !== null ? over.textDecorationLine : base.textDecorationLine,
 	};
 }

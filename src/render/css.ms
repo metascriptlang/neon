@@ -115,5 +115,7 @@ export function styleToCss(s: Style): string {
 	out = out + cssWord("transform", s.transform);
 	out = out + cssWord("cursor", s.cursor);
 	out = out + cssWord("boxShadow", s.boxShadow);
+	out = out + cssWord("fontStyle", s.fontStyle as string | null);
+	out = out + cssWord("textDecorationLine", s.textDecorationLine as string | null);
 	return out;
 }

@@ -19,6 +19,8 @@ extern class CssStyle {
 	padding: cstring;
 	borderRadius: cstring;
 	boxShadow: cstring;
+	fontStyle: cstring;
+	textDecorationLine: cstring;
 	position: cstring;
 	top: cstring;
 	left: cstring;
