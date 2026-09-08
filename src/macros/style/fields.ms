@@ -1,29 +1,67 @@
-import { Node, NodeKind, SourceLocation } from "std/meta";
+import { Node, NodeKind, DeclKind } from "std/meta";
 
-export const STYLE_FIELDS: string[] = [
-	"flexDirection", "justifyContent", "alignItems", "alignSelf", "alignContent", "position",
-	"flexWrap", "display", "flex", "flexGrow", "flexShrink", "flexBasis", "width", "height",
-	"minWidth", "minHeight", "maxWidth", "maxHeight", "aspectRatio", "margin", "marginTop",
-	"marginBottom", "marginLeft", "marginRight", "padding", "paddingTop", "paddingBottom",
-	"paddingLeft", "paddingRight", "top", "left", "right", "bottom", "gap", "rowGap", "columnGap",
-	"backgroundColor", "borderWidth", "borderColor", "borderRadius", "opacity", "color",
-	"fontSize", "fontWeight", "textAlign",
+export const STYLE_TABLE: string[][] = [
+	["flexDirection",   "word", "enum",   "ignore"],
+	["justifyContent",  "word", "enum",   "ignore"],
+	["alignItems",      "word", "enum",   "ignore"],
+	["alignSelf",       "word", "enum",   "ignore"],
+	["alignContent",    "word", "enum",   "ignore"],
+	["position",        "word", "enum",   "ignore"],
+	["flexWrap",        "word", "enum",   "ignore"],
+	["display",         "word", "enum",   "ignore"],
+	["flex",            "num",  "num",    "ignore"],
+	["flexGrow",        "num",  "num",    "ignore"],
+	["flexShrink",      "num",  "num",    "ignore"],
+	["flexBasis",       "len",  "dim",    "ignore"],
+	["width",           "len",  "dim",    "ignore"],
+	["height",          "len",  "dim",    "ignore"],
+	["minWidth",        "len",  "dim",    "ignore"],
+	["minHeight",       "len",  "dim",    "ignore"],
+	["maxWidth",        "len",  "dim",    "ignore"],
+	["maxHeight",       "len",  "dim",    "ignore"],
+	["aspectRatio",     "num",  "num",    "ignore"],
+	["margin",          "len",  "dim",    "ignore"],
+	["marginTop",       "len",  "dim",    "ignore"],
+	["marginBottom",    "len",  "dim",    "ignore"],
+	["marginLeft",      "len",  "dim",    "ignore"],
+	["marginRight",     "len",  "dim",    "ignore"],
+	["padding",         "len",  "dim",    "ignore"],
+	["paddingTop",      "len",  "dim",    "ignore"],
+	["paddingBottom",   "len",  "dim",    "ignore"],
+	["paddingLeft",     "len",  "dim",    "ignore"],
+	["paddingRight",    "len",  "dim",    "ignore"],
+	["top",             "len",  "dim",    "ignore"],
+	["left",            "len",  "dim",    "ignore"],
+	["right",           "len",  "dim",    "ignore"],
+	["bottom",          "len",  "dim",    "ignore"],
+	["gap",             "len",  "dim",    "ignore"],
+	["rowGap",          "len",  "dim",    "ignore"],
+	["columnGap",       "len",  "dim",    "ignore"],
+	["backgroundColor", "word", "paint",  "paint"],
+	["borderWidth",     "len",  "num",    "ignore"],
+	["borderColor",     "word", "ignore", "ignore"],
+	["borderRadius",    "len",  "ignore", "ignore"],
+	["opacity",         "num",  "paint",  "paint"],
+	["color",           "word", "paint",  "paint"],
+	["fontSize",        "len",  "paint",  "ignore"],
+	["fontWeight",      "word", "ignore", "paint"],
+	["textAlign",       "word", "ignore", "ignore"],
 ];
 
-export const STYLE_PROJECTIONS: string[] = [
-	"word", "word", "word", "word", "word", "word", "word", "word", "num", "num", "num", "len",
-	"len", "len", "len", "len", "len", "len", "num", "len", "len", "len", "len", "len", "len",
-	"len", "len", "len", "len", "len", "len", "len", "len", "len", "len", "len", "word", "len",
-	"word", "len", "num", "word", "len", "word", "word",
-];
+const COL_BROWSER = 1;
+const COL_VOID = 2;
+const COL_TERMINAL = 3;
 
 export macro applyCssPropBody(node: Node): Node {
 	const L = node.line;
 	const C = node.column;
 	const cases: Node[] = [];
-	for (let i = 0; i < STYLE_FIELDS.length; i = i + 1) {
-		const fieldName = STYLE_FIELDS[i];
-		const proj = STYLE_PROJECTIONS[i];
+	for (let i = 0; i < STYLE_TABLE.length; i = i + 1) {
+		const row = STYLE_TABLE[i];
+		if (row.length !== 4) { error("style table row " + row[0] + " must name every host", node); }
+		const fieldName = row[0];
+		const proj = row[COL_BROWSER];
+		if (proj !== "word" && proj !== "num" && proj !== "len") { error("browser projection for " + fieldName + " must be word, num or len", node); }
 		const castType = proj === "word" ? "string | null" : (proj === "num" ? "number | null" : "");
 		const vRef: Node = { kind: NodeKind.Identifier, line: L, column: C, name: "v" };
 		const arg: Node = castType === "" ? vRef
@@ -112,8 +150,8 @@ export macro applyCssBody(node: Node): Node {
 			right: { kind: NodeKind.StringLiteral, line: L, column: C, value: "" },
 		},
 	}];
-	for (let i = 0; i < STYLE_FIELDS.length; i = i + 1) {
-		const fieldName = STYLE_FIELDS[i];
+	for (let i = 0; i < STYLE_TABLE.length; i = i + 1) {
+		const fieldName = STYLE_TABLE[i][0];
 		const read: Node = {
 			kind: NodeKind.MemberExpr, line: L, column: C,
 			object: { kind: NodeKind.Identifier, line: L, column: C, name: "s" },
@@ -163,4 +201,73 @@ export macro applyCssBody(node: Node): Node {
 			},
 		}],
 	};
+}
+
+export macro asFlexStyleBody(node: Node): Node {
+	const L = node.line;
+	const C = node.column;
+	const stmts: Node[] = [{
+		kind: NodeKind.VariableDecl, line: L, column: C,
+		declName: "st", declType: "FlexStyle", declKind: DeclKind.Const,
+		initializer: { kind: NodeKind.ObjectLiteral, line: L, column: C, properties: [], keys: [], keyLocations: [] },
+	}];
+	for (let i = 0; i < STYLE_TABLE.length; i = i + 1) {
+		const row = STYLE_TABLE[i];
+		if (row.length !== 4) { error("style table row " + row[0] + " must name every host", node); }
+		const fieldName = row[0];
+		const how = row[COL_VOID];
+		if (how === "paint" || how === "ignore") { continue; }
+		if (how !== "enum" && how !== "num" && how !== "dim") { error("void projection for " + fieldName + " must be enum, num, dim, paint or ignore", node); }
+		const read: Node = {
+			kind: NodeKind.MemberExpr, line: L, column: C,
+			object: { kind: NodeKind.Identifier, line: L, column: C, name: "s" },
+			property: fieldName, isOptional: false,
+		};
+		const value: Node = how === "enum" ? read : {
+			kind: NodeKind.CallExpr, line: L, column: C,
+			callee: { kind: NodeKind.Identifier, line: L, column: C, name: how },
+			arguments: [read], isDirectCall: false, resolvedOverloadIdx: -1,
+		};
+		stmts.push({
+			kind: NodeKind.ExprStmt, line: L, column: C,
+			expr: {
+				kind: NodeKind.BinaryExpr, line: L, column: C, operator: "=",
+				left: {
+					kind: NodeKind.MemberExpr, line: L, column: C,
+					object: { kind: NodeKind.Identifier, line: L, column: C, name: "st" },
+					property: fieldName, isOptional: false,
+				},
+				right: value,
+			},
+		});
+	}
+	stmts.push({
+		kind: NodeKind.ReturnStmt, line: L, column: C,
+		argument: { kind: NodeKind.Identifier, line: L, column: C, name: "st" },
+	});
+	return {
+		kind: NodeKind.SpliceMany, line: L, column: C,
+		spliceNodes: [{
+			kind: NodeKind.ExportDecl, line: L, column: C,
+			exportedDecl: {
+				kind: NodeKind.FunctionDecl, line: L, column: C,
+				fnName: "asFlexStyle",
+				params: ["s"],
+				fnParamTypes: ["Style"],
+				fnBody: { kind: NodeKind.BlockStmt, line: L, column: C, statements: stmts },
+				fnFlags: "", fnReturnType: "FlexStyle", fnDefaults: [], nativeName: "",
+				nameLocation: { line: L, column: C },
+			},
+		}],
+	};
+}
+
+export macro terminalStyleCoverage(node: Node): Node {
+	for (let i = 0; i < STYLE_TABLE.length; i = i + 1) {
+		const row = STYLE_TABLE[i];
+		if (row.length !== 4) { error("style table row " + row[0] + " must name every host", node); }
+		const how = row[COL_TERMINAL];
+		if (how !== "paint" && how !== "ignore") { error("terminal projection for " + row[0] + " must be paint or ignore", node); }
+	}
+	return { kind: NodeKind.SpliceMany, line: node.line, column: node.column, spliceNodes: [] };
 }
