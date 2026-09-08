@@ -22,11 +22,13 @@
 
 import { Node, NodeKind, DeclKind, NodeFlag } from "std/meta";
 import { cleanJsxText } from "./element";
-import { isReactiveExpr } from "./reactive";
+import { isReactiveExpr, findSpreadAttr } from "./reactive";
 
 export macro direct(node: Node): Node {
 	const L = node.line;
 	const C = node.column;
+	const spread = findSpreadAttr(node);
+	if (spread !== null) { error("spread attributes are not supported yet: pass each prop by name", spread as Node); }
 	// Capitalized tag → createComponent(Tag, { props }), mirroring element.ms's prop
 	// contract byte for byte (string literals pass through, expression props become
 	// thunks, a JSX child passes RAW so the converter picks the emission from the

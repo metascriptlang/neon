@@ -16,7 +16,7 @@
 // through withStyle() into NeonNode.style — which then also needs withStyle in scope.
 
 import { Node, NodeKind } from "std/meta";
-import { isReactiveExpr } from "./reactive";
+import { isReactiveExpr, findSpreadAttr } from "./reactive";
 
 function trimEdgeSpaces(s: string, fromStart: boolean, fromEnd: boolean): string {
 	let lo = 0;
@@ -76,6 +76,8 @@ export function cleanJsxText(raw: string): string {
 }
 
 export macro element(node: Node): Node {
+	const spread = findSpreadAttr(node);
+	if (spread !== null) { error("spread attributes are not supported yet: pass each prop by name", spread as Node); }
 	// Capitalized tag → createComponent(Tag, { props }). V1 prop contract: a string
 	// literal passes through, every expression prop becomes a thunk (the component's
 	// props interface declares () => T); children stay structural — one child passes
