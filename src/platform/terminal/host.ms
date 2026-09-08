@@ -77,8 +77,8 @@ export function asTerminalStyle(this s: Style): TerminalStyle {
 		bg: bg !== null ? ansiNameFor(bg as string) : "",
 		bold: s.fontWeight !== null && (s.fontWeight as string) === "bold",
 		dim: s.opacity !== null && (s.opacity as number) < 1.0,
-		italic: false,
-		underline: false,
+		italic: s.fontStyle !== null && (s.fontStyle as string) === "italic",
+		underline: s.textDecorationLine !== null && (s.textDecorationLine as string) === "underline",
 	};
 }
 
