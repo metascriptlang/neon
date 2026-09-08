@@ -13,6 +13,7 @@ export type Align = "auto" | "flex-start" | "flex-end" | "center" | "stretch" | 
 export type PositionType = "static" | "relative" | "absolute";
 export type Wrap = "nowrap" | "wrap" | "wrap-reverse";
 export type Display = "flex" | "none";
+export type Overflow = "visible" | "hidden" | "scroll";
 export type TextAlign = "left" | "center" | "right";
 export type FontWeight = "normal" | "bold";
 
@@ -70,6 +71,13 @@ export interface Style {
 	fontSize: number | null;
 	fontWeight: FontWeight | null;
 	textAlign: TextAlign | null;
+
+	overflow: Overflow | null;
+	zIndex: number | null;
+	fontFamily: string | null;
+	transform: string | null;
+	cursor: string | null;
+	boxShadow: string | null;
 
 	// Metadata, not style: the class a CSS-speaking host applies instead of
 	// writing these fields inline, and the rule text backing it. Filled by
@@ -142,6 +150,12 @@ export function setStyleField(s: Style, name: string, v: StyleValue): void {
 		"fontSize" => { s.fontSize = v as unknown as number | null; },
 		"fontWeight" => { s.fontWeight = v as unknown as FontWeight | null; },
 		"textAlign" => { s.textAlign = v as unknown as TextAlign | null; },
+		"overflow" => { s.overflow = v as unknown as Overflow | null; },
+		"zIndex" => { s.zIndex = v as unknown as number | null; },
+		"fontFamily" => { s.fontFamily = v as unknown as string | null; },
+		"transform" => { s.transform = v as unknown as string | null; },
+		"cursor" => { s.cursor = v as unknown as string | null; },
+		"boxShadow" => { s.boxShadow = v as unknown as string | null; },
 		_ => { throw new Error(`no Style field named ${name}`); },
 	};
 }
@@ -214,5 +228,12 @@ export function mergeStyle(base: Style, over: Style): Style {
 		fontSize: over.fontSize !== null ? over.fontSize : base.fontSize,
 		fontWeight: over.fontWeight !== null ? over.fontWeight : base.fontWeight,
 		textAlign: over.textAlign !== null ? over.textAlign : base.textAlign,
+
+		overflow: over.overflow !== null ? over.overflow : base.overflow,
+		zIndex: over.zIndex !== null ? over.zIndex : base.zIndex,
+		fontFamily: over.fontFamily !== null ? over.fontFamily : base.fontFamily,
+		transform: over.transform !== null ? over.transform : base.transform,
+		cursor: over.cursor !== null ? over.cursor : base.cursor,
+		boxShadow: over.boxShadow !== null ? over.boxShadow : base.boxShadow,
 	};
 }

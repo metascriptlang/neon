@@ -108,5 +108,12 @@ export function styleToCss(s: Style): string {
 	out = out + cssPx("fontSize", s.fontSize);
 	out = out + cssWord("fontWeight", s.fontWeight as string | null);
 	out = out + cssWord("textAlign", s.textAlign as string | null);
+
+	out = out + cssWord("overflow", s.overflow as string | null);
+	out = out + cssRatio("zIndex", s.zIndex);
+	out = out + cssWord("fontFamily", s.fontFamily);
+	out = out + cssWord("transform", s.transform);
+	out = out + cssWord("cursor", s.cursor);
+	out = out + cssWord("boxShadow", s.boxShadow);
 	return out;
 }
