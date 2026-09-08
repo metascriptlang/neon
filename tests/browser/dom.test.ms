@@ -228,13 +228,11 @@ test "a bound value steers the input through the reactive path too" {
 	probe(el).remove();
 }
 
-// ── Still red on purpose — the work items after this step.
-
-test "GAP: the Style IR has no overflow field, so no host can ever receive it" {
+test "overflow reaches the element" {
 	const h = domHost();
 	const el = mount("view");
 	h.setStyle(el, styleWith("overflow", "hidden"));
-	assert probe(el).style.overflow === "hidden", "adding it to the IR is a cross-host decision";
+	assert probe(el).style.overflow === "hidden", "overflow is in the IR and the browser projects it";
 	probe(el).remove();
 }
 

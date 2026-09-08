@@ -170,3 +170,12 @@ test "setStyle: gap axes and border width reach yoga" {
 	assert n.layoutStyle.columnGap === 9, "columnGap reached yoga";
 	assert n.layoutStyle.borderWidth === 1, "borderWidth reached yoga";
 }
+
+test "setStyle: overflow reaches yoga and zIndex reaches the node" {
+	const vh = createVoidHost();
+	const node = vh.host.createElement("div");
+	const n = node as unknown as Node2D;
+	vh.host.setStyle(node, { overflow: "hidden", zIndex: 5 } as Style);
+	assert n.layoutStyle.overflow === "hidden", "overflow reached yoga";
+	assert n.zIndex === 5, "zIndex reached the node";
+}
