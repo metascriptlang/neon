@@ -16,6 +16,7 @@ import { Node2D, DrawKind, group, label, addChild, addChildAt, removeChild } fro
 import { Color } from "../../../../void/src/void2d/types";
 import { FlexStyle } from "../../../../yoga/src/index";
 import { Style } from "../../render/style";
+import { asFlexStyleBody } from "../../macros/style/fields";
 
 export { layoutPass, freeLayout } from "../../../../void/src/void2d/layout";
 export { Node2D, DrawKind, group } from "../../../../void/src/void2d/node";
@@ -190,27 +191,20 @@ export function applyPaint(n: Node2D, s: Style): void {
 	}
 }
 
-// Style → FlexStyle projection (docs/STYLE.md §5). The layout half; `applyPaint`
-// is the paint half.
-export function asFlexStyle(this s: Style): FlexStyle {
-	const st: FlexStyle = {};
-	if (s.flexDirection !== null) { styleEnum(st, "flexDirection", s.flexDirection as string); }
-	if (s.justifyContent !== null) { styleEnum(st, "justifyContent", s.justifyContent as string); }
-	if (s.alignItems !== null) { styleEnum(st, "alignItems", s.alignItems as string); }
-	if (s.position !== null) { styleEnum(st, "position", s.position as string); }
-	if (s.flexGrow !== null) { styleNum(st, "flexGrow", s.flexGrow as float32); }
-	if (s.flexShrink !== null) { styleNum(st, "flexShrink", s.flexShrink as float32); }
-	setDim(st, "width", s.width);
-	setDim(st, "height", s.height);
-	setDim(st, "padding", s.padding);
-	setDim(st, "margin", s.margin);
-	setDim(st, "gap", s.gap);
-	setDim(st, "left", s.left);
-	setDim(st, "top", s.top);
-	setDim(st, "right", s.right);
-	setDim(st, "bottom", s.bottom);
-	return st;
+function num(v: number | null): float32 | null {
+	if (v === null) { return null; }
+	const n = v as number;
+	return n as float32;
 }
+
+function dim(v: number | string | null): float32 | string | null {
+	if (v === null) { return null; }
+	if (typeof v === "string") { return v as string; }
+	const n = v as number;
+	return n as float32;
+}
+
+asFlexStyleBody(0);
 
 function worldX(links: ParentLink[], n: Node2D): float32 {
 	let x = n.x;
