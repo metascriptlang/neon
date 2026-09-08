@@ -147,3 +147,12 @@ test "paint: a styled node emits its ansi prefix" {
 	assert lines[0].indexOf("\x1b[1m", 0) >= 0, "bold prefix present";
 	assert lines[0].indexOf("\x1b[31m", 0) >= 0, "red fg present";
 }
+
+test "setStyle: fontStyle italic and textDecorationLine underline reach the ansi style" {
+	const host = terminalHost();
+	const node = host.createElement("text");
+	host.setStyle(node, { fontStyle: "italic", textDecorationLine: "underline" } as Style);
+	const n = tn(node);
+	assert n.style.italic === true, "fontStyle italic → ansi italic";
+	assert n.style.underline === true, "textDecorationLine underline → ansi underline";
+}

@@ -23,6 +23,8 @@ extern class ProbeStyle {
 	fontWeight: string;
 	textAlign: string;
 	overflow: string;
+	fontStyle: string;
+	textDecorationLine: string;
 }
 
 extern class ProbeClassList {
@@ -233,6 +235,16 @@ test "overflow reaches the element" {
 	const el = mount("view");
 	h.setStyle(el, styleWith("overflow", "hidden"));
 	assert probe(el).style.overflow === "hidden", "overflow is in the IR and the browser projects it";
+	probe(el).remove();
+}
+
+test "fontStyle and textDecorationLine reach the element" {
+	const h = domHost();
+	const el = mount("view");
+	h.setStyle(el, styleWith("fontStyle", "italic"));
+	assert probe(el).style.fontStyle === "italic", "fontStyle is in the IR and the browser projects it";
+	h.setStyle(el, styleWith("textDecorationLine", "underline"));
+	assert probe(el).style.textDecorationLine === "underline", "textDecorationLine is in the IR and the browser projects it";
 	probe(el).remove();
 }
 
