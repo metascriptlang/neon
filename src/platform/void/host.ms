@@ -175,6 +175,7 @@ export function parseColor(css: string): Color | null {
 // background becomes a Rect — a Group draws nothing on its own.
 export function applyPaint(n: Node2D, s: Style): void {
 	if (s.opacity !== null) { n.alpha = s.opacity as float32; }
+	if (s.zIndex !== null) { const z = s.zIndex as number; n.zIndex = z as int32; }
 	if (s.fontSize !== null && n.kind === DrawKind.Label) { n.size = s.fontSize as float32; }
 	const fg = s.color;
 	if (fg !== null && n.kind === DrawKind.Label) {
