@@ -46,6 +46,12 @@ export const STYLE_TABLE: string[][] = [
 	["fontSize",        "len",  "paint",  "ignore"],
 	["fontWeight",      "word", "ignore", "paint"],
 	["textAlign",       "word", "ignore", "ignore"],
+	["overflow",         "word", "enum", "ignore"],
+	["zIndex",           "num", "paint", "ignore"],
+	["fontFamily",       "word", "ignore", "ignore"],
+	["transform",        "word", "ignore", "ignore"],
+	["cursor",           "word", "ignore", "ignore"],
+	["boxShadow",        "word", "ignore", "ignore"],
 ];
 
 const COL_BROWSER = 1;
