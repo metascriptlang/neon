@@ -12,13 +12,11 @@ extern class CssStyle {
 	color: cstring;
 	backgroundColor: cstring;
 	display: cstring;
-	visibility: cstring;
 	opacity: cstring;
 	width: cstring;
 	height: cstring;
 	margin: cstring;
 	padding: cstring;
-	border: cstring;
 	borderRadius: cstring;
 	boxShadow: cstring;
 	position: cstring;
@@ -37,7 +35,6 @@ extern class CssStyle {
 	fontFamily: cstring;
 	textAlign: cstring;
 	cursor: cstring;
-	transition: cstring;
 	transform: cstring;
 	cssText: cstring;
 	alignContent: cstring;
