@@ -83,6 +83,7 @@ extern class DomNode {
 	extern appendChild(child: DomNode): void;
 	extern insertBefore(node: DomNode, ref: DomNode | null): void;
 	extern removeChild(child: DomNode): void;
+	value: cstring;
 	extern setAttribute(name: cstring, value: cstring): void;
 	extern addEventListener(name: cstring, handler: (e: DomEvent) => void): void;
 }
@@ -161,7 +162,9 @@ export function domHost(): Host {
 			(node as unknown as DomNode).textContent = s;
 		},
 		setAttr: (node: HostNode, name: string, value: string): void => {
-			(node as unknown as DomNode).setAttribute(name, value);
+			const el = node as unknown as DomNode;
+			if (name === "value") { el.value = value; return; }
+			el.setAttribute(name, value);
 		},
 		setStyle: (node: HostNode, style: Style): void => {
 			applyCss((node as unknown as DomNode).style, style);
