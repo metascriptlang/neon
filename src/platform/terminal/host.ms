@@ -16,6 +16,7 @@
 import { Host, HostNode } from "../../render/hostTypes";
 import { NeonEvent, neonEvent, eventType } from "../../render/event";
 import { Style } from "../../render/style";
+import { terminalStyleCoverage } from "../../macros/style/fields";
 import {
 	TerminalNode, TerminalEvent, TerminalStyle,
 	createTerminalNode, createTerminalTextNode,
@@ -66,6 +67,8 @@ function ansiNameFor(css: string): string {
 
 // docs/STYLE.md §5 — the terminal's projection of the portable Style IR.
 // A terminal has no flexbox, so the layout half is dropped on purpose.
+terminalStyleCoverage(0);
+
 export function asTerminalStyle(this s: Style): TerminalStyle {
 	const color = s.color;
 	const bg = s.backgroundColor;
