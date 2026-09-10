@@ -2532,6 +2532,9 @@ Each is cheap, none blocks anything, all were surfaced by the sessions that clos
   either a real fragment branch (multi-root NeonNode) or a loud macro error rejecting
   fragments until then. `direct.ms` mirrors afterward. Not a D4 blocker (template-clone
   operates on elements).
+  **2026-09-10: loud rejection LANDED** — `findFragment` (`src/macros/ui/reactive.ms`) walks every child,
+  both macros `error("fragments are not supported yet")`; gate `tests/macros/fragmentRejected.ms` proven red
+  without the guard. Real fragments = plan phase 7 (flatten in child position, multi-root over `regionNode`).
 
 - ~~**JS std string is ~19 exports behind cms**~~ **CLOSED 2026-07-29 (night)**: 18 exports ported
   as pure-MS byte loops matching `runtime/core/string.c` semantics + `lastIndexOf` gained
