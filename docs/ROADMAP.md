@@ -17,11 +17,22 @@ command that proved it. Never layer a correction on a stale row — rewrite the 
 
 ## Now
 
-**iOS host** — not started, and it is the last platform between Neon and the claim
-on the tin. Not blocked on the compiler: gate with `when (ios) { … }` around
-`@compile`/`@passC`/`@passL`/`@link` over one backend-agnostic extern surface, the shape
-`void/src/sokol/gpu.ms` already ships. An untaken `when` branch is never type-checked, so it may call
-APIs that do not exist on the other target.
+**React surface on the Solid core** (user decision 2026-09-10; execution plan in
+`~/.claude/plans/wiggly-wondering-treehouse.md`) — Neon keeps Solid's fine-grained reactivity and React
+Native's component/event vocabulary, and uses the compiler to drop the three rules Solid has to teach only
+because it is a library. Reactivity is decided by TYPE, never by syntax or by where a read sits. `setCount(v)`
+stays; no React hook aliases.
+
+| # | phase | owner | state |
+|---|---|---|---|
+| 0 | redeploy main; docs; loud-reject fragments; uniform spread walk | neon | done 2026-09-10 (`tests/macros/run.sh` rc=0) |
+| 1 | `distinct` nominal (`typeName`), callable over a fn base, one-way widen (`BrandWiden`) | compiler | |
+| 2 | `Accessor<T> = distinct (() => T)`; `createSignal`/`createMemo` return it; `accessor()` | neon core | |
+| 3 | checker auto-call: a read typed `Accessor<T>` becomes `x()` unless a fn-shaped slot expects it | compiler | |
+| 4 | props contract: every value prop is `Accessor<T>`; the macro wraps every value, literals too; one `propValueNode` replaces three copies | neon macros | |
+| 5 | `{a && <X/>}` / ternary / `.map` lower to `Show`/`For` through one `lowerJsxChild` | neon macros | |
+| 6 | error on an implicit accessor read at function-body time (`const d = count * 2`) | compiler | |
+| 7 | real fragments: flatten in child position; multi-root at top level over `regionNode` | neon | |
 
 Emission is finished and needs nothing further: the tier is picked per JSX site at compile time, on
 every target, and no build flag or user-visible knob exists (`RENDER-MODEL.md` §Selection).
@@ -32,9 +43,11 @@ every target, and no build flag or user-visible knob exists (`RENDER-MODEL.md` �
 
 | # | work | state | size |
 |---|---|---|---|
-| 1 | Android host | not started | large |
-| 2 | `_hover` / `_before` / `_classNames`, then the Animation API | user-chosen 2026-08-18 | large |
-| 3 | S1b projection caching, component macro, attribute classification | | medium |
+| 1 | RN components: Image, ScrollView, Button, Switch, FlatList, Modal, SafeAreaView — after phase 4 so they carry the props contract | not started | medium |
+| 2 | `{...props}` semantics, attribute classification, S1b projection caching | after phase 4 | medium |
+| 3 | bug 8 (`globalImports` cycle) so the four core style lists are generated from `STYLE_TABLE` instead of `tests/style/fields.sh` guarding five hand edits | compiler | medium |
+| 4 | `_hover` / `_before` / `_classNames`, then the Animation API | user-chosen 2026-08-18 | large |
+| 5 | iOS host, then Android host — not compiler-blocked: gate with `when (ios) { … }` around `@compile`/`@passC`/`@passL`/`@link` over one extern surface, the shape `void/src/sokol/gpu.ms` ships | not started | large |
 
 ---
 
@@ -47,7 +60,9 @@ In rough priority order, once the above is standing:
 - animation — the largest single module in the Nim original (~2055 LOC), deliberately last
 - from the Nim original and not yet ported: `resource` / `http` / `async` (the MS idiom is
   `Promise<Result<T,E>>` + `try await`, not a port of the Nim shape), `error_boundary`, `config`
-- `tests/macros/` and `tests/integration/` are empty directories
+- `VAttr.value: string | null` so `removeAttr` becomes reachable
+- native timer for the void and terminal hosts (long-press runs on browser + mock only)
+- arrow-defined components and module-level snapshots under the phase-6 diagnostic
 
 ---
 
