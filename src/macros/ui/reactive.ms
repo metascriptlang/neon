@@ -48,7 +48,6 @@ export function isReactiveExpr(n: Node): boolean {
 export function findSpreadAttr(n: Node): Node | null {
 	if (n === null) { return null; }
 	if (n.kind === NodeKind.JSXSpreadAttribute) { return n; }
-	if (n.kind === NodeKind.JSXExpressionContainer) { return null; }
 	const c = childCount(n);
 	for (let i = 0; i < c; i = i + 1) {
 		const found = findSpreadAttr(childAt(n, i));
