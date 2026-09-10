@@ -271,12 +271,12 @@ element:
 
 ```typescript
 // MetaScript syntax with @macros
-signal count = 0;
+const [count, setCount] = createSignal(0);
 
 element:
   View(style = styles.container):
     Text: () => count.toString()
-    Button(onPress = () => count.set(count() + 1)):
+    Button(onPress = () => setCount(count() + 1)):
       Text: "+"
 ```
 
@@ -284,7 +284,7 @@ element:
 
 | Concept | Nim (Original) | MetaScript (This) |
 |---------|----------------|-------------------|
-| **Signals** | `proc createSignal[T](val: T)` | `macro signal<T>(name, value)` |
+| **Signals** | `proc createSignal[T](val: T)` | `createSignal<T>(value): [Accessor<T>, (v: T) => void]` |
 | **Effects** | `proc createEffect(f: proc())` | `function createEffect(f: () => void)` |
 | **UI DSL** | `macro element(body: untyped)` | `macro element(body: ASTNode)` |
 | **C FFI** | `proc {.importc.}` | `extern function` |
