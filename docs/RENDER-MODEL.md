@@ -417,18 +417,44 @@ The existing test suite is these invariants encoded; keep it that way — every
 new render feature should land with the invariant it preserves named in its
 test.
 
-## Props typing — DX decision (user, 2026-08-08)
+## Props typing — DX decision (user, 2026-08-08; contract widened 2026-09-10)
 
 The component's props interface is the **single source of truth**; the macro
-inserts **no coercion**. `createSignal` stays generic — `createSignal(0)`
-inferring `Signal<int32>` is correct; want another type, annotate
-(`createSignal<number>(0)`, `0 as float32`, …). A repr mismatch — e.g. a
-`() => int32` getter into a `() => number` field — is a **checker error by
-design**, not a bug (function types are invariant). Note the asymmetry: the
-element macro wraps expression props in thunks (`count={n()}` → `() => n()`),
-so the returned VALUE widens and int32 signals flow into number fields fine
-through JSX; only passing a getter's function value directly
-(`{ count: n }`) trips invariance. Negative probe: `probe/thunkProps3.ms` S1.
+inserts **no type coercion**. `createSignal` stays generic — `createSignal(0)`
+inferring `Accessor<int32>` is correct; want another type, annotate
+(`createSignal<number>(0)`, `0 as float32`, …). A repr mismatch is a **checker
+error by design**, not a bug (function types are invariant).
+
+**Contract (uniform, 2026-09-10):** every value prop is declared `Accessor<T>`
+(optional: `x?: Accessor<T> | null`). `children`, `ref`, `on*` and function-typed
+props stay raw. At the call site the macro wraps every value prop — expressions
+AND literals — as `accessor(() => expr)`, so the field type matches nominally and
+a signal expression can never land as a snapshot. Inside the component a read of
+`props.x`, or of `x` after `function C({ x }: Props)`, is an accessor read and
+auto-calls (§Accessor). Negative probe: `probe/thunkProps3.ms` S1.
+
+## Accessor — reactivity decided by type (2026-09-10)
+
+`Accessor<T> = distinct (() => T)` (src/core/signal.ms). `createSignal` returns
+`[Accessor<T>, (v: T) => void]`, `createMemo` returns `Accessor<T>`, and
+`accessor(f)` brands a thunk at zero cost. An `Accessor<T>` widens one-way into
+any `() => T` slot (`mapArray`, `For.each`, `Show.when`, a hand-written
+callback); a `() => T` never narrows into an `Accessor<T>`.
+
+**Read rule (checker, both backends):** a value read whose flow-narrowed type is
+exactly `Accessor<T>` is rewritten to a zero-argument call typed `T` — in JSX,
+in `if`, in arithmetic, inside closures — unless the site is the callee of a call
+(`count()` stays one call), the target of an assignment, or a slot whose expected
+type is function-shaped. A union such as `Accessor<T> | null` is not an accessor
+until narrowed, so `props.x !== null` compares the handle and the branch body
+reads the value. `setCount(v)` remains the only way to write.
+
+**Consequences for macros:** the element/direct macros run after the checker, so
+`{count}` arrives as a call and `isReactiveExpr` already classifies it reactive.
+`{a && <X/>}`, `{c ? <A/> : <B/>}` and `{xs.map(fn)}` lower to `Show`/`For`
+(phase 5). **Body-time snapshot:** an implicit accessor read in a top-level
+`const` of a function declaration (`const d = count * 2`) is a compile error;
+write `count()` for a deliberate one-time value, or read it in JSX/`createMemo`.
 
 ## References
 
