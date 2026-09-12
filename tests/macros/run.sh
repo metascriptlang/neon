@@ -20,4 +20,5 @@ expect_reject() {
 expect_reject tests/macros/spreadRejected.ms "spread attributes are not supported"
 expect_reject tests/macros/spreadInContainerRejected.ms "spread attributes are not supported"
 expect_reject tests/macros/fragmentRejected.ms "fragments are not supported"
+expect_reject tests/macros/accessorNominal.ms "is not assignable to type 'Accessor<number>'"
 exit $fail
