@@ -6,13 +6,14 @@
 // it, so signals inside the value track per consumer — no re-render, the
 // Solid semantics our core already runs on.
 
+import { Accessor } from "../core/signal";
 import { Computation, CompState } from "../core/types";
 import { getOwner } from "../core/runtime";
 import { runWithOwner } from "../core/owner";
 import { NeonNode, scopedNode } from "./node";
 
 export interface ProviderProps<T> {
-	value: () => T;
+	value: Accessor<T>;
 	children: NeonNode;
 }
 

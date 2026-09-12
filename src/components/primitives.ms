@@ -5,12 +5,12 @@
 // every host translates that tag in its own createElement (browser:
 // htmlTagFor; terminal: box; void ignores tags; mock records as written).
 //
-// Prop contract (component.test pins it): CALL expression props arrive as
-// THUNKS (style is () => Style → withDynStyleAll, the call-based law's
-// channel), while arrow literals cross RAW and take the field's flat type
-// (handlers declare (e: NeonEvent) => void directly). `class` is the RN-web
-// escape hatch: a string literal attr crosses as a plain string, honored by
-// the browser host's CSS-class channel, ignored by native. children: NeonNode[] keeps children tree-emitted so
+// Prop contract (component.test pins it): every value prop arrives as an
+// Accessor<T> (style widens into withDynStyleAll's () => Style, the
+// call-based law's channel), while arrow literals, ref and on* cross RAW and
+// take the field's flat type (handlers declare (e: NeonEvent) => void
+// directly). `class` is the RN-web escape hatch, honored by the browser
+// host's CSS-class channel, ignored by native. children: NeonNode[] keeps children tree-emitted so
 // SSR still serializes them (RENDER-MODEL §Selection — component bodies stay
 // tree); a view-children channel is a measured follow-up if the js lane ever
 // needs direct-emitted children inside these containers.
@@ -23,11 +23,12 @@
 import { NeonEvent } from "../render/event";
 import { Style } from "../render/style";
 import { onCleanup } from "../core/cleanup";
+import { Accessor, accessor } from "../core/signal";
 import { NeonNode, VAttr, VEvent, RefFn, el, attr, evt, dynAttr, withDynStyleAll, withRef } from "../render/node";
 
 interface ViewProps {
-	style?: () => Style | null;
-	class?: string | null;
+	style?: Accessor<Style> | null;
+	class?: Accessor<string> | null;
 	ref?: RefFn | null;
 	children: NeonNode[];
 }
@@ -43,8 +44,8 @@ export function View(props: ViewProps): NeonNode {
 }
 
 interface TextProps {
-	style?: () => Style | null;
-	class?: string | null;
+	style?: Accessor<Style> | null;
+	class?: Accessor<string> | null;
 	ref?: RefFn | null;
 	children: NeonNode[];
 }
@@ -70,9 +71,9 @@ interface PressableProps {
 	onPressIn?: ((e: NeonEvent) => void) | null;
 	onPressOut?: ((e: NeonEvent) => void) | null;
 	onLongPress?: ((e: NeonEvent) => void) | null;
-	delayLongPress?: number | null;
-	style?: () => Style | null;
-	class?: string | null;
+	delayLongPress?: Accessor<number> | null;
+	style?: Accessor<Style> | null;
+	class?: Accessor<string> | null;
 	ref?: RefFn | null;
 	children: NeonNode[];
 }
@@ -85,7 +86,7 @@ interface PressableProps {
 // is not a question the host's click event can answer.
 export function Pressable(props: PressableProps): NeonNode {
 	const evts: VEvent[] = [];
-	const { onPress, onPressIn, onPressOut, onLongPress, delayLongPress = LONG_PRESS_DELAY_MS } = props;
+	const { onPress, onPressIn, onPressOut, onLongPress, delayLongPress = accessor(() => LONG_PRESS_DELAY_MS) } = props;
 	const wantsGestures = onPressIn !== null || onPressOut !== null || onLongPress !== null;
 
 	let state = 0;           // 0 idle · 1 pressing · 2 long-pressing
@@ -172,10 +173,10 @@ export function Pressable(props: PressableProps): NeonNode {
 }
 
 interface TextInputProps {
-	value?: () => string | null;
+	value?: Accessor<string> | null;
 	onChangeText?: ((t: string) => void) | null;
-	style?: () => Style | null;
-	class?: string | null;
+	style?: Accessor<Style> | null;
+	class?: Accessor<string> | null;
 	ref?: RefFn | null;
 }
 
