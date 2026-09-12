@@ -2,7 +2,7 @@
 // nearest-owner walk, consumers read it wherever they mount. Identity is the
 // context object itself; reactivity flows through signals inside the value.
 
-import { createSignal } from "../../src/core/signal";
+import { createSignal, accessor, Accessor } from "../../src/core/signal";
 import { element } from "../../src/macros/ui/element";
 import { direct } from "../../src/macros/ui/direct";
 import { NeonNode, renderToString } from "../../src/render/node";
@@ -86,7 +86,7 @@ test "the scope ends at the closing tag" {
 
 test "a consumer sees through a component boundary" {
 	const T = createContext<Theme>({ accent: "red" });
-	function Chip(props: { label: string }): NeonNode {
+	function Chip(props: { label: Accessor<string> }): NeonNode {
 		const c = useContext(T);
 		return element(<div>{props.label + ":" + c.accent}</div>);
 	}

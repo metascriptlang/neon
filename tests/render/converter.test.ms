@@ -4,13 +4,13 @@
 // own converter (NeonView is a mount closure there); on native the NeonView one
 // already covers it via the alias.
 
-import { createSignal } from "../../src/core/signal";
+import { createSignal, accessor, Accessor } from "../../src/core/signal";
 import { NeonNode, renderToString } from "../../src/render/node";
 import { renderToHost, mockHost, mockNode, mockToString, HostNode } from "../../src/render/host";
 
 interface CounterProps {
-	count: () => number;
-	label: string;
+	count: Accessor<number>;
+	label: Accessor<string>;
 }
 
 let counterRuns = 0;

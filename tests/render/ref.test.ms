@@ -97,3 +97,17 @@ test "an inline arrow ref crosses raw" {
 	renderToHost(element(<p ref={(n: HostNode) => { seen = (n as unknown as MockNode).tag; }}>hi</p>), mockHost(), root as unknown as HostNode);
 	assert seen === "p", "inline arrow ref fired, seen=" + seen;
 }
+
+test "a named callback prop and ref cross raw at the direct root too" {
+	let hits = 0;
+	const inc: (e: NeonEvent) => void = (e) => { hits = hits + 1; };
+	let seenTag = "";
+	const grab: (h: HostNode) => void = (h) => { seenTag = (h as unknown as MockNode).tag; };
+	const host = mockHost();
+	const root: MockNode = mockNode("root");
+	const mount = direct(<Pressable onPress={inc} ref={grab}><Text>+</Text></Pressable>);
+	host.append(root as unknown as HostNode, mount(host));
+	fireEvent(root.children[0], "onPress");
+	assert hits === 1, "named handler ran at the direct root, hits=" + hits.toString();
+	assert seenTag === "pressable", "named ref ran at the direct root, tag=" + seenTag;
+}

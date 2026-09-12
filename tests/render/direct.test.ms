@@ -2,7 +2,7 @@
 // same JSX through both emissions must be byte-identical, before and after
 // signal updates (tree emission is the oracle — docs/RENDER-MODEL.md).
 
-import { createSignal } from "../../src/core/signal";
+import { createSignal, accessor, Accessor } from "../../src/core/signal";
 import { onCleanup } from "../../src/core/cleanup";
 import { element } from "../../src/macros/ui/element";
 import { direct } from "../../src/macros/ui/direct";
@@ -81,8 +81,8 @@ test "multiple attrs and multiple dynamic spots keep distinct temps" {
 // ---- D1: component tags + Show through direct emission (tree side = oracle) ----
 
 interface GaugeProps {
-	count: () => number;
-	label: string;
+	count: Accessor<number>;
+	label: Accessor<string>;
 }
 
 let gaugeRuns = 0;
@@ -100,7 +100,7 @@ function Leak(props: GaugeProps): NeonNode {
 }
 
 interface CardProps {
-	title: string;
+	title: Accessor<string>;
 	children: NeonNode;
 }
 
