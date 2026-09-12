@@ -21,6 +21,7 @@ export { element } from "./macros/ui/element";
 export { direct } from "./macros/ui/direct";
 export { VAttr, VEvent, RegionFn, ComponentFn, ComponentProducer, NeonNode, VDynStyle, attr, dynAttr, evt, el, withStyle, withDynStyle, withDynStyleAll, withRef, RefFn, text, dynText, insChild, regionNode, componentNode, renderToString } from "./render/node";
 export { createComponent } from "./render/component";
+export { Accessor, accessor } from "./core/signal";
 export { Template, createTemplate, instantiate, mountTemplate, childOf, siblingOf } from "./render/template";
 export { renderNode, renderToHost, bindText, bindAttr, NeonView, mountView, viewOf } from "./render/host";
 export { Host, HostNode } from "./render/hostTypes";

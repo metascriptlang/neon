@@ -22,7 +22,7 @@
 
 import { Node, NodeKind, DeclKind, NodeFlag } from "std/meta";
 import { cleanJsxText } from "./element";
-import { isReactiveExpr, findSpreadAttr, findFragment } from "./reactive";
+import { isReactiveExpr, findSpreadAttr, findFragment, isRawPropValue } from "./reactive";
 
 export macro direct(node: Node): Node {
 	const L = node.line;
@@ -46,14 +46,10 @@ export macro direct(node: Node): Node {
 		for (const a of node.jsxAttrs) {
 			if (a.kind === NodeKind.JSXAttribute) {
 				keys.push(a.jsxAttrName);
-				if (a.jsxAttrValue.kind === NodeKind.StringLiteral
-					|| a.jsxAttrValue.kind === NodeKind.NumberLiteral
-					|| a.jsxAttrValue.kind === NodeKind.BooleanLiteral) {
-					values.push(a.jsxAttrValue);
-				} else if (a.jsxAttrValue.kind === NodeKind.ArrowFunction || a.jsxAttrValue.kind === NodeKind.FunctionExpr) {
+				if (isRawPropValue(a.jsxAttrName, a.jsxAttrValue)) {
 					values.push(a.jsxAttrValue);
 				} else {
-					values.push({ kind: NodeKind.ArrowFunction, line: a.line, column: a.column, arrowParams: [], arrowParamTypes: [], arrowBody: a.jsxAttrValue, arrowFlags: "", arrowReturnType: "" });
+					values.push({ kind: NodeKind.CallExpr, line: a.line, column: a.column, callee: { kind: NodeKind.Identifier, line: a.line, column: a.column, name: "accessor" }, arguments: [{ kind: NodeKind.ArrowFunction, line: a.line, column: a.column, arrowParams: [], arrowParamTypes: [], arrowBody: a.jsxAttrValue, arrowFlags: "", arrowReturnType: "" }] });
 				}
 			}
 		}
@@ -637,14 +633,10 @@ export macro direct(node: Node): Node {
 				for (const a of c.jsxAttrs) {
 					if (a.kind === NodeKind.JSXAttribute) {
 						ckeys.push(a.jsxAttrName);
-						if (a.jsxAttrValue.kind === NodeKind.StringLiteral) {
-							cvalues.push(a.jsxAttrValue);
-						} else if (a.jsxAttrValue.kind === NodeKind.ArrowFunction || a.jsxAttrValue.kind === NodeKind.FunctionExpr
-							|| a.jsxAttrName === "ref"
-							|| (a.jsxAttrName.startsWith("on") && a.jsxAttrName.charAt(2) >= "A" && a.jsxAttrName.charAt(2) <= "Z")) {
+						if (isRawPropValue(a.jsxAttrName, a.jsxAttrValue)) {
 							cvalues.push(a.jsxAttrValue);
 						} else {
-							cvalues.push({ kind: NodeKind.ArrowFunction, line: a.line, column: a.column, arrowParams: [], arrowParamTypes: [], arrowBody: a.jsxAttrValue, arrowFlags: "", arrowReturnType: "" });
+							cvalues.push({ kind: NodeKind.CallExpr, line: a.line, column: a.column, callee: { kind: NodeKind.Identifier, line: a.line, column: a.column, name: "accessor" }, arguments: [{ kind: NodeKind.ArrowFunction, line: a.line, column: a.column, arrowParams: [], arrowParamTypes: [], arrowBody: a.jsxAttrValue, arrowFlags: "", arrowReturnType: "" }] });
 						}
 					}
 				}

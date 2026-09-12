@@ -16,7 +16,7 @@
 // through withStyle() into NeonNode.style — which then also needs withStyle in scope.
 
 import { Node, NodeKind } from "std/meta";
-import { isReactiveExpr, findSpreadAttr, findFragment } from "./reactive";
+import { isReactiveExpr, findSpreadAttr, findFragment, isRawPropValue } from "./reactive";
 
 function trimEdgeSpaces(s: string, fromStart: boolean, fromEnd: boolean): string {
 	let lo = 0;
@@ -81,8 +81,8 @@ export macro element(node: Node): Node {
 	const frag = findFragment(node);
 	if (frag !== null) { error("fragments are not supported yet: wrap the children in one element", frag as Node); }
 	// Capitalized tag → createComponent(Tag, { props }). V1 prop contract: a string
-	// literal passes through, every expression prop becomes a thunk (the component's
-	// props interface declares () => T); children stay structural — one child passes
+	// every value prop — literal or expression — becomes accessor(() => v) (the
+	// component's props interface declares Accessor<T>); children stay structural — one child passes
 	// as written, several become an array, and a JSX child passes RAW so the
 	// converter lowers it against the prop's declared type (NeonView → the target's
 	// emission, NeonNode → tree). Wrapping it in element() here would pre-pick tree
@@ -95,22 +95,10 @@ export macro element(node: Node): Node {
 		for (const a of node.jsxAttrs) {
 			if (a.kind === NodeKind.JSXAttribute) {
 				keys.push(a.jsxAttrName);
-				if (a.jsxAttrValue.kind === NodeKind.StringLiteral
-					|| a.jsxAttrValue.kind === NodeKind.NumberLiteral
-					|| a.jsxAttrValue.kind === NodeKind.BooleanLiteral) {
-					values.push(a.jsxAttrValue);
-				} else if (a.jsxAttrValue.kind === NodeKind.ArrowFunction || a.jsxAttrValue.kind === NodeKind.FunctionExpr
-					|| a.jsxAttrName === "ref"
-					|| (a.jsxAttrName.startsWith("on") && a.jsxAttrName.charAt(2) >= "A" && a.jsxAttrName.charAt(2) <= "Z")) {
-					// An arrow/function literal crosses RAW: the field's declared type
-					// contextually types it (and pads its arity — bug118), so handler
-					// props declare the FLAT handler type. Wrapping it in a synthesized
-					// thunk instead both double-wraps (a thunk-valued prop would arrive
-					// as a thunk OF a thunk) and miscompiles on C today (BUGS.md §2 —
-					// engine-synthesized expr-bodied arrow around a user arrow).
+				if (isRawPropValue(a.jsxAttrName, a.jsxAttrValue)) {
 					values.push(a.jsxAttrValue);
 				} else {
-					values.push({ kind: NodeKind.ArrowFunction, line: a.line, column: a.column, arrowParams: [], arrowParamTypes: [], arrowBody: a.jsxAttrValue, arrowFlags: "", arrowReturnType: "" });
+					values.push({ kind: NodeKind.CallExpr, line: a.line, column: a.column, callee: { kind: NodeKind.Identifier, line: a.line, column: a.column, name: "accessor" }, arguments: [{ kind: NodeKind.ArrowFunction, line: a.line, column: a.column, arrowParams: [], arrowParamTypes: [], arrowBody: a.jsxAttrValue, arrowFlags: "", arrowReturnType: "" }] });
 				}
 			}
 		}
