@@ -1,7 +1,7 @@
 import { el, text, dynText } from "../../src/render/node";
 import { MockNode, mockHost, renderToHost, viewOf } from "../../src/render/host";
 import { For, Index, Show } from "../../src/macros/ui/flow";
-import { createSignal } from "../../src/core/signal";
+import { createSignal, Accessor } from "../../src/core/signal";
 import { createRoot } from "../../src/core/owner";
 
 function listText(node: MockNode): string {
@@ -138,6 +138,29 @@ test "For fallback reactive scope is disposed when rows return" {
 		setItems([1]);
 		setLabel("ignored");
 		assert fbRuns === 2, "fallback effect disposed once rows returned";
+		d();
+	});
+}
+
+test "an accessor feeds For.each directly and the row index is an Accessor" {
+	createRoot((d) => {
+		const [items, setItems] = createSignal<number[]>([7, 8]);
+		const ul = el("ul", [], [], [
+			For<number>({
+				each: items,
+				children: (item, i) => {
+					const idx: Accessor<number> = i;
+					return viewOf(el("li", [], [], [dynText(() => "" + item + "@" + idx())]));
+				},
+			}),
+		]);
+		const host = mockHost();
+		const root = host.createElement("root");
+		renderToHost(ul, host, root);
+		const ulNode = (root as unknown as MockNode).children[0];
+		assert listText(ulNode) === "7@08@1", "initial";
+		setItems([8, 7]);
+		assert listText(ulNode) === "8@07@1", "reordered rows keep live indexes";
 		d();
 	});
 }

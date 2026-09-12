@@ -1,5 +1,5 @@
 import { mapArray, indexArray } from "../../src/core/array";
-import { createSignal } from "../../src/core/signal";
+import { createSignal, Accessor } from "../../src/core/signal";
 import { createRoot } from "../../src/core/owner";
 import { onCleanup } from "../../src/core/cleanup";
 
@@ -116,6 +116,41 @@ test "indexArray grows and shrinks" {
 		const shrunk = m();
 		assert shrunk.length === 1, "shrank to 1";
 		assert disposed === 2, "two overflow rows disposed";
+		d();
+	});
+}
+
+test "an accessor feeds mapArray directly and the row index is an Accessor" {
+	createRoot((d) => {
+		const [list, setList] = createSignal<number[]>([5, 6]);
+		const m = mapArray<number, number>(list, (v, i) => {
+			const idx: Accessor<number> = i;
+			return v * 100 + idx();
+		});
+		const first = m();
+		assert first.length === 2;
+		assert first[0] === 500;
+		assert first[1] === 601;
+		setList([6, 5]);
+		const second = m();
+		assert second[0] === 601;
+		assert second[1] === 500;
+		d();
+	});
+}
+
+test "an accessor feeds indexArray directly and the row item is an Accessor" {
+	createRoot((d) => {
+		const [list, setList] = createSignal<number[]>([1]);
+		const m = indexArray<number, () => number>(list, (v, i) => {
+			const item: Accessor<number> = v;
+			return item;
+		});
+		const rows = m();
+		assert rows[0]() === 1;
+		setList([9]);
+		m();
+		assert rows[0]() === 9;
 		d();
 	});
 }
