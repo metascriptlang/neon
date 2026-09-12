@@ -433,6 +433,21 @@ a signal expression can never land as a snapshot. Inside the component a read of
 `props.x`, or of `x` after `function C({ x }: Props)`, is an accessor read and
 auto-calls (§Accessor). Negative probe: `probe/thunkProps3.ms` S1.
 
+**Landed 2026-09-12 (phase 4.1).** `isRawPropValue` (macros/ui/reactive.ms) is the
+one decision both macros share: an arrow/function literal, a JSX-valued prop,
+`ref` and `on*` cross raw; everything else is emitted as `accessor(() => v)`
+(the node literal stays inline in each macro — a helper that builds nodes
+outside a macro body is not available yet, LANG-METAPROGRAMMING "No helper
+functions"). `View`/`Text`/`Pressable`/`TextInput` declare `style?: Accessor<Style>
+| null`, `class?: Accessor<string> | null`, `delayLongPress?: Accessor<number> |
+null`, `value?: Accessor<string> | null`; `Context.Provider` takes `value:
+Accessor<T>` and widens it into `provideScope`'s thunk. An object-literal prop is
+stamped by the field's payload type (`style={{ gap: 12 }}` against
+`Accessor<{ gap: number }>`), which is why a value prop must be `Accessor<T>` and
+not a bare `() => T`: a plain thunk field gives the literal no expected type.
+`function C({ label, count }: Props)` binds each field as an accessor (compiler
+4.0); a pattern without an annotation is a compile error, not a silent snapshot.
+
 ## Accessor — reactivity decided by type (2026-09-10)
 
 `Accessor<T> = distinct (() => T)` (src/core/signal.ms). `createSignal` returns
