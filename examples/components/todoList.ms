@@ -11,6 +11,7 @@ import { createStyles, styleOf } from "../../src/macros/ui/style";
 import { NeonNode } from "../../src/render/node";
 import { NeonView } from "../../src/render/host";
 import { For, Show } from "../../src/macros/ui/flow";
+import { Accessor } from "../../src/core/signal";
 import { View, Text, Pressable } from "../../src/components/primitives";
 
 export interface Todo {
@@ -85,7 +86,7 @@ export function TodoList(): NeonNode {
 			<Text style={styles.empty}>nothing to do</Text>
 		</Show>
 		<For each={todos()}>
-			{(todo: Todo, i: () => int32): NeonView => <View style={styles.row}>
+			{(todo: Todo, i: Accessor<number>): NeonView => <View style={styles.row}>
 				<Text style={todo.done ? styles.labelDone : styles.label}>{todo.title}</Text>
 				<Pressable style={styles.button} onPress={() => toggle(todo.id)}>{todo.done ? "undo" : "done"}</Pressable>
 				<Pressable style={styles.button} onPress={() => remove(todo.id)}>x</Pressable>
