@@ -5,6 +5,7 @@
 
 import { mapArray, indexArray } from "../../core/array";
 import { createMemo } from "../../core/memo";
+import { Accessor } from "../../core/signal";
 import { createRoot } from "../../core/owner";
 import { NeonNode, regionNode } from "../../render/node";
 import { Host, HostNode, NeonView, mountView } from "../../render/host";
@@ -30,7 +31,7 @@ function withFallback(mapped: () => HostNode[], fb: NeonView, host: Host): () =>
 // Value-keyed list: rows reused by item identity; reorder moves DOM, never rebuilds.
 export function For<T>(props: {
 	each: () => T[];
-	children: (item: T, index: () => number) => NeonView;
+	children: (item: T, index: Accessor<number>) => NeonView;
 	fallback?: NeonView | null;
 }): NeonNode {
 	return regionNode((h) => {
@@ -45,7 +46,7 @@ export function For<T>(props: {
 // Index-keyed list: rows fixed per slot; value change updates the row's signal in place.
 export function Index<T>(props: {
 	each: () => T[];
-	children: (item: () => T, index: number) => NeonView;
+	children: (item: Accessor<T>, index: number) => NeonView;
 	fallback?: NeonView | null;
 }): NeonNode {
 	return regionNode((h) => {

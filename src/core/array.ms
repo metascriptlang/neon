@@ -8,7 +8,7 @@
 
 import { onCleanup } from "./cleanup";
 import { createRoot } from "./owner";
-import { untrack, createSignal } from "./signal";
+import { untrack, createSignal, accessor, Accessor, Setter } from "./signal";
 
 // Per-row index state, shared between the index accessor and the move controller. The
 // signal is created lazily on first read, so a row whose callback never reads the index
@@ -16,10 +16,10 @@ import { untrack, createSignal } from "./signal";
 interface IndexCell {
 	pos: number;
 	getter: (() => number) | null;
-	setter: ((v: number) => void) | null;
+	setter: Setter<number> | null;
 }
 
-export function mapArray<T, U>(list: () => T[], mapFn: (v: T, index: () => number) => U): () => U[] {
+export function mapArray<T, U>(list: () => T[], mapFn: (v: T, index: Accessor<number>) => U): () => U[] {
 	let items: T[] = [];
 	let mapped: U[] = [];
 	let disposers: (() => void)[] = [];
@@ -30,14 +30,14 @@ export function mapArray<T, U>(list: () => T[], mapFn: (v: T, index: () => numbe
 		mapStore[pos] = createRoot((d) => {
 			dispStore[pos] = d;
 			const cell: IndexCell = { pos, getter: null, setter: null };
-			const index = (): number => {
+			const index = accessor((): number => {
 				if (cell.getter === null) {
 					const [g, s] = createSignal(cell.pos);
 					cell.getter = g;
 					cell.setter = s;
 				}
 				return (cell.getter as () => number)();
-			};
+			});
 			idxStore[pos] = (newPos: number): void => {
 				cell.pos = newPos;
 				if (cell.setter !== null) { cell.setter(newPos); }
@@ -154,18 +154,18 @@ export function mapArray<T, U>(list: () => T[], mapFn: (v: T, index: () => numbe
 	};
 }
 
-export function indexArray<T, U>(list: () => T[], mapFn: (v: () => T, index: number) => U): () => U[] {
+export function indexArray<T, U>(list: () => T[], mapFn: (v: Accessor<T>, index: number) => U): () => U[] {
 	let items: T[] = [];
 	let mapped: U[] = [];
 	let disposers: (() => void)[] = [];
-	let valueSetters: ((v: T) => void)[] = [];
+	let valueSetters: Setter<T>[] = [];
 	let len = 0;
 
 	// Rows are only ever created at the tail (the caller walks i upward and stops at
 	// items.length), so each store grows by one. They are appended, not index-assigned:
 	// storing past the end raises here, it does not grow the array as it would in JS.
 	// Stores are parameters rather than captures, mirroring mapArray's makeRowInto.
-	function makeRowInto(item: T, pos: number, mapStore: U[], dispStore: (() => void)[], setStore: ((v: T) => void)[]): void {
+	function makeRowInto(item: T, pos: number, mapStore: U[], dispStore: (() => void)[], setStore: Setter<T>[]): void {
 		const row = createRoot((d) => {
 			dispStore.push(d);
 			const [val, setVal] = createSignal(item);
