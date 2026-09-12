@@ -1,10 +1,10 @@
 // Memo - Cached Computation Primitive
 // Like a derived signal that only recomputes when dependencies change
 
-import { Signal } from "./signal";
+import { Signal, Accessor, accessor } from "./signal";
 import { createComputation, runComputation } from "./runtime";
 
-export function createMemo<T>(fn: () => T, equals: ((a: T, b: T) => boolean) | null = null): () => T {
+export function createMemo<T>(fn: () => T, equals: ((a: T, b: T) => boolean) | null = null): Accessor<T> {
 	const signal = new Signal<T>(undefined as T);
 	let initialized = false;
 	let prev: T = undefined as T;
@@ -20,10 +20,10 @@ export function createMemo<T>(fn: () => T, equals: ((a: T, b: T) => boolean) | n
 	}, true);
 	runComputation(comp);
 
-	return () => {
+	return accessor(() => {
 		if (!initialized) {
 			throw new Error("Memo accessed before initialization");
 		}
 		return signal.get();
-	};
+	});
 }

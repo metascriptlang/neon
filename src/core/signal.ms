@@ -43,11 +43,24 @@ export class Signal<T> {
 	}
 }
 
-export function createSignal<T>(initialValue: T): [() => T, (v: T) => void] {
+export type Accessor<T> = distinct (() => T);
+export type Setter<T> = (v: T | ((prev: T) => T)) => void;
+
+export function accessor<T>(f: () => T): Accessor<T> {
+	return f as Accessor<T>;
+}
+
+export function createSignal<T>(initialValue: T): [Accessor<T>, Setter<T>] {
 	const signal = new Signal<T>(initialValue);
 	return [
-		() => signal.get(),
-		(v: T) => signal.set(v),
+		accessor(() => signal.get()),
+		(v: T | ((prev: T) => T)) => {
+			if (typeof v === "function") {
+				signal.set(v(signal.peek()));
+			} else {
+				signal.set(v);
+			}
+		},
 	];
 }
 
