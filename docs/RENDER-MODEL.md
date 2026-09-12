@@ -436,7 +436,10 @@ auto-calls (§Accessor). Negative probe: `probe/thunkProps3.ms` S1.
 ## Accessor — reactivity decided by type (2026-09-10)
 
 `Accessor<T> = distinct (() => T)` (src/core/signal.ms). `createSignal` returns
-`[Accessor<T>, (v: T) => void]`, `createMemo` returns `Accessor<T>`, and
+`[Accessor<T>, Setter<T>]` with `Setter<T> = (v: T | ((prev: T) => T)) => void` — a
+function argument is always an updater applied to the current value without
+tracking (Solid), so when `T` is itself a function type only the updater form
+exists — `createMemo` returns `Accessor<T>`, and
 `accessor(f)` brands a thunk at zero cost. An `Accessor<T>` widens one-way into
 any `() => T` slot (`mapArray`, `For.each`, `Show.when`, a hand-written
 callback); a `() => T` never narrows into an `Accessor<T>`.
