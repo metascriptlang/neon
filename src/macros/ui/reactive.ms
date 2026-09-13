@@ -45,6 +45,16 @@ export function isReactiveExpr(n: Node): boolean {
 	return true;
 }
 
+export function peelHidden(n: Node): Node {
+	let cur = n;
+	while (cur.kind === NodeKind.HiddenDeref || cur.kind === NodeKind.HiddenAddr
+		|| cur.kind === NodeKind.HiddenStdConv || cur.kind === NodeKind.HiddenSubConv) {
+		if (childCount(cur) === 0) { return cur; }
+		cur = childAt(cur, 0);
+	}
+	return cur;
+}
+
 export function isRawPropValue(name: string, v: Node): boolean {
 	return v.kind === NodeKind.ArrowFunction || v.kind === NodeKind.FunctionExpr
 		|| v.kind === NodeKind.JSXElement || v.kind === NodeKind.JSXFragment
