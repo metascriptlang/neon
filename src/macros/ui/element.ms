@@ -16,7 +16,7 @@
 // through withStyle() into NeonNode.style — which then also needs withStyle in scope.
 
 import { Node, NodeKind } from "std/meta";
-import { isReactiveExpr, findSpreadAttr, findFragment, isRawPropValue } from "./reactive";
+import { isReactiveExpr, findSpreadAttr, findFragment, isRawPropValue, peelHidden } from "./reactive";
 
 function trimEdgeSpaces(s: string, fromStart: boolean, fromEnd: boolean): string {
 	let lo = 0;
@@ -80,6 +80,57 @@ export macro element(node: Node): Node {
 	if (spread !== null) { error("spread attributes are not supported yet: pass each prop by name", spread as Node); }
 	const frag = findFragment(node);
 	if (frag !== null) { error("fragments are not supported yet: wrap the children in one element", frag as Node); }
+	function showOf(when: Node, child: Node, fallback: Node | null, ln: int32, col: int32): Node {
+		let attrs: Node[] = [{ kind: NodeKind.JSXAttribute, line: ln, column: col, jsxAttrName: "when", jsxAttrValue: when }];
+		if (fallback !== null) {
+			attrs.push({ kind: NodeKind.JSXAttribute, line: ln, column: col, jsxAttrName: "fallback", jsxAttrValue: fallback as Node });
+		}
+		return { kind: NodeKind.JSXElement, line: ln, column: col, jsxTag: "Show", jsxAttrs: attrs, jsxChildren: [child], jsxSelfClosing: false };
+	}
+	function forOf(each: Node, row: Node, ln: int32, col: int32): Node {
+		return {
+			kind: NodeKind.JSXElement, line: ln, column: col, jsxTag: "For",
+			jsxAttrs: [{ kind: NodeKind.JSXAttribute, line: ln, column: col, jsxAttrName: "each", jsxAttrValue: each }],
+			jsxChildren: [{ kind: NodeKind.JSXExpressionContainer, line: ln, column: col, jsxExpr: row }],
+			jsxSelfClosing: false,
+		};
+	}
+	function lowerFlowTree(elNode: Node): Node {
+		let kids: Node[] = [];
+		for (const c of elNode.jsxChildren) {
+			let lowered: Node | null = null;
+			if (c.kind === NodeKind.JSXElement) {
+				lowered = lowerFlowTree(c);
+			} else if (c.kind === NodeKind.JSXExpressionContainer) {
+				const ex = peelHidden(c.jsxExpr);
+				if (ex.kind === NodeKind.BinaryExpr && ex.operator === "&&") {
+					const rhs = peelHidden(ex.right);
+					if (rhs.kind === NodeKind.JSXElement) { lowered = showOf(ex.left, lowerFlowTree(rhs), null, c.line, c.column); }
+				} else if (ex.kind === NodeKind.ConditionalExpr) {
+					const yes = peelHidden(ex.ternaryConsequent);
+					const no = peelHidden(ex.ternaryAlternate);
+					if (yes.kind === NodeKind.JSXElement && no.kind === NodeKind.JSXElement) {
+						lowered = showOf(ex.ternaryCondition, lowerFlowTree(yes), lowerFlowTree(no), c.line, c.column);
+					} else if (yes.kind === NodeKind.JSXElement && no.kind === NodeKind.NullLiteral) {
+						lowered = showOf(ex.ternaryCondition, lowerFlowTree(yes), null, c.line, c.column);
+					} else if (yes.kind === NodeKind.NullLiteral && no.kind === NodeKind.JSXElement) {
+						const not: Node = { kind: NodeKind.UnaryExpr, line: c.line, column: c.column, unaryOp: "!", operand: ex.ternaryCondition };
+						lowered = showOf(not, lowerFlowTree(no), null, c.line, c.column);
+					}
+				} else if (ex.kind === NodeKind.CallExpr && ex.arguments.length === 1) {
+					const callee = peelHidden(ex.callee);
+					const row = peelHidden(ex.arguments[0]);
+					if (callee.kind === NodeKind.MemberExpr && callee.property === "map"
+						&& (row.kind === NodeKind.ArrowFunction || row.kind === NodeKind.FunctionExpr)) {
+						lowered = forOf(peelHidden(callee.object), row, c.line, c.column);
+					}
+				}
+			}
+			if (lowered !== null) { const picked = lowered as Node; kids.push(picked); } else { kids.push(c); }
+		}
+		return { kind: NodeKind.JSXElement, line: elNode.line, column: elNode.column, jsxTag: elNode.jsxTag, jsxAttrs: elNode.jsxAttrs, jsxChildren: kids, jsxSelfClosing: elNode.jsxSelfClosing };
+	}
+	node = lowerFlowTree(node);
 	// Capitalized tag → createComponent(Tag, { props }). V1 prop contract: a string
 	// every value prop — literal or expression — becomes accessor(() => v) (the
 	// component's props interface declares Accessor<T>); children stay structural — one child passes
