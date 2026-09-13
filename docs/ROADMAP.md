@@ -32,10 +32,16 @@ stays; no React hook aliases.
 | 4 | props contract: every value prop is `Accessor<T>`; the macro wraps every value, literals too; one `propValueNode` replaces three copies | neon macros | |
 | 5 | `{a && <X/>}` / ternary / `.map` lower to `Show`/`For` through one `lowerJsxChild` | neon macros | |
 | 6 | error on an implicit accessor read at function-body time (`const d = count * 2`) | compiler | |
-| 7 | real fragments: flatten in child position; multi-root at top level over `regionNode` | neon | |
+| 7 | real fragments: flatten in child position; multi-root at top level | neon | tree emission done 2026-09-13 (`msc test tests/render/fragment.test.ms`, 5 cells, C + js); `direct.ms` still rejects |
 
 Emission is finished and needs nothing further: the tier is picked per JSX site at compile time, on
 every target, and no build flag or user-visible knob exists (`RENDER-MODEL.md` §Selection).
+
+Phase 7 dropped `regionNode` from its own description: reading `insertExpression` in
+`dom-expressions/src/client.js` showed Solid reserves the effect + `reconcileArrays` path for arrays
+holding a FUNCTION, and appends a static array directly. A region for a static fragment applies the
+dynamic branch to a static value and breaks SSR (`renderToString` throws on regions). Detail and the
+refutation live in `BUGS.md` §7.
 
 ---
 

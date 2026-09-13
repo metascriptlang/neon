@@ -23,7 +23,7 @@ decided at COMPILE time and exposed to nobody — see *Selection* below.
   through the runtime seam (`renderToHost(_k, host, _rN)` in child position =
   the renderNode child loop's peel/region/append dispatch; `renderNode(_k,
   host)` in root position, which throws loudly if the component expands to a
-  region). Components/`Show`/`For` do not flatten by design: their structure
+  region or a fragment). Components/`Show`/`For` do not flatten by design: their structure
   changes at runtime. **D4 landed — template-clone**: a subtree of nothing but
   lowercase elements/text/attrs/events/style has a static skeleton, so the macro
   emits `mountTemplate(createTemplate(build), wire)` — the skeleton is built once
@@ -110,7 +110,8 @@ COMPILE ──► BUILD ──► MOUNT ──► UPDATE (×n) ──► DISPOSE
 - **MOUNT** (`renderToHost`): walk once. Static text/attrs applied and never
   touched again; every dynamic spot plants ONE effect whose first run subscribes
   it to the signals it reads; components run their body exactly once (untracked,
-  under the mounting owner); regions plant an anchor + a reconcile effect.
+  under the mounting owner); regions plant an anchor + a reconcile effect; a
+  fragment owns no host node and splices its children into the parent instead.
 - **UPDATE**: no render. A signal notifies exactly its subscribed effects; each
   performs one host op. Cost = number of spots that actually changed,
   independent of tree size.
