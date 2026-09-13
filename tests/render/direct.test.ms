@@ -464,3 +464,51 @@ test "For reorder through direct matches tree" {
 	setItems([2]);
 	assert mockToString(treeRoot) === mockToString(directRoot), "after shrink: tree=" + mockToString(treeRoot) + " direct=" + mockToString(directRoot);
 }
+
+test "a && <X/> through direct matches tree" {
+	const [on, setOn] = createSignal(true);
+	const host = mockHost();
+	const treeRoot = mockNode("root");
+	const tv: NeonNode = element(<div><p>a</p>{on && <span>yes</span>}<p>z</p></div>);
+	renderToHost(tv, host, treeRoot as unknown as HostNode);
+	const directRoot = mockNode("root");
+	const mount = direct(<div><p>a</p>{on && <span>yes</span>}<p>z</p></div>);
+	host.append(directRoot as unknown as HostNode, mount(host));
+	assert mockToString(treeRoot) === mockToString(directRoot), "initial: tree=" + mockToString(treeRoot) + " direct=" + mockToString(directRoot);
+	assert mockToString(directRoot).indexOf("yes") >= 0, "shown while true";
+	setOn(false);
+	assert mockToString(treeRoot) === mockToString(directRoot), "after off: tree=" + mockToString(treeRoot) + " direct=" + mockToString(directRoot);
+	assert mockToString(directRoot).indexOf("yes") < 0, "hidden while false";
+	setOn(true);
+	assert mockToString(treeRoot) === mockToString(directRoot), "after on: tree=" + mockToString(treeRoot) + " direct=" + mockToString(directRoot);
+}
+
+test "c ? <A/> : <B/> through direct matches tree" {
+	const [on, setOn] = createSignal(false);
+	const host = mockHost();
+	const treeRoot = mockNode("root");
+	const tv: NeonNode = element(<div>{on ? <span>yes</span> : <b>no</b>}</div>);
+	renderToHost(tv, host, treeRoot as unknown as HostNode);
+	const directRoot = mockNode("root");
+	const mount = direct(<div>{on ? <span>yes</span> : <b>no</b>}</div>);
+	host.append(directRoot as unknown as HostNode, mount(host));
+	assert mockToString(treeRoot) === mockToString(directRoot), "initial: tree=" + mockToString(treeRoot) + " direct=" + mockToString(directRoot);
+	assert mockToString(directRoot).indexOf("no") >= 0, "false state: " + mockToString(directRoot);
+	setOn(true);
+	assert mockToString(treeRoot) === mockToString(directRoot), "after on: tree=" + mockToString(treeRoot) + " direct=" + mockToString(directRoot);
+	assert mockToString(directRoot).indexOf("yes") >= 0, "true state: " + mockToString(directRoot);
+}
+
+test "xs.map(row) through direct matches tree" {
+	const [items, setItems] = createSignal<number[]>([1, 2, 3]);
+	const host = mockHost();
+	const treeRoot = mockNode("root");
+	const tv: NeonNode = element(<ul>{items.map((n: number): NeonView => viewOf(element(<li>{n.toString()}</li>)))}</ul>);
+	renderToHost(tv, host, treeRoot as unknown as HostNode);
+	const directRoot = mockNode("root");
+	const mount = direct(<ul>{items.map((n: number): NeonView => viewOf(element(<li>{n.toString()}</li>)))}</ul>);
+	host.append(directRoot as unknown as HostNode, mount(host));
+	assert mockToString(treeRoot) === mockToString(directRoot), "initial: tree=" + mockToString(treeRoot) + " direct=" + mockToString(directRoot);
+	setItems([3, 1, 2, 4]);
+	assert mockToString(treeRoot) === mockToString(directRoot), "after change: tree=" + mockToString(treeRoot) + " direct=" + mockToString(directRoot);
+}

@@ -1,7 +1,9 @@
-import { el, text, dynText } from "../../src/render/node";
-import { MockNode, mockHost, renderToHost, viewOf } from "../../src/render/host";
+import { el, text, dynText, NeonNode } from "../../src/render/node";
+import { MockNode, mockHost, renderToHost, viewOf, mockToString } from "../../src/render/host";
 import { For, Index, Show } from "../../src/macros/ui/flow";
-import { createSignal, Accessor } from "../../src/core/signal";
+import { createSignal, accessor, Accessor } from "../../src/core/signal";
+import { element } from "../../src/macros/ui/element";
+import { createComponent } from "../../src/render/component";
 import { createRoot } from "../../src/core/owner";
 
 function listText(node: MockNode): string {
@@ -163,4 +165,73 @@ test "an accessor feeds For.each directly and the row index is an Accessor" {
 		assert listText(ulNode) === "8@07@1", "reordered rows keep live indexes";
 		d();
 	});
+}
+
+function mountedText(view: NeonNode): [() => string, () => void] {
+	const host = mockHost();
+	const root = host.createElement("root");
+	let dispose: () => void = () => {};
+	createRoot((d) => { dispose = d; renderToHost(view, host, root); });
+	return [() => mockToString(root as unknown as MockNode), dispose];
+}
+
+test "a && <X/> child lowers to Show" {
+	const [on, setOn] = createSignal(true);
+	const [lowered, d1] = mountedText(element(<div>{on && <span>yes</span>}</div>));
+	const [explicit, d2] = mountedText(element(<div><Show when={on()}><span>yes</span></Show></div>));
+	assert lowered() === explicit(), "initial: lowered=" + lowered() + " explicit=" + explicit();
+	assert lowered().indexOf("yes") >= 0, "child shown while true";
+	setOn(false);
+	assert lowered() === explicit(), "after off: lowered=" + lowered() + " explicit=" + explicit();
+	assert lowered().indexOf("yes") < 0, "child gone while false";
+	setOn(true);
+	assert lowered() === explicit(), "after on: lowered=" + lowered() + " explicit=" + explicit();
+	d1(); d2();
+}
+
+test "c ? <A/> : <B/> child lowers to Show with a fallback" {
+	const [on, setOn] = createSignal(true);
+	const [lowered, d1] = mountedText(element(<div>{on ? <span>yes</span> : <b>no</b>}</div>));
+	const [explicit, d2] = mountedText(element(<div><Show when={on()} fallback={<b>no</b>}><span>yes</span></Show></div>));
+	assert lowered() === explicit(), "initial: lowered=" + lowered() + " explicit=" + explicit();
+	assert lowered().indexOf("yes") >= 0, "consequent shown while true";
+	setOn(false);
+	assert lowered() === explicit(), "after off: lowered=" + lowered() + " explicit=" + explicit();
+	assert lowered().indexOf("no") >= 0, "alternate shown while false";
+	d1(); d2();
+}
+
+test "a ternary with a null arm lowers to Show without a fallback, either way round" {
+	const [on, setOn] = createSignal(true);
+	const [nullElse, d1] = mountedText(element(<div>{on ? <span>yes</span> : null}</div>));
+	const [nullThen, d2] = mountedText(element(<div>{on ? null : <span>yes</span>}</div>));
+	const [explicit, d3] = mountedText(element(<div><Show when={on()}><span>yes</span></Show></div>));
+	assert nullElse() === explicit(), "null-else initial: " + nullElse() + " vs " + explicit();
+	assert nullThen().indexOf("yes") < 0, "null-then hides while true: " + nullThen();
+	setOn(false);
+	assert nullElse() === explicit(), "null-else after off: " + nullElse() + " vs " + explicit();
+	assert nullThen().indexOf("yes") >= 0, "null-then shows while false: " + nullThen();
+	d1(); d2(); d3();
+}
+
+test "xs.map(row) child lowers to For" {
+	const [items, setItems] = createSignal<number[]>([1, 2, 3]);
+	const [lowered, d1] = mountedText(element(<ul>{items.map((n: number): NeonView => viewOf(element(<li>{n.toString()}</li>)))}</ul>));
+	const [explicit, d2] = mountedText(element(<ul><For each={items()}>{(n: number, i: Accessor<number>): NeonView => viewOf(element(<li>{n.toString()}</li>))}</For></ul>));
+	assert lowered() === explicit(), "initial: lowered=" + lowered() + " explicit=" + explicit();
+	assert lowered().indexOf("3") >= 0, "rows rendered";
+	setItems([3, 1, 2, 4]);
+	assert lowered() === explicit(), "after reorder+append: lowered=" + lowered() + " explicit=" + explicit();
+	setItems([]);
+	assert lowered() === explicit(), "after clear: lowered=" + lowered() + " explicit=" + explicit();
+	d1(); d2();
+}
+
+test "a lowered For row reads its index bare as an Accessor" {
+	const [items, setItems] = createSignal<string[]>(["a", "b"]);
+	const [lowered, d1] = mountedText(element(<ul>{items.map((s: string, i: Accessor<number>): NeonView => viewOf(element(<li>{s + i.toString()}</li>)))}</ul>));
+	assert lowered().indexOf("a0") >= 0 && lowered().indexOf("b1") >= 0, "indexed rows: " + lowered();
+	setItems(["b", "a"]);
+	assert lowered().indexOf("b0") >= 0 && lowered().indexOf("a1") >= 0, "indexes follow the reorder: " + lowered();
+	d1();
 }
