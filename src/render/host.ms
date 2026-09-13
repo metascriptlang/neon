@@ -99,6 +99,9 @@ export function renderNode(vnode: NeonNode, host: Host): HostNode {
 	if (vnode.region !== null) {
 		throw "renderNode cannot mount a region (For/Show/Index) without a parent anchor — mount via renderToHost, or wrap the region in an element";
 	}
+	if (vnode.isFragment) {
+		throw "renderNode cannot build a fragment as one host node — mount it via renderToHost, or wrap the children in an element";
+	}
 	if (vnode.tag === "") {
 		if (vnode.isDyn) {
 			const tn = host.createText("");
@@ -157,6 +160,10 @@ function mountInto(vnode: NeonNode, host: Host, parent: HostNode): void {
 		return;
 	}
 	if (kv.region !== null) { mountRegion(kv, host, parent); return; }
+	if (kv.isFragment) {
+		for (const k of kv.children) { mountInto(k, host, parent); }
+		return;
+	}
 	host.append(parent, renderNode(kv, host));
 }
 

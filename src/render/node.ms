@@ -66,6 +66,7 @@ export interface NeonNode {
 	componentProps: Map<string, unknown> | null; // attached for debug/introspection
 	ref: RefFn | null;                  // called once at mount with the host node
 	scope: ScopeFn | null;              // non-null → mount children[0] inside this scope
+	isFragment: boolean;
 }
 
 export function attr(name: string, value: string): VAttr {
@@ -81,7 +82,7 @@ export function evt(name: string, handler: (e: NeonEvent) => void): VEvent {
 }
 
 export function el(tag: string, attrs: VAttr[], events: VEvent[], children: NeonNode[]): NeonNode {
-	return { tag, children, text: "", isDyn: false, dyn: () => "", attrs, events, style: null, dynStyle: null, dynStyleAll: null, region: null, componentFn: null, componentProps: null, ref: null, scope: null };
+	return { tag, children, text: "", isDyn: false, dyn: () => "", attrs, events, style: null, dynStyle: null, dynStyleAll: null, region: null, componentFn: null, componentProps: null, ref: null, scope: null, isFragment: false };
 }
 
 export function withStyle(n: NeonNode, s: Style): NeonNode {
@@ -106,11 +107,11 @@ export function withRef(n: NeonNode, f: RefFn): NeonNode {
 }
 
 export function text(s: string): NeonNode {
-	return { tag: "", children: [], text: s, isDyn: false, dyn: () => "", attrs: [], events: [], style: null, dynStyle: null, dynStyleAll: null, region: null, componentFn: null, componentProps: null, ref: null, scope: null };
+	return { tag: "", children: [], text: s, isDyn: false, dyn: () => "", attrs: [], events: [], style: null, dynStyle: null, dynStyleAll: null, region: null, componentFn: null, componentProps: null, ref: null, scope: null, isFragment: false };
 }
 
 export function dynText(thunk: () => string): NeonNode {
-	return { tag: "", children: [], text: "", isDyn: true, dyn: thunk, attrs: [], events: [], style: null, dynStyle: null, dynStyleAll: null, region: null, componentFn: null, componentProps: null, ref: null, scope: null };
+	return { tag: "", children: [], text: "", isDyn: true, dyn: thunk, attrs: [], events: [], style: null, dynStyle: null, dynStyleAll: null, region: null, componentFn: null, componentProps: null, ref: null, scope: null, isFragment: false };
 }
 
 // A static {expr} child, routed by type: a string becomes a text node, a NeonNode
@@ -128,15 +129,19 @@ export function insChild(n: NeonNode): NeonNode {
 }
 
 export function regionNode(fn: RegionFn): NeonNode {
-	return { tag: "", children: [], text: "", isDyn: false, dyn: () => "", attrs: [], events: [], style: null, dynStyle: null, dynStyleAll: null, region: fn, componentFn: null, componentProps: null, ref: null, scope: null };
+	return { tag: "", children: [], text: "", isDyn: false, dyn: () => "", attrs: [], events: [], style: null, dynStyle: null, dynStyleAll: null, region: fn, componentFn: null, componentProps: null, ref: null, scope: null, isFragment: false };
+}
+
+export function fragmentNode(children: NeonNode[]): NeonNode {
+	return { tag: "", children, text: "", isDyn: false, dyn: () => "", attrs: [], events: [], style: null, dynStyle: null, dynStyleAll: null, region: null, componentFn: null, componentProps: null, ref: null, scope: null, isFragment: true };
 }
 
 export function scopedNode(scope: ScopeFn, child: NeonNode): NeonNode {
-	return { tag: "", children: [child], text: "", isDyn: false, dyn: () => "", attrs: [], events: [], style: null, dynStyle: null, dynStyleAll: null, region: null, componentFn: null, componentProps: null, ref: null, scope };
+	return { tag: "", children: [child], text: "", isDyn: false, dyn: () => "", attrs: [], events: [], style: null, dynStyle: null, dynStyleAll: null, region: null, componentFn: null, componentProps: null, ref: null, scope, isFragment: false };
 }
 
 export function componentNode(fn: ComponentProducer, props: Map<string, unknown>): NeonNode {
-	return { tag: "", children: [], text: "", isDyn: false, dyn: () => "", attrs: [], events: [], style: null, dynStyle: null, dynStyleAll: null, region: null, componentFn: fn, componentProps: props, ref: null, scope: null };
+	return { tag: "", children: [], text: "", isDyn: false, dyn: () => "", attrs: [], events: [], style: null, dynStyle: null, dynStyleAll: null, region: null, componentFn: fn, componentProps: props, ref: null, scope: null, isFragment: false };
 }
 
 // Universal wire tags → html. One table shared by SSR (renderToString) and the
@@ -166,6 +171,11 @@ export function renderToString(n: NeonNode): string {
 	const reg = n.region;
 	if (reg !== null) {
 		throw "renderToString does not render reactive regions (For/Show/Index) — render via renderToHost with a host adapter";
+	}
+	if (n.isFragment) {
+		let joined = "";
+		for (const k of n.children) { joined = joined + renderToString(k); }
+		return joined;
 	}
 	if (n.tag === "") { return n.isDyn ? n.dyn() : n.text; }
 	let open = "<" + htmlTagFor(n.tag);

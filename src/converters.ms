@@ -19,7 +19,7 @@ import { renderToHost } from "./render/host";
 
 export { element } from "./macros/ui/element";
 export { direct } from "./macros/ui/direct";
-export { VAttr, VEvent, RegionFn, ComponentFn, ComponentProducer, NeonNode, VDynStyle, attr, dynAttr, evt, el, withStyle, withDynStyle, withDynStyleAll, withRef, RefFn, text, dynText, insChild, regionNode, componentNode, renderToString } from "./render/node";
+export { VAttr, VEvent, RegionFn, ComponentFn, ComponentProducer, NeonNode, VDynStyle, attr, dynAttr, evt, el, withStyle, withDynStyle, withDynStyleAll, withRef, RefFn, text, dynText, insChild, regionNode, fragmentNode, componentNode, renderToString } from "./render/node";
 export { createComponent } from "./render/component";
 export { Accessor, accessor } from "./core/signal";
 export { Template, createTemplate, instantiate, mountTemplate, childOf, siblingOf } from "./render/template";
