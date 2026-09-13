@@ -78,8 +78,65 @@ export function cleanJsxText(raw: string): string {
 export macro element(node: Node): Node {
 	const spread = findSpreadAttr(node);
 	if (spread !== null) { error("spread attributes are not supported yet: pass each prop by name", spread as Node); }
-	const frag = findFragment(node);
-	if (frag !== null) { error("fragments are not supported yet: wrap the children in one element", frag as Node); }
+	function kidsOf(n: Node): Node[] {
+		return n.kind === NodeKind.JSXFragment ? n.jsxFragChildren : n.jsxChildren;
+	}
+	function flattenFragments(n: Node): Node {
+		let out: Node[] = [];
+		for (const c of kidsOf(n)) {
+			if (c.kind === NodeKind.JSXFragment) {
+				for (const g of kidsOf(flattenFragments(c))) { out.push(g); }
+			} else if (c.kind === NodeKind.JSXElement) {
+				out.push(flattenFragments(c));
+			} else {
+				out.push(c);
+			}
+		}
+		if (n.kind === NodeKind.JSXFragment) {
+			return { kind: NodeKind.JSXFragment, line: n.line, column: n.column, jsxFragChildren: out };
+		}
+		return { kind: NodeKind.JSXElement, line: n.line, column: n.column, jsxTag: n.jsxTag, jsxAttrs: n.jsxAttrs, jsxChildren: out, jsxSelfClosing: n.jsxSelfClosing };
+	}
+	function lowerKids(list: Node[]): Node[] {
+		let out: Node[] = [];
+		for (const c of list) {
+			if (c.kind === NodeKind.JSXText) {
+				const cleaned = cleanJsxText(c.jsxText);
+				if (cleaned !== "") {
+					out.push({
+						kind: NodeKind.CallExpr, line: c.line, column: c.column,
+						callee: { kind: NodeKind.Identifier, line: c.line, column: c.column, name: "text" },
+						arguments: [{ kind: NodeKind.StringLiteral, line: c.line, column: c.column, value: cleaned }],
+					});
+				}
+			} else if (c.kind === NodeKind.JSXExpressionContainer) {
+				out.push(!isReactiveExpr(c.jsxExpr) ? {
+					kind: NodeKind.CallExpr, line: c.line, column: c.column,
+					callee: { kind: NodeKind.Identifier, line: c.line, column: c.column, name: "insChild" },
+					arguments: [c.jsxExpr],
+				} : {
+					kind: NodeKind.CallExpr, line: c.line, column: c.column,
+					callee: { kind: NodeKind.Identifier, line: c.line, column: c.column, name: "dynText" },
+					arguments: [{
+						kind: NodeKind.ArrowFunction, line: c.line, column: c.column,
+						arrowParams: [], arrowParamTypes: [], arrowBody: c.jsxExpr, arrowFlags: "", arrowReturnType: "",
+					}],
+				});
+			} else if (c.kind === NodeKind.JSXElement) {
+				out.push({
+					kind: NodeKind.CallExpr, line: c.line, column: c.column,
+					callee: { kind: NodeKind.Identifier, line: c.line, column: c.column, name: "element" },
+					arguments: [c],
+				});
+			}
+		}
+		return out;
+	}
+	node = flattenFragments(node);
+	for (const c of kidsOf(node)) {
+		const stray = findFragment(c);
+		if (stray !== null) { error("a fragment inside an expression is not supported yet: give it its own component", stray as Node); }
+	}
 	function showOf(when: Node, child: Node, fallback: Node | null, ln: int32, col: int32): Node {
 		let attrs: Node[] = [{ kind: NodeKind.JSXAttribute, line: ln, column: col, jsxAttrName: "when", jsxAttrValue: when }];
 		if (fallback !== null) {
@@ -97,7 +154,7 @@ export macro element(node: Node): Node {
 	}
 	function lowerFlowTree(elNode: Node): Node {
 		let kids: Node[] = [];
-		for (const c of elNode.jsxChildren) {
+		for (const c of kidsOf(elNode)) {
 			let lowered: Node | null = null;
 			if (c.kind === NodeKind.JSXElement) {
 				lowered = lowerFlowTree(c);
@@ -128,9 +185,19 @@ export macro element(node: Node): Node {
 			}
 			if (lowered !== null) { const picked = lowered as Node; kids.push(picked); } else { kids.push(c); }
 		}
+		if (elNode.kind === NodeKind.JSXFragment) {
+			return { kind: NodeKind.JSXFragment, line: elNode.line, column: elNode.column, jsxFragChildren: kids };
+		}
 		return { kind: NodeKind.JSXElement, line: elNode.line, column: elNode.column, jsxTag: elNode.jsxTag, jsxAttrs: elNode.jsxAttrs, jsxChildren: kids, jsxSelfClosing: elNode.jsxSelfClosing };
 	}
 	node = lowerFlowTree(node);
+	if (node.kind === NodeKind.JSXFragment) {
+		return {
+			kind: NodeKind.CallExpr, line: node.line, column: node.column,
+			callee: { kind: NodeKind.Identifier, line: node.line, column: node.column, name: "fragmentNode" },
+			arguments: [{ kind: NodeKind.ArrayLiteral, line: node.line, column: node.column, elements: lowerKids(node.jsxFragChildren) }],
+		};
+	}
 	// Capitalized tag → createComponent(Tag, { props }). V1 prop contract: a string
 	// every value prop — literal or expression — becomes accessor(() => v) (the
 	// component's props interface declares Accessor<T>); children stay structural — one child passes
@@ -379,38 +446,7 @@ export macro element(node: Node): Node {
 		}
 	}
 
-	let kids: Node[] = [];
-	for (const c of node.jsxChildren) {
-		if (c.kind === NodeKind.JSXText) {
-			const cleaned = cleanJsxText(c.jsxText);
-			if (cleaned !== "") {
-				kids.push({
-					kind: NodeKind.CallExpr, line: c.line, column: c.column,
-					callee: { kind: NodeKind.Identifier, line: c.line, column: c.column, name: "text" },
-					arguments: [{ kind: NodeKind.StringLiteral, line: c.line, column: c.column, value: cleaned }],
-				});
-			}
-		} else if (c.kind === NodeKind.JSXExpressionContainer) {
-			kids.push(!isReactiveExpr(c.jsxExpr) ? {
-				kind: NodeKind.CallExpr, line: c.line, column: c.column,
-				callee: { kind: NodeKind.Identifier, line: c.line, column: c.column, name: "insChild" },
-				arguments: [c.jsxExpr],
-			} : {
-				kind: NodeKind.CallExpr, line: c.line, column: c.column,
-				callee: { kind: NodeKind.Identifier, line: c.line, column: c.column, name: "dynText" },
-				arguments: [{
-					kind: NodeKind.ArrowFunction, line: c.line, column: c.column,
-					arrowParams: [], arrowParamTypes: [], arrowBody: c.jsxExpr, arrowFlags: "", arrowReturnType: "",
-				}],
-			});
-		} else if (c.kind === NodeKind.JSXElement) {
-			kids.push({
-				kind: NodeKind.CallExpr, line: c.line, column: c.column,
-				callee: { kind: NodeKind.Identifier, line: c.line, column: c.column, name: "element" },
-				arguments: [c],
-			});
-		}
-	}
+	const kids: Node[] = lowerKids(node.jsxChildren);
 
 	const elCall: Node = {
 		kind: NodeKind.CallExpr, line: node.line, column: node.column,
