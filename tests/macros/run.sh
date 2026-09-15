@@ -20,5 +20,7 @@ expect_reject() {
 expect_reject tests/macros/spreadRejected.ms "spread attributes are not supported"
 expect_reject tests/macros/spreadInContainerRejected.ms "spread attributes are not supported"
 expect_reject tests/macros/fragmentInExprRejected.ms "a fragment inside an expression is not supported"
+expect_reject tests/macros/fragmentInExprDirectRejected.ms "a fragment inside an expression is not supported"
+expect_reject tests/macros/fragmentDirectRootRejected.ms "a fragment has no single host node to return"
 expect_reject tests/macros/accessorNominal.ms "is not assignable to type 'Accessor<number>'"
 exit $fail
