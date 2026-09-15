@@ -1,6 +1,7 @@
 import { NeonNode, renderToString } from "../../src/render/node";
 import { MockNode, mockHost, renderToHost, mockToString } from "../../src/render/host";
 import { element } from "../../src/macros/ui/element";
+import { direct } from "../../src/macros/ui/direct";
 import { View, Text } from "../../src/components/primitives";
 import { createSignal, Accessor } from "../../src/core/signal";
 import { createRoot } from "../../src/core/owner";
@@ -92,4 +93,80 @@ test "a fragment carries text and reactive children" {
 		assert mockToString(box) === "<div>hi <p>2</p></div>", "reactive child still updates";
 		d();
 	});
+}
+
+test "a fragment child flattens the same under direct emission" {
+	const host = mockHost();
+	const treeRoot = host.createElement("root");
+	renderToHost(element(<div><><p>a</p><p>b</p></></div>), host, treeRoot);
+	const directRoot = host.createElement("root");
+	const mount = direct(<div><><p>a</p><p>b</p></></div>);
+	host.append(directRoot, mount(host));
+	const t = mockToString(treeRoot as unknown as MockNode);
+	const d = mockToString(directRoot as unknown as MockNode);
+	assert t === d, "tree=" + t + " direct=" + d;
+}
+
+test "nested fragments flatten the same under direct emission" {
+	const host = mockHost();
+	const treeRoot = host.createElement("root");
+	renderToHost(element(<div><><p>a</p><><p>b</p><p>c</p></></></div>), host, treeRoot);
+	const directRoot = host.createElement("root");
+	const mount = direct(<div><><p>a</p><><p>b</p><p>c</p></></></div>);
+	host.append(directRoot, mount(host));
+	const t = mockToString(treeRoot as unknown as MockNode);
+	const d = mockToString(directRoot as unknown as MockNode);
+	assert t === d, "tree=" + t + " direct=" + d;
+}
+
+test "an empty fragment is erased under direct emission too" {
+	const host = mockHost();
+	const directRoot = host.createElement("root");
+	const mount = direct(<div><></></div>);
+	host.append(directRoot, mount(host));
+	assert mockToString(directRoot as unknown as MockNode) === "<root><div></div></root>", "no placeholder";
+}
+
+test "a fragment inside a component tag flattens under direct emission" {
+	const host = mockHost();
+	const treeRoot = host.createElement("root");
+	renderToHost(element(<View><><Text>a</Text><Text>b</Text></></View>), host, treeRoot);
+	const directRoot = host.createElement("root");
+	const mount = direct(<View><><Text>a</Text><Text>b</Text></></View>);
+	host.append(directRoot, mount(host));
+	const t = mockToString(treeRoot as unknown as MockNode);
+	const d = mockToString(directRoot as unknown as MockNode);
+	assert t === d, "tree=" + t + " direct=" + d;
+}
+
+test "a flattened fragment child stays reactive under direct emission" {
+	createRoot((dispose) => {
+		const [n, setN] = createSignal(1);
+		const host = mockHost();
+		const treeRoot = host.createElement("root");
+		renderToHost(element(<div><>hi <p>{n() + ""}</p></></div>), host, treeRoot);
+		const directRoot = host.createElement("root");
+		const mount = direct(<div><>hi <p>{n() + ""}</p></></div>);
+		host.append(directRoot, mount(host));
+		assert mockToString(treeRoot as unknown as MockNode) === mockToString(directRoot as unknown as MockNode), "initial";
+		setN(2);
+		const t = mockToString(treeRoot as unknown as MockNode);
+		const d = mockToString(directRoot as unknown as MockNode);
+		assert t === d, "after set: tree=" + t + " direct=" + d;
+		assert d.indexOf("<p>2</p>") >= 0, "direct spot updated: " + d;
+		dispose();
+	});
+}
+
+test "a component that returns a fragment mounts under direct emission" {
+	const host = mockHost();
+	const treeRoot = host.createElement("root");
+	renderToHost(element(<div><Pair label="x" /></div>), host, treeRoot);
+	const directRoot = host.createElement("root");
+	const mount = direct(<div><Pair label="x" /></div>);
+	host.append(directRoot, mount(host));
+	const t = mockToString(treeRoot as unknown as MockNode);
+	const d = mockToString(directRoot as unknown as MockNode);
+	assert t === d, "tree=" + t + " direct=" + d;
+	assert d === "<root><div><p>r1</p><p>r2</p></div></root>", "both roots spliced: " + d;
 }
