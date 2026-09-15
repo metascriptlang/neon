@@ -432,7 +432,9 @@ props stay raw. At the call site the macro wraps every value prop — expression
 AND literals — as `accessor(() => expr)`, so the field type matches nominally and
 a signal expression can never land as a snapshot. Inside the component a read of
 `props.x`, or of `x` after `function C({ x }: Props)`, is an accessor read and
-auto-calls (§Accessor). Negative probe: `probe/thunkProps3.ms` S1.
+goes through `valueOf` where a value is needed (§Accessor). A value already typed
+`Accessor<T>` (`label={props.label}`, `class={count}`) crosses raw, so a prop passed
+down never nests as `Accessor<Accessor<T>>`. Negative probe: `probe/thunkProps3.ms` S1.
 
 **Landed 2026-09-12 (phase 4.1).** `isRawPropValue` (macros/ui/reactive.ms) is the
 one decision both macros share: an arrow/function literal, a JSX-valued prop,
@@ -460,20 +462,31 @@ exists — `createMemo` returns `Accessor<T>`, and
 any `() => T` slot (`mapArray`, `For.each`, `Show.when`, a hand-written
 callback); a `() => T` never narrows into an `Accessor<T>`.
 
-**Read rule (checker, both backends):** a value read whose flow-narrowed type is
-exactly `Accessor<T>` is rewritten to a zero-argument call typed `T` — in JSX,
-in `if`, in arithmetic, inside closures — unless the site is the callee of a call
-(`count()` stays one call), the target of an assignment, or a slot whose expected
-type is function-shaped. A union such as `Accessor<T> | null` is not an accessor
-until narrowed, so `props.x !== null` compares the handle and the branch body
-reads the value. `setCount(v)` remains the only way to write.
+**Read rule (checker, both backends, 2026-09-14):** `signal.ms` declares
+`valueOf(this a: Accessor<T>): T`, the compiler's `valueOf` protocol (LANG.md), so
+a bare accessor is read only where the read would otherwise be a type error: a
+typed slot, an operand, a condition, a missing member (`count.toString()`), an
+index, `switch`, `as`. Wherever the accessor itself fits it stays the accessor:
+`const d = count`, `id(count)`, `[count]`, a `() => T` or `Accessor<T>` slot, a
+generic parameter, the callee of `count()`. A union such as `Accessor<T> | null`
+is not an accessor until narrowed, so `props.x !== null` compares the handle and
+the branch body reads the value. The protocol follows import visibility: a module
+that reads bare imports something from `core/signal` or from the `src/index.ms`
+hub. Positions that take any type do not read: `console.log(count)` and
+`String(count)` print the handle — write `${count}` or `count.toString()`. An
+overloaded call never reads: it needs a candidate that takes the accessor, or an
+explicit `count()`.
+`setCount(v)` remains the only way to write.
 
-**Consequences for macros:** the element/direct macros run after the checker, so
-`{count}` arrives as a call and `isReactiveExpr` already classifies it reactive.
-`{a && <X/>}`, `{c ? <A/> : <B/>}` and `{xs.map(fn)}` lower to `Show`/`For`
-(phase 5). **Body-time snapshot:** an implicit accessor read in a top-level
-`const` of a function declaration (`const d = count * 2`) is a compile error;
-write `count()` for a deliberate one-time value, or read it in JSX/`createMemo`.
+**Consequences for macros:** the element/direct macros run after the checker. A
+read that had to become a value arrives as a call (`{count * 2}`,
+`{props.label + "!"}`) and `isReactiveExpr` classifies it reactive; a bare
+`{count}` or `class={props.label}` fails nothing, so it arrives as the accessor,
+and both macros read its `nodeType` (`isAccessorTyped`) to emit a live spot
+instead of a one-time `insChild`/`attr`. `{a && <X/>}`, `{c ? <A/> : <B/>}` and
+`{xs.map(fn)}` lower to `Show`/`For` (phase 5). **Body-time read:** `const d =
+count * 2` at the top of a component body reads once; read it in JSX or
+`createMemo` to keep it live.
 
 ## References
 

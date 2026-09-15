@@ -28,10 +28,10 @@ stays; no React hook aliases.
 | 0 | redeploy main; docs; loud-reject fragments; uniform spread walk | neon | done 2026-09-10 (`tests/macros/run.sh` rc=0) |
 | 1 | `distinct` nominal (`typeName`), callable over a fn base, one-way widen (`BrandWiden`) | compiler | |
 | 2 | `Accessor<T> = distinct (() => T)`; `createSignal`/`createMemo` return it; `accessor()` | neon core | |
-| 3 | checker auto-call: a read typed `Accessor<T>` becomes `x()` unless a fn-shaped slot expects it | compiler | |
+| 3 | checker reads a value through the `valueOf` protocol where a bare read would fail (replaced the source-typed auto-call 2026-09-14) | compiler | |
 | 4 | props contract: every value prop is `Accessor<T>`; the macro wraps every value, literals too; one `propValueNode` replaces three copies | neon macros | |
 | 5 | `{a && <X/>}` / ternary / `.map` lower to `Show`/`For` through one `lowerJsxChild` | neon macros | |
-| 6 | error on an implicit accessor read at function-body time (`const d = count * 2`) | compiler | |
+| 6 | error on an implicit accessor read at function-body time (`const d = count * 2`) | compiler | dropped 2026-09-14: with `valueOf` an alias keeps the accessor, and a body-time operand read is an ordinary one-time value |
 | 7 | real fragments: flatten in child position; multi-root at top level | neon | tree emission done 2026-09-13 (`msc test tests/render/fragment.test.ms`, 5 cells, C + js); `direct.ms` still rejects |
 
 Emission is finished and needs nothing further: the tier is picked per JSX site at compile time, on
