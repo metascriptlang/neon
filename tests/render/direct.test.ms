@@ -512,3 +512,41 @@ test "xs.map(row) through direct matches tree" {
 	setItems([3, 1, 2, 4]);
 	assert mockToString(treeRoot) === mockToString(directRoot), "after change: tree=" + mockToString(treeRoot) + " direct=" + mockToString(directRoot);
 }
+
+interface BareTagProps {
+	label: Accessor<string>;
+}
+
+function BareTag(props: BareTagProps): NeonNode {
+	return element(<b>{props.label}</b>);
+}
+
+test "a bare accessor attribute and child through direct match tree" {
+	const [l, setL] = createSignal("a");
+	const host = mockHost();
+	const treeRoot = mockNode("root");
+	const tv: NeonNode = element(<p class={l}>{l}</p>);
+	renderToHost(tv, host, treeRoot as unknown as HostNode);
+	const directRoot = mockNode("root");
+	const mount = direct(<p class={l}>{l}</p>);
+	host.append(directRoot as unknown as HostNode, mount(host));
+	setL("b");
+	assert mockToString(treeRoot) === mockToString(directRoot), "after set: tree=" + mockToString(treeRoot) + " direct=" + mockToString(directRoot);
+	assert mockToString(directRoot) === "<root><p class=\"b\">b</p></root>", "value: " + mockToString(directRoot);
+}
+
+test "an accessor operand, a bare child and an accessor prop beside a component through direct match tree" {
+	const [l, setL] = createSignal("a");
+	const [n, setN] = createSignal<number>(1);
+	const host = mockHost();
+	const treeRoot = mockNode("root");
+	const tv: NeonNode = element(<div title={(n * 2).toString()}>{l}<BareTag label={l} /></div>);
+	renderToHost(tv, host, treeRoot as unknown as HostNode);
+	const directRoot = mockNode("root");
+	const mount = direct(<div title={(n * 2).toString()}>{l}<BareTag label={l} /></div>);
+	host.append(directRoot as unknown as HostNode, mount(host));
+	setL("b");
+	setN(4);
+	assert mockToString(treeRoot) === mockToString(directRoot), "after set: tree=" + mockToString(treeRoot) + " direct=" + mockToString(directRoot);
+	assert mockToString(directRoot).indexOf("title=\"8\"") >= 0 && mockToString(directRoot).indexOf("<b>b</b>") >= 0, "value: " + mockToString(directRoot);
+}
