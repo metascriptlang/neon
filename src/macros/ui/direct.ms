@@ -29,8 +29,25 @@ export macro direct(node: Node): Node {
 	const C = node.column;
 	const spread = findSpreadAttr(node);
 	if (spread !== null) { error("spread attributes are not supported yet: pass each prop by name", spread as Node); }
-	const frag = findFragment(node);
-	if (frag !== null) { error("fragments are not supported yet: wrap the children in one element", frag as Node); }
+	function kidsOf(n: Node): Node[] {
+		return n.kind === NodeKind.JSXFragment ? n.jsxFragChildren : n.jsxChildren;
+	}
+	function flattenFragments(n: Node): Node {
+		let out: Node[] = [];
+		for (const c of kidsOf(n)) {
+			if (c.kind === NodeKind.JSXFragment) {
+				for (const g of kidsOf(flattenFragments(c))) { out.push(g); }
+			} else if (c.kind === NodeKind.JSXElement) {
+				out.push(flattenFragments(c));
+			} else {
+				out.push(c);
+			}
+		}
+		if (n.kind === NodeKind.JSXFragment) {
+			return { kind: NodeKind.JSXFragment, line: n.line, column: n.column, jsxFragChildren: out };
+		}
+		return { kind: NodeKind.JSXElement, line: n.line, column: n.column, jsxTag: n.jsxTag, jsxAttrs: n.jsxAttrs, jsxChildren: out, jsxSelfClosing: n.jsxSelfClosing };
+	}
 	function isAccessorTyped(n: Node): boolean {
 		const t = peelHidden(n).nodeType;
 		if (t !== null && t.kind === NodeKind.TypeGeneric) {
@@ -88,6 +105,14 @@ export macro direct(node: Node): Node {
 			if (lowered !== null) { const picked = lowered as Node; kids.push(picked); } else { kids.push(c); }
 		}
 		return { kind: NodeKind.JSXElement, line: elNode.line, column: elNode.column, jsxTag: elNode.jsxTag, jsxAttrs: elNode.jsxAttrs, jsxChildren: kids, jsxSelfClosing: elNode.jsxSelfClosing };
+	}
+	node = flattenFragments(node);
+	if (node.kind === NodeKind.JSXFragment) {
+		error("a fragment has no single host node to return: wrap the children in one element, or build it with element() and mount via renderToHost", node);
+	}
+	for (const c of kidsOf(node)) {
+		const stray = findFragment(c);
+		if (stray !== null) { error("a fragment inside an expression is not supported yet: give it its own component", stray as Node); }
 	}
 	node = lowerFlowTree(node);
 	// Capitalized tag → createComponent(Tag, { props }), mirroring element.ms's prop
