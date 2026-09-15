@@ -169,7 +169,7 @@ for what direct emission must generate, and the tree-emission test suite is the
 **oracle**: the differential test for direct emission is "same JSX, both
 emissions, identical host-op sequence".
 
-**Interleaving.** Static fragments unroll; every dynamic boundary is a call into
+**Interleaving.** Static subtrees unroll; every dynamic boundary is a call into
 the runtime core, handing it a direct-emitted closure as the child template —
 and the core calls back into that closure when (re)building:
 
@@ -184,6 +184,19 @@ flip back:                        [core] calls children(host) again ──► [d
 
 Components, `Show`, `For` are runtime calls in BOTH emissions — structure that
 changes at runtime cannot be unrolled at compile time.
+
+**Fragments.** `<>…</>` owns no host node, so in child position it is not emitted
+at all: both macros splice its children into the parent's child list at COMPILE
+time (`flattenFragments`, recursive, matching Solid's `normalizeIncomingArray`),
+and `<></>` erases. Nothing reaches the runtime, so the two emissions stay
+byte-identical for free. At the ROOT the two emissions differ, and the difference
+is the return type, not the feature: tree emission returns `NeonNode`, which can
+say "many roots" (`fragmentNode`, spliced by `mountInto`), while a direct mount
+closure IS a `NeonView` and returns exactly one `HostNode`. Direct emission is
+`renderNode` partially evaluated, and `renderNode` throws on a fragment for that
+same reason — so the macro refuses a root fragment at compile time, one phase
+earlier, pointing at the two ways out: wrap the children in one element, or build
+it with `element()` and mount via `renderToHost`.
 
 **Template-clone (D4, landed).** A pure subtree is emitted as a skeleton built
 once plus a per-instance walk, so mount N costs one native copy instead of N

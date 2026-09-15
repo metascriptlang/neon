@@ -32,7 +32,7 @@ stays; no React hook aliases.
 | 4 | props contract: every value prop is `Accessor<T>`; the macro wraps every value, literals too; one `propValueNode` replaces three copies | neon macros | |
 | 5 | `{a && <X/>}` / ternary / `.map` lower to `Show`/`For` through one `lowerJsxChild` | neon macros | |
 | 6 | error on an implicit accessor read at function-body time (`const d = count * 2`) | compiler | dropped 2026-09-14: with `valueOf` an alias keeps the accessor, and a body-time operand read is an ordinary one-time value |
-| 7 | real fragments: flatten in child position; multi-root at top level | neon | tree emission done 2026-09-13 (`msc test tests/render/fragment.test.ms`, 5 cells, C + js); `direct.ms` still rejects |
+| 7 | real fragments: flatten in child position; multi-root at top level | neon | done 2026-09-15 (`msc test tests/render/fragment.test.ms` 308 C / 72 js, 5 of the new cells differential vs tree; `tests/macros/run.sh` rc=0) — tree emission 2026-09-13, direct emission 2026-09-15: same compile-time flatten, root fragment refused because a mount closure returns one `HostNode` |
 
 Emission is finished and needs nothing further: the tier is picked per JSX site at compile time, on
 every target, and no build flag or user-visible knob exists (`RENDER-MODEL.md` §Selection).
