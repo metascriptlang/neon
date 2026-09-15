@@ -50,6 +50,10 @@ export function accessor<T>(f: () => T): Accessor<T> {
 	return f as Accessor<T>;
 }
 
+export function valueOf<T>(this a: Accessor<T>): T {
+	return a();
+}
+
 export function createSignal<T>(initialValue: T): [Accessor<T>, Setter<T>] {
 	const signal = new Signal<T>(initialValue);
 	return [

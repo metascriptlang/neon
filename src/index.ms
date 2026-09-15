@@ -1,7 +1,7 @@
 // Neon's public surface. Platform hosts stay out on purpose — a program picks
 // exactly one and pays for exactly one.
 
-export { Signal, createSignal, untrack, batch, accessor, Accessor, Setter } from "./core/signal";
+export { Signal, createSignal, untrack, batch, accessor, valueOf, Accessor, Setter } from "./core/signal";
 export { createEffect } from "./core/effect";
 export { createMemo } from "./core/memo";
 export { createRoot, runWithOwner } from "./core/owner";
