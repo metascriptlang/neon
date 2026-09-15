@@ -31,6 +31,14 @@ export macro direct(node: Node): Node {
 	if (spread !== null) { error("spread attributes are not supported yet: pass each prop by name", spread as Node); }
 	const frag = findFragment(node);
 	if (frag !== null) { error("fragments are not supported yet: wrap the children in one element", frag as Node); }
+	function isAccessorTyped(n: Node): boolean {
+		const t = peelHidden(n).nodeType;
+		if (t !== null && t.kind === NodeKind.TypeGeneric) {
+			const base = t.typExprBase;
+			return base.kind === NodeKind.Identifier && base.name === "Accessor";
+		}
+		return false;
+	}
 	function showOf(when: Node, child: Node, fallback: Node | null, ln: int32, col: int32): Node {
 		let attrs: Node[] = [{ kind: NodeKind.JSXAttribute, line: ln, column: col, jsxAttrName: "when", jsxAttrValue: when }];
 		if (fallback !== null) {
@@ -97,7 +105,7 @@ export macro direct(node: Node): Node {
 		for (const a of node.jsxAttrs) {
 			if (a.kind === NodeKind.JSXAttribute) {
 				keys.push(a.jsxAttrName);
-				if (isRawPropValue(a.jsxAttrName, a.jsxAttrValue)) {
+				if (isRawPropValue(a.jsxAttrName, a.jsxAttrValue) || isAccessorTyped(a.jsxAttrValue)) {
 					values.push(a.jsxAttrValue);
 				} else {
 					values.push({ kind: NodeKind.CallExpr, line: a.line, column: a.column, callee: { kind: NodeKind.Identifier, line: a.line, column: a.column, name: "accessor" }, arguments: [{ kind: NodeKind.ArrowFunction, line: a.line, column: a.column, arrowParams: [], arrowParamTypes: [], arrowBody: a.jsxAttrValue, arrowFlags: "", arrowReturnType: "" }] });
@@ -343,7 +351,7 @@ export macro direct(node: Node): Node {
 					} else if (a.jsxAttrValue.kind !== NodeKind.StringLiteral) {
 						wStmts.push({
 							kind: NodeKind.ExprStmt, line: a.line, column: a.column,
-							expr: !isReactiveExpr(a.jsxAttrValue) ? hostCall("host", "setAttr", [ident(elVar, a.line, a.column), strLit(a.jsxAttrName, a.line, a.column), a.jsxAttrValue], a.line, a.column) : {
+							expr: !isReactiveExpr(a.jsxAttrValue) && !isAccessorTyped(a.jsxAttrValue) ? hostCall("host", "setAttr", [ident(elVar, a.line, a.column), strLit(a.jsxAttrName, a.line, a.column), a.jsxAttrValue], a.line, a.column) : {
 								kind: NodeKind.CallExpr, line: a.line, column: a.column,
 								callee: ident("bindAttr", a.line, a.column),
 								arguments: [
@@ -415,7 +423,7 @@ export macro direct(node: Node): Node {
 					if (c.kind === NodeKind.JSXExpressionContainer) {
 						wStmts.push({
 							kind: NodeKind.ExprStmt, line: c.line, column: c.column,
-							expr: !isReactiveExpr(c.jsxExpr) ? hostCall("host", "setText", [ident(curVar, c.line, c.column), c.jsxExpr], c.line, c.column) : {
+							expr: !isReactiveExpr(c.jsxExpr) && !isAccessorTyped(c.jsxExpr) ? hostCall("host", "setText", [ident(curVar, c.line, c.column), c.jsxExpr], c.line, c.column) : {
 								kind: NodeKind.CallExpr, line: c.line, column: c.column,
 								callee: ident("bindText", c.line, c.column),
 								arguments: [
@@ -589,7 +597,7 @@ export macro direct(node: Node): Node {
 				} else {
 					stmts.push({
 						kind: NodeKind.ExprStmt, line: a.line, column: a.column,
-						expr: !isReactiveExpr(a.jsxAttrValue) ? {
+						expr: !isReactiveExpr(a.jsxAttrValue) && !isAccessorTyped(a.jsxAttrValue) ? {
 							kind: NodeKind.CallExpr, line: a.line, column: a.column,
 							callee: { kind: NodeKind.MemberExpr, line: a.line, column: a.column, object: { kind: NodeKind.Identifier, line: a.line, column: a.column, name: "host" }, property: "setAttr", isOptional: false },
 							arguments: [
@@ -639,7 +647,7 @@ export macro direct(node: Node): Node {
 			} else if (c.kind === NodeKind.JSXExpressionContainer) {
 				const tName = "_t" + tIdx.toString();
 				tIdx = tIdx + 1;
-				const liveSpot = isReactiveExpr(c.jsxExpr);
+				const liveSpot = isReactiveExpr(c.jsxExpr) || isAccessorTyped(c.jsxExpr);
 				stmts.push({
 					kind: NodeKind.VariableDecl, line: c.line, column: c.column,
 					declName: tName, declType: "", declKind: DeclKind.Const,
@@ -684,7 +692,7 @@ export macro direct(node: Node): Node {
 				for (const a of c.jsxAttrs) {
 					if (a.kind === NodeKind.JSXAttribute) {
 						ckeys.push(a.jsxAttrName);
-						if (isRawPropValue(a.jsxAttrName, a.jsxAttrValue)) {
+						if (isRawPropValue(a.jsxAttrName, a.jsxAttrValue) || isAccessorTyped(a.jsxAttrValue)) {
 							cvalues.push(a.jsxAttrValue);
 						} else {
 							cvalues.push({ kind: NodeKind.CallExpr, line: a.line, column: a.column, callee: { kind: NodeKind.Identifier, line: a.line, column: a.column, name: "accessor" }, arguments: [{ kind: NodeKind.ArrowFunction, line: a.line, column: a.column, arrowParams: [], arrowParamTypes: [], arrowBody: a.jsxAttrValue, arrowFlags: "", arrowReturnType: "" }] });

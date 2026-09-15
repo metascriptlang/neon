@@ -81,6 +81,14 @@ export macro element(node: Node): Node {
 	function kidsOf(n: Node): Node[] {
 		return n.kind === NodeKind.JSXFragment ? n.jsxFragChildren : n.jsxChildren;
 	}
+	function isAccessorTyped(n: Node): boolean {
+		const t = peelHidden(n).nodeType;
+		if (t !== null && t.kind === NodeKind.TypeGeneric) {
+			const base = t.typExprBase;
+			return base.kind === NodeKind.Identifier && base.name === "Accessor";
+		}
+		return false;
+	}
 	function flattenFragments(n: Node): Node {
 		let out: Node[] = [];
 		for (const c of kidsOf(n)) {
@@ -110,7 +118,7 @@ export macro element(node: Node): Node {
 					});
 				}
 			} else if (c.kind === NodeKind.JSXExpressionContainer) {
-				out.push(!isReactiveExpr(c.jsxExpr) ? {
+				out.push(!isReactiveExpr(c.jsxExpr) && !isAccessorTyped(c.jsxExpr) ? {
 					kind: NodeKind.CallExpr, line: c.line, column: c.column,
 					callee: { kind: NodeKind.Identifier, line: c.line, column: c.column, name: "insChild" },
 					arguments: [c.jsxExpr],
@@ -213,7 +221,7 @@ export macro element(node: Node): Node {
 		for (const a of node.jsxAttrs) {
 			if (a.kind === NodeKind.JSXAttribute) {
 				keys.push(a.jsxAttrName);
-				if (isRawPropValue(a.jsxAttrName, a.jsxAttrValue)) {
+				if (isRawPropValue(a.jsxAttrName, a.jsxAttrValue) || isAccessorTyped(a.jsxAttrValue)) {
 					values.push(a.jsxAttrValue);
 				} else {
 					values.push({ kind: NodeKind.CallExpr, line: a.line, column: a.column, callee: { kind: NodeKind.Identifier, line: a.line, column: a.column, name: "accessor" }, arguments: [{ kind: NodeKind.ArrowFunction, line: a.line, column: a.column, arrowParams: [], arrowParamTypes: [], arrowBody: a.jsxAttrValue, arrowFlags: "", arrowReturnType: "" }] });
@@ -327,7 +335,7 @@ export macro element(node: Node): Node {
 					const staticProps: Node[] = [];
 					for (let i = 0; i < a.jsxAttrValue.keys.length; i = i + 1) {
 						const fv = a.jsxAttrValue.properties[i];
-						if (isReactiveExpr(fv)) {
+						if (isReactiveExpr(fv) || isAccessorTyped(fv)) {
 							dynStyleNames.push(a.jsxAttrValue.keys[i]);
 							dynStyleExprs.push(fv);
 						} else {
@@ -357,7 +365,7 @@ export macro element(node: Node): Node {
 						for (const layer of a.jsxAttrValue.elements) {
 							for (let i = 0; i < layer.keys.length; i = i + 1) {
 								const fv = layer.properties[i];
-								if (isReactiveExpr(fv)) {
+								if (isReactiveExpr(fv) || isAccessorTyped(fv)) {
 									error("a reactive style field inside a layer array is not supported yet — pass it in a plain object style: style={{ " + layer.keys[i] + ": ... }}", fv);
 								}
 								// mergeStyle treats null as unset, so a later null must
@@ -382,7 +390,7 @@ export macro element(node: Node): Node {
 					for (const layer of a.jsxAttrValue.elements) {
 						if (layer.kind === NodeKind.ObjectLiteral) {
 							for (let i = 0; i < layer.keys.length; i = i + 1) {
-								if (isReactiveExpr(layer.properties[i])) {
+								if (isReactiveExpr(layer.properties[i]) || isAccessorTyped(layer.properties[i])) {
 									error("a reactive style field inside a layer array is not supported yet — pass it in a plain object style: style={{ " + layer.keys[i] + ": ... }}", layer.properties[i]);
 								}
 							}
@@ -399,7 +407,7 @@ export macro element(node: Node): Node {
 				// must not freeze into withStyle's one-shot constant — it gets
 				// one whole-style effect instead. A static expression through
 				// here (a sheet entry) keeps the constant path and its class id.
-				if (isReactiveExpr(a.jsxAttrValue)) {
+				if (isReactiveExpr(a.jsxAttrValue) || isAccessorTyped(a.jsxAttrValue)) {
 					dynStyleAllExpr = a.jsxAttrValue;
 				} else {
 					styleExpr = a.jsxAttrValue;
@@ -427,7 +435,7 @@ export macro element(node: Node): Node {
 					callee: { kind: NodeKind.Identifier, line: a.line, column: a.column, name: "attr" },
 					arguments: [nameLit, a.jsxAttrValue],
 				});
-			} else if (!isReactiveExpr(a.jsxAttrValue)) {
+			} else if (!isReactiveExpr(a.jsxAttrValue) && !isAccessorTyped(a.jsxAttrValue)) {
 				attrs.push({
 					kind: NodeKind.CallExpr, line: a.line, column: a.column,
 					callee: { kind: NodeKind.Identifier, line: a.line, column: a.column, name: "attr" },
