@@ -347,22 +347,42 @@ export macro direct(node: Node): Node {
 						continue;
 					}
 					if (a.jsxAttrName === "style" && a.jsxAttrValue.kind !== NodeKind.StringLiteral) {
-						if (a.jsxAttrValue.kind === NodeKind.ObjectLiteral) {
-							for (const fv of a.jsxAttrValue.properties) {
+						const sv = a.jsxAttrValue;
+						if (sv.kind === NodeKind.ObjectLiteral) {
+							for (const fv of sv.properties) {
 								if (fv.kind === NodeKind.CallExpr) { tplOffenders.push(fv); }
 							}
 						}
-						const sName = "_ts" + tsIdx.toString();
-						tsIdx = tsIdx + 1;
-						wStmts.push({
-							kind: NodeKind.VariableDecl, line: a.line, column: a.column,
-							declName: sName, declType: "", declKind: DeclKind.Const,
-							initializer: a.jsxAttrValue,
-						});
-						wStmts.push({
-							kind: NodeKind.ExprStmt, line: a.line, column: a.column,
-							expr: hostCall("host", "setStyle", [ident(elVar, a.line, a.column), ident(sName, a.line, a.column)], a.line, a.column),
-						});
+						if (sv.kind !== NodeKind.ObjectLiteral && sv.kind !== NodeKind.ArrayLiteral && (isReactiveExpr(sv) || isAccessorTyped(sv))) {
+							wStmts.push({
+								kind: NodeKind.ExprStmt, line: a.line, column: a.column,
+								expr: {
+									kind: NodeKind.CallExpr, line: a.line, column: a.column,
+									callee: ident("bindStyleAll", a.line, a.column),
+									arguments: [
+										ident("host", a.line, a.column),
+										ident(elVar, a.line, a.column),
+										{
+											kind: NodeKind.ArrowFunction, line: a.line, column: a.column,
+											arrowParams: [], arrowParamTypes: [], arrowFlags: "", arrowReturnType: "",
+											arrowBody: sv,
+										},
+									],
+								},
+							});
+						} else {
+							const sName = "_ts" + tsIdx.toString();
+							tsIdx = tsIdx + 1;
+							wStmts.push({
+								kind: NodeKind.VariableDecl, line: a.line, column: a.column,
+								declName: sName, declType: "", declKind: DeclKind.Const,
+								initializer: sv,
+							});
+							wStmts.push({
+								kind: NodeKind.ExprStmt, line: a.line, column: a.column,
+								expr: hostCall("host", "setStyle", [ident(elVar, a.line, a.column), ident(sName, a.line, a.column)], a.line, a.column),
+							});
+						}
 					} else if (a.jsxAttrName.startsWith("on")) {
 						// onChangeText text-unwrap — mirrors element.ms, see the comment there.
 						let hVal: Node = a.jsxAttrValue;
@@ -558,12 +578,32 @@ export macro direct(node: Node): Node {
 					continue;
 				}
 				if (a.jsxAttrName === "style" && a.jsxAttrValue.kind !== NodeKind.StringLiteral) {
-					if (a.jsxAttrValue.kind === NodeKind.ObjectLiteral) {
-						for (const fv of a.jsxAttrValue.properties) {
+					const sv = a.jsxAttrValue;
+					if (sv.kind === NodeKind.ObjectLiteral) {
+						for (const fv of sv.properties) {
 							if (fv.kind === NodeKind.CallExpr) {
 								styleOffenders.push(fv);
 							}
 						}
+					}
+					if (sv.kind !== NodeKind.ObjectLiteral && sv.kind !== NodeKind.ArrayLiteral && (isReactiveExpr(sv) || isAccessorTyped(sv))) {
+						stmts.push({
+							kind: NodeKind.ExprStmt, line: a.line, column: a.column,
+							expr: {
+								kind: NodeKind.CallExpr, line: a.line, column: a.column,
+								callee: { kind: NodeKind.Identifier, line: a.line, column: a.column, name: "bindStyleAll" },
+								arguments: [
+									{ kind: NodeKind.Identifier, line: a.line, column: a.column, name: "host" },
+									{ kind: NodeKind.Identifier, line: a.line, column: a.column, name: rName },
+									{
+										kind: NodeKind.ArrowFunction, line: a.line, column: a.column,
+										arrowParams: [], arrowParamTypes: [], arrowFlags: "", arrowReturnType: "",
+										arrowBody: sv,
+									},
+								],
+							},
+						});
+						continue;
 					}
 					// Bind the style expr to a temp before the call: BUGS.md §2 call-result
 					// arg at an address-taken position (same reason as the _e child temps).
@@ -572,7 +612,7 @@ export macro direct(node: Node): Node {
 					stmts.push({
 						kind: NodeKind.VariableDecl, line: a.line, column: a.column,
 						declName: sName, declType: "", declKind: DeclKind.Const,
-						initializer: a.jsxAttrValue,
+						initializer: sv,
 					});
 					stmts.push({
 						kind: NodeKind.ExprStmt, line: a.line, column: a.column,
