@@ -115,9 +115,9 @@ When you hit a MetaScript limitation:
 Neon builds and tests run directly via the self-hosted `msc` CLI (installed in `$PATH` at `~/.metascript/bin/msc`). No Bun, no `bun run` — `msc` is the ground truth: it typechecks AND does real C/JS codegen, so it catches bugs the old transpile-only Bun path hid.
 
 ```bash
-# Build the MetaScript compiler (only when compiler source changed)
+# Test the MetaScript compiler (only when compiler source changed)
 cd /Users/le/metascript/recompiler
-rm -rf out && msc test src/index.ms          # full compiler test suite
+msc test src/index.ms                        # full compiler test suite, ~40s warm
 
 # Run Neon tests (self-hosted msc — real codegen, no false-green)
 cd /Users/le/metascript/neon
@@ -128,7 +128,11 @@ msc test tests/render/reconcile.test.ms
 msc run examples/counter.ms                  # build native + run
 msc build examples/counter.ms                # build native binary (no run)
 
-# Tip: always `rm -rf out` before a fresh compiler build — stale artifacts cause false passes.
+# Do NOT `rm -rf out` by default: the object cache is fingerprint-keyed and correct
+# (recompiler src/test/CLAUDE.md §5.2); wiping it makes every suite cold for minutes.
+# It is the fix for one symptom only: an A/B where two binaries come from one tree
+# under one --output name. Which lane a compiler change needs before landing:
+# recompiler CLAUDE.md §Verification Cost — most fixes need suite + one guard, not corpus.
 ```
 
 ### File Structure
@@ -344,7 +348,7 @@ define table (`msc --help-defines`): backend `c`/`js`, OS `macos`/`ios`/`android
 # When you hit a compiler bug:
 cd /Users/le/metascript/recompiler
 # Fix the compiler (TDD: write failing test first)
-rm -rf out && msc test src/index.ms
+msc test src/index.ms
 
 # Verify fix in Neon
 cd /Users/le/metascript/neon
@@ -586,7 +590,7 @@ msc build examples/counter.ms
 3. Switch to `/Users/le/metascript/recompiler`
 4. Write failing compiler test demonstrating the crash
 5. Fix the compiler (TDD)
-6. Verify fix: `rm -rf out && msc test src/index.ms`
+6. Verify fix: `msc test src/index.ms` plus the one guard or probe that exercises it (lane table: recompiler `CLAUDE.md` §Verification Cost)
 7. Return to Neon - issue is now permanently resolved
 
 ### Macro Expansion Doesn't Work as Expected
@@ -671,7 +675,7 @@ msc build examples/counter.ms
 **MetaScript Compiler**:
 - Source: `/Users/le/metascript/recompiler/src`
 - Tests: integrated in `src/index.ms` (`msc test src/index.ms`)
-- Build: `rm -rf out && msc test src/index.ms`
+- Build: `msc build src/index.ms --gc=drc --danger --cc=clang --output=msc` (no `rm -rf out`)
 
 ---
 
