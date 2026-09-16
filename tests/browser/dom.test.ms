@@ -5,6 +5,7 @@ import { NeonEvent } from "../../src/render/event";
 import { bindAttr } from "../../src/render/host";
 import { createSignal } from "../../src/core/signal";
 import { createRoot } from "../../src/core/owner";
+import { HOST_MOVE_CONTRACT, RECONCILE_CONTRACT, hostMoveContract, reconcileContract } from "../render/hostContract";
 
 extern class ProbeStyle {
 	backgroundColor: string;
@@ -246,5 +247,15 @@ test "fontStyle and textDecorationLine reach the element" {
 	h.setStyle(el, styleWith("textDecorationLine", "underline"));
 	assert probe(el).style.textDecorationLine === "underline", "textDecorationLine is in the IR and the browser projects it";
 	probe(el).remove();
+}
+
+test "the DOM defines the host move contract" {
+	const got = hostMoveContract(domHost());
+	assert got === HOST_MOVE_CONTRACT, got;
+}
+
+test "reconcileArrays keeps its contract on the DOM" {
+	const got = reconcileContract(domHost());
+	assert got === RECONCILE_CONTRACT, got;
 }
 

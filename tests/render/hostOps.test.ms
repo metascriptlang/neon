@@ -1,4 +1,5 @@
 import { mockHost, mockToString, MockNode, HostNode } from "../../src/render/host";
+import { HOST_MOVE_CONTRACT, RECONCILE_CONTRACT, hostMoveContract, reconcileContract } from "./hostContract";
 
 test "insertBefore positions, nextSibling navigates, removeChild detaches" {
 	const h = mockHost();
@@ -21,4 +22,14 @@ test "insertBefore positions, nextSibling navigates, removeChild detaches" {
 
 	h.insertBefore(root, b, null as unknown as HostNode);
 	assert mockToString(root as unknown as MockNode) === "<ul><a></a><c></c><b></b></ul>", "null ref appends at end";
+}
+
+test "the mock host keeps the DOM move contract" {
+	const got = hostMoveContract(mockHost());
+	assert got === HOST_MOVE_CONTRACT, got;
+}
+
+test "reconcileArrays keeps its contract on the mock host" {
+	const got = reconcileContract(mockHost());
+	assert got === RECONCILE_CONTRACT, got;
 }

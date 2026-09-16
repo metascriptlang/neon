@@ -8,6 +8,7 @@ import { element } from "../../src/macros/ui/element";
 import { renderToHost, HostNode } from "../../src/render/host";
 import { createVoidHost, layoutPass, parseFlexStyle, DrawKind, Node2D } from "../../src/platform/void/host";
 import { Style } from "../../src/render/style";
+import { HOST_MOVE_CONTRACT, RECONCILE_CONTRACT, hostMoveContract, reconcileContract } from "../render/hostContract";
 
 test "counter renders into Node2D tree with parsed flex styles" {
 	const [count, setCount] = createSignal(0);
@@ -178,4 +179,14 @@ test "setStyle: overflow reaches yoga and zIndex reaches the node" {
 	vh.host.setStyle(node, { overflow: "hidden", zIndex: 5 } as Style);
 	assert n.layoutStyle.overflow === "hidden", "overflow reached yoga";
 	assert n.zIndex === 5, "zIndex reached the node";
+}
+
+test "the void host keeps the DOM move contract" {
+	const got = hostMoveContract(createVoidHost().host);
+	assert got === HOST_MOVE_CONTRACT, got;
+}
+
+test "reconcileArrays keeps its contract on the void host" {
+	const got = reconcileContract(createVoidHost().host);
+	assert got === RECONCILE_CONTRACT, got;
 }
