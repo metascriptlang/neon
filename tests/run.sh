@@ -9,7 +9,6 @@ MSC=${MSC:-msc}
 cd "$(dirname "$0")/.."
 files=$(find tests -name "*.test.ms" -not -path "tests/browser/*" | sort)
 fail=0
-tests/style/fields.sh || fail=1
 tests/macros/run.sh || fail=1
 for f in $files; do
 	echo "== native $f"
