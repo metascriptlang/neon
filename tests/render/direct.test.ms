@@ -16,6 +16,7 @@ import { styleToCss } from "../../src/render/css";
 import { createStyles, styleOf } from "../../src/macros/ui/style";
 import { createTemplate, mountTemplate, childOf, siblingOf } from "../../src/render/template";
 import { NeonEvent, neonEvent } from "../../src/render/event";
+import { registerCss, resetCss, cssRuleCount } from "../../src/render/sheet";
 
 test "static + dynamic text + event: direct matches tree" {
 	const [name, setName] = createSignal("an");
@@ -893,4 +894,60 @@ test "two sheet layers go through layerStyles on direct like tree — flat tier"
 	host.append(directRoot as unknown as HostNode, mount(host));
 	assert cssAt(treeRoot, 0) === cssAt(directRoot, 0), "tree=" + cssAt(treeRoot, 0) + " direct=" + cssAt(directRoot, 0);
 	assert cssAt(directRoot, 0) === "width:200px;height:20px;", "golden: " + cssAt(directRoot, 0);
+}
+
+// ---- Lát 0.5: a static sheet entry takes the class route on a host with a stylesheet ----
+
+function cssHost(): Host {
+	const h = mockHost();
+	h.setStyleClass = (node: HostNode, id: string, css: string): void => {
+		registerCss(id, css);
+		(node as unknown as MockNode).className = id;
+	};
+	return h;
+}
+
+test "a static sheet entry through direct takes the class route like tree — template tier" {
+	resetCss();
+	const host = cssHost();
+	const treeRoot = mockNode("root");
+	const tv: NeonNode = element(<div style={dsheet.box}><p>a</p></div>);
+	renderToHost(tv, host, treeRoot as unknown as HostNode);
+	const directRoot = mockNode("root");
+	const mount = direct(<div style={dsheet.box}><p>a</p></div>);
+	host.append(directRoot as unknown as HostNode, mount(host));
+	const tDiv = (treeRoot as MockNode).children[0];
+	const dDiv = (directRoot as MockNode).children[0];
+	assert tDiv.className === dDiv.className, "class: tree=" + tDiv.className + " direct=" + dDiv.className;
+	assert cssAt(treeRoot, 0) === cssAt(directRoot, 0), "inline: tree=" + cssAt(treeRoot, 0) + " direct=" + cssAt(directRoot, 0);
+	when (js) {
+		assert dDiv.className === (dsheet.box.cssId as string), "golden class: " + dDiv.className;
+		assert dDiv.style === null, "no inline style once a class applies";
+		assert cssRuleCount() === 1, "one rule shared by tree and direct, got " + cssRuleCount().toString();
+	} else {
+		assert dDiv.className === "", "no class off the browser lane";
+		assert cssAt(directRoot, 0) === "width:40px;height:10px;", "golden native inline: " + cssAt(directRoot, 0);
+	}
+}
+
+test "a static sheet entry through direct takes the class route like tree — flat tier" {
+	resetCss();
+	const [n, setN] = createSignal<number>(1);
+	const host = cssHost();
+	const treeRoot = mockNode("root");
+	const tv: NeonNode = element(<div style={dsheet.box}><Gauge count={n()} label="g" /></div>);
+	renderToHost(tv, host, treeRoot as unknown as HostNode);
+	const directRoot = mockNode("root");
+	const mount = direct(<div style={dsheet.box}><Gauge count={n()} label="g" /></div>);
+	host.append(directRoot as unknown as HostNode, mount(host));
+	const tDiv = (treeRoot as MockNode).children[0];
+	const dDiv = (directRoot as MockNode).children[0];
+	assert mockToString(treeRoot) === mockToString(directRoot), "markup: tree=" + mockToString(treeRoot) + " direct=" + mockToString(directRoot);
+	assert tDiv.className === dDiv.className, "class: tree=" + tDiv.className + " direct=" + dDiv.className;
+	when (js) {
+		assert dDiv.className === (dsheet.box.cssId as string), "golden class: " + dDiv.className;
+		assert dDiv.style === null, "no inline style once a class applies";
+	} else {
+		assert cssAt(directRoot, 0) === "width:40px;height:10px;", "golden native inline: " + cssAt(directRoot, 0);
+	}
 }
