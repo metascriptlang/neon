@@ -23,9 +23,9 @@ export { VAttr, VEvent, RegionFn, ComponentFn, ComponentProducer, NeonNode, VDyn
 export { createComponent } from "./render/component";
 export { Accessor, accessor } from "./core/signal";
 export { Template, createTemplate, instantiate, mountTemplate, childOf, siblingOf } from "./render/template";
-export { renderNode, renderToHost, bindText, bindAttr, bindStyleAll, NeonView, mountView, viewOf } from "./render/host";
+export { renderNode, renderToHost, bindText, bindAttr, bindStyleAll, bindStyleProp, NeonView, mountView, viewOf } from "./render/host";
 export { Host, HostNode } from "./render/hostTypes";
-export { Style, StyleValue, mergeStyle, layerStyles } from "./render/style";
+export { Style, StyleValue, emptyStyle, mergeStyle, layerStyles } from "./render/style";
 
 // Direct emission: the macro emits the mount code itself, so a view IS the mount
 // closure and rendering it is calling it. NeonView itself lives in render/host

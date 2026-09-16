@@ -56,6 +56,60 @@ export macro direct(node: Node): Node {
 		}
 		return false;
 	}
+	function pushStyleObject(into: Node[], sv: Node, nodeVar: string, tempName: string, ln: int32, col: int32): void {
+		const staticKeys: string[] = [];
+		const staticProps: Node[] = [];
+		const dynNames: string[] = [];
+		const dynExprs: Node[] = [];
+		for (let i = 0; i < sv.keys.length; i = i + 1) {
+			const fv = sv.properties[i];
+			if (isReactiveExpr(fv) || isAccessorTyped(fv)) {
+				dynNames.push(sv.keys[i]);
+				dynExprs.push(fv);
+			} else {
+				staticKeys.push(sv.keys[i]);
+				staticProps.push(fv);
+			}
+		}
+		into.push({
+			kind: NodeKind.VariableDecl, line: ln, column: col,
+			declName: tempName, declType: "Style", declKind: DeclKind.Const,
+			initializer: staticKeys.length > 0
+				? { kind: NodeKind.ObjectLiteral, line: ln, column: col, properties: staticProps, keys: staticKeys }
+				: { kind: NodeKind.CallExpr, line: ln, column: col, callee: { kind: NodeKind.Identifier, line: ln, column: col, name: "emptyStyle" }, arguments: [] },
+		});
+		into.push({
+			kind: NodeKind.ExprStmt, line: ln, column: col,
+			expr: {
+				kind: NodeKind.CallExpr, line: ln, column: col,
+				callee: { kind: NodeKind.MemberExpr, line: ln, column: col, object: { kind: NodeKind.Identifier, line: ln, column: col, name: "host" }, property: "setStyle", isOptional: false },
+				arguments: [
+					{ kind: NodeKind.Identifier, line: ln, column: col, name: nodeVar },
+					{ kind: NodeKind.Identifier, line: ln, column: col, name: tempName },
+				],
+			},
+		});
+		for (let i = 0; i < dynNames.length; i = i + 1) {
+			into.push({
+				kind: NodeKind.ExprStmt, line: ln, column: col,
+				expr: {
+					kind: NodeKind.CallExpr, line: ln, column: col,
+					callee: { kind: NodeKind.Identifier, line: ln, column: col, name: "bindStyleProp" },
+					arguments: [
+						{ kind: NodeKind.Identifier, line: ln, column: col, name: "host" },
+						{ kind: NodeKind.Identifier, line: ln, column: col, name: nodeVar },
+						{ kind: NodeKind.Identifier, line: ln, column: col, name: tempName },
+						{ kind: NodeKind.StringLiteral, line: ln, column: col, value: dynNames[i] },
+						{
+							kind: NodeKind.ArrowFunction, line: ln, column: col,
+							arrowParams: [], arrowParamTypes: [], arrowFlags: "", arrowReturnType: "",
+							arrowBody: dynExprs[i],
+						},
+					],
+				},
+			});
+		}
+	}
 	function showOf(when: Node, child: Node, fallback: Node | null, ln: int32, col: int32): Node {
 		let attrs: Node[] = [{ kind: NodeKind.JSXAttribute, line: ln, column: col, jsxAttrName: "when", jsxAttrValue: when }];
 		if (fallback !== null) {
@@ -269,7 +323,6 @@ export macro direct(node: Node): Node {
 		let bIdx = 0;
 		let pIdx = 1;
 		let tsIdx = 0;
-		let tplOffenders: Node[] = [];
 
 		function hostCall(recv: string, method: string, args: Node[], ln: int32, col: int32): Node {
 			return {
@@ -349,11 +402,9 @@ export macro direct(node: Node): Node {
 					if (a.jsxAttrName === "style" && a.jsxAttrValue.kind !== NodeKind.StringLiteral) {
 						const sv = a.jsxAttrValue;
 						if (sv.kind === NodeKind.ObjectLiteral) {
-							for (const fv of sv.properties) {
-								if (fv.kind === NodeKind.CallExpr) { tplOffenders.push(fv); }
-							}
-						}
-						if (sv.kind !== NodeKind.ObjectLiteral && sv.kind !== NodeKind.ArrayLiteral && (isReactiveExpr(sv) || isAccessorTyped(sv))) {
+							pushStyleObject(wStmts, sv, elVar, "_ts" + tsIdx.toString(), a.line, a.column);
+							tsIdx = tsIdx + 1;
+						} else if (sv.kind !== NodeKind.ArrayLiteral && (isReactiveExpr(sv) || isAccessorTyped(sv))) {
 							wStmts.push({
 								kind: NodeKind.ExprStmt, line: a.line, column: a.column,
 								expr: {
@@ -503,9 +554,6 @@ export macro direct(node: Node): Node {
 
 		const tplRoot = emitBuild(node);
 		emitWire(node, "_p0");
-		if (tplOffenders.length > 0) {
-			error("a style field cannot call a function — a signal read here would be a frozen snapshot, not reactive (reactive style fields land in S4)", tplOffenders[0]);
-		}
 		bStmts.push({
 			kind: NodeKind.ReturnStmt, line: L, column: C,
 			argument: { kind: NodeKind.Identifier, line: L, column: C, name: tplRoot },
@@ -551,11 +599,6 @@ export macro direct(node: Node): Node {
 	let tIdx = 0;
 	let kIdx = 0;
 	let sIdx = 0;
-	// error() only type-checks at the macro body's top level (the engine folds its
-	// compileError value into a nested function's return type), so emitEl records
-	// the offending node and the error fires after the walk — same message, same
-	// location, and error() aborts expansion either way.
-	let styleOffenders: Node[] = [];
 
 	function emitEl(el: Node): string {
 		const rName = "_r" + rIdx.toString();
@@ -580,13 +623,11 @@ export macro direct(node: Node): Node {
 				if (a.jsxAttrName === "style" && a.jsxAttrValue.kind !== NodeKind.StringLiteral) {
 					const sv = a.jsxAttrValue;
 					if (sv.kind === NodeKind.ObjectLiteral) {
-						for (const fv of sv.properties) {
-							if (fv.kind === NodeKind.CallExpr) {
-								styleOffenders.push(fv);
-							}
-						}
+						pushStyleObject(stmts, sv, rName, "_s" + sIdx.toString(), a.line, a.column);
+						sIdx = sIdx + 1;
+						continue;
 					}
-					if (sv.kind !== NodeKind.ObjectLiteral && sv.kind !== NodeKind.ArrayLiteral && (isReactiveExpr(sv) || isAccessorTyped(sv))) {
+					if (sv.kind !== NodeKind.ArrayLiteral && (isReactiveExpr(sv) || isAccessorTyped(sv))) {
 						stmts.push({
 							kind: NodeKind.ExprStmt, line: a.line, column: a.column,
 							expr: {
@@ -878,9 +919,6 @@ export macro direct(node: Node): Node {
 	}
 
 	const rootName = emitEl(node);
-	if (styleOffenders.length > 0) {
-		error("a style field cannot call a function — a signal read here would be a frozen snapshot, not reactive (reactive style fields land in S4)", styleOffenders[0]);
-	}
 	stmts.push({
 		kind: NodeKind.ReturnStmt, line: L, column: C,
 		argument: { kind: NodeKind.Identifier, line: L, column: C, name: rootName },
