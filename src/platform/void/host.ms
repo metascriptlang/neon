@@ -267,19 +267,30 @@ export function createVoidHost(): VoidHost {
 		insertBefore: (parent: HostNode, node: HostNode, ref: HostNode | null): void => {
 			const p = parent as unknown as Node2D;
 			const n = node as unknown as Node2D;
-			detachNode(links, n);
 			if (ref === null) {
+				detachNode(links, n);
 				p.addChild(n);
-			} else {
-				const idx = childIndexOf(p, ref as unknown as Node2D);
-				if (idx < 0) { p.addChild(n); }
-				else { p.addChildAt(n, idx); }
+				linkParent(links, n, p);
+				return;
 			}
+			let idx = childIndexOf(p, ref as unknown as Node2D);
+			if (idx < 0) { throw "insertBefore: the reference node is not a child of the parent"; }
+			const cur = childIndexOf(p, n);
+			if (cur >= 0) {
+				p.removeChild(n);
+				if (cur < idx) { idx = idx - 1; }
+			} else {
+				detachNode(links, n);
+			}
+			p.addChildAt(n, idx);
 			linkParent(links, n, p);
 		},
 		removeChild: (parent: HostNode, node: HostNode): void => {
-			(parent as unknown as Node2D).removeChild(node as unknown as Node2D);
-			linkParent(links, node as unknown as Node2D, null);
+			const p = parent as unknown as Node2D;
+			const n = node as unknown as Node2D;
+			if (childIndexOf(p, n) < 0) { throw "removeChild: the node is not a child of the parent"; }
+			p.removeChild(n);
+			linkParent(links, n, null);
 		},
 		nextSibling: (node: HostNode): HostNode | null => {
 			const n = node as unknown as Node2D;

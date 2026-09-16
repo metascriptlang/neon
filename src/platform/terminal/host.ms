@@ -157,8 +157,11 @@ export function terminalHost(): Host {
 		insertBefore: (parent: HostNode, node: HostNode, ref: HostNode | null): void => {
 			const p = parent as unknown as TerminalNode;
 			const n = node as unknown as TerminalNode;
-			let target = ref === null ? p.children.length : childIndex(p, ref as unknown as TerminalNode);
-			if (target < 0) { target = p.children.length; }
+			let target: number = p.children.length;
+			if (ref !== null) {
+				target = childIndex(p, ref as unknown as TerminalNode);
+				if (target < 0) { throw "insertBefore: the reference node is not a child of the parent"; }
+			}
 			const curIdx = childIndex(p, n);
 			if (curIdx >= 0) {
 				p.children.splice(curIdx, 1);
@@ -185,7 +188,8 @@ export function terminalHost(): Host {
 			const p = parent as unknown as TerminalNode;
 			const n = node as unknown as TerminalNode;
 			const idx = childIndex(p, n);
-			if (idx >= 0) { p.children.splice(idx, 1); }
+			if (idx < 0) { throw "removeChild: the node is not a child of the parent"; }
+			p.children.splice(idx, 1);
 			n.parent = null;
 		},
 		nextSibling: (node: HostNode): HostNode | null => {
