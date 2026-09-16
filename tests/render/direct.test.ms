@@ -724,3 +724,115 @@ test "an accessor-typed style and a ternary style through direct track the signa
 	assert cssAt(tDiv, 1) === cssAt(dDiv, 1), "ternary style after set: tree=" + cssAt(tDiv, 1) + " direct=" + cssAt(dDiv, 1);
 	assert cssAt(dDiv, 0) === "padding:20px;" && cssAt(dDiv, 1) === "margin:2px;", "golden after set: " + cssAt(dDiv, 0) + " " + cssAt(dDiv, 1);
 }
+
+// ---- Lát 0.2: a reactive style FIELD is one per-property effect on both emissions ----
+
+test "reactive style fields through direct track their signals like tree — template tier" {
+	const [w, setW] = createSignal<number>(10);
+	const [n, setN] = createSignal<number>(1);
+	const host = mockHost();
+
+	const treeRoot = mockNode("root");
+	const tv: NeonNode = element(<div style={{ padding: w(), height: n() * 10, margin: 4 }}><p>a</p></div>);
+	renderToHost(tv, host, treeRoot as unknown as HostNode);
+
+	const directRoot = mockNode("root");
+	const mount = direct(<div style={{ padding: w(), height: n() * 10, margin: 4 }}><p>a</p></div>);
+	host.append(directRoot as unknown as HostNode, mount(host));
+
+	assert mockToString(treeRoot) === mockToString(directRoot), "markup: tree=" + mockToString(treeRoot) + " direct=" + mockToString(directRoot);
+	assert cssAt(treeRoot, 0) === cssAt(directRoot, 0), "initial: tree=" + cssAt(treeRoot, 0) + " direct=" + cssAt(directRoot, 0);
+	assert cssAt(directRoot, 0) === "height:10px;margin:4px;padding:10px;", "golden: " + cssAt(directRoot, 0);
+	setW(20);
+	assert cssAt(treeRoot, 0) === cssAt(directRoot, 0), "after setW: tree=" + cssAt(treeRoot, 0) + " direct=" + cssAt(directRoot, 0);
+	setN(3);
+	assert cssAt(treeRoot, 0) === cssAt(directRoot, 0), "after setN: tree=" + cssAt(treeRoot, 0) + " direct=" + cssAt(directRoot, 0);
+	assert cssAt(directRoot, 0) === "height:30px;margin:4px;padding:20px;", "golden after set: " + cssAt(directRoot, 0);
+}
+
+test "a ternary style field and a bare accessor field through direct track the signal like tree — flat tier" {
+	const [pad, setPad] = createSignal<number>(10);
+	const [n, setN] = createSignal<number>(1);
+	const host = mockHost();
+
+	const treeRoot = mockNode("root");
+	const tv: NeonNode = element(<div><p style={{ margin: pad() > 15 ? 2 : 1 }}>a</p><p style={{ padding: pad }}>b</p><Gauge count={n()} label="g" /></div>);
+	renderToHost(tv, host, treeRoot as unknown as HostNode);
+
+	const directRoot = mockNode("root");
+	const mount = direct(<div><p style={{ margin: pad() > 15 ? 2 : 1 }}>a</p><p style={{ padding: pad }}>b</p><Gauge count={n()} label="g" /></div>);
+	host.append(directRoot as unknown as HostNode, mount(host));
+
+	const tDiv = (treeRoot as MockNode).children[0];
+	const dDiv = (directRoot as MockNode).children[0];
+	assert mockToString(treeRoot) === mockToString(directRoot), "markup: tree=" + mockToString(treeRoot) + " direct=" + mockToString(directRoot);
+	assert cssAt(dDiv, 0) === "margin:1px;" && cssAt(dDiv, 1) === "padding:10px;", "golden: " + cssAt(dDiv, 0) + " " + cssAt(dDiv, 1);
+	setPad(20);
+	assert cssAt(tDiv, 0) === cssAt(dDiv, 0), "ternary field after set: tree=" + cssAt(tDiv, 0) + " direct=" + cssAt(dDiv, 0);
+	assert cssAt(tDiv, 1) === cssAt(dDiv, 1), "bare accessor field after set: tree=" + cssAt(tDiv, 1) + " direct=" + cssAt(dDiv, 1);
+	assert cssAt(dDiv, 0) === "margin:2px;" && cssAt(dDiv, 1) === "padding:20px;", "golden after set: " + cssAt(dDiv, 0) + " " + cssAt(dDiv, 1);
+}
+
+test "a bare accessor style field through direct — template tier" {
+	const [w, setW] = createSignal<number>(10);
+	const host = mockHost();
+
+	const treeRoot = mockNode("root");
+	const tv: NeonNode = element(<div style={{ padding: w }}><p>a</p></div>);
+	renderToHost(tv, host, treeRoot as unknown as HostNode);
+
+	const directRoot = mockNode("root");
+	const mount = direct(<div style={{ padding: w }}><p>a</p></div>);
+	host.append(directRoot as unknown as HostNode, mount(host));
+
+	assert cssAt(treeRoot, 0) === cssAt(directRoot, 0), "initial: tree=" + cssAt(treeRoot, 0) + " direct=" + cssAt(directRoot, 0);
+	setW(20);
+	assert cssAt(treeRoot, 0) === cssAt(directRoot, 0), "after set: tree=" + cssAt(treeRoot, 0) + " direct=" + cssAt(directRoot, 0);
+	assert cssAt(directRoot, 0) === "padding:20px;", "golden after set: " + cssAt(directRoot, 0);
+}
+
+test "an identical signal value on a direct style field is not re-written to the host" {
+	const [w, setW] = createSignal<number>(20);
+	const host = mockHost();
+	const directRoot = mockNode("root");
+	const mount = direct(<div style={{ width: w() }}><p>a</p></div>);
+	host.append(directRoot as unknown as HostNode, mount(host));
+	const div = (directRoot as MockNode).children[0];
+	const before = div.style;
+	setW(20);
+	assert div.style === before, "same value writes nothing";
+	assert (div.style as Style).width === 20, "value intact";
+}
+
+test "an all-static style object through direct lands as one constant on both tiers" {
+	const [n, setN] = createSignal<number>(1);
+	const host = mockHost();
+
+	const treeRoot = mockNode("root");
+	const tv: NeonNode = element(<div style={{ width: 200, height: 120 }}><p style={{ margin: 3, color: "red" }}>a</p><Gauge count={n()} label="g" /></div>);
+	renderToHost(tv, host, treeRoot as unknown as HostNode);
+
+	const directRoot = mockNode("root");
+	const mount = direct(<div style={{ width: 200, height: 120 }}><p style={{ margin: 3, color: "red" }}>a</p><Gauge count={n()} label="g" /></div>);
+	host.append(directRoot as unknown as HostNode, mount(host));
+
+	const tDiv = (treeRoot as MockNode).children[0];
+	const dDiv = (directRoot as MockNode).children[0];
+	assert mockToString(treeRoot) === mockToString(directRoot), "markup: tree=" + mockToString(treeRoot) + " direct=" + mockToString(directRoot);
+	assert cssAt(treeRoot, 0) === cssAt(directRoot, 0), "outer: tree=" + cssAt(treeRoot, 0) + " direct=" + cssAt(directRoot, 0);
+	assert cssAt(tDiv, 0) === cssAt(dDiv, 0), "inner: tree=" + cssAt(tDiv, 0) + " direct=" + cssAt(dDiv, 0);
+	assert cssAt(directRoot, 0) === "width:200px;height:120px;", "golden outer: " + cssAt(directRoot, 0);
+	assert cssAt(dDiv, 0) === "margin:3px;color:red;", "golden inner: " + cssAt(dDiv, 0);
+}
+
+test "an all-static style object through direct — template tier" {
+	const host = mockHost();
+	const treeRoot = mockNode("root");
+	const tv: NeonNode = element(<div style={{ padding: 5 }}><p>a</p></div>);
+	renderToHost(tv, host, treeRoot as unknown as HostNode);
+	const directRoot = mockNode("root");
+	const mount = direct(<div style={{ padding: 5 }}><p>a</p></div>);
+	host.append(directRoot as unknown as HostNode, mount(host));
+	assert cssAt(treeRoot, 0) === cssAt(directRoot, 0), "tree=" + cssAt(treeRoot, 0) + " direct=" + cssAt(directRoot, 0);
+	assert cssAt(directRoot, 0) === "padding:5px;", "golden: " + cssAt(directRoot, 0);
+}
