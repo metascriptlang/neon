@@ -56,6 +56,68 @@ export macro direct(node: Node): Node {
 		}
 		return false;
 	}
+	let styleErrNodes: Node[] = [];
+	let styleErrMsgs: string[] = [];
+	function pushStyleConst(into: Node[], init: Node, nodeVar: string, tempName: string, ln: int32, col: int32): void {
+		into.push({
+			kind: NodeKind.VariableDecl, line: ln, column: col,
+			declName: tempName, declType: "Style", declKind: DeclKind.Const,
+			initializer: init,
+		});
+		into.push({
+			kind: NodeKind.ExprStmt, line: ln, column: col,
+			expr: {
+				kind: NodeKind.CallExpr, line: ln, column: col,
+				callee: { kind: NodeKind.MemberExpr, line: ln, column: col, object: { kind: NodeKind.Identifier, line: ln, column: col, name: "host" }, property: "setStyle", isOptional: false },
+				arguments: [
+					{ kind: NodeKind.Identifier, line: ln, column: col, name: nodeVar },
+					{ kind: NodeKind.Identifier, line: ln, column: col, name: tempName },
+				],
+			},
+		});
+	}
+	function pushStyleLayers(into: Node[], sv: Node, nodeVar: string, tempName: string, ln: int32, col: int32): void {
+		if (sv.elements.length === 0) {
+			styleErrNodes.push(sv);
+			styleErrMsgs.push("a style layer array needs at least one layer: style={[base, override]}");
+			return;
+		}
+		let allStatic = true;
+		for (const layer of sv.elements) {
+			if (layer.kind !== NodeKind.ObjectLiteral) { allStatic = false; continue; }
+			for (let i = 0; i < layer.keys.length; i = i + 1) {
+				const fv = layer.properties[i];
+				if (isReactiveExpr(fv) || isAccessorTyped(fv)) {
+					styleErrNodes.push(fv);
+					styleErrMsgs.push("a reactive style field inside a layer array is not supported yet — pass it in a plain object style: style={{ " + layer.keys[i] + ": ... }}");
+					return;
+				}
+			}
+		}
+		if (!allStatic) {
+			pushStyleConst(into, {
+				kind: NodeKind.CallExpr, line: ln, column: col,
+				callee: { kind: NodeKind.Identifier, line: ln, column: col, name: "layerStyles" },
+				arguments: [sv],
+			}, nodeVar, tempName, ln, col);
+			return;
+		}
+		const mergedKeys: string[] = [];
+		const mergedValues: Node[] = [];
+		for (const layer of sv.elements) {
+			for (let i = 0; i < layer.keys.length; i = i + 1) {
+				const fv = layer.properties[i];
+				if (fv.kind === NodeKind.NullLiteral) { continue; }
+				const k = layer.keys[i];
+				let at = -1;
+				for (let j = 0; j < mergedKeys.length; j = j + 1) {
+					if (mergedKeys[j] === k) { at = j; }
+				}
+				if (at >= 0) { mergedValues[at] = fv; } else { mergedKeys.push(k); mergedValues.push(fv); }
+			}
+		}
+		pushStyleConst(into, { kind: NodeKind.ObjectLiteral, line: ln, column: col, properties: mergedValues, keys: mergedKeys }, nodeVar, tempName, ln, col);
+	}
 	function pushStyleObject(into: Node[], sv: Node, nodeVar: string, tempName: string, ln: int32, col: int32): void {
 		const staticKeys: string[] = [];
 		const staticProps: Node[] = [];
@@ -71,24 +133,10 @@ export macro direct(node: Node): Node {
 				staticProps.push(fv);
 			}
 		}
-		into.push({
-			kind: NodeKind.VariableDecl, line: ln, column: col,
-			declName: tempName, declType: "Style", declKind: DeclKind.Const,
-			initializer: staticKeys.length > 0
-				? { kind: NodeKind.ObjectLiteral, line: ln, column: col, properties: staticProps, keys: staticKeys }
-				: { kind: NodeKind.CallExpr, line: ln, column: col, callee: { kind: NodeKind.Identifier, line: ln, column: col, name: "emptyStyle" }, arguments: [] },
-		});
-		into.push({
-			kind: NodeKind.ExprStmt, line: ln, column: col,
-			expr: {
-				kind: NodeKind.CallExpr, line: ln, column: col,
-				callee: { kind: NodeKind.MemberExpr, line: ln, column: col, object: { kind: NodeKind.Identifier, line: ln, column: col, name: "host" }, property: "setStyle", isOptional: false },
-				arguments: [
-					{ kind: NodeKind.Identifier, line: ln, column: col, name: nodeVar },
-					{ kind: NodeKind.Identifier, line: ln, column: col, name: tempName },
-				],
-			},
-		});
+		pushStyleConst(into, staticKeys.length > 0
+			? { kind: NodeKind.ObjectLiteral, line: ln, column: col, properties: staticProps, keys: staticKeys }
+			: { kind: NodeKind.CallExpr, line: ln, column: col, callee: { kind: NodeKind.Identifier, line: ln, column: col, name: "emptyStyle" }, arguments: [] },
+			nodeVar, tempName, ln, col);
 		for (let i = 0; i < dynNames.length; i = i + 1) {
 			into.push({
 				kind: NodeKind.ExprStmt, line: ln, column: col,
@@ -404,7 +452,10 @@ export macro direct(node: Node): Node {
 						if (sv.kind === NodeKind.ObjectLiteral) {
 							pushStyleObject(wStmts, sv, elVar, "_ts" + tsIdx.toString(), a.line, a.column);
 							tsIdx = tsIdx + 1;
-						} else if (sv.kind !== NodeKind.ArrayLiteral && (isReactiveExpr(sv) || isAccessorTyped(sv))) {
+						} else if (sv.kind === NodeKind.ArrayLiteral) {
+							pushStyleLayers(wStmts, sv, elVar, "_ts" + tsIdx.toString(), a.line, a.column);
+							tsIdx = tsIdx + 1;
+						} else if (isReactiveExpr(sv) || isAccessorTyped(sv)) {
 							wStmts.push({
 								kind: NodeKind.ExprStmt, line: a.line, column: a.column,
 								expr: {
@@ -554,6 +605,7 @@ export macro direct(node: Node): Node {
 
 		const tplRoot = emitBuild(node);
 		emitWire(node, "_p0");
+		if (styleErrNodes.length > 0) { error(styleErrMsgs[0], styleErrNodes[0]); }
 		bStmts.push({
 			kind: NodeKind.ReturnStmt, line: L, column: C,
 			argument: { kind: NodeKind.Identifier, line: L, column: C, name: tplRoot },
@@ -627,7 +679,12 @@ export macro direct(node: Node): Node {
 						sIdx = sIdx + 1;
 						continue;
 					}
-					if (sv.kind !== NodeKind.ArrayLiteral && (isReactiveExpr(sv) || isAccessorTyped(sv))) {
+					if (sv.kind === NodeKind.ArrayLiteral) {
+						pushStyleLayers(stmts, sv, rName, "_s" + sIdx.toString(), a.line, a.column);
+						sIdx = sIdx + 1;
+						continue;
+					}
+					if (isReactiveExpr(sv) || isAccessorTyped(sv)) {
 						stmts.push({
 							kind: NodeKind.ExprStmt, line: a.line, column: a.column,
 							expr: {
@@ -919,6 +976,7 @@ export macro direct(node: Node): Node {
 	}
 
 	const rootName = emitEl(node);
+	if (styleErrNodes.length > 0) { error(styleErrMsgs[0], styleErrNodes[0]); }
 	stmts.push({
 		kind: NodeKind.ReturnStmt, line: L, column: C,
 		argument: { kind: NodeKind.Identifier, line: L, column: C, name: rootName },
