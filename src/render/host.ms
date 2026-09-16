@@ -60,6 +60,14 @@ export function bindStyleProp(host: Host, node: HostNode, own: Style, name: stri
 // impossible here: which fields the result carries is only known per run, and
 // a field can fall back to an earlier layer when deselected, so the effect
 // hands the fresh merge to setStyle each time.
+export function applyStaticStyle(host: Host, node: HostNode, s: Style): void {
+	const setCls = host.setStyleClass;
+	const id = s.cssId;
+	if (id !== null && setCls !== null) {
+		setCls(node, id as string, s.css === null ? "" : s.css as string);
+	} else { host.setStyle(node, s); }
+}
+
 export function bindStyleAll(host: Host, node: HostNode, get: () => Style): void {
 	createEffect(() => {
 		host.setStyle(node, get());
@@ -131,12 +139,7 @@ export function renderNode(vnode: NeonNode, host: Host): HostNode {
 		host.setStyle(node, own);
 		for (const p of dyns) { bindStyleProp(host, node, own, p.name, p.get); }
 	} else if (vstyle !== null) {
-		const s = vstyle as Style;
-		const setCls = host.setStyleClass;
-		const id = s.cssId;
-		if (id !== null && setCls !== null) {
-			setCls(node, id as string, s.css === null ? "" : s.css as string);
-		} else { host.setStyle(node, s); }
+		applyStaticStyle(host, node, vstyle as Style);
 	}
 	for (const e of vnode.events) { host.addEvent(node, e.name, e.handler); }
 	for (const k of vnode.children) { mountInto(k, host, node); }

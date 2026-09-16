@@ -482,7 +482,11 @@ export macro direct(node: Node): Node {
 							});
 							wStmts.push({
 								kind: NodeKind.ExprStmt, line: a.line, column: a.column,
-								expr: hostCall("host", "setStyle", [ident(elVar, a.line, a.column), ident(sName, a.line, a.column)], a.line, a.column),
+								expr: {
+									kind: NodeKind.CallExpr, line: a.line, column: a.column,
+									callee: ident("applyStaticStyle", a.line, a.column),
+									arguments: [ident("host", a.line, a.column), ident(elVar, a.line, a.column), ident(sName, a.line, a.column)],
+								},
 							});
 						}
 					} else if (a.jsxAttrName.startsWith("on")) {
@@ -716,8 +720,9 @@ export macro direct(node: Node): Node {
 						kind: NodeKind.ExprStmt, line: a.line, column: a.column,
 						expr: {
 							kind: NodeKind.CallExpr, line: a.line, column: a.column,
-							callee: { kind: NodeKind.MemberExpr, line: a.line, column: a.column, object: { kind: NodeKind.Identifier, line: a.line, column: a.column, name: "host" }, property: "setStyle", isOptional: false },
+							callee: { kind: NodeKind.Identifier, line: a.line, column: a.column, name: "applyStaticStyle" },
 							arguments: [
+								{ kind: NodeKind.Identifier, line: a.line, column: a.column, name: "host" },
 								{ kind: NodeKind.Identifier, line: a.line, column: a.column, name: rName },
 								{ kind: NodeKind.Identifier, line: a.line, column: a.column, name: sName },
 							],
