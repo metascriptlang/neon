@@ -231,6 +231,11 @@ test "single element child passes as the children prop through direct" {
 
 // ---- D2: attr classification + typed style through direct emission ----
 
+const layerSheet = createStyles({
+	box: { width: 200, height: 120 },
+	row: { height: 20 },
+});
+
 const dsheet = createStyles({
 	box: { width: 40, height: 10 },
 });
@@ -835,4 +840,57 @@ test "an all-static style object through direct — template tier" {
 	host.append(directRoot as unknown as HostNode, mount(host));
 	assert cssAt(treeRoot, 0) === cssAt(directRoot, 0), "tree=" + cssAt(treeRoot, 0) + " direct=" + cssAt(directRoot, 0);
 	assert cssAt(directRoot, 0) === "padding:5px;", "golden: " + cssAt(directRoot, 0);
+}
+
+// ---- Lát 0.4: style layer arrays on both emissions ----
+
+test "all-literal style layers merge at expansion through direct like tree — template tier" {
+	const host = mockHost();
+	const treeRoot = mockNode("root");
+	const tv: NeonNode = element(<div style={[{ width: 200, height: 120 }, { height: 20 }]}><p>a</p></div>);
+	renderToHost(tv, host, treeRoot as unknown as HostNode);
+	const directRoot = mockNode("root");
+	const mount = direct(<div style={[{ width: 200, height: 120 }, { height: 20 }]}><p>a</p></div>);
+	host.append(directRoot as unknown as HostNode, mount(host));
+	assert cssAt(treeRoot, 0) === cssAt(directRoot, 0), "tree=" + cssAt(treeRoot, 0) + " direct=" + cssAt(directRoot, 0);
+	assert cssAt(directRoot, 0) === "width:200px;height:20px;", "golden: " + cssAt(directRoot, 0);
+}
+
+test "a null field in a later literal layer keeps the earlier value through direct like tree — flat tier" {
+	const [n, setN] = createSignal<number>(1);
+	const host = mockHost();
+	const treeRoot = mockNode("root");
+	const tv: NeonNode = element(<div style={[{ width: 1, height: 5 }, { height: null }, { width: 3 }]}><Gauge count={n()} label="g" /></div>);
+	renderToHost(tv, host, treeRoot as unknown as HostNode);
+	const directRoot = mockNode("root");
+	const mount = direct(<div style={[{ width: 1, height: 5 }, { height: null }, { width: 3 }]}><Gauge count={n()} label="g" /></div>);
+	host.append(directRoot as unknown as HostNode, mount(host));
+	assert mockToString(treeRoot) === mockToString(directRoot), "markup: tree=" + mockToString(treeRoot) + " direct=" + mockToString(directRoot);
+	assert cssAt(treeRoot, 0) === cssAt(directRoot, 0), "tree=" + cssAt(treeRoot, 0) + " direct=" + cssAt(directRoot, 0);
+	assert cssAt(directRoot, 0) === "width:3px;height:5px;", "golden: " + cssAt(directRoot, 0);
+}
+
+test "a sheet layer under a literal override goes through layerStyles on direct like tree — template tier" {
+	const host = mockHost();
+	const treeRoot = mockNode("root");
+	const tv: NeonNode = element(<div style={[layerSheet.box, { height: 20 }]}><p>a</p></div>);
+	renderToHost(tv, host, treeRoot as unknown as HostNode);
+	const directRoot = mockNode("root");
+	const mount = direct(<div style={[layerSheet.box, { height: 20 }]}><p>a</p></div>);
+	host.append(directRoot as unknown as HostNode, mount(host));
+	assert cssAt(treeRoot, 0) === cssAt(directRoot, 0), "tree=" + cssAt(treeRoot, 0) + " direct=" + cssAt(directRoot, 0);
+	assert cssAt(directRoot, 0) === "width:200px;height:20px;", "golden: " + cssAt(directRoot, 0);
+}
+
+test "two sheet layers go through layerStyles on direct like tree — flat tier" {
+	const [n, setN] = createSignal<number>(1);
+	const host = mockHost();
+	const treeRoot = mockNode("root");
+	const tv: NeonNode = element(<div style={[layerSheet.box, layerSheet.row]}><Gauge count={n()} label="g" /></div>);
+	renderToHost(tv, host, treeRoot as unknown as HostNode);
+	const directRoot = mockNode("root");
+	const mount = direct(<div style={[layerSheet.box, layerSheet.row]}><Gauge count={n()} label="g" /></div>);
+	host.append(directRoot as unknown as HostNode, mount(host));
+	assert cssAt(treeRoot, 0) === cssAt(directRoot, 0), "tree=" + cssAt(treeRoot, 0) + " direct=" + cssAt(directRoot, 0);
+	assert cssAt(directRoot, 0) === "width:200px;height:20px;", "golden: " + cssAt(directRoot, 0);
 }
