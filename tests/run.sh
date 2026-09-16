@@ -3,7 +3,6 @@
 # browser lane in real Chrome.
 # js-lane skips (measured 2026-08-14):
 #   style/void — Void platform host, C-only sibling repo
-#   direct — direct-emission arc in flight; enable when it lands
 # tests/browser is bound to a real DOM: it has no C lowering and no `document`
 # under node, so it runs only through tests/browser/run.sh.
 MSC=${MSC:-msc}
@@ -18,7 +17,7 @@ for f in $files; do
 done
 for f in $files; do
 	case "$f" in
-	*style/style.test.ms | *platform/void.test.ms | *render/direct.test.ms)
+	*style/style.test.ms | *platform/void.test.ms)
 		echo "== js skip $f"
 		continue
 		;;
