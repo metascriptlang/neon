@@ -13,6 +13,7 @@
 // same split as len/num/word in the DOM host.
 
 import { Style } from "./style";
+import { styleToCssBody } from "../macros/style/fields";
 
 function kebabCase(name: string): string {
 	const lower = "abcdefghijklmnopqrstuvwxyz";
@@ -53,69 +54,4 @@ function cssWord(name: string, v: string | null): string {
 
 // Field by field in declaration order, because unset is `null` rather than
 // absence and the flat IR has no key iteration.
-export function styleToCss(s: Style): string {
-	let out = "";
-	out = out + cssWord("flexDirection", s.flexDirection as string | null);
-	out = out + cssWord("justifyContent", s.justifyContent as string | null);
-	out = out + cssWord("alignItems", s.alignItems as string | null);
-	out = out + cssWord("alignSelf", s.alignSelf as string | null);
-	out = out + cssWord("alignContent", s.alignContent as string | null);
-	out = out + cssWord("position", s.position as string | null);
-	out = out + cssWord("flexWrap", s.flexWrap as string | null);
-	out = out + cssWord("display", s.display as string | null);
-
-	out = out + cssRatio("flex", s.flex);
-	out = out + cssRatio("flexGrow", s.flexGrow);
-	out = out + cssRatio("flexShrink", s.flexShrink);
-	out = out + cssLen("flexBasis", s.flexBasis);
-
-	out = out + cssLen("width", s.width);
-	out = out + cssLen("height", s.height);
-	out = out + cssLen("minWidth", s.minWidth);
-	out = out + cssLen("minHeight", s.minHeight);
-	out = out + cssLen("maxWidth", s.maxWidth);
-	out = out + cssLen("maxHeight", s.maxHeight);
-	out = out + cssRatio("aspectRatio", s.aspectRatio);
-
-	out = out + cssLen("margin", s.margin);
-	out = out + cssLen("marginTop", s.marginTop);
-	out = out + cssLen("marginBottom", s.marginBottom);
-	out = out + cssLen("marginLeft", s.marginLeft);
-	out = out + cssLen("marginRight", s.marginRight);
-
-	out = out + cssLen("padding", s.padding);
-	out = out + cssLen("paddingTop", s.paddingTop);
-	out = out + cssLen("paddingBottom", s.paddingBottom);
-	out = out + cssLen("paddingLeft", s.paddingLeft);
-	out = out + cssLen("paddingRight", s.paddingRight);
-
-	out = out + cssLen("top", s.top);
-	out = out + cssLen("left", s.left);
-	out = out + cssLen("right", s.right);
-	out = out + cssLen("bottom", s.bottom);
-
-	out = out + cssLen("gap", s.gap);
-	out = out + cssLen("rowGap", s.rowGap);
-	out = out + cssLen("columnGap", s.columnGap);
-
-	out = out + cssWord("backgroundColor", s.backgroundColor);
-	out = out + cssPx("borderWidth", s.borderWidth);
-	out = out + cssWord("borderColor", s.borderColor);
-	out = out + cssPx("borderRadius", s.borderRadius);
-	out = out + cssRatio("opacity", s.opacity);
-
-	out = out + cssWord("color", s.color);
-	out = out + cssPx("fontSize", s.fontSize);
-	out = out + cssWord("fontWeight", s.fontWeight as string | null);
-	out = out + cssWord("textAlign", s.textAlign as string | null);
-
-	out = out + cssWord("overflow", s.overflow as string | null);
-	out = out + cssRatio("zIndex", s.zIndex);
-	out = out + cssWord("fontFamily", s.fontFamily);
-	out = out + cssWord("transform", s.transform);
-	out = out + cssWord("cursor", s.cursor);
-	out = out + cssWord("boxShadow", s.boxShadow);
-	out = out + cssWord("fontStyle", s.fontStyle as string | null);
-	out = out + cssWord("textDecorationLine", s.textDecorationLine as string | null);
-	return out;
-}
+styleToCssBody(0);
