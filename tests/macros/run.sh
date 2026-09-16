@@ -23,4 +23,10 @@ expect_reject tests/macros/fragmentInExprRejected.ms "a fragment inside an expre
 expect_reject tests/macros/fragmentInExprDirectRejected.ms "a fragment inside an expression is not supported"
 expect_reject tests/macros/fragmentDirectRootRejected.ms "a fragment has no single host node to return"
 expect_reject tests/macros/accessorNominal.ms "is not assignable to type 'Accessor<number>'"
+expect_reject tests/macros/emptyLayerRejected.ms "a style layer array needs at least one layer"
+expect_reject tests/macros/emptyLayerDirectRejected.ms "a style layer array needs at least one layer"
+expect_reject tests/macros/reactiveLayerFieldRejected.ms "a reactive style field inside a layer array is not supported yet"
+expect_reject tests/macros/reactiveLayerFieldDirectRejected.ms "a reactive style field inside a layer array is not supported yet"
+expect_reject tests/macros/reactiveLayerFieldMixedRejected.ms "a reactive style field inside a layer array is not supported yet"
+expect_reject tests/macros/reactiveLayerFieldMixedDirectRejected.ms "a reactive style field inside a layer array is not supported yet"
 exit $fail
