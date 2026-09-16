@@ -10,6 +10,9 @@ import { NeonNode, el, attr } from "../../src/render/node";
 import { createComponent } from "../../src/render/component";
 import { Show, For } from "../../src/macros/ui/flow";
 import { renderToHost, renderNode, mockHost, mockNode, mockToString, fireEvent, fireEventWith, bindText, bindAttr, MockNode, Host, HostNode, NeonView, viewOf } from "../../src/render/host";
+import { createMemo } from "../../src/core/memo";
+import { Style } from "../../src/render/style";
+import { styleToCss } from "../../src/render/css";
 import { createStyles, styleOf } from "../../src/macros/ui/style";
 import { createTemplate, mountTemplate, childOf, siblingOf } from "../../src/render/template";
 import { NeonEvent, neonEvent } from "../../src/render/event";
@@ -645,4 +648,79 @@ test "a ternary with a null arm through direct matches tree, either way round" {
 	setOn(true);
 	assert mockToString(treeRoot) === mockToString(directRoot), "after on: tree=" + mockToString(treeRoot) + " direct=" + mockToString(directRoot);
 	assert mockToString(directRoot) === "<root><div><span>yes</span><p>m</p></div></root>", "golden back on: " + mockToString(directRoot);
+}
+
+// ---- S13: a whole-style expression that reads a signal is one effect on both emissions ----
+
+function cssAt(root: MockNode, i: number): string {
+	const st = root.children[i].style;
+	return st === null ? "(none)" : styleToCss(st as Style);
+}
+
+test "a whole-style call through direct tracks the signal like tree — template tier" {
+	const [pad, setPad] = createSignal<number>(10);
+	const s = (): Style => { const st: Style = { padding: pad() }; return st; };
+	const host = mockHost();
+
+	const treeRoot = mockNode("root");
+	const tv: NeonNode = element(<div style={s()}><p>a</p></div>);
+	renderToHost(tv, host, treeRoot as unknown as HostNode);
+
+	const directRoot = mockNode("root");
+	const mount = direct(<div style={s()}><p>a</p></div>);
+	host.append(directRoot as unknown as HostNode, mount(host));
+
+	assert mockToString(treeRoot) === mockToString(directRoot), "markup: tree=" + mockToString(treeRoot) + " direct=" + mockToString(directRoot);
+	assert cssAt(treeRoot, 0) === cssAt(directRoot, 0), "initial: tree=" + cssAt(treeRoot, 0) + " direct=" + cssAt(directRoot, 0);
+	assert cssAt(directRoot, 0) === "padding:10px;", "golden: " + cssAt(directRoot, 0);
+	setPad(20);
+	assert cssAt(treeRoot, 0) === cssAt(directRoot, 0), "after set: tree=" + cssAt(treeRoot, 0) + " direct=" + cssAt(directRoot, 0);
+	assert cssAt(directRoot, 0) === "padding:20px;", "golden after set: " + cssAt(directRoot, 0);
+}
+
+test "a whole-style call through direct tracks the signal like tree — flat tier" {
+	const [pad, setPad] = createSignal<number>(10);
+	const [n, setN] = createSignal<number>(1);
+	const s = (): Style => { const st: Style = { padding: pad() }; return st; };
+	const host = mockHost();
+
+	const treeRoot = mockNode("root");
+	const tv: NeonNode = element(<div style={s()}><Gauge count={n()} label="g" /></div>);
+	renderToHost(tv, host, treeRoot as unknown as HostNode);
+
+	const directRoot = mockNode("root");
+	const mount = direct(<div style={s()}><Gauge count={n()} label="g" /></div>);
+	host.append(directRoot as unknown as HostNode, mount(host));
+
+	assert mockToString(treeRoot) === mockToString(directRoot), "markup: tree=" + mockToString(treeRoot) + " direct=" + mockToString(directRoot);
+	assert cssAt(directRoot, 0) === "padding:10px;", "golden: " + cssAt(directRoot, 0);
+	setPad(20);
+	assert cssAt(treeRoot, 0) === cssAt(directRoot, 0), "after set: tree=" + cssAt(treeRoot, 0) + " direct=" + cssAt(directRoot, 0);
+	assert cssAt(directRoot, 0) === "padding:20px;", "golden after set: " + cssAt(directRoot, 0);
+}
+
+test "an accessor-typed style and a ternary style through direct track the signal like tree" {
+	const [pad, setPad] = createSignal<number>(10);
+	const [n, setN] = createSignal<number>(1);
+	const memoStyle = createMemo((): Style => { const st: Style = { padding: pad() }; return st; });
+	const small: Style = { margin: 1 };
+	const big: Style = { margin: 2 };
+	const host = mockHost();
+
+	const treeRoot = mockNode("root");
+	const tv: NeonNode = element(<div><p style={memoStyle}>a</p><p style={pad() > 15 ? big : small}>b</p><Gauge count={n()} label="g" /></div>);
+	renderToHost(tv, host, treeRoot as unknown as HostNode);
+
+	const directRoot = mockNode("root");
+	const mount = direct(<div><p style={memoStyle}>a</p><p style={pad() > 15 ? big : small}>b</p><Gauge count={n()} label="g" /></div>);
+	host.append(directRoot as unknown as HostNode, mount(host));
+
+	const tDiv = (treeRoot as MockNode).children[0];
+	const dDiv = (directRoot as MockNode).children[0];
+	assert mockToString(treeRoot) === mockToString(directRoot), "markup: tree=" + mockToString(treeRoot) + " direct=" + mockToString(directRoot);
+	assert cssAt(dDiv, 0) === "padding:10px;" && cssAt(dDiv, 1) === "margin:1px;", "golden: " + cssAt(dDiv, 0) + " " + cssAt(dDiv, 1);
+	setPad(20);
+	assert cssAt(tDiv, 0) === cssAt(dDiv, 0), "accessor style after set: tree=" + cssAt(tDiv, 0) + " direct=" + cssAt(dDiv, 0);
+	assert cssAt(tDiv, 1) === cssAt(dDiv, 1), "ternary style after set: tree=" + cssAt(tDiv, 1) + " direct=" + cssAt(dDiv, 1);
+	assert cssAt(dDiv, 0) === "padding:20px;" && cssAt(dDiv, 1) === "margin:2px;", "golden after set: " + cssAt(dDiv, 0) + " " + cssAt(dDiv, 1);
 }
