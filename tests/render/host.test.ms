@@ -2,6 +2,7 @@ import { createSignal } from "../../src/core/signal";
 import { createRoot } from "../../src/core/owner";
 import { el, text, dynText } from "../../src/render/node";
 import { element } from "../../src/macros/ui/element";
+import { direct } from "../../src/macros/ui/direct";
 import { HostNode, MockNode, mockNode, mockHost, renderToHost, mockToString } from "../../src/render/host";
 
 test "renderToHost builds tree and binds reactive text (push)" {
@@ -26,6 +27,47 @@ test "reactive attr: one effect per spot, upsert in place, dispose stops trackin
 		dispose();
 		setCls("green");
 		assert mockToString(root.children[0]) === "<p class=\"blue\">x</p>", "no update after dispose";
+		return 0;
+	});
+}
+
+test "null attr: static writes nothing, reactive removes then writes back — tree and direct agree" {
+	const s: string | null = null;
+	const [t, setT] = createSignal<string | null>("a");
+	const host = mockHost();
+	const tree: MockNode = mockNode("root");
+	const flat: MockNode = mockNode("root");
+	createRoot((dispose) => {
+		renderToHost(element(<div title={t()} id={s}>x</div>), host, tree as unknown as HostNode);
+		const mount = direct(<div title={t()} id={s}>x</div>);
+		host.append(flat as unknown as HostNode, mount(host));
+		host.append(flat as unknown as HostNode, mount(host));
+		assert mockToString(tree) === "<root><div title=\"a\">x</div></root>", "tree mount: " + mockToString(tree);
+		assert mockToString(flat) === "<root><div title=\"a\">x</div><div title=\"a\">x</div></root>", "direct mount: " + mockToString(flat);
+		setT(null);
+		assert mockToString(tree) === "<root><div>x</div></root>", "tree null: " + mockToString(tree);
+		assert mockToString(flat) === "<root><div>x</div><div>x</div></root>", "direct null: " + mockToString(flat);
+		setT("b");
+		assert mockToString(tree) === "<root><div title=\"b\">x</div></root>", "tree back: " + mockToString(tree);
+		assert mockToString(flat) === "<root><div title=\"b\">x</div><div title=\"b\">x</div></root>", "direct back: " + mockToString(flat);
+		dispose();
+		return 0;
+	});
+}
+
+test "null attr at mount: a reactive spot that starts null never shows" {
+	const [t, setT] = createSignal<string | null>(null);
+	const host = mockHost();
+	const tree: MockNode = mockNode("root");
+	const flat: MockNode = mockNode("root");
+	createRoot((dispose) => {
+		renderToHost(element(<div title={t()}>x</div>), host, tree as unknown as HostNode);
+		host.append(flat as unknown as HostNode, direct(<div title={t()}>x</div>)(host));
+		assert mockToString(tree) === "<root><div>x</div></root>", "tree: " + mockToString(tree);
+		assert mockToString(flat) === "<root><div>x</div></root>", "direct: " + mockToString(flat);
+		setT("a");
+		assert mockToString(flat) === "<root><div title=\"a\">x</div></root>", "direct write: " + mockToString(flat);
+		dispose();
 		return 0;
 	});
 }
