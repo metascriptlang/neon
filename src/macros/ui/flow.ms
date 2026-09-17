@@ -7,6 +7,7 @@ import { mapArray, indexArray } from "../../core/array";
 import { createMemo } from "../../core/memo";
 import { Accessor } from "../../core/signal";
 import { createRoot } from "../../core/owner";
+import { onCleanup } from "../../core/cleanup";
 import { NeonNode, regionNode } from "../../render/node";
 import { Host, HostNode, NeonView, mountView } from "../../render/host";
 
@@ -15,6 +16,7 @@ import { Host, HostNode, NeonView, mountView } from "../../render/host";
 function withFallback(mapped: () => HostNode[], fb: NeonView, host: Host): () => HostNode[] {
 	let fbNode: HostNode | null = null;
 	let fbDispose: (() => void) | null = null;
+	onCleanup(() => { if (fbDispose !== null) { fbDispose(); fbDispose = null; fbNode = null; } });
 	return () => {
 		const rows = mapped();
 		if (rows.length > 0) {
