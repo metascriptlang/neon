@@ -951,3 +951,39 @@ test "a static sheet entry through direct takes the class route like tree — fl
 		assert cssAt(directRoot, 0) === "width:40px;height:10px;", "golden native inline: " + cssAt(directRoot, 0);
 	}
 }
+
+// ---- Lát 0.6: a static {node} child mounts as a node on both emissions ----
+
+test "a static node child through direct mounts like tree" {
+	const host = mockHost();
+	const kid: NeonNode = element(<b>k</b>);
+	const treeRoot = mockNode("root");
+	const tv: NeonNode = element(<div><p>a</p>{kid}<p>z</p></div>);
+	renderToHost(tv, host, treeRoot as unknown as HostNode);
+	const directRoot = mockNode("root");
+	const kid2: NeonNode = element(<b>k</b>);
+	const mount = direct(<div><p>a</p>{kid2}<p>z</p></div>);
+	host.append(directRoot as unknown as HostNode, mount(host));
+	assert mockToString(treeRoot) === mockToString(directRoot), "markup: tree=" + mockToString(treeRoot) + " direct=" + mockToString(directRoot);
+	assert mockToString(directRoot) === "<root><div><p>a</p><b>k</b><p>z</p></div></root>", "golden: " + mockToString(directRoot);
+}
+
+interface FrameProps {
+	title: string;
+	children: NeonNode;
+}
+
+function Frame(props: FrameProps): NeonView {
+	return direct(<section title={props.title}>{props.children}</section>);
+}
+
+test "{props.children} carrying a node with live text through direct tracks the signal" {
+	const [name, setName] = createSignal("an");
+	const host = mockHost();
+	const directRoot = mockNode("root");
+	const view = Frame({ title: "t", children: element(<p>hi {name()}</p>) });
+	host.append(directRoot as unknown as HostNode, view(host));
+	assert mockToString(directRoot) === "<root><section title=\"t\"><p>hi an</p></section></root>", "golden: " + mockToString(directRoot);
+	setName("binh");
+	assert mockToString(directRoot) === "<root><section title=\"t\"><p>hi binh</p></section></root>", "golden after set: " + mockToString(directRoot);
+}
