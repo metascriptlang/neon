@@ -66,7 +66,7 @@ function removeSourceFromObserver(obs: Computation, slot: number): void {
 // The one teardown primitive. dispose=false → re-track prep (clear deps + run cleanups,
 // keep node alive). dispose=true → full teardown. Breaks BOTH halves of every cycle.
 export function cleanNode(node: Computation, dispose: boolean): void {
-	if (dispose) { node.disposed = true; }
+	if (dispose) { node.disposed = true; node.owner = null; }
 
 	for (let i = node.owned.length - 1; i >= 0; i -= 1) {
 		cleanNode(node.owned[i], true);
