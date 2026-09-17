@@ -14,7 +14,9 @@ decided at COMPILE time and exposed to nobody — see *Selection* below.
   by `tests/render/direct.test.ms`): lowercase elements, attr classification
   (string literal → one setAttr, `on*` → addEvent, any other expr → one
   setAttr effect per spot — D2, mirroring element.ms), the typed style channel
-  (`host.setStyle` behind a bound temp, same S4 field validation as element.ms),
+  (object literal → static fields once + `bindStyleProp` per reactive field; layer
+  array → compile-time merge or `layerStyles`, a reactive layer or field rejected;
+  reactive expression → `bindStyleAll`; anything else → `applyStaticStyle`),
   static+dynamic text, nested lowercase elements flattened INLINE into the one
   mount block (D3 — a single statement list, temps numbered across the whole
   tree `_r0/_r1/…`, child subtree emitted depth-first then appended; no
