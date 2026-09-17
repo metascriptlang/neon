@@ -576,7 +576,11 @@ export macro direct(node: Node): Node {
 					} else if (a.jsxAttrValue.kind !== NodeKind.StringLiteral) {
 						wStmts.push({
 							kind: NodeKind.ExprStmt, line: a.line, column: a.column,
-							expr: !isReactiveExpr(a.jsxAttrValue) && !isAccessorTyped(a.jsxAttrValue) ? hostCall("host", "setAttr", [ident(elVar, a.line, a.column), strLit(a.jsxAttrName, a.line, a.column), a.jsxAttrValue], a.line, a.column) : {
+							expr: !isReactiveExpr(a.jsxAttrValue) && !isAccessorTyped(a.jsxAttrValue) ? {
+								kind: NodeKind.CallExpr, line: a.line, column: a.column,
+								callee: ident("writeAttr", a.line, a.column),
+								arguments: [ident("host", a.line, a.column), ident(elVar, a.line, a.column), strLit(a.jsxAttrName, a.line, a.column), a.jsxAttrValue],
+							} : {
 								kind: NodeKind.CallExpr, line: a.line, column: a.column,
 								callee: ident("bindAttr", a.line, a.column),
 								arguments: [
@@ -854,8 +858,9 @@ export macro direct(node: Node): Node {
 						kind: NodeKind.ExprStmt, line: a.line, column: a.column,
 						expr: !isReactiveExpr(a.jsxAttrValue) && !isAccessorTyped(a.jsxAttrValue) ? {
 							kind: NodeKind.CallExpr, line: a.line, column: a.column,
-							callee: { kind: NodeKind.MemberExpr, line: a.line, column: a.column, object: { kind: NodeKind.Identifier, line: a.line, column: a.column, name: "host" }, property: "setAttr", isOptional: false },
+							callee: { kind: NodeKind.Identifier, line: a.line, column: a.column, name: "writeAttr" },
 							arguments: [
+								{ kind: NodeKind.Identifier, line: a.line, column: a.column, name: "host" },
 								{ kind: NodeKind.Identifier, line: a.line, column: a.column, name: rName },
 								nameLit,
 								a.jsxAttrValue,
