@@ -394,6 +394,8 @@ export macro element(node: Node): Node {
 									error("a reactive style field inside a layer array is not supported yet — pass it in a plain object style: style={{ " + layer.keys[i] + ": ... }}", layer.properties[i]);
 								}
 							}
+						} else if (isReactiveExpr(layer) || isAccessorTyped(layer)) {
+							error("a reactive style layer is not supported yet — merge it in a whole-style expression instead: style={layerStyles([base, pick()])}", layer);
 						}
 					}
 					styleExpr = {

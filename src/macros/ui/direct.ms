@@ -84,7 +84,15 @@ export macro direct(node: Node): Node {
 		}
 		let allStatic = true;
 		for (const layer of sv.elements) {
-			if (layer.kind !== NodeKind.ObjectLiteral) { allStatic = false; continue; }
+			if (layer.kind !== NodeKind.ObjectLiteral) {
+				if (isReactiveExpr(layer) || isAccessorTyped(layer)) {
+					styleErrNodes.push(layer);
+					styleErrMsgs.push("a reactive style layer is not supported yet — merge it in a whole-style expression instead: style={layerStyles([base, pick()])}");
+					return;
+				}
+				allStatic = false;
+				continue;
+			}
 			for (let i = 0; i < layer.keys.length; i = i + 1) {
 				const fv = layer.properties[i];
 				if (isReactiveExpr(fv) || isAccessorTyped(fv)) {
