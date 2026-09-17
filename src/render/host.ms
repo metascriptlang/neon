@@ -90,6 +90,10 @@ export function mountView(view: NeonView, host: Host): HostNode {
 // Escape hatch for a description built by hand (`el(...)`, `element(...)`) where
 // a view is expected. Bare JSX never needs it — the converter already emits the
 // right shape.
+export function applyRef(node: HostNode, fn: RefFn): void {
+	fn(node);
+}
+
 export function mountChild(host: Host, parent: HostNode, s: string): void {
 	host.append(parent, host.createText(s));
 }

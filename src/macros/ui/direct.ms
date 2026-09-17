@@ -363,7 +363,7 @@ export macro direct(node: Node): Node {
 	function needsHandle(el: Node): boolean {
 		for (const a of el.jsxAttrs) {
 			if (a.kind === NodeKind.JSXAttribute) {
-				if (a.jsxAttrName.startsWith("on")) { return true; }
+				if (a.jsxAttrName.startsWith("on") || a.jsxAttrName === "ref") { return true; }
 				if (a.jsxAttrValue.kind !== NodeKind.StringLiteral) { return true; }
 			}
 		}
@@ -609,8 +609,8 @@ export macro direct(node: Node): Node {
 					kind: NodeKind.ExprStmt, line: el.line, column: el.column,
 					expr: {
 						kind: NodeKind.CallExpr, line: el.line, column: el.column,
-						callee: wRef as Node,
-						arguments: [ident(elVar, el.line, el.column)],
+						callee: ident("applyRef", el.line, el.column),
+						arguments: [ident(elVar, el.line, el.column), wRef as Node],
 					},
 				});
 			}
@@ -993,8 +993,8 @@ export macro direct(node: Node): Node {
 				kind: NodeKind.ExprStmt, line: el.line, column: el.column,
 				expr: {
 					kind: NodeKind.CallExpr, line: el.line, column: el.column,
-					callee: refFor as Node,
-					arguments: [{ kind: NodeKind.Identifier, line: el.line, column: el.column, name: rName }],
+					callee: { kind: NodeKind.Identifier, line: el.line, column: el.column, name: "applyRef" },
+					arguments: [{ kind: NodeKind.Identifier, line: el.line, column: el.column, name: rName }, refFor as Node],
 				},
 			});
 		}
