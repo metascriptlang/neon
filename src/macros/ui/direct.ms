@@ -158,6 +158,14 @@ export macro direct(node: Node): Node {
 			});
 		}
 	}
+	function isNodeTyped(n: Node): boolean {
+		const t = peelHidden(n).nodeType;
+		if (t === null || t.kind !== NodeKind.TypeGeneric) { return false; }
+		const base = t.typExprBase;
+		if (base.kind !== NodeKind.Identifier || base.name !== "Ref" || t.typExprArgs.length !== 1) { return false; }
+		const arg = t.typExprArgs[0];
+		return arg.kind === NodeKind.TypeObject && arg.typExprTypeName === "NeonNode";
+	}
 	function showOf(when: Node, child: Node, fallback: Node | null, ln: int32, col: int32): Node {
 		let attrs: Node[] = [{ kind: NodeKind.JSXAttribute, line: ln, column: col, jsxAttrName: "when", jsxAttrValue: when }];
 		if (fallback !== null) {
@@ -340,6 +348,7 @@ export macro direct(node: Node): Node {
 	// keeps the D3 flat emission below, unchanged.
 	function isPureSubtree(el: Node): boolean {
 		for (const c of el.jsxChildren) {
+			if (c.kind === NodeKind.JSXExpressionContainer && isNodeTyped(c.jsxExpr)) { return false; }
 			if (c.kind === NodeKind.JSXElement) {
 				const t0 = c.jsxTag.charAt(0);
 				if (t0 >= "A" && t0 <= "Z") { return false; }
@@ -813,36 +822,49 @@ export macro direct(node: Node): Node {
 					});
 				}
 			} else if (c.kind === NodeKind.JSXExpressionContainer) {
+				const liveSpot = isReactiveExpr(c.jsxExpr) || isAccessorTyped(c.jsxExpr);
+				if (!liveSpot) {
+					stmts.push({
+						kind: NodeKind.ExprStmt, line: c.line, column: c.column,
+						expr: {
+							kind: NodeKind.CallExpr, line: c.line, column: c.column,
+							callee: { kind: NodeKind.Identifier, line: c.line, column: c.column, name: "mountChild" },
+							arguments: [
+								{ kind: NodeKind.Identifier, line: c.line, column: c.column, name: "host" },
+								{ kind: NodeKind.Identifier, line: c.line, column: c.column, name: rName },
+								c.jsxExpr,
+							],
+						},
+					});
+					continue;
+				}
 				const tName = "_t" + tIdx.toString();
 				tIdx = tIdx + 1;
-				const liveSpot = isReactiveExpr(c.jsxExpr) || isAccessorTyped(c.jsxExpr);
 				stmts.push({
 					kind: NodeKind.VariableDecl, line: c.line, column: c.column,
 					declName: tName, declType: "", declKind: DeclKind.Const,
 					initializer: {
 						kind: NodeKind.CallExpr, line: c.line, column: c.column,
 						callee: { kind: NodeKind.MemberExpr, line: c.line, column: c.column, object: { kind: NodeKind.Identifier, line: c.line, column: c.column, name: "host" }, property: "createText", isOptional: false },
-						arguments: [liveSpot ? { kind: NodeKind.StringLiteral, line: c.line, column: c.column, value: "" } : c.jsxExpr],
+						arguments: [{ kind: NodeKind.StringLiteral, line: c.line, column: c.column, value: "" }],
 					},
 				});
-				if (liveSpot) {
-					stmts.push({
-						kind: NodeKind.ExprStmt, line: c.line, column: c.column,
-						expr: {
-							kind: NodeKind.CallExpr, line: c.line, column: c.column,
-							callee: { kind: NodeKind.Identifier, line: c.line, column: c.column, name: "bindText" },
-							arguments: [
-								{ kind: NodeKind.Identifier, line: c.line, column: c.column, name: "host" },
-								{ kind: NodeKind.Identifier, line: c.line, column: c.column, name: tName },
-								{
-									kind: NodeKind.ArrowFunction, line: c.line, column: c.column,
-									arrowParams: [], arrowParamTypes: [], arrowFlags: "", arrowReturnType: "",
-									arrowBody: c.jsxExpr,
-								},
-							],
-						},
-					});
-				}
+				stmts.push({
+					kind: NodeKind.ExprStmt, line: c.line, column: c.column,
+					expr: {
+						kind: NodeKind.CallExpr, line: c.line, column: c.column,
+						callee: { kind: NodeKind.Identifier, line: c.line, column: c.column, name: "bindText" },
+						arguments: [
+							{ kind: NodeKind.Identifier, line: c.line, column: c.column, name: "host" },
+							{ kind: NodeKind.Identifier, line: c.line, column: c.column, name: tName },
+							{
+								kind: NodeKind.ArrowFunction, line: c.line, column: c.column,
+								arrowParams: [], arrowParamTypes: [], arrowFlags: "", arrowReturnType: "",
+								arrowBody: c.jsxExpr,
+							},
+						],
+					},
+				});
 				stmts.push({
 					kind: NodeKind.ExprStmt, line: c.line, column: c.column,
 					expr: {
