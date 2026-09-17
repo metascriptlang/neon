@@ -1,5 +1,5 @@
 import { Host, HostNode } from "../../src/render/hostTypes";
-import { reconcileArrays } from "../../src/render/reconcile";
+import { reconcileArrays, Range, rangeOf } from "../../src/render/reconcile";
 
 export const HOST_MOVE_CONTRACT = "abc abc cab abc bac insert-throws remove-throws bac";
 export const RECONCILE_CONTRACT = "abc_ cba_ acd_ deac_ b_ _";
@@ -72,22 +72,27 @@ export function reconcileContract(h: Host): string {
 	const e = h.createElement("view");
 	const nodes: HostNode[] = [a, b, c, d, e, anchor];
 	const names: string[] = ["a", "b", "c", "d", "e", "_"];
-	const s1: HostNode[] = [a, b, c];
+	const ra = rangeOf(a);
+	const rb = rangeOf(b);
+	const rc = rangeOf(c);
+	const rd = rangeOf(d);
+	const re = rangeOf(e);
+	const s1: Range[] = [ra, rb, rc];
 	reconcileArrays(h, root, [], s1, anchor);
 	let log = childOrder(h, root, nodes, names);
-	const s2: HostNode[] = [c, b, a];
-	reconcileArrays(h, root, [a, b, c], s2, anchor);
+	const s2: Range[] = [rc, rb, ra];
+	reconcileArrays(h, root, s1, s2, anchor);
 	log = log + " " + childOrder(h, root, nodes, names);
-	const s3: HostNode[] = [a, c, d];
-	reconcileArrays(h, root, [c, b, a], s3, anchor);
+	const s3: Range[] = [ra, rc, rd];
+	reconcileArrays(h, root, s2, s3, anchor);
 	log = log + " " + childOrder(h, root, nodes, names);
-	const s4: HostNode[] = [d, e, a, c];
-	reconcileArrays(h, root, [a, c, d], s4, anchor);
+	const s4: Range[] = [rd, re, ra, rc];
+	reconcileArrays(h, root, s3, s4, anchor);
 	log = log + " " + childOrder(h, root, nodes, names);
-	const s5: HostNode[] = [b];
-	reconcileArrays(h, root, [d, e, a, c], s5, anchor);
+	const s5: Range[] = [rb];
+	reconcileArrays(h, root, s4, s5, anchor);
 	log = log + " " + childOrder(h, root, nodes, names);
-	reconcileArrays(h, root, [b], [], anchor);
+	reconcileArrays(h, root, s5, [], anchor);
 	log = log + " " + childOrder(h, root, nodes, names);
 	return log;
 }

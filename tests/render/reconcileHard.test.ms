@@ -1,5 +1,5 @@
 import { mockHost, MockNode, HostNode } from "../../src/render/host";
-import { reconcileArrays } from "../../src/render/reconcile";
+import { reconcileArrays, Range, rangeOf } from "../../src/render/reconcile";
 
 function seq(parent: HostNode): string {
 	const p = parent as unknown as MockNode;
@@ -11,15 +11,15 @@ function seq(parent: HostNode): string {
 test "reconcileArrays forces the map-fallback branch (non-swap middle reorder)" {
 	const h = mockHost();
 	const parent = h.createElement("ul");
-	const pool = new Map<string, HostNode>();
-	for (const L of ["A", "B", "C", "D", "E"]) { pool.set(L, h.createElement(L)); }
-	function nodesFor(s: string): HostNode[] {
-		const out: HostNode[] = [];
-		for (let i = 0; i < s.length; i += 1) { out.push(pool.get(s.slice(i, i + 1)) as HostNode); }
+	const pool = new Map<string, Range>();
+	for (const L of ["A", "B", "C", "D", "E"]) { pool.set(L, rangeOf(h.createElement(L))); }
+	function nodesFor(s: string): Range[] {
+		const out: Range[] = [];
+		for (let i = 0; i < s.length; i += 1) { out.push(pool.get(s.slice(i, i + 1)) as Range); }
 		return out;
 	}
 	let cur = nodesFor("ABCD");
-	for (const n of cur) { h.append(parent, n); }
+	for (const n of cur) { h.append(parent, n.start); }
 	function go(next: string): void {
 		const b = nodesFor(next);
 		reconcileArrays(h, parent, cur, b, null as unknown as HostNode);
@@ -38,21 +38,21 @@ test "reconcileArrays forces the map-fallback branch (non-swap middle reorder)" 
 test "reconcileArrays handles duplicate keys" {
 	const h = mockHost();
 	const parent = h.createElement("ul");
-	const a = h.createElement("A");
-	const b1 = h.createElement("B");
-	const b2 = h.createElement("B");
-	const c = h.createElement("C");
+	const a = rangeOf(h.createElement("A"));
+	const b1 = rangeOf(h.createElement("B"));
+	const b2 = rangeOf(h.createElement("B"));
+	const c = rangeOf(h.createElement("C"));
 	// note: b1 and b2 are distinct nodes that share tag "B"
-	let cur: HostNode[] = [a, b1, b2, c];
-	for (const n of cur) { h.append(parent, n); }
+	let cur: Range[] = [a, b1, b2, c];
+	for (const n of cur) { h.append(parent, n.start); }
 	assert seq(parent) === "ABBC", "initial";
 
-	const next: HostNode[] = [c, b2, a, b1];
+	const next: Range[] = [c, b2, a, b1];
 	reconcileArrays(h, parent, cur, next, null as unknown as HostNode);
 	// distinct node identities must land in exactly the requested order
 	const p = parent as unknown as MockNode;
-	assert p.children[0] === (c as unknown as MockNode), "pos0 = C";
-	assert p.children[1] === (b2 as unknown as MockNode), "pos1 = b2";
-	assert p.children[2] === (a as unknown as MockNode), "pos2 = A";
-	assert p.children[3] === (b1 as unknown as MockNode), "pos3 = b1";
+	assert p.children[0] === (c.start as unknown as MockNode), "pos0 = C";
+	assert p.children[1] === (b2.start as unknown as MockNode), "pos1 = b2";
+	assert p.children[2] === (a.start as unknown as MockNode), "pos2 = A";
+	assert p.children[3] === (b1.start as unknown as MockNode), "pos3 = b1";
 }
