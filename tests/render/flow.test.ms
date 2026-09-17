@@ -1,5 +1,6 @@
 import { el, text, dynText, NeonNode } from "../../src/render/node";
-import { MockNode, mockHost, renderToHost, viewOf, mockToString } from "../../src/render/host";
+import { MockNode, mockHost, renderToHost, viewOf, mockToString, mountView, NeonView } from "../../src/render/host";
+import { Host, HostNode } from "../../src/render/hostTypes";
 import { For, Index, Show } from "../../src/macros/ui/flow";
 import { createSignal, accessor, Accessor } from "../../src/core/signal";
 import { element } from "../../src/macros/ui/element";
@@ -256,4 +257,54 @@ test "a lowered For row reads its index bare as an Accessor" {
 	setItems(["b", "a"]);
 	assert lowered().indexOf("b0") >= 0 && lowered().indexOf("a1") >= 0, "indexes follow the reorder: " + lowered();
 	d1();
+}
+
+test "Show mounts its branch untracked" {
+	createRoot((d) => {
+		const [on, setOn] = createSignal(true);
+		const [n, setN] = createSignal(0);
+		let builds = 0;
+		const child: NeonView = (h: Host): HostNode => {
+			builds = builds + 1;
+			const label = n().toString();
+			return mountView(viewOf(el("span", [], [], [text(label)])), h);
+		};
+		const div = el("div", [], [], [Show({ when: () => on(), children: child })]);
+		const host = mockHost();
+		const root = host.createElement("root");
+		renderToHost(div, host, root);
+		assert builds === 1, "branch built once on mount";
+		setN(5);
+		assert builds === 1, "a signal read while mounting does not rebuild the branch";
+		setOn(false);
+		setOn(true);
+		assert builds === 2, "flipping the condition still rebuilds";
+		d();
+	});
+}
+
+test "Show mounts its fallback untracked" {
+	createRoot((d) => {
+		const [on, setOn] = createSignal(false);
+		const [n, setN] = createSignal(0);
+		let builds = 0;
+		const fb: NeonView = (h: Host): HostNode => {
+			builds = builds + 1;
+			const label = n().toString();
+			return mountView(viewOf(el("i", [], [], [text(label)])), h);
+		};
+		const div = el("div", [], [], [
+			Show({ when: () => on(), children: viewOf(el("span", [], [], [text("on")])), fallback: fb }),
+		]);
+		const host = mockHost();
+		const root = host.createElement("root");
+		renderToHost(div, host, root);
+		assert builds === 1, "fallback built once on mount";
+		setN(5);
+		assert builds === 1, "a signal read while mounting does not rebuild the fallback";
+		setOn(true);
+		setOn(false);
+		assert builds === 2, "flipping the condition still rebuilds the fallback";
+		d();
+	});
 }
