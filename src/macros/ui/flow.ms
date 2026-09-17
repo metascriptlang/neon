@@ -5,7 +5,7 @@
 
 import { mapArray, indexArray } from "../../core/array";
 import { createMemo } from "../../core/memo";
-import { Accessor } from "../../core/signal";
+import { Accessor, untrack } from "../../core/signal";
 import { createRoot } from "../../core/owner";
 import { onCleanup } from "../../core/cleanup";
 import { NeonNode, regionNode } from "../../render/node";
@@ -70,9 +70,9 @@ export function Show(props: {
 		const host = h as Host;
 		const cond = createMemo(() => props.when(), (a, b) => a === b);
 		return createMemo<HostNode[]>(() => {
-			if (cond()) { return [mountView(props.children, host)]; }
+			if (cond()) { return untrack(() => [mountView(props.children, host)]); }
 			const fb = props.fallback;
-			if (fb !== null) { return [mountView(fb as NeonView, host)]; }
+			if (fb !== null) { return untrack(() => [mountView(fb as NeonView, host)]); }
 			return [] as HostNode[];
 		});
 	});
