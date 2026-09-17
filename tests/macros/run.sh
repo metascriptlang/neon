@@ -17,8 +17,12 @@ expect_reject() {
 		echo "ok   $1: rejected with '$2'"
 	fi
 }
-expect_reject tests/macros/spreadRejected.ms "spread attributes are not supported"
-expect_reject tests/macros/spreadInContainerRejected.ms "spread attributes are not supported"
+expect_reject tests/macros/spreadMapRejected.ms "a spread needs an object type with named fields"
+expect_reject tests/macros/spreadCallRejected.ms "a spread needs a variable or a field, not an expression"
+expect_reject tests/macros/spreadChildrenRejected.ms "children cannot come from a spread"
+expect_reject tests/macros/spreadNullHandlerRejected.ms "a nullable onPress handler is not supported yet"
+expect_reject tests/macros/spreadNullHandlerDirectRejected.ms "a nullable onPress handler is not supported yet"
+expect_reject tests/macros/spreadNullStyleRejected.ms "a nullable style is not supported yet"
 expect_reject tests/macros/fragmentInExprRejected.ms "a fragment inside an expression is not supported"
 expect_reject tests/macros/fragmentInExprDirectRejected.ms "a fragment inside an expression is not supported"
 expect_reject tests/macros/fragmentDirectRootRejected.ms "a fragment has no single host node to return"
