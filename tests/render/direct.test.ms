@@ -1006,3 +1006,77 @@ test "layerStyles over a reactive layer as a whole-style expression tracks the s
 	assert cssAt(treeRoot, 0) === cssAt(directRoot, 0), "after set: tree=" + cssAt(treeRoot, 0) + " direct=" + cssAt(directRoot, 0);
 	assert cssAt(directRoot, 0) === "width:200px;height:9px;", "golden after set: " + cssAt(directRoot, 0);
 }
+
+// ---- Lát 0.9: whitespace-only text around a single child does not change the wrapping ----
+
+interface ViewProps {
+	children: NeonNode[];
+}
+
+function View(props: ViewProps): NeonNode {
+	return el("view", [], [], props.children);
+}
+
+test "whitespace around a starter tag's single element child wraps like the flat form" {
+	const host = mockHost();
+	const flatRoot = mockNode("root");
+	const flat: NeonNode = element(<div><View><p>a</p></View></div>);
+	renderToHost(flat, host, flatRoot as unknown as HostNode);
+	const treeRoot = mockNode("root");
+	const tv: NeonNode = element(<div><View>
+		<p>a</p>
+	</View></div>);
+	renderToHost(tv, host, treeRoot as unknown as HostNode);
+	const directRoot = mockNode("root");
+	const mount = direct(<div><View>
+		<p>a</p>
+	</View></div>);
+	host.append(directRoot as unknown as HostNode, mount(host));
+	assert mockToString(treeRoot) === mockToString(flatRoot), "tree ws=" + mockToString(treeRoot) + " flat=" + mockToString(flatRoot);
+	assert mockToString(treeRoot) === mockToString(directRoot), "tree=" + mockToString(treeRoot) + " direct=" + mockToString(directRoot);
+	assert mockToString(directRoot) === "<root><div><view><p>a</p></view></div></root>", "golden: " + mockToString(directRoot);
+}
+
+test "whitespace around a starter tag's single expression child stays reactive text like the flat form" {
+	const [n, setN] = createSignal("v");
+	const host = mockHost();
+	const flatRoot = mockNode("root");
+	const flat: NeonNode = element(<div><View>{n()}</View></div>);
+	renderToHost(flat, host, flatRoot as unknown as HostNode);
+	const treeRoot = mockNode("root");
+	const tv: NeonNode = element(<div><View>
+		{n()}
+	</View></div>);
+	renderToHost(tv, host, treeRoot as unknown as HostNode);
+	const directRoot = mockNode("root");
+	const mount = direct(<div><View>
+		{n()}
+	</View></div>);
+	host.append(directRoot as unknown as HostNode, mount(host));
+	assert mockToString(treeRoot) === mockToString(flatRoot), "tree ws=" + mockToString(treeRoot) + " flat=" + mockToString(flatRoot);
+	assert mockToString(treeRoot) === mockToString(directRoot), "tree=" + mockToString(treeRoot) + " direct=" + mockToString(directRoot);
+	assert mockToString(directRoot) === "<root><div><view>v</view></div></root>", "golden: " + mockToString(directRoot);
+	setN("w");
+	assert mockToString(treeRoot) === mockToString(directRoot), "after set: tree=" + mockToString(treeRoot) + " direct=" + mockToString(directRoot);
+	assert mockToString(directRoot) === "<root><div><view>w</view></div></root>", "golden after set: " + mockToString(directRoot);
+}
+
+test "whitespace around a NeonNode-children component's single element child passes it raw like the flat form" {
+	const host = mockHost();
+	const flatRoot = mockNode("root");
+	const flat: NeonNode = element(<div><Card title="t"><p>a</p></Card></div>);
+	renderToHost(flat, host, flatRoot as unknown as HostNode);
+	const treeRoot = mockNode("root");
+	const tv: NeonNode = element(<div><Card title="t">
+		<p>a</p>
+	</Card></div>);
+	renderToHost(tv, host, treeRoot as unknown as HostNode);
+	const directRoot = mockNode("root");
+	const mount = direct(<div><Card title="t">
+		<p>a</p>
+	</Card></div>);
+	host.append(directRoot as unknown as HostNode, mount(host));
+	assert mockToString(treeRoot) === mockToString(flatRoot), "tree ws=" + mockToString(treeRoot) + " flat=" + mockToString(flatRoot);
+	assert mockToString(treeRoot) === mockToString(directRoot), "tree=" + mockToString(treeRoot) + " direct=" + mockToString(directRoot);
+	assert mockToString(directRoot) === "<root><div><section title=\"t\"><p>a</p></section></div></root>", "golden: " + mockToString(directRoot);
+}
