@@ -111,7 +111,7 @@ interface CardProps {
 }
 
 function Card(props: CardProps): NeonNode {
-	return el("section", [attr("title", props.title)], [], [props.children]);
+	return el("section", [attr("title", props.title())], [], [props.children]);
 }
 
 function applyFn(f: () => number): number { return f(); }
@@ -342,7 +342,7 @@ function countingHost(counter: number[]): Host {
 			counter[0] = counter[0] + 1;
 			return h.createElement(tag);
 		},
-		createText: h.createText, setText: h.setText, setAttr: h.setAttr,
+		createText: h.createText, setText: h.setText, setAttr: h.setAttr, removeAttr: h.removeAttr,
 		setStyle: h.setStyle, setStyleProp: h.setStyleProp, setStyleClass: h.setStyleClass, addEvent: h.addEvent, append: h.append,
 		insertBefore: h.insertBefore, removeChild: h.removeChild,
 		nextSibling: h.nextSibling, firstChild: h.firstChild, cloneNode: h.cloneNode,
@@ -380,7 +380,7 @@ function textCountingHost(counter: number[]): Host {
 			counter[0] = counter[0] + 1;
 			h.setText(node, value);
 		},
-		setAttr: h.setAttr, setStyle: h.setStyle, setStyleProp: h.setStyleProp, setStyleClass: h.setStyleClass, addEvent: h.addEvent,
+		setAttr: h.setAttr, removeAttr: h.removeAttr, setStyle: h.setStyle, setStyleProp: h.setStyleProp, setStyleClass: h.setStyleClass, addEvent: h.addEvent,
 		append: h.append, insertBefore: h.insertBefore, removeChild: h.removeChild,
 		nextSibling: h.nextSibling, firstChild: h.firstChild, cloneNode: h.cloneNode,
 	};
@@ -443,7 +443,7 @@ test "template mode on a cloneNode:null host falls back and still matches tree" 
 	const base = mockHost();
 	const host: Host = {
 		createElement: base.createElement, createText: base.createText, setText: base.setText,
-		setAttr: base.setAttr, setStyle: base.setStyle, setStyleProp: base.setStyleProp, setStyleClass: base.setStyleClass, addEvent: base.addEvent,
+		setAttr: base.setAttr, removeAttr: base.removeAttr, setStyle: base.setStyle, setStyleProp: base.setStyleProp, setStyleClass: base.setStyleClass, addEvent: base.addEvent,
 		append: base.append, insertBefore: base.insertBefore, removeChild: base.removeChild,
 		nextSibling: base.nextSibling, firstChild: base.firstChild,
 		cloneNode: null,

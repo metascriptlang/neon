@@ -247,6 +247,11 @@ export function createVoidHost(): VoidHost {
 				(node as unknown as Node2D).layoutStyle = parseFlexStyle(value);
 			}
 		},
+		removeAttr: (node: HostNode, name: string): void => {
+			if (name === "style") {
+				(node as unknown as Node2D).layoutStyle = parseFlexStyle("");
+			}
+		},
 		setStyle: (node: HostNode, style: Style): void => {
 			const n = node as unknown as Node2D;
 			n.layoutStyle = asFlexStyle(style);

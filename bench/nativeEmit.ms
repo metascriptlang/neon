@@ -11,6 +11,7 @@ function nativeHost(): Host {
 		createText: h.createText,
 		setText: h.setText,
 		setAttr: h.setAttr,
+		removeAttr: h.removeAttr,
 		setStyle: h.setStyle,
 		setStyleProp: h.setStyleProp,
 		setStyleClass: h.setStyleClass,

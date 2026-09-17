@@ -17,9 +17,9 @@ export interface VDynStyle {
 
 export interface VAttr {
 	name: string;
-	value: string;         // static value ("" when dynamic)
+	value: string | null;  // static value ("" when dynamic)
 	isDyn: boolean;        // true → `dyn` is the live value source
-	dyn: () => string;
+	dyn: () => string | null;
 }
 
 export interface VEvent {
@@ -69,11 +69,11 @@ export interface NeonNode {
 	isFragment: boolean;
 }
 
-export function attr(name: string, value: string): VAttr {
+export function attr(name: string, value: string | null): VAttr {
 	return { name, value, isDyn: false, dyn: () => "" };
 }
 
-export function dynAttr(name: string, thunk: () => string): VAttr {
+export function dynAttr(name: string, thunk: () => string | null): VAttr {
 	return { name, value: "", isDyn: true, dyn: thunk };
 }
 
@@ -205,7 +205,9 @@ export function renderToString(n: NeonNode): string {
 		}
 	}
 	for (const a of n.attrs) {
-		let v = a.isDyn ? a.dyn() : a.value;
+		const raw = a.isDyn ? a.dyn() : a.value;
+		if (raw === null) { continue; }
+		let v = raw as string;
 		if (a.name === "class" && cls !== "") { v = v === "" ? cls : v + " " + cls; cls = ""; }
 		open = open + " " + a.name + "=\"" + v + "\"";
 	}

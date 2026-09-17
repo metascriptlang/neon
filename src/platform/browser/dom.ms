@@ -29,6 +29,7 @@ extern class DomNode {
 	extern removeChild(child: DomNode): void;
 	value: cstring;
 	extern setAttribute(name: cstring, value: cstring): void;
+	extern removeAttribute(name: cstring): void;
 	extern addEventListener(name: cstring, handler: (e: DomEvent) => void): void;
 }
 
@@ -109,6 +110,11 @@ export function domHost(): Host {
 			const el = node as unknown as DomNode;
 			if (name === "value") { el.value = value; return; }
 			el.setAttribute(name, value);
+		},
+		removeAttr: (node: HostNode, name: string): void => {
+			const el = node as unknown as DomNode;
+			if (name === "value") { el.value = ""; }
+			el.removeAttribute(name);
 		},
 		setStyle: (node: HostNode, style: Style): void => {
 			applyCss((node as unknown as DomNode).style, style);

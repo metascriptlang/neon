@@ -19,7 +19,7 @@ import { Style } from "../../render/style";
 import { terminalStyleCoverage } from "../../macros/style/fields";
 import {
 	TerminalNode, TerminalEvent, TerminalStyle,
-	createTerminalNode, createTerminalTextNode,
+	createTerminalNode, createTerminalTextNode, makeStyle,
 } from "./types";
 
 function hexNibble(c: string): int32 {
@@ -134,6 +134,22 @@ export function terminalHost(): Host {
 		},
 		setAttr: (node: HostNode, name: string, value: string): void => {
 			applyAttr(node as unknown as TerminalNode, name, value);
+		},
+		removeAttr: (node: HostNode, name: string): void => {
+			const n = node as unknown as TerminalNode;
+			if (!n.attrs.has(name)) { return; }
+			n.attrs.delete(name);
+			const base = makeStyle();
+			match (name) {
+				"color" => { n.style.color = base.color; },
+				"bg" => { n.style.bg = base.bg; },
+				"bold" => { n.style.bold = base.bold; },
+				"dim" => { n.style.dim = base.dim; },
+				"italic" => { n.style.italic = base.italic; },
+				"underline" => { n.style.underline = base.underline; },
+				_ => {},
+			};
+			n.dirty = true;
 		},
 		setStyle: (node: HostNode, style: Style): void => {
 			const n = node as unknown as TerminalNode;

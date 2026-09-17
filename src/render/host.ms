@@ -28,15 +28,23 @@ export function bindText(host: Host, node: HostNode, get: () => string): void {
 	});
 }
 
-export function bindAttr(host: Host, node: HostNode, name: string, get: () => string): void {
-	let prev = "";
+export function writeAttr(host: Host, node: HostNode, name: string, value: string | null): void {
+	if (value === null) {
+		host.removeAttr(node, name);
+	} else {
+		host.setAttr(node, name, value as string);
+	}
+}
+
+export function bindAttr(host: Host, node: HostNode, name: string, get: () => string | null): void {
+	let prev: string | null = null;
 	let bound = false;
 	createEffect(() => {
 		const v = get();
 		if (bound && v === prev) { return; }
 		bound = true;
 		prev = v;
-		host.setAttr(node, name, v);
+		writeAttr(host, node, name, v);
 	});
 }
 
@@ -135,8 +143,8 @@ export function renderNode(vnode: NeonNode, host: Host): HostNode {
 		if (a.isDyn) {
 			const da = a;
 			bindAttr(host, node, da.name, () => da.dyn());
-		} else {
-			host.setAttr(node, a.name, a.value);
+		} else if (a.value !== null) {
+			host.setAttr(node, a.name, a.value as string);
 		}
 	}
 	const vstyle = vnode.style;
@@ -268,6 +276,12 @@ export function mockHost(): Host {
 			}
 			n.attrs.push(attr(name, value));
 		},
+		removeAttr: (node: HostNode, name: string): void => {
+			const n = node as unknown as MockNode;
+			for (let i = 0; i < n.attrs.length; i += 1) {
+				if (n.attrs[i].name === name) { n.attrs.splice(i, 1); return; }
+			}
+		},
 		setStyle: (node: HostNode, style: Style): void => {
 			(node as unknown as MockNode).style = style;
 		},
@@ -351,7 +365,7 @@ export function fireEventWith(node: MockNode, name: string, e: NeonEvent): void 
 export function mockToString(n: MockNode): string {
 	if (n.tag === "") { return n.text; }
 	let open = "<" + n.tag;
-	for (const a of n.attrs) { open = open + " " + a.name + "=\"" + a.value + "\""; }
+	for (const a of n.attrs) { open = open + " " + a.name + "=\"" + (a.value ?? "") + "\""; }
 	let s = open + ">";
 	for (const k of n.children) { s = s + mockToString(k); }
 	return s + "</" + n.tag + ">";

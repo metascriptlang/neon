@@ -183,7 +183,8 @@ interface TextInputProps {
 export function TextInput(props: TextInputProps): NeonNode {
 	const attrs: VAttr[] = [];
 	if (props.value !== null) {
-		attrs.push(dynAttr("value", props.value as () => string));
+		const value = props.value as () => string;
+		attrs.push(dynAttr("value", () => value()));
 	}
 	const evts: VEvent[] = [];
 	if (props.onChangeText !== null) {

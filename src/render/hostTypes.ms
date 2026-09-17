@@ -8,6 +8,7 @@ export interface Host {
 	createText: (s: string) => HostNode;
 	setText: (node: HostNode, s: string) => void;
 	setAttr: (node: HostNode, name: string, value: string) => void;
+	removeAttr: (node: HostNode, name: string) => void;
 	setStyle: (node: HostNode, style: Style) => void;
 	// Optional capability, like `cloneNode`: a host that can write ONE style
 	// property without touching the rest advertises it here (docs/STYLE.md §6).
