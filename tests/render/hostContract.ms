@@ -3,6 +3,7 @@ import { reconcileArrays } from "../../src/render/reconcile";
 
 export const HOST_MOVE_CONTRACT = "abc abc cab abc bac insert-throws remove-throws bac";
 export const RECONCILE_CONTRACT = "abc_ cba_ acd_ deac_ b_ _";
+export const HOST_ATTR_CONTRACT = "_ title=a,id=x id=x id=x,title=b id=x,title=b";
 
 function nameOf(nodes: HostNode[], names: string[], n: HostNode): string {
 	for (let i = 0; i < nodes.length; i += 1) {
@@ -88,5 +89,21 @@ export function reconcileContract(h: Host): string {
 	log = log + " " + childOrder(h, root, nodes, names);
 	reconcileArrays(h, root, [b], [], anchor);
 	log = log + " " + childOrder(h, root, nodes, names);
+	return log;
+}
+
+export function hostAttrContract(h: Host, read: (n: HostNode) => string): string {
+	const n = h.createElement("view");
+	h.removeAttr(n, "title");
+	let log = read(n);
+	h.setAttr(n, "title", "a");
+	h.setAttr(n, "id", "x");
+	log = log + " " + read(n);
+	h.removeAttr(n, "title");
+	log = log + " " + read(n);
+	h.setAttr(n, "title", "b");
+	log = log + " " + read(n);
+	h.removeAttr(n, "missing");
+	log = log + " " + read(n);
 	return log;
 }

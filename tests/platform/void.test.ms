@@ -190,3 +190,14 @@ test "reconcileArrays keeps its contract on the void host" {
 	const got = reconcileContract(createVoidHost().host);
 	assert got === RECONCILE_CONTRACT, got;
 }
+
+test "void removeAttr on style drops the parsed layout" {
+	const h = createVoidHost().host;
+	const node = h.createElement("view");
+	h.setAttr(node, "style", "width:320;flexGrow:1");
+	h.removeAttr(node, "style");
+	const st = (node as unknown as Node2D).layoutStyle;
+	assert st.width === null, "width gone";
+	assert st.flexGrow === null, "flexGrow gone";
+	h.removeAttr(node, "title");
+}

@@ -5,7 +5,7 @@ import { NeonEvent } from "../../src/render/event";
 import { bindAttr } from "../../src/render/host";
 import { createSignal } from "../../src/core/signal";
 import { createRoot } from "../../src/core/owner";
-import { HOST_MOVE_CONTRACT, RECONCILE_CONTRACT, hostMoveContract, reconcileContract } from "../render/hostContract";
+import { HOST_MOVE_CONTRACT, RECONCILE_CONTRACT, HOST_ATTR_CONTRACT, hostMoveContract, reconcileContract, hostAttrContract } from "../render/hostContract";
 
 extern class ProbeStyle {
 	backgroundColor: string;
@@ -32,7 +32,18 @@ extern class ProbeClassList {
 	extern contains(name: cstring): boolean;
 }
 
+extern class ProbeAttr {
+	name: string;
+	value: string;
+}
+
+extern class ProbeAttrs {
+	length: number;
+	extern item(i: number): ProbeAttr;
+}
+
 extern class ProbeNode {
+	attributes: ProbeAttrs;
 	textContent: string;
 	tagName: string;
 	value: string;
@@ -259,3 +270,39 @@ test "reconcileArrays keeps its contract on the DOM" {
 	assert got === RECONCILE_CONTRACT, got;
 }
 
+
+function domAttrs(n: HostNode): string {
+	const list = probe(n).attributes;
+	let out = "";
+	for (let i = 0; i < list.length; i += 1) { out = out + (out === "" ? "" : ",") + list.item(i).name + "=" + list.item(i).value; }
+	return out === "" ? "_" : out;
+}
+
+test "the DOM host keeps its own attribute contract" {
+	const got = hostAttrContract(domHost(), domAttrs);
+	assert got === HOST_ATTR_CONTRACT, got;
+}
+
+test "removing value clears a controlled input the user typed into" {
+	const h = domHost();
+	const el = mount("textinput");
+	h.setAttr(el, "value", "first");
+	probe(el).value = "typed by user";
+	h.removeAttr(el, "value");
+	assert probe(el).value === "", "the field empties like Solid's value = null";
+	assert probe(el).getAttribute("value") === null, "the attribute is gone too";
+	probe(el).remove();
+}
+
+test "a bound value that turns null empties the input" {
+	const h = domHost();
+	const el = mount("textinput");
+	const [v, setV] = createSignal<string | null>("a");
+	createRoot(() => { bindAttr(h, el, "value", () => v()); });
+	probe(el).value = "typed by user";
+	setV(null);
+	assert probe(el).value === "", "null clears the field";
+	setV("b");
+	assert probe(el).value === "b", "a later value writes again";
+	probe(el).remove();
+}

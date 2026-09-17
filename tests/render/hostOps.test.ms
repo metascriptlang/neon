@@ -1,5 +1,5 @@
 import { mockHost, mockToString, MockNode, HostNode } from "../../src/render/host";
-import { HOST_MOVE_CONTRACT, RECONCILE_CONTRACT, hostMoveContract, reconcileContract } from "./hostContract";
+import { HOST_MOVE_CONTRACT, RECONCILE_CONTRACT, HOST_ATTR_CONTRACT, hostMoveContract, reconcileContract, hostAttrContract } from "./hostContract";
 
 test "insertBefore positions, nextSibling navigates, removeChild detaches" {
 	const h = mockHost();
@@ -32,4 +32,15 @@ test "the mock host keeps the DOM move contract" {
 test "reconcileArrays keeps its contract on the mock host" {
 	const got = reconcileContract(mockHost());
 	assert got === RECONCILE_CONTRACT, got;
+}
+
+function mockAttrs(n: HostNode): string {
+	let out = "";
+	for (const a of (n as unknown as MockNode).attrs) { out = out + (out === "" ? "" : ",") + a.name + "=" + (a.value as string); }
+	return out === "" ? "_" : out;
+}
+
+test "the mock host keeps the DOM attribute contract" {
+	const got = hostAttrContract(mockHost(), mockAttrs);
+	assert got === HOST_ATTR_CONTRACT, got;
 }

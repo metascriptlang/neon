@@ -3,7 +3,7 @@ import { terminalHost } from "../../src/platform/terminal/host";
 import { paintNode, paintTree } from "../../src/platform/terminal/paint";
 import { HostNode } from "../../src/render/hostTypes";
 import { Style } from "../../src/render/style";
-import { HOST_MOVE_CONTRACT, RECONCILE_CONTRACT, hostMoveContract, reconcileContract } from "../render/hostContract";
+import { HOST_MOVE_CONTRACT, RECONCILE_CONTRACT, HOST_ATTR_CONTRACT, hostMoveContract, reconcileContract, hostAttrContract } from "../render/hostContract";
 
 function tn(hostNode: HostNode): TerminalNode {
 	return hostNode as unknown as TerminalNode;
@@ -166,4 +166,33 @@ test "the terminal host keeps the DOM move contract" {
 test "reconcileArrays keeps its contract on the terminal host" {
 	const got = reconcileContract(terminalHost());
 	assert got === RECONCILE_CONTRACT, got;
+}
+
+function terminalAttrs(n: HostNode): string {
+	const m = tn(n).attrs;
+	let out = "";
+	for (const k of m) { out = out + (out === "" ? "" : ",") + k + "=" + (m.get(k) ?? ""); }
+	return out === "" ? "_" : out;
+}
+
+test "the terminal host keeps the DOM attribute contract" {
+	const got = hostAttrContract(terminalHost(), terminalAttrs);
+	assert got === HOST_ATTR_CONTRACT, got;
+}
+
+test "terminalHost: removeAttr restores the style field it drove" {
+	const host = terminalHost();
+	const node = host.createElement("text");
+	host.setAttr(node, "color", "red");
+	host.setAttr(node, "bg", "blue");
+	host.setAttr(node, "bold", "true");
+	host.setAttr(node, "dim", "true");
+	host.setAttr(node, "italic", "true");
+	host.setAttr(node, "underline", "true");
+	tn(node).dirty = false;
+	for (const name of ["color", "bg", "bold", "dim", "italic", "underline"]) { host.removeAttr(node, name); }
+	const n = tn(node);
+	assert n.style.color === "" && n.style.bg === "", "colours back to unset";
+	assert !n.style.bold && !n.style.dim && !n.style.italic && !n.style.underline, "flags back to off";
+	assert n.dirty, "a removal repaints";
 }
