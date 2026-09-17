@@ -230,6 +230,10 @@ export macro element(node: Node): Node {
 		}
 		let compKids: Node[] = [];
 		let singleNeedsArray = false;
+		let significantKids = 0;
+		for (const c of node.jsxChildren) {
+			if (!(c.kind === NodeKind.JSXText && cleanJsxText(c.jsxText) === "")) { significantKids = significantKids + 1; }
+		}
 		for (const c of node.jsxChildren) {
 			if (c.kind === NodeKind.JSXText) {
 				// A raw JSXText does not survive the macro wire as a property value,
@@ -242,7 +246,7 @@ export macro element(node: Node): Node {
 						callee: { kind: NodeKind.Identifier, line: c.line, column: c.column, name: "text" },
 						arguments: [{ kind: NodeKind.StringLiteral, line: c.line, column: c.column, value: cleaned }],
 					});
-					if (node.jsxChildren.length === 1) { singleNeedsArray = true; }
+					if (significantKids === 1) { singleNeedsArray = true; }
 				}
 			} else if (c.kind === NodeKind.JSXExpressionContainer) {
 				// An ARROW child crosses raw — flow components (For/Show) declare
@@ -259,7 +263,7 @@ export macro element(node: Node): Node {
 						callee: { kind: NodeKind.Identifier, line: c.line, column: c.column, name: "dynText" },
 						arguments: [{ kind: NodeKind.ArrowFunction, line: c.line, column: c.column, arrowParams: [], arrowParamTypes: [], arrowBody: ex, arrowFlags: "", arrowReturnType: "" }],
 					});
-					if (node.jsxChildren.length === 1) { singleNeedsArray = true; }
+					if (significantKids === 1) { singleNeedsArray = true; }
 				}
 			} else if (c.kind === NodeKind.JSXElement) {
 				// The component vocabulary (View/Text/Pressable/TextInput) mounts
@@ -273,7 +277,7 @@ export macro element(node: Node): Node {
 				// gated on the converter registry matching array targets exactly.
 				const t = node.jsxTag;
 				const isStarterTag = t === "View" || t === "Text" || t === "Pressable" || t === "TextInput";
-				if (isStarterTag && node.jsxChildren.length === 1) {
+				if (isStarterTag && significantKids === 1) {
 					compKids.push({
 						kind: NodeKind.MacroInvocation, line: c.line, column: c.column,
 						macroName: "element", macroArgs: [c],

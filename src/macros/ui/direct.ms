@@ -258,6 +258,10 @@ export macro direct(node: Node): Node {
 		// Children rules mirror element.ms exactly — the two macros stay in lockstep.
 		let compKids: Node[] = [];
 		let singleNeedsArray = false;
+		let significantKids = 0;
+		for (const c of node.jsxChildren) {
+			if (!(c.kind === NodeKind.JSXText && cleanJsxText(c.jsxText) === "")) { significantKids = significantKids + 1; }
+		}
 		for (const c of node.jsxChildren) {
 			if (c.kind === NodeKind.JSXText) {
 				const cleaned = cleanJsxText(c.jsxText);
@@ -267,7 +271,7 @@ export macro direct(node: Node): Node {
 						callee: { kind: NodeKind.Identifier, line: c.line, column: c.column, name: "text" },
 						arguments: [{ kind: NodeKind.StringLiteral, line: c.line, column: c.column, value: cleaned }],
 					});
-					if (node.jsxChildren.length === 1) { singleNeedsArray = true; }
+					if (significantKids === 1) { singleNeedsArray = true; }
 				}
 			} else if (c.kind === NodeKind.JSXExpressionContainer) {
 				const ex = c.jsxExpr;
@@ -279,12 +283,12 @@ export macro direct(node: Node): Node {
 						callee: { kind: NodeKind.Identifier, line: c.line, column: c.column, name: "dynText" },
 						arguments: [{ kind: NodeKind.ArrowFunction, line: c.line, column: c.column, arrowParams: [], arrowParamTypes: [], arrowBody: ex, arrowFlags: "", arrowReturnType: "" }],
 					});
-					if (node.jsxChildren.length === 1) { singleNeedsArray = true; }
+					if (significantKids === 1) { singleNeedsArray = true; }
 				}
 			} else if (c.kind === NodeKind.JSXElement) {
 				const t = node.jsxTag;
 				const isStarterTag = t === "View" || t === "Text" || t === "Pressable" || t === "TextInput";
-				if (isStarterTag && node.jsxChildren.length === 1) {
+				if (isStarterTag && significantKids === 1) {
 					compKids.push({
 						kind: NodeKind.MacroInvocation, line: c.line, column: c.column,
 						macroName: "element", macroArgs: [c],
@@ -899,6 +903,10 @@ export macro direct(node: Node): Node {
 				}
 				let cKids: Node[] = [];
 				let cNeedsArray = false;
+				let cSignificant = 0;
+				for (const gc of c.jsxChildren) {
+					if (!(gc.kind === NodeKind.JSXText && cleanJsxText(gc.jsxText) === "")) { cSignificant = cSignificant + 1; }
+				}
 				for (const gc of c.jsxChildren) {
 					if (gc.kind === NodeKind.JSXText) {
 						const gcleaned = cleanJsxText(gc.jsxText);
@@ -908,7 +916,7 @@ export macro direct(node: Node): Node {
 								callee: { kind: NodeKind.Identifier, line: gc.line, column: gc.column, name: "text" },
 								arguments: [{ kind: NodeKind.StringLiteral, line: gc.line, column: gc.column, value: gcleaned }],
 							});
-							if (c.jsxChildren.length === 1) { cNeedsArray = true; }
+							if (cSignificant === 1) { cNeedsArray = true; }
 						}
 					} else if (gc.kind === NodeKind.JSXExpressionContainer) {
 						const gex = gc.jsxExpr;
@@ -920,12 +928,12 @@ export macro direct(node: Node): Node {
 								callee: { kind: NodeKind.Identifier, line: gc.line, column: gc.column, name: "dynText" },
 								arguments: [{ kind: NodeKind.ArrowFunction, line: gc.line, column: gc.column, arrowParams: [], arrowParamTypes: [], arrowBody: gex, arrowFlags: "", arrowReturnType: "" }],
 							});
-							if (c.jsxChildren.length === 1) { cNeedsArray = true; }
+							if (cSignificant === 1) { cNeedsArray = true; }
 						}
 					} else if (gc.kind === NodeKind.JSXElement) {
 						const ct = c.jsxTag;
 						const cIsStarter = ct === "View" || ct === "Text" || ct === "Pressable" || ct === "TextInput";
-						if (cIsStarter && c.jsxChildren.length === 1) {
+						if (cIsStarter && cSignificant === 1) {
 							cKids.push({
 								kind: NodeKind.MacroInvocation, line: gc.line, column: gc.column,
 								macroName: "element", macroArgs: [gc],
