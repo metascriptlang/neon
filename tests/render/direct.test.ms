@@ -1080,3 +1080,114 @@ test "whitespace around a NeonNode-children component's single element child pas
 	assert mockToString(treeRoot) === mockToString(directRoot), "tree=" + mockToString(treeRoot) + " direct=" + mockToString(directRoot);
 	assert mockToString(directRoot) === "<root><div><section title=\"t\"><p>a</p></section></div></root>", "golden: " + mockToString(directRoot);
 }
+
+// ---- Lát 0.11: a nullable-typed on*/ref/style attaches only when the value is present ----
+
+function optTemplate(h: ((e: NeonEvent) => void) | null, r: ((b: HostNode) => void) | null, s: Style | null, a: Accessor<Style> | null): (host: Host) => HostNode {
+	return direct(<div><button type="button" onPress={h} ref={r} style={s}>go</button><p style={a}>x</p></div>);
+}
+
+function optFlat(h: ((e: NeonEvent) => void) | null, r: ((b: HostNode) => void) | null, s: Style | null, a: Accessor<Style> | null): (host: Host) => HostNode {
+	return direct(<div><Gauge count={1} label="g" /><button type="button" onPress={h} ref={r} style={s}>go</button><p style={a}>x</p></div>);
+}
+
+test "null on*/ref/style through direct attach nothing, like the bare element — template tier" {
+	const host = mockHost();
+	const treeRoot = mockNode("root");
+	const tv: NeonNode = element(<div><button type="button">go</button><p>x</p></div>);
+	renderToHost(tv, host, treeRoot as unknown as HostNode);
+
+	const directRoot = mockNode("root");
+	host.append(directRoot as unknown as HostNode, optTemplate(null, null, null, null)(host));
+
+	assert mockToString(treeRoot) === mockToString(directRoot), "markup: tree=" + mockToString(treeRoot) + " direct=" + mockToString(directRoot);
+	assert mockToString(directRoot) === "<root><div><button type=\"button\">go</button><p>x</p></div></root>", "golden: " + mockToString(directRoot);
+	const btn = (directRoot as MockNode).children[0].children[0];
+	assert btn.events.length === 0, "no listener for a null handler: " + btn.events.length.toString();
+	assert cssAt((directRoot as MockNode).children[0], 0) === "(none)", "no style for a null Style: " + cssAt((directRoot as MockNode).children[0], 0);
+	assert cssAt((directRoot as MockNode).children[0], 1) === "(none)", "no style for a null accessor: " + cssAt((directRoot as MockNode).children[0], 1);
+}
+
+test "present on*/ref/style through a nullable type behave like tree — template tier" {
+	const [pad, setPad] = createSignal<number>(3);
+	let treeHits = 0;
+	let directHits = 0;
+	let treeSeen = "";
+	let directSeen = "";
+	const treeBump: (e: NeonEvent) => void = () => { treeHits = treeHits + 1; };
+	const directBump: (e: NeonEvent) => void = () => { directHits = directHits + 1; };
+	const treeGrab: (b: HostNode) => void = (b) => { treeSeen = mockToString(b as unknown as MockNode); };
+	const directGrab: (b: HostNode) => void = (b) => { directSeen = mockToString(b as unknown as MockNode); };
+	const fixed: Style = { margin: 2 };
+	const live = accessor((): Style => { const st: Style = { padding: pad() }; return st; });
+	const host = mockHost();
+
+	const treeRoot = mockNode("root");
+	const tv: NeonNode = element(<div><button type="button" onPress={treeBump} ref={treeGrab} style={fixed}>go</button><p style={live}>x</p></div>);
+	renderToHost(tv, host, treeRoot as unknown as HostNode);
+
+	const directRoot = mockNode("root");
+	host.append(directRoot as unknown as HostNode, optTemplate(directBump, directGrab, fixed, live)(host));
+
+	const tDiv = (treeRoot as MockNode).children[0];
+	const dDiv = (directRoot as MockNode).children[0];
+	assert mockToString(treeRoot) === mockToString(directRoot), "markup: tree=" + mockToString(treeRoot) + " direct=" + mockToString(directRoot);
+	assert directSeen === treeSeen && directSeen === "<button type=\"button\">go</button>", "ref saw the finished node: tree=" + treeSeen + " direct=" + directSeen;
+	fireEvent(tDiv.children[0], "onPress");
+	fireEvent(dDiv.children[0], "onPress");
+	assert treeHits === 1 && directHits === 1, "one hit each: tree=" + treeHits.toString() + " direct=" + directHits.toString();
+	assert cssAt(tDiv, 0) === cssAt(dDiv, 0) && cssAt(dDiv, 0) === "margin:2px;", "static style: tree=" + cssAt(tDiv, 0) + " direct=" + cssAt(dDiv, 0);
+	assert cssAt(tDiv, 1) === cssAt(dDiv, 1) && cssAt(dDiv, 1) === "padding:3px;", "accessor style: tree=" + cssAt(tDiv, 1) + " direct=" + cssAt(dDiv, 1);
+	setPad(8);
+	assert cssAt(tDiv, 1) === cssAt(dDiv, 1) && cssAt(dDiv, 1) === "padding:8px;", "accessor style after set: tree=" + cssAt(tDiv, 1) + " direct=" + cssAt(dDiv, 1);
+}
+
+test "null on*/ref/style through direct attach nothing — flat tier" {
+	const host = mockHost();
+	const treeRoot = mockNode("root");
+	const tv: NeonNode = element(<div><Gauge count={1} label="g" /><button type="button">go</button><p>x</p></div>);
+	renderToHost(tv, host, treeRoot as unknown as HostNode);
+
+	const directRoot = mockNode("root");
+	host.append(directRoot as unknown as HostNode, optFlat(null, null, null, null)(host));
+
+	assert mockToString(treeRoot) === mockToString(directRoot), "markup: tree=" + mockToString(treeRoot) + " direct=" + mockToString(directRoot);
+	assert mockToString(directRoot) === "<root><div><p class=\"g\">n=1</p><button type=\"button\">go</button><p>x</p></div></root>", "golden: " + mockToString(directRoot);
+	const dDiv = (directRoot as MockNode).children[0];
+	assert dDiv.children[1].events.length === 0, "no listener for a null handler: " + dDiv.children[1].events.length.toString();
+	assert cssAt(dDiv, 1) === "(none)" && cssAt(dDiv, 2) === "(none)", "no style: " + cssAt(dDiv, 1) + " / " + cssAt(dDiv, 2);
+}
+
+test "present on*/ref/style through a nullable type behave like tree — flat tier" {
+	const [pad, setPad] = createSignal<number>(3);
+	let treeHits = 0;
+	let directHits = 0;
+	let treeSeen = "";
+	let directSeen = "";
+	const treeBump: (e: NeonEvent) => void = () => { treeHits = treeHits + 1; };
+	const directBump: (e: NeonEvent) => void = () => { directHits = directHits + 1; };
+	const treeGrab: (b: HostNode) => void = (b) => { treeSeen = mockToString(b as unknown as MockNode); };
+	const directGrab: (b: HostNode) => void = (b) => { directSeen = mockToString(b as unknown as MockNode); };
+	const fixed: Style = { margin: 2 };
+	const live = accessor((): Style => { const st: Style = { padding: pad() }; return st; });
+	const host = mockHost();
+
+	const treeRoot = mockNode("root");
+	const tv: NeonNode = element(<div><Gauge count={1} label="g" /><button type="button" onPress={treeBump} ref={treeGrab} style={fixed}>go</button><p style={live}>x</p></div>);
+	renderToHost(tv, host, treeRoot as unknown as HostNode);
+
+	const directRoot = mockNode("root");
+	host.append(directRoot as unknown as HostNode, optFlat(directBump, directGrab, fixed, live)(host));
+
+	const tDiv = (treeRoot as MockNode).children[0];
+	const dDiv = (directRoot as MockNode).children[0];
+	assert mockToString(treeRoot) === mockToString(directRoot), "markup: tree=" + mockToString(treeRoot) + " direct=" + mockToString(directRoot);
+	assert directSeen === treeSeen && directSeen === "<button type=\"button\">go</button>", "ref saw the finished node: tree=" + treeSeen + " direct=" + directSeen;
+	fireEvent(tDiv.children[1], "onPress");
+	fireEvent(dDiv.children[1], "onPress");
+	assert treeHits === 1 && directHits === 1, "one hit each: tree=" + treeHits.toString() + " direct=" + directHits.toString();
+	assert cssAt(tDiv, 1) === cssAt(dDiv, 1) && cssAt(dDiv, 1) === "margin:2px;", "static style: tree=" + cssAt(tDiv, 1) + " direct=" + cssAt(dDiv, 1);
+	assert cssAt(tDiv, 2) === cssAt(dDiv, 2) && cssAt(dDiv, 2) === "padding:3px;", "accessor style: tree=" + cssAt(tDiv, 2) + " direct=" + cssAt(dDiv, 2);
+	setPad(8);
+	assert cssAt(tDiv, 2) === cssAt(dDiv, 2) && cssAt(dDiv, 2) === "padding:8px;", "accessor style after set: tree=" + cssAt(tDiv, 2) + " direct=" + cssAt(dDiv, 2);
+}
