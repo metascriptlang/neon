@@ -25,15 +25,108 @@
 
 import { Node, NodeKind, DeclKind, NodeFlag } from "std/meta";
 import { cleanJsxText } from "./element";
-import { isReactiveExpr, findSpreadAttr, findFragment, isRawPropValue, peelHidden } from "./reactive";
+import { isReactiveExpr, findFragment, isRawPropValue, peelHidden } from "./reactive";
 
 export macro direct(node: Node): Node {
 	const L = node.line;
 	const C = node.column;
-	const spread = findSpreadAttr(node);
-	if (spread !== null) { error("spread attributes are not supported yet: pass each prop by name", spread as Node); }
 	function kidsOf(n: Node): Node[] {
 		return n.kind === NodeKind.JSXFragment ? n.jsxFragChildren : n.jsxChildren;
+	}
+	function peelTypeRef(t: Node): Node {
+		let cur = t;
+		while (cur.kind === NodeKind.TypeGeneric) {
+			const b = cur.typExprBase;
+			if (b.kind !== NodeKind.Identifier) { return cur; }
+			if (b.name !== "Ref" && b.name !== "Borrow" && b.name !== "Cursor" && b.name !== "Lent") { return cur; }
+			if (cur.typExprArgs.length !== 1) { return cur; }
+			cur = cur.typExprArgs[0];
+		}
+		return cur;
+	}
+	function isAccessorType(t: Node): boolean {
+		if (t.kind !== NodeKind.TypeGeneric) { return false; }
+		const b = t.typExprBase;
+		return b.kind === NodeKind.Identifier && b.name === "Accessor";
+	}
+	function unionHasNull(t: Node): boolean {
+		if (t.kind !== NodeKind.TypeUnion) { return false; }
+		for (const m of t.typExprMembers) {
+			if (m.kind === NodeKind.Identifier && m.name === "null") { return true; }
+		}
+		return false;
+	}
+	function clonePath(e: Node): Node | null {
+		const p = peelHidden(e);
+		if (p.kind === NodeKind.Identifier) {
+			return { kind: NodeKind.Identifier, line: p.line, column: p.column, name: p.name };
+		}
+		if (p.kind === NodeKind.MemberExpr) {
+			const base = clonePath(p.object);
+			if (base === null) { return null; }
+			return { kind: NodeKind.MemberExpr, line: p.line, column: p.column, object: base as Node, property: p.property, isOptional: false };
+		}
+		return null;
+	}
+	function expandAttrs(list: Node[]): Node[] {
+		let names: string[] = [];
+		let out: Node[] = [];
+		for (const a of list) {
+			if (a.kind === NodeKind.JSXAttribute) {
+				let at = -1;
+				for (let i = 0; i < names.length; i = i + 1) { if (names[i] === a.jsxAttrName) { at = i; } }
+				if (at >= 0) { out[at] = a; } else { names.push(a.jsxAttrName); out.push(a); }
+				continue;
+			}
+			if (a.kind !== NodeKind.JSXSpreadAttribute) { continue; }
+			const arg = a.jsxSpreadArg;
+			const argType = arg.nodeType;
+			if (argType === null) {
+				error("a spread needs a typed object: annotate the value being spread", a as Node);
+				continue;
+			}
+			const t = peelTypeRef(argType as Node);
+			if (t.kind !== NodeKind.TypeObject || t.typExprFieldNames.length === 0) {
+				error("a spread needs an object type with named fields — a map or an index signature has no names to read at compile time", a as Node);
+				continue;
+			}
+			if (clonePath(arg) === null) {
+				error("a spread needs a variable or a field, not an expression: it is read once per prop", a as Node);
+				continue;
+			}
+			for (let i = 0; i < t.typExprFieldNames.length; i = i + 1) {
+				const fname = t.typExprFieldNames[i];
+				const ftype = t.typExprFieldTypes[i];
+				if (fname === "children") {
+					error("children cannot come from a spread: pass it as a child of the element", a as Node);
+					continue;
+				}
+				const isEvent = fname.startsWith("on") && fname.charAt(2) >= "A" && fname.charAt(2) <= "Z";
+				if (isEvent && unionHasNull(ftype)) {
+					error("a nullable " + fname + " handler is not supported yet: give the prop a non-null handler", a as Node);
+					continue;
+				}
+				if (fname === "style" && unionHasNull(ftype)) {
+					error("a nullable style is not supported yet: pass an empty style instead of null", a as Node);
+					continue;
+				}
+				let value: Node = {
+					kind: NodeKind.MemberExpr, line: a.line, column: a.column,
+					object: clonePath(arg) as Node, property: fname, isOptional: false,
+				};
+				if (isAccessorType(ftype)) {
+					value = { kind: NodeKind.CallExpr, line: a.line, column: a.column, callee: value, arguments: [] };
+				}
+				const attrNode: Node = {
+					kind: NodeKind.JSXAttribute, line: a.line, column: a.column,
+					jsxAttrName: fname, jsxAttrValue: value,
+				};
+				let at = -1;
+				for (let j = 0; j < names.length; j = j + 1) { if (names[j] === fname) { at = j; } }
+				if (at >= 0) { out[at] = attrNode; } else { names.push(fname); out.push(attrNode); }
+			}
+		}
+		return out;
 	}
 	function flattenFragments(n: Node): Node {
 		let out: Node[] = [];
@@ -49,7 +142,7 @@ export macro direct(node: Node): Node {
 		if (n.kind === NodeKind.JSXFragment) {
 			return { kind: NodeKind.JSXFragment, line: n.line, column: n.column, jsxFragChildren: out };
 		}
-		return { kind: NodeKind.JSXElement, line: n.line, column: n.column, jsxTag: n.jsxTag, jsxAttrs: n.jsxAttrs, jsxChildren: out, jsxSelfClosing: n.jsxSelfClosing };
+		return { kind: NodeKind.JSXElement, line: n.line, column: n.column, jsxTag: n.jsxTag, jsxAttrs: expandAttrs(n.jsxAttrs), jsxChildren: out, jsxSelfClosing: n.jsxSelfClosing };
 	}
 	function isAccessorTyped(n: Node): boolean {
 		const t = peelHidden(n).nodeType;
