@@ -61,6 +61,47 @@ export macro direct(node: Node): Node {
 	}
 	let styleErrNodes: Node[] = [];
 	let styleErrMsgs: string[] = [];
+	let optIdx = 0;
+	function presentKind(n: Node): string {
+		const t = peelHidden(n).nodeType;
+		if (t === null || t.kind !== NodeKind.TypeUnion) { return ""; }
+		let hasNull = false;
+		let kind = "value";
+		for (const m of t.typExprMembers) {
+			if (m.kind === NodeKind.Identifier && m.name === "null") { hasNull = true; }
+			if (m.kind === NodeKind.TypeGeneric) {
+				const base = m.typExprBase;
+				if (base.kind === NodeKind.Identifier && base.name === "Accessor") { kind = "accessor"; }
+			}
+		}
+		return hasNull ? kind : "";
+	}
+	function pushWhenPresent(into: Node[], callee: Node, lead: Node[], value: Node, ln: int32, col: int32): void {
+		const name = "_o" + optIdx.toString();
+		optIdx = optIdx + 1;
+		const args: Node[] = [];
+		for (const l of lead) { args.push(l); }
+		args.push({ kind: NodeKind.Identifier, line: ln, column: col, name: name });
+		into.push({
+			kind: NodeKind.VariableDecl, line: ln, column: col,
+			declName: name, declType: "", declKind: DeclKind.Const,
+			initializer: value,
+		});
+		into.push({
+			kind: NodeKind.IfStmt, line: ln, column: col,
+			condition: {
+				kind: NodeKind.BinaryExpr, line: ln, column: col, operator: "!==",
+				left: { kind: NodeKind.Identifier, line: ln, column: col, name: name },
+				right: { kind: NodeKind.NullLiteral, line: ln, column: col },
+			},
+			consequent: {
+				kind: NodeKind.BlockStmt, line: ln, column: col,
+				statements: [{ kind: NodeKind.ExprStmt, line: ln, column: col, expr: { kind: NodeKind.CallExpr, line: ln, column: col, callee: callee, arguments: args } }],
+			},
+			alternate: { kind: NodeKind.BlockStmt, line: ln, column: col, statements: [] },
+		});
+	}
+	const optChangeTextMsg = "a nullable onChangeText handler is not supported yet — pass a handler that is always present";
 	function pushStyleConst(into: Node[], init: Node, nodeVar: string, tempName: string, ln: int32, col: int32): void {
 		into.push({
 			kind: NodeKind.VariableDecl, line: ln, column: col,
@@ -479,6 +520,8 @@ export macro direct(node: Node): Node {
 						} else if (sv.kind === NodeKind.ArrayLiteral) {
 							pushStyleLayers(wStmts, sv, elVar, "_ts" + tsIdx.toString(), a.line, a.column);
 							tsIdx = tsIdx + 1;
+						} else if (!isReactiveExpr(sv) && presentKind(sv) !== "") {
+							pushWhenPresent(wStmts, ident(presentKind(sv) === "accessor" ? "bindStyleAll" : "applyStaticStyle", a.line, a.column), [ident("host", a.line, a.column), ident(elVar, a.line, a.column)], sv, a.line, a.column);
 						} else if (isReactiveExpr(sv) || isAccessorTyped(sv)) {
 							wStmts.push({
 								kind: NodeKind.ExprStmt, line: a.line, column: a.column,
@@ -512,6 +555,13 @@ export macro direct(node: Node): Node {
 									arguments: [ident("host", a.line, a.column), ident(elVar, a.line, a.column), ident(sName, a.line, a.column)],
 								},
 							});
+						}
+					} else if (a.jsxAttrName.startsWith("on") && presentKind(a.jsxAttrValue) !== "") {
+						if (a.jsxAttrName === "onChangeText") {
+							styleErrNodes.push(a.jsxAttrValue);
+							styleErrMsgs.push(optChangeTextMsg);
+						} else {
+							pushWhenPresent(wStmts, { kind: NodeKind.MemberExpr, line: a.line, column: a.column, object: ident("host", a.line, a.column), property: "addEvent", isOptional: false }, [ident(elVar, a.line, a.column), strLit(a.jsxAttrName, a.line, a.column)], a.jsxAttrValue, a.line, a.column);
 						}
 					} else if (a.jsxAttrName.startsWith("on")) {
 						// onChangeText text-unwrap — mirrors element.ms, see the comment there.
@@ -619,7 +669,9 @@ export macro direct(node: Node): Node {
 				slot = slot + 1;
 			}
 
-			if (wRef !== null) {
+			if (wRef !== null && presentKind(wRef as Node) !== "") {
+				pushWhenPresent(wStmts, ident("applyRef", el.line, el.column), [ident(elVar, el.line, el.column)], wRef as Node, el.line, el.column);
+			} else if (wRef !== null) {
 				wStmts.push({
 					kind: NodeKind.ExprStmt, line: el.line, column: el.column,
 					expr: {
@@ -712,6 +764,10 @@ export macro direct(node: Node): Node {
 						sIdx = sIdx + 1;
 						continue;
 					}
+					if (!isReactiveExpr(sv) && presentKind(sv) !== "") {
+						pushWhenPresent(stmts, { kind: NodeKind.Identifier, line: a.line, column: a.column, name: presentKind(sv) === "accessor" ? "bindStyleAll" : "applyStaticStyle" }, [{ kind: NodeKind.Identifier, line: a.line, column: a.column, name: "host" }, { kind: NodeKind.Identifier, line: a.line, column: a.column, name: rName }], sv, a.line, a.column);
+						continue;
+					}
 					if (isReactiveExpr(sv) || isAccessorTyped(sv)) {
 						stmts.push({
 							kind: NodeKind.ExprStmt, line: a.line, column: a.column,
@@ -755,7 +811,14 @@ export macro direct(node: Node): Node {
 					continue;
 				}
 				const nameLit: Node = { kind: NodeKind.StringLiteral, line: a.line, column: a.column, value: a.jsxAttrName };
-				if (a.jsxAttrName.startsWith("on")) {
+				if (a.jsxAttrName.startsWith("on") && presentKind(a.jsxAttrValue) !== "") {
+					if (a.jsxAttrName === "onChangeText") {
+						styleErrNodes.push(a.jsxAttrValue);
+						styleErrMsgs.push(optChangeTextMsg);
+					} else {
+						pushWhenPresent(stmts, { kind: NodeKind.MemberExpr, line: a.line, column: a.column, object: { kind: NodeKind.Identifier, line: a.line, column: a.column, name: "host" }, property: "addEvent", isOptional: false }, [{ kind: NodeKind.Identifier, line: a.line, column: a.column, name: rName }, nameLit], a.jsxAttrValue, a.line, a.column);
+					}
+				} else if (a.jsxAttrName.startsWith("on")) {
 					// onChangeText text-unwrap — mirrors element.ms, see the comment there.
 					let hVal: Node = a.jsxAttrValue;
 					if (a.jsxAttrName === "onChangeText") {
@@ -1007,7 +1070,9 @@ export macro direct(node: Node): Node {
 			}
 		}
 
-		if (refFor !== null) {
+		if (refFor !== null && presentKind(refFor as Node) !== "") {
+			pushWhenPresent(stmts, { kind: NodeKind.Identifier, line: el.line, column: el.column, name: "applyRef" }, [{ kind: NodeKind.Identifier, line: el.line, column: el.column, name: rName }], refFor as Node, el.line, el.column);
+		} else if (refFor !== null) {
 			stmts.push({
 				kind: NodeKind.ExprStmt, line: el.line, column: el.column,
 				expr: {
