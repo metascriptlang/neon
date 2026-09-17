@@ -5,9 +5,10 @@
 import { createSignal, accessor, Accessor } from "../../src/core/signal";
 import { element } from "../../src/macros/ui/element";
 import { direct } from "../../src/macros/ui/direct";
-import { NeonNode, renderToString } from "../../src/render/node";
-import { HostNode, MockNode, mockNode, mockHost, renderToHost, mockToString } from "../../src/render/host";
+import { NeonNode, renderToString, el, text } from "../../src/render/node";
+import { Host, HostNode, MockNode, NeonView, mockNode, mockHost, renderToHost, viewOf, mountView, mockToString } from "../../src/render/host";
 import { createContext, useContext } from "../../src/render/context";
+import { For, Index } from "../../src/macros/ui/flow";
 
 interface Theme { accent: string; }
 
@@ -123,4 +124,61 @@ test "a signal inside the value keeps the consumer reactive" {
 	assert mockToString(root) === "<root><div>blue</div></root>", "initial read: " + mockToString(root);
 	setAccent("green");
 	assert mockToString(root) === "<root><div>green</div></root>", "signal change reached the consumer: " + mockToString(root);
+}
+
+test "a For row reads the provider above the list" {
+	const T = createContext<Theme>({ accent: "red" });
+	const [items, setItems] = createSignal<number[]>([1]);
+	const root: MockNode = mockNode("root");
+	const app: NeonNode = T.Provider({
+		value: accessor((): Theme => ({ accent: "blue" })),
+		children: el("ul", [], [], [
+			For<number>({
+				each: () => items(),
+				children: (n: number, i: Accessor<number>): NeonView => viewOf(el("li", [], [], [text(useContext(T).accent + n.toString())])),
+			}),
+		]),
+	});
+	renderToHost(app, mockHost(), root as unknown as HostNode);
+	assert mockToString(root) === "<root><ul><li>blue1</li></ul></root>", "first row saw the provider: " + mockToString(root);
+	setItems([1, 2]);
+	assert mockToString(root) === "<root><ul><li>blue1</li><li>blue2</li></ul></root>", "a row added later saw the provider: " + mockToString(root);
+}
+
+test "an Index row reads the provider above the list" {
+	const T = createContext<Theme>({ accent: "red" });
+	const [items, setItems] = createSignal<number[]>([1, 2]);
+	const root: MockNode = mockNode("root");
+	const app: NeonNode = T.Provider({
+		value: accessor((): Theme => ({ accent: "blue" })),
+		children: el("ul", [], [], [
+			Index<number>({
+				each: () => items(),
+				children: (n: Accessor<number>, i: number): NeonView => viewOf(el("li", [], [], [text(useContext(T).accent + n().toString())])),
+			}),
+		]),
+	});
+	renderToHost(app, mockHost(), root as unknown as HostNode);
+	assert mockToString(root) === "<root><ul><li>blue1</li><li>blue2</li></ul></root>", "every row saw the provider: " + mockToString(root);
+}
+
+test "a For fallback reads the provider above the list" {
+	const T = createContext<Theme>({ accent: "red" });
+	const [items, setItems] = createSignal<number[]>([]);
+	const root: MockNode = mockNode("root");
+	const app: NeonNode = T.Provider({
+		value: accessor((): Theme => ({ accent: "blue" })),
+		children: el("ul", [], [], [
+			For<number>({
+				each: () => items(),
+				children: (n: number, i: Accessor<number>): NeonView => viewOf(el("li", [], [], [text(n.toString())])),
+				fallback: ((h: Host): HostNode => mountView(viewOf(el("li", [], [], [text(useContext(T).accent)])), h)) as NeonView,
+			}),
+		]),
+	});
+	renderToHost(app, mockHost(), root as unknown as HostNode);
+	assert mockToString(root) === "<root><ul><li>blue</li></ul></root>", "fallback saw the provider: " + mockToString(root);
+	setItems([7]);
+	setItems([]);
+	assert mockToString(root) === "<root><ul><li>blue</li></ul></root>", "a rebuilt fallback saw the provider: " + mockToString(root);
 }

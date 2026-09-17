@@ -2,6 +2,8 @@ import { createSignal } from "../../src/core/signal";
 import { createEffect } from "../../src/core/effect";
 import { onCleanup } from "../../src/core/cleanup";
 import { createRoot } from "../../src/core/owner";
+import { getOwner } from "../../src/core/runtime";
+import { Computation } from "../../src/core/types";
 
 test "effect re-tracks and re-runs on signal change" {
 	const [count, setCount] = createSignal(0);
@@ -60,4 +62,45 @@ test "createRoot disposal cascades to owned effects" {
 	disposers[0]();
 	setTick(2);
 	assert innerRuns === 2, "owned effect disposed via root cascade";
+}
+
+test "a nested createRoot keeps the owner it was created under" {
+	createRoot((outerDispose) => {
+		const outer = getOwner();
+		let seen: Computation | null = null;
+		createRoot((innerDispose) => {
+			const inner = getOwner() as Computation;
+			seen = inner.owner;
+			innerDispose();
+		});
+		assert seen === outer, "the inner root points at the outer owner";
+		outerDispose();
+	});
+}
+
+test "a nested createRoot is not disposed with the owner it was created under" {
+	let cleaned = 0;
+	let disposeInner: (() => void) | null = null;
+	createRoot((outerDispose) => {
+		createRoot((innerDispose) => {
+			disposeInner = innerDispose;
+			onCleanup(() => { cleaned = cleaned + 1; });
+		});
+		outerDispose();
+	});
+	assert cleaned === 0, "disposing the outer owner left the inner root alive";
+	(disposeInner as () => void)();
+	assert cleaned === 1, "the inner root tears down through its own dispose";
+}
+
+test "disposing a root drops its owner link" {
+	createRoot((outerDispose) => {
+		let inner: Computation | null = null;
+		createRoot((innerDispose) => {
+			inner = getOwner();
+			innerDispose();
+		});
+		assert (inner as Computation).owner === null, "a disposed root no longer points at its owner";
+		outerDispose();
+	});
 }
