@@ -32,4 +32,8 @@ expect_reject tests/macros/reactiveLayerFieldMixedDirectRejected.ms "a reactive 
 expect_reject tests/macros/refLiteralRejected.ms "arg 1: got string, expected function"
 expect_reject tests/macros/refLiteralDirectRejected.ms "arg 1: got string, expected function"
 expect_reject tests/macros/refLiteralDirectRootRejected.ms "arg 1: got string, expected function"
+expect_reject tests/macros/reactiveLayerRejected.ms "a reactive style layer is not supported yet"
+expect_reject tests/macros/reactiveLayerDirectRejected.ms "a reactive style layer is not supported yet"
+expect_reject tests/macros/accessorLayerRejected.ms "a reactive style layer is not supported yet"
+expect_reject tests/macros/accessorLayerDirectRejected.ms "a reactive style layer is not supported yet"
 exit $fail
