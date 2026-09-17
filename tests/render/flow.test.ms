@@ -144,6 +144,28 @@ test "For fallback reactive scope is disposed when rows return" {
 	});
 }
 
+test "For fallback reactive scope is disposed with the list" {
+	const [label, setLabel] = createSignal("empty");
+	let fbRuns = 0;
+	createRoot((d) => {
+		const [items, setItems] = createSignal<number[]>([]);
+		const ul = el("ul", [], [], [
+			For<number>({
+				each: () => items(),
+				children: (item, i) => viewOf(el("li", [], [], [text("" + item)])),
+				fallback: viewOf(el("li", [], [], [dynText(() => { fbRuns = fbRuns + 1; return label(); })])),
+			}),
+		]);
+		const host = mockHost();
+		const root = host.createElement("root");
+		renderToHost(ul, host, root);
+		assert fbRuns === 1, "fallback effect ran once when empty";
+		d();
+	});
+	setLabel("after");
+	assert fbRuns === 1, "fallback effect disposed with the list that showed it";
+}
+
 test "an accessor feeds For.each directly and the row index is an Accessor" {
 	createRoot((d) => {
 		const [items, setItems] = createSignal<number[]>([7, 8]);
