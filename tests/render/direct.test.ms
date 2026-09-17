@@ -11,7 +11,7 @@ import { createComponent } from "../../src/render/component";
 import { Show, For } from "../../src/macros/ui/flow";
 import { renderToHost, renderNode, mockHost, mockNode, mockToString, fireEvent, fireEventWith, bindText, bindAttr, MockNode, Host, HostNode, NeonView, viewOf } from "../../src/render/host";
 import { createMemo } from "../../src/core/memo";
-import { Style } from "../../src/render/style";
+import { Style, layerStyles } from "../../src/render/style";
 import { styleToCss } from "../../src/render/css";
 import { createStyles, styleOf } from "../../src/macros/ui/style";
 import { createTemplate, mountTemplate, childOf, siblingOf } from "../../src/render/template";
@@ -986,4 +986,23 @@ test "{props.children} carrying a node with live text through direct tracks the 
 	assert mockToString(directRoot) === "<root><section title=\"t\"><p>hi an</p></section></root>", "golden: " + mockToString(directRoot);
 	setName("binh");
 	assert mockToString(directRoot) === "<root><section title=\"t\"><p>hi binh</p></section></root>", "golden after set: " + mockToString(directRoot);
+}
+
+// ---- Lát 0.8: a reactive layer is rejected; the escape hatch is a whole-style layerStyles call ----
+
+test "layerStyles over a reactive layer as a whole-style expression tracks the signal like tree" {
+	const [h, setH] = createSignal<number>(5);
+	const pick = (): Style => { const s: Style = { height: h() }; return s; };
+	const host = mockHost();
+	const treeRoot = mockNode("root");
+	const tv: NeonNode = element(<div style={layerStyles([layerSheet.box, pick()])}><p>a</p></div>);
+	renderToHost(tv, host, treeRoot as unknown as HostNode);
+	const directRoot = mockNode("root");
+	const mount = direct(<div style={layerStyles([layerSheet.box, pick()])}><p>a</p></div>);
+	host.append(directRoot as unknown as HostNode, mount(host));
+	assert cssAt(treeRoot, 0) === cssAt(directRoot, 0), "initial: tree=" + cssAt(treeRoot, 0) + " direct=" + cssAt(directRoot, 0);
+	assert cssAt(directRoot, 0) === "width:200px;height:5px;", "golden: " + cssAt(directRoot, 0);
+	setH(9);
+	assert cssAt(treeRoot, 0) === cssAt(directRoot, 0), "after set: tree=" + cssAt(treeRoot, 0) + " direct=" + cssAt(directRoot, 0);
+	assert cssAt(directRoot, 0) === "width:200px;height:9px;", "golden after set: " + cssAt(directRoot, 0);
 }
