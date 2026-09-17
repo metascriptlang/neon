@@ -38,4 +38,6 @@ expect_reject tests/macros/accessorLayerRejected.ms "a reactive style layer is n
 expect_reject tests/macros/accessorLayerDirectRejected.ms "a reactive style layer is not supported yet"
 expect_reject tests/macros/wsSingleExprChildRejected.ms "Type 'NeonNode\[\]' is not assignable to type 'NeonNode'"
 expect_reject tests/macros/wsSingleExprChildDirectRejected.ms "Type 'NeonNode\[\]' is not assignable to type 'NeonNode'"
+expect_reject tests/macros/optChangeTextDirectRejected.ms "a nullable onChangeText handler is not supported yet"
+expect_reject tests/macros/optChangeTextDirectFlatRejected.ms "a nullable onChangeText handler is not supported yet"
 exit $fail
