@@ -111,3 +111,62 @@ test "a named callback prop and ref cross raw at the direct root too" {
 	assert hits === 1, "named handler ran at the direct root, hits=" + hits.toString();
 	assert seenTag === "pressable", "named ref ran at the direct root, tag=" + seenTag;
 }
+
+test "ref fires before the site root is placed, on both emissions" {
+	const host = mockHost();
+	const treeRoot: MockNode = mockNode("root");
+	let treeKidsAtRef = -1;
+	const grabTree: (h: HostNode) => void = (h) => { treeKidsAtRef = treeRoot.children.length; };
+	renderToHost(element(<div ref={grabTree}><p>hi</p></div>), host, treeRoot as unknown as HostNode);
+
+	const directRoot: MockNode = mockNode("root");
+	let directKidsAtRef = -1;
+	const grabDirect: (h: HostNode) => void = (h) => { directKidsAtRef = directRoot.children.length; };
+	const mount = direct(<div ref={grabDirect}><p>hi</p></div>);
+	host.append(directRoot as unknown as HostNode, mount(host));
+
+	assert treeKidsAtRef === 0, "tree ref ran before the root was placed, kids=" + treeKidsAtRef.toString();
+	assert directKidsAtRef === 0, "direct ref ran before the root was placed, kids=" + directKidsAtRef.toString();
+}
+
+test "nested refs fire innermost first, each with its own children complete" {
+	const host = mockHost();
+	let treeOrder = "";
+	const treeRoot: MockNode = mockNode("root");
+	const outerTree: (h: HostNode) => void = (h) => { treeOrder = treeOrder + "outer" + (h as unknown as MockNode).children.length.toString(); };
+	const innerTree: (h: HostNode) => void = (h) => { treeOrder = treeOrder + "inner" + (h as unknown as MockNode).children.length.toString(); };
+	renderToHost(element(<div ref={outerTree}><p ref={innerTree}>hi</p></div>), host, treeRoot as unknown as HostNode);
+
+	let directOrder = "";
+	const directRoot: MockNode = mockNode("root");
+	const outerDirect: (h: HostNode) => void = (h) => { directOrder = directOrder + "outer" + (h as unknown as MockNode).children.length.toString(); };
+	const innerDirect: (h: HostNode) => void = (h) => { directOrder = directOrder + "inner" + (h as unknown as MockNode).children.length.toString(); };
+	const mount = direct(<div ref={outerDirect}><p ref={innerDirect}>hi</p></div>);
+	host.append(directRoot as unknown as HostNode, mount(host));
+
+	assert treeOrder === "inner1outer1", "tree order=" + treeOrder;
+	assert directOrder === "inner1outer1", "direct order=" + directOrder;
+}
+
+test "a nested ref sees its template parent on direct emission" {
+	const host = mockHost();
+	let treeParent = "?";
+	const treeRoot: MockNode = mockNode("root");
+	const grabTree: (h: HostNode) => void = (h) => {
+		const p = (h as unknown as MockNode).parent;
+		treeParent = p === null ? "<none>" : p.tag;
+	};
+	renderToHost(element(<div><p ref={grabTree}>hi</p></div>), host, treeRoot as unknown as HostNode);
+
+	let directParent = "?";
+	const directRoot: MockNode = mockNode("root");
+	const grabDirect: (h: HostNode) => void = (h) => {
+		const p = (h as unknown as MockNode).parent;
+		directParent = p === null ? "<none>" : p.tag;
+	};
+	const mount = direct(<div><p ref={grabDirect}>hi</p></div>);
+	host.append(directRoot as unknown as HostNode, mount(host));
+
+	assert directParent === "div", "direct nested ref sees its parent, parent=" + directParent;
+	assert treeParent === "<none>", "tree builds bottom-up: the child is not attached yet, parent=" + treeParent;
+}
