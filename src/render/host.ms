@@ -5,7 +5,7 @@
 import { createEffect } from "../core/effect";
 import { NeonNode, VAttr, VEvent, RegionFn, RefFn, ScopeFn, ComponentProducer, attr } from "./node";
 import { Style, StyleValue, emptyStyle, mergeStyle, setStyleField } from "./style";
-import { reconcileArrays } from "./reconcile";
+import { reconcileArrays, Range } from "./reconcile";
 import { Host, HostNode } from "./hostTypes";
 import { NeonEvent, neonEvent, eventType } from "./event";
 
@@ -195,11 +195,11 @@ function mountInto(vnode: NeonNode, host: Host, parent: HostNode): void {
 function mountRegion(vnode: NeonNode, host: Host, parent: HostNode): void {
 	const anchor = host.createText("");
 	host.append(parent, anchor);
-	let current: HostNode[] = [];
+	let current: Range[] = [];
 	const fn = vnode.region as RegionFn;
 	const memo = fn(host);
 	createEffect(() => {
-		const next = memo() as HostNode[];
+		const next = memo() as Range[];
 		reconcileArrays(host, parent, current, next, anchor);
 		current = next;
 	});

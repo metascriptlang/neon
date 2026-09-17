@@ -9,12 +9,13 @@ import { Accessor, untrack } from "../../core/signal";
 import { createRoot } from "../../core/owner";
 import { onCleanup } from "../../core/cleanup";
 import { NeonNode, regionNode } from "../../render/node";
-import { Host, HostNode, NeonView, mountView } from "../../render/host";
+import { Host, NeonView, mountView } from "../../render/host";
+import { Range, rangeOf } from "../../render/reconcile";
 
 // Wrap a row list with an empty-state fallback. The fallback lives in its own root and is
 // disposed the moment rows return (and rebuilt on the next empty), so it never leaks.
-function withFallback(mapped: () => HostNode[], fb: NeonView, host: Host): () => HostNode[] {
-	let fbNode: HostNode | null = null;
+function withFallback(mapped: () => Range[], fb: NeonView, host: Host): () => Range[] {
+	let fbNode: Range | null = null;
 	let fbDispose: (() => void) | null = null;
 	onCleanup(() => { if (fbDispose !== null) { fbDispose(); fbDispose = null; fbNode = null; } });
 	return () => {
@@ -24,7 +25,7 @@ function withFallback(mapped: () => HostNode[], fb: NeonView, host: Host): () =>
 			return rows;
 		}
 		if (fbNode === null) {
-			fbNode = createRoot((d) => { fbDispose = d; return mountView(fb, host); });
+			fbNode = createRoot((d) => { fbDispose = d; return rangeOf(mountView(fb, host)); });
 		}
 		return [fbNode];
 	};
@@ -38,7 +39,7 @@ export function For<T>(props: {
 }): NeonNode {
 	return regionNode((h) => {
 		const host = h as Host;
-		const mapped = mapArray<T, HostNode>(props.each, (item, idx) => mountView(props.children(item, idx), host));
+		const mapped = mapArray<T, Range>(props.each, (item, idx) => rangeOf(mountView(props.children(item, idx), host)));
 		const fb = props.fallback;
 		if (fb === null) { return mapped; }
 		return withFallback(mapped, fb as NeonView, host);
@@ -53,7 +54,7 @@ export function Index<T>(props: {
 }): NeonNode {
 	return regionNode((h) => {
 		const host = h as Host;
-		const mapped = indexArray<T, HostNode>(props.each, (item, idx) => mountView(props.children(item, idx), host));
+		const mapped = indexArray<T, Range>(props.each, (item, idx) => rangeOf(mountView(props.children(item, idx), host)));
 		const fb = props.fallback;
 		if (fb === null) { return mapped; }
 		return withFallback(mapped, fb as NeonView, host);
@@ -69,11 +70,11 @@ export function Show(props: {
 	return regionNode((h) => {
 		const host = h as Host;
 		const cond = createMemo(() => props.when(), (a, b) => a === b);
-		return createMemo<HostNode[]>(() => {
-			if (cond()) { return untrack(() => [mountView(props.children, host)]); }
+		return createMemo<Range[]>(() => {
+			if (cond()) { return untrack(() => [rangeOf(mountView(props.children, host))]); }
 			const fb = props.fallback;
-			if (fb !== null) { return untrack(() => [mountView(fb as NeonView, host)]); }
-			return [] as HostNode[];
+			if (fb !== null) { return untrack(() => [rangeOf(mountView(fb as NeonView, host))]); }
+			return [] as Range[];
 		});
 	});
 }

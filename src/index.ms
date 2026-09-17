@@ -16,7 +16,7 @@ export { NeonView, mountView, viewOf, renderNode, renderToHost } from "./render/
 export { createComponent } from "./render/component";
 export { Context, ProviderProps, createContext, useContext } from "./render/context";
 export { NeonEvent, neonEvent } from "./render/event";
-export { reconcileArrays } from "./render/reconcile";
+export { Range, rangeOf, moveRange, removeRange, reconcileArrays } from "./render/reconcile";
 
 export {
 	Style, StyleValue, FlexDirection, Justify, Align, PositionType, Wrap, Display,
