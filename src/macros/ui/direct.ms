@@ -18,7 +18,10 @@
 // those must be in scope at the call site. Attr classification mirrors
 // element.ms: string literal → setAttr once, on* → addEvent, any other expr →
 // one createEffect around setAttr (1 dynamic spot = 1 effect); a non-literal
-// style routes through host.setStyle with the same S4 field validation.
+// style splits by shape: object literal → static fields once + bindStyleProp
+// per reactive field, layer array → compile-time merge or layerStyles (a
+// reactive layer or field is rejected), reactive expr → bindStyleAll, anything
+// else → applyStaticStyle.
 
 import { Node, NodeKind, DeclKind, NodeFlag } from "std/meta";
 import { cleanJsxText } from "./element";
