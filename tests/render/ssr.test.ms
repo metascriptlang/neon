@@ -1,0 +1,153 @@
+import { createSignal, accessor, Accessor } from "../../src/core/signal";
+import { el, attr, dynAttr, text, dynText, withStyle, withDynStyleAll, fragmentNode, NeonNode, renderToString } from "../../src/render/node";
+import { renderToStringViaHost } from "../../src/render/ssr";
+import { createComponent } from "../../src/render/component";
+import { createContext, useContext } from "../../src/render/context";
+import { For, Index, Show } from "../../src/macros/ui/flow";
+import { viewOf } from "../../src/render/host";
+import { createStyles, styleOf } from "../../src/macros/ui/style";
+import { collectCss, resetCss } from "../../src/render/sheet";
+
+const sheet = createStyles({
+	box: { padding: 8, backgroundColor: "#334" },
+});
+
+function diff(n: NeonNode): string {
+	const viaWalk = renderToString(n);
+	const viaHost = renderToStringViaHost(n);
+	return viaHost === viaWalk ? "" : "walk=" + viaWalk + " host=" + viaHost;
+}
+
+test "the host path agrees with the description walker on plain markup" {
+	const empty = diff(el("div", [], [], []));
+	assert empty === "", "empty element: " + empty;
+	const attrText = diff(el("div", [attr("class", "box")], [], [text("hi")]));
+	assert attrText === "", "attr + text: " + attrText;
+	const nested = diff(el("ul", [], [], [el("li", [], [], [text("a")]), el("li", [], [], [text("b")])]));
+	assert nested === "", "nested: " + nested;
+	const wire = diff(el("view", [], [], [el("text", [], [], [text("x")])]));
+	assert wire === "", "wire tags become html tags: " + wire;
+	const bare = diff(text("bare text"));
+	assert bare === "", "a bare text root: " + bare;
+	const order = diff(el("input", [attr("value", "v"), attr("id", "i")], [], []));
+	assert order === "", "attribute order: " + order;
+}
+
+test "the host path agrees on reactive text and attributes" {
+	const [n, _setN] = createSignal(7);
+	const [cls, _setCls] = createSignal("on");
+	const dt = diff(el("p", [], [], [dynText(() => n().toString())]));
+	assert dt === "", "dyn text: " + dt;
+	const da = diff(el("p", [dynAttr("class", () => cls())], [], [text("hi")]));
+	assert da === "", "dyn attr: " + da;
+	const both = diff(el("p", [dynAttr("class", () => cls())], [], [dynText(() => n().toString())]));
+	assert both === "", "both: " + both;
+}
+
+test "the host path agrees on styles, inline and as a sheet class" {
+	const entry = diff(withStyle(el("div", [], [], []), sheet.box));
+	assert entry === "", "sheet entry: " + entry;
+	const beside = diff(withStyle(el("div", [attr("class", "outer")], [], []), sheet.box));
+	assert beside === "", "sheet entry beside a class attr: " + beside;
+	const whole = diff(withDynStyleAll(el("div", [], [], []), () => sheet.box));
+	assert whole === "", "whole-style thunk: " + whole;
+}
+
+test "the sheet collected by the host path is the sheet the walker collects" {
+	when (js) {
+		resetCss();
+		const walked = renderToString(withStyle(el("div", [], [], []), sheet.box));
+		const walkCss = collectCss();
+		resetCss();
+		const hosted = renderToStringViaHost(withStyle(el("div", [], [], []), sheet.box));
+		const hostCss = collectCss();
+		assert hosted === walked, "markup: walk=" + walked + " host=" + hosted;
+		assert hostCss === walkCss, "css: walk=" + walkCss + " host=" + hostCss;
+		assert walkCss !== "", "the entry produced a rule at all";
+	}
+}
+
+interface Skin { accent: string; }
+
+interface LabelProps {
+	label: Accessor<string>;
+}
+
+function Label(props: LabelProps): NeonNode {
+	return el("span", [], [], [dynText(() => props.label())]);
+}
+
+test "the host path agrees on components and context scopes" {
+	const child = diff(el("div", [], [], [createComponent(Label, { label: accessor(() => "hi") })]));
+	assert child === "", "component child: " + child;
+	const root = diff(createComponent(Label, { label: accessor(() => "root") }));
+	assert root === "", "component root: " + root;
+
+	const T = createContext<Skin>({ accent: "light" });
+	const scoped = diff(T.Provider({
+		value: accessor((): Skin => ({ accent: "dark" })),
+		children: el("div", [], [], [dynText(() => useContext(T).accent)]),
+	}));
+	assert scoped === "", "provider scope: " + scoped;
+}
+
+test "the host path agrees on fragments, which the walker also renders" {
+	const frag = diff(fragmentNode([el("i", [], [], [text("a")]), el("b", [], [], [text("b")])]));
+	assert frag === "", "fragment root: " + frag;
+	const none = diff(fragmentNode([] as NeonNode[]));
+	assert none === "", "empty fragment root: " + none;
+	const kid = diff(el("div", [], [], [fragmentNode([text("a"), text("b")])]));
+	assert kid === "", "fragment child: " + kid;
+}
+
+test "the host path renders regions the walker refuses" {
+	const [items, _setItems] = createSignal<number[]>([1, 2]);
+	const rows = el("ul", [], [], [
+		For<number>({ each: () => items(), children: (item, i) => viewOf(el("li", [], [], [text("" + item)])) }),
+	]);
+	assert renderToStringViaHost(rows) === "<ul><li>1</li><li>2</li></ul>", "For: " + renderToStringViaHost(rows);
+
+	const indexed = el("ul", [], [], [
+		Index<number>({ each: () => items(), children: (item, i) => viewOf(el("li", [], [], [dynText(() => item().toString())])) }),
+	]);
+	assert renderToStringViaHost(indexed) === "<ul><li>1</li><li>2</li></ul>", "Index: " + renderToStringViaHost(indexed);
+
+	const [on, _setOn] = createSignal(true);
+	const shown = el("div", [], [], [
+		Show({ when: () => on(), children: viewOf(el("span", [], [], [text("yes")])), fallback: viewOf(el("b", [], [], [text("no")])) }),
+	]);
+	assert renderToStringViaHost(shown) === "<div><span>yes</span></div>", "Show: " + renderToStringViaHost(shown);
+}
+
+test "the host path renders an empty list through its fallback" {
+	const [items, _setItems] = createSignal<number[]>([]);
+	const rows = el("ul", [], [], [
+		For<number>({
+			each: () => items(),
+			children: (item, i) => viewOf(el("li", [], [], [text("" + item)])),
+			fallback: viewOf(el("li", [], [], [text("empty")])),
+		}),
+	]);
+	assert renderToStringViaHost(rows) === "<ul><li>empty</li></ul>", "fallback: " + renderToStringViaHost(rows);
+}
+
+test "a region at the root of the render renders too" {
+	const [items, _setItems] = createSignal<number[]>([1, 2, 3]);
+	const rows = For<number>({ each: () => items(), children: (item, i) => viewOf(el("i", [], [], [text("" + item)])) });
+	assert renderToStringViaHost(rows) === "<i>1</i><i>2</i><i>3</i>", "root region: " + renderToStringViaHost(rows);
+}
+
+test "the shared SSR host carries nothing over between renders" {
+	const [items, setItems] = createSignal<number[]>([1]);
+	const rows = el("ul", [], [], [
+		For<number>({ each: () => items(), children: (item, i) => viewOf(el("li", [], [], [text("" + item)])) }),
+	]);
+	const first = renderToStringViaHost(rows);
+	const second = renderToStringViaHost(rows);
+	assert first === second, "same tree twice: first=" + first + " second=" + second;
+	setItems([1, 2]);
+	const third = renderToStringViaHost(rows);
+	assert third === "<ul><li>1</li><li>2</li></ul>", "a later render sees the current signal: " + third;
+	const plain = renderToStringViaHost(el("div", [], [], [text("x")]));
+	assert plain === "<div>x</div>", "an unrelated render is not polluted: " + plain;
+}
