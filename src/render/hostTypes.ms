@@ -3,6 +3,10 @@ import { NeonEvent } from "./event";
 
 export type HostNode = unknown;
 
+// What a JSX expression becomes on every target: a function that puts the nodes
+// it owns into `parent`, in front of `before`.
+export type NeonView = (host: Host, parent: HostNode, before: HostNode | null) => void;
+
 export interface Host {
 	createElement: (tag: string) => HostNode;
 	createText: (s: string) => HostNode;

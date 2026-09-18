@@ -23,7 +23,8 @@ export { VAttr, VEvent, RegionFn, ComponentFn, ComponentProducer, NeonNode, VDyn
 export { createComponent } from "./render/component";
 export { Accessor, accessor } from "./core/signal";
 export { Template, createTemplate, instantiate, mountTemplate, childOf, siblingOf } from "./render/template";
-export { renderNode, renderToHost, bindText, bindAttr, writeAttr, bindStyleAll, bindStyleProp, applyStaticStyle, mountChild, applyRef, NeonView, mountView, viewOf } from "./render/host";
+export { renderNode, renderToHost, mountInto, bindText, bindAttr, writeAttr, bindStyleAll, bindStyleProp, applyStaticStyle, mountChild, applyRef, NeonView, viewOf } from "./render/host";
+export { Row, makeRow, rowOf, place, mountAt, moveRow, removeRow, reconcileArrays } from "./render/reconcile";
 export { Host, HostNode } from "./render/hostTypes";
 export { Style, StyleValue, emptyStyle, mergeStyle, layerStyles } from "./render/style";
 
@@ -42,5 +43,5 @@ export converter jsxToNode(n: Node): NeonNode {
 }
 
 export function render(view: NeonView, host: Host, parent: HostNode): void {
-	host.append(parent, view(host));
+	view(host, parent, null);
 }

@@ -5,11 +5,11 @@
 import { createEffect } from "../core/effect";
 import { NeonNode, VAttr, VEvent, RegionFn, RefFn, ScopeFn, ComponentProducer, attr } from "./node";
 import { Style, StyleValue, emptyStyle, mergeStyle, setStyleField } from "./style";
-import { reconcileArrays, Range } from "./reconcile";
-import { Host, HostNode } from "./hostTypes";
+import { reconcileArrays, Row, place, needsStartMarker } from "./reconcile";
+import { Host, HostNode, NeonView } from "./hostTypes";
 import { NeonEvent, neonEvent, eventType } from "./event";
 
-export { Host, HostNode } from "./hostTypes";
+export { Host, HostNode, NeonView } from "./hostTypes";
 
 // A dynamic spot re-runs whenever a source signal changes, but a derived expression
 // often maps several source values onto the SAME output ("big"/"small", a formatted
@@ -84,20 +84,6 @@ export function bindStyleAll(host: Host, node: HostNode, get: () => Style): void
 
 // Build a single host node from a vnode (recursing into children). dynText binds a
 // push-effect; a region child mounts an anchor + reconcile effect into this node.
-// What a JSX expression becomes, on every target: the mount closure itself.
-// Everything that accepts JSX takes `NeonView` and mounts it through `mountView`,
-// so the row path in flow.ms is one line everywhere. Tree emission stays the
-// substrate underneath — the direct emitter calls renderNode for components and
-// regions, and `viewOf` adapts a description built by hand.
-export type NeonView = (host: Host) => HostNode;
-
-export function mountView(view: NeonView, host: Host): HostNode {
-	return view(host);
-}
-
-// Escape hatch for a description built by hand (`el(...)`, `element(...)`) where
-// a view is expected. Bare JSX never needs it — the converter already emits the
-// right shape.
 export function applyRef(node: HostNode, fn: RefFn): void {
 	fn(node);
 }
@@ -110,8 +96,11 @@ export function mountChild(host: Host, parent: HostNode, n: NeonNode): void {
 	mountInto(n, host, parent, null);
 }
 
+// Escape hatch for a description built by hand (`el(...)`, `element(...)`) where
+// a view is expected. Bare JSX never needs it — the converter already emits the
+// right shape.
 export function viewOf(node: NeonNode): NeonView {
-	return (host: Host) => renderNode(node, host);
+	return (host: Host, parent: HostNode, before: HostNode | null) => { mountInto(node, host, parent, before); };
 }
 
 export function renderNode(vnode: NeonNode, host: Host): HostNode {
@@ -187,19 +176,20 @@ export function mountInto(vnode: NeonNode, host: Host, parent: HostNode, before:
 		for (const k of kv.children) { mountInto(k, host, parent, before); }
 		return;
 	}
-	host.insertBefore(parent, renderNode(kv, host), before);
+	place(host, parent, renderNode(kv, host), before);
 }
 
 // A region owns the span before its end anchor. The effect re-runs when the region's
 // list source changes, reconciling host nodes between the start of the span and anchor.
 function mountRegion(vnode: NeonNode, host: Host, parent: HostNode, before: HostNode | null): void {
+	if (needsStartMarker(parent)) { place(host, parent, host.createText(""), before); }
 	const anchor = host.createText("");
-	host.insertBefore(parent, anchor, before);
-	let current: Range[] = [];
+	place(host, parent, anchor, before);
+	let current: Row[] = [];
 	const fn = vnode.region as RegionFn;
 	const memo = fn(host);
 	createEffect(() => {
-		const next = memo() as Range[];
+		const next = memo() as Row[];
 		reconcileArrays(host, parent, current, next, anchor);
 		current = next;
 	});

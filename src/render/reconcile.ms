@@ -1,25 +1,71 @@
-// DOM minimal-move list reconciler (udomdiff variant). Given the current row list
-// `a` and the incoming list `b` (a row is a Range of host nodes; both lists share
-// row identity for reused rows), it rearranges the host with the fewest
-// inserts/removes. `after` is the marker the region ends before (insertion anchor);
-// host ops do every mutation, so the same code drives the mock host and the browser
-// DOM.
+// Row list reconciler. A row is a span of host nodes plus the view that mounts it,
+// so a row that is not in the host yet is mounted at its final position instead of
+// being built somewhere else and moved in. Insertion targets come from the NEW
+// order — the start of the row currently occupying the slot, or the region anchor
+// (Svelte each.js `move(effect, current, anchor)`) — so a live row is never
+// detached; only a row absent from the next list is removed.
 
-import { Host, HostNode } from "./hostTypes";
+import { Host, HostNode, NeonView } from "./hostTypes";
+import { Computation } from "../core/types";
+import { getOwner } from "../core/runtime";
+import { runWithOwner } from "../core/owner";
+import { untrack } from "../core/signal";
 
-export interface Range {
-	start: HostNode;
-	end: HostNode;
+export interface Row {
+	view: NeonView;
+	owner: Computation | null;
+	parent: HostNode | null;
+	start: HostNode | null;
+	end: HostNode | null;
 }
 
-export function rangeOf(n: HostNode): Range {
-	return { start: n, end: n };
+function noView(host: Host, parent: HostNode, before: HostNode | null): void {}
+
+export function makeRow(view: NeonView): Row {
+	return { view, owner: getOwner(), parent: null, start: null, end: null };
 }
 
-export function moveRange(host: Host, parent: HostNode, r: Range, before: HostNode | null): void {
-	if (before === r.start) { return; }
+export function rowOf(n: HostNode): Row {
+	return { view: noView, owner: null, parent: null, start: n, end: n };
+}
+
+let activeRow: Row | null = null;
+
+export function place(host: Host, parent: HostNode, node: HostNode, before: HostNode | null): void {
+	host.insertBefore(parent, node, before);
+	const r = activeRow;
+	if (r === null || r.parent !== parent) { return; }
+	if (r.start === null) { r.start = node; }
+	r.end = node;
+}
+
+export function needsStartMarker(parent: HostNode): boolean {
+	const r = activeRow;
+	return r !== null && r.parent === parent && r.start === null;
+}
+
+export function mountAt(host: Host, parent: HostNode, before: HostNode | null, r: Row): void {
+	const prev = activeRow;
+	r.parent = parent;
+	activeRow = r;
+	try {
+		runWithOwner(r.owner, (): number => untrack((): number => { r.view(host, parent, before); return 0; }));
+	} finally {
+		activeRow = prev;
+	}
+	if (r.start === null) {
+		const empty = host.createText("");
+		place(host, parent, empty, before);
+		r.start = empty;
+		r.end = empty;
+	}
+}
+
+export function moveRow(host: Host, parent: HostNode, r: Row, before: HostNode | null): void {
+	const start = r.start;
+	if (start === null || before === start) { return; }
 	const end = r.end;
-	let node: HostNode | null = r.start;
+	let node: HostNode | null = start;
 	while (node !== null) {
 		const cur = node as HostNode;
 		const next = host.nextSibling(cur);
@@ -29,14 +75,11 @@ export function moveRange(host: Host, parent: HostNode, r: Range, before: HostNo
 	}
 }
 
-function replaceRange(host: Host, parent: HostNode, fresh: Range, stale: Range): void {
-	moveRange(host, parent, fresh, stale.start);
-	removeRange(host, parent, stale);
-}
-
-export function removeRange(host: Host, parent: HostNode, r: Range): void {
+export function removeRow(host: Host, parent: HostNode, r: Row): void {
+	const start = r.start;
+	if (start === null) { return; }
 	const end = r.end;
-	let node: HostNode | null = r.start;
+	let node: HostNode | null = start;
 	while (node !== null) {
 		const cur = node as HostNode;
 		const next = host.nextSibling(cur);
@@ -46,96 +89,29 @@ export function removeRange(host: Host, parent: HostNode, r: Range): void {
 	}
 }
 
-export function reconcileArrays(host: Host, parent: HostNode, a: Range[], b: Range[], after: HostNode | null): void {
-	const bLength = b.length;
-	let aEnd = a.length;
-	let bEnd = bLength;
-	let aStart = 0;
-	let bStart = 0;
-	let map: Map<Range, number> | null = null;
+export function reconcileArrays(host: Host, parent: HostNode, a: Row[], b: Row[], after: HostNode | null): void {
+	const wanted = new Map<Row, number>();
+	for (let i = 0; i < b.length; i += 1) { wanted.set(b[i], i); }
 
-	if (aEnd === 0) {
-		let i = 0;
-		while (i < bLength) { moveRange(host, parent, b[i], after); i += 1; }
-		return;
+	const live: Row[] = [];
+	for (const r of a) {
+		if (wanted.has(r)) { live.push(r); } else { removeRow(host, parent, r); }
 	}
 
-	while (aStart < aEnd || bStart < bEnd) {
-		// 1) common prefix
-		if (aStart < aEnd && bStart < bEnd && a[aStart] === b[bStart]) {
-			aStart += 1;
-			bStart += 1;
-			continue;
+	for (let i = 0; i < b.length; i += 1) {
+		const want = b[i];
+		if (i < live.length && live[i] === want) { continue; }
+		const ref: HostNode | null = i < live.length ? live[i].start : after;
+		let at = -1;
+		for (let j = i + 1; j < live.length; j += 1) {
+			if (live[j] === want) { at = j; break; }
 		}
-		// 2) common suffix
-		while (aEnd > aStart && bEnd > bStart && a[aEnd - 1] === b[bEnd - 1]) {
-			aEnd -= 1;
-			bEnd -= 1;
-		}
-
-		if (aEnd === aStart) {
-			// 3) all remaining b are inserts
-			let node: HostNode | null = after;
-			if (bEnd < bLength) {
-				node = bStart > 0 ? host.nextSibling(b[bStart - 1].end) : b[bEnd].start;
-			}
-			while (bStart < bEnd) { moveRange(host, parent, b[bStart], node); bStart += 1; }
-		} else if (bEnd === bStart) {
-			// 4) all remaining a are removes (skip ones the map already relocated)
-			while (aStart < aEnd) {
-				if (map === null || !map.has(a[aStart])) { removeRange(host, parent, a[aStart]); }
-				aStart += 1;
-			}
-		} else if (a[aStart] === b[bEnd - 1] && b[bStart] === a[aEnd - 1]) {
-			// 5) reversal at both ends — two moves instead of a remap
-			aEnd -= 1;
-			const swapNode = host.nextSibling(a[aEnd].end);
-			const refA = host.nextSibling(a[aStart].end);
-			moveRange(host, parent, b[bStart], refA);
-			bStart += 1;
-			aStart += 1;
-			bEnd -= 1;
-			moveRange(host, parent, b[bEnd], swapNode);
-			a[aEnd] = b[bEnd];
+		if (at >= 0) { live.splice(at, 1); }
+		if (want.start === null) {
+			mountAt(host, parent, ref, want);
 		} else {
-			// 6) map fallback with longest-consecutive-run heuristic
-			if (map === null) {
-				map = new Map<Range, number>();
-				let i = bStart;
-				while (i < bEnd) { map.set(b[i], i); i += 1; }
-			}
-			if (map.has(a[aStart])) {
-				const index = map.get(a[aStart]) as number;
-				if (bStart < index && index < bEnd) {
-					let i = aStart;
-					let sequence = 1;
-					let cont = true;
-					while (cont) {
-						i += 1;
-						if (i >= aEnd || i >= bEnd) {
-							cont = false;
-						} else if (!map.has(a[i])) {
-							cont = false;
-						} else {
-							const t = map.get(a[i]) as number;
-							if (t !== index + sequence) { cont = false; } else { sequence += 1; }
-						}
-					}
-					if (sequence > index - bStart) {
-						const node = a[aStart].start;
-						while (bStart < index) { moveRange(host, parent, b[bStart], node); bStart += 1; }
-					} else {
-						replaceRange(host, parent, b[bStart], a[aStart]);
-						bStart += 1;
-						aStart += 1;
-					}
-				} else {
-					aStart += 1;
-				}
-			} else {
-				removeRange(host, parent, a[aStart]);
-				aStart += 1;
-			}
+			moveRow(host, parent, want, ref);
 		}
+		live.splice(i, 0, want);
 	}
 }

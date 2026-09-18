@@ -12,11 +12,11 @@ export { Dispose } from "./core/types";
 
 export { NeonNode, renderToString } from "./render/node";
 export { Host, HostNode } from "./render/hostTypes";
-export { NeonView, mountView, viewOf, renderNode, renderToHost } from "./render/host";
+export { NeonView, viewOf, renderNode, renderToHost, mountInto } from "./render/host";
 export { createComponent } from "./render/component";
 export { Context, ProviderProps, createContext, useContext } from "./render/context";
 export { NeonEvent, neonEvent } from "./render/event";
-export { Range, rangeOf, moveRange, removeRange, reconcileArrays } from "./render/reconcile";
+export { Row, makeRow, rowOf, place, mountAt, moveRow, removeRow, reconcileArrays } from "./render/reconcile";
 
 export {
 	Style, StyleValue, FlexDirection, Justify, Align, PositionType, Wrap, Display,

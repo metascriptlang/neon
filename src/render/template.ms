@@ -9,7 +9,8 @@
 // the skeleton at COMPILE time and emits childOf/siblingOf steps — no runtime
 // search, no per-mount allocation.
 
-import { Host, HostNode } from "./hostTypes";
+import { Host, HostNode, NeonView } from "./hostTypes";
+import { place } from "./reconcile";
 
 export type TemplateBuilder = (host: Host) => HostNode;
 
@@ -43,11 +44,11 @@ export function instantiate(t: Template, host: Host): HostNode {
 // The shape direct.ms emits: one template per direct() evaluation, reused by
 // every call of the returned mount closure. `wire` receives the fresh instance
 // and plants the walk + effects for that instance.
-export function mountTemplate(t: Template, wire: (host: Host, root: HostNode) => void): (host: Host) => HostNode {
-	return (host: Host): HostNode => {
+export function mountTemplate(t: Template, wire: (host: Host, root: HostNode) => void): NeonView {
+	return (host: Host, parent: HostNode, before: HostNode | null): void => {
 		const root = instantiate(t, host);
 		wire(host, root);
-		return root;
+		place(host, parent, root, before);
 	};
 }
 
