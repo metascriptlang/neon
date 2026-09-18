@@ -76,6 +76,7 @@ export function findSpreadAttr(n: Node): Node | null {
 export function findFragment(n: Node): Node | null {
 	if (n === null) { return null; }
 	if (n.kind === NodeKind.JSXFragment) { return n; }
+	if (n.kind === NodeKind.ArrowFunction || n.kind === NodeKind.FunctionExpr) { return null; }
 	const c = childCount(n);
 	for (let i = 0; i < c; i = i + 1) {
 		const found = findFragment(childAt(n, i));

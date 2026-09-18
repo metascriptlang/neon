@@ -1,21 +1,25 @@
-// element macro — JSX → reactive NeonNode tree.
+// element macro — JSX → a NeonNode: `(host, parent, before) => void`, a function
+// that performs the host ops itself (docs/RENDER-MODEL.md). Nested lowercase
+// elements flatten INLINE into the one mount block (D3): a single statement
+// list, temps numbered across the whole tree (_r0/_r1/... elements, _t0/...
+// dynamic texts, _k0/... component children, _s0/... style temps), child subtree
+// emitted depth-first then appended to its parent — no per-level closure, no
+// per-level call. A subtree with a static skeleton is built once and cloned per
+// mount instead (D4, src/render/template.ms).
 //
-//   element(<div class="box"><p>Hi {name()}</p><button onPress={inc}>+</button></div>)
-// expands to el("div", [attr("class","box")], [],
-//                [ el("p", [], [], [text("Hi "), dynText(() => name())]),
-//                  el("button", [], [evt("onPress", inc)], [text("+")]) ])
+// Component tags, Show and For do NOT flatten: their structure changes at
+// runtime, so they stay runtime calls through createComponent.
 //
-// el/attr/dynAttr/evt/text/dynText come from "../render/node" and must be in scope
-// at the call site. Attributes whose name starts with "on" become events; a string
-// literal attr stays static (attr); any other attr expression becomes a reactive
-// thunk (dynAttr), mirroring how expression children become dynText; nested JSX
-// re-expands through `element`.
-//
-// `style` is the one attribute with two channels: a string literal keeps the legacy
-// attr path (host parses it), while any other expression is a typed Style and routes
-// through withStyle() into NeonNode.style — which then also needs withStyle in scope.
+// The emitted code calls bindText / bindAttr / createComponent / mountChild /
+// place / text / dynText by name and types its params as Host / HostNode, so all
+// of those must be in scope at the call site. Attr classification: string
+// literal → setAttr once, on* → addEvent, any other expr → one createEffect
+// around setAttr (1 dynamic spot = 1 effect); a non-literal style splits by
+// shape: object literal → static fields once + bindStyleProp per reactive field,
+// layer array → compile-time merge or layerStyles (a reactive layer or field is
+// rejected), reactive expr → bindStyleAll, anything else → applyStaticStyle.
 
-import { Node, NodeKind } from "std/meta";
+import { Node, NodeKind, DeclKind, NodeFlag } from "std/meta";
 import { isReactiveExpr, findFragment, isRawPropValue, peelHidden } from "./reactive";
 
 function trimEdgeSpaces(s: string, fromStart: boolean, fromEnd: boolean): string {
@@ -76,16 +80,10 @@ export function cleanJsxText(raw: string): string {
 }
 
 export macro element(node: Node): Node {
+	const L = node.line;
+	const C = node.column;
 	function kidsOf(n: Node): Node[] {
 		return n.kind === NodeKind.JSXFragment ? n.jsxFragChildren : n.jsxChildren;
-	}
-	function isAccessorTyped(n: Node): boolean {
-		const t = peelHidden(n).nodeType;
-		if (t !== null && t.kind === NodeKind.TypeGeneric) {
-			const base = t.typExprBase;
-			return base.kind === NodeKind.Identifier && base.name === "Accessor";
-		}
-		return false;
 	}
 	function peelTypeRef(t: Node): Node {
 		let cur = t;
@@ -196,47 +194,211 @@ export macro element(node: Node): Node {
 		if (n.kind === NodeKind.JSXFragment) {
 			return { kind: NodeKind.JSXFragment, line: n.line, column: n.column, jsxFragChildren: out };
 		}
-		return { kind: NodeKind.JSXElement, line: n.line, column: n.column, jsxTag: n.jsxTag, jsxAttrs: n.jsxAttrs, jsxChildren: out, jsxSelfClosing: n.jsxSelfClosing };
+		return { kind: NodeKind.JSXElement, line: n.line, column: n.column, jsxTag: n.jsxTag, jsxAttrs: expandAttrs(n.jsxAttrs), jsxChildren: out, jsxSelfClosing: n.jsxSelfClosing };
 	}
-	function lowerKids(list: Node[]): Node[] {
-		let out: Node[] = [];
-		for (const c of list) {
-			if (c.kind === NodeKind.JSXText) {
-				const cleaned = cleanJsxText(c.jsxText);
-				if (cleaned !== "") {
-					out.push({
-						kind: NodeKind.CallExpr, line: c.line, column: c.column,
-						callee: { kind: NodeKind.Identifier, line: c.line, column: c.column, name: "text" },
-						arguments: [{ kind: NodeKind.StringLiteral, line: c.line, column: c.column, value: cleaned }],
-					});
-				}
-			} else if (c.kind === NodeKind.JSXExpressionContainer) {
-				out.push(!isReactiveExpr(c.jsxExpr) && !isAccessorTyped(c.jsxExpr) ? {
-					kind: NodeKind.CallExpr, line: c.line, column: c.column,
-					callee: { kind: NodeKind.Identifier, line: c.line, column: c.column, name: "insChild" },
-					arguments: [c.jsxExpr],
-				} : {
-					kind: NodeKind.CallExpr, line: c.line, column: c.column,
-					callee: { kind: NodeKind.Identifier, line: c.line, column: c.column, name: "dynText" },
-					arguments: [{
-						kind: NodeKind.ArrowFunction, line: c.line, column: c.column,
-						arrowParams: [], arrowParamTypes: [], arrowBody: c.jsxExpr, arrowFlags: "", arrowReturnType: "",
-					}],
-				});
-			} else if (c.kind === NodeKind.JSXElement) {
-				out.push({
-					kind: NodeKind.CallExpr, line: c.line, column: c.column,
-					callee: { kind: NodeKind.Identifier, line: c.line, column: c.column, name: "element" },
-					arguments: [c],
-				});
+	function isAccessorTyped(n: Node): boolean {
+		const t = peelHidden(n).nodeType;
+		if (t !== null && t.kind === NodeKind.TypeGeneric) {
+			const base = t.typExprBase;
+			return base.kind === NodeKind.Identifier && base.name === "Accessor";
+		}
+		return false;
+	}
+	function hostCall(recv: string, method: string, args: Node[], ln: int32, col: int32): Node {
+		return {
+			kind: NodeKind.CallExpr, line: ln, column: col,
+			callee: { kind: NodeKind.MemberExpr, line: ln, column: col, object: { kind: NodeKind.Identifier, line: ln, column: col, name: recv }, property: method, isOptional: false },
+			arguments: args,
+		};
+	}
+
+	function ident(n: string, ln: int32, col: int32): Node {
+		return { kind: NodeKind.Identifier, line: ln, column: col, name: n };
+	}
+
+	function strLit(v: string, ln: int32, col: int32): Node {
+		return { kind: NodeKind.StringLiteral, line: ln, column: col, value: v };
+	}
+
+	let errNodes: Node[] = [];
+	let errMsgs: string[] = [];
+	let optIdx = 0;
+	function presentKind(n: Node): string {
+		const t = peelHidden(n).nodeType;
+		if (t === null || t.kind !== NodeKind.TypeUnion) { return ""; }
+		let hasNull = false;
+		let kind = "value";
+		for (const m of t.typExprMembers) {
+			if (m.kind === NodeKind.Identifier && m.name === "null") { hasNull = true; }
+			if (m.kind === NodeKind.TypeGeneric) {
+				const base = m.typExprBase;
+				if (base.kind === NodeKind.Identifier && base.name === "Accessor") { kind = "accessor"; }
 			}
 		}
-		return out;
+		return hasNull ? kind : "";
 	}
-	node = flattenFragments(node);
-	for (const c of kidsOf(node)) {
-		const stray = findFragment(c);
-		if (stray !== null) { error("a fragment inside an expression is not supported yet: give it its own component", stray as Node); }
+	function pushWhenPresent(into: Node[], callee: Node, lead: Node[], value: Node, ln: int32, col: int32): void {
+		const name = "_o" + optIdx.toString();
+		optIdx = optIdx + 1;
+		const args: Node[] = [];
+		for (const l of lead) { args.push(l); }
+		args.push({ kind: NodeKind.Identifier, line: ln, column: col, name: name });
+		into.push({
+			kind: NodeKind.VariableDecl, line: ln, column: col,
+			declName: name, declType: "", declKind: DeclKind.Const,
+			initializer: value,
+		});
+		into.push({
+			kind: NodeKind.IfStmt, line: ln, column: col,
+			condition: {
+				kind: NodeKind.BinaryExpr, line: ln, column: col, operator: "!==",
+				left: { kind: NodeKind.Identifier, line: ln, column: col, name: name },
+				right: { kind: NodeKind.NullLiteral, line: ln, column: col },
+			},
+			consequent: {
+				kind: NodeKind.BlockStmt, line: ln, column: col,
+				statements: [{ kind: NodeKind.ExprStmt, line: ln, column: col, expr: { kind: NodeKind.CallExpr, line: ln, column: col, callee: callee, arguments: args } }],
+			},
+			alternate: { kind: NodeKind.BlockStmt, line: ln, column: col, statements: [] },
+		});
+	}
+	const optChangeTextMsg = "a nullable onChangeText handler is not supported yet — pass a handler that is always present";
+	function pushStyleConst(into: Node[], init: Node, nodeVar: string, tempName: string, ln: int32, col: int32): void {
+		into.push({
+			kind: NodeKind.VariableDecl, line: ln, column: col,
+			declName: tempName, declType: "Style", declKind: DeclKind.Const,
+			initializer: init,
+		});
+		into.push({
+			kind: NodeKind.ExprStmt, line: ln, column: col,
+			expr: {
+				kind: NodeKind.CallExpr, line: ln, column: col,
+				callee: { kind: NodeKind.MemberExpr, line: ln, column: col, object: { kind: NodeKind.Identifier, line: ln, column: col, name: "host" }, property: "setStyle", isOptional: false },
+				arguments: [
+					{ kind: NodeKind.Identifier, line: ln, column: col, name: nodeVar },
+					{ kind: NodeKind.Identifier, line: ln, column: col, name: tempName },
+				],
+			},
+		});
+	}
+	function pushStyleLayers(into: Node[], sv: Node, nodeVar: string, tempName: string, ln: int32, col: int32): void {
+		if (sv.elements.length === 0) {
+			errNodes.push(sv);
+			errMsgs.push("a style layer array needs at least one layer: style={[base, override]}");
+			return;
+		}
+		let allStatic = true;
+		for (const layer of sv.elements) {
+			if (layer.kind !== NodeKind.ObjectLiteral) {
+				if (isReactiveExpr(layer) || isAccessorTyped(layer)) {
+					errNodes.push(layer);
+					errMsgs.push("a reactive style layer is not supported yet — merge it in a whole-style expression instead: style={layerStyles([base, pick()])}");
+					return;
+				}
+				allStatic = false;
+				continue;
+			}
+			for (let i = 0; i < layer.keys.length; i = i + 1) {
+				const fv = layer.properties[i];
+				if (isReactiveExpr(fv) || isAccessorTyped(fv)) {
+					errNodes.push(fv);
+					errMsgs.push("a reactive style field inside a layer array is not supported yet — pass it in a plain object style: style={{ " + layer.keys[i] + ": ... }}");
+					return;
+				}
+			}
+		}
+		if (!allStatic) {
+			pushStyleConst(into, {
+				kind: NodeKind.CallExpr, line: ln, column: col,
+				callee: { kind: NodeKind.Identifier, line: ln, column: col, name: "layerStyles" },
+				arguments: [sv],
+			}, nodeVar, tempName, ln, col);
+			return;
+		}
+		const mergedKeys: string[] = [];
+		const mergedValues: Node[] = [];
+		for (const layer of sv.elements) {
+			for (let i = 0; i < layer.keys.length; i = i + 1) {
+				const fv = layer.properties[i];
+				if (fv.kind === NodeKind.NullLiteral) { continue; }
+				const k = layer.keys[i];
+				let at = -1;
+				for (let j = 0; j < mergedKeys.length; j = j + 1) {
+					if (mergedKeys[j] === k) { at = j; }
+				}
+				if (at >= 0) { mergedValues[at] = fv; } else { mergedKeys.push(k); mergedValues.push(fv); }
+			}
+		}
+		pushStyleConst(into, { kind: NodeKind.ObjectLiteral, line: ln, column: col, properties: mergedValues, keys: mergedKeys }, nodeVar, tempName, ln, col);
+	}
+	function pushStyleObject(into: Node[], sv: Node, nodeVar: string, tempName: string, ln: int32, col: int32): void {
+		const staticKeys: string[] = [];
+		const staticProps: Node[] = [];
+		const dynNames: string[] = [];
+		const dynExprs: Node[] = [];
+		for (let i = 0; i < sv.keys.length; i = i + 1) {
+			const fv = sv.properties[i];
+			if (isReactiveExpr(fv) || isAccessorTyped(fv)) {
+				dynNames.push(sv.keys[i]);
+				dynExprs.push(fv);
+			} else {
+				staticKeys.push(sv.keys[i]);
+				staticProps.push(fv);
+			}
+		}
+		pushStyleConst(into, staticKeys.length > 0
+			? { kind: NodeKind.ObjectLiteral, line: ln, column: col, properties: staticProps, keys: staticKeys }
+			: { kind: NodeKind.CallExpr, line: ln, column: col, callee: { kind: NodeKind.Identifier, line: ln, column: col, name: "emptyStyle" }, arguments: [] },
+			nodeVar, tempName, ln, col);
+		for (let i = 0; i < dynNames.length; i = i + 1) {
+			into.push({
+				kind: NodeKind.ExprStmt, line: ln, column: col,
+				expr: {
+					kind: NodeKind.CallExpr, line: ln, column: col,
+					callee: { kind: NodeKind.Identifier, line: ln, column: col, name: "bindStyleProp" },
+					arguments: [
+						{ kind: NodeKind.Identifier, line: ln, column: col, name: "host" },
+						{ kind: NodeKind.Identifier, line: ln, column: col, name: nodeVar },
+						{ kind: NodeKind.Identifier, line: ln, column: col, name: tempName },
+						{ kind: NodeKind.StringLiteral, line: ln, column: col, value: dynNames[i] },
+						{
+							kind: NodeKind.ArrowFunction, line: ln, column: col,
+							arrowParams: [], arrowParamTypes: [], arrowFlags: "", arrowReturnType: "",
+							arrowBody: dynExprs[i],
+						},
+					],
+				},
+			});
+		}
+	}
+	function isNodeType(t: Node): boolean {
+		if (t.kind !== NodeKind.TypeFunction || t.typExprParams.length !== 3) { return false; }
+		const names = t.typExprParamNames;
+		return names.length === 3 && names[0] === "host" && names[1] === "parent" && names[2] === "before";
+	}
+	function isNodeArrayTyped(n: Node): boolean {
+		const t = peelHidden(n).nodeType;
+		if (t === null) { return false; }
+		if (t.kind === NodeKind.TypeArray) { return isNodeType(t.typExprElement); }
+		if (t.kind !== NodeKind.TypeGeneric || t.typExprArgs.length !== 1) { return false; }
+		const arg = t.typExprArgs[0];
+		if (arg.kind === NodeKind.TypeArray) { return isNodeType(arg.typExprElement); }
+		return false;
+	}
+	function isNodeTyped(n: Node): boolean {
+		const t = peelHidden(n).nodeType;
+		return t !== null && isNodeType(t as Node);
+	}
+	function isNodeValued(n: Node): boolean {
+		return isNodeTyped(n) || isNodeArrayTyped(n);
+	}
+	function isReactiveSelection(n: Node): boolean {
+		const p = peelHidden(n);
+		if (p.kind === NodeKind.ConditionalExpr) { return isReactiveExpr(p.ternaryCondition); }
+		if (p.kind === NodeKind.BinaryExpr && (p.operator === "&&" || p.operator === "||" || p.operator === "??")) {
+			return isReactiveExpr(p.left);
+		}
+		return false;
 	}
 	function showOf(when: Node, child: Node, fallback: Node | null, ln: int32, col: int32): Node {
 		let attrs: Node[] = [{ kind: NodeKind.JSXAttribute, line: ln, column: col, jsxAttrName: "when", jsxAttrValue: when }];
@@ -291,28 +453,26 @@ export macro element(node: Node): Node {
 		}
 		return { kind: NodeKind.JSXElement, line: elNode.line, column: elNode.column, jsxTag: elNode.jsxTag, jsxAttrs: elNode.jsxAttrs, jsxChildren: kids, jsxSelfClosing: elNode.jsxSelfClosing };
 	}
-	node = lowerFlowTree(node);
-	if (node.kind === NodeKind.JSXFragment) {
-		return {
-			kind: NodeKind.CallExpr, line: node.line, column: node.column,
-			callee: { kind: NodeKind.Identifier, line: node.line, column: node.column, name: "fragmentNode" },
-			arguments: [{ kind: NodeKind.ArrayLiteral, line: node.line, column: node.column, elements: lowerKids(node.jsxFragChildren) }],
-		};
+	node = flattenFragments(node);
+	for (const c of kidsOf(node)) {
+		const stray = findFragment(c);
+		if (stray !== null) { error("a fragment inside an expression is not supported yet: give it its own component", stray as Node); }
 	}
-	// Capitalized tag → createComponent(Tag, { props }). V1 prop contract: a string
-	// every value prop — literal or expression — becomes accessor(() => v) (the
-	// component's props interface declares Accessor<T>); children stay structural — one child passes
-	// as written, several become an array, and a JSX child passes RAW so the
-	// converter lowers it against the prop's declared type (NeonView → the target's
-	// emission, NeonNode → tree). Wrapping it in element() here would pre-pick tree
-	// emission and break every view-typed child on js. Inline because node literals
-	// only type-check inside a macro body (engine-mode Node view).
-	const attrList: Node[] = expandAttrs(node.jsxAttrs);
-	const tagStart = node.jsxTag.charAt(0);
-	if (tagStart >= "A" && tagStart <= "Z") {
+	node = lowerFlowTree(node);
+
+	const reactiveNodeMsg = "a NeonNode child picked by a reactive condition would mount once and never switch — use <Show> or a JSX branch: {cond() ? <A/> : <B/>}";
+
+	// Capitalized tag → createComponent(Tag, { props }). Prop contract: every value
+	// prop — literal or expression — becomes accessor(() => v) (the component's props
+	// interface declares Accessor<T>); arrow literals, ref and on* cross RAW. Children
+	// stay structural — one child passes as written, several become an array, and a
+	// JSX child passes RAW so the converter lowers it against the prop's declared
+	// type. Inline because node literals only type-check inside a macro body
+	// (engine-mode Node view).
+	function componentCall(c: Node): Node {
 		let keys: string[] = [];
 		let values: Node[] = [];
-		for (const a of attrList) {
+		for (const a of c.jsxAttrs) {
 			if (a.kind === NodeKind.JSXAttribute) {
 				keys.push(a.jsxAttrName);
 				if (isRawPropValue(a.jsxAttrName, a.jsxAttrValue) || isAccessorTyped(a.jsxAttrValue)) {
@@ -322,288 +482,671 @@ export macro element(node: Node): Node {
 				}
 			}
 		}
-		let compKids: Node[] = [];
+		const tag = c.jsxTag;
+		const isStarterTag = tag === "View" || tag === "Text" || tag === "Pressable" || tag === "TextInput";
+		let kids: Node[] = [];
 		let singleNeedsArray = false;
 		let significantKids = 0;
-		for (const c of node.jsxChildren) {
-			if (!(c.kind === NodeKind.JSXText && cleanJsxText(c.jsxText) === "")) { significantKids = significantKids + 1; }
+		for (const k of c.jsxChildren) {
+			if (!(k.kind === NodeKind.JSXText && cleanJsxText(k.jsxText) === "")) { significantKids = significantKids + 1; }
 		}
-		for (const c of node.jsxChildren) {
-			if (c.kind === NodeKind.JSXText) {
+		for (const k of c.jsxChildren) {
+			if (k.kind === NodeKind.JSXText) {
 				// A raw JSXText does not survive the macro wire as a property value,
 				// so a text child lowers HERE to text() — and a SINGLE one arrives
 				// as [text()] (RN: strings live inside containers' children lists).
-				const cleaned = cleanJsxText(c.jsxText);
+				const cleaned = cleanJsxText(k.jsxText);
 				if (cleaned !== "") {
-					compKids.push({
-						kind: NodeKind.CallExpr, line: c.line, column: c.column,
-						callee: { kind: NodeKind.Identifier, line: c.line, column: c.column, name: "text" },
-						arguments: [{ kind: NodeKind.StringLiteral, line: c.line, column: c.column, value: cleaned }],
+					kids.push({
+						kind: NodeKind.CallExpr, line: k.line, column: k.column,
+						callee: { kind: NodeKind.Identifier, line: k.line, column: k.column, name: "text" },
+						arguments: [{ kind: NodeKind.StringLiteral, line: k.line, column: k.column, value: cleaned }],
 					});
 					if (significantKids === 1) { singleNeedsArray = true; }
 				}
-			} else if (c.kind === NodeKind.JSXExpressionContainer) {
+			} else if (k.kind === NodeKind.JSXExpressionContainer) {
 				// An ARROW child crosses raw — flow components (For/Show) declare
-				// fn-typed children and the boundary types them. Any other
-				// expression is reactive TEXT exactly as in lowercase tags:
-				// dynText(() => expr) (Counter's count={n()} thunk shape, proven
-				// on C), so <Text>Count: {count()}</Text> just works.
-				const ex = c.jsxExpr;
+				// fn-typed children and the boundary types them. A NeonNode value
+				// crosses raw too. Any other expression is reactive TEXT exactly as
+				// in lowercase tags: dynText(() => expr).
+				const ex = k.jsxExpr;
 				if (ex.kind === NodeKind.ArrowFunction || ex.kind === NodeKind.FunctionExpr) {
-					compKids.push(ex);
+					kids.push(ex);
+				} else if (isNodeValued(ex)) {
+					if (isReactiveSelection(ex)) { errNodes.push(ex); errMsgs.push(reactiveNodeMsg); }
+					kids.push(ex);
+					if (significantKids === 1 && isStarterTag && !isNodeArrayTyped(ex)) { singleNeedsArray = true; }
 				} else {
-					compKids.push({
-						kind: NodeKind.CallExpr, line: c.line, column: c.column,
-						callee: { kind: NodeKind.Identifier, line: c.line, column: c.column, name: "dynText" },
-						arguments: [{ kind: NodeKind.ArrowFunction, line: c.line, column: c.column, arrowParams: [], arrowParamTypes: [], arrowBody: ex, arrowFlags: "", arrowReturnType: "" }],
+					kids.push({
+						kind: NodeKind.CallExpr, line: k.line, column: k.column,
+						callee: { kind: NodeKind.Identifier, line: k.line, column: k.column, name: "dynText" },
+						arguments: [{ kind: NodeKind.ArrowFunction, line: k.line, column: k.column, arrowParams: [], arrowParamTypes: [], arrowBody: ex, arrowFlags: "", arrowReturnType: "" }],
 					});
 					if (significantKids === 1) { singleNeedsArray = true; }
 				}
-			} else if (c.kind === NodeKind.JSXElement) {
-				// The component vocabulary (View/Text/Pressable/TextInput) mounts
+			} else if (k.kind === NodeKind.JSXElement) {
+				// The component vocabulary (View/Text/Pressable/TextInput) takes
 				// children as NeonNode[], so a single element child arrives as
-				// [element(…)] — built HERE because nested element() calls from a
-				// MACRO re-expand (header) while ones nested in a converter result
-				// do not. Every OTHER capitalized component keeps its own children
-				// contract: a single element child crosses RAW and the boundary
-				// lowers it (NeonView → jsxToView, NeonNode → jsxToNode) — Show's
-				// element child, Card-style single-node props. Unifying these is
-				// gated on the converter registry matching array targets exactly.
-				const t = node.jsxTag;
-				const isStarterTag = t === "View" || t === "Text" || t === "Pressable" || t === "TextInput";
+				// [element(…)]. Every OTHER capitalized component keeps its own
+				// children contract: a single element child crosses RAW and the
+				// boundary lowers it.
 				if (isStarterTag && significantKids === 1) {
-					compKids.push({
-						kind: NodeKind.MacroInvocation, line: c.line, column: c.column,
-						macroName: "element", macroArgs: [c],
+					kids.push({
+						kind: NodeKind.MacroInvocation, line: k.line, column: k.column,
+						macroName: "element", macroArgs: [k],
 					});
 					singleNeedsArray = true;
 				} else {
-					compKids.push(c);
+					kids.push(k);
 				}
 			}
 		}
-		if (compKids.length === 1 && singleNeedsArray) {
+		if (kids.length === 1 && !singleNeedsArray) {
 			keys.push("children");
-			values.push({ kind: NodeKind.ArrayLiteral, line: node.line, column: node.column, elements: compKids });
-		} else if (compKids.length === 1) {
+			values.push(kids[0]);
+		} else if (kids.length > 0) {
 			keys.push("children");
-			values.push(compKids[0]);
-		} else if (compKids.length > 1) {
-			keys.push("children");
-			values.push({ kind: NodeKind.ArrayLiteral, line: node.line, column: node.column, elements: compKids });
+			values.push({ kind: NodeKind.ArrayLiteral, line: c.line, column: c.column, elements: kids });
 		}
 		// A dotted tag (Ctx.Provider) resolves through member access, not a flat
-		// name: fold the parts so the checker sees Ctx.Provider and types the
-		// call through the field's declared component type.
-		let tagRef: Node = { kind: NodeKind.Identifier, line: node.line, column: node.column, name: node.jsxTag };
-		if (node.jsxTag.indexOf(".") >= 0) {
-			const parts: string[] = node.jsxTag.split(".");
-			tagRef = { kind: NodeKind.Identifier, line: node.line, column: node.column, name: parts[0] };
+		// name: fold the parts so the checker sees Ctx.Provider and types the call
+		// through the field's declared component type.
+		let tagRef: Node = { kind: NodeKind.Identifier, line: c.line, column: c.column, name: tag };
+		if (tag.indexOf(".") >= 0) {
+			const parts: string[] = tag.split(".");
+			tagRef = { kind: NodeKind.Identifier, line: c.line, column: c.column, name: parts[0] };
 			for (let i = 1; i < parts.length; i = i + 1) {
-				tagRef = { kind: NodeKind.MemberExpr, line: node.line, column: node.column, object: tagRef, property: parts[i], isOptional: false };
+				tagRef = { kind: NodeKind.MemberExpr, line: c.line, column: c.column, object: tagRef, property: parts[i], isOptional: false };
 			}
 		}
 		return {
-			kind: NodeKind.CallExpr, line: node.line, column: node.column,
-			callee: { kind: NodeKind.Identifier, line: node.line, column: node.column, name: "createComponent" },
+			kind: NodeKind.CallExpr, line: c.line, column: c.column,
+			callee: { kind: NodeKind.Identifier, line: c.line, column: c.column, name: "createComponent" },
 			arguments: [
 				tagRef,
-				{ kind: NodeKind.ObjectLiteral, line: node.line, column: node.column, properties: values, keys: keys },
+				{ kind: NodeKind.ObjectLiteral, line: c.line, column: c.column, properties: values, keys: keys },
 			],
 		};
 	}
-	let attrs: Node[] = [];
-	let events: Node[] = [];
-	let styleExpr: Node | null = null;
-	let refExpr: Node | null = null;
-	let dynStyleAllExpr: Node | null = null;
-	let dynStyleNames: string[] = [];
-	let dynStyleExprs: Node[] = [];
-	for (const a of attrList) {
-		if (a.kind === NodeKind.JSXAttribute) {
-			if (a.jsxAttrName === "ref") {
-				refExpr = a.jsxAttrValue;
-				continue;
+	function isComponentTag(c: Node): boolean {
+		const first = c.jsxTag.charAt(0);
+		return first >= "A" && first <= "Z";
+	}
+	if (node.kind === NodeKind.JSXElement && isComponentTag(node)) {
+		const call = componentCall(node);
+		if (errNodes.length > 0) { error(errMsgs[0], errNodes[0]); }
+		return call;
+	}
+
+	// ---- D4 template mode ----
+	// A subtree of nothing but lowercase elements, text, attrs, events and style
+	// has a STATIC skeleton: build it once, duplicate it per mount, and walk to
+	// the dynamic spots along a path computed here at compile time. Component
+	// tags and regions change structure at runtime, so a subtree containing one
+	// keeps the D3 flat emission below, unchanged.
+	function isPureSubtree(el: Node): boolean {
+		for (const c of el.jsxChildren) {
+			if (c.kind === NodeKind.JSXExpressionContainer && isNodeValued(c.jsxExpr)) { return false; }
+			if (c.kind === NodeKind.JSXElement) {
+				const t0 = c.jsxTag.charAt(0);
+				if (t0 >= "A" && t0 <= "Z") { return false; }
+				if (!isPureSubtree(c)) { return false; }
 			}
-			if (a.jsxAttrName === "style" && a.jsxAttrValue.kind !== NodeKind.StringLiteral) {
-				if (a.jsxAttrValue.kind === NodeKind.ObjectLiteral) {
-					// S4: a reactive field peels off into its own per-property
-					// effect (withDynStyle); the rest stays one static constant.
-					const staticKeys: string[] = [];
-					const staticProps: Node[] = [];
-					for (let i = 0; i < a.jsxAttrValue.keys.length; i = i + 1) {
-						const fv = a.jsxAttrValue.properties[i];
-						if (isReactiveExpr(fv) || isAccessorTyped(fv)) {
-							dynStyleNames.push(a.jsxAttrValue.keys[i]);
-							dynStyleExprs.push(fv);
-						} else {
-							staticKeys.push(a.jsxAttrValue.keys[i]);
-							staticProps.push(fv);
-						}
-					}
-					if (staticKeys.length > 0) {
-						styleExpr = {
-							kind: NodeKind.ObjectLiteral, line: a.line, column: a.column,
-							properties: staticProps, keys: staticKeys,
-						};
-					}
-					continue;
+		}
+		return true;
+	}
+
+	// Does this element need a runtime handle in the instance (as opposed to
+	// living entirely inside the template)? Only handles get walk steps.
+	function needsHandle(el: Node): boolean {
+		for (const a of el.jsxAttrs) {
+			if (a.kind === NodeKind.JSXAttribute) {
+				if (a.jsxAttrName.startsWith("on") || a.jsxAttrName === "ref") { return true; }
+				if (a.jsxAttrValue.kind !== NodeKind.StringLiteral) { return true; }
+			}
+		}
+		for (const c of el.jsxChildren) {
+			if (c.kind === NodeKind.JSXExpressionContainer) { return true; }
+			if (c.kind === NodeKind.JSXElement && needsHandle(c)) { return true; }
+		}
+		return false;
+	}
+
+	if (node.kind === NodeKind.JSXElement && isPureSubtree(node)) {
+		let bStmts: Node[] = [];
+		let wStmts: Node[] = [];
+		let bIdx = 0;
+		let pIdx = 1;
+		let tsIdx = 0;
+
+		// Skeleton: elements, static attrs, and a placeholder for every dynamic
+		// slot. A dynamic attr keeps its SOURCE position with an empty value —
+		// the per-instance effect upserts it, so markup order matches tree
+		// emission (probe/tmplShape.ms "attr order" is the red-proof).
+		function emitBuild(el: Node): string {
+			const rName = "_r" + bIdx.toString();
+			bIdx = bIdx + 1;
+			bStmts.push({
+				kind: NodeKind.VariableDecl, line: el.line, column: el.column,
+				declName: rName, declType: "", declKind: DeclKind.Const,
+				initializer: hostCall("h", "createElement", [strLit(el.jsxTag, el.line, el.column)], el.line, el.column),
+			});
+			for (const a of el.jsxAttrs) {
+				if (a.kind === NodeKind.JSXAttribute) {
+					if (a.jsxAttrName.startsWith("on")) { continue; }
+					if (a.jsxAttrName === "ref") { continue; }
+					if (a.jsxAttrName === "style" && a.jsxAttrValue.kind !== NodeKind.StringLiteral) { continue; }
+					const v = a.jsxAttrValue.kind === NodeKind.StringLiteral ? a.jsxAttrValue : strLit("", a.line, a.column);
+					bStmts.push({
+						kind: NodeKind.ExprStmt, line: a.line, column: a.column,
+						expr: hostCall("h", "setAttr", [ident(rName, a.line, a.column), strLit(a.jsxAttrName, a.line, a.column), v], a.line, a.column),
+					});
 				}
-				if (a.jsxAttrValue.kind === NodeKind.ArrayLiteral) {
-					if (a.jsxAttrValue.elements.length === 0) {
-						error("a style layer array needs at least one layer: style={[base, override]}", a.jsxAttrValue);
+			}
+			for (const c of el.jsxChildren) {
+				if (c.kind === NodeKind.JSXText) {
+					const cleaned = cleanJsxText(c.jsxText);
+					if (cleaned !== "") {
+						bStmts.push({
+							kind: NodeKind.ExprStmt, line: c.line, column: c.column,
+							expr: hostCall("h", "append", [ident(rName, c.line, c.column), hostCall("h", "createText", [strLit(cleaned, c.line, c.column)], c.line, c.column)], c.line, c.column),
+						});
 					}
-					let allStatic = true;
-					for (const layer of a.jsxAttrValue.elements) {
-						if (layer.kind !== NodeKind.ObjectLiteral) { allStatic = false; }
-					}
-					if (allStatic) {
-						const mergedKeys: string[] = [];
-						const mergedValues: Node[] = [];
-						for (const layer of a.jsxAttrValue.elements) {
-							for (let i = 0; i < layer.keys.length; i = i + 1) {
-								const fv = layer.properties[i];
-								if (isReactiveExpr(fv) || isAccessorTyped(fv)) {
-									error("a reactive style field inside a layer array is not supported yet — pass it in a plain object style: style={{ " + layer.keys[i] + ": ... }}", fv);
-								}
-								// mergeStyle treats null as unset, so a later null must
-								// not erase an earlier layer's value.
-								if (fv.kind === NodeKind.NullLiteral) { continue; }
-								const k = layer.keys[i];
-								let at = -1;
-								for (let j = 0; j < mergedKeys.length; j = j + 1) {
-									if (mergedKeys[j] === k) { at = j; }
-								}
-								if (at >= 0) { mergedValues[at] = fv; } else { mergedKeys.push(k); mergedValues.push(fv); }
-							}
-						}
-						styleExpr = {
-							kind: NodeKind.ObjectLiteral, line: a.line, column: a.column,
-							properties: mergedValues, keys: mergedKeys,
-						};
+				} else if (c.kind === NodeKind.JSXExpressionContainer) {
+					bStmts.push({
+						kind: NodeKind.ExprStmt, line: c.line, column: c.column,
+						expr: hostCall("h", "append", [ident(rName, c.line, c.column), hostCall("h", "createText", [strLit("", c.line, c.column)], c.line, c.column)], c.line, c.column),
+					});
+				} else if (c.kind === NodeKind.JSXElement) {
+					const kid = emitBuild(c);
+					bStmts.push({
+						kind: NodeKind.ExprStmt, line: c.line, column: c.column,
+						expr: hostCall("h", "append", [ident(rName, c.line, c.column), ident(kid, c.line, c.column)], c.line, c.column),
+					});
+				}
+			}
+			return rName;
+		}
+
+		// Per-instance wiring: dynamic attrs (one effect each), events, style,
+		// then the walk into children that carry dynamic spots.
+		function emitWire(el: Node, elVar: string): void {
+			let wRef: Node | null = null;
+			for (const a of el.jsxAttrs) {
+				if (a.kind === NodeKind.JSXAttribute) {
+					if (a.jsxAttrName === "ref") {
+						wRef = a.jsxAttrValue;
 						continue;
 					}
-					// Dynamic layers reach layerStyles at runtime, where a reactive
-					// field would freeze silently — reject it here instead.
-					for (const layer of a.jsxAttrValue.elements) {
-						if (layer.kind === NodeKind.ObjectLiteral) {
-							for (let i = 0; i < layer.keys.length; i = i + 1) {
-								if (isReactiveExpr(layer.properties[i]) || isAccessorTyped(layer.properties[i])) {
-									error("a reactive style field inside a layer array is not supported yet — pass it in a plain object style: style={{ " + layer.keys[i] + ": ... }}", layer.properties[i]);
-								}
-							}
-						} else if (isReactiveExpr(layer) || isAccessorTyped(layer)) {
-							error("a reactive style layer is not supported yet — merge it in a whole-style expression instead: style={layerStyles([base, pick()])}", layer);
+					if (a.jsxAttrName === "style" && a.jsxAttrValue.kind !== NodeKind.StringLiteral) {
+						const sv = a.jsxAttrValue;
+						if (sv.kind === NodeKind.ObjectLiteral) {
+							pushStyleObject(wStmts, sv, elVar, "_ts" + tsIdx.toString(), a.line, a.column);
+							tsIdx = tsIdx + 1;
+						} else if (sv.kind === NodeKind.ArrayLiteral) {
+							pushStyleLayers(wStmts, sv, elVar, "_ts" + tsIdx.toString(), a.line, a.column);
+							tsIdx = tsIdx + 1;
+						} else if (!isReactiveExpr(sv) && presentKind(sv) !== "") {
+							pushWhenPresent(wStmts, ident(presentKind(sv) === "accessor" ? "bindStyleAll" : "applyStaticStyle", a.line, a.column), [ident("host", a.line, a.column), ident(elVar, a.line, a.column)], sv, a.line, a.column);
+						} else if (isReactiveExpr(sv) || isAccessorTyped(sv)) {
+							wStmts.push({
+								kind: NodeKind.ExprStmt, line: a.line, column: a.column,
+								expr: {
+									kind: NodeKind.CallExpr, line: a.line, column: a.column,
+									callee: ident("bindStyleAll", a.line, a.column),
+									arguments: [
+										ident("host", a.line, a.column),
+										ident(elVar, a.line, a.column),
+										{
+											kind: NodeKind.ArrowFunction, line: a.line, column: a.column,
+											arrowParams: [], arrowParamTypes: [], arrowFlags: "", arrowReturnType: "",
+											arrowBody: sv,
+										},
+									],
+								},
+							});
+						} else {
+							const sName = "_ts" + tsIdx.toString();
+							tsIdx = tsIdx + 1;
+							wStmts.push({
+								kind: NodeKind.VariableDecl, line: a.line, column: a.column,
+								declName: sName, declType: "", declKind: DeclKind.Const,
+								initializer: sv,
+							});
+							wStmts.push({
+								kind: NodeKind.ExprStmt, line: a.line, column: a.column,
+								expr: {
+									kind: NodeKind.CallExpr, line: a.line, column: a.column,
+									callee: ident("applyStaticStyle", a.line, a.column),
+									arguments: [ident("host", a.line, a.column), ident(elVar, a.line, a.column), ident(sName, a.line, a.column)],
+								},
+							});
 						}
+					} else if (a.jsxAttrName.startsWith("on") && presentKind(a.jsxAttrValue) !== "") {
+						if (a.jsxAttrName === "onChangeText") {
+							errNodes.push(a.jsxAttrValue);
+							errMsgs.push(optChangeTextMsg);
+						} else {
+							pushWhenPresent(wStmts, { kind: NodeKind.MemberExpr, line: a.line, column: a.column, object: ident("host", a.line, a.column), property: "addEvent", isOptional: false }, [ident(elVar, a.line, a.column), strLit(a.jsxAttrName, a.line, a.column)], a.jsxAttrValue, a.line, a.column);
+						}
+					} else if (a.jsxAttrName.startsWith("on")) {
+						// onChangeText text-unwrap — mirrors element.ms, see the comment there.
+						let hVal: Node = a.jsxAttrValue;
+						if (a.jsxAttrName === "onChangeText") {
+							hVal = { kind: NodeKind.ArrowFunction, line: a.line, column: a.column, arrowParams: ["__msCte"], arrowParamTypes: [""], arrowFlags: "", arrowReturnType: "", arrowBody: { kind: NodeKind.CallExpr, line: a.line, column: a.column, callee: a.jsxAttrValue, arguments: [{ kind: NodeKind.MemberExpr, line: a.line, column: a.column, object: { kind: NodeKind.Identifier, line: a.line, column: a.column, name: "__msCte" }, property: "value", isOptional: false }] } };
+						}
+						wStmts.push({
+							kind: NodeKind.ExprStmt, line: a.line, column: a.column,
+							expr: hostCall("host", "addEvent", [ident(elVar, a.line, a.column), strLit(a.jsxAttrName, a.line, a.column), hVal], a.line, a.column),
+						});
+					} else if (a.jsxAttrValue.kind !== NodeKind.StringLiteral) {
+						wStmts.push({
+							kind: NodeKind.ExprStmt, line: a.line, column: a.column,
+							expr: !isReactiveExpr(a.jsxAttrValue) && !isAccessorTyped(a.jsxAttrValue) ? {
+								kind: NodeKind.CallExpr, line: a.line, column: a.column,
+								callee: ident("writeAttr", a.line, a.column),
+								arguments: [ident("host", a.line, a.column), ident(elVar, a.line, a.column), strLit(a.jsxAttrName, a.line, a.column), a.jsxAttrValue],
+							} : {
+								kind: NodeKind.CallExpr, line: a.line, column: a.column,
+								callee: ident("bindAttr", a.line, a.column),
+								arguments: [
+									ident("host", a.line, a.column),
+									ident(elVar, a.line, a.column),
+									strLit(a.jsxAttrName, a.line, a.column),
+									{
+										kind: NodeKind.ArrowFunction, line: a.line, column: a.column,
+										arrowParams: [], arrowParamTypes: [], arrowFlags: "", arrowReturnType: "",
+										arrowBody: a.jsxAttrValue,
+									},
+								],
+							},
+						});
 					}
-					styleExpr = {
-						kind: NodeKind.CallExpr, line: a.line, column: a.column,
-						callee: { kind: NodeKind.Identifier, line: a.line, column: a.column, name: "layerStyles" },
-						arguments: [a.jsxAttrValue],
-					};
+				}
+			}
+
+			let lastVar = "";
+			let lastIdx = 0 - 1;
+			let slot = 0;
+			for (const c of el.jsxChildren) {
+				let occupies = true;
+				let wants = false;
+				if (c.kind === NodeKind.JSXText) {
+					occupies = cleanJsxText(c.jsxText) !== "";
+				} else if (c.kind === NodeKind.JSXExpressionContainer) {
+					wants = true;
+				} else if (c.kind === NodeKind.JSXElement) {
+					wants = needsHandle(c);
+				} else {
+					occupies = false;
+				}
+				if (!occupies) { continue; }
+				if (wants) {
+					let curVar = lastVar;
+					let k = lastIdx;
+					if (lastVar === "") {
+						curVar = "_p" + pIdx.toString();
+						pIdx = pIdx + 1;
+						wStmts.push({
+							kind: NodeKind.VariableDecl, line: c.line, column: c.column,
+							declName: curVar, declType: "", declKind: DeclKind.Const,
+							initializer: {
+								kind: NodeKind.CallExpr, line: c.line, column: c.column,
+								callee: ident("childOf", c.line, c.column),
+								arguments: [ident("host", c.line, c.column), ident(elVar, c.line, c.column)],
+							},
+						});
+						k = 0;
+					}
+					while (k < slot) {
+						const nextVar = "_p" + pIdx.toString();
+						pIdx = pIdx + 1;
+						wStmts.push({
+							kind: NodeKind.VariableDecl, line: c.line, column: c.column,
+							declName: nextVar, declType: "", declKind: DeclKind.Const,
+							initializer: {
+								kind: NodeKind.CallExpr, line: c.line, column: c.column,
+								callee: ident("siblingOf", c.line, c.column),
+								arguments: [ident("host", c.line, c.column), ident(curVar, c.line, c.column)],
+							},
+						});
+						curVar = nextVar;
+						k = k + 1;
+					}
+					lastVar = curVar;
+					lastIdx = slot;
+					if (c.kind === NodeKind.JSXExpressionContainer) {
+						wStmts.push({
+							kind: NodeKind.ExprStmt, line: c.line, column: c.column,
+							expr: !isReactiveExpr(c.jsxExpr) && !isAccessorTyped(c.jsxExpr) ? hostCall("host", "setText", [ident(curVar, c.line, c.column), c.jsxExpr], c.line, c.column) : {
+								kind: NodeKind.CallExpr, line: c.line, column: c.column,
+								callee: ident("bindText", c.line, c.column),
+								arguments: [
+									ident("host", c.line, c.column),
+									ident(curVar, c.line, c.column),
+									{
+										kind: NodeKind.ArrowFunction, line: c.line, column: c.column,
+										arrowParams: [], arrowParamTypes: [], arrowFlags: "", arrowReturnType: "",
+										arrowBody: c.jsxExpr,
+									},
+								],
+							},
+						});
+					} else {
+						emitWire(c, curVar);
+					}
+				}
+				slot = slot + 1;
+			}
+
+			if (wRef !== null && presentKind(wRef as Node) !== "") {
+				pushWhenPresent(wStmts, ident("applyRef", el.line, el.column), [ident(elVar, el.line, el.column)], wRef as Node, el.line, el.column);
+			} else if (wRef !== null) {
+				wStmts.push({
+					kind: NodeKind.ExprStmt, line: el.line, column: el.column,
+					expr: {
+						kind: NodeKind.CallExpr, line: el.line, column: el.column,
+						callee: ident("applyRef", el.line, el.column),
+						arguments: [ident(elVar, el.line, el.column), wRef as Node],
+					},
+				});
+			}
+		}
+
+		const tplRoot = emitBuild(node);
+		emitWire(node, "_p0");
+		if (errNodes.length > 0) { error(errMsgs[0], errNodes[0]); }
+		bStmts.push({
+			kind: NodeKind.ReturnStmt, line: L, column: C,
+			argument: { kind: NodeKind.Identifier, line: L, column: C, name: tplRoot },
+		});
+
+		const tplName = "_tpl" + L.toString() + "_" + C.toString();
+		return {
+			kind: NodeKind.SpliceMany, line: L, column: C,
+			spliceNodes: [
+				{
+					kind: NodeKind.VariableDecl, line: L, column: C,
+					flags: NodeFlag.StaticStorage,
+					declName: tplName, declType: "", declKind: DeclKind.Const,
+					nameLocation: { line: L, column: C },
+					initializer: {
+						kind: NodeKind.CallExpr, line: L, column: C,
+						callee: { kind: NodeKind.Identifier, line: L, column: C, name: "createTemplate" },
+						arguments: [{
+							kind: NodeKind.ArrowFunction, line: L, column: C,
+							arrowParams: ["h"], arrowParamTypes: ["Host"], arrowFlags: "", arrowReturnType: "HostNode",
+							arrowBody: { kind: NodeKind.BlockStmt, line: L, column: C, statements: bStmts },
+						}],
+					},
+				},
+				{
+					kind: NodeKind.CallExpr, line: L, column: C,
+					callee: { kind: NodeKind.Identifier, line: L, column: C, name: "mountTemplate" },
+					arguments: [
+						{ kind: NodeKind.Identifier, line: L, column: C, name: tplName },
+						{
+							kind: NodeKind.ArrowFunction, line: L, column: C,
+							arrowParams: ["host", "_p0"], arrowParamTypes: ["Host", "HostNode"], arrowFlags: "", arrowReturnType: "void",
+							arrowBody: { kind: NodeKind.BlockStmt, line: L, column: C, statements: wStmts },
+						},
+					],
+				},
+			],
+		};
+	}
+
+	let stmts: Node[] = [];
+	let rIdx = 0;
+	let tIdx = 0;
+	let kIdx = 0;
+	let sIdx = 0;
+
+	function pushInsert(parentVar: string, child: Node, atRoot: boolean, ln: int32, col: int32): void {
+		stmts.push({
+			kind: NodeKind.ExprStmt, line: ln, column: col,
+			expr: atRoot ? {
+				kind: NodeKind.CallExpr, line: ln, column: col,
+				callee: ident("place", ln, col),
+				arguments: [ident("host", ln, col), ident(parentVar, ln, col), child, ident("before", ln, col)],
+			} : hostCall("host", "append", [ident(parentVar, ln, col), child], ln, col),
+		});
+	}
+
+	function emitKids(list: Node[], parentVar: string, atRoot: boolean): void {
+		for (const c of list) {
+			const beforeArg: Node = atRoot ? ident("before", c.line, c.column) : { kind: NodeKind.NullLiteral, line: c.line, column: c.column };
+			if (c.kind === NodeKind.JSXText) {
+				const cleaned = cleanJsxText(c.jsxText);
+				if (cleaned !== "") {
+					pushInsert(parentVar, hostCall("host", "createText", [strLit(cleaned, c.line, c.column)], c.line, c.column), atRoot, c.line, c.column);
+				}
+			} else if (c.kind === NodeKind.JSXExpressionContainer) {
+				const nodeValued = isNodeValued(c.jsxExpr);
+				if (nodeValued && isReactiveSelection(c.jsxExpr)) { errNodes.push(c.jsxExpr); errMsgs.push(reactiveNodeMsg); }
+				const liveSpot = !nodeValued && (isReactiveExpr(c.jsxExpr) || isAccessorTyped(c.jsxExpr));
+				if (!liveSpot) {
+					stmts.push({
+						kind: NodeKind.ExprStmt, line: c.line, column: c.column,
+						expr: {
+							kind: NodeKind.CallExpr, line: c.line, column: c.column,
+							callee: ident("mountChild", c.line, c.column),
+							arguments: [ident("host", c.line, c.column), ident(parentVar, c.line, c.column), beforeArg, c.jsxExpr],
+						},
+					});
 					continue;
 				}
-				// A style expression that reads a signal (call-based rule, §6)
-				// must not freeze into withStyle's one-shot constant — it gets
-				// one whole-style effect instead. A static expression through
-				// here (a sheet entry) keeps the constant path and its class id.
-				if (isReactiveExpr(a.jsxAttrValue) || isAccessorTyped(a.jsxAttrValue)) {
-					dynStyleAllExpr = a.jsxAttrValue;
-				} else {
-					styleExpr = a.jsxAttrValue;
+				const tName = "_t" + tIdx.toString();
+				tIdx = tIdx + 1;
+				stmts.push({
+					kind: NodeKind.VariableDecl, line: c.line, column: c.column,
+					declName: tName, declType: "", declKind: DeclKind.Const,
+					initializer: hostCall("host", "createText", [strLit("", c.line, c.column)], c.line, c.column),
+				});
+				stmts.push({
+					kind: NodeKind.ExprStmt, line: c.line, column: c.column,
+					expr: {
+						kind: NodeKind.CallExpr, line: c.line, column: c.column,
+						callee: ident("bindText", c.line, c.column),
+						arguments: [
+							ident("host", c.line, c.column),
+							ident(tName, c.line, c.column),
+							{
+								kind: NodeKind.ArrowFunction, line: c.line, column: c.column,
+								arrowParams: [], arrowParamTypes: [], arrowFlags: "", arrowReturnType: "",
+								arrowBody: c.jsxExpr,
+							},
+						],
+					},
+				});
+				pushInsert(parentVar, ident(tName, c.line, c.column), atRoot, c.line, c.column);
+			} else if (c.kind === NodeKind.JSXElement && isComponentTag(c)) {
+				const kName = "_k" + kIdx.toString();
+				kIdx = kIdx + 1;
+				stmts.push({
+					kind: NodeKind.VariableDecl, line: c.line, column: c.column,
+					declName: kName, declType: "", declKind: DeclKind.Const,
+					initializer: componentCall(c),
+				});
+				stmts.push({
+					kind: NodeKind.ExprStmt, line: c.line, column: c.column,
+					expr: {
+						kind: NodeKind.CallExpr, line: c.line, column: c.column,
+						callee: ident(kName, c.line, c.column),
+						arguments: [ident("host", c.line, c.column), ident(parentVar, c.line, c.column), beforeArg],
+					},
+				});
+			} else if (c.kind === NodeKind.JSXElement) {
+				const el = c;
+				const rName = "_r" + rIdx.toString();
+				let refFor: Node | null = null;
+				rIdx = rIdx + 1;
+				stmts.push({
+					kind: NodeKind.VariableDecl, line: el.line, column: el.column,
+					declName: rName, declType: "", declKind: DeclKind.Const,
+					initializer: hostCall("host", "createElement", [strLit(el.jsxTag, el.line, el.column)], el.line, el.column),
+				});
+
+				for (const a of el.jsxAttrs) {
+					if (a.kind === NodeKind.JSXAttribute) {
+						if (a.jsxAttrName === "ref") {
+							refFor = a.jsxAttrValue;
+							continue;
+						}
+						if (a.jsxAttrName === "style" && a.jsxAttrValue.kind !== NodeKind.StringLiteral) {
+							const sv = a.jsxAttrValue;
+							if (sv.kind === NodeKind.ObjectLiteral) {
+								pushStyleObject(stmts, sv, rName, "_s" + sIdx.toString(), a.line, a.column);
+								sIdx = sIdx + 1;
+								continue;
+							}
+							if (sv.kind === NodeKind.ArrayLiteral) {
+								pushStyleLayers(stmts, sv, rName, "_s" + sIdx.toString(), a.line, a.column);
+								sIdx = sIdx + 1;
+								continue;
+							}
+							if (!isReactiveExpr(sv) && presentKind(sv) !== "") {
+								pushWhenPresent(stmts, { kind: NodeKind.Identifier, line: a.line, column: a.column, name: presentKind(sv) === "accessor" ? "bindStyleAll" : "applyStaticStyle" }, [{ kind: NodeKind.Identifier, line: a.line, column: a.column, name: "host" }, { kind: NodeKind.Identifier, line: a.line, column: a.column, name: rName }], sv, a.line, a.column);
+								continue;
+							}
+							if (isReactiveExpr(sv) || isAccessorTyped(sv)) {
+								stmts.push({
+									kind: NodeKind.ExprStmt, line: a.line, column: a.column,
+									expr: {
+										kind: NodeKind.CallExpr, line: a.line, column: a.column,
+										callee: { kind: NodeKind.Identifier, line: a.line, column: a.column, name: "bindStyleAll" },
+										arguments: [
+											{ kind: NodeKind.Identifier, line: a.line, column: a.column, name: "host" },
+											{ kind: NodeKind.Identifier, line: a.line, column: a.column, name: rName },
+											{
+												kind: NodeKind.ArrowFunction, line: a.line, column: a.column,
+												arrowParams: [], arrowParamTypes: [], arrowFlags: "", arrowReturnType: "",
+												arrowBody: sv,
+											},
+										],
+									},
+								});
+								continue;
+							}
+							// Bind the style expr to a temp before the call: BUGS.md §2 call-result
+							// arg at an address-taken position (same reason as the _e child temps).
+							const sName = "_s" + sIdx.toString();
+							sIdx = sIdx + 1;
+							stmts.push({
+								kind: NodeKind.VariableDecl, line: a.line, column: a.column,
+								declName: sName, declType: "", declKind: DeclKind.Const,
+								initializer: sv,
+							});
+							stmts.push({
+								kind: NodeKind.ExprStmt, line: a.line, column: a.column,
+								expr: {
+									kind: NodeKind.CallExpr, line: a.line, column: a.column,
+									callee: { kind: NodeKind.Identifier, line: a.line, column: a.column, name: "applyStaticStyle" },
+									arguments: [
+										{ kind: NodeKind.Identifier, line: a.line, column: a.column, name: "host" },
+										{ kind: NodeKind.Identifier, line: a.line, column: a.column, name: rName },
+										{ kind: NodeKind.Identifier, line: a.line, column: a.column, name: sName },
+									],
+								},
+							});
+							continue;
+						}
+						const nameLit: Node = { kind: NodeKind.StringLiteral, line: a.line, column: a.column, value: a.jsxAttrName };
+						if (a.jsxAttrName.startsWith("on") && presentKind(a.jsxAttrValue) !== "") {
+							if (a.jsxAttrName === "onChangeText") {
+								errNodes.push(a.jsxAttrValue);
+								errMsgs.push(optChangeTextMsg);
+							} else {
+								pushWhenPresent(stmts, { kind: NodeKind.MemberExpr, line: a.line, column: a.column, object: { kind: NodeKind.Identifier, line: a.line, column: a.column, name: "host" }, property: "addEvent", isOptional: false }, [{ kind: NodeKind.Identifier, line: a.line, column: a.column, name: rName }, nameLit], a.jsxAttrValue, a.line, a.column);
+							}
+						} else if (a.jsxAttrName.startsWith("on")) {
+							// onChangeText text-unwrap — mirrors element.ms, see the comment there.
+							let hVal: Node = a.jsxAttrValue;
+							if (a.jsxAttrName === "onChangeText") {
+								hVal = { kind: NodeKind.ArrowFunction, line: a.line, column: a.column, arrowParams: ["__msCte"], arrowParamTypes: [""], arrowFlags: "", arrowReturnType: "", arrowBody: { kind: NodeKind.CallExpr, line: a.line, column: a.column, callee: a.jsxAttrValue, arguments: [{ kind: NodeKind.MemberExpr, line: a.line, column: a.column, object: { kind: NodeKind.Identifier, line: a.line, column: a.column, name: "__msCte" }, property: "value", isOptional: false }] } };
+							}
+							stmts.push({
+								kind: NodeKind.ExprStmt, line: a.line, column: a.column,
+								expr: {
+									kind: NodeKind.CallExpr, line: a.line, column: a.column,
+									callee: { kind: NodeKind.MemberExpr, line: a.line, column: a.column, object: { kind: NodeKind.Identifier, line: a.line, column: a.column, name: "host" }, property: "addEvent", isOptional: false },
+									arguments: [
+										{ kind: NodeKind.Identifier, line: a.line, column: a.column, name: rName },
+										nameLit,
+										hVal,
+									],
+								},
+							});
+						} else if (a.jsxAttrValue.kind === NodeKind.StringLiteral) {
+							stmts.push({
+								kind: NodeKind.ExprStmt, line: a.line, column: a.column,
+								expr: {
+									kind: NodeKind.CallExpr, line: a.line, column: a.column,
+									callee: { kind: NodeKind.MemberExpr, line: a.line, column: a.column, object: { kind: NodeKind.Identifier, line: a.line, column: a.column, name: "host" }, property: "setAttr", isOptional: false },
+									arguments: [
+										{ kind: NodeKind.Identifier, line: a.line, column: a.column, name: rName },
+										nameLit,
+										a.jsxAttrValue,
+									],
+								},
+							});
+						} else {
+							stmts.push({
+								kind: NodeKind.ExprStmt, line: a.line, column: a.column,
+								expr: !isReactiveExpr(a.jsxAttrValue) && !isAccessorTyped(a.jsxAttrValue) ? {
+									kind: NodeKind.CallExpr, line: a.line, column: a.column,
+									callee: { kind: NodeKind.Identifier, line: a.line, column: a.column, name: "writeAttr" },
+									arguments: [
+										{ kind: NodeKind.Identifier, line: a.line, column: a.column, name: "host" },
+										{ kind: NodeKind.Identifier, line: a.line, column: a.column, name: rName },
+										nameLit,
+										a.jsxAttrValue,
+									],
+								} : {
+									kind: NodeKind.CallExpr, line: a.line, column: a.column,
+									callee: { kind: NodeKind.Identifier, line: a.line, column: a.column, name: "bindAttr" },
+									arguments: [
+										{ kind: NodeKind.Identifier, line: a.line, column: a.column, name: "host" },
+										{ kind: NodeKind.Identifier, line: a.line, column: a.column, name: rName },
+										nameLit,
+										{
+											kind: NodeKind.ArrowFunction, line: a.line, column: a.column,
+											arrowParams: [], arrowParamTypes: [], arrowFlags: "", arrowReturnType: "",
+											arrowBody: a.jsxAttrValue,
+										},
+									],
+								},
+							});
+						}
+					}
 				}
-				continue;
-			}
-			const nameLit: Node = { kind: NodeKind.StringLiteral, line: a.line, column: a.column, value: a.jsxAttrName };
-			if (a.jsxAttrName.startsWith("on")) {
-				// RN surface: onChangeText hands the handler the TEXT — wrap the user
-				// handler so the Host contract stays (e: NeonEvent) => void everywhere.
-				// Param is __msCte so a handler reading an outer `e` is never shadowed.
-				// Inline (not a helper): flat Node fields only type inside macro bodies.
-				let hVal: Node = a.jsxAttrValue;
-				if (a.jsxAttrName === "onChangeText") {
-					hVal = { kind: NodeKind.ArrowFunction, line: a.line, column: a.column, arrowParams: ["__msCte"], arrowParamTypes: [""], arrowFlags: "", arrowReturnType: "", arrowBody: { kind: NodeKind.CallExpr, line: a.line, column: a.column, callee: a.jsxAttrValue, arguments: [{ kind: NodeKind.MemberExpr, line: a.line, column: a.column, object: { kind: NodeKind.Identifier, line: a.line, column: a.column, name: "__msCte" }, property: "value", isOptional: false }] } };
+
+				emitKids(el.jsxChildren, rName, false);
+
+				if (refFor !== null && presentKind(refFor as Node) !== "") {
+					pushWhenPresent(stmts, { kind: NodeKind.Identifier, line: el.line, column: el.column, name: "applyRef" }, [{ kind: NodeKind.Identifier, line: el.line, column: el.column, name: rName }], refFor as Node, el.line, el.column);
+				} else if (refFor !== null) {
+					stmts.push({
+						kind: NodeKind.ExprStmt, line: el.line, column: el.column,
+						expr: {
+							kind: NodeKind.CallExpr, line: el.line, column: el.column,
+							callee: { kind: NodeKind.Identifier, line: el.line, column: el.column, name: "applyRef" },
+							arguments: [{ kind: NodeKind.Identifier, line: el.line, column: el.column, name: rName }, refFor as Node],
+						},
+					});
 				}
-				events.push({
-					kind: NodeKind.CallExpr, line: a.line, column: a.column,
-					callee: { kind: NodeKind.Identifier, line: a.line, column: a.column, name: "evt" },
-					arguments: [nameLit, hVal],
-				});
-			} else if (a.jsxAttrValue.kind === NodeKind.StringLiteral) {
-				attrs.push({
-					kind: NodeKind.CallExpr, line: a.line, column: a.column,
-					callee: { kind: NodeKind.Identifier, line: a.line, column: a.column, name: "attr" },
-					arguments: [nameLit, a.jsxAttrValue],
-				});
-			} else if (!isReactiveExpr(a.jsxAttrValue) && !isAccessorTyped(a.jsxAttrValue)) {
-				attrs.push({
-					kind: NodeKind.CallExpr, line: a.line, column: a.column,
-					callee: { kind: NodeKind.Identifier, line: a.line, column: a.column, name: "attr" },
-					arguments: [nameLit, a.jsxAttrValue],
-				});
-			} else {
-				attrs.push({
-					kind: NodeKind.CallExpr, line: a.line, column: a.column,
-					callee: { kind: NodeKind.Identifier, line: a.line, column: a.column, name: "dynAttr" },
-					arguments: [nameLit, {
-						kind: NodeKind.ArrowFunction, line: a.line, column: a.column,
-						arrowParams: [], arrowParamTypes: [], arrowBody: a.jsxAttrValue, arrowFlags: "", arrowReturnType: "",
-					}],
-				});
+
+				pushInsert(parentVar, ident(rName, el.line, el.column), atRoot, el.line, el.column);
 			}
 		}
 	}
 
-	const kids: Node[] = lowerKids(node.jsxChildren);
+	emitKids(node.kind === NodeKind.JSXFragment ? node.jsxFragChildren : [node], "parent", true);
+	if (errNodes.length > 0) { error(errMsgs[0], errNodes[0]); }
 
-	const elCall: Node = {
-		kind: NodeKind.CallExpr, line: node.line, column: node.column,
-		callee: { kind: NodeKind.Identifier, line: node.line, column: node.column, name: "el" },
-		arguments: [
-			{ kind: NodeKind.StringLiteral, line: node.line, column: node.column, value: node.jsxTag },
-			{ kind: NodeKind.ArrayLiteral, line: node.line, column: node.column, elements: attrs },
-			{ kind: NodeKind.ArrayLiteral, line: node.line, column: node.column, elements: events },
-			{ kind: NodeKind.ArrayLiteral, line: node.line, column: node.column, elements: kids },
-		],
+	return {
+		kind: NodeKind.ArrowFunction, line: L, column: C,
+		arrowParams: ["host", "parent", "before"], arrowParamTypes: ["Host", "HostNode", "HostNode | null"], arrowFlags: "", arrowReturnType: "void",
+		arrowBody: { kind: NodeKind.BlockStmt, line: L, column: C, statements: stmts },
 	};
-
-	let acc: Node = elCall;
-	if (refExpr !== null) {
-		acc = {
-			kind: NodeKind.CallExpr, line: node.line, column: node.column,
-			callee: { kind: NodeKind.Identifier, line: node.line, column: node.column, name: "withRef" },
-			arguments: [acc, refExpr as Node],
-		};
-	}
-	if (styleExpr !== null) {
-		acc = {
-			kind: NodeKind.CallExpr, line: node.line, column: node.column,
-			callee: { kind: NodeKind.Identifier, line: node.line, column: node.column, name: "withStyle" },
-			arguments: [acc, styleExpr as Node],
-		};
-	}
-	if (dynStyleAllExpr !== null) {
-		acc = {
-			kind: NodeKind.CallExpr, line: node.line, column: node.column,
-			callee: { kind: NodeKind.Identifier, line: node.line, column: node.column, name: "withDynStyleAll" },
-			arguments: [acc,
-				{
-					kind: NodeKind.ArrowFunction, line: node.line, column: node.column,
-					arrowParams: [], arrowParamTypes: [], arrowBody: dynStyleAllExpr as Node, arrowFlags: "", arrowReturnType: "",
-				}],
-		};
-	}
-	for (let i = 0; i < dynStyleNames.length; i = i + 1) {
-		acc = {
-			kind: NodeKind.CallExpr, line: node.line, column: node.column,
-			callee: { kind: NodeKind.Identifier, line: node.line, column: node.column, name: "withDynStyle" },
-			arguments: [acc,
-				{ kind: NodeKind.StringLiteral, line: node.line, column: node.column, value: dynStyleNames[i] },
-				{
-					kind: NodeKind.ArrowFunction, line: node.line, column: node.column,
-					arrowParams: [], arrowParamTypes: [], arrowBody: dynStyleExprs[i], arrowFlags: "", arrowReturnType: "",
-				}],
-		};
-	}
-	return acc;
 }
