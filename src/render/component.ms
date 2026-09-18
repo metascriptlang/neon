@@ -3,10 +3,10 @@
 // to mount and runs untracked (probe/componentSemantics.ms proves the semantics).
 
 import { untrack } from "../core/signal";
-import { NeonNode, componentNode } from "./node";
+import { Host, HostNode, NeonNode } from "./hostTypes";
 
 export function createComponent<P>(Comp: (props: P) => NeonNode, props: P): NeonNode {
-	return componentNode(() => {
-		return untrack(() => Comp(props));
-	}, new Map<string, unknown>());
+	return (host: Host, parent: HostNode, before: HostNode | null): void => {
+		untrack((): number => { Comp(props)(host, parent, before); return 0; });
+	};
 }

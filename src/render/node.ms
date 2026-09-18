@@ -1,19 +1,16 @@
-// Reactive view-node tree — backend-agnostic description of UI.
-// A node is either an element (tag + attrs + events + children) or a text node
-// (static `text` or reactive `dyn` thunk). Renderers consume this: renderToString
-// pulls a snapshot; renderToHost (host.ms) pushes live updates into a host node.
+// A NeonNode is a function that puts the host nodes it owns into `parent`, in
+// front of `before`. JSX lowers to one through the element macro; the builders
+// here are the same thing written by hand, for a tag, an attr list or an event
+// list only known at runtime (src/components/primitives.ms).
 
-import { Style, StyleValue, emptyStyle, mergeStyle, setStyleField } from "./style";
-import { styleToCss } from "./css";
-import { registerCss } from "./sheet";
+import { createEffect } from "../core/effect";
+import { Style } from "./style";
 import { NeonEvent } from "./event";
+import { Host, HostNode, NeonNode, RefFn } from "./hostTypes";
+import { Row, place, needsStartMarker, reconcileArrays } from "./reconcile";
+import { bindText, bindAttr, bindStyleAll } from "./bind";
 
-// One reactive style field: `width: w()` becomes { name: "width", get: () => w() }.
-// The host layer binds each entry to one effect writing exactly that property.
-export interface VDynStyle {
-	name: string;
-	get: () => StyleValue;
-}
+export { NeonNode, RefFn } from "./hostTypes";
 
 export interface VAttr {
 	name: string;
@@ -27,47 +24,9 @@ export interface VEvent {
 	handler: (e: NeonEvent) => void;
 }
 
-// A region produces a reactive list of host nodes (For/Show/Index). Typed loosely
-// (unknown) so this layer stays below the host: host.ms supplies the real Host and the
-// returned thunk yields host nodes that renderToHost reconciles into the DOM.
-export type RegionFn = (host: unknown) => () => unknown[];
+export type RegionFn = (host: Host) => () => Row[];
 
-// The host node is `unknown` here for the same reason a region's is: this layer
-// stays below the host. A caller casts to whatever its host really builds.
-export type RefFn = (node: unknown) => void;
-
-// A Component (function component) is a function from props to a NeonNode. Props values
-// are callables (signals/memos) or plain values — see Reactive<T> + read() in component.ms.
-// The producer form (() => NeonNode) is the deferred expansion of an already-bound call:
-// createComponent wraps Comp(props) in untrack and returns a NeonNode whose componentFn field
-// holds the deferred call. Renderer expands it lazily at mount.
 export type ComponentFn<P = unknown> = (props: P) => NeonNode;
-export type ComponentProducer = () => NeonNode;
-
-// A scoped node wraps the MOUNT of children[0] in an owner scope (Solid's
-// Provider is exactly this: a transparent component that sets context around
-// children resolution). Neon creates host nodes at mount, so the scope must
-// travel with the node and wrap mounting, not description building.
-export type ScopeFn = (body: () => unknown) => unknown;
-
-export interface NeonNode {
-	tag: string;           // "" marks a text node
-	children: NeonNode[];
-	text: string;          // static text
-	isDyn: boolean;        // true → `dyn` is the live text source
-	dyn: () => string;
-	attrs: VAttr[];
-	events: VEvent[];
-	style: Style | null;                // typed style channel (docs/STYLE.md); host projects it
-	dynStyle: VDynStyle[] | null;       // reactive style fields — one per-property effect each (§6)
-	dynStyleAll: (() => Style) | null;  // reactive whole-style thunk — one effect re-applying setStyle
-	region: RegionFn | null;            // non-null → reactive list region (host reconciles it)
-	componentFn: ComponentProducer | null; // non-null → Component variant (renderer expands lazily)
-	componentProps: Map<string, unknown> | null; // attached for debug/introspection
-	ref: RefFn | null;                  // called once at mount with the host node
-	scope: ScopeFn | null;              // non-null → mount children[0] inside this scope
-	isFragment: boolean;
-}
 
 export function attr(name: string, value: string | null): VAttr {
 	return { name, value, isDyn: false, dyn: () => "" };
@@ -81,67 +40,74 @@ export function evt(name: string, handler: (e: NeonEvent) => void): VEvent {
 	return { name, handler };
 }
 
+export function hostElement(
+	tag: string,
+	attrs: VAttr[],
+	events: VEvent[],
+	children: NeonNode[],
+	style: (() => Style) | null,
+	ref: RefFn | null,
+): NeonNode {
+	return (host: Host, parent: HostNode, before: HostNode | null): void => {
+		const node = host.createElement(tag);
+		for (const a of attrs) {
+			if (a.isDyn) {
+				bindAttr(host, node, a.name, a.dyn);
+			} else if (a.value !== null) {
+				host.setAttr(node, a.name, a.value as string);
+			}
+		}
+		if (style !== null) { bindStyleAll(host, node, style as () => Style); }
+		for (const e of events) { host.addEvent(node, e.name, e.handler); }
+		for (const child of children) { child(host, node, null); }
+		if (ref !== null) { (ref as RefFn)(node); }
+		place(host, parent, node, before);
+	};
+}
+
 export function el(tag: string, attrs: VAttr[], events: VEvent[], children: NeonNode[]): NeonNode {
-	return { tag, children, text: "", isDyn: false, dyn: () => "", attrs, events, style: null, dynStyle: null, dynStyleAll: null, region: null, componentFn: null, componentProps: null, ref: null, scope: null, isFragment: false };
-}
-
-export function withStyle(n: NeonNode, s: Style): NeonNode {
-	n.style = s;
-	return n;
-}
-
-export function withDynStyle(n: NeonNode, name: string, get: () => StyleValue): NeonNode {
-	if (n.dynStyle === null) { n.dynStyle = []; }
-	(n.dynStyle as VDynStyle[]).push({ name, get });
-	return n;
-}
-
-export function withDynStyleAll(n: NeonNode, get: () => Style): NeonNode {
-	n.dynStyleAll = get;
-	return n;
-}
-
-export function withRef(n: NeonNode, f: RefFn): NeonNode {
-	n.ref = f;
-	return n;
+	return hostElement(tag, attrs, events, children, null, null);
 }
 
 export function text(s: string): NeonNode {
-	return { tag: "", children: [], text: s, isDyn: false, dyn: () => "", attrs: [], events: [], style: null, dynStyle: null, dynStyleAll: null, region: null, componentFn: null, componentProps: null, ref: null, scope: null, isFragment: false };
+	return (host: Host, parent: HostNode, before: HostNode | null): void => {
+		place(host, parent, host.createText(s), before);
+	};
 }
 
 export function dynText(thunk: () => string): NeonNode {
-	return { tag: "", children: [], text: "", isDyn: true, dyn: thunk, attrs: [], events: [], style: null, dynStyle: null, dynStyleAll: null, region: null, componentFn: null, componentProps: null, ref: null, scope: null, isFragment: false };
+	return (host: Host, parent: HostNode, before: HostNode | null): void => {
+		const node = host.createText("");
+		bindText(host, node, thunk);
+		place(host, parent, node, before);
+	};
 }
 
-// A static {expr} child, routed by type: a string becomes a text node, a NeonNode
-// (a nested view, props.children) passes through unchanged. The macro picks this for
-// a child that isReactiveExpr rejects, so the branch is chosen by the value's type
-// rather than hard-lowered to text() — which is what let a node child reach text()
-// and fail. Overloaded on the argument value (string vs NeonNode), the form proven
-// to resolve on both backends; no thunk overload (return-type discrimination).
-export function insChild(s: string): NeonNode {
-	return text(s);
+export function mountChild(host: Host, parent: HostNode, before: HostNode | null, s: string): void {
+	place(host, parent, host.createText(s), before);
 }
 
-export function insChild(n: NeonNode): NeonNode {
-	return n;
+export function mountChild(host: Host, parent: HostNode, before: HostNode | null, n: NeonNode): void {
+	n(host, parent, before);
+}
+
+export function mountChild(host: Host, parent: HostNode, before: HostNode | null, ns: NeonNode[]): void {
+	for (const n of ns) { n(host, parent, before); }
 }
 
 export function regionNode(fn: RegionFn): NeonNode {
-	return { tag: "", children: [], text: "", isDyn: false, dyn: () => "", attrs: [], events: [], style: null, dynStyle: null, dynStyleAll: null, region: fn, componentFn: null, componentProps: null, ref: null, scope: null, isFragment: false };
-}
-
-export function fragmentNode(children: NeonNode[]): NeonNode {
-	return { tag: "", children, text: "", isDyn: false, dyn: () => "", attrs: [], events: [], style: null, dynStyle: null, dynStyleAll: null, region: null, componentFn: null, componentProps: null, ref: null, scope: null, isFragment: true };
-}
-
-export function scopedNode(scope: ScopeFn, child: NeonNode): NeonNode {
-	return { tag: "", children: [child], text: "", isDyn: false, dyn: () => "", attrs: [], events: [], style: null, dynStyle: null, dynStyleAll: null, region: null, componentFn: null, componentProps: null, ref: null, scope, isFragment: false };
-}
-
-export function componentNode(fn: ComponentProducer, props: Map<string, unknown>): NeonNode {
-	return { tag: "", children: [], text: "", isDyn: false, dyn: () => "", attrs: [], events: [], style: null, dynStyle: null, dynStyleAll: null, region: null, componentFn: fn, componentProps: props, ref: null, scope: null, isFragment: false };
+	return (host: Host, parent: HostNode, before: HostNode | null): void => {
+		if (needsStartMarker(parent)) { place(host, parent, host.createText(""), before); }
+		const anchor = host.createText("");
+		place(host, parent, anchor, before);
+		let current: Row[] = [];
+		const rows = fn(host);
+		createEffect(() => {
+			const next = rows();
+			reconcileArrays(host, parent, current, next, anchor);
+			current = next.slice(0, next.length);
+		});
+	};
 }
 
 // Universal wire tags → html. One table shared by SSR (renderToString) and the
@@ -154,66 +120,4 @@ export function htmlTagFor(tag: string): string {
 	if (tag === "textinput") { return "input"; }
 	if (tag === "pressable") { return "button"; }
 	return tag;
-}
-
-export function renderToString(n: NeonNode): string {
-	const comp = n.componentFn;
-	if (comp !== null) {
-		const producer = comp as ComponentProducer;
-		return renderToString(producer());
-	}
-	const sc = n.scope;
-	if (sc !== null) {
-		let out = "";
-		(sc as ScopeFn)(() => { out = renderToString(n.children[0]); return null; });
-		return out;
-	}
-	const reg = n.region;
-	if (reg !== null) {
-		throw "renderToString does not render reactive regions (For/Show/Index) — render via renderToHost with a host adapter";
-	}
-	if (n.isFragment) {
-		let joined = "";
-		for (const k of n.children) { joined = joined + renderToString(k); }
-		return joined;
-	}
-	if (n.tag === "") { return n.isDyn ? n.dyn() : n.text; }
-	let open = "<" + htmlTagFor(n.tag);
-	let cls = "";
-	let inline = "";
-	// The three style channels resolve exactly as renderNode (host.ms) resolves
-	// them, so the markup a server sends matches what the browser would build:
-	// a whole-style thunk wins, then per-property thunks over the static base,
-	// and only a purely static style can travel as a class.
-	const dynAll = n.dynStyleAll;
-	const dyns = n.dynStyle;
-	const base = n.style;
-	if (dynAll !== null) {
-		inline = styleToCss((dynAll as () => Style)());
-	} else if (dyns !== null) {
-		const own = base !== null ? mergeStyle(base as Style, emptyStyle()) : emptyStyle();
-		for (const p of (dyns as VDynStyle[])) { setStyleField(own, p.name, p.get()); }
-		inline = styleToCss(own);
-	} else if (base !== null) {
-		const st = base as Style;
-		const id = st.cssId;
-		if (id !== null) {
-			registerCss(id as string, st.css === null ? "" : st.css as string);
-			cls = id as string;
-		} else {
-			inline = styleToCss(st);
-		}
-	}
-	for (const a of n.attrs) {
-		const raw = a.isDyn ? a.dyn() : a.value;
-		if (raw === null) { continue; }
-		let v = raw as string;
-		if (a.name === "class" && cls !== "") { v = v === "" ? cls : v + " " + cls; cls = ""; }
-		open = open + " " + a.name + "=\"" + v + "\"";
-	}
-	if (cls !== "") { open = open + " class=\"" + cls + "\""; }
-	if (inline !== "") { open = open + " style=\"" + inline + "\""; }
-	let s = open + ">";
-	for (const k of n.children) { s = s + renderToString(k); }
-	return s + "</" + htmlTagFor(n.tag) + ">";
 }

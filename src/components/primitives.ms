@@ -6,25 +6,22 @@
 // htmlTagFor; terminal: box; void ignores tags; mock records as written).
 //
 // Prop contract (component.test pins it): every value prop arrives as an
-// Accessor<T> (style widens into withDynStyleAll's () => Style, the
+// Accessor<T> (style widens into bindStyleAll's () => Style, the
 // call-based law's channel), while arrow literals, ref and on* cross RAW and
 // take the field's flat type (handlers declare (e: NeonEvent) => void
 // directly). `class` is the RN-web escape hatch, honored by the browser
-// host's CSS-class channel, ignored by native. children: NeonNode[] keeps children tree-emitted so
-// SSR still serializes them (RENDER-MODEL §Selection — component bodies stay
-// tree); a view-children channel is a measured follow-up if the js lane ever
-// needs direct-emitted children inside these containers.
+// host's CSS-class channel, ignored by native.
 //
 // `onChangeText` stays RN-shaped here at RUNTIME — the component wraps the
 // user's (text) => void around the host's (e: NeonEvent) => void contract, no
-// macro machinery involved (the macro-side wrap in element/direct covers the
+// macro machinery involved (the macro-side wrap in element covers the
 // same name on raw lowercase tags).
 
 import { NeonEvent } from "../render/event";
 import { Style } from "../render/style";
 import { onCleanup } from "../core/cleanup";
 import { Accessor, accessor } from "../core/signal";
-import { NeonNode, VAttr, VEvent, RefFn, el, attr, evt, dynAttr, withDynStyleAll, withRef } from "../render/node";
+import { NeonNode, VAttr, VEvent, RefFn, hostElement, attr, evt, dynAttr } from "../render/node";
 
 interface HostProps {
 	style?: Accessor<Style> | null;
@@ -32,12 +29,11 @@ interface HostProps {
 	ref?: RefFn | null;
 }
 
-function hostElement(tag: string, props: HostProps, attrs: VAttr[], evts: VEvent[], kids: NeonNode[]): NeonNode {
+function primitive(tag: string, props: HostProps, attrs: VAttr[], evts: VEvent[], kids: NeonNode[]): NeonNode {
 	if (props.class !== null) { attrs.push(attr("class", props.class as string)); }
-	const n = el(tag, attrs, evts, kids);
-	if (props.style !== null) { withDynStyleAll(n, props.style as () => Style); }
-	if (props.ref !== null) { withRef(n, props.ref as RefFn); }
-	return n;
+	let style: (() => Style) | null = null;
+	if (props.style !== null) { style = props.style as () => Style; }
+	return hostElement(tag, attrs, evts, kids, style, props.ref);
 }
 
 interface ViewProps extends HostProps {
@@ -45,7 +41,7 @@ interface ViewProps extends HostProps {
 }
 
 export function View(props: ViewProps): NeonNode {
-	return hostElement("view", props, [], [], props.children);
+	return primitive("view", props, [], [], props.children);
 }
 
 interface TextProps extends HostProps {
@@ -53,7 +49,7 @@ interface TextProps extends HostProps {
 }
 
 export function Text(props: TextProps): NeonNode {
-	return hostElement("text", props, [], [], props.children);
+	return primitive("text", props, [], [], props.children);
 }
 
 // RN Pressability's two constants (Libraries/Pressability/Pressability.js):
@@ -156,7 +152,7 @@ export function Pressable(props: PressableProps): NeonNode {
 		evts.push(evt("onPress", onPress as (e: NeonEvent) => void));
 	}
 
-	return hostElement("pressable", props, [], evts, props.children);
+	return primitive("pressable", props, [], evts, props.children);
 }
 
 interface TextInputProps extends HostProps {
@@ -175,5 +171,5 @@ export function TextInput(props: TextInputProps): NeonNode {
 		const user = props.onChangeText as (t: string) => void;
 		evts.push(evt("onChangeText", (e: NeonEvent): void => { user(e.value); }));
 	}
-	return hostElement("textinput", props, attrs, evts, []);
+	return primitive("textinput", props, attrs, evts, []);
 }

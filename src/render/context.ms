@@ -10,7 +10,7 @@ import { Accessor } from "../core/signal";
 import { Computation, CompState } from "../core/types";
 import { getOwner } from "../core/runtime";
 import { runWithOwner } from "../core/owner";
-import { NeonNode, scopedNode } from "./node";
+import { Host, HostNode, NeonNode } from "./hostTypes";
 
 export interface ProviderProps<T> {
 	value: Accessor<T>;
@@ -39,7 +39,7 @@ export function useContext<T>(ctx: Context<T>): T {
 	return ctx.defaultValue;
 }
 
-function provideScope<T>(ctx: Context<T>, read: () => T, body: () => unknown): unknown {
+function provideScope<T>(ctx: Context<T>, read: () => T, body: () => number): number {
 	const parent = getOwner();
 	const scope: Computation = {
 		observers: [], observerSlots: [],
@@ -55,7 +55,9 @@ function provideScope<T>(ctx: Context<T>, read: () => T, body: () => unknown): u
 export function createContext<T>(defaultValue: T): Context<T> {
 	const ctx: Context<T> = { defaultValue: defaultValue, Provider: null as (props: ProviderProps<T>) => NeonNode };
 	ctx.Provider = (props: ProviderProps<T>): NeonNode => {
-		return scopedNode((body) => provideScope<T>(ctx, props.value, body), props.children);
+		return (host: Host, parent: HostNode, before: HostNode | null): void => {
+			provideScope<T>(ctx, props.value, (): number => { props.children(host, parent, before); return 0; });
+		};
 	};
 	return ctx;
 }

@@ -5,14 +5,14 @@
 // (Svelte each.js `move(effect, current, anchor)`) — so a live row is never
 // detached; only a row absent from the next list is removed.
 
-import { Host, HostNode, NeonView } from "./hostTypes";
+import { Host, HostNode, NeonNode } from "./hostTypes";
 import { Computation } from "../core/types";
 import { getOwner } from "../core/runtime";
 import { runWithOwner } from "../core/owner";
 import { untrack } from "../core/signal";
 
 export interface Row {
-	view: NeonView;
+	view: NeonNode;
 	owner: Computation | null;
 	parent: HostNode | null;
 	start: HostNode | null;
@@ -21,7 +21,7 @@ export interface Row {
 
 function noView(host: Host, parent: HostNode, before: HostNode | null): void {}
 
-export function makeRow(view: NeonView): Row {
+export function makeRow(view: NeonNode): Row {
 	return { view, owner: getOwner(), parent: null, start: null, end: null };
 }
 

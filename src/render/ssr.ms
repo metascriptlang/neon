@@ -1,6 +1,7 @@
 import { Host, HostNode } from "./hostTypes";
 import { MockNode, mockNode, mockHost, renderToHost } from "./host";
-import { NeonNode, htmlTagFor } from "./node";
+import { NeonNode } from "./hostTypes";
+import { htmlTagFor } from "./node";
 import { registerCss } from "./sheet";
 import { styleToCss } from "./css";
 import { Style } from "./style";
@@ -43,7 +44,7 @@ export function serializeChildren(n: MockNode): string {
 	return s;
 }
 
-export function renderToStringViaHost(n: NeonNode): string {
+export function renderToString(n: NeonNode): string {
 	return createRoot((dispose) => {
 		const box = mockNode("ssr-root");
 		renderToHost(n, SSR_HOST, box as unknown as HostNode);

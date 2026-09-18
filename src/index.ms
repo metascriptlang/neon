@@ -10,9 +10,9 @@ export { onCleanup } from "./core/cleanup";
 export { mapArray, indexArray } from "./core/array";
 export { Dispose } from "./core/types";
 
-export { NeonNode, renderToString } from "./render/node";
-export { Host, HostNode } from "./render/hostTypes";
-export { NeonView, viewOf, renderNode, renderToHost, mountInto } from "./render/host";
+export { Host, HostNode, NeonNode } from "./render/hostTypes";
+export { renderToHost } from "./render/host";
+export { renderToString } from "./render/ssr";
 export { createComponent } from "./render/component";
 export { Context, ProviderProps, createContext, useContext } from "./render/context";
 export { NeonEvent, neonEvent } from "./render/event";
