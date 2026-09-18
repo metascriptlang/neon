@@ -191,7 +191,7 @@ function mountRegion(vnode: NeonNode, host: Host, parent: HostNode, before: Host
 	createEffect(() => {
 		const next = memo() as Row[];
 		reconcileArrays(host, parent, current, next, anchor);
-		current = next;
+		current = next.slice(0, next.length);
 	});
 }
 
