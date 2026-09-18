@@ -1,5 +1,5 @@
 import { mockHost, MockNode, HostNode } from "../../src/render/host";
-import { reconcileArrays, Range, rangeOf } from "../../src/render/reconcile";
+import { reconcileArrays, Row, rowOf } from "../../src/render/reconcile";
 
 function seq(parent: HostNode): string {
 	const p = parent as unknown as MockNode;
@@ -11,11 +11,11 @@ function seq(parent: HostNode): string {
 test "reconcileArrays forces the map-fallback branch (non-swap middle reorder)" {
 	const h = mockHost();
 	const parent = h.createElement("ul");
-	const pool = new Map<string, Range>();
-	for (const L of ["A", "B", "C", "D", "E"]) { pool.set(L, rangeOf(h.createElement(L))); }
-	function nodesFor(s: string): Range[] {
-		const out: Range[] = [];
-		for (let i = 0; i < s.length; i += 1) { out.push(pool.get(s.slice(i, i + 1)) as Range); }
+	const pool = new Map<string, Row>();
+	for (const L of ["A", "B", "C", "D", "E"]) { pool.set(L, rowOf(h.createElement(L))); }
+	function nodesFor(s: string): Row[] {
+		const out: Row[] = [];
+		for (let i = 0; i < s.length; i += 1) { out.push(pool.get(s.slice(i, i + 1)) as Row); }
 		return out;
 	}
 	let cur = nodesFor("ABCD");
@@ -38,16 +38,16 @@ test "reconcileArrays forces the map-fallback branch (non-swap middle reorder)" 
 test "reconcileArrays handles duplicate keys" {
 	const h = mockHost();
 	const parent = h.createElement("ul");
-	const a = rangeOf(h.createElement("A"));
-	const b1 = rangeOf(h.createElement("B"));
-	const b2 = rangeOf(h.createElement("B"));
-	const c = rangeOf(h.createElement("C"));
+	const a = rowOf(h.createElement("A"));
+	const b1 = rowOf(h.createElement("B"));
+	const b2 = rowOf(h.createElement("B"));
+	const c = rowOf(h.createElement("C"));
 	// note: b1 and b2 are distinct nodes that share tag "B"
-	let cur: Range[] = [a, b1, b2, c];
+	let cur: Row[] = [a, b1, b2, c];
 	for (const n of cur) { h.append(parent, n.start); }
 	assert seq(parent) === "ABBC", "initial";
 
-	const next: Range[] = [c, b2, a, b1];
+	const next: Row[] = [c, b2, a, b1];
 	reconcileArrays(h, parent, cur, next, null as unknown as HostNode);
 	// distinct node identities must land in exactly the requested order
 	const p = parent as unknown as MockNode;

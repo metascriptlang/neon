@@ -1,6 +1,6 @@
 import { el, text, regionNode } from "../../src/render/node";
 import { Host, HostNode, MockNode, mockHost, renderToHost, renderNode } from "../../src/render/host";
-import { Range, rangeOf } from "../../src/render/reconcile";
+import { Row, rowOf } from "../../src/render/reconcile";
 import { mapArray } from "../../src/core/array";
 import { createSignal } from "../../src/core/signal";
 import { createRoot } from "../../src/core/owner";
@@ -20,7 +20,7 @@ test "region mounts a reactive list and reconciles on change" {
 		const [list, setList] = createSignal<number[]>([1, 2, 3]);
 		const region = regionNode((h) => {
 			const host = h as Host;
-			return mapArray<number, Range>(() => list(), (v, i) => rangeOf(renderNode(el("li", [], [], [text("" + v)]), host)));
+			return mapArray<number, Row>(() => list(), (v, i) => rowOf(renderNode(el("li", [], [], [text("" + v)]), host)));
 		});
 		const ul = el("ul", [], [], [region]);
 		const host = mockHost();

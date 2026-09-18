@@ -1,5 +1,5 @@
 import { mockHost, MockNode, HostNode, Host } from "../../src/render/host";
-import { reconcileArrays, Range, rangeOf, moveRange, removeRange } from "../../src/render/reconcile";
+import { reconcileArrays, Row, rowOf, moveRow, removeRow } from "../../src/render/reconcile";
 
 function seq(parent: HostNode): string {
 	const p = parent as unknown as MockNode;
@@ -11,13 +11,13 @@ function seq(parent: HostNode): string {
 test "reconcileArrays drives many transforms with node reuse" {
 	const h = mockHost();
 	const parent = h.createElement("ul");
-	const pool = new Map<string, Range>();
+	const pool = new Map<string, Row>();
 	const labels = ["A", "B", "C", "D", "E", "F"];
-	for (const L of labels) { pool.set(L, rangeOf(h.createElement(L))); }
+	for (const L of labels) { pool.set(L, rowOf(h.createElement(L))); }
 
-	function nodesFor(s: string): Range[] {
-		const out: Range[] = [];
-		for (let i = 0; i < s.length; i += 1) { out.push(pool.get(s.slice(i, i + 1)) as Range); }
+	function nodesFor(s: string): Row[] {
+		const out: Row[] = [];
+		for (let i = 0; i < s.length; i += 1) { out.push(pool.get(s.slice(i, i + 1)) as Row); }
 		return out;
 	}
 
@@ -52,19 +52,19 @@ test "reconcileArrays drives many transforms with node reuse" {
 test "reconcileArrays keeps region before a trailing anchor" {
 	const h = mockHost();
 	const parent = h.createElement("ul");
-	const pool = new Map<string, Range>();
-	for (const L of ["A", "B", "C"]) { pool.set(L, rangeOf(h.createElement(L))); }
-	const a = pool.get("A") as Range;
-	const b = pool.get("B") as Range;
-	const c = pool.get("C") as Range;
+	const pool = new Map<string, Row>();
+	for (const L of ["A", "B", "C"]) { pool.set(L, rowOf(h.createElement(L))); }
+	const a = pool.get("A") as Row;
+	const b = pool.get("B") as Row;
+	const c = pool.get("C") as Row;
 
 	h.append(parent, a.start);
 	h.append(parent, b.start);
 	const anchor = h.createText("|");
 	h.append(parent, anchor);
 
-	let cur: Range[] = [a, b];
-	const next: Range[] = [a, b, c];
+	let cur: Row[] = [a, b];
+	const next: Row[] = [a, b, c];
 	reconcileArrays(h, parent, cur, next, anchor);
 
 	const p = parent as unknown as MockNode;
@@ -72,14 +72,16 @@ test "reconcileArrays keeps region before a trailing anchor" {
 	assert p.children[p.children.length - 1] === (anchor as unknown as MockNode), "anchor stays last";
 }
 
-function span(h: Host, parent: HostNode, tags: string[]): Range {
+function span(h: Host, parent: HostNode, tags: string[]): Row {
 	const made: HostNode[] = [];
 	for (const t of tags) {
 		const n = h.createElement(t);
 		h.append(parent, n);
 		made.push(n);
 	}
-	return { start: made[0], end: made[made.length - 1] };
+	const r = rowOf(made[0]);
+	r.end = made[made.length - 1];
+	return r;
 }
 
 test "a range of several nodes moves and is removed as one block" {
@@ -90,8 +92,8 @@ test "a range of several nodes moves and is removed as one block" {
 	const third = span(h, parent, ["C"]);
 	assert seq(parent) === "AaBbbC", "initial";
 
-	let cur: Range[] = [first, second, third];
-	let next: Range[] = [third, first, second];
+	let cur: Row[] = [first, second, third];
+	let next: Row[] = [third, first, second];
 	reconcileArrays(h, parent, cur, next, null as unknown as HostNode);
 	assert seq(parent) === "CAaBbb", "whole blocks rotate, never interleave";
 
@@ -121,7 +123,7 @@ test "ranges keep their place around a trailing anchor" {
 	assert p.children[p.children.length - 1] === (anchor as unknown as MockNode), "anchor stays last";
 }
 
-test "moveRange and removeRange carry every node of a block" {
+test "moveRow and removeRow carry every node of a block" {
 	const h = mockHost();
 	const parent = h.createElement("ul");
 	const one = span(h, parent, ["A", "a", "a"]);
@@ -130,15 +132,15 @@ test "moveRange and removeRange carry every node of a block" {
 	h.append(parent, tail);
 	assert seq(parent) === "AaaBbZ", "initial";
 
-	moveRange(h, parent, one, tail);
+	moveRow(h, parent, one, tail);
 	assert seq(parent) === "BbAaaZ", "a block moves in one piece: " + seq(parent);
 
-	moveRange(h, parent, two, null as unknown as HostNode);
+	moveRow(h, parent, two, null as unknown as HostNode);
 	assert seq(parent) === "AaaZBb", "a block moves to the end: " + seq(parent);
 
-	moveRange(h, parent, two, two.start);
+	moveRow(h, parent, two, two.start);
 	assert seq(parent) === "AaaZBb", "moving a block before itself changes nothing";
 
-	removeRange(h, parent, one);
+	removeRow(h, parent, one);
 	assert seq(parent) === "ZBb", "a removed block takes every node: " + seq(parent);
 }

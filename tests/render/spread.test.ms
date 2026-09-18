@@ -127,7 +127,7 @@ test "direct emission expands a spread into the same attrs" {
 	const host = mockHost();
 	const root = mockNode("root");
 	const m = direct(<div {...p}>hi</div>);
-	host.append(root as unknown as HostNode, m(host));
+	m(host, root as unknown as HostNode, null);
 	assert mockToString(root.children[0]) === "<div id=\"x\" title=\"t\">hi</div>", "direct spread attrs";
 }
 
@@ -136,7 +136,7 @@ test "direct emission gives a later prop the win in place" {
 	const host = mockHost();
 	const root = mockNode("root");
 	const m = direct(<div title="early" {...p} id="late">hi</div>);
-	host.append(root as unknown as HostNode, m(host));
+	m(host, root as unknown as HostNode, null);
 	assert mockToString(root.children[0]) === "<div title=\"t\" id=\"late\">hi</div>", "direct override order";
 }
 
@@ -146,7 +146,7 @@ test "direct emission removes a null field" {
 	}
 	const host = mockHost();
 	const root = mockNode("root");
-	host.append(root as unknown as HostNode, view({ id: "x", title: null })(host));
+	view({ id: "x", title: null })(host, root as unknown as HostNode, null);
 	assert mockToString(root.children[0]) === "<div id=\"x\">hi</div>", "direct null removes";
 }
 
@@ -157,7 +157,7 @@ test "direct emission keeps an Accessor field reactive" {
 	}
 	const host = mockHost();
 	const root = mockNode("root");
-	host.append(root as unknown as HostNode, view({ title: t })(host));
+	view({ title: t })(host, root as unknown as HostNode, null);
 	assert mockToString(root.children[0]) === "<div title=\"a\">hi</div>", "direct accessor initial";
 	setT("b");
 	assert mockToString(root.children[0]) === "<div title=\"b\">hi</div>", "direct accessor updates";
@@ -170,7 +170,7 @@ test "direct emission routes an on* field to addEvent" {
 	}
 	const host = mockHost();
 	const root = mockNode("root");
-	host.append(root as unknown as HostNode, view({ onPress: (e: NeonEvent) => { hits = hits + 1; } })(host));
+	view({ onPress: (e: NeonEvent) => { hits = hits + 1; } })(host, root as unknown as HostNode, null);
 	fireEvent(root.children[0], "onPress");
 	assert hits === 1, "direct spread handler fired";
 }
@@ -181,7 +181,7 @@ test "direct emission lets a spread style replace an earlier one" {
 	}
 	const host = mockHost();
 	const root = mockNode("root");
-	host.append(root as unknown as HostNode, view({ style: { height: 2 } })(host));
+	view({ style: { height: 2 } })(host, root as unknown as HostNode, null);
 	const st = root.children[0].style;
 	assert st !== null && (st as Style).height === 2 && (st as Style).width === null, "direct spread style replaces";
 }

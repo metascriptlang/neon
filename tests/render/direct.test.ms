@@ -30,8 +30,7 @@ test "static + dynamic text + event: direct matches tree" {
 
 	const directRoot = mockNode("root");
 	const mount = direct(<div class="box"><p>hello {name()}</p><button onPress={inc}>+</button></div>);
-	const dnode = mount(host);
-	host.append(directRoot as unknown as HostNode, dnode);
+	mount(host, directRoot as unknown as HostNode, null);
 
 	assert mockToString(treeRoot) === mockToString(directRoot), "initial: tree=" + mockToString(treeRoot) + " direct=" + mockToString(directRoot);
 	setName("binh");
@@ -53,8 +52,7 @@ test "deep nesting: direct matches tree" {
 
 	const directRoot = mockNode("root");
 	const mount = direct(<ul><li><span>a</span></li><li>{v()}</li></ul>);
-	const dnode = mount(host);
-	host.append(directRoot as unknown as HostNode, dnode);
+	mount(host, directRoot as unknown as HostNode, null);
 
 	assert mockToString(treeRoot) === mockToString(directRoot), "initial: " + mockToString(directRoot);
 	setV("y");
@@ -73,8 +71,7 @@ test "multiple attrs and multiple dynamic spots keep distinct temps" {
 
 	const directRoot = mockNode("root");
 	const mount = direct(<div id="x" class="y"><p>{a()}</p><p>{b()}</p><span>{a()}</span></div>);
-	const dnode = mount(host);
-	host.append(directRoot as unknown as HostNode, dnode);
+	mount(host, directRoot as unknown as HostNode, null);
 
 	assert mockToString(treeRoot) === mockToString(directRoot), "initial: tree=" + mockToString(treeRoot) + " direct=" + mockToString(directRoot);
 	setA("7");
@@ -128,8 +125,7 @@ test "component child: defer, bodyRuns once, reactive prop updates match tree" {
 	const directRoot = mockNode("root");
 	const mount = direct(<div><Gauge count={n()} label="g" /></div>);
 	assert gaugeRuns === 1, "direct() must not run the body before mount, got " + gaugeRuns.toString();
-	const dnode = mount(host);
-	host.append(directRoot as unknown as HostNode, dnode);
+	mount(host, directRoot as unknown as HostNode, null);
 	assert gaugeRuns === 2, "one body run per emission after mount, got " + gaugeRuns.toString();
 
 	assert mockToString(treeRoot) === mockToString(directRoot), "initial: tree=" + mockToString(treeRoot) + " direct=" + mockToString(directRoot);
@@ -153,8 +149,7 @@ test "root-position component: deferred until mount, matches tree" {
 	const directRoot = mockNode("root");
 	const mount = direct(<Gauge count={n()} label="r" />);
 	assert gaugeRuns === 1, "root component body deferred until mount, got " + gaugeRuns.toString();
-	const dnode = mount(host);
-	host.append(directRoot as unknown as HostNode, dnode);
+	mount(host, directRoot as unknown as HostNode, null);
 	assert gaugeRuns === 2, "body ran once at mount, got " + gaugeRuns.toString();
 
 	assert mockToString(treeRoot) === mockToString(directRoot), "initial: tree=" + mockToString(treeRoot) + " direct=" + mockToString(directRoot);
@@ -174,8 +169,7 @@ test "prop expression with a nested arrow capturing outer variables stays reacti
 
 	const directRoot = mockNode("root");
 	const mount = direct(<div><Gauge count={applyFn(() => n() + base)} label="a" /></div>);
-	const dnode = mount(host);
-	host.append(directRoot as unknown as HostNode, dnode);
+	mount(host, directRoot as unknown as HostNode, null);
 
 	assert mockToString(treeRoot) === mockToString(directRoot), "initial: tree=" + mockToString(treeRoot) + " direct=" + mockToString(directRoot);
 	setN(2);
@@ -195,8 +189,7 @@ test "Show flip through direct: cleanup fires, span matches tree on both flips" 
 
 	const directRoot = mockNode("root");
 	const mount = direct(<div><Show when={on()}><Leak count={n()} label="l" /></Show></div>);
-	const dnode = mount(host);
-	host.append(directRoot as unknown as HostNode, dnode);
+	mount(host, directRoot as unknown as HostNode, null);
 
 	assert leakRuns === 0, "no cleanup while mounted";
 	assert mockToString(treeRoot) === mockToString(directRoot), "initial: tree=" + mockToString(treeRoot) + " direct=" + mockToString(directRoot);
@@ -223,8 +216,7 @@ test "single element child passes as the children prop through direct" {
 
 	const directRoot = mockNode("root");
 	const mount = direct(<div><Card title="t"><p>inner</p></Card></div>);
-	const dnode = mount(host);
-	host.append(directRoot as unknown as HostNode, dnode);
+	mount(host, directRoot as unknown as HostNode, null);
 
 	assert mockToString(treeRoot) === mockToString(directRoot), "tree=" + mockToString(treeRoot) + " direct=" + mockToString(directRoot);
 	assert mockToString(directRoot) === "<root><div><section title=\"t\"><p>inner</p></section></div></root>", "golden: " + mockToString(directRoot);
@@ -251,8 +243,7 @@ test "reactive attr through direct matches tree" {
 
 	const directRoot = mockNode("root");
 	const mount = direct(<p class={cls()}>x</p>);
-	const dnode = mount(host);
-	host.append(directRoot as unknown as HostNode, dnode);
+	mount(host, directRoot as unknown as HostNode, null);
 
 	assert mockToString(treeRoot) === mockToString(directRoot), "initial: tree=" + mockToString(treeRoot) + " direct=" + mockToString(directRoot);
 	setCls("blue");
@@ -270,8 +261,7 @@ test "typed style channel through direct matches tree" {
 
 	const directRoot = mockNode("root");
 	const mount = direct(<div style={dsheet.box}><p>a</p></div>);
-	const dnode = mount(host);
-	host.append(directRoot as unknown as HostNode, dnode);
+	mount(host, directRoot as unknown as HostNode, null);
 
 	assert mockToString(treeRoot) === mockToString(directRoot), "markup: tree=" + mockToString(treeRoot) + " direct=" + mockToString(directRoot);
 	assert mockToString(directRoot) === "<root><div><p>a</p></div></root>", "golden: " + mockToString(directRoot);
@@ -292,8 +282,7 @@ test "static attr + reactive attr + event + style mixed on one element" {
 
 	const directRoot = mockNode("root");
 	const mount = direct(<button type="button" title={n().toString()} style={dsheet.box} onPress={() => setN(n() + 1)}>go</button>);
-	const dnode = mount(host);
-	host.append(directRoot as unknown as HostNode, dnode);
+	mount(host, directRoot as unknown as HostNode, null);
 
 	assert mockToString(treeRoot) === mockToString(directRoot), "initial: tree=" + mockToString(treeRoot) + " direct=" + mockToString(directRoot);
 	const dBtn = (directRoot as MockNode).children[0];
@@ -317,8 +306,7 @@ test "deep interleave: dyn attr + dyn text + event across 4 levels" {
 
 	const directRoot = mockNode("root");
 	const mount = direct(<div id="top"><section class={cls()}><ul><li>{v()}</li><li><button onPress={bump} title={cls()}>go {v()}</button></li></ul><p>tail</p></section></div>);
-	const dnode = mount(host);
-	host.append(directRoot as unknown as HostNode, dnode);
+	mount(host, directRoot as unknown as HostNode, null);
 
 	assert mockToString(treeRoot) === mockToString(directRoot), "initial: tree=" + mockToString(treeRoot) + " direct=" + mockToString(directRoot);
 	setCls("b");
@@ -358,11 +346,11 @@ test "template mode: a pure subtree is built once and cloned per mount" {
 	assert counter[0] === 0, "no work before the first mount, got " + counter[0].toString();
 
 	const root = mockNode("root");
-	host.append(root as unknown as HostNode, mount(host));
+	mount(host, root as unknown as HostNode, null);
 	const afterFirst = counter[0];
 	assert afterFirst === 3, "template built once: div+span+em = 3 createElement, got " + afterFirst.toString();
 
-	host.append(root as unknown as HostNode, mount(host));
+	mount(host, root as unknown as HostNode, null);
 	assert counter[0] === afterFirst, "second mount must CLONE, not rebuild — createElement went " + afterFirst.toString() + " -> " + counter[0].toString();
 
 	assert mockToString(root) === "<root><div class=\"box\"><span>s</span><em>a</em></div><div class=\"box\"><span>s</span><em>a</em></div></root>", "two independent instances: " + mockToString(root);
@@ -411,7 +399,7 @@ test "a spot recomputing to the same string writes the host once — direct emis
 	const root = mockNode("root");
 
 	const mount = direct(<p>{n() > 5 ? "big" : "small"}</p>);
-	host.append(root as unknown as HostNode, mount(host));
+	mount(host, root as unknown as HostNode, null);
 	assert counter[0] === 1, "one write at mount, got " + counter[0].toString();
 
 	setN(2);
@@ -432,7 +420,7 @@ test "a spot with no call and no property access renders the same through both e
 
 	const directRoot = mockNode("root");
 	const mount = direct(<p class={label}>{label}</p>);
-	host.append(directRoot as unknown as HostNode, mount(host));
+	mount(host, directRoot as unknown as HostNode, null);
 
 	assert mockToString(treeRoot) === mockToString(directRoot), "same markup: tree=" + mockToString(treeRoot) + " direct=" + mockToString(directRoot);
 	assert mockToString(treeRoot) === "<root><p class=\"hi\">hi</p></root>", "value: " + mockToString(treeRoot);
@@ -455,7 +443,7 @@ test "template mode on a cloneNode:null host falls back and still matches tree" 
 
 	const directRoot = mockNode("root");
 	const mount = direct(<ul class="l"><li>{v()}</li><li>x</li></ul>);
-	host.append(directRoot as unknown as HostNode, mount(host));
+	mount(host, directRoot as unknown as HostNode, null);
 
 	assert mockToString(treeRoot) === mockToString(directRoot), "fallback initial: tree=" + mockToString(treeRoot) + " direct=" + mockToString(directRoot);
 	setV("z");
@@ -473,8 +461,7 @@ test "For reorder through direct matches tree" {
 
 	const directRoot = mockNode("root");
 	const mount = direct(<ul><For each={items()}>{(item: number, i: () => number): NeonView => viewOf(element(<li>{item.toString()}</li>))}</For></ul>);
-	const dnode = mount(host);
-	host.append(directRoot as unknown as HostNode, dnode);
+	mount(host, directRoot as unknown as HostNode, null);
 
 	assert mockToString(treeRoot) === mockToString(directRoot), "initial: tree=" + mockToString(treeRoot) + " direct=" + mockToString(directRoot);
 	setItems([3, 1, 2]);
@@ -495,7 +482,7 @@ test "a && <X/> through direct matches tree" {
 	renderToHost(tv, host, treeRoot as unknown as HostNode);
 	const directRoot = mockNode("root");
 	const mount = direct(<div><p>a</p>{on && <span>yes</span>}<p>z</p></div>);
-	host.append(directRoot as unknown as HostNode, mount(host));
+	mount(host, directRoot as unknown as HostNode, null);
 	assert mockToString(treeRoot) === mockToString(directRoot), "initial: tree=" + mockToString(treeRoot) + " direct=" + mockToString(directRoot);
 	assert mockToString(directRoot) === "<root><div><p>a</p><span>yes</span><p>z</p></div></root>", "golden while true: " + mockToString(directRoot);
 	setOn(false);
@@ -513,7 +500,7 @@ test "c ? <A/> : <B/> through direct matches tree" {
 	renderToHost(tv, host, treeRoot as unknown as HostNode);
 	const directRoot = mockNode("root");
 	const mount = direct(<div>{on ? <span>yes</span> : <b>no</b>}</div>);
-	host.append(directRoot as unknown as HostNode, mount(host));
+	mount(host, directRoot as unknown as HostNode, null);
 	assert mockToString(treeRoot) === mockToString(directRoot), "initial: tree=" + mockToString(treeRoot) + " direct=" + mockToString(directRoot);
 	assert mockToString(directRoot) === "<root><div><b>no</b></div></root>", "golden false state: " + mockToString(directRoot);
 	setOn(true);
@@ -529,7 +516,7 @@ test "xs.map(row) through direct matches tree" {
 	renderToHost(tv, host, treeRoot as unknown as HostNode);
 	const directRoot = mockNode("root");
 	const mount = direct(<ul>{items.map((n: number): NeonView => viewOf(element(<li>{n.toString()}</li>)))}</ul>);
-	host.append(directRoot as unknown as HostNode, mount(host));
+	mount(host, directRoot as unknown as HostNode, null);
 	assert mockToString(treeRoot) === mockToString(directRoot), "initial: tree=" + mockToString(treeRoot) + " direct=" + mockToString(directRoot);
 	setItems([3, 1, 2, 4]);
 	assert mockToString(treeRoot) === mockToString(directRoot), "after change: tree=" + mockToString(treeRoot) + " direct=" + mockToString(directRoot);
@@ -552,7 +539,7 @@ test "a bare accessor attribute and child through direct match tree" {
 	renderToHost(tv, host, treeRoot as unknown as HostNode);
 	const directRoot = mockNode("root");
 	const mount = direct(<p class={l}>{l}</p>);
-	host.append(directRoot as unknown as HostNode, mount(host));
+	mount(host, directRoot as unknown as HostNode, null);
 	setL("b");
 	assert mockToString(treeRoot) === mockToString(directRoot), "after set: tree=" + mockToString(treeRoot) + " direct=" + mockToString(directRoot);
 	assert mockToString(directRoot) === "<root><p class=\"b\">b</p></root>", "value: " + mockToString(directRoot);
@@ -567,7 +554,7 @@ test "an accessor operand, a bare child and an accessor prop beside a component 
 	renderToHost(tv, host, treeRoot as unknown as HostNode);
 	const directRoot = mockNode("root");
 	const mount = direct(<div title={(n * 2).toString()}>{l}<BareTag label={l} /></div>);
-	host.append(directRoot as unknown as HostNode, mount(host));
+	mount(host, directRoot as unknown as HostNode, null);
 	setL("b");
 	setN(4);
 	assert mockToString(treeRoot) === mockToString(directRoot), "after set: tree=" + mockToString(treeRoot) + " direct=" + mockToString(directRoot);
@@ -594,7 +581,7 @@ test "static attr, static text, event and ref beside a component through direct 
 
 	const directRoot = mockNode("root");
 	const mount = direct(<div id="top" class="c"><Gauge count={n()} label="g" /><button type="button" onPress={directBump} ref={directGrab}>go</button><p>tail</p></div>);
-	host.append(directRoot as unknown as HostNode, mount(host));
+	mount(host, directRoot as unknown as HostNode, null);
 
 	assert mockToString(treeRoot) === mockToString(directRoot), "initial: tree=" + mockToString(treeRoot) + " direct=" + mockToString(directRoot);
 	assert mockToString(directRoot) === "<root><div id=\"top\" class=\"c\"><p class=\"g\">n=1</p><button type=\"button\">go</button><p>tail</p></div></root>", "golden: " + mockToString(directRoot);
@@ -621,7 +608,7 @@ test "onChangeText beside a component hands the handler the text on both emissio
 	const directRoot = mockNode("root");
 	let directText = "";
 	const mount = direct(<div><Gauge count={n()} label="g" /><input onChangeText={(t: string): void => { directText = t; }} /></div>);
-	host.append(directRoot as unknown as HostNode, mount(host));
+	mount(host, directRoot as unknown as HostNode, null);
 
 	assert mockToString(treeRoot) === mockToString(directRoot), "initial: tree=" + mockToString(treeRoot) + " direct=" + mockToString(directRoot);
 	assert mockToString(directRoot) === "<root><div><p class=\"g\">n=1</p><input></input></div></root>", "golden: " + mockToString(directRoot);
@@ -644,7 +631,7 @@ test "a ternary with a null arm through direct matches tree, either way round" {
 
 	const directRoot = mockNode("root");
 	const mount = direct(<div>{on ? <span>yes</span> : null}<p>m</p>{on ? null : <b>no</b>}</div>);
-	host.append(directRoot as unknown as HostNode, mount(host));
+	mount(host, directRoot as unknown as HostNode, null);
 
 	assert mockToString(treeRoot) === mockToString(directRoot), "initial: tree=" + mockToString(treeRoot) + " direct=" + mockToString(directRoot);
 	assert mockToString(directRoot) === "<root><div><span>yes</span><p>m</p></div></root>", "golden while true: " + mockToString(directRoot);
@@ -674,7 +661,7 @@ test "a whole-style call through direct tracks the signal like tree — template
 
 	const directRoot = mockNode("root");
 	const mount = direct(<div style={s()}><p>a</p></div>);
-	host.append(directRoot as unknown as HostNode, mount(host));
+	mount(host, directRoot as unknown as HostNode, null);
 
 	assert mockToString(treeRoot) === mockToString(directRoot), "markup: tree=" + mockToString(treeRoot) + " direct=" + mockToString(directRoot);
 	assert cssAt(treeRoot, 0) === cssAt(directRoot, 0), "initial: tree=" + cssAt(treeRoot, 0) + " direct=" + cssAt(directRoot, 0);
@@ -696,7 +683,7 @@ test "a whole-style call through direct tracks the signal like tree — flat tie
 
 	const directRoot = mockNode("root");
 	const mount = direct(<div style={s()}><Gauge count={n()} label="g" /></div>);
-	host.append(directRoot as unknown as HostNode, mount(host));
+	mount(host, directRoot as unknown as HostNode, null);
 
 	assert mockToString(treeRoot) === mockToString(directRoot), "markup: tree=" + mockToString(treeRoot) + " direct=" + mockToString(directRoot);
 	assert cssAt(directRoot, 0) === "padding:10px;", "golden: " + cssAt(directRoot, 0);
@@ -719,7 +706,7 @@ test "an accessor-typed style and a ternary style through direct track the signa
 
 	const directRoot = mockNode("root");
 	const mount = direct(<div><p style={memoStyle}>a</p><p style={pad() > 15 ? big : small}>b</p><Gauge count={n()} label="g" /></div>);
-	host.append(directRoot as unknown as HostNode, mount(host));
+	mount(host, directRoot as unknown as HostNode, null);
 
 	const tDiv = (treeRoot as MockNode).children[0];
 	const dDiv = (directRoot as MockNode).children[0];
@@ -744,7 +731,7 @@ test "reactive style fields through direct track their signals like tree — tem
 
 	const directRoot = mockNode("root");
 	const mount = direct(<div style={{ padding: w(), height: n() * 10, margin: 4 }}><p>a</p></div>);
-	host.append(directRoot as unknown as HostNode, mount(host));
+	mount(host, directRoot as unknown as HostNode, null);
 
 	assert mockToString(treeRoot) === mockToString(directRoot), "markup: tree=" + mockToString(treeRoot) + " direct=" + mockToString(directRoot);
 	assert cssAt(treeRoot, 0) === cssAt(directRoot, 0), "initial: tree=" + cssAt(treeRoot, 0) + " direct=" + cssAt(directRoot, 0);
@@ -767,7 +754,7 @@ test "a ternary style field and a bare accessor field through direct track the s
 
 	const directRoot = mockNode("root");
 	const mount = direct(<div><p style={{ margin: pad() > 15 ? 2 : 1 }}>a</p><p style={{ padding: pad }}>b</p><Gauge count={n()} label="g" /></div>);
-	host.append(directRoot as unknown as HostNode, mount(host));
+	mount(host, directRoot as unknown as HostNode, null);
 
 	const tDiv = (treeRoot as MockNode).children[0];
 	const dDiv = (directRoot as MockNode).children[0];
@@ -789,7 +776,7 @@ test "a bare accessor style field through direct — template tier" {
 
 	const directRoot = mockNode("root");
 	const mount = direct(<div style={{ padding: w }}><p>a</p></div>);
-	host.append(directRoot as unknown as HostNode, mount(host));
+	mount(host, directRoot as unknown as HostNode, null);
 
 	assert cssAt(treeRoot, 0) === cssAt(directRoot, 0), "initial: tree=" + cssAt(treeRoot, 0) + " direct=" + cssAt(directRoot, 0);
 	setW(20);
@@ -802,7 +789,7 @@ test "an identical signal value on a direct style field is not re-written to the
 	const host = mockHost();
 	const directRoot = mockNode("root");
 	const mount = direct(<div style={{ width: w() }}><p>a</p></div>);
-	host.append(directRoot as unknown as HostNode, mount(host));
+	mount(host, directRoot as unknown as HostNode, null);
 	const div = (directRoot as MockNode).children[0];
 	const before = div.style;
 	setW(20);
@@ -820,7 +807,7 @@ test "an all-static style object through direct lands as one constant on both ti
 
 	const directRoot = mockNode("root");
 	const mount = direct(<div style={{ width: 200, height: 120 }}><p style={{ margin: 3, color: "red" }}>a</p><Gauge count={n()} label="g" /></div>);
-	host.append(directRoot as unknown as HostNode, mount(host));
+	mount(host, directRoot as unknown as HostNode, null);
 
 	const tDiv = (treeRoot as MockNode).children[0];
 	const dDiv = (directRoot as MockNode).children[0];
@@ -838,7 +825,7 @@ test "an all-static style object through direct — template tier" {
 	renderToHost(tv, host, treeRoot as unknown as HostNode);
 	const directRoot = mockNode("root");
 	const mount = direct(<div style={{ padding: 5 }}><p>a</p></div>);
-	host.append(directRoot as unknown as HostNode, mount(host));
+	mount(host, directRoot as unknown as HostNode, null);
 	assert cssAt(treeRoot, 0) === cssAt(directRoot, 0), "tree=" + cssAt(treeRoot, 0) + " direct=" + cssAt(directRoot, 0);
 	assert cssAt(directRoot, 0) === "padding:5px;", "golden: " + cssAt(directRoot, 0);
 }
@@ -852,7 +839,7 @@ test "all-literal style layers merge at expansion through direct like tree — t
 	renderToHost(tv, host, treeRoot as unknown as HostNode);
 	const directRoot = mockNode("root");
 	const mount = direct(<div style={[{ width: 200, height: 120 }, { height: 20 }]}><p>a</p></div>);
-	host.append(directRoot as unknown as HostNode, mount(host));
+	mount(host, directRoot as unknown as HostNode, null);
 	assert cssAt(treeRoot, 0) === cssAt(directRoot, 0), "tree=" + cssAt(treeRoot, 0) + " direct=" + cssAt(directRoot, 0);
 	assert cssAt(directRoot, 0) === "width:200px;height:20px;", "golden: " + cssAt(directRoot, 0);
 }
@@ -865,7 +852,7 @@ test "a null field in a later literal layer keeps the earlier value through dire
 	renderToHost(tv, host, treeRoot as unknown as HostNode);
 	const directRoot = mockNode("root");
 	const mount = direct(<div style={[{ width: 1, height: 5 }, { height: null }, { width: 3 }]}><Gauge count={n()} label="g" /></div>);
-	host.append(directRoot as unknown as HostNode, mount(host));
+	mount(host, directRoot as unknown as HostNode, null);
 	assert mockToString(treeRoot) === mockToString(directRoot), "markup: tree=" + mockToString(treeRoot) + " direct=" + mockToString(directRoot);
 	assert cssAt(treeRoot, 0) === cssAt(directRoot, 0), "tree=" + cssAt(treeRoot, 0) + " direct=" + cssAt(directRoot, 0);
 	assert cssAt(directRoot, 0) === "width:3px;height:5px;", "golden: " + cssAt(directRoot, 0);
@@ -878,7 +865,7 @@ test "a sheet layer under a literal override goes through layerStyles on direct 
 	renderToHost(tv, host, treeRoot as unknown as HostNode);
 	const directRoot = mockNode("root");
 	const mount = direct(<div style={[layerSheet.box, { height: 20 }]}><p>a</p></div>);
-	host.append(directRoot as unknown as HostNode, mount(host));
+	mount(host, directRoot as unknown as HostNode, null);
 	assert cssAt(treeRoot, 0) === cssAt(directRoot, 0), "tree=" + cssAt(treeRoot, 0) + " direct=" + cssAt(directRoot, 0);
 	assert cssAt(directRoot, 0) === "width:200px;height:20px;", "golden: " + cssAt(directRoot, 0);
 }
@@ -891,7 +878,7 @@ test "two sheet layers go through layerStyles on direct like tree — flat tier"
 	renderToHost(tv, host, treeRoot as unknown as HostNode);
 	const directRoot = mockNode("root");
 	const mount = direct(<div style={[layerSheet.box, layerSheet.row]}><Gauge count={n()} label="g" /></div>);
-	host.append(directRoot as unknown as HostNode, mount(host));
+	mount(host, directRoot as unknown as HostNode, null);
 	assert cssAt(treeRoot, 0) === cssAt(directRoot, 0), "tree=" + cssAt(treeRoot, 0) + " direct=" + cssAt(directRoot, 0);
 	assert cssAt(directRoot, 0) === "width:200px;height:20px;", "golden: " + cssAt(directRoot, 0);
 }
@@ -915,7 +902,7 @@ test "a static sheet entry through direct takes the class route like tree — te
 	renderToHost(tv, host, treeRoot as unknown as HostNode);
 	const directRoot = mockNode("root");
 	const mount = direct(<div style={dsheet.box}><p>a</p></div>);
-	host.append(directRoot as unknown as HostNode, mount(host));
+	mount(host, directRoot as unknown as HostNode, null);
 	const tDiv = (treeRoot as MockNode).children[0];
 	const dDiv = (directRoot as MockNode).children[0];
 	assert tDiv.className === dDiv.className, "class: tree=" + tDiv.className + " direct=" + dDiv.className;
@@ -939,7 +926,7 @@ test "a static sheet entry through direct takes the class route like tree — fl
 	renderToHost(tv, host, treeRoot as unknown as HostNode);
 	const directRoot = mockNode("root");
 	const mount = direct(<div style={dsheet.box}><Gauge count={n()} label="g" /></div>);
-	host.append(directRoot as unknown as HostNode, mount(host));
+	mount(host, directRoot as unknown as HostNode, null);
 	const tDiv = (treeRoot as MockNode).children[0];
 	const dDiv = (directRoot as MockNode).children[0];
 	assert mockToString(treeRoot) === mockToString(directRoot), "markup: tree=" + mockToString(treeRoot) + " direct=" + mockToString(directRoot);
@@ -963,7 +950,7 @@ test "a static node child through direct mounts like tree" {
 	const directRoot = mockNode("root");
 	const kid2: NeonNode = element(<b>k</b>);
 	const mount = direct(<div><p>a</p>{kid2}<p>z</p></div>);
-	host.append(directRoot as unknown as HostNode, mount(host));
+	mount(host, directRoot as unknown as HostNode, null);
 	assert mockToString(treeRoot) === mockToString(directRoot), "markup: tree=" + mockToString(treeRoot) + " direct=" + mockToString(directRoot);
 	assert mockToString(directRoot) === "<root><div><p>a</p><b>k</b><p>z</p></div></root>", "golden: " + mockToString(directRoot);
 }
@@ -982,7 +969,7 @@ test "{props.children} carrying a node with live text through direct tracks the 
 	const host = mockHost();
 	const directRoot = mockNode("root");
 	const view = Frame({ title: "t", children: element(<p>hi {name()}</p>) });
-	host.append(directRoot as unknown as HostNode, view(host));
+	view(host, directRoot as unknown as HostNode, null);
 	assert mockToString(directRoot) === "<root><section title=\"t\"><p>hi an</p></section></root>", "golden: " + mockToString(directRoot);
 	setName("binh");
 	assert mockToString(directRoot) === "<root><section title=\"t\"><p>hi binh</p></section></root>", "golden after set: " + mockToString(directRoot);
@@ -999,7 +986,7 @@ test "layerStyles over a reactive layer as a whole-style expression tracks the s
 	renderToHost(tv, host, treeRoot as unknown as HostNode);
 	const directRoot = mockNode("root");
 	const mount = direct(<div style={layerStyles([layerSheet.box, pick()])}><p>a</p></div>);
-	host.append(directRoot as unknown as HostNode, mount(host));
+	mount(host, directRoot as unknown as HostNode, null);
 	assert cssAt(treeRoot, 0) === cssAt(directRoot, 0), "initial: tree=" + cssAt(treeRoot, 0) + " direct=" + cssAt(directRoot, 0);
 	assert cssAt(directRoot, 0) === "width:200px;height:5px;", "golden: " + cssAt(directRoot, 0);
 	setH(9);
@@ -1031,7 +1018,7 @@ test "whitespace around a starter tag's single element child wraps like the flat
 	const mount = direct(<div><View>
 		<p>a</p>
 	</View></div>);
-	host.append(directRoot as unknown as HostNode, mount(host));
+	mount(host, directRoot as unknown as HostNode, null);
 	assert mockToString(treeRoot) === mockToString(flatRoot), "tree ws=" + mockToString(treeRoot) + " flat=" + mockToString(flatRoot);
 	assert mockToString(treeRoot) === mockToString(directRoot), "tree=" + mockToString(treeRoot) + " direct=" + mockToString(directRoot);
 	assert mockToString(directRoot) === "<root><div><view><p>a</p></view></div></root>", "golden: " + mockToString(directRoot);
@@ -1052,7 +1039,7 @@ test "whitespace around a starter tag's single expression child stays reactive t
 	const mount = direct(<div><View>
 		{n()}
 	</View></div>);
-	host.append(directRoot as unknown as HostNode, mount(host));
+	mount(host, directRoot as unknown as HostNode, null);
 	assert mockToString(treeRoot) === mockToString(flatRoot), "tree ws=" + mockToString(treeRoot) + " flat=" + mockToString(flatRoot);
 	assert mockToString(treeRoot) === mockToString(directRoot), "tree=" + mockToString(treeRoot) + " direct=" + mockToString(directRoot);
 	assert mockToString(directRoot) === "<root><div><view>v</view></div></root>", "golden: " + mockToString(directRoot);
@@ -1075,7 +1062,7 @@ test "whitespace around a NeonNode-children component's single element child pas
 	const mount = direct(<div><Card title="t">
 		<p>a</p>
 	</Card></div>);
-	host.append(directRoot as unknown as HostNode, mount(host));
+	mount(host, directRoot as unknown as HostNode, null);
 	assert mockToString(treeRoot) === mockToString(flatRoot), "tree ws=" + mockToString(treeRoot) + " flat=" + mockToString(flatRoot);
 	assert mockToString(treeRoot) === mockToString(directRoot), "tree=" + mockToString(treeRoot) + " direct=" + mockToString(directRoot);
 	assert mockToString(directRoot) === "<root><div><section title=\"t\"><p>a</p></section></div></root>", "golden: " + mockToString(directRoot);
@@ -1083,11 +1070,11 @@ test "whitespace around a NeonNode-children component's single element child pas
 
 // ---- Lát 0.11: a nullable-typed on*/ref/style attaches only when the value is present ----
 
-function optTemplate(h: ((e: NeonEvent) => void) | null, r: ((b: HostNode) => void) | null, s: Style | null, a: Accessor<Style> | null): (host: Host) => HostNode {
+function optTemplate(h: ((e: NeonEvent) => void) | null, r: ((b: HostNode) => void) | null, s: Style | null, a: Accessor<Style> | null): NeonView {
 	return direct(<div><button type="button" onPress={h} ref={r} style={s}>go</button><p style={a}>x</p></div>);
 }
 
-function optFlat(h: ((e: NeonEvent) => void) | null, r: ((b: HostNode) => void) | null, s: Style | null, a: Accessor<Style> | null): (host: Host) => HostNode {
+function optFlat(h: ((e: NeonEvent) => void) | null, r: ((b: HostNode) => void) | null, s: Style | null, a: Accessor<Style> | null): NeonView {
 	return direct(<div><Gauge count={1} label="g" /><button type="button" onPress={h} ref={r} style={s}>go</button><p style={a}>x</p></div>);
 }
 
@@ -1098,7 +1085,7 @@ test "null on*/ref/style through direct attach nothing, like the bare element �
 	renderToHost(tv, host, treeRoot as unknown as HostNode);
 
 	const directRoot = mockNode("root");
-	host.append(directRoot as unknown as HostNode, optTemplate(null, null, null, null)(host));
+	optTemplate(null, null, null, null)(host, directRoot as unknown as HostNode, null);
 
 	assert mockToString(treeRoot) === mockToString(directRoot), "markup: tree=" + mockToString(treeRoot) + " direct=" + mockToString(directRoot);
 	assert mockToString(directRoot) === "<root><div><button type=\"button\">go</button><p>x</p></div></root>", "golden: " + mockToString(directRoot);
@@ -1127,7 +1114,7 @@ test "present on*/ref/style through a nullable type behave like tree — templat
 	renderToHost(tv, host, treeRoot as unknown as HostNode);
 
 	const directRoot = mockNode("root");
-	host.append(directRoot as unknown as HostNode, optTemplate(directBump, directGrab, fixed, live)(host));
+	optTemplate(directBump, directGrab, fixed, live)(host, directRoot as unknown as HostNode, null);
 
 	const tDiv = (treeRoot as MockNode).children[0];
 	const dDiv = (directRoot as MockNode).children[0];
@@ -1149,7 +1136,7 @@ test "null on*/ref/style through direct attach nothing — flat tier" {
 	renderToHost(tv, host, treeRoot as unknown as HostNode);
 
 	const directRoot = mockNode("root");
-	host.append(directRoot as unknown as HostNode, optFlat(null, null, null, null)(host));
+	optFlat(null, null, null, null)(host, directRoot as unknown as HostNode, null);
 
 	assert mockToString(treeRoot) === mockToString(directRoot), "markup: tree=" + mockToString(treeRoot) + " direct=" + mockToString(directRoot);
 	assert mockToString(directRoot) === "<root><div><p class=\"g\">n=1</p><button type=\"button\">go</button><p>x</p></div></root>", "golden: " + mockToString(directRoot);
@@ -1177,7 +1164,7 @@ test "present on*/ref/style through a nullable type behave like tree — flat ti
 	renderToHost(tv, host, treeRoot as unknown as HostNode);
 
 	const directRoot = mockNode("root");
-	host.append(directRoot as unknown as HostNode, optFlat(directBump, directGrab, fixed, live)(host));
+	optFlat(directBump, directGrab, fixed, live)(host, directRoot as unknown as HostNode, null);
 
 	const tDiv = (treeRoot as MockNode).children[0];
 	const dDiv = (directRoot as MockNode).children[0];

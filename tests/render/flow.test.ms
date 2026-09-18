@@ -1,5 +1,5 @@
 import { el, text, dynText, NeonNode } from "../../src/render/node";
-import { MockNode, mockHost, renderToHost, viewOf, mockToString, mountView, NeonView } from "../../src/render/host";
+import { MockNode, mockHost, renderToHost, viewOf, mockToString, NeonView } from "../../src/render/host";
 import { Host, HostNode } from "../../src/render/hostTypes";
 import { For, Index, Show } from "../../src/macros/ui/flow";
 import { createSignal, accessor, Accessor } from "../../src/core/signal";
@@ -264,10 +264,10 @@ test "Show mounts its branch untracked" {
 		const [on, setOn] = createSignal(true);
 		const [n, setN] = createSignal(0);
 		let builds = 0;
-		const child: NeonView = (h: Host): HostNode => {
+		const child: NeonView = (h: Host, p: HostNode, b: HostNode | null): void => {
 			builds = builds + 1;
 			const label = n().toString();
-			return mountView(viewOf(el("span", [], [], [text(label)])), h);
+			viewOf(el("span", [], [], [text(label)]))(h, p, b);
 		};
 		const div = el("div", [], [], [Show({ when: () => on(), children: child })]);
 		const host = mockHost();
@@ -288,10 +288,10 @@ test "Show mounts its fallback untracked" {
 		const [on, setOn] = createSignal(false);
 		const [n, setN] = createSignal(0);
 		let builds = 0;
-		const fb: NeonView = (h: Host): HostNode => {
+		const fb: NeonView = (h: Host, p: HostNode, b: HostNode | null): void => {
 			builds = builds + 1;
 			const label = n().toString();
-			return mountView(viewOf(el("i", [], [], [text(label)])), h);
+			viewOf(el("i", [], [], [text(label)]))(h, p, b);
 		};
 		const div = el("div", [], [], [
 			Show({ when: () => on(), children: viewOf(el("span", [], [], [text("on")])), fallback: fb }),

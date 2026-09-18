@@ -40,8 +40,8 @@ test "null attr: static writes nothing, reactive removes then writes back — tr
 	createRoot((dispose) => {
 		renderToHost(element(<div title={t()} id={s}>x</div>), host, tree as unknown as HostNode);
 		const mount = direct(<div title={t()} id={s}>x</div>);
-		host.append(flat as unknown as HostNode, mount(host));
-		host.append(flat as unknown as HostNode, mount(host));
+		mount(host, flat as unknown as HostNode, null);
+		mount(host, flat as unknown as HostNode, null);
 		assert mockToString(tree) === "<root><div title=\"a\">x</div></root>", "tree mount: " + mockToString(tree);
 		assert mockToString(flat) === "<root><div title=\"a\">x</div><div title=\"a\">x</div></root>", "direct mount: " + mockToString(flat);
 		setT(null);
@@ -62,7 +62,7 @@ test "null attr at mount: a reactive spot that starts null never shows" {
 	const flat: MockNode = mockNode("root");
 	createRoot((dispose) => {
 		renderToHost(element(<div title={t()}>x</div>), host, tree as unknown as HostNode);
-		host.append(flat as unknown as HostNode, direct(<div title={t()}>x</div>)(host));
+		direct(<div title={t()}>x</div>)(host, flat as unknown as HostNode, null);
 		assert mockToString(tree) === "<root><div>x</div></root>", "tree: " + mockToString(tree);
 		assert mockToString(flat) === "<root><div>x</div></root>", "direct: " + mockToString(flat);
 		setT("a");

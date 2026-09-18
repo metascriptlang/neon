@@ -6,5 +6,5 @@ interface P { onPress: ((e: NeonEvent) => void) | null; }
 function view(p: P): NeonView { return direct(<div {...p}>hi</div>); }
 const host = mockHost();
 const root = mockNode("root");
-host.append(root as unknown as HostNode, view({ onPress: null })(host));
+view({ onPress: null })(host, root as unknown as HostNode, null);
 console.log(root.children.length.toString());

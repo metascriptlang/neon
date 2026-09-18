@@ -6,7 +6,7 @@ import { createSignal, accessor, Accessor } from "../../src/core/signal";
 import { element } from "../../src/macros/ui/element";
 import { direct } from "../../src/macros/ui/direct";
 import { NeonNode, renderToString, el, text } from "../../src/render/node";
-import { Host, HostNode, MockNode, NeonView, mockNode, mockHost, renderToHost, viewOf, mountView, mockToString } from "../../src/render/host";
+import { Host, HostNode, MockNode, NeonView, mockNode, mockHost, renderToHost, viewOf, mockToString } from "../../src/render/host";
 import { createContext, useContext } from "../../src/render/context";
 import { For, Index } from "../../src/macros/ui/flow";
 
@@ -33,7 +33,7 @@ test "a provider feeds a consumer nested in its subtree — direct emission" {
 			<div>{useContext(T).accent}</div>
 		</T.Provider>
 	);
-	host.append(root as unknown as HostNode, mount(host));
+	mount(host, root as unknown as HostNode, null);
 	assert mockToString(root) === "<root><div>blue</div></root>", "direct lane saw the same value: " + mockToString(root);
 }
 
@@ -172,7 +172,7 @@ test "a For fallback reads the provider above the list" {
 			For<number>({
 				each: () => items(),
 				children: (n: number, i: Accessor<number>): NeonView => viewOf(el("li", [], [], [text(n.toString())])),
-				fallback: ((h: Host): HostNode => mountView(viewOf(el("li", [], [], [text(useContext(T).accent)])), h)) as NeonView,
+				fallback: ((h: Host, p: HostNode, b: HostNode | null): void => { viewOf(el("li", [], [], [text(useContext(T).accent)]))(h, p, b); }) as NeonView,
 			}),
 		]),
 	});

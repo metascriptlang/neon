@@ -25,7 +25,7 @@ test "ref fires the same way on direct emission" {
 	const host = mockHost();
 	const root: MockNode = mockNode("root");
 	const mount = direct(<div class="box"><p ref={grab}>hi</p></div>);
-	host.append(root as unknown as HostNode, mount(host));
+	mount(host, root as unknown as HostNode, null);
 	assert seen === "<p>hi</p>", "ref saw the finished node, seen=" + seen;
 	assert mockToString(root) === "<root><div class=\"box\"><p>hi</p></div></root>", "ref leaves no attribute behind: " + mockToString(root);
 }
@@ -42,7 +42,7 @@ test "ref on the root element of a site" {
 
 	const directRoot: MockNode = mockNode("root");
 	const mount = direct(<section ref={grabDirect}>x</section>);
-	host.append(directRoot as unknown as HostNode, mount(host));
+	mount(host, directRoot as unknown as HostNode, null);
 
 	assert treeTag === "section", "tree ref, tag=" + treeTag;
 	assert directTag === "section", "direct ref, tag=" + directTag;
@@ -73,7 +73,7 @@ test "ref fires after a reactive child is bound, on both emissions" {
 
 	const directRoot: MockNode = mockNode("root");
 	const mount = direct(<p ref={grabDirect}>{n().toString()}</p>);
-	host.append(directRoot as unknown as HostNode, mount(host));
+	mount(host, directRoot as unknown as HostNode, null);
 
 	assert treeSeen === "<p>7</p>", "tree ref saw the bound child, seen=" + treeSeen;
 	assert directSeen === "<p>7</p>", "direct ref saw the bound child, seen=" + directSeen;
@@ -106,7 +106,7 @@ test "a named callback prop and ref cross raw at the direct root too" {
 	const host = mockHost();
 	const root: MockNode = mockNode("root");
 	const mount = direct(<Pressable onPress={inc} ref={grab}><Text>+</Text></Pressable>);
-	host.append(root as unknown as HostNode, mount(host));
+	mount(host, root as unknown as HostNode, null);
 	fireEvent(root.children[0], "onPress");
 	assert hits === 1, "named handler ran at the direct root, hits=" + hits.toString();
 	assert seenTag === "pressable", "named ref ran at the direct root, tag=" + seenTag;
@@ -123,7 +123,7 @@ test "ref fires before the site root is placed, on both emissions" {
 	let directKidsAtRef = -1;
 	const grabDirect: (h: HostNode) => void = (h) => { directKidsAtRef = directRoot.children.length; };
 	const mount = direct(<div ref={grabDirect}><p>hi</p></div>);
-	host.append(directRoot as unknown as HostNode, mount(host));
+	mount(host, directRoot as unknown as HostNode, null);
 
 	assert treeKidsAtRef === 0, "tree ref ran before the root was placed, kids=" + treeKidsAtRef.toString();
 	assert directKidsAtRef === 0, "direct ref ran before the root was placed, kids=" + directKidsAtRef.toString();
@@ -142,7 +142,7 @@ test "nested refs fire innermost first, each with its own children complete" {
 	const outerDirect: (h: HostNode) => void = (h) => { directOrder = directOrder + "outer" + (h as unknown as MockNode).children.length.toString(); };
 	const innerDirect: (h: HostNode) => void = (h) => { directOrder = directOrder + "inner" + (h as unknown as MockNode).children.length.toString(); };
 	const mount = direct(<div ref={outerDirect}><p ref={innerDirect}>hi</p></div>);
-	host.append(directRoot as unknown as HostNode, mount(host));
+	mount(host, directRoot as unknown as HostNode, null);
 
 	assert treeOrder === "inner1outer1", "tree order=" + treeOrder;
 	assert directOrder === "inner1outer1", "direct order=" + directOrder;
@@ -165,7 +165,7 @@ test "a nested ref sees its template parent on direct emission" {
 		directParent = p === null ? "<none>" : p.tag;
 	};
 	const mount = direct(<div><p ref={grabDirect}>hi</p></div>);
-	host.append(directRoot as unknown as HostNode, mount(host));
+	mount(host, directRoot as unknown as HostNode, null);
 
 	assert directParent === "div", "direct nested ref sees its parent, parent=" + directParent;
 	assert treeParent === "<none>", "tree builds bottom-up: the child is not attached yet, parent=" + treeParent;

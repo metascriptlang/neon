@@ -86,7 +86,7 @@ test "direct emission delivers the same event as tree emission" {
 	const directRoot = mockNode("root");
 	let directSaw = "";
 	const mount = direct(<button onPress={(e: NeonEvent): void => { directSaw = e.type + ":" + e.value; }}>go</button>);
-	host.append(directRoot as unknown as HostNode, mount(host));
+	mount(host, directRoot as unknown as HostNode, null);
 
 	const e = neonEvent("press");
 	e.value = "v";
@@ -118,7 +118,7 @@ test "onChangeText hands the handler the text on both emissions" {
 	const directRoot = mockNode("root");
 	let directText = "";
 	const mount = direct(<input onChangeText={(t: string): void => { directText = t; }} />);
-	host.append(directRoot as unknown as HostNode, mount(host));
+	mount(host, directRoot as unknown as HostNode, null);
 
 	const e = neonEvent("changetext");
 	e.value = "xin chao";
