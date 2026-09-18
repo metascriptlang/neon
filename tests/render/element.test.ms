@@ -1,6 +1,7 @@
 import { createSignal } from "../../src/core/signal";
 import { el, attr, text, dynText, renderToString } from "../../src/render/node";
 import { element } from "../../src/macros/ui/element";
+import { renderToHost, mockHost, mockNode, mockToString, fireEvent, Host, HostNode } from "../../src/render/host";
 
 test "reactive element renders and updates on signal change" {
 	const [name, setName] = createSignal("world");
@@ -84,40 +85,85 @@ test "text around an element on separate lines keeps both runs" {
 // D2 attr classification: string literal → static attr, on* → event, any other
 // expr → dynAttr thunk (same rule as dynText for expression children).
 
+function writeCountingHost(attrWrites: number[], textWrites: number[]): Host {
+	const h = mockHost();
+	return {
+		createElement: h.createElement, createText: h.createText,
+		setText: (node: HostNode, value: string): void => {
+			textWrites[0] = textWrites[0] + 1;
+			h.setText(node, value);
+		},
+		setAttr: (node: HostNode, name: string, value: string): void => {
+			attrWrites[0] = attrWrites[0] + 1;
+			h.setAttr(node, name, value);
+		},
+		removeAttr: h.removeAttr, setStyle: h.setStyle, setStyleProp: h.setStyleProp, setStyleClass: h.setStyleClass, addEvent: h.addEvent,
+		append: h.append, insertBefore: h.insertBefore, removeChild: h.removeChild,
+		nextSibling: h.nextSibling, firstChild: h.firstChild, cloneNode: h.cloneNode,
+	};
+}
+
 test "dynamic attr tracks its signal" {
 	const [cls, setCls] = createSignal("red");
 	const node = element(<p class={cls()}>x</p>);
 	assert renderToString(node) === "<p class=\"red\">x</p>", "initial snapshot";
 	setCls("blue");
 	assert renderToString(node) === "<p class=\"blue\">x</p>", "snapshot follows set";
-	assert node.attrs.length === 1, "one attr entry";
-	assert node.attrs[0].isDyn, "expr attr classified dynamic";
+
+	const attrWrites: number[] = [0];
+	const textWrites: number[] = [0];
+	const root = mockNode("root");
+	const [c2, setC2] = createSignal("red");
+	renderToHost(element(<p class={c2()}>x</p>), writeCountingHost(attrWrites, textWrites), root as unknown as HostNode);
+	assert attrWrites[0] === 1, "one attr write at mount, got " + attrWrites[0].toString();
+	setC2("blue");
+	assert attrWrites[0] === 2, "the set writes the attr again, got " + attrWrites[0].toString();
+	assert mockToString(root) === "<root><p class=\"blue\">x</p></root>", "value: " + mockToString(root);
 }
 
 test "string literal attr stays static, on* routes to events" {
 	const [n, setN] = createSignal<number>(0);
-	const node = element(<button type="button" onPress={() => setN(n() + 1)}>go</button>);
-	assert renderToString(node) === "<button type=\"button\">go</button>", "event attr does not render";
-	assert node.attrs.length === 1, "one attr entry";
-	assert node.attrs[0].isDyn === false, "literal attr classified static";
-	assert node.events.length === 1, "one event entry";
+	const attrWrites: number[] = [0];
+	const textWrites: number[] = [0];
+	const root = mockNode("root");
+	renderToHost(
+		element(<button type="button" onPress={() => setN(n() + 1)}>go</button>),
+		writeCountingHost(attrWrites, textWrites),
+		root as unknown as HostNode,
+	);
+	assert mockToString(root) === "<root><button type=\"button\">go</button></root>", "event attr does not render: " + mockToString(root);
+	assert attrWrites[0] === 1, "the literal attr is the only attr write, got " + attrWrites[0].toString();
+
+	fireEvent(root.children[0], "onPress");
+	assert n() === 1, "onPress reached the handler";
+	assert attrWrites[0] === 1, "a static attr is never rewritten, got " + attrWrites[0].toString();
 }
 
 test "an inert expression is classified static, a call stays dynamic" {
-	const label = "hi";
-	const inert = element(<p class={label}>{label}</p>);
-	assert inert.attrs.length === 1, "one attr entry";
-	assert inert.attrs[0].isDyn === false, "identifier attr needs no thunk";
-	assert inert.children.length === 1, "one child";
-	assert inert.children[0].isDyn === false, "identifier child needs no thunk";
-	assert renderToString(inert) === "<p class=\"hi\">hi</p>", "value: " + renderToString(inert);
-
 	const [n, setN] = createSignal("a");
-	const live = element(<p class={n()}>{n()}</p>);
-	assert live.attrs[0].isDyn, "call attr stays dynamic";
-	assert live.children[0].isDyn, "call child stays dynamic";
+	const label = n();
+
+	const inertAttr: number[] = [0];
+	const inertText: number[] = [0];
+	const inertRoot = mockNode("root");
+	renderToHost(element(<p class={label}>{label}</p>), writeCountingHost(inertAttr, inertText), inertRoot as unknown as HostNode);
+
+	const liveAttr: number[] = [0];
+	const liveText: number[] = [0];
+	const liveRoot = mockNode("root");
+	renderToHost(element(<p class={n()}>{n()}</p>), writeCountingHost(liveAttr, liveText), liveRoot as unknown as HostNode);
+
+	assert mockToString(inertRoot) === mockToString(liveRoot), "same markup at mount: inert=" + mockToString(inertRoot) + " live=" + mockToString(liveRoot);
+	assert inertText[0] === 0, "an identifier child is written as the text node itself, got " + inertText[0].toString();
+	assert liveText[0] === 1, "a call child is bound and written once at mount, got " + liveText[0].toString();
+
 	setN("b");
-	assert renderToString(live) === "<p class=\"b\">b</p>", "still reactive: " + renderToString(live);
+	assert inertAttr[0] === 1, "an identifier attr subscribes to nothing, got " + inertAttr[0].toString();
+	assert inertText[0] === 0, "an identifier child subscribes to nothing, got " + inertText[0].toString();
+	assert liveAttr[0] === 2, "a call attr follows the signal, got " + liveAttr[0].toString();
+	assert liveText[0] === 2, "a call child follows the signal, got " + liveText[0].toString();
+	assert mockToString(inertRoot) === "<root><p class=\"a\">a</p></root>", "inert value: " + mockToString(inertRoot);
+	assert mockToString(liveRoot) === "<root><p class=\"b\">b</p></root>", "live value: " + mockToString(liveRoot);
 }
 
 test "mixed static and dynamic attrs keep source order" {
