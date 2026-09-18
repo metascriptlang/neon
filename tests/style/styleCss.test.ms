@@ -9,8 +9,8 @@
 // (kebab-case, px) independently of applyCss in platform/browser/dom.ms, so
 // this assertion is the thing that catches the two drifting apart.
 
-import { el, withStyle } from "../../src/render/node";
-import { mockHost, renderNode, MockNode, Host, HostNode } from "../../src/render/host";
+import { NeonNode } from "../../src/render/node";
+import { mockHost, mockNode, renderToHost, MockNode, Host, HostNode } from "../../src/render/host";
 import { createStyles, styleOf } from "../../src/macros/ui/style";
 import { registerCss, collectCss, resetCss, cssRuleCount } from "../../src/render/sheet";
 
@@ -29,17 +29,23 @@ function cssHost(): Host {
 	return h;
 }
 
+function mountOne(node: NeonNode, host: Host): MockNode {
+	const root = mockNode("root");
+	renderToHost(node, host, root as unknown as HostNode);
+	return root.children[0];
+}
+
 test "a static sheet entry becomes one class instead of inline style" {
 	when (js) {
 		resetCss();
-		const m = renderNode(<div style={sheet.btn}></div>, cssHost()) as unknown as MockNode;
+		const m = mountOne(<div style={sheet.btn}></div>, cssHost());
 		assert sheet.btn.cssId !== null, "the entry carries a class id on the browser lane";
 		assert m.className === (sheet.btn.cssId as string), "the node carries that class";
 		assert m.style === null, "no inline style once a class applies";
 		assert cssRuleCount() === 1, "exactly one rule for one entry";
 		assert collectCss() === "." + (sheet.btn.cssId as string) + "{padding:8px;background-color:#334;}", "rule text";
 	} else {
-		const m = renderNode(<div style={sheet.btn}></div>, mockHost()) as unknown as MockNode;
+		const m = mountOne(<div style={sheet.btn}></div>, mockHost());
 		assert sheet.btn.cssId === null, "no css metadata off the browser lane";
 		assert sheet.btn.css === null, "and no rule text";
 		assert m.style !== null, "a native host still receives the fields through setStyle";

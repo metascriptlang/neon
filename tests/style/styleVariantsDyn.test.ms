@@ -5,7 +5,6 @@
 // frozen snapshot.
 
 import { element } from "../../src/macros/ui/element";
-import { withDynStyleAll } from "../../src/render/node";
 import { Style, mergeStyle, emptyStyle } from "../../src/render/style";
 import { createStyles, styleOf } from "../../src/macros/ui/style";
 import { renderToHost, mockHost, mockNode, HostNode } from "../../src/render/host";

@@ -1,14 +1,15 @@
 // A snapshot render carries style the same way a mounted tree does
 // (docs/STYLE.md §5): a static sheet entry becomes a class plus one rule in the
 // registry, every other channel is written inline. Server markup that resolved
-// styles differently from renderNode would hand the browser a tree it has to
+// styles differently from a live mount would hand the browser a tree it has to
 // correct on hydration.
 //
 // Both lanes run this file: the js lane exercises the class route, the native
 // lane pins that the same tree serializes inline, because the macro bakes no
 // CSS metadata off the browser lane.
 
-import { NeonNode, el, text, attr, withStyle, withDynStyle, withDynStyleAll, renderToString } from "../../src/render/node";
+import { NeonNode } from "../../src/render/node";
+import { renderToString } from "../../src/render/ssr";
 import { Style } from "../../src/render/style";
 import { styleToCss } from "../../src/render/css";
 import { createStyles, styleOf } from "../../src/macros/ui/style";

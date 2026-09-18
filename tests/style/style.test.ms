@@ -3,7 +3,7 @@
 // reactive fields. The legacy string-attr path must keep working alongside it.
 
 import { element } from "../../src/macros/ui/element";
-import { NeonNode, el, attr, evt, text, dynText, withStyle } from "../../src/render/node";
+import { NeonNode, el, attr, evt, text, dynText } from "../../src/render/node";
 import { renderToHost, HostNode } from "../../src/render/host";
 import { createVoidHost, layoutPass } from "../../src/platform/void/host";
 import { createStyles, styleOf } from "../../src/macros/ui/style";
@@ -61,8 +61,10 @@ test "inline style literal routes through the typed channel" {
 }
 
 test "a style prop attaches a Style to the node" {
-	const node: NeonNode = <div style={sheet.btn}></div>;
-	assert node.style !== null, "style slot set";
-	const plain: NeonNode = <div></div>;
-	assert plain.style === null, "an element with no style prop carries none";
+	const styled = createVoidHost();
+	renderToHost(<div style={sheet.btn}></div>, styled.host, styled.root as unknown as HostNode);
+	assert styled.root.children[0].layoutStyle !== null, "the host received the style";
+	const plain = createVoidHost();
+	renderToHost(<div></div>, plain.host, plain.root as unknown as HostNode);
+	assert plain.root.children[0].layoutStyle === null, "an element with no style prop carries none";
 }

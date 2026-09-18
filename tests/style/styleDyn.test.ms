@@ -4,7 +4,7 @@
 // whole-style re-apply, no re-render — the Solid model, per-property.
 
 import { element } from "../../src/macros/ui/element";
-import { Style } from "../../src/render/style";
+import { Style, StyleValue } from "../../src/render/style";
 import { renderToHost, mockHost, mockNode, HostNode } from "../../src/render/host";
 import { createSignal } from "../../src/core/signal";
 
@@ -38,10 +38,16 @@ test "a derived style expression is reactive too" {
 
 test "an all-static style object still lands as one constant" {
 	const vnode = element(<div style={{ width: 200, height: 120 }}></div>);
-	assert vnode.dynStyle === null, "no dynamic entries for a static object";
 	const host = mockHost();
+	const styleWrites: number[] = [0];
+	const propWrites: number[] = [0];
+	const setStyle = host.setStyle;
+	host.setStyle = (node: HostNode, style: Style): void => { styleWrites[0] = styleWrites[0] + 1; setStyle(node, style); };
+	host.setStyleProp = (node: HostNode, name: string, value: StyleValue): void => { propWrites[0] = propWrites[0] + 1; };
 	const root = mockNode("root");
 	renderToHost(vnode, host, root as unknown as HostNode);
+	assert styleWrites[0] === 1, "one whole-style write, got " + styleWrites[0].toString();
+	assert propWrites[0] === 0, "no per-property binding for a static object, got " + propWrites[0].toString();
 	const st = root.children[0].style as Style;
 	assert st.width === 200, "static width";
 	assert st.height === 120, "static height";

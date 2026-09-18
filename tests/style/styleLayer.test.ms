@@ -3,10 +3,11 @@
 // that ruled out spread. Two emission paths, one meaning:
 //   all layers object literals  → merged at expansion, no runtime call
 //   any layer a sheet reference → nested mergeStyle() calls
-// Asserted on NeonNode.style rather than through a host, so both lanes run it.
+// Asserted on the style the mock host receives, so both lanes run it.
 
 import { element } from "../../src/macros/ui/element";
-import { el, withStyle, NeonNode } from "../../src/render/node";
+import { el, NeonNode } from "../../src/render/node";
+import { mockHost, mockNode, renderToHost, HostNode } from "../../src/render/host";
 import { Style, mergeStyle, layerStyles } from "../../src/render/style";
 import { createStyles, styleOf } from "../../src/macros/ui/style";
 
@@ -16,7 +17,9 @@ const sheet = createStyles({
 });
 
 function styleOfNode(n: NeonNode): Style {
-	return n.style as Style;
+	const root = mockNode("root");
+	renderToHost(n, mockHost(), root as unknown as HostNode);
+	return root.children[0].style as Style;
 }
 
 test "mergeStyle takes the later layer for a set field" {
@@ -34,7 +37,6 @@ test "mergeStyle leaves a field unset when neither layer sets it" {
 
 test "two static layers merge at expansion" {
 	const node = element(<div style={[{ width: 200, height: 120 }, { height: 20 }]}></div>);
-	assert node.style !== null, "a layer array attaches a style";
 	const s = styleOfNode(node);
 	assert s.width === 200, "base width";
 	assert s.height === 20, "override height wins";
