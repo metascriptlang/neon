@@ -48,7 +48,7 @@ interface CardProps {
 }
 
 function Card(props: CardProps): NeonNode {
-	return el("section", [attr("title", props.title())], [], [props.children]);
+	return <section title={props.title()}>{props.children}</section>;
 }
 
 test "single element child passes as the children prop" {

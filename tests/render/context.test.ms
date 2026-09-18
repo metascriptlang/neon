@@ -135,7 +135,7 @@ test "a For row reads the provider above the list" {
 		children: el("ul", [], [], [
 			For<number>({
 				each: () => items(),
-				children: (n: number, i: Accessor<number>): NeonView => viewOf(el("li", [], [], [text(useContext(T).accent + n.toString())])),
+				children: (n: number, i: Accessor<number>): NeonView => viewOf(<li>{useContext(T).accent + n.toString()}</li>),
 			}),
 		]),
 	});
@@ -154,7 +154,7 @@ test "an Index row reads the provider above the list" {
 		children: el("ul", [], [], [
 			Index<number>({
 				each: () => items(),
-				children: (n: Accessor<number>, i: number): NeonView => viewOf(el("li", [], [], [text(useContext(T).accent + n().toString())])),
+				children: (n: Accessor<number>, i: number): NeonView => viewOf(<li>{useContext(T).accent + n().toString()}</li>),
 			}),
 		]),
 	});
@@ -171,8 +171,8 @@ test "a For fallback reads the provider above the list" {
 		children: el("ul", [], [], [
 			For<number>({
 				each: () => items(),
-				children: (n: number, i: Accessor<number>): NeonView => viewOf(el("li", [], [], [text(n.toString())])),
-				fallback: ((h: Host, p: HostNode, b: HostNode | null): void => { viewOf(el("li", [], [], [text(useContext(T).accent)]))(h, p, b); }) as NeonView,
+				children: (n: number, i: Accessor<number>): NeonView => viewOf(<li>{n.toString()}</li>),
+				fallback: ((h: Host, p: HostNode, b: HostNode | null): void => { viewOf(<li>{useContext(T).accent}</li>)(h, p, b); }) as NeonView,
 			}),
 		]),
 	});

@@ -20,7 +20,7 @@ test "region mounts a reactive list and reconciles on change" {
 		const [list, setList] = createSignal<number[]>([1, 2, 3]);
 		const region = regionNode((h) => {
 			const host = h as Host;
-			return mapArray<number, Row>(() => list(), (v, i) => rowOf(renderNode(el("li", [], [], [text("" + v)]), host)));
+			return mapArray<number, Row>(() => list(), (v, i) => rowOf(renderNode(<li>{"" + v}</li>, host)));
 		});
 		const ul = el("ul", [], [], [region]);
 		const host = mockHost();

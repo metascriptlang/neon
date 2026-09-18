@@ -64,7 +64,7 @@ test "a region anchors in front of the sibling and grows on its own side" {
 		const root = twoSiblings(host);
 		const [list, setList] = createSignal<number[]>([1, 2]);
 		const region = regionNode((h) => {
-			return mapArray<number, Row>(() => list(), (v, i) => makeRow(viewOf(el("li", [], [], [text("" + v)]))));
+			return mapArray<number, Row>(() => list(), (v, i) => makeRow(viewOf(<li>{"" + v}</li>)));
 		});
 		mountInto(region, host, root as unknown as HostNode, tailOf(root));
 		assert mockToString(root) === "<root><a></a><li>1</li><li>2</li><z></z></root>", "initial: " + mockToString(root);

@@ -24,7 +24,7 @@ test "For reactive list reuses rows on reorder, creates only new" {
 		const ul = el("ul", [], [], [
 			For<number>({
 				each: () => items(),
-				children: (item, i) => { creates = creates + 1; return viewOf(el("li", [], [], [text("" + item)])); },
+				children: (item, i) => { creates = creates + 1; return viewOf(<li>{"" + item}</li>); },
 			}),
 		]);
 		const host = mockHost();
@@ -52,8 +52,8 @@ test "For fallback shows when empty" {
 		const ul = el("ul", [], [], [
 			For<number>({
 				each: () => items(),
-				children: (item, i) => viewOf(el("li", [], [], [text("" + item)])),
-				fallback: viewOf(el("li", [], [], [text("empty")])),
+				children: (item, i) => viewOf(<li>{"" + item}</li>),
+				fallback: viewOf(<li>empty</li>),
 			}),
 		]);
 		const host = mockHost();
@@ -76,7 +76,7 @@ test "Index updates row value in place, no recreate" {
 		const ul = el("ul", [], [], [
 			Index<number>({
 				each: () => items(),
-				children: (item, i) => { creates = creates + 1; return viewOf(el("li", [], [], [dynText(() => "" + item())])); },
+				children: (item, i) => { creates = creates + 1; return viewOf(<li>{"" + item()}</li>); },
 			}),
 		]);
 		const host = mockHost();
@@ -122,8 +122,8 @@ test "Show swaps child/fallback and stays stable while true" {
 		const div = el("div", [], [], [
 			Show({
 				when: () => n() > 0,
-				children: viewOf(el("span", [], [], [text("on")])),
-				fallback: viewOf(el("span", [], [], [text("off")])),
+				children: viewOf(<span>on</span>),
+				fallback: viewOf(<span>off</span>),
 			}),
 		]);
 		const host = mockHost();
@@ -149,11 +149,12 @@ test "For fallback reactive scope is disposed when rows return" {
 		const [items, setItems] = createSignal<number[]>([]);
 		const [label, setLabel] = createSignal("empty");
 		let fbRuns = 0;
+		const fbTick = (): string => { fbRuns = fbRuns + 1; return label(); };
 		const ul = el("ul", [], [], [
 			For<number>({
 				each: () => items(),
-				children: (item, i) => viewOf(el("li", [], [], [text("" + item)])),
-				fallback: viewOf(el("li", [], [], [dynText(() => { fbRuns = fbRuns + 1; return label(); })])),
+				children: (item, i) => viewOf(<li>{"" + item}</li>),
+				fallback: viewOf(<li>{fbTick()}</li>),
 			}),
 		]);
 		const host = mockHost();
@@ -172,13 +173,14 @@ test "For fallback reactive scope is disposed when rows return" {
 test "For fallback reactive scope is disposed with the list" {
 	const [label, setLabel] = createSignal("empty");
 	let fbRuns = 0;
+	const fbTick = (): string => { fbRuns = fbRuns + 1; return label(); };
 	createRoot((d) => {
 		const [items, setItems] = createSignal<number[]>([]);
 		const ul = el("ul", [], [], [
 			For<number>({
 				each: () => items(),
-				children: (item, i) => viewOf(el("li", [], [], [text("" + item)])),
-				fallback: viewOf(el("li", [], [], [dynText(() => { fbRuns = fbRuns + 1; return label(); })])),
+				children: (item, i) => viewOf(<li>{"" + item}</li>),
+				fallback: viewOf(<li>{fbTick()}</li>),
 			}),
 		]);
 		const host = mockHost();
@@ -199,7 +201,7 @@ test "an accessor feeds For.each directly and the row index is an Accessor" {
 				each: items,
 				children: (item, i) => {
 					const idx: Accessor<number> = i;
-					return viewOf(el("li", [], [], [dynText(() => "" + item + "@" + idx())]));
+					return viewOf(<li>{"" + item + "@" + idx()}</li>);
 				},
 			}),
 		]);
@@ -291,7 +293,7 @@ test "Show mounts its branch untracked" {
 		const child: NeonView = (h: Host, p: HostNode, b: HostNode | null): void => {
 			builds = builds + 1;
 			const label = n().toString();
-			viewOf(el("span", [], [], [text(label)]))(h, p, b);
+			viewOf(<span>{label}</span>)(h, p, b);
 		};
 		const div = el("div", [], [], [Show({ when: () => on(), children: child })]);
 		const host = mockHost();
@@ -315,10 +317,10 @@ test "Show mounts its fallback untracked" {
 		const fb: NeonView = (h: Host, p: HostNode, b: HostNode | null): void => {
 			builds = builds + 1;
 			const label = n().toString();
-			viewOf(el("i", [], [], [text(label)]))(h, p, b);
+			viewOf(<i>{label}</i>)(h, p, b);
 		};
 		const div = el("div", [], [], [
-			Show({ when: () => on(), children: viewOf(el("span", [], [], [text("on")])), fallback: fb }),
+			Show({ when: () => on(), children: viewOf(<span>on</span>), fallback: fb }),
 		]);
 		const host = mockHost();
 		const root = host.createElement("root");
