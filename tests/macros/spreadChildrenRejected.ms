@@ -3,4 +3,4 @@ import { element } from "../../src/macros/ui/element";
 
 interface P { id: string; children: NeonNode[]; }
 function view(p: P): NeonNode { return element(<div {...p}>hi</div>); }
-console.log(view({ id: "x", children: [text("k")] }).tag);
+console.log(view({ id: "x", children: [<span>k</span>] }).tag);
