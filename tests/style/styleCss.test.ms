@@ -32,14 +32,14 @@ function cssHost(): Host {
 test "a static sheet entry becomes one class instead of inline style" {
 	when (js) {
 		resetCss();
-		const m = renderNode(withStyle(el("div", [], [], []), sheet.btn), cssHost()) as unknown as MockNode;
+		const m = renderNode(<div style={sheet.btn}></div>, cssHost()) as unknown as MockNode;
 		assert sheet.btn.cssId !== null, "the entry carries a class id on the browser lane";
 		assert m.className === (sheet.btn.cssId as string), "the node carries that class";
 		assert m.style === null, "no inline style once a class applies";
 		assert cssRuleCount() === 1, "exactly one rule for one entry";
 		assert collectCss() === "." + (sheet.btn.cssId as string) + "{padding:8px;background-color:#334;}", "rule text";
 	} else {
-		const m = renderNode(withStyle(el("div", [], [], []), sheet.btn), mockHost()) as unknown as MockNode;
+		const m = renderNode(<div style={sheet.btn}></div>, mockHost()) as unknown as MockNode;
 		assert sheet.btn.cssId === null, "no css metadata off the browser lane";
 		assert sheet.btn.css === null, "and no rule text";
 		assert m.style !== null, "a native host still receives the fields through setStyle";

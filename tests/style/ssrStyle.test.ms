@@ -8,7 +8,7 @@
 // lane pins that the same tree serializes inline, because the macro bakes no
 // CSS metadata off the browser lane.
 
-import { el, text, attr, withStyle, withDynStyle, withDynStyleAll, renderToString } from "../../src/render/node";
+import { NeonNode, el, text, attr, withStyle, withDynStyle, withDynStyleAll, renderToString } from "../../src/render/node";
 import { Style } from "../../src/render/style";
 import { styleToCss } from "../../src/render/css";
 import { createStyles, styleOf } from "../../src/macros/ui/style";
@@ -21,7 +21,7 @@ const sheet = createStyles({
 
 test "a static sheet entry serializes as a class and registers its rule" {
 	resetCss();
-	const html = renderToString(withStyle(el("div", [], [], [text("hi")]), sheet.btn));
+	const html = renderToString(<div style={sheet.btn}>hi</div>);
 	when (js) {
 		const id = sheet.btn.cssId as string;
 		assert html === "<div class=\"" + id + "\">hi</div>", "class, no inline copy of the rule";
@@ -41,25 +41,26 @@ test "the runtime spelling equals the rule the macro baked" {
 
 test "an inline style literal serializes into the style attribute" {
 	const s = styleOf({ width: "50%", opacity: 0.5, color: "#fff" });
-	assert renderToString(withStyle(el("p", [], [], []), s)) === "<p style=\"width:50%;opacity:0.5;color:#fff;\"></p>", "a string dimension passes through, a ratio takes no unit";
+	assert renderToString(<p style={s}></p>) === "<p style=\"width:50%;opacity:0.5;color:#fff;\"></p>", "a string dimension passes through, a ratio takes no unit";
 }
 
 test "a reactive whole-style thunk serializes its value at render time" {
 	const [w, setW] = createSignal(10);
-	const n = withDynStyleAll(el("div", [], [], []), () => styleOf({ width: w() }) as Style);
+	const n: NeonNode = <div style={styleOf({ width: w() })}></div>;
 	assert renderToString(n) === "<div style=\"width:10px;\"></div>", "the thunk runs";
 	setW(20);
 	assert renderToString(n) === "<div style=\"width:20px;\"></div>", "a second render re-reads it";
 }
 
 test "per-property thunks land over the static base" {
-	const n = withDynStyle(withStyle(el("div", [], [], []), styleOf({ padding: 4 })), "width", () => 7);
+	const seven = (): number => 7;
+	const n: NeonNode = <div style={{ width: seven(), padding: 4 }}></div>;
 	assert renderToString(n) === "<div style=\"width:7px;padding:4px;\"></div>", "declaration order, base and override together";
 }
 
 test "a class from a sheet joins the class attribute already on the node" {
 	when (js) {
-		const n = withStyle(el("div", [attr("class", "x")], [], []), sheet.btn);
+		const n: NeonNode = <div class="x" style={sheet.btn}></div>;
 		assert renderToString(n) === "<div class=\"x " + (sheet.btn.cssId as string) + "\"></div>", "one class attribute, not two";
 	}
 }
