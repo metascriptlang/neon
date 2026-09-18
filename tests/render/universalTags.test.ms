@@ -8,7 +8,8 @@
 import { element } from "../../src/macros/ui/element";
 import { View, Text, TextInput, Pressable } from "../../src/components/primitives";
 import { neonEvent } from "../../src/render/event";
-import { htmlTagFor, renderToString } from "../../src/render/node";
+import { htmlTagFor } from "../../src/render/node";
+import { renderToString } from "../../src/render/ssr";
 import { HostNode, MockNode, mockHost, mockNode, renderToHost, fireEvent, fireEventWith, mockToString } from "../../src/render/host";
 import { terminalHost } from "../../src/platform/terminal/host";
 import { TerminalNode } from "../../src/platform/terminal/types";

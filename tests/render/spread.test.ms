@@ -5,13 +5,14 @@
 // HOST_ATTR_CONTRACT), null removes, and an Accessor field stays reactive.
 
 import { createSignal, Accessor, accessor } from "../../src/core/signal";
-import { NeonNode, renderToString } from "../../src/render/node";
+import { NeonNode } from "../../src/render/node";
+import { renderToString } from "../../src/render/ssr";
 import { Style } from "../../src/render/style";
 import { element } from "../../src/macros/ui/element";
 import { direct } from "../../src/macros/ui/direct";
 import { Show } from "../../src/macros/ui/flow";
 import { NeonEvent } from "../../src/render/event";
-import { renderToHost, mockHost, mockNode, mockToString, fireEvent, HostNode, NeonView } from "../../src/render/host";
+import { renderToHost, mockHost, mockNode, mockToString, fireEvent, HostNode } from "../../src/render/host";
 
 interface Attrs {
 	id: string;
@@ -120,7 +121,7 @@ test "an explicit style after a spread replaces the spread's style" {
 	assert renderToString(view({ style: { height: 2 } })) === "<div style=\"width:1px;\">hi</div>", "explicit style wins";
 }
 
-// Direct emission (NeonView): the same classification, the same override order.
+// Direct emission (NeonNode): the same classification, the same override order.
 
 test "direct emission expands a spread into the same attrs" {
 	const p = { id: "x", title: "t" };
@@ -141,7 +142,7 @@ test "direct emission gives a later prop the win in place" {
 }
 
 test "direct emission removes a null field" {
-	function view(p: Attrs): NeonView {
+	function view(p: Attrs): NeonNode {
 		return direct(<div title="early" {...p}>hi</div>);
 	}
 	const host = mockHost();
@@ -152,7 +153,7 @@ test "direct emission removes a null field" {
 
 test "direct emission keeps an Accessor field reactive" {
 	const [t, setT] = createSignal("a");
-	function view(p: Reactive): NeonView {
+	function view(p: Reactive): NeonNode {
 		return direct(<div {...p}>hi</div>);
 	}
 	const host = mockHost();
@@ -165,7 +166,7 @@ test "direct emission keeps an Accessor field reactive" {
 
 test "direct emission routes an on* field to addEvent" {
 	let hits = 0;
-	function view(p: Handlers): NeonView {
+	function view(p: Handlers): NeonNode {
 		return direct(<div {...p}>hi</div>);
 	}
 	const host = mockHost();
@@ -176,7 +177,7 @@ test "direct emission routes an on* field to addEvent" {
 }
 
 test "direct emission lets a spread style replace an earlier one" {
-	function view(p: Styled): NeonView {
+	function view(p: Styled): NeonNode {
 		return direct(<div style={{ width: 1 }} {...p}>hi</div>);
 	}
 	const host = mockHost();

@@ -6,26 +6,26 @@
 
 import { createSignal } from "../../src/core/signal";
 import { element } from "../../src/macros/ui/element";
-// insChild is NOT imported here on purpose: it must arrive through globalImports,
+// mountChild is NOT imported here on purpose: it must arrive through globalImports,
 // which is how bare-JSX user code gets it.
-import { el, NeonNode, renderToString } from "../../src/render/node";
+import { el, NeonNode } from "../../src/render/node";
+import { mockHost, mockNode, mockToString, renderToHost, HostNode } from "../../src/render/host";
+import { renderToString } from "../../src/render/ssr";
 
 // --- static string child (regression: must stay text, isDyn false) ---
 test "a static string child renders once" {
 	const label = "hi";
 	const node = element(<p>{label}</p>);
-	assert node.children.length === 1, "one child";
-	assert node.children[0].isDyn === false, "identifier child is static";
 	assert renderToString(node) === "<p>hi</p>", "got " + renderToString(node);
 }
 
 // --- dynamic string child (regression: call stays reactive) ---
 test "a call string child stays reactive" {
 	const [n, setN] = createSignal("a");
-	const node = element(<p>{n()}</p>);
-	assert node.children[0].isDyn, "call child is dynamic";
+	const root = mockNode("root");
+	renderToHost(element(<p>{n()}</p>), mockHost(), root as unknown as HostNode);
 	setN("b");
-	assert renderToString(node) === "<p>b</p>", "got " + renderToString(node);
+	assert mockToString(root) === "<root><p>b</p></root>", "got " + mockToString(root);
 }
 
 // --- static NeonNode child: THE BUG. props.children is a member read (no call),

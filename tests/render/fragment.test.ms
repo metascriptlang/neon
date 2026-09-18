@@ -1,10 +1,12 @@
-import { NeonNode, renderToString } from "../../src/render/node";
+import { NeonNode } from "../../src/render/node";
+import { renderToString } from "../../src/render/ssr";
 import { MockNode, mockHost, renderToHost, mockToString } from "../../src/render/host";
 import { element } from "../../src/macros/ui/element";
 import { direct } from "../../src/macros/ui/direct";
 import { View, Text } from "../../src/components/primitives";
 import { createSignal, Accessor } from "../../src/core/signal";
 import { createRoot } from "../../src/core/owner";
+import { For, Show } from "../../src/macros/ui/flow";
 
 function Pair(props: { label: Accessor<string> }): NeonNode {
 	return element(<><p>r1</p><p>r2</p></>);
@@ -169,4 +171,41 @@ test "a component that returns a fragment mounts under direct emission" {
 	const d = mockToString(directRoot as unknown as MockNode);
 	assert t === d, "tree=" + t + " direct=" + d;
 	assert d === "<root><div><p>r1</p><p>r2</p></div></root>", "both roots spliced: " + d;
+}
+
+function Gate(props: { open: Accessor<boolean> }): NeonNode {
+	return <Show when={props.open()}><i>on</i></Show>;
+}
+
+test "a fragment row moves and leaves as one span" {
+	createRoot((dispose) => {
+		const [items, setItems] = createSignal<string[]>(["a", "b", "c"]);
+		const host = mockHost();
+		const root = host.createElement("root");
+		renderToHost(<ul><For each={items()}>{(item: string, i: Accessor<number>): NeonNode => <><dt>{item}</dt><dd>{item + "!"}</dd></>}</For></ul>, host, root);
+		const first = mockToString(root as unknown as MockNode);
+		assert first === "<root><ul><dt>a</dt><dd>a!</dd><dt>b</dt><dd>b!</dd><dt>c</dt><dd>c!</dd></ul></root>", "initial: " + first;
+		setItems(["c", "a", "b"]);
+		const moved = mockToString(root as unknown as MockNode);
+		assert moved === "<root><ul><dt>c</dt><dd>c!</dd><dt>a</dt><dd>a!</dd><dt>b</dt><dd>b!</dd></ul></root>", "reorder: " + moved;
+		setItems(["c", "b"]);
+		const removed = mockToString(root as unknown as MockNode);
+		assert removed === "<root><ul><dt>c</dt><dd>c!</dd><dt>b</dt><dd>b!</dd></ul></root>", "remove: " + removed;
+		dispose();
+	});
+}
+
+test "a row that opens with a closed region still moves with its span" {
+	createRoot((dispose) => {
+		const [items, setItems] = createSignal<string[]>(["a", "b"]);
+		const [open, setOpen] = createSignal(false);
+		const host = mockHost();
+		const root = host.createElement("root");
+		renderToHost(<ul><For each={items()}>{(item: string, i: Accessor<number>): NeonNode => <><Gate open={open()} /><li>{item}</li></>}</For></ul>, host, root);
+		setItems(["b", "a"]);
+		setOpen(true);
+		const shown = mockToString(root as unknown as MockNode);
+		assert shown === "<root><ul><i>on</i><li>b</li><i>on</i><li>a</li></ul></root>", "each gate opens inside its own row: " + shown;
+		dispose();
+	});
 }

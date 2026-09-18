@@ -1,4 +1,6 @@
-import { NeonNode, el, text, attr, dynAttr, regionNode, renderToString } from "../../src/render/node";
+import { NeonNode, el, text, attr, dynAttr, regionNode } from "../../src/render/node";
+import { renderToString } from "../../src/render/ssr";
+import { Row, makeRow } from "../../src/render/reconcile";
 
 function maybeClass(): string | null { return null; }
 
@@ -7,15 +9,10 @@ test "renderToString serializes a static tree" {
 	assert renderToString(v) === "<div><p>hi</p></div>", "static serialize";
 }
 
-test "renderToString rejects a region node instead of silently emptying" {
-	let threw = false;
-	const r = regionNode((h) => () => [] as unknown[]);
-	try {
-		renderToString(r);
-	} catch (e) {
-		threw = true;
-	}
-	assert threw, "region must throw";
+test "renderToString renders the rows of a region" {
+	const rows: Row[] = [makeRow(<li>a</li>), makeRow(<li>b</li>)];
+	const r = regionNode((h) => () => rows);
+	assert renderToString(<ul>{r}</ul>) === "<ul><li>a</li><li>b</li></ul>", renderToString(<ul>{r}</ul>);
 }
 
 test "renderToString leaves a null attr out" {

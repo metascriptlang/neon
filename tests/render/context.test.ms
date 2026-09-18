@@ -5,8 +5,9 @@
 import { createSignal, accessor, Accessor } from "../../src/core/signal";
 import { element } from "../../src/macros/ui/element";
 import { direct } from "../../src/macros/ui/direct";
-import { NeonNode, renderToString, el, text } from "../../src/render/node";
-import { Host, HostNode, MockNode, NeonView, mockNode, mockHost, renderToHost, viewOf, mockToString } from "../../src/render/host";
+import { NeonNode, el, text } from "../../src/render/node";
+import { renderToString } from "../../src/render/ssr";
+import { Host, HostNode, MockNode, mockNode, mockHost, renderToHost, mockToString } from "../../src/render/host";
 import { createContext, useContext } from "../../src/render/context";
 import { For, Index } from "../../src/macros/ui/flow";
 
@@ -135,7 +136,7 @@ test "a For row reads the provider above the list" {
 		children: el("ul", [], [], [
 			For<number>({
 				each: () => items(),
-				children: (n: number, i: Accessor<number>): NeonView => viewOf(<li>{useContext(T).accent + n.toString()}</li>),
+				children: (n: number, i: Accessor<number>): NeonNode => <li>{useContext(T).accent + n.toString()}</li>,
 			}),
 		]),
 	});
@@ -154,7 +155,7 @@ test "an Index row reads the provider above the list" {
 		children: el("ul", [], [], [
 			Index<number>({
 				each: () => items(),
-				children: (n: Accessor<number>, i: number): NeonView => viewOf(<li>{useContext(T).accent + n().toString()}</li>),
+				children: (n: Accessor<number>, i: number): NeonNode => <li>{useContext(T).accent + n().toString()}</li>,
 			}),
 		]),
 	});
@@ -171,8 +172,11 @@ test "a For fallback reads the provider above the list" {
 		children: el("ul", [], [], [
 			For<number>({
 				each: () => items(),
-				children: (n: number, i: Accessor<number>): NeonView => viewOf(<li>{n.toString()}</li>),
-				fallback: ((h: Host, p: HostNode, b: HostNode | null): void => { viewOf(<li>{useContext(T).accent}</li>)(h, p, b); }) as NeonView,
+				children: (n: number, i: Accessor<number>): NeonNode => <li>{n.toString()}</li>,
+				fallback: (h: Host, p: HostNode, b: HostNode | null): void => {
+					const row: NeonNode = <li>{useContext(T).accent}</li>;
+					row(h, p, b);
+				},
 			}),
 		]),
 	});

@@ -9,7 +9,7 @@ import { direct } from "../../src/macros/ui/direct";
 import { NeonNode, el, attr } from "../../src/render/node";
 import { createComponent } from "../../src/render/component";
 import { Show, For } from "../../src/macros/ui/flow";
-import { renderToHost, renderNode, mockHost, mockNode, mockToString, fireEvent, fireEventWith, bindText, bindAttr, MockNode, Host, HostNode, NeonView, viewOf } from "../../src/render/host";
+import { renderToHost, mockHost, mockNode, mockToString, fireEvent, fireEventWith, bindText, bindAttr, MockNode, Host, HostNode } from "../../src/render/host";
 import { createMemo } from "../../src/core/memo";
 import { Style, layerStyles } from "../../src/render/style";
 import { styleToCss } from "../../src/render/css";
@@ -456,11 +456,11 @@ test "For reorder through direct matches tree" {
 	const host = mockHost();
 
 	const treeRoot = mockNode("root");
-	const tv: NeonNode = element(<ul><For each={items()}>{(item: number, i: () => number): NeonView => viewOf(element(<li>{item.toString()}</li>))}</For></ul>);
+	const tv: NeonNode = element(<ul><For each={items()}>{(item: number, i: () => number): NeonNode => element(<li>{item.toString()}</li>)}</For></ul>);
 	renderToHost(tv, host, treeRoot as unknown as HostNode);
 
 	const directRoot = mockNode("root");
-	const mount = direct(<ul><For each={items()}>{(item: number, i: () => number): NeonView => viewOf(element(<li>{item.toString()}</li>))}</For></ul>);
+	const mount = direct(<ul><For each={items()}>{(item: number, i: () => number): NeonNode => element(<li>{item.toString()}</li>)}</For></ul>);
 	mount(host, directRoot as unknown as HostNode, null);
 
 	assert mockToString(treeRoot) === mockToString(directRoot), "initial: tree=" + mockToString(treeRoot) + " direct=" + mockToString(directRoot);
@@ -512,10 +512,10 @@ test "xs.map(row) through direct matches tree" {
 	const [items, setItems] = createSignal<number[]>([1, 2, 3]);
 	const host = mockHost();
 	const treeRoot = mockNode("root");
-	const tv: NeonNode = element(<ul>{items.map((n: number): NeonView => viewOf(element(<li>{n.toString()}</li>)))}</ul>);
+	const tv: NeonNode = element(<ul>{items.map((n: number): NeonNode => element(<li>{n.toString()}</li>))}</ul>);
 	renderToHost(tv, host, treeRoot as unknown as HostNode);
 	const directRoot = mockNode("root");
-	const mount = direct(<ul>{items.map((n: number): NeonView => viewOf(element(<li>{n.toString()}</li>)))}</ul>);
+	const mount = direct(<ul>{items.map((n: number): NeonNode => element(<li>{n.toString()}</li>))}</ul>);
 	mount(host, directRoot as unknown as HostNode, null);
 	assert mockToString(treeRoot) === mockToString(directRoot), "initial: tree=" + mockToString(treeRoot) + " direct=" + mockToString(directRoot);
 	setItems([3, 1, 2, 4]);
@@ -960,7 +960,7 @@ interface FrameProps {
 	children: NeonNode;
 }
 
-function Frame(props: FrameProps): NeonView {
+function Frame(props: FrameProps): NeonNode {
 	return direct(<section title={props.title}>{props.children}</section>);
 }
 
@@ -1070,11 +1070,11 @@ test "whitespace around a NeonNode-children component's single element child pas
 
 // ---- Lát 0.11: a nullable-typed on*/ref/style attaches only when the value is present ----
 
-function optTemplate(h: ((e: NeonEvent) => void) | null, r: ((b: HostNode) => void) | null, s: Style | null, a: Accessor<Style> | null): NeonView {
+function optTemplate(h: ((e: NeonEvent) => void) | null, r: ((b: HostNode) => void) | null, s: Style | null, a: Accessor<Style> | null): NeonNode {
 	return direct(<div><button type="button" onPress={h} ref={r} style={s}>go</button><p style={a}>x</p></div>);
 }
 
-function optFlat(h: ((e: NeonEvent) => void) | null, r: ((b: HostNode) => void) | null, s: Style | null, a: Accessor<Style> | null): NeonView {
+function optFlat(h: ((e: NeonEvent) => void) | null, r: ((b: HostNode) => void) | null, s: Style | null, a: Accessor<Style> | null): NeonNode {
 	return direct(<div><Gauge count={1} label="g" /><button type="button" onPress={h} ref={r} style={s}>go</button><p style={a}>x</p></div>);
 }
 

@@ -1,11 +1,12 @@
 // The converter surface — bare JSX, zero element()/direct() calls, lowered by the
 // prelude converter at every settled expected-type boundary. Pins PORT-STATUS #2:
 // an app is writable without naming a macro. On js the NeonNode boundary needs its
-// own converter (NeonView is a mount closure there); on native the NeonView one
+// own converter (NeonNode is a mount closure there); on native the NeonNode one
 // already covers it via the alias.
 
 import { createSignal, accessor, Accessor } from "../../src/core/signal";
-import { NeonNode, renderToString } from "../../src/render/node";
+import { NeonNode } from "../../src/render/node";
+import { renderToString } from "../../src/render/ssr";
 import { renderToHost, mockHost, mockNode, mockToString, HostNode } from "../../src/render/host";
 
 interface CounterProps {

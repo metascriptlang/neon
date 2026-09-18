@@ -150,14 +150,6 @@ test "nested refs fire innermost first, each with its own children complete" {
 
 test "a nested ref sees its template parent on direct emission" {
 	const host = mockHost();
-	let treeParent = "?";
-	const treeRoot: MockNode = mockNode("root");
-	const grabTree: (h: HostNode) => void = (h) => {
-		const p = (h as unknown as MockNode).parent;
-		treeParent = p === null ? "<none>" : p.tag;
-	};
-	renderToHost(element(<div><p ref={grabTree}>hi</p></div>), host, treeRoot as unknown as HostNode);
-
 	let directParent = "?";
 	const directRoot: MockNode = mockNode("root");
 	const grabDirect: (h: HostNode) => void = (h) => {
@@ -168,5 +160,4 @@ test "a nested ref sees its template parent on direct emission" {
 	mount(host, directRoot as unknown as HostNode, null);
 
 	assert directParent === "div", "direct nested ref sees its parent, parent=" + directParent;
-	assert treeParent === "<none>", "tree builds bottom-up: the child is not attached yet, parent=" + treeParent;
 }

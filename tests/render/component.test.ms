@@ -4,7 +4,8 @@
 import { createSignal, accessor, Accessor } from "../../src/core/signal";
 import { onCleanup } from "../../src/core/cleanup";
 import { element } from "../../src/macros/ui/element";
-import { el, attr, text, dynText, NeonNode, renderToString } from "../../src/render/node";
+import { el, attr, text, dynText, NeonNode } from "../../src/render/node";
+import { renderToString } from "../../src/render/ssr";
 import { createComponent } from "../../src/render/component";
 import { renderToHost, mockHost, mockNode, mockToString, HostNode } from "../../src/render/host";
 import { Show } from "../../src/macros/ui/flow";
