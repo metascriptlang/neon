@@ -2,32 +2,34 @@
 // el(tag, attrs, events, [ For({...}) ]). The reactive engines (mapArray/indexArray) and
 // the host reconciler do the work; these are thin wrappers, mirroring the reference's
 // <For>/<Index>/<Show> = thin wrappers over the array helpers + a condition memo.
+// A row is described here and mounted by the reconciler at its final position, so
+// nothing below touches the host.
 
 import { mapArray, indexArray } from "../../core/array";
 import { createMemo } from "../../core/memo";
-import { Accessor, untrack } from "../../core/signal";
+import { Accessor } from "../../core/signal";
 import { createRoot } from "../../core/owner";
 import { onCleanup } from "../../core/cleanup";
 import { NeonNode, regionNode } from "../../render/node";
-import { Host, NeonView, mountView } from "../../render/host";
-import { Range, rangeOf } from "../../render/reconcile";
+import { NeonView } from "../../render/host";
+import { Row, makeRow } from "../../render/reconcile";
 
 // Wrap a row list with an empty-state fallback. The fallback lives in its own root and is
 // disposed the moment rows return (and rebuilt on the next empty), so it never leaks.
-function withFallback(mapped: () => Range[], fb: NeonView, host: Host): () => Range[] {
-	let fbNode: Range | null = null;
+function withFallback(mapped: () => Row[], fb: NeonView): () => Row[] {
+	let fbRow: Row | null = null;
 	let fbDispose: (() => void) | null = null;
-	onCleanup(() => { if (fbDispose !== null) { fbDispose(); fbDispose = null; fbNode = null; } });
+	onCleanup(() => { if (fbDispose !== null) { fbDispose(); fbDispose = null; fbRow = null; } });
 	return () => {
 		const rows = mapped();
 		if (rows.length > 0) {
-			if (fbDispose !== null) { fbDispose(); fbDispose = null; fbNode = null; }
+			if (fbDispose !== null) { fbDispose(); fbDispose = null; fbRow = null; }
 			return rows;
 		}
-		if (fbNode === null) {
-			fbNode = createRoot((d) => { fbDispose = d; return rangeOf(mountView(fb, host)); });
+		if (fbRow === null) {
+			fbRow = createRoot((d) => { fbDispose = d; return makeRow(fb); });
 		}
-		return [fbNode];
+		return [fbRow as Row];
 	};
 }
 
@@ -38,11 +40,10 @@ export function For<T>(props: {
 	fallback?: NeonView | null;
 }): NeonNode {
 	return regionNode((h) => {
-		const host = h as Host;
-		const mapped = mapArray<T, Range>(props.each, (item, idx) => rangeOf(mountView(props.children(item, idx), host)));
+		const mapped = mapArray<T, Row>(props.each, (item, idx) => makeRow(props.children(item, idx)));
 		const fb = props.fallback;
 		if (fb === null) { return mapped; }
-		return withFallback(mapped, fb as NeonView, host);
+		return withFallback(mapped, fb as NeonView);
 	});
 }
 
@@ -53,11 +54,10 @@ export function Index<T>(props: {
 	fallback?: NeonView | null;
 }): NeonNode {
 	return regionNode((h) => {
-		const host = h as Host;
-		const mapped = indexArray<T, Range>(props.each, (item, idx) => rangeOf(mountView(props.children(item, idx), host)));
+		const mapped = indexArray<T, Row>(props.each, (item, idx) => makeRow(props.children(item, idx)));
 		const fb = props.fallback;
 		if (fb === null) { return mapped; }
-		return withFallback(mapped, fb as NeonView, host);
+		return withFallback(mapped, fb as NeonView);
 	});
 }
 
@@ -68,13 +68,12 @@ export function Show(props: {
 	fallback?: NeonView | null;
 }): NeonNode {
 	return regionNode((h) => {
-		const host = h as Host;
 		const cond = createMemo(() => props.when(), (a, b) => a === b);
-		return createMemo<Range[]>(() => {
-			if (cond()) { return untrack(() => [rangeOf(mountView(props.children, host))]); }
+		return createMemo<Row[]>(() => {
+			if (cond()) { return [makeRow(props.children)]; }
 			const fb = props.fallback;
-			if (fb !== null) { return untrack(() => [rangeOf(mountView(fb as NeonView, host))]); }
-			return [] as Range[];
+			if (fb !== null) { return [makeRow(fb as NeonView)]; }
+			return [] as Row[];
 		});
 	});
 }

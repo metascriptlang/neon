@@ -471,20 +471,22 @@ export macro direct(node: Node): Node {
 				},
 			},
 			{
-				kind: NodeKind.ReturnStmt, line: L, column: C,
-				argument: {
+				kind: NodeKind.ExprStmt, line: L, column: C,
+				expr: {
 					kind: NodeKind.CallExpr, line: L, column: C,
-					callee: { kind: NodeKind.Identifier, line: L, column: C, name: "renderNode" },
+					callee: { kind: NodeKind.Identifier, line: L, column: C, name: "mountInto" },
 					arguments: [
 						{ kind: NodeKind.Identifier, line: L, column: C, name: "_k0" },
 						{ kind: NodeKind.Identifier, line: L, column: C, name: "host" },
+						{ kind: NodeKind.Identifier, line: L, column: C, name: "parent" },
+						{ kind: NodeKind.Identifier, line: L, column: C, name: "before" },
 					],
 				},
 			},
 		];
 		return {
 			kind: NodeKind.ArrowFunction, line: L, column: C,
-			arrowParams: ["host"], arrowParamTypes: ["Host"], arrowFlags: "", arrowReturnType: "",
+			arrowParams: ["host", "parent", "before"], arrowParamTypes: ["Host", "HostNode", "HostNode | null"], arrowFlags: "", arrowReturnType: "void",
 			arrowBody: { kind: NodeKind.BlockStmt, line: L, column: C, statements: rootStmts },
 		};
 	}
@@ -1187,13 +1189,22 @@ export macro direct(node: Node): Node {
 	const rootName = emitEl(node);
 	if (styleErrNodes.length > 0) { error(styleErrMsgs[0], styleErrNodes[0]); }
 	stmts.push({
-		kind: NodeKind.ReturnStmt, line: L, column: C,
-		argument: { kind: NodeKind.Identifier, line: L, column: C, name: rootName },
+		kind: NodeKind.ExprStmt, line: L, column: C,
+		expr: {
+			kind: NodeKind.CallExpr, line: L, column: C,
+			callee: { kind: NodeKind.Identifier, line: L, column: C, name: "place" },
+			arguments: [
+				{ kind: NodeKind.Identifier, line: L, column: C, name: "host" },
+				{ kind: NodeKind.Identifier, line: L, column: C, name: "parent" },
+				{ kind: NodeKind.Identifier, line: L, column: C, name: rootName },
+				{ kind: NodeKind.Identifier, line: L, column: C, name: "before" },
+			],
+		},
 	});
 
 	return {
 		kind: NodeKind.ArrowFunction, line: L, column: C,
-		arrowParams: ["host"], arrowParamTypes: ["Host"], arrowFlags: "", arrowReturnType: "",
+		arrowParams: ["host", "parent", "before"], arrowParamTypes: ["Host", "HostNode", "HostNode | null"], arrowFlags: "", arrowReturnType: "void",
 		arrowBody: { kind: NodeKind.BlockStmt, line: L, column: C, statements: stmts },
 	};
 }
