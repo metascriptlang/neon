@@ -107,7 +107,7 @@ export function mountChild(host: Host, parent: HostNode, s: string): void {
 }
 
 export function mountChild(host: Host, parent: HostNode, n: NeonNode): void {
-	mountInto(n, host, parent);
+	mountInto(n, host, parent, null);
 }
 
 export function viewOf(node: NeonNode): NeonView {
@@ -162,15 +162,15 @@ export function renderNode(vnode: NeonNode, host: Host): HostNode {
 		applyStaticStyle(host, node, vstyle as Style);
 	}
 	for (const e of vnode.events) { host.addEvent(node, e.name, e.handler); }
-	for (const k of vnode.children) { mountInto(k, host, node); }
+	for (const k of vnode.children) { mountInto(k, host, node, null); }
 	const r = vnode.ref;
 	if (r !== null) { (r as RefFn)(node); }
 	return node;
 }
 
 // The one mounting primitive for a child with a real parent: unwrap deferred
-// components, enter a provider scope, anchor a region, or append an element.
-function mountInto(vnode: NeonNode, host: Host, parent: HostNode): void {
+// components, enter a provider scope, anchor a region, or insert an element.
+export function mountInto(vnode: NeonNode, host: Host, parent: HostNode, before: HostNode | null): void {
 	let kv = vnode;
 	while (kv.componentFn !== null) {
 		const producer = kv.componentFn as ComponentProducer;
@@ -179,22 +179,22 @@ function mountInto(vnode: NeonNode, host: Host, parent: HostNode): void {
 	const sc = kv.scope;
 	if (sc !== null) {
 		const inner = kv.children[0];
-		(sc as ScopeFn)(() => { mountInto(inner, host, parent); return null; });
+		(sc as ScopeFn)(() => { mountInto(inner, host, parent, before); return null; });
 		return;
 	}
-	if (kv.region !== null) { mountRegion(kv, host, parent); return; }
+	if (kv.region !== null) { mountRegion(kv, host, parent, before); return; }
 	if (kv.isFragment) {
-		for (const k of kv.children) { mountInto(k, host, parent); }
+		for (const k of kv.children) { mountInto(k, host, parent, before); }
 		return;
 	}
-	host.append(parent, renderNode(kv, host));
+	host.insertBefore(parent, renderNode(kv, host), before);
 }
 
 // A region owns the span before its end anchor. The effect re-runs when the region's
 // list source changes, reconciling host nodes between the start of the span and anchor.
-function mountRegion(vnode: NeonNode, host: Host, parent: HostNode): void {
+function mountRegion(vnode: NeonNode, host: Host, parent: HostNode, before: HostNode | null): void {
 	const anchor = host.createText("");
-	host.append(parent, anchor);
+	host.insertBefore(parent, anchor, before);
 	let current: Range[] = [];
 	const fn = vnode.region as RegionFn;
 	const memo = fn(host);
@@ -206,7 +206,7 @@ function mountRegion(vnode: NeonNode, host: Host, parent: HostNode): void {
 }
 
 export function renderToHost(vnode: NeonNode, host: Host, parent: HostNode): void {
-	mountInto(vnode, host, parent);
+	mountInto(vnode, host, parent, null);
 }
 
 // ---- Mock host: in-memory tree for tests/SSR (no browser needed) ----
