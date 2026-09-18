@@ -1,4 +1,4 @@
-import { NeonView } from "../../src/render/host";
+import { NeonNode } from "../../src/render/host";
 
-const v: NeonView = <p ref="lit">hi</p>;
+const v: NeonNode = <p ref="lit">hi</p>;
 console.log(v === null);

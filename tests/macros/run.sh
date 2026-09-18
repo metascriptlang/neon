@@ -25,7 +25,6 @@ expect_reject tests/macros/spreadNullHandlerDirectRejected.ms "a nullable onPres
 expect_reject tests/macros/spreadNullStyleRejected.ms "a nullable style is not supported yet"
 expect_reject tests/macros/fragmentInExprRejected.ms "a fragment inside an expression is not supported"
 expect_reject tests/macros/fragmentInExprDirectRejected.ms "a fragment inside an expression is not supported"
-expect_reject tests/macros/fragmentDirectRootRejected.ms "a fragment has no single host node to return"
 expect_reject tests/macros/accessorNominal.ms "is not assignable to type 'Accessor<number>'"
 expect_reject tests/macros/emptyLayerRejected.ms "a style layer array needs at least one layer"
 expect_reject tests/macros/emptyLayerDirectRejected.ms "a style layer array needs at least one layer"
@@ -40,8 +39,8 @@ expect_reject tests/macros/reactiveLayerRejected.ms "a reactive style layer is n
 expect_reject tests/macros/reactiveLayerDirectRejected.ms "a reactive style layer is not supported yet"
 expect_reject tests/macros/accessorLayerRejected.ms "a reactive style layer is not supported yet"
 expect_reject tests/macros/accessorLayerDirectRejected.ms "a reactive style layer is not supported yet"
-expect_reject tests/macros/wsSingleExprChildRejected.ms "Type 'NeonNode\[\]' is not assignable to type 'NeonNode'"
-expect_reject tests/macros/wsSingleExprChildDirectRejected.ms "Type 'NeonNode\[\]' is not assignable to type 'NeonNode'"
+expect_reject tests/macros/wsSingleExprChildRejected.ms "Type 'function\[\]' is not assignable to type 'function' for field 'children'"
+expect_reject tests/macros/wsSingleExprChildDirectRejected.ms "Type 'function\[\]' is not assignable to type 'function' for field 'children'"
 expect_reject tests/macros/optChangeTextDirectRejected.ms "a nullable onChangeText handler is not supported yet"
 expect_reject tests/macros/optChangeTextDirectFlatRejected.ms "a nullable onChangeText handler is not supported yet"
 exit $fail

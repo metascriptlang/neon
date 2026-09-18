@@ -1,6 +1,6 @@
-import { NeonView } from "../../src/render/host";
+import { NeonNode } from "../../src/render/host";
 
-function field(onText: ((t: string) => void) | null): NeonView {
+function field(onText: ((t: string) => void) | null): NeonNode {
 	return <div><input onChangeText={onText} /></div>;
 }
 console.log(field(null) === null);
