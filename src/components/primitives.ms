@@ -26,38 +26,34 @@ import { onCleanup } from "../core/cleanup";
 import { Accessor, accessor } from "../core/signal";
 import { NeonNode, VAttr, VEvent, RefFn, el, attr, evt, dynAttr, withDynStyleAll, withRef } from "../render/node";
 
-interface ViewProps {
+interface HostProps {
 	style?: Accessor<Style> | null;
 	class?: Accessor<string> | null;
 	ref?: RefFn | null;
+}
+
+function hostElement(tag: string, props: HostProps, attrs: VAttr[], evts: VEvent[], kids: NeonNode[]): NeonNode {
+	if (props.class !== null) { attrs.push(attr("class", props.class as string)); }
+	const n = el(tag, attrs, evts, kids);
+	if (props.style !== null) { withDynStyleAll(n, props.style as () => Style); }
+	if (props.ref !== null) { withRef(n, props.ref as RefFn); }
+	return n;
+}
+
+interface ViewProps extends HostProps {
 	children: NeonNode[];
 }
 
 export function View(props: ViewProps): NeonNode {
-	const kids = props.children;
-	const attrs: VAttr[] = [];
-	if (props.class !== null) { attrs.push(attr("class", props.class as string)); }
-	const n = el("view", attrs, [], kids);
-	if (props.style !== null) { withDynStyleAll(n, props.style as () => Style); }
-	if (props.ref !== null) { withRef(n, props.ref as RefFn); }
-	return n;
+	return hostElement("view", props, [], [], props.children);
 }
 
-interface TextProps {
-	style?: Accessor<Style> | null;
-	class?: Accessor<string> | null;
-	ref?: RefFn | null;
+interface TextProps extends HostProps {
 	children: NeonNode[];
 }
 
 export function Text(props: TextProps): NeonNode {
-	const kids = props.children;
-	const attrs: VAttr[] = [];
-	if (props.class !== null) { attrs.push(attr("class", props.class as string)); }
-	const n = el("text", attrs, [], kids);
-	if (props.style !== null) { withDynStyleAll(n, props.style as () => Style); }
-	if (props.ref !== null) { withRef(n, props.ref as RefFn); }
-	return n;
+	return hostElement("text", props, [], [], props.children);
 }
 
 // RN Pressability's two constants (Libraries/Pressability/Pressability.js):
@@ -66,15 +62,12 @@ export function Text(props: TextProps): NeonNode {
 const LONG_PRESS_DELAY_MS = 500;
 const MIN_PRESS_DURATION_MS = 130;
 
-interface PressableProps {
+interface PressableProps extends HostProps {
 	onPress?: ((e: NeonEvent) => void) | null;
 	onPressIn?: ((e: NeonEvent) => void) | null;
 	onPressOut?: ((e: NeonEvent) => void) | null;
 	onLongPress?: ((e: NeonEvent) => void) | null;
 	delayLongPress?: Accessor<number> | null;
-	style?: Accessor<Style> | null;
-	class?: Accessor<string> | null;
-	ref?: RefFn | null;
 	children: NeonNode[];
 }
 
@@ -163,21 +156,12 @@ export function Pressable(props: PressableProps): NeonNode {
 		evts.push(evt("onPress", onPress as (e: NeonEvent) => void));
 	}
 
-	const kids = props.children;
-	const attrs: VAttr[] = [];
-	if (props.class !== null) { attrs.push(attr("class", props.class as string)); }
-	const n = el("pressable", attrs, evts, kids);
-	if (props.style !== null) { withDynStyleAll(n, props.style as () => Style); }
-	if (props.ref !== null) { withRef(n, props.ref as RefFn); }
-	return n;
+	return hostElement("pressable", props, [], evts, props.children);
 }
 
-interface TextInputProps {
+interface TextInputProps extends HostProps {
 	value?: Accessor<string> | null;
 	onChangeText?: ((t: string) => void) | null;
-	style?: Accessor<Style> | null;
-	class?: Accessor<string> | null;
-	ref?: RefFn | null;
 }
 
 export function TextInput(props: TextInputProps): NeonNode {
@@ -191,9 +175,5 @@ export function TextInput(props: TextInputProps): NeonNode {
 		const user = props.onChangeText as (t: string) => void;
 		evts.push(evt("onChangeText", (e: NeonEvent): void => { user(e.value); }));
 	}
-	if (props.class !== null) { attrs.push(attr("class", props.class as string)); }
-	const n = el("textinput", attrs, evts, []);
-	if (props.style !== null) { withDynStyleAll(n, props.style as () => Style); }
-	if (props.ref !== null) { withRef(n, props.ref as RefFn); }
-	return n;
+	return hostElement("textinput", props, attrs, evts, []);
 }
