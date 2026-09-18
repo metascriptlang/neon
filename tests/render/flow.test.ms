@@ -92,6 +92,30 @@ test "Index updates row value in place, no recreate" {
 	});
 }
 
+test "Index grows and shrinks with the list" {
+	createRoot((d) => {
+		const [items, setItems] = createSignal<number[]>([1]);
+		const ul = el("ul", [], [], [
+			Index<number>({
+				each: () => items(),
+				children: (item, i) => viewOf(<li>{"" + item()}</li>),
+			}),
+		]);
+		const host = mockHost();
+		const root = host.createElement("root");
+		renderToHost(ul, host, root);
+		const ulNode = (root as unknown as MockNode).children[0];
+		assert listText(ulNode) === "1", "initial row";
+		setItems([1, 2]);
+		assert listText(ulNode) === "12", "append mounts the new row: " + listText(ulNode);
+		setItems([1, 2, 3]);
+		assert listText(ulNode) === "123", "a second append too: " + listText(ulNode);
+		setItems([1]);
+		assert listText(ulNode) === "1", "shrinking removes the tail: " + listText(ulNode);
+		d();
+	});
+}
+
 test "Show swaps child/fallback and stays stable while true" {
 	createRoot((d) => {
 		const [n, setN] = createSignal(1);
