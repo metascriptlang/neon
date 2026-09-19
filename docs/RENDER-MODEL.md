@@ -309,22 +309,160 @@ interleaved runs, min of 6×3. `comp3` is the dyn3 row as the body of a componen
 - **Against the tree, every cell is 1.6–2.0x faster**, and void is not slower in any of
   the five sessions measured (229–319 now, 259–374 before).
 - **Against the retired direct emitter the rows read 0.3–1.1 µs per mount slower in this
-  session — between 0.2 µs faster and 1.1 µs slower across the five, slower in most —
-  and that is not attributed.** Ruled out by measurement: the extra parent node (one shared
-  parent per round changes nothing), `insertBefore` vs `append` for the root, the
-  compiler version (the baseline rebuilt on v0.2.55 is, if anything, faster than its
-  v0.2.54 binary), and the mock host's `setAttr`, which did get dearer when an attribute
-  value became nullable but only by ~0.01 µs per attribute. The same rows WITHOUT
-  static attributes read equal to the old emitter within 5% (1.66 / 2.89 / 3.89 now,
-  1.65 / 2.74 / 3.69 before), and the macro emits the same `setAttr` calls it did. Two
-  baseline binaries doing equivalent work differed by up to 30% in the same session,
-  so the residue sits inside what this bench can resolve on this machine.
+  session, under load 6–19.** 2026-09-20 below re-measures it at lower load and
+  attributes it: 0.07–0.3 µs per row remain, the emitted C per row is identical, and the
+  named extra work is `place()` and the nullable `setAttr`.
 
 Caveats, so the numbers are not over-trusted: every session ran under load 6–19 from
 parallel builds (ratios held across sessions, absolutes did not); the mock host does
 less work per op than a real one, which inflates every ratio; `void3` is dominated by
 the void host's linear parent-link registry, not by emission. Raw logs:
 `probe/l5/bench-*.txt` (gitignored).
+
+### 2026-09-20 — the merge measured whole: mount, update, reorder, remove, memory, size
+
+How it was measured. msc v0.2.55, binary `7f80b93b`. "Old" is `git archive 5c2802e` (the
+last commit with both emitters) built with the same compiler beside the current tree; old
+and new binaries run alternately in one session, and every cell is the MIN over all runs
+and rounds. Load average (1 min) is written beside each table; no step started above 14.
+Every time is in ms, **lower is better**. Probes and raw logs are in `probe/m/`
+(gitignored): `run.sh` → `measure.log`, `ops.sh` → `ops.log`, `residue.sh` → `residue.log`.
+
+**Size.** Bytes, lower is better. Native: `__text` of one 8-site app (`probe/m/sizeApp.ms`
+and its old twins), all three printing the same 728-character markup. JS: gzip -9 of
+`examples/showcaseDom.ms`.
+
+| build | old: tree | old: direct | new |
+|---|---|---|---|
+| native app, `__text` | 328 164 | 309 884 | **301 232** |
+| showcaseDom JS, gzip | 33 517 (both emitters shipped) | — | **33 490** |
+
+Verdict: the one emitter is smaller than either old emitter alone.
+
+**Mount, native.** `bench/nativeEmit.ms` against `nativeEmitFair.ms` in the old tree: one cell is
+1000 rows of 6 spans, each into a fresh parent, on the mock host; dynN = N of the 6 spans
+bound to a signal; `comp3` = the dyn3 row as a component body; `void3` = dyn3 into one void
+root. "No clone" = host with `cloneNode: null` (terminal, void); "clone" = mock with
+`cloneNode`. 10 interleaved runs × 3 rounds, load 6.5–13.
+
+| cell | old: tree | old: direct | new, no clone | new, clone |
+|---|---|---|---|---|
+| dyn0 | 3.48 | **1.20** | 1.50 | 1.29 |
+| dyn3 | 4.12 | **1.93** | 2.01 | 2.03 |
+| dyn6 | 5.74 | 3.35 | 3.44 | **2.49** |
+| comp3 | 4.36 | 4.32 | 2.19 | **2.10** |
+| void3 | 228.7 | 234.6 | 233.0 | — |
+
+Verdict: against the tree every cell is 1.7–2.3x faster, a component row is 2x faster
+than either old emitter, and against the old direct emitter a plain row costs 0.07–0.3 µs
+more without clone (see *Residue*). `void3` is equal in all three: it is the void host's
+O(N²) parent registry (arc `void-host-links`), not emission.
+
+**Mount, Chrome.** `probe/m/domSweep.ms`: 500 rows in a `For` through the public api,
+headless Chrome, ms per 1000 rows, 5 interleaved page loads × 7 rounds, load 11–23.
+Chrome's timer is coarsened to ~0.1 ms, so cells closer than 0.2 are equal.
+
+| dynamic spans / 6 | old: tree | old: direct | new |
+|---|---|---|---|
+| 0 | 4.8 | 2.0 | 2.2 |
+| 1 | 5.4 | 2.6 | 2.6 |
+| 3 | 6.0 | 3.4 | 3.6 |
+| 6 | 7.0 | 5.2 | 5.2 |
+
+Verdict: the new emitter equals the old direct emitter within timer resolution and is
+1.3–2.2x faster than the tree.
+
+**After mount, Chrome.** `probe/m/opsDom.ms`: 1000 rows in a `For`, each row the dyn3 row;
+"plain" writes the row inline, "comp" writes it as a component. One cell is ms per
+operation: *mount* the 1000 rows; *update* one set of the shared signal (3000 text writes,
+batch of 20); *reverse* the list (batch of 20); *swap* rows 1 and 998 (batch of 20);
+*remove half* (the last 500 rows, mean of 5 fresh mounts). 5 interleaved page loads × 7
+rounds, load 3–12.
+
+| op | old: tree | old: direct | new | new ÷ best old |
+|---|---|---|---|---|
+| mount, plain | 4.00 | 2.30 | **1.90** | 0.83 |
+| mount, comp | 3.60 | 3.70 | **2.00** | 0.56 |
+| update, plain | 0.945 | 0.805 | **0.720** | 0.89 |
+| update, comp | 0.995 | 0.975 | **0.720** | 0.74 |
+| reverse, plain | 0.685 | **0.645** | 0.935 | **1.45** |
+| swap, plain | 0.385 | **0.365** | 0.625 | **1.71** |
+| remove half, plain | 0.260 | 0.220 | 0.220 | 1.00 |
+
+The comp rows of reverse, swap and remove read the same as the plain ones on both sides.
+Verdict: mount and update got faster; **reorder regressed — swap 1.7x, reverse 1.45x
+slower** — and remove is unchanged.
+
+**After mount, native.** `probe/m/opsNative.ms`, the same five operations on the mock host
+with `cloneNode: null`, ms per operation, 6 interleaved runs × 5 rounds, load ~3. The mock
+host's `insertBefore` and `removeChild` search the child array, so every move costs O(rows)
+here and reorder cells are inflated against a real host.
+
+| op, plain row | old: tree | old: direct | new |
+|---|---|---|---|
+| mount | 5.51 | **3.15** | 3.54 |
+| update | **0.437** | 0.488 | 0.442 |
+| reverse | **0.859** | 1.013 | 2.064 |
+| swap | **0.060** | 0.069 | 1.419 |
+| remove half | 0.672 | **0.595** | 0.990 |
+
+Verdict: update is equal; reverse 2–2.4x, swap ~20x and remove 1.7x slower — the same
+regression as Chrome, magnified by a host whose moves are linear.
+
+**Why reorder regressed.** Host calls counted by a wrapping host (`probe/m/movesCount.ms`),
+1000 rows. Exact counts, not timings.
+
+| op | old: direct `insertBefore` | new `insertBefore` |
+|---|---|---|
+| reverse | 1000 | 999 |
+| swap rows 1 and 998 | **2** | **997** |
+| remove half | 1 (+500 `removeChild`) | 1 (+500 `removeChild`) |
+
+The merge replaced the udomdiff reconciler over host nodes with `reconcileArrays` over rows
+(`src/render/reconcile.ms`), which mounts a new row in place. It walks the new order and
+moves every row whose slot is taken by another, so a swap moves every row between the two
+positions; and it finds each row with a linear scan plus a `splice`, O(n²) in the list
+length even when the move count is right (reverse). Remove is not affected. Open as its
+own arc; nothing in the emitter is involved.
+
+**Memory per mounted row.** The runtime has no allocation counter. Chrome: `usedJSHeapSize`
+after two forced GCs (`--enable-precise-memory-info --js-flags=--expose-gc`), before and
+after mounting 5000 retained rows, divided by 5000. Native: macOS peak memory footprint
+(`/usr/bin/time -l`) of a process retaining 21 000 rows minus one retaining 1000, divided
+by 20 000; this includes the mock host's nodes and malloc slack. Bytes per row, lower is
+better, min of 5 (Chrome) and 3 (native) runs.
+
+| row | old: tree | old: direct | new |
+|---|---|---|---|
+| Chrome, plain | 2370 | **1785** | 1889 |
+| Chrome, comp | 2440 | 2440 | **1936** |
+| native, plain | 9658 | **8163** | 8425 |
+| native, comp | 9812 | 9837 | **8577** |
+
+Verdict: a component row is 13–21% smaller than with either old emitter; a plain row is
+3–6% larger than the old direct emitter's (100–260 bytes) and 13–20% smaller than the tree's.
+
+**Residue — the native plain-row gap, attributed.** The C that the release build emits for
+one `dyn0` row and for one `dyn6` row (the template builder and the wire function) is
+identical between old direct and new after renaming; `bindText` is unchanged. What differs
+is the runtime around it, each piece timed alone (`probe/m/hostOpsAlone.ms`,
+`placeAlone.ms`, 4 interleaved runs × 3 × 200 rounds, load 7.5–7.8), µs per row:
+
+| extra work in the new path | old | new | cost per row |
+|---|---|---|---|
+| attach the root: `append` → `place()` (`insertBefore` + row bookkeeping) | 0.011 | 0.021 | +0.01 |
+| 7 mock `setAttr` (the attribute value became `string \| null`) | 0.242 | 0.284 | +0.04 |
+| 7 × `createElement` + `append` | 0.457 | 0.451 | 0 |
+
+Verdict: ~0.05 µs of the 0.07–0.3 µs is named. The rest (up to 0.25 µs, dyn0 only) is inside
+this bench's spread: the same old binary's dyn0 ranged 1.20–1.62 ms across the 10 runs.
+The "~1 µs per row" of the 09-19 session and of the first 09-20 run was load (6–60);
+it does not reproduce at load 7.
+
+Not measured, and why: reorder and memory on the void and terminal hosts (void mounts are
+O(N²) in the host until `void-host-links` lands, which would swamp any row cost; the
+terminal host has no bench); memory as live bytes on native (no runtime counter; the
+footprint delta is an upper bound that includes allocator slack).
 
 ## Invariants — the contract every tier and every hand-built node must satisfy
 
