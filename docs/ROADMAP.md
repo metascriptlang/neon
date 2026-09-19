@@ -74,6 +74,18 @@ In rough priority order, once the above is standing:
 
 ## Recently done
 
+- **tail of one NeonNode** (2026-09-19) — what the merge left behind. `on*` is an event by ONE rule,
+  `on` + an uppercase letter, for a tag, a spread field and a component prop (`isEventName`; `<p once="x">`
+  did not compile before). A function-typed value is a row and a raw child, so `<For>{namedRow}</For>`
+  works. An `Accessor<string> | null` attribute and a `NeonNode | null` child attach only when present,
+  `{maybe ?? <X/>}` lowers to `Show`, and View / Text / Pressable are written in JSX — which fixed a
+  reactive `class` that froze at its first value on the whole vocabulary. Proved: `bash tests/run.sh`
+  rc=0 — macros 17, apps 3, native 40, js 38 + 2 deliberate skips, browser 80/80;
+  `msc build examples/counterDom.ms --target=js` and `msc run examples/counter.ms` rc=0. Left on the
+  compiler, each with a card under `~/metascript/.inbox/compiler/` and a fixture in `tests/macros/`:
+  `{xs.map(namedRow)}` (a macro argument keeps the type error of a named function, not of an arrow),
+  nullable slots in BARE JSX (narrowing is lost in converter-expanded code; green through `element(...)`),
+  `{a || <X/>}` (rides Next 7). BUGS §3 has the measurements.
 - **twin test cells folded** (2026-09-19) — no test compares `element` against itself any more. A cell
   that repeated another cell's JSX and assertion is deleted (`fragment` 6, `spread` 4, `ref` 2, `event` 1,
   `context` 1); a cell that pinned something of its own keeps a hand-written golden under a name that says
