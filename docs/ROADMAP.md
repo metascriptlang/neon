@@ -53,7 +53,6 @@ dynamic branch to a static value. Detail and the refutation live in `BUGS.md` §
 | 3 | bug 8 (`globalImports` cycle) so the four core style lists are generated from `STYLE_TABLE` instead of `tests/style/fields.sh` guarding five hand edits | compiler | medium |
 | 4 | `_hover` / `_before` / `_classNames`, then the Animation API | user-chosen 2026-08-18 | large |
 | 5 | iOS host, then Android host — not compiler-blocked: gate with `when (ios) { … }` around `@compile`/`@passC`/`@passL`/`@link` over one extern surface, the shape `void/src/sokol/gpu.ms` ships | not started | large |
-| 6 | fold the ~20 test cells that still compare `element` against itself under "tree" / "direct" names — `fragment.test.ms` (6), `spread.test.ms` (6), `ref.test.ms` (3), `event.test.ms`, `context.test.ms`, `host.test.ms`, and the `treeRoot` halves in `emit.test.ms`: delete a cell that repeats another, rename and golden one that pins a tier | left by one NeonNode | small |
 | 7 | numbers in text and attribute slots, and how the macro asks for a type — PARKED on the compiler: `as<T>` and `valueOf` are being reworked in a parallel recompiler session (2026-09-19). Brief with every measurement: `~/metascript/.inbox/compiler/2026-09-19-design-typed-slots-value-read-and-text-coercion.md`; bug card beside it (`…-union-into-string-slot-accepted.md`). Measured there: `asString(this n: int32)` already carries a number into every `string` slot and chains after `valueOf`; the open question is scope. Decided by the user 2026-09-19: `null` and `boolean` children are to become displayable too, through the same general protocol or design, never through a Neon-only patch. When it settles: drop `isNumberTyped` / `asText` from `element.ms` (`07bb579`) if the language covers it, give attributes (`tabIndex={n}`) the same rule instead of copying the patch, replace the name matching in `isAccessorTyped` / `isNodeType`, sweep `{x() + ""}`. After any msc sync that touches the protocols run `bash tests/run.sh`: `tests/render/bareAccessor.test.ms` and the two "a numeric child renders as text" cells in `emit.test.ms` are the guard | waiting on compiler | small |
 
 ---
@@ -75,6 +74,13 @@ In rough priority order, once the above is standing:
 
 ## Recently done
 
+- **twin test cells folded** (2026-09-19) — no test compares `element` against itself any more. A cell
+  that repeated another cell's JSX and assertion is deleted (`fragment` 6, `spread` 4, `ref` 2, `event` 1,
+  `context` 1); a cell that pinned something of its own keeps a hand-written golden under a name that says
+  what it pins (`ref`, `event`, `spread`, `host`, and the `treeRoot` halves of `emit.test.ms`). Proved:
+  `grep -rnE '^test ".*(direct emission|tree emission|tree and direct|under direct)' tests` and
+  `grep -rn treeRoot tests` both print nothing; `msc test` rc=0 on C and `--target=js` for each of the
+  seven files.
 - **one NeonNode** (2026-09-19) — a JSX expression is `(host, parent, before) => void` on every
   target: a function that puts the host nodes it owns into `parent`, in front of `before` (Svelte 5's
   shape). The description tree, its walker, the second macro and the second boundary type are gone;
