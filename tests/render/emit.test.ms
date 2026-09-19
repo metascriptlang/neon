@@ -982,3 +982,47 @@ test "once and online are attributes, not events — flat tier" {
 	setV("z");
 	assert mockToString(directRoot) === "<root><div><i>z</i><p once=\"x\" online=\"z\">hi</p></div></root>", "golden after set: " + mockToString(directRoot);
 }
+
+// ---- a nullable Accessor attribute and a nullable NeonNode child attach only when present ----
+
+function optAttrTemplate(c: Accessor<string> | null): NeonNode {
+	return element(<div><p class={c}>x</p></div>);
+}
+
+function optAttrFlat(c: Accessor<string> | null): NeonNode {
+	return element(<div><Gauge count={1} label="g" /><p class={c}>x</p></div>);
+}
+
+function optChild(k: NeonNode | null): NeonNode {
+	return element(<div><p>a</p>{k}<p>z</p></div>);
+}
+
+test "a nullable Accessor attribute binds when present and leaves nothing when null — template tier" {
+	const [cls, setCls] = createSignal("a");
+	const host = mockHost();
+	const directRoot = mockNode("root");
+	optAttrTemplate(cls)(host, directRoot as unknown as HostNode, null);
+	optAttrTemplate(null)(host, directRoot as unknown as HostNode, null);
+	assert mockToString(directRoot) === "<root><div><p class=\"a\">x</p></div><div><p>x</p></div></root>", "golden: " + mockToString(directRoot);
+	setCls("b");
+	assert mockToString(directRoot) === "<root><div><p class=\"b\">x</p></div><div><p>x</p></div></root>", "golden after set: " + mockToString(directRoot);
+}
+
+test "a nullable Accessor attribute binds when present and leaves nothing when null — flat tier" {
+	const [cls, setCls] = createSignal("a");
+	const host = mockHost();
+	const directRoot = mockNode("root");
+	optAttrFlat(cls)(host, directRoot as unknown as HostNode, null);
+	optAttrFlat(null)(host, directRoot as unknown as HostNode, null);
+	assert mockToString(directRoot) === "<root><div><p class=\"g\">n=1</p><p class=\"a\">x</p></div><div><p class=\"g\">n=1</p><p>x</p></div></root>", "golden: " + mockToString(directRoot);
+	setCls("b");
+	assert mockToString(directRoot) === "<root><div><p class=\"g\">n=1</p><p class=\"b\">x</p></div><div><p class=\"g\">n=1</p><p>x</p></div></root>", "golden after set: " + mockToString(directRoot);
+}
+
+test "a nullable NeonNode child mounts in place when present and mounts nothing when null" {
+	const host = mockHost();
+	const directRoot = mockNode("root");
+	optChild(element(<b>k</b>))(host, directRoot as unknown as HostNode, null);
+	optChild(null)(host, directRoot as unknown as HostNode, null);
+	assert mockToString(directRoot) === "<root><div><p>a</p><b>k</b><p>z</p></div><div><p>a</p><p>z</p></div></root>", "golden: " + mockToString(directRoot);
+}
