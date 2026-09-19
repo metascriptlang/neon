@@ -888,9 +888,12 @@ Neon native under that binary: 40 files, **3 red, all pre-existing on a same-com
     `0b283fd4` (installed `7f80b93b`) closed the hole that let the arrow through. A For row takes an
     `Accessor<number>` index, which is never `map`'s callback, so `.map` lowers only a row WITHOUT an
     index (`preludeFlow.test.ms`); a row with an index, `number` or `Accessor`, arrow or named, is
-    refused and pointed at `<For>` (`b2f22b4`: "a .map row that takes an index is written
+    refused and pointed at `<For>` (`3af6f81`: "a .map row that takes an index is written
     <For each={xs}>…"; before it, a `number` index failed as "Type 'function' is not assignable to type
-    'function' for field 'children'"). Permanent rejection fixtures: `tests/macros/mapIndexRowRejected.ms`,
+    'function' for field 'children'"). Measured 2026-09-20 under that commit: a `number` index compiles
+    for `map` and only the macro message stops it, an `Accessor<number>` index collects both that message
+    and the checker's "Argument type mismatch in 'map' arg 0" — so ONE fixture, the `number` one, pins the
+    rule. Permanent rejection fixtures: `tests/macros/mapIndexRowRejected.ms`,
     `tests/macros/mapNamedRowRejected.ms`. A function-typed value is a row and a raw component child,
     so `<For each={xs()}>{namedRow}</For>` works (`flow.test.ms` "For takes a named row function as its
     child"). A named row that ignores the index waits on the design card
@@ -910,11 +913,11 @@ Neon native under that binary: 40 files, **3 red, all pre-existing on a same-com
     arm; `msc test tests/render/flow.test.ms` rc=0 on C and `--target=js`). In bare JSX too since
     2026-09-20: `preludeFlow.test.ms` "bare JSX lowers ?? over a nullable node".
 - **✅ CLOSED 2026-09-20 (recompiler `0f1e6735`, installed `7f80b93b`) — every nullable slot was red in
-  BARE JSX and green through `element(<jsx/>)`.** Pinned by the four "bare JSX:" cells at the end of
+  BARE JSX and green through `element(<jsx/>)`.** Pinned by the four "— bare JSX" cells at the end of
   `emit.test.ms` (`msc test tests/render/emit.test.ms` rc=0 on C and `--target=js`); the fixture
   `bareNullableChildRejected.ms` is gone. Found with it: the lowering names `Show` / `For`, which the
   prelude did not export, so bare JSX with `&&`, `?:`, `??` or `.map` failed with "Undefined variable
-  'For'" unless the file imported them — `src/converters.ms` exports both since `0f26a01`
+  'For'" unless the file imported them — `src/converters.ms` exports `For`, `Index` and `Show` since `bd295d2`
   (`preludeFlow.test.ms`). Was: A nullable `on*` / `ref` / `style` (Lát 0.11), an `Accessor<string> | null`
   attribute and a `NeonNode | null` child all emit `const _o = v; if (_o !== null) { f(_o); }`. Called
   as `element(...)` the `if` narrows `_o`; when the converter `jsxToNode` builds the same
