@@ -1,6 +1,6 @@
 import { createSignal } from "../src/core/signal";
 import { element } from "../src/macros/ui/element";
-import { renderToHost } from "../src/render/host";
+import { render } from "../src/render/host";
 import { domHost, documentBody } from "../src/platform/browser/dom";
 import { View, Text, Pressable } from "../src/components/primitives";
 
@@ -12,7 +12,7 @@ function main(): void {
 			<Pressable onPress={() => setCount(count() + 1)}>+</Pressable>
 		</View>
 	);
-	renderToHost(app, domHost(), documentBody());
+	render(app, domHost(), documentBody());
 }
 
 main();
