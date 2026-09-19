@@ -449,6 +449,20 @@ export macro element(node: Node): Node {
 	function isNodeValued(n: Node): boolean {
 		return isNodeTyped(n) || isNodeArrayTyped(n) || isNullableNodeTyped(n);
 	}
+	function declaredCount(names: string[]): int32 {
+		let k = 0;
+		for (const p of names) {
+			if (!p.startsWith("__msPad")) { k = k + 1; }
+		}
+		return k;
+	}
+	function rowArity(n: Node): int32 {
+		if (n.kind === NodeKind.ArrowFunction) { return declaredCount(n.arrowParams); }
+		if (n.kind === NodeKind.FunctionExpr) { return declaredCount(n.funcExprParams); }
+		const t = peelHidden(n).nodeType;
+		if (t !== null && t.kind === NodeKind.TypeFunction) { return t.typExprParams.length; }
+		return 0;
+	}
 	function isFunctionValued(n: Node): boolean {
 		if (n.kind === NodeKind.ArrowFunction || n.kind === NodeKind.FunctionExpr) { return true; }
 		const t = peelHidden(n).nodeType;
@@ -483,6 +497,7 @@ export macro element(node: Node): Node {
 	function isJsx(n: Node): boolean {
 		return n.kind === NodeKind.JSXElement || n.kind === NodeKind.JSXFragment;
 	}
+	const mapIndexRowMsg = "a .map row that takes an index is written <For each={xs}>{(x, i) => …}</For>, where the index is an Accessor<number> that follows the row";
 	const reactiveNodeMsg = "a NeonNode child picked by a reactive condition would mount once and never switch — use <Show> or a JSX branch: {cond() ? <A/> : <B/>}";
 	function lowerFlowTree(elNode: Node): Node {
 		let kids: Node[] = [];
@@ -518,6 +533,7 @@ export macro element(node: Node): Node {
 					const callee = peelHidden(ex.callee);
 					const row = peelHidden(ex.arguments[0]);
 					if (callee.kind === NodeKind.MemberExpr && callee.property === "map" && isFunctionValued(row)) {
+						if (rowArity(row) > 1) { errNodes.push(row); errMsgs.push(mapIndexRowMsg); }
 						lowered = forOf(peelHidden(callee.object), row, c.line, c.column);
 					}
 				}
