@@ -26,3 +26,5 @@ export { Style, StyleValue, emptyStyle, mergeStyle, layerStyles } from "./render
 export converter jsxToNode(n: Node): NeonNode {
 	return { kind: NodeKind.MacroInvocation, line: n.line, column: n.column, macroName: "element", macroArgs: [n] };
 }
+
+export { For, Index, Show } from "./macros/ui/flow";
