@@ -1,6 +1,6 @@
 import { NeonNode } from "../../src/render/node";
 import { renderToString } from "../../src/render/ssr";
-import { MockNode, mockHost, render, mockToString } from "../../src/render/host";
+import { MockNode, HostNode, mockHost, render, mockToString } from "../../src/render/host";
 import { element } from "../../src/macros/ui/element";
 import { View, Text } from "../../src/components/primitives";
 import { createSignal, Accessor } from "../../src/core/signal";
@@ -207,4 +207,95 @@ test "a row that opens with a closed region still moves with its span" {
 		assert shown === "<root><ul><i>on</i><li>b</li><i>on</i><li>a</li></ul></root>", "each gate opens inside its own row: " + shown;
 		dispose();
 	});
+}
+
+function boxOf(root: HostNode): string {
+	return mockToString((root as unknown as MockNode).children[0]);
+}
+
+test "a fragment picked by && mounts every root between its siblings and leaves as one span" {
+	createRoot((dispose) => {
+		const [on, setOn] = createSignal(true);
+		const host = mockHost();
+		const root = host.createElement("root");
+		render(<div><i>head</i>{on() && <><p>a</p><p>b</p></>}<i>tail</i></div>, host, root);
+		assert boxOf(root) === "<div><i>head</i><p>a</p><p>b</p><i>tail</i></div>", "initial: " + boxOf(root);
+		setOn(false);
+		assert boxOf(root) === "<div><i>head</i><i>tail</i></div>", "both roots leave: " + boxOf(root);
+		setOn(true);
+		assert boxOf(root) === "<div><i>head</i><p>a</p><p>b</p><i>tail</i></div>", "both roots return in place: " + boxOf(root);
+		dispose();
+	});
+}
+
+test "a ternary switches between two fragments" {
+	createRoot((dispose) => {
+		const [on, setOn] = createSignal(true);
+		const host = mockHost();
+		const root = host.createElement("root");
+		render(<div>{on() ? <><p>a</p><p>b</p></> : <><b>x</b><b>y</b><b>z</b></>}<i>tail</i></div>, host, root);
+		assert boxOf(root) === "<div><p>a</p><p>b</p><i>tail</i></div>", "initial: " + boxOf(root);
+		setOn(false);
+		assert boxOf(root) === "<div><b>x</b><b>y</b><b>z</b><i>tail</i></div>", "other arm: " + boxOf(root);
+		setOn(true);
+		assert boxOf(root) === "<div><p>a</p><p>b</p><i>tail</i></div>", "back: " + boxOf(root);
+		dispose();
+	});
+}
+
+test "a ternary pairs a fragment with null or with one element, either way round" {
+	createRoot((dispose) => {
+		const [on, setOn] = createSignal(false);
+		const host = mockHost();
+		const root = host.createElement("root");
+		render(<div>{on() ? <><p>a</p><p>b</p></> : null}|{on() ? null : <><b>x</b><b>y</b></>}|{on() ? <em>one</em> : <><u>m</u><u>n</u></>}</div>, host, root);
+		assert boxOf(root) === "<div>|<b>x</b><b>y</b>|<u>m</u><u>n</u></div>", "initial: " + boxOf(root);
+		setOn(true);
+		assert boxOf(root) === "<div><p>a</p><p>b</p>||<em>one</em></div>", "flipped: " + boxOf(root);
+		dispose();
+	});
+}
+
+test "a fragment inside an expression keeps its own spots and its own conditions live" {
+	createRoot((dispose) => {
+		const [on, setOn] = createSignal(true);
+		const [deep, setDeep] = createSignal(false);
+		const [n, setN] = createSignal(1);
+		const host = mockHost();
+		const root = host.createElement("root");
+		render(<div>{on() && <>n=<p>{n() + ""}</p>{deep() && <><s>d1</s><s>d2</s></>}</>}</div>, host, root);
+		assert boxOf(root) === "<div>n=<p>1</p></div>", "initial: " + boxOf(root);
+		setN(2);
+		setDeep(true);
+		assert boxOf(root) === "<div>n=<p>2</p><s>d1</s><s>d2</s></div>", "inner spot and inner fragment: " + boxOf(root);
+		setOn(false);
+		assert boxOf(root) === "<div></div>", "the outer fragment takes the inner one with it: " + boxOf(root);
+		dispose();
+	});
+}
+
+test "a fragment picked by a plain value mounts once" {
+	const cond: boolean = true;
+	const v: NeonNode = <div>{cond && <><p>a</p><p>b</p></>}</div>;
+	assert renderToString(v) === "<div><p>a</p><p>b</p></div>", "static condition: " + renderToString(v);
+}
+
+test "a fragment is a fallback" {
+	createRoot((dispose) => {
+		const [on, setOn] = createSignal(false);
+		const host = mockHost();
+		const root = host.createElement("root");
+		render(<div><Show when={on()} fallback={<><b>x</b><b>y</b></>}><p>a</p></Show></div>, host, root);
+		assert boxOf(root) === "<div><b>x</b><b>y</b></div>", "fallback fragment: " + boxOf(root);
+		setOn(true);
+		assert boxOf(root) === "<div><p>a</p></div>", "children: " + boxOf(root);
+		dispose();
+	});
+}
+
+function passThrough(n: NeonNode): NeonNode { return n; }
+
+test "a fragment handed to a function that takes a NeonNode mounts every root" {
+	const v: NeonNode = <div>{passThrough(<><p>a</p><p>b</p></>)}</div>;
+	assert renderToString(v) === "<div><p>a</p><p>b</p></div>", "through a call: " + renderToString(v);
 }
