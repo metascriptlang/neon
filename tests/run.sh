@@ -1,8 +1,8 @@
 #!/bin/sh
 # Neon test gate — every test file runs native, then --target=js, then the
 # browser lane in real Chrome.
-# js-lane skips (measured 2026-08-14):
-#   style/void — Void platform host, C-only sibling repo
+# js-lane skips: tests/style/style.test.ms and tests/platform/void.test.ms import
+# the Void platform host, a C-only sibling repo.
 # tests/browser is bound to a real DOM: it has no C lowering and no `document`
 # under node, so it runs only through tests/browser/run.sh.
 MSC=${MSC:-msc}

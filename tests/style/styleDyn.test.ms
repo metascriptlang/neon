@@ -1,6 +1,6 @@
 // Reactive style fields (docs/STYLE.md §6, S4a): a style field whose expression
 // is reactive becomes ONE effect updating exactly that property through
-// host.setStyleProp; the remaining fields stay static on VNode.style. No
+// host.setStyleProp; the remaining fields are written once at mount. No
 // whole-style re-apply, no re-render — the Solid model, per-property.
 
 import { element } from "../../src/macros/ui/element";

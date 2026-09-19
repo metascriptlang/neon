@@ -1,4 +1,4 @@
-// Typed style sheet → NeonNode.style → void host projection → yoga layout.
+// Typed style sheet → host.setStyle → void host projection → yoga layout.
 // S1 (docs/STYLE.md §9): static styles only — no variants, no layering, no
 // reactive fields. The legacy string-attr path must keep working alongside it.
 
