@@ -2820,6 +2820,90 @@ Each is cheap, none blocks anything, all were surfaced by the sessions that clos
   both macros `error("fragments are not supported yet")`; gate `tests/macros/fragmentRejected.ms` proven red
   without the guard. Real fragments = plan phase 7 (flatten in child position, multi-root over `regionNode`).
 
+  **2026-09-13: real fragments LANDED in the TREE emission** (phase 7, tree-first — `direct.ms` still
+  rejects and is the remaining half). `tests/render/fragment.test.ms` = 5 cells, green on C and js;
+  `tests/macros/fragmentRejected.ms` is gone (its contract is obsolete) and
+  `tests/macros/fragmentInExprRejected.ms` replaces it.
+
+  **The `regionNode` route named above was REFUTED by reading Solid.** `insertExpression`
+  (`dom-expressions/src/client.js`) flattens nested arrays in `normalizeIncomingArray` and sets
+  `dynamic` only when an item is a FUNCTION; a static array takes `appendNodes(parent, array)` — no
+  effect, no anchor, no `reconcileArrays`. Routing a static fragment through `regionNode` would apply
+  Solid's DYNAMIC branch to a static value: it buys an anchor text node plus an effect, and
+  `renderToString` throws on regions, so it would also break SSR. The Nim original is no reference
+  here — its `Fragment` (`src/core/component.nim:111`) is dead code, called from nowhere, and
+  `render*(container, elementProc: proc(): Element)` is single-root.
+
+  Shipped shape: the macro flattens fragments at COMPILE time (`flattenFragments`, matching
+  `normalizeIncomingArray`'s recursion), a root fragment emits `fragmentNode([...])`, and `mountInto`
+  splices its children into the parent — Solid's static `appendNodes`. `renderNode` throws on one (it
+  must return exactly one host node) exactly as it does for a region.
+
+  `NeonNode` gained `isFragment: boolean`. The first cut inferred the variant instead
+  (`tag === ""` with non-empty `children`) and that was the wrong call twice over. It broke a
+  degenerate case — `fragmentNode([])` is byte-identical to `text("")`, so a bare `element(<></>)`
+  mounted one stray empty text node where Solid mounts none — and, worse, it made fragments the only
+  variant in the type with no field of its own, readable solely by elimination, so any future text
+  node carrying children would silently become a fragment. Every other variant already declares
+  itself (`isDyn`, `region`, `componentFn`, `scope`), and `isDyn` is precedent for a bare boolean, so
+  the field IS the house model and the inference was the improvisation. Only `node.ms` builds these
+  literals, so the change is 7 literals plus the interface line; the three readers
+  (`renderToString`, `renderNode`, `mountInto`) now test the field.
+
+  **2026-09-15: the DIRECT half LANDED — phase 7 closed.** `direct.ms` carries the same
+  `kidsOf`/`flattenFragments` pair as `element.ms`, so a fragment child is folded into the parent's
+  op sequence at compile time and emits nothing of its own; nested fragments and `<></>` erase the
+  same way. Nothing in the runtime moved: flattening happens entirely inside the macro, and a
+  component that returns a fragment already mounted correctly through the child seam
+  (`renderToHost(_kN, host, _rN)` → `mountInto` → `isFragment`).
+
+  A root fragment is REFUSED at compile time, and that is the design, not a missing feature. Direct
+  emission is `renderNode` partially evaluated (RENDER-MODEL §Direct emission), a mount closure IS a
+  `NeonView`, and `NeonView` returns exactly one `HostNode` — the same wall `renderNode` hits at run
+  time. The macro raises it one phase earlier with the escape hatches named:
+  `"a fragment has no single host node to return: wrap the children in one element, or build it with
+  element() and mount via renderToHost"`. `Host` has no fragment primitive to return instead
+  (`hostTypes.ms` is create/append/insertBefore only — terminal and void have no `DocumentFragment`),
+  so inventing one would be a mechanism with no model behind it.
+
+  The blanket `findFragment(node)` guard is gone from `direct.ms`; the narrower stray check it was
+  replaced by (`kidsOf` loop, byte-identical to `element.ms`) is pinned by
+  `tests/macros/fragmentInExprDirectRejected.ms`, and the root refusal by
+  `tests/macros/fragmentDirectRootRejected.ms`. `tests/render/fragment.test.ms` gained 6 cells, five
+  of them differential against tree emission (the oracle), covering child flatten, nested flatten,
+  empty-fragment erasure, a fragment under a component tag, a reactive spot inside a flattened
+  fragment, and a component returning a fragment.
+
+  **✅ CLOSED 2026-09-19 (one-NeonNode arc) — the root fragment, the fragment row, and (a) the
+  fragment inside an expression (`d9a46c8` + cells `ea92f08`).** (a): an `&&` or `?:` arm that is a
+  fragment lowers to `Show` exactly as an element arm does (`lowerFlowTree` runs before
+  `flattenFragments`), a fragment prop value or call argument lowers through the converter, and the
+  fragment-specific rejection plus `findFragment` are DELETED — measured with the check off, a
+  fragment and an element behave identically in every expression position: both work as a call
+  argument, both are rejected by the COMPILER under `??` and in a ternary mixed with a string ("JSX
+  fragment must be consumed by a macro", pinned by `tests/macros/fragmentNullishRejected.ms`). Seven
+  cells in `tests/render/fragment.test.ms` (&& between siblings, fragment/fragment, fragment/null,
+  null/fragment, fragment/element, nested condition + live spot, static condition, `fallback`, call
+  argument), RED before the change with the old message; `bash tests/run.sh` rc=0 on all four lanes.
+  The first half of this note, as written before (a) landed:
+  **the root fragment and the fragment row CLOSED; only (a) below was left, and it was loud.** A NeonNode is `(host, parent, before) => void`, so it may own any number of
+  host nodes: a root fragment lowers through the flat tier with every root placed in front of
+  `before`, and a region row records the span `place` produced, so a row may be a fragment.
+  `tests/macros/fragmentDirectRootRejected.ms` is gone with the refusal. Measured on msc v0.2.55:
+  `msc test tests/render/fragment.test.ms` rc=0 on C and `--target=js` ("a top-level fragment mounts
+  as siblings under one parent", "a fragment row moves and leaves as one span", "a row that opens
+  with a closed region still moves with its span"), plus the fuzz cell named in §3. What follows is
+  the 2026-09-15 record; its (b) and its root-fragment case no longer hold.
+
+  Still open, and the honest gap vs Solid — ONE family, every case loud, none silent: a fragment
+  only works where a parent is already in hand. (a) Inside an expression container
+  (`{cond && <>…</>}`) BOTH macros reject it at compile time. (b) Through `viewOf` — hence as a `For`
+  row, since `For` mounts rows with `mountView` — it throws at run time, because a `NeonView` must
+  return exactly ONE host node; a root fragment handed to `direct()` is the SAME case, caught at
+  compile time instead. All of it is Solid's dynamic-array branch, the one place `regionNode`
+  really is the right machinery; closing them means teaching a region that a row may expand to n
+  nodes, which is `reconcileArrays` work, not macro work.
+
 - ~~**JS std string is ~19 exports behind cms**~~ **CLOSED 2026-07-29 (night)**: 18 exports ported
   as pure-MS byte loops matching `runtime/core/string.c` semantics + `lastIndexOf` gained
   `startIdx`/int64 (silent signature drift). Same pass fixed FOUR cross-backend divergences —
