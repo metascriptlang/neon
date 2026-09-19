@@ -29,7 +29,7 @@ interface HostProps {
 	ref?: RefFn | null;
 }
 
-function primitive(tag: string, props: HostProps, attrs: VAttr[], evts: VEvent[], kids: NeonNode[]): NeonNode {
+function primitive(tag: string, props: HostProps, attrs: VAttr[], evts: VEvent[], kids: NeonNode | null): NeonNode {
 	if (props.class !== null) { attrs.push(attr("class", props.class as string)); }
 	let style: (() => Style) | null = null;
 	if (props.style !== null) { style = props.style as () => Style; }
@@ -37,7 +37,7 @@ function primitive(tag: string, props: HostProps, attrs: VAttr[], evts: VEvent[]
 }
 
 interface ViewProps extends HostProps {
-	children: NeonNode[];
+	children?: NeonNode | null;
 }
 
 export function View(props: ViewProps): NeonNode {
@@ -45,7 +45,7 @@ export function View(props: ViewProps): NeonNode {
 }
 
 interface TextProps extends HostProps {
-	children: NeonNode[];
+	children?: NeonNode | null;
 }
 
 export function Text(props: TextProps): NeonNode {
@@ -64,7 +64,7 @@ interface PressableProps extends HostProps {
 	onPressOut?: ((e: NeonEvent) => void) | null;
 	onLongPress?: ((e: NeonEvent) => void) | null;
 	delayLongPress?: Accessor<number> | null;
-	children: NeonNode[];
+	children?: NeonNode | null;
 }
 
 // Two tiers, chosen once at build time from the props the caller actually
@@ -171,5 +171,5 @@ export function TextInput(props: TextInputProps): NeonNode {
 		const user = props.onChangeText as (t: string) => void;
 		evts.push(evt("onChangeText", (e: NeonEvent): void => { user(e.value); }));
 	}
-	return primitive("textinput", props, attrs, evts, []);
+	return primitive("textinput", props, attrs, evts, null);
 }

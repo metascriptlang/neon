@@ -392,6 +392,9 @@ export macro element(node: Node): Node {
 	function isNodeValued(n: Node): boolean {
 		return isNodeTyped(n) || isNodeArrayTyped(n);
 	}
+	function isRawChild(n: Node): boolean {
+		return n.kind === NodeKind.ArrowFunction || n.kind === NodeKind.FunctionExpr || isNodeTyped(n);
+	}
 	function isReactiveSelection(n: Node): boolean {
 		const p = peelHidden(n);
 		if (p.kind === NodeKind.ConditionalExpr) { return isReactiveExpr(p.ternaryCondition); }
@@ -465,9 +468,8 @@ export macro element(node: Node): Node {
 	// Capitalized tag → createComponent(Tag, { props }). Prop contract: every value
 	// prop — literal or expression — becomes accessor(() => v) (the component's props
 	// interface declares Accessor<T>); arrow literals, ref and on* cross RAW. Children
-	// stay structural — one child passes as written, several become an array, and a
-	// JSX child passes RAW so the converter lowers it against the prop's declared
-	// type. Inline because node literals only type-check inside a macro body
+	// arrive as ONE NeonNode: an arrow or a NeonNode value crosses as written, anything
+	// else lowers through element. Inline because node literals only type-check inside a macro body
 	// (engine-mode Node view).
 	function componentCall(c: Node): Node {
 		let keys: string[] = [];
@@ -483,70 +485,24 @@ export macro element(node: Node): Node {
 			}
 		}
 		const tag = c.jsxTag;
-		const isStarterTag = tag === "View" || tag === "Text" || tag === "Pressable" || tag === "TextInput";
-		let kids: Node[] = [];
-		let singleNeedsArray = false;
-		let significantKids = 0;
+		let significant: Node[] = [];
 		for (const k of c.jsxChildren) {
-			if (!(k.kind === NodeKind.JSXText && cleanJsxText(k.jsxText) === "")) { significantKids = significantKids + 1; }
+			if (!(k.kind === NodeKind.JSXText && cleanJsxText(k.jsxText) === "")) { significant.push(k); }
 		}
-		for (const k of c.jsxChildren) {
-			if (k.kind === NodeKind.JSXText) {
-				// A raw JSXText does not survive the macro wire as a property value,
-				// so a text child lowers HERE to text() — and a SINGLE one arrives
-				// as [text()] (RN: strings live inside containers' children lists).
-				const cleaned = cleanJsxText(k.jsxText);
-				if (cleaned !== "") {
-					kids.push({
-						kind: NodeKind.CallExpr, line: k.line, column: k.column,
-						callee: { kind: NodeKind.Identifier, line: k.line, column: k.column, name: "text" },
-						arguments: [{ kind: NodeKind.StringLiteral, line: k.line, column: k.column, value: cleaned }],
-					});
-					if (significantKids === 1) { singleNeedsArray = true; }
-				}
-			} else if (k.kind === NodeKind.JSXExpressionContainer) {
-				// An ARROW child crosses raw — flow components (For/Show) declare
-				// fn-typed children and the boundary types them. A NeonNode value
-				// crosses raw too. Any other expression is reactive TEXT exactly as
-				// in lowercase tags: dynText(() => expr).
-				const ex = k.jsxExpr;
-				if (ex.kind === NodeKind.ArrowFunction || ex.kind === NodeKind.FunctionExpr) {
-					kids.push(ex);
-				} else if (isNodeValued(ex)) {
-					if (isReactiveSelection(ex)) { errNodes.push(ex); errMsgs.push(reactiveNodeMsg); }
-					kids.push(ex);
-					if (significantKids === 1 && isStarterTag && !isNodeArrayTyped(ex)) { singleNeedsArray = true; }
-				} else {
-					kids.push({
-						kind: NodeKind.CallExpr, line: k.line, column: k.column,
-						callee: { kind: NodeKind.Identifier, line: k.line, column: k.column, name: "dynText" },
-						arguments: [{ kind: NodeKind.ArrowFunction, line: k.line, column: k.column, arrowParams: [], arrowParamTypes: [], arrowBody: ex, arrowFlags: "", arrowReturnType: "" }],
-					});
-					if (significantKids === 1) { singleNeedsArray = true; }
-				}
-			} else if (k.kind === NodeKind.JSXElement) {
-				// The component vocabulary (View/Text/Pressable/TextInput) takes
-				// children as NeonNode[], so a single element child arrives as
-				// [element(…)]. Every OTHER capitalized component keeps its own
-				// children contract: a single element child crosses RAW and the
-				// boundary lowers it.
-				if (isStarterTag && significantKids === 1) {
-					kids.push({
-						kind: NodeKind.MacroInvocation, line: k.line, column: k.column,
-						macroName: "element", macroArgs: [k],
-					});
-					singleNeedsArray = true;
-				} else {
-					kids.push(k);
-				}
-			}
-		}
-		if (kids.length === 1 && !singleNeedsArray) {
+		if (significant.length === 1 && significant[0].kind === NodeKind.JSXExpressionContainer && isRawChild(significant[0].jsxExpr)) {
+			const only = significant[0].jsxExpr;
+			if (isNodeTyped(only) && isReactiveSelection(only)) { errNodes.push(only); errMsgs.push(reactiveNodeMsg); }
 			keys.push("children");
-			values.push(kids[0]);
-		} else if (kids.length > 0) {
+			values.push(only);
+		} else if (significant.length === 1 && significant[0].kind === NodeKind.JSXElement) {
 			keys.push("children");
-			values.push({ kind: NodeKind.ArrayLiteral, line: c.line, column: c.column, elements: kids });
+			values.push({ kind: NodeKind.MacroInvocation, line: significant[0].line, column: significant[0].column, macroName: "element", macroArgs: [significant[0]] });
+		} else if (significant.length > 0) {
+			keys.push("children");
+			values.push({
+				kind: NodeKind.MacroInvocation, line: c.line, column: c.column, macroName: "element",
+				macroArgs: [{ kind: NodeKind.JSXFragment, line: c.line, column: c.column, jsxFragChildren: c.jsxChildren }],
+			});
 		}
 		// A dotted tag (Ctx.Provider) resolves through member access, not a flat
 		// name: fold the parts so the checker sees Ctx.Provider and types the call

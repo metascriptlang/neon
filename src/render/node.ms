@@ -44,7 +44,7 @@ export function hostElement(
 	tag: string,
 	attrs: VAttr[],
 	events: VEvent[],
-	children: NeonNode[],
+	children: NeonNode | null,
 	style: (() => Style) | null,
 	ref: RefFn | null,
 ): NeonNode {
@@ -59,13 +59,13 @@ export function hostElement(
 		}
 		if (style !== null) { bindStyleAll(host, node, style as () => Style); }
 		for (const e of events) { host.addEvent(node, e.name, e.handler); }
-		for (const child of children) { child(host, node, null); }
+		if (children !== null) { (children as NeonNode)(host, node, null); }
 		if (ref !== null) { (ref as RefFn)(node); }
 		place(host, parent, node, before);
 	};
 }
 
-export function el(tag: string, attrs: VAttr[], events: VEvent[], children: NeonNode[]): NeonNode {
+export function el(tag: string, attrs: VAttr[], events: VEvent[], children: NeonNode | null): NeonNode {
 	return hostElement(tag, attrs, events, children, null, null);
 }
 
