@@ -459,9 +459,30 @@ this bench's spread: the same old binary's dyn0 ranged 1.20–1.62 ms across the
 The "~1 µs per row" of the 09-19 session and of the first 09-20 run was load (6–60);
 it does not reproduce at load 7.
 
-Not measured, and why: reorder and memory on the void and terminal hosts (void mounts are
-O(N²) in the host until `void-host-links` lands, which would swamp any row cost; the
-terminal host has no bench); memory as live bytes on native (no runtime counter; the
+**The void host's parent registry.** `bench/voidMount.ms`: rows of 6 spans mounted into ONE void root, µs per row,
+lower is better; "append" calls the row node directly, "for" mounts the same rows through a `For`. Before =
+`cfd0d9a` (parent links in an array scanned linearly), after = `edd2cf2` (a `Map<Node2D, Node2D>`), same compiler, the
+two binaries run alternately, 3 runs, min; load 11.6–15.2. The last row is the `void3` cell of `bench/nativeEmit.ms`
+(1000 rows, dyn3), the one the tables above carry.
+
+| cell | rows | before | after | after ÷ before |
+|---|---|---|---|---|
+| append | 1 000 | 266.3 | 207.5 | 0.78 |
+| append | 5 000 | 1 140.3 | 330.5 | 0.29 |
+| append | 20 000 | 15 133.6 | 463.2 | **0.03** |
+| `For` | 1 000 | 397.2 | 192.6 | 0.48 |
+| `For` | 5 000 | 1 859.7 | 362.8 | 0.20 |
+| `nativeEmit` void3 | 1 000 | 229.2 | 202.6 | 0.88 |
+
+Verdict: the O(N²) parent scan is gone — 20 000 rows cost 32.7x less per row — but the cost per row is NOT flat yet
+(207 → 463 µs from 1 000 to 20 000 rows). `sample` puts ~94% of what is left inside the std `Map` lookup on a ref key
+(an entry copy at every probe step, then ORC cycle-candidate registration and collection); reduced without neon or void
+and carded at `~/metascript/.inbox/compiler/2026-09-20-map-ref-key-entry-copy-per-probe.md`, which this arc is parked on.
+Two sibling-linear paths are also untouched and keep a `For` into one void root quadratic in principle: `childIndexOf`
+here, and void's `addChildAt` / `removeChild`, which rebuild the children array.
+
+Not measured, and why: reorder and memory on the void and terminal hosts (the terminal host has no bench; the void
+host's own mount cost is the table above and still dominates a row); memory as live bytes on native (no runtime counter; the
 footprint delta is an upper bound that includes allocator slack).
 
 ## Invariants — the contract every tier and every hand-built node must satisfy
