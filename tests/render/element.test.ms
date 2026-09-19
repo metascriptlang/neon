@@ -2,7 +2,7 @@ import { createSignal } from "../../src/core/signal";
 import { el, attr, text, dynText } from "../../src/render/node";
 import { renderToString } from "../../src/render/ssr";
 import { element } from "../../src/macros/ui/element";
-import { renderToHost, mockHost, mockNode, mockToString, fireEvent, Host, HostNode } from "../../src/render/host";
+import { render, mockHost, mockNode, mockToString, fireEvent, Host, HostNode } from "../../src/render/host";
 
 test "reactive element renders and updates on signal change" {
 	const [name, setName] = createSignal("world");
@@ -117,9 +117,9 @@ test "dynamic attr tracks its signal" {
 	const [c2, setC2] = createSignal("red");
 	const host = writeCountingHost(attrWrites, textWrites);
 	const view = element(<p class={c2()}>x</p>);
-	renderToHost(view, host, root as unknown as HostNode);
+	render(view, host, root as unknown as HostNode);
 	assert attrWrites[0] === 2, "the first mount builds the skeleton's placeholder and binds the value, got " + attrWrites[0].toString();
-	renderToHost(view, host, root as unknown as HostNode);
+	render(view, host, root as unknown as HostNode);
 	assert attrWrites[0] === 3, "a later mount clones the skeleton and writes the attr once, got " + attrWrites[0].toString();
 	setC2("blue");
 	assert attrWrites[0] === 5, "the set writes each mounted attr once, got " + attrWrites[0].toString();
@@ -131,7 +131,7 @@ test "string literal attr stays static, on* routes to events" {
 	const attrWrites: number[] = [0];
 	const textWrites: number[] = [0];
 	const root = mockNode("root");
-	renderToHost(
+	render(
 		element(<button type="button" onPress={() => setN(n() + 1)}>go</button>),
 		writeCountingHost(attrWrites, textWrites),
 		root as unknown as HostNode,
@@ -151,12 +151,12 @@ test "an inert expression is classified static, a call stays dynamic" {
 	const inertAttr: number[] = [0];
 	const inertText: number[] = [0];
 	const inertRoot = mockNode("root");
-	renderToHost(element(<p class={label}>{label}</p>), writeCountingHost(inertAttr, inertText), inertRoot as unknown as HostNode);
+	render(element(<p class={label}>{label}</p>), writeCountingHost(inertAttr, inertText), inertRoot as unknown as HostNode);
 
 	const liveAttr: number[] = [0];
 	const liveText: number[] = [0];
 	const liveRoot = mockNode("root");
-	renderToHost(element(<p class={n()}>{n()}</p>), writeCountingHost(liveAttr, liveText), liveRoot as unknown as HostNode);
+	render(element(<p class={n()}>{n()}</p>), writeCountingHost(liveAttr, liveText), liveRoot as unknown as HostNode);
 
 	assert mockToString(inertRoot) === mockToString(liveRoot), "same markup at mount: inert=" + mockToString(inertRoot) + " live=" + mockToString(liveRoot);
 	assert inertText[0] === 1, "an identifier child fills its placeholder once, got " + inertText[0].toString();

@@ -9,7 +9,7 @@ import { element } from "../../src/macros/ui/element";
 // mountChild is NOT imported here on purpose: it must arrive through globalImports,
 // which is how bare-JSX user code gets it.
 import { el, NeonNode } from "../../src/render/node";
-import { mockHost, mockNode, mockToString, renderToHost, HostNode } from "../../src/render/host";
+import { mockHost, mockNode, mockToString, render, HostNode } from "../../src/render/host";
 import { renderToString } from "../../src/render/ssr";
 
 // --- static string child (regression: must stay text, isDyn false) ---
@@ -23,7 +23,7 @@ test "a static string child renders once" {
 test "a call string child stays reactive" {
 	const [n, setN] = createSignal("a");
 	const root = mockNode("root");
-	renderToHost(element(<p>{n()}</p>), mockHost(), root as unknown as HostNode);
+	render(element(<p>{n()}</p>), mockHost(), root as unknown as HostNode);
 	setN("b");
 	assert mockToString(root) === "<root><p>b</p></root>", "got " + mockToString(root);
 }

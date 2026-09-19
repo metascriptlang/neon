@@ -7,7 +7,7 @@ import { element } from "../../src/macros/ui/element";
 import { direct } from "../../src/macros/ui/direct";
 import { NeonNode, el, text } from "../../src/render/node";
 import { renderToString } from "../../src/render/ssr";
-import { Host, HostNode, MockNode, mockNode, mockHost, renderToHost, mockToString } from "../../src/render/host";
+import { Host, HostNode, MockNode, mockNode, mockHost, render, mockToString } from "../../src/render/host";
 import { createContext, useContext } from "../../src/render/context";
 import { For, Index } from "../../src/macros/ui/flow";
 
@@ -21,7 +21,7 @@ test "a provider feeds a consumer nested in its subtree — tree emission" {
 			<div>{useContext(T).accent}</div>
 		</T.Provider>
 	);
-	renderToHost(app, mockHost(), root as unknown as HostNode);
+	render(app, mockHost(), root as unknown as HostNode);
 	assert mockToString(root) === "<root><div>blue</div></root>", "consumer saw the provided value: " + mockToString(root);
 }
 
@@ -48,7 +48,7 @@ test "the nearest provider wins when providers nest" {
 			</T.Provider>
 		</T.Provider>
 	);
-	renderToHost(app, mockHost(), root as unknown as HostNode);
+	render(app, mockHost(), root as unknown as HostNode);
 	assert mockToString(root) === "<root><div>green</div></root>", "inner provider won: " + mockToString(root);
 }
 
@@ -56,7 +56,7 @@ test "a consumer without a provider reads the default" {
 	const T = createContext<Theme>({ accent: "red" });
 	const root: MockNode = mockNode("root");
 	const app: NeonNode = element(<div>{useContext(T).accent}</div>);
-	renderToHost(app, mockHost(), root as unknown as HostNode);
+	render(app, mockHost(), root as unknown as HostNode);
 	assert mockToString(root) === "<root><div>red</div></root>", "default came back: " + mockToString(root);
 }
 
@@ -69,7 +69,7 @@ test "identity is the context object, not the shape" {
 			<div>{useContext(B).accent}</div>
 		</A.Provider>
 	);
-	renderToHost(app, mockHost(), root as unknown as HostNode);
+	render(app, mockHost(), root as unknown as HostNode);
 	assert mockToString(root) === "<root><div>b</div></root>", "same shape, different object: no bleed: " + mockToString(root);
 }
 
@@ -82,7 +82,7 @@ test "the scope ends at the closing tag" {
 			<p>{useContext(T).accent}</p>
 		</div>
 	);
-	renderToHost(app, mockHost(), root as unknown as HostNode);
+	render(app, mockHost(), root as unknown as HostNode);
 	assert mockToString(root) === "<root><div><span>x</span><p>red</p></div></root>", "sibling outside saw the default: " + mockToString(root);
 }
 
@@ -98,7 +98,7 @@ test "a consumer sees through a component boundary" {
 			<Chip label="go" />
 		</T.Provider>
 	);
-	renderToHost(app, mockHost(), root as unknown as HostNode);
+	render(app, mockHost(), root as unknown as HostNode);
 	assert mockToString(root) === "<root><div>go:blue</div></root>", "component body mounted inside the scope: " + mockToString(root);
 }
 
@@ -121,7 +121,7 @@ test "a signal inside the value keeps the consumer reactive" {
 			<div>{useContext(T).accent}</div>
 		</T.Provider>
 	);
-	renderToHost(app, mockHost(), root as unknown as HostNode);
+	render(app, mockHost(), root as unknown as HostNode);
 	assert mockToString(root) === "<root><div>blue</div></root>", "initial read: " + mockToString(root);
 	setAccent("green");
 	assert mockToString(root) === "<root><div>green</div></root>", "signal change reached the consumer: " + mockToString(root);
@@ -140,7 +140,7 @@ test "a For row reads the provider above the list" {
 			}),
 		]),
 	});
-	renderToHost(app, mockHost(), root as unknown as HostNode);
+	render(app, mockHost(), root as unknown as HostNode);
 	assert mockToString(root) === "<root><ul><li>blue1</li></ul></root>", "first row saw the provider: " + mockToString(root);
 	setItems([1, 2]);
 	assert mockToString(root) === "<root><ul><li>blue1</li><li>blue2</li></ul></root>", "a row added later saw the provider: " + mockToString(root);
@@ -159,7 +159,7 @@ test "an Index row reads the provider above the list" {
 			}),
 		]),
 	});
-	renderToHost(app, mockHost(), root as unknown as HostNode);
+	render(app, mockHost(), root as unknown as HostNode);
 	assert mockToString(root) === "<root><ul><li>blue1</li><li>blue2</li></ul></root>", "every row saw the provider: " + mockToString(root);
 }
 
@@ -180,7 +180,7 @@ test "a For fallback reads the provider above the list" {
 			}),
 		]),
 	});
-	renderToHost(app, mockHost(), root as unknown as HostNode);
+	render(app, mockHost(), root as unknown as HostNode);
 	assert mockToString(root) === "<root><ul><li>blue</li></ul></root>", "fallback saw the provider: " + mockToString(root);
 	setItems([7]);
 	setItems([]);

@@ -1,7 +1,7 @@
 import { createSignal, Accessor } from "../../src/core/signal";
 import { element } from "../../src/macros/ui/element";
 import { NeonNode } from "../../src/render/node";
-import { renderToHost, mockHost, mockNode, mockToString, HostNode } from "../../src/render/host";
+import { render, mockHost, mockNode, mockToString, HostNode } from "../../src/render/host";
 import { Show } from "../../src/macros/ui/flow";
 
 interface LabelProps {
@@ -37,7 +37,7 @@ test "a bare accessor prop in an attribute stays reactive" {
 	const [l, setL] = createSignal("a");
 	const [n, setN] = createSignal<number>(1);
 	const root = mockNode("root");
-	renderToHost(element(<AttrBare label={l} count={n} />), mockHost(), root as unknown as HostNode);
+	render(element(<AttrBare label={l} count={n} />), mockHost(), root as unknown as HostNode);
 	setL("b");
 	assert mockToString(root) === "<root><p class=\"b\">x</p></root>", "attr: " + mockToString(root);
 }
@@ -46,7 +46,7 @@ test "a bare accessor prop as a child stays reactive" {
 	const [l, setL] = createSignal("a");
 	const [n, setN] = createSignal<number>(1);
 	const root = mockNode("root");
-	renderToHost(element(<ChildBare label={l} count={n} />), mockHost(), root as unknown as HostNode);
+	render(element(<ChildBare label={l} count={n} />), mockHost(), root as unknown as HostNode);
 	setL("b");
 	assert mockToString(root) === "<root><p>b</p></root>", "child: " + mockToString(root);
 }
@@ -55,7 +55,7 @@ test "an accessor operand in a child stays reactive" {
 	const [l, setL] = createSignal("a");
 	const [n, setN] = createSignal<number>(1);
 	const root = mockNode("root");
-	renderToHost(element(<ChildOperand label={l} count={n} />), mockHost(), root as unknown as HostNode);
+	render(element(<ChildOperand label={l} count={n} />), mockHost(), root as unknown as HostNode);
 	setN(5);
 	assert mockToString(root) === "<root><p>a:10</p></root>", "operand: " + mockToString(root);
 }
@@ -64,7 +64,7 @@ test "an accessor receiver in a child stays reactive" {
 	const [l, setL] = createSignal("a");
 	const [n, setN] = createSignal<number>(1);
 	const root = mockNode("root");
-	renderToHost(element(<ChildReceiver label={l} count={n} />), mockHost(), root as unknown as HostNode);
+	render(element(<ChildReceiver label={l} count={n} />), mockHost(), root as unknown as HostNode);
 	setN(7);
 	assert mockToString(root) === "<root><p>7</p></root>", "receiver: " + mockToString(root);
 }
@@ -73,7 +73,7 @@ test "an accessor prop passed through a second component stays reactive" {
 	const [l, setL] = createSignal("a");
 	const [n, setN] = createSignal<number>(1);
 	const root = mockNode("root");
-	renderToHost(element(<Outer label={l} count={n} />), mockHost(), root as unknown as HostNode);
+	render(element(<Outer label={l} count={n} />), mockHost(), root as unknown as HostNode);
 	setL("b");
 	assert mockToString(root) === "<root><i title=\"b\">b</i></root>", "pass-through: " + mockToString(root);
 }
@@ -81,7 +81,7 @@ test "an accessor prop passed through a second component stays reactive" {
 test "a top-level signal read bare in an attribute and a child stays reactive" {
 	const [l, setL] = createSignal("a");
 	const root = mockNode("root");
-	renderToHost(element(<p class={l}>{l}</p>), mockHost(), root as unknown as HostNode);
+	render(element(<p class={l}>{l}</p>), mockHost(), root as unknown as HostNode);
 	setL("b");
 	assert mockToString(root) === "<root><p class=\"b\">b</p></root>", "signal: " + mockToString(root);
 }
@@ -89,7 +89,7 @@ test "a top-level signal read bare in an attribute and a child stays reactive" {
 test "a bare boolean accessor guarding a child toggles it" {
 	const [on, setOn] = createSignal(false);
 	const root = mockNode("root");
-	renderToHost(element(<div>{on && <span>yes</span>}</div>), mockHost(), root as unknown as HostNode);
+	render(element(<div>{on && <span>yes</span>}</div>), mockHost(), root as unknown as HostNode);
 	const before = mockToString(root);
 	setOn(true);
 	const after = mockToString(root);

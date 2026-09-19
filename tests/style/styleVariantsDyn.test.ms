@@ -7,7 +7,7 @@
 import { element } from "../../src/macros/ui/element";
 import { Style, mergeStyle, emptyStyle } from "../../src/render/style";
 import { createStyles, styleOf } from "../../src/macros/ui/style";
-import { renderToHost, mockHost, mockNode, HostNode } from "../../src/render/host";
+import { render, mockHost, mockNode, HostNode } from "../../src/render/host";
 import { createSignal } from "../../src/core/signal";
 
 const s = createStyles({
@@ -25,7 +25,7 @@ test "a signal-driven selection tracks the signal" {
 	const vnode = element(<div style={s.btn({ state: pressed() ? "on" : "" })}></div>);
 	const host = mockHost();
 	const root = mockNode("root");
-	renderToHost(vnode, host, root as unknown as HostNode);
+	render(vnode, host, root as unknown as HostNode);
 	const div = root.children[0];
 	const st0 = div.style as Style;
 	assert st0.backgroundColor === "#334", "unpressed renders the base";
@@ -42,7 +42,7 @@ test "a static selection still lands on the node" {
 	const vnode = element(<div style={s.btn({ state: "on" })}></div>);
 	const host = mockHost();
 	const root = mockNode("root");
-	renderToHost(vnode, host, root as unknown as HostNode);
+	render(vnode, host, root as unknown as HostNode);
 	const st = root.children[0].style as Style;
 	assert st.backgroundColor === "#445", "selected variant applied";
 }

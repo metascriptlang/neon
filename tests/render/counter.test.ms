@@ -1,7 +1,7 @@
 import { createSignal } from "../../src/core/signal";
 import { el, evt, text, dynText } from "../../src/render/node";
 import { element } from "../../src/macros/ui/element";
-import { HostNode, MockNode, mockNode, mockHost, renderToHost, fireEvent, mockToString } from "../../src/render/host";
+import { HostNode, MockNode, mockNode, mockHost, render, fireEvent, mockToString } from "../../src/render/host";
 import { NeonEvent } from "../../src/render/event";
 
 test "counter: onPress increments and reactive text updates" {
@@ -10,7 +10,7 @@ test "counter: onPress increments and reactive text updates" {
 	const vnode = element(<div><p>{count() + ""}</p><button onPress={inc}>+</button></div>);
 
 	const root: MockNode = mockNode("root");
-	renderToHost(vnode, mockHost(), root as unknown as HostNode);
+	render(vnode, mockHost(), root as unknown as HostNode);
 	const div = root.children[0];
 
 	assert mockToString(div.children[0]) === "<p>0</p>", "initial count 0";

@@ -10,7 +10,7 @@ import { NeonEvent, neonEvent, eventType } from "./event";
 export { Host, HostNode, NeonNode } from "./hostTypes";
 export { bindText, writeAttr, bindAttr, bindStyleProp, applyStaticStyle, bindStyleAll, applyRef } from "./bind";
 
-export function renderToHost(node: NeonNode, host: Host, parent: HostNode): void {
+export function render(node: NeonNode, host: Host, parent: HostNode): void {
 	node(host, parent, null);
 }
 

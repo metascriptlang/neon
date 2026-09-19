@@ -7,7 +7,7 @@ import { element } from "../../src/macros/ui/element";
 import { el, attr, text, dynText, NeonNode } from "../../src/render/node";
 import { renderToString } from "../../src/render/ssr";
 import { createComponent } from "../../src/render/component";
-import { renderToHost, mockHost, mockNode, mockToString, HostNode } from "../../src/render/host";
+import { render, mockHost, mockNode, mockToString, HostNode } from "../../src/render/host";
 import { Show } from "../../src/macros/ui/flow";
 
 interface CounterProps {
@@ -29,7 +29,7 @@ test "capitalized tag defers and renders through createComponent" {
 	assert counterRuns === 0, "body must not run at tree construction";
 	const host = mockHost();
 	const root = mockNode("root");
-	renderToHost(view, host, root as unknown as HostNode);
+	render(view, host, root as unknown as HostNode);
 	assert mockToString(root) === "<root><p class=\"c\">n=1</p></root>", "initial: " + mockToString(root);
 	setN(5);
 	assert mockToString(root) === "<root><p class=\"c\">n=5</p></root>", "after set: " + mockToString(root);
@@ -85,7 +85,7 @@ test "reactive prop E2E: dynText updates across sets, body runs once" {
 	const view = element(<Gauge count={n()} label="g" />);
 	const host = mockHost();
 	const root = mockNode("root");
-	renderToHost(view, host, root as unknown as HostNode);
+	render(view, host, root as unknown as HostNode);
 	assert gaugeRuns === 1, "mounted once, got " + gaugeRuns.toString();
 	assert mockToString(root) === "<root><p class=\"g\">n=1</p></root>", "initial: " + mockToString(root);
 	setN(3);
@@ -103,7 +103,7 @@ test "prop expression with a nested arrow capturing outer variables stays reacti
 	const view = element(<Gauge count={applyFn(() => n() + base)} label="a" />);
 	const host = mockHost();
 	const root = mockNode("root");
-	renderToHost(view, host, root as unknown as HostNode);
+	render(view, host, root as unknown as HostNode);
 	assert mockToString(root) === "<root><p class=\"a\">n=101</p></root>", "initial: " + mockToString(root);
 	setN(2);
 	assert mockToString(root) === "<root><p class=\"a\">n=102</p></root>", "after set: " + mockToString(root);
@@ -123,7 +123,7 @@ test "unmounting a Show region through JSX fires the component's onCleanup" {
 	const view = element(<div><Show when={on()}><Leak count={n()} label="l" /></Show></div>);
 	const host = mockHost();
 	const root = mockNode("root");
-	renderToHost(view, host, root as unknown as HostNode);
+	render(view, host, root as unknown as HostNode);
 	assert leakRuns === 0, "no cleanup while mounted";
 	setOn(false);
 	assert leakRuns === 1, "cleanup fires when Show drops the component, got " + leakRuns.toString();
@@ -142,7 +142,7 @@ test "a bare accessor prop read is the value and stays reactive" {
 	const view = element(<Bare count={n()} label="b" />);
 	const host = mockHost();
 	const root = mockNode("root");
-	renderToHost(view, host, root as unknown as HostNode);
+	render(view, host, root as unknown as HostNode);
 	assert mockToString(root) === "<root><p class=\"b\">n=1</p></root>", "initial: " + mockToString(root);
 	setN(4);
 	assert mockToString(root) === "<root><p class=\"b\">n=4</p></root>", "after set: " + mockToString(root);
@@ -158,7 +158,7 @@ test "a destructured props parameter reads bare and stays reactive" {
 	const view = element(<Destr count={n()} label="d" />);
 	const host = mockHost();
 	const root = mockNode("root");
-	renderToHost(view, host, root as unknown as HostNode);
+	render(view, host, root as unknown as HostNode);
 	assert mockToString(root) === "<root><p class=\"d\">n=2</p></root>", "initial: " + mockToString(root);
 	setN(7);
 	assert mockToString(root) === "<root><p class=\"d\">n=7</p></root>", "after set: " + mockToString(root);

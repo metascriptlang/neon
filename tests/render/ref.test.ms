@@ -5,7 +5,7 @@ import { createSignal } from "../../src/core/signal";
 import { element } from "../../src/macros/ui/element";
 import { direct } from "../../src/macros/ui/direct";
 import { NeonNode } from "../../src/render/node";
-import { HostNode, MockNode, mockNode, mockHost, renderToHost, mockToString, fireEvent } from "../../src/render/host";
+import { HostNode, MockNode, mockNode, mockHost, render, mockToString, fireEvent } from "../../src/render/host";
 import { View, TextInput, Pressable, Text } from "../../src/components/primitives";
 import { NeonEvent } from "../../src/render/event";
 
@@ -14,7 +14,7 @@ test "ref hands the completed host node to the callback — tree emission" {
 	const grab: (n: HostNode) => void = (n) => { seen = mockToString(n as unknown as MockNode); };
 	const root: MockNode = mockNode("root");
 	const view: NeonNode = element(<div class="box"><p ref={grab}>hi</p></div>);
-	renderToHost(view, mockHost(), root as unknown as HostNode);
+	render(view, mockHost(), root as unknown as HostNode);
 	assert seen === "<p>hi</p>", "ref saw the finished node, seen=" + seen;
 	assert mockToString(root) === "<root><div class=\"box\"><p>hi</p></div></root>", "ref leaves no attribute behind: " + mockToString(root);
 }
@@ -38,7 +38,7 @@ test "ref on the root element of a site" {
 	const host = mockHost();
 
 	const treeRoot: MockNode = mockNode("root");
-	renderToHost(element(<section ref={grabTree}>x</section>), host, treeRoot as unknown as HostNode);
+	render(element(<section ref={grabTree}>x</section>), host, treeRoot as unknown as HostNode);
 
 	const directRoot: MockNode = mockNode("root");
 	const mount = direct(<section ref={grabDirect}>x</section>);
@@ -55,7 +55,7 @@ test "ref reaches the universal vocabulary, not just raw tags" {
 	const grabView: (n: HostNode) => void = (n) => { viewTag = (n as unknown as MockNode).tag; };
 	const grabInput: (n: HostNode) => void = (n) => { inputTag = (n as unknown as MockNode).tag; };
 	const root: MockNode = mockNode("root");
-	renderToHost(element(<View ref={grabView}><TextInput ref={grabInput} /></View>), mockHost(), root as unknown as HostNode);
+	render(element(<View ref={grabView}><TextInput ref={grabInput} /></View>), mockHost(), root as unknown as HostNode);
 	assert viewTag === "view", "View ref, tag=" + viewTag;
 	assert inputTag === "textinput", "TextInput ref, tag=" + inputTag;
 }
@@ -69,7 +69,7 @@ test "ref fires after a reactive child is bound, on both emissions" {
 	const host = mockHost();
 
 	const treeRoot: MockNode = mockNode("root");
-	renderToHost(element(<p ref={grabTree}>{n().toString()}</p>), host, treeRoot as unknown as HostNode);
+	render(element(<p ref={grabTree}>{n().toString()}</p>), host, treeRoot as unknown as HostNode);
 
 	const directRoot: MockNode = mockNode("root");
 	const mount = direct(<p ref={grabDirect}>{n().toString()}</p>);
@@ -85,7 +85,7 @@ test "a callback prop crosses raw when it is named, not only when it is a litera
 	let seenTag = "";
 	const grab: (h: HostNode) => void = (h) => { seenTag = (h as unknown as MockNode).tag; };
 	const root: MockNode = mockNode("root");
-	renderToHost(element(<Pressable onPress={inc} ref={grab}><Text>+</Text></Pressable>), mockHost(), root as unknown as HostNode);
+	render(element(<Pressable onPress={inc} ref={grab}><Text>+</Text></Pressable>), mockHost(), root as unknown as HostNode);
 	fireEvent(root.children[0], "onPress");
 	assert hits === 1, "named handler ran, hits=" + hits.toString();
 	assert seenTag === "pressable", "named ref ran, tag=" + seenTag;
@@ -94,7 +94,7 @@ test "a callback prop crosses raw when it is named, not only when it is a litera
 test "an inline arrow ref crosses raw" {
 	let seen = "";
 	const root: MockNode = mockNode("root");
-	renderToHost(element(<p ref={(n: HostNode) => { seen = (n as unknown as MockNode).tag; }}>hi</p>), mockHost(), root as unknown as HostNode);
+	render(element(<p ref={(n: HostNode) => { seen = (n as unknown as MockNode).tag; }}>hi</p>), mockHost(), root as unknown as HostNode);
 	assert seen === "p", "inline arrow ref fired, seen=" + seen;
 }
 
@@ -117,7 +117,7 @@ test "ref fires before the site root is placed, on both emissions" {
 	const treeRoot: MockNode = mockNode("root");
 	let treeKidsAtRef = -1;
 	const grabTree: (h: HostNode) => void = (h) => { treeKidsAtRef = treeRoot.children.length; };
-	renderToHost(element(<div ref={grabTree}><p>hi</p></div>), host, treeRoot as unknown as HostNode);
+	render(element(<div ref={grabTree}><p>hi</p></div>), host, treeRoot as unknown as HostNode);
 
 	const directRoot: MockNode = mockNode("root");
 	let directKidsAtRef = -1;
@@ -135,7 +135,7 @@ test "nested refs fire innermost first, each with its own children complete" {
 	const treeRoot: MockNode = mockNode("root");
 	const outerTree: (h: HostNode) => void = (h) => { treeOrder = treeOrder + "outer" + (h as unknown as MockNode).children.length.toString(); };
 	const innerTree: (h: HostNode) => void = (h) => { treeOrder = treeOrder + "inner" + (h as unknown as MockNode).children.length.toString(); };
-	renderToHost(element(<div ref={outerTree}><p ref={innerTree}>hi</p></div>), host, treeRoot as unknown as HostNode);
+	render(element(<div ref={outerTree}><p ref={innerTree}>hi</p></div>), host, treeRoot as unknown as HostNode);
 
 	let directOrder = "";
 	const directRoot: MockNode = mockNode("root");

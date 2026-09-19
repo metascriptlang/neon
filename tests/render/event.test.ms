@@ -10,7 +10,7 @@ import { element } from "../../src/macros/ui/element";
 import { direct } from "../../src/macros/ui/direct";
 import { el, evt, text } from "../../src/render/node";
 import { NeonEvent, neonEvent, eventType } from "../../src/render/event";
-import { renderToHost, mockHost, mockNode, fireEvent, fireEventWith, HostNode } from "../../src/render/host";
+import { render, mockHost, mockNode, fireEvent, fireEventWith, HostNode } from "../../src/render/host";
 import { createTemplate, mountTemplate } from "../../src/render/template";
 
 test "eventType strips the on prefix and lowercases" {
@@ -34,7 +34,7 @@ test "a handler on a jsx element receives the event" {
 	const host = mockHost();
 	const root = mockNode("root");
 	let seen = "";
-	renderToHost(element(<button onPress={(e: NeonEvent): void => { seen = e.type; }}>go</button>), host, root as unknown as HostNode);
+	render(element(<button onPress={(e: NeonEvent): void => { seen = e.type; }}>go</button>), host, root as unknown as HostNode);
 
 	const btn = root.children[0];
 	fireEvent(btn, "onPress");
@@ -45,7 +45,7 @@ test "a handler that ignores the event still runs" {
 	const host = mockHost();
 	const root = mockNode("root");
 	let runs = 0;
-	renderToHost(element(<button onPress={(): void => { runs = runs + 1; }}>go</button>), host, root as unknown as HostNode);
+	render(element(<button onPress={(): void => { runs = runs + 1; }}>go</button>), host, root as unknown as HostNode);
 
 	fireEvent(root.children[0], "onPress");
 	assert runs === 1, "zero-arg handler runs=" + runs.toString();
@@ -55,7 +55,7 @@ test "an input handler reads the value the host put on the event" {
 	const host = mockHost();
 	const root = mockNode("root");
 	let typed = "";
-	renderToHost(element(<input onInput={(e: NeonEvent): void => { typed = e.value; }} />), host, root as unknown as HostNode);
+	render(element(<input onInput={(e: NeonEvent): void => { typed = e.value; }} />), host, root as unknown as HostNode);
 
 	const e = neonEvent("input");
 	e.value = "hello";
@@ -67,7 +67,7 @@ test "a click handler reads the coordinates the host put on the event" {
 	const host = mockHost();
 	const root = mockNode("root");
 	let at = "";
-	renderToHost(element(<div onPress={(e: NeonEvent): void => { at = e.x.toString() + "," + e.y.toString(); }} />), host, root as unknown as HostNode);
+	render(element(<div onPress={(e: NeonEvent): void => { at = e.x.toString() + "," + e.y.toString(); }} />), host, root as unknown as HostNode);
 
 	const e = neonEvent("press");
 	e.x = 12;
@@ -81,7 +81,7 @@ test "direct emission delivers the same event as tree emission" {
 
 	const treeRoot = mockNode("root");
 	let treeSaw = "";
-	renderToHost(element(<button onPress={(e: NeonEvent): void => { treeSaw = e.type + ":" + e.value; }}>go</button>), host, treeRoot as unknown as HostNode);
+	render(element(<button onPress={(e: NeonEvent): void => { treeSaw = e.type + ":" + e.value; }}>go</button>), host, treeRoot as unknown as HostNode);
 
 	const directRoot = mockNode("root");
 	let directSaw = "";
@@ -100,7 +100,7 @@ test "a handler drives a signal through the event value" {
 	const host = mockHost();
 	const root = mockNode("root");
 	const [name, setName] = createSignal("");
-	renderToHost(element(<input onInput={(e: NeonEvent): void => { setName(e.value); }} />), host, root as unknown as HostNode);
+	render(element(<input onInput={(e: NeonEvent): void => { setName(e.value); }} />), host, root as unknown as HostNode);
 
 	const e = neonEvent("input");
 	e.value = "son";
@@ -113,7 +113,7 @@ test "onChangeText hands the handler the text on both emissions" {
 
 	const treeRoot = mockNode("root");
 	let treeText = "";
-	renderToHost(element(<input onChangeText={(t: string): void => { treeText = t; }} />), host, treeRoot as unknown as HostNode);
+	render(element(<input onChangeText={(t: string): void => { treeText = t; }} />), host, treeRoot as unknown as HostNode);
 
 	const directRoot = mockNode("root");
 	let directText = "";

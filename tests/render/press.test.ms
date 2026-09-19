@@ -10,7 +10,7 @@ import { createRoot } from "../../src/core/owner";
 import { sleepAsync } from "std/core/promise";
 import { element } from "../../src/macros/ui/element";
 import { NeonEvent } from "../../src/render/event";
-import { HostNode, mockNode, mockHost, renderToHost, fireEvent } from "../../src/render/host";
+import { HostNode, mockNode, mockHost, render, fireEvent } from "../../src/render/host";
 import { Pressable, Text } from "../../src/components/primitives";
 
 test "onPress alone stays on the cheap click path" {
@@ -18,7 +18,7 @@ test "onPress alone stays on the cheap click path" {
 	const root = mockNode("root");
 	let hits = 0;
 	createRoot((): void => {
-		renderToHost(element(<Pressable onPress={(e: NeonEvent): void => { hits = hits + 1; }}><Text>go</Text></Pressable>), host, root as unknown as HostNode);
+		render(element(<Pressable onPress={(e: NeonEvent): void => { hits = hits + 1; }}><Text>go</Text></Pressable>), host, root as unknown as HostNode);
 	});
 
 	const btn = root.children[0];
@@ -32,7 +32,7 @@ test "declaring a gesture prop switches to pointer tracking" {
 	const host = mockHost();
 	const root = mockNode("root");
 	createRoot((): void => {
-		renderToHost(element(<Pressable onPressIn={(e: NeonEvent): void => {}}><Text>go</Text></Pressable>), host, root as unknown as HostNode);
+		render(element(<Pressable onPressIn={(e: NeonEvent): void => {}}><Text>go</Text></Pressable>), host, root as unknown as HostNode);
 	});
 
 	const btn = root.children[0];
@@ -46,7 +46,7 @@ test "press in and out bracket the gesture" {
 	const [log, setLog] = createSignal("");
 	const say = (s: string): void => { setLog(log() + s); };
 	createRoot((): void => {
-		renderToHost(element(<Pressable
+		render(element(<Pressable
 			onPressIn={(e: NeonEvent): void => { say("in;"); }}
 			onPressOut={(e: NeonEvent): void => { say("out;"); }}
 			onPress={(e: NeonEvent): void => { say("press;"); }}><Text>go</Text></Pressable>), host, root as unknown as HostNode);
@@ -70,7 +70,7 @@ test "a hold past 500ms fires onLongPress and swallows the press" {
 	const [log, setLog] = createSignal("");
 	const say = (s: string): void => { setLog(log() + s); };
 	createRoot((): void => {
-		renderToHost(element(<Pressable
+		render(element(<Pressable
 			onLongPress={(e: NeonEvent): void => { say("long;"); }}
 			onPress={(e: NeonEvent): void => { say("press;"); }}><Text>go</Text></Pressable>), host, root as unknown as HostNode);
 	});
@@ -93,7 +93,7 @@ test "a short tap with a long press handler still presses" {
 	const [log, setLog] = createSignal("");
 	const say = (s: string): void => { setLog(log() + s); };
 	createRoot((): void => {
-		renderToHost(element(<Pressable
+		render(element(<Pressable
 			onLongPress={(e: NeonEvent): void => { say("long;"); }}
 			onPress={(e: NeonEvent): void => { say("press;"); }}><Text>go</Text></Pressable>), host, root as unknown as HostNode);
 	});
@@ -111,7 +111,7 @@ test "leaving the element cancels the press without firing it" {
 	const [log, setLog] = createSignal("");
 	const say = (s: string): void => { setLog(log() + s); };
 	createRoot((): void => {
-		renderToHost(element(<Pressable
+		render(element(<Pressable
 			onPressIn={(e: NeonEvent): void => { say("in;"); }}
 			onPressOut={(e: NeonEvent): void => { say("out;"); }}
 			onPress={(e: NeonEvent): void => { say("press;"); }}><Text>go</Text></Pressable>), host, root as unknown as HostNode);
@@ -136,7 +136,7 @@ test "a custom delayLongPress is honored" {
 	const [log, setLog] = createSignal("");
 	const say = (s: string): void => { setLog(log() + s); };
 	createRoot((): void => {
-		renderToHost(element(<Pressable
+		render(element(<Pressable
 			onLongPress={(e: NeonEvent): void => { say("long;"); }}
 			delayLongPress={120}><Text>go</Text></Pressable>), host, root as unknown as HostNode);
 	});
@@ -154,7 +154,7 @@ test "a press drives a signal end to end" {
 	const root = mockNode("root");
 	const [count, setCount] = createSignal(0);
 	createRoot((): void => {
-		renderToHost(element(<Pressable
+		render(element(<Pressable
 			onPressIn={(e: NeonEvent): void => {}}
 			onPress={(e: NeonEvent): void => { setCount(count() + 1); }}><Text>go</Text></Pressable>), host, root as unknown as HostNode);
 	});

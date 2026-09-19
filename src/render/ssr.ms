@@ -1,5 +1,5 @@
 import { Host, HostNode } from "./hostTypes";
-import { MockNode, mockNode, mockHost, renderToHost } from "./host";
+import { MockNode, mockNode, mockHost, render } from "./host";
 import { NeonNode } from "./hostTypes";
 import { htmlTagFor } from "./node";
 import { registerCss } from "./sheet";
@@ -47,7 +47,7 @@ export function serializeChildren(n: MockNode): string {
 export function renderToString(n: NeonNode): string {
 	return createRoot((dispose) => {
 		const box = mockNode("ssr-root");
-		renderToHost(n, SSR_HOST, box as unknown as HostNode);
+		render(n, SSR_HOST, box as unknown as HostNode);
 		const out = serializeChildren(box);
 		dispose();
 		return out;

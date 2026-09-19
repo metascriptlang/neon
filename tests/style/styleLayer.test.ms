@@ -7,7 +7,7 @@
 
 import { element } from "../../src/macros/ui/element";
 import { el, NeonNode } from "../../src/render/node";
-import { mockHost, mockNode, renderToHost, HostNode } from "../../src/render/host";
+import { mockHost, mockNode, render, HostNode } from "../../src/render/host";
 import { Style, mergeStyle, layerStyles } from "../../src/render/style";
 import { createStyles, styleOf } from "../../src/macros/ui/style";
 
@@ -18,7 +18,7 @@ const sheet = createStyles({
 
 function styleOfNode(n: NeonNode): Style {
 	const root = mockNode("root");
-	renderToHost(n, mockHost(), root as unknown as HostNode);
+	render(n, mockHost(), root as unknown as HostNode);
 	return root.children[0].style as Style;
 }
 

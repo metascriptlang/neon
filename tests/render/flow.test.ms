@@ -1,5 +1,5 @@
 import { el, text, dynText, NeonNode } from "../../src/render/node";
-import { MockNode, mockHost, renderToHost, mockToString } from "../../src/render/host";
+import { MockNode, mockHost, render, mockToString } from "../../src/render/host";
 import { Host, HostNode } from "../../src/render/hostTypes";
 import { For, Index, Show } from "../../src/macros/ui/flow";
 import { createSignal, accessor, Accessor } from "../../src/core/signal";
@@ -29,7 +29,7 @@ test "For reactive list reuses rows on reorder, creates only new" {
 		]);
 		const host = mockHost();
 		const root = host.createElement("root");
-		renderToHost(ul, host, root);
+		render(ul, host, root);
 		const ulNode = (root as unknown as MockNode).children[0];
 		assert listText(ulNode) === "123", "initial";
 		assert creates === 3, "3 rows created";
@@ -58,7 +58,7 @@ test "For fallback shows when empty" {
 		]);
 		const host = mockHost();
 		const root = host.createElement("root");
-		renderToHost(ul, host, root);
+		render(ul, host, root);
 		const ulNode = (root as unknown as MockNode).children[0];
 		assert listText(ulNode) === "1", "has item";
 		setItems([]);
@@ -81,7 +81,7 @@ test "Index updates row value in place, no recreate" {
 		]);
 		const host = mockHost();
 		const root = host.createElement("root");
-		renderToHost(ul, host, root);
+		render(ul, host, root);
 		const ulNode = (root as unknown as MockNode).children[0];
 		assert listText(ulNode) === "123", "initial";
 		assert creates === 3, "3 created";
@@ -103,7 +103,7 @@ test "Index grows and shrinks with the list" {
 		]);
 		const host = mockHost();
 		const root = host.createElement("root");
-		renderToHost(ul, host, root);
+		render(ul, host, root);
 		const ulNode = (root as unknown as MockNode).children[0];
 		assert listText(ulNode) === "1", "initial row";
 		setItems([1, 2]);
@@ -128,7 +128,7 @@ test "Show swaps child/fallback and stays stable while true" {
 		]);
 		const host = mockHost();
 		const root = host.createElement("root");
-		renderToHost(div, host, root);
+		render(div, host, root);
 		const divNode = (root as unknown as MockNode).children[0];
 
 		assert divNode.children[0].children[0].text === "on", "initial on";
@@ -159,7 +159,7 @@ test "For fallback reactive scope is disposed when rows return" {
 		]);
 		const host = mockHost();
 		const root = host.createElement("root");
-		renderToHost(ul, host, root);
+		render(ul, host, root);
 		assert fbRuns === 1, "fallback effect ran once when empty";
 		setLabel("none");
 		assert fbRuns === 2, "fallback effect reactive while shown";
@@ -185,7 +185,7 @@ test "For fallback reactive scope is disposed with the list" {
 		]);
 		const host = mockHost();
 		const root = host.createElement("root");
-		renderToHost(ul, host, root);
+		render(ul, host, root);
 		assert fbRuns === 1, "fallback effect ran once when empty";
 		d();
 	});
@@ -207,7 +207,7 @@ test "an accessor feeds For.each directly and the row index is an Accessor" {
 		]);
 		const host = mockHost();
 		const root = host.createElement("root");
-		renderToHost(ul, host, root);
+		render(ul, host, root);
 		const ulNode = (root as unknown as MockNode).children[0];
 		assert listText(ulNode) === "7@08@1", "initial";
 		setItems([8, 7]);
@@ -220,7 +220,7 @@ function mountedText(view: NeonNode): [() => string, () => void] {
 	const host = mockHost();
 	const root = host.createElement("root");
 	let dispose: () => void = () => {};
-	createRoot((d) => { dispose = d; renderToHost(view, host, root); });
+	createRoot((d) => { dispose = d; render(view, host, root); });
 	return [() => mockToString(root as unknown as MockNode), dispose];
 }
 
@@ -299,7 +299,7 @@ test "Show mounts its branch untracked" {
 		const div = el("div", [], [], [Show({ when: () => on(), children: child })]);
 		const host = mockHost();
 		const root = host.createElement("root");
-		renderToHost(div, host, root);
+		render(div, host, root);
 		assert builds === 1, "branch built once on mount";
 		setN(5);
 		assert builds === 1, "a signal read while mounting does not rebuild the branch";
@@ -326,7 +326,7 @@ test "Show mounts its fallback untracked" {
 		]);
 		const host = mockHost();
 		const root = host.createElement("root");
-		renderToHost(div, host, root);
+		render(div, host, root);
 		assert builds === 1, "fallback built once on mount";
 		setN(5);
 		assert builds === 1, "a signal read while mounting does not rebuild the fallback";

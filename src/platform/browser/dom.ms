@@ -1,4 +1,4 @@
-// Browser DOM host — JS backend only. Same renderToHost(vnode, host, parent)
+// Browser DOM host — JS backend only. Same render(vnode, host, parent)
 // drives this; here the host ops map to real document.* / Node APIs.
 
 import { Host, HostNode } from "../../render/host";

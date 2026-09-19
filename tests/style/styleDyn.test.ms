@@ -5,7 +5,7 @@
 
 import { element } from "../../src/macros/ui/element";
 import { Style, StyleValue } from "../../src/render/style";
-import { renderToHost, mockHost, mockNode, HostNode } from "../../src/render/host";
+import { render, mockHost, mockNode, HostNode } from "../../src/render/host";
 import { createSignal } from "../../src/core/signal";
 
 test "a dynamic style field tracks its signal" {
@@ -13,7 +13,7 @@ test "a dynamic style field tracks its signal" {
 	const vnode = element(<div style={{ width: w(), backgroundColor: "red" }}></div>);
 	const host = mockHost();
 	const root = mockNode("root");
-	renderToHost(vnode, host, root as unknown as HostNode);
+	render(vnode, host, root as unknown as HostNode);
 	const div = root.children[0];
 	const st0 = div.style as Style;
 	assert st0.width === 20, "initial signal value applied";
@@ -29,7 +29,7 @@ test "a derived style expression is reactive too" {
 	const vnode = element(<div style={{ height: n() * 10 }}></div>);
 	const host = mockHost();
 	const root = mockNode("root");
-	renderToHost(vnode, host, root as unknown as HostNode);
+	render(vnode, host, root as unknown as HostNode);
 	const div = root.children[0];
 	assert (div.style as Style).height === 10, "derived initial value";
 	setN(4);
@@ -45,7 +45,7 @@ test "an all-static style object still lands as one constant" {
 	host.setStyle = (node: HostNode, style: Style): void => { styleWrites[0] = styleWrites[0] + 1; setStyle(node, style); };
 	host.setStyleProp = (node: HostNode, name: string, value: StyleValue): void => { propWrites[0] = propWrites[0] + 1; };
 	const root = mockNode("root");
-	renderToHost(vnode, host, root as unknown as HostNode);
+	render(vnode, host, root as unknown as HostNode);
 	assert styleWrites[0] === 1, "one whole-style write, got " + styleWrites[0].toString();
 	assert propWrites[0] === 0, "no per-property binding for a static object, got " + propWrites[0].toString();
 	const st = root.children[0].style as Style;
@@ -58,7 +58,7 @@ test "an identical signal value is not re-written to the host" {
 	const vnode = element(<div style={{ width: w() }}></div>);
 	const host = mockHost();
 	const root = mockNode("root");
-	renderToHost(vnode, host, root as unknown as HostNode);
+	render(vnode, host, root as unknown as HostNode);
 	const div = root.children[0];
 	const before = div.style;
 	setW(20);

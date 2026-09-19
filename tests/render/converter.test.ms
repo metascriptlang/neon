@@ -7,7 +7,7 @@
 import { createSignal, accessor, Accessor } from "../../src/core/signal";
 import { NeonNode } from "../../src/render/node";
 import { renderToString } from "../../src/render/ssr";
-import { renderToHost, mockHost, mockNode, mockToString, HostNode } from "../../src/render/host";
+import { render, mockHost, mockNode, mockToString, HostNode } from "../../src/render/host";
 
 interface CounterProps {
 	count: Accessor<number>;
@@ -29,7 +29,7 @@ test "bare JSX lowers at an annotated const boundary" {
 test "bare JSX lowers at a parameter boundary" {
 	const host = mockHost();
 	const root = mockNode("root");
-	renderToHost(<ul><li>a</li></ul>, host, root as unknown as HostNode);
+	render(<ul><li>a</li></ul>, host, root as unknown as HostNode);
 	assert mockToString(root) === "<root><ul><li>a</li></ul></root>", mockToString(root);
 }
 
@@ -48,7 +48,7 @@ test "a component returns bare JSX and stays reactive" {
 	const [n, setN] = createSignal(1);
 	const host = mockHost();
 	const root = mockNode("root");
-	renderToHost(<div><Counter count={n()} label="c" /></div>, host, root as unknown as HostNode);
+	render(<div><Counter count={n()} label="c" /></div>, host, root as unknown as HostNode);
 	assert mockToString(root) === "<root><div><p class=\"c\">n=1</p></div></root>", "initial: " + mockToString(root);
 	setN(5);
 	assert mockToString(root) === "<root><div><p class=\"c\">n=5</p></div></root>", "after set: " + mockToString(root);

@@ -9,7 +9,7 @@ import { direct } from "../../src/macros/ui/direct";
 import { NeonNode, el, attr } from "../../src/render/node";
 import { createComponent } from "../../src/render/component";
 import { Show, For } from "../../src/macros/ui/flow";
-import { renderToHost, mockHost, mockNode, mockToString, fireEvent, fireEventWith, bindText, bindAttr, MockNode, Host, HostNode } from "../../src/render/host";
+import { render, mockHost, mockNode, mockToString, fireEvent, fireEventWith, bindText, bindAttr, MockNode, Host, HostNode } from "../../src/render/host";
 import { createMemo } from "../../src/core/memo";
 import { Style, layerStyles } from "../../src/render/style";
 import { styleToCss } from "../../src/render/css";
@@ -26,7 +26,7 @@ test "static + dynamic text + event: direct matches tree" {
 
 	const treeRoot = mockNode("root");
 	const view: NeonNode = element(<div class="box"><p>hello {name()}</p><button onPress={inc}>+</button></div>);
-	renderToHost(view, host, treeRoot as unknown as HostNode);
+	render(view, host, treeRoot as unknown as HostNode);
 
 	const directRoot = mockNode("root");
 	const mount = direct(<div class="box"><p>hello {name()}</p><button onPress={inc}>+</button></div>);
@@ -48,7 +48,7 @@ test "deep nesting: direct matches tree" {
 
 	const treeRoot = mockNode("root");
 	const tv: NeonNode = element(<ul><li><span>a</span></li><li>{v()}</li></ul>);
-	renderToHost(tv, host, treeRoot as unknown as HostNode);
+	render(tv, host, treeRoot as unknown as HostNode);
 
 	const directRoot = mockNode("root");
 	const mount = direct(<ul><li><span>a</span></li><li>{v()}</li></ul>);
@@ -67,7 +67,7 @@ test "multiple attrs and multiple dynamic spots keep distinct temps" {
 
 	const treeRoot = mockNode("root");
 	const tv: NeonNode = element(<div id="x" class="y"><p>{a()}</p><p>{b()}</p><span>{a()}</span></div>);
-	renderToHost(tv, host, treeRoot as unknown as HostNode);
+	render(tv, host, treeRoot as unknown as HostNode);
 
 	const directRoot = mockNode("root");
 	const mount = direct(<div id="x" class="y"><p>{a()}</p><p>{b()}</p><span>{a()}</span></div>);
@@ -120,7 +120,7 @@ test "component child: defer, bodyRuns once, reactive prop updates match tree" {
 
 	const treeRoot = mockNode("root");
 	const tv: NeonNode = element(<div><Gauge count={n()} label="g" /></div>);
-	renderToHost(tv, host, treeRoot as unknown as HostNode);
+	render(tv, host, treeRoot as unknown as HostNode);
 
 	const directRoot = mockNode("root");
 	const mount = direct(<div><Gauge count={n()} label="g" /></div>);
@@ -144,7 +144,7 @@ test "root-position component: deferred until mount, matches tree" {
 
 	const treeRoot = mockNode("root");
 	const tv: NeonNode = element(<Gauge count={n()} label="r" />);
-	renderToHost(tv, host, treeRoot as unknown as HostNode);
+	render(tv, host, treeRoot as unknown as HostNode);
 
 	const directRoot = mockNode("root");
 	const mount = direct(<Gauge count={n()} label="r" />);
@@ -165,7 +165,7 @@ test "prop expression with a nested arrow capturing outer variables stays reacti
 
 	const treeRoot = mockNode("root");
 	const tv: NeonNode = element(<div><Gauge count={applyFn(() => n() + base)} label="a" /></div>);
-	renderToHost(tv, host, treeRoot as unknown as HostNode);
+	render(tv, host, treeRoot as unknown as HostNode);
 
 	const directRoot = mockNode("root");
 	const mount = direct(<div><Gauge count={applyFn(() => n() + base)} label="a" /></div>);
@@ -185,7 +185,7 @@ test "Show flip through direct: cleanup fires, span matches tree on both flips" 
 
 	const treeRoot = mockNode("root");
 	const tv: NeonNode = element(<div><Show when={on()}><Leak count={n()} label="l" /></Show></div>);
-	renderToHost(tv, host, treeRoot as unknown as HostNode);
+	render(tv, host, treeRoot as unknown as HostNode);
 
 	const directRoot = mockNode("root");
 	const mount = direct(<div><Show when={on()}><Leak count={n()} label="l" /></Show></div>);
@@ -212,7 +212,7 @@ test "single element child passes as the children prop through direct" {
 
 	const treeRoot = mockNode("root");
 	const tv: NeonNode = element(<div><Card title="t"><p>inner</p></Card></div>);
-	renderToHost(tv, host, treeRoot as unknown as HostNode);
+	render(tv, host, treeRoot as unknown as HostNode);
 
 	const directRoot = mockNode("root");
 	const mount = direct(<div><Card title="t"><p>inner</p></Card></div>);
@@ -239,7 +239,7 @@ test "reactive attr through direct matches tree" {
 
 	const treeRoot = mockNode("root");
 	const tv: NeonNode = element(<p class={cls()}>x</p>);
-	renderToHost(tv, host, treeRoot as unknown as HostNode);
+	render(tv, host, treeRoot as unknown as HostNode);
 
 	const directRoot = mockNode("root");
 	const mount = direct(<p class={cls()}>x</p>);
@@ -257,7 +257,7 @@ test "typed style channel through direct matches tree" {
 
 	const treeRoot = mockNode("root");
 	const tv: NeonNode = element(<div style={dsheet.box}><p>a</p></div>);
-	renderToHost(tv, host, treeRoot as unknown as HostNode);
+	render(tv, host, treeRoot as unknown as HostNode);
 
 	const directRoot = mockNode("root");
 	const mount = direct(<div style={dsheet.box}><p>a</p></div>);
@@ -278,7 +278,7 @@ test "static attr + reactive attr + event + style mixed on one element" {
 
 	const treeRoot = mockNode("root");
 	const tv: NeonNode = element(<button type="button" title={n().toString()} style={dsheet.box} onPress={() => setN(n() + 1)}>go</button>);
-	renderToHost(tv, host, treeRoot as unknown as HostNode);
+	render(tv, host, treeRoot as unknown as HostNode);
 
 	const directRoot = mockNode("root");
 	const mount = direct(<button type="button" title={n().toString()} style={dsheet.box} onPress={() => setN(n() + 1)}>go</button>);
@@ -302,7 +302,7 @@ test "deep interleave: dyn attr + dyn text + event across 4 levels" {
 
 	const treeRoot = mockNode("root");
 	const tv: NeonNode = element(<div id="top"><section class={cls()}><ul><li>{v()}</li><li><button onPress={bump} title={cls()}>go {v()}</button></li></ul><p>tail</p></section></div>);
-	renderToHost(tv, host, treeRoot as unknown as HostNode);
+	render(tv, host, treeRoot as unknown as HostNode);
 
 	const directRoot = mockNode("root");
 	const mount = direct(<div id="top"><section class={cls()}><ul><li>{v()}</li><li><button onPress={bump} title={cls()}>go {v()}</button></li></ul><p>tail</p></section></div>);
@@ -381,7 +381,7 @@ test "a spot recomputing to the same string writes the host once — tree emissi
 	const root = mockNode("root");
 
 	const tv: NeonNode = element(<p>{n() > 5 ? "big" : "small"}</p>);
-	renderToHost(tv, host, root as unknown as HostNode);
+	render(tv, host, root as unknown as HostNode);
 	assert counter[0] === 1, "one write at mount, got " + counter[0].toString();
 
 	setN(2);
@@ -416,7 +416,7 @@ test "a spot with no call and no property access renders the same through both e
 
 	const treeRoot = mockNode("root");
 	const tv: NeonNode = element(<p class={label}>{label}</p>);
-	renderToHost(tv, host, treeRoot as unknown as HostNode);
+	render(tv, host, treeRoot as unknown as HostNode);
 
 	const directRoot = mockNode("root");
 	const mount = direct(<p class={label}>{label}</p>);
@@ -439,7 +439,7 @@ test "template mode on a cloneNode:null host falls back and still matches tree" 
 
 	const treeRoot = mockNode("root");
 	const tv: NeonNode = element(<ul class="l"><li>{v()}</li><li>x</li></ul>);
-	renderToHost(tv, host, treeRoot as unknown as HostNode);
+	render(tv, host, treeRoot as unknown as HostNode);
 
 	const directRoot = mockNode("root");
 	const mount = direct(<ul class="l"><li>{v()}</li><li>x</li></ul>);
@@ -457,7 +457,7 @@ test "For reorder through direct matches tree" {
 
 	const treeRoot = mockNode("root");
 	const tv: NeonNode = element(<ul><For each={items()}>{(item: number, i: () => number): NeonNode => element(<li>{item.toString()}</li>)}</For></ul>);
-	renderToHost(tv, host, treeRoot as unknown as HostNode);
+	render(tv, host, treeRoot as unknown as HostNode);
 
 	const directRoot = mockNode("root");
 	const mount = direct(<ul><For each={items()}>{(item: number, i: () => number): NeonNode => element(<li>{item.toString()}</li>)}</For></ul>);
@@ -479,7 +479,7 @@ test "a && <X/> through direct matches tree" {
 	const host = mockHost();
 	const treeRoot = mockNode("root");
 	const tv: NeonNode = element(<div><p>a</p>{on && <span>yes</span>}<p>z</p></div>);
-	renderToHost(tv, host, treeRoot as unknown as HostNode);
+	render(tv, host, treeRoot as unknown as HostNode);
 	const directRoot = mockNode("root");
 	const mount = direct(<div><p>a</p>{on && <span>yes</span>}<p>z</p></div>);
 	mount(host, directRoot as unknown as HostNode, null);
@@ -497,7 +497,7 @@ test "c ? <A/> : <B/> through direct matches tree" {
 	const host = mockHost();
 	const treeRoot = mockNode("root");
 	const tv: NeonNode = element(<div>{on ? <span>yes</span> : <b>no</b>}</div>);
-	renderToHost(tv, host, treeRoot as unknown as HostNode);
+	render(tv, host, treeRoot as unknown as HostNode);
 	const directRoot = mockNode("root");
 	const mount = direct(<div>{on ? <span>yes</span> : <b>no</b>}</div>);
 	mount(host, directRoot as unknown as HostNode, null);
@@ -513,7 +513,7 @@ test "xs.map(row) through direct matches tree" {
 	const host = mockHost();
 	const treeRoot = mockNode("root");
 	const tv: NeonNode = element(<ul>{items.map((n: number): NeonNode => element(<li>{n.toString()}</li>))}</ul>);
-	renderToHost(tv, host, treeRoot as unknown as HostNode);
+	render(tv, host, treeRoot as unknown as HostNode);
 	const directRoot = mockNode("root");
 	const mount = direct(<ul>{items.map((n: number): NeonNode => element(<li>{n.toString()}</li>))}</ul>);
 	mount(host, directRoot as unknown as HostNode, null);
@@ -536,7 +536,7 @@ test "a bare accessor attribute and child through direct match tree" {
 	const host = mockHost();
 	const treeRoot = mockNode("root");
 	const tv: NeonNode = element(<p class={l}>{l}</p>);
-	renderToHost(tv, host, treeRoot as unknown as HostNode);
+	render(tv, host, treeRoot as unknown as HostNode);
 	const directRoot = mockNode("root");
 	const mount = direct(<p class={l}>{l}</p>);
 	mount(host, directRoot as unknown as HostNode, null);
@@ -551,7 +551,7 @@ test "an accessor operand, a bare child and an accessor prop beside a component 
 	const host = mockHost();
 	const treeRoot = mockNode("root");
 	const tv: NeonNode = element(<div title={(n * 2).toString()}>{l}<BareTag label={l} /></div>);
-	renderToHost(tv, host, treeRoot as unknown as HostNode);
+	render(tv, host, treeRoot as unknown as HostNode);
 	const directRoot = mockNode("root");
 	const mount = direct(<div title={(n * 2).toString()}>{l}<BareTag label={l} /></div>);
 	mount(host, directRoot as unknown as HostNode, null);
@@ -577,7 +577,7 @@ test "static attr, static text, event and ref beside a component through direct 
 
 	const treeRoot = mockNode("root");
 	const tv: NeonNode = element(<div id="top" class="c"><Gauge count={n()} label="g" /><button type="button" onPress={treeBump} ref={treeGrab}>go</button><p>tail</p></div>);
-	renderToHost(tv, host, treeRoot as unknown as HostNode);
+	render(tv, host, treeRoot as unknown as HostNode);
 
 	const directRoot = mockNode("root");
 	const mount = direct(<div id="top" class="c"><Gauge count={n()} label="g" /><button type="button" onPress={directBump} ref={directGrab}>go</button><p>tail</p></div>);
@@ -603,7 +603,7 @@ test "onChangeText beside a component hands the handler the text on both emissio
 
 	const treeRoot = mockNode("root");
 	let treeText = "";
-	renderToHost(element(<div><Gauge count={n()} label="g" /><input onChangeText={(t: string): void => { treeText = t; }} /></div>), host, treeRoot as unknown as HostNode);
+	render(element(<div><Gauge count={n()} label="g" /><input onChangeText={(t: string): void => { treeText = t; }} /></div>), host, treeRoot as unknown as HostNode);
 
 	const directRoot = mockNode("root");
 	let directText = "";
@@ -627,7 +627,7 @@ test "a ternary with a null arm through direct matches tree, either way round" {
 
 	const treeRoot = mockNode("root");
 	const tv: NeonNode = element(<div>{on ? <span>yes</span> : null}<p>m</p>{on ? null : <b>no</b>}</div>);
-	renderToHost(tv, host, treeRoot as unknown as HostNode);
+	render(tv, host, treeRoot as unknown as HostNode);
 
 	const directRoot = mockNode("root");
 	const mount = direct(<div>{on ? <span>yes</span> : null}<p>m</p>{on ? null : <b>no</b>}</div>);
@@ -657,7 +657,7 @@ test "a whole-style call through direct tracks the signal like tree — template
 
 	const treeRoot = mockNode("root");
 	const tv: NeonNode = element(<div style={s()}><p>a</p></div>);
-	renderToHost(tv, host, treeRoot as unknown as HostNode);
+	render(tv, host, treeRoot as unknown as HostNode);
 
 	const directRoot = mockNode("root");
 	const mount = direct(<div style={s()}><p>a</p></div>);
@@ -679,7 +679,7 @@ test "a whole-style call through direct tracks the signal like tree — flat tie
 
 	const treeRoot = mockNode("root");
 	const tv: NeonNode = element(<div style={s()}><Gauge count={n()} label="g" /></div>);
-	renderToHost(tv, host, treeRoot as unknown as HostNode);
+	render(tv, host, treeRoot as unknown as HostNode);
 
 	const directRoot = mockNode("root");
 	const mount = direct(<div style={s()}><Gauge count={n()} label="g" /></div>);
@@ -702,7 +702,7 @@ test "an accessor-typed style and a ternary style through direct track the signa
 
 	const treeRoot = mockNode("root");
 	const tv: NeonNode = element(<div><p style={memoStyle}>a</p><p style={pad() > 15 ? big : small}>b</p><Gauge count={n()} label="g" /></div>);
-	renderToHost(tv, host, treeRoot as unknown as HostNode);
+	render(tv, host, treeRoot as unknown as HostNode);
 
 	const directRoot = mockNode("root");
 	const mount = direct(<div><p style={memoStyle}>a</p><p style={pad() > 15 ? big : small}>b</p><Gauge count={n()} label="g" /></div>);
@@ -727,7 +727,7 @@ test "reactive style fields through direct track their signals like tree — tem
 
 	const treeRoot = mockNode("root");
 	const tv: NeonNode = element(<div style={{ padding: w(), height: n() * 10, margin: 4 }}><p>a</p></div>);
-	renderToHost(tv, host, treeRoot as unknown as HostNode);
+	render(tv, host, treeRoot as unknown as HostNode);
 
 	const directRoot = mockNode("root");
 	const mount = direct(<div style={{ padding: w(), height: n() * 10, margin: 4 }}><p>a</p></div>);
@@ -750,7 +750,7 @@ test "a ternary style field and a bare accessor field through direct track the s
 
 	const treeRoot = mockNode("root");
 	const tv: NeonNode = element(<div><p style={{ margin: pad() > 15 ? 2 : 1 }}>a</p><p style={{ padding: pad }}>b</p><Gauge count={n()} label="g" /></div>);
-	renderToHost(tv, host, treeRoot as unknown as HostNode);
+	render(tv, host, treeRoot as unknown as HostNode);
 
 	const directRoot = mockNode("root");
 	const mount = direct(<div><p style={{ margin: pad() > 15 ? 2 : 1 }}>a</p><p style={{ padding: pad }}>b</p><Gauge count={n()} label="g" /></div>);
@@ -772,7 +772,7 @@ test "a bare accessor style field through direct — template tier" {
 
 	const treeRoot = mockNode("root");
 	const tv: NeonNode = element(<div style={{ padding: w }}><p>a</p></div>);
-	renderToHost(tv, host, treeRoot as unknown as HostNode);
+	render(tv, host, treeRoot as unknown as HostNode);
 
 	const directRoot = mockNode("root");
 	const mount = direct(<div style={{ padding: w }}><p>a</p></div>);
@@ -803,7 +803,7 @@ test "an all-static style object through direct lands as one constant on both ti
 
 	const treeRoot = mockNode("root");
 	const tv: NeonNode = element(<div style={{ width: 200, height: 120 }}><p style={{ margin: 3, color: "red" }}>a</p><Gauge count={n()} label="g" /></div>);
-	renderToHost(tv, host, treeRoot as unknown as HostNode);
+	render(tv, host, treeRoot as unknown as HostNode);
 
 	const directRoot = mockNode("root");
 	const mount = direct(<div style={{ width: 200, height: 120 }}><p style={{ margin: 3, color: "red" }}>a</p><Gauge count={n()} label="g" /></div>);
@@ -822,7 +822,7 @@ test "an all-static style object through direct — template tier" {
 	const host = mockHost();
 	const treeRoot = mockNode("root");
 	const tv: NeonNode = element(<div style={{ padding: 5 }}><p>a</p></div>);
-	renderToHost(tv, host, treeRoot as unknown as HostNode);
+	render(tv, host, treeRoot as unknown as HostNode);
 	const directRoot = mockNode("root");
 	const mount = direct(<div style={{ padding: 5 }}><p>a</p></div>);
 	mount(host, directRoot as unknown as HostNode, null);
@@ -836,7 +836,7 @@ test "all-literal style layers merge at expansion through direct like tree — t
 	const host = mockHost();
 	const treeRoot = mockNode("root");
 	const tv: NeonNode = element(<div style={[{ width: 200, height: 120 }, { height: 20 }]}><p>a</p></div>);
-	renderToHost(tv, host, treeRoot as unknown as HostNode);
+	render(tv, host, treeRoot as unknown as HostNode);
 	const directRoot = mockNode("root");
 	const mount = direct(<div style={[{ width: 200, height: 120 }, { height: 20 }]}><p>a</p></div>);
 	mount(host, directRoot as unknown as HostNode, null);
@@ -849,7 +849,7 @@ test "a null field in a later literal layer keeps the earlier value through dire
 	const host = mockHost();
 	const treeRoot = mockNode("root");
 	const tv: NeonNode = element(<div style={[{ width: 1, height: 5 }, { height: null }, { width: 3 }]}><Gauge count={n()} label="g" /></div>);
-	renderToHost(tv, host, treeRoot as unknown as HostNode);
+	render(tv, host, treeRoot as unknown as HostNode);
 	const directRoot = mockNode("root");
 	const mount = direct(<div style={[{ width: 1, height: 5 }, { height: null }, { width: 3 }]}><Gauge count={n()} label="g" /></div>);
 	mount(host, directRoot as unknown as HostNode, null);
@@ -862,7 +862,7 @@ test "a sheet layer under a literal override goes through layerStyles on direct 
 	const host = mockHost();
 	const treeRoot = mockNode("root");
 	const tv: NeonNode = element(<div style={[layerSheet.box, { height: 20 }]}><p>a</p></div>);
-	renderToHost(tv, host, treeRoot as unknown as HostNode);
+	render(tv, host, treeRoot as unknown as HostNode);
 	const directRoot = mockNode("root");
 	const mount = direct(<div style={[layerSheet.box, { height: 20 }]}><p>a</p></div>);
 	mount(host, directRoot as unknown as HostNode, null);
@@ -875,7 +875,7 @@ test "two sheet layers go through layerStyles on direct like tree — flat tier"
 	const host = mockHost();
 	const treeRoot = mockNode("root");
 	const tv: NeonNode = element(<div style={[layerSheet.box, layerSheet.row]}><Gauge count={n()} label="g" /></div>);
-	renderToHost(tv, host, treeRoot as unknown as HostNode);
+	render(tv, host, treeRoot as unknown as HostNode);
 	const directRoot = mockNode("root");
 	const mount = direct(<div style={[layerSheet.box, layerSheet.row]}><Gauge count={n()} label="g" /></div>);
 	mount(host, directRoot as unknown as HostNode, null);
@@ -899,7 +899,7 @@ test "a static sheet entry through direct takes the class route like tree — te
 	const host = cssHost();
 	const treeRoot = mockNode("root");
 	const tv: NeonNode = element(<div style={dsheet.box}><p>a</p></div>);
-	renderToHost(tv, host, treeRoot as unknown as HostNode);
+	render(tv, host, treeRoot as unknown as HostNode);
 	const directRoot = mockNode("root");
 	const mount = direct(<div style={dsheet.box}><p>a</p></div>);
 	mount(host, directRoot as unknown as HostNode, null);
@@ -923,7 +923,7 @@ test "a static sheet entry through direct takes the class route like tree — fl
 	const host = cssHost();
 	const treeRoot = mockNode("root");
 	const tv: NeonNode = element(<div style={dsheet.box}><Gauge count={n()} label="g" /></div>);
-	renderToHost(tv, host, treeRoot as unknown as HostNode);
+	render(tv, host, treeRoot as unknown as HostNode);
 	const directRoot = mockNode("root");
 	const mount = direct(<div style={dsheet.box}><Gauge count={n()} label="g" /></div>);
 	mount(host, directRoot as unknown as HostNode, null);
@@ -946,7 +946,7 @@ test "a static node child through direct mounts like tree" {
 	const kid: NeonNode = element(<b>k</b>);
 	const treeRoot = mockNode("root");
 	const tv: NeonNode = element(<div><p>a</p>{kid}<p>z</p></div>);
-	renderToHost(tv, host, treeRoot as unknown as HostNode);
+	render(tv, host, treeRoot as unknown as HostNode);
 	const directRoot = mockNode("root");
 	const kid2: NeonNode = element(<b>k</b>);
 	const mount = direct(<div><p>a</p>{kid2}<p>z</p></div>);
@@ -983,7 +983,7 @@ test "layerStyles over a reactive layer as a whole-style expression tracks the s
 	const host = mockHost();
 	const treeRoot = mockNode("root");
 	const tv: NeonNode = element(<div style={layerStyles([layerSheet.box, pick()])}><p>a</p></div>);
-	renderToHost(tv, host, treeRoot as unknown as HostNode);
+	render(tv, host, treeRoot as unknown as HostNode);
 	const directRoot = mockNode("root");
 	const mount = direct(<div style={layerStyles([layerSheet.box, pick()])}><p>a</p></div>);
 	mount(host, directRoot as unknown as HostNode, null);
@@ -1008,12 +1008,12 @@ test "whitespace around a starter tag's single element child wraps like the flat
 	const host = mockHost();
 	const flatRoot = mockNode("root");
 	const flat: NeonNode = element(<div><View><p>a</p></View></div>);
-	renderToHost(flat, host, flatRoot as unknown as HostNode);
+	render(flat, host, flatRoot as unknown as HostNode);
 	const treeRoot = mockNode("root");
 	const tv: NeonNode = element(<div><View>
 		<p>a</p>
 	</View></div>);
-	renderToHost(tv, host, treeRoot as unknown as HostNode);
+	render(tv, host, treeRoot as unknown as HostNode);
 	const directRoot = mockNode("root");
 	const mount = direct(<div><View>
 		<p>a</p>
@@ -1029,12 +1029,12 @@ test "whitespace around a starter tag's single expression child stays reactive t
 	const host = mockHost();
 	const flatRoot = mockNode("root");
 	const flat: NeonNode = element(<div><View>{n()}</View></div>);
-	renderToHost(flat, host, flatRoot as unknown as HostNode);
+	render(flat, host, flatRoot as unknown as HostNode);
 	const treeRoot = mockNode("root");
 	const tv: NeonNode = element(<div><View>
 		{n()}
 	</View></div>);
-	renderToHost(tv, host, treeRoot as unknown as HostNode);
+	render(tv, host, treeRoot as unknown as HostNode);
 	const directRoot = mockNode("root");
 	const mount = direct(<div><View>
 		{n()}
@@ -1052,12 +1052,12 @@ test "whitespace around a NeonNode-children component's single element child pas
 	const host = mockHost();
 	const flatRoot = mockNode("root");
 	const flat: NeonNode = element(<div><Card title="t"><p>a</p></Card></div>);
-	renderToHost(flat, host, flatRoot as unknown as HostNode);
+	render(flat, host, flatRoot as unknown as HostNode);
 	const treeRoot = mockNode("root");
 	const tv: NeonNode = element(<div><Card title="t">
 		<p>a</p>
 	</Card></div>);
-	renderToHost(tv, host, treeRoot as unknown as HostNode);
+	render(tv, host, treeRoot as unknown as HostNode);
 	const directRoot = mockNode("root");
 	const mount = direct(<div><Card title="t">
 		<p>a</p>
@@ -1082,7 +1082,7 @@ test "null on*/ref/style through direct attach nothing, like the bare element �
 	const host = mockHost();
 	const treeRoot = mockNode("root");
 	const tv: NeonNode = element(<div><button type="button">go</button><p>x</p></div>);
-	renderToHost(tv, host, treeRoot as unknown as HostNode);
+	render(tv, host, treeRoot as unknown as HostNode);
 
 	const directRoot = mockNode("root");
 	optTemplate(null, null, null, null)(host, directRoot as unknown as HostNode, null);
@@ -1111,7 +1111,7 @@ test "present on*/ref/style through a nullable type behave like tree — templat
 
 	const treeRoot = mockNode("root");
 	const tv: NeonNode = element(<div><button type="button" onPress={treeBump} ref={treeGrab} style={fixed}>go</button><p style={live}>x</p></div>);
-	renderToHost(tv, host, treeRoot as unknown as HostNode);
+	render(tv, host, treeRoot as unknown as HostNode);
 
 	const directRoot = mockNode("root");
 	optTemplate(directBump, directGrab, fixed, live)(host, directRoot as unknown as HostNode, null);
@@ -1133,7 +1133,7 @@ test "null on*/ref/style through direct attach nothing — flat tier" {
 	const host = mockHost();
 	const treeRoot = mockNode("root");
 	const tv: NeonNode = element(<div><Gauge count={1} label="g" /><button type="button">go</button><p>x</p></div>);
-	renderToHost(tv, host, treeRoot as unknown as HostNode);
+	render(tv, host, treeRoot as unknown as HostNode);
 
 	const directRoot = mockNode("root");
 	optFlat(null, null, null, null)(host, directRoot as unknown as HostNode, null);
@@ -1161,7 +1161,7 @@ test "present on*/ref/style through a nullable type behave like tree — flat ti
 
 	const treeRoot = mockNode("root");
 	const tv: NeonNode = element(<div><Gauge count={1} label="g" /><button type="button" onPress={treeBump} ref={treeGrab} style={fixed}>go</button><p style={live}>x</p></div>);
-	renderToHost(tv, host, treeRoot as unknown as HostNode);
+	render(tv, host, treeRoot as unknown as HostNode);
 
 	const directRoot = mockNode("root");
 	optFlat(directBump, directGrab, fixed, live)(host, directRoot as unknown as HostNode, null);

@@ -5,7 +5,7 @@
 import { createSignal } from "../../src/core/signal";
 import { el, attr, evt, text, dynText } from "../../src/render/node";
 import { element } from "../../src/macros/ui/element";
-import { renderToHost, HostNode } from "../../src/render/host";
+import { render, HostNode } from "../../src/render/host";
 import { createVoidHost, layoutPass, parseFlexStyle, DrawKind, Node2D } from "../../src/platform/void/host";
 import { Style } from "../../src/render/style";
 import { HOST_MOVE_CONTRACT, RECONCILE_CONTRACT, hostMoveContract, reconcileContract } from "../render/hostContract";
@@ -19,7 +19,7 @@ test "counter renders into Node2D tree with parsed flex styles" {
 		</div>
 	);
 	const vh = createVoidHost();
-	renderToHost(app, vh.host, vh.root as unknown as HostNode);
+	render(app, vh.host, vh.root as unknown as HostNode);
 
 	assert vh.root.children.length === 1, "root has the div";
 	const div = vh.root.children[0];
@@ -54,7 +54,7 @@ test "clickAt hits the button and reactive text updates" {
 		</div>
 	);
 	const vh = createVoidHost();
-	renderToHost(app, vh.host, vh.root as unknown as HostNode);
+	render(app, vh.host, vh.root as unknown as HostNode);
 	const div = vh.root.children[0];
 	layoutPass(div, 200.0, 120.0);
 

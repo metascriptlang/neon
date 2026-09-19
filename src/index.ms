@@ -11,7 +11,7 @@ export { mapArray, indexArray } from "./core/array";
 export { Dispose } from "./core/types";
 
 export { Host, HostNode, NeonNode } from "./render/hostTypes";
-export { renderToHost } from "./render/host";
+export { render } from "./render/host";
 export { renderToString } from "./render/ssr";
 export { createComponent } from "./render/component";
 export { Context, ProviderProps, createContext, useContext } from "./render/context";

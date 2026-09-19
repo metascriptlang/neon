@@ -10,7 +10,7 @@
 // this assertion is the thing that catches the two drifting apart.
 
 import { NeonNode } from "../../src/render/node";
-import { mockHost, mockNode, renderToHost, MockNode, Host, HostNode } from "../../src/render/host";
+import { mockHost, mockNode, render, MockNode, Host, HostNode } from "../../src/render/host";
 import { createStyles, styleOf } from "../../src/macros/ui/style";
 import { registerCss, collectCss, resetCss, cssRuleCount } from "../../src/render/sheet";
 
@@ -31,7 +31,7 @@ function cssHost(): Host {
 
 function mountOne(node: NeonNode, host: Host): MockNode {
 	const root = mockNode("root");
-	renderToHost(node, host, root as unknown as HostNode);
+	render(node, host, root as unknown as HostNode);
 	return root.children[0];
 }
 

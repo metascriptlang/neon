@@ -1,6 +1,6 @@
 import { createSignal } from "../src/core/signal";
 import { element } from "../src/macros/ui/element";
-import { renderToHost } from "../src/render/host";
+import { render } from "../src/render/host";
 import { domHost, documentBody } from "../src/platform/browser/dom";
 import { View, Text, Pressable } from "../src/components/primitives";
 
@@ -17,4 +17,4 @@ const view = <View class="card">
 	</View>
 </View>;
 
-renderToHost(element(view), domHost(), documentBody());
+render(element(view), domHost(), documentBody());

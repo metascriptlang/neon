@@ -11,7 +11,7 @@
 // Text attrs: color, bold, dim, italic, underline
 //
 // This is the terminal equivalent of the browser engine's layout + paint pass.
-// Called after renderToHost builds the TerminalNode tree, and again on every
+// Called after render builds the TerminalNode tree, and again on every
 // reactive update (dirty nodes).
 
 import { TerminalNode, TerminalStyle } from "./types";

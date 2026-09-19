@@ -10,7 +10,7 @@
 // re-exports them: prelude injection puts them in scope of every file.
 
 import { Node, NodeKind } from "std/meta";
-import { Host, HostNode, NeonNode } from "./render/hostTypes";
+import { NeonNode } from "./render/hostTypes";
 
 export { element } from "./macros/ui/element";
 export { direct } from "./macros/ui/direct";
@@ -19,15 +19,11 @@ export { renderToString } from "./render/ssr";
 export { createComponent } from "./render/component";
 export { Accessor, accessor } from "./core/signal";
 export { Template, createTemplate, instantiate, mountTemplate, childOf, siblingOf } from "./render/template";
-export { renderToHost, bindText, bindAttr, writeAttr, bindStyleAll, bindStyleProp, applyStaticStyle, applyRef } from "./render/host";
+export { render, bindText, bindAttr, writeAttr, bindStyleAll, bindStyleProp, applyStaticStyle, applyRef } from "./render/host";
 export { Row, makeRow, rowOf, place, mountAt, moveRow, removeRow, reconcileArrays } from "./render/reconcile";
 export { Host, HostNode, NeonNode } from "./render/hostTypes";
 export { Style, StyleValue, emptyStyle, mergeStyle, layerStyles } from "./render/style";
 
 export converter jsxToNode(n: Node): NeonNode {
 	return { kind: NodeKind.MacroInvocation, line: n.line, column: n.column, macroName: "element", macroArgs: [n] };
-}
-
-export function render(node: NeonNode, host: Host, parent: HostNode): void {
-	node(host, parent, null);
 }

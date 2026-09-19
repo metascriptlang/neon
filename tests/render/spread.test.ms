@@ -12,7 +12,7 @@ import { element } from "../../src/macros/ui/element";
 import { direct } from "../../src/macros/ui/direct";
 import { Show } from "../../src/macros/ui/flow";
 import { NeonEvent } from "../../src/render/event";
-import { renderToHost, mockHost, mockNode, mockToString, fireEvent, HostNode } from "../../src/render/host";
+import { render, mockHost, mockNode, mockToString, fireEvent, HostNode } from "../../src/render/host";
 
 interface Attrs {
 	id: string;
@@ -43,7 +43,7 @@ test "a spread inside a container element expands the same way" {
 	const n: NeonNode = element(<div>{flag ? <span {...p}>hi</span> : null}</div>);
 	const host = mockHost();
 	const root = mockNode("root");
-	renderToHost(n, host, root as unknown as HostNode);
+	render(n, host, root as unknown as HostNode);
 	assert mockToString(root.children[0]) === "<div><span id=\"x\">hi</span></div>", "nested spread expands";
 }
 
@@ -80,7 +80,7 @@ test "a null field removes an attribute already written by an earlier prop" {
 	}
 	const host = mockHost();
 	const root = mockNode("root");
-	renderToHost(view({ id: "x", title: null }), host, root as unknown as HostNode);
+	render(view({ id: "x", title: null }), host, root as unknown as HostNode);
 	assert mockToString(root.children[0]) === "<div id=\"x\">hi</div>", "null erases the earlier title";
 }
 
@@ -102,7 +102,7 @@ test "an on* field becomes an event" {
 	}
 	const host = mockHost();
 	const root = mockNode("root");
-	renderToHost(view({ onPress: (e: NeonEvent) => { hits = hits + 1; } }), host, root as unknown as HostNode);
+	render(view({ onPress: (e: NeonEvent) => { hits = hits + 1; } }), host, root as unknown as HostNode);
 	fireEvent(root.children[0], "onPress");
 	assert hits === 1, "spread handler fired";
 }

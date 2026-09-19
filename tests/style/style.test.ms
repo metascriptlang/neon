@@ -4,7 +4,7 @@
 
 import { element } from "../../src/macros/ui/element";
 import { NeonNode, el, attr, evt, text, dynText } from "../../src/render/node";
-import { renderToHost, HostNode } from "../../src/render/host";
+import { render, HostNode } from "../../src/render/host";
 import { createVoidHost, layoutPass } from "../../src/platform/void/host";
 import { createStyles, styleOf } from "../../src/macros/ui/style";
 
@@ -22,7 +22,7 @@ test "typed style sheet drives void layout" {
 		</div>
 	);
 	const vh = createVoidHost();
-	renderToHost(app, vh.host, vh.root as unknown as HostNode);
+	render(app, vh.host, vh.root as unknown as HostNode);
 
 	const div = vh.root.children[0];
 	assert div.children.length === 2, "div has p + button";
@@ -42,7 +42,7 @@ test "typed style sheet drives void layout" {
 test "legacy string style attr still works" {
 	const app = element(<div style="width:50;height:10"></div>);
 	const vh = createVoidHost();
-	renderToHost(app, vh.host, vh.root as unknown as HostNode);
+	render(app, vh.host, vh.root as unknown as HostNode);
 
 	const div = vh.root.children[0];
 	assert div.layoutStyle !== null, "string style still parsed";
@@ -53,7 +53,7 @@ test "legacy string style attr still works" {
 test "inline style literal routes through the typed channel" {
 	const app = element(<div style={{ width: 40, height: 10 }}></div>);
 	const vh = createVoidHost();
-	renderToHost(app, vh.host, vh.root as unknown as HostNode);
+	render(app, vh.host, vh.root as unknown as HostNode);
 	const div = vh.root.children[0];
 	assert div.layoutStyle !== null, "inline literal projected";
 	layoutPass(div, 40.0, 10.0);
@@ -62,9 +62,9 @@ test "inline style literal routes through the typed channel" {
 
 test "a style prop attaches a Style to the node" {
 	const styled = createVoidHost();
-	renderToHost(<div style={sheet.btn}></div>, styled.host, styled.root as unknown as HostNode);
+	render(<div style={sheet.btn}></div>, styled.host, styled.root as unknown as HostNode);
 	assert styled.root.children[0].layoutStyle !== null, "the host received the style";
 	const plain = createVoidHost();
-	renderToHost(<div></div>, plain.host, plain.root as unknown as HostNode);
+	render(<div></div>, plain.host, plain.root as unknown as HostNode);
 	assert plain.root.children[0].layoutStyle === null, "an element with no style prop carries none";
 }

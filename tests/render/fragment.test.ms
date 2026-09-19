@@ -1,6 +1,6 @@
 import { NeonNode } from "../../src/render/node";
 import { renderToString } from "../../src/render/ssr";
-import { MockNode, mockHost, renderToHost, mockToString } from "../../src/render/host";
+import { MockNode, mockHost, render, mockToString } from "../../src/render/host";
 import { element } from "../../src/macros/ui/element";
 import { direct } from "../../src/macros/ui/direct";
 import { View, Text } from "../../src/components/primitives";
@@ -30,7 +30,7 @@ test "a top-level fragment renders every root" {
 test "a top-level fragment mounts as siblings under one parent" {
 	const host = mockHost();
 	const root = host.createElement("root");
-	renderToHost(element(<><p>a</p><p>b</p></>), host, root);
+	render(element(<><p>a</p><p>b</p></>), host, root);
 	const r = root as unknown as MockNode;
 	assert r.children.length === 2, "two roots appended";
 	assert mockToString(r.children[0]) === "<p>a</p>", "first root";
@@ -47,7 +47,7 @@ test "a component may return a fragment" {
 	assert renderToString(v) === "<div><p>r1</p><p>r2</p></div>", "server render";
 	const host = mockHost();
 	const root = host.createElement("root");
-	renderToHost(element(<div><Pair label="x" /></div>), host, root);
+	render(element(<div><Pair label="x" /></div>), host, root);
 	assert mockToString((root as unknown as MockNode).children[0]) === "<div><p>r1</p><p>r2</p></div>", "mount";
 }
 
@@ -56,7 +56,7 @@ test "a top-level fragment keeps its children reactive" {
 		const [n, setN] = createSignal(1);
 		const host = mockHost();
 		const root = host.createElement("root");
-		renderToHost(element(<><p>{n() + ""}</p><span>fixed</span></>), host, root);
+		render(element(<><p>{n() + ""}</p><span>fixed</span></>), host, root);
 		const r = root as unknown as MockNode;
 		assert r.children.length === 2, "two roots";
 		assert mockToString(r.children[0]) === "<p>1</p>", "initial";
@@ -71,7 +71,7 @@ test "an empty fragment contributes no child" {
 	assert renderToString(element(<div><></></div>)) === "<div></div>", "erased at compile time";
 	const host = mockHost();
 	const root = host.createElement("root");
-	renderToHost(element(<div><></></div>), host, root);
+	render(element(<div><></></div>), host, root);
 	assert (root as unknown as MockNode).children[0].children.length === 0, "no placeholder mounted";
 }
 
@@ -79,7 +79,7 @@ test "a bare empty fragment at the root mounts nothing" {
 	assert renderToString(element(<></>)) === "", "renders nothing";
 	const host = mockHost();
 	const root = host.createElement("root");
-	renderToHost(element(<></>), host, root);
+	render(element(<></>), host, root);
 	assert (root as unknown as MockNode).children.length === 0, "no placeholder, matching Solid's empty array";
 }
 
@@ -88,7 +88,7 @@ test "a fragment carries text and reactive children" {
 		const [n, setN] = createSignal(1);
 		const host = mockHost();
 		const root = host.createElement("root");
-		renderToHost(element(<div><>hi <p>{n() + ""}</p></></div>), host, root);
+		render(element(<div><>hi <p>{n() + ""}</p></></div>), host, root);
 		const box = (root as unknown as MockNode).children[0];
 		assert mockToString(box) === "<div>hi <p>1</p></div>", "initial";
 		setN(2);
@@ -100,7 +100,7 @@ test "a fragment carries text and reactive children" {
 test "a fragment child flattens the same under direct emission" {
 	const host = mockHost();
 	const treeRoot = host.createElement("root");
-	renderToHost(element(<div><><p>a</p><p>b</p></></div>), host, treeRoot);
+	render(element(<div><><p>a</p><p>b</p></></div>), host, treeRoot);
 	const directRoot = host.createElement("root");
 	const mount = direct(<div><><p>a</p><p>b</p></></div>);
 	mount(host, directRoot, null);
@@ -112,7 +112,7 @@ test "a fragment child flattens the same under direct emission" {
 test "nested fragments flatten the same under direct emission" {
 	const host = mockHost();
 	const treeRoot = host.createElement("root");
-	renderToHost(element(<div><><p>a</p><><p>b</p><p>c</p></></></div>), host, treeRoot);
+	render(element(<div><><p>a</p><><p>b</p><p>c</p></></></div>), host, treeRoot);
 	const directRoot = host.createElement("root");
 	const mount = direct(<div><><p>a</p><><p>b</p><p>c</p></></></div>);
 	mount(host, directRoot, null);
@@ -132,7 +132,7 @@ test "an empty fragment is erased under direct emission too" {
 test "a fragment inside a component tag flattens under direct emission" {
 	const host = mockHost();
 	const treeRoot = host.createElement("root");
-	renderToHost(element(<View><><Text>a</Text><Text>b</Text></></View>), host, treeRoot);
+	render(element(<View><><Text>a</Text><Text>b</Text></></View>), host, treeRoot);
 	const directRoot = host.createElement("root");
 	const mount = direct(<View><><Text>a</Text><Text>b</Text></></View>);
 	mount(host, directRoot, null);
@@ -146,7 +146,7 @@ test "a flattened fragment child stays reactive under direct emission" {
 		const [n, setN] = createSignal(1);
 		const host = mockHost();
 		const treeRoot = host.createElement("root");
-		renderToHost(element(<div><>hi <p>{n() + ""}</p></></div>), host, treeRoot);
+		render(element(<div><>hi <p>{n() + ""}</p></></div>), host, treeRoot);
 		const directRoot = host.createElement("root");
 		const mount = direct(<div><>hi <p>{n() + ""}</p></></div>);
 		mount(host, directRoot, null);
@@ -163,7 +163,7 @@ test "a flattened fragment child stays reactive under direct emission" {
 test "a component that returns a fragment mounts under direct emission" {
 	const host = mockHost();
 	const treeRoot = host.createElement("root");
-	renderToHost(element(<div><Pair label="x" /></div>), host, treeRoot);
+	render(element(<div><Pair label="x" /></div>), host, treeRoot);
 	const directRoot = host.createElement("root");
 	const mount = direct(<div><Pair label="x" /></div>);
 	mount(host, directRoot, null);
@@ -182,7 +182,7 @@ test "a fragment row moves and leaves as one span" {
 		const [items, setItems] = createSignal<string[]>(["a", "b", "c"]);
 		const host = mockHost();
 		const root = host.createElement("root");
-		renderToHost(<ul><For each={items()}>{(item: string, i: Accessor<number>): NeonNode => <><dt>{item}</dt><dd>{item + "!"}</dd></>}</For></ul>, host, root);
+		render(<ul><For each={items()}>{(item: string, i: Accessor<number>): NeonNode => <><dt>{item}</dt><dd>{item + "!"}</dd></>}</For></ul>, host, root);
 		const first = mockToString(root as unknown as MockNode);
 		assert first === "<root><ul><dt>a</dt><dd>a!</dd><dt>b</dt><dd>b!</dd><dt>c</dt><dd>c!</dd></ul></root>", "initial: " + first;
 		setItems(["c", "a", "b"]);
@@ -201,7 +201,7 @@ test "a row that opens with a closed region still moves with its span" {
 		const [open, setOpen] = createSignal(false);
 		const host = mockHost();
 		const root = host.createElement("root");
-		renderToHost(<ul><For each={items()}>{(item: string, i: Accessor<number>): NeonNode => <><Gate open={open()} /><li>{item}</li></>}</For></ul>, host, root);
+		render(<ul><For each={items()}>{(item: string, i: Accessor<number>): NeonNode => <><Gate open={open()} /><li>{item}</li></>}</For></ul>, host, root);
 		setItems(["b", "a"]);
 		setOpen(true);
 		const shown = mockToString(root as unknown as MockNode);
