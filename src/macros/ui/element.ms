@@ -204,6 +204,28 @@ export macro element(node: Node): Node {
 		}
 		return false;
 	}
+	function isNumberTyped(n: Node): boolean {
+		const t = peelHidden(n).nodeType;
+		if (t === null) { return false; }
+		let payload: Node = t as Node;
+		if (payload.kind === NodeKind.TypeGeneric && payload.typExprArgs.length === 1) {
+			const base = payload.typExprBase;
+			if (base.kind === NodeKind.Identifier && base.name === "Accessor") { payload = payload.typExprArgs[0]; }
+		}
+		if (payload.kind !== NodeKind.Identifier) { return false; }
+		const name = payload.name;
+		return name === "number" || name === "float32" || name === "float64"
+			|| name === "int8" || name === "int16" || name === "int32" || name === "int64"
+			|| name === "uint8" || name === "uint16" || name === "uint32" || name === "uint64";
+	}
+	function asText(n: Node): Node {
+		if (!isNumberTyped(n)) { return n; }
+		return {
+			kind: NodeKind.CallExpr, line: n.line, column: n.column,
+			callee: { kind: NodeKind.MemberExpr, line: n.line, column: n.column, object: n, property: "toString", isOptional: false },
+			arguments: [],
+		};
+	}
 	function hostCall(recv: string, method: string, args: Node[], ln: int32, col: int32): Node {
 		return {
 			kind: NodeKind.CallExpr, line: ln, column: col,
@@ -772,7 +794,7 @@ export macro element(node: Node): Node {
 					if (c.kind === NodeKind.JSXExpressionContainer) {
 						wStmts.push({
 							kind: NodeKind.ExprStmt, line: c.line, column: c.column,
-							expr: !isReactiveExpr(c.jsxExpr) && !isAccessorTyped(c.jsxExpr) ? hostCall("host", "setText", [ident(curVar, c.line, c.column), c.jsxExpr], c.line, c.column) : {
+							expr: !isReactiveExpr(c.jsxExpr) && !isAccessorTyped(c.jsxExpr) ? hostCall("host", "setText", [ident(curVar, c.line, c.column), asText(c.jsxExpr)], c.line, c.column) : {
 								kind: NodeKind.CallExpr, line: c.line, column: c.column,
 								callee: ident("bindText", c.line, c.column),
 								arguments: [
@@ -781,7 +803,7 @@ export macro element(node: Node): Node {
 									{
 										kind: NodeKind.ArrowFunction, line: c.line, column: c.column,
 										arrowParams: [], arrowParamTypes: [], arrowFlags: "", arrowReturnType: "",
-										arrowBody: c.jsxExpr,
+										arrowBody: asText(c.jsxExpr),
 									},
 								],
 							},
@@ -885,7 +907,7 @@ export macro element(node: Node): Node {
 						expr: {
 							kind: NodeKind.CallExpr, line: c.line, column: c.column,
 							callee: ident("mountChild", c.line, c.column),
-							arguments: [ident("host", c.line, c.column), ident(parentVar, c.line, c.column), beforeArg, c.jsxExpr],
+							arguments: [ident("host", c.line, c.column), ident(parentVar, c.line, c.column), beforeArg, asText(c.jsxExpr)],
 						},
 					});
 					continue;
@@ -908,7 +930,7 @@ export macro element(node: Node): Node {
 							{
 								kind: NodeKind.ArrowFunction, line: c.line, column: c.column,
 								arrowParams: [], arrowParamTypes: [], arrowFlags: "", arrowReturnType: "",
-								arrowBody: c.jsxExpr,
+								arrowBody: asText(c.jsxExpr),
 							},
 						],
 					},
