@@ -285,6 +285,24 @@ test "For takes a named row function as its child" {
 	d1(); d2();
 }
 
+function orNone(maybe: NeonNode | null): NeonNode {
+	return element(<div>{maybe ?? <i>none</i>}</div>);
+}
+
+function orPair(maybe: NeonNode | null): NeonNode {
+	return element(<div>{maybe ?? <><p>a</p><p>b</p></>}<i>tail</i></div>);
+}
+
+test "a ?? <X/> child mounts the node when present and the JSX arm when null" {
+	const [none, d1] = mountedText(orNone(null));
+	assert none() === "<root><div><i>none</i></div></root>", "null: " + none();
+	const [some, d2] = mountedText(orNone(element(<b>x</b>)));
+	assert some() === "<root><div><b>x</b></div></root>", "present: " + some();
+	const [pair, d3] = mountedText(orPair(null));
+	assert pair() === "<root><div><p>a</p><p>b</p><i>tail</i></div></root>", "fragment arm: " + pair();
+	d1(); d2(); d3();
+}
+
 test "Show mounts its branch untracked" {
 	createRoot((d) => {
 		const [on, setOn] = createSignal(true);
