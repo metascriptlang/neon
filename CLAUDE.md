@@ -60,6 +60,6 @@ No `rm -rf out`: the object cache is fingerprint-keyed and correct; wiping it ma
 
 Neon follows the arc model of `~/.claude/CLAUDE.md` and lands with the plain-git recipe of `~/metascript/CLAUDE.md` §Arcs. What only neon adds:
 
-- A new worktree needs the yoga symlink: inside it, `mkdir deps && ln -s ../../yoga/deps/yoga deps/yoga`. Before `git worktree remove`, `unlink deps/yoga`.
+- `claude --worktree <name>` from this checkout creates or re-enters `../neon-wt-<name>` on `wt/<name>` with the `deps/yoga` symlink a worktree needs (`tools/worktreeHook.sh`, the WorktreeCreate hook). Removing it through Claude runs the WorktreeRemove hook, which refuses a worktree holding a dirty or untracked file, an ignored file outside `out/` and `deps/` (a probe), or a commit missing from `main`. By hand: `git worktree add -b wt/<name> ../neon-wt-<name> main`, then `mkdir deps && ln -s ../../yoga/deps/yoga deps/yoga`; `unlink deps/yoga` before `git worktree remove`.
 - **The gate is `bash tests/run.sh`, read by its exit code.** A commit runs the test files of the module it touches plus their importers; the full gate runs before a land that changes `src/` or a shared contract. One `msc` per directory at a time.
 - The SessionStart hook prints the card of the `wt/<name>` branch a session starts on and counts the notes in `~/metascript/.inbox/neon/`: notes from other repos about fixes that landed and sites to unpark. Read them first.
