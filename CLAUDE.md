@@ -17,7 +17,6 @@
 2. **MetaScript Dogfooding**: Stress-test compiler, find edge cases, drive language evolution
 
 **Why MetaScript over Nim**:
-- **Compiler Control**: We own MetaScript - can fix compiler bugs immediately
 - **Co-Evolution**: Neon findings improve MetaScript, MetaScript improvements benefit Neon
 - **TypeScript Syntax**: More approachable than Nim for web developers
 - **Three Backends**: C (native), JS (browser), Erlang (distributed) - vs Nim's two
