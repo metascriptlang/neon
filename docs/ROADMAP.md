@@ -32,7 +32,7 @@ stays; no React hook aliases.
 | 4 | props contract: every value prop is `Accessor<T>`; the macro wraps every value, literals too; one `propValueNode` replaces three copies | neon macros | |
 | 5 | `{a && <X/>}` / ternary / `.map` lower to `Show`/`For` through one `lowerJsxChild` | neon macros | |
 | 6 | error on an implicit accessor read at function-body time (`const d = count * 2`) | compiler | dropped 2026-09-14: with `valueOf` an alias keeps the accessor, and a body-time operand read is an ordinary one-time value |
-| 7 | real fragments: flatten in child position; multi-root at top level | neon | done 2026-09-15 (`msc test tests/render/fragment.test.ms` 308 C / 72 js, 5 of the new cells differential vs tree; `tests/macros/run.sh` rc=0) — tree emission 2026-09-13, direct emission 2026-09-15: same compile-time flatten, root fragment refused because a mount closure returns one `HostNode` |
+| 7 | real fragments: flatten in child position; multi-root at top level | neon | done 2026-09-15, root fragment and fragment rows 2026-09-19 with one NeonNode (`msc test tests/render/fragment.test.ms` rc=0 on C and `--target=js`; `tests/macros/run.sh` rc=0) — a fragment child is flattened at compile time, a root fragment places every root in front of `before`, a row may be a fragment; a fragment inside an expression is still a compile error |
 
 Emission is finished and needs nothing further: the tier is picked per JSX site at compile time, on
 every target, and no build flag or user-visible knob exists (`RENDER-MODEL.md` §Selection).
@@ -40,8 +40,7 @@ every target, and no build flag or user-visible knob exists (`RENDER-MODEL.md` �
 Phase 7 dropped `regionNode` from its own description: reading `insertExpression` in
 `dom-expressions/src/client.js` showed Solid reserves the effect + `reconcileArrays` path for arrays
 holding a FUNCTION, and appends a static array directly. A region for a static fragment applies the
-dynamic branch to a static value and breaks SSR (`renderToString` throws on regions). Detail and the
-refutation live in `BUGS.md` §7.
+dynamic branch to a static value. Detail and the refutation live in `BUGS.md` §7.
 
 ---
 
@@ -74,6 +73,19 @@ In rough priority order, once the above is standing:
 
 ## Recently done
 
+- **one NeonNode** (2026-09-19) — a JSX expression is `(host, parent, before) => void` on every
+  target: a function that puts the host nodes it owns into `parent`, in front of `before` (Svelte 5's
+  shape). The description tree, its walker, the second macro and the second boundary type are gone;
+  ONE macro picks the template tier or the flat tier per site, and component bodies, region rows,
+  root fragments and `renderToString` all go through it. `render` owns the mount in a root and returns
+  its dispose; `children` is always one NeonNode; the reconciler mounts a row at its final position
+  and never detaches a live one (`RENDER-MODEL.md`). Proved at `e93dcdb`: `bash tests/run.sh` —
+  macros 16, native 40, js 38 + 2 deliberate skips, browser 80/80 in real Chrome (in a worktree the
+  browser lane needs `NEON_PLAYWRIGHT` pointed at the main checkout's playwright). Measured
+  (`bench/nativeEmit.ms`, `RENDER-MODEL.md` §Gate): a component body mounts 2.3–2.7x faster, every row
+  1.6–2.0x faster than the tree, void not slower; against the retired per-site emitter, rows with
+  static attributes read up to 1.1 µs per mount slower on the no-clone mock host, unattributed and
+  inside the bench's noise. Still owed: `examples/counterDom.ms` waits on another session's edit.
 - **Pressable runs RN's gesture machine** (2026-09-03) — `onPressIn`/`onPressOut`/`onLongPress`
   ported from `Libraries/Pressability/Pressability.js`: long press at 500ms (`delayLongPress`
   overrides), a minimum 130ms held state so a fast tap still shows feedback, and RN's
@@ -122,26 +134,20 @@ In rough priority order, once the above is standing:
   site; recompiler bug118). Fn VALUES keep strict arity (BUGS.md §7 — annotate the decl). Sweep:
   C 28/28, JS 27/28; the one JS red is a PRE-EXISTING int64→number return-conversion drop
   (BUGS.md §2, A/B-proven against a self-built v0.2.52 control).
-- **the JSX boundary stopped being per-target** (2026-09-03) — `NeonView` is a mount closure
-  everywhere, `jsxToView` picks `direct` and `jsxToNode` picks `element`, and both `when (js)` blocks
-  (`render/host.ms`, `converters.ms`) are gone. This did **not** make everything direct-emitted: what
-  a site emits still depends on whether its SHAPE changes at run time, so regions, component bodies
-  and SSR stay tree-emitted on every target (`RENDER-MODEL.md` §Selection). Justified by the C-lane
-  measurement nobody had taken:
-  2.6-2.8x static, 2.0x half-dynamic, 1.5x all-dynamic (`probe/nativeEmit_q4m.ms`, release, min of 3
-  rounds × 3 runs), which refutes the "small — allocations only" prediction in `RENDER-MODEL.md`.
-  Two Neon bugs fell out and are fixed: `direct.ms` wrapped a component tag's JSX children in
-  `element(...)` — the exact thing `element.ms`'s own comment forbids, because it pre-picks tree
-  emission — and `direct.test.ms` typed its `For` row callbacks `NeonNode` where `For.children` is
-  `NeonView`. (The "27 files bad=0" sweep recorded here at the time was later found false-green —
-  broken zsh harness; the honest gate is the 2026-09-03 sweep above.)
+- **the JSX boundary stopped being per-target** (2026-09-03) — both `when (js)` blocks (`render/host.ms`,
+  `converters.ms`) are gone: a native build reaches the same per-site emission a browser build does.
+  Justified by the C-lane measurement nobody had taken: 2.6-2.8x static, 2.0x half-dynamic, 1.5x
+  all-dynamic (`probe/nativeEmit_q4m.ms`, release, min of 3 rounds × 3 runs), which refuted the "small —
+  allocations only" prediction. Regions, component bodies and SSR stayed on the description tree until
+  one NeonNode removed it (2026-09-19, above). (The "27 files bad=0" sweep recorded here at the time was
+  later found false-green — broken zsh harness; the honest gate is the 2026-09-03 sweep above.)
 - **theme tokens, static and swapped** — `createTheme` bakes one `:root` rule, `createStyles` spells
   `var(--token)` with the unit applied at the use site, `setTheme({…})` replaces the rule by key.
 - **`variants`** (2026-09-02) — the caller picks at the use site; `when` stays for what the
   environment picks. `msc test tests/render/styleVariants.test.ms` + `styleVariantsDyn.test.ms`,
   both lanes.
 - **sheet lifecycle** (2026-09-02) — `flushSheet` rewrites the whole `<style>` on every change
-  (browser), `renderToString` resolves the three style channels exactly as `renderNode` does and
+  (browser), `renderToString` resolves the three style channels exactly as a mount does and
   registers the rule it uses, `mountSheet()` prints the registry as one block for SSR.
   `msc test tests/render/ssrStyle.test.ms` and `--target=js`, both green, both `when` branches
   proven live by mutation.
@@ -150,11 +156,8 @@ In rough priority order, once the above is standing:
 
 ## Not our queue
 
-`tests/render/style.test.ms` and `voidHost.test.ms` do not link without zig/yoga/sokol present, and
-they **hang** rather than fail (measured 2026-09-03: 24 minutes, no progress) — exclude them from a
-sweep instead of waiting. Everything else in `tests/core`, `tests/render` and `tests/platform` is
-green on both lanes, 27 files each, so measure against that before attributing a red to new work.
-
-The long-standing "one JS-lane red that belongs to the compiler" claim was wrong and is gone: it was
-two Neon bugs, both fixed 2026-09-03 (`direct.ms` pre-picking tree emission for a component's JSX
-child, and a row callback in the test annotated `NeonNode` where `For.children` is `NeonView`).
+The gate is `bash tests/run.sh`, read by its exit code: `tests/macros/run.sh`, every test file native,
+every test file `--target=js` except the two that import the C-only Void host
+(`tests/style/style.test.ms`, `tests/platform/void.test.ms`), then `tests/browser` in real Chrome. It was
+green on all four lanes on 2026-09-19 (`e93dcdb`), so measure against that before attributing a red to
+new work.
