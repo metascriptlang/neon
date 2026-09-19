@@ -22,7 +22,7 @@ expect_reject tests/macros/spreadCallRejected.ms "a spread needs a variable or a
 expect_reject tests/macros/spreadChildrenRejected.ms "children cannot come from a spread"
 expect_reject tests/macros/spreadNullHandlerRejected.ms "a nullable onPress handler is not supported yet"
 expect_reject tests/macros/spreadNullStyleRejected.ms "a nullable style is not supported yet"
-expect_reject tests/macros/fragmentNullishRejected.ms "JSX fragment must be consumed by a macro"
+expect_reject tests/macros/bareNullableChildRejected.ms "No matching overload for 'mountChild'"
 expect_reject tests/macros/mapNamedRowRejected.ms "Argument type mismatch in 'map' arg 0"
 expect_reject tests/macros/accessorNominal.ms "is not assignable to type 'Accessor<number>'"
 expect_reject tests/macros/emptyLayerRejected.ms "a style layer array needs at least one layer"
