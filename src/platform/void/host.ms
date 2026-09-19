@@ -21,11 +21,6 @@ import { asFlexStyleBody } from "../../macros/style/fields";
 export { layoutPass, freeLayout } from "../../../../void/src/void2d/layout";
 export { Node2D, DrawKind, group } from "../../../../void/src/void2d/node";
 
-interface ParentLink {
-	child: Node2D;
-	parent: Node2D | null;
-}
-
 interface EventEntry {
 	node: Node2D;
 	name: string;
@@ -38,24 +33,15 @@ export interface VoidHost {
 	clickAt: (x: float32, y: float32) => void;
 }
 
-function parentOf(links: ParentLink[], child: Node2D): Node2D | null {
-	for (const l of links) {
-		if (l.child === child) { return l.parent; }
-	}
-	return null;
+function parentOf(links: Map<Node2D, Node2D>, child: Node2D): Node2D | null {
+	if (!links.has(child)) { return null; }
+	return links.get(child) as Node2D;
 }
 
-function linkParent(links: ParentLink[], child: Node2D, parent: Node2D | null): void {
-	for (const l of links) {
-		if (l.child === child) { l.parent = parent; return; }
-	}
-	links.push({ child, parent });
-}
-
-function detachNode(links: ParentLink[], child: Node2D): void {
+function detachNode(links: Map<Node2D, Node2D>, child: Node2D): void {
 	const p = parentOf(links, child);
 	if (p !== null) { p.removeChild(child); }
-	linkParent(links, child, null);
+	links.delete(child);
 }
 
 function childIndexOf(parent: Node2D, node: Node2D): int32 {
@@ -207,7 +193,7 @@ function dim(v: number | string | null): float32 | string | null {
 
 asFlexStyleBody(0);
 
-function worldX(links: ParentLink[], n: Node2D): float32 {
+function worldX(links: Map<Node2D, Node2D>, n: Node2D): float32 {
 	let x = n.x;
 	let p = parentOf(links, n);
 	while (p !== null) {
@@ -217,7 +203,7 @@ function worldX(links: ParentLink[], n: Node2D): float32 {
 	return x;
 }
 
-function worldY(links: ParentLink[], n: Node2D): float32 {
+function worldY(links: Map<Node2D, Node2D>, n: Node2D): float32 {
 	let y = n.y;
 	let p = parentOf(links, n);
 	while (p !== null) {
@@ -230,7 +216,7 @@ function worldY(links: ParentLink[], n: Node2D): float32 {
 const TEXT_SIZE: float32 = 16.0;
 
 export function createVoidHost(): VoidHost {
-	const links: ParentLink[] = [];
+	const links = new Map<Node2D, Node2D>();
 	const events: EventEntry[] = [];
 	const root = group();
 
@@ -267,7 +253,7 @@ export function createVoidHost(): VoidHost {
 			const c = child as unknown as Node2D;
 			detachNode(links, c);
 			p.addChild(c);
-			linkParent(links, c, p);
+			links.set(c, p);
 		},
 		insertBefore: (parent: HostNode, node: HostNode, ref: HostNode | null): void => {
 			const p = parent as unknown as Node2D;
@@ -275,7 +261,7 @@ export function createVoidHost(): VoidHost {
 			if (ref === null) {
 				detachNode(links, n);
 				p.addChild(n);
-				linkParent(links, n, p);
+				links.set(n, p);
 				return;
 			}
 			let idx = childIndexOf(p, ref as unknown as Node2D);
@@ -288,14 +274,14 @@ export function createVoidHost(): VoidHost {
 				detachNode(links, n);
 			}
 			p.addChildAt(n, idx);
-			linkParent(links, n, p);
+			links.set(n, p);
 		},
 		removeChild: (parent: HostNode, node: HostNode): void => {
 			const p = parent as unknown as Node2D;
 			const n = node as unknown as Node2D;
 			if (childIndexOf(p, n) < 0) { throw "removeChild: the node is not a child of the parent"; }
 			p.removeChild(n);
-			linkParent(links, n, null);
+			links.delete(n);
 		},
 		nextSibling: (node: HostNode): HostNode | null => {
 			const n = node as unknown as Node2D;
