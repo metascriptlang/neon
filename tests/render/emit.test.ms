@@ -941,3 +941,33 @@ test "present on*/ref/style through a nullable type behave like the bare element
 	setPad(8);
 	assert cssAt(tDiv, 2) === cssAt(dDiv, 2) && cssAt(dDiv, 2) === "padding:8px;", "accessor style after set: tree=" + cssAt(tDiv, 2) + " direct=" + cssAt(dDiv, 2);
 }
+
+function Tag(props: { children: NeonNode }): NeonNode {
+	return <b>{props.children}</b>;
+}
+
+test "a numeric child renders as text and follows its signal — template tier" {
+	const [n, setN] = createSignal(7);
+	const [f, setF] = createSignal<number>(1.5);
+	const k: number = 3;
+	const host = mockHost();
+	const root = mockNode("root");
+	const mount = element(<p>{n}|{n()}|{n() + 1}|{k}|{f}</p>);
+	mount(host, root as unknown as HostNode, null);
+	assert mockToString(root) === "<root><p>7|7|8|3|1.5</p></root>", "initial: " + mockToString(root);
+	setN(8);
+	setF(2.25);
+	assert mockToString(root) === "<root><p>8|8|9|3|2.25</p></root>", "after set: " + mockToString(root);
+}
+
+test "a numeric child renders as text and follows its signal — flat tier" {
+	const [n, setN] = createSignal(7);
+	const k: number = 3;
+	const host = mockHost();
+	const root = mockNode("root");
+	const mount = element(<p>{n}|{n() + 1}|{k}<Tag>{n}</Tag></p>);
+	mount(host, root as unknown as HostNode, null);
+	assert mockToString(root) === "<root><p>7|8|3<b>7</b></p></root>", "initial: " + mockToString(root);
+	setN(8);
+	assert mockToString(root) === "<root><p>8|9|3<b>8</b></p></root>", "after set: " + mockToString(root);
+}
