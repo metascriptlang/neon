@@ -71,25 +71,9 @@
 - **Visible progress over invisible effort**: If you can't see it, it doesn't count yet
 - **Connected to real output**: Everything should tie to something runnable/testable
 
-### MetaScript is Your Best Friend, NOT Enemy
+### A MetaScript limitation is a compiler card, not a workaround
 
-**CRITICAL POLICY: NEVER WORKAROUND COMPILER LIMITATIONS**
-
-When you hit a MetaScript limitation:
-
-1. **IMMEDIATELY STOP** current work
-2. **Switch to MetaScript project** at /Users/le/metascript/recompiler
-3. **Fix the compiler** to support what Neon needs
-4. **Return to Neon** with solid compiler support
-5. **Continue with confidence** - no hacks, no workarounds
-
-**Why?**
-- We own MetaScript - we can fix it immediately
-- Workarounds create technical debt and hide real issues
-- Compiler improvements benefit all future MetaScript projects
-- Clean code > clever hacks
-
-**MetaScript wants to help** - ask it for whatever capabilities you need. If it can't do something, that's a feature request, not a limitation to work around.
+It follows the workspace compiler boundary (`~/metascript/CLAUDE.md`): repro, card, park, move on.
 
 ### Practical Implications
 
@@ -97,12 +81,10 @@ When you hit a MetaScript limitation:
 - [ ] Do I have a test that will verify this works?
 - [ ] Can I see/observe the output of this change?
 - [ ] Is this the smallest increment that produces visible progress?
-- [ ] Am I tempted to workaround a compiler issue? (If yes → fix compiler first)
 
 **When stuck:**
 - [ ] Is the problem visible and reproducible?
 - [ ] Have I written a failing test that demonstrates it?
-- [ ] Is this a MetaScript limitation? (If yes → fix compiler, don't workaround)
 
 **Remember**: Slow and solid beats fast and broken. Every line of code should be tested, visible, and built on a stable foundation.
 
@@ -112,15 +94,9 @@ When you hit a MetaScript limitation:
 
 ### Development Commands
 
-Neon builds and tests run directly via the self-hosted `msc` CLI (installed in `$PATH` at `~/.metascript/bin/msc`). No Bun, no `bun run` — `msc` is the ground truth: it typechecks AND does real C/JS codegen, so it catches bugs the old transpile-only Bun path hid.
+Neon builds and tests run through the installed `msc` (workspace `CLAUDE.md`, Toolchain); it typechecks and does real C/JS codegen.
 
 ```bash
-# Test the MetaScript compiler (only when compiler source changed)
-cd /Users/le/metascript/recompiler
-msc test src/index.ms                        # full compiler test suite, ~40s warm
-
-# Run Neon tests (self-hosted msc — real codegen, no false-green)
-cd /Users/le/metascript/neon
 msc test tests/core/signal.test.ms           # single test file
 msc test tests/render/reconcile.test.ms
 
@@ -128,11 +104,8 @@ msc test tests/render/reconcile.test.ms
 msc run examples/counter.ms                  # build native + run
 msc build examples/counter.ms                # build native binary (no run)
 
-# Do NOT `rm -rf out` by default: the object cache is fingerprint-keyed and correct
-# (recompiler src/test/CLAUDE.md §5.2); wiping it makes every suite cold for minutes.
-# It is the fix for one symptom only: an A/B where two binaries come from one tree
-# under one --output name. Which lane a compiler change needs before landing:
-# recompiler CLAUDE.md §Verification Cost — most fixes need suite + one guard, not corpus.
+# Do NOT `rm -rf out` by default: the object cache is fingerprint-keyed and correct;
+# wiping it makes every suite cold for minutes.
 ```
 
 ### File Structure
@@ -340,36 +313,9 @@ define table (`msc --help-defines`): backend `c`/`js`, OS `macos`/`ios`/`android
 
 **Remaining**: iOS host, Android host.
 
-### Phase 4: Compiler Co-Evolution (Ongoing)
-
-**Goal**: Find and fix MetaScript compiler issues.
-
-```bash
-# When you hit a compiler bug:
-cd /Users/le/metascript/recompiler
-# Fix the compiler (TDD: write failing test first)
-msc test src/index.ms
-
-# Verify fix in Neon
-cd /Users/le/metascript/neon
-msc test tests/core/signal.test.ms
-```
-
-**Feedback Loop**:
-1. Neon implementation hits compiler edge case
-2. **STOP Neon work immediately**
-3. Switch to MetaScript project
-4. Write failing compiler test demonstrating the issue
-5. Fix MetaScript compiler with proper solution
-6. Verify fix with test suite
-7. Return to Neon and continue with solid compiler support
-8. Both projects improve - no technical debt created
-
 ---
 
-## Compiler Co-Evolution Strategy
-
-### What Neon Tests About MetaScript
+## What Neon Tests About MetaScript
 
 | Neon Feature | MetaScript Stress Test |
 |--------------|------------------------|
@@ -378,47 +324,6 @@ msc test tests/core/signal.test.ms
 | **Cross-platform** | C FFI, conditional compilation, multi-backend |
 | **Performance** | Zero-cost abstractions, inline expansion |
 | **Type safety** | Generics, type inference, ownership tracking |
-
-### When to Fix Compiler vs Workaround
-
-**ALWAYS Fix in MetaScript** - No exceptions:
-- Type inference limitation → Fix type checker
-- Macro expansion bug → Fix macro expander
-- C codegen issue → Fix C backend
-- Missing FFI capability → Add FFI feature
-- Syntax limitation → Extend parser
-- Any other compiler issue → Fix the root cause
-
-**NEVER Workaround in Neon**:
-- ❌ Don't accept "cosmetic syntax issues"
-- ❌ Don't settle for "good enough" hacks
-- ✅ Always fix MetaScript to support what Neon needs
-
-**We own the compiler** - there's no reason to compromise.
-
-### Bug Tracking Template
-
-```markdown
-## MetaScript Compiler Issue: [Title]
-
-**Found in**: Neon [component] (e.g., signal.ms, element.ms)
-**Current Behavior**: [What happens now]
-**Expected Behavior**: [What MetaScript should support]
-
-**Minimal Reproduction**:
-```typescript
-// MetaScript code that demonstrates the issue
-```
-
-**Error Output**:
-```
-<!-- Compiler error message -->
-```
-
-**Impact**: [How this blocks Neon development]
-**Priority**: [High/Medium/Low]
-**Status**: [Investigating/In Progress/Fixed]
-```
 
 ---
 
@@ -579,19 +484,6 @@ msc build examples/counter.ms
 ---
 
 ## Troubleshooting
-
-### MetaScript Compiler Crashes
-
-**Symptom**: `msc test` or `msc build` segfaults or panics
-
-**Steps**:
-1. **STOP Neon work** - don't try to work around this
-2. Simplify code to minimal reproduction case
-3. Switch to `/Users/le/metascript/recompiler`
-4. Write failing compiler test demonstrating the crash
-5. Fix the compiler (TDD)
-6. Verify fix: `msc test src/index.ms` plus the one guard or probe that exercises it (lane table: recompiler `CLAUDE.md` §Verification Cost)
-7. Return to Neon - issue is now permanently resolved
 
 ### Macro Expansion Doesn't Work as Expected
 
