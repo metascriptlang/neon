@@ -6,12 +6,17 @@ import { VAttr, VEvent, attr } from "./node";
 import { Style, StyleValue, emptyStyle, setStyleField } from "./style";
 import { Host, HostNode, NeonNode } from "./hostTypes";
 import { NeonEvent, neonEvent, eventType } from "./event";
+import { createRoot } from "../core/owner";
+import { Dispose } from "../core/types";
 
 export { Host, HostNode, NeonNode } from "./hostTypes";
 export { bindText, writeAttr, bindAttr, bindStyleProp, applyStaticStyle, bindStyleAll, applyRef } from "./bind";
 
-export function render(node: NeonNode, host: Host, parent: HostNode): void {
-	node(host, parent, null);
+export function render(node: NeonNode, host: Host, parent: HostNode): Dispose {
+	return createRoot((dispose) => {
+		node(host, parent, null);
+		return dispose;
+	});
 }
 
 // ---- Mock host: in-memory tree for tests/SSR (no browser needed) ----

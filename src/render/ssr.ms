@@ -5,7 +5,6 @@ import { htmlTagFor } from "./node";
 import { registerCss } from "./sheet";
 import { styleToCss } from "./css";
 import { Style } from "./style";
-import { createRoot } from "../core/owner";
 
 function ssrHost(): Host {
 	const h = mockHost();
@@ -45,11 +44,9 @@ export function serializeChildren(n: MockNode): string {
 }
 
 export function renderToString(n: NeonNode): string {
-	return createRoot((dispose) => {
-		const box = mockNode("ssr-root");
-		render(n, SSR_HOST, box as unknown as HostNode);
-		const out = serializeChildren(box);
-		dispose();
-		return out;
-	});
+	const box = mockNode("ssr-root");
+	const dispose = render(n, SSR_HOST, box as unknown as HostNode);
+	const out = serializeChildren(box);
+	dispose();
+	return out;
 }

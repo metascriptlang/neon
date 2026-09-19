@@ -1,6 +1,8 @@
-import { createSignal } from "../../src/core/signal";
+import { createSignal, Accessor } from "../../src/core/signal";
 import { createRoot } from "../../src/core/owner";
-import { el, text, dynText } from "../../src/render/node";
+import { onCleanup } from "../../src/core/cleanup";
+import { createEffect } from "../../src/core/effect";
+import { NeonNode, el, text, dynText } from "../../src/render/node";
 import { element } from "../../src/macros/ui/element";
 import { direct } from "../../src/macros/ui/direct";
 import { HostNode, MockNode, mockNode, mockHost, render, mockToString } from "../../src/render/host";
@@ -15,20 +17,50 @@ test "render builds tree and binds reactive text (push)" {
 	assert mockToString(root.children[0]) === "<p>Hi neon</p>", "host text updated via effect";
 }
 
+let probeCleanups = 0;
+let probeEffectRuns = 0;
+
+interface ProbeProps {
+	label: Accessor<string>;
+}
+
+function Probe(props: ProbeProps): NeonNode {
+	createEffect(() => { props.label(); probeEffectRuns = probeEffectRuns + 1; });
+	onCleanup(() => { probeCleanups = probeCleanups + 1; });
+	return element(<p>{props.label()}</p>);
+}
+
+test "render owns the mount: its dispose runs cleanups once and stops every write" {
+	const [label, setLabel] = createSignal("a");
+	const root: MockNode = mockNode("root");
+	probeCleanups = 0;
+	probeEffectRuns = 0;
+	const dispose = render(element(<Probe label={label()} />), mockHost(), root as unknown as HostNode);
+	assert mockToString(root) === "<root><p>a</p></root>", "mounted: " + mockToString(root);
+	setLabel("b");
+	assert mockToString(root) === "<root><p>b</p></root>", "live before dispose: " + mockToString(root);
+	assert probeEffectRuns === 2, "effect reran once: " + probeEffectRuns.toString();
+	assert probeCleanups === 0, "no cleanup while mounted";
+	dispose();
+	assert probeCleanups === 1, "cleanup ran once: " + probeCleanups.toString();
+	setLabel("c");
+	assert mockToString(root) === "<root><p>b</p></root>", "no host write after dispose: " + mockToString(root);
+	assert probeEffectRuns === 2, "effect stopped: " + probeEffectRuns.toString();
+	dispose();
+	assert probeCleanups === 1, "second dispose is a no-op: " + probeCleanups.toString();
+}
+
 test "reactive attr: one effect per spot, upsert in place, dispose stops tracking" {
 	const [cls, setCls] = createSignal("red");
 	const root: MockNode = mockNode("root");
-	createRoot((dispose) => {
-		render(element(<p class={cls()}>x</p>), mockHost(), root as unknown as HostNode);
-		assert mockToString(root.children[0]) === "<p class=\"red\">x</p>", "initial mount";
-		setCls("blue");
-		assert mockToString(root.children[0]) === "<p class=\"blue\">x</p>", "attr updated via effect";
-		assert root.children[0].attrs.length === 1, "upsert — no duplicate attr entries";
-		dispose();
-		setCls("green");
-		assert mockToString(root.children[0]) === "<p class=\"blue\">x</p>", "no update after dispose";
-		return 0;
-	});
+	const dispose = render(element(<p class={cls()}>x</p>), mockHost(), root as unknown as HostNode);
+	assert mockToString(root.children[0]) === "<p class=\"red\">x</p>", "initial mount";
+	setCls("blue");
+	assert mockToString(root.children[0]) === "<p class=\"blue\">x</p>", "attr updated via effect";
+	assert root.children[0].attrs.length === 1, "upsert — no duplicate attr entries";
+	dispose();
+	setCls("green");
+	assert mockToString(root.children[0]) === "<p class=\"blue\">x</p>", "no update after dispose";
 }
 
 test "null attr: static writes nothing, reactive removes then writes back — tree and direct agree" {

@@ -185,8 +185,9 @@ test "For fallback reactive scope is disposed with the list" {
 		]);
 		const host = mockHost();
 		const root = host.createElement("root");
-		render(ul, host, root);
+		const unmount = render(ul, host, root);
 		assert fbRuns === 1, "fallback effect ran once when empty";
+		unmount();
 		d();
 	});
 	setLabel("after");
@@ -219,8 +220,7 @@ test "an accessor feeds For.each directly and the row index is an Accessor" {
 function mountedText(view: NeonNode): [() => string, () => void] {
 	const host = mockHost();
 	const root = host.createElement("root");
-	let dispose: () => void = () => {};
-	createRoot((d) => { dispose = d; render(view, host, root); });
+	const dispose = render(view, host, root);
 	return [() => mockToString(root as unknown as MockNode), dispose];
 }
 
