@@ -149,9 +149,11 @@ neon/
 │   │   └── types.ms       # Core reactive types
 │   │
 │   ├── render/            # Renderer-agnostic layer (✓ ported, NOT in Nim original)
-│   │   ├── node.ms        # VNode / element construction
-│   │   ├── host.ms        # Host operations contract
-│   │   ├── hostTypes.ms   # Host-facing type surface
+│   │   ├── node.ms        # NeonNode builders written by hand (el / text / mountChild / regionNode)
+│   │   ├── host.ms        # render + the mock host
+│   │   ├── hostTypes.ms   # Host contract + the NeonNode type
+│   │   ├── bind.ms        # One effect per dynamic spot (bindText / bindAttr / bindStyle*)
+│   │   ├── ssr.ms         # renderToString
 │   │   ├── reconcile.ms   # Reconciler
 │   │   ├── component.ms   # createComponent seam
 │   │   ├── context.ms     # createContext / useContext
@@ -163,8 +165,7 @@ neon/
 │   │
 │   ├── macros/            # Compile-time transformations
 │   │   └── ui/
-│   │       ├── element.ms  # element macro - JSX → VNode tree (sacred)
-│   │       ├── direct.ms   # direct-emission macro
+│   │       ├── element.ms  # element macro - JSX → NeonNode (sacred)
 │   │       ├── flow.ms     # Show / For control flow
 │   │       ├── reactive.ms # reactive-expression detection
 │   │       ├── style.ms    # createStyles macro
@@ -192,8 +193,8 @@ neon/
 │   └── closureReassign.ms
 │
 ├── tests/                 # Test suite — mirrors src/
-│   ├── core/              # Reactive system tests (4 files)
-│   ├── render/            # Render / reconcile / macro tests (18 files)
+│   ├── core/              # Reactive system tests (5 files)
+│   ├── render/            # Render / reconcile / macro tests (23 files)
 │   ├── style/             # Style, variants and theme tests (10 files)
 │   ├── platform/          # terminal.test.ms · void.test.ms
 │   └── run.sh             # Full gate: every test native, then --target=js
@@ -231,8 +232,8 @@ neon/
 | File | Reason | Breaking Change Impact |
 |------|--------|------------------------|
 | `src/core/signal.ms` | Reactive core API | Affects all reactivity |
-| `src/macros/ui/element.ms` | UI DSL macro (JSX → VNode) | Changes framework API |
-| `src/render/node.ms` | VNode construction contract | Affects every renderer |
+| `src/macros/ui/element.ms` | UI DSL macro (JSX → NeonNode) | Changes framework API |
+| `src/render/node.ms` | NeonNode construction contract | Affects every renderer |
 
 **Decision Tree**:
 ```
@@ -299,7 +300,7 @@ See `docs/PORT-STATUS.md` for the live, detailed port status + module mapping. S
 
 **Goal**: Compile-time DSL transformation via JSX + macros.
 
-**Delivered**: `src/macros/ui/element.ms` (JSX → VNode tree) + `flow.ms` (Show/For). `style.ms` is a stub.
+**Delivered**: `src/macros/ui/element.ms` (JSX → NeonNode) + `flow.ms` (Show/For). `style.ms` is a stub.
 
 **Remaining**: component macro (function components), createStyles macro, full attribute classification (animatable/events/static).
 
@@ -373,7 +374,7 @@ msc test tests/core/array.test.ms
 ### Macro & Render Tests
 
 ```bash
-# Test JSX → VNode macro expansion + reconciler
+# Test JSX → NeonNode macro expansion + reconciler
 msc test tests/render/element.test.ms
 msc test tests/render/reconcile.test.ms
 msc test tests/render/reconcileHard.test.ms
@@ -484,7 +485,7 @@ msc build examples/counter-myplatform.ms
 MetaScript does not currently have a `msc expand` CLI. To inspect macro output:
 
 1. Write a minimal test in `tests/render/` that exercises the macro.
-2. Add `console.log`/`assert` on the produced VNode tree (see `tests/render/element.test.ms`).
+2. Mount it on `mockHost()` and `assert` on `mockToString` (see `tests/render/emit.test.ms`).
 3. Run: `msc test tests/render/element.test.ms`.
 
 ### Profile Performance
@@ -506,7 +507,7 @@ msc build examples/counter.ms
 **Symptom**: Generated code is wrong
 
 **Steps**:
-1. Add `console.log`/`assert` on the produced VNode tree (no `msc expand` CLI yet)
+1. Add `console.log`/`assert` on the `mockToString` of the mounted node (no `msc expand` CLI yet)
 2. Check macro implementation in `src/macros/ui/element.ms`
 3. Add test case in `tests/render/element.test.ms`
 4. Fix macro logic
@@ -543,7 +544,7 @@ msc build examples/counter.ms
 - [x] Tests pass: 90%+ coverage of core reactivity
 
 ### Phase 2 Partial ✅:
-- [x] `element` macro transforms JSX to VNode tree
+- [x] `element` macro transforms JSX to a NeonNode
 - [x] `flow.ms` (Show/For) works
 - [ ] `createStyles` macro generates style objects (style.ms is a stub)
 - [ ] Component macro (function components)
