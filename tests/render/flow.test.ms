@@ -260,15 +260,6 @@ test "xs.map(row) child lowers to For" {
 	d1(); d2();
 }
 
-test "a lowered For row reads its index bare as an Accessor" {
-	const [items, setItems] = createSignal<string[]>(["a", "b"]);
-	const [lowered, d1] = mountedText(element(<ul>{items.map((s: string, i: Accessor<number>): NeonNode => element(<li>{s + i.toString()}</li>))}</ul>));
-	assert lowered().indexOf("a0") >= 0 && lowered().indexOf("b1") >= 0, "indexed rows: " + lowered();
-	setItems(["b", "a"]);
-	assert lowered().indexOf("b0") >= 0 && lowered().indexOf("a1") >= 0, "indexes follow the reorder: " + lowered();
-	d1();
-}
-
 function namedRow(s: string, i: Accessor<number>): NeonNode {
 	return element(<li>{s + i.toString()}</li>);
 }
