@@ -53,6 +53,8 @@ dynamic branch to a static value. Detail and the refutation live in `BUGS.md` §
 | 3 | bug 8 (`globalImports` cycle) so the four core style lists are generated from `STYLE_TABLE` instead of `tests/style/fields.sh` guarding five hand edits | compiler | medium |
 | 4 | `_hover` / `_before` / `_classNames`, then the Animation API | user-chosen 2026-08-18 | large |
 | 5 | iOS host, then Android host — not compiler-blocked: gate with `when (ios) { … }` around `@compile`/`@passC`/`@passL`/`@link` over one extern surface, the shape `void/src/sokol/gpu.ms` ships | not started | large |
+| 6 | fold the ~20 test cells that still compare `element` against itself under "tree" / "direct" names — `fragment.test.ms` (6), `spread.test.ms` (6), `ref.test.ms` (3), `event.test.ms`, `context.test.ms`, `host.test.ms`, and the `treeRoot` halves in `emit.test.ms`: delete a cell that repeats another, rename and golden one that pins a tier | left by one NeonNode | small |
+| 7 | a numeric ATTRIBUTE value (`tabIndex={n}`) still needs a string — give attrs the rule children got (`asText` in `element.ms`) | not started | small |
 
 ---
 
@@ -85,7 +87,14 @@ In rough priority order, once the above is standing:
   (`bench/nativeEmit.ms`, `RENDER-MODEL.md` §Gate): a component body mounts 2.3–2.7x faster, every row
   1.6–2.0x faster than the tree, void not slower; against the retired per-site emitter, rows with
   static attributes read up to 1.1 µs per mount slower on the no-clone mock host, unattributed and
-  inside the bench's noise. Still owed: `examples/counterDom.ms` waits on another session's edit.
+  inside the bench's noise (accepted by the user 2026-09-19). `examples/counterDom.ms` builds `--target=js`
+  and the vite-counter check is green in real Chrome: render, two clicks, sourcemap, edit → reload, zero
+  console errors (`8ddfc0e`).
+- **a numeric child renders as text** (2026-09-19) — `{count}` over an `Accessor<int32>`, `{n()}`,
+  `{n() + 1}` and a plain `{k}` were all type errors ("expected string, got int32"), which is why the
+  suite is full of `{count() + ""}`. The macro now emits `.toString()` when the child's type, or the
+  payload of its `Accessor<T>`, is a number type. `msc test tests/render/emit.test.ms` rc=0 on C and
+  `--target=js`, both tiers, red first; `bash tests/run.sh` rc=0 at `8036e96`.
 - **Pressable runs RN's gesture machine** (2026-09-03) — `onPressIn`/`onPressOut`/`onLongPress`
   ported from `Libraries/Pressability/Pressability.js`: long press at 500ms (`delayLongPress`
   overrides), a minimum 130ms held state so a fast tap still shows feedback, and RN's

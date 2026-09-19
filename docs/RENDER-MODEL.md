@@ -60,7 +60,8 @@ it stands; the macro never guesses a node count.
 A `{child}` expression is routed by its TYPE (`isNodeType`: a function type whose
 parameters are named `host`, `parent`, `before`): a NeonNode or a NeonNode array goes
 to `mountChild`, anything else is text — live when the expression is reactive or
-accessor-typed, written once otherwise. A NeonNode picked by a reactive condition
+accessor-typed, written once otherwise. A number, or an `Accessor` of one, is rendered
+through `.toString()`, so `{count}` needs no `+ ""`. A NeonNode picked by a reactive condition
 (`{cond() ? a : b}` over node values) would mount once and never switch, so it is a
 compile error pointing at `<Show>`; the JSX-armed forms `{a && <X/>}`,
 `{c ? <A/> : <B/>}` and `{xs.map(row)}` lower to `Show` / `For` before emission.
@@ -323,7 +324,7 @@ Caveats, so the numbers are not over-trusted: every session ran under load 6–1
 parallel builds (ratios held across sessions, absolutes did not); the mock host does
 less work per op than a real one, which inflates every ratio; `void3` is dominated by
 the void host's linear parent-link registry, not by emission. Raw logs:
-`probe/l5/bench-*.txt` in the arc's worktree (gitignored).
+`probe/l5/bench-*.txt` (gitignored).
 
 ## Invariants — the contract every tier and every hand-built node must satisfy
 
