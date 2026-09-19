@@ -13,7 +13,7 @@ function main(): void {
 		<View style={{ height: 20, display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 12, padding: 16, backgroundColor: "#1e1e2e", color: "#cdd6f4", borderRadius: 8 }}>
 			<Text>Counter!: {count() + ""}</Text>
 			<Pressable onPress={() => setCount(count() + 1)}>+</Pressable>
-			<Text>JSX above compiled to:</Text>
+			<Text>JSX above compiled to:{count}</Text>
 			<pre style={{ padding: 12, backgroundColor: "#11111b", color: "#a6e3a1", borderRadius: 6, fontSize: 12 }}>{generated}</pre>
 		</View>
 	);
