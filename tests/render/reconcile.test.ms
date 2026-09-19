@@ -1,5 +1,5 @@
-import { mockHost, MockNode, HostNode, Host } from "../../src/render/host";
-import { reconcileArrays, Row, rowOf, moveRow, removeRow } from "../../src/render/reconcile";
+import { mockHost, MockNode, HostNode, Host, NeonNode } from "../../src/render/host";
+import { reconcileArrays, Row, rowOf, makeRow, place, moveRow, removeRow } from "../../src/render/reconcile";
 
 function seq(parent: HostNode): string {
 	const p = parent as unknown as MockNode;
@@ -143,4 +143,77 @@ test "moveRow and removeRow carry every node of a block" {
 
 	removeRow(h, parent, one);
 	assert seq(parent) === "ZBb", "a removed block takes every node: " + seq(parent);
+}
+
+let fuzzSeed: number = 12345.0;
+function fuzzRnd(n: number): number {
+	fuzzSeed = (fuzzSeed * 1103515.0 + 12345.0) % 2147483.0;
+	return Math.floor(fuzzSeed % n);
+}
+
+function fragmentOf(tags: string[]): NeonNode {
+	return (host: Host, parent: HostNode, before: HostNode | null): void => {
+		for (const t of tags) { place(host, parent, host.createElement(t), before); }
+	};
+}
+
+test "fragment rows of one to three nodes survive random reorder, drop and remount" {
+	let fails = 0;
+	let firstMismatch = "";
+	let multi = 0;
+	for (let trial = 0; trial < 400; trial += 1) {
+		const h = mockHost();
+		const parent = h.createElement("ul");
+		h.append(parent, h.createElement("head"));
+		const anchor = h.createElement("tail");
+		h.append(parent, anchor);
+		const count = 2 + fuzzRnd(6);
+		const views: NeonNode[] = [];
+		const texts: string[] = [];
+		const rows: (Row | null)[] = [];
+		for (let i = 0; i < count; i += 1) {
+			const size = 1 + fuzzRnd(3);
+			if (size > 1) { multi = multi + 1; }
+			const tags: string[] = [];
+			let t = "";
+			for (let k = 0; k < size; k += 1) {
+				const tag = i.toString() + "." + k.toString();
+				tags.push(tag);
+				t = t + tag;
+			}
+			views.push(fragmentOf(tags));
+			texts.push(t);
+			rows.push(null);
+		}
+		let cur: Row[] = [];
+		for (let step = 0; step < 6; step += 1) {
+			const next: Row[] = [];
+			const picked: boolean[] = [];
+			const pool: number[] = [];
+			for (let i = 0; i < count; i += 1) { picked.push(false); pool.push(i); }
+			let want = "head";
+			const keep = fuzzRnd(count + 1);
+			for (let i = 0; i < keep; i += 1) {
+				const pick = fuzzRnd(pool.length);
+				const idx = pool[pick];
+				pool.splice(pick, 1);
+				picked[idx] = true;
+				if (rows[idx] === null) { rows[idx] = makeRow(views[idx]); }
+				next.push(rows[idx] as Row);
+				want = want + texts[idx];
+			}
+			want = want + "tail";
+			reconcileArrays(h, parent, cur, next, anchor);
+			for (let i = 0; i < count; i += 1) {
+				if (!picked[i]) { rows[i] = null; }
+			}
+			if (seq(parent) !== want) {
+				fails = fails + 1;
+				if (firstMismatch === "") { firstMismatch = "want=" + want + " got=" + seq(parent); }
+			}
+			cur = next;
+		}
+	}
+	assert multi > 1000, "the fuzz exercised multi-node rows: " + multi.toString();
+	assert fails === 0, fails.toString() + " of 2400 steps lost or misplaced a node, first: " + firstMismatch;
 }
