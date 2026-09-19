@@ -1,6 +1,5 @@
 // Reactive classification for JSX attribute values and expression children,
-// shared by the element (tree) and direct (mount-closure) macros —
-// tests/render/direct.test.ms pins the two emissions to one classification.
+// read by the element macro — tests/render/emit.test.ms pins it.
 //
 // Reactive ⟺ the expression syntactically contains a call. Solid's rule reads
 // "a property read is reactive", which holds there only because its props are
