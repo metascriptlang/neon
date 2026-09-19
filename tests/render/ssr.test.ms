@@ -95,32 +95,24 @@ test "fragments serialize every root in order" {
 
 test "regions serialize their current rows" {
 	const [items, _setItems] = createSignal<number[]>([1, 2]);
-	const rows = el("ul", [], [], [
-		For<number>({ each: () => items(), children: (item, i) => <li>{"" + item}</li> }),
-	]);
+	const rows = el("ul", [], [], For<number>({ each: () => items(), children: (item, i) => <li>{"" + item}</li> }));
 	assert renderToString(rows) === "<ul><li>1</li><li>2</li></ul>", "For: " + renderToString(rows);
 
-	const indexed = el("ul", [], [], [
-		Index<number>({ each: () => items(), children: (item, i) => <li>{item().toString()}</li> }),
-	]);
+	const indexed = el("ul", [], [], Index<number>({ each: () => items(), children: (item, i) => <li>{item().toString()}</li> }));
 	assert renderToString(indexed) === "<ul><li>1</li><li>2</li></ul>", "Index: " + renderToString(indexed);
 
 	const [on, _setOn] = createSignal(true);
-	const shown = el("div", [], [], [
-		Show({ when: () => on(), children: <span>yes</span>, fallback: <b>no</b> }),
-	]);
+	const shown = el("div", [], [], Show({ when: () => on(), children: <span>yes</span>, fallback: <b>no</b> }));
 	assert renderToString(shown) === "<div><span>yes</span></div>", "Show: " + renderToString(shown);
 }
 
 test "an empty list serializes through its fallback" {
 	const [items, _setItems] = createSignal<number[]>([]);
-	const rows = el("ul", [], [], [
-		For<number>({
-			each: () => items(),
-			children: (item, i) => <li>{"" + item}</li>,
-			fallback: <li>empty</li>,
-		}),
-	]);
+	const rows = el("ul", [], [], For<number>({
+		each: () => items(),
+		children: (item, i) => <li>{"" + item}</li>,
+		fallback: <li>empty</li>,
+	}));
 	assert renderToString(rows) === "<ul><li>empty</li></ul>", "fallback: " + renderToString(rows);
 }
 
@@ -132,9 +124,7 @@ test "a region at the root of the render renders too" {
 
 test "the shared SSR host carries nothing over between renders" {
 	const [items, setItems] = createSignal<number[]>([1]);
-	const rows = el("ul", [], [], [
-		For<number>({ each: () => items(), children: (item, i) => <li>{"" + item}</li> }),
-	]);
+	const rows = el("ul", [], [], For<number>({ each: () => items(), children: (item, i) => <li>{"" + item}</li> }));
 	const first = renderToString(rows);
 	const second = renderToString(rows);
 	assert first === second, "same tree twice: first=" + first + " second=" + second;

@@ -997,7 +997,7 @@ test "layerStyles over a reactive layer as a whole-style expression tracks the s
 // ---- Lát 0.9: whitespace-only text around a single child does not change the wrapping ----
 
 interface ViewProps {
-	children: NeonNode[];
+	children: NeonNode;
 }
 
 function View(props: ViewProps): NeonNode {

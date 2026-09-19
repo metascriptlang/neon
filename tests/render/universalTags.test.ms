@@ -32,6 +32,15 @@ test "the components render the wire tags the mock records" {
 	assert s.indexOf("text") >= 0, "mock kept text: " + s;
 }
 
+test "a container with no children mounts empty, several mount in order" {
+	const empty = renderToString(element(<View />));
+	assert empty === "<div></div>", "empty View: " + empty;
+	const many = renderToString(element(<View><Text>a</Text>mid<Text>b</Text></View>));
+	assert many === "<div><span>a</span>mid<span>b</span></div>", "several: " + many;
+	const label = renderToString(element(<Pressable>go</Pressable>));
+	assert label === "<button>go</button>", "text only: " + label;
+}
+
 test "Pressable speaks onPress end to end on the mock" {
 	const host = mockHost();
 	const root = mockNode("root");

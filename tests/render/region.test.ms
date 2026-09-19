@@ -1,4 +1,5 @@
-import { el, regionNode } from "../../src/render/node";
+import { regionNode } from "../../src/render/node";
+import { element } from "../../src/macros/ui/element";
 import { MockNode, mockHost, render } from "../../src/render/host";
 import { Row, makeRow } from "../../src/render/reconcile";
 import { mapArray } from "../../src/core/array";
@@ -21,7 +22,7 @@ test "region mounts a reactive list and reconciles on change" {
 		const region = regionNode((h) => {
 			return mapArray<number, Row>(() => list(), (v, i) => makeRow(<li>{"" + v}</li>));
 		});
-		const ul = el("ul", [], [], [region]);
+		const ul = element(<ul>{region}</ul>);
 		const host = mockHost();
 		const root = host.createElement("root");
 		render(ul, host, root);

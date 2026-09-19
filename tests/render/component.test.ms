@@ -8,7 +8,7 @@ import { el, attr, text, dynText, NeonNode } from "../../src/render/node";
 import { renderToString } from "../../src/render/ssr";
 import { createComponent } from "../../src/render/component";
 import { render, mockHost, mockNode, mockToString, HostNode } from "../../src/render/host";
-import { Show } from "../../src/macros/ui/flow";
+import { Show, For } from "../../src/macros/ui/flow";
 
 interface CounterProps {
 	count: Accessor<number>;
@@ -59,17 +59,81 @@ test "single element child passes as the children prop" {
 }
 
 interface WrapProps {
-	children: NeonNode[];
+	children: NeonNode;
 }
 
 function Wrap(props: WrapProps): NeonNode {
-	return el("ul", [], [], props.children);
+	return element(<ul>{props.children}</ul>);
 }
 
-test "several children arrive as an array" {
-	const view = element(<Wrap><li>a</li><li>b</li></Wrap>);
-	const out = renderToString(view);
+test "one element child arrives as one NeonNode" {
+	const out = renderToString(element(<Wrap><li>a</li></Wrap>));
+	assert out === "<ul><li>a</li></ul>", "got " + out;
+}
+
+test "several children arrive as one NeonNode that places every root" {
+	const out = renderToString(element(<Wrap><li>a</li><li>b</li></Wrap>));
 	assert out === "<ul><li>a</li><li>b</li></ul>", "got " + out;
+}
+
+test "one text child arrives as one NeonNode" {
+	const out = renderToString(element(<Wrap>plain</Wrap>));
+	assert out === "<ul>plain</ul>", "got " + out;
+}
+
+test "text beside an element keeps source order inside the one NeonNode" {
+	const out = renderToString(element(<Wrap>lead<li>a</li>tail</Wrap>));
+	assert out === "<ul>lead<li>a</li>tail</ul>", "got " + out;
+}
+
+test "a NeonNode value as the only child crosses as itself" {
+	const item: NeonNode = element(<li>held</li>);
+	const out = renderToString(element(<Wrap>{item}</Wrap>));
+	assert out === "<ul><li>held</li></ul>", "got " + out;
+}
+
+test "a For call as the only child mounts its rows" {
+	const [items, setItems] = createSignal<number[]>([1, 2]);
+	const host = mockHost();
+	const root = mockNode("root");
+	render(element(<Wrap>{For<number>({ each: () => items(), children: (n, i) => element(<li>{n.toString()}</li>) })}</Wrap>), host, root as unknown as HostNode);
+	assert mockToString(root) === "<root><ul><li>1</li><li>2</li></ul></root>", "initial: " + mockToString(root);
+	setItems([2, 3, 1]);
+	assert mockToString(root) === "<root><ul><li>2</li><li>3</li><li>1</li></ul></root>", "after set: " + mockToString(root);
+}
+
+test "a <For> tag as the only child mounts its rows" {
+	const [items, setItems] = createSignal<number[]>([1, 2]);
+	const host = mockHost();
+	const root = mockNode("root");
+	render(element(<Wrap><For each={items()}>{(n: number, i: Accessor<number>): NeonNode => element(<li>{n.toString()}</li>)}</For></Wrap>), host, root as unknown as HostNode);
+	assert mockToString(root) === "<root><ul><li>1</li><li>2</li></ul></root>", "initial: " + mockToString(root);
+	setItems([3]);
+	assert mockToString(root) === "<root><ul><li>3</li></ul></root>", "after set: " + mockToString(root);
+}
+
+test "a reactive text child surrounded by whitespace stays live" {
+	const [word, setWord] = createSignal("v");
+	const host = mockHost();
+	const root = mockNode("root");
+	render(element(<Wrap>
+		{word()}
+	</Wrap>), host, root as unknown as HostNode);
+	assert mockToString(root) === "<root><ul>v</ul></root>", "initial: " + mockToString(root);
+	setWord("w");
+	assert mockToString(root) === "<root><ul>w</ul></root>", "after set: " + mockToString(root);
+}
+
+test "a reactive text child surrounded by whitespace stays live under a host tag" {
+	const [word, setWord] = createSignal("v");
+	const host = mockHost();
+	const root = mockNode("root");
+	render(element(<div><Wrap>
+		{word()}
+	</Wrap></div>), host, root as unknown as HostNode);
+	assert mockToString(root) === "<root><div><ul>v</ul></div></root>", "initial: " + mockToString(root);
+	setWord("w");
+	assert mockToString(root) === "<root><div><ul>w</ul></div></root>", "after set: " + mockToString(root);
 }
 
 let gaugeRuns = 0;

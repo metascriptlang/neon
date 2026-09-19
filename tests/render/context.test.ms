@@ -5,7 +5,7 @@
 import { createSignal, accessor, Accessor } from "../../src/core/signal";
 import { element } from "../../src/macros/ui/element";
 import { direct } from "../../src/macros/ui/direct";
-import { NeonNode, el, text } from "../../src/render/node";
+import { NeonNode, text } from "../../src/render/node";
 import { renderToString } from "../../src/render/ssr";
 import { Host, HostNode, MockNode, mockNode, mockHost, render, mockToString } from "../../src/render/host";
 import { createContext, useContext } from "../../src/render/context";
@@ -133,12 +133,10 @@ test "a For row reads the provider above the list" {
 	const root: MockNode = mockNode("root");
 	const app: NeonNode = T.Provider({
 		value: accessor((): Theme => ({ accent: "blue" })),
-		children: el("ul", [], [], [
-			For<number>({
-				each: () => items(),
-				children: (n: number, i: Accessor<number>): NeonNode => <li>{useContext(T).accent + n.toString()}</li>,
-			}),
-		]),
+		children: element(<ul>{For<number>({
+			each: () => items(),
+			children: (n: number, i: Accessor<number>): NeonNode => <li>{useContext(T).accent + n.toString()}</li>,
+		})}</ul>),
 	});
 	render(app, mockHost(), root as unknown as HostNode);
 	assert mockToString(root) === "<root><ul><li>blue1</li></ul></root>", "first row saw the provider: " + mockToString(root);
@@ -152,12 +150,10 @@ test "an Index row reads the provider above the list" {
 	const root: MockNode = mockNode("root");
 	const app: NeonNode = T.Provider({
 		value: accessor((): Theme => ({ accent: "blue" })),
-		children: el("ul", [], [], [
-			Index<number>({
-				each: () => items(),
-				children: (n: Accessor<number>, i: number): NeonNode => <li>{useContext(T).accent + n().toString()}</li>,
-			}),
-		]),
+		children: element(<ul>{Index<number>({
+			each: () => items(),
+			children: (n: Accessor<number>, i: number): NeonNode => <li>{useContext(T).accent + n().toString()}</li>,
+		})}</ul>),
 	});
 	render(app, mockHost(), root as unknown as HostNode);
 	assert mockToString(root) === "<root><ul><li>blue1</li><li>blue2</li></ul></root>", "every row saw the provider: " + mockToString(root);
@@ -169,16 +165,14 @@ test "a For fallback reads the provider above the list" {
 	const root: MockNode = mockNode("root");
 	const app: NeonNode = T.Provider({
 		value: accessor((): Theme => ({ accent: "blue" })),
-		children: el("ul", [], [], [
-			For<number>({
-				each: () => items(),
-				children: (n: number, i: Accessor<number>): NeonNode => <li>{n.toString()}</li>,
-				fallback: (h: Host, p: HostNode, b: HostNode | null): void => {
-					const row: NeonNode = <li>{useContext(T).accent}</li>;
-					row(h, p, b);
-				},
-			}),
-		]),
+		children: element(<ul>{For<number>({
+			each: () => items(),
+			children: (n: number, i: Accessor<number>): NeonNode => <li>{n.toString()}</li>,
+			fallback: (h: Host, p: HostNode, b: HostNode | null): void => {
+				const row: NeonNode = <li>{useContext(T).accent}</li>;
+				row(h, p, b);
+			},
+		})}</ul>),
 	});
 	render(app, mockHost(), root as unknown as HostNode);
 	assert mockToString(root) === "<root><ul><li>blue</li></ul></root>", "fallback saw the provider: " + mockToString(root);
