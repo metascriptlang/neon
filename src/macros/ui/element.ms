@@ -20,7 +20,7 @@
 // rejected), reactive expr → bindStyleAll, anything else → applyStaticStyle.
 
 import { Node, NodeKind, DeclKind, NodeFlag } from "std/meta";
-import { isReactiveExpr, isRawPropValue, peelHidden } from "./reactive";
+import { isReactiveExpr, isRawPropValue, isEventName, peelHidden } from "./reactive";
 
 function trimEdgeSpaces(s: string, fromStart: boolean, fromEnd: boolean): string {
 	let lo = 0;
@@ -153,7 +153,7 @@ export macro element(node: Node): Node {
 					error("children cannot come from a spread: pass it as a child of the element", a as Node);
 					continue;
 				}
-				const isEvent = fname.startsWith("on") && fname.charAt(2) >= "A" && fname.charAt(2) <= "Z";
+				const isEvent = isEventName(fname);
 				if (isEvent && unionHasNull(ftype)) {
 					error("a nullable " + fname + " handler is not supported yet: give the prop a non-null handler", a as Node);
 					continue;
@@ -577,7 +577,7 @@ export macro element(node: Node): Node {
 	function needsHandle(el: Node): boolean {
 		for (const a of el.jsxAttrs) {
 			if (a.kind === NodeKind.JSXAttribute) {
-				if (a.jsxAttrName.startsWith("on") || a.jsxAttrName === "ref") { return true; }
+				if (isEventName(a.jsxAttrName) || a.jsxAttrName === "ref") { return true; }
 				if (a.jsxAttrValue.kind !== NodeKind.StringLiteral) { return true; }
 			}
 		}
@@ -609,7 +609,7 @@ export macro element(node: Node): Node {
 			});
 			for (const a of el.jsxAttrs) {
 				if (a.kind === NodeKind.JSXAttribute) {
-					if (a.jsxAttrName.startsWith("on")) { continue; }
+					if (isEventName(a.jsxAttrName)) { continue; }
 					if (a.jsxAttrName === "ref") { continue; }
 					if (a.jsxAttrName === "style" && a.jsxAttrValue.kind !== NodeKind.StringLiteral) { continue; }
 					const v = a.jsxAttrValue.kind === NodeKind.StringLiteral ? a.jsxAttrValue : strLit("", a.line, a.column);
@@ -698,14 +698,14 @@ export macro element(node: Node): Node {
 								},
 							});
 						}
-					} else if (a.jsxAttrName.startsWith("on") && presentKind(a.jsxAttrValue) !== "") {
+					} else if (isEventName(a.jsxAttrName) && presentKind(a.jsxAttrValue) !== "") {
 						if (a.jsxAttrName === "onChangeText") {
 							errNodes.push(a.jsxAttrValue);
 							errMsgs.push(optChangeTextMsg);
 						} else {
 							pushWhenPresent(wStmts, { kind: NodeKind.MemberExpr, line: a.line, column: a.column, object: ident("host", a.line, a.column), property: "addEvent", isOptional: false }, [ident(elVar, a.line, a.column), strLit(a.jsxAttrName, a.line, a.column)], a.jsxAttrValue, a.line, a.column);
 						}
-					} else if (a.jsxAttrName.startsWith("on")) {
+					} else if (isEventName(a.jsxAttrName)) {
 						// onChangeText text-unwrap — mirrors element.ms, see the comment there.
 						let hVal: Node = a.jsxAttrValue;
 						if (a.jsxAttrName === "onChangeText") {
@@ -1028,14 +1028,14 @@ export macro element(node: Node): Node {
 							continue;
 						}
 						const nameLit: Node = { kind: NodeKind.StringLiteral, line: a.line, column: a.column, value: a.jsxAttrName };
-						if (a.jsxAttrName.startsWith("on") && presentKind(a.jsxAttrValue) !== "") {
+						if (isEventName(a.jsxAttrName) && presentKind(a.jsxAttrValue) !== "") {
 							if (a.jsxAttrName === "onChangeText") {
 								errNodes.push(a.jsxAttrValue);
 								errMsgs.push(optChangeTextMsg);
 							} else {
 								pushWhenPresent(stmts, { kind: NodeKind.MemberExpr, line: a.line, column: a.column, object: { kind: NodeKind.Identifier, line: a.line, column: a.column, name: "host" }, property: "addEvent", isOptional: false }, [{ kind: NodeKind.Identifier, line: a.line, column: a.column, name: rName }, nameLit], a.jsxAttrValue, a.line, a.column);
 							}
-						} else if (a.jsxAttrName.startsWith("on")) {
+						} else if (isEventName(a.jsxAttrName)) {
 							// onChangeText text-unwrap — mirrors element.ms, see the comment there.
 							let hVal: Node = a.jsxAttrValue;
 							if (a.jsxAttrName === "onChangeText") {
