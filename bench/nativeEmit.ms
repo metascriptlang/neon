@@ -1,4 +1,4 @@
-import { createSignal } from "../src/core/signal";
+import { createSignal, Accessor } from "../src/core/signal";
 import { mockHost, Host, HostNode, NeonNode } from "../src/render/host";
 import { createVoidHost, VoidHost } from "../src/platform/void/host";
 
@@ -55,6 +55,23 @@ function mount6(host: Host, sig: () => string): void {
 	}
 }
 
+interface RowProps {
+	v: Accessor<string>;
+}
+
+function RowC(props: RowProps): NeonNode {
+	return <div class="row"><span class="c">{props.v}</span><span class="c">b</span><span class="c">{props.v}</span><span class="c">d</span><span class="c">{props.v}</span><span class="c">f</span></div>;
+}
+
+function mountComp3(host: Host, sig: () => string): void {
+	let i = 0;
+	while (i < N) {
+		const node: NeonNode = <RowC v={sig()} />;
+		node(host, host.createElement("slot"), null);
+		i = i + 1;
+	}
+}
+
 function voidMount3(vh: VoidHost, sig: () => string): void {
 	const root = vh.root as unknown as HostNode;
 	let i = 0;
@@ -104,6 +121,7 @@ function main(): void {
 	report("dyn0 ", mount0, sig);
 	report("dyn3 ", mount3, sig);
 	report("dyn6 ", mount6, sig);
+	report("comp3", mountComp3, sig);
 	console.log("void3  mount=" + timeVoid3(sig).toString());
 	console.log("BENCH-END");
 }
