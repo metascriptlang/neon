@@ -209,7 +209,11 @@ A `Context.Provider` is the same shape with the call wrapped in the provider's s
 the macro splices its children into the parent's child list at COMPILE time
 (`flattenFragments`, recursive, matching Solid's `normalizeIncomingArray`), and `<></>`
 erases. At the ROOT it lowers through the flat tier with every root placed in front of
-`before`, in order. A fragment inside an expression is a compile error for now.
+`before`, in order. Inside an expression a fragment is JSX like any other: an `&&` or `?:` arm
+lowers to `Show` with the fragment as its children, and a prop value or a call argument
+lowers through the converter to a multi-root NeonNode. There is no fragment-specific
+rule left — where no NeonNode is expected (`a ?? <>…</>`) the compiler rejects a fragment
+with the same error it gives an element there.
 
 **Regions.** `For` / `Index` / `Show` (`src/macros/ui/flow.ms`) each return
 `regionNode(fn)` (`src/render/node.ms`): an anchor text node placed at the region's
