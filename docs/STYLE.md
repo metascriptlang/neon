@@ -174,7 +174,7 @@ version is opt-in per host, keeps core blind to platforms, and gives N vocabular
 — the same ladder `recompiler/docs/PROTOCOLS.md` already shipped for serialization.
 
 > **CORRECTION (2026-07-28, S2).** The either/or above is wrong, and shipping it that way cost a
-> segfault. `renderNode` is generic over `Host` — at that call site there is no static host type, so
+> segfault. Mount code is generic over `Host` — at that call site there is no static host type, so
 > `asX` **cannot** dispatch. The two mechanisms are layers, not rivals:
 > **`Host.setStyle` is the seam** (dynamic, one entry point the renderer can call) and
 > **`asX` is the projection inside each host's `setStyle`** (`asFlexStyle` for void, `asTerminalStyle`
@@ -191,10 +191,10 @@ and reuses it across every element that references it.
 
 ## 6. Reactivity — static on the node, dynamic through effects
 
-This mirrors a pattern `src/render/node.ms` already established: `text` (static) vs `dyn` (reactive
+This mirrors a pattern `src/render/node.ms` already established: `text` (static) vs `dynText` (reactive
 thunk). Style follows the same shape rather than introducing a new concept:
 
-- static, merged, normalized sheet data → `VNode.style` constant
+- static, merged, normalized sheet data → written once at mount (`applyStaticStyle`)
 - a field reading a signal → one effect updating **exactly that property** on the host node
 
 No re-render, no whole-style re-apply, no diffing.
@@ -283,10 +283,10 @@ runtime object (`rt`), pseudo-states beyond variants, animation (Nim had `Animat
 > `mergeStyle`, so a selection drops `cssId` and takes the inline path — a one-off combination, the
 > same rule a merged layer array follows. A selector key or variant name that does not exist is a
 > checker error at the call site. Because a selection is a CALL, the element macro routes it through
-> the new whole-style channel (`withDynStyleAll` → one effect calling `host.setStyle`): per-property
+> the new whole-style channel (`bindStyleAll` → one effect calling `host.setStyle`): per-property
 > precision is impossible when a deselected field must fall back to an earlier layer. A static
 > selection pays that same effect once and never re-fires — the §6 false-positive trade, by design,
-> and it means `vnode.style` is filled at MOUNT rather than at construction for a called style.
+> and it means a called style reaches the host at MOUNT, inside that effect.
 >
 > The `pressed() && "on"` spelling in §2 is blocked by a C codegen bug (`boolean && string` emits a
 > bool-cast of the string, `BUGS.md` §2); use the ternary form until it closes. Wiring the reactive
@@ -305,7 +305,8 @@ runtime object (`rt`), pseudo-states beyond variants, animation (Nim had `Animat
 | `src/render/sheet.ms` | **new** — the CSS rule registry, replace-by-key | `mountSheet()` prints it as one block for SSR |
 | `src/render/css.ms` | **new** — `styleToCss`, the runtime spelling for a `style="…"` attribute | pinned against the macro's baked rule in `ssrStyle.test.ms` |
 | `src/macros/ui/theme.ms` | **new** — `createTheme` bakes one `:root` rule; `themeOf` registers it | the arrow in `createStyles(theme => …)` is a marker, not a runtime fn |
-| `src/render/node.ms` | add `style` field to `VNode` | ⚠ **sacred file** — API change, needs sign-off |
+| `src/render/node.ms` | `hostElement` takes the style thunk | ⚠ **sacred file** — API change, needs sign-off |
+| `src/render/bind.ms` | `applyStaticStyle`, `bindStyleProp`, `bindStyleAll` — the three style channels | shared by both emission tiers and the hand-written builders |
 | `src/platform/void/host.ms` | add `asFlexStyle`; keep `parseFlexStyle` for the legacy string path | |
 | `src/platform/terminal/host.ms` | add `asTerminalStyle` | S2 |
 | `src/macros/ui/element.ms` | route `style={…}` to the typed channel | ⚠ sacred |

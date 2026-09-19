@@ -3,7 +3,7 @@
 How a declarative UI (JSX) becomes pixels, and **who owns each step** across platforms. This is the model that keeps Neon and Void from duplicating work.
 
 > Companion: `RENDER-MODEL.md` — the render lifecycle and the two emission tiers
-> (**tree emission** vs **direct emission**). "Layer A/B/C" here names
+> (**template** and **flat**). "Layer A/B/C" here names
 > reconcile/paint/GPU ownership; the emission tiers are a different axis and are
 > never called A/B.
 

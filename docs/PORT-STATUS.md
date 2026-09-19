@@ -22,8 +22,8 @@ Nim → MetaScript module map plus the design decisions taken along the way.
 | area | state |
 |---|---|
 | reactive core | signal / effect / memo / owner / cleanup / runtime / array — green |
-| render layer | node / host / reconcile — green, and NOT in the Nim original (cleaner split) |
-| macros | `element` (JSX → VNode, incl. Babel whitespace rules) + `flow` (Show/For) |
+| render layer | hostTypes / node / bind / template / reconcile / component / context / ssr / host — green, and NOT in the Nim original (cleaner split) |
+| macros | `element` (JSX → NeonNode, incl. Babel whitespace rules) + `flow` (Show/For/Index) |
 | hosts | browser DOM (JS, partial) · terminal (green) · **void / Node2D + yoga flexbox (green)** |
 | yoga | DONE — binding lives in `~/metascript/yoga`, `deps/yoga` symlinks a real checkout |
 
@@ -32,8 +32,8 @@ Nim → MetaScript module map plus the design decisions taken along the way.
 | # | work | state | size |
 |---|---|---|---|
 | 1 | ~~`createStyles` macro~~ | **DONE (S1b)** — `style.ms` is a real styleOf-rewrite macro; checker validates each entry against `Style`. Remaining style work is S3 (spread, blocked by §2 row 8) + S4 (reactive fields) | — |
-| 2 | component macro (function components) | **DONE 2026-08-12** — runtime path green E2E since 2026-08-08; converter surface closed: `jsxToNode` in the js branch of `src/converters.ms` lowers bare JSX at NeonNode boundaries (param/const/component return — native already covered via the NeonView alias). Measured: `msc build probe/bareCompJs.ms --target=js` + node prints the same tree as `msc run` on C, zero `element()` calls; pinned by `tests/render/converter.test.ms`; suite 19/19 files | — |
-| 3 | attribute classification | **DONE (D2, 2026-08-09)** — string literal → static `attr`, `on*` → `evt`, any other expr → `dynAttr` thunk + one setAttr effect at mount (`element.ms` + `renderNode`); mirrored in direct emission, which also gained the typed style channel. Remaining: animatable channel = S4 reactive style fields | — |
+| 2 | component macro (function components) | **DONE 2026-08-12** — runtime path green E2E since 2026-08-08; converter surface closed: `jsxToNode` in `src/converters.ms` lowers bare JSX at NeonNode boundaries (param/const/component return) on every target. Measured: `msc build probe/bareCompJs.ms --target=js` + node prints the same tree as `msc run` on C, zero `element()` calls; pinned by `tests/render/converter.test.ms`; suite 19/19 files | — |
+| 3 | attribute classification | **DONE (D2, 2026-08-09)** — string literal → static `attr`, `on*` → `evt`, any other expr → one `bindAttr` effect at mount (`element.ms`, both tiers), plus the typed style channel. Remaining: animatable channel = S4 reactive style fields | — |
 | 4 | demo components | **DONE** — `examples/components/{counter,todoList}.ms` | — |
 | 5 | iOS host | not started — add `src/platform/ios/` when it lands | large |
 | 6 | Android host | not started — add `src/platform/android/` when it lands | large |
@@ -46,13 +46,10 @@ Current order lives in `docs/ROADMAP.md`; 5/6 sit behind the style/theme work th
 
 | piece | state |
 |---|---|
-| `VNode.componentFn` / `componentProps` fields | ✅ `src/render/node.ms` |
-| `ComponentFn<P>` / `ComponentProducer` types | ✅ `src/render/node.ms` |
-| `componentNode(fn, props)` constructor | ✅ `src/render/node.ms` |
-| lazy expansion at mount (host path) | ✅ `src/render/host.ms` (3 sites: mount, keyed child, region) |
-| lazy expansion in `renderToString` | ✅ `src/render/node.ms` |
+| `ComponentFn<P> = (props: P) => NeonNode` | ✅ `src/render/node.ms` |
+| body deferred to mount, mounted at the component's own position | ✅ a component IS a NeonNode — no expansion step, on any host or in `renderToString` (2026-09-19) |
 | **`src/render/component.ms`** — `createComponent` (wraps `Comp(props)` in `untrack`) | ✅ landed 2026-08-03, 12 lines |
-| **element macro emitting `createComponent` for capitalized JSX tags** | ✅ `element.ms` capitalized branch: expression props → thunks, string literals pass through, children structural (1 child as written, n children as array) |
+| **element macro emitting `createComponent` for capitalized JSX tags** | ✅ `element.ms` capitalized branch: expression props → thunks, string literals pass through, `children` is ONE NeonNode (1 child as written, n children wrapped in a root fragment) |
 | tests | ✅ `tests/render/component.test.ms` — 7 green: 4 static (defer / nest / children 1-n) + 3 reactive E2E (dynText updates + body-runs-once, prop expr with nested-arrow capture, `onCleanup` fires on `<Show>` unmount) |
 
 **Runtime path CLOSED 2026-08-08** (msc v0.2.38 — both compiler prerequisites below are
@@ -66,21 +63,21 @@ miscompiles C — `probe/closureCastCall.ms`). DX decision recorded in
 
 **Design LOCKED 2026-07-30 (full design session with user) — the component/JSX contract:**
 
-- **User surface = React**: components are PLAIN functions `(props) => VNode`, bare JSX
+- **User surface = React**: components are PLAIN functions `(props) => NeonNode`, bare JSX
   everywhere, zero `element()` calls. Mechanism = new `converter` routine kind in MS
   (compile-time body, compiler-invoked at settled type boundaries). Normative spec:
   recompiler `docs/LANG.md` §"Converter Declarations" + `docs/LANG-JSX.md` §"Boundary
   Lowering via Converter"; implementation plan `docs/JSX-ROADMAP.md` Phase 9.
-  `element.ms` only changes its declaration line to `export converter element(node: Node): VNode`.
+  As shipped: the converter is `jsxToNode` (`src/converters.ms`), which hands the JSX to the `element` macro.
 - **Props reactivity = thunks** (`count: () => number`); the converter wraps dynamic
   attr exprs into arrows (same rule as dynText). Defer + untrack at the boundary via
   `componentNode` — semantics MEASURED green in `probe/componentSemantics.ms`
   (defer / body-runs-once / untrack / owner-inherit+cleanup all pass, block-bodied producer).
-- **Emission V1 = tree emission** (VNode layer — host-agnostic: dom/terminal/void/mock +
-  renderToString ride free; smallest compiler-bug surface). Direct host-call emission
-  (Nim-original / Solid-DOM style) = **direct emission** — landed D1-D4, selected per
-  JSX site at compile time, zero user-code change. Both tiers, the selection rule, the
-  lifecycle, and the invariants are specified in `docs/RENDER-MODEL.md`.
+- **Emission**: one macro, one node type — a JSX expression is a NeonNode,
+  `(host, parent, before) => void`, on every target (2026-09-19). The macro picks the
+  template tier or the flat tier per JSX site at compile time, zero user-code change.
+  The tiers, the selection rule, the lifecycle and the invariants are specified in
+  `docs/RENDER-MODEL.md`.
 - Nim-original `core/component.nim` ruled out as reference (ComponentContext threadvar +
   `cast[pointer]` + React-style useEffect deps — all superseded by our Owner tree).
 - **ORDER (2 compiler prerequisites measured, filed as BUGS.md §2 rows 2026-07-30):**
