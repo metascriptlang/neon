@@ -10,6 +10,7 @@ cd "$(dirname "$0")/.."
 files=$(find tests -name "*.test.ms" -not -path "tests/browser/*" | sort)
 fail=0
 tests/macros/run.sh || fail=1
+tests/apps/run.sh || fail=1
 for f in $files; do
 	echo "== native $f"
 	"$MSC" test "$f" || fail=1
