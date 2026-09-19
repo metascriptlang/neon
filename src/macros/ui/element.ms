@@ -20,7 +20,7 @@
 // rejected), reactive expr → bindStyleAll, anything else → applyStaticStyle.
 
 import { Node, NodeKind, DeclKind, NodeFlag } from "std/meta";
-import { isReactiveExpr, findFragment, isRawPropValue, peelHidden } from "./reactive";
+import { isReactiveExpr, isRawPropValue, peelHidden } from "./reactive";
 
 function trimEdgeSpaces(s: string, fromStart: boolean, fromEnd: boolean): string {
 	let lo = 0;
@@ -418,25 +418,28 @@ export macro element(node: Node): Node {
 			jsxSelfClosing: false,
 		};
 	}
+	function isJsx(n: Node): boolean {
+		return n.kind === NodeKind.JSXElement || n.kind === NodeKind.JSXFragment;
+	}
 	function lowerFlowTree(elNode: Node): Node {
 		let kids: Node[] = [];
 		for (const c of kidsOf(elNode)) {
 			let lowered: Node | null = null;
-			if (c.kind === NodeKind.JSXElement) {
+			if (isJsx(c)) {
 				lowered = lowerFlowTree(c);
 			} else if (c.kind === NodeKind.JSXExpressionContainer) {
 				const ex = peelHidden(c.jsxExpr);
 				if (ex.kind === NodeKind.BinaryExpr && ex.operator === "&&") {
 					const rhs = peelHidden(ex.right);
-					if (rhs.kind === NodeKind.JSXElement) { lowered = showOf(ex.left, lowerFlowTree(rhs), null, c.line, c.column); }
+					if (isJsx(rhs)) { lowered = showOf(ex.left, lowerFlowTree(rhs), null, c.line, c.column); }
 				} else if (ex.kind === NodeKind.ConditionalExpr) {
 					const yes = peelHidden(ex.ternaryConsequent);
 					const no = peelHidden(ex.ternaryAlternate);
-					if (yes.kind === NodeKind.JSXElement && no.kind === NodeKind.JSXElement) {
+					if (isJsx(yes) && isJsx(no)) {
 						lowered = showOf(ex.ternaryCondition, lowerFlowTree(yes), lowerFlowTree(no), c.line, c.column);
-					} else if (yes.kind === NodeKind.JSXElement && no.kind === NodeKind.NullLiteral) {
+					} else if (isJsx(yes) && no.kind === NodeKind.NullLiteral) {
 						lowered = showOf(ex.ternaryCondition, lowerFlowTree(yes), null, c.line, c.column);
-					} else if (yes.kind === NodeKind.NullLiteral && no.kind === NodeKind.JSXElement) {
+					} else if (yes.kind === NodeKind.NullLiteral && isJsx(no)) {
 						const not: Node = { kind: NodeKind.UnaryExpr, line: c.line, column: c.column, unaryOp: "!", operand: ex.ternaryCondition };
 						lowered = showOf(not, lowerFlowTree(no), null, c.line, c.column);
 					}
@@ -456,12 +459,7 @@ export macro element(node: Node): Node {
 		}
 		return { kind: NodeKind.JSXElement, line: elNode.line, column: elNode.column, jsxTag: elNode.jsxTag, jsxAttrs: elNode.jsxAttrs, jsxChildren: kids, jsxSelfClosing: elNode.jsxSelfClosing };
 	}
-	node = flattenFragments(node);
-	for (const c of kidsOf(node)) {
-		const stray = findFragment(c);
-		if (stray !== null) { error("a fragment inside an expression is not supported yet: give it its own component", stray as Node); }
-	}
-	node = lowerFlowTree(node);
+	node = flattenFragments(lowerFlowTree(node));
 
 	const reactiveNodeMsg = "a NeonNode child picked by a reactive condition would mount once and never switch — use <Show> or a JSX branch: {cond() ? <A/> : <B/>}";
 
