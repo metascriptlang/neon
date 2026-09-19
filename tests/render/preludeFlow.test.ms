@@ -2,6 +2,7 @@ import { NeonNode } from "../../src/render/node";
 import { renderToString } from "../../src/render/ssr";
 import { element } from "../../src/macros/ui/element";
 import { createSignal, Accessor } from "../../src/core/signal";
+import { render, mockHost, mockNode, mockToString, HostNode } from "../../src/render/host";
 
 test "a lowered && needs no flow import" {
 	const [on, _s] = createSignal(true);
@@ -28,4 +29,17 @@ test "the flow tags are in scope without an import" {
 	assert renderToString(shown) === "<div><b>y</b></div>", "Show tag";
 	const each: NeonNode = element(<ul><For each={xs()}>{(n: number, i: Accessor<number>): NeonNode => element(<li>{n.toString()}</li>)}</For></ul>);
 	assert renderToString(each) === "<ul><li>1</li></ul>", "For tag";
+}
+
+function orNone(maybe: NeonNode | null): NeonNode {
+	return <div>{maybe ?? <i>none</i>}</div>;
+}
+
+test "bare JSX lowers ?? over a nullable node" {
+	const a = mockNode("root");
+	render(orNone(null), mockHost(), a as unknown as HostNode);
+	assert mockToString(a) === "<root><div><i>none</i></div></root>", "null: " + mockToString(a);
+	const b = mockNode("root");
+	render(orNone(<b>x</b>), mockHost(), b as unknown as HostNode);
+	assert mockToString(b) === "<root><div><b>x</b></div></root>", "present: " + mockToString(b);
 }
