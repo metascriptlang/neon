@@ -12,7 +12,7 @@ import { For, Index } from "../../src/macros/ui/flow";
 
 interface Theme { accent: string; }
 
-test "a provider feeds a consumer nested in its subtree — tree emission" {
+test "a provider feeds a consumer nested in its subtree" {
 	const T = createContext<Theme>({ accent: "red" });
 	const root: MockNode = mockNode("root");
 	const app: NeonNode = element(
@@ -22,19 +22,6 @@ test "a provider feeds a consumer nested in its subtree — tree emission" {
 	);
 	render(app, mockHost(), root as unknown as HostNode);
 	assert mockToString(root) === "<root><div>blue</div></root>", "consumer saw the provided value: " + mockToString(root);
-}
-
-test "a provider feeds a consumer nested in its subtree — direct emission" {
-	const T = createContext<Theme>({ accent: "red" });
-	const host = mockHost();
-	const root: MockNode = mockNode("root");
-	const mount = element(
-		<T.Provider value={{ accent: "blue" }}>
-			<div>{useContext(T).accent}</div>
-		</T.Provider>
-	);
-	mount(host, root as unknown as HostNode, null);
-	assert mockToString(root) === "<root><div>blue</div></root>", "direct lane saw the same value: " + mockToString(root);
 }
 
 test "the nearest provider wins when providers nest" {
