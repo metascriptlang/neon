@@ -483,6 +483,7 @@ export macro element(node: Node): Node {
 	function isJsx(n: Node): boolean {
 		return n.kind === NodeKind.JSXElement || n.kind === NodeKind.JSXFragment;
 	}
+	const reactiveNodeMsg = "a NeonNode child picked by a reactive condition would mount once and never switch — use <Show> or a JSX branch: {cond() ? <A/> : <B/>}";
 	function lowerFlowTree(elNode: Node): Node {
 		let kids: Node[] = [];
 		for (const c of kidsOf(elNode)) {
@@ -494,6 +495,14 @@ export macro element(node: Node): Node {
 				if (ex.kind === NodeKind.BinaryExpr && ex.operator === "&&") {
 					const rhs = peelHidden(ex.right);
 					if (isJsx(rhs)) { lowered = showOf(ex.left, lowerFlowTree(rhs), null, c.line, c.column); }
+				} else if (ex.kind === NodeKind.BinaryExpr && ex.operator === "??") {
+					const rhs = peelHidden(ex.right);
+					if (isJsx(rhs)) {
+						if (isReactiveExpr(ex.left)) { errNodes.push(ex.left); errMsgs.push(reactiveNodeMsg); }
+						const present: Node = { kind: NodeKind.BinaryExpr, line: c.line, column: c.column, operator: "!==", left: ex.left, right: { kind: NodeKind.NullLiteral, line: c.line, column: c.column } };
+						const held: Node = { kind: NodeKind.JSXExpressionContainer, line: c.line, column: c.column, jsxExpr: ex.left };
+						lowered = showOf(present, held, lowerFlowTree(rhs), c.line, c.column);
+					}
 				} else if (ex.kind === NodeKind.ConditionalExpr) {
 					const yes = peelHidden(ex.ternaryConsequent);
 					const no = peelHidden(ex.ternaryAlternate);
@@ -522,7 +531,6 @@ export macro element(node: Node): Node {
 	}
 	node = flattenFragments(lowerFlowTree(node));
 
-	const reactiveNodeMsg = "a NeonNode child picked by a reactive condition would mount once and never switch — use <Show> or a JSX branch: {cond() ? <A/> : <B/>}";
 
 	// Capitalized tag → createComponent(Tag, { props }). Prop contract: every value
 	// prop — literal or expression — becomes accessor(() => v) (the component's props
