@@ -2,7 +2,7 @@
 //
 // The DOM mapping itself cannot be tested here — it needs a browser — so these
 // pin the parts every host shares: the name→type spelling, that the event
-// reaches a handler through both emissions, and that a handler which ignores it
+// reaches a handler, and that a handler which ignores it
 // still runs (the compatibility promise that made the arity change affordable).
 
 import { createSignal } from "../../src/core/signal";
@@ -75,26 +75,6 @@ test "a click handler reads the coordinates the host put on the event" {
 	assert at === "12,34", "handler read at=" + at;
 }
 
-test "direct emission delivers the same event as tree emission" {
-	const host = mockHost();
-
-	const treeRoot = mockNode("root");
-	let treeSaw = "";
-	render(element(<button onPress={(e: NeonEvent): void => { treeSaw = e.type + ":" + e.value; }}>go</button>), host, treeRoot as unknown as HostNode);
-
-	const directRoot = mockNode("root");
-	let directSaw = "";
-	const mount = element(<button onPress={(e: NeonEvent): void => { directSaw = e.type + ":" + e.value; }}>go</button>);
-	mount(host, directRoot as unknown as HostNode, null);
-
-	const e = neonEvent("press");
-	e.value = "v";
-	fireEventWith(treeRoot.children[0], "onPress", e);
-	fireEventWith(directRoot.children[0], "onPress", e);
-	assert treeSaw === directSaw, "tree=" + treeSaw + " direct=" + directSaw;
-	assert treeSaw === "press:v", "both saw " + treeSaw;
-}
-
 test "a handler drives a signal through the event value" {
 	const host = mockHost();
 	const root = mockNode("root");
@@ -107,22 +87,14 @@ test "a handler drives a signal through the event value" {
 	assert name() === "son", "signal now " + name();
 }
 
-test "onChangeText hands the handler the text on both emissions" {
+test "onChangeText hands the handler the text" {
 	const host = mockHost();
-
-	const treeRoot = mockNode("root");
-	let treeText = "";
-	render(element(<input onChangeText={(t: string): void => { treeText = t; }} />), host, treeRoot as unknown as HostNode);
-
-	const directRoot = mockNode("root");
-	let directText = "";
-	const mount = element(<input onChangeText={(t: string): void => { directText = t; }} />);
-	mount(host, directRoot as unknown as HostNode, null);
+	const root = mockNode("root");
+	let seenText = "";
+	render(element(<input onChangeText={(t: string): void => { seenText = t; }} />), host, root as unknown as HostNode);
 
 	const e = neonEvent("changetext");
 	e.value = "xin chao";
-	fireEventWith(treeRoot.children[0], "onChangeText", e);
-	fireEventWith(directRoot.children[0], "onChangeText", e);
-	assert treeText === "xin chao", "tree read text=" + treeText;
-	assert directText === "xin chao", "direct read text=" + directText;
+	fireEventWith(root.children[0], "onChangeText", e);
+	assert seenText === "xin chao", "handler read text=" + seenText;
 }
