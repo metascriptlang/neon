@@ -4,7 +4,6 @@
 
 import { createSignal, accessor, Accessor } from "../../src/core/signal";
 import { element } from "../../src/macros/ui/element";
-import { direct } from "../../src/macros/ui/direct";
 import { NeonNode, text } from "../../src/render/node";
 import { renderToString } from "../../src/render/ssr";
 import { Host, HostNode, MockNode, mockNode, mockHost, render, mockToString } from "../../src/render/host";
@@ -29,7 +28,7 @@ test "a provider feeds a consumer nested in its subtree — direct emission" {
 	const T = createContext<Theme>({ accent: "red" });
 	const host = mockHost();
 	const root: MockNode = mockNode("root");
-	const mount = direct(
+	const mount = element(
 		<T.Provider value={{ accent: "blue" }}>
 			<div>{useContext(T).accent}</div>
 		</T.Provider>

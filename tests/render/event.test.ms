@@ -7,7 +7,6 @@
 
 import { createSignal } from "../../src/core/signal";
 import { element } from "../../src/macros/ui/element";
-import { direct } from "../../src/macros/ui/direct";
 import { el, evt, text } from "../../src/render/node";
 import { NeonEvent, neonEvent, eventType } from "../../src/render/event";
 import { render, mockHost, mockNode, fireEvent, fireEventWith, HostNode } from "../../src/render/host";
@@ -85,7 +84,7 @@ test "direct emission delivers the same event as tree emission" {
 
 	const directRoot = mockNode("root");
 	let directSaw = "";
-	const mount = direct(<button onPress={(e: NeonEvent): void => { directSaw = e.type + ":" + e.value; }}>go</button>);
+	const mount = element(<button onPress={(e: NeonEvent): void => { directSaw = e.type + ":" + e.value; }}>go</button>);
 	mount(host, directRoot as unknown as HostNode, null);
 
 	const e = neonEvent("press");
@@ -117,7 +116,7 @@ test "onChangeText hands the handler the text on both emissions" {
 
 	const directRoot = mockNode("root");
 	let directText = "";
-	const mount = direct(<input onChangeText={(t: string): void => { directText = t; }} />);
+	const mount = element(<input onChangeText={(t: string): void => { directText = t; }} />);
 	mount(host, directRoot as unknown as HostNode, null);
 
 	const e = neonEvent("changetext");

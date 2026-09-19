@@ -4,7 +4,6 @@ import { onCleanup } from "../../src/core/cleanup";
 import { createEffect } from "../../src/core/effect";
 import { NeonNode, el, text, dynText } from "../../src/render/node";
 import { element } from "../../src/macros/ui/element";
-import { direct } from "../../src/macros/ui/direct";
 import { HostNode, MockNode, mockNode, mockHost, render, mockToString } from "../../src/render/host";
 
 test "render builds tree and binds reactive text (push)" {
@@ -71,7 +70,7 @@ test "null attr: static writes nothing, reactive removes then writes back — tr
 	const flat: MockNode = mockNode("root");
 	createRoot((dispose) => {
 		render(element(<div title={t()} id={s}>x</div>), host, tree as unknown as HostNode);
-		const mount = direct(<div title={t()} id={s}>x</div>);
+		const mount = element(<div title={t()} id={s}>x</div>);
 		mount(host, flat as unknown as HostNode, null);
 		mount(host, flat as unknown as HostNode, null);
 		assert mockToString(tree) === "<root><div title=\"a\">x</div></root>", "tree mount: " + mockToString(tree);
@@ -94,7 +93,7 @@ test "null attr at mount: a reactive spot that starts null never shows" {
 	const flat: MockNode = mockNode("root");
 	createRoot((dispose) => {
 		render(element(<div title={t()}>x</div>), host, tree as unknown as HostNode);
-		direct(<div title={t()}>x</div>)(host, flat as unknown as HostNode, null);
+		element(<div title={t()}>x</div>)(host, flat as unknown as HostNode, null);
 		assert mockToString(tree) === "<root><div>x</div></root>", "tree: " + mockToString(tree);
 		assert mockToString(flat) === "<root><div>x</div></root>", "direct: " + mockToString(flat);
 		setT("a");

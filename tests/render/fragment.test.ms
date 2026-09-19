@@ -2,7 +2,6 @@ import { NeonNode } from "../../src/render/node";
 import { renderToString } from "../../src/render/ssr";
 import { MockNode, mockHost, render, mockToString } from "../../src/render/host";
 import { element } from "../../src/macros/ui/element";
-import { direct } from "../../src/macros/ui/direct";
 import { View, Text } from "../../src/components/primitives";
 import { createSignal, Accessor } from "../../src/core/signal";
 import { createRoot } from "../../src/core/owner";
@@ -102,7 +101,7 @@ test "a fragment child flattens the same under direct emission" {
 	const treeRoot = host.createElement("root");
 	render(element(<div><><p>a</p><p>b</p></></div>), host, treeRoot);
 	const directRoot = host.createElement("root");
-	const mount = direct(<div><><p>a</p><p>b</p></></div>);
+	const mount = element(<div><><p>a</p><p>b</p></></div>);
 	mount(host, directRoot, null);
 	const t = mockToString(treeRoot as unknown as MockNode);
 	const d = mockToString(directRoot as unknown as MockNode);
@@ -114,7 +113,7 @@ test "nested fragments flatten the same under direct emission" {
 	const treeRoot = host.createElement("root");
 	render(element(<div><><p>a</p><><p>b</p><p>c</p></></></div>), host, treeRoot);
 	const directRoot = host.createElement("root");
-	const mount = direct(<div><><p>a</p><><p>b</p><p>c</p></></></div>);
+	const mount = element(<div><><p>a</p><><p>b</p><p>c</p></></></div>);
 	mount(host, directRoot, null);
 	const t = mockToString(treeRoot as unknown as MockNode);
 	const d = mockToString(directRoot as unknown as MockNode);
@@ -124,7 +123,7 @@ test "nested fragments flatten the same under direct emission" {
 test "an empty fragment is erased under direct emission too" {
 	const host = mockHost();
 	const directRoot = host.createElement("root");
-	const mount = direct(<div><></></div>);
+	const mount = element(<div><></></div>);
 	mount(host, directRoot, null);
 	assert mockToString(directRoot as unknown as MockNode) === "<root><div></div></root>", "no placeholder";
 }
@@ -134,7 +133,7 @@ test "a fragment inside a component tag flattens under direct emission" {
 	const treeRoot = host.createElement("root");
 	render(element(<View><><Text>a</Text><Text>b</Text></></View>), host, treeRoot);
 	const directRoot = host.createElement("root");
-	const mount = direct(<View><><Text>a</Text><Text>b</Text></></View>);
+	const mount = element(<View><><Text>a</Text><Text>b</Text></></View>);
 	mount(host, directRoot, null);
 	const t = mockToString(treeRoot as unknown as MockNode);
 	const d = mockToString(directRoot as unknown as MockNode);
@@ -148,7 +147,7 @@ test "a flattened fragment child stays reactive under direct emission" {
 		const treeRoot = host.createElement("root");
 		render(element(<div><>hi <p>{n() + ""}</p></></div>), host, treeRoot);
 		const directRoot = host.createElement("root");
-		const mount = direct(<div><>hi <p>{n() + ""}</p></></div>);
+		const mount = element(<div><>hi <p>{n() + ""}</p></></div>);
 		mount(host, directRoot, null);
 		assert mockToString(treeRoot as unknown as MockNode) === mockToString(directRoot as unknown as MockNode), "initial";
 		setN(2);
@@ -165,7 +164,7 @@ test "a component that returns a fragment mounts under direct emission" {
 	const treeRoot = host.createElement("root");
 	render(element(<div><Pair label="x" /></div>), host, treeRoot);
 	const directRoot = host.createElement("root");
-	const mount = direct(<div><Pair label="x" /></div>);
+	const mount = element(<div><Pair label="x" /></div>);
 	mount(host, directRoot, null);
 	const t = mockToString(treeRoot as unknown as MockNode);
 	const d = mockToString(directRoot as unknown as MockNode);

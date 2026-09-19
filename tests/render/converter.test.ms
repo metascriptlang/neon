@@ -1,4 +1,4 @@
-// The converter surface — bare JSX, zero element()/direct() calls, lowered by the
+// The converter surface — bare JSX, zero element()/element() calls, lowered by the
 // prelude converter at every settled expected-type boundary. Pins PORT-STATUS #2:
 // an app is writable without naming a macro. On js the NeonNode boundary needs its
 // own converter (NeonNode is a mount closure there); on native the NeonNode one
