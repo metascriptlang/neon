@@ -881,7 +881,26 @@ Neon native under that binary: 40 files, **3 red, all pre-existing on a same-com
   `grep -rn 'startsWith("on")' src` prints the predicate alone). Was: on a lowercase tag both macros
   tested `startsWith("on")`; a component prop needed `on` + an uppercase letter.
 - **PARKED 2026-09-17 (one-NeonNode arc) — flow lowering does not cover `||`, `??` or
-  `.map(namedFn)`.** Only `&&`, the ternary and `.map(arrow)` are lowered (`element.ms:171-188`).
+  `.map(namedFn)`.** Only `&&`, the ternary and `.map(arrow)` are lowered (`lowerFlowTree` in
+  `element.ms`). Measured 2026-09-19 on msc v0.2.55 (`bce99dbf`), each form on its own:
+  - `{xs.map(namedRow)}` — the macro side is in place (`isFunctionValued`: a function-typed value is a
+    row and a raw component child, so `<For each={xs()}>{namedRow}</For>` works — `flow.test.ms` "For
+    takes a named row function as its child"). The lowering fires and the build still stops on
+    "Argument type mismatch in 'map' arg 0": inside a macro argument a mismatched ARROW is silent, a
+    mismatched named function is a hard error. PARKED on
+    `~/metascript/.inbox/compiler/2026-09-19-macro-arg-type-error-kept-for-named-function-only.md`,
+    pinned by `tests/macros/mapNamedRowRejected.ms`. A named row that ignores the index is refused
+    separately: `…/2026-09-19-named-function-with-fewer-params-rejected.md`.
+  - `{ready() || <i>wait</i>}` — "JSX expression must be consumed by a macro". The left arm is a VALUE
+    that renders when truthy (a string, a node; a `true` renders nothing), so the lowering is
+    `<Show when={a} fallback={<X/>}>{a}</Show>` and needs a boolean / nullable value as a child:
+    PARKED with ROADMAP Next 7 on
+    `~/metascript/.inbox/compiler/2026-09-19-design-typed-slots-value-read-and-text-coercion.md`
+    (the user ruled 2026-09-19 that `null` and `boolean` children come from that design, not from a
+    Neon patch). No boolean-only shortcut is added meanwhile.
+  - `{maybe ?? <i>none</i>}` with `maybe: NeonNode | null` — same compiler message, pinned by
+    `tests/macros/fragmentNullishRejected.ms`. Neon-side: it needs a `NeonNode | null` child, which is
+    the "primitives drop `hostElement`" work (arc card `neonnode-tail`, Next).
 - **~~PARKED 2026-09-17 (one-NeonNode arc) — a fragment inside a prop of a NESTED element is reported
   as "inside an expression".~~ ✅ CLOSED 2026-09-19 (`d9a46c8`): the message and `findFragment` are gone;
   a fragment prop value lowers through the converter (`fragment.test.ms` "a fragment is a fallback").** Code reading: `findFragment` walks every child subtree attrs included
