@@ -414,8 +414,13 @@ export macro element(node: Node): Node {
 	function isNodeValued(n: Node): boolean {
 		return isNodeTyped(n) || isNodeArrayTyped(n);
 	}
+	function isFunctionValued(n: Node): boolean {
+		if (n.kind === NodeKind.ArrowFunction || n.kind === NodeKind.FunctionExpr) { return true; }
+		const t = peelHidden(n).nodeType;
+		return t !== null && t.kind === NodeKind.TypeFunction;
+	}
 	function isRawChild(n: Node): boolean {
-		return n.kind === NodeKind.ArrowFunction || n.kind === NodeKind.FunctionExpr || isNodeTyped(n);
+		return isFunctionValued(n);
 	}
 	function isReactiveSelection(n: Node): boolean {
 		const p = peelHidden(n);
@@ -468,8 +473,7 @@ export macro element(node: Node): Node {
 				} else if (ex.kind === NodeKind.CallExpr && ex.arguments.length === 1) {
 					const callee = peelHidden(ex.callee);
 					const row = peelHidden(ex.arguments[0]);
-					if (callee.kind === NodeKind.MemberExpr && callee.property === "map"
-						&& (row.kind === NodeKind.ArrowFunction || row.kind === NodeKind.FunctionExpr)) {
+					if (callee.kind === NodeKind.MemberExpr && callee.property === "map" && isFunctionValued(row)) {
 						lowered = forOf(peelHidden(callee.object), row, c.line, c.column);
 					}
 				}
