@@ -774,7 +774,7 @@ Neon native under that binary: 40 files, **3 red, all pre-existing on a same-com
 - **OPEN docs (2026-09-18) — `LANG.md:780` documents `for (const [key, value] of map)` as valid while `LANG.md:2488` defines `Map<K, V>.toItems()` as `K[]`.** The two sections contradict each other and the first one is what a TypeScript reader copies. Decide the direction before touching either: TS semantics (a Map is an iterable of `[K, V]` pairs, so `toItems` should yield tuples and the destructure is correct) or the current model (keys by default, and line 780's example must be deleted). The checker bug above is independent of that decision — an array pattern on a `string` element must be rejected either way.
 - **NOTE corpus (2026-09-16) — `405-lockedSharedCounter`, `410-awaitStructSpawnStored`, `419-leakSendMovedArgAsync` are non-deterministic cells.** Across four full corpus runs on two binaries built from one tree they flipped side (red on control in one run, red on the patch in the next) and lane (`[orc]` vs `[drc]` vs `[danger]`), each rerun alone was green, and hung cell processes from earlier days were found still running in the recompiler root. Read them as concurrency flakes, never as a regression signal, until someone owns them.
 
-## §3 — Neon-side / environment — 0 OPEN (the multi-node range row CLOSED 2026-09-19), 2 PARKED by the one-NeonNode arc (flow lowering gaps; `isAccessorTyped` alias/nullable, which waits on a compiler card); `Index` does not grow CLOSED 2026-09-18; direct-emission style CLOSED 2026-09-17; `voidHost` CLOSED 2026-07-27 (late)
+## §3 — Neon-side / environment — 0 OPEN Neon-side (the multi-node range row CLOSED 2026-09-19), 1 OPEN on the compiler (nullable slots in bare JSX, found 2026-09-19), 2 PARKED by the one-NeonNode arc, each on a compiler card (flow lowering: `.map(namedFn)` and `||`; `isAccessorTyped` alias/nullable); `Index` does not grow CLOSED 2026-09-18; direct-emission style CLOSED 2026-09-17; `voidHost` CLOSED 2026-07-27 (late)
 
 - **~~`Index` never mounts a row appended to the list~~ ✅ CLOSED 2026-09-18 (Lát 4c, Neon `8644587`
   fix + `b1cfb19` guard) — the suspected root was WRONG, and `src/core/array.ms` was never touched.**
@@ -898,9 +898,36 @@ Neon native under that binary: 40 files, **3 red, all pre-existing on a same-com
     `~/metascript/.inbox/compiler/2026-09-19-design-typed-slots-value-read-and-text-coercion.md`
     (the user ruled 2026-09-19 that `null` and `boolean` children come from that design, not from a
     Neon patch). No boolean-only shortcut is added meanwhile.
-  - `{maybe ?? <i>none</i>}` with `maybe: NeonNode | null` — same compiler message, pinned by
-    `tests/macros/fragmentNullishRejected.ms`. Neon-side: it needs a `NeonNode | null` child, which is
-    the "primitives drop `hostElement`" work (arc card `neonnode-tail`, Next).
+  - `{maybe ?? <i>none</i>}` with `maybe: NeonNode | null` — ✅ CLOSED 2026-09-19 (`c1920fa`) through
+    `element(<jsx/>)`: it lowers to `<Show when={maybe !== null} fallback={<X/>}>{maybe}</Show>`, the
+    nullable node mounts through the new `NeonNode | null` child (`5291f67`); a reactive left arm is
+    rejected with the "picked by a reactive condition" message. Pinned by `flow.test.ms`
+    "a ?? <X/> child mounts the node when present and the JSX arm when null" (element arm and fragment
+    arm; `msc test tests/render/flow.test.ms` rc=0 on C and `--target=js`). In BARE JSX it stays
+    red — not the lowering, the row below.
+- **OPEN compiler 2026-09-19 — every nullable slot is red in BARE JSX and green through
+  `element(<jsx/>)`.** A nullable `on*` / `ref` / `style` (Lát 0.11), an `Accessor<string> | null`
+  attribute and a `NeonNode | null` child all emit `const _o = v; if (_o !== null) { f(_o); }`. Called
+  as `element(...)` the `if` narrows `_o`; when the converter `jsxToNode` builds the same
+  `MacroInvocation` it does not ("Argument type mismatch in 'addEvent' arg 2: got Maybe_fn…", "No
+  matching overload for 'mountChild'"). Reduced outside Neon — a 35-line macro + converter, same
+  split. Every cell that pins these features calls `element(...)`, which is how it went unseen since
+  Lát 0.11. Card: `~/metascript/.inbox/compiler/2026-09-19-narrowing-lost-in-converter-expanded-macro-code.md`;
+  parked at `tests/macros/bareNullableChildRejected.ms`. `primitives.ms` calls `element(...)` for
+  this reason.
+- **✅ CLOSED 2026-09-19 (`0daeddb`) — a reactive `class` on View / Text / Pressable / TextInput froze at
+  its first value, silently.** `primitive()` read it once (`attr("class", props.class as string)`).
+  Measured before the fix: `<View class={cls()}>` kept `class="a"` after `setCls("b")` on all four.
+  View, Text and Pressable are now written in JSX (`<view class={props.class} style={props.style}
+  ref={props.ref}>{props.children}</view>`; Pressable hands its gesture handlers over as nullable
+  `on*`), which needed two macro additions: an `Accessor<string> | null` attribute binds when present
+  and leaves no attribute when null, and a `NeonNode | null` child mounts when present (`5291f67`,
+  pinned on both tiers in `emit.test.ms`). TextInput keeps `hostElement` with `class` as a `dynAttr`:
+  its nullable `onChangeText` is what the macro rejects until `const` narrowing survives a closure
+  (the KNOWN-ISSUES L47 row in §2; fixtures `optChangeText{Template,Flat}Rejected.ms`). Pinned by
+  `universalTags.test.ms` "a reactive class follows its signal on every component of the vocabulary"
+  (rc=0 on C and `--target=js`; importers `press`, `ref`, `fragment`, `tests/platform/terminal`,
+  `tests/platform/void`, `tests/style/style` rc=0).
 - **~~PARKED 2026-09-17 (one-NeonNode arc) — a fragment inside a prop of a NESTED element is reported
   as "inside an expression".~~ ✅ CLOSED 2026-09-19 (`d9a46c8`): the message and `findFragment` are gone;
   a fragment prop value lowers through the converter (`fragment.test.ms` "a fragment is a fallback").** Code reading: `findFragment` walks every child subtree attrs included
