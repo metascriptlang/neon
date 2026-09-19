@@ -89,6 +89,22 @@ It follows the workspace compiler boundary (`~/metascript/CLAUDE.md`): repro, ca
 
 ---
 
+## Git — one worktree per arc, `/split-commit`, fast-forward land
+
+Neon holds the workspace rules with plain git. It has no `wt.sh`, no `gate.sh` and no land script, and does not need one.
+
+- **One worktree per feature or named arc**, reused by every session of that arc. It sits BESIDE this checkout, because Neon imports `../void` and `../yoga` by relative path:
+  `git worktree add -b wt/<name> ../neon-wt-<name> main`, then inside it `mkdir deps && ln -s ../../yoga/deps/yoga deps/yoga`.
+  Sequential steps of one arc are commits in that worktree, never new worktrees.
+- **The arc's goal lives in its card, `~/metascript/.wt/<name>.md`** — one card folder for the whole workspace, outside every checkout. It holds the Goal, a "Done when" a session can run, and a State of a few lines naming the step in flight. Memory points at the card and never copies its state; the card is deleted once "Done when" holds on `main`.
+- **Commit in the worktree through `/split-commit`**, without asking. A session ends with its work committed and the card's State current.
+- **The gate is `bash tests/run.sh`, read by its exit code.** A commit runs the test files of the module it touches plus their importers; the full gate runs before a land that changes `src/` or a shared contract. One `msc` per directory at a time.
+- **Land a slice as soon as it stands alone**: `git rebase main` in the worktree, gate, then `git -C ~/metascript/neon merge --ff-only wt/<name>`. Git refuses the merge when it touches a path the main checkout holds uncommitted work on — leave that refusal alone and report it.
+- **The main checkout only receives lands.** Never push without asking.
+- **A worktree is removed from outside its own session**: check it holds no dirty file and no commit missing from `main`, `unlink deps/yoga`, `git worktree remove <path>`, `git branch -d wt/<name>`.
+
+---
+
 ## Quick Reference
 
 ### Development Commands
@@ -191,6 +207,7 @@ neon/
 
 **Essential Reading**:
 - [CRITICAL: Development Philosophy](#️-critical-development-philosophy) - Must-read methodology
+- [Git](#git--one-worktree-per-arc-split-commit-fast-forward-land) - Worktree, card, commit, land
 - [Sacred Files](#sacred-files-do-not-modify-api) - API protection policy
 - [Quick Reference](#quick-reference) - Commands and structure
 
