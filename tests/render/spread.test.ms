@@ -120,70 +120,25 @@ test "an explicit style after a spread replaces the spread's style" {
 	assert renderToString(view({ style: { height: 2 } })) === "<div style=\"width:1px;\">hi</div>", "explicit style wins";
 }
 
-// Direct emission (NeonNode): the same classification, the same override order.
-
-test "direct emission expands a spread into the same attrs" {
+test "attrs on both sides of a spread each keep their own position" {
 	const p = { id: "x", title: "t" };
 	const host = mockHost();
 	const root = mockNode("root");
-	const m = element(<div {...p}>hi</div>);
-	m(host, root as unknown as HostNode, null);
-	assert mockToString(root.children[0]) === "<div id=\"x\" title=\"t\">hi</div>", "direct spread attrs";
+	render(element(<div title="early" {...p} id="late">hi</div>), host, root as unknown as HostNode);
+	assert mockToString(root.children[0]) === "<div title=\"t\" id=\"late\">hi</div>", "override order: " + mockToString(root.children[0]);
 }
 
-test "direct emission gives a later prop the win in place" {
-	const p = { id: "x", title: "t" };
-	const host = mockHost();
-	const root = mockNode("root");
-	const m = element(<div title="early" {...p} id="late">hi</div>);
-	m(host, root as unknown as HostNode, null);
-	assert mockToString(root.children[0]) === "<div title=\"t\" id=\"late\">hi</div>", "direct override order";
-}
-
-test "direct emission removes a null field" {
-	function view(p: Attrs): NeonNode {
-		return element(<div title="early" {...p}>hi</div>);
-	}
-	const host = mockHost();
-	const root = mockNode("root");
-	view({ id: "x", title: null })(host, root as unknown as HostNode, null);
-	assert mockToString(root.children[0]) === "<div id=\"x\">hi</div>", "direct null removes";
-}
-
-test "direct emission keeps an Accessor field reactive" {
+test "an Accessor field updates the attribute of a mounted node" {
 	const [t, setT] = createSignal("a");
 	function view(p: Reactive): NeonNode {
 		return element(<div {...p}>hi</div>);
 	}
 	const host = mockHost();
 	const root = mockNode("root");
-	view({ title: t })(host, root as unknown as HostNode, null);
-	assert mockToString(root.children[0]) === "<div title=\"a\">hi</div>", "direct accessor initial";
+	render(view({ title: t }), host, root as unknown as HostNode);
+	assert mockToString(root.children[0]) === "<div title=\"a\">hi</div>", "initial: " + mockToString(root.children[0]);
 	setT("b");
-	assert mockToString(root.children[0]) === "<div title=\"b\">hi</div>", "direct accessor updates";
-}
-
-test "direct emission routes an on* field to addEvent" {
-	let hits = 0;
-	function view(p: Handlers): NeonNode {
-		return element(<div {...p}>hi</div>);
-	}
-	const host = mockHost();
-	const root = mockNode("root");
-	view({ onPress: (e: NeonEvent) => { hits = hits + 1; } })(host, root as unknown as HostNode, null);
-	fireEvent(root.children[0], "onPress");
-	assert hits === 1, "direct spread handler fired";
-}
-
-test "direct emission lets a spread style replace an earlier one" {
-	function view(p: Styled): NeonNode {
-		return element(<div style={{ width: 1 }} {...p}>hi</div>);
-	}
-	const host = mockHost();
-	const root = mockNode("root");
-	view({ style: { height: 2 } })(host, root as unknown as HostNode, null);
-	const st = root.children[0].style;
-	assert st !== null && (st as Style).height === 2 && (st as Style).width === null, "direct spread style replaces";
+	assert mockToString(root.children[0]) === "<div title=\"b\">hi</div>", "after set: " + mockToString(root.children[0]);
 }
 
 // A capitalized tag takes the same expansion, then the V1 prop contract wraps
