@@ -948,3 +948,37 @@ test "a numeric child renders as text and follows its signal — flat tier" {
 	setN(8);
 	assert mockToString(root) === "<root><p>8|9|3<b>8</b></p></root>", "after set: " + mockToString(root);
 }
+
+// ---- on* is an event only as `on` + an uppercase letter, on a tag and on a component alike ----
+
+interface NetProps {
+	online: Accessor<string>;
+}
+
+function Net(props: NetProps): NeonNode {
+	return element(<i>{props.online()}</i>);
+}
+
+test "once and online are attributes, not events — template tier" {
+	const [v, setV] = createSignal("y");
+	const host = mockHost();
+	const directRoot = mockNode("root");
+	const mount = element(<p once="x" online={v()}>hi</p>);
+	mount(host, directRoot as unknown as HostNode, null);
+	assert mockToString(directRoot) === "<root><p once=\"x\" online=\"y\">hi</p></root>", "golden: " + mockToString(directRoot);
+	assert (directRoot as MockNode).children[0].events.length === 0, "no listener";
+	setV("z");
+	assert mockToString(directRoot) === "<root><p once=\"x\" online=\"z\">hi</p></root>", "golden after set: " + mockToString(directRoot);
+}
+
+test "once and online are attributes, not events — flat tier" {
+	const [v, setV] = createSignal("y");
+	const host = mockHost();
+	const directRoot = mockNode("root");
+	const mount = element(<div><Net online={v()} /><p once="x" online={v()}>hi</p></div>);
+	mount(host, directRoot as unknown as HostNode, null);
+	assert mockToString(directRoot) === "<root><div><i>y</i><p once=\"x\" online=\"y\">hi</p></div></root>", "golden: " + mockToString(directRoot);
+	assert (directRoot as MockNode).children[0].children[1].events.length === 0, "no listener";
+	setV("z");
+	assert mockToString(directRoot) === "<root><div><i>z</i><p once=\"x\" online=\"z\">hi</p></div></root>", "golden after set: " + mockToString(directRoot);
+}
