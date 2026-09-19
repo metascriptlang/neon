@@ -1026,3 +1026,71 @@ test "a nullable NeonNode child mounts in place when present and mounts nothing 
 	optChild(null)(host, directRoot as unknown as HostNode, null);
 	assert mockToString(directRoot) === "<root><div><p>a</p><b>k</b><p>z</p></div><div><p>a</p><p>z</p></div></root>", "golden: " + mockToString(directRoot);
 }
+
+// ---- the same nullable spots written as bare JSX, lowered by the converter ----
+
+function optBare(h: ((e: NeonEvent) => void) | null, r: ((b: HostNode) => void) | null, s: Style | null, a: Accessor<Style> | null): NeonNode {
+	return <div><button type="button" onPress={h} ref={r} style={s}>go</button><p style={a}>x</p></div>;
+}
+
+function optAttrBare(c: Accessor<string> | null): NeonNode {
+	return <div><p class={c}>x</p></div>;
+}
+
+function optChildBare(k: NeonNode | null): NeonNode {
+	return <div><p>a</p>{k}<p>z</p></div>;
+}
+
+test "null on*/ref/style attach nothing — bare JSX" {
+	const host = mockHost();
+	const directRoot = mockNode("root");
+	optBare(null, null, null, null)(host, directRoot as unknown as HostNode, null);
+
+	assert mockToString(directRoot) === "<root><div><button type=\"button\">go</button><p>x</p></div></root>", "golden: " + mockToString(directRoot);
+	const btn = (directRoot as MockNode).children[0].children[0];
+	assert btn.events.length === 0, "no listener for a null handler: " + btn.events.length.toString();
+	assert cssAt((directRoot as MockNode).children[0], 0) === "(none)", "no style for a null Style: " + cssAt((directRoot as MockNode).children[0], 0);
+	assert cssAt((directRoot as MockNode).children[0], 1) === "(none)", "no style for a null accessor: " + cssAt((directRoot as MockNode).children[0], 1);
+}
+
+test "present on*/ref/style through a nullable type attach — bare JSX" {
+	const [pad, setPad] = createSignal<number>(3);
+	let hits = 0;
+	let seen = "";
+	const bump: (e: NeonEvent) => void = () => { hits = hits + 1; };
+	const grab: (b: HostNode) => void = (b) => { seen = mockToString(b as unknown as MockNode); };
+	const fixed: Style = { margin: 2 };
+	const live = accessor((): Style => { const st: Style = { padding: pad() }; return st; });
+	const host = mockHost();
+
+	const directRoot = mockNode("root");
+	optBare(bump, grab, fixed, live)(host, directRoot as unknown as HostNode, null);
+
+	const dDiv = (directRoot as MockNode).children[0];
+	assert seen === "<button type=\"button\">go</button>", "ref saw the finished node: " + seen;
+	fireEvent(dDiv.children[0], "onPress");
+	assert hits === 1, "one hit: " + hits.toString();
+	assert cssAt(dDiv, 0) === "margin:2px;", "static style: " + cssAt(dDiv, 0);
+	assert cssAt(dDiv, 1) === "padding:3px;", "accessor style: " + cssAt(dDiv, 1);
+	setPad(8);
+	assert cssAt(dDiv, 1) === "padding:8px;", "accessor style after set: " + cssAt(dDiv, 1);
+}
+
+test "a nullable Accessor attribute binds when present and leaves nothing when null — bare JSX" {
+	const [cls, setCls] = createSignal("a");
+	const host = mockHost();
+	const directRoot = mockNode("root");
+	optAttrBare(cls)(host, directRoot as unknown as HostNode, null);
+	optAttrBare(null)(host, directRoot as unknown as HostNode, null);
+	assert mockToString(directRoot) === "<root><div><p class=\"a\">x</p></div><div><p>x</p></div></root>", "golden: " + mockToString(directRoot);
+	setCls("b");
+	assert mockToString(directRoot) === "<root><div><p class=\"b\">x</p></div><div><p>x</p></div></root>", "golden after set: " + mockToString(directRoot);
+}
+
+test "a nullable NeonNode child mounts in place when present and mounts nothing when null — bare JSX" {
+	const host = mockHost();
+	const directRoot = mockNode("root");
+	optChildBare(<b>k</b>)(host, directRoot as unknown as HostNode, null);
+	optChildBare(null)(host, directRoot as unknown as HostNode, null);
+	assert mockToString(directRoot) === "<root><div><p>a</p><b>k</b><p>z</p></div><div><p>a</p><p>z</p></div></root>", "golden: " + mockToString(directRoot);
+}
