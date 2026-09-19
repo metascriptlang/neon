@@ -774,7 +774,7 @@ Neon native under that binary: 40 files, **3 red, all pre-existing on a same-com
 - **OPEN docs (2026-09-18) — `LANG.md:780` documents `for (const [key, value] of map)` as valid while `LANG.md:2488` defines `Map<K, V>.toItems()` as `K[]`.** The two sections contradict each other and the first one is what a TypeScript reader copies. Decide the direction before touching either: TS semantics (a Map is an iterable of `[K, V]` pairs, so `toItems` should yield tuples and the destructure is correct) or the current model (keys by default, and line 780's example must be deleted). The checker bug above is independent of that decision — an array pattern on a `string` element must be rejected either way.
 - **NOTE corpus (2026-09-16) — `405-lockedSharedCounter`, `410-awaitStructSpawnStored`, `419-leakSendMovedArgAsync` are non-deterministic cells.** Across four full corpus runs on two binaries built from one tree they flipped side (red on control in one run, red on the patch in the next) and lane (`[orc]` vs `[drc]` vs `[danger]`), each rerun alone was green, and hung cell processes from earlier days were found still running in the recompiler root. Read them as concurrency flakes, never as a regression signal, until someone owns them.
 
-## §3 — Neon-side / environment — 0 OPEN (the multi-node range row CLOSED 2026-09-19), 4 PARKED by the one-NeonNode arc; `Index` does not grow CLOSED 2026-09-18; direct-emission style CLOSED 2026-09-17; `voidHost` CLOSED 2026-07-27 (late)
+## §3 — Neon-side / environment — 0 OPEN (the multi-node range row CLOSED 2026-09-19), 3 PARKED by the one-NeonNode arc (`on*` two ways, flow lowering gaps, `isAccessorTyped` alias/nullable — the last one waits on a compiler card); `Index` does not grow CLOSED 2026-09-18; direct-emission style CLOSED 2026-09-17; `voidHost` CLOSED 2026-07-27 (late)
 
 - **~~`Index` never mounts a row appended to the list~~ ✅ CLOSED 2026-09-18 (Lát 4c, Neon `8644587`
   fix + `b1cfb19` guard) — the suspected root was WRONG, and `src/core/array.ms` was never touched.**
@@ -882,13 +882,21 @@ Neon native under that binary: 40 files, **3 red, all pre-existing on a same-com
   as "inside an expression".~~ ✅ CLOSED 2026-09-19 (`d9a46c8`): the message and `findFragment` are gone;
   a fragment prop value lowers through the converter (`fragment.test.ms` "a fragment is a fallback").** Code reading: `findFragment` walks every child subtree attrs included
   (`reactive.ms:76`), so a fragment that is a prop VALUE gets the expression-container message.
-- **PARKED 2026-09-17 (one-NeonNode arc) — `isAccessorTyped` exists twice (`element.ms`,
-  `direct.ms`) and matches neither a type alias of `Accessor<T>` nor `Accessor<T> | null`.** The
-  Lát 4 macro merge deletes the copy; the alias and nullable arms are the real gap.
-- **PARKED 2026-09-17 (one-NeonNode arc, Lát 0.9 cleanup) — the component-children wrapping block
-  exists three times:** `direct.ms` root (~:259) and nested component (~:903), plus `element.ms`.
-  A shared helper cannot be written today: outside a macro body a `Node` only exposes
-  `childCount`/`childAt` (`reactive.ms:10`). The Lát 4 macro merge deletes the copies.
+- **PARKED 2026-09-17 (one-NeonNode arc) — `isAccessorTyped` ~~exists twice (`element.ms`,
+  `direct.ms`) and~~ matches neither a type alias of `Accessor<T>` nor `Accessor<T> | null`.** The
+  duplicate is ✅ CLOSED 2026-09-19 by the macro merge (`direct.ms` is gone;
+  `grep -rn "function isAccessorTyped" src` prints one line, `element.ms`). The alias and nullable
+  arms stay PARKED on the compiler: how a macro asks for a type is part of
+  `~/metascript/.inbox/compiler/2026-09-19-design-typed-slots-value-read-and-text-coercion.md`
+  (ROADMAP Next 7); no Neon-side name matching is added meanwhile.
+- **~~PARKED 2026-09-17 (one-NeonNode arc, Lát 0.9 cleanup) — the component-children wrapping block
+  exists three times:~~ ✅ CLOSED 2026-09-19 by the macro merge.** `direct.ms` is gone and the block
+  lives once, in `componentCall` (`grep -c 'keys.push("children")' src/macros/ui/element.ms` = 3, the
+  three arms of that one block). Children that are not a single raw value or a single element lower
+  through a root fragment, so a static `{expr}` child reaches `mountChild` as text — pinned by
+  `emit.test.ms` "a static string expression as a component's only child mounts as text"
+  (`msc test tests/render/emit.test.ms` rc=0 on C and `--target=js`). Was: `direct.ms` root (~:259)
+  and nested component (~:903), plus `element.ms`.
 - **`voidHost`** — ✅ **GREEN (3/3).** Both problems recorded here were MIS-DIAGNOSED; see §5 for the
   four real roots. Corrections worth carrying forward:
   - **"env: sokol_gfx.h not present" was WRONG.** `sokol_gfx.h` was on disk the whole time at
