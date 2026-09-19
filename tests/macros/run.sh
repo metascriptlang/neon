@@ -23,6 +23,7 @@ expect_reject tests/macros/spreadChildrenRejected.ms "children cannot come from 
 expect_reject tests/macros/spreadNullHandlerRejected.ms "a nullable onPress handler is not supported yet"
 expect_reject tests/macros/spreadNullStyleRejected.ms "a nullable style is not supported yet"
 expect_reject tests/macros/mapNamedRowRejected.ms "Argument type mismatch in 'map' arg 0"
+expect_reject tests/macros/mapArrowAccessorRowRejected.ms "Argument type mismatch in 'map' arg 0"
 expect_reject tests/macros/accessorNominal.ms "is not assignable to type 'Accessor<number>'"
 expect_reject tests/macros/emptyLayerRejected.ms "a style layer array needs at least one layer"
 expect_reject tests/macros/reactiveLayerFieldRejected.ms "a reactive style field inside a layer array is not supported yet"
