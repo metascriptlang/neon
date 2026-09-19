@@ -774,7 +774,7 @@ Neon native under that binary: 40 files, **3 red, all pre-existing on a same-com
 - **OPEN docs (2026-09-18) — `LANG.md:780` documents `for (const [key, value] of map)` as valid while `LANG.md:2488` defines `Map<K, V>.toItems()` as `K[]`.** The two sections contradict each other and the first one is what a TypeScript reader copies. Decide the direction before touching either: TS semantics (a Map is an iterable of `[K, V]` pairs, so `toItems` should yield tuples and the destructure is correct) or the current model (keys by default, and line 780's example must be deleted). The checker bug above is independent of that decision — an array pattern on a `string` element must be rejected either way.
 - **NOTE corpus (2026-09-16) — `405-lockedSharedCounter`, `410-awaitStructSpawnStored`, `419-leakSendMovedArgAsync` are non-deterministic cells.** Across four full corpus runs on two binaries built from one tree they flipped side (red on control in one run, red on the patch in the next) and lane (`[orc]` vs `[drc]` vs `[danger]`), each rerun alone was green, and hung cell processes from earlier days were found still running in the recompiler root. Read them as concurrency flakes, never as a regression signal, until someone owns them.
 
-## §3 — Neon-side / environment — 0 OPEN Neon-side (the multi-node range row CLOSED 2026-09-19), 1 OPEN on the compiler (nullable slots in bare JSX, found 2026-09-19), 2 PARKED by the one-NeonNode arc, each on a compiler card (flow lowering: `.map(namedFn)` and `||`; `isAccessorTyped` alias/nullable); `Index` does not grow CLOSED 2026-09-18; direct-emission style CLOSED 2026-09-17; `voidHost` CLOSED 2026-07-27 (late)
+## §3 — Neon-side / environment — 0 OPEN Neon-side (the multi-node range row CLOSED 2026-09-19), 2 PARKED by the one-NeonNode arc, each on a compiler card (flow lowering `||`; `isAccessorTyped` alias/nullable); `Index` does not grow CLOSED 2026-09-18; direct-emission style CLOSED 2026-09-17; `voidHost` CLOSED 2026-07-27 (late)
 
 - **~~`Index` never mounts a row appended to the list~~ ✅ CLOSED 2026-09-18 (Lát 4c, Neon `8644587`
   fix + `b1cfb19` guard) — the suspected root was WRONG, and `src/core/array.ms` was never touched.**
@@ -883,14 +883,18 @@ Neon native under that binary: 40 files, **3 red, all pre-existing on a same-com
 - **PARKED 2026-09-17 (one-NeonNode arc) — flow lowering does not cover `||`, `??` or
   `.map(namedFn)`.** Only `&&`, the ternary and `.map(arrow)` are lowered (`lowerFlowTree` in
   `element.ms`). Measured 2026-09-19 on msc v0.2.55 (`bce99dbf`), each form on its own:
-  - `{xs.map(namedRow)}` — the macro side is in place (`isFunctionValued`: a function-typed value is a
-    row and a raw component child, so `<For each={xs()}>{namedRow}</For>` works — `flow.test.ms` "For
-    takes a named row function as its child"). The lowering fires and the build still stops on
-    "Argument type mismatch in 'map' arg 0": inside a macro argument a mismatched ARROW is silent, a
-    mismatched named function is a hard error. PARKED on
-    `~/metascript/.inbox/compiler/2026-09-19-macro-arg-type-error-kept-for-named-function-only.md`,
-    pinned by `tests/macros/mapNamedRowRejected.ms`. A named row that ignores the index is refused
-    separately: `…/2026-09-19-named-function-with-fewer-params-rejected.md`.
+  - `{xs.map(namedRow)}` — ✅ CLOSED 2026-09-20 as a rule, not a feature. The person ruled 2026-09-19
+    that a callback which does not fit `map` is an error, arrow or named; recompiler `76a6a9bd` +
+    `0b283fd4` (installed `7f80b93b`) closed the hole that let the arrow through. A For row takes an
+    `Accessor<number>` index, which is never `map`'s callback, so `.map` lowers only a row WITHOUT an
+    index (`preludeFlow.test.ms`); a row with an index, `number` or `Accessor`, arrow or named, is
+    refused and pointed at `<For>` (`b2f22b4`: "a .map row that takes an index is written
+    <For each={xs}>…"; before it, a `number` index failed as "Type 'function' is not assignable to type
+    'function' for field 'children'"). Permanent rejection fixtures: `tests/macros/mapIndexRowRejected.ms`,
+    `tests/macros/mapNamedRowRejected.ms`. A function-typed value is a row and a raw component child,
+    so `<For each={xs()}>{namedRow}</For>` works (`flow.test.ms` "For takes a named row function as its
+    child"). A named row that ignores the index waits on the design card
+    `…/2026-09-19-named-function-with-fewer-params-rejected.md`.
   - `{ready() || <i>wait</i>}` — "JSX expression must be consumed by a macro". The left arm is a VALUE
     that renders when truthy (a string, a node; a `true` renders nothing), so the lowering is
     `<Show when={a} fallback={<X/>}>{a}</Show>` and needs a boolean / nullable value as a child:
@@ -903,18 +907,21 @@ Neon native under that binary: 40 files, **3 red, all pre-existing on a same-com
     nullable node mounts through the new `NeonNode | null` child (`5291f67`); a reactive left arm is
     rejected with the "picked by a reactive condition" message. Pinned by `flow.test.ms`
     "a ?? <X/> child mounts the node when present and the JSX arm when null" (element arm and fragment
-    arm; `msc test tests/render/flow.test.ms` rc=0 on C and `--target=js`). In BARE JSX it stays
-    red — not the lowering, the row below.
-- **OPEN compiler 2026-09-19 — every nullable slot is red in BARE JSX and green through
-  `element(<jsx/>)`.** A nullable `on*` / `ref` / `style` (Lát 0.11), an `Accessor<string> | null`
+    arm; `msc test tests/render/flow.test.ms` rc=0 on C and `--target=js`). In bare JSX too since
+    2026-09-20: `preludeFlow.test.ms` "bare JSX lowers ?? over a nullable node".
+- **✅ CLOSED 2026-09-20 (recompiler `0f1e6735`, installed `7f80b93b`) — every nullable slot was red in
+  BARE JSX and green through `element(<jsx/>)`.** Pinned by the four "bare JSX:" cells at the end of
+  `emit.test.ms` (`msc test tests/render/emit.test.ms` rc=0 on C and `--target=js`); the fixture
+  `bareNullableChildRejected.ms` is gone. Found with it: the lowering names `Show` / `For`, which the
+  prelude did not export, so bare JSX with `&&`, `?:`, `??` or `.map` failed with "Undefined variable
+  'For'" unless the file imported them — `src/converters.ms` exports both since `0f26a01`
+  (`preludeFlow.test.ms`). Was: A nullable `on*` / `ref` / `style` (Lát 0.11), an `Accessor<string> | null`
   attribute and a `NeonNode | null` child all emit `const _o = v; if (_o !== null) { f(_o); }`. Called
   as `element(...)` the `if` narrows `_o`; when the converter `jsxToNode` builds the same
   `MacroInvocation` it does not ("Argument type mismatch in 'addEvent' arg 2: got Maybe_fn…", "No
   matching overload for 'mountChild'"). Reduced outside Neon — a 35-line macro + converter, same
   split. Every cell that pins these features calls `element(...)`, which is how it went unseen since
-  Lát 0.11. Card: `~/metascript/.inbox/compiler/2026-09-19-narrowing-lost-in-converter-expanded-macro-code.md`;
-  parked at `tests/macros/bareNullableChildRejected.ms`. `primitives.ms` calls `element(...)` for
-  this reason.
+  Lát 0.11.
 - **✅ CLOSED 2026-09-19 (`0daeddb`) — a reactive `class` on View / Text / Pressable / TextInput froze at
   its first value, silently.** `primitive()` read it once (`attr("class", props.class as string)`).
   Measured before the fix: `<View class={cls()}>` kept `class="a"` after `setCls("b")` on all four.
