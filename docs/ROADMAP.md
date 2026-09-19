@@ -82,10 +82,15 @@ In rough priority order, once the above is standing:
   reactive `class` that froze at its first value on the whole vocabulary. Proved: `bash tests/run.sh`
   rc=0 — macros 17, apps 3, native 40, js 38 + 2 deliberate skips, browser 80/80;
   `msc build examples/counterDom.ms --target=js` and `msc run examples/counter.ms` rc=0. Left on the
-  compiler, each with a card under `~/metascript/.inbox/compiler/` and a fixture in `tests/macros/`:
-  `{xs.map(namedRow)}` (a macro argument keeps the type error of a named function, not of an arrow),
-  nullable slots in BARE JSX (narrowing is lost in converter-expanded code; green through `element(...)`),
-  `{a || <X/>}` (rides Next 7). BUGS §3 has the measurements.
+  compiler: `{a || <X/>}` (rides Next 7). BUGS §3 has the measurements.
+- **bare JSX catches up with `element(...)`** (2026-09-20) — after recompiler `0f1e6735`, `76a6a9bd`,
+  `0b283fd4` reached the installed `msc` (`7f80b93b`). Every nullable slot (handler, ref, style,
+  `Accessor<string> | null` attribute, `NeonNode | null` child) works in bare JSX; `Show` and `For` are in
+  the prelude, so `&&` / `?:` / `??` / `.map` need no import. `.map` lowers a row without an index only:
+  a callback that does not fit `map` is an error by the person's ruling, and a For row's index is an
+  `Accessor<number>`, so a row with an index is refused with a message that names `<For>`. Proved:
+  `bash tests/run.sh` rc=0 (see the land commit); the four "bare JSX:" cells in `emit.test.ms`,
+  `preludeFlow.test.ms`, `tests/macros/mapIndexRowRejected.ms`.
 - **twin test cells folded** (2026-09-19) — no test compares `element` against itself any more. A cell
   that repeated another cell's JSX and assertion is deleted (`fragment` 6, `spread` 4, `ref` 2, `event` 1,
   `context` 1); a cell that pinned something of its own keeps a hand-written golden under a name that says
