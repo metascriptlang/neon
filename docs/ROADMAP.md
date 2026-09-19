@@ -26,11 +26,11 @@ stays; no React hook aliases.
 | # | phase | owner | state |
 |---|---|---|---|
 | 0 | redeploy main; docs; loud-reject fragments; uniform spread walk | neon | done 2026-09-10 (`tests/macros/run.sh` rc=0) |
-| 1 | `distinct` nominal (`typeName`), callable over a fn base, one-way widen (`BrandWiden`) | compiler | |
-| 2 | `Accessor<T> = distinct (() => T)`; `createSignal`/`createMemo` return it; `accessor()` | neon core | |
-| 3 | checker reads a value through the `valueOf` protocol where a bare read would fail (replaced the source-typed auto-call 2026-09-14) | compiler | |
-| 4 | props contract: every value prop is `Accessor<T>`; the macro wraps every value, literals too; one `propValueNode` replaces three copies | neon macros | |
-| 5 | `{a && <X/>}` / ternary / `.map` lower to `Show`/`For` through one `lowerJsxChild` | neon macros | |
+| 1 | `distinct` nominal, callable over a fn base, one-way widen | compiler | done, re-measured 2026-09-19 on msc v0.2.55 (`probe/rm1_distinct.ms`, `rm1b_nominal.ms`): an `Accessor<string>` reads as `() => string`, the reverse is rejected. The names `typeName` / `BrandWiden` are not in Neon's source — the row described an early shape |
+| 2 | `Accessor<T> = distinct (() => T)`; `createSignal`/`createMemo` return it; `accessor()` | neon core | done, re-measured 2026-09-19 (`src/core/signal.ms:46`, `probe/rm1_distinct.ms`): the alias, `accessor()` and `valueOf` are all live |
+| 3 | checker reads a value through the `valueOf` protocol where a bare read would fail (replaced the source-typed auto-call 2026-09-14) | compiler | done, re-measured 2026-09-19 (`probe/rm3_valueof.ms`): `const [x] = createSignal(2); x * 2` prints `4` with no call |
+| 4 | props contract: every value prop is `Accessor<T>`; the macro wraps every value, literals too | neon macros | done, re-measured 2026-09-19 (`probe/rm4_props.ms`): `label="hi"` enters an `Accessor<string>` prop and `count={n()}` stays reactive (`hi:1` → `hi:2`). `propValueNode` no longer exists — one NeonNode replaced it |
+| 5 | `{a && <X/>}` / ternary / `.map` lower to `Show`/`For` | neon macros | partly, re-measured 2026-09-19: `&&` (`probe/rm5a_and.ms`) and `?:` (`rm5b_ternary.ms`) mount and update; `{xs().map(row)}` is still a type error even with `element(...)` and the documented row signature (`rm5d_mapElement.ms`), while the same rows through `<For>` are green (`rm5e_forTag.ms`). `lowerJsxChild` no longer exists. `Show` / `For` must be in the user's scope: the macro emits bare calls, so a file using only `&&` still needs the import |
 | 6 | error on an implicit accessor read at function-body time (`const d = count * 2`) | compiler | dropped 2026-09-14: with `valueOf` an alias keeps the accessor, and a body-time operand read is an ordinary one-time value |
 | 7 | real fragments: flatten in child position; multi-root at top level | neon | done 2026-09-15, root fragment and fragment rows 2026-09-19 with one NeonNode (`msc test tests/render/fragment.test.ms` rc=0 on C and `--target=js`; `tests/macros/run.sh` rc=0) — a fragment child is flattened at compile time, a root fragment places every root in front of `before`, a row may be a fragment, and inside an expression a fragment lowers exactly as an element does (`&&` / `?:` arm → `Show`, prop value or argument → converter) |
 
