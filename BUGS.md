@@ -774,7 +774,7 @@ Neon native under that binary: 40 files, **3 red, all pre-existing on a same-com
 - **OPEN docs (2026-09-18) — `LANG.md:780` documents `for (const [key, value] of map)` as valid while `LANG.md:2488` defines `Map<K, V>.toItems()` as `K[]`.** The two sections contradict each other and the first one is what a TypeScript reader copies. Decide the direction before touching either: TS semantics (a Map is an iterable of `[K, V]` pairs, so `toItems` should yield tuples and the destructure is correct) or the current model (keys by default, and line 780's example must be deleted). The checker bug above is independent of that decision — an array pattern on a `string` element must be rejected either way.
 - **NOTE corpus (2026-09-16) — `405-lockedSharedCounter`, `410-awaitStructSpawnStored`, `419-leakSendMovedArgAsync` are non-deterministic cells.** Across four full corpus runs on two binaries built from one tree they flipped side (red on control in one run, red on the patch in the next) and lane (`[orc]` vs `[drc]` vs `[danger]`), each rerun alone was green, and hung cell processes from earlier days were found still running in the recompiler root. Read them as concurrency flakes, never as a regression signal, until someone owns them.
 
-## §3 — Neon-side / environment — 0 OPEN (the multi-node range row CLOSED 2026-09-19), 3 PARKED by the one-NeonNode arc (`on*` two ways, flow lowering gaps, `isAccessorTyped` alias/nullable — the last one waits on a compiler card); `Index` does not grow CLOSED 2026-09-18; direct-emission style CLOSED 2026-09-17; `voidHost` CLOSED 2026-07-27 (late)
+## §3 — Neon-side / environment — 0 OPEN (the multi-node range row CLOSED 2026-09-19), 2 PARKED by the one-NeonNode arc (flow lowering gaps; `isAccessorTyped` alias/nullable, which waits on a compiler card); `Index` does not grow CLOSED 2026-09-18; direct-emission style CLOSED 2026-09-17; `voidHost` CLOSED 2026-07-27 (late)
 
 - **~~`Index` never mounts a row appended to the list~~ ✅ CLOSED 2026-09-18 (Lát 4c, Neon `8644587`
   fix + `b1cfb19` guard) — the suspected root was WRONG, and `src/core/array.ms` was never touched.**
@@ -872,10 +872,14 @@ Neon native under that binary: 40 files, **3 red, all pre-existing on a same-com
   layer merge), differential cells red first. It belongs to the "one NeonNode" merge (the merged macro
   must carry the UNION of both macros' compile-time analyses), but a silent freeze should not wait on
   that arc if it slips.
-- **PARKED 2026-09-17 (one-NeonNode arc, outside Lát 0) — `on*` is classified two ways.** On a
-  lowercase tag both macros test `startsWith("on")` (`element.ms:424`, `direct.ms:381/429/516/758`);
-  a component prop needs `on` + an uppercase letter (`reactive.ms:62`). Code reading, not probed.
-  One rule for both when the macros merge (Lát 4).
+- **~~PARKED 2026-09-17 (one-NeonNode arc, outside Lát 0) — `on*` is classified two ways.~~ ✅ CLOSED
+  2026-09-19 (`447ed07`): one predicate, `isEventName` in `reactive.ms` — `on` + an uppercase letter,
+  React's rule — decides it for a tag, a spread field and a component prop.** Measured before the fix:
+  `<p once="x" online={v()}>` did not compile on either tier ("Argument type mismatch in 'addEvent'
+  arg 2: got string, expected function"). Pinned by the two "once and online are attributes, not
+  events" cells in `emit.test.ms` (`msc test tests/render/emit.test.ms` rc=0 on C and `--target=js`;
+  `grep -rn 'startsWith("on")' src` prints the predicate alone). Was: on a lowercase tag both macros
+  tested `startsWith("on")`; a component prop needed `on` + an uppercase letter.
 - **PARKED 2026-09-17 (one-NeonNode arc) — flow lowering does not cover `||`, `??` or
   `.map(namedFn)`.** Only `&&`, the ternary and `.map(arrow)` are lowered (`element.ms:171-188`).
 - **~~PARKED 2026-09-17 (one-NeonNode arc) — a fragment inside a prop of a NESTED element is reported
