@@ -89,7 +89,8 @@ In rough priority order, once the above is standing:
   the prelude, so `&&` / `?:` / `??` / `.map` need no import. `.map` lowers a row without an index only:
   a callback that does not fit `map` is an error by the person's ruling, and a For row's index is an
   `Accessor<number>`, so a row with an index is refused with a message that names `<For>`. Proved:
-  `bash tests/run.sh` rc=0 (see the land commit); the four "— bare JSX" cells in `emit.test.ms`,
+  `bash tests/run.sh` rc=0 on `4e1602c` — macros, apps, 41 native, 41 js, browser 80/80; the four
+  "— bare JSX" cells in `emit.test.ms`,
   `preludeFlow.test.ms`, `tests/macros/mapIndexRowRejected.ms`.
 - **twin test cells folded** (2026-09-19) — no test compares `element` against itself any more. A cell
   that repeated another cell's JSX and assertion is deleted (`fragment` 6, `spread` 4, `ref` 2, `event` 1,
