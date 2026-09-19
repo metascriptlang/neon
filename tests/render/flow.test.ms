@@ -269,6 +269,22 @@ test "a lowered For row reads its index bare as an Accessor" {
 	d1();
 }
 
+function namedRow(s: string, i: Accessor<number>): NeonNode {
+	return element(<li>{s + i.toString()}</li>);
+}
+
+test "For takes a named row function as its child" {
+	const [items, setItems] = createSignal<string[]>(["a", "b"]);
+	const [named, d1] = mountedText(element(<ul><For each={items()}>{namedRow}</For></ul>));
+	const [arrow, d2] = mountedText(element(<ul><For each={items()}>{(s: string, i: Accessor<number>): NeonNode => element(<li>{s + i.toString()}</li>)}</For></ul>));
+	assert named() === arrow(), "initial: named=" + named() + " arrow=" + arrow();
+	assert named().indexOf("a0") >= 0 && named().indexOf("b1") >= 0, "indexed rows: " + named();
+	setItems(["b", "a", "c"]);
+	assert named() === arrow(), "after reorder+append: named=" + named() + " arrow=" + arrow();
+	assert named().indexOf("b0") >= 0 && named().indexOf("c2") >= 0, "indexes follow: " + named();
+	d1(); d2();
+}
+
 test "Show mounts its branch untracked" {
 	createRoot((d) => {
 		const [on, setOn] = createSignal(true);
