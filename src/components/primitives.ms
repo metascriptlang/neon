@@ -21,7 +21,8 @@ import { NeonEvent } from "../render/event";
 import { Style } from "../render/style";
 import { onCleanup } from "../core/cleanup";
 import { Accessor, accessor } from "../core/signal";
-import { NeonNode, VAttr, VEvent, RefFn, hostElement, attr, evt, dynAttr } from "../render/node";
+import { element } from "../macros/ui/element";
+import { NeonNode, VAttr, VEvent, RefFn, hostElement, evt, dynAttr } from "../render/node";
 
 interface HostProps {
 	style?: Accessor<Style> | null;
@@ -30,7 +31,10 @@ interface HostProps {
 }
 
 function primitive(tag: string, props: HostProps, attrs: VAttr[], evts: VEvent[], kids: NeonNode | null): NeonNode {
-	if (props.class !== null) { attrs.push(attr("class", props.class as string)); }
+	if (props.class !== null) {
+		const cls = props.class as () => string;
+		attrs.push(dynAttr("class", () => cls()));
+	}
 	let style: (() => Style) | null = null;
 	if (props.style !== null) { style = props.style as () => Style; }
 	return hostElement(tag, attrs, evts, kids, style, props.ref);
@@ -41,7 +45,7 @@ interface ViewProps extends HostProps {
 }
 
 export function View(props: ViewProps): NeonNode {
-	return primitive("view", props, [], [], props.children);
+	return element(<view class={props.class} style={props.style} ref={props.ref}>{props.children}</view>);
 }
 
 interface TextProps extends HostProps {
@@ -49,7 +53,7 @@ interface TextProps extends HostProps {
 }
 
 export function Text(props: TextProps): NeonNode {
-	return primitive("text", props, [], [], props.children);
+	return element(<text class={props.class} style={props.style} ref={props.ref}>{props.children}</text>);
 }
 
 // RN Pressability's two constants (Libraries/Pressability/Pressability.js):
@@ -74,7 +78,6 @@ interface PressableProps extends HostProps {
 // pointer down/up/leave itself, because "did this press become a long press"
 // is not a question the host's click event can answer.
 export function Pressable(props: PressableProps): NeonNode {
-	const evts: VEvent[] = [];
 	const { onPress, onPressIn, onPressOut, onLongPress, delayLongPress = accessor(() => LONG_PRESS_DELAY_MS) } = props;
 	const wantsGestures = onPressIn !== null || onPressOut !== null || onLongPress !== null;
 
@@ -83,6 +86,11 @@ export function Pressable(props: PressableProps): NeonNode {
 	let minId = -1;
 	let minHeld = false;
 	let outPending: NeonEvent | null = null;
+
+	let press: ((e: NeonEvent) => void) | null = null;
+	let pointerDown: ((e: NeonEvent) => void) | null = null;
+	let pointerUp: ((e: NeonEvent) => void) | null = null;
+	let pointerLeave: ((e: NeonEvent) => void) | null = null;
 
 	if (wantsGestures) {
 		const cancelTimer = (id: number): void => {
@@ -140,19 +148,18 @@ export function Pressable(props: PressableProps): NeonNode {
 			state = 0;
 			releaseOut(e);
 		};
-		evts.push(evt("onPointerDown", down));
-		evts.push(evt("onPointerUp", up));
-		evts.push(evt("onPointerLeave", leave));
-		evts.push(evt("onPointerCancel", leave));
+		pointerDown = down;
+		pointerUp = up;
+		pointerLeave = leave;
 		onCleanup((): void => {
 			cancelTimer(longId);
 			cancelTimer(minId);
 		});
-	} else if (onPress !== null) {
-		evts.push(evt("onPress", onPress as (e: NeonEvent) => void));
+	} else {
+		press = onPress;
 	}
 
-	return primitive("pressable", props, [], evts, props.children);
+	return element(<pressable class={props.class} style={props.style} ref={props.ref} onPress={press} onPointerDown={pointerDown} onPointerUp={pointerUp} onPointerLeave={pointerLeave} onPointerCancel={pointerLeave}>{props.children}</pressable>);
 }
 
 interface TextInputProps extends HostProps {
