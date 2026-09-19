@@ -39,8 +39,6 @@ expect_reject tests/macros/reactiveLayerRejected.ms "a reactive style layer is n
 expect_reject tests/macros/reactiveLayerDirectRejected.ms "a reactive style layer is not supported yet"
 expect_reject tests/macros/accessorLayerRejected.ms "a reactive style layer is not supported yet"
 expect_reject tests/macros/accessorLayerDirectRejected.ms "a reactive style layer is not supported yet"
-expect_reject tests/macros/wsSingleExprChildRejected.ms "Type 'function\[\]' is not assignable to type 'function' for field 'children'"
-expect_reject tests/macros/wsSingleExprChildDirectRejected.ms "Type 'function\[\]' is not assignable to type 'function' for field 'children'"
 expect_reject tests/macros/optChangeTextDirectRejected.ms "a nullable onChangeText handler is not supported yet"
 expect_reject tests/macros/optChangeTextDirectFlatRejected.ms "a nullable onChangeText handler is not supported yet"
 exit $fail
