@@ -1,382 +1,257 @@
-# Render Model — Emission Tiers over One Runtime Core
+# Render Model — One NeonNode, Tiers Chosen in the Macro
 
 How JSX becomes live UI. Companion to `RENDER-LAYERS.md` (which answers *who paints,
 per platform*); this doc answers *how mount code is produced and what runs when*.
 
-**Naming.** The two ways the mount plan is produced. Which one a given JSX site uses is
-decided at COMPILE time and exposed to nobody — see *Selection* below.
+## The one concept
 
-- **Tree emission** — the `element` macro emits a NeonNode *description tree*;
-  the shared walker (`renderNode`, `src/render/host.ms`) mounts it at runtime.
-  The substrate: direct emission itself falls back to it for components and regions.
-- **Direct emission** — the macro emits the *mount instructions themselves*,
-  specialized per JSX site. V1+D1+D2+D3 landed (`src/macros/ui/direct.ms`, differential-pinned
-  by `tests/render/direct.test.ms`): lowercase elements, attr classification
-  (string literal → one setAttr, `on*` → addEvent, any other expr → one
-  setAttr effect per spot — D2, mirroring element.ms), the typed style channel
-  (object literal → static fields once + `bindStyleProp` per reactive field; layer
-  array → compile-time merge or `layerStyles`, a reactive layer or field rejected;
-  reactive expression → `bindStyleAll`; anything else → `applyStaticStyle`),
-  static+dynamic text, nested lowercase elements flattened INLINE into the one
-  mount block (D3 — a single statement list, temps numbered across the whole
-  tree `_r0/_r1/…`, child subtree emitted depth-first then appended; no
-  per-level closure or call), component tags + `Show`/`For` interleaving — a
-  capitalized tag emits the element.ms `createComponent` contract and mounts
-  through the runtime seam (`renderToHost(_k, host, _rN)` in child position =
-  the renderNode child loop's peel/region/append dispatch; `renderNode(_k,
-  host)` in root position, which throws loudly if the component expands to a
-  region or a fragment). Components/`Show`/`For` do not flatten by design: their structure
-  changes at runtime. **D4 landed — template-clone**: a subtree of nothing but
-  lowercase elements/text/attrs/events/style has a static skeleton, so the macro
-  emits `mountTemplate(createTemplate(build), wire)` — the skeleton is built once
-  and duplicated per mount (`host.cloneNode`), and each dynamic spot is reached
-  by a walk path computed at COMPILE time (`childOf`/`siblingOf` steps, pruned to
-  the branches that actually carry a dynamic spot). A subtree containing a
-  component tag or a region keeps the D3 flat emission unchanged. Two rules make
-  the differential hold: a dynamic attr keeps its SOURCE slot in the skeleton with
-  an empty value (the per-instance effect upserts it, so markup order matches tree
-  emission), and events/style are applied per instance, never baked into the
-  skeleton. Not yet: `<Index>` differential cells, HTML-string fast path for the
-  DOM skeleton (Solid's one-time `innerHTML` parse — the contract already allows
-  it).
+```ts
+type NeonNode = (host: Host, parent: HostNode, before: HostNode | null) => void;
+```
 
-Do NOT call these "model A/B" — `RENDER-LAYERS.md` already uses Layer A/B/C for
-reconcile/paint/GPU and the letters collide.
+A NeonNode is a function that puts the host nodes it owns into `parent`, in front of
+`before` (`src/render/hostTypes.ms`). It is what a JSX expression becomes on every
+target, what a component returns, what `children` holds, and what a `For` row callback
+yields. There is no description tree and no walker: rendering a node is calling it.
+
+```ts
+render(<App/>, host, parent)   // = createRoot(dispose => { node(host, parent, null); return dispose; })
+```
+
+`render` (`src/render/host.ms`) owns the mount in a root and returns its `Dispose`. That
+root is not a child of the owner that was current when `render` ran (Solid), so the
+only way to take a mount down is the dispose `render` handed back.
+
+The shape is Svelte 5's: a fragment function that receives its anchor and inserts
+itself in front of it. It is what lets a node own zero, one or many host nodes — a
+component, a fragment, a region — without the caller knowing which, and what lets a
+row be mounted at its final position instead of being built elsewhere and moved in.
+
+The same thing can be written by hand. `src/render/node.ms` holds the builders for a
+tag, an attr list or an event list only known at runtime (`hostElement`, `el`, `text`,
+`dynText`, `mountChild`, `regionNode`); `src/components/primitives.ms` is their user.
+They produce NeonNodes too, so hand-built and macro-built nodes compose freely.
+
+Do NOT call the tiers below "model A/B" — `RENDER-LAYERS.md` already uses Layer A/B/C
+for reconcile/paint/GPU and the letters collide.
 
 ## Selection — per site, at compile time, exposed to nobody
 
-**The axis is not static vs dynamic.** It is: *does the SHAPE of this subtree change
-while it runs?* Two different things get called "dynamic" and they select opposite
-emissions:
+There is ONE macro, `element` (`src/macros/ui/element.ms`), and ONE converter,
+`jsxToNode` (`src/converters.ms`), which fires wherever a `NeonNode` is expected — a
+component's return, an annotated const, a `render` argument, a row callback. No build
+flag, no per-target policy, nothing to call by hand.
 
-| | what changes | how many nodes | emission |
-|---|---|---|---|
-| **dynamic value** | `{count()}`, `class={cls()}`, `style={s()}` | fixed — the spots are known at compile time | **direct** — one effect per spot, writing the host directly |
-| **dynamic structure** | `<For>`, `<Show>`, `<Index>`, a component body | changes at run time | **tree** — a description the walker mounts, reached through the runtime seam |
+Inside the macro a JSX site lowers by what its own shape can support. The axis is not
+static vs dynamic; it is *does the SHAPE of this subtree change while it runs?*
 
-So a fully reactive element is still direct-emitted: six changing text spots is six
-effects over a skeleton whose shape never moves (measured 1.5x faster than tree even
-at 6/6 dynamic, §Gate (3) — native). What direct emission never does is guess a node
-count — the moment a subtree contains a region or a component tag, that part goes to
-the seam.
-
-**Do not read this as "direct replaced tree".** Tree emission is the substrate and is
-permanent: it mounts every region and every component body, `createComponent` takes and
-returns `NeonNode` on every target, and `renderToString` (SSR) consumes a description
-because a mount closure cannot be serialized. The direct emitter calls `element`,
-`text`, `createComponent`, `renderNode` and `renderToHost` BY NAME to get there.
-
-There is no build flag, no `direct()` in user code, and no per-target policy to tune.
-A JSX site lowers by what its own shape can support:
-
-| the subtree is | emits as | where |
+| the subtree is | emits as | tier |
 |---|---|---|
-| lowercase elements, text, attrs, events, style — any number of them reactive (`isPureSubtree`) | template built once, `cloneNode` per mount, compile-time walk path to each hole | `direct.ms` D4 |
-| that, plus a component tag or a region anywhere inside | one flat inline mount block; the component/region parts become runtime calls | `direct.ms` D3 |
-| a component body, `Show`, `For`, `Index` | tree emission through the runtime seam | `element.ms` |
+| lowercase elements, text, attrs, events, style — any number of them reactive (`isPureSubtree`) | a template built once, `cloneNode` per mount, a compile-time walk path to each dynamic spot | **template** |
+| that, plus a component tag, a region or a NeonNode-valued `{child}` anywhere inside | one flat inline mount block; the component / region / child parts are NeonNode calls at their position | **flat** |
+| a root fragment `<>…</>` | the flat block with every root placed in front of `before` | **flat** |
 
-Nothing about this is per-target any more (LANDED 2026-09-03). `src/converters.ms`
-used to select the macro by target — `js` → `direct`, native → `element` — so a native
-build reached neither template-clone nor flat emission. The C-lane measurement below
-retired that split: `NeonView` is a mount closure on every target, `jsxToView` picks
-`direct` and `jsxToNode` picks `element` everywhere, and both `when (js)` blocks
-(`render/host.ms`, `converters.ms`) are gone.
+A dynamic VALUE (`{count()}`, `class={cls()}`, `style={s()}`) never changes the node
+count, so a fully reactive element is still template-emitted: six changing text spots
+are six effects over a skeleton whose shape never moves. A dynamic STRUCTURE (`<For>`,
+`<Show>`, `<Index>`, a component) is a NeonNode produced at run time and called where
+it stands; the macro never guesses a node count.
 
-## The system is 3 parts; emissions differ in ONE
+A `{child}` expression is routed by its TYPE (`isNodeType`: a function type whose
+parameters are named `host`, `parent`, `before`): a NeonNode or a NeonNode array goes
+to `mountChild`, anything else is text — live when the expression is reactive or
+accessor-typed, written once otherwise. A NeonNode picked by a reactive condition
+(`{cond() ? a : b}` over node values) would mount once and never switch, so it is a
+compile error pointing at `<Show>`; the JSX-armed forms `{a && <X/>}`,
+`{c ? <A/> : <B/>}` and `{xs.map(row)}` lower to `Show` / `For` before emission.
 
-```
-(1) EMISSION       what the macro emits for JSX      ← tree vs direct differ HERE ONLY
-(2) RUNTIME CORE   signals, effects, memos, owner    ← shared, emission-agnostic
-                   Show/For regions, reconcileArrays,
-                   createComponent
-(3) HOST ADAPTERS  dom / terminal / void / mock      ← shared (Host contract, 12 ops)
-```
-
-Tree-emission-specific code is small and permanent: the NeonNode structs
-(`node.ms`), the mount walker (`host.ms:renderNode`), and `renderToString`.
-Everything else is shared infrastructure both emissions stand on.
-
-## Lifecycle — five phases
+## The system is 3 parts
 
 ```
-COMPILE ──► BUILD ──► MOUNT ──► UPDATE (×n) ──► DISPOSE
- macro      run       walk       effects fire     owner tree
- expand     App()     ONCE       individually     kills subtree
+(1) EMISSION       what the macro emits for JSX      ← template tier / flat tier
+(2) RUNTIME CORE   signals, effects, memos, owner    ← shared
+                   regions, reconcileArrays,
+                   createComponent, context scopes
+(3) HOST ADAPTERS  dom / terminal / void / mock      ← shared (Host contract:
+                                                        12 required ops + 3 optional)
 ```
 
-- **COMPILE** (macro): JSX → calls. Static facts (tags, static attrs, which spots
-  are dynamic) are decided here, never re-derived at runtime.
-- **BUILD** (run `App()`): construct the description tree — pure data, zero host
-  calls, zero signal reads. Deferred things hold closures unrun: components
-  (`componentFn`), regions (`region`), dynamic text (`dyn`).
-- **MOUNT** (`renderToHost`): walk once. Static text/attrs applied and never
-  touched again; every dynamic spot plants ONE effect whose first run subscribes
-  it to the signals it reads; components run their body exactly once (untracked,
-  under the mounting owner); regions plant an anchor + a reconcile effect; a
-  fragment owns no host node and splices its children into the parent instead.
+The optional capabilities are `cloneNode`, `setStyleProp` and `setStyleClass`; a host
+sets one to `null` and the runtime takes the coarser path with the same result.
+
+## Lifecycle — four phases
+
+```
+COMPILE ──► MOUNT ──► UPDATE (×n) ──► DISPOSE
+ macro      call       effects fire     owner tree
+ expand     ONCE       individually     kills subtree
+```
+
+- **COMPILE** (macro): JSX → a NeonNode. Static facts (tags, static attrs, which spots
+  are dynamic, the walk path to each) are decided here, never re-derived at runtime.
+- **MOUNT** (`render`, or a parent node calling a child): the node runs once. Static
+  text/attrs are applied and never touched again; every dynamic spot plants ONE effect
+  whose first run subscribes it to the signals it reads; a component runs its body
+  exactly once (untracked, under the mounting owner) and its result is called at the
+  same position; a region plants an anchor + a reconcile effect; a fragment owns no
+  host node and places each of its roots in front of `before`.
 - **UPDATE**: no render. A signal notifies exactly its subscribed effects; each
-  performs one host op. Cost = number of spots that actually changed,
-  independent of tree size.
+  performs one host op. Cost = number of spots that actually changed, independent of
+  tree size.
 - **DISPOSE**: owner-tree teardown — deterministic, recursive, fires `onCleanup`,
   kills every subscription underneath. Never waits for GC.
 
-Under direct emission, BUILD+MOUNT fuse into one step (the emitted code builds
-host nodes directly); the other phases are identical.
+Building the node (evaluating the JSX expression) allocates a closure and performs no
+host op and no signal read; there is no separate BUILD phase producing data.
 
 ## After mount: the wire graph
 
-The description tree has done its job; what stays alive is wiring:
+What stays alive after mount is wiring:
 
 ```
    SIGNALS                 EFFECTS                      HOST TREE
  ┌──────────┐  subscribe ┌────────────────────┐  1 op ┌─────────────────────┐
  │  n = 0   │ ─────────► │ #1: setText(t, …)  │ ────► │ text node inside <p>│
  └──────────┘            └────────────────────┘       ├─────────────────────┤
- ┌──────────┐            ┌────────────────────┐       │ region span         │
- │ on = true│ ─────────► │ #R: reconcile span │ ────► │ (before its anchor) │
+ ┌──────────┐            ┌────────────────────┐       │ region rows         │
+ │ on = true│ ─────────► │ #R: reconcile rows │ ────► │ (before its anchor) │
  └──────────┘            └────────────────────┘       └─────────────────────┘
 ```
 
 No background walker, no whole-tree diff scheduler. Two update paths only:
 
 - **thin** — `setN(5)` → effect → `host.setText`. Done.
-- **structural** — a region's source flips → its effect re-runs → the memo
-  yields a new host-node list → `reconcileArrays` splices minimally between the
-  anchor bounds → the dropped subtree's owner is disposed (effects die,
-  `onCleanup` fires). Diffing exists ONLY here: real host nodes, one region's
-  direct span, never recursive, only when that region's source changed.
+- **structural** — a region's source flips → its effect re-runs → the memo yields a new
+  row list → `reconcileArrays` mounts, moves and removes rows in front of the region's
+  anchor → a dropped row's owner is disposed (effects die, `onCleanup` fires). Diffing
+  exists ONLY here: one region's own rows, never recursive, only when that region's
+  source changed.
 
-## Direct emission — mechanics
+## Emission — mechanics
 
-Direct emission is `renderNode` **partially evaluated at compile time** over the
-static structure. Every `if`/`for` of the walker is answered during macro
-expansion; what remains is the straight-line op sequence:
-
-```ts
-// tree emission (data + shared walker):        // direct emission (the walk, pre-run):
-el("div", [attr("class","box")], [], [          (host) => {
-  el("p", [], [], [                               const d = host.createElement("div");
-    text("hello "),                               host.setAttr(d, "class", "box");
-    dynText(() => name()),                        const p = host.createElement("p");
-  ]),                                             host.append(p, host.createText("hello "));
-])                                                const t = host.createText("");
-                                                  createEffect(() => host.setText(t, name()));
-                                                  host.append(p, t); host.append(d, p);
-                                                  return d;
-                                                }
-```
-
-Same host ops, same order, same effects. `renderNode` is therefore the **spec**
-for what direct emission must generate, and the tree-emission test suite is the
-**oracle**: the differential test for direct emission is "same JSX, both
-emissions, identical host-op sequence".
-
-**Interleaving.** Static subtrees unroll; every dynamic boundary is a call into
-the runtime core, handing it a direct-emitted closure as the child template —
-and the core calls back into that closure when (re)building:
-
-```
-mount:  [direct] build <div>
-        [direct] mountShow(…) ──► [core] anchor + memo + effect
-                                  [core] when=true → children(host) ──► [direct] build <p>
-                                  [core] reconcileArrays splices it
-flip:                             [core] memo flips → reconcile removes, owner disposes
-flip back:                        [core] calls children(host) again ──► [direct] fresh <p>
-```
-
-Components, `Show`, `For` are runtime calls in BOTH emissions — structure that
-changes at runtime cannot be unrolled at compile time.
-
-**Fragments.** `<>…</>` owns no host node, so in child position it is not emitted
-at all: both macros splice its children into the parent's child list at COMPILE
-time (`flattenFragments`, recursive, matching Solid's `normalizeIncomingArray`),
-and `<></>` erases. Nothing reaches the runtime, so the two emissions stay
-byte-identical for free. At the ROOT the two emissions differ, and the difference
-is the return type, not the feature: tree emission returns `NeonNode`, which can
-say "many roots" (`fragmentNode`, spliced by `mountInto`), while a direct mount
-closure IS a `NeonView` and returns exactly one `HostNode`. Direct emission is
-`renderNode` partially evaluated, and `renderNode` throws on a fragment for that
-same reason — so the macro refuses a root fragment at compile time, one phase
-earlier, pointing at the two ways out: wrap the children in one element, or build
-it with `element()` and mount via `renderToHost`.
-
-**Template-clone (D4, landed).** A pure subtree is emitted as a skeleton built
-once plus a per-instance walk, so mount N costs one native copy instead of N
-create/append calls:
+**Flat tier.** One statement list, temps numbered across the whole subtree (`_r0/_r1/…`
+elements, `_t0/…` dynamic texts, `_k0/…` component children, `_s0/…` style temps), a
+child subtree emitted depth-first then appended to its parent — no per-level closure,
+no per-level call. Only the roots are inserted with `place(host, parent, node, before)`;
+everything below a root is a plain `host.append`:
 
 ```ts
-mountTemplate(
-  createTemplate((h) => {                  // built ONCE, lazily, per direct() site
-    const r0 = h.createElement("div");
-    h.setAttr(r0, "class", "box");
-    h.setAttr(r0, "title", "");            // dynamic attr keeps its SOURCE slot
-    h.append(r0, h.createText(""));        // dynamic text slot
-    return r0;
-  }),
-  (host, p0) => {                          // per instance
-    const p1 = childOf(host, p0);          // walk path resolved at COMPILE time
-    createEffect(() => host.setText(p1, name()));
-    createEffect(() => host.setAttr(p0, "title", t()));
-  },
-)
+<div class="box"><p>hello {name()}</p><Badge n={n()}/></div>
+// lowers to
+(host, parent, before) => {
+  const _r0 = host.createElement("div");
+  host.setAttr(_r0, "class", "box");
+  const _r1 = host.createElement("p");
+  host.append(_r1, host.createText("hello "));
+  const _t0 = host.createText("");
+  bindText(host, _t0, () => name());
+  host.append(_r1, _t0);
+  host.append(_r0, _r1);
+  const _k0 = createComponent(Badge, { n: accessor(() => n()) });
+  _k0(host, _r0, null);
+  place(host, parent, _r0, before);
+}
 ```
 
-The skeleton carries structure, static attrs and placeholders only — events and
-style are applied per instance (DOM `cloneNode` does not copy listeners, and the
-mock oracle mirrors that rule exactly).
+Attr classification: a string literal is one `setAttr`, `on*` is `addEvent`, any other
+expression is one `bindAttr` effect per spot (a `null` value removes the attribute).
+The typed style channel splits by shape: an object literal writes its static fields
+once and plants `bindStyleProp` per reactive field; a layer array merges at compile
+time or goes through `layerStyles` (a reactive layer or field is rejected); a reactive
+expression is `bindStyleAll`; anything else is `applyStaticStyle`. A `ref` runs
+innermost-first, before the root is placed (React's order).
 
-`cloneNode` is an **optional capability** on the Host contract: a host that
-cannot duplicate a subtree cheaply sets it to `null` and `instantiate` runs the
-builder again — same markup, no clone, nothing for that host to implement
-(terminal and void ship exactly this). `firstChild` is required and trivial
-everywhere, mirroring the existing `nextSibling`.
+**Template tier.** A pure subtree has a static skeleton, so it is built once and
+duplicated per mount, and each dynamic spot is reached by a walk path computed at
+COMPILE time (`childOf` / `siblingOf` steps, pruned to the branches that carry a
+dynamic spot):
 
-Still open for the DOM host: materialising the skeleton from an HTML string
-(Solid's one-time `innerHTML` parse). The contract already permits it — only the
-`createTemplate` builder body would change — and it buys startup cost, not
-per-mount cost, which is why it was not required to land D4.
-
-## Per-platform economics — what the removal is worth, per platform
-
-Direct emission removes description-tree allocation + the interpreter loop at
-mount. What that removal is worth depends on the platform:
-
-| Platform | Tree walk runs as | Direct-emission win |
-|---|---|---|
-| Browser (JS backend) | interpreted/JIT JS | **large** — per-op JS cost is high, and the template-clone trick exists only here |
-| Terminal / Void / iOS (C backend) | compiled C | **small** — the walk is already cheap native code; mount is dominated by layout/paint/GPU; the win is allocations only |
-| Embedded / IoT | compiled C | **possibly negative** — unrolled mount code at every JSX site grows the binary; one shared ~30-line walker is smaller and icache-friendlier |
-
-This table was once read as a policy — "tree everywhere until a per-target benchmark
-shows a gap, then a `build.ms` switch, browser first." The measurements below retired
-that. Read the table as *how much a site gains*, never as *which tier a target picks*:
-the tier is a property of the SITE (see *Selection*), and the IoT row's binary-size
-concern applies to flat emission, not to template-clone, which shrinks per-site code.
-
-Its C-lane prediction was also **wrong, and was never measured until 2026-09-03**. The
-row said "small — the walk is already cheap native code; the win is allocations only".
-Measured, the C lane tracks the browser curve almost exactly (§Gate (3) — native).
-
-Three gates guarded the work; all three are closed. (1) and (2) were the closure
-codegen debts it leans on (loop+nested-closure snapshot, expr-bodied-arrow env, fixed
-2026-08-07/08) and attribute classification in both emissions (D2, 2026-08-09).
-
-### Gate (3) — MEASURED 2026-08-11
-
-The choice is per-JSX-SITE and fully decidable at compile time, so nothing is exposed —
-no build flag, no `direct()` call in user code. User code and types change zero
-characters either way.
-
-Prerequisite that made the benchmark meaningful at all: before template hoisting
-landed (recompiler `1840976`), the per-site cell was *slower than tree* (19.00 vs
-18.00 host-ops/mount), so gate (3) would have concluded "don't use direct". With
-hoisting it is 3.016, equal to the hand-hoisted cell. `probe/bench.ms`.
-
-**Real DOM, headless Chrome, ms per 1000 row mounts inside a real `For` region**
-(`probe/sweep6.ms`, `probe/sweep12.ms`; ratio = tree ÷ direct, >1 means direct wins):
-
-| dynamic spots | 6-cell row | 12-cell row |
-|---|---|---|
-| 0% | 2.31 | 2.57 / 2.50 / 2.56 |
-| 25% | — | 1.94 / 1.77 / 2.03 |
-| 33% | 1.95 | — |
-| 50% | 1.67 | 1.71 / 1.63 / 1.56 |
-| 75% | — | 1.60 / 1.51 / 1.38 |
-| 100% | 1.38 | 1.44 / 1.45 / 1.36 |
-
-Three things follow, and the first two were surprises:
-
-1. **There is no crossover.** Direct wins at every level, 2.5x on fully static
-   markup down to ~1.4x when every cell is dynamic. An earlier run of this same
-   sweep reported direct LOSING at 100% dynamic (0.74x); that was an artifact of
-   summing timed rounds, where one CPU-stolen round dominates a cell. Reported
-   here as the MIN across rounds. Do not reinstate a "mostly static only"
-   threshold on the strength of the retracted number.
-2. **The rule tracks the RATIO of dynamic spots, not row size.** At 50% dynamic a
-   6-cell row gives 1.67 and a 12-cell row 1.63. So no absolute static-cell count
-   is needed in the decision.
-3. **Rows are where this matters, and they cannot reach it today.** `For.children`
-   is typed `=> NeonNode` while `direct()` yields `(host) => HostNode`, and there
-   is no adapter — `tests/render/direct.test.ms:446` builds the row with
-   `element(...)` in BOTH of its cells. So the win currently applies to one shell
-   mount, not to the N rows under it. `probe/rowDirect.ms` measures the widened
-   form at **1.9x per row**, and `probe/rowDirectParity.ms` shows it produces a
-   byte-identical tree through initial → reorder → append → shrink on C and JS.
-
-Direction, therefore: keep both emissions (tree stays the substrate — the direct
-emitter itself calls `element`/`text`/`createComponent`/`renderNode`/
-`renderToHost` by name for components and regions), and make template+clone the
-DEFAULT inside `element` for any subtree `isPureSubtree` already accepts. That
-turns `direct()` from a user-facing macro into an internal emission strategy. The row
-half of it landed on 2026-08-12 — see *Rows* below, where the region API took a mount
-closure without any app code changing. The `f(x)(y)` C-backend defect (`BUGS.md` §2,
-still open) is the shape to watch when the fold reaches native: `mountView` sidesteps
-it on the row path, nothing guarantees the same inside `element`.
-
-Caveats on the numbers, so they are not over-trusted: measured on a machine under
-load 4–54 from a parallel build (ratios were stable across runs, absolute values
-were not — the 6-cell runs 2 and 3 are inflated 3x and were discarded); rows are
-built into a DETACHED box, so layout and paint are excluded; a row carrying event
-handlers was not measured. Good enough to choose an architecture, not yet the
-number to publish.
-
-### Gate (3) — native, MEASURED 2026-09-03
-
-The 2026-08-11/12 sweeps all ran in headless Chrome, so every number above is a JS-lane
-number and the C lane went on being guessed at. `probe/nativeEmit_q4m.ms`, release build
-(`--danger --cc=clang`), 1000 mounts of a 6-cell row, min of 3 rounds, 3 runs — the host
-is mockHost with `cloneNode: null`, which is what terminal and void actually advertise,
-so template mode falls back to re-running the builder and emits exactly the ops tree
-emission does. Everything direct wins here is the NeonNode allocation and the walker's
-interpretation loop, nothing else:
-
-| dynamic spots / 6 | tree (ms) | direct (ms) | ratio |
-|---|---|---|---|
-| 0 | 3.81–4.46 | 1.44–1.60 | **2.6–2.8x** |
-| 3 | 4.59–5.28 | 2.27–2.59 | **2.0x** |
-| 6 | 6.14–7.24 | 4.04–4.57 | **1.5x** |
-
-Same shape as the browser (2.86 / 2.00 / 1.63 / 1.21), so "small — allocations only" is
-refuted: on this workload the allocations ARE the cost. Two caveats, so the number is
-not over-trusted: op counting cannot see any of this (with no cheap clone the two
-emissions issue identical host ops), and a real native host does more work per op than
-the mock, which dilutes the ratio — this is an upper bound, not a shipped-app figure.
-Debug builds read higher still (4.04 / 2.28 / 1.47); the table is release.
-
-That closed the last per-target branch — see *Selection*.
-
-## Rows — the boundary type carries the emission (LANDED 2026-08-12)
-
-`For.children` used to be typed `=> NeonNode`, so a row was always a description
-the walker mounts — even under a direct-emitted shell. Rows are the hottest mount
-path in a real app, so the emission win applied to one shell and not to the N rows
-under it.
-
-`For` / `Index` / `Show` now take **`NeonView`** — the same boundary type the JSX
-converter selects on (`src/converters.ms`), defined per target in
-`src/render/host.ms`:
-
-| target | `NeonView` | `mountView` |
-|---|---|---|
-| js | `(host: Host) => HostNode` | calls it |
-| native | `NeonNode` | `renderNode` |
-
-Nothing is exposed and nothing is chosen by hand: a bare JSX row hits the
-converter at the `NeonView` boundary and lowers to the target's emission. The row
-callback is the only line that changed inside `For`:
-
-```ms
-- mapArray(..., (item, idx) => renderNode(props.children(item, idx), host))
-+ mapArray(..., (item, idx) => mountView(props.children(item, idx), host))
+```ts
+const _tpl12_9 = createTemplate((h) => {   // static storage: built ONCE per site, lazily
+  const r0 = h.createElement("div");
+  h.setAttr(r0, "class", "box");
+  h.setAttr(r0, "title", "");              // a dynamic attr keeps its SOURCE slot
+  h.append(r0, h.createText(""));          // dynamic text slot
+  return r0;
+});
+mountTemplate(_tpl12_9, (host, _p0) => {   // per instance
+  const _p1 = childOf(host, _p0);          // walk path resolved at COMPILE time
+  bindText(host, _p1, () => name());
+  bindAttr(host, _p0, "title", () => t());
+})
 ```
 
-`viewOf(node)` adapts a hand-built description (`el(...)`, `element(...)`) where a
-view is expected; bare JSX never needs it.
+`mountTemplate` (`src/render/template.ms`) returns the NeonNode: instantiate, wire,
+`place`. The skeleton carries structure, static attrs and placeholders only — events
+and style are applied per instance (DOM `cloneNode` does not copy listeners, and the
+mock host mirrors that rule exactly).
 
-**Measured through the public api** — `probe/rowSweep.ms`, real DOM in headless
-Chrome, 500 rows, 6 spans per row, **min of 3 runs** (a mean hides it: one run put
-`dyn=6` direct at 6.33 vs tree 5.67, i.e. slower, which averaging would have baked
-into the answer):
+`cloneNode` is an **optional capability** on the Host contract: a host that cannot
+duplicate a subtree cheaply sets it to `null` and `instantiate` runs the builder again
+— same markup, no clone, nothing for that host to implement (terminal and void ship
+exactly this). `firstChild` is required and trivial everywhere, mirroring
+`nextSibling`.
+
+Still open for the DOM host: materialising the skeleton from an HTML string (Solid's
+one-time `innerHTML` parse). The contract already permits it — only the
+`createTemplate` builder body would change — and it buys startup cost, not per-mount
+cost.
+
+**Components.** A capitalized tag emits `createComponent(Comp, props)`
+(`src/render/component.ms`), which is
+`(host, parent, before) => untrack(() => Comp(props)(host, parent, before))`: the body
+is deferred to mount, runs once, and whatever it returns mounts at the component's own
+position. `children` is always ONE NeonNode — a single child is passed as is, several
+are wrapped in a root fragment — so a component places them with `{props.children}`.
+A `Context.Provider` is the same shape with the call wrapped in the provider's scope.
+
+**Fragments.** `<>…</>` owns no host node. In child position it is not emitted at all:
+the macro splices its children into the parent's child list at COMPILE time
+(`flattenFragments`, recursive, matching Solid's `normalizeIncomingArray`), and `<></>`
+erases. At the ROOT it lowers through the flat tier with every root placed in front of
+`before`, in order. A fragment inside an expression is a compile error for now.
+
+**Regions.** `For` / `Index` / `Show` (`src/macros/ui/flow.ms`) each return
+`regionNode(fn)` (`src/render/node.ms`): an anchor text node placed at the region's
+position, plus one effect that reconciles the region's rows in front of that anchor.
+A `Row` (`src/render/reconcile.ms`) is a NeonNode plus the span of host nodes it
+produced (`start`…`end`) and the owner it was created under. `reconcileArrays` mounts
+a row that is not in the host yet directly at its final position (`mountAt`), moves a
+live row by re-inserting its span, and removes only a row absent from the next list —
+insertion targets come from the NEW order (Svelte `each.js`), so a live row is never
+detached. While a row mounts, `place` records the first and last host node it put
+into the region's parent, which is how a row made of a fragment, a component or a
+nested region gets a span without anyone counting nodes; an empty row gets one empty
+text node so it still has a position.
+
+**Server rendering.** `renderToString` (`src/render/ssr.ms`) renders the node on a mock
+host whose `setStyleClass` registers the rule in the sheet registry, serializes the
+result, and disposes the mount. Regions, fragments, components and context scopes
+serialize through the same path every host uses (`tests/render/ssr.test.ms`).
+
+## Per-platform economics
+
+What a site gains depends on the platform, and the tier never does: it is a property
+of the SITE (see *Selection*).
+
+| Platform | What dominates a mount | Template tier |
+|---|---|---|
+| Browser (JS backend) | per-op JS cost | one native `cloneNode` replaces the create/append calls |
+| Terminal / Void / iOS (C backend) | allocation, then layout/paint/GPU | no cheap clone today — the builder re-runs, same ops as the flat tier |
+| Embedded / IoT | binary size | the flat tier unrolls mount code at every site; the template tier shrinks per-site code |
+
+## Gate — measured
+
+The measurements that chose this model, then the one that guards it. Every table is ms
+for N mounts of a 6-cell row (N = 1000 unless the table says otherwise), MIN across
+rounds and runs (a mean bakes one CPU-stolen round into the answer). Until 2026-09-19 Neon had two
+emitters — a description tree mounted by a shared walker ("tree") and mount
+instructions emitted per site ("direct") — and the first two tables compare them.
+
+### 2026-08-11/12 — real DOM, headless Chrome
+
+500 rows mounted inside a real `For` region through the public api (`probe/rowSweep.ms`);
+ratio = tree ÷ direct.
 
 | dynamic spots / 6 | tree | direct | ratio |
 |---|---|---|---|
@@ -385,19 +260,71 @@ into the answer):
 | 3 | 3.03 | 1.87 | 1.63x |
 | 6 | 5.67 | 4.67 | 1.21x |
 
-Same numbers as the private `ForDirect` cell that measured this before the api
-could express it, so the widening delivers the win rather than a version of it.
+There is no crossover — per-site emission wins at every level — and the ratio tracks
+the SHARE of dynamic spots, not the row size (a 12-cell row gave the same curve). An
+earlier run reported a loss at 100% dynamic (0.74x); that was an artifact of summing
+timed rounds. Do not reinstate a "mostly static only" threshold on the strength of it.
 
-**Not widened, on purpose:** `createComponent` still takes and returns `NeonNode`,
-so a component's INTERNALS stay tree-emitted on every target. That is a separate
-arc with its own measurement — a component row written as bare JSX already reaches
-direct emission, because the macro lowers a capitalized tag to
-`createComponent` + `renderToHost` inside the mount closure.
+### 2026-09-03 — native, mock host with `cloneNode: null`
 
-## Invariants — the contract every emission must satisfy
+Release build (`probe/nativeEmit_q4m.ms`). `cloneNode: null` is what terminal and void
+advertise, so the template tier re-runs its builder and issues
+exactly the ops the tree did; everything won is allocation and the walker's loop.
 
-1. **Build is pure** — no signal reads while constructing the description
-   (style macro already errors on this; S4 will lift it properly).
+| dynamic spots / 6 | tree | direct | ratio |
+|---|---|---|---|
+| 0 | 3.81–4.46 | 1.44–1.60 | **2.6–2.8x** |
+| 3 | 4.59–5.28 | 2.27–2.59 | **2.0x** |
+| 6 | 6.14–7.24 | 4.04–4.57 | **1.5x** |
+
+Same shape as the browser, which refuted the prediction that the C lane would gain
+"allocations only, small". That closed the last per-target branch; what remained
+tree-emitted — every component body, every region row built by hand, SSR — is what the
+one-NeonNode arc removed.
+
+### 2026-09-19 — one NeonNode against the two emitters it replaced
+
+`bench/nativeEmit.ms`, msc v0.2.55. "Before" is the P0.5 baseline source (`5c2802e`)
+REBUILT with the same compiler and made to insert each root into a fresh parent, as
+the new bench must — the baseline as first recorded returned a detached node. Six
+interleaved runs, min of 6×3. `comp3` is the dyn3 row as the body of a component,
+`void3` is dyn3 mounted into one void host root.
+
+| cell | before: tree | before: direct | now, `cloneNode: null` | now, with clone |
+|---|---|---|---|---|
+| comp3 | 6.87 | 5.76 | **2.54** | 2.63 |
+| dyn0 | 4.09 | 1.46 | 2.05 | 1.63 |
+| dyn3 | 5.05 | 2.28 | 2.61 | 2.63 |
+| dyn6 | 7.08 | 3.18 | 4.26 | 3.41 |
+| void3 | 374.0 | 366.3 | **318.8** | — |
+
+- **A component body is 2.3–2.7x faster.** It used to be tree-emitted on every target
+  whatever the call site did; it now goes through the same tiers as any other site.
+  This is the case the arc was for.
+- **Against the tree, every cell is 1.6–2.0x faster**, and void is not slower in any of
+  the five sessions measured (229–319 now, 259–374 before).
+- **Against the retired direct emitter the rows read 0.3–1.1 µs per mount slower in this
+  session — between 0.2 µs faster and 1.1 µs slower across the five, slower in most —
+  and that is not attributed.** Ruled out by measurement: the extra parent node (one shared
+  parent per round changes nothing), `insertBefore` vs `append` for the root, the
+  compiler version (the baseline rebuilt on v0.2.55 is, if anything, faster than its
+  v0.2.54 binary), and the mock host's `setAttr`, which did get dearer when an attribute
+  value became nullable but only by ~0.01 µs per attribute. The same rows WITHOUT
+  static attributes read equal to the old emitter within 5% (1.66 / 2.89 / 3.89 now,
+  1.65 / 2.74 / 3.69 before), and the macro emits the same `setAttr` calls it did. Two
+  baseline binaries doing equivalent work differed by up to 30% in the same session,
+  so the residue sits inside what this bench can resolve on this machine.
+
+Caveats, so the numbers are not over-trusted: every session ran under load 6–19 from
+parallel builds (ratios held across sessions, absolutes did not); the mock host does
+less work per op than a real one, which inflates every ratio; `void3` is dominated by
+the void host's linear parent-link registry, not by emission. Raw logs:
+`probe/l5/bench-*.txt` in the arc's worktree (gitignored).
+
+## Invariants — the contract every tier and every hand-built node must satisfy
+
+1. **Evaluating JSX is pure** — it allocates the NeonNode and performs no host op
+   and no signal read; everything happens when the node is called.
 2. **A component body runs exactly once** — any second run is a serious bug
    (`bodyRuns`-counter test pattern).
 3. **Every dynamic spot = one effect, created at mount, under the mounting
@@ -406,23 +333,22 @@ direct emission, because the macro lowers a capitalized tag to
    (`babel-plugin-jsx-dom-expressions`): an expression carrying a call or a
    property read is reactive; a bare identifier or literal is resolved once at
    mount, so wrapping it would allocate an effect that can never re-run.
-   `isReactiveExpr` (`src/macros/ui/element.ms`) is the single classifier both
-   emissions consult, and it is deliberately conservative — anything it does not
+   `isReactiveExpr` (`src/macros/ui/reactive.ms`) is the single classifier both
+   tiers consult, and it is deliberately conservative — anything it does not
    recognise as inert stays reactive, because a wasted computation is cheap and a
-   missed update is not. Tree emission pins the rule structurally (`isDyn` on the
-   NeonNode, `element.test.ms`); direct emission has no such surface and stays
-   pinned only by the shared differential until macro-expansion output can be
-   inspected the way Solid snapshots its compiled JSX.
+   missed update is not. Pinned by counting host writes across a signal change
+   (`element.test.ms`, "an inert expression is classified static, a call stays
+   dynamic"), since macro-expansion output cannot yet be inspected the way Solid
+   snapshots its compiled JSX.
 3b. **A spot writes the host only when its value actually changed.** The signal
    already drops a set to an equal value, but a derived expression maps many
    source values onto one output (`n() > 5 ? "big" : "small"`), so the last
-   written value is kept and an identical recomputation is dropped. Both
-   emissions bind through `bindText`/`bindAttr` (`src/render/host.ms`) — one
-   implementation is what keeps their host-op sequences identical, and
-   `mockToString` cannot see the difference, so the test for it counts writes
-   on a counting host.
-4. **Structural change goes through a region + anchor only** — nothing else
-   inserts/removes host nodes except `reconcileArrays`.
+   written value is kept and an identical recomputation is dropped. Both tiers
+   and the hand-written builders bind through `bindText`/`bindAttr`
+   (`src/render/bind.ms`); `mockToString` cannot see the difference, so the test
+   for it counts writes on a counting host (`emit.test.ms`).
+4. **Structural change goes through a region + anchor only** — after mount,
+   nothing inserts/removes host nodes except `reconcileArrays`.
 5. **Dispose is total** — after unmount, signal writes reach zero effects
    (`tests/core/dispose.test.ms`).
 6. **A Host adapter matches mock-host semantics op for op** — e.g.
@@ -452,9 +378,9 @@ goes through `valueOf` where a value is needed (§Accessor). A value already typ
 down never nests as `Accessor<Accessor<T>>`. Negative probe: `probe/thunkProps3.ms` S1.
 
 **Landed 2026-09-12 (phase 4.1).** `isRawPropValue` (macros/ui/reactive.ms) is the
-one decision both macros share: an arrow/function literal, a JSX-valued prop,
+one decision every call site goes through: an arrow/function literal, a JSX-valued prop,
 `ref` and `on*` cross raw; everything else is emitted as `accessor(() => v)`
-(the node literal stays inline in each macro — a helper that builds nodes
+(the node literal stays inline in the macro — a helper that builds nodes
 outside a macro body is not available yet, LANG-METAPROGRAMMING "No helper
 functions"). `View`/`Text`/`Pressable`/`TextInput` declare `style?: Accessor<Style>
 | null`, `class?: Accessor<string> | null`, `delayLongPress?: Accessor<number> |
@@ -493,24 +419,28 @@ overloaded call never reads: it needs a candidate that takes the accessor, or an
 explicit `count()`.
 `setCount(v)` remains the only way to write.
 
-**Consequences for macros:** the element/direct macros run after the checker. A
+**Consequences for the macro:** `element` runs after the checker. A
 read that had to become a value arrives as a call (`{count * 2}`,
 `{props.label + "!"}`) and `isReactiveExpr` classifies it reactive; a bare
 `{count}` or `class={props.label}` fails nothing, so it arrives as the accessor,
-and both macros read its `nodeType` (`isAccessorTyped`) to emit a live spot
-instead of a one-time `insChild`/`attr`. `{a && <X/>}`, `{c ? <A/> : <B/>}` and
+and the macro reads its `nodeType` (`isAccessorTyped`) to emit a live spot
+instead of a one-time write. `{a && <X/>}`, `{c ? <A/> : <B/>}` and
 `{xs.map(fn)}` lower to `Show`/`For` (phase 5). **Body-time read:** `const d =
 count * 2` at the top of a component body reads once; read it in JSX or
 `createMemo` to keep it live.
 
 ## References
 
-- `src/render/node.ms` — NeonNode, `createComponent` seam (`component.ms`),
-  `renderToString`
-- `src/render/host.ms` — Host contract, `renderNode` walker, `mountRegion`,
-  `mockHost` reference
-- `src/render/reconcile.ms` — region list reconciliation
-- `src/macros/ui/element.ms` — the emission frontend (tree emission today)
+- `src/render/hostTypes.ms` — the `NeonNode` type and the Host contract
+- `src/render/host.ms` — `render`, `mockHost` (the reference implementation of the
+  contract)
+- `src/render/node.ms` — the hand-written builders, `mountChild`, `regionNode`
+- `src/render/bind.ms` — one effect per dynamic spot
+- `src/render/template.ms` — template instantiation and the walk steps
+- `src/render/reconcile.ms` — rows, `place`, `reconcileArrays`
+- `src/render/component.ms`, `src/render/context.ms` — component and provider seams
+- `src/render/ssr.ms` — `renderToString`
+- `src/macros/ui/element.ms` — the emitter; `src/converters.ms` — the JSX boundary
+- `tests/render/emit.test.ms` — what the macro emits, pinned by hand-written goldens
 - `docs/RENDER-LAYERS.md` — reconcile/paint/GPU ownership per platform
-- PORT-STATUS.md "Design LOCKED 2026-07-30" — the component/JSX contract this
-  doc's emission-tier plan belongs to
+- PORT-STATUS.md "Design LOCKED 2026-07-30" — the component/JSX contract
