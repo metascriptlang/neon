@@ -5,6 +5,7 @@
 // wire tags (mock records them as written), the vocabulary working end to end
 // through the event surface, and the terminal's box translation.
 
+import { createSignal } from "../../src/core/signal";
 import { element } from "../../src/macros/ui/element";
 import { View, Text, TextInput, Pressable } from "../../src/components/primitives";
 import { neonEvent } from "../../src/render/event";
@@ -60,6 +61,15 @@ test "TextInput hands onChangeText the text in the universal vocabulary" {
 	e.value = "chao";
 	fireEventWith(root.children[0], "onChangeText", e);
 	assert typed === "chao", "typed=" + typed;
+}
+
+test "a reactive class follows its signal on every component of the vocabulary" {
+	const [cls, setCls] = createSignal("a");
+	const root: MockNode = mockNode("root");
+	render(element(<View class={cls()}><Text class={cls()}>t</Text><Pressable class={cls()}><Text>p</Text></Pressable><TextInput class={cls()} /></View>), mockHost(), root as unknown as HostNode);
+	assert mockToString(root) === "<root><view class=\"a\"><text class=\"a\">t</text><pressable class=\"a\"><text>p</text></pressable><textinput class=\"a\"></textinput></view></root>", "initial: " + mockToString(root);
+	setCls("b");
+	assert mockToString(root) === "<root><view class=\"b\"><text class=\"b\">t</text><pressable class=\"b\"><text>p</text></pressable><textinput class=\"b\"></textinput></view></root>", "after set: " + mockToString(root);
 }
 
 test "ssr serializes the vocabulary as html" {
