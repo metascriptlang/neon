@@ -829,6 +829,15 @@ test "whitespace around a user component's single element child lowers like the 
 	assert mockToString(wsRoot) === "<root><div><section title=\"t\"><p>a</p></section></div></root>", "golden: " + mockToString(wsRoot);
 }
 
+test "a static string expression as a component's only child mounts as text" {
+	const label: string = "hi";
+	const host = mockHost();
+	const directRoot = mockNode("root");
+	const mount = element(<div><Card title="t">{label}</Card></div>);
+	mount(host, directRoot as unknown as HostNode, null);
+	assert mockToString(directRoot) === "<root><div><section title=\"t\">hi</section></div></root>", "golden: " + mockToString(directRoot);
+}
+
 // ---- Lát 0.11: a nullable-typed on*/ref/style attaches only when the value is present ----
 
 function optTemplate(h: ((e: NeonEvent) => void) | null, r: ((b: HostNode) => void) | null, s: Style | null, a: Accessor<Style> | null): NeonNode {
