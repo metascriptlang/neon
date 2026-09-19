@@ -13,7 +13,6 @@ import { Node, NodeKind } from "std/meta";
 import { NeonNode } from "./render/hostTypes";
 
 export { element } from "./macros/ui/element";
-export { direct } from "./macros/ui/direct";
 export { VAttr, VEvent, RegionFn, ComponentFn, RefFn, attr, dynAttr, evt, el, hostElement, text, dynText, mountChild, regionNode } from "./render/node";
 export { renderToString } from "./render/ssr";
 export { createComponent } from "./render/component";

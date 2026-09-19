@@ -26,7 +26,6 @@ export { styleToCss } from "./render/css";
 export { onCssChange, registerCss, collectCss, mountSheet, cssRuleCount, resetCss } from "./render/sheet";
 
 export { element } from "./macros/ui/element";
-export { direct } from "./macros/ui/direct";
 export { createStyles, styleOf } from "./macros/ui/style";
 export { createTheme, setTheme, themeOf, setThemeCss } from "./macros/ui/theme";
 export { For, Index, Show } from "./macros/ui/flow";

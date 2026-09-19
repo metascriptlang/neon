@@ -5,7 +5,7 @@
 // a pointer walk; on a host that cannot (`cloneNode: null`) instantiate falls back
 // to running the builder again, which is exactly the pre-template behaviour.
 //
-// The emitter (src/macros/ui/direct.ms) computes each dynamic spot's path through
+// The emitter (src/macros/ui/element.ms) computes each dynamic spot's path through
 // the skeleton at COMPILE time and emits childOf/siblingOf steps — no runtime
 // search, no per-mount allocation.
 
@@ -41,7 +41,7 @@ export function instantiate(t: Template, host: Host): HostNode {
 	return clone(cached);
 }
 
-// The shape direct.ms emits: one template per direct() evaluation, reused by
+// The shape element.ms emits: one template per element() evaluation, reused by
 // every call of the returned mount closure. `wire` receives the fresh instance
 // and plants the walk + effects for that instance.
 export function mountTemplate(t: Template, wire: (host: Host, root: HostNode) => void): NeonNode {
