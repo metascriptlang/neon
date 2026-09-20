@@ -19,15 +19,19 @@ interface IndexCell {
 	setter: Setter<number> | null;
 }
 
-export function mapArray<T, U>(list: () => T[], mapFn: (v: T, index: Accessor<number>) => U): () => U[] {
-	return mapArrayBy<T, T, U>(list, null, mapFn);
+export function mapArray<T, U>(list: () => T[], mapFn: (v: T, index: Accessor<number>) => U, usesIndex: boolean = true): () => U[] {
+	return mapArrayBy<T, T, U>(list, null, mapFn, usesIndex);
 }
 
-export function mapArrayKeyed<T, U>(list: () => T[], keyOf: (v: T) => number, mapFn: (v: T, index: Accessor<number>) => U): () => U[] {
-	return mapArrayBy<T, number, U>(list, keyOf, mapFn);
+export function mapArrayKeyed<T, U>(list: () => T[], keyOf: (v: T) => number, mapFn: (v: T, index: Accessor<number>) => U, usesIndex: boolean = true): () => U[] {
+	return mapArrayBy<T, number, U>(list, keyOf, mapFn, usesIndex);
 }
 
-function mapArrayBy<T, K, U>(list: () => T[], keyOf: ((v: T) => K) | null, mapFn: (v: T, index: Accessor<number>) => U): () => U[] {
+const unreadIndex: Accessor<number> = accessor((): number => {
+	throw new Error("the row of this <For> was emitted as not reading its index, but it read it");
+});
+
+function mapArrayBy<T, K, U>(list: () => T[], keyOf: ((v: T) => K) | null, mapFn: (v: T, index: Accessor<number>) => U, usesIndex: boolean): () => U[] {
 	let items: T[] = [];
 	let keys: K[] = [];
 	let mapped: U[] = [];
@@ -36,6 +40,13 @@ function mapArrayBy<T, K, U>(list: () => T[], keyOf: ((v: T) => K) | null, mapFn
 	let len = 0;
 
 	function makeRowInto(item: T, pos: number, mapStore: U[], dispStore: (() => void)[], idxStore: ((v: number) => void)[]): void {
+		if (!usesIndex) {
+			mapStore[pos] = createRoot((d) => {
+				dispStore[pos] = d;
+				return mapFn(item, unreadIndex);
+			});
+			return;
+		}
 		mapStore[pos] = createRoot((d) => {
 			dispStore[pos] = d;
 			const cell: IndexCell = { pos, getter: null, setter: null };
@@ -93,14 +104,18 @@ function mapArrayBy<T, K, U>(list: () => T[], keyOf: ((v: T) => K) | null, mapFn
 			}
 
 			if (len === 0) {
-				mapped = new Array(newLen);
-				disposers = new Array(newLen);
-				indexSetters = new Array(newLen);
-				items = new Array(newLen);
+				const firstMapped: U[] = new Array(newLen);
+				const firstDisposers: (() => void)[] = new Array(newLen);
+				const firstIndexSetters: ((v: number) => void)[] = new Array(usesIndex ? newLen : 0);
+				const firstItems: T[] = new Array(newLen);
 				for (let j = 0; j < newLen; j += 1) {
-					items[j] = newItems[j];
-					makeRowInto(newItems[j], j, mapped, disposers, indexSetters);
+					firstItems[j] = newItems[j];
+					makeRowInto(newItems[j], j, firstMapped, firstDisposers, firstIndexSetters);
 				}
+				mapped = firstMapped;
+				disposers = firstDisposers;
+				indexSetters = firstIndexSetters;
+				items = firstItems;
 				keys = keyOf === null ? (items as unknown as K[]) : newKeys;
 				len = newLen;
 				return mapped;
@@ -109,7 +124,7 @@ function mapArrayBy<T, K, U>(list: () => T[], keyOf: ((v: T) => K) | null, mapFn
 			const temp: U[] = new Array(newLen);
 			const tempFilled: boolean[] = new Array(newLen);
 			const tempDisposers: (() => void)[] = new Array(newLen);
-			const tempIndexSetters: ((v: number) => void)[] = new Array(newLen);
+			const tempIndexSetters: ((v: number) => void)[] = new Array(usesIndex ? newLen : 0);
 			for (let k = 0; k < newLen; k += 1) { tempFilled[k] = false; }
 
 			let start = 0;
@@ -122,7 +137,7 @@ function mapArrayBy<T, K, U>(list: () => T[], keyOf: ((v: T) => K) | null, mapFn
 				temp[newEnd] = mapped[end];
 				tempFilled[newEnd] = true;
 				tempDisposers[newEnd] = disposers[end];
-				tempIndexSetters[newEnd] = indexSetters[end];
+				if (usesIndex) { tempIndexSetters[newEnd] = indexSetters[end]; }
 				end -= 1;
 				newEnd -= 1;
 			}
@@ -148,7 +163,7 @@ function mapArrayBy<T, K, U>(list: () => T[], keyOf: ((v: T) => K) | null, mapFn
 						temp[j] = mapped[i];
 						tempFilled[j] = true;
 						tempDisposers[j] = disposers[i];
-						tempIndexSetters[j] = indexSetters[i];
+						if (usesIndex) { tempIndexSetters[j] = indexSetters[i]; }
 						newIndices.set(k, newIndicesNext[j]);
 					} else {
 						disposers[i]();
@@ -160,18 +175,20 @@ function mapArrayBy<T, K, U>(list: () => T[], keyOf: ((v: T) => K) | null, mapFn
 
 			const nextMapped: U[] = new Array(newLen);
 			const nextDisposers: (() => void)[] = new Array(newLen);
-			const nextIndexSetters: ((v: number) => void)[] = new Array(newLen);
+			const nextIndexSetters: ((v: number) => void)[] = new Array(usesIndex ? newLen : 0);
 			for (let p = 0; p < start; p += 1) {
 				nextMapped[p] = mapped[p];
 				nextDisposers[p] = disposers[p];
-				nextIndexSetters[p] = indexSetters[p];
+				if (usesIndex) { nextIndexSetters[p] = indexSetters[p]; }
 			}
 			for (let j = start; j < newLen; j += 1) {
 				if (tempFilled[j]) {
 					nextMapped[j] = temp[j];
 					nextDisposers[j] = tempDisposers[j];
-					nextIndexSetters[j] = tempIndexSetters[j];
-					nextIndexSetters[j](j);
+					if (usesIndex) {
+						nextIndexSetters[j] = tempIndexSetters[j];
+						nextIndexSetters[j](j);
+					}
 				} else {
 					makeRowInto(newItems[j], j, nextMapped, nextDisposers, nextIndexSetters);
 				}
