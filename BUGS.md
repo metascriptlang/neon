@@ -17,110 +17,11 @@ cannot be reproduced is re-measured and rewritten, never corrected on top.
 ---
 ## §3 — Neon-side and environment
 
-- **~~`Index` never mounts a row appended to the list~~ ✅ CLOSED 2026-09-18 (Lát 4c, Neon `8644587`
-  fix + `b1cfb19` guard) — the suspected root was WRONG, and `src/core/array.ms` was never touched.**
-  Filed by Lát 1.1 as "suspect `indexArray` pushes onto a value-copied array parameter". Measured:
-  `indexArray` grows correctly on its own (`probe/l4c/indexAppend.ms` — 1 → 2 → 3 rows). The real
-  root is an ALIAS across the producer/consumer boundary: `indexArray` mutates the very array it
-  handed out last time (`mapped.push(row)` then `mapped = mapped.slice(0, newLen)`), while
-  `mountRegion` (`src/render/host.ms`) kept `current = next`. `probe/l4c/aliasCheck.ms` prints it:
-  after one append the array returned by the PREVIOUS call has length 2 for `indexArray` and 1 for
-  `mapArray` (which rebuilds `nextMapped` fresh). So `reconcileArrays(host, parent, current, next,
-  anchor)` was handed `a === b`, matched every row, and did nothing. Solid has the same producer
-  behaviour (`array.ts:243` `return (mapped = mapped.slice(0, len))`) and is safe only because its
-  consumer never keeps the memo's array — `insertExpression` holds a normalized DOM-node array. Fix
-  is therefore on the consumer, one line: `current = next.slice(0, next.length)`. Guard
-  `tests/render/flow.test.ms` "Index grows and shrinks with the list" (append, second append, shrink),
-  proven RED on the line before the fix.
+No open Neon-side bug. Three sites are parked on a compiler card; each names the card and the
+site, and nothing is worked around in `src/`. Rows closed before 2026-09-20 were dropped with
+§2 — they are in this file's history at `git show c00bd2b:BUGS.md`, and the invariants that
+outlived them were moved to the head of the test that pins each one.
 
-- **~~OPEN Neon (2026-09-18, found by Lát 3 of the one-NeonNode arc) — a range of more than one node
-  does not survive the reconciler's replace branch.~~ ✅ CLOSED 2026-09-19 (one-NeonNode arc: fix Lát 4b
-  `df93941`+`9f23709`+`facb35b`, guard Lát 5 `e3d87ae`).** `reconcileArrays` (`src/render/reconcile.ms`)
-  was rewritten on the Svelte model settled below: there is no replace branch, a row that survives is
-  never detached, a row not in the host yet is mounted at its final position (`mountAt`), and the
-  destination is the start of the row occupying the slot in the NEW order, or the region anchor.
-  Measured: the fuzz of this row ported to the `Row` API with FRAGMENT rows of 1–3 nodes between a
-  leading sibling and a trailing anchor — 2400/2400 steps, 1301 multi-node rows, 0 lost or misplaced,
-  on C and `--target=js` (`msc run probe/l3_rangeFuzz/mainRowApi.ms`; `main.ms` beside it still speaks
-  the retired `Range` API and no longer compiles). It is now
-  a cell of `tests/render/reconcile.test.ms`, "fragment rows of one to three nodes survive random
-  reorder, drop and remount", proven RED by making `moveRow` carry only the first node of a span
-  (4 of 6 cells red, this one included) and green on restore. The record of the failure follows.
-  `reconcileArrays` (`src/render/reconcile.ms`)
-  now runs on `Range {start, end}`; every range operation walks `start → end` by `nextSibling`.
-  udomdiff's map-fallback `replaceChild` detaches `a[aStart]` even though the map proves it reappears
-  later in `b`, and re-inserts it from the caller's array on a later step. A detached single node is
-  still insertable; a detached RANGE is not — `nextSibling(start)` is null, so only the first node
-  comes back and the rest are lost. Measured with `probe/l3_rangeFuzz/main.ms` (400 trials × 6 steps,
-  ranges of 1–3 nodes): **0 failures with every range `{n, n}`** (2400/2400, so the port is faithful
-  for today's rows), and an immediate loss of nodes as soon as a range holds two. Not a regression:
-  rows are `{n, n}` until Lát 4b. **Direction settled 2026-09-18 against the Svelte source** (cloned
-  to `~/projects/svelte`, `packages/svelte/src/internal/client/dom/blocks/each.js`): `reconcile` there
-  NEVER detaches a row that survives — a live row is always `move(effect, next, anchor)`, and only
-  rows in `to_destroy` are removed. `move` itself matches this port line for line (next sibling read
-  BEFORE the insert, stop at `end`) with ONE difference that is the whole answer: its destination is
-  `next.nodes.start` — the start of the row that follows in the NEW order — not `nextSibling` of the
-  row that precedes in the OLD tree, which is what udomdiff's ref node is. So 4b should drop the
-  replace branch and move to a next-row destination. The measured failure of a naive "move, do not
-  remove" (32/2400 even for single-node rows) does NOT contradict this: that variant kept udomdiff's
-  old-tree ref node, so it was a hybrid of the two models, not Svelte's.
-
-- **NOT A BUG — deliberate, decided 2026-09-18 after reading both references: `ref` follows REACT,
-  not Solid.** `ref` is component/event surface, and the standing rule is reactivity = Solid,
-  component/event surface = React Native. React attaches refs innermost-first, after the subtree is
-  built: `~/projects/react/packages/react-reconciler/src/ReactFiberCommitWork.js` runs
-  `recursivelyTraverseLayoutEffects` (`:682`, `:627`) BEFORE `safelyAttachRef` (`:700`, `:641`).
-  Neon does the same on both emissions, and the older cell pinning that a `ref` already sees a bound
-  reactive child follows from it. Solid is the one that differs — `dom-expressions`
-  (`~/projects/dom-expressions`, `packages/babel-plugin-jsx-dom-expressions/src/dom/element.js`)
-  `unshift`s a `use(ref, el)` onto that element's own `exprs` (`:676`, `:694`, `:704`) while
-  `transformChildren` `push`es each child's `exprs` afterwards (`:1122`), and attributes are
-  transformed before children (`:171` before `:188`). A parent's `ref` therefore runs BEFORE any
-  child's `ref`, and before the `insert(...)` that binds a dynamic child. Neon runs React's order:
-  `tests/render/ref.test.ms` pins innermost-first, and an older cell pins that
-  a `ref` already sees a bound reactive child (`"<p>7</p>"`) — both stay. What all three agree on:
-  `ref` fires before the site root is placed (Solid calls `use` inside the IIFE, before
-  `return _el$`). Lát 4d only has to keep this order when the two emitters merge into one.
-- ~~**OPEN 2026-09-15 — direct emission FREEZES a whole-style call SILENTLY, and rejects the per-field
-  reactive styles that tree emission supports.**~~ ✅ **CLOSED 2026-09-17 by Lát 0 of the one-NeonNode
-  arc, every table row now a differential cell in `tests/render/direct.test.ms` (47/47 native and
-  `--target=js`):** whole-style call → `bindStyleAll` `8ad2bb8` (0.1); object literal → static
-  fields once + `bindStyleProp` per reactive field `0dc155e` (0.2); layer array → compile-time merge
-  or `layerStyles` `ff0a42e` (0.4); static sheet → `applyStaticStyle`, the CSS-class route `9cce2b6`
-  (0.5); a reactive layer is rejected at expansion on BOTH macros `ec2d383` (0.8). The stale docs
-  sentence ("same S4 field validation") is corrected in `direct.ms` and RENDER-MODEL.md by 0.10.
-  Was: measured on the installed msc (deployed 2026-09-15
-  12:09) with Neon at `ee953bc`, every probe in `probe/` (gitignored), tree emission as the oracle:
-
-  | `style=` | tree (`element.ms`) | direct (`direct.ms`) | probe |
-  |---|---|---|---|
-  | `{s()}`, `s` reads a signal | `padding:10px` → `20px` | **stays `10px`, no diagnostic** — D4 and D3, native and `--target=js` | `styleWholeCall.ms`, `styleWholeCallD3.ms` (a `<Text>` child forces the flat tier) |
-  | `{{ padding: w }}`, bare accessor | reactive, `10px` → `20px` | compile error `Argument type mismatch in 'setStyle' arg 1: got __anon1__paddingx, expected Style` | `styleTreeReactive.ms`, `styleBareAccessor.ms` |
-  | `{{ padding: w(), margin: 4 }}` | split at COMPILE time: `padding` one effect, `margin` one constant | macro error `a style field cannot call a function … (reactive style fields land in S4)` — stale, S4 landed in `element.ms:330-352` | `styleTreeReactive.ms`, `styleCallField.ms` |
-  | a static sheet style | constant, CSS-class route (`cssId` → `setStyleClass`, `dom.ms:174`) | always inline `setStyle` (`applyCss`, `dom.ms:168`) | code reading |
-
-  Cause: `direct.ms` binds `const _s = <expr>` and calls `host.setStyle(_r, _s)` ONCE — D4 wire
-  (~352-364) and D3 `emitEl` (~564-581) — with no `isReactiveExpr`/`isAccessorTyped` test, while
-  `element.ms:406-414` routes the same whole-style expression to `withDynStyleAll` (one whole-style
-  effect) and `:330-352` peels reactive fields into `withDynStyle`. The runtime pieces direct would
-  emit already exist (`bindStyleAll` / `bindStyleProp`, `host.ms:126-132`).
-  Why nothing caught it: `direct.test.ms` has no cell with a reactive style, so the differential never
-  compared one. Same asymmetry as fragments — tree gained S4 and it was never mirrored, and the docs
-  claim otherwise: RENDER-MODEL §Selection lists `style={s()}` under "direct — one effect per spot",
-  and §Naming says direct has "the same S4 field validation as element.ms".
-  Fix direction: port `element.ms`'s three-channel style classification into direct (whole reactive →
-  `bindStyleAll`, reactive field → `bindStyleProp`, static → constant + class route, compile-time
-  layer merge), differential cells red first. It belongs to the "one NeonNode" merge (the merged macro
-  must carry the UNION of both macros' compile-time analyses), but a silent freeze should not wait on
-  that arc if it slips.
-- **~~PARKED 2026-09-17 (one-NeonNode arc, outside Lát 0) — `on*` is classified two ways.~~ ✅ CLOSED
-  2026-09-19 (`447ed07`): one predicate, `isEventName` in `reactive.ms` — `on` + an uppercase letter,
-  React's rule — decides it for a tag, a spread field and a component prop.** Measured before the fix:
-  `<p once="x" online={v()}>` did not compile on either tier ("Argument type mismatch in 'addEvent'
-  arg 2: got string, expected function"). Pinned by the two "once and online are attributes, not
-  events" cells in `emit.test.ms` (`msc test tests/render/emit.test.ms` rc=0 on C and `--target=js`;
-  `grep -rn 'startsWith("on")' src` prints the predicate alone). Was: on a lowercase tag both macros
-  tested `startsWith("on")`; a component prop needed `on` + an uppercase letter.
 - **PARKED 2026-09-20 — `<Index each={xs()}>{row}</Index>` is refused at `createComponent`, so the
   index-keyed list has no JSX surface.** Not Neon's: reduced to 11 lines with no JSX and no Neon
   import — a generic callee passed as a value argument cannot bind its own type parameter through a
@@ -163,36 +64,6 @@ cannot be reproduced is re-measured and rewritten, never corrected on top.
     "a ?? <X/> child mounts the node when present and the JSX arm when null" (element arm and fragment
     arm; `msc test tests/render/flow.test.ms` rc=0 on C and `--target=js`). In bare JSX too since
     2026-09-20: `preludeFlow.test.ms` "bare JSX lowers ?? over a nullable node".
-- **✅ CLOSED 2026-09-20 (recompiler `0f1e6735`, installed `7f80b93b`) — every nullable slot was red in
-  BARE JSX and green through `element(<jsx/>)`.** Pinned by the four "— bare JSX" cells at the end of
-  `emit.test.ms` (`msc test tests/render/emit.test.ms` rc=0 on C and `--target=js`); the fixture
-  `bareNullableChildRejected.ms` is gone. Found with it: the lowering names `Show` / `For`, which the
-  prelude did not export, so bare JSX with `&&`, `?:`, `??` or `.map` failed with "Undefined variable
-  'For'" unless the file imported them — `src/converters.ms` exports `For`, `Index` and `Show` since `bd295d2`
-  (`preludeFlow.test.ms`). Was: A nullable `on*` / `ref` / `style` (Lát 0.11), an `Accessor<string> | null`
-  attribute and a `NeonNode | null` child all emit `const _o = v; if (_o !== null) { f(_o); }`. Called
-  as `element(...)` the `if` narrows `_o`; when the converter `jsxToNode` builds the same
-  `MacroInvocation` it does not ("Argument type mismatch in 'addEvent' arg 2: got Maybe_fn…", "No
-  matching overload for 'mountChild'"). Reduced outside Neon — a 35-line macro + converter, same
-  split. Every cell that pins these features calls `element(...)`, which is how it went unseen since
-  Lát 0.11.
-- **✅ CLOSED 2026-09-19 (`0daeddb`) — a reactive `class` on View / Text / Pressable / TextInput froze at
-  its first value, silently.** `primitive()` read it once (`attr("class", props.class as string)`).
-  Measured before the fix: `<View class={cls()}>` kept `class="a"` after `setCls("b")` on all four.
-  View, Text and Pressable are now written in JSX (`<view class={props.class} style={props.style}
-  ref={props.ref}>{props.children}</view>`; Pressable hands its gesture handlers over as nullable
-  `on*`), which needed two macro additions: an `Accessor<string> | null` attribute binds when present
-  and leaves no attribute when null, and a `NeonNode | null` child mounts when present (`5291f67`,
-  pinned on both tiers in `emit.test.ms`). TextInput keeps `hostElement` with `class` as a `dynAttr`:
-  its nullable `onChangeText` is what the macro rejects until `const` narrowing survives a closure
-  (the KNOWN-ISSUES L47 row in §2; fixtures `optChangeText{Template,Flat}Rejected.ms`). Pinned by
-  `universalTags.test.ms` "a reactive class follows its signal on every component of the vocabulary"
-  (rc=0 on C and `--target=js`; importers `press`, `ref`, `fragment`, `tests/platform/terminal`,
-  `tests/platform/void`, `tests/style/style` rc=0).
-- **~~PARKED 2026-09-17 (one-NeonNode arc) — a fragment inside a prop of a NESTED element is reported
-  as "inside an expression".~~ ✅ CLOSED 2026-09-19 (`d9a46c8`): the message and `findFragment` are gone;
-  a fragment prop value lowers through the converter (`fragment.test.ms` "a fragment is a fallback").** Code reading: `findFragment` walks every child subtree attrs included
-  (`reactive.ms:76`), so a fragment that is a prop VALUE gets the expression-container message.
 - **PARKED 2026-09-17 (one-NeonNode arc) — `isAccessorTyped` ~~exists twice (`element.ms`,
   `direct.ms`) and~~ matches neither a type alias of `Accessor<T>` nor `Accessor<T> | null`.** The
   duplicate is ✅ CLOSED 2026-09-19 by the macro merge (`direct.ms` is gone;
@@ -200,29 +71,6 @@ cannot be reproduced is re-measured and rewritten, never corrected on top.
   arms stay PARKED on the compiler: how a macro asks for a type is part of
   `~/metascript/.inbox/compiler/2026-09-19-design-typed-slots-value-read-and-text-coercion.md`
   (ROADMAP Next 7); no Neon-side name matching is added meanwhile.
-- **~~PARKED 2026-09-17 (one-NeonNode arc, Lát 0.9 cleanup) — the component-children wrapping block
-  exists three times:~~ ✅ CLOSED 2026-09-19 by the macro merge.** `direct.ms` is gone and the block
-  lives once, in `componentCall` (`grep -c 'keys.push("children")' src/macros/ui/element.ms` = 3, the
-  three arms of that one block). Children that are not a single raw value or a single element lower
-  through a root fragment, so a static `{expr}` child reaches `mountChild` as text — pinned by
-  `emit.test.ms` "a static string expression as a component's only child mounts as text"
-  (`msc test tests/render/emit.test.ms` rc=0 on C and `--target=js`). Was: `direct.ms` root (~:259)
-  and nested component (~:903), plus `element.ms`.
-- **`voidHost`** — ✅ **GREEN (3/3).** Both problems recorded here were MIS-DIAGNOSED; see §5 for the
-  four real roots. Corrections worth carrying forward:
-  - **"env: sokol_gfx.h not present" was WRONG.** `sokol_gfx.h` was on disk the whole time at
-    `void/deps/sokol/`. The header was unreachable because `@passC("-Ideps/sokol")` is resolved
-    against the **process CWD**, and Neon builds from its own root — a compiler bug, not a missing
-    dependency. **Nothing was ever installed to fix this.**
-  - **The `renderToHost arg 0: got string` type error no longer existed** when re-measured; it had
-    been fixed by an earlier session's compiler work and the row was never re-measured. Per this
-    file's own rule: re-measure before repeating a claim.
-- **`terminal`** — ✅ FIXED 2026-07-21, Neon-side, stays green (284/284). Was "two short texts in a row
-  render as 1 line". Two fixes in `src/platform/terminal/paint.ms`: tag `"row"` now defaults
-  flexDirection to row; `getAttr`/`getAttrNum` guard with `.has(name)`.
-
----
-
 ## §7 — Small debts (not bugs, but owed)
 
 Each is cheap, none blocks anything, all were surfaced by the sessions that closed §1.
