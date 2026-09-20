@@ -1,4 +1,4 @@
-import { mapArray, indexArray } from "../../src/core/array";
+import { mapArray, mapArrayKeyed, indexArray } from "../../src/core/array";
 import { createSignal, Accessor } from "../../src/core/signal";
 import { createRoot } from "../../src/core/owner";
 import { onCleanup } from "../../src/core/cleanup";
@@ -151,6 +151,76 @@ test "an accessor feeds indexArray directly and the row item is an Accessor" {
 		setList([9]);
 		m();
 		assert rows[0]() === 9;
+		d();
+	});
+}
+
+interface Item {
+	id: number;
+	label: string;
+}
+
+test "mapArrayKeyed reuses a row when the object is replaced but the key stays" {
+	createRoot((d) => {
+		const [list, setList] = createSignal<Item[]>([{ id: 1, label: "a" }, { id: 2, label: "b" }]);
+		let calls = 0;
+		const m = mapArrayKeyed<Item, string>(() => list(), (v) => v.id, (v, i) => { calls = calls + 1; return v.label; });
+		const out = m();
+		assert out.length === 2, "two rows";
+		assert calls === 2, "two mapFn calls";
+		setList([{ id: 2, label: "b2" }, { id: 1, label: "a2" }]);
+		const out2 = m();
+		assert calls === 2, "reorder of fresh objects with the same keys creates nothing";
+		assert out2[0] === "b", "row of key 2 moved to slot 0, its mapped value is the old one";
+		assert out2[1] === "a", "row of key 1 moved to slot 1";
+		d();
+	});
+}
+
+test "mapArrayKeyed inserts, removes and keeps the index accessor right" {
+	createRoot((d) => {
+		const [list, setList] = createSignal<Item[]>([{ id: 1, label: "a" }, { id: 2, label: "b" }]);
+		let calls = 0;
+		const m = mapArrayKeyed<Item, () => number>(() => list(), (v) => v.id, (v, i) => { calls = calls + 1; return i; });
+		const out = m();
+		assert out[0]() === 0, "first row reads index 0";
+		setList([{ id: 3, label: "c" }, { id: 1, label: "a" }, { id: 2, label: "b" }]);
+		const out2 = m();
+		assert calls === 3, "one new row for the inserted key";
+		assert out2[0]() === 0, "the new row is at 0";
+		assert out2[1]() === 1, "key 1 moved to 1 and its index accessor followed";
+		assert out2[2]() === 2, "key 2 moved to 2";
+		setList([{ id: 2, label: "b" }]);
+		const out3 = m();
+		assert out3.length === 1, "two rows removed";
+		assert calls === 3, "removal creates nothing";
+		assert out3[0]() === 0, "the survivor reads index 0";
+		d();
+	});
+}
+
+test "mapArrayKeyed rejects two rows sharing a key, naming the key" {
+	createRoot((d) => {
+		const [list, setList] = createSignal<Item[]>([{ id: 1, label: "a" }, { id: 1, label: "b" }]);
+		const m = mapArrayKeyed<Item, string>(() => list(), (v) => v.id, (v, i) => v.label);
+		let caught = "";
+		try { m(); } catch (e) { caught = e.toString(); }
+		assert caught !== "", "a duplicate key raises";
+		assert caught.includes("1"), "the message names the key value: " + caught;
+		d();
+	});
+}
+
+test "mapArrayKeyed disposes every row when the list empties" {
+	createRoot((d) => {
+		const [list, setList] = createSignal<Item[]>([{ id: 1, label: "a" }, { id: 2, label: "b" }]);
+		let disposed = 0;
+		const m = mapArrayKeyed<Item, string>(() => list(), (v) => v.id, (v, i) => { onCleanup(() => { disposed = disposed + 1; }); return v.label; });
+		m();
+		setList([]);
+		const out = m();
+		assert out.length === 0, "no rows left";
+		assert disposed === 2, "both rows disposed";
 		d();
 	});
 }
