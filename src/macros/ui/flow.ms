@@ -33,6 +33,10 @@ function withFallback(mapped: () => Row[], fb: NeonNode): () => Row[] {
 }
 
 // Value-keyed list: rows reused by item identity; reorder moves DOM, never rebuilds.
+// PARKED: the approved `key?: ((item: T) => number) | null` prop, which would route this at
+// mapArrayKeyed, cannot be declared — a nullable function of T in these props stops every <For>
+// JSX tag from compiling. Card:
+// ~/metascript/.inbox/compiler/2026-09-20-nullable-function-of-a-type-param-in-props-blocks-a-generic-callee.md
 export function For<T>(props: {
 	each: () => T[];
 	children: (item: T, index: Accessor<number>) => NeonNode;
