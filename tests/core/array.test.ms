@@ -224,3 +224,46 @@ test "mapArrayKeyed disposes every row when the list empties" {
 		d();
 	});
 }
+
+test "mapArray told the row never reads its index refuses a row that does" {
+	createRoot((d) => {
+		const [list, setList] = createSignal<number[]>([1, 2]);
+		const m = mapArray<number, number>(() => list(), (v, i) => i(), false);
+		let caught = "";
+		try { m(); } catch (e) { caught = e.toString(); }
+		assert caught !== "", "reading the index of a row emitted as index-free raises";
+		assert caught.includes("index"), "the message names the index: " + caught;
+		d();
+	});
+}
+
+test "mapArray without the index still reorders and disposes" {
+	createRoot((d) => {
+		const [list, setList] = createSignal<number[]>([1, 2, 3]);
+		let calls = 0;
+		let disposed = 0;
+		const m = mapArray<number, number>(() => list(), (v, i) => { calls = calls + 1; onCleanup(() => { disposed = disposed + 1; }); return v * 10; }, false);
+		const out = m();
+		assert out[0] === 10 && out[2] === 30, "mapped without an index";
+		setList([3, 1, 2]);
+		const out2 = m();
+		assert calls === 3, "reorder reuses rows";
+		assert out2[0] === 30 && out2[1] === 10, "rows followed the reorder";
+		setList([2]);
+		m();
+		assert disposed === 2, "removed rows disposed";
+		d();
+	});
+}
+
+test "mapArray lets a row that throws reach the caller" {
+	createRoot((d) => {
+		const [list, setList] = createSignal<number[]>([1, 2, 3]);
+		const m = mapArray<number, number>(() => list(), (v, i) => { throw new Error("row " + v.toString()); });
+		let caught = "";
+		try { m(); } catch (e) { caught = e.toString(); }
+		assert caught !== "", "the row's error reaches the caller instead of killing the process";
+		assert caught.includes("row 1"), "the first row is the one that raised: " + caught;
+		d();
+	});
+}
