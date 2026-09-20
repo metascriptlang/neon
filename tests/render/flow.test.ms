@@ -44,6 +44,9 @@ test "For reactive list reuses rows on reorder, creates only new" {
 	});
 }
 
+// PARKED: both fallback cells take the call form because a JSX value in an attribute of a generic
+// tag never lowers — `<For each={xs} fallback={<li/>}>` is refused. Card:
+// ~/metascript/.inbox/compiler/2026-09-19-jsx-converter-skipped-in-generic-call-inside-macro-arg.md
 test "For fallback shows when empty" {
 	createRoot((d) => {
 		const [items, setItems] = createSignal<number[]>([1]);
@@ -342,6 +345,77 @@ test "Show mounts its fallback untracked" {
 		setOn(true);
 		setOn(false);
 		assert builds === 2, "flipping the condition still rebuilds the fallback";
+		d();
+	});
+}
+
+interface Keyed {
+	id: number;
+	label: string;
+}
+
+function keyedRow(r: Keyed, i: Accessor<number>): NeonNode {
+	return element(<li>{r.label}</li>);
+}
+
+test "For with a key reuses rows across fresh objects that carry the same keys" {
+	const [rows, setRows] = createSignal<Keyed[]>([{ id: 1, label: "a" }, { id: 2, label: "b" }]);
+	let builds = 0;
+	const row = (r: Keyed, i: Accessor<number>): NeonNode => { builds = builds + 1; return element(<li>{r.label}</li>); };
+	const [view, d] = mountedText(element(<ul><For each={rows()} key={(r: Keyed): number => r.id}>{row}</For></ul>));
+	assert view().indexOf("a") >= 0 && view().indexOf("b") >= 0, "both rows rendered: " + view();
+	assert builds === 2, "two rows built";
+	setRows([{ id: 2, label: "b2" }, { id: 1, label: "a2" }]);
+	assert builds === 2, "a reorder of fresh objects with the same keys builds nothing";
+	assert view().indexOf("b") < view().indexOf("a"), "the rows moved, not rebuilt: " + view();
+	d();
+}
+
+test "For with a key inserts and removes by key" {
+	const [rows, setRows] = createSignal<Keyed[]>([{ id: 1, label: "a" }, { id: 2, label: "b" }]);
+	let builds = 0;
+	const row = (r: Keyed, i: Accessor<number>): NeonNode => { builds = builds + 1; return element(<li>{r.label + i.toString()}</li>); };
+	const [view, d] = mountedText(element(<ul><For each={rows()} key={(r: Keyed): number => r.id}>{row}</For></ul>));
+	assert builds === 2, "two rows built";
+	setRows([{ id: 3, label: "c" }, { id: 1, label: "a" }, { id: 2, label: "b" }]);
+	assert builds === 3, "one build for the inserted key";
+	assert view().indexOf("c0") >= 0 && view().indexOf("a1") >= 0 && view().indexOf("b2") >= 0, "indexes follow the move: " + view();
+	setRows([{ id: 2, label: "b" }]);
+	assert builds === 3, "removal builds nothing";
+	assert view().indexOf("b0") >= 0 && view().indexOf("a") < 0, "only the survivor is left: " + view();
+	d();
+}
+
+test "For with a key refuses two rows sharing a key" {
+	const [rows, setRows] = createSignal<Keyed[]>([{ id: 1, label: "a" }, { id: 1, label: "b" }]);
+	let caught = "";
+	try {
+		const [view, d] = mountedText(element(<ul><For each={rows()} key={(r: Keyed): number => r.id}>{keyedRow}</For></ul>));
+		view();
+		d();
+	} catch (e) { caught = e.toString(); }
+	assert caught !== "", "a duplicate key raises through the tag";
+	assert caught.includes("1"), "the message names the key value: " + caught;
+}
+
+test "For takes a key beside a fallback" {
+	createRoot((d) => {
+		const [rows, setRows] = createSignal<Keyed[]>([]);
+		const ul = el("ul", [], [], For<Keyed>({
+			each: () => rows(),
+			key: (r: Keyed): number => r.id,
+			children: keyedRow,
+			fallback: <li>empty</li>,
+		}));
+		const host = mockHost();
+		const root = host.createElement("root");
+		render(ul, host, root);
+		const ulNode = (root as unknown as MockNode).children[0];
+		assert listText(ulNode) === "empty", "the fallback shows while the list is empty";
+		setRows([{ id: 4, label: "d" }]);
+		assert listText(ulNode) === "d", "the keyed row replaces the fallback";
+		setRows([]);
+		assert listText(ulNode) === "empty", "the fallback comes back";
 		d();
 	});
 }
