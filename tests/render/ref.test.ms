@@ -1,5 +1,17 @@
 // ref — the escape hatch to the host node. The callback fires once per mount
 // with the node the element became.
+//
+// Ordering follows REACT, not Solid, decided 2026-09-18 after reading both: ref is
+// component/event surface, and the standing rule is reactivity = Solid, component and
+// event surface = React Native. React attaches refs innermost-first, after the subtree
+// is built (`~/projects/react/packages/react-reconciler/src/ReactFiberCommitWork.js`:
+// recursivelyTraverseLayoutEffects `:682` `:627` before safelyAttachRef `:700` `:641`).
+// Solid is the one that differs — dom-expressions unshifts `use(ref, el)` onto the
+// element's own exprs (`packages/babel-plugin-jsx-dom-expressions/src/dom/element.js`
+// `:676` `:694` `:704`) while transformChildren pushes each child's afterwards
+// (`:1122`), so a parent's ref runs BEFORE any child's. The cells below pin React's
+// order: innermost-first, and a ref already sees a bound reactive child. What all three
+// agree on: ref fires before the site root is placed.
 
 import { createSignal } from "../../src/core/signal";
 import { element } from "../../src/macros/ui/element";
