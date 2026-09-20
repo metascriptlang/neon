@@ -8,8 +8,7 @@
 
 **The suite is 15/15 green for the first time. Neon has zero open bugs on its own path.**
 Recompiler battery 3340/3340 (163 files). Committed: recompiler `de322f8`, neon `4f97082`,
-void `5152755`. Bug detail + root-cause ledger: `BUGS.md` (§1 clean, §2 = 7 compiler debts that do
-NOT block Neon, §7 = small debts).
+void `5152755`. That day's bug detail and root-cause ledger are in history — `git show c00bd2b:BUGS.md`.
 
 ⚠ Sections below this block predate 2026-07-26 and describe the port as "đang dở" with a ~546 LOC
 core. Treat them as history for the Nim→MS module mapping, not as current status.
@@ -80,7 +79,7 @@ miscompiles C — `probe/closureCastCall.ms`). DX decision recorded in
   `docs/RENDER-MODEL.md`.
 - Nim-original `core/component.nim` ruled out as reference (ComponentContext threadvar +
   `cast[pointer]` + React-style useEffect deps — all superseded by our Owner tree).
-- **ORDER (2 compiler prerequisites measured, filed as BUGS.md §2 rows 2026-07-30):**
+- **ORDER (2 compiler prerequisites measured, filed as rows of the handover card `~/metascript/.inbox/compiler/2026-09-20-neon-bugs-md-compiler-rows-handover.md`):**
   bug "thunk-field closure garbage" (SILENT — also latent in Show/For) → converter arc
   (Phase 9) → bug "expr-bodied-arrow env" → `src/render/component.ms` + element
   capitalized-tag branch + tests.

@@ -8,7 +8,7 @@ What we build next, in order, and why that order. **Forward-looking only.**
 | `docs/STYLE.md` §9 | the style/theme stages (S1-S4) in detail |
 | `docs/RENDER-MODEL.md` | the emission tiers, how a site picks one, and the lifecycle |
 | `docs/PORT-STATUS.md` | the Nim → MetaScript module map, and history |
-| `BUGS.md` | every open bug, compiler or framework |
+| `BUGS.md` | open FRAMEWORK bugs of Neon, and the sites parked on a compiler card — 81 lines, read it whole. A compiler bug is a card in `~/metascript/.inbox/compiler/`, never a row here |
 
 **Rule for this file** (same as `BUGS.md` and `STYLE.md`): a row moves to *done* only with the
 command that proved it. Never layer a correction on a stale row — rewrite the row.
@@ -30,7 +30,7 @@ stays; no React hook aliases.
 | 2 | `Accessor<T> = distinct (() => T)`; `createSignal`/`createMemo` return it; `accessor()` | neon core | done, re-measured 2026-09-19 (`src/core/signal.ms:46`, `probe/rm1_distinct.ms`): the alias, `accessor()` and `valueOf` are all live |
 | 3 | checker reads a value through the `valueOf` protocol where a bare read would fail (replaced the source-typed auto-call 2026-09-14) | compiler | done, re-measured 2026-09-19 (`probe/rm3_valueof.ms`): `const [x] = createSignal(2); x * 2` prints `4` with no call |
 | 4 | props contract: every value prop is `Accessor<T>`; the macro wraps every value, literals too | neon macros | done, re-measured 2026-09-19 (`probe/rm4_props.ms`): `label="hi"` enters an `Accessor<string>` prop and `count={n()}` stays reactive (`hi:1` → `hi:2`). `propValueNode` no longer exists — one NeonNode replaced it |
-| 5 | `{a && <X/>}` / ternary / `.map` lower to `Show`/`For` | neon macros | done for the three forms, re-measured 2026-09-20: `&&` (`probe/rm5a_and.ms`), `?:` (`rm5b_ternary.ms`) and `{xs.map((v: number): NeonNode => element(<s/>))}` (`rm5h_mapOneParam.ms`) each mount and update. `.map` lowers a row without an index only; a row with an index, `number` or `Accessor<number>`, is refused with a message that names `<For>` (`tests/macros/mapIndexRowRejected.ms`), and `.map(namedFn)` whose callback does not fit `map` is a permanent rejection (`mapNamedRowRejected.ms`), not a parked gap. `||` stays PARKED (BUGS §3). `lowerJsxChild` no longer exists. The macro emits bare `Show` / `For` calls; `src/converters.ms` re-exports them, so the prelude carries them into every file (`tests/render/preludeFlow.test.ms`). `<Index>` as a TAG is rejected at `createComponent` — card in `~/metascript/.inbox/neon/` |
+| 5 | `{a && <X/>}` / ternary / `.map` lower to `Show`/`For` | neon macros | done for the three forms, re-measured 2026-09-20: `&&` (`probe/rm5a_and.ms`), `?:` (`rm5b_ternary.ms`) and `{xs.map((v: number): NeonNode => element(<s/>))}` (`rm5h_mapOneParam.ms`) each mount and update. `.map` lowers a row without an index only; a row with an index, `number` or `Accessor<number>`, is refused with a message that names `<For>` (`tests/macros/mapIndexRowRejected.ms`), and `.map(namedFn)` whose callback does not fit `map` is a permanent rejection (`mapNamedRowRejected.ms`), not a parked gap. `||` stays PARKED (BUGS §3). `lowerJsxChild` no longer exists. The macro emits bare `Show` / `For` calls; `src/converters.ms` re-exports them, so the prelude carries them into every file (`tests/render/preludeFlow.test.ms`). `<Index>` as a TAG is rejected at `createComponent`, reduced 2026-09-20 to a generic callee that cannot bind its own type parameter through a `distinct` alias — card `~/metascript/.inbox/compiler/2026-09-20-generic-callee-type-param-through-distinct-alias.md` |
 | 6 | error on an implicit accessor read at function-body time (`const d = count * 2`) | compiler | dropped 2026-09-14: with `valueOf` an alias keeps the accessor, and a body-time operand read is an ordinary one-time value |
 | 7 | real fragments: flatten in child position; multi-root at top level | neon | done 2026-09-15, root fragment and fragment rows 2026-09-19 with one NeonNode (`msc test tests/render/fragment.test.ms` rc=0 on C and `--target=js`; `tests/macros/run.sh` rc=0) — a fragment child is flattened at compile time, a root fragment places every root in front of `before`, a row may be a fragment, and inside an expression a fragment lowers exactly as an element does (`&&` / `?:` arm → `Show`, prop value or argument → converter) |
 
@@ -40,7 +40,8 @@ every target, and no build flag or user-visible knob exists (`RENDER-MODEL.md` �
 Phase 7 dropped `regionNode` from its own description: reading `insertExpression` in
 `dom-expressions/src/client.js` showed Solid reserves the effect + `reconcileArrays` path for arrays
 holding a FUNCTION, and appends a static array directly. A region for a static fragment applies the
-dynamic branch to a static value. Detail and the refutation live in `BUGS.md` §7.
+dynamic branch to a static value. Detail and the refutation are in this file's history:
+`git show c00bd2b:BUGS.md`, §7.
 
 ---
 
@@ -133,7 +134,7 @@ In rough priority order, once the above is standing:
   `tests/render/press.test.ms` (8 cells, both lanes). A fix fell out: both macros wrapped EVERY
   non-string prop in a thunk, so `delayLongPress={200}` against a flat `number` field miscompiled
   on C — constants now cross RAW, which is what the call-based reactive law already implied.
-  Native hosts have no clock yet, so long press does not fire there (BUGS.md §7).
+  Native hosts have no clock yet, so long press does not fire there (handed over, `~/metascript/.inbox/compiler/2026-09-20-neon-bugs-md-compiler-rows-handover.md`).
 - **the universal component vocabulary** (2026-09-03, user decision — div/span are HTML-isms
   users must not meet) — `View`/`Text`/`TextInput`/`Pressable` are real components
   (`src/components/primitives.ms`, the createComponent seam) rendering lowercase WIRE tags; every host
@@ -146,7 +147,7 @@ In rough priority order, once the above is standing:
   arrays; arrows stay raw for For/Show; non-arrow expressions are dynText). `class` is the
   RN-web escape hatch. Starter counter/todoList + counterDom/showcaseDom migrated — no div in
   the public surface. Sweep: C 29/29, JS 28/29 (same single pre-existing red). Two compiler
-  debts filed (BUGS.md §2): engine-synthesized thunks around user arrows, and the converter
+  debts filed (handed over, `~/metascript/.inbox/compiler/2026-09-20-neon-bugs-md-compiler-rows-handover.md`): engine-synthesized thunks around user arrows, and the converter
   registry's array-target gap.
 - **the event surface speaks React Native** (2026-09-03, user decision — mobile-first) —
   `onPress` replaces `onClick` everywhere; `e.type` uses the neon spelling ("press",
@@ -164,9 +165,9 @@ In rough priority order, once the above is standing:
   param position but called through the SLOT's ABI on C (garbage frame → double-free in the event's
   destructor) and was rejected at field position. Fixed at the root in msc **v0.2.53**
   (`padLiteralParams` — a literal lambda pads to its slot's arity at its own contextual-typing
-  site; recompiler bug118). Fn VALUES keep strict arity (BUGS.md §7 — annotate the decl). Sweep:
+  site; recompiler bug118). Fn VALUES keep strict arity (handed over, `~/metascript/.inbox/compiler/2026-09-20-neon-bugs-md-compiler-rows-handover.md` — annotate the decl). Sweep:
   C 28/28, JS 27/28; the one JS red is a PRE-EXISTING int64→number return-conversion drop
-  (BUGS.md §2, A/B-proven against a self-built v0.2.52 control).
+  (handed over, `~/metascript/.inbox/compiler/2026-09-20-neon-bugs-md-compiler-rows-handover.md`, A/B-proven against a self-built v0.2.52 control).
 - **the JSX boundary stopped being per-target** (2026-09-03) — both `when (js)` blocks (`render/host.ms`,
   `converters.ms`) are gone: a native build reaches the same per-site emission a browser build does.
   Justified by the C-lane measurement nobody had taken: 2.6-2.8x static, 2.0x half-dynamic, 1.5x

@@ -181,7 +181,7 @@ version is opt-in per host, keeps core blind to platforms, and gives N vocabular
 > for terminal, `applyCss` for browser). The §5 objection — "the interface version forces every host
 > to implement it" — turned out to be the *feature*: S1 added `setStyle` to `Host`, terminal and
 > browser silently didn't implement it, and MS had no conformance check, so the omission became a
-> NULL function pointer (BUGS.md §5, 2026-07-28). The compiler now rejects a missing function-typed
+> NULL function pointer (`git show c00bd2b:BUGS.md`, 2026-07-28). The compiler now rejects a missing function-typed
 > field, which is what makes this layering safe to rely on.
 
 **Projection is cached per sheet entry.** A sheet entry is a constant, so each host projects it once
@@ -222,8 +222,8 @@ covered by the plugin". A macro inside the compiler knows.
 ## 7. Measured compiler facts (2026-07-27)
 
 Each probe was built in its **own directory** — running them in parallel against a shared `/tmp/out`
-produced a spurious `undefined symbol` from another probe's module. Same cache-collision trap
-recorded in `BUGS.md` §1: isolate, or `rm -rf out` between runs.
+produced a spurious `undefined symbol` from another probe's module. Isolate by directory — the
+object cache is fingerprint-keyed, so wiping it is never the fix (`CLAUDE.md` §Commands).
 
 | Capability | Result | Probe |
 |---|---|---|
@@ -238,7 +238,7 @@ recorded in `BUGS.md` §1: isolate, or `rm -rf out` between runs.
 | **Excess-property check through a macro-emitted call** (2026-07-27 late night) | ✅ since recompiler bug051 — `keyLocations` survive the macro round-trip, and the excess/duplicate diagnostics fall back to the literal's location instead of being swallowed. Pre-fix this died at the C layer (`no member named 'widht'`) | `probe/style_neg.ms` (deliberate-red), recompiler `src/test/fixedbugs/bug051.ms` |
 | **Macro `error(msg, node)` diagnostics** | ✅ fires once, exact location, `Macro 'name':` prefix | `createStyles`/`element` static-style guards, `probe/style_neg.ms` |
 
-The spread row is a genuine compiler bug and belongs in `BUGS.md` §2. It does **not** block S1; it
+The spread row is a genuine compiler bug and belongs in the handover card. It does **not** block S1; it
 blocks the composition work in S3. Note that array layering was chosen over spread for provenance
 (§1), so this bug is not the reason for that choice.
 
@@ -289,7 +289,7 @@ runtime object (`rt`), pseudo-states beyond variants, animation (Nim had `Animat
 > and it means a called style reaches the host at MOUNT, inside that effect.
 >
 > The `pressed() && "on"` spelling in §2 is blocked by a C codegen bug (`boolean && string` emits a
-> bool-cast of the string, `BUGS.md` §2); use the ternary form until it closes. Wiring the reactive
+> bool-cast of the string, the handover card); use the ternary form until it closes. Wiring the reactive
 > selector also uncovered and fixed a compiler bug of its own — a fitted optional argument froze into
 > its Maybe carrier while crossing the macro wire, which C rejected at clang and JS silently
 > mis-evaluated (`NIM-REF` row 157, corpus `751-macroArgMaybeFit.ms`).
