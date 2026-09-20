@@ -569,6 +569,45 @@ a string key would be **worse than no key at all** on the C backend; and `<For>`
 engine, not the tag — the `key` prop landed on the tag on 2026-09-21 and its cells are in
 `tests/render/flow.test.ms`.
 
+### 2026-09-21 — the macro tells mapArray when a row never reads its index
+
+How it was measured. msc v0.2.55, binary `d74853ed`; `probe/m/indexFlagCost.ms` (gitignored), release
+build, N = 5000 rows of `number`, 10 rounds, both variants run alternately **inside one round of one
+process**, every cell the MIN over the rounds, load 2.6 before the run. A cell is ms for one call of
+the mapped accessor — the whole `mapArray` step, no host. **Lower is better.**
+
+`with index` is what every row paid before: an `IndexCell`, a lazily-signalled accessor, a closure
+setter and three parallel setter arrays. `no index` is the same engine told the row never names its
+index parameter, which the element macro now decides by reading the row arrow's body.
+
+| op, 5000 rows | with index | no index | after ÷ before |
+|---|---|---|---|
+| build | 1.10 | **0.82** | 0.74 |
+| swap | 0.286 | **0.219** | 0.77 |
+| reverse | 0.262 | **0.205** | 0.78 |
+| move 1 | 0.290 | **0.204** | 0.70 |
+| add 1 | 0.060 | **0.040** | 0.67 |
+| remove half | 0.273 | 0.440 | **1.61** |
+
+Verdict: five cells of six get 22–33% cheaper and one gets 61% dearer. Remove-half is the only cell
+that DISPOSES rows, and a root holding fewer closures costing more to dispose is backwards; three
+hypotheses were tested and refuted (a shared accessor captured by every row, the zero-length setter
+arrays, run order), so it is open in BUGS.md §7 rather than explained here. The same inversion was
+seen on 2026-09-20 by a hand-copied index-free `mapArray` in another arc, so it belongs to dropping
+the machinery, not to this implementation.
+
+What the macro decides, and what it cannot: a row written `(x) => …` or `(x, i) => …` whose body never
+names `i` is emitted `usesIndex: false`; a named row function, or anything the macro cannot read, is
+emitted `true`. A row that rebinds the index name reads as a use and keeps the machinery. The wrong
+direction is caught loudly — a row emitted index-free gets an accessor that raises if it is ever read,
+pinned by `tests/core/array.test.ms` — while the other direction only costs the win, and is covered by
+this table rather than by a test.
+
+Not measured, and why: Chrome (the win is allocation and closure count, and the browser's timer
+coarsens at 0.1 ms to the size of four of these six cells); and whether the macro picks `false` on a
+given tag, because the only runtime observable of the choice is the raise, so the table above is the
+evidence that the false path is taken at all.
+
 ## Invariants — the contract every tier and every hand-built node must satisfy
 
 1. **Evaluating JSX is pure** — it allocates the NeonNode and performs no host op
