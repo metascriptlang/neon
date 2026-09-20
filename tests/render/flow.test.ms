@@ -419,3 +419,21 @@ test "For takes a key beside a fallback" {
 		d();
 	});
 }
+
+test "For gives a row that names its index a live index through the tag" {
+	const [items, setItems] = createSignal<string[]>(["a", "b"]);
+	const [view, d] = mountedText(element(<ul><For each={items()}>{(s: string, i: Accessor<number>): NeonNode => element(<li>{s + i().toString()}</li>)}</For></ul>));
+	assert view().indexOf("a0") >= 0 && view().indexOf("b1") >= 0, "indexed rows: " + view();
+	setItems(["b", "a"]);
+	assert view().indexOf("b0") >= 0 && view().indexOf("a1") >= 0, "indexes follow the reorder: " + view();
+	d();
+}
+
+test "For renders a row that never names its index" {
+	const [items, setItems] = createSignal<string[]>(["a", "b"]);
+	const [view, d] = mountedText(element(<ul><For each={items()}>{(s: string, i: Accessor<number>): NeonNode => element(<li>{s}</li>)}</For></ul>));
+	assert view().indexOf("a") >= 0 && view().indexOf("b") >= 0, "rows render: " + view();
+	setItems(["b", "a", "c"]);
+	assert view().indexOf("c") >= 0, "reorder and append still work: " + view();
+	d();
+}
