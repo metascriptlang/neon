@@ -20,7 +20,16 @@ interface IndexCell {
 }
 
 export function mapArray<T, U>(list: () => T[], mapFn: (v: T, index: Accessor<number>) => U): () => U[] {
+	return mapArrayBy<T, T, U>(list, null, mapFn);
+}
+
+export function mapArrayKeyed<T, U>(list: () => T[], keyOf: (v: T) => number, mapFn: (v: T, index: Accessor<number>) => U): () => U[] {
+	return mapArrayBy<T, number, U>(list, keyOf, mapFn);
+}
+
+function mapArrayBy<T, K, U>(list: () => T[], keyOf: ((v: T) => K) | null, mapFn: (v: T, index: Accessor<number>) => U): () => U[] {
 	let items: T[] = [];
+	let keys: K[] = [];
 	let mapped: U[] = [];
 	let disposers: (() => void)[] = [];
 	let indexSetters: ((v: number) => void)[] = [];
@@ -52,11 +61,30 @@ export function mapArray<T, U>(list: () => T[], mapFn: (v: T, index: Accessor<nu
 		const newItems = list();
 		const newLen = newItems.length;
 		return untrack(() => {
+			let newKeys: K[] = newItems as unknown as K[];
+			let keyIndex: Map<K, number> | null = null;
+			if (keyOf !== null) {
+				const of = keyOf as (v: T) => K;
+				const ks: K[] = new Array(newLen);
+				const seen = new Map<K, number>();
+				for (let j = 0; j < newLen; j += 1) {
+					const k = of(newItems[j]);
+					if (seen.has(k)) {
+						throw new Error("For: the key " + k.toString() + " is used by rows " + (seen.get(k) as number).toString() + " and " + j.toString());
+					}
+					seen.set(k, j);
+					ks[j] = k;
+				}
+				newKeys = ks;
+				keyIndex = seen;
+			}
+
 			if (newLen === 0) {
 				if (len !== 0) {
 					for (const d of disposers) { d(); }
 					disposers = [];
 					items = [];
+					keys = [];
 					mapped = [];
 					indexSetters = [];
 					len = 0;
@@ -73,6 +101,7 @@ export function mapArray<T, U>(list: () => T[], mapFn: (v: T, index: Accessor<nu
 					items[j] = newItems[j];
 					makeRowInto(newItems[j], j, mapped, disposers, indexSetters);
 				}
+				keys = keyOf === null ? (items as unknown as K[]) : newKeys;
 				len = newLen;
 				return mapped;
 			}
@@ -85,11 +114,11 @@ export function mapArray<T, U>(list: () => T[], mapFn: (v: T, index: Accessor<nu
 
 			let start = 0;
 			const minLen = len < newLen ? len : newLen;
-			while (start < minLen && items[start] === newItems[start]) { start += 1; }
+			while (start < minLen && keys[start] === newKeys[start]) { start += 1; }
 
 			let end = len - 1;
 			let newEnd = newLen - 1;
-			while (end >= start && newEnd >= start && items[end] === newItems[newEnd]) {
+			while (end >= start && newEnd >= start && keys[end] === newKeys[newEnd]) {
 				temp[newEnd] = mapped[end];
 				tempFilled[newEnd] = true;
 				tempDisposers[newEnd] = disposers[end];
@@ -98,25 +127,29 @@ export function mapArray<T, U>(list: () => T[], mapFn: (v: T, index: Accessor<nu
 				newEnd -= 1;
 			}
 
-			const newIndices = new Map<T, number>();
-			const newIndicesNext: number[] = new Array(newEnd + 1);
-			for (let j = newEnd; j >= start; j -= 1) {
-				const item = newItems[j];
-				const prev = newIndices.has(item) ? (newIndices.get(item) as number) : -1;
-				newIndicesNext[j] = prev;
-				newIndices.set(item, j);
+			const newIndices = keyIndex !== null ? (keyIndex as Map<K, number>) : new Map<K, number>();
+			const newIndicesNext: number[] = new Array(newLen);
+			if (keyIndex === null) {
+				for (let j = newEnd; j >= start; j -= 1) {
+					const k = newKeys[j];
+					const prev = newIndices.has(k) ? (newIndices.get(k) as number) : -1;
+					newIndicesNext[j] = prev;
+					newIndices.set(k, j);
+				}
+			} else {
+				for (let j = 0; j < newLen; j += 1) { newIndicesNext[j] = -1; }
 			}
 
 			for (let i = start; i <= end; i += 1) {
-				const item = items[i];
-				if (newIndices.has(item)) {
-					const j = newIndices.get(item) as number;
+				const k = keys[i];
+				if (newIndices.has(k)) {
+					const j = newIndices.get(k) as number;
 					if (j !== -1) {
 						temp[j] = mapped[i];
 						tempFilled[j] = true;
 						tempDisposers[j] = disposers[i];
 						tempIndexSetters[j] = indexSetters[i];
-						newIndices.set(item, newIndicesNext[j]);
+						newIndices.set(k, newIndicesNext[j]);
 					} else {
 						disposers[i]();
 					}
@@ -148,6 +181,7 @@ export function mapArray<T, U>(list: () => T[], mapFn: (v: T, index: Accessor<nu
 			disposers = nextDisposers;
 			indexSetters = nextIndexSetters;
 			items = newItems.slice(0, newItems.length);
+			keys = keyOf === null ? (items as unknown as K[]) : newKeys;
 			len = newLen;
 			return mapped;
 		});
