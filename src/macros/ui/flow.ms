@@ -38,14 +38,17 @@ export function For<T>(props: {
 	each: () => T[];
 	children: (item: T, index: Accessor<number>) => NeonNode;
 	key?: ((item: T) => number) | null;
+	usesIndex?: boolean | null;
 	fallback?: NeonNode | null;
 }): NeonNode {
 	return regionNode((h) => {
 		const keyOf = props.key;
+		const declared = props.usesIndex;
+		const usesIndex = declared === null ? true : (declared as boolean);
 		const row = (item: T, idx: Accessor<number>): Row => makeRow(props.children(item, idx));
 		const mapped = keyOf === null
-			? mapArray<T, Row>(props.each, row)
-			: mapArrayKeyed<T, Row>(props.each, keyOf as (item: T) => number, row);
+			? mapArray<T, Row>(props.each, row, usesIndex)
+			: mapArrayKeyed<T, Row>(props.each, keyOf as (item: T) => number, row, usesIndex);
 		const fb = props.fallback;
 		if (fb === null) { return mapped; }
 		return withFallback(mapped, fb as NeonNode);

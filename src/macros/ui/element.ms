@@ -19,7 +19,7 @@
 // layer array → compile-time merge or layerStyles (a reactive layer or field is
 // rejected), reactive expr → bindStyleAll, anything else → applyStaticStyle.
 
-import { Node, NodeKind, DeclKind, NodeFlag } from "std/meta";
+import { Node, NodeKind, DeclKind, NodeFlag, childCount, childAt } from "std/meta";
 import { isReactiveExpr, isRawPropValue, isEventName, peelHidden } from "./reactive";
 
 function trimEdgeSpaces(s: string, fromStart: boolean, fromEnd: boolean): string {
@@ -463,6 +463,28 @@ export macro element(node: Node): Node {
 		if (t !== null && t.kind === NodeKind.TypeFunction) { return t.typExprParams.length; }
 		return 0;
 	}
+	// A row that rebinds the index name is not detected, so it reads as a use and
+	// keeps the machinery.
+	function readsName(n: Node, name: string): boolean {
+		if (n.kind === NodeKind.Identifier && n.name === name) { return true; }
+		const c = childCount(n);
+		for (let i = 0; i < c; i = i + 1) {
+			if (readsName(childAt(n, i), name)) { return true; }
+		}
+		return false;
+	}
+	// A For row that never names its index parameter lets mapArray drop the per-row
+	// index cell, accessor and setter; anything the macro cannot read says it does.
+	function rowUsesIndex(row: Node): boolean {
+		const r = peelHidden(row);
+		if (r.kind !== NodeKind.ArrowFunction) { return true; }
+		let declared: string[] = [];
+		for (const p of r.arrowParams) {
+			if (!p.startsWith("__msPad")) { declared.push(p); }
+		}
+		if (declared.length < 2) { return false; }
+		return readsName(r.arrowBody, declared[1]);
+	}
 	function isFunctionValued(n: Node): boolean {
 		if (n.kind === NodeKind.ArrowFunction || n.kind === NodeKind.FunctionExpr) { return true; }
 		const t = peelHidden(n).nodeType;
@@ -586,6 +608,18 @@ export macro element(node: Node): Node {
 				kind: NodeKind.MacroInvocation, line: c.line, column: c.column, macroName: "element",
 				macroArgs: [{ kind: NodeKind.JSXFragment, line: c.line, column: c.column, jsxFragChildren: c.jsxChildren }],
 			});
+		}
+		if (tag === "For") {
+			let written = false;
+			let rowAt = -1;
+			for (let i = 0; i < keys.length; i = i + 1) {
+				if (keys[i] === "usesIndex") { written = true; }
+				if (keys[i] === "children") { rowAt = i; }
+			}
+			if (!written && rowAt >= 0) {
+				keys.push("usesIndex");
+				values.push({ kind: NodeKind.BooleanLiteral, line: c.line, column: c.column, boolValue: rowUsesIndex(values[rowAt]) });
+			}
 		}
 		// A dotted tag (Ctx.Provider) resolves through member access, not a flat
 		// name: fold the parts so the checker sees Ctx.Provider and types the call
