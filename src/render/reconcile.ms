@@ -24,16 +24,19 @@ export interface Row {
 	parent: HostNode | null;
 	start: HostNode | null;
 	end: HostNode | null;
+	slot: number;
+	stamp: number;
+	kept: boolean;
 }
 
 function noView(host: Host, parent: HostNode, before: HostNode | null): void {}
 
 export function makeRow(view: NeonNode): Row {
-	return { view, owner: getOwner(), parent: null, start: null, end: null };
+	return { view, owner: getOwner(), parent: null, start: null, end: null, slot: -1, stamp: -1, kept: false };
 }
 
 export function rowOf(n: HostNode): Row {
-	return { view: noView, owner: null, parent: null, start: n, end: n };
+	return { view: noView, owner: null, parent: null, start: n, end: n, slot: -1, stamp: -1, kept: false };
 }
 
 let activeRow: Row | null = null;
@@ -110,6 +113,13 @@ function longestIncreasingRun(xs: number[]): boolean[] {
 
 	for (let i = 0; i < xs.length; i += 1) {
 		const v = xs[i];
+		const last = tailValue.length - 1;
+		if (last >= 0 && tailValue[last] < v) {
+			before[i] = tailAt[last];
+			tailValue.push(v);
+			tailAt.push(i);
+			continue;
+		}
 		let lo = 0;
 		let hi = tailValue.length;
 		while (lo < hi) {
@@ -135,53 +145,58 @@ function longestIncreasingRun(xs: number[]): boolean[] {
 	return inRun;
 }
 
-export function reconcileArrays(host: Host, parent: HostNode, a: Row[], b: Row[], after: HostNode | null): void {
-	const wanted = new Map<Row, number>();
-	for (let i = 0; i < b.length; i += 1) { wanted.set(b[i], i); }
-	if (wanted.size !== b.length) { throw "reconcileArrays: the next list holds the same row twice"; }
+let reconcileStamp = 0;
 
+export function reconcileArrays(host: Host, parent: HostNode, a: Row[], b: Row[], after: HostNode | null): void {
+	reconcileStamp = reconcileStamp + 1;
+	const stamp = reconcileStamp;
+	for (let i = 0; i < b.length; i += 1) {
+		const row = b[i];
+		if (row.stamp === stamp) { throw "reconcileArrays: the next list holds the same row twice"; }
+		row.stamp = stamp;
+		row.slot = i;
+		row.kept = false;
+	}
+
+	const survivors: Row[] = [];
 	const survivorSlots: number[] = [];
 	let ordered = true;
 	for (const r of a) {
-		if (!wanted.has(r)) {
+		if (r.stamp !== stamp) {
 			removeRow(host, parent, r);
 			continue;
 		}
-		const slot = wanted.get(r) as number;
-		if (survivorSlots.length > 0 && slot < survivorSlots[survivorSlots.length - 1]) { ordered = false; }
-		survivorSlots.push(slot);
+		if (survivorSlots.length > 0 && r.slot < survivorSlots[survivorSlots.length - 1]) { ordered = false; }
+		survivors.push(r);
+		survivorSlots.push(r.slot);
 	}
-	if (ordered && survivorSlots.length === b.length) { return; }
+	if (ordered && survivors.length === b.length) { return; }
 
-	const stays: boolean[] = [];
-	for (let i = 0; i < b.length; i += 1) { stays.push(false); }
 	if (ordered) {
-		for (const slot of survivorSlots) { stays[slot] = true; }
+		for (let p = 0; p < survivors.length; p += 1) { survivors[p].kept = true; }
 	} else {
 		const inRun = longestIncreasingRun(survivorSlots);
-		for (let p = 0; p < survivorSlots.length; p += 1) {
-			if (inRun[p]) { stays[survivorSlots[p]] = true; }
+		for (let p = 0; p < survivors.length; p += 1) {
+			if (inRun[p]) { survivors[p].kept = true; }
 		}
 	}
 
-	const anchors: (HostNode | null)[] = [];
-	for (let i = 0; i < b.length; i += 1) { anchors.push(null); }
+	const freshRows: Row[] = [];
+	const freshAnchors: (HostNode | null)[] = [];
 	let next: HostNode | null = after;
 	for (let i = b.length - 1; i >= 0; i -= 1) {
-		anchors[i] = next;
-		const start = b[i].start;
-		if (start !== null) { next = start; }
+		const row = b[i];
+		const start = row.start;
+		if (start === null) {
+			freshRows.push(row);
+			freshAnchors.push(next);
+			continue;
+		}
+		if (!row.kept) { moveRow(host, parent, row, next); }
+		next = start;
 	}
 
-	for (let i = b.length - 1; i >= 0; i -= 1) {
-		const row = b[i];
-		if (row.start === null || stays[i]) { continue; }
-		moveRow(host, parent, row, anchors[i]);
-	}
-
-	for (let i = 0; i < b.length; i += 1) {
-		const row = b[i];
-		if (row.start !== null) { continue; }
-		mountAt(host, parent, anchors[i], row);
+	for (let k = freshRows.length - 1; k >= 0; k -= 1) {
+		mountAt(host, parent, freshAnchors[k], freshRows[k]);
 	}
 }
