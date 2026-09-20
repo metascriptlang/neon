@@ -565,8 +565,9 @@ Not measured, and why: Chrome (the JS backend's `Map` is not the one being route
 browser's timer coarsens at 0.1 ms to the size of the whole win on the cheap cells); a string key,
 because it is not a surface Neon offers — measured on its own (`probe/m/keyKind.ms`, same machine)
 a `Map<string, number>` cycle costs 9.85 ms against 4.54 for a ref key and 0.145 for a number key, so
-a string key would be **worse than no key at all** on the C backend; and `<For>` itself, because the
-`key` prop cannot be declared yet (BUGS.md §3, PARKED 2026-09-20).
+a string key would be **worse than no key at all** on the C backend; and `<For>` itself, because the table times the
+engine, not the tag — the `key` prop landed on the tag on 2026-09-21 and its cells are in
+`tests/render/flow.test.ms`.
 
 ## Invariants — the contract every tier and every hand-built node must satisfy
 
