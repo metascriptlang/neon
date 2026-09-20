@@ -103,22 +103,31 @@ function longestIncreasingRun(xs: number[]): boolean[] {
 	for (let i = 0; i < xs.length; i += 1) { inRun.push(false); }
 	if (xs.length === 0) { return inRun; }
 
-	const runTail: number[] = [];
+	const tailValue: number[] = [];
+	const tailAt: number[] = [];
 	const before: number[] = [];
 	for (let i = 0; i < xs.length; i += 1) { before.push(-1); }
 
 	for (let i = 0; i < xs.length; i += 1) {
-		let lo: number = 0;
-		let hi: number = runTail.length;
+		const v = xs[i];
+		let lo = 0;
+		let hi = tailValue.length;
 		while (lo < hi) {
-			const mid: number = ((lo + hi) / 2) as int32;
-			if (xs[runTail[mid]] < xs[i]) { lo = mid + 1; } else { hi = mid; }
+			const span = lo + hi;
+			const mid = (span - (span % 2)) / 2;
+			if (tailValue[mid] < v) { lo = mid + 1; } else { hi = mid; }
 		}
-		if (lo > 0) { before[i] = runTail[lo - 1]; }
-		if (lo === runTail.length) { runTail.push(i); } else { runTail[lo] = i; }
+		if (lo > 0) { before[i] = tailAt[lo - 1]; }
+		if (lo === tailValue.length) {
+			tailValue.push(v);
+			tailAt.push(i);
+		} else {
+			tailValue[lo] = v;
+			tailAt[lo] = i;
+		}
 	}
 
-	let at = runTail[runTail.length - 1];
+	let at = tailAt[tailAt.length - 1];
 	while (at >= 0) {
 		inRun[at] = true;
 		at = before[at];
