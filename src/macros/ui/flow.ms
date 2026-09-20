@@ -5,7 +5,7 @@
 // A row is described here and mounted by the reconciler at its final position, so
 // nothing below touches the host.
 
-import { mapArray, indexArray } from "../../core/array";
+import { mapArray, mapArrayKeyed, indexArray } from "../../core/array";
 import { createMemo } from "../../core/memo";
 import { Accessor } from "../../core/signal";
 import { createRoot } from "../../core/owner";
@@ -32,18 +32,20 @@ function withFallback(mapped: () => Row[], fb: NeonNode): () => Row[] {
 	};
 }
 
-// Value-keyed list: rows reused by item identity; reorder moves DOM, never rebuilds.
-// PARKED: the approved `key?: ((item: T) => number) | null` prop, which would route this at
-// mapArrayKeyed, cannot be declared — a nullable function of T in these props stops every <For>
-// JSX tag from compiling. Card:
-// ~/metascript/.inbox/compiler/2026-09-20-nullable-function-of-a-type-param-in-props-blocks-a-generic-callee.md
+// Value-keyed list: rows reused by item identity, or by key when one is given; reorder
+// moves DOM, never rebuilds.
 export function For<T>(props: {
 	each: () => T[];
 	children: (item: T, index: Accessor<number>) => NeonNode;
+	key?: ((item: T) => number) | null;
 	fallback?: NeonNode | null;
 }): NeonNode {
 	return regionNode((h) => {
-		const mapped = mapArray<T, Row>(props.each, (item, idx) => makeRow(props.children(item, idx)));
+		const keyOf = props.key;
+		const row = (item: T, idx: Accessor<number>): Row => makeRow(props.children(item, idx));
+		const mapped = keyOf === null
+			? mapArray<T, Row>(props.each, row)
+			: mapArrayKeyed<T, Row>(props.each, keyOf as (item: T) => number, row);
 		const fb = props.fallback;
 		if (fb === null) { return mapped; }
 		return withFallback(mapped, fb as NeonNode);
