@@ -85,6 +85,19 @@ outlived them were moved to the head of the test that pins each one.
 A compiler debt is not one of these: the twelve this section used to carry moved to
 `~/metascript/.inbox/compiler/2026-09-20-neon-bugs-md-compiler-rows-handover.md` on 2026-09-20.
 
+- **OPEN 2026-09-21 — removing half a list is 1,6x SLOWER when the row has no index.** Measured
+  `probe/m/indexFlagCost.ms`, 5000 rows, release, min of 10 rounds with both variants interleaved in
+  one process: every other cell gets 22–33% faster when `mapArray` is told the row never reads its
+  index (build 1,10 → 0,82 ms, swap 0,286 → 0,219, reverse 0,262 → 0,205, move-1 0,290 → 0,204,
+  add-1 0,060 → 0,040) while remove-half goes 0,273 → 0,440. Remove-half is the only cell that
+  DISPOSES rows (2500 of them), so a root that holds fewer closures appears to cost more to dispose,
+  which is backwards. Three hypotheses tested and refuted, each in its own interleaved run: a shared
+  `unreadIndex` accessor captured by every row (per-row accessor inverts the same way), the
+  zero-length setter arrays (full-length arrays invert the same way), and run order. Not reduced below
+  Neon, so it is not a compiler card yet. The arc `row-reconcile-moves` hit the same inversion on
+  2026-09-20 with a hand-copied index-free `mapArray`, which makes this an independent second sighting,
+  not an artefact of one implementation.
+
 - **Neon `probe/` housekeeping** — `macro_disambig` / `macro_lenval` still assert the formerly-WRONG
   values (deliberate RED bracket-tests); `macro_narrow` N1 is red BY DESIGN (Nhịp-2 marker). Rewrite
   truth-only or delete at leisure, but do not read them as failures.
