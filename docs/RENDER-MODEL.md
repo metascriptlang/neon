@@ -532,6 +532,42 @@ Not measured, and why: reorder and memory on the void and terminal hosts (the te
 host's own mount cost is the table above and still dominates a row); memory as live bytes on native (no runtime counter; the
 footprint delta is an upper bound that includes allocator slack).
 
+### 2026-09-20 — a key function takes an object list off the ref-keyed map
+
+How it was measured. msc v0.2.55, binary `cdc62398`; `probe/m/keyedCost.ms` (gitignored), release
+build, N = 5000 rows, 10 rounds, the three variants run alternately **inside one round of one
+process**, every cell the MIN over the rounds, load 3.1 before the run. A cell is ms for one call of
+the mapped accessor after the list is replaced — the whole `mapArray` step, no host: *build* is the
+first call, the others replace the list and call again. **Lower is better.**
+
+`number` is `mapArray` over a `number[]`; `object` is the same `mapArray` over an `Item[]`, which is
+what a list of records costs today; `objectKeyed` is the same `Item[]` through `mapArrayKeyed` with
+`(item) => item.id`.
+
+| op, 5000 rows | `number` | `object` (before) | `objectKeyed` (after) | after ÷ before |
+|---|---|---|---|---|
+| build | 1.00 | 0.955 | 1.07 | 1.12 |
+| swap | 0.256 | 2.84 | **0.279** | **0.098** |
+| reverse | 0.266 | 2.59 | **0.267** | **0.103** |
+| move 1 | 0.253 | 2.72 | **0.265** | **0.097** |
+| remove half | 0.243 | 2.36 | **0.257** | **0.109** |
+| add 1 | 0.050 | 0.071 | 0.154 | **2.17** |
+
+Verdict: every reorder and removal on a list of objects drops ~10x and lands on the number list's
+figure, which is what the key was for; the cause it removes is the ref-keyed `Map` carded at
+`~/metascript/.inbox/compiler/2026-09-20-map-ref-key-entry-copy-per-probe.md`. **Two cells got worse
+and both are the price of the key**: the keyed path extracts a key per row and builds its index over
+the whole list, so the first build costs 12% more and appending one row costs 2.2x (0.071 → 0.154 ms
+per 5000 rows) — the full-range index is what makes a duplicate key an error rather than a silent
+wrong render.
+
+Not measured, and why: Chrome (the JS backend's `Map` is not the one being routed around, and the
+browser's timer coarsens at 0.1 ms to the size of the whole win on the cheap cells); a string key,
+because it is not a surface Neon offers — measured on its own (`probe/m/keyKind.ms`, same machine)
+a `Map<string, number>` cycle costs 9.85 ms against 4.54 for a ref key and 0.145 for a number key, so
+a string key would be **worse than no key at all** on the C backend; and `<For>` itself, because the
+`key` prop cannot be declared yet (BUGS.md §3, PARKED 2026-09-20).
+
 ## Invariants — the contract every tier and every hand-built node must satisfy
 
 1. **Evaluating JSX is pure** — it allocates the NeonNode and performs no host op
