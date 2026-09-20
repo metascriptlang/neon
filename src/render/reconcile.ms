@@ -1,9 +1,16 @@
 // Row list reconciler. A row is a span of host nodes plus the view that mounts it,
 // so a row that is not in the host yet is mounted at its final position instead of
 // being built somewhere else and moved in. Insertion targets come from the NEW
-// order — the start of the row currently occupying the slot, or the region anchor
+// order — the start of the next row already in the host, or the region anchor
 // (Svelte each.js `move(effect, current, anchor)`) — so a live row is never
 // detached; only a row absent from the next list is removed.
+//
+// The rows that keep their relative order are the longest increasing run of the
+// surviving rows (Vue 3 / ivi); they are left alone and everything else moves, which
+// is the minimum number of moves for a reorder — a swap of two rows is two moves.
+// Moves run right to left, so each one already sees its final neighbour; the rows
+// being mounted for the first time run afterwards, left to right, so a row body
+// still runs in list order.
 
 import { Host, HostNode, NeonNode } from "./hostTypes";
 import { Computation } from "../core/types";
@@ -89,29 +96,83 @@ export function removeRow(host: Host, parent: HostNode, r: Row): void {
 	}
 }
 
+// Longest strictly increasing run of `xs`, marked per position (patience sorting with
+// predecessors, O(n log n)).
+function longestIncreasingRun(xs: number[]): boolean[] {
+	const inRun: boolean[] = [];
+	for (let i = 0; i < xs.length; i += 1) { inRun.push(false); }
+	if (xs.length === 0) { return inRun; }
+
+	const runTail: number[] = [];
+	const before: number[] = [];
+	for (let i = 0; i < xs.length; i += 1) { before.push(-1); }
+
+	for (let i = 0; i < xs.length; i += 1) {
+		let lo: number = 0;
+		let hi: number = runTail.length;
+		while (lo < hi) {
+			const mid: number = ((lo + hi) / 2) as int32;
+			if (xs[runTail[mid]] < xs[i]) { lo = mid + 1; } else { hi = mid; }
+		}
+		if (lo > 0) { before[i] = runTail[lo - 1]; }
+		if (lo === runTail.length) { runTail.push(i); } else { runTail[lo] = i; }
+	}
+
+	let at = runTail[runTail.length - 1];
+	while (at >= 0) {
+		inRun[at] = true;
+		at = before[at];
+	}
+	return inRun;
+}
+
 export function reconcileArrays(host: Host, parent: HostNode, a: Row[], b: Row[], after: HostNode | null): void {
 	const wanted = new Map<Row, number>();
 	for (let i = 0; i < b.length; i += 1) { wanted.set(b[i], i); }
+	if (wanted.size !== b.length) { throw "reconcileArrays: the next list holds the same row twice"; }
 
-	const live: Row[] = [];
+	const survivorSlots: number[] = [];
+	let ordered = true;
 	for (const r of a) {
-		if (wanted.has(r)) { live.push(r); } else { removeRow(host, parent, r); }
+		if (!wanted.has(r)) {
+			removeRow(host, parent, r);
+			continue;
+		}
+		const slot = wanted.get(r) as number;
+		if (survivorSlots.length > 0 && slot < survivorSlots[survivorSlots.length - 1]) { ordered = false; }
+		survivorSlots.push(slot);
+	}
+	if (ordered && survivorSlots.length === b.length) { return; }
+
+	const stays: boolean[] = [];
+	for (let i = 0; i < b.length; i += 1) { stays.push(false); }
+	if (ordered) {
+		for (const slot of survivorSlots) { stays[slot] = true; }
+	} else {
+		const inRun = longestIncreasingRun(survivorSlots);
+		for (let p = 0; p < survivorSlots.length; p += 1) {
+			if (inRun[p]) { stays[survivorSlots[p]] = true; }
+		}
+	}
+
+	const anchors: (HostNode | null)[] = [];
+	for (let i = 0; i < b.length; i += 1) { anchors.push(null); }
+	let next: HostNode | null = after;
+	for (let i = b.length - 1; i >= 0; i -= 1) {
+		anchors[i] = next;
+		const start = b[i].start;
+		if (start !== null) { next = start; }
+	}
+
+	for (let i = b.length - 1; i >= 0; i -= 1) {
+		const row = b[i];
+		if (row.start === null || stays[i]) { continue; }
+		moveRow(host, parent, row, anchors[i]);
 	}
 
 	for (let i = 0; i < b.length; i += 1) {
-		const want = b[i];
-		if (i < live.length && live[i] === want) { continue; }
-		const ref: HostNode | null = i < live.length ? live[i].start : after;
-		let at = -1;
-		for (let j = i + 1; j < live.length; j += 1) {
-			if (live[j] === want) { at = j; break; }
-		}
-		if (at >= 0) { live.splice(at, 1); }
-		if (want.start === null) {
-			mountAt(host, parent, ref, want);
-		} else {
-			moveRow(host, parent, want, ref);
-		}
-		live.splice(i, 0, want);
+		const row = b[i];
+		if (row.start !== null) { continue; }
+		mountAt(host, parent, anchors[i], row);
 	}
 }
