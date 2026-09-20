@@ -65,6 +65,8 @@ test "For fallback shows when empty" {
 	});
 }
 
+// The two Index cells below stay call-shaped: `<Index each={…}>{row}</Index>` is refused at
+// createComponent, parked on ~/metascript/.inbox/compiler/2026-09-20-generic-callee-type-param-through-distinct-alias.md
 test "Index updates row value in place, no recreate" {
 	createRoot((d) => {
 		const [items, setItems] = createSignal<number[]>([1, 2, 3]);
