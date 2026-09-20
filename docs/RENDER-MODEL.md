@@ -391,7 +391,7 @@ rounds, load 3–12.
 
 The comp rows of reverse, swap and remove read the same as the plain ones on both sides.
 Verdict: mount and update got faster; **reorder regressed — swap 1.7x, reverse 1.45x
-slower** — and remove is unchanged.
+slower** — and remove is unchanged. Fixed later the same day, below.
 
 **After mount, native.** `probe/m/opsNative.ms`, the same five operations on the mock host
 with `cloneNode: null`, ms per operation, 6 interleaved runs × 5 rounds, load ~3. The mock
@@ -407,7 +407,7 @@ here and reorder cells are inflated against a real host.
 | remove half | 0.672 | **0.595** | 0.990 |
 
 Verdict: update is equal; reverse 2–2.4x, swap ~20x and remove 1.7x slower — the same
-regression as Chrome, magnified by a host whose moves are linear.
+regression as Chrome, magnified by a host whose moves are linear. Fixed later the same day, below.
 
 **Why reorder regressed.** Host calls counted by a wrapping host (`probe/m/movesCount.ms`),
 1000 rows. Exact counts, not timings.
@@ -480,6 +480,53 @@ Verdict: the O(N²) parent scan is gone — 20 000 rows cost 32.7x less per row 
 and carded at `~/metascript/.inbox/compiler/2026-09-20-map-ref-key-entry-copy-per-probe.md`, which this arc is parked on.
 Two sibling-linear paths are also untouched and keep a `For` into one void root quadratic in principle: `childIndexOf`
 here, and void's `addChildAt` / `removeChild`, which rebuild the children array.
+
+**The reorder regression, fixed.** The table above measured `reconcileArrays` as the merge landed it: it walked the
+new order left to right and forced each slot, so a swap of two rows moved every row between them. It now leaves the
+longest increasing run of surviving rows alone and moves the rest (Vue 3 / ivi), which is the minimum. Host calls
+counted by a wrapping host, 1000 rows — exact counts, not timings:
+
+| op | before | after |
+|---|---|---|
+| swap rows 1 and 998 | 997 `insertBefore` | **2** |
+| reverse | 999 | 999 |
+| remove half | 0 moves, 500 `removeChild` | 0 moves, 500 `removeChild` |
+
+`reconcileArrays` alone, 5000 rows already in the host, ms per call, min of 3 interleaved page loads × 20 rounds,
+lower is better. This isolates the reconciler from `mapArray` and from the row bodies:
+
+| op | before | after |
+|---|---|---|
+| swap two rows | 1.8 | **0.4** |
+| reverse | 9.0 | **0.4** |
+| move one row to the front | **0.1** | 0.4 |
+| remove half | 0.1 | 0.1 |
+
+The one cell that got dearer is the small edit: the old walk stopped as soon as the rest matched, this one is five
+passes over the list whatever the edit is. It costs 0.08 ms per 1000 rows and buys the two rows above.
+
+End to end, 1000 rows of a dyn3 row in a `For` (`probe/m/opsDom.ms`, `opsNative.ms`), ms per operation, lower is
+better; before = `9652fe9`, after = this arc, interleaved, min, load 3.5–3.9. "old direct" repeats the retired
+emitter's column from the tables above, for scale:
+
+| op | Chrome before | Chrome after | old direct | native before | native after |
+|---|---|---|---|---|---|
+| swap | 0.605 | **0.385** | 0.365 | 1.125 | **0.091** |
+| reverse | 0.915 | **0.530** | 0.645 | 1.652 | **0.459** |
+| remove half | 0.240 | **0.200** | 0.220 | 0.754 | **0.613** |
+| mount | 1.900 | 1.900 | 2.300 | 2.795 | 2.553 |
+| update | 0.700 | 0.700 | 0.805 | 0.386 | 0.390 |
+| bytes per row (Chrome heap) | 1883 | 1893 | 1785 | — | — |
+
+Verdict: reorder is no longer a regression — reverse and remove are now below the retired emitter too, swap is within
+5% of it, and on a host whose moves are linear (mock, void, terminal) a swap is 12x cheaper. The 10 bytes per row are
+the three marks the reconciler keeps on a `Row` instead of a per-update map.
+
+Two things found while measuring this, both carded: std `Map` with a ref key costs 15–70x a number key per operation
+(`~/metascript/.inbox/compiler/2026-09-20-map-ref-key-entry-copy-per-probe.md`), which is why the row marks live on the
+row; and on `--target=js` an array index that is not a loop counter compiles to `BigInt(Math.trunc(i))`, 19x per read
+(`…/2026-09-20-js-array-index-allocates-a-bigint.md`) — the kept-run search is written to index by arithmetic locals
+only for that reason and should be simplified back when it is fixed.
 
 Not measured, and why: reorder and memory on the void and terminal hosts (the terminal host has no bench; the void
 host's own mount cost is the table above and still dominates a row); memory as live bytes on native (no runtime counter; the
