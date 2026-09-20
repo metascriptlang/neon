@@ -22,15 +22,14 @@ site, and nothing is worked around in `src/`. Rows closed before 2026-09-20 were
 §2 — they are in this file's history at `git show c00bd2b:BUGS.md`, and the invariants that
 outlived them were moved to the head of the test that pins each one.
 
-- **PARKED 2026-09-20 — `<For each={xs} key={(x) => x.id}>` cannot be declared, so a keyed list has no
-  surface.** Not Neon's: the moment `key?: ((item: T) => number) | null` joins `For`'s props, EVERY
-  `<For>` JSX tag stops compiling, keyed or not, because the tag lowers to `createComponent(For, props)`
-  and a nullable function of `T` in those props defeats the binding of `P`. Reduced to 11 lines with no
-  JSX and no Neon import; three green controls isolate it (required and non-nullable; nullable but not
-  of `T`; the same props called directly). The engine is landed and tested — `mapArrayKeyed` in
-  `src/core/array.ms`, `tests/core/array.test.ms` — only the prop is parked. Card:
-  `~/metascript/.inbox/compiler/2026-09-20-nullable-function-of-a-type-param-in-props-blocks-a-generic-callee.md`.
-  Parked at `src/macros/ui/flow.ms` above `For`; nothing worked around in `src/`.
+- **PARKED 2026-09-21 — `<For each={xs} fallback={<li/>}>` cannot be written as a tag.** Not Neon's: a
+  JSX value in an attribute of a GENERIC component tag never lowers, while the identical attribute on a
+  non-generic tag does — `<Show fallback={<b/>}>` is green because `Show` is not generic. Two controls in
+  one file isolate it (`Plain` non-generic builds, `Gen<T>` with the same attribute and the same child
+  errors "JSX expression must be consumed by a macro"); the child's shape is irrelevant. Second sighting
+  on `~/metascript/.inbox/compiler/2026-09-19-jsx-converter-skipped-in-generic-call-inside-macro-arg.md`.
+  Parked at `tests/render/flow.test.ms`, the two fallback cells, which use the call form
+  `For<T>({ …, fallback: <li/> })` instead; nothing worked around in `src/`.
 
 - **PARKED 2026-09-20 — `<Index each={xs()}>{row}</Index>` is refused at `createComponent`, so the
   index-keyed list has no JSX surface.** Not Neon's: reduced to 11 lines with no JSX and no Neon
