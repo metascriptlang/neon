@@ -14,6 +14,8 @@ import { catchError } from "../../core/error";
 import { NeonNode, regionNode } from "../../render/node";
 import { Host, HostNode } from "../../render/hostTypes";
 import { Row, makeRow } from "../../render/reconcile";
+import { List } from "../../core/list";
+import { listRegion } from "../../render/listRegion";
 
 // Wrap a row list with an empty-state fallback. The fallback lives in its own root and is
 // disposed the moment rows return (and rebuilt on the next empty), so it never leaks.
@@ -55,6 +57,13 @@ export function For<T>(props: {
 		if (fb === null) { return mapped; }
 		return withFallback(mapped, fb as NeonNode);
 	});
+}
+
+export function ForList<T>(props: {
+	each: List<T>;
+	children: (item: Accessor<T>) => NeonNode;
+}): NeonNode {
+	return listRegion<T>(props.each, props.children);
 }
 
 // Index-keyed list: rows fixed per slot; value change updates the row's signal in place.
