@@ -9,6 +9,7 @@ export { getOwner } from "./core/runtime";
 export { onCleanup } from "./core/cleanup";
 export { catchError } from "./core/error";
 export { mapArray, indexArray } from "./core/array";
+export { createList, List, ListOp, ListQueue } from "./core/list";
 export { Dispose } from "./core/types";
 
 export { Host, HostNode, NeonNode } from "./render/hostTypes";
@@ -29,6 +30,6 @@ export { onCssChange, registerCss, collectCss, mountSheet, cssRuleCount, resetCs
 export { element } from "./macros/ui/element";
 export { createStyles, styleOf } from "./macros/ui/style";
 export { createTheme, setTheme, themeOf, setThemeCss } from "./macros/ui/theme";
-export { For, Index, Show } from "./macros/ui/flow";
+export { For, ForList, Index, Show } from "./macros/ui/flow";
 
 export { View, Text, Pressable, TextInput } from "./components/primitives";
