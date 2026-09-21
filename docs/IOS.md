@@ -156,21 +156,74 @@ The Nim generator (`src/cli/generators/ios.nim:308-440`) emits into `platforms/i
 | `libyoga.a` + yoga headers | prebuilt for simulator, linked via `OTHER_LDFLAGS` |
 | `project.pbxproj` | hand-built string emission: fixed UUIDs for app files, MD5-derived per C file, one app target, `-framework UIKit … -ObjC` |
 
-**Ion today** (verified in the main session): the generator at
-`~/metascript/ion/tooling/generator/` emits exactly two files (`project.pbxproj` +
-`graph.json`) from a typed `project.ms` manifest, and its only emitter **rejects every
-non-macOS target** (`xcode.ms:26`), while `enum Platform { Macos, Ios }` already exists in
-the model (`description.ms:1`) and `Target.app` defaults to Macos (`description.ms:39-41`).
+**Measured Ion boundary, 2026-09-22.** A temporary manifest containing one
+`Target.app("NeonCounter", "main.ms")` overridden to `Platform.Ios` was passed to the
+real generator:
 
-**Gap for iOS, in ion**: (1) an iOS emitter beside `xcode.ms` — `SDKROOT = iphonesimulator`
-/ `iphoneos`, a real `Info.plist` file reference (the macOS emitter relies on
-`GENERATE_INFOPLIST_FILE`), an app-bundle layout without `Contents/MacOS`, signing
-allowed-for-simulator, and the frameworks list; (2) a `Target.iosApp(...)` helper so the
-platform is explicit; (3) yoga + bridge .m/.c file references in the project (today the
-shell phase just runs `msc build`, `xcode.ms:43` — an iOS app needs the ObjC bridge TU and
-yoga compiled in, i.e. either msc `@compile` side-files or extra pbx file references).
-Ion imports neither neon nor void by design (`ion/CLAUDE.md:3,49`) — the host must surface
-as files + entry points, never a neon import.
+```text
+$ tooling/generator/ion-generate /tmp/ion-ios-doc-probe.ms /tmp/ion-ios-doc-output
+ion generate: POC emitter supports macOS only: NeonCounter
+```
+
+That is exactly the guard in `ion/tooling/generator/xcode.ms:25-26`; the emitter's build
+settings and app path are also macOS-specific (`:15-16,43-50`). The model already names
+`Platform.Ios`, but `Target.app` still selects `Platform.Macos`
+(`ion/tooling/generator/description.ms:1,39-41`). This probe covers one iOS application
+target only. It did **not** test a mixed-platform graph, an iOS Xcode project, simulator
+or device signing; no Ion-generated iOS project exists yet.
+
+### 6.1 Accepted Neon × Ion wiring contract
+
+Ion remains the build-time owner; Neon remains the UI/runtime consumer. Ion owns the
+typed manifest → resolved graph → deterministic native-project pipeline
+(`ion/docs/PROJECT-GENERATOR.md:3-6,40-62`). Neon owns its MetaScript entry, `Host`
+implementation and UIKit bridge: `createIosHost` creates the native/Yoga root and
+`registerAndRun` transfers control to the bridge
+(`src/platform/ios/host.ms:284-287,440-442`); the bridge owns `NeonVC`,
+`NeonAppDelegate` and `UIApplicationMain` (`src/platform/ios/bridge.m:55-95`). The
+generated project references those Neon-owned files; Ion neither copies their behavior
+nor imports Neon (`ion/CLAUDE.md:3,48-49`).
+
+The clean flow is:
+
+```text
+tracked Neon project manifest + app.ms
+  → ion-generate
+  → deterministic iOS Xcode project + graph.json
+  → Xcode build phase runs msc --emit=c for app.ms
+  → Xcode compiles emitted C + MetaScript runtime + Neon bridge.m + yoga C++
+  → Xcode links UIKit + Foundation + CoreGraphics + libc++
+  → simulator installs the app
+  → UIKit lifecycle calls the Neon mount closure
+```
+
+`Target.iosApp(...)` extends the existing static-constructor idiom used by
+`Target.app` (`ion/tooling/generator/description.ms:39-41`); it is not a second
+generator. The one **NEW MECHANISM** is typed, generic native-build inputs on the
+target/graph: native source files, generated-source outputs, frameworks and compile
+settings. The current `Target` carries only name/platform/entry/bundle/dependencies
+(`ion/tooling/generator/description.ms:3-9`), and plugins can contribute bundle
+identifiers only (`ion/tooling/generator/description.ms:16-19`;
+`ion/docs/PROJECT-GENERATOR.md:176-177`). Therefore the
+integration belongs in the target/graph model, not in a Neon-specific Ion plugin and not
+as hard-coded `../neon` paths in the emitter.
+
+Clean cutover means:
+
+1. two fresh generations of the iOS manifest are byte-identical, matching the existing
+   determinism contract (`ion/docs/PROJECT-GENERATOR.md:136-149`);
+2. `xcodebuild -sdk iphonesimulator -arch arm64` builds without project edits;
+3. the generated app installs and launches, then the counter proves the whole runtime
+   path by changing `0 → 1` and `even → odd` after the `+` touch;
+4. Neon retains only tracked entry/manifest/smoke inputs; the hand-written
+   compile/link inventory is deleted rather than maintained as a second build path;
+5. Ion's generator gate and Neon's full gate are green.
+
+Device signing, App Store packaging, Android generation, TextInput/ScrollView/Image and
+performance beyond the counter are explicitly outside this wiring milestone. Ion's
+canonical generator document (`ion/docs/PROJECT-GENERATOR.md`) must receive the same
+surface and verification results in the `ion-ios-emitter` arc when the implementation
+exists; this Neon document does not pre-claim them.
 
 ## 7. What the MetaScript port does differently
 
