@@ -47,6 +47,9 @@ dynamic branch to a static value. Detail and the refutation are in this file's h
 
 ## Next
 
+Feature work. The reactive core's own debt is tracked separately in `docs/SOLID.md`: eight
+concepts Solid has that Neon does not, each on a card under `~/metascript/.wt/solid-*.md`.
+
 | # | work | state | size |
 |---|---|---|---|
 | 1 | RN components: Image, ScrollView, Button, Switch, FlatList, Modal, SafeAreaView — after phase 4 so they carry the props contract | not started | medium |

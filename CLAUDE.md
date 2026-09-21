@@ -9,6 +9,7 @@ Workspace rules (toolchain, compiler boundary, arcs and cards, code style) are i
 | question | file |
 |---|---|
 | what we build next, in order | `docs/ROADMAP.md` |
+| which of Solid's core concepts Neon still owes | `docs/SOLID.md` |
 | how JSX becomes mount code: tiers, lifecycle | `docs/RENDER-MODEL.md` |
 | who paints on each platform (Neon × Void × host) | `docs/RENDER-LAYERS.md` |
 | style, variants, theme | `docs/STYLE.md` |
