@@ -14,7 +14,7 @@ import { Host, HostNode } from "../../render/host";
 import { NeonEvent, neonEvent, eventType } from "../../render/event";
 import { Node2D, DrawKind, group, label, addChild, addChildAt, removeChild } from "../../../../void/src/void2d/node";
 import { Color } from "../../../../void/src/void2d/types";
-import { FlexStyle } from "../../../../yoga/src/index";
+import { FlexStyle, FlexDirection, Justify, Align, PositionType, Wrap, Display, Overflow } from "../../../../yoga/src/index";
 import { Style } from "../../render/style";
 import { asFlexStyleBody } from "../../macros/style/fields";
 

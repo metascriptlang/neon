@@ -237,22 +237,54 @@ export macro asFlexStyleBody(node: Node): Node {
 			object: { kind: NodeKind.Identifier, line: L, column: C, name: "s" },
 			property: fieldName, isOptional: false,
 		};
-		const value: Node = how === "enum" ? read : {
+		// Enum rows cross from the Style union (render/style.ms) into the
+		// target FlexStyle union (yoga's enums) — same members, distinct
+		// nominal types. The checker takes the raw copy, but the C backend
+		// lowers the two unions to different Maybe_T structs and clang
+		// rejects the assignment. An explicit cast to the target union name
+		// makes codegen build the TARGET field field-wise (probed with a
+		// two-module cast probe during the ios-host arc). The caller of
+		// asFlexStyleBody must therefore have the table's type names in
+		// scope (yoga re-exports them from src/index).
+		const value: Node = how === "enum" ? {
+			kind: NodeKind.TypeAssertion, line: L, column: C,
+			asExpr: read,
+			asType: row[COL_TYPE],
+		} : {
 			kind: NodeKind.CallExpr, line: L, column: C,
 			callee: { kind: NodeKind.Identifier, line: L, column: C, name: how },
 			arguments: [read], isDirectCall: false, resolvedOverloadIdx: -1,
 		};
+		// Null-guard every projection: an unset Style field must stay UNSET on
+		// the FlexStyle, never become a boxed null. applyStyle (yoga/src/style.ms)
+		// reads `field !== null`; a boxed null passes that check and reaches the
+		// setter as garbage — on the C backend a style whose maxWidth arrived
+		// boxed-null clamped every node to 0x0 (found by the ios-host arc's
+		// walk probe; applyCssBody below has guarded the same way from the
+		// start). The guard is why enum rows never cast null either.
 		stmts.push({
-			kind: NodeKind.ExprStmt, line: L, column: C,
-			expr: {
-				kind: NodeKind.BinaryExpr, line: L, column: C, operator: "=",
-				left: {
-					kind: NodeKind.MemberExpr, line: L, column: C,
-					object: { kind: NodeKind.Identifier, line: L, column: C, name: "st" },
-					property: fieldName, isOptional: false,
-				},
-				right: value,
+			kind: NodeKind.IfStmt, line: L, column: C,
+			condition: {
+				kind: NodeKind.BinaryExpr, line: L, column: C, operator: "!==",
+				left: read,
+				right: { kind: NodeKind.NullLiteral, line: L, column: C },
 			},
+			consequent: {
+				kind: NodeKind.BlockStmt, line: L, column: C,
+				statements: [{
+					kind: NodeKind.ExprStmt, line: L, column: C,
+					expr: {
+						kind: NodeKind.BinaryExpr, line: L, column: C, operator: "=",
+						left: {
+							kind: NodeKind.MemberExpr, line: L, column: C,
+							object: { kind: NodeKind.Identifier, line: L, column: C, name: "st" },
+							property: fieldName, isOptional: false,
+						},
+						right: value,
+					},
+				}],
+			},
+			alternate: { kind: NodeKind.BlockStmt, line: L, column: C, statements: [] },
 		});
 	}
 	stmts.push({
