@@ -621,6 +621,75 @@ coarsens at 0.1 ms to the size of four of these six cells); and whether the macr
 given tag, because the only runtime observable of the choice is the raise, so the table above is the
 evidence that the false path is taken at all.
 
+### 2026-09-21 — one op per edit against a rebuilt array, and where the last O(n) actually lives
+
+How it was measured. msc v0.2.55, binary `1fc3d947`; `probe/m/listOpsScale.ms` (gitignored), release
+build, sizes N = 1000 / 5000 / 20000, 5 rounds per size with **all four roads run inside one round of
+one process** and the round order flipped every other round; each cell the MIN over the rounds and then
+over three runs of the whole binary; load 3.4–8.8 before each run, read from `vm.loadavg`. A cell is ms
+for ONE user-level operation, taken as the mean of 20 consecutive ops (4 for `reverse`). **Lower is
+better.** Both hosts are asserted correct in the same binary before the timing: after
+`insert(1,9) · move(0,2) · remove(0) · replaceAll([4,5])` each prints `9213` then `45`.
+
+The two roads. `For diff` is `<For each={xs}>` over a plain array signal — the caller builds the next
+array and hands it over, the region diffs; **the cell includes building that array**, because the road
+requires it. `ForList ops` is `<ForList each={list}>` over a `createList` handle — one op, no array
+built, no list scanned.
+
+The two hosts, which is the point of this table. `dll-host` keeps its children in a doubly linked list,
+so `insertBefore` / `removeChild` / `nextSibling` are O(1), the way a DOM's are. `array-host` is
+`mockHost`: children in an array, the reference node found by a linear `childIndex` and moved with a
+`splice`, so the HOST alone is O(n) per call. Measuring only on `mockHost` would have credited the host's
+cost to the region.
+
+| ms per one op, `dll-host` (O(1) host) | 1000 diff | 1000 ops | 5000 diff | 5000 ops | 20000 diff | 20000 ops |
+|---|---|---|---|---|---|---|
+| mount the whole list | **0.373** | 0.727 | **2.646** | 4.864 | **14.04** | 21.37 |
+| insert 1 row (middle) | 0.0356 | **0.0049** | 0.183 | **0.0216** | 4.104 | **0.0908** |
+| move 1 row (neighbour swap) | 0.0524 | **0.0002** | 0.259 | **0.0002** | 4.464 | **0.00025** |
+| remove 1 row (middle) | 0.0306 | **0.00465** | 0.159 | **0.0221** | 2.934 | **0.0854** |
+| reverse the whole list | **0.1002** | 0.1052 | **0.497** | 0.530 | **7.491** | 10.29 |
+
+| ms per one op, `array-host` (`mockHost`, O(n) per host call) | 1000 diff | 1000 ops | 5000 diff | 5000 ops | 20000 diff | 20000 ops |
+|---|---|---|---|---|---|---|
+| mount the whole list | **0.906** | 1.233 | **13.43** | 16.18 | **185.7** | 192.1 |
+| insert 1 row (middle) | 0.0369 | **0.0057** | 0.197 | **0.0272** | 3.288 | **0.1875** |
+| move 1 row (neighbour swap) | 0.0535 | **0.00095** | 0.267 | **0.00385** | 3.687 | **0.0149** |
+| remove 1 row (middle) | 0.0313 | **0.00515** | 0.161 | **0.0250** | 1.912 | **0.0981** |
+| reverse the whole list | **0.4335** | 0.4332 | **9.598** | 9.845 | **158.5** | 163.2 |
+
+Verdict, on the O(1) host at 20000 rows: **move is 17 900x cheaper and FLAT in N** (0.0002 / 0.0002 /
+0.00025 ms — the only cell the arc set out to make flat and the only one that is), insert is 45x cheaper
+and remove 34x cheaper but both still **linear in N**; mount costs 1.52x and a whole-list reverse 1.37x
+MORE than the diff road. On `mockHost` the same five cells still favour the op road by 17x to 250x, but
+its mount and reverse figures are the host's linear `childIndex`, not the region's: the same mount is
+185.7 ms there and 14.0 ms on the linked-list host.
+
+Why insert and remove are still linear, and what would fix it: an op names its row by INDEX, so the
+region keeps `rows` / `cells` / `disposers` index-addressable and an insert in the middle shifts three
+pointer arrays — measured at a steady ~4.5 ns per row shifted (4.9 / 4.3 / 4.5 ns at the three sizes),
+which is the whole remaining slope. No structure gives O(1) insert AND O(1) lookup by index; flat
+insert/remove would need ops that name a row by KEY instead of by position, which is a surface change
+and is not taken here. The diff road's own insert does NOT improve on the faster host (4.10 ms on
+`dll-host` against 3.29 ms on `mockHost` at 20000): its cost is its own rebuilt array, `Map` and longest-
+increasing-run, and no host can give that back.
+
+Why mount is dearer: a `ForList` row carries `Accessor<T>`, so every row allocates a `Signal` and its
+text binding subscribes to it; a `<For>` row carries bare `T` and its text is static. That per-row
+subscription is exactly what makes `set(i, v)` a signal write instead of a rebuild — the mount pays for
+the update.
+
+Why reverse is dearer: `replaceAll` is the escape hatch, not the fast path. It matches each new item to
+the row that carried it (by the optional number `key`, else by item identity) and hands the result to
+`reconcileArrays`, so it pays for one extra pass over the old values on top of what `<For>` already
+pays. On par at 1000 and 5000, 1.37x the diff road at 20000.
+
+Not measured, and why: Chrome and a real DOM (the arc's claim is about the region's own work, and the
+browser timer coarsens at 0.1 ms, which is 400x the flat move cell); object rows without a `key`, where
+`replaceAll` falls back to a ref-keyed `Map` — its cost is the one already measured on
+2026-09-20 (`Map` with a ref key, 15–70x a number key); memory; and the keyed `replaceAll` road, which
+is pinned by tests but has no figure here.
+
 ## Invariants — the contract every tier and every hand-built node must satisfy
 
 1. **Evaluating JSX is pure** — it allocates the NeonNode and performs no host op
