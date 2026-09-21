@@ -219,16 +219,20 @@ export function listRegion<Item>(
 		const initial = untrack((): Item[] => list.read());
 		for (let i = 0; i < initial.length; i += 1) { insertRow<Item>(g, i, initial[i]); }
 
+		// The queue is taken before it is applied, not cleared after: an op that raises inside a row
+		// body then leaves the region inconsistent and loud, never re-applied on the next bump.
 		createEffect(() => {
 			const items = list.read();
+			const pending = q.ops;
+			const fromReset = q.reset;
+			q.ops = [];
+			q.reset = false;
 			untrack((): number => {
-				if (q.reset) {
+				if (fromReset) {
 					resetTo<Item>(g, items);
 				} else {
-					for (let k = 0; k < q.ops.length; k += 1) { applyOp<Item>(g, q.ops[k]); }
+					for (let k = 0; k < pending.length; k += 1) { applyOp<Item>(g, pending[k]); }
 				}
-				q.ops = [];
-				q.reset = false;
 				return 0;
 			});
 		});
