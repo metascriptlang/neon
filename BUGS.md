@@ -17,7 +17,7 @@ cannot be reproduced is re-measured and rewritten, never corrected on top.
 ---
 ## §3 — Neon-side and environment
 
-No open Neon-side bug. Six sites are parked on a compiler card; each names the card and the
+No open Neon-side bug. Seven sites are parked on a compiler card; each names the card and the
 site, and nothing is worked around in `src/`. Rows closed before 2026-09-20 were dropped with
 §2 — they are in this file's history at `git show c00bd2b:BUGS.md`, and the invariants that
 outlived them were moved to the head of the test that pins each one.
@@ -41,6 +41,33 @@ outlived them were moved to the head of the test that pins each one.
   site, where the value is still intact; widening to the `Error` is three lines once the card closes.
   Card: `~/metascript/.inbox/compiler/2026-09-21-setter-union-over-a-nullable-ref-corrupts-the-value.md`.
   Parked at the cells of `tests/render/errorBoundary.test.ms` that assert on a message string.
+
+- **PARKED 2026-09-21 — `setX(v)` with a local `number` is silently dropped on native.** Not Neon's: a
+  value argument to a union parameter (`Setter<T> = (v: T | ((prev: T) => T)) => void`) is passed by raw
+  address on the C backend, so the callee reads the union tag out of the double's bits. `msc run
+  probe/m/setterLocalArg.ms` prints `local want 6 got 0` through neon's own `createSignal`, while a
+  literal and a parameter argument are correct and `--target=js` is correct everywhere; `string` is
+  correct through `createSignal` and an error in the standalone probe. Card, four repros and the
+  controls: `~/metascript/.inbox/compiler/2026-09-21-value-into-a-union-parameter-passes-the-raw-address.md`.
+  Parked at `src/core/list.ms` and `src/render/listRegion.ms`, whose version cell and per-row value cell
+  are `Signal<T>` fields with `.get()` / `.set()` — the class method takes a plain `T` and is correct —
+  instead of the `[Accessor, Setter]` pair every other module takes from `createSignal`.
+
+- **PARKED 2026-09-21 — a helper returning `HostNode | null` called from a generic region function
+  segfaults on native.** Not Neon's: an `unknown | null` value returned by a call is mis-represented when
+  the CALLER is generic; two byte-identical bodies differ only by `<T>` and only the generic one crashes
+  (`msc run probe/m/nullableUnknownReturnInGeneric.ms`, JS correct). Reading the field inline is correct,
+  hoisting the callee out of the generic is not enough. Card with the ten-row matrix of what flips it:
+  `~/metascript/.inbox/compiler/2026-09-21-nullable-unknown-return-value-in-a-generic-caller.md`.
+  Parked at `src/render/listRegion.ms`, where every step takes a `Region<Item>` object and the anchor is
+  read through `anchorAt<Item>(g, i)` of the same instantiation.
+
+- **PARKED 2026-09-21 — `<ForList each={list}>` cannot be written as a tag.** Same root as `<Index>`
+  below: a `ForList` row carries `Accessor<T>`, and a generic callee cannot bind its type parameter
+  through a `distinct` alias at `createComponent`. Third sighting on
+  `~/metascript/.inbox/compiler/2026-09-20-generic-callee-type-param-through-distinct-alias.md`. Parked at
+  `tests/render/forList.test.ms`, whose cells take the call form `ForList<T>({ each: l, children: row })`;
+  nothing worked around in `src/`.
 
 - **PARKED 2026-09-21 — `<For each={xs} fallback={<li/>}>` cannot be written as a tag.** Not Neon's: a
   JSX value in an attribute of a GENERIC component tag never lowers, while the identical attribute on a
