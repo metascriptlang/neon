@@ -62,8 +62,9 @@ export function For<T>(props: {
 export function ForList<T>(props: {
 	each: List<T>;
 	children: (item: Accessor<T>) => NeonNode;
+	key?: ((item: T) => number) | null;
 }): NeonNode {
-	return listRegion<T>(props.each, props.children);
+	return listRegion<T>(props.each, props.children, props.key);
 }
 
 // Index-keyed list: rows fixed per slot; value change updates the row's signal in place.
