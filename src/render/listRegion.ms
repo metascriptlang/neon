@@ -4,7 +4,7 @@ import { createRoot } from "../core/owner";
 import { Accessor, Signal, accessor, untrack } from "../core/signal";
 import { List, ListOp, listInsert, listMove, listRemove, listSet } from "../core/list";
 import { Host, HostNode, NeonNode } from "./hostTypes";
-import { Row, makeRow, place, needsStartMarker, mountAt, moveRow, removeRow } from "./reconcile";
+import { Row, makeRow, place, needsStartMarker, mountAt, moveRow, removeRow, reconcileArrays } from "./reconcile";
 
 // The region's stores live in one object passed to every step, never captured by a nested
 // closure: src/core/array.ms keeps mapArray's stores as parameters for the same reason.
@@ -12,7 +12,12 @@ interface Region<Item> {
 	host: Host;
 	parent: HostNode;
 	anchor: HostNode;
+	list: List<Item>;
 	row: (item: Accessor<Item>) => NeonNode;
+	// Zero or one key function: a nullable function of Item in a field of this generic interface is
+	// the shape that does not reach its Maybe carrier on C
+	// (~/metascript/.inbox/compiler/2026-09-21-value-into-a-union-parameter-passes-the-raw-address.md).
+	keys: ((item: Item) => number)[];
 	rows: Row[];
 	cells: Signal<Item>[];
 	disposers: (() => void)[];
@@ -26,18 +31,24 @@ function anchorAt<Item>(g: Region<Item>, i: number): HostNode | null {
 // The stores are filled by push, never by assigning past the end, and the row is appended
 // only once its body has run: a slot of an array longer than what it holds is a segfault,
 // not an undefined (src/core/array.ms indexArray).
-function buildRow<Item>(g: Region<Item>, v: Item): void {
+function buildRow<Item>(
+	g: Region<Item>,
+	v: Item,
+	rowStore: Row[],
+	cellStore: Signal<Item>[],
+	dispStore: (() => void)[],
+): void {
 	const r = createRoot((d) => {
-		g.disposers.push(d);
+		dispStore.push(d);
 		const cell = new Signal<Item>(v);
-		g.cells.push(cell);
+		cellStore.push(cell);
 		return makeRow(g.row(accessor((): Item => cell.get())));
 	});
-	g.rows.push(r);
+	rowStore.push(r);
 }
 
 function insertRow<Item>(g: Region<Item>, i: number, v: Item): void {
-	buildRow<Item>(g, v);
+	buildRow<Item>(g, v, g.rows, g.cells, g.disposers);
 	const last = g.rows.length - 1;
 	const r = g.rows[last];
 	const c = g.cells[last];
@@ -90,13 +101,83 @@ function moveRowTo<Item>(g: Region<Item>, from: number, to: number): void {
 	moveRow(g.host, g.parent, r, anchorAt<Item>(g, to + 1));
 }
 
+// Each new row takes the old row that carries the same item — by number key when the list has one,
+// by item identity otherwise, which is what <For> does. A row's DOM and its reactive scope belong to
+// the item, not to the slot, so a replaceAll that reorders moves nodes instead of rewriting values.
+function matchByIds<K>(oldIds: K[], newIds: K[], out: number[]): void {
+	const byId = new Map<K, number>();
+	for (let i = 0; i < oldIds.length; i += 1) {
+		const k = oldIds[i];
+		if (byId.has(k)) { continue; }
+		byId.set(k, i);
+	}
+	for (let j = 0; j < newIds.length; j += 1) {
+		const k = newIds[j];
+		if (!byId.has(k)) {
+			out[j] = -1;
+			continue;
+		}
+		const at = byId.get(k) as number;
+		out[j] = at;
+		byId.set(k, -1);
+	}
+}
+
 function resetTo<Item>(g: Region<Item>, items: Item[]): void {
-	const n = items.length;
 	const have = g.rows.length;
-	const keep = have < n ? have : n;
-	for (let i = 0; i < keep; i += 1) { g.cells[i].set(items[i]); }
-	for (let i = have - 1; i >= n; i -= 1) { removeRowAt<Item>(g, i); }
-	for (let i = have; i < n; i += 1) { insertRow<Item>(g, i, items[i]); }
+	const n = items.length;
+
+	const reuse: number[] = [];
+	for (let j = 0; j < n; j += 1) { reuse.push(-1); }
+	if (g.keys.length > 0) {
+		const keyOf = g.keys[0];
+		const oldIds: number[] = [];
+		for (let i = 0; i < have; i += 1) { oldIds.push(keyOf(g.cells[i].peek())); }
+		const newIds: number[] = [];
+		const seen = new Map<number, number>();
+		for (let j = 0; j < n; j += 1) {
+			const k = keyOf(items[j]);
+			if (seen.has(k)) {
+				throw new Error("ForList: the key " + k.toString() + " is used by rows "
+					+ (seen.get(k) as number).toString() + " and " + j.toString());
+			}
+			seen.set(k, j);
+			newIds.push(k);
+		}
+		matchByIds<number>(oldIds, newIds, reuse);
+	} else {
+		const oldIds: Item[] = [];
+		for (let i = 0; i < have; i += 1) { oldIds.push(g.cells[i].peek()); }
+		matchByIds<Item>(oldIds, items, reuse);
+	}
+
+	const nextRows: Row[] = [];
+	const nextCells: Signal<Item>[] = [];
+	const nextDisposers: (() => void)[] = [];
+	const kept: boolean[] = [];
+	for (let i = 0; i < have; i += 1) { kept.push(false); }
+
+	for (let j = 0; j < n; j += 1) {
+		const from = reuse[j];
+		if (from < 0) {
+			buildRow<Item>(g, items[j], nextRows, nextCells, nextDisposers);
+			continue;
+		}
+		nextRows.push(g.rows[from]);
+		nextCells.push(g.cells[from]);
+		nextDisposers.push(g.disposers[from]);
+		kept[from] = true;
+		g.cells[from].set(items[j]);
+	}
+
+	for (let i = 0; i < have; i += 1) {
+		if (!kept[i]) { g.disposers[i](); }
+	}
+
+	reconcileArrays(g.host, g.parent, g.rows, nextRows, g.anchor);
+	g.rows = nextRows;
+	g.cells = nextCells;
+	g.disposers = nextDisposers;
 }
 
 function applyOp<Item>(g: Region<Item>, op: ListOp<Item>): void {
@@ -107,7 +188,11 @@ function applyOp<Item>(g: Region<Item>, op: ListOp<Item>): void {
 	throw new Error("ForList: list op kind " + op.kind.toString() + " has no region case");
 }
 
-export function listRegion<Item>(list: List<Item>, row: (item: Accessor<Item>) => NeonNode): NeonNode {
+export function listRegion<Item>(
+	list: List<Item>,
+	row: (item: Accessor<Item>) => NeonNode,
+	keyOf: ((item: Item) => number) | null,
+): NeonNode {
 	return (host: Host, parent: HostNode, before: HostNode | null): void => {
 		if (needsStartMarker(parent)) { place(host, parent, host.createText(""), before); }
 		const anchor = host.createText("");
@@ -117,7 +202,9 @@ export function listRegion<Item>(list: List<Item>, row: (item: Accessor<Item>) =
 			host: host,
 			parent: parent,
 			anchor: anchor,
+			list: list,
 			row: row,
+			keys: keyOf === null ? [] : [keyOf as (item: Item) => number],
 			rows: [],
 			cells: [],
 			disposers: [],
