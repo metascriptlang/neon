@@ -17,10 +17,19 @@ cannot be reproduced is re-measured and rewritten, never corrected on top.
 ---
 ## §3 — Neon-side and environment
 
-No open Neon-side bug. Five sites are parked on a compiler card; each names the card and the
+No open Neon-side bug. Six sites are parked on a compiler card; each names the card and the
 site, and nothing is worked around in `src/`. Rows closed before 2026-09-20 were dropped with
 §2 — they are in this file's history at `git show c00bd2b:BUGS.md`, and the invariants that
 outlived them were moved to the head of the test that pins each one.
+
+- **PARKED 2026-09-21 — a `throw` of a non-`Error` value carries its message on C and loses it on
+  `--target=js`.** Not Neon's: five lines with no Neon import print `msg=[bare 7]` on C and
+  `msg=[undefined]` on js, while `new Error(...)` agrees on both. So a user component that writes
+  `throw "oops"` shows its message on desktop and an empty one in the browser. Measured on msc
+  v0.2.55, build `1fc3d947`. Card:
+  `~/metascript/.inbox/compiler/2026-09-21-bare-throw-binds-differently-on-c-and-js.md`. Parked at
+  the cell `tests/core/error.test.ms` "a bare throw still reaches the handler", which asserts the
+  handler fires but not what the message says.
 
 - **PARKED 2026-09-21 — `<ErrorBoundary>`'s fallback receives the message string, not the `Error`,
   because a signal cannot hold a nullable reference.** Not Neon's: `Setter<T> = (v: T | ((prev: T) =>
