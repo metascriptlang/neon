@@ -17,7 +17,7 @@ cannot be reproduced is re-measured and rewritten, never corrected on top.
 ---
 ## §3 — Neon-side and environment
 
-No open Neon-side bug. Seven sites are parked on a compiler card; each names the card and the
+No open Neon-side bug. Eight sites are parked on a compiler card; each names the card and the
 site, and nothing is worked around in `src/`. Rows closed before 2026-09-20 were dropped with
 §2 — they are in this file's history at `git show c00bd2b:BUGS.md`, and the invariants that
 outlived them were moved to the head of the test that pins each one.
@@ -41,6 +41,21 @@ outlived them were moved to the head of the test that pins each one.
   site, where the value is still intact; widening to the `Error` is three lines once the card closes.
   Card: `~/metascript/.inbox/compiler/2026-09-21-setter-union-over-a-nullable-ref-corrupts-the-value.md`.
   Parked at the cells of `tests/render/errorBoundary.test.ms` that assert on a message string.
+
+- **PARKED 2026-09-21 — the gate is exit 1 on `tests/platform/void.test.ms` and
+  `tests/style/style.test.ms`: the void host no longer compiles.** Not Neon's, and nothing Neon-side
+  changed: `src/platform/void/host.ms` copies a neon `Style` into a yoga `Style` field by field, and the
+  installed `msc` moved from `d74853ed` (2026-09-20, gate exit 0 with those 15 cells green) to `1fc3d947`
+  (2026-09-21), which qualifies a `T | null` carrier by its declaring module. `~/metascript/yoga/src/enums.ms:8`
+  and `src/render/style.ms:15` declare `export type PositionType = "static" | "relative" | "absolute";`
+  byte for byte, so the two are the same type — but nine errors say otherwise, and **all nine are nullable
+  alias fields** (`Maybe_PositionType`, `Maybe_Align` ×3, `Maybe_Wrap`, `Maybe_Display`, `Maybe_Overflow`,
+  `Maybe_FlexDirection`, `Maybe_Justify`) while every non-nullable field of the same copy still compiles.
+  A transparent `type` alias is not `distinct`; the carrier must not make two identical aliases nominal.
+  Recorded as a regression on the card that owns the fix (claimed `wt/inbox-directive`):
+  `~/metascript/.inbox/compiler/2026-09-20-maybe-cache-keyed-by-type-name-mixes-modules.md` §REGRESSION.
+  Nothing worked around in `src/`; the void row of `~/metascript/.wt/void-host-links.md` "Done when" is
+  blocked by it.
 
 - **PARKED 2026-09-21 — `setX(v)` with a local `number` is silently dropped on native.** Not Neon's: a
   value argument to a union parameter (`Setter<T> = (v: T | ((prev: T) => T)) => void`) is passed by raw
