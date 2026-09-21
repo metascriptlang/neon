@@ -7,10 +7,12 @@
 
 import { mapArray, mapArrayKeyed, indexArray } from "../../core/array";
 import { createMemo } from "../../core/memo";
-import { Accessor } from "../../core/signal";
+import { Accessor, createSignal } from "../../core/signal";
 import { createRoot } from "../../core/owner";
 import { onCleanup } from "../../core/cleanup";
+import { catchError } from "../../core/error";
 import { NeonNode, regionNode } from "../../render/node";
+import { Host, HostNode } from "../../render/hostTypes";
 import { Row, makeRow } from "../../render/reconcile";
 
 // Wrap a row list with an empty-state fallback. The fallback lives in its own root and is
@@ -66,6 +68,27 @@ export function Index<T>(props: {
 		const fb = props.fallback;
 		if (fb === null) { return mapped; }
 		return withFallback(mapped, fb as NeonNode);
+	});
+}
+
+export function ErrorBoundary(props: {
+	children: NeonNode;
+	fallback: (err: string, reset: () => void) => NeonNode;
+}): NeonNode {
+	return regionNode((h) => {
+		const [failed, setFailed] = createSignal<string | null>(null);
+		const reset = (): void => { setFailed(null); };
+		const guarded: NeonNode = (host: Host, parent: HostNode, before: HostNode | null): void => {
+			catchError(
+				(): void => { props.children(host, parent, before); },
+				(err: string): void => { setFailed(err); },
+			);
+		};
+		return createMemo<Row[]>(() => {
+			const err = failed();
+			if (err !== null) { return [makeRow(props.fallback(err as string, reset))]; }
+			return [makeRow(guarded)];
+		});
 	});
 }
 
