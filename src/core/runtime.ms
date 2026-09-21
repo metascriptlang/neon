@@ -3,7 +3,7 @@
 // and symmetrically: --gc=drc is ARC-only (no cycle collector), so an undisposed
 // Signal<->Computation pair would otherwise leak deterministically.
 
-import { Computation, Source, EffectFn, CompState } from "./types";
+import { Computation, Source, EffectFn, CompState, ErrorHandler } from "./types";
 
 let tlListener: Computation | null = null;
 let tlOwner: Computation | null = null;
@@ -97,10 +97,20 @@ export function createComputation(fn: EffectFn, pure: boolean): Computation {
 		fn, isRoot: false, state: CompState.Stale,
 		sources: [], sourceSlots: [],
 		pure, disposed: false,
-		owned: [], cleanups: [], owner: tlOwner, contexts: null,
+		owned: [], cleanups: [], owner: tlOwner, contexts: null, handler: null,
 	};
 	if (tlOwner !== null) { tlOwner.owned.push(comp); }
 	return comp;
+}
+
+export function findHandler(from: Computation | null): ErrorHandler | null {
+	let o = from;
+	while (o !== null) {
+		const h = o.handler;
+		if (h !== null) { return h; }
+		o = o.owner;
+	}
+	return null;
 }
 
 export function runComputation(comp: Computation): void {
@@ -111,11 +121,20 @@ export function runComputation(comp: Computation): void {
 	const prevOwner = tlOwner;
 	tlListener = comp;
 	tlOwner = comp;
+	let failure: string | null = null;
 	try {
 		comp.fn();
+	} catch (e) {
+		if (findHandler(comp) === null) { throw e; }
+		failure = e.toString();
 	} finally {
 		tlListener = prevListener;
 		tlOwner = prevOwner;
+	}
+	if (failure !== null) {
+		const h = findHandler(comp);
+		cleanNode(comp, true);
+		if (h !== null) { h(failure); }
 	}
 }
 

@@ -15,7 +15,7 @@ export function createRoot<T>(fn: (dispose: Dispose) => T): T {
 		fn: noop, isRoot: true, state: CompState.Clean,
 		sources: [], sourceSlots: [],
 		pure: false, disposed: false,
-		owned: [], cleanups: [], owner: prevOwner, contexts: null,
+		owned: [], cleanups: [], owner: prevOwner, contexts: null, handler: null,
 	};
 	setOwner(root);
 	setListener(null);

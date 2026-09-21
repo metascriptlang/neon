@@ -7,6 +7,7 @@ export { createMemo } from "./core/memo";
 export { createRoot, runWithOwner } from "./core/owner";
 export { getOwner } from "./core/runtime";
 export { onCleanup } from "./core/cleanup";
+export { catchError } from "./core/error";
 export { mapArray, indexArray } from "./core/array";
 export { Dispose } from "./core/types";
 

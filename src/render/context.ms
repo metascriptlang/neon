@@ -46,7 +46,7 @@ function provideScope<T>(ctx: Context<T>, read: () => T, body: () => number): nu
 		fn: noop, isRoot: false, state: CompState.Clean,
 		sources: [], sourceSlots: [],
 		pure: false, disposed: false,
-		owned: [], cleanups: [], owner: parent, contexts: [{ key: ctx as unknown, read: read as () => unknown }],
+		owned: [], cleanups: [], owner: parent, contexts: [{ key: ctx as unknown, read: read as () => unknown }], handler: null,
 	};
 	if (parent !== null) { parent.owned.push(scope); }
 	return runWithOwner(scope, body);
