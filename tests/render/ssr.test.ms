@@ -3,7 +3,8 @@ import { el, text, NeonNode } from "../../src/render/node";
 import { renderToString } from "../../src/render/ssr";
 import { createComponent } from "../../src/render/component";
 import { createContext, useContext } from "../../src/render/context";
-import { For, Index, Show } from "../../src/macros/ui/flow";
+import { createList } from "../../src/core/list";
+import { For, ForList, Index, Show } from "../../src/macros/ui/flow";
 import { createStyles, styleOf } from "../../src/macros/ui/style";
 import { Style } from "../../src/render/style";
 import { collectCss, resetCss } from "../../src/render/sheet";
@@ -100,6 +101,12 @@ test "regions serialize their current rows" {
 
 	const indexed = el("ul", [], [], Index<number>({ each: () => items(), children: (item, i) => <li>{item().toString()}</li> }));
 	assert renderToString(indexed) === "<ul><li>1</li><li>2</li></ul>", "Index: " + renderToString(indexed);
+
+	// A ForList region serializes through read(), the same path a diff consumer takes: SSR never
+	// sees an op, because no region is mounted when the markup is produced.
+	const l = createList<number>([1, 2]);
+	const opRows = el("ul", [], [], ForList<number>({ each: l, children: (item) => <li>{item().toString()}</li> }));
+	assert renderToString(opRows) === "<ul><li>1</li><li>2</li></ul>", "ForList: " + renderToString(opRows);
 
 	const [on, _setOn] = createSignal(true);
 	const shown = el("div", [], [], Show({ when: () => on(), children: <span>yes</span>, fallback: <b>no</b> }));
