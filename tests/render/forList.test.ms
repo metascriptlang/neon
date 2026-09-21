@@ -27,6 +27,11 @@ function numberRow(item: Accessor<number>): NeonNode {
 	return <li>{"" + item()}</li>;
 }
 
+interface Keyed {
+	id: number;
+	label: string;
+}
+
 test "ForList mounts one row per item" {
 	createRoot((d) => {
 		const l = createList<number>([1, 2, 3]);
@@ -146,7 +151,7 @@ test "set updates the row in place through its own signal" {
 	});
 }
 
-test "replaceAll reuses the rows by slot and trims or grows the tail" {
+test "replaceAll keeps the row of an item that comes back, in its new place" {
 	createRoot((d) => {
 		const l = createList<number>([1, 2, 3]);
 		let builds = 0;
@@ -158,16 +163,83 @@ test "replaceAll reuses the rows by slot and trims or grows the tail" {
 		const root = host.createElement("root");
 		render(ul, host, root);
 		const ulNode = (root as unknown as MockNode).children[0];
-		l.replaceAll([7, 8]);
-		assert rowText(ulNode) === "78", "shorter: " + rowText(ulNode);
-		assert builds === 3, "the two kept slots were set, not rebuilt";
-		l.replaceAll([1, 2, 3, 4]);
-		assert rowText(ulNode) === "1234", "longer: " + rowText(ulNode);
-		assert builds === 5, "two rows built for the two new slots";
+		l.replaceAll([3, 1, 2]);
+		assert rowText(ulNode) === "312", "reordered: " + rowText(ulNode);
+		assert builds === 3, "a pure reorder builds no row";
+		l.replaceAll([2, 3, 9]);
+		assert rowText(ulNode) === "239", "one new item: " + rowText(ulNode);
+		assert builds === 4, "only the item never seen built a row";
 		l.replaceAll([]);
 		assert rowText(ulNode) === "", "empty: " + rowText(ulNode);
 		d();
 	});
+}
+
+test "replaceAll disposes the rows of the items that left" {
+	createRoot((d) => {
+		const l = createList<number>([1, 2, 3]);
+		let cleanups = 0;
+		const ul = el("ul", [], [], ForList<number>({
+			each: l,
+			children: (item) => {
+				onCleanup(() => { cleanups = cleanups + 1; });
+				return <li>{"" + item()}</li>;
+			},
+		}));
+		const host = mockHost();
+		const root = host.createElement("root");
+		render(ul, host, root);
+		l.replaceAll([2]);
+		assert cleanups === 2, "the two absent items were disposed";
+		l.replaceAll([]);
+		assert cleanups === 3, "and the last one with the empty list";
+		d();
+	});
+}
+
+test "a keyed list reuses the row of the same key and shows the new item" {
+	createRoot((d) => {
+		const l = createList<Keyed>([{ id: 1, label: "a" }, { id: 2, label: "b" }]);
+		let builds = 0;
+		const ul = el("ul", [], [], ForList<Keyed>({
+			each: l,
+			key: (k: Keyed): number => k.id,
+			children: (item) => { builds = builds + 1; return <li>{item().label}</li>; },
+		}));
+		const host = mockHost();
+		const root = host.createElement("root");
+		render(ul, host, root);
+		const ulNode = (root as unknown as MockNode).children[0];
+		assert rowText(ulNode) === "ab", "initial: " + rowText(ulNode);
+		l.replaceAll([{ id: 2, label: "B" }, { id: 1, label: "A" }]);
+		assert rowText(ulNode) === "BA", "same keys, new objects, new order: " + rowText(ulNode);
+		assert builds === 2, "no row was rebuilt";
+		l.replaceAll([{ id: 3, label: "c" }, { id: 1, label: "A" }]);
+		assert rowText(ulNode) === "cA", "one key gone, one new: " + rowText(ulNode);
+		assert builds === 3, "one row built for the new key";
+		d();
+	});
+}
+
+test "a duplicate key in replaceAll raises and names the key" {
+	let caught = "";
+	try {
+		createRoot((d) => {
+			const l = createList<Keyed>([{ id: 1, label: "a" }, { id: 2, label: "b" }]);
+			const ul = el("ul", [], [], ForList<Keyed>({
+				each: l,
+				key: (k: Keyed): number => k.id,
+				children: (item) => <li>{item().label}</li>,
+			}));
+			const host = mockHost();
+			const root = host.createElement("root");
+			render(ul, host, root);
+			l.replaceAll([{ id: 1, label: "a" }, { id: 1, label: "b" }]);
+			d();
+		});
+	} catch (e) { caught = e.toString(); }
+	assert caught !== "", "a duplicate key raises";
+	assert caught.includes("1"), "the message names the key: " + caught;
 }
 
 test "ops that follow a replaceAll land on the rebuilt rows" {
