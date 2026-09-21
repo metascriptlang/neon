@@ -127,6 +127,19 @@ No background walker, no whole-tree diff scheduler. Two update paths only:
   anchor → a dropped row's owner is disposed (effects die, `onCleanup` fires). Diffing
   exists ONLY here: one region's own rows, never recursive, only when that region's
   source changed.
+- **op** — `<ForList each={list}>` over a `createList` handle (`src/core/list.ms`,
+  `src/render/listRegion.ms`). A command on the handle (`push` / `insert` / `move` / `remove` /
+  `set`) writes ONE op into each mounted region's queue and bumps the list's version; the region's
+  effect drains the queue and applies each op straight to its row array and to the host — insert
+  builds one root and inserts before the next row's first node, move only re-inserts nodes that
+  already exist, remove disposes one root and takes its nodes out, set writes the row's own signal
+  and touches no node. No op reads the list, builds an array or diffs. A row of a `ForList` carries
+  `Accessor<T>` rather than bare `T`, which is what lets `set` be a signal write instead of a
+  rebuild. `replaceAll` is the escape hatch: it drops the queue, matches each new item to the row
+  that carried it — by the optional `key` function when one is given, by item identity otherwise,
+  like `<For>` — and hands the result to `reconcileArrays`, so a reorder still moves nodes and a row
+  keeps its DOM, its focus and its scope. A plain array in `<For each={xs}>` keeps the structural
+  path untouched.
 
 ## Emission — mechanics
 
