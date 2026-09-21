@@ -17,6 +17,6 @@ export function catchError(tryFn: () => void, handler: ErrorHandler): void {
 	try {
 		runWithOwner(scope, (): number => { tryFn(); return 0; });
 	} catch (e) {
-		handler(e.toString());
+		handler(e.message);
 	}
 }

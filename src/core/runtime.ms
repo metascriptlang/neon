@@ -126,7 +126,7 @@ export function runComputation(comp: Computation): void {
 		comp.fn();
 	} catch (e) {
 		if (findHandler(comp) === null) { throw e; }
-		failure = e.toString();
+		failure = e.message;
 	} finally {
 		tlListener = prevListener;
 		tlOwner = prevOwner;

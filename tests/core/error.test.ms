@@ -7,8 +7,7 @@ import { catchError } from "../../src/core/error";
 test "catchError catches a throw in its own body" {
 	let seen = "";
 	catchError(() => { throw new Error("boom 7"); }, (err: string) => { seen = err; });
-	assert seen !== "", "the handler ran";
-	assert seen.includes("7"), "the handler is given the cause: " + seen;
+	assert seen === "boom 7", "the handler is given the error itself: [" + seen + "]";
 }
 
 test "an effect under catchError routes a later throw to the handler" {
@@ -19,7 +18,7 @@ test "an effect under catchError routes a later throw to the handler" {
 	}, (err: string) => { seen = err; });
 	assert seen === "", "nothing failed on the first run";
 	setA(1);
-	assert seen.includes("7"), "the write re-ran the effect and the owner carried the handler: " + seen;
+	assert seen === "late 7", "the write re-ran the effect and the owner carried the handler: [" + seen + "]";
 }
 
 test "the nearest handler wins" {
@@ -28,7 +27,7 @@ test "the nearest handler wins" {
 	catchError(() => {
 		catchError(() => { throw new Error("boom"); }, (err: string) => { inner = err; });
 	}, (err: string) => { outer = err; });
-	assert inner !== "", "the inner handler ran";
+	assert inner === "boom", "the inner handler ran";
 	assert outer === "", "the outer handler was not reached";
 }
 
@@ -36,8 +35,8 @@ test "a throw with no handler still escapes" {
 	const [a, setA] = createSignal(0);
 	createEffect(() => { if (a() === 1) { throw new Error("loud"); } });
 	let escaped = "";
-	try { setA(1); } catch (e) { escaped = e.toString(); }
-	assert escaped !== "", "an unhandled throw is never swallowed";
+	try { setA(1); } catch (e) { escaped = e.message; }
+	assert escaped === "loud", "an unhandled throw is never swallowed: [" + escaped + "]";
 }
 
 test "a computation that threw is disposed, not re-run" {
@@ -58,6 +57,12 @@ test "a computation that threw is disposed, not re-run" {
 	assert runs === 2, "a failed computation does not run again: runs=" + runs.toString();
 	assert handled === 1, "and does not fire the handler again";
 	assert cleaned > 0, "its cleanups ran";
+}
+
+test "a bare throw reaches the handler as its message" {
+	let seen = "";
+	catchError(() => { throw "bare 7"; }, (err: string) => { seen = err; });
+	assert seen === "bare 7", "a bare throw is boxed, not lost: [" + seen + "]";
 }
 
 test "catchError restores the owner it ran under" {

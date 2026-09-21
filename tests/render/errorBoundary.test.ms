@@ -38,7 +38,7 @@ test "a throw while mounting the children swaps in the fallback" {
 			fallback: (err: string, reset: () => void): NeonNode => { seen = err; return el("b", [], [], text("caught")); },
 		}));
 		assert view().includes("caught"), "the fallback is mounted: " + view();
-		assert seen.includes("7"), "the fallback is given the cause: " + seen;
+		assert seen === "mount 7", "the fallback is given the error itself: [" + seen + "]";
 		dispose();
 		return 0;
 	});
@@ -58,7 +58,7 @@ test "a throw in a later effect swaps in the fallback" {
 		}));
 		assert view().includes("ok"), "children mounted first: " + view();
 		setA(1);
-		assert seen.includes("7"), "the boundary caught the later throw: " + seen;
+		assert seen === "late 7", "the boundary caught the later throw: [" + seen + "]";
 		assert view().includes("caught") && !view().includes("ok"), "the fallback replaced the children: " + view();
 		dispose();
 		return 0;
@@ -118,7 +118,7 @@ test "ErrorBoundary works written as a tag" {
 		const [view, dispose] = mounted(element(<div><ErrorBoundary fallback={fb}>{late}</ErrorBoundary></div>));
 		assert view().includes("ok"), "children mounted through the tag: " + view();
 		setA(1);
-		assert view().includes("caught") && view().includes("7"), "the tag routed the throw: " + view();
+		assert view().includes("caught tag 7"), "the tag renders the message, not a JSON dump: " + view();
 		dispose();
 		return 0;
 	});

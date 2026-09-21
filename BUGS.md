@@ -17,10 +17,21 @@ cannot be reproduced is re-measured and rewritten, never corrected on top.
 ---
 ## §3 — Neon-side and environment
 
-No open Neon-side bug. Four sites are parked on a compiler card; each names the card and the
+No open Neon-side bug. Five sites are parked on a compiler card; each names the card and the
 site, and nothing is worked around in `src/`. Rows closed before 2026-09-20 were dropped with
 §2 — they are in this file's history at `git show c00bd2b:BUGS.md`, and the invariants that
 outlived them were moved to the head of the test that pins each one.
+
+- **PARKED 2026-09-21 — `<ErrorBoundary>`'s fallback receives the message string, not the `Error`,
+  because a signal cannot hold a nullable reference.** Not Neon's: `Setter<T> = (v: T | ((prev: T) =>
+  T)) => void` corrupts its value when `T` is `<ref> | null` — `createSignal<Error | null>` panics with
+  a misaligned `msTypeInfo`, `createSignal<SomeClass | null>` with `index -1 out of bounds (length 1)`.
+  Reduced to 29 lines with no Neon import, with controls: drop the union from the setter and it is
+  green, use `T = number | null` and it is green. Measured on msc v0.2.55, build `1fc3d947`. So
+  `catchError`'s handler is `(err: string) => void` and the boundary extracts `e.message` at the catch
+  site, where the value is still intact; widening to the `Error` is three lines once the card closes.
+  Card: `~/metascript/.inbox/compiler/2026-09-21-setter-union-over-a-nullable-ref-corrupts-the-value.md`.
+  Parked at the cells of `tests/render/errorBoundary.test.ms` that assert on a message string.
 
 - **PARKED 2026-09-21 — `<For each={xs} fallback={<li/>}>` cannot be written as a tag.** Not Neon's: a
   JSX value in an attribute of a GENERIC component tag never lowers, while the identical attribute on a
