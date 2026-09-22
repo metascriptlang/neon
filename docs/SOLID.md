@@ -23,7 +23,7 @@ consumer · `createComponent` running the body untracked · `mapArray` / `indexA
 |---|---|---|---|
 | 1 | **store** — `createStore`, `produce`, `reconcile`, `unwrap`, `createMutable` | no nested reactivity: a write anywhere in an object invalidates every reader of it. The compiler replaces Solid's `Proxy` with one signal per field, and makes a wrong path a type error | `solid-store.md` |
 | 2 | **async** — `createResource`, `<Suspense>`, `startTransition` / `useTransition`, `lazy` | no async story at all. Needs a pending state on `Computation`, so the shape is decided early even if it ships late | `solid-async.md` |
-| 3 | **error channel** — `catchError`, `<ErrorBoundary>` | an error in an effect unwinds past the mount with nothing to catch it at a UI boundary | `solid-error-boundary.md` |
+| 3 | ~~error channel — `catchError`, `<ErrorBoundary>`~~ | done `12a9456` (2026-09-22): the handler carries the message, not the `Error` — parked on a compiler bug, see the card | ~~`solid-error-boundary.md`~~ |
 | 4 | **the third effect tier** — a deferred `createEffect`, and `onMount` | today's `createEffect` runs immediately, so it *is* Solid's `createRenderEffect`; nothing has a correct place to read a host node back | `solid-effect-tiers.md` |
 | 5 | `createSelector` | selecting one row of a list re-runs every row's effect | `solid-selector.md` |
 | 6 | `equals` on `createSignal` | equality is hardcoded to identity, so a value mutated in place can never announce itself and there is no always-notify signal | `solid-signal-equals.md` |
