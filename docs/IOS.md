@@ -193,6 +193,28 @@ Physical-device signing, provisioning and launch remain unverified. App Store
 archive/export, universal binaries, Swift library embedding and MetaScript source-level
 debugging are also outside this milestone.
 
+### 6.2 Measured lifecycle proof
+
+Measured 2026-09-22 on source/test tree
+`92271c31252a20ec06ef3f5bdf9ffa8776b72fed`, installed compiler `d757c7e1`,
+Xcode 26.6 and the same iPhone 17 Pro simulator:
+
+- `tests/platform/ios.test.ms` passed 295/295 and proves a removed native tag no
+  longer dispatches;
+- fresh Ion-generated Debug and Release arm64 simulator builds exited 0;
+- the portrait container used the safe-area bounds `(0,0;402,778)`, below the
+  status region rather than the full `(402,874)` screen;
+- foregrounding Settings and returning preserved PID 4387; post-resume native
+  press routing still updated and remeasured the counter;
+- a temporary native teardown app removed its only `NeonTouchView`: UIKit's
+  hierarchy changed from one tagged child to none, and a second dispatch to the
+  removed tag was inert.
+
+Orientation remains unproved. The generated target warns that it does not declare
+all interface orientations, and simulator rotation automation was denied macOS
+Accessibility permission. The Ion orientation metadata and a rotated screenshot
+remain part of the mobile-foundation acceptance, not a claim of this proof.
+
 ## 7. What the MetaScript port does differently
 
 - **The host is `Host`** (`src/render/hostTypes.ms`): `createElement` translates the WIRE
@@ -201,18 +223,18 @@ debugging are also outside this milestone.
 - **Extern surface gated, not branched**: one backend-agnostic extern block over the
   bridge header, `when (ios) { @passL "-framework UIKit" … }` around it — the shape
   `void/src/sokol/gpu.ms` ships; an untaken branch is never type-checked.
-- **Cleanup wired into the Owner tree**: the reference's unwired-disposal TODO (gesture
-  recognizers, animation state, yoga nodes, handler maps) is exactly what `onCleanup`
-  already schedules for every unmount in our runtime.
+- **Cleanup follows discarded host rows**: owner disposal removes reactive wiring;
+  `Host.removeChild` then drops native event routes, frees the detached Yoga subtree
+  and releases each UIKit view retained across the C boundary.
 - **Nested Text**: RN's paragraph model (flatten to attributed runs on one UILabel via
   NSAttributedString, measure func + prepared-layout cache, per-fragment hit-testing when
   press handlers arrive) — not the reference's merge with its static-content loss.
 - **multiline**: UITextField vs UITextView differ at creation; pick the wire tag in the
   `TextInput` component from a static `multiline` prop (RN picks the backing control at
   init from default props, `RCTTextInputComponentView.mm:70`).
-- **Safe area**: the reference container is edge-to-edge and the Neon app handles insets
-  (`ViewController.m.template:23-24`) — that stays our call, and pairs with the runtime
-  object `rt` (ROADMAP "Later").
+- **Safe area and resize**: UIKit owns the container frame through
+  `safeAreaLayoutGuide`; `viewDidLayoutSubviews` notifies `createIosHost`, which
+  refreshes the root dimensions and reruns Yoga only when the frame changes.
 
 ## 8. Sources — what was and was not verified
 
