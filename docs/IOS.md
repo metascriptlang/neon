@@ -1,12 +1,15 @@
-# iOS Host — research notes for the port
+# iOS Host
 
-Status: **research only**. No `src/platform/ios/` exists (ROADMAP "Next" #5 — iOS first, then
-Android). Everything below was read from the named checkouts on 2026-09-21 and carries
-`file:line` evidence; judgment calls are marked as such. The two decisions these notes feed:
+Status: the first UIKit host and tracked Ion-generated integration app are implemented.
+`src/platform/ios/host.ms` owns the reusable host and lifecycle handoff;
+`examples/ios/` is the generated-project consumer. This document keeps the measured
+boundary and the reference research that code cannot express.
 
-- **Boilerplate (Xcode project, UIKit shell, yoga packaging) comes from ion's generator**,
-  not from a neon-side generator — the Nim original's generator is the inventory, not the plan.
-- **The native-component mapping is learned from the Nim original and from React Native.**
+Two decisions still shape the platform:
+
+- **Boilerplate and the Xcode build environment come from Ion's generator**, not from a
+  Neon-side generator.
+- **The native-component mapping is learned from the Nim original and React Native.**
 
 | source | what it is |
 |---|---|
@@ -143,87 +146,52 @@ no-VDOM framework):
   need at most a minimal per-frame host queue if effect storms ever thrash UIKit; not a
   batch architecture. Judgment.
 
-## 6. Boilerplate inventory — what ion must generate
+## 6. Executable handoff to Ion
 
-The Nim generator (`src/cli/generators/ios.nim:308-440`) emits into `platforms/ios/<Name>/`:
-
-| generated | notes |
-|---|---|
-| `main.m`, `AppDelegate.h/.m`, `ViewController.h/.m` | static UIKit shell; ViewController owns a full-screen `neonContainer` + rotation re-render |
-| `Info.plist` | classic entry; no Swift bridging header needed |
-| `apple_bridge.h/.m`, `async_bridge.h/.m` | copied from the framework |
-| nimbase + `@*.c` | from `nim c --os:ios --compileOnly --noMain` — for us, `msc build` output |
-| `libyoga.a` + yoga headers | prebuilt for simulator, linked via `OTHER_LDFLAGS` |
-| `project.pbxproj` | hand-built string emission: fixed UUIDs for app files, MD5-derived per C file, one app target, `-framework UIKit … -ObjC` |
-
-**Measured Ion boundary, 2026-09-22.** A temporary manifest containing one
-`Target.app("NeonCounter", "main.ms")` overridden to `Platform.Ios` was passed to the
-real generator:
+The production boundary is a compiler-linked executable handoff. Ion resolves the typed
+manifest and emits the deterministic Xcode application target. Xcode invokes the pinned
+compiler with its SDK, architecture, deployment and configuration context. The compiler
+then owns generated C, runtime selection, package-native directives and the final link;
+Xcode owns metadata, bundling, simulator signing and launch.
 
 ```text
-$ tooling/generator/ion-generate /tmp/ion-ios-doc-probe.ms /tmp/ion-ios-doc-output
-ion generate: POC emitter supports macOS only: NeonCounter
+examples/ios/project.ms
+  → Ion Target.iosApp
+  → deterministic NeonCounter.xcodeproj
+  → Xcode Compile MetaScript phase
+  → msc build examples/ios/app.ms --os=ios
+  → Neon/Yoga native directives + compiler runtime
+  → bundle, sign, install and launch
 ```
 
-That is exactly the guard in `ion/tooling/generator/xcode.ms:25-26`; the emitter's build
-settings and app path are also macOS-specific (`:15-16,43-50`). The model already names
-`Platform.Ios`, but `Target.app` still selects `Platform.Macos`
-(`ion/tooling/generator/description.ms:1,39-41`). This probe covers one iOS application
-target only. It did **not** test a mixed-platform graph, an iOS Xcode project, simulator
-or device signing; no Ion-generated iOS project exists yet.
+There is no PBX inventory of compiler runtime, Neon bridge or Yoga sources. The ownership
+seams are `Target.iosApp` and `iosScript` in Ion, `createIosHost` and `registerAndRun` in
+`src/platform/ios/host.ms`, and the process bootstrap in `examples/ios/entry.m`. Neon
+remains the sole owner of `UIApplicationMain`; Ion imports neither Neon nor Yoga.
 
-### 6.1 Accepted Neon × Ion wiring contract
+### 6.1 Measured generated-project proof
 
-Ion remains the build-time owner; Neon remains the UI/runtime consumer. Ion owns the
-typed manifest → resolved graph → deterministic native-project pipeline
-(`ion/docs/PROJECT-GENERATOR.md:3-6,40-62`). Neon owns its MetaScript entry, `Host`
-implementation and UIKit bridge: `createIosHost` creates the native/Yoga root and
-`registerAndRun` transfers control to the bridge
-(`src/platform/ios/host.ms:284-287,440-442`); the bridge owns `NeonVC`,
-`NeonAppDelegate` and `UIApplicationMain` (`src/platform/ios/bridge.m:55-95`). The
-generated project references those Neon-owned files; Ion neither copies their behavior
-nor imports Neon (`ion/CLAUDE.md:3,48-49`).
+Measured 2026-09-22 on source/test tree
+`35d1e99db827b857f06e71f2571d6c8ab891858f`, installed compiler
+`d757c7e1`, Xcode 26.6, arm64 host and iPhone 17 Pro simulator on iOS 26.5:
 
-The clean flow is:
+- two fresh generations from `examples/ios/project.ms` were byte-identical for
+  `graph.json` and `project.pbxproj`; `plutil -lint` accepted the project;
+- generated-project Debug and Release arm64 simulator builds both exited 0 with no PBX
+  edits, and the Debug bundle installed and launched as `dev.neon.NeonCounter`;
+- the launched `examples/components/counter.ms` changed `0 → 1` and `even → odd`;
+  UIKit reported the value frame changing `(186,60;31,58) → (190,60;23,58)` and the hint
+  frame changing `(188,186;27,15) → (190,186;22,15)`;
+- before/after simulator screenshots visually showed both state changes.
 
-```text
-tracked Neon project manifest + app.ms
-  → ion-generate
-  → deterministic iOS Xcode project + graph.json
-  → Xcode build phase runs msc --emit=c for app.ms
-  → Xcode compiles emitted C + MetaScript runtime + Neon bridge.m + yoga C++
-  → Xcode links UIKit + Foundation + CoreGraphics + libc++
-  → simulator installs the app
-  → UIKit lifecycle calls the Neon mount closure
-```
+The interaction was synthetic, not physical input: LLDB invoked
+`touchesBegan`/`touchesEnded` on the actual `NeonTouchView` tagged for the `+` pressable.
+That proves native event dispatch, signal update, dynamic text, Yoga measurement and frame
+application. Physical finger input was not exercised.
 
-`Target.iosApp(...)` extends the existing static-constructor idiom used by
-`Target.app` (`ion/tooling/generator/description.ms:39-41`); it is not a second
-generator. The one **NEW MECHANISM** is typed, generic native-build inputs on the
-target/graph: native source files, generated-source outputs, frameworks and compile
-settings. The current `Target` carries only name/platform/entry/bundle/dependencies
-(`ion/tooling/generator/description.ms:3-9`), and plugins can contribute bundle
-identifiers only (`ion/tooling/generator/description.ms:16-19`;
-`ion/docs/PROJECT-GENERATOR.md:176-177`). Therefore the
-integration belongs in the target/graph model, not in a Neon-specific Ion plugin and not
-as hard-coded `../neon` paths in the emitter.
-
-Clean cutover means:
-
-1. two fresh generations of the iOS manifest are byte-identical, matching the existing
-   determinism contract (`ion/docs/PROJECT-GENERATOR.md:136-149`);
-2. `xcodebuild -sdk iphonesimulator -arch arm64` builds without project edits;
-3. the generated app installs and launches, then the counter proves the whole runtime
-   path by changing `0 → 1` and `even → odd` after the `+` touch;
-4. Neon retains only tracked entry/manifest/smoke inputs; the hand-written
-   compile/link inventory is deleted rather than maintained as a second build path;
-5. Ion's generator gate and Neon's full gate are green.
-
-Device signing, App Store packaging, Android generation, TextInput/ScrollView/Image and
-performance beyond the counter are explicitly outside this wiring milestone. Ion's
-canonical generator document (`ion/docs/PROJECT-GENERATOR.md`) must receive the same
-surface and verification results in the `ion-ios-emitter` arc when the implementation
-exists; this Neon document does not pre-claim them.
+Physical-device signing, provisioning and launch remain unverified. App Store
+archive/export, universal binaries, Swift library embedding and MetaScript source-level
+debugging are also outside this milestone.
 
 ## 7. What the MetaScript port does differently
 
