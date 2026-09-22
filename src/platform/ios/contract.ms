@@ -15,6 +15,7 @@ interface IosEventRoute {
 
 export interface IosEventRegistry {
 	add: (tag: int32, name: string, handler: (e: NeonEvent) => void) => void;
+	remove: (tag: int32) => void;
 	dispatch: (tag: int32, phase: int32, x: number, y: number) => boolean;
 }
 
@@ -67,6 +68,9 @@ export function createIosEventRegistry(): IosEventRegistry {
 		}
 		routes.push({ name, handler });
 	}
+	function remove(tag: int32): void {
+		byTag.delete(tag);
+	}
 
 	function dispatch(tag: int32, phase: int32, x: number, y: number): boolean {
 		if (!byTag.has(tag)) { return false; }
@@ -81,5 +85,5 @@ export function createIosEventRegistry(): IosEventRegistry {
 		return false;
 	}
 
-	return { add, dispatch };
+	return { add, remove, dispatch };
 }

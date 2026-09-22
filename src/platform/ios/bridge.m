@@ -1,13 +1,10 @@
-// Neon iOS host bridge — UIKit first cut. MS main() calls niRegisterApp(mount)
-// then niRunApp() -> UIApplicationMain (never returns); NeonVC builds the
-// full-screen container and calls the mount closure, which renders into
-// niContainerView(). Events flow back through niSetTouchHandler.
 #import <UIKit/UIKit.h>
 #import <Foundation/Foundation.h>
 #include "bridge.h"
 
 static msClosure s_mount;
 static msClosure s_touch;
+static msClosure s_resize;
 static int g_lastTag = 0;
 static int g_lastPhase = 0;
 static UIView *g_container = nil;
@@ -60,11 +57,18 @@ static void call0(msClosure c) {
 - (void)viewDidLoad {
 	[super viewDidLoad];
 	self.view.backgroundColor = [UIColor blackColor];
-	g_container = [[UIView alloc] initWithFrame:self.view.bounds];
-	g_container.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+	g_container = [[UIView alloc] initWithFrame:self.view.safeAreaLayoutGuide.layoutFrame];
 	g_container.userInteractionEnabled = YES;
 	[self.view addSubview:g_container];
 	call0(s_mount);
+}
+
+- (void)viewDidLayoutSubviews {
+	[super viewDidLayoutSubviews];
+	CGRect frame = self.view.safeAreaLayoutGuide.layoutFrame;
+	if (CGRectEqualToRect(g_container.frame, frame)) return;
+	g_container.frame = frame;
+	call0(s_resize);
 }
 
 @end
@@ -87,6 +91,10 @@ void niRegisterApp(msClosure mount) {
 	s_mount = mount;
 }
 
+void niSetResizeHandler(msClosure handler) {
+	s_resize = handler;
+}
+
 int niRunApp(void) {
 	@autoreleasepool {
 		return UIApplicationMain(0, nil, nil, NSStringFromClass([NeonAppDelegate class]));
@@ -98,11 +106,11 @@ void *niContainerView(void) {
 }
 
 float niScreenWidth(void) {
-	return (float)[UIScreen mainScreen].bounds.size.width;
+	return (float)g_container.bounds.size.width;
 }
 
 float niScreenHeight(void) {
-	return (float)[UIScreen mainScreen].bounds.size.height;
+	return (float)g_container.bounds.size.height;
 }
 
 // --- views ---
@@ -133,6 +141,10 @@ void niViewSetTag(void *view, int32_t tag) {
 void niRemoveFromParent(void *child) {
 	UIView *c = (__bridge UIView *)child;
 	[c removeFromSuperview];
+}
+
+void niViewRelease(void *view) {
+	if (view) CFRelease((CFTypeRef)view);
 }
 
 void niSetFrame(void *view, float x, float y, float w, float h) {

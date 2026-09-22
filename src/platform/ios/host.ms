@@ -1,6 +1,6 @@
 import { Host, HostNode } from "../../render/host";
 import { NeonEvent } from "../../render/event";
-import { FlexStyle, layoutPass as runLayoutPass } from "../../../../yoga/src/index";
+import { FlexStyle, freeLayoutTree, layoutPass as runLayoutPass } from "../../../../yoga/src/index";
 import { Style } from "../../render/style";
 import { IosElementKind, createIosEventRegistry, iosElementKind, iosFlexStyle } from "./contract";
 
@@ -14,7 +14,7 @@ when (ios) {
 }
 
 import {
-	niViewCreate, niTextCreate, niAddChild, niRemoveFromParent, niSetFrame,
+	niViewCreate, niTextCreate, niAddChild, niRemoveFromParent, niViewRelease, niSetFrame,
 	niSetBackgroundColor, niSetCornerRadius, niSetOpacity,
 	niSetText, niSetTextColor, niSetFont, niMeasureText, niMeasuredW, niMeasuredH,
 	niContainerView, niScreenWidth, niScreenHeight, niViewSetTag,
@@ -24,6 +24,7 @@ import {
 extern function niRegisterApp(mount: () => void): void;
 extern function niRunApp(): int32;
 extern function niSetTouchHandler(handler: () => void): void;
+extern function niSetResizeHandler(handler: () => void): void;
 
 
 interface IosNode {
@@ -189,6 +190,36 @@ function childIndex(parent: IosNode, node: IosNode): int32 {
 	return -1;
 }
 
+function isMounted(n: IosNode): boolean {
+	let current: IosNode | null = n;
+	while (current !== null) {
+		if (current === root) { return true; }
+		current = current.parent;
+	}
+	return false;
+}
+
+function releaseNativeTree(n: IosNode): void {
+	for (const child of n.children) { releaseNativeTree(child); }
+	if (n.eventTag !== 0) {
+		eventRegistry.remove(n.eventTag);
+		n.eventTag = 0;
+	}
+	if (n.view !== null) {
+		niRemoveFromParent(n.view);
+		niViewRelease(n.view);
+		n.view = null;
+	}
+	n.children = [];
+	n.labelOwner = null;
+	n.styleCache = null;
+	n.flex = null;
+}
+
+function onResize(): void {
+	relayoutRoot();
+}
+
 // A string under a Text element merges onto the parent's label (the reference
 // hosts' rule — no nested labels); under anything else it materialises its
 // own label, inheriting the parent's text paint (RN color/fontSize cascade,
@@ -236,6 +267,7 @@ export function createIosHost(): IosHost {
 	root = iosNode(container, false, false);
 	root.flex = { width: niScreenWidth(), height: niScreenHeight() };
 	niSetTouchHandler(onTouch);
+	niSetResizeHandler(onResize);
 
 	const host: Host = {
 		createElement: (tag: string): HostNode => {
@@ -272,6 +304,7 @@ export function createIosHost(): IosHost {
 			n.flex = iosFlexStyle(style, n.isText);
 			applyPaint(n, style);
 			if (n.isText) { remeasureText(n); }
+			if (isMounted(n)) { relayoutRoot(); }
 		},
 		setStyleProp: null,
 		setStyleClass: null,
@@ -299,6 +332,7 @@ export function createIosHost(): IosHost {
 				return;
 			}
 			if (p.view !== null && c.view !== null) { niAddChild(p.view, c.view); }
+			if (isMounted(p)) { relayoutRoot(); }
 		},
 		insertBefore: (parent: HostNode, node: HostNode, ref: HostNode | null): void => {
 			const p = parent as unknown as IosNode;
@@ -319,6 +353,7 @@ export function createIosHost(): IosHost {
 			p.children.splice(idx, 0, n);
 			if (n.isString) {
 				materializeString(n, p);
+				if (isMounted(p)) { relayoutRoot(); }
 				return;
 			}
 			if (p.view !== null && n.view !== null) {
@@ -330,6 +365,7 @@ export function createIosHost(): IosHost {
 					sortLater(p);
 				}
 			}
+			if (isMounted(p)) { relayoutRoot(); }
 		},
 		removeChild: (parent: HostNode, node: HostNode): void => {
 			const p = parent as unknown as IosNode;
@@ -338,7 +374,9 @@ export function createIosHost(): IosHost {
 			if (idx < 0) { throw "removeChild: the node is not a child of the parent"; }
 			p.children.splice(idx, 1);
 			n.parent = null;
-			if (n.view !== null) { niRemoveFromParent(n.view); }
+			if (isMounted(p)) { relayoutRoot(); }
+			freeLayoutTree(n);
+			releaseNativeTree(n);
 		},
 		nextSibling: (node: HostNode): HostNode | null => {
 			const n = node as unknown as IosNode;
@@ -374,8 +412,10 @@ function sortLater(p: IosNode): void {
 }
 
 function relayoutRoot(): void {
-	if (root.flex === null) { return; }
-	runLayoutPass(root, niScreenWidth(), niScreenHeight());
+	const width = niScreenWidth();
+	const height = niScreenHeight();
+	root.flex = { width, height };
+	runLayoutPass(root, width, height);
 }
 
 // ---- app entry (probe/iosApp/app.ms drives this) ----

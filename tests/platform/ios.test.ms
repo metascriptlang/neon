@@ -51,4 +51,6 @@ test "iOS event registry routes native tags and touch phases" {
 	assert registry.dispatch(7, 2, 0, 0), "known press dispatches";
 	assert got === "pointerdown;press;", got;
 	assert downX === 12 && downY === 9, "pointer coordinates reach the handler";
+	registry.remove(7);
+	assert registry.dispatch(7, 2, 0, 0) === false, "removed tags no longer dispatch";
 }
