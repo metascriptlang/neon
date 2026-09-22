@@ -1,11 +1,3 @@
-// Neon iOS host — UIKit bridge, first cut of the ios-host arc
-// (~/metascript/.wt/ios-host.md). C ABI over UIKit: views cross as void*,
-// colors as floats, text as const char*. Events cross the other way as
-// msClosure — the exact shape void/src/sokol/bridge.h ships.
-//
-// Deliberate first-cut limits (see the card): views are created retained and
-// never released (app-lifetime, like the Nim reference), rotation is not
-// handled, and text measure is UILabel sizeThatFits, not a yoga measure func.
 #ifndef NEON_IOS_BRIDGE_H
 #define NEON_IOS_BRIDGE_H
 

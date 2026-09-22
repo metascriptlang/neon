@@ -82,20 +82,14 @@ static void call0(msClosure c) {
 	return YES;
 }
 @end
+
 void niRegisterApp(msClosure mount) {
-	FILE *marker = fopen("/tmp/neon_ran.txt", "a");
-	if (marker) { fprintf(marker, "niRegisterApp fn=%p env=%p\n", mount.fn, mount.env); fclose(marker); }
 	s_mount = mount;
 }
 
 int niRunApp(void) {
-	FILE *marker = fopen("/tmp/neon_ran.txt", "a");
-	if (marker) { fprintf(marker, "niRunApp enter\n"); fclose(marker); }
 	@autoreleasepool {
-		int rc = UIApplicationMain(0, nil, nil, NSStringFromClass([NeonAppDelegate class]));
-		marker = fopen("/tmp/neon_ran.txt", "a");
-		if (marker) { fprintf(marker, "UIApplicationMain returned %d\n", rc); fclose(marker); }
-		return rc;
+		return UIApplicationMain(0, nil, nil, NSStringFromClass([NeonAppDelegate class]));
 	}
 }
 

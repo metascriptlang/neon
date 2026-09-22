@@ -1,17 +1,3 @@
-// iOS host — a NeonNode mounts into a UIKit view tree through the bridge
-// (bridge.h/bridge.m), laid out by the shared yoga pass (yoga/src/sync.ms:
-// this module owns the seven `layout*` extensions on IosNode).
-//
-// First cut of the ios-host arc (~/metascript/.wt/ios-host.md): view / text /
-// pressable, colors + fontSize + fontWeight + cornerRadius + opacity, tap
-// forwarding through tag routing. Text intrinsic size is an EAGER measure
-// (UILabel sizeThatFits written into the FlexStyle as fixed w/h) because the
-// yoga binding has no measure-func surface yet — recorded as debt in the card.
-//
-// Events: the bridge fires one () => void closure per touch phase; the tag +
-// phase are read back through niLastTouchTag/Phase (msClosure carries no
-// args). The registry maps tag -> IosNode -> handlers.
-
 import { Host, HostNode } from "../../render/host";
 import { NeonEvent } from "../../render/event";
 import { FlexStyle, layoutPass as runLayoutPass } from "../../../../yoga/src/index";
