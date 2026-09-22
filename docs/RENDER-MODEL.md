@@ -690,6 +690,51 @@ browser timer coarsens at 0.1 ms, which is 400x the flat move cell); object rows
 2026-09-20 (`Map` with a ref key, 15–70x a number key); memory; and the keyed `replaceAll` road, which
 is pinned by tests but has no figure here.
 
+
+### 2026-09-22 — where the mount and reverse premiums actually live, and the one fixable slice
+
+How it was measured. msc v0.2.55, binary `d757c7e1`; `probe/m/forlistParts.ms` (gitignored), release,
+N = 1000 / 5000 / 20000, 5 rounds x 3 runs with every variant run inside one round and the round order
+flipped, each cell the MIN; load 5-9 before each run; `dll-host` only. Every hand variant is a copy of
+the `listRegion` step shapes asserted to render the same string as the two real roads before any
+timing. The fix was benched on the real road with `probe/m/listOpsScale.ms` + `runForlistAB.sh`:
+two builds of one tree (stash), six interleaved runs, order flipped. **Lower is better.**
+
+| ms at 20000 rows, dll-host | mount | | reverse | |
+|---|---|---|---|---|
+| `<For>` diff road (A0 / B0) | 13.24 | | 7.10 | |
+| `ForList` op road (A1 / B1) | 19.33 | 1.46x | 10.88 | 1.53x |
+| hand region, bare rows (A2) | 9.95 | | rows-only permutation, accessor rows (B5) | 9.16 |
+| + per-row `Signal` cell (A3) | 9.42 | | same over static rows (B7) | 6.52 |
+| + row reads the accessor (A4) | 18.72 | | prealloc bookkeeping (B2) | 11.12 |
+
+Mount, attributed: the cell machinery itself is free (A2 -> A3); the subscription is the whole premium
+— a row that reads its `Accessor` gets one computation each, +9.3 ms over 20000 rows — and the diff
+road's own mount frame (fresh-row `reconcileArrays`, the `slice`, mapArray's bookkeeping) is 3.3 ms
+dearer than the op road's. 9.3 - 3.3 = the 6 ms premium. Store preallocation buys nothing on mount
+(A5). Not fixable without a surface change: the subscription is what makes `set(i, v)` a signal write
+instead of a rebuild.
+
+Reverse, attributed: a rows-only permutation over STATIC rows (B7) lands below the diff road — the
+move machinery is not the problem. The same permutation over accessor rows costs +2.6 ms more (B5):
+reordering rows that each carry a `Signal` and a computation pays it in cache locality with zero
+signal work. The card's Map hypothesis is refuted: the diff road builds the same-shaped `Map`
+(`mapArray`'s `newIndices`), and with number keys the whole `matchByIds` + `oldIds` block is 0.8 ms
+of a 3.8 ms delta. What was left and fixable: `resetTo` grew seven bookkeeping arrays by push.
+
+The fix (`4c49618`): `resetTo` preallocates `reuse` / `oldIds` / `newIds` / `nextRows` / `nextCells` /
+`nextDisposers` / `kept` at exact size and index-assigns them, fresh rows through a `buildRowAt`
+sibling of `buildRow` (mapArray's `makeRowInto` precedent: exact-size prealloc, every slot written
+before any read — reading past what an array holds is a segfault on C). On the real road, interleaved:
+`ForList` reverse 0.104 -> 0.099 / 0.562 -> 0.504 / 9.221 -> 8.870 ms at 1000 / 5000 / 20000
+(-4.6 / -10.3 / -3.8%); every other cell inside the day's noise band, whose width the untouched
+`<For>` road shows by swinging +-4% between runs. The flat move, 45x insert and 34x remove figures
+are untouched: the op path is not on `resetTo`.
+
+Not fixed, and why: the subscription (mount) and the reactive-row footprint (reverse) are the
+`Accessor` row itself — dropping either means rows that carry bare `T`, which is the `<For>` surface,
+not a change inside this one.
+
 ## Invariants — the contract every tier and every hand-built node must satisfy
 
 1. **Evaluating JSX is pure** — it allocates the NeonNode and performs no host op
