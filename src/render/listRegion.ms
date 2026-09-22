@@ -28,9 +28,9 @@ function anchorAt<Item>(g: Region<Item>, i: number): HostNode | null {
 	return g.rows[i].start;
 }
 
-// The stores are filled by push, never by assigning past the end, and the row is appended
-// only once its body has run: a slot of an array longer than what it holds is a segfault,
-// not an undefined (src/core/array.ms indexArray).
+// Op stores grow by push; reading a slot past what the array holds segfaults on C, it is
+// not an undefined (src/core/array.ms indexArray). resetTo's next-lists are the exception:
+// exact-size prealloc, every slot written before any read (mapArray makeRowInto).
 function buildRow<Item>(
 	g: Region<Item>,
 	v: Item,
@@ -45,6 +45,23 @@ function buildRow<Item>(
 		return makeRow(g.row(accessor((): Item => cell.get())));
 	});
 	rowStore.push(r);
+}
+
+function buildRowAt<Item>(
+	g: Region<Item>,
+	v: Item,
+	i: number,
+	rowStore: Row[],
+	cellStore: Signal<Item>[],
+	dispStore: (() => void)[],
+): void {
+	const r = createRoot((d) => {
+		dispStore[i] = d;
+		const cell = new Signal<Item>(v);
+		cellStore[i] = cell;
+		return makeRow(g.row(accessor((): Item => cell.get())));
+	});
+	rowStore[i] = r;
 }
 
 function insertRow<Item>(g: Region<Item>, i: number, v: Item): void {
@@ -127,13 +144,12 @@ function resetTo<Item>(g: Region<Item>, items: Item[]): void {
 	const have = g.rows.length;
 	const n = items.length;
 
-	const reuse: number[] = [];
-	for (let j = 0; j < n; j += 1) { reuse.push(-1); }
+	const reuse: number[] = new Array(n);
 	if (g.keys.length > 0) {
 		const keyOf = g.keys[0];
-		const oldIds: number[] = [];
-		for (let i = 0; i < have; i += 1) { oldIds.push(keyOf(g.cells[i].peek())); }
-		const newIds: number[] = [];
+		const oldIds: number[] = new Array(have);
+		for (let i = 0; i < have; i += 1) { oldIds[i] = keyOf(g.cells[i].peek()); }
+		const newIds: number[] = new Array(n);
 		const seen = new Map<number, number>();
 		for (let j = 0; j < n; j += 1) {
 			const k = keyOf(items[j]);
@@ -142,30 +158,30 @@ function resetTo<Item>(g: Region<Item>, items: Item[]): void {
 					+ (seen.get(k) as number).toString() + " and " + j.toString());
 			}
 			seen.set(k, j);
-			newIds.push(k);
+			newIds[j] = k;
 		}
 		matchByIds<number>(oldIds, newIds, reuse);
 	} else {
-		const oldIds: Item[] = [];
-		for (let i = 0; i < have; i += 1) { oldIds.push(g.cells[i].peek()); }
+		const oldIds: Item[] = new Array(have);
+		for (let i = 0; i < have; i += 1) { oldIds[i] = g.cells[i].peek(); }
 		matchByIds<Item>(oldIds, items, reuse);
 	}
 
-	const nextRows: Row[] = [];
-	const nextCells: Signal<Item>[] = [];
-	const nextDisposers: (() => void)[] = [];
-	const kept: boolean[] = [];
-	for (let i = 0; i < have; i += 1) { kept.push(false); }
+	const nextRows: Row[] = new Array(n);
+	const nextCells: Signal<Item>[] = new Array(n);
+	const nextDisposers: (() => void)[] = new Array(n);
+	const kept: boolean[] = new Array(have);
+	for (let i = 0; i < have; i += 1) { kept[i] = false; }
 
 	for (let j = 0; j < n; j += 1) {
 		const from = reuse[j];
 		if (from < 0) {
-			buildRow<Item>(g, items[j], nextRows, nextCells, nextDisposers);
+			buildRowAt<Item>(g, items[j], j, nextRows, nextCells, nextDisposers);
 			continue;
 		}
-		nextRows.push(g.rows[from]);
-		nextCells.push(g.cells[from]);
-		nextDisposers.push(g.disposers[from]);
+		nextRows[j] = g.rows[from];
+		nextCells[j] = g.cells[from];
+		nextDisposers[j] = g.disposers[from];
 		kept[from] = true;
 		g.cells[from].set(items[j]);
 	}
