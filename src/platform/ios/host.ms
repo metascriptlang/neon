@@ -13,17 +13,18 @@
 // args). The registry maps tag -> IosNode -> handlers.
 
 import { Host, HostNode } from "../../render/host";
-import { NeonEvent, neonEvent, eventType } from "../../render/event";
-import { FlexStyle, FlexDirection, Justify, Align, PositionType, Wrap, Display, Overflow, layoutPass as runLayoutPass } from "../../../../yoga/src/index";
+import { NeonEvent } from "../../render/event";
+import { FlexStyle, layoutPass as runLayoutPass } from "../../../../yoga/src/index";
 import { Style } from "../../render/style";
-import { asFlexStyleBody } from "../../macros/style/fields";
+import { IosElementKind, createIosEventRegistry, iosElementKind, iosFlexStyle } from "./contract";
 
-@passC("-Isrc/platform/ios");
+@passC("-I./");
 
 when (ios) {
-	@compile("./bridge.m");
+	@compile("./bridge.m", "-fobjc-arc");
 	@passL("-framework UIKit");
 	@passL("-framework Foundation");
+	@passL("-framework CoreGraphics");
 }
 
 import {
@@ -38,11 +39,6 @@ extern function niRegisterApp(mount: () => void): void;
 extern function niRunApp(): int32;
 extern function niSetTouchHandler(handler: () => void): void;
 
-interface TouchEntry {
-	node: IosNode;
-	name: string;
-	handler: (e: NeonEvent) => void;
-}
 
 interface IosNode {
 	view: Ptr<void> | null;      // the UIView/UILabel; null on merged string nodes
@@ -52,7 +48,7 @@ interface IosNode {
 	text: string;
 	children: IosNode[];
 	parent: IosNode | null;
-	events: TouchEntry[];
+	eventTag: int32;
 	styleCache: Style | null;
 	flex: FlexStyle | null;
 	lastFlex: FlexStyle | null;
@@ -63,7 +59,7 @@ interface IosNode {
 function iosNode(view: Ptr<void> | null, isText: boolean, isString: boolean): IosNode {
 	return {
 		view, isText, isString, labelOwner: null, text: "",
-		children: [], parent: null, events: [], styleCache: null,
+		children: [], parent: null, eventTag: 0, styleCache: null,
 		flex: null, lastFlex: null, yg: null,
 		x: 0.0, y: 0.0, w: 0.0, h: 0.0,
 	};
@@ -86,7 +82,6 @@ export function layoutSetFrame(this n: IosNode, x: float32, y: float32, w: float
 
 // ---- style projection + paint ----
 
-asFlexStyleBody(0);
 
 function hexNibble(c: string): int32 {
 	if (c >= "0" && c <= "9") { return c.charCodeAt(0) - 48; }
@@ -117,19 +112,6 @@ function parseHex(css: string): Rgba | null {
 	return { r: (r as float32) / s, g: (g as float32) / s, b: (b as float32) / s };
 }
 
-// Converters the generated asFlexStyle calls (same contract as the void host).
-function num(v: number | null): float32 | null {
-	if (v === null) { return null; }
-	const n = v as number;
-	return n as float32;
-}
-
-function dim(v: number | string | null): float32 | string | null {
-	if (v === null) { return null; }
-	if (typeof v === "string") { return v as string; }
-	const n = v as number;
-	return n as float32;
-}
 
 // The paint half of the projection (docs/STYLE.md §5), onto UIKit.
 function applyPaint(n: IosNode, s: Style): void {
@@ -209,7 +191,7 @@ function remeasureText(n: IosNode): void {
 // ---- the host ----
 
 let nextTag: int32 = 1;
-const registry = new Map<int32, IosNode>();
+const eventRegistry = createIosEventRegistry();
 let root: IosNode;
 
 function childIndex(parent: IosNode, node: IosNode): int32 {
@@ -250,29 +232,11 @@ function materializeString(child: IosNode, parent: IosNode): void {
 	remeasureText(child);
 }
 
-function firePhase(node: IosNode, phase: int32, evType: string, x: number, y: number): void {
-	for (let i = 0; i < node.events.length; i += 1) {
-		const e = node.events[i];
-		if (eventType(e.name) !== evType) { continue; }
-		const ev = neonEvent(evType);
-		ev.x = x;
-		ev.y = y;
-		e.handler(ev);
-	}
-}
 
 function onTouch(): void {
 	const tag = niLastTouchTag();
 	const phase = niLastTouchPhase();
-	if (tag === 0 || !registry.has(tag)) { return; }
-	const node = registry.get(tag) as IosNode;
-	if (phase === 0) { firePhase(node, 0, "pointerdown", 0, 0); }
-	else if (phase === 1) { firePhase(node, 1, "pointerup", 0, 0); }
-	else if (phase === 2) { firePhase(node, 2, "press", 0, 0); }
-	else if (phase === 3) {
-		firePhase(node, 3, "pointercancel", 0, 0);
-		firePhase(node, 3, "pointerleave", 0, 0);
-	}
+	eventRegistry.dispatch(tag, phase, 0, 0);
 }
 
 export interface IosHost {
@@ -289,15 +253,12 @@ export function createIosHost(): IosHost {
 
 	const host: Host = {
 		createElement: (tag: string): HostNode => {
-			let n: IosNode;
-			if (tag === "text") {
-				n = iosNode(niTextCreate(), true, false);
-			} else {
-				// view / pressable / unknown escape hatch: a plain view.
-				n = iosNode(niViewCreate(), false, false);
-			}
+			const kind = iosElementKind(tag);
+			const n = kind === IosElementKind.Text
+				? iosNode(niTextCreate(), true, false)
+				: iosNode(niViewCreate(), false, false);
 			// RN parity: containers lay out as columns (yoga's default is row).
-			n.flex = { flexDirection: "column" };
+			n.flex = iosFlexStyle({} as Style, n.isText);
 			return n as unknown as HostNode;
 		},
 		createText: (s: string): HostNode => {
@@ -322,10 +283,7 @@ export function createIosHost(): IosHost {
 		setStyle: (node: HostNode, style: Style): void => {
 			const n = node as unknown as IosNode;
 			n.styleCache = style;
-			n.flex = asFlexStyle(style);
-			if (!n.isText && n.flex.flexDirection == null) {
-				n.flex.flexDirection = "column";
-			}
+			n.flex = iosFlexStyle(style, n.isText);
 			applyPaint(n, style);
 			if (n.isText) { remeasureText(n); }
 		},
@@ -333,13 +291,12 @@ export function createIosHost(): IosHost {
 		setStyleClass: null,
 		addEvent: (node: HostNode, name: string, handler: (e: NeonEvent) => void): void => {
 			const n = node as unknown as IosNode;
-			n.events.push({ node: n, name, handler });
-			if (n.view !== null && n.events.length === 1) {
-				const tag = nextTag;
+			if (n.eventTag === 0) {
+				n.eventTag = nextTag;
 				nextTag += 1;
-				registry.set(tag, n);
-				niViewSetTag(n.view, tag);
+				if (n.view !== null) { niViewSetTag(n.view, n.eventTag); }
 			}
+			eventRegistry.add(n.eventTag, name, handler);
 		},
 		append: (parent: HostNode, child: HostNode): void => {
 			const p = parent as unknown as IosNode;
