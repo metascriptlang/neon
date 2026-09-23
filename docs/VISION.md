@@ -12,7 +12,8 @@ and `ROADMAP.md` what is built next. This file holds the goal that those three d
 ## One interface, no runtime tree
 
 The JSX macro emits the mount code for each site: the most efficient render function, which behaves
-as if a tree existed, without keeping a VNode tree at runtime (direct emission, `RENDER-MODEL.md`).
+as if a tree existed, without keeping a VNode tree at runtime: a `NeonNode` is a function, and rendering a node is calling it
+(`RENDER-MODEL.md` "The one concept").
 Components, hooks, props and reactivity work the same way on every host, because the macro targets
 the `Host` contract (`src/render/hostTypes.ms`) and never a platform.
 
