@@ -4,6 +4,7 @@ What we build next, in order, and why that order. **Forward-looking only.**
 
 | doc | owns |
 |---|---|
+| `docs/VISION.md` | the goal the order serves: one interface over every kind of rendering |
 | this file | the order of work across the whole framework |
 | `docs/STYLE.md` §9 | the style/theme stages (S1-S4) in detail |
 | `docs/RENDER-MODEL.md` | the emission tiers, how a site picks one, and the lifecycle |
