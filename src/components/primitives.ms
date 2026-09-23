@@ -41,12 +41,29 @@ function primitive(tag: string, props: HostProps, attrs: VAttr[], evts: VEvent[]
 	return hostElement(tag, attrs, evts, kids, style, props.ref);
 }
 
-interface ViewProps extends HostProps {
+interface InteractiveProps extends HostProps {
+	onKeyDown?: ((e: NeonEvent) => void) | null;
+	onKeyUp?: ((e: NeonEvent) => void) | null;
+	onFocus?: ((e: NeonEvent) => void) | null;
+	onBlur?: ((e: NeonEvent) => void) | null;
+	onLayout?: ((e: NeonEvent) => void) | null;
+}
+
+function interactiveEvents(props: InteractiveProps, evts: VEvent[]): VEvent[] {
+	if (props.onKeyDown !== null) { evts.push(evt("onKeyDown", props.onKeyDown as (e: NeonEvent) => void)); }
+	if (props.onKeyUp !== null) { evts.push(evt("onKeyUp", props.onKeyUp as (e: NeonEvent) => void)); }
+	if (props.onFocus !== null) { evts.push(evt("onFocus", props.onFocus as (e: NeonEvent) => void)); }
+	if (props.onBlur !== null) { evts.push(evt("onBlur", props.onBlur as (e: NeonEvent) => void)); }
+	if (props.onLayout !== null) { evts.push(evt("onLayout", props.onLayout as (e: NeonEvent) => void)); }
+	return evts;
+}
+
+interface ViewProps extends InteractiveProps {
 	children?: NeonNode | null;
 }
 
 export function View(props: ViewProps): NeonNode {
-	return element(<view class={props.class} style={props.style} ref={props.ref}>{props.children}</view>);
+	return primitive("view", props, [], interactiveEvents(props, []), props.children);
 }
 
 interface TextProps extends HostProps {
@@ -163,9 +180,11 @@ export function Pressable(props: PressableProps): NeonNode {
 	return element(<pressable class={props.class} style={props.style} ref={props.ref} onPress={press} onPointerDown={pointerDown} onPointerUp={pointerUp} onPointerLeave={pointerLeave} onPointerCancel={pointerLeave}>{props.children}</pressable>);
 }
 
-interface TextInputProps extends HostProps {
+interface TextInputProps extends InteractiveProps {
 	value?: Accessor<string> | null;
 	onChangeText?: ((t: string) => void) | null;
+	onKeyPress?: ((e: NeonEvent) => void) | null;
+	onSubmitEditing?: ((e: NeonEvent) => void) | null;
 }
 
 export function TextInput(props: TextInputProps): NeonNode {
@@ -174,11 +193,13 @@ export function TextInput(props: TextInputProps): NeonNode {
 		const value = props.value as () => string;
 		attrs.push(dynAttr("value", () => value()));
 	}
-	const evts: VEvent[] = [];
+	const evts: VEvent[] = interactiveEvents(props, []);
 	if (props.onChangeText !== null) {
 		const user = props.onChangeText as (t: string) => void;
 		evts.push(evt("onChangeText", (e: NeonEvent): void => { user(e.value); }));
 	}
+	if (props.onKeyPress !== null) { evts.push(evt("onKeyPress", props.onKeyPress as (e: NeonEvent) => void)); }
+	if (props.onSubmitEditing !== null) { evts.push(evt("onSubmitEditing", props.onSubmitEditing as (e: NeonEvent) => void)); }
 	return primitive("textinput", props, attrs, evts, null);
 }
 
