@@ -12,6 +12,9 @@ when (ios) {
 	@passL("-framework UIKit");
 	@passL("-framework Foundation");
 	@passL("-framework CoreGraphics");
+} else when (android) {
+	@compile("../android/bridge.c");
+	@passL("-llog");
 }
 
 import {
