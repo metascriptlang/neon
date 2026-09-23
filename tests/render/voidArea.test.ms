@@ -3,7 +3,6 @@ import { element } from "../../src/macros/ui/element";
 import { HostNode, MockNode, mockNode, mockHost, render, mockToString } from "../../src/render/host";
 import { createContext, useContext } from "../../src/render/context";
 import { Void, View, Text } from "../../src/components/primitives";
-import { createVoidHost } from "../../src/platform/void/host";
 
 test "Void mounts its children into the area the host opens" {
 	const root: MockNode = mockNode("root");
@@ -44,14 +43,4 @@ test "context and signals cross into the area" {
 	assert mockToString(root).indexOf("<text>blue1</text>") >= 0, "context read inside: " + mockToString(root);
 	setN(2);
 	assert mockToString(root).indexOf("<text>blue2</text>") >= 0, "signal tracked inside: " + mockToString(root);
-}
-
-test "a host without voidArea refuses Void and names the capability" {
-	const vh = createVoidHost();
-	assert vh.host.voidArea === null, "the void host opens no nested area";
-	let caught = "";
-	try {
-		render(element(<Void><View /></Void>), vh.host, vh.root as unknown as HostNode);
-	} catch (e) { caught = e.toString(); }
-	assert caught.includes("voidArea"), "error names the capability: " + caught;
 }

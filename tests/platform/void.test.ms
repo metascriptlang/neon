@@ -8,6 +8,7 @@ import { element } from "../../src/macros/ui/element";
 import { render, HostNode } from "../../src/render/host";
 import { createVoidHost, layoutPass, parseFlexStyle, DrawKind, Node2D } from "../../src/platform/void/host";
 import { Style } from "../../src/render/style";
+import { Void, View } from "../../src/components/primitives";
 import { HOST_MOVE_CONTRACT, RECONCILE_CONTRACT, hostMoveContract, reconcileContract } from "../render/hostContract";
 
 test "counter renders into Node2D tree with parsed flex styles" {
@@ -204,4 +205,14 @@ test "void removeAttr on style drops the parsed layout" {
 	assert st.width === null, "width gone";
 	assert st.flexGrow === null, "flexGrow gone";
 	h.removeAttr(node, "title");
+}
+
+test "the void host opens no nested area, so a Void inside it fails and names the capability" {
+	const vh = createVoidHost();
+	assert vh.host.voidArea === null, "voidArea is null";
+	let caught = "";
+	try {
+		render(element(<Void><View /></Void>), vh.host, vh.root as unknown as HostNode);
+	} catch (e) { caught = e.toString(); }
+	assert caught.includes("voidArea"), "error names the capability: " + caught;
 }
