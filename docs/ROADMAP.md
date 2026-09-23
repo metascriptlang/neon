@@ -71,6 +71,8 @@ In rough priority order, once the above is standing:
 - from the Nim original and not yet ported: `resource` / `http` / `async` (the MS idiom is
   `Promise<Result<T,E>>` + `try await`, not a port of the Nim shape), `error_boundary`, `config`
 - `VAttr.value: string | null` so `removeAttr` becomes reachable
+- Void as a native component beside `View`/`Text`, as a separate root on its own host, after the iOS host
+  (`RENDER-LAYERS.md` "Void as a native component — not built")
 - native timer for the void and terminal hosts (long-press runs on browser + mock only)
 - arrow-defined components and module-level snapshots under the phase-6 diagnostic
 
