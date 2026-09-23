@@ -43,6 +43,7 @@ Application UI world         native host (iOS, Android, desktop) or DOM host (br
 | Application UI, iOS / Android | native, React Native's model | `UIView`, `android.view.View` / `UILabel`, `TextView` |
 | Application UI, browser | DOM, react-native-web's model | `<div>` / `<span>` |
 | Void, on every platform, browser included | void host (`src/platform/void/host.ms`) | void2d rect / void2d text |
+| Terminal | terminal host (`src/platform/terminal/host.ms`) | ANSI lines; it speaks its own tags (`<box>`, `<text>`) today |
 
 Which of these exist is recorded in `PORT-STATUS.md` and `ROADMAP.md`, not here.
 
@@ -53,6 +54,19 @@ Which of these exist is recorded in `PORT-STATUS.md` and `ROADMAP.md`, not here.
    on each platform: Metal, D3D11, GL/GLES3, WebGPU, WebGL2. The browser treats a Void area as one
    more native component, a canvas, so the same Void code runs there. That it runs as fast as on
    iOS or Android is a goal, not a measurement.
+
+   **In the browser, Void is JavaScript that calls WebGPU directly**: MetaScript compiled with
+   `--target=js`, not wasm. Neon's DOM host and Void then share one JS runtime, so signals, context
+   and owners reach inside a `<Void>` exactly as they reach any other child, and no call crosses a
+   JS↔wasm boundary. This path is not built yet. Today's web build is wasm: sokol and the bridge
+   compiled by emscripten (`void/src/sokol/gpu.wms`, `--os=emcc`), shipped as a WebGPU artifact and a
+   WebGL2 artifact (`void/README.md`). Getting to JS needs:
+   - a GPU layer for the JS target, written in MetaScript over WebGPU, because sokol is C;
+   - JS versions of the C pieces under the text stack (fontstash, stb_truetype, the shaper void2d P3
+     brings);
+   - an answer for the WebGL2 floor: a JS path over WebGL2 too, or WebGPU only on the JS target;
+   - size budgets (`void/docs/VOID2D.md` guardrail 6) measured in JS bytes instead of wasm bytes;
+   - a measurement of what the CPU side (walk, layout, shaping) costs in JS against wasm.
 2. **A host for Neon's vocabulary.** Void understands `Text` and `View` and maps them to void2d. So
    a UI written for the browser or for React-Native-style mobile also runs inside Void, drawn with
    WebGPU into a canvas or a Metal view instead of with HTML or native components.
@@ -107,6 +121,4 @@ or its laziest.
   UI gives the `<Void>` tag, or one Yoga tree runs through the boundary.
 - **The Application UI world on the desktop.** Native widgets through Ion, or Ion's webview under the
   DOM host.
-- **Two runtimes in one browser page.** Neon's browser host runs on the JS backend, and Void's web
-  build is separate. The JS↔wasm crossing is unmeasured.
 - **Void's own tag vocabulary.** The void host maps every tag to a `group()` today.
