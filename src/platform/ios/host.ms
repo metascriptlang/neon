@@ -62,7 +62,7 @@ export function layoutGetYg(this n: IosNode): Ptr<void> | null { return n.yg; }
 export function layoutSetYg(this n: IosNode, yg: Ptr<void> | null): void { n.yg = yg; }
 export function layoutSetFrame(this n: IosNode, x: float32, y: float32, w: float32, h: float32): void {
 	n.x = x; n.y = y; n.w = w; n.h = h;
-	if (n.view !== null) {
+	if (n.view !== null && n !== root) {
 		niSetFrame(n.view, x, y, w, h);
 	}
 }
