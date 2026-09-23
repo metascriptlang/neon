@@ -5,6 +5,8 @@ import sys
 import time
 
 PACKAGE = "dev.neon.NeonCounter"
+CHURN_PACKAGE = "dev.neon.NeonChurn"
+CHURN_DONE = "churned 20000"
 ACTIVITY = PACKAGE + "/dev.metascript.app.MainActivity"
 LABELS = ["-", "reset", "+"]
 PRESS_CARD = "~/metascript/.inbox/compiler/2026-09-23-design-android-java-handoff.md"
@@ -134,7 +136,29 @@ def lane():
     press_plus(texts, "landscape-pressed", "2", "even", True, launched)
 
 
+def churn():
+    adb("shell", "am", "force-stop", CHURN_PACKAGE)
+    adb("shell", "am", "start", "-W", "-n", CHURN_PACKAGE + "/dev.metascript.app.MainActivity")
+    deadline = time.time() + 120
+    while time.time() < deadline:
+        adb("shell", "uiautomator", "dump", "/sdcard/neon-lane.xml")
+        xml = adb("shell", "cat", "/sdcard/neon-lane.xml")
+        texts = re.findall(r"text=\"([^\"]*)\"[^>]*?package=\"" + re.escape(CHURN_PACKAGE) + "\"", xml)
+        alive = adb("shell", "pidof", CHURN_PACKAGE, check=False).strip()
+        if CHURN_DONE in texts and alive:
+            print("NEON_ANDROID churn pid=%s texts=%s" % (alive, [t for t in texts if t]))
+            return 0
+        if not alive:
+            break
+        time.sleep(2)
+    fatal = [line[:300] for line in adb("logcat", "-d", "*:F", check=False).splitlines() if "Abort message" in line or " F Neon" in line]
+    print("FAIL: android churn did not reach %r; fatal log: %s" % (CHURN_DONE, fatal[-3:]), file=sys.stderr)
+    return 1
+
+
 def main():
+    if len(sys.argv) > 2 and sys.argv[2] == "churn":
+        return churn()
     mode = adb("shell", "cmd", "window", "user-rotation").strip()
     try:
         lane()
