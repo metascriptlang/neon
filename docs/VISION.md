@@ -50,7 +50,7 @@ Application UI world         native host (iOS, Android, desktop) or DOM host (br
 ## Across the boundary
 
 The developer sees one tree. Inside, a `<Void>` is a separate root on the void host
-(`RENDER-LAYERS.md` "Void as a native component — not built"). These rules are what keep that
+(`RENDER-LAYERS.md` "Void as a native component"). These rules are what keep that
 separate root invisible.
 
 - **One owner tree across the boundary.** The inner root is created under the owner of the
@@ -86,11 +86,11 @@ for free. Without these, face 2 below cannot carry a real app's UI.
 - **Accessibility.** A GPU surface has no accessibility tree, so text and controls drawn in Void
   are invisible to a screen reader. Void keeps a semantics tree beside its node tree and mirrors
   it to the platform's accessibility API, as Flutter does.
-- **Text input.** `TextInput`, selection, clipboard and IME inside a Void area are Void's work.
-  Void places the IME candidate window itself (Ion already provides
-  `renderSurfaceSetImeRect`).
-- **Focus.** Keyboard focus and tab order run through the boundary in both directions, from native
-  views into a Void area and back out.
+- **Text input.** `TextInput` with committed and composing text runs inside a Void area on the
+  void host, which places the IME candidate window at the caret (`renderSurfaceSetImeRect`).
+  Selection and clipboard are still missing.
+- **Focus.** Focus inside one Void area exists; keyboard focus and tab order running through the
+  boundary in both directions, from native views into a Void area and back out, do not.
 - **A fallback chain.** The chain is WebGPU → WebGL2 → no GPU. What a Void area shows with no GPU
   at all, and what it renders server-side (`src/render/ssr.ms`), have to be decided, not left to
   fail silently.
@@ -131,7 +131,7 @@ Which of these exist is recorded in `PORT-STATUS.md` and `ROADMAP.md`, not here.
    WebGPU into a canvas or a Metal view instead of with HTML or native components.
 
 The mechanics of face 1, meaning what exists on Void's side and what is missing on Neon's, are in
-`RENDER-LAYERS.md` "Void as a native component — not built".
+`RENDER-LAYERS.md` "Void as a native component".
 
 ## Many Void areas in one app
 
@@ -163,17 +163,19 @@ or its laziest.
   Application UI redraws on demand, when something changed. A Void area is on demand or continuous.
   An idle app draws nothing.
 - **A Void area's frame never passes through reconcile.** It has its own clock. The host drives Void
-  (`voidEmbedFrame`, the idiom of `void/src/sokol/bridgeIos.m` and `bridgeAndroid.c`), and Void
-  owns no loop and no window. A game keeps control of simulation step, present timing and pacing.
+  (`viewFrame` on one view per area, `void/docs/EMBED.md`), and Void owns no loop and no window.
+  A game keeps control of simulation step, present timing and pacing.
 - **What a game needs is exposed through Neon, not around it:** raw and relative pointer input,
   pointer lock, exclusive fullscreen, vsync mode. Input reaches a Void area without a per-event
   allocation at high polling rates.
 - **Ion treats a surface and a webview alike:** each is an element with a frame that layout sets,
   a z-order and its own input region. Today only the webview has a frame (`ionWebviewSetFrame`).
-  A render surface always fills the window (`ionRenderSurfaceSyncFrame`), its input sink is one
-  per process (`ionRenderSurfaceSetInputSink`), and Ion has no frame clock: the MS loop polls
-  (`ion/docs/RENDER-SURFACE.md` "Driving the renderer"). An app that is one full-window `<Void>`
-  does not need the first two. Everything else does.
+  A render surface always fills the window (`ionRenderSurfaceSyncFrame`) and its input sink is one
+  per process (`ionRenderSurfaceSetInputSink`). Ion's frame clock exists: a surface declares
+  `FrameOnDemand` or `FrameContinuous` and draws on `onSurfaceFrame` (`ion/docs/RENDER-SURFACE.md`).
+  An app that is one full-window `<Void>` does not need the first two, and it runs today on Windows:
+  `runWindow` in `src/platform/ion/window.ms`, measured in `ROADMAP.md` "Recently done". Everything
+  else does.
 - **Audio never goes through the tree.** It runs on the device's own thread; Neon only carries
   control.
 
