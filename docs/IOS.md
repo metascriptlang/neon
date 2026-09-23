@@ -210,10 +210,22 @@ Xcode 26.6 and the same iPhone 17 Pro simulator:
   hierarchy changed from one tagged child to none, and a second dispatch to the
   removed tag was inert.
 
-Orientation remains unproved. The generated target warns that it does not declare
-all interface orientations, and simulator rotation automation was denied macOS
-Accessibility permission. The Ion orientation metadata and a rotated screenshot
-remain part of the mobile-foundation acceptance, not a claim of this proof.
+### 6.3 Measured rotation proof
+
+Measured 2026-09-23 on Neon `4d2481c`, Ion `a6cce63`, installed compiler `d757c7e1`,
+Xcode 26.6 and the same simulator, with an XCUITest driving one launched process
+portrait → landscape → portrait:
+
+- the process kept one PID and native presses changed the counter `0 → 1` in
+  landscape and `1 → 2` after returning to portrait;
+- every counter static text lay inside the safe area `(0,62;402,778)` in portrait and
+  `(62,0;750,382)` in landscape; the title frame was `(137,86;128,24)` in portrait and
+  `(373,24;128,24)` in landscape, centred at x=437;
+- before `4d2481c` the root's Yoga frame reset the container origin to `(0,0)`: the
+  portrait title sat at y=24 under the status bar and the landscape column centred at
+  x=375;
+- screenshots matched the frames. The `-`, `reset` and `+` pressables render without a
+  visible label.
 
 ## 7. What the MetaScript port does differently
 
@@ -234,7 +246,8 @@ remain part of the mobile-foundation acceptance, not a claim of this proof.
   init from default props, `RCTTextInputComponentView.mm:70`).
 - **Safe area and resize**: UIKit owns the container frame through
   `safeAreaLayoutGuide`; `viewDidLayoutSubviews` notifies `createIosHost`, which
-  refreshes the root dimensions and reruns Yoga only when the frame changes.
+  refreshes the root dimensions and reruns Yoga only when the frame changes. The root's
+  Yoga frame is recorded but never applied to the container.
 
 ## 8. Sources — what was and was not verified
 
