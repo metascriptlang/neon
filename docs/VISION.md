@@ -17,15 +17,18 @@ as if a tree existed, without keeping a VNode tree at runtime: a `NeonNode` is a
 Components, hooks, props and reactivity work the same way on every host, because the macro targets
 the `Host` contract (`src/render/hostTypes.ms`) and never a platform.
 
-## Two worlds, nested one way
+## Worlds, nested one way
 
 ```
 Application UI world         native host (iOS, Android, desktop) or DOM host (browser)
   View = UIView / android.view.View / <div>      Text = UILabel / TextView / <span>
-  └─ <Void>                  a tag like View, laid out like View
-       Void world            one GPU surface; Void draws every pixel in it, as Flutter does on its canvas
-       View = void2d rect                         Text = void2d text
-       + Void's own tags: void2d, void3d, shader, …
+  ├─ <Void>                  a tag like View, laid out like View
+  │    Void world            one GPU surface; Void draws every pixel in it, as Flutter does on its canvas
+  │    View = void2d rect                         Text = void2d text
+  │    + Void's own tags: void2d, void3d, shader, …
+  └─ <WebView>               a tag like View, laid out like View
+       Web world             an embedded browser engine (WebView2, WKWebView) with its own JS runtime;
+                             it talks to the app over IPC, as Tauri does
 ```
 
 - **A component is written once.** A component built from `Text` and `View` runs on iOS, Android, the
@@ -34,6 +37,10 @@ Application UI world         native host (iOS, Android, desktop) or DOM host (br
 - **Nesting goes one way: Application UI → Void, never Void → Application UI.** A Void area holds
   only Void components. A game's HUD is written with `Text` and `View`, but inside the Void area
   they are void2d. No native view and no DOM element ever lives inside a GPU surface.
+- **An embedded browser is one more element of the Application UI world.** `<WebView>` sits beside
+  `View` and `<Void>`, and layout places it. Like a native view, it never lives inside a Void area.
+  On the desktop this is Ion's webview laid out as an element (`ionWebviewSetFrame` in
+  `ion/src/platform/bridge.h`: once it is called, native layout owns the frame).
 - **A game is an app whose only child is one `<Void>` filling the window.** It uses the same
   interface as an app, with no separate mode for games.
 - **An application UI can live entirely in Void,** the way Flutter does, and that is also an
@@ -62,6 +69,14 @@ separate root invisible.
   **not** get the same pixels: outside Void, the platform draws. Text can **wrap differently**,
   because the OS measures text outside Void and Void's own shaper measures it inside. Only a
   shared font file narrows that gap.
+
+**A `<WebView>` is not a transparent root, and the doc does not pretend it is.** A Void area runs
+in the same process, the same runtime and the same owner tree, so the rules above can hold. A
+webview runs another engine with its own JS runtime: no signal, context or owner reaches into it.
+Everything crosses as a message over IPC, as in Tauri. Neon's DOM host running inside a webview is
+a second Neon app joined to the first by IPC, not one shared tree. This boundary cannot be removed,
+so Neon makes it explicit: the `<WebView>` element carries the channel, and nothing pretends the
+content inside belongs to the outer tree.
 
 ## What a Void area owes the app
 
@@ -153,6 +168,12 @@ or its laziest.
 - **What a game needs is exposed through Neon, not around it:** raw and relative pointer input,
   pointer lock, exclusive fullscreen, vsync mode. Input reaches a Void area without a per-event
   allocation at high polling rates.
+- **Ion treats a surface and a webview alike:** each is an element with a frame that layout sets,
+  a z-order and its own input region. Today only the webview has a frame (`ionWebviewSetFrame`).
+  A render surface always fills the window (`ionRenderSurfaceSyncFrame`), its input sink is one
+  per process (`ionRenderSurfaceSetInputSink`), and Ion has no frame clock: the MS loop polls
+  (`ion/docs/RENDER-SURFACE.md` "Driving the renderer"). An app that is one full-window `<Void>`
+  does not need the first two. Everything else does.
 - **Audio never goes through the tree.** It runs on the device's own thread; Neon only carries
   control.
 
@@ -163,8 +184,10 @@ or its laziest.
   and nothing overlaps it.
 - **One Yoga tree or two.** Either the Void world runs its own layout from the size the Application
   UI gives the `<Void>` tag, or one Yoga tree runs through the boundary.
-- **The Application UI world on the desktop.** Native widgets through Ion, or Ion's webview under the
-  DOM host.
+- **What `View` and `Text` are on the desktop.** The desktop Application UI world is a native host
+  on an Ion window, and a webview is one of its elements, not the root. What `View` and `Text`
+  map to there is open: AppKit, Win32 or GTK widgets, or nothing yet while the first desktop apps
+  are entirely Void.
 - **Void's own tag vocabulary.** The void host maps every tag to a `group()` today.
 - **One animation model for both worlds.** Native animation runs on the platform compositor's
   thread, while Void animates on its own clock. The Animation API in `ROADMAP.md` has to drive
