@@ -35,6 +35,49 @@ Application UI world         native host (iOS, Android, desktop) or DOM host (br
   they are void2d. No native view and no DOM element ever lives inside a GPU surface.
 - **A game is an app whose only child is one `<Void>` filling the window.** It uses the same
   interface as an app, with no separate mode for games.
+- **An application UI can live entirely in Void,** the way Flutter does, and that is also an
+  app-level choice. It buys the same pixels everywhere. It costs native look and feel, and it
+  depends on everything in "What a Void area owes the app" below, accessibility first.
+
+## Across the boundary
+
+The developer sees one tree. Inside, a `<Void>` is a separate root on the void host
+(`RENDER-LAYERS.md` "Void as a native component — not built"). These rules are what keep that
+separate root invisible.
+
+- **One owner tree across the boundary.** The inner root is created under the owner of the
+  `<Void>` element. Signals, memos, context and theme read inside a Void area track and update
+  exactly as they do outside it. The outer owner's cleanup disposes the inner root and releases
+  its surface. React Three Fiber shows what happens otherwise: React context does not cross a
+  reconciler root there, and every provider has to be bridged by hand. Neon has one reactive
+  runtime, so it has no reason to repeat that.
+- **One change, one displayed frame.** A signal that updates a native label and a void2d text
+  shows both changes in the same displayed frame. Otherwise the two worlds visibly drift apart,
+  the tell of a boundary. That takes one commit that spans the platform compositor's transaction
+  and Void's present (on iOS, `CAMetalLayer.presentsWithTransaction`).
+- **What "written once" guarantees.** The same component in two worlds gets the same **layout**,
+  because Yoga computes both. It gets the same **style** for every property both worlds support,
+  and a property one world lacks is an error at the declaration, not a silent drop. It does
+  **not** get the same pixels: outside Void, the platform draws. Text can **wrap differently**,
+  because the OS measures text outside Void and Void's own shaper measures it inside. Only a
+  shared font file narrows that gap.
+
+## What a Void area owes the app
+
+A Void area draws every pixel itself, so it must also provide what the platform gives a native view
+for free. Without these, face 2 below cannot carry a real app's UI.
+
+- **Accessibility.** A GPU surface has no accessibility tree, so text and controls drawn in Void
+  are invisible to a screen reader. Void keeps a semantics tree beside its node tree and mirrors
+  it to the platform's accessibility API, as Flutter does.
+- **Text input.** `TextInput`, selection, clipboard and IME inside a Void area are Void's work.
+  Void places the IME candidate window itself (Ion already provides
+  `renderSurfaceSetImeRect`).
+- **Focus.** Keyboard focus and tab order run through the boundary in both directions, from native
+  views into a Void area and back out.
+- **A fallback chain.** The chain is WebGPU → WebGL2 → no GPU. What a Void area shows with no GPU
+  at all, and what it renders server-side (`src/render/ssr.ms`), have to be decided, not left to
+  fail silently.
 
 ## The hosts under the umbrella
 
@@ -122,3 +165,10 @@ or its laziest.
 - **The Application UI world on the desktop.** Native widgets through Ion, or Ion's webview under the
   DOM host.
 - **Void's own tag vocabulary.** The void host maps every tag to a `group()` today.
+- **One animation model for both worlds.** Native animation runs on the platform compositor's
+  thread, while Void animates on its own clock. The Animation API in `ROADMAP.md` has to drive
+  both, with the same timing curve.
+- **Shared resources.** An image or font used in both worlds is decoded and loaded twice today.
+  Text that has to match needs the same font file on both sides.
+- **Threads.** UIKit runs on the main thread, and Void may render on its own thread. A reactive
+  update then crosses a thread boundary, and the one-frame rule above has to hold across it.
