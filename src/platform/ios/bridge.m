@@ -1,6 +1,6 @@
 #import <UIKit/UIKit.h>
 #import <Foundation/Foundation.h>
-#include "bridge.h"
+#include "../native/bridge.h"
 
 static msClosure s_mount;
 static msClosure s_touch;
@@ -203,3 +203,7 @@ void niSetTouchHandler(msClosure handler) {
 
 int niLastTouchTag(void) { return g_lastTag; }
 int niLastTouchPhase(void) { return g_lastPhase; }
+
+void niSetTeardownHandler(msClosure handler) {
+	(void)handler;
+}

@@ -1,8 +1,9 @@
 # iOS Host
 
 Status: the first UIKit host and tracked Ion-generated integration app are implemented.
-`src/platform/ios/host.ms` owns the reusable host and lifecycle handoff;
-`examples/ios/` is the generated-project consumer. This document keeps the measured
+`src/platform/native/host.ms` owns the host and lifecycle handoff shared with Android;
+`src/platform/ios/bridge.m` is its UIKit bridge; `examples/ios/` is the generated-project
+consumer. This document keeps the measured
 boundary and the reference research that code cannot express.
 
 Two decisions still shape the platform:
@@ -165,8 +166,8 @@ examples/ios/project.ms
 ```
 
 There is no PBX inventory of compiler runtime, Neon bridge or Yoga sources. The ownership
-seams are `Target.iosApp` and `iosScript` in Ion, `createIosHost` and `registerAndRun` in
-`src/platform/ios/host.ms`, and the process bootstrap in `examples/ios/entry.m`. Neon
+seams are `Target.iosApp` and `iosScript` in Ion, `runApp` in
+`src/platform/native/host.ms`, and the process bootstrap in `examples/ios/entry.m`. Neon
 remains the sole owner of `UIApplicationMain`; Ion imports neither Neon nor Yoga.
 
 ### 6.1 Measured generated-project proof
@@ -256,7 +257,7 @@ portrait → landscape → portrait:
   `TextInput` component from a static `multiline` prop (RN picks the backing control at
   init from default props, `RCTTextInputComponentView.mm:70`).
 - **Safe area and resize**: UIKit owns the container frame through
-  `safeAreaLayoutGuide`; `viewDidLayoutSubviews` notifies `createIosHost`, which
+  `safeAreaLayoutGuide`; `viewDidLayoutSubviews` notifies `createNativeHost`, which
   refreshes the root dimensions and reruns Yoga only when the frame changes. The root's
   Yoga frame is recorded but never applied to the container.
 

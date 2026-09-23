@@ -3,17 +3,17 @@ import { Style } from "../../render/style";
 import { FlexStyle, FlexDirection, Justify, Align, PositionType, Wrap, Display, Overflow } from "../../../../yoga/src/index";
 import { asFlexStyleBody } from "../../macros/style/fields";
 
-export enum IosElementKind {
+export enum NativeElementKind {
 	View,
 	Text,
 }
 
-interface IosEventRoute {
+interface NativeEventRoute {
 	name: string;
 	handler: (e: NeonEvent) => void;
 }
 
-export interface IosEventRegistry {
+export interface NativeEventRegistry {
 	add: (tag: int32, name: string, handler: (e: NeonEvent) => void) => void;
 	remove: (tag: int32) => void;
 	dispatch: (tag: int32, phase: int32, x: number, y: number) => boolean;
@@ -32,17 +32,17 @@ function dim(v: number | string | null): float32 | string | null {
 
 asFlexStyleBody(0);
 
-export function iosElementKind(tag: string): IosElementKind {
-	return tag === "text" ? IosElementKind.Text : IosElementKind.View;
+export function nativeElementKind(tag: string): NativeElementKind {
+	return tag === "text" ? NativeElementKind.Text : NativeElementKind.View;
 }
 
-export function iosFlexStyle(style: Style, isText: boolean): FlexStyle {
+export function nativeFlexStyle(style: Style, isText: boolean): FlexStyle {
 	const flex = asFlexStyle(style);
 	if (!isText && flex.flexDirection === null) { flex.flexDirection = "column"; }
 	return flex;
 }
 
-function fireRoutes(routes: IosEventRoute[], type: string, x: number, y: number): boolean {
+function fireRoutes(routes: NativeEventRoute[], type: string, x: number, y: number): boolean {
 	let fired = false;
 	for (const route of routes) {
 		if (eventType(route.name) !== type) { continue; }
@@ -55,13 +55,13 @@ function fireRoutes(routes: IosEventRoute[], type: string, x: number, y: number)
 	return fired;
 }
 
-export function createIosEventRegistry(): IosEventRegistry {
-	const byTag = new Map<int32, IosEventRoute[]>();
+export function createNativeEventRegistry(): NativeEventRegistry {
+	const byTag = new Map<int32, NativeEventRoute[]>();
 
 	function add(tag: int32, name: string, handler: (e: NeonEvent) => void): void {
-		let routes: IosEventRoute[];
+		let routes: NativeEventRoute[];
 		if (byTag.has(tag)) {
-			routes = byTag.get(tag) as IosEventRoute[];
+			routes = byTag.get(tag) as NativeEventRoute[];
 		} else {
 			routes = [];
 			byTag.set(tag, routes);
@@ -74,7 +74,7 @@ export function createIosEventRegistry(): IosEventRegistry {
 
 	function dispatch(tag: int32, phase: int32, x: number, y: number): boolean {
 		if (!byTag.has(tag)) { return false; }
-		const routes = byTag.get(tag) as IosEventRoute[];
+		const routes = byTag.get(tag) as NativeEventRoute[];
 		if (phase === 0) { return fireRoutes(routes, "pointerdown", x, y); }
 		if (phase === 1) { return fireRoutes(routes, "pointerup", x, y); }
 		if (phase === 2) { return fireRoutes(routes, "press", x, y); }
