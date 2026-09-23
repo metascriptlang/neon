@@ -14,13 +14,25 @@
 export interface NeonEvent {
 	type: string;   // "click", "input", "keydown" — the JSX name with "on" stripped
 	value: string;  // the target's text value where it has one
-	x: number;      // pointer position in host coordinates
+	x: number;      // pointer position in host coordinates; the layout origin on onLayout
 	y: number;
-	key: string;    // key name for keyboard events
+	width: number;  // the layout size on onLayout
+	height: number;
+	key: string;    // logical key: "a", "A", "Enter"
+	code: string;   // physical key, W3C KeyboardEvent.code: "KeyA", "Enter"
+	altKey: boolean;
+	ctrlKey: boolean;
+	metaKey: boolean;
+	shiftKey: boolean;
+	repeat: boolean;
+	isComposing: boolean;
 }
 
 export function neonEvent(type: string): NeonEvent {
-	return { type, value: "", x: 0, y: 0, key: "" };
+	return {
+		type, value: "", x: 0, y: 0, width: 0, height: 0, key: "", code: "",
+		altKey: false, ctrlKey: false, metaKey: false, shiftKey: false, repeat: false, isComposing: false,
+	};
 }
 
 // "onPress" → "click". Every host derives the type the same way, so a handler

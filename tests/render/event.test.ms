@@ -27,6 +27,10 @@ test "a fresh event carries its type and zero everywhere else" {
 	assert e.key === "", "key defaults empty";
 	assert e.x === 0, "x defaults 0";
 	assert e.y === 0, "y defaults 0";
+	assert e.width === 0 && e.height === 0, "layout size defaults 0";
+	assert e.code === "", "code defaults empty";
+	assert !e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey, "modifiers default up";
+	assert !e.repeat && !e.isComposing, "repeat and isComposing default false";
 }
 
 test "a handler on a jsx element receives the event" {
