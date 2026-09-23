@@ -17,10 +17,20 @@ cannot be reproduced is re-measured and rewritten, never corrected on top.
 ---
 ## §3 — Neon-side and environment
 
-No open Neon-side bug. Eight sites are parked on a compiler card; each names the card and the
+No open Neon-side bug. The sites below are parked on a compiler card; each names the card and the
 site, and nothing is worked around in `src/`. Rows closed before 2026-09-20 were dropped with
 §2 — they are in this file's history at `git show c00bd2b:BUGS.md`, and the invariants that
 outlived them were moved to the head of the test that pins each one.
+
+- **PARKED 2026-09-23 — a press on Android never reaches the host.** Not a compiler bug but a
+  missing compiler handoff: receiving a touch on an Android `View` needs a Java
+  `View.OnTouchListener`, JNI cannot define one, and Ion's generated bootstrap (`NativeApp`, five
+  native methods) has no input channel. Decided with the user: Neon declares its Java and keep
+  rule, msc hands them to Gradle beside the `.so` (wry's model). Brief:
+  `~/metascript/.inbox/compiler/2026-09-23-design-android-java-handoff.md`; Ion's half:
+  `~/metascript/.inbox/ion/2026-09-23-android-java-handoff.md`. Parked at
+  `src/platform/android/bridge.c` `niViewSetTag` and at the `portrait-pressed` step of
+  `bash tests/android/run.sh`, which fails naming the card.
 
 - **PARKED 2026-09-21 — a `throw` of a non-`Error` value carries its message on C and loses it on
   `--target=js`.** Not Neon's: five lines with no Neon import print `msg=[bare 7]` on C and
