@@ -23,6 +23,7 @@ import { onCleanup } from "../core/cleanup";
 import { Accessor, accessor } from "../core/signal";
 import { element } from "../macros/ui/element";
 import { NeonNode, VAttr, VEvent, RefFn, hostElement, evt, dynAttr } from "../render/node";
+import { Host, HostNode, VoidArea } from "../render/hostTypes";
 
 interface HostProps {
 	style?: Accessor<Style> | null;
@@ -179,4 +180,20 @@ export function TextInput(props: TextInputProps): NeonNode {
 		evts.push(evt("onChangeText", (e: NeonEvent): void => { user(e.value); }));
 	}
 	return primitive("textinput", props, attrs, evts, null);
+}
+
+interface VoidProps extends HostProps {
+	children?: NeonNode | null;
+}
+
+export function Void(props: VoidProps): NeonNode {
+	const kids = props.children;
+	const area: NeonNode = (host: Host, node: HostNode, before: HostNode | null): void => {
+		const open = host.voidArea;
+		if (open === null) { throw "<Void> needs a host with the voidArea capability, and this host has none"; }
+		const a = (open as (n: HostNode) => VoidArea)(node);
+		onCleanup((): void => { a.release(); });
+		if (kids !== null) { (kids as NeonNode)(a.host, a.root, null); }
+	};
+	return primitive("void", props, [], [], area);
 }
