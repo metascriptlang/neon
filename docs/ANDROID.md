@@ -1,8 +1,12 @@
-# Android Host — research notes for the port
+# Android Host
 
-Status: **research only**. No `src/platform/android/` exists (ROADMAP "Next" #5). Everything
-below was read from the named checkouts on 2026-09-21 and carries `file:line` evidence;
-judgment calls are marked as such. The two decisions these notes feed:
+Status: the counter renders, rotates, backgrounds and tears down on the Android 36 emulator
+through an Ion-generated Gradle project; **a press does not reach the host yet** (§9, parked on
+`~/metascript/.inbox/compiler/2026-09-23-design-android-java-handoff.md`). The host is shared
+with iOS: `src/platform/native/host.ms` over one bridge per platform, `src/platform/android/bridge.c`
+here. `examples/android/` is the generated-project consumer and `bash tests/android/run.sh` the
+lane. §1–§8 are the research the port started from, read on 2026-09-21 with `file:line`
+evidence; judgment calls are marked as such. The two decisions these notes feed:
 
 - **Boilerplate (gradle project, manifest, JNI packaging) comes from ion's generator**, not
   from a neon-side generator — the Nim original's generator is the inventory, not the plan.
@@ -127,9 +131,9 @@ preserve gesture momentum (`NeonBridge.java:620-810`);
 `removeElement`/`clearChildren` must remember the whole ladder: remove from global handler
 maps (`cleanupHandlerMaps`, `android.nim:422`), free yoga nodes recursively, release JNI
 global refs (`AndroidView_destroy`). The Nim original's iOS twin has an explicit TODO that
-general disposal (For-list reconciliation) is unwired. **Neon's Owner tree already runs
-`onCleanup` on unmount** — the mobile host registers its ladder there and the bug class is
-designed out. Judgment, but grounded in both sides.
+general disposal (For-list reconciliation) is unwired. In Neon the ladder is one host
+function, `releaseNativeTree` in `src/platform/native/host.ms`, reached from `removeChild` and
+from teardown; §9 has what pins it.
 
 ## 6. Boilerplate inventory — what ion must generate
 
@@ -146,20 +150,20 @@ The Nim generator (`src/cli/generators/android.nim`) emits into `platforms/andro
 | `cpp/CMakeLists.txt` | one SHARED lib = neon_jni.c + bridges + Nim `@*.c` + yoga sources |
 | `cpp/neon_jni.c` | JNI entries → `NeonBridge_initJNI` + `neon_init` + `neon_init_async` / `neon_render` |
 
-**Ion today** (verified in the main session): the generator is
-`~/metascript/ion/tooling/generator/` — typed `project.ms` manifest → resolve → deterministic
-emitters, currently exactly one: `xcode.ms`, which **rejects any non-macOS target**
-(`xcode.ms:26`). The model's `enum Platform { Macos, Ios }` has **no Android**
-(`description.ms:1`).
+Ion now generates the project (Ion `6e3b88e`, `docs/PROJECT-GENERATOR.md` §Android
+application): Gradle wrapper, manifest, and a package-stable bootstrap
+`dev.metascript.app.NativeApp` whose five native methods (`start`, `resize`, `pause`, `resume`,
+`destroy`) `bridge.c` implements; msc builds `libmetascript.so` with no CMake inventory.
 
-**Gap for Android, in ion**: (1) widen `Platform` with `Android`; (2) write a gradle emitter
-beside `xcode.ms` — plain-text templates, strictly simpler than the positional-PBX emitter
-that already exists; (3) a plugin or target flag carrying the JNI package name so the
-generated Java satisfies the `Java_<pkg>_…` symbol names; (4) the compile phase stays the
-shape ion already ships — a shell/gradle step invoking `msc build` (the macOS emitter does
-exactly this, `xcode.ms:43`). Ion imports neither neon nor void by design
-(`ion/CLAUDE.md:3,49`) — the Android host must therefore keep every ion-facing surface as
-files + entry points, never a neon import.
+What the table above has and Ion's bootstrap does not: `NeonBridge.java`. Every Java→native
+event of the reference (touch, text, scroll, image, gestures, the async runtime) goes through a
+listener class in that file, and JNI cannot define a Java class. Rejected with the user on
+2026-09-23: a listener in Ion's bootstrap (puts Neon's bridge in Ion), a Neon Gradle module (a
+second build description), a runtime-loaded dex, NativeActivity (only for self-painted
+surfaces). Chosen: Neon declares its Java and keep rule and msc hands them to Gradle beside the
+`.so` — the shape of wry's `build.rs` + `WRY_ANDROID_KOTLIN_FILES_OUT_DIR` (tauri-apps/wry
+`build.rs`). A `/tmp` probe proved it on the emulator, keep rule included; the brief with the
+numbers is the card named in the status line.
 
 ## 7. What the MetaScript port does differently
 
@@ -200,3 +204,51 @@ pipeline and gesture listener bodies, `animation.nim:240-346`, `async.nim` bodie
 platform `CLAUDE.md` in the reference is stale on paths (`out/android/NeonApp` vs actual
 `platforms/android/`) and on `NeonSetButtonCallback` (no counterpart in code — iOS CLAUDE.md
 only). Nothing above rests on an unverified region.
+
+## 9. Measured on the emulator
+
+```bash
+ANDROID_SERIAL=emulator-5554 bash tests/android/run.sh
+```
+
+generates `examples/android/project.ms` and `tests/android/churn/project.ms` with Ion into a
+fresh temporary directory, builds the counter Debug and Release (Release signed with a
+throwaway key) and the churn app Debug, installs both Debug apps and drives them with
+`tests/android/counter.py`. It refuses an `ANDROID_SERIAL` that is not `emulator-*`. The
+visible frame it checks against is read from `dumpsys window` (status bar, navigation bar,
+display cutout), not from the host. It waits for two identical `uiautomator` dumps before
+each check: a dump taken right after a rotation can show the rotated window with the old
+container frame.
+
+Measured 2026-09-23 on code/test tree `3303aed1c4e24f50cc358cb938bf0e89eae74f80`, msc v0.2.55 build `e5f0ec68`, Ion `5b26122`,
+Gradle 9.3.1, AGP 9.1.0, NDK 28.0.13004108, Zulu 17.0.18, Pixel_9_Pro emulator on Android 36:
+
+- the command exits 1 at the parked step and nowhere before it. One process (the same PID)
+  went portrait → landscape → portrait → home → launcher → foreground. Every text, `-`,
+  `reset` and `+` included, lay inside the visible frame: `(0,156;1280,2784)` in portrait and
+  `(156,156;2856,1208)` in landscape, where the display cutout takes the left 156 px. The
+  title was `[453,228][825,309]` in portrait and `[1320,228][1692,309]` in landscape. A tap
+  on `+` left the counter at `0`: there is no touch listener to receive it (status line);
+- churn: 20000 cycles of three `Pressable` rows mounted and removed (120 000 native views,
+  each a JNI global ref) finished with the app alive. With `DeleteGlobalRef` removed from
+  `niViewRelease` it aborts with `JNI ERROR (app bug): global reference table overflow
+  (max=51200)`;
+- with the root guard in `layoutSetFrame` reverted (the iOS fix `4d2481c`), the lane fails at
+  `portrait-initial`: the title sits at `[453,72][825,153]`, under the status bar;
+- the Release APK installs and launches with the same six texts at the same bounds;
+- `libmetascript.so` Debug 1 597 600 bytes, Release 1 179 176; both need only `liblog`,
+  `libm`, `libdl`, `libc` (Yoga links libc++ statically) and load at 16 KiB alignment
+  (`0x4000`). APKs: Debug 2 455 796 bytes, Release 1 217 970.
+
+The device-independent half is `tests/platform/nativeHost.test.ms`, on the C mock bridge in
+`tests/platform/nativeBridgeMock.c`: removing a keyed row releases exactly its two views and
+makes its tag inert, teardown releases every created view, and a remount starts clean; a
+second release of one view aborts the mock. With the route removal or the view release in
+`releaseNativeTree` dropped, it fails on the matching assertion. The same run exposed that a
+closure handed to C is borrowed: `runApp` keeps the app in module state because Android calls
+`start` after `MsMain` has returned.
+
+Not measured: a physical device (slice 8), a press, `pause`/`resume` beyond what the
+background step shows, and `destroy` followed by a second `start` on a device (the mock
+remount covers the host side only). Yoga nodes are freed through `freeLayoutTree` in the same
+two paths, but no test counts them.
