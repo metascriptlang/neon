@@ -17,7 +17,14 @@ cannot be reproduced is re-measured and rewritten, never corrected on top.
 ---
 ## §3 — Neon-side and environment
 
-No open Neon-side bug. Eight sites are parked on a compiler card; each names the card and the
+- **OPEN 2026-09-23 — on iOS a string child of `<Pressable>` renders no label.** The counter's
+  `-`, `reset` and `+` pressables (`examples/components/counter.ms:25-27`) show as empty rounded
+  rectangles, and XCUITest `app.staticTexts` lists only `Neon Counter`, the value and the parity
+  text. Measured on Neon `4d2481c`, msc v0.2.55 build `d757c7e1`, iPhone 17 Pro simulator iOS
+  26.5, with the ephemeral `testRotate2` probe of `docs/IOS.md` §6.3. The string path under a
+  non-Text parent is `materializeString` in `src/platform/ios/host.ms`; not yet reduced.
+
+One open Neon-side bug, above. Eight sites are parked on a compiler card; each names the card and the
 site, and nothing is worked around in `src/`. Rows closed before 2026-09-20 were dropped with
 §2 — they are in this file's history at `git show c00bd2b:BUGS.md`, and the invariants that
 outlived them were moved to the head of the test that pins each one.
