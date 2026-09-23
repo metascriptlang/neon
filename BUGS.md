@@ -42,20 +42,6 @@ outlived them were moved to the head of the test that pins each one.
   Card: `~/metascript/.inbox/compiler/2026-09-21-setter-union-over-a-nullable-ref-corrupts-the-value.md`.
   Parked at the cells of `tests/render/errorBoundary.test.ms` that assert on a message string.
 
-- **PARKED 2026-09-22 (rerun) — the gate is exit 1 on `tests/platform/void.test.ms` and
-  `tests/style/style.test.ms`: the void host still does not compile.** The 2026-09-20 module-qualified
-  maybe-key regression is FIXED in the synced build `863c807e`: gate rerun 2026-09-22 on main `57e0ad6`
-  shows none of the nine nullable-alias-field errors the 2026-09-21 entry recorded
-  (`~/metascript/.inbox/compiler/2026-09-20-maybe-cache-keyed-by-type-name-mixes-modules.md`). What fails
-  now is a distinct family the fix exposed: `src/platform/void/host.ms:203-208` assigns a
-  `Maybe<subset>` into a `Maybe<superset>` field (`Align` without `spaceAround|spaceBetween|spaceEvenly`
-  into `Align`, `Display` without `"contents"` into `Display`) and the C build structurally rejects the
-  two record types. Tracked by
-  `~/metascript/.inbox/compiler/2026-09-22-nullable-union-subset-assignment-reaches-codegen.md`
-  (state: design — the checker is to reject such assignments clearly, not synthesize a conversion).
-  Nothing worked around in `src/`; the void row of `~/metascript/.wt/void-host-links.md` "Done when"
-  stays blocked by it.
-
 - **PARKED 2026-09-21 — `setX(v)` with a local `number` is silently dropped on native.** Not Neon's: a
   value argument to a union parameter (`Setter<T> = (v: T | ((prev: T) => T)) => void`) is passed by raw
   address on the C backend, so the callee reads the union tag out of the double's bits. `msc run
