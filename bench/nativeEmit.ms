@@ -20,6 +20,7 @@ function nativeHost(): Host {
 		nextSibling: h.nextSibling,
 		firstChild: h.firstChild,
 		cloneNode: null,
+		voidArea: null,
 	};
 }
 

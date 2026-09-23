@@ -222,6 +222,7 @@ export function terminalHost(): Host {
 			return n.children[0] as unknown as HostNode;
 		},
 		cloneNode: null,
+		voidArea: null,
 	};
 }
 

@@ -269,7 +269,7 @@ function countingHost(counter: number[]): Host {
 		createText: h.createText, setText: h.setText, setAttr: h.setAttr, removeAttr: h.removeAttr,
 		setStyle: h.setStyle, setStyleProp: h.setStyleProp, setStyleClass: h.setStyleClass, addEvent: h.addEvent, append: h.append,
 		insertBefore: h.insertBefore, removeChild: h.removeChild,
-		nextSibling: h.nextSibling, firstChild: h.firstChild, cloneNode: h.cloneNode,
+		nextSibling: h.nextSibling, firstChild: h.firstChild, cloneNode: h.cloneNode, voidArea: h.voidArea,
 	};
 }
 
@@ -306,7 +306,7 @@ function textCountingHost(counter: number[]): Host {
 		},
 		setAttr: h.setAttr, removeAttr: h.removeAttr, setStyle: h.setStyle, setStyleProp: h.setStyleProp, setStyleClass: h.setStyleClass, addEvent: h.addEvent,
 		append: h.append, insertBefore: h.insertBefore, removeChild: h.removeChild,
-		nextSibling: h.nextSibling, firstChild: h.firstChild, cloneNode: h.cloneNode,
+		nextSibling: h.nextSibling, firstChild: h.firstChild, cloneNode: h.cloneNode, voidArea: h.voidArea,
 	};
 }
 
@@ -348,6 +348,7 @@ test "template mode on a cloneNode:null host falls back and renders the same" {
 		append: base.append, insertBefore: base.insertBefore, removeChild: base.removeChild,
 		nextSibling: base.nextSibling, firstChild: base.firstChild,
 		cloneNode: null,
+		voidArea: null,
 	};
 
 	const directRoot = mockNode("root");

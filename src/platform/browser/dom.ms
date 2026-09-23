@@ -181,5 +181,6 @@ export function domHost(): Host {
 		cloneNode: (node: HostNode): HostNode => {
 			return (node as unknown as DomNode).cloneNode(true) as unknown as HostNode;
 		},
+		voidArea: null,
 	};
 }

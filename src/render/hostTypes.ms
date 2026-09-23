@@ -9,6 +9,12 @@ export type RefFn = (node: HostNode) => void;
 // it owns into `parent`, in front of `before`.
 export type NeonNode = (host: Host, parent: HostNode, before: HostNode | null) => void;
 
+export interface VoidArea {
+	host: Host;
+	root: HostNode;
+	release: () => void;
+}
+
 export interface Host {
 	createElement: (tag: string) => HostNode;
 	createText: (s: string) => HostNode;
@@ -37,4 +43,5 @@ export interface Host {
 	// src/render/template.ms transparently rebuilds instead — same result,
 	// slower, so a host is never forced to implement it.
 	cloneNode: ((node: HostNode) => HostNode) | null;
+	voidArea: ((node: HostNode) => VoidArea) | null;
 }

@@ -4,12 +4,12 @@
 
 import { VAttr, VEvent, attr } from "./node";
 import { Style, StyleValue, emptyStyle, setStyleField } from "./style";
-import { Host, HostNode, NeonNode } from "./hostTypes";
+import { Host, HostNode, NeonNode, VoidArea } from "./hostTypes";
 import { NeonEvent, neonEvent, eventType } from "./event";
 import { createRoot } from "../core/owner";
 import { Dispose } from "../core/types";
 
-export { Host, HostNode, NeonNode } from "./hostTypes";
+export { Host, HostNode, NeonNode, VoidArea } from "./hostTypes";
 export { bindText, writeAttr, bindAttr, bindStyleProp, applyStaticStyle, bindStyleAll, applyRef } from "./bind";
 
 export function render(node: NeonNode, host: Host, parent: HostNode): Dispose {
@@ -155,6 +155,17 @@ export function mockHost(): Host {
 		},
 		cloneNode: (node: HostNode): HostNode => {
 			return cloneMock(node as unknown as MockNode) as unknown as HostNode;
+		},
+		voidArea: (node: HostNode): VoidArea => {
+			const outer = node as unknown as MockNode;
+			const root = mockNode("voidroot");
+			root.parent = outer;
+			outer.children.push(root);
+			return {
+				host: mockHost(),
+				root: root as unknown as HostNode,
+				release: (): void => { outer.attrs.push(attr("released", "true")); },
+			};
 		},
 	};
 }
