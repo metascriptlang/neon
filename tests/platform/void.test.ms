@@ -73,13 +73,7 @@ test "clickAt hits the button and reactive text updates" {
 
 test "parseFlexStyle maps numeric + enum keys and ignores junk" {
 	const st = parseFlexStyle("width:320;flexGrow:1;flexDirection:row;justifyContent:center;alignItems:stretch;position:absolute;nonsense:42;broken");
-	assert st.width !== null, "width present";
-	let w: float32 = 0.0 as float32;
-	if (st.width !== null) {
-		if (typeof st.width === "string") { w = -1.0 as float32; }
-		else { w = st.width as float32; }
-	}
-	assert w === 320.0, "width parsed as points";
+	assert (st.width ?? 0.0) === 320.0, "width parsed as points";
 	assert (st.flexGrow ?? 0.0) === 1.0, "flexGrow parsed";
 	assert (st.flexDirection ?? "column") === "row", "flexDirection parsed";
 	assert (st.justifyContent ?? "flex-start") === "center", "justifyContent parsed";
@@ -144,10 +138,20 @@ test "setStyle: min and max constraints reach yoga" {
 	const vh = createVoidHost();
 	const node = vh.host.createElement("div");
 	const n = node as unknown as Node2D;
-	vh.host.setStyle(node, { minWidth: 10, maxHeight: "50%", aspectRatio: 2 } as Style);
+	vh.host.setStyle(node, { minWidth: 10, maxHeight: 50, aspectRatio: 2 } as Style);
 	assert n.layoutStyle.minWidth === 10, "minWidth reached yoga";
-	assert n.layoutStyle.maxHeight === "50%", "maxHeight reached yoga";
+	assert n.layoutStyle.maxHeight === 50, "maxHeight reached yoga";
 	assert n.layoutStyle.aspectRatio === 2, "aspectRatio reached yoga";
+}
+
+test "setStyle: a percent dimension is refused and names the field" {
+	const vh = createVoidHost();
+	const node = vh.host.createElement("div");
+	let caught = "";
+	try {
+		vh.host.setStyle(node, { maxHeight: "50%" } as Style);
+	} catch (e) { caught = e.toString(); }
+	assert caught.includes("maxHeight") && caught.includes("50%"), "error names field and value: " + caught;
 }
 
 test "setStyle: flex shorthand, basis, wrap and self-alignment reach yoga" {

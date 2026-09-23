@@ -24,9 +24,9 @@ function num(v: number | null): float32 | null {
 	return (v as number) as float32;
 }
 
-function dim(v: number | string | null): float32 | string | null {
+function dim(v: number | string | null, field: string): float32 | null {
 	if (v === null) { return null; }
-	if (typeof v === "string") { return v as string; }
+	if (typeof v === "string") { throw `ios host: ${field} "${v as string}" is not supported, yoga takes points only`; }
 	return (v as number) as float32;
 }
 

@@ -110,24 +110,6 @@ export function parseFlexStyle(s: string): FlexStyle {
 	return st;
 }
 
-function setDimStr(st: FlexStyle, key: string, v: string): void {
-	if (key === "width") { st.width = v; }
-	else if (key === "height") { st.height = v; }
-	else if (key === "padding") { st.padding = v; }
-	else if (key === "margin") { st.margin = v; }
-	else if (key === "gap") { st.gap = v; }
-	else if (key === "left") { st.left = v; }
-	else if (key === "top") { st.top = v; }
-	else if (key === "right") { st.right = v; }
-	else if (key === "bottom") { st.bottom = v; }
-}
-
-function setDim(st: FlexStyle, key: string, v: number | string | null): void {
-	if (v === null) { return; }
-	if (typeof v === "string") { setDimStr(st, key, v as string); }
-	else { styleNum(st, key, v as number); }
-}
-
 function hexNibble(c: string): int32 {
 	if (c >= "0" && c <= "9") { return c.charCodeAt(0) - 48; }
 	if (c >= "a" && c <= "f") { return c.charCodeAt(0) - 87; }
@@ -184,9 +166,9 @@ function num(v: number | null): float32 | null {
 	return n as float32;
 }
 
-function dim(v: number | string | null): float32 | string | null {
+function dim(v: number | string | null, field: string): float32 | null {
 	if (v === null) { return null; }
-	if (typeof v === "string") { return v as string; }
+	if (typeof v === "string") { throw `void host: ${field} "${v as string}" is not supported, yoga takes points only`; }
 	const n = v as number;
 	return n as float32;
 }

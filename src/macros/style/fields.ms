@@ -253,7 +253,8 @@ export macro asFlexStyleBody(node: Node): Node {
 		} : {
 			kind: NodeKind.CallExpr, line: L, column: C,
 			callee: { kind: NodeKind.Identifier, line: L, column: C, name: how },
-			arguments: [read], isDirectCall: false, resolvedOverloadIdx: -1,
+			arguments: how === "dim" ? [read, { kind: NodeKind.StringLiteral, line: L, column: C, value: fieldName }] : [read],
+			isDirectCall: false, resolvedOverloadIdx: -1,
 		};
 		// Null-guard every projection: an unset Style field must stay UNSET on
 		// the FlexStyle, never become a boxed null. applyStyle (yoga/src/style.ms)
