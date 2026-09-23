@@ -159,6 +159,14 @@ export function parseColor(css: string): Color | null {
 
 // The paint half of the projection (docs/STYLE.md §5). A Group carrying a
 // background becomes a Rect — a Group draws nothing on its own.
+function applyTextPaint(n: Node2D, s: Style): void {
+	if (s.fontSize !== null) { n.size = s.fontSize as float32; }
+	if (s.color !== null) {
+		const c = parseColor(s.color as string);
+		if (c !== null) { n.color = c; }
+	}
+}
+
 export function applyPaint(n: Node2D, s: Style): void {
 	if (s.opacity !== null) { n.alpha = s.opacity as float32; }
 	if (s.zIndex !== null) { const z = s.zIndex as number; n.zIndex = z as int32; }
@@ -257,10 +265,10 @@ function noMeasure(size: float32, text: string): float32 {
 }
 
 export function createVoidHost(): VoidHost {
-	return createVoidHostWith(noMeasure);
+	return createVoidHostWith(noMeasure, 0 as int32);
 }
 
-export function createVoidHostWith(measure: MeasureText): VoidHost {
+export function createVoidHostWith(measure: MeasureText, fontId: int32): VoidHost {
 	const links = new Map<Node2D, Node2D>();
 	const events: EventEntry[] = [];
 	const clients: ClientEntry[] = [];
@@ -381,6 +389,7 @@ export function createVoidHostWith(measure: MeasureText): VoidHost {
 	const makeField = (): Node2D => {
 		const node = group();
 		const text = label("", TEXT_SIZE, { r: 1.0, g: 1.0, b: 1.0, a: 1.0 });
+		text.fontId = fontId;
 		const caret = rect(CARET_WIDTH, TEXT_SIZE * LINE_HEIGHT, { r: 1.0, g: 1.0, b: 1.0, a: 1.0 });
 		caret.visible = false;
 		node.addChild(text);
@@ -434,7 +443,9 @@ export function createVoidHostWith(measure: MeasureText): VoidHost {
 			return group() as unknown as HostNode;
 		},
 		createText: (s: string): HostNode => {
-			return label(s, TEXT_SIZE, { r: 1.0, g: 1.0, b: 1.0, a: 1.0 }) as unknown as HostNode;
+			const n = label(s, TEXT_SIZE, { r: 1.0, g: 1.0, b: 1.0, a: 1.0 });
+			n.fontId = fontId;
+			return n as unknown as HostNode;
 		},
 		setText: (node: HostNode, s: string): void => {
 			(node as unknown as Node2D).text = s;
@@ -465,7 +476,7 @@ export function createVoidHostWith(measure: MeasureText): VoidHost {
 			applyPaint(n, style);
 			const f = fieldOf(n);
 			if (f !== null) {
-				applyPaint((f as Field).label, style);
+				applyTextPaint((f as Field).label, style);
 				showField(f as Field, (clientOf(n) as ClientEntry).value);
 			}
 			markDirty();
@@ -598,6 +609,17 @@ export function createVoidHostWith(measure: MeasureText): VoidHost {
 		markDirty();
 	};
 
+	const flowText = (n: Node2D): void => {
+		let x: float32 = 0.0;
+		for (const c of n.children) {
+			if (c.kind === DrawKind.Label && c.layoutStyle === null && fieldOf(n) === null) {
+				c.x = x;
+				x = x + measure(c.size, c.text);
+			}
+			flowText(c);
+		}
+	};
+
 	const lastFrame = (n: Node2D): LaidOut | null => {
 		for (const l of laidOut) {
 			if (l.node === n) { return l; }
@@ -608,6 +630,7 @@ export function createVoidHostWith(measure: MeasureText): VoidHost {
 	const layout = (w: float32, h: float32): void => {
 		if (root.layoutStyle === null) { root.layoutStyle = {}; }
 		layoutPass(root, w, h);
+		flowText(root);
 		for (const e of events) {
 			if (e.name !== "onLayout" || !attached(e.node)) { continue; }
 			const n = e.node;

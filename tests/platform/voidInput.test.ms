@@ -2,7 +2,7 @@ import { createSignal } from "../../src/core/signal";
 import { element } from "../../src/macros/ui/element";
 import { render, HostNode } from "../../src/render/host";
 import { NeonEvent, neonEvent } from "../../src/render/event";
-import { View, TextInput } from "../../src/components/primitives";
+import { View, Text, TextInput } from "../../src/components/primitives";
 import {
 	createVoidHostWith, VoidHost, Node2D, TextEditingValue, editingValue, CaretRect,
 } from "../../src/platform/void/host";
@@ -26,7 +26,7 @@ function field(vh: VoidHost): Node2D {
 }
 
 test "a click focuses the text field and typed text reaches onChangeText" {
-	const vh = createVoidHostWith(fixedMeasure);
+	const vh = createVoidHostWith(fixedMeasure, 0 as int32);
 	const seen: string[] = [];
 	render(element(
 		<View style={{ width: 300, height: 100 }}>
@@ -43,7 +43,7 @@ test "a click focuses the text field and typed text reaches onChangeText" {
 }
 
 test "a Telex word shows its preedit and reports once, on commit" {
-	const vh = createVoidHostWith(fixedMeasure);
+	const vh = createVoidHostWith(fixedMeasure, 0 as int32);
 	const seen: string[] = [];
 	render(element(<TextInput style={{ width: 200, height: 24 }} onChangeText={(t: string): void => { seen.push(t); }} />), vh.host, vh.root as unknown as HostNode);
 	vh.layout(300.0, 100.0);
@@ -59,7 +59,7 @@ test "a Telex word shows its preedit and reports once, on commit" {
 }
 
 test "Backspace, arrows and Enter edit the focused field" {
-	const vh = createVoidHostWith(fixedMeasure);
+	const vh = createVoidHostWith(fixedMeasure, 0 as int32);
 	const seen: string[] = [];
 	let submitted = "";
 	let pressed = "";
@@ -78,7 +78,7 @@ test "Backspace, arrows and Enter edit the focused field" {
 }
 
 test "a controlled value replaces the text without reporting a change" {
-	const vh = createVoidHostWith(fixedMeasure);
+	const vh = createVoidHostWith(fixedMeasure, 0 as int32);
 	const [value, setValue] = createSignal("one");
 	let changes = 0;
 	render(element(<TextInput value={value()} onChangeText={(t: string): void => { changes = changes + 1; }} />), vh.host, vh.root as unknown as HostNode);
@@ -89,7 +89,7 @@ test "a controlled value replaces the text without reporting a change" {
 }
 
 test "keys go to the focused node and bubble to its parents" {
-	const vh = createVoidHostWith(fixedMeasure);
+	const vh = createVoidHostWith(fixedMeasure, 0 as int32);
 	let order = "";
 	let inner: Node2D | null = null;
 	render(element(
@@ -105,7 +105,7 @@ test "keys go to the focused node and bubble to its parents" {
 }
 
 test "focus moves on click, fires onFocus and onBlur, and a click on empty space blurs" {
-	const vh = createVoidHostWith(fixedMeasure);
+	const vh = createVoidHostWith(fixedMeasure, 0 as int32);
 	let log = "";
 	render(element(
 		<View style={{ width: 300, height: 100, flexDirection: "row" }}>
@@ -122,7 +122,7 @@ test "focus moves on click, fires onFocus and onBlur, and a click on empty space
 }
 
 test "window focus blurs and refocuses the focused node" {
-	const vh = createVoidHostWith(fixedMeasure);
+	const vh = createVoidHostWith(fixedMeasure, 0 as int32);
 	let log = "";
 	render(element(<TextInput onFocus={(): void => { log = log + "+ "; }} onBlur={(): void => { log = log + "- "; }} />), vh.host, vh.root as unknown as HostNode);
 	vh.focus(vh.root.children[0]);
@@ -133,7 +133,7 @@ test "window focus blurs and refocuses the focused node" {
 }
 
 test "onLayout reports the frame once per change" {
-	const vh = createVoidHostWith(fixedMeasure);
+	const vh = createVoidHostWith(fixedMeasure, 0 as int32);
 	const frames: string[] = [];
 	render(element(
 		<View style={{ flexGrow: 1, padding: 10 }} onLayout={(e: NeonEvent): void => { frames.push(e.x.toString() + "," + e.y.toString() + "," + e.width.toString() + "x" + e.height.toString()); }} />
@@ -145,7 +145,7 @@ test "onLayout reports the frame once per change" {
 }
 
 test "the IME rect follows the caret of the focused field in window coordinates" {
-	const vh = createVoidHostWith(fixedMeasure);
+	const vh = createVoidHostWith(fixedMeasure, 0 as int32);
 	render(element(
 		<View style={{ width: 300, height: 100, paddingLeft: 20, paddingTop: 30 }}>
 			<TextInput style={{ width: 200, height: 24 }} />
@@ -161,7 +161,7 @@ test "the IME rect follows the caret of the focused field in window coordinates"
 }
 
 test "a hand-drawn node receives text as a Flutter-style text input client" {
-	const vh = createVoidHostWith(fixedMeasure);
+	const vh = createVoidHostWith(fixedMeasure, 0 as int32);
 	const node = vh.host.createElement("view") as unknown as Node2D;
 	vh.host.append(vh.root as unknown as HostNode, node as unknown as HostNode);
 	const values: string[] = [];
@@ -182,7 +182,7 @@ test "a hand-drawn node receives text as a Flutter-style text input client" {
 }
 
 test "any tree change marks the host dirty" {
-	const vh = createVoidHostWith(fixedMeasure);
+	const vh = createVoidHostWith(fixedMeasure, 0 as int32);
 	let dirty = 0;
 	vh.onDirty((): void => { dirty = dirty + 1; });
 	const [n, setN] = createSignal(0);
@@ -191,4 +191,30 @@ test "any tree change marks the host dirty" {
 	assert before > 0, "mounting marked dirty";
 	setN(1);
 	assert dirty > before, "a signal write marked dirty";
+}
+
+test "every label the host makes draws in the host's font" {
+	const vh = createVoidHostWith(fixedMeasure, 3 as int32);
+	render(element(<View><Text>hi</Text><TextInput /></View>), vh.host, vh.root as unknown as HostNode);
+	const view = vh.root.children[0];
+	assert view.children[0].children[0].fontId === 3, "text label font";
+	assert view.children[1].children[0].fontId === 3, "text field label font";
+}
+
+test "text pieces inside one element flow one after another on the line" {
+	const vh = createVoidHostWith(fixedMeasure, 0 as int32);
+	const [n, setN] = createSignal(7);
+	render(element(<View style={{ width: 200, height: 20 }}><Text>Count: {n().toString()}</Text></View>), vh.host, vh.root as unknown as HostNode);
+	vh.layout(200.0, 20.0);
+	const text = vh.root.children[0].children[0];
+	assert text.children[0].x === 0.0, "first piece at the start";
+	assert text.children[1].x === 7.0 * ADVANCE, "second piece after 'Count: ': " + text.children[1].x.toString();
+}
+
+test "a text field keeps its text color when it has a background" {
+	const vh = createVoidHostWith(fixedMeasure, 0 as int32);
+	render(element(<TextInput style={{ backgroundColor: "#313244", color: "#ffffff" }} />), vh.host, vh.root as unknown as HostNode);
+	const f = vh.root.children[0];
+	assert Math.abs(f.color.r - 0x31 / 255.0) < 0.001 && Math.abs(f.color.b - 0x44 / 255.0) < 0.001, "the field paints the background";
+	assert f.children[0].color.r === 1.0, "the label keeps the text color, got r=" + f.children[0].color.r.toString();
 }
