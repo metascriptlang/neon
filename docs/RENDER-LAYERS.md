@@ -91,7 +91,9 @@ Void has a second role beside "the platform": **one native component among the o
 - **The native hosts.** A component needs a host tree to sit in, and the iOS and Android hosts are not started (`ROADMAP.md` Next #5).
 - **The host boundary.** Every tree has exactly one `Host` today (`src/render/hostTypes.ms`), and nothing lets a subtree switch hosts. The shape to take is R3F's `<Canvas>`. On the outer host, the component is one element that creates the native view. Its content is **a separate root**, mounted with `renderToHost(vnode, voidHost, root)` or built imperatively on `Node2D`. The reconciler therefore stays single-host and never learns about a second one. The rejected alternative is a reconciler that switches hosts mid-tree: every op would then have to carry which host it targets.
 - **Layout and input across the boundary.** The outer layout gives the view its size. That size in device pixels is passed to `voidEmbedResize`, and the inner tree runs its own `layoutPass` at that size. Touches inside the view are routed into the inner tree's hit test (`clickAt` in `src/platform/void/host.ms`).
-- **More than one instance.** The embed drivers keep their GPU context in process globals (`g_layer`, `g_device`, `g_w`/`g_h` in `bridgeIos.m`; the EGL state in `bridgeAndroid.c`). As shipped, only one Void view can be live per process. Two instances need per-surface state in Void: that change is Void's work, not Neon's.
+- **More than one instance.** The embed drivers keep their GPU context in process globals (`g_layer`, `g_device`, `g_w`/`g_h` in `bridgeIos.m`; the EGL state in `bridgeAndroid.c`). As shipped, only one Void view can be live per process. `VISION.md` "Many Void areas in one app" defines the split: the device and its resources stay shared, and the surface, its size and its frame policy move to each view. That change is Void's work, not Neon's.
+
+Inside a Void view there are only Void components: `Text` and `View` become void2d, and no native view is ever a child of a Void view (`VISION.md` "Two worlds, nested one way").
 
 ## What this means per repo
 
