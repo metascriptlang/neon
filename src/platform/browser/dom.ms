@@ -46,6 +46,13 @@ extern class DomEvent {
 	clientX: number;
 	clientY: number;
 	key: string;
+	code: string;
+	altKey: boolean;
+	ctrlKey: boolean;
+	metaKey: boolean;
+	shiftKey: boolean;
+	repeat: boolean;
+	isComposing: boolean;
 }
 
 extern class document {
@@ -136,7 +143,16 @@ export function domHost(): Host {
 			(node as unknown as DomNode).addEventListener(domType, (de: DomEvent): void => {
 				const ev = neonEvent(type);
 				if (type === "changetext" || type === "input" || type === "change") { ev.value = de.target.value; }
-				else if (type === "keydown" || type === "keyup" || type === "keypress") { ev.key = de.key; }
+				else if (type === "keydown" || type === "keyup" || type === "keypress") {
+					ev.key = de.key;
+					ev.code = de.code;
+					ev.altKey = de.altKey;
+					ev.ctrlKey = de.ctrlKey;
+					ev.metaKey = de.metaKey;
+					ev.shiftKey = de.shiftKey;
+					ev.repeat = de.repeat;
+					ev.isComposing = de.isComposing;
+				}
 				else if (type === "press" || type === "click" || type === "dblclick" || type === "mousedown" || type === "mouseup" || type === "mousemove") {
 					ev.x = de.clientX;
 					ev.y = de.clientY;
