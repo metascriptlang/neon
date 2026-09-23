@@ -247,6 +247,7 @@ function materializeString(child: IosNode, parent: IosNode): void {
 		niSetFont(child.view, size, bold ? 1 : 0);
 	}
 	remeasureText(child);
+	if (parent.view !== null && child.view !== null) { niAddChild(parent.view, child.view); }
 }
 
 
