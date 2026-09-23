@@ -9,7 +9,7 @@ What we build next, in order, and why that order. **Forward-looking only.**
 | `docs/STYLE.md` §9 | the style/theme stages (S1-S4) in detail |
 | `docs/RENDER-MODEL.md` | the emission tiers, how a site picks one, and the lifecycle |
 | `docs/PORT-STATUS.md` | the Nim → MetaScript module map, and history |
-| `BUGS.md` | open FRAMEWORK bugs of Neon, and the sites parked on a compiler card — 81 lines, read it whole. A compiler bug is a card in `~/metascript/.inbox/compiler/`, never a row here |
+| `BUGS.md` | open FRAMEWORK bugs of Neon, and the sites parked on a compiler card — 150 lines, read it whole. A compiler bug is a card in `~/metascript/.inbox/compiler/`, never a row here |
 
 **Rule for this file** (same as `BUGS.md` and `STYLE.md`): a row moves to *done* only with the
 command that proved it. Never layer a correction on a stale row — rewrite the row.
@@ -72,14 +72,33 @@ In rough priority order, once the above is standing:
 - from the Nim original and not yet ported: `resource` / `http` / `async` (the MS idiom is
   `Promise<Result<T,E>>` + `try await`, not a port of the Nim shape), `error_boundary`, `config`
 - `VAttr.value: string | null` so `removeAttr` becomes reachable
-- Void as a native component beside `View`/`Text`, as a separate root on its own host, after Mobile App Foundation (Next #1)
-  (`RENDER-LAYERS.md` "Void as a native component — not built")
+- Void as a native component beside `View`/`Text`: the iOS and Android hosts implement `Host.voidArea`, after
+  Mobile App Foundation (Next #1) (`RENDER-LAYERS.md` "Void as a native component")
+- a `Text` that sizes itself: labels take no part in yoga today, so a `Text` needs an explicit height in a
+  Void area; void2d's `TextLayout` is the measure a yoga measure callback would read
 - native timer for the void and terminal hosts (long-press runs on browser + mock only)
 - arrow-defined components and module-level snapshots under the phase-6 diagnostic
 
 ---
 
 ## Recently done
+
+- **an Ion window whose content is one full-window `<Void>`** (2026-09-24) — `runWindow` in
+  `src/platform/ion/window.ms`, `<Void>` over the optional `Host.voidArea`, React Native's key, focus,
+  layout and submit handlers, and a Flutter-style text client for content drawn by hand. Measured on
+  Windows 11 (96 DPI, UniKey running in Telex mode) with `examples/voidWindow.ms` driven by synthetic
+  input: three clicks on `+1` read `Count: 3`; typing `ab cd`, Backspace and Enter logged each
+  `changetext` and `submit "ab c"`; typing `vieetj` through UniKey logged
+  `vi → vie → vi → viê → viêt → viê → vi → việ → việt` and drew `việt` with the caret after it; resizing
+  the window from 640×360 to 900×500 re-ran `onLayout` (header 576 → 836 wide) and stretched the
+  field. Not verified: a TSF IME's preedit (no Vietnamese IME is installed on this box; the composing
+  path is pinned by `tests/platform/voidInput.test.ms` only), a DPI change, and the DOM host's new key
+  fields in Chrome. The void host compiles again: it wrote `"50%"` strings into yoga's `float32`
+  dimensions, which msc 0.2.55 rejects; a string dimension now fails loud with its field name.
+  Proved: `bash tests/run.sh` on tree `eb60fd75` — macros ok, apps ok (`moduleSignalApp` native red,
+  known L46), native 50 files and js 47 + 3 deliberate skips with 0 failures; exit 1 because the
+  browser lane cannot run on this Windows box (no `python3`, no playwright,
+  `examples/vite-counter` absent).
 
 - **tail of one NeonNode** (2026-09-19) — what the merge left behind. `on*` is an event by ONE rule,
   `on` + an uppercase letter, for a tag, a spread field and a component prop (`isEventName`; `<p once="x">`
