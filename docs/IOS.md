@@ -212,20 +212,31 @@ Xcode 26.6 and the same iPhone 17 Pro simulator:
 
 ### 6.3 Measured rotation proof
 
-Measured 2026-09-23 on Neon `4d2481c`, Ion `a6cce63`, installed compiler `d757c7e1`,
-Xcode 26.6 and the same simulator, with an XCUITest driving one launched process
+```bash
+bash tests/ios/run.sh
+```
+
+generates `examples/ios/project.ms` with Ion into a fresh temporary directory, builds it,
+installs it on a throwaway iPhone 17 Pro simulator and runs `tests/ios/counterUITests.swift`
+against it; the generated project is never edited. The XCUITest is its own bundle and
+reaches the app by bundle identifier. Logs, the UI hierarchy on failure and named
+screenshots stay in the printed results directory.
+
+Measured 2026-09-23 on Neon `4c49e38`, Ion `a6cce63`, installed
+compiler `d757c7e1`, Xcode 26.6 and iOS 26.5, one launched process driven
 portrait → landscape → portrait:
 
-- the process kept one PID and native presses changed the counter `0 → 1` in
-  landscape and `1 → 2` after returning to portrait;
-- every counter static text lay inside the safe area `(0,62;402,778)` in portrait and
-  `(62,0;750,382)` in landscape; the title frame was `(137,86;128,24)` in portrait and
-  `(373,24;128,24)` in landscape, centred at x=437;
-- before `4d2481c` the root's Yoga frame reset the container origin to `(0,0)`: the
-  portrait title sat at y=24 under the status bar and the landscape column centred at
-  x=375;
-- screenshots matched the frames. The `-`, `reset` and `+` pressables render without a
-  visible label.
+- the process kept one PID and presses on the `+` static text changed the counter
+  `0 → 1` in landscape and `1 → 2` after returning to portrait;
+- every static text, `-`, `reset` and `+` included, lay inside the safe area
+  `(0,62;402,778)` in portrait and `(62,0;750,382)` in landscape; the title frame was
+  `(137,86;128,24)` in portrait and `(373,24;128,24)` in landscape;
+- screenshots show the three pressable labels in the parent's text colour;
+- with `4d2481c` reverted the command fails: the root's Yoga frame resets the container
+  origin and the portrait title sits at `(137,24;128,24)`, under the status bar;
+- without the label fix it fails with no `-` static text: each pressable is sized by its
+  measured label plus padding (`32`, `61`, `34` wide) but the `UILabel` a string child
+  materialises under a non-Text parent was never added to the parent's view.
 
 ## 7. What the MetaScript port does differently
 
