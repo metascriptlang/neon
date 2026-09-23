@@ -73,7 +73,7 @@ If every OS ships a mature B+C for free, why carry your own?
 
 Void = the opt-in heavy backend for apps whose pixels the native B+C cannot produce. Neon-default (native) stays light for the apps that don't need it. See Void's `CLAUDE.md` "Direction" for the scope discipline that keeps Void from drifting into a game engine.
 
-## Void as a native component — not built
+## Void as a native component — the boundary is built, the native hosts are not
 
 Void has a second role beside "the platform": **one native component among the others**. An iOS or Android app stays on the native host, with `View` and `Text` borrowed from UIKit and Android Views. One element in that tree is a Void view that owns a GPU surface and draws a `Node2D` tree into it. React Native gets the same thing from a GL or Skia canvas view. The two roles differ only in where the Void subtree starts:
 
@@ -85,13 +85,16 @@ Void has a second role beside "the platform": **one native component among the o
 
 **Why it is worth having:** the reasons in "Why Void is a platform at all" usually cover one region of an app, not the whole app: a chart, a canvas, a terminal grid, a shader preview. Making the whole app a Void app for that region would give up native text, accessibility and platform widgets everywhere else.
 
-**What exists, on the Void side:** host-driven embed drivers in which the host owns the surface and the frame clock, and Void owns no window and no loop. `void/src/sokol/bridgeIos.m` renders into a `CAMetalLayer` that the host passes in. `void/src/sokol/bridgeAndroid.c` renders into an `ANativeWindow`. Both are driven through `voidEmbedInit` / `voidEmbedResize` / `voidEmbedFrame`, and `void/ios/VoidView.m` is a `UIView` with that layer and a `CADisplayLink`. At window level on desktop, Ion's render surface plays the same role: a Void surface composited beside the webview (`ion/docs/RENDER-SURFACE.md`).
+**What exists, on the Void side:** host views. The host owns the surface and the frame clock, Void owns no window and no loop, and one device serves every view of the process (`void/docs/EMBED.md`: `viewCreate` / `viewResize` / `viewFrame` / `viewDestroy`). iOS renders into a `CAMetalLayer`, Android into an `ANativeWindow`, and Windows into a composition swapchain that Ion's render surface attaches (`ion/docs/RENDER-SURFACE.md`).
+
+**What exists, on the Neon side:**
+- **The host boundary.** `<Void>` (`src/components/primitives.ms`) is one element on the outer host, and the optional capability `Host.voidArea` (`src/render/hostTypes.ms`) opens its content: a second host and a root. The shape is R3F's `<Canvas>`, and the reconciler stays single-host. The rejected alternative is a reconciler that switches hosts mid-tree: every op would then have to carry which host it targets. The content is mounted by calling its `NeonNode` directly under the current owner, **not** through `render()`, whose `createRoot` would cut the owner chain; that is what lets context and signals cross, and the outer owner's cleanup releases the area (`tests/render/voidArea.test.ms`). A host without the capability makes `<Void>` fail at mount, the void host included.
+- **Layout and input across the boundary.** The outer side passes the area's logical size to `VoidHost.layout`, which runs yoga and then `onLayout`. Pointer input goes through `clickAt`, which also moves focus; keys go to the focused node and bubble to its parents; committed and composing text reach the focused text client (`src/platform/void/host.ms`, `tests/platform/voidInput.test.ms`).
+- **The first outer host: an Ion window** (`src/platform/ion/window.ms`). It accepts only the `void` tag, so a desktop app is one full-window `<Void>`.
 
 **What is missing:**
-- **The native hosts, still in progress.** A component needs a host tree to sit in. The first UIKit host exists (`src/platform/ios/host.ms`, `docs/IOS.md`). Android follows (`docs/ANDROID.md`), and both belong to `ROADMAP.md` Next #1, Mobile App Foundation.
-- **The host boundary.** Every tree has exactly one `Host` today (`src/render/hostTypes.ms`), and nothing lets a subtree switch hosts. The shape to take is R3F's `<Canvas>`. On the outer host, the component is one element that creates the native view. Its content is **a separate root**, mounted with `render(node, voidHost, root)` (`src/render/host.ms`) or built imperatively on `Node2D`. The reconciler therefore stays single-host and never learns about a second one. The rejected alternative is a reconciler that switches hosts mid-tree: every op would then have to carry which host it targets.
-- **Layout and input across the boundary.** The outer layout gives the view its size. That size in device pixels is passed to `voidEmbedResize`, and the inner tree runs its own `layoutPass` at that size. Touches inside the view are routed into the inner tree's hit test (`clickAt` in `src/platform/void/host.ms`).
-- **More than one instance.** The embed drivers keep their GPU context in process globals (`g_layer`, `g_device`, `g_w`/`g_h` in `bridgeIos.m`; the EGL state in `bridgeAndroid.c`). As shipped, only one Void view can be live per process. `VISION.md` "Many Void areas in one app" defines the split: the device and its resources stay shared, and the surface, its size and its frame policy move to each view. That change is Void's work, not Neon's.
+- **The native hosts, still in progress.** A component needs a host tree to sit in. The first UIKit host exists (`src/platform/ios/host.ms`, `docs/IOS.md`) but does not implement `voidArea` yet. Android follows (`docs/ANDROID.md`), and both belong to `ROADMAP.md` Next #1, Mobile App Foundation.
+- **More than one area per Ion window.** The window host refuses a second `<Void>`; a Void area beside other elements needs Ion to give a surface a frame of its own (`VISION.md` "Window, frame and input").
 
 Inside a Void view there are only Void components: `Text` and `View` become void2d, and no native view is ever a child of a Void view (`VISION.md` "Worlds, nested one way").
 
