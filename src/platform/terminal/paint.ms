@@ -103,9 +103,9 @@ function styleLine(content: string, width: number, s: TerminalStyle, pad: boolea
 	const visibleLen = content.length;
 	let body = content;
 	if (pad && visibleLen < width) {
-		body = content + " ".repeat(width - visibleLen);
+		body = content + " ".repeat((width - visibleLen) as int32);
 	} else if (visibleLen > width) {
-		body = content.slice(0, width);
+		body = content.slice(0, width as int32);
 	}
 	if (prefix === "") { return body; }
 	return prefix + body + RESET;
@@ -149,7 +149,7 @@ export function paintNode(node: TerminalNode, width: number): string[] {
 			return [styleLine(node.text, width, node.style, false)];
 		},
 		"hr" => {
-			return [styleLine("─".repeat(width), width, node.style, false)];
+			return [styleLine("─".repeat(width as int32), width, node.style, false)];
 		},
 		"gap" => {
 			const h = getAttrNum(node, "height", 1);
@@ -213,7 +213,7 @@ function paintRow(node: TerminalNode, innerWidth: number, hasBorder: boolean, pa
 			if (row < block.length) {
 				line = line + block[row];
 				const padLen = childWidth - visibleLen(block[row]);
-				if (padLen > 0) { line = line + " ".repeat(padLen); }
+				if (padLen > 0) { line = line + " ".repeat(padLen as int32); }
 			} else {
 				line = line + " ".repeat(childWidth);
 			}
@@ -250,15 +250,15 @@ function applyBoxDecoration(
 	let working = lines;
 
 	if (padding > 0) {
-		const padLine = " ".repeat(innerWidth);
+		const padLine = " ".repeat(innerWidth as int32);
 		const padded: string[] = [];
 		let pi = 0;
 		while (pi < padding) { padded.push(padLine); pi += 1; }
 		for (const line of working) {
 			let content = line;
 			const vl = visibleLen(line);
-			if (vl < innerWidth) { content = line + " ".repeat(innerWidth - vl); }
-			padded.push(" ".repeat(padding) + content + " ".repeat(padding));
+			if (vl < innerWidth) { content = line + " ".repeat((innerWidth - vl) as int32); }
+			padded.push(" ".repeat(padding as int32) + content + " ".repeat(padding as int32));
 		}
 		pi = 0;
 		while (pi < padding) { padded.push(padLine); pi += 1; }
@@ -268,17 +268,17 @@ function applyBoxDecoration(
 	if (hasBorder) {
 		const totalWidth = innerWidth + padding * 2;
 		const prefix = stylePrefix(node.style);
-		const top = prefix + "┌" + "─".repeat(totalWidth) + "┐" + RESET;
-		const bottom = prefix + "└" + "─".repeat(totalWidth) + "┘" + RESET;
+		const top = prefix + "┌" + "─".repeat(totalWidth as int32) + "┐" + RESET;
+		const bottom = prefix + "└" + "─".repeat(totalWidth as int32) + "┘" + RESET;
 		const bordered: string[] = [top];
 		for (const line of working) {
 			const vl = visibleLen(line);
 			const totalContentWidth = totalWidth;
 			let content = line;
 			if (vl < totalContentWidth) {
-				content = line + " ".repeat(totalContentWidth - vl);
+				content = line + " ".repeat((totalContentWidth - vl) as int32);
 			} else if (vl > totalContentWidth) {
-				content = line.slice(0, totalContentWidth);
+				content = line.slice(0, totalContentWidth as int32);
 			}
 			bordered.push(prefix + "│" + content + "│" + RESET);
 		}
