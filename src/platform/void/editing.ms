@@ -2,8 +2,8 @@
 // a composing range of -1..-1 means no IME composition is in progress.
 
 export interface TextRange {
-	start: number;
-	end: number;
+	start: int32;
+	end: int32;
 }
 
 export interface TextEditingValue {
@@ -12,7 +12,7 @@ export interface TextEditingValue {
 	composing: TextRange;
 }
 
-export function textRange(start: number, end: number): TextRange {
+export function textRange(start: int32, end: int32): TextRange {
 	return { start, end };
 }
 
@@ -42,7 +42,7 @@ export function commitText(v: TextEditingValue, s: string): TextEditingValue {
 	return { text: replaced(v, r, s), selection: textRange(caret, caret), composing: noRange() };
 }
 
-export function composeText(v: TextEditingValue, s: string, cursor: number): TextEditingValue {
+export function composeText(v: TextEditingValue, s: string, cursor: int32): TextEditingValue {
 	const r = target(v);
 	const caret = r.start + cursor;
 	const composing = s.length === 0 ? noRange() : textRange(r.start, r.start + s.length);
@@ -65,7 +65,7 @@ export function deleteForward(v: TextEditingValue): TextEditingValue {
 	return commitText({ text: v.text, selection: textRange(s.start, s.start + 1), composing: noRange() }, "");
 }
 
-export function moveCaret(v: TextEditingValue, to: number): TextEditingValue {
+export function moveCaret(v: TextEditingValue, to: int32): TextEditingValue {
 	if (!isEmptyRange(v.composing)) { return v; }
 	const c = to < 0 ? 0 : (to > v.text.length ? v.text.length : to);
 	return { text: v.text, selection: textRange(c, c), composing: noRange() };

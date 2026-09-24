@@ -40,7 +40,7 @@ export interface VoidHost {
 	keyDown: (e: NeonEvent) => void;
 	keyUp: (e: NeonEvent) => void;
 	commitText: (text: string) => void;
-	composeText: (text: string, cursor: number) => void;
+	composeText: (text: string, cursor: int32) => void;
 	setWindowFocus: (focused: boolean) => void;
 	layout: (width: float32, height: float32) => void;
 	focus: (node: Node2D | null) => void;
@@ -592,7 +592,7 @@ export function createVoidHostWith(measure: MeasureText, fontId: int32): VoidHos
 		setValue(c as ClientEntry, commitText((c as ClientEntry).value, text));
 	};
 
-	const compose = (text: string, cursor: number): void => {
+	const compose = (text: string, cursor: int32): void => {
 		if (focusedNode === null) { return; }
 		const c = clientOf(focusedNode as Node2D);
 		if (c === null) { return; }
