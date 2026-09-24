@@ -12,7 +12,7 @@ import {
 } from "../../../../ion/src/index";
 import { embedRegister, viewCreate, viewResize, viewFrame, viewDestroy, viewSwapChain, currentView, gfxSetup, ViewId, ViewInvalid } from "../../../../void/src/sokol/gpu";
 import { setup2d } from "../../../../void/src/void2d/draw";
-import { addFont, faceFor } from "../../../../void/src/void2d/labelText";
+import { addFont } from "../../../../void/src/void2d/font";
 import { TextLayout, TextStyle } from "../../../../void/src/void2d/textLayout";
 import { Scene, scene, add, present } from "../../../../void/src/void2d/scene";
 import { Color } from "../../../../void/src/void2d/types";
@@ -141,7 +141,7 @@ function keyEvent(e: KeyEvent, composing: boolean): NeonEvent {
 	ev.repeat = e.action === KeyAction.Repeat;
 	ev.isComposing = composing;
 	if (printable(e.text)) { ev.key = e.text; }
-	else if (e.unshifted >= (32 as int32) && e.unshifted !== (127 as int32) && ev.code.startsWith("Key")) { ev.key = String.fromCharCode(e.unshifted as number); }
+	else if (e.unshifted >= (32 as int32) && e.unshifted !== (127 as int32) && ev.code.startsWith("Key")) { ev.key = String.fromCharCode(e.unshifted); }
 	else { ev.key = ev.code; }
 	return ev;
 }
@@ -180,7 +180,7 @@ function wireInput(): void {
 		const a = areaOfSurface(surface);
 		if (a === null) { return; }
 		(a as Area).composing = text.length > 0;
-		(a as Area).vh.composeText(text, cursor as number);
+		(a as Area).vh.composeText(text, cursor);
 	});
 	onSurfaceFocus((surface: int32, focused: boolean): void => {
 		const a = areaOfSurface(surface);
@@ -217,9 +217,8 @@ function windowHost(win: Window): Host {
 		const surface = renderSurfaceCreate(win, SurfaceBelow);
 		if (surface === RenderSurfaceInvalid) { throw "Ion window host: renderSurfaceCreate failed"; }
 		renderSurfaceSetFramePolicy(surface, FrameOnDemand);
-		const face = faceFor(_fontId);
 		const vh = createVoidHostWith((size: float32, text: string): float32 => advanceWidth(text, {
-			face, size, letterSpacing: 0.0, lineSpacing: 0.0, maxWidth: 0.0, align: 0.0,
+			font: _fontId, size, letterSpacing: 0.0, lineSpacing: 0.0, maxWidth: 0.0, align: 0.0,
 		}), _fontId);
 		const sc = scene({ r: 0.0, g: 0.0, b: 0.0, a: 1.0 });
 		sc.add(vh.root);
