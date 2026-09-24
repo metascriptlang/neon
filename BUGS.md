@@ -34,23 +34,14 @@ outlived them were moved to the head of the test that pins each one.
 
 - **PARKED 2026-09-21 — a `throw` of a non-`Error` value carries its message on C and loses it on
   `--target=js`.** Not Neon's: five lines with no Neon import print `msg=[bare 7]` on C and
-  `msg=[undefined]` on js, while `new Error(...)` agrees on both. So a user component that writes
-  `throw "oops"` shows its message on desktop and an empty one in the browser. Measured on msc
-  v0.2.55, build `1fc3d947`. Card:
+  `msg=[undefined]` on js, while `new Error(...)` agrees on both. Measured on msc v0.2.55, build
+  `1fc3d947`. Since the handler takes the `Error` (2026-09-25, `00de615`), a user component that
+  writes `throw "oops"` hands its fallback an `Error` carrying the message on desktop and the raw
+  string in the browser: the card's second sighting, through `catchError`, prints
+  `typeof=object msg=[bare 7]` on C and `typeof=string msg=[undefined]` on js, build `6086c900`. Card:
   `~/metascript/.inbox/compiler/2026-09-21-bare-throw-binds-differently-on-c-and-js.md`. Parked at
   the cell `tests/core/error.test.ms` "a bare throw still reaches the handler", which asserts the
   handler fires but not what the message says.
-
-- **PARKED 2026-09-21 — `<ErrorBoundary>`'s fallback receives the message string, not the `Error`,
-  because a signal cannot hold a nullable reference.** Not Neon's: `Setter<T> = (v: T | ((prev: T) =>
-  T)) => void` corrupts its value when `T` is `<ref> | null` — `createSignal<Error | null>` panics with
-  a misaligned `msTypeInfo`, `createSignal<SomeClass | null>` with `index -1 out of bounds (length 1)`.
-  Reduced to 29 lines with no Neon import, with controls: drop the union from the setter and it is
-  green, use `T = number | null` and it is green. Measured on msc v0.2.55, build `1fc3d947`. So
-  `catchError`'s handler is `(err: string) => void` and the boundary extracts `e.message` at the catch
-  site, where the value is still intact; widening to the `Error` is three lines once the card closes.
-  Card: `~/metascript/.inbox/compiler/2026-09-21-setter-union-over-a-nullable-ref-corrupts-the-value.md`.
-  Parked at the cells of `tests/render/errorBoundary.test.ms` that assert on a message string.
 
 - **PARKED 2026-09-22 (rerun) — the gate is exit 1 on `tests/platform/void.test.ms` and
   `tests/style/style.test.ms`: the void host still does not compile.** The 2026-09-20 module-qualified
