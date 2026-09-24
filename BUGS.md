@@ -17,7 +17,7 @@ cannot be reproduced is re-measured and rewritten, never corrected on top.
 ---
 ## §3 — Neon-side and environment
 
-No open Neon-side bug. Eight sites are parked on a compiler card; each names the card and the
+No open Neon-side bug. The sites below are parked on a compiler card; each names the card and the
 site, and nothing is worked around in `src/`. Rows closed before 2026-09-20 were dropped with
 §2 — they are in this file's history at `git show c00bd2b:BUGS.md`, and the invariants that
 outlived them were moved to the head of the test that pins each one.
@@ -28,25 +28,26 @@ outlived them were moved to the head of the test that pins each one.
   `a5e1bc69`. Card: `~/metascript/.inbox/compiler/2026-09-25-push-unknown-into-unknown-array-rejected.md`.
   Parked at `span` in that file; the JS lane still runs it.
 
+- **PARKED 2026-09-23 — a press on Android never reaches the host.** Not a compiler bug but a
+  missing compiler handoff: receiving a touch on an Android `View` needs a Java
+  `View.OnTouchListener`, JNI cannot define one, and Ion's generated bootstrap (`NativeApp`, five
+  native methods) has no input channel. Decided with the user: Neon declares its Java and keep
+  rule, msc hands them to Gradle beside the `.so` (wry's model). Brief:
+  `~/metascript/.inbox/compiler/2026-09-23-design-android-java-handoff.md`; Ion's half:
+  `~/metascript/.inbox/ion/2026-09-23-android-java-handoff.md`. Parked at
+  `src/platform/android/bridge.c` `niViewSetTag` and at the `portrait-pressed` step of
+  `bash tests/android/run.sh`, which fails naming the card.
+
 - **PARKED 2026-09-21 — a `throw` of a non-`Error` value carries its message on C and loses it on
   `--target=js`.** Not Neon's: five lines with no Neon import print `msg=[bare 7]` on C and
-  `msg=[undefined]` on js, while `new Error(...)` agrees on both. So a user component that writes
-  `throw "oops"` shows its message on desktop and an empty one in the browser. Measured on msc
-  v0.2.55, build `1fc3d947`. Card:
+  `msg=[undefined]` on js, while `new Error(...)` agrees on both. Measured on msc v0.2.55, build
+  `1fc3d947`. Since the handler takes the `Error` (2026-09-25, `00de615`), a user component that
+  writes `throw "oops"` hands its fallback an `Error` carrying the message on desktop and the raw
+  string in the browser: the card's second sighting, through `catchError`, prints
+  `typeof=object msg=[bare 7]` on C and `typeof=string msg=[undefined]` on js, build `6086c900`. Card:
   `~/metascript/.inbox/compiler/2026-09-21-bare-throw-binds-differently-on-c-and-js.md`. Parked at
   the cell `tests/core/error.test.ms` "a bare throw still reaches the handler", which asserts the
   handler fires but not what the message says.
-
-- **PARKED 2026-09-21 — `<ErrorBoundary>`'s fallback receives the message string, not the `Error`,
-  because a signal cannot hold a nullable reference.** Not Neon's: `Setter<T> = (v: T | ((prev: T) =>
-  T)) => void` corrupts its value when `T` is `<ref> | null` — `createSignal<Error | null>` panics with
-  a misaligned `msTypeInfo`, `createSignal<SomeClass | null>` with `index -1 out of bounds (length 1)`.
-  Reduced to 29 lines with no Neon import, with controls: drop the union from the setter and it is
-  green, use `T = number | null` and it is green. Measured on msc v0.2.55, build `1fc3d947`. So
-  `catchError`'s handler is `(err: string) => void` and the boundary extracts `e.message` at the catch
-  site, where the value is still intact; widening to the `Error` is three lines once the card closes.
-  Card: `~/metascript/.inbox/compiler/2026-09-21-setter-union-over-a-nullable-ref-corrupts-the-value.md`.
-  Parked at the cells of `tests/render/errorBoundary.test.ms` that assert on a message string.
 
 - **PARKED 2026-09-21 — `setX(v)` with a local `number` is silently dropped on native.** Not Neon's: a
   value argument to a union parameter (`Setter<T> = (v: T | ((prev: T) => T)) => void`) is passed by raw

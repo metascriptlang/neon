@@ -1,16 +1,16 @@
-import { IosElementKind, createIosEventRegistry, iosElementKind, iosFlexStyle } from "../../src/platform/ios/contract";
+import { NativeElementKind, createNativeEventRegistry, nativeElementKind, nativeFlexStyle } from "../../src/platform/native/contract";
 import { Style } from "../../src/render/style";
 import { NeonEvent } from "../../src/render/event";
 
-test "iOS tags select UIKit-backed element kinds" {
-	assert iosElementKind("text") === IosElementKind.Text, "text uses a label";
-	assert iosElementKind("view") === IosElementKind.View, "view uses a view";
-	assert iosElementKind("pressable") === IosElementKind.View, "pressable uses a touch view";
-	assert iosElementKind("custom") === IosElementKind.View, "unknown tags use the view escape hatch";
+test "native tags select view-backed element kinds" {
+	assert nativeElementKind("text") === NativeElementKind.Text, "text uses a label view";
+	assert nativeElementKind("view") === NativeElementKind.View, "view uses a view";
+	assert nativeElementKind("pressable") === NativeElementKind.View, "pressable uses a touch-routed view";
+	assert nativeElementKind("custom") === NativeElementKind.View, "unknown tags use the view escape hatch";
 }
 
-test "iOS styles project onto FlexStyle without filling absent fields" {
-	const projected = iosFlexStyle({
+test "native styles project onto FlexStyle without filling absent fields" {
+	const projected = nativeFlexStyle({
 		width: 320,
 		flexGrow: 1,
 		flexDirection: "row",
@@ -28,14 +28,14 @@ test "iOS styles project onto FlexStyle without filling absent fields" {
 	assert projected.overflow === "hidden", "overflow reaches flex";
 	assert projected.maxWidth === null, "absent maxWidth stays absent";
 
-	const container = iosFlexStyle({} as Style, false);
-	const text = iosFlexStyle({} as Style, true);
+	const container = nativeFlexStyle({} as Style, false);
+	const text = nativeFlexStyle({} as Style, true);
 	assert container.flexDirection === "column", "containers default to columns";
 	assert text.flexDirection === null, "text keeps Yoga's direction default";
 }
 
-test "iOS event registry routes native tags and touch phases" {
-	const registry = createIosEventRegistry();
+test "native event registry routes native tags and touch phases" {
+	const registry = createNativeEventRegistry();
 	let got = "";
 	let downX: number = 0;
 	let downY: number = 0;

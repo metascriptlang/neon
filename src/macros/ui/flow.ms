@@ -83,20 +83,20 @@ export function Index<T>(props: {
 
 export function ErrorBoundary(props: {
 	children: NeonNode;
-	fallback: (err: string, reset: () => void) => NeonNode;
+	fallback: (err: Error, reset: () => void) => NeonNode;
 }): NeonNode {
 	return regionNode((h) => {
-		const [failed, setFailed] = createSignal<string | null>(null);
+		const [failed, setFailed] = createSignal<Error | null>(null);
 		const reset = (): void => { setFailed(null); };
 		const guarded: NeonNode = (host: Host, parent: HostNode, before: HostNode | null): void => {
 			catchError(
 				(): void => { props.children(host, parent, before); },
-				(err: string): void => { setFailed(err); },
+				(err: Error): void => { setFailed(err); },
 			);
 		};
 		return createMemo<Row[]>(() => {
 			const err = failed();
-			if (err !== null) { return [makeRow(props.fallback(err as string, reset))]; }
+			if (err !== null) { return [makeRow(props.fallback(err as Error, reset))]; }
 			return [makeRow(guarded)];
 		});
 	});

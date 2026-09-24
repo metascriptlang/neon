@@ -1,16 +1,20 @@
-import { Host, HostNode } from "../../render/host";
+import { Host, HostNode, NeonNode, render } from "../../render/host";
+import { Dispose } from "../../core/types";
 import { NeonEvent } from "../../render/event";
 import { FlexStyle, freeLayoutTree, layoutPass as runLayoutPass } from "../../../../yoga/src/index";
 import { Style } from "../../render/style";
-import { IosElementKind, createIosEventRegistry, iosElementKind, iosFlexStyle } from "./contract";
+import { NativeElementKind, createNativeEventRegistry, nativeElementKind, nativeFlexStyle } from "./contract";
 
 @passC("-I./");
 
 when (ios) {
-	@compile("./bridge.m", "-fobjc-arc");
+	@compile("../ios/bridge.m", "-fobjc-arc");
 	@passL("-framework UIKit");
 	@passL("-framework Foundation");
 	@passL("-framework CoreGraphics");
+} else when (android) {
+	@compile("../android/bridge.c");
+	@passL("-llog");
 }
 
 import {
@@ -25,16 +29,17 @@ extern function niRegisterApp(mount: () => void): void;
 extern function niRunApp(): int32;
 extern function niSetTouchHandler(handler: () => void): void;
 extern function niSetResizeHandler(handler: () => void): void;
+extern function niSetTeardownHandler(handler: () => void): void;
 
 
-interface IosNode {
-	view: Ptr<void> | null;      // the UIView/UILabel; null on merged string nodes
-	isText: boolean;             // owns a UILabel
+interface NativeNode {
+	view: Ptr<void> | null;      // the platform view; null on merged string nodes
+	isText: boolean;             // owns a text view
 	isString: boolean;           // a text leaf created by createText
-	labelOwner: IosNode | null;  // whose label displays a string node's text
+	labelOwner: NativeNode | null;  // whose label displays a string node's text
 	text: string;
-	children: IosNode[];
-	parent: IosNode | null;
+	children: NativeNode[];
+	parent: NativeNode | null;
 	eventTag: int32;
 	styleCache: Style | null;
 	flex: FlexStyle | null;
@@ -43,7 +48,7 @@ interface IosNode {
 	x: float32; y: float32; w: float32; h: float32;
 }
 
-function iosNode(view: Ptr<void> | null, isText: boolean, isString: boolean): IosNode {
+function nativeNode(view: Ptr<void> | null, isText: boolean, isString: boolean): NativeNode {
 	return {
 		view, isText, isString, labelOwner: null, text: "",
 		children: [], parent: null, eventTag: 0, styleCache: null,
@@ -52,15 +57,15 @@ function iosNode(view: Ptr<void> | null, isText: boolean, isString: boolean): Io
 	};
 }
 
-// ---- the yoga sync protocol (yoga/src/sync.ms) on IosNode ----
+// ---- the yoga sync protocol (yoga/src/sync.ms) on NativeNode ----
 
-export function layoutGetChildren(this n: IosNode): IosNode[] { return n.children; }
-export function layoutGetStyle(this n: IosNode): FlexStyle | null { return n.flex; }
-export function layoutGetLastStyle(this n: IosNode): FlexStyle | null { return n.lastFlex; }
-export function layoutSetLastStyle(this n: IosNode, s: FlexStyle | null): void { n.lastFlex = s; }
-export function layoutGetYg(this n: IosNode): Ptr<void> | null { return n.yg; }
-export function layoutSetYg(this n: IosNode, yg: Ptr<void> | null): void { n.yg = yg; }
-export function layoutSetFrame(this n: IosNode, x: float32, y: float32, w: float32, h: float32): void {
+export function layoutGetChildren(this n: NativeNode): NativeNode[] { return n.children; }
+export function layoutGetStyle(this n: NativeNode): FlexStyle | null { return n.flex; }
+export function layoutGetLastStyle(this n: NativeNode): FlexStyle | null { return n.lastFlex; }
+export function layoutSetLastStyle(this n: NativeNode, s: FlexStyle | null): void { n.lastFlex = s; }
+export function layoutGetYg(this n: NativeNode): Ptr<void> | null { return n.yg; }
+export function layoutSetYg(this n: NativeNode, yg: Ptr<void> | null): void { n.yg = yg; }
+export function layoutSetFrame(this n: NativeNode, x: float32, y: float32, w: float32, h: float32): void {
 	n.x = x; n.y = y; n.w = w; n.h = h;
 	if (n.view !== null && n !== root) {
 		niSetFrame(n.view, x, y, w, h);
@@ -100,8 +105,8 @@ function parseHex(css: string): Rgba | null {
 }
 
 
-// The paint half of the projection (docs/STYLE.md §5), onto UIKit.
-function applyPaint(n: IosNode, s: Style): void {
+// The paint half of the projection (docs/STYLE.md §5), onto the platform view.
+function applyPaint(n: NativeNode, s: Style): void {
 	if (n.view === null || !n.isText) {
 		if (n.view !== null) {
 			const bg = s.backgroundColor;
@@ -126,9 +131,9 @@ function applyPaint(n: IosNode, s: Style): void {
 }
 
 
-// Eager text measure: sizeThatFits becomes the node's fixed w/h so yoga lays
+// Eager text measure: the bridge's measured size becomes the node's fixed w/h so yoga lays
 // out text without a measure func. Fresh FlexStyle object every time — the
-function remeasureText(n: IosNode): void {
+function remeasureText(n: NativeNode): void {
 	if (!n.isText || n.view === null) { return; }
 	niMeasureText(n.view, niScreenWidth());
 	const w = niMeasuredW();
@@ -178,10 +183,10 @@ function remeasureText(n: IosNode): void {
 // ---- the host ----
 
 let nextTag: int32 = 1;
-const eventRegistry = createIosEventRegistry();
-let root: IosNode;
+const eventRegistry = createNativeEventRegistry();
+let root: NativeNode;
 
-function childIndex(parent: IosNode, node: IosNode): int32 {
+function childIndex(parent: NativeNode, node: NativeNode): int32 {
 	let i: int32 = 0;
 	while (i < (parent.children.length as int32)) {
 		if (parent.children[i] === node) { return i; }
@@ -190,8 +195,8 @@ function childIndex(parent: IosNode, node: IosNode): int32 {
 	return -1;
 }
 
-function isMounted(n: IosNode): boolean {
-	let current: IosNode | null = n;
+function isMounted(n: NativeNode): boolean {
+	let current: NativeNode | null = n;
 	while (current !== null) {
 		if (current === root) { return true; }
 		current = current.parent;
@@ -199,7 +204,7 @@ function isMounted(n: IosNode): boolean {
 	return false;
 }
 
-function releaseNativeTree(n: IosNode): void {
+function releaseNativeTree(n: NativeNode): void {
 	for (const child of n.children) { releaseNativeTree(child); }
 	if (n.eventTag !== 0) {
 		eventRegistry.remove(n.eventTag);
@@ -224,7 +229,7 @@ function onResize(): void {
 // hosts' rule — no nested labels); under anything else it materialises its
 // own label, inheriting the parent's text paint (RN color/fontSize cascade,
 // first cut).
-function materializeString(child: IosNode, parent: IosNode): void {
+function materializeString(child: NativeNode, parent: NativeNode): void {
 	if (parent.isText && parent.view !== null) {
 		child.labelOwner = parent;
 		niSetText(parent.view, child.text);
@@ -257,38 +262,38 @@ function onTouch(): void {
 	eventRegistry.dispatch(tag, phase, 0, 0);
 }
 
-export interface IosHost {
+export interface NativeHost {
 	host: Host;
 	rootNode: HostNode;
 	relayout: () => void;
 }
 
-export function createIosHost(): IosHost {
+export function createNativeHost(): NativeHost {
 	const container = niContainerView();
-	root = iosNode(container, false, false);
+	root = nativeNode(container, false, false);
 	root.flex = { width: niScreenWidth(), height: niScreenHeight() };
 	niSetTouchHandler(onTouch);
 	niSetResizeHandler(onResize);
 
 	const host: Host = {
 		createElement: (tag: string): HostNode => {
-			const kind = iosElementKind(tag);
-			const n = kind === IosElementKind.Text
-				? iosNode(niTextCreate(), true, false)
-				: iosNode(niViewCreate(), false, false);
+			const kind = nativeElementKind(tag);
+			const n = kind === NativeElementKind.Text
+				? nativeNode(niTextCreate(), true, false)
+				: nativeNode(niViewCreate(), false, false);
 			// RN parity: containers lay out as columns (yoga's default is row).
-			n.flex = iosFlexStyle({} as Style, n.isText);
+			n.flex = nativeFlexStyle({} as Style, n.isText);
 			return n as unknown as HostNode;
 		},
 		createText: (s: string): HostNode => {
-			const n = iosNode(null, false, true);
+			const n = nativeNode(null, false, true);
 			n.text = s;
 			return n as unknown as HostNode;
 		},
 		setText: (node: HostNode, s: string): void => {
-			const n = node as unknown as IosNode;
+			const n = node as unknown as NativeNode;
 			n.text = s;
-			const owner = n.labelOwner !== null ? (n.labelOwner as IosNode) : n;
+			const owner = n.labelOwner !== null ? (n.labelOwner as NativeNode) : n;
 			if (owner.isText && owner.view !== null) {
 				niSetText(owner.view, s);
 				remeasureText(owner);
@@ -300,9 +305,9 @@ export function createIosHost(): IosHost {
 		},
 		removeAttr: (node: HostNode, name: string): void => {},
 		setStyle: (node: HostNode, style: Style): void => {
-			const n = node as unknown as IosNode;
+			const n = node as unknown as NativeNode;
 			n.styleCache = style;
-			n.flex = iosFlexStyle(style, n.isText);
+			n.flex = nativeFlexStyle(style, n.isText);
 			applyPaint(n, style);
 			if (n.isText) { remeasureText(n); }
 			if (isMounted(n)) { relayoutRoot(); }
@@ -310,7 +315,7 @@ export function createIosHost(): IosHost {
 		setStyleProp: null,
 		setStyleClass: null,
 		addEvent: (node: HostNode, name: string, handler: (e: NeonEvent) => void): void => {
-			const n = node as unknown as IosNode;
+			const n = node as unknown as NativeNode;
 			if (n.eventTag === 0) {
 				n.eventTag = nextTag;
 				nextTag += 1;
@@ -319,8 +324,8 @@ export function createIosHost(): IosHost {
 			eventRegistry.add(n.eventTag, name, handler);
 		},
 		append: (parent: HostNode, child: HostNode): void => {
-			const p = parent as unknown as IosNode;
-			const c = child as unknown as IosNode;
+			const p = parent as unknown as NativeNode;
+			const c = child as unknown as NativeNode;
 			if (c.parent !== null) {
 				const old = c.parent;
 				const idx = childIndex(old, c);
@@ -336,13 +341,13 @@ export function createIosHost(): IosHost {
 			if (isMounted(p)) { relayoutRoot(); }
 		},
 		insertBefore: (parent: HostNode, node: HostNode, ref: HostNode | null): void => {
-			const p = parent as unknown as IosNode;
-			const n = node as unknown as IosNode;
+			const p = parent as unknown as NativeNode;
+			const n = node as unknown as NativeNode;
 			let idx: int32;
 			if (ref === null) {
 				idx = p.children.length as int32;
 			} else {
-				idx = childIndex(p, ref as unknown as IosNode);
+				idx = childIndex(p, ref as unknown as NativeNode);
 				if (idx < 0) { throw "insertBefore: the reference node is not a child of the parent"; }
 			}
 			if (n.parent !== null) {
@@ -359,9 +364,9 @@ export function createIosHost(): IosHost {
 			}
 			if (p.view !== null && n.view !== null) {
 				niAddChild(p.view, n.view);
-				const refChild = ref as unknown as IosNode;
+				const refChild = ref as unknown as NativeNode;
 				if (refChild !== null && refChild.view !== null) {
-					// UIKit stacking order follows addSubview order; the next
+					// Stacking order follows add order on both platforms; the next
 					// relayout re-asserts frames, z-order matches the array.
 					sortLater(p);
 				}
@@ -369,8 +374,8 @@ export function createIosHost(): IosHost {
 			if (isMounted(p)) { relayoutRoot(); }
 		},
 		removeChild: (parent: HostNode, node: HostNode): void => {
-			const p = parent as unknown as IosNode;
-			const n = node as unknown as IosNode;
+			const p = parent as unknown as NativeNode;
+			const n = node as unknown as NativeNode;
 			const idx = childIndex(p, n);
 			if (idx < 0) { throw "removeChild: the node is not a child of the parent"; }
 			p.children.splice(idx, 1);
@@ -380,7 +385,7 @@ export function createIosHost(): IosHost {
 			releaseNativeTree(n);
 		},
 		nextSibling: (node: HostNode): HostNode | null => {
-			const n = node as unknown as IosNode;
+			const n = node as unknown as NativeNode;
 			const p = n.parent;
 			if (p === null) { return null; }
 			const idx = childIndex(p, n);
@@ -388,7 +393,7 @@ export function createIosHost(): IosHost {
 			return p.children[idx + 1] as unknown as HostNode;
 		},
 		firstChild: (node: HostNode): HostNode | null => {
-			const n = node as unknown as IosNode;
+			const n = node as unknown as NativeNode;
 			if ((n.children.length as int32) === 0) { return null; }
 			return n.children[0] as unknown as HostNode;
 		},
@@ -403,9 +408,9 @@ export function createIosHost(): IosHost {
 	};
 }
 
-// UIKit stacking order must follow the children array; frames alone do not
+// Native stacking order must follow the children array; frames alone do not
 // reorder views. First cut: re-add subviews in array order on insert.
-function sortLater(p: IosNode): void {
+function sortLater(p: NativeNode): void {
 	if (p.view === null) { return; }
 	for (let i = 0; i < p.children.length; i += 1) {
 		const c = p.children[i];
@@ -420,10 +425,28 @@ function relayoutRoot(): void {
 	runLayoutPass(root, width, height);
 }
 
-// ---- app entry (probe/iosApp/app.ms drives this) ----
+let mountedApp: (() => NeonNode) | null = null;
+let mounted: Dispose | null = null;
 
-export function registerAndRun(mount: () => void): int32 {
-	niRegisterApp(mount);
-	return niRunApp();
+function mountApp(): void {
+	const native = createNativeHost();
+	mounted = render((mountedApp as () => NeonNode)(), native.host, native.rootNode);
+	native.relayout();
 }
 
+function teardownApp(): void {
+	if (mounted !== null) {
+		(mounted as Dispose)();
+		mounted = null;
+	}
+	freeLayoutTree(root);
+	for (const child of root.children) { releaseNativeTree(child); }
+	root.children = [];
+}
+
+export function runApp(app: () => NeonNode): int32 {
+	mountedApp = app;
+	niRegisterApp(mountApp);
+	niSetTeardownHandler(teardownApp);
+	return niRunApp();
+}

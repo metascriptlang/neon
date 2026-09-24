@@ -5,30 +5,35 @@ import { createRoot } from "../../src/core/owner";
 import { catchError } from "../../src/core/error";
 
 test "catchError catches a throw in its own body" {
-	let seen = "";
-	catchError(() => { throw new Error("boom 7"); }, (err: string) => { seen = err; });
-	assert seen === "boom 7", "the handler is given the error itself: [" + seen + "]";
+	const thrown = new Error("boom 7");
+	let seen: Error | null = null;
+	catchError(() => { throw thrown; }, (err: Error) => { seen = err; });
+	assert seen === thrown, "the handler is given the thrown Error itself";
+	assert (seen as Error).message === "boom 7", "with its message: [" + (seen as Error).message + "]";
 }
 
 test "an effect under catchError routes a later throw to the handler" {
 	const [a, setA] = createSignal(0);
-	let seen = "";
+	const thrown = new Error("late 7");
+	let seen: Error | null = null;
 	catchError(() => {
-		createEffect(() => { if (a() === 1) { throw new Error("late 7"); } });
-	}, (err: string) => { seen = err; });
-	assert seen === "", "nothing failed on the first run";
+		createEffect(() => { if (a() === 1) { throw thrown; } });
+	}, (err: Error) => { seen = err; });
+	assert seen === null, "nothing failed on the first run";
 	setA(1);
-	assert seen === "late 7", "the write re-ran the effect and the owner carried the handler: [" + seen + "]";
+	assert seen === thrown, "the write re-ran the effect and the owner carried the handler";
+	assert (seen as Error).message === "late 7", "with its message: [" + (seen as Error).message + "]";
 }
 
 test "the nearest handler wins" {
-	let outer = "";
-	let inner = "";
+	const thrown = new Error("boom");
+	let outer: Error | null = null;
+	let inner: Error | null = null;
 	catchError(() => {
-		catchError(() => { throw new Error("boom"); }, (err: string) => { inner = err; });
-	}, (err: string) => { outer = err; });
-	assert inner === "boom", "the inner handler ran";
-	assert outer === "", "the outer handler was not reached";
+		catchError(() => { throw thrown; }, (err: Error) => { inner = err; });
+	}, (err: Error) => { outer = err; });
+	assert inner === thrown, "the inner handler ran";
+	assert outer === null, "the outer handler was not reached";
 }
 
 test "a throw with no handler still escapes" {
@@ -50,7 +55,7 @@ test "a computation that threw is disposed, not re-run" {
 			onCleanup(() => { cleaned = cleaned + 1; });
 			if (a() > 0) { throw new Error("boom"); }
 		});
-	}, (err: string) => { handled = handled + 1; });
+	}, (err: Error) => { handled = handled + 1; });
 	setA(1);
 	assert runs === 2 && handled === 1, "it ran twice and failed once: runs=" + runs.toString();
 	setA(2);
@@ -61,7 +66,7 @@ test "a computation that threw is disposed, not re-run" {
 
 test "a bare throw still reaches the handler" {
 	let ran = 0;
-	catchError(() => { throw "bare 7"; }, (err: string) => { ran = ran + 1; });
+	catchError(() => { throw "bare 7"; }, (err: Error) => { ran = ran + 1; });
 	assert ran === 1, "a non-Error throw is routed, not lost";
 }
 
@@ -69,7 +74,7 @@ test "catchError restores the owner it ran under" {
 	createRoot((dispose) => {
 		let sameOwner = false;
 		let ran = 0;
-		catchError(() => { throw new Error("boom"); }, (err: string) => { ran = ran + 1; });
+		catchError(() => { throw new Error("boom"); }, (err: Error) => { ran = ran + 1; });
 		createEffect(() => { sameOwner = true; ran = ran + 1; });
 		assert ran === 2, "the scope did not leak: ran=" + ran.toString();
 		assert sameOwner, "an effect still mounts after a caught error";

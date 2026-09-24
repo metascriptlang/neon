@@ -1,5 +1,5 @@
-#ifndef NEON_IOS_BRIDGE_H
-#define NEON_IOS_BRIDGE_H
+#ifndef NEON_NATIVE_BRIDGE_H
+#define NEON_NATIVE_BRIDGE_H
 
 #include <stdint.h>
 
@@ -32,9 +32,9 @@ float niMeasuredW(void);
 float niMeasuredH(void);
 
 // --- events ---
-// One touch-forwarding view class fires every phase; the tag routes to the
-// MS-side registry. The last phase's tag is readable from the () => void
-// closure (msClosure carries no args).
+// Every touch phase fires the one handler; the tag routes to the MS-side
+// registry. The last phase's tag is readable from the () => void closure
+// (msClosure carries no args).
 void niSetTouchHandler(msClosure handler);
 int  niLastTouchTag(void);
 int  niLastTouchPhase(void); // 0 = down, 1 = up, 2 = press, 3 = cancel
@@ -42,6 +42,7 @@ int  niLastTouchPhase(void); // 0 = down, 1 = up, 2 = press, 3 = cancel
 // --- app lifecycle ---
 void  niRegisterApp(msClosure mount);
 void  niSetResizeHandler(msClosure handler);
+void  niSetTeardownHandler(msClosure handler);
 int   niRunApp(void);
 void *niContainerView(void);
 float niScreenWidth(void);
