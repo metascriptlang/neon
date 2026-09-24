@@ -92,13 +92,17 @@ In rough priority order, once the above is standing:
   `vi → vie → vi → viê → viêt → viê → vi → việ → việt` and drew `việt` with the caret after it; resizing
   the window from 640×360 to 900×500 re-ran `onLayout` (header 576 → 836 wide) and stretched the
   field. Not verified: a TSF IME's preedit (no Vietnamese IME is installed on this box; the composing
-  path is pinned by `tests/platform/voidInput.test.ms` only), a DPI change, and the DOM host's new key
-  fields in Chrome. The void host compiles again: it wrote `"50%"` strings into yoga's `float32`
-  dimensions, which msc 0.2.55 rejects; a string dimension now fails loud with its field name.
-  Proved: `bash tests/run.sh` on tree `eb60fd75` — macros ok, apps ok (`moduleSignalApp` native red,
-  known L46), native 50 files and js 47 + 3 deliberate skips with 0 failures; exit 1 because the
-  browser lane cannot run on this Windows box (no `python3`, no playwright,
-  `examples/vite-counter` absent).
+  path is pinned by `tests/platform/voidInput.test.ms` only) and a DPI change. The DOM host's key
+  fields are pinned in real Chrome by a dispatched `KeyboardEvent` (`tests/browser/dom.test.ms`). The
+  void host compiles again: it wrote `"50%"` strings into yoga's `float32` dimensions, which msc 0.2.55
+  rejects; a string dimension now fails loud with its field name. The Chrome lane runs on Windows now:
+  `playwright-core` driving the installed Chrome, a node static server, and the bundle read from beside
+  the test file, where `msc test --target=js` writes it. Re-run after the example on msc `2f306532` and
+  void2d's Font API: `xin chaof vieetj` through UniKey → `xin chào việt`.
+  Proved: `bash tests/run.sh` on msc `2f306532`, tree `34595404` — macros ok, apps ok
+  (`moduleSignalApp` native red, known L46), native 50 files and js 47 + 3 deliberate skips with 0 test
+  failures, browser 81/81; exit 1 only on `tests/render/reconcile.test.ms` native, parked on a compiler
+  card (`BUGS.md`).
 
 - **tail of one NeonNode** (2026-09-19) — what the merge left behind. `on*` is an event by ONE rule,
   `on` + an uppercase letter, for a tag, a spread field and a component prop (`isEventName`; `<p once="x">`
