@@ -121,12 +121,12 @@ export function runComputation(comp: Computation): void {
 	const prevOwner = tlOwner;
 	tlListener = comp;
 	tlOwner = comp;
-	let failure: string | null = null;
+	let failure: Error | null = null;
 	try {
 		comp.fn();
 	} catch (e) {
 		if (findHandler(comp) === null) { throw e; }
-		failure = e.message;
+		failure = e;
 	} finally {
 		tlListener = prevListener;
 		tlOwner = prevOwner;

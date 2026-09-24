@@ -4,7 +4,7 @@ export enum CompState { Clean, Stale }
 
 export type EffectFn = () => void;
 export type Dispose = () => void;
-export type ErrorHandler = (err: string) => void;
+export type ErrorHandler = (err: Error) => void;
 
 // A context entry an owner scope carries: `key` is the context object itself
 // (identity by creation, not by name), `read` the value thunk so each consumer
