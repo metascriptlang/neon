@@ -18,7 +18,7 @@ test "ErrorBoundary mounts its children when nothing fails" {
 	createRoot((d) => {
 		const [view, dispose] = mounted(ErrorBoundary({
 			children: el("i", [], [], text("ok")),
-			fallback: (err: string, reset: () => void): NeonNode => el("b", [], [], text("caught")),
+			fallback: (err: Error, reset: () => void): NeonNode => el("b", [], [], text("caught")),
 		}));
 		assert view().includes("ok"), "children mounted: " + view();
 		assert !view().includes("caught"), "the fallback stayed out: " + view();
@@ -29,16 +29,18 @@ test "ErrorBoundary mounts its children when nothing fails" {
 
 test "a throw while mounting the children swaps in the fallback" {
 	createRoot((d) => {
+		const thrown = new Error("mount 7");
 		const boom: NeonNode = (host: Host, parent: HostNode, before: HostNode | null): void => {
-			throw new Error("mount 7");
+			throw thrown;
 		};
-		let seen = "";
+		let seen: Error | null = null;
 		const [view, dispose] = mounted(ErrorBoundary({
 			children: boom,
-			fallback: (err: string, reset: () => void): NeonNode => { seen = err; return el("b", [], [], text("caught")); },
+			fallback: (err: Error, reset: () => void): NeonNode => { seen = err; return el("b", [], [], text("caught")); },
 		}));
 		assert view().includes("caught"), "the fallback is mounted: " + view();
-		assert seen === "mount 7", "the fallback is given the error itself: [" + seen + "]";
+		assert seen === thrown, "the fallback is given the thrown Error itself";
+		assert (seen as Error).message === "mount 7", "with its message: [" + (seen as Error).message + "]";
 		dispose();
 		return 0;
 	});
@@ -47,18 +49,20 @@ test "a throw while mounting the children swaps in the fallback" {
 test "a throw in a later effect swaps in the fallback" {
 	createRoot((d) => {
 		const [a, setA] = createSignal(0);
+		const thrown = new Error("late 7");
 		const late: NeonNode = (host: Host, parent: HostNode, before: HostNode | null): void => {
-			createEffect(() => { if (a() === 1) { throw new Error("late 7"); } });
+			createEffect(() => { if (a() === 1) { throw thrown; } });
 			text("ok")(host, parent, before);
 		};
-		let seen = "";
+		let seen: Error | null = null;
 		const [view, dispose] = mounted(ErrorBoundary({
 			children: late,
-			fallback: (err: string, reset: () => void): NeonNode => { seen = err; return el("b", [], [], text("caught")); },
+			fallback: (err: Error, reset: () => void): NeonNode => { seen = err; return el("b", [], [], text("caught")); },
 		}));
 		assert view().includes("ok"), "children mounted first: " + view();
 		setA(1);
-		assert seen === "late 7", "the boundary caught the later throw: [" + seen + "]";
+		assert seen === thrown, "the boundary caught the later throw and hands it over as is";
+		assert (seen as Error).message === "late 7", "with its message: [" + (seen as Error).message + "]";
 		assert view().includes("caught") && !view().includes("ok"), "the fallback replaced the children: " + view();
 		dispose();
 		return 0;
@@ -76,7 +80,7 @@ test "the failed subtree is torn down before the fallback mounts" {
 		};
 		const [view, dispose] = mounted(ErrorBoundary({
 			children: late,
-			fallback: (err: string, reset: () => void): NeonNode => el("b", [], [], text("caught")),
+			fallback: (err: Error, reset: () => void): NeonNode => el("b", [], [], text("caught")),
 		}));
 		setA(1);
 		assert cleaned > 0, "the children's cleanups ran";
@@ -95,7 +99,7 @@ test "reset re-mounts the children" {
 		};
 		const [view, dispose] = mounted(ErrorBoundary({
 			children: late,
-			fallback: (err: string, reset: () => void): NeonNode => { again = reset; return el("b", [], [], text("caught")); },
+			fallback: (err: Error, reset: () => void): NeonNode => { again = reset; return el("b", [], [], text("caught")); },
 		}));
 		setA(1);
 		assert view().includes("caught"), "failed first: " + view();
@@ -114,11 +118,32 @@ test "ErrorBoundary works written as a tag" {
 			createEffect(() => { if (a() === 1) { throw new Error("tag 7"); } });
 			text("ok")(host, parent, before);
 		};
-		const fb = (err: string, reset: () => void): NeonNode => element(<b>{"caught " + err}</b>);
+		const fb = (err: Error, reset: () => void): NeonNode => element(<b>{"caught " + err.message}</b>);
 		const [view, dispose] = mounted(element(<div><ErrorBoundary fallback={fb}>{late}</ErrorBoundary></div>));
 		assert view().includes("ok"), "children mounted through the tag: " + view();
 		setA(1);
 		assert view().includes("caught tag 7"), "the tag renders the message, not a JSON dump: " + view();
+		dispose();
+		return 0;
+	});
+}
+
+test "the fallback keeps the Error in a signal and reads it back" {
+	createRoot((d) => {
+		const [last, setLast] = createSignal<Error | null>(null);
+		const thrown = new Error("x7");
+		const boom: NeonNode = (host: Host, parent: HostNode, before: HostNode | null): void => {
+			throw thrown;
+		};
+		const [view, dispose] = mounted(ErrorBoundary({
+			children: boom,
+			fallback: (err: Error, reset: () => void): NeonNode => {
+				setLast(err);
+				return el("b", [], [], text("caught " + (last() as Error).message));
+			},
+		}));
+		assert view().includes("caught x7"), "the fallback read the Error back from its signal: " + view();
+		assert last() === thrown, "the signal still holds the same Error after the mount";
 		dispose();
 		return 0;
 	});
@@ -134,7 +159,7 @@ test "a sibling of the boundary keeps running after the boundary fails" {
 		};
 		const [view, dispose] = mounted(el("div", [], [], ErrorBoundary({
 			children: late,
-			fallback: (err: string, reset: () => void): NeonNode => el("b", [], [], text("caught")),
+			fallback: (err: Error, reset: () => void): NeonNode => el("b", [], [], text("caught")),
 		})));
 		createEffect(() => { b(); seen = seen + 1; });
 		setA(1);
