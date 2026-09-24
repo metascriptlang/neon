@@ -1,12 +1,23 @@
-const [, , playwrightPath, port, label] = process.argv;
-const { chromium } = await import(playwrightPath);
+import { pathToFileURL } from "node:url";
 
-const browser = await chromium.launch();
+const [, , playwrightPath, port, label, pagePath] = process.argv;
+const { chromium } = await import(pathToFileURL(playwrightPath).href);
+
+const browser = await chromium.launch({ channel: process.env.NEON_CHROME_CHANNEL ?? "chrome" });
 const page = await browser.newPage();
 const pageErrors = [];
 page.on("pageerror", (e) => pageErrors.push(String(e)));
 
-await page.goto(`http://localhost:${port}/neon-test.html`);
+const url = `http://127.0.0.1:${port}/${pagePath}`;
+for (let attempt = 0; ; attempt++) {
+	try {
+		await page.goto(url);
+		break;
+	} catch (e) {
+		if (attempt >= 50) throw e;
+		await new Promise((r) => setTimeout(r, 100));
+	}
+}
 await page.waitForFunction("globalThis.__neonDone !== undefined", { timeout: 60000 });
 const done = await page.evaluate("globalThis.__neonDone");
 await browser.close();
