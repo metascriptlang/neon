@@ -51,6 +51,7 @@ Anything under `src/platform/` is proven on its own host; examples and docs are 
 ```bash
 msc test tests/core/signal.test.ms           # one file, native; add --target=js for the JS lane
 bash tests/macros/run.sh                     # the rejection programs
+npm install --prefix tests/browser           # once per checkout: playwright-core for the Chrome lane (drives the installed Chrome)
 bash tests/run.sh                            # the full gate: macros, apps, every file native, then JS, then Chrome
 msc run examples/counter.ms
 ```
