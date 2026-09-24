@@ -22,6 +22,12 @@ site, and nothing is worked around in `src/`. Rows closed before 2026-09-20 were
 §2 — they are in this file's history at `git show c00bd2b:BUGS.md`, and the invariants that
 outlived them were moved to the head of the test that pins each one.
 
+- **PARKED 2026-09-25 — `tests/render/reconcile.test.ms` does not compile on the native lane since
+  msc `2f306532`.** Not Neon's: `span` pushes a `HostNode` (`unknown`) into a `HostNode[]`, and the
+  checker now answers `Argument 0: unknown is not assignable to <kind:Sink>`; it compiled and passed on
+  `a5e1bc69`. Card: `~/metascript/.inbox/compiler/2026-09-25-push-unknown-into-unknown-array-rejected.md`.
+  Parked at `span` in that file; the JS lane still runs it.
+
 - **PARKED 2026-09-21 — a `throw` of a non-`Error` value carries its message on C and loses it on
   `--target=js`.** Not Neon's: five lines with no Neon import print `msg=[bare 7]` on C and
   `msg=[undefined]` on js, while `new Error(...)` agrees on both. So a user component that writes
