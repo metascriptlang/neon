@@ -306,3 +306,20 @@ test "a bound value that turns null empties the input" {
 	assert probe(el).value === "b", "a later value writes again";
 	probe(el).remove();
 }
+
+extern class window {
+	static extern eval(code: cstring): void;
+}
+
+test "a real KeyboardEvent reaches the handler with React Native's key fields" {
+	const h = domHost();
+	const el = mount("view");
+	h.setAttr(el, "id", "neon-key-probe");
+	let seen = "";
+	h.addEvent(el, "onKeyDown", (e: NeonEvent): void => {
+		seen = `${e.type} ${e.key} ${e.code} alt=${e.altKey} ctrl=${e.ctrlKey} meta=${e.metaKey} shift=${e.shiftKey} repeat=${e.repeat} composing=${e.isComposing}`;
+	});
+	window.eval("document.getElementById('neon-key-probe').dispatchEvent(new KeyboardEvent('keydown', { key: 'A', code: 'KeyA', shiftKey: true, ctrlKey: true, repeat: true, isComposing: true }))");
+	assert seen === "keydown A KeyA alt=false ctrl=true meta=false shift=true repeat=true composing=true", "fields: " + seen;
+	probe(el).remove();
+}
