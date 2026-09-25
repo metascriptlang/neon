@@ -28,15 +28,21 @@ outlived them were moved to the head of the test that pins each one.
   `a5e1bc69`. Card: `~/metascript/.inbox/compiler/2026-09-25-push-unknown-into-unknown-array-rejected.md`.
   Parked at `span` in that file; the JS lane still runs it.
 
-- **PARKED 2026-09-23 — a press on Android never reaches the host.** Not a compiler bug but a
-  missing compiler handoff: receiving a touch on an Android `View` needs a Java
-  `View.OnTouchListener`, JNI cannot define one, and Ion's generated bootstrap (`NativeApp`, five
-  native methods) has no input channel. Decided with the user: Neon declares its Java and keep
-  rule, msc hands them to Gradle beside the `.so` (wry's model). Brief:
-  `~/metascript/.inbox/compiler/2026-09-23-design-android-java-handoff.md`; Ion's half:
-  `~/metascript/.inbox/ion/2026-09-23-android-java-handoff.md`. Parked at
-  `src/platform/android/bridge.c` `niViewSetTag` and at the `portrait-pressed` step of
-  `bash tests/android/run.sh`, which fails naming the card.
+- **PARKED 2026-09-26 — the Android counter and `tests/platform/nativeHost.test.ms` do not compile
+  on msc `227ebc34`: Yoga's node handle.** Not Neon's: Yoga holds a node as `Ptr<void>` while its
+  header gives `Ptr<YGNode>`, and `Ptr<void>` → `Ptr<YGNode>` is an error by the person's decision
+  (2026-09-25, Nim: `pointer` into `ptr T`). `msc check tests/platform/nativeHost.test.ms` and
+  `msc check examples/android/app.ms --os=android --cpu=arm64` stop at 86 errors, all in Yoga; Ion's
+  generated `settings.gradle` runs the second on every configuration, so the lane cannot build the
+  counter. Route: Yoga types the handle (`~/metascript/.wt/yoga-modernize.md` step 1) and writes
+  `~/metascript/.inbox/neon/<date>-yoga-typed-handle.md`; Neon then types `NativeNode.yg` and the
+  two `layout*Yg` extensions in `src/platform/native/host.ms` as `Ptr<YGNode> | null`, no `as`. The
+  compiler's half (`Ptr<T>` → `Ptr<void>`) is
+  `~/metascript/.inbox/compiler/2026-09-26-header-pointer-into-ptr-void-rejected.md` and blocks
+  nothing here. Parked at `bash tests/android/run.sh`, which fails at its `build` step on the Yoga
+  errors, so its press steps (`portrait-pressed`, `landscape-pressed`) have not run: the Java half
+  of the press is proven apart from the host (`docs/ANDROID.md` §9, 2026-09-26), the press through
+  the host is not.
 
 - **PARKED 2026-09-21, re-measured 2026-09-26 — a `throw` of a non-`Error` value does not reach
   the handler as an `Error`, and `throw null` inside an effect is swallowed.** Not Neon's: the
