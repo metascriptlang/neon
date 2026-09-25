@@ -1,9 +1,11 @@
 # Android Host
 
 Status: the counter renders, rotates, backgrounds and tears down on the Android 36 emulator
-through an Ion-generated Gradle project; **a press does not reach the host yet** (§9, parked on
-`~/metascript/.inbox/compiler/2026-09-23-design-android-java-handoff.md`). The host is shared
-with iOS: `src/platform/native/host.ms` over one bridge per platform, `src/platform/android/bridge.c`
+through an Ion-generated Gradle project (§9, 2026-09-23). A tap reaches native code through
+Neon's Android library (§6), proven on the emulator apart from the host (§9, 2026-09-26); **the
+counter itself does not build on msc `227ebc34`** (Yoga's node handle, `BUGS.md` §3), so the
+press through the host is unmeasured. The host is shared with iOS: `src/platform/native/host.ms`
+over one bridge per platform, `src/platform/android/bridge.c`
 here. `examples/android/` is the generated-project consumer and `bash tests/android/run.sh` the
 lane. §1–§8 are the research the port started from, read on 2026-09-21 with `file:line`
 evidence; judgment calls are marked as such. The two decisions these notes feed:
@@ -158,12 +160,18 @@ application): Gradle wrapper, manifest, and a package-stable bootstrap
 What the table above has and Ion's bootstrap does not: `NeonBridge.java`. Every Java→native
 event of the reference (touch, text, scroll, image, gestures, the async runtime) goes through a
 listener class in that file, and JNI cannot define a Java class. Rejected with the user on
-2026-09-23: a listener in Ion's bootstrap (puts Neon's bridge in Ion), a Neon Gradle module (a
-second build description), a runtime-loaded dex, NativeActivity (only for self-painted
-surfaces). Chosen: Neon declares its Java and keep rule and msc hands them to Gradle beside the
-`.so` — the shape of wry's `build.rs` + `WRY_ANDROID_KOTLIN_FILES_OUT_DIR` (tauri-apps/wry
-`build.rs`). A `/tmp` probe proved it on the emulator, keep rule included; the brief with the
-numbers is the card named in the status line.
+2026-09-23: a listener in Ion's bootstrap (puts Neon's bridge in Ion), a runtime-loaded dex,
+NativeActivity (only for self-painted surfaces). The first choice, msc copying declared `.java`
+files and a keep rule beside the `.so` (wry's `build.rs` + `WRY_ANDROID_KOTLIN_FILES_OUT_DIR`),
+was replaced with the user on 2026-09-25 by a standard Android library module, which AGP already
+knows how to compile and whose consumer keep rules already reach R8: nothing is copied. Neon's
+module is `src/platform/android/java/` (`Touch`, one `View.OnTouchListener` per event tag, and
+`consumer-rules.pro`), declared once by `src/platform/android/library.ms` with Ion's
+`androidLibrary`; Ion's `docs/PROJECT-GENERATOR.md` §Android application says how the generated
+project includes it. The path given to `androidLibrary` must stay under the declaring module's
+directory: a `..` fails in the macro until
+`~/metascript/.inbox/compiler/2026-09-25-raiser-array-pop-fails.md` is fixed, which is why the
+declaration is not in `src/platform/native/host.ms`.
 
 ## 7. What the MetaScript port does differently
 
@@ -218,7 +226,23 @@ throwaway key) and the churn app Debug, installs both Debug apps and drives them
 visible frame it checks against is read from `dumpsys window` (status bar, navigation bar,
 display cutout), not from the host. It waits for two identical `uiautomator` dumps before
 each check: a dump taken right after a rotation can show the rotated window with the old
-container frame.
+container frame. When the app is alive but another window holds the focus (`mCurrentFocus` in
+`dumpsys window`), the lane names that window and its texts and exits 2 instead of 1: a system
+dialog over the app is the emulator, not Neon. The app's own "isn't responding" or "has stopped"
+dialog stays a failure (exit 1).
+
+The 2026-09-23 run did not record how the emulator was started. Measured 2026-09-26 with
+`emulator -avd Pixel_9_Pro -no-window -no-audio -no-snapshot-save` while the machine ran at load
+95–108 on 14 cores: `sys.boot_completed` came first, and within 20 s the focus was
+`Application Not Responding: com.google.android.apps.nexuslauncher` ("Pixel Launcher isn't
+responding"); after "Wait" it was `Application Not Responding: com.android.systemui`, the dialog
+that covered churn in the coach's run of 2026-09-23 (same command, load ≈ 10). Against that live
+dialog the lane's check reported `a system window has focus: 'Application Not Responding:
+com.google.android.apps.nexuslauncher' over the app (texts ["Pixel Launcher isn't responding",
+'Close app', 'Wait'])`, and classified the same dialog as the app's own when asked for the
+launcher's package. So start the emulator with the command above and, before the lane, check that
+`adb shell dumpsys window | grep mCurrentFocus` names the launcher and no `Application Not
+Responding` window.
 
 Measured 2026-09-23 on code/test tree `3303aed1c4e24f50cc358cb938bf0e89eae74f80`, msc v0.2.55 build `e5f0ec68`, Ion `5b26122`,
 Gradle 9.3.1, AGP 9.1.0, NDK 28.0.13004108, Zulu 17.0.18, Pixel_9_Pro emulator on Android 36:
@@ -240,6 +264,25 @@ Gradle 9.3.1, AGP 9.1.0, NDK 28.0.13004108, Zulu 17.0.18, Pixel_9_Pro emulator o
   `libm`, `libdl`, `libc` (Yoga links libc++ statically) and load at 16 KiB alignment
   (`0x4000`). APKs: Debug 2 455 796 bytes, Release 1 217 970.
 
+Measured 2026-09-26, the Java half of the press without the host (the counter does not build,
+status line): a probe app generated by Ion from its Android fixture shape — a C file that
+implements `NativeApp`, puts one `TextView` in the root and attaches `new Touch(7)` to it, and
+an entry that imports `src/platform/android/library.ms` instead of declaring a library of its own.
+Code/test tree `581b91eb9635aff0ee3dd151807bccd3cc95a42b`, msc v0.2.55 `227ebc34`, Ion `0de8c04`, Gradle 9.3.1, AGP 9.1.0, NDK 28.0.13004108, Pixel_9_Pro
+emulator on Android 36:
+
+- `assembleDebug assembleRelease` exit 0, `verifyNativeClassesRelease` ran; `dexdump` finds
+  `Ldev/metascript/neon/Touch;` in both APKs and R8's mapping keeps the name
+  (`dev.metascript.neon.Touch -> dev.metascript.neon.Touch`); nothing is written under
+  `src/platform/android/java/`;
+- a tap on the label logs `touch tag=7 action=0` then `touch tag=7 action=1` from
+  `Java_dev_metascript_neon_Touch_touch`, Debug and Release;
+- red control, the `androidLibrary` line removed: Release fails at `verifyNativeClassesRelease`
+  with "R8 removed dev.metascript.neon.Touch, but libmetascript.so implements its native method
+  Java_dev_metascript_neon_Touch_touch"; Debug builds and installs, and `FindClass` finds no
+  `Touch` (`listener=missing`). `bridge.c` caches `Touch` in `cacheJni`, so the counter would
+  abort at `start` naming the class — not measured, for the same reason.
+
 The device-independent half is `tests/platform/nativeHost.test.ms`, on the C mock bridge in
 `tests/platform/nativeBridgeMock.c`: removing a keyed row releases exactly its two views and
 makes its tag inert, teardown releases every created view, and a remount starts clean; a
@@ -248,7 +291,7 @@ second release of one view aborts the mock. With the route removal or the view r
 closure handed to C is borrowed: `runApp` keeps the app in module state because Android calls
 `start` after `MsMain` has returned.
 
-Not measured: a physical device (slice 8), a press, `pause`/`resume` beyond what the
+Not measured: a physical device (slice 8), a press through the host, `pause`/`resume` beyond what the
 background step shows, and `destroy` followed by a second `start` on a device (the mock
 remount covers the host side only). Yoga nodes are freed through `freeLayoutTree` in the same
 two paths, but no test counts them.
