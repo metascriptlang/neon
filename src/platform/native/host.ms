@@ -4,6 +4,7 @@ import { NeonEvent } from "../../render/event";
 import { FlexStyle, freeLayoutTree, layoutPass as runLayoutPass } from "../../../../yoga/src/index";
 import { Style } from "../../render/style";
 import { NativeElementKind, createNativeEventRegistry, nativeElementKind, nativeFlexStyle } from "./contract";
+import "../android/library";
 
 @passC("-I./");
 
