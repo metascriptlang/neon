@@ -43,10 +43,12 @@ adb uninstall dev.neon.NeonChurn > /dev/null 2>&1 || true
 step install adb install "$results/gradle/app/build/outputs/apk/debug/app-debug.apk"
 step install-churn adb install "$results/churn/app/build/outputs/apk/debug/app-debug.apk"
 step logcat adb logcat -c
-if ! python3 tests/android/counter.py "$results" churn > "$results/churn.log" 2>&1; then
-	echo "FAIL: android churn; log $results/churn.log" >&2
+status=0
+python3 tests/android/counter.py "$results" churn > "$results/churn.log" 2>&1 || status=$?
+if [ "$status" -ne 0 ]; then
+	echo "FAIL: android churn exit $status; log $results/churn.log" >&2
 	tail -20 "$results/churn.log" >&2
-	exit 1
+	exit "$status"
 fi
 grep NEON_ANDROID "$results/churn.log"
 

@@ -9,11 +9,15 @@ CHURN_PACKAGE = "dev.neon.NeonChurn"
 CHURN_DONE = "churned 20000"
 ACTIVITY = PACKAGE + "/dev.metascript.app.MainActivity"
 LABELS = ["-", "reset", "+"]
-PRESS_CARD = "~/metascript/.inbox/compiler/2026-09-23-design-android-java-handoff.md"
+EMULATOR = 2
 results = sys.argv[1]
 
 
 class LaneError(Exception):
+    pass
+
+
+class EmulatorError(Exception):
     pass
 
 
@@ -53,6 +57,26 @@ def visible_frame(window):
     return (left, top, right, bottom)
 
 
+def focus():
+    for line in adb("shell", "dumpsys", "window").splitlines():
+        match = re.search(r"mCurrentFocus=Window\{\S+ \S+ ([^}]*)\}", line)
+        if match:
+            return match.group(1)
+    return ""
+
+
+def cover(package, xml):
+    window = focus()
+    alive = adb("shell", "pidof", package, check=False).strip()
+    if not alive or not window or window.startswith(package + "/"):
+        return
+    texts = [t for t, p in re.findall(r"<node [^>]*?text=\"([^\"]+)\"[^>]*?package=\"([^\"]*)\"", xml) if p != package]
+    shown = "%r over the app (texts %s)" % (window, texts)
+    if window.endswith(": " + package):
+        raise LaneError("the app's own system dialog: " + shown)
+    raise EmulatorError("a system window has focus: %s; not a Neon failure, boot the emulator as docs/ANDROID.md §9 says" % shown)
+
+
 def dump():
     adb("shell", "uiautomator", "dump", "/sdcard/neon-lane.xml")
     xml = adb("shell", "cat", "/sdcard/neon-lane.xml")
@@ -73,6 +97,7 @@ def settle(landscape):
             return state
         last = state
         time.sleep(1)
+    cover(PACKAGE, adb("shell", "cat", "/sdcard/neon-lane.xml"))
     raise LaneError("the counter did not settle " + ("landscape" if landscape else "portrait") + "; last dump " + repr(last))
 
 
@@ -106,10 +131,7 @@ def rotate(quarter):
 def press_plus(texts, name, value, parity, landscape, expected_pid):
     x1, y1, x2, y2 = texts["+"]
     adb("shell", "input", "tap", str((x1 + x2) // 2), str((y1 + y2) // 2))
-    try:
-        return snapshot(name, landscape, expected_pid, value, parity)
-    except LaneError as failure:
-        raise LaneError("%s (touch routing is parked on %s)" % (failure, PRESS_CARD))
+    return snapshot(name, landscape, expected_pid, value, parity)
 
 
 def lane():
@@ -140,6 +162,7 @@ def churn():
     adb("shell", "am", "force-stop", CHURN_PACKAGE)
     adb("shell", "am", "start", "-W", "-n", CHURN_PACKAGE + "/dev.metascript.app.MainActivity")
     deadline = time.time() + 120
+    xml = ""
     while time.time() < deadline:
         adb("shell", "uiautomator", "dump", "/sdcard/neon-lane.xml")
         xml = adb("shell", "cat", "/sdcard/neon-lane.xml")
@@ -151,6 +174,14 @@ def churn():
         if not alive:
             break
         time.sleep(2)
+    try:
+        cover(CHURN_PACKAGE, xml)
+    except EmulatorError as covered:
+        print("FAIL: android churn: " + str(covered), file=sys.stderr)
+        return EMULATOR
+    except LaneError as failure:
+        print("FAIL: android churn: " + str(failure), file=sys.stderr)
+        return 1
     fatal = [line[:300] for line in adb("logcat", "-d", "*:F", check=False).splitlines() if "Abort message" in line or " F Neon" in line]
     print("FAIL: android churn did not reach %r; fatal log: %s" % (CHURN_DONE, fatal[-3:]), file=sys.stderr)
     return 1
@@ -162,6 +193,9 @@ def main():
     mode = adb("shell", "cmd", "window", "user-rotation").strip()
     try:
         lane()
+    except EmulatorError as covered:
+        print("FAIL: android " + str(covered), file=sys.stderr)
+        return EMULATOR
     except LaneError as failure:
         print("FAIL: android " + str(failure), file=sys.stderr)
         return 1
