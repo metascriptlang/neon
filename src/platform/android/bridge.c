@@ -25,9 +25,10 @@ static float g_measuredW;
 static float g_measuredH;
 
 static struct {
-	jclass view, viewGroup, frameLayout, layoutParams, textView, gradientDrawable, integer;
+	jclass view, viewGroup, frameLayout, layoutParams, textView, gradientDrawable, integer, touch;
 	jmethodID viewGetParent, viewSetLayoutParams, viewSetAlpha, viewGetBackground, viewSetBackground;
 	jmethodID viewMeasure, viewGetMeasuredWidth, viewGetMeasuredHeight, viewSetTag, viewGetRootWindowInsets;
+	jmethodID viewSetOnTouchListener, touchInit;
 	jmethodID viewGetContext, groupAddView, groupRemoveView, frameInit, paramsInit;
 	jfieldID paramsLeft, paramsTop;
 	jmethodID textInit, textSetText, textSetTextColor, textSetTextSize, textSetTypeface;
@@ -91,6 +92,7 @@ static void cacheJni(JNIEnv *e) {
 	J.textView = globalClass(e, "android/widget/TextView");
 	J.gradientDrawable = globalClass(e, "android/graphics/drawable/GradientDrawable");
 	J.integer = globalClass(e, "java/lang/Integer");
+	J.touch = globalClass(e, "dev/metascript/neon/Touch");
 
 	J.viewGetParent = method(e, J.view, "getParent", "()Landroid/view/ViewParent;");
 	J.viewSetLayoutParams = method(e, J.view, "setLayoutParams", "(Landroid/view/ViewGroup$LayoutParams;)V");
@@ -103,6 +105,8 @@ static void cacheJni(JNIEnv *e) {
 	J.viewSetTag = method(e, J.view, "setTag", "(Ljava/lang/Object;)V");
 	J.viewGetRootWindowInsets = method(e, J.view, "getRootWindowInsets", "()Landroid/view/WindowInsets;");
 	J.viewGetContext = method(e, J.view, "getContext", "()Landroid/content/Context;");
+	J.viewSetOnTouchListener = method(e, J.view, "setOnTouchListener", "(Landroid/view/View$OnTouchListener;)V");
+	J.touchInit = method(e, J.touch, "<init>", "(I)V");
 	J.groupAddView = method(e, J.viewGroup, "addView", "(Landroid/view/View;)V");
 	J.groupRemoveView = method(e, J.viewGroup, "removeView", "(Landroid/view/View;)V");
 	J.frameInit = method(e, J.frameLayout, "<init>", "(Landroid/content/Context;)V");
@@ -282,6 +286,26 @@ JNIEXPORT void JNICALL Java_dev_metascript_app_NativeApp_destroy(JNIEnv *e, jcla
 	g_container = g_context = g_root = NULL;
 }
 
+JNIEXPORT jboolean JNICALL Java_dev_metascript_neon_Touch_touch(JNIEnv *e, jclass cls, jint tag, jint action) {
+	(void)e;
+	(void)cls;
+	enum { ACTION_DOWN = 0, ACTION_UP = 1, ACTION_CANCEL = 3 };
+	g_lastTag = tag;
+	if (action == ACTION_DOWN) {
+		g_lastPhase = 0;
+		call0(s_touch);
+	} else if (action == ACTION_UP) {
+		g_lastPhase = 1;
+		call0(s_touch);
+		g_lastPhase = 2;
+		call0(s_touch);
+	} else if (action == ACTION_CANCEL) {
+		g_lastPhase = 3;
+		call0(s_touch);
+	}
+	return JNI_TRUE;
+}
+
 void niRegisterApp(msClosure mount) { s_mount = mount; }
 void niSetResizeHandler(msClosure handler) { s_resize = handler; }
 void niSetTeardownHandler(msClosure handler) { s_teardown = handler; }
@@ -316,13 +340,17 @@ void *niTextCreate(void) {
 	return label;
 }
 
-// PARKED: attaching the touch listener waits on ~/metascript/.inbox/compiler/2026-09-23-design-android-java-handoff.md
 void niViewSetTag(void *view, int32_t tag) {
 	JNIEnv *e = env();
 	jobject boxed = (*e)->CallStaticObjectMethod(e, J.integer, J.integerValueOf, tag);
 	(*e)->CallVoidMethod(e, (jobject)view, J.viewSetTag, boxed);
 	check(e, "setTag");
 	(*e)->DeleteLocalRef(e, boxed);
+	jobject listener = (*e)->NewObject(e, J.touch, J.touchInit, tag);
+	check(e, "Touch");
+	(*e)->CallVoidMethod(e, (jobject)view, J.viewSetOnTouchListener, listener);
+	check(e, "setOnTouchListener");
+	(*e)->DeleteLocalRef(e, listener);
 }
 
 void niAddChild(void *parent, void *child) {
