@@ -38,16 +38,21 @@ outlived them were moved to the head of the test that pins each one.
   `src/platform/android/bridge.c` `niViewSetTag` and at the `portrait-pressed` step of
   `bash tests/android/run.sh`, which fails naming the card.
 
-- **PARKED 2026-09-21 — a `throw` of a non-`Error` value carries its message on C and loses it on
-  `--target=js`.** Not Neon's: five lines with no Neon import print `msg=[bare 7]` on C and
-  `msg=[undefined]` on js, while `new Error(...)` agrees on both. Measured on msc v0.2.55, build
-  `1fc3d947`. Since the handler takes the `Error` (2026-09-25, `00de615`), a user component that
-  writes `throw "oops"` hands its fallback an `Error` carrying the message on desktop and the raw
-  string in the browser: the card's second sighting, through `catchError`, prints
-  `typeof=object msg=[bare 7]` on C and `typeof=string msg=[undefined]` on js, build `6086c900`. Card:
+- **PARKED 2026-09-21, re-measured 2026-09-26 — a `throw` of a non-`Error` value does not reach
+  the handler as an `Error`, and `throw null` inside an effect is swallowed.** Not Neon's: the
+  checker types the `catch` binding as a non-null `Error` whatever was thrown. With no Neon import,
+  on msc v0.2.55 build `227ebc34`: a string arrives boxed on C and raw on js (`msg=[bare 7]` against
+  `msg=[undefined]`), a number is used as an `Error` pointer on C (`panic: pointer index expression
+  with base 0x7`) and arrives raw on js, and `null` arrives as `null` on both. Through Neon since
+  `00de615`: a `throw null` in an effect under `catchError` never reaches the handler, and the
+  effect is not disposed (`late handler runs=0 effect runs=3` on C and js; before `00de615` it
+  crashed at `e.message`). `<ErrorBoundary>` catches through the same paths; not measured there.
+  Card, with the programs and the Neon probe:
   `~/metascript/.inbox/compiler/2026-09-21-bare-throw-binds-differently-on-c-and-js.md`. Parked at
   the cell `tests/core/error.test.ms` "a bare throw still reaches the handler", which asserts the
-  handler fires but not what the message says.
+  handler fires but not what it receives, and at the null tests of `runComputation`
+  (`src/core/runtime.ms`) and `ErrorBoundary` (`src/macros/ui/flow.ms`), which are right once the
+  binding is never null.
 
 - **PARKED 2026-09-21 — `setX(v)` with a local `number` is silently dropped on native.** Not Neon's: a
   value argument to a union parameter (`Setter<T> = (v: T | ((prev: T) => T)) => void`) is passed by raw
