@@ -17,32 +17,27 @@ cannot be reproduced is re-measured and rewritten, never corrected on top.
 ---
 ## §3 — Neon-side and environment
 
-No open Neon-side bug. The sites below are parked on a compiler card; each names the card and the
-site, and nothing is worked around in `src/`. Rows closed before 2026-09-20 were dropped with
-§2 — they are in this file's history at `git show c00bd2b:BUGS.md`, and the invariants that
-outlived them were moved to the head of the test that pins each one.
+One open Neon-side bug, the first row. The sites after it are parked on a compiler card; each
+names the card and the site, and nothing is worked around in `src/`. Rows closed before
+2026-09-20 were dropped with §2 — they are in this file's history at `git show c00bd2b:BUGS.md`,
+and the invariants that outlived them were moved to the head of the test that pins each one.
+
+- **OPEN 2026-09-26 — Android: the first landscape can lay the app out under the display
+  cutout.** Neon's host: `Java_dev_metascript_app_NativeApp_resize` in
+  `src/platform/android/bridge.c` reads `getRootWindowInsets` when Ion's bootstrap forwards a new
+  size and places the container once. In 1 of 3 runs of `bash tests/android/run.sh` on 2026-09-26
+  (the first after install; `docs/ANDROID.md` §9) the first landscape centred the title on the
+  full 2856 px, `[1242,228][1614,309]`, instead of on the visible frame `(156,156;2856,1208)`,
+  `[1320,228][1692,309]`. The lane stays green because centred text still lies inside the frame:
+  it checks text bounds, not the container's frame, so nothing shows this yet. Assumed, not
+  measured: the new insets reach the view after the resize, and nothing re-places the container
+  when they change.
 
 - **PARKED 2026-09-25 — `tests/render/reconcile.test.ms` does not compile on the native lane since
   msc `2f306532`.** Not Neon's: `span` pushes a `HostNode` (`unknown`) into a `HostNode[]`, and the
   checker now answers `Argument 0: unknown is not assignable to <kind:Sink>`; it compiled and passed on
   `a5e1bc69`. Card: `~/metascript/.inbox/compiler/2026-09-25-push-unknown-into-unknown-array-rejected.md`.
   Parked at `span` in that file; the JS lane still runs it.
-
-- **PARKED 2026-09-26 — the Android counter and `tests/platform/nativeHost.test.ms` do not compile
-  on msc `227ebc34`: Yoga's node handle.** Not Neon's: Yoga holds a node as `Ptr<void>` while its
-  header gives `Ptr<YGNode>`, and `Ptr<void>` → `Ptr<YGNode>` is an error by the person's decision
-  (2026-09-25, Nim: `pointer` into `ptr T`). `msc check tests/platform/nativeHost.test.ms` and
-  `msc check examples/android/app.ms --os=android --cpu=arm64` stop at 86 errors, all in Yoga; Ion's
-  generated `settings.gradle` runs the second on every configuration, so the lane cannot build the
-  counter. Route: Yoga types the handle (`~/metascript/.wt/yoga-modernize.md` step 1) and writes
-  `~/metascript/.inbox/neon/<date>-yoga-typed-handle.md`; Neon then types `NativeNode.yg` and the
-  two `layout*Yg` extensions in `src/platform/native/host.ms` as `Ptr<YGNode> | null`, no `as`. The
-  compiler's half (`Ptr<T>` → `Ptr<void>`) is
-  `~/metascript/.inbox/compiler/2026-09-26-header-pointer-into-ptr-void-rejected.md` and blocks
-  nothing here. Parked at `bash tests/android/run.sh`, which fails at its `build` step on the Yoga
-  errors, so its press steps (`portrait-pressed`, `landscape-pressed`) have not run: the Java half
-  of the press is proven apart from the host (`docs/ANDROID.md` §9, 2026-09-26), the press through
-  the host is not.
 
 - **PARKED 2026-09-21, re-measured 2026-09-26 — a `throw` of a non-`Error` value does not reach
   the handler as an `Error`, and `throw null` inside an effect is swallowed.** Not Neon's: the
