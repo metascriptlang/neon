@@ -64,10 +64,11 @@ test "a computation that threw is disposed, not re-run" {
 	assert cleaned > 0, "its cleanups ran";
 }
 
-test "a bare throw still reaches the handler" {
-	let ran = 0;
-	catchError(() => { throw "bare 7"; }, (err: Error) => { ran = ran + 1; });
-	assert ran === 1, "a non-Error throw is routed, not lost";
+test "a thrown string reaches the handler as an Error carrying it" {
+	let seen: Error | null = null;
+	catchError(() => { throw "bare 7"; }, (err: Error) => { seen = err; });
+	assert seen !== null && (seen as Error) instanceof Error, "the string arrives boxed in an Error";
+	assert (seen as Error).message === "bare 7", "with the string as its message: [" + (seen as Error).message + "]";
 }
 
 test "catchError restores the owner it ran under" {
