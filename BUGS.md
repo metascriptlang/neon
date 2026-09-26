@@ -17,7 +17,7 @@ cannot be reproduced is re-measured and rewritten, never corrected on top.
 ---
 ## §3 — Neon-side and environment
 
-One open Neon-side bug, the first row. The sites after it are parked on a compiler card; each
+Open Neon-side rows first, then sites parked on a card in another repo's inbox; each parked row
 names the card and the site, and nothing is worked around in `src/`. Rows closed before
 2026-09-20 were dropped with §2 — they are in this file's history at `git show c00bd2b:BUGS.md`,
 and the invariants that outlived them were moved to the head of the test that pins each one.
@@ -32,6 +32,29 @@ and the invariants that outlived them were moved to the head of the test that pi
   it checks text bounds, not the container's frame, so nothing shows this yet. Assumed, not
   measured: the new insets reach the view after the resize, and nothing re-places the container
   when they change.
+
+- **OPEN 2026-09-26 — the gate's macro lane: `tests/macros/mapNamedRowRejected.ms` is rejected
+  with another message.** `bash tests/macros/run.sh` prints `FAIL
+  tests/macros/mapNamedRowRejected.ms: rejected for another reason`: the element macro now refuses
+  `.map(row)` with its own "a .map row that takes an index is written <For each={xs}>…" before the
+  checker's `Argument type mismatch in 'map' arg 0`, which `run.sh` pins. The program is still
+  rejected. Measured on an export of main `ecfbcc7` with msc `227ebc34`; `2f306532` reported the
+  macro lane ok. The pinned message is part of the JSX contract (`CLAUDE.md`), so changing it needs a
+  yes.
+
+- **OPEN 2026-09-26 — the gate's Chrome lane finds no bundle.** `tests/browser/run.sh` prints
+  `COMPILE FAILED — no test bundle emitted at tests/browser/out/debug/_test/main.js`: on msc
+  `227ebc34` (macOS) `msc test --target=js tests/browser/dom.test.ms` writes
+  `out/debug/_test/main.js` under the working directory, the checkout root, not beside the test
+  file where `run.sh` reads it. Measured on an export of main `ecfbcc7`; the Windows run on
+  `2f306532` found it beside the test file. Not yet known whether msc moved it on purpose.
+
+- **PARKED 2026-09-26 — `tests/platform/void.test.ms`, `tests/platform/voidInput.test.ms` and
+  `tests/style/style.test.ms` do not compile on the native lane.** Not Neon's: Yoga types its node
+  handle as `Ptr<YGNode>` since Yoga `f5a811d`, and Void's `Node2D` still holds `Ptr<void>`, which
+  `layoutPass<Node2D>` and `freeLayoutTree<Node2D>` refuse (2 errors per file; same on an export of
+  main `ecfbcc7`). Void's half: `~/metascript/.inbox/void/2026-09-26-yoga-typed-handle.md`. Parked at
+  those three files; nothing in Neon changes.
 
 - **PARKED 2026-09-25 — `tests/render/reconcile.test.ms` does not compile on the native lane since
   msc `2f306532`.** Not Neon's: `span` pushes a `HostNode` (`unknown`) into a `HostNode[]`, and the
