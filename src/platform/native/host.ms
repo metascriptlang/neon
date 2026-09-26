@@ -1,7 +1,7 @@
 import { Host, HostNode, NeonNode, render } from "../../render/host";
 import { Dispose } from "../../core/types";
 import { NeonEvent } from "../../render/event";
-import { FlexStyle, freeLayoutTree, layoutPass as runLayoutPass } from "../../../../yoga/src/index";
+import { FlexStyle, YGNode, freeLayoutTree, layoutPass as runLayoutPass } from "../../../../yoga/src/index";
 import { Style } from "../../render/style";
 import { NativeElementKind, createNativeEventRegistry, nativeElementKind, nativeFlexStyle } from "./contract";
 import "../android/library";
@@ -45,7 +45,7 @@ interface NativeNode {
 	styleCache: Style | null;
 	flex: FlexStyle | null;
 	lastFlex: FlexStyle | null;
-	yg: Ptr<void> | null;
+	yg: Ptr<YGNode> | null;
 	x: float32; y: float32; w: float32; h: float32;
 }
 
@@ -64,8 +64,8 @@ export function layoutGetChildren(this n: NativeNode): NativeNode[] { return n.c
 export function layoutGetStyle(this n: NativeNode): FlexStyle | null { return n.flex; }
 export function layoutGetLastStyle(this n: NativeNode): FlexStyle | null { return n.lastFlex; }
 export function layoutSetLastStyle(this n: NativeNode, s: FlexStyle | null): void { n.lastFlex = s; }
-export function layoutGetYg(this n: NativeNode): Ptr<void> | null { return n.yg; }
-export function layoutSetYg(this n: NativeNode, yg: Ptr<void> | null): void { n.yg = yg; }
+export function layoutGetYg(this n: NativeNode): Ptr<YGNode> | null { return n.yg; }
+export function layoutSetYg(this n: NativeNode, yg: Ptr<YGNode> | null): void { n.yg = yg; }
 export function layoutSetFrame(this n: NativeNode, x: float32, y: float32, w: float32, h: float32): void {
 	n.x = x; n.y = y; n.w = w; n.h = h;
 	if (n.view !== null && n !== root) {
