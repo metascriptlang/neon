@@ -10,7 +10,7 @@ CHURN_DONE = "churned 20000"
 ACTIVITY = PACKAGE + "/dev.metascript.app.MainActivity"
 LABELS = ["-", "reset", "+"]
 EMULATOR = 2
-results = sys.argv[1]
+results = None
 
 
 class LaneError(Exception):
@@ -207,4 +207,6 @@ def main():
     return 0
 
 
-sys.exit(main())
+if __name__ == "__main__":
+    results = sys.argv[1]
+    sys.exit(main())
