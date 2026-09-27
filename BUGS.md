@@ -28,7 +28,9 @@ and the invariants that outlived them were moved to the head of the test that pi
   size and places the container once. In 1 of 3 runs of `bash tests/android/run.sh` on 2026-09-26
   (the first after install; `docs/ANDROID.md` §9) the first landscape centred the title on the
   full 2856 px, `[1242,228][1614,309]`, instead of on the visible frame `(156,156;2856,1208)`,
-  `[1320,228][1692,309]`. The lane stays green because centred text still lies inside the frame:
+  `[1320,228][1692,309]`. Again on 2026-09-27 (Neon `4e33c9e`, msc `013853dd`, Ion `4198106`, the
+first run after install): first landscape `[1242,228][1614,309]`, the landscape after the press
+`[1320,228][1692,309]`. The lane stays green because centred text still lies inside the frame:
   it checks text bounds, not the container's frame, so nothing shows this yet. Assumed, not
   measured: the new insets reach the view after the resize, and nothing re-places the container
   when they change.
