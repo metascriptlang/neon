@@ -190,7 +190,7 @@ export macro applyCssBody(node: Node): Node {
 							{ kind: NodeKind.StringLiteral, line: L, column: C, value: fieldName },
 							{
 								kind: NodeKind.TypeAssertion, line: L, column: C, asType: "StyleValue",
-								asExpr: { kind: NodeKind.TypeAssertion, line: L, column: C, asType: "unknown", asExpr: read },
+								asExpr: read,
 							},
 						],
 						isDirectCall: false, resolvedOverloadIdx: -1,
@@ -368,7 +368,7 @@ export macro setStyleFieldBody(node: Node): Node {
 						left: { kind: NodeKind.MemberExpr, line: L, column: C, object: { kind: NodeKind.Identifier, line: L, column: C, name: "s" }, property: fieldName, isOptional: false },
 						right: {
 							kind: NodeKind.TypeAssertion, line: L, column: C,
-							asExpr: { kind: NodeKind.TypeAssertion, line: L, column: C, asExpr: { kind: NodeKind.Identifier, line: L, column: C, name: "v" }, asType: "unknown" },
+							asExpr: { kind: NodeKind.Identifier, line: L, column: C, name: "v" },
 							asType: row[COL_TYPE] + " | null",
 						},
 					},
