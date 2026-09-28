@@ -21,19 +21,23 @@ export function render(node: NeonNode, host: Host, parent: HostNode): Dispose {
 
 // ---- Mock host: in-memory tree for tests/SSR (no browser needed) ----
 
-export interface MockNode {
+export class MockNode {
 	tag: string;
-	text: string;
-	children: MockNode[];
-	attrs: VAttr[];
-	events: VEvent[];
-	style: Style | null;
-	className: string;
-	parent: MockNode | null;
+	text: string = "";
+	children: MockNode[] = [];
+	attrs: VAttr[] = [];
+	events: VEvent[] = [];
+	style: Style | null = null;
+	className: string = "";
+	parent: MockNode | null = null;
+
+	constructor(tag: string) {
+		this.tag = tag;
+	}
 }
 
 export function mockNode(tag: string): MockNode {
-	return { tag, text: "", children: [], attrs: [], events: [], style: null, className: "", parent: null };
+	return new MockNode(tag);
 }
 
 function childIndex(parent: MockNode, node: MockNode): number {
