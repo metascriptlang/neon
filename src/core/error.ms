@@ -11,7 +11,7 @@ export function catchError(tryFn: () => void, handler: ErrorHandler): void {
 		fn: noop, isRoot: false, state: CompState.Clean,
 		sources: [], sourceSlots: [],
 		pure: false, disposed: false,
-		owned: [], cleanups: [], owner: parent, contexts: null, handler: handler,
+		owned: [], cleanups: [], owner: parent, handler: handler,
 	};
 	if (parent !== null) { parent.owned.push(scope); }
 	try {

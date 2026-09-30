@@ -6,14 +6,6 @@ export type EffectFn = () => void;
 export type Dispose = () => void;
 export type ErrorHandler = (err: Error) => void;
 
-// A context entry an owner scope carries: `key` is the context object itself
-// (identity by creation, not by name), `read` the value thunk so each consumer
-// read re-evaluates it and signals inside the value track per consumer.
-export interface ContextEntry {
-	key: unknown;
-	read: () => unknown;
-}
-
 // The observable half of the graph: a Signal's node, or a memo's own node.
 export interface Source {
 	observers: Computation[];
@@ -37,6 +29,5 @@ export interface Computation {
 	owned: Computation[];
 	cleanups: EffectFn[];
 	owner: Computation | null;
-	contexts: ContextEntry[] | null;
 	handler: ErrorHandler | null;
 }
