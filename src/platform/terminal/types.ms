@@ -18,46 +18,35 @@ export interface TerminalEvent {
 	handler: (e: NeonEvent) => void;
 }
 
-export interface TerminalNode {
-	tag: string;
-	text: string;
-	isText: boolean;
-	children: TerminalNode[];
-	attrs: Map<string, string>;
-	events: TerminalEvent[];
-	parent: TerminalNode | null;
-	style: TerminalStyle;
-	dirty: boolean;
-}
-
 export function makeStyle(): TerminalStyle {
 	return { color: "", bg: "", bold: false, dim: false, italic: false, underline: false };
 }
 
+export class TerminalNode {
+	tag: string;
+	text: string = "";
+	isText: boolean = false;
+	children: TerminalNode[] = [];
+	attrs: Map<string, string>;
+	events: TerminalEvent[] = [];
+	parent: TerminalNode | null = null;
+	style: TerminalStyle;
+	dirty: boolean = true;
+
+	constructor(tag: string) {
+		this.tag = tag;
+		this.attrs = new Map<string, string>();
+		this.style = makeStyle();
+	}
+}
+
 export function createTerminalNode(tag: string): TerminalNode {
-	return {
-		tag,
-		text: "",
-		isText: false,
-		children: [],
-		attrs: new Map<string, string>(),
-		events: [],
-		parent: null,
-		style: makeStyle(),
-		dirty: true,
-	};
+	return new TerminalNode(tag);
 }
 
 export function createTerminalTextNode(s: string): TerminalNode {
-	return {
-		tag: "",
-		text: s,
-		isText: true,
-		children: [],
-		attrs: new Map<string, string>(),
-		events: [],
-		parent: null,
-		style: makeStyle(),
-		dirty: true,
-	};
+	const n = new TerminalNode("");
+	n.text = s;
+	n.isText = true;
+	return n;
 }

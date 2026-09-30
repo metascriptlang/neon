@@ -33,29 +33,33 @@ extern function niSetResizeHandler(handler: () => void): void;
 extern function niSetTeardownHandler(handler: () => void): void;
 
 
-interface NativeNode {
-	view: Ptr<void> | null;      // the platform view; null on merged string nodes
-	isText: boolean;             // owns a text view
-	isString: boolean;           // a text leaf created by createText
-	labelOwner: NativeNode | null;  // whose label displays a string node's text
-	text: string;
-	children: NativeNode[];
-	parent: NativeNode | null;
-	eventTag: int32;
-	styleCache: Style | null;
-	flex: FlexStyle | null;
-	lastFlex: FlexStyle | null;
-	yg: Ptr<YGNode> | null;
-	x: float32; y: float32; w: float32; h: float32;
+class NativeNode {
+	view: Ptr<void> | null = null;
+	isText: boolean = false;
+	isString: boolean = false;
+	labelOwner: NativeNode | null = null;
+	text: string = "";
+	children: NativeNode[] = [];
+	parent: NativeNode | null = null;
+	eventTag: int32 = 0;
+	styleCache: Style | null = null;
+	flex: FlexStyle | null = null;
+	lastFlex: FlexStyle | null = null;
+	yg: Ptr<YGNode> | null = null;
+	x: float32 = 0.0;
+	y: float32 = 0.0;
+	w: float32 = 0.0;
+	h: float32 = 0.0;
+
+	constructor(view: Ptr<void> | null, isText: boolean, isString: boolean) {
+		this.view = view;
+		this.isText = isText;
+		this.isString = isString;
+	}
 }
 
 function nativeNode(view: Ptr<void> | null, isText: boolean, isString: boolean): NativeNode {
-	return {
-		view, isText, isString, labelOwner: null, text: "",
-		children: [], parent: null, eventTag: 0, styleCache: null,
-		flex: null, lastFlex: null, yg: null,
-		x: 0.0, y: 0.0, w: 0.0, h: 0.0,
-	};
+	return new NativeNode(view, isText, isString);
 }
 
 // ---- the yoga sync protocol (yoga/src/sync.ms) on NativeNode ----
