@@ -190,9 +190,9 @@ The interaction was synthetic, not physical input: LLDB invoked
 That proves native event dispatch, signal update, dynamic text, Yoga measurement and frame
 application. Physical finger input was not exercised.
 
-Physical-device signing, provisioning and launch remain unverified. App Store
-archive/export, universal binaries, Swift library embedding and MetaScript source-level
-debugging are also outside this milestone.
+Physical-device signing, provisioning and launch were unverified in this measurement;
+§6.4 records the later physical-device run. Universal binaries, Swift library embedding
+and MetaScript source-level debugging were outside this milestone.
 
 ### 6.2 Measured lifecycle proof
 
@@ -238,6 +238,62 @@ portrait → landscape → portrait:
 - without the label fix it fails with no `-` static text: each pressable is sized by its
   measured label plus padding (`32`, `61`, `34` wide) but the `UILabel` a string child
   materialises under a non-Text parent was never added to the parent's view.
+
+### 6.4 Physical signing and Release archive
+
+Measured 2026-09-30 on Neon `1666e2c`, source tree
+`8bcd6f9897bdfb0568ddc177751caf1550f5150a`, clean Ion
+`c18f7035029af6c8866d53603c236fba482a4c7b`, clean Yoga `dba68fd`,
+installed compiler `013853dd`, Xcode 26.6 / iPhoneOS SDK 26.5, and an iPhone
+13 Pro running iOS 26.6.2. The phone was paired, Developer Mode enabled,
+and `devicectl` reported `ddiServicesAvailable: true`.
+
+- Fresh generation through `tooling/generator/ion-generate` from the tracked
+  `examples/ios/project.ms` succeeded. `plutil -lint` accepted the project;
+  no PBX edits were made.
+- Debug device build exited 0 with `CODE_SIGNING_ALLOWED=YES`,
+  `CODE_SIGN_STYLE=Automatic`, `DEVELOPMENT_TEAM=4R7EAZY462`,
+  `CODE_SIGN_IDENTITY=Apple Development`, `ARCHS=arm64`, and SDK `iphoneos`.
+  No `-allowProvisioningUpdates` or account-settings change was used.
+- Xcode selected certificate `EDE37BCFB4A07778B17022D7C59BAF1313F6234C`
+  and wildcard development profile `6116108f-83fb-457f-940c-ad601b6f4895`,
+  which includes this phone and expires 2027-05-11. The certificate's team is
+  `4R7EAZY462`; `NA8RXR8UMR` in its display name is not the team.
+- `codesign --verify --deep --strict` passed. Entitlements identify
+  `4R7EAZY462.dev.neon.NeonCounter` and enable `get-task-allow`.
+  The executable is arm64; both its Mach-O minimum OS and `Info.plist`
+  `MinimumOSVersion` are `15.0`.
+- `devicectl device install app` and `device process launch` succeeded
+  wirelessly, after the person's permission. The fresh Debug app launched
+  as PID `2153`; later process inventories retained that PID after a
+  real press and rotation.
+- The person confirmed finger presses increased the counter and that it
+  worked in portrait and landscape. These are human observations, not
+  captured exact values, parity transitions, screenshots or measured
+  physical-device safe-area frames.
+- Release `xcodebuild archive` exited 0 for scheme `NeonCounter` and
+  destination `generic/platform=iOS`, with the same signing flags.
+  Archive metadata, bundle identifier, arm64 executable and minimum OS agree;
+  `codesign --verify --deep --strict` passed on the archived app.
+  Release executable SHA-256:
+  `0d4a3ce9dd1a92dc0f4721667a2271cb80d813af7555092f3532ab9603cc19c8`.
+
+Signing control: `CODE_SIGN_STYLE=Manual` with this explicit profile failed
+with exit 65: the profile is Xcode-managed and cannot satisfy manually
+managed signing. Automatic signing with the existing team selected the
+installed profile successfully.
+
+Do not attach LLDB during the finger run without accounting for its stop:
+here it stopped the app with `SIGSTOP` while loading system libraries from
+device memory, and taps stopped responding. Stopping the local debugger and
+`devicectl device process resume --pid 2153` restored input, as confirmed
+by the person, without relaunching. No synthetic touch was sent.
+
+The physical background/foreground proof is still pending. The Release
+archive is development-signed; no IPA was exported. No usable Apple
+Distribution identity is installed, and the existing store profile names
+another application. Distribution export and the final acceptance remain
+open; these observations do not close Phase 1.
 
 ## 7. What the MetaScript port does differently
 
