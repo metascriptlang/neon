@@ -18,20 +18,38 @@ interface IndexCell {
 	getter: (() => number) | null;
 	setter: Setter<number> | null;
 }
+interface KeyScan<K> {
+	keys: K[];
+	index: Map<K, number> | null;
+}
+
 
 export function mapArray<T, U>(list: () => T[], mapFn: (v: T, index: Accessor<number>) => U, usesIndex: boolean = true): () => U[] {
-	return mapArrayBy<T, T, U>(list, null, mapFn, usesIndex);
+	return mapArrayBy<T, T, U>(list, (items: T[]): KeyScan<T> => ({ keys: items, index: null }), mapFn, usesIndex);
 }
 
 export function mapArrayKeyed<T, U>(list: () => T[], keyOf: (v: T) => number, mapFn: (v: T, index: Accessor<number>) => U, usesIndex: boolean = true): () => U[] {
-	return mapArrayBy<T, number, U>(list, keyOf, mapFn, usesIndex);
+	const scan = (items: T[]): KeyScan<number> => {
+		const ks: number[] = new Array(items.length);
+		const seen = new Map<number, number>();
+		for (let j = 0; j < items.length; j += 1) {
+			const k = keyOf(items[j]);
+			if (seen.has(k)) {
+				throw new Error("For: the key " + k.toString() + " is used by rows " + (seen.get(k) as number).toString() + " and " + j.toString());
+			}
+			seen.set(k, j);
+			ks[j] = k;
+		}
+		return { keys: ks, index: seen };
+	};
+	return mapArrayBy<T, number, U>(list, scan, mapFn, usesIndex);
 }
 
 const unreadIndex: Accessor<number> = accessor((): number => {
 	throw new Error("the row of this <For> was emitted as not reading its index, but it read it");
 });
 
-function mapArrayBy<T, K, U>(list: () => T[], keyOf: ((v: T) => K) | null, mapFn: (v: T, index: Accessor<number>) => U, usesIndex: boolean): () => U[] {
+function mapArrayBy<T, K, U>(list: () => T[], keysOf: (items: T[]) => KeyScan<K>, mapFn: (v: T, index: Accessor<number>) => U, usesIndex: boolean): () => U[] {
 	let items: T[] = [];
 	let keys: K[] = [];
 	let mapped: U[] = [];
@@ -72,23 +90,9 @@ function mapArrayBy<T, K, U>(list: () => T[], keyOf: ((v: T) => K) | null, mapFn
 		const newItems = list();
 		const newLen = newItems.length;
 		return untrack(() => {
-			let newKeys: K[] = newItems as unknown as K[];
-			let keyIndex: Map<K, number> | null = null;
-			if (keyOf !== null) {
-				const of = keyOf as (v: T) => K;
-				const ks: K[] = new Array(newLen);
-				const seen = new Map<K, number>();
-				for (let j = 0; j < newLen; j += 1) {
-					const k = of(newItems[j]);
-					if (seen.has(k)) {
-						throw new Error("For: the key " + k.toString() + " is used by rows " + (seen.get(k) as number).toString() + " and " + j.toString());
-					}
-					seen.set(k, j);
-					ks[j] = k;
-				}
-				newKeys = ks;
-				keyIndex = seen;
-			}
+			const scanned = keysOf(newItems);
+			let newKeys: K[] = scanned.keys;
+			let keyIndex: Map<K, number> | null = scanned.index;
 
 			if (newLen === 0) {
 				if (len !== 0) {
@@ -116,7 +120,7 @@ function mapArrayBy<T, K, U>(list: () => T[], keyOf: ((v: T) => K) | null, mapFn
 				disposers = firstDisposers;
 				indexSetters = firstIndexSetters;
 				items = firstItems;
-				keys = keyOf === null ? (items as unknown as K[]) : newKeys;
+				keys = keyIndex !== null ? newKeys : keysOf(items).keys;
 				len = newLen;
 				return mapped;
 			}
@@ -198,7 +202,7 @@ function mapArrayBy<T, K, U>(list: () => T[], keyOf: ((v: T) => K) | null, mapFn
 			disposers = nextDisposers;
 			indexSetters = nextIndexSetters;
 			items = newItems.slice(0, newItems.length);
-			keys = keyOf === null ? (items as unknown as K[]) : newKeys;
+			keys = keyIndex !== null ? newKeys : keysOf(items).keys;
 			len = newLen;
 			return mapped;
 		});
