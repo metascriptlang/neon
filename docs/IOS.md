@@ -239,7 +239,7 @@ portrait → landscape → portrait:
   measured label plus padding (`32`, `61`, `34` wide) but the `UILabel` a string child
   materialises under a non-Text parent was never added to the parent's view.
 
-### 6.4 Physical signing and Release archive
+### 6.4 Physical signing, Release archive and development IPA
 
 Measured 2026-09-30 on Neon `1666e2c`, source tree
 `8bcd6f9897bdfb0568ddc177751caf1550f5150a`, clean Ion
@@ -271,12 +271,29 @@ and `devicectl` reported `ddiServicesAvailable: true`.
   worked in portrait and landscape. These are human observations, not
   captured exact values, parity transitions, screenshots or measured
   physical-device safe-area frames.
+- After going Home and reopening the app, the person reported the retained
+  value `1` and a real `+` press changing it to `2`. A subsequent `devicectl`
+  process inventory confirmed the original PID `2153`, proving same-process
+  background/foreground continuity. Parity text was not explicitly reported.
 - Release `xcodebuild archive` exited 0 for scheme `NeonCounter` and
   destination `generic/platform=iOS`, with the same signing flags.
   Archive metadata, bundle identifier, arm64 executable and minimum OS agree;
   `codesign --verify --deep --strict` passed on the archived app.
   Release executable SHA-256:
   `0d4a3ce9dd1a92dc0f4721667a2271cb80d813af7555092f3532ab9603cc19c8`.
+- With the person's approval to try a development-signed IPA, export exited 0
+  using `xcodebuild -exportArchive` and ExportOptions `method=debugging`,
+  `destination=export`, `signingStyle=automatic`, `teamID=4R7EAZY462`.
+  The IPA SHA-256 is
+  `5aa9fbf80db65c941876cc1c501fb716ea5e4d1926f4c680cfb3addc24ead47e`.
+- The actual IPA payload passed `codesign --verify --deep --strict`.
+  Its bundle id, executable, arm64 architecture, team, development certificate,
+  minimum OS `15.0` and embedded phone provisioning agree with the archive.
+  `get-task-allow` is true: this is development signing, not distribution signing.
+- The `.app` extracted from the IPA installed and launched wirelessly through
+  `devicectl`, as PID `2342`. The earlier PID `2153` observations belong to the
+  Debug run; this intentional Release reinstall/relaunch starts a separate run.
+  Release finger interaction is still awaiting the person's observation.
 
 Signing control: `CODE_SIGN_STYLE=Manual` with this explicit profile failed
 with exit 65: the profile is Xcode-managed and cannot satisfy manually
@@ -289,11 +306,11 @@ device memory, and taps stopped responding. Stopping the local debugger and
 `devicectl device process resume --pid 2153` restored input, as confirmed
 by the person, without relaunching. No synthetic touch was sent.
 
-The physical background/foreground proof is still pending. The Release
-archive is development-signed; no IPA was exported. No usable Apple
-Distribution identity is installed, and the existing store profile names
-another application. Distribution export and the final acceptance remain
-open; these observations do not close Phase 1.
+The person approved trying a development-signed IPA for this milestone.
+No usable Apple Distribution identity is installed, and the existing store
+profile names another application; App Store/ad-hoc distribution is not proven.
+Exact `0/even → 1/odd` finger evidence and physical frame measurements remain
+open, as does final acceptance. These observations do not close Phase 1.
 
 ## 7. What the MetaScript port does differently
 
