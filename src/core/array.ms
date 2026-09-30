@@ -18,7 +18,7 @@ interface IndexCell {
 	getter: (() => number) | null;
 	setter: Setter<number> | null;
 }
-interface KeyScan<K> {
+struct KeyScan<K> {
 	keys: K[];
 	index: Map<K, number> | null;
 }
