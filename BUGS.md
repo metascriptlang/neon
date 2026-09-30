@@ -42,23 +42,44 @@ and the invariants that outlived them were moved to the head of the test that pi
   tests/macros/mapNamedRowRejected.ms: rejected for another reason`: the element macro now refuses
   `.map(row)` with its own "a .map row that takes an index is written <For each={xs}>…" before the
   checker's `Argument type mismatch in 'map' arg 0`, which `run.sh` pins. The program is still
-  rejected. Measured on an export of main `ecfbcc7` with msc `227ebc34`; `2f306532` reported the
-  macro lane ok. The pinned message is part of the JSX contract (`CLAUDE.md`), so changing it needs a
+  rejected. Measured on an export of main `ecfbcc7` with msc `227ebc34`, and again on an export of
+  main `4e33c9e` with msc `013853dd` (2026-09-30); `2f306532` reported the macro lane ok. The pinned message is part of the JSX contract (`CLAUDE.md`), so changing it needs a
   yes.
 
 - **OPEN 2026-09-26 — the gate's Chrome lane finds no bundle.** `tests/browser/run.sh` prints
   `COMPILE FAILED — no test bundle emitted at tests/browser/out/debug/_test/main.js`: on msc
   `227ebc34` (macOS) `msc test --target=js tests/browser/dom.test.ms` writes
   `out/debug/_test/main.js` under the working directory, the checkout root, not beside the test
-  file where `run.sh` reads it. Measured on an export of main `ecfbcc7`; the Windows run on
-  `2f306532` found it beside the test file. Not yet known whether msc moved it on purpose.
+  file where `run.sh` reads it. Measured on an export of main `ecfbcc7`, and again on an export of
+  main `4e33c9e` with msc `013853dd` (2026-09-30); the Windows run on `2f306532` found it beside the
+  test file. Not yet known whether msc moved it on purpose.
 
 - **PARKED 2026-09-26 — `tests/platform/void.test.ms`, `tests/platform/voidInput.test.ms` and
   `tests/style/style.test.ms` do not compile on the native lane.** Not Neon's: Yoga types its node
   handle as `Ptr<YGNode>` since Yoga `f5a811d`, and Void's `Node2D` still holds `Ptr<void>`, which
   `layoutPass<Node2D>` and `freeLayoutTree<Node2D>` refuse (2 errors per file; same on an export of
-  main `ecfbcc7`). Void's half: `~/metascript/.inbox/void/2026-09-26-yoga-typed-handle.md`. Parked at
-  those three files; nothing in Neon changes.
+  main `ecfbcc7`). Void's half: `~/metascript/.inbox/void/2026-09-26-yoga-typed-handle.md`. On msc
+  `013853dd` with Void `69e1f7c` (2026-09-30, the same on an export of main `4e33c9e`) each file also
+  reports 40 `cannot write '…[…]' — '…' is const (use 'let')` in Void's `const` `Vec<T>` bindings:
+  `~/metascript/.inbox/void/2026-09-28-const-vec-element-write.md`. Parked at those three files;
+  nothing in Neon changes.
+
+- **PARKED 2026-09-30 — `tests/style/theme.test.ms` and `tests/style/themeSwap.test.ms` do not
+  compile on the native lane.** Not Neon's: `createTheme` expands to `themeOf(<literal>, css)`, typed
+  `Theme<T>` with `type Theme<T> = T` (`src/macros/ui/theme.ms`), and msc `013853dd` reads the
+  returned object with `.` on a pointer, `member reference type '__anon3__sp2i__o5n__brands *' … is a
+  pointer`. The same on an export of main `4e33c9e`; neither file was in the known-red set of msc
+  `227ebc34`. Card, 9-line repro and controls:
+  `~/metascript/.inbox/compiler/2026-09-30-generic-alias-return-object-emits-dot-on-pointer.md`.
+  Parked at those two files; nothing in Neon changes.
+
+- **PARKED 2026-09-30 — `tests/platform/native.test.ms` dies at module load on the JS lane.** Not
+  Neon's: Yoga `dba68fd` re-exports its enums from `Yoga.h`, and msc `013853dd` emits
+  `export var YGAlign_YGAlignAuto` beside an export list that names `YGAlignAuto`, so node stops at
+  `SyntaxError: Export 'YGAlignAuto' is not defined in module`. The same on an export of main
+  `4e33c9e`; the file was not in the known-red set of msc `227ebc34` with Yoga `f5a811d`. Card and
+  repro: `~/metascript/.inbox/compiler/2026-09-30-js-header-enum-reexport-exports-undefined-member.md`.
+  Parked at that file's JS lane; nothing in Neon changes.
 
 - **PARKED 2026-09-25 — `tests/render/reconcile.test.ms` does not compile on the native lane since
   msc `2f306532`.** Not Neon's: `span` pushes a `HostNode` (`unknown`) into a `HostNode[]`, and the
