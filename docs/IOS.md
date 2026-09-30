@@ -293,7 +293,8 @@ and `devicectl` reported `ddiServicesAvailable: true`.
 - The `.app` extracted from the IPA installed and launched wirelessly through
   `devicectl`, as PID `2342`. The earlier PID `2153` observations belong to the
   Debug run; this intentional Release reinstall/relaunch starts a separate run.
-  Release finger interaction is still awaiting the person's observation.
+  The person subsequently gave a positive confirmation ("ngon"), without
+  explicitly reporting the Release value/parity transition or frame measurements.
 
 Signing control: `CODE_SIGN_STYLE=Manual` with this explicit profile failed
 with exit 65: the profile is Xcode-managed and cannot satisfy manually
@@ -311,6 +312,53 @@ No usable Apple Distribution identity is installed, and the existing store
 profile names another application; App Store/ad-hoc distribution is not proven.
 Exact `0/even → 1/odd` finger evidence and physical frame measurements remain
 open, as does final acceptance. These observations do not close Phase 1.
+
+### 6.5 Final mobile matrix — 2026-09-30
+
+The run started from clean Neon `7caa23a`, tree
+`3e12c79750f6978ab059292b6081dd2548ca099e`, clean Ion `c18f703`, tree
+`7a483231f870f588d5e5836ce3e99c21fb08dcf5`, and clean Yoga `dba68fd`, tree
+`6ad92281259c8cea5af178db7ec5e068f68d4f2d`. Installed compiler and support
+stayed at `013853dd` before and after the run. Xcode 26.6, SDK 26.5,
+Zulu 17.0.18, NDK 28.0.13004108, Gradle 9.3.1 and AGP 9.1.0 were used.
+
+| lane / command | exit | observed result |
+|---|---|---|
+| Neon `bash tests/run.sh` | 1 | 92 green target-file lanes, exactly 8 known reds, 0 new / 0 absent |
+| Yoga `sh scripts/test.sh` | 0 | layout/lifetime suite passed |
+| Ion owning gate | 0 each | library check, ten test invocations, macOS example build, generator check |
+| Ion `MSC=~/.metascript/bin/msc bash tooling/generator/tests/run.sh` | 0 | generator contracts and real macOS/iOS/Android fixtures passed |
+| Neon `bash tests/ios/run.sh` | 0 | portrait → landscape → portrait, `0/even → 1/odd → 2/even`, safe-area assertions, one PID `29915` |
+| Generated counter Release simulator build | 0 | arm64 `iphonesimulator`, ad-hoc signed, zero PBX edits |
+| Neon `ANDROID_SERIAL=emulator-5554 bash tests/android/run.sh` | 0 | Debug/Release build, `churned 20000`, rotation, Home/resume, `0 → 1 → 2`, one PID `6156` |
+| Physical iOS Release `0/even → 1/odd` and frame numbers | — | not explicitly captured; the person gave a positive confirmation only |
+
+The iOS UI test measured value frames `(422,60;31,58) → (426,60;23,58)`
+and parity frames `(424,186;27,15) → (426,186;22,15)` in landscape.
+Screenshots show the labels and updated counter in both orientations.
+These presses were XCUITest-synthetic; they do not replace the physical
+finger observations in §6.4.
+
+On Pixel 9 Pro / Android 36, all text bounds stayed inside the visible
+frame. The first landscape title was `[1320,228][1692,309]` inside
+`(156,156;2856,1208)`; the previously recorded cutout miscentring did not
+appear in this run, which does not close its intermittent bug.
+The emulator held launcher focus for 60 s before testing and was shut
+down afterwards. The physical Seeker and its installed Release APK were
+not modified. Lane entry waited for load ≤14 on this 14-core Mac;
+the Neon Android lane started at 12.62. Emulator startup separately
+waited for load ≤12; its exact startup load was not retained.
+
+The eight reds match `BUGS.md` §3: the macro rejection-message fixture,
+Chrome's missing bundle, three native Void/style files, two native theme
+files, and JS `native.test.ms`. The full gate imports Void `69e1f7c`;
+that checkout had unrelated metadata, asset and documentation changes,
+left untouched. Do not describe every workspace checkout as clean.
+
+The automated mobile lanes pass, but the full Neon gate still exits 1.
+Phase 1 remains active; land past the measured reds needs permission
+for this round. Distribution and exact physical iOS frame/parity
+measurements are not claimed.
 
 ## 7. What the MetaScript port does differently
 
