@@ -2,9 +2,12 @@
 
 Status: the counter renders, rotates, backgrounds, counts presses and tears down on the Android 36
 emulator through an Ion-generated Gradle project (§9, 2026-09-26); a tap reaches the host through
-Neon's Android library (§6). The host is shared with iOS: `src/platform/native/host.ms` over one
-bridge per platform, `src/platform/android/bridge.c` here. `examples/android/` is the
-generated-project consumer and `bash tests/android/run.sh` the lane. §1–§8 are the research the
+Neon's Android library (§6). The signed Release APK does the same on a physical phone under a
+person's finger, and the Release AAB is signed with the same key (§10, 2026-09-30). The host is
+shared with iOS: `src/platform/native/host.ms` over one bridge per platform,
+`src/platform/android/bridge.c` here. `examples/android/` is the generated-project consumer,
+`bash tests/android/run.sh` the emulator lane and `tests/android/device.py` its twin for a phone
+in a person's hand. §1–§8 are the research the
 port started from, read on 2026-09-21 with `file:line` evidence; judgment calls are marked as
 such. The two decisions these notes feed:
 
@@ -307,7 +310,71 @@ second release of one view aborts the mock. With the route removal or the view r
 closure handed to C is borrowed: `runApp` keeps the app in module state because Android calls
 `start` after `MsMain` has returned.
 
-Not measured: a physical device (slice 8), `pause`/`resume` beyond what the background step
-shows, and `destroy` followed by a second `start` on a device (the mock remount covers the host
-side only). Yoga nodes are freed through `freeLayoutTree` in the same
-two paths, but no test counts them.
+Not measured: `pause`/`resume` beyond what the background step shows, and `destroy` followed by a
+second `start` on a device (the mock remount covers the host side only). Yoga nodes are freed
+through `freeLayoutTree` in the same two paths, but no test counts them.
+
+## 10. Measured on a physical device
+
+```bash
+ANDROID_SERIAL=<serial> python3 -u tests/android/device.py <results>
+```
+
+drives the counter already installed on a phone, with a person's hands where `run.sh` uses
+`input tap`. It refuses an `emulator-*` serial, the mirror of `run.sh`: an emulator has no finger.
+It force-stops and starts the app, then waits up to 300 s at each step for the person — hold the
+phone upright, tap `+` until the counter shows `1`, tap it again until `2`, turn to landscape,
+press home, reopen from the launcher — and checks each step with `counter.py`'s snapshot: the
+same pid, and every text inside the visible frame from `dumpsys window`. `getevent -lt` records
+the touchscreen (the input device that reports `ABS_MT_POSITION_X`) for the whole run, and a
+press passes only when a `BTN_TOUCH DOWN` arrived since the previous step: `input tap` enters at
+the input dispatcher and never shows there. It restores `accelerometer_rotation` and
+`user_rotation` and prints both. Two traps cost a run each on 2026-09-27: the script reads the
+screen about every 2 s and waits for the exact value, so a second tap before the first shows
+skips past `1` (tell the person "one tap, then wait"); and `uiautomator` serves one dump at a
+time, so a dump taken from outside while the script runs makes the script's own dump fail.
+
+The Release build that went onto the phone, measured 2026-09-27 on code/test tree
+`812060de6123f0fcb06b75ccbe219a70bf55afd7`, msc v0.2.55 `013853dd`, Ion `4198106`, Yoga `dba68fd`,
+Gradle 9.3.1, AGP 9.1.0, NDK 28.0.13004108, Zulu 17.0.18:
+
+- generated from `examples/android/project.ms` and built with `assembleRelease bundleRelease`
+  (exit 0), signed through Ion's `ION_ANDROID_*` variables with a dedicated key: PKCS12
+  `~/.android/neon-counter-release.p12` on the machine that built it, alias `neon-counter`, RSA
+  4096, valid until 2054-02-12. Its password lives only in the macOS keychain item
+  `neon-counter-release` and reaches the build environment through
+  `security find-generic-password -s neon-counter-release -w`; the build log contains no
+  "password";
+- `app-release.apk`: 1 257 837 bytes, sha256
+  `ecd76fb03db89866e8bbaf612878f448a6781550a9559230e1f22910247bba75`. `apksigner verify
+  --print-certs`: v1 + v2, one signer `CN=Neon Counter, O=MetaScript`, certificate SHA-256
+  `7db19e7c02654ff1f6054cd115fd6e7837d2120ea03f92459010981c73b77c22`;
+- `app-release.aab`: 842 652 bytes, sha256
+  `15a3340473c797f41e30c978e32f5dcdb963f92763915929597838b96deae7f8`. `jarsigner -verify`: "jar
+  verified.", the same DN; the only warnings are the self-signed certificate and the missing
+  timestamp;
+- `libmetascript.so`: 1 218 224 bytes, every LOAD segment aligned `0x4000`, NEEDED `liblog`,
+  `libm`, `libdl`, `libc`; `zipalign -c -P 16` OK;
+- red controls: with no signing variable set, `verifyReleaseSigning` exits 1 and names all four,
+  `ION_ANDROID_STORE_FILE` (or `-Pion.android.storeFile`), `ION_ANDROID_STORE_PASSWORD`,
+  `ION_ANDROID_KEY_ALIAS` and `ION_ANDROID_KEY_PASSWORD`, each with its `-P` form; with only
+  `ION_ANDROID_KEY_PASSWORD` unset, `assembleRelease` fails at the same task and names that one.
+
+Measured 2026-09-30 with that APK installed on the phone (the `base.apk` the package manager
+holds has the sha256 above) and `device.py` as committed beside this section:
+
+- Solana Seeker (`ro.product.model` `Seeker`), Android 16, API 36, arm64-v8a, kernel page size
+  4096, touchscreen `/dev/input/event2`. The 16 KiB-aligned library loads on the 4 KiB kernel;
+- the command exits 0 and one process holds every step. Portrait: window `(0,0;1200,2670)`,
+  visible `(0,110;1200,2598)`, title `[414,182][786,263]`, `0` and `even`. The first tap is a
+  hardware `BTN_TOUCH DOWN` at (763, 654), released 81 ms later, inside `+`'s `Pressable`
+  `[720,530][819,668]`; the counter then shows `1` and `odd`. The second, at (764, 616) for
+  109 ms, gives `2` and `even`;
+- landscape keeps `2` and `even` with every text inside the visible frame `(78,110;2670,1128)`,
+  where the display cutout takes the left 78 px; the title `[1188,182][1560,263]` is centred on
+  that frame. After home and a reopen from the launcher the same process shows the same texts at
+  the same bounds;
+- the rotation settings are back to `accelerometer_rotation=1`, `user_rotation=0`.
+
+Not measured on the phone: the Debug build, the churn app, and `destroy` followed by a second
+`start`.
