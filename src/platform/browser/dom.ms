@@ -6,9 +6,7 @@ import { Style, StyleValue } from "../../render/style";
 import { registerCss, collectCss, onCssChange } from "../../render/sheet";
 import { NeonEvent, neonEvent, eventType } from "../../render/event";
 import { htmlTagFor } from "../../render/node";
-import { applyCssPropBody, applyCssBody, cssStyleExternBody } from "../../macros/style/fields";
-
-cssStyleExternBody(0);
+import { CssStyle, applyCss, applyCssProp } from "./domCss";
 
 extern class ClassList {
 	extern add(name: cstring): void;
@@ -75,27 +73,6 @@ function flushSheet(): void {
 	}
 	(sheetNode as DomNode).textContent = collectCss();
 }
-
-// docs/STYLE.md §5 — the browser's projection of the portable Style IR.
-// A bare number is points, which on the web means px; a string ("50%", "auto")
-// is already CSS.
-function len(v: number | string | null): string {
-	if (v === null) { return ""; }
-	if (typeof v === "string") { return v as string; }
-	return `${v as number}px`;
-}
-
-function num(v: number | null): string {
-	return v === null ? "" : `${v as number}`;
-}
-
-function word(v: string | null): string {
-	return v === null ? "" : v as string;
-}
-
-applyCssPropBody(0);
-
-applyCssBody(0);
 
 export function documentBody(): HostNode {
 	return document.body as unknown as HostNode;
