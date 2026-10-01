@@ -42,7 +42,7 @@ extern class ProbeAttrs {
 	extern item(i: number): ProbeAttr;
 }
 
-extern class ProbeNode {
+extern class Node {
 	attributes: ProbeAttrs;
 	textContent: string;
 	tagName: string;
@@ -54,8 +54,8 @@ extern class ProbeNode {
 	extern remove(): void;
 }
 
-function probe(n: HostNode): ProbeNode {
-	return n as unknown as ProbeNode;
+function probe(n: HostNode): Node {
+	return n as unknown as Node;
 }
 
 function styleWith(name: string, v: number | string | null): Style {

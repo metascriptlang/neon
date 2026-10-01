@@ -15,16 +15,16 @@ extern class ClassList {
 	extern contains(name: cstring): boolean;
 }
 
-extern class DomNode {
+extern class Node {
 	textContent: cstring;
 	style: CssStyle;
 	classList: ClassList;
-	nextSibling: DomNode;
-	firstChild: DomNode;
-	extern cloneNode(deep: boolean): DomNode;
-	extern appendChild(child: DomNode): void;
-	extern insertBefore(node: DomNode, ref: DomNode | null): void;
-	extern removeChild(child: DomNode): void;
+	nextSibling: Node;
+	firstChild: Node;
+	extern cloneNode(deep: boolean): Node;
+	extern appendChild(child: Node): void;
+	extern insertBefore(node: Node, ref: Node | null): void;
+	extern removeChild(child: Node): void;
 	value: cstring;
 	extern setAttribute(name: cstring, value: cstring): void;
 	extern removeAttribute(name: cstring): void;
@@ -54,16 +54,16 @@ extern class DomEvent {
 }
 
 extern class document {
-	static body: DomNode;
-	static head: DomNode;
-	static extern createElement(tag: cstring): DomNode;
-	static extern createTextNode(s: cstring): DomNode;
+	static body: Node;
+	static head: Node;
+	static extern createElement(tag: cstring): Node;
+	static extern createTextNode(s: cstring): Node;
 }
 
 // One <style> element owns every rule the program registered. Rewriting its
 // whole text on each new rule is fine because registration happens as sheets
 // are first mounted, not per element, and the browser reparses one small block.
-let sheetNode: DomNode | null = null;
+let sheetNode: Node | null = null;
 
 function flushSheet(): void {
 	if (sheetNode === null) {
@@ -71,7 +71,7 @@ function flushSheet(): void {
 		document.head.appendChild(n);
 		sheetNode = n;
 	}
-	(sheetNode as DomNode).textContent = collectCss();
+	(sheetNode as Node).textContent = collectCss();
 }
 
 export function documentBody(): HostNode {
@@ -88,27 +88,27 @@ export function domHost(): Host {
 		createElement: (tag: string): HostNode => document.createElement(htmlTagFor(tag)) as unknown as HostNode,
 		createText: (s: string): HostNode => document.createTextNode(s) as unknown as HostNode,
 		setText: (node: HostNode, s: string): void => {
-			(node as unknown as DomNode).textContent = s;
+			(node as unknown as Node).textContent = s;
 		},
 		setAttr: (node: HostNode, name: string, value: string): void => {
-			const el = node as unknown as DomNode;
+			const el = node as unknown as Node;
 			if (name === "value") { el.value = value; return; }
 			el.setAttribute(name, value);
 		},
 		removeAttr: (node: HostNode, name: string): void => {
-			const el = node as unknown as DomNode;
+			const el = node as unknown as Node;
 			if (name === "value") { el.value = ""; }
 			el.removeAttribute(name);
 		},
 		setStyle: (node: HostNode, style: Style): void => {
-			applyCss((node as unknown as DomNode).style, style);
+			applyCss((node as unknown as Node).style, style);
 		},
 		setStyleProp: (node: HostNode, name: string, value: StyleValue): void => {
-			applyCssProp((node as unknown as DomNode).style, name, value);
+			applyCssProp((node as unknown as Node).style, name, value);
 		},
 		setStyleClass: (node: HostNode, id: string, css: string): void => {
 			registerCss(id, css);
-			(node as unknown as DomNode).classList.add(id);
+			(node as unknown as Node).classList.add(id);
 		},
 		addEvent: (node: HostNode, name: string, handler: (e: NeonEvent) => void): void => {
 			const type = eventType(name);
@@ -117,7 +117,7 @@ export function domHost(): Host {
 			let domType = type;
 			if (type === "press") { domType = "click"; }
 			else if (type === "changetext") { domType = "input"; }
-			(node as unknown as DomNode).addEventListener(domType, (de: DomEvent): void => {
+			(node as unknown as Node).addEventListener(domType, (de: DomEvent): void => {
 				const ev = neonEvent(type);
 				if (type === "changetext" || type === "input" || type === "change") { ev.value = de.target.value; }
 				else if (type === "keydown" || type === "keyup" || type === "keypress") {
@@ -138,25 +138,25 @@ export function domHost(): Host {
 			});
 		},
 		append: (parent: HostNode, child: HostNode): void => {
-			(parent as unknown as DomNode).appendChild(child as unknown as DomNode);
+			(parent as unknown as Node).appendChild(child as unknown as Node);
 		},
 		insertBefore: (parent: HostNode, node: HostNode, ref: HostNode | null): void => {
-			(parent as unknown as DomNode).insertBefore(
-				node as unknown as DomNode,
-				ref === null ? null : (ref as unknown as DomNode),
+			(parent as unknown as Node).insertBefore(
+				node as unknown as Node,
+				ref === null ? null : (ref as unknown as Node),
 			);
 		},
 		removeChild: (parent: HostNode, node: HostNode): void => {
-			(parent as unknown as DomNode).removeChild(node as unknown as DomNode);
+			(parent as unknown as Node).removeChild(node as unknown as Node);
 		},
 		nextSibling: (node: HostNode): HostNode | null => {
-			return (node as unknown as DomNode).nextSibling as unknown as HostNode;
+			return (node as unknown as Node).nextSibling as unknown as HostNode;
 		},
 		firstChild: (node: HostNode): HostNode | null => {
-			return (node as unknown as DomNode).firstChild as unknown as HostNode;
+			return (node as unknown as Node).firstChild as unknown as HostNode;
 		},
 		cloneNode: (node: HostNode): HostNode => {
-			return (node as unknown as DomNode).cloneNode(true) as unknown as HostNode;
+			return (node as unknown as Node).cloneNode(true) as unknown as HostNode;
 		},
 		voidArea: null,
 	};
