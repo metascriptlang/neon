@@ -2,9 +2,10 @@
 # Neon browser lane — the same `test "…" { assert … }` files every other lane runs,
 # executed against a real DOM in real Chrome instead of a mock host.
 #
-# `msc test --target=js` emits an ES-module tree under out/debug beside the test file
-# and then runs it under node, where `document` does not exist; that run is expected
-# to fail and its status is discarded. The artifacts it leaves are what Chrome loads.
+# `msc test --target=js` emits an ES-module tree under out/debug in the project root, or
+# beside the test file where the compiler cannot prefix the entry with that root, and then
+# runs it under node, where `document` does not exist; that run is expected to fail and
+# its status is discarded. The artifacts it leaves are what Chrome loads.
 # Setup once per checkout: npm install --prefix tests/browser
 set -e
 cd "$(dirname "$0")/../.."
@@ -27,11 +28,16 @@ trap 'kill $server 2>/dev/null' EXIT INT TERM
 fail=0
 for f in $files; do
 	echo "== browser $f"
-	out="$(dirname "$f")/out/debug"
-	rm -f "$out/_test/main.js"
+	root_out=out/debug
+	beside_out="$(dirname "$f")/out/debug"
+	rm -f "$root_out/_test/main.js" "$beside_out/_test/main.js"
 	"$MSC" test --target=js "$f" >/dev/null 2>&1 || true
-	if [ ! -f "$out/_test/main.js" ]; then
-		echo "   COMPILE FAILED — no test bundle emitted at $out/_test/main.js; run: $MSC test --target=js $f" >&2
+	out=""
+	for candidate in "$root_out" "$beside_out"; do
+		if [ -f "$candidate/_test/main.js" ]; then out="$candidate"; break; fi
+	done
+	if [ -z "$out" ]; then
+		echo "   COMPILE FAILED — no test bundle emitted at $root_out or $beside_out; run: $MSC test --target=js $f" >&2
 		fail=1
 		continue
 	fi
