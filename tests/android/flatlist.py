@@ -3,6 +3,7 @@ import re
 import sys
 import time
 
+sys.dont_write_bytecode = True
 import counter
 import list as scroll_list
 from counter import adb, LaneError, EmulatorError, EMULATOR
