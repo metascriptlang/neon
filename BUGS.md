@@ -54,15 +54,21 @@ and the invariants that outlived them were moved to the head of the test that pi
   main `4e33c9e` with msc `013853dd` (2026-09-30); the Windows run on `2f306532` found it beside the
   test file. Not yet known whether msc moved it on purpose.
 
-- **PARKED 2026-09-26 — `tests/platform/void.test.ms`, `tests/platform/voidInput.test.ms` and
-  `tests/style/style.test.ms` do not compile on the native lane.** Not Neon's: Yoga types its node
-  handle as `Ptr<YGNode>` since Yoga `f5a811d`, and Void's `Node2D` still holds `Ptr<void>`, which
-  `layoutPass<Node2D>` and `freeLayoutTree<Node2D>` refuse (2 errors per file; same on an export of
-  main `ecfbcc7`). Void's half: `~/metascript/.inbox/void/2026-09-26-yoga-typed-handle.md`. On msc
-  `013853dd` with Void `69e1f7c` (2026-09-30, the same on an export of main `4e33c9e`) each file also
-  reports 40 `cannot write '…[…]' — '…' is const (use 'let')` in Void's `const` `Vec<T>` bindings:
-  `~/metascript/.inbox/void/2026-09-28-const-vec-element-write.md`. Parked at those three files;
-  nothing in Neon changes.
+- **PARKED 2026-10-03 — `tests/platform/void.test.ms`, `tests/platform/voidInput.test.ms` and
+  `tests/style/style.test.ms` do not compile on the native lane.** Not Neon's alone: on msc
+  `e5e932d0` with Void `8946ec1` (2026-10-03) Void's `Ptr<YGNode>` and `const` `Vec<T>` halves are
+  gone, and each file fails only on `cannot check a conversion from unknown to Node2D` — 14 sites in
+  `src/platform/void/host.ms` plus the tests' own casts — because Void's `Node2D` is an interface and
+  a cast out of `unknown` needs a class. Open with the person: Void makes `Node2D` a class (the idiom
+  of `MockNode`, `TerminalNode`, `NativeNode`), or Neon wraps each node at one allocation per node.
+  Parked at those three files.
+
+- **PARKED 2026-10-03 — `(st.width ?? 0.0) === 320.0` does not compile.** Not Neon's: with
+  `st.width: float32 | string | null` the fallback joins as a new `float64` member and the present
+  value is refused against it on C and JS; with a written target type the `===` against a number then
+  fails in clang. Card and the five-file matrix:
+  `~/metascript/.inbox/compiler/2026-10-03-nullish-coalesce-union-into-its-superset-rejected.md`.
+  Parked at `tests/platform/void.test.ms:78`, the "parseFlexStyle" cell.
 
 - **PARKED 2026-09-30 — `tests/style/theme.test.ms` and `tests/style/themeSwap.test.ms` do not
   compile on the native lane.** Not Neon's: `createTheme` expands to `themeOf(<literal>, css)`, typed
