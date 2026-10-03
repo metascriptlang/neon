@@ -177,7 +177,11 @@ and the invariants that outlived them were moved to the head of the test that pi
   `grep -rn "function isAccessorTyped" src` prints one line, `element.ms`). The alias and nullable
   arms stay PARKED on the compiler: how a macro asks for a type is part of
   `~/metascript/.inbox/compiler/2026-09-19-design-typed-slots-value-read-and-text-coercion.md`
-  (ROADMAP Next 7); no Neon-side name matching is added meanwhile.
+  (ROADMAP Next 7); no Neon-side name matching is added meanwhile. Measured again 2026-10-03 on msc
+  `e5e932d0`: `function Card(props: { style?: Accessor<Style> | null }) { return <View style={props.style} />; }`
+  fails with `Type 'Accessor<Style> | null' is not assignable to type 'Style'`; with `style: Accessor<Style>` it
+  passes. A wrapper component cannot forward an optional style through JSX. Site parked on it:
+  `src/components/flatList.ms` builds its `ScrollView` by a direct call.
 ## §7 — Small debts of Neon itself
 
 A compiler debt is not one of these: the twelve this section used to carry moved to
