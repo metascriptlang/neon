@@ -55,6 +55,10 @@ class NativeNode {
 	y: float32 = 0.0;
 	w: float32 = 0.0;
 	h: float32 = 0.0;
+	firedX: float32 = -1.0;
+	firedY: float32 = -1.0;
+	firedW: float32 = -1.0;
+	firedH: float32 = -1.0;
 
 	constructor(view: Ptr<void> | null, isText: boolean, isString: boolean) {
 		this.view = view;
@@ -196,6 +200,7 @@ let nextTag: int32 = 1;
 const eventRegistry = createNativeEventRegistry();
 let root: NativeNode;
 const scrollNodes: NativeNode[] = [];
+const layoutNodes: NativeNode[] = [];
 
 function kindOf(n: NativeNode): NativeElementKind {
 	if (n.isText) { return NativeElementKind.Text; }
@@ -213,6 +218,18 @@ function writeContentSizes(): void {
 			if (c.y + c.h > h) { h = c.y + c.h; }
 		}
 		niScrollSetContentSize(s.view, w, h);
+	}
+}
+
+function fireLayouts(): void {
+	for (const n of layoutNodes.slice(0, layoutNodes.length)) {
+		if (n.eventTag === 0 || !isMounted(n)) { continue; }
+		if (n.x === n.firedX && n.y === n.firedY && n.w === n.firedW && n.h === n.firedH) { continue; }
+		n.firedX = n.x;
+		n.firedY = n.y;
+		n.firedW = n.w;
+		n.firedH = n.h;
+		eventRegistry.layout(n.eventTag, n.x, n.y, n.w, n.h);
 	}
 }
 
@@ -244,6 +261,8 @@ function releaseNativeTree(n: NativeNode): void {
 		const at = scrollNodes.indexOf(n);
 		if (at >= 0) { scrollNodes.splice(at, 1); }
 	}
+	const laid = layoutNodes.indexOf(n);
+	if (laid >= 0) { layoutNodes.splice(laid, 1); }
 	if (n.view !== null) {
 		niRemoveFromParent(n.view);
 		niViewRelease(n.view);
@@ -371,6 +390,7 @@ export function createNativeHost(): NativeHost {
 				else if (n.view !== null) { niViewSetTag(n.view, n.eventTag); }
 			}
 			eventRegistry.add(n.eventTag, name, handler);
+			if (name === "onLayout" && layoutNodes.indexOf(n) < 0) { layoutNodes.push(n); }
 		},
 		append: (parent: HostNode, child: HostNode): void => {
 			const p = parent as unknown as NativeNode;
@@ -478,6 +498,7 @@ function relayoutRoot(): void {
 	root.flex = { width, height };
 	runLayoutPass(root, width, height);
 	writeContentSizes();
+	fireLayouts();
 }
 
 let mountedApp: (() => NeonNode) | null = null;

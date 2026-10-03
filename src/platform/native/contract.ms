@@ -19,6 +19,7 @@ export interface NativeEventRegistry {
 	remove: (tag: int32) => void;
 	dispatch: (tag: int32, phase: int32, x: number, y: number) => boolean;
 	scroll: (tag: int32, x: number, y: number, width: number, height: number, contentWidth: number, contentHeight: number) => boolean;
+	layout: (tag: int32, x: number, y: number, width: number, height: number) => boolean;
 }
 
 function num(v: number | null): float32 | null {
@@ -108,5 +109,21 @@ export function createNativeEventRegistry(): NativeEventRegistry {
 		return fired;
 	}
 
-	return { add, remove, dispatch, scroll };
+	function layout(tag: int32, x: number, y: number, width: number, height: number): boolean {
+		if (!byTag.has(tag)) { return false; }
+		let fired = false;
+		for (const route of byTag.get(tag) as NativeEventRoute[]) {
+			if (eventType(route.name) !== "layout") { continue; }
+			const event = neonEvent("layout");
+			event.x = x;
+			event.y = y;
+			event.width = width;
+			event.height = height;
+			route.handler(event);
+			fired = true;
+		}
+		return fired;
+	}
+
+	return { add, remove, dispatch, scroll, layout };
 }
