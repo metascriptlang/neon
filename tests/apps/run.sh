@@ -11,7 +11,7 @@ golden='<app><div>count=0</div></app>
 
 expect_output() {
 	for target in "" "--target=js"; do
-		out=$(NO_COLOR=1 "$MSC" run "$1" $target 2>&1 | grep '^<app>')
+		out=$(NO_COLOR=1 "$MSC" run $target "$1" 2>&1 | grep '^<app>')
 		if [ "$out" = "$golden" ]; then
 			echo "ok   ${target:-native} $1"
 		else
