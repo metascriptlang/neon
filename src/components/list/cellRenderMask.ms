@@ -1,3 +1,5 @@
+import { CellRange } from "./virtualizeUtils";
+
 // React Native's CellRenderMask (packages/virtualized-lists/Lists/CellRenderMask.js): the
 // rows of a list split into runs of rendered cells and runs a spacer stands in for.
 
@@ -5,11 +7,6 @@ export struct CellRegion {
 	first: int32;
 	last: int32;
 	isSpacer: boolean;
-}
-
-export struct CellSpan {
-	first: int32;
-	last: int32;
 }
 
 export class CellRenderMask {
@@ -26,7 +23,7 @@ export class CellRenderMask {
 		return this.regions;
 	}
 
-	addCells(cells: CellSpan): void {
+	addCells(cells: CellRange): void {
 		if (cells.first < 0 || cells.first >= this.numCells || cells.last < -1 || cells.last >= this.numCells || cells.last < cells.first - 1) {
 			throw `CellRenderMask.addCells: invalid cell range ${cells.first}..${cells.last} for ${this.numCells} cells`;
 		}
