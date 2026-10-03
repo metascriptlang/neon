@@ -32,7 +32,7 @@ expect_known_red() {
 	else
 		echo "red  native $1: known, $2"
 	fi
-	out=$(NO_COLOR=1 "$MSC" run "$1" --target=js 2>&1 | grep '^<app>')
+	out=$(NO_COLOR=1 "$MSC" run --target=js "$1" 2>&1 | grep '^<app>')
 	if [ "$out" = "$golden" ]; then
 		echo "ok   js $1"
 	else

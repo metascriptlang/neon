@@ -24,7 +24,7 @@ for f in $files; do
 		;;
 	esac
 	echo "== js $f"
-	"$MSC" test "$f" --target=js || fail=1
+	"$MSC" test --target=js "$f" || fail=1
 done
 tests/browser/run.sh || fail=1
 exit $fail
