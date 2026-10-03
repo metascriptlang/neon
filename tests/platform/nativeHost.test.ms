@@ -10,7 +10,7 @@ import { FlatList, ItemLayout, ListRenderItemInfo } from "../../src/components/f
 
 import {
 	nmViewsCreated, nmReleaseCalls, nmTouch, nmTeardown, nmMount, nmResize, nmScroll, nmLastScrollTag,
-	nmContentWidth, nmContentHeight, nmScrolledX, nmScrolledY, nmScrolledAnimated,
+	nmContentWidth, nmContentHeight, nmScrolledX, nmScrolledY, nmScrolledAnimated, nmContentSizeWrites,
 } from "./nativeBridgeMock.h";
 
 const PRESS: int32 = 2;
@@ -148,4 +148,16 @@ test "an empty string node, such as a region's anchor, takes no layout space and
 	runApp(app);
 	assert got === "50", "two 20-high boxes and one gap: " + got;
 	nmTeardown();
+}
+
+test "one native scroll event that moves a FlatList window runs one layout pass" {
+	const data = entries(10000);
+	const app = (): NeonNode => <FlatList data={data} style={fill} keyExtractor={(e: Entry, i: number): string => e.id} getItemLayout={rowLayout}
+		renderItem={(info: ListRenderItemInfo<Entry>): NeonNode => <View style={rowBox}><Text>{"row " + info.item.n.toString()}</Text></View>} />;
+	runApp(app);
+	const before = nmContentSizeWrites();
+	nmScroll(nmLastScrollTag(), 0, 1000, 400, 800, 400, 500000);
+	const passes = nmContentSizeWrites() - before;
+	nmTeardown();
+	assert passes === 1, "layout passes for one scroll event: " + passes.toString();
 }

@@ -12,3 +12,4 @@ float nmContentHeight(void);
 float nmScrolledX(void);
 float nmScrolledY(void);
 int32_t nmScrolledAnimated(void);
+int32_t nmContentSizeWrites(void);

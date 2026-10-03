@@ -78,10 +78,13 @@ void niScrollSetTag(void *view, int32_t tag) {
 	g_lastScrollTag = tag;
 }
 
+static int g_contentWrites = 0;
+
 void niScrollSetContentSize(void *view, float w, float h) {
 	live(view, "niScrollSetContentSize");
 	g_contentW = w;
 	g_contentH = h;
+	g_contentWrites++;
 }
 
 void niScrollTo(void *view, float x, float y, int animated) {
@@ -197,3 +200,4 @@ float nmContentHeight(void) { return g_contentH; }
 float nmScrolledX(void) { return g_scrolledX; }
 float nmScrolledY(void) { return g_scrolledY; }
 int32_t nmScrolledAnimated(void) { return g_scrolledAnimated; }
+int32_t nmContentSizeWrites(void) { return g_contentWrites; }
