@@ -73,6 +73,9 @@ In rough priority order, once the above is standing:
 - `VAttr.value: string | null` so `removeAttr` becomes reachable
 - Void as a native component beside `View`/`Text`: the iOS and Android hosts implement `Host.voidArea`, after
   Mobile App Foundation (Next #1) (`RENDER-LAYERS.md` "Void as a native component")
+- Void's own vocabulary inside a Void area (`VISION.md` "Inside a Void area"): `Scene3D`, `Group`, `Mesh`,
+  `Light`, `Camera3D` and the HUD over the scene on what Void has now; a `View` drawn into a texture on a mesh
+  after Void's items in `void/docs/NEON.md`
 - a `Text` that sizes itself: labels take no part in yoga today, so a `Text` needs an explicit height in a
   Void area; void2d's `TextLayout` is the measure a yoga measure callback would read
 - native timer for the void and terminal hosts (long-press runs on browser + mock only)
