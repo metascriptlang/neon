@@ -152,3 +152,86 @@ final class ListUITests: XCTestCase {
         XCTAssertEqual(launched, pid(), "rotate, Home and resume kept the same process")
     }
 }
+
+@MainActor
+final class FlatListUITests: XCTestCase {
+    private let app = XCUIApplication(bundleIdentifier: "dev.neon.NeonFlatList")
+
+    override func setUp() {
+        continueAfterFailure = false
+    }
+
+    private func pid() -> String {
+        let text = app.debugDescription
+        guard let range = text.range(of: "pid: ") else { return "" }
+        return String(text[range.upperBound...].prefix(while: { $0.isNumber }))
+    }
+
+    private func label(startingWith prefix: String) -> String {
+        let match = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", prefix)).firstMatch
+        return match.exists ? match.label : ""
+    }
+
+    private func onScreen(_ label: String) -> Bool {
+        let text = app.staticTexts[label]
+        return text.exists && app.windows.firstMatch.frame.contains(text.frame)
+    }
+
+    private func rowsInTree() -> Int {
+        return app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "row ")).count
+    }
+
+    private func report(_ name: String) {
+        print("NEON_IOS flatlist-\(name) pid=\(pid()) \(label(startingWith: "mounted")) \(label(startingWith: "offset ")) \(label(startingWith: "pressed ")) rows-in-tree=\(rowsInTree())")
+        let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        shot.name = "flatlist-\(name)"
+        shot.lifetime = .keepAlways
+        add(shot)
+    }
+
+    func testTenThousandRows() {
+        XCUIDevice.shared.orientation = .portrait
+        app.launch()
+        XCTAssertTrue(app.wait(for: .runningForeground, timeout: 20))
+        let mounted = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "mounted ")).firstMatch
+        XCTAssertTrue(mounted.waitForExistence(timeout: 30), "the list reports its mount time")
+        XCTAssertTrue(onScreen("row 0"), "row 0 starts on screen")
+        XCTAssertFalse(app.staticTexts["row 9999"].exists, "row 9999 is not mounted")
+        XCTAssertLessThan(rowsInTree(), 400, "a window of rows, not 10000")
+        let launched = pid()
+        report("initial")
+
+        for _ in 0..<3 { app.swipeUp() }
+        RunLoop.current.run(until: Date().addingTimeInterval(1))
+        XCTAssertNotEqual(label(startingWith: "offset "), "offset 0", "onScroll moved the offset")
+        XCTAssertEqual(label(startingWith: "pressed "), "pressed none", "a swipe that starts on a row does not press it")
+        report("swiped")
+
+        app.staticTexts["jump 5000"].tap()
+        XCTAssertTrue(app.staticTexts["row 5000"].waitForExistence(timeout: 10), "row 5000 mounts after scrollToIndex")
+        XCTAssertTrue(onScreen("row 5000"), "row 5000 is on screen")
+        XCTAssertFalse(app.staticTexts["row 0"].exists, "row 0 left the window")
+        XCTAssertLessThan(rowsInTree(), 400, "still a window at row 5000")
+        report("jumped")
+
+        app.staticTexts["row 5000"].tap()
+        XCTAssertTrue(app.staticTexts["pressed row 5000"].waitForExistence(timeout: 10), "the tap hits row 5000")
+        report("pressed")
+
+        XCUIDevice.shared.orientation = .landscapeRight
+        RunLoop.current.run(until: Date().addingTimeInterval(2))
+        XCTAssertTrue(app.staticTexts["pressed row 5000"].waitForExistence(timeout: 10), "state survives the rotation")
+        report("landscape")
+        XCUIDevice.shared.orientation = .portrait
+        RunLoop.current.run(until: Date().addingTimeInterval(2))
+
+        XCUIDevice.shared.press(.home)
+        RunLoop.current.run(until: Date().addingTimeInterval(2))
+        app.activate()
+        XCTAssertTrue(app.wait(for: .runningForeground, timeout: 20))
+        XCTAssertTrue(app.staticTexts["pressed row 5000"].waitForExistence(timeout: 10), "state survives Home and resume")
+        report("resumed")
+
+        XCTAssertEqual(launched, pid(), "rotate, Home and resume kept the same process")
+    }
+}
