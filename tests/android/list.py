@@ -7,12 +7,22 @@ import counter
 from counter import adb, LaneError, EmulatorError, EMULATOR
 
 PACKAGE = "dev.neon.NeonList"
-ACTIVITY = PACKAGE + "/dev.metascript.app.MainActivity"
 
 
 def state(landscape):
-    window, texts = counter.settle(landscape)
-    return window, dict(texts)
+    for attempt in range(3):
+        try:
+            window, texts = counter.settle(landscape)
+            return window, dict(texts)
+        except LaneError as failure:
+            if "neon-lane.xml" not in str(failure) or attempt == 2:
+                raise
+            time.sleep(1)
+
+
+def launch(package):
+    adb("shell", "am", "force-stop", package)
+    adb("shell", "monkey", "-p", package, "-c", "android.intent.category.LAUNCHER", "1")
 
 
 def label(texts, prefix):
@@ -53,8 +63,7 @@ def tap(texts, text):
 def lane():
     counter.PACKAGE = PACKAGE
     os.makedirs(os.path.join(counter.results, "screenshots"), exist_ok=True)
-    adb("shell", "am", "force-stop", PACKAGE)
-    adb("shell", "am", "start", "-W", "-n", ACTIVITY)
+    launch(PACKAGE)
     counter.rotate(0)
     window, texts = state(False)
     launched = counter.pid()

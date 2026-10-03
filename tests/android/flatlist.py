@@ -8,7 +8,6 @@ import list as scroll_list
 from counter import adb, LaneError, EmulatorError, EMULATOR
 
 PACKAGE = "dev.neon.NeonFlatList"
-ACTIVITY = PACKAGE + "/dev.metascript.app.MainActivity"
 
 
 def rows_in(texts):
@@ -33,8 +32,7 @@ def lane():
     counter.PACKAGE = PACKAGE
     scroll_list.PACKAGE = PACKAGE
     os.makedirs(os.path.join(counter.results, "screenshots"), exist_ok=True)
-    adb("shell", "am", "force-stop", PACKAGE)
-    adb("shell", "am", "start", "-W", "-n", ACTIVITY)
+    scroll_list.launch(PACKAGE)
     counter.rotate(0)
     deadline = time.time() + 30
     window, texts = scroll_list.state(False)
@@ -68,6 +66,14 @@ def lane():
     if not scroll_list.on_screen(texts, frame, "row 5000") or "row 0" in texts:
         raise LaneError("scrollToIndex 5000 did not move the window; texts %s" % sorted(texts)[:20])
     scroll_list.report("flatlist-jumped", window, texts, launched)
+
+    adb("shell", "dumpsys", "gfxinfo", PACKAGE, "reset")
+    for _ in range(3):
+        scroll_list.swipe_up(window)
+    frames, jank = janky()
+    print("NEON_ANDROID flatlist-swipes-after-jump frames=%s janky=%s" % (frames, jank))
+    scroll_list.tap(texts, "jump 5000")
+    window, texts = scroll_list.state(False)
 
     scroll_list.tap(texts, "row 5000")
     window, texts = scroll_list.state(False)
