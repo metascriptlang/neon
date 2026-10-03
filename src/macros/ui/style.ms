@@ -107,11 +107,11 @@ function cssDecl(name: string, v: Node, token: string, tokenIsText: boolean): st
 // so it is computed here at expansion — never at runtime, where the two lanes
 // could disagree on integer width.
 function hashText(s: string): number {
-	let h = 5381;
+	let h: int64 = 5381;
 	for (let i = 0; i < s.length; i += 1) {
 		h = (h * 33 + s.charCodeAt(i)) % 4294967296;
 	}
-	return h;
+	return h as number;
 }
 
 export macro createStyles(node: Node): Node {
