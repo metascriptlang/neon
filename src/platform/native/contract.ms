@@ -6,6 +6,7 @@ import { asFlexStyleBody } from "../../macros/style/fields";
 export enum NativeElementKind {
 	View,
 	Text,
+	Scroll,
 }
 
 interface NativeEventRoute {
@@ -17,6 +18,7 @@ export interface NativeEventRegistry {
 	add: (tag: int32, name: string, handler: (e: NeonEvent) => void) => void;
 	remove: (tag: int32) => void;
 	dispatch: (tag: int32, phase: int32, x: number, y: number) => boolean;
+	scroll: (tag: int32, x: number, y: number, width: number, height: number, contentWidth: number, contentHeight: number) => boolean;
 }
 
 function num(v: number | null): float32 | null {
@@ -33,12 +35,15 @@ function dim(v: number | string | null, field: string): float32 | null {
 asFlexStyleBody(0);
 
 export function nativeElementKind(tag: string): NativeElementKind {
-	return tag === "text" ? NativeElementKind.Text : NativeElementKind.View;
+	if (tag === "text") { return NativeElementKind.Text; }
+	if (tag === "scrollview") { return NativeElementKind.Scroll; }
+	return NativeElementKind.View;
 }
 
-export function nativeFlexStyle(style: Style, isText: boolean): FlexStyle {
+export function nativeFlexStyle(style: Style, kind: NativeElementKind): FlexStyle {
 	const flex = asFlexStyle(style);
-	if (!isText && flex.flexDirection === null) { flex.flexDirection = "column"; }
+	if (kind !== NativeElementKind.Text && flex.flexDirection === null) { flex.flexDirection = "column"; }
+	if (kind === NativeElementKind.Scroll) { flex.overflow = "scroll"; }
 	return flex;
 }
 
@@ -85,5 +90,23 @@ export function createNativeEventRegistry(): NativeEventRegistry {
 		return false;
 	}
 
-	return { add, remove, dispatch };
+	function scroll(tag: int32, x: number, y: number, width: number, height: number, contentWidth: number, contentHeight: number): boolean {
+		if (!byTag.has(tag)) { return false; }
+		let fired = false;
+		for (const route of byTag.get(tag) as NativeEventRoute[]) {
+			if (eventType(route.name) !== "scroll") { continue; }
+			const event = neonEvent("scroll");
+			event.x = x;
+			event.y = y;
+			event.width = width;
+			event.height = height;
+			event.contentWidth = contentWidth;
+			event.contentHeight = contentHeight;
+			route.handler(event);
+			fired = true;
+		}
+		return fired;
+	}
+
+	return { add, remove, dispatch, scroll };
 }

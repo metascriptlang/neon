@@ -24,11 +24,15 @@ import {
 	niSetText, niSetTextColor, niSetFont, niMeasureText, niMeasuredW, niMeasuredH,
 	niContainerView, niScreenWidth, niScreenHeight, niViewSetTag,
 	niLastTouchTag, niLastTouchPhase,
+	niScrollCreate, niScrollSetTag, niScrollSetContentSize, niScrollTo,
+	niLastScrollTag, niLastScrollX, niLastScrollY, niLastScrollWidth, niLastScrollHeight,
+	niLastScrollContentWidth, niLastScrollContentHeight,
 } from "./bridge.h";
 
 extern function niRegisterApp(mount: () => void): void;
 extern function niRunApp(): int32;
 extern function niSetTouchHandler(handler: () => void): void;
+extern function niSetScrollHandler(handler: () => void): void;
 extern function niSetResizeHandler(handler: () => void): void;
 extern function niSetTeardownHandler(handler: () => void): void;
 
@@ -37,6 +41,7 @@ class NativeNode {
 	view: Ptr<void> | null = null;
 	isText: boolean = false;
 	isString: boolean = false;
+	isScroll: boolean = false;
 	labelOwner: NativeNode | null = null;
 	text: string = "";
 	children: NativeNode[] = [];
@@ -190,6 +195,26 @@ function remeasureText(n: NativeNode): void {
 let nextTag: int32 = 1;
 const eventRegistry = createNativeEventRegistry();
 let root: NativeNode;
+const scrollNodes: NativeNode[] = [];
+
+function kindOf(n: NativeNode): NativeElementKind {
+	if (n.isText) { return NativeElementKind.Text; }
+	if (n.isScroll) { return NativeElementKind.Scroll; }
+	return NativeElementKind.View;
+}
+
+function writeContentSizes(): void {
+	for (const s of scrollNodes) {
+		if (s.view === null || !isMounted(s)) { continue; }
+		let w: float32 = 0.0;
+		let h: float32 = 0.0;
+		for (const c of s.children) {
+			if (c.x + c.w > w) { w = c.x + c.w; }
+			if (c.y + c.h > h) { h = c.y + c.h; }
+		}
+		niScrollSetContentSize(s.view, w, h);
+	}
+}
 
 function childIndex(parent: NativeNode, node: NativeNode): int32 {
 	let i: int32 = 0;
@@ -214,6 +239,10 @@ function releaseNativeTree(n: NativeNode): void {
 	if (n.eventTag !== 0) {
 		eventRegistry.remove(n.eventTag);
 		n.eventTag = 0;
+	}
+	if (n.isScroll) {
+		const at = scrollNodes.indexOf(n);
+		if (at >= 0) { scrollNodes.splice(at, 1); }
 	}
 	if (n.view !== null) {
 		niRemoveFromParent(n.view);
@@ -261,6 +290,13 @@ function materializeString(child: NativeNode, parent: NativeNode): void {
 }
 
 
+function onScroll(): void {
+	eventRegistry.scroll(
+		niLastScrollTag(), niLastScrollX(), niLastScrollY(), niLastScrollWidth(), niLastScrollHeight(),
+		niLastScrollContentWidth(), niLastScrollContentHeight(),
+	);
+}
+
 function onTouch(): void {
 	const tag = niLastTouchTag();
 	const phase = niLastTouchPhase();
@@ -278,16 +314,23 @@ export function createNativeHost(): NativeHost {
 	root = nativeNode(container, false, false);
 	root.flex = { width: niScreenWidth(), height: niScreenHeight() };
 	niSetTouchHandler(onTouch);
+	niSetScrollHandler(onScroll);
 	niSetResizeHandler(onResize);
 
 	const host: Host = {
 		createElement: (tag: string): HostNode => {
 			const kind = nativeElementKind(tag);
-			const n = kind === NativeElementKind.Text
-				? nativeNode(niTextCreate(), true, false)
-				: nativeNode(niViewCreate(), false, false);
-			// RN parity: containers lay out as columns (yoga's default is row).
-			n.flex = nativeFlexStyle({} as Style, n.isText);
+			let n: NativeNode;
+			if (kind === NativeElementKind.Text) {
+				n = nativeNode(niTextCreate(), true, false);
+			} else if (kind === NativeElementKind.Scroll) {
+				n = nativeNode(niScrollCreate(), false, false);
+				n.isScroll = true;
+				scrollNodes.push(n);
+			} else {
+				n = nativeNode(niViewCreate(), false, false);
+			}
+			n.flex = nativeFlexStyle({} as Style, kind);
 			return n as unknown as HostNode;
 		},
 		createText: (s: string): HostNode => {
@@ -312,7 +355,7 @@ export function createNativeHost(): NativeHost {
 		setStyle: (node: HostNode, style: Style): void => {
 			const n = node as unknown as NativeNode;
 			n.styleCache = style;
-			n.flex = nativeFlexStyle(style, n.isText);
+			n.flex = nativeFlexStyle(style, kindOf(n));
 			applyPaint(n, style);
 			if (n.isText) { remeasureText(n); }
 			if (isMounted(n)) { relayoutRoot(); }
@@ -324,7 +367,8 @@ export function createNativeHost(): NativeHost {
 			if (n.eventTag === 0) {
 				n.eventTag = nextTag;
 				nextTag += 1;
-				if (n.view !== null) { niViewSetTag(n.view, n.eventTag); }
+				if (n.view !== null && n.isScroll) { niScrollSetTag(n.view, n.eventTag); }
+				else if (n.view !== null) { niViewSetTag(n.view, n.eventTag); }
 			}
 			eventRegistry.add(n.eventTag, name, handler);
 		},
@@ -404,7 +448,11 @@ export function createNativeHost(): NativeHost {
 		},
 		cloneNode: null,
 		voidArea: null,
-		scrollTo: null,
+		scrollTo: (node: HostNode, x: number, y: number, animated: boolean): void => {
+			const n = node as unknown as NativeNode;
+			if (!n.isScroll || n.view === null) { throw "native host: scrollTo needs a mounted scroll view"; }
+			niScrollTo(n.view, x as float32, y as float32, animated ? 1 : 0);
+		},
 	};
 
 	return {
@@ -429,6 +477,7 @@ function relayoutRoot(): void {
 	const height = niScreenHeight();
 	root.flex = { width, height };
 	runLayoutPass(root, width, height);
+	writeContentSizes();
 }
 
 let mountedApp: (() => NeonNode) | null = null;

@@ -7,6 +7,7 @@ test "native tags select view-backed element kinds" {
 	assert nativeElementKind("view") === NativeElementKind.View, "view uses a view";
 	assert nativeElementKind("pressable") === NativeElementKind.View, "pressable uses a touch-routed view";
 	assert nativeElementKind("custom") === NativeElementKind.View, "unknown tags use the view escape hatch";
+	assert nativeElementKind("scrollview") === NativeElementKind.Scroll, "scrollview uses the platform scroll container";
 }
 
 test "native styles project onto FlexStyle without filling absent fields" {
@@ -18,7 +19,7 @@ test "native styles project onto FlexStyle without filling absent fields" {
 		marginTop: 8,
 		paddingLeft: 4,
 		overflow: "hidden",
-	} as Style, false);
+	} as Style, NativeElementKind.View);
 	assert projected.width === 320, "width reaches flex";
 	assert projected.flexGrow === 1, "flexGrow reaches flex";
 	assert projected.flexDirection === "row", "flexDirection reaches flex";
@@ -28,10 +29,12 @@ test "native styles project onto FlexStyle without filling absent fields" {
 	assert projected.overflow === "hidden", "overflow reaches flex";
 	assert projected.maxWidth === null, "absent maxWidth stays absent";
 
-	const container = nativeFlexStyle({} as Style, false);
-	const text = nativeFlexStyle({} as Style, true);
+	const container = nativeFlexStyle({} as Style, NativeElementKind.View);
+	const text = nativeFlexStyle({} as Style, NativeElementKind.Text);
+	const scroll = nativeFlexStyle({ overflow: "hidden" } as Style, NativeElementKind.Scroll);
 	assert container.flexDirection === "column", "containers default to columns";
 	assert text.flexDirection === null, "text keeps Yoga's direction default";
+	assert scroll.flexDirection === "column" && scroll.overflow === "scroll", "a scroll container lays out its content unshrunk";
 }
 
 test "native event registry routes native tags and touch phases" {
@@ -53,4 +56,15 @@ test "native event registry routes native tags and touch phases" {
 	assert downX === 12 && downY === 9, "pointer coordinates reach the handler";
 	registry.remove(7);
 	assert registry.dispatch(7, 2, 0, 0) === false, "removed tags no longer dispatch";
+}
+
+test "native event registry routes a scroll with React Native's payload" {
+	const registry = createNativeEventRegistry();
+	let got = "";
+	registry.add(5, "onScroll", (e: NeonEvent): void => {
+		got = `${e.type} ${e.x} ${e.y} ${e.width} ${e.height} ${e.contentWidth} ${e.contentHeight}`;
+	});
+	assert registry.scroll(99, 0, 0, 0, 0, 0, 0) === false, "unknown tags are ignored";
+	assert registry.scroll(5, 0, 40, 320, 480, 320, 1200), "a known scroll dispatches";
+	assert got === "scroll 0 40 320 480 320 1200", "payload: " + got;
 }
