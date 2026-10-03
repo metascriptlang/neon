@@ -161,3 +161,13 @@ test "FlatList without getItemLayout fails loud and names the prop" {
 	} catch (e) { caught = e.toString(); }
 	assert caught.includes("getItemLayout"), "names the prop: " + caught;
 }
+
+test "onLayout reaches the author after the window opened" {
+	const root: MockNode = mockNode("root");
+	let seen = "";
+	render(element(<FlatList data={items(10000)} keyExtractor={(it: Item, i: number): string => it.id} getItemLayout={fixed}
+		onLayout={(e: NeonEvent): void => { seen = `${e.height} ${rowTexts(root, []).length}`; }}
+		renderItem={(info: ListRenderItemInfo<Item>): NeonNode => <Text>{"row " + info.item.n.toString()}</Text>} />), mockHost(), root as unknown as HostNode);
+	fireEventWith(root.children[0], "onLayout", layoutEvent(500));
+	assert seen === "500 111", "the author sees the layout with the window already mounted: " + seen;
+}
