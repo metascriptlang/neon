@@ -14,10 +14,12 @@
 export interface NeonEvent {
 	type: string;   // "click", "input", "keydown" — the JSX name with "on" stripped
 	value: string;  // the target's text value where it has one
-	x: number;      // pointer position in host coordinates; the layout origin on onLayout
+	x: number;      // pointer position in host coordinates; the layout origin on onLayout; the content offset on onScroll
 	y: number;
-	width: number;  // the layout size on onLayout
+	width: number;  // the layout size on onLayout; the viewport size on onScroll
 	height: number;
+	contentWidth: number;
+	contentHeight: number;
 	key: string;    // logical key: "a", "A", "Enter"
 	code: string;   // physical key, W3C KeyboardEvent.code: "KeyA", "Enter"
 	altKey: boolean;
@@ -30,7 +32,7 @@ export interface NeonEvent {
 
 export function neonEvent(type: string): NeonEvent {
 	return {
-		type, value: "", x: 0, y: 0, width: 0, height: 0, key: "", code: "",
+		type, value: "", x: 0, y: 0, width: 0, height: 0, contentWidth: 0, contentHeight: 0, key: "", code: "",
 		altKey: false, ctrlKey: false, metaKey: false, shiftKey: false, repeat: false, isComposing: false,
 	};
 }
