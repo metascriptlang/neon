@@ -22,6 +22,22 @@ names the card and the site, and nothing is worked around in `src/`. Rows closed
 2026-09-20 were dropped with §2 — they are in this file's history at `git show c00bd2b:BUGS.md`,
 and the invariants that outlived them were moved to the head of the test that pins each one.
 
+- **OPEN 2026-10-03 — Android: the list examples' `offset` label draws "offset" without its
+  number.** Seen on the Seeker in the `list-pressed.png` screenshot that `tests/android/list.py`
+  writes, in two runs: 15:40, before `c12ed39`, and 16:25, after it. In the same runs the
+  `uiautomator` dump reads the label as `offset 1577`, so the `TextView` holds the full text and
+  only its drawn width is short. The label is a `Text` with `fontSize: 16` whose text grows on every
+  scroll (`examples/components/scrollList.ms`). Not investigated.
+
+- **OPEN 2026-10-03 — Android: on a fast hand swipe, rows entering the screen first draw small
+  text, then the styled size** (the person's report, Seeker, FlatList build of 16:25). Not
+  reproduced by machine: two screen recordings of `adb shell input swipe 600 2300 600 700 40` and
+  `… 600 2500 600 300 15` flings (355 and 252 frames) were scanned for the height of every bright
+  text run in the label column, and every run measured the 37 px median. `createEffect` runs
+  `setStyle` before the row's label exists (`src/render/node.ms` `hostElement`) and `niTextCreate`
+  starts a label at 17 sp, so a late style is ruled out. Next: record the screen while a hand
+  swipe reproduces it.
+
 - **OPEN 2026-09-26 — Android: the first landscape can lay the app out under the display
   cutout.** Neon's host: `Java_dev_metascript_app_NativeApp_resize` in
   `src/platform/android/bridge.c` reads `getRootWindowInsets` when Ion's bootstrap forwards a new
