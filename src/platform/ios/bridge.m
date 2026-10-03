@@ -53,9 +53,13 @@ static void call0(msClosure c) {
 @end
 
 @interface NeonScrollView : UIScrollView <UIScrollViewDelegate>
+- (void)neonSetContentSize:(CGSize)size;
 @end
 
-@implementation NeonScrollView
+@implementation NeonScrollView {
+	BOOL _isUserTriggeredScrolling;
+	BOOL _isSetContentOffsetDisabled;
+}
 
 - (instancetype)initWithFrame:(CGRect)frame {
 	self = [super initWithFrame:frame];
@@ -63,8 +67,53 @@ static void call0(msClosure c) {
 		self.delegate = self;
 		self.delaysContentTouches = NO;
 		self.contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentNever;
+		// React Native's vertical ScrollView default (ScrollView.js: alwaysBounceVertical = !horizontal).
+		self.alwaysBounceVertical = YES;
 	}
 	return self;
+}
+
+// React Native keeps a drag's offset while the content size changes under it
+// (RCTScrollViewComponentView.mm _preserveContentOffsetIfNeededWithBlock, RCTEnhancedScrollView.mm).
+- (void)setContentOffset:(CGPoint)contentOffset {
+	if (_isSetContentOffsetDisabled) return;
+	[super setContentOffset:contentOffset];
+}
+
+- (void)neonSetContentSize:(CGSize)size {
+	if (!_isUserTriggeredScrolling) {
+		self.contentSize = size;
+		return;
+	}
+	_isSetContentOffsetDisabled = YES;
+	self.contentSize = size;
+	_isSetContentOffsetDisabled = NO;
+}
+
+- (void)scrollViewWillBeginDragging:(UIScrollView *)scrollView {
+	_isUserTriggeredScrolling = YES;
+}
+
+- (void)scrollViewDidEndDragging:(UIScrollView *)scrollView willDecelerate:(BOOL)decelerate {
+	if (!decelerate) _isUserTriggeredScrolling = NO;
+}
+
+- (void)scrollViewDidEndDecelerating:(UIScrollView *)scrollView {
+	_isUserTriggeredScrolling = NO;
+}
+
+- (BOOL)scrollViewShouldScrollToTop:(UIScrollView *)scrollView {
+	_isUserTriggeredScrolling = YES;
+	return YES;
+}
+
+- (void)scrollViewDidScrollToTop:(UIScrollView *)scrollView {
+	_isUserTriggeredScrolling = NO;
+}
+
+- (void)didMoveToWindow {
+	[super didMoveToWindow];
+	if (!self.window && (self.isDecelerating || !self.isTracking)) _isUserTriggeredScrolling = NO;
 }
 
 - (void)scrollViewDidScroll:(UIScrollView *)scrollView {
@@ -194,8 +243,8 @@ void niScrollSetTag(void *scroll, int32_t tag) {
 }
 
 void niScrollSetContentSize(void *scroll, float w, float h) {
-	UIScrollView *s = (__bridge UIScrollView *)scroll;
-	s.contentSize = CGSizeMake(w, h);
+	NeonScrollView *s = (__bridge NeonScrollView *)scroll;
+	[s neonSetContentSize:CGSizeMake(w, h)];
 }
 
 void niScrollTo(void *scroll, float x, float y, int animated) {
