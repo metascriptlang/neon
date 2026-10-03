@@ -2,3 +2,8 @@
 	<init>(int);
 	native <methods>;
 }
+
+-keep class dev.metascript.neon.Scroll {
+	<init>(int);
+	native <methods>;
+}

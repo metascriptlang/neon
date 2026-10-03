@@ -22,6 +22,10 @@ void  niSetFrame(void *view, float x, float y, float w, float h);
 void  niSetBackgroundColor(void *view, float r, float g, float b, float a);
 void  niSetCornerRadius(void *view, float radius);
 void  niSetOpacity(void *view, float opacity);
+void *niScrollCreate(void);
+void  niScrollSetTag(void *scroll, int32_t tag);
+void  niScrollSetContentSize(void *scroll, float w, float h);
+void  niScrollTo(void *scroll, float x, float y, int animated);
 
 // --- text ---
 void  niSetText(void *label, const char *s);
@@ -38,6 +42,14 @@ float niMeasuredH(void);
 void niSetTouchHandler(msClosure handler);
 int  niLastTouchTag(void);
 int  niLastTouchPhase(void); // 0 = down, 1 = up, 2 = press, 3 = cancel
+void  niSetScrollHandler(msClosure handler);
+int   niLastScrollTag(void);
+float niLastScrollX(void);
+float niLastScrollY(void);
+float niLastScrollWidth(void);
+float niLastScrollHeight(void);
+float niLastScrollContentWidth(void);
+float niLastScrollContentHeight(void);
 
 // --- app lifecycle ---
 void  niRegisterApp(msClosure mount);

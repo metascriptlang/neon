@@ -5,7 +5,10 @@
 static msClosure s_mount;
 static msClosure s_touch;
 static msClosure s_resize;
+static msClosure s_scroll;
 static int g_lastTag = 0;
+static int g_scrollTag = 0;
+static float g_scrollX = 0, g_scrollY = 0, g_scrollW = 0, g_scrollH = 0, g_scrollContentW = 0, g_scrollContentH = 0;
 static int g_lastPhase = 0;
 static UIView *g_container = nil;
 static float g_measuredW = 0;
@@ -45,6 +48,35 @@ static void call0(msClosure c) {
 	g_lastPhase = 3;
 	call0(s_touch);
 	[super touchesCancelled:touches withEvent:event];
+}
+
+@end
+
+@interface NeonScrollView : UIScrollView <UIScrollViewDelegate>
+@end
+
+@implementation NeonScrollView
+
+- (instancetype)initWithFrame:(CGRect)frame {
+	self = [super initWithFrame:frame];
+	if (self) {
+		self.delegate = self;
+		self.delaysContentTouches = NO;
+		self.contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentNever;
+	}
+	return self;
+}
+
+- (void)scrollViewDidScroll:(UIScrollView *)scrollView {
+	if (self.tag == 0) return;
+	g_scrollTag = (int)self.tag;
+	g_scrollX = (float)scrollView.contentOffset.x;
+	g_scrollY = (float)scrollView.contentOffset.y;
+	g_scrollW = (float)scrollView.bounds.size.width;
+	g_scrollH = (float)scrollView.bounds.size.height;
+	g_scrollContentW = (float)scrollView.contentSize.width;
+	g_scrollContentH = (float)scrollView.contentSize.height;
+	call0(s_scroll);
 }
 
 @end
@@ -152,6 +184,28 @@ void niSetFrame(void *view, float x, float y, float w, float h) {
 	v.frame = CGRectMake(x, y, w, h);
 }
 
+void *niScrollCreate(void) {
+	return CFBridgingRetain([[NeonScrollView alloc] initWithFrame:CGRectZero]);
+}
+
+void niScrollSetTag(void *scroll, int32_t tag) {
+	UIScrollView *s = (__bridge UIScrollView *)scroll;
+	s.tag = tag;
+}
+
+void niScrollSetContentSize(void *scroll, float w, float h) {
+	UIScrollView *s = (__bridge UIScrollView *)scroll;
+	s.contentSize = CGSizeMake(w, h);
+}
+
+void niScrollTo(void *scroll, float x, float y, int animated) {
+	UIScrollView *s = (__bridge UIScrollView *)scroll;
+	CGFloat maxX = MAX(0, s.contentSize.width - s.bounds.size.width);
+	CGFloat maxY = MAX(0, s.contentSize.height - s.bounds.size.height);
+	CGPoint to = CGPointMake(MIN(MAX(0, x), maxX), MIN(MAX(0, y), maxY));
+	[s setContentOffset:to animated:animated != 0];
+}
+
 void niSetBackgroundColor(void *view, float r, float g, float b, float a) {
 	UIView *v = (__bridge UIView *)view;
 	v.backgroundColor = [UIColor colorWithRed:r green:g blue:b alpha:a];
@@ -203,6 +257,18 @@ void niSetTouchHandler(msClosure handler) {
 
 int niLastTouchTag(void) { return g_lastTag; }
 int niLastTouchPhase(void) { return g_lastPhase; }
+
+void niSetScrollHandler(msClosure handler) {
+	s_scroll = handler;
+}
+
+int niLastScrollTag(void) { return g_scrollTag; }
+float niLastScrollX(void) { return g_scrollX; }
+float niLastScrollY(void) { return g_scrollY; }
+float niLastScrollWidth(void) { return g_scrollW; }
+float niLastScrollHeight(void) { return g_scrollH; }
+float niLastScrollContentWidth(void) { return g_scrollContentW; }
+float niLastScrollContentHeight(void) { return g_scrollContentH; }
 
 void niSetTeardownHandler(msClosure handler) {
 	(void)handler;
