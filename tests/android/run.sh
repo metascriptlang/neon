@@ -2,7 +2,8 @@
 # Neon Android emulator lane — generates the counter's Gradle project with Ion,
 # builds Debug and Release, installs Debug on the emulator named by
 # ANDROID_SERIAL and drives it with tests/android/counter.py, then the scroll list
-# (examples/list/android) with tests/android/list.py. Before the counter,
+# (examples/list/android) with tests/android/list.py and the 10000-row FlatList
+# (examples/flatlist/android) with tests/android/flatlist.py. Before the counter,
 # tests/android/churn mounts and removes 120000 native views: a leaked JNI global
 # ref overflows ART's table and a double delete trips -Xcheck:jni. Logs and
 # screenshots stay in the printed results directory.
@@ -40,13 +41,17 @@ step generate-churn "$ION/tooling/generator/ion-generate" tests/android/churn/pr
 step build-churn sh -c "cd '$results/churn' && ./gradlew assembleDebug --console=plain"
 step generate-list "$ION/tooling/generator/ion-generate" examples/list/android/project.ms "$results/list"
 step build-list sh -c "cd '$results/list' && ./gradlew assembleDebug --console=plain"
+step generate-flatlist "$ION/tooling/generator/ion-generate" examples/flatlist/android/project.ms "$results/flatlist"
+step build-flatlist sh -c "cd '$results/flatlist' && ./gradlew assembleDebug --console=plain"
 step boot sh -c 'until [ "$(adb shell getprop sys.boot_completed | tr -d "\r")" = 1 ]; do sleep 2; done'
 adb uninstall dev.neon.NeonCounter > /dev/null 2>&1 || true
 adb uninstall dev.neon.NeonChurn > /dev/null 2>&1 || true
 adb uninstall dev.neon.NeonList > /dev/null 2>&1 || true
+adb uninstall dev.neon.NeonFlatList > /dev/null 2>&1 || true
 step install adb install "$results/gradle/app/build/outputs/apk/debug/app-debug.apk"
 step install-churn adb install "$results/churn/app/build/outputs/apk/debug/app-debug.apk"
 step install-list adb install "$results/list/app/build/outputs/apk/debug/app-debug.apk"
+step install-flatlist adb install "$results/flatlist/app/build/outputs/apk/debug/app-debug.apk"
 step logcat adb logcat -c
 status=0
 python3 tests/android/counter.py "$results" churn > "$results/churn.log" 2>&1 || status=$?
@@ -71,4 +76,12 @@ if [ "$status" -ne 0 ]; then
 	echo "FAIL: android list exit $status; log $results/list.log" >&2
 	exit "$status"
 fi
-echo "PASS: android counter rotation, lifecycle and press, list scroll, press, rotate and resume; screenshots $results/screenshots"
+
+status=0
+python3 tests/android/flatlist.py "$results" > "$results/flatlist.log" 2>&1 || status=$?
+grep -E "NEON_ANDROID|FAIL" "$results/flatlist.log" || true
+if [ "$status" -ne 0 ]; then
+	echo "FAIL: android flatlist exit $status; log $results/flatlist.log" >&2
+	exit "$status"
+fi
+echo "PASS: android counter rotation, lifecycle and press, list and 10000-row FlatList scroll, press, rotate and resume; screenshots $results/screenshots"
