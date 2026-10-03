@@ -13,3 +13,5 @@ float nmScrolledX(void);
 float nmScrolledY(void);
 int32_t nmScrolledAnimated(void);
 int32_t nmContentSizeWrites(void);
+int32_t nmScrollFrameWrites(void);
+int32_t nmScreenHeightReads(void);

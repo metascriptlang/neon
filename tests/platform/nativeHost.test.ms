@@ -11,6 +11,7 @@ import { FlatList, ItemLayout, ListRenderItemInfo } from "../../src/components/f
 import {
 	nmViewsCreated, nmReleaseCalls, nmTouch, nmTeardown, nmMount, nmResize, nmScroll, nmLastScrollTag,
 	nmContentWidth, nmContentHeight, nmScrolledX, nmScrolledY, nmScrolledAnimated, nmContentSizeWrites,
+	nmScrollFrameWrites, nmScreenHeightReads,
 } from "./nativeBridgeMock.h";
 
 const PRESS: int32 = 2;
@@ -155,9 +156,31 @@ test "one native scroll event that moves a FlatList window runs one layout pass"
 	const app = (): NeonNode => <FlatList data={data} style={fill} keyExtractor={(e: Entry, i: number): string => e.id} getItemLayout={rowLayout}
 		renderItem={(info: ListRenderItemInfo<Entry>): NeonNode => <View style={rowBox}><Text>{"row " + info.item.n.toString()}</Text></View>} />;
 	runApp(app);
-	const before = nmContentSizeWrites();
+	const before = nmScreenHeightReads();
 	nmScroll(nmLastScrollTag(), 0, 1000, 400, 800, 400, 500000);
-	const passes = nmContentSizeWrites() - before;
+	const passes = nmScreenHeightReads() - before;
 	nmTeardown();
 	assert passes === 1, "layout passes for one scroll event: " + passes.toString();
+}
+
+test "a layout pass that leaves a ScrollView's frame and content size alone writes neither to the native scroll view" {
+	const [y, setY] = createSignal<number>(0);
+	const app = (): NeonNode => <View style={{ flex: 1 }}>
+		<Text>{"offset " + y().toString()}</Text>
+		<ScrollView style={{ flex: 1 }} onScroll={(e: NeonEvent): void => { setY(e.y); }}>
+			<View style={{ height: 900 }} />
+		</ScrollView>
+	</View>;
+	runApp(app);
+	const frames = nmScrollFrameWrites();
+	const sizes = nmContentSizeWrites();
+	const passes = nmScreenHeightReads();
+	nmScroll(nmLastScrollTag(), 0, 120, 400, 760, 400, 900);
+	const ran = nmScreenHeightReads() - passes;
+	const framed = nmScrollFrameWrites() - frames;
+	const sized = nmContentSizeWrites() - sizes;
+	nmTeardown();
+	assert ran === 1, "the changed offset text runs a layout pass: " + ran.toString();
+	assert framed === 0, "frame writes to the unchanged scroll view: " + framed.toString();
+	assert sized === 0, "content size writes for unchanged content: " + sized.toString();
 }

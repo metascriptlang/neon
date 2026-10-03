@@ -110,9 +110,11 @@ void niViewRelease(void *view) {
 	g_releaseCalls++;
 }
 
+static int g_scrollFrameWrites = 0;
+
 void niSetFrame(void *view, float x, float y, float w, float h) {
 	(void)x; (void)y; (void)w; (void)h;
-	live(view, "niSetFrame");
+	if (live(view, "niSetFrame")->isScroll) g_scrollFrameWrites++;
 }
 
 void niSetBackgroundColor(void *view, float r, float g, float b, float a) {
@@ -163,7 +165,11 @@ int niRunApp(void) {
 
 void *niContainerView(void) { return &s_container; }
 float niScreenWidth(void) { return g_screenW; }
-float niScreenHeight(void) { return g_screenH; }
+static int g_screenHeightReads = 0;
+float niScreenHeight(void) {
+	g_screenHeightReads++;
+	return g_screenH;
+}
 
 int32_t nmViewsCreated(void) { return g_created; }
 int32_t nmReleaseCalls(void) { return g_releaseCalls; }
@@ -201,3 +207,5 @@ float nmScrolledX(void) { return g_scrolledX; }
 float nmScrolledY(void) { return g_scrolledY; }
 int32_t nmScrolledAnimated(void) { return g_scrolledAnimated; }
 int32_t nmContentSizeWrites(void) { return g_contentWrites; }
+int32_t nmScrollFrameWrites(void) { return g_scrollFrameWrites; }
+int32_t nmScreenHeightReads(void) { return g_screenHeightReads; }

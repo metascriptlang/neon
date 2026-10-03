@@ -59,6 +59,9 @@ class NativeNode {
 	firedY: float32 = -1.0;
 	firedW: float32 = -1.0;
 	firedH: float32 = -1.0;
+	framed: boolean = false;
+	contentW: float32 = -1.0;
+	contentH: float32 = -1.0;
 
 	constructor(view: Ptr<void> | null, isText: boolean, isString: boolean) {
 		this.view = view;
@@ -80,8 +83,10 @@ export function layoutSetLastStyle(this n: NativeNode, s: FlexStyle | null): voi
 export function layoutGetYg(this n: NativeNode): Ptr<YGNode> | null { return n.yg; }
 export function layoutSetYg(this n: NativeNode, yg: Ptr<YGNode> | null): void { n.yg = yg; }
 export function layoutSetFrame(this n: NativeNode, x: float32, y: float32, w: float32, h: float32): void {
+	const moved = !n.framed || n.x !== x || n.y !== y || n.w !== w || n.h !== h;
 	n.x = x; n.y = y; n.w = w; n.h = h;
-	if (n.view !== null && n !== root) {
+	if (moved && n.view !== null && n !== root) {
+		n.framed = true;
 		niSetFrame(n.view, x, y, w, h);
 	}
 }
@@ -218,6 +223,9 @@ function writeContentSizes(): void {
 			if (c.x + c.w > w) { w = c.x + c.w; }
 			if (c.y + c.h > h) { h = c.y + c.h; }
 		}
+		if (w === s.contentW && h === s.contentH) { continue; }
+		s.contentW = w;
+		s.contentH = h;
 		niScrollSetContentSize(s.view, w, h);
 	}
 }
