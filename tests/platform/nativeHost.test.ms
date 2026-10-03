@@ -126,7 +126,7 @@ const rowBox: Style = { height: 50 };
 test "a 10000-row FlatList creates native views for its window only and sizes the content to every row" {
 	const data = entries(10000);
 	const before = nmViewsCreated();
-	const app = (): NeonNode => <FlatList data={data} style={fill} keyExtractor={(e: Entry, i: number): string => e.id} getItemLayout={rowLayout}
+	const app = (): NeonNode => <FlatList data={data} style={fill} getItemLayout={rowLayout}
 		renderItem={(info: ListRenderItemInfo<Entry>): NeonNode => <View style={rowBox}><Text>{"row " + info.item.n.toString()}</Text></View>} />;
 	runApp(app);
 	const created = nmViewsCreated() - before;
@@ -153,7 +153,7 @@ test "an empty string node, such as a region's anchor, takes no layout space and
 
 test "one native scroll event that moves a FlatList window runs one layout pass" {
 	const data = entries(10000);
-	const app = (): NeonNode => <FlatList data={data} style={fill} keyExtractor={(e: Entry, i: number): string => e.id} getItemLayout={rowLayout}
+	const app = (): NeonNode => <FlatList data={data} style={fill} getItemLayout={rowLayout}
 		renderItem={(info: ListRenderItemInfo<Entry>): NeonNode => <View style={rowBox}><Text>{"row " + info.item.n.toString()}</Text></View>} />;
 	runApp(app);
 	const before = nmScreenHeightReads();

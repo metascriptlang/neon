@@ -46,7 +46,7 @@ export function BigList(): NeonNode {
 		<Text style={styles.status}>{"offset " + Math.round(offset()).toString()}</Text>
 		<Text style={styles.status}>{"pressed " + pressed()}</Text>
 		<Pressable style={styles.jump} onPress={() => handles[0].scrollToIndex({ index: 5000, animated: false })}>jump 5000</Pressable>
-		<FlatList data={data} style={styles.list} keyExtractor={(e: Entry, i: number): string => e.id} getItemLayout={rowLayout}
+		<FlatList data={data} style={styles.list} getItemLayout={rowLayout}
 			ref={(h: FlatListHandle): void => { handles.push(h); }}
 			onScroll={(e: NeonEvent): void => { setOffset(e.y); }}
 			onLayout={(e: NeonEvent): void => { if (mounted() < 0) { setMounted(performance.now() - started); } }}

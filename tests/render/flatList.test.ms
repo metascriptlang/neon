@@ -1,6 +1,5 @@
-import { createRoot } from "../../src/core/owner";
-import { Accessor, accessor } from "../../src/core/signal";
 import { onCleanup } from "../../src/core/cleanup";
+import { Accessor, accessor, createSignal } from "../../src/core/signal";
 import { element } from "../../src/macros/ui/element";
 import { NeonEvent, neonEvent } from "../../src/render/event";
 import { NeonNode } from "../../src/render/hostTypes";
@@ -8,12 +7,15 @@ import { HostNode, MockNode, mockNode, mockHost, render, fireEventWith } from ".
 import { Text } from "../../src/components/primitives";
 import { FlatList, FlatListHandle, ItemLayout, ListRenderItemInfo, EndReachedInfo } from "../../src/components/flatList";
 
+// Cases named after React Native's are ported from
+// packages/virtualized-lists/Lists/__tests__/VirtualizedList-test.js; their expected content is
+// RN's snapshot after every batch ran, written c<first>-<last> for rendered rows and sp<size> for
+// a spacer.
+
 interface Item {
 	id: string;
 	n: number;
 }
-
-const ROW = 50;
 
 function items(count: number): Item[] {
 	const out: Item[] = [];
@@ -21,147 +23,260 @@ function items(count: number): Item[] {
 	return out;
 }
 
-function fixed(data: Item[], index: number): ItemLayout {
-	return { length: ROW, offset: ROW * index, index };
+function tall10(data: Item[], index: number): ItemLayout {
+	return { length: 10, offset: 10 * index, index };
 }
 
-function rowTexts(n: MockNode, out: string[]): string[] {
-	if (n.tag === "text") {
-		for (const k of n.children) { out.push(k.text); }
-		return out;
+function tall40(data: Item[], index: number): ItemLayout {
+	return { length: 40, offset: 40 * index, index };
+}
+
+function tall50(data: Item[], index: number): ItemLayout {
+	return { length: 50, offset: 50 * index, index };
+}
+
+// Parked: a named renderer does not bind FlatList's T, an inline arrow does —
+// ~/metascript/.inbox/compiler/2026-10-03-generic-component-cannot-bind-t-from-a-named-callback.md
+function row(info: ListRenderItemInfo<Item>): NeonNode {
+	return element(<Text>{"row " + info.item.n.toString()}</Text>);
+}
+
+// Parked: a number literal on a generic component's Accessor prop loses its contextual type —
+// ~/metascript/.inbox/compiler/2026-10-03-object-literal-prop-of-a-generic-component-loses-its-contextual-type.md
+const zero: Accessor<number> = accessor((): number => 0);
+const one: Accessor<number> = accessor((): number => 1);
+const three: Accessor<number> = accessor((): number => 3);
+const five: Accessor<number> = accessor((): number => 5);
+const ten: Accessor<number> = accessor((): number => 10);
+
+function scrollView(root: MockNode): MockNode {
+	return root.children[0];
+}
+
+function content(root: MockNode): MockNode {
+	return root.children[0].children[0];
+}
+
+function shape(root: MockNode): string {
+	const parts: string[] = [];
+	let runFirst: number = -1;
+	let runLast: number = -1;
+	const flush = (): void => {
+		if (runFirst >= 0) { parts.push(runFirst === runLast ? `c${runFirst}` : `c${runFirst}-${runLast}`); }
+		runFirst = -1;
+	};
+	for (const k of content(root).children) {
+		if (k.tag === "") { continue; }
+		if (k.tag === "text") {
+			const n: number = parseInt(k.children[0].text.slice(4)) as number;
+			if (runFirst >= 0 && n === runLast + 1) {
+				runLast = n;
+			} else {
+				flush();
+				runFirst = n;
+				runLast = n;
+			}
+		} else {
+			flush();
+			parts.push(`sp${k.style!.height as number}`);
+		}
 	}
-	for (const k of n.children) { rowTexts(k, out); }
-	return out;
+	flush();
+	return parts.join(" ");
+}
+
+function layoutEvent(height: number): NeonEvent {
+	const e = neonEvent("layout");
+	e.width = 10;
+	e.height = height;
+	return e;
 }
 
 function scrollEvent(y: number, height: number, contentHeight: number): NeonEvent {
 	const e = neonEvent("scroll");
 	e.y = y;
-	e.width = 320;
+	e.width = 10;
 	e.height = height;
-	e.contentWidth = 320;
+	e.contentWidth = 10;
 	e.contentHeight = contentHeight;
 	return e;
 }
 
-function layoutEvent(height: number): NeonEvent {
-	const e = neonEvent("layout");
-	e.width = 320;
-	e.height = height;
-	return e;
+function layOut(root: MockNode, viewport: number, contentHeight: number): void {
+	fireEventWith(scrollView(root), "onLayout", layoutEvent(viewport));
+	fireEventWith(content(root), "onLayout", layoutEvent(contentHeight));
 }
 
-function spacers(root: MockNode): string {
-	const content = root.children[0].children[0];
-	const top = content.children[0];
-	const bottom = content.children[content.children.length - 1];
-	return `${top.style!.height as number} ${bottom.style!.height as number}`;
+function caught(fn: () => void): string {
+	try {
+		fn();
+	} catch (e) {
+		return e.toString();
+	}
+	return "";
+}
+
+test "renders simple list" {
+	const root: MockNode = mockNode("root");
+	render(element(<FlatList data={items(3)} getItemLayout={tall10} renderItem={(info: ListRenderItemInfo<Item>): NeonNode => row(info)} />), mockHost(), root as unknown as HostNode);
+	assert shape(root) === "c0-2", shape(root);
+}
+
+test "renders empty list" {
+	const root: MockNode = mockNode("root");
+	render(element(<FlatList data={items(0)} getItemLayout={tall10} renderItem={(info: ListRenderItemInfo<Item>): NeonNode => row(info)} />), mockHost(), root as unknown as HostNode);
+	assert shape(root) === "", shape(root);
+}
+
+test "initially renders nothing when initialNumToRender is 0" {
+	const root: MockNode = mockNode("root");
+	render(element(<FlatList data={items(10)} getItemLayout={tall10} initialNumToRender={zero} renderItem={(info: ListRenderItemInfo<Item>): NeonNode => row(info)} />), mockHost(), root as unknown as HostNode);
+	assert shape(root) === "sp100", shape(root);
 }
 
 test "before its viewport is known FlatList mounts initialNumToRender rows" {
 	const root: MockNode = mockNode("root");
-	const data = items(10000);
-	render(element(<FlatList data={data} keyExtractor={(it: Item, i: number): string => it.id} getItemLayout={fixed}
-		renderItem={(info: ListRenderItemInfo<Item>): NeonNode => <Text>{"row " + info.item.n.toString()}</Text>} />), mockHost(), root as unknown as HostNode);
-	const texts = rowTexts(root, []);
-	assert texts.length === 10, "rows " + texts.length.toString();
-	assert texts[0] === "row 0" && texts[9] === "row 9", "first rows: " + texts.join(",");
-	assert spacers(root) === `0 ${10000 * ROW - 10 * ROW}`, "spacers " + spacers(root);
+	render(element(<FlatList data={items(10000)} getItemLayout={tall50} renderItem={(info: ListRenderItemInfo<Item>): NeonNode => row(info)} />), mockHost(), root as unknown as HostNode);
+	assert shape(root) === "c0-9 sp499500", shape(root);
 }
 
-test "onLayout opens the window to the viewport plus windowSize" {
+test "renders windowSize derived region at top" {
 	const root: MockNode = mockNode("root");
-	render(element(<FlatList data={items(10000)} keyExtractor={(it: Item, i: number): string => it.id} getItemLayout={fixed}
-		renderItem={(info: ListRenderItemInfo<Item>): NeonNode => <Text>{"row " + info.item.n.toString()}</Text>} />), mockHost(), root as unknown as HostNode);
-	fireEventWith(root.children[0], "onLayout", layoutEvent(500));
-	const texts = rowTexts(root, []);
-	assert texts.length === 111, "a 500-high viewport with windowSize 21 keeps rows 0..110: " + texts.length.toString();
-	assert spacers(root) === `0 ${10000 * ROW - 111 * ROW}`, "spacers " + spacers(root);
+	render(element(<FlatList data={items(10)} getItemLayout={tall10} initialNumToRender={one} maxToRenderPerBatch={one} windowSize={three} renderItem={(info: ListRenderItemInfo<Item>): NeonNode => row(info)} />), mockHost(), root as unknown as HostNode);
+	layOut(root, 20, 100);
+	assert shape(root) === "c0-3 sp60", shape(root);
+}
+
+test "renders windowSize derived region in middle" {
+	const root: MockNode = mockNode("root");
+	render(element(<FlatList data={items(10)} getItemLayout={tall10} initialNumToRender={one} maxToRenderPerBatch={one} windowSize={three} renderItem={(info: ListRenderItemInfo<Item>): NeonNode => row(info)} />), mockHost(), root as unknown as HostNode);
+	layOut(root, 20, 100);
+	fireEventWith(scrollView(root), "onScroll", scrollEvent(50, 20, 100));
+	assert shape(root) === "c0 sp10 c2-8 sp10", shape(root);
+}
+
+test "renders windowSize derived region at bottom" {
+	const root: MockNode = mockNode("root");
+	render(element(<FlatList data={items(10)} getItemLayout={tall10} initialNumToRender={one} maxToRenderPerBatch={one} windowSize={three} renderItem={(info: ListRenderItemInfo<Item>): NeonNode => row(info)} />), mockHost(), root as unknown as HostNode);
+	layOut(root, 20, 100);
+	fireEventWith(scrollView(root), "onScroll", scrollEvent(80, 20, 100));
+	assert shape(root) === "c0 sp40 c5-9", shape(root);
+}
+
+test "retains intitial render if initialScrollIndex == 0" {
+	const root: MockNode = mockNode("root");
+	render(element(<FlatList data={items(20)} getItemLayout={tall10} initialNumToRender={five} windowSize={one} renderItem={(info: ListRenderItemInfo<Item>): NeonNode => row(info)} />), mockHost(), root as unknown as HostNode);
+	layOut(root, 50, 200);
+	fireEventWith(scrollView(root), "onScroll", scrollEvent(150, 50, 200));
+	assert shape(root) === "c0-4 sp90 c14-19", "the first initialNumToRender rows stay for scroll-to-top: " + shape(root);
 }
 
 test "scrolling mounts rows that enter the window, unmounts rows that leave, and keeps the rest" {
 	const root: MockNode = mockNode("root");
 	let mounts = 0;
 	let unmounts = 0;
-	render(element(<FlatList data={items(10000)} keyExtractor={(it: Item, i: number): string => it.id} getItemLayout={fixed}
+	render(element(<FlatList data={items(10000)} getItemLayout={tall50}
 		renderItem={(info: ListRenderItemInfo<Item>): NeonNode => {
 			mounts = mounts + 1;
 			onCleanup((): void => { unmounts = unmounts + 1; });
-			return <Text>{"row " + info.item.n.toString()}</Text>;
+			return row(info);
 		}} />), mockHost(), root as unknown as HostNode);
-	const sv = root.children[0];
-	fireEventWith(sv, "onLayout", layoutEvent(500));
-	assert mounts === 111 && unmounts === 0, `after layout ${mounts} ${unmounts}`;
-	fireEventWith(sv, "onScroll", scrollEvent(1000, 500, 10000 * ROW));
-	assert mounts === 131 && unmounts === 0, "rows 111..130 mount, rows 0..110 stay: " + `${mounts} ${unmounts}`;
-	fireEventWith(sv, "onScroll", scrollEvent(20000, 500, 10000 * ROW));
-	const texts = rowTexts(root, []);
-	assert texts.length === 211 && texts[0] === "row 300" && texts[210] === "row 510", "window 300..510: " + `${texts.length} ${texts[0]} ${texts[texts.length - 1]}`;
-	assert unmounts === 131, "every row of the old window unmounted: " + unmounts.toString();
-	assert spacers(root) === `${300 * ROW} ${10000 * ROW - 511 * ROW}`, "spacers " + spacers(root);
+	layOut(root, 500, 500000);
+	assert shape(root) === "c0-109 sp494500", shape(root);
+	assert mounts === 110 && unmounts === 0, `after layout ${mounts} ${unmounts}`;
+	fireEventWith(scrollView(root), "onScroll", scrollEvent(1000, 500, 500000));
+	assert mounts === 130 && unmounts === 0, "rows 110..129 mount, rows 0..109 stay: " + `${mounts} ${unmounts}`;
+	fireEventWith(scrollView(root), "onScroll", scrollEvent(20000, 500, 500000));
+	assert shape(root) === "c0-9 sp14450 c299-509 sp474500", shape(root);
+	assert unmounts === 120, "rows 10..129 unmounted, the first ten stay: " + unmounts.toString();
 }
 
-test "a row that leaves the window and comes back is mounted again for the same key" {
+test "a row that leaves the window and comes back is mounted again for the same item" {
 	const root: MockNode = mockNode("root");
-	let k5 = 0;
-	render(element(<FlatList data={items(10000)} keyExtractor={(it: Item, i: number): string => it.id} getItemLayout={fixed}
+	let mounts = 0;
+	render(element(<FlatList data={items(10000)} getItemLayout={tall50}
 		renderItem={(info: ListRenderItemInfo<Item>): NeonNode => {
-			if (info.item.id === "k5") { k5 = k5 + 1; }
-			return <Text>{"row " + info.item.n.toString()}</Text>;
+			if (info.item.id === "k200") { mounts = mounts + 1; }
+			return row(info);
 		}} />), mockHost(), root as unknown as HostNode);
-	const sv = root.children[0];
-	fireEventWith(sv, "onLayout", layoutEvent(500));
-	fireEventWith(sv, "onScroll", scrollEvent(20000, 500, 10000 * ROW));
-	fireEventWith(sv, "onScroll", scrollEvent(0, 500, 10000 * ROW));
-	assert k5 === 2, "row k5 mounted, left with its state and came back fresh: " + k5.toString();
-	assert rowTexts(root, [])[5] === "row 5", "the key renders its own item";
+	layOut(root, 500, 500000);
+	fireEventWith(scrollView(root), "onScroll", scrollEvent(10000, 500, 500000));
+	fireEventWith(scrollView(root), "onScroll", scrollEvent(0, 500, 500000));
+	fireEventWith(scrollView(root), "onScroll", scrollEvent(10000, 500, 500000));
+	assert mounts === 2, "row k200 mounted, left with its state and came back fresh: " + mounts.toString();
 }
 
-// Parked: a number literal on a generic component's Accessor prop loses its contextual type —
-// ~/metascript/.inbox/compiler/2026-10-03-object-literal-prop-of-a-generic-component-loses-its-contextual-type.md
-const twoViewports: Accessor<number> = accessor((): number => 2);
-
-test "onEndReached fires once when the window reaches the end within the threshold" {
+test "rows follow their items when the data is reordered or grows, and their index follows too" {
 	const root: MockNode = mockNode("root");
-	let ends = "";
-	render(element(<FlatList data={items(100)} keyExtractor={(it: Item, i: number): string => it.id} getItemLayout={fixed}
-		onEndReachedThreshold={twoViewports}
-		onEndReached={(info: EndReachedInfo): void => { ends = ends + info.distanceFromEnd.toString() + ";"; }}
-		renderItem={(info: ListRenderItemInfo<Item>): NeonNode => <Text>{"row " + info.item.n.toString()}</Text>} />), mockHost(), root as unknown as HostNode);
-	const sv = root.children[0];
-	fireEventWith(sv, "onLayout", layoutEvent(500));
-	assert ends === "", "5000 high, at the top: not near the end";
-	fireEventWith(sv, "onScroll", scrollEvent(3600, 500, 100 * ROW));
-	assert ends === "900;", "900 from the end is inside 2 viewports: " + ends;
-	fireEventWith(sv, "onScroll", scrollEvent(3700, 500, 100 * ROW));
-	assert ends === "900;", "fires once per content length: " + ends;
+	const a: Item = { id: "a", n: 0 };
+	const b: Item = { id: "b", n: 1 };
+	const z: Item = { id: "z", n: 9 };
+	const [data, setData] = createSignal<Item[]>([a, b]);
+	let mounts = 0;
+	render(element(<FlatList data={data()} getItemLayout={tall10}
+		renderItem={(info: ListRenderItemInfo<Item>): NeonNode => {
+			mounts = mounts + 1;
+			return <Text>{info.item.id + "@" + info.index.toString()}</Text>;
+		}} />), mockHost(), root as unknown as HostNode);
+	const texts = (): string => {
+		let out = "";
+		for (const k of content(root).children) { if (k.tag === "text") { out += k.children[0].text + ";"; } }
+		return out;
+	};
+	assert texts() === "a@0;b@1;" && mounts === 2, texts();
+	setData([z, a, b]);
+	assert texts() === "z@0;a@1;b@2;", "kept rows read their new index: " + texts();
+	assert mounts === 3, "only z mounts: " + mounts.toString();
+	setData([b, a]);
+	assert texts() === "b@0;a@1;", texts();
+	assert mounts === 3, "a reorder moves rows, it does not rebuild them: " + mounts.toString();
+}
+
+test "the same item twice in the rendered rows fails loud" {
+	const root: MockNode = mockNode("root");
+	const a: Item = { id: "a", n: 0 };
+	const msg = caught((): void => {
+		render(element(<FlatList data={[a, a]} getItemLayout={tall10} renderItem={(info: ListRenderItemInfo<Item>): NeonNode => row(info)} />), mockHost(), root as unknown as HostNode);
+	});
+	assert msg.includes("FlatList") && msg.includes("rows 0 and 1"), "names the list and both rows: " + msg;
+}
+
+test "calls onEndReached when near the end" {
+	const root: MockNode = mockNode("root");
+	let ends = 0;
+	render(element(<FlatList data={items(40)} getItemLayout={tall40} initialNumToRender={ten} onEndReachedThreshold={one} windowSize={ten}
+		onEndReached={(info: EndReachedInfo): void => { ends = ends + 1; }} renderItem={(info: ListRenderItemInfo<Item>): NeonNode => row(info)} />), mockHost(), root as unknown as HostNode);
+	layOut(root, 600, 1600);
+	assert ends === 0, "not at the top";
+	fireEventWith(scrollView(root), "onScroll", scrollEvent(40, 600, 1600));
+	assert ends === 0, "not after a small scroll";
+	fireEventWith(scrollView(root), "onScroll", scrollEvent(1600, 600, 1600));
+	assert ends === 1, "at the end: " + ends.toString();
 }
 
 test "onEndReached without a threshold fires within 2 px of the end, React Native's default" {
 	const root: MockNode = mockNode("root");
 	let ends = "";
-	render(element(<FlatList data={items(100)} keyExtractor={(it: Item, i: number): string => it.id} getItemLayout={fixed}
+	render(element(<FlatList data={items(100)} getItemLayout={tall50}
 		onEndReached={(info: EndReachedInfo): void => { ends = ends + info.distanceFromEnd.toString() + ";"; }}
-		renderItem={(info: ListRenderItemInfo<Item>): NeonNode => <Text>{"row " + info.item.n.toString()}</Text>} />), mockHost(), root as unknown as HostNode);
-	const sv = root.children[0];
-	fireEventWith(sv, "onLayout", layoutEvent(500));
-	fireEventWith(sv, "onScroll", scrollEvent(3600, 500, 100 * ROW));
+		renderItem={(info: ListRenderItemInfo<Item>): NeonNode => row(info)} />), mockHost(), root as unknown as HostNode);
+	layOut(root, 500, 5000);
+	fireEventWith(scrollView(root), "onScroll", scrollEvent(3600, 500, 5000));
 	assert ends === "", "900 from the end is outside the 2 px default: " + ends;
-	fireEventWith(sv, "onScroll", scrollEvent(4498, 500, 100 * ROW));
+	fireEventWith(scrollView(root), "onScroll", scrollEvent(4498, 500, 5000));
 	assert ends === "2;", "exactly 2 px from the end is inside: " + ends;
-	fireEventWith(sv, "onScroll", scrollEvent(3000, 500, 100 * ROW));
-	fireEventWith(sv, "onScroll", scrollEvent(4499.9995, 500, 100 * ROW));
+	fireEventWith(scrollView(root), "onScroll", scrollEvent(3000, 500, 5000));
+	fireEventWith(scrollView(root), "onScroll", scrollEvent(4499.9995, 500, 5000));
 	assert ends === "2;0;", "leaving the threshold re-arms it, and a distance under 0.001 reads 0: " + ends;
 }
 
 test "the ref's handle scrolls to an index, an offset and the end" {
 	const root: MockNode = mockNode("root");
 	const handles: FlatListHandle[] = [];
-	render(element(<FlatList data={items(100)} keyExtractor={(it: Item, i: number): string => it.id} getItemLayout={fixed}
-		ref={(h: FlatListHandle): void => { handles.push(h); }}
-		renderItem={(info: ListRenderItemInfo<Item>): NeonNode => <Text>{"row " + info.item.n.toString()}</Text>} />), mockHost(), root as unknown as HostNode);
-	const sv = root.children[0];
-	fireEventWith(sv, "onLayout", layoutEvent(500));
+	render(element(<FlatList data={items(100)} getItemLayout={tall50}
+		ref={(h: FlatListHandle): void => { handles.push(h); }} renderItem={(info: ListRenderItemInfo<Item>): NeonNode => row(info)} />), mockHost(), root as unknown as HostNode);
+	const sv = scrollView(root);
+	layOut(root, 500, 5000);
 	handles[0].scrollToIndex({ index: 40 });
 	assert `${sv.scrollY} ${sv.scrollAnimated}` === "2000 true", "index 40: " + `${sv.scrollY} ${sv.scrollAnimated}`;
 	handles[0].scrollToIndex({ index: 40, viewPosition: 0.5, animated: false });
@@ -172,27 +287,54 @@ test "the ref's handle scrolls to an index, an offset and the end" {
 	assert sv.scrollY === 123, "offset " + sv.scrollY.toString();
 	handles[0].scrollToEnd({});
 	assert sv.scrollY === 4500, "end " + sv.scrollY.toString();
-	let caught = "";
-	try { handles[0].scrollToIndex({ index: 100 }); } catch (e) { caught = e.toString(); }
-	assert caught.includes("100"), "an index past the data fails loud: " + caught;
+}
+
+test "throws if using scrollToIndex with index less than 0" {
+	const root: MockNode = mockNode("root");
+	const handles: FlatListHandle[] = [];
+	render(element(<FlatList data={items(3)} getItemLayout={tall10} ref={(h: FlatListHandle): void => { handles.push(h); }} renderItem={(info: ListRenderItemInfo<Item>): NeonNode => row(info)} />), mockHost(), root as unknown as HostNode);
+	const msg = caught((): void => { handles[0].scrollToIndex({ index: -1 }); });
+	assert msg.includes("scrollToIndex out of range: requested index -1 but minimum is 0"), msg;
+}
+
+test "throws if using scrollToIndex when item length is less than 1" {
+	const root: MockNode = mockNode("root");
+	const handles: FlatListHandle[] = [];
+	render(element(<FlatList data={items(0)} getItemLayout={tall10} ref={(h: FlatListHandle): void => { handles.push(h); }} renderItem={(info: ListRenderItemInfo<Item>): NeonNode => row(info)} />), mockHost(), root as unknown as HostNode);
+	const msg = caught((): void => { handles[0].scrollToIndex({ index: 0 }); });
+	assert msg.includes("scrollToIndex out of range: item length 0 but minimum is 1"), msg;
+}
+
+test "throws if using scrollToIndex when requested index is bigger than or equal to item length" {
+	const root: MockNode = mockNode("root");
+	const handles: FlatListHandle[] = [];
+	render(element(<FlatList data={items(3)} getItemLayout={tall10} ref={(h: FlatListHandle): void => { handles.push(h); }} renderItem={(info: ListRenderItemInfo<Item>): NeonNode => row(info)} />), mockHost(), root as unknown as HostNode);
+	const msg = caught((): void => { handles[0].scrollToIndex({ index: 3 }); });
+	assert msg.includes("scrollToIndex out of range: requested index 3 is out of 0 to 2"), msg;
+}
+
+test "scrollToEnd works with null list" {
+	const root: MockNode = mockNode("root");
+	const handles: FlatListHandle[] = [];
+	render(element(<FlatList data={items(0)} getItemLayout={tall10} ref={(h: FlatListHandle): void => { handles.push(h); }} renderItem={(info: ListRenderItemInfo<Item>): NeonNode => row(info)} />), mockHost(), root as unknown as HostNode);
+	assert caught((): void => { handles[0].scrollToEnd({}); }) === "", "no throw on an empty list";
 }
 
 test "FlatList without getItemLayout fails loud and names the prop" {
 	const root: MockNode = mockNode("root");
-	let caught = "";
-	try {
-		render(element(<FlatList data={items(3)} keyExtractor={(it: Item, i: number): string => it.id}
-			renderItem={(info: ListRenderItemInfo<Item>): NeonNode => <Text>{"row " + info.item.n.toString()}</Text>} />), mockHost(), root as unknown as HostNode);
-	} catch (e) { caught = e.toString(); }
-	assert caught.includes("getItemLayout"), "names the prop: " + caught;
+	const msg = caught((): void => {
+		render(element(<FlatList data={items(3)} renderItem={(info: ListRenderItemInfo<Item>): NeonNode => row(info)} />), mockHost(), root as unknown as HostNode);
+	});
+	assert msg.includes("getItemLayout"), "names the prop: " + msg;
 }
 
-test "onLayout reaches the author after the window opened" {
+test "onLayout reaches the author before the window moves, as React Native orders it" {
 	const root: MockNode = mockNode("root");
 	let seen = "";
-	render(element(<FlatList data={items(10000)} keyExtractor={(it: Item, i: number): string => it.id} getItemLayout={fixed}
-		onLayout={(e: NeonEvent): void => { seen = `${e.height} ${rowTexts(root, []).length}`; }}
-		renderItem={(info: ListRenderItemInfo<Item>): NeonNode => <Text>{"row " + info.item.n.toString()}</Text>} />), mockHost(), root as unknown as HostNode);
-	fireEventWith(root.children[0], "onLayout", layoutEvent(500));
-	assert seen === "500 111", "the author sees the layout with the window already mounted: " + seen;
+	render(element(<FlatList data={items(10000)} getItemLayout={tall50}
+		onLayout={(e: NeonEvent): void => { seen = `${e.height} ${shape(root)}`; }} renderItem={(info: ListRenderItemInfo<Item>): NeonNode => row(info)} />), mockHost(), root as unknown as HostNode);
+	fireEventWith(content(root), "onLayout", layoutEvent(500000));
+	fireEventWith(scrollView(root), "onLayout", layoutEvent(500));
+	assert seen === "500 c0-9 sp499500", "VirtualizedList._onLayout calls props.onLayout, then schedules the window: " + seen;
+	assert shape(root) === "c0-109 sp494500", "then the window opens: " + shape(root);
 }

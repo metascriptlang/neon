@@ -47,7 +47,7 @@ function rowsIn(text: string): number {
 
 test "a 10000-row FlatList mounts a window, keeps the full scroll height and follows scrollToIndex" {
 	const handles: FlatListHandle[] = [];
-	render(element(<FlatList data={items(10000)} style={listStyle} keyExtractor={(it: Item, i: number): string => it.id} getItemLayout={fixed}
+	render(element(<FlatList data={items(10000)} style={listStyle} getItemLayout={fixed}
 		ref={(h: FlatListHandle): void => { handles.push(h); }}
 		renderItem={(info: ListRenderItemInfo<Item>): NeonNode => <View style={rowStyle}><Text>{"<" + info.item.n.toString() + ">"}</Text></View>} />), domHost(), documentBody());
 	await sleepAsync(100);
@@ -60,7 +60,8 @@ test "a 10000-row FlatList mounts a window, keeps the full scroll height and fol
 	await sleepAsync(200);
 	assert scroller.scrollTop === 3000 * ROW, "offset " + scroller.scrollTop.toString();
 	const text = scroller.textContent;
-	assert text.includes("<3000>") && !text.includes("<0>"), "the window moved to row 3000";
+	assert text.includes("<3000>") && !text.includes("<1000>"), "the window moved to row 3000";
+	assert text.includes("<0>") && text.includes("<9>"), "the first initialNumToRender rows stay for scroll-to-top";
 	assert rowsIn(text) < 200, "still a window after the move: " + rowsIn(text).toString();
 	scroller.remove();
 }

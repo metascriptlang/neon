@@ -1,7 +1,6 @@
-import { Accessor, createSignal } from "../core/signal";
-import { createMemo } from "../core/memo";
+import { Accessor, createSignal, batch, untrack } from "../core/signal";
 import { createEffect } from "../core/effect";
-import { mapArrayKeyedText } from "../core/array";
+import { mapArray } from "../core/array";
 import { element } from "../macros/ui/element";
 import { NeonNode, regionNode } from "../render/node";
 import { Row, makeRow } from "../render/reconcile";
@@ -9,10 +8,13 @@ import { NeonEvent } from "../render/event";
 import { Host } from "../render/hostTypes";
 import { Style } from "../render/style";
 import { ScrollView, ScrollViewHandle, View } from "./primitives";
+import { CellMetrics, CellRange, WindowScroll, computeWindowedRenderLimits } from "./list/virtualizeUtils";
+import { CellRenderMask } from "./list/cellRenderMask";
+import { CellSource, ListMetricsAggregator, ListOrientation } from "./list/listMetrics";
 
 export interface ListRenderItemInfo<T> {
 	item: T;
-	index: number;
+	index: Accessor<number>;
 }
 
 export interface ItemLayout {
@@ -45,20 +47,32 @@ export interface ScrollToEndOptions {
 const DEFAULT_THRESHOLD_PX = 2;
 const ON_EDGE_REACHED_EPSILON = 0.001;
 
-interface Slot<T> {
-	item: T;
-	index: number;
+const VERTICAL: ListOrientation = { horizontal: false, rtl: false };
+
+class ListCell {
+	index: number = -1;
+	setIndex: (index: number) => void;
+	setSize: (size: number) => void;
+	make: () => NeonNode;
+
+	constructor(setIndex: (index: number) => void, setSize: (size: number) => void, make: () => NeonNode) {
+		this.setIndex = setIndex;
+		this.setSize = setSize;
+		this.make = make;
+	}
 }
 
 export class FlatListHandle {
 	private scroll: ScrollViewHandle;
-	private layoutOf: (index: number) => ItemLayout;
+	private frameOf: (index: number) => CellMetrics;
+	private offsetOf: (index: number) => number;
 	private count: () => number;
 	private viewport: () => number;
 
-	constructor(scroll: ScrollViewHandle, layoutOf: (index: number) => ItemLayout, count: () => number, viewport: () => number) {
+	constructor(scroll: ScrollViewHandle, frameOf: (index: number) => CellMetrics, offsetOf: (index: number) => number, count: () => number, viewport: () => number) {
 		this.scroll = scroll;
-		this.layoutOf = layoutOf;
+		this.frameOf = frameOf;
+		this.offsetOf = offsetOf;
 		this.count = count;
 		this.viewport = viewport;
 	}
@@ -71,28 +85,29 @@ export class FlatListHandle {
 	scrollToIndex(options: ScrollToIndexOptions): void {
 		const { index, animated = true, viewPosition = 0, viewOffset = 0 } = options;
 		const n = this.count();
-		if (index < 0 || index >= n) {
-			throw `FlatList.scrollToIndex: index ${index} is outside the ${n} items`;
-		}
-		const at = this.layoutOf(index);
-		this.scroll.scrollTo({ y: Math.max(0, at.offset - viewPosition * (this.viewport() - at.length)) - viewOffset, animated });
+		if (index < 0) { throw `scrollToIndex out of range: requested index ${index} but minimum is 0`; }
+		if (n < 1) { throw `scrollToIndex out of range: item length ${n} but minimum is 1`; }
+		if (index >= n) { throw `scrollToIndex out of range: requested index ${index} is out of 0 to ${n - 1}`; }
+		const frame = this.frameOf(Math.floor(index));
+		const offset = Math.max(0, this.offsetOf(index) - viewPosition * (this.viewport() - frame.length)) - viewOffset;
+		this.scroll.scrollTo({ y: offset, animated });
 	}
 
 	scrollToEnd(options: ScrollToEndOptions): void {
 		const { animated = true } = options;
 		const n = this.count();
 		if (n === 0) { return; }
-		const last = this.layoutOf(n - 1);
-		this.scroll.scrollTo({ y: Math.max(0, last.offset + last.length - this.viewport()), animated });
+		const frame = this.frameOf(n - 1);
+		this.scroll.scrollTo({ y: Math.max(0, frame.offset + frame.length - this.viewport()), animated });
 	}
 }
 
 export function FlatList<T>(props: {
 	data: () => T[];
 	renderItem: (info: ListRenderItemInfo<T>) => NeonNode;
-	keyExtractor: (item: T, index: number) => string;
 	getItemLayout?: ((data: T[], index: number) => ItemLayout) | null;
 	initialNumToRender?: Accessor<number> | null;
+	maxToRenderPerBatch?: Accessor<number> | null;
 	windowSize?: Accessor<number> | null;
 	onEndReached?: ((info: EndReachedInfo) => void) | null;
 	onEndReachedThreshold?: Accessor<number> | null;
@@ -109,115 +124,178 @@ export function FlatList<T>(props: {
 	const getItemLayout = props.getItemLayout as (data: T[], index: number) => ItemLayout;
 	const data = props.data;
 	const renderItem = props.renderItem;
-	const keyExtractor = props.keyExtractor;
 	const initialProp = props.initialNumToRender;
+	const batchProp = props.maxToRenderPerBatch;
 	const windowProp = props.windowSize;
 	const thresholdProp = props.onEndReachedThreshold;
+	const endReached = props.onEndReached;
 	const userScroll = props.onScroll;
 	const userLayout = props.onLayout;
-	const endReached = props.onEndReached;
 	const userRef = props.ref;
 
-	const [offset, setOffset] = createSignal<number>(0);
-	const [viewport, setViewport] = createSignal<number>(0);
-
-	const layoutOf = (index: number): ItemLayout => getItemLayout(data(), index);
-	const count = (): number => data().length;
-	const total = (): number => {
-		const n = count();
-		if (n === 0) { return 0; }
-		const last = layoutOf(n - 1);
-		return last.offset + last.length;
+	let items: T[] = [];
+	const metrics = new ListMetricsAggregator<T>();
+	const source: CellSource<T> = {
+		count: (): int32 => items.length as int32,
+		keyAt: (index: int32): T => items[index],
+		layoutAt: (index: int32): CellMetrics => {
+			const layout = getItemLayout(items, index as number);
+			return { index, length: layout.length, offset: layout.offset, isMounted: true };
+		},
 	};
-	const indexAt = (y: number): number => {
-		let lo: number = 0;
-		let hi: number = count() - 1;
-		while (lo < hi) {
-			const mid = Math.floor((lo + hi + 1) / 2);
-			if (layoutOf(mid).offset <= y) { lo = mid; } else { hi = mid - 1; }
-		}
-		return lo;
+	const metricsAt = (index: int32): CellMetrics => metrics.getCellMetricsApprox(index, source);
+
+	const initialNumToRender = (): int32 => initialProp === null ? 10 : (initialProp as () => number)() as int32;
+	const maxToRenderPerBatch = (): int32 => batchProp === null ? 10 : (batchProp as () => number)() as int32;
+	const windowSize = (): int32 => windowProp === null ? 21 : (windowProp as () => number)() as int32;
+	const initialRegion = (n: int32): CellRange => ({ first: 0, last: Math.min(n, initialNumToRender()) - 1 });
+
+	let offset = 0.0;
+	let visibleLength = 0.0;
+	let sentEndForContentLength = 0.0;
+	let cellsAroundViewport: CellRange = { first: 0, last: -1 };
+	let itemCells = new Map<T, ListCell>();
+	let spacerCells = new Map<int32, ListCell>();
+	const [cells, setCells] = createSignal<ListCell[]>([]);
+
+	// RN VirtualizedList._constrainToItemCount.
+	const constrainToItemCount = (range: CellRange, n: int32): CellRange => {
+		const maxFirst = Math.max(0, n - 1 - maxToRenderPerBatch());
+		return { first: Math.min(Math.max(0, range.first), maxFirst), last: Math.min(n - 1, range.last) };
 	};
 
-	const first = createMemo((): number => {
-		if (count() === 0 || viewport() <= 0) { return 0; }
-		const ws = windowProp === null ? 21 : (windowProp as () => number)();
-		return indexAt(Math.max(0, offset() - (ws - 1) / 2 * viewport()));
-	});
-	const last = createMemo((): number => {
-		const n = count();
-		if (n === 0) { return -1; }
-		if (viewport() <= 0) {
-			const initial = initialProp === null ? 10 : (initialProp as () => number)();
-			return Math.min(n, initial) - 1;
+	// RN VirtualizedList._adjustCellsAroundViewport, with every batch RN's timer would run taken
+	// here: native hosts have no timer, so the window lands where RN's lands once its batches drain.
+	const adjustCellsAroundViewport = (n: int32): CellRange => {
+		if (visibleLength <= 0.0 || metrics.getContentLength() <= 0.0) {
+			return cellsAroundViewport.last >= n ? constrainToItemCount(cellsAroundViewport, n) : cellsAroundViewport;
 		}
-		const ws = windowProp === null ? 21 : (windowProp as () => number)();
-		return indexAt(offset() + viewport() + (ws - 1) / 2 * viewport());
-	});
-	const slots = createMemo((): Slot<T>[] => {
-		const items = data();
-		const out: Slot<T>[] = [];
-		for (let i = first(); i <= last(); i += 1) { out.push({ item: items[i], index: i }); }
+		const scroll: WindowScroll = { offset, velocity: 0.0, visibleLength, zoomScale: 1.0 };
+		let current = cellsAroundViewport;
+		for (let pass: int32 = 0; pass <= n + 1; pass += 1) {
+			const next = computeWindowedRenderLimits(n, maxToRenderPerBatch(), windowSize(), current, metricsAt, scroll);
+			if (next.first === current.first && next.last === current.last) { return next; }
+			current = next;
+		}
+		throw `FlatList: the render window did not settle within ${n + 1} batches`;
+	};
+
+	const spacerCell = (): ListCell => {
+		const [size, setSize] = createSignal<number>(0);
+		return new ListCell((index: number): void => {}, (next: number): void => { setSize(next); }, (): NeonNode => element(<View style={{ height: size() }} />));
+	};
+
+	const itemCell = (item: T, index: number): ListCell => {
+		const [at, setAt] = createSignal<number>(index);
+		return new ListCell((next: number): void => { setAt(next); }, (size: number): void => {}, (): NeonNode => renderItem({ item, index: at }));
+	};
+
+	const buildCells = (mask: CellRenderMask): ListCell[] => {
+		const out: ListCell[] = [];
+		const nextItems = new Map<T, ListCell>();
+		const nextSpacers = new Map<int32, ListCell>();
+		for (const region of mask.enumerateRegions()) {
+			if (region.isSpacer) {
+				const first = metricsAt(region.first);
+				const last = metricsAt(region.last);
+				const cell = spacerCells.has(region.first) ? spacerCells.get(region.first) as ListCell : spacerCell();
+				cell.setSize(last.offset + last.length - first.offset);
+				nextSpacers.set(region.first, cell);
+				out.push(cell);
+				continue;
+			}
+			for (let i = region.first; i <= region.last; i += 1) {
+				const item = items[i];
+				if (nextItems.has(item)) {
+					throw `FlatList: the same item is at rows ${(nextItems.get(item) as ListCell).index} and ${i}; rows are told apart by their item`;
+				}
+				const cell = itemCells.has(item) ? itemCells.get(item) as ListCell : itemCell(item, i as number);
+				cell.index = i as number;
+				cell.setIndex(i as number);
+				nextItems.set(item, cell);
+				out.push(cell);
+			}
+		}
+		itemCells = nextItems;
+		spacerCells = nextSpacers;
 		return out;
-	});
-	const topSpace = (): number => last() < 0 ? 0 : layoutOf(first()).offset;
-	const bottomSpace = (): number => {
-		if (last() < 0) { return 0; }
-		const end = layoutOf(last());
-		return total() - end.offset - end.length;
 	};
 
-	if (endReached !== null) {
-		const fire = endReached as (info: EndReachedInfo) => void;
-		let firedAt = -1.0;
-		createEffect((): void => {
-			const v = viewport();
-			const n = count();
-			if (v <= 0 || n === 0) { return; }
-			const raw = total() - v - offset();
-			const distance = raw < ON_EDGE_REACHED_EPSILON ? 0 : raw;
-			const threshold = thresholdProp === null ? DEFAULT_THRESHOLD_PX : (thresholdProp as () => number)() * v;
-			if (distance > threshold) {
-				firedAt = -1.0;
-				return;
-			}
-			if (last() === n - 1 && firedAt !== total()) {
-				firedAt = total();
-				fire({ distanceFromEnd: distance });
-			}
-		});
-	}
+	// RN VirtualizedList._maybeCallOnEdgeReached, the onEndReached half.
+	const maybeCallOnEndReached = (n: int32): void => {
+		if (endReached === null || !metrics.hasContentLength() || visibleLength === 0.0) { return; }
+		const contentLength = metrics.getContentLength();
+		let distanceFromEnd = contentLength - visibleLength - offset;
+		if (distanceFromEnd < ON_EDGE_REACHED_EPSILON) { distanceFromEnd = 0; }
+		const endThreshold = thresholdProp === null ? DEFAULT_THRESHOLD_PX : (thresholdProp as () => number)() * visibleLength;
+		const within = distanceFromEnd <= endThreshold;
+		if (within && cellsAroundViewport.last === n - 1 && contentLength !== sentEndForContentLength) {
+			sentEndForContentLength = contentLength;
+			(endReached as (info: EndReachedInfo) => void)({ distanceFromEnd });
+		}
+		if (!within) { sentEndForContentLength = 0.0; }
+	};
 
-	const rows = regionNode((host: Host) => mapArrayKeyedText<Slot<T>, Row>(
-		slots,
-		(slot: Slot<T>): string => keyExtractor(slot.item, slot.index),
-		(slot: Slot<T>): Row => makeRow(renderItem({ item: slot.item, index: slot.index })),
-		false,
-		"FlatList",
-	));
+	const refresh = (): void => {
+		const n = items.length as int32;
+		cellsAroundViewport = adjustCellsAroundViewport(n);
+		const mask = new CellRenderMask(n);
+		if (n > 0) {
+			mask.addCells(cellsAroundViewport);
+			mask.addCells(initialRegion(n));
+		}
+		batch((): void => { setCells(buildCells(mask)); });
+		maybeCallOnEndReached(n);
+	};
+
+	let seenCount: int32 = -1;
+	createEffect((): void => {
+		const next = data();
+		untrack((): void => {
+			items = next;
+			const n = items.length as int32;
+			if (seenCount < 0) {
+				cellsAroundViewport = initialRegion(n);
+			} else if (n !== seenCount) {
+				cellsAroundViewport = constrainToItemCount(cellsAroundViewport, n);
+			}
+			seenCount = n;
+			refresh();
+		});
+	});
+
+	const rows = regionNode((host: Host) => mapArray<ListCell, Row>(cells, (cell: ListCell, i: Accessor<number>): Row => makeRow(cell.make()), false));
 
 	const onScroll = (e: NeonEvent): void => {
-		setOffset(e.y);
-		setViewport(e.height);
 		if (userScroll !== null) { (userScroll as (e: NeonEvent) => void)(e); }
+		offset = e.y;
+		visibleLength = e.height;
+		refresh();
 	};
 	const onLayout = (e: NeonEvent): void => {
-		setViewport(e.height);
+		visibleLength = e.height;
 		if (userLayout !== null) { (userLayout as (e: NeonEvent) => void)(e); }
+		refresh();
+	};
+	const onContentSizeChange = (width: number, height: number): void => {
+		metrics.notifyListContentLayout(VERTICAL, width, height);
+		refresh();
 	};
 	const scrollRef = (h: ScrollViewHandle): void => {
-		if (userRef !== null) { (userRef as (handle: FlatListHandle) => void)(new FlatListHandle(h, layoutOf, count, viewport)); }
+		if (userRef === null) { return; }
+		(userRef as (handle: FlatListHandle) => void)(new FlatListHandle(
+			h,
+			(index: number): CellMetrics => metricsAt(index as int32),
+			(index: number): number => metrics.getCellOffsetApprox(index, source),
+			(): number => items.length,
+			(): number => visibleLength,
+		));
 	};
 
-	const content: NeonNode = element(<>
-		<View style={{ height: topSpace() }} />
-		{rows}
-		<View style={{ height: bottomSpace() }} />
-	</>);
 	// Parked: <ScrollView style={props.style}> wraps a nullable Accessor again (BUGS.md §3, isAccessorTyped) —
 	// ~/metascript/.inbox/compiler/2026-09-19-design-typed-slots-value-read-and-text-coercion.md
 	return ScrollView({
 		style: props.style, contentContainerStyle: props.contentContainerStyle, class: null,
-		scrollEventThrottle: props.scrollEventThrottle, onScroll, onLayout, ref: scrollRef, children: content,
+		scrollEventThrottle: props.scrollEventThrottle, onScroll, onLayout, onContentSizeChange, ref: scrollRef, children: rows,
 	});
 }
