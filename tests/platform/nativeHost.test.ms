@@ -4,6 +4,9 @@ import { For } from "../../src/macros/ui/flow";
 import { View, Pressable, ScrollView, ScrollViewHandle } from "../../src/components/primitives";
 import { NeonNode } from "../../src/render/node";
 import { NeonEvent } from "../../src/render/event";
+import { Style } from "../../src/render/style";
+import { Text } from "../../src/components/primitives";
+import { FlatList, ItemLayout, ListRenderItemInfo } from "../../src/components/flatList";
 
 import {
 	nmViewsCreated, nmReleaseCalls, nmTouch, nmTeardown, nmMount, nmResize, nmScroll, nmLastScrollTag,
@@ -96,5 +99,53 @@ test "onLayout reports a native view's frame after mount and again when a rotati
 	nmResize(800, 400);
 	assert got === "layout 0 0 400 100;layout 0 0 800 100;", "an unchanged frame does not fire again: " + got;
 	nmResize(400, 800);
+	nmTeardown();
+}
+
+interface Entry {
+	id: string;
+	n: number;
+}
+
+function entries(count: number): Entry[] {
+	const out: Entry[] = [];
+	for (let i = 0; i < count; i += 1) { out.push({ id: "e" + i.toString(), n: i }); }
+	return out;
+}
+
+function rowLayout(data: Entry[], index: number): ItemLayout {
+	return { length: 50, offset: 50 * index, index };
+}
+
+// Parked: inline style literals on the generic FlatList lose their Style type —
+// ~/metascript/.inbox/compiler/2026-10-03-object-literal-prop-of-a-generic-component-loses-its-contextual-type.md
+const fill: Style = { flex: 1 };
+const rowBox: Style = { height: 50 };
+
+test "a 10000-row FlatList creates native views for its window only and sizes the content to every row" {
+	const data = entries(10000);
+	const before = nmViewsCreated();
+	const app = (): NeonNode => <FlatList data={data} style={fill} keyExtractor={(e: Entry, i: number): string => e.id} getItemLayout={rowLayout}
+		renderItem={(info: ListRenderItemInfo<Entry>): NeonNode => <View style={rowBox}><Text>{"row " + info.item.n.toString()}</Text></View>} />;
+	runApp(app);
+	const created = nmViewsCreated() - before;
+	assert created > 100 && created < 1000, "views for the window, not 10000 rows: " + created.toString();
+	assert nmContentHeight() === 500000, "content spans every row: " + nmContentHeight().toString();
+	nmTeardown();
+	assert nmReleaseCalls() === nmViewsCreated(), "every window view is released";
+}
+
+test "an empty string node, such as a region's anchor, takes no layout space and no gap" {
+	let got = "";
+	const none: number[] = [];
+	// Parked: an inline style literal in the For row fails on C —
+	// ~/metascript/.inbox/compiler/2026-10-03-style-literal-in-a-for-row-assigns-int-to-a-union-on-c.md
+	const app = (): NeonNode => <View style={{ gap: 10 }} onLayout={(e: NeonEvent): void => { got = `${e.height}`; }}>
+		<View style={{ height: 20 }} />
+		<For each={none}>{(n: number, i: Accessor<number>): NeonNode => <View style={rowBox} />}</For>
+		<View style={{ height: 20 }} />
+	</View>;
+	runApp(app);
+	assert got === "50", "two 20-high boxes and one gap: " + got;
 	nmTeardown();
 }
