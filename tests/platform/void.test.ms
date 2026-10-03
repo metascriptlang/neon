@@ -74,6 +74,7 @@ test "clickAt hits the button and reactive text updates" {
 
 test "parseFlexStyle maps numeric + enum keys and ignores junk" {
 	const st = parseFlexStyle("width:320;flexGrow:1;flexDirection:row;justifyContent:center;alignItems:stretch;position:absolute;nonsense:42;broken");
+	// PARKED as written on ~/metascript/.inbox/compiler/2026-10-03-nullish-coalesce-union-into-its-superset-rejected.md
 	assert (st.width ?? 0.0) === 320.0, "width parsed as points";
 	assert (st.flexGrow ?? 0.0) === 1.0, "flexGrow parsed";
 	assert (st.flexDirection ?? "column") === "row", "flexDirection parsed";
