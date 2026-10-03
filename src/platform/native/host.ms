@@ -311,16 +311,18 @@ function materializeString(child: NativeNode, parent: NativeNode): void {
 
 
 function onScroll(): void {
-	eventRegistry.scroll(
-		niLastScrollTag(), niLastScrollX(), niLastScrollY(), niLastScrollWidth(), niLastScrollHeight(),
-		niLastScrollContentWidth(), niLastScrollContentHeight(),
-	);
+	batched((): void => {
+		eventRegistry.scroll(
+			niLastScrollTag(), niLastScrollX(), niLastScrollY(), niLastScrollWidth(), niLastScrollHeight(),
+			niLastScrollContentWidth(), niLastScrollContentHeight(),
+		);
+	});
 }
 
 function onTouch(): void {
 	const tag = niLastTouchTag();
 	const phase = niLastTouchPhase();
-	eventRegistry.dispatch(tag, phase, 0, 0);
+	batched((): void => { eventRegistry.dispatch(tag, phase, 0, 0); });
 }
 
 export interface NativeHost {
@@ -365,7 +367,7 @@ export function createNativeHost(): NativeHost {
 			if (owner.isText && owner.view !== null) {
 				niSetText(owner.view, s);
 				remeasureText(owner);
-				relayoutRoot();
+				requestLayout();
 			}
 		},
 		setAttr: (node: HostNode, name: string, value: string): void => {
@@ -378,7 +380,7 @@ export function createNativeHost(): NativeHost {
 			n.flex = nativeFlexStyle(style, kindOf(n));
 			applyPaint(n, style);
 			if (n.isText) { remeasureText(n); }
-			if (isMounted(n)) { relayoutRoot(); }
+			if (isMounted(n)) { requestLayout(); }
 		},
 		setStyleProp: null,
 		setStyleClass: null,
@@ -408,7 +410,7 @@ export function createNativeHost(): NativeHost {
 				return;
 			}
 			if (p.view !== null && c.view !== null) { niAddChild(p.view, c.view); }
-			if (isMounted(p)) { relayoutRoot(); }
+			if (isMounted(p)) { requestLayout(); }
 		},
 		insertBefore: (parent: HostNode, node: HostNode, ref: HostNode | null): void => {
 			const p = parent as unknown as NativeNode;
@@ -429,7 +431,7 @@ export function createNativeHost(): NativeHost {
 			p.children.splice(idx, 0, n);
 			if (n.isString) {
 				materializeString(n, p);
-				if (isMounted(p)) { relayoutRoot(); }
+				if (isMounted(p)) { requestLayout(); }
 				return;
 			}
 			if (p.view !== null && n.view !== null) {
@@ -441,7 +443,7 @@ export function createNativeHost(): NativeHost {
 					sortLater(p);
 				}
 			}
-			if (isMounted(p)) { relayoutRoot(); }
+			if (isMounted(p)) { requestLayout(); }
 		},
 		removeChild: (parent: HostNode, node: HostNode): void => {
 			const p = parent as unknown as NativeNode;
@@ -450,7 +452,7 @@ export function createNativeHost(): NativeHost {
 			if (idx < 0) { throw "removeChild: the node is not a child of the parent"; }
 			p.children.splice(idx, 1);
 			n.parent = null;
-			if (isMounted(p)) { relayoutRoot(); }
+			if (isMounted(p)) { requestLayout(); }
 			freeLayoutTree(n);
 			releaseNativeTree(n);
 		},
@@ -493,13 +495,35 @@ function sortLater(p: NativeNode): void {
 	}
 }
 
+let batchDepth = 0;
+let layoutDirty = false;
+
+function requestLayout(): void {
+	if (batchDepth > 0) {
+		layoutDirty = true;
+		return;
+	}
+	relayoutRoot();
+}
+
+function batched(fn: () => void): void {
+	batchDepth += 1;
+	try {
+		fn();
+	} finally {
+		batchDepth -= 1;
+	}
+	if (batchDepth === 0 && layoutDirty) { relayoutRoot(); }
+}
+
 function relayoutRoot(): void {
+	layoutDirty = false;
 	const width = niScreenWidth();
 	const height = niScreenHeight();
 	root.flex = { width, height };
 	runLayoutPass(root, width, height);
 	writeContentSizes();
-	fireLayouts();
+	batched(fireLayouts);
 }
 
 let mountedApp: (() => NeonNode) | null = null;
@@ -507,7 +531,9 @@ let mounted: Dispose | null = null;
 
 function mountApp(): void {
 	const native = createNativeHost();
-	mounted = render((mountedApp as () => NeonNode)(), native.host, native.rootNode);
+	batched((): void => {
+		mounted = render((mountedApp as () => NeonNode)(), native.host, native.rootNode);
+	});
 	native.relayout();
 }
 
