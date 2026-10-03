@@ -93,6 +93,7 @@ export function FlatList<T>(props: {
 	onEndReached?: ((info: EndReachedInfo) => void) | null;
 	onEndReachedThreshold?: Accessor<number> | null;
 	onScroll?: ((e: NeonEvent) => void) | null;
+	onLayout?: ((e: NeonEvent) => void) | null;
 	scrollEventThrottle?: Accessor<number> | null;
 	style?: Accessor<Style> | null;
 	contentContainerStyle?: Accessor<Style> | null;
@@ -109,6 +110,7 @@ export function FlatList<T>(props: {
 	const windowProp = props.windowSize;
 	const thresholdProp = props.onEndReachedThreshold;
 	const userScroll = props.onScroll;
+	const userLayout = props.onLayout;
 	const endReached = props.onEndReached;
 	const userRef = props.ref;
 
@@ -194,7 +196,10 @@ export function FlatList<T>(props: {
 		setViewport(e.height);
 		if (userScroll !== null) { (userScroll as (e: NeonEvent) => void)(e); }
 	};
-	const onLayout = (e: NeonEvent): void => { setViewport(e.height); };
+	const onLayout = (e: NeonEvent): void => {
+		setViewport(e.height);
+		if (userLayout !== null) { (userLayout as (e: NeonEvent) => void)(e); }
+	};
 	const scrollRef = (h: ScrollViewHandle): void => {
 		if (userRef !== null) { (userRef as (handle: FlatListHandle) => void)(new FlatListHandle(h, layoutOf, count, viewport)); }
 	};
