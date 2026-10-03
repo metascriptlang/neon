@@ -180,6 +180,77 @@ export function Pressable(props: PressableProps): NeonNode {
 	return element(<pressable class={props.class} style={props.style} ref={props.ref} onPress={press} onPointerDown={pointerDown} onPointerUp={pointerUp} onPointerLeave={pointerLeave} onPointerCancel={pointerLeave}>{props.children}</pressable>);
 }
 
+export interface ScrollToOptions {
+	x?: number | null;
+	y?: number | null;
+	animated?: boolean | null;
+}
+
+export class ScrollViewHandle {
+	node: HostNode;
+	private host: Host;
+	private mounted: () => boolean;
+
+	constructor(host: Host, node: HostNode, mounted: () => boolean) {
+		this.host = host;
+		this.node = node;
+		this.mounted = mounted;
+	}
+
+	scrollTo(options: ScrollToOptions): void {
+		if (!this.mounted()) { throw "ScrollView.scrollTo was called after the ScrollView unmounted"; }
+		const hostScrollTo = this.host.scrollTo;
+		if (hostScrollTo === null) { throw "ScrollView.scrollTo needs a host with the scrollTo capability, and this host has none"; }
+		const { x = 0, y = 0, animated = true } = options;
+		(hostScrollTo as (n: HostNode, x: number, y: number, animated: boolean) => void)(this.node, x, y, animated);
+	}
+}
+
+interface ScrollViewProps {
+	style?: Accessor<Style> | null;
+	contentContainerStyle?: Accessor<Style> | null;
+	class?: Accessor<string> | null;
+	ref?: ((handle: ScrollViewHandle) => void) | null;
+	onScroll?: ((e: NeonEvent) => void) | null;
+	scrollEventThrottle?: Accessor<number> | null;
+	onLayout?: ((e: NeonEvent) => void) | null;
+	children?: NeonNode | null;
+}
+
+// RN scrollEventThrottle: up to 16 ms means every event on iOS and Android
+// (RCTScrollViewComponentView.mm:375-387, ReactScrollViewHelper.kt:116-124).
+const EVERY_FRAME_MS = 16;
+
+export function ScrollView(props: ScrollViewProps): NeonNode {
+	const evts: VEvent[] = [];
+	if (props.onScroll !== null) {
+		const user = props.onScroll as (e: NeonEvent) => void;
+		const throttle = props.scrollEventThrottle;
+		let last = -1.0;
+		evts.push(evt("onScroll", (e: NeonEvent): void => {
+			const every = throttle === null ? 0 : (throttle as () => number)();
+			if (every > EVERY_FRAME_MS) {
+				const now = performance.now();
+				if (last >= 0 && now - last < every) { return; }
+				last = now;
+			}
+			user(e);
+		}));
+	}
+	if (props.onLayout !== null) { evts.push(evt("onLayout", props.onLayout as (e: NeonEvent) => void)); }
+	const content = element(<view style={props.contentContainerStyle}>{props.children}</view>);
+	const userRef = props.ref;
+	const inner: NeonNode = (host: Host, node: HostNode, before: HostNode | null): void => {
+		content(host, node, before);
+		if (userRef !== null) {
+			let mounted = true;
+			onCleanup((): void => { mounted = false; });
+			(userRef as (h: ScrollViewHandle) => void)(new ScrollViewHandle(host, node, (): boolean => mounted));
+		}
+	};
+	return primitive("scrollview", { style: props.style, class: props.class, ref: null }, [], evts, inner);
+}
+
 interface TextInputProps extends InteractiveProps {
 	value?: Accessor<string> | null;
 	onChangeText?: ((t: string) => void) | null;
