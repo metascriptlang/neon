@@ -154,6 +154,8 @@ export function FlatList<T>(props: {
 	let visibleLength = 0.0;
 	let sentEndForContentLength = 0.0;
 	let cellsAroundViewport: CellRange = { first: 0, last: -1 };
+	let renderedMask: CellRenderMask | null = null;
+	let renderedItems: T[] = [];
 	let itemCells = new Map<T, ListCell>();
 	let spacerCells = new Map<int32, ListCell>();
 	const [cells, setCells] = createSignal<ListCell[]>([]);
@@ -244,7 +246,12 @@ export function FlatList<T>(props: {
 			mask.addCells(cellsAroundViewport);
 			mask.addCells(initialRegion(n));
 		}
-		batch((): void => { setCells(buildCells(mask)); });
+		// RN VirtualizedList._updateCellsToRender: the same window and mask render nothing.
+		if (renderedMask === null || renderedItems !== items || !mask.equals(renderedMask as CellRenderMask)) {
+			renderedMask = mask;
+			renderedItems = items;
+			batch((): void => { setCells(buildCells(mask)); });
+		}
 		maybeCallOnEndReached(n);
 	};
 
