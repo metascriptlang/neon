@@ -122,7 +122,7 @@ function getAttrNum(node: TerminalNode, name: string, fallback: number): number 
 	if (!node.attrs.has(name)) { return fallback; }
 	const v = node.attrs.get(name);
 	if (v === null) { return fallback; }
-	return parseInt(v);
+	return parseInt(v) as number;
 }
 
 // Paint a single node into a list of styled lines fitting within `width`.
