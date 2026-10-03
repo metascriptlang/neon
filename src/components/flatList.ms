@@ -41,6 +41,10 @@ export interface ScrollToEndOptions {
 	animated?: boolean | null;
 }
 
+// RN VirtualizedList._maybeCallOnEdgeReached: 2 px without onEndReachedThreshold, distances under 0.001 read 0.
+const DEFAULT_THRESHOLD_PX = 2;
+const ON_EDGE_REACHED_EPSILON = 0.001;
+
 interface Slot<T> {
 	item: T;
 	index: number;
@@ -170,9 +174,10 @@ export function FlatList<T>(props: {
 			const v = viewport();
 			const n = count();
 			if (v <= 0 || n === 0) { return; }
-			const distance = total() - v - offset();
-			const threshold = (thresholdProp === null ? 2 : (thresholdProp as () => number)()) * v;
-			if (distance >= threshold) {
+			const raw = total() - v - offset();
+			const distance = raw < ON_EDGE_REACHED_EPSILON ? 0 : raw;
+			const threshold = thresholdProp === null ? DEFAULT_THRESHOLD_PX : (thresholdProp as () => number)() * v;
+			if (distance > threshold) {
 				firedAt = -1.0;
 				return;
 			}

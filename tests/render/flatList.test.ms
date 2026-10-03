@@ -1,4 +1,5 @@
 import { createRoot } from "../../src/core/owner";
+import { Accessor, accessor } from "../../src/core/signal";
 import { onCleanup } from "../../src/core/cleanup";
 import { element } from "../../src/macros/ui/element";
 import { NeonEvent, neonEvent } from "../../src/render/event";
@@ -116,10 +117,15 @@ test "a row that leaves the window and comes back is mounted again for the same 
 	assert rowTexts(root, [])[5] === "row 5", "the key renders its own item";
 }
 
+// Parked: a number literal on a generic component's Accessor prop loses its contextual type —
+// ~/metascript/.inbox/compiler/2026-10-03-object-literal-prop-of-a-generic-component-loses-its-contextual-type.md
+const twoViewports: Accessor<number> = accessor((): number => 2);
+
 test "onEndReached fires once when the window reaches the end within the threshold" {
 	const root: MockNode = mockNode("root");
 	let ends = "";
 	render(element(<FlatList data={items(100)} keyExtractor={(it: Item, i: number): string => it.id} getItemLayout={fixed}
+		onEndReachedThreshold={twoViewports}
 		onEndReached={(info: EndReachedInfo): void => { ends = ends + info.distanceFromEnd.toString() + ";"; }}
 		renderItem={(info: ListRenderItemInfo<Item>): NeonNode => <Text>{"row " + info.item.n.toString()}</Text>} />), mockHost(), root as unknown as HostNode);
 	const sv = root.children[0];
@@ -129,6 +135,23 @@ test "onEndReached fires once when the window reaches the end within the thresho
 	assert ends === "900;", "900 from the end is inside 2 viewports: " + ends;
 	fireEventWith(sv, "onScroll", scrollEvent(3700, 500, 100 * ROW));
 	assert ends === "900;", "fires once per content length: " + ends;
+}
+
+test "onEndReached without a threshold fires within 2 px of the end, React Native's default" {
+	const root: MockNode = mockNode("root");
+	let ends = "";
+	render(element(<FlatList data={items(100)} keyExtractor={(it: Item, i: number): string => it.id} getItemLayout={fixed}
+		onEndReached={(info: EndReachedInfo): void => { ends = ends + info.distanceFromEnd.toString() + ";"; }}
+		renderItem={(info: ListRenderItemInfo<Item>): NeonNode => <Text>{"row " + info.item.n.toString()}</Text>} />), mockHost(), root as unknown as HostNode);
+	const sv = root.children[0];
+	fireEventWith(sv, "onLayout", layoutEvent(500));
+	fireEventWith(sv, "onScroll", scrollEvent(3600, 500, 100 * ROW));
+	assert ends === "", "900 from the end is outside the 2 px default: " + ends;
+	fireEventWith(sv, "onScroll", scrollEvent(4498, 500, 100 * ROW));
+	assert ends === "2;", "exactly 2 px from the end is inside: " + ends;
+	fireEventWith(sv, "onScroll", scrollEvent(3000, 500, 100 * ROW));
+	fireEventWith(sv, "onScroll", scrollEvent(4499.9995, 500, 100 * ROW));
+	assert ends === "2;0;", "leaving the threshold re-arms it, and a distance under 0.001 reads 0: " + ends;
 }
 
 test "the ref's handle scrolls to an index, an offset and the end" {
