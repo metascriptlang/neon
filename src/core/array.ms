@@ -28,21 +28,28 @@ export function mapArray<T, U>(list: () => T[], mapFn: (v: T, index: Accessor<nu
 	return mapArrayBy<T, T, U>(list, (items: T[]): KeyScan<T> => ({ keys: items, index: null }), mapFn, usesIndex);
 }
 
-export function mapArrayKeyed<T, U>(list: () => T[], keyOf: (v: T) => number, mapFn: (v: T, index: Accessor<number>) => U, usesIndex: boolean = true): () => U[] {
-	const scan = (items: T[]): KeyScan<number> => {
-		const ks: number[] = new Array(items.length);
-		const seen = new Map<number, number>();
+function keyedScan<T, K>(keyOf: (v: T) => K, show: (k: K) => string, who: string): (items: T[]) => KeyScan<K> {
+	return (items: T[]): KeyScan<K> => {
+		const ks: K[] = new Array(items.length);
+		const seen = new Map<K, number>();
 		for (let j = 0; j < items.length; j += 1) {
 			const k = keyOf(items[j]);
 			if (seen.has(k)) {
-				throw new Error("For: the key " + k.toString() + " is used by rows " + (seen.get(k) as number).toString() + " and " + j.toString());
+				throw new Error(who + ": the key " + show(k) + " is used by rows " + (seen.get(k) as number).toString() + " and " + j.toString());
 			}
 			seen.set(k, j);
 			ks[j] = k;
 		}
 		return { keys: ks, index: seen };
 	};
-	return mapArrayBy<T, number, U>(list, scan, mapFn, usesIndex);
+}
+
+export function mapArrayKeyed<T, U>(list: () => T[], keyOf: (v: T) => number, mapFn: (v: T, index: Accessor<number>) => U, usesIndex: boolean = true): () => U[] {
+	return mapArrayBy<T, number, U>(list, keyedScan<T, number>(keyOf, (k: number): string => k.toString(), "For"), mapFn, usesIndex);
+}
+
+export function mapArrayKeyedText<T, U>(list: () => T[], keyOf: (v: T) => string, mapFn: (v: T, index: Accessor<number>) => U, usesIndex: boolean, who: string): () => U[] {
+	return mapArrayBy<T, string, U>(list, keyedScan<T, string>(keyOf, (k: string): string => `"${k}"`, who), mapFn, usesIndex);
 }
 
 const unreadIndex: Accessor<number> = accessor((): number => {
