@@ -6,6 +6,13 @@ export type EffectFn = () => void;
 export type Dispose = () => void;
 export type ErrorHandler = (err: Error) => void;
 
+// The context a provider scope carries: `key` is the context object itself
+// (identity by creation, not by name), `value` the provider's typed holder.
+export interface ContextEntry {
+	key: unknown;
+	value: unknown;
+}
+
 // The observable half of the graph: a Signal's node, or a memo's own node.
 export interface Source {
 	observers: Computation[];
@@ -29,5 +36,6 @@ export interface Computation {
 	owned: Computation[];
 	cleanups: EffectFn[];
 	owner: Computation | null;
+	context: ContextEntry | null;
 	handler: ErrorHandler | null;
 }
