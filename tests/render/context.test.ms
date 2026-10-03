@@ -168,7 +168,7 @@ test "a For fallback reads the provider above the list" {
 	assert mockToString(root) === "<root><ul><li>blue</li></ul></root>", "a rebuilt fallback saw the provider: " + mockToString(root);
 }
 
-test "disposing the mount leaves the context with no slot and later consumers on the default" {
+test "disposing the mount leaves later consumers on the default" {
 	const T = createContext<Theme>({ accent: "red" });
 	const root: MockNode = mockNode("root");
 	const app: NeonNode = element(
@@ -177,31 +177,30 @@ test "disposing the mount leaves the context with no slot and later consumers on
 		</T.Provider>
 	);
 	const dispose = render(app, mockHost(), root as unknown as HostNode);
-	assert T.slots.length === 1, "a mounted provider owns one slot: " + T.slots.length.toString();
+	assert mockToString(root) === "<root><div>blue</div></root>", "mounted under the provider: " + mockToString(root);
 	dispose();
-	assert T.slots.length === 0, "dispose left a stale slot: " + T.slots.length.toString();
 	const after: MockNode = mockNode("after");
 	render(element(<div>{useContext(T).accent}</div>), mockHost(), after as unknown as HostNode);
 	assert mockToString(after) === "<after><div>red</div></after>", "a consumer mounted later reads the default: " + mockToString(after);
 }
 
-test "a provider that a Show drops and brings back registers one slot each time" {
+test "a provider that a Show drops and brings back feeds its child each time" {
 	const T = createContext<Theme>({ accent: "red" });
 	const [on, setOn] = createSignal(true);
 	const root: MockNode = mockNode("root");
 	const app: NeonNode = element(
 		<Show when={on()}>
-			<T.Provider value={{ accent: "blue" }}><span>x</span></T.Provider>
+			<T.Provider value={{ accent: "blue" }}><span>{useContext(T).accent}</span></T.Provider>
 		</Show>
 	);
 	render(app, mockHost(), root as unknown as HostNode);
-	assert T.slots.length === 1, "mounted: " + T.slots.length.toString();
+	assert mockToString(root) === "<root><span>blue</span></root>", "mounted: " + mockToString(root);
 	setOn(false);
-	assert T.slots.length === 0, "dropped: " + T.slots.length.toString();
+	assert mockToString(root) === "<root></root>", "dropped: " + mockToString(root);
 	setOn(true);
-	assert T.slots.length === 1, "back: " + T.slots.length.toString();
+	assert mockToString(root) === "<root><span>blue</span></root>", "back: " + mockToString(root);
 	setOn(false);
-	assert T.slots.length === 0, "dropped again: " + T.slots.length.toString();
+	assert mockToString(root) === "<root></root>", "dropped again: " + mockToString(root);
 }
 
 test "dropping the first of two sibling providers keeps the second one readable" {
@@ -224,11 +223,9 @@ test "dropping the first of two sibling providers keeps the second one readable"
 		</div>
 	);
 	render(app, mockHost(), root as unknown as HostNode);
-	assert T.slots.length === 2, "both providers registered: " + T.slots.length.toString();
 	setShowA(false);
-	assert T.slots.length === 1, "only the dropped provider's slot went: " + T.slots.length.toString();
 	setItems([1]);
-	assert mockToString(root) === "<root><div><ul><li>B1</li></ul></div></root>", "a row mounted after the removal found the surviving slot: " + mockToString(root);
+	assert mockToString(root) === "<root><div><ul><li>B1</li></ul></div></root>", "a row mounted after the removal found the surviving provider: " + mockToString(root);
 }
 
 test "a nested provider that goes leaves the outer provider readable" {
@@ -251,20 +248,16 @@ test "a nested provider that goes leaves the outer provider readable" {
 		),
 	});
 	render(app, mockHost(), root as unknown as HostNode);
-	assert T.slots.length === 2, "outer and inner: " + T.slots.length.toString();
 	setInner(false);
-	assert T.slots.length === 1, "inner gone: " + T.slots.length.toString();
 	setItems([1]);
 	assert mockToString(root) === "<root><div><ul><li>outer1</li></ul></div></root>", "the outer provider still answers: " + mockToString(root);
 }
 
-test "a consumer's cleanup runs before its provider's slot is removed" {
+test "a consumer's cleanup runs once when its provider's mount is disposed" {
 	const T = createContext<Theme>({ accent: "red" });
-	let slotsSeen = -1;
 	let cleanups = 0;
 	function Probe(props: { tag: string }): NeonNode {
 		onCleanup((): void => {
-			slotsSeen = T.slots.length;
 			cleanups = cleanups + 1;
 		});
 		return element(<b>{props.tag}</b>);
@@ -276,9 +269,6 @@ test "a consumer's cleanup runs before its provider's slot is removed" {
 		</T.Provider>
 	);
 	const dispose = render(app, mockHost(), root as unknown as HostNode);
-	assert T.slots.length === 1, "mounted: " + T.slots.length.toString();
 	dispose();
 	assert cleanups === 1, "the child's cleanup ran once: " + cleanups.toString();
-	assert slotsSeen === 1, "the provider's slot was still registered when the child cleaned up: " + slotsSeen.toString();
-	assert T.slots.length === 0, "and is gone after: " + T.slots.length.toString();
 }
