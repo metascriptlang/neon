@@ -10,12 +10,14 @@ typedef struct MockView {
 	int tag;
 	char text[128];
 	float size;
+	int isScroll;
 } MockView;
 
 static msClosure s_mount;
 static msClosure s_touch;
 static msClosure s_resize;
 static msClosure s_teardown;
+static msClosure s_scroll;
 static MockView s_container;
 static int g_lastTag = 0;
 static int g_lastPhase = 0;
@@ -23,6 +25,14 @@ static int g_created = 0;
 static int g_releaseCalls = 0;
 static float g_measuredW = 0;
 static float g_measuredH = 0;
+static float g_screenW = 400;
+static float g_screenH = 800;
+static int g_scrollTag = 0;
+static float g_scrollX = 0, g_scrollY = 0, g_scrollW = 0, g_scrollH = 0, g_scrollContentW = 0, g_scrollContentH = 0;
+static int g_lastScrollTag = 0;
+static float g_contentW = 0, g_contentH = 0;
+static float g_scrolledX = -1, g_scrolledY = -1;
+static int g_scrolledAnimated = -1;
 
 static void call0(msClosure c) {
 	if (!c.fn) return;
@@ -48,7 +58,47 @@ static void *create(float size) {
 
 void *niViewCreate(void) { return create(0); }
 void *niTextCreate(void) { return create(17); }
-void niViewSetTag(void *view, int32_t tag) { live(view, "niViewSetTag")->tag = tag; }
+void niViewSetTag(void *view, int32_t tag) {
+	MockView *v = live(view, "niViewSetTag");
+	if (v->isScroll) {
+		fprintf(stderr, "mock bridge: niViewSetTag on a scroll view installs a touch listener that takes its drags\n");
+		abort();
+	}
+	v->tag = tag;
+}
+
+void *niScrollCreate(void) {
+	MockView *v = create(0);
+	v->isScroll = 1;
+	return v;
+}
+
+void niScrollSetTag(void *view, int32_t tag) {
+	live(view, "niScrollSetTag")->tag = tag;
+	g_lastScrollTag = tag;
+}
+
+void niScrollSetContentSize(void *view, float w, float h) {
+	live(view, "niScrollSetContentSize");
+	g_contentW = w;
+	g_contentH = h;
+}
+
+void niScrollTo(void *view, float x, float y, int animated) {
+	live(view, "niScrollTo");
+	g_scrolledX = x;
+	g_scrolledY = y;
+	g_scrolledAnimated = animated;
+}
+
+void niSetScrollHandler(msClosure handler) { s_scroll = handler; }
+int niLastScrollTag(void) { return g_scrollTag; }
+float niLastScrollX(void) { return g_scrollX; }
+float niLastScrollY(void) { return g_scrollY; }
+float niLastScrollWidth(void) { return g_scrollW; }
+float niLastScrollHeight(void) { return g_scrollH; }
+float niLastScrollContentWidth(void) { return g_scrollContentW; }
+float niLastScrollContentHeight(void) { return g_scrollContentH; }
 void niAddChild(void *parent, void *child) { live(child, "niAddChild")->parent = live(parent, "niAddChild parent"); }
 void niRemoveFromParent(void *child) { live(child, "niRemoveFromParent")->parent = NULL; }
 
@@ -109,8 +159,8 @@ int niRunApp(void) {
 }
 
 void *niContainerView(void) { return &s_container; }
-float niScreenWidth(void) { return 400; }
-float niScreenHeight(void) { return 800; }
+float niScreenWidth(void) { return g_screenW; }
+float niScreenHeight(void) { return g_screenH; }
 
 int32_t nmViewsCreated(void) { return g_created; }
 int32_t nmReleaseCalls(void) { return g_releaseCalls; }
@@ -123,3 +173,27 @@ void nmTouch(int32_t tag, int32_t phase) {
 
 void nmTeardown(void) { call0(s_teardown); }
 void nmMount(void) { call0(s_mount); }
+
+void nmResize(float width, float height) {
+	g_screenW = width;
+	g_screenH = height;
+	call0(s_resize);
+}
+
+void nmScroll(int32_t tag, float x, float y, float width, float height, float contentWidth, float contentHeight) {
+	g_scrollTag = tag;
+	g_scrollX = x;
+	g_scrollY = y;
+	g_scrollW = width;
+	g_scrollH = height;
+	g_scrollContentW = contentWidth;
+	g_scrollContentH = contentHeight;
+	call0(s_scroll);
+}
+
+int32_t nmLastScrollTag(void) { return g_lastScrollTag; }
+float nmContentWidth(void) { return g_contentW; }
+float nmContentHeight(void) { return g_contentH; }
+float nmScrolledX(void) { return g_scrolledX; }
+float nmScrolledY(void) { return g_scrolledY; }
+int32_t nmScrolledAnimated(void) { return g_scrolledAnimated; }
