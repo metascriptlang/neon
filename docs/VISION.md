@@ -142,9 +142,24 @@ The mechanics of face 1, meaning what exists on Void's side and what is missing 
 
 ## Inside a Void area
 
-Decided with the person on 2026-10-03; not built yet. A Void area speaks two vocabularies, and the
-author always knows which one they are in: 3D is written in 3D's own terms, Application UI starts
-at a `View`, and the one place the two meet is a texture.
+Decided with the person on 2026-10-03; the window/frame integration is not built yet. Headless
+components are in `src/components/scene3d.ms`, with the full native contract in
+`tests/render/scene3d.test.ms`; that suite is parked on the two compiler cards named in `BUGS.md`.
+`msc run out/scene3dReachable.ms` on `e80c2002`, using `mockHost` and Void's pre-uploaded-resource
+fixture, observed `nodes=3 group.x=7`, HUD `HP: 42`, a camera resolved at 640×480, terminal
+scene/context closure and all four UI parent errors. The throwaway smoke was removed afterwards;
+this proves the reachable Scene3D/Group/pre-uploaded Mesh/Camera3D path, not Light's enum JSX,
+GPU uploads or pixels.
+
+The branch's full `bash tests/run.sh` on the same toolchain exited 1: native 50/54 files passed
+(the three carried Void-host reds plus the new compiler-blocked Scene3D file), JS 48/49
+executed files passed with five native-only skips (the carried Yoga enum-re-export failure),
+and Chrome 3/3 files passed. This is not a land verdict: the complete Scene3D contract still
+cannot run.
+
+A Void area speaks two vocabularies, and the author always knows which one they are in: 3D is
+written in 3D's own terms, Application UI starts at a `View`, and the one place the two meet is
+a texture.
 
 ```tsx
 <Void style={{ flex: 1 }}>
