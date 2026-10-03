@@ -40,7 +40,7 @@ extern class Node {
 	scrollHeight: number;
 	offsetWidth: number;
 	offsetHeight: number;
-	parentNode: Node;
+	parentNode: Node | null;
 	extern scroll(options: DomScrollOptions): void;
 	extern getBoundingClientRect(): DomRect;
 	style: CssStyle;
@@ -162,10 +162,11 @@ export function domHost(): Host {
 				const observer = new ResizeObserver((): void => {
 					const box = el.getBoundingClientRect();
 					const parent = el.parentNode;
-					const outer = parent.getBoundingClientRect();
+					if (parent === null) { return; }
+					const outer = (parent as Node).getBoundingClientRect();
 					const ev = neonEvent(type);
-					ev.x = box.left - outer.left + parent.scrollLeft;
-					ev.y = box.top - outer.top + parent.scrollTop;
+					ev.x = box.left - outer.left + (parent as Node).scrollLeft;
+					ev.y = box.top - outer.top + (parent as Node).scrollTop;
 					ev.width = box.width;
 					ev.height = box.height;
 					handler(ev);
