@@ -68,3 +68,12 @@ test "native event registry routes a scroll with React Native's payload" {
 	assert registry.scroll(5, 0, 40, 320, 480, 320, 1200), "a known scroll dispatches";
 	assert got === "scroll 0 40 320 480 320 1200", "payload: " + got;
 }
+
+test "native event registry routes a layout with the frame" {
+	const registry = createNativeEventRegistry();
+	let got = "";
+	registry.add(4, "onLayout", (e: NeonEvent): void => { got = `${e.type} ${e.x} ${e.y} ${e.width} ${e.height}`; });
+	assert registry.layout(99, 0, 0, 1, 1) === false, "unknown tags are ignored";
+	assert registry.layout(4, 8, 16, 320, 48), "a known layout dispatches";
+	assert got === "layout 8 16 320 48", "frame: " + got;
+}

@@ -83,3 +83,18 @@ test "scrollTo on a native ScrollView reaches the native scroll view" {
 	assert `${nmScrolledX()} ${nmScrolledY()} ${nmScrolledAnimated()}` === "0 120 0", "scrolled " + `${nmScrolledX()} ${nmScrolledY()} ${nmScrolledAnimated()}`;
 	nmTeardown();
 }
+
+test "onLayout reports a native view's frame after mount and again when a rotation changes it" {
+	let got = "";
+	const app = (): NeonNode => <View style={{ height: 100 }} onLayout={(e: NeonEvent): void => {
+		got += `${e.type} ${e.x} ${e.y} ${e.width} ${e.height};`;
+	}} />;
+	runApp(app);
+	assert got === "layout 0 0 400 100;", "after mount: " + got;
+	nmResize(800, 400);
+	assert got === "layout 0 0 400 100;layout 0 0 800 100;", "after a rotation: " + got;
+	nmResize(800, 400);
+	assert got === "layout 0 0 400 100;layout 0 0 800 100;", "an unchanged frame does not fire again: " + got;
+	nmResize(400, 800);
+	nmTeardown();
+}
