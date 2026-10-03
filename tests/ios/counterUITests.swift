@@ -77,3 +77,78 @@ final class CounterUITests: XCTestCase {
         XCTAssertEqual(launched, pid(), "rotation relaunched the app")
     }
 }
+
+@MainActor
+final class ListUITests: XCTestCase {
+    private let app = XCUIApplication(bundleIdentifier: "dev.neon.NeonList")
+
+    override func setUp() {
+        continueAfterFailure = false
+    }
+
+    private func pid() -> String {
+        let text = app.debugDescription
+        guard let range = text.range(of: "pid: ") else { return "" }
+        return String(text[range.upperBound...].prefix(while: { $0.isNumber }))
+    }
+
+    private func label(startingWith prefix: String) -> String {
+        let match = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", prefix)).firstMatch
+        return match.exists ? match.label : ""
+    }
+
+    private func onScreen(_ label: String) -> Bool {
+        let text = app.staticTexts[label]
+        return text.exists && app.windows.firstMatch.frame.contains(text.frame)
+    }
+
+    private func report(_ name: String) {
+        print("NEON_IOS list-\(name) pid=\(pid()) window=\(app.windows.firstMatch.frame) \(label(startingWith: "offset ")) \(label(startingWith: "pressed "))")
+        let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        shot.name = "list-\(name)"
+        shot.lifetime = .keepAlways
+        add(shot)
+    }
+
+    func testScrollPressRotateResume() {
+        XCUIDevice.shared.orientation = .portrait
+        app.launch()
+        XCTAssertTrue(app.wait(for: .runningForeground, timeout: 20))
+        XCTAssertTrue(app.staticTexts["offset 0"].waitForExistence(timeout: 20), "initial offset")
+        XCTAssertTrue(onScreen("row 1"), "row 1 starts on screen")
+        XCTAssertFalse(onScreen("row 30"), "row 30 starts below the fold")
+        let launched = pid()
+        report("initial")
+
+        var swipes = 0
+        while !onScreen("row 30") && swipes < 8 {
+            app.swipeUp()
+            swipes += 1
+        }
+        RunLoop.current.run(until: Date().addingTimeInterval(1))
+        XCTAssertTrue(onScreen("row 30"), "row 30 scrolled into view after \(swipes) swipes")
+        XCTAssertNotEqual(label(startingWith: "offset "), "offset 0", "onScroll moved the offset")
+        XCTAssertEqual(label(startingWith: "pressed "), "pressed none", "a swipe that starts on a row does not press it")
+        report("scrolled")
+
+        app.staticTexts["row 30"].tap()
+        XCTAssertTrue(app.staticTexts["pressed row 30"].waitForExistence(timeout: 10), "the tap after scrolling hits row 30")
+        report("pressed")
+
+        XCUIDevice.shared.orientation = .landscapeRight
+        RunLoop.current.run(until: Date().addingTimeInterval(2))
+        XCTAssertTrue(app.staticTexts["pressed row 30"].waitForExistence(timeout: 10), "state survives the rotation")
+        report("landscape")
+        XCUIDevice.shared.orientation = .portrait
+        RunLoop.current.run(until: Date().addingTimeInterval(2))
+
+        XCUIDevice.shared.press(.home)
+        RunLoop.current.run(until: Date().addingTimeInterval(2))
+        app.activate()
+        XCTAssertTrue(app.wait(for: .runningForeground, timeout: 20))
+        XCTAssertTrue(app.staticTexts["pressed row 30"].waitForExistence(timeout: 10), "state survives Home and resume")
+        report("resumed")
+
+        XCTAssertEqual(launched, pid(), "rotate, Home and resume kept the same process")
+    }
+}
