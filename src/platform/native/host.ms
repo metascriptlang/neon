@@ -119,8 +119,8 @@ function applyPaint(n: NativeNode, s: Style): void {
 				const c = parseHex(bg as string);
 				if (c !== null) { niSetBackgroundColor(n.view, c.r, c.g, c.b, 1.0); }
 			}
-			if (s.borderRadius !== null) { niSetCornerRadius(n.view, s.borderRadius as number); }
-			if (s.opacity !== null) { niSetOpacity(n.view, s.opacity as number); }
+			if (s.borderRadius !== null) { niSetCornerRadius(n.view, s.borderRadius as float32); }
+			if (s.opacity !== null) { niSetOpacity(n.view, s.opacity as float32); }
 		}
 	}
 	if (n.isText && n.view !== null) {
@@ -131,7 +131,7 @@ function applyPaint(n: NativeNode, s: Style): void {
 		}
 		const size = s.fontSize !== null ? (s.fontSize as number) : 17.0;
 		const bold = s.fontWeight !== null && s.fontWeight !== "normal";
-		niSetFont(n.view, size, bold ? 1 : 0);
+		niSetFont(n.view, size as float32, bold ? 1 : 0);
 	}
 }
 
@@ -254,7 +254,7 @@ function materializeString(child: NativeNode, parent: NativeNode): void {
 		}
 		const size = ps.fontSize !== null ? (ps.fontSize as number) : 17.0;
 		const bold = ps.fontWeight !== null && ps.fontWeight !== "normal";
-		niSetFont(child.view, size, bold ? 1 : 0);
+		niSetFont(child.view, size as float32, bold ? 1 : 0);
 	}
 	remeasureText(child);
 	if (parent.view !== null && child.view !== null) { niAddChild(parent.view, child.view); }
