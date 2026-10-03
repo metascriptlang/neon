@@ -210,7 +210,8 @@ final class FlatListUITests: XCTestCase {
         app.staticTexts["jump 5000"].tap()
         XCTAssertTrue(app.staticTexts["row 5000"].waitForExistence(timeout: 10), "row 5000 mounts after scrollToIndex")
         XCTAssertTrue(onScreen("row 5000"), "row 5000 is on screen")
-        XCTAssertFalse(app.staticTexts["row 0"].exists, "row 0 left the window")
+        XCTAssertFalse(app.staticTexts["row 1000"].exists, "the rows between left the window")
+        XCTAssertFalse(onScreen("row 0"), "row 0 stays mounted for scroll-to-top, off screen")
         XCTAssertLessThan(rowsInTree(), 400, "still a window at row 5000")
         report("jumped")
 

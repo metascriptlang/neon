@@ -64,8 +64,10 @@ def lane():
 
     scroll_list.tap(texts, "jump 5000")
     window, texts = scroll_list.state(False)
-    if not scroll_list.on_screen(texts, frame, "row 5000") or "row 0" in texts:
+    if not scroll_list.on_screen(texts, frame, "row 5000") or "row 1000" in texts:
         raise LaneError("scrollToIndex 5000 did not move the window; texts %s" % sorted(texts)[:20])
+    if scroll_list.on_screen(texts, frame, "row 0"):
+        raise LaneError("row 0 is still on screen after scrollToIndex 5000; texts %s" % sorted(texts)[:20])
     scroll_list.report("flatlist-jumped", window, texts, launched)
 
     adb("shell", "dumpsys", "gfxinfo", PACKAGE, "reset")
