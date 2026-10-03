@@ -30,7 +30,7 @@ static float g_measuredH;
 static struct {
 	jclass view, viewGroup, frameLayout, layoutParams, textView, gradientDrawable, integer, touch;
 	jclass scrollView, scroll;
-	jmethodID scrollViewInit, scrollInit, viewSetOnScrollChangeListener, viewScrollTo, scrollViewSmoothScrollTo;
+	jmethodID scrollViewInit, scrollInit, viewSetOnScrollChangeListener, viewScrollTo, scrollViewSmoothScrollTo, scrollViewFling;
 	jmethodID viewGetParent, viewSetLayoutParams, viewSetAlpha, viewGetBackground, viewSetBackground;
 	jmethodID viewMeasure, viewGetMeasuredWidth, viewGetMeasuredHeight, viewSetTag, viewGetRootWindowInsets;
 	jmethodID viewSetOnTouchListener, touchInit;
@@ -105,6 +105,7 @@ static void cacheJni(JNIEnv *e) {
 	J.viewSetOnScrollChangeListener = method(e, J.view, "setOnScrollChangeListener", "(Landroid/view/View$OnScrollChangeListener;)V");
 	J.viewScrollTo = method(e, J.view, "scrollTo", "(II)V");
 	J.scrollViewSmoothScrollTo = method(e, J.scrollView, "smoothScrollTo", "(II)V");
+	J.scrollViewFling = method(e, J.scrollView, "fling", "(I)V");
 
 	J.viewGetParent = method(e, J.view, "getParent", "()Landroid/view/ViewParent;");
 	J.viewSetLayoutParams = method(e, J.view, "setLayoutParams", "(Landroid/view/ViewGroup$LayoutParams;)V");
@@ -412,8 +413,14 @@ void niScrollSetContentSize(void *scroll, float w, float h) {
 
 void niScrollTo(void *scroll, float x, float y, int animated) {
 	JNIEnv *e = env();
-	if (animated) (*e)->CallVoidMethod(e, (jobject)scroll, J.scrollViewSmoothScrollTo, px(x), px(y));
-	else (*e)->CallVoidMethod(e, (jobject)scroll, J.viewScrollTo, px(x), px(y));
+	if (animated) {
+		(*e)->CallVoidMethod(e, (jobject)scroll, J.scrollViewSmoothScrollTo, px(x), px(y));
+	} else {
+		// React Native aborts the running fling (ReactScrollViewManager.kt:228). A fling(0) started after
+		// scrollTo replaces it at the new offset; started before, it would hold the old one.
+		(*e)->CallVoidMethod(e, (jobject)scroll, J.viewScrollTo, px(x), px(y));
+		(*e)->CallVoidMethod(e, (jobject)scroll, J.scrollViewFling, 0);
+	}
 	check(e, "scrollTo");
 }
 
