@@ -6,6 +6,7 @@ import { bindAttr } from "../../src/render/host";
 import { createSignal } from "../../src/core/signal";
 import { createRoot } from "../../src/core/owner";
 import { HOST_MOVE_CONTRACT, RECONCILE_CONTRACT, HOST_ATTR_CONTRACT, hostMoveContract, reconcileContract, hostAttrContract } from "../render/hostContract";
+import { sleepAsync } from "std/core/promise";
 
 extern class ProbeStyle {
 	backgroundColor: string;
@@ -322,4 +323,21 @@ test "a real KeyboardEvent reaches the handler with React Native's key fields" {
 	window.eval("document.getElementById('neon-key-probe').dispatchEvent(new KeyboardEvent('keydown', { key: 'A', code: 'KeyA', shiftKey: true, ctrlKey: true, repeat: true, isComposing: true }))");
 	assert seen === "keydown A KeyA alt=false ctrl=true meta=false shift=true repeat=true composing=true", "fields: " + seen;
 	probe(el).remove();
+}
+
+test "onLayout reports the frame relative to the parent, and again when it changes" {
+	const h = domHost();
+	const outer = mount("view");
+	h.setStyle(outer, styleWith("paddingTop", 10));
+	const el = h.createElement("view");
+	h.setStyle(el, styleWith("height", 40));
+	h.insertBefore(outer, el, null);
+	let got = "";
+	h.addEvent(el, "onLayout", (e: NeonEvent): void => { got += `${e.type} ${e.y} ${e.height};`; });
+	await sleepAsync(100);
+	assert got === "layout 10 40;", "after mount: " + got;
+	h.setStyle(el, styleWith("height", 60));
+	await sleepAsync(100);
+	assert got === "layout 10 40;layout 10 60;", "after a resize: " + got;
+	probe(outer).remove();
 }
