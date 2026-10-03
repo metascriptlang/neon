@@ -404,6 +404,7 @@ export function createNativeHost(): NativeHost {
 		},
 		cloneNode: null,
 		voidArea: null,
+		scrollTo: null,
 	};
 
 	return {

@@ -32,6 +32,7 @@ function countingHost(): Host {
 		firstChild: h.firstChild,
 		cloneNode: null,
 		voidArea: null,
+		scrollTo: null,
 	};
 }
 

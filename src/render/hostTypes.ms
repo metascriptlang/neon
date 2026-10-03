@@ -44,4 +44,5 @@ export interface Host {
 	// slower, so a host is never forced to implement it.
 	cloneNode: ((node: HostNode) => HostNode) | null;
 	voidArea: ((node: HostNode) => VoidArea) | null;
+	scrollTo: ((node: HostNode, x: number, y: number, animated: boolean) => void) | null;
 }

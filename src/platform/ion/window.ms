@@ -268,6 +268,7 @@ function windowHost(win: Window): Host {
 		firstChild: (node: HostNode): HostNode | null => null,
 		cloneNode: null,
 		voidArea: openArea,
+		scrollTo: null,
 	};
 }
 

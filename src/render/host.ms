@@ -30,6 +30,9 @@ export class MockNode {
 	style: Style | null = null;
 	className: string = "";
 	parent: MockNode | null = null;
+	scrollX: number = 0;
+	scrollY: number = 0;
+	scrollAnimated: boolean = false;
 
 	constructor(tag: string) {
 		this.tag = tag;
@@ -170,6 +173,12 @@ export function mockHost(): Host {
 				root: root as unknown as HostNode,
 				release: (): void => { outer.attrs.push(attr("released", "true")); },
 			};
+		},
+		scrollTo: (node: HostNode, x: number, y: number, animated: boolean): void => {
+			const n = node as unknown as MockNode;
+			n.scrollX = x;
+			n.scrollY = y;
+			n.scrollAnimated = animated;
 		},
 	};
 }

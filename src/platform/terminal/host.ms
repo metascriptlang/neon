@@ -223,6 +223,7 @@ export function terminalHost(): Host {
 		},
 		cloneNode: null,
 		voidArea: null,
+		scrollTo: null,
 	};
 }
 
