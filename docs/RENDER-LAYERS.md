@@ -98,6 +98,8 @@ Void has a second role beside "the platform": **one native component among the o
 
 Inside a Void view there are only Void components: `Text` and `View` become void2d, and no native view is ever a child of a Void view (`VISION.md` "Worlds, nested one way").
 
+**Void's own vocabulary inside an area** (`VISION.md` "Inside a Void area") is not built. The void host maps every element tag to an empty `group()` (`src/platform/void/host.ms` `createElement`), so a 3D tag mounts silently as nothing today, and the Ion window draws one `Scene2D` with `present()` (`src/platform/ion/window.ms`). Neon's next step uses only what Void has: `Scene3D`, `Group`, `Mesh`, `Light` and `Camera3D` on void3d's scene calls, the parent rule, and the HUD drawn over the scene through the renderer's prepare and screen halves. What waits on Void, a `View` drawn into a texture on a mesh first, is listed in `void/docs/NEON.md`.
+
 ## What this means per repo
 
 - **Neon** (`~/metascript/neon`) owns **Layer A** and the **Host contract**. It contains no B+C code. Adding a platform = implementing `Host` + binding to that platform's B+C (native objects, or Void).
