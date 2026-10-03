@@ -192,6 +192,7 @@ function remeasureText(n: NativeNode): void {
 	}
 	fresh.width = w;
 	fresh.height = h;
+	if (n.isString) { fresh.display = n.text === "" ? "none" : null; }
 	n.flex = fresh;
 }
 // ---- the host ----
