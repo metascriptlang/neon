@@ -22,13 +22,17 @@ step() {
 	fi
 }
 
-step generate "$ION/tooling/generator/ion-generate" examples/ios/project.ms "$results/xcode"
+mkdir -p "$results/home"
+step install-ion env HOME="$results/home" msc install -g "@metascript/ion@file:$ION"
+ion() { HOME="$results/home" "$results/home/.metascript/bin/ion" "$@"; }
+
+step generate ion generate examples/ios/project.ms "$results/xcode"
 step build xcodebuild -project "$results/xcode/NeonCounter.xcodeproj" -target NeonCounter \
 	-configuration Debug -sdk iphonesimulator -jobs 1 ARCHS=arm64 ONLY_ACTIVE_ARCH=YES \
 	SYMROOT="$results/products" OBJROOT="$results/objects" \
 	CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- build
-step generate-list "$ION/tooling/generator/ion-generate" examples/list/ios/project.ms "$results/xcode-list"
-step generate-flatlist "$ION/tooling/generator/ion-generate" examples/flatlist/ios/project.ms "$results/xcode-flatlist"
+step generate-list ion generate examples/list/ios/project.ms "$results/xcode-list"
+step generate-flatlist ion generate examples/flatlist/ios/project.ms "$results/xcode-flatlist"
 step build-list xcodebuild -project "$results/xcode-list/NeonList.xcodeproj" -target NeonList \
 	-configuration Debug -sdk iphonesimulator -jobs 1 ARCHS=arm64 ONLY_ACTIVE_ARCH=YES \
 	SYMROOT="$results/products" OBJROOT="$results/objects-list" \

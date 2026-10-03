@@ -31,17 +31,21 @@ step() {
 	fi
 }
 
-step generate "$ION/tooling/generator/ion-generate" examples/android/project.ms "$results/gradle"
+mkdir -p "$results/home"
+step install-ion env HOME="$results/home" msc install -g "@metascript/ion@file:$ION"
+ion() { HOME="$results/home" "$results/home/.metascript/bin/ion" "$@"; }
+
+step generate ion generate examples/android/project.ms "$results/gradle"
 step keystore keytool -genkeypair -keystore "$results/lane.jks" -storepass neonlane -keypass neonlane \
 	-alias lane -keyalg RSA -keysize 2048 -validity 1 -dname CN=neon-lane
 export ION_ANDROID_STORE_FILE="$results/lane.jks" ION_ANDROID_STORE_PASSWORD=neonlane
 export ION_ANDROID_KEY_ALIAS=lane ION_ANDROID_KEY_PASSWORD=neonlane
 step build sh -c "cd '$results/gradle' && ./gradlew assembleDebug assembleRelease --console=plain"
-step generate-churn "$ION/tooling/generator/ion-generate" tests/android/churn/project.ms "$results/churn"
+step generate-churn ion generate tests/android/churn/project.ms "$results/churn"
 step build-churn sh -c "cd '$results/churn' && ./gradlew assembleDebug --console=plain"
-step generate-list "$ION/tooling/generator/ion-generate" examples/list/android/project.ms "$results/list"
+step generate-list ion generate examples/list/android/project.ms "$results/list"
 step build-list sh -c "cd '$results/list' && ./gradlew assembleDebug --console=plain"
-step generate-flatlist "$ION/tooling/generator/ion-generate" examples/flatlist/android/project.ms "$results/flatlist"
+step generate-flatlist ion generate examples/flatlist/android/project.ms "$results/flatlist"
 step build-flatlist sh -c "cd '$results/flatlist' && ./gradlew assembleDebug --console=plain"
 step boot sh -c 'until [ "$(adb shell getprop sys.boot_completed | tr -d "\r")" = 1 ]; do sleep 2; done'
 adb uninstall dev.neon.NeonCounter > /dev/null 2>&1 || true
