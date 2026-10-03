@@ -15,8 +15,21 @@ extern class ClassList {
 	extern contains(name: cstring): boolean;
 }
 
+interface DomScrollOptions {
+	left: number;
+	top: number;
+	behavior: string;
+}
+
 extern class Node {
 	textContent: cstring;
+	scrollLeft: number;
+	scrollTop: number;
+	scrollWidth: number;
+	scrollHeight: number;
+	offsetWidth: number;
+	offsetHeight: number;
+	extern scroll(options: DomScrollOptions): void;
 	style: CssStyle;
 	classList: ClassList;
 	nextSibling: Node;
@@ -65,6 +78,8 @@ extern class document {
 // are first mounted, not per element, and the browser reparses one small block.
 let sheetNode: Node | null = null;
 
+const SCROLL_CLASS = "neon-scrollview";
+
 function flushSheet(): void {
 	if (sheetNode === null) {
 		const n = document.createElement("style");
@@ -84,8 +99,20 @@ export function domHost(): Host {
 	// swap that touches no node.
 	onCssChange(flushSheet);
 	flushSheet();
+	let scrollRule = false;
 	return {
-		createElement: (tag: string): HostNode => document.createElement(htmlTagFor(tag)) as unknown as HostNode,
+		createElement: (tag: string): HostNode => {
+			if (tag === "scrollview") {
+				if (!scrollRule) {
+					registerCss(SCROLL_CLASS, `.${SCROLL_CLASS}{overflow-x:hidden;overflow-y:auto}`);
+					scrollRule = true;
+				}
+				const el = document.createElement("div");
+				el.classList.add(SCROLL_CLASS);
+				return el as unknown as HostNode;
+			}
+			return document.createElement(htmlTagFor(tag)) as unknown as HostNode;
+		},
 		createText: (s: string): HostNode => document.createTextNode(s) as unknown as HostNode,
 		setText: (node: HostNode, s: string): void => {
 			(node as unknown as Node).textContent = s;
@@ -117,9 +144,18 @@ export function domHost(): Host {
 			let domType = type;
 			if (type === "press") { domType = "click"; }
 			else if (type === "changetext") { domType = "input"; }
-			(node as unknown as Node).addEventListener(domType, (de: DomEvent): void => {
+			const el = node as unknown as Node;
+			el.addEventListener(domType, (de: DomEvent): void => {
 				const ev = neonEvent(type);
 				if (type === "changetext" || type === "input" || type === "change") { ev.value = de.target.value; }
+				else if (type === "scroll") {
+					ev.x = el.scrollLeft;
+					ev.y = el.scrollTop;
+					ev.width = el.offsetWidth;
+					ev.height = el.offsetHeight;
+					ev.contentWidth = el.scrollWidth;
+					ev.contentHeight = el.scrollHeight;
+				}
 				else if (type === "keydown" || type === "keyup" || type === "keypress") {
 					ev.key = de.key;
 					ev.code = de.code;
@@ -159,5 +195,8 @@ export function domHost(): Host {
 			return (node as unknown as Node).cloneNode(true) as unknown as HostNode;
 		},
 		voidArea: null,
+		scrollTo: (node: HostNode, x: number, y: number, animated: boolean): void => {
+			(node as unknown as Node).scroll({ left: x, top: y, behavior: animated ? "smooth" : "auto" });
+		},
 	};
 }
