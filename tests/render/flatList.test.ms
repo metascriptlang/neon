@@ -166,6 +166,8 @@ test "the ref's handle scrolls to an index, an offset and the end" {
 	assert `${sv.scrollY} ${sv.scrollAnimated}` === "2000 true", "index 40: " + `${sv.scrollY} ${sv.scrollAnimated}`;
 	handles[0].scrollToIndex({ index: 40, viewPosition: 0.5, animated: false });
 	assert `${sv.scrollY} ${sv.scrollAnimated}` === "1775 false", "centred: " + `${sv.scrollY} ${sv.scrollAnimated}`;
+	handles[0].scrollToIndex({ index: 0, viewPosition: 0.5, viewOffset: -20, animated: false });
+	assert sv.scrollY === 20, "clamped at 0 before viewOffset applies: " + sv.scrollY.toString();
 	handles[0].scrollToOffset({ offset: 123 });
 	assert sv.scrollY === 123, "offset " + sv.scrollY.toString();
 	handles[0].scrollToEnd({});

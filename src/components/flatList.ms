@@ -75,7 +75,7 @@ export class FlatListHandle {
 			throw `FlatList.scrollToIndex: index ${index} is outside the ${n} items`;
 		}
 		const at = this.layoutOf(index);
-		this.scroll.scrollTo({ y: at.offset - viewPosition * (this.viewport() - at.length) - viewOffset, animated });
+		this.scroll.scrollTo({ y: Math.max(0, at.offset - viewPosition * (this.viewport() - at.length)) - viewOffset, animated });
 	}
 
 	scrollToEnd(options: ScrollToEndOptions): void {
