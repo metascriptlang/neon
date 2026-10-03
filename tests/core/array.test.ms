@@ -1,4 +1,4 @@
-import { mapArray, mapArrayKeyed, indexArray } from "../../src/core/array";
+import { mapArray, mapArrayKeyed, mapArrayKeyedText, indexArray } from "../../src/core/array";
 import { createSignal, Accessor } from "../../src/core/signal";
 import { createRoot } from "../../src/core/owner";
 import { onCleanup } from "../../src/core/cleanup";
@@ -266,4 +266,35 @@ test "mapArray lets a row that throws reach the caller" {
 		assert caught.includes("row 1"), "the first row is the one that raised: " + caught;
 		d();
 	});
+}
+
+interface Named {
+	key: string;
+	label: string;
+}
+
+test "mapArrayKeyedText reuses rows by a string key across a reorder of fresh objects" {
+	createRoot((d) => {
+		const [list, setList] = createSignal<Named[]>([{ key: "a", label: "A" }, { key: "b", label: "B" }]);
+		let calls = 0;
+		const m = mapArrayKeyedText<Named, string>(() => list(), (v) => v.key, (v, i) => { calls = calls + 1; return v.label; }, true, "FlatList");
+		assert m().join(",") === "A,B", "initial rows";
+		setList([{ key: "b", label: "B2" }, { key: "a", label: "A2" }, { key: "c", label: "C" }]);
+		assert m().join(",") === "B,A,C", "keyed rows move, the new key mounts: " + m().join(",");
+		assert calls === 3, "only the new key ran mapFn: " + calls.toString();
+		d();
+	});
+}
+
+test "mapArrayKeyedText refuses two rows sharing a string key and names it" {
+	let caught = "";
+	createRoot((d) => {
+		const [list, setList] = createSignal<Named[]>([{ key: "x", label: "1" }, { key: "x", label: "2" }]);
+		try {
+			const m = mapArrayKeyedText<Named, string>(() => list(), (v) => v.key, (v, i) => v.label, true, "FlatList");
+			m();
+		} catch (e) { caught = e.toString(); }
+		d();
+	});
+	assert caught.includes("FlatList: the key") && caught.includes("x") && caught.includes("rows 0 and 1"), "names the owner, the key and the rows: " + caught;
 }
