@@ -18,7 +18,7 @@
 // same name on raw lowercase tags).
 
 import { NeonEvent } from "../render/event";
-import { Style } from "../render/style";
+import { Style, layerStyles } from "../render/style";
 import { onCleanup } from "../core/cleanup";
 import { Accessor, accessor } from "../core/signal";
 import { element } from "../macros/ui/element";
@@ -221,6 +221,9 @@ interface ScrollViewProps {
 // (RCTScrollViewComponentView.mm:375-387, ReactScrollViewHelper.kt:116-124).
 const EVERY_FRAME_MS = 16;
 
+// RN ScrollView.js styles.baseVertical, composed under the author's style.
+const SCROLL_BASE: Style = { flexGrow: 1, flexShrink: 1, flexDirection: "column", overflow: "scroll" };
+
 export function ScrollView(props: ScrollViewProps): NeonNode {
 	const evts: VEvent[] = [];
 	if (props.onScroll !== null) {
@@ -248,7 +251,11 @@ export function ScrollView(props: ScrollViewProps): NeonNode {
 			(userRef as (h: ScrollViewHandle) => void)(new ScrollViewHandle(host, node, (): boolean => mounted));
 		}
 	};
-	return primitive("scrollview", { style: props.style, class: props.class, ref: null }, [], evts, inner);
+	const userStyle = props.style;
+	const style: Accessor<Style> = userStyle === null
+		? accessor((): Style => SCROLL_BASE)
+		: accessor((): Style => layerStyles([SCROLL_BASE, (userStyle as () => Style)()]));
+	return primitive("scrollview", { style, class: props.class, ref: null }, [], evts, inner);
 }
 
 interface TextInputProps extends InteractiveProps {

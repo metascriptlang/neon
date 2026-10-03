@@ -30,6 +30,20 @@ test "style goes to the scroll container, contentContainerStyle to the content" 
 	assert content.style !== null && content.style!.padding === 8, "padding on the content container";
 }
 
+test "a ScrollView grows and shrinks in its parent unless its style says otherwise, React Native's base style" {
+	const root: MockNode = mockNode("root");
+	render(element(<ScrollView><Text>a</Text></ScrollView>), mockHost(), root as unknown as HostNode);
+	const sv = root.children[0];
+	assert sv.style !== null, "the scroll container carries the base style";
+	assert sv.style!.flexGrow === 1 && sv.style!.flexShrink === 1, "base flexGrow and flexShrink: " + `${sv.style!.flexGrow} ${sv.style!.flexShrink}`;
+	assert sv.style!.flexDirection === "column" && sv.style!.overflow === "scroll", "base flexDirection column and overflow scroll";
+	const root2: MockNode = mockNode("root");
+	render(element(<ScrollView style={{ flexGrow: 0, height: 100 }}><Text>a</Text></ScrollView>), mockHost(), root2 as unknown as HostNode);
+	const sv2 = root2.children[0];
+	assert sv2.style!.flexGrow === 0 && sv2.style!.flexShrink === 1, "the author's flexGrow wins, flexShrink stays: " + `${sv2.style!.flexGrow} ${sv2.style!.flexShrink}`;
+	assert (sv2.style!.height as number) === 100, "the author's height is kept";
+}
+
 test "onScroll receives the content offset, the viewport and the content size" {
 	const root: MockNode = mockNode("root");
 	let got = "";

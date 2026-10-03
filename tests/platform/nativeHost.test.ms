@@ -184,3 +184,13 @@ test "a layout pass that leaves a ScrollView's frame and content size alone writ
 	assert framed === 0, "frame writes to the unchanged scroll view: " + framed.toString();
 	assert sized === 0, "content size writes for unchanged content: " + sized.toString();
 }
+
+test "a ScrollView with no style fits its parent instead of growing to its content, React Native's base style" {
+	let got = "";
+	const app = (): NeonNode => <ScrollView onLayout={(e: NeonEvent): void => { got = `${e.height}`; }}>
+		<View style={{ height: 2000 }} />
+	</ScrollView>;
+	runApp(app);
+	nmTeardown();
+	assert got === "800", "the scroll view's height in an 800-high screen: " + got;
+}
