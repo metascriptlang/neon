@@ -27,6 +27,8 @@ import { Host, HostNode, VoidArea, TextSpan, TextMeasure } from "../render/hostT
 import { paragraphChildren } from "../render/paragraph";
 import { VoidAreaHandle } from "../render/voidAreaHandle";
 import { applyRef } from "../render/bind";
+import { useContext } from "../render/context";
+import { VoidSpace, voidScope } from "../render/voidScope";
 import { visibleContentAttr } from "../render/visibleContent";
 import {
 	ClaimWatch,
@@ -97,6 +99,15 @@ export interface ImeRect {
 	y: number;
 	width: number;
 	height: number;
+}
+
+function uiParent(tag: string, node: NeonNode): NeonNode {
+	return (host: Host, parent: HostNode, before: HostNode | null): void => {
+		if (useContext(voidScope) === VoidSpace.Scene3D) {
+			throw new Error("<" + tag + "> belongs in <Void>, <Texture> or a 2D parent, not directly in <Scene3D>");
+		}
+		node(host, parent, before);
+	};
 }
 
 export interface InteractiveProps extends HostProps {
@@ -247,7 +258,7 @@ export function View(props: ViewProps): NeonNode {
 		if (entry !== null) { (entry as ResponderEntry).node = node; }
 		if (userRef !== null) { (userRef as (h: ViewHandle) => void)(new ViewHandle(mountedOn as Host, node, (): boolean => mounted)); }
 	};
-	const view = primitive("view", props, attrs, evts, provided, grab);
+	const view = uiParent("View", primitive("view", props, attrs, evts, provided, grab));
 	if (grab === null) { return view; }
 	return (host: Host, parent: HostNode, before: HostNode | null): void => {
 		mountedOn = host;
@@ -293,7 +304,7 @@ export function Text(props: TextProps): NeonNode {
 	if (spans !== null && props.children !== null) { throw new Error("<Text> takes spans or children, not both"); }
 	if (lines === null && ellipsize === null && props.selectable === null && press === null && cell === null && spans === null) {
 		const accessible = accessibleText(props);
-		return element(<text class={props.class} style={props.style} ref={props.ref} accessible={accessible} accessibilityLabel={props.accessibilityLabel} accessibilityHint={props.accessibilityHint} accessibilityRole={props.accessibilityRole}>{paragraphChildren(props.children, null)}</text>);
+		return uiParent("Text", element(<text class={props.class} style={props.style} ref={props.ref} accessible={accessible} accessibilityLabel={props.accessibilityLabel} accessibilityHint={props.accessibilityHint} accessibilityRole={props.accessibilityRole}>{paragraphChildren(props.children, null)}</text>));
 	}
 	const attrs: VAttr[] = [];
 	if (lines !== null) {
@@ -316,7 +327,7 @@ export function Text(props: TextProps): NeonNode {
 			if (!pressSwallowed(e)) { user(e); }
 		}));
 	}
-	return primitive("text", props, attrs, evts, paragraphChildren(props.children, spans), props.ref);
+	return uiParent("Text", primitive("text", props, attrs, evts, paragraphChildren(props.children, spans), props.ref));
 }
 
 // RN Pressability's two constants (Libraries/Pressability/Pressability.js):
@@ -474,7 +485,7 @@ export function Pressable(props: PressableProps): NeonNode {
 	const hitSlop: Accessor<string> | null = slop === null ? null : accessor((): string => insetsAttr((slop as Accessor<number | Insets>)()));
 	const ripple = props.android_ripple;
 	const androidRipple: Accessor<string> | null = ripple === null ? null : accessor((): string => rippleAttr((ripple as Accessor<AndroidRipple>)()));
-	return element(<pressable class={props.class} style={props.style} ref={props.ref} accessible={accessible} hitSlop={hitSlop} androidRipple={androidRipple} accessibilityLabel={props.accessibilityLabel} accessibilityHint={props.accessibilityHint} accessibilityRole={props.accessibilityRole} onLayout={props.onLayout} onPress={press} onPointerDown={pointerDown} onPointerUp={pointerUp} onPointerLeave={pointerLeave} onPointerCancel={pointerLeave}>{props.children}</pressable>);
+	return uiParent("Pressable", element(<pressable class={props.class} style={props.style} ref={props.ref} accessible={accessible} hitSlop={hitSlop} androidRipple={androidRipple} accessibilityLabel={props.accessibilityLabel} accessibilityHint={props.accessibilityHint} accessibilityRole={props.accessibilityRole} onLayout={props.onLayout} onPress={press} onPointerDown={pointerDown} onPointerUp={pointerUp} onPointerLeave={pointerLeave} onPointerCancel={pointerLeave}>{props.children}</pressable>));
 }
 
 export interface ScrollToOptions {
@@ -775,14 +786,14 @@ export function TextInput(props: TextInputProps): NeonNode {
 		}));
 	}
 	if (userRef === null) {
-		return primitive(tag, { style: props.style, class: props.class }, accessibilityAttrs(props, attrs), evts, null, null);
+		return uiParent("TextInput", primitive(tag, { style: props.style, class: props.class }, accessibilityAttrs(props, attrs), evts, null, null));
 	}
 	let mountedHost: Host | null = null;
 	let mounted = false;
 	const grab: RefFn = (node: HostNode): void => {
 		(userRef as (h: TextInputHandle) => void)(new TextInputHandle(mountedHost as Host, node, (): boolean => focused, (): boolean => mounted));
 	};
-	const field = primitive(tag, { style: props.style, class: props.class }, accessibilityAttrs(props, attrs), evts, null, grab);
+	const field = uiParent("TextInput", primitive(tag, { style: props.style, class: props.class }, accessibilityAttrs(props, attrs), evts, null, grab));
 	return (host: Host, parent: HostNode, before: HostNode | null): void => {
 		mountedHost = host;
 		mounted = true;
@@ -809,7 +820,13 @@ export function Void(props: VoidProps): NeonNode {
 			a.hub.close();
 			a.release();
 		});
-		if (kids !== null) { (kids as NeonNode)(a.host, a.root, null); }
+		if (kids !== null) {
+			const scoped = voidScope.Provider({
+				value: accessor((): VoidSpace => VoidSpace.Area),
+				children: kids as NeonNode,
+			});
+			scoped(a.host, a.root, null);
+		}
 		if (userRef !== null) { applyRef(a.hub.handle, userRef as (handle: VoidAreaHandle) => void); }
 	};
 	return primitive("void", { style: props.style, class: props.class, accessible: props.accessible, accessibilityLabel: props.accessibilityLabel, accessibilityHint: props.accessibilityHint, accessibilityRole: props.accessibilityRole }, [], [], area, null);
