@@ -214,6 +214,7 @@ interface ScrollViewProps {
 	onScroll?: ((e: NeonEvent) => void) | null;
 	scrollEventThrottle?: Accessor<number> | null;
 	onLayout?: ((e: NeonEvent) => void) | null;
+	onContentSizeChange?: ((width: number, height: number) => void) | null;
 	children?: NeonNode | null;
 }
 
@@ -241,7 +242,10 @@ export function ScrollView(props: ScrollViewProps): NeonNode {
 		}));
 	}
 	if (props.onLayout !== null) { evts.push(evt("onLayout", props.onLayout as (e: NeonEvent) => void)); }
-	const content = element(<view style={props.contentContainerStyle}>{props.children}</view>);
+	const sizeChange = props.onContentSizeChange;
+	const content = sizeChange === null
+		? element(<view style={props.contentContainerStyle}>{props.children}</view>)
+		: element(<view style={props.contentContainerStyle} onLayout={(e: NeonEvent): void => { (sizeChange as (width: number, height: number) => void)(e.width, e.height); }}>{props.children}</view>);
 	const userRef = props.ref;
 	const inner: NeonNode = (host: Host, node: HostNode, before: HostNode | null): void => {
 		content(host, node, before);

@@ -44,6 +44,17 @@ test "a ScrollView grows and shrinks in its parent unless its style says otherwi
 	assert (sv2.style!.height as number) === 100, "the author's height is kept";
 }
 
+test "onContentSizeChange receives the content container's size, React Native's _handleContentOnLayout" {
+	const root: MockNode = mockNode("root");
+	let got = "";
+	render(element(<ScrollView onContentSizeChange={(width: number, height: number): void => { got = `${width} ${height}`; }}><Text>a</Text></ScrollView>), mockHost(), root as unknown as HostNode);
+	const sized = neonEvent("layout");
+	sized.width = 320;
+	sized.height = 2000;
+	fireEventWith(root.children[0].children[0], "onLayout", sized);
+	assert got === "320 2000", "content size: " + got;
+}
+
 test "onScroll receives the content offset, the viewport and the content size" {
 	const root: MockNode = mockNode("root");
 	let got = "";
