@@ -25,7 +25,7 @@ Application UI world         native host (iOS, Android, desktop) or DOM host (br
   ├─ <Void>                  a tag like View, laid out like View
   │    Void world            one GPU surface; Void draws every pixel in it, as Flutter does on its canvas
   │    View = void2d rect                         Text = void2d text
-  │    + Void's own tags: void2d, void3d, shader, …
+  │    + 3D in Void's own terms: Scene3D, Mesh, Material, Texture, Camera3D, …
   └─ <WebView>               a tag like View, laid out like View
        Web world             an embedded browser engine (WebView2, WKWebView) with its own JS runtime;
                              it talks to the app over IPC, as Tauri does
@@ -133,6 +133,65 @@ Which of these exist is recorded in `PORT-STATUS.md` and `ROADMAP.md`, not here.
 The mechanics of face 1, meaning what exists on Void's side and what is missing on Neon's, are in
 `RENDER-LAYERS.md` "Void as a native component".
 
+## Inside a Void area
+
+Decided with the person on 2026-10-03; not built yet. A Void area speaks two vocabularies, and the
+author always knows which one they are in: 3D is written in 3D's own terms, Application UI starts
+at a `View`, and the one place the two meet is a texture.
+
+```tsx
+<Void style={{ flex: 1 }}>
+  <Scene3D>
+    <Camera3D active position={[0, 3, 8]} />
+    <Mesh geometry={quad} position={[0, 2, 0]} rotation={[0, 0.4, 0]}>
+      <Material>
+        <Texture width={600} height={400}>
+          <View style={{ flex: 1, padding: 24 }}>
+            <Text>Shop</Text>
+            <Pressable onPress={buy}><Text>Buy</Text></Pressable>
+          </View>
+        </Texture>
+      </Material>
+    </Mesh>
+  </Scene3D>
+  <View style={{ position: "absolute", top: 8, left: 8 }}>
+    <Text>HP: {hp()}</Text>
+  </View>
+</Void>
+```
+
+- **`View` and `Text` are void2d, nothing more.** Where one is placed decides what it is. Directly
+  in `<Void>` it is HUD: 2D drawn onto the screen, laid out by yoga over the area and moved by no
+  camera, which is what the void host does today. Inside a `<Texture>` it is 2D drawn into that
+  texture. Inside a `View`, everything is Application UI, as on every other host.
+- **3D is written in 3D's terms.** `Scene3D`, `Group`, `Mesh`, `Material`, `Texture`, `Light`,
+  `Camera3D` are the names of Void's own types, so a reader of Neon code and a reader of Void code
+  call one thing by one name. Objects are placed by transform (`position`, `rotation`, `scale`). A
+  camera sits in the tree like any object, so a camera that follows a character is a camera nested
+  under it.
+- **2D enters 3D as a texture on a mesh, as in every engine read for this.** UI in a 3D world is
+  not a special panel: it is a `View` drawn into a `Texture` that a `Material` samples on a `Mesh`.
+  The author sees the real cost: UI that looks soft up close needs a larger texture, not a
+  different `View`. A press on the mesh reaches the `Pressable` inside: the pick ray hits the mesh,
+  the hit's UV becomes a pixel of the texture, and that pixel goes through the HUD's hit test.
+- **Yoga lays out boxes; transforms place objects.** Every 2D root, the HUD and each texture's
+  `View`, is its own yoga root, sized by the area or by the texture. Nothing in a `Scene3D` takes
+  part in flexbox.
+- **`Scene2D` is the 2D counterpart of `Scene3D`:** void2d under its own camera (pan, zoom,
+  rotation) instead of fixed to the screen, drawn under the HUD. Its children are placed by
+  coordinates, not by flow.
+- **Each tag has a fixed set of parents.** `View`, `Text`, `Pressable` and `TextInput` live in
+  `<Void>`, a `Texture`, a `Scene2D` or another void2d node. `Group`, `Mesh`, `Light` and
+  `Camera3D` live in a `Scene3D` or under another 3D node; a `Material` lives in a `Mesh` and a
+  `Texture` in a `Material`. A misplaced tag is an error: at compile time when its parent is in the
+  same JSX expression, at mount when a component boundary hides the parent. One `NeonNode` type
+  serves every host (`src/render/hostTypes.ms` `NeonNode`), so a component's result does not say
+  which world it belongs to. A `NeonNode` typed by world would move every case to compile time; it
+  changes that contract and is a decision of its own.
+
+The alternatives rejected on the way, each with the source that ruled it out, what Neon builds
+first on what Void already has, and what Void still has to add are in `void/docs/NEON.md`.
+
 ## Many Void areas in one app
 
 An app may hold several independent `<Void>` tags. That is an anti-pattern, but it must work.
@@ -190,7 +249,6 @@ or its laziest.
   on an Ion window, and a webview is one of its elements, not the root. What `View` and `Text`
   map to there is open: AppKit, Win32 or GTK widgets, or nothing yet while the first desktop apps
   are entirely Void.
-- **Void's own tag vocabulary.** The void host maps every tag to a `group()` today.
 - **One animation model for both worlds.** Native animation runs on the platform compositor's
   thread, while Void animates on its own clock. The Animation API in `ROADMAP.md` has to drive
   both, with the same timing curve.
