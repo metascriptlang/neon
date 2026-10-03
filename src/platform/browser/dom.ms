@@ -15,6 +15,17 @@ extern class ClassList {
 	extern contains(name: cstring): boolean;
 }
 
+extern class DomRect {
+	left: number;
+	top: number;
+	width: number;
+	height: number;
+}
+
+extern class ResizeObserver {
+	extern observe(target: Node): void;
+}
+
 interface DomScrollOptions {
 	left: number;
 	top: number;
@@ -29,7 +40,9 @@ extern class Node {
 	scrollHeight: number;
 	offsetWidth: number;
 	offsetHeight: number;
+	parentNode: Node;
 	extern scroll(options: DomScrollOptions): void;
+	extern getBoundingClientRect(): DomRect;
 	style: CssStyle;
 	classList: ClassList;
 	nextSibling: Node;
@@ -145,6 +158,21 @@ export function domHost(): Host {
 			if (type === "press") { domType = "click"; }
 			else if (type === "changetext") { domType = "input"; }
 			const el = node as unknown as Node;
+			if (type === "layout") {
+				const observer = new ResizeObserver((): void => {
+					const box = el.getBoundingClientRect();
+					const parent = el.parentNode;
+					const outer = parent.getBoundingClientRect();
+					const ev = neonEvent(type);
+					ev.x = box.left - outer.left + parent.scrollLeft;
+					ev.y = box.top - outer.top + parent.scrollTop;
+					ev.width = box.width;
+					ev.height = box.height;
+					handler(ev);
+				});
+				observer.observe(el);
+				return;
+			}
 			el.addEventListener(domType, (de: DomEvent): void => {
 				const ev = neonEvent(type);
 				if (type === "changetext" || type === "input" || type === "change") { ev.value = de.target.value; }
