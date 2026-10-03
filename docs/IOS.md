@@ -248,7 +248,8 @@ installed compiler `013853dd`, Xcode 26.6 / iPhoneOS SDK 26.5, and an iPhone
 13 Pro running iOS 26.6.2. The phone was paired, Developer Mode enabled,
 and `devicectl` reported `ddiServicesAvailable: true`.
 
-- Fresh generation through `tooling/generator/ion-generate` from the tracked
+- Fresh generation through Ion's generator (then its wrapper script, `ion generate`
+  since Ion `5e5065e`) from the tracked
   `examples/ios/project.ms` succeeded. `plutil -lint` accepted the project;
   no PBX edits were made.
 - Debug device build exited 0 with `CODE_SIGNING_ALLOWED=YES`,
