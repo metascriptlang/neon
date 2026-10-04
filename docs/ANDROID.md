@@ -187,10 +187,12 @@ declaration is not in `src/platform/native/host.ms`.
 - **Nested Text**: port RN's paragraph model (flatten to one TextView + Spannable runs at
   the `Text` component level, measure func + cache) — decision to make when `Text` grows
   nested styles, until then the merge-with-static-loss must NOT be copied silently.
-- **multiline / horizontal**: widget class differs at creation, so pick the wire tag at the
-  component (`TextInput` branches on a static `multiline`, `ScrollView` on `horizontal`) —
-  compile-time, no host-side recreation. The reference warns and refuses to swap at runtime
-  (`android.nim:1621-1627`); RN chooses the backing control at init from default props.
+- **Multiline** still selects a backing widget at creation. ScrollView's logical host node
+  instead stays stable around a native vertical/horizontal control and refresh wrapper;
+  the adapter moves the existing content when the axis changes. This preserves Solid row
+  identity rather than rebuilding the app subtree. See `Scroll.replaceScroller` in
+  `src/platform/android/java/src/main/java/dev/metascript/neon/Scroll.java`; the reference
+  controls are RN's `ReactScrollView` and `ReactHorizontalScrollView`.
 - **No echo-debug logging**: the reference `echo`es on every mount/prop/touch; we don't.
 - **Async/timers**: neon's own queue — `Pressable` already runs on the std timer
   (ROADMAP). The ALooper+eventfd wake pattern is the piece worth re-implementing when a
@@ -378,3 +380,29 @@ holds has the sha256 above) and `device.py` as committed beside this section:
 
 Not measured on the phone: the Debug build, the churn app, and `destroy` followed by a second
 `start`.
+
+## 11. RN scrolling protocol — 2026-10-04
+
+The portable surface is `ScrollViewProps` in `src/components/primitives.ms` and `FlatList`
+in `src/components/flatList.ms`. Options and lifecycle events reuse `Host.setAttr` /
+`Host.addEvent`; this slice adds no Host capability. Android's declared library dependency
+is `androidx.swiperefreshlayout:swiperefreshlayout:1.1.0`, carried by Neon's library Gradle file,
+not by Ion's bootstrap.
+
+Reference constraints: RN `ReactScrollView.java` `onInterceptTouchEvent`, `onTouchEvent`,
+`executeKeyEvent` and `handlePostTouchScrolling` govern disabling, drag/momentum and page
+settlement; `RefreshControl.js` `_onRefresh` and `componentDidUpdate` require the app's
+controlled value to win over a native gesture, even when that value remains false.
+`ScrollView.js` documents interactive keyboard dismissal as iOS-only; Android keeps the
+keyboard in that mode.
+
+On source/test tree `d4f1963637acf2db1276453aaa99c44582797ed2`, installed compiler/support
+`7a4af78c9` (deployment recorded at 13:17), both `examples/list/android/project.ms` and
+`examples/flatlist/android/project.ms` generated, built as Debug and installed on Seeker
+`SM02G40619100815`. The frozen-tree interaction lane was blocked before app assertions:
+`mWakefulness=Asleep`, then `isKeyguardShowing=true` after a wake event. No keyguard
+dismissal was attempted. An earlier candidate passed scroll/press/rotate/resume, but is
+not the frozen-tree verdict.
+
+The phone lanes use vertical examples. They do not certify native horizontal gestures,
+refresh, keyboard capture or reactive axis replacement; those acceptance checks remain open.

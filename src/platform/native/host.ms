@@ -22,10 +22,10 @@ import {
 	niViewCreate, niTextCreate, niAddChild, niRemoveFromParent, niViewRelease, niSetFrame,
 	niSetBackgroundColor, niSetCornerRadius, niSetOpacity,
 	niSetText, niSetTextColor, niSetFont, niMeasureText, niMeasuredW, niMeasuredH,
-	niContainerView, niScreenWidth, niScreenHeight, niViewSetTag,
+	niContainerView, niScreenWidth, niScreenHeight, niViewSetTag, niViewSetPressable,
 	niLastTouchTag, niLastTouchPhase,
-	niScrollCreate, niScrollSetTag, niScrollSetContentSize, niScrollTo,
-	niLastScrollTag, niLastScrollX, niLastScrollY, niLastScrollWidth, niLastScrollHeight,
+	niScrollCreate, niScrollSetTag, niScrollSetContentSize, niScrollTo, niScrollSetOption,
+	niLastScrollTag, niLastScrollPhase, niLastScrollX, niLastScrollY, niLastScrollWidth, niLastScrollHeight,
 	niLastScrollContentWidth, niLastScrollContentHeight,
 } from "./bridge.h";
 
@@ -320,8 +320,8 @@ function materializeString(child: NativeNode, parent: NativeNode): void {
 
 function onScroll(): void {
 	batched((): void => {
-		eventRegistry.scroll(
-			niLastScrollTag(), niLastScrollX(), niLastScrollY(), niLastScrollWidth(), niLastScrollHeight(),
+		eventRegistry.scrollPhase(
+			niLastScrollTag(), niLastScrollPhase(), niLastScrollX(), niLastScrollY(), niLastScrollWidth(), niLastScrollHeight(),
 			niLastScrollContentWidth(), niLastScrollContentHeight(),
 		);
 	});
@@ -379,9 +379,13 @@ export function createNativeHost(): NativeHost {
 			}
 		},
 		setAttr: (node: HostNode, name: string, value: string): void => {
-			// No non-style, non-event attrs in the first-cut vocabulary.
+			const n = node as unknown as NativeNode;
+			if (n.isScroll && n.view !== null) { niScrollSetOption(n.view, name, value); }
 		},
-		removeAttr: (node: HostNode, name: string): void => {},
+		removeAttr: (node: HostNode, name: string): void => {
+			const n = node as unknown as NativeNode;
+			if (n.isScroll && n.view !== null) { niScrollSetOption(n.view, name, ""); }
+		},
 		setStyle: (node: HostNode, style: Style): void => {
 			const n = node as unknown as NativeNode;
 			n.styleCache = style;
@@ -401,6 +405,7 @@ export function createNativeHost(): NativeHost {
 				else if (n.view !== null) { niViewSetTag(n.view, n.eventTag); }
 			}
 			eventRegistry.add(n.eventTag, name, handler);
+			if (name === "onPress" && n.view !== null) { niViewSetPressable(n.view); }
 			if (name === "onLayout" && layoutNodes.indexOf(n) < 0) { layoutNodes.push(n); }
 		},
 		append: (parent: HostNode, child: HostNode): void => {

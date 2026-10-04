@@ -7,7 +7,7 @@ import { Row, makeRow } from "../render/reconcile";
 import { NeonEvent } from "../render/event";
 import { Host } from "../render/hostTypes";
 import { Style } from "../render/style";
-import { ScrollView, ScrollViewHandle, View } from "./primitives";
+import { ScrollView, ScrollViewHandle, View, KeyboardDismissMode, KeyboardShouldPersistTaps } from "./primitives";
 import { CellMetrics, CellRange, WindowScroll, computeWindowedRenderLimits } from "./list/virtualizeUtils";
 import { CellRenderMask } from "./list/cellRenderMask";
 import { CellSource, ListMetricsAggregator, ListOrientation } from "./list/listMetrics";
@@ -47,7 +47,6 @@ export interface ScrollToEndOptions {
 const DEFAULT_THRESHOLD_PX = 2;
 const ON_EDGE_REACHED_EPSILON = 0.001;
 
-const VERTICAL: ListOrientation = { horizontal: false, rtl: false };
 
 class ListCell {
 	index: number = -1;
@@ -68,18 +67,25 @@ export class FlatListHandle {
 	private offsetOf: (index: number) => number;
 	private count: () => number;
 	private viewport: () => number;
+	private horizontal: () => boolean;
 
-	constructor(scroll: ScrollViewHandle, frameOf: (index: number) => CellMetrics, offsetOf: (index: number) => number, count: () => number, viewport: () => number) {
+	constructor(scroll: ScrollViewHandle, frameOf: (index: number) => CellMetrics, offsetOf: (index: number) => number, count: () => number, viewport: () => number, horizontal: () => boolean) {
 		this.scroll = scroll;
 		this.frameOf = frameOf;
 		this.offsetOf = offsetOf;
 		this.count = count;
 		this.viewport = viewport;
+		this.horizontal = horizontal;
+	}
+
+	private moveTo(offset: number, animated: boolean): void {
+		const horizontal = this.horizontal();
+		this.scroll.scrollTo({ x: horizontal ? offset : 0, y: horizontal ? 0 : offset, animated });
 	}
 
 	scrollToOffset(options: ScrollToOffsetOptions): void {
 		const { offset, animated = true } = options;
-		this.scroll.scrollTo({ y: offset, animated });
+		this.moveTo(offset, animated);
 	}
 
 	scrollToIndex(options: ScrollToIndexOptions): void {
@@ -90,7 +96,7 @@ export class FlatListHandle {
 		if (index >= n) { throw `scrollToIndex out of range: requested index ${index} is out of 0 to ${n - 1}`; }
 		const frame = this.frameOf(Math.floor(index));
 		const offset = Math.max(0, this.offsetOf(index) - viewPosition * (this.viewport() - frame.length)) - viewOffset;
-		this.scroll.scrollTo({ y: offset, animated });
+		this.moveTo(offset, animated);
 	}
 
 	scrollToEnd(options: ScrollToEndOptions): void {
@@ -98,7 +104,7 @@ export class FlatListHandle {
 		const n = this.count();
 		if (n === 0) { return; }
 		const frame = this.frameOf(n - 1);
-		this.scroll.scrollTo({ y: Math.max(0, frame.offset + frame.length - this.viewport()), animated });
+		this.moveTo(Math.max(0, frame.offset + frame.length - this.viewport()), animated);
 	}
 }
 
@@ -114,6 +120,20 @@ export function FlatList<T>(props: {
 	onScroll?: ((e: NeonEvent) => void) | null;
 	onLayout?: ((e: NeonEvent) => void) | null;
 	scrollEventThrottle?: Accessor<number> | null;
+	horizontal?: Accessor<boolean> | null;
+	scrollEnabled?: Accessor<boolean> | null;
+	showsHorizontalScrollIndicator?: Accessor<boolean> | null;
+	showsVerticalScrollIndicator?: Accessor<boolean> | null;
+	pagingEnabled?: Accessor<boolean> | null;
+	keyboardDismissMode?: Accessor<KeyboardDismissMode> | null;
+	keyboardShouldPersistTaps?: Accessor<KeyboardShouldPersistTaps> | null;
+	onScrollBeginDrag?: ((e: NeonEvent) => void) | null;
+	onScrollEndDrag?: ((e: NeonEvent) => void) | null;
+	onMomentumScrollBegin?: ((e: NeonEvent) => void) | null;
+	onMomentumScrollEnd?: ((e: NeonEvent) => void) | null;
+	onRefresh?: (() => void) | null;
+	refreshing?: Accessor<boolean> | null;
+	onContentSizeChange?: ((width: number, height: number) => void) | null;
 	style?: Accessor<Style> | null;
 	contentContainerStyle?: Accessor<Style> | null;
 	ref?: ((handle: FlatListHandle) => void) | null;
@@ -132,6 +152,9 @@ export function FlatList<T>(props: {
 	const userScroll = props.onScroll;
 	const userLayout = props.onLayout;
 	const userRef = props.ref;
+	const horizontal = props.horizontal;
+	const isHorizontal = (): boolean => horizontal !== null && (horizontal as () => boolean)();
+	const orientation = (): ListOrientation => ({ horizontal: isHorizontal(), rtl: false });
 
 	let items: T[] = [];
 	const metrics = new ListMetricsAggregator<T>();
@@ -184,7 +207,7 @@ export function FlatList<T>(props: {
 
 	const spacerCell = (): ListCell => {
 		const [size, setSize] = createSignal<number>(0);
-		return new ListCell((index: number): void => {}, (next: number): void => { setSize(next); }, (): NeonNode => element(<View style={{ height: size() }} />));
+		return new ListCell((index: number): void => {}, (next: number): void => { setSize(next); }, (): NeonNode => element(<View style={{ width: isHorizontal() ? size() : null, height: isHorizontal() ? null : size(), flexShrink: 0 }} />));
 	};
 
 	const itemCell = (item: T, index: number): ListCell => {
@@ -275,17 +298,19 @@ export function FlatList<T>(props: {
 
 	const onScroll = (e: NeonEvent): void => {
 		if (userScroll !== null) { (userScroll as (e: NeonEvent) => void)(e); }
-		offset = e.y;
-		visibleLength = e.height;
+		offset = isHorizontal() ? e.x : e.y;
+		visibleLength = isHorizontal() ? e.width : e.height;
 		refresh();
 	};
 	const onLayout = (e: NeonEvent): void => {
-		visibleLength = e.height;
+		visibleLength = isHorizontal() ? e.width : e.height;
 		if (userLayout !== null) { (userLayout as (e: NeonEvent) => void)(e); }
 		refresh();
 	};
 	const onContentSizeChange = (width: number, height: number): void => {
-		metrics.notifyListContentLayout(VERTICAL, width, height);
+		metrics.notifyListContentLayout(orientation(), width, height);
+		const changed = props.onContentSizeChange;
+		if (changed !== null) { (changed as (width: number, height: number) => void)(width, height); }
 		refresh();
 	};
 	const scrollRef = (h: ScrollViewHandle): void => {
@@ -296,6 +321,7 @@ export function FlatList<T>(props: {
 			(index: number): number => metrics.getCellOffsetApprox(index, source),
 			(): number => items.length,
 			(): number => visibleLength,
+			isHorizontal,
 		));
 	};
 
@@ -304,5 +330,11 @@ export function FlatList<T>(props: {
 	return ScrollView({
 		style: props.style, contentContainerStyle: props.contentContainerStyle, class: null,
 		scrollEventThrottle: props.scrollEventThrottle, onScroll, onLayout, onContentSizeChange, ref: scrollRef, children: rows,
+		horizontal: props.horizontal, scrollEnabled: props.scrollEnabled,
+		showsHorizontalScrollIndicator: props.showsHorizontalScrollIndicator, showsVerticalScrollIndicator: props.showsVerticalScrollIndicator,
+		pagingEnabled: props.pagingEnabled, keyboardDismissMode: props.keyboardDismissMode, keyboardShouldPersistTaps: props.keyboardShouldPersistTaps,
+		onScrollBeginDrag: props.onScrollBeginDrag, onScrollEndDrag: props.onScrollEndDrag,
+		onMomentumScrollBegin: props.onMomentumScrollBegin, onMomentumScrollEnd: props.onMomentumScrollEnd,
+		onRefresh: props.onRefresh, refreshing: props.refreshing,
 	});
 }

@@ -19,6 +19,7 @@ export interface NativeEventRegistry {
 	remove: (tag: int32) => void;
 	dispatch: (tag: int32, phase: int32, x: number, y: number) => boolean;
 	scroll: (tag: int32, x: number, y: number, width: number, height: number, contentWidth: number, contentHeight: number) => boolean;
+	scrollPhase: (tag: int32, phase: int32, x: number, y: number, width: number, height: number, contentWidth: number, contentHeight: number) => boolean;
 	layout: (tag: int32, x: number, y: number, width: number, height: number) => boolean;
 }
 
@@ -91,12 +92,22 @@ export function createNativeEventRegistry(): NativeEventRegistry {
 		return false;
 	}
 
-	function scroll(tag: int32, x: number, y: number, width: number, height: number, contentWidth: number, contentHeight: number): boolean {
+
+	function scrollPhase(tag: int32, phase: int32, x: number, y: number, width: number, height: number, contentWidth: number, contentHeight: number): boolean {
 		if (!byTag.has(tag)) { return false; }
+		const type = match (phase) {
+			0 => "scroll",
+			1 => "scrollbegindrag",
+			2 => "scrollenddrag",
+			3 => "momentumscrollbegin",
+			4 => "momentumscrollend",
+			5 => "refresh",
+			_ => "",
+		};
 		let fired = false;
 		for (const route of byTag.get(tag) as NativeEventRoute[]) {
-			if (eventType(route.name) !== "scroll") { continue; }
-			const event = neonEvent("scroll");
+			if (eventType(route.name) !== type) { continue; }
+			const event = neonEvent(type);
 			event.x = x;
 			event.y = y;
 			event.width = width;
@@ -107,6 +118,9 @@ export function createNativeEventRegistry(): NativeEventRegistry {
 			fired = true;
 		}
 		return fired;
+	}
+	function scroll(tag: int32, x: number, y: number, width: number, height: number, contentWidth: number, contentHeight: number): boolean {
+		return scrollPhase(tag, 0, x, y, width, height, contentWidth, contentHeight);
 	}
 
 	function layout(tag: int32, x: number, y: number, width: number, height: number): boolean {
@@ -125,5 +139,5 @@ export function createNativeEventRegistry(): NativeEventRegistry {
 		return fired;
 	}
 
-	return { add, remove, dispatch, scroll, layout };
+	return { add, remove, dispatch, scroll, scrollPhase, layout };
 }

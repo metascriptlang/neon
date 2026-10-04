@@ -6,10 +6,13 @@ import { element } from "../../src/macros/ui/element";
 import { Text, View } from "../../src/components/primitives";
 import { FlatList, FlatListHandle, ItemLayout, ListRenderItemInfo } from "../../src/components/flatList";
 import { sleepAsync } from "std/core/promise";
+import { Accessor, accessor } from "../../src/core/signal";
 
 extern class HTMLElement {
 	textContent: string;
 	scrollTop: number;
+	scrollLeft: number;
+	scrollWidth: number;
 	scrollHeight: number;
 	lastElementChild: HTMLElement;
 	extern remove(): void;
@@ -63,5 +66,26 @@ test "a 10000-row FlatList mounts a window, keeps the full scroll height and fol
 	assert text.includes("<3000>") && !text.includes("<1000>"), "the window moved to row 3000";
 	assert text.includes("<0>") && text.includes("<9>"), "the first initialNumToRender rows stay for scroll-to-top";
 	assert rowsIn(text) < 200, "still a window after the move: " + rowsIn(text).toString();
+	scroller.remove();
+}
+
+const horizontal: Accessor<boolean> = accessor((): boolean => true);
+const horizontalListStyle: Style = { width: 300, height: 100 };
+const horizontalRowStyle: Style = { width: ROW, height: 100, flexShrink: 0 };
+
+test "horizontal FlatList virtualizes on x and retains its complete scroll width" {
+	const handles: FlatListHandle[] = [];
+	const dispose = render(element(<FlatList data={items(10000)} horizontal={horizontal} style={horizontalListStyle} getItemLayout={fixed}
+		ref={(h: FlatListHandle): void => { handles.push(h); }}
+		renderItem={(info: ListRenderItemInfo<Item>): NeonNode => <View style={horizontalRowStyle}><Text>{"<" + info.item.n.toString() + ">"}</Text></View>} />), domHost(), documentBody());
+	await sleepAsync(100);
+	const scroller = (documentBody() as unknown as HTMLElement).lastElementChild;
+	assert scroller.scrollWidth === 10000 * ROW, "spacers preserve every row's width";
+	handles[0].scrollToIndex({ index: 3000, animated: false });
+	await sleepAsync(200);
+	assert scroller.scrollLeft === 3000 * ROW && scroller.scrollTop === 0, "index scroll uses x only";
+	assert scroller.textContent.includes("<3000>") && !scroller.textContent.includes("<1000>"), "the horizontal window follows the viewport";
+	assert rowsIn(scroller.textContent) < 200, "only the render window remains mounted";
+	dispose();
 	scroller.remove();
 }

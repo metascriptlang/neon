@@ -206,6 +206,9 @@ export class ScrollViewHandle {
 	}
 }
 
+export type KeyboardDismissMode = "none" | "on-drag" | "interactive";
+export type KeyboardShouldPersistTaps = "never" | "always" | "handled";
+
 interface ScrollViewProps {
 	style?: Accessor<Style> | null;
 	contentContainerStyle?: Accessor<Style> | null;
@@ -215,6 +218,19 @@ interface ScrollViewProps {
 	scrollEventThrottle?: Accessor<number> | null;
 	onLayout?: ((e: NeonEvent) => void) | null;
 	onContentSizeChange?: ((width: number, height: number) => void) | null;
+	horizontal?: Accessor<boolean> | null;
+	scrollEnabled?: Accessor<boolean> | null;
+	showsHorizontalScrollIndicator?: Accessor<boolean> | null;
+	showsVerticalScrollIndicator?: Accessor<boolean> | null;
+	pagingEnabled?: Accessor<boolean> | null;
+	keyboardDismissMode?: Accessor<KeyboardDismissMode> | null;
+	keyboardShouldPersistTaps?: Accessor<KeyboardShouldPersistTaps> | null;
+	onScrollBeginDrag?: ((e: NeonEvent) => void) | null;
+	onScrollEndDrag?: ((e: NeonEvent) => void) | null;
+	onMomentumScrollBegin?: ((e: NeonEvent) => void) | null;
+	onMomentumScrollEnd?: ((e: NeonEvent) => void) | null;
+	onRefresh?: (() => void) | null;
+	refreshing?: Accessor<boolean> | null;
 	children?: NeonNode | null;
 }
 
@@ -223,10 +239,38 @@ interface ScrollViewProps {
 const EVERY_FRAME_MS = 16;
 
 // RN ScrollView.js styles.baseVertical, composed under the author's style.
-const SCROLL_BASE: Style = { flexGrow: 1, flexShrink: 1, flexDirection: "column", overflow: "scroll" };
+const SCROLL_BASE: Style = { display: "flex", flexGrow: 1, flexShrink: 1, flexDirection: "column", overflow: "scroll" };
+const SCROLL_HORIZONTAL: Style = { display: "flex", flexGrow: 1, flexShrink: 1, flexDirection: "row", overflow: "scroll" };
 
 export function ScrollView(props: ScrollViewProps): NeonNode {
 	const evts: VEvent[] = [];
+	const attrs: VAttr[] = [];
+	const horizontal = props.horizontal;
+	if (horizontal !== null) { attrs.push(dynAttr("horizontal", (): string | null => `${(horizontal as () => boolean)()}`)); }
+	const enabled = props.scrollEnabled;
+	if (enabled !== null) { attrs.push(dynAttr("scrollEnabled", (): string | null => `${(enabled as () => boolean)()}`)); }
+	const horizontalIndicator = props.showsHorizontalScrollIndicator;
+	if (horizontalIndicator !== null) { attrs.push(dynAttr("showsHorizontalScrollIndicator", (): string | null => `${(horizontalIndicator as () => boolean)()}`)); }
+	const verticalIndicator = props.showsVerticalScrollIndicator;
+	if (verticalIndicator !== null) { attrs.push(dynAttr("showsVerticalScrollIndicator", (): string | null => `${(verticalIndicator as () => boolean)()}`)); }
+	const paging = props.pagingEnabled;
+	if (paging !== null) { attrs.push(dynAttr("pagingEnabled", (): string | null => `${(paging as () => boolean)()}`)); }
+	const dismiss = props.keyboardDismissMode;
+	if (dismiss !== null) { attrs.push(dynAttr("keyboardDismissMode", (): string | null => (dismiss as () => string)())); }
+	const taps = props.keyboardShouldPersistTaps;
+	if (taps !== null) { attrs.push(dynAttr("keyboardShouldPersistTaps", (): string | null => (taps as () => string)())); }
+	const refreshing = props.refreshing;
+	if (refreshing !== null) { attrs.push(dynAttr("refreshing", (): string | null => `${(refreshing as () => boolean)()}`)); }
+	if (props.onScrollBeginDrag !== null) { evts.push(evt("onScrollBeginDrag", props.onScrollBeginDrag as (e: NeonEvent) => void)); }
+	if (props.onScrollEndDrag !== null) { evts.push(evt("onScrollEndDrag", props.onScrollEndDrag as (e: NeonEvent) => void)); }
+	if (props.onMomentumScrollBegin !== null) { evts.push(evt("onMomentumScrollBegin", props.onMomentumScrollBegin as (e: NeonEvent) => void)); }
+	if (props.onMomentumScrollEnd !== null) { evts.push(evt("onMomentumScrollEnd", props.onMomentumScrollEnd as (e: NeonEvent) => void)); }
+	const refresh = props.onRefresh;
+	if (refresh !== null && refreshing === null) { throw "ScrollView: refreshing must be provided with onRefresh"; }
+	if (refresh !== null) {
+		attrs.push(dynAttr("refreshEnabled", (): string | null => "true"));
+		evts.push(evt("onRefresh", (e: NeonEvent): void => { (refresh as () => void)(); }));
+	}
 	if (props.onScroll !== null) {
 		const user = props.onScroll as (e: NeonEvent) => void;
 		const throttle = props.scrollEventThrottle;
@@ -243,9 +287,14 @@ export function ScrollView(props: ScrollViewProps): NeonNode {
 	}
 	if (props.onLayout !== null) { evts.push(evt("onLayout", props.onLayout as (e: NeonEvent) => void)); }
 	const sizeChange = props.onContentSizeChange;
+	const userContentStyle = props.contentContainerStyle;
+	const contentStyle: Accessor<Style> = accessor((): Style => {
+		const base: Style = { display: "flex", flexShrink: 0, flexDirection: horizontal !== null && (horizontal as () => boolean)() ? "row" : "column" };
+		return userContentStyle === null ? base : layerStyles([base, (userContentStyle as () => Style)()]);
+	});
 	const content = sizeChange === null
-		? element(<view style={props.contentContainerStyle}>{props.children}</view>)
-		: element(<view style={props.contentContainerStyle} onLayout={(e: NeonEvent): void => { (sizeChange as (width: number, height: number) => void)(e.width, e.height); }}>{props.children}</view>);
+		? element(<view style={contentStyle}>{props.children}</view>)
+		: element(<view style={contentStyle} onLayout={(e: NeonEvent): void => { (sizeChange as (width: number, height: number) => void)(e.width, e.height); }}>{props.children}</view>);
 	const userRef = props.ref;
 	const inner: NeonNode = (host: Host, node: HostNode, before: HostNode | null): void => {
 		content(host, node, before);
@@ -256,10 +305,11 @@ export function ScrollView(props: ScrollViewProps): NeonNode {
 		}
 	};
 	const userStyle = props.style;
-	const style: Accessor<Style> = userStyle === null
-		? accessor((): Style => SCROLL_BASE)
-		: accessor((): Style => layerStyles([SCROLL_BASE, (userStyle as () => Style)()]));
-	return primitive("scrollview", { style, class: props.class, ref: null }, [], evts, inner);
+	const style: Accessor<Style> = accessor((): Style => {
+		const base = horizontal !== null && (horizontal as () => boolean)() ? SCROLL_HORIZONTAL : SCROLL_BASE;
+		return userStyle === null ? base : layerStyles([base, (userStyle as () => Style)()]);
+	});
+	return primitive("scrollview", { style, class: props.class, ref: null }, attrs, evts, inner);
 }
 
 interface TextInputProps extends InteractiveProps {

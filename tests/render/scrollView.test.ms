@@ -3,6 +3,7 @@ import { element } from "../../src/macros/ui/element";
 import { NeonEvent, neonEvent } from "../../src/render/event";
 import { HostNode, MockNode, mockNode, mockHost, render, mockToString, fireEvent, fireEventWith } from "../../src/render/host";
 import { ScrollView, ScrollViewHandle, Text, Pressable } from "../../src/components/primitives";
+import { createSignal } from "../../src/core/signal";
 
 function scrollEvent(x: number, y: number, width: number, height: number, contentWidth: number, contentHeight: number): NeonEvent {
 	const e = neonEvent("scroll");
@@ -139,4 +140,45 @@ test "a press the host cancels for a scroll does not fire onPress" {
 	fireEventWith(sv, "onScroll", scrollEvent(0, 30, 320, 480, 320, 2000));
 	fireEvent(row, "onPointerUp");
 	assert log === "in;scroll;", "no press after the cancel: " + log;
+}
+
+test "reactive horizontal switches both container and content direction without remounting rows" {
+	const [horizontal, setHorizontal] = createSignal(false);
+	const root = mockNode("root");
+	const dispose = render(element(<ScrollView horizontal={horizontal()}><Text>same row</Text></ScrollView>), mockHost(), root as unknown as HostNode);
+	const scroll = root.children[0];
+	const content = scroll.children[0];
+	const row = content.children[0];
+	setHorizontal(true);
+	assert scroll.style!.flexDirection === "row" && content.style!.flexDirection === "row", "horizontal outer and content use RN row direction";
+	assert root.children[0] === scroll && content.children[0] === row, "axis change preserves the mounted row";
+	setHorizontal(false);
+	assert scroll.style!.flexDirection === "column" && content.style!.flexDirection !== "row", "vertical restores the original content convention";
+	dispose();
+}
+
+test "drag and momentum handlers bypass scroll throttling and carry the final offset" {
+	const root = mockNode("root");
+	let seen = "";
+	render(element(<ScrollView scrollEventThrottle={60000}
+		onScroll={(e: NeonEvent): void => { seen += "scroll;"; }}
+		onScrollBeginDrag={(e: NeonEvent): void => { seen += `begin${e.y};`; }}
+		onScrollEndDrag={(e: NeonEvent): void => { seen += `end${e.y};`; }}
+		onMomentumScrollBegin={(e: NeonEvent): void => { seen += `momentum${e.y};`; }}
+		onMomentumScrollEnd={(e: NeonEvent): void => { seen += `settled${e.y};`; }} />), mockHost(), root as unknown as HostNode);
+	const scroll = root.children[0];
+	fireEventWith(scroll, "onScrollBeginDrag", scrollEvent(0, 0, 300, 400, 300, 1200));
+	fireEventWith(scroll, "onScroll", scrollEvent(0, 10, 300, 400, 300, 1200));
+	fireEventWith(scroll, "onScroll", scrollEvent(0, 20, 300, 400, 300, 1200));
+	fireEventWith(scroll, "onScrollEndDrag", scrollEvent(0, 20, 300, 400, 300, 1200));
+	fireEventWith(scroll, "onMomentumScrollBegin", scrollEvent(0, 20, 300, 400, 300, 1200));
+	fireEventWith(scroll, "onMomentumScrollEnd", scrollEvent(0, 200, 300, 400, 300, 1200));
+	assert seen === "begin0;scroll;end20;momentum20;settled200;", "throttling never suppresses a boundary event: " + seen;
+}
+
+test "refresh requests require a controlled refreshing prop" {
+	let error = "";
+	try { ScrollView({ onRefresh: (): void => {} }); }
+	catch (e) { error = e.toString(); }
+	assert error.includes("refreshing"), "a refresh handler cannot leave an uncontrolled native indicator";
 }

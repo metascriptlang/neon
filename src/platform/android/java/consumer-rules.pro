@@ -4,6 +4,5 @@
 }
 
 -keep class dev.metascript.neon.Scroll {
-	<init>(int);
-	native <methods>;
+	*;
 }

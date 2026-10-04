@@ -338,3 +338,23 @@ test "onLayout reaches the author before the window moves, as React Native order
 	assert seen === "500 c0-9 sp499500", "VirtualizedList._onLayout calls props.onLayout, then schedules the window: " + seen;
 	assert shape(root) === "c0-109 sp494500", "then the window opens: " + shape(root);
 }
+
+test "horizontal FlatList uses width and x for its window and every imperative offset" {
+	const horizontal: Accessor<boolean> = accessor((): boolean => true);
+	const root = mockNode("root");
+	const handles: FlatListHandle[] = [];
+	render(element(<FlatList data={items(100)} getItemLayout={tall50} horizontal={horizontal}
+		ref={(h: FlatListHandle): void => { handles.push(h); }} renderItem={(info: ListRenderItemInfo<Item>): NeonNode => row(info)} />), mockHost(), root as unknown as HostNode);
+	const viewport = layoutEvent(80);
+	viewport.width = 200;
+	fireEventWith(scrollView(root), "onLayout", viewport);
+	const dimensions = layoutEvent(80);
+	dimensions.width = 5000;
+	fireEventWith(content(root), "onLayout", dimensions);
+	handles[0].scrollToIndex({ index: 40, viewPosition: 0.5, animated: false });
+	assert scrollView(root).scrollX === 1925 && scrollView(root).scrollY === 0, "centres on the horizontal viewport";
+	handles[0].scrollToOffset({ offset: 123, animated: false });
+	assert scrollView(root).scrollX === 123 && scrollView(root).scrollY === 0, "offset moves only x";
+	handles[0].scrollToEnd({ animated: false });
+	assert scrollView(root).scrollX === 4800 && scrollView(root).scrollY === 0, "end subtracts viewport width";
+}

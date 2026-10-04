@@ -11,7 +11,7 @@ import { FlatList, ItemLayout, ListRenderItemInfo } from "../../src/components/f
 import {
 	nmViewsCreated, nmReleaseCalls, nmTouch, nmTeardown, nmMount, nmResize, nmScroll, nmLastScrollTag,
 	nmContentWidth, nmContentHeight, nmScrolledX, nmScrolledY, nmScrolledAnimated, nmContentSizeWrites,
-	nmScrollFrameWrites, nmScreenHeightReads,
+	nmScrollFrameWrites, nmScreenHeightReads, nmDrag, nmPull,
 } from "./nativeBridgeMock.h";
 
 const PRESS: int32 = 2;
@@ -194,3 +194,15 @@ test "a ScrollView with no style fits its parent instead of growing to its conte
 	nmTeardown();
 	assert got === "800", "the scroll view's height in an 800-high screen: " + got;
 }
+
+test "horizontal content measures on the x axis" {
+	const app = (): NeonNode => <ScrollView horizontal={true}>
+		<View style={{ width: 300, height: 100 }} />
+		<View style={{ width: 300, height: 100 }} />
+		<View style={{ width: 300, height: 100 }} />
+	</ScrollView>;
+	runApp(app);
+	assert nmContentWidth() === 900, "three 300-wide children share one horizontal row";
+	nmTeardown();
+}
+

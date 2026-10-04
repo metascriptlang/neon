@@ -14,6 +14,7 @@ typedef struct {
 // --- views ---
 void *niViewCreate(void);
 void  niViewSetTag(void *view, int32_t tag);
+void  niViewSetPressable(void *view);
 void *niTextCreate(void);
 void  niAddChild(void *parent, void *child);
 void  niRemoveFromParent(void *child);
@@ -26,6 +27,7 @@ void *niScrollCreate(void);
 void  niScrollSetTag(void *scroll, int32_t tag);
 void  niScrollSetContentSize(void *scroll, float w, float h);
 void  niScrollTo(void *scroll, float x, float y, int animated);
+void  niScrollSetOption(void *scroll, const char *name, const char *value);
 
 // --- text ---
 void  niSetText(void *label, const char *s);
@@ -44,6 +46,7 @@ int  niLastTouchTag(void);
 int  niLastTouchPhase(void); // 0 = down, 1 = up, 2 = press, 3 = cancel
 void  niSetScrollHandler(msClosure handler);
 int   niLastScrollTag(void);
+int   niLastScrollPhase(void); // 0 scroll, 1 begin drag, 2 end drag, 3 momentum begin, 4 momentum end, 5 refresh
 float niLastScrollX(void);
 float niLastScrollY(void);
 float niLastScrollWidth(void);

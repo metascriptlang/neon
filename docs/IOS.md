@@ -399,3 +399,32 @@ targeted grep; gaps ~`:195-330, :675-745, :960-1130` sampled only), `src/core/yo
 templates, the `platforms/ios/` example output tree. The reference's iOS `CLAUDE.md`
 mentions `NeonSetButtonCallback` (`:25, :79`) — no counterpart exists in code (stale doc).
 Nothing above rests on an unverified region.
+
+## 9. RN scrolling protocol — 2026-10-04
+
+The portable surface is `ScrollViewProps` in `src/components/primitives.ms` and `FlatList`
+in `src/components/flatList.ms`. The adapter uses the existing Host attribute/event channels
+and UIKit's native scroll properties and delegate phases; it adds no Host capability.
+
+Reference anchors: RN `ScrollView.js` keyboard contracts and bounce defaults,
+`RCTScrollViewComponentView.mm` user-offset preservation, and `RefreshControl.js`
+`_onRefresh` / `componentDidUpdate`. A native refresh gesture does not override the
+controlled value: leaving it false stops the indicator immediately. The browser rejects
+interactive keyboard dismissal explicitly; Android treats it as none, as RN documents.
+
+On source/test tree `d4f1963637acf2db1276453aaa99c44582797ed2`, compiler/support
+`7a4af78c9` (deployment recorded at 13:17), the Ion-generated
+`examples/list/ios/project.ms` and `examples/flatlist/ios/project.ms` Debug applications
+were installed on the Wi-Fi-connected iPhone 13 Pro (`00008110-001411093CEA801E`).
+`CounterUITests/ListUITests` and `CounterUITests/FlatListUITests` passed through
+`xcodebuild test -project tests/ios/counter.xcodeproj -scheme CounterUITests` with that
+device destination. FlatList had 93 rows in the initial tree and 187 after index 5000;
+press state survived rotation and Home/resume without a PID change.
+
+The phone suites exercise vertical lists. Native horizontal gestures, refresh,
+keyboard capture and reactive axis replacement were not exercised by those suites.
+The real-Chrome per-module lane passed 12 ScrollView and 2 FlatList cases, including
+horizontal geometry, paging, controlled refresh and disposal. The normal bundled
+FlatList app remains compiler-blocked by duplicate struct-copy helpers:
+`~/metascript/.inbox/compiler/2026-10-04-js-bundle-duplicates-struct-value-copy-helpers.md`.
+Per-module test artifacts are not proof of that bundled consumer.

@@ -19,6 +19,7 @@ static msClosure s_resize;
 static msClosure s_teardown;
 static msClosure s_scroll;
 static MockView s_container;
+static int g_scrollPhase;
 static int g_lastTag = 0;
 static int g_lastPhase = 0;
 static int g_created = 0;
@@ -58,6 +59,7 @@ static void *create(float size) {
 
 void *niViewCreate(void) { return create(0); }
 void *niTextCreate(void) { return create(17); }
+void niViewSetPressable(void *view) { live(view, "niViewSetPressable"); }
 void niViewSetTag(void *view, int32_t tag) {
 	MockView *v = live(view, "niViewSetTag");
 	if (v->isScroll) {
@@ -94,8 +96,14 @@ void niScrollTo(void *view, float x, float y, int animated) {
 	g_scrolledAnimated = animated;
 }
 
+void niScrollSetOption(void *view, const char *name, const char *value) {
+	(void)name; (void)value;
+	live(view, "niScrollSetOption");
+}
+
 void niSetScrollHandler(msClosure handler) { s_scroll = handler; }
 int niLastScrollTag(void) { return g_scrollTag; }
+int niLastScrollPhase(void) { return g_scrollPhase; }
 float niLastScrollX(void) { return g_scrollX; }
 float niLastScrollY(void) { return g_scrollY; }
 float niLastScrollWidth(void) { return g_scrollW; }
@@ -114,7 +122,8 @@ static int g_scrollFrameWrites = 0;
 
 void niSetFrame(void *view, float x, float y, float w, float h) {
 	(void)x; (void)y; (void)w; (void)h;
-	if (live(view, "niSetFrame")->isScroll) g_scrollFrameWrites++;
+	MockView *v = live(view, "niSetFrame");
+	if (v->isScroll) g_scrollFrameWrites++;
 }
 
 void niSetBackgroundColor(void *view, float r, float g, float b, float a) {
@@ -191,6 +200,7 @@ void nmResize(float width, float height) {
 
 void nmScroll(int32_t tag, float x, float y, float width, float height, float contentWidth, float contentHeight) {
 	g_scrollTag = tag;
+	g_scrollPhase = 0;
 	g_scrollX = x;
 	g_scrollY = y;
 	g_scrollW = width;
@@ -209,3 +219,4 @@ int32_t nmScrolledAnimated(void) { return g_scrolledAnimated; }
 int32_t nmContentSizeWrites(void) { return g_contentWrites; }
 int32_t nmScrollFrameWrites(void) { return g_scrollFrameWrites; }
 int32_t nmScreenHeightReads(void) { return g_screenHeightReads; }
+

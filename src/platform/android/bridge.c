@@ -17,6 +17,7 @@ static int g_lastTag;
 static int g_lastPhase;
 static int g_scrollTag;
 static float g_scrollX, g_scrollY, g_scrollW, g_scrollH, g_scrollContentW, g_scrollContentH;
+static int g_scrollPhase;
 
 static jobject g_root;
 static jobject g_container;
@@ -29,8 +30,8 @@ static float g_measuredH;
 
 static struct {
 	jclass view, viewGroup, frameLayout, layoutParams, textView, gradientDrawable, integer, touch;
-	jclass scrollView, scroll;
-	jmethodID scrollViewInit, scrollInit, viewSetOnScrollChangeListener, viewScrollTo, scrollViewSmoothScrollTo, scrollViewFling;
+	jclass scroll;
+	jmethodID scrollInit, scrollSetTag, scrollSetOption, scrollSetContentSize, scrollTo, scrollAddContent, scrollDispose, viewSetClickable;
 	jmethodID viewGetParent, viewSetLayoutParams, viewSetAlpha, viewGetBackground, viewSetBackground;
 	jmethodID viewMeasure, viewGetMeasuredWidth, viewGetMeasuredHeight, viewSetTag, viewGetRootWindowInsets;
 	jmethodID viewSetOnTouchListener, touchInit;
@@ -98,14 +99,15 @@ static void cacheJni(JNIEnv *e) {
 	J.gradientDrawable = globalClass(e, "android/graphics/drawable/GradientDrawable");
 	J.integer = globalClass(e, "java/lang/Integer");
 	J.touch = globalClass(e, "dev/metascript/neon/Touch");
-	J.scrollView = globalClass(e, "android/widget/ScrollView");
 	J.scroll = globalClass(e, "dev/metascript/neon/Scroll");
-	J.scrollViewInit = method(e, J.scrollView, "<init>", "(Landroid/content/Context;)V");
-	J.scrollInit = method(e, J.scroll, "<init>", "(I)V");
-	J.viewSetOnScrollChangeListener = method(e, J.view, "setOnScrollChangeListener", "(Landroid/view/View$OnScrollChangeListener;)V");
-	J.viewScrollTo = method(e, J.view, "scrollTo", "(II)V");
-	J.scrollViewSmoothScrollTo = method(e, J.scrollView, "smoothScrollTo", "(II)V");
-	J.scrollViewFling = method(e, J.scrollView, "fling", "(I)V");
+	J.scrollInit = method(e, J.scroll, "<init>", "(Landroid/content/Context;)V");
+	J.scrollSetTag = method(e, J.scroll, "setNeonTag", "(I)V");
+	J.scrollSetOption = method(e, J.scroll, "setOption", "(Ljava/lang/String;Ljava/lang/String;)V");
+	J.scrollSetContentSize = method(e, J.scroll, "setContentSize", "(II)V");
+	J.scrollTo = method(e, J.scroll, "neonScrollTo", "(IIZ)V");
+	J.scrollAddContent = method(e, J.scroll, "addContent", "(Landroid/view/View;)V");
+	J.scrollDispose = method(e, J.scroll, "dispose", "()V");
+	J.viewSetClickable = method(e, J.view, "setClickable", "(Z)V");
 
 	J.viewGetParent = method(e, J.view, "getParent", "()Landroid/view/ViewParent;");
 	J.viewSetLayoutParams = method(e, J.view, "setLayoutParams", "(Landroid/view/ViewGroup$LayoutParams;)V");
@@ -319,10 +321,11 @@ JNIEXPORT jboolean JNICALL Java_dev_metascript_neon_Touch_touch(JNIEnv *e, jclas
 	return JNI_TRUE;
 }
 
-JNIEXPORT void JNICALL Java_dev_metascript_neon_Scroll_scroll(JNIEnv *e, jclass cls, jint tag, jint x, jint y, jint width, jint height, jint contentWidth, jint contentHeight) {
+JNIEXPORT void JNICALL Java_dev_metascript_neon_Scroll_scroll(JNIEnv *e, jclass cls, jint tag, jint phase, jint x, jint y, jint width, jint height, jint contentWidth, jint contentHeight) {
 	(void)e;
 	(void)cls;
 	g_scrollTag = tag;
+	g_scrollPhase = phase;
 	g_scrollX = x / g_density;
 	g_scrollY = y / g_density;
 	g_scrollW = width / g_density;
@@ -341,6 +344,7 @@ int niLastTouchTag(void) { return g_lastTag; }
 int niLastTouchPhase(void) { return g_lastPhase; }
 void niSetScrollHandler(msClosure handler) { s_scroll = handler; }
 int niLastScrollTag(void) { return g_scrollTag; }
+int niLastScrollPhase(void) { return g_scrollPhase; }
 float niLastScrollX(void) { return g_scrollX; }
 float niLastScrollY(void) { return g_scrollY; }
 float niLastScrollWidth(void) { return g_scrollW; }
@@ -387,47 +391,52 @@ void niViewSetTag(void *view, int32_t tag) {
 	(*e)->DeleteLocalRef(e, listener);
 }
 
+void niViewSetPressable(void *view) {
+	JNIEnv *e = env();
+	(*e)->CallVoidMethod(e, (jobject)view, J.viewSetClickable, JNI_TRUE);
+	check(e, "setClickable");
+}
+
 void *niScrollCreate(void) {
-	return newView(J.scrollView, J.scrollViewInit);
+	return newView(J.scroll, J.scrollInit);
 }
 
 void niScrollSetTag(void *scroll, int32_t tag) {
 	JNIEnv *e = env();
-	jobject boxed = (*e)->CallStaticObjectMethod(e, J.integer, J.integerValueOf, tag);
-	(*e)->CallVoidMethod(e, (jobject)scroll, J.viewSetTag, boxed);
-	check(e, "setTag");
-	(*e)->DeleteLocalRef(e, boxed);
-	jobject listener = (*e)->NewObject(e, J.scroll, J.scrollInit, tag);
-	check(e, "Scroll");
-	(*e)->CallVoidMethod(e, (jobject)scroll, J.viewSetOnScrollChangeListener, listener);
-	check(e, "setOnScrollChangeListener");
-	(*e)->DeleteLocalRef(e, listener);
+	(*e)->CallVoidMethod(e, (jobject)scroll, J.scrollSetTag, tag);
+	check(e, "setNeonTag");
+}
+
+void niScrollSetOption(void *scroll, const char *name, const char *value) {
+	JNIEnv *e = env();
+	jstring key = (*e)->NewStringUTF(e, name);
+	jstring val = (*e)->NewStringUTF(e, value);
+	(*e)->CallVoidMethod(e, (jobject)scroll, J.scrollSetOption, key, val);
+	check(e, "setOption");
+	(*e)->DeleteLocalRef(e, key);
+	(*e)->DeleteLocalRef(e, val);
 }
 
 void niScrollSetContentSize(void *scroll, float w, float h) {
-	// android.widget.ScrollView takes its scroll range from its child's layout params.
-	(void)scroll;
-	(void)w;
-	(void)h;
+	JNIEnv *e = env();
+	(*e)->CallVoidMethod(e, (jobject)scroll, J.scrollSetContentSize, px(w), px(h));
+	check(e, "setContentSize");
 }
 
 void niScrollTo(void *scroll, float x, float y, int animated) {
 	JNIEnv *e = env();
-	if (animated) {
-		(*e)->CallVoidMethod(e, (jobject)scroll, J.scrollViewSmoothScrollTo, px(x), px(y));
-	} else {
-		// React Native aborts the running fling (ReactScrollViewManager.kt:228). A fling(0) started after
-		// scrollTo replaces it at the new offset; started before, it would hold the old one.
-		(*e)->CallVoidMethod(e, (jobject)scroll, J.viewScrollTo, px(x), px(y));
-		(*e)->CallVoidMethod(e, (jobject)scroll, J.scrollViewFling, 0);
-	}
-	check(e, "scrollTo");
+	(*e)->CallVoidMethod(e, (jobject)scroll, J.scrollTo, px(x), px(y), animated ? JNI_TRUE : JNI_FALSE);
+	check(e, "neonScrollTo");
 }
 
 void niAddChild(void *parent, void *child) {
 	JNIEnv *e = env();
 	detach(e, (jobject)child);
-	(*e)->CallVoidMethod(e, (jobject)parent, J.groupAddView, (jobject)child);
+	if ((*e)->IsInstanceOf(e, (jobject)parent, J.scroll)) {
+		(*e)->CallVoidMethod(e, (jobject)parent, J.scrollAddContent, (jobject)child);
+	} else {
+		(*e)->CallVoidMethod(e, (jobject)parent, J.groupAddView, (jobject)child);
+	}
 	check(e, "addView");
 }
 
@@ -436,7 +445,14 @@ void niRemoveFromParent(void *child) {
 }
 
 void niViewRelease(void *view) {
-	if (view) (*env())->DeleteGlobalRef(env(), (jobject)view);
+	if (view) {
+		JNIEnv *e = env();
+		if ((*e)->IsInstanceOf(e, (jobject)view, J.scroll)) {
+			(*e)->CallVoidMethod(e, (jobject)view, J.scrollDispose);
+			check(e, "dispose scroll");
+		}
+		(*e)->DeleteGlobalRef(e, (jobject)view);
+	}
 }
 
 void niSetFrame(void *view, float x, float y, float w, float h) {

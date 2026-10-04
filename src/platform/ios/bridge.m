@@ -1,11 +1,14 @@
 #import <UIKit/UIKit.h>
 #import <Foundation/Foundation.h>
 #include "../native/bridge.h"
+#include <string.h>
 
 static msClosure s_mount;
 static msClosure s_touch;
 static msClosure s_resize;
 static msClosure s_scroll;
+static msClosure s_teardown;
+static int g_scrollPhase = 0;
 static int g_lastTag = 0;
 static int g_scrollTag = 0;
 static float g_scrollX = 0, g_scrollY = 0, g_scrollW = 0, g_scrollH = 0, g_scrollContentW = 0, g_scrollContentH = 0;
@@ -23,6 +26,7 @@ static void call0(msClosure c) {
 // Touch-forwarding view: every phase of a touch fires the one handler, with
 // the tag + phase readable via niLastTouchTag/Phase.
 @interface NeonTouchView : UIView
+@property (nonatomic) BOOL neonHandlesPress;
 @end
 
 @implementation NeonTouchView
@@ -52,13 +56,30 @@ static void call0(msClosure c) {
 
 @end
 
-@interface NeonScrollView : UIScrollView <UIScrollViewDelegate>
+static UIView *focusedInput(UIView *view) {
+	if (view.isFirstResponder && ([view isKindOfClass:UITextField.class] || [view isKindOfClass:UITextView.class])) return view;
+	for (UIView *child in view.subviews) {
+		UIView *focused = focusedInput(child);
+		if (focused) return focused;
+	}
+	return nil;
+}
+
+@interface NeonScrollView : UIScrollView <UIScrollViewDelegate, UIGestureRecognizerDelegate>
+@property (nonatomic) NSInteger neonPersistTaps;
+@property (nonatomic, strong) UITapGestureRecognizer *neonKeyboardTap;
+@property (nonatomic) BOOL neonRefreshingDesired;
 - (void)neonSetContentSize:(CGSize)size;
+- (void)neonEmit:(int)phase;
+- (void)neonSetRefreshing:(BOOL)refreshing;
+- (void)neonRefresh:(UIRefreshControl *)control;
 @end
 
 @implementation NeonScrollView {
 	BOOL _isUserTriggeredScrolling;
 	BOOL _isSetContentOffsetDisabled;
+	BOOL _keyboardVisible;
+	BOOL _refreshingProgrammatically;
 }
 
 - (instancetype)initWithFrame:(CGRect)frame {
@@ -67,39 +88,111 @@ static void call0(msClosure c) {
 		self.delegate = self;
 		self.delaysContentTouches = NO;
 		self.contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentNever;
-		// React Native's vertical ScrollView default (ScrollView.js: alwaysBounceVertical = !horizontal).
 		self.alwaysBounceVertical = YES;
+		_neonKeyboardTap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(neonDismissKeyboard:)];
+		_neonKeyboardTap.delegate = self;
+		[self addGestureRecognizer:_neonKeyboardTap];
+		[[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(neonKeyboardFrame:) name:UIKeyboardWillChangeFrameNotification object:nil];
+		[[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(neonKeyboardHidden:) name:UIKeyboardWillHideNotification object:nil];
 	}
 	return self;
 }
 
-// React Native keeps a drag's offset while the content size changes under it
-// (RCTScrollViewComponentView.mm _preserveContentOffsetIfNeededWithBlock, RCTEnhancedScrollView.mm).
+- (void)dealloc { [[NSNotificationCenter defaultCenter] removeObserver:self]; }
+- (void)neonKeyboardFrame:(NSNotification *)notification {
+	CGRect frame = [notification.userInfo[UIKeyboardFrameEndUserInfoKey] CGRectValue];
+	CGRect screen = self.window ? self.window.screen.bounds : UIScreen.mainScreen.bounds;
+	_keyboardVisible = CGRectIntersectsRect(screen, frame) && CGRectGetHeight(CGRectIntersection(screen, frame)) > 0;
+}
+- (void)neonKeyboardHidden:(NSNotification *)notification { _keyboardVisible = NO; }
+
+- (void)layoutSubviews {
+	[super layoutSubviews];
+	if (_neonRefreshingDesired && !_refreshingProgrammatically && self.window && self.refreshControl && !self.refreshControl.isRefreshing) {
+		_refreshingProgrammatically = YES;
+		[self.refreshControl sizeToFit];
+		CGFloat height = self.refreshControl.bounds.size.height;
+		[self setContentOffset:CGPointMake(self.contentOffset.x, self.contentOffset.y - height) animated:NO];
+		[self.refreshControl beginRefreshing];
+	}
+}
+
+- (void)neonSetRefreshing:(BOOL)refreshing {
+	self.neonRefreshingDesired = refreshing;
+	if (refreshing) { [self setNeedsLayout]; return; }
+	if (_refreshingProgrammatically && self.contentOffset.y < -self.contentInset.top) {
+		[self setContentOffset:CGPointMake(self.contentOffset.x, -self.contentInset.top) animated:NO];
+	}
+	_refreshingProgrammatically = NO;
+	[self.refreshControl endRefreshing];
+}
+
+- (BOOL)gestureRecognizer:(UIGestureRecognizer *)recognizer shouldReceiveTouch:(UITouch *)touch {
+	if (recognizer != _neonKeyboardTap) return YES;
+	if (_neonPersistTaps == 1 || !_keyboardVisible || !focusedInput(self.window)) return NO;
+	BOOL handled = NO;
+	for (UIView *target = touch.view; target && target != self; target = target.superview) {
+		if ([target isKindOfClass:UITextField.class] || [target isKindOfClass:UITextView.class]) return NO;
+		if ([target isKindOfClass:UIControl.class] || ([target isKindOfClass:NeonTouchView.class] && ((NeonTouchView *)target).neonHandlesPress)) handled = YES;
+	}
+	return _neonPersistTaps == 0 || !handled;
+}
+
+- (void)neonDismissKeyboard:(UITapGestureRecognizer *)recognizer {
+	if (recognizer.state == UIGestureRecognizerStateEnded) [self.window endEditing:YES];
+}
+
+// RN Fabric preserves the actual user offset during content-size and frame writes.
 - (void)setContentOffset:(CGPoint)contentOffset {
-	if (_isSetContentOffsetDisabled) return;
-	[super setContentOffset:contentOffset];
+	if (!_isSetContentOffsetDisabled) [super setContentOffset:contentOffset];
+}
+
+- (void)setFrame:(CGRect)frame {
+	BOOL previous = _isSetContentOffsetDisabled;
+	_isSetContentOffsetDisabled = _isUserTriggeredScrolling;
+	[super setFrame:frame];
+	_isSetContentOffsetDisabled = previous;
 }
 
 - (void)neonSetContentSize:(CGSize)size {
-	if (!_isUserTriggeredScrolling) {
-		self.contentSize = size;
-		return;
-	}
-	_isSetContentOffsetDisabled = YES;
+	if (CGSizeEqualToSize(self.contentSize, size)) return;
+	BOOL previous = _isSetContentOffsetDisabled;
+	_isSetContentOffsetDisabled = _isUserTriggeredScrolling;
 	self.contentSize = size;
-	_isSetContentOffsetDisabled = NO;
+	_isSetContentOffsetDisabled = previous;
+}
+
+- (void)neonEmit:(int)phase {
+	if (self.tag == 0) return;
+	g_scrollTag = (int)self.tag;
+	g_scrollPhase = phase;
+	g_scrollX = (float)self.contentOffset.x;
+	g_scrollY = (float)self.contentOffset.y;
+	g_scrollW = (float)self.bounds.size.width;
+	g_scrollH = (float)self.bounds.size.height;
+	g_scrollContentW = (float)self.contentSize.width;
+	g_scrollContentH = (float)self.contentSize.height;
+	call0(s_scroll);
 }
 
 - (void)scrollViewWillBeginDragging:(UIScrollView *)scrollView {
 	_isUserTriggeredScrolling = YES;
+	[self neonEmit:1];
 }
 
 - (void)scrollViewDidEndDragging:(UIScrollView *)scrollView willDecelerate:(BOOL)decelerate {
-	if (!decelerate) _isUserTriggeredScrolling = NO;
+	[self neonEmit:2];
+	if (decelerate) [self neonEmit:3];
+	else _isUserTriggeredScrolling = NO;
 }
 
 - (void)scrollViewDidEndDecelerating:(UIScrollView *)scrollView {
 	_isUserTriggeredScrolling = NO;
+	[self neonEmit:4];
+}
+
+- (void)scrollViewDidEndScrollingAnimation:(UIScrollView *)scrollView {
+	[self neonEmit:4];
 }
 
 - (BOOL)scrollViewShouldScrollToTop:(UIScrollView *)scrollView {
@@ -113,21 +206,14 @@ static void call0(msClosure c) {
 
 - (void)didMoveToWindow {
 	[super didMoveToWindow];
-	if (!self.window && (self.isDecelerating || !self.isTracking)) _isUserTriggeredScrolling = NO;
+	if (!self.window) _isUserTriggeredScrolling = NO;
 }
 
-- (void)scrollViewDidScroll:(UIScrollView *)scrollView {
-	if (self.tag == 0) return;
-	g_scrollTag = (int)self.tag;
-	g_scrollX = (float)scrollView.contentOffset.x;
-	g_scrollY = (float)scrollView.contentOffset.y;
-	g_scrollW = (float)scrollView.bounds.size.width;
-	g_scrollH = (float)scrollView.bounds.size.height;
-	g_scrollContentW = (float)scrollView.contentSize.width;
-	g_scrollContentH = (float)scrollView.contentSize.height;
-	call0(s_scroll);
+- (void)scrollViewDidScroll:(UIScrollView *)scrollView { [self neonEmit:0]; }
+- (void)neonRefresh:(UIRefreshControl *)control {
+	[self neonEmit:5];
+	if (!self.neonRefreshingDesired) [control endRefreshing];
 }
-
 @end
 
 @interface NeonVC : UIViewController
@@ -166,6 +252,8 @@ static void call0(msClosure c) {
 	[self.window makeKeyAndVisible];
 	return YES;
 }
+
+- (void)applicationWillTerminate:(UIApplication *)application { call0(s_teardown); }
 @end
 
 void niRegisterApp(msClosure mount) {
@@ -219,13 +307,22 @@ void niViewSetTag(void *view, int32_t tag) {
 	UIView *v = (__bridge UIView *)view;
 	v.tag = tag;
 }
+
+void niViewSetPressable(void *view) {
+	UIView *v = (__bridge UIView *)view;
+	if ([v isKindOfClass:NeonTouchView.class]) ((NeonTouchView *)v).neonHandlesPress = YES;
+}
 void niRemoveFromParent(void *child) {
 	UIView *c = (__bridge UIView *)child;
 	[c removeFromSuperview];
 }
 
 void niViewRelease(void *view) {
-	if (view) CFRelease((CFTypeRef)view);
+	if (view) {
+		UIView *v = (__bridge UIView *)view;
+		if ([v isKindOfClass:NeonScrollView.class]) { ((NeonScrollView *)v).delegate = nil; v.tag = 0; }
+		CFRelease((CFTypeRef)view);
+	}
 }
 
 void niSetFrame(void *view, float x, float y, float w, float h) {
@@ -247,11 +344,43 @@ void niScrollSetContentSize(void *scroll, float w, float h) {
 	[s neonSetContentSize:CGSizeMake(w, h)];
 }
 
+void niScrollSetOption(void *scroll, const char *name, const char *value) {
+	NeonScrollView *s = (__bridge NeonScrollView *)scroll;
+	BOOL yes = strcmp(value, "true") == 0;
+	BOOL defaultYes = value[0] == '\0' || yes;
+	if (strcmp(name, "horizontal") == 0) {
+		s.alwaysBounceHorizontal = yes;
+		s.alwaysBounceVertical = !yes;
+	} else if (strcmp(name, "scrollEnabled") == 0) s.scrollEnabled = defaultYes;
+	else if (strcmp(name, "showsHorizontalScrollIndicator") == 0) s.showsHorizontalScrollIndicator = defaultYes;
+	else if (strcmp(name, "showsVerticalScrollIndicator") == 0) s.showsVerticalScrollIndicator = defaultYes;
+	else if (strcmp(name, "pagingEnabled") == 0) s.pagingEnabled = yes;
+	else if (strcmp(name, "keyboardDismissMode") == 0) {
+		s.keyboardDismissMode = strcmp(value, "interactive") == 0 ? UIScrollViewKeyboardDismissModeInteractive :
+			strcmp(value, "on-drag") == 0 ? UIScrollViewKeyboardDismissModeOnDrag : UIScrollViewKeyboardDismissModeNone;
+	} else if (strcmp(name, "keyboardShouldPersistTaps") == 0) {
+		s.neonPersistTaps = strcmp(value, "always") == 0 ? 1 : strcmp(value, "handled") == 0 ? 2 : 0;
+	} else if (strcmp(name, "refreshEnabled") == 0) {
+		if (yes && !s.refreshControl) {
+			UIRefreshControl *control = [[UIRefreshControl alloc] init];
+			[control addTarget:s action:@selector(neonRefresh:) forControlEvents:UIControlEventValueChanged];
+			s.refreshControl = control;
+		} else if (!yes) s.refreshControl = nil;
+	} else if (strcmp(name, "refreshing") == 0) {
+		if (!s.refreshControl && yes) {
+			s.refreshControl = [[UIRefreshControl alloc] init];
+			[s.refreshControl addTarget:s action:@selector(neonRefresh:) forControlEvents:UIControlEventValueChanged];
+		}
+		[s neonSetRefreshing:yes];
+	}
+}
+
 void niScrollTo(void *scroll, float x, float y, int animated) {
-	UIScrollView *s = (__bridge UIScrollView *)scroll;
+	NeonScrollView *s = (__bridge NeonScrollView *)scroll;
 	CGFloat maxX = MAX(0, s.contentSize.width - s.bounds.size.width);
 	CGFloat maxY = MAX(0, s.contentSize.height - s.bounds.size.height);
 	CGPoint to = CGPointMake(MIN(MAX(0, x), maxX), MIN(MAX(0, y), maxY));
+	if (animated && !CGPointEqualToPoint(s.contentOffset, to)) [s neonEmit:3];
 	[s setContentOffset:to animated:animated != 0];
 }
 
@@ -312,6 +441,7 @@ void niSetScrollHandler(msClosure handler) {
 }
 
 int niLastScrollTag(void) { return g_scrollTag; }
+int niLastScrollPhase(void) { return g_scrollPhase; }
 float niLastScrollX(void) { return g_scrollX; }
 float niLastScrollY(void) { return g_scrollY; }
 float niLastScrollWidth(void) { return g_scrollW; }
@@ -320,5 +450,5 @@ float niLastScrollContentWidth(void) { return g_scrollContentW; }
 float niLastScrollContentHeight(void) { return g_scrollContentH; }
 
 void niSetTeardownHandler(msClosure handler) {
-	(void)handler;
+	s_teardown = handler;
 }
