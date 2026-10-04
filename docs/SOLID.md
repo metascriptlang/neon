@@ -13,8 +13,8 @@ Audited 2026-09-21 against `src/core/` (8 files, 553 lines) and `src/render/`.
 `createSignal` · `createEffect` · `createMemo` · `createRoot` · `onCleanup` · `untrack` · `batch` ·
 `runWithOwner` · `getOwner` · owner tree with scoped cleanup · a two-lane queue that drains pure
 computations before effects, so no downstream effect reads a stale memo · `createContext` /
-`useContext` on the owner walk with a value thunk, so signals inside a context value track per
-consumer · `createComponent` running the body untracked · `mapArray` / `indexArray` ·
+`useContext` on context entries every owner inherits, with a value thunk, so signals inside a
+context value track per consumer · `createComponent` running the body untracked · `mapArray` / `indexArray` ·
 `<Show>` / `<For>` / `<Index>` · `renderToString`.
 
 ## Missing
