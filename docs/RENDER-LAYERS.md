@@ -36,6 +36,8 @@ nextSibling(node)                    // list reconciliation
 
 Each platform implements `Host`. The reconciler never knows what a "node" really is — a `UIView`, a DOM `Node`, or a Void `Node2D`. `mockHost()` (`host.ms:97`) is a ~50-line in-memory reference implementation.
 
+`HostNode` is `unknown` (`src/render/hostTypes.ms`), and each host's node is a class (`MockNode`, `NativeNode`, `TerminalNode`; the extern `Node` in `src/platform/browser/dom.ms`). A host reads its own node back with a cast the compiler tests, so a node from another host stops the program with `invalid object conversion` instead of reading foreign memory. `Handle<T>` (`std/ffi`, keeps an object alive while C holds its address) is not used: no Neon object is handed to C — native callbacks are closures registered once (`niSetTouchHandler` in `src/platform/ios/bridge.m`), and native views are platform pointers.
+
 **This is the React host-config / R3F pattern, exactly:**
 - React = reconciler; ReactDOM / React Native / R3F = Host implementations over DOM / native / THREE.
 - Neon = reconciler; `neon-dom` / `neon-ios` / `neon-void` = Host implementations over DOM / UIKit / `Node2D`.
