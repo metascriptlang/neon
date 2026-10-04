@@ -1,6 +1,5 @@
 // Owner — disposal scope. createRoot establishes an owner whose dispose tears down every
-// computation created under it (cascading through the owned tree). It links to the owner it
-// was created under for the context walk, but stays out of that owner's `owned`.
+// computation created under it (cascading through the owned tree).
 
 import { Computation, Dispose, CompState } from "./types";
 import { getOwner, setOwner, getListener, setListener, cleanNode } from "./runtime";
@@ -15,7 +14,7 @@ export function createRoot<T>(fn: (dispose: Dispose) => T): T {
 		fn: noop, isRoot: true, state: CompState.Clean,
 		sources: [], sourceSlots: [],
 		pure: false, disposed: false,
-		owned: [], cleanups: [], owner: prevOwner, context: null, handler: null,
+		owned: [], cleanups: [], owner: prevOwner, context: prevOwner !== null ? prevOwner.context : null, handler: null,
 	};
 	setOwner(root);
 	setListener(null);

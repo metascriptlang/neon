@@ -11,6 +11,7 @@ export type ErrorHandler = (err: Error) => void;
 export interface ContextEntry {
 	key: unknown;
 	value: unknown;
+	next: ContextEntry | null;
 }
 
 // The observable half of the graph: a Signal's node, or a memo's own node.

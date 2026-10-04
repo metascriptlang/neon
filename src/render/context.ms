@@ -1,11 +1,3 @@
-// Context — createContext/useContext on the owner walk. A provider is a
-// transparent scope (Solid's createProvider): its node carries the context
-// entry and wraps the mount of its children, so consumers walk owner.owner
-// upward and the nearest enclosing provider wins; identity is the context
-// object itself. The entry stores the value thunk: every consumer read calls
-// it, so signals inside the value track per consumer — no re-render, the
-// Solid semantics our core already runs on.
-
 import { Accessor } from "../core/signal";
 import { Computation, CompState } from "../core/types";
 import { getOwner } from "../core/runtime";
@@ -31,11 +23,11 @@ function noop(): void {}
 
 export function useContext<T>(ctx: Context<T>): T {
 	const key: unknown = ctx;
-	let o = getOwner();
-	while (o !== null) {
-		const entry = o.context;
-		if (entry !== null && entry.key === key) { return (entry.value as Provided<T>).read(); }
-		o = o.owner;
+	const owner = getOwner();
+	let entry = owner !== null ? owner.context : null;
+	while (entry !== null) {
+		if (entry.key === key) { return (entry.value as Provided<T>).read(); }
+		entry = entry.next;
 	}
 	return ctx.defaultValue;
 }
@@ -47,7 +39,7 @@ function provideScope<T>(ctx: Context<T>, read: () => T, body: () => number): nu
 		fn: noop, isRoot: false, state: CompState.Clean,
 		sources: [], sourceSlots: [],
 		pure: false, disposed: false,
-		owned: [], cleanups: [], owner: parent, context: { key: ctx as unknown, value: new Provided<T>(read) }, handler: null,
+		owned: [], cleanups: [], owner: parent, context: { key: ctx as unknown, value: new Provided<T>(read), next: parent !== null ? parent.context : null }, handler: null,
 	};
 	if (parent !== null) { parent.owned.push(scope); }
 	return runWithOwner(scope, body);
