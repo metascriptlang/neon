@@ -23,7 +23,7 @@ Nim → MetaScript module map plus the design decisions taken along the way.
 | reactive core | signal / effect / memo / owner / cleanup / runtime / array — green |
 | render layer | hostTypes / node / bind / template / reconcile / component / context / ssr / host — green, and NOT in the Nim original (cleaner split) |
 | macros | `element` (JSX → NeonNode, incl. Babel whitespace rules) + `flow` (Show/For/Index) |
-| hosts | browser DOM (JS, partial) · terminal (green) · **void / Node2D + yoga flexbox (green)** |
+| hosts | browser DOM (JS, partial) · terminal (green) · void: written against Void's deleted `Node2D`, does not build on Void's `main` (`BUGS.md` §3) |
 | yoga | DONE — binding lives in `~/metascript/yoga`, `deps/yoga` symlinks a real checkout |
 
 ### What is LEFT — none of it is compiler-blocked

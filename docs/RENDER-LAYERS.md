@@ -34,13 +34,13 @@ addEvent(node, name, handler)        // input wiring
 nextSibling(node)                    // list reconciliation
 ```
 
-Each platform implements `Host`. The reconciler never knows what a "node" really is — a `UIView`, a DOM `Node`, or a Void `Node2D`. `mockHost()` (`host.ms:97`) is a ~50-line in-memory reference implementation.
+Each platform implements `Host`. The reconciler never knows what a "node" really is — a `UIView`, a DOM `Node`, or a row of a Void `Scene2D`. `mockHost()` (`host.ms:97`) is a ~50-line in-memory reference implementation.
 
 `HostNode` is `unknown` (`src/render/hostTypes.ms`), and each host's node is a class (`MockNode`, `NativeNode`, `TerminalNode`; the extern `Node` in `src/platform/browser/dom.ms`). A host reads its own node back with a cast the compiler tests, so a node from another host stops the program with `invalid object conversion` instead of reading foreign memory. `Handle<T>` (`std/ffi`, keeps an object alive while C holds its address) is not used: no Neon object is handed to C — native callbacks are closures registered once (`niSetTouchHandler` in `src/platform/ios/bridge.m`), and native views are platform pointers.
 
 **This is the React host-config / R3F pattern, exactly:**
 - React = reconciler; ReactDOM / React Native / R3F = Host implementations over DOM / native / THREE.
-- Neon = reconciler; `neon-dom` / `neon-ios` / `neon-void` = Host implementations over DOM / UIKit / `Node2D`.
+- Neon = reconciler; `neon-dom` / `neon-ios` / `neon-void` = Host implementations over DOM / UIKit / void2d's `Scene2D`.
 
 No reconciler ever lives in a renderer. Void does not build a reconciler — it implements `Host`.
 
@@ -51,7 +51,7 @@ No reconciler ever lives in a renderer. Void does not build a reconciler — it 
 | **iOS native** | Neon | **Core Animation** (CALayer tree, render server) ◀ borrowed | **Metal** ◀ borrowed | `UIView` / `CALayer` |
 | **Android native** | Neon | **RenderNode tree / HardwareRenderer** ◀ borrowed | **GLES / Vulkan** ◀ borrowed | `android.view.View` |
 | **Browser DOM** | Neon | **browser engine** (Blink/WebKit layout + paint + composite) ◀ borrowed | browser GPU process ◀ borrowed | DOM `Node` |
-| **Void** (any OS) | Neon | **`void2d` walk** (`src/void2d/`) ◀ owned | **`sokol_gfx`** ◀ owned | `Node2D` |
+| **Void** (any OS) | Neon | **`void2d` walk** (`src/void2d/`) ◀ owned | **`sokol_gfx`** ◀ owned | `NodeRef`, a row of `Scene2D` |
 
 **Native modes are light** because B+C are the OS's — Neon contributes Layer A only and mutates native objects; the OS repaints every frame. **Void is heavy** because Void *is* the B+C renderer (the void2d scene walk + sokol GPU calls). Same Layer A on top; swappable B+C below the Host seam.
 
@@ -59,7 +59,7 @@ The retained-tree architectures mirror each other:
 
 ```
    iOS-native:        CALayer tree  →  Core Animation walk  →  Metal
-   Void:              Node2D tree   →  void2d walk           →  sokol_gfx
+   Void:              Scene2D rows  →  void2d walk           →  sokol_gfx
 ```
 
 Same 3-layer shape, different B+C supplier.
@@ -77,11 +77,11 @@ Void = the opt-in heavy backend for apps whose pixels the native B+C cannot prod
 
 ## Void as a native component — the boundary is built, the native hosts are not
 
-Void has a second role beside "the platform": **one native component among the others**. An iOS or Android app stays on the native host, with `View` and `Text` borrowed from UIKit and Android Views. One element in that tree is a Void view that owns a GPU surface and draws a `Node2D` tree into it. React Native gets the same thing from a GL or Skia canvas view. The two roles differ only in where the Void subtree starts:
+Void has a second role beside "the platform": **one native component among the others**. An iOS or Android app stays on the native host, with `View` and `Text` borrowed from UIKit and Android Views. One element in that tree is a Void view that owns a GPU surface and draws a `Scene2D` into it. React Native gets the same thing from a GL or Skia canvas view. The two roles differ only in where the Void subtree starts:
 
 ```
-   Void as platform:   Neon ─ voidHost ─ Node2D root = the whole window
-   Void as component:  Neon ─ iosHost ─ UIView ─ UIView ─ VoidView ─ Node2D root
+   Void as platform:   Neon ─ voidHost ─ Scene2D root = the whole window
+   Void as component:  Neon ─ iosHost ─ UIView ─ UIView ─ VoidView ─ Scene2D root
                                                └ UILabel
 ```
 
@@ -105,7 +105,7 @@ Inside a Void view there are only Void components: `Text` and `View` become void
 ## What this means per repo
 
 - **Neon** (`~/metascript/neon`) owns **Layer A** and the **Host contract**. It contains no B+C code. Adding a platform = implementing `Host` + binding to that platform's B+C (native objects, or Void).
-- **Void** (`~/metascript/void`) owns **Layers B+C** and the embed drivers a host drives. The Host adapter that lets Neon's Layer A drive `Node2D` lives on Neon's side, in `src/platform/void/host.ms`. Void-standalone uses B+C without Layer A (imperative).
+- **Void** (`~/metascript/void`) owns **Layers B+C** and the embed drivers a host drives. The Host adapter that lets Neon's Layer A drive a `Scene2D` through `NodeRef` binders lives on Neon's side, in `src/platform/void/host.ms`; it is still written against the deleted `Node2D` and does not build on Void's `main` (`BUGS.md` §3). Void-standalone uses B+C without Layer A (imperative).
 - They meet only at the **Host interface**. No reconciler in Void; no renderer in Neon.
 
 ## Consequence for Layer B quality
