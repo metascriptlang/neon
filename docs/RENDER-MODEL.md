@@ -119,6 +119,11 @@ survived. A nested-fragment remount first failed by leaving old child nodes in
 the host. Using the reconciler's start-marker/range idiom and retaining the
 instance owner made that regression pass through three remounts and final
 subscription disposal.
+After the exclusive compiler gate handed back admission, the same six refresh
+cases passed on native C with the final runtime source:
+`msc test tests/render/refresh.test.ms`, 15 files / 304 tests including imported
+std tests, on the same installed build. This is a native mock-host control,
+not cross-image HCR or native-window callback proof.
 
 These are mock-host lifecycle measurements, not browser/Vite or native-window
 HCR proof. The expression-only transform experiment was rejected: a JS
