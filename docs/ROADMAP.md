@@ -46,40 +46,105 @@ dynamic branch to a static value. Detail and the refutation are in this file's h
 
 ---
 
-## Next
+## Next — app deliverability before full parity
 
-Feature work. The reactive core's own debt is tracked separately in `docs/SOLID.md`: eight
-concepts Solid has that Neon does not, each on a card under `~/metascript/.wt/solid-*.md`.
+Approved 2026-10-05: "chốt hướng, đi rồi mình sẽ bắt tay vào làm trong session mới".
+The goal is an app author completing an ordinary app, not cloning the RN or Flutter catalog.
+“20/80” is a prioritization hypothesis based on screen reach, not measured API coverage,
+implementation size, or a promise that 80% of apps already work.
 
-| # | work | state | size |
+Keep the RN component surface and Solid's fine-grained model. Borrow Flutter's app contracts
+where they expose missing behavior; do not import its widget-rebuild model. The order below
+supersedes the earlier style-first and full-list-parity-first order.
+
+| order | capability bundle | what it unlocks | owner / boundary |
 |---|---|---|---|
-| 2 | `{...props}` semantics, attribute classification, S1b projection caching | after phase 4 | medium |
-| 3 | bug 8 (`globalImports` cycle) so the four core style lists are generated from `STYLE_TABLE` instead of `tests/style/fields.sh` guarding five hand edits | compiler | medium |
-| 4 | `_hover` / `_before` / `_classNames`, then the Animation API | user-chosen 2026-08-18 | large |
-| 5 | RN components: Image, ScrollView, Button, Switch, FlatList, Modal, SafeAreaView | in flight: `.wt/rn-components.md` (ScrollView, FlatList first) | medium |
-| 7 | numbers in text and attribute slots, and how the macro asks for a type — PARKED on the compiler: `as<T>` and `valueOf` are being reworked in a parallel recompiler session (2026-09-19). Brief with every measurement: `~/metascript/.inbox/compiler/2026-09-19-design-typed-slots-value-read-and-text-coercion.md`; bug card beside it (`…-union-into-string-slot-accepted.md`). Measured there: `asString(this n: int32)` already carries a number into every `string` slot and chains after `valueOf`; the open question is scope. Decided by the user 2026-09-19: `null` and `boolean` children are to become displayable too, through the same general protocol or design, never through a Neon-only patch. When it settles: drop `isNumberTyped` / `asText` from `element.ms` (`07bb579`) if the language covers it, give attributes (`tabIndex={n}`) the same rule instead of copying the patch, replace the name matching in `isAccessorTyped` / `isNodeType`, sweep `{x() + ""}`. After any msc sync that touches the protocols run `bash tests/run.sh`: `tests/render/bareAccessor.test.ms` and the two "a numeric child renders as text" cells in `emit.test.ms` are the guard | waiting on compiler | small |
+| 1 | ordinary SDK consumption: normal browser bundles, named renderers, contextual props, signal types, typed text/attribute slots and public exports | app code written normally, without compiler-avoidance rewrites | compiler fixes only from recompiler; Neon validates real consumers and its public entrypoint |
+| 2 | native forms and app environment: TextInput, focus/IME/selection, text measurement/truncation, dimensions/insets/keyboard, lifecycle after mount | search, login, settings and property inspection | Neon components/hosts; runtime scheduling reuses std before any new Host timing API |
+| 3 | everyday UI: Image, Button, Switch, loading indicator, Modal/Portal; accessibility and keyboard/focus behavior included | content screens, forms, dialogs and menus | Neon; reuse Ion resource/packaging/runtime facilities rather than duplicating them |
+| 4 | real-data path: store/reconcile, resource loading/error/cancellation/lifetime; variable-height FlatList, timed batching, Header/Footer/Empty/Separator and scroll-to-index failure handling | refetched data keeps row identity; a feed does not require fixed-height rows | Solid concepts localized to MetaScript; shared list engine, not a second list convention |
+| 5 | developer loop and common feedback: build/run/deploy diagnostics with source locations, Neon refresh integration, opacity/transform/press feedback and common transitions | short iteration and understandable failures; responsive-feeling UI | compiler HCR and Ion foundations, Neon integration; no whole-engine animation port by default |
+
+A compiler-blocked item is reduced, recorded and parked; it is never “completed” by making
+the app author rewrite valid code. Continue reachable work in the next bundle while the
+owning compiler session fixes it. Shared-contract changes and genuinely new mechanisms
+retain their approval gates; this order does not grant land/push permissions.
+
+### Acceptance — three complete author workflows
+
+1. Data list → search → detail → edit/save form, with images, variable-height rows,
+   loading/error/empty states and normal source syntax.
+2. Settings with input, toggle, adaptive layout/theme, keyboard focus and screen-reader use.
+3. A Lightcube slice: select a node → edit a property → observe the canvas update without
+   losing state/focus. Pan/zoom, drag/resize, selection, clipboard and undo/redo remain
+   product priorities when required by that slice, even if not common mobile-core controls.
+
+Prove each workflow through its real consumer on the declared targets. A public symbol,
+mock pass or separate-module test artifact is not proof of the normal packaged app.
+The reactive concepts still owed live in `docs/SOLID.md`; they are dependencies of these
+workflows, not a separate checklist to finish before writing an app.
+
+### Reference and ownership constraints
+
+- RN's core catalog: `packages/react-native/index.js`, component exports and app/runtime APIs.
+  Navigation is a community library, not an omitted RN-core widget
+  ([RN navigation](https://reactnative.dev/docs/navigation)).
+- Flutter contracts: `packages/flutter/lib/src/widgets/editable_text.dart` `EditableText`,
+  `media_query.dart` `MediaQueryData`, `navigator.dart` `Navigator`, `overlay.dart` `Overlay`,
+  `async.dart` `FutureBuilder` / `StreamBuilder`, and `basic.dart` `Semantics`.
+- Development expectations: [RN Fast Refresh](https://reactnative.dev/docs/fast-refresh)
+  and [Flutter hot reload](https://docs.flutter.dev/tools/hot-reload). Existing compiler HCR
+  platform support and Neon integration boundaries are in `recompiler/docs/HCR.md`;
+  do not confuse the missing mobile/Neon integration with an absent HCR implementation.
+- Ion owns the implemented project generator and desktop runtime services:
+  `ion/docs/PROJECT-GENERATOR.md`, `ion/src/index.ms`. The older Neon generator design
+  is not authority for current implementation ownership.
+- Framework layers remain separate: Neon UI/reactivity, Ion runtime/packaging,
+  Void rendering, compiler language/toolchain, Lightcube editor/collaboration.
+  Camera/auth/storage and similar ecosystem domains enter through concrete consumers,
+  not a blanket RN/Flutter API-cloning requirement.
+
+### Carry-forward constraints
+
+The typed-slot protocol question is not dropped: see
+`~/metascript/.inbox/compiler/2026-09-19-design-typed-slots-value-read-and-text-coercion.md`.
+The author's `null` and boolean children use the same general protocol as numbers,
+not a Neon-only special case. Once the language covers it, remove `isNumberTyped` / `asText`,
+replace name-based type matching, and give attributes the same rule. Re-run the actual
+JSX consumers after a protocol sync.
+
+Do not restart implemented spread/classification or style-table generation from stale
+roadmap rows: inspect `tests/render/spread.test.ms` and `src/macros/style/fields.ms`.
+ErrorBoundary is existing; `docs/SOLID.md` owns its remaining concepts. Basic typography,
+runtime adaptation and accessibility precede more pseudo-state or animation machinery.
+
+Native std already supplies cancellable timers. A 2026-10-04 standalone C probe, using
+`setTimeout` then `msPoll(50)`, printed `native timer callbacks with runtime poll=1`;
+the inspected Neon native adapters and Ion loop had no dispatcher-pump calls. This
+isolates runtime timer existence, not a working UI integration. Read
+`std/core/system/index.ms`, `runtime/promise/dispatchFull.c` `msSetTimeout` / `msPoll`,
+and the platform UI loop before proposing a second timing API.
 
 ---
 
-## Later
+## Later — retained scope, not current prerequisites
 
-In rough priority order, once the above is standing:
-
-- breakpoints / media queries, and the runtime object (`rt`: insets, dimensions, orientation)
-- pseudo-states beyond variants — hover/focus join `when`, not a separate `states:` block
-- animation — the largest single module in the Nim original (~2055 LOC), deliberately last
-- from the Nim original and not yet ported: `resource` / `http` / `async` (the MS idiom is
-  `Promise<Result<T,E>>` + `try await`, not a port of the Nim shape), `error_boundary`, `config`
-- `VAttr.value: string | null` so `removeAttr` becomes reachable
-- Void as a native component beside `View`/`Text`: the iOS and Android hosts implement `Host.voidArea`, after
-  Mobile App Foundation (Next #1) (`RENDER-LAYERS.md` "Void as a native component")
+- Advanced lists/slivers: grouped sections, complex sticky/viewability behavior,
+  multiple columns, inverted/nested scrolling and full reference-case coverage.
+- Full Material/Cupertino-style catalogs, gesture arbitration, complex animation graphs
+  and pseudo-state surfaces beyond the common workflows.
+- SSR hydration/resource serialization when a real SSR consumer needs them.
+- Terminal parity and GPU embedding across every host; self-sizing Void Text remains
+  required for the applicable app/editor workflow, not silently removed.
 - Void's own vocabulary inside a Void area (`VISION.md` "Inside a Void area"): `Scene3D`, `Group`, `Mesh`,
   `Light`, `Camera3D` and the HUD over the scene on what Void has now; a `View` drawn into a texture on a mesh
   after Void's items in `void/docs/NEON.md`
-- a `Text` that sizes itself: labels take no part in yoga today, so a `Text` needs an explicit height in a
-  Void area; void2d's `TextLayout` is the measure a yoga measure callback would read
-- native timer for the void and terminal hosts (long-press runs on browser + mock only)
-- arrow-defined components and module-level snapshots under the phase-6 diagnostic
+- Mobile `<Void>`, desktop native vocabulary, multiple embeds, cross-boundary focus/
+  accessibility and shared frame behavior (`docs/VISION.md`, `docs/RENDER-LAYERS.md`).
+- Distribution/store acceptance through Ion; broader native-service/plugin domains
+  chosen from actual apps.
+- Editor/collaboration depth belongs to Lightcube. Preserve the canonical-source and
+  render-boundary goals without making all of them gates for ordinary Neon screens.
 
 ---
 
@@ -123,7 +188,7 @@ In rough priority order, once the above is standing:
   reactive `class` that froze at its first value on the whole vocabulary. Proved: `bash tests/run.sh`
   rc=0 — macros 17, apps 3, native 40, js 38 + 2 deliberate skips, browser 80/80;
   `msc build examples/counterDom.ms --target=js` and `msc run examples/counter.ms` rc=0. Left on the
-  compiler: `{a || <X/>}` (rides Next 7). BUGS §3 has the measurements.
+  compiler: `{a || <X/>}` (the typed-slot protocol work in the first bundle). BUGS §3 has the measurements.
 - **bare JSX catches up with `element(...)`** (2026-09-20) — after recompiler `0f1e6735`, `76a6a9bd`,
   `0b283fd4` reached the installed `msc` (`7f80b93b`). Every nullable slot (handler, ref, style,
   `Accessor<string> | null` attribute, `NeonNode | null` child) works in bare JSX; `Show` and `For` are in
@@ -174,7 +239,7 @@ In rough priority order, once the above is standing:
   `tests/render/press.test.ms` (8 cells, both lanes). A fix fell out: both macros wrapped EVERY
   non-string prop in a thunk, so `delayLongPress={200}` against a flat `number` field miscompiled
   on C — constants now cross RAW, which is what the call-based reactive law already implied.
-  Native hosts have no clock yet, so long press does not fire there (handed over, `~/metascript/.inbox/compiler/2026-09-20-neon-bugs-md-compiler-rows-handover.md`).
+  Native UI-loop integration remains unproven; std timers themselves exist (see the first bundle's carry-forward constraint). The older handover is `~/metascript/.inbox/compiler/2026-09-20-neon-bugs-md-compiler-rows-handover.md`.
 - **the universal component vocabulary** (2026-09-03, user decision — div/span are HTML-isms
   users must not meet) — `View`/`Text`/`TextInput`/`Pressable` are real components
   (`src/components/primitives.ms`, the createComponent seam) rendering lowercase WIRE tags; every host
