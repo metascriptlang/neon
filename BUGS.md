@@ -70,14 +70,14 @@ and the invariants that outlived them were moved to the head of the test that pi
   main `4e33c9e` with msc `013853dd` (2026-09-30); the Windows run on `2f306532` found it beside the
   test file. Not yet known whether msc moved it on purpose.
 
-- **PARKED 2026-10-03 — `tests/platform/void.test.ms`, `tests/platform/voidInput.test.ms` and
-  `tests/style/style.test.ms` do not compile on the native lane.** Not Neon's alone: on msc
-  `e5e932d0` with Void `8946ec1` (2026-10-03) Void's `Ptr<YGNode>` and `const` `Vec<T>` halves are
-  gone, and each file fails only on `cannot check a conversion from unknown to Node2D` — 14 sites in
-  `src/platform/void/host.ms` plus the tests' own casts — because Void's `Node2D` is an interface and
-  a cast out of `unknown` needs a class. Open with the person: Void makes `Node2D` a class (the idiom
-  of `MockNode`, `TerminalNode`, `NativeNode`), or Neon wraps each node at one allocation per node.
-  Parked at those three files.
+- **OPEN 2026-10-04 — `tests/platform/void.test.ms`, `tests/platform/voidInput.test.ms` and
+  `tests/style/style.test.ms` do not compile.** Neon's: `src/platform/void/host.ms` is written
+  against Void's `Node2D`, which Void deleted at P5 step 6; a Void node is now a row of `Scene2D`,
+  held as the struct `NodeRef` and written through binders. `msc check <file>` on msc `0f1ecc060`,
+  Void `5899f26`, Neon `349b3db` stops in each file on the host's casts out of `unknown` (24, 17 and
+  14 `cannot check a conversion from unknown`), on a `NodeRef` held as `unknown`, and on API Void
+  no longer has (`layoutStyle`, `fontId`, `label`'s colour argument). The rewrite onto a `VoidNode`
+  class that holds its `NodeRef` is `~/metascript/.wt/void-noderef-host.md`.
 
 - **PARKED 2026-10-03 — `(st.width ?? 0.0) === 320.0` does not compile.** Not Neon's: with
   `st.width: float32 | string | null` the fallback joins as a new `float64` member and the present
@@ -85,15 +85,6 @@ and the invariants that outlived them were moved to the head of the test that pi
   fails in clang. Card and the five-file matrix:
   `~/metascript/.inbox/compiler/2026-10-03-nullish-coalesce-union-into-its-superset-rejected.md`.
   Parked at `tests/platform/void.test.ms:78`, the "parseFlexStyle" cell.
-
-- **PARKED 2026-09-30 — `tests/style/theme.test.ms` and `tests/style/themeSwap.test.ms` do not
-  compile on the native lane.** Not Neon's: `createTheme` expands to `themeOf(<literal>, css)`, typed
-  `Theme<T>` with `type Theme<T> = T` (`src/macros/ui/theme.ms`), and msc `013853dd` reads the
-  returned object with `.` on a pointer, `member reference type '__anon3__sp2i__o5n__brands *' … is a
-  pointer`. The same on an export of main `4e33c9e`; neither file was in the known-red set of msc
-  `227ebc34`. Card, 9-line repro and controls:
-  `~/metascript/.inbox/compiler/2026-09-30-generic-alias-return-object-emits-dot-on-pointer.md`.
-  Parked at those two files; nothing in Neon changes.
 
 - **PARKED 2026-09-30 — `tests/platform/native.test.ms` dies at module load on the JS lane.** Not
   Neon's: Yoga `dba68fd` re-exports its enums from `Yoga.h`, and msc `013853dd` emits
