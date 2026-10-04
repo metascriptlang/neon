@@ -25,35 +25,10 @@ context value track per consumer · `createComponent` running the body untracked
 | 2 | **async** — `createResource`, `<Suspense>`, `startTransition` / `useTransition`, `lazy` | no async story at all. Needs a pending state on `Computation`, so the shape is decided early even if it ships late | `solid-async.md` |
 | 3 | ~~error channel — `catchError`, `<ErrorBoundary>`~~ | done `12a9456` (2026-09-22); since `00de615` (2026-09-25) the handler and the fallback receive the thrown `Error` itself, the same object on C and `--target=js` (`tests/render/errorBoundary.test.ms`). A thrown string arrives as an `Error` carrying it, and a thrown non-`Error` value is a compile error (recompiler `1debbcc8`) | ~~`solid-error-boundary.md`~~ |
 | 4 | **the third effect tier** — a deferred `createEffect`, and `onMount` | today's `createEffect` runs immediately, so it *is* Solid's `createRenderEffect`; nothing has a correct place to read a host node back | `solid-effect-tiers.md` |
-| 5 | `createSelector` — implemented on `wt/solid-selector`; land pending | keyed subscriptions in `src/core/selector.ms`; native nullable-source acceptance is compiler-blocked (below) | `solid-selector.md` |
+| 5 | `createSelector` | built (`src/core/selector.ms`, `tests/core/selector.test.ms`); open until a nullable source builds natively, `BUGS.md` §3 | `solid-selector.md` |
 | 6 | `equals` on `createSignal` | equality is hardcoded to identity, so a value mutated in place can never announce itself and there is no always-notify signal | `solid-signal-equals.md` |
 | 7 | `<Switch>` / `<Match>`, `<Dynamic>`, `<Portal>` | no n-way choice, no component-as-a-value, no mounting outside the subtree | `solid-control-flow.md` |
 | 8 | `hydrate`, `createUniqueId`, resource serialization | SSR produces markup but nothing can attach to it | `solid-hydrate.md` |
-
-## Selector acceptance, not yet landed
-
-Reference: Solid `packages/solid/src/reactive/signal.ts` `createSelector` (834–875).
-The keyed-subscription mechanism stays; using Neon's existing `Source` graph keeps
-subscription teardown in the same lifecycle instead of adding a second teardown system.
-Only changed matches notify their readers; all registered keys are still scanned.
-
-Measured 2026-10-04 on source/test tree `86b7d472389eeac078219aa031a78bfd6466ede7`,
-installed binary/support `7a4af78c9`, macOS on a shared machine:
-- `msc test --target=js tests/core/selector.test.ms`: all 11 cases pass. The native command
-  stops before runtime because std cannot hash `int32 | null`; no nullable case is skipped.
-  Earlier, before the identity and nullable boundaries were added, the initial 9 cases passed
-  C and JS on the same selector implementation. That is not a current full-native verdict.
-- `msc run out/selectorConsumer.ms` and its `--target=js` run mounted 1000 actual JSX rows:
-  first selection wrote one row class, moving 0 → 999 wrote two, disposal stopped writes.
-- `msc run out/selectorIdentity.ms` and its `--target=js` run kept three equal-field objects
-  distinct: moving to an unsubscribed object changed only the previously selected reader.
-- `msc build --target=js out/selectorBrowser.ms` plus real Chromium showed 1000 DOM rows,
-  row 0 then row 999 highlighted. Observed class mutations were only the leaving and entering
-  rows on both moves, with no page errors. These throwaway consumers were removed afterwards.
-
-Native acceptance is parked on
-`~/metascript/.inbox/compiler/2026-10-04-nullable-primitive-map-key-has-no-native-hash.md`.
-No full gate or land verdict; row 5 remains open until the original C/JS suite and land pass.
 
 ## Deliberately not taken
 
