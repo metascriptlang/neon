@@ -1,7 +1,3 @@
-// context — createContext/useContext: a provider pushes a value onto the
-// nearest-owner walk, consumers read it wherever they mount. Identity is the
-// context object itself; reactivity flows through signals inside the value.
-
 import { createSignal, accessor, Accessor } from "../../src/core/signal";
 import { element } from "../../src/macros/ui/element";
 import { NeonNode, text } from "../../src/render/node";
@@ -9,6 +5,9 @@ import { renderToString } from "../../src/render/ssr";
 import { Host, HostNode, MockNode, mockNode, mockHost, render, mockToString } from "../../src/render/host";
 import { createContext, useContext } from "../../src/render/context";
 import { onCleanup } from "../../src/core/cleanup";
+import { createRoot } from "../../src/core/owner";
+import { catchError } from "../../src/core/error";
+import { Dispose } from "../../src/core/types";
 import { For, Index, Show } from "../../src/macros/ui/flow";
 
 interface Theme { accent: string; }
@@ -271,4 +270,46 @@ test "a consumer's cleanup runs once when its provider's mount is disposed" {
 	const dispose = render(app, mockHost(), root as unknown as HostNode);
 	dispose();
 	assert cleanups === 1, "the child's cleanup ran once: " + cleanups.toString();
+}
+
+test "a root created under a provider reads it" {
+	const T = createContext<Theme>({ accent: "red" });
+	let seen = "";
+	const consumer: NeonNode = (host: Host, parent: HostNode, before: HostNode | null): void => {
+		createRoot((dispose: Dispose): number => {
+			seen = useContext(T).accent;
+			return 0;
+		});
+	};
+	const app: NeonNode = T.Provider({ value: accessor((): Theme => ({ accent: "blue" })), children: consumer });
+	render(app, mockHost(), mockNode("root") as unknown as HostNode);
+	assert seen === "blue", "the root saw the provider: " + seen;
+}
+
+test "a catchError scope under a provider reads it" {
+	const T = createContext<Theme>({ accent: "red" });
+	let seen = "";
+	const consumer: NeonNode = (host: Host, parent: HostNode, before: HostNode | null): void => {
+		catchError((): void => {
+			seen = useContext(T).accent;
+		}, (err: Error): void => {});
+	};
+	const app: NeonNode = T.Provider({ value: accessor((): Theme => ({ accent: "blue" })), children: consumer });
+	render(app, mockHost(), mockNode("root") as unknown as HostNode);
+	assert seen === "blue", "the catchError scope saw the provider: " + seen;
+}
+
+test "a provider of another context between does not hide the outer one" {
+	const A = createContext<Theme>({ accent: "red" });
+	const B = createContext<number>(0);
+	let seen = "";
+	let inner: number = -1;
+	const consumer: NeonNode = (host: Host, parent: HostNode, before: HostNode | null): void => {
+		seen = useContext(A).accent;
+		inner = useContext(B);
+	};
+	const middle: NeonNode = B.Provider({ value: accessor((): number => 7), children: consumer });
+	const app: NeonNode = A.Provider({ value: accessor((): Theme => ({ accent: "blue" })), children: middle });
+	render(app, mockHost(), mockNode("root") as unknown as HostNode);
+	assert seen === "blue" && inner === 7, "both providers answered: " + seen + " " + inner.toString();
 }
