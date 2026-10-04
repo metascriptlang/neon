@@ -735,6 +735,39 @@ Not fixed, and why: the subscription (mount) and the reactive-row footprint (rev
 `Accessor` row itself — dropping either means rows that carry bare `T`, which is the `<For>` surface,
 not a change inside this one.
 
+### 2026-10-04 — a provider's value on its owner, against typed slots on the context
+
+The shape (`src/render/context.ms`): a Provider's scope carries one `context` entry on its own owner,
+keyed by the context object, and `useContext` walks `owner.owner` to the first entry with that key.
+The value is held as `unknown` and read back with `entry.value as Provided<T>`, a cast the compiler
+tests on C and JS. The walk is Nim Neon's (`~/projects/neon/src/core/component.nim:45`,
+`ComponentContext.data: Table[string, pointer]` walked through `parent`), whose `cast[pointer]` in and
+`cast[T]` out read memory unchecked. One entry per owner is enough because every Provider opens its
+own scope. Solid does not walk: a new computation inherits its owner's `context` object
+(`packages/solid/src/reactive/signal.ts:1444` at `0af2c2b4`), a provider replaces it with a spread copy
+holding its value (`:1762`), and `useContext` reads `Owner.context[id]` once (`:1216`).
+
+Rejected: typed slots on `Context<T>` (`510b5cf`). Each Provider pushed `{ owner, read }` into
+`ctx.slots` and every `useContext` scanned the slots at each owner on its walk, so with N live
+providers of one context a read costs O(N) and mounting N provider rows O(N²). It kept the value
+typed without `unknown`; the cost below is why it went.
+
+How it was measured. `bench/providerRows.ms`: N Provider rows of one context, each mounting one
+consumer, on the mock host; mount time in ms, lower is better. msc v0.3.0 (`0f1ecc060`), release C
+and `--target=js` on node v24.1.0; slots = tree `16bd9048` (`510b5cf`), owner = tree `585c0f60`;
+one full series each, then 3 alternating rounds at 8000 rows; load 16 on 14 cores.
+
+| rows | slots C | owner C | slots JS | owner JS |
+|---|---|---|---|---|
+| 500 | 0.45 | 0.38 | 2.19 | 0.91 |
+| 1 000 | 1.41 | 0.88 | 2.01 | 1.23 |
+| 2 000 | 3.70 | 1.65 | 8.15 | 1.50 |
+| 4 000 | 13.1 | 3.47 | 27.4 | 2.90 |
+| 8 000 | 50.4 | 7.64 | 103 | 6.39 |
+
+8000 rows over the 3 rounds: slots 38.3–39.4 ms C, 74.8–82.4 ms JS; owner 5.0–6.2 ms C, 3.3–3.8 ms JS.
+Doubling the rows multiplies the slots mount by about 3.5 and the owner mount by about 2.
+
 ## Invariants — the contract every tier and every hand-built node must satisfy
 
 1. **Evaluating JSX is pure** — it allocates the NeonNode and performs no host op
