@@ -750,7 +750,9 @@ holding its value (`:1762`), and `useContext` reads `Owner.context[id]` once (`:
 Rejected: typed slots on `Context<T>` (`510b5cf`). Each Provider pushed `{ owner, read }` into
 `ctx.slots` and every `useContext` scanned the slots at each owner on its walk, so with N live
 providers of one context a read costs O(N) and mounting N provider rows O(N²). It kept the value
-typed without `unknown`; the cost below is why it went.
+typed without `unknown`; the cost below is why it went. Not taken either: a `Map` keyed by owner on
+the context, offered as a stopgap while the compiler still refused `as Provided<T>`; the cast was
+fixed in the compiler instead (recompiler `paper/NIM-REF.md` CK-127).
 
 How it was measured. `bench/providerRows.ms`: N Provider rows of one context, each mounting one
 consumer, on the mock host; mount time in ms, lower is better. msc v0.3.0 (`0f1ecc060`), release C
