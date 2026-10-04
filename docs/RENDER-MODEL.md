@@ -738,14 +738,18 @@ not a change inside this one.
 ### 2026-10-04 — a provider's value on its owner, against typed slots on the context
 
 The shape (`src/render/context.ms`): a Provider's scope carries one `context` entry on its own owner,
-keyed by the context object, and `useContext` walks `owner.owner` to the first entry with that key.
-The value is held as `unknown` and read back with `entry.value as Provided<T>`, a cast the compiler
-tests on C and JS. The walk is Nim Neon's (`~/projects/neon/src/core/component.nim:45`,
-`ComponentContext.data: Table[string, pointer]` walked through `parent`), whose `cast[pointer]` in and
-`cast[T]` out read memory unchecked. One entry per owner is enough because every Provider opens its
-own scope. Solid does not walk: a new computation inherits its owner's `context` object
+keyed by the context object and linked (`next`) to the entry that scope inherited. Every computation,
+root and `catchError` scope inherits its owner's entry when it is created, so `useContext` walks the
+providers above it, never the owners in between, to the first entry with its key. The value is held as
+`unknown` and read back with `entry.value as Provided<T>`, a cast the compiler tests on C and JS.
+
+The inheritance is Solid's: a new computation takes its owner's `context` object
 (`packages/solid/src/reactive/signal.ts:1444` at `0af2c2b4`), a provider replaces it with a spread copy
-holding its value (`:1762`), and `useContext` reads `Owner.context[id]` once (`:1216`).
+holding its value (`:1762`), and `useContext` reads `Owner.context[id]` once (`:1216`). Neon links the
+entries instead of copying them: providing costs one entry, not a copy of every context above, and a
+read walks only the providers on its path. Before 2026-10-04 Neon walked `owner.owner`, the walk of
+Nim Neon (`~/projects/neon/src/core/component.nim:45`, `ComponentContext.data: Table[string, pointer]`
+walked through `parent`), whose `cast[pointer]` in and `cast[T]` out read memory unchecked.
 
 Rejected: typed slots on `Context<T>` (`510b5cf`). Each Provider pushed `{ owner, read }` into
 `ctx.slots` and every `useContext` scanned the slots at each owner on its walk, so with N live
@@ -769,6 +773,28 @@ one full series each, then 3 alternating rounds at 8000 rows; load 16 on 14 core
 
 8000 rows over the 3 rounds: slots 38.3–39.4 ms C, 74.8–82.4 ms JS; owner 5.0–6.2 ms C, 3.3–3.8 ms JS.
 Doubling the rows multiplies the slots mount by about 3.5 and the owner mount by about 2.
+
+**Inherited entries against the owner walk.** `bench/contextDepth.ms`: one consumer reads a context
+provided D levels above it, 200 000 reads, ns per read; "owners" puts D plain roots in between (the
+effects, rows and roots of a real tree), "providers" puts D providers of another context in between.
+msc v0.3.0 (`0f1ecc060`), release C and node v24.1.0; walk = tree `51567b14` (`349b3db`), inherited =
+the tree of the commit that adds this table; 3 alternating rounds, the middle one shown, load 16–20 on
+14 cores.
+
+| between | D | walk C | inherited C | walk JS | inherited JS |
+|---|---|---|---|---|---|
+| owners | 0 | 9.3 | 9.5 | 19.6 | 21.0 |
+| owners | 10 | 33.5 | 9.4 | 25.7 | 16.6 |
+| owners | 50 | 151 | 9.4 | 79.5 | 9.6 |
+| owners | 200 | 559 | 9.5 | 330 | 11.1 |
+| providers | 10 | 53.9 | 27.4 | 20.9 | 26.3 |
+| providers | 50 | 245 | 109 | 83.3 | 83.7 |
+| providers | 200 | 945 | 432 | 358 | 340 |
+
+A read no longer depends on how deep the consumer sits, only on how many providers sit between it and
+its own. Creating owners did not get dearer: 20 000 roots of two effects each, mounted and disposed,
+min of 7, three rounds: walk 57.9–84.2 ms C / 16.2–31.4 ms JS, inherited 52.2–82.2 ms C /
+16.8–20.2 ms JS, with no provider above and under one (`out/probe/ownerChurn.ms`, not kept).
 
 ## Invariants — the contract every tier and every hand-built node must satisfy
 
