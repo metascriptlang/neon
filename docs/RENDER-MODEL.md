@@ -105,6 +105,30 @@ COMPILE ──► MOUNT ──► UPDATE (×n) ──► DISPOSE
 Building the node (evaluating the JSX expression) allocates a closure and performs no
 host op and no signal read; there is no separate BUILD phase producing data.
 
+### Refresh lifecycle measurements
+
+`src/render/refresh.ms` is not yet connected to automatic JSX transformation,
+native HCR or Vite. Its registration/patch consumer is
+`tests/render/refresh.test.ms`; ordinary JSX still uses the lowering above.
+
+On 2026-10-05, installed msc `4573591e`, the JS command
+`msc test --target=js tests/render/refresh.test.ms` passed six refresh tests
+(67 tests including imported std tests). Explicit template registration kept
+count 8; an explicit component registration reset its local count while a sibling
+survived. A nested-fragment remount first failed by leaving old child nodes in
+the host. Using the reconciler's start-marker/range idiom and retaining the
+instance owner made that regression pass through three remounts and final
+subscription disposal.
+
+These are mock-host lifecycle measurements, not browser/Vite or native-window
+HCR proof. The expression-only transform experiment was rejected: a JS
+`SpliceMany`/`StaticStorage` registration probe ran its initializer on both
+calls of the enclosing function (`1`, then `2`), so the single-call control
+did not prove module-evaluation registration. Automatic Refresh requires a
+generic module-transform prerequisite. The reference extraction/publication
+mechanism is [Solid Refresh](https://github.com/solidjs/solid-refresh),
+`src/babel/core/transform-jsx.ts` and `src/runtime/index.ts`.
+
 ## After mount: the wire graph
 
 What stays alive after mount is wiring:

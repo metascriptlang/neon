@@ -133,3 +133,38 @@ test "refresh: disposal drops instance records" {
 	const summary = refreshModule("app.ms");
 	assert summary.rebuilt === 0 && summary.remounted === 0, "disposed regions are not patched";
 }
+
+test "refresh: remounting a fragment boundary removes its nested regions" {
+	refreshReset();
+	const [value, setValue] = createSignal(1);
+	let effectRuns = 0;
+	refreshTemplate("nested.ms", "child", (): string => "child", (host: Host, parent: HostNode, before: HostNode | null, props: unknown): void => {
+		const node = host.createText("");
+		place(host, parent, node, before);
+		createEffect((): void => {
+			effectRuns += 1;
+			host.setText(node, "value:" + value().toString());
+		});
+	});
+	const component = (props: unknown): NeonNode => refreshRegion("nested.ms", "child", null);
+	refreshComponentDef("nested.ms", "parent", (): string => "1", component);
+	const root = mockNode("root");
+	const dispose = render((host: Host, parent: HostNode, before: HostNode | null): void => {
+		refreshBoundary("nested.ms", "parent")(null)(host, parent, before);
+		place(host, parent, host.createText("|sibling"), before);
+	}, mockHost(), root as HostNode);
+	for (let generation = 2; generation <= 4; generation += 1) {
+		const signature = generation.toString();
+		refreshComponentDef("nested.ms", "parent", (): string => signature, component);
+		refreshModule("nested.ms");
+		assert mockToString(root) === "<root>value:1|sibling</root>", "nested fragment is replaced, not left beside its replacement";
+		const before = effectRuns;
+		setValue(generation);
+		assert effectRuns === before + 1, "only the surviving nested effect runs";
+		setValue(1);
+	}
+	dispose();
+	const before = effectRuns;
+	setValue(9);
+	assert effectRuns === before, "final disposal also cleans the refreshed nested effect";
+}

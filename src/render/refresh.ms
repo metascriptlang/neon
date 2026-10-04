@@ -1,24 +1,8 @@
-// Neon Refresh — the shared granular-refresh runtime.
-// Solid-refresh's model on Neon's row/owner machinery: a dev-only transform
-// registers component definitions and JSX template regions under stable ids
-// with signature getters, and mounts each instance under its own owner with
-// its row span and captured props recorded. A transport (native std/hcr, JS
-// import.meta.hot) reports a module update through refreshModule and the same
-// decision runs everywhere: a changed template signature rebuilds only that
-// region's nodes and effects while the owning component's signals stay alive;
-// a changed component signature remounts its boundary, which resets only that
-// component's local state. Instances read signatures and code through the
-// registry entry, never through captured closures: a native reload forwards
-// the registered addresses to the newest generation, and a JS module
-// re-evaluation re-runs the registration with fresh ones. Production builds
-// never reference this module (the transform emits no calls without
-// -d:neonRefresh).
-
 import { Host, HostNode, NeonNode } from "./hostTypes";
 import { ComponentFn } from "./node";
-import { Row, makeRow, mountAt, removeRow } from "./reconcile";
+import { Row, makeRow, mountAt, removeRow, place, needsStartMarker } from "./reconcile";
 import { Computation } from "../core/types";
-import { createComputation, cleanNode, getOwner } from "../core/runtime";
+import { createComputation, cleanNode } from "../core/runtime";
 import { runWithOwner } from "../core/owner";
 import { untrack } from "../core/signal";
 import { onCleanup } from "../core/cleanup";
@@ -47,7 +31,6 @@ interface TmplInstance {
 	anchor: HostNode;
 	row: Row;
 	owner: Computation;
-	parentOwner: Computation | null;
 	sig: string;
 }
 interface CompEntry {
@@ -65,7 +48,6 @@ interface CompInstance {
 	anchor: HostNode;
 	row: Row;
 	owner: Computation;
-	parentOwner: Computation | null;
 	sig: string;
 }
 
@@ -104,11 +86,6 @@ function dropFromComp(list: CompInstance[], inst: CompInstance): boolean {
 	return true;
 }
 
-function freshOwner(parentOwner: Computation | null): Computation {
-	if (parentOwner === null) { return createComputation(noop, false); }
-	const made = runWithOwner(parentOwner, (): Computation => createComputation(noop, false));
-	return made;
-}
 
 function mountTmpl(inst: TmplInstance): void {
 	runWithOwner(inst.owner, (): number => untrack((): number => {
@@ -135,8 +112,7 @@ function mountComp(inst: CompInstance): void {
 
 function rebuildTmpl(inst: TmplInstance, sig: string): void {
 	removeRow(inst.host, inst.parent, inst.row);
-	cleanNode(inst.owner, true);
-	inst.owner = freshOwner(inst.parentOwner);
+	cleanNode(inst.owner, false);
 	runWithOwner(inst.owner, (): number => { onCleanup((): void => { dropTmplInstance(inst); }); return 0; });
 	pushTmpl(inst.key, inst);
 	inst.sig = sig;
@@ -145,8 +121,7 @@ function rebuildTmpl(inst: TmplInstance, sig: string): void {
 
 function rebuildComp(inst: CompInstance, sig: string): void {
 	removeRow(inst.host, inst.parent, inst.row);
-	cleanNode(inst.owner, true);
-	inst.owner = freshOwner(inst.parentOwner);
+	cleanNode(inst.owner, false);
 	runWithOwner(inst.owner, (): number => { onCleanup((): void => { dropCompInstance(inst); }); return 0; });
 	pushComp(inst.key, inst);
 	inst.sig = sig;
@@ -176,13 +151,14 @@ export function refreshTemplate(moduleFile: string, id: string, sigFn: SigFn, tm
 	}
 }
 
-export function refreshRegion(moduleFile: string, id: string, props: unknown): NeonNode {
+export function refreshRegion<P>(moduleFile: string, id: string, props: P): NeonNode {
 	const key = keyOf(moduleFile, id);
 	return (host: Host, parent: HostNode, before: HostNode | null): void => {
 		const entry = tmplEntries.get(key);
 		if (entry === undefined) { throw `neon refresh: region ${id} mounted before its registration in ${moduleFile}`; }
+		if (needsStartMarker(parent)) { place(host, parent, host.createText(""), before); }
 		const anchor = host.createText("");
-		host.insertBefore(parent, anchor, before);
+		place(host, parent, anchor, before);
 		const inst: TmplInstance = {
 			entry: entry,
 			key: key,
@@ -193,7 +169,6 @@ export function refreshRegion(moduleFile: string, id: string, props: unknown): N
 			anchor: anchor,
 			row: makeRow((h: Host, p: HostNode, b: HostNode | null): void => { h.insertBefore(p, anchor, b); }),
 			owner: createComputation(noop, false),
-			parentOwner: getOwner(),
 			sig: entry.sigFn(),
 		};
 		runWithOwner(inst.owner, (): number => { onCleanup((): void => { dropTmplInstance(inst); }); return 0; });
@@ -219,8 +194,9 @@ export function refreshBoundary(moduleFile: string, id: string): (props: unknown
 		return (host: Host, parent: HostNode, before: HostNode | null): void => {
 			const entry = compEntries.get(key);
 			if (entry === undefined) { throw `neon refresh: boundary ${id} mounted before its registration in ${moduleFile}`; }
+			if (needsStartMarker(parent)) { place(host, parent, host.createText(""), before); }
 			const anchor = host.createText("");
-			host.insertBefore(parent, anchor, before);
+			place(host, parent, anchor, before);
 			const inst: CompInstance = {
 				entry: entry,
 				key: key,
@@ -231,7 +207,6 @@ export function refreshBoundary(moduleFile: string, id: string): (props: unknown
 				anchor: anchor,
 				row: makeRow((h: Host, p: HostNode, b: HostNode | null): void => { h.insertBefore(p, anchor, b); }),
 				owner: createComputation(noop, false),
-				parentOwner: getOwner(),
 				sig: entry.sigFn(),
 			};
 			runWithOwner(inst.owner, (): number => { onCleanup((): void => { dropCompInstance(inst); }); return 0; });
@@ -245,25 +220,31 @@ export function refreshModule(moduleFile: string): RefreshSummary {
 	let kept = 0 as int32;
 	let rebuilt = 0 as int32;
 	let remounted = 0 as int32;
-	for (const list of tmplInstances.values()) {
-		for (let i = list.length - 1; i >= 0; i -= 1) {
-			const inst = list[i];
-			if (inst.keyFile !== moduleFile) { continue; }
-			const sig = inst.entry.sigFn();
-			if (sig === inst.sig) { kept += 1; continue; }
-			rebuildTmpl(inst, sig);
-			rebuilt += 1;
+	const boundaries: CompInstance[] = [];
+	for (const list of compInstances.values()) {
+		for (const inst of list) {
+			if (inst.keyFile === moduleFile) { boundaries.push(inst); }
 		}
 	}
-	for (const list of compInstances.values()) {
-		for (let i = list.length - 1; i >= 0; i -= 1) {
-			const inst = list[i];
-			if (inst.keyFile !== moduleFile) { continue; }
-			const sig = inst.entry.sigFn();
-			if (sig === inst.sig) { kept += 1; continue; }
-			rebuildComp(inst, sig);
-			remounted += 1;
+	for (const inst of boundaries) {
+		if (inst.owner.disposed) { continue; }
+		const sig = inst.entry.sigFn();
+		if (sig === inst.sig) { kept += 1; continue; }
+		rebuildComp(inst, sig);
+		remounted += 1;
+	}
+	const regions: TmplInstance[] = [];
+	for (const list of tmplInstances.values()) {
+		for (const inst of list) {
+			if (inst.keyFile === moduleFile) { regions.push(inst); }
 		}
+	}
+	for (const inst of regions) {
+		if (inst.owner.disposed) { continue; }
+		const sig = inst.entry.sigFn();
+		if (sig === inst.sig) { kept += 1; continue; }
+		rebuildTmpl(inst, sig);
+		rebuilt += 1;
 	}
 	return { kept: kept, rebuilt: rebuilt, remounted: remounted };
 }
