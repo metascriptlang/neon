@@ -4,6 +4,7 @@
 export { Signal, createSignal, untrack, batch, accessor, valueOf, Accessor, Setter } from "./core/signal";
 export { createEffect } from "./core/effect";
 export { createMemo } from "./core/memo";
+export { createSelector } from "./core/selector";
 export { createRoot, runWithOwner } from "./core/owner";
 export { getOwner } from "./core/runtime";
 export { onCleanup } from "./core/cleanup";
