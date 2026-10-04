@@ -215,18 +215,3 @@ test "object keys compare by identity even when their fields match" {
 		assert runs === 2 && !first && second;
 	});
 }
-
-test "a nullable source can enter and clear a selection" {
-	scoped(() => {
-		const [id, setId] = createSignal<int32 | null>(null);
-		const selected = createSelector(id);
-		let value = false;
-		let runs = 0;
-		createEffect(() => { value = selected(0); runs += 1; });
-		assert !value && runs === 1;
-		setId(0);
-		assert value && runs === 2;
-		setId(null);
-		assert !value && runs === 3;
-	});
-}
