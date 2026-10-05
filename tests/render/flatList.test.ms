@@ -1,5 +1,5 @@
 import { onCleanup } from "../../src/core/cleanup";
-import { Accessor, accessor, createSignal } from "../../src/core/signal";
+import { createSignal } from "../../src/core/signal";
 import { element } from "../../src/macros/ui/element";
 import { NeonEvent, neonEvent } from "../../src/render/event";
 import { NeonNode } from "../../src/render/hostTypes";
@@ -35,13 +35,10 @@ function tall50(data: Item[], index: number): ItemLayout {
 	return { length: 50, offset: 50 * index, index };
 }
 
-// Parked: a named renderer does not bind FlatList's T, an inline arrow does —
-// ~/metascript/.inbox/compiler/2026-10-03-generic-component-cannot-bind-t-from-a-named-callback.md
 function row(info: ListRenderItemInfo<Item>): NeonNode {
 	return element(<Text>{"row " + info.item.n.toString()}</Text>);
 }
 
-const one: Accessor<number> = accessor((): number => 1);
 
 function scrollView(root: MockNode): MockNode {
 	return root.children[0];
@@ -112,38 +109,38 @@ function caught(fn: () => void): string {
 
 test "renders simple list" {
 	const root: MockNode = mockNode("root");
-	render(element(<FlatList data={items(3)} getItemLayout={tall10} renderItem={(info: ListRenderItemInfo<Item>): NeonNode => row(info)} />), mockHost(), root as unknown as HostNode);
+	render(element(<FlatList data={items(3)} getItemLayout={tall10} renderItem={row} />), mockHost(), root as unknown as HostNode);
 	assert shape(root) === "c0-2", shape(root);
 }
 
 test "renders empty list" {
 	const root: MockNode = mockNode("root");
-	render(element(<FlatList data={items(0)} getItemLayout={tall10} renderItem={(info: ListRenderItemInfo<Item>): NeonNode => row(info)} />), mockHost(), root as unknown as HostNode);
+	render(element(<FlatList data={items(0)} getItemLayout={tall10} renderItem={row} />), mockHost(), root as unknown as HostNode);
 	assert shape(root) === "", shape(root);
 }
 
 test "initially renders nothing when initialNumToRender is 0" {
 	const root: MockNode = mockNode("root");
-	render(element(<FlatList data={items(10)} getItemLayout={tall10} initialNumToRender={0} renderItem={(info: ListRenderItemInfo<Item>): NeonNode => row(info)} />), mockHost(), root as unknown as HostNode);
+	render(element(<FlatList data={items(10)} getItemLayout={tall10} initialNumToRender={0} renderItem={row} />), mockHost(), root as unknown as HostNode);
 	assert shape(root) === "sp100", shape(root);
 }
 
 test "before its viewport is known FlatList mounts initialNumToRender rows" {
 	const root: MockNode = mockNode("root");
-	render(element(<FlatList data={items(10000)} getItemLayout={tall50} renderItem={(info: ListRenderItemInfo<Item>): NeonNode => row(info)} />), mockHost(), root as unknown as HostNode);
+	render(element(<FlatList data={items(10000)} getItemLayout={tall50} renderItem={row} />), mockHost(), root as unknown as HostNode);
 	assert shape(root) === "c0-9 sp499500", shape(root);
 }
 
 test "renders windowSize derived region at top" {
 	const root: MockNode = mockNode("root");
-	render(element(<FlatList data={items(10)} getItemLayout={tall10} initialNumToRender={1} maxToRenderPerBatch={1} windowSize={3} renderItem={(info: ListRenderItemInfo<Item>): NeonNode => row(info)} />), mockHost(), root as unknown as HostNode);
+	render(element(<FlatList data={items(10)} getItemLayout={tall10} initialNumToRender={1} maxToRenderPerBatch={1} windowSize={3} renderItem={row} />), mockHost(), root as unknown as HostNode);
 	layOut(root, 20, 100);
 	assert shape(root) === "c0-3 sp60", shape(root);
 }
 
 test "renders windowSize derived region in middle" {
 	const root: MockNode = mockNode("root");
-	render(element(<FlatList data={items(10)} getItemLayout={tall10} initialNumToRender={1} maxToRenderPerBatch={1} windowSize={3} renderItem={(info: ListRenderItemInfo<Item>): NeonNode => row(info)} />), mockHost(), root as unknown as HostNode);
+	render(element(<FlatList data={items(10)} getItemLayout={tall10} initialNumToRender={1} maxToRenderPerBatch={1} windowSize={3} renderItem={row} />), mockHost(), root as unknown as HostNode);
 	layOut(root, 20, 100);
 	fireEventWith(scrollView(root), "onScroll", scrollEvent(50, 20, 100));
 	assert shape(root) === "c0 sp10 c2-8 sp10", shape(root);
@@ -151,7 +148,7 @@ test "renders windowSize derived region in middle" {
 
 test "renders windowSize derived region at bottom" {
 	const root: MockNode = mockNode("root");
-	render(element(<FlatList data={items(10)} getItemLayout={tall10} initialNumToRender={1} maxToRenderPerBatch={1} windowSize={3} renderItem={(info: ListRenderItemInfo<Item>): NeonNode => row(info)} />), mockHost(), root as unknown as HostNode);
+	render(element(<FlatList data={items(10)} getItemLayout={tall10} initialNumToRender={1} maxToRenderPerBatch={1} windowSize={3} renderItem={row} />), mockHost(), root as unknown as HostNode);
 	layOut(root, 20, 100);
 	fireEventWith(scrollView(root), "onScroll", scrollEvent(80, 20, 100));
 	assert shape(root) === "c0 sp40 c5-9", shape(root);
@@ -159,7 +156,7 @@ test "renders windowSize derived region at bottom" {
 
 test "retains intitial render if initialScrollIndex == 0" {
 	const root: MockNode = mockNode("root");
-	render(element(<FlatList data={items(20)} getItemLayout={tall10} initialNumToRender={5} windowSize={1} renderItem={(info: ListRenderItemInfo<Item>): NeonNode => row(info)} />), mockHost(), root as unknown as HostNode);
+	render(element(<FlatList data={items(20)} getItemLayout={tall10} initialNumToRender={5} windowSize={1} renderItem={row} />), mockHost(), root as unknown as HostNode);
 	layOut(root, 50, 200);
 	fireEventWith(scrollView(root), "onScroll", scrollEvent(150, 50, 200));
 	assert shape(root) === "c0-4 sp90 c14-19", "the first initialNumToRender rows stay for scroll-to-top: " + shape(root);
@@ -230,7 +227,7 @@ test "the same item twice in the rendered rows fails loud" {
 	const root: MockNode = mockNode("root");
 	const a: Item = { id: "a", n: 0 };
 	const msg = caught((): void => {
-		render(element(<FlatList data={[a, a]} getItemLayout={tall10} renderItem={(info: ListRenderItemInfo<Item>): NeonNode => row(info)} />), mockHost(), root as unknown as HostNode);
+		render(element(<FlatList data={[a, a]} getItemLayout={tall10} renderItem={row} />), mockHost(), root as unknown as HostNode);
 	});
 	assert msg.includes("FlatList") && msg.includes("rows 0 and 1"), "names the list and both rows: " + msg;
 }
@@ -238,8 +235,8 @@ test "the same item twice in the rendered rows fails loud" {
 test "calls onEndReached when near the end" {
 	const root: MockNode = mockNode("root");
 	let ends = 0;
-	render(element(<FlatList data={items(40)} getItemLayout={tall40} initialNumToRender={10} onEndReachedThreshold={one} windowSize={10}
-		onEndReached={(info: EndReachedInfo): void => { ends = ends + 1; }} renderItem={(info: ListRenderItemInfo<Item>): NeonNode => row(info)} />), mockHost(), root as unknown as HostNode);
+	render(element(<FlatList data={items(40)} getItemLayout={tall40} initialNumToRender={10} onEndReachedThreshold={1} windowSize={10}
+		onEndReached={(info: EndReachedInfo): void => { ends = ends + 1; }} renderItem={row} />), mockHost(), root as unknown as HostNode);
 	layOut(root, 600, 1600);
 	assert ends === 0, "not at the top";
 	fireEventWith(scrollView(root), "onScroll", scrollEvent(40, 600, 1600));
@@ -253,7 +250,7 @@ test "onEndReached without a threshold fires within 2 px of the end, React Nativ
 	let ends = "";
 	render(element(<FlatList data={items(100)} getItemLayout={tall50}
 		onEndReached={(info: EndReachedInfo): void => { ends = ends + info.distanceFromEnd.toString() + ";"; }}
-		renderItem={(info: ListRenderItemInfo<Item>): NeonNode => row(info)} />), mockHost(), root as unknown as HostNode);
+		renderItem={row} />), mockHost(), root as unknown as HostNode);
 	layOut(root, 500, 5000);
 	fireEventWith(scrollView(root), "onScroll", scrollEvent(3600, 500, 5000));
 	assert ends === "", "900 from the end is outside the 2 px default: " + ends;
@@ -268,7 +265,7 @@ test "the ref's handle scrolls to an index, an offset and the end" {
 	const root: MockNode = mockNode("root");
 	const handles: FlatListHandle[] = [];
 	render(element(<FlatList data={items(100)} getItemLayout={tall50}
-		ref={(h: FlatListHandle): void => { handles.push(h); }} renderItem={(info: ListRenderItemInfo<Item>): NeonNode => row(info)} />), mockHost(), root as unknown as HostNode);
+		ref={(h: FlatListHandle): void => { handles.push(h); }} renderItem={row} />), mockHost(), root as unknown as HostNode);
 	const sv = scrollView(root);
 	layOut(root, 500, 5000);
 	handles[0].scrollToIndex({ index: 40 });
@@ -286,7 +283,7 @@ test "the ref's handle scrolls to an index, an offset and the end" {
 test "throws if using scrollToIndex with index less than 0" {
 	const root: MockNode = mockNode("root");
 	const handles: FlatListHandle[] = [];
-	render(element(<FlatList data={items(3)} getItemLayout={tall10} ref={(h: FlatListHandle): void => { handles.push(h); }} renderItem={(info: ListRenderItemInfo<Item>): NeonNode => row(info)} />), mockHost(), root as unknown as HostNode);
+	render(element(<FlatList data={items(3)} getItemLayout={tall10} ref={(h: FlatListHandle): void => { handles.push(h); }} renderItem={row} />), mockHost(), root as unknown as HostNode);
 	const msg = caught((): void => { handles[0].scrollToIndex({ index: -1 }); });
 	assert msg.includes("scrollToIndex out of range: requested index -1 but minimum is 0"), msg;
 }
@@ -294,7 +291,7 @@ test "throws if using scrollToIndex with index less than 0" {
 test "throws if using scrollToIndex when item length is less than 1" {
 	const root: MockNode = mockNode("root");
 	const handles: FlatListHandle[] = [];
-	render(element(<FlatList data={items(0)} getItemLayout={tall10} ref={(h: FlatListHandle): void => { handles.push(h); }} renderItem={(info: ListRenderItemInfo<Item>): NeonNode => row(info)} />), mockHost(), root as unknown as HostNode);
+	render(element(<FlatList data={items(0)} getItemLayout={tall10} ref={(h: FlatListHandle): void => { handles.push(h); }} renderItem={row} />), mockHost(), root as unknown as HostNode);
 	const msg = caught((): void => { handles[0].scrollToIndex({ index: 0 }); });
 	assert msg.includes("scrollToIndex out of range: item length 0 but minimum is 1"), msg;
 }
@@ -302,7 +299,7 @@ test "throws if using scrollToIndex when item length is less than 1" {
 test "throws if using scrollToIndex when requested index is bigger than or equal to item length" {
 	const root: MockNode = mockNode("root");
 	const handles: FlatListHandle[] = [];
-	render(element(<FlatList data={items(3)} getItemLayout={tall10} ref={(h: FlatListHandle): void => { handles.push(h); }} renderItem={(info: ListRenderItemInfo<Item>): NeonNode => row(info)} />), mockHost(), root as unknown as HostNode);
+	render(element(<FlatList data={items(3)} getItemLayout={tall10} ref={(h: FlatListHandle): void => { handles.push(h); }} renderItem={row} />), mockHost(), root as unknown as HostNode);
 	const msg = caught((): void => { handles[0].scrollToIndex({ index: 3 }); });
 	assert msg.includes("scrollToIndex out of range: requested index 3 is out of 0 to 2"), msg;
 }
@@ -310,14 +307,14 @@ test "throws if using scrollToIndex when requested index is bigger than or equal
 test "scrollToEnd works with null list" {
 	const root: MockNode = mockNode("root");
 	const handles: FlatListHandle[] = [];
-	render(element(<FlatList data={items(0)} getItemLayout={tall10} ref={(h: FlatListHandle): void => { handles.push(h); }} renderItem={(info: ListRenderItemInfo<Item>): NeonNode => row(info)} />), mockHost(), root as unknown as HostNode);
+	render(element(<FlatList data={items(0)} getItemLayout={tall10} ref={(h: FlatListHandle): void => { handles.push(h); }} renderItem={row} />), mockHost(), root as unknown as HostNode);
 	assert caught((): void => { handles[0].scrollToEnd({}); }) === "", "no throw on an empty list";
 }
 
 test "FlatList without getItemLayout fails loud and names the prop" {
 	const root: MockNode = mockNode("root");
 	const msg = caught((): void => {
-		render(element(<FlatList data={items(3)} renderItem={(info: ListRenderItemInfo<Item>): NeonNode => row(info)} />), mockHost(), root as unknown as HostNode);
+		render(element(<FlatList data={items(3)} renderItem={row} />), mockHost(), root as unknown as HostNode);
 	});
 	assert msg.includes("getItemLayout"), "names the prop: " + msg;
 }
@@ -326,7 +323,7 @@ test "onLayout reaches the author before the window moves, as React Native order
 	const root: MockNode = mockNode("root");
 	let seen = "";
 	render(element(<FlatList data={items(10000)} getItemLayout={tall50}
-		onLayout={(e: NeonEvent): void => { seen = `${e.height} ${shape(root)}`; }} renderItem={(info: ListRenderItemInfo<Item>): NeonNode => row(info)} />), mockHost(), root as unknown as HostNode);
+		onLayout={(e: NeonEvent): void => { seen = `${e.height} ${shape(root)}`; }} renderItem={row} />), mockHost(), root as unknown as HostNode);
 	fireEventWith(content(root), "onLayout", layoutEvent(500000));
 	fireEventWith(scrollView(root), "onLayout", layoutEvent(500));
 	assert seen === "500 c0-9 sp499500", "VirtualizedList._onLayout calls props.onLayout, then schedules the window: " + seen;
@@ -337,7 +334,7 @@ test "horizontal FlatList uses width and x for its window and every imperative o
 	const root = mockNode("root");
 	const handles: FlatListHandle[] = [];
 	render(element(<FlatList data={items(100)} getItemLayout={tall50} horizontal={true}
-		ref={(h: FlatListHandle): void => { handles.push(h); }} renderItem={(info: ListRenderItemInfo<Item>): NeonNode => row(info)} />), mockHost(), root as unknown as HostNode);
+		ref={(h: FlatListHandle): void => { handles.push(h); }} renderItem={row} />), mockHost(), root as unknown as HostNode);
 	const viewport = layoutEvent(80);
 	viewport.width = 200;
 	fireEventWith(scrollView(root), "onLayout", viewport);
