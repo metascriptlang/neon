@@ -68,8 +68,31 @@ test "For fallback shows when empty" {
 	});
 }
 
-// The two Index cells below stay call-shaped: `<Index each={…}>{row}</Index>` is refused at
-// createComponent, parked on ~/metascript/.inbox/compiler/2026-09-20-generic-callee-type-param-through-distinct-alias.md
+let indexRowCreates = 0;
+
+function indexRow(item: Accessor<number>, i: number): NeonNode {
+	indexRowCreates = indexRowCreates + 1;
+	return element(<li>{"" + item()}</li>);
+}
+
+test "Index as a JSX tag updates a row value in place and grows with the list" {
+	createRoot((d) => {
+		indexRowCreates = 0;
+		const [items, setItems] = createSignal<number[]>([1, 2]);
+		const host = mockHost();
+		const root = host.createElement("root");
+		render(element(<ul><Index each={items()}>{indexRow}</Index></ul>), host, root);
+		const ulNode = (root as unknown as MockNode).children[0];
+		assert listText(ulNode) === "12", "initial: " + listText(ulNode);
+		setItems([9, 2]);
+		assert listText(ulNode) === "92", "value updated in place: " + listText(ulNode);
+		assert indexRowCreates === 2, "no recreate on value change: " + indexRowCreates.toString();
+		setItems([9, 2, 3]);
+		assert listText(ulNode) === "923", "append mounts the new row: " + listText(ulNode);
+		d();
+	});
+}
+
 test "Index updates row value in place, no recreate" {
 	createRoot((d) => {
 		const [items, setItems] = createSignal<number[]>([1, 2, 3]);
