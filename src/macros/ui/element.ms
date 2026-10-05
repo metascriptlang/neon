@@ -19,8 +19,8 @@
 // layer array → compile-time merge or layerStyles (a reactive layer or field is
 // rejected), reactive expr → bindStyleAll, anything else → applyStaticStyle.
 
-import { Node, NodeKind, DeclKind, NodeFlag, childCount, childAt } from "std/meta";
-import { isReactiveExpr, isRawPropValue, isEventName, peelHidden } from "./reactive";
+import { Node, NodeKind, DeclKind, NodeFlag, childCount, childAt, bindSym, getType, getTypeImpl } from "std/meta";
+import { isReactiveExpr, isEventName, peelHidden } from "./reactive";
 
 function trimEdgeSpaces(s: string, fromStart: boolean, fromEnd: boolean): string {
 	let lo = 0;
@@ -203,6 +203,65 @@ export macro element(node: Node): Node {
 			return base.kind === NodeKind.Identifier && base.name === "Accessor";
 		}
 		return false;
+	}
+	function accessorSlot(t: Node): number {
+		if (isAccessorType(t)) { return 1; }
+		if (t.kind !== NodeKind.TypeUnion) { return 0; }
+		let reactive = false;
+		let other = false;
+		for (const m of t.typExprMembers) {
+			if (isAccessorType(m)) {
+				reactive = true;
+			} else if (!(m.kind === NodeKind.Identifier && m.name === "null")) {
+				other = true;
+			}
+		}
+		if (!reactive) { return 0; }
+		return other ? -1 : 1;
+	}
+	function objectType(t: Node | null): Node | null {
+		if (t === null) { return null; }
+		const direct = peelTypeRef(t as Node);
+		if (direct.kind === NodeKind.TypeObject) { return direct; }
+		const impl = getTypeImpl(direct);
+		if (impl === null) { return null; }
+		const expanded = peelTypeRef(impl as Node);
+		return expanded.kind === NodeKind.TypeObject ? expanded : null;
+	}
+	function declaredProps(c: Node): Node | null {
+		const parts: string[] = c.jsxTag.split(".");
+		const sym = bindSym(parts[0]);
+		if (sym === null) {
+			error("<" + c.jsxTag + "> is not a component in scope", c);
+			return null;
+		}
+		let t: Node | null = getType(sym);
+		for (let i = 1; i < parts.length; i = i + 1) {
+			const holder = objectType(t);
+			t = null;
+			if (holder !== null) {
+				for (let j = 0; j < holder.typExprFieldNames.length; j = j + 1) {
+					if (holder.typExprFieldNames[j] === parts[i]) { t = holder.typExprFieldTypes[j]; }
+				}
+			}
+			if (t === null) {
+				error("<" + c.jsxTag + "> names no field '" + parts[i] + "'", c);
+				return null;
+			}
+		}
+		const fn = t === null ? null : peelTypeRef(t as Node);
+		if (fn === null || fn.kind !== NodeKind.TypeFunction) {
+			error("<" + c.jsxTag + "> is not a component: its type is not a function", c);
+			return null;
+		}
+		if (fn.typExprParams.length === 0) {
+			return { kind: NodeKind.TypeObject, line: c.line, column: c.column, typExprFieldNames: [], typExprFieldTypes: [] };
+		}
+		const props = objectType(fn.typExprParams[0]);
+		if (props === null) {
+			error("<" + c.jsxTag + "> takes props of a type the element macro cannot read field by field", c);
+		}
+		return props;
 	}
 	function isNumberTyped(n: Node): boolean {
 		const t = peelHidden(n).nodeType;
@@ -570,19 +629,28 @@ export macro element(node: Node): Node {
 	node = flattenFragments(lowerFlowTree(node));
 
 
-	// Capitalized tag → createComponent(Tag, { props }). Prop contract: every value
-	// prop — literal or expression — becomes accessor(() => v) (the component's props
-	// interface declares Accessor<T>); arrow literals, ref and on* cross RAW. Children
-	// arrive as ONE NeonNode: an arrow or a NeonNode value crosses as written, anything
-	// else lowers through element. Inline because node literals only type-check inside a macro body
-	// (engine-mode Node view).
 	function componentCall(c: Node): Node {
 		let keys: string[] = [];
 		let values: Node[] = [];
+		const declared = declaredProps(c);
 		for (const a of c.jsxAttrs) {
 			if (a.kind === NodeKind.JSXAttribute) {
+				if (declared === null) { continue; }
+				let slot: Node | null = null;
+				for (let i = 0; i < declared.typExprFieldNames.length; i = i + 1) {
+					if (declared.typExprFieldNames[i] === a.jsxAttrName) { slot = declared.typExprFieldTypes[i]; }
+				}
+				if (slot === null) {
+					error("<" + c.jsxTag + "> has no prop '" + a.jsxAttrName + "'", a as Node);
+					continue;
+				}
+				const reactive = accessorSlot(slot as Node);
+				if (reactive < 0) {
+					error("prop '" + a.jsxAttrName + "' of <" + c.jsxTag + "> mixes Accessor with another type: declare it Accessor<…> | null or a plain type", a as Node);
+					continue;
+				}
 				keys.push(a.jsxAttrName);
-				if (isRawPropValue(a.jsxAttrName, a.jsxAttrValue) || isAccessorTyped(a.jsxAttrValue)) {
+				if (reactive === 0 || isAccessorTyped(a.jsxAttrValue)) {
 					values.push(a.jsxAttrValue);
 				} else {
 					values.push({ kind: NodeKind.CallExpr, line: a.line, column: a.column, callee: { kind: NodeKind.Identifier, line: a.line, column: a.column, name: "accessor" }, arguments: [{ kind: NodeKind.ArrowFunction, line: a.line, column: a.column, arrowParams: [], arrowParamTypes: [], arrowBody: a.jsxAttrValue, arrowFlags: "", arrowReturnType: "" }] });

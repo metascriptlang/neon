@@ -58,13 +58,6 @@ export function isEventName(name: string): boolean {
 	return name.startsWith("on") && name.charAt(2) >= "A" && name.charAt(2) <= "Z";
 }
 
-export function isRawPropValue(name: string, v: Node): boolean {
-	return v.kind === NodeKind.ArrowFunction || v.kind === NodeKind.FunctionExpr
-		|| v.kind === NodeKind.JSXElement || v.kind === NodeKind.JSXFragment
-		|| name === "ref"
-		|| isEventName(name);
-}
-
 export function findSpreadAttr(n: Node): Node | null {
 	if (n === null) { return null; }
 	if (n.kind === NodeKind.JSXSpreadAttribute) { return n; }
