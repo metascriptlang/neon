@@ -79,14 +79,6 @@ and the invariants that outlived them were moved to the head of the test that pi
   no longer has (`layoutStyle`, `fontId`, `label`'s colour argument). The rewrite onto a `VoidNode`
   class that holds its `NodeRef` is `~/metascript/.wt/void-noderef-host.md`.
 
-- **PARKED 2026-10-04 — `tests/core/selectorNullable.test.ms` does not compile on the native lane.**
-  Not Neon's: `createSelector` over an `int32 | null` source keys its `Map` by `int32 | null`, and
-  `msc test tests/core/selectorNullable.test.ms` on `7a4af78c9` stops at `hash<int32 | null>`,
-  `hashOf: no hash for this key type`; the same case passes with `--target=js`, and the other ten
-  cases in `tests/core/selector.test.ms` pass on both. Card:
-  `~/metascript/.inbox/compiler/2026-10-04-nullable-primitive-map-key-has-no-native-hash.md`.
-  Parked at that file.
-
 - **PARKED 2026-10-03 — `(st.width ?? 0.0) === 320.0` does not compile.** Not Neon's: with
   `st.width: float32 | string | null` the fallback joins as a new `float64` member and the present
   value is refused against it on C and JS; with a written target type the `===` against a number then
