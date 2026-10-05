@@ -50,7 +50,7 @@ extern class Node {
 	value: string;
 	style: ProbeStyle;
 	classList: ProbeClassList;
-	extern getAttribute(name: cstring): cstring | null;
+	extern getAttribute(name: cstring): string | null;
 	extern click(): void;
 	extern remove(): void;
 }
