@@ -1,5 +1,5 @@
-import { createSignal } from "../../src/core/signal";
-import { el, attr, text, dynText } from "../../src/render/node";
+import { createSignal, Accessor } from "../../src/core/signal";
+import { el, attr, text, dynText, NeonNode } from "../../src/render/node";
 import { renderToString } from "../../src/render/ssr";
 import { element } from "../../src/macros/ui/element";
 import { render, mockHost, mockNode, mockToString, fireEvent, Host, HostNode } from "../../src/render/host";
@@ -189,4 +189,50 @@ test "the same JSX const consumed twice yields independent trees" {
 	setA("y");
 	assert renderToString(one) === "<p>y</p>", "first tree reactive";
 	assert renderToString(two) === "<p>y</p>", "second tree reactive";
+}
+
+interface Limits {
+	label: string;
+	format: (n: number) => string;
+	onEndReachedThreshold?: Accessor<number> | null;
+}
+
+function Limited(props: Limits): NeonNode {
+	const threshold = props.onEndReachedThreshold;
+	return element(<p>{props.label + " " + props.format(1) + " " + (threshold === null ? "none" : (threshold as Accessor<number>)().toString())}</p>);
+}
+
+function Picked<T>(props: { data: Accessor<T[]>; format: (item: T) => string; onEndReachedThreshold?: Accessor<number> | null }): NeonNode {
+	const threshold = props.onEndReachedThreshold;
+	return element(<p>{props.format(props.data()[0]) + " " + (threshold === null ? "none" : (threshold as Accessor<number>)().toString())}</p>);
+}
+
+function twice(n: number): string { return (n * 2).toString(); }
+function shout(w: string): string { return w.toUpperCase(); }
+function quiet(w: string): string { return w; }
+const words: string[] = ["neon", "void"];
+
+test "a named function crosses to a component's function prop as written" {
+	assert renderToString(element(<Limited label="x" format={twice} />)) === "<p>x 2 none</p>", "non-generic";
+	assert renderToString(element(<Picked data={words} format={shout} />)) === "<p>NEON none</p>", "generic, T bound by the named function";
+}
+
+test "an on-named Accessor prop takes a literal and a reactive expression" {
+	assert renderToString(element(<Limited label="x" format={twice} onEndReachedThreshold={2} />)) === "<p>x 2 2</p>", "non-generic literal";
+	assert renderToString(element(<Picked data={words} format={shout} onEndReachedThreshold={3} />)) === "<p>NEON 3</p>", "generic literal";
+	const [limit, setLimit] = createSignal<number>(4);
+	const root = mockNode("root");
+	render(element(<Picked data={words} format={shout} onEndReachedThreshold={limit()} />), mockHost(), root as unknown as HostNode);
+	assert mockToString(root) === "<root><p>NEON 4</p></root>", "initial: " + mockToString(root);
+	setLimit(5);
+	assert mockToString(root) === "<root><p>NEON 5</p></root>", "after set: " + mockToString(root);
+}
+
+test "a reactive expression given to a function prop is read once, when the props are built" {
+	const [loud, setLoud] = createSignal(true);
+	const root = mockNode("root");
+	render(element(<Picked data={words} format={loud() ? shout : quiet} />), mockHost(), root as unknown as HostNode);
+	assert mockToString(root) === "<root><p>NEON none</p></root>", "initial: " + mockToString(root);
+	setLoud(false);
+	assert mockToString(root) === "<root><p>NEON none</p></root>", "the chosen function stays: " + mockToString(root);
 }
