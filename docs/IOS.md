@@ -424,7 +424,7 @@ press state survived rotation and Home/resume without a PID change.
 The phone suites exercise vertical lists. Native horizontal gestures, refresh,
 keyboard capture and reactive axis replacement were not exercised by those suites.
 The real-Chrome per-module lane passed 12 ScrollView and 2 FlatList cases, including
-horizontal geometry, paging, controlled refresh and disposal. The normal bundled
-FlatList app remains compiler-blocked by duplicate struct-copy helpers:
-`~/metascript/.inbox/compiler/2026-10-04-js-bundle-duplicates-struct-value-copy-helpers.md`.
-Per-module test artifacts are not proof of that bundled consumer.
+horizontal geometry, paging, controlled refresh and disposal. A normal
+`msc build --target=js` bundle of a horizontal 10,000-row FlatList app mounts in Chrome,
+and its jump to row 3000 lands at x=300000, y=0 with scroll width 1000000, no page
+error (installed msc `2d428dc42`, 2026-10-05).
