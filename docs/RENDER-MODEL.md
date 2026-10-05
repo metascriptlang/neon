@@ -843,8 +843,8 @@ inferring `Accessor<int32>` is correct; want another type, annotate
 error by design**, not a bug (function types are invariant).
 
 **Contract (uniform, 2026-09-10):** every value prop is declared `Accessor<T>`
-(optional: `x?: Accessor<T> | null`). `children`, `ref`, `on*` and function-typed
-props stay raw. At the call site the macro wraps every value prop — expressions
+(optional: `x?: Accessor<T> | null`). `children` and every prop declared with another
+type (handlers, `ref`, render callbacks) stay raw. At the call site the macro wraps every value prop — expressions
 AND literals — as `accessor(() => expr)`, so the field type matches nominally and
 a signal expression can never land as a snapshot. Inside the component a read of
 `props.x`, or of `x` after `function C({ x }: Props)`, is an accessor read and
@@ -852,12 +852,16 @@ goes through `valueOf` where a value is needed (§Accessor). A value already typ
 `Accessor<T>` (`label={props.label}`, `class={count}`) crosses raw, so a prop passed
 down never nests as `Accessor<Accessor<T>>`. Negative probe: `probe/thunkProps3.ms` S1.
 
-**Landed 2026-09-12 (phase 4.1).** `isRawPropValue` (macros/ui/reactive.ms) is the
-one decision every call site goes through: an arrow/function literal, a JSX-valued prop,
-`ref` and `on*` cross raw; everything else is emitted as `accessor(() => v)`
-(the node literal stays inline in the macro — a helper that builds nodes
-outside a macro body is not available yet, LANG-METAPROGRAMMING "No helper
-functions"). `View`/`Text`/`Pressable`/`TextInput` declare `style?: Accessor<Style>
+**Landed 2026-09-12 (phase 4.1); lowered by declared type since 2026-10-05.**
+`componentCall` (macros/ui/element.ms) reads the called component's props type
+through `bindSym` + `getType` and emits `accessor(() => v)` exactly when the field
+is `Accessor<T>` (or `Accessor<T> | null`) and the value is not already an
+`Accessor`; every other prop crosses as written, whatever its name or shape, so
+`renderItem={row}` and `onEndReachedThreshold={1}` both land on their declared types.
+An undeclared prop, a field mixing `Accessor` with a non-null type, or a tag that
+names nothing in scope is a macro error (`tests/macros/run.sh`). `For`/`Index`
+`each`, `Show` `when` and `FlatList` `data` are `Accessor<…>` too, so a hand-written
+call passes a signal (`each: items`) or `accessor(() => expr)`. `View`/`Text`/`Pressable`/`TextInput` declare `style?: Accessor<Style>
 | null`, `class?: Accessor<string> | null`, `delayLongPress?: Accessor<number> |
 null`, `value?: Accessor<string> | null`; `Context.Provider` takes `value:
 Accessor<T>` and widens it into `provideScope`'s thunk. An object-literal prop is
