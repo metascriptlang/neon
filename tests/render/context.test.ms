@@ -120,7 +120,7 @@ test "a For row reads the provider above the list" {
 	const app: NeonNode = T.Provider({
 		value: accessor((): Theme => ({ accent: "blue" })),
 		children: element(<ul>{For<number>({
-			each: () => items(),
+			each: items,
 			children: (n: number, i: Accessor<number>): NeonNode => <li>{useContext(T).accent + n.toString()}</li>,
 		})}</ul>),
 	});
@@ -137,7 +137,7 @@ test "an Index row reads the provider above the list" {
 	const app: NeonNode = T.Provider({
 		value: accessor((): Theme => ({ accent: "blue" })),
 		children: element(<ul>{Index<number>({
-			each: () => items(),
+			each: items,
 			children: (n: Accessor<number>, i: number): NeonNode => <li>{useContext(T).accent + n().toString()}</li>,
 		})}</ul>),
 	});
@@ -152,7 +152,7 @@ test "a For fallback reads the provider above the list" {
 	const app: NeonNode = T.Provider({
 		value: accessor((): Theme => ({ accent: "blue" })),
 		children: element(<ul>{For<number>({
-			each: () => items(),
+			each: items,
 			children: (n: number, i: Accessor<number>): NeonNode => <li>{n.toString()}</li>,
 			fallback: (h: Host, p: HostNode, b: HostNode | null): void => {
 				const row: NeonNode = <li>{useContext(T).accent}</li>;
@@ -215,7 +215,7 @@ test "dropping the first of two sibling providers keeps the second one readable"
 			{T.Provider({
 				value: accessor((): Theme => ({ accent: "B" })),
 				children: element(<ul>{For<number>({
-					each: () => items(),
+					each: items,
 					children: (n: number, i: Accessor<number>): NeonNode => <li>{useContext(T).accent + n.toString()}</li>,
 				})}</ul>),
 			})}
@@ -240,7 +240,7 @@ test "a nested provider that goes leaves the outer provider readable" {
 					<T.Provider value={{ accent: "inner" }}><span>i</span></T.Provider>
 				</Show>
 				<ul>{For<number>({
-					each: () => items(),
+					each: items,
 					children: (n: number, i: Accessor<number>): NeonNode => <li>{useContext(T).accent + n.toString()}</li>,
 				})}</ul>
 			</div>

@@ -109,7 +109,7 @@ export class FlatListHandle {
 }
 
 export function FlatList<T>(props: {
-	data: () => T[];
+	data: Accessor<T[]>;
 	renderItem: (info: ListRenderItemInfo<T>) => NeonNode;
 	getItemLayout?: ((data: T[], index: number) => ItemLayout) | null;
 	initialNumToRender?: Accessor<number> | null;

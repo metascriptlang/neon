@@ -96,7 +96,7 @@ test "a For call as the only child mounts its rows" {
 	const [items, setItems] = createSignal<number[]>([1, 2]);
 	const host = mockHost();
 	const root = mockNode("root");
-	render(element(<Wrap>{For<number>({ each: () => items(), children: (n, i) => element(<li>{n.toString()}</li>) })}</Wrap>), host, root as unknown as HostNode);
+	render(element(<Wrap>{For<number>({ each: items, children: (n, i) => element(<li>{n.toString()}</li>) })}</Wrap>), host, root as unknown as HostNode);
 	assert mockToString(root) === "<root><ul><li>1</li><li>2</li></ul></root>", "initial: " + mockToString(root);
 	setItems([2, 3, 1]);
 	assert mockToString(root) === "<root><ul><li>2</li><li>3</li><li>1</li></ul></root>", "after set: " + mockToString(root);

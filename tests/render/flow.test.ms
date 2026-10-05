@@ -22,7 +22,7 @@ test "For reactive list reuses rows on reorder, creates only new" {
 		const [items, setItems] = createSignal<number[]>([1, 2, 3]);
 		let creates = 0;
 		const ul = el("ul", [], [], For<number>({
-			each: () => items(),
+			each: items,
 			children: (item, i) => { creates = creates + 1; return <li>{"" + item}</li>; },
 		}));
 		const host = mockHost();
@@ -51,7 +51,7 @@ test "For fallback shows when empty" {
 	createRoot((d) => {
 		const [items, setItems] = createSignal<number[]>([1]);
 		const ul = el("ul", [], [], For<number>({
-			each: () => items(),
+			each: items,
 			children: (item, i) => <li>{"" + item}</li>,
 			fallback: <li>empty</li>,
 		}));
@@ -75,7 +75,7 @@ test "Index updates row value in place, no recreate" {
 		const [items, setItems] = createSignal<number[]>([1, 2, 3]);
 		let creates = 0;
 		const ul = el("ul", [], [], Index<number>({
-			each: () => items(),
+			each: items,
 			children: (item, i) => { creates = creates + 1; return <li>{"" + item()}</li>; },
 		}));
 		const host = mockHost();
@@ -95,7 +95,7 @@ test "Index grows and shrinks with the list" {
 	createRoot((d) => {
 		const [items, setItems] = createSignal<number[]>([1]);
 		const ul = el("ul", [], [], Index<number>({
-			each: () => items(),
+			each: items,
 			children: (item, i) => <li>{"" + item()}</li>,
 		}));
 		const host = mockHost();
@@ -117,7 +117,7 @@ test "Show swaps child/fallback and stays stable while true" {
 	createRoot((d) => {
 		const [n, setN] = createSignal(1);
 		const div = el("div", [], [], Show({
-			when: () => n() > 0,
+			when: accessor(() => n() > 0),
 			children: <span>on</span>,
 			fallback: <span>off</span>,
 		}));
@@ -146,7 +146,7 @@ test "For fallback reactive scope is disposed when rows return" {
 		let fbRuns = 0;
 		const fbTick = (): string => { fbRuns = fbRuns + 1; return label(); };
 		const ul = el("ul", [], [], For<number>({
-			each: () => items(),
+			each: items,
 			children: (item, i) => <li>{"" + item}</li>,
 			fallback: <li>{fbTick()}</li>,
 		}));
@@ -170,7 +170,7 @@ test "For fallback reactive scope is disposed with the list" {
 	createRoot((d) => {
 		const [items, setItems] = createSignal<number[]>([]);
 		const ul = el("ul", [], [], For<number>({
-			each: () => items(),
+			each: items,
 			children: (item, i) => <li>{"" + item}</li>,
 			fallback: <li>{fbTick()}</li>,
 		}));
@@ -310,7 +310,7 @@ test "Show mounts its branch untracked" {
 			const built: NeonNode = <span>{label}</span>;
 			built(h, p, b);
 		};
-		const div = el("div", [], [], Show({ when: () => on(), children: child }));
+		const div = el("div", [], [], Show({ when: on, children: child }));
 		const host = mockHost();
 		const root = host.createElement("root");
 		render(div, host, root);
@@ -335,7 +335,7 @@ test "Show mounts its fallback untracked" {
 			const built: NeonNode = <i>{label}</i>;
 			built(h, p, b);
 		};
-		const div = el("div", [], [], Show({ when: () => on(), children: <span>on</span>, fallback: fb }));
+		const div = el("div", [], [], Show({ when: on, children: <span>on</span>, fallback: fb }));
 		const host = mockHost();
 		const root = host.createElement("root");
 		render(div, host, root);
@@ -402,7 +402,7 @@ test "For takes a key beside a fallback" {
 	createRoot((d) => {
 		const [rows, setRows] = createSignal<Keyed[]>([]);
 		const ul = el("ul", [], [], For<Keyed>({
-			each: () => rows(),
+			each: rows,
 			key: (r: Keyed): number => r.id,
 			children: keyedRow,
 			fallback: <li>empty</li>,

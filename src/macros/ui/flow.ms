@@ -39,7 +39,7 @@ function withFallback(mapped: () => Row[], fb: NeonNode): () => Row[] {
 // Value-keyed list: rows reused by item identity, or by key when one is given; reorder
 // moves DOM, never rebuilds.
 export function For<T>(props: {
-	each: () => T[];
+	each: Accessor<T[]>;
 	children: (item: T, index: Accessor<number>) => NeonNode;
 	key?: ((item: T) => number) | null;
 	usesIndex?: boolean | null;
@@ -69,7 +69,7 @@ export function ForList<T>(props: {
 
 // Index-keyed list: rows fixed per slot; value change updates the row's signal in place.
 export function Index<T>(props: {
-	each: () => T[];
+	each: Accessor<T[]>;
 	children: (item: Accessor<T>, index: number) => NeonNode;
 	fallback?: NeonNode | null;
 }): NeonNode {
@@ -104,7 +104,7 @@ export function ErrorBoundary(props: {
 
 // Conditional: children rebuild only when the condition's truthiness flips (equals memo).
 export function Show(props: {
-	when: () => boolean;
+	when: Accessor<boolean>;
 	children: NeonNode;
 	fallback?: NeonNode | null;
 }): NeonNode {
