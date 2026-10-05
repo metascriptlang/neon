@@ -6,7 +6,6 @@ import { element } from "../../src/macros/ui/element";
 import { Text, View } from "../../src/components/primitives";
 import { FlatList, FlatListHandle, ItemLayout, ListRenderItemInfo } from "../../src/components/flatList";
 import { sleepAsync } from "std/core/promise";
-import { Accessor, accessor } from "../../src/core/signal";
 
 extern class HTMLElement {
 	textContent: string;
@@ -25,9 +24,6 @@ interface Item {
 
 const ROW = 50;
 
-// Parked: style={{ height: 300 }} on the generic FlatList loses its Style type —
-// ~/metascript/.inbox/compiler/2026-10-03-object-literal-prop-of-a-generic-component-loses-its-contextual-type.md
-const listStyle: Style = { height: 300 };
 const rowStyle: Style = { height: ROW };
 
 function items(count: number): Item[] {
@@ -50,7 +46,7 @@ function rowsIn(text: string): number {
 
 test "a 10000-row FlatList mounts a window, keeps the full scroll height and follows scrollToIndex" {
 	const handles: FlatListHandle[] = [];
-	render(element(<FlatList data={items(10000)} style={listStyle} getItemLayout={fixed}
+	render(element(<FlatList data={items(10000)} style={{ height: 300 }} getItemLayout={fixed}
 		ref={(h: FlatListHandle): void => { handles.push(h); }}
 		renderItem={(info: ListRenderItemInfo<Item>): NeonNode => <View style={rowStyle}><Text>{"<" + info.item.n.toString() + ">"}</Text></View>} />), domHost(), documentBody());
 	await sleepAsync(100);
@@ -69,13 +65,12 @@ test "a 10000-row FlatList mounts a window, keeps the full scroll height and fol
 	scroller.remove();
 }
 
-const horizontal: Accessor<boolean> = accessor((): boolean => true);
 const horizontalListStyle: Style = { width: 300, height: 100 };
 const horizontalRowStyle: Style = { width: ROW, height: 100, flexShrink: 0 };
 
 test "horizontal FlatList virtualizes on x and retains its complete scroll width" {
 	const handles: FlatListHandle[] = [];
-	const dispose = render(element(<FlatList data={items(10000)} horizontal={horizontal} style={horizontalListStyle} getItemLayout={fixed}
+	const dispose = render(element(<FlatList data={items(10000)} horizontal={true} style={horizontalListStyle} getItemLayout={fixed}
 		ref={(h: FlatListHandle): void => { handles.push(h); }}
 		renderItem={(info: ListRenderItemInfo<Item>): NeonNode => <View style={horizontalRowStyle}><Text>{"<" + info.item.n.toString() + ">"}</Text></View>} />), domHost(), documentBody());
 	await sleepAsync(100);
