@@ -191,7 +191,7 @@ test "renders windowSize derived region at bottom" {
 
 test "retains intitial render if initialScrollIndex == 0" {
 	const root: MockNode = mockNode("root");
-	render(element(<FlatList data={items(20)} getItemLayout={tall10} initialNumToRender={5} windowSize={1} updateCellsBatchingPeriod={0} renderItem={row} />), mockHost(), root as unknown as HostNode);
+	render(element(<FlatList data={items(20)} getItemLayout={tall10} initialNumToRender={5} initialScrollIndex={0} windowSize={1} updateCellsBatchingPeriod={0} renderItem={row} />), mockHost(), root as unknown as HostNode);
 	layOut(root, 50, 200);
 	await performAllBatches(root);
 	fireEventWith(scrollView(root), "onScroll", scrollEvent(150, 50, 200));
@@ -504,4 +504,134 @@ test "horizontal FlatList uses width and x for its window and every imperative o
 	assert scrollView(root).scrollX === 123 && scrollView(root).scrollY === 0, "offset moves only x";
 	handles[0].scrollToEnd({ animated: false });
 	assert scrollView(root).scrollX === 4800 && scrollView(root).scrollY === 0, "end subtracts viewport width";
+}
+
+function heights1to10(data: Item[], index: number): ItemLayout {
+	return { length: index + 1, offset: index * (index + 1) / 2, index };
+}
+
+function scrolledTo(root: MockNode): string {
+	return `${scrollView(root).scrollY} ${scrollView(root).scrollAnimated}`;
+}
+
+test "gracefully handles negative initialScrollIndex" {
+	const root: MockNode = mockNode("root");
+	render(element(<FlatList data={items(10)} getItemLayout={tall10} initialScrollIndex={-1} initialNumToRender={4} updateCellsBatchingPeriod={0} renderItem={row} />), mockHost(), root as unknown as HostNode);
+	layOut(root, 50, 100);
+	await performAllBatches(root);
+	assert shape(root) === "c0-9", shape(root);
+}
+
+test "gracefully handles too large initialScrollIndex" {
+	const root: MockNode = mockNode("root");
+	render(element(<FlatList data={items(10)} getItemLayout={tall10} initialScrollIndex={15} initialNumToRender={4} updateCellsBatchingPeriod={0} renderItem={row} />), mockHost(), root as unknown as HostNode);
+	layOut(root, 50, 100);
+	await performAllBatches(root);
+	assert scrolledTo(root) === "50 false", "scrollToEnd without animation: " + scrolledTo(root);
+}
+
+test "renders offset cells in initial render when initialScrollIndex set" {
+	const root: MockNode = mockNode("root");
+	render(element(<FlatList data={items(10)} getItemLayout={tall10} initialScrollIndex={4} initialNumToRender={4} renderItem={row} />), mockHost(), root as unknown as HostNode);
+	assert shape(root) === "sp40 c4-7 sp20", shape(root);
+}
+
+test "scrolls after content sizing with integer initialScrollIndex" {
+	const root: MockNode = mockNode("root");
+	render(element(<FlatList data={items(10)} getItemLayout={tall10} initialScrollIndex={1} initialNumToRender={4} updateCellsBatchingPeriod={0} renderItem={row} />), mockHost(), root as unknown as HostNode);
+	layOut(root, 50, 200);
+	await performAllBatches(root);
+	assert scrolledTo(root) === "10 false", scrolledTo(root);
+}
+
+test "scrolls after content sizing with near-zero initialScrollIndex" {
+	const root: MockNode = mockNode("root");
+	render(element(<FlatList data={items(10)} getItemLayout={tall10} initialScrollIndex={0.0001} initialNumToRender={4} updateCellsBatchingPeriod={0} renderItem={row} />), mockHost(), root as unknown as HostNode);
+	layOut(root, 50, 200);
+	await performAllBatches(root);
+	assert scrolledTo(root) === "0.001 false", scrolledTo(root);
+}
+
+test "scrolls after content sizing with near-end initialScrollIndex" {
+	const root: MockNode = mockNode("root");
+	render(element(<FlatList data={items(10)} getItemLayout={tall10} initialScrollIndex={9.9999} initialNumToRender={4} updateCellsBatchingPeriod={0} renderItem={row} />), mockHost(), root as unknown as HostNode);
+	layOut(root, 50, 200);
+	await performAllBatches(root);
+	assert scrolledTo(root) === "99.999 false", scrolledTo(root);
+}
+
+test "scrolls after content sizing with fractional initialScrollIndex (getItemLayout())" {
+	const root: MockNode = mockNode("root");
+	render(element(<FlatList data={items(10)} getItemLayout={heights1to10} initialScrollIndex={1.5} initialNumToRender={4} updateCellsBatchingPeriod={0} renderItem={row} />), mockHost(), root as unknown as HostNode);
+	layOut(root, 50, 200);
+	await performAllBatches(root);
+	assert scrolledTo(root) === "2 false", scrolledTo(root);
+}
+
+test "scrolls after content sizing with fractional initialScrollIndex (cached layout)" {
+	const root: MockNode = mockNode("root");
+	render(element(<FlatList data={items(10)} initialScrollIndex={1.5} initialNumToRender={4} updateCellsBatchingPeriod={0} renderItem={row} />), mockHost(), root as unknown as HostNode);
+	for (const k of content(root).children) {
+		if (k.tag === "" || rowLabel(k) === null) { continue; }
+		const n: number = parseInt((rowLabel(k) as MockNode).children[0].text.slice(4)) as number;
+		const e = neonEvent("layout");
+		e.y = n * (n + 1) / 2;
+		e.width = 10;
+		e.height = n + 1;
+		fireEventWith(k, "onLayout", e);
+	}
+	layOut(root, 50, 200);
+	await performAllBatches(root);
+	assert scrolledTo(root) === "2 false", "row 1 measured at y 1, height 2: " + scrolledTo(root);
+}
+
+test "does not over-render when there is less than initialNumToRender cells" {
+	const root: MockNode = mockNode("root");
+	render(element(<FlatList data={items(10)} getItemLayout={tall10} initialScrollIndex={4} initialNumToRender={20} renderItem={row} />), mockHost(), root as unknown as HostNode);
+	assert shape(root) === "sp40 c4-9", shape(root);
+}
+
+test "discards intitial render if initialScrollIndex != 0" {
+	const root: MockNode = mockNode("root");
+	render(element(<FlatList data={items(20)} getItemLayout={tall10} initialScrollIndex={5} initialNumToRender={5} windowSize={1} updateCellsBatchingPeriod={0} renderItem={row} />), mockHost(), root as unknown as HostNode);
+	layOut(root, 50, 200);
+	await performAllBatches(root);
+	fireEventWith(scrollView(root), "onScroll", scrollEvent(150, 50, 200));
+	await performAllBatches(root);
+	assert shape(root) === "sp140 c14-19", shape(root);
+}
+
+test "does not move render area when initialScrollIndex is > 0 and offset not yet known" {
+	const root: MockNode = mockNode("root");
+	render(element(<FlatList data={items(20)} getItemLayout={tall10} initialScrollIndex={1} initialNumToRender={5} windowSize={10} updateCellsBatchingPeriod={0} renderItem={row} />), mockHost(), root as unknown as HostNode);
+	layOut(root, 50, 100);
+	await performAllBatches(root);
+	assert shape(root) === "sp10 c1-5 sp140", shape(root);
+}
+
+test "clamps render area when items removed for initialScrollIndex > 0 and scroller position not yet known" {
+	const root: MockNode = mockNode("root");
+	const [data, setData] = createSignal<Item[]>(items(20));
+	render(element(<FlatList data={data()} getItemLayout={tall10} initialScrollIndex={14} initialNumToRender={5} windowSize={10} updateCellsBatchingPeriod={0} renderItem={row} />), mockHost(), root as unknown as HostNode);
+	setData(items(15));
+	layOut(root, 50, 100);
+	await performAllBatches(root);
+	assert shape(root) === "sp40 c4-14", shape(root);
+}
+
+test "renders new items when data is updated with non-zero initialScrollIndex" {
+	const root: MockNode = mockNode("root");
+	const [data, setData] = createSignal<Item[]>(items(2));
+	render(element(<FlatList data={data()} getItemLayout={tall10} initialScrollIndex={1} initialNumToRender={5} windowSize={10} maxToRenderPerBatch={10} updateCellsBatchingPeriod={0} renderItem={row} />), mockHost(), root as unknown as HostNode);
+	layOut(root, 20, 20);
+	await performAllBatches(root);
+	setData(items(4));
+	await performAllBatches(root);
+	assert shape(root) === "c0-1 sp20", shape(root);
+}
+
+test "expands first in viewport to render up to maxToRenderPerBatch on initial render" {
+	const root: MockNode = mockNode("root");
+	render(element(<FlatList data={items(10)} getItemLayout={tall10} initialNumToRender={2} initialScrollIndex={4} maxToRenderPerBatch={10} renderItem={row} />), mockHost(), root as unknown as HostNode);
+	assert shape(root) === "sp40 c4-5 sp40", shape(root);
 }

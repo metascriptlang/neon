@@ -123,6 +123,7 @@ export function FlatList<T>(props: {
 	renderItem: (info: ListRenderItemInfo<T>) => NeonNode;
 	getItemLayout?: ((data: T[], index: number) => ItemLayout) | null;
 	initialNumToRender?: Accessor<number> | null;
+	initialScrollIndex?: Accessor<number> | null;
 	onScrollToIndexFailed?: ((info: ScrollToIndexFailedInfo) => void) | null;
 	maxToRenderPerBatch?: Accessor<number> | null;
 	updateCellsBatchingPeriod?: Accessor<number> | null;
@@ -154,6 +155,7 @@ export function FlatList<T>(props: {
 	const data = props.data;
 	const renderItem = props.renderItem;
 	const initialProp = props.initialNumToRender;
+	const initialIndexProp = props.initialScrollIndex;
 	const batchProp = props.maxToRenderPerBatch;
 	const periodProp = props.updateCellsBatchingPeriod;
 	const windowProp = props.windowSize;
@@ -182,11 +184,18 @@ export function FlatList<T>(props: {
 	const maxToRenderPerBatch = (): int32 => batchProp === null ? 10 : (batchProp as () => number)() as int32;
 	const windowSize = (): int32 => windowProp === null ? 21 : (windowProp as () => number)() as int32;
 	const batchingPeriod = (): number => periodProp === null ? 50 : (periodProp as () => number)();
-	const initialRegion = (n: int32): CellRange => ({ first: 0, last: Math.min(n, initialNumToRender()) - 1 });
+	const initialScrollIndex = (): number => initialIndexProp === null ? 0 : (initialIndexProp as () => number)();
+	const initialRegion = (n: int32): CellRange => {
+		const first = Math.max(0, Math.min(n - 1, Math.floor(initialScrollIndex()) as int32));
+		return { first, last: Math.min(n, first + initialNumToRender()) - 1 };
+	};
 
 	let offset = 0.0;
 	let visibleLength = 0.0;
 	let sentEndForContentLength = 0.0;
+	let pendingScrollUpdateCount = initialScrollIndex() > 0 ? 1 : 0;
+	let triggeredInitialScrollToIndex = false;
+	let handle: FlatListHandle | null = null;
 	let cellsAroundViewport: CellRange = { first: 0, last: -1 };
 	let renderedMask: CellRenderMask | null = null;
 	let itemCells = new Map<T, ListCell>();
@@ -207,6 +216,9 @@ export function FlatList<T>(props: {
 	// RN VirtualizedList._adjustCellsAroundViewport.
 	const adjustCellsAroundViewport = (n: int32): CellRange => {
 		if (visibleLength <= 0.0 || metrics.getContentLength() <= 0.0) {
+			return cellsAroundViewport.last >= n ? constrainToItemCount(cellsAroundViewport, n) : cellsAroundViewport;
+		}
+		if (pendingScrollUpdateCount > 0) {
 			return cellsAroundViewport.last >= n ? constrainToItemCount(cellsAroundViewport, n) : cellsAroundViewport;
 		}
 		const scroll: WindowScroll = { offset, velocity: 0.0, visibleLength, zoomScale: 1.0 };
@@ -271,7 +283,7 @@ export function FlatList<T>(props: {
 
 	// RN VirtualizedList._maybeCallOnEdgeReached, the onEndReached half.
 	const maybeCallOnEndReached = (n: int32): void => {
-		if (endReached === null || !metrics.hasContentLength() || visibleLength === 0.0) { return; }
+		if (endReached === null || !metrics.hasContentLength() || visibleLength === 0.0 || pendingScrollUpdateCount > 0) { return; }
 		const contentLength = metrics.getContentLength();
 		let distanceFromEnd = contentLength - visibleLength - offset;
 		if (distanceFromEnd < ON_EDGE_REACHED_EPSILON) { distanceFromEnd = 0; }
@@ -288,7 +300,7 @@ export function FlatList<T>(props: {
 		const mask = new CellRenderMask(n);
 		if (n > 0) {
 			mask.addCells(cellsAroundViewport);
-			mask.addCells(initialRegion(n));
+			if (initialScrollIndex() <= 0) { mask.addCells(initialRegion(n)); }
 		}
 		return mask;
 	};
@@ -361,6 +373,7 @@ export function FlatList<T>(props: {
 		offset = isHorizontal() ? e.x : e.y;
 		visibleLength = isHorizontal() ? e.width : e.height;
 		maybeCallOnEndReached(items.length as int32);
+		if (pendingScrollUpdateCount > 0) { pendingScrollUpdateCount -= 1; }
 		scheduleCellsToRenderUpdate(false);
 	};
 	const onLayout = (e: NeonEvent): void => {
@@ -371,14 +384,21 @@ export function FlatList<T>(props: {
 	};
 	const onContentSizeChange = (width: number, height: number): void => {
 		metrics.notifyListContentLayout(orientation(), width, height);
+		if (width > 0 && height > 0 && initialScrollIndex() > 0 && !triggeredInitialScrollToIndex && handle !== null) {
+			if (initialScrollIndex() < items.length) {
+				(handle as FlatListHandle).scrollToIndex({ animated: false, index: initialScrollIndex() });
+			} else {
+				(handle as FlatListHandle).scrollToEnd({ animated: false });
+			}
+			triggeredInitialScrollToIndex = true;
+		}
 		const changed = props.onContentSizeChange;
 		if (changed !== null) { (changed as (width: number, height: number) => void)(width, height); }
 		scheduleCellsToRenderUpdate(false);
 		maybeCallOnEndReached(items.length as int32);
 	};
 	const scrollRef = (h: ScrollViewHandle): void => {
-		if (userRef === null) { return; }
-		(userRef as (handle: FlatListHandle) => void)(new FlatListHandle(
+		handle = new FlatListHandle(
 			h,
 			(index: number): CellMetrics => metricsAt(index as int32),
 			(index: number): number => metrics.getCellOffsetApprox(index, source),
@@ -398,7 +418,8 @@ export function FlatList<T>(props: {
 				});
 				return true;
 			},
-		));
+		);
+		if (userRef !== null) { (userRef as (handle: FlatListHandle) => void)(handle as FlatListHandle); }
 	};
 
 	// Parked: <ScrollView style={props.style}> wraps a nullable Accessor again (BUGS.md §3, isAccessorTyped) —
