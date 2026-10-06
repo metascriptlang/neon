@@ -1,5 +1,6 @@
 #import <UIKit/UIKit.h>
 #import <Foundation/Foundation.h>
+#include "runtime/promise/dispatch.h"
 #include "../native/bridge.h"
 #include <string.h>
 
@@ -16,11 +17,37 @@ static int g_lastPhase = 0;
 static UIView *g_container = nil;
 static float g_measuredW = 0;
 static float g_measuredH = 0;
+static CFRunLoopTimerRef g_loopTimer = NULL;
+
+static void loopArm(int ms) {
+	if (!g_loopTimer) return;
+	CFAbsoluteTime at = ms < 0 ? [[NSDate distantFuture] timeIntervalSinceReferenceDate] : CFAbsoluteTimeGetCurrent() + ms / 1000.0;
+	CFRunLoopTimerSetNextFireDate(g_loopTimer, at);
+}
+
+static void loopPump(CFRunLoopTimerRef timer, void *info) {
+	(void)timer;
+	(void)info;
+	msDispatcher *d = msGetDispatcher();
+	bool didWork = false;
+	(void)msRunOnce(0);
+	int next = msProcessTimers(d, &didWork);
+	msProcessCallbacks(d, &didWork);
+	loopArm(didWork ? 0 : next);
+}
+
+static void loopStart(void) {
+	(void)msGetDispatcher();
+	CFTimeInterval never = [[NSDate distantFuture] timeIntervalSinceReferenceDate];
+	g_loopTimer = CFRunLoopTimerCreate(kCFAllocatorDefault, never, never, 0, 0, loopPump, NULL);
+	CFRunLoopAddTimer(CFRunLoopGetMain(), g_loopTimer, kCFRunLoopCommonModes);
+}
 
 static void call0(msClosure c) {
 	if (!c.fn) return;
 	if (c.env) ((void (*)(void *))c.fn)(c.env);
 	else ((void (*)(void))c.fn)();
+	loopArm(0);
 }
 
 // Touch-forwarding view: every phase of a touch fires the one handler, with
@@ -265,6 +292,7 @@ void niSetResizeHandler(msClosure handler) {
 }
 
 int niRunApp(void) {
+	loopStart();
 	@autoreleasepool {
 		return UIApplicationMain(0, nil, nil, NSStringFromClass([NeonAppDelegate class]));
 	}

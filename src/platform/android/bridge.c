@@ -1,8 +1,12 @@
+#include "runtime/promise/dispatch.h"
 #include "../native/bridge.h"
 #include <android/log.h>
+#include <android/looper.h>
 #include <jni.h>
 #include <math.h>
 #include <stdlib.h>
+#include <sys/timerfd.h>
+#include <unistd.h>
 
 extern void MsMain(void);
 
@@ -27,6 +31,7 @@ static float g_width;
 static float g_height;
 static float g_measuredW;
 static float g_measuredH;
+static int g_loopFd = -1;
 
 static struct {
 	jclass view, viewGroup, frameLayout, layoutParams, textView, gradientDrawable, integer, touch;
@@ -43,10 +48,41 @@ static struct {
 	int sdk;
 } J;
 
+static void loopArm(int ms) {
+	if (g_loopFd < 0) return;
+	struct itimerspec at = {0};
+	if (ms >= 0) {
+		at.it_value.tv_sec = ms / 1000;
+		at.it_value.tv_nsec = (long)(ms % 1000) * 1000000L + 1;
+	}
+	timerfd_settime(g_loopFd, 0, &at, NULL);
+}
+
+static int loopPump(int fd, int events, void *data) {
+	(void)events;
+	(void)data;
+	uint64_t expirations;
+	(void)read(fd, &expirations, sizeof expirations);
+	msDispatcher *d = msGetDispatcher();
+	bool didWork = false;
+	(void)msRunOnce(0);
+	int next = msProcessTimers(d, &didWork);
+	msProcessCallbacks(d, &didWork);
+	loopArm(didWork ? 0 : next);
+	return 1;
+}
+
+static void loopStart(void) {
+	(void)msGetDispatcher();
+	g_loopFd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC);
+	ALooper_addFd(ALooper_forThread(), g_loopFd, ALOOPER_POLL_CALLBACK, ALOOPER_EVENT_INPUT, loopPump, NULL);
+}
+
 static void call0(msClosure c) {
 	if (!c.fn) return;
 	if (c.env) ((void (*)(void *))c.fn)(c.env);
 	else ((void (*)(void))c.fn)();
+	loopArm(0);
 }
 
 static JNIEnv *env(void) {
@@ -230,6 +266,7 @@ JNIEXPORT void JNICALL Java_dev_metascript_app_NativeApp_start(JNIEnv *e, jclass
 	if (!g_started) {
 		g_started = 1;
 		cacheJni(e);
+		loopStart();
 		MsMain();
 	}
 	(*e)->PushLocalFrame(e, 32);

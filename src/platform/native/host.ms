@@ -16,6 +16,7 @@ when (ios) {
 } else when (android) {
 	@compile("../android/bridge.c");
 	@passL("-llog");
+	@passL("-landroid");
 }
 
 import {
