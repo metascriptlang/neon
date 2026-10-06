@@ -294,6 +294,22 @@ test "template mode: a pure subtree is built once and cloned per mount" {
 	assert mockToString(root) === "<root><div class=\"box\"><span>s</span><em>b</em></div><div class=\"box\"><span>s</span><em>b</em></div></root>", "every clone stays reactive: " + mockToString(root);
 }
 
+function boxView(label: string): NeonNode {
+	return element(<div class="box"><span>s</span><em>{label}</em></div>);
+}
+
+test "template mode: a JSX site evaluated on every call keeps one template" {
+	const counter: number[] = [0];
+	const host = countingHost(counter);
+	const root = mockNode("root");
+	boxView("a")(host, root as unknown as HostNode, null);
+	const afterFirst = counter[0];
+	boxView("b")(host, root as unknown as HostNode, null);
+	boxView("c")(host, root as unknown as HostNode, null);
+	assert counter[0] === afterFirst, "later calls must clone the site's one template — createElement went " + afterFirst.toString() + " -> " + counter[0].toString();
+	assert mockToString(root) === "<root><div class=\"box\"><span>s</span><em>a</em></div><div class=\"box\"><span>s</span><em>b</em></div><div class=\"box\"><span>s</span><em>c</em></div></root>", "three instances: " + mockToString(root);
+}
+
 // Counts host text writes, so a test can separate a real update from a redundant
 // touch. mockToString cannot see this: the tree state is identical either way.
 function textCountingHost(counter: number[]): Host {
