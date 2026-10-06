@@ -14,7 +14,22 @@ extern class HTMLElement {
 	scrollWidth: number;
 	scrollHeight: number;
 	lastElementChild: HTMLElement;
+	parentElement: HTMLElement;
+	extern querySelectorAll(selector: cstring): ElementList;
+	extern getBoundingClientRect(): Frame;
 	extern remove(): void;
+}
+
+extern class ElementList {
+	length: number;
+	extern item(index: int32): HTMLElement;
+}
+
+extern class Frame {
+	top: number;
+	left: number;
+	width: number;
+	height: number;
 }
 
 interface Item {
@@ -125,6 +140,44 @@ test "initialScrollIndex opens a 10000-row FlatList at its row without the first
 	const text = scroller.textContent;
 	assert text.includes("<3000>") && !text.includes("<0>") && !text.includes("<1000>"), "the window starts at row 3000, the first rows are not kept";
 	assert rowsIn(text) < 200, "a window: " + rowsIn(text).toString();
+	dispose();
+	scroller.remove();
+}
+
+test "an inverted measured list keeps logical indices and scroll offsets while painting rows bottom first" {
+	const handles: FlatListHandle[] = [];
+	let ends = 0;
+	const dispose = render(element(<FlatList data={items(6)} inverted={true} style={{ height: 100 }}
+		ref={(h: FlatListHandle): void => { handles.push(h); }} onEndReached={(): void => { ends += 1; }}
+		ItemSeparatorComponent={<View class="separator-probe" style={{ height: 2 }} />}
+		renderItem={(info: ListRenderItemInfo<Item>): NeonNode => <View style={tallness(info.item.n)}><Text>{"<" + info.item.n.toString() + ">"}</Text></View>} />), domHost(), documentBody());
+	await sleepAsync(200);
+	const scroller = (documentBody() as unknown as HTMLElement).lastElementChild;
+	const labels = scroller.querySelectorAll("span");
+	assert labels.item(0).textContent === "<0>" && labels.item(1).textContent === "<1>", "logical item order stays unchanged";
+	assert labels.item(0).getBoundingClientRect().top > labels.item(1).getBoundingClientRect().top, "row 0 paints below row 1";
+	const lower = labels.item(0).parentElement.getBoundingClientRect();
+	const upper = labels.item(1).parentElement.getBoundingClientRect();
+	const separator = scroller.querySelectorAll(".separator-probe").item(0).getBoundingClientRect();
+	assert separator.top === upper.top + upper.height && separator.top + separator.height === lower.top, "the separator paints between neighbouring rows, not after the lower row";
+	assert scroller.scrollHeight === 260, "untransformed measured lengths include the separators";
+	handles[0].scrollToIndex({ index: 3, animated: false });
+	await sleepAsync(100);
+	assert scroller.scrollTop === 126, "row 3 retains its logical measured offset, including separators";
+	handles[0].scrollToEnd({ animated: false });
+	await sleepAsync(100);
+	assert scroller.scrollTop === 160 && ends === 1, "end scrolling and callback retain logical direction";
+	dispose();
+	scroller.remove();
+}
+
+test "an initial index beyond the list scrolls to the measured footer end even when content layout arrives first" {
+	const dispose = render(element(<FlatList data={items(3)} style={{ flexGrow: 0, flexShrink: 0, height: 100 }} getItemLayout={fixed} initialScrollIndex={999}
+		ListFooterComponent={<View style={{ height: 40 }} />}
+		renderItem={(info: ListRenderItemInfo<Item>): NeonNode => <View style={rowStyle}><Text>{"<" + info.item.n.toString() + ">"}</Text></View>} />), domHost(), documentBody());
+	await sleepAsync(200);
+	const scroller = (documentBody() as unknown as HTMLElement).lastElementChild;
+	assert scroller.scrollHeight === 190 && scroller.scrollTop === 90, "the footer belongs to the initial end target: " + scroller.scrollTop.toString();
 	dispose();
 	scroller.remove();
 }

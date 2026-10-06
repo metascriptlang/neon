@@ -1,15 +1,16 @@
-import { Accessor, createSignal, batch, untrack } from "../core/signal";
+import { Accessor, accessor, createSignal, batch, untrack } from "../core/signal";
 import { createEffect } from "../core/effect";
 import { onCleanup } from "../core/cleanup";
 import { mapArray } from "../core/array";
 import { element } from "../macros/ui/element";
+import { Show } from "../macros/ui/flow";
 import { NeonNode, regionNode } from "../render/node";
 import { Row, makeRow } from "../render/reconcile";
 import { NeonEvent } from "../render/event";
 import { Host } from "../render/hostTypes";
-import { Style } from "../render/style";
+import { Style, mergeStyle } from "../render/style";
 import { ScrollView, ScrollViewHandle, View, KeyboardDismissMode, KeyboardShouldPersistTaps } from "./primitives";
-import { CellMetrics, CellRange, WindowScroll, computeWindowedRenderLimits } from "./list/virtualizeUtils";
+import { CellMetrics, CellRange, WindowScroll, computeWindowedRenderLimits, shouldRenderWithPriority } from "./list/virtualizeUtils";
 import { CellRenderMask } from "./list/cellRenderMask";
 import { CellSource, ListMetricsAggregator, ListOrientation } from "./list/listMetrics";
 
@@ -26,6 +27,10 @@ export interface ItemLayout {
 
 export interface EndReachedInfo {
 	distanceFromEnd: number;
+}
+
+export interface StartReachedInfo {
+	distanceFromStart: number;
 }
 
 export interface ScrollToIndexFailedInfo {
@@ -76,8 +81,9 @@ export class FlatListHandle {
 	private viewport: () => number;
 	private horizontal: () => boolean;
 	private unmeasured: (index: number) => boolean;
+	private footerLength: () => number;
 
-	constructor(scroll: ScrollViewHandle, frameOf: (index: number) => CellMetrics, offsetOf: (index: number) => number, count: () => number, viewport: () => number, horizontal: () => boolean, unmeasured: (index: number) => boolean) {
+	constructor(scroll: ScrollViewHandle, frameOf: (index: number) => CellMetrics, offsetOf: (index: number) => number, count: () => number, viewport: () => number, horizontal: () => boolean, unmeasured: (index: number) => boolean, footerLength: () => number) {
 		this.scroll = scroll;
 		this.frameOf = frameOf;
 		this.offsetOf = offsetOf;
@@ -85,6 +91,7 @@ export class FlatListHandle {
 		this.viewport = viewport;
 		this.horizontal = horizontal;
 		this.unmeasured = unmeasured;
+		this.footerLength = footerLength;
 	}
 
 	private moveTo(offset: number, animated: boolean): void {
@@ -114,7 +121,7 @@ export class FlatListHandle {
 		const n = this.count();
 		if (n === 0) { return; }
 		const frame = this.frameOf(n - 1);
-		this.moveTo(Math.max(0, frame.offset + frame.length - this.viewport()), animated);
+		this.moveTo(Math.max(0, frame.offset + frame.length + this.footerLength() - this.viewport()), animated);
 	}
 }
 
@@ -122,6 +129,12 @@ export function FlatList<T>(props: {
 	data: Accessor<T[]>;
 	renderItem: (info: ListRenderItemInfo<T>) => NeonNode;
 	getItemLayout?: ((data: T[], index: number) => ItemLayout) | null;
+	ListHeaderComponent?: NeonNode | null;
+	ListFooterComponent?: NeonNode | null;
+	ListEmptyComponent?: NeonNode | null;
+	ItemSeparatorComponent?: NeonNode | null;
+	ListHeaderComponentStyle?: Accessor<Style> | null;
+	ListFooterComponentStyle?: Accessor<Style> | null;
 	initialNumToRender?: Accessor<number> | null;
 	initialScrollIndex?: Accessor<number> | null;
 	onScrollToIndexFailed?: ((info: ScrollToIndexFailedInfo) => void) | null;
@@ -130,10 +143,13 @@ export function FlatList<T>(props: {
 	windowSize?: Accessor<number> | null;
 	onEndReached?: ((info: EndReachedInfo) => void) | null;
 	onEndReachedThreshold?: Accessor<number> | null;
+	onStartReached?: ((info: StartReachedInfo) => void) | null;
+	onStartReachedThreshold?: Accessor<number> | null;
 	onScroll?: ((e: NeonEvent) => void) | null;
 	onLayout?: ((e: NeonEvent) => void) | null;
 	scrollEventThrottle?: Accessor<number> | null;
 	horizontal?: Accessor<boolean> | null;
+	inverted?: Accessor<boolean> | null;
 	scrollEnabled?: Accessor<boolean> | null;
 	showsHorizontalScrollIndicator?: Accessor<boolean> | null;
 	showsVerticalScrollIndicator?: Accessor<boolean> | null;
@@ -167,6 +183,9 @@ export function FlatList<T>(props: {
 	const horizontal = props.horizontal;
 	const isHorizontal = (): boolean => horizontal !== null && (horizontal as () => boolean)();
 	const orientation = (): ListOrientation => ({ horizontal: isHorizontal(), rtl: false });
+	const isInverted = (): boolean => props.inverted !== null && (props.inverted as Accessor<boolean>)();
+	const inversionStyle = (): Style => ({ transform: isInverted() ? (isHorizontal() ? "scaleX(-1)" : "scaleY(-1)") : null });
+	const slotStyle = (user: Accessor<Style> | null): Accessor<Style> => accessor((): Style => mergeStyle(inversionStyle(), user === null ? {} : (user as Accessor<Style>)()));
 
 	let items: T[] = [];
 	const metrics = new ListMetricsAggregator<T>();
@@ -191,6 +210,9 @@ export function FlatList<T>(props: {
 	};
 
 	let offset = 0.0;
+	let velocity = 0.0;
+	let timeStamp = 0.0;
+	let sentStartForContentLength = 0.0;
 	let visibleLength = 0.0;
 	let sentEndForContentLength = 0.0;
 	let pendingScrollUpdateCount = initialScrollIndex() > 0 ? 1 : 0;
@@ -203,6 +225,35 @@ export function FlatList<T>(props: {
 	let updateTimeout: number = -1;
 	let hiPriInProgress = false;
 	const [cells, setCells] = createSignal<ListCell[]>([]);
+	const [itemCount, setItemCount] = createSignal<number>(0);
+	let footerLength = 0.0;
+	let footerMeasured = props.ListFooterComponent === null;
+	let initialContentReady = false;
+	const maybeScrollToInitialIndex = (): void => {
+		const index = initialScrollIndex();
+		if (!initialContentReady || !footerMeasured || index <= 0 || triggeredInitialScrollToIndex || handle === null) { return; }
+		triggeredInitialScrollToIndex = true;
+		if (index < items.length) {
+			(handle as FlatListHandle).scrollToIndex({ animated: false, index });
+		} else {
+			(handle as FlatListHandle).scrollToEnd({ animated: false });
+		}
+	};
+	const fixedCell = (node: NeonNode): ListCell => new ListCell((index: number): void => {}, (size: number): void => {}, (scheduleUpdate: () => void): NeonNode => node);
+	const header = props.ListHeaderComponent;
+	const footer = props.ListFooterComponent;
+	const empty = props.ListEmptyComponent;
+	const separator = props.ItemSeparatorComponent;
+	const headerCell = header === null ? null : fixedCell(View({ children: header, style: slotStyle(props.ListHeaderComponentStyle) }));
+	const footerCell = footer === null ? null : fixedCell(View({
+		children: footer, style: slotStyle(props.ListFooterComponentStyle),
+		onLayout: (e: NeonEvent): void => {
+			footerLength = isHorizontal() ? e.width : e.height;
+			footerMeasured = true;
+			maybeScrollToInitialIndex();
+		},
+	}));
+	const emptyCell = empty === null ? null : fixedCell(View({ children: empty, style: slotStyle(null) }));
 	onCleanup((): void => {
 		if (updateTimeout >= 0) { clearTimeout(updateTimeout); }
 	});
@@ -221,7 +272,7 @@ export function FlatList<T>(props: {
 		if (pendingScrollUpdateCount > 0) {
 			return cellsAroundViewport.last >= n ? constrainToItemCount(cellsAroundViewport, n) : cellsAroundViewport;
 		}
-		const scroll: WindowScroll = { offset, velocity: 0.0, visibleLength, zoomScale: 1.0 };
+		const scroll: WindowScroll = { offset, velocity, visibleLength, zoomScale: 1.0 };
 		return computeWindowedRenderLimits(n, maxToRenderPerBatch(), windowSize(), cellsAroundViewport, metricsAt, scroll);
 	};
 
@@ -233,12 +284,22 @@ export function FlatList<T>(props: {
 	const itemCell = (item: T, index: number): ListCell => {
 		const [at, setAt] = createSignal<number>(index);
 		return new ListCell((next: number): void => { setAt(next); }, (size: number): void => {}, (scheduleUpdate: () => void): NeonNode => {
-			if (getItemLayout !== null) { return renderItem({ item, index: at }); }
+			const row = renderItem({ item, index: at });
+			if (separator === null && getItemLayout !== null && props.inverted === null) { return row; }
+			const tail = separator === null ? null : Show({
+				when: accessor((): boolean => at() < itemCount() - 1),
+				children: separator, fallback: null,
+			});
 			onCleanup((): void => { metrics.notifyCellUnmounted(item); });
-			const onCellLayout = (e: NeonEvent): void => {
+			const onCellLayout = getItemLayout !== null ? null : (e: NeonEvent): void => {
 				if (metrics.notifyCellLayout(at() as int32, item, orientation(), { x: e.x, y: e.y, width: e.width, height: e.height })) { scheduleUpdate(); }
 			};
-			return element(<View onLayout={onCellLayout}>{renderItem({ item, index: at })}</View>);
+			const style = accessor((): Style => ({
+				...inversionStyle(),
+				display: "flex", flexShrink: 0,
+				flexDirection: isHorizontal() ? (isInverted() ? "row-reverse" : "row") : (isInverted() ? "column-reverse" : "column"),
+			}));
+			return View({ style, onLayout: onCellLayout, children: element(<>{row}{tail}</>) });
 		});
 	};
 
@@ -246,6 +307,8 @@ export function FlatList<T>(props: {
 		const out: ListCell[] = [];
 		const nextItems = new Map<T, ListCell>();
 		const nextSpacers = new Map<int32, ListCell>();
+		if (headerCell !== null) { out.push(headerCell as ListCell); }
+		if (items.length === 0 && emptyCell !== null) { out.push(emptyCell as ListCell); }
 		const regions = mask.enumerateRegions();
 		for (let r = 0; r < regions.length; r += 1) {
 			const region = regions[r];
@@ -278,22 +341,33 @@ export function FlatList<T>(props: {
 		}
 		itemCells = nextItems;
 		spacerCells = nextSpacers;
+		if (footerCell !== null) { out.push(footerCell as ListCell); }
 		return out;
 	};
 
-	// RN VirtualizedList._maybeCallOnEdgeReached, the onEndReached half.
-	const maybeCallOnEndReached = (n: int32): void => {
-		if (endReached === null || !metrics.hasContentLength() || visibleLength === 0.0 || pendingScrollUpdateCount > 0) { return; }
+	const maybeCallOnEdgeReached = (n: int32): void => {
+		const startReached = props.onStartReached;
+		if ((endReached === null && startReached === null) || !metrics.hasContentLength() || visibleLength === 0.0 || pendingScrollUpdateCount > 0) { return; }
 		const contentLength = metrics.getContentLength();
 		let distanceFromEnd = contentLength - visibleLength - offset;
 		if (distanceFromEnd < ON_EDGE_REACHED_EPSILON) { distanceFromEnd = 0; }
 		const endThreshold = thresholdProp === null ? DEFAULT_THRESHOLD_PX : (thresholdProp as () => number)() * visibleLength;
-		const within = distanceFromEnd <= endThreshold;
-		if (within && cellsAroundViewport.last === n - 1 && contentLength !== sentEndForContentLength) {
+		const withinEnd = distanceFromEnd <= endThreshold;
+		if (endReached !== null && withinEnd && cellsAroundViewport.last === n - 1 && contentLength !== sentEndForContentLength) {
 			sentEndForContentLength = contentLength;
 			(endReached as (info: EndReachedInfo) => void)({ distanceFromEnd });
 		}
-		if (!within) { sentEndForContentLength = 0.0; }
+		if (!withinEnd) { sentEndForContentLength = 0.0; }
+		let distanceFromStart = offset;
+		if (distanceFromStart < ON_EDGE_REACHED_EPSILON) { distanceFromStart = 0; }
+		const startThresholdProp = props.onStartReachedThreshold;
+		const startThreshold = startThresholdProp === null ? DEFAULT_THRESHOLD_PX : (startThresholdProp as Accessor<number>)() * visibleLength;
+		const withinStart = distanceFromStart <= startThreshold;
+		if (startReached !== null && withinStart && cellsAroundViewport.first === 0 && contentLength !== sentStartForContentLength) {
+			sentStartForContentLength = contentLength;
+			(startReached as (info: StartReachedInfo) => void)({ distanceFromStart });
+		}
+		if (!withinStart) { sentStartForContentLength = 0.0; }
 	};
 
 	const renderMask = (n: int32): CellRenderMask => {
@@ -305,11 +379,10 @@ export function FlatList<T>(props: {
 		return mask;
 	};
 
-	const shouldRenderWithPriority = (n: int32): boolean => {
-		const first = cellsAroundViewport.first;
-		const last = cellsAroundViewport.last;
-		if (first > 0 && offset - metricsAt(first).offset < 0) { return true; }
-		return last >= 0 && last < n - 1 && metricsAt(last).offset - (offset + visibleLength) < 0;
+	const hasRenderPriority = (n: int32): boolean => {
+		const start = props.onStartReachedThreshold;
+		const scroll: WindowScroll = { offset, velocity, visibleLength, zoomScale: 1.0 };
+		return shouldRenderWithPriority(n, cellsAroundViewport, metricsAt, scroll, start === null ? 2 : (start as Accessor<number>)(), thresholdProp === null ? 2 : (thresholdProp as Accessor<number>)());
 	};
 
 	const updateCellsToRender = (): boolean => {
@@ -328,7 +401,7 @@ export function FlatList<T>(props: {
 		const update = (): void => {
 			if (updateCellsToRender()) { scheduleCellsToRenderUpdate(true); }
 		};
-		if ((metrics.getAverageCellLength() > 0.0 || props.getItemLayout !== null) && shouldRenderWithPriority(items.length as int32) && !hiPriInProgress) {
+		if ((metrics.getAverageCellLength() > 0.0 || props.getItemLayout !== null) && hasRenderPriority(items.length as int32) && !hiPriInProgress) {
 			hiPriInProgress = true;
 			if (updateTimeout >= 0) {
 				clearTimeout(updateTimeout);
@@ -343,7 +416,7 @@ export function FlatList<T>(props: {
 		}
 		if (!rendered) { return; }
 		if (hiPri) { hiPriInProgress = false; }
-		if (props.getItemLayout !== null) { maybeCallOnEndReached(items.length as int32); }
+		if (props.getItemLayout !== null) { maybeCallOnEdgeReached(items.length as int32); }
 	};
 
 	let seenCount: int32 = -1;
@@ -352,6 +425,7 @@ export function FlatList<T>(props: {
 		untrack((): void => {
 			items = next;
 			const n = items.length as int32;
+			setItemCount(n as number);
 			if (seenCount < 0) {
 				cellsAroundViewport = initialRegion(n);
 			} else if (n !== seenCount) {
@@ -370,9 +444,13 @@ export function FlatList<T>(props: {
 
 	const onScroll = (e: NeonEvent): void => {
 		if (userScroll !== null) { (userScroll as (e: NeonEvent) => void)(e); }
-		offset = isHorizontal() ? e.x : e.y;
+		const nextOffset = isHorizontal() ? e.x : e.y;
+		velocity = e.timeStamp > 0 ? (nextOffset - offset) / (timeStamp > 0 ? Math.max(1, e.timeStamp - timeStamp) : 1) : 0;
+		timeStamp = e.timeStamp;
+		offset = nextOffset;
 		visibleLength = isHorizontal() ? e.width : e.height;
-		maybeCallOnEndReached(items.length as int32);
+		metrics.notifyListContentLayout(orientation(), e.contentWidth, e.contentHeight);
+		maybeCallOnEdgeReached(items.length as int32);
 		if (pendingScrollUpdateCount > 0) { pendingScrollUpdateCount -= 1; }
 		scheduleCellsToRenderUpdate(false);
 	};
@@ -380,22 +458,16 @@ export function FlatList<T>(props: {
 		visibleLength = isHorizontal() ? e.width : e.height;
 		if (userLayout !== null) { (userLayout as (e: NeonEvent) => void)(e); }
 		scheduleCellsToRenderUpdate(false);
-		maybeCallOnEndReached(items.length as int32);
+		maybeCallOnEdgeReached(items.length as int32);
 	};
 	const onContentSizeChange = (width: number, height: number): void => {
 		metrics.notifyListContentLayout(orientation(), width, height);
-		if (width > 0 && height > 0 && initialScrollIndex() > 0 && !triggeredInitialScrollToIndex && handle !== null) {
-			if (initialScrollIndex() < items.length) {
-				(handle as FlatListHandle).scrollToIndex({ animated: false, index: initialScrollIndex() });
-			} else {
-				(handle as FlatListHandle).scrollToEnd({ animated: false });
-			}
-			triggeredInitialScrollToIndex = true;
-		}
+		initialContentReady = width > 0 && height > 0;
+		maybeScrollToInitialIndex();
 		const changed = props.onContentSizeChange;
 		if (changed !== null) { (changed as (width: number, height: number) => void)(width, height); }
 		scheduleCellsToRenderUpdate(false);
-		maybeCallOnEndReached(items.length as int32);
+		maybeCallOnEdgeReached(items.length as int32);
 	};
 	const scrollRef = (h: ScrollViewHandle): void => {
 		handle = new FlatListHandle(
@@ -418,6 +490,7 @@ export function FlatList<T>(props: {
 				});
 				return true;
 			},
+			(): number => footerLength,
 		);
 		if (userRef !== null) { (userRef as (handle: FlatListHandle) => void)(handle as FlatListHandle); }
 	};
@@ -425,7 +498,7 @@ export function FlatList<T>(props: {
 	// Parked: <ScrollView style={props.style}> wraps a nullable Accessor again (BUGS.md §3, isAccessorTyped) —
 	// ~/metascript/.inbox/compiler/2026-09-19-design-typed-slots-value-read-and-text-coercion.md
 	return ScrollView({
-		style: props.style, contentContainerStyle: props.contentContainerStyle, class: null,
+		style: props.inverted === null ? props.style : slotStyle(props.style), contentContainerStyle: props.contentContainerStyle, class: null,
 		scrollEventThrottle: props.scrollEventThrottle, onScroll, onLayout, onContentSizeChange, ref: scrollRef, children: rows,
 		horizontal: props.horizontal, scrollEnabled: props.scrollEnabled,
 		showsHorizontalScrollIndicator: props.showsHorizontalScrollIndicator, showsVerticalScrollIndicator: props.showsVerticalScrollIndicator,

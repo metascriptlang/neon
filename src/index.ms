@@ -33,4 +33,8 @@ export { createStyles, styleOf } from "./macros/ui/style";
 export { createTheme, setTheme, themeOf, setThemeCss } from "./macros/ui/theme";
 export { For, ForList, Index, Show } from "./macros/ui/flow";
 
-export { View, Text, Pressable, TextInput } from "./components/primitives";
+export { View, Text, Pressable, TextInput, ScrollView, ScrollViewHandle, KeyboardDismissMode, KeyboardShouldPersistTaps } from "./components/primitives";
+export {
+	FlatList, FlatListHandle, ListRenderItemInfo, ItemLayout, EndReachedInfo, StartReachedInfo,
+	ScrollToIndexFailedInfo, ScrollToIndexOptions, ScrollToOffsetOptions, ScrollToEndOptions,
+} from "./components/flatList";

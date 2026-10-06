@@ -635,3 +635,93 @@ test "expands first in viewport to render up to maxToRenderPerBatch on initial r
 	render(element(<FlatList data={items(10)} getItemLayout={tall10} initialNumToRender={2} initialScrollIndex={4} maxToRenderPerBatch={10} renderItem={row} />), mockHost(), root as unknown as HostNode);
 	assert shape(root) === "sp40 c4-5 sp40", shape(root);
 }
+
+test "a scroll sample updates content length before end detection when content layout arrives later" {
+	const root: MockNode = mockNode("root");
+	let ends = 0;
+	const dispose = render(element(<FlatList data={items(3)} getItemLayout={tall10} renderItem={row}
+		onEndReached={(): void => { ends += 1; }} />), mockHost(), root as unknown as HostNode);
+	layOut(root, 10, 20);
+	fireEventWith(scrollView(root), "onScroll", scrollEvent(20, 10, 30));
+	fireEventWith(content(root), "onLayout", layoutEvent(30));
+	assert ends === 1, "one callback for the same actual content length: " + ends.toString();
+	dispose();
+}
+
+function slotText(node: MockNode): string {
+	let out = node.text;
+	for (const child of node.children) { out += slotText(child); }
+	return out;
+}
+
+function ListHeader(): NeonNode { return element(<Text>header|</Text>); }
+function ListFooter(): NeonNode { return element(<Text>|footer</Text>); }
+function EmptyList(): NeonNode { return element(<Text>empty</Text>); }
+function BetweenRows(): NeonNode { return element(<Text>|separator|</Text>); }
+
+test "list slots preserve header and footer while empty content changes into rows and back" {
+	const root: MockNode = mockNode("root");
+	const [data, setData] = createSignal<Item[]>([]);
+	const dispose = render(element(<FlatList data={data()} renderItem={row} getItemLayout={tall10}
+		ListHeaderComponent={ListHeader} ListFooterComponent={<ListFooter />}
+		ListEmptyComponent={EmptyList} ItemSeparatorComponent={BetweenRows} />), mockHost(), root as unknown as HostNode);
+	assert slotText(content(root)) === "header|empty|footer", slotText(content(root));
+	setData(items(3));
+	assert slotText(content(root)) === "header|row 0|separator|row 1|separator|row 2|footer", slotText(content(root));
+	setData([]);
+	assert slotText(content(root)) === "header|empty|footer", slotText(content(root));
+	dispose();
+}
+
+test "a retained last row gains and loses its separator as data is appended and removed" {
+	const root: MockNode = mockNode("root");
+	const first = items(1)[0];
+	const second = items(2)[1];
+	const [data, setData] = createSignal<Item[]>([first]);
+	let mounted = 0;
+	const renderRow = (info: ListRenderItemInfo<Item>): NeonNode => {
+		mounted += 1;
+		return row(info);
+	};
+	const dispose = render(element(<FlatList data={data()} renderItem={renderRow} getItemLayout={tall10}
+		ItemSeparatorComponent={BetweenRows} />), mockHost(), root as unknown as HostNode);
+	assert slotText(content(root)) === "row 0", slotText(content(root));
+	setData([first, second]);
+	assert slotText(content(root)) === "row 0|separator|row 1", slotText(content(root));
+	assert mounted === 2, "the retained row is not remounted";
+	setData([first]);
+	assert slotText(content(root)) === "row 0", slotText(content(root));
+	assert mounted === 2, "removing a neighbour does not remount the retained row";
+	dispose();
+}
+
+test "scrollToEnd includes a measured footer" {
+	const root: MockNode = mockNode("root");
+	const handles: FlatListHandle[] = [];
+	const dispose = render(element(<FlatList data={items(3)} getItemLayout={tall10} renderItem={row}
+		ListFooterComponent={ListFooter} ref={(h: FlatListHandle): void => { handles.push(h); }} />), mockHost(), root as unknown as HostNode);
+	layOut(root, 10, 50);
+	for (const child of content(root).children) {
+		if (child.tag === "view" && slotText(child) === "|footer") { fireEventWith(child, "onLayout", layoutEvent(20)); }
+	}
+	handles[0].scrollToEnd({ animated: false });
+	assert scrolledTo(root) === "40 false", scrolledTo(root);
+	dispose();
+}
+
+test "onStartReached fires once per content length and re-arms after leaving the start threshold" {
+	const root: MockNode = mockNode("root");
+	let starts = 0;
+	const dispose = render(element(<FlatList data={items(10)} getItemLayout={tall10} renderItem={row}
+		onStartReached={(): void => { starts += 1; }} onStartReachedThreshold={0.1} />), mockHost(), root as unknown as HostNode);
+	layOut(root, 20, 100);
+	assert starts === 1, "initial start after content layout";
+	fireEventWith(scrollView(root), "onScroll", scrollEvent(0, 20, 100));
+	assert starts === 1, "remaining within the threshold is not another arrival";
+	fireEventWith(scrollView(root), "onScroll", scrollEvent(10, 20, 100));
+	fireEventWith(scrollView(root), "onScroll", scrollEvent(-5, 20, 100));
+	assert starts === 2, "bounce into the start is one new arrival";
+	fireEventWith(content(root), "onLayout", layoutEvent(110));
+	assert starts === 3, "a changed content length can reach the start again";
+	dispose();
+}
