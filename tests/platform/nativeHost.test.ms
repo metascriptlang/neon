@@ -143,11 +143,9 @@ test "a 10000-row FlatList creates native views for its window only and sizes th
 test "an empty string node, such as a region's anchor, takes no layout space and no gap" {
 	let got = "";
 	const none: number[] = [];
-	// Parked: an inline style literal in the For row fails on C —
-	// ~/metascript/.inbox/compiler/2026-10-03-style-literal-in-a-for-row-assigns-int-to-a-union-on-c.md
 	const app = (): NeonNode => <View style={{ gap: 10 }} onLayout={(e: NeonEvent): void => { got = `${e.height}`; }}>
 		<View style={{ height: 20 }} />
-		<For each={none}>{(n: number, i: Accessor<number>): NeonNode => <View style={rowBox} />}</For>
+		<For each={none}>{(n: number, i: Accessor<number>): NeonNode => <View style={{ height: 20 }} />}</For>
 		<View style={{ height: 20 }} />
 	</View>;
 	runApp(app);
