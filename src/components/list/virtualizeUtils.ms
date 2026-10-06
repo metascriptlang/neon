@@ -37,6 +37,22 @@ export function newRangeCount(prev: CellRange, next: CellRange): int32 {
 	return next.last - next.first + 1 - Math.max(0, 1 + Math.min(next.last, prev.last) - Math.max(next.first, prev.first));
 }
 
+// RN VirtualizedList.js:1812-1848 (_shouldRenderWithPriority), with normalized RN
+// thresholds supplied by the caller (default 2), velocity in pixels/ms.
+export function shouldRenderWithPriority(count: int32, range: CellRange, metricsAt: (index: int32) => CellMetrics, scroll: WindowScroll, onStartReachedThreshold: float64, onEndReachedThreshold: float64): boolean {
+	if (range.first > 0) {
+		const distTop = scroll.offset - metricsAt(range.first).offset;
+		if (distTop < 0.0 || (scroll.velocity < -2.0 && distTop < onStartReachedThreshold * scroll.visibleLength / 2.0)) {
+			return true;
+		}
+	}
+	if (range.last >= 0 && range.last < count - 1) {
+		const distBottom = metricsAt(range.last).offset - (scroll.offset + scroll.visibleLength);
+		return distBottom < 0.0 || (scroll.velocity > 2.0 && distBottom < onEndReachedThreshold * scroll.visibleLength / 2.0);
+	}
+	return false;
+}
+
 export function elementsThatOverlapOffsets(offsets: float64[], itemCount: int32, metricsAt: (index: int32) => CellMetrics, zoomScale: float64): OffsetHit[] {
 	const result: OffsetHit[] = [];
 	for (let offsetIndex = 0; offsetIndex < offsets.length; offsetIndex += 1) {
