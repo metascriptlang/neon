@@ -51,6 +51,7 @@ export function BigList(): NeonNode {
 			onScroll={(e: NeonEvent): void => { setOffset(e.y); }}
 			onLayout={(e: NeonEvent): void => { if (mounted() < 0) { setMounted(performance.now() - started); } }}
 			renderItem={(info: ListRenderItemInfo<Entry>): NeonNode =>
-				<Pressable style={styles.row} onPress={() => setPressed("row " + info.item.n.toString())}>{"row " + info.item.n.toString()}</Pressable>} />
+				<Pressable style={styles.row} onPress={() => setPressed("row " + info.item.n.toString())}
+					onLongPress={() => setPressed("long row " + info.item.n.toString())}>{"row " + info.item.n.toString()}</Pressable>} />
 	</View>;
 }

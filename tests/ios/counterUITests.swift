@@ -219,6 +219,12 @@ final class FlatListUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["pressed row 5000"].waitForExistence(timeout: 10), "the tap hits row 5000")
         report("pressed")
 
+        app.staticTexts["row 5001"].press(forDuration: 1.2)
+        XCTAssertTrue(app.staticTexts["pressed long row 5001"].waitForExistence(timeout: 10), "a held row fires onLongPress on its std timer: \(label(startingWith: "pressed "))")
+        report("long-pressed")
+        app.staticTexts["row 5000"].tap()
+        XCTAssertTrue(app.staticTexts["pressed row 5000"].waitForExistence(timeout: 10), "the tap hits row 5000 again")
+
         XCUIDevice.shared.orientation = .landscapeRight
         RunLoop.current.run(until: Date().addingTimeInterval(2))
         XCTAssertTrue(app.staticTexts["pressed row 5000"].waitForExistence(timeout: 10), "state survives the rotation")

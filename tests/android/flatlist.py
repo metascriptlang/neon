@@ -84,6 +84,18 @@ def lane():
         raise LaneError("the tap did not hit row 5000: %r" % scroll_list.label(texts, "pressed "))
     scroll_list.report("flatlist-pressed", window, texts, launched)
 
+    x1, y1, x2, y2 = texts["row 5001"]
+    x, y = str((x1 + x2) // 2), str((y1 + y2) // 2)
+    adb("shell", "input", "swipe", x, y, x, y, "1200")
+    window, texts = scroll_list.state(False)
+    if "pressed long row 5001" not in texts:
+        raise LaneError("a held row did not fire onLongPress on its std timer: %r" % scroll_list.label(texts, "pressed "))
+    scroll_list.report("flatlist-long-pressed", window, texts, launched)
+    scroll_list.tap(texts, "row 5000")
+    window, texts = scroll_list.state(False)
+    if "pressed row 5000" not in texts:
+        raise LaneError("the tap did not hit row 5000 again: %r" % scroll_list.label(texts, "pressed "))
+
     counter.rotate(1)
     window, texts = scroll_list.state(True)
     if "pressed row 5000" not in texts:
