@@ -115,3 +115,16 @@ test "a FlatList without getItemLayout measures rows of different heights and sc
 	dispose();
 	scroller.remove();
 }
+
+test "initialScrollIndex opens a 10000-row FlatList at its row without the first rows" {
+	const dispose = render(element(<FlatList data={items(10000)} style={{ height: 300 }} getItemLayout={fixed} initialScrollIndex={3000}
+		renderItem={(info: ListRenderItemInfo<Item>): NeonNode => <View style={rowStyle}><Text>{"<" + info.item.n.toString() + ">"}</Text></View>} />), domHost(), documentBody());
+	await sleepAsync(300);
+	const scroller = (documentBody() as unknown as HTMLElement).lastElementChild;
+	assert scroller.scrollTop === 3000 * ROW, "offset " + scroller.scrollTop.toString();
+	const text = scroller.textContent;
+	assert text.includes("<3000>") && !text.includes("<0>") && !text.includes("<1000>"), "the window starts at row 3000, the first rows are not kept";
+	assert rowsIn(text) < 200, "a window: " + rowsIn(text).toString();
+	dispose();
+	scroller.remove();
+}
