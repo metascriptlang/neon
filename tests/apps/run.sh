@@ -43,5 +43,5 @@ expect_known_red() {
 }
 
 expect_output tests/apps/localSignalApp.ms
-expect_known_red tests/apps/moduleSignalApp.ms "recompiler KNOWN-ISSUES L46"
+expect_output tests/apps/moduleSignalApp.ms
 exit $fail
