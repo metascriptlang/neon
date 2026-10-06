@@ -42,6 +42,9 @@ extern class Node {
 	scrollHeight: number;
 	offsetWidth: number;
 	offsetHeight: number;
+	offsetLeft: number;
+	offsetTop: number;
+	offsetParent: Node | null;
 	parentNode: Node | null;
 	tagName: string;
 	extern blur(): void;
@@ -88,6 +91,7 @@ extern class CSSStyleDeclaration {
 // there is no way to probe for absence across the extern boundary.
 extern class DomEvent {
 	target: Node;
+	timeStamp: number;
 	clientX: number;
 	clientY: number;
 	key: string;
@@ -141,6 +145,7 @@ class DomScrollState {
 
 	fire(type: string): void {
 		const e = neonEvent(type);
+		e.timeStamp = performance.now();
 		e.x = this.el.scrollLeft; e.y = this.el.scrollTop;
 		e.width = this.el.offsetWidth; e.height = this.el.offsetHeight;
 		e.contentWidth = this.el.scrollWidth; e.contentHeight = this.el.scrollHeight;
@@ -462,15 +467,23 @@ export function domHost(): Host {
 				let active = true;
 				const observer = new ResizeObserver((): void => {
 					if (!active) { return; }
-					const box = el.getBoundingClientRect();
 					const parent = el.parentNode;
 					if (parent === null) { return; }
-					const outer = (parent as Node).getBoundingClientRect();
 					const ev = neonEvent(type);
-					ev.x = box.left - outer.left + (parent as Node).scrollLeft;
-					ev.y = box.top - outer.top + (parent as Node).scrollTop;
-					ev.width = box.width;
-					ev.height = box.height;
+					let ancestor: Node | null = el;
+					while (ancestor !== null) {
+						ev.x += (ancestor as Node).offsetLeft;
+						ev.y += (ancestor as Node).offsetTop;
+						ancestor = (ancestor as Node).offsetParent;
+					}
+					ancestor = parent;
+					while (ancestor !== null) {
+						ev.x -= (ancestor as Node).offsetLeft;
+						ev.y -= (ancestor as Node).offsetTop;
+						ancestor = (ancestor as Node).offsetParent;
+					}
+					ev.width = el.offsetWidth;
+					ev.height = el.offsetHeight;
 					handler(ev);
 				});
 				observer.observe(el);
@@ -479,6 +492,7 @@ export function domHost(): Host {
 			}
 			listen(el, domType, (de: DomEvent): void => {
 				const ev = neonEvent(type);
+				ev.timeStamp = de.timeStamp;
 				if (type === "changetext" || type === "input" || type === "change") { ev.value = de.target.value; }
 				else if (type === "scroll") {
 					ev.x = el.scrollLeft;

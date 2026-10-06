@@ -341,3 +341,17 @@ test "onLayout reports the frame relative to the parent, and again when it chang
 	assert got === "layout 10 40;layout 10 60;", "after a resize: " + got;
 	probe(outer).remove();
 }
+
+test "onLayout keeps logical parent coordinates and dimensions under inversions and scale" {
+	const h = domHost();
+	const outer = mount("view");
+	h.setStyle(outer, { paddingTop: 10, transform: "scaleY(-1)" });
+	const el = h.createElement("view");
+	h.setStyle(el, { height: 40, width: 80, transform: "scale(2)" });
+	h.insertBefore(outer, el, null);
+	let got = "";
+	h.addEvent(el, "onLayout", (e: NeonEvent): void => { got = `${e.x} ${e.y} ${e.width} ${e.height}`; });
+	await sleepAsync(100);
+	assert got === "0 10 80 40", "logical frame, not the transformed bounding rectangle: " + got;
+	probe(outer).remove();
+}
