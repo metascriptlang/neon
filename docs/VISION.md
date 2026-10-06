@@ -170,6 +170,16 @@ compiler families, not a new measured Neon runtime failure. Their current fix/de
 state belongs to the compiler cards linked by `BUGS.md`; this run gives no newer full-gate
 or pixel verdict.
 
+Consumer remeasurement, 2026-10-06, source/test tree
+`2de0549b95cee13d4e6d197f41776b248172ed10`, installed binary/support `f31716cad`:
+`msc test tests/render/scene3d.test.ms` exits 1 with 470 type errors; all 16 cases
+remain before runtime. The same `NodeKind` macro failures remain, with two additional
+errors at Void `src/void3d/scene.ms` `findByName`: its const `stack` cannot be popped
+or pushed. `msc run out/scene3dConsumer.ms` exits 1 with three errors: unchanged
+`LightKind_Point` plus those two Void errors. The latter are part of the existing
+Void inbox note `2026-10-05-const-value-arrays-become-read-only.md`, not a Neon fix.
+Neither original path reaches runtime; no full gate or pixel claim follows.
+
 A Void area speaks two vocabularies, and the author always knows which one they are in: 3D is
 written in 3D's own terms, Application UI starts at a `View`, and the one place the two meet is
 a texture.
