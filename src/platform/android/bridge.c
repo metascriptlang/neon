@@ -40,7 +40,7 @@ static struct {
 	jclass scroll;
 	jmethodID scrollInit, scrollSetTag, scrollSetOption, scrollSetContentSize, scrollTo, scrollAddContent, scrollDispose, viewSetClickable;
 	jmethodID viewGetParent, viewSetLayoutParams, viewSetAlpha, viewGetBackground, viewSetBackground;
-	jmethodID viewSetScaleX, viewSetScaleY, viewSetTranslationX, viewSetTranslationY;
+	jmethodID viewSetScaleX, viewSetScaleY, viewSetTranslationX, viewSetTranslationY, viewBringToFront;
 	jmethodID viewMeasure, viewGetMeasuredWidth, viewGetMeasuredHeight, viewSetTag, viewGetRootWindowInsets;
 	jmethodID viewSetOnTouchListener, touchInit;
 	jmethodID viewGetContext, groupAddView, groupRemoveView, frameInit, paramsInit;
@@ -156,6 +156,7 @@ static void cacheJni(JNIEnv *e) {
 	J.viewSetScaleY = method(e, J.view, "setScaleY", "(F)V");
 	J.viewSetTranslationX = method(e, J.view, "setTranslationX", "(F)V");
 	J.viewSetTranslationY = method(e, J.view, "setTranslationY", "(F)V");
+	J.viewBringToFront = method(e, J.view, "bringToFront", "()V");
 	J.viewGetBackground = method(e, J.view, "getBackground", "()Landroid/graphics/drawable/Drawable;");
 	J.viewSetBackground = method(e, J.view, "setBackground", "(Landroid/graphics/drawable/Drawable;)V");
 	J.viewMeasure = method(e, J.view, "measure", "(II)V");
@@ -484,6 +485,12 @@ void niAddChild(void *parent, void *child) {
 		(*e)->CallVoidMethod(e, (jobject)parent, J.groupAddView, (jobject)child);
 	}
 	check(e, "addView");
+}
+
+void niBringChildToFront(void *child) {
+	JNIEnv *e = env();
+	(*e)->CallVoidMethod(e, (jobject)child, J.viewBringToFront);
+	check(e, "bringToFront");
 }
 
 void niRemoveFromParent(void *child) {

@@ -2,6 +2,7 @@ import { Host, HostNode, NeonNode, render } from "../../render/host";
 import { Dispose } from "../../core/types";
 import { NeonEvent } from "../../render/event";
 import { FlexStyle, YGNode, freeLayoutTree, layoutPass as runLayoutPass } from "../../../../yoga/src/index";
+import { YGNodeGetParent, YGNodeRemoveChild } from "../../../../yoga/src/yogaH";
 import { Style } from "../../render/style";
 import { NativeElementKind, createNativeEventRegistry, nativeElementKind, nativeFlexStyle, nativeTransform } from "./contract";
 import "../android/library";
@@ -20,7 +21,7 @@ when (ios) {
 }
 
 import {
-	niViewCreate, niTextCreate, niAddChild, niRemoveFromParent, niViewRelease, niSetFrame,
+	niViewCreate, niTextCreate, niAddChild, niBringChildToFront, niRemoveFromParent, niViewRelease, niSetFrame,
 	niSetBackgroundColor, niSetCornerRadius, niSetOpacity, niSetTransform,
 	niSetText, niSetTextColor, niSetFont, niMeasureText, niMeasuredW, niMeasuredH,
 	niContainerView, niScreenWidth, niScreenHeight, niViewSetTag, niViewSetPressable,
@@ -52,6 +53,9 @@ class NativeNode {
 	eventTag: int32 = 0;
 	styleCache: Style | null = null;
 	transformCss: string | null = null;
+	zIndex: number = 0;
+	zChildren: int32 = 0;
+	paintOrder: NativeNode[] = [];
 	flex: FlexStyle | null = null;
 	lastFlex: FlexStyle | null = null;
 	yg: Ptr<YGNode> | null = null;
@@ -289,6 +293,8 @@ function releaseNativeTree(n: NativeNode): void {
 		n.view = null;
 	}
 	n.children = [];
+	n.paintOrder = [];
+	n.zChildren = 0;
 	n.labelOwner = null;
 	n.styleCache = null;
 	n.flex = null;
@@ -309,7 +315,7 @@ function materializeString(child: NativeNode, parent: NativeNode): void {
 		remeasureText(parent);
 		return;
 	}
-	child.view = niTextCreate();
+	if (child.view === null) { child.view = niTextCreate(); }
 	child.isText = true;
 	child.labelOwner = child;
 	niSetText(child.view, child.text);
@@ -325,6 +331,7 @@ function materializeString(child: NativeNode, parent: NativeNode): void {
 		niSetFont(child.view, size as float32, bold ? 1 : 0);
 	}
 	remeasureText(child);
+	if (child.styleCache !== null) { applyPaint(child, child.styleCache); }
 	if (parent.view !== null && child.view !== null) { niAddChild(parent.view, child.view); }
 }
 
@@ -404,6 +411,16 @@ export function createNativeHost(): NativeHost {
 		},
 		setStyle: (node: HostNode, style: Style): void => {
 			const n = node as unknown as NativeNode;
+			const zIndex = style.zIndex ?? 0;
+			if (zIndex !== n.zIndex) {
+				const p = n.parent;
+				if (p !== null) {
+					if (n.zIndex !== 0) { p.zChildren -= 1; }
+					if (zIndex !== 0) { p.zChildren += 1; }
+				}
+				n.zIndex = zIndex;
+				if (p !== null) { restack(p); }
+			}
 			n.styleCache = style;
 			n.flex = nativeFlexStyle(style, kindOf(n));
 			applyPaint(n, style);
@@ -427,19 +444,22 @@ export function createNativeHost(): NativeHost {
 		append: (parent: HostNode, child: HostNode): void => {
 			const p = parent as unknown as NativeNode;
 			const c = child as unknown as NativeNode;
-			if (c.parent !== null) {
-				const old = c.parent;
-				const idx = childIndex(old, c);
-				if (idx >= 0) { old.children.splice(idx, 1); }
-			}
+			if (c.parent === p && childIndex(p, c) === (p.children.length as int32) - 1) { return; }
+			const sameParent = c.parent === p;
+			const wasMounted = isMounted(c);
+			unlinkChild(c, p);
 			c.parent = p;
 			p.children.push(c);
-			if (c.isString) {
+			if (c.zIndex !== 0) { p.zChildren += 1; }
+			if (c.isString && !sameParent) {
 				materializeString(c, p);
-				return;
+			} else if (!sameParent && p.view !== null && c.view !== null) {
+				niAddChild(p.view, c.view);
+			} else if (sameParent && p.zChildren === 0 && c.view !== null) {
+				niBringChildToFront(c.view);
 			}
-			if (p.view !== null && c.view !== null) { niAddChild(p.view, c.view); }
-			if (isMounted(p)) { requestLayout(); }
+			if (p.zChildren > 0) { restack(p); }
+			if (wasMounted || isMounted(p)) { requestLayout(); }
 		},
 		insertBefore: (parent: HostNode, node: HostNode, ref: HostNode | null): void => {
 			const p = parent as unknown as NativeNode;
@@ -451,28 +471,23 @@ export function createNativeHost(): NativeHost {
 				idx = childIndex(p, ref as unknown as NativeNode);
 				if (idx < 0) { throw "insertBefore: the reference node is not a child of the parent"; }
 			}
-			if (n.parent !== null) {
-				const old = n.parent;
-				const cur = childIndex(old, n);
-				if (cur >= 0) { old.children.splice(cur, 1); }
-			}
+			if (ref === node) { return; }
+			const sameParent = n.parent === p;
+			const wasMounted = isMounted(n);
+			const current = sameParent ? childIndex(p, n) : -1;
+			if (sameParent && current === idx - 1) { return; }
+			if (sameParent && current < idx) { idx -= 1; }
+			unlinkChild(n, p);
 			n.parent = p;
 			p.children.splice(idx, 0, n);
-			if (n.isString) {
+			if (n.zIndex !== 0) { p.zChildren += 1; }
+			if (n.isString && !sameParent) {
 				materializeString(n, p);
-				if (isMounted(p)) { requestLayout(); }
-				return;
-			}
-			if (p.view !== null && n.view !== null) {
+			} else if (!sameParent && p.view !== null && n.view !== null) {
 				niAddChild(p.view, n.view);
-				const refChild = ref as unknown as NativeNode;
-				if (refChild !== null && refChild.view !== null) {
-					// Stacking order follows add order on both platforms; the next
-					// relayout re-asserts frames, z-order matches the array.
-					sortLater(p);
-				}
 			}
-			if (isMounted(p)) { requestLayout(); }
+			if (ref !== null || sameParent || p.zChildren > 0) { restack(p); }
+			if (wasMounted || isMounted(p)) { requestLayout(); }
 		},
 		removeChild: (parent: HostNode, node: HostNode): void => {
 			const p = parent as unknown as NativeNode;
@@ -480,6 +495,13 @@ export function createNativeHost(): NativeHost {
 			const idx = childIndex(p, n);
 			if (idx < 0) { throw "removeChild: the node is not a child of the parent"; }
 			p.children.splice(idx, 1);
+			if (n.zIndex !== 0) { p.zChildren -= 1; }
+			removePaintChild(p, n);
+			const owner = n.labelOwner;
+			if (n.isString && owner !== null && owner !== n && owner.view !== null) {
+				niSetText(owner.view, "");
+				remeasureText(owner);
+			}
 			n.parent = null;
 			if (isMounted(p)) { requestLayout(); }
 			freeLayoutTree(n);
@@ -514,13 +536,65 @@ export function createNativeHost(): NativeHost {
 	};
 }
 
-// Native stacking order must follow the children array; frames alone do not
-// reorder views. First cut: re-add subviews in array order on insert.
-function sortLater(p: NativeNode): void {
+function removePaintChild(p: NativeNode, n: NativeNode): void {
+	const at = p.paintOrder.indexOf(n);
+	if (at < 0) { return; }
+	for (let i = at; i + 1 < p.paintOrder.length; i += 1) { p.paintOrder[i] = p.paintOrder[i + 1]; }
+	p.paintOrder.pop();
+}
+
+function unlinkChild(n: NativeNode, nextParent: NativeNode): void {
+	const old = n.parent;
+	if (old === null) { return; }
+	if (old !== nextParent && n.yg !== null) {
+		const owner = YGNodeGetParent(n.yg);
+		if (owner !== null) { YGNodeRemoveChild(owner, n.yg); }
+	}
+	const at = childIndex(old, n);
+	if (at >= 0) { old.children.splice(at, 1); }
+	if (n.zIndex !== 0) { old.zChildren -= 1; }
+	removePaintChild(old, n);
+	if (n.isString && old !== nextParent) {
+		const owner = n.labelOwner;
+		if (owner !== null && owner !== n && owner.view !== null) {
+			niSetText(owner.view, "");
+			remeasureText(owner);
+		}
+		if (nextParent.isText && n.view !== null) {
+			freeLayoutTree(n);
+			niRemoveFromParent(n.view);
+			niViewRelease(n.view);
+			n.view = null;
+			n.isText = false;
+		}
+		n.labelOwner = null;
+	}
+}
+
+function restack(p: NativeNode): void {
 	if (p.view === null) { return; }
-	for (let i = 0; i < p.children.length; i += 1) {
-		const c = p.children[i];
-		if (p.view !== null && c.view !== null && !c.isString) { niAddChild(p.view, c.view); }
+	if (p.zChildren === 0) {
+		for (const child of p.children) {
+			if (child.view !== null) { niBringChildToFront(child.view); }
+		}
+		return;
+	}
+	let count: int32 = 0;
+	for (const child of p.children) {
+		if (child.view === null) { continue; }
+		if (count < p.paintOrder.length) { p.paintOrder[count] = child; }
+		else { p.paintOrder.push(child); }
+		let at = count;
+		while (at > 0 && p.paintOrder[at - 1].zIndex > child.zIndex) {
+			p.paintOrder[at] = p.paintOrder[at - 1];
+			at -= 1;
+		}
+		p.paintOrder[at] = child;
+		count += 1;
+	}
+	while (p.paintOrder.length > count) { p.paintOrder.pop(); }
+	for (const child of p.paintOrder) {
+		if (child.view !== null) { niBringChildToFront(child.view); }
 	}
 }
 
@@ -574,6 +648,8 @@ function teardownApp(): void {
 	freeLayoutTree(root);
 	for (const child of root.children) { releaseNativeTree(child); }
 	root.children = [];
+	root.paintOrder = [];
+	root.zChildren = 0;
 }
 
 export function runApp(app: () => NeonNode): int32 {

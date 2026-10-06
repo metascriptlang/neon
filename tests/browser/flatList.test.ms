@@ -181,3 +181,48 @@ test "an initial index beyond the list scrolls to the measured footer end even w
 	dispose();
 	scroller.remove();
 }
+
+function stickyRows(info: ListRenderItemInfo<Item>): NeonNode {
+	return element(<View class={"sticky-row-" + info.item.n.toString()} style={rowStyle}><Text>{"<" + info.item.n.toString() + ">"}</Text></View>);
+}
+
+test "sticky rows collide with their successor and the nearest header survives outside the virtual window" {
+	const dispose = render(element(<FlatList data={items(30)} getItemLayout={fixed} renderItem={stickyRows}
+		style={{ height: 100 }} stickyHeaderIndices={[0, 3, 6, 9, 12, 15, 18, 21, 24, 27]}
+		initialNumToRender={1} windowSize={1} updateCellsBatchingPeriod={0} />), domHost(), documentBody());
+	await sleepAsync(200);
+	const scroller = (documentBody() as unknown as HTMLElement).lastElementChild;
+	const top = scroller.getBoundingClientRect().top;
+	scroller.scrollTop = 120;
+	await sleepAsync(100);
+	const first = scroller.querySelectorAll(".sticky-row-0").item(0).getBoundingClientRect();
+	const next = scroller.querySelectorAll(".sticky-row-3").item(0).getBoundingClientRect();
+	assert first.top + first.height === next.top && first.top === top - 20, "the following header pushes the first one out";
+	scroller.scrollTop = 200;
+	await sleepAsync(100);
+	assert scroller.querySelectorAll(".sticky-row-3").item(0).getBoundingClientRect().top === top, "the next header now sticks";
+	scroller.scrollTop = 1000;
+	await sleepAsync(200);
+	assert scroller.querySelectorAll(".sticky-row-18").item(0).getBoundingClientRect().top === top, "the closest preceding header remains at the viewport edge";
+	dispose();
+	scroller.remove();
+}
+
+test "measured sticky headers count the list header slot and push it out before pinning an item" {
+	const dispose = render(element(<FlatList data={items(6)} renderItem={stickyRows}
+		style={{ height: 100 }} stickyHeaderIndices={[0, 2, 4]} initialNumToRender={6}
+		ListHeaderComponent={<View class="list-sticky-header" style={{ height: 40 }}><Text>Header</Text></View>} />), domHost(), documentBody());
+	await sleepAsync(200);
+	const scroller = (documentBody() as unknown as HTMLElement).lastElementChild;
+	const top = scroller.getBoundingClientRect().top;
+	scroller.scrollTop = 80;
+	await sleepAsync(100);
+	const header = scroller.querySelectorAll(".list-sticky-header").item(0).getBoundingClientRect();
+	const first = scroller.querySelectorAll(".sticky-row-1").item(0).getBoundingClientRect();
+	assert header.top === top - 30 && header.top + header.height === first.top, "indices include the header slot and its collision uses measured row positions";
+	scroller.scrollTop = 100;
+	await sleepAsync(100);
+	assert scroller.querySelectorAll(".sticky-row-1").item(0).getBoundingClientRect().top === top, "a measured item takes over at its actual offset";
+	dispose();
+	scroller.remove();
+}

@@ -1,4 +1,4 @@
-import { runApp } from "../../src/platform/native/host";
+import { runApp, createNativeHost } from "../../src/platform/native/host";
 import { createSignal, Accessor } from "../../src/core/signal";
 import { For } from "../../src/macros/ui/flow";
 import { View, Pressable, ScrollView, ScrollViewHandle } from "../../src/components/primitives";
@@ -6,13 +6,14 @@ import { NeonNode } from "../../src/render/node";
 import { NeonEvent } from "../../src/render/event";
 import { Style } from "../../src/render/style";
 import { Text } from "../../src/components/primitives";
-import { FlatList, ItemLayout, ListRenderItemInfo } from "../../src/components/flatList";
+import { FlatList, FlatListHandle, ItemLayout, ListRenderItemInfo } from "../../src/components/flatList";
 
 import {
 	nmViewsCreated, nmReleaseCalls, nmTouch, nmTeardown, nmMount, nmResize, nmScroll, nmLastScrollTag,
 	nmContentWidth, nmContentHeight, nmScrolledX, nmScrolledY, nmScrolledAnimated, nmContentSizeWrites,
 	nmScrollFrameWrites, nmScreenHeightReads, nmDrag, nmPull, nmLoop,
 	nmTransformWrites, nmVisualX, nmVisualY, nmLayoutWidth, nmLayoutHeight, nmTouchAt, nmLastPressableTag,
+	nmLayoutX, nmLayoutY, nmRestackWrites, nmAddChildWrites, nmDetachWrites, nmPaintTag, nmPaintTextIndex,
 } from "./nativeBridgeMock.h";
 
 const PRESS: int32 = 2;
@@ -333,4 +334,227 @@ test "unrelated native Style changes keep the cached transform projection" {
 	assert nmLayoutHeight(tag) === 60 && nmVisualX(tag, 0) === 100, "new layout with the old inversion";
 	assert nmTransformWrites() === writes, "the same CSS transform is not parsed or projected again";
 	nmTeardown();
+}
+
+test "native zIndex controls overlapping pressables without changing layout or detaching their views" {
+	const [z, setZ] = createSignal<number | null>(10);
+	const [color, setColor] = createSignal<string>("#112233");
+	let pressed = "";
+	let layouts: int32 = 0;
+	const app = (): NeonNode => <View style={{ height: 100 }} onLayout={(e: NeonEvent): void => {}}>
+		<Pressable style={{ width: 100, height: 40, zIndex: z(), backgroundColor: color() }}
+			onLayout={(e: NeonEvent): void => { layouts += 1; }}
+			onPress={() => { pressed += "upper;"; }} />
+		<Pressable style={{ width: 100, height: 40, transform: "translateY(-40px)" }}
+			onLayout={(e: NeonEvent): void => { layouts += 1; }}
+			onPress={() => { pressed += "lower;"; }} />
+	</View>;
+	runApp(app);
+	const parentTag = nmPaintTag(0, 0);
+	const upperTag = nmPaintTag(parentTag, 1);
+	const lowerTag = nmLastPressableTag();
+	assert upperTag !== lowerTag, "the earlier high-z sibling paints last";
+	assert nmLayoutY(upperTag) === 0 && nmLayoutY(lowerTag) === 40, "Yoga still uses logical child order";
+	const added = nmAddChildWrites();
+	const detached = nmDetachWrites();
+	nmTouchAt(50, 20, PRESS);
+	setZ(-1);
+	nmTouchAt(50, 20, PRESS);
+	setZ(null);
+	nmTouchAt(50, 20, PRESS);
+	setZ(10);
+	nmTouchAt(50, 20, PRESS);
+	assert pressed === "upper;lower;lower;upper;", "touch order follows changed z, including a reset to equal zero: " + pressed;
+	assert nmLayoutX(upperTag) === 0 && nmLayoutY(upperTag) === 0 &&
+		nmLayoutY(lowerTag) === 40 && nmLayoutWidth(upperTag) === 100 && nmLayoutHeight(upperTag) === 40,
+		"z changes leave logical frames alone";
+	assert layouts === 2, "paint-order changes do not repeat onLayout";
+	assert nmAddChildWrites() === added && nmDetachWrites() === detached, "restacking never removes or re-adds a view";
+	const restacked = nmRestackWrites();
+	setColor("#445566");
+	nmResize(400, 800);
+	nmResize(800, 400);
+	nmResize(400, 800);
+	assert nmRestackWrites() === restacked, "unrelated Style updates and stable or resized layouts do not restack";
+	nmTouchAt(50, 20, PRESS);
+	assert pressed === "upper;lower;lower;upper;upper;", "the same press route survives paint and layout changes";
+	nmTeardown();
+}
+
+test "native equal-z reorders preserve logical siblings and press state, with a cheap zero-z append path" {
+	const levels: number[] = [0, 10];
+	for (const level of levels) {
+		const native = createNativeHost();
+		const host = native.host;
+		const p = host.createElement("View");
+		host.setStyle(p, { width: 100, height: 100 });
+		host.addEvent(p, "onLayout", (e: NeonEvent): void => {});
+		host.append(native.rootNode, p);
+		const parentTag = nmPaintTag(0, 0);
+		let pressed = "";
+		const a = host.createElement("View");
+		const b = host.createElement("View");
+		const c = host.createElement("View");
+		const box: Style = { position: "absolute", top: 0, left: 0, width: 100, height: 40, zIndex: level };
+		host.setStyle(a, box);
+		host.setStyle(b, box);
+		host.setStyle(c, box);
+		host.addEvent(a, "onPress", (e: NeonEvent): void => { pressed += "a;"; });
+		const aTag = nmLastPressableTag();
+		host.addEvent(b, "onPress", (e: NeonEvent): void => { pressed += "b;"; });
+		const bTag = nmLastPressableTag();
+		host.addEvent(c, "onPress", (e: NeonEvent): void => { pressed += "c;"; });
+		const cTag = nmLastPressableTag();
+		const initialRestacks = nmRestackWrites();
+		host.append(p, a);
+		host.append(p, b);
+		host.append(p, c);
+		if (level === 0) { assert nmRestackWrites() === initialRestacks, "ordinary zero-z appends require no restack"; }
+		nmTouchAt(50, 20, PRESS);
+		const added = nmAddChildWrites();
+		const detached = nmDetachWrites();
+		host.insertBefore(p, a, c);
+		assert host.firstChild(p) === b && host.nextSibling(b) === a && host.nextSibling(a) === c,
+			"moving an earlier node forward adjusts the insertion index after unlinking it";
+		assert nmPaintTag(parentTag, 0) === bTag && nmPaintTag(parentTag, 1) === aTag && nmPaintTag(parentTag, 2) === cTag,
+			"equal z preserves the new logical order";
+		host.insertBefore(p, c, b);
+		nmTouchAt(50, 20, PRESS);
+		assert host.firstChild(p) === c && host.nextSibling(c) === b && host.nextSibling(b) === a, "paint sorting never mutates Yoga children";
+		host.insertBefore(p, c, null);
+		nmTouchAt(50, 20, PRESS);
+		host.append(p, b);
+		nmTouchAt(50, 20, PRESS);
+		assert pressed === "c;a;c;b;", "same views keep their press routes through insert and append moves: " + pressed;
+		assert nmAddChildWrites() === added && nmDetachWrites() === detached, "same-parent moves only bring views forward";
+		const restacked = nmRestackWrites();
+		host.insertBefore(p, c, b);
+		host.insertBefore(p, b, null);
+		host.insertBefore(p, a, a);
+		host.append(p, b);
+		native.relayout();
+		native.relayout();
+		assert nmRestackWrites() === restacked, "no-op child moves and unchanged layout do not restack";
+		host.removeChild(p, b);
+		nmTouchAt(50, 20, PRESS);
+		nmTouch(bTag, PRESS);
+		assert pressed === "c;a;c;b;c;", "a removed upper sibling and its event route cannot take a hit";
+		assert nmPaintTag(parentTag, 0) === aTag && nmPaintTag(parentTag, 1) === cTag, "removal preserves the remaining paint order";
+		const q = host.createElement("View");
+		host.setStyle(q, { position: "absolute", top: 0, left: 0, width: 100, height: 100 });
+		host.addEvent(q, "onLayout", (e: NeonEvent): void => {});
+		host.append(native.rootNode, q);
+		const nextParentTag = nmPaintTag(0, 1);
+		const d = host.createElement("View");
+		host.setStyle(d, { position: "absolute", top: 0, left: 0, width: 100, height: 40 });
+		host.addEvent(d, "onPress", (e: NeonEvent): void => { pressed += "d;"; });
+		const dTag = nmLastPressableTag();
+		host.append(q, d);
+		const beforeMove = nmDetachWrites();
+		host.append(q, c);
+		assert nmDetachWrites() === beforeMove + 1, "only a real reparent detaches the moved view";
+		assert host.firstChild(p) === a && host.nextSibling(a) === null && host.firstChild(q) === d && host.nextSibling(d) === c,
+			"reparenting updates logical child lists";
+		assert nmPaintTag(parentTag, 0) === aTag && nmPaintTag(nextParentTag, 1) === cTag, "no stale paint entry remains in the old parent";
+		nmTouchAt(50, 20, PRESS);
+		host.setStyle(c, { position: "absolute", top: 0, left: 0, width: 100, height: 40, zIndex: -1 });
+		assert nmPaintTag(nextParentTag, 0) === cTag && nmPaintTag(nextParentTag, 1) === dTag, "the new parent responds to the moved child's z change";
+		nmTouchAt(50, 20, PRESS);
+		assert pressed === "c;a;c;b;c;c;d;", "reparented routes remain live and respect their new siblings: " + pressed;
+		host.removeChild(native.rootNode, q);
+		host.removeChild(native.rootNode, p);
+		assert nmReleaseCalls() === nmViewsCreated(), "every moved or removed view is released exactly once";
+		nmTeardown();
+	}
+}
+
+test "native materialized string labels participate in paint order and reuse their views when moved" {
+	const native = createNativeHost();
+	const host = native.host;
+	const p = host.createElement("View");
+	host.setStyle(p, { width: 100, height: 100 });
+	host.addEvent(p, "onLayout", (e: NeonEvent): void => {});
+	host.append(native.rootNode, p);
+	const parentTag = nmPaintTag(0, 0);
+	const label = host.createText("label");
+	const upper = host.createElement("View");
+	host.setStyle(upper, { height: 40, zIndex: 10 });
+	host.addEvent(upper, "onPress", (e: NeonEvent): void => {});
+	const upperTag = nmLastPressableTag();
+	host.append(p, upper);
+	host.append(p, label);
+	assert nmPaintTextIndex(parentTag, "label") === 0 && nmPaintTag(parentTag, 1) === upperTag,
+		"materialized labels are zero-z children, not excluded from restacking";
+	host.setStyle(upper, { height: 40 });
+	assert nmPaintTextIndex(parentTag, "label") === 1, "resetting the only nonzero z restores logical order";
+	const created = nmViewsCreated();
+	const detached = nmDetachWrites();
+	host.insertBefore(p, label, upper);
+	assert nmViewsCreated() === created && nmDetachWrites() === detached && nmPaintTextIndex(parentTag, "label") === 0,
+		"same-parent string moves restack the existing label without recreating or detaching it";
+	host.append(p, label);
+	assert nmPaintTextIndex(parentTag, "label") === 1, "string appends also follow logical equal-z order";
+	const q = host.createElement("View");
+	host.addEvent(q, "onLayout", (e: NeonEvent): void => {});
+	host.append(native.rootNode, q);
+	const nextParentTag = nmPaintTag(0, 1);
+	host.insertBefore(q, label, null);
+	assert nmViewsCreated() === created + 1 && nmPaintTextIndex(parentTag, "label") === -1 && nmPaintTextIndex(nextParentTag, "label") === 0,
+		"moving a materialized label to another view reuses it and removes it from its old paint order";
+	const text = host.createElement("text");
+	host.addEvent(text, "onLayout", (e: NeonEvent): void => {});
+	host.append(native.rootNode, text);
+	const textTag = nmPaintTag(0, 2);
+	const releases = nmReleaseCalls();
+	host.append(text, label);
+	assert nmReleaseCalls() === releases + 1 && nmPaintTextIndex(nextParentTag, "label") === -1,
+		"moving into Text releases the standalone label and merges into its owner";
+	const beforeRematerialize = nmViewsCreated();
+	host.append(q, label);
+	assert nmViewsCreated() === beforeRematerialize + 1 && nmPaintTextIndex(nextParentTag, "label") === 0,
+		"moving out of Text materializes one fresh label";
+	assert nmPaintTextIndex(0, "label") === -1 && nmPaintTag(0, 2) === textTag, "the old Text owner is cleared, not replaced";
+	host.removeChild(q, label);
+	assert nmPaintTextIndex(nextParentTag, "label") === -1, "removed labels cannot remain in paint order";
+	const merged = host.createText("merged");
+	host.append(text, merged);
+	assert nmPaintTextIndex(0, "merged") === 2, "the Text owner paints its merged child";
+	host.removeChild(text, merged);
+	assert nmPaintTextIndex(0, "merged") === -1, "removing a merged string also clears its Text owner";
+	host.removeChild(native.rootNode, text);
+	host.removeChild(native.rootNode, q);
+	host.removeChild(native.rootNode, p);
+	assert nmReleaseCalls() === nmViewsCreated(), "string materialization and cleanup leave no native views behind";
+	nmTeardown();
+}
+
+test "a native sticky list paints and routes its retained header above rows, then removes and changes its sticky indices" {
+	const data = entries(40);
+	const [indices, setIndices] = createSignal<int32[]>([0, 5, 10, 15, 20, 25, 30, 35]);
+	const handles: FlatListHandle[] = [];
+	let pressed = "";
+	const app = (): NeonNode => <FlatList data={data} getItemLayout={rowLayout}
+		style={{ height: 200, flexGrow: 0, flexShrink: 0 }} windowSize={1} initialNumToRender={1}
+		updateCellsBatchingPeriod={0} stickyHeaderIndices={indices()} ref={(h: FlatListHandle): void => { handles.push(h); }}
+		renderItem={(info: ListRenderItemInfo<Entry>): NeonNode => <Pressable style={rowBox} onPress={() => { pressed += info.item.n.toString() + ";"; }}><Text>{info.item.id}</Text></Pressable>} />;
+	runApp(app);
+	loopUntilIdle();
+	const scrollTag = nmLastScrollTag();
+	handles[0].scrollToOffset({ offset: 650, animated: false });
+	nmScroll(scrollTag, 0, 650, 400, 200, 400, 2000);
+	loopUntilIdle();
+	nmTouchAt(50, 25, PRESS);
+	assert pressed === "10;", "the preceding sticky header receives the overlapping row's press: " + pressed;
+	setIndices([]);
+	loopUntilIdle();
+	nmTouchAt(50, 25, PRESS);
+	assert pressed === "10;13;", "removing sticky indices exposes the ordinary visible row: " + pressed;
+	setIndices([0, 13]);
+	handles[0].scrollToOffset({ offset: 700, animated: false });
+	nmScroll(scrollTag, 0, 700, 400, 200, 400, 2000);
+	loopUntilIdle();
+	nmTouchAt(50, 25, PRESS);
+	assert pressed === "10;13;13;", "changing indices makes the retained row stick instead: " + pressed;
+	nmTeardown();
+	assert nmReleaseCalls() === nmViewsCreated(), "sticky wrappers leave no native view behind";
 }

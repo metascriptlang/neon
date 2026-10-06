@@ -8,6 +8,7 @@
 typedef struct MockView {
 	struct MockView *parent;
 	struct MockView *next;
+	struct MockView *firstChild, *lastChild, *previousSibling, *nextSibling;
 	int released;
 	int tag;
 	char text[128];
@@ -43,6 +44,9 @@ static float g_contentW = 0, g_contentH = 0;
 static float g_scrolledX = -1, g_scrolledY = -1;
 static int g_scrolledAnimated = -1;
 static int g_transformWrites;
+static int g_restackWrites;
+static int g_addChildWrites;
+static int g_detachWrites;
 
 static void call0(msClosure c) {
 	if (!c.fn) return;
@@ -124,8 +128,45 @@ float niLastScrollWidth(void) { return g_scrollW; }
 float niLastScrollHeight(void) { return g_scrollH; }
 float niLastScrollContentWidth(void) { return g_scrollContentW; }
 float niLastScrollContentHeight(void) { return g_scrollContentH; }
-void niAddChild(void *parent, void *child) { live(child, "niAddChild")->parent = live(parent, "niAddChild parent"); }
-void niRemoveFromParent(void *child) { live(child, "niRemoveFromParent")->parent = NULL; }
+static void unlinkView(MockView *v) {
+	MockView *p = v->parent;
+	if (!p) return;
+	if (v->previousSibling) v->previousSibling->nextSibling = v->nextSibling;
+	else p->firstChild = v->nextSibling;
+	if (v->nextSibling) v->nextSibling->previousSibling = v->previousSibling;
+	else p->lastChild = v->previousSibling;
+	v->parent = NULL;
+	v->previousSibling = v->nextSibling = NULL;
+}
+
+static void appendView(MockView *p, MockView *v) {
+	v->parent = p;
+	v->previousSibling = p->lastChild;
+	if (p->lastChild) p->lastChild->nextSibling = v;
+	else p->firstChild = v;
+	p->lastChild = v;
+}
+
+void niAddChild(void *parent, void *child) {
+	MockView *v = live(child, "niAddChild");
+	MockView *p = live(parent, "niAddChild parent");
+	if (v->parent) { g_detachWrites++; unlinkView(v); }
+	appendView(p, v);
+	g_addChildWrites++;
+}
+
+void niBringChildToFront(void *child) {
+	MockView *v = live(child, "niBringChildToFront");
+	MockView *p = v->parent;
+	if (!p) { fprintf(stderr, "mock bridge: restacking an unattached view\n"); abort(); }
+	if (p->lastChild != v) { unlinkView(v); appendView(p, v); }
+	g_restackWrites++;
+}
+
+void niRemoveFromParent(void *child) {
+	MockView *v = live(child, "niRemoveFromParent");
+	if (v->parent) { g_detachWrites++; unlinkView(v); }
+}
 
 void niViewRelease(void *view) {
 	live(view, "niViewRelease")->released = 1;
@@ -284,20 +325,50 @@ float nmVisualX(int32_t tag, float x) { return visualCoordinate(tagged(tag), x, 
 float nmVisualY(int32_t tag, float y) { return visualCoordinate(tagged(tag), y, 1); }
 float nmLayoutWidth(int32_t tag) { return tagged(tag)->w; }
 float nmLayoutHeight(int32_t tag) { return tagged(tag)->h; }
+float nmLayoutX(int32_t tag) { return tagged(tag)->x; }
+float nmLayoutY(int32_t tag) { return tagged(tag)->y; }
+int32_t nmRestackWrites(void) { return g_restackWrites; }
+int32_t nmAddChildWrites(void) { return g_addChildWrites; }
+int32_t nmDetachWrites(void) { return g_detachWrites; }
+
+int32_t nmPaintTag(int32_t parentTag, int32_t index) {
+	MockView *p = parentTag ? tagged(parentTag) : &s_container;
+	MockView *v = p->firstChild;
+	for (int32_t i = 0; v && i < index; i++) v = v->nextSibling;
+	if (!v || index < 0) { fprintf(stderr, "mock bridge: paint index out of bounds\n"); abort(); }
+	return v->tag;
+}
+
+int32_t nmPaintTextIndex(int32_t parentTag, const char *text) {
+	MockView *p = parentTag ? tagged(parentTag) : &s_container;
+	int32_t index = 0;
+	for (MockView *v = p->firstChild; v; v = v->nextSibling, index++) {
+		if (v->size > 0 && strcmp(v->text, text) == 0) return index;
+	}
+	return -1;
+}
+
+static int containsPoint(MockView *v, float x, float y) {
+	float originX = visualCoordinate(v, 0, 0), originY = visualCoordinate(v, 0, 1);
+	float scaleX = visualCoordinate(v, 1, 0) - originX;
+	float scaleY = visualCoordinate(v, 1, 1) - originY;
+	if (scaleX == 0 || scaleY == 0) return 0;
+	float localX = (x - originX) / scaleX, localY = (y - originY) / scaleY;
+	return localX >= v->scrollX && localX < v->scrollX + v->w &&
+		localY >= v->scrollY && localY < v->scrollY + v->h;
+}
+
+static MockView *hitView(MockView *p, float x, float y) {
+	for (MockView *v = p->lastChild; v; v = v->previousSibling) {
+		if (v->released || !containsPoint(v, x, y)) continue;
+		MockView *hit = hitView(v, x, y);
+		if (hit) return hit;
+		if (v->pressable && v->tag) return v;
+	}
+	return NULL;
+}
 
 void nmTouchAt(float x, float y, int32_t phase) {
-	for (MockView *v = g_views; v; v = v->next) {
-		if (v->released || !v->pressable || !v->tag) continue;
-		int inside = 1;
-		for (MockView *p = v; p && p != &s_container; p = p->parent) {
-			float originX = visualCoordinate(p, 0, 0), originY = visualCoordinate(p, 0, 1);
-			float scaleX = visualCoordinate(p, 1, 0) - originX;
-			float scaleY = visualCoordinate(p, 1, 1) - originY;
-			if (scaleX == 0 || scaleY == 0) { inside = 0; break; }
-			float localX = (x - originX) / scaleX, localY = (y - originY) / scaleY;
-			if (localX < p->scrollX || localX >= p->scrollX + p->w ||
-				localY < p->scrollY || localY >= p->scrollY + p->h) { inside = 0; break; }
-		}
-		if (inside) { nmTouch(v->tag, phase); return; }
-	}
+	MockView *hit = hitView(&s_container, x, y);
+	if (hit) nmTouch(hit->tag, phase);
 }

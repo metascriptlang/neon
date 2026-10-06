@@ -17,6 +17,7 @@ void  niViewSetTag(void *view, int32_t tag);
 void  niViewSetPressable(void *view);
 void *niTextCreate(void);
 void  niAddChild(void *parent, void *child);
+void  niBringChildToFront(void *child);
 void  niRemoveFromParent(void *child);
 void  niViewRelease(void *view);
 void  niSetFrame(void *view, float x, float y, float w, float h);

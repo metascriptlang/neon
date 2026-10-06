@@ -1,4 +1,4 @@
-import { Accessor, accessor, createSignal, batch, untrack } from "../core/signal";
+import { Accessor, Signal, accessor, createSignal, batch, untrack } from "../core/signal";
 import { createEffect } from "../core/effect";
 import { onCleanup } from "../core/cleanup";
 import { mapArray } from "../core/array";
@@ -13,6 +13,7 @@ import { ScrollView, ScrollViewHandle, View, KeyboardDismissMode, KeyboardShould
 import { CellMetrics, CellRange, WindowScroll, computeWindowedRenderLimits, shouldRenderWithPriority } from "./list/virtualizeUtils";
 import { CellRenderMask } from "./list/cellRenderMask";
 import { CellSource, ListMetricsAggregator, ListOrientation } from "./list/listMetrics";
+import { stickyTranslation } from "./list/sticky";
 
 export interface ListRenderItemInfo<T> {
 	item: T;
@@ -72,6 +73,14 @@ class ListCell {
 		this.make = make;
 	}
 }
+class StickyState {
+	offset: Signal<number> = new Signal<number>(0);
+	viewport: Signal<number> = new Signal<number>(0);
+	layoutVersion: Signal<int32> = new Signal<int32>(0);
+	indicesVersion: Signal<int32> = new Signal<int32>(0);
+	header: CellMetrics | null = null;
+}
+
 
 export class FlatListHandle {
 	private scroll: ScrollViewHandle;
@@ -150,6 +159,8 @@ export function FlatList<T>(props: {
 	scrollEventThrottle?: Accessor<number> | null;
 	horizontal?: Accessor<boolean> | null;
 	inverted?: Accessor<boolean> | null;
+	stickyHeaderIndices?: Accessor<int32[]> | null;
+	invertStickyHeaders?: Accessor<boolean> | null;
 	scrollEnabled?: Accessor<boolean> | null;
 	showsHorizontalScrollIndicator?: Accessor<boolean> | null;
 	showsVerticalScrollIndicator?: Accessor<boolean> | null;
@@ -198,6 +209,34 @@ export function FlatList<T>(props: {
 		},
 	};
 	const metricsAt = (index: int32): CellMetrics => metrics.getCellMetricsApprox(index, source);
+	const sticky = props.stickyHeaderIndices === null ? null : new StickyState();
+	let stickyIndices: int32[] = [];
+	const headerOffset: int32 = props.ListHeaderComponent === null ? 0 : 1;
+	const stickyFrame = (childIndex: int32): CellMetrics | null => {
+		if (childIndex === 0 && headerOffset === 1) { return (sticky as StickyState).header; }
+		const index = childIndex - headerOffset;
+		return index < 0 || index >= items.length ? null : metrics.getCellMetrics(index, source);
+	};
+	const stickyStyle = (index: () => int32): Accessor<Style> => accessor((): Style => {
+		const state = sticky as StickyState;
+		state.indicesVersion.get();
+		const childIndex = index();
+		let found = false;
+		let nextIndex: int32 = -1;
+		for (const at of stickyIndices) {
+			if (at === childIndex) { found = true; }
+			if (at > childIndex && (nextIndex < 0 || at < nextIndex)) { nextIndex = at; }
+		}
+		if (!found) { return { flexShrink: 0 }; }
+		if (isHorizontal()) { throw "FlatList: stickyHeaderIndices does not support horizontal lists"; }
+		state.layoutVersion.get();
+		const frame = stickyFrame(childIndex);
+		if (frame === null) { return { flexShrink: 0, zIndex: 10 }; }
+		const next = nextIndex < 0 ? null : stickyFrame(nextIndex);
+		const invert = props.invertStickyHeaders;
+		const translation = stickyTranslation(frame.offset, frame.length, next === null ? null : next.offset, state.offset.get(), state.viewport.get(), invert === null ? isInverted() : (invert as Accessor<boolean>)());
+		return { flexShrink: 0, zIndex: 10, transform: "translateY(" + translation.toString() + "px)" };
+	});
 
 	const initialNumToRender = (): int32 => initialProp === null ? 10 : (initialProp as () => number)() as int32;
 	const maxToRenderPerBatch = (): int32 => batchProp === null ? 10 : (batchProp as () => number)() as int32;
@@ -244,7 +283,15 @@ export function FlatList<T>(props: {
 	const footer = props.ListFooterComponent;
 	const empty = props.ListEmptyComponent;
 	const separator = props.ItemSeparatorComponent;
-	const headerCell = header === null ? null : fixedCell(View({ children: header, style: slotStyle(props.ListHeaderComponentStyle) }));
+	const headerNode = header === null ? null : View({ children: header, style: slotStyle(props.ListHeaderComponentStyle) });
+	const headerCell = headerNode === null ? null : fixedCell(sticky === null ? headerNode : View({
+		children: headerNode, style: stickyStyle((): int32 => 0),
+		onLayout: (e: NeonEvent): void => {
+			const state = sticky as StickyState;
+			state.header = { index: -1, offset: e.y, length: e.height, isMounted: true };
+			state.layoutVersion.set(state.layoutVersion.peek() + 1);
+		},
+	}));
 	const footerCell = footer === null ? null : fixedCell(View({
 		children: footer, style: slotStyle(props.ListFooterComponentStyle),
 		onLayout: (e: NeonEvent): void => {
@@ -285,21 +332,26 @@ export function FlatList<T>(props: {
 		const [at, setAt] = createSignal<number>(index);
 		return new ListCell((next: number): void => { setAt(next); }, (size: number): void => {}, (scheduleUpdate: () => void): NeonNode => {
 			const row = renderItem({ item, index: at });
-			if (separator === null && getItemLayout !== null && props.inverted === null) { return row; }
+			if (separator === null && getItemLayout !== null && props.inverted === null && sticky === null) { return row; }
 			const tail = separator === null ? null : Show({
 				when: accessor((): boolean => at() < itemCount() - 1),
 				children: separator, fallback: null,
 			});
 			onCleanup((): void => { metrics.notifyCellUnmounted(item); });
-			const onCellLayout = getItemLayout !== null ? null : (e: NeonEvent): void => {
-				if (metrics.notifyCellLayout(at() as int32, item, orientation(), { x: e.x, y: e.y, width: e.width, height: e.height })) { scheduleUpdate(); }
+			const onCellLayout = getItemLayout !== null && sticky === null ? null : (e: NeonEvent): void => {
+				if (getItemLayout === null && metrics.notifyCellLayout(at() as int32, item, orientation(), { x: e.x, y: e.y, width: e.width, height: e.height })) { scheduleUpdate(); }
+				if (sticky !== null) {
+					const state = sticky as StickyState;
+					state.layoutVersion.set(state.layoutVersion.peek() + 1);
+				}
 			};
 			const style = accessor((): Style => ({
 				...inversionStyle(),
 				display: "flex", flexShrink: 0,
 				flexDirection: isHorizontal() ? (isInverted() ? "row-reverse" : "row") : (isInverted() ? "column-reverse" : "column"),
 			}));
-			return View({ style, onLayout: onCellLayout, children: element(<>{row}{tail}</>) });
+			const inner = View({ style, onLayout: sticky === null ? onCellLayout : null, children: element(<>{row}{tail}</>) });
+			return sticky === null ? inner : View({ style: stickyStyle((): int32 => (at() as int32) + headerOffset), onLayout: onCellLayout, children: inner });
 		});
 	};
 
@@ -375,6 +427,12 @@ export function FlatList<T>(props: {
 		if (n > 0) {
 			mask.addCells(cellsAroundViewport);
 			if (initialScrollIndex() <= 0) { mask.addCells(initialRegion(n)); }
+			let closest: int32 = -1;
+			for (const childIndex of stickyIndices) {
+				const index = childIndex - headerOffset;
+				if (index >= 0 && index < cellsAroundViewport.first && index > closest) { closest = index; }
+			}
+			if (closest >= 0) { mask.addCells({ first: closest, last: closest }); }
 		}
 		return mask;
 	};
@@ -420,6 +478,19 @@ export function FlatList<T>(props: {
 	};
 
 	let seenCount: int32 = -1;
+	if (sticky !== null) {
+		createEffect((): void => {
+			const next = (props.stickyHeaderIndices as Accessor<int32[]>)();
+			untrack((): void => {
+				for (const index of next) { if (index < 0) { throw "FlatList: stickyHeaderIndices must be non-negative"; } }
+				if (next.length > 0 && isHorizontal()) { throw "FlatList: stickyHeaderIndices does not support horizontal lists"; }
+				stickyIndices = next;
+				const state = sticky as StickyState;
+				state.indicesVersion.set(state.indicesVersion.peek() + 1);
+				if (seenCount >= 0) { updateCellsToRender(); }
+			});
+		});
+	}
 	createEffect((): void => {
 		const next = data();
 		untrack((): void => {
@@ -449,6 +520,10 @@ export function FlatList<T>(props: {
 		timeStamp = e.timeStamp;
 		offset = nextOffset;
 		visibleLength = isHorizontal() ? e.width : e.height;
+		if (sticky !== null) {
+			const state = sticky as StickyState;
+			batch((): void => { state.offset.set(offset); state.viewport.set(visibleLength); });
+		}
 		metrics.notifyListContentLayout(orientation(), e.contentWidth, e.contentHeight);
 		maybeCallOnEdgeReached(items.length as int32);
 		if (pendingScrollUpdateCount > 0) { pendingScrollUpdateCount -= 1; }
@@ -456,6 +531,7 @@ export function FlatList<T>(props: {
 	};
 	const onLayout = (e: NeonEvent): void => {
 		visibleLength = isHorizontal() ? e.width : e.height;
+		if (sticky !== null) { (sticky as StickyState).viewport.set(visibleLength); }
 		if (userLayout !== null) { (userLayout as (e: NeonEvent) => void)(e); }
 		scheduleCellsToRenderUpdate(false);
 		maybeCallOnEdgeReached(items.length as int32);

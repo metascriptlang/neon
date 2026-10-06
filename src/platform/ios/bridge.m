@@ -333,6 +333,11 @@ void niAddChild(void *parent, void *child) {
 	[p addSubview:c];
 }
 
+void niBringChildToFront(void *child) {
+	UIView *c = (__bridge UIView *)child;
+	[c.superview bringSubviewToFront:c];
+}
+
 
 void niViewSetTag(void *view, int32_t tag) {
 	UIView *v = (__bridge UIView *)view;

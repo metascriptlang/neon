@@ -204,6 +204,21 @@ Native mock geometry and real browser consumers were exercised; rebuilt phone/si
 acceptance is blocked by Ion's generator migration recorded in its inbox. Do not substitute
 an old installed phone binary for the changed adapters.
 
+**Sticky-list reference boundary.** RN `VirtualizedList.js`
+`_ensureClosestStickyHeader` retains the nearest preceding header outside the
+ordinary window; `ScrollViewStickyHeader.js` owns the collision interpolation.
+The corresponding Neon boundary is `FlatList` / `stickyTranslation`, pinned by
+`tests/components/list/sticky.test.ms`, `tests/browser/flatList.test.ms` and the
+native sticky press case in `tests/platform/nativeHost.test.ms`.
+
+Native stacking follows RN `UIView+React.m` `reactZIndexSortedSubviews`: stable
+equal-z sibling order and a cheap unsorted path when all z values are zero.
+Paint order must not become Yoga child order or detach a retained view, because
+scrolling and restacking must preserve the active press. On actual reparenting,
+detach the existing Yoga node before the next layout pass: a new parent can be
+visited before its old parent, so rebuilding logical children alone does not
+release Yoga's single-owner constraint.
+
 
 ---
 
