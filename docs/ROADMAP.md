@@ -118,12 +118,12 @@ roadmap rows: inspect `tests/render/spread.test.ms` and `src/macros/style/fields
 ErrorBoundary is existing; `docs/SOLID.md` owns its remaining concepts. Basic typography,
 runtime adaptation and accessibility precede more pseudo-state or animation machinery.
 
-Native std already supplies cancellable timers. A 2026-10-04 standalone C probe, using
-`setTimeout` then `msPoll(50)`, printed `native timer callbacks with runtime poll=1`;
-the inspected Neon native adapters and Ion loop had no dispatcher-pump calls. This
-isolates runtime timer existence, not a working UI integration. Read
-`std/core/system/index.ms`, `runtime/promise/dispatchFull.c` `msSetTimeout` / `msPoll`,
-and the platform UI loop before proposing a second timing API.
+Timing is std's `setTimeout`, with no Host timer. The iOS and Android adapters pump the
+std event loop from the UI loop (`src/platform/native/loop.c`, armed by a `CFRunLoopTimer` /
+`timerfd` on the main looper after every bridge entry, each pass inside the host's layout
+batch). Before that pump a held FlatList row read `pressed row 5001` on the iOS simulator
+and the Android emulator, with `onLongPress`'s timer never fired. After it, both read
+`pressed long row 5001` (2026-10-06, msc `c96ea1d1f`). Physical phones were not run.
 
 ---
 
@@ -239,7 +239,7 @@ and the platform UI loop before proposing a second timing API.
   `tests/render/press.test.ms` (8 cells, both lanes). A fix fell out: both macros wrapped EVERY
   non-string prop in a thunk, so `delayLongPress={200}` against a flat `number` field miscompiled
   on C — constants now cross RAW, which is what the call-based reactive law already implied.
-  Native UI-loop integration remains unproven; std timers themselves exist (see the first bundle's carry-forward constraint). The older handover is `~/metascript/.inbox/compiler/2026-09-20-neon-bugs-md-compiler-rows-handover.md`.
+  The native UI loops pump those timers (the first bundle's carry-forward constraint). The older handover is `~/metascript/.inbox/compiler/2026-09-20-neon-bugs-md-compiler-rows-handover.md`.
 - **the universal component vocabulary** (2026-09-03, user decision — div/span are HTML-isms
   users must not meet) — `View`/`Text`/`TextInput`/`Pressable` are real components
   (`src/components/primitives.ms`, the createComponent seam) rendering lowercase WIRE tags; every host

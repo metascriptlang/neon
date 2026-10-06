@@ -378,6 +378,10 @@ measurements are not claimed.
 - **multiline**: UITextField vs UITextView differ at creation; pick the wire tag in the
   `TextInput` component from a static `multiline` prop (RN picks the backing control at
   init from default props, `RCTTextInputComponentView.mm:70`).
+- **Timers**: no main-queue `dispatch_source` per timer. The std event loop owns timers;
+  one repeating `CFRunLoopTimer` in the common modes (so it fires while a scroll view
+  tracks) is set to its next deadline after every bridge entry, and fires one loop pass
+  inside the host's layout batch (`src/platform/native/loop.c`).
 - **Safe area and resize**: UIKit owns the container frame through
   `safeAreaLayoutGuide`; `viewDidLayoutSubviews` notifies `createNativeHost`, which
   refreshes the root dimensions and reruns Yoga only when the frame changes. The root's

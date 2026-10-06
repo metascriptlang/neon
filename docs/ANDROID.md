@@ -194,10 +194,10 @@ declaration is not in `src/platform/native/host.ms`.
   `src/platform/android/java/src/main/java/dev/metascript/neon/Scroll.java`; the reference
   controls are RN's `ReactScrollView` and `ReactHorizontalScrollView`.
 - **No echo-debug logging**: the reference `echo`es on every mount/prop/touch; we don't.
-- **Async/timers**: neon's own queue — `Pressable` already runs on the std timer
-  (ROADMAP). The ALooper+eventfd wake pattern is the piece worth re-implementing when a
-  native event loop lands; it is not needed for a first host that only renders and handles
-  input synchronously on the main thread.
+- **Async/timers**: no Neon queue. The std event loop owns timers and completions; one
+  `timerfd` on the main `ALooper` is armed for its next deadline after every JNI entry, and
+  its callback runs one loop pass inside the host's layout batch (`src/platform/native/loop.c`).
+  The reference instead woke an eventfd from a sleeping thread per timer.
 
 ## 8. Sources — what was and was not verified
 
