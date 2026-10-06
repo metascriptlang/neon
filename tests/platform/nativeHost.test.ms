@@ -168,6 +168,33 @@ test "one native scroll event that moves a FlatList window runs one layout pass"
 	assert moved && passes === 1, "layout passes for one scroll event that moves the window: " + passes.toString();
 }
 
+function tallness(n: number): Style {
+	return { height: 30 + (n % 4) * 10 };
+}
+
+test "a FlatList without getItemLayout measures its native rows and scrolls to its end through them" {
+	const data = entries(1000);
+	const before = nmViewsCreated();
+	const app = (): NeonNode => <FlatList data={data} style={{ flex: 1 }} windowSize={3} updateCellsBatchingPeriod={0}
+		renderItem={(info: ListRenderItemInfo<Entry>): NeonNode => <View style={tallness(info.item.n)}><Text>{"row " + info.item.n.toString()}</Text></View>} />;
+	runApp(app);
+	loopUntilIdle();
+	const full = 250 * (30 + 40 + 50 + 60);
+	const window = nmViewsCreated() - before;
+	assert window > 20 && window < 600, "views for a measured window: " + window.toString();
+	assert nmContentHeight() < full, "the content stops at the measured rows: " + nmContentHeight().toString();
+	let steps = 0;
+	while (nmContentHeight() < full && steps < 500) {
+		nmScroll(nmLastScrollTag(), 0, nmContentHeight() - 800, 400, 800, 400, nmContentHeight());
+		loopUntilIdle();
+		steps += 1;
+	}
+	const live = nmViewsCreated() - nmReleaseCalls();
+	nmTeardown();
+	assert nmContentHeight() === full, "every row measured at its own height after " + steps.toString() + " scrolls: " + nmContentHeight().toString();
+	assert live < 600, "still a window at the end: " + live.toString();
+}
+
 test "a FlatList batch that a std timer runs is laid out once per pass of the UI loop" {
 	const data = entries(10000);
 	const app = (): NeonNode => <FlatList data={data} style={{ flex: 1 }} getItemLayout={rowLayout} updateCellsBatchingPeriod={0}
