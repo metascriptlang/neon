@@ -85,6 +85,7 @@ interface PressableProps extends HostProps {
 	onPressIn?: ((e: NeonEvent) => void) | null;
 	onPressOut?: ((e: NeonEvent) => void) | null;
 	onLongPress?: ((e: NeonEvent) => void) | null;
+	onLayout?: ((e: NeonEvent) => void) | null;
 	delayLongPress?: Accessor<number> | null;
 	children?: NeonNode | null;
 }
@@ -177,7 +178,7 @@ export function Pressable(props: PressableProps): NeonNode {
 		press = onPress;
 	}
 
-	return element(<pressable class={props.class} style={props.style} ref={props.ref} onPress={press} onPointerDown={pointerDown} onPointerUp={pointerUp} onPointerLeave={pointerLeave} onPointerCancel={pointerLeave}>{props.children}</pressable>);
+	return element(<pressable class={props.class} style={props.style} ref={props.ref} onLayout={props.onLayout} onPress={press} onPointerDown={pointerDown} onPointerUp={pointerUp} onPointerLeave={pointerLeave} onPointerCancel={pointerLeave}>{props.children}</pressable>);
 }
 
 export interface ScrollToOptions {
