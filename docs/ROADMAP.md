@@ -70,6 +70,20 @@ the app author rewrite valid code. Continue reachable work in the next bundle wh
 owning compiler session fixes it. Shared-contract changes and genuinely new mechanisms
 retain their approval gates; this order does not grant land/push permissions.
 
+On 2026-10-06 the user expanded the list part of bundle 4 to grid and inverted chat lists,
+SectionList, sticky headers, viewability, public VirtualizedList and the deeper RN list
+reference catalog. These are current scope, not a prerequisite to port the full RN/Flutter
+ecosystem. Component and element slots both use declared-type JSX lowering; invalid initial
+indices must clamp with a warning on every backend, not a native-only silent fallback.
+
+Preserve Solid item identity when extending grid layout. RN's multi-column row key joins
+every item key (`FlatList.js`, `_keyExtractor`, lines 554–569 in the reference checkout),
+so regrouping changes row identity. Copying that key model would not establish Solid state
+preservation across row parents; cross-parent ownership/reconciliation needs its own
+mechanism approval. The reference list cases are in
+`packages/virtualized-lists/Lists/__tests__/VirtualizedList-test.js`.
+
+
 ### Acceptance — three complete author workflows
 
 1. Data list → search → detail → edit/save form, with images, variable-height rows,
@@ -129,8 +143,7 @@ and the Android emulator, with `onLongPress`'s timer never fired. After it, both
 
 ## Later — retained scope, not current prerequisites
 
-- Advanced lists/slivers: grouped sections, complex sticky/viewability behavior,
-  multiple columns, inverted/nested scrolling and full reference-case coverage.
+- List ecosystem contracts beyond the RN list reference catalog already approved above.
 - Full Material/Cupertino-style catalogs, gesture arbitration, complex animation graphs
   and pseudo-state surfaces beyond the common workflows.
 - SSR hydration/resource serialization when a real SSR consumer needs them.
