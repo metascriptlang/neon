@@ -355,3 +355,23 @@ test "onLayout keeps logical parent coordinates and dimensions under inversions 
 	assert got === "0 10 80 40", "logical frame, not the transformed bounding rectangle: " + got;
 	probe(outer).remove();
 }
+
+test "onLayout follows a retained node moved between siblings without resizing it" {
+	const h = domHost();
+	const outer = mount("view");
+	h.setStyle(outer, { height: 40 });
+	const first = h.createElement("view");
+	const second = h.createElement("view");
+	h.setStyle(first, { height: 20 });
+	h.setStyle(second, { height: 20 });
+	h.insertBefore(outer, first, null);
+	h.insertBefore(outer, second, null);
+	let positions = "";
+	h.addEvent(second, "onLayout", (e: NeonEvent): void => { positions += `${e.y};`; });
+	await sleepAsync(100);
+	assert positions === "20;", positions;
+	h.insertBefore(outer, second, first);
+	await sleepAsync(100);
+	assert positions === "20;0;", "same node and size, new logical position: " + positions;
+	probe(outer).remove();
+}

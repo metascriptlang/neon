@@ -299,6 +299,22 @@ export function documentBody(): HostNode {
 	return document.body as unknown as HostNode;
 }
 
+class DomLayoutState {
+	node: Node;
+	handler: (e: NeonEvent) => void;
+	active: boolean = true;
+	known: boolean = false;
+	x: number = 0;
+	y: number = 0;
+	width: number = 0;
+	height: number = 0;
+
+	constructor(node: Node, handler: (e: NeonEvent) => void) {
+		this.node = node;
+		this.handler = handler;
+	}
+}
+
 export function domHost(): Host {
 	// The registry may already hold rules from module init — a theme's :root
 	// among them — and from here on every change mounts itself, including a
@@ -309,6 +325,49 @@ export function domHost(): Host {
 	const scrolls = new Map<Node, DomScrollState>();
 	const cleanups = new Map<Node, (() => void)[]>();
 	const presses = new Map<Node, boolean>();
+	const layouts: DomLayoutState[] = [];
+	let layoutFrame: number = -1;
+	function flushLayouts(): void {
+		const count = layouts.length;
+		for (let i = 0; i < count; i += 1) {
+			const state = layouts[i];
+			if (!state.active || state.node.parentNode === null) { continue; }
+			let x = 0.0;
+			let y = 0.0;
+			let ancestor: Node | null = state.node;
+			while (ancestor !== null) {
+				x += (ancestor as Node).offsetLeft;
+				y += (ancestor as Node).offsetTop;
+				ancestor = (ancestor as Node).offsetParent;
+			}
+			ancestor = state.node.parentNode;
+			while (ancestor !== null) {
+				x -= (ancestor as Node).offsetLeft;
+				y -= (ancestor as Node).offsetTop;
+				ancestor = (ancestor as Node).offsetParent;
+			}
+			const width = state.node.offsetWidth;
+			const height = state.node.offsetHeight;
+			if (state.known && x === state.x && y === state.y && width === state.width && height === state.height) { continue; }
+			state.known = true;
+			state.x = x; state.y = y; state.width = width; state.height = height;
+			const event = neonEvent("layout");
+			event.x = x; event.y = y; event.width = width; event.height = height;
+			state.handler(event);
+		}
+		let live = 0;
+		for (const state of layouts) {
+			if (state.active) { layouts[live] = state; live += 1; }
+		}
+		while (layouts.length > live) { layouts.pop(); }
+	}
+	function scheduleLayouts(): void {
+		if (layoutFrame >= 0 || layouts.length === 0) { return; }
+		layoutFrame = requestAnimationFrame((): void => {
+			layoutFrame = -1;
+			flushLayouts();
+		});
+	}
 	function releaseOne(el: Node): void {
 		if (cleanups.has(el)) {
 			for (const cleanup of cleanups.get(el) as (() => void)[]) { cleanup(); }
@@ -440,15 +499,18 @@ export function domHost(): Host {
 			applyCss((node as unknown as Node).style, style);
 			const el = node as unknown as Node;
 			if (scrolls.has(el)) { (scrolls.get(el) as DomScrollState).apply(); }
+			scheduleLayouts();
 		},
 		setStyleProp: (node: HostNode, name: string, value: StyleValue): void => {
 			applyCssProp((node as unknown as Node).style, name, value);
 			const el = node as unknown as Node;
 			if (scrolls.has(el)) { (scrolls.get(el) as DomScrollState).apply(); }
+			scheduleLayouts();
 		},
 		setStyleClass: (node: HostNode, id: string, css: string): void => {
 			registerCss(id, css);
 			(node as unknown as Node).classList.add(id);
+			scheduleLayouts();
 		},
 		addEvent: (node: HostNode, name: string, handler: (e: NeonEvent) => void): void => {
 			const type = eventType(name);
@@ -464,30 +526,12 @@ export function domHost(): Host {
 				return;
 			}
 			if (type === "layout") {
-				let active = true;
-				const observer = new ResizeObserver((): void => {
-					if (!active) { return; }
-					const parent = el.parentNode;
-					if (parent === null) { return; }
-					const ev = neonEvent(type);
-					let ancestor: Node | null = el;
-					while (ancestor !== null) {
-						ev.x += (ancestor as Node).offsetLeft;
-						ev.y += (ancestor as Node).offsetTop;
-						ancestor = (ancestor as Node).offsetParent;
-					}
-					ancestor = parent;
-					while (ancestor !== null) {
-						ev.x -= (ancestor as Node).offsetLeft;
-						ev.y -= (ancestor as Node).offsetTop;
-						ancestor = (ancestor as Node).offsetParent;
-					}
-					ev.width = el.offsetWidth;
-					ev.height = el.offsetHeight;
-					handler(ev);
-				});
+				const state = new DomLayoutState(el, handler);
+				layouts.push(state);
+				const observer = new ResizeObserver((): void => { if (state.active) { scheduleLayouts(); } });
 				observer.observe(el);
-				keep(el, (): void => { active = false; observer.disconnect(); });
+				scheduleLayouts();
+				keep(el, (): void => { state.active = false; observer.disconnect(); scheduleLayouts(); });
 				return;
 			}
 			listen(el, domType, (de: DomEvent): void => {
@@ -523,6 +567,7 @@ export function domHost(): Host {
 			(parent as unknown as Node).appendChild(child as unknown as Node);
 			const el = parent as unknown as Node;
 			if (scrolls.has(el)) { (scrolls.get(el) as DomScrollState).mountRefresh(); }
+			scheduleLayouts();
 		},
 		insertBefore: (parent: HostNode, node: HostNode, ref: HostNode | null): void => {
 			(parent as unknown as Node).insertBefore(
@@ -531,10 +576,12 @@ export function domHost(): Host {
 			);
 			const el = parent as unknown as Node;
 			if (scrolls.has(el)) { (scrolls.get(el) as DomScrollState).mountRefresh(); }
+			scheduleLayouts();
 		},
 		removeChild: (parent: HostNode, node: HostNode): void => {
 			release(node as unknown as Node);
 			(parent as unknown as Node).removeChild(node as unknown as Node);
+			scheduleLayouts();
 		},
 		nextSibling: (node: HostNode): HostNode | null => {
 			return (node as unknown as Node).nextSibling as unknown as HostNode;
