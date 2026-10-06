@@ -20,6 +20,9 @@ void  niAddChild(void *parent, void *child);
 void  niRemoveFromParent(void *child);
 void  niViewRelease(void *view);
 void  niSetFrame(void *view, float x, float y, float w, float h);
+// Apply the CSS-centred axis-aligned affine transform; translation is in points.
+// Keep niSetFrame and scroll metrics in untransformed layout coordinates.
+void  niSetTransform(void *view, float scaleX, float scaleY, float translateX, float translateY);
 void  niSetBackgroundColor(void *view, float r, float g, float b, float a);
 void  niSetCornerRadius(void *view, float radius);
 void  niSetOpacity(void *view, float opacity);

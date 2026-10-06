@@ -7,11 +7,16 @@
 
 typedef struct MockView {
 	struct MockView *parent;
+	struct MockView *next;
 	int released;
 	int tag;
 	char text[128];
 	float size;
 	int isScroll;
+	int pressable;
+	float x, y, w, h;
+	float scaleX, scaleY, translateX, translateY;
+	float scrollX, scrollY;
 } MockView;
 
 static msClosure s_mount;
@@ -21,6 +26,7 @@ static msClosure s_teardown;
 static msClosure s_scroll;
 static msClosure s_loop;
 static MockView s_container;
+static MockView *g_views;
 static int g_scrollPhase;
 static int g_lastTag = 0;
 static int g_lastPhase = 0;
@@ -36,6 +42,7 @@ static int g_lastScrollTag = 0;
 static float g_contentW = 0, g_contentH = 0;
 static float g_scrolledX = -1, g_scrolledY = -1;
 static int g_scrolledAnimated = -1;
+static int g_transformWrites;
 
 static void call0(msClosure c) {
 	if (!c.fn) return;
@@ -55,13 +62,16 @@ static MockView *live(void *view, const char *op) {
 static void *create(float size) {
 	MockView *v = calloc(1, sizeof(MockView));
 	v->size = size;
+	v->scaleX = v->scaleY = 1;
+	v->next = g_views;
+	g_views = v;
 	g_created++;
 	return v;
 }
 
 void *niViewCreate(void) { return create(0); }
 void *niTextCreate(void) { return create(17); }
-void niViewSetPressable(void *view) { live(view, "niViewSetPressable"); }
+void niViewSetPressable(void *view) { live(view, "niViewSetPressable")->pressable = 1; }
 void niViewSetTag(void *view, int32_t tag) {
 	MockView *v = live(view, "niViewSetTag");
 	if (v->isScroll) {
@@ -92,7 +102,9 @@ void niScrollSetContentSize(void *view, float w, float h) {
 }
 
 void niScrollTo(void *view, float x, float y, int animated) {
-	live(view, "niScrollTo");
+	MockView *v = live(view, "niScrollTo");
+	v->scrollX = x;
+	v->scrollY = y;
 	g_scrolledX = x;
 	g_scrolledY = y;
 	g_scrolledAnimated = animated;
@@ -123,9 +135,16 @@ void niViewRelease(void *view) {
 static int g_scrollFrameWrites = 0;
 
 void niSetFrame(void *view, float x, float y, float w, float h) {
-	(void)x; (void)y; (void)w; (void)h;
 	MockView *v = live(view, "niSetFrame");
+	v->x = x; v->y = y; v->w = w; v->h = h;
 	if (v->isScroll) g_scrollFrameWrites++;
+}
+
+void niSetTransform(void *view, float scaleX, float scaleY, float translateX, float translateY) {
+	MockView *v = live(view, "niSetTransform");
+	v->scaleX = scaleX; v->scaleY = scaleY;
+	v->translateX = translateX; v->translateY = translateY;
+	g_transformWrites++;
 }
 
 void niSetBackgroundColor(void *view, float r, float g, float b, float a) {
@@ -216,6 +235,9 @@ void nmScroll(int32_t tag, float x, float y, float width, float height, float co
 	g_scrollH = height;
 	g_scrollContentW = contentWidth;
 	g_scrollContentH = contentHeight;
+	for (MockView *v = g_views; v; v = v->next) {
+		if (!v->released && v->isScroll && v->tag == tag) { v->scrollX = x; v->scrollY = y; break; }
+	}
 	call0(s_scroll);
 }
 
@@ -228,4 +250,54 @@ int32_t nmScrolledAnimated(void) { return g_scrolledAnimated; }
 int32_t nmContentSizeWrites(void) { return g_contentWrites; }
 int32_t nmScrollFrameWrites(void) { return g_scrollFrameWrites; }
 int32_t nmScreenHeightReads(void) { return g_screenHeightReads; }
+int32_t nmLastPressableTag(void) {
+	for (MockView *v = g_views; v; v = v->next) {
+		if (!v->released && v->pressable && v->tag) return v->tag;
+	}
+	fprintf(stderr, "mock bridge: no live pressable\n");
+	abort();
+}
 
+
+static MockView *tagged(int32_t tag) {
+	for (MockView *v = g_views; v; v = v->next) {
+		if (!v->released && v->tag == tag) return v;
+	}
+	fprintf(stderr, "mock bridge: no live view for tag %d\n", tag);
+	abort();
+}
+
+static float visualCoordinate(MockView *v, float point, int vertical) {
+	for (; v && v != &s_container; v = v->parent) {
+		float size = vertical ? v->h : v->w;
+		float scale = vertical ? v->scaleY : v->scaleX;
+		float translation = vertical ? v->translateY : v->translateX;
+		float position = vertical ? v->y : v->x;
+		float offset = vertical ? v->scrollY : v->scrollX;
+		point = position + size * 0.5f + scale * (point - offset - size * 0.5f) + translation;
+	}
+	return point;
+}
+
+int32_t nmTransformWrites(void) { return g_transformWrites; }
+float nmVisualX(int32_t tag, float x) { return visualCoordinate(tagged(tag), x, 0); }
+float nmVisualY(int32_t tag, float y) { return visualCoordinate(tagged(tag), y, 1); }
+float nmLayoutWidth(int32_t tag) { return tagged(tag)->w; }
+float nmLayoutHeight(int32_t tag) { return tagged(tag)->h; }
+
+void nmTouchAt(float x, float y, int32_t phase) {
+	for (MockView *v = g_views; v; v = v->next) {
+		if (v->released || !v->pressable || !v->tag) continue;
+		int inside = 1;
+		for (MockView *p = v; p && p != &s_container; p = p->parent) {
+			float originX = visualCoordinate(p, 0, 0), originY = visualCoordinate(p, 0, 1);
+			float scaleX = visualCoordinate(p, 1, 0) - originX;
+			float scaleY = visualCoordinate(p, 1, 1) - originY;
+			if (scaleX == 0 || scaleY == 0) { inside = 0; break; }
+			float localX = (x - originX) / scaleX, localY = (y - originY) / scaleY;
+			if (localX < p->scrollX || localX >= p->scrollX + p->w ||
+				localY < p->scrollY || localY >= p->scrollY + p->h) { inside = 0; break; }
+		}
+		if (inside) { nmTouch(v->tag, phase); return; }
+	}
+}

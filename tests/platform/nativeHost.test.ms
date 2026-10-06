@@ -12,6 +12,7 @@ import {
 	nmViewsCreated, nmReleaseCalls, nmTouch, nmTeardown, nmMount, nmResize, nmScroll, nmLastScrollTag,
 	nmContentWidth, nmContentHeight, nmScrolledX, nmScrolledY, nmScrolledAnimated, nmContentSizeWrites,
 	nmScrollFrameWrites, nmScreenHeightReads, nmDrag, nmPull, nmLoop,
+	nmTransformWrites, nmVisualX, nmVisualY, nmLayoutWidth, nmLayoutHeight, nmTouchAt, nmLastPressableTag,
 } from "./nativeBridgeMock.h";
 
 const PRESS: int32 = 2;
@@ -257,3 +258,79 @@ test "horizontal content measures on the x axis" {
 	nmTeardown();
 }
 
+
+test "native Style transforms paint and hit-test around the centre without changing layout, and reset on none or null" {
+	const [transform, setTransform] = createSignal<string | null>("scaleX(-1) translateX(10px) scaleY(-1)");
+	let layouts: int32 = 0;
+	let pressed: int32 = 0;
+	const app = (): NeonNode => <Pressable style={{ width: 100, height: 40, transform: transform() }}
+		onLayout={(e: NeonEvent): void => {
+			assert e.width === 100 && e.height === 40, "layout is independent of paint";
+			layouts += 1;
+		}}
+		onPress={() => { pressed += 1; }} />;
+	runApp(app);
+	const tag = nmLastPressableTag();
+	assert nmVisualX(tag, 0) === 90 && nmVisualX(tag, 100) === -10, "inversion scales the subsequent x translation";
+	assert nmVisualY(tag, 0) === 40 && nmVisualY(tag, 40) === 0, "vertical inversion is centred on the view";
+	nmTouchAt(40, 20, PRESS);
+	assert pressed === 1, "a transformed hit still routes to the pressable";
+	const writes = nmTransformWrites();
+	setTransform("translateX(15px) scale(2, 3)");
+	assert nmVisualX(tag, 0) === -35 && nmVisualX(tag, 100) === 165, "translation before scale is not multiplied";
+	assert nmVisualY(tag, 0) === -40 && nmVisualY(tag, 40) === 80, "nonuniform scale uses the unchanged layout height";
+	assert nmTransformWrites() === writes + 1, "one update projects one transform";
+	setTransform("none");
+	assert nmVisualX(tag, 0) === 0 && nmVisualY(tag, 0) === 0, "none clears scale and translation";
+	setTransform("translate(12px, 7px)");
+	assert nmVisualX(tag, 0) === 12 && nmVisualY(tag, 0) === 7, "sticky-style translation paints without moving the layout frame";
+	setTransform(null);
+	assert nmVisualX(tag, 0) === 0 && nmVisualY(tag, 0) === 0, "null also clears a prior transform";
+	assert nmLayoutWidth(tag) === 100 && nmLayoutHeight(tag) === 40 && layouts === 1, "paint updates neither resize nor repeat onLayout";
+	nmTeardown();
+}
+
+test "inverted native scroll content keeps logical offsets and frames after resizing, with double-inverted rows still pressable" {
+	let pressed = false;
+	let payload = "";
+	const handles: ScrollViewHandle[] = [];
+	const app = (): NeonNode => <ScrollView style={{ flexGrow: 0, flexShrink: 0, height: 100, transform: "scaleY(-1)" }}
+		ref={(h: ScrollViewHandle): void => { handles.push(h); }}
+		onScroll={(e: NeonEvent): void => { payload = `${e.y} ${e.height} ${e.contentHeight}`; }}>
+		<View style={{ height: 200 }} />
+		<Pressable style={{ width: 100, height: 50, transform: "scaleY(-1)" }}
+			onPress={() => { pressed = true; }} />
+	</ScrollView>;
+	runApp(app);
+	const tag = nmLastPressableTag();
+	const scrollTag = nmLastScrollTag();
+	assert nmLayoutHeight(scrollTag) === 100, "the fixture declares a fixed viewport instead of flex-growing";
+	assert nmContentHeight() === 250, "paint inversion does not change content coordinates";
+	handles[0].scrollTo({ y: 150, animated: false });
+	assert nmScrolledY() === 150, "imperative offsets remain untransformed";
+	nmScroll(scrollTag, 0, 150, 400, 100, 400, 250);
+	assert payload === "150 100 250", "scroll event metrics remain untransformed";
+	assert nmVisualY(tag, 0) === 0 && nmVisualY(tag, 50) === 50, "two inversions restore the visible row direction at the logical offset";
+	nmTouchAt(50, 25, PRESS);
+	assert pressed, "transformed content routes the visible row's touch";
+	const transforms = nmTransformWrites();
+	nmResize(800, 400);
+	assert nmLayoutWidth(scrollTag) === 800 && nmLayoutHeight(scrollTag) === 100, "an inverted viewport still receives the new logical frame";
+	assert nmVisualY(tag, 0) === 0 && nmVisualY(tag, 50) === 50, "resizing preserves the scroll offset and existing transform";
+	assert nmContentHeight() === 250 && nmTransformWrites() === transforms, "layout does not re-project or reparse transforms";
+	nmResize(400, 800);
+	nmTeardown();
+}
+
+test "unrelated native Style changes keep the cached transform projection" {
+	const [height, setHeight] = createSignal<number>(40);
+	const app = (): NeonNode => <Pressable style={{ width: 100, height: height(), transform: "scaleX(-1)" }}
+		onPress={() => {}} />;
+	runApp(app);
+	const tag = nmLastPressableTag();
+	const writes = nmTransformWrites();
+	setHeight(60);
+	assert nmLayoutHeight(tag) === 60 && nmVisualX(tag, 0) === 100, "new layout with the old inversion";
+	assert nmTransformWrites() === writes, "the same CSS transform is not parsed or projected again";
+	nmTeardown();
+}

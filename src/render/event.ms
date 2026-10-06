@@ -13,6 +13,7 @@
 
 export interface NeonEvent {
 	type: string;   // "click", "input", "keydown" — the JSX name with "on" stripped
+	timeStamp: number;
 	value: string;  // the target's text value where it has one
 	x: number;      // pointer position in host coordinates; the layout origin on onLayout; the content offset on onScroll
 	y: number;
@@ -32,7 +33,7 @@ export interface NeonEvent {
 
 export function neonEvent(type: string): NeonEvent {
 	return {
-		type, value: "", x: 0, y: 0, width: 0, height: 0, contentWidth: 0, contentHeight: 0, key: "", code: "",
+		type, timeStamp: 0, value: "", x: 0, y: 0, width: 0, height: 0, contentWidth: 0, contentHeight: 0, key: "", code: "",
 		altKey: false, ctrlKey: false, metaKey: false, shiftKey: false, repeat: false, isComposing: false,
 	};
 }

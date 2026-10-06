@@ -3,7 +3,7 @@ import { Dispose } from "../../core/types";
 import { NeonEvent } from "../../render/event";
 import { FlexStyle, YGNode, freeLayoutTree, layoutPass as runLayoutPass } from "../../../../yoga/src/index";
 import { Style } from "../../render/style";
-import { NativeElementKind, createNativeEventRegistry, nativeElementKind, nativeFlexStyle } from "./contract";
+import { NativeElementKind, createNativeEventRegistry, nativeElementKind, nativeFlexStyle, nativeTransform } from "./contract";
 import "../android/library";
 
 @passC("-I./");
@@ -21,7 +21,7 @@ when (ios) {
 
 import {
 	niViewCreate, niTextCreate, niAddChild, niRemoveFromParent, niViewRelease, niSetFrame,
-	niSetBackgroundColor, niSetCornerRadius, niSetOpacity,
+	niSetBackgroundColor, niSetCornerRadius, niSetOpacity, niSetTransform,
 	niSetText, niSetTextColor, niSetFont, niMeasureText, niMeasuredW, niMeasuredH,
 	niContainerView, niScreenWidth, niScreenHeight, niViewSetTag, niViewSetPressable,
 	niLastTouchTag, niLastTouchPhase,
@@ -51,6 +51,7 @@ class NativeNode {
 	parent: NativeNode | null = null;
 	eventTag: int32 = 0;
 	styleCache: Style | null = null;
+	transformCss: string | null = null;
 	flex: FlexStyle | null = null;
 	lastFlex: FlexStyle | null = null;
 	yg: Ptr<YGNode> | null = null;
@@ -129,6 +130,13 @@ function parseHex(css: string): Rgba | null {
 
 // The paint half of the projection (docs/STYLE.md §5), onto the platform view.
 function applyPaint(n: NativeNode, s: Style): void {
+	if (s.transform !== n.transformCss) {
+		const transform = nativeTransform(s.transform);
+		if (n.view !== null) {
+			niSetTransform(n.view, transform.scaleX, transform.scaleY, transform.translateX, transform.translateY);
+		}
+		n.transformCss = s.transform;
+	}
 	if (n.view === null || !n.isText) {
 		if (n.view !== null) {
 			const bg = s.backgroundColor;

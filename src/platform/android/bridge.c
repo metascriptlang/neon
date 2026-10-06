@@ -40,6 +40,7 @@ static struct {
 	jclass scroll;
 	jmethodID scrollInit, scrollSetTag, scrollSetOption, scrollSetContentSize, scrollTo, scrollAddContent, scrollDispose, viewSetClickable;
 	jmethodID viewGetParent, viewSetLayoutParams, viewSetAlpha, viewGetBackground, viewSetBackground;
+	jmethodID viewSetScaleX, viewSetScaleY, viewSetTranslationX, viewSetTranslationY;
 	jmethodID viewMeasure, viewGetMeasuredWidth, viewGetMeasuredHeight, viewSetTag, viewGetRootWindowInsets;
 	jmethodID viewSetOnTouchListener, touchInit;
 	jmethodID viewGetContext, groupAddView, groupRemoveView, frameInit, paramsInit;
@@ -151,6 +152,10 @@ static void cacheJni(JNIEnv *e) {
 	J.viewGetParent = method(e, J.view, "getParent", "()Landroid/view/ViewParent;");
 	J.viewSetLayoutParams = method(e, J.view, "setLayoutParams", "(Landroid/view/ViewGroup$LayoutParams;)V");
 	J.viewSetAlpha = method(e, J.view, "setAlpha", "(F)V");
+	J.viewSetScaleX = method(e, J.view, "setScaleX", "(F)V");
+	J.viewSetScaleY = method(e, J.view, "setScaleY", "(F)V");
+	J.viewSetTranslationX = method(e, J.view, "setTranslationX", "(F)V");
+	J.viewSetTranslationY = method(e, J.view, "setTranslationY", "(F)V");
 	J.viewGetBackground = method(e, J.view, "getBackground", "()Landroid/graphics/drawable/Drawable;");
 	J.viewSetBackground = method(e, J.view, "setBackground", "(Landroid/graphics/drawable/Drawable;)V");
 	J.viewMeasure = method(e, J.view, "measure", "(II)V");
@@ -500,6 +505,15 @@ void niSetFrame(void *view, float x, float y, float w, float h) {
 	int left = px(x);
 	int top = px(y);
 	place(env(), (jobject)view, left, top, px(x + w) - left, px(y + h) - top);
+}
+
+void niSetTransform(void *view, float scaleX, float scaleY, float translateX, float translateY) {
+	JNIEnv *e = env();
+	(*e)->CallVoidMethod(e, (jobject)view, J.viewSetScaleX, scaleX);
+	(*e)->CallVoidMethod(e, (jobject)view, J.viewSetScaleY, scaleY);
+	(*e)->CallVoidMethod(e, (jobject)view, J.viewSetTranslationX, translateX * g_density);
+	(*e)->CallVoidMethod(e, (jobject)view, J.viewSetTranslationY, translateY * g_density);
+	check(e, "setTransform");
 }
 
 void niSetBackgroundColor(void *view, float r, float g, float b, float a) {

@@ -358,7 +358,17 @@ void niViewRelease(void *view) {
 
 void niSetFrame(void *view, float x, float y, float w, float h) {
 	UIView *v = (__bridge UIView *)view;
-	v.frame = CGRectMake(x, y, w, h);
+	// Set bounds and centre: UIKit leaves frame undefined under non-identity transforms.
+	// Preserve bounds.origin; UIScrollView stores its contentOffset there.
+	CGRect bounds = v.bounds;
+	bounds.size = CGSizeMake(w, h);
+	v.bounds = bounds;
+	v.center = CGPointMake(x + w * 0.5f, y + h * 0.5f);
+}
+
+void niSetTransform(void *view, float scaleX, float scaleY, float translateX, float translateY) {
+	UIView *v = (__bridge UIView *)view;
+	v.transform = CGAffineTransformMake(scaleX, 0, 0, scaleY, translateX, translateY);
 }
 
 void *niScrollCreate(void) {
