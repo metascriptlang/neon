@@ -1,4 +1,5 @@
 #include "../../src/platform/native/bridge.h"
+#include "../../src/platform/native/loop.h"
 #include "nativeBridgeMock.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -18,6 +19,7 @@ static msClosure s_touch;
 static msClosure s_resize;
 static msClosure s_teardown;
 static msClosure s_scroll;
+static msClosure s_loop;
 static MockView s_container;
 static int g_scrollPhase;
 static int g_lastTag = 0;
@@ -166,6 +168,7 @@ int niLastTouchPhase(void) { return g_lastPhase; }
 void niRegisterApp(msClosure mount) { s_mount = mount; }
 void niSetResizeHandler(msClosure handler) { s_resize = handler; }
 void niSetTeardownHandler(msClosure handler) { s_teardown = handler; }
+void niSetLoopHandler(msClosure handler) { s_loop = handler; }
 
 int niRunApp(void) {
 	call0(s_mount);
@@ -190,6 +193,12 @@ void nmTouch(int32_t tag, int32_t phase) {
 }
 
 void nmTeardown(void) { call0(s_teardown); }
+
+int32_t nmLoop(void) {
+	if (s_loop.fn) call0(s_loop);
+	else niLoopRun();
+	return niLoopNext();
+}
 void nmMount(void) { call0(s_mount); }
 
 void nmResize(float width, float height) {

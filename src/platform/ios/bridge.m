@@ -2,6 +2,7 @@
 #import <Foundation/Foundation.h>
 #include "runtime/promise/dispatch.h"
 #include "../native/bridge.h"
+#include "../native/loop.h"
 #include <string.h>
 
 static msClosure s_mount;
@@ -9,6 +10,7 @@ static msClosure s_touch;
 static msClosure s_resize;
 static msClosure s_scroll;
 static msClosure s_teardown;
+static msClosure s_loop;
 static int g_scrollPhase = 0;
 static int g_lastTag = 0;
 static int g_scrollTag = 0;
@@ -25,15 +27,17 @@ static void loopArm(int ms) {
 	CFRunLoopTimerSetNextFireDate(g_loopTimer, at);
 }
 
+static void invoke(msClosure c) {
+	if (c.env) ((void (*)(void *))c.fn)(c.env);
+	else ((void (*)(void))c.fn)();
+}
+
 static void loopPump(CFRunLoopTimerRef timer, void *info) {
 	(void)timer;
 	(void)info;
-	msDispatcher *d = msGetDispatcher();
-	bool didWork = false;
-	(void)msRunOnce(0);
-	int next = msProcessTimers(d, &didWork);
-	msProcessCallbacks(d, &didWork);
-	loopArm(didWork ? 0 : next);
+	if (s_loop.fn) invoke(s_loop);
+	else niLoopRun();
+	loopArm(niLoopNext());
 }
 
 static void loopStart(void) {
@@ -45,8 +49,7 @@ static void loopStart(void) {
 
 static void call0(msClosure c) {
 	if (!c.fn) return;
-	if (c.env) ((void (*)(void *))c.fn)(c.env);
-	else ((void (*)(void))c.fn)();
+	invoke(c);
 	loopArm(0);
 }
 
@@ -479,4 +482,8 @@ float niLastScrollContentHeight(void) { return g_scrollContentH; }
 
 void niSetTeardownHandler(msClosure handler) {
 	s_teardown = handler;
+}
+
+void niSetLoopHandler(msClosure handler) {
+	s_loop = handler;
 }

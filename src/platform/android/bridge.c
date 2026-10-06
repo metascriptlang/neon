@@ -1,5 +1,6 @@
 #include "runtime/promise/dispatch.h"
 #include "../native/bridge.h"
+#include "../native/loop.h"
 #include <android/log.h>
 #include <android/looper.h>
 #include <jni.h>
@@ -17,6 +18,7 @@ static msClosure s_touch;
 static msClosure s_resize;
 static msClosure s_teardown;
 static msClosure s_scroll;
+static msClosure s_loop;
 static int g_lastTag;
 static int g_lastPhase;
 static int g_scrollTag;
@@ -58,17 +60,19 @@ static void loopArm(int ms) {
 	timerfd_settime(g_loopFd, 0, &at, NULL);
 }
 
+static void invoke(msClosure c) {
+	if (c.env) ((void (*)(void *))c.fn)(c.env);
+	else ((void (*)(void))c.fn)();
+}
+
 static int loopPump(int fd, int events, void *data) {
 	(void)events;
 	(void)data;
 	uint64_t expirations;
 	(void)read(fd, &expirations, sizeof expirations);
-	msDispatcher *d = msGetDispatcher();
-	bool didWork = false;
-	(void)msRunOnce(0);
-	int next = msProcessTimers(d, &didWork);
-	msProcessCallbacks(d, &didWork);
-	loopArm(didWork ? 0 : next);
+	if (s_loop.fn) invoke(s_loop);
+	else niLoopRun();
+	loopArm(niLoopNext());
 	return 1;
 }
 
@@ -80,8 +84,7 @@ static void loopStart(void) {
 
 static void call0(msClosure c) {
 	if (!c.fn) return;
-	if (c.env) ((void (*)(void *))c.fn)(c.env);
-	else ((void (*)(void))c.fn)();
+	invoke(c);
 	loopArm(0);
 }
 
@@ -375,6 +378,7 @@ JNIEXPORT void JNICALL Java_dev_metascript_neon_Scroll_scroll(JNIEnv *e, jclass 
 void niRegisterApp(msClosure mount) { s_mount = mount; }
 void niSetResizeHandler(msClosure handler) { s_resize = handler; }
 void niSetTeardownHandler(msClosure handler) { s_teardown = handler; }
+void niSetLoopHandler(msClosure handler) { s_loop = handler; }
 void niSetTouchHandler(msClosure handler) { s_touch = handler; }
 int niRunApp(void) { return 0; }
 int niLastTouchTag(void) { return g_lastTag; }

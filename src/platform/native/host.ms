@@ -29,6 +29,7 @@ import {
 	niLastScrollTag, niLastScrollPhase, niLastScrollX, niLastScrollY, niLastScrollWidth, niLastScrollHeight,
 	niLastScrollContentWidth, niLastScrollContentHeight,
 } from "./bridge.h";
+import { niLoopRun } from "./loop.h";
 
 extern function niRegisterApp(mount: () => void): void;
 extern function niRunApp(): int32;
@@ -36,6 +37,7 @@ extern function niSetTouchHandler(handler: () => void): void;
 extern function niSetScrollHandler(handler: () => void): void;
 extern function niSetResizeHandler(handler: () => void): void;
 extern function niSetTeardownHandler(handler: () => void): void;
+extern function niSetLoopHandler(handler: () => void): void;
 
 
 class NativeNode {
@@ -328,6 +330,10 @@ function onScroll(): void {
 	});
 }
 
+function runLoop(): void {
+	batched((): void => { niLoopRun(); });
+}
+
 function onTouch(): void {
 	const tag = niLastTouchTag();
 	const phase = niLastTouchPhase();
@@ -347,6 +353,7 @@ export function createNativeHost(): NativeHost {
 	niSetTouchHandler(onTouch);
 	niSetScrollHandler(onScroll);
 	niSetResizeHandler(onResize);
+	niSetLoopHandler(runLoop);
 
 	const host: Host = {
 		createElement: (tag: string): HostNode => {

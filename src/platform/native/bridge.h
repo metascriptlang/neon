@@ -58,6 +58,7 @@ float niLastScrollContentHeight(void);
 void  niRegisterApp(msClosure mount);
 void  niSetResizeHandler(msClosure handler);
 void  niSetTeardownHandler(msClosure handler);
+void  niSetLoopHandler(msClosure handler);
 int   niRunApp(void);
 void *niContainerView(void);
 float niScreenWidth(void);
