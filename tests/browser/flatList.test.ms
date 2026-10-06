@@ -84,3 +84,34 @@ test "horizontal FlatList virtualizes on x and retains its complete scroll width
 	dispose();
 	scroller.remove();
 }
+
+function tallness(n: number): Style {
+	return { height: 30 + (n % 4) * 10 };
+}
+
+test "a FlatList without getItemLayout measures rows of different heights and scrolls to its end through them" {
+	let ends = 0;
+	const dispose = render(element(<FlatList data={items(2000)} style={{ height: 300 }} windowSize={5}
+		onEndReached={(): void => { ends += 1; }}
+		renderItem={(info: ListRenderItemInfo<Item>): NeonNode => <View style={tallness(info.item.n)}><Text>{"<" + info.item.n.toString() + ">"}</Text></View>} />), domHost(), documentBody());
+	await sleepAsync(500);
+	const scroller = (documentBody() as unknown as HTMLElement).lastElementChild;
+	const first = rowsIn(scroller.textContent);
+	assert first > 10 && first < 200, "a measured window of rows: " + first.toString();
+	assert scroller.scrollHeight < 2000 * 30, "the tail spacer stops at the measured rows: " + scroller.scrollHeight.toString();
+	let steps = 0;
+	while (!scroller.textContent.includes("<1999>") && steps < 400) {
+		scroller.scrollTop = scroller.scrollHeight;
+		await sleepAsync(60);
+		steps += 1;
+	}
+	assert scroller.textContent.includes("<1999>"), "scrolling reaches the last row after " + steps.toString() + " steps";
+	assert ends === 0, "not before the end is in view: " + ends.toString();
+	scroller.scrollTop = scroller.scrollHeight;
+	await sleepAsync(200);
+	assert scroller.scrollHeight === 500 * (30 + 40 + 50 + 60), "every row measured at its own height: " + scroller.scrollHeight.toString();
+	assert rowsIn(scroller.textContent) < 200 && !scroller.textContent.includes("<1000>"), "still a window at the end: " + rowsIn(scroller.textContent).toString();
+	assert ends === 1, "onEndReached once at the end: " + ends.toString();
+	dispose();
+	scroller.remove();
+}
