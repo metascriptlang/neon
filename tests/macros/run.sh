@@ -37,4 +37,5 @@ expect_reject tests/macros/optChangeTextFlatRejected.ms "a nullable onChangeText
 expect_reject tests/macros/componentUnknownPropRejected.ms "<Badge> has no prop 'lable'"
 expect_reject tests/macros/componentMixedAccessorRejected.ms "prop 'value' of <Count> mixes Accessor with another type"
 expect_reject tests/macros/componentNotInScopeRejected.ms "<Missing> is not a component in scope"
+expect_reject tests/macros/componentSlotRequiredPropsRejected.ms "a node slot component requires prop 'title': pass an element with props instead"
 exit $fail
