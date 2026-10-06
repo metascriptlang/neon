@@ -157,6 +157,19 @@ executed files passed with five native-only skips (the carried Yoga enum-re-expo
 and Chrome 3/3 files passed. This is not a land verdict: the complete Scene3D contract still
 cannot run.
 
+Later consumer measurement, 2026-10-05, shared machine, source/test tree
+`59293670f8f076782081b87f63ab3789a1abc1ae`, installed binary/support `8ea0b65d7`:
+`msc test tests/render/scene3d.test.ms` exits 1 with 468 type errors in the element macro
+(`NodeKind` identity and enum-literal conversion); no one of its 16 cases reaches runtime.
+`msc run out/scene3dConsumer.ms` also exits 1 at the original
+`<Light kind={LightKind.Point}>`, with `Undefined variable 'LightKind_Point'`.
+The collision and both enum roundtrip reductions still fail on C and JS; all eight
+renamed/no-enum/direct-enum/numeric control runs pass on that build. No alias, ordinal
+cast or hand-built JSX replaced the original expressions. These are the same two parked
+compiler families, not a new measured Neon runtime failure. Their current fix/deployment
+state belongs to the compiler cards linked by `BUGS.md`; this run gives no newer full-gate
+or pixel verdict.
+
 A Void area speaks two vocabularies, and the author always knows which one they are in: 3D is
 written in 3D's own terms, Application UI starts at a `View`, and the one place the two meet is
 a texture.
