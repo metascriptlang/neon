@@ -1,5 +1,6 @@
 import { Accessor, createSignal, batch, untrack } from "../core/signal";
 import { createEffect } from "../core/effect";
+import { onCleanup } from "../core/cleanup";
 import { mapArray } from "../core/array";
 import { element } from "../macros/ui/element";
 import { NeonNode, regionNode } from "../render/node";
@@ -114,6 +115,7 @@ export function FlatList<T>(props: {
 	getItemLayout?: ((data: T[], index: number) => ItemLayout) | null;
 	initialNumToRender?: Accessor<number> | null;
 	maxToRenderPerBatch?: Accessor<number> | null;
+	updateCellsBatchingPeriod?: Accessor<number> | null;
 	windowSize?: Accessor<number> | null;
 	onEndReached?: ((info: EndReachedInfo) => void) | null;
 	onEndReachedThreshold?: Accessor<number> | null;
@@ -146,6 +148,7 @@ export function FlatList<T>(props: {
 	const renderItem = props.renderItem;
 	const initialProp = props.initialNumToRender;
 	const batchProp = props.maxToRenderPerBatch;
+	const periodProp = props.updateCellsBatchingPeriod;
 	const windowProp = props.windowSize;
 	const thresholdProp = props.onEndReachedThreshold;
 	const endReached = props.onEndReached;
@@ -171,6 +174,7 @@ export function FlatList<T>(props: {
 	const initialNumToRender = (): int32 => initialProp === null ? 10 : (initialProp as () => number)() as int32;
 	const maxToRenderPerBatch = (): int32 => batchProp === null ? 10 : (batchProp as () => number)() as int32;
 	const windowSize = (): int32 => windowProp === null ? 21 : (windowProp as () => number)() as int32;
+	const batchingPeriod = (): number => periodProp === null ? 50 : (periodProp as () => number)();
 	const initialRegion = (n: int32): CellRange => ({ first: 0, last: Math.min(n, initialNumToRender()) - 1 });
 
 	let offset = 0.0;
@@ -178,10 +182,14 @@ export function FlatList<T>(props: {
 	let sentEndForContentLength = 0.0;
 	let cellsAroundViewport: CellRange = { first: 0, last: -1 };
 	let renderedMask: CellRenderMask | null = null;
-	let renderedItems: T[] = [];
 	let itemCells = new Map<T, ListCell>();
 	let spacerCells = new Map<int32, ListCell>();
+	let updateTimeout: number = -1;
+	let hiPriInProgress = false;
 	const [cells, setCells] = createSignal<ListCell[]>([]);
+	onCleanup((): void => {
+		if (updateTimeout >= 0) { clearTimeout(updateTimeout); }
+	});
 
 	// RN VirtualizedList._constrainToItemCount.
 	const constrainToItemCount = (range: CellRange, n: int32): CellRange => {
@@ -189,20 +197,13 @@ export function FlatList<T>(props: {
 		return { first: Math.min(Math.max(0, range.first), maxFirst), last: Math.min(n - 1, range.last) };
 	};
 
-	// RN VirtualizedList._adjustCellsAroundViewport, with every batch RN's timer would run taken
-	// here: native hosts have no timer, so the window lands where RN's lands once its batches drain.
+	// RN VirtualizedList._adjustCellsAroundViewport.
 	const adjustCellsAroundViewport = (n: int32): CellRange => {
 		if (visibleLength <= 0.0 || metrics.getContentLength() <= 0.0) {
 			return cellsAroundViewport.last >= n ? constrainToItemCount(cellsAroundViewport, n) : cellsAroundViewport;
 		}
 		const scroll: WindowScroll = { offset, velocity: 0.0, visibleLength, zoomScale: 1.0 };
-		let current = cellsAroundViewport;
-		for (let pass: int32 = 0; pass <= n + 1; pass += 1) {
-			const next = computeWindowedRenderLimits(n, maxToRenderPerBatch(), windowSize(), current, metricsAt, scroll);
-			if (next.first === current.first && next.last === current.last) { return next; }
-			current = next;
-		}
-		throw `FlatList: the render window did not settle within ${n + 1} batches`;
+		return computeWindowedRenderLimits(n, maxToRenderPerBatch(), windowSize(), cellsAroundViewport, metricsAt, scroll);
 	};
 
 	const spacerCell = (): ListCell => {
@@ -261,21 +262,54 @@ export function FlatList<T>(props: {
 		if (!within) { sentEndForContentLength = 0.0; }
 	};
 
-	const refresh = (): void => {
-		const n = items.length as int32;
-		cellsAroundViewport = adjustCellsAroundViewport(n);
+	const renderMask = (n: int32): CellRenderMask => {
 		const mask = new CellRenderMask(n);
 		if (n > 0) {
 			mask.addCells(cellsAroundViewport);
 			mask.addCells(initialRegion(n));
 		}
-		// RN VirtualizedList._updateCellsToRender: the same window and mask render nothing.
-		if (renderedMask === null || renderedItems !== items || !mask.equals(renderedMask as CellRenderMask)) {
-			renderedMask = mask;
-			renderedItems = items;
-			batch((): void => { setCells(buildCells(mask)); });
+		return mask;
+	};
+
+	const shouldRenderWithPriority = (n: int32): boolean => {
+		const first = cellsAroundViewport.first;
+		const last = cellsAroundViewport.last;
+		if (first > 0 && offset - metricsAt(first).offset < 0) { return true; }
+		return last >= 0 && last < n - 1 && metricsAt(last).offset - (offset + visibleLength) < 0;
+	};
+
+	const updateCellsToRender = (): boolean => {
+		const n = items.length as int32;
+		const previous = cellsAroundViewport;
+		cellsAroundViewport = adjustCellsAroundViewport(n);
+		const mask = renderMask(n);
+		if (cellsAroundViewport.first === previous.first && cellsAroundViewport.last === previous.last && renderedMask !== null && mask.equals(renderedMask as CellRenderMask)) { return false; }
+		renderedMask = mask;
+		batch((): void => { setCells(buildCells(mask)); });
+		return true;
+	};
+
+	const scheduleCellsToRenderUpdate = (rendered: boolean): void => {
+		const hiPri = hiPriInProgress;
+		const update = (): void => {
+			if (updateCellsToRender()) { scheduleCellsToRenderUpdate(true); }
+		};
+		if ((metrics.getAverageCellLength() > 0.0 || props.getItemLayout !== null) && shouldRenderWithPriority(items.length as int32) && !hiPriInProgress) {
+			hiPriInProgress = true;
+			if (updateTimeout >= 0) {
+				clearTimeout(updateTimeout);
+				updateTimeout = -1;
+			}
+			update();
+		} else if (updateTimeout < 0) {
+			updateTimeout = setTimeout((): void => {
+				updateTimeout = -1;
+				update();
+			}, batchingPeriod());
 		}
-		maybeCallOnEndReached(n);
+		if (!rendered) { return; }
+		if (hiPri) { hiPriInProgress = false; }
+		if (props.getItemLayout !== null) { maybeCallOnEndReached(items.length as int32); }
 	};
 
 	let seenCount: int32 = -1;
@@ -289,8 +323,11 @@ export function FlatList<T>(props: {
 			} else if (n !== seenCount) {
 				cellsAroundViewport = constrainToItemCount(cellsAroundViewport, n);
 			}
+			const first = seenCount < 0;
 			seenCount = n;
-			refresh();
+			renderedMask = renderMask(n);
+			batch((): void => { setCells(buildCells(renderedMask as CellRenderMask)); });
+			if (!first) { scheduleCellsToRenderUpdate(true); }
 		});
 	});
 
@@ -300,18 +337,21 @@ export function FlatList<T>(props: {
 		if (userScroll !== null) { (userScroll as (e: NeonEvent) => void)(e); }
 		offset = isHorizontal() ? e.x : e.y;
 		visibleLength = isHorizontal() ? e.width : e.height;
-		refresh();
+		maybeCallOnEndReached(items.length as int32);
+		scheduleCellsToRenderUpdate(false);
 	};
 	const onLayout = (e: NeonEvent): void => {
 		visibleLength = isHorizontal() ? e.width : e.height;
 		if (userLayout !== null) { (userLayout as (e: NeonEvent) => void)(e); }
-		refresh();
+		scheduleCellsToRenderUpdate(false);
+		maybeCallOnEndReached(items.length as int32);
 	};
 	const onContentSizeChange = (width: number, height: number): void => {
 		metrics.notifyListContentLayout(orientation(), width, height);
 		const changed = props.onContentSizeChange;
 		if (changed !== null) { (changed as (width: number, height: number) => void)(width, height); }
-		refresh();
+		scheduleCellsToRenderUpdate(false);
+		maybeCallOnEndReached(items.length as int32);
 	};
 	const scrollRef = (h: ScrollViewHandle): void => {
 		if (userRef === null) { return; }

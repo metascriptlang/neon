@@ -11,7 +11,7 @@ import { FlatList, ItemLayout, ListRenderItemInfo } from "../../src/components/f
 import {
 	nmViewsCreated, nmReleaseCalls, nmTouch, nmTeardown, nmMount, nmResize, nmScroll, nmLastScrollTag,
 	nmContentWidth, nmContentHeight, nmScrolledX, nmScrolledY, nmScrolledAnimated, nmContentSizeWrites,
-	nmScrollFrameWrites, nmScreenHeightReads, nmDrag, nmPull,
+	nmScrollFrameWrites, nmScreenHeightReads, nmDrag, nmPull, nmLoop,
 } from "./nativeBridgeMock.h";
 
 const PRESS: int32 = 2;
@@ -120,12 +120,17 @@ function rowLayout(data: Entry[], index: number): ItemLayout {
 
 const rowBox: Style = { height: 50 };
 
+function loopUntilIdle(): void {
+	for (let i = 0; i < 1000 && nmLoop() === 0; i += 1) {}
+}
+
 test "a 10000-row FlatList creates native views for its window only and sizes the content to every row" {
 	const data = entries(10000);
 	const before = nmViewsCreated();
-	const app = (): NeonNode => <FlatList data={data} style={{ flex: 1 }} getItemLayout={rowLayout}
+	const app = (): NeonNode => <FlatList data={data} style={{ flex: 1 }} getItemLayout={rowLayout} updateCellsBatchingPeriod={0}
 		renderItem={(info: ListRenderItemInfo<Entry>): NeonNode => <View style={rowBox}><Text>{"row " + info.item.n.toString()}</Text></View>} />;
 	runApp(app);
+	loopUntilIdle();
 	const created = nmViewsCreated() - before;
 	assert created > 100 && created < 1000, "views for the window, not 10000 rows: " + created.toString();
 	assert nmContentHeight() === 500000, "content spans every row: " + nmContentHeight().toString();
@@ -150,14 +155,36 @@ test "an empty string node, such as a region's anchor, takes no layout space and
 
 test "one native scroll event that moves a FlatList window runs one layout pass" {
 	const data = entries(10000);
-	const app = (): NeonNode => <FlatList data={data} style={{ flex: 1 }} getItemLayout={rowLayout}
+	const app = (): NeonNode => <FlatList data={data} style={{ flex: 1 }} getItemLayout={rowLayout} updateCellsBatchingPeriod={0}
 		renderItem={(info: ListRenderItemInfo<Entry>): NeonNode => <View style={rowBox}><Text>{"row " + info.item.n.toString()}</Text></View>} />;
 	runApp(app);
+	loopUntilIdle();
+	const views = nmViewsCreated();
 	const before = nmScreenHeightReads();
-	nmScroll(nmLastScrollTag(), 0, 1000, 400, 800, 400, 500000);
+	nmScroll(nmLastScrollTag(), 0, 100000, 400, 800, 400, 500000);
 	const passes = nmScreenHeightReads() - before;
+	const moved = nmViewsCreated() > views;
 	nmTeardown();
-	assert passes === 1, "layout passes for one scroll event: " + passes.toString();
+	assert moved && passes === 1, "layout passes for one scroll event that moves the window: " + passes.toString();
+}
+
+test "a FlatList batch that a std timer runs is laid out once per pass of the UI loop" {
+	const data = entries(10000);
+	const app = (): NeonNode => <FlatList data={data} style={{ flex: 1 }} getItemLayout={rowLayout} updateCellsBatchingPeriod={0}
+		renderItem={(info: ListRenderItemInfo<Entry>): NeonNode => <View style={rowBox}><Text>{"row " + info.item.n.toString()}</Text></View>} />;
+	runApp(app);
+	let worst = 0;
+	let batches = 0;
+	for (let i = 0; i < 1000; i += 1) {
+		const views = nmViewsCreated();
+		const before = nmScreenHeightReads();
+		const next = nmLoop();
+		if (nmViewsCreated() > views) { batches += 1; }
+		worst = Math.max(worst, nmScreenHeightReads() - before);
+		if (next !== 0) { break; }
+	}
+	nmTeardown();
+	assert batches > 0 && worst === 1, `${batches} batches, at most ${worst} layout passes in one pass of the loop`;
 }
 
 test "a layout pass that leaves a ScrollView's frame and content size alone writes neither to the native scroll view" {

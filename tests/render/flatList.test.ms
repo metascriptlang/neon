@@ -1,4 +1,5 @@
 import { onCleanup } from "../../src/core/cleanup";
+import { sleepAsync } from "std/core/promise";
 import { createSignal } from "../../src/core/signal";
 import { element } from "../../src/macros/ui/element";
 import { NeonEvent, neonEvent } from "../../src/render/event";
@@ -98,6 +99,16 @@ function layOut(root: MockNode, viewport: number, contentHeight: number): void {
 	fireEventWith(content(root), "onLayout", layoutEvent(contentHeight));
 }
 
+async function performAllBatches(root: MockNode): Promise<void> {
+	let seen = "";
+	let rounds = 0;
+	while (shape(root) !== seen && rounds < 100) {
+		seen = shape(root);
+		rounds += 1;
+		await sleepAsync(20);
+	}
+}
+
 function caught(fn: () => void): string {
 	try {
 		fn();
@@ -133,32 +144,39 @@ test "before its viewport is known FlatList mounts initialNumToRender rows" {
 
 test "renders windowSize derived region at top" {
 	const root: MockNode = mockNode("root");
-	render(element(<FlatList data={items(10)} getItemLayout={tall10} initialNumToRender={1} maxToRenderPerBatch={1} windowSize={3} renderItem={row} />), mockHost(), root as unknown as HostNode);
+	render(element(<FlatList data={items(10)} getItemLayout={tall10} initialNumToRender={1} maxToRenderPerBatch={1} windowSize={3} updateCellsBatchingPeriod={0} renderItem={row} />), mockHost(), root as unknown as HostNode);
 	layOut(root, 20, 100);
+	await performAllBatches(root);
 	assert shape(root) === "c0-3 sp60", shape(root);
 }
 
 test "renders windowSize derived region in middle" {
 	const root: MockNode = mockNode("root");
-	render(element(<FlatList data={items(10)} getItemLayout={tall10} initialNumToRender={1} maxToRenderPerBatch={1} windowSize={3} renderItem={row} />), mockHost(), root as unknown as HostNode);
+	render(element(<FlatList data={items(10)} getItemLayout={tall10} initialNumToRender={1} maxToRenderPerBatch={1} windowSize={3} updateCellsBatchingPeriod={0} renderItem={row} />), mockHost(), root as unknown as HostNode);
 	layOut(root, 20, 100);
+	await performAllBatches(root);
 	fireEventWith(scrollView(root), "onScroll", scrollEvent(50, 20, 100));
+	await performAllBatches(root);
 	assert shape(root) === "c0 sp10 c2-8 sp10", shape(root);
 }
 
 test "renders windowSize derived region at bottom" {
 	const root: MockNode = mockNode("root");
-	render(element(<FlatList data={items(10)} getItemLayout={tall10} initialNumToRender={1} maxToRenderPerBatch={1} windowSize={3} renderItem={row} />), mockHost(), root as unknown as HostNode);
+	render(element(<FlatList data={items(10)} getItemLayout={tall10} initialNumToRender={1} maxToRenderPerBatch={1} windowSize={3} updateCellsBatchingPeriod={0} renderItem={row} />), mockHost(), root as unknown as HostNode);
 	layOut(root, 20, 100);
+	await performAllBatches(root);
 	fireEventWith(scrollView(root), "onScroll", scrollEvent(80, 20, 100));
+	await performAllBatches(root);
 	assert shape(root) === "c0 sp40 c5-9", shape(root);
 }
 
 test "retains intitial render if initialScrollIndex == 0" {
 	const root: MockNode = mockNode("root");
-	render(element(<FlatList data={items(20)} getItemLayout={tall10} initialNumToRender={5} windowSize={1} renderItem={row} />), mockHost(), root as unknown as HostNode);
+	render(element(<FlatList data={items(20)} getItemLayout={tall10} initialNumToRender={5} windowSize={1} updateCellsBatchingPeriod={0} renderItem={row} />), mockHost(), root as unknown as HostNode);
 	layOut(root, 50, 200);
+	await performAllBatches(root);
 	fireEventWith(scrollView(root), "onScroll", scrollEvent(150, 50, 200));
+	await performAllBatches(root);
 	assert shape(root) === "c0-4 sp90 c14-19", "the first initialNumToRender rows stay for scroll-to-top: " + shape(root);
 }
 
@@ -166,18 +184,21 @@ test "scrolling mounts rows that enter the window, unmounts rows that leave, and
 	const root: MockNode = mockNode("root");
 	let mounts = 0;
 	let unmounts = 0;
-	render(element(<FlatList data={items(10000)} getItemLayout={tall50}
+	render(element(<FlatList data={items(10000)} getItemLayout={tall50} updateCellsBatchingPeriod={0}
 		renderItem={(info: ListRenderItemInfo<Item>): NeonNode => {
 			mounts = mounts + 1;
 			onCleanup((): void => { unmounts = unmounts + 1; });
 			return row(info);
 		}} />), mockHost(), root as unknown as HostNode);
 	layOut(root, 500, 500000);
+	await performAllBatches(root);
 	assert shape(root) === "c0-109 sp494500", shape(root);
 	assert mounts === 110 && unmounts === 0, `after layout ${mounts} ${unmounts}`;
 	fireEventWith(scrollView(root), "onScroll", scrollEvent(1000, 500, 500000));
+	await performAllBatches(root);
 	assert mounts === 130 && unmounts === 0, "rows 110..129 mount, rows 0..109 stay: " + `${mounts} ${unmounts}`;
 	fireEventWith(scrollView(root), "onScroll", scrollEvent(20000, 500, 500000));
+	await performAllBatches(root);
 	assert shape(root) === "c0-9 sp14450 c299-509 sp474500", shape(root);
 	assert unmounts === 120, "rows 10..129 unmounted, the first ten stay: " + unmounts.toString();
 }
@@ -185,15 +206,19 @@ test "scrolling mounts rows that enter the window, unmounts rows that leave, and
 test "a row that leaves the window and comes back is mounted again for the same item" {
 	const root: MockNode = mockNode("root");
 	let mounts = 0;
-	render(element(<FlatList data={items(10000)} getItemLayout={tall50}
+	render(element(<FlatList data={items(10000)} getItemLayout={tall50} updateCellsBatchingPeriod={0}
 		renderItem={(info: ListRenderItemInfo<Item>): NeonNode => {
 			if (info.item.id === "k200") { mounts = mounts + 1; }
 			return row(info);
 		}} />), mockHost(), root as unknown as HostNode);
 	layOut(root, 500, 500000);
+	await performAllBatches(root);
 	fireEventWith(scrollView(root), "onScroll", scrollEvent(10000, 500, 500000));
+	await performAllBatches(root);
 	fireEventWith(scrollView(root), "onScroll", scrollEvent(0, 500, 500000));
+	await performAllBatches(root);
 	fireEventWith(scrollView(root), "onScroll", scrollEvent(10000, 500, 500000));
+	await performAllBatches(root);
 	assert mounts === 2, "row k200 mounted, left with its state and came back fresh: " + mounts.toString();
 }
 
@@ -235,23 +260,27 @@ test "the same item twice in the rendered rows fails loud" {
 test "calls onEndReached when near the end" {
 	const root: MockNode = mockNode("root");
 	let ends = 0;
-	render(element(<FlatList data={items(40)} getItemLayout={tall40} initialNumToRender={10} onEndReachedThreshold={1} windowSize={10}
+	render(element(<FlatList data={items(40)} getItemLayout={tall40} initialNumToRender={10} onEndReachedThreshold={1} windowSize={10} updateCellsBatchingPeriod={0}
 		onEndReached={(info: EndReachedInfo): void => { ends = ends + 1; }} renderItem={row} />), mockHost(), root as unknown as HostNode);
 	layOut(root, 600, 1600);
+	await performAllBatches(root);
 	assert ends === 0, "not at the top";
 	fireEventWith(scrollView(root), "onScroll", scrollEvent(40, 600, 1600));
+	await performAllBatches(root);
 	assert ends === 0, "not after a small scroll";
 	fireEventWith(scrollView(root), "onScroll", scrollEvent(1600, 600, 1600));
+	await performAllBatches(root);
 	assert ends === 1, "at the end: " + ends.toString();
 }
 
 test "onEndReached without a threshold fires within 2 px of the end, React Native's default" {
 	const root: MockNode = mockNode("root");
 	let ends = "";
-	render(element(<FlatList data={items(100)} getItemLayout={tall50}
+	render(element(<FlatList data={items(100)} getItemLayout={tall50} updateCellsBatchingPeriod={0}
 		onEndReached={(info: EndReachedInfo): void => { ends = ends + info.distanceFromEnd.toString() + ";"; }}
 		renderItem={row} />), mockHost(), root as unknown as HostNode);
 	layOut(root, 500, 5000);
+	await performAllBatches(root);
 	fireEventWith(scrollView(root), "onScroll", scrollEvent(3600, 500, 5000));
 	assert ends === "", "900 from the end is outside the 2 px default: " + ends;
 	fireEventWith(scrollView(root), "onScroll", scrollEvent(4498, 500, 5000));
@@ -322,12 +351,61 @@ test "FlatList without getItemLayout fails loud and names the prop" {
 test "onLayout reaches the author before the window moves, as React Native orders it" {
 	const root: MockNode = mockNode("root");
 	let seen = "";
-	render(element(<FlatList data={items(10000)} getItemLayout={tall50}
+	render(element(<FlatList data={items(10000)} getItemLayout={tall50} updateCellsBatchingPeriod={0}
 		onLayout={(e: NeonEvent): void => { seen = `${e.height} ${shape(root)}`; }} renderItem={row} />), mockHost(), root as unknown as HostNode);
 	fireEventWith(content(root), "onLayout", layoutEvent(500000));
 	fireEventWith(scrollView(root), "onLayout", layoutEvent(500));
 	assert seen === "500 c0-9 sp499500", "VirtualizedList._onLayout calls props.onLayout, then schedules the window: " + seen;
-	assert shape(root) === "c0-109 sp494500", "then the window opens: " + shape(root);
+	assert shape(root) === "c0-19 sp499000", "then the window opens by one batch at once, the viewport reaching past the rendered rows: " + shape(root);
+	await performAllBatches(root);
+	assert shape(root) === "c0-109 sp494500", "and the later batches fill it: " + shape(root);
+}
+
+test "expands render area by maxToRenderPerBatch on tick" {
+	const root: MockNode = mockNode("root");
+	render(element(<FlatList data={items(20)} getItemLayout={tall10} initialNumToRender={5} maxToRenderPerBatch={2} updateCellsBatchingPeriod={200} renderItem={row} />), mockHost(), root as unknown as HostNode);
+	layOut(root, 50, 200);
+	assert shape(root) === "c0-4 sp150", "no batch before the period: " + shape(root);
+	await sleepAsync(300);
+	assert shape(root) === "c0-6 sp130", "one tick renders maxToRenderPerBatch more: " + shape(root);
+}
+
+test "a scroll past the rendered rows renders the visible rows at once and the rest of the window in batches" {
+	const root: MockNode = mockNode("root");
+	render(element(<FlatList data={items(10000)} getItemLayout={tall50} updateCellsBatchingPeriod={0} renderItem={row} />), mockHost(), root as unknown as HostNode);
+	layOut(root, 500, 500000);
+	await performAllBatches(root);
+	fireEventWith(scrollView(root), "onScroll", scrollEvent(100000, 500, 500000));
+	assert shape(root) === "c0-9 sp94450 c1899-2009 sp399500", "the viewport and the window behind it, synchronously: " + shape(root);
+	await performAllBatches(root);
+	assert shape(root) === "c0-9 sp94450 c1899-2109 sp394500", "then its window: " + shape(root);
+}
+
+test "a scroll inside the rendered rows waits for the batching period" {
+	const root: MockNode = mockNode("root");
+	render(element(<FlatList data={items(10000)} getItemLayout={tall50} updateCellsBatchingPeriod={100} renderItem={row} />), mockHost(), root as unknown as HostNode);
+	layOut(root, 500, 500000);
+	await sleepAsync(1500);
+	assert shape(root) === "c0-109 sp494500", shape(root);
+	fireEventWith(scrollView(root), "onScroll", scrollEvent(1000, 500, 500000));
+	assert shape(root) === "c0-109 sp494500", "nothing at once: " + shape(root);
+	await sleepAsync(150);
+	assert shape(root) === "c0-119 sp494000", "one batch after the period: " + shape(root);
+}
+
+test "unmounting cancels the pending batch" {
+	const root: MockNode = mockNode("root");
+	let mounts = 0;
+	const dispose = render(element(<FlatList data={items(10000)} getItemLayout={tall50} updateCellsBatchingPeriod={100}
+		renderItem={(info: ListRenderItemInfo<Item>): NeonNode => {
+			mounts = mounts + 1;
+			return row(info);
+		}} />), mockHost(), root as unknown as HostNode);
+	layOut(root, 500, 500000);
+	const before = mounts;
+	dispose();
+	await sleepAsync(250);
+	assert mounts === before, `no row mounts after unmount: ${before} then ${mounts}`;
 }
 
 test "horizontal FlatList uses width and x for its window and every imperative offset" {
