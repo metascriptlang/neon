@@ -6,7 +6,7 @@ import { NeonEvent, neonEvent } from "../../src/render/event";
 import { NeonNode } from "../../src/render/hostTypes";
 import { HostNode, MockNode, mockNode, mockHost, render, fireEventWith } from "../../src/render/host";
 import { Text } from "../../src/components/primitives";
-import { FlatList, FlatListHandle, ItemLayout, ListRenderItemInfo, EndReachedInfo } from "../../src/components/flatList";
+import { FlatList, FlatListHandle, ItemLayout, ListRenderItemInfo, EndReachedInfo, ScrollToIndexFailedInfo } from "../../src/components/flatList";
 
 // Cases named after React Native's are ported from
 // packages/virtualized-lists/Lists/__tests__/VirtualizedList-test.js; their expected content is
@@ -49,6 +49,24 @@ function content(root: MockNode): MockNode {
 	return root.children[0].children[0];
 }
 
+function rowLabel(k: MockNode): MockNode | null {
+	if (k.tag === "text") { return k; }
+	if (k.children.length > 0 && k.children[0].tag === "text") { return k.children[0]; }
+	return null;
+}
+
+function measureRows(root: MockNode, length: number): void {
+	for (const k of content(root).children) {
+		if (k.tag === "" || k.tag === "text" || rowLabel(k) === null) { continue; }
+		const n: number = parseInt((rowLabel(k) as MockNode).children[0].text.slice(4)) as number;
+		const e = neonEvent("layout");
+		e.y = n * length;
+		e.width = 10;
+		e.height = length;
+		fireEventWith(k, "onLayout", e);
+	}
+}
+
 function shape(root: MockNode): string {
 	const parts: string[] = [];
 	let runFirst: number = -1;
@@ -59,8 +77,9 @@ function shape(root: MockNode): string {
 	};
 	for (const k of content(root).children) {
 		if (k.tag === "") { continue; }
-		if (k.tag === "text") {
-			const n: number = parseInt(k.children[0].text.slice(4)) as number;
+		const label = rowLabel(k);
+		if (label !== null) {
+			const n: number = parseInt((label as MockNode).children[0].text.slice(4)) as number;
 			if (runFirst >= 0 && n === runLast + 1) {
 				runLast = n;
 			} else {
@@ -340,12 +359,72 @@ test "scrollToEnd works with null list" {
 	assert caught((): void => { handles[0].scrollToEnd({}); }) === "", "no throw on an empty list";
 }
 
-test "FlatList without getItemLayout fails loud and names the prop" {
+test "renders a zero-height tail spacer on initial render if getItemLayout not defined" {
 	const root: MockNode = mockNode("root");
-	const msg = caught((): void => {
-		render(element(<FlatList data={items(3)} renderItem={row} />), mockHost(), root as unknown as HostNode);
-	});
-	assert msg.includes("getItemLayout"), "names the prop: " + msg;
+	render(element(<FlatList data={items(10)} initialNumToRender={3} renderItem={row} />), mockHost(), root as unknown as HostNode);
+	assert shape(root) === "c0-2 sp0", shape(root);
+}
+
+test "renders zero-height tail spacer on batch render if cells not yet measured and getItemLayout not defined" {
+	const root: MockNode = mockNode("root");
+	render(element(<FlatList data={items(10)} initialNumToRender={3} maxToRenderPerBatch={1} windowSize={1} updateCellsBatchingPeriod={200} renderItem={row} />), mockHost(), root as unknown as HostNode);
+	layOut(root, 50, 200);
+	await sleepAsync(300);
+	assert shape(root) === "c0-2 sp0" || shape(root) === "c0-3 sp0", "a zero-height tail spacer after at most one batch: " + shape(root);
+}
+
+test "a tail spacer without getItemLayout reaches the highest measured row, measured rows that left the window included" {
+	const root: MockNode = mockNode("root");
+	render(element(<FlatList data={items(10)} initialNumToRender={3} windowSize={1} updateCellsBatchingPeriod={0} renderItem={row} />), mockHost(), root as unknown as HostNode);
+	layOut(root, 30, 100);
+	measureRows(root, 10);
+	await performAllBatches(root);
+	fireEventWith(scrollView(root), "onScroll", scrollEvent(50, 30, 100));
+	await performAllBatches(root);
+	measureRows(root, 10);
+	await performAllBatches(root);
+	fireEventWith(scrollView(root), "onScroll", scrollEvent(0, 30, 100));
+	await performAllBatches(root);
+	assert shape(root) === "c0-2 sp50", "rows 3..7, up to the measured row 7, not 8 and 9: " + shape(root);
+}
+
+test "does not call onEndReached when onContentSizeChange happens after onLayout" {
+	const root: MockNode = mockNode("root");
+	let ends = 0;
+	render(element(<FlatList data={items(20)} initialNumToRender={10} onEndReachedThreshold={2} windowSize={21} updateCellsBatchingPeriod={0}
+		onEndReached={(info: EndReachedInfo): void => { ends = ends + 1; }} renderItem={row} />), mockHost(), root as unknown as HostNode);
+	fireEventWith(scrollView(root), "onLayout", layoutEvent(600));
+	fireEventWith(content(root), "onLayout", layoutEvent(400));
+	fireEventWith(content(root), "onLayout", layoutEvent(800));
+	await performAllBatches(root);
+	assert ends === 0, "React Native #16067: not before the rows are measured";
+	measureRows(root, 40);
+	fireEventWith(scrollView(root), "onScroll", scrollEvent(400, 600, 800));
+	await performAllBatches(root);
+	assert ends === 1, "at the end once measured: " + ends.toString();
+}
+
+test "scrollToIndex past the measured rows without getItemLayout calls onScrollToIndexFailed instead of scrolling" {
+	const root: MockNode = mockNode("root");
+	const handles: FlatListHandle[] = [];
+	let failed = "";
+	render(element(<FlatList data={items(100)} updateCellsBatchingPeriod={0}
+		onScrollToIndexFailed={(info: ScrollToIndexFailedInfo): void => { failed = `${info.index} ${info.highestMeasuredFrameIndex} ${info.averageItemLength}`; }}
+		ref={(h: FlatListHandle): void => { handles.push(h); }} renderItem={row} />), mockHost(), root as unknown as HostNode);
+	layOut(root, 50, 100);
+	measureRows(root, 10);
+	handles[0].scrollToIndex({ index: 5, animated: false });
+	assert scrollView(root).scrollY === 50 && failed === "", "a measured row scrolls: " + scrollView(root).scrollY.toString();
+	handles[0].scrollToIndex({ index: 50, animated: false });
+	assert failed === "50 9 10" && scrollView(root).scrollY === 50, "an unmeasured row reports and stays: " + failed;
+}
+
+test "scrollToIndex past the measured rows without getItemLayout or onScrollToIndexFailed fails loud" {
+	const root: MockNode = mockNode("root");
+	const handles: FlatListHandle[] = [];
+	render(element(<FlatList data={items(100)} ref={(h: FlatListHandle): void => { handles.push(h); }} renderItem={row} />), mockHost(), root as unknown as HostNode);
+	const msg = caught((): void => { handles[0].scrollToIndex({ index: 50 }); });
+	assert msg.includes("scrollToIndex should be used in conjunction with getItemLayout or onScrollToIndexFailed"), msg;
 }
 
 test "onLayout reaches the author before the window moves, as React Native orders it" {

@@ -28,6 +28,12 @@ export interface EndReachedInfo {
 	distanceFromEnd: number;
 }
 
+export interface ScrollToIndexFailedInfo {
+	index: number;
+	highestMeasuredFrameIndex: number;
+	averageItemLength: number;
+}
+
 export interface ScrollToIndexOptions {
 	index: number;
 	animated?: boolean | null;
@@ -53,9 +59,9 @@ class ListCell {
 	index: number = -1;
 	setIndex: (index: number) => void;
 	setSize: (size: number) => void;
-	make: () => NeonNode;
+	make: (scheduleUpdate: () => void) => NeonNode;
 
-	constructor(setIndex: (index: number) => void, setSize: (size: number) => void, make: () => NeonNode) {
+	constructor(setIndex: (index: number) => void, setSize: (size: number) => void, make: (scheduleUpdate: () => void) => NeonNode) {
 		this.setIndex = setIndex;
 		this.setSize = setSize;
 		this.make = make;
@@ -69,14 +75,16 @@ export class FlatListHandle {
 	private count: () => number;
 	private viewport: () => number;
 	private horizontal: () => boolean;
+	private unmeasured: (index: number) => boolean;
 
-	constructor(scroll: ScrollViewHandle, frameOf: (index: number) => CellMetrics, offsetOf: (index: number) => number, count: () => number, viewport: () => number, horizontal: () => boolean) {
+	constructor(scroll: ScrollViewHandle, frameOf: (index: number) => CellMetrics, offsetOf: (index: number) => number, count: () => number, viewport: () => number, horizontal: () => boolean, unmeasured: (index: number) => boolean) {
 		this.scroll = scroll;
 		this.frameOf = frameOf;
 		this.offsetOf = offsetOf;
 		this.count = count;
 		this.viewport = viewport;
 		this.horizontal = horizontal;
+		this.unmeasured = unmeasured;
 	}
 
 	private moveTo(offset: number, animated: boolean): void {
@@ -95,6 +103,7 @@ export class FlatListHandle {
 		if (index < 0) { throw `scrollToIndex out of range: requested index ${index} but minimum is 0`; }
 		if (n < 1) { throw `scrollToIndex out of range: item length ${n} but minimum is 1`; }
 		if (index >= n) { throw `scrollToIndex out of range: requested index ${index} is out of 0 to ${n - 1}`; }
+		if (this.unmeasured(index)) { return; }
 		const frame = this.frameOf(Math.floor(index));
 		const offset = Math.max(0, this.offsetOf(index) - viewPosition * (this.viewport() - frame.length)) - viewOffset;
 		this.moveTo(offset, animated);
@@ -114,6 +123,7 @@ export function FlatList<T>(props: {
 	renderItem: (info: ListRenderItemInfo<T>) => NeonNode;
 	getItemLayout?: ((data: T[], index: number) => ItemLayout) | null;
 	initialNumToRender?: Accessor<number> | null;
+	onScrollToIndexFailed?: ((info: ScrollToIndexFailedInfo) => void) | null;
 	maxToRenderPerBatch?: Accessor<number> | null;
 	updateCellsBatchingPeriod?: Accessor<number> | null;
 	windowSize?: Accessor<number> | null;
@@ -140,10 +150,7 @@ export function FlatList<T>(props: {
 	contentContainerStyle?: Accessor<Style> | null;
 	ref?: ((handle: FlatListHandle) => void) | null;
 }): NeonNode {
-	if (props.getItemLayout === null) {
-		throw "FlatList: getItemLayout is required; rows of measured height are not supported yet";
-	}
-	const getItemLayout = props.getItemLayout as (data: T[], index: number) => ItemLayout;
+	const getItemLayout = props.getItemLayout;
 	const data = props.data;
 	const renderItem = props.renderItem;
 	const initialProp = props.initialNumToRender;
@@ -164,8 +171,8 @@ export function FlatList<T>(props: {
 	const source: CellSource<T> = {
 		count: (): int32 => items.length as int32,
 		keyAt: (index: int32): T => items[index],
-		layoutAt: (index: int32): CellMetrics => {
-			const layout = getItemLayout(items, index as number);
+		layoutAt: getItemLayout === null ? null : (index: int32): CellMetrics => {
+			const layout = (getItemLayout as (data: T[], index: number) => ItemLayout)(items, index as number);
 			return { index, length: layout.length, offset: layout.offset, isMounted: true };
 		},
 	};
@@ -208,24 +215,39 @@ export function FlatList<T>(props: {
 
 	const spacerCell = (): ListCell => {
 		const [size, setSize] = createSignal<number>(0);
-		return new ListCell((index: number): void => {}, (next: number): void => { setSize(next); }, (): NeonNode => element(<View style={{ width: isHorizontal() ? size() : null, height: isHorizontal() ? null : size(), flexShrink: 0 }} />));
+		return new ListCell((index: number): void => {}, (next: number): void => { setSize(next); }, (scheduleUpdate: () => void): NeonNode => element(<View style={{ width: isHorizontal() ? size() : null, height: isHorizontal() ? null : size(), flexShrink: 0 }} />));
 	};
 
 	const itemCell = (item: T, index: number): ListCell => {
 		const [at, setAt] = createSignal<number>(index);
-		return new ListCell((next: number): void => { setAt(next); }, (size: number): void => {}, (): NeonNode => renderItem({ item, index: at }));
+		return new ListCell((next: number): void => { setAt(next); }, (size: number): void => {}, (scheduleUpdate: () => void): NeonNode => {
+			if (getItemLayout !== null) { return renderItem({ item, index: at }); }
+			onCleanup((): void => { metrics.notifyCellUnmounted(item); });
+			const onCellLayout = (e: NeonEvent): void => {
+				if (metrics.notifyCellLayout(at() as int32, item, orientation(), { x: e.x, y: e.y, width: e.width, height: e.height })) { scheduleUpdate(); }
+			};
+			return element(<View onLayout={onCellLayout}>{renderItem({ item, index: at })}</View>);
+		});
 	};
 
 	const buildCells = (mask: CellRenderMask): ListCell[] => {
 		const out: ListCell[] = [];
 		const nextItems = new Map<T, ListCell>();
 		const nextSpacers = new Map<int32, ListCell>();
-		for (const region of mask.enumerateRegions()) {
+		const regions = mask.enumerateRegions();
+		for (let r = 0; r < regions.length; r += 1) {
+			const region = regions[r];
 			if (region.isSpacer) {
+				const highest = metrics.getHighestMeasuredCellIndex();
+				const lastIndex = r === regions.length - 1 && getItemLayout === null ? (region.last > highest ? highest : region.last) : region.last;
 				const first = metricsAt(region.first);
-				const last = metricsAt(region.last);
 				const cell = spacerCells.has(region.first) ? spacerCells.get(region.first) as ListCell : spacerCell();
-				cell.setSize(last.offset + last.length - first.offset);
+				if (lastIndex < region.first) {
+					cell.setSize(0);
+				} else {
+					const last = metricsAt(lastIndex);
+					cell.setSize(last.offset + last.length - first.offset);
+				}
 				nextSpacers.set(region.first, cell);
 				out.push(cell);
 				continue;
@@ -331,7 +353,8 @@ export function FlatList<T>(props: {
 		});
 	});
 
-	const rows = regionNode((host: Host) => mapArray<ListCell, Row>(cells, (cell: ListCell, i: Accessor<number>): Row => makeRow(cell.make()), false));
+	const scheduleUpdate = (): void => { scheduleCellsToRenderUpdate(false); };
+	const rows = regionNode((host: Host) => mapArray<ListCell, Row>(cells, (cell: ListCell, i: Accessor<number>): Row => makeRow(cell.make(scheduleUpdate)), false));
 
 	const onScroll = (e: NeonEvent): void => {
 		if (userScroll !== null) { (userScroll as (e: NeonEvent) => void)(e); }
@@ -362,6 +385,19 @@ export function FlatList<T>(props: {
 			(): number => items.length,
 			(): number => visibleLength,
 			isHorizontal,
+			(index: number): boolean => {
+				if (getItemLayout !== null || index <= metrics.getHighestMeasuredCellIndex()) { return false; }
+				const failed = props.onScrollToIndexFailed;
+				if (failed === null) {
+					throw "scrollToIndex should be used in conjunction with getItemLayout or onScrollToIndexFailed, otherwise there is no way to know the location of offscreen indices or handle failures.";
+				}
+				(failed as (info: ScrollToIndexFailedInfo) => void)({
+					averageItemLength: metrics.getAverageCellLength(),
+					highestMeasuredFrameIndex: metrics.getHighestMeasuredCellIndex(),
+					index,
+				});
+				return true;
+			},
 		));
 	};
 
