@@ -10,6 +10,7 @@ import {
 	NavigationContainer,
 	NavigationContainerRef,
 	ScreenProps,
+	TabBarIconProps,
 	createBottomTabNavigator,
 	createDrawerNavigator,
 	createNavigationContainerRef,
@@ -171,11 +172,15 @@ function ProfileTab(props: ScreenProps<string>): NeonNode {
 	</View>;
 }
 
+function glyph(text: string, icon: TabBarIconProps): NeonNode {
+	return <Text style={{ color: icon.color, fontSize: icon.focused ? 22 : 20 }}>{text}</Text>;
+}
+
 function MainTabs(props: ScreenProps<string>): NeonNode {
 	return <Tab.Navigator>
-		<Tab.Screen name="Home" component={HomeTab} options={{ headerShown: false }} />
-		<Tab.Screen name="Search" component={SearchTab} />
-		<Tab.Screen name="Profile" component={ProfileTab} />
+		<Tab.Screen name="Home" component={HomeTab} options={{ headerShown: false, tabBarIcon: (icon: TabBarIconProps): NeonNode => glyph("⌂", icon) }} />
+		<Tab.Screen name="Search" component={SearchTab} options={{ tabBarIcon: (icon: TabBarIconProps): NeonNode => glyph("⚲", icon) }} />
+		<Tab.Screen name="Profile" component={ProfileTab} options={{ tabBarIcon: (icon: TabBarIconProps): NeonNode => glyph("☺", icon) }} />
 	</Tab.Navigator>;
 }
 

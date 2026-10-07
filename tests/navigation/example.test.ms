@@ -19,6 +19,7 @@ test "the navigation example walks list, detail, edit, tabs, drawer and a deep l
 	const root: MockNode = mockNode("root");
 	const dispose = render(NavigationDemo(), mockHost(), root as unknown as HostNode);
 	assert navigationRef.currentPath() === "Main>Home>List", navigationRef.currentPath();
+	assert visibleText(root).indexOf("⌂|Home|⚲|Search|☺|Profile") >= 0, "tab icons: " + visibleText(root);
 	press(root, "Increment home");
 	press(root, "Open Void shader");
 	assert navigationRef.currentPath() === "Main>Home>Detail", navigationRef.currentPath();
