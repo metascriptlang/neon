@@ -4,6 +4,8 @@ import { createRoot } from "../core/owner";
 import { onCleanup } from "../core/cleanup";
 import { NeonNode } from "../render/hostTypes";
 import { Style } from "../render/style";
+import { Animated, AnimatedValue, EndResult, Easing } from "../animation/index";
+import { StackLayout } from "./layout";
 import { createContext, useContext } from "../render/context";
 
 export enum NavigatorKind {
@@ -27,11 +29,17 @@ export interface TabBarIconProps {
 
 export type StackPresentation = "card" | "modal" | "transparentModal";
 
+export type StackAnimation = "default" | "slide_from_right" | "slide_from_bottom" | "fade" | "none";
+
 export type HeaderTitleAlign = "left" | "center";
 
 export interface ScreenOptions {
 	title?: string | null;
 	presentation?: StackPresentation | null;
+	animation?: StackAnimation | null;
+	animationDuration?: number | null;
+	gestureEnabled?: boolean | null;
+	swipeEnabled?: boolean | null;
 	headerTitleAlign?: HeaderTitleAlign | null;
 	headerShown?: boolean | null;
 	headerTitle?: string | null;
@@ -58,6 +66,10 @@ export function plainOptions<P>(o: ScreenOptionsOf<P>): ScreenOptions {
 	return {
 		title: o.title,
 		presentation: o.presentation,
+		animation: o.animation,
+		animationDuration: o.animationDuration,
+		gestureEnabled: o.gestureEnabled,
+		swipeEnabled: o.swipeEnabled,
 		headerTitleAlign: o.headerTitleAlign,
 		headerShown: o.headerShown,
 		headerTitle: o.headerTitle,
@@ -91,6 +103,12 @@ export function mergeOptions(base: ScreenOptions, over: ScreenOptions): ScreenOp
 	return {
 		title: over.title !== null ? over.title : base.title,
 		presentation: over.presentation !== null ? over.presentation : base.presentation,
+		animation: over.animation !== null ? over.animation : base.animation,
+		animationDuration: over.animationDuration !== null
+			? over.animationDuration
+			: base.animationDuration,
+		gestureEnabled: over.gestureEnabled !== null ? over.gestureEnabled : base.gestureEnabled,
+		swipeEnabled: over.swipeEnabled !== null ? over.swipeEnabled : base.swipeEnabled,
 		headerTitleAlign: over.headerTitleAlign !== null
 			? over.headerTitleAlign
 			: base.headerTitleAlign,
@@ -343,6 +361,15 @@ export function noAction(): void {}
 
 export type Unsubscribe = () => void;
 
+export const STACK_DURATION = 350;
+
+function contains<T>(list: T[], item: T): boolean {
+	for (const candidate of list) {
+		if (candidate === item) { return true; }
+	}
+	return false;
+}
+
 interface ChildEntry {
 	routeKey: string;
 	link: NavigatorLink;
@@ -367,6 +394,9 @@ export class Navigation<P> {
 	writeOverrides: Setter<ScreenOptions>;
 	visited: Accessor<boolean>;
 	markVisited: Setter<boolean>;
+	progress: AnimatedValue = new AnimatedValue(1);
+	motion: Accessor<boolean>;
+	writeMotion: Setter<boolean>;
 
 	constructor(
 		core: NavigatorCore<P>,
@@ -386,6 +416,8 @@ export class Navigation<P> {
 		this.writeOverrides = writeOverrides;
 		this.visited = visited;
 		this.markVisited = markVisited;
+		this.motion = visited;
+		this.writeMotion = markVisited;
 	}
 
 	goBack(): void {
@@ -639,6 +671,9 @@ export class NavigatorCore<P> {
 	listeners: StateListener[] = [];
 	nextKey: int32 = 1;
 	nextListener: int32 = 1;
+	closing: Accessor<Navigation<P>[]>;
+	writeClosing: Setter<Navigation<P>[]>;
+	layout: StackLayout = new StackLayout();
 
 	constructor(
 		kind: NavigatorKind,
@@ -649,6 +684,8 @@ export class NavigatorCore<P> {
 		writeIndex: Setter<int32>,
 		drawerOpen: Accessor<boolean>,
 		writeDrawerOpen: Setter<boolean>,
+		closing: Accessor<Navigation<P>[]>,
+		writeClosing: Setter<Navigation<P>[]>,
 		screenOptions: Accessor<ScreenOptions>,
 		backBehavior: string,
 		initialName: string,
@@ -662,6 +699,8 @@ export class NavigatorCore<P> {
 		this.writeIndex = writeIndex;
 		this.drawerOpen = drawerOpen;
 		this.writeDrawerOpen = writeDrawerOpen;
+		this.closing = closing;
+		this.writeClosing = writeClosing;
 		this.screenOptions = screenOptions;
 		this.backBehavior = backBehavior;
 		this.initialName = initialName;
@@ -729,10 +768,11 @@ export class NavigatorCore<P> {
 		const empty: ScreenOptions = {};
 		const [overrides, writeOverrides] = createSignal<ScreenOptions>(empty);
 		const [visited, markVisited] = createSignal<boolean>(false);
+		const [motion, writeMotion] = createSignal<boolean>(false);
 		const key = name + "-" + this.nextKey.toString();
 		this.nextKey += 1;
 		const route = new Route<P>(key, name, read);
-		return new Navigation<P>(
+		const entry = new Navigation<P>(
 			this,
 			route,
 			config,
@@ -742,6 +782,9 @@ export class NavigatorCore<P> {
 			visited,
 			markVisited,
 		);
+		entry.motion = motion;
+		entry.writeMotion = writeMotion;
+		return entry;
 	}
 
 	start(initialParams: P | null): void {
@@ -766,12 +809,100 @@ export class NavigatorCore<P> {
 		this.commit(list, at);
 	}
 
+	rendered(): Navigation<P>[] {
+		const list = this.entries();
+		const leaving = this.closing();
+		if (leaving.length === 0) { return list; }
+		const all = list.slice(0, list.length);
+		for (const entry of leaving) {
+			if (!contains(all, entry)) { all.push(entry); }
+		}
+		return all;
+	}
+
+	isClosing(entry: Navigation<P>): boolean {
+		return contains(this.closing(), entry);
+	}
+
+	animationOf(entry: Navigation<P>): StackAnimation {
+		const options = entry.options();
+		const own = options.animation;
+		if (own !== null && own !== "default") { return own as StackAnimation; }
+		const presentation = options.presentation;
+		if (presentation !== null && presentation === "modal") { return "slide_from_bottom"; }
+		if (presentation !== null && presentation === "transparentModal") { return "fade"; }
+		return "slide_from_right";
+	}
+
+	durationOf(entry: Navigation<P>): number {
+		const own = entry.options().animationDuration;
+		return own === null ? STACK_DURATION : own as number;
+	}
+
+	animateIn(entry: Navigation<P>): void {
+		const kind = untrack((): StackAnimation => this.animationOf(entry));
+		if (kind === "none") {
+			entry.progress.setValue(1);
+			return;
+		}
+		entry.progress.setValue(0);
+		entry.writeMotion(true);
+		const duration = untrack((): number => this.durationOf(entry));
+		Animated.timing(entry.progress, { toValue: 1, duration, easing: Easing.out(Easing.cubic) })
+			.start((result: EndResult): void => {
+				if (result.finished) { entry.writeMotion(false); }
+			});
+	}
+
+	settleIn(entry: Navigation<P>): void {
+		const duration = untrack((): number => this.durationOf(entry));
+		Animated.timing(entry.progress, { toValue: 1, duration, easing: Easing.out(Easing.cubic) })
+			.start((result: EndResult): void => {
+				if (result.finished) { entry.writeMotion(false); }
+			});
+	}
+
+	animateOut(entry: Navigation<P>): void {
+		const kind = untrack((): StackAnimation => this.animationOf(entry));
+		if (kind === "none") { return; }
+		const leaving = untrack((): Navigation<P>[] => this.closing());
+		const next = leaving.slice(0, leaving.length);
+		next.push(entry);
+		this.writeClosing(next);
+		entry.writeMotion(true);
+		const duration = untrack((): number => this.durationOf(entry));
+		Animated.timing(entry.progress, { toValue: 0, duration, easing: Easing.in(Easing.cubic) })
+			.start((result: EndResult): void => {
+				const now = untrack((): Navigation<P>[] => this.closing());
+				const kept: Navigation<P>[] = [];
+				for (const other of now) {
+					if (other !== entry) { kept.push(other); }
+				}
+				this.writeClosing(kept);
+				entry.writeMotion(false);
+			});
+	}
+
+	transition(before: Navigation<P>[], list: Navigation<P>[]): void {
+		if (!this.isStack() || before.length === 0 || list.length === 0) { return; }
+		const previous = before[before.length - 1];
+		const top = list[list.length - 1];
+		if (previous === top) { return; }
+		if (!contains(list, previous) && contains(before, top)) {
+			this.animateOut(previous);
+			return;
+		}
+		if (!contains(before, top)) { this.animateIn(top); }
+	}
+
 	commit(list: Navigation<P>[], at: int32): void {
+		const before = this.snapshot();
 		batch((): void => {
 			this.writeEntries(list);
 			this.writeIndex(at);
 			list[at].markVisited(true);
 		});
+		this.transition(before, list);
 		this.notify();
 		this.container.changed();
 	}
@@ -1190,6 +1321,8 @@ export function createCore<P>(setup: NavigatorSetup<P>): NavigatorCore<P> {
 	const [entries, writeEntries] = createSignal<Navigation<P>[]>(empty);
 	const [index, writeIndex] = createSignal<int32>(0);
 	const [drawerOpen, writeDrawerOpen] = createSignal<boolean>(false);
+	const none: Navigation<P>[] = [];
+	const [closing, writeClosing] = createSignal<Navigation<P>[]>(none);
 	const core = new NavigatorCore<P>(
 		setup.kind,
 		setup.screens,
@@ -1199,6 +1332,8 @@ export function createCore<P>(setup: NavigatorSetup<P>): NavigatorCore<P> {
 		writeIndex,
 		drawerOpen,
 		writeDrawerOpen,
+		closing,
+		writeClosing,
 		setup.screenOptions,
 		setup.backBehavior,
 		initial,

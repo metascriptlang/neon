@@ -36,6 +36,8 @@ export {
 	useIsFocused,
 	useFocusEffect,
 	useNavigationState,
+	STACK_DURATION,
+	StackAnimation,
 	StackPresentation,
 	HeaderTitleAlign,
 	useLinkTo,

@@ -1,5 +1,7 @@
 import { Accessor, accessor, untrack } from "../core/signal";
 import { Host, HostNode, NeonNode } from "../render/hostTypes";
+import { NeonEvent } from "../render/event";
+import { StackLayout } from "./layout";
 import { mockHost, mockNode } from "../render/host";
 import { View } from "../components/primitives";
 import { For } from "../macros/ui/flow";
@@ -141,8 +143,11 @@ export function createStackNavigator<P>(): StackNavigator<P> {
 			const screen = (entry: Navigation<P>, at: Accessor<number>): NeonNode => {
 				return screenView<P>(core, entry);
 			};
-			return <View style={{ flex: 1, flexDirection: "column", position: "relative" }}>
-				<For each={core.entries}>{screen}</For>
+			const rendered = accessor((): Navigation<P>[] => core.rendered());
+			const measure = (e: NeonEvent): void => { core.layout.measure(e); };
+			return <View style={{ flex: 1, flexDirection: "column", position: "relative", overflow: "hidden" }}
+				onLayout={measure}>
+				<For each={rendered}>{screen}</For>
 			</View>;
 		},
 		Group: (props: {

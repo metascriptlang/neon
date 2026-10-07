@@ -1,10 +1,17 @@
 import { Accessor, accessor } from "../core/signal";
+import {
+	GestureResponderHandlers,
+	PanResponder,
+	PanResponderGestureState,
+} from "../components/panResponder";
 import { createMemo } from "../core/memo";
 import { NeonNode, Host } from "../render/hostTypes";
 import { regionNode } from "../render/node";
 import { Row, makeRow } from "../render/reconcile";
 import { Style, TextAlign } from "../render/style";
 import { Platform } from "../api/platform";
+import { AnimatedValue } from "../animation/index";
+import { StackLayout } from "./layout";
 import { NeonEvent } from "../render/event";
 import { createComponent } from "../render/component";
 import { View, Text, Pressable } from "../components/primitives";
@@ -175,12 +182,51 @@ export function shown(value: boolean | null, fallback: boolean): boolean {
 	return value === null ? fallback : value as boolean;
 }
 
+export const EDGE_WIDTH = 24;
+
+function backGesture<P>(core: NavigatorCore<P>, entry: Navigation<P>): GestureResponderHandlers {
+	const settle = (): void => {
+		if (contained<P>(core.snapshot(), entry)) { core.settleIn(entry); }
+	};
+	const pan = PanResponder.create({
+		onMoveShouldSetPanResponder: (e: NeonEvent, g: PanResponderGestureState): boolean => {
+			return g.dx > 10 && Math.abs(g.dx) > Math.abs(g.dy) * 2;
+		},
+		onPanResponderGrant: (e: NeonEvent, g: PanResponderGestureState): void => {
+			entry.progress.stopAnimation();
+			entry.writeMotion(true);
+		},
+		onPanResponderMove: (e: NeonEvent, g: PanResponderGestureState): void => {
+			const width = core.layout.extentX();
+			const moved = width > 0 ? Math.max(0, Math.min(1, g.dx / width)) : 0;
+			entry.progress.setValue(1 - moved);
+		},
+		onPanResponderRelease: (e: NeonEvent, g: PanResponderGestureState): void => {
+			const width = core.layout.extentX();
+			const moved = width > 0 ? g.dx / width : 0;
+			if (moved > 0.35 || g.vx > 0.5) {
+				core.goBackFrom(entry.route.key);
+			}
+			settle();
+		},
+		onPanResponderTerminate: (e: NeonEvent, g: PanResponderGestureState): void => { settle(); },
+	});
+	return pan.panHandlers;
+}
+
+function contained<P>(list: Navigation<P>[], entry: Navigation<P>): boolean {
+	for (const candidate of list) {
+		if (candidate === entry) { return true; }
+	}
+	return false;
+}
+
 export function screenView<P>(core: NavigatorCore<P>, entry: Navigation<P>): NeonNode {
 	const scope = screenScope<P>(core, entry);
 	const key = entry.route.key;
 	const options = accessor((): ScreenOptions => entry.options());
 	const position = accessor((): int32 => {
-		const list = core.entries();
+		const list = core.isStack() ? core.rendered() : core.entries();
 		for (let i = 0; i < list.length; i += 1) {
 			if (list[i].route.key === key) { return i as int32; }
 		}
@@ -189,19 +235,38 @@ export function screenView<P>(core: NavigatorCore<P>, entry: Navigation<P>): Neo
 	const transparent = accessor((): boolean => core.isStack() && core.transparent(entry));
 	const visible = accessor((): boolean => {
 		if (!core.isStack()) { return core.currentKey() === key; }
+		if (core.isClosing(entry)) { return true; }
+		const list = core.entries();
 		const at = position();
-		return at >= 0 && at >= core.visibleFrom();
+		if (at < 0 || at >= list.length) { return false; }
+		if (at >= core.visibleFrom()) { return true; }
+		const top = list.length - 1;
+		return at === top - 1 && list[top].motion();
 	});
-	const frame = accessor((): Style => ({
-		position: "absolute",
-		top: 0,
-		left: 0,
-		right: 0,
-		bottom: 0,
-		flexDirection: "column",
-		display: visible() ? "flex" : "none",
-		backgroundColor: transparent() ? null : core.container.theme().colors.background,
-	}));
+	const frame = accessor((): Style => {
+		const base: Style = {
+			position: "absolute",
+			top: 0,
+			left: 0,
+			right: 0,
+			bottom: 0,
+			flexDirection: "column",
+			display: visible() ? "flex" : "none",
+			backgroundColor: transparent() ? null : core.container.theme().colors.background,
+		};
+		if (!core.isStack()) { return base; }
+		const p = entry.progress.get();
+		if (p >= 1) { return base; }
+		const kind = core.animationOf(entry);
+		if (kind === "fade") { return { ...base, opacity: p }; }
+		if (kind === "slide_from_bottom") {
+			return { ...base, transform: `translateY(${(1 - p) * core.layout.extentY()}px)` };
+		}
+		if (kind === "slide_from_right") {
+			return { ...base, transform: `translateX(${(1 - p) * core.layout.extentX()}px)` };
+		}
+		return base;
+	});
 	const headerShown = accessor((): boolean => {
 		const presentation = options().presentation;
 		const overlay = presentation !== null && presentation === "transparentModal";
@@ -213,10 +278,23 @@ export function screenView<P>(core: NavigatorCore<P>, entry: Navigation<P>): Neo
 		if (at <= 0) { return "Back"; }
 		const own = options().headerBackTitle;
 		if (own !== null) { return own as string; }
-		return titleOf<P>(core.entries()[at - 1]);
+		return titleOf<P>(core.rendered()[at - 1]);
 	});
 	const menu = accessor((): boolean => core.kind === NavigatorKind.Drawer);
 	const title = accessor((): string => titleOf<P>(entry));
+	const swipeBack = accessor((): boolean => {
+		if (!core.isStack() || position() <= 0 || core.isClosing(entry)) { return false; }
+		if (core.animationOf(entry) !== "slide_from_right") { return false; }
+		return shown(options().gestureEnabled, Platform.OS === "ios");
+	});
+	const edge = accessor((): Style => ({
+		position: "absolute",
+		left: 0,
+		top: headerShown() ? 53 : 0,
+		bottom: 0,
+		width: EDGE_WIDTH,
+	}));
+	const handlers = backGesture<P>(core, entry);
 	const props: ScreenProps<P> = { navigation: entry, route: entry.route };
 	const body = createComponent(entry.config.component, props);
 	const goBack = (): void => { entry.goBack(); };
@@ -227,6 +305,9 @@ export function screenView<P>(core: NavigatorCore<P>, entry: Navigation<P>): Neo
 					onBack={goBack} menu={menu} />
 			</Show>
 			<View style={{ flex: 1, flexDirection: "column" }}>{body}</View>
+			<Show when={swipeBack()}>
+				<View {...handlers} style={edge} />
+			</Show>
 		</View>
 	</ScopeContext.Provider>;
 }
