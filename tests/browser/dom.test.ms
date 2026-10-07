@@ -341,3 +341,24 @@ test "onLayout reports the frame relative to the parent, and again when it chang
 	assert got === "layout 10 40;layout 10 60;", "after a resize: " + got;
 	probe(outer).remove();
 }
+
+test "disposed DOM listeners cannot mutate state through retained detached nodes" {
+	const h = domHost();
+	const parent = documentBody();
+	let count = 0;
+	for (let cycle = 0; cycle < 3; cycle += 1) {
+		const el = h.createElement("pressable");
+		h.setAttr(el, "id", "neon-listener-cleanup");
+		h.append(parent, el);
+		const dispose = createRoot((dispose) => {
+			h.addEvent(el, "onPress", (e: NeonEvent): void => { count += 1; });
+			return dispose;
+		});
+		window.eval("window.neonRetiredListenerNode = document.getElementById('neon-listener-cleanup'); window.neonRetiredListenerNode.click()");
+		assert count === cycle + 1, "the current listener runs once";
+		dispose();
+		h.removeChild(parent, el);
+		window.eval("window.neonRetiredListenerNode.click(); delete window.neonRetiredListenerNode");
+		assert count === cycle + 1, "a detached node cannot run its disposed listener";
+	}
+}
