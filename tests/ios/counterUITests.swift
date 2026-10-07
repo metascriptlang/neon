@@ -1337,3 +1337,116 @@ final class ControlsUITests: XCTestCase {
         report("toast")
     }
 }
+
+final class NavigationUITests: XCTestCase {
+    private let app = XCUIApplication(bundleIdentifier: "dev.neon.NeonNavigation")
+
+    override func setUp() {
+        continueAfterFailure = false
+    }
+
+    private func report(_ name: String) {
+        let texts = app.staticTexts.allElementsBoundByIndex.prefix(16).map { $0.label }.joined(separator: " | ")
+        let buttons = app.buttons.allElementsBoundByIndex.prefix(16).map { $0.label }.joined(separator: " | ")
+        print("NEON_IOS navigation-\(name) texts: \(texts) buttons: \(buttons)")
+        let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        shot.name = "navigation-\(name)"
+        shot.lifetime = .keepAlways
+        add(shot)
+    }
+
+    private func any(_ label: String, timeout: TimeInterval = 15) -> XCUIElement {
+        let element = app.descendants(matching: .any)[label].firstMatch
+        XCTAssertTrue(element.waitForExistence(timeout: timeout),
+            "no \(label); texts \(app.staticTexts.allElementsBoundByIndex.prefix(30).map { $0.label }) buttons \(app.buttons.allElementsBoundByIndex.prefix(30).map { $0.label })")
+        return element
+    }
+
+    private func press(_ label: String) {
+        let button = app.buttons[label].firstMatch
+        if button.waitForExistence(timeout: 10) {
+            button.tap()
+            return
+        }
+        any(label).tap()
+    }
+
+    private func gone(_ label: String) {
+        let element = app.descendants(matching: .any)[label].firstMatch
+        let absent = NSPredicate { _, _ in !element.exists || !element.isHittable }
+        XCTAssertEqual(XCTWaiter.wait(for: [expectation(for: absent, evaluatedWith: app)], timeout: 10), .completed, "\(label) is still shown")
+    }
+
+    func testStackTabsDrawerAndBack() {
+        XCUIDevice.shared.orientation = .portrait
+        app.launch()
+        XCTAssertTrue(app.wait(for: .runningForeground, timeout: 20))
+        _ = any("Home taps 0", timeout: 20)
+        _ = any("Items")
+        report("list")
+        press("Increment home")
+        _ = any("Home taps 1")
+
+        press("Open Void shader")
+        _ = any("Item number 2")
+        _ = any("Back")
+        report("detail")
+
+        press("Edit item")
+        let field = app.textFields["Item name"]
+        XCTAssertTrue(field.waitForExistence(timeout: 10), "the edit field")
+        field.tap()
+        field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 20))
+        field.typeText("Void renderer")
+        report("edit")
+        press("Save")
+        _ = any("Item number 2")
+        _ = any("Void renderer")
+        report("saved")
+
+        press("Back")
+        _ = any("Home taps 1")
+        _ = any("Open Void renderer")
+        report("back-kept-state")
+
+        press("Search")
+        _ = any("Searches 0")
+        press("Increment search")
+        _ = any("Searches 1")
+        press("Add badge")
+        RunLoop.current.run(until: Date().addingTimeInterval(1))
+        report("search-badge")
+
+        press("Profile")
+        _ = any("Profile taps 0")
+        press("Increment profile")
+        _ = any("Profile taps 1")
+        press("Search")
+        _ = any("Searches 1")
+        press("Home")
+        _ = any("Home taps 1")
+        report("tabs-kept-state")
+
+        press("Show navigation menu")
+        _ = any("Close navigation menu")
+        report("drawer-open")
+        press("Settings")
+        _ = any("Settings taps 0")
+        gone("Close navigation menu")
+        report("settings")
+        press("Show navigation menu")
+        press("About")
+        _ = any("Neon navigation")
+        report("about")
+        press("Show navigation menu")
+        press("Items")
+        _ = any("Home taps 1")
+        report("back-to-items")
+
+        XCUIDevice.shared.orientation = .landscapeLeft
+        RunLoop.current.run(until: Date().addingTimeInterval(2))
+        _ = any("Home taps 1")
+        report("landscape")
+        XCUIDevice.shared.orientation = .portrait
+    }
+}
