@@ -1,6 +1,7 @@
 import { HostNode } from "../../render/hostTypes";
 import { NeonEvent, neonEvent } from "../../render/event";
 import { registerCss } from "../../render/sheet";
+import { addCameraEvent, createCameraNode, isCameraNode, releaseCamera, writeCameraAttr } from "./camera";
 
 extern class MediaClassList {
 	extern add(name: cstring): void;
@@ -377,10 +378,11 @@ function listenVideo(state: MediaState): void {
 }
 
 export function isMediaTag(tag: string): boolean {
-	return tag === "webview" || tag === "video";
+	return tag === "webview" || tag === "video" || tag === "camera";
 }
 
 export function createMediaNode(tag: string): HostNode {
+	if (tag === "camera") { return createCameraNode(); }
 	if (!cssDone) {
 		registerCss("neon-media", MEDIA_CSS);
 		cssDone = true;
@@ -404,10 +406,11 @@ export function createMediaNode(tag: string): HostNode {
 }
 
 export function isMediaNode(node: HostNode): boolean {
-	return states.has(node as unknown as Node);
+	return states.has(node as unknown as Node) || isCameraNode(node);
 }
 
 export function writeMediaAttr(node: HostNode, name: string, value: string): boolean {
+	if (writeCameraAttr(node, name, value)) { return true; }
 	const el = node as unknown as Node;
 	if (!states.has(el)) { return false; }
 	const state = states.get(el) as MediaState;
@@ -415,6 +418,7 @@ export function writeMediaAttr(node: HostNode, name: string, value: string): boo
 }
 
 export function addMediaEvent(node: HostNode, type: string, handler: (e: NeonEvent) => void): boolean {
+	if (addCameraEvent(node, type, handler)) { return true; }
 	const el = node as unknown as Node;
 	if (!states.has(el) || type === "layout") { return false; }
 	(states.get(el) as MediaState).routes.push({ type, handler });
@@ -422,6 +426,7 @@ export function addMediaEvent(node: HostNode, type: string, handler: (e: NeonEve
 }
 
 export function releaseMedia(node: HostNode): void {
+	releaseCamera(node);
 	const el = node as unknown as Node;
 	if (!states.has(el)) { return; }
 	const state = states.get(el) as MediaState;

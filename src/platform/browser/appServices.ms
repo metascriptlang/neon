@@ -10,6 +10,8 @@ import {
 	locationWatch, permissionStatus, refreshNetInfo, requestPermission, storageClear, storageGet, storageKeys,
 	storageRemove, storageSet, watchNetInfo,
 } from "./deviceServices";
+import { installCaptureServices } from "../../api/captureServices";
+import { browserCaptureServices } from "./captureServices";
 
 extern class BrowserClipboard {
 	extern readText(): Promise<string>;
@@ -222,6 +224,7 @@ export function installBrowserAppServices(): void {
 	if (installed) { return; }
 	installed = true;
 	installAppServices(services);
+	installCaptureServices(browserCaptureServices);
 	publishPlatform("", false);
 	publishScale(window.devicePixelRatio, 1);
 	publishScreen(window.screen.width, window.screen.height);
