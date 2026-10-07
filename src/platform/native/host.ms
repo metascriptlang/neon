@@ -8,6 +8,7 @@ import { NativeElementKind, createNativeEventRegistry, nativeElementKind, native
 import { publishWindow, publishKeyboard, publishColorScheme } from "../../render/environment";
 import { VisibleContentPosition, parseVisibleContent } from "../../render/visibleContent";
 import { installNativeAppServices } from "./appServices";
+import { LayoutAnimationPlan, LayoutPhase, takeLayoutAnimation, runLayoutTween } from "../../animation/layoutAnimation";
 import "../android/library";
 
 @passC("-I./");
@@ -66,6 +67,12 @@ class NativeNode {
 	styleCache: Style | null = null;
 	transformCss: string | null = null;
 	rotation: float32 = 0.0;
+	tween: int32 = 0;
+	fadePass: int32 = 0;
+	shownX: float32 = 0.0;
+	shownY: float32 = 0.0;
+	shownW: float32 = 0.0;
+	shownH: float32 = 0.0;
 	zIndex: number = 0;
 	zChildren: int32 = 0;
 	paintOrder: NativeNode[] = [];
@@ -111,12 +118,66 @@ export function layoutGetLastStyle(this n: NativeNode): FlexStyle | null { retur
 export function layoutSetLastStyle(this n: NativeNode, s: FlexStyle | null): void { n.lastFlex = s; }
 export function layoutGetYg(this n: NativeNode): Ptr<YGNode> | null { return n.yg; }
 export function layoutSetYg(this n: NativeNode, yg: Ptr<YGNode> | null): void { n.yg = yg; }
+let layoutPlan: LayoutAnimationPlan | null = null;
+let nextTween: int32 = 1;
+let layoutPassId: int32 = 0;
+
+function showFrame(n: NativeNode, x: float32, y: float32, w: float32, h: float32): void {
+	n.shownX = x; n.shownY = y; n.shownW = w; n.shownH = h;
+	if (n.view !== null) { niSetFrame(n.view, x, y, w, h); }
+}
+
+function lerp(a: float32, b: float32, t: number): float32 {
+	return (a + (b - a) * t) as float32;
+}
+
+function tweenFrame(n: NativeNode, phase: LayoutPhase): void {
+	const id = nextTween;
+	nextTween += 1;
+	n.tween = id;
+	const fromX = n.shownX;
+	const fromY = n.shownY;
+	const fromW = n.shownW;
+	const fromH = n.shownH;
+	runLayoutTween(phase, (t: number): void => {
+		if (n.tween !== id || n.view === null) { return; }
+		showFrame(n, lerp(fromX, n.x, t), lerp(fromY, n.y, t), lerp(fromW, n.w, t), lerp(fromH, n.h, t));
+	}, (): void => {
+		if (n.tween === id) { n.tween = 0; }
+	});
+}
+
+function fadeIn(n: NativeNode, phase: LayoutPhase): void {
+	const view = n.view;
+	if (view === null) { return; }
+	const style = n.styleCache;
+	const target = style !== null && (style as Style).opacity !== null ? ((style as Style).opacity as number) : 1.0;
+	runLayoutTween(phase, (t: number): void => {
+		if (n.view !== null) { niSetOpacity(n.view, (target * t) as float32); }
+	}, (): void => {});
+}
+
 export function layoutSetFrame(this n: NativeNode, x: float32, y: float32, w: float32, h: float32): void {
 	const moved = !n.framed || n.x !== x || n.y !== y || n.w !== w || n.h !== h;
 	n.x = x; n.y = y; n.w = w; n.h = h;
-	if (moved && n.view !== null && n !== root) {
-		n.framed = true;
-		niSetFrame(n.view, x, y, w, h);
+	if (!moved || n.view === null || n === root) { return; }
+	const plan = layoutPlan;
+	if (plan !== null && n.framed && (plan as LayoutAnimationPlan).update !== null) {
+		tweenFrame(n, (plan as LayoutAnimationPlan).update as LayoutPhase);
+		return;
+	}
+	const fresh = !n.framed;
+	n.framed = true;
+	n.tween = 0;
+	showFrame(n, x, y, w, h);
+	if (fresh && plan !== null && (plan as LayoutAnimationPlan).create !== null && !n.isString) {
+		const parent = n.parent;
+		if (parent !== null && (parent as NativeNode).fadePass === layoutPassId) {
+			n.fadePass = layoutPassId;
+			return;
+		}
+		n.fadePass = layoutPassId;
+		fadeIn(n, (plan as LayoutAnimationPlan).create as LayoutPhase);
 	}
 }
 
@@ -835,6 +896,9 @@ function batched(fn: () => void): void {
 
 function relayoutRoot(): void {
 	layoutDirty = false;
+	const plan = takeLayoutAnimation();
+	if (plan !== null) { layoutPlan = plan; }
+	layoutPassId += 1;
 	const width = niScreenWidth();
 	const height = niScreenHeight();
 	batchDepth += 1;
@@ -857,6 +921,7 @@ function relayoutRoot(): void {
 		if (!changed) { break; }
 		runLayoutPass(root, width, height);
 	}
+	layoutPlan = null;
 	writeContentSizes();
 	adjustVisibleContent();
 	batched(fireLayouts);
