@@ -603,6 +603,16 @@ let sheetNode: Node | null = null;
 
 const SCROLL_CLASS = "neon-scrollview";
 
+const VIEW_CLASS = "neon-view";
+const TEXT_CLASS = "neon-text";
+const RN_WEB_BASE_CSS = ":where(.neon-view){align-content:flex-start;align-items:stretch;background-color:transparent;border:0 solid black;box-sizing:border-box;display:flex;flex-basis:auto;flex-direction:column;flex-shrink:0;list-style:none;margin:0;min-height:0;min-width:0;padding:0;position:relative;text-decoration:none;z-index:0}:where(button.neon-view){font:inherit;color:inherit;text-align:inherit}:where(.neon-text){background-color:transparent;border:0 solid black;box-sizing:border-box;list-style:none;margin:0;padding:0;position:relative;text-decoration:none;white-space:pre-wrap;overflow-wrap:break-word}";
+
+function baseClassOf(el: Node): string {
+	if (el.classList.contains(VIEW_CLASS)) { return VIEW_CLASS; }
+	if (el.classList.contains(TEXT_CLASS)) { return TEXT_CLASS; }
+	return "";
+}
+
 function flushSheet(): void {
 	if (sheetNode === null) {
 		const n = document.createElement("style");
@@ -689,6 +699,7 @@ export function domHost(): Host {
 	watchSafeArea();
 	installDomLayoutAnimation();
 	let scrollRule = false;
+	let baseRule = false;
 	let controlRule = false;
 	let modalRule = false;
 	const scrolls = new Map<Node, DomScrollState>();
@@ -854,12 +865,18 @@ export function domHost(): Host {
 	}
 	return {
 		createElement: (tag: string): HostNode => {
+			const base = tag === "view" || tag === "pressable" || tag === "scrollview" ? VIEW_CLASS : tag === "text" ? TEXT_CLASS : "";
+			if (base !== "" && !baseRule) {
+				registerCss("neon-base", RN_WEB_BASE_CSS);
+				baseRule = true;
+			}
 			if (tag === "scrollview") {
 				if (!scrollRule) {
 					registerCss(SCROLL_CLASS, `.${SCROLL_CLASS}{overflow-x:hidden;overflow-y:auto}.neon-hide-horizontal::-webkit-scrollbar:horizontal{height:0}.neon-hide-vertical::-webkit-scrollbar:vertical{width:0}@keyframes neon-refresh-spin{to{transform:rotate(360deg)}}.neon-refresh-indicator[aria-busy=true]{animation:neon-refresh-spin 1s linear infinite}`);
 					scrollRule = true;
 				}
 				const el = document.createElement("div");
+				el.classList.add(VIEW_CLASS);
 				el.classList.add(SCROLL_CLASS);
 				installScroll(el);
 				return el as unknown as HostNode;
@@ -891,7 +908,9 @@ export function domHost(): Host {
 				controlKinds.set(control, tag);
 				return control as unknown as HostNode;
 			}
-			return document.createElement(htmlTagFor(tag)) as unknown as HostNode;
+			const el = document.createElement(htmlTagFor(tag));
+			if (base !== "") { el.classList.add(base); }
+			return el as unknown as HostNode;
 		},
 		createText: (s: string): HostNode => document.createTextNode(s) as unknown as HostNode,
 		setText: (node: HostNode, s: string): void => {
@@ -901,7 +920,9 @@ export function domHost(): Host {
 		setAttr: (node: HostNode, name: string, value: string): void => {
 			prepareVisibleContent();
 			const el = node as unknown as Node;
+			const base = name === "class" ? baseClassOf(el) : "";
 			writeDomAttr(el, name, value);
+			if (base !== "") { el.classList.add(base); }
 			if (name === "value" || name === "defaultValue") { return; }
 			if (scrolls.has(el)) {
 				if (name === "class") { el.classList.add(SCROLL_CLASS); }
@@ -914,7 +935,9 @@ export function domHost(): Host {
 			prepareVisibleContent();
 			const el = node as unknown as Node;
 			if (name === "value") { el.value = ""; }
+			const base = name === "class" ? baseClassOf(el) : "";
 			el.removeAttribute(domAttrName(name));
+			if (base !== "") { el.classList.add(base); }
 			if (scrolls.has(el)) {
 				if (name === "class") { el.classList.add(SCROLL_CLASS); }
 				const state = scrolls.get(el) as DomScrollState;

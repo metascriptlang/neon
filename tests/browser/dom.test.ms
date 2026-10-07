@@ -277,7 +277,10 @@ test "reconcileArrays keeps its contract on the DOM" {
 function domAttrs(n: HostNode): string {
 	const list = probe(n).attributes;
 	let out = "";
-	for (let i = 0; i < list.length; i += 1) { out = out + (out === "" ? "" : ",") + list.item(i).name + "=" + list.item(i).value; }
+	for (let i = 0; i < list.length; i += 1) {
+		const hostBase = list.item(i).name === "class" && list.item(i).value === "neon-view";
+		if (!hostBase) { out = out + (out === "" ? "" : ",") + list.item(i).name + "=" + list.item(i).value; }
+	}
 	return out === "" ? "_" : out;
 }
 
