@@ -1050,8 +1050,8 @@ final class MotionUITests: XCTestCase {
         let midY = after.frame.minY
         report("panel-mid", "y=\(midY) before=\(beforeY)")
         XCTAssertGreaterThan(midY, beforeY + 5, "the panel is opening")
-        XCTAssertLessThan(midY, beforeY + 155, "the panel has not landed yet")
-        pause(1.0)
+        XCTAssertLessThan(midY, beforeY + 150, "the panel has not landed yet")
+        pause(2.0)
         let endY = after.frame.minY
         report("panel-end", "y=\(endY) before=\(beforeY)")
         XCTAssertEqual(endY - beforeY, 160, accuracy: 2, "the text below moved by the panel height")

@@ -111,9 +111,9 @@ def lane():
     window, texts = raw()
     mid = top(texts, "after panel")
     report("panel-mid", texts, launched, "y=%d before=%d" % (mid, before))
-    if not (before + 5 < mid < before + 155 * scale):
+    if not (before + 5 < mid < before + 150 * scale):
         raise LaneError("the panel should be part open 0.2 s in: %d -> %d" % (before, mid))
-    time.sleep(1.0)
+    time.sleep(2.0)
     window, texts = raw()
     end = top(texts, "after panel")
     report("panel-end", texts, launched, "y=%d before=%d" % (end, before))

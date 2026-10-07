@@ -77,7 +77,7 @@ export function Motion(): NeonNode {
 		});
 	};
 	const togglePanel = (e: NeonEvent): void => {
-		LayoutAnimation.configureNext(LayoutAnimation.create(500, "easeInEaseOut", "opacity"));
+		LayoutAnimation.configureNext(LayoutAnimation.create(1500, "easeInEaseOut", "opacity"));
 		setExpanded(!expanded());
 	};
 
