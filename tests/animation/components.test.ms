@@ -50,3 +50,16 @@ test "a color interpolation drives backgroundColor" {
 	assert styleOf(root.children[0]).backgroundColor === "rgba(255, 0, 0, 1)", styleOf(root.children[0]).backgroundColor as string;
 	setFrameDriver(null);
 }
+
+test "a component style layer array merges RN-style, the reactive layer stays live" {
+	const clock = useManualFrames();
+	const v = new AnimatedValue(0);
+	const base: Style = { width: 10, opacity: 1, backgroundColor: "#111" };
+	const root: MockNode = mockNode("root");
+	render(element(<Animated.View style={[base, { opacity: v.get() }]} />), mockHost(), root as unknown as HostNode);
+	const box = root.children[0];
+	assert styleOf(box).width === 10 && styleOf(box).opacity === 0 && styleOf(box).backgroundColor === "#111";
+	v.setValue(0.5);
+	assert styleOf(box).opacity === 0.5 && styleOf(box).width === 10;
+	setFrameDriver(null);
+}

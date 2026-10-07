@@ -729,10 +729,15 @@ export macro element(node: Node): Node {
 					continue;
 				}
 				keys.push(a.jsxAttrName);
-				if (reactive === 0 || isAccessorTyped(a.jsxAttrValue)) {
-					values.push(nodeSlot(slot as Node) ? lowerNodeSlot(a.jsxAttrValue) : a.jsxAttrValue);
+				let given: Node = a.jsxAttrValue;
+				// WORKAROUND.md N8.
+				if (a.jsxAttrName === "style" && given.kind === NodeKind.ArrayLiteral) {
+					given = { kind: NodeKind.CallExpr, line: a.line, column: a.column, callee: { kind: NodeKind.Identifier, line: a.line, column: a.column, name: "layerStyles" }, arguments: [given] };
+				}
+				if (reactive === 0 || isAccessorTyped(given)) {
+					values.push(nodeSlot(slot as Node) ? lowerNodeSlot(given) : given);
 				} else {
-					values.push({ kind: NodeKind.CallExpr, line: a.line, column: a.column, callee: { kind: NodeKind.Identifier, line: a.line, column: a.column, name: "accessor" }, arguments: [{ kind: NodeKind.ArrowFunction, line: a.line, column: a.column, arrowParams: [], arrowParamTypes: [], arrowBody: a.jsxAttrValue, arrowFlags: "", arrowReturnType: "" }] });
+					values.push({ kind: NodeKind.CallExpr, line: a.line, column: a.column, callee: { kind: NodeKind.Identifier, line: a.line, column: a.column, name: "accessor" }, arguments: [{ kind: NodeKind.ArrowFunction, line: a.line, column: a.column, arrowParams: [], arrowParamTypes: [], arrowBody: given, arrowFlags: "", arrowReturnType: "" }] });
 				}
 			}
 		}
