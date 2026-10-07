@@ -1367,7 +1367,16 @@ final class NavigationUITests: XCTestCase {
     }
 
     private func press(_ label: String) {
-        any(label).tap()
+        let element = any(label)
+        RunLoop.current.run(until: Date().addingTimeInterval(0.6))
+        element.tap()
+    }
+
+    private func swipeFromLeftEdge() {
+        let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.01, dy: 0.6))
+        let end = app.coordinate(withNormalizedOffset: CGVector(dx: 0.85, dy: 0.6))
+        start.press(forDuration: 0.05, thenDragTo: end)
+        RunLoop.current.run(until: Date().addingTimeInterval(0.8))
     }
 
     private func gone(_ label: String) {
@@ -1407,6 +1416,21 @@ final class NavigationUITests: XCTestCase {
         _ = any("Home taps 1")
         _ = any("Open Void renderer")
         report("back-kept-state")
+
+        press("Open Neon lamp")
+        _ = any("Item number 1")
+        report("before-swipe-back")
+        swipeFromLeftEdge()
+        _ = any("Home taps 1")
+        gone("Item number 1")
+        report("swiped-back")
+
+        swipeFromLeftEdge()
+        _ = any("Close navigation menu")
+        report("drawer-swiped-open")
+        press("Items")
+        gone("Close navigation menu")
+        _ = any("Home taps 1")
 
         press("Search")
         _ = any("Searches 0")
