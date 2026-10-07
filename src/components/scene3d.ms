@@ -18,6 +18,7 @@ import {
 	Scene3D as VoidScene3D, NodeId3D, Transform3D, LightKind, LightInstance,
 	addGroup, addLightNode, addMeshNode, setLocal, setLightPower, setMeshOf,
 	remove, closeScene, addCameraNode, setCameraOf, setActiveCamera,
+	setVisible, setPickable, setName,
 } from "../../../void/src/void3d/scene";
 import {
 	Camera3D as VoidCamera3D, CameraProjection, ProjectionKind,
@@ -59,6 +60,9 @@ interface TransformProps {
 }
 
 interface NodeProps extends TransformProps {
+	visible?: Accessor<boolean> | null;
+	pickable?: Accessor<boolean> | null;
+	name?: Accessor<string> | null;
 	ref?: ((node: NodeId3D) => void) | null;
 	children?: NeonNode | null;
 }
@@ -129,6 +133,22 @@ function bindLocal(scene: VoidScene3D, node: NodeId3D, props: TransformProps, in
 			local = next;
 		}
 	});
+}
+
+function bindNode(scene: VoidScene3D, node: NodeId3D, props: NodeProps, initial: Transform3D): void {
+	bindLocal(scene, node, props, initial);
+	if (props.visible !== null) {
+		const visible = props.visible as () => boolean;
+		createEffect((): void => { setVisible(scene, node, visible()); });
+	}
+	if (props.pickable !== null) {
+		const pickable = props.pickable as () => boolean;
+		createEffect((): void => { setPickable(scene, node, pickable()); });
+	}
+	if (props.name !== null) {
+		const name = props.name as () => string;
+		createEffect((): void => { setName(scene, node, name()); });
+	}
 }
 
 function ownNode(scene: VoidScene3D, node: NodeId3D): void {
@@ -211,7 +231,7 @@ export function Group(props: NodeProps): NeonNode {
 			const local = localOf(props);
 			const node = addGroup(scene, scope.parent, local);
 			ownNode(scene, node);
-			bindLocal(scene, node, props, local);
+			bindNode(scene, node, props, local);
 			mountNodeChildren(scope, node, props, host, parent, before);
 		});
 	};
@@ -232,7 +252,7 @@ export function Light(props: LightProps): NeonNode {
 			};
 			const node = addLightNode(scene, scope.parent, local, light);
 			ownNode(scene, node);
-			bindLocal(scene, node, props, local);
+			bindNode(scene, node, props, local);
 			createEffect((): void => {
 				if (props.kind() !== light.kind) { throw new Error("Light: kind cannot change; Void has no light-kind binder"); }
 				if (props.color !== null && (props.color as () => Vec3)() !== light.color) { throw new Error("Light: color cannot change; Void has no light-color binder"); }
@@ -308,7 +328,7 @@ export function Mesh(props: MeshProps): NeonNode {
 					if ((props.material as () => MaterialId)() !== selected) { throw new Error("Mesh: material cannot change; Void has no material-node binder"); }
 				});
 			}
-			bindLocal(scene, mounted, props, local);
+			bindNode(scene, mounted, props, local);
 			mountNodeChildren(scope, mounted, props, host, parent, before);
 		});
 	};
