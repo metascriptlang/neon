@@ -34,7 +34,7 @@ test "a native WebView is a media view created by name: source, page events, the
 		/>
 	</View>;
 	runApp(app);
-	const web = nmLastControlTag(9);
+	const web = nmLastControlTag(10);
 	assert prop(web, "source") === "uri\x1fhttps://example.com/" && prop(web, "interceptLoads") === "true", "props";
 	assert `${nmLayoutWidth(web)}x${nmLayoutHeight(web)}` === "300x500", "a WebView fills its parent: " + `${nmLayoutWidth(web)}x${nmLayoutHeight(web)}`;
 	nmControl(web, 12, "https://example.com/next\x1fclick\x1ftrue");
@@ -71,7 +71,7 @@ test "a native Video takes its size from its style, reports load and progress, a
 		/>
 	</View>;
 	runApp(app);
-	const video = nmLastControlTag(10);
+	const video = nmLastControlTag(11);
 	assert `${nmLayoutWidth(video)}x${nmLayoutHeight(video)}` === "320x180", "sized by style: " + `${nmLayoutWidth(video)}x${nmLayoutHeight(video)}`;
 	assert prop(video, "paused") === "true" && prop(video, "source") === "https://neon.dev/clip.mp4", "props";
 	setPaused(false);

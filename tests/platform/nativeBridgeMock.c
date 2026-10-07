@@ -133,8 +133,8 @@ void *niControlCreate(const char *kind) {
 	if (strcmp(kind, "slider") == 0) return createControl(6);
 	if (strcmp(kind, "picker") == 0) return createControl(7);
 	if (strcmp(kind, "datetimepicker") == 0) return createControl(8);
-	if (strcmp(kind, "webview") == 0) return createControl(9);
-	if (strcmp(kind, "video") == 0) return createControl(10);
+	if (strcmp(kind, "webview") == 0) return createControl(10);
+	if (strcmp(kind, "video") == 0) return createControl(11);
 	fprintf(stderr, "mock bridge: niControlCreate has no control \"%s\"\n", kind);
 	abort();
 }
