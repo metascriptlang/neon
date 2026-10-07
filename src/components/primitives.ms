@@ -39,7 +39,7 @@ import {
 	watchTouchClaim,
 } from "../render/responder";
 
-export type AccessibilityRole = "none" | "button" | "link" | "search" | "image" | "text" | "header" | "switch" | "checkbox" | "adjustable" | "progressbar" | "summary" | "alert";
+export type AccessibilityRole = "none" | "button" | "link" | "search" | "image" | "text" | "header" | "switch" | "checkbox" | "adjustable" | "progressbar" | "summary" | "alert" | "radio" | "radiogroup" | "tab" | "tablist" | "togglebutton" | "combobox" | "menu" | "menuitem";
 
 export interface AccessibilityProps {
 	accessible?: Accessor<boolean> | null;
