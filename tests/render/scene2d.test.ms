@@ -14,7 +14,10 @@ import {
 	Scene2D as VoidScene2D, NodeRef, NodeId2D, DrawKind, Local2D, nodeCount, kind, local,
 	content, text, textStyle, paint, order, filter, colorMatrix, numChildren, parent, isLive,
 } from "../../../void/src/void2d/node";
-import { rgba, whiteTile, camera, glowFilter, Smooth } from "../../../void/src/void2d/types";
+import {
+	rgba, whiteTile, camera, glowFilter, Smooth, ScaleMode,
+} from "../../../void/src/void2d/types";
+import { sceneViewMatrix } from "../../../void/src/void2d/scene";
 import { BlendMode } from "../../../void/src/gpu/state";
 import { colorMatrixGrayscale, NO_COLOR_MATRIX } from "../../../void/src/void2d/effect";
 
@@ -31,6 +34,74 @@ function mountError(node: NeonNode): string {
 		} catch (error) { message = error.toString(); } finally { dispose(); }
 	});
 	return message;
+}
+
+test "Scene2D scale modes and design size react independently and stop at disposal" {
+	let first: VoidScene2D = null as unknown as VoidScene2D;
+	let second: VoidScene2D = null as unknown as VoidScene2D;
+	const [width, setWidth] = createSignal<float32>(200.0);
+	const [height, setHeight] = createSignal<float32>(100.0);
+	const [mode, setMode] = createSignal<ScaleMode>(ScaleMode.LetterBox);
+	const root = mockNode("root");
+	const dispose = render(element(<Void>
+		<Scene2D scaleMode={mode()} designW={width()} designH={height()}
+			ref={(value: VoidScene2D): void => { first = value; }} />
+		<Scene2D scaleMode={ScaleMode.Stretch} designW={100.0} designH={100.0}
+			ref={(value: VoidScene2D): void => { second = value; }} />
+	</Void>), mockHost(), root as unknown as HostNode);
+	const letterBox = sceneViewMatrix(first, 800.0, 600.0);
+	const stretch = sceneViewMatrix(second, 800.0, 600.0);
+	assert letterBox.a === 4.0 && letterBox.d === 4.0;
+	assert letterBox.tx === 0.0 && letterBox.ty === 100.0;
+	assert stretch.a === 8.0 && stretch.d === 6.0;
+	setWidth(400.0); setHeight(300.0); setMode(ScaleMode.Stretch);
+	const changed = sceneViewMatrix(first, 800.0, 600.0);
+	assert first.designW === 400.0 && first.designH === 300.0;
+	assert changed.a === 2.0 && changed.d === 2.0;
+	assert second.designW === 100.0 && second.designH === 100.0;
+	assert second.scaleMode === ScaleMode.Stretch;
+	setMode(ScaleMode.Resize);
+	const resized = sceneViewMatrix(first, 800.0, 600.0);
+	assert resized.a === 1.0 && resized.d === 1.0;
+	dispose();
+	setWidth(900.0); setHeight(700.0); setMode(ScaleMode.Fixed);
+	assert first.closed && second.closed;
+	assert first.designW === 400.0 && first.designH === 300.0;
+	assert first.scaleMode === ScaleMode.Resize;
+}
+
+test "Scene2D Fixed Zoom AutoZoom and omitted design values keep Void semantics" {
+	let scene: VoidScene2D = null as unknown as VoidScene2D;
+	let noDesign: VoidScene2D = null as unknown as VoidScene2D;
+	let onlyWidth: VoidScene2D = null as unknown as VoidScene2D;
+	const [mode, setMode] = createSignal<ScaleMode>(ScaleMode.Fixed);
+	const root = mockNode("root");
+	const dispose = render(element(<Void>
+		<Scene2D scaleMode={mode()} designW={400.0} designH={300.0}
+			ref={(value: VoidScene2D): void => { scene = value; }} />
+		<Scene2D scaleMode={ScaleMode.LetterBox}
+			ref={(value: VoidScene2D): void => { noDesign = value; }} />
+		<Scene2D designW={100.0}
+			ref={(value: VoidScene2D): void => { onlyWidth = value; }} />
+	</Void>), mockHost(), root as unknown as HostNode);
+	const fixed = sceneViewMatrix(scene, 900.0, 600.0);
+	assert fixed.a === 1.0 && fixed.d === 1.0;
+	assert fixed.tx === 250.0 && fixed.ty === 150.0;
+	setMode(ScaleMode.Zoom);
+	const zoom = sceneViewMatrix(scene, 900.0, 600.0);
+	assert zoom.a === 2.25 && zoom.d === 2.25;
+	assert zoom.tx === 0.0 && zoom.ty === -37.5;
+	setMode(ScaleMode.AutoZoom);
+	const autoZoom = sceneViewMatrix(scene, 900.0, 600.0);
+	assert autoZoom.a === 2.0 && autoZoom.d === 2.0;
+	assert autoZoom.tx === 50.0 && autoZoom.ty === 0.0;
+	assert noDesign.designW === 0.0 && noDesign.designH === 0.0;
+	assert onlyWidth.scaleMode === ScaleMode.Resize && onlyWidth.designH === 0.0;
+	const identity = sceneViewMatrix(noDesign, 900.0, 600.0);
+	assert identity.a === 1.0 && identity.d === 1.0;
+	dispose();
+	setMode(ScaleMode.Fixed);
+	assert scene.closed && scene.scaleMode === ScaleMode.AutoZoom;
 }
 
 test "Scene2D mounts real render nodes without creating host elements" {

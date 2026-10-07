@@ -34,8 +34,8 @@ import {
 	textStyle,
 	setTextStyle,
 } from "../../../void/src/void2d/node";
-import { create, close } from "../../../void/src/void2d/scene";
-import { Color, Camera, Tile, Filter, rgba } from "../../../void/src/void2d/types";
+import { create, close, setScaleMode } from "../../../void/src/void2d/scene";
+import { Color, Camera, Tile, Filter, ScaleMode, rgba } from "../../../void/src/void2d/types";
 import { TextStyle } from "../../../void/src/void2d/textLayout";
 import { Mat4 } from "../../../void/src/math/math3d";
 
@@ -43,6 +43,9 @@ interface Scene2DProps {
 	clear?: Accessor<Color> | null;
 	camera?: Accessor<Camera> | null;
 	smooth?: Accessor<boolean> | null;
+	scaleMode?: Accessor<ScaleMode> | null;
+	designW?: Accessor<float32> | null;
+	designH?: Accessor<float32> | null;
 	ref?: ((scene: VoidScene2D) => void) | null;
 	children?: NeonNode | null;
 }
@@ -176,6 +179,17 @@ export function Scene2D(props: Scene2DProps): NeonNode {
 			if (props.smooth !== null) {
 				const smooth = props.smooth as () => boolean;
 				createEffect((): void => { scene.defaultSmooth = smooth(); });
+			}
+			if (props.scaleMode !== null || props.designW !== null || props.designH !== null) {
+				createEffect((): void => {
+					const mode: ScaleMode = props.scaleMode === null ? ScaleMode.Resize :
+						(props.scaleMode as () => ScaleMode)();
+					const width: float32 = props.designW === null ? 0.0 :
+						(props.designW as () => float32)();
+					const height: float32 = props.designH === null ? 0.0 :
+						(props.designH as () => float32)();
+					scene.setScaleMode(mode, width, height);
+				});
 			}
 			if (props.ref !== null) { (props.ref as (scene: VoidScene2D) => void)(scene); }
 			const children = props.children;
