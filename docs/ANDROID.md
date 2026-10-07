@@ -316,6 +316,22 @@ Not measured: `pause`/`resume` beyond what the background step shows, and `destr
 second `start` on a device (the mock remount covers the host side only). Yoga nodes are freed
 through `freeLayoutTree` in the same two paths, but no test counts them.
 
+Measured 2026-10-08 on the emulator (`emulator-5554`, Pixel 9 Pro, Android 36; not the
+physical device), tree `697697f`, msc v0.3.2 `0d83c4867`, through
+`/private/tmp/neon-emu-run.sh`: `navigation.py`, `widgets.py`, `motion.py` and `media.py` exit
+0, after four first-run reds. Two were Neon: a focused `Input` removed with its screen left
+the soft keyboard up, so the next hardware back only closed it (`Input.removing` now hides
+it), and a swipe over a TabView scene's native ScrollView never reached the pager
+(`WORKAROUND.md` W9, `Scroll.report`). The rest were the drivers: `uiautomator dump` waits
+for a second without accessibility events, so during an animation it returns only after the
+end and during a loop it fails with "could not get idle state"; the motion lane now reads
+mid-animation geometry and the spin from device-side `screencap`, the carousel step reads
+one dump without waiting for a still screen, and the video step plays and pauses on the
+device before reading. The WebView exposes a page `<button>` as `android.widget.Button`,
+which `counter.dump` filtered out. `injectJavaScript("location.href = …")` left
+`canGoBack` false and `goBack` inert on Android, so the example moves by `source`. Motion
+reported 83–85 % janky frames in `gfxinfo` on this emulator; not measured on a phone.
+
 ## 10. Measured on a physical device
 
 ```bash
