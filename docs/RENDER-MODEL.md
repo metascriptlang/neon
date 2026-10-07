@@ -824,11 +824,30 @@ min of 7, three rounds: walk 57.9–84.2 ms C / 16.2–31.4 ms JS, inherited 52.
    for it counts writes on a counting host (`emit.test.ms`).
 4. **Structural change goes through a region + anchor only** — after mount,
    nothing inserts/removes host nodes except `reconcileArrays`.
+4a. **A row changes parents only through a FlatList grid's item pool**
+   (`numColumns`, `src/components/virtualizedList.ms`). The pool is `mapArray`'s
+   ownership lifted over every row container: one root per item while the item
+   sits in any rendered row, disposed when it leaves the data or the window, its
+   `index` a signal the list sets. A row container's region leaves a live item's
+   row in place for the region that now lists it, which moves it in with
+   `moveRow`; a container that leaves the window first parks its live items in
+   the list content, because a host frees what it removes (native `removeChild`,
+   the DOM host's listener release). Only an item that placed one host node moves
+   between containers: a region placed directly in the item captured the old
+   container as its parent, so an item that placed several nodes remounts on a
+   row change, as React Native remounts every regrouped row. Pinned by
+   `tests/render/flatList.test.ms` ("a grid keeps an item's state and host node
+   when regrouping moves it to another row", prepend, removal, reorder, window,
+   TextInput and multi-node cases, on a host that frees what it removes) and the
+   Chrome case "a prepend moves a focused grid field to the next row as the same
+   element, still focused".
 5. **Dispose is total** — after unmount, signal writes reach zero effects
    (`tests/core/dispose.test.ms`).
 6. **A Host adapter matches mock-host semantics op for op** — e.g.
    `insertBefore` detaches first (DOM move semantics). `mockHost()` is the
-   reference implementation of the contract.
+   reference implementation of the contract. The DOM host moves a node that is
+   already in the document with `moveBefore` where the browser has it, so a
+   moved element keeps its focus.
 
 The existing test suite is these invariants encoded; keep it that way — every
 new render feature should land with the invariant it preserves named in its
