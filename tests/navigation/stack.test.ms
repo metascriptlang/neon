@@ -69,6 +69,14 @@ function Edit(props: ScreenProps<ItemParams>): NeonNode {
 
 let unmount: Dispose | null = null;
 
+function Sheet(props: ScreenProps<ItemParams>): NeonNode {
+	const navigation = props.navigation;
+	return <View>
+		<Text>sheet</Text>
+		<Pressable accessibilityLabel="close sheet" onPress={(e: NeonEvent): void => { navigation.goBack(); }}><Text>x</Text></Pressable>
+	</View>;
+}
+
 function mountStack(ref: NavigationContainerRef): MockNode {
 	if (unmount !== null) { (unmount as Dispose)(); }
 	const root: MockNode = mockNode("root");
@@ -77,6 +85,7 @@ function mountStack(ref: NavigationContainerRef): MockNode {
 			<Stack.Screen name="Home" component={Home} options={{ title: "Items" }} />
 			<Stack.Screen name="Detail" component={Detail} />
 			<Stack.Screen name="Edit" component={Edit} options={{ title: "Edit item" }} />
+			<Stack.Screen name="Sheet" component={Sheet} options={{ presentation: "transparentModal" }} />
 		</Stack.Navigator>
 	</NavigationContainer>, mockHost(), root as unknown as HostNode);
 	return root;
@@ -153,4 +162,13 @@ test "navigate to an unknown screen throws, naming it" {
 		message = (e as Error).message;
 	}
 	assert message.indexOf("Nowhere") >= 0, message;
+}
+
+test "a transparent modal keeps the screen below it visible and has no header" {
+	const ref = createNavigationContainerRef();
+	const root = mountStack(ref);
+	ref.navigate("Sheet");
+	assert visibleText(root) === "Items|home 0|+|open|sheet|x", visibleText(root);
+	press(root, "close sheet");
+	assert visibleText(root) === "Items|home 0|+|open", visibleText(root);
 }

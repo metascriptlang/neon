@@ -25,8 +25,14 @@ export interface TabBarIconProps {
 	size: number;
 }
 
+export type StackPresentation = "card" | "modal" | "transparentModal";
+
+export type HeaderTitleAlign = "left" | "center";
+
 export interface ScreenOptions {
 	title?: string | null;
+	presentation?: StackPresentation | null;
+	headerTitleAlign?: HeaderTitleAlign | null;
 	headerShown?: boolean | null;
 	headerTitle?: string | null;
 	headerBackTitle?: string | null;
@@ -51,6 +57,8 @@ export interface ScreenOptionsOf<P> extends ScreenOptions {}
 export function plainOptions<P>(o: ScreenOptionsOf<P>): ScreenOptions {
 	return {
 		title: o.title,
+		presentation: o.presentation,
+		headerTitleAlign: o.headerTitleAlign,
 		headerShown: o.headerShown,
 		headerTitle: o.headerTitle,
 		headerBackTitle: o.headerBackTitle,
@@ -80,6 +88,8 @@ export function optionsAccessor<P>(declared: Accessor<ScreenOptionsOf<P>> | null
 export function mergeOptions(base: ScreenOptions, over: ScreenOptions): ScreenOptions {
 	return {
 		title: over.title !== null ? over.title : base.title,
+		presentation: over.presentation !== null ? over.presentation : base.presentation,
+		headerTitleAlign: over.headerTitleAlign !== null ? over.headerTitleAlign : base.headerTitleAlign,
 		headerShown: over.headerShown !== null ? over.headerShown : base.headerShown,
 		headerTitle: over.headerTitle !== null ? over.headerTitle : base.headerTitle,
 		headerBackTitle: over.headerBackTitle !== null ? over.headerBackTitle : base.headerBackTitle,
@@ -527,6 +537,19 @@ export class NavigatorCore<P> {
 		const names: string[] = [];
 		for (const screen of this.screens) { names.push(screen.name); }
 		return names;
+	}
+
+	transparent(entry: Navigation<P>): boolean {
+		const presentation = entry.options().presentation;
+		return presentation !== null && presentation === "transparentModal";
+	}
+
+	visibleFrom(): int32 {
+		const list = this.entries();
+		let at = (list.length - 1) as int32;
+		if (!this.isStack()) { return this.index(); }
+		while (at > 0 && this.transparent(list[at])) { at -= 1; }
+		return at;
 	}
 
 	currentKey(): string {

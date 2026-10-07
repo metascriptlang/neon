@@ -97,7 +97,7 @@ export function createStackNavigator<P>(): StackNavigator<P> {
 				scope: currentScope("Stack.Navigator"),
 			});
 			const screen = (entry: Navigation<P>, at: Accessor<number>): NeonNode => screenView<P>(core, entry);
-			return <View style={{ flex: 1, flexDirection: "column" }}>
+			return <View style={{ flex: 1, flexDirection: "column", position: "relative" }}>
 				<For each={core.entries}>{screen}</For>
 			</View>;
 		},

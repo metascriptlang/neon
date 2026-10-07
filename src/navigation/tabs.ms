@@ -147,7 +147,7 @@ export function createBottomTabNavigator<P>(): TabNavigator<P> {
 			const screen = (entry: Navigation<P>, at: Accessor<number>): NeonNode => screenView<P>(core, entry);
 			const item = (entry: Navigation<P>, at: Accessor<number>): NeonNode => tabItem<P>(core, entry);
 			return <View style={{ flex: 1, flexDirection: "column" }}>
-				<View style={{ flex: 1, flexDirection: "column" }}>
+				<View style={{ flex: 1, flexDirection: "column", position: "relative" }}>
 					<For each={mounted}>{screen}</For>
 				</View>
 				<View style={{ height: 1, backgroundColor: "#d8d8d8" }} />

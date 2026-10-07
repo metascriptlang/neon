@@ -3,7 +3,8 @@ import { createMemo } from "../core/memo";
 import { NeonNode, Host } from "../render/hostTypes";
 import { regionNode } from "../render/node";
 import { Row, makeRow } from "../render/reconcile";
-import { Style } from "../render/style";
+import { Style, TextAlign } from "../render/style";
+import { Platform } from "../api/platform";
 import { NeonEvent } from "../render/event";
 import { createComponent } from "../render/component";
 import { View, Text, Pressable } from "../components/primitives";
@@ -103,6 +104,11 @@ export function Header(props: {
 	const hasLeft = accessor((): boolean => options().headerLeft !== null);
 	const showBack = accessor((): boolean => !hasLeft() && props.back());
 	const showMenu = accessor((): boolean => !hasLeft() && !props.back() && props.menu());
+	const align = accessor((): TextAlign => {
+		const own = options().headerTitleAlign;
+		if (own !== null) { return own === "center" ? "center" : "left"; }
+		return Platform.OS === "ios" ? "center" : "left";
+	});
 	const titleColor = accessor((): string => {
 		const color = options().headerTintColor;
 		return color === null ? TITLE_COLOR : color as string;
@@ -116,7 +122,7 @@ export function Header(props: {
 			<DrawerToggleButton tintColor={tint} />
 		</Show>
 		<Slot node={left} />
-		<Text style={{ flex: 1, color: titleColor(), fontSize: 17, fontWeight: "bold", paddingLeft: 8 }}
+		<Text style={{ flex: 1, color: titleColor(), fontSize: 17, fontWeight: "bold", paddingLeft: 8, paddingRight: 8, textAlign: align() }}
 			accessibilityRole="header">{props.title()}</Text>
 		<Slot node={right} />
 	</View><View style={{ height: 1, backgroundColor: HEADER_BORDER }} /></View>;
@@ -137,20 +143,32 @@ export function shown(value: boolean | null, fallback: boolean): boolean {
 export function screenView<P>(core: NavigatorCore<P>, entry: Navigation<P>): NeonNode {
 	const scope = screenScope<P>(core, entry);
 	const key = entry.route.key;
-	const visible = accessor((): boolean => core.currentKey() === key);
-	const frame = accessor((): Style => ({
-		flex: 1,
-		flexDirection: "column",
-		display: visible() ? "flex" : "none",
-	}));
 	const options = accessor((): ScreenOptions => entry.options());
-	const headerShown = accessor((): boolean => shown(options().headerShown, true));
 	const position = accessor((): int32 => {
 		const list = core.entries();
 		for (let i = 0; i < list.length; i += 1) {
 			if (list[i].route.key === key) { return i as int32; }
 		}
 		return -1;
+	});
+	const visible = accessor((): boolean => {
+		if (!core.isStack()) { return core.currentKey() === key; }
+		const at = position();
+		return at >= 0 && at >= core.visibleFrom();
+	});
+	const frame = accessor((): Style => ({
+		position: "absolute",
+		top: 0,
+		left: 0,
+		right: 0,
+		bottom: 0,
+		flexDirection: "column",
+		display: visible() ? "flex" : "none",
+	}));
+	const headerShown = accessor((): boolean => {
+		const presentation = options().presentation;
+		const overlay = presentation !== null && presentation === "transparentModal";
+		return shown(options().headerShown, !overlay);
 	});
 	const back = accessor((): boolean => core.kind === NavigatorKind.Stack && position() > 0);
 	const backTitle = accessor((): string => {

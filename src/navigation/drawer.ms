@@ -110,7 +110,7 @@ export function createDrawerNavigator<P>(): DrawerNavigator<P> {
 			const screen = (entry: Navigation<P>, at: Accessor<number>): NeonNode => screenView<P>(core, entry);
 			const item = (entry: Navigation<P>, at: Accessor<number>): NeonNode => drawerItem<P>(core, entry);
 			return <View style={{ flex: 1, flexDirection: "column", position: "relative" }}>
-				<View style={{ flex: 1, flexDirection: "column" }}>
+				<View style={{ flex: 1, flexDirection: "column", position: "relative" }}>
 					<For each={mounted}>{screen}</For>
 				</View>
 				<Show when={core.drawerOpen()}>
