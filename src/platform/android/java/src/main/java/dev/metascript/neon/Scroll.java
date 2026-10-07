@@ -75,6 +75,15 @@ public final class Scroll extends SwipeRefreshLayout {
 	}
 
 	public void addContent(View content) { scroller.addView(content); }
+
+	private static boolean measureAtWrittenContentSize(View content) {
+		ViewGroup.LayoutParams params = content.getLayoutParams();
+		if (params.width < 0 || params.height < 0) return false;
+		content.measure(View.MeasureSpec.makeMeasureSpec(params.width, View.MeasureSpec.EXACTLY),
+			View.MeasureSpec.makeMeasureSpec(params.height, View.MeasureSpec.EXACTLY));
+		return true;
+	}
+
 	public void setContentSize(int width, int height) {
 		if (scroller.getChildCount() == 0) return;
 		View content = scroller.getChildAt(0);
@@ -383,6 +392,9 @@ public final class Scroll extends SwipeRefreshLayout {
 
 	private final class Vertical extends ScrollView {
 		Vertical(Context context) { super(context); }
+		@Override protected void measureChildWithMargins(View child, int widthSpec, int widthUsed, int heightSpec, int heightUsed) {
+			if (!measureAtWrittenContentSize(child)) super.measureChildWithMargins(child, widthSpec, widthUsed, heightSpec, heightUsed);
+		}
 		@Override public boolean onInterceptTouchEvent(MotionEvent e) {
 			if (!scrollEnabled) return false;
 			boolean intercepted = super.onInterceptTouchEvent(e);
@@ -413,6 +425,9 @@ public final class Scroll extends SwipeRefreshLayout {
 
 	private final class Horizontal extends HorizontalScrollView {
 		Horizontal(Context context) { super(context); }
+		@Override protected void measureChildWithMargins(View child, int widthSpec, int widthUsed, int heightSpec, int heightUsed) {
+			if (!measureAtWrittenContentSize(child)) super.measureChildWithMargins(child, widthSpec, widthUsed, heightSpec, heightUsed);
+		}
 		@Override public boolean onInterceptTouchEvent(MotionEvent e) {
 			if (!scrollEnabled) return false;
 			boolean intercepted = super.onInterceptTouchEvent(e);
