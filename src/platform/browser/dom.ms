@@ -12,6 +12,7 @@ import { publishSafeArea } from "../../render/environment";
 import { CssStyle, applyCss, applyCssProp } from "./domCss";
 import { VisibleContentPosition, parseVisibleContent } from "../../render/visibleContent";
 import { installBrowserAppServices } from "./appServices";
+import { installDomLayoutAnimation } from "./layoutAnimation";
 
 extern class ClassList {
 	extern add(name: cstring): void;
@@ -638,6 +639,7 @@ export function domHost(): Host {
 	watchEnvironment();
 	installBrowserAppServices();
 	watchSafeArea();
+	installDomLayoutAnimation();
 	let scrollRule = false;
 	let controlRule = false;
 	let modalRule = false;

@@ -24,6 +24,7 @@ export interface LayoutPhase {
 	duration: number;
 	delay: number;
 	curve: EasingFunction;
+	cssCurve: string;
 	property: LayoutAnimationProperty;
 }
 
@@ -56,6 +57,18 @@ function curveFor(anim: LayoutAnimationAnim): EasingFunction {
 	};
 }
 
+function cssCurveFor(anim: LayoutAnimationAnim): string {
+	const type = anim.type ?? "easeInEaseOut";
+	return match (type) {
+		"linear" => "linear",
+		"easeIn" => "cubic-bezier(0.42, 0, 1, 1)",
+		"easeOut" => "cubic-bezier(0, 0, 0.58, 1)",
+		"keyboard" => "cubic-bezier(0.17, 0.59, 0.4, 0.77)",
+		"spring" => "cubic-bezier(0.5, 1.6, 0.4, 0.8)",
+		_ => "cubic-bezier(0.42, 0, 0.58, 1)",
+	};
+}
+
 function phase(anim: LayoutAnimationAnim | null, duration: number): LayoutPhase | null {
 	if (anim === null || anim === undefined) { return null; }
 	const a = anim as LayoutAnimationAnim;
@@ -63,6 +76,7 @@ function phase(anim: LayoutAnimationAnim | null, duration: number): LayoutPhase 
 		duration: a.duration ?? duration,
 		delay: a.delay ?? 0,
 		curve: curveFor(a),
+		cssCurve: cssCurveFor(a),
 		property: a.property ?? "opacity",
 	};
 }
@@ -82,12 +96,18 @@ export function onConfigureNext(listener: (plan: LayoutAnimationPlan) => void): 
 	listeners.push(listener);
 }
 
+// Every field spelled out: a nested literal's absent fields read `undefined` on JS
+// (compiler card 2026-10-06-js-optional-fields-through-nullable-constructor.md).
+function anim(type: LayoutAnimationType, property: LayoutAnimationProperty | null, springDamping: number | null): LayoutAnimationAnim {
+	return { type, property, duration: null, delay: null, springDamping, initialVelocity: null };
+}
+
 function createConfig(duration: number, type: LayoutAnimationType, property: LayoutAnimationProperty): LayoutAnimationConfig {
 	return {
 		duration,
-		create: { type, property },
-		update: { type },
-		delete: { type, property },
+		create: anim(type, property, null),
+		update: anim(type, null, null),
+		delete: anim(type, property, null),
 	};
 }
 
@@ -140,9 +160,9 @@ export class LayoutAnimationPresets {
 	static linear: LayoutAnimationConfig = createConfig(500, "linear", "opacity");
 	static spring: LayoutAnimationConfig = {
 		duration: 700,
-		create: { type: "linear", property: "opacity" },
-		update: { type: "spring", springDamping: 0.4 },
-		delete: { type: "linear", property: "opacity" },
+		create: anim("linear", "opacity", null),
+		update: anim("spring", null, 0.4),
+		delete: anim("linear", "opacity", null),
 	};
 }
 
