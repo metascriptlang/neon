@@ -1076,3 +1076,120 @@ final class MotionUITests: XCTestCase {
         XCTAssertLessThan(shrunkY, titleY - 20, "the header shrinks with the scroll offset")
     }
 }
+
+final class FlutterListsUITests: XCTestCase {
+    private let app = XCUIApplication(bundleIdentifier: "dev.neon.NeonFlutterLists")
+
+    override func setUp() {
+        continueAfterFailure = false
+    }
+
+    private func pid() -> String {
+        let text = app.debugDescription
+        guard let range = text.range(of: "pid: ") else { return "" }
+        return String(text[range.upperBound...].prefix(while: { $0.isNumber }))
+    }
+
+    private func status() -> String {
+        let match = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "status ")).firstMatch
+        return match.exists ? match.label : ""
+    }
+
+    private func waitStatus(_ prefix: String, _ why: String) {
+        let predicate = NSPredicate { [self] _, _ in status().hasPrefix(prefix) }
+        XCTAssertEqual(XCTWaiter.wait(for: [expectation(for: predicate, evaluatedWith: app)], timeout: 10), .completed,
+            "\(why): expected \(prefix), app says \(status())")
+    }
+
+    private func report(_ name: String) {
+        print("NEON_IOS flutterlists-\(name) pid=\(pid()) \(status())")
+        let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        shot.name = "flutterlists-\(name)"
+        shot.lifetime = .keepAlways
+        add(shot)
+    }
+
+    private func settle() {
+        RunLoop.current.run(until: Date().addingTimeInterval(1))
+    }
+
+    private func rowPoint(_ text: XCUIElement, _ x: CGFloat) -> XCUICoordinate {
+        let window = app.windows.firstMatch
+        let origin = window.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0))
+        return origin.withOffset(CGVector(dx: window.frame.width * x, dy: text.frame.midY))
+    }
+
+    func testSwipeReorderGridAndHeaders() {
+        XCUIDevice.shared.orientation = .portrait
+        app.launch()
+        XCTAssertTrue(app.wait(for: .runningForeground, timeout: 20))
+        XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Mail 2")).firstMatch.waitForExistence(timeout: 15))
+        let launched = pid()
+        report("mail")
+
+        let archive = rowPoint(app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Mail 2")).firstMatch, 0.3)
+        archive.press(forDuration: 0.05, thenDragTo: archive.withOffset(CGVector(dx: 230, dy: 0)))
+        waitStatus("status archived Mail 2", "a right swipe archives the row")
+        settle()
+        XCTAssertFalse(app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Mail 2")).firstMatch.exists, "the archived row left the list")
+        report("archived")
+
+        let remove = rowPoint(app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Mail 3")).firstMatch, 0.7)
+        remove.press(forDuration: 0.05, thenDragTo: remove.withOffset(CGVector(dx: -230, dy: 0)))
+        waitStatus("status deleted Mail 3", "a left swipe deletes the row")
+        settle()
+
+        app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Mail 4")).firstMatch.tap()
+        waitStatus("status opened Mail 4", "a tap on a swipeable row still presses it")
+
+        let short = rowPoint(app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Mail 5")).firstMatch, 0.3)
+        short.press(forDuration: 0.05, thenDragTo: short.withOffset(CGVector(dx: 60, dy: 0)))
+        settle()
+        XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Mail 5")).firstMatch.exists, "a short swipe springs back")
+        XCTAssertEqual(status(), "status opened Mail 4", "and neither dismisses nor presses")
+
+        let firstY = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Mail 1")).firstMatch.frame.minY
+        let scroll = rowPoint(app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Mail 6")).firstMatch, 0.5)
+        scroll.press(forDuration: 0.05, thenDragTo: scroll.withOffset(CGVector(dx: 0, dy: -200)))
+        settle()
+        XCTAssertLessThan(app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Mail 1")).firstMatch.frame.minY, firstY - 50, "a vertical drag over the rows scrolls the list")
+        XCTAssertEqual(status(), "status opened Mail 4", "the vertical drag dismissed nothing")
+        report("scrolled")
+
+        app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "playlist")).firstMatch.tap()
+        waitStatus("status order 1 2 3 4", "the playlist opens")
+        let handle = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "drag 1")).firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        handle.press(forDuration: 0.8, thenDragTo: handle.withOffset(CGVector(dx: 0, dy: 130)))
+        waitStatus("status order 2 3 1 4 moved 0 to 2", "a long-press drag moves song 1 below song 3")
+        report("reordered")
+
+        app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "photos")).firstMatch.tap()
+        waitStatus("status grid width", "the max-extent grid derives its item width")
+        settle()
+        let p1 = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "P1")).firstMatch, p2 = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "P2")).firstMatch, p3 = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "P3")).firstMatch
+        XCTAssertEqual(p1.frame.midY, p3.frame.midY, accuracy: 1, "three photos share the first row")
+        XCTAssertLessThan(p1.frame.midX, p2.frame.midX)
+        report("grid")
+        app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "show masonry")).firstMatch.tap()
+        XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "P1 c0")).firstMatch.waitForExistence(timeout: 10), "masonry places P1 in the first column")
+        report("masonry")
+
+        app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "header")).firstMatch.tap()
+        waitStatus("status header 200", "the header starts expanded")
+        let list = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Row 3")).firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        list.press(forDuration: 0.05, thenDragTo: list.withOffset(CGVector(dx: 0, dy: -300)))
+        waitStatus("status header 64", "the pinned header collapses to its toolbar height")
+        report("collapsed")
+
+        app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "slivers")).firstMatch.tap()
+        XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Albums")).firstMatch.waitForExistence(timeout: 10))
+        let top = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Albums")).firstMatch.frame.minY
+        let slivers = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Album 4")).firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        slivers.press(forDuration: 0.05, thenDragTo: slivers.withOffset(CGVector(dx: 0, dy: -150)))
+        settle()
+        XCTAssertLessThan(app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Albums")).firstMatch.frame.minY, top, "the banner scrolled away")
+        XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Albums")).firstMatch.isHittable || app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Tracks")).firstMatch.exists, "a pinned header stays at the top")
+        XCTAssertEqual(launched, pid())
+        report("slivers")
+    }
+}
