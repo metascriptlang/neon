@@ -64,4 +64,8 @@ export {
 	BADGE_COLOR,
 } from "./tabs";
 export { DrawerNavigator, DrawerPosition, createDrawerNavigator, DRAWER_WIDTH } from "./drawer";
-export { NavigationContainer, NavigationContainerRef, createNavigationContainerRef } from "./container";
+export {
+	NavigationContainer,
+	NavigationContainerRef,
+	createNavigationContainerRef,
+} from "./container";

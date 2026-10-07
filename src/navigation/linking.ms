@@ -68,7 +68,8 @@ function collect(
 		nextChain.push(screen.name);
 		const own = screen.path;
 		const exact = screen.exact;
-		let segments: Segment[] = exact !== null && (exact as boolean) ? [] : prefix.slice(0, prefix.length);
+		const fromRoot = exact !== null && (exact as boolean);
+		let segments: Segment[] = fromRoot ? [] : prefix.slice(0, prefix.length);
 		if (own !== null) {
 			for (const segment of patternSegments(own as string, depth)) { segments.push(segment); }
 		}
@@ -174,7 +175,9 @@ export function targetFromPath(path: string, config: LinkingConfig): NavTarget |
 	let bestValues: Map<string, string>[] = [];
 	for (const candidate of candidates) {
 		const values: Map<string, string>[] = [];
-		for (let i = 0; i < candidate.chain.length; i += 1) { values.push(new Map<string, string>()); }
+		for (let i = 0; i < candidate.chain.length; i += 1) {
+			values.push(new Map<string, string>());
+		}
 		if (!matchFrom(candidate.segments, 0, parts, 0, values)) { continue; }
 		if (best === null || candidate.score > (best as Candidate).score) {
 			best = candidate;
@@ -191,7 +194,8 @@ export function targetFromPath(path: string, config: LinkingConfig): NavTarget |
 			if (eq < 0) {
 				leaf.set(decode(pair), "");
 			} else {
-				leaf.set(decode(pair.substring(0, eq)), decode(pair.substring(eq + 1, pair.length)));
+				const key = decode(pair.substring(0, eq));
+				leaf.set(key, decode(pair.substring(eq + 1, pair.length)));
 			}
 		}
 	}

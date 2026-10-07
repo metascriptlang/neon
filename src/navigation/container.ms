@@ -35,7 +35,9 @@ export class NavigationContainerRef {
 
 	private focusedLeaf(api: string): NavigatorLink {
 		const root = this.root();
-		if (root === null) { throw new Error(api + ": the navigation container is not mounted yet"); }
+		if (root === null) {
+			throw new Error(api + ": the navigation container is not mounted yet");
+		}
 		return deepestFocused(root as NavigatorLink);
 	}
 
@@ -116,7 +118,9 @@ function containerLink(): NavigatorLink {
 	let waiting: NavTarget | null = null;
 	return {
 		kind: NavigatorKind.Container,
-		hasRoute: (name: string): boolean => root !== null && (root as NavigatorLink).hasRoute(name),
+		hasRoute: (name: string): boolean => {
+			return root !== null && (root as NavigatorLink).hasRoute(name);
+		},
 		navigateTo: (target: NavTarget): boolean => {
 			if (root === null) {
 				waiting = target;
@@ -172,7 +176,9 @@ export function NavigationContainer(props: {
 		return link.navigateTo(target as NavTarget);
 	};
 	const openPath = (path: string): boolean => {
-		if (linking === null) { throw new Error("linkTo: the NavigationContainer has no linking config"); }
+		if (linking === null) {
+			throw new Error("linkTo: the NavigationContainer has no linking config");
+		}
 		const target = targetFromPath(path, (linking as LinkingOptions).config);
 		if (target === null) { return false; }
 		return link.navigateTo(target as NavTarget);
@@ -185,16 +191,23 @@ export function NavigationContainer(props: {
 		handle.link = link;
 		handle.linkPath = openPath;
 	}
-	const back = BackHandler.addEventListener("hardwareBackPress", (): boolean => link.handleBack());
+	const back = BackHandler.addEventListener(
+		"hardwareBackPress",
+		(): boolean => link.handleBack(),
+	);
 	onCleanup((): void => { back.remove(); });
 	if (enabled) {
-		const urls = Linking.addEventListener("url", (event: LinkingUrlEvent): void => { openURL(event.url); });
+		const urls = Linking.addEventListener("url", (event: LinkingUrlEvent): void => {
+			openURL(event.url);
+		});
 		onCleanup((): void => { urls.remove(); });
 	}
 	const children = props.children;
 	const ready = props.onReady;
 	return (host: Host, parent: HostNode, before: HostNode | null): void => {
-		const body: NeonNode = <ScopeContext.Provider value={scope as unknown}>{children}</ScopeContext.Provider>;
+		const body: NeonNode = <ScopeContext.Provider value={scope as unknown}>
+			{children}
+		</ScopeContext.Provider>;
 		body(host, parent, before);
 		state.ready = true;
 		if (enabled && hasAppServices()) { openInitialURL(openURL); }

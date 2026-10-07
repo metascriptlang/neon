@@ -25,6 +25,25 @@ export const TAB_ACTIVE = "#007aff";
 export const TAB_INACTIVE = "#8e8e93";
 export const BADGE_COLOR = "#ff3b30";
 
+const TAB_ITEM: Style = {
+	flex: 1,
+	flexDirection: "column",
+	alignItems: "center",
+	justifyContent: "center",
+	paddingTop: 6,
+	paddingBottom: 6,
+};
+
+const BADGE: Style = {
+	backgroundColor: BADGE_COLOR,
+	borderRadius: 9,
+	paddingLeft: 5,
+	paddingRight: 5,
+	height: 18,
+	alignItems: "center",
+	justifyContent: "center",
+};
+
 export function readBehavior(behavior: Accessor<BackBehavior> | null, fallback: string): string {
 	if (behavior === null) { return fallback; }
 	const read = behavior as Accessor<BackBehavior>;
@@ -84,13 +103,13 @@ export function tabItem<P>(core: NavigatorCore<P>, entry: Navigation<P>): NeonNo
 		}
 		core.navigateLocal(entry.route.name, null);
 	};
-	return <Pressable style={{ flex: 1, flexDirection: "column", alignItems: "center", justifyContent: "center", paddingTop: 6, paddingBottom: 6 }}
+	return <Pressable style={TAB_ITEM}
 		accessibilityRole="button" accessibilityLabel={a11y()} onPress={press}>
 		<Slot node={icon} />
 		<View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
 			<Text style={{ color: color(), fontSize: 12 }}>{label()}</Text>
 			<Show when={badge() !== ""}>
-				<View style={{ backgroundColor: BADGE_COLOR, borderRadius: 9, paddingLeft: 5, paddingRight: 5, height: 18, alignItems: "center", justifyContent: "center" }}>
+				<View style={BADGE}>
 					<Text style={{ color: "#ffffff", fontSize: 11 }}>{badge()}</Text>
 				</View>
 			</Show>
@@ -144,11 +163,17 @@ export function createBottomTabNavigator<P>(): TabNavigator<P> {
 				};
 				if (own === null) { return base; }
 				const extra = (own as Accessor<Style>)();
-				return { ...base, backgroundColor: extra.backgroundColor !== null ? extra.backgroundColor : base.backgroundColor };
+				const background = extra.backgroundColor;
+				if (background === null) { return base; }
+				return { ...base, backgroundColor: background };
 			});
 			const mounted = mountedEntries<P>(core);
-			const screen = (entry: Navigation<P>, at: Accessor<number>): NeonNode => screenView<P>(core, entry);
-			const item = (entry: Navigation<P>, at: Accessor<number>): NeonNode => tabItem<P>(core, entry);
+			const screen = (entry: Navigation<P>, at: Accessor<number>): NeonNode => {
+				return screenView<P>(core, entry);
+			};
+			const item = (entry: Navigation<P>, at: Accessor<number>): NeonNode => {
+				return tabItem<P>(core, entry);
+			};
 			return <View style={{ flex: 1, flexDirection: "column" }}>
 				<View style={{ flex: 1, flexDirection: "column", position: "relative" }}>
 					<For each={mounted}>{screen}</For>

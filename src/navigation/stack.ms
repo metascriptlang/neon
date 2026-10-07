@@ -20,7 +20,10 @@ export interface ScreenCollector<P> {
 	screens: ScreenConfig<P>[] | null;
 }
 
-export function collectScreens<P>(collector: ScreenCollector<P>, children: NeonNode): ScreenConfig<P>[] {
+export function collectScreens<P>(
+	collector: ScreenCollector<P>,
+	children: NeonNode,
+): ScreenConfig<P>[] {
 	const found: ScreenConfig<P>[] = [];
 	collector.screens = found;
 	const parent = mockNode("screens");
@@ -43,7 +46,9 @@ export function screenOf<P>(
 	const config = new ScreenConfig<P>(name, component, options, initialParams, parseParams);
 	return (host: Host, parent: HostNode, before: HostNode | null): void => {
 		const list = collector.screens;
-		if (list === null) { throw new Error("Screen '" + name + "' must be a child of its Navigator"); }
+		if (list === null) {
+			throw new Error("Screen '" + name + "' must be a child of its Navigator");
+		}
 		for (const screen of list as ScreenConfig<P>[]) {
 			if (screen.name === name) { throw new Error("two screens are named '" + name + "'"); }
 		}
@@ -57,7 +62,9 @@ export function readName(name: Accessor<string> | null): string | null {
 	return untrack((): string => read());
 }
 
-export function readOptions<P>(options: Accessor<ScreenOptionsOf<P>> | null): Accessor<ScreenOptions> {
+export function readOptions<P>(
+	options: Accessor<ScreenOptionsOf<P>> | null,
+): Accessor<ScreenOptions> {
 	const plain = optionsAccessor<P>(options);
 	if (plain === null) { return accessor((): ScreenOptions => ({})); }
 	return plain as Accessor<ScreenOptions>;
@@ -96,7 +103,9 @@ export function createStackNavigator<P>(): StackNavigator<P> {
 				backBehavior: "history",
 				scope: currentScope("Stack.Navigator"),
 			});
-			const screen = (entry: Navigation<P>, at: Accessor<number>): NeonNode => screenView<P>(core, entry);
+			const screen = (entry: Navigation<P>, at: Accessor<number>): NeonNode => {
+				return screenView<P>(core, entry);
+			};
 			return <View style={{ flex: 1, flexDirection: "column", position: "relative" }}>
 				<For each={core.entries}>{screen}</For>
 			</View>;

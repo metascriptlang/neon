@@ -79,7 +79,9 @@ export function plainOptions<P>(o: ScreenOptionsOf<P>): ScreenOptions {
 	};
 }
 
-export function optionsAccessor<P>(declared: Accessor<ScreenOptionsOf<P>> | null): Accessor<ScreenOptions> | null {
+export function optionsAccessor<P>(
+	declared: Accessor<ScreenOptionsOf<P>> | null,
+): Accessor<ScreenOptions> | null {
 	if (declared === null) { return null; }
 	const read = declared as Accessor<ScreenOptionsOf<P>>;
 	return accessor((): ScreenOptions => plainOptions<P>(read()));
@@ -89,11 +91,17 @@ export function mergeOptions(base: ScreenOptions, over: ScreenOptions): ScreenOp
 	return {
 		title: over.title !== null ? over.title : base.title,
 		presentation: over.presentation !== null ? over.presentation : base.presentation,
-		headerTitleAlign: over.headerTitleAlign !== null ? over.headerTitleAlign : base.headerTitleAlign,
+		headerTitleAlign: over.headerTitleAlign !== null
+			? over.headerTitleAlign
+			: base.headerTitleAlign,
 		headerShown: over.headerShown !== null ? over.headerShown : base.headerShown,
 		headerTitle: over.headerTitle !== null ? over.headerTitle : base.headerTitle,
-		headerBackTitle: over.headerBackTitle !== null ? over.headerBackTitle : base.headerBackTitle,
-		headerTintColor: over.headerTintColor !== null ? over.headerTintColor : base.headerTintColor,
+		headerBackTitle: over.headerBackTitle !== null
+			? over.headerBackTitle
+			: base.headerBackTitle,
+		headerTintColor: over.headerTintColor !== null
+			? over.headerTintColor
+			: base.headerTintColor,
 		headerStyle: over.headerStyle !== null ? over.headerStyle : base.headerStyle,
 		headerLeft: over.headerLeft !== null ? over.headerLeft : base.headerLeft,
 		headerRight: over.headerRight !== null ? over.headerRight : base.headerRight,
@@ -191,7 +199,9 @@ export const ScopeContext = createContext<unknown>(null);
 export function currentScope(api: string): ScreenScope {
 	const value = useContext(ScopeContext);
 	if (value === null) {
-		throw new Error(api + ": no navigator around this component; render it inside NavigationContainer");
+		throw new Error(
+			api + ": no navigator around this component; render it inside NavigationContainer",
+		);
 	}
 	return value as ScreenScope;
 }
@@ -375,7 +385,9 @@ export class Navigation<P> {
 	options(): ScreenOptions {
 		const core = this.core;
 		const declared = this.config.options;
-		const base = declared === null ? core.screenOptions() : mergeOptions(core.screenOptions(), declared());
+		const base = declared === null
+			? core.screenOptions()
+			: mergeOptions(core.screenOptions(), declared());
 		return mergeOptions(base, this.overrides());
 	}
 
@@ -422,7 +434,8 @@ export class Navigation<P> {
 	}
 
 	emitBeforeRemove(action: NavigationAction): boolean {
-		const event = new NavigationEventArg("beforeRemove", this.route.key, new NavigationEventData(action));
+		const data = new NavigationEventData(action);
+		const event = new NavigationEventArg("beforeRemove", this.route.key, data);
 		for (const listener of this.removalListeners.slice(0, this.removalListeners.length)) {
 			listener.handler(event);
 		}
@@ -432,9 +445,12 @@ export class Navigation<P> {
 	addListener(event: NavigationEvent, handler: (event: NavigationEventArg) => void): Unsubscribe {
 		const target = this.route.key;
 		const notify = (type: string): void => {
-			handler(new NavigationEventArg(type, target, new NavigationEventData(new NavigationAction("NONE", noAction))));
+			const data = new NavigationEventData(new NavigationAction("NONE", noAction));
+			handler(new NavigationEventArg(type, target, data));
 		};
-		if (event === "state") { return this.core.addStateListener((): void => { notify("state"); }); }
+		if (event === "state") {
+			return this.core.addStateListener((): void => { notify("state"); });
+		}
 		if (event === "beforeRemove") {
 			const id = this.nextRemoval;
 			this.nextRemoval += 1;
@@ -468,19 +484,35 @@ export class Navigation<P> {
 	}
 }
 
-export function navigate<P>(this navigation: Navigation<P>, name: string, params: P | null = null): void {
+export function navigate<P>(
+	this navigation: Navigation<P>,
+	name: string,
+	params: P | null = null,
+): void {
 	navigation.core.navigate(name, params);
 }
 
-export function push<P>(this navigation: Navigation<P>, name: string, params: P | null = null): void {
+export function push<P>(
+	this navigation: Navigation<P>,
+	name: string,
+	params: P | null = null,
+): void {
 	navigation.core.push(name, params);
 }
 
-export function replace<P>(this navigation: Navigation<P>, name: string, params: P | null = null): void {
+export function replace<P>(
+	this navigation: Navigation<P>,
+	name: string,
+	params: P | null = null,
+): void {
 	navigation.core.replaceRoute(navigation.route.key, name, params);
 }
 
-export function jumpTo<P>(this navigation: Navigation<P>, name: string, params: P | null = null): void {
+export function jumpTo<P>(
+	this navigation: Navigation<P>,
+	name: string,
+	params: P | null = null,
+): void {
 	navigation.core.navigate(name, params);
 }
 
@@ -491,7 +523,9 @@ export function pop<P>(this navigation: Navigation<P>, count: int32 = 1): void {
 export function getParent<P, Q>(this navigation: Navigation<P>): Navigation<Q> {
 	const outer = navigation.core.parentNavigation;
 	if (outer === null) {
-		throw new Error("getParent: the navigator of '" + navigation.route.name + "' is the root navigator");
+		throw new Error(
+			"getParent: the navigator of '" + navigation.route.name + "' is the root navigator",
+		);
 	}
 	return outer as Navigation<Q>;
 }
@@ -653,7 +687,16 @@ export class NavigatorCore<P> {
 		const key = name + "-" + this.nextKey.toString();
 		this.nextKey += 1;
 		const route = new Route<P>(key, name, read);
-		return new Navigation<P>(this, route, config, write, overrides, writeOverrides, visited, markVisited);
+		return new Navigation<P>(
+			this,
+			route,
+			config,
+			write,
+			overrides,
+			writeOverrides,
+			visited,
+			markVisited,
+		);
 	}
 
 	start(initialParams: P | null): void {
@@ -688,7 +731,9 @@ export class NavigatorCore<P> {
 	}
 
 	notify(): void {
-		for (const listener of this.listeners.slice(0, this.listeners.length)) { listener.handler(); }
+		for (const listener of this.listeners.slice(0, this.listeners.length)) {
+			listener.handler();
+		}
 	}
 
 	addStateListener(handler: () => void): Unsubscribe {
@@ -724,12 +769,14 @@ export class NavigatorCore<P> {
 		}
 		if (params !== null) {
 			throw new Error(
-				"navigate: '" + name + "' is not a screen of this navigator; params of this navigator's type" +
+				"navigate: '" + name + "' is not a screen of this navigator; " +
+				"params of this navigator's type" +
 				" cannot reach another navigator, use getParent<Q>().navigate",
 			);
 		}
 		const parent = this.parent;
-		if (parent !== null && navigateUp(parent as NavigatorLink, { name, values: null, child: null })) { return; }
+		const target: NavTarget = { name, values: null, child: null };
+		if (parent !== null && navigateUp(parent as NavigatorLink, target)) { return; }
 		throw new Error("navigate: no navigator has a screen named '" + name + "'");
 	}
 
@@ -842,7 +889,9 @@ export class NavigatorCore<P> {
 			const params = route.params;
 			list.push(this.makeEntry(route.name, params === null ? null : params));
 		}
-		if (list.length === 0) { throw new Error("reset: a navigation state needs at least one route"); }
+		if (list.length === 0) {
+			throw new Error("reset: a navigation state needs at least one route");
+		}
 		const wanted = state.index;
 		let at = (list.length - 1) as int32;
 		if (wanted !== null) { at = wanted as int32; }
@@ -880,7 +929,9 @@ export class NavigatorCore<P> {
 				}
 			}
 			if (removed.length === 0) { return false; }
-			this.guarded("GO_BACK", removed, (): void => { this.commit(kept, (kept.length - 1) as int32); });
+			this.guarded("GO_BACK", removed, (): void => {
+				this.commit(kept, (kept.length - 1) as int32);
+			});
 			return true;
 		}
 		return this.backLocal();
@@ -888,7 +939,8 @@ export class NavigatorCore<P> {
 
 	canBackLocal(): boolean {
 		if (this.isStack()) { return untrack((): Navigation<P>[] => this.entries()).length > 1; }
-		if (this.kind === NavigatorKind.Drawer && untrack((): boolean => this.drawerOpen())) { return true; }
+		const open = untrack((): boolean => this.drawerOpen());
+		if (this.kind === NavigatorKind.Drawer && open) { return true; }
 		return this.backTarget() >= 0;
 	}
 
@@ -916,7 +968,9 @@ export class NavigatorCore<P> {
 			if (list.length <= 1) { return false; }
 			const top = list[list.length - 1];
 			const kept = list.slice(0, list.length - 1);
-			this.guarded("GO_BACK", [top], (): void => { this.commit(kept, (kept.length - 1) as int32); });
+			this.guarded("GO_BACK", [top], (): void => {
+				this.commit(kept, (kept.length - 1) as int32);
+			});
 			return true;
 		}
 		if (this.kind === NavigatorKind.Drawer && untrack((): boolean => this.drawerOpen())) {
@@ -1014,7 +1068,9 @@ export class NavigatorCore<P> {
 
 	trackedState(): NavigationState {
 		const routes: RouteKey[] = [];
-		for (const entry of this.entries()) { routes.push({ key: entry.route.key, name: entry.route.name }); }
+		for (const entry of this.entries()) {
+			routes.push({ key: entry.route.key, name: entry.route.name });
+		}
 		return { index: this.index(), routeNames: this.routeNames(), routes };
 	}
 
@@ -1047,8 +1103,12 @@ export function linkOf<P>(core: NavigatorCore<P>): NavigatorLink {
 		handleBack: (): boolean => core.handleBack(),
 		drawerAction: (action: DrawerAction): boolean => core.drawerLocal(action),
 		isFocused: accessor((): boolean => core.focused()),
-		register: (routeKey: string, child: NavigatorLink): NavTarget | null => core.register(routeKey, child),
-		unregister: (routeKey: string, child: NavigatorLink): void => { core.unregister(routeKey, child); },
+		register: (routeKey: string, child: NavigatorLink): NavTarget | null => {
+			return core.register(routeKey, child);
+		},
+		unregister: (routeKey: string, child: NavigatorLink): void => {
+			core.unregister(routeKey, child);
+		},
 		focusedChild: (): NavigatorLink | null => core.focusedChild(),
 		focusedRoute: (): RouteKey | null => {
 			const current = core.current();
@@ -1075,7 +1135,9 @@ export function createCore<P>(setup: NavigatorSetup<P>): NavigatorCore<P> {
 		for (const screen of setup.screens) {
 			if (screen.name === named) { found = true; }
 		}
-		if (!found) { throw new Error("initialRouteName '" + (named as string) + "' names no Screen"); }
+		if (!found) {
+			throw new Error("initialRouteName '" + (named as string) + "' names no Screen");
+		}
 		initial = named as string;
 	}
 	const empty: Navigation<P>[] = [];
@@ -1107,7 +1169,8 @@ export function createCore<P>(setup: NavigatorSetup<P>): NavigatorCore<P> {
 
 export function screenScope<P>(core: NavigatorCore<P>, entry: Navigation<P>): ScreenScope {
 	const focused = accessor((): boolean => entry.focusedNow());
-	return new ScreenScope(core.link as NavigatorLink, entry.route.key, focused, entry as unknown, core.container);
+	const link = core.link as NavigatorLink;
+	return new ScreenScope(link, entry.route.key, focused, entry as unknown, core.container);
 }
 
 export function useNavigation<P>(): Navigation<P> {
@@ -1152,6 +1215,8 @@ export function useFocusEffect(effect: () => (() => void) | null): void {
 export function useLinkTo(): (path: string) => void {
 	const container = currentScope("useLinkTo").container;
 	return (path: string): void => {
-		if (!container.linkTo(path)) { throw new Error("useLinkTo: no screen matches '" + path + "'"); }
+		if (!container.linkTo(path)) {
+			throw new Error("useLinkTo: no screen matches '" + path + "'");
+		}
 	};
 }

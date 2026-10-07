@@ -38,6 +38,25 @@ export function Slot(props: { node: Accessor<NeonNode | null> }): NeonNode {
 	}));
 }
 
+function tintOf(tint: Accessor<string> | null): Accessor<string> {
+	return accessor((): string => tint === null ? HEADER_TINT : (tint as Accessor<string>)());
+}
+
+const BACK_BUTTON: Style = {
+	flexDirection: "row",
+	alignItems: "center",
+	paddingLeft: 8,
+	paddingRight: 8,
+	height: 44,
+};
+
+const MENU_BUTTON: Style = {
+	paddingLeft: 12,
+	paddingRight: 12,
+	height: 44,
+	justifyContent: "center",
+};
+
 export function HeaderBackButton(props: {
 	label?: Accessor<string> | null;
 	tintColor?: Accessor<string> | null;
@@ -45,10 +64,10 @@ export function HeaderBackButton(props: {
 }): NeonNode {
 	const label = props.label;
 	const tint = props.tintColor;
-	const color = accessor((): string => tint === null ? HEADER_TINT : (tint as Accessor<string>)());
+	const color = tintOf(tint);
 	const text = accessor((): string => label === null ? "Back" : (label as Accessor<string>)());
 	const press = props.onPress;
-	return <Pressable style={{ flexDirection: "row", alignItems: "center", paddingLeft: 8, paddingRight: 8, height: 44 }}
+	return <Pressable style={BACK_BUTTON}
 		accessibilityRole="button" accessibilityLabel="Back"
 		onPress={(e: NeonEvent): void => { press(); }}>
 		<Text style={{ color: color(), fontSize: 17 }}>{"‹ " + text()}</Text>
@@ -57,7 +76,7 @@ export function HeaderBackButton(props: {
 
 export function DrawerToggleButton(props: { tintColor?: Accessor<string> | null }): NeonNode {
 	const tint = props.tintColor;
-	const color = accessor((): string => tint === null ? HEADER_TINT : (tint as Accessor<string>)());
+	const color = tintOf(tint);
 	const scope = currentScope("DrawerToggleButton");
 	const toggle = (e: NeonEvent): void => {
 		let link: NavigatorLink | null = scope.link;
@@ -68,7 +87,7 @@ export function DrawerToggleButton(props: { tintColor?: Accessor<string> | null 
 		}
 		throw new Error("DrawerToggleButton: no drawer navigator around this screen");
 	};
-	return <Pressable style={{ paddingLeft: 12, paddingRight: 12, height: 44, justifyContent: "center" }}
+	return <Pressable style={MENU_BUTTON}
 		accessibilityRole="button" accessibilityLabel="Show navigation menu" onPress={toggle}>
 		<Text style={{ color: color(), fontSize: 22 }}>☰</Text>
 	</Pressable>;
@@ -97,7 +116,8 @@ export function Header(props: {
 			backgroundColor: HEADER_BACKGROUND,
 		};
 		const extra = options().headerStyle;
-		return extra === null ? base : { ...base, backgroundColor: (extra as Style).backgroundColor };
+		if (extra === null) { return base; }
+		return { ...base, backgroundColor: (extra as Style).backgroundColor };
 	});
 	const left = accessor((): NeonNode | null => options().headerLeft);
 	const right = accessor((): NeonNode | null => options().headerRight);
@@ -109,10 +129,23 @@ export function Header(props: {
 		if (own !== null) { return own === "center" ? "center" : "left"; }
 		return Platform.OS === "ios" ? "center" : "left";
 	});
+	const titleBox = accessor((): Style => ({
+		flex: 1,
+		flexDirection: "row",
+		justifyContent: align() === "center" ? "center" : "flex-start",
+		paddingLeft: 8,
+		paddingRight: 8,
+	}));
 	const titleColor = accessor((): string => {
 		const color = options().headerTintColor;
 		return color === null ? TITLE_COLOR : color as string;
 	});
+	const titleText = accessor((): Style => ({
+		color: titleColor(),
+		fontSize: 17,
+		fontWeight: "bold",
+		textAlign: align(),
+	}));
 	const onBack = props.onBack;
 	return <View style={{ flexDirection: "column" }}><View style={bar}>
 		<Show when={showBack()}>
@@ -122,8 +155,8 @@ export function Header(props: {
 			<DrawerToggleButton tintColor={tint} />
 		</Show>
 		<Slot node={left} />
-		<View style={{ flex: 1, flexDirection: "row", justifyContent: align() === "center" ? "center" : "flex-start", paddingLeft: 8, paddingRight: 8 }}>
-			<Text style={{ color: titleColor(), fontSize: 17, fontWeight: "bold", textAlign: align() }}
+		<View style={titleBox}>
+			<Text style={titleText}
 				accessibilityRole="header">{props.title()}</Text>
 		</View>
 		<Slot node={right} />
@@ -188,7 +221,8 @@ export function screenView<P>(core: NavigatorCore<P>, entry: Navigation<P>): Neo
 	return <ScopeContext.Provider value={scope as unknown}>
 		<View style={frame}>
 			<Show when={headerShown()}>
-				<Header title={title} options={options} back={back} backTitle={backTitle} onBack={goBack} menu={menu} />
+				<Header title={title} options={options} back={back} backTitle={backTitle}
+					onBack={goBack} menu={menu} />
 			</Show>
 			<View style={{ flex: 1, flexDirection: "column" }}>{body}</View>
 		</View>

@@ -23,6 +23,16 @@ export const DRAWER_WIDTH = 280;
 
 export type DrawerPosition = "left" | "right";
 
+const BACKDROP: Style = {
+	position: "absolute",
+	top: 0,
+	left: 0,
+	right: 0,
+	bottom: 0,
+	backgroundColor: "#000000",
+	opacity: 0.4,
+};
+
 export function drawerItem<P>(core: NavigatorCore<P>, entry: Navigation<P>): NeonNode {
 	const key = entry.route.key;
 	const focused = accessor((): boolean => core.currentKey() === key);
@@ -44,8 +54,14 @@ export function drawerItem<P>(core: NavigatorCore<P>, entry: Navigation<P>): Neo
 		backgroundColor: focused() ? "#e5f0ff" : "#ffffff",
 	}));
 	const press = (e: NeonEvent): void => { core.navigateLocal(entry.route.name, null); };
-	return <Pressable style={row} accessibilityRole="button" accessibilityLabel={label()} onPress={press}>
-		<Text style={{ color: focused() ? tint() : "#1c1c1e", fontSize: 15, fontWeight: focused() ? "bold" : "normal" }}>{label()}</Text>
+	const text = accessor((): Style => ({
+		color: focused() ? tint() : "#1c1c1e",
+		fontSize: 15,
+		fontWeight: focused() ? "bold" : "normal",
+	}));
+	return <Pressable style={row} accessibilityRole="button" accessibilityLabel={label()}
+		onPress={press}>
+		<Text style={text}>{label()}</Text>
 	</Pressable>;
 }
 
@@ -113,20 +129,26 @@ export function createDrawerNavigator<P>(): DrawerNavigator<P> {
 				return {
 					...base,
 					width: extra.width !== null ? extra.width : base.width,
-					backgroundColor: extra.backgroundColor !== null ? extra.backgroundColor : base.backgroundColor,
+					backgroundColor: extra.backgroundColor !== null
+						? extra.backgroundColor
+						: base.backgroundColor,
 				};
 			});
 			const close = (e: NeonEvent): void => { core.writeDrawerOpen(false); };
 			const mounted = mountedEntries<P>(core);
-			const screen = (entry: Navigation<P>, at: Accessor<number>): NeonNode => screenView<P>(core, entry);
-			const item = (entry: Navigation<P>, at: Accessor<number>): NeonNode => drawerItem<P>(core, entry);
+			const screen = (entry: Navigation<P>, at: Accessor<number>): NeonNode => {
+				return screenView<P>(core, entry);
+			};
+			const item = (entry: Navigation<P>, at: Accessor<number>): NeonNode => {
+				return drawerItem<P>(core, entry);
+			};
 			return <View style={{ flex: 1, flexDirection: "column", position: "relative" }}>
 				<View style={{ flex: 1, flexDirection: "column", position: "relative" }}>
 					<For each={mounted}>{screen}</For>
 				</View>
 				<Show when={core.drawerOpen()}>
-					<Pressable style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "#000000", opacity: 0.4 }}
-						accessibilityRole="button" accessibilityLabel="Close navigation menu" onPress={close} />
+					<Pressable style={BACKDROP} accessibilityRole="button"
+						accessibilityLabel="Close navigation menu" onPress={close} />
 					<View style={panel}>
 						<For each={core.entries}>{item}</For>
 					</View>
