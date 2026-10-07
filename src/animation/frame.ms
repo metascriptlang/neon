@@ -54,6 +54,10 @@ export function setFrameDriver(next: FrameDriver | null): void {
 	generation += 1;
 }
 
+export function installFrameDriver(next: FrameDriver): void {
+	if (driver === null) { driver = next; }
+}
+
 export function frameNow(): number {
 	return currentDriver().now();
 }

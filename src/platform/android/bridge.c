@@ -3,6 +3,7 @@
 #include "../native/loop.h"
 #include <android/log.h>
 #include <android/looper.h>
+#include <dlfcn.h>
 #include <jni.h>
 #include <math.h>
 #include <stdlib.h>
@@ -457,6 +458,45 @@ void niRegisterApp(msClosure mount) { s_mount = mount; }
 void niSetResizeHandler(msClosure handler) { s_resize = handler; }
 void niSetTeardownHandler(msClosure handler) { s_teardown = handler; }
 void niSetLoopHandler(msClosure handler) { s_loop = handler; }
+
+typedef void (*NeonChoreographerCallback)(long frameTimeNanos, void *data);
+static msClosure s_frame;
+static int g_framePending = 0;
+static int g_choreographerResolved = 0;
+static void *(*p_choreographerInstance)(void) = NULL;
+static void (*p_choreographerPost)(void *, NeonChoreographerCallback, void *) = NULL;
+
+static void frameTick(long frameTimeNanos, void *data) {
+	(void)frameTimeNanos;
+	(void)data;
+	g_framePending = 0;
+	call0(s_frame);
+}
+
+// AChoreographer is API 24 and Neon's minSdk is 23: resolve it at run time.
+static int choreographer(void) {
+	if (!g_choreographerResolved) {
+		g_choreographerResolved = 1;
+		void *lib = dlopen("libandroid.so", RTLD_NOW);
+		if (lib) {
+			p_choreographerInstance = (void *(*)(void))dlsym(lib, "AChoreographer_getInstance");
+			p_choreographerPost = (void (*)(void *, NeonChoreographerCallback, void *))dlsym(lib, "AChoreographer_postFrameCallback");
+		}
+	}
+	return p_choreographerInstance && p_choreographerPost;
+}
+
+void niSetFrameHandler(msClosure handler) { s_frame = handler; }
+
+int niRequestFrame(void) {
+	if (!choreographer()) return 0;
+	if (g_framePending) return 1;
+	void *instance = p_choreographerInstance();
+	if (!instance) return 0;
+	g_framePending = 1;
+	p_choreographerPost(instance, frameTick, NULL);
+	return 1;
+}
 void niSetTouchHandler(msClosure handler) { s_touch = handler; }
 int niRunApp(void) { return 0; }
 int niLastTouchTag(void) { return g_lastTag; }

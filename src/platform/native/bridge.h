@@ -91,6 +91,8 @@ void  niRegisterApp(msClosure mount);
 void  niSetResizeHandler(msClosure handler);
 void  niSetTeardownHandler(msClosure handler);
 void  niSetLoopHandler(msClosure handler);
+void  niSetFrameHandler(msClosure handler);
+int   niRequestFrame(void); // 1 when a display-synchronised frame is scheduled, 0 when unsupported
 int   niRunApp(void);
 void *niContainerView(void);
 float niScreenWidth(void);

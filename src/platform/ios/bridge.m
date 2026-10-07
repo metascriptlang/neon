@@ -1084,3 +1084,30 @@ void niSetLoopHandler(msClosure handler) {
 }
 
 void niInvokeClosure(msClosure c) { call0(c); }
+static msClosure s_frame;
+
+@interface NeonFrameTarget : NSObject
+@end
+
+@implementation NeonFrameTarget
+- (void)tick:(CADisplayLink *)link {
+	link.paused = YES;
+	call0(s_frame);
+}
+@end
+
+static CADisplayLink *g_frameLink;
+static NeonFrameTarget *g_frameTarget;
+
+void niSetFrameHandler(msClosure handler) { s_frame = handler; }
+
+int niRequestFrame(void) {
+	if (!g_frameLink) {
+		g_frameTarget = [NeonFrameTarget new];
+		g_frameLink = [CADisplayLink displayLinkWithTarget:g_frameTarget selector:@selector(tick:)];
+		g_frameLink.paused = YES;
+		[g_frameLink addToRunLoop:[NSRunLoop mainRunLoop] forMode:NSRunLoopCommonModes];
+	}
+	g_frameLink.paused = NO;
+	return 1;
+}

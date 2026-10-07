@@ -8,6 +8,7 @@ import { NativeElementKind, createNativeEventRegistry, nativeElementKind, native
 import { publishWindow, publishKeyboard, publishColorScheme } from "../../render/environment";
 import { VisibleContentPosition, parseVisibleContent } from "../../render/visibleContent";
 import { installNativeAppServices } from "./appServices";
+import { installFrameDriver } from "../../animation/frame";
 import { LayoutAnimationPlan, LayoutPhase, takeLayoutAnimation, runLayoutTween } from "../../animation/layoutAnimation";
 import "../android/library";
 
@@ -18,6 +19,7 @@ when (ios) {
 	@passL("-framework UIKit");
 	@passL("-framework Foundation");
 	@passL("-framework CoreGraphics");
+	@passL("-framework QuartzCore");
 } else when (android) {
 	@compile("../android/bridge.c");
 	@passL("-llog");
@@ -37,7 +39,7 @@ import {
 	niInputCreate, niSwitchCreate, niIndicatorCreate, niImageCreate, niControlSetTag, niSetProp, niSetFocused,
 	niModalCreate, niTextAreaCreate,
 	niLastControlTag, niLastControlPhase, niLastControlValue, niLastControlWidth, niLastControlHeight,
-	niKeyboardHeight, niColorScheme,
+	niKeyboardHeight, niColorScheme, niRequestFrame,
 } from "./bridge.h";
 import { niLoopRun } from "./loop.h";
 
@@ -48,6 +50,7 @@ extern function niSetScrollHandler(handler: () => void): void;
 extern function niSetResizeHandler(handler: () => void): void;
 extern function niSetTeardownHandler(handler: () => void): void;
 extern function niSetLoopHandler(handler: () => void): void;
+extern function niSetFrameHandler(handler: () => void): void;
 extern function niSetControlHandler(handler: () => void): void;
 extern function niSetEnvironmentHandler(handler: () => void): void;
 
@@ -585,6 +588,22 @@ function intrinsicFlex(n: NativeNode, flex: FlexStyle): FlexStyle {
 	return flex;
 }
 
+let frameFire: (() => void) | null = null;
+
+function onFrame(): void {
+	const fire = frameFire;
+	frameFire = null;
+	if (fire !== null) { batched(fire as () => void); }
+}
+
+function scheduleFrame(fire: () => void): void {
+	frameFire = fire;
+	if (niRequestFrame() === 0) {
+		frameFire = null;
+		setTimeout(fire, 16);
+	}
+}
+
 function runLoop(): void {
 	batched((): void => { niLoopRun(); });
 }
@@ -609,6 +628,8 @@ export function createNativeHost(): NativeHost {
 	niSetScrollHandler(onScroll);
 	niSetResizeHandler(onResize);
 	niSetLoopHandler(runLoop);
+	niSetFrameHandler(onFrame);
+	installFrameDriver({ now: (): number => performance.now(), schedule: scheduleFrame });
 	niSetControlHandler(onControl);
 	niSetEnvironmentHandler(onEnvironment);
 	publishEnvironment();
