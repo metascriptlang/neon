@@ -8,9 +8,11 @@ import { StatusBar } from "../../src/components/statusBar";
 import { SafeAreaView } from "../../src/components/safeAreaView";
 import { useSafeAreaInsets } from "../../src/render/environment";
 import { NeonNode } from "../../src/render/node";
-import { nmTeardown, nmSystemInsets, nmTextVisualY, nmTextWidth, nmLabelProp, nmHasLabel, nmAnyProp, nmViewsCreated, nmTagWithProp, nmTouch, nmLastInputTag, nmLayoutHeight, nmControl, nmProp, nmAppLog, nmAppLogClear, nmAppEvent, nmLastPressableTag } from "./nativeBridgeMock.h";
+import { nmTeardown, nmSystemInsets, nmTextVisualY, nmTextWidth, nmLabelProp, nmHasLabel, nmAnyProp, nmViewsCreated, nmTagWithProp, nmTouch, nmLastInputTag, nmLayoutHeight, nmControl, nmProp, nmAppLog, nmAppLogClear, nmAppEvent, nmLastPressableTag, nmTextVisualX } from "./nativeBridgeMock.h";
 import { ImageLoader } from "../../src/components/image";
 import { Dialog } from "../../src/components/dialog";
+import { Button } from "../../src/components/button";
+import { GalleryApp } from "../../examples/components/gallery";
 
 test "the native host publishes how far the unsafe areas reach into its root, and a translucent StatusBar takes the root edge to edge" {
 	const insets = useSafeAreaInsets();
@@ -190,4 +192,42 @@ test "the native back press closes a shown Dialog through BackHandler" {
 	nmTeardown();
 	assert consumed === 1 && log === "dismiss;", `consumed and dismissed: ${consumed} ${log}`;
 	assert after === 0, "the next back press goes to the platform: " + after.toString();
+}
+
+test "the gallery's parity screen mounts natively and drives its rows" {
+	runApp(GalleryApp);
+	nmSystemInsets(59, 0, 34, 0);
+	nmTouch(nmTagWithProp("accessibilityLabel", "Open parity screen"), 2);
+	const opened = nmHasLabel("status: parity screen");
+	const joined = nmHasLabel("Terms apply to this gallery.");
+	nmTouch(nmTagWithProp("accessibilityLabel", "Edge to edge"), 2);
+	const edge = nmHasLabel("insets 59/34 · bar shown · image loading");
+	nmTouch(nmTagWithProp("accessibilityLabel", "Inside safe area"), 2);
+	const inside = nmHasLabel("insets 0/0 · bar shown · image loading");
+	nmTouch(nmTagWithProp("accessibilityLabel", "Slop target"), 2);
+	const slop = nmHasLabel("status: slop pressed");
+	nmTouch(nmTagWithProp("accessibilityLabel", "Open dialog"), 2);
+	const back = nmAppEvent(1, "");
+	const dismissed = nmHasLabel("status: dialog dismissed");
+	nmTeardown();
+	nmSystemInsets(0, 0, 0, 0);
+	assert opened === 1 && joined === 1, `parity screen with one joined label: ${opened} ${joined}`;
+	assert edge === 1 && inside === 1, `edge to edge publishes the insets: ${edge} ${inside}`;
+	assert slop === 1, "the slop target presses";
+	assert back === 1 && dismissed === 1, `back dismisses the dialog: ${back} ${dismissed}`;
+}
+
+test "a centred label in a centring parent keeps its text's width as its text arrives" {
+	const [label, setLabel] = createSignal("");
+	const app = (): NeonNode => <View style={{ width: 300 }}>
+		<Button title="Press me" onPress={(e: NeonEvent): void => {}} />
+		<View style={{ alignItems: "center" }}><Text style={{ textAlign: "center" }}>{label()}</Text></View>
+	</View>;
+	runApp(app);
+	setLabel("mid");
+	const button = nmTextWidth("PRESS ME");
+	const mid = `${nmTextWidth("mid")} ${nmTextVisualX("mid")}`;
+	nmTeardown();
+	assert button === 68, "the Button title is not squeezed to nothing: " + button.toString();
+	assert mid === "26 137", "centred in its parent: " + mid;
 }

@@ -104,6 +104,7 @@ class NativeNode {
 	measuredW: float32 = 0.0;
 	textInsets: string = "";
 	textAlign: string = "";
+	minFromMeasure: boolean = false;
 	contentH: float32 = -1.0;
 	horizontal: boolean = false;
 	visibleContent: VisibleContentPosition | null = null;
@@ -389,7 +390,10 @@ function measureTextWithin(n: NativeNode, available: float32): void {
 	}
 	if (alignsAcross(n)) {
 		fresh.width = old !== null ? old.width : null;
-		if (fresh.minWidth === null) { fresh.minWidth = w; }
+		if (fresh.minWidth === null || n.minFromMeasure) {
+			fresh.minWidth = w;
+			n.minFromMeasure = true;
+		}
 	} else {
 		fresh.width = w;
 	}
@@ -689,6 +693,7 @@ function releaseSpan(span: NativeNode): void {
 	if (textNodes.indexOf(span) < 0) { textNodes.push(span); }
 	const own: Style = span.styleCache !== null ? span.styleCache as Style : {};
 	span.flex = nativeFlexStyle(own, NativeElementKind.Text);
+	span.minFromMeasure = false;
 	applyPaint(span, own);
 	for (const c of span.children) {
 		if (c.spanOwner !== null) { adoptSpan(c, span); }
@@ -940,6 +945,7 @@ export function createNativeHost(): NativeHost {
 			}
 			writeTextInsets(n, style);
 			n.flex = intrinsicFlex(n, nativeFlexStyle(style, kindOf(n)));
+			n.minFromMeasure = false;
 			applyPaint(n, style);
 			if (n.isText && !n.isString && (hasSpans(n) || styledRun(style))) { refreshLabel(n); }
 			else if (n.isText) { remeasureText(n); }
