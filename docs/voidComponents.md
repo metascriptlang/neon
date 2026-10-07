@@ -132,7 +132,7 @@ A resource is owned or borrowed explicitly; copying a handle is not retaining it
 | 3D-05 | `src/void3d/material.ms` passFor/phaseFor/layer; `src/void3d/passList.ms` collect/sortByLayer | Material render-state/kind/phase/layer props; missing beyond default lit material | Opaque/alpha-kill/alpha/additive/soft-add, culling/depth, transparency sort and layer ordering match Void; `tests/integration/alphaKill.ms`, `tests/integration/sceneOcclusion.ms`, `tests/integration/sortLayer.ms` |
 | 3D-06 | `src/void3d/texture.ms` TextureData/TextureAlpha; `src/void3d/draw.ms` addTexture | Texture image/data/sampler binding in Material; missing | Authored data/image colors, filter/wrap/alpha, UVs, replacement, context loss and ownership; `src/test/textureCheck.ms`, `tests/integration/texturedFrame.ms` |
 | 3D-07 | `src/void3d/draw.ms` addTargetTexture; `src/void2d/scene.ms` drawTarget; `src/gpu/target.ms` RenderTarget | Texture containing View/Text/Pressable owns 2D scene and sampled target; missing | Same owner/context chain, resize/recreation/DPI invalidation, premultiplied material pairing, disposal and target no-self-sampling checks; `tests/integration/sceneTarget.ms`, `tests/integration/targetTexture.ms`, `tests/integration/targetOwner.ms` |
-| 3D-08 | `src/void3d/camera.ms` Camera3D/fromWorld/resolve; `src/void3d/scene.ms` SceneCamera/addCameraNode/cameraOf | Camera3D selection exists; world-bound orientation/roll and camera mounting are not mapped | Perspective/orthographic, reactive selection/depth/projection, moving/rolled Group parent and supported pixel-art snap; `tests/integration/cameraRigFrame.ms`, `src/test/cameraCheck.ms` |
+| 3D-08 | `src/void3d/camera.ms` Camera3D/fromWorld/resolve; `src/void3d/scene.ms` SceneCamera/addCameraNode/cameraOf | Camera3D binds a Void camera node; local yaw/pitch, parent translation/roll/scale and active fallback CPU-tested on candidate. handle.camera remains local request; frame must resolve Void.cameraOf. Installed/projection/pixels pending | Perspective/orthographic, reactive selection/depth/projection, moving/rolled Group parent and supported pixel-art snap; `tests/integration/cameraRigFrame.ms`, `src/test/cameraCheck.ms` |
 | 3D-09 | `src/void3d/scene.ms` LightInstance/addLightNode/setLightPower/collectLights | Light kind/value mount and reactive power/local pose exist; other supported writes must be mapped or reject explicitly | Directional/point behavior, ambient, priority/light limits, reactive power/pose, no silently frozen props; `tests/render/scene3d.test.ms`, `src/test/scene3dCheck.ms` |
 | 3D-10 | `src/void3d/scene.ms` setPickable; `src/void3d/camera.ms` rayFromScreen; `src/void3d/pick.ms` PickHit/pickNearest | Group/Mesh press and pick ref/query; absent (do not advertise inert onPress) | Nearest visible hit, ancestor owner, culling/transforms and authored UV/null-UV; HUD wins, texture UV reaches UI handler; `src/test/pickCheck.ms`, `tests/integration/targetTexture.ms` |
 | 3D-11 | `src/void3d/animation.ms` AnimationClock/ObjectAnimation/bindTracks/syncPose | ObjectAnimation driven by component-owned frame subscription; missing | Named tracks, linear/step sample, speed/pause/loop/frame control and transform-writer conflicts have explicit policy; stop at unmount; `src/test/animationCheck.ms` |
@@ -198,10 +198,11 @@ Being exported for tests or low-level drawing does not imply it needs its own JS
 - Material/Texture parent scope, ownership and replacement must be explicit. Keep the authored
   `<Mesh><Material><Texture><View>…</View></Texture></Material></Mesh>` path; resource handles
   remain available for intentional borrowing, not as a requirement to manually mount this path.
-- Existing camera tests reject a transformed Group because the earlier Void could not represent it.
-  Baseline Void can (`src/void3d/scene.ms` cameraOf; `src/void3d/camera.ms` fromWorld). Full coverage
-  must map it, not preserve the old limitation indefinitely. Retain the camera test's lifecycle/
-  selection coverage and evolve its old refusal in the camera-support slice, with pixel proof.
+- Camera binding now uses Void addCameraNode/setCameraOf/setActiveCamera and cameraOf/fromWorld.
+  Original sixteen-case contract retains selection/lifecycle/projection inputs, evolves the old
+  parent refusal into world-pose assertions and accounts for real camera nodes. Three additional
+  native camera cases pass candidate; original contract still stops at the projection-signal
+  compiler error. Parent-roll CPU proof is not pixel/frame acceptance.
 - Light and animation props that lack a safe binder need explicit replacement/update design. A
   frozen prop is not compatibility. Animation and a reactive transform cannot silently overwrite
   each other; determine writer ownership before implementation.
