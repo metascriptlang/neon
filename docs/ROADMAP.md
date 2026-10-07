@@ -236,6 +236,27 @@ manual frame clock; Chrome checks a pushed screen moves and settles; on the simu
 are rows V1–V11 of `WORKAROUND.md`. Not verified: gestures on a physical phone, url
 events on a device (P7), hardware back on a device, browser history.
 
+Device and storage modules (`wt/rn-device`, msc `0d83c4867`, 2026-10-08): the first hand-ported
+RN/Expo native-module domains, on the P1 app channel (new commands and app events 9–12):
+`AsyncStorage` (+ `useAsyncStorage`), `NetInfo` (+ `useNetInfo`), `Permissions` (expo's
+`PermissionResponse` for camera, microphone, location, notifications) and `PermissionsAndroid`,
+`Geolocation` (`@react-native-community/geolocation`) with an expo-location subset, `Haptics`,
+`DeviceInfo`, expo-localization's `getLocales`/`getCalendars` with react-native-localize's
+helpers, and local `Notifications` (expo-notifications), exported from `src/index.ms`. Proven:
+`tests/api/deviceApis.test.ms` (19, native and JS), `tests/platform/nativeDevice.test.ms` (8, mock
+bridge), `tests/browser/deviceApis.test.ms` (7, Chrome), and `examples/device` on an iPhone 17 Pro
+simulator, iOS 26.5 (`tests/ios/device.sh`, `DeviceUITests`, `/private/tmp/neon-device-run2`): a note
+and a merged JSON item survive terminate and relaunch, NetInfo reads wifi/connected/reachable, the
+location alert is answered and `getCurrentPosition` reads the simulated 10.7769,106.7009, a watch
+reports fixes, the notification alert is answered, a 2 s notification reaches the received listener
+and the handler, and a banner tapped from the home screen reaches the response listener. Android:
+the demo's APK builds (`tests/android/devicemodules.sh --build-only`); the lane
+`tests/android/devicemodules.py` is written but not run (the Seeker is locked). Provisional choices
+are rows D1–D8 of `WORKAROUND.md`. Not verified: any module on an Android device or emulator,
+haptics felt (the simulator has none), battery on a device, a network change event on a device,
+camera and microphone requests (only their refusal path is tested), notification taps while an
+Android app is alive (needs Ion's `onNewIntent`, P7).
+
 Prove each workflow through its real consumer on the declared targets. A public symbol,
 mock pass or separate-module test artifact is not proof of the normal packaged app.
 The reactive concepts still owed live in `docs/SOLID.md`; they are dependencies of these
