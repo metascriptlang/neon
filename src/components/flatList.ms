@@ -2,7 +2,11 @@ import { Accessor } from "../core/signal";
 import { NeonNode } from "../render/node";
 import { NeonEvent } from "../render/event";
 import { Style } from "../render/style";
-import { KeyboardDismissMode, KeyboardShouldPersistTaps } from "./primitives";
+import {
+	KeyboardDismissMode,
+	KeyboardShouldPersistTaps,
+	MaintainVisibleContentPosition,
+} from "./primitives";
 import {
 	EndReachedInfo,
 	FlatListHandle,
@@ -79,6 +83,7 @@ export function FlatList<T>(props: {
 	onMomentumScrollEnd?: ((e: NeonEvent) => void) | null;
 	onRefresh?: (() => void) | null;
 	refreshing?: Accessor<boolean> | null;
+	maintainVisibleContentPosition?: Accessor<MaintainVisibleContentPosition> | null;
 	onContentSizeChange?: ((width: number, height: number) => void) | null;
 	style?: Accessor<Style> | null;
 	contentContainerStyle?: Accessor<Style> | null;

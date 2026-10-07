@@ -1246,3 +1246,55 @@ test "eventually renders all items when virtualization disabled" {
 	assert shape(root) === "c0-9", shape(root);
 	dispose();
 }
+
+function itemsFrom(first: number, count: number): Item[] {
+	const out: Item[] = [];
+	for (let i = 0; i < count; i += 1) { out.push({ id: "k" + (first + i).toString(), n: first + i }); }
+	return out;
+}
+
+test "handles maintainVisibleContentPosition" {
+	const root: MockNode = mockNode("root");
+	const first = items(20);
+	const [data, setData] = createSignal<Item[]>(first);
+	const dispose = render(element(<FlatList data={data()} getItemLayout={tall10} renderItem={row} initialNumToRender={1} windowSize={1}
+		updateCellsBatchingPeriod={0} maintainVisibleContentPosition={{ minIndexForVisible: 0 }} />), mockHost(), root as unknown as HostNode);
+	layOut(root, 50, 200);
+	await performAllBatches(root);
+	assert shape(root) === "c0-4 sp150", "initial render: " + shape(root);
+	const next = itemsFrom(20, 10);
+	for (const item of first) { next.push(item); }
+	setData(next);
+	assert shape(root) === "c20 sp90 c0-4 sp150", "previously rendered cells are rendered still: " + shape(root);
+	fireEventWith(content(root), "onLayout", layoutEvent(300));
+	fireEventWith(scrollView(root), "onScroll", scrollEvent(100, 50, 300));
+	await performAllBatches(root);
+	assert shape(root) === "c20 sp80 c29 c0-4 sp150", "the window follows the adjusted offset: " + shape(root);
+	dispose();
+}
+
+test "handles maintainVisibleContentPosition when anchor moves before minIndexForVisible" {
+	const root: MockNode = mockNode("root");
+	const first = items(20);
+	const [data, setData] = createSignal<Item[]>(first);
+	const dispose = render(element(<FlatList data={data()} getItemLayout={tall10} renderItem={row} initialNumToRender={1} windowSize={1}
+		updateCellsBatchingPeriod={0} maintainVisibleContentPosition={{ minIndexForVisible: 1 }} />), mockHost(), root as unknown as HostNode);
+	layOut(root, 50, 200);
+	await performAllBatches(root);
+	assert shape(root) === "c0-4 sp150", "initial render: " + shape(root);
+	setData(first.slice(1, first.length));
+	assert shape(root) === "c1-4 sp150", shape(root);
+	dispose();
+}
+
+test "a list hands maintainVisibleContentPosition to its ScrollView with the header counted as a child" {
+	const root: MockNode = mockNode("root");
+	const dispose = render(element(<FlatList data={items(3)} getItemLayout={tall10} renderItem={row} ListHeaderComponent={ListHeader}
+		maintainVisibleContentPosition={{ minIndexForVisible: 0, autoscrollToTopThreshold: 5 }} />), mockHost(), root as unknown as HostNode);
+	let got = "<unset>";
+	for (const a of scrollView(root).attrs) {
+		if (a.name === "maintainVisibleContentPosition") { got = a.value ?? ""; }
+	}
+	assert got === "1,5", got;
+	dispose();
+}

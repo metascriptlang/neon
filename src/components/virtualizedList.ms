@@ -11,7 +11,14 @@ import { Row, makeRow, moveRow, needsStartMarker, place, reconcileArrays } from 
 import { NeonEvent } from "../render/event";
 import { Host, HostNode } from "../render/hostTypes";
 import { Style, mergeStyle } from "../render/style";
-import { ScrollView, ScrollViewHandle, View, KeyboardDismissMode, KeyboardShouldPersistTaps } from "./primitives";
+import {
+	KeyboardDismissMode,
+	KeyboardShouldPersistTaps,
+	MaintainVisibleContentPosition,
+	ScrollView,
+	ScrollViewHandle,
+	View,
+} from "./primitives";
 import { CellMetrics, CellRange, WindowScroll, computeWindowedRenderLimits, shouldRenderWithPriority } from "./list/virtualizeUtils";
 import { CellRenderMask } from "./list/cellRenderMask";
 import { CellSource, LayoutBox, ListMetricsAggregator, ListOrientation } from "./list/listMetrics";
@@ -73,6 +80,8 @@ export interface ScrollToItemOptions {
 export interface ScrollToEndOptions {
 	animated?: boolean | null;
 }
+
+type KeptPosition = Accessor<MaintainVisibleContentPosition>;
 
 // RN VirtualizedList._maybeCallOnEdgeReached: 2 px without onEndReachedThreshold, distances under 0.001 read 0.
 const DEFAULT_THRESHOLD_PX = 2;
@@ -242,6 +251,7 @@ export function VirtualizedList<T, D>(props: {
 	onMomentumScrollEnd?: ((e: NeonEvent) => void) | null;
 	onRefresh?: (() => void) | null;
 	refreshing?: Accessor<boolean> | null;
+	maintainVisibleContentPosition?: Accessor<MaintainVisibleContentPosition> | null;
 	onContentSizeChange?: ((width: number, height: number) => void) | null;
 	style?: Accessor<Style> | null;
 	contentContainerStyle?: Accessor<Style> | null;
@@ -296,6 +306,7 @@ export function listEngine<T, D>(props: {
 	onMomentumScrollEnd?: ((e: NeonEvent) => void) | null;
 	onRefresh?: (() => void) | null;
 	refreshing?: Accessor<boolean> | null;
+	maintainVisibleContentPosition?: Accessor<MaintainVisibleContentPosition> | null;
 	onContentSizeChange?: ((width: number, height: number) => void) | null;
 	style?: Accessor<Style> | null;
 	contentContainerStyle?: Accessor<Style> | null;
@@ -820,6 +831,50 @@ export function listEngine<T, D>(props: {
 		if (props.getItemLayout !== null) { maybeCallOnEdgeReached(cellCount()); }
 	};
 
+	// RN VirtualizedList.getDerivedStateFromProps, its maintainVisibleContentPosition branch.
+	const keepProp = props.maintainVisibleContentPosition;
+	const minIndexForVisible = (): int32 => {
+		if (keepProp === null) { return 0; }
+		return (keepProp as KeptPosition)().minIndexForVisible as int32;
+	};
+	let firstVisibleKey: T | null = null;
+	const indexOfKey = (key: T, hint: int32, n: int32): int32 | null => {
+		if (hint >= 0 && hint < n && source.keyAt(hint) === key) { return hint; }
+		for (let i: int32 = 0; i < n; i += 1) {
+			if (source.keyAt(i) === key) { return i; }
+		}
+		return null;
+	};
+	const keptWindow = (n: int32, previousCount: int32): CellRange => {
+		const minIndex = minIndexForVisible();
+		const previousKey = firstVisibleKey;
+		const unchanged = cellsAroundViewport;
+		if (keepProp === null || previousKey === null || n <= minIndex) { return unchanged; }
+		if (source.keyAt(minIndex) === previousKey) { return unchanged; }
+		const found = indexOfKey(previousKey as T, n - previousCount + minIndex, n);
+		if (found === null) { return unchanged; }
+		const adjustment = (found as int32) - minIndex;
+		pendingScrollUpdateCount += 1;
+		return {
+			first: cellsAroundViewport.first + adjustment,
+			last: cellsAroundViewport.last + adjustment,
+		};
+	};
+	const rememberFirstVisibleKey = (n: int32): void => {
+		const minIndex = minIndexForVisible();
+		firstVisibleKey = n > minIndex ? source.keyAt(minIndex) : null;
+	};
+
+	// RN VirtualizedList.render: the ScrollView counts ListHeaderComponent as a child.
+	const keptPosition = (keep: KeptPosition): KeptPosition =>
+		accessor((): MaintainVisibleContentPosition => {
+			const position = keep();
+			return {
+				minIndexForVisible: position.minIndexForVisible + (headerOffset as number),
+				autoscrollToTopThreshold: position.autoscrollToTopThreshold,
+			};
+		});
+
 	let seenCount: int32 = -1;
 	if (sticky !== null) {
 		createEffect((): void => {
@@ -843,8 +898,10 @@ export function listEngine<T, D>(props: {
 			setCellTotal(n as number);
 			if (seenCount < 0) {
 				cellsAroundViewport = initialRegion(n);
+				rememberFirstVisibleKey(n);
 			} else if (n !== seenCount) {
-				cellsAroundViewport = constrainToItemCount(cellsAroundViewport, n);
+				cellsAroundViewport = constrainToItemCount(keptWindow(n, seenCount), n);
+				rememberFirstVisibleKey(n);
 			}
 			const first = seenCount < 0;
 			seenCount = n;
@@ -950,5 +1007,7 @@ export function listEngine<T, D>(props: {
 		onScrollBeginDrag, onScrollEndDrag: props.onScrollEndDrag,
 		onMomentumScrollBegin: props.onMomentumScrollBegin, onMomentumScrollEnd: props.onMomentumScrollEnd,
 		onRefresh: props.onRefresh, refreshing: props.refreshing,
+		maintainVisibleContentPosition:
+			keepProp === null ? null : keptPosition(keepProp as KeptPosition),
 	});
 }
