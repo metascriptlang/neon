@@ -127,3 +127,23 @@ test "the container theme colors headers and reaches screens through useTheme" {
 	assert (headerOf(root).style as Style).backgroundColor === DarkTheme.colors.card;
 	dispose();
 }
+
+test "a Group hands its screenOptions to its screens, under their own options" {
+	const root: MockNode = mockNode("root");
+	const ref = createNavigationContainerRef();
+	const dispose: Dispose = render(<NavigationContainer ref={ref}>
+		<Stack.Navigator>
+			<Stack.Screen name="Base" component={Counted} />
+			<Stack.Group screenOptions={{ presentation: "transparentModal", title: "Grouped" }}>
+				<Stack.Screen name="Overlay" component={Counted} />
+				<Stack.Screen name="Titled" component={Counted} options={{ presentation: "card", title: "Own" }} />
+			</Stack.Group>
+		</Stack.Navigator>
+	</NavigationContainer>, mockHost(), root as unknown as HostNode);
+	ref.navigate("Overlay");
+	assert visibleText(root) === "Base|Base 0|+|Overlay 0|+", "overlay keeps Base visible: " + visibleText(root);
+	ref.goBack();
+	ref.navigate("Titled");
+	assert visibleText(root) === "‹ Base|Own|Titled 0|+", visibleText(root);
+	dispose();
+}

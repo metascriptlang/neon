@@ -16,7 +16,7 @@ import {
 	optionsAccessor,
 } from "./core";
 import { screenView } from "./header";
-import { ScreenCollector, collectScreens, readName, readOptions, screenOf } from "./stack";
+import { ScreenCollector, collectScreens, groupOf, readName, readOptions, screenOf } from "./stack";
 import { BackBehavior, labelOf, mountedEntries, readBehavior } from "./tabs";
 
 export const DRAWER_WIDTH = 280;
@@ -76,6 +76,10 @@ export interface DrawerNavigator<P> {
 		drawerStyle?: Accessor<Style> | null;
 		drawerPosition?: Accessor<DrawerPosition> | null;
 	}) => NeonNode;
+	Group: (props: {
+		children: NeonNode;
+		screenOptions?: Accessor<ScreenOptionsOf<P>> | null;
+	}) => NeonNode;
 	Screen: (props: {
 		name: string;
 		component: (props: ScreenProps<P>) => NeonNode;
@@ -86,7 +90,7 @@ export interface DrawerNavigator<P> {
 }
 
 export function createDrawerNavigator<P>(): DrawerNavigator<P> {
-	const collector: ScreenCollector<P> = { screens: null };
+	const collector: ScreenCollector<P> = { screens: null, groups: [] };
 	return {
 		Navigator: (props: {
 			children: NeonNode;
@@ -157,6 +161,10 @@ export function createDrawerNavigator<P>(): DrawerNavigator<P> {
 				</Show>
 			</View>;
 		},
+		Group: (props: {
+			children: NeonNode;
+			screenOptions?: Accessor<ScreenOptionsOf<P>> | null;
+		}): NeonNode => groupOf<P>(collector, props.children, optionsAccessor<P>(props.screenOptions)),
 		Screen: (props: {
 			name: string;
 			component: (props: ScreenProps<P>) => NeonNode;

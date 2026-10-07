@@ -11,6 +11,7 @@ import {
 	ScreenOptionsOf,
 	ScreenProps,
 	createCore,
+	mergeOptions,
 	optionsAccessor,
 	currentScope,
 } from "./core";
@@ -18,6 +19,35 @@ import { screenView } from "./header";
 
 export interface ScreenCollector<P> {
 	screens: ScreenConfig<P>[] | null;
+	groups: Accessor<ScreenOptions>[];
+}
+
+function withGroups(
+	groups: Accessor<ScreenOptions>[],
+	own: Accessor<ScreenOptions> | null,
+): Accessor<ScreenOptions> | null {
+	if (groups.length === 0) { return own; }
+	return accessor((): ScreenOptions => {
+		let merged: ScreenOptions = {};
+		for (const group of groups) { merged = mergeOptions(merged, group()); }
+		return own === null ? merged : mergeOptions(merged, (own as Accessor<ScreenOptions>)());
+	});
+}
+
+export function groupOf<P>(
+	collector: ScreenCollector<P>,
+	children: NeonNode,
+	screenOptions: Accessor<ScreenOptions> | null,
+): NeonNode {
+	return (host: Host, parent: HostNode, before: HostNode | null): void => {
+		if (collector.screens === null) {
+			throw new Error("a Group must be a child of its Navigator");
+		}
+		const pushed = screenOptions !== null;
+		if (pushed) { collector.groups.push(screenOptions as Accessor<ScreenOptions>); }
+		children(host, parent, before);
+		if (pushed) { collector.groups.pop(); }
+	};
 }
 
 export function collectScreens<P>(
@@ -52,6 +82,7 @@ export function screenOf<P>(
 		for (const screen of list as ScreenConfig<P>[]) {
 			if (screen.name === name) { throw new Error("two screens are named '" + name + "'"); }
 		}
+		config.options = withGroups(collector.groups.slice(0, collector.groups.length), options);
 		(list as ScreenConfig<P>[]).push(config);
 	};
 }
@@ -76,6 +107,10 @@ export interface StackNavigator<P> {
 		initialRouteName?: Accessor<string> | null;
 		screenOptions?: Accessor<ScreenOptionsOf<P>> | null;
 	}) => NeonNode;
+	Group: (props: {
+		children: NeonNode;
+		screenOptions?: Accessor<ScreenOptionsOf<P>> | null;
+	}) => NeonNode;
 	Screen: (props: {
 		name: string;
 		component: (props: ScreenProps<P>) => NeonNode;
@@ -86,7 +121,7 @@ export interface StackNavigator<P> {
 }
 
 export function createStackNavigator<P>(): StackNavigator<P> {
-	const collector: ScreenCollector<P> = { screens: null };
+	const collector: ScreenCollector<P> = { screens: null, groups: [] };
 	return {
 		Navigator: (props: {
 			children: NeonNode;
@@ -110,6 +145,10 @@ export function createStackNavigator<P>(): StackNavigator<P> {
 				<For each={core.entries}>{screen}</For>
 			</View>;
 		},
+		Group: (props: {
+			children: NeonNode;
+			screenOptions?: Accessor<ScreenOptionsOf<P>> | null;
+		}): NeonNode => groupOf<P>(collector, props.children, optionsAccessor<P>(props.screenOptions)),
 		Screen: (props: {
 			name: string;
 			component: (props: ScreenProps<P>) => NeonNode;

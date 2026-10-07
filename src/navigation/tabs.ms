@@ -17,7 +17,7 @@ import {
 	optionsAccessor,
 } from "./core";
 import { Slot, screenView, shown } from "./header";
-import { ScreenCollector, collectScreens, readName, readOptions, screenOf } from "./stack";
+import { ScreenCollector, collectScreens, groupOf, readName, readOptions, screenOf } from "./stack";
 
 export type BackBehavior = "firstRoute" | "initialRoute" | "history" | "none";
 
@@ -126,6 +126,10 @@ export interface TabNavigator<P> {
 		backBehavior?: Accessor<BackBehavior> | null;
 		tabBarStyle?: Accessor<Style> | null;
 	}) => NeonNode;
+	Group: (props: {
+		children: NeonNode;
+		screenOptions?: Accessor<ScreenOptionsOf<P>> | null;
+	}) => NeonNode;
 	Screen: (props: {
 		name: string;
 		component: (props: ScreenProps<P>) => NeonNode;
@@ -136,7 +140,7 @@ export interface TabNavigator<P> {
 }
 
 export function createBottomTabNavigator<P>(): TabNavigator<P> {
-	const collector: ScreenCollector<P> = { screens: null };
+	const collector: ScreenCollector<P> = { screens: null, groups: [] };
 	return {
 		Navigator: (props: {
 			children: NeonNode;
@@ -185,6 +189,10 @@ export function createBottomTabNavigator<P>(): TabNavigator<P> {
 				</View>
 			</View>;
 		},
+		Group: (props: {
+			children: NeonNode;
+			screenOptions?: Accessor<ScreenOptionsOf<P>> | null;
+		}): NeonNode => groupOf<P>(collector, props.children, optionsAccessor<P>(props.screenOptions)),
 		Screen: (props: {
 			name: string;
 			component: (props: ScreenProps<P>) => NeonNode;
