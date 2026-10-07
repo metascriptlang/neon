@@ -11,12 +11,14 @@ import android.view.ViewConfiguration;
 import android.view.WindowInsets;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.EditText;
+import android.widget.FrameLayout;
 import android.widget.HorizontalScrollView;
 import android.widget.ScrollView;
 import android.widget.OverScroller;
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
 
 public final class Scroll extends SwipeRefreshLayout {
+	private final FrameLayout refreshTarget;
 	private ViewGroup scroller;
 	private boolean horizontal, scrollEnabled = true, paging, refreshEnabled;
 	private boolean desiredRefreshing;
@@ -39,6 +41,8 @@ public final class Scroll extends SwipeRefreshLayout {
 			if (!desiredRefreshing) setRefreshing(false);
 		});
 		setOnChildScrollUpCallback((parent, child) -> !scrollEnabled || scroller.canScrollVertically(-1));
+		refreshTarget = new FrameLayout(context);
+		addView(refreshTarget, new ViewGroup.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
 		replaceScroller(false);
 		setEnabled(false);
 	}
@@ -48,10 +52,8 @@ public final class Scroll extends SwipeRefreshLayout {
 	private void replaceScroller(boolean axis) {
 		stopMomentum();
 		View content = scroller != null && scroller.getChildCount() > 0 ? scroller.getChildAt(0) : null;
-		int x = scroller == null ? 0 : scroller.getScrollX();
-		int y = scroller == null ? 0 : scroller.getScrollY();
 		if (content != null) scroller.removeView(content);
-		if (scroller != null) removeView(scroller);
+		if (scroller != null) refreshTarget.removeView(scroller);
 		horizontal = axis;
 		scroller = axis ? new Horizontal(getContext()) : new Vertical(getContext());
 		scroller.setHorizontalScrollBarEnabled(horizontalIndicator);
@@ -61,9 +63,8 @@ public final class Scroll extends SwipeRefreshLayout {
 			activelyScrolling = true;
 			emit(0);
 		});
-		addView(scroller, new ViewGroup.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
+		refreshTarget.addView(scroller, new ViewGroup.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
 		if (content != null) scroller.addView(content);
-		scroller.scrollTo(x, y);
 	}
 
 	public void addContent(View content) { scroller.addView(content); }
