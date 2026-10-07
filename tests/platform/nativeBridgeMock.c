@@ -607,3 +607,21 @@ const char *nmAnyProp(const char *name) {
 	}
 	return "<unset>";
 }
+
+int32_t nmTagWithProp(const char *name, const char *value) {
+	for (MockView *v = g_views; v; v = v->next) {
+		if (v->released || !v->tag) continue;
+		for (int i = 0; i < v->propCount; i++) {
+			if (strcmp(v->propNames[i], name) == 0 && strcmp(v->propValues[i], value) == 0) return v->tag;
+		}
+	}
+	fprintf(stderr, "mock bridge: no live tagged view with %s=%s\n", name, value);
+	abort();
+}
+
+int32_t nmHasLabel(const char *text) {
+	for (MockView *v = g_views; v; v = v->next) {
+		if (!v->released && v->size > 0 && strcmp(v->text, text) == 0) return 1;
+	}
+	return 0;
+}

@@ -51,3 +51,5 @@ int32_t nmAppEvent(int32_t kind, const char *value);
 float nmBackgroundAlpha(int32_t tag);
 int32_t nmLastViewTag(void);
 const char *nmAnyProp(const char *name);
+int32_t nmTagWithProp(const char *name, const char *value);
+int32_t nmHasLabel(const char *text);

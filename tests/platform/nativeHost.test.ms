@@ -7,6 +7,7 @@ import { Switch } from "../../src/components/switch";
 import { TouchableHighlight } from "../../src/components/touchable";
 import { StatusBar } from "../../src/components/statusBar";
 import { Modal } from "../../src/components/modal";
+import { GalleryApp } from "../../examples/components/gallery";
 import { KeyboardAvoidingView } from "../../src/components/keyboardAvoidingView";
 import { ActivityIndicator } from "../../src/components/activityIndicator";
 import { Image } from "../../src/components/image";
@@ -25,7 +26,7 @@ import {
 	nmLayoutX, nmLayoutY, nmRestackWrites, nmAddChildWrites, nmDetachWrites, nmPaintTag, nmPaintTextIndex,
 	nmControl, nmControlSized, nmTextWidth, nmTextHeight, nmLastControlTag, nmEnvironment, nmLastInputTag, nmFocused, nmProp,
 	nmTextVisualX, nmTextVisualY, nmScrollOffsetX, nmScrollOffsetY, nmScrollShifts,
-	nmBackgroundAlpha, nmLastViewTag, nmAnyProp,
+	nmBackgroundAlpha, nmLastViewTag, nmAnyProp, nmTagWithProp, nmHasLabel,
 } from "./nativeBridgeMock.h";
 
 const PRESS: int32 = 2;
@@ -976,4 +977,25 @@ test "a native multiline TextInput is created as the platform's text area and ro
 	nmControl(tag, 0, "line one\nline two");
 	assert typed === "line one\nline two", "typing routes: " + typed;
 	nmTeardown();
+}
+
+test "the gallery app runs on the native host: button, modal over the app, status bar and keyboard screen" {
+	runApp(GalleryApp);
+	assert nmHasLabel("status: ready") === 1, "mounted";
+	nmTouch(nmTagWithProp("accessibilityLabel", "Press me"), PRESS);
+	assert nmHasLabel("status: button 1") === 1, "button";
+	nmTouch(nmTagWithProp("accessibilityLabel", "Open modal"), PRESS);
+	assert nmHasLabel("Modal content") === 1, "modal open";
+	const modal = nmLastControlTag(5);
+	nmControl(modal, 7, "");
+	assert nmHasLabel("Modal content") === 0 && nmHasLabel("status: modal closed by request") === 1, "back closes the modal";
+	nmTouch(nmTagWithProp("accessibilityLabel", "Hide status bar"), PRESS);
+	assert anyProp("statusBarHidden") === "true", "bar hidden";
+	nmTouch(nmTagWithProp("accessibilityLabel", "Open keyboard screen"), PRESS);
+	assert nmHasLabel("keyboard hidden") === 1, "keyboard screen";
+	nmEnvironment(300, 0);
+	assert nmHasLabel("keyboard 300") === 1, "keyboard published";
+	nmEnvironment(0, 0);
+	nmTeardown();
+	assert nmReleaseCalls() === nmViewsCreated(), "every view released";
 }
