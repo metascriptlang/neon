@@ -421,5 +421,12 @@ fixed LayoutParams, so `TextView.setText` only invalidates, and `View.measure()`
 cached size for the unchanged spec. `niMeasureText` now calls `forceLayout()` first; the lane
 asserts the label widens. Functional evidence only; load was not controlled.
 
-The phone lanes use vertical examples. They do not certify native horizontal gestures,
-refresh, keyboard capture or reactive axis replacement; those acceptance checks remain open.
+`examples/scrollmatrix` with `tests/android/scrollmatrix.py` covers native horizontal drag
+(x moves, y stays 0, a drag presses nothing, a tap after it hits the card under the finger),
+reactive axis replacement both ways with app state kept, and pull-to-refresh closed by the
+app's `refreshing` value; exit 0 on Seeker 2026-10-07. The first runs found two `Scroll.java`
+faults, fixed in `1789560`: `SwipeRefreshLayout` caches its first child as the refresh target
+and only lays out that view, so a replaced scroller never got a frame (content vanished);
+and the old axis offset was carried into the new axis. The scroller now lives inside a stable
+target, and a new axis starts at 0 as RN's remounted native view does. Keyboard capture is
+still open: the native hosts have no TextInput yet.
