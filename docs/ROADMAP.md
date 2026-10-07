@@ -128,6 +128,20 @@ covered the app); a system appearance change from XCUITest (`XCUIDevice.appearan
 the app, `xcrun simctl ui <device> appearance dark` did). Provisional choices are rows A1–A11 of
 `WORKAROUND.md`.
 
+App APIs, bundles 2/3 (`wt/rn-apis`, msc `0d83c4867`, 2026-10-07): `src/api/` holds RN's
+Platform, Dimensions, PixelRatio, Appearance, Keyboard, AppState, BackHandler, Alert, Linking,
+Share, Vibration, Clipboard (the community package's surface) and AccessibilityInfo, exported
+from `src/index.ms`; listeners return subscriptions and the reactive ones also read as Accessors
+(`useAppState`, `useScreenReaderEnabled`). Hosts install them (`WORKAROUND.md` P1–P9). Proven:
+`tests/api/apis.test.ms` (16, native and JS), `tests/platform/nativeApis.test.ms` (7, mock
+bridge), `tests/browser/apis.test.ms` (9, Chrome), and the `examples/apis` demo on an iPhone 17
+Pro simulator, iOS 26.5 (`ApisUITests`: UIAlertController choice, copy/paste, the share sheet's
+Copy resolving `sharedAction`, keyboard dismiss, AppState `inactive>background>active` through
+Home and through `Linking.openSettings`). The Android build and install of the demo succeeded on
+the Seeker; the device lane `tests/android/apis.py` is pending because the phone stayed locked.
+Not verified: vibration on any device (the simulator has none), a screen reader, `tel:` on a
+real phone (the simulator cannot open it), url events (P7).
+
 Prove each workflow through its real consumer on the declared targets. A public symbol,
 mock pass or separate-module test artifact is not proof of the normal packaged app.
 The reactive concepts still owed live in `docs/SOLID.md`; they are dependencies of these
