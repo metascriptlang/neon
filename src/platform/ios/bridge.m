@@ -19,6 +19,9 @@ static int g_lastTag = 0;
 static int g_scrollTag = 0;
 static float g_scrollX = 0, g_scrollY = 0, g_scrollW = 0, g_scrollH = 0, g_scrollContentW = 0, g_scrollContentH = 0;
 static int g_lastPhase = 0;
+static float g_touchX = 0, g_touchY = 0;
+static double g_touchTime = 0;
+static __weak UIView *g_responderView = nil;
 static UIView *g_container = nil;
 static float g_measuredW = 0;
 static float g_measuredH = 0;
@@ -72,26 +75,36 @@ static void call0(msClosure c) {
 
 @implementation NeonTouchView
 
-- (void)touchesBegan:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
+- (void)neonReport:(NSSet<UITouch *> *)touches phase:(int)phase {
+	UITouch *touch = touches.anyObject;
+	CGPoint at = [touch locationInView:nil];
 	g_lastTag = (int)self.tag;
-	g_lastPhase = 0;
+	g_lastPhase = phase;
+	g_touchX = (float)at.x;
+	g_touchY = (float)at.y;
+	g_touchTime = touch.timestamp * 1000.0;
 	call0(s_touch);
+}
+
+- (void)touchesBegan:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
+	[self neonReport:touches phase:0];
 	[super touchesBegan:touches withEvent:event];
 }
 
+- (void)touchesMoved:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
+	[self neonReport:touches phase:4];
+	[super touchesMoved:touches withEvent:event];
+}
+
 - (void)touchesEnded:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
-	g_lastTag = (int)self.tag;
-	g_lastPhase = 1;
-	call0(s_touch);
+	[self neonReport:touches phase:1];
 	g_lastPhase = 2; // the press itself, after the up
 	call0(s_touch);
 	[super touchesEnded:touches withEvent:event];
 }
 
 - (void)touchesCancelled:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
-	g_lastTag = (int)self.tag;
-	g_lastPhase = 3;
-	call0(s_touch);
+	[self neonReport:touches phase:3];
 	[super touchesCancelled:touches withEvent:event];
 }
 
@@ -556,6 +569,25 @@ static UIView *focusedInput(UIView *view) {
 		if ([target isKindOfClass:UIControl.class] || ([target isKindOfClass:NeonTouchView.class] && ((NeonTouchView *)target).neonHandlesPress)) handled = YES;
 	}
 	return _neonPersistTaps == 0 || !handled;
+}
+
+// RN RCTScrollView _shouldDisableScrollInteraction: a blocking responder inside keeps the
+// touch. The pan recognizer begins before the content view sees this move, so report it first.
+- (BOOL)touchesShouldCancelInContentView:(UIView *)view {
+	UIView *tagged = view;
+	while (tagged && tagged != self && !([tagged isKindOfClass:NeonTouchView.class] && tagged.tag != 0)) tagged = tagged.superview;
+	if (tagged && tagged != self) {
+		CGPoint at = [self.panGestureRecognizer locationInView:nil];
+		g_lastTag = (int)tagged.tag;
+		g_lastPhase = 4;
+		g_touchX = (float)at.x;
+		g_touchY = (float)at.y;
+		g_touchTime = g_touchTime + 0.5;
+		call0(s_touch);
+	}
+	UIView *holder = g_responderView;
+	if (holder && [holder isDescendantOfView:self]) return NO;
+	return [super touchesShouldCancelInContentView:view];
 }
 
 - (void)neonDismissKeyboard:(UITapGestureRecognizer *)recognizer {
@@ -1061,6 +1093,15 @@ void niSetTouchHandler(msClosure handler) {
 
 int niLastTouchTag(void) { return g_lastTag; }
 int niLastTouchPhase(void) { return g_lastPhase; }
+float niLastTouchX(void) { return g_touchX; }
+float niLastTouchY(void) { return g_touchY; }
+double niLastTouchTime(void) { return g_touchTime; }
+
+void niSetResponder(void *view, int blockNativeResponder) {
+	g_responderView = blockNativeResponder ? (__bridge UIView *)view : nil;
+}
+
+void niClearResponder(void) { g_responderView = nil; }
 
 void niSetScrollHandler(msClosure handler) {
 	s_scroll = handler;

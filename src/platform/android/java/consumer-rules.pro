@@ -1,5 +1,6 @@
 -keep class dev.metascript.neon.Touch {
 	<init>(int);
+	static void claim(android.view.View, boolean);
 	native <methods>;
 }
 

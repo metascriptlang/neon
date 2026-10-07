@@ -22,7 +22,8 @@ interface NativeEventRoute {
 export interface NativeEventRegistry {
 	add: (tag: int32, name: string, handler: (e: NeonEvent) => void) => void;
 	remove: (tag: int32) => void;
-	dispatch: (tag: int32, phase: int32, x: number, y: number) => boolean;
+	dispatch: (tag: int32, phase: int32, x: number, y: number, timeStamp: number) => boolean;
+	touch: (tag: int32, phase: int32, x: number, y: number, timeStamp: number) => boolean;
 	scroll: (tag: int32, x: number, y: number, width: number, height: number, contentWidth: number, contentHeight: number) => boolean;
 	scrollPhase: (tag: int32, phase: int32, x: number, y: number, width: number, height: number, contentWidth: number, contentHeight: number) => boolean;
 	layout: (tag: int32, x: number, y: number, width: number, height: number) => boolean;
@@ -219,13 +220,14 @@ function transformAngle(ref p: TransformCursor): float64 {
 	return 0;
 }
 
-function fireRoutes(routes: NativeEventRoute[], type: string, x: number, y: number): boolean {
+function fireRoutes(routes: NativeEventRoute[], type: string, x: number, y: number, timeStamp: number): boolean {
 	let fired = false;
 	for (const route of routes) {
 		if (eventType(route.name) !== type) { continue; }
 		const event = neonEvent(type);
 		event.x = x;
 		event.y = y;
+		event.timeStamp = timeStamp;
 		route.handler(event);
 		fired = true;
 	}
@@ -249,17 +251,31 @@ export function createNativeEventRegistry(): NativeEventRegistry {
 		byTag.delete(tag);
 	}
 
-	function dispatch(tag: int32, phase: int32, x: number, y: number): boolean {
+	function dispatch(tag: int32, phase: int32, x: number, y: number, timeStamp: number): boolean {
 		if (!byTag.has(tag)) { return false; }
 		const routes = byTag.get(tag) as NativeEventRoute[];
-		if (phase === 0) { return fireRoutes(routes, "pointerdown", x, y); }
-		if (phase === 1) { return fireRoutes(routes, "pointerup", x, y); }
-		if (phase === 2) { return fireRoutes(routes, "press", x, y); }
+		if (phase === 0) { return fireRoutes(routes, "pointerdown", x, y, timeStamp); }
+		if (phase === 1) { return fireRoutes(routes, "pointerup", x, y, timeStamp); }
+		if (phase === 2) { return fireRoutes(routes, "press", x, y, timeStamp); }
 		if (phase === 3) {
-			const cancelled = fireRoutes(routes, "pointercancel", x, y);
-			return fireRoutes(routes, "pointerleave", x, y) || cancelled;
+			const cancelled = fireRoutes(routes, "pointercancel", x, y, timeStamp);
+			return fireRoutes(routes, "pointerleave", x, y, timeStamp) || cancelled;
 		}
+		if (phase === 4) { return fireRoutes(routes, "pointermove", x, y, timeStamp); }
 		return false;
+	}
+
+	function touch(tag: int32, phase: int32, x: number, y: number, timeStamp: number): boolean {
+		if (!byTag.has(tag)) { return false; }
+		const type = match (phase) {
+			0 => "touchstart",
+			1 => "touchend",
+			3 => "touchcancel",
+			4 => "touchmove",
+			_ => "",
+		};
+		if (type === "") { return false; }
+		return fireRoutes(byTag.get(tag) as NativeEventRoute[], type, x, y, timeStamp);
 	}
 
 
@@ -340,5 +356,5 @@ export function createNativeEventRegistry(): NativeEventRegistry {
 		return fired;
 	}
 
-	return { add, remove, dispatch, scroll, scrollPhase, layout, control };
+	return { add, remove, dispatch, touch, scroll, scrollPhase, layout, control };
 }

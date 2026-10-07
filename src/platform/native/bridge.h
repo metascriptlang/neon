@@ -75,7 +75,14 @@ int   niColorScheme(void); // 0 light, 1 dark
 // (msClosure carries no args).
 void niSetTouchHandler(msClosure handler);
 int  niLastTouchTag(void);
-int  niLastTouchPhase(void); // 0 = down, 1 = up, 2 = press, 3 = cancel
+int  niLastTouchPhase(void); // 0 = down, 1 = up, 2 = press, 3 = cancel, 4 = move
+// Window coordinates in points and a millisecond clock shared by every phase of a touch.
+float niLastTouchX(void);
+float niLastTouchY(void);
+double niLastTouchTime(void);
+// The view that holds the touch; a blocking holder keeps ancestor scroll views from taking it.
+void niSetResponder(void *view, int blockNativeResponder);
+void niClearResponder(void);
 void  niSetScrollHandler(msClosure handler);
 int   niLastScrollTag(void);
 int   niLastScrollPhase(void); // 0 scroll, 1 begin drag, 2 end drag, 3 momentum begin, 4 momentum end, 5 refresh

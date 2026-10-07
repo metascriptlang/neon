@@ -27,7 +27,9 @@ import {
 	nmControl, nmControlSized, nmTextWidth, nmTextHeight, nmLastControlTag, nmEnvironment, nmLastInputTag, nmFocused, nmProp,
 	nmTextVisualX, nmTextVisualY, nmScrollOffsetX, nmScrollOffsetY, nmScrollShifts,
 	nmBackgroundAlpha, nmLastViewTag, nmAnyProp, nmTagWithProp, nmHasLabel,
+	nmTouchFull, nmResponderTag, nmResponderBlocks,
 } from "./nativeBridgeMock.h";
+import { PanResponder, PanResponderGestureState } from "../../src/components/panResponder";
 
 const PRESS: int32 = 2;
 
@@ -998,4 +1000,42 @@ test "the gallery app runs on the native host: button, modal over the app, statu
 	nmEnvironment(0, 0);
 	nmTeardown();
 	assert nmReleaseCalls() === nmViewsCreated(), "every view released";
+}
+
+const DOWN: int32 = 0;
+const UP: int32 = 1;
+const MOVE: int32 = 4;
+
+test "a native pan row takes a horizontal drag from the Pressable inside it and blocks native scrolling" {
+	let log = "";
+	const pan = PanResponder.create({
+		onMoveShouldSetPanResponder: (e: NeonEvent, g: PanResponderGestureState): boolean => Math.abs(g.dx) > 10,
+		onPanResponderGrant: (e: NeonEvent, g: PanResponderGestureState): void => { log += `grant ${g.x0};`; },
+		onPanResponderMove: (e: NeonEvent, g: PanResponderGestureState): void => { log += `move ${g.dx};`; },
+		onPanResponderRelease: (e: NeonEvent, g: PanResponderGestureState): void => { log += `release ${g.dx};`; },
+	});
+	const app = (): NeonNode => <ScrollView>
+		<View {...pan.panHandlers} style={{ height: 60 }}>
+			<Pressable onPress={(): void => { log += "press;"; }}><Text>mail</Text></Pressable>
+		</View>
+	</ScrollView>;
+	runApp(app);
+	const button = nmLastPressableTag();
+	nmTouchFull(button, DOWN, 100, 30, 1000);
+	nmTouchFull(button, MOVE, 104, 31, 1016);
+	assert nmResponderTag() === 0, "no claim under the slop";
+	nmTouchFull(button, MOVE, 130, 31, 1032);
+	const holder = nmResponderTag();
+	const blocks = nmResponderBlocks();
+	nmTouchFull(button, MOVE, 150, 31, 1048);
+	nmTouchFull(button, UP, 150, 31, 1064);
+	nmTouchFull(button, PRESS, 150, 31, 1064);
+	const released = nmResponderTag();
+	nmTouchFull(button, DOWN, 10, 30, 2000);
+	nmTouchFull(button, UP, 10, 30, 2010);
+	nmTouchFull(button, PRESS, 10, 30, 2010);
+	nmTeardown();
+	assert holder !== 0 && holder !== button && blocks === 1, `the row holds the touch and blocks: ${holder} ${blocks}`;
+	assert released === 0, "the release clears the native responder";
+	assert log === "grant 130;move 20;release 20;press;", "the swipe does not press, a later tap does: " + log;
 }

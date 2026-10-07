@@ -2,6 +2,9 @@
 int32_t nmViewsCreated(void);
 int32_t nmReleaseCalls(void);
 void nmTouch(int32_t tag, int32_t phase);
+void nmTouchFull(int32_t tag, int32_t phase, float x, float y, double time);
+int32_t nmResponderTag(void);
+int32_t nmResponderBlocks(void);
 void nmTeardown(void);
 int32_t nmLoop(void);
 void nmMount(void);

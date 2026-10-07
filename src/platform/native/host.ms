@@ -31,7 +31,7 @@ import {
 	niSetBackgroundColor, niSetCornerRadius, niSetOpacity, niSetTransform, niSetRotation,
 	niSetText, niSetTextColor, niSetFont, niMeasureText, niMeasuredW, niMeasuredH,
 	niContainerView, niScreenWidth, niScreenHeight, niViewSetTag, niViewSetPressable,
-	niLastTouchTag, niLastTouchPhase,
+	niLastTouchTag, niLastTouchPhase, niLastTouchX, niLastTouchY, niLastTouchTime, niSetResponder, niClearResponder,
 	niScrollCreate, niScrollSetTag, niScrollSetContentSize, niScrollTo, niScrollSetOption,
 	niScrollShift, niScrollOffsetX, niScrollOffsetY,
 	niLastScrollTag, niLastScrollPhase, niLastScrollX, niLastScrollY, niLastScrollWidth, niLastScrollHeight,
@@ -381,6 +381,7 @@ function textNeedsRemeasure(n: NativeNode): boolean {
 
 let nextTag: int32 = 1;
 const eventRegistry = createNativeEventRegistry();
+const nodesByTag = new Map<int32, NativeNode>();
 let root: NativeNode;
 const scrollNodes: NativeNode[] = [];
 const layoutNodes: NativeNode[] = [];
@@ -486,6 +487,7 @@ function releaseNativeTree(n: NativeNode): void {
 	for (const child of n.children) { releaseNativeTree(child); }
 	if (n.eventTag !== 0) {
 		eventRegistry.remove(n.eventTag);
+		nodesByTag.delete(n.eventTag);
 		n.eventTag = 0;
 	}
 	if (n.isScroll) {
@@ -608,10 +610,37 @@ function runLoop(): void {
 	batched((): void => { niLoopRun(); });
 }
 
+let bubbledPhase: int32 = -1;
+let bubbledTime: number = -1;
+let bubbledX: number = 0;
+let bubbledY: number = 0;
+
+// iOS forwards a touch up the superview chain, so one native event can arrive once per tagged view.
+function bubbleTouch(tag: int32, phase: int32, x: number, y: number, timeStamp: number): void {
+	if (phase === 2 || !nodesByTag.has(tag)) { return; }
+	if (phase === bubbledPhase && timeStamp === bubbledTime && x === bubbledX && y === bubbledY) { return; }
+	bubbledPhase = phase;
+	bubbledTime = timeStamp;
+	bubbledX = x;
+	bubbledY = y;
+	let at: NativeNode | null = nodesByTag.get(tag) as NativeNode;
+	while (at !== null) {
+		const n = at as NativeNode;
+		if (n.eventTag !== 0) { eventRegistry.touch(n.eventTag, phase, x, y, timeStamp); }
+		at = n.parent;
+	}
+}
+
 function onTouch(): void {
 	const tag = niLastTouchTag();
 	const phase = niLastTouchPhase();
-	batched((): void => { eventRegistry.dispatch(tag, phase, 0, 0); });
+	const x = niLastTouchX() as number;
+	const y = niLastTouchY() as number;
+	const timeStamp = niLastTouchTime();
+	batched((): void => {
+		bubbleTouch(tag, phase, x, y, timeStamp);
+		eventRegistry.dispatch(tag, phase, x, y, timeStamp);
+	});
 }
 
 export interface NativeHost {
@@ -711,6 +740,7 @@ export function createNativeHost(): NativeHost {
 			if (n.eventTag === 0) {
 				n.eventTag = nextTag;
 				nextTag += 1;
+				nodesByTag.set(n.eventTag, n);
 				if (n.view !== null && n.isScroll) { niScrollSetTag(n.view, n.eventTag); }
 				else if (n.view !== null && n.control !== NativeElementKind.View) { niControlSetTag(n.view, n.eventTag); }
 				else if (n.view !== null) { niViewSetTag(n.view, n.eventTag); }
@@ -810,6 +840,14 @@ export function createNativeHost(): NativeHost {
 			const n = node as unknown as NativeNode;
 			if (!n.isScroll || n.view === null) { throw "native host: scrollTo needs a mounted scroll view"; }
 			niScrollTo(n.view, x as float32, y as float32, animated ? 1 : 0);
+		},
+		setResponder: (node: HostNode | null, blockNativeResponder: boolean): void => {
+			if (node === null) {
+				niClearResponder();
+				return;
+			}
+			const n = node as unknown as NativeNode;
+			if (n.view !== null) { niSetResponder(n.view, blockNativeResponder ? 1 : 0); }
 		},
 	};
 

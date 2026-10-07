@@ -30,6 +30,8 @@ static float g_keyboardH;
 static int g_dark;
 static int g_lastTag;
 static int g_lastPhase;
+static float g_touchX, g_touchY;
+static double g_touchTime;
 static int g_scrollTag;
 static float g_scrollX, g_scrollY, g_scrollW, g_scrollH, g_scrollContentW, g_scrollContentH;
 static int g_scrollPhase;
@@ -54,7 +56,7 @@ static struct {
 	jmethodID viewGetParent, viewSetLayoutParams, viewSetAlpha, viewGetBackground, viewSetBackground;
 	jmethodID viewSetScaleX, viewSetScaleY, viewSetTranslationX, viewSetTranslationY, viewSetRotation, viewBringToFront;
 	jmethodID viewForceLayout, viewMeasure, viewGetMeasuredWidth, viewGetMeasuredHeight, viewSetTag, viewGetRootWindowInsets;
-	jmethodID viewSetOnTouchListener, touchInit;
+	jmethodID viewSetOnTouchListener, touchInit, touchClaim;
 	jmethodID viewGetContext, groupAddView, groupRemoveView, frameInit, paramsInit;
 	jfieldID paramsLeft, paramsTop;
 	jmethodID textInit, textSetText, textSetTextColor, textSetTextSize, textSetTypeface;
@@ -205,6 +207,8 @@ static void cacheJni(JNIEnv *e) {
 	J.viewGetContext = method(e, J.view, "getContext", "()Landroid/content/Context;");
 	J.viewSetOnTouchListener = method(e, J.view, "setOnTouchListener", "(Landroid/view/View$OnTouchListener;)V");
 	J.touchInit = method(e, J.touch, "<init>", "(I)V");
+	J.touchClaim = (*e)->GetStaticMethodID(e, J.touch, "claim", "(Landroid/view/View;Z)V");
+	check(e, "Touch.claim");
 	J.groupAddView = method(e, J.viewGroup, "addView", "(Landroid/view/View;)V");
 	J.groupRemoveView = method(e, J.viewGroup, "removeView", "(Landroid/view/View;)V");
 	J.frameInit = method(e, J.frameLayout, "<init>", "(Landroid/content/Context;)V");
@@ -389,13 +393,19 @@ JNIEXPORT void JNICALL Java_dev_metascript_app_NativeApp_destroy(JNIEnv *e, jcla
 	g_container = g_context = g_root = NULL;
 }
 
-JNIEXPORT jboolean JNICALL Java_dev_metascript_neon_Touch_touch(JNIEnv *e, jclass cls, jint tag, jint action) {
+JNIEXPORT jboolean JNICALL Java_dev_metascript_neon_Touch_touch(JNIEnv *e, jclass cls, jint tag, jint action, jfloat x, jfloat y, jlong time) {
 	(void)e;
 	(void)cls;
-	enum { ACTION_DOWN = 0, ACTION_UP = 1, ACTION_CANCEL = 3 };
+	enum { ACTION_DOWN = 0, ACTION_UP = 1, ACTION_MOVE = 2, ACTION_CANCEL = 3 };
 	g_lastTag = tag;
+	g_touchX = x / g_density;
+	g_touchY = y / g_density;
+	g_touchTime = (double)time;
 	if (action == ACTION_DOWN) {
 		g_lastPhase = 0;
+		call0(s_touch);
+	} else if (action == ACTION_MOVE) {
+		g_lastPhase = 4;
 		call0(s_touch);
 	} else if (action == ACTION_UP) {
 		g_lastPhase = 1;
@@ -501,6 +511,18 @@ void niSetTouchHandler(msClosure handler) { s_touch = handler; }
 int niRunApp(void) { return 0; }
 int niLastTouchTag(void) { return g_lastTag; }
 int niLastTouchPhase(void) { return g_lastPhase; }
+float niLastTouchX(void) { return g_touchX; }
+float niLastTouchY(void) { return g_touchY; }
+double niLastTouchTime(void) { return g_touchTime; }
+
+void niSetResponder(void *view, int blockNativeResponder) {
+	if (!blockNativeResponder) return;
+	JNIEnv *e = env();
+	(*e)->CallStaticVoidMethod(e, J.touch, J.touchClaim, (jobject)view, JNI_TRUE);
+	check(e, "Touch.claim");
+}
+
+void niClearResponder(void) {}
 void niSetScrollHandler(msClosure handler) { s_scroll = handler; }
 int niLastScrollTag(void) { return g_scrollTag; }
 int niLastScrollPhase(void) { return g_scrollPhase; }

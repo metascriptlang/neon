@@ -339,6 +339,22 @@ float niMeasuredH(void) { return g_measuredH; }
 void niSetTouchHandler(msClosure handler) { s_touch = handler; }
 int niLastTouchTag(void) { return g_lastTag; }
 int niLastTouchPhase(void) { return g_lastPhase; }
+static float g_touchX = 0, g_touchY = 0;
+static double g_touchTime = 0;
+static int g_responderTag = 0, g_responderBlocks = 0;
+float niLastTouchX(void) { return g_touchX; }
+float niLastTouchY(void) { return g_touchY; }
+double niLastTouchTime(void) { return g_touchTime; }
+void niSetResponder(void *view, int block) {
+	g_responderTag = ((MockView *)view)->tag;
+	g_responderBlocks = block;
+}
+void niClearResponder(void) {
+	g_responderTag = 0;
+	g_responderBlocks = 0;
+}
+int32_t nmResponderTag(void) { return g_responderTag; }
+int32_t nmResponderBlocks(void) { return g_responderBlocks; }
 
 void niRegisterApp(msClosure mount) { s_mount = mount; }
 void niSetResizeHandler(msClosure handler) { s_resize = handler; }
@@ -362,6 +378,13 @@ float niScreenHeight(void) {
 
 int32_t nmViewsCreated(void) { return g_created; }
 int32_t nmReleaseCalls(void) { return g_releaseCalls; }
+
+void nmTouchFull(int32_t tag, int32_t phase, float x, float y, double time) {
+	g_touchX = x;
+	g_touchY = y;
+	g_touchTime = time;
+	nmTouch(tag, phase);
+}
 
 void nmTouch(int32_t tag, int32_t phase) {
 	g_lastTag = tag;
