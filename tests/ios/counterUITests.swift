@@ -1280,7 +1280,7 @@ final class ControlsUITests: XCTestCase {
 
         let tip = any("Guest limit")
         tip.press(forDuration: 1.0)
-        XCTAssertTrue(any("Up to 8 guests per room").waitForExistence(timeout: 5), "the tooltip shows on long press")
+        XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", "Up to 8 guests per room")).firstMatch.waitForExistence(timeout: 5), "the tooltip shows on long press")
         report("tooltip")
 
         let room = app.buttons["Room type"]
