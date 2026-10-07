@@ -190,7 +190,7 @@ export function BookingForm(): NeonNode {
 		</ScrollView>
 		<Snackbar visible={booked()} message={`Booked ${summary()}`} actionLabel="Undo" duration={8000}
 			onActionPress={(): void => { undo(); }} onDismiss={(): void => { setBooked(false); }} />
-		<BottomSheet visible={details()} onDismiss={(): void => { setDetails(false); }} accessibilityLabel="Booking details">
+		<BottomSheet visible={details()} onDismiss={(): void => { setDetails(false); }}>
 			<View style={{ paddingLeft: 24, paddingRight: 24, gap: 8 }}>
 				<Text style={{ color: "#1c1b1f", fontSize: 20, fontWeight: "bold" }} accessibilityRole="header">Booking details</Text>
 				<Text style={value}>{`details ${summary()}`}</Text>
