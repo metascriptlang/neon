@@ -9,6 +9,7 @@ import { HostNode, MockNode, mockNode, mockHost, render, mockToString, fireEvent
 import { Style } from "../../src/render/style";
 import { Text } from "../../src/components/primitives";
 import { Snackbar } from "../../src/components/snackbar";
+import { Toast, ToastHost, currentToast } from "../../src/components/toast";
 
 test "Snackbar shows a bottom alert with its action, and the action dismisses it" {
 	const [open, setOpen] = createSignal(false);
@@ -59,4 +60,39 @@ test "Snackbar takes paper's action object and an accent colour" {
 	assert (button.children[0].style as Style).color === "#ffcc80", "accent";
 	fireEvent(button, "onPress");
 	assert log() === "retry;dismiss;", "presses: " + log();
+}
+
+test "Toast.show reaches the ToastHost, Toast.hide and the timer take it away" {
+	const root: MockNode = mockNode("root");
+	render(element(<ToastHost />), mockHost(), root as unknown as HostNode);
+	assert mockToString(root) === "<root></root>", "idle: " + mockToString(root);
+	Toast.show({ text1: "Saved", text2: "Draft stored", type: "success" });
+	assert mockToString(root) === "<root><view><view accessibilityLabel=\"Saved, Draft stored\" accessibilityRole=\"alert\"><view></view><view><text>Saved</text><text>Draft stored</text></view></view></view></root>", "shown: " + mockToString(root);
+	const layer = root.children[0];
+	assert (layer.style as Style).bottom === 40 && (layer.style as Style).position === "absolute", "near the bottom";
+	assert (layer.children[0].children[0].style as Style).backgroundColor === "#4caf50", "success dot";
+	Toast.hide();
+	assert mockToString(root) === "<root></root>", "hidden: " + mockToString(root);
+	Toast.show({ text1: "Offline", type: "error", position: "top", visibilityTime: 120 });
+	assert mockToString(root) === "<root><view><view accessibilityLabel=\"Offline\" accessibilityRole=\"alert\"><view></view><view><text>Offline</text></view></view></view></root>", "one line: " + mockToString(root);
+	assert (root.children[0].style as Style).top === 40, "top position";
+	await sleepAsync(40);
+	assert currentToast() !== null, "still up";
+	await sleepAsync(160);
+	assert currentToast() === null && mockToString(root) === "<root></root>", "timed out: " + mockToString(root);
+}
+
+test "a second Toast.show replaces the first and restarts the timer" {
+	const root: MockNode = mockNode("root");
+	render(element(<ToastHost />), mockHost(), root as unknown as HostNode);
+	Toast.show({ text1: "One", visibilityTime: 150 });
+	await sleepAsync(100);
+	Toast.show({ text1: "Two", visibilityTime: 150 });
+	await sleepAsync(100);
+	assert mockToString(root).indexOf("<text>Two</text>") > 0, "replaced and still up: " + mockToString(root);
+	Toast.show({ text1: "Sticky", autoHide: false, visibilityTime: 50 });
+	await sleepAsync(120);
+	assert mockToString(root).indexOf("<text>Sticky</text>") > 0, "autoHide false stays";
+	Toast.hide();
+	assert currentToast() === null, "hidden";
 }
