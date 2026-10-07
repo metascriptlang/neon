@@ -44,3 +44,28 @@ export function publishColorScheme(scheme: ColorScheme): void {
 	const next = scheme === "dark";
 	if (dark() !== next) { setDark(next); }
 }
+
+// How far the unsafe areas (status bar, notch, home indicator) reach into the
+// root a host renders into, per edge.
+export interface EdgeInsets {
+	top: number;
+	right: number;
+	bottom: number;
+	left: number;
+}
+
+const [insetTop, setInsetTop] = createSignal<number>(0);
+const [insetRight, setInsetRight] = createSignal<number>(0);
+const [insetBottom, setInsetBottom] = createSignal<number>(0);
+const [insetLeft, setInsetLeft] = createSignal<number>(0);
+
+export function useSafeAreaInsets(): Accessor<EdgeInsets> {
+	return accessor((): EdgeInsets => ({ top: insetTop(), right: insetRight(), bottom: insetBottom(), left: insetLeft() }));
+}
+
+export function publishSafeArea(top: number, right: number, bottom: number, left: number): void {
+	if (insetTop() !== top) { setInsetTop(top); }
+	if (insetRight() !== right) { setInsetRight(right); }
+	if (insetBottom() !== bottom) { setInsetBottom(bottom); }
+	if (insetLeft() !== left) { setInsetLeft(left); }
+}

@@ -8,6 +8,7 @@ import { NeonEvent, neonEvent, eventType } from "../../render/event";
 import { onCleanup } from "../../core/cleanup";
 import { htmlTagFor } from "../../render/node";
 import { publishWindow, publishColorScheme } from "../../render/environment";
+import { publishSafeArea } from "../../render/environment";
 import { CssStyle, applyCss, applyCssProp } from "./domCss";
 import { VisibleContentPosition, parseVisibleContent } from "../../render/visibleContent";
 import { installBrowserAppServices } from "./appServices";
@@ -149,6 +150,31 @@ function watchEnvironment(): void {
 	publish();
 	window.addEventListener("resize", (e: DomEvent): void => { publish(); });
 	scheme.addEventListener("change", (e: DomEvent): void => { publish(); });
+}
+
+let safeAreaWatched = false;
+
+// CSS env(safe-area-inset-*) has no script API: four hidden probes take one
+// inset each as their height, read back after every resize.
+function watchSafeArea(): void {
+	if (safeAreaWatched) { return; }
+	safeAreaWatched = true;
+	const probe = document.createElement("div");
+	probe.setAttribute("aria-hidden", "true");
+	probe.setAttribute("style", "position:fixed;left:0;top:0;width:0;height:0;overflow:hidden;visibility:hidden;pointer-events:none");
+	const edges: Node[] = [];
+	for (const edge of ["top", "right", "bottom", "left"]) {
+		const one = document.createElement("div");
+		one.setAttribute("style", `width:0;height:env(safe-area-inset-${edge}, 0px)`);
+		probe.appendChild(one);
+		edges.push(one);
+	}
+	document.body.appendChild(probe);
+	const publish = (): void => {
+		publishSafeArea(edges[0].offsetHeight, edges[1].offsetHeight, edges[2].offsetHeight, edges[3].offsetHeight);
+	};
+	publish();
+	window.addEventListener("resize", (e: DomEvent): void => { publish(); });
 }
 
 extern function requestAnimationFrame(callback: (time: number) => void): number;
@@ -562,6 +588,7 @@ export function domHost(): Host {
 	flushSheet();
 	watchEnvironment();
 	installBrowserAppServices();
+	watchSafeArea();
 	let scrollRule = false;
 	let controlRule = false;
 	const scrolls = new Map<Node, DomScrollState>();
