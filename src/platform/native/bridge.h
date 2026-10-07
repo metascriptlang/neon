@@ -56,7 +56,7 @@ void *niImageCreate(void);
 // platform's back/escape as control phase 7 (request close).
 void *niModalCreate(void);
 // Controls added after the first four go through one create call keyed by the wire tag:
-// "slider", "picker", "datetimepicker"; the media views "webview" and "video" are created the
+// "slider", "picker", "datetimepicker"; the media views "webview", "video" and "camera" are created the
 // same way and take a `command` prop ("name\x1fargument") for their imperative methods.
 // "slider", "picker", "datetimepicker", and "svg" (an <Svg>: draws its `displayList` prop,
 // grammar in src/components/svg/scene.ms encodeScene, sized by layout only).

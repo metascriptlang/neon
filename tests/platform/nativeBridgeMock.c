@@ -136,6 +136,7 @@ void *niControlCreate(const char *kind) {
 	if (strcmp(kind, "datetimepicker") == 0) return createControl(8);
 	if (strcmp(kind, "webview") == 0) return createControl(10);
 	if (strcmp(kind, "video") == 0) return createControl(11);
+	if (strcmp(kind, "camera") == 0) return createControl(12);
 	if (strcmp(kind, "svg") == 0) return createControl(9);
 	fprintf(stderr, "mock bridge: niControlCreate has no control \"%s\"\n", kind);
 	abort();

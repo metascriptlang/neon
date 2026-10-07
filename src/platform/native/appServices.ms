@@ -13,6 +13,8 @@ import {
 	storageClear, storageGet, storageKeys, storageRemove, storageSet, watchNetInfo,
 } from "./deviceServices";
 import { publishNotificationEvent } from "../../api/notifications";
+import { installCaptureServices } from "../../api/captureServices";
+import { nativeCaptureServices, onRecordingEvent, onSoundEvent } from "./captureServices";
 
 when (ios) {
 	@compile("../ios/app.m", "-fobjc-arc");
@@ -53,6 +55,8 @@ enum AppEvent {
 	NetInfo,
 	Location,
 	Notification,
+	Sound,
+	Recording,
 }
 
 interface PendingImage {
@@ -114,6 +118,8 @@ function onAppEvent(): void {
 		AppEvent.NetInfo => onNetInfoEvent(value),
 		AppEvent.Location => onLocationEvent(value),
 		AppEvent.Notification => publishNotificationEvent(value),
+		AppEvent.Sound => onSoundEvent(value),
+		AppEvent.Recording => onRecordingEvent(value),
 	};
 }
 
@@ -218,6 +224,7 @@ export function installNativeAppServices(run: (fn: () => void) => void): void {
 	runEvent = run;
 	niSetAppHandler(onAppEventBatched);
 	installAppServices(services);
+	installCaptureServices(nativeCaptureServices);
 	publishPlatform(call("platform", ""), call("isPad", "") === "1");
 	publishScale(parseFloat(call("pixelRatio", "")), parseFloat(call("fontScale", "")));
 	const screen = call("screen", "").split(FIELD);

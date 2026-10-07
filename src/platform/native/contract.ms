@@ -55,7 +55,7 @@ export function nativeElementKind(tag: string): NativeElementKind {
 	if (tag === "image") { return NativeElementKind.Image; }
 	if (tag === "modal") { return NativeElementKind.Modal; }
 	if (tag === "slider" || tag === "picker" || tag === "datetimepicker") { return NativeElementKind.Control; }
-	if (tag === "webview" || tag === "video") { return NativeElementKind.Media; }
+	if (tag === "webview" || tag === "video" || tag === "camera") { return NativeElementKind.Media; }
 	if (tag === "svg") { return NativeElementKind.Vector; }
 	return NativeElementKind.View;
 }
@@ -351,6 +351,9 @@ export function createNativeEventRegistry(): NativeEventRegistry {
 			12 => "shouldstartload",
 			13 => "progress",
 			14 => "end",
+			30 => "cameraready",
+			31 => "mounterror",
+			32 => "picture",
 			_ => "",
 		};
 		if (type === "") { throw `native host: control phase ${phase} has no event`; }
