@@ -10,6 +10,14 @@ import { Style } from "../../src/render/style";
 import { Text } from "../../src/components/primitives";
 import { Snackbar } from "../../src/components/snackbar";
 import { Toast, ToastHost, currentToast } from "../../src/components/toast";
+import { Tooltip } from "../../src/components/tooltip";
+
+function firstTag(parent: MockNode, tag: string): MockNode {
+	for (const c of parent.children) {
+		if (c.tag === tag) { return c; }
+	}
+	throw "no <" + tag + "> under <" + parent.tag + ">";
+}
 
 test "Snackbar shows a bottom alert with its action, and the action dismisses it" {
 	const [open, setOpen] = createSignal(false);
@@ -95,4 +103,25 @@ test "a second Toast.show replaces the first and restarts the timer" {
 	assert mockToString(root).indexOf("<text>Sticky</text>") > 0, "autoHide false stays";
 	Toast.hide();
 	assert currentToast() === null, "hidden";
+}
+
+test "Tooltip shows its title above the child on a long press and leaves after the release" {
+	const root: MockNode = mockNode("root");
+	render(element(<Tooltip title="Delete" enterTouchDelay={60} leaveTouchDelay={120}>
+		<Text>trash</Text>
+	</Tooltip>), mockHost(), root as unknown as HostNode);
+	const wrapper = root.children[0];
+	assert mockToString(root) === "<root><pressable accessibilityHint=\"Delete\"><text>trash</text></pressable></root>", "idle: " + mockToString(root);
+	fireEvent(wrapper, "onPointerDown");
+	await sleepAsync(20);
+	assert mockToString(wrapper).indexOf("<view>") < 0, "not before the enter delay";
+	await sleepAsync(150);
+	assert mockToString(wrapper) === "<pressable accessibilityHint=\"Delete\"><text>trash</text><view><text>Delete</text></view></pressable>", "bubble: " + mockToString(wrapper);
+	const bubble = firstTag(wrapper, "view").style as Style;
+	assert bubble.position === "absolute" && bubble.top === -40 && bubble.backgroundColor === "#616161", "above the child";
+	fireEvent(wrapper, "onPointerUp");
+	await sleepAsync(40);
+	assert mockToString(wrapper).indexOf("<view>") > 0, "stays for the leave delay";
+	await sleepAsync(160);
+	assert mockToString(wrapper) === "<pressable accessibilityHint=\"Delete\"><text>trash</text></pressable>", "left: " + mockToString(wrapper);
 }
