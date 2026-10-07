@@ -16,6 +16,7 @@ enum {
 	NI_APP_REPLY = 9,
 	NI_APP_NETINFO = 10,
 	NI_APP_LOCATION = 11,
+	NI_APP_NOTIFICATION = 12,
 };
 
 const char *niAppCall(const char *name, const char *arg);

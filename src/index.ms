@@ -81,6 +81,11 @@ export {
 	getLocalizeLocales, getNumberFormatSettings, getTemperatureUnit, getTimeZone, uses24HourClock, usesMetricSystem,
 } from "./api/localization";
 export {
+	DEFAULT_ACTION_IDENTIFIER, Notification, NotificationBehavior, NotificationContent, NotificationContentInput,
+	NotificationHandler, NotificationRequest, NotificationRequestInput, NotificationResponse, NotificationTriggerInput,
+	Notifications,
+} from "./api/notifications";
+export {
 	Animated, CompositeAnimation, useAnimatedValue, AnimatedNode, AnimatedValue, AnimatedValueXY,
 	AnimatedInterpolation, AnimatedStringInterpolation, Easing, EasingFunction, LayoutAnimation,
 	LayoutAnimationPresets, Presence, EndResult,

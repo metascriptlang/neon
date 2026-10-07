@@ -9,6 +9,7 @@ import { Geolocation, GeolocationError, GeolocationResponse } from "../../src/ap
 import { Haptics, ImpactFeedbackStyle } from "../../src/api/haptics";
 import { DeviceInfo } from "../../src/api/deviceInfo";
 import { getCalendars, getLocales } from "../../src/api/localization";
+import { Notification, NotificationBehavior, NotificationResponse, Notifications } from "../../src/api/notifications";
 import { nmAppReply, nmAppLog, nmAppLogClear, nmAppEvent, nmTeardown } from "./nativeBridgeMock.h";
 
 const FIELD = "\u001f";
@@ -16,6 +17,7 @@ const RECORD = "\u001e";
 const REPLY: int32 = 9;
 const NETINFO: int32 = 10;
 const LOCATION: int32 = 11;
+const NOTIFICATION: int32 = 12;
 
 function mount(): void {
 	nmAppReply("platform", "17.5");
@@ -193,5 +195,44 @@ test "Haptics, DeviceInfo and the locale readout go through their commands and d
 	assert getCalendars()[0].timeZone === "Europe/Paris" && getCalendars()[0].firstWeekday === 2;
 	const log: string = nmAppLog();
 	assert log.startsWith("haptics.impact(rigid);haptics.selection();device.info()"), log;
+	nmTeardown();
+}
+
+test "Notifications encode the schedule request, read the received and response events and answer the presentation" {
+	mount();
+	nmAppReply("notification.schedule", "");
+	const pending = Notifications.scheduleNotificationAsync({
+		identifier: "water",
+		content: { title: "Reminder", body: "Water the plants", sound: true },
+		trigger: { seconds: 2 },
+	});
+	await sleepAsync(5);
+	const asked: string = nmAppLog();
+	const id = requestId(asked, "notification.schedule");
+	assert asked.endsWith("notification.schedule(" + id + FIELD + ["water", "Reminder", "", "Water the plants", "", "1", "-1", "2", "0", "-1"].join(FIELD) + ")"), asked;
+	nmAppEvent(REPLY, id + FIELD + "water");
+	assert (await pending) === "water";
+	nmAppLogClear();
+	const seen: string[] = [];
+	const received = Notifications.addNotificationReceivedListener((n: Notification): void => {
+		seen.push("received " + (n.request.content.title ?? "") + " " + n.date.toString());
+	});
+	const responses = Notifications.addNotificationResponseReceivedListener((r: NotificationResponse): void => {
+		seen.push("response " + r.notification.request.identifier + " " + r.actionIdentifier);
+	});
+	Notifications.setNotificationHandler({
+		handleNotification: async (n: Notification): Promise<NotificationBehavior> => {
+			return { shouldShowBanner: true, shouldShowList: false, shouldPlaySound: false, shouldSetBadge: false };
+		},
+	});
+	nmAppEvent(NOTIFICATION, ["received", "water", "Reminder", "", "Water the plants", "", "1700"].join(FIELD));
+	await sleepAsync(20);
+	nmAppEvent(NOTIFICATION, ["response", "water", "Reminder", "", "Water the plants", "", "1700", "open"].join(FIELD));
+	received.remove();
+	responses.remove();
+	Notifications.setNotificationHandler(null);
+	assert seen.join(";") === "received Reminder 1700;response water open", seen.join(";");
+	const log: string = nmAppLog();
+	assert log === "notification.handler(1);notification.present(water" + FIELD + "1" + FIELD + "0" + FIELD + "0);notification.handler(0)", log;
 	nmTeardown();
 }

@@ -3,6 +3,8 @@ import {
 	BatterySnapshot, DeviceSnapshot, LocaleSnapshot, LocationFix, LocationRequest, PermissionReply,
 } from "../../api/services";
 import { decodeLocalization } from "../../api/hostCodec";
+import { NotificationSpec, ScheduleReply } from "../../api/services";
+import { publishNotificationEvent } from "../../api/notifications";
 
 extern class DeviceEvent {}
 
@@ -65,6 +67,10 @@ extern function localeReport(unused: int32): string from "(#, (() => { const F =
 extern function batteryReport(unused: int32): Promise<string> from "(#, navigator.getBattery ? navigator.getBattery().then((b) => b.level + ',' + (b.charging ? '1' : '0'), () => '-1,0') : Promise.resolve('-1,0'))";
 extern function documentTitle(unused: int32): string from "(#, document.title || '')";
 extern function pageHost(unused: int32): string from "(#, location.host || '')";
+extern function notificationPermission(unused: int32): string from "(#, typeof Notification === 'undefined' ? 'unsupported' : Notification.permission)";
+extern function pageVisible(unused: int32): boolean from "(#, document.visibilityState === 'visible')";
+extern function showNotification(title: cstring, body: cstring, tag: cstring, onClick: () => void): boolean from "((title, body, tag, onClick) => { const n = new Notification(title, { body, tag }); n.onclick = () => onClick(); (window.__neonNotifications = window.__neonNotifications || []).push(n); return true; })(#, #, #, #)";
+extern function closeNotifications(unused: int32): void from "(#, (window.__neonNotifications || []).splice(0).forEach((n) => n.close()))";
 extern function connectionType(unused: int32): string from "(#, String((navigator.connection && navigator.connection.type) || ''))";
 extern function connectionSavesData(unused: int32): boolean from "(#, Boolean(navigator.connection && navigator.connection.saveData))";
 
@@ -296,4 +302,102 @@ export async function battery(): Promise<BatterySnapshot> {
 
 export function localization(): LocaleSnapshot {
 	return decodeLocalization(localeReport(0));
+}
+
+const NOTIFICATION_FIELD = "\u001f";
+
+interface BrowserScheduled {
+	spec: NotificationSpec;
+	timer: int32;
+}
+
+const scheduled: BrowserScheduled[] = [];
+const awaitingPresentation: NotificationSpec[] = [];
+let decidesPresentation = false;
+
+function notificationRecord(kind: string, spec: NotificationSpec): string {
+	return [kind, spec.identifier, spec.title, spec.subtitle, spec.body, spec.data, Date.now().toString()].join(NOTIFICATION_FIELD);
+}
+
+function show(spec: NotificationSpec): void {
+	showNotification(spec.title, spec.body, spec.identifier, (): void => {
+		publishNotificationEvent(notificationRecord("response", spec));
+	});
+}
+
+function deliver(spec: NotificationSpec): void {
+	if (!pageVisible(0)) {
+		show(spec);
+		return;
+	}
+	if (decidesPresentation) { awaitingPresentation.push(spec); }
+	publishNotificationEvent(notificationRecord("received", spec));
+}
+
+function forget(identifier: string): void {
+	for (let i = 0; i < scheduled.length; i += 1) {
+		if (scheduled[i].spec.identifier === identifier) {
+			clearTimeout(scheduled[i].timer);
+			scheduled.splice(i, 1);
+			return;
+		}
+	}
+}
+
+function arm(spec: NotificationSpec, delay: number): void {
+	const timer = setTimeout((): void => {
+		forget(spec.identifier);
+		deliver(spec);
+		if (spec.repeats) { arm(spec, spec.seconds * 1000); }
+	}, delay) as int32;
+	scheduled.push({ spec, timer });
+}
+
+export async function scheduleNotification(spec: NotificationSpec): Promise<ScheduleReply> {
+	const permission = notificationPermission(0);
+	if (permission === "unsupported") {
+		return { identifier: "", error: "Notifications are not supported in this browser" };
+	}
+	if (permission !== "granted") {
+		return { identifier: "", error: "Notifications.scheduleNotificationAsync: notification permission is " + permission };
+	}
+	forget(spec.identifier);
+	const delay = spec.date >= 0 ? Math.max(0, spec.date - Date.now()) : Math.max(0, spec.seconds) * 1000;
+	if (spec.seconds < 0 && spec.date < 0) {
+		deliver(spec);
+	} else {
+		arm(spec, delay);
+	}
+	return { identifier: spec.identifier, error: "" };
+}
+
+export function cancelNotification(identifier: string): void {
+	forget(identifier);
+}
+
+export function cancelAllNotifications(): void {
+	for (const entry of scheduled.slice(0, scheduled.length)) { forget(entry.spec.identifier); }
+}
+
+export function dismissAllNotifications(): void {
+	closeNotifications(0);
+}
+
+export function presentNotifications(decide: boolean): void {
+	decidesPresentation = decide;
+}
+
+export function presentNotification(identifier: string, banner: boolean, sound: boolean, badge: boolean): void {
+	for (let i = 0; i < awaitingPresentation.length; i += 1) {
+		if (awaitingPresentation[i].identifier === identifier) {
+			const spec = awaitingPresentation[i];
+			awaitingPresentation.splice(i, 1);
+			if (banner) { show(spec); }
+			return;
+		}
+	}
+}
+
+export async function lastNotificationResponse(): Promise<string> {
+	return "";
 }

@@ -29,4 +29,7 @@
 			<data android:scheme="geo" />
 		</intent>
 	</queries>
+	<application>
+		<receiver android:name="dev.metascript.neon.NotificationReceiver" android:exported="false" />
+	</application>
 </manifest>

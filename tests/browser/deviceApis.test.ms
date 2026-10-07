@@ -10,6 +10,7 @@ import { sleepAsync } from "std/core/promise";
 import { Haptics, ImpactFeedbackStyle, NotificationFeedbackType } from "../../src/api/haptics";
 import { DeviceInfo } from "../../src/api/deviceInfo";
 import { getCalendars, getCountry, getLocales, getTimeZone } from "../../src/api/localization";
+import { Notification, NotificationBehavior, NotificationResponse, Notifications } from "../../src/api/notifications";
 
 extern function js(code: cstring): string from "String((0, eval)(#))";
 
@@ -129,4 +130,38 @@ test "getLocales follows navigator.languages and Intl, getCalendars the page's t
 	assert calendar.calendar === "gregory";
 	assert getTimeZone() === js("Intl.DateTimeFormat().resolvedOptions().timeZone");
 	assert getCountry() === "DE";
+}
+
+test "Notifications schedule a web Notification, hand a visible page's notification to the handler and report the click" {
+	mount();
+	js("window.__shown = []; window.Notification = class { constructor(title, options) { this.title = title; this.options = options; window.__shown.push(this); } close() {} }; window.Notification.permission = 'granted'; Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => window.__hidden ? 'hidden' : 'visible' })");
+	const seen: string[] = [];
+	const received = Notifications.addNotificationReceivedListener((n: Notification): void => {
+		seen.push("received " + n.request.identifier);
+	});
+	const responses = Notifications.addNotificationResponseReceivedListener((r: NotificationResponse): void => {
+		seen.push("response " + r.notification.request.identifier);
+	});
+	Notifications.setNotificationHandler({
+		handleNotification: async (n: Notification): Promise<NotificationBehavior> => {
+			return { shouldShowBanner: true, shouldShowList: true, shouldPlaySound: false, shouldSetBadge: false };
+		},
+	});
+	const id = await Notifications.scheduleNotificationAsync({ identifier: "soon", content: { title: "Soon", body: "in 50 ms" }, trigger: { seconds: 0.05 } });
+	assert id === "soon";
+	await sleepAsync(200);
+	assert js("window.__shown.map((n) => n.title + ':' + n.options.body + ':' + n.options.tag).join(',')") === "Soon:in 50 ms:soon",
+		js("window.__shown.length");
+	js("window.__shown[0].onclick()");
+	Notifications.setNotificationHandler(null);
+	js("window.__hidden = true");
+	await Notifications.scheduleNotificationAsync({ identifier: "hidden", content: { title: "Hidden" }, trigger: null });
+	const later = await Notifications.scheduleNotificationAsync({ identifier: "cancelled", content: { title: "Never" }, trigger: { seconds: 0.05 } });
+	await Notifications.cancelScheduledNotificationAsync(later);
+	await sleepAsync(150);
+	received.remove();
+	responses.remove();
+	js("window.__hidden = false");
+	assert seen.join(",") === "received soon,response soon", seen.join(",");
+	assert js("window.__shown.map((n) => n.title).join(',')") === "Soon,Hidden", js("window.__shown.map((n) => n.title).join(',')");
 }

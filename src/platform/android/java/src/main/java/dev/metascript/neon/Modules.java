@@ -17,6 +17,7 @@ final class Modules {
 			case "haptics":
 			case "device":
 			case "locale": return Device.call(a, name, arg);
+			case "notification": return Notifications.call(a, name, arg);
 			default: throw new IllegalArgumentException("Neon App.call: unknown command " + name);
 		}
 	}

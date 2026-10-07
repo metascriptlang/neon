@@ -1,6 +1,6 @@
 import {
-	AppServices, AlertRequest, BatterySnapshot, DeviceSnapshot, LocaleSnapshot, LocationFix, LocationRequest, PermissionReply,
-	ShareRequest, installAppServices,
+	AppServices, AlertRequest, BatterySnapshot, DeviceSnapshot, LocaleSnapshot, LocationFix, LocationRequest,
+	NotificationSpec, PermissionReply, ScheduleReply, ShareRequest, installAppServices,
 } from "../../src/api/services";
 import { NetInfoState, publishNetInfo } from "../../src/api/netInfo";
 
@@ -73,6 +73,8 @@ export class FakeServices {
 		uses24hourClock: true,
 		firstWeekday: 2,
 	};
+	notifications: NotificationSpec[] = [];
+	lastResponse: string = "";
 	network: NetInfoState = { type: "wifi", isConnected: true, isInternetReachable: true, details: { isConnectionExpensive: false } };
 
 	install(): void {
@@ -179,6 +181,18 @@ export class FakeServices {
 			deviceInfo: (): DeviceSnapshot => { return this.device; },
 			battery: async (): Promise<BatterySnapshot> => { return { level: 0.75, charging: true }; },
 			localization: (): LocaleSnapshot => { return this.locales; },
+			scheduleNotification: async (spec: NotificationSpec): Promise<ScheduleReply> => {
+				this.notifications.push(spec);
+				return { identifier: spec.identifier, error: spec.title === "refuse" ? "refused by the fake" : "" };
+			},
+			cancelNotification: (identifier: string): void => { this.log.push("cancelNotification " + identifier); },
+			cancelAllNotifications: (): void => { this.log.push("cancelAllNotifications"); },
+			dismissAllNotifications: (): void => { this.log.push("dismissAllNotifications"); },
+			presentNotifications: (decide: boolean): void => { this.log.push("presentNotifications " + (decide ? "yes" : "no")); },
+			presentNotification: (identifier: string, banner: boolean, sound: boolean, badge: boolean): void => {
+				this.log.push("presentNotification " + identifier + " " + (banner ? "banner" : "-") + " " + (sound ? "sound" : "-"));
+			},
+			lastNotificationResponse: async (): Promise<string> => { return this.lastResponse; },
 			androidRequestPermissions: async (permissions: string[]): Promise<PermissionReply[]> => {
 				this.log.push("androidRequestPermissions " + permissions.join(","));
 				const results: PermissionReply[] = [];

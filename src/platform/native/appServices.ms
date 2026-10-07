@@ -6,11 +6,13 @@ import { dispatchHardwareBackPress } from "../../api/backHandler";
 import { publishUrl } from "../../api/linking";
 import { publishReduceMotion, publishScreenReader } from "../../api/accessibilityInfo";
 import {
-	androidPermissionGranted, androidRequestPermissions, androidShouldShowRationale, battery, deviceInfo, haptic,
-	localization, locationClear, locationCurrent,
-	locationWatch, onLocationEvent, onNetInfoEvent, onReplyEvent, permissionStatus, refreshNetInfo, requestPermission,
+	androidPermissionGranted, androidRequestPermissions, androidShouldShowRationale, battery, cancelAllNotifications,
+	cancelNotification, deviceInfo, dismissAllNotifications, haptic, installNotifications, lastNotificationResponse,
+	localization, locationClear, locationCurrent, locationWatch, onLocationEvent, onNetInfoEvent, onReplyEvent,
+	permissionStatus, presentNotification, presentNotifications, refreshNetInfo, requestPermission, scheduleNotification,
 	storageClear, storageGet, storageKeys, storageRemove, storageSet, watchNetInfo,
 } from "./deviceServices";
+import { publishNotificationEvent } from "../../api/notifications";
 
 when (ios) {
 	@compile("../ios/app.m", "-fobjc-arc");
@@ -20,6 +22,7 @@ when (ios) {
 	@compile("../ios/permissions.m", "-fobjc-arc");
 	@compile("../ios/location.m", "-fobjc-arc");
 	@compile("../ios/device.m", "-fobjc-arc");
+	@compile("../ios/notifications.m", "-fobjc-arc");
 	@passL("-framework AudioToolbox");
 	@passL("-framework Network");
 	@passL("-framework AVFoundation");
@@ -49,6 +52,7 @@ enum AppEvent {
 	Reply,
 	NetInfo,
 	Location,
+	Notification,
 }
 
 interface PendingImage {
@@ -109,6 +113,7 @@ function onAppEvent(): void {
 		AppEvent.Reply => onReplyEvent(value),
 		AppEvent.NetInfo => onNetInfoEvent(value),
 		AppEvent.Location => onLocationEvent(value),
+		AppEvent.Notification => publishNotificationEvent(value),
 	};
 }
 
@@ -200,6 +205,13 @@ const services: AppServices = {
 	deviceInfo,
 	battery,
 	localization,
+	scheduleNotification,
+	cancelNotification,
+	cancelAllNotifications,
+	dismissAllNotifications,
+	presentNotifications,
+	presentNotification,
+	lastNotificationResponse,
 };
 
 export function installNativeAppServices(run: (fn: () => void) => void): void {
@@ -214,4 +226,5 @@ export function installNativeAppServices(run: (fn: () => void) => void): void {
 	if (state !== "") { publishAppState(state as AppStateStatus); }
 	publishScreenReader(call("a11y.screenReader", "") === "1");
 	publishReduceMotion(call("a11y.reduceMotion", "") === "1");
+	installNotifications();
 }

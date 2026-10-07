@@ -94,6 +94,25 @@ export interface LocaleSnapshot {
 	firstWeekday: int32;
 }
 
+// A notification to schedule; -1 marks no badge, no delay and no date.
+export interface NotificationSpec {
+	identifier: string;
+	title: string;
+	subtitle: string;
+	body: string;
+	data: string;
+	sound: boolean;
+	badge: number;
+	seconds: number;
+	repeats: boolean;
+	date: number;
+}
+
+export interface ScheduleReply {
+	identifier: string;
+	error: string;
+}
+
 export interface AppServices {
 	dismissKeyboard: () => void;
 	alert: (request: AlertRequest) => void;
@@ -132,6 +151,13 @@ export interface AppServices {
 	deviceInfo: () => DeviceSnapshot;
 	battery: () => Promise<BatterySnapshot>;
 	localization: () => LocaleSnapshot;
+	scheduleNotification: (spec: NotificationSpec) => Promise<ScheduleReply>;
+	cancelNotification: (identifier: string) => void;
+	cancelAllNotifications: () => void;
+	dismissAllNotifications: () => void;
+	presentNotifications: (decide: boolean) => void;
+	presentNotification: (identifier: string, banner: boolean, sound: boolean, badge: boolean) => void;
+	lastNotificationResponse: () => Promise<string>;
 }
 
 let installed: AppServices | null = null;

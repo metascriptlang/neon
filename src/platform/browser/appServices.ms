@@ -4,8 +4,9 @@ import { publishScale, publishScreen } from "../../api/dimensions";
 import { publishAppState } from "../../api/appState";
 import { publishReduceMotion } from "../../api/accessibilityInfo";
 import {
-	androidPermissionGranted, androidRequestPermissions, androidShouldShowRationale, battery, deviceInfo, haptic,
-	localization, locationClear, locationCurrent,
+	androidPermissionGranted, androidRequestPermissions, androidShouldShowRationale, battery, cancelAllNotifications,
+	cancelNotification, deviceInfo, dismissAllNotifications, haptic, lastNotificationResponse, localization, locationClear,
+	locationCurrent, presentNotification, presentNotifications, scheduleNotification,
 	locationWatch, permissionStatus, refreshNetInfo, requestPermission, storageClear, storageGet, storageKeys,
 	storageRemove, storageSet, watchNetInfo,
 } from "./deviceServices";
@@ -202,6 +203,13 @@ const services: AppServices = {
 	deviceInfo,
 	battery,
 	localization,
+	scheduleNotification,
+	cancelNotification,
+	cancelAllNotifications,
+	dismissAllNotifications,
+	presentNotifications,
+	presentNotification,
+	lastNotificationResponse,
 };
 
 let installed = false;

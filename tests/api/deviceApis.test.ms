@@ -12,6 +12,10 @@ import {
 	getCalendars, getCountry, getCurrencies, getLocales, getLocalizeLocales, getNumberFormatSettings, getTemperatureUnit,
 	getTimeZone, uses24HourClock, usesMetricSystem,
 } from "../../src/api/localization";
+import {
+	DEFAULT_ACTION_IDENTIFIER, Notification, NotificationBehavior, NotificationRequestInput, NotificationResponse, Notifications,
+	publishNotificationEvent,
+} from "../../src/api/notifications";
 import { FakeServices } from "./fakeServices";
 
 test "AsyncStorage reads null for a missing key and round-trips set, remove and clear" {
@@ -326,4 +330,64 @@ test "getLocales and getCalendars answer expo-localization's shapes, the react-n
 	assert getCurrencies().join(",") === "VND,EGP";
 	assert getNumberFormatSettings().groupingSeparator === ".";
 	assert getLocalizeLocales()[1].isRTL && !getLocalizeLocales()[0].isRTL;
+}
+
+test "scheduleNotificationAsync flattens expo's request, names it and refuses a short repeat" {
+	const fake = new FakeServices();
+	fake.install();
+	const id = await Notifications.scheduleNotificationAsync({
+		content: { title: "Reminder", body: "Water the plants", data: "{\"plant\":3}" },
+		trigger: { seconds: 5 },
+	});
+	assert id.startsWith("neon-"), id;
+	const first = fake.notifications[0];
+	assert first.identifier === id && first.title === "Reminder" && first.subtitle === "" && first.body === "Water the plants";
+	assert first.data === "{\"plant\":3}" && first.seconds === 5 && !first.repeats && first.date === -1 && first.badge === -1;
+	const now = await Notifications.scheduleNotificationAsync({ identifier: "fixed", content: { title: "Now" }, trigger: null });
+	assert now === "fixed" && fake.notifications[1].seconds === -1;
+	const short = notificationRejection({ content: { title: "Again" }, trigger: { seconds: 10, repeats: true } });
+	assert (await short) === "Notifications.scheduleNotificationAsync: a repeating trigger needs at least 60 seconds";
+	assert (await notificationRejection({ content: { title: "refuse" }, trigger: null })) === "refused by the fake";
+	await Notifications.cancelScheduledNotificationAsync(id);
+	await Notifications.cancelAllScheduledNotificationsAsync();
+	assert fake.joined() === "cancelNotification " + id + ";cancelAllNotifications", fake.joined();
+}
+
+async function notificationRejection(request: NotificationRequestInput): Promise<string> {
+	try {
+		await Notifications.scheduleNotificationAsync(request);
+	} catch (e) {
+		return (e as Error).message;
+	}
+	return "";
+}
+
+test "a received notification reaches its listeners and the handler decides how it is presented" {
+	const fake = new FakeServices();
+	fake.install();
+	const seen: string[] = [];
+	const subscription = Notifications.addNotificationReceivedListener((notification: Notification): void => {
+		seen.push(notification.request.identifier + " " + (notification.request.content.title ?? "untitled"));
+	});
+	const tapped: string[] = [];
+	const responses = Notifications.addNotificationResponseReceivedListener((response: NotificationResponse): void => {
+		tapped.push(response.notification.request.identifier + " " + response.actionIdentifier);
+	});
+	Notifications.setNotificationHandler({
+		handleNotification: async (notification: Notification): Promise<NotificationBehavior> => {
+			return { shouldShowBanner: true, shouldShowList: true, shouldPlaySound: true, shouldSetBadge: false };
+		},
+	});
+	publishNotificationEvent(["received", "n1", "Hello", "", "World", "", "1000"].join("\u001f"));
+	await sleepAsync(20);
+	publishNotificationEvent(["response", "n1", "Hello", "", "World", "", "1000"].join("\u001f"));
+	subscription.remove();
+	responses.remove();
+	Notifications.setNotificationHandler(null);
+	assert seen.join(",") === "n1 Hello", seen.join(",");
+	assert tapped.join(",") === "n1 " + DEFAULT_ACTION_IDENTIFIER, tapped.join(",");
+	assert fake.joined() === "presentNotifications yes;presentNotification n1 banner sound;presentNotifications no", fake.joined();
+	fake.lastResponse = ["response", "n2", "Cold", "", "", "", "5"].join("\u001f");
+	const last = await Notifications.getLastNotificationResponseAsync();
+	assert last !== null && (last as NotificationResponse).notification.request.identifier === "n2";
 }

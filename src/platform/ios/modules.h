@@ -14,6 +14,7 @@ NSString *niNetInfoCall(NSString *name, NSString *arg);
 NSString *niPermissionCall(NSString *name, NSString *arg);
 NSString *niLocationCall(NSString *name, NSString *arg);
 NSString *niDeviceCall(NSString *name, NSString *arg);
+NSString *niNotificationCall(NSString *name, NSString *arg);
 
 NSString *niLocationPermission(void);
 void niLocationAuthorize(void (^done)(void));

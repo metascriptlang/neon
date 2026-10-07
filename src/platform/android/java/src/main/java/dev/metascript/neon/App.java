@@ -47,6 +47,10 @@ public final class App {
 
 	static native int event(int kind, String value);
 
+	static boolean foreground() {
+		return activity != null && "active".equals(state);
+	}
+
 	public static String call(Context context, String name, String arg) {
 		if (activity == null && context instanceof Activity) attach((Activity) context);
 		Activity a = activity;

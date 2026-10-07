@@ -1,7 +1,10 @@
 import { niAppCall } from "./app.h";
 import { NetInfoDetails, NetInfoState, NetInfoStateType, publishNetInfo } from "../../api/netInfo";
 import { TextSlot } from "../../api/replySlot";
-import { BatterySnapshot, DeviceSnapshot, LocaleSnapshot, LocationFix, LocationRequest, PermissionReply } from "../../api/services";
+import {
+	BatterySnapshot, DeviceSnapshot, LocaleSnapshot, LocationFix, LocationRequest, NotificationSpec, PermissionReply,
+	ScheduleReply,
+} from "../../api/services";
 import { decodeLocalization } from "../../api/hostCodec";
 
 const FIELD = "\u001f";
@@ -249,4 +252,45 @@ export async function battery(): Promise<BatterySnapshot> {
 
 export function localization(): LocaleSnapshot {
 	return decodeLocalization(call("locale.info", ""));
+}
+
+function flagText(value: boolean): string {
+	return value ? "1" : "0";
+}
+
+export async function scheduleNotification(spec: NotificationSpec): Promise<ScheduleReply> {
+	const reply = await ask("notification.schedule", [
+		spec.identifier, spec.title, spec.subtitle, spec.body, spec.data, flagText(spec.sound), spec.badge.toString(),
+		spec.seconds.toString(), flagText(spec.repeats), spec.date.toString(),
+	].join(FIELD));
+	const error = refusal(reply);
+	return { identifier: error === "" ? reply : "", error };
+}
+
+export function cancelNotification(identifier: string): void {
+	call("notification.cancel", identifier);
+}
+
+export function cancelAllNotifications(): void {
+	call("notification.cancelAll", "");
+}
+
+export function dismissAllNotifications(): void {
+	call("notification.dismissAll", "");
+}
+
+export function presentNotifications(decide: boolean): void {
+	call("notification.handler", flagText(decide));
+}
+
+export function presentNotification(identifier: string, banner: boolean, sound: boolean, badge: boolean): void {
+	call("notification.present", [identifier, flagText(banner), flagText(sound), flagText(badge)].join(FIELD));
+}
+
+export async function lastNotificationResponse(): Promise<string> {
+	return call("notification.last", "");
+}
+
+export function installNotifications(): void {
+	call("notification.install", "");
 }
