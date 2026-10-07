@@ -147,6 +147,24 @@ web bundles of every example load again (W6). The Seeker lane `tests/android/wid
 and not run (the phone is locked overnight); Android is not measured, and W9 names the swipe over a
 native ScrollView as its likely gap. Not verified: a screen reader on any of these widgets.
 
+Media (`wt/rn-media`, msc `0d83c4867`, 2026-10-08, provisional as `WORKAROUND.md` R1–R5):
+`WebView` (react-native-webview: `source` uri or html + `baseUrl`, `onLoadStart/onLoad/onLoadEnd/
+onError`, `onNavigationStateChange`, `onMessage` with `window.ReactNativeWebView.postMessage`,
+`injectedJavaScript`, `javaScriptEnabled`, `originWhitelist`, a synchronous
+`onShouldStartLoadWithRequest`, ref `goBack/goForward/reload/stopLoading/injectJavaScript/
+postMessage`) on WKWebView, `android.webkit.WebView` and an `<iframe>`; `Video` (react-native-video:
+`source`, `paused`, `muted`, `volume`, `rate`, `repeat`, `resizeMode`, `controls`,
+`progressUpdateInterval`, `onLoadStart/onLoad/onProgress/onEnd/onError`, ref `seek/pause/resume`) on
+AVPlayer, MediaPlayer and `<video>`; no `Audio`/`Sound` player yet. Cases:
+`tests/components/{webView,video}.test.ms` (native and JS), `tests/platform/nativeMedia.test.ms`
+(mock bridge), `tests/browser/media.test.ms` (Chrome: html page ↔ app messages both ways, a refused
+and an allowed link, back and forward; the bundled 3 s clip loads 160x90, progresses, seeks and
+ends). The consumer `examples/media` passes in Chrome (`node tests/browser/media.mjs <playwright>`)
+and on the iPhone 17 Pro simulator (`MediaUITests`: a tap inside the page reaches the app, the app's
+message reaches the page, injection, https example.com → example.org → back → forward, the clip
+plays and ends; `/private/tmp/neon-sim.DHnfJA`). The Android APK builds; `tests/android/media.py`
+is written and not run (the Seeker is locked), so Android is not measured.
+
 
 ### Acceptance — three complete author workflows
 
