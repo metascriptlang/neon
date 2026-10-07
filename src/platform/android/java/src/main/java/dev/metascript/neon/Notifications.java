@@ -26,6 +26,7 @@ final class Notifications {
 	private static final long PRESENT_WAIT = 3000;
 
 	private static final Map<String, String[]> awaiting = new HashMap<>();
+	private static final Map<String, Runnable> timers = new HashMap<>();
 	private static final Handler main = new Handler(Looper.getMainLooper());
 	private static boolean decides;
 	private static String lastResponse = "";
@@ -85,9 +86,22 @@ final class Notifications {
 		scheduled(context).edit().putString(identifier, String.join(FIELD, spec)).commit();
 		AlarmManager alarms = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
 		PendingIntent pending = alarm(context, spec, PendingIntent.FLAG_UPDATE_CURRENT);
-		if ("1".equals(spec[8])) alarms.setRepeating(AlarmManager.RTC_WAKEUP, when, (long) (seconds * 1000), pending);
-		else if (Build.VERSION.SDK_INT >= 31 && !alarms.canScheduleExactAlarms()) alarms.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, when, pending);
+		if ("1".equals(spec[8])) {
+			alarms.setRepeating(AlarmManager.RTC_WAKEUP, when, (long) (seconds * 1000), pending);
+			return identifier;
+		}
+		if (Build.VERSION.SDK_INT >= 31 && !alarms.canScheduleExactAlarms()) alarms.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, when, pending);
 		else alarms.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, when, pending);
+		// While the process lives a main-thread timer fires on time; the alarm, inexact without the
+		// exact-alarm permission, covers a process that is gone by then.
+		Context application = context.getApplicationContext();
+		Runnable timer = () -> {
+			timers.remove(identifier);
+			cancel(application, identifier);
+			deliver(application, spec);
+		};
+		timers.put(identifier, timer);
+		main.postDelayed(timer, Math.max(0L, when - System.currentTimeMillis()));
 		return identifier;
 	}
 
@@ -101,6 +115,8 @@ final class Notifications {
 	}
 
 	private static void cancel(Context context, String identifier) {
+		Runnable timer = timers.remove(identifier);
+		if (timer != null) main.removeCallbacks(timer);
 		PendingIntent pending = PendingIntent.getBroadcast(context, identifier.hashCode(), alarmIntent(context, identifier),
 			PendingIntent.FLAG_NO_CREATE | PendingIntent.FLAG_IMMUTABLE);
 		if (pending != null) {
@@ -111,7 +127,11 @@ final class Notifications {
 	}
 
 	static void deliver(Context context, String[] spec) {
-		if (!"1".equals(spec[8])) scheduled(context).edit().remove(spec[0]).commit();
+		if (!"1".equals(spec[8])) {
+			Runnable timer = timers.remove(spec[0]);
+			if (timer != null) main.removeCallbacks(timer);
+			scheduled(context).edit().remove(spec[0]).commit();
+		}
 		if (!App.foreground()) {
 			post(context, spec);
 			return;
