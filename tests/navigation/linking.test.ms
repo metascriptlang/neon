@@ -106,7 +106,7 @@ test "the initial URL from the host opens its screen once the container mounts" 
 		prefixes: ["orders://"],
 		config: { screens: [{ name: "OrderList", path: "" }, { name: "Order", path: "order/:order" }] },
 	};
-	const dispose: Dispose = render(<NavigationContainer navigationRef={ref} linking={linking}>
+	const dispose: Dispose = render(<NavigationContainer ref={ref} linking={linking}>
 		<Orders.Navigator>
 			<Orders.Screen name="OrderList" component={OrderList} />
 			<Orders.Screen name="Order" component={Order}

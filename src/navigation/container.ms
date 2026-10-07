@@ -155,7 +155,7 @@ async function openInitialURL(open: (url: string) => boolean): Promise<void> {
 export function NavigationContainer(props: {
 	children: NeonNode;
 	linking?: LinkingOptions | null;
-	navigationRef?: NavigationContainerRef | null;
+	ref?: NavigationContainerRef | null;
 	onReady?: (() => void) | null;
 }): NeonNode {
 	const link = containerLink();
@@ -175,7 +175,7 @@ export function NavigationContainer(props: {
 	};
 	const state = new ContainerState(openPath);
 	const scope = new ScreenScope(link, "", accessor((): boolean => true), null, state);
-	const ref = props.navigationRef;
+	const ref = props.ref;
 	if (ref !== null) {
 		const handle = ref as NavigationContainerRef;
 		handle.link = link;

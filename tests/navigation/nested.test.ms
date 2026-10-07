@@ -133,7 +133,7 @@ let unmount: Dispose | null = null;
 function mountApp(ref: NavigationContainerRef): MockNode {
 	if (unmount !== null) { (unmount as Dispose)(); }
 	const root: MockNode = mockNode("root");
-	unmount = render(<NavigationContainer navigationRef={ref} linking={linking}>
+	unmount = render(<NavigationContainer ref={ref} linking={linking}>
 		<Drawer.Navigator>
 			<Drawer.Screen name="Main" component={Main} options={{ headerShown: false, drawerLabel: "Home" }} />
 			<Drawer.Screen name="Settings" component={Settings} />

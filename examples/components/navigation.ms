@@ -224,7 +224,7 @@ export const navigationLinking: LinkingOptions = {
 export const navigationRef: NavigationContainerRef = createNavigationContainerRef();
 
 export function NavigationDemo(): NeonNode {
-	return <NavigationContainer navigationRef={navigationRef} linking={navigationLinking}>
+	return <NavigationContainer ref={navigationRef} linking={navigationLinking}>
 		<Drawer.Navigator>
 			<Drawer.Screen name="Main" component={MainTabs} options={{ headerShown: false, drawerLabel: "Items" }} />
 			<Drawer.Screen name="Settings" component={SettingsScreen} />

@@ -72,7 +72,7 @@ let unmount: Dispose | null = null;
 function mountStack(ref: NavigationContainerRef): MockNode {
 	if (unmount !== null) { (unmount as Dispose)(); }
 	const root: MockNode = mockNode("root");
-	unmount = render(<NavigationContainer navigationRef={ref}>
+	unmount = render(<NavigationContainer ref={ref}>
 		<Stack.Navigator initialRouteName="Home">
 			<Stack.Screen name="Home" component={Home} options={{ title: "Items" }} />
 			<Stack.Screen name="Detail" component={Detail} />
