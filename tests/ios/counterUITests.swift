@@ -1193,12 +1193,13 @@ final class FlutterListsUITests: XCTestCase {
 
         app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "wheel")).firstMatch.tap()
         XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "hour 1")).firstMatch.waitForExistence(timeout: 10))
+        settle()
+        let centre = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "hour 1")).firstMatch.frame.midY
         let wheel = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "hour 2")).firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
         wheel.press(forDuration: 0.05, thenDragTo: wheel.withOffset(CGVector(dx: 0, dy: -132)), withVelocity: .slow, thenHoldForDuration: 0.4)
         waitStatus("status picked hour 4", "dragging the wheel three items picks hour 4")
         settle()
-        let one = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "hour 1")).firstMatch.frame, four = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "hour 4")).firstMatch.frame
-        XCTAssertEqual(four.midY - one.midY, 0, accuracy: 200, "the wheel moved")
+        XCTAssertEqual(app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "hour 4")).firstMatch.frame.midY, centre, accuracy: 4, "the wheel snaps hour 4 to the centre hour 1 started at")
         XCTAssertEqual(launched, pid())
         report("wheel")
     }
