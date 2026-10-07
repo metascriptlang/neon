@@ -5,7 +5,8 @@ import { Animated } from "../../src/animation/animated";
 import { AnimatedValue, AnimatedNode } from "../../src/animation/nodes";
 import { Easing } from "../../src/animation/easing";
 import { useManualFrames, setFrameDriver } from "../../src/animation/frame";
-import { nmTeardown, nmLastPressableTag, nmRotation, nmOpacity, nmTranslateX, nmTransformWrites } from "./nativeBridgeMock.h";
+import { nmTeardown, nmLastPressableTag, nmRotation, nmOpacity, nmTranslateX, nmTransformWrites, nmProp } from "./nativeBridgeMock.h";
+import { createSignal } from "../../src/core/signal";
 
 test "an animated opacity, translateX and rotate are written to the native view each frame" {
 	const clock = useManualFrames();
@@ -43,4 +44,19 @@ test "an rgba background from a colour interpolation parses on native" {
 	assert bg.peek() === "rgba(255, 0, 0, 0.5)", bg.peek();
 	nmTeardown();
 	setFrameDriver(null);
+}
+
+function prop(tag: int32, name: string): string {
+	return nmProp(tag, name);
+}
+
+test "overflow hidden clips a native view and visible releases it" {
+	const [clip, setClip] = createSignal(true);
+	const app = (): NeonNode => <Pressable onPress={() => {}} style={{ width: 10, height: 10, overflow: clip() ? "hidden" : "visible" }} />;
+	runApp(app);
+	const tag = nmLastPressableTag();
+	assert prop(tag, "overflow") === "hidden", "hidden: " + prop(tag, "overflow");
+	setClip(false);
+	assert prop(tag, "overflow") === "visible";
+	nmTeardown();
 }

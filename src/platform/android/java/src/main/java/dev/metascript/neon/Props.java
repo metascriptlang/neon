@@ -34,6 +34,9 @@ public final class Props {
 				return;
 			}
 			case "accessibilityRole": role(view, value); return;
+			case "overflow":
+				if (view instanceof android.view.ViewGroup) ((android.view.ViewGroup)view).setClipChildren("hidden".equals(value));
+				return;
 			default: break;
 		}
 		if (view instanceof Input) ((Input)view).setProp(name, value);

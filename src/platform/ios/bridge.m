@@ -827,6 +827,7 @@ void niSetProp(void *view, const char *name, const char *value) {
 		if ([v isKindOfClass:NeonTouchView.class]) ((NeonTouchView *)v).neonAccessibleSet = text[0] != '\0';
 	}
 	else if (strcmp(name, "accessibilityRole") == 0) v.accessibilityTraits = roleTraits(text);
+	else if (strcmp(name, "overflow") == 0) v.clipsToBounds = strcmp(text, "hidden") == 0;
 	else if ([v isKindOfClass:UILabel.class]) {
 		UILabel *label = (UILabel *)v;
 		if (strcmp(name, "numberOfLines") == 0) label.numberOfLines = text[0] ? atoi(text) : 0;

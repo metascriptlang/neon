@@ -67,6 +67,7 @@ class NativeNode {
 	styleCache: Style | null = null;
 	transformCss: string | null = null;
 	rotation: float32 = 0.0;
+	clip: string = "visible";
 	tween: int32 = 0;
 	fadePass: int32 = 0;
 	shownX: float32 = 0.0;
@@ -273,6 +274,11 @@ function applyPaint(n: NativeNode, s: Style): void {
 			}
 			if (s.borderRadius !== null) { niSetCornerRadius(n.view, s.borderRadius as float32); }
 			if (s.opacity !== null) { niSetOpacity(n.view, s.opacity as float32); }
+			const clip = s.overflow === "hidden" ? "hidden" : "visible";
+			if (clip !== n.clip && !n.isScroll) {
+				n.clip = clip;
+				niSetProp(n.view, "overflow", clip);
+			}
 		}
 	}
 	if ((n.isText || n.isInput) && n.view !== null) {
