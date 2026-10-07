@@ -167,6 +167,7 @@ export function NavigationContainer(props: {
 	linking?: LinkingOptions | null;
 	ref?: NavigationContainerRef | null;
 	onReady?: (() => void) | null;
+	onStateChange?: ((state: NavigationState) => void) | null;
 	theme?: Accessor<Theme> | null;
 }): NeonNode {
 	const link = containerLink();
@@ -191,6 +192,13 @@ export function NavigationContainer(props: {
 		return link.navigateTo(target as NavTarget);
 	};
 	const state = new ContainerState(openPath, theme);
+	const stateChange = props.onStateChange;
+	if (stateChange !== null) {
+		const report = stateChange as (state: NavigationState) => void;
+		state.changed = (): void => {
+			if (state.ready) { report(link.state()); }
+		};
+	}
 	const scope = new ScreenScope(link, "", accessor((): boolean => true), null, state);
 	const ref = props.ref;
 	if (ref !== null) {

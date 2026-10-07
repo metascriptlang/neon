@@ -55,6 +55,7 @@ export {
 	targetFromURL,
 } from "./linking";
 export { Header, HeaderBackButton, DrawerToggleButton } from "./header";
+export { Link } from "./link";
 export {
 	StackNavigator,
 	createStackNavigator,

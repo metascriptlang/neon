@@ -227,6 +227,7 @@ export class ContainerState {
 	linkTo: (path: string) => boolean;
 	theme: Accessor<Theme>;
 	ready: boolean = false;
+	changed: () => void = (): void => {};
 
 	constructor(linkTo: (path: string) => boolean, theme: Accessor<Theme>) {
 		this.linkTo = linkTo;
@@ -295,7 +296,7 @@ export interface ResetState<P> {
 	routes: ResetRoute<P>[];
 }
 
-export type NavigationEvent = "focus" | "blur" | "state" | "beforeRemove";
+export type NavigationEvent = "focus" | "blur" | "state" | "beforeRemove" | "tabPress";
 
 export class NavigationAction {
 	type: string;
@@ -332,12 +333,13 @@ export class NavigationEventArg {
 	}
 }
 
-interface RemovalListener {
+interface EventListener {
 	id: int32;
+	type: string;
 	handler: (event: NavigationEventArg) => void;
 }
 
-function noAction(): void {}
+export function noAction(): void {}
 
 export type Unsubscribe = () => void;
 
@@ -466,20 +468,23 @@ export class Navigation<P> {
 		throw new Error("drawer action: no drawer navigator around '" + this.route.name + "'");
 	}
 
-	removalListeners: RemovalListener[] = [];
-	nextRemoval: int32 = 1;
+	eventListeners: EventListener[] = [];
+	nextEvent: int32 = 1;
 
 	dispatch(action: NavigationAction): void {
 		action.run();
 	}
 
-	emitBeforeRemove(action: NavigationAction): boolean {
-		const data = new NavigationEventData(action);
-		const event = new NavigationEventArg("beforeRemove", this.route.key, data);
-		for (const listener of this.removalListeners.slice(0, this.removalListeners.length)) {
-			listener.handler(event);
+	emit(type: string, action: NavigationAction): boolean {
+		const event = new NavigationEventArg(type, this.route.key, new NavigationEventData(action));
+		for (const listener of this.eventListeners.slice(0, this.eventListeners.length)) {
+			if (listener.type === type) { listener.handler(event); }
 		}
 		return event.defaultPrevented;
+	}
+
+	emitBeforeRemove(action: NavigationAction): boolean {
+		return this.emit("beforeRemove", action);
 	}
 
 	addListener(event: NavigationEvent, handler: (event: NavigationEventArg) => void): Unsubscribe {
@@ -491,14 +496,14 @@ export class Navigation<P> {
 		if (event === "state") {
 			return this.core.addStateListener((): void => { notify("state"); });
 		}
-		if (event === "beforeRemove") {
-			const id = this.nextRemoval;
-			this.nextRemoval += 1;
-			this.removalListeners.push({ id, handler });
+		if (event === "beforeRemove" || event === "tabPress") {
+			const id = this.nextEvent;
+			this.nextEvent += 1;
+			this.eventListeners.push({ id, type: event as string, handler });
 			return (): void => {
-				for (let i = 0; i < this.removalListeners.length; i += 1) {
-					if (this.removalListeners[i].id === id) {
-						this.removalListeners.splice(i, 1);
+				for (let i = 0; i < this.eventListeners.length; i += 1) {
+					if (this.eventListeners[i].id === id) {
+						this.eventListeners.splice(i, 1);
 						return;
 					}
 				}
@@ -768,6 +773,7 @@ export class NavigatorCore<P> {
 			list[at].markVisited(true);
 		});
 		this.notify();
+		this.container.changed();
 	}
 
 	notify(): void {

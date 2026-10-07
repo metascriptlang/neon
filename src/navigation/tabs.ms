@@ -15,6 +15,8 @@ import {
 	createCore,
 	currentScope,
 	mergeOptions,
+	NavigationAction,
+	noAction,
 	optionsAccessor,
 } from "./core";
 import { Slot, screenView, shown } from "./header";
@@ -118,6 +120,7 @@ export function tabItem<P>(
 		backgroundColor: core.container.theme().colors.notification,
 	}));
 	const press = (e: NeonEvent): void => {
+		if (entry.emit("tabPress", new NavigationAction("TAB_PRESS", noAction))) { return; }
 		if (untrack((): boolean => focused())) {
 			core.repressFocused();
 			return;

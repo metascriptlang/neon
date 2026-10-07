@@ -1,5 +1,6 @@
 import { createSignal } from "../../src/core/signal";
 import { Dispose } from "../../src/core/types";
+import { onCleanup } from "../../src/core/cleanup";
 import { NeonNode } from "../../src/render/node";
 import { NeonEvent } from "../../src/render/event";
 import { Style } from "../../src/render/style";
@@ -16,6 +17,9 @@ import {
 	createStackNavigator,
 	useNavigationState,
 	useTheme,
+	Link,
+	LinkingOptions,
+	NavigationEventArg,
 	DarkTheme,
 	DefaultTheme,
 } from "../../src/navigation/index";
@@ -176,5 +180,47 @@ test "material top tabs put the bar above the screens, without a header, with a 
 	press(root, "Calls");
 	assert under(calls) === DefaultTheme.colors.primary && under(chats) === DefaultTheme.colors.card;
 	assert ref.currentPath() === "Calls";
+	dispose();
+}
+
+let blockTabs = false;
+
+function Landing(props: ScreenProps<string>): NeonNode {
+	const stop = props.navigation.addListener("tabPress", (e: NavigationEventArg): void => {
+		if (blockTabs) { e.preventDefault(); }
+	});
+	onCleanup(stop);
+	return <View>
+		<Text>landing</Text>
+		<Link to="/second" accessibilityLabel="go second"><Text>second</Text></Link>
+	</View>;
+}
+
+test "Link opens a path, tabPress can be prevented and onStateChange reports each change" {
+	blockTabs = false;
+	const root: MockNode = mockNode("root");
+	const ref = createNavigationContainerRef();
+	const seen: string[] = [];
+	const linking: LinkingOptions = {
+		prefixes: ["app://"],
+		config: { screens: [{ name: "Landing", path: "" }, { name: "Second", path: "second" }] },
+	};
+	const dispose: Dispose = render(<NavigationContainer ref={ref} linking={linking}
+		onStateChange={(state: NavigationState): void => { seen.push(state.routes[state.index].name); }}>
+		<Tab.Navigator>
+			<Tab.Screen name="Landing" component={Landing} />
+			<Tab.Screen name="Second" component={Counted} />
+		</Tab.Navigator>
+	</NavigationContainer>, mockHost(), root as unknown as HostNode);
+	press(root, "go second");
+	assert ref.currentPath() === "Second", ref.currentPath();
+	press(root, "Landing");
+	blockTabs = true;
+	press(root, "Landing");
+	assert ref.currentPath() === "Landing";
+	ref.navigate("Second");
+	press(root, "Landing");
+	assert ref.currentPath() === "Second", "a prevented tabPress keeps the tab: " + ref.currentPath();
+	assert seen.join(",") === "Second,Landing,Second", seen.join(",");
 	dispose();
 }
