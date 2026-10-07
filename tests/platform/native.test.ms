@@ -109,9 +109,24 @@ test "native transform parses signed fractional and exponent CSS numbers without
 	assert single.translateX === 7 && single.translateY === 0, "one argument translates x only";
 }
 
+test "native transform rotates in deg, rad and turn, and rotates later translations" {
+	const deg = nativeTransform("rotate(45deg)");
+	assert deg.rotate === 45 && deg.scaleX === 1 && deg.translateX === 0, "degrees";
+	const rad = nativeTransform("rotateZ(3.141592653589793rad)");
+	assert Math.abs(rad.rotate - 180) < 0.001, "radians " + rad.rotate.toString();
+	const turn = nativeTransform("rotate(0.25turn) rotate(-10deg)");
+	assert Math.abs(turn.rotate - 80) < 0.001, "turns add up " + turn.rotate.toString();
+	const zero = nativeTransform("rotate(0)");
+	assert zero.rotate === 0, "a bare zero";
+	const before = nativeTransform("translateX(10px) rotate(90deg)");
+	assert before.translateX === 10 && Math.abs(before.translateY) < 0.001, "translate then rotate keeps the offset";
+	const after = nativeTransform("rotate(90deg) translateX(10px)");
+	assert Math.abs(after.translateX) < 0.001 && Math.abs(after.translateY - 10) < 0.001, "rotate then translate moves along the turned axis";
+}
+
 test "native transform refuses unsupported functions, units, junk and non-finite coefficients" {
 	const invalid = [
-		"", " ", "none scaleY(-1)", "rotate(1deg)", "skewX(1deg)", "matrix(1,0,0,1,0,0)",
+		"", " ", "none scaleY(-1)", "rotate(1)", "rotate(1px)", "skewX(1deg)", "matrix(1,0,0,1,0,0)",
 		"scale()", "scale(1,)", "scaleX(1,2)", "scale(1px)", "scale(NaN)", "scale(Infinity)",
 		"translateY(2)", "translateX(2%)", "translate(1px,,2px)", "scale(-1", "scale(1) junk",
 		"scale(1e)", "scale(1e400)", "scale(1e30) scale(1e30)", "translateY(1e40px)",

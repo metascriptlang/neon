@@ -65,6 +65,7 @@ export struct NativeTransform {
 	scaleY: float32;
 	translateX: float32;
 	translateY: float32;
+	rotate: float32;
 }
 
 struct TransformCursor {
@@ -145,20 +146,29 @@ function finiteTransformNumber(value: float64): boolean {
 }
 
 export function nativeTransform(css: string | null): NativeTransform {
-	if (css === null) { return { scaleX: 1, scaleY: 1, translateX: 0, translateY: 0 }; }
+	if (css === null) { return { scaleX: 1, scaleY: 1, translateX: 0, translateY: 0, rotate: 0 }; }
 	let p: TransformCursor = { css: css as string, at: 0 };
 	skipTransformSpace(p);
 	if (transformWord(p, "none")) {
 		skipTransformSpace(p);
 		if (p.at !== p.css.length) { invalidTransform(p); }
-		return { scaleX: 1, scaleY: 1, translateX: 0, translateY: 0 };
+		return { scaleX: 1, scaleY: 1, translateX: 0, translateY: 0, rotate: 0 };
 	}
 	if (p.at === p.css.length) { invalidTransform(p); }
 	let sx: float64 = 1;
 	let sy: float64 = 1;
 	let tx: float64 = 0;
 	let ty: float64 = 0;
+	let angle: float64 = 0;
 	while (p.at < p.css.length) {
+		if (transformWord(p, "rotateZ") || transformWord(p, "rotate")) {
+			if (!transformWord(p, "(")) { invalidTransform(p); }
+			angle += transformAngle(p);
+			skipTransformSpace(p);
+			if (!transformWord(p, ")")) { invalidTransform(p); }
+			skipTransformSpace(p);
+			continue;
+		}
 		let scale = false;
 		let axis: int32 = 0;
 		if (transformWord(p, "scaleX")) { scale = true; axis = 1; }
@@ -183,8 +193,13 @@ export function nativeTransform(css: string | null): NativeTransform {
 			sx *= axis === 2 ? 1 : first;
 			sy *= axis === 1 ? 1 : (axis === 2 ? first : second);
 		} else {
-			tx += sx * (axis === 2 ? 0 : first);
-			ty += sy * (axis === 1 ? 0 : (axis === 2 ? first : second));
+			// A translation after a rotate/scale moves along the rotated, scaled
+			// axes (CSS composes left to right): T' = T + R * S * t.
+			const lx = sx * (axis === 2 ? 0 : first);
+			const ly = sy * (axis === 1 ? 0 : (axis === 2 ? first : second));
+			const radians = angle * Math.PI / 180;
+			tx += Math.cos(radians) * lx - Math.sin(radians) * ly;
+			ty += Math.sin(radians) * lx + Math.cos(radians) * ly;
 		}
 		if (!finiteTransformNumber(sx) || !finiteTransformNumber(sy) || !finiteTransformNumber(tx) || !finiteTransformNumber(ty)) { invalidTransform(p); }
 		skipTransformSpace(p);
@@ -192,7 +207,19 @@ export function nativeTransform(css: string | null): NativeTransform {
 	return {
 		scaleX: sx as float32, scaleY: sy as float32,
 		translateX: tx as float32, translateY: ty as float32,
+		rotate: angle as float32,
 	};
+}
+
+// An angle in degrees from `deg`, `rad`, `turn` or `grad`; a bare 0 is allowed.
+function transformAngle(ref p: TransformCursor): float64 {
+	const value = transformNumber(p, false);
+	if (transformWord(p, "deg")) { return value; }
+	if (transformWord(p, "rad")) { return value * 180 / Math.PI; }
+	if (transformWord(p, "turn")) { return value * 360; }
+	if (transformWord(p, "grad")) { return value * 0.9; }
+	if (value !== 0) { invalidTransform(p); }
+	return 0;
 }
 
 function fireRoutes(routes: NativeEventRoute[], type: string, x: number, y: number): boolean {
