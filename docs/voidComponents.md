@@ -271,6 +271,15 @@ not a hidden GUI launch from the CPU gate. Initial probe import/DPI errors were 
 errors corrected before these measurements. Driver failures exit explicitly rather than
 throw through Cocoa’s frame callback.
 
+Texture device consumer at `29e1e4b` / tree `9455241fab0c26d7e390fa8bfe1494d342b421bd`:
+`msc run tests/device/scene2dTexture.ms` rejects before emission on installed0d83 and r8:
+const successful upload Result `a` loses its `.value` proof inside the JSX reader. The original
+`tile(a.value, 2.0, 2.0)` remains parked; no uploaded Sprite/frame/replacement claim follows.
+Plain no-Neon reduction out/resultConstCapture.ms rejects on installed C/JS and r8 C;
+direct field access prints7, equivalent TypeScript passes strict checking. Added as a sibling
+variant to `2026-10-07-captured-const-nullable-struct-loses-narrowing.md`, without assuming
+shared root; no getter/cast substitution. This opt-in `.ms` is not a new CPU-gate red.
+
 Latest full installed gate: `NEON_BROWSER_PORT=8734 bash tests/run.sh`, commit `8d4e361`,
 tree `442ff190e91c01a8b238b6811ef1d3107c3b1aaa`, installed binary/support `0d83c4867`,
 Void `d255ffb`, exit1. Macros17/apps4 pass; native55 pass/10 fail; JS48 pass/1 fail;
