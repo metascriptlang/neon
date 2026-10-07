@@ -416,7 +416,7 @@ JNIEXPORT void JNICALL Java_dev_metascript_app_NativeApp_destroy(JNIEnv *e, jcla
 JNIEXPORT jboolean JNICALL Java_dev_metascript_neon_Touch_touch(JNIEnv *e, jclass cls, jint tag, jint action, jfloat x, jfloat y, jlong time) {
 	(void)e;
 	(void)cls;
-	enum { ACTION_DOWN = 0, ACTION_UP = 1, ACTION_MOVE = 2, ACTION_CANCEL = 3 };
+	enum { ACTION_DOWN = 0, ACTION_UP = 1, ACTION_MOVE = 2, ACTION_CANCEL = 3, REPORTED_UP = -1 };
 	g_lastTag = tag;
 	g_touchX = x / g_density;
 	g_touchY = y / g_density;
@@ -426,6 +426,9 @@ JNIEXPORT jboolean JNICALL Java_dev_metascript_neon_Touch_touch(JNIEnv *e, jclas
 		call0(s_touch);
 	} else if (action == ACTION_MOVE) {
 		g_lastPhase = 4;
+		call0(s_touch);
+	} else if (action == REPORTED_UP) {
+		g_lastPhase = 1;
 		call0(s_touch);
 	} else if (action == ACTION_UP) {
 		g_lastPhase = 1;

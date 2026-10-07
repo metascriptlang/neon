@@ -29,6 +29,8 @@ public final class Scroll extends SwipeRefreshLayout {
 	private String dismissMode = "none", persistTaps = "never";
 	private float downX, downY;
 	private boolean keyboardCaptured;
+	private int reportTag;
+	private float reportDownX, reportDownY;
 	private final int touchSlop;
 	private final OverScroller prediction;
 	private final Rect visibleFrame = new Rect();
@@ -339,6 +341,44 @@ public final class Scroll extends SwipeRefreshLayout {
 		super.onDetachedFromWindow();
 	}
 
+	// WORKAROUND.md W9 on Android: a touch no view inside claims lands on the scroller, so a
+	// listener around the scroll view (a pager around a vertical list) never hears it. Until
+	// the scroller begins its own drag, the touch is reported for the first listener from
+	// this view outwards, without the press an up on that listener's own view sends; the
+	// drag cancels the report.
+	private static int listenerFrom(View view) {
+		for (View at = view; at != null; at = at.getParent() instanceof View ? (View)at.getParent() : null) {
+			Object tag = at.getTag();
+			if (tag instanceof Integer && (Integer)tag != 0) return (Integer)tag;
+		}
+		return 0;
+	}
+
+	private void report(MotionEvent e) {
+		int action = e.getActionMasked();
+		if (action == MotionEvent.ACTION_DOWN) {
+			reportTag = listenerFrom(this);
+			reportDownX = e.getRawX();
+			reportDownY = e.getRawY();
+		}
+		if (reportTag == 0) return;
+		int tag = reportTag;
+		if (action == MotionEvent.ACTION_MOVE) {
+			float travel = horizontal ? e.getRawX() - reportDownX : e.getRawY() - reportDownY;
+			boolean room = horizontal ? scroller.canScrollHorizontally(travel < 0 ? 1 : -1) : scroller.canScrollVertically(travel < 0 ? 1 : -1);
+			if (Math.abs(travel) > touchSlop && room) {
+				reportTag = 0;
+				Touch.touch(tag, MotionEvent.ACTION_CANCEL, e.getRawX(), e.getRawY(), e.getEventTime());
+				return;
+			}
+		}
+		if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) reportTag = 0;
+		if (action == MotionEvent.ACTION_UP) action = Touch.REPORTED_UP;
+		if (action == MotionEvent.ACTION_DOWN || action == MotionEvent.ACTION_MOVE || action == Touch.REPORTED_UP || action == MotionEvent.ACTION_CANCEL) {
+			Touch.touch(tag, action, e.getRawX(), e.getRawY(), e.getEventTime());
+		}
+	}
+
 	public void dispose() { tag = 0; stopMomentum(); scroller.setOnScrollChangeListener(null); }
 
 	private final class Vertical extends ScrollView {
@@ -351,6 +391,7 @@ public final class Scroll extends SwipeRefreshLayout {
 		}
 		@Override public boolean onTouchEvent(MotionEvent e) {
 			if (!scrollEnabled) return false;
+			if (!dragging) report(e);
 			boolean handled = super.onTouchEvent(e);
 			endDrag(e);
 			return handled;
@@ -380,6 +421,7 @@ public final class Scroll extends SwipeRefreshLayout {
 		}
 		@Override public boolean onTouchEvent(MotionEvent e) {
 			if (!scrollEnabled) return false;
+			if (!dragging) report(e);
 			boolean handled = super.onTouchEvent(e);
 			endDrag(e);
 			return handled;

@@ -5,6 +5,7 @@ import android.view.View;
 import android.view.ViewParent;
 
 public final class Touch implements View.OnTouchListener {
+	static final int REPORTED_UP = -1;
 	private final int tag;
 	private int target;
 
