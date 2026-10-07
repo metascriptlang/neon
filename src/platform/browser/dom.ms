@@ -13,6 +13,7 @@ import { CssStyle, applyCss, applyCssProp } from "./domCss";
 import { VisibleContentPosition, parseVisibleContent } from "../../render/visibleContent";
 import { installBrowserAppServices } from "./appServices";
 import { installDomLayoutAnimation } from "./layoutAnimation";
+import { isMediaTag, createMediaNode, writeMediaAttr, addMediaEvent, releaseMedia } from "./media";
 
 extern class ClassList {
 	extern add(name: cstring): void;
@@ -914,6 +915,7 @@ export function domHost(): Host {
 		});
 	}
 	function releaseOne(el: Node): void {
+		releaseMedia(el as unknown as HostNode);
 		controlKinds.delete(el);
 		switchValues.delete(el);
 		if (cleanups.has(el)) {
@@ -1050,6 +1052,7 @@ export function domHost(): Host {
 				layer.setAttribute("aria-modal", "true");
 				return layer as unknown as HostNode;
 			}
+			if (isMediaTag(tag)) { return createMediaNode(tag); }
 			if (tag === "slider" || tag === "picker" || tag === "datetimepicker") {
 				const control = document.createElement(tag === "picker" ? "select" : "input");
 				if (tag === "slider") { control.setAttribute("type", "range"); }
@@ -1083,6 +1086,7 @@ export function domHost(): Host {
 		},
 		setAttr: (node: HostNode, name: string, value: string): void => {
 			prepareVisibleContent();
+			if (writeMediaAttr(node, name, value)) { return; }
 			const el = node as unknown as Node;
 			const base = name === "class" ? baseClassOf(el) : "";
 			writeDomAttr(el, name, value);
@@ -1131,6 +1135,7 @@ export function domHost(): Host {
 		},
 		addEvent: (node: HostNode, name: string, handler: (e: NeonEvent) => void): void => {
 			const type = eventType(name);
+			if (addMediaEvent(node, type, handler)) { return; }
 			// RN surface names project onto DOM listeners; e.type keeps the neon
 			// spelling so handlers compare one vocabulary on every host.
 			let domType = type;

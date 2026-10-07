@@ -201,17 +201,17 @@ const WEBVIEW_BASE: Style = { flexGrow: 1, flexShrink: 1, flexBasis: 0, backgrou
 export function WebView(props: WebViewProps): NeonNode {
 	const slot = new WebViewSlot();
 	const attrs: VAttr[] = [];
-	const source = props.source;
-	if (source !== null) {
-		const read = source as Accessor<WebViewSource>;
-		attrs.push(dynAttr("source", (): string | null => webViewSourceAttr(read())));
-	}
+	attrs.push(dynAttr("interceptLoads", (): string | null => "true"));
 	const scripts = props.javaScriptEnabled;
 	if (scripts !== null) {
 		const read = scripts as Accessor<boolean>;
 		attrs.push(dynAttr("javaScriptEnabled", (): string | null => read() ? "true" : "false"));
 	}
-	attrs.push(dynAttr("interceptLoads", (): string | null => "true"));
+	const source = props.source;
+	if (source !== null) {
+		const read = source as Accessor<WebViewSource>;
+		attrs.push(dynAttr("source", (): string | null => webViewSourceAttr(read())));
+	}
 	const whitelist = props.originWhitelist;
 	const decide = props.onShouldStartLoadWithRequest;
 	const injected = props.injectedJavaScript;
