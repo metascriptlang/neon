@@ -151,7 +151,7 @@ function SectionsList(): NeonNode {
 export function ListAcceptance(): NeonNode {
 	const [mode, setMode] = createSignal<int32>(0);
 	return <View style={{ flex: 1 }}>
-		<View style={{ flexDirection: "row", gap: 8, padding: 8 }}>
+		<View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, padding: 8 }}>
 			<Pressable style={styles.jump} onPress={() => setMode(0)}>fixed rows</Pressable>
 			<Pressable style={styles.jump} onPress={() => setMode(1)}>measured rows</Pressable>
 			<Pressable style={styles.jump} onPress={() => setMode(2)}>inverted rows</Pressable>
