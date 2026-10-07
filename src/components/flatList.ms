@@ -278,6 +278,14 @@ export function FlatList<T>(props: {
 			(handle as FlatListHandle).scrollToEnd({ animated: false });
 		}
 	};
+	let warnedInitialScrollIndex = false;
+	const checkInitialScrollIndex = (n: int32): void => {
+		if (initialIndexProp === null || warnedInitialScrollIndex || triggeredInitialScrollToIndex) { return; }
+		const index = initialScrollIndex();
+		if (index >= 0 && (n === 0 || index < n)) { return; }
+		warnedInitialScrollIndex = true;
+		console.warn(`initialScrollIndex "${index}" is not valid (list has ${n} items)`);
+	};
 	const fixedCell = (node: NeonNode): ListCell => new ListCell((index: number): void => {}, (size: number): void => {}, (scheduleUpdate: () => void): NeonNode => node);
 	const header = props.ListHeaderComponent;
 	const footer = props.ListFooterComponent;
@@ -496,6 +504,7 @@ export function FlatList<T>(props: {
 		untrack((): void => {
 			items = next;
 			const n = items.length as int32;
+			checkInitialScrollIndex(n);
 			setItemCount(n as number);
 			if (seenCount < 0) {
 				cellsAroundViewport = initialRegion(n);

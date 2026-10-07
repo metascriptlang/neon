@@ -42,6 +42,23 @@ expect_known_red() {
 	fi
 }
 
+warnings='initialScrollIndex "15" is not valid (list has 10 items)
+initialScrollIndex "-1" is not valid (list has 3 items)'
+
+expect_warnings() {
+	for target in "" "--target=js"; do
+		out=$(NO_COLOR=1 "$MSC" run $target "$1" 2>&1 >/dev/null | grep '^initialScrollIndex')
+		if [ "$out" = "$warnings" ]; then
+			echo "ok   ${target:-native} $1"
+		else
+			echo "FAIL ${target:-native} $1: stderr warnings were"
+			echo "$out" | head -4
+			fail=1
+		fi
+	done
+}
+
 expect_output tests/apps/localSignalApp.ms
 expect_output tests/apps/moduleSignalApp.ms
+expect_warnings tests/apps/listWarnApp.ms
 exit $fail
