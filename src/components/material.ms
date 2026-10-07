@@ -12,7 +12,7 @@ export const MATERIAL_SURFACE = "#ffffff";
 export const MATERIAL_ON_SURFACE = "#1c1b1f";
 export const MATERIAL_OUTLINE = "#79747e";
 export const MATERIAL_DISABLED = "#bdbdbd";
-export const MATERIAL_SCRIM = "rgba(0,0,0,0.5)";
+export const MATERIAL_SCRIM = "#000000";
 
 export function colorOr(color: Accessor<string> | null, fallback: string): string {
 	return color === null ? fallback : (color as Accessor<string>)();
