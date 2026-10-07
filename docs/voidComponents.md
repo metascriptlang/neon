@@ -33,10 +33,10 @@ Light JSX consumer remain before runtime on the installed compiler. Measurements
 candidate differences belong to `VISION.md` "Inside a Void area".
 
 Raw 2D slice: `src/components/scene2d.ms` exports Scene2D, Group, Rect, Sprite,
-Mask and Label, using Void NodeRef/binders and Neon owners. Current nineteen-case
+Mask, Label and TileGroup, using Void NodeRef/binders and Neon owners. Current twenty-two-case
 `tests/render/scene2d.test.ms` runs natively on read-only compiler candidate r8
 (binary sha256 prefix `356b1a0fd75d`, matching source/support `f65616348`) against
-Void `d255ffb`: 19 own cases / 333 including imports (`677c0c0`). This proves mapping, reactive
+Void `d255ffb`: 22 own cases / 336 including imports (`11e12d3`). This proves mapping, reactive
 camera/geometry/text/paint/filter, matrix-row reuse/clear, remount/disposal and
 invalid-parent rejection. Parent guards went red before restoration: raw text/tags
 could leak into HUD, and a foreign scene scope could capture an outer 2D parent.
@@ -70,7 +70,10 @@ retile. All five ObjectFit values are tested through JSX and Void fitImage geome
 not rendered image pixels. Mask.scrollX/scrollY/scrollBounds map to Void's scroll
 payload; one effect applies size, bounds, then requested offsets. Tests cover clamp on
 resize, clearing/replacing bounds, omitted axes, negative unbounded offsets and payload
-reuse/remount/disposal. Plain masks allocate no scroll payload. These are state/lifecycle
+reuse/remount/disposal. TileGroup.cells/first/count use setTiles/setRange without a new
+cell reconciler: replacement/empty cells, range/defaults, caller-data isolation, payload
+reuse and named negative-range cleanup are tested. Packing/edit optimization stays in
+Void; current data setter takes whole cell snapshots. Plain masks allocate no scroll payload. These are state/lifecycle
 checks; transformed clipping, nested scopes and input/pixels remain unproved.
 
 The host and Ion frame are still on Void's old API. Their migration belongs to
@@ -96,7 +99,7 @@ existing 3D Group tag silently switch meaning outside Scene3D.
 | 2D-08 | `src/void2d/node.ms` mask/scrollTo/scrollBy/setScrollBounds/scrollScope | Mask size/parenting/scrollX/scrollY/nullable scrollBounds mapped; clamp/resize/defaults/lifecycle CPU-tested on candidate, clipping/input/pixels pending. ScrollView remains UI over the host | Transformed clipping and scroll affect pixels and hit tests identically; bounds clamp, input over clipped content, nested scopes; `src/test/nodeCheck.ms`, `src/test/h2dOracleCheck.ms` |
 | 2D-09 | `src/void2d/node.ms` scaleGrid | ScaleGrid with Tile and borders; missing | Resize preserves nine-slice edges and updates center without dropping texture alpha; `src/test/nodeCheck.ms`, `src/test/tileCheck.ms` |
 | 2D-10 | `src/void2d/node.ms` underline/selection | Render decorations exposed directly or through text props, not omitted because Text also draws decorations; missing | Wavy/straight underline and selection neighbor geometry remain expressible/reactive; `src/test/textMetricsCheck.ms`, `src/test/labelTextCheck.ms` |
-| 2D-11 | `src/void2d/node.ms` tileGroup/setTiles/setTile/setRange | TileGroup with cells and visible range; missing | Reactive single-cell edits, reshapes, ranges, transform/order/bounds and zero cells; `src/test/tileGroupCheck.ms` |
+| 2D-11 | `src/void2d/node.ms` tileGroup/setTiles/setTile/setRange | TileGroup cells/first/count mapped; replacement/empty arrays, range/defaults, payload lifecycle/caller-data isolation/parent errors CPU-tested on candidate; packed output/bounds/pixels pending | Reactive single-cell edits, reshapes, ranges, transform/order/bounds and zero cells; `src/test/tileGroupCheck.ms` |
 | 2D-12 | `src/void2d/node.ms` label and text binders; `src/void2d/textLayout.ms` TextStyle/TextRun/LineOptions | Label text/size/color/TextStyle core written; runs/line options/font selection/query/pixels pending. Text UI projection remains a subset | Font/spacing/alignment/wrap, runs/decorations, truncate/indent/force-width, shaping breaks, selection/cursor/blink; rendered layout and queries agree; `src/test/textLayoutCheck.ms`, `src/test/textMetricsCheck.ms`, `src/test/labelTextCheck.ms` |
 | 2D-13 | `src/void2d/font.ms` Font/FontId/resolveFont; `src/void2d/face.ms` loadFace | Font values usable in JSX text props; loading helpers need no separate tag | Supported font descriptors/fallback/synthetic styles produce expected layout; requests Void refuses remain loud (do not promise a shaper it lacks); `src/test/fontCheck.ms`, `src/test/fontOracleCheck.ms` |
 | 2D-14 | `src/void2d/node.ms` setPaint/setFilter/setColorMatrix; `src/void2d/types.ms` Filter/Smooth; `src/void2d/effect.ms` color-matrix helpers | Common Paint2D/filter/colorMatrix ownership tests pass on candidate; installed JSX contract blocked by enum roundtrip, compositing/pixels pending | Blend/alpha/color-add/key/matrix, smooth/wrap/no-overlap and blur/glow/drop-shadow preserve compositing and clipping; `src/test/effectCheck.ms`, `tests/integration/doorBlendModes.ms` |
