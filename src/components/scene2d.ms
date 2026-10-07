@@ -28,6 +28,8 @@ import {
 	setOrder,
 	setFilter,
 	setSize,
+	setBoxStyle,
+	setImageStyle,
 	setColor,
 	setTile,
 	setText,
@@ -38,6 +40,8 @@ import { create, close, setScaleMode } from "../../../void/src/void2d/scene";
 import { Color, Camera, Tile, Filter, ScaleMode, rgba } from "../../../void/src/void2d/types";
 import { TextStyle } from "../../../void/src/void2d/textLayout";
 import { Mat4 } from "../../../void/src/math/math3d";
+import { BoxStyle } from "../../../void/src/void2d/boxStyle";
+import { ImageStyle } from "../../../void/src/void2d/imageStyle";
 
 interface Scene2DProps {
 	clear?: Accessor<Color> | null;
@@ -64,10 +68,14 @@ interface RectProps extends NodeProps {
 	width: Accessor<float32>;
 	height: Accessor<float32>;
 	color: Accessor<Color>;
+	boxStyle?: Accessor<BoxStyle> | null;
 }
 
 interface SpriteProps extends NodeProps {
 	tile: Accessor<Tile>;
+	width?: Accessor<float32> | null;
+	height?: Accessor<float32> | null;
+	imageStyle?: Accessor<ImageStyle> | null;
 }
 
 interface MaskProps extends NodeProps {
@@ -230,6 +238,10 @@ export function Rect(props: RectProps): NeonNode {
 		(scene: VoidScene2D): NodeRef => scene.rect(props.width(), props.height(), props.color()),
 		(node: NodeRef): void => {
 			createEffect((): void => { node.setSize(props.width(), props.height()); });
+			if (props.boxStyle !== null) {
+				const style = props.boxStyle as () => BoxStyle;
+				createEffect((): void => { node.setBoxStyle(style()); });
+			}
 			if (props.paint === null) {
 				createEffect((): void => { node.setColor(props.color()); });
 			}
@@ -241,8 +253,16 @@ export function Sprite(props: SpriteProps): NeonNode {
 		(node: NodeRef): void => {
 			createEffect((): void => {
 				const tile = props.tile();
-				node.setTile(tile).setSize(tile.w, tile.h);
+				const width: float32 = props.width === null ? tile.w :
+					(props.width as () => float32)();
+				const height: float32 = props.height === null ? tile.h :
+					(props.height as () => float32)();
+				node.setTile(tile).setSize(width, height);
 			});
+			if (props.imageStyle !== null) {
+				const style = props.imageStyle as () => ImageStyle;
+				createEffect((): void => { node.setImageStyle(style()); });
+			}
 		});
 }
 

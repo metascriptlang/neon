@@ -20,6 +20,12 @@ import {
 import { sceneViewMatrix } from "../../../void/src/void2d/scene";
 import { BlendMode } from "../../../void/src/gpu/state";
 import { colorMatrixGrayscale, NO_COLOR_MATRIX } from "../../../void/src/void2d/effect";
+import {
+	BoxStyle, create, uniformRadii, uniformBorders, dashed, castShadow, boxStyles,
+} from "../../../void/src/void2d/boxStyle";
+import {
+	imageStyle, imageStyles, ObjectFit, fitImage,
+} from "../../../void/src/void2d/imageStyle";
 
 function translated(x: float32, y: float32): Local2D {
 	return { x: x, y: y, scaleX: 1.0, scaleY: 1.0, rotation: 0.0, pivotX: 0.0, pivotY: 0.0 };
@@ -102,6 +108,107 @@ test "Scene2D Fixed Zoom AutoZoom and omitted design values keep Void semantics"
 	dispose();
 	setMode(ScaleMode.Fixed);
 	assert scene.closed && scene.scaleMode === ScaleMode.AutoZoom;
+}
+
+test "Rect boxStyle updates its owned payload and reuses it after removal" {
+	let scene: VoidScene2D = null as unknown as VoidScene2D;
+	const nodes: NodeRef[] = [];
+	const [radius, setRadius] = createSignal<float32>(4.0);
+	const [shown, setShown] = createSignal(true);
+	const root = mockNode("root");
+	const dispose = render(element(<Void>
+		<Scene2D ref={(value: VoidScene2D): void => { scene = value; }}>
+			{Show({ when: () => shown(), children: element(
+				<Rect width={50.0} height={30.0} color={rgba(1.0, 0.0, 0.0, 1.0)}
+					boxStyle={BoxStyle.create(
+						uniformRadii(radius()), uniformBorders(2.0), rgba(0.0, 0.0, 1.0, 1.0),
+					).dashed().castShadow(rgba(0.0, 0.0, 0.0, 0.5), 3.0, 1.0, 2.0)}
+					ref={(value: NodeRef): void => { nodes.push(value); }} />
+			) })}
+		</Scene2D>
+	</Void>), mockHost(), root as unknown as HostNode);
+	const row = scene.payloads[nodes[0].id.index];
+	assert row >= 0 && boxStyles[row].radii.topLeft === 4.0;
+	assert boxStyles[row].borders.right === 2.0 && boxStyles[row].shadowBlur === 3.0;
+	setRadius(9.0);
+	assert scene.payloads[nodes[0].id.index] === row && boxStyles[row].radii.topRight === 9.0;
+	setShown(false);
+	assert !nodes[0].isLive();
+	setRadius(2.0); setShown(true);
+	assert scene.payloads[nodes[1].id.index] === row;
+	assert boxStyles[row].radii.bottomLeft === 2.0;
+	dispose();
+	setRadius(20.0);
+	assert scene.closed && !nodes[1].isLive();
+}
+
+test "Sprite imageStyle and independent fitted size react without replacing its payload" {
+	let scene: VoidScene2D = null as unknown as VoidScene2D;
+	const nodes: NodeRef[] = [];
+	const [width, setWidth] = createSignal<float32>(80.0);
+	const [tileWidth, setTileWidth] = createSignal<float32>(64.0);
+	const [gray, setGray] = createSignal(false);
+	const [shown, setShown] = createSignal(true);
+	const root = mockNode("root");
+	const dispose = render(element(<Void>
+		<Scene2D ref={(value: VoidScene2D): void => { scene = value; }}>
+			{Show({ when: () => shown(), children: element(
+				<Sprite tile={whiteTile(tileWidth(), 32.0)} width={width()} height={80.0}
+					imageStyle={imageStyle(uniformRadii(3.0), gray(), ObjectFit.Contain)}
+					ref={(value: NodeRef): void => { nodes.push(value); }} />
+			) })}
+		</Scene2D>
+	</Void>), mockHost(), root as unknown as HostNode);
+	const row = scene.payloads[nodes[0].id.index];
+	const initial = fitImage(nodes[0].content().tile, 80.0, 80.0, imageStyles[row].fit);
+	assert initial.w === 80.0 && initial.h === 40.0 && initial.y === 20.0;
+	setWidth(120.0); setGray(true);
+	assert scene.payloads[nodes[0].id.index] === row && imageStyles[row].grayscale;
+	assert nodes[0].content().w === 120.0 && nodes[0].content().h === 80.0;
+	setTileWidth(32.0);
+	assert nodes[0].content().tile.w === 32.0 && nodes[0].content().w === 120.0;
+	const fitted = fitImage(nodes[0].content().tile, 120.0, 80.0, imageStyles[row].fit);
+	assert fitted.w === 80.0 && fitted.h === 80.0 && fitted.x === 20.0;
+	setShown(false); setWidth(60.0); setGray(false); setShown(true);
+	assert !nodes[0].isLive() && scene.payloads[nodes[1].id.index] === row;
+	assert nodes[1].content().w === 60.0 && !imageStyles[row].grayscale;
+	dispose();
+	setWidth(200.0); setGray(true); setTileWidth(100.0);
+	assert scene.closed && !nodes[1].isLive();
+}
+
+test "Sprite exposes remaining ObjectFit values and partial dimensions follow retile" {
+	const nodes: NodeRef[] = [];
+	const [fit, setFit] = createSignal<ObjectFit>(ObjectFit.Cover);
+	const [tileHeight, setTileHeight] = createSignal<float32>(12.0);
+	const root = mockNode("root");
+	const dispose = render(element(<Void><Scene2D>
+		<Sprite tile={whiteTile(64.0, 32.0)} width={80.0} height={80.0}
+			imageStyle={imageStyle(uniformRadii(0.0), false, fit())}
+			ref={(value: NodeRef): void => { nodes.push(value); }} />
+		<Sprite tile={whiteTile(10.0, tileHeight())} width={30.0}
+			ref={(value: NodeRef): void => { nodes.push(value); }} />
+	</Scene2D></Void>), mockHost(), root as unknown as HostNode);
+	const row = nodes[0].scene.payloads[nodes[0].id.index];
+	const covered = fitImage(nodes[0].content().tile, 80.0, 80.0, imageStyles[row].fit);
+	assert covered.w === 80.0 && covered.h === 80.0;
+	assert covered.u0 === 0.25 && covered.u1 === 0.75;
+	setFit(ObjectFit.Fill);
+	const filled = fitImage(nodes[0].content().tile, 80.0, 80.0, imageStyles[row].fit);
+	assert filled.w === 80.0 && filled.h === 80.0 && filled.u0 === 0.0;
+	setFit(ObjectFit.ScaleDown);
+	const small = fitImage(nodes[0].content().tile, 80.0, 80.0, imageStyles[row].fit);
+	assert small.w === 64.0 && small.h === 32.0 && small.x === 8.0 && small.y === 24.0;
+	setFit(ObjectFit.None);
+	const unchanged = fitImage(nodes[0].content().tile, 80.0, 80.0, imageStyles[row].fit);
+	assert unchanged.x === 0.0 && unchanged.y === 0.0;
+	assert unchanged.w === 64.0 && unchanged.h === 32.0;
+	assert nodes[1].content().w === 30.0 && nodes[1].content().h === 12.0;
+	setTileHeight(20.0);
+	assert nodes[1].content().w === 30.0 && nodes[1].content().h === 20.0;
+	dispose();
+	setFit(ObjectFit.Contain); setTileHeight(40.0);
+	assert !nodes[0].isLive() && !nodes[1].isLive();
 }
 
 test "Scene2D mounts real render nodes without creating host elements" {
