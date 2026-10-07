@@ -7,14 +7,22 @@ import { sleepAsync } from "std/core/promise";
 import { element } from "../../src/macros/ui/element";
 import { HostNode, MockNode, mockNode, mockHost, render, mockToString, fireEvent } from "../../src/render/host";
 import { Style } from "../../src/render/style";
-import { Text } from "../../src/components/primitives";
+import { Text, View } from "../../src/components/primitives";
 import { Snackbar } from "../../src/components/snackbar";
 import { Toast, ToastHost, currentToast } from "../../src/components/toast";
 import { Tooltip } from "../../src/components/tooltip";
+import { Dialog, DialogAction } from "../../src/components/dialog";
 
 function firstTag(parent: MockNode, tag: string): MockNode {
 	for (const c of parent.children) {
 		if (c.tag === tag) { return c; }
+	}
+	throw "no <" + tag + "> under <" + parent.tag + ">";
+}
+
+function lastTag(parent: MockNode, tag: string): MockNode {
+	for (let i = parent.children.length - 1; i >= 0; i -= 1) {
+		if (parent.children[i].tag === tag) { return parent.children[i]; }
 	}
 	throw "no <" + tag + "> under <" + parent.tag + ">";
 }
@@ -124,4 +132,46 @@ test "Tooltip shows its title above the child on a long press and leaves after t
 	assert mockToString(wrapper).indexOf("<view>") > 0, "stays for the leave delay";
 	await sleepAsync(160);
 	assert mockToString(wrapper) === "<pressable accessibilityHint=\"Delete\"><text>trash</text></pressable>", "left: " + mockToString(wrapper);
+}
+
+test "Dialog lays a scrim under a titled card, and the scrim and the actions dismiss it" {
+	const [open, setOpen] = createSignal(false);
+	const [log, setLog] = createSignal("");
+	const root: MockNode = mockNode("root");
+	render(element(<Dialog visible={open()} title="Discard draft?"
+		onDismiss={(): void => { setLog(log() + "dismiss;"); setOpen(false); }}
+		actions={<View>
+			<DialogAction label="Cancel" onPress={(): void => { setLog(log() + "cancel;"); setOpen(false); }} />
+			<DialogAction label="Discard" color="#b3261e" onPress={(): void => { setLog(log() + "discard;"); }} />
+		</View>}>
+		<Text>The draft will be lost.</Text>
+	</Dialog>), mockHost(), root as unknown as HostNode);
+	assert mockToString(root) === "<root></root>", "hidden: " + mockToString(root);
+	setOpen(true);
+	assert mockToString(root) === "<root><view><pressable accessibilityLabel=\"Dismiss\"></pressable><view accessibilityLabel=\"Discard draft?\" accessibilityRole=\"alert\"><text accessibilityRole=\"header\">Discard draft?</text><view><text>The draft will be lost.</text></view><view><view><pressable accessibilityLabel=\"Cancel\" accessibilityRole=\"button\"><text>Cancel</text></pressable><pressable accessibilityLabel=\"Discard\" accessibilityRole=\"button\"><text>Discard</text></pressable></view></view></view></view></root>", "shown: " + mockToString(root);
+	const layer = root.children[0];
+	const scrim = firstTag(layer, "pressable");
+	const scrimStyle = scrim.style as Style;
+	assert scrimStyle.backgroundColor === "#000000" && scrimStyle.opacity === 0.5 && scrimStyle.position === "absolute", "scrim";
+	const card = firstTag(layer, "view");
+	assert (card.style as Style).borderRadius === 28 && (card.style as Style).backgroundColor === "#ffffff", "card";
+	fireEvent(scrim, "onPress");
+	assert log() === "dismiss;" && mockToString(root) === "<root></root>", "scrim dismissed: " + log();
+	setOpen(true);
+	const actions = firstTag(lastTag(firstTag(root.children[0], "view"), "view"), "view");
+	fireEvent(actions.children[1], "onPress");
+	fireEvent(actions.children[0], "onPress");
+	assert log() === "dismiss;discard;cancel;", "actions: " + log();
+	assert mockToString(root) === "<root></root>", "cancel closed it";
+}
+
+test "a Dialog that is not dismissable ignores the scrim" {
+	const [log, setLog] = createSignal("");
+	const root: MockNode = mockNode("root");
+	render(element(<Dialog visible={true} dismissable={false} onDismiss={(): void => { setLog("dismiss"); }}>
+		<Text>Working</Text>
+	</Dialog>), mockHost(), root as unknown as HostNode);
+	assert mockToString(root) === "<root><view><pressable accessibilityLabel=\"Dismiss\"></pressable><view accessibilityLabel=\"\" accessibilityRole=\"alert\"><view><text>Working</text></view></view></view></root>", "untitled: " + mockToString(root);
+	fireEvent(firstTag(root.children[0], "pressable"), "onPress");
+	assert log() === "", "scrim ignored: " + log();
 }
