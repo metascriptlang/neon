@@ -26,11 +26,28 @@ def wait_status(prefix, why, seconds=15):
     raise LaneError("%s: expected %r, app says %r" % (why, prefix, status(texts)))
 
 
+# counter.dump keeps TextView nodes only; the WebView exposes the page's <button> as an
+# android.widget.Button, so page content is read from every node with a text.
+def page_texts():
+    window, texts = scroll_list.state(False)
+    xml = adb("shell", "cat", "/sdcard/neon-lane.xml")
+    for attrs in re.findall(r"<node ([^>]*?)/?>", xml):
+        fields = dict(re.findall(r'([\w-]+)="([^"]*)"', attrs))
+        if fields.get("package") == PACKAGE and fields.get("text"):
+            texts.setdefault(fields["text"], counter.bounds(fields["bounds"]))
+    return window, texts
+
+
+def centre_of(texts, text):
+    x1, y1, x2, y2 = texts[text]
+    return ((x1 + x2) // 2, (y1 + y2) // 2)
+
+
 def wait_for(text, seconds=15):
     deadline = time.time() + seconds
     texts = {}
     while time.time() < deadline:
-        window, texts = scroll_list.state(False)
+        window, texts = page_texts()
         if text in texts:
             return window, texts
         time.sleep(0.3)
@@ -86,16 +103,22 @@ def lane():
 
     scroll_list.tap(texts, "video")
     window, texts = wait_status("status video 3s 160x90", "the bundled clip loads with its duration and natural size")
-    scroll_list.tap(texts, "play")
-    window, texts = wait_status("status playing", "play")
-    time.sleep(1)
-    window, texts = scroll_list.state(False)
-    played = scroll_list.label(texts, "time ")
-    if float(played[5:] or "0") <= 0.2:
-        raise LaneError("progress did not advance while playing: %r" % played)
+    # Progress events keep the accessibility tree busy, so a dump during playback waits for
+    # the clip's end. Play and pause run on the device a second apart, and the paused
+    # screen is read.
+    button = centre_of(texts, "play")
+    adb("shell", "input tap %d %d; sleep 1; input tap %d %d" % (button + button))
+    window, texts = wait_status("status paused", "play, then pause a second later")
+    played = float(scroll_list.label(texts, "time ")[5:] or "0")
+    if not (0.2 < played < 2.5):
+        raise LaneError("progress should stop about a second in: time %s" % played)
     report("video-playing", window, texts, launched)
-    scroll_list.tap(texts, "seek 2")
-    window, texts = wait_status("status video ended", "after a seek to 2 s the clip ends")
+    seek = centre_of(texts, "seek 2")
+    adb("shell", "input tap %d %d; input tap %d %d" % (seek + button))
+    window, texts = wait_status("status video ended", "after a seek to 2 s the clip plays to its end")
+    ended = float(scroll_list.label(texts, "time ")[5:] or "0")
+    if ended < 2.5:
+        raise LaneError("the clip ended at time %s, before its 3 s" % ended)
     if counter.pid() != launched:
         raise LaneError("the process restarted")
     report("video-ended", window, texts, launched)
