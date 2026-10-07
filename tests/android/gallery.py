@@ -216,6 +216,94 @@ def lane():
     adb("shell", "input", "keyevent", "KEYCODE_BACK")
     if counter.pid() != launched:
         raise LaneError("the process restarted during the gallery")
+    parity(launched)
+
+
+def described_bounds(description):
+    adb("shell", "uiautomator", "dump", "/sdcard/neon-lane.xml")
+    xml = adb("shell", "cat", "/sdcard/neon-lane.xml")
+    for node in re.findall(r"<node [^>]*>", xml):
+        if 'package="%s"' % PACKAGE in node and 'content-desc="%s"' % description in node:
+            return counter.bounds(re.search(r'bounds="([^"]*)"', node).group(1))
+    raise LaneError("no view described %r" % description)
+
+
+def leading_number(text, prefix):
+    digits = ""
+    for c in text[len(prefix):]:
+        if not c.isdigit():
+            break
+        digits += c
+    return int(digits) if digits else -1
+
+
+# The React Native parity screen (examples/components/gallery.ms ParityScreen).
+def parity(launched):
+    window, texts = scroll_list.state(False)
+    window, texts = scroll_to("OPEN PARITY SCREEN", window)
+    scroll_list.tap(texts, "OPEN PARITY SCREEN")
+    window, texts = wait_for("status: parity screen")
+
+    window, texts, line = wait_prefix("insets ")
+    if leading_number(line, "insets ") != 0:
+        raise LaneError("the root starts inside the safe area: %r" % line)
+    window, texts = press(texts, "EDGE TO EDGE", "edge to edge")
+    window, texts, line = wait_prefix("insets ")
+    top = leading_number(line, "insets ")
+    if top <= 0:
+        raise LaneError("a translucent StatusBar publishes no top inset: %r" % line)
+    header = texts["Neon gallery"]
+    print("NEON_ANDROID gallery-parity-edge %s header %s" % (line, header))
+    scroll_list.report("gallery-parity-edge", window, texts, launched)
+    window, texts = press(texts, "INSIDE SAFE AREA", "inside safe area")
+
+    window, texts = wait_for("Terms apply to this gallery.")
+    x1, y1, x2, y2 = texts["Terms apply to this gallery."]
+    adb("shell", "input", "tap", str(x1 + 20), str((y1 + y2) // 2))
+    window, texts = wait_for("status: terms pressed")
+    adb("shell", "input", "tap", str(x2 - 20), str((y1 + y2) // 2))
+    window, texts = wait_for("status: text pressed")
+    cx1, _, cx2, _ = texts["centred"]
+    if cx2 - cx1 < (window[2] - window[0]) // 2:
+        raise LaneError("a centred Text does not span its parent: %s" % (texts["centred"],))
+    print("NEON_ANDROID gallery-parity-text spans press apart, centred width %d" % (cx2 - cx1))
+
+    window, texts, line = wait_prefix("grow ")
+    resting = leading_number(line, "grow ")
+    x, y = editable_centre("Grows with its text")
+    adb("shell", "input", "tap", str(x), str(y))
+    time.sleep(1)
+    for word in ["one", "two", "three"]:
+        adb("shell", "input", "text", word)
+        adb("shell", "input", "keyevent", "KEYCODE_ENTER")
+    deadline = time.time() + 8
+    grown = resting
+    while time.time() < deadline and grown <= resting + 20:
+        window, texts, line = wait_prefix("grow ")
+        grown = leading_number(line, "grow ")
+        time.sleep(0.4)
+    if grown <= resting + 20:
+        raise LaneError("the multiline TextInput did not grow: %d -> %d" % (resting, grown))
+    print("NEON_ANDROID gallery-parity-grow %d -> %d" % (resting, grown))
+    adb("shell", "input", "keyevent", "KEYCODE_BACK")
+
+    window, texts = scroll_to("size 600x240", window)
+    window, texts, line = wait_prefix("hairline ")
+    print("NEON_ANDROID gallery-parity-image size 600x240 %s" % line)
+
+    window, texts = scroll_to("OPEN DIALOG", window)
+    sx1, sy1, sx2, sy2 = described_bounds("Slop target")
+    adb("shell", "input", "tap", str(sx1 - (sx2 - sx1) // 2), str((sy1 + sy2) // 2))
+    window, texts = wait_for("status: slop pressed")
+    window, texts = press(texts, "OPEN DIALOG", "dialog open")
+    window, texts = wait_for("Parity dialog")
+    adb("shell", "input", "keyevent", "KEYCODE_BACK")
+    window, texts = wait_for("status: dialog dismissed")
+    window, texts = gone("Parity dialog")
+    if counter.pid() != launched:
+        raise LaneError("back closed the activity instead of the dialog")
+    print("NEON_ANDROID gallery-parity-dialog back dismisses it")
+    scroll_list.report("gallery-parity", window, texts, launched)
 
 
 def main():

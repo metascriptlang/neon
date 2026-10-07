@@ -987,6 +987,90 @@ final class GalleryUITests: XCTestCase {
         status("notes 4")
         report("notes")
     }
+
+    private func number(after prefix: String) -> Int {
+        let text = label(startingWith: prefix)
+        let rest = text.dropFirst(prefix.count)
+        return Int(rest.prefix { $0.isNumber }) ?? -1
+    }
+
+    private func waitFor(_ what: String, timeout: TimeInterval = 10, _ check: @escaping () -> Bool) {
+        let predicate = NSPredicate { _, _ in check() }
+        XCTAssertEqual(XCTWaiter.wait(for: [expectation(for: predicate, evaluatedWith: app)], timeout: timeout), .completed, what)
+    }
+
+    private func dismissKeyboard() {
+        for _ in 0..<3 where app.keyboards.count > 0 {
+            app.staticTexts["TEXT INPUT"].tap()
+            _ = app.keyboards.firstMatch.waitForNonExistence(timeout: 3)
+        }
+    }
+
+    func testGalleryParity() {
+        XCUIDevice.shared.orientation = .portrait
+        app.launch()
+        XCTAssertTrue(app.staticTexts["Neon gallery"].waitForExistence(timeout: 20))
+        let open = app.buttons["Open parity screen"]
+        scrollTo(open)
+        open.tap()
+        status("parity screen")
+
+        XCTAssertEqual(number(after: "insets "), 0, "the root sits inside the safe area: \(label(startingWith: "insets "))")
+        app.buttons["Edge to edge"].tap()
+        status("edge to edge")
+        waitFor("a translucent StatusBar publishes the real top inset: \(label(startingWith: "insets "))") { self.number(after: "insets ") > 20 }
+        let top = number(after: "insets ")
+        let header = app.staticTexts["Neon gallery"]
+        XCTAssertGreaterThanOrEqual(header.frame.minY, CGFloat(top) - 1, "SafeAreaView pads the header below the status bar: \(header.frame) top \(top)")
+        report("parity-edge")
+        app.buttons["Inside safe area"].tap()
+        status("inside safe area")
+        waitFor("back inside the safe area: \(label(startingWith: "insets "))") { self.number(after: "insets ") == 0 }
+
+        let centred = app.staticTexts["centred"]
+        XCTAssertGreaterThan(centred.frame.width, 200, "a centred Text spans its parent: \(centred.frame)")
+        let joined = app.staticTexts["Terms apply to this gallery."]
+        XCTAssertTrue(joined.exists, "the nested Texts are one label")
+        joined.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0.5)).withOffset(CGVector(dx: 14, dy: 0)).tap()
+        status("terms pressed")
+        joined.coordinate(withNormalizedOffset: CGVector(dx: 1, dy: 0.5)).withOffset(CGVector(dx: -14, dy: 0)).tap()
+        status("text pressed")
+        report("parity-text")
+
+        let grow = app.textViews["Grow"]
+        scrollTo(grow)
+        let resting = number(after: "grow ")
+        XCTAssertGreaterThan(resting, 0, "the multiline input reported its frame")
+        grow.tap()
+        grow.typeText("one\ntwo\nthree")
+        waitFor("a multiline TextInput grows with its lines: \(resting) -> \(label(startingWith: "grow "))") { self.number(after: "grow ") > resting + 20 }
+        report("parity-grow")
+        dismissKeyboard()
+
+        let selectable = app.textFields["Selectable"]
+        scrollTo(selectable)
+        selectable.tap()
+        waitFor("the native selection reaches onSelectionChange: \(label(startingWith: "selection "))") { self.label(startingWith: "selection ") != "selection none" }
+        selectable.typeText("\n")
+        dismissKeyboard()
+
+        waitFor("ImageLoader.getSize reads the photo: \(label(startingWith: "size "))", timeout: 30) { self.label(startingWith: "size ") == "size 600x240" }
+        XCTAssertTrue(app.staticTexts["hairline 0.333"].exists, "hairlineWidth on a 3x screen: \(label(startingWith: "hairline "))")
+
+        let target = element("Slop target")
+        scrollTo(target)
+        target.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).withOffset(CGVector(dx: -30, dy: 0)).tap()
+        status("slop pressed")
+
+        let dialog = app.buttons["Open dialog"]
+        scrollTo(dialog)
+        dialog.tap()
+        XCTAssertTrue(app.staticTexts["Parity dialog"].waitForExistence(timeout: 10))
+        report("parity-dialog")
+        element("Close").tap()
+        status("dialog closed")
+        report("parity")
+    }
 }
 
 final class MotionUITests: XCTestCase {

@@ -1,10 +1,13 @@
 // A gallery of the RN core components: one scroll of sections, a status line
 // the device drivers read, a Modal, a StatusBar toggle and a keyboard screen.
 
-import { Accessor, createSignal } from "../../src/core/signal";
+import { Accessor, accessor, createSignal } from "../../src/core/signal";
 import { NeonNode } from "../../src/render/node";
 import { NeonEvent } from "../../src/render/event";
-import { View, Text, TextInput, ScrollView } from "../../src/components/primitives";
+import { View, Text, TextInput, ScrollView, Pressable, TextSelection } from "../../src/components/primitives";
+import { Image, ImageLoader } from "../../src/components/image";
+import { Dialog, DialogAction } from "../../src/components/dialog";
+import { StyleSheet } from "../../src/api/styleSheet";
 import { Button } from "../../src/components/button";
 import { Switch } from "../../src/components/switch";
 import { ActivityIndicator } from "../../src/components/activityIndicator";
@@ -43,6 +46,73 @@ function KeyboardScreen(props: { back: () => void; say: (s: string) => void }): 
 	</KeyboardAvoidingView>;
 }
 
+const TILE = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAADCAIAAAA2iEnWAAAAEElEQVR4nGP4z8AARAwoFABE0AX7pM/egAAAAABJRU5ErkJggg==";
+const PHOTO = "https://picsum.photos/id/29/600/240";
+
+// The React Native parity screen: safe-area insets, textAlign, nested Text spans, multiline
+// growth and selection, Image extras, StyleSheet, Pressable hitSlop and android_ripple, and a
+// Dialog the Android back button closes.
+function ParityScreen(props: { back: () => void; say: (s: string) => void; edge: Accessor<boolean>; setEdge: (on: boolean) => void }): NeonNode {
+	const [growH, setGrowH] = createSignal<number>(0);
+	const [selected, setSelected] = createSignal("none");
+	const [size, setSize] = createSignal("pending");
+	const [dialog, setDialog] = createSignal(false);
+	const say = props.say;
+	ImageLoader.getSize(PHOTO, (w: number, h: number): void => { setSize(`${w}x${h}`); }, (e: Error): void => { setSize("failed"); });
+	return <View style={{ flex: 1 }}>
+		<ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 12, paddingBottom: 240, gap: 12 }}>
+			<Button title="Back to gallery" onPress={(e: NeonEvent): void => { props.back(); }} />
+			<Section title="Safe area">
+				<Button title={props.edge() ? "Inside safe area" : "Edge to edge"} onPress={(e: NeonEvent): void => {
+					props.setEdge(!props.edge());
+					say(props.edge() ? "edge to edge" : "inside safe area");
+				}} />
+			</Section>
+			<Section title="Text">
+				<Text style={{ color: "#cdd6f4", textAlign: "center", backgroundColor: "#313244" }}>centred</Text>
+				<Text style={{ color: "#cdd6f4", fontSize: 15 }} onPress={(e: NeonEvent): void => { say("text pressed"); }}><Text style={{ color: "#89b4fa", fontWeight: "bold", textDecorationLine: "underline" }} onPress={(e: NeonEvent): void => { say("terms pressed"); }}>Terms</Text> apply to <Text style={{ fontStyle: "italic", color: "#f38ba8" }}>this</Text> gallery.</Text>
+			</Section>
+			<Section title="Text input">
+				<TextInput multiline={true} placeholder="Grows with its text" accessibilityLabel="Grow"
+					style={{ maxHeight: 120, padding: 8, backgroundColor: "#313244", color: "#cdd6f4", borderRadius: 8 }}
+					onLayout={(e: NeonEvent): void => { setGrowH(Math.round(e.height)); }} />
+				<Text style={{ color: "#cdd6f4" }}>{`grow ${growH()}`}</Text>
+				<TextInput value="hello world" accessibilityLabel="Selectable" selection={{ start: 6, end: 11 }}
+					style={{ height: 40, paddingLeft: 8, backgroundColor: "#313244", color: "#cdd6f4", borderRadius: 8 }}
+					onSelectionChange={(sel: TextSelection): void => { setSelected(`${sel.start}-${sel.end}`); }} />
+				<Text style={{ color: "#cdd6f4" }}>{`selection ${selected()}`}</Text>
+			</Section>
+			<Section title="Image">
+				<Image source={{ uri: PHOTO }} defaultSource={{ uri: TILE }} blurRadius={4} accessibilityLabel="Blurred photo" style={{ height: 80, borderRadius: 8 }} />
+				<Image source={{ uri: TILE }} resizeMode="repeat" accessibilityLabel="Tiled" style={{ height: 30 }} />
+				<Text style={{ color: "#cdd6f4" }}>{`size ${size()}`}</Text>
+			</Section>
+			<Section title="StyleSheet">
+				<View style={{ height: 40, justifyContent: "center", padding: 8 }}>
+					<View style={[StyleSheet.absoluteFill, { backgroundColor: "#45475a", borderRadius: 8 }]} />
+					<Text style={{ color: "#cdd6f4" }}>absolute fill</Text>
+				</View>
+				<View style={{ height: StyleSheet.hairlineWidth, backgroundColor: "#cdd6f4" }} />
+				<Text style={{ color: "#cdd6f4" }}>{`hairline ${Math.round(StyleSheet.hairlineWidth * 1000) / 1000}`}</Text>
+			</Section>
+			<Section title="Pressable">
+				<View style={{ flexDirection: "row", padding: 32 }}>
+					<Pressable hitSlop={24} android_ripple={{ color: "#5589b4fa", borderless: true }} accessibilityLabel="Slop target"
+						style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: "#89b4fa" }}
+						onPress={(e: NeonEvent): void => { say("slop pressed"); }} />
+				</View>
+			</Section>
+			<Section title="Dialog">
+				<Button title="Open dialog" onPress={(e: NeonEvent): void => { setDialog(true); say("dialog open"); }} />
+			</Section>
+		</ScrollView>
+		<Dialog visible={dialog()} title="Parity dialog" onDismiss={(): void => { setDialog(false); say("dialog dismissed"); }}
+			actions={<DialogAction label="Close" onPress={(): void => { setDialog(false); say("dialog closed"); }} />}>
+			<Text style={{ color: "#1d1b20" }}>Android back closes this dialog.</Text>
+		</Dialog>
+	</View>;
+}
+
 export function GalleryApp(): NeonNode {
 	const [status, setStatus] = createSignal("ready");
 	const [presses, setPresses] = createSignal(0);
@@ -54,6 +124,7 @@ export function GalleryApp(): NeonNode {
 	const [toggle, setToggle] = createSignal(false);
 	const [notes, setNotes] = createSignal("");
 	const [image, setImage] = createSignal("loading");
+	const [edge, setEdge] = createSignal(false);
 	const insets = useSafeAreaInsets();
 	const say = (s: string): void => { setStatus(s); };
 	const press = (what: string): void => {
@@ -70,7 +141,7 @@ export function GalleryApp(): NeonNode {
 	};
 
 	return <SafeAreaView style={{ flex: 1, backgroundColor: "#11111b" }}>
-		<StatusBar barStyle="light-content" backgroundColor="#11111b" hidden={barHidden()} />
+		<StatusBar barStyle="light-content" backgroundColor="#11111b" hidden={barHidden()} translucent={edge()} />
 		<View style={{ padding: 12, gap: 2 }}>
 			<Text style={{ color: "#cdd6f4", fontSize: 22, fontWeight: "bold" }} accessibilityRole="header">Neon gallery</Text>
 			<Text style={{ color: "#a6e3a1", fontSize: 15 }}>{`status: ${status()}`}</Text>
@@ -78,6 +149,9 @@ export function GalleryApp(): NeonNode {
 		</View>
 		<Show when={screen() === "keyboard"}>
 			<KeyboardScreen back={(): void => { setScreen("gallery"); say("back"); }} say={say} />
+		</Show>
+		<Show when={screen() === "parity"}>
+			<ParityScreen back={(): void => { setScreen("gallery"); say("back"); }} say={say} edge={accessor((): boolean => edge())} setEdge={(on: boolean): void => { setEdge(on); }} />
 		</Show>
 		<Show when={screen() === "gallery"}>
 			<ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 12, gap: 12 }}
@@ -105,6 +179,9 @@ export function GalleryApp(): NeonNode {
 						setBarHidden(!barHidden());
 						say(barHidden() ? "status bar hidden" : "status bar shown");
 					}} />
+				</Section>
+				<Section title="React Native parity">
+					<Button title="Open parity screen" onPress={(e: NeonEvent): void => { setScreen("parity"); say("parity screen"); }} />
 				</Section>
 				<Section title="Keyboard">
 					<Button title="Open keyboard screen" onPress={(e: NeonEvent): void => { setScreen("keyboard"); say("keyboard screen"); }} />
