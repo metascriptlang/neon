@@ -5,9 +5,12 @@ import { AppStateStatus, publishAppState, publishMemoryWarning } from "../../api
 import { dispatchHardwareBackPress } from "../../api/backHandler";
 import { publishUrl } from "../../api/linking";
 import { publishReduceMotion, publishScreenReader } from "../../api/accessibilityInfo";
+import { storageClear, storageGet, storageKeys, storageRemove, storageSet } from "./deviceServices";
 
 when (ios) {
 	@compile("../ios/app.m", "-fobjc-arc");
+	@compile("../ios/modules.m", "-fobjc-arc");
+	@compile("../ios/storage.m", "-fobjc-arc");
 	@passL("-framework AudioToolbox");
 } else when (android) {
 	@compile("../android/app.c");
@@ -159,6 +162,11 @@ const services: AppServices = {
 	announce: (text: string): void => { call("a11y.announce", text); },
 	exitApp: (): void => { call("exitApp", ""); },
 	imageSize,
+	storageGet,
+	storageSet,
+	storageRemove,
+	storageClear,
+	storageKeys,
 };
 
 export function installNativeAppServices(run: (fn: () => void) => void): void {

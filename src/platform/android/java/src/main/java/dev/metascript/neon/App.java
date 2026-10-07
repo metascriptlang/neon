@@ -81,7 +81,7 @@ public final class App {
 				Picture.size(a, fields[1], (width, height, error) -> event(IMAGE_SIZE, id + FIELD + width + FIELD + height + FIELD + error));
 				return "";
 			}
-			default: throw new IllegalArgumentException("Neon App.call: unknown command " + name);
+			default: return Modules.call(a, name, arg);
 		}
 	}
 

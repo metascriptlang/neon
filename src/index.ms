@@ -61,6 +61,7 @@ export { Share, ShareAction, ShareContent, ShareOptions } from "./api/share";
 export { Vibration } from "./api/vibration";
 export { Clipboard } from "./api/clipboard";
 export { AccessibilityInfo, AccessibilityChangeEventName, useScreenReaderEnabled } from "./api/accessibilityInfo";
+export { AsyncStorage, AsyncStorageHook, KeyValuePair, StringPair, useAsyncStorage } from "./api/asyncStorage";
 export {
 	Animated, CompositeAnimation, useAnimatedValue, AnimatedNode, AnimatedValue, AnimatedValueXY,
 	AnimatedInterpolation, AnimatedStringInterpolation, Easing, EasingFunction, LayoutAnimation,

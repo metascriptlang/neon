@@ -3,6 +3,7 @@ import { publishPlatform } from "../../api/platform";
 import { publishScale, publishScreen } from "../../api/dimensions";
 import { publishAppState } from "../../api/appState";
 import { publishReduceMotion } from "../../api/accessibilityInfo";
+import { storageClear, storageGet, storageKeys, storageRemove, storageSet } from "./deviceServices";
 
 extern class BrowserClipboard {
 	extern readText(): Promise<string>;
@@ -177,6 +178,11 @@ const services: AppServices = {
 		image.addEventListener("error", (e: BrowserEvent): void => { done(0, 0, "cannot load the image " + uri); });
 		image.src = uri;
 	},
+	storageGet,
+	storageSet,
+	storageRemove,
+	storageClear,
+	storageKeys,
 };
 
 let installed = false;

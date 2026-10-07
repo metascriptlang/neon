@@ -632,9 +632,9 @@ static msClosure s_app;
 static int g_appEvent;
 static char g_appValue[512];
 static int g_appResult;
-static char g_appLog[4096];
-static char g_appReplyNames[16][32];
-static char g_appReplyValues[16][128];
+static char g_appLog[8192];
+static char g_appReplyNames[64][32];
+static char g_appReplyValues[64][512];
 static int g_appReplyCount;
 
 const char *niAppCall(const char *name, const char *arg) {
@@ -658,8 +658,8 @@ void nmAppReply(const char *name, const char *value) {
 			return;
 		}
 	}
-	if (g_appReplyCount == 16) {
-		fprintf(stderr, "mock bridge: more than 16 app replies\n");
+	if (g_appReplyCount == 64) {
+		fprintf(stderr, "mock bridge: more than 64 app replies\n");
 		abort();
 	}
 	snprintf(g_appReplyNames[g_appReplyCount], sizeof g_appReplyNames[0], "%s", name);

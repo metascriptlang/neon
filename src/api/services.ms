@@ -39,6 +39,11 @@ export interface AppServices {
 	// Loads an image into the platform's image cache and reports its pixel size; a failure
 	// reports an error message and a 0 x 0 size.
 	imageSize: (uri: string, done: (width: number, height: number, error: string) => void) => void;
+	storageGet: (key: string) => string | null;
+	storageSet: (key: string, value: string) => void;
+	storageRemove: (key: string) => void;
+	storageClear: () => void;
+	storageKeys: () => string[];
 }
 
 let installed: AppServices | null = null;

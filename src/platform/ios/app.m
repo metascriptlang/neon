@@ -1,6 +1,7 @@
 #import <UIKit/UIKit.h>
 #import <AudioToolbox/AudioToolbox.h>
 #include "../native/app.h"
+#import "modules.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -21,6 +22,10 @@ static void emit(int kind, NSString *value) {
 	g_value = strdup(value ? value.UTF8String : "");
 	g_event = kind;
 	niInvokeClosure(s_app);
+}
+
+void niAppEmit(int kind, NSString *value) {
+	emit(kind, value);
 }
 
 static void publishState(NSString *next) {
@@ -209,8 +214,7 @@ static NSString *call(NSString *name, NSString *arg) {
 		return @"";
 	}
 	if ([name isEqualToString:@"exitApp"]) return @"";
-	NSLog(@"Neon niAppCall: unknown command %@", name);
-	abort();
+	return niModuleCall(name, arg);
 }
 
 const char *niAppCall(const char *name, const char *arg) {

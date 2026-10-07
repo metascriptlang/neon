@@ -10,6 +10,8 @@ export class FakeServices {
 	screenReader: boolean = false;
 	images: string[] = [];
 	imageDone: ((width: number, height: number, error: string) => void)[] = [];
+	storedKeys: string[] = [];
+	storedValues: string[] = [];
 
 	install(): void {
 		const services: AppServices = {
@@ -55,6 +57,31 @@ export class FakeServices {
 				this.images.push(uri);
 				this.imageDone.push(done);
 			},
+			storageGet: (key: string): string | null => {
+				const at = this.storedKeys.indexOf(key);
+				return at < 0 ? null : this.storedValues[at];
+			},
+			storageSet: (key: string, value: string): void => {
+				const at = this.storedKeys.indexOf(key);
+				if (at < 0) {
+					this.storedKeys.push(key);
+					this.storedValues.push(value);
+				} else {
+					this.storedValues[at] = value;
+				}
+			},
+			storageRemove: (key: string): void => {
+				const at = this.storedKeys.indexOf(key);
+				if (at >= 0) {
+					this.storedKeys.splice(at, 1);
+					this.storedValues.splice(at, 1);
+				}
+			},
+			storageClear: (): void => {
+				this.storedKeys = [];
+				this.storedValues = [];
+			},
+			storageKeys: (): string[] => { return this.storedKeys.slice(0, this.storedKeys.length); },
 		};
 		installAppServices(services);
 	}
