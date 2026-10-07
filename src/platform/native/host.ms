@@ -77,6 +77,9 @@ class NativeNode {
 	shownY: float32 = 0.0;
 	shownW: float32 = 0.0;
 	shownH: float32 = 0.0;
+	painted: boolean = false;
+	rounded: boolean = false;
+	faded: boolean = false;
 	zIndex: number = 0;
 	zChildren: int32 = 0;
 	paintOrder: NativeNode[] = [];
@@ -272,11 +275,31 @@ function applyPaint(n: NativeNode, s: Style): void {
 			const bg = s.backgroundColor;
 			if (bg !== null) {
 				const c = parseHex(bg as string);
-				if (c !== null) { niSetBackgroundColor(n.view, c.r, c.g, c.b, c.a); }
-				else if (bg === "transparent") { niSetBackgroundColor(n.view, 0.0, 0.0, 0.0, 0.0); }
+				if (c !== null) {
+					niSetBackgroundColor(n.view, c.r, c.g, c.b, c.a);
+					n.painted = true;
+				} else if (bg === "transparent") {
+					niSetBackgroundColor(n.view, 0.0, 0.0, 0.0, 0.0);
+					n.painted = true;
+				}
+			} else if (n.painted) {
+				niSetBackgroundColor(n.view, 0.0, 0.0, 0.0, 0.0);
+				n.painted = false;
 			}
-			if (s.borderRadius !== null) { niSetCornerRadius(n.view, s.borderRadius as float32); }
-			if (s.opacity !== null) { niSetOpacity(n.view, s.opacity as float32); }
+			if (s.borderRadius !== null) {
+				niSetCornerRadius(n.view, s.borderRadius as float32);
+				n.rounded = true;
+			} else if (n.rounded) {
+				niSetCornerRadius(n.view, 0.0);
+				n.rounded = false;
+			}
+			if (s.opacity !== null) {
+				niSetOpacity(n.view, s.opacity as float32);
+				n.faded = true;
+			} else if (n.faded) {
+				niSetOpacity(n.view, 1.0);
+				n.faded = false;
+			}
 			const clip = s.overflow === "hidden" ? "hidden" : "visible";
 			if (clip !== n.clip && !n.isScroll) {
 				n.clip = clip;

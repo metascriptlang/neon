@@ -486,6 +486,10 @@ int32_t nmLastPressableTag(void) {
 }
 
 
+static MockView *tagged(int32_t tag);
+float nmOpacity(int32_t tag);
+float nmBackgroundAlpha(int32_t tag);
+
 static MockView *tagged(int32_t tag) {
 	for (MockView *v = g_views; v; v = v->next) {
 		if (!v->released && v->tag == tag) return v;

@@ -27,7 +27,7 @@ import {
 	nmControl, nmControlSized, nmTextWidth, nmTextHeight, nmLastControlTag, nmEnvironment, nmLastInputTag, nmFocused, nmProp,
 	nmTextVisualX, nmTextVisualY, nmScrollOffsetX, nmScrollOffsetY, nmScrollShifts,
 	nmBackgroundAlpha, nmLastViewTag, nmAnyProp, nmTagWithProp, nmHasLabel,
-	nmTouchFull, nmResponderTag, nmResponderBlocks,
+	nmTouchFull, nmResponderTag, nmResponderBlocks, nmOpacity,
 } from "./nativeBridgeMock.h";
 import { PanResponder, PanResponderGestureState } from "../../src/components/panResponder";
 
@@ -1038,4 +1038,21 @@ test "a native pan row takes a horizontal drag from the Pressable inside it and 
 	assert holder !== 0 && holder !== button && blocks === 1, `the row holds the touch and blocks: ${holder} ${blocks}`;
 	assert released === 0, "the release clears the native responder";
 	assert log === "grant 130;move 20;release 20;press;", "the swipe does not press, a later tap does: " + log;
+}
+
+test "a native view whose style drops its background and opacity goes back to clear and opaque" {
+	const [lifted, setLifted] = createSignal(true);
+	const app = (): NeonNode => <View>
+		<Pressable onPress={(): void => {}} style={lifted() ? { backgroundColor: "#6c7086", opacity: 0.5 } : { height: 10 }}><Text>row</Text></Pressable>
+	</View>;
+	runApp(app);
+	const tag = nmLastPressableTag();
+	const liftedOpacity = nmOpacity(tag);
+	const liftedAlpha = nmBackgroundAlpha(tag);
+	setLifted(false);
+	const restingOpacity = nmOpacity(tag);
+	const restingAlpha = nmBackgroundAlpha(tag);
+	nmTeardown();
+	assert liftedOpacity === 0.5 && liftedAlpha === 1, `lifted ${liftedOpacity} ${liftedAlpha}`;
+	assert restingOpacity === 1 && restingAlpha === 0, `resting ${restingOpacity} ${restingAlpha}`;
 }
