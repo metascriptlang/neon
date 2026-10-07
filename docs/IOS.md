@@ -433,7 +433,7 @@ horizontal geometry, paging, controlled refresh and disposal. A normal
 and its jump to row 3000 lands at x=300000, y=0 with scroll width 1000000, no page
 error (installed msc `2d428dc42`, 2026-10-05).
 
-### 9.1 Prepared physical list acceptance — 2026-10-07
+### 9.1 Physical list acceptance — 2026-10-07
 
 Source/test tree `4484f0da16dd140a506101ea107d7f5088ec1cef`, installed compiler
 binary/support `8506eaf03`, real Ion generator from landed `94f7ad3`, Xcode 26.6 /
@@ -457,13 +457,17 @@ export or hand-edited generated project was used.
   -scheme CounterUITests -destination id=00008110-001411093CEA801E` with the same
   signing settings built and signed the UI runner.
 - `xcodebuild test-without-building` with that project/scheme/destination and
-  `-only-testing:CounterUITests/FlatListUITests` failed before runner bootstrap:
-  `Unlock Le’s iPhone to Continue`. No interaction case ran.
+  `-only-testing:CounterUITests/FlatListUITests` first failed before runner bootstrap
+  (`Unlock Le’s iPhone to Continue`). Rerun on the unlocked phone against the same
+  installed app and runner: `testMeasuredStickyAndInverted` passed (29.2 s),
+  `testTenThousandRows` passed (44.7 s), `Executed 2 tests, with 0 failures`,
+  `** TEST EXECUTE SUCCEEDED **`.
 
-This proves current consumer compilation, signing and installation, not measured,
-sticky or inverted behavior on the physical phone. Unlock and keep the phone awake
-before retrying; use a fresh result bundle. Native mock or an old installed binary
-cannot close that acceptance.
+The attached screenshots show header 0 pinned over measured rows at offset 267,
+header 8 pressed and still pinned after inversion with row order reversed, and the
+measured end at offset 4747 with `ends 1` and the footer in view. This closes the
+iPhone fixed/measured/sticky/inverted acceptance on the current source and compiler;
+it is functional evidence only, with no performance comparison.
 
 ### 9.2 Earlier list gate boundary — 2026-10-06
 
