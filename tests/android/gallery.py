@@ -68,11 +68,14 @@ def scroll_to(text, window):
 def scroll_top(window):
     cx = (window[0] + window[2]) // 2
     height = window[3] - window[1]
+    window, texts = scroll_list.state(False)
     for _ in range(8):
-        drag(cx, window[1] + height // 2, cx, window[1] + height * 5 // 6, 300)
-        window, texts = scroll_list.state(False)
         if "BUTTON" in texts:
             return window, texts
+        drag(cx, window[1] + height // 2, cx, window[1] + height * 5 // 6, 300)
+        window, texts = scroll_list.state(False)
+    if "BUTTON" in texts:
+        return window, texts
     raise LaneError("could not return to the top")
 
 
