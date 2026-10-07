@@ -159,6 +159,36 @@ mock pass or separate-module test artifact is not proof of the normal packaged a
 The reactive concepts still owed live in `docs/SOLID.md`; they are dependencies of these
 workflows, not a separate checklist to finish before writing an app.
 
+### Bundle 5 — animation (state 2026-10-07, `wt/rn-animated`, msc `0d83c4867`)
+
+RN's `Animated` / `Easing` / `LayoutAnimation` surface runs on Neon signals: an `AnimatedValue`
+is a signal, a style that reads `value.get()` follows it per property, and every running
+animation shares one frame loop (`src/animation/`; import from `src/animation/index`). Covered:
+`Value`/`ValueXY`, `interpolate` (numbers, clamp/extend/identity) and `interpolateString`
+(colours, `"90deg"`, paths), timing/spring (tension-friction, bounciness-speed,
+stiffness-damping-mass)/decay, `parallel`/`sequence`/`stagger`/`loop`/`delay`, tracking,
+`add`/`subtract`/`multiply`/`divide`/`modulo`/`diffClamp`, listeners and offsets,
+`Animated.event` onto NeonEvent fields, `Animated.View/Text/Image/ScrollView`,
+`LayoutAnimation.configureNext/create/Presets` (native frame tweens and create-fade; browser
+size transitions) and a `Presence` mount/unmount transition. Native gained `rotate` in
+transforms, `rgb()/rgba()` colours, `overflow: "hidden"` clipping and display-link frames.
+
+Proof: RN's own Animated, Easing, bezier and Interpolation test values on a manual clock
+(`msc test [--target=js] tests/animation/*.test.ms`, 43 cases, both lanes), the mock native bridge
+(`tests/platform/nativeAnimation.test.ms`, `nativeLayoutAnimation.test.ms`), Chrome
+(`tests/browser/run.sh tests/browser/animated.test.ms`: opacity/translate/rotate across real
+frames, a LayoutAnimation height transition), the `examples/motion` consumer on the mock host
+and JS (`tests/apps/motion.test.ms`) and on an iPhone 17 Pro simulator on display-link frames
+(`/private/tmp/neon-sim-run.sh <wt> examples/motion NeonMotion MotionUITests`, exit 0: spring
+card at x 193 mid-flight then +160 pt, fade, LayoutAnimation panel +28 pt mid-way then +160 pt,
+loop spinner, header 137 → 83 pt with scroll). The Android APK builds (ion generate + gradle).
+Not run: the Seeker lane (`tests/android/motion.py`, written; the phone was asleep behind its
+lock overnight), so Choreographer frames, rotation and clipping on Android are unproven. Provisional
+choices are rows N1–N9 of `WORKAROUND.md`; the compiler findings are cards dated 2026-10-07 in
+`~/metascript/.inbox/compiler/`. Not covered: `Animated.FlatList/SectionList` (generic
+components cannot sit in a static field), `Animated.Color`, `useNativeDriver` (accepted, every
+animation is JS-driven), LayoutAnimation `delete` and `scale*` properties.
+
 ### Reference and ownership constraints
 
 - RN's core catalog: `packages/react-native/index.js`, component exports and app/runtime APIs.
