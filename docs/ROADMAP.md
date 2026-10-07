@@ -102,6 +102,15 @@ Public `VirtualizedList` (`getItem`/`getItemCount`), viewability (`onViewableIte
    losing state/focus. Pan/zoom, drag/resize, selection, clipboard and undo/redo remain
    product priorities when required by that slice, even if not common mobile-core controls.
 
+State 2026-10-07 (`wt/rn-apps`, msc `8506eaf03`): workflows 1 and 2 run as
+`examples/catalog` and `examples/settings`. Proven on the mock host and JS
+(`msc test [--target=js] tests/apps/workflows.test.ms`), in Chrome
+(`tests/browser/run.sh tests/browser/workflows.test.ms`) and on the Seeker
+(`tests/android/catalog.py`, `tests/android/settings.py`, exit 0). Not proven: iOS beyond a
+clang syntax check of `src/platform/ios/bridge.m`, and a screen reader driving the app (the
+accessibility tree was read through `uiautomator`; TalkBack's first-run tutorial covered the app).
+Provisional choices are rows A1–A9 of `WORKAROUND.md`.
+
 Prove each workflow through its real consumer on the declared targets. A public symbol,
 mock pass or separate-module test artifact is not proof of the normal packaged app.
 The reactive concepts still owed live in `docs/SOLID.md`; they are dependencies of these
