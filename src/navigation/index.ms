@@ -49,4 +49,13 @@ export {
 	createStackNavigator,
 	createNativeStackNavigator,
 } from "./stack";
+export {
+	BackBehavior,
+	TabNavigator,
+	createBottomTabNavigator,
+	TAB_ACTIVE,
+	TAB_INACTIVE,
+	BADGE_COLOR,
+} from "./tabs";
+export { DrawerNavigator, createDrawerNavigator, DRAWER_WIDTH } from "./drawer";
 export { NavigationContainer, NavigationContainerRef, createNavigationContainerRef } from "./container";

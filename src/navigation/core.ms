@@ -132,6 +132,7 @@ export interface NavigatorLink {
 	pushTo: (name: string) => boolean;
 	backLocal: () => boolean;
 	canBackLocal: () => boolean;
+	popToTop: () => boolean;
 	handleBack: () => boolean;
 	drawerAction: (action: DrawerAction) => boolean;
 	isFocused: Accessor<boolean>;
@@ -867,6 +868,11 @@ export class NavigatorCore<P> {
 		return null;
 	}
 
+	repressFocused(): void {
+		const child = this.focusedChild();
+		if (child !== null) { (child as NavigatorLink).popToTop(); }
+	}
+
 	handleBack(): boolean {
 		const child = this.focusedChild();
 		if (child !== null && (child as NavigatorLink).handleBack()) { return true; }
@@ -901,6 +907,11 @@ export function linkOf<P>(core: NavigatorCore<P>): NavigatorLink {
 		},
 		backLocal: (): boolean => core.backLocal(),
 		canBackLocal: (): boolean => core.canBackLocal(),
+		popToTop: (): boolean => {
+			if (!core.isStack() || !core.canBackLocal()) { return false; }
+			core.popTo(0);
+			return true;
+		},
 		handleBack: (): boolean => core.handleBack(),
 		drawerAction: (action: DrawerAction): boolean => core.drawerLocal(action),
 		isFocused: accessor((): boolean => core.focused()),
