@@ -207,7 +207,7 @@ tabs mount lazily, Android back reaches the focused navigator through `BackHandl
 Pro simulator (`NavigationUITests`: list → detail → edit and save, back with the list's state
 kept, per-tab state, a badge, the drawer, a theme switch, rotation). The Android build and install
 of the demo succeeded on the Seeker; `tests/android/navigation.py` is pending because the phone was
-asleep behind its lock. Provisional choices are rows N1–N11 of `WORKAROUND.md`. Not verified:
+asleep behind its lock. Provisional choices are rows V1–V11 of `WORKAROUND.md`. Not verified:
 transitions and swipe gestures (none yet: no `Animated` or gesture layer on that branch), url
 events on a device (P7), hardware back on a device, browser history.
 
