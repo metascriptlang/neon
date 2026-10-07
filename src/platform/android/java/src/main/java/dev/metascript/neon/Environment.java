@@ -16,6 +16,9 @@ public final class Environment extends View {
 	}
 
 	public static void install(ViewGroup root) {
+		root.setFocusable(true);
+		root.setFocusableInTouchMode(true);
+		root.setDescendantFocusability(ViewGroup.FOCUS_BEFORE_DESCENDANTS);
 		Environment probe = new Environment(root.getContext());
 		root.addView(probe, new ViewGroup.LayoutParams(0, 0));
 		root.getViewTreeObserver().addOnGlobalLayoutListener(probe::publish);
