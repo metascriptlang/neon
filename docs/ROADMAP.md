@@ -112,7 +112,8 @@ State 2026-10-07 (`wt/rn-apps`, msc `8506eaf03`): workflows 1 and 2 run as
 (`tests/browser/run.sh tests/browser/workflows.test.ms`), on the Seeker
 (`tests/android/catalog.py`, `tests/android/settings.py`, exit 0) and on an iPhone 17 Pro
 simulator (`CatalogUITests`, `SettingsUITests` in `tests/ios/counterUITests.swift`, run with the
-software keyboard). Not proven: a physical iPhone; a screen reader driving the app (the
+software keyboard), then on the physical iPhone 13 Pro at `18f4baa` (both classes passed in one
+7/7 run with the list and scroll classes). Not proven: a screen reader driving the app (the
 accessibility tree was read through `uiautomator` and XCUITest; TalkBack's first-run tutorial
 covered the app); a system appearance change from XCUITest (`XCUIDevice.appearance` did not reach
 the app, `xcrun simctl ui <device> appearance dark` did). Provisional choices are rows A1–A11 of
