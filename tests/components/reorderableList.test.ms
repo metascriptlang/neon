@@ -139,3 +139,38 @@ test "releasing a long press without moving cancels the drag" {
 	assert log.length === 0, "a later drag without drag() does not reorder: " + log.join(",");
 	assert transformOf(target) === "translateY(0px)", "rests: " + transformOf(target);
 }
+
+test "dragging a row past the bottom edge scrolls the list and the row stays under the touch" {
+	const [data, setData] = createSignal<Song[]>(songs(8));
+	const drags: (() => void)[] = [];
+	const log: string[] = [];
+	const root = mockNode("root");
+	createRoot((): void => {
+		render(element(<ReorderableFlatList data={data()} dropDuration={0}
+			onReorder={(from: number, to: number): void => { log.push(`${from}->${to}`); }}
+			renderItem={(info: ReorderableRenderItemInfo<Song>): NeonNode => {
+				drags.push(info.drag);
+				return element(<Text>{info.item.title}</Text>);
+			}} />), mockHost(), root as unknown as HostNode);
+	});
+	for (let i = 0; i < 8; i += 1) {
+		const e = neonEvent("layout");
+		e.height = 50;
+		fireEventWith(rowOf(root, "song " + i.toString()), "onLayout", e);
+	}
+	const scroll = root.children[0];
+	const viewport = neonEvent("scroll");
+	viewport.height = 200;
+	fireEventWith(scroll, "onScroll", viewport);
+	const target = rowOf(root, "song 1");
+	fireTouch(target, "onTouchStart", 10, 75, 1);
+	drags[1]();
+	fireTouch(target, "onTouchMove", 10, 80, 2);
+	fireTouch(target, "onTouchMove", 10, 280, 3);
+	const scrolled = scroll.scrollY;
+	const moved = transformOf(target);
+	fireTouch(target, "onTouchEnd", 10, 280, 4);
+	assert scrolled === 20, "one autoscroll step of 20: " + scrolled.toString();
+	assert moved === "translateY(220px)", "the row follows the touch and the scroll: " + moved;
+	assert log.join(",") === "1->5", "dropped past song 5: " + log.join(",");
+}
