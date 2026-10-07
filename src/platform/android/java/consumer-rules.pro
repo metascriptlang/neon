@@ -51,3 +51,7 @@
 -keep class dev.metascript.neon.PermissionRequester {
 	*;
 }
+
+-keepclassmembers class dev.metascript.neon.Web$Bridge {
+	@android.webkit.JavascriptInterface <methods>;
+}
