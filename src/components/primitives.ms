@@ -24,6 +24,7 @@ import { Accessor, accessor } from "../core/signal";
 import { element } from "../macros/ui/element";
 import { NeonNode, VAttr, VEvent, RefFn, hostElement, evt, dynAttr } from "../render/node";
 import { Host, HostNode, VoidArea } from "../render/hostTypes";
+import { visibleContentAttr } from "../render/visibleContent";
 
 export type AccessibilityRole = "none" | "button" | "link" | "search" | "image" | "text" | "header" | "switch" | "checkbox" | "adjustable" | "progressbar" | "summary" | "alert";
 
@@ -250,6 +251,11 @@ export class ScrollViewHandle {
 	}
 }
 
+export interface MaintainVisibleContentPosition {
+	minIndexForVisible: number;
+	autoscrollToTopThreshold?: number | null;
+}
+
 export type KeyboardDismissMode = "none" | "on-drag" | "interactive";
 export type KeyboardShouldPersistTaps = "never" | "always" | "handled";
 
@@ -275,6 +281,7 @@ interface ScrollViewProps {
 	onMomentumScrollEnd?: ((e: NeonEvent) => void) | null;
 	onRefresh?: (() => void) | null;
 	refreshing?: Accessor<boolean> | null;
+	maintainVisibleContentPosition?: Accessor<MaintainVisibleContentPosition> | null;
 	children?: NeonNode | null;
 }
 
@@ -305,6 +312,14 @@ export function ScrollView(props: ScrollViewProps): NeonNode {
 	if (taps !== null) { attrs.push(dynAttr("keyboardShouldPersistTaps", (): string | null => (taps as () => string)())); }
 	const refreshing = props.refreshing;
 	if (refreshing !== null) { attrs.push(dynAttr("refreshing", (): string | null => `${(refreshing as () => boolean)()}`)); }
+	const keep = props.maintainVisibleContentPosition;
+	if (keep !== null) {
+		attrs.push(dynAttr("maintainVisibleContentPosition", (): string | null => {
+			const position = (keep as Accessor<MaintainVisibleContentPosition>)();
+			const threshold = position.autoscrollToTopThreshold;
+			return visibleContentAttr(position.minIndexForVisible, threshold);
+		}));
+	}
 	if (props.onScrollBeginDrag !== null) { evts.push(evt("onScrollBeginDrag", props.onScrollBeginDrag as (e: NeonEvent) => void)); }
 	if (props.onScrollEndDrag !== null) { evts.push(evt("onScrollEndDrag", props.onScrollEndDrag as (e: NeonEvent) => void)); }
 	if (props.onMomentumScrollBegin !== null) { evts.push(evt("onMomentumScrollBegin", props.onMomentumScrollBegin as (e: NeonEvent) => void)); }

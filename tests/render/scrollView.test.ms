@@ -4,6 +4,7 @@ import { NeonEvent, neonEvent } from "../../src/render/event";
 import { HostNode, MockNode, mockNode, mockHost, render, mockToString, fireEvent, fireEventWith } from "../../src/render/host";
 import { ScrollView, ScrollViewHandle, Text, Pressable } from "../../src/components/primitives";
 import { createSignal } from "../../src/core/signal";
+import { VisibleContentPosition, parseVisibleContent } from "../../src/render/visibleContent";
 
 function scrollEvent(x: number, y: number, width: number, height: number, contentWidth: number, contentHeight: number): NeonEvent {
 	const e = neonEvent("scroll");
@@ -181,4 +182,41 @@ test "refresh requests require a controlled refreshing prop" {
 	try { ScrollView({ onRefresh: (): void => {} }); }
 	catch (e) { error = e.toString(); }
 	assert error.includes("refreshing"), "a refresh handler cannot leave an uncontrolled native indicator";
+}
+
+function attrOf(node: MockNode, name: string): string {
+	for (const a of node.attrs) {
+		if (a.name === name) { return a.value ?? ""; }
+	}
+	return "<unset>";
+}
+
+test "maintainVisibleContentPosition reaches the host as one attribute, with the threshold when one is given" {
+	const root: MockNode = mockNode("root");
+	const [threshold, setThreshold] = createSignal<number | null>(10);
+	render(element(<ScrollView maintainVisibleContentPosition={{ minIndexForVisible: 1, autoscrollToTopThreshold: threshold() }}><Text>a</Text></ScrollView>), mockHost(), root as unknown as HostNode);
+	assert attrOf(root.children[0], "maintainVisibleContentPosition") === "1,10", attrOf(root.children[0], "maintainVisibleContentPosition");
+	setThreshold(null);
+	assert attrOf(root.children[0], "maintainVisibleContentPosition") === "1", attrOf(root.children[0], "maintainVisibleContentPosition");
+	const bare: MockNode = mockNode("root");
+	render(element(<ScrollView><Text>a</Text></ScrollView>), mockHost(), bare as unknown as HostNode);
+	assert attrOf(bare.children[0], "maintainVisibleContentPosition") === "<unset>", "no prop, no attribute";
+}
+
+test "the host reads the attribute back as the index and the optional threshold" {
+	const both = parseVisibleContent("2,10") as VisibleContentPosition;
+	assert both.minIndexForVisible === 2 && both.autoscrollToTopThreshold === 10, `${both.minIndexForVisible} ${both.autoscrollToTopThreshold}`;
+	const bare = parseVisibleContent("0") as VisibleContentPosition;
+	assert bare.minIndexForVisible === 0 && bare.autoscrollToTopThreshold === null, "no threshold";
+	assert parseVisibleContent("") === null, "a removed attribute turns the position keeping off";
+}
+
+test "a minIndexForVisible that is not a non-negative integer fails loud" {
+	let error = "";
+	try {
+		render(element(<ScrollView maintainVisibleContentPosition={{ minIndexForVisible: -1 }}><Text>a</Text></ScrollView>), mockHost(), mockNode("root") as unknown as HostNode);
+	} catch (e) {
+		error = e.toString();
+	}
+	assert error.includes("minIndexForVisible must be a non-negative integer, got -1"), error;
 }
