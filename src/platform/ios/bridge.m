@@ -65,6 +65,7 @@ static void call0(msClosure c) {
 // the tag + phase readable via niLastTouchTag/Phase.
 @interface NeonTouchView : UIView
 @property (nonatomic) BOOL neonHandlesPress;
+@property (nonatomic) BOOL neonAccessibleSet;
 @end
 
 @implementation NeonTouchView
@@ -558,6 +559,7 @@ void *niTextCreate(void) {
 	label.textColor = [UIColor whiteColor];
 	label.font = [UIFont systemFontOfSize:17];
 	label.backgroundColor = [UIColor clearColor];
+	label.numberOfLines = 0;
 	return CFBridgingRetain(label);
 }
 
@@ -609,9 +611,15 @@ void niControlSetTag(void *control, int32_t tag) {
 void niSetProp(void *view, const char *name, const char *value) {
 	UIView *v = (__bridge UIView *)view;
 	const char *text = value ? value : "";
-	if (strcmp(name, "accessibilityLabel") == 0) v.accessibilityLabel = text[0] ? [NSString stringWithUTF8String:text] : nil;
+	if (strcmp(name, "accessibilityLabel") == 0) {
+		v.accessibilityLabel = text[0] ? [NSString stringWithUTF8String:text] : nil;
+		if ([v isKindOfClass:NeonTouchView.class] && !((NeonTouchView *)v).neonAccessibleSet) v.isAccessibilityElement = text[0] != '\0';
+	}
 	else if (strcmp(name, "accessibilityHint") == 0) v.accessibilityHint = text[0] ? [NSString stringWithUTF8String:text] : nil;
-	else if (strcmp(name, "accessible") == 0) v.isAccessibilityElement = strcmp(text, "true") == 0;
+	else if (strcmp(name, "accessible") == 0) {
+		v.isAccessibilityElement = strcmp(text, "true") == 0;
+		if ([v isKindOfClass:NeonTouchView.class]) ((NeonTouchView *)v).neonAccessibleSet = text[0] != '\0';
+	}
 	else if (strcmp(name, "accessibilityRole") == 0) v.accessibilityTraits = roleTraits(text);
 	else if ([v isKindOfClass:NeonInput.class]) setInputProp((NeonInput *)v, name, text);
 	else if ([v isKindOfClass:NeonSwitch.class]) {
@@ -655,7 +663,9 @@ int niColorScheme(void) { return g_dark; }
 
 void niViewSetPressable(void *view) {
 	UIView *v = (__bridge UIView *)view;
-	if ([v isKindOfClass:NeonTouchView.class]) ((NeonTouchView *)v).neonHandlesPress = YES;
+	if (![v isKindOfClass:NeonTouchView.class]) return;
+	NeonTouchView *touch = (NeonTouchView *)v;
+	touch.neonHandlesPress = YES;
 }
 void niRemoveFromParent(void *child) {
 	UIView *c = (__bridge UIView *)child;
