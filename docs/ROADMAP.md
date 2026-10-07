@@ -91,6 +91,10 @@ Public `VirtualizedList` (`getItem`/`getItemCount`), viewability (`onViewableIte
 `WORKAROUND.md` L3–L7. Cases: `tests/render/{virtualizedList,sectionList}.test.ms`,
 `tests/components/list/viewability.test.ms`, `tests/browser/sectionList.test.ms`; the invalid
 `initialScrollIndex` warning is pinned on native and JS by `tests/apps/listWarnApp.ms`.
+`scrollToItem`, `ListItemComponent` and `disableVirtualization` follow RN's cases in the same
+files (L8–L9). `maintainVisibleContentPosition` is not started: RN keeps the content still in the
+native ScrollView, so it needs a ScrollView host attribute on every platform, a shared-contract
+change that waits for approval.
 
 
 ### Acceptance — three complete author workflows

@@ -421,6 +421,16 @@ fixed LayoutParams, so `TextView.setText` only invalidates, and `View.measure()`
 cached size for the unchanged spec. `niMeasureText` now calls `forceLayout()` first; the lane
 asserts the label widens. Functional evidence only; load was not controlled.
 
+Grid and sections (2026-10-07, source `9306954`, same Seeker, awake and unlocked):
+`/private/tmp/neon-seeker-run.sh` with `tests/android/flatlist.py` ran every lane above, then
+`grid_lane` (three cells per row 68.0 dp apart, `pressed cell 4 at 4`, a prepend that puts
+`cell 60` first and moves `cell 0` to the second column, `pressed cell 4 at 5`, a press after
+swiping) and `sections_lane` (`Section 0` pinned after a drag, `scrollToLocation(1, 0)` puts
+`Section 1` at the pinned top, `pressed Section 1 item 1`); exit 0, one pid. The mode buttons
+now wrap: five no longer fit one row. One earlier run on the rebased tree failed the existing
+long-press step (`pressed none`); an isolated long-press probe and the full rerun both passed,
+so it is recorded as an unexplained one-off, not a fix.
+
 `examples/scrollmatrix` with `tests/android/scrollmatrix.py` covers native horizontal drag
 (x moves, y stays 0, a drag presses nothing, a tap after it hits the card under the finger),
 reactive axis replacement both ways with app state kept, and pull-to-refresh closed by the

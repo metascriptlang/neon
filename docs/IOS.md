@@ -472,6 +472,15 @@ measured end at offset 4747 with `ends 1` and the footer in view. This closes th
 iPhone fixed/measured/sticky/inverted acceptance on the current source and compiler;
 it is functional evidence only, with no performance comparison.
 
+Grid and sections, simulator only (2026-10-07, source `9306954`, compiler `8506eaf03`;
+the iPhone was not available): `/private/tmp/neon-sim-run.sh` generated, built and installed
+the same consumer on a fresh iPhone 17 Pro simulator and ran `FlatListUITests`, 3/3 passed.
+`testGridAndSections` checks three cells per row 68 pt apart, a prepend that puts `cell 60`
+first and moves `cell 0` to the second column while `cell 4` reads index 5, `Section 0` pinned
+over a slow drag, `scrollToLocation(1, 0)` bringing `Section 1` to the list top, and a press on
+`item 101` as `Section 1 item 1`. A fast drag flings past the 149 pt first section, so the test
+drags slowly and holds. Not yet run on the physical iPhone.
+
 ### 9.2 Earlier list gate boundary — 2026-10-06
 
 On source/test tree `58fa59202ac69a7cdc09ad837c60392c3cef4b85` with compiler
