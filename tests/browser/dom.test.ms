@@ -375,3 +375,48 @@ test "onLayout follows a retained node moved between siblings without resizing i
 	assert positions === "20;0;", "same node and size, new logical position: " + positions;
 	probe(outer).remove();
 }
+
+test "RN TextInput and accessibility props map onto input and ARIA attributes" {
+	const h = domHost();
+	const el = mount("textinput");
+	h.setAttr(el, "placeholder", "Email");
+	h.setAttr(el, "keyboardType", "email-address");
+	h.setAttr(el, "returnKeyType", "next");
+	h.setAttr(el, "secureTextEntry", "true");
+	h.setAttr(el, "editable", "false");
+	h.setAttr(el, "maxLength", "12");
+	h.setAttr(el, "accessibilityLabel", "Email address");
+	h.setAttr(el, "accessibilityRole", "search");
+	const got = `${probe(el).getAttribute("placeholder")} ${probe(el).getAttribute("inputmode")} ${probe(el).getAttribute("enterkeyhint")} ${probe(el).getAttribute("type")} ${probe(el).getAttribute("readonly") !== null} ${probe(el).getAttribute("maxlength")} ${probe(el).getAttribute("aria-label")} ${probe(el).getAttribute("role")}`;
+	assert got === "Email email next password true 12 Email address search", "attributes: " + got;
+	h.removeAttr(el, "accessibilityLabel");
+	assert probe(el).getAttribute("aria-label") === null, "removing the RN name removes the ARIA attribute";
+	h.setAttr(el, "editable", "true");
+	assert probe(el).getAttribute("readonly") === null, "editable again";
+	probe(el).remove();
+	const header = mount("text");
+	h.setAttr(header, "accessibilityRole", "header");
+	assert probe(header).getAttribute("role") === "heading", "header becomes an ARIA heading";
+	probe(header).remove();
+}
+
+test "Enter submits a TextInput with its value, and the focus capability moves the DOM focus" {
+	const h = domHost();
+	const el = mount("textinput");
+	h.setAttr(el, "id", "neon-submit-probe");
+	let seen = "";
+	h.addEvent(el, "onSubmitEditing", (e: NeonEvent): void => { seen += `${e.type} ${e.value};`; });
+	h.addEvent(el, "onFocus", (e: NeonEvent): void => { seen += "focus;"; });
+	h.addEvent(el, "onBlur", (e: NeonEvent): void => { seen += "blur;"; });
+	probe(el).value = "neon";
+	window.eval("document.getElementById('neon-submit-probe').dispatchEvent(new KeyboardEvent('keydown', { key: 'a' }))");
+	window.eval("document.getElementById('neon-submit-probe').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }))");
+	const focus = h.focus;
+	assert focus !== null, "the browser host advertises focus";
+	if (focus !== null) {
+		focus(el, true);
+		focus(el, false);
+	}
+	assert seen === "submitediting neon;focus;blur;", "events: " + seen;
+	probe(el).remove();
+}

@@ -48,6 +48,7 @@ extern class Node {
 	parentNode: Node | null;
 	tagName: string;
 	extern blur(): void;
+	extern focus(): void;
 	extern contains(node: Node): boolean;
 	extern scroll(options: DomScrollOptions): void;
 	extern getBoundingClientRect(): DomRect;
@@ -265,6 +266,81 @@ class DomScrollState {
 	}
 }
 
+function ariaRole(role: string): string | null {
+	return match (role) {
+		"header" => "heading",
+		"image" => "img",
+		"adjustable" => "slider",
+		"summary" => "region",
+		"none" => "presentation",
+		"text" => null,
+		_ => role,
+	};
+}
+
+function writeDomAttr(el: Node, name: string, value: string): void {
+	if (name === "value") { el.value = value; return; }
+	if (name === "defaultValue") {
+		const current: string = el.value;
+		if (current === "") { el.value = value; }
+		return;
+	}
+	if (name === "accessibilityLabel") { el.setAttribute("aria-label", value); return; }
+	if (name === "accessibilityHint") { el.setAttribute("aria-description", value); return; }
+	if (name === "accessibilityRole") {
+		const role = ariaRole(value);
+		if (role === null) { el.removeAttribute("role"); } else { el.setAttribute("role", role as string); }
+		return;
+	}
+	if (name === "accessible" || name === "blurOnSubmit" || name === "multiline" || name === "placeholderTextColor") { return; }
+	if (name === "editable") {
+		if (value === "false") { el.setAttribute("readonly", ""); } else { el.removeAttribute("readonly"); }
+		return;
+	}
+	if (name === "secureTextEntry") {
+		el.setAttribute("type", value === "true" ? "password" : "text");
+		return;
+	}
+	if (name === "keyboardType") {
+		const mode = match (value) {
+			"numeric" | "number-pad" => "numeric",
+			"decimal-pad" => "decimal",
+			"phone-pad" => "tel",
+			"email-address" => "email",
+			"url" => "url",
+			_ => "text",
+		};
+		el.setAttribute("inputmode", mode);
+		return;
+	}
+	if (name === "returnKeyType") { el.setAttribute("enterkeyhint", value); return; }
+	if (name === "autoCapitalize") { el.setAttribute("autocapitalize", value); return; }
+	if (name === "autoCorrect") { el.setAttribute("autocorrect", value === "false" ? "off" : "on"); return; }
+	if (name === "maxLength") { el.setAttribute("maxlength", value); return; }
+	if (name === "autoFocus") {
+		if (value === "true") { el.setAttribute("autofocus", ""); } else { el.removeAttribute("autofocus"); }
+		return;
+	}
+	el.setAttribute(name, value);
+}
+
+function domAttrName(name: string): string {
+	return match (name) {
+		"accessibilityLabel" => "aria-label",
+		"accessibilityHint" => "aria-description",
+		"accessibilityRole" => "role",
+		"editable" => "readonly",
+		"keyboardType" => "inputmode",
+		"returnKeyType" => "enterkeyhint",
+		"autoCapitalize" => "autocapitalize",
+		"autoCorrect" => "autocorrect",
+		"maxLength" => "maxlength",
+		"autoFocus" => "autofocus",
+		"secureTextEntry" => "type",
+		_ => name,
+	};
+}
+
 function inputNode(node: Node): boolean { return node.tagName === "INPUT" || node.tagName === "TEXTAREA"; }
 function blurInput(): void {
 	const focused = document.activeElement;
@@ -479,8 +555,8 @@ export function domHost(): Host {
 		},
 		setAttr: (node: HostNode, name: string, value: string): void => {
 			const el = node as unknown as Node;
-			if (name === "value") { el.value = value; return; }
-			el.setAttribute(name, value);
+			writeDomAttr(el, name, value);
+			if (name === "value" || name === "defaultValue") { return; }
 			if (scrolls.has(el)) {
 				if (name === "class") { el.classList.add(SCROLL_CLASS); }
 				(scrolls.get(el) as DomScrollState).setOption(name, value);
@@ -489,7 +565,7 @@ export function domHost(): Host {
 		removeAttr: (node: HostNode, name: string): void => {
 			const el = node as unknown as Node;
 			if (name === "value") { el.value = ""; }
-			el.removeAttribute(name);
+			el.removeAttribute(domAttrName(name));
 			if (scrolls.has(el)) {
 				if (name === "class") { el.classList.add(SCROLL_CLASS); }
 				(scrolls.get(el) as DomScrollState).setOption(name, "");
@@ -519,6 +595,7 @@ export function domHost(): Host {
 			let domType = type;
 			if (type === "press") { domType = "click"; }
 			else if (type === "changetext") { domType = "input"; }
+			else if (type === "submitediting") { domType = "keydown"; }
 			const el = node as unknown as Node;
 			if (type === "press" || type === "click") { presses.set(el, true); }
 			if (scrolls.has(el) && (type === "scroll" || type === "scrollbegindrag" || type === "scrollenddrag" || type === "momentumscrollbegin" || type === "momentumscrollend" || type === "refresh")) {
@@ -535,9 +612,10 @@ export function domHost(): Host {
 				return;
 			}
 			listen(el, domType, (de: DomEvent): void => {
+				if (type === "submitediting" && (de.key !== "Enter" || de.isComposing)) { return; }
 				const ev = neonEvent(type);
 				ev.timeStamp = de.timeStamp;
-				if (type === "changetext" || type === "input" || type === "change") { ev.value = de.target.value; }
+				if (type === "changetext" || type === "input" || type === "change" || type === "submitediting") { ev.value = de.target.value; }
 				else if (type === "scroll") {
 					ev.x = el.scrollLeft;
 					ev.y = el.scrollTop;
@@ -593,6 +671,10 @@ export function domHost(): Host {
 			return (node as unknown as Node).cloneNode(true) as unknown as HostNode;
 		},
 		voidArea: null,
+		focus: (node: HostNode, focused: boolean): void => {
+			const el = node as unknown as Node;
+			if (focused) { el.focus(); } else { el.blur(); }
+		},
 		scrollTo: (node: HostNode, x: number, y: number, animated: boolean): void => {
 			(node as unknown as Node).scroll({ left: x, top: y, behavior: animated ? "smooth" : "auto" });
 		},
