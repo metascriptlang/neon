@@ -20,7 +20,8 @@ export function Link(props: {
 	const children = props.children;
 	const body: NeonNode = children === null ? <Text>{to()}</Text> : children as NeonNode;
 	const press = (e: NeonEvent): void => { linkTo(to()); };
-	return <Pressable style={style} accessibilityRole="link" accessibilityLabel={name()} onPress={press}>
+	return <Pressable style={style} accessibilityRole="link" accessibilityLabel={name()}
+		onPress={press}>
 		{body}
 	</Pressable>;
 }

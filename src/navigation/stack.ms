@@ -1,6 +1,7 @@
 import { Accessor, accessor, untrack } from "../core/signal";
 import { Host, HostNode, NeonNode } from "../render/hostTypes";
 import { NeonEvent } from "../render/event";
+import { Style } from "../render/style";
 import { StackLayout } from "./layout";
 import { mockHost, mockNode } from "../render/host";
 import { View } from "../components/primitives";
@@ -18,6 +19,13 @@ import {
 	currentScope,
 } from "./core";
 import { screenView } from "./header";
+
+const STACK_FRAME: Style = {
+	flex: 1,
+	flexDirection: "column",
+	position: "relative",
+	overflow: "hidden",
+};
 
 export interface ScreenCollector<P> {
 	screens: ScreenConfig<P>[] | null;
@@ -145,8 +153,7 @@ export function createStackNavigator<P>(): StackNavigator<P> {
 			};
 			const rendered = accessor((): Navigation<P>[] => core.rendered());
 			const measure = (e: NeonEvent): void => { core.layout.measure(e); };
-			return <View style={{ flex: 1, flexDirection: "column", position: "relative", overflow: "hidden" }}
-				onLayout={measure}>
+			return <View style={STACK_FRAME} onLayout={measure}>
 				<For each={rendered}>{screen}</For>
 			</View>;
 		},

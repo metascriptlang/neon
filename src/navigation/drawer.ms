@@ -114,7 +114,9 @@ class DrawerMotion {
 					this.run(false);
 				}
 			},
-			onPanResponderTerminate: (e: NeonEvent, g: PanResponderGestureState): void => { this.run(false); },
+			onPanResponderTerminate: (e: NeonEvent, g: PanResponderGestureState): void => {
+				this.run(false);
+			},
 		});
 		return pan.panHandlers;
 	}
@@ -262,7 +264,10 @@ export function createDrawerNavigator<P>(): DrawerNavigator<P> {
 			});
 			const close = (e: NeonEvent): void => { core.writeDrawerOpen(false); };
 			const mounted = mountedEntries<P>(core);
-			const backdrop = accessor((): Style => ({ ...BACKDROP, opacity: 0.4 * motion.progress.get() }));
+			const backdrop = accessor((): Style => ({
+				...BACKDROP,
+				opacity: 0.4 * motion.progress.get(),
+			}));
 			const edge = accessor((): Style => ({
 				position: "absolute",
 				top: 56,
