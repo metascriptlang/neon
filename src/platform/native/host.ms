@@ -99,6 +99,7 @@ class NativeNode {
 	measuredFor: float32 = -1.0;
 	measuredW: float32 = 0.0;
 	textInsets: string = "";
+	textAlign: string = "";
 	contentH: float32 = -1.0;
 	horizontal: boolean = false;
 	visibleContent: VisibleContentPosition | null = null;
@@ -316,7 +317,18 @@ function applyPaint(n: NativeNode, s: Style): void {
 		const size = s.fontSize !== null ? (s.fontSize as number) : 17.0;
 		const bold = s.fontWeight !== null && s.fontWeight !== "normal";
 		niSetFont(n.view, size as float32, bold ? 1 : 0);
+		const align = s.textAlign !== null ? (s.textAlign as string) : "";
+		if (align !== n.textAlign) {
+			n.textAlign = align;
+			niSetProp(n.view, "textAlign", align === "" ? "auto" : align);
+		}
 	}
+}
+
+// A centred, right or justified label spans the width its parent gives it (RN Text stretches
+// like any flex item), at least as wide as its text; a left-aligned one keeps its text's width.
+function alignsAcross(n: NativeNode): boolean {
+	return n.textAlign === "center" || n.textAlign === "right" || n.textAlign === "justify";
 }
 
 
@@ -371,7 +383,12 @@ function measureTextWithin(n: NativeNode, available: float32): void {
 		fresh.rowGap = old.rowGap;
 		fresh.columnGap = old.columnGap;
 	}
-	fresh.width = w;
+	if (alignsAcross(n)) {
+		fresh.width = old !== null ? old.width : null;
+		if (fresh.minWidth === null) { fresh.minWidth = w; }
+	} else {
+		fresh.width = w;
+	}
 	fresh.height = h;
 	if (n.isString) { fresh.display = n.text === "" ? "none" : null; }
 	n.flex = fresh;

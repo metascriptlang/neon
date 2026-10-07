@@ -42,6 +42,9 @@ public final class Props {
 				if (view instanceof android.view.ViewGroup) ((android.view.ViewGroup)view).setClipChildren("hidden".equals(value));
 				return;
 			case "accessibilityState": state(view, value); return;
+			case "textAlign":
+				if (view instanceof android.widget.TextView) align((android.widget.TextView)view, value);
+				return;
 			default: break;
 		}
 		if (view instanceof Input) ((Input)view).setProp(name, value);
@@ -71,6 +74,23 @@ public final class Props {
 				break;
 			case "selectable": label.setTextIsSelectable("true".equals(value)); break;
 			default: break;
+		}
+	}
+
+	// RN ReactTextView: textAlign is the horizontal gravity, justify is inter-word justification
+	// (API 26+) over left gravity, and auto is the locale's start.
+	static void align(android.widget.TextView label, String value) {
+		int horizontal;
+		switch (value) {
+			case "left": case "justify": horizontal = android.view.Gravity.LEFT; break;
+			case "center": horizontal = android.view.Gravity.CENTER_HORIZONTAL; break;
+			case "right": horizontal = android.view.Gravity.RIGHT; break;
+			default: horizontal = android.view.Gravity.START; break;
+		}
+		int vertical = label.getGravity() & android.view.Gravity.VERTICAL_GRAVITY_MASK;
+		label.setGravity(horizontal | vertical);
+		if (android.os.Build.VERSION.SDK_INT >= 26) {
+			label.setJustificationMode("justify".equals(value) ? android.text.Layout.JUSTIFICATION_MODE_INTER_WORD : android.text.Layout.JUSTIFICATION_MODE_NONE);
 		}
 	}
 

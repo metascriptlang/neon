@@ -596,6 +596,13 @@ static MockView *labelled(const char *text) {
 }
 
 float nmTextWidth(const char *text) { return labelled(text)->w; }
+const char *nmLabelProp(const char *text, const char *name) {
+	MockView *v = labelled(text);
+	for (int i = 0; i < v->propCount; i++) {
+		if (strcmp(v->propNames[i], name) == 0) return v->propValues[i];
+	}
+	return "<unset>";
+}
 float nmTextVisualX(const char *text) { return visualCoordinate(labelled(text), 0, 0); }
 float nmTextVisualY(const char *text) { return visualCoordinate(labelled(text), 0, 1); }
 float nmScrollOffsetX(int32_t tag) { return tagged(tag)->scrollX; }

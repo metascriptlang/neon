@@ -1097,6 +1097,13 @@ void niSetProp(void *view, const char *name, const char *value) {
 	}
 	else if (strcmp(name, "accessibilityState") == 0) setAccessibilityState(v, text);
 	else if (strcmp(name, "overflow") == 0) v.clipsToBounds = strcmp(text, "hidden") == 0;
+	else if (strcmp(name, "textAlign") == 0 && [v respondsToSelector:@selector(setTextAlignment:)]) {
+		NSTextAlignment alignment = strcmp(text, "left") == 0 ? NSTextAlignmentLeft :
+			strcmp(text, "center") == 0 ? NSTextAlignmentCenter :
+			strcmp(text, "right") == 0 ? NSTextAlignmentRight :
+			strcmp(text, "justify") == 0 ? NSTextAlignmentJustified : NSTextAlignmentNatural;
+		[(id)v setTextAlignment:alignment];
+	}
 	else if ([v isKindOfClass:UILabel.class]) {
 		UILabel *label = (UILabel *)v;
 		if (strcmp(name, "numberOfLines") == 0) label.numberOfLines = text[0] ? atoi(text) : 0;
