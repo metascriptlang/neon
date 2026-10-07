@@ -335,6 +335,26 @@ compiler cards `2026-10-08-function-component-cannot-carry-static-members.md`,
 `2026-10-06-js-cast-object-arrow-body.md`. Not done: `pressRetentionOffset`, `onContentSizeChange`,
 `StyleSheet.create` under that name, innermost-only press for nested Text.
 
+### Vector graphics (state 2026-10-08, `wt/rn-svg`, msc `0d83c4867`)
+
+react-native-svg's surface (`src/components/svg/`): `Svg` (width, height, viewBox,
+preserveAspectRatio, color), `G`, `Path` (the full SVG 1.1 path grammar, arcs to cubics per F.6),
+`Rect` (rx/ry), `Circle`, `Ellipse`, `Line`, `Polyline`, `Polygon`, `Text`/`TSpan`, `Use`, `Defs`,
+`LinearGradient`/`RadialGradient`/`Stop`, `ClipPath`, the presentation props (fill, stroke and their
+opacities, width, caps, joins, miter, dashes, fill and clip rules, opacity, transform and RN's
+rotation/scale/origin props) as Accessors, and `SvgXml`. Every host draws one display list encoded
+in MetaScript (browser: real `<svg>` markup; iOS: CoreGraphics in `NeonSvgView`; Android: a canvas
+in `SvgView`), so the geometry is the same everywhere. Proof: `tests/components/svg/{pathData,svg,
+markup,xml}.test.ms` and `tests/components/svgGalleryApp.test.ms` (native and JS),
+`tests/platform/nativeSvg.test.ms` (mock bridge), Chrome `tests/browser/svg.test.ms` (getBBox,
+hit tests, clip, viewBox) and `node tests/browser/svg.mjs <playwright>` (16 pixel samples of the
+gallery, Animated ring included), and the iPhone 17 Pro simulator `SvgUITests` (the same 17 pixel
+samples, exit 0; same colours as Chrome within 1/255). The consumer is `examples/components/svgGallery.ms`
+(icons, donut, gradient line chart, Animated progress ring, SvgXml logo) with `examples/svg/{ios,android,web}`.
+The APK builds (`SvgView` in the dex); the Seeker lane `tests/android/svg.py` is written and not run
+(phone locked), so Android drawing is compile-checked only. Provisional choices: `WORKAROUND.md` S1–S9;
+compiler card `2026-10-08-number-local-into-result-of-float64-fails-at-clang.md`.
+
 ### Reference and ownership constraints
 
 - RN's core catalog: `packages/react-native/index.js`, component exports and app/runtime APIs.
