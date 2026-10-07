@@ -16,7 +16,7 @@ typedef struct MockView {
 	int isScroll;
 	int pressable;
 	float x, y, w, h;
-	float scaleX, scaleY, translateX, translateY;
+	float scaleX, scaleY, translateX, translateY, rotation, opacity;
 	float scrollX, scrollY;
 	int isInput;
 	int control;
@@ -84,6 +84,7 @@ static void *create(float size) {
 	MockView *v = calloc(1, sizeof(MockView));
 	v->size = size;
 	v->scaleX = v->scaleY = 1;
+	v->opacity = 1;
 	v->next = g_views;
 	g_views = v;
 	g_created++;
@@ -290,13 +291,19 @@ void niSetTransform(void *view, float scaleX, float scaleY, float translateX, fl
 	g_transformWrites++;
 }
 
+void niSetRotation(void *view, float degrees) {
+	MockView *v = live(view, "niSetRotation");
+	v->rotation = degrees;
+	g_transformWrites++;
+}
+
 void niSetBackgroundColor(void *view, float r, float g, float b, float a) {
 	MockView *v = live(view, "niSetBackgroundColor");
 	v->background[0] = r; v->background[1] = g; v->background[2] = b; v->background[3] = a;
 }
 
 void niSetCornerRadius(void *view, float radius) { (void)radius; live(view, "niSetCornerRadius"); }
-void niSetOpacity(void *view, float opacity) { (void)opacity; live(view, "niSetOpacity"); }
+void niSetOpacity(void *view, float opacity) { live(view, "niSetOpacity")->opacity = opacity; }
 
 void niSetText(void *label, const char *s) {
 	MockView *v = live(label, "niSetText");
@@ -478,6 +485,9 @@ int32_t nmTransformWrites(void) { return g_transformWrites; }
 float nmVisualX(int32_t tag, float x) { return visualCoordinate(tagged(tag), x, 0); }
 float nmVisualY(int32_t tag, float y) { return visualCoordinate(tagged(tag), y, 1); }
 float nmLayoutWidth(int32_t tag) { return tagged(tag)->w; }
+float nmRotation(int32_t tag) { return tagged(tag)->rotation; }
+float nmOpacity(int32_t tag) { return tagged(tag)->opacity; }
+float nmTranslateX(int32_t tag) { return tagged(tag)->translateX; }
 float nmLayoutHeight(int32_t tag) { return tagged(tag)->h; }
 float nmLayoutX(int32_t tag) { return tagged(tag)->x; }
 float nmLayoutY(int32_t tag) { return tagged(tag)->y; }

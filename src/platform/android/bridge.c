@@ -51,7 +51,7 @@ static struct {
 	jmethodID scrollInit, scrollSetTag, scrollSetOption, scrollSetContentSize, scrollTo, scrollAddContent, scrollDispose, viewSetClickable;
 	jmethodID scrollShift, scrollOffsetX, scrollOffsetY;
 	jmethodID viewGetParent, viewSetLayoutParams, viewSetAlpha, viewGetBackground, viewSetBackground;
-	jmethodID viewSetScaleX, viewSetScaleY, viewSetTranslationX, viewSetTranslationY, viewBringToFront;
+	jmethodID viewSetScaleX, viewSetScaleY, viewSetTranslationX, viewSetTranslationY, viewSetRotation, viewBringToFront;
 	jmethodID viewForceLayout, viewMeasure, viewGetMeasuredWidth, viewGetMeasuredHeight, viewSetTag, viewGetRootWindowInsets;
 	jmethodID viewSetOnTouchListener, touchInit;
 	jmethodID viewGetContext, groupAddView, groupRemoveView, frameInit, paramsInit;
@@ -191,6 +191,7 @@ static void cacheJni(JNIEnv *e) {
 	J.viewSetScaleY = method(e, J.view, "setScaleY", "(F)V");
 	J.viewSetTranslationX = method(e, J.view, "setTranslationX", "(F)V");
 	J.viewSetTranslationY = method(e, J.view, "setTranslationY", "(F)V");
+	J.viewSetRotation = method(e, J.view, "setRotation", "(F)V");
 	J.viewBringToFront = method(e, J.view, "bringToFront", "()V");
 	J.viewGetBackground = method(e, J.view, "getBackground", "()Landroid/graphics/drawable/Drawable;");
 	J.viewSetBackground = method(e, J.view, "setBackground", "(Landroid/graphics/drawable/Drawable;)V");
@@ -654,6 +655,12 @@ void niSetTransform(void *view, float scaleX, float scaleY, float translateX, fl
 	(*e)->CallVoidMethod(e, (jobject)view, J.viewSetTranslationX, translateX * g_density);
 	(*e)->CallVoidMethod(e, (jobject)view, J.viewSetTranslationY, translateY * g_density);
 	check(e, "setTransform");
+}
+
+void niSetRotation(void *view, float degrees) {
+	JNIEnv *e = env();
+	(*e)->CallVoidMethod(e, (jobject)view, J.viewSetRotation, degrees);
+	check(e, "setRotation");
 }
 
 void niSetBackgroundColor(void *view, float r, float g, float b, float a) {

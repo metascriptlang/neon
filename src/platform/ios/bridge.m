@@ -1,4 +1,5 @@
 #import <UIKit/UIKit.h>
+#import <objc/runtime.h>
 #import <Foundation/Foundation.h>
 #include "runtime/promise/dispatch.h"
 #include "../native/bridge.h"
@@ -908,9 +909,30 @@ void niSetFrame(void *view, float x, float y, float w, float h) {
 	v.center = CGPointMake(x + w * 0.5f, y + h * 0.5f);
 }
 
+static const void *kNeonRotationKey = &kNeonRotationKey;
+static const void *kNeonAffineKey = &kNeonAffineKey;
+
+// translate · rotate · scale about the centre, the order CSS composes them in.
+static void neonApplyTransform(UIView *v) {
+	NSArray<NSNumber *> *affine = objc_getAssociatedObject(v, kNeonAffineKey);
+	NSNumber *rotation = objc_getAssociatedObject(v, kNeonRotationKey);
+	CGFloat sx = affine ? affine[0].doubleValue : 1, sy = affine ? affine[1].doubleValue : 1;
+	CGFloat tx = affine ? affine[2].doubleValue : 0, ty = affine ? affine[3].doubleValue : 0;
+	CGAffineTransform t = CGAffineTransformMakeTranslation(tx, ty);
+	t = CGAffineTransformRotate(t, (rotation ? rotation.doubleValue : 0) * M_PI / 180.0);
+	v.transform = CGAffineTransformScale(t, sx, sy);
+}
+
 void niSetTransform(void *view, float scaleX, float scaleY, float translateX, float translateY) {
 	UIView *v = (__bridge UIView *)view;
-	v.transform = CGAffineTransformMake(scaleX, 0, 0, scaleY, translateX, translateY);
+	objc_setAssociatedObject(v, kNeonAffineKey, @[@(scaleX), @(scaleY), @(translateX), @(translateY)], OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+	neonApplyTransform(v);
+}
+
+void niSetRotation(void *view, float degrees) {
+	UIView *v = (__bridge UIView *)view;
+	objc_setAssociatedObject(v, kNeonRotationKey, @(degrees), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+	neonApplyTransform(v);
 }
 
 void *niScrollCreate(void) {

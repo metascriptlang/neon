@@ -25,7 +25,7 @@ when (ios) {
 
 import {
 	niViewCreate, niTextCreate, niAddChild, niBringChildToFront, niRemoveFromParent, niViewRelease, niSetFrame,
-	niSetBackgroundColor, niSetCornerRadius, niSetOpacity, niSetTransform,
+	niSetBackgroundColor, niSetCornerRadius, niSetOpacity, niSetTransform, niSetRotation,
 	niSetText, niSetTextColor, niSetFont, niMeasureText, niMeasuredW, niMeasuredH,
 	niContainerView, niScreenWidth, niScreenHeight, niViewSetTag, niViewSetPressable,
 	niLastTouchTag, niLastTouchPhase,
@@ -65,6 +65,7 @@ class NativeNode {
 	eventTag: int32 = 0;
 	styleCache: Style | null = null;
 	transformCss: string | null = null;
+	rotation: float32 = 0.0;
 	zIndex: number = 0;
 	zChildren: int32 = 0;
 	paintOrder: NativeNode[] = [];
@@ -129,9 +130,29 @@ function hexNibble(c: string): int32 {
 	return -1;
 }
 
-interface Rgba { r: float32; g: float32; b: float32; }
+interface Rgba { r: float32; g: float32; b: float32; a: float32; }
+
+// `rgb(r, g, b)` / `rgba(r, g, b, a)`, the form Animated colour interpolation
+// produces (RN AnimatedInterpolation).
+function parseRgbFunction(css: string): Rgba | null {
+	const open = css.indexOf("(");
+	const close = css.lastIndexOf(")");
+	if (open < 0 || close < open) { return null; }
+	const name = css.substring(0, open).trim();
+	if (name !== "rgb" && name !== "rgba") { return null; }
+	const parts = css.substring(open + 1, close).split(",");
+	if (parts.length !== 3 && parts.length !== 4) { return null; }
+	const r = parseFloat(parts[0].trim());
+	const g = parseFloat(parts[1].trim());
+	const b = parseFloat(parts[2].trim());
+	const a = parts.length === 4 ? parseFloat(parts[3].trim()) : 1.0;
+	if (r !== r || g !== g || b !== b || a !== a) { return null; }
+	const s = 255.0;
+	return { r: (r / s) as float32, g: (g / s) as float32, b: (b / s) as float32, a: Math.min(1.0, Math.max(0.0, a)) as float32 };
+}
 
 function parseHex(css: string): Rgba | null {
+	if (css.startsWith("rgb")) { return parseRgbFunction(css); }
 	if (css.length < 4 || css.charAt(0) !== "#") { return null; }
 	const body = css.substring(1, css.length);
 	let r = -1;
@@ -148,7 +169,7 @@ function parseHex(css: string): Rgba | null {
 	}
 	if (r < 0 || g < 0 || b < 0) { return null; }
 	const s = 255.0 as float32;
-	return { r: (r as float32) / s, g: (g as float32) / s, b: (b as float32) / s };
+	return { r: (r as float32) / s, g: (g as float32) / s, b: (b as float32) / s, a: 1.0 };
 }
 
 
@@ -178,7 +199,9 @@ function applyPaint(n: NativeNode, s: Style): void {
 		const transform = nativeTransform(s.transform);
 		if (n.view !== null) {
 			niSetTransform(n.view, transform.scaleX, transform.scaleY, transform.translateX, transform.translateY);
+			if (transform.rotate !== n.rotation) { niSetRotation(n.view, transform.rotate); }
 		}
+		n.rotation = transform.rotate;
 		n.transformCss = s.transform;
 	}
 	if (n.view === null || !n.isText) {
@@ -186,7 +209,7 @@ function applyPaint(n: NativeNode, s: Style): void {
 			const bg = s.backgroundColor;
 			if (bg !== null) {
 				const c = parseHex(bg as string);
-				if (c !== null) { niSetBackgroundColor(n.view, c.r, c.g, c.b, 1.0); }
+				if (c !== null) { niSetBackgroundColor(n.view, c.r, c.g, c.b, c.a); }
 				else if (bg === "transparent") { niSetBackgroundColor(n.view, 0.0, 0.0, 0.0, 0.0); }
 			}
 			if (s.borderRadius !== null) { niSetCornerRadius(n.view, s.borderRadius as float32); }
@@ -197,7 +220,7 @@ function applyPaint(n: NativeNode, s: Style): void {
 		const fg = s.color;
 		if (fg !== null) {
 			const c = parseHex(fg as string);
-			if (c !== null) { niSetTextColor(n.view, c.r, c.g, c.b, 1.0); }
+			if (c !== null) { niSetTextColor(n.view, c.r, c.g, c.b, c.a); }
 		}
 		const size = s.fontSize !== null ? (s.fontSize as number) : 17.0;
 		const bold = s.fontWeight !== null && s.fontWeight !== "normal";
@@ -445,7 +468,7 @@ function materializeString(child: NativeNode, parent: NativeNode): void {
 		const fg = ps.color;
 		if (fg !== null) {
 			const c = parseHex(fg as string);
-			if (c !== null) { niSetTextColor(child.view, c.r, c.g, c.b, 1.0); }
+			if (c !== null) { niSetTextColor(child.view, c.r, c.g, c.b, c.a); }
 		}
 		const size = ps.fontSize !== null ? (ps.fontSize as number) : 17.0;
 		const bold = ps.fontWeight !== null && ps.fontWeight !== "normal";
