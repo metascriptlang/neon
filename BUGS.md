@@ -22,6 +22,14 @@ names the card and the site, and nothing is worked around in `src/`. Rows closed
 2026-09-20 were dropped with §2 — they are in this file's history at `git show c00bd2b:BUGS.md`,
 and the invariants that outlived them were moved to the head of the test that pins each one.
 
+- **OPEN 2026-10-07 — DOM: a `View` lacks React Native's base layout style.** In Chrome
+  (`node tests/browser/flutterlists.mjs <playwright>`, `wt/rn-flutter-lists`) a `View` renders as a
+  `display: block`, `position: static`, `min-height: auto` div, where RN-web's View is
+  `display: flex; flex-direction: column; position: relative; min-height: 0; min-width: 0`. Measured
+  in the example: a `FlatList` under two `flex: 1` Views grew to its 2800 px content instead of
+  scrolling, and an `absolute` header escaped its screen and covered the tab row. The example and
+  `Dismissible` set those fields explicitly; native hosts (yoga) already behave like RN.
+
 - **OPEN 2026-10-07 — a raw tag with an `Accessor<boolean> | null` attribute dies on C.** In
   `probe/apps/boolAttr.ms` (`wt/rn-apps`), `function Tag(props: { on?: Accessor<boolean> | null })`
   returning `element(<text accessible={props.on}>hi</text>)`, mounted as `<Tag on={true} />` on
