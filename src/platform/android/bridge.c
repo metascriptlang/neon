@@ -52,7 +52,7 @@ static int g_loopFd = -1;
 static struct {
 	jclass view, viewGroup, frameLayout, layoutParams, textView, gradientDrawable, integer, touch;
 	jclass scroll, input, props, environment, toggle, spinner, picture, overlay, controls;
-	jmethodID inputInit, inputSetTag, inputSetFocused, propsSet, propsSetTag, environmentInstall, environmentScheme;
+	jmethodID inputInit, inputSetTag, inputSetFocused, inputRemoving, propsSet, propsSetTag, environmentInstall, environmentScheme;
 	jmethodID toggleInit, spinnerInit, pictureInit, overlayInit, controlsCreate;
 	jmethodID scrollInit, scrollSetTag, scrollSetOption, scrollSetContentSize, scrollTo, scrollAddContent, scrollDispose, viewSetClickable;
 	jmethodID scrollShift, scrollOffsetX, scrollOffsetY;
@@ -172,6 +172,8 @@ static void cacheJni(JNIEnv *e) {
 	J.inputInit = method(e, J.input, "<init>", "(Landroid/content/Context;)V");
 	J.inputSetTag = method(e, J.input, "setNeonTag", "(I)V");
 	J.inputSetFocused = method(e, J.input, "setFocused", "(Z)V");
+	J.inputRemoving = (*e)->GetStaticMethodID(e, J.input, "removing", "(Landroid/view/View;)V");
+	check(e, "Input.removing");
 	J.props = globalClass(e, "dev/metascript/neon/Props");
 	J.propsSet = (*e)->GetStaticMethodID(e, J.props, "set", "(Landroid/view/View;Ljava/lang/String;Ljava/lang/String;)V");
 	check(e, "Props.set");
@@ -727,7 +729,10 @@ void niBringChildToFront(void *child) {
 }
 
 void niRemoveFromParent(void *child) {
-	detach(env(), (jobject)child);
+	JNIEnv *e = env();
+	(*e)->CallStaticVoidMethod(e, J.input, J.inputRemoving, (jobject)child);
+	check(e, "Input.removing");
+	detach(e, (jobject)child);
 }
 
 void niViewRelease(void *view) {

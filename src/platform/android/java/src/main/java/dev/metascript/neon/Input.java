@@ -64,6 +64,13 @@ public final class Input extends EditText {
 		}
 	}
 
+	public static void removing(android.view.View removed) {
+		android.view.View focused = removed.findFocus();
+		if (!(focused instanceof Input)) return;
+		InputMethodManager manager = (InputMethodManager)focused.getContext().getSystemService(Context.INPUT_METHOD_SERVICE);
+		manager.hideSoftInputFromWindow(focused.getWindowToken(), 0);
+	}
+
 	@Override protected void onAttachedToWindow() {
 		super.onAttachedToWindow();
 		if (autoFocus) post(() -> setFocused(true));
