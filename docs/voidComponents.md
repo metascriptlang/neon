@@ -33,10 +33,10 @@ Light JSX consumer remain before runtime on the installed compiler. Measurements
 candidate differences belong to `VISION.md` "Inside a Void area".
 
 Raw 2D slice: `src/components/scene2d.ms` exports Scene2D, Group, Rect, Sprite,
-Mask and Label, using Void NodeRef/binders and Neon owners. Current seventeen-case
+Mask and Label, using Void NodeRef/binders and Neon owners. Current nineteen-case
 `tests/render/scene2d.test.ms` runs natively on read-only compiler candidate r8
 (binary sha256 prefix `356b1a0fd75d`, matching source/support `f65616348`) against
-Void `d255ffb`: 17 own cases / 331 including imports (`b80ed2c`). This proves mapping, reactive
+Void `d255ffb`: 19 own cases / 333 including imports (`677c0c0`). This proves mapping, reactive
 camera/geometry/text/paint/filter, matrix-row reuse/clear, remount/disposal and
 invalid-parent rejection. Parent guards went red before restoration: raw text/tags
 could leak into HUD, and a foreign scene scope could capture an outer 2D parent.
@@ -67,7 +67,11 @@ view-transform proof, not viewport pixels. Rect.boxStyle/Sprite.imageStyle use V
 payload allocation/update/disposal; tests prove payload reuse after reactive edits and
 remount. Sprite width/height override tile dimensions independently; omitted axes follow
 retile. All five ObjectFit values are tested through JSX and Void fitImage geometry,
-not rendered image pixels.
+not rendered image pixels. Mask.scrollX/scrollY/scrollBounds map to Void's scroll
+payload; one effect applies size, bounds, then requested offsets. Tests cover clamp on
+resize, clearing/replacing bounds, omitted axes, negative unbounded offsets and payload
+reuse/remount/disposal. Plain masks allocate no scroll payload. These are state/lifecycle
+checks; transformed clipping, nested scopes and input/pixels remain unproved.
 
 The host and Ion frame are still on Void's old API. Their migration belongs to
 `void-noderef-host`, not to a parallel edit here. Existing host tests describe carried
@@ -89,7 +93,7 @@ existing 3D Group tag silently switch meaning outside Scene3D.
 | 2D-05 | `src/void2d/node.ms` anim/animFrames; `src/void2d/scene.ms` tick | Anim with frames/fps and clock integration; missing | Frames advance on demand while playing; stop when not playing/unmounted; replacement policy must follow actual Void API rather than silently freeze a prop; `src/test/nodeCheck.ms` |
 | 2D-06 | `src/void2d/node.ms` graphics/clear; `src/void2d/graphics.ms` GraphicsOpKind and exported drawing operations | Graphics component plus declarative geometry/operation inputs; missing, input design pending | All exported shape/fill/stroke/curve operations are reachable; order is retained, reactive edits rebuild only their owned geometry and do not accumulate old operations; `src/test/graphicsCheck.ms` |
 | 2D-07 | `src/void2d/graphics.ms` gradient/pattern/textured operations; `src/void2d/gradient.ms` GradientSpace | Graphics inputs include gradients, stops, color-space/dither, patterns and textured shapes; missing | Linear/radial gradients, Oklab alternatives, slash/checker patterns, texture changes and overlap pixels; `src/test/gradientCheck.ms`, `src/test/graphicsCheck.ms` |
-| 2D-08 | `src/void2d/node.ms` mask/scrollTo/scrollBy/setScrollBounds/scrollScope | Mask size/parenting core written; scroll props/input/pixels pending. ScrollView remains UI over the host | Transformed clipping and scroll affect pixels and hit tests identically; bounds clamp, input over clipped content, nested scopes; `src/test/nodeCheck.ms`, `src/test/h2dOracleCheck.ms` |
+| 2D-08 | `src/void2d/node.ms` mask/scrollTo/scrollBy/setScrollBounds/scrollScope | Mask size/parenting/scrollX/scrollY/nullable scrollBounds mapped; clamp/resize/defaults/lifecycle CPU-tested on candidate, clipping/input/pixels pending. ScrollView remains UI over the host | Transformed clipping and scroll affect pixels and hit tests identically; bounds clamp, input over clipped content, nested scopes; `src/test/nodeCheck.ms`, `src/test/h2dOracleCheck.ms` |
 | 2D-09 | `src/void2d/node.ms` scaleGrid | ScaleGrid with Tile and borders; missing | Resize preserves nine-slice edges and updates center without dropping texture alpha; `src/test/nodeCheck.ms`, `src/test/tileCheck.ms` |
 | 2D-10 | `src/void2d/node.ms` underline/selection | Render decorations exposed directly or through text props, not omitted because Text also draws decorations; missing | Wavy/straight underline and selection neighbor geometry remain expressible/reactive; `src/test/textMetricsCheck.ms`, `src/test/labelTextCheck.ms` |
 | 2D-11 | `src/void2d/node.ms` tileGroup/setTiles/setTile/setRange | TileGroup with cells and visible range; missing | Reactive single-cell edits, reshapes, ranges, transform/order/bounds and zero cells; `src/test/tileGroupCheck.ms` |
