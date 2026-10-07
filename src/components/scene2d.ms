@@ -37,7 +37,7 @@ import {
 	setColorMatrix,
 	setOrder,
 	setFilter,
-	setSize,
+	setSize, content, setBackground, clearBackground,
 	setBoxStyle,
 	setImageStyle,
 	setScrollBounds,
@@ -77,6 +77,12 @@ interface NodeProps {
 	filter?: Accessor<Filter> | null;
 	ref?: ((node: NodeRef) => void) | null;
 	children?: NeonNode | null;
+}
+
+interface GroupProps extends NodeProps {
+	width?: Accessor<float32> | null;
+	height?: Accessor<float32> | null;
+	background?: Accessor<Color | null> | null;
 }
 
 interface RectProps extends NodeProps {
@@ -289,9 +295,29 @@ export function Scene2D(props: Scene2DProps): NeonNode {
 	};
 }
 
-export function Group(props: NodeProps): NeonNode {
+export function Group(props: GroupProps): NeonNode {
 	return renderNode("Group", props, (scene: VoidScene2D): NodeRef => scene.group(),
-		(node: NodeRef): void => {});
+		(node: NodeRef): void => {
+			if (props.width !== null || props.height !== null) {
+				const initial = node.content();
+				createEffect((): void => {
+					const width = props.width === null ? initial.w : (props.width as () => float32)();
+					const height = props.height === null ? initial.h : (props.height as () => float32)();
+					node.setSize(width, height);
+				});
+			}
+			if (props.background !== null) {
+				const background = props.background as () => Color | null;
+				createEffect((): void => {
+					const color = background();
+					if (color === null) { node.clearBackground(); }
+					else {
+						const fill = props.paint === null ? color : (props.paint as () => Paint2D)().color;
+						node.setBackground(fill);
+					}
+				});
+			}
+		});
 }
 
 export function TileGroup(props: TileGroupProps): NeonNode {
