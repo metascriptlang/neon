@@ -9,7 +9,6 @@ from apps import find, texts, wait_for, tap
 from counter import adb, LaneError, EmulatorError, EMULATOR
 
 PACKAGE = "dev.neon.NeonSettings"
-TALKBACK = "com.google.android.marvin.talkback/com.google.android.marvin.talkback.TalkBackService"
 
 
 def starting(ns, prefix):
@@ -108,59 +107,10 @@ def lane():
         raise LaneError("the app restarted during the lane")
 
 
-def restore_accessibility(before):
-    if before and before != "null":
-        adb("shell", "settings", "put", "secure", "enabled_accessibility_services", before)
-    else:
-        adb("shell", "settings", "delete", "secure", "enabled_accessibility_services")
-        adb("shell", "settings", "put", "secure", "accessibility_enabled", "0")
-
-
-def talkback_lane():
-    packages = adb("shell", "pm", "list", "packages", check=False)
-    if "com.google.android.marvin.talkback" not in packages:
-        print("NEON_ANDROID settings-talkback not installed")
-        return
-    before = adb("shell", "settings", "get", "secure", "enabled_accessibility_services").strip()
-    target_desc = "Use system theme"
-    try:
-        adb("shell", "settings", "put", "secure", "enabled_accessibility_services", TALKBACK)
-        adb("shell", "settings", "put", "secure", "accessibility_enabled", "1")
-        time.sleep(5)
-        ns = apps.nodes(PACKAGE)
-        target = find(ns, desc=target_desc)
-        if target is None:
-            print("NEON_ANDROID settings-talkback no %r switch; texts %s" % (target_desc, texts(ns)[:20]))
-            return
-        was = target.checked
-        adb("logcat", "-c")
-        tap(target)
-        time.sleep(2)
-        apps.shot("settings-talkback-focus")
-        x, y = target.center()
-        adb("shell", "input", "tap", str(x), str(y))
-        time.sleep(0.08)
-        adb("shell", "input", "tap", str(x), str(y))
-        time.sleep(2)
-        after = find(apps.nodes(PACKAGE), desc=target_desc)
-        print("NEON_ANDROID settings-talkback double-tap %s -> %s" % (was, after.checked if after else "gone"))
-        apps.shot("settings-talkback-activated")
-        log = adb("logcat", "-d", check=False)
-        spoken = [line for line in log.splitlines() if target_desc in line and "talkback" in line.lower()][:6]
-        print("NEON_ANDROID settings-talkback log lines naming the switch: %d" % len(spoken))
-        for line in spoken:
-            print("NEON_ANDROID settings-talkback %s" % line[-220:])
-    finally:
-        restore_accessibility(before)
-        time.sleep(2)
-        print("NEON_ANDROID settings-talkback restored %s" % adb("shell", "settings", "get", "secure", "enabled_accessibility_services").strip())
-
-
 def main():
     mode = adb("shell", "cmd", "window", "user-rotation").strip()
     try:
         lane()
-        talkback_lane()
     except EmulatorError as covered:
         print("FAIL: android settings " + str(covered), file=sys.stderr)
         return EMULATOR

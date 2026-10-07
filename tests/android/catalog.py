@@ -29,7 +29,7 @@ def lane():
     short = find(ns, text="Dot grid, 120 pages.")
     long = find(ns, text="Oiled walnut tray with a felt base that keeps pens, keys and a phone in one place on a crowded desk.")
     if short is None or long is None:
-        raise LaneError("rows did not mount their descriptions; texts %s" % texts(ns)[:30])
+        raise LaneError("rows did not mount their descriptions; nodes %s" % [n for n in ns if n.text])
     if long.height() < 2 * short.height() - 4:
         raise LaneError("the long description did not wrap: %s vs %s" % (long, short))
     images = [n for n in ns if n.desc in ("Field notebook", "Walnut desk tray") and n.cls.endswith("ImageView")]
