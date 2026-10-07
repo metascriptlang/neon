@@ -1,9 +1,11 @@
 import { pathToFileURL } from "node:url";
+import { readFileSync } from "node:fs";
 
 const [, , playwrightPath, port, label, pagePath] = process.argv;
 const { chromium } = await import(pathToFileURL(playwrightPath).href);
 
-const browser = await chromium.launch({ channel: process.env.NEON_CHROME_CHANNEL ?? "chrome" });
+const args = (readFileSync(label, "utf8").match(/^\/\/ chrome-args: (.*)$/m)?.[1] ?? "").split(" ").filter(Boolean);
+const browser = await chromium.launch({ channel: process.env.NEON_CHROME_CHANNEL ?? "chrome", args });
 const page = await browser.newPage();
 const pageErrors = [];
 page.on("pageerror", (e) => pageErrors.push(String(e)));
