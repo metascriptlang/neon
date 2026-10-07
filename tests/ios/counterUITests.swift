@@ -1927,3 +1927,88 @@ final class MediaUITests: XCTestCase {
         XCTAssertEqual(launched, pid())
     }
 }
+
+final class SvgUITests: XCTestCase {
+    private let app = XCUIApplication(bundleIdentifier: "dev.neon.NeonSvg")
+
+    override func setUp() {
+        continueAfterFailure = false
+    }
+
+    private func status() -> String {
+        let match = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "status ")).firstMatch
+        return match.exists ? match.label : ""
+    }
+
+    private func any(_ label: String) -> XCUIElement {
+        app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", label)).firstMatch
+    }
+
+    private func report(_ name: String) {
+        print("NEON_IOS svg-\(name) \(status())")
+        let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        shot.name = "svg-\(name)"
+        shot.lifetime = .keepAlways
+        add(shot)
+    }
+
+    // The screen's colour at (x, y) points inside the element labelled `label`.
+    private func color(_ label: String, _ x: CGFloat, _ y: CGFloat) -> [Int] {
+        let frame = any(label).frame
+        let image = XCUIScreen.main.screenshot().image
+        guard let cg = image.cgImage else { return [] }
+        let scale = CGFloat(cg.width) / image.size.width
+        let px = Int((frame.minX + x) * scale)
+        let py = Int((frame.minY + y) * scale)
+        var data = [UInt8](repeating: 0, count: 4)
+        let ctx = CGContext(data: &data, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4,
+            space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+        ctx.draw(cg, in: CGRect(x: -px, y: -(cg.height - 1 - py), width: cg.width, height: cg.height))
+        return [Int(data[0]), Int(data[1]), Int(data[2])]
+    }
+
+    private func expectColor(_ label: String, _ x: CGFloat, _ y: CGFloat, _ want: [Int], _ why: String, tolerance: Int = 40) {
+        let got = color(label, x, y)
+        let close = got.count == 3 && zip(got, want).allSatisfy { abs($0 - $1) <= tolerance }
+        print("NEON_IOS svg-pixel \(label) (\(x), \(y)) = \(got) want \(want): \(why)")
+        XCTAssertTrue(close, "\(why): \(label) at (\(x), \(y)) is \(got), want \(want)")
+    }
+
+    func testIconsChartsRingAndLogo() {
+        XCUIDevice.shared.orientation = .portrait
+        app.launch()
+        XCTAssertTrue(app.wait(for: .runningForeground, timeout: 20))
+        XCTAssertTrue(any("donut chart").waitForExistence(timeout: 15), "the Svg views are accessibility images")
+        for label in ["icon heart", "icon star", "icon check", "icon home", "progress ring", "line chart", "logo"] {
+            XCTAssertTrue(any(label).exists, "\(label) is labelled")
+        }
+        XCTAssertEqual(any("donut chart").frame.width, 140, accuracy: 0.5)
+        RunLoop.current.run(until: Date().addingTimeInterval(1))
+        report("start")
+        let white = [255, 255, 255]
+        expectColor("icon heart", 20, 20, [229, 57, 53], "the heart icon is red in its middle")
+        expectColor("icon heart", 2, 38, white, "and empty in its corner", tolerance: 10)
+        expectColor("icon check", 11, 25, [67, 160, 71], "the check mark is green")
+        expectColor("donut chart", 120, 70, [229, 57, 53], "the first slice (40%) covers three o'clock")
+        expectColor("donut chart", 70, 120, [30, 136, 229], "the second slice covers six o'clock")
+        expectColor("donut chart", 20, 70, [67, 160, 71], "the third slice covers nine o'clock")
+        expectColor("donut chart", 55, 23, [251, 192, 45], "the fourth slice sits before twelve o'clock")
+        expectColor("donut chart", 70, 70, white, "the hole is empty", tolerance: 10)
+        expectColor("progress ring", 70, 120, [224, 224, 224], "the ring track shows before the animation")
+        expectColor("line chart", 375, 116, [229, 241, 252], "the gradient area fades to a light blue at the bottom", tolerance: 25)
+        expectColor("line chart", 300, 20, white, "the sky above the line is white", tolerance: 10)
+        expectColor("logo", 15, 30, [243, 104, 12], "the logo starts orange", tolerance: 50)
+        expectColor("logo", 190, 30, [113, 31, 146], "and ends purple", tolerance: 50)
+        expectColor("logo", 100, 28, white, "with white text in the middle", tolerance: 30)
+
+        any("animate").tap()
+        let done = NSPredicate { [self] _, _ in status() == "status progress 75%" }
+        XCTAssertEqual(XCTWaiter.wait(for: [expectation(for: done, evaluatedWith: app)], timeout: 10), .completed,
+            "the Animated ring finishes, app says \(status())")
+        RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+        report("animated")
+        expectColor("progress ring", 70, 120, [142, 36, 170], "the Animated ring reaches six o'clock")
+        expectColor("progress ring", 35, 35, [224, 224, 224], "and stops short of the last quarter")
+        expectColor("progress ring", 70, 100, white, "inside the ring, below the label, stays clear", tolerance: 10)
+    }
+}
