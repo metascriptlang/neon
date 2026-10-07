@@ -82,6 +82,9 @@ so regrouping changes row identity. Copying that key model would not establish S
 preservation across row parents; cross-parent ownership/reconciliation needs its own
 mechanism approval. The reference list cases are in
 `packages/virtualized-lists/Lists/__tests__/VirtualizedList-test.js`.
+Until that approval, grid is provisional (`WORKAROUND.md` L1): an item keeps its state while
+it stays in its row and remounts when regrouping moves it to another row; the grid cases in
+`tests/render/flatList.test.ms` and `tests/browser/flatList.test.ms` pin it.
 
 
 ### Acceptance — three complete author workflows
