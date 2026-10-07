@@ -150,6 +150,7 @@ export interface NavigatorLink {
 	unregister: (routeKey: string, child: NavigatorLink) => void;
 	focusedChild: () => NavigatorLink | null;
 	focusedRoute: () => RouteKey | null;
+	state: () => NavigationState;
 	parent: () => NavigatorLink | null;
 	describe: () => string;
 }
@@ -903,10 +904,13 @@ export class NavigatorCore<P> {
 	}
 
 	state(): NavigationState {
-		const list = untrack((): Navigation<P>[] => this.entries());
+		return untrack((): NavigationState => this.trackedState());
+	}
+
+	trackedState(): NavigationState {
 		const routes: RouteKey[] = [];
-		for (const entry of list) { routes.push({ key: entry.route.key, name: entry.route.name }); }
-		return { index: untrack((): int32 => this.index()), routeNames: this.routeNames(), routes };
+		for (const entry of this.entries()) { routes.push({ key: entry.route.key, name: entry.route.name }); }
+		return { index: this.index(), routeNames: this.routeNames(), routes };
 	}
 
 	describe(): string {
@@ -947,6 +951,7 @@ export function linkOf<P>(core: NavigatorCore<P>): NavigatorLink {
 			const route = (current as Navigation<P>).route;
 			return { key: route.key, name: route.name };
 		},
+		state: (): NavigationState => core.trackedState(),
 		parent: (): NavigatorLink | null => core.parent,
 		describe: (): string => core.describe(),
 	};
@@ -1014,6 +1019,11 @@ export function useRoute<P>(): Route<P> {
 
 export function useIsFocused(): Accessor<boolean> {
 	return currentScope("useIsFocused").focused;
+}
+
+export function useNavigationState<T>(selector: (state: NavigationState) => T): Accessor<T> {
+	const link = currentScope("useNavigationState").link;
+	return accessor((): T => selector(link.state()));
 }
 
 export function useFocusEffect(effect: () => (() => void) | null): void {

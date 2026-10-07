@@ -21,6 +21,8 @@ import { BackBehavior, labelOf, mountedEntries, readBehavior } from "./tabs";
 
 export const DRAWER_WIDTH = 280;
 
+export type DrawerPosition = "left" | "right";
+
 export function drawerItem<P>(core: NavigatorCore<P>, entry: Navigation<P>): NeonNode {
 	const key = entry.route.key;
 	const focused = accessor((): boolean => core.currentKey() === key);
@@ -54,6 +56,7 @@ export interface DrawerNavigator<P> {
 		screenOptions?: Accessor<ScreenOptionsOf<P>> | null;
 		backBehavior?: Accessor<BackBehavior> | null;
 		drawerStyle?: Accessor<Style> | null;
+		drawerPosition?: Accessor<DrawerPosition> | null;
 	}) => NeonNode;
 	Screen: (props: {
 		name: string;
@@ -73,6 +76,7 @@ export function createDrawerNavigator<P>(): DrawerNavigator<P> {
 			screenOptions?: Accessor<ScreenOptionsOf<P>> | null;
 			backBehavior?: Accessor<BackBehavior> | null;
 			drawerStyle?: Accessor<Style> | null;
+			drawerPosition?: Accessor<DrawerPosition> | null;
 		}): NeonNode => {
 			const screens = collectScreens<P>(collector, props.children);
 			const core = createCore<P>({
@@ -85,11 +89,18 @@ export function createDrawerNavigator<P>(): DrawerNavigator<P> {
 				scope: currentScope("Drawer.Navigator"),
 			});
 			const own = props.drawerStyle;
+			const side = props.drawerPosition;
+			const right = accessor((): boolean => {
+				if (side === null) { return false; }
+				const value: DrawerPosition = (side as Accessor<DrawerPosition>)();
+				return value === "right";
+			});
 			const panel = accessor((): Style => {
 				const base: Style = {
 					position: "absolute",
 					top: 0,
-					left: 0,
+					left: right() ? null : 0,
+					right: right() ? 0 : null,
 					bottom: 0,
 					width: DRAWER_WIDTH,
 					flexDirection: "column",

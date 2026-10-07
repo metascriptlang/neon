@@ -32,6 +32,9 @@ export {
 	useRoute,
 	useIsFocused,
 	useFocusEffect,
+	useNavigationState,
+	StackPresentation,
+	HeaderTitleAlign,
 	useLinkTo,
 } from "./core";
 export {
@@ -57,5 +60,5 @@ export {
 	TAB_INACTIVE,
 	BADGE_COLOR,
 } from "./tabs";
-export { DrawerNavigator, createDrawerNavigator, DRAWER_WIDTH } from "./drawer";
+export { DrawerNavigator, DrawerPosition, createDrawerNavigator, DRAWER_WIDTH } from "./drawer";
 export { NavigationContainer, NavigationContainerRef, createNavigationContainerRef } from "./container";

@@ -10,6 +10,7 @@ import {
 	NavTarget,
 	NavigatorKind,
 	NavigatorLink,
+	NavigationState,
 	RouteKey,
 	ScopeContext,
 	ScreenScope,
@@ -142,6 +143,9 @@ function containerLink(): NavigatorLink {
 		},
 		focusedChild: (): NavigatorLink | null => root,
 		focusedRoute: (): RouteKey | null => null,
+		state: (): NavigationState => root === null
+			? { index: 0, routeNames: [], routes: [] }
+			: (root as NavigatorLink).state(),
 		parent: (): NavigatorLink | null => null,
 		describe: (): string => root === null ? "" : (root as NavigatorLink).describe(),
 	};

@@ -37,8 +37,11 @@ export function readBehavior(behavior: Accessor<BackBehavior> | null, fallback: 
 export function mountedEntries<P>(core: NavigatorCore<P>): Accessor<Navigation<P>[]> {
 	return accessor((): Navigation<P>[] => {
 		const kept: Navigation<P>[] = [];
+		const focused = core.currentKey();
 		for (const entry of core.entries()) {
-			if (entry.visited() || !shown(entry.options().lazy, true)) { kept.push(entry); }
+			const options = entry.options();
+			if (shown(options.unmountOnBlur, false) && entry.route.key !== focused) { continue; }
+			if (entry.visited() || !shown(options.lazy, true)) { kept.push(entry); }
 		}
 		return kept;
 	});
