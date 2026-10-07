@@ -119,6 +119,7 @@ static void *createControl(int kind) {
 void *niSwitchCreate(void) { return createControl(2); }
 void *niIndicatorCreate(void) { return createControl(3); }
 void *niImageCreate(void) { return createControl(4); }
+void *niModalCreate(void) { return createControl(5); }
 
 void niControlSetTag(void *view, int32_t tag) {
 	MockView *v = live(view, "niControlSetTag");
@@ -508,13 +509,14 @@ static MockView *hitView(MockView *p, float x, float y) {
 		MockView *hit = hitView(v, x, y);
 		if (hit) return hit;
 		if (v->pressable && v->tag) return v;
+		if (v->control == 5) return v;
 	}
 	return NULL;
 }
 
 void nmTouchAt(float x, float y, int32_t phase) {
 	MockView *hit = hitView(&s_container, x, y);
-	if (hit) nmTouch(hit->tag, phase);
+	if (hit && hit->tag) nmTouch(hit->tag, phase);
 }
 
 static MockView *labelled(const char *text) {

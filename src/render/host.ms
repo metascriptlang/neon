@@ -76,6 +76,7 @@ function cloneMock(n: MockNode): MockNode {
 }
 
 export function mockHost(): Host {
+	const overlay = mockNode("overlay");
 	return {
 		createElement: (tag: string): HostNode => mockNode(tag) as unknown as HostNode,
 		createText: (s: string): HostNode => {
@@ -184,6 +185,7 @@ export function mockHost(): Host {
 			const n = node as unknown as MockNode;
 			fireEvent(n, focused ? "onFocus" : "onBlur");
 		},
+		overlayRoot: (node: HostNode): HostNode => overlay as unknown as HostNode,
 	};
 }
 

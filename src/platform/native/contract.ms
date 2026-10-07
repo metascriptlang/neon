@@ -11,6 +11,7 @@ export enum NativeElementKind {
 	Switch,
 	Indicator,
 	Image,
+	Modal,
 }
 
 interface NativeEventRoute {
@@ -48,6 +49,7 @@ export function nativeElementKind(tag: string): NativeElementKind {
 	if (tag === "switch") { return NativeElementKind.Switch; }
 	if (tag === "activityindicator") { return NativeElementKind.Indicator; }
 	if (tag === "image") { return NativeElementKind.Image; }
+	if (tag === "modal") { return NativeElementKind.Modal; }
 	return NativeElementKind.View;
 }
 
@@ -295,6 +297,7 @@ export function createNativeEventRegistry(): NativeEventRegistry {
 			4 => "valuechange",
 			5 => "load",
 			6 => "error",
+			7 => "requestclose",
 			_ => "",
 		};
 		if (type === "") { throw `native host: control phase ${phase} has no event`; }

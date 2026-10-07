@@ -34,6 +34,7 @@ import {
 	niLastScrollTag, niLastScrollPhase, niLastScrollX, niLastScrollY, niLastScrollWidth, niLastScrollHeight,
 	niLastScrollContentWidth, niLastScrollContentHeight,
 	niInputCreate, niSwitchCreate, niIndicatorCreate, niImageCreate, niControlSetTag, niSetProp, niSetFocused,
+	niModalCreate,
 	niLastControlTag, niLastControlPhase, niLastControlValue, niLastControlWidth, niLastControlHeight,
 	niKeyboardHeight, niColorScheme,
 } from "./bridge.h";
@@ -545,6 +546,8 @@ export function createNativeHost(): NativeHost {
 				n = nativeNode(niIndicatorCreate(), false, false);
 			} else if (kind === NativeElementKind.Image) {
 				n = nativeNode(niImageCreate(), false, false);
+			} else if (kind === NativeElementKind.Modal) {
+				n = nativeNode(niModalCreate(), false, false);
 			} else {
 				n = nativeNode(niViewCreate(), false, false);
 			}
@@ -688,6 +691,7 @@ export function createNativeHost(): NativeHost {
 		},
 		cloneNode: null,
 		voidArea: null,
+		overlayRoot: (node: HostNode): HostNode => root as unknown as HostNode,
 		focus: (node: HostNode, focused: boolean): void => {
 			const n = node as unknown as NativeNode;
 			if (!n.isInput || n.view === null) { throw "native host: focus needs a mounted text input"; }

@@ -6,6 +6,7 @@ import { element } from "../../src/macros/ui/element";
 import { Switch } from "../../src/components/switch";
 import { TouchableHighlight } from "../../src/components/touchable";
 import { StatusBar } from "../../src/components/statusBar";
+import { Modal } from "../../src/components/modal";
 import { KeyboardAvoidingView } from "../../src/components/keyboardAvoidingView";
 import { ActivityIndicator } from "../../src/components/activityIndicator";
 import { Image } from "../../src/components/image";
@@ -920,4 +921,32 @@ test "a native KeyboardAvoidingView pads by the keyboard the host publishes" {
 	nmEnvironment(0, 0);
 	assert nmLayoutY(field) === 760, "back down";
 	nmTeardown();
+}
+
+test "a native Modal fills the root above the app, takes the touches below it and routes the back request" {
+	const [open, setOpen] = createSignal(false);
+	let log = "";
+	const app = (): NeonNode => <View style={{ flex: 1 }}>
+		<Pressable style={{ height: 100 }} onPress={(e: NeonEvent): void => { log += "under;"; }}><Text>under</Text></Pressable>
+		<Modal visible={open()} transparent={true} onRequestClose={(): void => { log += "close;"; setOpen(false); }}>
+			<Pressable style={{ marginTop: 300, height: 50 }} onPress={(e: NeonEvent): void => { log += "inside;"; }}><Text>inside</Text></Pressable>
+		</Modal>
+	</View>;
+	runApp(app);
+	nmTouchAt(10, 50, PRESS);
+	assert log === "under;", "no modal yet: " + log;
+	setOpen(true);
+	const modal = nmLastControlTag(5);
+	assert `${nmLayoutWidth(modal)}x${nmLayoutHeight(modal)}` === "400x800", "fills the root: " + `${nmLayoutWidth(modal)}x${nmLayoutHeight(modal)}`;
+	assert nmPaintTag(0, 1) === modal, "paints above the app";
+	nmTouchAt(10, 50, PRESS);
+	assert log === "under;", "the modal takes the touch over the app: " + log;
+	nmTouchAt(10, 320, PRESS);
+	assert log === "under;inside;", "its own content presses: " + log;
+	nmControl(modal, 7, "");
+	assert log === "under;inside;close;", "back asks to close: " + log;
+	nmTouchAt(10, 50, PRESS);
+	assert log === "under;inside;close;under;", "closed: the app presses again: " + log;
+	nmTeardown();
+	assert nmReleaseCalls() === nmViewsCreated(), "the modal layer is released";
 }

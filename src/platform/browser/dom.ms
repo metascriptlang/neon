@@ -135,7 +135,12 @@ extern class window {
 	static innerHeight: number;
 	static extern addEventListener(name: cstring, handler: (e: DomEvent) => void): void;
 	static extern matchMedia(query: cstring): MediaQueryList;
+	static extern removeEventListener(name: cstring, handler: (e: DomEvent) => void): void;
 }
+
+// A Modal's layer covers the viewport even when the page scrolls, and its
+// animationType plays once as it appears.
+const MODAL_CSS = ".neon-modal{position:fixed !important}.neon-modal[animationtype=fade]{animation:neon-modal-fade .3s ease-out}.neon-modal[animationtype=slide]{animation:neon-modal-slide .3s ease-out}@keyframes neon-modal-fade{from{opacity:0}to{opacity:1}}@keyframes neon-modal-slide{from{transform:translateY(100vh)}to{transform:none}}";
 
 let environmentWatched = false;
 
@@ -591,6 +596,7 @@ export function domHost(): Host {
 	watchSafeArea();
 	let scrollRule = false;
 	let controlRule = false;
+	let modalRule = false;
 	const scrolls = new Map<Node, DomScrollState>();
 	const cleanups = new Map<Node, (() => void)[]>();
 	const presses = new Map<Node, boolean>();
@@ -764,6 +770,17 @@ export function domHost(): Host {
 				installScroll(el);
 				return el as unknown as HostNode;
 			}
+			if (tag === "modal") {
+				if (!modalRule) {
+					registerCss("neon-modal", MODAL_CSS);
+					modalRule = true;
+				}
+				const layer = document.createElement("div");
+				layer.classList.add("neon-modal");
+				layer.setAttribute("role", "dialog");
+				layer.setAttribute("aria-modal", "true");
+				return layer as unknown as HostNode;
+			}
 			if (tag === "switch" || tag === "activityindicator" || tag === "image") {
 				if (!controlRule) {
 					registerCss("neon-controls", CONTROL_CSS);
@@ -843,6 +860,17 @@ export function domHost(): Host {
 			if (type === "press" || type === "click") { presses.set(el, true); }
 			if (scrolls.has(el) && (type === "scroll" || type === "scrollbegindrag" || type === "scrollenddrag" || type === "momentumscrollbegin" || type === "momentumscrollend" || type === "refresh")) {
 				(scrolls.get(el) as DomScrollState).routes.push({ type, handler });
+				return;
+			}
+			if (type === "requestclose") {
+				const escape = (de: DomEvent): void => {
+					if (de.key !== "Escape") { return; }
+					const ev = neonEvent(type);
+					ev.timeStamp = de.timeStamp;
+					handler(ev);
+				};
+				window.addEventListener("keydown", escape);
+				keep(el, (): void => { window.removeEventListener("keydown", escape); });
 				return;
 			}
 			if (type === "layout") {
@@ -931,6 +959,7 @@ export function domHost(): Host {
 			return (node as unknown as Node).cloneNode(true) as unknown as HostNode;
 		},
 		voidArea: null,
+		overlayRoot: (node: HostNode): HostNode => document.body as unknown as HostNode,
 		focus: (node: HostNode, focused: boolean): void => {
 			const el = node as unknown as Node;
 			if (focused) { el.focus(); } else { el.blur(); }

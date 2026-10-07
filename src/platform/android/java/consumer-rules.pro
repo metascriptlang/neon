@@ -34,3 +34,11 @@
 -keep class dev.metascript.neon.App {
 	*;
 }
+
+-keep class dev.metascript.neon.Overlay {
+	*;
+}
+
+-keep class dev.metascript.neon.SystemBars {
+	*;
+}

@@ -50,12 +50,15 @@ void *niInputCreate(void);
 void *niSwitchCreate(void);
 void *niIndicatorCreate(void);
 void *niImageCreate(void);
+// A layer above the app for a Modal: blocks touches below it, takes the
+// platform's back/escape as control phase 7 (request close).
+void *niModalCreate(void);
 void  niControlSetTag(void *control, int32_t tag);
 void  niSetProp(void *view, const char *name, const char *value);
 void  niSetFocused(void *control, int focused);
 void  niSetControlHandler(msClosure handler);
 int   niLastControlTag(void);
-int   niLastControlPhase(void); // 0 change text, 1 focus, 2 blur, 3 submit, 4 value change, 5 load, 6 error
+int   niLastControlPhase(void); // 0 change text, 1 focus, 2 blur, 3 submit, 4 value change, 5 load, 6 error, 7 request close
 const char *niLastControlValue(void);
 float niLastControlWidth(void);
 float niLastControlHeight(void);

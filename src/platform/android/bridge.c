@@ -45,9 +45,9 @@ static int g_loopFd = -1;
 
 static struct {
 	jclass view, viewGroup, frameLayout, layoutParams, textView, gradientDrawable, integer, touch;
-	jclass scroll, input, props, environment, toggle, spinner, picture;
+	jclass scroll, input, props, environment, toggle, spinner, picture, overlay;
 	jmethodID inputInit, inputSetTag, inputSetFocused, propsSet, propsSetTag, environmentInstall, environmentScheme;
-	jmethodID toggleInit, spinnerInit, pictureInit;
+	jmethodID toggleInit, spinnerInit, pictureInit, overlayInit;
 	jmethodID scrollInit, scrollSetTag, scrollSetOption, scrollSetContentSize, scrollTo, scrollAddContent, scrollDispose, viewSetClickable;
 	jmethodID scrollShift, scrollOffsetX, scrollOffsetY;
 	jmethodID viewGetParent, viewSetLayoutParams, viewSetAlpha, viewGetBackground, viewSetBackground;
@@ -177,6 +177,8 @@ static void cacheJni(JNIEnv *e) {
 	J.spinnerInit = method(e, J.spinner, "<init>", "(Landroid/content/Context;)V");
 	J.picture = globalClass(e, "dev/metascript/neon/Picture");
 	J.pictureInit = method(e, J.picture, "<init>", "(Landroid/content/Context;)V");
+	J.overlay = globalClass(e, "dev/metascript/neon/Overlay");
+	J.overlayInit = method(e, J.overlay, "<init>", "(Landroid/content/Context;)V");
 	J.environment = globalClass(e, "dev/metascript/neon/Environment");
 	J.environmentInstall = (*e)->GetStaticMethodID(e, J.environment, "install", "(Landroid/view/ViewGroup;)V");
 	J.environmentScheme = (*e)->GetStaticMethodID(e, J.environment, "colorScheme", "(Landroid/content/Context;)I");
@@ -519,6 +521,7 @@ void *niInputCreate(void) {
 void *niSwitchCreate(void) { return newView(J.toggle, J.toggleInit); }
 void *niIndicatorCreate(void) { return newView(J.spinner, J.spinnerInit); }
 void *niImageCreate(void) { return newView(J.picture, J.pictureInit); }
+void *niModalCreate(void) { return newView(J.overlay, J.overlayInit); }
 
 void niControlSetTag(void *control, int32_t tag) {
 	JNIEnv *e = env();

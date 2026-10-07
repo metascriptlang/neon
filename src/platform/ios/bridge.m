@@ -137,6 +137,41 @@ static void publishEnvironment(float keyboard, int dark) {
 	call0(s_environment);
 }
 
+// A Modal's layer: VoiceOver stays inside it, and its escape gesture asks the
+// app to close it (control phase 7, RN's onRequestClose).
+@interface NeonModalView : NeonTouchView
+@property (nonatomic, copy) NSString *neonAnimation;
+@end
+
+@implementation NeonModalView
+
+- (instancetype)initWithFrame:(CGRect)frame {
+	self = [super initWithFrame:frame];
+	if (self) self.accessibilityViewIsModal = YES;
+	return self;
+}
+
+- (BOOL)accessibilityPerformEscape {
+	emitControl((int)self.tag, 7, @"", 0, 0);
+	return YES;
+}
+
+- (void)didMoveToWindow {
+	[super didMoveToWindow];
+	if (!self.window) return;
+	if ([self.neonAnimation isEqualToString:@"fade"]) {
+		self.alpha = 0;
+		[UIView animateWithDuration:0.3 animations:^{ self.alpha = 1; }];
+	} else if ([self.neonAnimation isEqualToString:@"slide"]) {
+		CGFloat height = self.window.bounds.size.height;
+		self.layer.transform = CATransform3DMakeTranslation(0, height, 0);
+		[UIView animateWithDuration:0.3 animations:^{ self.layer.transform = CATransform3DIdentity; }];
+	}
+	UIAccessibilityPostNotification(UIAccessibilityScreenChangedNotification, self);
+}
+
+@end
+
 @interface NeonInput : UITextField <UITextFieldDelegate>
 @property (nonatomic) BOOL neonWriting;
 @property (nonatomic) BOOL neonBlurOnSubmit;
@@ -669,6 +704,10 @@ void *niImageCreate(void) {
 	return CFBridgingRetain(image);
 }
 
+void *niModalCreate(void) {
+	return CFBridgingRetain([[NeonModalView alloc] initWithFrame:CGRectZero]);
+}
+
 void niControlSetTag(void *control, int32_t tag) {
 	UIView *v = (__bridge UIView *)control;
 	v.tag = tag;
@@ -688,6 +727,9 @@ void niSetProp(void *view, const char *name, const char *value) {
 		if ([v isKindOfClass:NeonTouchView.class]) ((NeonTouchView *)v).neonAccessibleSet = text[0] != '\0';
 	}
 	else if (strcmp(name, "accessibilityRole") == 0) v.accessibilityTraits = roleTraits(text);
+	else if ([v isKindOfClass:NeonModalView.class]) {
+		if (strcmp(name, "animationType") == 0) ((NeonModalView *)v).neonAnimation = [NSString stringWithUTF8String:text];
+	}
 	else if ([v isKindOfClass:NeonInput.class]) setInputProp((NeonInput *)v, name, text);
 	else if ([v isKindOfClass:NeonSwitch.class]) {
 		NeonSwitch *s = (NeonSwitch *)v;

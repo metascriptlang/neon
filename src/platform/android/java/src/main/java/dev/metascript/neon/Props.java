@@ -40,12 +40,14 @@ public final class Props {
 		else if (view instanceof Toggle) ((Toggle)view).setProp(name, value);
 		else if (view instanceof Spinner) ((Spinner)view).setProp(name, value);
 		else if (view instanceof Picture) ((Picture)view).setProp(name, value);
+		else if (view instanceof Overlay) ((Overlay)view).setProp(name, value);
 	}
 
 	public static void setTag(View view, int tag) {
 		if (view instanceof Input) ((Input)view).setNeonTag(tag);
 		else if (view instanceof Toggle) ((Toggle)view).setNeonTag(tag);
 		else if (view instanceof Picture) ((Picture)view).setNeonTag(tag);
+		else if (view instanceof Overlay) ((Overlay)view).setNeonTag(tag);
 	}
 
 	private static String roleClass(String role) {
