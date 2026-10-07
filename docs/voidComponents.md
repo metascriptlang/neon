@@ -12,10 +12,10 @@ JSX tags. Math, geometry construction and asset decoding remain ordinary Void he
 the app must not have to write mount builders or frame glue to make the component path work.
 No new backend or feature absent from Void is required.
 
-Inventory baseline: Void `b27825480da4a4f34e2585bdd519dc58082854d2`, source tree
-`9180aa3453ea4e1e288fb15cef45c4c6f60e0cef`. Export declarations of all 26 `.ms` modules
-in each of `src/void2d/` and `src/void3d/` were inspected, with the constructor/binder,
-resource and renderer paths cited below read directly. This is a source inventory, not a
+Inventory refreshed 2026-10-07: Void `d255ffb` (original inventory `b278254`), source tree
+`7f61a6576e2cd03402d4bc65da4599e70db6e862`. The original 26 void2d and 26 void3d `.ms`
+modules were inspected; the refresh adds `dirShadowMap.ms` and reads the changed material,
+program-key and renderer paths. All 26 void2d and 27 void3d modules are accounted for below. This is a source inventory, not a
 run of Void's gates. Recheck the inventory when the consumed Void changes; a new capability
 must be accounted for explicitly, not silently excluded or declared implemented.
 
@@ -86,6 +86,8 @@ A resource is owned or borrowed explicitly; copying a handle is not retaining it
 | 3D-15 | `src/void3d/gltf.ms` loadGltf/loadGlb/GltfData; `src/void3d/gltfScene.ms` GltfAssets/addGltfAssets/addGltfNodes | GltfData scene component, helpers decode bytes; missing | Authored hierarchy/transforms/material/texture and errors, borrowed versus owned assets, repeated mount and cleanup; `tests/integration/gltfFrame.ms`, `src/test/gltfMaterialCheck.ms` |
 | 3D-16 | `src/void3d/forwardRenderer.ms` ForwardRenderer; `src/void3d/renderer.ms` Renderer | Scene renderer configuration and internal frame integration; missing | On-demand prepare→screen composition, camera/light blocks, frustum/pass lists and close/rebuild; `tests/integration/mixedFrame.ms`, `tests/integration/bothLayers.ms` |
 | 3D-17 | `src/void3d/pixelArtRenderer.ms` PixelArtRenderer/PixelArtSettings/PixelArtLook; `src/void3d/palette.ms` PaletteLut; `src/void3d/blit.ms` LowResView | Pixel-art renderer/palette/look as scene configuration; missing | Low-resolution/snap, post-pass toggles, depth source, outline/fog/saturation/palette, reactive settings and resize; compare existing renderer semantics, not a new Neon effect engine; `src/test/rendererCheck.ms`, `tests/integration/targetPresetEpoch.ms` |
+| 3D-18 | `src/void3d/dirShadowMap.ms` DirShadowMap; `src/void3d/renderer.ms` attachShadow; `src/void3d/material.ms` ShadowCasting/withShadows | Directional shadow configuration plus material cast/receive settings; missing | Dynamic caster bounds, shadows-only/off/on, supported alpha-cutout casters, bias/opacity/size, receiver pixels and resource cleanup; `src/test/dirShadowCheck.ms`, `tests/integration/dirShadow.ms` |
+| 3D-19 | `src/void3d/gpu3d.ms` withUvTransform/withBackTexture/withDissolve; `src/void3d/material.ms` movingDefaults/textureOf; `src/void3d/renderer.ms` setElapsedTime | Material moving-feature parameters and checked back/noise texture roles, frame time supplied internally; missing | UV transform/scroll and back-face UV/texture, dissolve threshold/edge, shadow/color consistency, float64 frame time, schedule only while a UV scrolls, texture holds survive replacement/loss; `tests/integration/movingMaterial.ms`, `src/test/programKeyCheck.ms`, `src/test/textureCheck.ms` |
 
 ## Shared acceptance
 
@@ -118,6 +120,7 @@ Being exported for tests or low-level drawing does not imply it needs its own JS
 | `src/void3d/meshData.ms`, `src/void3d/draw.ms` | 3D-03/04/06/07/13/14 and X-02; geometry and resource helpers need no raw GPU tags |
 | `src/void3d/material.ms`, `src/void3d/gpu3d.ms`, `src/void3d/texture.ms` | 3D-04/05/06/07; program keys/values and checked resources, not pipeline/buffer commands |
 | `src/void3d/animation.ms`, `src/void3d/particles.ms`, `src/void3d/billboard.ms` | 3D-11/12/13/14 and X-03 |
+| `src/void3d/dirShadowMap.ms` | 3D-18; scene/material configuration owns a real shadow-map lifecycle; depth pass stays in Void |
 | `src/void3d/gltf.ms`, `src/void3d/gltfDecode.ms`, `src/void3d/gltfScene.ms` | 3D-15; byte decode helper plus owned scene/assets |
 | `src/void3d/forwardRenderer.ms`, `src/void3d/pixelArtRenderer.ms`, `src/void3d/palette.ms` | 3D-16/17; scene configuration with actual renderer lifetime |
 | `src/void3d/renderer.ms`, `src/void3d/passList.ms`, `src/void3d/screenFx.ms`, `src/void3d/blit.ms` | 3D-05/16/17 and X-01; pass scheduling/screen meshes remain renderer internals, view mapping remains usable |
@@ -130,8 +133,9 @@ Being exported for tests or low-level drawing does not imply it needs its own JS
 - Follow the original Void names/model, not Three.js aliases. For missing 2D/resource/animation
   mappings, choose the smallest surface that expresses the row before implementing it. No opaque
   catch-all component or imperative ref callback is accepted as coverage of an otherwise missing row.
-- Scene-to-area registration remains an open decision: recommend the existing `voidHostOf(host)`
-  lookup instead of a new VoidArea/Host contract field. Coordinate its lifetime with the host owner.
+- Scene-to-area registration approved by the person 2026-10-07: use the existing area registry/
+  `voidHostOf(host)` lookup, no new VoidArea/Host contract field. Coordinate lifetime with the
+  host owner; null-off-Void lookup remains integration work, not current lookup behavior.
 - Geometry helpers can remain imperative **data construction**. Graphics operations mutate a
   live node, so a callback that makes the app perform those mutations is not the finished JSX
   surface. Decide a declarative operation input before claiming Graphics coverage.
@@ -158,8 +162,10 @@ Being exported for tests or low-level drawing does not imply it needs its own JS
 Compiler owners already recorded in `BUGS.md`/`VISION.md` keep the original macro/enum cases;
 `2026-10-04-string-literal-union-signal-rejects-its-function-layout.md` also owns the reduced
 CameraProjection signal diagnostic. Void's existing const-array migration note owns findByName's
-stack writes. A candidate is not a deployed compiler. Host/window migration and its open wake/
-frame choices belong to `void-noderef-host`; this goal does not transfer that ownership.
+stack writes (changed to `let` at refreshed Void `d255ffb`; consumer remeasurement pending).
+A candidate is not a deployed compiler. The person approved starting `void-noderef-host`:
+its owner is now migrating the host, not editing the Ion window yet. macOS embed/frame
+prerequisites remain with their owners; this goal does not transfer that ownership.
 
 Until those consumers run, no coverage row is runtime-accepted. Missing rows are Neon work,
 not excuses to rename expressions, remove tests or invent capability beneath Void. On a blocked
