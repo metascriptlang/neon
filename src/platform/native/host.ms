@@ -132,8 +132,6 @@ function hexNibble(c: string): int32 {
 
 interface Rgba { r: float32; g: float32; b: float32; a: float32; }
 
-// `rgb(r, g, b)` / `rgba(r, g, b, a)`, the form Animated colour interpolation
-// produces (RN AnimatedInterpolation).
 function parseRgbFunction(css: string): Rgba | null {
 	const open = css.indexOf("(");
 	const close = css.lastIndexOf(")");

@@ -1,8 +1,5 @@
-// RN's Easing module (Libraries/Animated/Easing.js, bezier.js), ported member by
-// member. A class of statics rather than RN's object of functions: a default
-// argument (`Easing.back()`, `Easing.elastic()`) is lost when the function is
-// called through a field value (compiler card
-// 2026-10-07-default-parameter-lost-through-a-function-value.md).
+// Statics, not RN's object of functions: compiler card
+// 2026-10-07-default-parameter-lost-through-a-function-value.md.
 
 export type EasingFunction = (t: number) => number;
 
@@ -113,19 +110,15 @@ function bounceCurve(t: number): number {
 	return 7.5625 * t2 * t2 + 0.984375;
 }
 
-// An optional easing with its default. A function rather than an inline
-// ternary: a ternary arm reading a static closure field, stored into a class
-// field, corrupts the static on C (compiler card
-// 2026-10-07-ternary-of-static-closure-into-field-corrupts-the-static.md).
+// Never inline as a ternary into a field: compiler card
+// 2026-10-07-ternary-of-static-closure-into-field-corrupts-the-static.md.
 export function easingOr(easing: EasingFunction | null, fallback: EasingFunction): EasingFunction {
 	if (easing !== null && easing !== undefined) { return easing as EasingFunction; }
 	return fallback;
 }
 
-// The parameterless curves are function-valued static fields, not static
-// methods: a static method read as a value (`Easing.in(Easing.quad)`) breaks
-// on both backends (compiler handover card, row "a static method read as a
-// value", sighting 2026-10-07).
+// Fields, not static methods: a static method read as a value breaks (compiler
+// handover card 2026-09-20, sighting 2026-10-07).
 export class Easing {
 	static step0: EasingFunction = step0Curve;
 	static step1: EasingFunction = step1Curve;

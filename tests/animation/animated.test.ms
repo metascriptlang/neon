@@ -1,6 +1,4 @@
-// RN Libraries/Animated/__tests__/Animated-test.js and TimingAnimation-test.js,
-// ported onto Neon's manual frame clock: a test advances time by hand, frame by
-// frame, where RN's jest runs fake timers.
+// Ported from RN Libraries/Animated/__tests__/Animated-test.js and TimingAnimation-test.js.
 
 import { Animated, CompositeAnimation } from "../../src/animation/animated";
 import { AnimatedValue, ValueState } from "../../src/animation/nodes";
@@ -11,7 +9,6 @@ import { NeonEvent, neonEvent } from "../../src/render/event";
 import { createEffect } from "../../src/core/effect";
 import { createRoot } from "../../src/core/owner";
 
-// A stand-in animation that records its calls and lets the test end it.
 class Probe extends CompositeAnimation {
 	starts: int32 = 0;
 	stops: int32 = 0;

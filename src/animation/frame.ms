@@ -1,12 +1,3 @@
-// The per-frame clock every animation runs on. One loop serves every running
-// animation: a request lands in the next frame, and a frame runs its callbacks
-// inside one `batch`, so every style an animation frame writes reaches the host
-// in one effect drain.
-//
-// The driver is the platform's frame source: `requestAnimationFrame` in the
-// browser, a 16 ms std timer on native (WORKAROUND.md N1), and a manual clock
-// in tests, which advance it frame by frame.
-
 import { batch } from "../core/signal";
 
 export interface FrameDriver {
@@ -34,6 +25,7 @@ when (js) {
 		};
 	}
 } else {
+	// Not vsync-aligned: WORKAROUND.md N1.
 	function platformDriver(): FrameDriver {
 		return {
 			now: (): number => performance.now(),
@@ -105,8 +97,6 @@ export function framePending(): boolean {
 	return false;
 }
 
-// A clock a test drives by hand: time stands still until `advance`, and each
-// advance runs at most the one frame that was requested before it.
 export class ManualFrames {
 	time: number = 0;
 	fire: (() => void) | null = null;

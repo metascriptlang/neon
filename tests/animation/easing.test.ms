@@ -1,4 +1,4 @@
-// RN Libraries/Animated/__tests__/Easing-test.js and bezier-test.js, ported.
+// Ported from RN Libraries/Animated/__tests__/Easing-test.js and bezier-test.js.
 
 import { Easing, EasingFunction, bezier } from "../../src/animation/easing";
 

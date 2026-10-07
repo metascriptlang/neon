@@ -1,5 +1,4 @@
-// RN Libraries/Animated/__tests__/Interpolation-test.js, ported: an
-// interpolation over a value set by hand, read at each input.
+// Ported from RN Libraries/Animated/__tests__/Interpolation-test.js.
 
 import { Easing } from "../../src/animation/easing";
 import { AnimatedValue, InterpolationConfig, StringInterpolationConfig } from "../../src/animation/nodes";

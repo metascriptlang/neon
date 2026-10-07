@@ -1,6 +1,3 @@
-// Animated values reach the native bridge: opacity, translation and rotation
-// written once per frame through the ordinary style path.
-
 import { runApp } from "../../src/platform/native/host";
 import { Pressable } from "../../src/components/primitives";
 import { NeonNode } from "../../src/render/node";

@@ -228,9 +228,7 @@ export macro element(node: Node): Node {
 		const expanded = peelTypeRef(impl as Node);
 		return expanded.kind === NodeKind.TypeObject ? expanded : null;
 	}
-	// A class's static field (`class Animated { static View = View; }`) names a
-	// component the way an object field does; its checked initializer carries the
-	// type (WORKAROUND.md N2).
+	// WORKAROUND.md N2.
 	function staticFieldType(sym: Node, name: string): Node | null {
 		const impl = getImpl(sym);
 		if (impl === null || (impl as Node).kind !== NodeKind.ClassDecl) { return null; }

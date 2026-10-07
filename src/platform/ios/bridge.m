@@ -912,7 +912,6 @@ void niSetFrame(void *view, float x, float y, float w, float h) {
 static const void *kNeonRotationKey = &kNeonRotationKey;
 static const void *kNeonAffineKey = &kNeonAffineKey;
 
-// translate · rotate · scale about the centre, the order CSS composes them in.
 static void neonApplyTransform(UIView *v) {
 	NSArray<NSNumber *> *affine = objc_getAssociatedObject(v, kNeonAffineKey);
 	NSNumber *rotation = objc_getAssociatedObject(v, kNeonRotationKey);

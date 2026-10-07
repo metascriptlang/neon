@@ -193,8 +193,6 @@ export function nativeTransform(css: string | null): NativeTransform {
 			sx *= axis === 2 ? 1 : first;
 			sy *= axis === 1 ? 1 : (axis === 2 ? first : second);
 		} else {
-			// A translation after a rotate/scale moves along the rotated, scaled
-			// axes (CSS composes left to right): T' = T + R * S * t.
 			const lx = sx * (axis === 2 ? 0 : first);
 			const ly = sy * (axis === 1 ? 0 : (axis === 2 ? first : second));
 			const radians = angle * Math.PI / 180;
@@ -211,7 +209,6 @@ export function nativeTransform(css: string | null): NativeTransform {
 	};
 }
 
-// An angle in degrees from `deg`, `rad`, `turn` or `grad`; a bare 0 is allowed.
 function transformAngle(ref p: TransformCursor): float64 {
 	const value = transformNumber(p, false);
 	if (transformWord(p, "deg")) { return value; }

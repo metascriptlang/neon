@@ -1,13 +1,3 @@
-// RN's `Animated` namespace (Libraries/Animated/AnimatedImplementation.js) on
-// Neon: composite animations, the timing/spring/decay entry points, events
-// and the animated components.
-//
-// `Animated` is a class of statics so a call may leave out RN's optional
-// arguments (`Animated.loop(a)`, `.start()`), and `<Animated.View>` resolves
-// through its static field (WORKAROUND.md N2). An animated component is the
-// ordinary component: every Neon style already binds per property, so a style
-// that reads `value.get()` follows the value frame by frame.
-
 import { NeonNode } from "../render/hostTypes";
 import { NeonEvent } from "../render/event";
 import {
@@ -63,8 +53,7 @@ function combine(callback: EndCallback | null, onComplete: EndCallback | null): 
 	};
 }
 
-// One value driven by one kind of animation; `make` builds a fresh Animation
-// per start, because RN starts and stops an Animation at most once.
+// RN starts and stops an Animation at most once: build a fresh one per start.
 class ValueAnimation extends CompositeAnimation {
 	value: AnimatedValue;
 	target: number;
@@ -258,8 +247,7 @@ class LoopAnimation extends CompositeAnimation {
 	}
 }
 
-// RN's `toValue: number | AnimatedNode` splits in two: a node target (tracking)
-// goes in `toNode` (WORKAROUND.md N4).
+// RN's `toValue: number | AnimatedNode` is split: WORKAROUND.md N4.
 export interface TimingConfig {
 	toValue: number;
 	toNode?: AnimatedNode | null;
@@ -377,8 +365,6 @@ function delayAnimation(time: number): CompositeAnimation {
 	return timingAnimation(new AnimatedValue(0), { toValue: 0, delay: time, duration: 0 });
 }
 
-// The NeonEvent fields an `Animated.event` mapping can drive. Neon's event is
-// flat where RN nests `nativeEvent.contentOffset.y` (WORKAROUND.md N5).
 export interface EventMapping {
 	x?: AnimatedValue | null;
 	y?: AnimatedValue | null;
@@ -416,8 +402,6 @@ export class Animated {
 	static Image: (props: ImageProps) => NeonNode = PlainImage;
 	static ScrollView: (props: ScrollViewProps) => NeonNode = PlainScrollView;
 
-	// RN writes `new Animated.Value(0)`; Neon writes `Animated.Value(0)` or
-	// `new AnimatedValue(0)` (WORKAROUND.md N3).
 	static Value(value: number = 0): AnimatedValue {
 		return new AnimatedValue(value);
 	}
@@ -492,8 +476,7 @@ export class Animated {
 		return new LoopAnimation(animation, config.iterations ?? -1, config.resetBeforeIteration ?? true);
 	}
 
-	// RN accepts `AnimatedNode | number` operands; Neon takes nodes, a constant is
-	// `Animated.Value(n)` (WORKAROUND.md N4).
+	// Node operands only: WORKAROUND.md N4.
 	static add(a: AnimatedNode, b: AnimatedNode): AnimatedNode {
 		return new AnimatedAddition(a, b);
 	}
@@ -537,8 +520,6 @@ export class Animated {
 	static unforkEvent(event: ((e: NeonEvent) => void) | null, listener: (e: NeonEvent) => void): void {}
 }
 
-// RN 0.71's hook: one value for the component's lifetime. A Neon component
-// body runs once, so this is the value itself.
 export function useAnimatedValue(initial: number = 0): AnimatedValue {
 	return new AnimatedValue(initial);
 }

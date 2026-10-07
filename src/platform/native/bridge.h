@@ -24,8 +24,6 @@ void  niSetFrame(void *view, float x, float y, float w, float h);
 // Apply the CSS-centred axis-aligned affine transform; translation is in points.
 // Keep niSetFrame and scroll metrics in untransformed layout coordinates.
 void  niSetTransform(void *view, float scaleX, float scaleY, float translateX, float translateY);
-// Rotation in degrees about the view centre, composed as translate · rotate · scale
-// with the last niSetTransform.
 void  niSetRotation(void *view, float degrees);
 void  niSetBackgroundColor(void *view, float r, float g, float b, float a);
 void  niSetCornerRadius(void *view, float radius);

@@ -1,9 +1,3 @@
-// The driver half of RN's Animated (Libraries/Animated/animations/*.js): an
-// Animation moves one number from where a value is towards a target, one
-// frame at a time, and reports once when it ends. Every animation here is
-// JS-driven in RN's terms: it runs on Neon's frame loop and writes the value
-// through its signal, so `useNativeDriver` is accepted and has no effect.
-
 import { requestFrame, cancelFrame, frameNow } from "./frame";
 import { Easing, EasingFunction, easingOr } from "./easing";
 
@@ -30,9 +24,7 @@ export class Animation {
 		this.begin(onEnd);
 	}
 
-	// RN's `super.start(...)`; a subclass calls this by name because
-	// `super.method()` fails on both backends (compiler card
-	// 2026-10-07-super-method-call-fails-on-c-and-js.md).
+	// RN's super.start; compiler card 2026-10-07-super-method-call-fails-on-c-and-js.md.
 	begin(onEnd: EndCallback | null): void {
 		this.onEnd = onEnd;
 		this.active = true;
@@ -58,8 +50,6 @@ export class Animation {
 		if (callback !== null) { (callback as EndCallback)({ finished }); }
 	}
 
-	// RN starts a delayed animation from a `setTimeout`; Neon waits on the frame
-	// clock instead, so a manual clock in a test drives the delay too.
 	afterDelay(delay: number, run: () => void): void {
 		if (delay <= 0) {
 			run();
@@ -113,7 +103,6 @@ export class TimingAnimation extends Animation {
 		this.delay = config.delay ?? 0;
 	}
 
-	// RN `__getNativeAnimationConfig().frames`: the eased progress sampled at 60 Hz.
 	frames(): number[] {
 		const frameDuration = 1000.0 / 60.0;
 		const out: number[] = [];
@@ -188,7 +177,6 @@ export interface SpringParameters {
 function stiffnessFromOrigami(value: number): number { return (value - 30) * 3.62 + 194; }
 function dampingFromOrigami(value: number): number { return (value - 8) * 3 + 25; }
 
-// RN SpringConfig.js.
 export function fromOrigamiTensionAndFriction(tension: number, friction: number): SpringParameters {
 	return { stiffness: stiffnessFromOrigami(tension), damping: dampingFromOrigami(friction) };
 }
@@ -238,8 +226,7 @@ export function fromBouncinessAndSpeed(bounciness: number, speed: number): Sprin
 
 const ABSENT = -1.0e300;
 
-// An absent optional number reads as `undefined` on JS and `null` on C; `??`
-// folds both (WORKAROUND.md L4 describes the same absence gap).
+// Absence is `undefined` on JS and `null` on C (WORKAROUND.md L4); `??` folds both.
 function present(value: number | null): boolean {
 	return (value ?? ABSENT) !== ABSENT;
 }
@@ -318,7 +305,6 @@ export class SpringAnimation extends Animation {
 		this.afterDelay(this.delay, (): void => { this.onFrame(); });
 	}
 
-	// RN's closed-form damped harmonic oscillator, the model CASpringAnimation uses.
 	onFrame(): void {
 		this.frame = -1;
 		const maxSteps = 64;

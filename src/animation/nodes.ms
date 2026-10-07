@@ -1,10 +1,3 @@
-// The value half of RN's Animated (Libraries/Animated/nodes/*.js) on Neon's
-// signals. An AnimatedValue is a signal; reading `get()` inside a style
-// subscribes that one style to it, so a frame updates exactly the properties
-// that read the value and nothing re-renders. Derived nodes (interpolate, add,
-// multiply, diffClamp, …) recompute from their parents on read, so they track
-// through to the same signals.
-
 import { Signal, Accessor, accessor, untrack } from "../core/signal";
 import { createEffect } from "../core/effect";
 import { createRoot } from "../core/owner";
@@ -57,10 +50,8 @@ function listenerId(): string {
 	return id.toString();
 }
 
-// The listeners of derived nodes. AnimatedNode itself holds no field: a base
-// class with a field whose method constructs a subclass (`interpolate`) breaks
-// the build (compiler card
-// 2026-10-07-base-class-method-returning-a-later-subclass-breaks-fields.md).
+// Keep AnimatedNode field-less: compiler card
+// 2026-10-07-base-class-method-returning-a-later-subclass-breaks-fields.md.
 let derivedListeners: DerivedListener[] = [];
 
 function disposeEntry(entry: ListenerEntry): void {
@@ -70,12 +61,10 @@ function disposeEntry(entry: ListenerEntry): void {
 export class AnimatedNode {
 	constructor() {}
 
-	// The tracked read: inside a style, a memo or an effect it subscribes.
 	get(): number {
 		return 0;
 	}
 
-	// The untracked read (RN `__getValue`).
 	peek(): number {
 		return untrack((): number => this.get());
 	}
@@ -96,8 +85,6 @@ export class AnimatedNode {
 		return new AnimatedStringInterpolation(this, config);
 	}
 
-	// A derived node has no setter to hook, so a listener is an effect that
-	// watches the computed value and reports each change after the first read.
 	addListener(callback: ValueListener): string {
 		const id = listenerId();
 		let primed = false;
@@ -236,8 +223,6 @@ export class AnimatedValue extends AnimatedNode {
 		if (t !== null) { (t as Dispose)(); }
 	}
 
-	// RN AnimatedTracking: every change of `target` restarts `make(target)` on
-	// this value, beginning with the target's current value.
 	track(target: AnimatedNode, make: (toValue: number) => Animation, callback: EndCallback | null): void {
 		this.stopTracking();
 		this.tracking = createRoot((d: Dispose): Dispose => {
@@ -338,9 +323,7 @@ export class AnimatedModulo extends AnimatedNode {
 	}
 }
 
-// RN's diffClamp folds every input change into a clamped running value. Reads
-// are idempotent per input value here, because several readers (a style and a
-// listener) read once per change where RN reads once.
+// Idempotent per input: several readers may read one change, RN reads it once.
 export class AnimatedDiffClamp extends AnimatedNode {
 	a: AnimatedNode;
 	min: number;
@@ -371,7 +354,6 @@ function extrapolateSide(side: ExtrapolateType | null, both: ExtrapolateType | n
 	return "extend";
 }
 
-// RN AnimatedInterpolation.js `interpolate`.
 export function interpolateSegment(
 	input: number,
 	inputMin: number,
@@ -487,8 +469,6 @@ export class AnimatedInterpolation extends AnimatedNode {
 	}
 }
 
-// ---- string outputs: colors and numbers inside text ("90deg", SVG paths) ----
-
 interface StringShape {
 	isColor: boolean;
 	numbers: number[];
@@ -520,8 +500,7 @@ const NAMED_COLORS: string[][] = [
 	["grey", "128,128,128,1"],
 ];
 
-// Reads the numbers out of a string the way RN's numericComponentRegex does:
-// `[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?`, keeping the text between them.
+// RN numericComponentRegex: `[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?`.
 function splitNumbers(input: string): StringShape {
 	const numbers: number[] = [];
 	const texts: string[] = [];
@@ -784,14 +763,10 @@ export class AnimatedValueXY {
 		this.listenerPairs = [];
 	}
 
-	// RN returns `{ left: x, top: y }` of AnimatedValues for a style spread;
-	// Neon's style reads numbers, tracked here.
 	getLayout(): LayoutXY {
 		return { left: this.x.get(), top: this.y.get() };
 	}
 
-	// RN returns `[{ translateX: x }, { translateY: y }]`; Neon's transform is
-	// the CSS string, tracked here.
 	getTranslateTransform(): string {
 		return `translateX(${this.x.get()}px) translateY(${this.y.get()}px)`;
 	}

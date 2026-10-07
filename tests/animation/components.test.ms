@@ -1,6 +1,3 @@
-// Animated.View / Text / Image are the ordinary components: a style reading
-// `value.get()` follows the value, one host write per frame, no re-render.
-
 import { Animated } from "../../src/animation/animated";
 import { AnimatedValue } from "../../src/animation/nodes";
 import { Easing } from "../../src/animation/easing";
