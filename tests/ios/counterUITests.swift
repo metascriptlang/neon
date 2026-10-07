@@ -1836,3 +1836,94 @@ final class DeviceUITests: XCTestCase {
         report("final")
     }
 }
+
+final class MediaUITests: XCTestCase {
+    private let app = XCUIApplication(bundleIdentifier: "dev.neon.NeonMedia")
+
+    override func setUp() {
+        continueAfterFailure = false
+    }
+
+    private func pid() -> String {
+        let text = app.debugDescription
+        guard let range = text.range(of: "pid: ") else { return "" }
+        return String(text[range.upperBound...].prefix(while: { $0.isNumber }))
+    }
+
+    private func status() -> String {
+        let match = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "status ")).firstMatch
+        return match.exists ? match.label : ""
+    }
+
+    private func label(_ prefix: String) -> String {
+        let match = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", prefix)).firstMatch
+        return match.exists ? match.label : ""
+    }
+
+    private func waitStatus(_ prefix: String, _ why: String, timeout: TimeInterval = 15) {
+        let predicate = NSPredicate { [self] _, _ in status().hasPrefix(prefix) }
+        XCTAssertEqual(XCTWaiter.wait(for: [expectation(for: predicate, evaluatedWith: app)], timeout: timeout), .completed,
+            "\(why): expected \(prefix), app says \(status())")
+    }
+
+    private func any(_ label: String) -> XCUIElement {
+        app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", label)).firstMatch
+    }
+
+    private func report(_ name: String) {
+        print("NEON_IOS media-\(name) pid=\(pid()) \(status())")
+        let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        shot.name = "media-\(name)"
+        shot.lifetime = .keepAlways
+        add(shot)
+    }
+
+    private func settle() {
+        RunLoop.current.run(until: Date().addingTimeInterval(1))
+    }
+
+    func testWebViewBridgeHttpsPageAndVideo() {
+        XCUIDevice.shared.orientation = .portrait
+        app.launch()
+        XCTAssertTrue(app.wait(for: .runningForeground, timeout: 20))
+        let launched = pid()
+        waitStatus("status page ready", "the local html page posts to the app on load")
+        let send = app.webViews.buttons["Send to app"]
+        XCTAssertTrue(send.waitForExistence(timeout: 10), "the page's button is inside a WKWebView")
+        send.tap()
+        waitStatus("status hello from the page", "a tap in the page reaches onMessage")
+        any("send to page").tap()
+        waitStatus("status page got hello from the app", "postMessage reaches the page, which answers")
+        XCTAssertTrue(app.webViews.staticTexts["got hello from the app"].waitForExistence(timeout: 5), "the page shows the app's message")
+        any("inject").tap()
+        waitStatus("status title Neon bridge", "injectJavaScript runs in the page")
+        report("bridge")
+
+        any("browser").tap()
+        waitStatus("status loaded https://example.com/", "an https page loads", timeout: 30)
+        XCTAssertTrue(any("first page").exists, "nothing to go back to yet")
+        report("browser-first")
+        any("next site").tap()
+        waitStatus("status loaded https://example.org/", "a page navigation loads the next site", timeout: 30)
+        XCTAssertTrue(any("can go back").waitForExistence(timeout: 5), "canGoBack after a navigation")
+        report("browser-next")
+        any("back").tap()
+        waitStatus("status loaded https://example.com/", "goBack returns to the first site", timeout: 30)
+        any("forward").tap()
+        waitStatus("status loaded https://example.org/", "goForward goes to the next site again", timeout: 30)
+        report("browser-forward")
+
+        any("video").tap()
+        waitStatus("status video 3s 160x90", "the bundled clip loads with its duration and natural size")
+        any("play").tap()
+        waitStatus("status playing", "play")
+        settle()
+        let time = Double(label("time ").dropFirst(5)) ?? 0
+        XCTAssertGreaterThan(time, 0.2, "progress advances while playing")
+        report("video-playing")
+        any("seek 2").tap()
+        waitStatus("status video ended", "after a seek to 2 s the clip ends")
+        report("video-ended")
+        XCTAssertEqual(launched, pid())
+    }
+}
