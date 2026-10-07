@@ -192,6 +192,14 @@ Being exported for tests or low-level drawing does not imply it needs its own JS
 - Scene-to-area registration approved by the person 2026-10-07: use the existing area registry/
   `voidHostOf(host)` lookup, no new VoidArea/Host contract field. Coordinate lifetime with the
   host owner; null-off-Void lookup remains integration work, not current lookup behavior.
+- Raw tree ordering is a Neon runtime gap (`BUGS.md`, `scene2dOrder.test.ms`). Prefer
+  reusing the host owner's VoidNode tree/order/disposal mechanism over a second bridge;
+  raw-kind/layout policy still requires the person's decision and the owner's land.
+  On `812a97a`, an owned Label at `(42,17;30×20)` survives Yoga-only layout unchanged,
+  but full `VoidHost.layout(100,100)` changes x to 0 through `flowText`. Probe used installed
+  `0d83c4867`/Void `d255ffb`, newly allocated owned rows, no borrowed wrapper or host edits.
+  Reuse must keep raw Label transforms out of UI text-flow as well as preserve layout domains.
+  Raw-binder idle wake routing remains unmeasured; existing host onDirty wraps its own mutations.
 - Geometry helpers can remain imperative **data construction**. Graphics operations mutate a
   live node, so a callback that makes the app perform those mutations is not the finished JSX
   surface. Decide a declarative operation input before claiming Graphics coverage.
@@ -229,6 +237,18 @@ not excuses to rename expressions, remove tests or invent capability beneath Voi
 row keep the original consumer/output and park the exact site at its existing owner; advance
 only independent approved work. Any change of protected contract, new mechanism or ownership
 requires the person's decision here, not a peer message.
+
+Full installed gate on source/test tree `226effdc733a0f0d8a10fa1bb0650813f82e6458`
+(`0aac7e9`; later docs-only commits leave that checked scope unchanged):
+`NEON_BROWSER_PORT=8734 bash tests/run.sh` exits 1 with installed binary/support `0d83c4867`,
+Void `d255ffb`, native C + Node JS + actual Chrome. Macros17 and apps4 pass; native54 pass/9 fail;
+JS49 pass/0 fail; Chrome3 files pass, 30 own cases (DOM26/FlatList1/ScrollView3), checkout paths
+verified, not the discarded foreign-port bundle. Against the `8a515a0` gate: four additional
+native files pass; eight old native reds persist; `scene2dOrder.test.ms` adds one failed file/two
+Neon runtime cases, not compiler reds. App expectation and DOM signature failures are closed.
+The old reds remain platform void/voidInput/style migration, scene2d enum capture, Paint kind48,
+original scene3d, camera caller-enum and nodes caller-NodeFlag. No Ion pixels/events, resource
+replacement, idle/input or full-row acceptance follows from this gate; source land stays blocked.
 
 Acceptance ledger entries must name the row IDs, Neon JSX test/example, command and exit code,
 source tree, installed compiler/support and consumed Void baseline, backend and actual observed
