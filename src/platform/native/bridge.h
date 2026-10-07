@@ -56,14 +56,15 @@ void *niImageCreate(void);
 // platform's back/escape as control phase 7 (request close).
 void *niModalCreate(void);
 // Controls added after the first four go through one create call keyed by the wire tag:
-// "slider", "picker", "datetimepicker".
+// "slider", "picker", "datetimepicker"; the media views "webview" and "video" are created the
+// same way and take a `command` prop ("name\x1fargument") for their imperative methods.
 void *niControlCreate(const char *kind);
 void  niControlSetTag(void *control, int32_t tag);
 void  niSetProp(void *view, const char *name, const char *value);
 void  niSetFocused(void *control, int focused);
 void  niSetControlHandler(msClosure handler);
 int   niLastControlTag(void);
-int   niLastControlPhase(void); // 0 change text, 1 focus, 2 blur, 3 submit, 4 value change, 5 load, 6 error, 7 request close, 8 sliding complete, 9 selection change ("start,end")
+int   niLastControlPhase(void); // 0 change text, 1 focus, 2 blur, 3 submit, 4 value change, 5 load, 6 error, 7 request close, 8 sliding complete, 9 selection change ("start,end"), 10 load start, 11 message, 12 should start load (the handler answers by writing the `loadDecision` prop before it returns), 13 progress, 14 end
 const char *niLastControlValue(void);
 float niLastControlWidth(void);
 float niLastControlHeight(void);

@@ -896,7 +896,7 @@ export function createNativeHost(): NativeHost {
 				n = nativeNode(niImageCreate(), false, false);
 			} else if (kind === NativeElementKind.Modal) {
 				n = nativeNode(niModalCreate(), false, false);
-			} else if (kind === NativeElementKind.Control) {
+			} else if (kind === NativeElementKind.Control || kind === NativeElementKind.Media) {
 				n = nativeNode(niControlCreate(tag), false, false);
 			} else {
 				n = nativeNode(niViewCreate(), false, false);

@@ -13,6 +13,7 @@ export enum NativeElementKind {
 	Image,
 	Modal,
 	Control,
+	Media,
 }
 
 interface NativeEventRoute {
@@ -53,6 +54,7 @@ export function nativeElementKind(tag: string): NativeElementKind {
 	if (tag === "image") { return NativeElementKind.Image; }
 	if (tag === "modal") { return NativeElementKind.Modal; }
 	if (tag === "slider" || tag === "picker" || tag === "datetimepicker") { return NativeElementKind.Control; }
+	if (tag === "webview" || tag === "video") { return NativeElementKind.Media; }
 	return NativeElementKind.View;
 }
 
@@ -342,6 +344,11 @@ export function createNativeEventRegistry(): NativeEventRegistry {
 			7 => "requestclose",
 			8 => "slidingcomplete",
 			9 => "selectionchange",
+			10 => "loadstart",
+			11 => "message",
+			12 => "shouldstartload",
+			13 => "progress",
+			14 => "end",
 			_ => "",
 		};
 		if (type === "") { throw `native host: control phase ${phase} has no event`; }
