@@ -271,6 +271,15 @@ not a hidden GUI launch from the CPU gate. Initial probe import/DPI errors were 
 errors corrected before these measurements. Driver failures exit explicitly rather than
 throw through Cocoa’s frame callback.
 
+Device extension at `d77f6fe` / tree `5b4dbc5bc6a37bc245072b9e52e9ccccbe98ee6f`:
+`msc run tests/device/scene2d.ms`, installed0d83/Void d255/macOS Metal exits0 for12 frames:
+retained Rect x20→80, Scene2D camera x0→4, blur radius2→3, real filter target allocated,
+nonzero draw submission, terminal scene close returns renderTargetsAlive to0. Ignoring
+camera binder or filter binder separately gives exit1; both restored exactly and run exits0.
+Logs `/tmp/scene2d-device-camera-filter-installed.log` and
+`/tmp/scene2d-device-ignored-{camera,filter}-red.log`. This extends the same opt-in fixture;
+no observed pixels, Ion/window-owner integration, idle or input acceptance added.
+
 Texture device consumer at `29e1e4b` / tree `9455241fab0c26d7e390fa8bfe1494d342b421bd`:
 `msc run tests/device/scene2dTexture.ms` rejects before emission on installed0d83 and r8:
 const successful upload Result `a` loses its `.value` proof inside the JSX reader. The original
