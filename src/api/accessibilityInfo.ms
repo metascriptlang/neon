@@ -4,8 +4,14 @@ import { appServices } from "./services";
 
 export type AccessibilityChangeEventName = "screenReaderChanged" | "reduceMotionChanged";
 
-const [screenReader, setScreenReader] = createSignal<boolean>(false);
-const [reduceMotion, setReduceMotion] = createSignal<boolean>(false);
+// Indexed, not destructured: module-scope destructuring temps collide in a JS bundle (compiler
+// card 2026-10-08-js-bundle-module-scope-destructuring-temps-collide.md, WORKAROUND.md W6).
+const screenReaderSignal = createSignal<boolean>(false);
+const screenReader = screenReaderSignal[0];
+const setScreenReader = screenReaderSignal[1];
+const reduceMotionSignal = createSignal<boolean>(false);
+const reduceMotion = reduceMotionSignal[0];
+const setReduceMotion = reduceMotionSignal[1];
 
 export class AccessibilityInfo {
 	static async isScreenReaderEnabled(): Promise<boolean> {

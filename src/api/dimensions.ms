@@ -16,10 +16,20 @@ export interface DimensionsChange {
 
 export type DimensionsKey = "window" | "screen";
 
-const [pixelRatio, setPixelRatio] = createSignal<number>(1);
-const [fontScale, setFontScale] = createSignal<number>(1);
-const [screenWidth, setScreenWidth] = createSignal<number>(0);
-const [screenHeight, setScreenHeight] = createSignal<number>(0);
+// Indexed, not destructured: module-scope destructuring temps collide in a JS bundle (compiler
+// card 2026-10-08-js-bundle-module-scope-destructuring-temps-collide.md, WORKAROUND.md W6).
+const pixelRatioSignal = createSignal<number>(1);
+const pixelRatio = pixelRatioSignal[0];
+const setPixelRatio = pixelRatioSignal[1];
+const fontScaleSignal = createSignal<number>(1);
+const fontScale = fontScaleSignal[0];
+const setFontScale = fontScaleSignal[1];
+const screenWidthSignal = createSignal<number>(0);
+const screenWidth = screenWidthSignal[0];
+const setScreenWidth = screenWidthSignal[1];
+const screenHeightSignal = createSignal<number>(0);
+const screenHeight = screenHeightSignal[0];
+const setScreenHeight = screenHeightSignal[1];
 
 export function publishScale(ratio: number, font: number): void {
 	batch((): void => {

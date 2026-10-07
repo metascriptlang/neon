@@ -6,7 +6,11 @@ export type AppStateEvent = "change" | "memoryWarning" | "focus" | "blur";
 
 // A string signal: createSignal of a literal union is refused (compiler card
 // 2026-10-04-string-literal-union-signal-rejects-its-function-layout.md).
-const [state, setState] = createSignal<string>("active");
+// Indexed, not destructured: module-scope destructuring temps collide in a JS bundle (compiler
+// card 2026-10-08-js-bundle-module-scope-destructuring-temps-collide.md, WORKAROUND.md W6).
+const stateSignal = createSignal<string>("active");
+const state = stateSignal[0];
+const setState = stateSignal[1];
 const memoryWarnings = new Listeners<AppStateStatus>();
 
 export class AppState {

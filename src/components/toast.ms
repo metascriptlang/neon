@@ -51,7 +51,11 @@ const TOAST_NONE: ToastShown = {
 	autoHide: false,
 };
 
-const [shown, setShown] = createSignal<ToastShown | null>(null);
+// Indexed, not destructured: module-scope destructuring temps collide in a JS bundle (compiler
+// card 2026-10-08-js-bundle-module-scope-destructuring-temps-collide.md, WORKAROUND.md W6).
+const shownSignal = createSignal<ToastShown | null>(null);
+const shown = shownSignal[0];
+const setShown = shownSignal[1];
 
 function showToast(options: ToastOptions): void {
 	const {

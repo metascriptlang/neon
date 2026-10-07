@@ -32,7 +32,11 @@ class StatusBarEntry {
 // the rest. The status bar itself is one per app, so the top entry's hidden
 // node carries the merged values to the host.
 const stack: StatusBarEntry[] = [];
-const [revision, setRevision] = createSignal<number>(0);
+// Indexed, not destructured: module-scope destructuring temps collide in a JS bundle (compiler
+// card 2026-10-08-js-bundle-module-scope-destructuring-temps-collide.md, WORKAROUND.md W6).
+const revisionSignal = createSignal<number>(0);
+const revision = revisionSignal[0];
+const setRevision = revisionSignal[1];
 
 function bump(): void {
 	setRevision(untrack((): number => revision()) + 1);
