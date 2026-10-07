@@ -67,9 +67,9 @@ test "a reactive class follows its signal on every component of the vocabulary" 
 	const [cls, setCls] = createSignal("a");
 	const root: MockNode = mockNode("root");
 	render(element(<View class={cls()}><Text class={cls()}>t</Text><Pressable class={cls()}><Text>p</Text></Pressable><TextInput class={cls()} /></View>), mockHost(), root as unknown as HostNode);
-	assert mockToString(root) === "<root><view class=\"a\"><text class=\"a\">t</text><pressable class=\"a\"><text>p</text></pressable><textinput class=\"a\"></textinput></view></root>", "initial: " + mockToString(root);
+	assert mockToString(root) === "<root><view class=\"a\"><text class=\"a\">t</text><pressable class=\"a\" accessible=\"true\"><text>p</text></pressable><textinput class=\"a\"></textinput></view></root>", "initial: " + mockToString(root);
 	setCls("b");
-	assert mockToString(root) === "<root><view class=\"b\"><text class=\"b\">t</text><pressable class=\"b\"><text>p</text></pressable><textinput class=\"b\"></textinput></view></root>", "after set: " + mockToString(root);
+	assert mockToString(root) === "<root><view class=\"b\"><text class=\"b\">t</text><pressable class=\"b\" accessible=\"true\"><text>p</text></pressable><textinput class=\"b\"></textinput></view></root>", "after set: " + mockToString(root);
 }
 
 test "ssr serializes the vocabulary as html" {

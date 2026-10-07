@@ -52,5 +52,5 @@ test "accessibility props reach every primitive as attributes" {
 		<Text accessibilityRole="header">Title</Text>
 		<Pressable accessibilityLabel="Save" accessibilityHint="Saves the form" accessibilityRole="button" onPress={() => {}}>Save</Pressable>
 	</View>), mockHost(), root as unknown as HostNode);
-	assert mockToString(root) === "<root><view accessible=\"true\" accessibilityLabel=\"Card\" accessibilityRole=\"summary\"><text accessibilityRole=\"header\">Title</text><pressable accessibilityLabel=\"Save\" accessibilityHint=\"Saves the form\" accessibilityRole=\"button\">Save</pressable></view></root>", "attributes: " + mockToString(root);
+	assert mockToString(root) === "<root><view accessible=\"true\" accessibilityLabel=\"Card\" accessibilityRole=\"summary\"><text accessibilityRole=\"header\">Title</text><pressable accessible=\"true\" accessibilityLabel=\"Save\" accessibilityHint=\"Saves the form\" accessibilityRole=\"button\">Save</pressable></view></root>", "attributes: " + mockToString(root);
 }

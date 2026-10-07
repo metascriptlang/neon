@@ -859,3 +859,15 @@ test "a native FlatList with maintainVisibleContentPosition keeps the visible me
 	assert after === before, `row 20 stays at ${before}: ${after}`;
 	assert offset === 2000 && height === 6000, `the offset follows the 20 older rows: ${offset}, content ${height}`;
 }
+
+test "a native Pressable is one accessibility element by default, and accessible={false} opts out" {
+	const app = (): NeonNode => <View>
+		<Pressable onPress={(e: NeonEvent): void => {}}><Text>Open</Text></Pressable>
+		<Pressable accessible={false} onPress={(e: NeonEvent): void => {}}><Text>Quiet</Text></Pressable>
+	</View>;
+	runApp(app);
+	const quiet = nmLastPressableTag();
+	assert prop(quiet, "accessible") === "false", "opted out: " + prop(quiet, "accessible");
+	assert prop(quiet - 1, "accessible") === "true", "default: " + prop(quiet - 1, "accessible");
+	nmTeardown();
+}

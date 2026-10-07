@@ -221,7 +221,10 @@ export function Pressable(props: PressableProps): NeonNode {
 		press = onPress;
 	}
 
-	const accessible = accessibleText(props);
+	// RN Pressable.js: `accessible: accessible !== false`, so a Pressable is one
+	// accessibility element whose label the host composes from its texts.
+	const declared = accessibleText(props);
+	const accessible = declared === null ? accessor((): string => "true") : declared as Accessor<string>;
 	return element(<pressable class={props.class} style={props.style} ref={props.ref} accessible={accessible} accessibilityLabel={props.accessibilityLabel} accessibilityHint={props.accessibilityHint} accessibilityRole={props.accessibilityRole} onLayout={props.onLayout} onPress={press} onPointerDown={pointerDown} onPointerUp={pointerUp} onPointerLeave={pointerLeave} onPointerCancel={pointerLeave}>{props.children}</pressable>);
 }
 

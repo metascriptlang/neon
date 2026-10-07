@@ -23,7 +23,7 @@ function serializeNode(n: MockNode): string {
 	let cls = n.className;
 	let open = "<" + tag;
 	for (const a of n.attrs) {
-		if (a.value === null) { continue; }
+		if (a.value === null || a.name === "accessible") { continue; }
 		let v = a.value as string;
 		if (a.name === "class" && cls !== "") { v = v === "" ? cls : v + " " + cls; cls = ""; }
 		open = open + " " + a.name + "=\"" + v + "\"";

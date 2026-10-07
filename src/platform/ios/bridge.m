@@ -94,6 +94,29 @@ static void call0(msClosure c) {
 	[super touchesCancelled:touches withEvent:event];
 }
 
+// RN RCTViewComponentView: an accessible view without its own label speaks the
+// labels of its subviews, joined with ", " (RCTRecursiveAccessibilityLabel).
+static NSString *recursiveAccessibilityLabel(UIView *view) {
+	NSMutableString *result = nil;
+	for (UIView *subview in view.subviews) {
+		if (subview.hidden) continue;
+		NSString *label = subview.accessibilityLabel;
+		if (!label) label = recursiveAccessibilityLabel(subview);
+		if (label.length == 0) continue;
+		if (!result) result = [NSMutableString string];
+		if (result.length > 0) [result appendString:@", "];
+		[result appendString:label];
+	}
+	return result;
+}
+
+- (NSString *)accessibilityLabel {
+	NSString *label = super.accessibilityLabel;
+	if (label) return label;
+	if (self.isAccessibilityElement) return recursiveAccessibilityLabel(self);
+	return nil;
+}
+
 @end
 
 static void emitControl(int tag, int phase, NSString *value, float width, float height) {
