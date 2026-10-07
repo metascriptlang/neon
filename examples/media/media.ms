@@ -65,19 +65,20 @@ function BrowserScreen(props: ScreenProps): NeonNode {
 	let web: WebViewHandle | null = null;
 	const say = props.say;
 	const [back, setBack] = createSignal(false);
+	// A source change, not injected `location.href`: Android's WebView skips on back an
+	// entry that navigated away by script without a user gesture, so canGoBack stayed false.
+	const [site, setSite] = createSignal("https://example.com/");
 	return <View style={styles.body}>
 		<View style={styles.row}>
 			<Pressable style={styles.button} onPress={() => { (web as WebViewHandle).goBack(); }}>back</Pressable>
 			<Pressable style={styles.button} onPress={() => { (web as WebViewHandle).goForward(); }}>forward</Pressable>
 			<Pressable style={styles.button} onPress={() => { (web as WebViewHandle).reload(); }}>reload</Pressable>
-			<Pressable style={styles.button} onPress={() => {
-				(web as WebViewHandle).injectJavaScript("location.href = 'https://example.org/'");
-			}}>next site</Pressable>
+			<Pressable style={styles.button} onPress={() => { setSite("https://example.org/"); }}>next site</Pressable>
 			<Text style={styles.status}>{back() ? "can go back" : "first page"}</Text>
 		</View>
 		<WebView
 			style={styles.web}
-			source={{ uri: "https://example.com/" }}
+			source={{ uri: site() }}
 			ref={(h: WebViewHandle): void => { web = h; }}
 			onNavigationStateChange={(n: WebViewNavigation): void => {
 				setBack(n.canGoBack);
