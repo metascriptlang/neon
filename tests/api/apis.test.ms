@@ -2,7 +2,6 @@ import { createRoot } from "../../src/core/owner";
 import { createEffect } from "../../src/core/effect";
 import { publishWindow, publishKeyboard, publishColorScheme } from "../../src/render/environment";
 import { ALERT_DISMISSED, installAppServices } from "../../src/api/services";
-import { Platform } from "../../src/api/platform";
 import { Dimensions, DimensionsChange, publishScale, publishScreen } from "../../src/api/dimensions";
 import { PixelRatio } from "../../src/api/pixelRatio";
 import { Appearance, AppearancePreferences } from "../../src/api/appearance";
@@ -13,7 +12,7 @@ import { Alert } from "../../src/api/alert";
 import { Linking, LinkingUrlEvent, publishUrl } from "../../src/api/linking";
 import { Share, ShareAction } from "../../src/api/share";
 import { Vibration } from "../../src/api/vibration";
-import { Clipboard } from "../../src/api/clipboard";
+import { Platform, Clipboard } from "../../src/index";
 import { AccessibilityInfo, publishScreenReader } from "../../src/api/accessibilityInfo";
 import { FakeServices } from "./fakeServices";
 

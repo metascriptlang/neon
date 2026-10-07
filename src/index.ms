@@ -44,3 +44,19 @@ export {
 	SectionBase, SectionInfo, SectionList, SectionListHandle, SectionListRenderItemInfo,
 	SectionViewToken, SectionViewabilityInfo, ScrollToLocationParams, VirtualizedSectionList,
 } from "./components/sectionList";
+
+export { EventSubscription } from "./api/subscription";
+export { AppServices, AlertRequest, AlertButtonSpec, ShareRequest, installAppServices } from "./api/services";
+export { Platform, PlatformOSType } from "./api/platform";
+export { Dimensions, DimensionsChange, DimensionsKey, ScaledSize } from "./api/dimensions";
+export { PixelRatio } from "./api/pixelRatio";
+export { Appearance, AppearancePreferences } from "./api/appearance";
+export { Keyboard, KeyboardEvent, KeyboardEventCoordinates, KeyboardEventName } from "./api/keyboard";
+export { AppState, AppStateEvent, AppStateStatus, useAppState } from "./api/appState";
+export { BackHandler } from "./api/backHandler";
+export { Alert, AlertButton, AlertButtonStyle, AlertOptions } from "./api/alert";
+export { Linking, LinkingUrlEvent } from "./api/linking";
+export { Share, ShareAction, ShareContent, ShareOptions } from "./api/share";
+export { Vibration } from "./api/vibration";
+export { Clipboard } from "./api/clipboard";
+export { AccessibilityInfo, AccessibilityChangeEventName, useScreenReaderEnabled } from "./api/accessibilityInfo";
