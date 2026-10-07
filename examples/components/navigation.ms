@@ -15,7 +15,10 @@ import {
 	createDrawerNavigator,
 	createNavigationContainerRef,
 	createStackNavigator,
+	DarkTheme,
+	DefaultTheme,
 	useIsFocused,
+	useTheme,
 	useNavigation,
 	useRoute,
 } from "../../src/navigation/index";
@@ -184,10 +187,18 @@ function MainTabs(props: ScreenProps<string>): NeonNode {
 	</Tab.Navigator>;
 }
 
+const [darkTheme, setDarkTheme] = createSignal(false);
+
 function SettingsScreen(props: ScreenProps<string>): NeonNode {
 	const navigation = props.navigation;
-	return <View style={styles.screen}>
+	const theme = useTheme();
+	return <View style={{ flex: 1, flexDirection: "column", gap: 12, padding: 16, backgroundColor: theme().colors.background }}>
 		<Counter name="settings" label="Settings taps" />
+		<Text style={{ color: theme().colors.text, fontSize: 16 }}>{theme().dark ? "Theme: dark" : "Theme: light"}</Text>
+		<Pressable style={styles.button} accessibilityRole="button" accessibilityLabel="Toggle dark theme"
+			onPress={(e: NeonEvent): void => { setDarkTheme(!darkTheme()); }}>
+			<Text style={styles.buttonText}>Toggle theme</Text>
+		</Pressable>
 		<Pressable style={styles.button} accessibilityRole="button" accessibilityLabel="Back to items"
 			onPress={(e: NeonEvent): void => { navigation.navigate("Main"); }}>
 			<Text style={styles.buttonText}>Back to items</Text>
@@ -229,7 +240,8 @@ export const navigationLinking: LinkingOptions = {
 export const navigationRef: NavigationContainerRef = createNavigationContainerRef();
 
 export function NavigationDemo(): NeonNode {
-	return <NavigationContainer ref={navigationRef} linking={navigationLinking}>
+	return <NavigationContainer ref={navigationRef} linking={navigationLinking}
+		theme={darkTheme() ? DarkTheme : DefaultTheme}>
 		<Drawer.Navigator>
 			<Drawer.Screen name="Main" component={MainTabs} options={{ headerShown: false, drawerLabel: "Items" }} />
 			<Drawer.Screen name="Settings" component={SettingsScreen} />

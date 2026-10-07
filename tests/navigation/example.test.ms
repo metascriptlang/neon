@@ -46,6 +46,9 @@ test "the navigation example walks list, detail, edit, tabs, drawer and a deep l
 	press(root, "Show navigation menu");
 	press(root, "Settings");
 	assert navigationRef.currentPath() === "Settings", navigationRef.currentPath();
+	press(root, "Toggle dark theme");
+	assert visibleText(root).indexOf("Theme: dark") >= 0, visibleText(root);
+	press(root, "Toggle dark theme");
 	assert dispatchHardwareBackPress();
 	assert navigationRef.currentPath() === "Main>Home>List", navigationRef.currentPath();
 
