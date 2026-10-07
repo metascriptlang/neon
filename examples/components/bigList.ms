@@ -93,6 +93,33 @@ function MeasuredStickyList(props: { inverted: Accessor<boolean> }): NeonNode {
 	</View>;
 }
 
+function GridList(): NeonNode {
+	const start: Entry[] = [];
+	for (let i = 0; i < 60; i += 1) { start.push({ id: "g" + i.toString(), n: i }); }
+	const [data, setData] = createSignal<Entry[]>(start);
+	const [next, setNext] = createSignal<number>(60);
+	const [pressed, setPressed] = createSignal("none");
+	const fresh = (): Entry => {
+		const n = next();
+		setNext(n + 1);
+		return { id: "g" + n.toString(), n };
+	};
+	return <View style={styles.screen}>
+		<Text style={styles.title}>Grid</Text>
+		<Text style={styles.status}>{"pressed " + pressed()}</Text>
+		<View style={{ flexDirection: "row", gap: 8 }}>
+			<Pressable style={styles.jump} onPress={() => setData([fresh(), ...data()])}>prepend</Pressable>
+			<Pressable style={styles.jump} onPress={() => setData([...data(), fresh()])}>append</Pressable>
+		</View>
+		<FlatList data={data()} style={styles.list} numColumns={3} columnWrapperStyle={{ gap: 4, marginBottom: 4 }}
+			renderItem={(info: ListRenderItemInfo<Entry>): NeonNode =>
+				<Pressable style={{ flex: 1, height: 64, padding: 12, backgroundColor: "#313244", color: "#cdd6f4" }}
+					onPress={() => setPressed("cell " + info.item.n.toString() + " at " + info.index().toString())}>
+					{"cell " + info.item.n.toString()}
+				</Pressable>} />
+	</View>;
+}
+
 export function ListAcceptance(): NeonNode {
 	const [mode, setMode] = createSignal<int32>(0);
 	return <View style={{ flex: 1 }}>
@@ -100,9 +127,12 @@ export function ListAcceptance(): NeonNode {
 			<Pressable style={styles.jump} onPress={() => setMode(0)}>fixed rows</Pressable>
 			<Pressable style={styles.jump} onPress={() => setMode(1)}>measured rows</Pressable>
 			<Pressable style={styles.jump} onPress={() => setMode(2)}>inverted rows</Pressable>
+			<Pressable style={styles.jump} onPress={() => setMode(3)}>grid</Pressable>
 		</View>
-		<Show when={mode() === 0} fallback={<MeasuredStickyList inverted={mode() === 2} />}>
+		<Show when={mode() === 3} fallback={<Show when={mode() === 0} fallback={<MeasuredStickyList inverted={mode() === 2} />}>
 			<BigList />
+		</Show>}>
+			<GridList />
 		</Show>
 	</View>;
 }
