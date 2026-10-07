@@ -3,6 +3,16 @@
 The person went to sleep and said: "có gì không quyết định được thì WORKAROUND.md note lại và làm ẩu luôn, khi nào tao thức dậy tao sẽ check lại sau".
 Every entry below is a choice made without the person's decision. Each says what was chosen, what the proper path is, and how to undo it.
 
+## Reviewed 2026-10-07
+
+The person approved the whole recommended package ("duyệt hết, làm theo suggest"):
+A1 and A2 are accepted contract additions (A2 moves per Host when Neon gets multiple windows);
+L1 becomes the approved grid ownership mechanism and `maintainVisibleContentPosition` an approved
+ScrollView attribute on every platform; L6, L7 (RN arithmetic) and L9 (fail at mount) stay as built;
+A3 and A5 stay as interim; A10 moves to RN's accessible-by-default Pressable; A6 splits the Button
+look per platform; A4, A9 go to Ion and A8 to yoga as notes; the compiler-tracked rows (C1, L2–L5,
+L8, A7) undo themselves when their cards land.
+
 | # | where | decided | proper path | undo |
 |---|---|---|---|---|
 | A1 | `src/render/hostTypes.ms` `Host.focus?` | Optional host capability `focus(node, focused)` (same idiom as `scrollTo`/`voidArea`), implemented by the native, DOM and mock hosts; `TextInput` ref now receives a `TextInputHandle` (`focus`/`blur`/`clear`/`isFocused`, `node`) like `ScrollViewHandle`, instead of the raw `HostNode` | Approve the contract field, or move focus onto a different seam (e.g. a host command channel) | Drop the field and the three host entries; restore `ref?: RefFn` on `TextInputProps` and `tests/render/ref.test.ms` |
