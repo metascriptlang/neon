@@ -5,6 +5,8 @@ import { Style } from "../../src/render/style";
 import { NeonEvent } from "../../src/render/event";
 import { Checkbox } from "../../src/components/checkbox";
 import { RadioButton, RadioGroup, RadioOption } from "../../src/components/radio";
+import { SegmentedControl } from "../../src/components/segmentedControl";
+import { Chip } from "../../src/components/chip";
 
 function attrOf(n: MockNode, name: string): string {
 	for (const a of n.attrs) {
@@ -93,4 +95,60 @@ test "RadioGroup renders one radio row per option and selects the pressed one" {
 	assert attrOf(rows[0], "accessibilityState") === "checked" && attrOf(rows[1], "accessibilityState") === "unchecked", "moved";
 	setOpts([{ label: "Alpha", value: "a" }, { label: "Beta", value: "b" }, { label: "Gamma", value: "c" }]);
 	assert tagged(group, "pressable").length === 3, "options are reactive";
+}
+
+test "SegmentedControl is a tablist of tabs that reports index and value" {
+	const [index, setIndex] = createSignal(0);
+	const [on, setOn] = createSignal(true);
+	let log = "";
+	const root: MockNode = mockNode("root");
+	render(element(<SegmentedControl values={["Day", "Week"]} selectedIndex={index()} enabled={on()}
+		onChange={(i: int32): void => { log += "i" + i.toString() + ";"; setIndex(i); }}
+		onValueChange={(v: string): void => { log += v + ";"; }} />), mockHost(), root as unknown as HostNode);
+	const bar = root.children[0];
+	assert attrOf(bar, "accessibilityRole") === "tablist", "bar: " + mockToString(bar);
+	const tabs = tagged(bar, "pressable");
+	assert tabs.length === 2, "tabs: " + mockToString(bar);
+	assert mockToString(tabs[0]) === "<pressable accessibilityRole=\"tab\" accessibilityLabel=\"Day\" accessibilityState=\"selected\"><text>Day</text></pressable>", "tab: " + mockToString(tabs[0]);
+	assert attrOf(tabs[1], "accessibilityState") === "", "unselected: " + attrOf(tabs[1], "accessibilityState");
+	fireEvent(tabs[0], "onPress");
+	fireEvent(tabs[1], "onPress");
+	assert log === "i1;Week;", "log: " + log;
+	assert attrOf(tabs[1], "accessibilityState") === "selected" && attrOf(tabs[0], "accessibilityState") === "", "moved";
+	assert styleOf(tabs[1]).backgroundColor === "#2196f3", "selected tint";
+	setOn(false);
+	fireEvent(tabs[0], "onPress");
+	assert log === "i1;Week;" && attrOf(tabs[0], "accessibilityState") === "disabled", "disabled: " + attrOf(tabs[0], "accessibilityState");
+}
+
+test "Chip is a toggle button once selectable and closes through its own button" {
+	const [chosen, setChosen] = createSignal(false);
+	let closed = 0;
+	const root: MockNode = mockNode("root");
+	render(element(<Chip label="Pizza" selected={chosen()} mode="outlined" onPress={(e: NeonEvent): void => { setChosen(!chosen()); }}
+		onClose={(): void => { closed += 1; }} />), mockHost(), root as unknown as HostNode);
+	const shell = root.children[0];
+	const body = shell.children[0].children[0];
+	const closer = shell.children[0].children[1];
+	assert mockToString(body) === "<pressable accessibilityRole=\"togglebutton\" accessibilityLabel=\"Pizza\" accessibilityState=\"\"><text></text><text>Pizza</text></pressable>", "body: " + mockToString(body);
+	assert mockToString(closer) === "<pressable accessibilityRole=\"button\" accessibilityLabel=\"Close\"><text>×</text></pressable>", "close: " + mockToString(closer);
+	assert styleOf(shell).padding === 1, "outlined shell";
+	fireEvent(body, "onPress");
+	assert chosen() && attrOf(body, "accessibilityState") === "selected", "selected: " + attrOf(body, "accessibilityState");
+	assert mockToString(body).indexOf("✓") > 0, "check shown: " + mockToString(body);
+	fireEvent(closer, "onPress");
+	assert closed === 1, "closed";
+}
+
+test "Chip without selection is a plain button and ignores presses while disabled" {
+	const [off, setOff] = createSignal(true);
+	let presses = 0;
+	const root: MockNode = mockNode("root");
+	render(element(<Chip icon="★" disabled={off()} onPress={(e: NeonEvent): void => { presses += 1; }}>Starred</Chip>), mockHost(), root as unknown as HostNode);
+	const body = root.children[0].children[0].children[0];
+	assert mockToString(body) === "<pressable accessibilityRole=\"button\" accessibilityState=\"disabled\"><text>★</text><text>Starred</text></pressable>", "body: " + mockToString(body);
+	fireEvent(body, "onPress");
+	setOff(false);
+	fireEvent(body, "onPress");
+	assert presses === 1, "presses: " + presses.toString();
 }
