@@ -355,6 +355,31 @@ The APK builds (`SvgView` in the dex); the Seeker lane `tests/android/svg.py` is
 (phone locked), so Android drawing is compile-checked only. Provisional choices: `WORKAROUND.md` S1–S9;
 compiler card `2026-10-08-number-local-into-result-of-float64-fails-at-clang.md`.
 
+### Capture: image picker, camera, audio (state 2026-10-08, `wt/rn-capture`, msc `0d83c4867`)
+
+expo-image-picker (`launchImageLibraryAsync`, `launchCameraAsync`, permissions; mediaTypes, quality,
+base64, multiple selection), expo-camera's `CameraView` (`facing`, `flash`, `active`, `mirror`,
+`onCameraReady`, `onMountError`, ref `takePictureAsync/pausePreview/resumePreview`, `Camera`
+permissions, `useCameraPermissions`) and expo-av's `Audio` (`Sound` load/play/pause/stop/seek/volume/
+loop/mute/rate with status updates and `didJustFinish`; `Recording` prepare/start/pause/stop, `getURI`,
+`createNewLoadedSoundAsync`; `setAudioModeAsync`) on Android, iOS and the browser. Proof:
+`tests/platform/nativeCapture.test.ms` (mock bridge, 7 cases), `tests/api/captureApis.test.ms` (native
+and JS), Chrome `tests/browser/capture.test.ms` (file input pick and cancel, the fake camera streams and
+takes a JPEG, the chime plays to its end, a recording plays back) and `node tests/browser/capture.mjs
+<playwright>` on the consumer `examples/capture` (pick a png, camera input, preview, 640x480 picture,
+flip, chime, record and play back: all passed). iPhone 17 Pro simulator `tests/ios/capture.sh`
+(`CaptureUITests`, exit 0, `/private/tmp/neon-capture-run6`): a sample photo picked through PHPicker
+shows at 4032x3024, a denied camera keeps the view closed, an allowed camera with no device reports
+the mount error and refuses a picture, the simulated system camera opens and cancels, the chime plays
+to its end, the microphone prompt is answered. The APK builds with the provider and permissions; the
+lane `tests/android/capture.py` is written and not run (Seeker locked, emulator reserved). Not
+verified: Android at runtime, a real camera preview or picture on iOS/Android, recording on iOS (the
+host's audio input times out; `NEON_IOS_RECORD=1`), real microphone capture in Chrome. The web
+bundle needed `netInfo.ms` read by index (W6). Provisional: `WORKAROUND.md` X1–X6; compiler cards
+`2026-10-08-arrow-with-a-function-return-type-does-not-parse.md` and sightings added to
+`2026-10-08-test-block-awaiting-a-rejected-nullable-promise-segfaults.md` and
+`2026-10-07-js-outer-function-made-async-by-nested-async.md`.
+
 ### Reference and ownership constraints
 
 - RN's core catalog: `packages/react-native/index.js`, component exports and app/runtime APIs.
