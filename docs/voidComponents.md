@@ -33,10 +33,10 @@ Light JSX consumer remain before runtime on the installed compiler. Measurements
 candidate differences belong to `VISION.md` "Inside a Void area".
 
 Raw 2D slice: `src/components/scene2d.ms` exports Scene2D, Group, Rect, Sprite,
-Mask and Label, using Void NodeRef/binders and Neon owners. Current twelve-case
+Mask and Label, using Void NodeRef/binders and Neon owners. Current fourteen-case
 `tests/render/scene2d.test.ms` runs natively on read-only compiler candidate r8
 (binary sha256 prefix `356b1a0fd75d`, matching source/support `f65616348`) against
-Void `d255ffb`: 12 own cases / 326 including imports. This proves mapping, reactive
+Void `d255ffb`: 14 own cases / 328 including imports (`f645c2c`). This proves mapping, reactive
 camera/geometry/text/paint/filter, matrix-row reuse/clear, remount/disposal and
 invalid-parent rejection. Parent guards went red before restoration: raw text/tags
 could leak into HUD, and a foreign scene scope could capture an outer 2D parent.
@@ -44,7 +44,7 @@ Empty text markers retain Neon's existing structural protocol; visible raw text
 is rejected on both createText and setText, not silently placed in the HUD.
 
 Installed binary/support `0d83c4867` still rejects this unchanged JSX at check:
-9 enum-roundtrip errors (BlendMode_Alpha, Smooth_Inherit, VoidSpace_Scene3D).
+11 enum-roundtrip errors (ScaleMode, BlendMode, Smooth and VoidSpace members).
 VoidArea/component importers pass on installed C and JS. The original 16-case
 Scene3D contract remains red on candidate with one union-signal layout error;
 its original Light consumer now runs and cleans up on candidate. Candidate results
@@ -60,7 +60,10 @@ Refs expose real Void scenes/NodeRefs for queries, not a substitute for missing
 component/frame integration. colorMatrix uses Void's setColorMatrix data API;
 paint updates preserve the node-owned matrix row and reject selection of another row,
 following the unchanged-row invariant in Void node.ms:499–507. Clearing a matrix uses
-Void's NO_COLOR_MATRIX value, not a resource-row assignment.
+Void's NO_COLOR_MATRIX value, not a resource-row assignment. Scene scaleMode/designW/
+designH call setScaleMode; all six Void modes, partial/omitted design values, independent
+scenes and disposal are checked against sceneViewMatrix on the candidate. This is CPU
+view-transform proof, not viewport pixels.
 
 The host and Ion frame are still on Void's old API. Their migration belongs to
 `void-noderef-host`, not to a parallel edit here. Existing host tests describe carried
@@ -75,7 +78,7 @@ existing 3D Group tag silently switch meaning outside Scene3D.
 
 | ID | Void source and symbol | Candidate JSX mapping / present gap | Required Neon evidence; reference consumer |
 |---|---|---|---|
-| 2D-01 | `src/void2d/node.ms` Scene2D; `src/void2d/scene.ms` create/close/setScaleMode; `src/void2d/types.ms` Camera | Scene2D camera/clear/default-smooth mapping written; design size/scale mode/frame still missing | Camera pan/zoom/rotation moves scene but not HUD; scale-mode/resize behavior and sibling-scene isolation; `src/test/sceneCheck.ms` |
+| 2D-01 | `src/void2d/node.ms` Scene2D; `src/void2d/scene.ms` create/close/setScaleMode; `src/void2d/types.ms` Camera | Scene2D camera/clear/default-smooth/scaleMode/designW/designH mapped; all six scale modes CPU-tested on candidate, frame missing | Camera pan/zoom/rotation moves scene but not HUD; scale-mode/resize behavior and sibling-scene isolation; `src/test/sceneCheck.ms` |
 | 2D-02 | `src/void2d/node.ms` group/addChild/addChildAt/remove/dispose | Group core written with local/paint/order/filter and node ownership; keyed moves pending. View is not a raw group substitute | Nested transforms, keyed order/moves and retained NodeRef identity; `src/test/nodeCheck.ms`, `tests/integration/reparentFrame.ms` is the 3D move analogue only |
 | 2D-03 | `src/void2d/node.ms` rect/setBackground/clearBackground/setBoxStyle; `src/void2d/boxStyle.ms` BoxStyle | Rect size/color/core props written; BoxStyle/background promotion pending. View style remains incomplete on current host | Rounded/per-edge/dashed borders, outer/inset shadow; reactive group↔paint promotion preserves children and handles, transparent paint emits nothing; `tests/integration/viewPaint.ms`, `src/test/coverageOracleCheck.ms` |
 | 2D-04 | `src/void2d/node.ms` sprite/setImageStyle; `src/void2d/types.ms` Tile/TextureSource; `src/void2d/imageStyle.ms` ImageStyle | Sprite Tile/retile/size core written; ImageStyle, fitted size and texture replacement pending | Atlas regions, flipping/offsets, fit/crop, rounded/grayscale image and replaced texture; `src/test/tileCheck.ms`, `src/test/imageStyleCheck.ms` |
