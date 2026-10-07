@@ -13,6 +13,8 @@ import { Toast, ToastHost, currentToast } from "../../src/components/toast";
 import { Tooltip } from "../../src/components/tooltip";
 import { Dialog, DialogAction } from "../../src/components/dialog";
 import { BottomSheet } from "../../src/components/bottomSheet";
+import { StepItem, Stepper } from "../../src/components/stepper";
+import { NeonNode } from "../../src/render/node";
 
 function firstTag(parent: MockNode, tag: string): MockNode {
 	for (const c of parent.children) {
@@ -194,4 +196,40 @@ test "BottomSheet docks a handled sheet at the bottom and the scrim dismisses it
 	assert handle.width === 32 && handle.height === 4, "drag handle";
 	fireEvent(firstTag(layer, "pressable"), "onPress");
 	assert dismissed() === 1 && mockToString(root) === "<root></root>", "dismissed";
+}
+
+test "Stepper numbers its steps, checks the done ones and drives the active step's controls" {
+	const [current, setCurrent] = createSignal<int32>(1);
+	const [log, setLog] = createSignal("");
+	const root: MockNode = mockNode("root");
+	const steps: StepItem[] = [
+		{ title: "Cart" },
+		{ title: "Shipping", subtitle: "Address and speed" },
+		{ title: "Pay" },
+	];
+	render(element(<Stepper steps={steps} currentStep={current()}
+		renderContent={(i: int32): NeonNode => <Text>{"body " + i.toString()}</Text>}
+		onStepTapped={(i: int32): void => { setLog(log() + "tap" + i.toString() + ";"); setCurrent(i); }}
+		onStepContinue={(): void => { setLog(log() + "continue;"); setCurrent(current() + 1); }}
+		onStepCancel={(): void => { setLog(log() + "cancel;"); }} />), mockHost(), root as unknown as HostNode);
+	const text = mockToString(root);
+	assert text.indexOf("<pressable accessibilityLabel=\"Cart, step 1 of 3, completed\" accessibilityRole=\"button\"><view><text>✓</text></view>") > 0, "done: " + text;
+	assert text.indexOf("<pressable accessibilityLabel=\"Shipping, step 2 of 3\" accessibilityRole=\"button\"><view><text>2</text></view><view><text>Shipping</text><text>Address and speed</text></view></pressable>") > 0, "active: " + text;
+	assert text.indexOf("<text>body 1</text><view><pressable accessibilityLabel=\"Continue\" accessibilityRole=\"button\"><text>Continue</text></pressable><pressable accessibilityLabel=\"Cancel\" accessibilityRole=\"button\"><text>Cancel</text></pressable></view>") > 0, "body and controls: " + text;
+	assert text.indexOf("body 0") < 0 && text.indexOf("body 2") < 0, "only the active body";
+	const steps0 = firstTag(root, "view");
+	const pay = lastTag(steps0, "view");
+	const payHeader = firstTag(pay, "pressable");
+	assert (firstTag(payHeader, "view").style as Style).backgroundColor === "#9e9e9e", "upcoming circle is grey";
+	const shipping = steps0.children[1];
+	assert (firstTag(firstTag(shipping, "pressable"), "view").style as Style).backgroundColor === "#2196f3", "active circle is the accent";
+	const controls = firstTag(lastTag(lastTag(shipping, "view"), "view"), "view");
+	fireEvent(controls.children[1], "onPress");
+	fireEvent(controls.children[0], "onPress");
+	assert log() === "cancel;continue;", "controls: " + log();
+	assert mockToString(root).indexOf("<text>body 2</text>") > 0 && mockToString(root).indexOf("Shipping, step 2 of 3, completed") > 0, "advanced: " + mockToString(root);
+	fireEvent(payHeader, "onPress");
+	fireEvent(firstTag(steps0.children[0], "pressable"), "onPress");
+	assert log() === "cancel;continue;tap2;tap0;", "taps: " + log();
+	assert mockToString(root).indexOf("<text>body 0</text>") > 0 && mockToString(root).indexOf("✓") < 0, "back to the first: " + mockToString(root);
 }
