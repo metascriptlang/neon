@@ -40,3 +40,7 @@ export {
 	ViewabilityConfig, ViewabilityConfigCallbackPair, ViewabilityInfo, ViewToken,
 } from "./components/flatList";
 export { VirtualizedList } from "./components/virtualizedList";
+export {
+	SectionBase, SectionInfo, SectionList, SectionListHandle, SectionListRenderItemInfo,
+	SectionViewToken, SectionViewabilityInfo, ScrollToLocationParams, VirtualizedSectionList,
+} from "./components/sectionList";

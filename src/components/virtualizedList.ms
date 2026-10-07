@@ -145,6 +145,10 @@ export class FlatListHandle {
 		this.interaction();
 	}
 
+	cellLength(index: number): number {
+		return this.frameOf(Math.floor(index)).length;
+	}
+
 	scrollToEnd(options: ScrollToEndOptions): void {
 		const { animated = true } = options;
 		const n = this.count();
