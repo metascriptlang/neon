@@ -7,7 +7,7 @@ extern class MediaClassList {
 	extern remove(name: cstring): void;
 }
 
-extern class HTMLElement {
+extern class Node {
 	src: cstring;
 	srcdoc: cstring;
 	muted: boolean;
@@ -34,7 +34,7 @@ extern class HTMLElement {
 extern class Event {}
 
 extern class document {
-	static extern createElement(tag: cstring): HTMLElement;
+	static extern createElement(tag: cstring): Node;
 }
 
 extern class window {
@@ -42,22 +42,22 @@ extern class window {
 }
 
 extern function queueMicrotask(callback: () => void): void;
-extern function frameSameOrigin(frame: HTMLElement): boolean from "((f) => { try { return !!f.contentDocument; } catch (e) { return false; } })(#)";
-extern function frameLocation(frame: HTMLElement): string from "#.contentWindow.location.href";
-extern function frameTitle(frame: HTMLElement): string from "(#.contentDocument.title || '')";
-extern function frameEval(frame: HTMLElement, script: cstring): void from "#.contentWindow.eval(#)";
-extern function framePost(frame: HTMLElement, data: cstring): void from "#.contentWindow.postMessage(#, '*')";
-extern function frameReload(frame: HTMLElement): void from "#.contentWindow.location.reload()";
-extern function frameStop(frame: HTMLElement): void from "#.contentWindow.stop()";
+extern function frameSameOrigin(frame: Node): boolean from "((f) => { try { return !!f.contentDocument; } catch (e) { return false; } })(#)";
+extern function frameLocation(frame: Node): string from "#.contentWindow.location.href";
+extern function frameTitle(frame: Node): string from "(#.contentDocument.title || '')";
+extern function frameEval(frame: Node, script: cstring): void from "#.contentWindow.eval(#)";
+extern function framePost(frame: Node, data: cstring): void from "#.contentWindow.postMessage(#, '*')";
+extern function frameReload(frame: Node): void from "#.contentWindow.location.reload()";
+extern function frameStop(frame: Node): void from "#.contentWindow.stop()";
 extern function historyBack(unused: int32): void from "(#, history.back())";
 extern function historyForward(unused: int32): void from "(#, history.forward())";
-extern function messageFrom(e: Event, frame: HTMLElement): boolean from "(#.source === #.contentWindow)";
+extern function messageFrom(e: Event, frame: Node): boolean from "(#.source === #.contentWindow)";
 extern function messageLoadUrl(e: Event): string from "((d) => (typeof d === 'object' && d !== null && typeof d.__neonLoad === 'string') ? d.__neonLoad : '')(#.data)";
 extern function messageText(e: Event): string from "String(#.data)";
-extern function playVideo(video: HTMLElement, failed: (message: string) => void): void from "((v, f) => { const p = v.play(); if (p) p.catch((e) => f(String((e && e.message) || e))); })(#, #)";
-extern function videoBuffered(video: HTMLElement): number from "((v) => v.buffered.length ? v.buffered.end(v.buffered.length - 1) : 0)(#)";
-extern function videoErrorCode(video: HTMLElement): number from "((v) => v.error ? v.error.code : 0)(#)";
-extern function videoErrorMessage(video: HTMLElement): string from "((v) => v.error ? (v.error.message || 'media error ' + v.error.code) : '')(#)";
+extern function playVideo(video: Node, failed: (message: string) => void): void from "((v, f) => { const p = v.play(); if (p) p.catch((e) => f(String((e && e.message) || e))); })(#, #)";
+extern function videoBuffered(video: Node): number from "((v) => v.buffered.length ? v.buffered.end(v.buffered.length - 1) : 0)(#)";
+extern function videoErrorCode(video: Node): number from "((v) => v.error ? v.error.code : 0)(#)";
+extern function videoErrorMessage(video: Node): string from "((v) => v.error ? (v.error.message || 'media error ' + v.error.code) : '')(#)";
 
 interface MediaRoute {
 	type: string;
@@ -85,7 +85,7 @@ function escapeScriptEnd(script: string): string {
 }
 
 class MediaState {
-	el: HTMLElement;
+	el: Node;
 	kind: string;
 	routes: MediaRoute[] = [];
 	released: boolean = false;
@@ -104,7 +104,7 @@ class MediaState {
 	timer: number = -1;
 	paused: boolean = false;
 
-	constructor(el: HTMLElement, kind: string) {
+	constructor(el: Node, kind: string) {
 		this.el = el;
 		this.kind = kind;
 	}
@@ -148,7 +148,7 @@ class MediaState {
 	}
 }
 
-const states = new Map<HTMLElement, MediaState>();
+const states = new Map<Node, MediaState>();
 let cssDone = false;
 let listening = false;
 
@@ -285,7 +285,7 @@ function writeFrameAttr(state: MediaState, name: string, value: string): boolean
 	return false;
 }
 
-function progressRecord(el: HTMLElement): string {
+function progressRecord(el: Node): string {
 	return `${el.currentTime}\x1f${videoBuffered(el)}\x1f${el.duration}`;
 }
 
@@ -359,7 +359,7 @@ function listenVideo(state: MediaState): void {
 	const el = state.el;
 	el.addEventListener("loadstart", (e: Event): void => { state.fire("loadstart", el.currentSrc, 0, 0); });
 	el.addEventListener("loadedmetadata", (e: Event): void => {
-		state.fire("load", `${el.duration}\x1f${el.currentTime}`, el.videoWidth, el.videoHeight);
+		state.fire("load", `${el.duration}\x1f${el.currentTime}\x1f${el.videoWidth}\x1f${el.videoHeight}`, 0, 0);
 	});
 	el.addEventListener("play", (e: Event): void => { startProgress(state); });
 	el.addEventListener("pause", (e: Event): void => {
@@ -404,25 +404,25 @@ export function createMediaNode(tag: string): HostNode {
 }
 
 export function isMediaNode(node: HostNode): boolean {
-	return states.has(node as unknown as HTMLElement);
+	return states.has(node as unknown as Node);
 }
 
 export function writeMediaAttr(node: HostNode, name: string, value: string): boolean {
-	const el = node as unknown as HTMLElement;
+	const el = node as unknown as Node;
 	if (!states.has(el)) { return false; }
 	const state = states.get(el) as MediaState;
 	return state.kind === "webview" ? writeFrameAttr(state, name, value) : writeVideoAttr(state, name, value);
 }
 
 export function addMediaEvent(node: HostNode, type: string, handler: (e: NeonEvent) => void): boolean {
-	const el = node as unknown as HTMLElement;
+	const el = node as unknown as Node;
 	if (!states.has(el) || type === "layout") { return false; }
 	(states.get(el) as MediaState).routes.push({ type, handler });
 	return true;
 }
 
 export function releaseMedia(node: HostNode): void {
-	const el = node as unknown as HTMLElement;
+	const el = node as unknown as Node;
 	if (!states.has(el)) { return; }
 	const state = states.get(el) as MediaState;
 	state.released = true;

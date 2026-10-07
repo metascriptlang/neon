@@ -53,7 +53,7 @@ test "playback events arrive as react-native-video's data objects" {
 	/>, mockHost(), root as unknown as HostNode);
 	const video = root.children[0];
 	fire(video, "onLoadStart", "", 0, 0);
-	fire(video, "onLoad", "3\x1f0", 160, 90);
+	fire(video, "onLoad", "3\x1f0\x1f160\x1f90", 0, 0);
 	fire(video, "onProgress", "1.5\x1f3\x1f3", 0, 0);
 	fire(video, "onEnd", "", 0, 0);
 	fire(video, "onError", "-11800\x1fThe operation could not be completed", 0, 0);

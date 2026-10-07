@@ -7,7 +7,6 @@ import { Video, VideoHandle, OnLoadData, OnProgressData } from "../../src/compon
 import {
 	nmTeardown,
 	nmControl,
-	nmControlSized,
 	nmProp,
 	nmLastControlTag,
 	nmLayoutWidth,
@@ -76,7 +75,7 @@ test "a native Video takes its size from its style, reports load and progress, a
 	assert prop(video, "paused") === "true" && prop(video, "source") === "https://neon.dev/clip.mp4", "props";
 	setPaused(false);
 	assert prop(video, "paused") === "false", "play";
-	nmControlSized(video, 5, "3\x1f0", 160, 90);
+	nmControl(video, 5, "3\x1f0\x1f160\x1f90");
 	nmControl(video, 13, "1.25\x1f3\x1f3");
 	nmControl(video, 14, "");
 	assert log === "load 3 160x90;at 1.25;end;", "events: " + log;

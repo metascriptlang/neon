@@ -168,9 +168,9 @@ export function Video(props: VideoProps): NeonNode {
 				currentTime: fieldNumber(fields, 1),
 				duration: fieldNumber(fields, 0),
 				naturalSize: {
-					width: e.width,
-					height: e.height,
-					orientation: e.height > e.width ? "portrait" : "landscape",
+					width: fieldNumber(fields, 2),
+					height: fieldNumber(fields, 3),
+					orientation: fieldNumber(fields, 3) > fieldNumber(fields, 2) ? "portrait" : "landscape",
 				},
 			});
 		}));
