@@ -9,6 +9,7 @@ import { onCleanup } from "../../core/cleanup";
 import { htmlTagFor } from "../../render/node";
 import { publishWindow, publishColorScheme } from "../../render/environment";
 import { CssStyle, applyCss, applyCssProp } from "./domCss";
+import { VisibleContentPosition, parseVisibleContent } from "../../render/visibleContent";
 
 extern class ClassList {
 	extern add(name: cstring): void;
@@ -51,6 +52,8 @@ extern class Node {
 	offsetTop: number;
 	offsetParent: Node | null;
 	parentNode: Node | null;
+	isConnected: boolean;
+	nodeType: number;
 	tagName: string;
 	extern blur(): void;
 	extern focus(): void;
@@ -93,6 +96,7 @@ extern class CSSStyleDeclaration {
 	scrollbarWidth: string;
 	touchAction: string;
 	overscrollBehaviorY: string;
+	overflowAnchor: string;
 	position: string;
 }
 
@@ -148,6 +152,19 @@ function watchEnvironment(): void {
 
 extern function requestAnimationFrame(callback: (time: number) => void): number;
 extern function cancelAnimationFrame(id: number): void;
+extern function queueMicrotask(callback: () => void): void;
+
+const ELEMENT_NODE = 1;
+
+function layoutStart(node: Node, horizontal: boolean): number {
+	let start = 0.0;
+	let at: Node | null = node;
+	while (at !== null) {
+		start += horizontal ? (at as Node).offsetLeft : (at as Node).offsetTop;
+		at = (at as Node).offsetParent;
+	}
+	return start;
+}
 
 interface DomScrollRoute {
 	type: string;
@@ -178,8 +195,72 @@ class DomScrollState {
 	lastY: number = -1;
 	indicator: Node | null = null;
 	routes: DomScrollRoute[] = [];
+	visibleContent: VisibleContentPosition | null = null;
+	anchor: Node | null = null;
+	anchorStart: number = 0;
+	shifted: boolean = false;
 
 	constructor(el: Node) { this.el = el; }
+
+	content(): Node | null {
+		let child = this.el.firstChild as Node | null;
+		while (child !== null && (child as Node).nodeType !== ELEMENT_NODE) {
+			child = (child as Node).nextSibling as Node | null;
+		}
+		return child;
+	}
+
+	// RN RCTScrollViewComponentView _prepareForMaintainVisibleScrollPosition, before a batch of
+	// host writes instead of a mount transaction.
+	prepareVisibleContent(): void {
+		this.anchor = null;
+		const position = this.visibleContent;
+		const content = this.content();
+		if (position === null || content === null || !this.el.isConnected) { return; }
+		const offset = this.horizontal ? this.el.scrollLeft : this.el.scrollTop;
+		const origin = layoutStart(content as Node, this.horizontal);
+		let index: int32 = 0;
+		let child = (content as Node).firstChild as Node | null;
+		while (child !== null) {
+			const node = child as Node;
+			child = node.nextSibling as Node | null;
+			if (node.nodeType !== ELEMENT_NODE) { continue; }
+			index += 1;
+			if (index <= (position as VisibleContentPosition).minIndexForVisible) { continue; }
+			const start = layoutStart(node, this.horizontal) - origin;
+			this.anchor = node;
+			this.anchorStart = start;
+			const length = this.horizontal ? node.offsetWidth : node.offsetHeight;
+			if (start + length > offset) { break; }
+		}
+	}
+
+	adjustVisibleContent(): void {
+		const anchor = this.anchor;
+		const position = this.visibleContent;
+		const content = this.content();
+		this.anchor = null;
+		if (anchor === null || position === null || content === null) { return; }
+		if ((anchor as Node).parentNode !== content) { return; }
+		const origin = layoutStart(content as Node, this.horizontal);
+		const delta = layoutStart(anchor as Node, this.horizontal) - origin - this.anchorStart;
+		if (Math.abs(delta) <= 0.5) { return; }
+		const before = this.horizontal ? this.el.scrollLeft : this.el.scrollTop;
+		if (this.horizontal) {
+			this.el.scrollLeft = before + delta;
+		} else {
+			this.el.scrollTop = before + delta;
+		}
+		this.shifted = (this.horizontal ? this.el.scrollLeft : this.el.scrollTop) !== before;
+		const threshold = (position as VisibleContentPosition).autoscrollToTopThreshold;
+		if (threshold !== null && before <= (threshold as number)) {
+			this.el.scroll({
+				left: this.horizontal ? 0 : this.el.scrollLeft,
+				top: this.horizontal ? this.el.scrollTop : 0,
+				behavior: "smooth",
+			});
+		}
+	}
 
 	fire(type: string): void {
 		const e = neonEvent(type);
@@ -240,6 +321,7 @@ class DomScrollState {
 		if (this.verticalIndicator) { this.el.classList.remove("neon-hide-vertical"); }
 		else { this.el.classList.add("neon-hide-vertical"); }
 		css.overscrollBehaviorY = this.refreshEnabled ? "contain" : "";
+		css.overflowAnchor = this.visibleContent === null ? "" : "none";
 		if (this.indicator !== null && (css.position === "" || css.position === "static")) { css.position = "relative"; }
 	}
 
@@ -279,6 +361,9 @@ class DomScrollState {
 			"keyboardShouldPersistTaps" => { this.taps = value === "" ? "never" : value; },
 			"refreshEnabled" => { this.refreshEnabled = yes; },
 			"refreshing" => { this.refreshing = yes; this.refreshPending = false; this.showRefresh(); },
+			"maintainVisibleContentPosition" => {
+				this.visibleContent = parseVisibleContent(value);
+			},
 			_ => {},
 		}
 		this.apply();
@@ -475,6 +560,23 @@ export function domHost(): Host {
 	const presses = new Map<Node, boolean>();
 	const layouts: DomLayoutState[] = [];
 	let layoutFrame: number = -1;
+	const keepers: DomScrollState[] = [];
+	let adjustQueued = false;
+	function adjustVisibleContent(): void {
+		adjustQueued = false;
+		for (const state of keepers.slice(0, keepers.length)) { state.adjustVisibleContent(); }
+	}
+	function prepareVisibleContent(): void {
+		if (keepers.length === 0 || adjustQueued) { return; }
+		adjustQueued = true;
+		for (const state of keepers) { state.prepareVisibleContent(); }
+		queueMicrotask(adjustVisibleContent);
+	}
+	function trackKeeper(state: DomScrollState): void {
+		const at = keepers.indexOf(state);
+		if (at >= 0) { keepers.splice(at, 1); }
+		if (state.visibleContent !== null && scrolls.has(state.el)) { keepers.push(state); }
+	}
 	function flushLayouts(): void {
 		const count = layouts.length;
 		for (let i = 0; i < count; i += 1) {
@@ -523,7 +625,11 @@ export function domHost(): Host {
 			for (const cleanup of cleanups.get(el) as (() => void)[]) { cleanup(); }
 			cleanups.delete(el);
 		}
-		scrolls.delete(el);
+		if (scrolls.has(el)) {
+			const state = scrolls.get(el) as DomScrollState;
+			scrolls.delete(el);
+			trackKeeper(state);
+		}
 		presses.delete(el);
 	}
 	function release(el: Node): void {
@@ -554,7 +660,8 @@ export function domHost(): Host {
 		keep(el, (): void => { state.dispose(); });
 		state.apply();
 		listen(el, "scroll", (e: DomEvent): void => {
-			if (state.touching) { state.beginDrag(); }
+			if (state.shifted && !state.touching) { state.shifted = false; }
+			else if (state.touching) { state.beginDrag(); }
 			else { state.beginMomentum(); }
 			state.fire("scroll");
 		}, false);
@@ -640,39 +747,49 @@ export function domHost(): Host {
 		},
 		createText: (s: string): HostNode => document.createTextNode(s) as unknown as HostNode,
 		setText: (node: HostNode, s: string): void => {
+			prepareVisibleContent();
 			(node as unknown as Node).textContent = s;
 		},
 		setAttr: (node: HostNode, name: string, value: string): void => {
+			prepareVisibleContent();
 			const el = node as unknown as Node;
 			writeDomAttr(el, name, value);
 			if (name === "value" || name === "defaultValue") { return; }
 			if (scrolls.has(el)) {
 				if (name === "class") { el.classList.add(SCROLL_CLASS); }
-				(scrolls.get(el) as DomScrollState).setOption(name, value);
+				const state = scrolls.get(el) as DomScrollState;
+				state.setOption(name, value);
+				if (name === "maintainVisibleContentPosition") { trackKeeper(state); }
 			}
 		},
 		removeAttr: (node: HostNode, name: string): void => {
+			prepareVisibleContent();
 			const el = node as unknown as Node;
 			if (name === "value") { el.value = ""; }
 			el.removeAttribute(domAttrName(name));
 			if (scrolls.has(el)) {
 				if (name === "class") { el.classList.add(SCROLL_CLASS); }
-				(scrolls.get(el) as DomScrollState).setOption(name, "");
+				const state = scrolls.get(el) as DomScrollState;
+				state.setOption(name, "");
+				if (name === "maintainVisibleContentPosition") { trackKeeper(state); }
 			}
 		},
 		setStyle: (node: HostNode, style: Style): void => {
+			prepareVisibleContent();
 			applyCss((node as unknown as Node).style, style);
 			const el = node as unknown as Node;
 			if (scrolls.has(el)) { (scrolls.get(el) as DomScrollState).apply(); }
 			scheduleLayouts();
 		},
 		setStyleProp: (node: HostNode, name: string, value: StyleValue): void => {
+			prepareVisibleContent();
 			applyCssProp((node as unknown as Node).style, name, value);
 			const el = node as unknown as Node;
 			if (scrolls.has(el)) { (scrolls.get(el) as DomScrollState).apply(); }
 			scheduleLayouts();
 		},
 		setStyleClass: (node: HostNode, id: string, css: string): void => {
+			prepareVisibleContent();
 			registerCss(id, css);
 			(node as unknown as Node).classList.add(id);
 			scheduleLayouts();
@@ -743,12 +860,14 @@ export function domHost(): Host {
 			}, false);
 		},
 		append: (parent: HostNode, child: HostNode): void => {
+			prepareVisibleContent();
 			(parent as unknown as Node).appendChild(child as unknown as Node);
 			const el = parent as unknown as Node;
 			if (scrolls.has(el)) { (scrolls.get(el) as DomScrollState).mountRefresh(); }
 			scheduleLayouts();
 		},
 		insertBefore: (parent: HostNode, node: HostNode, ref: HostNode | null): void => {
+			prepareVisibleContent();
 			const el = parent as unknown as Node;
 			const moved = node as unknown as Node;
 			const before = ref === null ? null : (ref as unknown as Node);
@@ -761,6 +880,7 @@ export function domHost(): Host {
 			scheduleLayouts();
 		},
 		removeChild: (parent: HostNode, node: HostNode): void => {
+			prepareVisibleContent();
 			release(node as unknown as Node);
 			(parent as unknown as Node).removeChild(node as unknown as Node);
 			scheduleLayouts();

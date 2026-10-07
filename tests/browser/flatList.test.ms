@@ -292,3 +292,31 @@ test "a prepend moves a focused grid field to the next row as the same element, 
 	dispose();
 	scroller.remove();
 }
+
+function chatRow(info: ListRenderItemInfo<Item>): NeonNode {
+	return element(<View class={"chat-row-" + info.item.n.toString()} style={rowStyle}><Text>{"<" + info.item.n.toString() + ">"}</Text></View>);
+}
+
+test "a FlatList with maintainVisibleContentPosition keeps the visible message still when older ones are prepended" {
+	const [data, setData] = createSignal<Item[]>(items(100));
+	const dispose = render(element(<FlatList data={data()} style={{ height: 300 }} getItemLayout={fixed} renderItem={chatRow}
+		maintainVisibleContentPosition={{ minIndexForVisible: 0 }} />), domHost(), documentBody());
+	await sleepAsync(100);
+	const scroller = (documentBody() as unknown as HTMLElement).lastElementChild;
+	scroller.scrollTop = 1000;
+	await sleepAsync(200);
+	const before = scroller.querySelectorAll(".chat-row-20").item(0).getBoundingClientRect().top;
+	const next: Item[] = [];
+	for (let i = 0; i < 20; i += 1) { next.push({ id: "old" + i.toString(), n: 1000 + i }); }
+	for (const item of data()) { next.push(item); }
+	setData(next);
+	await sleepAsync(200);
+	const after = scroller.querySelectorAll(".chat-row-20").item(0).getBoundingClientRect().top;
+	assert after === before && scroller.scrollTop === 2000, `row 20 stays at ${before}: ${after}, offset ${scroller.scrollTop}`;
+	assert scroller.scrollHeight === 120 * ROW, "the older rows extend the content above: " + scroller.scrollHeight.toString();
+	scroller.scrollTop = 0;
+	await sleepAsync(200);
+	assert scroller.textContent.includes("<1000>"), "the oldest message is reachable at the top";
+	dispose();
+	scroller.remove();
+}
