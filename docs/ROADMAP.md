@@ -126,6 +126,27 @@ wheel snap), and the iOS simulator passes `FlutterListsUITests` with the same st
 The Seeker lane `tests/android/flutterlists.py` is written and its APK built; its one run stopped
 at the locked screen (exit 2, `/private/tmp/neon-seeker.gbYoCQ`), so Android is not yet measured.
 
+Flutter widgets and their RN community equivalents (`wt/rn-flutter-widgets`, msc `0d83c4867`,
+2026-10-08, provisional as `WORKAROUND.md` W1–W9): `PageView` with `PageController` (Flutter page
+physics over a PanResponder, `setPage`/`setPageWithoutAnimation`, loop, `viewportFraction`, vertical)
+and `PageIndicator`; `Carousel` (react-native-reanimated-carousel: auto-play held by a finger, loop,
+parallax); `TabView`/`TabBar` (react-native-tab-view: swipe, indicator between measured tabs, lazy
+scenes, scrollable bar); `Collapsible`, `ExpansionTile` and `Accordion`; `DataTable` (sortable
+columns, row and select-all selection, intrinsic column widths, horizontal scroll); `Wrap`.
+`RefreshIndicator`, `SnackBar` and `BottomSheet` are the existing RefreshControl, Snackbar and
+BottomSheet; a Hero shared-element transition is not done. Cases:
+`tests/components/{pageView,carousel,tabView,collapsible,dataTable,wrap,widgetsApp}.test.ms` (native
+and JS) and `tests/platform/nativeWidgets.test.ms` (a Collapsible opens under native Yoga). The
+consumer `examples/components/widgets.ms` passes real mouse drags in Chrome
+(`node tests/browser/widgets.mjs <playwright>`: page swipe and spring-back, dots, tab swipe and
+indicator, scene scroll inside the pager, auto-play, pause and drag, accordion, sort and select,
+wrapped chips) and the iPhone 17 Pro simulator (`WidgetsUITests`, the same steps,
+`/private/tmp/neon-sim.V0gFm7`), after two native fixes found there: a swipe over a scene's vertical
+ScrollView now reaches the pager (W9) and a first opening of a Collapsible is measured (W8). The
+web bundles of every example load again (W6). The Seeker lane `tests/android/widgets.py` is written
+and not run (the phone is locked overnight); Android is not measured, and W9 names the swipe over a
+native ScrollView as its likely gap. Not verified: a screen reader on any of these widgets.
+
 
 ### Acceptance — three complete author workflows
 
