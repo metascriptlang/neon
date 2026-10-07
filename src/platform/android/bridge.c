@@ -41,7 +41,7 @@ static struct {
 	jmethodID scrollInit, scrollSetTag, scrollSetOption, scrollSetContentSize, scrollTo, scrollAddContent, scrollDispose, viewSetClickable;
 	jmethodID viewGetParent, viewSetLayoutParams, viewSetAlpha, viewGetBackground, viewSetBackground;
 	jmethodID viewSetScaleX, viewSetScaleY, viewSetTranslationX, viewSetTranslationY, viewBringToFront;
-	jmethodID viewMeasure, viewGetMeasuredWidth, viewGetMeasuredHeight, viewSetTag, viewGetRootWindowInsets;
+	jmethodID viewForceLayout, viewMeasure, viewGetMeasuredWidth, viewGetMeasuredHeight, viewSetTag, viewGetRootWindowInsets;
 	jmethodID viewSetOnTouchListener, touchInit;
 	jmethodID viewGetContext, groupAddView, groupRemoveView, frameInit, paramsInit;
 	jfieldID paramsLeft, paramsTop;
@@ -159,6 +159,7 @@ static void cacheJni(JNIEnv *e) {
 	J.viewBringToFront = method(e, J.view, "bringToFront", "()V");
 	J.viewGetBackground = method(e, J.view, "getBackground", "()Landroid/graphics/drawable/Drawable;");
 	J.viewSetBackground = method(e, J.view, "setBackground", "(Landroid/graphics/drawable/Drawable;)V");
+	J.viewForceLayout = method(e, J.view, "forceLayout", "()V");
 	J.viewMeasure = method(e, J.view, "measure", "(II)V");
 	J.viewGetMeasuredWidth = method(e, J.view, "getMeasuredWidth", "()I");
 	J.viewGetMeasuredHeight = method(e, J.view, "getMeasuredHeight", "()I");
@@ -569,6 +570,7 @@ void niSetFont(void *label, float size, int bold) {
 void niMeasureText(void *label, float maxWidth) {
 	JNIEnv *e = env();
 	int widthSpec = (px(maxWidth) & 0x3fffffff) | (int)0x80000000;
+	(*e)->CallVoidMethod(e, (jobject)label, J.viewForceLayout);
 	(*e)->CallVoidMethod(e, (jobject)label, J.viewMeasure, widthSpec, 0);
 	int w = (*e)->CallIntMethod(e, (jobject)label, J.viewGetMeasuredWidth);
 	int h = (*e)->CallIntMethod(e, (jobject)label, J.viewGetMeasuredHeight);
