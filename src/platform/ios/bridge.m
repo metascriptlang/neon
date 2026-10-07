@@ -351,7 +351,7 @@ static char kNeonStateTraits;
 static char kNeonGroup;
 
 static BOOL groupRole(const char *role) {
-	return strcmp(role, "tablist") == 0 || strcmp(role, "radiogroup") == 0 || strcmp(role, "menu") == 0;
+	return strcmp(role, "tablist") == 0 || strcmp(role, "radiogroup") == 0 || strcmp(role, "menu") == 0 || strcmp(role, "alert") == 0;
 }
 
 static BOOL isGroup(UIView *v) { return [objc_getAssociatedObject(v, &kNeonGroup) boolValue]; }
@@ -945,8 +945,11 @@ void niViewSetTag(void *view, int32_t tag) {
 	return [[self neonFormatter] dateFromString:neonText(text)];
 }
 - (CGSize)sizeThatFits:(CGSize)size {
-	CGSize fit = self.intrinsicContentSize;
-	if (fit.width <= 0 || fit.height <= 0) fit = [super sizeThatFits:size];
+	CGSize fit = [self systemLayoutSizeFittingSize:UILayoutFittingCompressedSize];
+	if (fit.width <= 0 || fit.width >= size.width || fit.height <= 0) {
+		CGFloat width = [self.neonMode isEqualToString:@"time"] ? 96 : [self.neonMode isEqualToString:@"datetime"] ? 230 : 136;
+		fit = CGSizeMake(width, 35);
+	}
 	return CGSizeMake(MIN(fit.width, size.width), fit.height);
 }
 - (void)neonChanged { emitControl((int)self.tag, 4, [[self neonFormatter] stringFromDate:self.date], 0, 0); }
