@@ -11,6 +11,8 @@ import { Card, CardActions, CardContent, CardTitle } from "../../src/components/
 import { Avatar } from "../../src/components/avatar";
 import { Badge } from "../../src/components/badge";
 import { Divider } from "../../src/components/divider";
+import { ProgressBar, sweepSpan, sweepSteps } from "../../src/components/progressBar";
+import { sleepAsync } from "std/core/promise";
 import { Text, View } from "../../src/components/primitives";
 
 function attrOf(n: MockNode, name: string): string {
@@ -228,4 +230,49 @@ test "Divider is a filled line, horizontal or vertical, with insets" {
 	const column = styleOf(root.children[0].children[1]);
 	assert line.height === 2 && line.marginLeft === 16 && line.backgroundColor === "#ff0000", "horizontal";
 	assert column.width === 1 && column.marginTop === 4 && column.backgroundColor === "#e0e0e0", "vertical";
+}
+
+test "ProgressBar fills by flex and labels the percentage" {
+	const [done, setDone] = createSignal(0.4);
+	const root: MockNode = mockNode("root");
+	render(element(<ProgressBar progress={done()} color="#00aa00" />), mockHost(), root as unknown as HostNode);
+	const bar = root.children[0];
+	assert mockToString(bar) === "<view accessibilityRole=\"progressbar\" accessibilityLabel=\"40%\" accessibilityState=\"\"><view></view><view></view><view></view></view>", "bar: " + mockToString(bar);
+	assert styleOf(bar.children[0]).flex === 0 && styleOf(bar.children[1]).flex === 0.4 && styleOf(bar.children[2]).flex === 0.6, "flex split";
+	assert styleOf(bar.children[1]).backgroundColor === "#00aa00", "fill colour";
+	setDone(1.5);
+	assert styleOf(bar.children[1]).flex === 1 && attrOf(bar, "accessibilityLabel") === "100%", "clamped";
+}
+
+test "the indeterminate sweep crosses the track and leaves it" {
+	assert sweepSteps() === 26, "steps: " + sweepSteps().toString();
+	const first = sweepSpan(0);
+	assert first.lead === 0 && first.fill === 0 && first.tail === 1, "starts empty at the left";
+	const mid = sweepSpan(10);
+	assert mid.lead === 0.2 && mid.tail === 0.5, "mid: " + mid.lead.toString() + " " + mid.tail.toString();
+	const last = sweepSpan(26);
+	assert last.tail === 0 && last.lead === 1 && last.fill === 0, "ends empty at the right";
+}
+
+test "an indeterminate ProgressBar steps on a timer that stops when it unmounts" {
+	const [busy, setBusy] = createSignal(true);
+	const root: MockNode = mockNode("root");
+	const dispose = render(element(<ProgressBar indeterminate={busy()} />), mockHost(), root as unknown as HostNode);
+	const bar = root.children[0];
+	assert attrOf(bar, "accessibilityState") === "busy" && attrOf(bar, "accessibilityLabel") === "", "busy";
+	const head = (): float64 => styleOf(bar.children[0]).flex as float64 + (styleOf(bar.children[1]).flex as float64);
+	assert head() === 0, "starts at the left";
+	await sleepAsync(300);
+	const moved = head();
+	assert moved > 0, "the segment moved: " + moved.toString();
+	setBusy(false);
+	const stoppedAt = styleOf(bar.children[1]).flex as float64;
+	await sleepAsync(200);
+	assert styleOf(bar.children[1]).flex as float64 === stoppedAt, "determinate again, no more steps";
+	setBusy(true);
+	await sleepAsync(200);
+	dispose();
+	const frozen = head();
+	await sleepAsync(250);
+	assert head() === frozen, "no steps after dispose: " + frozen.toString() + " then " + head().toString();
 }
