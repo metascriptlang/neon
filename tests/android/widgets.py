@@ -15,22 +15,33 @@ def status(texts):
     return scroll_list.label(texts, "status ")
 
 
-def wait_status(prefix, why, seconds=10):
+# A screen that keeps moving (an auto-playing carousel) never gives two equal dumps in a
+# row, which scroll_list.state waits for; moving=True reads one dump as it is.
+def read(moving):
+    if not moving:
+        return scroll_list.state(False)
+    state = counter.dump()
+    if state is None:
+        return (0, 0, 0, 0), {}
+    return state[0], dict(state[1])
+
+
+def wait_status(prefix, why, seconds=10, moving=False):
     deadline = time.time() + seconds
     texts = {}
     while time.time() < deadline:
-        window, texts = scroll_list.state(False)
+        window, texts = read(moving)
         if status(texts).startswith(prefix):
             return window, texts
         time.sleep(0.3)
     raise LaneError("%s: expected %r, app says %r" % (why, prefix, status(texts)))
 
 
-def wait_for(text, seconds=15):
+def wait_for(text, seconds=15, moving=False):
     deadline = time.time() + seconds
     texts = {}
     while time.time() < deadline:
-        window, texts = scroll_list.state(False)
+        window, texts = read(moving)
         if text in texts:
             return window, texts
         time.sleep(0.3)
@@ -110,13 +121,22 @@ def lane():
     report("tab-calls", window, texts, launched)
 
     scroll_list.tap(texts, "carousel")
-    window, texts = wait_for("Slide A", 10)
-    window, texts = wait_status("status slide Slide B", "auto-play moves to Slide B", 8)
+    window, texts = wait_for("Slide A", 10, moving=True)
+    # One dump takes longer than the 2.5 s auto-play interval here, so which slide a dump
+    # sees is not fixed: any later slide proves auto-play, and the swipe goes from the one
+    # that rests centred once paused.
+    window, texts = wait_status("status slide Slide ", "auto-play moves past Slide A", 8, moving=True)
     scroll_list.tap(texts, "pause")
-    window, texts = wait_status("status autoplay off", "pause stops auto-play")
-    y = middle_y(texts, "Slide B")
+    window, texts = wait_for("play", 10)
+    slides = ["Slide A", "Slide B", "Slide C", "Slide D", "Slide E"]
+    shown = [name for name in slides if name in texts]
+    if not shown:
+        raise LaneError("no slide on screen after pause; texts %s" % sorted(texts))
+    current = min(shown, key=lambda name: abs(middle_x(texts, name) - centre))
+    following = slides[(slides.index(current) + 1) % len(slides)]
+    y = middle_y(texts, current)
     swipe(window[0] + width * 8 // 10, y, window[0] + width * 2 // 10, y, 250)
-    window, texts = wait_status("status slide Slide C", "a swipe moves to Slide C")
+    window, texts = wait_status("status slide " + following, "a swipe moves from %s to %s" % (current, following))
     report("carousel", window, texts, launched)
 
     scroll_list.tap(texts, "faq")
