@@ -1056,6 +1056,15 @@ final class MotionUITests: XCTestCase {
         report("panel-end", "y=\(endY) before=\(beforeY)")
         XCTAssertEqual(endY - beforeY, 160, accuracy: 2, "the text below moved by the panel height")
 
+        app.staticTexts["start spin"].tap()
+        waitStatus(containing: "spin on")
+        pause(0.4)
+        report("spin-a", "")
+        pause(0.3)
+        report("spin-b", "")
+        app.staticTexts["stop spin"].tap()
+        waitStatus(containing: "spin off")
+
         let title = app.staticTexts["Neon motion"]
         let titleY = title.frame.minY
         let row = app.staticTexts["row 3"]
