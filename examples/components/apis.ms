@@ -59,7 +59,7 @@ export function ApiDemo(): NeonNode {
 	});
 
 	const share = async (): Promise<void> => {
-		const result = await Share.share({ title: "Neon", message: "Hello from Neon", url: "https://example.com" });
+		const result = await Share.share({ title: "Neon", message: "Hello from Neon", url: "https://neon.invalid/apis" });
 		setShareResult(result.action);
 	};
 	const openUrl = async (): Promise<void> => {
