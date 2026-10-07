@@ -8,7 +8,7 @@ import {
 import { NeonNode } from "../../src/render/node";
 import { Void, View, Text } from "../../src/components/primitives";
 import {
-	Scene2D, Group, Rect, Sprite, Mask, Label, TileGroup, ScaleGrid,
+	Scene2D, Group, Rect, Sprite, Mask, Label, TileGroup, ScaleGrid, Underline, Selection,
 } from "../../src/components/scene2d";
 import { Scene3D } from "../../src/components/scene3d";
 import { voidScope as Scope, VoidSpace } from "../../src/render/voidScope";
@@ -413,6 +413,64 @@ test "ScaleGrid structural remount reads current values and refuses a foreign pa
 			borderL={0.0} borderT={0.0} borderR={0.0} borderB={0.0} />
 	));
 	assert invalid.includes("ScaleGrid: mount inside Scene2D within Void");
+}
+
+test "Underline maps straight and wavy geometry and reactive color without replacing the node" {
+	let node: NodeRef = null as unknown as NodeRef;
+	const [width, setWidth] = createSignal<float32>(40.0);
+	const [thickness, setThickness] = createSignal<float32>(2.0);
+	const [wavy, setWavy] = createSignal(true);
+	const [red, setRed] = createSignal<float32>(1.0);
+	const root = mockNode("root");
+	const dispose = render(element(<Void><Scene2D>
+		<Underline width={width()} thickness={thickness()} wavy={wavy()}
+			color={rgba(red(), 0.0, 0.0, 1.0)}
+			ref={(value: NodeRef): void => { node = value; }} />
+	</Scene2D></Void>), mockHost(), root as unknown as HostNode);
+	assert node.kind() === DrawKind.Underline;
+	assert node.content().w === 40.0 && node.content().h === 6.0;
+	assert node.content().borderL === 2.0 && node.content().borderT === 1.0;
+	setWidth(20.0); setThickness(3.0); setWavy(false); setRed(0.5);
+	assert node.content().w === 20.0 && node.content().h === 3.0;
+	assert node.content().borderL === 3.0 && node.content().borderT === 0.0;
+	assert node.paint().color.r === 0.5;
+	dispose(); setWavy(true); setThickness(8.0); setRed(0.1);
+	assert !node.isLive();
+}
+
+test "Selection maps all neighbor geometry and remount reads current reactive values" {
+	const nodes: NodeRef[] = [];
+	const [width, setWidth] = createSignal<float32>(40.0);
+	const [offset, setOffset] = createSignal<float32>(5.0);
+	const [shown, setShown] = createSignal(true);
+	const root = mockNode("root");
+	const dispose = render(element(<Void><Scene2D><Group>
+		{Show({ when: () => shown(), children: element(
+			<Selection width={width()} height={12.0} color={rgba(0.0, 0.0, 1.0, 0.5)}
+				prevOffsetX={offset()} prevWidth={30.0}
+				nextOffsetX={offset() + 2.0} nextWidth={width() * 0.5}
+				ref={(value: NodeRef): void => { nodes.push(value); }} />
+		) })}
+	</Group></Scene2D></Void>), mockHost(), root as unknown as HostNode);
+	assert nodes[0].kind() === DrawKind.Selection;
+	assert nodes[0].content().borderL === 5.0 && nodes[0].content().borderT === 30.0;
+	assert nodes[0].content().borderR === 7.0 && nodes[0].content().borderB === 20.0;
+	setWidth(60.0); setOffset(8.0);
+	assert nodes[0].content().w === 60.0 && nodes[0].content().h === 12.0;
+	assert nodes[0].content().borderL === 8.0 && nodes[0].content().borderR === 10.0;
+	assert nodes[0].content().borderB === 30.0;
+	setShown(false); setWidth(80.0); setShown(true);
+	assert !nodes[0].isLive() && nodes[1].content().w === 80.0;
+	assert nodes[1].content().borderB === 40.0;
+	dispose(); setWidth(100.0); setOffset(20.0);
+	assert !nodes[1].isLive();
+	assert mountError(element(
+		<Underline width={1.0} thickness={1.0} wavy={false} color={rgba(1.0, 1.0, 1.0, 1.0)} />
+	)).includes("Underline: mount inside Scene2D within Void");
+	assert mountError(element(
+		<Selection width={1.0} height={1.0} color={rgba(1.0, 1.0, 1.0, 1.0)}
+			prevOffsetX={0.0} prevWidth={0.0} nextOffsetX={0.0} nextWidth={0.0} />
+	)).includes("Selection: mount inside Scene2D within Void");
 }
 
 test "Scene2D mounts real render nodes without creating host elements" {

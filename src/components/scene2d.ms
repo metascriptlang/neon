@@ -17,6 +17,9 @@ import {
 	setTiles,
 	setRange,
 	scaleGrid,
+	underline,
+	selection,
+	content,
 	setContent,
 	group,
 	rect,
@@ -97,6 +100,23 @@ interface ScaleGridProps extends NodeProps {
 	borderT: Accessor<float32>;
 	borderR: Accessor<float32>;
 	borderB: Accessor<float32>;
+}
+
+interface UnderlineProps extends NodeProps {
+	width: Accessor<float32>;
+	thickness: Accessor<float32>;
+	wavy: Accessor<boolean>;
+	color: Accessor<Color>;
+}
+
+interface SelectionProps extends NodeProps {
+	width: Accessor<float32>;
+	height: Accessor<float32>;
+	color: Accessor<Color>;
+	prevOffsetX: Accessor<float32>;
+	prevWidth: Accessor<float32>;
+	nextOffsetX: Accessor<float32>;
+	nextWidth: Accessor<float32>;
 }
 
 interface TileGroupProps extends NodeProps {
@@ -330,6 +350,42 @@ export function ScaleGrid(props: ScaleGridProps): NeonNode {
 				borderR: props.borderR(), borderB: props.borderB(),
 			});
 		});
+	});
+}
+
+export function Underline(props: UnderlineProps): NeonNode {
+	return renderNode("Underline", props, (scene: VoidScene2D): NodeRef => scene.underline(
+		props.width(), props.thickness(), props.color(), props.wavy(),
+	), (node: NodeRef): void => {
+		createEffect((): void => {
+			const thickness = props.thickness();
+			const wavy = props.wavy();
+			node.setContent({
+				...node.content(), w: props.width(), h: wavy ? thickness * 3.0 : thickness,
+				borderL: thickness, borderT: wavy ? 1.0 : 0.0,
+			});
+		});
+		if (props.paint === null) {
+			createEffect((): void => { node.setColor(props.color()); });
+		}
+	});
+}
+
+export function Selection(props: SelectionProps): NeonNode {
+	return renderNode("Selection", props, (scene: VoidScene2D): NodeRef => scene.selection(
+		props.width(), props.height(), props.color(), props.prevOffsetX(), props.prevWidth(),
+		props.nextOffsetX(), props.nextWidth(),
+	), (node: NodeRef): void => {
+		createEffect((): void => {
+			node.setContent({
+				...node.content(), w: props.width(), h: props.height(),
+				borderL: props.prevOffsetX(), borderT: props.prevWidth(),
+				borderR: props.nextOffsetX(), borderB: props.nextWidth(),
+			});
+		});
+		if (props.paint === null) {
+			createEffect((): void => { node.setColor(props.color()); });
+		}
 	});
 }
 
