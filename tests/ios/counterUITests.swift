@@ -2012,3 +2012,133 @@ final class SvgUITests: XCTestCase {
         expectColor("progress ring", 70, 100, white, "inside the ring, below the label, stays clear", tolerance: 10)
     }
 }
+
+final class CaptureUITests: XCTestCase {
+    private let app = XCUIApplication(bundleIdentifier: "dev.neon.NeonCapture")
+    private let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+
+    override func setUp() {
+        continueAfterFailure = false
+    }
+
+    private func status() -> String {
+        let match = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "status ")).firstMatch
+        return match.exists ? match.label : ""
+    }
+
+    private func waitStatus(_ prefix: String, _ why: String, timeout: TimeInterval = 15) {
+        let predicate = NSPredicate { [self] _, _ in status().hasPrefix(prefix) }
+        XCTAssertEqual(XCTWaiter.wait(for: [expectation(for: predicate, evaluatedWith: app)], timeout: timeout), .completed,
+            "\(why): expected \(prefix), app says \(status()) (state \(app.state.rawValue))")
+    }
+
+    private func any(_ label: String) -> XCUIElement {
+        app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", label)).firstMatch
+    }
+
+    private func tap(_ label: String) {
+        let element = any(label)
+        XCTAssertTrue(element.waitForExistence(timeout: 10), "no \(label)")
+        element.tap()
+    }
+
+    private func report(_ name: String) {
+        print("NEON_IOS capture-\(name) \(status())")
+        let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        shot.name = "capture-\(name)"
+        shot.lifetime = .keepAlways
+        add(shot)
+    }
+
+    private func answer(_ choices: [String], _ name: String) {
+        let alert = springboard.alerts.firstMatch
+        XCTAssertTrue(alert.waitForExistence(timeout: 15), "the system permission alert is shown for \(name)")
+        report("alert-\(name)")
+        for choice in choices where alert.buttons[choice].exists {
+            alert.buttons[choice].tap()
+            return
+        }
+        XCTFail("no \(choices) in the alert; it offers \(alert.buttons.allElementsBoundByIndex.map { $0.label })")
+    }
+
+    private func launch() {
+        app.launch()
+        XCTAssertTrue(app.staticTexts["Neon capture"].waitForExistence(timeout: 20))
+    }
+
+    func testPickerCameraAndAudio() {
+        XCUIDevice.shared.orientation = .portrait
+        app.resetAuthorizationStatus(for: .camera)
+        app.resetAuthorizationStatus(for: .microphone)
+        launch()
+        waitStatus("status ready", "the demo starts")
+
+        tap("pick photo")
+        let photo = app.images.matching(NSPredicate(format: "label BEGINSWITH %@", "Photo")).firstMatch
+        XCTAssertTrue(photo.waitForExistence(timeout: 20), "the system photo picker lists the simulator's sample photos")
+        report("photo-picker")
+        RunLoop.current.run(until: Date().addingTimeInterval(1))
+        photo.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        waitStatus("status picked image ", "the picked photo comes back as an image asset", timeout: 30)
+        report("picked")
+
+        tap("camera")
+        tap("open camera")
+        answer(["Don’t Allow", "Don't Allow"], "camera-deny")
+        waitStatus("status camera permission denied", "a denied camera permission keeps the CameraView closed")
+        tap("photos")
+        tap("system camera")
+        waitStatus("status camera permission denied", "the system camera is refused without the permission")
+        report("camera-denied")
+
+        app.resetAuthorizationStatus(for: .camera)
+        launch()
+        tap("camera")
+        tap("open camera")
+        answer(["Allow", "OK"], "camera-allow")
+        waitStatus("status camera error No camera is available on this device", "the simulator has no camera to preview")
+        report("camera-unavailable")
+        tap("take picture")
+        waitStatus("status picture error CameraView.takePictureAsync: the camera is not running", "no picture without a running camera")
+        tap("photos")
+        tap("system camera")
+        let refused = NSPredicate { [self] _, _ in status().hasPrefix("status camera error ImagePicker.launchCameraAsync: the camera is not available") }
+        if XCTWaiter.wait(for: [expectation(for: refused, evaluatedWith: app)], timeout: 5) == .completed {
+            report("system-camera-unavailable")
+        } else {
+            RunLoop.current.run(until: Date().addingTimeInterval(2))
+            report("system-camera-ui")
+            app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.823)).tap()
+            let use = app.buttons.matching(NSPredicate(format: "label IN %@", ["Use Photo", "Use", "Done"])).firstMatch
+            if use.waitForExistence(timeout: 10) {
+                report("system-camera-taken")
+                use.tap()
+                waitStatus("status shot image ", "a picture from the simulated system camera comes back as an image asset", timeout: 30)
+            } else {
+                report("system-camera-no-shutter")
+                app.coordinate(withNormalizedOffset: CGVector(dx: 0.145, dy: 0.933)).tap()
+                waitStatus("status shot canceled", "closing the system camera answers canceled")
+            }
+            report("system-camera-done")
+        }
+
+        tap("audio")
+        tap("play clip")
+        waitStatus("status clip finished", "the bundled chime loads, plays and reports didJustFinish", timeout: 20)
+        report("clip-finished")
+        tap("record")
+        answer(["Allow", "OK"], "microphone")
+        // On a host without a working audio input (no microphone, or none granted to the Simulator) every
+        // CoreAudio input call times out after 30 s and AVAudioRecorder blocks the main thread for minutes,
+        // so the recording itself is asserted only when tests/ios/capture.sh runs with NEON_IOS_RECORD=1.
+        guard ProcessInfo.processInfo.environment["NEON_IOS_RECORD"] == "1" else { return }
+        waitStatus("status recording", "recording starts once the microphone is allowed")
+        RunLoop.current.run(until: Date().addingTimeInterval(1.5))
+        report("recording")
+        tap("stop")
+        waitStatus("status recorded 500+ms", "the recording stops with its duration")
+        tap("play recording")
+        waitStatus("status recording finished", "the recorded file loads as a Sound and plays to its end", timeout: 20)
+        report("recording-finished")
+    }
+}
