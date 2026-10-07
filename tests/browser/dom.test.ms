@@ -48,6 +48,7 @@ extern class Node {
 	textContent: string;
 	tagName: string;
 	value: string;
+	checked: boolean;
 	style: ProbeStyle;
 	classList: ProbeClassList;
 	extern getAttribute(name: cstring): string | null;
@@ -419,4 +420,41 @@ test "Enter submits a TextInput with its value, and the focus capability moves t
 	}
 	assert seen === "submitediting neon;focus;blur;", "events: " + seen;
 	probe(el).remove();
+}
+
+test "Switch is a role=switch checkbox whose change reports the new value and then returns to the controlled one" {
+	const h = domHost();
+	const el = mount("switch");
+	h.setAttr(el, "id", "neon-switch-probe");
+	h.setAttr(el, "value", "false");
+	let seen = "";
+	h.addEvent(el, "onValueChange", (e: NeonEvent): void => { seen += `${e.type} ${e.value};`; });
+	probe(el).click();
+	const shape = `${probe(el).tagName} ${probe(el).getAttribute("type")} ${probe(el).getAttribute("role")}`;
+	assert shape === "INPUT checkbox switch", "shape: " + shape;
+	assert seen === "valuechange true;", "event: " + seen;
+	assert !probe(el).checked, "an unchanged value prop pulls the checkbox back";
+	h.setAttr(el, "value", "true");
+	assert probe(el).checked, "a new value prop checks it";
+	probe(el).remove();
+}
+
+test "ActivityIndicator and Image map onto a spinner element and an img with load and error events" {
+	const h = domHost();
+	const spinner = mount("activityindicator");
+	h.setAttr(spinner, "animating", "false");
+	assert probe(spinner).getAttribute("data-animating") === "false", "animating attribute";
+	probe(spinner).remove();
+	const img = mount("image");
+	const [seen, setSeen] = createSignal("");
+	h.addEvent(img, "onLoad", (e: NeonEvent): void => { setSeen(seen() + `load ${e.width}x${e.height};`); });
+	h.addEvent(img, "onError", (e: NeonEvent): void => { setSeen(seen() + "error;"); });
+	h.setAttr(img, "resizeMode", "contain");
+	h.setAttr(img, "source", "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7");
+	await sleepAsync(200);
+	h.setAttr(img, "source", "data:image/png;base64,bm90IGFuIGltYWdl");
+	await sleepAsync(200);
+	assert `${probe(img).tagName} ${probe(img).getAttribute("data-resize")}` === "IMG contain", "img shape";
+	assert seen() === "load 1x1;error;", "events: " + seen();
+	probe(img).remove();
 }
