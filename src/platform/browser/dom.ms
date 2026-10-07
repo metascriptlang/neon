@@ -82,6 +82,7 @@ extern class Node {
 	extern removeAttribute(name: cstring): void;
 	extern addEventListener(name: cstring, handler: (e: DomEvent) => void, capture: boolean): void;
 	extern removeEventListener(name: cstring, handler: (e: DomEvent) => void, capture: boolean): void;
+	extern setPointerCapture(pointerId: number): void;
 }
 
 extern class DomTouch {
@@ -122,6 +123,7 @@ extern class DomEvent {
 	repeat: boolean;
 	isComposing: boolean;
 	touches: DomTouchList;
+	pointerId: number;
 	defaultPrevented: boolean;
 	extern preventDefault(): void;
 	extern stopPropagation(): void;
@@ -630,6 +632,52 @@ class DomLayoutState {
 	}
 }
 
+interface DomTouchRoute {
+	type: string;
+	handler: (e: NeonEvent) => void;
+}
+
+const touchRoutes = new Map<Node, DomTouchRoute[]>();
+let touchElements: Node[] = [];
+let touchStamp: number = -1;
+let touchPointer: number = -1;
+let lastPointerUp: number = -1;
+let touchWatching = false;
+
+function fireTouchRoutes(el: Node, type: string, de: DomEvent): void {
+	if (!touchRoutes.has(el)) { return; }
+	for (const route of (touchRoutes.get(el) as DomTouchRoute[]).slice(0)) {
+		if (route.type !== type) { continue; }
+		const ev = neonEvent(type);
+		ev.timeStamp = de.timeStamp;
+		ev.x = de.clientX;
+		ev.y = de.clientY;
+		route.handler(ev);
+	}
+}
+
+function endTouches(type: string, de: DomEvent): void {
+	const touched = touchElements;
+	touchElements = [];
+	touchPointer = -1;
+	for (const el of touched) { fireTouchRoutes(el, type, de); }
+}
+
+// RN-web's responder listens on the document: a touch keeps reaching the views it
+// started on after the pointer leaves them.
+function watchTouches(): void {
+	if (touchWatching) { return; }
+	touchWatching = true;
+	window.addEventListener("pointermove", (de: DomEvent): void => {
+		for (const el of touchElements.slice(0)) { fireTouchRoutes(el, "touchmove", de); }
+	});
+	window.addEventListener("pointerup", (de: DomEvent): void => {
+		lastPointerUp = de.timeStamp;
+		endTouches("touchend", de);
+	});
+	window.addEventListener("pointercancel", (de: DomEvent): void => { endTouches("touchcancel", de); });
+}
+
 export function domHost(): Host {
 	// The registry may already hold rules from module init — a theme's :root
 	// among them — and from here on every change mounts itself, including a
@@ -920,6 +968,24 @@ export function domHost(): Host {
 				keep(el, (): void => { window.removeEventListener("keydown", escape); });
 				return;
 			}
+			if (type === "touchstart" || type === "touchmove" || type === "touchend" || type === "touchcancel") {
+				watchTouches();
+				if (!touchRoutes.has(el)) {
+					touchRoutes.set(el, []);
+					listen(el, "pointerdown", (de: DomEvent): void => {
+						if (de.timeStamp !== touchStamp) {
+							touchStamp = de.timeStamp;
+							touchElements = [];
+							touchPointer = de.pointerId;
+						}
+						touchElements.push(el);
+						fireTouchRoutes(el, "touchstart", de);
+					}, false);
+					keep(el, (): void => { touchRoutes.delete(el); });
+				}
+				(touchRoutes.get(el) as DomTouchRoute[]).push({ type, handler });
+				return;
+			}
 			if (type === "layout") {
 				const state = new DomLayoutState(el, handler);
 				layouts.push(state);
@@ -963,10 +1029,11 @@ export function domHost(): Host {
 					ev.repeat = de.repeat;
 					ev.isComposing = de.isComposing;
 				}
-				else if (type === "press" || type === "click" || type === "dblclick" || type === "mousedown" || type === "mouseup" || type === "mousemove") {
+				else if (type === "press" || type === "click" || type === "dblclick" || type === "mousedown" || type === "mouseup" || type === "mousemove" || type.startsWith("pointer")) {
 					ev.x = de.clientX;
 					ev.y = de.clientY;
 				}
+				if (type === "press" && lastPointerUp >= 0) { ev.timeStamp = lastPointerUp; }
 				handler(ev);
 			}, false);
 		},
@@ -1013,6 +1080,14 @@ export function domHost(): Host {
 		},
 		scrollTo: (node: HostNode, x: number, y: number, animated: boolean): void => {
 			(node as unknown as Node).scroll({ left: x, top: y, behavior: animated ? "smooth" : "auto" });
+		},
+		setResponder: (node: HostNode | null, blockNativeResponder: boolean): void => {
+			if (node === null || touchPointer < 0) { return; }
+			try {
+				(node as unknown as Node).setPointerCapture(touchPointer);
+			} catch (e) {
+				touchPointer = -1;
+			}
 		},
 	};
 }
