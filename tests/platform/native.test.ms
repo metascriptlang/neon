@@ -49,13 +49,13 @@ test "native event registry routes native tags and touch phases" {
 	});
 	registry.add(7, "onPress", (e: NeonEvent): void => { got += e.type + ";"; });
 
-	assert registry.dispatch(99, 2, 0, 0) === false, "unknown tags are ignored";
-	assert registry.dispatch(7, 0, 12, 9), "known pointer-down dispatches";
-	assert registry.dispatch(7, 2, 0, 0), "known press dispatches";
+	assert registry.dispatch(99, 2, 0, 0, 0) === false, "unknown tags are ignored";
+	assert registry.dispatch(7, 0, 12, 9, 0), "known pointer-down dispatches";
+	assert registry.dispatch(7, 2, 0, 0, 0), "known press dispatches";
 	assert got === "pointerdown;press;", got;
 	assert downX === 12 && downY === 9, "pointer coordinates reach the handler";
 	registry.remove(7);
-	assert registry.dispatch(7, 2, 0, 0) === false, "removed tags no longer dispatch";
+	assert registry.dispatch(7, 2, 0, 0, 0) === false, "removed tags no longer dispatch";
 }
 
 test "native event registry routes a scroll with React Native's payload" {
