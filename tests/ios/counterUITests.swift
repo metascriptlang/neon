@@ -809,7 +809,9 @@ final class ApisUITests: XCTestCase {
         waitLabel("vibrated ", containing: "vibrated 1")
         report("clipboard")
 
-        tap("type here")
+        let field = app.textFields.firstMatch
+        XCTAssertTrue(field.waitForExistence(timeout: 10), "the demo's text input")
+        field.tap()
         waitLabel("reader ", containing: "keyboard shown")
         tap("dismiss")
         waitLabel("reader ", containing: "keyboard hidden")
