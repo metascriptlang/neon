@@ -7,12 +7,15 @@ import {
 } from "../../src/render/host";
 import { NeonNode } from "../../src/render/node";
 import { Void, View, Text } from "../../src/components/primitives";
-import { Scene2D, Group, Rect, Sprite, Mask, Label } from "../../src/components/scene2d";
+import {
+	Scene2D, Group, Rect, Sprite, Mask, Label, TileGroup,
+} from "../../src/components/scene2d";
 import { Scene3D } from "../../src/components/scene3d";
 import { voidScope as Scope, VoidSpace } from "../../src/render/voidScope";
 import {
 	Scene2D as VoidScene2D, NodeRef, NodeId2D, DrawKind, Local2D, nodeCount, kind, local,
 	content, text, textStyle, paint, order, filter, colorMatrix, numChildren, parent, isLive,
+	TileCell, ALL_TILES,
 } from "../../../void/src/void2d/node";
 import {
 	rgba, whiteTile, camera, glowFilter, Smooth, ScaleMode, Bounds2D,
@@ -29,6 +32,13 @@ import {
 
 function translated(x: float32, y: float32): Local2D {
 	return { x: x, y: y, scaleX: 1.0, scaleY: 1.0, rotation: 0.0, pivotX: 0.0, pivotY: 0.0 };
+}
+
+function cell(x: float32): TileCell {
+	return {
+		x: x, y: 0.0, tile: whiteTile(8.0, 8.0), color: rgba(1.0, 1.0, 1.0, 1.0),
+		scaleX: 1.0, scaleY: 1.0, rotation: 0.0,
+	};
 }
 
 function mountError(node: NeonNode): string {
@@ -276,6 +286,79 @@ test "Mask omitted scroll axes retain Void defaults and resized bounds restore r
 	assert nodes[0].scroll().y === 50.0;
 	dispose(); setHeight(90.0);
 	assert !nodes[0].isLive() && !nodes[1].isLive() && !nodes[2].isLive();
+}
+
+test "TileGroup replaces cells and visible range and reuses its owned payload" {
+	let scene: VoidScene2D = null as unknown as VoidScene2D;
+	const nodes: NodeRef[] = [];
+	const [cells, setCells] = createSignal<TileCell[]>([cell(0.0), cell(8.0)]);
+	const [first, setFirst] = createSignal<int32>(0);
+	const [count, setCount] = createSignal<int32>(ALL_TILES);
+	const [shown, setShown] = createSignal(true);
+	const root = mockNode("root");
+	const dispose = render(element(<Void>
+		<Scene2D ref={(value: VoidScene2D): void => { scene = value; }}>
+			<Group local={translated(3.0, 4.0)}>
+				{Show({ when: () => shown(), children: element(
+					<TileGroup cells={cells()} first={first()} count={count()}
+						ref={(value: NodeRef): void => { nodes.push(value); }} />
+				) })}
+			</Group>
+		</Scene2D>
+	</Void>), mockHost(), root as unknown as HostNode);
+	const row = scene.payloads[nodes[0].id.index];
+	assert nodes[0].kind() === DrawKind.TileGroup;
+	assert scene.tileCells[row].length === 2 && scene.tileGroups[row].count === ALL_TILES;
+	setCells([cell(2.0), cell(10.0), cell(18.0)]); setFirst(1); setCount(1);
+	assert scene.payloads[nodes[0].id.index] === row;
+	assert scene.tileCells[row].length === 3 && scene.tileCells[row][1].x === 10.0;
+	assert scene.tileGroups[row].first === 1 && scene.tileGroups[row].count === 1;
+	setCells([]); setCount(0);
+	assert scene.tileCells[row].length === 0 && scene.tileGroups[row].count === 0;
+	setShown(false); setCells([cell(7.0)]); setShown(true);
+	assert !nodes[0].isLive() && scene.payloads[nodes[1].id.index] === row;
+	assert scene.tileCells[row].length === 1 && scene.tileCells[row][0].x === 7.0;
+	dispose(); setCells([cell(9.0)]); setFirst(0); setCount(ALL_TILES);
+	assert scene.closed && !nodes[1].isLive();
+}
+
+test "TileGroup rejects negative ranges with named errors and cleans failed mounts" {
+	let firstScene: VoidScene2D = null as unknown as VoidScene2D;
+	let countScene: VoidScene2D = null as unknown as VoidScene2D;
+	const badFirst = mountError(element(<Void>
+		<Scene2D ref={(value: VoidScene2D): void => { firstScene = value; }}>
+			<TileGroup cells={[]} first={-1} />
+		</Scene2D>
+	</Void>));
+	const badCount = mountError(element(<Void>
+		<Scene2D ref={(value: VoidScene2D): void => { countScene = value; }}>
+			<TileGroup cells={[]} count={-1} />
+		</Scene2D>
+	</Void>));
+	assert badFirst.includes("TileGroup: first/count must be nonnegative");
+	assert badCount.includes("TileGroup: first/count must be nonnegative");
+	assert firstScene.closed && countScene.closed;
+	assert firstScene.nodeCount() === 0 && countScene.nodeCount() === 0;
+}
+
+test "TileGroup defaults copy caller cells and preserve the ordinary scene parent guard" {
+	let node: NodeRef = null as unknown as NodeRef;
+	let authored: TileCell[] = [cell(1.0)];
+	const root = mockNode("root");
+	const dispose = render(element(<Void><Scene2D>
+		<TileGroup cells={authored} local={translated(3.0, 4.0)}
+			ref={(value: NodeRef): void => { node = value; }} />
+	</Scene2D></Void>), mockHost(), root as unknown as HostNode);
+	const row = node.scene.payloads[node.id.index];
+	assert node.scene.tileGroups[row].first === 0;
+	assert node.scene.tileGroups[row].count === ALL_TILES;
+	assert node.local().x === 3.0 && node.local().y === 4.0;
+	authored[0] = cell(99.0);
+	assert node.scene.tileCells[row][0].x === 1.0;
+	dispose();
+	assert !node.isLive();
+	const invalid = mountError(element(<TileGroup cells={[]} />));
+	assert invalid.includes("TileGroup: mount inside Scene2D within Void");
 }
 
 test "Scene2D mounts real render nodes without creating host elements" {

@@ -11,6 +11,11 @@ import {
 	Local2D,
 	Paint2D,
 	Order2D,
+	TileCell,
+	ALL_TILES,
+	tileGroup,
+	setTiles,
+	setRange,
 	group,
 	rect,
 	sprite,
@@ -80,6 +85,12 @@ interface SpriteProps extends NodeProps {
 	width?: Accessor<float32> | null;
 	height?: Accessor<float32> | null;
 	imageStyle?: Accessor<ImageStyle> | null;
+}
+
+interface TileGroupProps extends NodeProps {
+	cells: Accessor<TileCell[]>;
+	first?: Accessor<int32> | null;
+	count?: Accessor<int32> | null;
 }
 
 interface MaskProps extends NodeProps {
@@ -238,6 +249,24 @@ export function Scene2D(props: Scene2DProps): NeonNode {
 export function Group(props: NodeProps): NeonNode {
 	return renderNode("Group", props, (scene: VoidScene2D): NodeRef => scene.group(),
 		(node: NodeRef): void => {});
+}
+
+export function TileGroup(props: TileGroupProps): NeonNode {
+	return renderNode("TileGroup", props, (scene: VoidScene2D): NodeRef => scene.tileGroup(),
+		(node: NodeRef): void => {
+			createEffect((): void => { node.setTiles(props.cells()); });
+			if (props.first !== null || props.count !== null) {
+				createEffect((): void => {
+					const first: int32 = props.first === null ? 0 : (props.first as () => int32)();
+					const count: int32 = props.count === null ? ALL_TILES :
+						(props.count as () => int32)();
+					if (first < 0 || count < 0) {
+						throw new Error("TileGroup: first/count must be nonnegative");
+					}
+					node.setRange(first, count);
+				});
+			}
+		});
 }
 
 export function Rect(props: RectProps): NeonNode {
