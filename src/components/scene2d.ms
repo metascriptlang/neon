@@ -30,6 +30,8 @@ import {
 	setSize,
 	setBoxStyle,
 	setImageStyle,
+	setScrollBounds,
+	scrollTo,
 	setColor,
 	setTile,
 	setText,
@@ -37,7 +39,9 @@ import {
 	setTextStyle,
 } from "../../../void/src/void2d/node";
 import { create, close, setScaleMode } from "../../../void/src/void2d/scene";
-import { Color, Camera, Tile, Filter, ScaleMode, rgba } from "../../../void/src/void2d/types";
+import {
+	Color, Camera, Tile, Filter, ScaleMode, Bounds2D, rgba,
+} from "../../../void/src/void2d/types";
 import { TextStyle } from "../../../void/src/void2d/textLayout";
 import { Mat4 } from "../../../void/src/math/math3d";
 import { BoxStyle } from "../../../void/src/void2d/boxStyle";
@@ -81,6 +85,9 @@ interface SpriteProps extends NodeProps {
 interface MaskProps extends NodeProps {
 	width: Accessor<float32>;
 	height: Accessor<float32>;
+	scrollX?: Accessor<float32> | null;
+	scrollY?: Accessor<float32> | null;
+	scrollBounds?: Accessor<Bounds2D | null> | null;
 }
 
 interface LabelProps extends NodeProps {
@@ -270,7 +277,20 @@ export function Mask(props: MaskProps): NeonNode {
 	return renderNode("Mask", props,
 		(scene: VoidScene2D): NodeRef => scene.mask(props.width(), props.height()),
 		(node: NodeRef): void => {
-			createEffect((): void => { node.setSize(props.width(), props.height()); });
+			const scrolling = props.scrollX !== null || props.scrollY !== null ||
+				props.scrollBounds !== null;
+			createEffect((): void => {
+				node.setSize(props.width(), props.height());
+				if (scrolling) {
+					const bounds: Bounds2D | null = props.scrollBounds === null ? null :
+						(props.scrollBounds as () => Bounds2D | null)();
+					const x: float32 = props.scrollX === null ? 0.0 :
+						(props.scrollX as () => float32)();
+					const y: float32 = props.scrollY === null ? 0.0 :
+						(props.scrollY as () => float32)();
+					node.setScrollBounds(bounds).scrollTo(x, y);
+				}
+			});
 		});
 }
 

@@ -15,7 +15,7 @@ import {
 	content, text, textStyle, paint, order, filter, colorMatrix, numChildren, parent, isLive,
 } from "../../../void/src/void2d/node";
 import {
-	rgba, whiteTile, camera, glowFilter, Smooth, ScaleMode,
+	rgba, whiteTile, camera, glowFilter, Smooth, ScaleMode, Bounds2D,
 } from "../../../void/src/void2d/types";
 import { sceneViewMatrix } from "../../../void/src/void2d/scene";
 import { BlendMode } from "../../../void/src/gpu/state";
@@ -209,6 +209,73 @@ test "Sprite exposes remaining ObjectFit values and partial dimensions follow re
 	dispose();
 	setFit(ObjectFit.Contain); setTileHeight(40.0);
 	assert !nodes[0].isLive() && !nodes[1].isLive();
+}
+
+test "Mask scroll bounds clamp requested offsets on resize and clear without stale state" {
+	let scene: VoidScene2D = null as unknown as VoidScene2D;
+	const masks: NodeRef[] = [];
+	const [width, setWidth] = createSignal<float32>(50.0);
+	const [x, setX] = createSignal<float32>(180.0);
+	const [y, setY] = createSignal<float32>(120.0);
+	const initial: Bounds2D = { xMin: 0.0, yMin: 0.0, xMax: 200.0, yMax: 150.0 };
+	const [bounds, setBounds] = createSignal<Bounds2D | null>(initial);
+	const [shown, setShown] = createSignal(true);
+	const root = mockNode("root");
+	const dispose = render(element(<Void>
+		<Scene2D ref={(value: VoidScene2D): void => { scene = value; }}>
+			{Show({ when: () => shown(), children: element(
+				<Mask width={width()} height={40.0} scrollX={x()} scrollY={y()}
+					scrollBounds={bounds()}
+					ref={(value: NodeRef): void => { masks.push(value); }}>
+					<Rect width={200.0} height={150.0} color={rgba(1.0, 1.0, 1.0, 1.0)} />
+				</Mask>
+			) })}
+			<Mask width={10.0} height={10.0} />
+		</Scene2D>
+	</Void>), mockHost(), root as unknown as HostNode);
+	const row = scene.payloads[masks[0].id.index];
+	assert scene.scrolls.length === 1;
+	assert masks[0].scroll().bounded;
+	assert masks[0].scroll().x === 150.0 && masks[0].scroll().y === 110.0;
+	setWidth(100.0);
+	assert masks[0].scroll().x === 100.0 && masks[0].scroll().y === 110.0;
+	setBounds({ xMin: 10.0, yMin: 20.0, xMax: 250.0, yMax: 200.0 });
+	assert masks[0].scroll().x === 150.0 && masks[0].scroll().y === 120.0;
+	setBounds(null);
+	assert !masks[0].scroll().bounded;
+	assert masks[0].scroll().x === 180.0 && masks[0].scroll().y === 120.0;
+	setShown(false); setX(7.0); setY(8.0); setShown(true);
+	assert !masks[0].isLive() && scene.payloads[masks[1].id.index] === row;
+	assert masks[1].scroll().x === 7.0 && masks[1].scroll().y === 8.0;
+	dispose();
+	setX(9.0); setY(10.0); setWidth(200.0); setBounds(initial);
+	assert scene.closed && !masks[1].isLive();
+}
+
+test "Mask omitted scroll axes retain Void defaults and resized bounds restore requested offsets" {
+	const nodes: NodeRef[] = [];
+	const [height, setHeight] = createSignal<float32>(20.0);
+	const limits: Bounds2D = { xMin: 0.0, yMin: 0.0, xMax: 100.0, yMax: 100.0 };
+	const positive: Bounds2D = { xMin: 5.0, yMin: 6.0, xMax: 100.0, yMax: 100.0 };
+	const root = mockNode("root");
+	const dispose = render(element(<Void><Scene2D>
+		<Mask width={10.0} height={height()} scrollY={50.0} scrollBounds={limits}
+			ref={(value: NodeRef): void => { nodes.push(value); }} />
+		<Mask width={10.0} height={10.0} scrollX={-5.0}
+			ref={(value: NodeRef): void => { nodes.push(value); }} />
+		<Mask width={10.0} height={10.0} scrollBounds={positive}
+			ref={(value: NodeRef): void => { nodes.push(value); }} />
+	</Scene2D></Void>), mockHost(), root as unknown as HostNode);
+	assert nodes[0].scroll().x === 0.0 && nodes[0].scroll().y === 50.0;
+	assert nodes[1].scroll().x === -5.0 && nodes[1].scroll().y === 0.0;
+	assert !nodes[1].scroll().bounded;
+	assert nodes[2].scroll().x === 5.0 && nodes[2].scroll().y === 6.0;
+	setHeight(80.0);
+	assert nodes[0].scroll().y === 20.0;
+	setHeight(10.0);
+	assert nodes[0].scroll().y === 50.0;
+	dispose(); setHeight(90.0);
+	assert !nodes[0].isLive() && !nodes[1].isLive() && !nodes[2].isLive();
 }
 
 test "Scene2D mounts real render nodes without creating host elements" {
