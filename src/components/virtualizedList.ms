@@ -1,13 +1,15 @@
 import { Accessor, Signal, accessor, createSignal, batch, untrack } from "../core/signal";
 import { createEffect } from "../core/effect";
 import { onCleanup } from "../core/cleanup";
+import { createRoot, runWithOwner } from "../core/owner";
+import { getOwner } from "../core/runtime";
 import { mapArray } from "../core/array";
 import { element } from "../macros/ui/element";
 import { Show } from "../macros/ui/flow";
 import { NeonNode, regionNode } from "../render/node";
-import { Row, makeRow } from "../render/reconcile";
+import { Row, makeRow, moveRow, needsStartMarker, place, reconcileArrays } from "../render/reconcile";
 import { NeonEvent } from "../render/event";
-import { Host } from "../render/hostTypes";
+import { Host, HostNode } from "../render/hostTypes";
 import { Style, mergeStyle } from "../render/style";
 import { ScrollView, ScrollViewHandle, View, KeyboardDismissMode, KeyboardShouldPersistTaps } from "./primitives";
 import { CellMetrics, CellRange, WindowScroll, computeWindowedRenderLimits, shouldRenderWithPriority } from "./list/virtualizeUtils";
@@ -89,6 +91,26 @@ class ListCell {
 		this.make = make;
 	}
 }
+
+class GridItem {
+	row: Row;
+	dispose: () => void;
+	setIndex: (index: number) => void;
+	rowIndex: int32;
+	container: HostNode | null = null;
+
+	constructor(row: Row, dispose: () => void, setIndex: (index: number) => void, rowIndex: int32) {
+		this.row = row;
+		this.dispose = dispose;
+		this.setIndex = setIndex;
+		this.rowIndex = rowIndex;
+	}
+
+	movable(): boolean {
+		return this.row.start === null || this.row.start === this.row.end;
+	}
+}
+
 interface ViewabilityTuple<T> {
 	helper: ViewabilityHelper<T>;
 	onViewableItemsChanged: (info: ViewabilityInfo<T>) => void;
@@ -399,6 +421,9 @@ export function listEngine<T, D>(props: {
 	let itemCells = new Map<T, ListCell>();
 	let spacerCells = new Map<int32, ListCell>();
 	let gridRows = new Map<int32, ListCell>();
+	let gridItems = new Map<T, GridItem>();
+	let parking: HostNode | null = null;
+	const listOwner = getOwner();
 	let updateTimeout: number = -1;
 	let hiPriInProgress = false;
 	const [cells, setCells] = createSignal<ListCell[]>([]);
@@ -491,6 +516,8 @@ export function listEngine<T, D>(props: {
 	onCleanup((): void => {
 		if (updateTimeout >= 0) { clearTimeout(updateTimeout); }
 		for (const tuple of viewables) { tuple.helper.dispose(); }
+		for (const item of gridItems) { (gridItems.get(item) as GridItem).dispose(); }
+		gridItems = new Map<T, GridItem>();
 	});
 
 	// RN VirtualizedList._constrainToItemCount.
@@ -554,6 +581,49 @@ export function listEngine<T, D>(props: {
 			cellNode(at, (): T => item, renderItem({ item, index: at }), scheduleUpdate, (box: LayoutBox): void => {}));
 	};
 
+	const gridItem = (item: T, index: int32): GridItem => runWithOwner(listOwner, (): GridItem => createRoot((dispose: () => void): GridItem => {
+		const [at, setAt] = createSignal<number>(index as number);
+		return new GridItem(makeRow(renderItem({ item, index: at })), dispose, (next: number): void => { setAt(next); }, index / columns);
+	}));
+
+	const gridRowItems = (members: Accessor<T[]>): NeonNode => (host: Host, parent: HostNode, before: HostNode | null): void => {
+		if (needsStartMarker(parent)) { place(host, parent, host.createText(""), before); }
+		const anchor = host.createText("");
+		place(host, parent, anchor, before);
+		let shown: T[] = [];
+		let current: Row[] = [];
+		const alive = (item: T, row: Row): boolean => gridItems.has(item) && (gridItems.get(item) as GridItem).row === row;
+		createEffect((): void => {
+			const next = members();
+			untrack((): void => {
+				const rows: Row[] = [];
+				const here = new Map<T, boolean>();
+				for (const item of next) {
+					const entry = gridItems.get(item) as GridItem;
+					entry.container = parent;
+					rows.push(entry.row);
+					here.set(item, true);
+				}
+				const staying: Row[] = [];
+				for (let i = 0; i < shown.length; i += 1) {
+					if (here.has(shown[i]) || !alive(shown[i], current[i])) { staying.push(current[i]); }
+				}
+				reconcileArrays(host, parent, staying, rows, anchor);
+				shown = next;
+				current = rows;
+			});
+		});
+		onCleanup((): void => {
+			for (let i = 0; i < shown.length; i += 1) {
+				if (!alive(shown[i], current[i]) || parking === null) { continue; }
+				const entry = gridItems.get(shown[i]) as GridItem;
+				if (entry.container !== parent) { continue; }
+				moveRow(host, parking as HostNode, current[i], null);
+				entry.container = parking;
+			}
+		});
+	};
+
 	const gridRowCell = (row: int32): ListCell => {
 		const [at, setAt] = createSignal<number>(row as number);
 		const [members, setMembers] = createSignal<T[]>(rowItems(row));
@@ -575,10 +645,25 @@ export function listEngine<T, D>(props: {
 		return new ListCell(moveTo, (size: number): void => {}, (scheduleUpdate: () => void): NeonNode => {
 			const wrapper = columnWrapperStyle;
 			const rowStyle = accessor((): Style => mergeStyle({ display: "flex", flexDirection: "row" }, wrapper === null ? {} : (wrapper as Accessor<Style>)()));
-			const cells = regionNode((host: Host) => mapArray<T, Row>(members, (item: T, column: Accessor<number>): Row =>
-				makeRow(renderItem({ item, index: accessor((): number => at() * (columns as number) + column()) })), true));
-			return cellNode(at, (): T => key, View({ style: rowStyle, children: cells }), scheduleUpdate, (box: LayoutBox): void => { measuredBox = box; });
+			return cellNode(at, (): T => key, View({ style: rowStyle, children: gridRowItems(members) }), scheduleUpdate, (box: LayoutBox): void => { measuredBox = box; });
 		});
+	};
+
+	const placeGridItems = (row: int32, next: Map<T, GridItem>): void => {
+		const end = Math.min(itemTotal(), (row + 1) * columns);
+		for (let i = row * columns; i < end; i += 1) {
+			const item = itemAt(i);
+			let entry: GridItem | null = gridItems.has(item) ? gridItems.get(item) as GridItem : null;
+			if (entry !== null && (entry as GridItem).rowIndex !== row && !(entry as GridItem).movable()) { entry = null; }
+			if (entry === null) {
+				next.set(item, gridItem(item, i));
+				continue;
+			}
+			const kept = entry as GridItem;
+			kept.rowIndex = row;
+			kept.setIndex(i as number);
+			next.set(item, kept);
+		}
 	};
 
 	const checkGridItems = (row: int32, seen: Map<T, int32>): void => {
@@ -598,6 +683,7 @@ export function listEngine<T, D>(props: {
 		const nextRows = new Map<int32, ListCell>();
 		const nextSpacers = new Map<int32, ListCell>();
 		const gridSeen = new Map<T, int32>();
+		const nextGridItems = new Map<T, GridItem>();
 		if (headerCell !== null) { out.push(headerCell as ListCell); }
 		if (cellCount() === 0 && emptyCell !== null) { out.push(emptyCell as ListCell); }
 		const regions = mask.enumerateRegions();
@@ -622,6 +708,7 @@ export function listEngine<T, D>(props: {
 			for (let i = region.first; i <= region.last; i += 1) {
 				if (columns > 1) {
 					checkGridItems(i, gridSeen);
+					placeGridItems(i, nextGridItems);
 					const rowCell = gridRows.has(i) ? gridRows.get(i) as ListCell : gridRowCell(i);
 					rowCell.index = i as number;
 					rowCell.setIndex(i as number);
@@ -641,6 +728,11 @@ export function listEngine<T, D>(props: {
 			}
 		}
 		itemCells = nextItems;
+		for (const item of gridItems) {
+			const entry = gridItems.get(item) as GridItem;
+			if (!nextGridItems.has(item) || nextGridItems.get(item) !== entry) { entry.dispose(); }
+		}
+		gridItems = nextGridItems;
 		gridRows = nextRows;
 		spacerCells = nextSpacers;
 		if (footerCell !== null) { out.push(footerCell as ListCell); }
@@ -766,7 +858,11 @@ export function listEngine<T, D>(props: {
 	});
 
 	const scheduleUpdate = (): void => { scheduleCellsToRenderUpdate(false); };
-	const rows = regionNode((host: Host) => mapArray<ListCell, Row>(cells, (cell: ListCell, i: Accessor<number>): Row => makeRow(cell.make(scheduleUpdate)), false));
+	const cellRows = regionNode((host: Host) => mapArray<ListCell, Row>(cells, (cell: ListCell, i: Accessor<number>): Row => makeRow(cell.make(scheduleUpdate)), false));
+	const rows: NeonNode = columns <= 1 ? cellRows : (host: Host, parent: HostNode, before: HostNode | null): void => {
+		parking = parent;
+		cellRows(host, parent, before);
+	};
 
 	const onScroll = (e: NeonEvent): void => {
 		if (userScroll !== null) { (userScroll as (e: NeonEvent) => void)(e); }

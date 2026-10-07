@@ -3,9 +3,9 @@ import { sleepAsync } from "std/core/promise";
 import { createSignal } from "../../src/core/signal";
 import { element } from "../../src/macros/ui/element";
 import { NeonEvent, neonEvent } from "../../src/render/event";
-import { NeonNode } from "../../src/render/hostTypes";
+import { Host, NeonNode } from "../../src/render/hostTypes";
 import { HostNode, MockNode, mockNode, mockHost, render, fireEventWith } from "../../src/render/host";
-import { Text } from "../../src/components/primitives";
+import { Text, TextInput, TextInputHandle, View } from "../../src/components/primitives";
 import { FlatList, FlatListHandle, ItemLayout, ListRenderItemInfo, EndReachedInfo, ScrollToIndexFailedInfo, ViewabilityInfo, ViewToken } from "../../src/components/flatList";
 
 // Cases named after React Native's are ported from
@@ -754,7 +754,68 @@ test "numColumns lays items out in rows that carry columnWrapperStyle, and windo
 	disposeBig();
 }
 
-test "a grid keeps an item's row state while the item stays in its row and remounts only items that change rows" {
+function gridItemNodes(root: MockNode): Map<string, MockNode> {
+	const out = new Map<string, MockNode>();
+	for (const rowNode of content(root).children) {
+		for (const k of rowNode.children) {
+			const label = slotText(k);
+			if (label.length === 0 || label.indexOf("@") < 0) { continue; }
+			out.set(label.slice(1, label.indexOf("@")), k);
+		}
+	}
+	return out;
+}
+
+function keptNodes(before: Map<string, MockNode>, after: Map<string, MockNode>): string {
+	let out = "";
+	for (const id of before) {
+		if (after.has(id) && after.get(id) === before.get(id)) { out += id; }
+	}
+	return out;
+}
+
+function freeTree(n: MockNode, freed: Map<MockNode, boolean>): void {
+	freed.set(n, true);
+	for (const child of n.children) { freeTree(child, freed); }
+}
+
+// A native host frees the subtree it removes, so a removed node never comes back.
+function freeingHost(): Host {
+	const base = mockHost();
+	const freed = new Map<MockNode, boolean>();
+	return {
+		...base,
+		insertBefore: (parent: HostNode, node: HostNode, ref: HostNode | null): void => {
+			if (freed.has(node as unknown as MockNode)) { throw "insertBefore: the node was removed, and a native host freed it"; }
+			base.insertBefore(parent, node, ref);
+		},
+		removeChild: (parent: HostNode, node: HostNode): void => {
+			base.removeChild(parent, node);
+			freeTree(node as unknown as MockNode, freed);
+		},
+	};
+}
+
+class CellLog {
+	text: string = "";
+	bumps: Map<string, () => void> = new Map<string, () => void>();
+
+	add(entry: string): void { this.text = this.text.length === 0 ? entry : this.text + " " + entry; }
+	tap(id: string): void { (this.bumps.get(id) as () => void)(); }
+}
+
+function statefulCell(log: CellLog): (info: ListRenderItemInfo<Item>) => NeonNode {
+	return (info: ListRenderItemInfo<Item>): NeonNode => {
+		const id = info.item.id;
+		const [taps, setTaps] = createSignal<number>(0);
+		log.add("+" + id);
+		onCleanup((): void => { log.add("-" + id); });
+		log.bumps.set(id, (): void => { setTaps(taps() + 1); });
+		return element(<Text>{"[" + id + "@" + info.index().toString() + "#" + taps().toString() + "]"}</Text>);
+	};
+}
+
+test "a grid keeps an item's state and host node when regrouping moves it to another row" {
 	const root: MockNode = mockNode("root");
 	const all = items(5);
 	const [data, setData] = createSignal<Item[]>([all[0], all[1], all[2], all[3]]);
@@ -769,9 +830,139 @@ test "a grid keeps an item's row state while the item stays in its row and remou
 	assert gridRows(root) === "[k0@0][k1@1]|[k2@2][k3@3]|[k4@4]" && mounts === "k0k1k2k3k4", "append mounts only the new item: " + mounts;
 	setData([all[1], all[0], all[2], all[3], all[4]]);
 	assert gridRows(root) === "[k1@0][k0@1]|[k2@2][k3@3]|[k4@4]" && mounts === "k0k1k2k3k4", "a reorder inside a row moves, it does not remount: " + mounts;
+	const before = gridItemNodes(root);
 	setData([all[0], all[2], all[1], all[3], all[4]]);
 	assert gridRows(root) === "[k0@0][k2@1]|[k1@2][k3@3]|[k4@4]", gridRows(root);
-	assert mounts === "k0k1k2k3k4k1k2" || mounts === "k0k1k2k3k4k2k1", "only the two items that changed rows remount: " + mounts;
+	assert mounts === "k0k1k2k3k4", "items that change rows move, they do not remount: " + mounts;
+	assert keptNodes(before, gridItemNodes(root)) === "k1k0k2k3k4", "every item kept its host node: " + keptNodes(before, gridItemNodes(root));
+	dispose();
+}
+
+test "a prepend moves every grid item to its next column without remounting it, and its index follows" {
+	const root: MockNode = mockNode("root");
+	const all = items(6);
+	const [data, setData] = createSignal<Item[]>([all[0], all[1], all[2], all[3], all[4]]);
+	const log = new CellLog();
+	const dispose = render(element(<FlatList data={data()} numColumns={2} getItemLayout={tall10}
+		renderItem={statefulCell(log)} />), freeingHost(), root as unknown as HostNode);
+	log.tap("k1");
+	log.tap("k4");
+	assert gridRows(root) === "[k0@0#0][k1@1#1]|[k2@2#0][k3@3#0]|[k4@4#1]", gridRows(root);
+	const before = gridItemNodes(root);
+	log.text = "";
+	setData([all[5], all[0], all[1], all[2], all[3], all[4]]);
+	assert gridRows(root) === "[k5@0#0][k0@1#0]|[k1@2#1][k2@3#0]|[k3@4#0][k4@5#1]", gridRows(root);
+	assert log.text === "+k5", "only the new item mounts: " + log.text;
+	assert keptNodes(before, gridItemNodes(root)) === "k0k1k2k3k4", keptNodes(before, gridItemNodes(root));
+	log.tap("k1");
+	assert gridRows(root) === "[k5@0#0][k0@1#0]|[k1@2#2][k2@3#0]|[k3@4#0][k4@5#1]", "the moved item's own signal still drives it: " + gridRows(root);
+	dispose();
+	assert log.text.split("-").length === 7, "disposing the list disposes every item once: " + log.text;
+}
+
+test "removing an item moves the rest up rows without remounting them and disposes only the removed item" {
+	const root: MockNode = mockNode("root");
+	const all = items(5);
+	const [data, setData] = createSignal<Item[]>([all[0], all[1], all[2], all[3], all[4]]);
+	const log = new CellLog();
+	const dispose = render(element(<FlatList data={data()} numColumns={2} getItemLayout={tall10}
+		renderItem={statefulCell(log)} />), freeingHost(), root as unknown as HostNode);
+	log.tap("k4");
+	const before = gridItemNodes(root);
+	log.text = "";
+	setData([all[1], all[2], all[3], all[4]]);
+	assert gridRows(root) === "[k1@0#0][k2@1#0]|[k3@2#0][k4@3#1]", "the last row's item moved out of its disposed row: " + gridRows(root);
+	assert log.text === "-k0", log.text;
+	assert keptNodes(before, gridItemNodes(root)) === "k1k2k3k4", keptNodes(before, gridItemNodes(root));
+	setData([all[4], all[3]]);
+	assert gridRows(root) === "[k4@0#1][k3@1#0]", gridRows(root);
+	assert log.text === "-k0 -k1 -k2" || log.text === "-k0 -k2 -k1", log.text;
+	dispose();
+}
+
+test "a reorder that keeps the column count moves items across rows without remounting them" {
+	const root: MockNode = mockNode("root");
+	const all = items(5);
+	const [data, setData] = createSignal<Item[]>([all[0], all[1], all[2], all[3], all[4]]);
+	const log = new CellLog();
+	const dispose = render(element(<FlatList data={data()} numColumns={2} getItemLayout={tall10}
+		renderItem={statefulCell(log)} />), freeingHost(), root as unknown as HostNode);
+	log.tap("k0");
+	const before = gridItemNodes(root);
+	log.text = "";
+	setData([all[4], all[3], all[2], all[1], all[0]]);
+	assert gridRows(root) === "[k4@0#0][k3@1#0]|[k2@2#0][k1@3#0]|[k0@4#1]", gridRows(root);
+	setData([all[1], all[3], all[0], all[4], all[2]]);
+	assert gridRows(root) === "[k1@0#0][k3@1#0]|[k0@2#1][k4@3#0]|[k2@4#0]", gridRows(root);
+	assert log.text === "", "nothing remounts: " + log.text;
+	assert keptNodes(before, gridItemNodes(root)) === "k0k1k2k3k4", keptNodes(before, gridItemNodes(root));
+	dispose();
+}
+
+test "a grid item pushed out of the rendered rows is disposed and mounts again when it returns" {
+	const root: MockNode = mockNode("root");
+	const all = items(101);
+	const [data, setData] = createSignal<Item[]>(all.slice(0, 100));
+	const log = new CellLog();
+	const dispose = render(element(<FlatList data={data()} numColumns={2} initialNumToRender={3} getItemLayout={tall10}
+		renderItem={statefulCell(log)} />), freeingHost(), root as unknown as HostNode);
+	assert gridRows(root) === "[k0@0#0][k1@1#0]|[k2@2#0][k3@3#0]|[k4@4#0][k5@5#0]|sp470", gridRows(root);
+	log.tap("k5");
+	log.text = "";
+	const prepended: Item[] = [all[100]];
+	for (const item of all.slice(0, 100)) { prepended.push(item); }
+	setData(prepended);
+	assert gridRows(root) === "[k100@0#0][k0@1#0]|[k1@2#0][k2@3#0]|[k3@4#0][k4@5#0]|sp480", gridRows(root);
+	assert log.text === "+k100 -k5", log.text;
+	log.text = "";
+	setData(all.slice(0, 100));
+	assert gridRows(root) === "[k0@0#0][k1@1#0]|[k2@2#0][k3@3#0]|[k4@4#0][k5@5#0]|sp470", "k5 comes back with fresh state: " + gridRows(root);
+	assert log.text === "-k100 +k5" || log.text === "+k5 -k100", log.text;
+	dispose();
+}
+
+test "a TextInput in a grid cell keeps its node and its focused state when a prepend moves it to another row" {
+	const root: MockNode = mockNode("root");
+	const all = items(4);
+	const [data, setData] = createSignal<Item[]>([all[0], all[1], all[2]]);
+	const inputs = new Map<string, MockNode>();
+	const dispose = render(element(<FlatList data={data()} numColumns={2} getItemLayout={tall10}
+		renderItem={(info: ListRenderItemInfo<Item>): NeonNode => {
+			const id = info.item.id;
+			const [focused, setFocused] = createSignal<boolean>(false);
+			return element(<View>
+				<TextInput ref={(h: TextInputHandle): void => { inputs.set(id, h.node as unknown as MockNode); }}
+					onFocus={(e: NeonEvent): void => { setFocused(true); }} onBlur={(e: NeonEvent): void => { setFocused(false); }} />
+				<Text>{"[" + id + "@" + info.index().toString() + (focused() ? " focused]" : "]")}</Text>
+			</View>);
+		}} />), mockHost(), root as unknown as HostNode);
+	const input = inputs.get("k1") as MockNode;
+	fireEventWith(input, "onFocus", neonEvent("focus"));
+	assert gridRows(root) === "[k0@0][k1@1 focused]|[k2@2]", gridRows(root);
+	setData([all[3], all[0], all[1], all[2]]);
+	assert gridRows(root) === "[k3@0][k0@1]|[k1@2 focused][k2@3]", gridRows(root);
+	assert inputs.get("k1") === input && content(root).children[1].children[0].children[0] === input, "the focused field is the same host node, now in row 1";
+	dispose();
+}
+
+function pairCell(info: ListRenderItemInfo<Item>): NeonNode {
+	return element(<><Text>{"[" + info.item.id + "@" + info.index().toString() + "]"}</Text><Text>{"*"}</Text></>);
+}
+
+test "a grid item that places more than one host node remounts when it changes rows, as React Native does" {
+	const root: MockNode = mockNode("root");
+	const all = items(4);
+	const [data, setData] = createSignal<Item[]>([all[0], all[1], all[2]]);
+	let mounts = "";
+	const dispose = render(element(<FlatList data={data()} numColumns={2} getItemLayout={tall10}
+		renderItem={(info: ListRenderItemInfo<Item>): NeonNode => {
+			mounts += info.item.id;
+			return pairCell(info);
+		}} />), mockHost(), root as unknown as HostNode);
+	assert gridRows(root) === "[k0@0]*[k1@1]*|[k2@2]*", gridRows(root);
+	setData([all[3], all[0], all[1], all[2]]);
+	assert gridRows(root) === "[k3@0]*[k0@1]*|[k1@2]*[k2@3]*", gridRows(root);
+	assert mounts === "k0k1k2k3k1" || mounts === "k0k1k2k1k3", "k0 and k2 keep their rows; k1 changes rows and remounts: " + mounts;
 	dispose();
 }
 
