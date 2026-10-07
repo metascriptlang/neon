@@ -10,6 +10,9 @@ import {
 	ListRenderItemInfo,
 	ScrollToIndexFailedInfo,
 	StartReachedInfo,
+	ViewabilityConfig,
+	ViewabilityConfigCallbackPair,
+	ViewabilityInfo,
 	listEngine,
 } from "./virtualizedList";
 
@@ -23,6 +26,10 @@ export {
 	ScrollToIndexOptions,
 	ScrollToOffsetOptions,
 	StartReachedInfo,
+	ViewabilityConfig,
+	ViewabilityConfigCallbackPair,
+	ViewabilityInfo,
+	ViewToken,
 } from "./virtualizedList";
 
 export function FlatList<T>(props: {
@@ -60,6 +67,9 @@ export function FlatList<T>(props: {
 	pagingEnabled?: Accessor<boolean> | null;
 	keyboardDismissMode?: Accessor<KeyboardDismissMode> | null;
 	keyboardShouldPersistTaps?: Accessor<KeyboardShouldPersistTaps> | null;
+	onViewableItemsChanged?: ((info: ViewabilityInfo<T>) => void) | null;
+	viewabilityConfig?: Accessor<ViewabilityConfig> | null;
+	viewabilityConfigCallbackPairs?: Accessor<ViewabilityConfigCallbackPair<T>[]> | null;
 	onScrollBeginDrag?: ((e: NeonEvent) => void) | null;
 	onScrollEndDrag?: ((e: NeonEvent) => void) | null;
 	onMomentumScrollBegin?: ((e: NeonEvent) => void) | null;

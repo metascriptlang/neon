@@ -1,9 +1,10 @@
 import { createSignal } from "../../src/core/signal";
 import { element } from "../../src/macros/ui/element";
 import { NeonNode } from "../../src/render/hostTypes";
-import { HostNode, MockNode, mockNode, mockHost, render } from "../../src/render/host";
+import { HostNode, MockNode, mockNode, mockHost, render, fireEventWith } from "../../src/render/host";
+import { NeonEvent, neonEvent } from "../../src/render/event";
 import { Text } from "../../src/components/primitives";
-import { VirtualizedList, FlatListHandle, ItemLayout, ListRenderItemInfo } from "../../src/components/virtualizedList";
+import { VirtualizedList, FlatListHandle, ItemLayout, ListRenderItemInfo, ViewabilityInfo } from "../../src/components/virtualizedList";
 
 // Cases named after React Native's are ported from
 // packages/virtualized-lists/Lists/__tests__/VirtualizedList-test.js.
@@ -128,4 +129,41 @@ test "VirtualizedList names itself when getItem returns one item for two rows" {
 			renderItem={itemText} />), mockHost(), root as unknown as HostNode);
 	});
 	assert msg.includes("VirtualizedList: the same item is at rows 0 and 1"), msg;
+}
+
+function scrollTo(y: number): NeonEvent {
+	const e = neonEvent("scroll");
+	e.y = y;
+	e.width = 300;
+	e.height = 600;
+	e.contentWidth = 300;
+	e.contentHeight = 2400;
+	return e;
+}
+
+function tall800(data: Item[], index: number): ItemLayout {
+	return { length: 800, offset: 800 * index, index };
+}
+
+test "returns the viewableItems correctly in the onViewableItemsChanged callback after changing the data" {
+	const root: MockNode = mockNode("root");
+	const first: Item[] = [{ key: "i1" }, { key: "i2" }, { key: "i3" }];
+	const [data, setData] = createSignal<Item[]>(first);
+	const calls: string[] = [];
+	const dispose = render(element(<VirtualizedList data={data()} getItemLayout={tall800}
+		getItem={(d: Item[], index: number): Item => d[index]}
+		getItemCount={(d: Item[]): number => d.length}
+		onViewableItemsChanged={(info: ViewabilityInfo<Item>): void => {
+			let seen = "";
+			for (const token of info.viewableItems) { seen += token.item.key + (token.isViewable ? "+" : "-"); }
+			calls.push(seen);
+		}}
+		renderItem={itemText} />), mockHost(), root as unknown as HostNode);
+	fireEventWith(root.children[0], "onScrollBeginDrag", scrollTo(0));
+	fireEventWith(root.children[0], "onScroll", scrollTo(0));
+	assert calls.length === 1 && calls[0] === "i1+", calls.join("|");
+	setData([{ key: "i4" }, first[0], first[1], first[2]]);
+	fireEventWith(root.children[0], "onScroll", scrollTo(100));
+	assert calls.length === 2 && calls[1] === "i4+", "a data change resets the viewable indices: " + calls.join("|");
+	dispose();
 }

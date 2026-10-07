@@ -37,5 +37,6 @@ export { View, Text, Pressable, TextInput, ScrollView, ScrollViewHandle, Keyboar
 export {
 	FlatList, FlatListHandle, ListRenderItemInfo, ItemLayout, EndReachedInfo, StartReachedInfo,
 	ScrollToIndexFailedInfo, ScrollToIndexOptions, ScrollToOffsetOptions, ScrollToEndOptions,
+	ViewabilityConfig, ViewabilityConfigCallbackPair, ViewabilityInfo, ViewToken,
 } from "./components/flatList";
 export { VirtualizedList } from "./components/virtualizedList";

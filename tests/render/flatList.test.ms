@@ -6,7 +6,7 @@ import { NeonEvent, neonEvent } from "../../src/render/event";
 import { NeonNode } from "../../src/render/hostTypes";
 import { HostNode, MockNode, mockNode, mockHost, render, fireEventWith } from "../../src/render/host";
 import { Text } from "../../src/components/primitives";
-import { FlatList, FlatListHandle, ItemLayout, ListRenderItemInfo, EndReachedInfo, ScrollToIndexFailedInfo } from "../../src/components/flatList";
+import { FlatList, FlatListHandle, ItemLayout, ListRenderItemInfo, EndReachedInfo, ScrollToIndexFailedInfo, ViewabilityInfo, ViewToken } from "../../src/components/flatList";
 
 // Cases named after React Native's are ported from
 // packages/virtualized-lists/Lists/__tests__/VirtualizedList-test.js; their expected content is
@@ -825,5 +825,77 @@ test "a measured grid row keeps its measured frame when regrouping changes the r
 	setData([all[6], all[1], all[0], all[3], all[2], all[5]]);
 	handles[0].scrollToIndex({ index: 2, animated: false });
 	assert scrollView(root).scrollY === 40, "the row kept its frame under its new first item: " + scrollView(root).scrollY.toString();
+	dispose();
+}
+
+function tokens(list: ViewToken<Item>[]): string {
+	let out = "";
+	for (const token of list) { out += `${token.item.id}@${token.index}${token.isViewable ? "+" : "-"} `; }
+	return out.trim();
+}
+
+function viewabilityLog(calls: string[]): (info: ViewabilityInfo<Item>) => void {
+	return (info: ViewabilityInfo<Item>): void => { calls.push(tokens(info.viewableItems) + " / " + tokens(info.changed)); };
+}
+
+test "a literal viewabilityConfig with only itemVisiblePercentThreshold reports rows at least half visible" {
+	const root: MockNode = mockNode("root");
+	const calls: string[] = [];
+	const dispose = render(element(<FlatList data={items(10)} getItemLayout={tall50}
+		viewabilityConfig={{ itemVisiblePercentThreshold: 50 }} onViewableItemsChanged={viewabilityLog(calls)}
+		renderItem={row} />), mockHost(), root as unknown as HostNode);
+	fireEventWith(scrollView(root), "onScroll", scrollEvent(0, 120, 500));
+	assert calls.length === 1 && calls[0] === "k0@0+ k1@1+ / k0@0+ k1@1+", calls.join("|");
+	fireEventWith(scrollView(root), "onScroll", scrollEvent(30, 120, 500));
+	assert calls.length === 2 && calls[1] === "k1@1+ k2@2+ / k2@2+ k0@0-", calls.join("|");
+	fireEventWith(scrollView(root), "onScroll", scrollEvent(31, 120, 500));
+	assert calls.length === 2, "an unchanged viewable set is silent";
+	dispose();
+}
+
+test "viewabilityConfigCallbackPairs notify every pair under its own config" {
+	const root: MockNode = mockNode("root");
+	const area: string[] = [];
+	const item: string[] = [];
+	const dispose = render(element(<FlatList data={items(10)} getItemLayout={tall50}
+		viewabilityConfigCallbackPairs={[
+			{ viewabilityConfig: { viewAreaCoveragePercentThreshold: 0 }, onViewableItemsChanged: viewabilityLog(area) },
+			{ viewabilityConfig: { itemVisiblePercentThreshold: 100 }, onViewableItemsChanged: viewabilityLog(item) },
+		]}
+		renderItem={row} />), mockHost(), root as unknown as HostNode);
+	fireEventWith(scrollView(root), "onScroll", scrollEvent(10, 100, 500));
+	assert area.length === 1 && area[0].startsWith("k0@0+ k1@1+ k2@2+ /"), area.join("|");
+	assert item.length === 1 && item[0].startsWith("k1@1+ /"), item.join("|");
+	dispose();
+	const both = caught((): void => {
+		render(element(<FlatList data={items(3)} getItemLayout={tall50} onViewableItemsChanged={viewabilityLog(area)}
+			viewabilityConfigCallbackPairs={[{ viewabilityConfig: { viewAreaCoveragePercentThreshold: 0 }, onViewableItemsChanged: viewabilityLog(item) }]}
+			renderItem={row} />), mockHost(), mockNode("root") as unknown as HostNode);
+	});
+	assert both.includes("does not support setting both onViewableItemsChanged and viewabilityConfigCallbackPairs"), both;
+}
+
+test "waitForInteraction holds viewability until a drag or recordInteraction" {
+	const root: MockNode = mockNode("root");
+	const calls: string[] = [];
+	const handles: FlatListHandle[] = [];
+	const dispose = render(element(<FlatList data={items(10)} getItemLayout={tall50}
+		viewabilityConfig={{ viewAreaCoveragePercentThreshold: 0, waitForInteraction: true }}
+		onViewableItemsChanged={viewabilityLog(calls)} ref={(h: FlatListHandle): void => { handles.push(h); }}
+		renderItem={row} />), mockHost(), root as unknown as HostNode);
+	fireEventWith(scrollView(root), "onScroll", scrollEvent(0, 100, 500));
+	assert calls.length === 0, "a scroll sample is not an interaction";
+	handles[0].recordInteraction();
+	assert calls.length === 1 && calls[0].startsWith("k0@0+ k1@1+ /"), calls.join("|");
+	dispose();
+}
+
+test "a grid reports one viewability token per item, indexed in the data" {
+	const root: MockNode = mockNode("root");
+	const calls: string[] = [];
+	const dispose = render(element(<FlatList data={items(7)} numColumns={2} getItemLayout={tall50}
+		onViewableItemsChanged={viewabilityLog(calls)} renderItem={cellText} />), mockHost(), root as unknown as HostNode);
+	fireEventWith(scrollView(root), "onScroll", scrollEvent(50, 100, 200));
+	assert calls.length === 1 && calls[0] === "k2@2+ k3@3+ k4@4+ k5@5+ / k2@2+ k3@3+ k4@4+ k5@5+", calls.join("|");
 	dispose();
 }

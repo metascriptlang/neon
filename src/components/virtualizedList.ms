@@ -14,6 +14,15 @@ import { CellMetrics, CellRange, WindowScroll, computeWindowedRenderLimits, shou
 import { CellRenderMask } from "./list/cellRenderMask";
 import { CellSource, LayoutBox, ListMetricsAggregator, ListOrientation } from "./list/listMetrics";
 import { stickyTranslation } from "./list/sticky";
+import {
+	ViewabilityConfig,
+	ViewabilityConfigCallbackPair,
+	ViewabilityHelper,
+	ViewabilityInfo,
+	ViewToken,
+} from "./list/viewability";
+
+export { ViewabilityConfig, ViewabilityConfigCallbackPair, ViewabilityInfo, ViewToken } from "./list/viewability";
 
 export interface ListRenderItemInfo<T> {
 	item: T;
@@ -73,6 +82,11 @@ class ListCell {
 		this.make = make;
 	}
 }
+interface ViewabilityTuple<T> {
+	helper: ViewabilityHelper<T>;
+	onViewableItemsChanged: (info: ViewabilityInfo<T>) => void;
+}
+
 class StickyState {
 	offset: Signal<number> = new Signal<number>(0);
 	viewport: Signal<number> = new Signal<number>(0);
@@ -91,8 +105,9 @@ export class FlatListHandle {
 	private horizontal: () => boolean;
 	private unmeasured: (index: number) => boolean;
 	private footerLength: () => number;
+	private interaction: () => void;
 
-	constructor(scroll: ScrollViewHandle, frameOf: (index: number) => CellMetrics, offsetOf: (index: number) => number, count: () => number, viewport: () => number, horizontal: () => boolean, unmeasured: (index: number) => boolean, footerLength: () => number) {
+	constructor(scroll: ScrollViewHandle, frameOf: (index: number) => CellMetrics, offsetOf: (index: number) => number, count: () => number, viewport: () => number, horizontal: () => boolean, unmeasured: (index: number) => boolean, footerLength: () => number, interaction: () => void) {
 		this.scroll = scroll;
 		this.frameOf = frameOf;
 		this.offsetOf = offsetOf;
@@ -101,6 +116,7 @@ export class FlatListHandle {
 		this.horizontal = horizontal;
 		this.unmeasured = unmeasured;
 		this.footerLength = footerLength;
+		this.interaction = interaction;
 	}
 
 	private moveTo(offset: number, animated: boolean): void {
@@ -123,6 +139,10 @@ export class FlatListHandle {
 		const frame = this.frameOf(Math.floor(index));
 		const offset = Math.max(0, this.offsetOf(index) - viewPosition * (this.viewport() - frame.length)) - viewOffset;
 		this.moveTo(offset, animated);
+	}
+
+	recordInteraction(): void {
+		this.interaction();
 	}
 
 	scrollToEnd(options: ScrollToEndOptions): void {
@@ -169,6 +189,9 @@ export function VirtualizedList<T, D>(props: {
 	pagingEnabled?: Accessor<boolean> | null;
 	keyboardDismissMode?: Accessor<KeyboardDismissMode> | null;
 	keyboardShouldPersistTaps?: Accessor<KeyboardShouldPersistTaps> | null;
+	onViewableItemsChanged?: ((info: ViewabilityInfo<T>) => void) | null;
+	viewabilityConfig?: Accessor<ViewabilityConfig> | null;
+	viewabilityConfigCallbackPairs?: Accessor<ViewabilityConfigCallbackPair<T>[]> | null;
 	onScrollBeginDrag?: ((e: NeonEvent) => void) | null;
 	onScrollEndDrag?: ((e: NeonEvent) => void) | null;
 	onMomentumScrollBegin?: ((e: NeonEvent) => void) | null;
@@ -218,6 +241,9 @@ export function listEngine<T, D>(props: {
 	pagingEnabled?: Accessor<boolean> | null;
 	keyboardDismissMode?: Accessor<KeyboardDismissMode> | null;
 	keyboardShouldPersistTaps?: Accessor<KeyboardShouldPersistTaps> | null;
+	onViewableItemsChanged?: ((info: ViewabilityInfo<T>) => void) | null;
+	viewabilityConfig?: Accessor<ViewabilityConfig> | null;
+	viewabilityConfigCallbackPairs?: Accessor<ViewabilityConfigCallbackPair<T>[]> | null;
 	onScrollBeginDrag?: ((e: NeonEvent) => void) | null;
 	onScrollEndDrag?: ((e: NeonEvent) => void) | null;
 	onMomentumScrollBegin?: ((e: NeonEvent) => void) | null;
@@ -256,6 +282,12 @@ export function listEngine<T, D>(props: {
 	const columnsNow = (): int32 => columnsProp === null ? 1 : (columnsProp as Accessor<number>)() as int32;
 	const columns: int32 = untrack(columnsNow);
 	const cellCount = (): int32 => current === null ? 0 : (columns > 1 ? (itemTotal() + columns - 1) / columns : itemTotal());
+	const rowItems = (row: int32): T[] => {
+		const out: T[] = [];
+		const end = Math.min(itemTotal(), (row + 1) * columns);
+		for (let i = row * columns; i < end; i += 1) { out.push(itemAt(i)); }
+		return out;
+	};
 	if (columnsProp !== null || columnWrapperStyle !== null) {
 		createEffect((): void => {
 			const next = columnsNow();
@@ -359,6 +391,47 @@ export function listEngine<T, D>(props: {
 		warnedInitialScrollIndex = true;
 		console.warn(`initialScrollIndex "${index}" is not valid (list has ${n} items)`);
 	};
+	const viewables: ViewabilityTuple<T>[] = [];
+	const itemTokens = (rowTokens: ViewToken<T>[]): ViewToken<T>[] => {
+		const out: ViewToken<T>[] = [];
+		for (const token of rowTokens) {
+			const row = token.index as int32;
+			const members = row < cellCount() && itemAt(row * columns) === token.item ? rowItems(row) : [token.item];
+			for (let i = 0; i < members.length; i += 1) {
+				out.push({ item: members[i], index: (row * columns + (i as int32)) as number, isViewable: token.isViewable });
+			}
+		}
+		return out;
+	};
+	const addViewability = (config: ViewabilityConfig | null, callback: (info: ViewabilityInfo<T>) => void): void => {
+		const notify = columns <= 1 ? callback : (info: ViewabilityInfo<T>): void => {
+			callback({ viewableItems: itemTokens(info.viewableItems), changed: itemTokens(info.changed), viewabilityConfig: info.viewabilityConfig });
+		};
+		const helper = config === null ? new ViewabilityHelper<T>() : new ViewabilityHelper<T>(config as ViewabilityConfig);
+		viewables.push({ helper, onViewableItemsChanged: notify });
+	};
+	const pairsProp = props.viewabilityConfigCallbackPairs;
+	const changedProp = props.onViewableItemsChanged;
+	if (pairsProp !== null && changedProp !== null) {
+		throw `${who} does not support setting both onViewableItemsChanged and viewabilityConfigCallbackPairs.`;
+	}
+	if (pairsProp !== null) {
+		const pairs = untrack((): ViewabilityConfigCallbackPair<T>[] => (pairsProp as Accessor<ViewabilityConfigCallbackPair<T>[]>)());
+		for (const pair of pairs) { addViewability(pair.viewabilityConfig, pair.onViewableItemsChanged); }
+	} else if (changedProp !== null) {
+		const configProp = props.viewabilityConfig;
+		const config = configProp === null ? null : untrack((): ViewabilityConfig => (configProp as Accessor<ViewabilityConfig>)());
+		addViewability(config, changedProp as (info: ViewabilityInfo<T>) => void);
+	}
+	const updateViewableItems = (): void => {
+		if (pendingScrollUpdateCount > 0 || current === null) { return; }
+		for (const tuple of viewables) {
+			tuple.helper.update(source, metrics, offset, visibleLength, cellsAroundViewport, tuple.onViewableItemsChanged);
+		}
+	};
+	const recordInteraction = (): void => {
+		for (const tuple of viewables) { tuple.helper.recordInteraction(); }
+	};
 	const fixedCell = (node: NeonNode): ListCell => new ListCell((index: number): void => {}, (size: number): void => {}, (scheduleUpdate: () => void): NeonNode => node);
 	const header = props.ListHeaderComponent;
 	const footer = props.ListFooterComponent;
@@ -384,6 +457,7 @@ export function listEngine<T, D>(props: {
 	const emptyCell = empty === null ? null : fixedCell(View({ children: empty, style: slotStyle(null) }));
 	onCleanup((): void => {
 		if (updateTimeout >= 0) { clearTimeout(updateTimeout); }
+		for (const tuple of viewables) { tuple.helper.dispose(); }
 	});
 
 	// RN VirtualizedList._constrainToItemCount.
@@ -424,6 +498,7 @@ export function listEngine<T, D>(props: {
 				const state = sticky as StickyState;
 				state.layoutVersion.set(state.layoutVersion.peek() + 1);
 			}
+			updateViewableItems();
 		};
 		const style = accessor((): Style => ({
 			...inversionStyle(),
@@ -438,13 +513,6 @@ export function listEngine<T, D>(props: {
 		const [at, setAt] = createSignal<number>(index);
 		return new ListCell((next: number): void => { setAt(next); }, (size: number): void => {}, (scheduleUpdate: () => void): NeonNode =>
 			cellNode(at, (): T => item, renderItem({ item, index: at }), scheduleUpdate, (box: LayoutBox): void => {}));
-	};
-
-	const rowItems = (row: int32): T[] => {
-		const out: T[] = [];
-		const end = Math.min(itemTotal(), (row + 1) * columns);
-		for (let i = row * columns; i < end; i += 1) { out.push(itemAt(i)); }
-		return out;
 	};
 
 	const gridRowCell = (row: int32): ListCell => {
@@ -586,6 +654,7 @@ export function listEngine<T, D>(props: {
 	};
 
 	const updateCellsToRender = (): boolean => {
+		updateViewableItems();
 		const n = cellCount();
 		const previous = cellsAroundViewport;
 		cellsAroundViewport = adjustCellsAroundViewport(n);
@@ -649,7 +718,10 @@ export function listEngine<T, D>(props: {
 			seenCount = n;
 			renderedMask = renderMask(n);
 			batch((): void => { setCells(buildCells(renderedMask as CellRenderMask)); });
-			if (!first) { scheduleCellsToRenderUpdate(true); }
+			if (!first) {
+				for (const tuple of viewables) { tuple.helper.resetViewableIndices(); }
+				scheduleCellsToRenderUpdate(true);
+			}
 		});
 	});
 
@@ -670,6 +742,7 @@ export function listEngine<T, D>(props: {
 		metrics.notifyListContentLayout(orientation(), e.contentWidth, e.contentHeight);
 		maybeCallOnEdgeReached(cellCount());
 		if (pendingScrollUpdateCount > 0) { pendingScrollUpdateCount -= 1; }
+		updateViewableItems();
 		scheduleCellsToRenderUpdate(false);
 	};
 	const onLayout = (e: NeonEvent): void => {
@@ -687,6 +760,11 @@ export function listEngine<T, D>(props: {
 		if (changed !== null) { (changed as (width: number, height: number) => void)(width, height); }
 		scheduleCellsToRenderUpdate(false);
 		maybeCallOnEdgeReached(cellCount());
+	};
+	const userDragBegin = props.onScrollBeginDrag;
+	const onScrollBeginDrag = viewables.length === 0 ? userDragBegin : (e: NeonEvent): void => {
+		recordInteraction();
+		if (userDragBegin !== null) { (userDragBegin as (e: NeonEvent) => void)(e); }
 	};
 	const scrollRef = (h: ScrollViewHandle): void => {
 		handle = new FlatListHandle(
@@ -710,6 +788,10 @@ export function listEngine<T, D>(props: {
 				return true;
 			},
 			(): number => footerLength,
+			(): void => {
+				recordInteraction();
+				updateViewableItems();
+			},
 		);
 		if (userRef !== null) { (userRef as (handle: FlatListHandle) => void)(handle as FlatListHandle); }
 	};
@@ -722,7 +804,7 @@ export function listEngine<T, D>(props: {
 		horizontal: props.horizontal, scrollEnabled: props.scrollEnabled,
 		showsHorizontalScrollIndicator: props.showsHorizontalScrollIndicator, showsVerticalScrollIndicator: props.showsVerticalScrollIndicator,
 		pagingEnabled: props.pagingEnabled, keyboardDismissMode: props.keyboardDismissMode, keyboardShouldPersistTaps: props.keyboardShouldPersistTaps,
-		onScrollBeginDrag: props.onScrollBeginDrag, onScrollEndDrag: props.onScrollEndDrag,
+		onScrollBeginDrag, onScrollEndDrag: props.onScrollEndDrag,
 		onMomentumScrollBegin: props.onMomentumScrollBegin, onMomentumScrollEnd: props.onMomentumScrollEnd,
 		onRefresh: props.onRefresh, refreshing: props.refreshing,
 	});
