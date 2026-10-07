@@ -47,6 +47,12 @@ public final class Input extends EditText {
 
 	public void setNeonTag(int value) { tag = value; }
 
+	@Override public boolean onKeyUp(int keyCode, KeyEvent event) {
+		boolean submitReleaseMustNotAdvanceFocus = (keyCode == KeyEvent.KEYCODE_ENTER || keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER) && !multiline;
+		if (submitReleaseMustNotAdvanceFocus) return true;
+		return super.onKeyUp(keyCode, event);
+	}
+
 	@Override protected void onSelectionChanged(int start, int end) {
 		super.onSelectionChanged(start, end);
 		if (!writing && tag != 0) Props.control(tag, 9, start + "," + end, 0, 0);
