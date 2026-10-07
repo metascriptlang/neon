@@ -213,6 +213,16 @@ Its `run out/scene3dConsumer.ms` reports only the two Void const-stack errors.
 The macro diagnostics disappear on this candidate, but it is not installed;
 these are build-time findings, not runtime acceptance or a land/sync authorization.
 
+Later pinned remeasurement on installed `0d83c4867` / Void `d255ffb`, Neon `89c9012`:
+the original contract has 468 errors (-2 const-stack errors), Light one (-2).
+Matching r8 (binary `356b1a0fd75d`, source/support `f65616348`) now runs the original
+Light consumer: nodes=4, group.x=7, light.power=3, camera=640x480; disposal closes
+scene/context and leaves zero nodes. Its full 16-case contract still stops before
+runtime on one CameraProjection union-signal layout error. Raw 2D core is now
+written and its twelve-case JSX contract runs on that candidate; installed has nine
+known enum-macro errors. See `voidComponents.md` for coverage and proof limits.
+No full gate/frame/pixel acceptance follows; no source land or deployment is claimed.
+
 A Void area speaks two vocabularies, and the author always knows which one they are in: 3D is
 written in 3D's own terms, Application UI starts at a `View`, and the one place the two meet is
 a texture.

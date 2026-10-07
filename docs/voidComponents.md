@@ -32,6 +32,36 @@ Existing does not mean accepted: the original 16-case `tests/render/scene3d.test
 Light JSX consumer remain before runtime on the installed compiler. Measurements and
 candidate differences belong to `VISION.md` "Inside a Void area".
 
+Raw 2D slice: `src/components/scene2d.ms` exports Scene2D, Group, Rect, Sprite,
+Mask and Label, using Void NodeRef/binders and Neon owners. Current twelve-case
+`tests/render/scene2d.test.ms` runs natively on read-only compiler candidate r8
+(binary sha256 prefix `356b1a0fd75d`, matching source/support `f65616348`) against
+Void `d255ffb`: 12 own cases / 326 including imports. This proves mapping, reactive
+camera/geometry/text/paint/filter, matrix-row reuse/clear, remount/disposal and
+invalid-parent rejection. Parent guards went red before restoration: raw text/tags
+could leak into HUD, and a foreign scene scope could capture an outer 2D parent.
+Empty text markers retain Neon's existing structural protocol; visible raw text
+is rejected on both createText and setText, not silently placed in the HUD.
+
+Installed binary/support `0d83c4867` still rejects this unchanged JSX at check:
+9 enum-roundtrip errors (BlendMode_Alpha, Smooth_Inherit, VoidSpace_Scene3D).
+VoidArea/component importers pass on installed C and JS. The original 16-case
+Scene3D contract remains red on candidate with one union-signal layout error;
+its original Light consumer now runs and cleans up on candidate. Candidate results
+are not deployed acceptance, full gate or pixels. Earlier five-case observations
+were incorrectly labelled `8506eaf03` without checking BUILD at invocation; current
+measurements above supersede that unpinned attribution.
+
+This slice does not yet attach to an area/frame. View/Text/Pressable/TextInput under
+Scene2D therefore fail loudly instead of silently mounting into the HUD; their
+camera-scoped UI mapping remains required, not removed from the goal. Full paint wins
+over a Rect/Label color prop; Label size overrides the size in a supplied TextStyle.
+Refs expose real Void scenes/NodeRefs for queries, not a substitute for missing
+component/frame integration. colorMatrix uses Void's setColorMatrix data API;
+paint updates preserve the node-owned matrix row and reject selection of another row,
+following the unchanged-row invariant in Void node.ms:499–507. Clearing a matrix uses
+Void's NO_COLOR_MATRIX value, not a resource-row assignment.
+
 The host and Ion frame are still on Void's old API. Their migration belongs to
 `void-noderef-host`, not to a parallel edit here. Existing host tests describe carried
 behavior, not current pixel proof against this baseline.
@@ -45,20 +75,20 @@ existing 3D Group tag silently switch meaning outside Scene3D.
 
 | ID | Void source and symbol | Candidate JSX mapping / present gap | Required Neon evidence; reference consumer |
 |---|---|---|---|
-| 2D-01 | `src/void2d/node.ms` Scene2D; `src/void2d/scene.ms` create/close/setScaleMode; `src/void2d/types.ms` Camera | Scene2D with camera, clear, design size, scale mode and default sampler values; missing | Camera pan/zoom/rotation moves scene but not HUD; scale-mode/resize behavior and sibling-scene isolation; `src/test/sceneCheck.ms` |
-| 2D-02 | `src/void2d/node.ms` group/addChild/addChildAt/remove/dispose | 2D group component; missing. View is UI, not a substitute for raw group transforms | Nested transforms, keyed order/moves and retained NodeRef identity; `src/test/nodeCheck.ms`, `tests/integration/reparentFrame.ms` is the 3D move analogue only |
-| 2D-03 | `src/void2d/node.ms` rect/setBackground/clearBackground/setBoxStyle; `src/void2d/boxStyle.ms` BoxStyle | Rect render component; View style projects the UI subset through its host. Both incomplete on current host | Rounded/per-edge/dashed borders, outer/inset shadow; reactive group↔paint promotion preserves children and handles, transparent paint emits nothing; `tests/integration/viewPaint.ms`, `src/test/coverageOracleCheck.ms` |
-| 2D-04 | `src/void2d/node.ms` sprite/setImageStyle; `src/void2d/types.ms` Tile/TextureSource; `src/void2d/imageStyle.ms` ImageStyle | Sprite with Tile and image style; missing | Atlas regions, flipping/offsets, fit/crop, rounded/grayscale image and replaced texture; `src/test/tileCheck.ms`, `src/test/imageStyleCheck.ms` |
+| 2D-01 | `src/void2d/node.ms` Scene2D; `src/void2d/scene.ms` create/close/setScaleMode; `src/void2d/types.ms` Camera | Scene2D camera/clear/default-smooth mapping written; design size/scale mode/frame still missing | Camera pan/zoom/rotation moves scene but not HUD; scale-mode/resize behavior and sibling-scene isolation; `src/test/sceneCheck.ms` |
+| 2D-02 | `src/void2d/node.ms` group/addChild/addChildAt/remove/dispose | Group core written with local/paint/order/filter and node ownership; keyed moves pending. View is not a raw group substitute | Nested transforms, keyed order/moves and retained NodeRef identity; `src/test/nodeCheck.ms`, `tests/integration/reparentFrame.ms` is the 3D move analogue only |
+| 2D-03 | `src/void2d/node.ms` rect/setBackground/clearBackground/setBoxStyle; `src/void2d/boxStyle.ms` BoxStyle | Rect size/color/core props written; BoxStyle/background promotion pending. View style remains incomplete on current host | Rounded/per-edge/dashed borders, outer/inset shadow; reactive group↔paint promotion preserves children and handles, transparent paint emits nothing; `tests/integration/viewPaint.ms`, `src/test/coverageOracleCheck.ms` |
+| 2D-04 | `src/void2d/node.ms` sprite/setImageStyle; `src/void2d/types.ms` Tile/TextureSource; `src/void2d/imageStyle.ms` ImageStyle | Sprite Tile/retile/size core written; ImageStyle, fitted size and texture replacement pending | Atlas regions, flipping/offsets, fit/crop, rounded/grayscale image and replaced texture; `src/test/tileCheck.ms`, `src/test/imageStyleCheck.ms` |
 | 2D-05 | `src/void2d/node.ms` anim/animFrames; `src/void2d/scene.ms` tick | Anim with frames/fps and clock integration; missing | Frames advance on demand while playing; stop when not playing/unmounted; replacement policy must follow actual Void API rather than silently freeze a prop; `src/test/nodeCheck.ms` |
 | 2D-06 | `src/void2d/node.ms` graphics/clear; `src/void2d/graphics.ms` GraphicsOpKind and exported drawing operations | Graphics component plus declarative geometry/operation inputs; missing, input design pending | All exported shape/fill/stroke/curve operations are reachable; order is retained, reactive edits rebuild only their owned geometry and do not accumulate old operations; `src/test/graphicsCheck.ms` |
 | 2D-07 | `src/void2d/graphics.ms` gradient/pattern/textured operations; `src/void2d/gradient.ms` GradientSpace | Graphics inputs include gradients, stops, color-space/dither, patterns and textured shapes; missing | Linear/radial gradients, Oklab alternatives, slash/checker patterns, texture changes and overlap pixels; `src/test/gradientCheck.ms`, `src/test/graphicsCheck.ms` |
-| 2D-08 | `src/void2d/node.ms` mask/scrollTo/scrollBy/setScrollBounds/scrollScope | Mask render component and scroll props; ScrollView remains UI over the host; missing raw mapping | Transformed clipping and scroll affect pixels and hit tests identically; bounds clamp, input over clipped content, nested scopes; `src/test/nodeCheck.ms`, `src/test/h2dOracleCheck.ms` |
+| 2D-08 | `src/void2d/node.ms` mask/scrollTo/scrollBy/setScrollBounds/scrollScope | Mask size/parenting core written; scroll props/input/pixels pending. ScrollView remains UI over the host | Transformed clipping and scroll affect pixels and hit tests identically; bounds clamp, input over clipped content, nested scopes; `src/test/nodeCheck.ms`, `src/test/h2dOracleCheck.ms` |
 | 2D-09 | `src/void2d/node.ms` scaleGrid | ScaleGrid with Tile and borders; missing | Resize preserves nine-slice edges and updates center without dropping texture alpha; `src/test/nodeCheck.ms`, `src/test/tileCheck.ms` |
 | 2D-10 | `src/void2d/node.ms` underline/selection | Render decorations exposed directly or through text props, not omitted because Text also draws decorations; missing | Wavy/straight underline and selection neighbor geometry remain expressible/reactive; `src/test/textMetricsCheck.ms`, `src/test/labelTextCheck.ms` |
 | 2D-11 | `src/void2d/node.ms` tileGroup/setTiles/setTile/setRange | TileGroup with cells and visible range; missing | Reactive single-cell edits, reshapes, ranges, transform/order/bounds and zero cells; `src/test/tileGroupCheck.ms` |
-| 2D-12 | `src/void2d/node.ms` label and text binders; `src/void2d/textLayout.ms` TextStyle/TextRun/LineOptions | Label render component and Text UI projection. Existing Text surface only covers a subset | Font/spacing/alignment/wrap, runs/decorations, truncate/indent/force-width, shaping breaks, selection/cursor/blink; rendered layout and queries agree; `src/test/textLayoutCheck.ms`, `src/test/textMetricsCheck.ms`, `src/test/labelTextCheck.ms` |
+| 2D-12 | `src/void2d/node.ms` label and text binders; `src/void2d/textLayout.ms` TextStyle/TextRun/LineOptions | Label text/size/color/TextStyle core written; runs/line options/font selection/query/pixels pending. Text UI projection remains a subset | Font/spacing/alignment/wrap, runs/decorations, truncate/indent/force-width, shaping breaks, selection/cursor/blink; rendered layout and queries agree; `src/test/textLayoutCheck.ms`, `src/test/textMetricsCheck.ms`, `src/test/labelTextCheck.ms` |
 | 2D-13 | `src/void2d/font.ms` Font/FontId/resolveFont; `src/void2d/face.ms` loadFace | Font values usable in JSX text props; loading helpers need no separate tag | Supported font descriptors/fallback/synthetic styles produce expected layout; requests Void refuses remain loud (do not promise a shaper it lacks); `src/test/fontCheck.ms`, `src/test/fontOracleCheck.ms` |
-| 2D-14 | `src/void2d/node.ms` setPaint/setFilter/setColorMatrix; `src/void2d/types.ms` Filter/Smooth; `src/void2d/effect.ms` color-matrix helpers | Common paint/filter props on 2D components; missing outside legacy host's small style projection | Blend/alpha/color-add/key/matrix, smooth/wrap/no-overlap and blur/glow/drop-shadow preserve compositing and clipping; `src/test/effectCheck.ms`, `tests/integration/doorBlendModes.ms` |
+| 2D-14 | `src/void2d/node.ms` setPaint/setFilter/setColorMatrix; `src/void2d/types.ms` Filter/Smooth; `src/void2d/effect.ms` color-matrix helpers | Common Paint2D/filter/colorMatrix ownership tests pass on candidate; installed JSX contract blocked by enum roundtrip, compositing/pixels pending | Blend/alpha/color-add/key/matrix, smooth/wrap/no-overlap and blur/glow/drop-shadow preserve compositing and clipping; `src/test/effectCheck.ms`, `tests/integration/doorBlendModes.ms` |
 | 2D-15 | `src/void2d/render.ms` hitTest/global queries and text geometry; `src/void2d/node.ms` localToGlobal/globalToLocal | Ref/query access and Neon event dispatch for render nodes; host integration incomplete | Press hits what is drawn; UTF-16 index/caret/line queries match text pixels; use Void geometry, not a second measurer/hit tester; `tests/platform/voidInput.test.ms`, `src/test/textMetricsCheck.ms` |
 
 ## 3D coverage
