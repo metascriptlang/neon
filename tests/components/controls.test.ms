@@ -3,7 +3,8 @@ import { element } from "../../src/macros/ui/element";
 import { HostNode, MockNode, mockNode, mockHost, render, mockToString, fireEvent, fireEventWith } from "../../src/render/host";
 import { NeonEvent, neonEvent } from "../../src/render/event";
 import { Style } from "../../src/render/style";
-import { View } from "../../src/components/primitives";
+import { View, Text } from "../../src/components/primitives";
+import { ImageBackground } from "../../src/components/imageBackground";
 import { Button } from "../../src/components/button";
 import { Switch } from "../../src/components/switch";
 import { Image } from "../../src/components/image";
@@ -95,4 +96,20 @@ test "ActivityIndicator sizes small and large like RN and keeps animating reacti
 	assert (large.style as Style).width === 36 && (small.style as Style).width === 20, "sizes";
 	setBusy(false);
 	assert mockToString(large).indexOf("animating=\"false\"") > 0, "animating follows the signal";
+}
+
+test "ImageBackground stretches its image under the children and keeps the box style on the View" {
+	const root: MockNode = mockNode("root");
+	let loads = 0;
+	render(element(<ImageBackground source={{ uri: "https://example.com/bg.png" }} resizeMode="cover" style={{ height: 120, padding: 8 }}
+		imageStyle={{ borderRadius: 6 }} onLoad={(e: NeonEvent): void => { loads += 1; }}>
+		<Text>Over</Text>
+	</ImageBackground>), mockHost(), root as unknown as HostNode);
+	assert mockToString(root) === "<root><view><image source=\"https://example.com/bg.png\" resizeMode=\"cover\" accessibilityRole=\"image\"></image><text>Over</text></view></root>", "shape: " + mockToString(root);
+	const box = root.children[0].style as Style;
+	const fill = root.children[0].children[0].style as Style;
+	assert box.height === 120 && box.padding === 8, "box style";
+	assert fill.position === "absolute" && fill.top === 0 && fill.bottom === 0 && fill.left === 0 && fill.right === 0 && fill.borderRadius === 6, "image fills the box";
+	fireEvent(root.children[0].children[0], "onLoad");
+	assert loads === 1, "onLoad reaches the author";
 }
