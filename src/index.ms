@@ -38,3 +38,4 @@ export {
 	FlatList, FlatListHandle, ListRenderItemInfo, ItemLayout, EndReachedInfo, StartReachedInfo,
 	ScrollToIndexFailedInfo, ScrollToIndexOptions, ScrollToOffsetOptions, ScrollToEndOptions,
 } from "./components/flatList";
+export { VirtualizedList } from "./components/virtualizedList";
