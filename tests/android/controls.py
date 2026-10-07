@@ -65,12 +65,12 @@ def wait_label(prefix, part, seconds=10):
 
 
 def reveal(name, swipes=6):
+    size = adb("shell", "wm", "size").split()[-1].split("x")
+    w, h = int(size[0]), int(size[1])
     for _ in range(swipes):
         for n in nodes():
-            if n.get("text") == name or n.get("content-desc") == name:
+            if (n.get("text") == name or n.get("content-desc") == name) and counter.bounds(n["bounds"])[3] < h * 3 // 4:
                 return n
-        size = adb("shell", "wm", "size").split()[-1].split("x")
-        w, h = int(size[0]), int(size[1])
         adb("shell", "input", "swipe", str(w // 2), str(h * 3 // 4), str(w // 2), str(h // 3), "500")
         time.sleep(0.8)
     return find(name, 2)
@@ -110,10 +110,12 @@ def lane():
     wait_label("check-in ", "2026-10-24")
     shot("date")
 
-    slider = reveal("Guests")
+    reveal("Guests")
+    slider = find("Guests", cls="android.widget.SeekBar")
     x1, y1, x2, y2 = counter.bounds(slider["bounds"])
     mid = (y1 + y2) // 2
-    adb("shell", "input", "swipe", str(x1 + 10), str(mid), str(x1 + (x2 - x1) * 6 // 10), str(mid), "600")
+    thumb_at_two_of_one_to_eight = x1 + (x2 - x1) // 7
+    adb("shell", "input", "swipe", str(thumb_at_two_of_one_to_eight), str(mid), str(x1 + (x2 - x1) * 6 // 10), str(mid), "600")
     wait_label("guests ", "guests ")
     print("NEON_ANDROID controls-slider %s" % label("guests "))
     if label("guests ") == "guests 2":
@@ -157,8 +159,11 @@ def lane():
     find("Confirm booking", 5)
     shot("dialog")
     tap("Confirm")
-    wait_label("status ", "status booking")
+    with open(os.path.join(counter.results, "screenshots", "controls-booking.png"), "wb") as out:
+        out.write(subprocess.run(["adb", "exec-out", "screencap", "-p"], capture_output=True).stdout)
+    started = time.time()
     wait_label("status ", "status booked", 10)
+    print("NEON_ANDROID controls-booking the first dump after Confirm took %.1f s: uiautomator waits for idle while the spinner animates, so 'status booking' is a screenshot here, not a dump" % (time.time() - started))
     shot("snackbar")
     tap("Undo")
     wait_label("status ", "status cancelled")
