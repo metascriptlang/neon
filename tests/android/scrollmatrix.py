@@ -1,4 +1,5 @@
 import os
+import re
 import sys
 import time
 
@@ -32,6 +33,84 @@ def wait_for(text, seconds):
             return window, texts
         time.sleep(0.3)
     raise LaneError("%r never appeared; texts %s" % (text, sorted(texts)))
+
+
+def input_centre():
+    adb("shell", "uiautomator", "dump", "/sdcard/neon-lane.xml")
+    xml = adb("shell", "cat", "/sdcard/neon-lane.xml")
+    for cls, b in re.findall(r'<node [^>]*?class="([^"]*)"[^>]*?package="' + re.escape(PACKAGE) + r'"[^>]*?bounds="([^"]*)"', xml):
+        if "EditText" in cls or cls.endswith("Input"):
+            x1, y1, x2, y2 = counter.bounds(b)
+            return (x1 + x2) // 2, (y1 + y2) // 2
+    raise LaneError("no text input in the scroll view")
+
+
+def ime_shown():
+    return "mInputShown=true" in adb("shell", "dumpsys", "input_method")
+
+
+def keyboard(shown, seconds=6):
+    want = "keyboard " + ("shown" if shown else "hidden")
+    deadline = time.time() + seconds
+    while time.time() < deadline:
+        window, texts = scroll_list.state(False)
+        if scroll_list.label(texts, "keyboard ").startswith(want) and ime_shown() == shown:
+            return window, texts
+        time.sleep(0.4)
+    raise LaneError("expected %s; app says %r, IME shown=%s" % (want, scroll_list.label(texts, "keyboard "), ime_shown()))
+
+
+def focus_input():
+    x, y = input_centre()
+    adb("shell", "input", "tap", str(x), str(y))
+    return keyboard(True)
+
+
+def keyboard_lane(launched):
+    window, texts = scroll_list.state(False)
+    scroll_list.tap(texts, "toggle axis")
+    window, texts = wait_for("axis vertical", 10)
+    if "dismiss on-drag" not in texts or "taps never" not in texts:
+        raise LaneError("unexpected keyboard modes: %s" % sorted(texts))
+    window, texts = focus_input()
+    if "focus yes" not in scroll_list.label(texts, "keyboard "):
+        raise LaneError("the input did not report focus: %r" % scroll_list.label(texts, "keyboard "))
+    scroll_list.report("matrix-keyboard-shown", window, texts, launched)
+    cx, cy = centre(texts, "card 1")
+    drag(cx, cy, cx, cy - 250, 400)
+    window, texts = keyboard(False)
+    scroll_list.report("matrix-keyboard-dragged", window, texts, launched)
+    for _ in range(4):
+        drag(cx, window[1] + (window[3] - window[1]) // 2, cx, window[3] - 200, 300)
+        window, texts = scroll_list.state(False)
+        if offsets(texts)[1] == 0:
+            break
+    before = scroll_list.label(texts, "pressed ")
+    window, texts = focus_input()
+    scroll_list.tap(texts, "card 1")
+    window, texts = keyboard(False)
+    if scroll_list.label(texts, "pressed ") != before:
+        raise LaneError("with keyboardShouldPersistTaps=never the first tap only dismisses; it pressed %r" % scroll_list.label(texts, "pressed "))
+    scroll_list.report("matrix-taps-never", window, texts, launched)
+
+    scroll_list.tap(texts, "taps never")
+    window, texts = wait_for("taps always", 10)
+    window, texts = focus_input()
+    scroll_list.tap(texts, "card 1")
+    window, texts = wait_for("pressed card 1", 10)
+    window, texts = keyboard(True)
+    scroll_list.report("matrix-taps-always", window, texts, launched)
+
+    scroll_list.tap(texts, "dismiss on-drag")
+    window, texts = wait_for("dismiss none", 10)
+    window, texts = keyboard(True)
+    cx, cy = centre(texts, "card 1")
+    drag(cx, cy, cx, cy - 250, 400)
+    time.sleep(1)
+    window, texts = keyboard(True)
+    scroll_list.report("matrix-dismiss-none", window, texts, launched)
+    adb("shell", "input", "keyevent", "KEYCODE_BACK")
+    keyboard(False)
 
 
 def lane():
@@ -110,6 +189,7 @@ def lane():
     if counter.pid() != launched:
         raise LaneError("the process restarted during the matrix")
     scroll_list.report("matrix-horizontal-again", window, texts, launched)
+    keyboard_lane(launched)
 
 
 def main():
