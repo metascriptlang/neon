@@ -142,6 +142,12 @@ The mechanics of face 1, meaning what exists on Void's side and what is missing 
 
 ## Inside a Void area
 
+Scope expanded with the person on 2026-10-07: Neon must expose all existing Void
+render concepts through JSX, like React Three Fiber over Three.js, not stop at the
+initial five 3D components. The baseline inventory, candidate mappings and required
+acceptance are in [voidComponents.md](voidComponents.md). GPU commands/passes and
+new backends remain outside that goal; the original owner/binder model remains.
+
 Decided with the person on 2026-10-03; the window/frame integration is not built yet. Headless
 components are in `src/components/scene3d.ms`, with the full native contract in
 `tests/render/scene3d.test.ms`; that suite is parked on the two compiler cards named in `BUGS.md`.
