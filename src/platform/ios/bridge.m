@@ -86,10 +86,25 @@ static void call0(msClosure c) {
 	return CGRectContainsPoint(area, point);
 }
 
+// UIKit hands an untagged view's touch on to its superviews, but a UIScrollView keeps it,
+// so a listener outside the scroll view (a pager around a vertical list) never hears it.
+// The view the touch hit reports it for the first listener past the scroll view instead
+// (WORKAROUND.md W9); inside it, forwarding still reaches the listeners.
+- (NSInteger)neonReportTag:(UITouch *)touch {
+	if (self.tag != 0) return self.tag;
+	if (touch.view != self) return 0;
+	BOOL crossed = NO;
+	for (UIView *at = self.superview; at; at = at.superview) {
+		if ([at isKindOfClass:UIScrollView.class]) { crossed = YES; continue; }
+		if ([at isKindOfClass:NeonTouchView.class] && at.tag != 0) return crossed ? at.tag : 0;
+	}
+	return 0;
+}
+
 - (void)neonReport:(NSSet<UITouch *> *)touches phase:(int)phase {
 	UITouch *touch = touches.anyObject;
 	CGPoint at = [touch locationInView:nil];
-	g_lastTag = (int)self.tag;
+	g_lastTag = (int)[self neonReportTag:touch];
 	g_lastPhase = phase;
 	g_touchX = (float)at.x;
 	g_touchY = (float)at.y;
@@ -109,8 +124,10 @@ static void call0(msClosure c) {
 
 - (void)touchesEnded:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
 	[self neonReport:touches phase:1];
-	g_lastPhase = 2; // the press itself, after the up
-	call0(s_touch);
+	if (self.tag != 0) {
+		g_lastPhase = 2; // the press itself, after the up
+		call0(s_touch);
+	}
 	[super touchesEnded:touches withEvent:event];
 }
 
