@@ -22,12 +22,6 @@ names the card and the site, and nothing is worked around in `src/`. Rows closed
 2026-09-20 were dropped with §2 — they are in this file's history at `git show c00bd2b:BUGS.md`,
 and the invariants that outlived them were moved to the head of the test that pins each one.
 
-- **OPEN 2026-10-07 — native hosts ignore `textAlign`.** `grep -n textAlign
-  src/platform/native/*.ms src/platform/ios/bridge.m src/platform/android/java -r` finds nothing:
-  the style field reaches the mock and the DOM (`css.ms`) but no native label. Seen on the iPhone 17
-  Pro simulator (`NavigationUITests`, `wt/rn-navigation`, results `/private/tmp/neon-sim.ZR5ULo`):
-  a header title with `flex: 1, textAlign: "center"` drew left-aligned. The navigation header
-  centers its title with a row `justifyContent` instead (`src/navigation/header.ms`).
 
 - **OPEN 2026-10-07 — a raw tag with an `Accessor<boolean> | null` attribute dies on C.** In
   `probe/apps/boolAttr.ms` (`wt/rn-apps`), `function Tag(props: { on?: Accessor<boolean> | null })`
