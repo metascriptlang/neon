@@ -180,6 +180,22 @@ or pushed. `msc run out/scene3dConsumer.ms` exits 1 with three errors: unchanged
 Void inbox note `2026-10-05-const-value-arrays-become-read-only.md`, not a Neon fix.
 Neither original path reaches runtime; no full gate or pixel claim follows.
 
+Consumer remeasurement, 2026-10-07, source/test tree
+`121385f4499b6371b4916ea757d303f1794e8ace`, installed binary/support `8506eaf03`,
+Void pulled fast-forward from `6870116` to `b278254`:
+`msc test tests/render/scene3d.test.ms` exits 1 with 471 type errors;
+`msc run out/scene3dConsumer.ms` exits 1 with three errors. The original
+NodeKind macro failures, `LightKind_Point` and Void `findByName` const stack
+writes remain. All 16 cases and the original Light JSX remain unchanged.
+The contract also rejects `createSignal<CameraProjection>` with the function-layout
+diagnostic and its old `Program` comparison against Void's new `ProgramKey`.
+The standalone `msc run out/scene3dProjectionSignal.ms` isolates the signal
+failure without JSX and exits 1 with one type error; it is recorded in the existing
+union-signal compiler card. The ProgramKey assertion still needs Neon migration.
+Void's `docs/NEON.md` now records target drawing, checked target textures and pick UV
+as implemented; those APIs do not resolve these compiler/const-array blockers.
+No runtime, full-gate or pixel proof was obtained.
+
 A Void area speaks two vocabularies, and the author always knows which one they are in: 3D is
 written in 3D's own terms, Application UI starts at a `View`, and the one place the two meet is
 a texture.
