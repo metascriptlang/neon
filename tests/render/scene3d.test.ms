@@ -7,7 +7,7 @@ import { HostNode, MockNode, mockNode, mockHost, render, mockToString } from "..
 import { Void, View, Text, Pressable, TextInput } from "../../src/components/primitives";
 import { Scene3D, Scene3DHandle, Group, Mesh, Light, Camera3D } from "../../src/components/scene3d";
 import { Vec3, vec3, eulerQuat } from "../../../void/src/math/math3d";
-import { NodeId3D, NO_NODE_ID, NodeKind, Transform3D, LightKind, syncWorld, nodeCount, isLive, worldOf } from "../../../void/src/void3d/scene";
+import { NodeId3D, NO_NODE_ID, NodeKind, Transform3D, LightKind, syncWorld, nodeCount, isLive, worldOf, cameraOf } from "../../../void/src/void3d/scene";
 import { MeshId, MaterialId, NO_MESH, NO_MATERIAL, DrawContext, addMaterial, releaseMesh, releaseMaterial, hasMesh, hasMaterial } from "../../../void/src/void3d/draw";
 import { Material, Phase } from "../../../void/src/void3d/material";
 import { MeshData } from "../../../void/src/void3d/meshData";
@@ -78,7 +78,7 @@ test "all five components mount real Void nodes without creating host elements" 
 			<Light kind={LightKind.Directional} ref={(value: NodeId3D): void => { lightId = value; }} />
 		</Group>
 	</Scene3D><View><Text>HUD</Text></View></Void>), mockHost(), root as unknown as HostNode);
-	assert handle.scene.nodeCount() === 5, "root, group, mesh, mesh child and light; camera is not a node";
+	assert handle.scene.nodeCount() === 6, "root, camera binding, group, mesh, mesh child and light";
 	assert handle.scene.nodes[groupId.index].parent === handle.scene.root, "group parent is scene root";
 	assert handle.scene.nodes[meshId.index].parent === groupId.index, "mesh parent is enclosing group";
 	assert handle.scene.nodes[lightId.index].parent === groupId.index, "light parent is enclosing group";
@@ -176,7 +176,7 @@ test "Light power and local pose react under a moving group" {
 	assert handle.scene.nodeCount() === 0 && handle.context.closed, "light effects stop with owner";
 }
 
-test "Camera3D selection restores active cameras and reacts without adding nodes" {
+test "Camera3D selection restores active world-bound cameras and reacts" {
 	let handle: Scene3DHandle = null as unknown as Scene3DHandle;
 	const [firstActive, setFirstActive] = createSignal(true);
 	const [secondActive, setSecondActive] = createSignal(true);
@@ -191,7 +191,7 @@ test "Camera3D selection restores active cameras and reacts without adding nodes
 		<Camera3D active={firstActive()} position={vec3(x(), 3.0, 8.0)} yaw={yaw()} pitch={pitch()} nearPlane={near()} farPlane={far()} projection={projection()} />
 		{Show({ when: () => showSecond(), children: element(<Camera3D active={secondActive()} position={vec3(20.0, 0.0, 0.0)} />) })}
 	</Scene3D></Void>));
-	assert handle.scene.nodeCount() === 1, "cameras do not allocate scene nodes";
+	assert handle.scene.nodeCount() === 3, "root and two camera bindings are live";
 	assert handle.camera !== null, "most recently mounted active camera wins";
 	if (handle.camera !== null) { assert approx(handle.camera.position.x, 20.0), "second camera selected"; }
 	setSecondActive(false);
@@ -396,14 +396,24 @@ test "Light refuses reactive changes without a Void binder rather than silently 
 	assert handle.context.closed, "rejected update leaves owner disposable";
 }
 
-test "Camera3D rejects a transformed Group parent rather than ignoring its world transform" {
+test "Camera3D honors transformed Group parents and disposes world-bound nodes" {
 	let handle: Scene3DHandle = null as unknown as Scene3DHandle;
-	const failure = mountError(element(<Void><Scene3D ref={(value: Scene3DHandle): void => { handle = value; }}>
+	const dispose = mounted(element(<Void><Scene3D ref={(value: Scene3DHandle): void => { handle = value; }}>
 		<Group position={vec3(5.0, 3.0, 1.0)} rotation={eulerQuat(0.0, 0.0, 0.5)}>
 			<Camera3D active={true} position={vec3(0.0, 0.0, 8.0)} />
 		</Group>
 	</Scene3D></Void>));
-	assert failure.includes("Camera3D"), "unsupported nested camera rejects naming its component: " + failure;
-	assert handle.scene.closed && handle.context.closed, "nested camera rejection disposes real owners";
-	assert handle.scene.nodeCount() === 0 && handle.camera === null, "rejected camera leaves no selected camera or live parent nodes";
+	const request = handle.camera;
+	assert request !== null, "nested active camera is selected";
+	if (request !== null) {
+		const world = cameraOf(handle.scene, request);
+		assert world.ok, "Void resolves the camera's enclosing world";
+		if (world.ok) {
+			assert nearVec(world.value.position, 5.0, 3.0, 9.0), "camera local offset follows parent";
+			assert world.value.basisOf().right.y > 0.4, "parent roll reaches camera orientation";
+		}
+	}
+	dispose();
+	assert handle.scene.closed && handle.context.closed, "nested camera disposal closes real owners";
+	assert handle.scene.nodeCount() === 0 && handle.camera === null, "camera leaves no selected camera or live parent nodes";
 }

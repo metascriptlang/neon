@@ -5,7 +5,7 @@ import { onCleanup } from "../core/cleanup";
 import { createContext, useContext } from "../render/context";
 import { VoidSpace, voidScope } from "../render/voidScope";
 import { Host, HostNode, NeonNode } from "../render/hostTypes";
-import { Vec3, Quat, vec3 } from "../../../void/src/math/math3d";
+import { Vec3, Quat, vec3, eulerQuat } from "../../../void/src/math/math3d";
 import { RenderState } from "../../../void/src/gpu/state";
 import { Program, MATERIAL_UNIFORM_SLOT, MATERIAL_UNIFORM_LENGTH } from "../../../void/src/void3d/gpu3d";
 import { Material, Phase } from "../../../void/src/void3d/material";
@@ -17,7 +17,7 @@ import {
 import {
 	Scene3D as VoidScene3D, NodeId3D, Transform3D, LightKind, LightInstance,
 	addGroup, addLightNode, addMeshNode, setLocal, setLightPower, setMeshOf,
-	remove, closeScene,
+	remove, closeScene, addCameraNode, setCameraOf, setActiveCamera,
 } from "../../../void/src/void3d/scene";
 import {
 	Camera3D as VoidCamera3D, CameraProjection, ProjectionKind,
@@ -30,6 +30,7 @@ export interface Scene3DHandle {
 }
 
 interface CameraEntry {
+	node: NodeId3D;
 	camera: VoidCamera3D;
 	active: boolean;
 }
@@ -104,7 +105,9 @@ function mountOwned(body: () => void): void {
 
 function requireScene(tag: string): NodeScope {
 	const scope = useContext(sceneScope);
-	if (scope === null) { throw new Error(tag + ": mount inside Scene3D within Void"); }
+	if (scope === null || useContext(voidScope) !== VoidSpace.Scene3D) {
+		throw new Error(tag + ": mount inside Scene3D within Void");
+	}
 	return scope;
 }
 
@@ -325,20 +328,38 @@ function cameraOf(props: Camera3DProps): VoidCamera3D {
 	};
 }
 
+function cameraLocal(camera: VoidCamera3D): Transform3D {
+	return {
+		position: camera.position, rotation: eulerQuat(-camera.pitch, camera.yaw, 0.0),
+		scale: vec3(1.0, 1.0, 1.0),
+	};
+}
+
 function selectCamera(state: SceneState): void {
+	const scene = state.handle.scene;
+	if (scene.closed) { state.handle.camera = null; return; }
 	for (let i = state.cameras.length - 1; i >= 0; i--) {
 		const entry = state.cameras[i];
-		if (entry.active) { state.handle.camera = entry.camera; return; }
+		if (entry.active && scene.isLive(entry.node)) {
+			setActiveCamera(scene, entry.node);
+			state.handle.camera = entry.camera;
+			return;
+		}
 	}
+	setActiveCamera(scene, null);
 	state.handle.camera = null;
 }
 
 export function Camera3D(props: Camera3DProps): NeonNode {
 	return (host: Host, parent: HostNode, before: HostNode | null): void => {
 		const scope = requireScene("Camera3D");
-		if (scope.parent !== scope.state.handle.scene.rootId()) { throw new Error("Camera3D: mount directly in Scene3D; Void has no parent-world camera transform"); }
 		mountOwned((): void => {
 			const state = scope.state;
+			const scene = state.handle.scene;
+			const initial = untrack(() => cameraOf(props));
+			let local = cameraLocal(initial);
+			const node = addCameraNode(scene, scope.parent, local, initial);
+			ownNode(scene, node);
 			let entry: CameraEntry | null = null;
 			onCleanup((): void => {
 				const mounted = entry;
@@ -355,9 +376,12 @@ export function Camera3D(props: Camera3DProps): NeonNode {
 			createEffect((): void => {
 				const camera = cameraOf(props);
 				const active = props.active === null ? false : (props.active as () => boolean)();
+				const nextLocal = cameraLocal(camera);
+				if (nextLocal !== local) { setLocal(scene, node, nextLocal); local = nextLocal; }
+				setCameraOf(scene, node, camera);
 				const mounted = entry;
 				if (mounted === null) {
-					const added: CameraEntry = { camera: camera, active: active };
+					const added: CameraEntry = { node: node, camera: camera, active: active };
 					entry = added;
 					state.cameras.push(added);
 				} else {
