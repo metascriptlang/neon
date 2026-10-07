@@ -272,9 +272,13 @@ final class FlatListUITests: XCTestCase {
         app.staticTexts["inverted rows"].tap()
         XCTAssertTrue(app.staticTexts["pressed header 0"].waitForExistence(timeout: 10), "changing inversion preserves the mounted list state")
         RunLoop.current.run(until: Date().addingTimeInterval(1))
+        let pull = app.staticTexts["item 3"].coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.5))
+        pull.press(forDuration: 0.1, thenDragTo: pull.withOffset(CGVector(dx: 0, dy: 300)))
+        RunLoop.current.run(until: Date().addingTimeInterval(1))
         let visibleHeaders = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "header ")).allElementsBoundByIndex.filter { $0.isHittable }
         XCTAssertFalse(visibleHeaders.isEmpty, "an inverted sticky header is visible")
         let invertedHeader = visibleHeaders.min { $0.frame.minY < $1.frame.minY }!
+        XCTAssertEqual(invertedHeader.frame.minY, top, accuracy: 2, "the inverted header is pinned at the list top")
         let selected = invertedHeader.label
         invertedHeader.tap()
         XCTAssertTrue(app.staticTexts["pressed " + selected].waitForExistence(timeout: 10), "the transformed visible header receives its press")
@@ -290,5 +294,90 @@ final class FlatListUITests: XCTestCase {
         XCTAssertTrue(onScreen("item 63"), "the measured list reaches its final item without getItemLayout")
         XCTAssertTrue(onScreen("List end"), "the footer participates in the measured end")
         report("measured-end")
+    }
+}
+
+final class ScrollMatrixUITests: XCTestCase {
+    private let app = XCUIApplication(bundleIdentifier: "dev.neon.NeonScrollMatrix")
+
+    override func setUp() {
+        continueAfterFailure = false
+    }
+
+    private func pid() -> String {
+        let text = app.debugDescription
+        guard let range = text.range(of: "pid: ") else { return "" }
+        return String(text[range.upperBound...].prefix(while: { $0.isNumber }))
+    }
+
+    private func label(startingWith prefix: String) -> String {
+        let match = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", prefix)).firstMatch
+        return match.exists ? match.label : ""
+    }
+
+    private func offsets() -> (Int, Int) {
+        let words = label(startingWith: "x ").split(separator: " ")
+        return (Int(words[1]) ?? -1, Int(words[3]) ?? -1)
+    }
+
+    private func report(_ name: String) {
+        print("NEON_IOS matrix-\(name) pid=\(pid()) \(label(startingWith: "axis ")) \(label(startingWith: "x ")) \(label(startingWith: "pressed ")) \(label(startingWith: "refresh"))")
+        let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        shot.name = "matrix-\(name)"
+        shot.lifetime = .keepAlways
+        add(shot)
+    }
+
+    private func settle() {
+        RunLoop.current.run(until: Date().addingTimeInterval(1))
+    }
+
+    func testAxisRefreshAndPress() {
+        XCUIDevice.shared.orientation = .portrait
+        app.launch()
+        XCTAssertTrue(app.wait(for: .runningForeground, timeout: 20))
+        XCTAssertTrue(app.staticTexts["axis horizontal"].waitForExistence(timeout: 15))
+        let launched = pid()
+        let one = app.staticTexts["card 1"], two = app.staticTexts["card 2"]
+        XCTAssertEqual(two.frame.minY, one.frame.minY, accuracy: 1, "horizontal cards share a row")
+        XCTAssertGreaterThan(two.frame.minX, one.frame.minX)
+        report("initial")
+
+        let start = two.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: -220, dy: 0)))
+        settle()
+        let (x, y) = offsets()
+        XCTAssertGreaterThan(x, 0, "a horizontal drag moves x")
+        XCTAssertEqual(y, 0, "a horizontal drag leaves y")
+        XCTAssertEqual(label(startingWith: "pressed "), "pressed none")
+        let window = app.windows.firstMatch.frame
+        let visible = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "card ")).allElementsBoundByIndex
+            .filter { window.contains($0.frame) }.sorted { $0.frame.minX < $1.frame.minX }
+        XCTAssertFalse(visible.isEmpty)
+        let target = visible[0].label
+        visible[0].tap()
+        XCTAssertTrue(app.staticTexts["pressed " + target].waitForExistence(timeout: 10))
+        report("horizontal")
+
+        app.staticTexts["toggle axis"].tap()
+        XCTAssertTrue(app.staticTexts["axis vertical"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["pressed " + target].exists, "the axis change keeps app state")
+        settle()
+        XCTAssertGreaterThan(two.frame.minY, one.frame.minY, "vertical cards stack")
+        XCTAssertEqual(two.frame.minX, one.frame.minX, accuracy: 1)
+        report("vertical")
+
+        let pull = one.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.2))
+        pull.press(forDuration: 0.05, thenDragTo: pull.withOffset(CGVector(dx: 0, dy: 320)))
+        XCTAssertTrue(app.staticTexts["refreshed 1"].waitForExistence(timeout: 10), "pull to refresh calls onRefresh and the app's value closes it")
+        report("refreshed")
+
+        app.staticTexts["toggle axis"].tap()
+        XCTAssertTrue(app.staticTexts["axis horizontal"].waitForExistence(timeout: 10))
+        settle()
+        XCTAssertEqual(two.frame.minY, one.frame.minY, accuracy: 1, "cards return to one row")
+        XCTAssertTrue(app.staticTexts["refreshed 1"].exists)
+        XCTAssertEqual(launched, pid())
+        report("horizontal-again")
     }
 }
