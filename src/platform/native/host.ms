@@ -34,7 +34,7 @@ import {
 	niLastScrollTag, niLastScrollPhase, niLastScrollX, niLastScrollY, niLastScrollWidth, niLastScrollHeight,
 	niLastScrollContentWidth, niLastScrollContentHeight,
 	niInputCreate, niSwitchCreate, niIndicatorCreate, niImageCreate, niControlSetTag, niSetProp, niSetFocused,
-	niModalCreate,
+	niModalCreate, niTextAreaCreate,
 	niLastControlTag, niLastControlPhase, niLastControlValue, niLastControlWidth, niLastControlHeight,
 	niKeyboardHeight, niColorScheme,
 } from "./bridge.h";
@@ -538,7 +538,7 @@ export function createNativeHost(): NativeHost {
 				n.isScroll = true;
 				scrollNodes.push(n);
 			} else if (kind === NativeElementKind.Input) {
-				n = nativeNode(niInputCreate(), false, false);
+				n = nativeNode(tag === "multilinetextinput" ? niTextAreaCreate() : niInputCreate(), false, false);
 				n.isInput = true;
 			} else if (kind === NativeElementKind.Switch) {
 				n = nativeNode(niSwitchCreate(), false, false);

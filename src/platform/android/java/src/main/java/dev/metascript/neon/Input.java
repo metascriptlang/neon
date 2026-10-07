@@ -91,6 +91,7 @@ public final class Input extends EditText {
 		int end = getSelectionEnd();
 		setInputType(type);
 		setSingleLine(!multiline);
+		setGravity((multiline ? Gravity.TOP : Gravity.CENTER_VERTICAL) | Gravity.START);
 		if (start >= 0 && end >= 0 && end <= length()) setSelection(start, end);
 	}
 

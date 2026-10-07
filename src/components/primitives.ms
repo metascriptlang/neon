@@ -20,7 +20,7 @@
 import { NeonEvent } from "../render/event";
 import { Style, layerStyles } from "../render/style";
 import { onCleanup } from "../core/cleanup";
-import { Accessor, accessor } from "../core/signal";
+import { Accessor, accessor, untrack } from "../core/signal";
 import { element } from "../macros/ui/element";
 import { NeonNode, VAttr, VEvent, RefFn, hostElement, evt, dynAttr } from "../render/node";
 import { Host, HostNode, VoidArea } from "../render/hostTypes";
@@ -460,6 +460,9 @@ interface TextInputProps extends AccessibilityProps {
 }
 
 export function TextInput(props: TextInputProps): NeonNode {
+	// RN renders a different native view for a multiline input, chosen once.
+	const multiline = props.multiline;
+	const tag = multiline !== null && untrack((): boolean => (multiline as Accessor<boolean>)()) ? "multilinetextinput" : "textinput";
 	const attrs: VAttr[] = [];
 	stringAttr(attrs, "value", props.value);
 	stringAttr(attrs, "defaultValue", props.defaultValue);
@@ -515,14 +518,14 @@ export function TextInput(props: TextInputProps): NeonNode {
 		}));
 	}
 	if (userRef === null) {
-		return primitive("textinput", { style: props.style, class: props.class, ref: null }, accessibilityAttrs(props, attrs), evts, null);
+		return primitive(tag, { style: props.style, class: props.class, ref: null }, accessibilityAttrs(props, attrs), evts, null);
 	}
 	let mountedHost: Host | null = null;
 	let mounted = false;
 	const grab: RefFn = (node: HostNode): void => {
 		(userRef as (h: TextInputHandle) => void)(new TextInputHandle(mountedHost as Host, node, (): boolean => focused, (): boolean => mounted));
 	};
-	const field = primitive("textinput", { style: props.style, class: props.class, ref: grab }, accessibilityAttrs(props, attrs), evts, null);
+	const field = primitive(tag, { style: props.style, class: props.class, ref: grab }, accessibilityAttrs(props, attrs), evts, null);
 	return (host: Host, parent: HostNode, before: HostNode | null): void => {
 		mountedHost = host;
 		mounted = true;

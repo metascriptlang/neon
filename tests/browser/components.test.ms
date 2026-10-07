@@ -5,7 +5,7 @@ import { element } from "../../src/macros/ui/element";
 import { createSignal } from "../../src/core/signal";
 import { sleepAsync } from "std/core/promise";
 import { NeonEvent } from "../../src/render/event";
-import { ScrollView, Text, View } from "../../src/components/primitives";
+import { ScrollView, Text, TextInput, View } from "../../src/components/primitives";
 import { Modal } from "../../src/components/modal";
 import { RefreshControl } from "../../src/components/refreshControl";
 import { TouchableOpacity } from "../../src/components/touchable";
@@ -113,4 +113,13 @@ test "Text numberOfLines clamps in Chrome and selectable={false} turns selection
 	assert clamped === "2 none", "two lines, no selection: " + clamped;
 	setLines(0);
 	assert js("return document.querySelector('.neon-lines') === null;") === "true", "0 lifts the clamp";
+}
+
+test "a multiline TextInput is a textarea in Chrome whose input reaches onChangeText" {
+	let typed = "";
+	const mount = mountPoint();
+	render(element(<View><TextInput multiline={true} accessibilityLabel="Notes" onChangeText={(t: string): void => { typed = t; }} /></View>), domHost(), mount as unknown as HostNode);
+	assert mount.querySelector("textarea") !== null, "a textarea";
+	js("const el = document.querySelector('textarea'); el.value = 'a\\nb'; el.dispatchEvent(new Event('input', { bubbles: true })); return 1;");
+	assert typed === "a\nb", "typed: " + typed;
 }

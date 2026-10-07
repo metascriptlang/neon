@@ -110,6 +110,12 @@ void *niInputCreate(void) {
 	return v;
 }
 
+void *niTextAreaCreate(void) {
+	void *area = niInputCreate();
+	niSetProp(area, "multiline", "true");
+	return area;
+}
+
 static void *createControl(int kind) {
 	MockView *v = create(0);
 	v->control = kind;

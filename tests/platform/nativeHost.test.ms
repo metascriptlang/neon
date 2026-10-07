@@ -963,3 +963,17 @@ test "native numberOfLines caps a wrapping label's measured height, and 0 lifts 
 	assert nmTextHeight(long) > 21, "unlimited wraps: " + nmTextHeight(long).toString();
 	nmTeardown();
 }
+
+test "a native multiline TextInput is created as the platform's text area and routes typing like the field" {
+	let typed = "";
+	const app = (): NeonNode => <View>
+		<TextInput multiline={true} placeholder="Notes" style={{ height: 120 }} onChangeText={(t: string): void => { typed = t; }} />
+	</View>;
+	runApp(app);
+	const tag = nmLastInputTag();
+	assert prop(tag, "multiline") === "true" && prop(tag, "placeholder") === "Notes", "a text area";
+	assert nmLayoutHeight(tag) === 120, "its own height";
+	nmControl(tag, 0, "line one\nline two");
+	assert typed === "line one\nline two", "typing routes: " + typed;
+	nmTeardown();
+}

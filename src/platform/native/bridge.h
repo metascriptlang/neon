@@ -47,6 +47,7 @@ float niMeasuredW(void);
 float niMeasuredH(void);
 
 void *niInputCreate(void);
+void *niTextAreaCreate(void); // the multiline TextInput: same props and control phases
 void *niSwitchCreate(void);
 void *niIndicatorCreate(void);
 void *niImageCreate(void);

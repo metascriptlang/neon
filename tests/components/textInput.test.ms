@@ -54,3 +54,9 @@ test "accessibility props reach every primitive as attributes" {
 	</View>), mockHost(), root as unknown as HostNode);
 	assert mockToString(root) === "<root><view accessible=\"true\" accessibilityLabel=\"Card\" accessibilityRole=\"summary\"><text accessibilityRole=\"header\">Title</text><pressable accessible=\"true\" accessibilityLabel=\"Save\" accessibilityHint=\"Saves the form\" accessibilityRole=\"button\">Save</pressable></view></root>", "attributes: " + mockToString(root);
 }
+
+test "a multiline TextInput is RN's separate multiline input, chosen once from its first value" {
+	const root: MockNode = mockNode("root");
+	render(element(<View><TextInput multiline={true} placeholder="Notes" /><TextInput multiline={false} /></View>), mockHost(), root as unknown as HostNode);
+	assert mockToString(root) === "<root><view><multilinetextinput placeholder=\"Notes\" multiline=\"true\"></multilinetextinput><textinput multiline=\"false\"></textinput></view></root>", "shape: " + mockToString(root);
+}

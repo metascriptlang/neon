@@ -378,6 +378,101 @@ static void setInputProp(NeonInput *input, const char *name, const char *value) 
 	} else if (strcmp(name, "maxLength") == 0) input.neonMaxLength = value[0] == '\0' ? -1 : atoi(value);
 }
 
+// RN's multiline TextInput (RCTMultilineTextInputView): a UITextView with a
+// placeholder label, the same control phases as the single-line field.
+@interface NeonTextArea : UITextView <UITextViewDelegate>
+@property (nonatomic) BOOL neonWriting;
+@property (nonatomic) BOOL neonBlurOnSubmit;
+@property (nonatomic) NSInteger neonMaxLength;
+@property (nonatomic, strong) UILabel *neonPlaceholder;
+@end
+
+@implementation NeonTextArea
+
+- (instancetype)initWithFrame:(CGRect)frame {
+	self = [super initWithFrame:frame textContainer:nil];
+	if (self) {
+		self.delegate = self;
+		self.neonMaxLength = -1;
+		self.backgroundColor = [UIColor clearColor];
+		self.textColor = [UIColor whiteColor];
+		self.font = [UIFont systemFontOfSize:17];
+		self.textContainer.lineFragmentPadding = 0;
+		self.textContainerInset = UIEdgeInsetsZero;
+		_neonPlaceholder = [[UILabel alloc] initWithFrame:CGRectZero];
+		_neonPlaceholder.textColor = UIColor.placeholderTextColor;
+		_neonPlaceholder.numberOfLines = 0;
+		[self addSubview:_neonPlaceholder];
+	}
+	return self;
+}
+
+- (void)layoutSubviews {
+	[super layoutSubviews];
+	UIEdgeInsets inset = self.textContainerInset;
+	CGFloat width = MAX(0, self.bounds.size.width - inset.left - inset.right);
+	CGSize fit = [self.neonPlaceholder sizeThatFits:CGSizeMake(width, CGFLOAT_MAX)];
+	self.neonPlaceholder.frame = CGRectMake(inset.left, inset.top, width, fit.height);
+	self.neonPlaceholder.font = self.font;
+	self.neonPlaceholder.hidden = self.text.length > 0;
+}
+
+- (void)neonSetText:(NSString *)text {
+	if ([self.text isEqualToString:text]) return;
+	self.neonWriting = YES;
+	self.text = text;
+	self.neonWriting = NO;
+	[self setNeedsLayout];
+}
+
+- (void)textViewDidChange:(UITextView *)view {
+	[self setNeedsLayout];
+	if (!self.neonWriting) emitControl((int)self.tag, 0, self.text, 0, 0);
+}
+
+- (void)textViewDidBeginEditing:(UITextView *)view { emitControl((int)self.tag, 1, self.text, 0, 0); }
+- (void)textViewDidEndEditing:(UITextView *)view { emitControl((int)self.tag, 2, self.text, 0, 0); }
+
+- (BOOL)textView:(UITextView *)view shouldChangeTextInRange:(NSRange)range replacementText:(NSString *)text {
+	if (self.neonBlurOnSubmit && [text isEqualToString:@"\n"]) {
+		emitControl((int)self.tag, 3, self.text, 0, 0);
+		[self resignFirstResponder];
+		return NO;
+	}
+	if (self.neonMaxLength < 0) return YES;
+	return (NSInteger)(view.text.length - range.length + text.length) <= self.neonMaxLength;
+}
+
+@end
+
+static void setTextAreaProp(NeonTextArea *area, const char *name, const char *value) {
+	BOOL yes = strcmp(value, "true") == 0;
+	BOOL defaultYes = value[0] == '\0' || yes;
+	NSString *text = [NSString stringWithUTF8String:value];
+	if (strcmp(name, "value") == 0) [area neonSetText:text];
+	else if (strcmp(name, "defaultValue") == 0) { if (area.text.length == 0) [area neonSetText:text]; }
+	else if (strcmp(name, "placeholder") == 0) { area.neonPlaceholder.text = text; [area setNeedsLayout]; }
+	else if (strcmp(name, "placeholderTextColor") == 0) area.neonPlaceholder.textColor = cssColor(value, UIColor.placeholderTextColor);
+	else if (strcmp(name, "editable") == 0) area.editable = defaultYes;
+	else if (strcmp(name, "secureTextEntry") == 0) area.secureTextEntry = yes;
+	else if (strcmp(name, "keyboardType") == 0) area.keyboardType = keyboardType(value);
+	else if (strcmp(name, "returnKeyType") == 0) area.returnKeyType = value[0] ? returnKeyType(value) : UIReturnKeyDefault;
+	else if (strcmp(name, "autoCorrect") == 0) area.autocorrectionType = value[0] == '\0' ? UITextAutocorrectionTypeDefault : yes ? UITextAutocorrectionTypeYes : UITextAutocorrectionTypeNo;
+	else if (strcmp(name, "autoCapitalize") == 0) {
+		area.autocapitalizationType = strcmp(value, "none") == 0 ? UITextAutocapitalizationTypeNone :
+			strcmp(value, "words") == 0 ? UITextAutocapitalizationTypeWords :
+			strcmp(value, "characters") == 0 ? UITextAutocapitalizationTypeAllCharacters : UITextAutocapitalizationTypeSentences;
+	} else if (strcmp(name, "blurOnSubmit") == 0) area.neonBlurOnSubmit = yes;
+	else if (strcmp(name, "autoFocus") == 0) { if (yes) dispatch_async(dispatch_get_main_queue(), ^{ [area becomeFirstResponder]; }); }
+	else if (strcmp(name, "textInsets") == 0) {
+		float left = 0, top = 0, right = 0, bottom = 0;
+		if (sscanf(value, "%f,%f,%f,%f", &left, &top, &right, &bottom) == 4) {
+			area.textContainerInset = UIEdgeInsetsMake(top, left, bottom, right);
+			[area setNeedsLayout];
+		}
+	} else if (strcmp(name, "maxLength") == 0) area.neonMaxLength = value[0] == '\0' ? -1 : atoi(value);
+}
+
 static UIView *focusedInput(UIView *view) {
 	if (view.isFirstResponder && ([view isKindOfClass:UITextField.class] || [view isKindOfClass:UITextView.class])) return view;
 	for (UIView *child in view.subviews) {
@@ -704,6 +799,10 @@ void *niImageCreate(void) {
 	return CFBridgingRetain(image);
 }
 
+void *niTextAreaCreate(void) {
+	return CFBridgingRetain([[NeonTextArea alloc] initWithFrame:CGRectZero]);
+}
+
 void *niModalCreate(void) {
 	return CFBridgingRetain([[NeonModalView alloc] initWithFrame:CGRectZero]);
 }
@@ -740,6 +839,7 @@ void niSetProp(void *view, const char *name, const char *value) {
 		if (strcmp(name, "animationType") == 0) ((NeonModalView *)v).neonAnimation = [NSString stringWithUTF8String:text];
 	}
 	else if ([v isKindOfClass:NeonInput.class]) setInputProp((NeonInput *)v, name, text);
+	else if ([v isKindOfClass:NeonTextArea.class]) setTextAreaProp((NeonTextArea *)v, name, text);
 	else if ([v isKindOfClass:NeonSwitch.class]) {
 		NeonSwitch *s = (NeonSwitch *)v;
 		if (strcmp(name, "value") == 0) { s.neonValue = strcmp(text, "true") == 0; if (s.isOn != s.neonValue) [s setOn:s.neonValue animated:YES]; }

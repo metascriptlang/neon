@@ -814,6 +814,7 @@ export function domHost(): Host {
 				installScroll(el);
 				return el as unknown as HostNode;
 			}
+			if (tag === "multilinetextinput") { return document.createElement("textarea") as unknown as HostNode; }
 			if (tag === "modal") {
 				if (!modalRule) {
 					registerCss("neon-modal", MODAL_CSS);

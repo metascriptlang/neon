@@ -518,6 +518,12 @@ void *niInputCreate(void) {
 	return input;
 }
 
+void *niTextAreaCreate(void) {
+	void *area = niInputCreate();
+	niSetProp(area, "multiline", "true");
+	return area;
+}
+
 void *niSwitchCreate(void) { return newView(J.toggle, J.toggleInit); }
 void *niIndicatorCreate(void) { return newView(J.spinner, J.spinnerInit); }
 void *niImageCreate(void) { return newView(J.picture, J.pictureInit); }

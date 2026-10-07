@@ -45,7 +45,7 @@ asFlexStyleBody(0);
 export function nativeElementKind(tag: string): NativeElementKind {
 	if (tag === "text") { return NativeElementKind.Text; }
 	if (tag === "scrollview") { return NativeElementKind.Scroll; }
-	if (tag === "textinput") { return NativeElementKind.Input; }
+	if (tag === "textinput" || tag === "multilinetextinput") { return NativeElementKind.Input; }
 	if (tag === "switch") { return NativeElementKind.Switch; }
 	if (tag === "activityindicator") { return NativeElementKind.Indicator; }
 	if (tag === "image") { return NativeElementKind.Image; }
