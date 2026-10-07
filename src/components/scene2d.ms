@@ -46,13 +46,13 @@ import {
 	setTile,
 	setText,
 	textStyle,
-	setTextStyle,
+	setTextStyle, setTextRuns, setShapingBreaks, setTruncate, setHangingIndent, setForceWidth,
 } from "../../../void/src/void2d/node";
 import { create, close, setScaleMode } from "../../../void/src/void2d/scene";
 import {
 	Color, Camera, Tile, Filter, ScaleMode, Bounds2D, rgba,
 } from "../../../void/src/void2d/types";
-import { TextStyle } from "../../../void/src/void2d/textLayout";
+import { TextStyle, TextRun, Truncate } from "../../../void/src/void2d/textLayout";
 import { Mat4 } from "../../../void/src/math/math3d";
 import { BoxStyle } from "../../../void/src/void2d/boxStyle";
 import { ImageStyle } from "../../../void/src/void2d/imageStyle";
@@ -138,6 +138,11 @@ interface LabelProps extends NodeProps {
 	size: Accessor<float32>;
 	color: Accessor<Color>;
 	textStyle?: Accessor<TextStyle> | null;
+	textRuns?: Accessor<TextRun[]> | null;
+	shapingBreaks?: Accessor<int32[]> | null;
+	truncate?: Accessor<Truncate> | null;
+	hangingIndent?: Accessor<float32> | null;
+	forceWidth?: Accessor<float32> | null;
 }
 
 const sceneScope = createContext<NodeRef | null>(null);
@@ -423,5 +428,25 @@ export function Label(props: LabelProps): NeonNode {
 					(props.textStyle as () => TextStyle)();
 				node.setTextStyle({ ...style, size: props.size() });
 			});
+			if (props.textRuns !== null) {
+				const runs = props.textRuns as () => TextRun[];
+				createEffect((): void => { node.setTextRuns(runs()); });
+			}
+			if (props.shapingBreaks !== null) {
+				const breaks = props.shapingBreaks as () => int32[];
+				createEffect((): void => { node.setShapingBreaks(breaks()); });
+			}
+			if (props.truncate !== null) {
+				const truncate = props.truncate as () => Truncate;
+				createEffect((): void => { node.setTruncate(truncate()); });
+			}
+			if (props.hangingIndent !== null) {
+				const indent = props.hangingIndent as () => float32;
+				createEffect((): void => { node.setHangingIndent(indent()); });
+			}
+			if (props.forceWidth !== null) {
+				const width = props.forceWidth as () => float32;
+				createEffect((): void => { node.setForceWidth(width()); });
+			}
 		});
 }
