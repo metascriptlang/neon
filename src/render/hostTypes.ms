@@ -45,4 +45,5 @@ export interface Host {
 	cloneNode: ((node: HostNode) => HostNode) | null;
 	voidArea: ((node: HostNode) => VoidArea) | null;
 	scrollTo: ((node: HostNode, x: number, y: number, animated: boolean) => void) | null;
+	focus?: ((node: HostNode, focused: boolean) => void) | null;
 }

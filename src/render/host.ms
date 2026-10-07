@@ -180,6 +180,10 @@ export function mockHost(): Host {
 			n.scrollY = y;
 			n.scrollAnimated = animated;
 		},
+		focus: (node: HostNode, focused: boolean): void => {
+			const n = node as unknown as MockNode;
+			fireEvent(n, focused ? "onFocus" : "onBlur");
+		},
 	};
 }
 
