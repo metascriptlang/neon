@@ -49,8 +49,18 @@ export function Motion(): NeonNode {
 	const headerHeight: AnimatedNode = scrollY.interpolate({ inputRange: [0, 120], outputRange: [110, 56], extrapolate: "clamp" });
 	const titleOpacity: AnimatedNode = scrollY.interpolate({ inputRange: [0, 120], outputRange: [1, 0.4], extrapolate: "clamp" });
 
+	const [spinning, setSpinning] = createSignal(false);
 	const spinLoop: CompositeAnimation = Animated.loop(Animated.timing(spin, { toValue: 1, duration: 1200, easing: Easing.linear }));
-	spinLoop.start();
+	const toggleSpin = (e: NeonEvent): void => {
+		if (spinning()) {
+			spinLoop.stop();
+			spinLoop.reset();
+		} else {
+			spinLoop.reset();
+			spinLoop.start();
+		}
+		setSpinning(!spinning());
+	};
 
 	const toggleFade = (e: NeonEvent): void => {
 		const target = fade.peek() > 0.5 ? 0 : 1;
@@ -78,12 +88,13 @@ export function Motion(): NeonNode {
 		<ScrollView style={styles.scroll} scrollEventThrottle={16}
 			onScroll={Animated.event({ y: scrollY }, { listener: (e: NeonEvent): void => { setScrolled(Math.round(e.y)); } })}>
 			<View style={styles.content}>
-				<Text style={styles.status}>{fadeState() + " · " + springState() + " · scroll " + scrolled().toString()}</Text>
+				<Text style={styles.status}>{fadeState() + " · " + springState() + " · scroll " + scrolled().toString() + " · spin " + (spinning() ? "on" : "off")}</Text>
 				<View style={styles.controls}>
 					<Pressable style={styles.button} onPress={toggleFade}>fade</Pressable>
 					<Pressable style={styles.button} onPress={pushCard}>spring</Pressable>
 					<Pressable style={styles.button} onPress={togglePanel}>{expanded() ? "collapse" : "expand"}</Pressable>
 					<Pressable style={styles.button} onPress={() => setToast(!toast())}>toast</Pressable>
+					<Pressable style={styles.button} onPress={toggleSpin}>{spinning() ? "stop spin" : "start spin"}</Pressable>
 				</View>
 				<View style={styles.stage}>
 					<Animated.View style={[styles.box, { opacity: fade.get() }]}><Text style={styles.label}>fade box</Text></Animated.View>

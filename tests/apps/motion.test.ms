@@ -49,7 +49,7 @@ test "the motion example: fade, spring, scroll-linked header, toast" {
 	const clock = useManualFrames();
 	const root: MockNode = mockNode("root");
 	render(element(<Motion />), mockHost(), root as unknown as HostNode);
-	assert textOf(root).indexOf("fade 1 · spring 0 · scroll 0") >= 0, textOf(root).substring(0, 200);
+	assert textOf(root).indexOf("fade 1 · spring 0 · scroll 0 · spin off") >= 0, textOf(root).substring(0, 200);
 
 	const box = holder(root, "fade box");
 	assert styleOf(box).opacity === 1;
@@ -73,9 +73,16 @@ test "the motion example: fade, spring, scroll-linked header, toast" {
 	assert styleOf(card).transform === "translateX(160px)" && textOf(root).indexOf("spring 160") >= 0, styleOf(card).transform as string;
 
 	const spinner = holder(root, "spin");
+	press(root, "start spin");
 	clock.step(10);
 	const angle = styleOf(spinner).transform as string;
 	assert angle.startsWith("rotate(") && angle !== "rotate(0deg)", angle;
+	clock.step(80);
+	assert textOf(root).indexOf("spin on") >= 0, "the loop keeps running past one turn";
+	press(root, "stop spin");
+	const stopped = styleOf(spinner).transform as string;
+	clock.step(10);
+	assert styleOf(spinner).transform === stopped && textOf(root).indexOf("spin off") >= 0, "stop holds the angle";
 
 	const header = find(root, "text", "Neon motion");
 	const headerBox = (header as MockNode).parent as MockNode;
