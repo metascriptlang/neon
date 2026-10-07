@@ -496,3 +496,183 @@ final class ScrollMatrixUITests: XCTestCase {
         report("dismiss-none")
     }
 }
+
+final class CatalogUITests: XCTestCase {
+    private let app = XCUIApplication(bundleIdentifier: "dev.neon.NeonCatalog")
+
+    override func setUp() {
+        continueAfterFailure = false
+    }
+
+    private func report(_ name: String) {
+        print("NEON_IOS catalog-\(name)")
+        let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        shot.name = "catalog-\(name)"
+        shot.lifetime = .keepAlways
+        add(shot)
+    }
+
+    private func text(_ label: String, timeout: TimeInterval = 15) -> XCUIElement {
+        let element = app.staticTexts[label]
+        XCTAssertTrue(element.waitForExistence(timeout: timeout), "no text \(label); texts \(app.staticTexts.allElementsBoundByIndex.prefix(30).map { $0.label })")
+        return element
+    }
+
+    private func button(_ label: String, timeout: TimeInterval = 15) -> XCUIElement {
+        let element = app.buttons[label]
+        XCTAssertTrue(element.waitForExistence(timeout: timeout), "no button \(label); buttons \(app.buttons.allElementsBoundByIndex.prefix(30).map { $0.label })")
+        return element
+    }
+
+    private func clear(_ field: XCUIElement, _ count: Int) {
+        field.tap()
+        field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: count))
+    }
+
+    func testSearchDetailEditSave() {
+        XCUIDevice.shared.orientation = .portrait
+        app.launch()
+        XCTAssertTrue(app.wait(for: .runningForeground, timeout: 20))
+        if app.staticTexts["Loading products"].waitForExistence(timeout: 5) { report("loading") }
+        _ = text("12 products")
+        let short = button("Field notebook, $12"), long = button("Walnut desk tray, $48")
+        RunLoop.current.run(until: Date().addingTimeInterval(3))
+        report("list")
+        print("NEON_IOS catalog-rows short=\(short.frame) long=\(long.frame)")
+        XCTAssertGreaterThan(long.frame.height, short.frame.height + 10, "the long description wraps into a taller row")
+
+        let search = app.textFields["Search products"]
+        XCTAssertTrue(search.waitForExistence(timeout: 10))
+        search.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10), "the software keyboard opens")
+        search.typeText("mug")
+        _ = text("1 product")
+        _ = button("Ceramic mug, $18")
+        XCTAssertFalse(app.buttons["Brass pen, $36"].exists, "search drops a non-matching row")
+        report("search")
+        search.typeText("zzz")
+        _ = text("No products match \"mugzzz\"")
+        report("empty")
+        clear(search, 6)
+        _ = text("12 products")
+        search.typeText("\n")
+
+        app.switches["Simulate offline"].tap()
+        _ = text("Could not reach the catalog. Check the connection and try again.")
+        report("error")
+        app.switches["Simulate offline"].tap()
+        if app.buttons["Retry"].waitForExistence(timeout: 3) { app.buttons["Retry"].tap() }
+        _ = text("12 products")
+
+        let mug = button("Ceramic mug, $18")
+        if !app.windows.firstMatch.frame.contains(mug.frame) { app.swipeUp() }
+        mug.tap()
+        _ = button("Edit")
+        _ = text("$18")
+        RunLoop.current.run(until: Date().addingTimeInterval(2))
+        report("detail")
+
+        button("Edit").tap()
+        _ = text("Edit product")
+        let title = app.textFields["Title"]
+        clear(title, 20)
+        button("Save").tap()
+        _ = text("Title is required.")
+        report("invalid")
+        title.tap()
+        title.typeText("Clay cup")
+        clear(app.textFields["Price"], 6)
+        app.textFields["Price"].typeText("21")
+        button("Save").tap()
+        _ = text("Clay cup")
+        _ = text("$21")
+        _ = button("Edit")
+        report("saved")
+        button("Back to catalog").tap()
+        _ = button("Clay cup, $21")
+        report("list-after-save")
+    }
+}
+
+final class SettingsUITests: XCTestCase {
+    private let app = XCUIApplication(bundleIdentifier: "dev.neon.NeonSettings")
+
+    override func setUp() {
+        continueAfterFailure = false
+    }
+
+    private func label(startingWith prefix: String) -> String {
+        let match = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", prefix)).firstMatch
+        return match.exists ? match.label : ""
+    }
+
+    private func waitLabel(_ prefix: String, containing part: String) {
+        let predicate = NSPredicate { [self] _, _ in label(startingWith: prefix).contains(part) }
+        XCTAssertEqual(XCTWaiter.wait(for: [expectation(for: predicate, evaluatedWith: app)], timeout: 10), .completed,
+            "expected \(prefix)… to contain \(part); it reads \(label(startingWith: prefix))")
+    }
+
+    private func report(_ name: String) {
+        print("NEON_IOS settings-\(name) \(label(startingWith: "Compact")) \(label(startingWith: "Wide")) \(label(startingWith: "Focus:"))")
+        let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        shot.name = "settings-\(name)"
+        shot.lifetime = .keepAlways
+        add(shot)
+    }
+
+    func testFocusThemeAndLayout() {
+        XCUIDevice.shared.orientation = .portrait
+        if #available(iOS 17.0, *) { XCUIDevice.shared.appearance = .light }
+        app.launch()
+        XCTAssertTrue(app.staticTexts["Settings"].waitForExistence(timeout: 20))
+        waitLabel("Compact", containing: "light theme (system light)")
+        for name in ["Use system theme", "Large text", "Notifications"] {
+            XCTAssertTrue(app.switches[name].exists, "switch \(name) is exposed with its label")
+        }
+        XCTAssertTrue(app.buttons["Save profile"].exists, "the save button is exposed as a button")
+        XCTAssertEqual(app.buttons["Save profile"].value as? String ?? "", "", "no stray value on the button")
+        XCTAssertTrue(app.textFields["Name"].exists && app.textFields["Email"].exists, "fields are labelled")
+        print("NEON_IOS settings-a11y switches=\(app.switches.allElementsBoundByIndex.map { $0.label }) buttons=\(app.buttons.allElementsBoundByIndex.map { $0.label }) fields=\(app.textFields.allElementsBoundByIndex.map { $0.label })")
+        report("start")
+
+        app.textFields["Name"].tap()
+        waitLabel("Focus:", containing: "Focus: name")
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10))
+        waitLabel("Focus:", containing: "pt")
+        report("name-focused")
+        app.textFields["Name"].typeText(" King\n")
+        waitLabel("Focus:", containing: "Focus: email")
+        report("email-focused")
+        app.textFields["Email"].typeText("\n")
+        XCTAssertTrue(app.staticTexts["Saved Ada Lovelace King <ada@example.com>"].waitForExistence(timeout: 10))
+        waitLabel("Focus:", containing: "Focus: none · keyboard hidden")
+        report("saved")
+
+        app.switches["Use system theme"].tap()
+        XCTAssertTrue(app.switches["Dark mode"].waitForExistence(timeout: 10))
+        app.switches["Dark mode"].tap()
+        waitLabel("Compact", containing: "dark theme (system light)")
+        report("dark")
+        app.switches["Large text"].tap()
+        RunLoop.current.run(until: Date().addingTimeInterval(1))
+        report("large-text")
+        app.switches["Large text"].tap()
+        app.switches["Use system theme"].tap()
+        if #available(iOS 17.0, *) {
+            XCUIDevice.shared.appearance = .dark
+            let followed = NSPredicate { [self] _, _ in label(startingWith: "Compact").contains("dark theme (system dark)") }
+            let result = XCTWaiter.wait(for: [expectation(for: followed, evaluatedWith: app)], timeout: 6)
+            print("NEON_IOS settings-system-appearance \(result == .completed ? "followed" : "not delivered by XCUIDevice") \(label(startingWith: "Compact"))")
+            report("system-dark-requested")
+            XCUIDevice.shared.appearance = .light
+        }
+
+        XCUIDevice.shared.orientation = .landscapeLeft
+        waitLabel("Wide", containing: "Wide layout")
+        let name = app.textFields["Name"].frame, theme = app.switches["Use system theme"].frame
+        XCTAssertGreaterThan(theme.minX, name.maxX, "landscape puts the sections side by side")
+        report("landscape")
+        XCUIDevice.shared.orientation = .portrait
+        waitLabel("Compact", containing: "Compact layout")
+    }
+}
