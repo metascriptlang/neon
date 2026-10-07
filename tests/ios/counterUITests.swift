@@ -424,11 +424,11 @@ final class FlatListUITests: XCTestCase {
         report("chat-kept")
 
         let pull = app.windows.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.45))
-        for _ in 0..<8 where !(onScreen("message 980") && app.staticTexts["message 980"].frame.minY >= listTop) {
+        for _ in 0..<8 where !(onScreen(app.staticTexts["message 980"]) && app.staticTexts["message 980"].frame.minY >= listTop) {
             pull.press(forDuration: 0.1, thenDragTo: pull.withOffset(CGVector(dx: 0, dy: 300)))
             RunLoop.current.run(until: Date().addingTimeInterval(1))
         }
-        XCTAssertTrue(onScreen("message 980"), "the older messages are above the kept one")
+        XCTAssertTrue(onScreen(app.staticTexts["message 980"]), "the older messages are above the kept one")
         let older = messagesBelow(listTop).map { Int($0.label.dropFirst("message ".count)) ?? -1 }
         XCTAssertEqual(older, older.sorted(), "older messages read top to bottom")
         report("chat-older")
