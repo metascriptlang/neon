@@ -95,7 +95,7 @@ final class Permissions {
 		return reply("denied", rationale);
 	}
 
-	private static String undeclared(Activity a, String[] permissions) {
+	static String undeclared(Activity a, String[] permissions) {
 		List<String> declared;
 		try {
 			PackageInfo info = a.getPackageManager().getPackageInfo(a.getPackageName(), PackageManager.GET_PERMISSIONS);

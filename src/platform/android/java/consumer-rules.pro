@@ -52,6 +52,10 @@
 	*;
 }
 
+-keep class dev.metascript.neon.CaptureRequester {
+	*;
+}
+
 -keepclassmembers class dev.metascript.neon.Web$Bridge {
 	@android.webkit.JavascriptInterface <methods>;
 }

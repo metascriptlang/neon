@@ -69,14 +69,14 @@ final class Movie extends FrameLayout implements Control, TextureView.SurfaceTex
 
 	// Native players take files, not data: URIs, and the app bundles no asset files, so a data:
 	// URI is decoded once into the cache directory.
-	private String playable(String uri) throws IOException {
+	static String playable(Context context, String uri) throws IOException {
 		if (!uri.startsWith("data:")) return uri;
 		int comma = uri.indexOf(',');
 		String header = comma < 0 ? "" : uri.substring(5, comma);
 		if (comma < 0 || !header.endsWith(";base64")) throw new IOException("the data: URI is not base64");
 		String mime = header.substring(0, header.indexOf(';'));
 		String extension = mime.equals("video/quicktime") ? "mov" : mime.equals("audio/mpeg") ? "mp3" : mime.startsWith("audio/") ? "m4a" : "mp4";
-		File file = new File(getContext().getCacheDir(), "neon-media-" + Integer.toHexString(uri.hashCode()) + "-" + uri.length() + "." + extension);
+		File file = new File(context.getCacheDir(), "neon-media-" + Integer.toHexString(uri.hashCode()) + "-" + uri.length() + "." + extension);
 		if (!file.exists()) {
 			byte[] bytes = Base64.decode(uri.substring(comma + 1), Base64.DEFAULT);
 			try (FileOutputStream out = new FileOutputStream(file)) { out.write(bytes); }
@@ -127,7 +127,7 @@ final class Movie extends FrameLayout implements Control, TextureView.SurfaceTex
 			return true;
 		});
 		try {
-			String path = playable(uri);
+			String path = playable(getContext(), uri);
 			if (path.startsWith("/")) {
 				next.setDataSource(path);
 				buffered = 100;

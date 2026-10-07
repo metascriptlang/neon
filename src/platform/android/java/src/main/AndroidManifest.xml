@@ -28,8 +28,21 @@
 			<action android:name="android.intent.action.VIEW" />
 			<data android:scheme="geo" />
 		</intent>
+		<intent>
+			<action android:name="android.media.action.IMAGE_CAPTURE" />
+		</intent>
+		<intent>
+			<action android:name="android.media.action.VIDEO_CAPTURE" />
+		</intent>
 	</queries>
 	<application>
 		<receiver android:name="dev.metascript.neon.NotificationReceiver" android:exported="false" />
+		<provider
+			android:name="dev.metascript.neon.CaptureFiles"
+			android:authorities="${applicationId}.neon.capture"
+			android:exported="false"
+			android:grantUriPermissions="true">
+			<meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/neon_capture_paths" />
+		</provider>
 	</application>
 </manifest>

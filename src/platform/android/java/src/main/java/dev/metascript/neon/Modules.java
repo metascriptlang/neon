@@ -18,6 +18,10 @@ final class Modules {
 			case "device":
 			case "locale": return Device.call(a, name, arg);
 			case "notification": return Notifications.call(a, name, arg);
+			case "capture": return Capture.call(a, name, arg);
+			case "sound":
+			case "audio": return Sounds.call(a, name, arg);
+			case "recording": return Recordings.call(a, name, arg);
 			default: throw new IllegalArgumentException("Neon App.call: unknown command " + name);
 		}
 	}
