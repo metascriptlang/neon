@@ -20,6 +20,10 @@ import { Animated, AnimatedValue, CompositeAnimation, Easing, EasingFunction, En
 const COLLAPSIBLE_MS = 300;
 const EXPANSION_MS = 200;
 const TILE_MIN_HEIGHT = 56;
+// Yoga on the native hosts lays out no child of a box whose height is exactly 0, so the
+// content of a box opening for the first time could never be measured; it opens from this
+// instead (WORKAROUND.md W8).
+const MEASURING_HEIGHT = 0.01;
 
 export function Collapsible(props: {
 	collapsed: Accessor<boolean>;
@@ -95,7 +99,8 @@ export function Collapsible(props: {
 		if (open() && !moving()) { return merged; }
 		const low = floor();
 		const high = Math.max(low, measured());
-		return { ...merged, height: low + (high - low) * progress.get() };
+		const height = low + (high - low) * progress.get();
+		return { ...merged, height: height <= 0 && moving() ? MEASURING_HEIGHT : height };
 	});
 	const inner = accessor((): Style => {
 		const hidden = !open() && !moving() && floor() <= 0;

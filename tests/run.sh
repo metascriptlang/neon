@@ -18,7 +18,7 @@ for f in $files; do
 done
 for f in $files; do
 	case "$f" in
-	*style/style.test.ms | *platform/void.test.ms | *platform/voidInput.test.ms | *platform/nativeHost.test.ms | *platform/nativeApis.test.ms | *platform/nativeAnimation.test.ms | *platform/nativeLayoutAnimation.test.ms)
+	*style/style.test.ms | *platform/void.test.ms | *platform/voidInput.test.ms | *platform/nativeHost.test.ms | *platform/nativeApis.test.ms | *platform/nativeAnimation.test.ms | *platform/nativeLayoutAnimation.test.ms | *platform/nativeWidgets.test.ms)
 		echo "== js skip $f"
 		continue
 		;;
