@@ -102,6 +102,7 @@ test "setAttr reaches getAttribute" {
 	const el = mount("view");
 	h.setAttr(el, "data-neon", "yes");
 	assert probe(el).getAttribute("data-neon") === "yes", "attribute is readable back";
+	assert probe(el).getAttribute("missing") === null, "absent attribute is null";
 	probe(el).remove();
 }
 
