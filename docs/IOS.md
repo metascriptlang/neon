@@ -486,6 +486,14 @@ over a slow drag, `scrollToLocation(1, 0)` bringing `Section 1` to the list top,
 `item 101` as `Section 1 item 1`. A fast drag flings past the 149 pt first section, so the test
 drags slowly and holds. Not yet run on the physical iPhone.
 
+Grid item ownership, simulator only (2026-10-07, `wt/rn-grid-own`, compiler `0d83c4867`): each grid
+cell of `examples/components/bigList.ms` counts its own taps in a signal created inside the cell.
+`testGridAndSections` taps `cell 2` and `cell 4`, prepends, and finds `cell 2 tapped 1` opening the
+second row in the first column, then `cell 2 tapped 2` with `pressed cell 2 at 3` and
+`pressed cell 4 at 5`; it passed twice. The same run with `src/components/virtualizedList.ms` of
+`5e3fb7e` fails at "cell 2 keeps its own counter", the remount the pool removes.
+`testMeasuredStickyAndInverted` failed in all three runs, the control included (BUGS.md §3).
+
 ### 9.2 Earlier list gate boundary — 2026-10-06
 
 On source/test tree `58fa59202ac69a7cdc09ad837c60392c3cef4b85` with compiler

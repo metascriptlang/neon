@@ -22,6 +22,13 @@ names the card and the site, and nothing is worked around in `src/`. Rows closed
 2026-09-20 were dropped with §2 — they are in this file's history at `git show c00bd2b:BUGS.md`,
 and the invariants that outlived them were moved to the head of the test that pins each one.
 
+- **OPEN 2026-10-07 — iOS simulator: the inverted sticky header is not at the list top after the
+  pull.** `/private/tmp/neon-sim-run.sh <worktree> examples/flatlist NeonFlatList FlatListUITests`
+  fails `testMeasuredStickyAndInverted` at `counterUITests.swift:281` ("the inverted header is
+  pinned at the list top"): header `minY` 383.0 and 391.7 on `wt/rn-grid-own`, 411.0 with
+  `src/components/virtualizedList.ms` of `5e3fb7e` (`wt/rn-components`), against 349.0 expected;
+  the other two cases pass. The value moves between runs, so the header is read mid-bounce or
+  off its pinned frame; not yet told apart. docs/IOS.md records this case green on `9306954`.
 - **OPEN 2026-10-07 — a raw tag with an `Accessor<boolean> | null` attribute dies on C.** In
   `probe/apps/boolAttr.ms` (`wt/rn-apps`), `function Tag(props: { on?: Accessor<boolean> | null })`
   returning `element(<text accessible={props.on}>hi</text>)`, mounted as `<Tag on={true} />` on
