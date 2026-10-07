@@ -1708,3 +1708,109 @@ final class WidgetsUITests: XCTestCase {
         report("chips")
     }
 }
+
+final class DeviceUITests: XCTestCase {
+    private let app = XCUIApplication(bundleIdentifier: "dev.neon.NeonDevice")
+    private let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+
+    override func setUp() {
+        continueAfterFailure = false
+    }
+
+    private func label(startingWith prefix: String) -> String {
+        let match = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", prefix)).firstMatch
+        return match.exists ? match.label : ""
+    }
+
+    private func waitLabel(_ prefix: String, containing part: String, timeout: TimeInterval = 10) {
+        let predicate = NSPredicate { [self] _, _ in label(startingWith: prefix).contains(part) }
+        XCTAssertEqual(XCTWaiter.wait(for: [expectation(for: predicate, evaluatedWith: app)], timeout: timeout), .completed,
+            "expected \(prefix)… to contain \(part); it reads \(label(startingWith: prefix))")
+    }
+
+    private func report(_ name: String) {
+        func flat(_ node: XCUIElementSnapshot) -> [String] {
+            (node.elementType == .staticText ? [node.label] : []) + node.children.flatMap { flat($0) }
+        }
+        let texts = ((try? app.snapshot()).map { flat($0) } ?? []).prefix(16).joined(separator: " | ")
+        print("NEON_IOS device-\(name) \(texts)")
+        let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        shot.name = "device-\(name)"
+        shot.lifetime = .keepAlways
+        add(shot)
+    }
+
+    private func tap(_ text: String) {
+        let element = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", text)).firstMatch
+        XCTAssertTrue(element.waitForExistence(timeout: 10), "no \(text)")
+        element.tap()
+    }
+
+    private func allow(_ choices: [String]) {
+        let alert = springboard.alerts.firstMatch
+        XCTAssertTrue(alert.waitForExistence(timeout: 15), "the system permission alert is shown")
+        let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        shot.name = "device-permission-alert"
+        shot.lifetime = .keepAlways
+        add(shot)
+        for choice in choices where alert.buttons[choice].exists {
+            alert.buttons[choice].tap()
+            return
+        }
+        XCTFail("no \(choices) in the alert; it offers \(alert.buttons.allElementsBoundByIndex.map { $0.label })")
+    }
+
+    private func launch() {
+        app.launch()
+        XCTAssertTrue(app.staticTexts["Neon Device"].waitForExistence(timeout: 20))
+    }
+
+    func testStorageNetworkLocationAndDevice() {
+        XCUIDevice.shared.orientation = .portrait
+        launch()
+        waitLabel("stored ", containing: "stored none")
+        waitLabel("network ", containing: "connected yes reachable yes")
+        waitLabel("permission ", containing: "permission undetermined")
+        waitLabel("device ", containing: "device iPhone iOS \(UIDevice.current.systemVersion) emulator yes")
+        waitLabel("app ", containing: "app dev.neon.NeonDevice 1.0 (1)")
+        waitLabel("locale ", containing: "locale ")
+        report("initial")
+
+        tap("save note")
+        waitLabel("stored ", containing: "stored note-1")
+        tap("save note")
+        waitLabel("stored ", containing: "stored note-2")
+        tap("merge note")
+        waitLabel("merged ", containing: "\"tags\":{\"a\":1,\"b\":2}")
+        report("stored")
+
+        app.terminate()
+        launch()
+        waitLabel("stored ", containing: "stored note-2")
+        waitLabel("merged ", containing: "\"b\":2")
+        report("relaunched")
+
+        tap("request location")
+        allow(["Allow While Using App", "Allow Once", "Allow"])
+        waitLabel("permission ", containing: "permission granted")
+        tap("locate")
+        waitLabel("position ", containing: "position 10.7769,106.7009", timeout: 30)
+        report("located")
+        tap("watch location")
+        let watched = NSPredicate { [self] _, _ in
+            let text = label(startingWith: "watched ")
+            return !text.isEmpty && text != "watched 0"
+        }
+        XCTAssertEqual(XCTWaiter.wait(for: [expectation(for: watched, evaluatedWith: app)], timeout: 30), .completed,
+            "watchPosition reports a fix; it reads \(label(startingWith: "watched "))")
+
+        tap("haptic")
+        waitLabel("haptics ", containing: "haptics 1")
+        tap("battery")
+        RunLoop.current.run(until: Date().addingTimeInterval(1))
+        print("NEON_IOS device-battery \(label(startingWith: "battery "))")
+        tap("clear notes")
+        waitLabel("stored ", containing: "stored none")
+        report("final")
+    }
+}
