@@ -38,22 +38,31 @@ final class CounterUITests: XCTestCase {
         let landscape = window.width > window.height
         XCTAssertEqual(window.size, landscape ? CGSize(width: 874, height: 402) : CGSize(width: 402, height: 874))
         let safe = landscape ? landscapeSafe : portraitSafe
-        for label in ["Neon Counter", value, "-", "reset", "+", parity] {
-            XCTAssertTrue(app.staticTexts[label].waitForExistence(timeout: 10), "\(name): no static text \(label)")
-        }
-        let texts = app.staticTexts.allElementsBoundByIndex
+        let texts = ["Neon Counter", value, parity].map { app.staticTexts[$0] }
+        let pressables = ["-", "reset", "+"].map { element($0) }
         for text in texts {
-            XCTAssertTrue(safe.contains(text.frame), "\(name): \(text.label) at \(text.frame) outside safe area \(safe)")
+            XCTAssertTrue(text.waitForExistence(timeout: 10), "\(name): no static text \(text)")
         }
-        print("NEON_IOS \(name) pid=\(pid()) window=\(window) texts=\(texts.map { "\($0.label)@\($0.frame)" })")
+        for pressable in pressables {
+            XCTAssertTrue(pressable.waitForExistence(timeout: 10), "\(name): no accessible pressable \(pressable)")
+        }
+        let shown = texts + pressables
+        for item in shown {
+            XCTAssertTrue(safe.contains(item.frame), "\(name): \(item.label) at \(item.frame) outside safe area \(safe)")
+        }
+        print("NEON_IOS \(name) pid=\(pid()) window=\(window) texts=\(shown.map { "\($0.label)@\($0.frame)" })")
         let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         shot.name = name
         shot.lifetime = .keepAlways
         add(shot)
     }
 
+    private func element(_ label: String) -> XCUIElement {
+        app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", label)).firstMatch
+    }
+
     private func press(_ label: String) {
-        app.staticTexts[label].tap()
+        element(label).tap()
     }
 
     func testRotateAndPress() {
@@ -97,9 +106,12 @@ final class ListUITests: XCTestCase {
         return match.exists ? match.label : ""
     }
 
-    private func onScreen(_ label: String) -> Bool {
-        let text = app.staticTexts[label]
-        return text.exists && app.windows.firstMatch.frame.contains(text.frame)
+    private func element(_ label: String) -> XCUIElement {
+        app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", label)).firstMatch
+    }
+
+    private func onScreen(_ item: XCUIElement) -> Bool {
+        item.exists && app.windows.firstMatch.frame.contains(item.frame)
     }
 
     private func report(_ name: String) {
@@ -115,23 +127,23 @@ final class ListUITests: XCTestCase {
         app.launch()
         XCTAssertTrue(app.wait(for: .runningForeground, timeout: 20))
         XCTAssertTrue(app.staticTexts["offset 0"].waitForExistence(timeout: 20), "initial offset")
-        XCTAssertTrue(onScreen("row 1"), "row 1 starts on screen")
-        XCTAssertFalse(onScreen("row 30"), "row 30 starts below the fold")
+        XCTAssertTrue(onScreen(element("row 1")), "row 1 starts on screen")
+        XCTAssertFalse(onScreen(element("row 30")), "row 30 starts below the fold")
         let launched = pid()
         report("initial")
 
         var swipes = 0
-        while !onScreen("row 30") && swipes < 8 {
+        while !onScreen(element("row 30")) && swipes < 8 {
             app.swipeUp()
             swipes += 1
         }
         RunLoop.current.run(until: Date().addingTimeInterval(1))
-        XCTAssertTrue(onScreen("row 30"), "row 30 scrolled into view after \(swipes) swipes")
+        XCTAssertTrue(onScreen(element("row 30")), "row 30 scrolled into view after \(swipes) swipes")
         XCTAssertNotEqual(label(startingWith: "offset "), "offset 0", "onScroll moved the offset")
         XCTAssertEqual(label(startingWith: "pressed "), "pressed none", "a swipe that starts on a row does not press it")
         report("scrolled")
 
-        app.staticTexts["row 30"].tap()
+        element("row 30").tap()
         XCTAssertTrue(app.staticTexts["pressed row 30"].waitForExistence(timeout: 10), "the tap after scrolling hits row 30")
         report("pressed")
 
@@ -172,13 +184,16 @@ final class FlatListUITests: XCTestCase {
         return match.exists ? match.label : ""
     }
 
-    private func onScreen(_ label: String) -> Bool {
-        let text = app.staticTexts[label]
-        return text.exists && app.windows.firstMatch.frame.contains(text.frame)
+    private func element(_ label: String) -> XCUIElement {
+        app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", label)).firstMatch
+    }
+
+    private func onScreen(_ item: XCUIElement) -> Bool {
+        item.exists && app.windows.firstMatch.frame.contains(item.frame)
     }
 
     private func rowsInTree() -> Int {
-        return app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "row ")).count
+        return app.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH %@", "row ")).count
     }
 
     private func report(_ name: String) {
@@ -195,8 +210,8 @@ final class FlatListUITests: XCTestCase {
         XCTAssertTrue(app.wait(for: .runningForeground, timeout: 20))
         let mounted = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "mounted ")).firstMatch
         XCTAssertTrue(mounted.waitForExistence(timeout: 30), "the list reports its mount time")
-        XCTAssertTrue(onScreen("row 0"), "row 0 starts on screen")
-        XCTAssertFalse(app.staticTexts["row 9999"].exists, "row 9999 is not mounted")
+        XCTAssertTrue(onScreen(element("row 0")), "row 0 starts on screen")
+        XCTAssertFalse(element("row 9999").exists, "row 9999 is not mounted")
         XCTAssertLessThan(rowsInTree(), 400, "a window of rows, not 10000")
         let launched = pid()
         report("initial")
@@ -207,22 +222,22 @@ final class FlatListUITests: XCTestCase {
         XCTAssertEqual(label(startingWith: "pressed "), "pressed none", "a swipe that starts on a row does not press it")
         report("swiped")
 
-        app.staticTexts["jump 5000"].tap()
-        XCTAssertTrue(app.staticTexts["row 5000"].waitForExistence(timeout: 10), "row 5000 mounts after scrollToIndex")
-        XCTAssertTrue(onScreen("row 5000"), "row 5000 is on screen")
-        XCTAssertFalse(app.staticTexts["row 1000"].exists, "the rows between left the window")
-        XCTAssertFalse(onScreen("row 0"), "row 0 stays mounted for scroll-to-top, off screen")
+        element("jump 5000").tap()
+        XCTAssertTrue(element("row 5000").waitForExistence(timeout: 10), "row 5000 mounts after scrollToIndex")
+        XCTAssertTrue(onScreen(element("row 5000")), "row 5000 is on screen")
+        XCTAssertFalse(element("row 1000").exists, "the rows between left the window")
+        XCTAssertFalse(onScreen(element("row 0")), "row 0 stays mounted for scroll-to-top, off screen")
         XCTAssertLessThan(rowsInTree(), 400, "still a window at row 5000")
         report("jumped")
 
-        app.staticTexts["row 5000"].tap()
+        element("row 5000").tap()
         XCTAssertTrue(app.staticTexts["pressed row 5000"].waitForExistence(timeout: 10), "the tap hits row 5000")
         report("pressed")
 
-        app.staticTexts["row 5001"].press(forDuration: 1.2)
+        element("row 5001").press(forDuration: 1.2)
         XCTAssertTrue(app.staticTexts["pressed long row 5001"].waitForExistence(timeout: 10), "a held row fires onLongPress on its std timer: \(label(startingWith: "pressed "))")
         report("long-pressed")
-        app.staticTexts["row 5000"].tap()
+        element("row 5000").tap()
         XCTAssertTrue(app.staticTexts["pressed row 5000"].waitForExistence(timeout: 10), "the tap hits row 5000 again")
 
         XCUIDevice.shared.orientation = .landscapeRight
@@ -247,16 +262,16 @@ final class FlatListUITests: XCTestCase {
         app.launch()
         XCTAssertTrue(app.wait(for: .runningForeground, timeout: 20))
         let launched = pid()
-        app.staticTexts["measured rows"].tap()
-        let header = app.staticTexts["header 0"]
+        element("measured rows").tap()
+        let header = element("header 0")
         XCTAssertTrue(header.waitForExistence(timeout: 15))
-        XCTAssertTrue(app.staticTexts["item 3"].waitForExistence(timeout: 15))
+        XCTAssertTrue(element("item 3").waitForExistence(timeout: 15))
         let top = header.frame.minY
-        XCTAssertEqual(app.staticTexts["item 2"].frame.minY - app.staticTexts["item 1"].frame.minY, 80, accuracy: 2)
-        XCTAssertEqual(app.staticTexts["item 3"].frame.minY - app.staticTexts["item 2"].frame.minY, 112, accuracy: 2)
+        XCTAssertEqual(element("item 2").frame.minY - element("item 1").frame.minY, 80, accuracy: 2)
+        XCTAssertEqual(element("item 3").frame.minY - element("item 2").frame.minY, 112, accuracy: 2)
         report("measured-initial")
 
-        let start = app.staticTexts["item 2"].coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.5))
+        let start = element("item 2").coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.5))
         start.press(forDuration: 0.1, thenDragTo: start.withOffset(CGVector(dx: 0, dy: -110)))
         let moved = NSPredicate { [self] _, _ in
             !label(startingWith: "offset ").isEmpty && label(startingWith: "offset ") != "offset 0"
@@ -269,10 +284,10 @@ final class FlatListUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["pressed header 0"].waitForExistence(timeout: 10))
         report("measured-sticky-pressed")
 
-        app.staticTexts["inverted rows"].tap()
+        element("inverted rows").tap()
         XCTAssertTrue(app.staticTexts["pressed header 0"].waitForExistence(timeout: 10), "changing inversion preserves the mounted list state")
         RunLoop.current.run(until: Date().addingTimeInterval(1))
-        let headers = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "header "))
+        let headers = app.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH %@", "header "))
         func pinnedHeader() -> XCUIElement? {
             headers.allElementsBoundByIndex.filter { $0.isHittable }.min { $0.frame.minY < $1.frame.minY }
         }
@@ -292,14 +307,14 @@ final class FlatListUITests: XCTestCase {
         XCTAssertEqual(launched, pid(), "the measured and inverted modes share one running process")
         report("inverted-sticky-pressed")
 
-        app.staticTexts["measured rows"].tap()
+        element("measured rows").tap()
         for _ in 0..<12 {
-            if onScreen("List end") { break }
-            app.staticTexts["measured end"].tap()
+            if onScreen(app.staticTexts["List end"]) { break }
+            element("measured end").tap()
             RunLoop.current.run(until: Date().addingTimeInterval(0.4))
         }
-        XCTAssertTrue(onScreen("item 63"), "the measured list reaches its final item without getItemLayout")
-        XCTAssertTrue(onScreen("List end"), "the footer participates in the measured end")
+        XCTAssertTrue(onScreen(element("item 63")), "the measured list reaches its final item without getItemLayout")
+        XCTAssertTrue(onScreen(app.staticTexts["List end"]), "the footer participates in the measured end")
         report("measured-end")
     }
 
@@ -308,12 +323,12 @@ final class FlatListUITests: XCTestCase {
         app.launch()
         XCTAssertTrue(app.wait(for: .runningForeground, timeout: 20))
         let launched = pid()
-        app.staticTexts["grid"].tap()
-        XCTAssertTrue(app.staticTexts["cell 5"].waitForExistence(timeout: 15), "grid mode mounts its first rows")
-        let c0 = app.staticTexts["cell 0"].frame
-        let c1 = app.staticTexts["cell 1"].frame
-        let c2 = app.staticTexts["cell 2"].frame
-        let c3 = app.staticTexts["cell 3"].frame
+        element("grid").tap()
+        XCTAssertTrue(element("cell 5").waitForExistence(timeout: 15), "grid mode mounts its first rows")
+        let c0 = element("cell 0").frame
+        let c1 = element("cell 1").frame
+        let c2 = element("cell 2").frame
+        let c3 = element("cell 3").frame
         XCTAssertEqual(c1.minY, c0.minY, accuracy: 2, "cell 1 shares the first row")
         XCTAssertEqual(c2.minY, c0.minY, accuracy: 2, "cell 2 shares the first row")
         XCTAssertLessThan(c0.minX, c1.minX)
@@ -322,52 +337,52 @@ final class FlatListUITests: XCTestCase {
         XCTAssertEqual(c3.minX, c0.minX, accuracy: 2, "cell 3 opens the second row")
         report("grid-initial")
 
-        app.staticTexts["cell 2"].tap()
-        XCTAssertTrue(app.staticTexts["cell 2 tapped 1"].waitForExistence(timeout: 10), "cell 2 counts its own tap: \(label(startingWith: "pressed "))")
-        app.staticTexts["cell 4"].tap()
+        element("cell 2").tap()
+        XCTAssertTrue(element("cell 2 tapped 1").waitForExistence(timeout: 10), "cell 2 counts its own tap: \(label(startingWith: "pressed "))")
+        element("cell 4").tap()
         XCTAssertTrue(app.staticTexts["pressed cell 4 at 4"].waitForExistence(timeout: 10), "the tap hits cell 4: \(label(startingWith: "pressed "))")
-        app.staticTexts["prepend"].tap()
-        XCTAssertTrue(app.staticTexts["cell 60"].waitForExistence(timeout: 10), "the prepended cell mounts")
-        let fresh = app.staticTexts["cell 60"].frame
+        element("prepend").tap()
+        XCTAssertTrue(element("cell 60").waitForExistence(timeout: 10), "the prepended cell mounts")
+        let fresh = element("cell 60").frame
         XCTAssertEqual(fresh.minY, c0.minY, accuracy: 2, "cell 60 opens the first row")
         XCTAssertEqual(fresh.minX, c0.minX, accuracy: 2, "cell 60 takes the first column")
-        XCTAssertEqual(app.staticTexts["cell 0"].frame.minX, c1.minX, accuracy: 2, "cell 0 moves to the second column")
-        let moved = app.staticTexts["cell 2 tapped 1"]
+        XCTAssertEqual(element("cell 0").frame.minX, c1.minX, accuracy: 2, "cell 0 moves to the second column")
+        let moved = element("cell 2 tapped 1")
         XCTAssertTrue(moved.exists, "cell 2 keeps its own counter when the prepend moves it to the second row")
         XCTAssertEqual(moved.frame.minY, c3.minY, accuracy: 2, "cell 2 opens the second row")
         XCTAssertEqual(moved.frame.minX, c0.minX, accuracy: 2, "cell 2 takes the first column")
         report("grid-prepended")
         moved.tap()
-        XCTAssertTrue(app.staticTexts["cell 2 tapped 2"].waitForExistence(timeout: 10), "the moved cell counts on from its kept state")
+        XCTAssertTrue(element("cell 2 tapped 2").waitForExistence(timeout: 10), "the moved cell counts on from its kept state")
         XCTAssertTrue(app.staticTexts["pressed cell 2 at 3"].exists, "cell 2 reads its new index: \(label(startingWith: "pressed "))")
-        app.staticTexts["cell 4 tapped 1"].tap()
+        element("cell 4 tapped 1").tap()
         XCTAssertTrue(app.staticTexts["pressed cell 4 at 5"].waitForExistence(timeout: 10), "cell 4 reads its new index: \(label(startingWith: "pressed "))")
         report("grid-moved-kept-state")
 
-        app.staticTexts["sections"].tap()
+        element("sections").tap()
         let first = app.staticTexts["Section 0"]
         XCTAssertTrue(first.waitForExistence(timeout: 15), "sections mode mounts")
-        XCTAssertTrue(app.staticTexts["item 100"].waitForExistence(timeout: 15), "the second section mounts")
+        XCTAssertTrue(element("item 100").waitForExistence(timeout: 15), "the second section mounts")
         let top = first.frame.minY
-        XCTAssertLessThan(top, app.staticTexts["item 0"].frame.minY)
-        XCTAssertLessThan(app.staticTexts["item 0"].frame.minY, app.staticTexts["item 1"].frame.minY)
-        XCTAssertLessThan(app.staticTexts["item 1"].frame.minY, app.staticTexts["Section 1"].frame.minY)
-        XCTAssertLessThan(app.staticTexts["Section 1"].frame.minY, app.staticTexts["item 100"].frame.minY)
+        XCTAssertLessThan(top, element("item 0").frame.minY)
+        XCTAssertLessThan(element("item 0").frame.minY, element("item 1").frame.minY)
+        XCTAssertLessThan(element("item 1").frame.minY, app.staticTexts["Section 1"].frame.minY)
+        XCTAssertLessThan(app.staticTexts["Section 1"].frame.minY, element("item 100").frame.minY)
         report("sections-initial")
 
-        let start = app.staticTexts["item 1"].coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.5))
+        let start = element("item 1").coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.5))
         start.press(forDuration: 0.1, thenDragTo: start.withOffset(CGVector(dx: 0, dy: -60)), withVelocity: .slow, thenHoldForDuration: 0.5)
         RunLoop.current.run(until: Date().addingTimeInterval(1))
-        XCTAssertLessThan(app.staticTexts["item 0"].frame.minY, top, "the drag scrolled item 0 under the header")
+        XCTAssertLessThan(element("item 0").frame.minY, top, "the drag scrolled item 0 under the header")
         XCTAssertEqual(first.frame.minY, top, accuracy: 2, "Section 0 stays pinned while its items scroll")
         XCTAssertEqual(label(startingWith: "pressed "), "pressed none", "scrolling must cancel the item press")
         report("sections-sticky")
 
-        app.staticTexts["section 1"].tap()
+        element("section 1").tap()
         RunLoop.current.run(until: Date().addingTimeInterval(1))
         XCTAssertFalse(label(startingWith: "pressed ").hasPrefix("pressed jump waits"), "scrollToLocation reached a measured header")
         XCTAssertEqual(app.staticTexts["Section 1"].frame.minY, top, accuracy: 2, "scrollToLocation(1, 0) brings Section 1 to the list top")
-        app.staticTexts["item 101"].tap()
+        element("item 101").tap()
         XCTAssertTrue(app.staticTexts["pressed Section 1 item 1"].waitForExistence(timeout: 10), "item 101 is Section 1 item 1: \(label(startingWith: "pressed "))")
         report("sections-located-pressed")
         XCTAssertEqual(launched, pid(), "the grid and section modes share one running process")
@@ -439,6 +454,10 @@ final class ScrollMatrixUITests: XCTestCase {
         return match.exists ? match.label : ""
     }
 
+    private func element(_ label: String) -> XCUIElement {
+        app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", label)).firstMatch
+    }
+
     private func offsets() -> (Int, Int) {
         let words = label(startingWith: "x ").split(separator: " ")
         return (Int(words[1]) ?? -1, Int(words[3]) ?? -1)
@@ -462,7 +481,7 @@ final class ScrollMatrixUITests: XCTestCase {
         XCTAssertTrue(app.wait(for: .runningForeground, timeout: 20))
         XCTAssertTrue(app.staticTexts["axis horizontal"].waitForExistence(timeout: 15))
         let launched = pid()
-        let one = app.staticTexts["card 1"], two = app.staticTexts["card 2"]
+        let one = element("card 1"), two = element("card 2")
         XCTAssertEqual(two.frame.minY, one.frame.minY, accuracy: 1, "horizontal cards share a row")
         XCTAssertGreaterThan(two.frame.minX, one.frame.minX)
         report("initial")
@@ -475,7 +494,7 @@ final class ScrollMatrixUITests: XCTestCase {
         XCTAssertEqual(y, 0, "a horizontal drag leaves y")
         XCTAssertEqual(label(startingWith: "pressed "), "pressed none")
         let window = app.windows.firstMatch.frame
-        let visible = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "card ")).allElementsBoundByIndex
+        let visible = app.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH %@", "card ")).allElementsBoundByIndex
             .filter { window.contains($0.frame) }.sorted { $0.frame.minX < $1.frame.minX }
         XCTAssertFalse(visible.isEmpty)
         let target = visible[0].label
@@ -483,7 +502,7 @@ final class ScrollMatrixUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["pressed " + target].waitForExistence(timeout: 10))
         report("horizontal")
 
-        app.staticTexts["toggle axis"].tap()
+        element("toggle axis").tap()
         XCTAssertTrue(app.staticTexts["axis vertical"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.staticTexts["pressed " + target].exists, "the axis change keeps app state")
         settle()
@@ -496,7 +515,7 @@ final class ScrollMatrixUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["refreshed 1"].waitForExistence(timeout: 10), "pull to refresh calls onRefresh and the app's value closes it")
         report("refreshed")
 
-        app.staticTexts["toggle axis"].tap()
+        element("toggle axis").tap()
         XCTAssertTrue(app.staticTexts["axis horizontal"].waitForExistence(timeout: 10))
         settle()
         XCTAssertEqual(two.frame.minY, one.frame.minY, accuracy: 1, "cards return to one row")
@@ -516,10 +535,10 @@ final class ScrollMatrixUITests: XCTestCase {
         XCUIDevice.shared.orientation = .portrait
         app.launch()
         XCTAssertTrue(app.staticTexts["axis horizontal"].waitForExistence(timeout: 15))
-        app.staticTexts["toggle axis"].tap()
+        element("toggle axis").tap()
         XCTAssertTrue(app.staticTexts["axis vertical"].waitForExistence(timeout: 10))
         let input = app.textFields.firstMatch
-        let one = app.staticTexts["card 1"]
+        let one = element("card 1")
 
         input.tap()
         keyboard(true)
@@ -541,8 +560,8 @@ final class ScrollMatrixUITests: XCTestCase {
         XCTAssertEqual(label(startingWith: "pressed "), before, "with never, the first tap only dismisses the keyboard")
         report("taps-never")
 
-        app.staticTexts["taps never"].tap()
-        XCTAssertTrue(app.staticTexts["taps always"].waitForExistence(timeout: 10))
+        element("taps never").tap()
+        XCTAssertTrue(element("taps always").waitForExistence(timeout: 10))
         input.tap()
         keyboard(true)
         one.tap()
@@ -550,8 +569,8 @@ final class ScrollMatrixUITests: XCTestCase {
         keyboard(true)
         report("taps-always")
 
-        app.staticTexts["dismiss on-drag"].tap()
-        XCTAssertTrue(app.staticTexts["dismiss none"].waitForExistence(timeout: 10))
+        element("dismiss on-drag").tap()
+        XCTAssertTrue(element("dismiss none").waitForExistence(timeout: 10))
         keyboard(true)
         let again = one.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.3))
         again.press(forDuration: 0.05, thenDragTo: again.withOffset(CGVector(dx: 0, dy: -120)))
