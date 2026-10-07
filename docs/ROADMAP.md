@@ -191,6 +191,26 @@ progress, snackbar undo and toast; re-run on `wt/rn-web-base`, `/private/tmp/neo
 lane `tests/android/controls.py` is pending because the phone was asleep behind its keyguard.
 Not verified: any control on a real Android screen, a screen reader, `Stepper` in an app.
 
+Navigation (`wt/rn-navigation`, msc `0d83c4867`, 2026-10-07): `src/navigation/` holds React
+Navigation's surface — `NavigationContainer` (`ref`, `linking`, `theme`, `onReady`,
+`onStateChange`), stack (`createStackNavigator`, `createNativeStackNavigator`), bottom and material
+top tabs, and drawer navigators, each with `Navigator` / `Group` / `Screen`; the per-screen
+navigation object (`navigate`, `push`, `pop`, `popToTop`, `replace`, `reset`, `goBack`,
+`canGoBack`, `setParams`, `setOptions`, `getParent`, `getState`, `isFocused`, `dispatch`, drawer
+actions, `addListener` for focus/blur/state/beforeRemove/tabPress); `useNavigation`, `useRoute`,
+`useIsFocused`, `useFocusEffect`, `useNavigationState`, `useLinkTo`, `useTheme`, `Link`; headers
+with back button and left/right slots, tab bars with icons and badges, the drawer panel, transparent
+modals, deep links through `Linking` with nested paths. Covered screens stay mounted (state kept),
+tabs mount lazily, Android back reaches the focused navigator through `BackHandler`. Exported from
+`src/index.ms`. Proven: `tests/navigation/` (5 files, 28 tests, native and JS),
+`tests/browser/navigation.test.ms` (Chrome), and the `examples/navigation` demo on an iPhone 17
+Pro simulator (`NavigationUITests`: list → detail → edit and save, back with the list's state
+kept, per-tab state, a badge, the drawer, a theme switch, rotation). The Android build and install
+of the demo succeeded on the Seeker; `tests/android/navigation.py` is pending because the phone was
+asleep behind its lock. Provisional choices are rows N1–N11 of `WORKAROUND.md`. Not verified:
+transitions and swipe gestures (none yet: no `Animated` or gesture layer on that branch), url
+events on a device (P7), hardware back on a device, browser history.
+
 Prove each workflow through its real consumer on the declared targets. A public symbol,
 mock pass or separate-module test artifact is not proof of the normal packaged app.
 The reactive concepts still owed live in `docs/SOLID.md`; they are dependencies of these
