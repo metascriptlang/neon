@@ -60,3 +60,8 @@ export { Share, ShareAction, ShareContent, ShareOptions } from "./api/share";
 export { Vibration } from "./api/vibration";
 export { Clipboard } from "./api/clipboard";
 export { AccessibilityInfo, AccessibilityChangeEventName, useScreenReaderEnabled } from "./api/accessibilityInfo";
+export {
+	Animated, CompositeAnimation, useAnimatedValue, AnimatedNode, AnimatedValue, AnimatedValueXY,
+	AnimatedInterpolation, AnimatedStringInterpolation, Easing, EasingFunction, LayoutAnimation,
+	LayoutAnimationPresets, Presence, EndResult,
+} from "./animation/index";
