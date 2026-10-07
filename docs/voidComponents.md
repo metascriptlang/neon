@@ -33,10 +33,10 @@ Light JSX consumer remain before runtime on the installed compiler. Measurements
 candidate differences belong to `VISION.md` "Inside a Void area".
 
 Raw 2D slice: `src/components/scene2d.ms` exports Scene2D, Group, Rect, Sprite,
-Mask and Label, using Void NodeRef/binders and Neon owners. Current fourteen-case
+Mask and Label, using Void NodeRef/binders and Neon owners. Current seventeen-case
 `tests/render/scene2d.test.ms` runs natively on read-only compiler candidate r8
 (binary sha256 prefix `356b1a0fd75d`, matching source/support `f65616348`) against
-Void `d255ffb`: 14 own cases / 328 including imports (`f645c2c`). This proves mapping, reactive
+Void `d255ffb`: 17 own cases / 331 including imports (`b80ed2c`). This proves mapping, reactive
 camera/geometry/text/paint/filter, matrix-row reuse/clear, remount/disposal and
 invalid-parent rejection. Parent guards went red before restoration: raw text/tags
 could leak into HUD, and a foreign scene scope could capture an outer 2D parent.
@@ -44,7 +44,7 @@ Empty text markers retain Neon's existing structural protocol; visible raw text
 is rejected on both createText and setText, not silently placed in the HUD.
 
 Installed binary/support `0d83c4867` still rejects this unchanged JSX at check:
-11 enum-roundtrip errors (ScaleMode, BlendMode, Smooth and VoidSpace members).
+13 enum-roundtrip errors (ObjectFit, ScaleMode, BlendMode, Smooth and VoidSpace members).
 VoidArea/component importers pass on installed C and JS. The original 16-case
 Scene3D contract remains red on candidate with one union-signal layout error;
 its original Light consumer now runs and cleans up on candidate. Candidate results
@@ -63,7 +63,11 @@ following the unchanged-row invariant in Void node.ms:499–507. Clearing a matr
 Void's NO_COLOR_MATRIX value, not a resource-row assignment. Scene scaleMode/designW/
 designH call setScaleMode; all six Void modes, partial/omitted design values, independent
 scenes and disposal are checked against sceneViewMatrix on the candidate. This is CPU
-view-transform proof, not viewport pixels.
+view-transform proof, not viewport pixels. Rect.boxStyle/Sprite.imageStyle use Void
+payload allocation/update/disposal; tests prove payload reuse after reactive edits and
+remount. Sprite width/height override tile dimensions independently; omitted axes follow
+retile. All five ObjectFit values are tested through JSX and Void fitImage geometry,
+not rendered image pixels.
 
 The host and Ion frame are still on Void's old API. Their migration belongs to
 `void-noderef-host`, not to a parallel edit here. Existing host tests describe carried
@@ -80,8 +84,8 @@ existing 3D Group tag silently switch meaning outside Scene3D.
 |---|---|---|---|
 | 2D-01 | `src/void2d/node.ms` Scene2D; `src/void2d/scene.ms` create/close/setScaleMode; `src/void2d/types.ms` Camera | Scene2D camera/clear/default-smooth/scaleMode/designW/designH mapped; all six scale modes CPU-tested on candidate, frame missing | Camera pan/zoom/rotation moves scene but not HUD; scale-mode/resize behavior and sibling-scene isolation; `src/test/sceneCheck.ms` |
 | 2D-02 | `src/void2d/node.ms` group/addChild/addChildAt/remove/dispose | Group core written with local/paint/order/filter and node ownership; keyed moves pending. View is not a raw group substitute | Nested transforms, keyed order/moves and retained NodeRef identity; `src/test/nodeCheck.ms`, `tests/integration/reparentFrame.ms` is the 3D move analogue only |
-| 2D-03 | `src/void2d/node.ms` rect/setBackground/clearBackground/setBoxStyle; `src/void2d/boxStyle.ms` BoxStyle | Rect size/color/core props written; BoxStyle/background promotion pending. View style remains incomplete on current host | Rounded/per-edge/dashed borders, outer/inset shadow; reactive group↔paint promotion preserves children and handles, transparent paint emits nothing; `tests/integration/viewPaint.ms`, `src/test/coverageOracleCheck.ms` |
-| 2D-04 | `src/void2d/node.ms` sprite/setImageStyle; `src/void2d/types.ms` Tile/TextureSource; `src/void2d/imageStyle.ms` ImageStyle | Sprite Tile/retile/size core written; ImageStyle, fitted size and texture replacement pending | Atlas regions, flipping/offsets, fit/crop, rounded/grayscale image and replaced texture; `src/test/tileCheck.ms`, `src/test/imageStyleCheck.ms` |
+| 2D-03 | `src/void2d/node.ms` rect/setBackground/clearBackground/setBoxStyle; `src/void2d/boxStyle.ms` BoxStyle | Rect size/color/BoxStyle/core props mapped and payload lifecycle CPU-tested on candidate; background promotion/pixels pending. View style remains incomplete on current host | Rounded/per-edge/dashed borders, outer/inset shadow; reactive group↔paint promotion preserves children and handles, transparent paint emits nothing; `tests/integration/viewPaint.ms`, `src/test/coverageOracleCheck.ms` |
+| 2D-04 | `src/void2d/node.ms` sprite/setImageStyle; `src/void2d/types.ms` Tile/TextureSource; `src/void2d/imageStyle.ms` ImageStyle | Sprite Tile/retile/independent size/ImageStyle mapped; all ObjectFit values and payload lifecycle CPU-tested on candidate, actual texture replacement/pixels pending | Atlas regions, flipping/offsets, fit/crop, rounded/grayscale image and replaced texture; `src/test/tileCheck.ms`, `src/test/imageStyleCheck.ms` |
 | 2D-05 | `src/void2d/node.ms` anim/animFrames; `src/void2d/scene.ms` tick | Anim with frames/fps and clock integration; missing | Frames advance on demand while playing; stop when not playing/unmounted; replacement policy must follow actual Void API rather than silently freeze a prop; `src/test/nodeCheck.ms` |
 | 2D-06 | `src/void2d/node.ms` graphics/clear; `src/void2d/graphics.ms` GraphicsOpKind and exported drawing operations | Graphics component plus declarative geometry/operation inputs; missing, input design pending | All exported shape/fill/stroke/curve operations are reachable; order is retained, reactive edits rebuild only their owned geometry and do not accumulate old operations; `src/test/graphicsCheck.ms` |
 | 2D-07 | `src/void2d/graphics.ms` gradient/pattern/textured operations; `src/void2d/gradient.ms` GradientSpace | Graphics inputs include gradients, stops, color-space/dither, patterns and textured shapes; missing | Linear/radial gradients, Oklab alternatives, slash/checker patterns, texture changes and overlap pixels; `src/test/gradientCheck.ms`, `src/test/graphicsCheck.ms` |
