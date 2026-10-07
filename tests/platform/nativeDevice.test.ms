@@ -5,12 +5,14 @@ import { AsyncStorage } from "../../src/api/asyncStorage";
 import { NetInfo, NetInfoState, useNetInfo } from "../../src/api/netInfo";
 import { Permissions, PermissionResponse, PermissionsAndroid } from "../../src/api/permissions";
 import { sleepAsync } from "std/core/promise";
+import { Geolocation, GeolocationError, GeolocationResponse } from "../../src/api/geolocation";
 import { nmAppReply, nmAppLog, nmAppLogClear, nmAppEvent, nmTeardown } from "./nativeBridgeMock.h";
 
 const FIELD = "\u001f";
 const RECORD = "\u001e";
 const REPLY: int32 = 9;
 const NETINFO: int32 = 10;
+const LOCATION: int32 = 11;
 
 function mount(): void {
 	nmAppReply("platform", "17.5");
@@ -124,5 +126,46 @@ test "PermissionsAndroid sends raw permission names and reads one result per per
 	const log: string = nmAppLog();
 	const id = requestId(log, "permissionsAndroid.request");
 	assert log === "permissionsAndroid.check(android.permission.CAMERA);permissionsAndroid.request(" + id + FIELD + fine + "," + coarse + ")", log;
+	nmTeardown();
+}
+
+test "Geolocation encodes its options, decodes fixes with absent fields as null and routes watch events by id" {
+	mount();
+	nmAppReply("permission.request", "granted" + FIELD + "0");
+	nmAppReply("location.current", "ok" + FIELD + "10.5" + FIELD + "106.25" + FIELD + "" + FIELD + "35" + FIELD + "" +
+		FIELD + "90" + FIELD + "1.5" + FIELD + "1700000000000");
+	let read = "";
+	Geolocation.getCurrentPosition(
+		(position: GeolocationResponse): void => {
+			const c = position.coords;
+			read = c.latitude.toString() + "," + c.longitude.toString() + " alt " + (c.altitude === null ? "null" : "set") +
+				" acc " + c.accuracy.toString() + " heading " + (c.heading ?? -1).toString() + " speed " + (c.speed ?? -1).toString();
+		},
+		null,
+		{ enableHighAccuracy: true, timeout: 5000, maximumAge: 1000 },
+	);
+	await sleepAsync(20);
+	assert read === "10.5,106.25 alt null acc 35 heading 90 speed 1.5", read;
+	const current: string = nmAppLog();
+	const id = requestId(current, "location.current");
+	assert current.endsWith("location.current(" + id + FIELD + "1" + FIELD + "5000" + FIELD + "1000" + FIELD + "0" + FIELD + "10000)"), current;
+	nmAppLogClear();
+	const seen: string[] = [];
+	const watch = Geolocation.watchPosition(
+		(position: GeolocationResponse): void => { seen.push(position.coords.latitude.toString()); },
+		(error: GeolocationError): void => { seen.push(error.code.toString() + " " + error.message); },
+	);
+	await sleepAsync(20);
+	const fix = "ok" + FIELD + "1" + FIELD + "2" + FIELD + "3" + FIELD + "4" + FIELD + "5" + FIELD + "6" + FIELD + "7" + FIELD + "8";
+	nmAppEvent(LOCATION, watch.toString() + FIELD + fix);
+	nmAppEvent(LOCATION, "999" + FIELD + fix);
+	nmAppEvent(LOCATION, watch.toString() + FIELD + "error" + FIELD + "2" + FIELD + "No location provider is enabled");
+	Geolocation.clearWatch(watch);
+	nmAppEvent(LOCATION, watch.toString() + FIELD + fix);
+	assert seen.join(";") === "1;2 No location provider is enabled", seen.join(";");
+	const log: string = nmAppLog();
+	const permission = requestId(log, "permission.request");
+	assert log === "permission.request(" + permission + FIELD + "location);location.watch(" + watch.toString() + FIELD + "0" + FIELD +
+		"-1" + FIELD + "-1" + FIELD + "100" + FIELD + "10000);location.clear(" + watch.toString() + ")", log;
 	nmTeardown();
 }

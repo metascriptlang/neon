@@ -6,9 +6,9 @@ import { dispatchHardwareBackPress } from "../../api/backHandler";
 import { publishUrl } from "../../api/linking";
 import { publishReduceMotion, publishScreenReader } from "../../api/accessibilityInfo";
 import {
-	androidPermissionGranted, androidRequestPermissions, androidShouldShowRationale, onNetInfoEvent, onReplyEvent,
-	permissionStatus, refreshNetInfo, requestPermission, storageClear, storageGet, storageKeys, storageRemove,
-	storageSet, watchNetInfo,
+	androidPermissionGranted, androidRequestPermissions, androidShouldShowRationale, locationClear, locationCurrent,
+	locationWatch, onLocationEvent, onNetInfoEvent, onReplyEvent, permissionStatus, refreshNetInfo, requestPermission,
+	storageClear, storageGet, storageKeys, storageRemove, storageSet, watchNetInfo,
 } from "./deviceServices";
 
 when (ios) {
@@ -46,6 +46,7 @@ enum AppEvent {
 	ImageSize,
 	Reply,
 	NetInfo,
+	Location,
 }
 
 interface PendingImage {
@@ -105,6 +106,7 @@ function onAppEvent(): void {
 		AppEvent.ImageSize => settleImage(value),
 		AppEvent.Reply => onReplyEvent(value),
 		AppEvent.NetInfo => onNetInfoEvent(value),
+		AppEvent.Location => onLocationEvent(value),
 	};
 }
 
@@ -189,6 +191,9 @@ const services: AppServices = {
 	androidPermissionGranted,
 	androidShouldShowRationale,
 	androidRequestPermissions,
+	locationCurrent,
+	locationWatch,
+	locationClear,
 };
 
 export function installNativeAppServices(run: (fn: () => void) => void): void {

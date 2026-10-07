@@ -1,4 +1,6 @@
-import { AppServices, AlertRequest, PermissionReply, ShareRequest, installAppServices } from "../../src/api/services";
+import {
+	AppServices, AlertRequest, LocationFix, LocationRequest, PermissionReply, ShareRequest, installAppServices,
+} from "../../src/api/services";
 import { NetInfoState, publishNetInfo } from "../../src/api/netInfo";
 
 export class FakeServices {
@@ -17,6 +19,11 @@ export class FakeServices {
 	permissionStates: string[] = [];
 	answer: string = "granted";
 	rationale: boolean = false;
+	currentRequests: LocationRequest[] = [];
+	currentDone: ((fix: LocationFix) => void)[] = [];
+	watchIds: int32[] = [];
+	watchUpdates: ((fix: LocationFix) => void)[] = [];
+	watchRequests: LocationRequest[] = [];
 	network: NetInfoState = { type: "wifi", isConnected: true, isInternetReachable: true, details: { isConnectionExpensive: false } };
 
 	install(): void {
@@ -108,6 +115,17 @@ export class FakeServices {
 				return this.permission(permission).status === "granted";
 			},
 			androidShouldShowRationale: async (permission: string): Promise<boolean> => { return this.rationale; },
+			locationCurrent: (request: LocationRequest, done: (fix: LocationFix) => void): void => {
+				this.currentRequests.push(request);
+				this.currentDone.push(done);
+			},
+			locationWatch: (id: int32, request: LocationRequest, update: (fix: LocationFix) => void): void => {
+				this.log.push("locationWatch " + id.toString());
+				this.watchIds.push(id);
+				this.watchRequests.push(request);
+				this.watchUpdates.push(update);
+			},
+			locationClear: (id: int32): void => { this.log.push("locationClear " + id.toString()); },
 			androidRequestPermissions: async (permissions: string[]): Promise<PermissionReply[]> => {
 				this.log.push("androidRequestPermissions " + permissions.join(","));
 				const results: PermissionReply[] = [];

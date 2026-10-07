@@ -1,7 +1,7 @@
 import { niAppCall } from "./app.h";
 import { NetInfoDetails, NetInfoState, NetInfoStateType, publishNetInfo } from "../../api/netInfo";
 import { TextSlot } from "../../api/replySlot";
-import { PermissionReply } from "../../api/services";
+import { LocationFix, LocationRequest, PermissionReply } from "../../api/services";
 
 const FIELD = "\u001f";
 const PRESENT = "=";
@@ -67,7 +67,7 @@ interface PendingReply {
 const replies: PendingReply[] = [];
 let nextReply: int32 = 1;
 
-export function request(name: string, arg: string, done: (reply: string) => void): void {
+export function requestReply(name: string, arg: string, done: (reply: string) => void): void {
 	const id = nextReply;
 	nextReply += 1;
 	const reply = call(name, id.toString() + FIELD + arg);
@@ -80,7 +80,7 @@ export function request(name: string, arg: string, done: (reply: string) => void
 
 export async function ask(name: string, arg: string): Promise<string> {
 	const slot = new TextSlot();
-	request(name, arg, (reply: string): void => { slot.settle(reply); });
+	requestReply(name, arg, (reply: string): void => { slot.settle(reply); });
 	return await slot.wait();
 }
 
@@ -135,4 +135,80 @@ export async function androidRequestPermissions(permissions: string[]): Promise<
 		results.push({ status, canAskAgain: false, error });
 	}
 	return results;
+}
+
+function measured(text: string): number {
+	return text === "" ? NaN : parseFloat(text);
+}
+
+export function decodeFix(value: string): LocationFix {
+	const fields = value.split(FIELD);
+	if (fields[0] === "error" && fields.length === 3) {
+		return {
+			code: parseInt(fields[1]) as int32,
+			message: fields[2],
+			latitude: 0,
+			longitude: 0,
+			altitude: NaN,
+			accuracy: NaN,
+			altitudeAccuracy: NaN,
+			heading: NaN,
+			speed: NaN,
+			timestamp: 0,
+		};
+	}
+	if (fields[0] !== "ok" || fields.length !== 9) {
+		throw new Error("Geolocation: the host sent a malformed fix: " + value);
+	}
+	return {
+		code: 0,
+		message: "",
+		latitude: parseFloat(fields[1]),
+		longitude: parseFloat(fields[2]),
+		altitude: measured(fields[3]),
+		accuracy: measured(fields[4]),
+		altitudeAccuracy: measured(fields[5]),
+		heading: measured(fields[6]),
+		speed: measured(fields[7]),
+		timestamp: parseFloat(fields[8]),
+	};
+}
+
+function encodeRequest(request: LocationRequest): string {
+	return (request.highAccuracy ? "1" : "0") + FIELD + request.timeout.toString() + FIELD +
+		request.maximumAge.toString() + FIELD + request.distanceFilter.toString() + FIELD + request.interval.toString();
+}
+
+interface LocationWatch {
+	id: int32;
+	update: (fix: LocationFix) => void;
+}
+
+const watches: LocationWatch[] = [];
+
+export function locationCurrent(request: LocationRequest, done: (fix: LocationFix) => void): void {
+	requestReply("location.current", encodeRequest(request), (reply: string): void => { done(decodeFix(reply)); });
+}
+
+export function locationWatch(id: int32, request: LocationRequest, update: (fix: LocationFix) => void): void {
+	watches.push({ id, update });
+	call("location.watch", id.toString() + FIELD + encodeRequest(request));
+}
+
+export function locationClear(id: int32): void {
+	for (let i = 0; i < watches.length; i += 1) {
+		if (watches[i].id === id) {
+			watches.splice(i, 1);
+			call("location.clear", id.toString());
+			return;
+		}
+	}
+}
+
+export function onLocationEvent(value: string): void {
+	const split = value.indexOf(FIELD);
+	const id = parseInt(value.substring(0, split)) as int32;
+	for (const watch of watches.slice(0, watches.length)) {
+		if (watch.id === id) { watch.update(decodeFix(value.substring(split + 1, value.length))); }
+	}
 }

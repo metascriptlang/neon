@@ -4,8 +4,9 @@ import { publishScale, publishScreen } from "../../api/dimensions";
 import { publishAppState } from "../../api/appState";
 import { publishReduceMotion } from "../../api/accessibilityInfo";
 import {
-	androidPermissionGranted, androidRequestPermissions, androidShouldShowRationale, permissionStatus,
-	refreshNetInfo, requestPermission, storageClear, storageGet, storageKeys, storageRemove, storageSet, watchNetInfo,
+	androidPermissionGranted, androidRequestPermissions, androidShouldShowRationale, locationClear, locationCurrent,
+	locationWatch, permissionStatus, refreshNetInfo, requestPermission, storageClear, storageGet, storageKeys,
+	storageRemove, storageSet, watchNetInfo,
 } from "./deviceServices";
 
 extern class BrowserClipboard {
@@ -193,6 +194,9 @@ const services: AppServices = {
 	androidPermissionGranted,
 	androidShouldShowRationale,
 	androidRequestPermissions,
+	locationCurrent,
+	locationWatch,
+	locationClear,
 };
 
 let installed = false;

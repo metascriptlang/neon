@@ -70,6 +70,11 @@ export {
 	PermissionsAndroidResult, PermissionStatus, Rationale,
 } from "./api/permissions";
 export {
+	Geolocation, GeolocationConfiguration, GeolocationCoordinates, GeolocationError, GeolocationFailure, GeolocationOptions,
+	GeolocationResponse, GeolocationSuccess, Location, LocationAccuracy, LocationObject, LocationObjectCoords,
+	LocationOptions, LocationSubscription,
+} from "./api/geolocation";
+export {
 	Animated, CompositeAnimation, useAnimatedValue, AnimatedNode, AnimatedValue, AnimatedValueXY,
 	AnimatedInterpolation, AnimatedStringInterpolation, Easing, EasingFunction, LayoutAnimation,
 	LayoutAnimationPresets, Presence, EndResult,

@@ -5,6 +5,8 @@ import { View } from "../../src/components/primitives";
 import { AsyncStorage, KeyValuePair } from "../../src/api/asyncStorage";
 import { NetInfo, NetInfoState, useNetInfo } from "../../src/api/netInfo";
 import { Permissions, PermissionsAndroid } from "../../src/api/permissions";
+import { Geolocation, GeolocationError, GeolocationResponse } from "../../src/api/geolocation";
+import { sleepAsync } from "std/core/promise";
 
 extern function js(code: cstring): string from "String((0, eval)(#))";
 
@@ -68,4 +70,30 @@ test "Permissions map the browser's permission states and ask through the matchi
 	assert js("window.__asked") === "{\"video\":true}", js("window.__asked");
 	assert !(await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.CAMERA));
 	assert (await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.CAMERA)) === "denied";
+}
+
+test "Geolocation reads navigator.geolocation with the options and clears its watch" {
+	mount();
+	js("window.__geo = []; Object.defineProperty(navigator, 'geolocation', { configurable: true, value: { getCurrentPosition: (ok, fail, o) => { window.__geo.push('get ' + o.enableHighAccuracy + ' ' + o.timeout + ' ' + o.maximumAge); ok({ coords: { latitude: 10.75, longitude: 106.5, altitude: null, accuracy: 20, altitudeAccuracy: null, heading: null, speed: null }, timestamp: 42 }); }, watchPosition: (ok, fail, o) => { window.__watchOk = ok; window.__watchFail = fail; return 7; }, clearWatch: (id) => { window.__geo.push('clear ' + id); } } })");
+	let read = "";
+	Geolocation.getCurrentPosition(
+		(position: GeolocationResponse): void => {
+			read = position.coords.latitude.toString() + " " + (position.coords.altitude === null ? "no altitude" : "altitude") +
+				" " + position.timestamp.toString();
+		},
+		null,
+		{ enableHighAccuracy: true, timeout: 3000 },
+	);
+	await sleepAsync(20);
+	assert read === "10.75 no altitude 42", read;
+	const seen: string[] = [];
+	const id = Geolocation.watchPosition(
+		(position: GeolocationResponse): void => { seen.push(position.coords.longitude.toString()); },
+		(error: GeolocationError): void => { seen.push("error " + error.code.toString()); },
+	);
+	await sleepAsync(20);
+	js("window.__watchOk({ coords: { latitude: 1, longitude: 2, accuracy: 3 }, timestamp: 1 }); window.__watchFail({ code: 3, message: 'Timeout expired' })");
+	Geolocation.clearWatch(id);
+	assert seen.join(",") === "2,error 3", seen.join(",");
+	assert js("window.__geo.join(',')") === "get true 3000 Infinity,clear 7", js("window.__geo.join(',')");
 }

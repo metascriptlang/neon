@@ -2,7 +2,10 @@ import { AsyncStorage, KeyValuePair, StringPair, useAsyncStorage } from "../../s
 import { NetInfo, NetInfoState, publishNetInfo, useNetInfo } from "../../src/api/netInfo";
 import { Permissions, PermissionsAndroid } from "../../src/api/permissions";
 import { sleepAsync } from "std/core/promise";
-import { installAppServices } from "../../src/api/services";
+import { LocationFix, installAppServices } from "../../src/api/services";
+import {
+	Geolocation, GeolocationError, GeolocationResponse, Location, LocationAccuracy, LocationObject,
+} from "../../src/api/geolocation";
 import { FakeServices } from "./fakeServices";
 
 test "AsyncStorage reads null for a missing key and round-trips set, remove and clear" {
@@ -171,4 +174,109 @@ test "the async device APIs reject when no host installed app services" {
 		permission = (e as Error).message;
 	}
 	assert permission.startsWith("Permissions.check: no host"), permission;
+}
+
+function fixAt(latitude: number, longitude: number): LocationFix {
+	return {
+		code: 0,
+		message: "",
+		latitude,
+		longitude,
+		altitude: 12,
+		accuracy: 5,
+		altitudeAccuracy: NaN,
+		heading: NaN,
+		speed: 0,
+		timestamp: 1000,
+	};
+}
+
+function failure(code: int32, message: string): LocationFix {
+	const fix = fixAt(0, 0);
+	return { ...fix, code, message };
+}
+
+test "Geolocation asks for location permission, then reads one fix with RN's defaults" {
+	const fake = new FakeServices();
+	fake.install();
+	let read = "";
+	Geolocation.getCurrentPosition((position: GeolocationResponse): void => {
+		const coords = position.coords;
+		read = coords.latitude.toString() + "," + coords.longitude.toString() + " alt " + (coords.altitude ?? -1).toString() +
+			" heading " + (coords.heading === null ? "null" : "set") + " at " + position.timestamp.toString();
+	});
+	await sleepAsync(20);
+	when (js) {
+		assert fake.joined() === "", "the browser asks through navigator.geolocation itself: " + fake.joined();
+	} else {
+		assert fake.joined() === "requestPermission location", fake.joined();
+	}
+	assert fake.currentRequests.length === 1;
+	const request = fake.currentRequests[0];
+	assert !request.highAccuracy && request.timeout === -1 && request.maximumAge === -1 && request.distanceFilter === 0;
+	fake.currentDone[0](fixAt(10.5, 106.25));
+	assert read === "10.5,106.25 alt 12 heading null at 1000", read;
+}
+
+test "Geolocation reports a denied permission as error code 1 without reading (native; the browser prompts itself)" {
+	when (js) { return; }
+	const fake = new FakeServices();
+	fake.install();
+	fake.answer = "denied";
+	let code: number = 0;
+	Geolocation.getCurrentPosition(
+		(position: GeolocationResponse): void => {},
+		(error: GeolocationError): void => { code = error.code; },
+		{ enableHighAccuracy: true, timeout: 5000 },
+	);
+	await sleepAsync(20);
+	assert code === 1, code.toString();
+	assert fake.currentRequests.length === 0;
+}
+
+test "watchPosition streams fixes and errors until clearWatch, and skipPermissionRequests skips the ask" {
+	const fake = new FakeServices();
+	fake.install();
+	Geolocation.setRNConfiguration({ skipPermissionRequests: true });
+	const seen: string[] = [];
+	const id = Geolocation.watchPosition(
+		(position: GeolocationResponse): void => { seen.push(position.coords.latitude.toString()); },
+		(error: GeolocationError): void => { seen.push("error " + error.code.toString() + " " + error.message); },
+		{ distanceFilter: 5 },
+	);
+	await sleepAsync(20);
+	assert fake.watchIds.length === 1 && fake.watchIds[0] === (id as int32);
+	assert fake.watchRequests[0].distanceFilter === 5;
+	fake.watchUpdates[0](fixAt(1, 2));
+	fake.watchUpdates[0](failure(3, "Location request timed out"));
+	Geolocation.clearWatch(id);
+	fake.watchUpdates[0](fixAt(3, 4));
+	assert seen.join(";") === "1;error 3 Location request timed out", seen.join(";");
+	assert fake.joined() === "locationWatch " + id.toString() + ";locationClear " + id.toString(), fake.joined();
+	Geolocation.setRNConfiguration({ skipPermissionRequests: false });
+}
+
+test "Location.getCurrentPositionAsync resolves expo's LocationObject and rejects with the host's message" {
+	const fake = new FakeServices();
+	fake.install();
+	fake.setPermission("location", "granted");
+	const pending = Location.getCurrentPositionAsync({ accuracy: LocationAccuracy.High });
+	await sleepAsync(20);
+	assert fake.currentRequests[0].highAccuracy && fake.currentRequests[0].maximumAge === 0;
+	fake.currentDone[0](fixAt(48.85, 2.35));
+	const location: LocationObject = await pending;
+	assert location.coords.latitude === 48.85 && location.coords.accuracy === 5;
+	const failing = locationRejection();
+	await sleepAsync(20);
+	fake.currentDone[1](failure(2, "No location provider is enabled"));
+	assert (await failing) === "No location provider is enabled";
+}
+
+async function locationRejection(): Promise<string> {
+	try {
+		await Location.getCurrentPositionAsync();
+	} catch (e) {
+		return (e as Error).message;
+	}
+	return "";
 }

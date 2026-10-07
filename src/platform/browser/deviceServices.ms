@@ -1,5 +1,5 @@
 import { NetInfoState, NetInfoStateType, publishNetInfo } from "../../api/netInfo";
-import { PermissionReply } from "../../api/services";
+import { LocationFix, LocationRequest, PermissionReply } from "../../api/services";
 
 extern class DeviceEvent {}
 
@@ -15,6 +15,48 @@ extern function permissionQuery(name: cstring): Promise<string> from "(navigator
 extern function askNotifications(unused: int32): Promise<string> from "(#, typeof Notification === 'undefined' ? Promise.resolve('denied') : Promise.resolve(Notification.requestPermission()))";
 extern function askMedia(video: boolean): Promise<string> from "(navigator.mediaDevices ? navigator.mediaDevices.getUserMedia(# ? { video: true } : { audio: true }).then((s) => { s.getTracks().forEach((t) => t.stop()); return 'granted'; }, () => 'denied') : Promise.resolve('denied'))";
 extern function askGeolocation(unused: int32): Promise<string> from "(#, new Promise((resolve) => navigator.geolocation ? navigator.geolocation.getCurrentPosition(() => resolve('granted'), (e) => resolve(e.code === 1 ? 'denied' : 'granted')) : resolve('denied')))";
+extern class BrowserCoordinates {
+	latitude: number;
+	longitude: number;
+	altitude: number;
+	accuracy: number;
+	altitudeAccuracy: number;
+	heading: number;
+	speed: number;
+}
+
+extern class BrowserPosition {
+	coords: BrowserCoordinates;
+	timestamp: number;
+}
+
+extern class BrowserPositionError {
+	code: number;
+	message: string;
+}
+
+interface BrowserPositionOptions {
+	enableHighAccuracy: boolean;
+	timeout: number;
+	maximumAge: number;
+}
+
+extern class BrowserGeolocation {
+	extern getCurrentPosition(
+		ok: (p: BrowserPosition) => void,
+		fail: (e: BrowserPositionError) => void,
+		options: BrowserPositionOptions,
+	): void;
+	extern watchPosition(
+		ok: (p: BrowserPosition) => void,
+		fail: (e: BrowserPositionError) => void,
+		options: BrowserPositionOptions,
+	): number;
+	extern clearWatch(id: number): void;
+}
+
+extern function geolocation(unused: int32): BrowserGeolocation | null from "(#, navigator.geolocation || null)";
+extern function measured(value: number): number from "((v) => typeof v === 'number' && Number.isFinite(v) ? v : NaN)(#)";
 extern function connectionType(unused: int32): string from "(#, String((navigator.connection && navigator.connection.type) || ''))";
 extern function connectionSavesData(unused: int32): boolean from "(#, Boolean(navigator.connection && navigator.connection.saveData))";
 
@@ -126,4 +168,83 @@ export async function androidRequestPermissions(permissions: string[]): Promise<
 	const denied: PermissionReply[] = [];
 	for (const permission of permissions) { denied.push({ status: "denied", canAskAgain: false, error: "" }); }
 	return denied;
+}
+
+function browserFix(position: BrowserPosition): LocationFix {
+	const coords = position.coords;
+	return {
+		code: 0,
+		message: "",
+		latitude: coords.latitude,
+		longitude: coords.longitude,
+		altitude: measured(coords.altitude),
+		accuracy: measured(coords.accuracy),
+		altitudeAccuracy: measured(coords.altitudeAccuracy),
+		heading: measured(coords.heading),
+		speed: measured(coords.speed),
+		timestamp: position.timestamp,
+	};
+}
+
+function browserFailure(code: number, message: string): LocationFix {
+	return {
+		code: code as int32,
+		message,
+		latitude: 0,
+		longitude: 0,
+		altitude: NaN,
+		accuracy: NaN,
+		altitudeAccuracy: NaN,
+		heading: NaN,
+		speed: NaN,
+		timestamp: 0,
+	};
+}
+
+function browserOptions(request: LocationRequest): BrowserPositionOptions {
+	return {
+		enableHighAccuracy: request.highAccuracy,
+		timeout: request.timeout < 0 ? Infinity : request.timeout,
+		maximumAge: request.maximumAge < 0 ? Infinity : request.maximumAge,
+	};
+}
+
+const browserWatchIds: int32[] = [];
+const browserWatchHandles: number[] = [];
+
+export function locationCurrent(request: LocationRequest, done: (fix: LocationFix) => void): void {
+	const located = geolocation(0);
+	if (located === null) {
+		done(browserFailure(2, "Geolocation is not supported in this browser"));
+		return;
+	}
+	located.getCurrentPosition(
+		(position: BrowserPosition): void => { done(browserFix(position)); },
+		(error: BrowserPositionError): void => { done(browserFailure(error.code, error.message)); },
+		browserOptions(request),
+	);
+}
+
+export function locationWatch(id: int32, request: LocationRequest, update: (fix: LocationFix) => void): void {
+	const located = geolocation(0);
+	if (located === null) {
+		update(browserFailure(2, "Geolocation is not supported in this browser"));
+		return;
+	}
+	const handle = located.watchPosition(
+		(position: BrowserPosition): void => { update(browserFix(position)); },
+		(error: BrowserPositionError): void => { update(browserFailure(error.code, error.message)); },
+		browserOptions(request),
+	);
+	browserWatchIds.push(id);
+	browserWatchHandles.push(handle);
+}
+
+export function locationClear(id: int32): void {
+	const at = browserWatchIds.indexOf(id);
+	const located = geolocation(0);
+	if (at < 0 || located === null) { return; }
+	located.clearWatch(browserWatchHandles[at]);
+	browserWatchIds.splice(at, 1);
+	browserWatchHandles.splice(at, 1);
 }
