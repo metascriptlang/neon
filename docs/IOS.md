@@ -427,8 +427,9 @@ press state survived rotation and Home/resume without a PID change.
 
 `ScrollMatrixUITests` (`examples/scrollmatrix`) drives native horizontal drag and press,
 axis replacement both ways with app state kept and the offset restarting at 0, and
-pull-to-refresh; it passed on an iPhone 17 Pro simulator 2026-10-07, not on a physical phone.
-Keyboard capture is still open: the native hosts have no TextInput yet.
+pull-to-refresh, and `testKeyboardModes` the same four keyboard modes as Android against
+`app.keyboards`; both passed on an iPhone 17 Pro simulator with the software keyboard
+2026-10-07, not on a physical phone.
 The real-Chrome per-module lane passed 12 ScrollView and 2 FlatList cases, including
 horizontal geometry, paging, controlled refresh and disposal. A normal
 `msc build --target=js` bundle of a horizontal 10,000-row FlatList app mounts in Chrome,

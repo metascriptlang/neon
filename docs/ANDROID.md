@@ -424,9 +424,11 @@ asserts the label widens. Functional evidence only; load was not controlled.
 `examples/scrollmatrix` with `tests/android/scrollmatrix.py` covers native horizontal drag
 (x moves, y stays 0, a drag presses nothing, a tap after it hits the card under the finger),
 reactive axis replacement both ways with app state kept, and pull-to-refresh closed by the
-app's `refreshing` value; exit 0 on Seeker 2026-10-07. The first runs found two `Scroll.java`
+app's `refreshing` value, then keyboard modes over the native TextInput: `on-drag` dismisses
+on a drag, `never` spends the first tap on dismissal without pressing the card, `always`
+presses with the keyboard kept, `none` keeps it across a drag (app signal and
+`dumpsys input_method` agree); exit 0 on Seeker 2026-10-07. The first runs found two `Scroll.java`
 faults, fixed in `1789560`: `SwipeRefreshLayout` caches its first child as the refresh target
 and only lays out that view, so a replaced scroller never got a frame (content vanished);
 and the old axis offset was carried into the new axis. The scroller now lives inside a stable
-target, and a new axis starts at 0 as RN's remounted native view does. Keyboard capture is
-still open: the native hosts have no TextInput yet.
+target, and a new axis starts at 0 as RN's remounted native view does.
