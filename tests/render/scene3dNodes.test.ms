@@ -7,6 +7,7 @@ import { Scene3D, Scene3DHandle, Group, Mesh, Light } from "../../src/components
 import { NodeId3D, NodeFlag, LightKind, nodeCount, isLive } from "../../../void/src/void3d/scene";
 import { NO_MESH, releaseMesh } from "../../../void/src/void3d/draw";
 import { added, litShape } from "../../../void/src/test/drawHelpers";
+import { Vec3, vec3 } from "../../../void/src/math/math3d";
 
 test "Group Mesh Light visibility pickability and names react through Void binders" {
 	let handle: Scene3DHandle = null as unknown as Scene3DHandle;
@@ -71,5 +72,30 @@ test "Omitted node flags preserve Void defaults and remount reads current values
 	assert handle.scene.nodes[nodes[2].index].name === "after";
 	dispose(); setShown(false); setVisible(false); setName("late");
 	assert handle.scene.closed && handle.scene.nodeCount() === 0;
+}
+
+test "Scene3D ambient follows its signal without changing sibling scenes or Void defaults" {
+	let first: Scene3DHandle = null as unknown as Scene3DHandle;
+	let second: Scene3DHandle = null as unknown as Scene3DHandle;
+	let defaults: Scene3DHandle = null as unknown as Scene3DHandle;
+	const [ambient, setAmbient] = createSignal<Vec3>(vec3(0.1, 0.2, 0.3));
+	const root = mockNode("root");
+	const dispose = render(element(<Void>
+		<Scene3D ambient={ambient()}
+			ref={(value: Scene3DHandle): void => { first = value; }} />
+		<Scene3D ambient={vec3(0.7, 0.8, 0.9)}
+			ref={(value: Scene3DHandle): void => { second = value; }} />
+		<Scene3D ref={(value: Scene3DHandle): void => { defaults = value; }} />
+	</Void>), mockHost(), root as unknown as HostNode);
+	assert first.scene.ambientLight === vec3(0.1, 0.2, 0.3);
+	assert second.scene.ambientLight === vec3(0.7, 0.8, 0.9);
+	assert defaults.scene.ambientLight === vec3(0.5, 0.5, 0.5);
+	setAmbient(vec3(0.4, 0.5, 0.6));
+	assert first.scene.ambientLight === vec3(0.4, 0.5, 0.6);
+	assert second.scene.ambientLight === vec3(0.7, 0.8, 0.9);
+	assert defaults.scene.ambientLight === vec3(0.5, 0.5, 0.5);
+	dispose(); setAmbient(vec3(1.0, 1.0, 1.0));
+	assert first.scene.closed && second.scene.closed && defaults.scene.closed;
+	assert first.context.closed && second.context.closed && defaults.context.closed;
 }
 

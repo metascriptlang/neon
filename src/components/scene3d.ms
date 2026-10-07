@@ -18,7 +18,7 @@ import {
 	Scene3D as VoidScene3D, NodeId3D, Transform3D, LightKind, LightInstance,
 	addGroup, addLightNode, addMeshNode, setLocal, setLightPower, setMeshOf,
 	remove, closeScene, addCameraNode, setCameraOf, setActiveCamera,
-	setVisible, setPickable, setName,
+	setVisible, setPickable, setName, setAmbient,
 } from "../../../void/src/void3d/scene";
 import {
 	Camera3D as VoidCamera3D, CameraProjection, ProjectionKind,
@@ -48,6 +48,7 @@ interface NodeScope {
 }
 
 interface Scene3DProps {
+	ambient?: Accessor<Vec3> | null;
 	ref?: ((handle: Scene3DHandle) => void) | null;
 	children?: NeonNode | null;
 }
@@ -210,6 +211,10 @@ export function Scene3D(props: Scene3DProps): NeonNode {
 				}
 				closeContext(context);
 			});
+			if (props.ambient !== null) {
+				const ambient = props.ambient as () => Vec3;
+				createEffect((): void => { setAmbient(scene, ambient()); });
+			}
 			if (props.ref !== null) { (props.ref as (value: Scene3DHandle) => void)(handle); }
 			const children = props.children;
 			if (children !== null) {
