@@ -15,19 +15,49 @@ function changed(value: string): NeonEvent {
 	return e;
 }
 
+when (ios) {
+	const SAVE_TITLE = "Save";
+} else {
+	const SAVE_TITLE = "SAVE";
+}
+
 test "Button is a pressable with the button role whose press stops while disabled" {
 	const [disabled, setDisabled] = createSignal(false);
 	let presses = 0;
 	const root: MockNode = mockNode("root");
 	render(element(<Button title="Save" disabled={disabled()} onPress={(e: NeonEvent): void => { presses += 1; }} />), mockHost(), root as unknown as HostNode);
-	assert mockToString(root) === "<root><pressable accessibilityLabel=\"Save\" accessibilityHint=\"\" accessibilityRole=\"button\"><text>SAVE</text></pressable></root>", "shape: " + mockToString(root);
+	assert mockToString(root) === "<root><pressable accessibilityLabel=\"Save\" accessibilityHint=\"\" accessibilityRole=\"button\"><text>" + SAVE_TITLE + "</text></pressable></root>", "shape: " + mockToString(root);
 	const button = root.children[0];
 	fireEvent(button, "onPress");
 	setDisabled(true);
 	fireEvent(button, "onPress");
 	assert presses === 1, "presses: " + presses.toString();
-	const box = button.style;
-	assert box !== null && (box as Style).backgroundColor === "#dfdfdf", "disabled colours";
+}
+
+when (ios) {
+	test "Button on iOS is RN's text-only button: tinted 18pt label, #cdcdcd when disabled, no box" {
+		const [disabled, setDisabled] = createSignal(false);
+		const root: MockNode = mockNode("root");
+		render(element(<Button title="Go" disabled={disabled()} />), mockHost(), root as unknown as HostNode);
+		const button = root.children[0];
+		assert (button.style as Style).backgroundColor === null, "no box colour";
+		const label = (): Style => button.children[0].style as Style;
+		assert label().color === "#007AFF" && label().fontSize === 18 && label().margin === 8, "label";
+		setDisabled(true);
+		assert label().color === "#cdcdcd", "disabled label: " + (label().color ?? "none");
+	}
+} else {
+	test "Button off iOS is RN's Material button: tinted box, radius 2, white uppercase label, grey when disabled" {
+		const [disabled, setDisabled] = createSignal(false);
+		const root: MockNode = mockNode("root");
+		render(element(<Button title="Go" color="#ff0000" disabled={disabled()} />), mockHost(), root as unknown as HostNode);
+		const box = (): Style => root.children[0].style as Style;
+		const label = (): Style => root.children[0].children[0].style as Style;
+		assert box().backgroundColor === "#ff0000" && box().borderRadius === 2, "box: " + (box().backgroundColor ?? "none");
+		assert label().color === "#ffffff" && label().margin === 8 && label().fontWeight === "bold", "label";
+		setDisabled(true);
+		assert box().backgroundColor === "#dfdfdf" && label().color === "#a1a1a1", "disabled colours";
+	}
 }
 
 test "Switch reports a boolean and follows its controlled value" {
