@@ -10,6 +10,7 @@ import { htmlTagFor } from "../../render/node";
 import { publishWindow, publishColorScheme } from "../../render/environment";
 import { CssStyle, applyCss, applyCssProp } from "./domCss";
 import { VisibleContentPosition, parseVisibleContent } from "../../render/visibleContent";
+import { installBrowserAppServices } from "./appServices";
 
 extern class ClassList {
 	extern add(name: cstring): void;
@@ -553,6 +554,7 @@ export function domHost(): Host {
 	onCssChange(flushSheet);
 	flushSheet();
 	watchEnvironment();
+	installBrowserAppServices();
 	let scrollRule = false;
 	let controlRule = false;
 	const scrolls = new Map<Node, DomScrollState>();
