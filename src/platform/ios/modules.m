@@ -8,6 +8,7 @@ NSString *niModuleCall(NSString *name, NSString *arg) {
 	NSString *domain = dot.location == NSNotFound ? name : [name substringToIndex:dot.location];
 	if ([domain isEqualToString:@"storage"]) return niStorageCall(name, arg);
 	if ([domain isEqualToString:@"netinfo"]) return niNetInfoCall(name, arg);
+	if ([domain isEqualToString:@"permission"] || [domain isEqualToString:@"permissionsAndroid"]) return niPermissionCall(name, arg);
 	NSLog(@"Neon niAppCall: unknown command %@", name);
 	abort();
 }

@@ -4,6 +4,7 @@ import { element } from "../../src/macros/ui/element";
 import { View } from "../../src/components/primitives";
 import { AsyncStorage, KeyValuePair } from "../../src/api/asyncStorage";
 import { NetInfo, NetInfoState, useNetInfo } from "../../src/api/netInfo";
+import { Permissions, PermissionsAndroid } from "../../src/api/permissions";
 
 extern function js(code: cstring): string from "String((0, eval)(#))";
 
@@ -51,4 +52,20 @@ test "NetInfo follows navigator.onLine and the window's online and offline event
 	const fetched = await NetInfo.fetch();
 	assert fetched.isInternetReachable === true;
 	assert seen.length === 3 && seen[1] === "none:down" && seen[2].endsWith(":up"), seen.join(",");
+}
+
+test "Permissions map the browser's permission states and ask through the matching web API" {
+	mount();
+	js("window.__states = { camera: 'prompt', geolocation: 'granted', notifications: 'denied' }; Object.defineProperty(navigator, 'permissions', { configurable: true, value: { query: (d) => Promise.resolve({ state: window.__states[d.name] }) } })");
+	const camera = await Permissions.check("camera");
+	assert camera.status === "undetermined" && camera.canAskAgain;
+	assert (await Permissions.check("location")).granted;
+	const notifications = await Permissions.check("notifications");
+	assert notifications.status === "denied" && !notifications.canAskAgain;
+	js("Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: { getUserMedia: (c) => { window.__asked = JSON.stringify(c); window.__states.camera = 'granted'; return Promise.resolve({ getTracks: () => [] }); } } })");
+	const asked = await Permissions.request("camera");
+	assert asked.granted, asked.status as string;
+	assert js("window.__asked") === "{\"video\":true}", js("window.__asked");
+	assert !(await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.CAMERA));
+	assert (await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.CAMERA)) === "denied";
 }

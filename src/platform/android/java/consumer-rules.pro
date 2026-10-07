@@ -47,3 +47,7 @@
 -keep class dev.metascript.neon.SystemBars {
 	*;
 }
+
+-keep class dev.metascript.neon.PermissionRequester {
+	*;
+}

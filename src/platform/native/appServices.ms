@@ -6,8 +6,9 @@ import { dispatchHardwareBackPress } from "../../api/backHandler";
 import { publishUrl } from "../../api/linking";
 import { publishReduceMotion, publishScreenReader } from "../../api/accessibilityInfo";
 import {
-	onNetInfoEvent, onReplyEvent, refreshNetInfo, storageClear, storageGet, storageKeys, storageRemove, storageSet,
-	watchNetInfo,
+	androidPermissionGranted, androidRequestPermissions, androidShouldShowRationale, onNetInfoEvent, onReplyEvent,
+	permissionStatus, refreshNetInfo, requestPermission, storageClear, storageGet, storageKeys, storageRemove,
+	storageSet, watchNetInfo,
 } from "./deviceServices";
 
 when (ios) {
@@ -15,8 +16,13 @@ when (ios) {
 	@compile("../ios/modules.m", "-fobjc-arc");
 	@compile("../ios/storage.m", "-fobjc-arc");
 	@compile("../ios/netinfo.m", "-fobjc-arc");
+	@compile("../ios/permissions.m", "-fobjc-arc");
+	@compile("../ios/location.m", "-fobjc-arc");
 	@passL("-framework AudioToolbox");
 	@passL("-framework Network");
+	@passL("-framework AVFoundation");
+	@passL("-framework CoreLocation");
+	@passL("-framework UserNotifications");
 } else when (android) {
 	@compile("../android/app.c");
 }
@@ -178,6 +184,11 @@ const services: AppServices = {
 	storageKeys,
 	watchNetInfo,
 	refreshNetInfo,
+	permissionStatus,
+	requestPermission,
+	androidPermissionGranted,
+	androidShouldShowRationale,
+	androidRequestPermissions,
 };
 
 export function installNativeAppServices(run: (fn: () => void) => void): void {

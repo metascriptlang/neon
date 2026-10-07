@@ -1,6 +1,7 @@
 import { niAppCall } from "./app.h";
 import { NetInfoDetails, NetInfoState, NetInfoStateType, publishNetInfo } from "../../api/netInfo";
 import { TextSlot } from "../../api/replySlot";
+import { PermissionReply } from "../../api/services";
 
 const FIELD = "\u001f";
 const PRESENT = "=";
@@ -95,4 +96,43 @@ export function onReplyEvent(value: string): void {
 			return;
 		}
 	}
+}
+
+function refusal(reply: string): string {
+	return reply.startsWith("!") ? reply.substring(1, reply.length) : "";
+}
+
+function permissionReply(reply: string): PermissionReply {
+	const error = refusal(reply);
+	if (error !== "") { return { status: "", canAskAgain: false, error }; }
+	const fields = reply.split(FIELD);
+	return { status: fields[0], canAskAgain: fields.length > 1 && fields[1] === "1", error: "" };
+}
+
+export async function permissionStatus(name: string): Promise<PermissionReply> {
+	return permissionReply(await ask("permission.check", name));
+}
+
+export async function requestPermission(name: string): Promise<PermissionReply> {
+	return permissionReply(await ask("permission.request", name));
+}
+
+export async function androidPermissionGranted(permission: string): Promise<boolean> {
+	return call("permissionsAndroid.check", permission) === "1";
+}
+
+export async function androidShouldShowRationale(permission: string): Promise<boolean> {
+	return call("permissionsAndroid.rationale", permission) === "1";
+}
+
+export async function androidRequestPermissions(permissions: string[]): Promise<PermissionReply[]> {
+	const reply = await ask("permissionsAndroid.request", permissions.join(","));
+	const error = refusal(reply);
+	const results: PermissionReply[] = [];
+	const fields = reply.split(FIELD);
+	for (let i = 0; i < permissions.length; i += 1) {
+		const status = error === "" && i < fields.length ? fields[i] : "";
+		results.push({ status, canAskAgain: false, error });
+	}
+	return results;
 }

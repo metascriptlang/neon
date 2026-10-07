@@ -1,4 +1,4 @@
-import { AppServices, AlertRequest, ShareRequest, installAppServices } from "../../src/api/services";
+import { AppServices, AlertRequest, PermissionReply, ShareRequest, installAppServices } from "../../src/api/services";
 import { NetInfoState, publishNetInfo } from "../../src/api/netInfo";
 
 export class FakeServices {
@@ -13,6 +13,10 @@ export class FakeServices {
 	imageDone: ((width: number, height: number, error: string) => void)[] = [];
 	storedKeys: string[] = [];
 	storedValues: string[] = [];
+	permissionNames: string[] = [];
+	permissionStates: string[] = [];
+	answer: string = "granted";
+	rationale: boolean = false;
 	network: NetInfoState = { type: "wifi", isConnected: true, isInternetReachable: true, details: { isConnectionExpensive: false } };
 
 	install(): void {
@@ -92,8 +96,45 @@ export class FakeServices {
 				this.log.push("refreshNetInfo");
 				publishNetInfo(this.network);
 			},
+			permissionStatus: async (name: string): Promise<PermissionReply> => {
+				return this.permission(name);
+			},
+			requestPermission: async (name: string): Promise<PermissionReply> => {
+				this.log.push("requestPermission " + name);
+				if (this.permission(name).status === "undetermined") { this.setPermission(name, this.answer); }
+				return this.permission(name);
+			},
+			androidPermissionGranted: async (permission: string): Promise<boolean> => {
+				return this.permission(permission).status === "granted";
+			},
+			androidShouldShowRationale: async (permission: string): Promise<boolean> => { return this.rationale; },
+			androidRequestPermissions: async (permissions: string[]): Promise<PermissionReply[]> => {
+				this.log.push("androidRequestPermissions " + permissions.join(","));
+				const results: PermissionReply[] = [];
+				for (const permission of permissions) {
+					if (this.permission(permission).status !== "granted") { this.setPermission(permission, this.answer); }
+					results.push(this.permission(permission));
+				}
+				return results;
+			},
 		};
 		installAppServices(services);
+	}
+
+	permission(name: string): PermissionReply {
+		const at = this.permissionNames.indexOf(name);
+		const status = at < 0 ? "undetermined" : this.permissionStates[at];
+		return { status, canAskAgain: status === "undetermined", error: "" };
+	}
+
+	setPermission(name: string, status: string): void {
+		const at = this.permissionNames.indexOf(name);
+		if (at < 0) {
+			this.permissionNames.push(name);
+			this.permissionStates.push(status);
+		} else {
+			this.permissionStates[at] = status;
+		}
 	}
 
 	joined(): string {

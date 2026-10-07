@@ -3,10 +3,13 @@ import { View } from "../../src/components/primitives";
 import { NeonNode } from "../../src/render/node";
 import { AsyncStorage } from "../../src/api/asyncStorage";
 import { NetInfo, NetInfoState, useNetInfo } from "../../src/api/netInfo";
+import { Permissions, PermissionResponse, PermissionsAndroid } from "../../src/api/permissions";
+import { sleepAsync } from "std/core/promise";
 import { nmAppReply, nmAppLog, nmAppLogClear, nmAppEvent, nmTeardown } from "./nativeBridgeMock.h";
 
 const FIELD = "\u001f";
 const RECORD = "\u001e";
+const REPLY: int32 = 9;
 const NETINFO: int32 = 10;
 
 function mount(): void {
@@ -69,5 +72,57 @@ test "NetInfo decodes the host's state on watch, fetch and the netinfo event" {
 	assert network(await NetInfo.fetch()) === "none/0/0/-";
 	const log: string = nmAppLog();
 	assert log === "netinfo.watch();netinfo.fetch()", log;
+	nmTeardown();
+}
+
+function requestId(log: string, command: string): string {
+	const at = log.lastIndexOf(command + "(");
+	const start = at + command.length + 1;
+	return log.substring(start, log.indexOf(FIELD, start));
+}
+
+test "Permissions answer at once when the host replies, else on the reply event carrying the request id" {
+	mount();
+	nmAppReply("permission.check", "granted" + FIELD + "0");
+	const camera = await Permissions.check("camera");
+	assert camera.granted && camera.status === "granted" && !camera.canAskAgain;
+	nmAppReply("permission.request", "");
+	const pending = Permissions.request("location");
+	await sleepAsync(5);
+	const asked: string = nmAppLog();
+	const id = requestId(asked, "permission.request");
+	assert asked.endsWith("permission.request(" + id + FIELD + "location)"), asked;
+	nmAppEvent(REPLY, "999" + FIELD + "granted" + FIELD + "0");
+	nmAppEvent(REPLY, id + FIELD + "denied" + FIELD + "1");
+	const location: PermissionResponse = await pending;
+	assert location.status === "denied" && location.canAskAgain, location.status as string;
+	nmTeardown();
+}
+
+test "a host refusal reply becomes a thrown error naming what the app must declare" {
+	mount();
+	nmAppReply("permission.request", "!Permissions.request(camera): add NSCameraUsageDescription to the app's Info.plist");
+	let message = "";
+	try {
+		await Permissions.request("camera");
+	} catch (e) {
+		message = (e as Error).message;
+	}
+	assert message === "Permissions.request(camera): add NSCameraUsageDescription to the app's Info.plist", message;
+	nmTeardown();
+}
+
+test "PermissionsAndroid sends raw permission names and reads one result per permission" {
+	mount();
+	nmAppReply("permissionsAndroid.check", "1");
+	assert await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.CAMERA);
+	nmAppReply("permissionsAndroid.request", "granted" + FIELD + "never_ask_again");
+	const fine = PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION;
+	const coarse = PermissionsAndroid.PERMISSIONS.ACCESS_COARSE_LOCATION;
+	const results = await PermissionsAndroid.requestMultiple([fine, coarse]);
+	assert results.get(fine) === "granted" && results.get(coarse) === "never_ask_again";
+	const log: string = nmAppLog();
+	const id = requestId(log, "permissionsAndroid.request");
+	assert log === "permissionsAndroid.check(android.permission.CAMERA);permissionsAndroid.request(" + id + FIELD + fine + "," + coarse + ")", log;
 	nmTeardown();
 }

@@ -66,6 +66,10 @@ export {
 	NetInfo, NetInfoChangeHandler, NetInfoDetails, NetInfoState, NetInfoStateType, NetInfoUnsubscribe, useNetInfo,
 } from "./api/netInfo";
 export {
+	AndroidPermissionNames, AndroidPermissionResults, PermissionName, PermissionResponse, Permissions, PermissionsAndroid,
+	PermissionsAndroidResult, PermissionStatus, Rationale,
+} from "./api/permissions";
+export {
 	Animated, CompositeAnimation, useAnimatedValue, AnimatedNode, AnimatedValue, AnimatedValueXY,
 	AnimatedInterpolation, AnimatedStringInterpolation, Easing, EasingFunction, LayoutAnimation,
 	LayoutAnimationPresets, Presence, EndResult,

@@ -1,5 +1,8 @@
 import { AsyncStorage, KeyValuePair, StringPair, useAsyncStorage } from "../../src/api/asyncStorage";
 import { NetInfo, NetInfoState, publishNetInfo, useNetInfo } from "../../src/api/netInfo";
+import { Permissions, PermissionsAndroid } from "../../src/api/permissions";
+import { sleepAsync } from "std/core/promise";
+import { installAppServices } from "../../src/api/services";
 import { FakeServices } from "./fakeServices";
 
 test "AsyncStorage reads null for a missing key and round-trips set, remove and clear" {
@@ -96,4 +99,76 @@ test "NetInfo starts the host's watch once, calls a new listener at once and the
 	fake.network = { type: "ethernet", isConnected: true, isInternetReachable: true, details: { isConnectionExpensive: false } };
 	assert describe(await NetInfo.fetch()) === "ethernet up reachable cheap";
 	assert fake.joined() === "watchNetInfo;refreshNetInfo", fake.joined();
+}
+
+test "Permissions.check and request answer in expo's PermissionResponse shape" {
+	const fake = new FakeServices();
+	fake.install();
+	const before = await Permissions.check("camera");
+	assert before.status === "undetermined" && !before.granted && before.canAskAgain && before.expires === "never";
+	const after = await Permissions.request("camera");
+	assert after.status === "granted" && after.granted && !after.canAskAgain;
+	fake.answer = "denied";
+	const location = await Permissions.request("location");
+	assert location.status === "denied" && !location.granted;
+	assert fake.joined() === "requestPermission camera;requestPermission location", fake.joined();
+}
+
+test "PermissionsAndroid names RN's permissions and results and maps requestMultiple per permission" {
+	const fake = new FakeServices();
+	fake.install();
+	assert PermissionsAndroid.PERMISSIONS.CAMERA === "android.permission.CAMERA";
+	assert PermissionsAndroid.PERMISSIONS.ADD_VOICEMAIL === "com.android.voicemail.permission.ADD_VOICEMAIL";
+	assert PermissionsAndroid.RESULTS.NEVER_ASK_AGAIN === "never_ask_again";
+	assert !(await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.CAMERA));
+	assert (await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.CAMERA)) === "granted";
+	assert await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.CAMERA);
+	fake.answer = "never_ask_again";
+	const fine = PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION;
+	const coarse = PermissionsAndroid.PERMISSIONS.ACCESS_COARSE_LOCATION;
+	const results = await PermissionsAndroid.requestMultiple([fine, coarse]);
+	assert results.get(fine) === "never_ask_again" && results.size === 2;
+}
+
+test "PermissionsAndroid.request shows the rationale first when the platform asks for one" {
+	const fake = new FakeServices();
+	fake.install();
+	fake.rationale = true;
+	const result = PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.RECORD_AUDIO, {
+		title: "Microphone",
+		message: "To record notes",
+		buttonNegative: "Not now",
+		buttonPositive: "Continue",
+	});
+	await sleepAsync(20);
+	assert fake.alerts.length === 1, "the rationale alert is up";
+	assert fake.alerts[0].buttons.length === 2 && fake.alerts[0].buttons[1].text === "Continue";
+	assert fake.joined() === "alert Microphone", fake.joined();
+	fake.alerts[0].done(1);
+	assert (await result) === "granted";
+	assert fake.joined() === "alert Microphone;androidRequestPermissions android.permission.RECORD_AUDIO", fake.joined();
+}
+
+// Awaited inside an async helper: a test body that awaits a rejected nullable promise segfaults on C
+// (compiler card 2026-10-08-test-block-awaiting-a-rejected-nullable-promise-segfaults.md).
+async function storageRejection(): Promise<string> {
+	try {
+		await AsyncStorage.getItem("k");
+	} catch (e) {
+		return (e as Error).message;
+	}
+	return "";
+}
+
+test "the async device APIs reject when no host installed app services" {
+	installAppServices(null);
+	const storage = await storageRejection();
+	assert storage.startsWith("AsyncStorage.getItem: no host has installed app services"), storage;
+	let permission = "";
+	try {
+		await Permissions.check("camera");
+	} catch (e) {
+		permission = (e as Error).message;
+	}
+	assert permission.startsWith("Permissions.check: no host"), permission;
 }

@@ -11,6 +11,8 @@ final class Modules {
 		switch (domain) {
 			case "storage": return Storage.call(a, name, arg);
 			case "netinfo": return NetInfo.call(a, name, arg);
+			case "permission":
+			case "permissionsAndroid": return Permissions.call(a, name, arg);
 			default: throw new IllegalArgumentException("Neon App.call: unknown command " + name);
 		}
 	}

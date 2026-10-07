@@ -37,8 +37,11 @@ function mergeOne(api: string, key: string, value: string): void {
 }
 
 export class AsyncStorage {
+	// A throwing call is bound before `return` (compiler card
+	// 2026-10-08-async-return-of-a-throwing-call-loses-the-exception-on-c.md).
 	static async getItem(key: string): Promise<string | null> {
-		return readItem("AsyncStorage.getItem", key);
+		const value = readItem("AsyncStorage.getItem", key);
+		return value;
 	}
 
 	static async setItem(key: string, value: string): Promise<void> {
@@ -58,7 +61,8 @@ export class AsyncStorage {
 	}
 
 	static async getAllKeys(): Promise<string[]> {
-		return appServices("AsyncStorage.getAllKeys").storageKeys();
+		const keys = appServices("AsyncStorage.getAllKeys").storageKeys();
+		return keys;
 	}
 
 	static async multiGet(keys: string[]): Promise<KeyValuePair[]> {
