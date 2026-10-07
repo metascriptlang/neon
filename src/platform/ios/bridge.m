@@ -3,6 +3,7 @@
 #include "runtime/promise/dispatch.h"
 #include "../native/bridge.h"
 #include "../native/loop.h"
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -118,6 +119,7 @@ static void publishEnvironment(float keyboard, int dark) {
 @property (nonatomic) BOOL neonBlurOnSubmit;
 @property (nonatomic) BOOL neonAutoFocus;
 @property (nonatomic) NSInteger neonMaxLength;
+@property (nonatomic) UIEdgeInsets neonInsets;
 @end
 
 @implementation NeonInput
@@ -133,6 +135,15 @@ static void publishEnvironment(float keyboard, int dark) {
 		[self addTarget:self action:@selector(neonChanged) forControlEvents:UIControlEventEditingChanged];
 	}
 	return self;
+}
+
+- (CGRect)textRectForBounds:(CGRect)bounds { return UIEdgeInsetsInsetRect([super textRectForBounds:bounds], self.neonInsets); }
+- (CGRect)editingRectForBounds:(CGRect)bounds { return UIEdgeInsetsInsetRect([super editingRectForBounds:bounds], self.neonInsets); }
+- (CGRect)placeholderRectForBounds:(CGRect)bounds { return UIEdgeInsetsInsetRect([super placeholderRectForBounds:bounds], self.neonInsets); }
+
+- (CGSize)sizeThatFits:(CGSize)size {
+	CGSize fit = [super sizeThatFits:size];
+	return CGSizeMake(fit.width + self.neonInsets.left + self.neonInsets.right, fit.height + self.neonInsets.top + self.neonInsets.bottom);
 }
 
 - (void)neonChanged {
@@ -300,6 +311,12 @@ static void setInputProp(NeonInput *input, const char *name, const char *value) 
 	else if (strcmp(name, "autoFocus") == 0) {
 		input.neonAutoFocus = yes;
 		if (yes && input.window) [input becomeFirstResponder];
+	} else if (strcmp(name, "textInsets") == 0) {
+		float left = 0, top = 0, right = 0, bottom = 0;
+		if (sscanf(value, "%f,%f,%f,%f", &left, &top, &right, &bottom) == 4) {
+			input.neonInsets = UIEdgeInsetsMake(top, left, bottom, right);
+			[input setNeedsLayout];
+		}
 	} else if (strcmp(name, "maxLength") == 0) input.neonMaxLength = value[0] == '\0' ? -1 : atoi(value);
 }
 

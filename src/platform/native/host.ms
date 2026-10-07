@@ -79,6 +79,7 @@ class NativeNode {
 	contentW: float32 = -1.0;
 	measuredFor: float32 = -1.0;
 	measuredW: float32 = 0.0;
+	textInsets: string = "";
 	contentH: float32 = -1.0;
 
 	constructor(view: Ptr<void> | null, isText: boolean, isString: boolean) {
@@ -141,6 +142,26 @@ function parseHex(css: string): Rgba | null {
 	return { r: (r as float32) / s, g: (g as float32) / s, b: (b as float32) / s };
 }
 
+
+function points(v: number | string | null): number {
+	if (v === null || typeof v === "string") { return -1; }
+	return v as number;
+}
+
+function inset(side: number | string | null, all: number | string | null): number {
+	const own = points(side);
+	if (own >= 0) { return own; }
+	return Math.max(0, points(all));
+}
+
+function writeTextInsets(n: NativeNode, s: Style): void {
+	if (!n.isInput || n.view === null) { return; }
+	if (s.padding === null && s.paddingLeft === null && s.paddingTop === null && s.paddingRight === null && s.paddingBottom === null && n.textInsets === "") { return; }
+	const insets = `${inset(s.paddingLeft, s.padding)},${inset(s.paddingTop, s.padding)},${inset(s.paddingRight, s.padding)},${inset(s.paddingBottom, s.padding)}`;
+	if (insets === n.textInsets) { return; }
+	n.textInsets = insets;
+	niSetProp(n.view, "textInsets", insets);
+}
 
 // The paint half of the projection (docs/STYLE.md §5), onto the platform view.
 function applyPaint(n: NativeNode, s: Style): void {
@@ -512,6 +533,7 @@ export function createNativeHost(): NativeHost {
 				if (p !== null) { restack(p); }
 			}
 			n.styleCache = style;
+			writeTextInsets(n, style);
 			n.flex = intrinsicFlex(n, nativeFlexStyle(style, kindOf(n)));
 			applyPaint(n, style);
 			if (n.isText) { remeasureText(n); }

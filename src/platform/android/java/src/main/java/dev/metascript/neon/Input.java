@@ -129,6 +129,14 @@ public final class Input extends EditText {
 			case "returnKeyType": setImeOptions(imeAction(value)); break;
 			case "blurOnSubmit": blurOnSubmit = value.isEmpty() || yes; break;
 			case "autoFocus": autoFocus = yes; if (yes && isAttachedToWindow()) post(() -> setFocused(true)); break;
+			case "textInsets": {
+				String[] parts = value.split(",");
+				if (parts.length != 4) break;
+				float density = getResources().getDisplayMetrics().density;
+				setPadding(Math.round(Float.parseFloat(parts[0]) * density), Math.round(Float.parseFloat(parts[1]) * density),
+					Math.round(Float.parseFloat(parts[2]) * density), Math.round(Float.parseFloat(parts[3]) * density));
+				break;
+			}
 			case "maxLength":
 				setFilters(value.isEmpty() ? new InputFilter[0] : new InputFilter[] { new InputFilter.LengthFilter(Integer.parseInt(value)) });
 				break;

@@ -701,3 +701,12 @@ test "a label that grows inside a shrink-wrapped box is remeasured unwrapped, no
 	assert `${nmTextWidth("SAVE")}x${nmTextHeight("SAVE")}` === "40x24", "a bigger font keeps one line: " + `${nmTextWidth("SAVE")}x${nmTextHeight("SAVE")}`;
 	nmTeardown();
 }
+
+test "a native TextInput's padding reaches the native field as text insets" {
+	const app = (): NeonNode => <View>
+		<TextInput style={{ padding: 8, paddingLeft: 12, height: 44 }} onChangeText={(t: string): void => {}} />
+	</View>;
+	runApp(app);
+	assert prop(nmLastInputTag(), "textInsets") === "12,8,8,8", "insets: " + prop(nmLastInputTag(), "textInsets");
+	nmTeardown();
+}
