@@ -1811,6 +1811,28 @@ final class DeviceUITests: XCTestCase {
         print("NEON_IOS device-battery \(label(startingWith: "battery "))")
         tap("clear notes")
         waitLabel("stored ", containing: "stored none")
+
+        waitLabel("notifications ", containing: "notifications undetermined")
+        tap("allow notifications")
+        allow(["Allow"])
+        waitLabel("notifications ", containing: "notifications granted")
+        tap("notify")
+        waitLabel("notified ", containing: "notified scheduled")
+        waitLabel("notified ", containing: "notified received Neon reminder", timeout: 15)
+        report("notification-foreground")
+
+        tap("notify later")
+        waitLabel("notified ", containing: "notified scheduled")
+        XCUIDevice.shared.press(.home)
+        let banner = springboard.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", "Neon later")).firstMatch
+        XCTAssertTrue(banner.waitForExistence(timeout: 20), "the scheduled notification is presented while the app is in the background")
+        let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        shot.name = "device-notification-banner"
+        shot.lifetime = .keepAlways
+        add(shot)
+        banner.tap()
+        XCTAssertTrue(app.wait(for: .runningForeground, timeout: 15), "tapping the notification opens the app")
+        waitLabel("notified ", containing: "notified response Neon later", timeout: 15)
         report("final")
     }
 }

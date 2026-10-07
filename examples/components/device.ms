@@ -10,6 +10,9 @@ import { Geolocation, GeolocationError, GeolocationResponse } from "../../src/ap
 import { Haptics, ImpactFeedbackStyle } from "../../src/api/haptics";
 import { DeviceInfo } from "../../src/api/deviceInfo";
 import { getCalendars, getLocales } from "../../src/api/localization";
+import {
+	Notification, NotificationBehavior, NotificationHandler, NotificationResponse, Notifications,
+} from "../../src/api/notifications";
 
 const styles = createStyles({
 	screen: { flex: 1 },
@@ -22,6 +25,14 @@ const styles = createStyles({
 
 const NOTE = "neon.device.note";
 const PROFILE = "neon.device.profile";
+
+// Module level: on JS an object of async arrows makes its enclosing function async (compiler card
+// 2026-10-07-js-outer-function-made-async-by-nested-async.md).
+const SHOW_IN_FOREGROUND: NotificationHandler = {
+	handleNotification: async (notification: Notification): Promise<NotificationBehavior> => {
+		return { shouldShowBanner: true, shouldShowList: true, shouldPlaySound: true, shouldSetBadge: false };
+	},
+};
 
 function rounded(value: number): string {
 	return (Math.round(value * 10000) / 10000).toString();
@@ -45,16 +56,31 @@ export function DeviceDemo(): NeonNode {
 	const [watched, setWatched] = createSignal<int32>(0);
 	const [haptics, setHaptics] = createSignal<int32>(0);
 	const [battery, setBattery] = createSignal("unknown");
+	const [notifications, setNotifications] = createSignal("unknown");
+	const [notified, setNotified] = createSignal("nothing");
 	const net = useNetInfo();
 	let watchId: number = -1;
+	Notifications.setNotificationHandler(SHOW_IN_FOREGROUND);
+	const received = Notifications.addNotificationReceivedListener((notification: Notification): void => {
+		setNotified("received " + (notification.request.content.title ?? ""));
+	});
+	const responded = Notifications.addNotificationResponseReceivedListener((response: NotificationResponse): void => {
+		setNotified("response " + (response.notification.request.content.title ?? ""));
+	});
 	onCleanup((): void => {
 		if (watchId >= 0) { Geolocation.clearWatch(watchId); }
+		received.remove();
+		responded.remove();
+		Notifications.setNotificationHandler(null);
 	});
 
 	const load = async (): Promise<void> => {
 		setStored((await AsyncStorage.getItem(NOTE)) ?? "none");
 		setMerged((await AsyncStorage.getItem(PROFILE)) ?? "none");
 		setPermission((await Permissions.check("location")).status as string);
+		setNotifications((await Notifications.getPermissionsAsync()).status as string);
+		const last = await Notifications.getLastNotificationResponseAsync();
+		if (last !== null) { setNotified("launched by " + (last.notification.request.content.title ?? "")); }
 	};
 	const saveNote = async (): Promise<void> => {
 		const current = (await AsyncStorage.getItem(NOTE)) ?? "note-0";
@@ -75,6 +101,16 @@ export function DeviceDemo(): NeonNode {
 	const requestLocation = async (): Promise<void> => {
 		const answer = await Permissions.request("location");
 		setPermission(answer.status as string);
+	};
+	const allowNotifications = async (): Promise<void> => {
+		setNotifications((await Notifications.requestPermissionsAsync()).status as string);
+	};
+	const notify = async (title: string, seconds: number): Promise<void> => {
+		const id = await Notifications.scheduleNotificationAsync({
+			content: { title, body: "From the Neon device demo", sound: true },
+			trigger: { seconds },
+		});
+		setNotified("scheduled " + id.substring(0, 5));
 	};
 	const readBattery = async (): Promise<void> => {
 		const level = await DeviceInfo.getBatteryLevel();
@@ -102,6 +138,8 @@ export function DeviceDemo(): NeonNode {
 				" emulator " + (DeviceInfo.isEmulatorSync() ? "yes" : "no")}</Text>
 			<Text style={styles.status}>{"app " + DeviceInfo.getBundleId() + " " + DeviceInfo.getVersion() + " (" + DeviceInfo.getBuildNumber() + ")"}</Text>
 			<Text style={styles.status}>{"battery " + battery()}</Text>
+			<Text style={styles.status}>{"notifications " + notifications()}</Text>
+			<Text style={styles.status}>{"notified " + notified()}</Text>
 			<Text style={styles.status}>{"locale " + locale.languageTag + " tz " + (calendar.timeZone ?? "none") + " 24h " +
 				flag(calendar.uses24hourClock) + " rtl " + (locale.textDirection === "rtl" ? "yes" : "no")}</Text>
 			<View style={styles.buttons}>
@@ -132,6 +170,9 @@ export function DeviceDemo(): NeonNode {
 					setHaptics(haptics() + 1);
 				}}>haptic</Pressable>
 				<Pressable style={styles.button} onPress={() => { readBattery(); }}>battery</Pressable>
+				<Pressable style={styles.button} onPress={() => { allowNotifications(); }}>allow notifications</Pressable>
+				<Pressable style={styles.button} onPress={() => { notify("Neon reminder", 2); }}>notify</Pressable>
+				<Pressable style={styles.button} onPress={() => { notify("Neon later", 6); }}>notify later</Pressable>
 			</View>
 		</View>
 	</ScrollView>;
