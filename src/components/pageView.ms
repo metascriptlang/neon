@@ -33,6 +33,9 @@ const SPRING_DAMPING = 15.556349186104045;
 // tabs.dart kTabScrollDuration with Curves.ease, what animateToPage uses for a tab.
 const PAGE_ANIMATION_MS = 300;
 const DRAG_SLOP = 10;
+// velocity_tracker.dart _assumePointerMoveStoppedMilliseconds: a finger that rested this
+// long before lifting releases with no velocity.
+const POINTER_STOPPED_MS = 40;
 // An edge drag moves the pages by this share of the finger (WORKAROUND.md W1).
 const OVERSCROLL_SHARE = 0.35;
 
@@ -284,7 +287,8 @@ export function PageView<T>(props: {
 		},
 		onPanResponderRelease: (e: NeonEvent, g: PanResponderGestureState): void => {
 			const length = untrack<number>(extent);
-			const velocity = -(untrack<boolean>(vertical) ? g.vy : g.vx) * 1000;
+			const rested = e.timeStamp - g.accountsForMovesUpTo > POINTER_STOPPED_MS;
+			const velocity = rested ? 0 : -(untrack<boolean>(vertical) ? g.vy : g.vx) * 1000;
 			const at = position.peek();
 			const target = clampTarget(pageTarget(at, velocity));
 			settle(target, length > 0 ? velocity / length : 0);

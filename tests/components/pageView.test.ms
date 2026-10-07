@@ -58,7 +58,7 @@ function drag(target: MockNode, points: number[], step: number, vertical: boolea
 		t += step;
 		at("onTouchMove", points[i]);
 	}
-	t += step;
+	t += Math.min(step, 10);
 	at("onTouchEnd", points[points.length - 1]);
 }
 
@@ -111,6 +111,13 @@ test "a short fast fling turns the page, a short slow drag springs back" {
 	drag(outer.children[1], [100, 112, 124, 136, 136], 100, false);
 	clock.runAll();
 	assert controller.selectedPage() === 1 && controller.peek() === 1, "a slow 36 pt drag stays on page 1";
+	let t = 5000.0;
+	fireTouch(outer.children[1], "onTouchStart", 100, 10, t);
+	fireTouch(outer.children[1], "onTouchMove", 115, 10, t + 10);
+	fireTouch(outer.children[1], "onTouchMove", 160, 10, t + 20);
+	fireTouch(outer.children[1], "onTouchEnd", 160, 10, t + 320);
+	clock.runAll();
+	assert controller.selectedPage() === 1, "a fast drag that rests before lifting does not fling";
 	setFrameDriver(null);
 }
 
