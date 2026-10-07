@@ -27,7 +27,7 @@ import { Host, HostNode, VoidArea } from "../render/hostTypes";
 
 export type AccessibilityRole = "none" | "button" | "link" | "search" | "image" | "text" | "header" | "switch" | "checkbox" | "adjustable" | "progressbar" | "summary" | "alert";
 
-interface AccessibilityProps {
+export interface AccessibilityProps {
 	accessible?: Accessor<boolean> | null;
 	accessibilityLabel?: Accessor<string> | null;
 	accessibilityHint?: Accessor<string> | null;
