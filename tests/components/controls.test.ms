@@ -9,6 +9,9 @@ import { Button } from "../../src/components/button";
 import { Switch } from "../../src/components/switch";
 import { Image } from "../../src/components/image";
 import { ActivityIndicator } from "../../src/components/activityIndicator";
+import { Slider, snapSliderValue } from "../../src/components/slider";
+import { Picker, PickerItem } from "../../src/components/picker";
+import { DateTimePicker, isoDate, isoTime } from "../../src/components/dateTimePicker";
 
 function changed(value: string): NeonEvent {
 	const e = neonEvent("valuechange");
@@ -121,4 +124,56 @@ test "Text forwards numberOfLines, ellipsizeMode and selectable, and stays a pla
 	assert mockToString(root) === "<root><view><text numberOfLines=\"2\" ellipsizeMode=\"middle\" selectable=\"true\">long</text><text>plain</text></view></root>", "shape: " + mockToString(root);
 	setLines(0);
 	assert mockToString(root).indexOf("numberOfLines=\"0\"") > 0, "reactive";
+}
+
+test "Slider sends its range and reports snapped values, a start once per drag and the completion" {
+	const [guests, setGuests] = createSignal(2.0 as float64);
+	let log = "";
+	const root: MockNode = mockNode("root");
+	render(element(<Slider value={guests()} minimumValue={1} maximumValue={8} step={1} accessibilityLabel="Guests"
+		onSlidingStart={(v: float64): void => { log += `start ${v};`; }}
+		onValueChange={(v: float64): void => { log += `change ${v};`; setGuests(v); }}
+		onSlidingComplete={(v: float64): void => { log += `done ${v};`; }} />), mockHost(), root as unknown as HostNode);
+	assert mockToString(root) === "<root><slider minimumValue=\"1\" maximumValue=\"8\" step=\"1\" value=\"2\" accessibilityRole=\"adjustable\" accessibilityLabel=\"Guests\"></slider></root>", "shape: " + mockToString(root);
+	const slider = root.children[0];
+	fireEventWith(slider, "onValueChange", changed("3.4"));
+	fireEventWith(slider, "onValueChange", changed("4.6"));
+	fireEventWith(slider, "onSlidingComplete", changed("4.6"));
+	fireEventWith(slider, "onValueChange", changed("12"));
+	assert log === "start 3;change 3;change 5;done 5;start 8;change 8;", "events: " + log;
+	assert mockToString(root).indexOf("value=\"8\"") > 0, "value follows the signal: " + mockToString(root);
+}
+
+test "snapSliderValue clamps to the range and snaps from the minimum, continuous without a step" {
+	assert snapSliderValue(0.33, 0, 1, 0) === 0.33, "continuous";
+	assert snapSliderValue(7.4, 1, 8, 2) === 7, "steps count from the minimum";
+	assert snapSliderValue(-3, 1, 8, 1) === 1 && snapSliderValue(30, 1, 8, 1) === 8, "clamped";
+}
+
+test "Picker sends labels and the selected index and reports the chosen item value" {
+	const rooms: PickerItem[] = [{ label: "Standard", value: "std" }, { label: "Deluxe", value: "dlx" }, { label: "Suite", value: "ste" }];
+	const [room, setRoom] = createSignal("dlx");
+	let picked = "";
+	const root: MockNode = mockNode("root");
+	render(element(<Picker items={rooms} selectedValue={room()} prompt="Room" accessibilityLabel="Room type"
+		onValueChange={(v: string, i: int32): void => { picked = `${v}@${i}`; setRoom(v); }} />), mockHost(), root as unknown as HostNode);
+	const picker = root.children[0];
+	assert mockToString(root).indexOf("selectedIndex=\"1\"") > 0 && mockToString(root).indexOf("accessibilityRole=\"combobox\"") > 0, "shape: " + mockToString(root);
+	assert mockToString(root).indexOf("items=\"Standard\x1fstd\x1eDeluxe\x1fdlx\x1eSuite\x1fste\"") > 0, "items: " + mockToString(root);
+	fireEventWith(picker, "onValueChange", changed("2"));
+	assert picked === "ste@2" && mockToString(root).indexOf("selectedIndex=\"2\"") > 0, "picked: " + picked;
+}
+
+test "DateTimePicker sends its mode, bounds and ISO value and reports the chosen value" {
+	const [day, setDay] = createSignal(isoDate(2026, 10, 7));
+	const root: MockNode = mockNode("root");
+	render(element(<View>
+		<DateTimePicker value={day()} minimumDate="2026-10-01" accessibilityLabel="Check-in" onChange={(v: string): void => { setDay(v); }} />
+		<DateTimePicker value={isoTime(9, 5)} mode="time" />
+	</View>), mockHost(), root as unknown as HostNode);
+	const date = root.children[0].children[0];
+	assert mockToString(date) === "<datetimepicker mode=\"date\" minimumDate=\"2026-10-01\" value=\"2026-10-07\" accessibilityLabel=\"Check-in\"></datetimepicker>", "shape: " + mockToString(date);
+	assert mockToString(root.children[0].children[1]).indexOf("value=\"09:05\"") > 0, "time: " + mockToString(root.children[0].children[1]);
+	fireEventWith(date, "onValueChange", changed("2026-12-24"));
+	assert day() === "2026-12-24" && mockToString(date).indexOf("value=\"2026-12-24\"") > 0, "chosen: " + mockToString(date);
 }

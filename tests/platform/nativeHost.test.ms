@@ -11,6 +11,9 @@ import { GalleryApp } from "../../examples/components/gallery";
 import { KeyboardAvoidingView } from "../../src/components/keyboardAvoidingView";
 import { ActivityIndicator } from "../../src/components/activityIndicator";
 import { Image } from "../../src/components/image";
+import { Slider } from "../../src/components/slider";
+import { Picker, PickerItem } from "../../src/components/picker";
+import { DateTimePicker } from "../../src/components/dateTimePicker";
 import { useColorScheme, useKeyboard, useWindowDimensions } from "../../src/render/environment";
 import { NeonNode } from "../../src/render/node";
 import { NeonEvent } from "../../src/render/event";
@@ -657,6 +660,37 @@ test "native Switch, ActivityIndicator and Image write their props, size themsel
 	nmControlSized(picture, 5, "", 640, 480);
 	nmControl(picture, 6, "HTTP 404");
 	assert log === "switch true;load 640x480;error HTTP 404;", "events: " + log;
+	nmTeardown();
+	assert nmReleaseCalls() === nmViewsCreated(), "controls are released";
+}
+
+test "native Slider, Picker and DateTimePicker are created by name, size themselves and route value changes" {
+	const [guests, setGuests] = createSignal(2.0 as float64);
+	const [room, setRoom] = createSignal("std");
+	const [day, setDay] = createSignal("2026-10-07");
+	const rooms: PickerItem[] = [{ label: "Standard", value: "std" }, { label: "Suite", value: "ste" }];
+	let log = "";
+	const app = (): NeonNode => <View style={{ width: 300 }}>
+		<Slider value={guests()} minimumValue={1} maximumValue={8} step={1}
+			onValueChange={(v: float64): void => { log += `slide ${v};`; setGuests(v); }}
+			onSlidingComplete={(v: float64): void => { log += `done ${v};`; }} />
+		<Picker items={rooms} selectedValue={room()} onValueChange={(v: string, i: int32): void => { log += `room ${v};`; setRoom(v); }} />
+		<DateTimePicker value={day()} onChange={(v: string): void => { log += `day ${v};`; setDay(v); }} />
+	</View>;
+	runApp(app);
+	const slider = nmLastControlTag(6);
+	const picker = nmLastControlTag(7);
+	const date = nmLastControlTag(8);
+	assert prop(slider, "maximumValue") === "8" && prop(slider, "value") === "2" && prop(slider, "accessibilityRole") === "adjustable", "slider props";
+	assert `${nmLayoutWidth(slider)}x${nmLayoutHeight(slider)}` === "300x31", "the slider stretches at its native height: " + `${nmLayoutWidth(slider)}x${nmLayoutHeight(slider)}`;
+	assert prop(picker, "selectedIndex") === "0" && `${nmLayoutHeight(picker)}` === "44", "picker";
+	assert prop(date, "mode") === "date" && `${nmLayoutWidth(date)}x${nmLayoutHeight(date)}` === "120x36", "date picker takes its native size";
+	nmControl(slider, 4, "5.2");
+	nmControl(slider, 8, "5.2");
+	nmControl(picker, 4, "1");
+	nmControl(date, 4, "2026-11-02");
+	assert log === "slide 5;done 5;room ste;day 2026-11-02;", "events: " + log;
+	assert prop(slider, "value") === "5" && prop(picker, "selectedIndex") === "1" && prop(date, "value") === "2026-11-02", "controlled values written back";
 	nmTeardown();
 	assert nmReleaseCalls() === nmViewsCreated(), "controls are released";
 }
