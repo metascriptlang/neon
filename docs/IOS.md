@@ -494,6 +494,12 @@ second row in the first column, then `cell 2 tapped 2` with `pressed cell 2 at 3
 `5e3fb7e` fails at "cell 2 keeps its own counter", the remount the pool removes.
 `testMeasuredStickyAndInverted` failed in all three runs, the control included (BUGS.md §3).
 
+`maintainVisibleContentPosition`, simulator only (2026-10-07, source `4ead070`, compiler
+`0d83c4867`): `FlatListUITests/testChatKeepsVisibleMessage` drags the `chat` mode to offset 170,
+presses `load older`, and `message 1002` stays at y 311.0 while the offset moves to 1610 (the 20
+older messages, 1440 pt); scrolling up shows `message 980` through 986 in order; one pid, 1/1
+passed. The screenshots before and after the press are identical below the status lines.
+
 ### 9.2 Earlier list gate boundary — 2026-10-06
 
 On source/test tree `58fa59202ac69a7cdc09ad837c60392c3cef4b85` with compiler

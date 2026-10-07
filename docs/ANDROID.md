@@ -431,6 +431,15 @@ now wrap: five no longer fit one row. One earlier run on the rebased tree failed
 long-press step (`pressed none`); an isolated long-press probe and the full rerun both passed,
 so it is recorded as an unexplained one-off, not a fix.
 
+`maintainVisibleContentPosition` (source `4ead070`): `chat_lane` in `tests/android/flatlist.py`
+(`NEON_FLATLIST_LANES=chat` selects it) drags the chat, notes the second visible message's y,
+presses `load older`, and asserts the same message within 2 dp, `messages 60, oldest 980`, and
+`message 980` above it after scrolling up. The app generated, built and installed on Seeker
+through `/private/tmp/neon-seeker-run.sh` on 2026-10-07 22:2x, but the lane did not run: the
+phone was `mWakefulness=Asleep` behind a secure keyguard, which was not bypassed. Pending the
+person's unlock. `Scroll.shiftBy` and its fling restart (reflection on `ScrollView.mScroller`,
+as RN's `ReactScrollView`) are therefore not yet measured on a device.
+
 `examples/scrollmatrix` with `tests/android/scrollmatrix.py` covers native horizontal drag
 (x moves, y stays 0, a drag presses nothing, a tap after it hits the card under the finger),
 reactive axis replacement both ways with app state kept, and pull-to-refresh closed by the

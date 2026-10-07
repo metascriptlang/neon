@@ -92,9 +92,18 @@ Public `VirtualizedList` (`getItem`/`getItemCount`), viewability (`onViewableIte
 `tests/components/list/viewability.test.ms`, `tests/browser/sectionList.test.ms`; the invalid
 `initialScrollIndex` warning is pinned on native and JS by `tests/apps/listWarnApp.ms`.
 `scrollToItem`, `ListItemComponent` and `disableVirtualization` follow RN's cases in the same
-files (L8–L9). `maintainVisibleContentPosition` is not started: RN keeps the content still in the
-native ScrollView, so it needs a ScrollView host attribute on every platform, a shared-contract
-change that waits for approval.
+files (L8–L9). `maintainVisibleContentPosition` (approved 2026-10-07) is a ScrollView attribute through
+`Host.setAttr`, kept by each host around its own write batch the way RN's ScrollView keeps it
+around a mount: the native host records the first visible child at or after
+`minIndexForVisible` before its yoga pass and shifts the offset by that child's move after it
+(`niScrollShift`, `niScrollOffsetX/Y` in `bridge.h`; Android waits for its layout pass and
+restarts a running fling, iOS writes `contentOffset`), the DOM host records before the first
+host write of a task and shifts in a microtask with CSS `overflow-anchor: none`. The list ports
+RN's `getDerivedStateFromProps` window shift and counts the header slot. Cases:
+`tests/render/{scrollView,flatList}.test.ms` (RN's two `VirtualizedList-test.js` cases),
+`tests/platform/nativeHost.test.ms`, `tests/browser/{scrollView,flatList}.test.ms`; the consumer is
+the `chat` mode of `examples/components/bigList.ms`, passing on the iOS simulator
+(`docs/IOS.md` §9.1); the Seeker lane is written but not yet run (`docs/ANDROID.md` §11.1).
 
 
 ### Acceptance — three complete author workflows
