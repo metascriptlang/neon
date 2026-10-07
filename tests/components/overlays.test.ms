@@ -39,7 +39,7 @@ test "Snackbar shows a bottom alert with its action, and the action dismisses it
 		onDismiss={(): void => { setLog(log() + "dismiss;"); setOpen(false); }} />), mockHost(), root as unknown as HostNode);
 	assert mockToString(root) === "<root></root>", "hidden: " + mockToString(root);
 	setOpen(true);
-	assert mockToString(root) === "<root><view accessibilityLabel=\"Saved\" accessibilityRole=\"alert\"><view><text>Saved</text></view><pressable accessibilityLabel=\"Undo\" accessibilityRole=\"button\"><text>UNDO</text></pressable></view></root>", "shown: " + mockToString(root);
+	assert mockToString(root) === "<root><view accessibilityLabel=\"Saved\" accessibilityRole=\"alert\"><view><text>Saved</text></view><pressable accessible=\"true\" accessibilityLabel=\"Undo\" accessibilityRole=\"button\"><text>UNDO</text></pressable></view></root>", "shown: " + mockToString(root);
 	const bar = root.children[0];
 	const layer = bar.style as Style;
 	assert layer.position === "absolute" && layer.bottom === 8 && layer.backgroundColor === "#323232", "pinned to the bottom";
@@ -75,7 +75,7 @@ test "Snackbar takes paper's action object and an accent colour" {
 		action={{ label: "Retry", onPress: (): void => { setLog(log() + "retry;"); } }}
 		onDismiss={(): void => { setLog(log() + "dismiss;"); }} />), mockHost(), root as unknown as HostNode);
 	const button = root.children[0].children[1];
-	assert mockToString(button) === "<pressable accessibilityLabel=\"Retry\" accessibilityRole=\"button\"><text>RETRY</text></pressable>", "action: " + mockToString(button);
+	assert mockToString(button) === "<pressable accessible=\"true\" accessibilityLabel=\"Retry\" accessibilityRole=\"button\"><text>RETRY</text></pressable>", "action: " + mockToString(button);
 	assert (button.children[0].style as Style).color === "#ffcc80", "accent";
 	fireEvent(button, "onPress");
 	assert log() === "retry;dismiss;", "presses: " + log();
@@ -122,19 +122,19 @@ test "Tooltip shows its title above the child on a long press and leaves after t
 		<Text>trash</Text>
 	</Tooltip>), mockHost(), root as unknown as HostNode);
 	const wrapper = root.children[0];
-	assert mockToString(root) === "<root><pressable accessibilityHint=\"Delete\"><text>trash</text></pressable></root>", "idle: " + mockToString(root);
+	assert mockToString(root) === "<root><pressable accessible=\"true\" accessibilityHint=\"Delete\"><text>trash</text></pressable></root>", "idle: " + mockToString(root);
 	fireEvent(wrapper, "onPointerDown");
 	await sleepAsync(20);
 	assert mockToString(wrapper).indexOf("<view>") < 0, "not before the enter delay";
 	await sleepAsync(150);
-	assert mockToString(wrapper) === "<pressable accessibilityHint=\"Delete\"><text>trash</text><view><text>Delete</text></view></pressable>", "bubble: " + mockToString(wrapper);
+	assert mockToString(wrapper) === "<pressable accessible=\"true\" accessibilityHint=\"Delete\"><text>trash</text><view><text>Delete</text></view></pressable>", "bubble: " + mockToString(wrapper);
 	const bubble = firstTag(wrapper, "view").style as Style;
 	assert bubble.position === "absolute" && bubble.top === -40 && bubble.backgroundColor === "#616161", "above the child";
 	fireEvent(wrapper, "onPointerUp");
 	await sleepAsync(40);
 	assert mockToString(wrapper).indexOf("<view>") > 0, "stays for the leave delay";
 	await sleepAsync(160);
-	assert mockToString(wrapper) === "<pressable accessibilityHint=\"Delete\"><text>trash</text></pressable>", "left: " + mockToString(wrapper);
+	assert mockToString(wrapper) === "<pressable accessible=\"true\" accessibilityHint=\"Delete\"><text>trash</text></pressable>", "left: " + mockToString(wrapper);
 }
 
 test "Dialog lays a scrim under a titled card, and the scrim and the actions dismiss it" {
@@ -151,7 +151,7 @@ test "Dialog lays a scrim under a titled card, and the scrim and the actions dis
 	</Dialog>), mockHost(), root as unknown as HostNode);
 	assert mockToString(root) === "<root></root>", "hidden: " + mockToString(root);
 	setOpen(true);
-	assert mockToString(root) === "<root><view><pressable accessibilityLabel=\"Dismiss\"></pressable><view accessibilityLabel=\"Discard draft?\" accessibilityRole=\"alert\"><text accessibilityRole=\"header\">Discard draft?</text><view><text>The draft will be lost.</text></view><view><view><pressable accessibilityLabel=\"Cancel\" accessibilityRole=\"button\"><text>Cancel</text></pressable><pressable accessibilityLabel=\"Discard\" accessibilityRole=\"button\"><text>Discard</text></pressable></view></view></view></view></root>", "shown: " + mockToString(root);
+	assert mockToString(root) === "<root><view><pressable accessible=\"true\" accessibilityLabel=\"Dismiss\"></pressable><view accessibilityLabel=\"Discard draft?\" accessibilityRole=\"alert\"><text accessibilityRole=\"header\">Discard draft?</text><view><text>The draft will be lost.</text></view><view><view><pressable accessible=\"true\" accessibilityLabel=\"Cancel\" accessibilityRole=\"button\"><text>Cancel</text></pressable><pressable accessible=\"true\" accessibilityLabel=\"Discard\" accessibilityRole=\"button\"><text>Discard</text></pressable></view></view></view></view></root>", "shown: " + mockToString(root);
 	const layer = root.children[0];
 	const scrim = firstTag(layer, "pressable");
 	const scrimStyle = scrim.style as Style;
@@ -174,7 +174,7 @@ test "a Dialog that is not dismissable ignores the scrim" {
 	render(element(<Dialog visible={true} dismissable={false} onDismiss={(): void => { setLog("dismiss"); }}>
 		<Text>Working</Text>
 	</Dialog>), mockHost(), root as unknown as HostNode);
-	assert mockToString(root) === "<root><view><pressable accessibilityLabel=\"Dismiss\"></pressable><view accessibilityLabel=\"\" accessibilityRole=\"alert\"><view><text>Working</text></view></view></view></root>", "untitled: " + mockToString(root);
+	assert mockToString(root) === "<root><view><pressable accessible=\"true\" accessibilityLabel=\"Dismiss\"></pressable><view accessibilityLabel=\"\" accessibilityRole=\"alert\"><view><text>Working</text></view></view></view></root>", "untitled: " + mockToString(root);
 	fireEvent(firstTag(root.children[0], "pressable"), "onPress");
 	assert log() === "", "scrim ignored: " + log();
 }
@@ -187,7 +187,7 @@ test "BottomSheet docks a handled sheet at the bottom and the scrim dismisses it
 		onDismiss={(): void => { setDismissed(dismissed() + 1); setOpen(false); }}>
 		<Text>Copy link</Text>
 	</BottomSheet>), mockHost(), root as unknown as HostNode);
-	assert mockToString(root) === "<root><view><pressable accessibilityLabel=\"Dismiss\"></pressable><view accessibilityLabel=\"Share\"><view></view><view><text>Copy link</text></view></view></view></root>", "shown: " + mockToString(root);
+	assert mockToString(root) === "<root><view><pressable accessible=\"true\" accessibilityLabel=\"Dismiss\"></pressable><view accessibilityLabel=\"Share\"><view></view><view><text>Copy link</text></view></view></view></root>", "shown: " + mockToString(root);
 	const layer = root.children[0];
 	assert (layer.style as Style).justifyContent === "flex-end" && (layer.style as Style).position === "absolute", "docked";
 	const sheet = firstTag(layer, "view");
@@ -213,9 +213,9 @@ test "Stepper numbers its steps, checks the done ones and drives the active step
 		onStepContinue={(): void => { setLog(log() + "continue;"); setCurrent(current() + 1); }}
 		onStepCancel={(): void => { setLog(log() + "cancel;"); }} />), mockHost(), root as unknown as HostNode);
 	const text = mockToString(root);
-	assert text.indexOf("<pressable accessibilityLabel=\"Cart, step 1 of 3, completed\" accessibilityRole=\"button\"><view><text>✓</text></view>") > 0, "done: " + text;
-	assert text.indexOf("<pressable accessibilityLabel=\"Shipping, step 2 of 3\" accessibilityRole=\"button\"><view><text>2</text></view><view><text>Shipping</text><text>Address and speed</text></view></pressable>") > 0, "active: " + text;
-	assert text.indexOf("<text>body 1</text><view><pressable accessibilityLabel=\"Continue\" accessibilityRole=\"button\"><text>Continue</text></pressable><pressable accessibilityLabel=\"Cancel\" accessibilityRole=\"button\"><text>Cancel</text></pressable></view>") > 0, "body and controls: " + text;
+	assert text.indexOf("<pressable accessible=\"true\" accessibilityLabel=\"Cart, step 1 of 3, completed\" accessibilityRole=\"button\"><view><text>✓</text></view>") > 0, "done: " + text;
+	assert text.indexOf("<pressable accessible=\"true\" accessibilityLabel=\"Shipping, step 2 of 3\" accessibilityRole=\"button\"><view><text>2</text></view><view><text>Shipping</text><text>Address and speed</text></view></pressable>") > 0, "active: " + text;
+	assert text.indexOf("<text>body 1</text><view><pressable accessible=\"true\" accessibilityLabel=\"Continue\" accessibilityRole=\"button\"><text>Continue</text></pressable><pressable accessible=\"true\" accessibilityLabel=\"Cancel\" accessibilityRole=\"button\"><text>Cancel</text></pressable></view>") > 0, "body and controls: " + text;
 	assert text.indexOf("body 0") < 0 && text.indexOf("body 2") < 0, "only the active body";
 	const steps0 = firstTag(root, "view");
 	const pay = lastTag(steps0, "view");
