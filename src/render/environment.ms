@@ -64,8 +64,10 @@ export function useSafeAreaInsets(): Accessor<EdgeInsets> {
 }
 
 export function publishSafeArea(top: number, right: number, bottom: number, left: number): void {
-	if (insetTop() !== top) { setInsetTop(top); }
-	if (insetRight() !== right) { setInsetRight(right); }
-	if (insetBottom() !== bottom) { setInsetBottom(bottom); }
-	if (insetLeft() !== left) { setInsetLeft(left); }
+	batch((): void => {
+		if (insetTop() !== top) { setInsetTop(top); }
+		if (insetRight() !== right) { setInsetRight(right); }
+		if (insetBottom() !== bottom) { setInsetBottom(bottom); }
+		if (insetLeft() !== left) { setInsetLeft(left); }
+	});
 }

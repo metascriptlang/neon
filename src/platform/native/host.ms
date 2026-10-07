@@ -5,7 +5,7 @@ import { FlexStyle, YGNode, freeLayoutTree, layoutPass as runLayoutPass } from "
 import { YGNodeGetParent, YGNodeRemoveChild, YGNodeLayoutGetPadding, YGNodeLayoutGetBorder, YGNodeLayoutGetMargin, YGEdge } from "../../../../yoga/src/yogaH";
 import { Style } from "../../render/style";
 import { NativeElementKind, createNativeEventRegistry, nativeElementKind, nativeFlexStyle, nativeTransform } from "./contract";
-import { publishWindow, publishKeyboard, publishColorScheme } from "../../render/environment";
+import { publishWindow, publishKeyboard, publishColorScheme, publishSafeArea } from "../../render/environment";
 import { VisibleContentPosition, parseVisibleContent } from "../../render/visibleContent";
 import { installNativeAppServices } from "./appServices";
 import { installFrameDriver } from "../../animation/frame";
@@ -39,7 +39,7 @@ import {
 	niInputCreate, niSwitchCreate, niIndicatorCreate, niImageCreate, niControlCreate, niControlSetTag, niSetProp, niSetFocused,
 	niModalCreate, niTextAreaCreate,
 	niLastControlTag, niLastControlPhase, niLastControlValue, niLastControlWidth, niLastControlHeight,
-	niKeyboardHeight, niColorScheme, niRequestFrame,
+	niKeyboardHeight, niColorScheme, niRequestFrame, niSafeAreaInset,
 } from "./bridge.h";
 import { niLoopRun } from "./loop.h";
 
@@ -899,6 +899,7 @@ function writeProp(n: NativeNode, name: string, value: string): void {
 		return;
 	}
 	niSetProp(n.view, name, value);
+	if (name === "statusBarTranslucent") { requestLayout(); }
 	if (n.isText && name === "numberOfLines") {
 		remeasureText(n);
 		if (isMounted(n)) { requestLayout(); }
@@ -998,6 +999,7 @@ function relayoutRoot(): void {
 	batchDepth += 1;
 	try {
 		publishWindow(width, height);
+		publishSafeArea(niSafeAreaInset(0), niSafeAreaInset(1), niSafeAreaInset(2), niSafeAreaInset(3));
 	} finally {
 		batchDepth -= 1;
 	}

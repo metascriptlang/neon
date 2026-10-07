@@ -710,7 +710,20 @@ static BOOL g_statusBarHidden = NO;
 
 // RN StatusBar on iOS: bar style and visibility through the view controller;
 // iOS has no status bar background, so that prop does nothing here.
+static BOOL g_edgeToEdge = NO;
+
+// The container fills the safe area; a translucent StatusBar takes it to the window's edges,
+// where RN iOS always draws, and SafeAreaView pads by what niSafeAreaInset reports.
+static CGRect containerFrame(UIView *root) {
+	return g_edgeToEdge ? root.bounds : root.safeAreaLayoutGuide.layoutFrame;
+}
+
 static void setStatusBar(const char *name, const char *value) {
+	if (strcmp(name, "statusBarTranslucent") == 0) {
+		g_edgeToEdge = strcmp(value, "true") == 0;
+		if (g_vc && g_container) g_container.frame = containerFrame(g_vc.view);
+		return;
+	}
 	if (strcmp(name, "statusBarStyle") == 0) {
 		g_statusBarStyle = strcmp(value, "light-content") == 0 ? UIStatusBarStyleLightContent :
 			strcmp(value, "dark-content") == 0 ? UIStatusBarStyleDarkContent : UIStatusBarStyleDefault;
@@ -736,7 +749,7 @@ static void setStatusBar(const char *name, const char *value) {
 	[[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(neonKeyboard:) name:UIKeyboardWillChangeFrameNotification object:nil];
 	[[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(neonKeyboardHide:) name:UIKeyboardWillHideNotification object:nil];
 	self.view.backgroundColor = [UIColor blackColor];
-	g_container = [[UIView alloc] initWithFrame:self.view.safeAreaLayoutGuide.layoutFrame];
+	g_container = [[UIView alloc] initWithFrame:containerFrame(self.view)];
 	g_container.userInteractionEnabled = YES;
 	[self.view addSubview:g_container];
 	call0(s_mount);
@@ -759,9 +772,12 @@ static void setStatusBar(const char *name, const char *value) {
 
 - (void)viewDidLayoutSubviews {
 	[super viewDidLayoutSubviews];
-	CGRect frame = self.view.safeAreaLayoutGuide.layoutFrame;
-	if (CGRectEqualToRect(g_container.frame, frame)) return;
+	static CGRect lastSafe;
+	CGRect frame = containerFrame(self.view);
+	CGRect safe = self.view.safeAreaLayoutGuide.layoutFrame;
+	if (CGRectEqualToRect(g_container.frame, frame) && CGRectEqualToRect(lastSafe, safe)) return;
 	g_container.frame = frame;
+	lastSafe = safe;
 	call0(s_resize);
 }
 
@@ -808,6 +824,17 @@ float niScreenWidth(void) {
 
 float niScreenHeight(void) {
 	return (float)g_container.bounds.size.height;
+}
+
+float niSafeAreaInset(int edge) {
+	if (!g_vc || !g_container) return 0;
+	CGRect safe = g_vc.view.safeAreaLayoutGuide.layoutFrame;
+	CGRect c = g_container.frame;
+	CGFloat inset = edge == 0 ? CGRectGetMinY(safe) - CGRectGetMinY(c)
+		: edge == 1 ? CGRectGetMaxX(c) - CGRectGetMaxX(safe)
+		: edge == 2 ? CGRectGetMaxY(c) - CGRectGetMaxY(safe)
+		: CGRectGetMinX(safe) - CGRectGetMinX(c);
+	return (float)MAX(0, inset);
 }
 
 // --- views ---

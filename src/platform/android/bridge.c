@@ -42,6 +42,9 @@ static jobject g_context;
 static float g_density = 1;
 static float g_width;
 static float g_height;
+static int g_rootW, g_rootH;
+static int g_translucent;
+static float g_safeTop;
 static float g_measuredW;
 static float g_measuredH;
 static int g_loopFd = -1;
@@ -309,6 +312,20 @@ static void systemBarInsets(JNIEnv *e, int *left, int *top, int *right, int *bot
 	}
 }
 
+// The container stays clear of the system bars and the cutout; a translucent StatusBar lets it
+// reach under the status bar (RN Android), and niSafeAreaInset reports that overlap.
+static void placeContainer(JNIEnv *e) {
+	int left, top, right, bottom;
+	systemBarInsets(e, &left, &top, &right, &bottom);
+	int under = g_translucent ? top : 0;
+	int w = g_rootW - left - right;
+	int h = g_rootH - (top - under) - bottom;
+	place(e, g_container, left, top - under, w, h);
+	g_width = w / g_density;
+	g_height = h / g_density;
+	g_safeTop = under / g_density;
+}
+
 JNIEXPORT jint JNI_OnLoad(JavaVM *vm, void *reserved) {
 	(void)reserved;
 	g_vm = vm;
@@ -345,6 +362,8 @@ JNIEXPORT void JNICALL Java_dev_metascript_app_NativeApp_start(JNIEnv *e, jclass
 	check(e, "DisplayMetrics fields");
 	g_width = width / g_density;
 	g_height = height / g_density;
+	g_rootW = width;
+	g_rootH = height;
 	g_dark = (*e)->CallStaticIntMethod(e, J.environment, J.environmentScheme, context);
 	check(e, "colorScheme");
 
@@ -364,14 +383,10 @@ JNIEXPORT void JNICALL Java_dev_metascript_app_NativeApp_resize(JNIEnv *e, jclas
 	(void)cls;
 	if (!g_container) return;
 	(*e)->PushLocalFrame(e, 16);
-	int left, top, right, bottom;
-	systemBarInsets(e, &left, &top, &right, &bottom);
-	int w = width - left - right;
-	int h = height - top - bottom;
-	place(e, g_container, left, top, w, h);
+	g_rootW = width;
+	g_rootH = height;
+	placeContainer(e);
 	(*e)->PopLocalFrame(e, NULL);
-	g_width = w / g_density;
-	g_height = h / g_density;
 	call0(s_resize);
 }
 
@@ -538,6 +553,7 @@ float niLastScrollContentHeight(void) { return g_scrollContentH; }
 void *niContainerView(void) { return g_container; }
 float niScreenWidth(void) { return g_width; }
 float niScreenHeight(void) { return g_height; }
+float niSafeAreaInset(int edge) { return edge == 0 ? g_safeTop : 0; }
 
 static void *newView(jclass cls, jmethodID init) {
 	JNIEnv *e = env();
@@ -615,6 +631,12 @@ void niControlSetTag(void *control, int32_t tag) {
 
 void niSetProp(void *view, const char *name, const char *value) {
 	JNIEnv *e = env();
+	if (strcmp(name, "statusBarTranslucent") == 0 && g_container) {
+		g_translucent = value && strcmp(value, "true") == 0;
+		(*e)->PushLocalFrame(e, 16);
+		placeContainer(e);
+		(*e)->PopLocalFrame(e, NULL);
+	}
 	jstring key = (*e)->NewStringUTF(e, name);
 	jstring val = (*e)->NewStringUTF(e, value ? value : "");
 	(*e)->CallStaticVoidMethod(e, J.props, J.propsSet, (jobject)view, key, val);

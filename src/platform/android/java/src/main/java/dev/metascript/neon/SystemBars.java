@@ -19,6 +19,7 @@ import android.widget.FrameLayout;
 public final class SystemBars {
 	private static View scrim;
 	private static int scrimColor;
+	private static boolean translucent;
 
 	private SystemBars() {}
 
@@ -39,6 +40,10 @@ public final class SystemBars {
 			case "statusBarStyle": style(window, "dark-content".equals(value)); break;
 			case "statusBarHidden": hidden(window, "true".equals(value)); break;
 			case "statusBarBackgroundColor": background(activity, window, Props.color(value, 0xff000000)); break;
+			case "statusBarTranslucent":
+				translucent = "true".equals(value);
+				if (scrim != null) scrim.setVisibility(translucent ? View.GONE : View.VISIBLE);
+				break;
 			default: break;
 		}
 	}
@@ -92,6 +97,7 @@ public final class SystemBars {
 			content.getViewTreeObserver().addOnGlobalLayoutListener(() -> fit(bar));
 		}
 		scrim.setBackgroundColor(scrimColor);
+		scrim.setVisibility(translucent ? View.GONE : View.VISIBLE);
 		fit(scrim);
 	}
 

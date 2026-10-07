@@ -107,5 +107,8 @@ int   niRunApp(void);
 void *niContainerView(void);
 float niScreenWidth(void);
 float niScreenHeight(void);
+// How far the unsafe areas (status bar, notch, home indicator) reach into the container, in points;
+// edge 0 top, 1 right, 2 bottom, 3 left. Zero while the container sits inside the safe area.
+float niSafeAreaInset(int edge);
 
 #endif

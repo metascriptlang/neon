@@ -62,6 +62,8 @@ static int g_restackWrites;
 static int g_addChildWrites;
 static int g_detachWrites;
 static int g_lastViewTag;
+static int g_translucent;
+static float g_systemInsets[4];
 
 static struct MockView *tagged(int32_t tag);
 
@@ -151,6 +153,7 @@ void niSetProp(void *view, const char *name, const char *value) {
 		snprintf(v->propNames[i], sizeof v->propNames[i], "%s", name);
 	}
 	snprintf(v->propValues[i], sizeof v->propValues[i], "%s", value);
+	if (strcmp(name, "statusBarTranslucent") == 0) g_translucent = strcmp(value, "true") == 0;
 	if (v->isInput && strcmp(name, "value") == 0) snprintf(v->text, sizeof v->text, "%s", value);
 }
 
@@ -384,6 +387,13 @@ static int g_screenHeightReads = 0;
 float niScreenHeight(void) {
 	g_screenHeightReads++;
 	return g_screenH;
+}
+
+float niSafeAreaInset(int edge) { return g_translucent && edge >= 0 && edge < 4 ? g_systemInsets[edge] : 0; }
+
+void nmSystemInsets(float top, float right, float bottom, float left) {
+	g_systemInsets[0] = top; g_systemInsets[1] = right; g_systemInsets[2] = bottom; g_systemInsets[3] = left;
+	call0(s_resize);
 }
 
 int32_t nmViewsCreated(void) { return g_created; }
