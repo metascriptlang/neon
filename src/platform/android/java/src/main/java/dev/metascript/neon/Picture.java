@@ -3,13 +3,19 @@ package dev.metascript.neon;
 import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.graphics.Matrix;
 import android.graphics.RenderEffect;
 import android.graphics.Shader;
 import android.graphics.drawable.BitmapDrawable;
+import android.media.ExifInterface;
+import android.net.Uri;
 import android.os.Build;
 import android.util.Base64;
 import android.util.LruCache;
 import android.widget.ImageView;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
@@ -18,6 +24,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public final class Picture extends ImageView {
+	static final int MAX_SIDE = 4096;
 	private static final ExecutorService POOL = Executors.newFixedThreadPool(3);
 	private static final LruCache<String, Bitmap> CACHE = new LruCache<String, Bitmap>(24 * 1024 * 1024) {
 		@Override protected int sizeOf(String key, Bitmap value) { return value.getByteCount(); }
@@ -158,6 +165,7 @@ public final class Picture extends ImageView {
 		if (uri.startsWith("asset:/")) {
 			try (InputStream in = context.getAssets().open(uri.substring("asset:/".length()))) { return decode(in, uri); }
 		}
+		if (uri.startsWith("file:") || uri.startsWith("content:") || uri.startsWith("/")) return local(context, uri);
 		HttpURLConnection connection = (HttpURLConnection)new URL(uri).openConnection();
 		connection.setConnectTimeout(10000);
 		connection.setReadTimeout(15000);
@@ -169,5 +177,72 @@ public final class Picture extends ImageView {
 		} finally {
 			connection.disconnect();
 		}
+	}
+
+	private static Uri parse(String uri) {
+		return uri.startsWith("/") ? Uri.fromFile(new File(uri)) : Uri.parse(uri);
+	}
+
+	private static InputStream open(Context context, Uri uri) throws IOException {
+		if ("file".equals(uri.getScheme())) return new FileInputStream(uri.getPath());
+		InputStream in = context.getContentResolver().openInputStream(uri);
+		if (in == null) throw new FileNotFoundException("cannot open " + uri);
+		return in;
+	}
+
+	static int orientation(String path) {
+		try {
+			return new ExifInterface(path).getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL);
+		} catch (IOException e) {
+			return ExifInterface.ORIENTATION_NORMAL;
+		}
+	}
+
+	private static int orientation(Context context, Uri uri) {
+		if ("file".equals(uri.getScheme())) return orientation(uri.getPath());
+		if (Build.VERSION.SDK_INT < 24) return ExifInterface.ORIENTATION_NORMAL;
+		try (InputStream in = open(context, uri)) {
+			return new ExifInterface(in).getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL);
+		} catch (IOException e) {
+			return ExifInterface.ORIENTATION_NORMAL;
+		}
+	}
+
+	static boolean swaps(int orientation) {
+		return orientation >= ExifInterface.ORIENTATION_TRANSPOSE && orientation <= ExifInterface.ORIENTATION_ROTATE_270;
+	}
+
+	static Bitmap orient(Bitmap bitmap, int orientation, boolean mirror) {
+		Matrix matrix = new Matrix();
+		switch (orientation) {
+			case ExifInterface.ORIENTATION_FLIP_HORIZONTAL: matrix.setScale(-1, 1); break;
+			case ExifInterface.ORIENTATION_ROTATE_180: matrix.setRotate(180); break;
+			case ExifInterface.ORIENTATION_FLIP_VERTICAL: matrix.setScale(1, -1); break;
+			case ExifInterface.ORIENTATION_TRANSPOSE: matrix.setRotate(90); matrix.postScale(-1, 1); break;
+			case ExifInterface.ORIENTATION_ROTATE_90: matrix.setRotate(90); break;
+			case ExifInterface.ORIENTATION_TRANSVERSE: matrix.setRotate(-90); matrix.postScale(-1, 1); break;
+			case ExifInterface.ORIENTATION_ROTATE_270: matrix.setRotate(-90); break;
+			default: break;
+		}
+		if (mirror) matrix.postScale(-1, 1);
+		if (matrix.isIdentity()) return bitmap;
+		Bitmap turned = Bitmap.createBitmap(bitmap, 0, 0, bitmap.getWidth(), bitmap.getHeight(), matrix, true);
+		if (turned != bitmap) bitmap.recycle();
+		return turned;
+	}
+
+	static Bitmap local(Context context, String uri) throws IOException {
+		Uri parsed = parse(uri);
+		BitmapFactory.Options bounds = new BitmapFactory.Options();
+		bounds.inJustDecodeBounds = true;
+		try (InputStream in = open(context, parsed)) { BitmapFactory.decodeStream(in, null, bounds); }
+		if (bounds.outWidth <= 0 || bounds.outHeight <= 0) throw new IOException("cannot decode image " + uri);
+		BitmapFactory.Options options = new BitmapFactory.Options();
+		options.inSampleSize = 1;
+		while (Math.max(bounds.outWidth, bounds.outHeight) / options.inSampleSize > MAX_SIDE) options.inSampleSize *= 2;
+		Bitmap bitmap;
+		try (InputStream in = open(context, parsed)) { bitmap = BitmapFactory.decodeStream(in, null, options); }
+		if (bitmap == null) throw new IOException("cannot decode image " + uri);
+		return orient(bitmap, orientation(context, parsed), false);
 	}
 }
