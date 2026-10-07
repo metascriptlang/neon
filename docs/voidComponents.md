@@ -33,10 +33,10 @@ Light JSX consumer remain before runtime on the installed compiler. Measurements
 candidate differences belong to `VISION.md` "Inside a Void area".
 
 Raw 2D slice: `src/components/scene2d.ms` exports Scene2D, Group, Rect, Sprite,
-Mask, Label and TileGroup, using Void NodeRef/binders and Neon owners. Current twenty-two-case
+Mask, Label, TileGroup and ScaleGrid, using Void NodeRef/binders and Neon owners. Current twenty-four-case
 `tests/render/scene2d.test.ms` runs natively on read-only compiler candidate r8
 (binary sha256 prefix `356b1a0fd75d`, matching source/support `f65616348`) against
-Void `d255ffb`: 22 own cases / 336 including imports (`11e12d3`). This proves mapping, reactive
+Void `d255ffb`: 24 own cases / 338 including imports (`1cd49c0`). This proves mapping, reactive
 camera/geometry/text/paint/filter, matrix-row reuse/clear, remount/disposal and
 invalid-parent rejection. Parent guards went red before restoration: raw text/tags
 could leak into HUD, and a foreign scene scope could capture an outer 2D parent.
@@ -73,7 +73,10 @@ resize, clearing/replacing bounds, omitted axes, negative unbounded offsets and 
 reuse/remount/disposal. TileGroup.cells/first/count use setTiles/setRange without a new
 cell reconciler: replacement/empty cells, range/defaults, caller-data isolation, payload
 reuse and named negative-range cleanup are tested. Packing/edit optimization stays in
-Void; current data setter takes whole cell snapshots. Plain masks allocate no scroll payload. These are state/lifecycle
+Void; current data setter takes whole cell snapshots. ScaleGrid uses the native factory
+and setContent, preserving Tile and all four independent borders; optional axes follow
+tile dimensions. Retile, chosen size, defaults, siblings, remount and parent errors are
+CPU-tested. Nine-slice packing/alpha/pixels still require renderer acceptance. Plain masks allocate no scroll payload. These are state/lifecycle
 checks; transformed clipping, nested scopes and input/pixels remain unproved.
 
 The host and Ion frame are still on Void's old API. Their migration belongs to
@@ -97,7 +100,7 @@ existing 3D Group tag silently switch meaning outside Scene3D.
 | 2D-06 | `src/void2d/node.ms` graphics/clear; `src/void2d/graphics.ms` GraphicsOpKind and exported drawing operations | Graphics component plus declarative geometry/operation inputs; missing, input design pending | All exported shape/fill/stroke/curve operations are reachable; order is retained, reactive edits rebuild only their owned geometry and do not accumulate old operations; `src/test/graphicsCheck.ms` |
 | 2D-07 | `src/void2d/graphics.ms` gradient/pattern/textured operations; `src/void2d/gradient.ms` GradientSpace | Graphics inputs include gradients, stops, color-space/dither, patterns and textured shapes; missing | Linear/radial gradients, Oklab alternatives, slash/checker patterns, texture changes and overlap pixels; `src/test/gradientCheck.ms`, `src/test/graphicsCheck.ms` |
 | 2D-08 | `src/void2d/node.ms` mask/scrollTo/scrollBy/setScrollBounds/scrollScope | Mask size/parenting/scrollX/scrollY/nullable scrollBounds mapped; clamp/resize/defaults/lifecycle CPU-tested on candidate, clipping/input/pixels pending. ScrollView remains UI over the host | Transformed clipping and scroll affect pixels and hit tests identically; bounds clamp, input over clipped content, nested scopes; `src/test/nodeCheck.ms`, `src/test/h2dOracleCheck.ms` |
-| 2D-09 | `src/void2d/node.ms` scaleGrid | ScaleGrid with Tile and borders; missing | Resize preserves nine-slice edges and updates center without dropping texture alpha; `src/test/nodeCheck.ms`, `src/test/tileCheck.ms` |
+| 2D-09 | `src/void2d/node.ms` scaleGrid | ScaleGrid Tile/four borders/optional size mapped; reactive content, defaults/retile, parent/siblings/remount/disposal CPU-tested on candidate; nine-slice pixels/texture alpha pending | Resize preserves nine-slice edges and updates center without dropping texture alpha; `src/test/nodeCheck.ms`, `src/test/tileCheck.ms` |
 | 2D-10 | `src/void2d/node.ms` underline/selection | Render decorations exposed directly or through text props, not omitted because Text also draws decorations; missing | Wavy/straight underline and selection neighbor geometry remain expressible/reactive; `src/test/textMetricsCheck.ms`, `src/test/labelTextCheck.ms` |
 | 2D-11 | `src/void2d/node.ms` tileGroup/setTiles/setTile/setRange | TileGroup cells/first/count mapped; replacement/empty arrays, range/defaults, payload lifecycle/caller-data isolation/parent errors CPU-tested on candidate; packed output/bounds/pixels pending | Reactive single-cell edits, reshapes, ranges, transform/order/bounds and zero cells; `src/test/tileGroupCheck.ms` |
 | 2D-12 | `src/void2d/node.ms` label and text binders; `src/void2d/textLayout.ms` TextStyle/TextRun/LineOptions | Label text/size/color/TextStyle core written; runs/line options/font selection/query/pixels pending. Text UI projection remains a subset | Font/spacing/alignment/wrap, runs/decorations, truncate/indent/force-width, shaping breaks, selection/cursor/blink; rendered layout and queries agree; `src/test/textLayoutCheck.ms`, `src/test/textMetricsCheck.ms`, `src/test/labelTextCheck.ms` |
