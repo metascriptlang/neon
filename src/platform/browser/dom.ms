@@ -76,6 +76,7 @@ extern class Node {
 	extern removeChild(child: Node): void;
 	value: cstring;
 	checked: boolean;
+	selectedIndex: number;
 	naturalWidth: number;
 	naturalHeight: number;
 	extern setAttribute(name: cstring, value: cstring): void;
@@ -103,6 +104,9 @@ extern class CSSStyleDeclaration {
 	overscrollBehaviorY: string;
 	overflowAnchor: string;
 	position: string;
+	accentColor: string;
+	color: string;
+	direction: string;
 }
 
 // Only the fields Neon projects onto NeonEvent. Each is read ONLY for the event
@@ -516,7 +520,88 @@ function writeTextAttr(el: Node, name: string, value: string): boolean {
 	return true;
 }
 
+function accent(el: Node): CSSStyleDeclaration {
+	return el.style as unknown as CSSStyleDeclaration;
+}
+
+function setFlag(el: Node, name: string, on: boolean): void {
+	if (on) { el.setAttribute(name, ""); } else { el.removeAttribute(name); }
+}
+
+function writePickerItems(el: Node, value: string): void {
+	const keep = el.selectedIndex;
+	el.textContent = "";
+	if (value === "") { return; }
+	for (const record of value.split("\x1e")) {
+		const option = document.createElement("option");
+		const cut = record.indexOf("\x1f");
+		option.textContent = cut < 0 ? record : record.substring(0, cut);
+		el.appendChild(option);
+	}
+	el.selectedIndex = keep;
+}
+
+function dateInputType(mode: string): string {
+	return match (mode) {
+		"time" => "time",
+		"datetime" => "datetime-local",
+		_ => "date",
+	};
+}
+
+function writeNewControlAttr(el: Node, kind: string, name: string, value: string): boolean {
+	if (kind === "slider") {
+		if (name === "minimumValue") { el.setAttribute("min", value); return true; }
+		if (name === "maximumValue") { el.setAttribute("max", value); return true; }
+		if (name === "step") { el.setAttribute("step", value === "0" || value === "" ? "any" : value); return true; }
+		if (name === "value") { el.value = value; return true; }
+		if (name === "disabled") { setFlag(el, "disabled", value === "true"); return true; }
+		if (name === "inverted") { accent(el).direction = value === "true" ? "rtl" : ""; return true; }
+		if (name === "minimumTrackTintColor" || name === "thumbTintColor") { accent(el).accentColor = value; return true; }
+		return name === "maximumTrackTintColor";
+	}
+	if (kind === "picker") {
+		if (name === "items") { writePickerItems(el, value); return true; }
+		if (name === "selectedIndex") { el.selectedIndex = parseInt(value) as number; return true; }
+		if (name === "disabled") { setFlag(el, "disabled", value === "true"); return true; }
+		if (name === "prompt") { el.setAttribute("title", value); return true; }
+		if (name === "color") { accent(el).color = value; return true; }
+		return name === "mode";
+	}
+	if (kind === "datetimepicker") {
+		if (name === "mode") { el.setAttribute("type", dateInputType(value)); return true; }
+		if (name === "value") { el.value = value; return true; }
+		if (name === "minimumDate") { el.setAttribute("min", value); return true; }
+		if (name === "maximumDate") { el.setAttribute("max", value); return true; }
+		if (name === "disabled") { setFlag(el, "disabled", value === "true"); return true; }
+		if (name === "accentColor") { accent(el).accentColor = value; return true; }
+		if (name === "textColor") { accent(el).color = value; return true; }
+		return name === "display";
+	}
+	return false;
+}
+
+function hasStateToken(tokens: string[], token: string): boolean {
+	return tokens.indexOf(token) >= 0;
+}
+
+function writeAccessibilityState(el: Node, value: string): void {
+	const tokens = value === "" ? [] as string[] : value.split(",");
+	if (hasStateToken(tokens, "checked")) { el.setAttribute("aria-checked", "true"); }
+	else if (hasStateToken(tokens, "unchecked")) { el.setAttribute("aria-checked", "false"); }
+	else if (hasStateToken(tokens, "mixed")) { el.setAttribute("aria-checked", "mixed"); }
+	else { el.removeAttribute("aria-checked"); }
+	if (hasStateToken(tokens, "selected")) { el.setAttribute("aria-selected", "true"); } else { el.removeAttribute("aria-selected"); }
+	if (hasStateToken(tokens, "disabled")) { el.setAttribute("aria-disabled", "true"); } else { el.removeAttribute("aria-disabled"); }
+	if (hasStateToken(tokens, "busy")) { el.setAttribute("aria-busy", "true"); } else { el.removeAttribute("aria-busy"); }
+	if (hasStateToken(tokens, "expanded")) { el.setAttribute("aria-expanded", "true"); }
+	else if (hasStateToken(tokens, "collapsed")) { el.setAttribute("aria-expanded", "false"); }
+	else { el.removeAttribute("aria-expanded"); }
+}
+
 function writeDomAttr(el: Node, name: string, value: string): void {
+	if (name === "accessibilityState") { writeAccessibilityState(el, value); return; }
+	if (controlKinds.has(el) && writeNewControlAttr(el, controlKinds.get(el) as string, name, value)) { return; }
 	if (controlKinds.has(el) && writeControlAttr(el, controlKinds.get(el) as string, name, value)) { return; }
 	if (writeTextAttr(el, name, value)) { return; }
 	if (name.startsWith("statusBar")) { return; }
@@ -893,6 +978,13 @@ export function domHost(): Host {
 				layer.setAttribute("aria-modal", "true");
 				return layer as unknown as HostNode;
 			}
+			if (tag === "slider" || tag === "picker" || tag === "datetimepicker") {
+				const control = document.createElement(tag === "picker" ? "select" : "input");
+				if (tag === "slider") { control.setAttribute("type", "range"); }
+				if (tag === "datetimepicker") { control.setAttribute("type", "date"); }
+				controlKinds.set(control, tag);
+				return control as unknown as HostNode;
+			}
 			if (tag === "switch" || tag === "activityindicator" || tag === "image") {
 				if (!controlRule) {
 					registerCss("neon-controls", CONTROL_CSS);
@@ -974,7 +1066,19 @@ export function domHost(): Host {
 			else if (type === "changetext") { domType = "input"; }
 			else if (type === "submitediting") { domType = "keydown"; }
 			else if (type === "valuechange") { domType = "change"; }
+			else if (type === "slidingcomplete") { domType = "change"; }
 			const el = node as unknown as Node;
+			const newControl = controlKinds.has(el) ? controlKinds.get(el) as string : "";
+			if (type === "valuechange" && newControl === "slider") { domType = "input"; }
+			if (newControl === "slider" || newControl === "picker" || newControl === "datetimepicker") {
+				listen(el, domType, (de: DomEvent): void => {
+					const ev = neonEvent(type);
+					ev.timeStamp = de.timeStamp;
+					ev.value = newControl === "picker" ? `${el.selectedIndex}` : el.value;
+					handler(ev);
+				}, false);
+				return;
+			}
 			if (type === "press" || type === "click") { presses.set(el, true); }
 			if (scrolls.has(el) && (type === "scroll" || type === "scrollbegindrag" || type === "scrollenddrag" || type === "momentumscrollbegin" || type === "momentumscrollend" || type === "refresh")) {
 				(scrolls.get(el) as DomScrollState).routes.push({ type, handler });
