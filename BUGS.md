@@ -71,6 +71,18 @@ and the invariants that outlived them were moved to the head of the test that pi
   (`src/core/runtime.ms`) leaves its loop at 1 000 000 passes with work still queued; Solid 2.0
   throws at 100 000 (`~/projects/solid-next` `84dada77`, `packages/signals/src/core/scheduler.ts:1309-1315`).
 
+- **OPEN — raw Scene2D `For` does not reorder or insert before existing Void siblings.**
+  `msc test tests/render/scene2dOrder.test.ms` reaches runtime: 314 imported tests pass,
+  both own cases fail (reorder without remount; insertion inside Group). Same result with
+  the held `msc-n2s-r8` candidate. Source baseline `6a658ec`, tree
+  `2cba3c3072ebaab3b53bf363de74083cee183ee5`, plus the new fixture. This is a Neon
+  runtime finding, not one of the compiler known reds. `scene2d.ms` `renderNode` appends
+  directly while `reconcile.ms` `moveRow` only moves Host spans; the raw nodes never enter
+  those spans. The existing host in `wt/void-noderef-host` (`812a97a`, `VoidNode` and
+  `insertBefore` in `src/platform/void/host.ms`) already owns sibling/order/disposal logic.
+  Prefer extending that host for raw kinds with yoga skipped, rather than duplicating it.
+  Host-owner land and the person's design decision remain pending; no bridge implemented.
+
 - **OPEN 2026-10-12 — a component tag that omits a required prop compiles and then crashes.**
   `interface BadgeProps { label: Accessor<string>; suffix: Accessor<string>; }` mounted as
   `<Badge label="a" />` builds on msc `e8c024c8` (C) and the test binary ends with status
