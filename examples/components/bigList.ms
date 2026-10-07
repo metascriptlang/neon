@@ -3,7 +3,8 @@ import { createStyles, styleOf } from "../../src/macros/ui/style";
 import { NeonNode } from "../../src/render/node";
 import { NeonEvent } from "../../src/render/event";
 import { View, Text, Pressable } from "../../src/components/primitives";
-import { FlatList, FlatListHandle, ItemLayout, ListRenderItemInfo } from "../../src/components/flatList";
+import { FlatList, FlatListHandle, ItemLayout, ListRenderItemInfo, ScrollToIndexFailedInfo } from "../../src/components/flatList";
+import { SectionBase, SectionInfo, SectionList, SectionListHandle, SectionListRenderItemInfo } from "../../src/components/sectionList";
 import { Show } from "../../src/macros/ui/flow";
 import { Style } from "../../src/render/style";
 
@@ -120,6 +121,33 @@ function GridList(): NeonNode {
 	</View>;
 }
 
+function SectionsList(): NeonNode {
+	const groups: SectionBase<Entry>[] = [];
+	for (let s = 0; s < 20; s += 1) {
+		const data: Entry[] = [];
+		for (let i = 0; i < 2 + s % 5; i += 1) { data.push({ id: "s" + s.toString() + "-" + i.toString(), n: s * 100 + i }); }
+		groups.push({ key: "Section " + s.toString(), data });
+	}
+	const [pressed, setPressed] = createSignal("none");
+	const handles: SectionListHandle[] = [];
+	return <View style={styles.screen}>
+		<Text style={styles.title}>Sections</Text>
+		<Text style={styles.status}>{"pressed " + pressed()}</Text>
+		<Pressable style={styles.jump} onPress={() => handles[0].scrollToLocation({ sectionIndex: 1, itemIndex: 0, animated: false })}>section 1</Pressable>
+		<SectionList sections={groups} style={styles.list} stickySectionHeadersEnabled={true}
+			ref={(h: SectionListHandle): void => { handles.push(h); }}
+			onScrollToIndexFailed={(info: ScrollToIndexFailedInfo): void => { setPressed("jump waits for row " + info.index.toString() + " to be measured"); }}
+			ItemSeparatorComponent={<View style={{ height: 1, backgroundColor: "#45475a" }} />}
+			renderSectionHeader={(info: SectionInfo<SectionBase<Entry>>): NeonNode =>
+				<View style={{ height: 36, padding: 8, backgroundColor: "#1e66a1" }}><Text style={styles.status}>{info.section.key as string}</Text></View>}
+			renderItem={(info: SectionListRenderItemInfo<Entry, SectionBase<Entry>>): NeonNode =>
+				<Pressable style={{ height: 56, padding: 12, backgroundColor: "#313244", color: "#cdd6f4" }}
+					onPress={() => setPressed((info.section().key as string) + " item " + info.index().toString())}>
+					{"item " + info.item.n.toString()}
+				</Pressable>} />
+	</View>;
+}
+
 export function ListAcceptance(): NeonNode {
 	const [mode, setMode] = createSignal<int32>(0);
 	return <View style={{ flex: 1 }}>
@@ -128,11 +156,14 @@ export function ListAcceptance(): NeonNode {
 			<Pressable style={styles.jump} onPress={() => setMode(1)}>measured rows</Pressable>
 			<Pressable style={styles.jump} onPress={() => setMode(2)}>inverted rows</Pressable>
 			<Pressable style={styles.jump} onPress={() => setMode(3)}>grid</Pressable>
+			<Pressable style={styles.jump} onPress={() => setMode(4)}>sections</Pressable>
 		</View>
-		<Show when={mode() === 3} fallback={<Show when={mode() === 0} fallback={<MeasuredStickyList inverted={mode() === 2} />}>
+		<Show when={mode() === 4} fallback={<Show when={mode() === 3} fallback={<Show when={mode() === 0} fallback={<MeasuredStickyList inverted={mode() === 2} />}>
 			<BigList />
 		</Show>}>
 			<GridList />
+		</Show>}>
+			<SectionsList />
 		</Show>
 	</View>;
 }
