@@ -49,6 +49,7 @@ def lane():
     pss, rss = memory()
     print("NEON_ANDROID flatlist-mount %s rows-in-tree=%d pss_kb=%s rss_kb=%s" % (scroll_list.label(texts, "mounted "), rows_in(texts), pss, rss))
     scroll_list.report("flatlist-initial", window, texts, launched)
+    narrow = width(texts, scroll_list.label(texts, "offset "))
 
     adb("shell", "dumpsys", "gfxinfo", PACKAGE, "reset")
     for _ in range(3):
@@ -68,6 +69,9 @@ def lane():
         raise LaneError("scrollToIndex 5000 did not move the window; texts %s" % sorted(texts)[:20])
     if scroll_list.on_screen(texts, frame, "row 0"):
         raise LaneError("row 0 is still on screen after scrollToIndex 5000; texts %s" % sorted(texts)[:20])
+    wide = scroll_list.label(texts, "offset ")
+    if width(texts, wide) <= narrow:
+        raise LaneError("%r kept the %dpx frame of \"offset 0\": the label was not remeasured" % (wide, narrow))
     scroll_list.report("flatlist-jumped", window, texts, launched)
 
     adb("shell", "dumpsys", "gfxinfo", PACKAGE, "reset")
@@ -115,10 +119,94 @@ def lane():
     scroll_list.report("flatlist-resumed", window, texts, launched)
 
 
+def dp():
+    density = re.search(r"(\d+)\s*$", adb("shell", "wm", "density").strip().splitlines()[-1])
+    return int(density.group(1)) / 160
+
+
+def width(texts, text):
+    return texts[text][2] - texts[text][0]
+
+
+def top(texts, text):
+    return texts[text][1]
+
+
+def measured_lane():
+    scale = dp()
+    launched = counter.pid()
+    scroll_list.tap(scroll_list.state(False)[1], "measured rows")
+    window, texts = scroll_list.state(False)
+    frame = counter.visible_frame(window)
+    for want in ["header 0", "item 1", "item 2", "item 3"]:
+        if want not in texts:
+            raise LaneError("measured mode did not mount %r; texts %s" % (want, sorted(texts)[:20]))
+    for upper, lower, height in [("item 1", "item 2", 80), ("item 2", "item 3", 112)]:
+        gap = (top(texts, lower) - top(texts, upper)) / scale
+        if abs(gap - height) > 2:
+            raise LaneError("measured %s is %.1fdp tall, expected %d" % (upper, gap, height))
+    pinned = top(texts, "header 0")
+    scroll_list.report("flatlist-measured-initial", window, texts, launched)
+
+    x1, y1, x2, y2 = texts["item 2"]
+    x, y = (x1 + 4 * x2) // 5, (y1 + y2) // 2
+    adb("shell", "input", "swipe", str(x), str(y), str(x), str(y - int(110 * scale)), "600")
+    window, texts = scroll_list.state(False)
+    if scroll_list.label(texts, "offset ") == "offset 0":
+        raise LaneError("a drag did not scroll the measured list")
+    if "header 0" not in texts or abs(top(texts, "header 0") - pinned) > 2 * scale:
+        raise LaneError("header 0 left its pinned top %d after a drag: %s" % (pinned, texts.get("header 0")))
+    if scroll_list.label(texts, "pressed ") != "pressed none":
+        raise LaneError("scrolling pressed a row: %r" % scroll_list.label(texts, "pressed "))
+    scroll_list.tap(texts, "header 0")
+    window, texts = scroll_list.state(False)
+    if "pressed header 0" not in texts:
+        raise LaneError("the pinned header did not receive its press: %r" % scroll_list.label(texts, "pressed "))
+    scroll_list.report("flatlist-measured-sticky-pressed", window, texts, launched)
+
+    scroll_list.tap(texts, "inverted rows")
+    time.sleep(1)
+    window, texts = scroll_list.state(False)
+    if "pressed header 0" not in texts:
+        raise LaneError("inversion lost the mounted list state: %r" % scroll_list.label(texts, "pressed "))
+    x1, y1, x2, y2 = texts["item 3"]
+    x, y = (x1 + 4 * x2) // 5, (y1 + y2) // 2
+    adb("shell", "input", "swipe", str(x), str(y - int(150 * scale)), str(x), str(y + int(150 * scale)), "600")
+    time.sleep(1)
+    window, texts = scroll_list.state(False)
+    headers = [t for t in texts if t.startswith("header ") and scroll_list.on_screen(texts, frame, t)]
+    if not headers:
+        raise LaneError("no header is pinned after dragging the inverted list; texts %s" % sorted(texts)[:20])
+    selected = min(headers, key=lambda t: top(texts, t))
+    if abs(top(texts, selected) - pinned) > 2 * scale:
+        raise LaneError("inverted %r sits at %d, not pinned at the list top %d" % (selected, top(texts, selected), pinned))
+    scroll_list.tap(texts, selected)
+    window, texts = scroll_list.state(False)
+    if "pressed " + selected not in texts:
+        raise LaneError("the inverted header %r did not receive its press: %r" % (selected, scroll_list.label(texts, "pressed ")))
+    scroll_list.report("flatlist-inverted-sticky-pressed", window, texts, launched)
+
+    scroll_list.tap(texts, "measured rows")
+    window, texts = scroll_list.state(False)
+    for _ in range(12):
+        if scroll_list.on_screen(texts, frame, "List end"):
+            break
+        scroll_list.tap(texts, "measured end")
+        time.sleep(0.4)
+        window, texts = scroll_list.state(False)
+    if not scroll_list.on_screen(texts, frame, "item 63"):
+        raise LaneError("the measured list did not reach item 63; texts %s" % sorted(texts)[:20])
+    if not scroll_list.on_screen(texts, frame, "List end"):
+        raise LaneError("the footer is not on screen at the measured end; texts %s" % sorted(texts)[:20])
+    print("NEON_ANDROID flatlist-measured-end %s %s" % (scroll_list.label(texts, "offset "), scroll_list.label(texts, "ends ")))
+    scroll_list.report("flatlist-measured-end", window, texts, launched)
+
+
 def main():
     mode = adb("shell", "cmd", "window", "user-rotation").strip()
     try:
         lane()
+        measured_lane()
     except EmulatorError as covered:
         print("FAIL: android flatlist " + str(covered), file=sys.stderr)
         return EMULATOR
