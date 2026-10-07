@@ -48,9 +48,9 @@ static int g_loopFd = -1;
 
 static struct {
 	jclass view, viewGroup, frameLayout, layoutParams, textView, gradientDrawable, integer, touch;
-	jclass scroll, input, props, environment, toggle, spinner, picture, overlay;
+	jclass scroll, input, props, environment, toggle, spinner, picture, overlay, controls;
 	jmethodID inputInit, inputSetTag, inputSetFocused, propsSet, propsSetTag, environmentInstall, environmentScheme;
-	jmethodID toggleInit, spinnerInit, pictureInit, overlayInit;
+	jmethodID toggleInit, spinnerInit, pictureInit, overlayInit, controlsCreate;
 	jmethodID scrollInit, scrollSetTag, scrollSetOption, scrollSetContentSize, scrollTo, scrollAddContent, scrollDispose, viewSetClickable;
 	jmethodID scrollShift, scrollOffsetX, scrollOffsetY;
 	jmethodID viewGetParent, viewSetLayoutParams, viewSetAlpha, viewGetBackground, viewSetBackground;
@@ -182,6 +182,9 @@ static void cacheJni(JNIEnv *e) {
 	J.pictureInit = method(e, J.picture, "<init>", "(Landroid/content/Context;)V");
 	J.overlay = globalClass(e, "dev/metascript/neon/Overlay");
 	J.overlayInit = method(e, J.overlay, "<init>", "(Landroid/content/Context;)V");
+	J.controls = globalClass(e, "dev/metascript/neon/Controls");
+	J.controlsCreate = (*e)->GetStaticMethodID(e, J.controls, "create", "(Landroid/content/Context;Ljava/lang/String;)Landroid/view/View;");
+	check(e, "Controls.create");
 	J.environment = globalClass(e, "dev/metascript/neon/Environment");
 	J.environmentInstall = (*e)->GetStaticMethodID(e, J.environment, "install", "(Landroid/view/ViewGroup;)V");
 	J.environmentScheme = (*e)->GetStaticMethodID(e, J.environment, "colorScheme", "(Landroid/content/Context;)I");
@@ -591,6 +594,18 @@ void *niSwitchCreate(void) { return newView(J.toggle, J.toggleInit); }
 void *niIndicatorCreate(void) { return newView(J.spinner, J.spinnerInit); }
 void *niImageCreate(void) { return newView(J.picture, J.pictureInit); }
 void *niModalCreate(void) { return newView(J.overlay, J.overlayInit); }
+
+void *niControlCreate(const char *kind) {
+	JNIEnv *e = env();
+	jstring name = (*e)->NewStringUTF(e, kind);
+	jobject local = (*e)->CallStaticObjectMethod(e, J.controls, J.controlsCreate, g_context, name);
+	check(e, "Controls.create");
+	(*e)->DeleteLocalRef(e, name);
+	place(e, local, 0, 0, 0, 0);
+	jobject global = (*e)->NewGlobalRef(e, local);
+	(*e)->DeleteLocalRef(e, local);
+	return global;
+}
 
 void niControlSetTag(void *control, int32_t tag) {
 	JNIEnv *e = env();

@@ -36,6 +36,10 @@
 	*;
 }
 
+-keep class dev.metascript.neon.Controls {
+	*;
+}
+
 -keep class dev.metascript.neon.Overlay {
 	*;
 }
