@@ -6,6 +6,9 @@
 #include <stdlib.h>
 
 void neonMediaEmit(int tag, int phase, NSString *value, float width, float height);
+void *neonCameraCreate(void);
+int neonCameraSetProp(UIView *view, const char *name, const char *text);
+void neonCameraRelease(UIView *view);
 
 static NSString *mediaText(const char *text) { return [NSString stringWithUTF8String:text ? text : ""]; }
 
@@ -402,16 +405,18 @@ static void *kNeonItemStatus = &kNeonItemStatus;
 void *neonMediaCreate(const char *kind) {
 	if (strcmp(kind, "webview") == 0) return CFBridgingRetain([NeonWebView neonWebView]);
 	if (strcmp(kind, "video") == 0) return CFBridgingRetain([[NeonVideoView alloc] initWithFrame:CGRectZero]);
+	if (strcmp(kind, "camera") == 0) return neonCameraCreate();
 	return NULL;
 }
 
 int neonMediaSetProp(UIView *view, const char *name, const char *text) {
 	if ([view isKindOfClass:NeonWebView.class]) { [(NeonWebView *)view neonSetProp:name value:text]; return 1; }
 	if ([view isKindOfClass:NeonVideoView.class]) { [(NeonVideoView *)view neonSetProp:name value:text]; return 1; }
-	return 0;
+	return neonCameraSetProp(view, name, text);
 }
 
 void neonMediaRelease(UIView *view) {
+	neonCameraRelease(view);
 	if ([view isKindOfClass:NeonVideoView.class]) [(NeonVideoView *)view neonStop];
 	else if ([view isKindOfClass:NeonWebView.class]) {
 		NeonWebView *web = (NeonWebView *)view;

@@ -17,6 +17,7 @@ import "../android/library";
 when (ios) {
 	@compile("../ios/bridge.m", "-fobjc-arc");
 	@compile("../ios/media.m", "-fobjc-arc");
+	@compile("../ios/camera.m", "-fobjc-arc");
 	@passL("-framework WebKit");
 	@passL("-framework AVFoundation");
 	@passL("-framework AVKit");

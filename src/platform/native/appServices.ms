@@ -25,6 +25,11 @@ when (ios) {
 	@compile("../ios/location.m", "-fobjc-arc");
 	@compile("../ios/device.m", "-fobjc-arc");
 	@compile("../ios/notifications.m", "-fobjc-arc");
+	@compile("../ios/capture.m", "-fobjc-arc");
+	@compile("../ios/audio.m", "-fobjc-arc");
+	@passL("-framework PhotosUI");
+	@passL("-framework UniformTypeIdentifiers");
+	@passL("-framework CoreMedia");
 	@passL("-framework AudioToolbox");
 	@passL("-framework Network");
 	@passL("-framework AVFoundation");
