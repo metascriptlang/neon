@@ -4,8 +4,9 @@
 
 import { element } from "../../src/macros/ui/element";
 import { NeonNode, el, attr, evt, text, dynText } from "../../src/render/node";
-import { render, HostNode } from "../../src/render/host";
-import { createVoidHost, layoutPass } from "../../src/platform/void/host";
+import { render } from "../../src/render/host";
+import { createVoidHost, layoutPass, VoidNode } from "../../src/platform/void/host";
+import { content, local } from "../../../void/src/void2d/node";
 import { createStyles, styleOf } from "../../src/macros/ui/style";
 
 const sheet = createStyles({
@@ -22,49 +23,49 @@ test "typed style sheet drives void layout" {
 		</div>
 	);
 	const vh = createVoidHost();
-	render(app, vh.host, vh.root as unknown as HostNode);
+	render(app, vh.host, vh.root);
 
-	const div = vh.root.children[0];
+	const div = (vh.root as VoidNode).children[0];
 	assert div.children.length === 2, "div has p + button";
 	const p = div.children[0];
 	const button = div.children[1];
 
-	assert div.layoutStyle !== null, "div style projected to FlexStyle";
-	assert button.layoutStyle !== null, "button style projected to FlexStyle";
+	assert div.flex !== null, "div style projected to FlexStyle";
+	assert button.flex !== null, "button style projected to FlexStyle";
 
 	layoutPass(div, 200.0, 120.0);
-	assert button.w === 80.0, "button width from typed style";
-	assert button.h === 40.0, "button height from typed style";
-	assert p.y === 0.0, "p at top of column";
-	assert button.y === 20.0, "button below p";
+	assert button.ref.content().w === 80.0, "button width from typed style";
+	assert button.ref.content().h === 40.0, "button height from typed style";
+	assert p.ref.local().y === 0.0, "p at top of column";
+	assert button.ref.local().y === 20.0, "button below p";
 }
 
 test "legacy string style attr still works" {
 	const app = element(<div style="width:50;height:10"></div>);
 	const vh = createVoidHost();
-	render(app, vh.host, vh.root as unknown as HostNode);
+	render(app, vh.host, vh.root);
 
-	const div = vh.root.children[0];
-	assert div.layoutStyle !== null, "string style still parsed";
+	const div = (vh.root as VoidNode).children[0];
+	assert div.flex !== null, "string style still parsed";
 	layoutPass(div, 50.0, 10.0);
-	assert div.w === 50.0, "string style width survives";
+	assert div.ref.content().w === 50.0, "string style width survives";
 }
 
 test "inline style literal routes through the typed channel" {
 	const app = element(<div style={{ width: 40, height: 10 }}></div>);
 	const vh = createVoidHost();
-	render(app, vh.host, vh.root as unknown as HostNode);
-	const div = vh.root.children[0];
-	assert div.layoutStyle !== null, "inline literal projected";
+	render(app, vh.host, vh.root);
+	const div = (vh.root as VoidNode).children[0];
+	assert div.flex !== null, "inline literal projected";
 	layoutPass(div, 40.0, 10.0);
-	assert div.w === 40.0, "inline width applies";
+	assert div.ref.content().w === 40.0, "inline width applies";
 }
 
 test "a style prop attaches a Style to the node" {
 	const styled = createVoidHost();
-	render(<div style={sheet.btn}></div>, styled.host, styled.root as unknown as HostNode);
-	assert styled.root.children[0].layoutStyle !== null, "the host received the style";
+	render(<div style={sheet.btn}></div>, styled.host, styled.root);
+	assert (styled.root as VoidNode).children[0].flex !== null, "the host received the style";
 	const plain = createVoidHost();
-	render(<div></div>, plain.host, plain.root as unknown as HostNode);
-	assert plain.root.children[0].layoutStyle === null, "an element with no style prop carries none";
+	render(<div></div>, plain.host, plain.root);
+	assert (plain.root as VoidNode).children[0].flex === null, "an element with no style prop carries none";
 }

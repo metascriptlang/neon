@@ -91,7 +91,10 @@ export function reconcileContract(h: Host): string {
 	const s4: Row[] = [rd, re, ra, rc];
 	reconcileArrays(h, root, s3, s4, anchor);
 	log = log + " " + childOrder(h, root, nodes, names);
-	const s5: Row[] = [rb];
+	const b2 = h.createElement("view");
+	nodes.push(b2);
+	names.push("b");
+	const s5: Row[] = [rowOf(b2)];
 	reconcileArrays(h, root, s4, s5, anchor);
 	log = log + " " + childOrder(h, root, nodes, names);
 	reconcileArrays(h, root, s5, [], anchor);
