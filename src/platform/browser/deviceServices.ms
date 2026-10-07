@@ -1,5 +1,8 @@
 import { NetInfoState, NetInfoStateType, publishNetInfo } from "../../api/netInfo";
-import { LocationFix, LocationRequest, PermissionReply } from "../../api/services";
+import {
+	BatterySnapshot, DeviceSnapshot, LocaleSnapshot, LocationFix, LocationRequest, PermissionReply,
+} from "../../api/services";
+import { decodeLocalization } from "../../api/hostCodec";
 
 extern class DeviceEvent {}
 
@@ -57,6 +60,11 @@ extern class BrowserGeolocation {
 
 extern function geolocation(unused: int32): BrowserGeolocation | null from "(#, navigator.geolocation || null)";
 extern function measured(value: number): number from "((v) => typeof v === 'number' && Number.isFinite(v) ? v : NaN)(#)";
+extern function vibrateFor(pattern: cstring): boolean from "(typeof navigator.vibrate === 'function' ? navigator.vibrate(JSON.parse(#)) : false)";
+extern function localeReport(unused: int32): string from "(#, (() => { const F = String.fromCharCode(31); const R = String.fromCharCode(30); const fahrenheit = ['US', 'BS', 'BZ', 'KY', 'PW', 'LR']; const tags = (navigator.languages && navigator.languages.length ? navigator.languages : [navigator.language || 'en-US']); const options = new Intl.DateTimeFormat().resolvedOptions(); const cycle = new Intl.DateTimeFormat(undefined, { hour: 'numeric' }).resolvedOptions().hourCycle; const first = new Intl.Locale(tags[0]); const week = first.getWeekInfo ? first.getWeekInfo() : first.weekInfo; const firstWeekday = week && week.firstDay ? (week.firstDay % 7) + 1 : 1; const records = [[options.calendar || '', options.timeZone || '', cycle === 'h23' || cycle === 'h24' ? '1' : '0', String(firstWeekday)].join(F)]; for (const tag of tags) { const locale = new Intl.Locale(tag); const info = locale.getTextInfo ? locale.getTextInfo() : locale.textInfo; const parts = new Intl.NumberFormat(tag).formatToParts(12345.6); const part = (type) => (parts.find((p) => p.type === type) || { value: '' }).value; const region = locale.region || ''; const measurement = region === '' ? '' : region === 'US' || region === 'LR' || region === 'MM' ? 'us' : region === 'GB' ? 'uk' : 'metric'; records.push([tag, locale.language || '', locale.script || '', region, info && info.direction ? info.direction : '', part('decimal'), part('group'), measurement, '', '', region === '' ? '' : fahrenheit.includes(region) ? 'fahrenheit' : 'celsius'].join(F)); } return records.join(R); })())";
+extern function batteryReport(unused: int32): Promise<string> from "(#, navigator.getBattery ? navigator.getBattery().then((b) => b.level + ',' + (b.charging ? '1' : '0'), () => '-1,0') : Promise.resolve('-1,0'))";
+extern function documentTitle(unused: int32): string from "(#, document.title || '')";
+extern function pageHost(unused: int32): string from "(#, location.host || '')";
 extern function connectionType(unused: int32): string from "(#, String((navigator.connection && navigator.connection.type) || ''))";
 extern function connectionSavesData(unused: int32): boolean from "(#, Boolean(navigator.connection && navigator.connection.saveData))";
 
@@ -247,4 +255,45 @@ export function locationClear(id: int32): void {
 	located.clearWatch(browserWatchHandles[at]);
 	browserWatchIds.splice(at, 1);
 	browserWatchHandles.splice(at, 1);
+}
+
+export function haptic(kind: string, style: string): void {
+	const pattern = match (kind + "." + style) {
+		"impact.light" => "[10]",
+		"impact.soft" => "[10]",
+		"impact.heavy" => "[30]",
+		"impact.rigid" => "[15]",
+		"notification.success" => "[10,40,20]",
+		"notification.warning" => "[20,60,20]",
+		"notification.error" => "[30,40,30,40,30]",
+		"selection." => "[5]",
+		_ => "[20]",
+	};
+	vibrateFor(pattern);
+}
+
+export function deviceInfo(): DeviceSnapshot {
+	return {
+		brand: "",
+		manufacturer: "",
+		model: "",
+		deviceId: "",
+		systemName: "",
+		systemVersion: "",
+		applicationName: documentTitle(0),
+		bundleId: pageHost(0),
+		version: "",
+		buildNumber: "",
+		isEmulator: false,
+		isTablet: false,
+	};
+}
+
+export async function battery(): Promise<BatterySnapshot> {
+	const fields = (await batteryReport(0)).split(",");
+	return { level: parseFloat(fields[0]), charging: fields[1] === "1" };
+}
+
+export function localization(): LocaleSnapshot {
+	return decodeLocalization(localeReport(0));
 }

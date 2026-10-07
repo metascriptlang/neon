@@ -6,6 +6,12 @@ import { LocationFix, installAppServices } from "../../src/api/services";
 import {
 	Geolocation, GeolocationError, GeolocationResponse, Location, LocationAccuracy, LocationObject,
 } from "../../src/api/geolocation";
+import { Haptics, ImpactFeedbackStyle, NotificationFeedbackType } from "../../src/api/haptics";
+import { DeviceInfo } from "../../src/api/deviceInfo";
+import {
+	getCalendars, getCountry, getCurrencies, getLocales, getLocalizeLocales, getNumberFormatSettings, getTemperatureUnit,
+	getTimeZone, uses24HourClock, usesMetricSystem,
+} from "../../src/api/localization";
 import { FakeServices } from "./fakeServices";
 
 test "AsyncStorage reads null for a missing key and round-trips set, remove and clear" {
@@ -279,4 +285,45 @@ async function locationRejection(): Promise<string> {
 		return (e as Error).message;
 	}
 	return "";
+}
+
+test "Haptics names expo's styles and types on the haptic service" {
+	const fake = new FakeServices();
+	fake.install();
+	await Haptics.impactAsync();
+	await Haptics.impactAsync(ImpactFeedbackStyle.Heavy);
+	await Haptics.notificationAsync(NotificationFeedbackType.Error);
+	await Haptics.selectionAsync();
+	assert fake.joined() === "haptic impact medium;haptic impact heavy;haptic notification error;haptic selection ", fake.joined();
+}
+
+test "DeviceInfo reads react-native-device-info's fields from the host snapshot" {
+	const fake = new FakeServices();
+	fake.install();
+	assert DeviceInfo.getBrand() === "Apple" && DeviceInfo.getModel() === "iPhone" && DeviceInfo.getDeviceId() === "iPhone17,1";
+	assert DeviceInfo.getSystemName() === "iOS" && DeviceInfo.getSystemVersion() === "26.0";
+	assert DeviceInfo.getBundleId() === "dev.neon.Fake" && DeviceInfo.getApplicationName() === "Neon";
+	assert DeviceInfo.getReadableVersion() === "1.2.0.42";
+	assert DeviceInfo.getDeviceType() === "Handset" && !DeviceInfo.isTablet();
+	assert await DeviceInfo.isEmulator();
+	assert (await DeviceInfo.getManufacturer()) === "Apple";
+	assert (await DeviceInfo.getBatteryLevel()) === 0.75;
+	assert await DeviceInfo.isBatteryCharging();
+}
+
+test "getLocales and getCalendars answer expo-localization's shapes, the react-native-localize helpers read the first locale" {
+	const fake = new FakeServices();
+	fake.install();
+	const locales = getLocales();
+	assert locales.length === 2;
+	assert locales[0].languageTag === "vi-VN" && locales[0].languageCode === "vi" && locales[0].regionCode === "VN";
+	assert locales[0].languageScriptCode === null && locales[0].decimalSeparator === ",";
+	assert locales[1].textDirection === "rtl" && locales[1].currencyCode === "EGP";
+	const calendars = getCalendars();
+	assert calendars[0].timeZone === "Asia/Ho_Chi_Minh" && calendars[0].uses24hourClock === true && calendars[0].firstWeekday === 2;
+	assert getTimeZone() === "Asia/Ho_Chi_Minh" && uses24HourClock() && usesMetricSystem();
+	assert getCountry() === "VN" && getTemperatureUnit() === "celsius";
+	assert getCurrencies().join(",") === "VND,EGP";
+	assert getNumberFormatSettings().groupingSeparator === ".";
+	assert getLocalizeLocales()[1].isRTL && !getLocalizeLocales()[0].isRTL;
 }

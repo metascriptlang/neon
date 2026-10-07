@@ -14,6 +14,9 @@ final class Modules {
 			case "permission":
 			case "permissionsAndroid": return Permissions.call(a, name, arg);
 			case "location": return Geolocation.call(a, name, arg);
+			case "haptics":
+			case "device":
+			case "locale": return Device.call(a, name, arg);
 			default: throw new IllegalArgumentException("Neon App.call: unknown command " + name);
 		}
 	}

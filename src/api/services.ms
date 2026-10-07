@@ -51,6 +51,49 @@ export interface LocationFix {
 	timestamp: number;
 }
 
+export interface DeviceSnapshot {
+	brand: string;
+	manufacturer: string;
+	model: string;
+	deviceId: string;
+	systemName: string;
+	systemVersion: string;
+	applicationName: string;
+	bundleId: string;
+	version: string;
+	buildNumber: string;
+	isEmulator: boolean;
+	isTablet: boolean;
+}
+
+export interface BatterySnapshot {
+	level: number;
+	charging: boolean;
+}
+
+// "" marks a field the platform does not report.
+export interface LocaleFields {
+	languageTag: string;
+	languageCode: string;
+	scriptCode: string;
+	regionCode: string;
+	textDirection: string;
+	decimalSeparator: string;
+	groupingSeparator: string;
+	measurementSystem: string;
+	currencyCode: string;
+	currencySymbol: string;
+	temperatureUnit: string;
+}
+
+export interface LocaleSnapshot {
+	locales: LocaleFields[];
+	calendar: string;
+	timeZone: string;
+	uses24hourClock: boolean;
+	firstWeekday: int32;
+}
+
 export interface AppServices {
 	dismissKeyboard: () => void;
 	alert: (request: AlertRequest) => void;
@@ -85,6 +128,10 @@ export interface AppServices {
 	locationCurrent: (request: LocationRequest, done: (fix: LocationFix) => void) => void;
 	locationWatch: (id: int32, request: LocationRequest, update: (fix: LocationFix) => void) => void;
 	locationClear: (id: int32) => void;
+	haptic: (kind: string, style: string) => void;
+	deviceInfo: () => DeviceSnapshot;
+	battery: () => Promise<BatterySnapshot>;
+	localization: () => LocaleSnapshot;
 }
 
 let installed: AppServices | null = null;

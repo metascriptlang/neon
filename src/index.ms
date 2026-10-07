@@ -74,6 +74,12 @@ export {
 	GeolocationResponse, GeolocationSuccess, Location, LocationAccuracy, LocationObject, LocationObjectCoords,
 	LocationOptions, LocationSubscription,
 } from "./api/geolocation";
+export { Haptics, ImpactFeedbackStyle, NotificationFeedbackType } from "./api/haptics";
+export { DeviceInfo, DeviceType } from "./api/deviceInfo";
+export {
+	Calendar, Locale, LocalizeLocale, NumberFormatSettings, getCalendars, getCountry, getCurrencies, getLocales,
+	getLocalizeLocales, getNumberFormatSettings, getTemperatureUnit, getTimeZone, uses24HourClock, usesMetricSystem,
+} from "./api/localization";
 export {
 	Animated, CompositeAnimation, useAnimatedValue, AnimatedNode, AnimatedValue, AnimatedValueXY,
 	AnimatedInterpolation, AnimatedStringInterpolation, Easing, EasingFunction, LayoutAnimation,

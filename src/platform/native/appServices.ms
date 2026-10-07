@@ -6,7 +6,8 @@ import { dispatchHardwareBackPress } from "../../api/backHandler";
 import { publishUrl } from "../../api/linking";
 import { publishReduceMotion, publishScreenReader } from "../../api/accessibilityInfo";
 import {
-	androidPermissionGranted, androidRequestPermissions, androidShouldShowRationale, locationClear, locationCurrent,
+	androidPermissionGranted, androidRequestPermissions, androidShouldShowRationale, battery, deviceInfo, haptic,
+	localization, locationClear, locationCurrent,
 	locationWatch, onLocationEvent, onNetInfoEvent, onReplyEvent, permissionStatus, refreshNetInfo, requestPermission,
 	storageClear, storageGet, storageKeys, storageRemove, storageSet, watchNetInfo,
 } from "./deviceServices";
@@ -18,6 +19,7 @@ when (ios) {
 	@compile("../ios/netinfo.m", "-fobjc-arc");
 	@compile("../ios/permissions.m", "-fobjc-arc");
 	@compile("../ios/location.m", "-fobjc-arc");
+	@compile("../ios/device.m", "-fobjc-arc");
 	@passL("-framework AudioToolbox");
 	@passL("-framework Network");
 	@passL("-framework AVFoundation");
@@ -194,6 +196,10 @@ const services: AppServices = {
 	locationCurrent,
 	locationWatch,
 	locationClear,
+	haptic,
+	deviceInfo,
+	battery,
+	localization,
 };
 
 export function installNativeAppServices(run: (fn: () => void) => void): void {

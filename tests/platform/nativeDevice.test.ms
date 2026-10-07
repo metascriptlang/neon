@@ -6,6 +6,9 @@ import { NetInfo, NetInfoState, useNetInfo } from "../../src/api/netInfo";
 import { Permissions, PermissionResponse, PermissionsAndroid } from "../../src/api/permissions";
 import { sleepAsync } from "std/core/promise";
 import { Geolocation, GeolocationError, GeolocationResponse } from "../../src/api/geolocation";
+import { Haptics, ImpactFeedbackStyle } from "../../src/api/haptics";
+import { DeviceInfo } from "../../src/api/deviceInfo";
+import { getCalendars, getLocales } from "../../src/api/localization";
 import { nmAppReply, nmAppLog, nmAppLogClear, nmAppEvent, nmTeardown } from "./nativeBridgeMock.h";
 
 const FIELD = "\u001f";
@@ -167,5 +170,28 @@ test "Geolocation encodes its options, decodes fixes with absent fields as null 
 	const permission = requestId(log, "permission.request");
 	assert log === "permission.request(" + permission + FIELD + "location);location.watch(" + watch.toString() + FIELD + "0" + FIELD +
 		"-1" + FIELD + "-1" + FIELD + "100" + FIELD + "10000);location.clear(" + watch.toString() + ")", log;
+	nmTeardown();
+}
+
+test "Haptics, DeviceInfo and the locale readout go through their commands and decode the host's fields" {
+	mount();
+	await Haptics.impactAsync(ImpactFeedbackStyle.Rigid);
+	await Haptics.selectionAsync();
+	nmAppReply("device.info", ["Google", "Google", "Pixel 9", "tokay", "Android", "16", "Neon Device", "dev.neon.NeonDevice",
+		"1.0", "1", "0", "0"].join(FIELD));
+	assert DeviceInfo.getModel() === "Pixel 9" && DeviceInfo.getDeviceId() === "tokay" && DeviceInfo.getSystemVersion() === "16";
+	assert DeviceInfo.getBundleId() === "dev.neon.NeonDevice" && !DeviceInfo.isEmulatorSync();
+	nmAppReply("device.battery", "0.42" + FIELD + "1");
+	assert (await DeviceInfo.getBatteryLevel()) === 0.42;
+	nmAppReply("device.battery", "" + FIELD + "0");
+	assert (await DeviceInfo.getBatteryLevel()) === -1, "an unknown level is -1, as react-native-device-info";
+	nmAppReply("locale.info", ["gregory", "Europe/Paris", "1", "2"].join(FIELD) + RECORD +
+		["fr-FR", "fr", "", "FR", "ltr", ",", " ", "metric", "EUR", "€", "celsius"].join(FIELD) + RECORD +
+		["he-IL", "he", "", "IL", "rtl", ".", ",", "metric", "ILS", "₪", "celsius"].join(FIELD));
+	const locales = getLocales();
+	assert locales.length === 2 && locales[0].currencySymbol === "€" && locales[1].textDirection === "rtl";
+	assert getCalendars()[0].timeZone === "Europe/Paris" && getCalendars()[0].firstWeekday === 2;
+	const log: string = nmAppLog();
+	assert log.startsWith("haptics.impact(rigid);haptics.selection();device.info()"), log;
 	nmTeardown();
 }

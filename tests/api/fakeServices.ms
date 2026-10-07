@@ -1,5 +1,6 @@
 import {
-	AppServices, AlertRequest, LocationFix, LocationRequest, PermissionReply, ShareRequest, installAppServices,
+	AppServices, AlertRequest, BatterySnapshot, DeviceSnapshot, LocaleSnapshot, LocationFix, LocationRequest, PermissionReply,
+	ShareRequest, installAppServices,
 } from "../../src/api/services";
 import { NetInfoState, publishNetInfo } from "../../src/api/netInfo";
 
@@ -24,6 +25,54 @@ export class FakeServices {
 	watchIds: int32[] = [];
 	watchUpdates: ((fix: LocationFix) => void)[] = [];
 	watchRequests: LocationRequest[] = [];
+	device: DeviceSnapshot = {
+		brand: "Apple",
+		manufacturer: "Apple",
+		model: "iPhone",
+		deviceId: "iPhone17,1",
+		systemName: "iOS",
+		systemVersion: "26.0",
+		applicationName: "Neon",
+		bundleId: "dev.neon.Fake",
+		version: "1.2.0",
+		buildNumber: "42",
+		isEmulator: true,
+		isTablet: false,
+	};
+	locales: LocaleSnapshot = {
+		locales: [
+			{
+				languageTag: "vi-VN",
+				languageCode: "vi",
+				scriptCode: "",
+				regionCode: "VN",
+				textDirection: "ltr",
+				decimalSeparator: ",",
+				groupingSeparator: ".",
+				measurementSystem: "metric",
+				currencyCode: "VND",
+				currencySymbol: "₫",
+				temperatureUnit: "celsius",
+			},
+			{
+				languageTag: "ar-EG",
+				languageCode: "ar",
+				scriptCode: "",
+				regionCode: "EG",
+				textDirection: "rtl",
+				decimalSeparator: "٫",
+				groupingSeparator: "٬",
+				measurementSystem: "metric",
+				currencyCode: "EGP",
+				currencySymbol: "E£",
+				temperatureUnit: "celsius",
+			},
+		],
+		calendar: "gregory",
+		timeZone: "Asia/Ho_Chi_Minh",
+		uses24hourClock: true,
+		firstWeekday: 2,
+	};
 	network: NetInfoState = { type: "wifi", isConnected: true, isInternetReachable: true, details: { isConnectionExpensive: false } };
 
 	install(): void {
@@ -126,6 +175,10 @@ export class FakeServices {
 				this.watchUpdates.push(update);
 			},
 			locationClear: (id: int32): void => { this.log.push("locationClear " + id.toString()); },
+			haptic: (kind: string, style: string): void => { this.log.push("haptic " + kind + " " + style); },
+			deviceInfo: (): DeviceSnapshot => { return this.device; },
+			battery: async (): Promise<BatterySnapshot> => { return { level: 0.75, charging: true }; },
+			localization: (): LocaleSnapshot => { return this.locales; },
 			androidRequestPermissions: async (permissions: string[]): Promise<PermissionReply[]> => {
 				this.log.push("androidRequestPermissions " + permissions.join(","));
 				const results: PermissionReply[] = [];

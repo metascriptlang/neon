@@ -7,6 +7,9 @@ import { NetInfo, NetInfoState, useNetInfo } from "../../src/api/netInfo";
 import { Permissions, PermissionsAndroid } from "../../src/api/permissions";
 import { Geolocation, GeolocationError, GeolocationResponse } from "../../src/api/geolocation";
 import { sleepAsync } from "std/core/promise";
+import { Haptics, ImpactFeedbackStyle, NotificationFeedbackType } from "../../src/api/haptics";
+import { DeviceInfo } from "../../src/api/deviceInfo";
+import { getCalendars, getCountry, getLocales, getTimeZone } from "../../src/api/localization";
 
 extern function js(code: cstring): string from "String((0, eval)(#))";
 
@@ -96,4 +99,34 @@ test "Geolocation reads navigator.geolocation with the options and clears its wa
 	Geolocation.clearWatch(id);
 	assert seen.join(",") === "2,error 3", seen.join(",");
 	assert js("window.__geo.join(',')") === "get true 3000 Infinity,clear 7", js("window.__geo.join(',')");
+}
+
+test "Haptics vibrate a short pattern, DeviceInfo names the page, battery reads navigator.getBattery" {
+	mount();
+	js("window.__buzz = []; navigator.vibrate = (p) => { window.__buzz.push(JSON.stringify(p)); return true; }; document.title = 'Neon device test'; navigator.getBattery = () => Promise.resolve({ level: 0.5, charging: false })");
+	await Haptics.impactAsync(ImpactFeedbackStyle.Light);
+	await Haptics.notificationAsync(NotificationFeedbackType.Error);
+	await Haptics.selectionAsync();
+	assert js("window.__buzz.join(';')") === "[10];[30,40,30,40,30];[5]", js("window.__buzz.join(';')");
+	assert DeviceInfo.getApplicationName() === "Neon device test";
+	assert DeviceInfo.getBundleId() === js("location.host");
+	assert DeviceInfo.getDeviceType() === "Desktop" && !(await DeviceInfo.isEmulator());
+	assert (await DeviceInfo.getBatteryLevel()) === 0.5 && !(await DeviceInfo.isBatteryCharging());
+}
+
+test "getLocales follows navigator.languages and Intl, getCalendars the page's time zone and hour cycle" {
+	mount();
+	js("Object.defineProperty(navigator, 'languages', { configurable: true, get: () => ['de-DE', 'ar-EG', 'en'] })");
+	const locales = getLocales();
+	assert locales.length === 3, locales.length.toString();
+	assert locales[0].languageTag === "de-DE" && locales[0].languageCode === "de" && locales[0].regionCode === "DE";
+	assert locales[0].decimalSeparator === "," && locales[0].digitGroupingSeparator === ".", (locales[0].decimalSeparator ?? "null");
+	assert locales[0].measurementSystem === "metric" && locales[0].temperatureUnit === "celsius";
+	assert locales[1].textDirection === "rtl", locales[1].textDirection ?? "null";
+	assert locales[2].regionCode === null && locales[2].textDirection === "ltr";
+	const calendar = getCalendars()[0];
+	assert calendar.timeZone === js("Intl.DateTimeFormat().resolvedOptions().timeZone"), calendar.timeZone ?? "null";
+	assert calendar.calendar === "gregory";
+	assert getTimeZone() === js("Intl.DateTimeFormat().resolvedOptions().timeZone");
+	assert getCountry() === "DE";
 }
