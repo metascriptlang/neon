@@ -828,6 +828,7 @@ export class NavigatorCore<P> {
 		const options = entry.options();
 		const own = options.animation;
 		if (own !== null && own !== "default") { return own as StackAnimation; }
+		if (!this.isStack()) { return "none"; }
 		const presentation = options.presentation;
 		if (presentation !== null && presentation === "modal") { return "slide_from_bottom"; }
 		if (presentation !== null && presentation === "transparentModal") { return "fade"; }
@@ -897,12 +898,17 @@ export class NavigatorCore<P> {
 
 	commit(list: Navigation<P>[], at: int32): void {
 		const before = this.snapshot();
+		const focusedBefore = this.current();
 		batch((): void => {
 			this.writeEntries(list);
 			this.writeIndex(at);
 			list[at].markVisited(true);
 		});
-		this.transition(before, list);
+		if (this.isStack()) {
+			this.transition(before, list);
+		} else if (focusedBefore !== list[at]) {
+			this.animateIn(list[at]);
+		}
 		this.notify();
 		this.container.changed();
 	}

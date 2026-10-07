@@ -71,7 +71,13 @@ export {
 	createMaterialTopTabNavigator,
 	TAB_INACTIVE,
 } from "./tabs";
-export { DrawerNavigator, DrawerPosition, createDrawerNavigator, DRAWER_WIDTH } from "./drawer";
+export {
+	DrawerNavigator,
+	DrawerPosition,
+	createDrawerNavigator,
+	DRAWER_WIDTH,
+	DRAWER_DURATION,
+} from "./drawer";
 export {
 	NavigationContainer,
 	NavigationContainerRef,

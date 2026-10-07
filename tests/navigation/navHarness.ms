@@ -43,6 +43,10 @@ export function findLabel(node: MockNode, label: string): MockNode | null {
 	return labelled(node, label);
 }
 
+export function labelledNow(node: MockNode, label: string): MockNode | null {
+	return labelled(node, label);
+}
+
 function labelled(node: MockNode, label: string): MockNode | null {
 	if (hidden(node)) { return null; }
 	if (attrOf(node, "accessibilityLabel") === label) { return node; }

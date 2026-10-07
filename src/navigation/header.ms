@@ -254,7 +254,6 @@ export function screenView<P>(core: NavigatorCore<P>, entry: Navigation<P>): Neo
 			display: visible() ? "flex" : "none",
 			backgroundColor: transparent() ? null : core.container.theme().colors.background,
 		};
-		if (!core.isStack()) { return base; }
 		const p = entry.progress.get();
 		if (p >= 1) { return base; }
 		const kind = core.animationOf(entry);

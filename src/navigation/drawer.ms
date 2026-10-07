@@ -1,4 +1,11 @@
-import { Accessor, accessor } from "../core/signal";
+import { Accessor, Setter, accessor, createSignal, untrack } from "../core/signal";
+import { createEffect } from "../core/effect";
+import { Animated, AnimatedValue, EndResult, Easing } from "../animation/index";
+import {
+	GestureResponderHandlers,
+	PanResponder,
+	PanResponderGestureState,
+} from "../components/panResponder";
 import { NeonNode } from "../render/hostTypes";
 import { NeonEvent } from "../render/event";
 import { Style } from "../render/style";
@@ -15,11 +22,13 @@ import {
 	currentScope,
 	optionsAccessor,
 } from "./core";
-import { screenView } from "./header";
+import { EDGE_WIDTH, screenView, shown } from "./header";
 import { ScreenCollector, collectScreens, groupOf, readName, readOptions, screenOf } from "./stack";
 import { BackBehavior, labelOf, mountedEntries, readBehavior } from "./tabs";
 
 export const DRAWER_WIDTH = 280;
+
+export const DRAWER_DURATION = 250;
 
 export type DrawerPosition = "left" | "right";
 
@@ -32,6 +41,115 @@ const BACKDROP: Style = {
 	backgroundColor: "#000000",
 	opacity: 0.4,
 };
+
+class DrawerMotion {
+	progress: AnimatedValue = new AnimatedValue(0);
+	shown: Accessor<boolean>;
+	writeShown: Setter<boolean>;
+	open: Accessor<boolean>;
+	setOpen: (open: boolean) => void;
+	right: Accessor<boolean>;
+	width: () => number;
+	swipe: Accessor<boolean>;
+
+	constructor(
+		open: Accessor<boolean>,
+		setOpen: (open: boolean) => void,
+		right: Accessor<boolean>,
+		width: () => number,
+		swipe: Accessor<boolean>,
+	) {
+		const [shown, writeShown] = createSignal<boolean>(false);
+		this.shown = shown;
+		this.writeShown = writeShown;
+		this.open = open;
+		this.setOpen = setOpen;
+		this.right = right;
+		this.width = width;
+		this.swipe = swipe;
+	}
+
+	run(toOpen: boolean): void {
+		this.writeShown(true);
+		Animated.timing(this.progress, {
+			toValue: toOpen ? 1 : 0,
+			duration: DRAWER_DURATION,
+			easing: Easing.out(Easing.cubic),
+		}).start((result: EndResult): void => {
+			if (result.finished && !toOpen) { this.writeShown(false); }
+		});
+	}
+
+	panelTransform(): string {
+		const p = this.progress.get();
+		if (p >= 1) { return "none"; }
+		const offset = (1 - p) * this.width();
+		return "translateX(" + (this.right() ? offset : -offset).toString() + "px)";
+	}
+
+	edgeShown(): boolean {
+		return !this.open() && this.swipe();
+	}
+
+	edgeHandlers(): GestureResponderHandlers {
+		const pan = PanResponder.create({
+			onMoveShouldSetPanResponder: (e: NeonEvent, g: PanResponderGestureState): boolean => {
+				const inward = this.right() ? -g.dx : g.dx;
+				return inward > 10 && Math.abs(g.dx) > Math.abs(g.dy) * 2;
+			},
+			onPanResponderGrant: (e: NeonEvent, g: PanResponderGestureState): void => {
+				this.progress.stopAnimation();
+				this.writeShown(true);
+			},
+			onPanResponderMove: (e: NeonEvent, g: PanResponderGestureState): void => {
+				const inward = this.right() ? -g.dx : g.dx;
+				const width = this.width();
+				this.progress.setValue(width > 0 ? Math.max(0, Math.min(1, inward / width)) : 0);
+			},
+			onPanResponderRelease: (e: NeonEvent, g: PanResponderGestureState): void => {
+				const speed = this.right() ? -g.vx : g.vx;
+				if (this.progress.get() > 0.5 || speed > 0.5) {
+					this.setOpen(true);
+				} else {
+					this.run(false);
+				}
+			},
+			onPanResponderTerminate: (e: NeonEvent, g: PanResponderGestureState): void => { this.run(false); },
+		});
+		return pan.panHandlers;
+	}
+}
+
+function drawerMotion<P>(
+	core: NavigatorCore<P>,
+	right: Accessor<boolean>,
+	own: Accessor<Style> | null,
+): DrawerMotion {
+	const width = (): number => {
+		if (own !== null) {
+			const extra = (own as Accessor<Style>)().width;
+			if (extra !== null && typeof extra !== "string") { return extra as number; }
+		}
+		return DRAWER_WIDTH;
+	};
+	const swipe = accessor((): boolean => {
+		const current = core.current();
+		if (current === null) { return true; }
+		return shown((current as Navigation<P>).options().swipeEnabled, true);
+	});
+	const setOpen = (open: boolean): void => { core.writeDrawerOpen(open); };
+	const motion = new DrawerMotion(core.drawerOpen, setOpen, right, width, swipe);
+	let first = true;
+	createEffect((): void => {
+		const open = core.drawerOpen();
+		if (first) {
+			first = false;
+			return;
+		}
+		untrack((): void => { motion.run(open); });
+	});
+	return motion;
+}
 
 export function drawerItem<P>(core: NavigatorCore<P>, entry: Navigation<P>): NeonNode {
 	const key = entry.route.key;
@@ -117,6 +235,7 @@ export function createDrawerNavigator<P>(): DrawerNavigator<P> {
 				const value: DrawerPosition = (side as Accessor<DrawerPosition>)();
 				return value === "right";
 			});
+			const motion = drawerMotion<P>(core, right, own);
 			const panel = accessor((): Style => {
 				const base: Style = {
 					position: "absolute",
@@ -125,6 +244,7 @@ export function createDrawerNavigator<P>(): DrawerNavigator<P> {
 					right: right() ? 0 : null,
 					bottom: 0,
 					width: DRAWER_WIDTH,
+					transform: motion.panelTransform(),
 					flexDirection: "column",
 					gap: 4,
 					paddingTop: 56,
@@ -142,6 +262,16 @@ export function createDrawerNavigator<P>(): DrawerNavigator<P> {
 			});
 			const close = (e: NeonEvent): void => { core.writeDrawerOpen(false); };
 			const mounted = mountedEntries<P>(core);
+			const backdrop = accessor((): Style => ({ ...BACKDROP, opacity: 0.4 * motion.progress.get() }));
+			const edge = accessor((): Style => ({
+				position: "absolute",
+				top: 56,
+				bottom: 0,
+				left: right() ? null : 0,
+				right: right() ? 0 : null,
+				width: EDGE_WIDTH,
+			}));
+			const edgeHandlers = motion.edgeHandlers();
 			const screen = (entry: Navigation<P>, at: Accessor<number>): NeonNode => {
 				return screenView<P>(core, entry);
 			};
@@ -152,8 +282,11 @@ export function createDrawerNavigator<P>(): DrawerNavigator<P> {
 				<View style={{ flex: 1, flexDirection: "column", position: "relative" }}>
 					<For each={mounted}>{screen}</For>
 				</View>
-				<Show when={core.drawerOpen()}>
-					<Pressable style={BACKDROP} accessibilityRole="button"
+				<Show when={motion.edgeShown()}>
+					<View {...edgeHandlers} style={edge} />
+				</Show>
+				<Show when={motion.shown()}>
+					<Pressable style={backdrop} accessibilityRole="button"
 						accessibilityLabel="Close navigation menu" onPress={close} />
 					<View style={panel}>
 						<For each={core.entries}>{item}</For>

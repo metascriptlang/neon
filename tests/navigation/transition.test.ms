@@ -10,9 +10,12 @@ import {
 	ScreenProps,
 	createNavigationContainerRef,
 	createStackNavigator,
+	createDrawerNavigator,
+	createBottomTabNavigator,
+	DRAWER_DURATION,
 	STACK_DURATION,
 } from "../../src/navigation/index";
-import { clock, settle } from "./navHarness";
+import { clock, findLabel, settle, labelledNow } from "./navHarness";
 
 const Stack = createStackNavigator<string>();
 
@@ -166,4 +169,77 @@ test "a swipe from the left edge drags the screen and pops it past a third of th
 	assert ref.currentPath() === "Home", ref.currentPath();
 	settle();
 	assert frames(root).length === 1;
+}
+
+const Drawer = createDrawerNavigator<string>();
+
+function panelOf(root: MockNode): MockNode | null {
+	const item = findLabel(root, "Two");
+	return item === null ? null : (item as MockNode).parent;
+}
+
+function drawerEdge(root: MockNode): MockNode {
+	for (const child of root.children[0].children) {
+		const style = child.style;
+		if (style !== null && (style as Style).width === 24) { return child; }
+	}
+	throw new Error("no drawer edge");
+}
+
+test "the drawer slides in and out, and a swipe from the edge opens it" {
+	const ref = createNavigationContainerRef();
+	const root: MockNode = mockNode("root");
+	render(<NavigationContainer ref={ref}>
+		<Drawer.Navigator>
+			<Drawer.Screen name="One" component={Named} />
+			<Drawer.Screen name="Two" component={Named} />
+		</Drawer.Navigator>
+	</NavigationContainer>, mockHost(), root as unknown as HostNode);
+	ref.openDrawer();
+	clock.step(steps(DRAWER_DURATION / 2));
+	const sliding = labelledNow(root, "Two");
+	const moving = translation((sliding as MockNode).parent as MockNode);
+	assert moving < 0 && moving > -280, "mid-slide " + moving.toString();
+	settle();
+	assert transformOf(panelOf(root) as MockNode) === "none", "open";
+	ref.closeDrawer();
+	clock.step(steps(DRAWER_DURATION / 2));
+	assert labelledNow(root, "Two") !== null, "still mounted while it slides out";
+	settle();
+	assert panelOf(root) === null, "closed";
+	const edge = drawerEdge(root);
+	fireTouch(edge, "onTouchStart", 2, 300, 20000);
+	fireTouch(edge, "onTouchMove", 40, 300, 20100);
+	fireTouch(edge, "onTouchMove", 120, 300, 20200);
+	const dragged = translation((labelledNow(root, "Two") as MockNode).parent as MockNode);
+	assert dragged > -280 && dragged < -150, "follows the finger: " + dragged.toString();
+	fireTouch(edge, "onTouchMove", 240, 300, 20300);
+	fireTouch(edge, "onTouchEnd", 240, 300, 20400);
+	settle();
+	assert panelOf(root) !== null && transformOf(panelOf(root) as MockNode) === "none", "opened by the swipe";
+}
+
+const Tabs = createBottomTabNavigator<string>();
+
+test "a tab with animation fade fades in when it gains focus; other tabs switch at once" {
+	const ref = createNavigationContainerRef();
+	const root: MockNode = mockNode("root");
+	render(<NavigationContainer ref={ref}>
+		<Tabs.Navigator>
+			<Tabs.Screen name="Plain" component={Named} />
+			<Tabs.Screen name="Faded" component={Named} options={{ animation: "fade" }} />
+		</Tabs.Navigator>
+	</NavigationContainer>, mockHost(), root as unknown as HostNode);
+	settle();
+	ref.navigate("Faded");
+	const faded = (labelledNow(root, "Faded") as MockNode);
+	const screens = root.children[0].children[0];
+	const frame = screens.children[screens.children.length - 2];
+	clock.step(steps(STACK_DURATION / 2));
+	const opacity = styleOf(frame).opacity as number;
+	assert opacity > 0 && opacity < 1, "mid-fade " + opacity.toString() + " " + faded.tag;
+	settle();
+	assert styleOf(frame).opacity === null, "settled";
+	ref.navigate("Plain");
+	assert styleOf(screens.children[0]).opacity === null, "a plain tab does not fade";
 }
