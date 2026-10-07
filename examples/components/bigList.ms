@@ -153,6 +153,41 @@ function SectionsList(): NeonNode {
 	</View>;
 }
 
+function message(n: number): Entry {
+	return { id: "c" + n.toString(), n };
+}
+
+function messageStyle(n: number): Style {
+	return {
+		height: 56 + (n % 3) * 16,
+		padding: 12, color: "#cdd6f4",
+		backgroundColor: n % 2 === 0 ? "#313244" : "#45475a",
+	};
+}
+
+function ChatList(): NeonNode {
+	const start: Entry[] = [];
+	for (let i = 0; i < 40; i += 1) { start.push(message(1000 + i)); }
+	const [data, setData] = createSignal<Entry[]>(start);
+	const [offset, setOffset] = createSignal<number>(0);
+	const loadOlder = (): void => {
+		const current = data();
+		const older: Entry[] = [];
+		for (let i = 20; i > 0; i -= 1) { older.push(message(current[0].n - i)); }
+		setData([...older, ...current]);
+	};
+	return <View style={styles.screen}>
+		<Text style={styles.title}>Chat</Text>
+		<Text style={styles.status}>{"messages " + data().length.toString() + ", oldest " + data()[0].n.toString()}</Text>
+		<Text style={styles.status}>{"offset " + Math.round(offset()).toString()}</Text>
+		<Pressable style={styles.jump} onPress={() => loadOlder()}>load older</Pressable>
+		<FlatList data={data()} style={styles.list} maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
+			onScroll={(e: NeonEvent): void => { setOffset(e.y); }}
+			renderItem={(info: ListRenderItemInfo<Entry>): NeonNode =>
+				<View style={messageStyle(info.item.n)}><Text style={styles.status}>{"message " + info.item.n.toString()}</Text></View>} />
+	</View>;
+}
+
 export function ListAcceptance(): NeonNode {
 	const [mode, setMode] = createSignal<int32>(0);
 	return <View style={{ flex: 1 }}>
@@ -162,13 +197,16 @@ export function ListAcceptance(): NeonNode {
 			<Pressable style={styles.jump} onPress={() => setMode(2)}>inverted rows</Pressable>
 			<Pressable style={styles.jump} onPress={() => setMode(3)}>grid</Pressable>
 			<Pressable style={styles.jump} onPress={() => setMode(4)}>sections</Pressable>
+			<Pressable style={styles.jump} onPress={() => setMode(5)}>chat</Pressable>
 		</View>
-		<Show when={mode() === 4} fallback={<Show when={mode() === 3} fallback={<Show when={mode() === 0} fallback={<MeasuredStickyList inverted={mode() === 2} />}>
+		<Show when={mode() === 5} fallback={<Show when={mode() === 4} fallback={<Show when={mode() === 3} fallback={<Show when={mode() === 0} fallback={<MeasuredStickyList inverted={mode() === 2} />}>
 			<BigList />
 		</Show>}>
 			<GridList />
 		</Show>}>
 			<SectionsList />
+		</Show>}>
+			<ChatList />
 		</Show>
 	</View>;
 }

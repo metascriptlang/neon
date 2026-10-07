@@ -322,13 +322,86 @@ def sections_lane():
     scroll_list.report("flatlist-sections-located-pressed", window, texts, launched)
 
 
+def messages_on_screen(texts, frame):
+    shown = [t for t in texts if t.startswith("message ") and scroll_list.on_screen(texts, frame, t)]
+    return sorted(shown, key=lambda t: top(texts, t))
+
+
+def chat_lane():
+    scale = dp()
+    launched = counter.pid()
+    scroll_list.tap(scroll_list.state(False)[1], "chat")
+    window, texts = scroll_list.state(False)
+    frame = counter.visible_frame(window)
+    if "messages 40, oldest 1000" not in texts or "message 1000" not in texts:
+        raise LaneError("chat mode did not mount its 40 messages; texts %s" % sorted(texts)[:20])
+    x1, y1, x2, y2 = texts["message 1002"]
+    x, y = (x1 + x2) // 2, (y1 + y2) // 2
+    adb("shell", "input", "swipe", str(x), str(y + int(120 * scale)), str(x), str(y - int(60 * scale)), "800")
+    time.sleep(1.5)
+    window, texts = scroll_list.state(False)
+    if scroll_list.label(texts, "offset ") == "offset 0":
+        raise LaneError("the drag did not scroll the chat")
+    shown = messages_on_screen(texts, frame)
+    if len(shown) < 3:
+        raise LaneError("too few messages on screen to pick one; texts %s" % sorted(texts)[:20])
+    kept = shown[1]
+    before = top(texts, kept)
+    offset_before = scroll_list.label(texts, "offset ")
+    scroll_list.report("flatlist-chat-before", window, texts, launched)
+
+    scroll_list.tap(texts, "load older")
+    time.sleep(1)
+    window, texts = scroll_list.state(False)
+    if "messages 60, oldest 980" not in texts:
+        raise LaneError("load older did not prepend 20 messages: %r" % scroll_list.label(texts, "messages "))
+    if kept not in texts:
+        raise LaneError("%r left the screen after load older; texts %s" % (kept, sorted(texts)[:20]))
+    after = top(texts, kept)
+    if abs(after - before) > 2 * scale:
+        raise LaneError("%r moved from y=%d to y=%d after load older" % (kept, before, after))
+    if "message 999" in texts and scroll_list.on_screen(texts, frame, "message 999"):
+        raise LaneError("an older message jumped into view: %s" % texts["message 999"])
+    print("NEON_ANDROID flatlist-chat kept=%r y=%d->%d %s -> %s" % (kept, before, after, offset_before, scroll_list.label(texts, "offset ")))
+    scroll_list.report("flatlist-chat-kept", window, texts, launched)
+
+    for _ in range(8):
+        if scroll_list.on_screen(texts, frame, "message 980"):
+            break
+        swipe_down(window)
+        time.sleep(1)
+        window, texts = scroll_list.state(False)
+    if not scroll_list.on_screen(texts, frame, "message 980"):
+        raise LaneError("the older messages are not above the kept one; texts %s" % sorted(texts)[:20])
+    shown = messages_on_screen(texts, frame)
+    if [int(t.split()[1]) for t in shown] != sorted(int(t.split()[1]) for t in shown):
+        raise LaneError("older messages are out of order above: %s" % shown)
+    print("NEON_ANDROID flatlist-chat-top %s first=%r" % (scroll_list.label(texts, "offset "), shown[0]))
+    scroll_list.report("flatlist-chat-older", window, texts, launched)
+
+
+def swipe_down(window):
+    x = (window[0] + window[2]) // 2
+    height = window[3] - window[1]
+    adb("shell", "input", "swipe", str(x), str(window[1] + height // 2), str(x), str(window[1] + height * 5 // 6), "300")
+
+
+LANES = {"list": lane, "measured": measured_lane, "grid": grid_lane, "sections": sections_lane, "chat": chat_lane}
+
+
 def main():
     mode = adb("shell", "cmd", "window", "user-rotation").strip()
+    selected = os.environ.get("NEON_FLATLIST_LANES", "list measured grid sections chat").split()
     try:
-        lane()
-        measured_lane()
-        grid_lane()
-        sections_lane()
+        if selected[0] != "list":
+            counter.PACKAGE = PACKAGE
+            scroll_list.PACKAGE = PACKAGE
+            os.makedirs(os.path.join(counter.results, "screenshots"), exist_ok=True)
+            scroll_list.launch(PACKAGE)
+            counter.rotate(0)
+            scroll_list.state(False)
+        for name in selected:
+            LANES[name]()
     except EmulatorError as covered:
         print("FAIL: android flatlist " + str(covered), file=sys.stderr)
         return EMULATOR

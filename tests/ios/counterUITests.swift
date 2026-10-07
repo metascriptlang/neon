@@ -372,6 +372,53 @@ final class FlatListUITests: XCTestCase {
         report("sections-located-pressed")
         XCTAssertEqual(launched, pid(), "the grid and section modes share one running process")
     }
+
+    private func messagesBelow(_ top: CGFloat) -> [XCUIElement] {
+        let window = app.windows.firstMatch.frame
+        return app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "message ")).allElementsBoundByIndex
+            .filter { $0.frame.minY >= top && window.contains($0.frame) }
+            .sorted { $0.frame.minY < $1.frame.minY }
+    }
+
+    func testChatKeepsVisibleMessage() {
+        XCUIDevice.shared.orientation = .portrait
+        app.launch()
+        XCTAssertTrue(app.wait(for: .runningForeground, timeout: 20))
+        let launched = pid()
+        app.staticTexts["chat"].tap()
+        XCTAssertTrue(app.staticTexts["messages 40, oldest 1000"].waitForExistence(timeout: 15), "chat mode mounts its 40 messages")
+        XCTAssertTrue(app.staticTexts["message 1002"].waitForExistence(timeout: 15))
+        let start = app.staticTexts["message 1002"].coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).withOffset(CGVector(dx: 0, dy: 120))
+        start.press(forDuration: 0.1, thenDragTo: start.withOffset(CGVector(dx: 0, dy: -180)), withVelocity: .slow, thenHoldForDuration: 0.5)
+        RunLoop.current.run(until: Date().addingTimeInterval(1.5))
+        XCTAssertNotEqual(label(startingWith: "offset "), "offset 0", "the drag scrolled the chat")
+        let listTop = app.staticTexts["load older"].frame.maxY + 16
+        let shown = messagesBelow(listTop)
+        XCTAssertGreaterThan(shown.count, 2, "messages on screen below the list top")
+        let kept = shown[0].label
+        let before = app.staticTexts[kept].frame.minY
+        let offset = label(startingWith: "offset ")
+        report("chat-before")
+
+        app.staticTexts["load older"].tap()
+        XCTAssertTrue(app.staticTexts["messages 60, oldest 980"].waitForExistence(timeout: 10), "load older prepends 20 messages")
+        RunLoop.current.run(until: Date().addingTimeInterval(1))
+        let after = app.staticTexts[kept].frame.minY
+        XCTAssertEqual(after, before, accuracy: 2, "\(kept) stays where it was")
+        print("NEON_IOS flatlist-chat kept=\(kept) y=\(before)->\(after) \(offset) -> \(label(startingWith: "offset "))")
+        report("chat-kept")
+
+        let pull = app.windows.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.45))
+        for _ in 0..<8 where !(onScreen("message 980") && app.staticTexts["message 980"].frame.minY >= listTop) {
+            pull.press(forDuration: 0.1, thenDragTo: pull.withOffset(CGVector(dx: 0, dy: 300)))
+            RunLoop.current.run(until: Date().addingTimeInterval(1))
+        }
+        XCTAssertTrue(onScreen("message 980"), "the older messages are above the kept one")
+        let older = messagesBelow(listTop).map { Int($0.label.dropFirst("message ".count)) ?? -1 }
+        XCTAssertEqual(older, older.sorted(), "older messages read top to bottom")
+        report("chat-older")
+        XCTAssertEqual(launched, pid(), "the chat mode runs in the same process")
+    }
 }
 
 final class ScrollMatrixUITests: XCTestCase {
