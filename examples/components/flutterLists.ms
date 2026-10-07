@@ -20,13 +20,13 @@ import {
 } from "../../src/components/sliver";
 
 const styles = createStyles({
-	screen: { display: "flex", flex: 1, minHeight: 0, flexDirection: "column", backgroundColor: "#11111b" },
+	screen: { flex: 1, backgroundColor: "#11111b" },
 	top: { paddingTop: 48, paddingLeft: 12, paddingRight: 12, paddingBottom: 8, gap: 6, backgroundColor: "#1e1e2e" },
 	title: { color: "#cdd6f4", fontSize: 20, fontWeight: "bold" },
 	status: { color: "#89b4fa", fontSize: 15 },
 	tabs: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
 	tab: { paddingTop: 8, paddingBottom: 8, paddingLeft: 10, paddingRight: 10, backgroundColor: "#45475a", color: "#cdd6f4", borderRadius: 6 },
-	body: { display: "flex", flexDirection: "column", flex: 1, minHeight: 0 },
+	body: { flex: 1 },
 	mail: { height: 64, paddingLeft: 16, paddingRight: 16, justifyContent: "center", backgroundColor: "#313244" },
 	mailText: { color: "#cdd6f4", fontSize: 17 },
 	archive: { flex: 1, justifyContent: "center", paddingLeft: 20, backgroundColor: "#40a02b" },
@@ -188,7 +188,7 @@ function HeaderScreen(props: ScreenProps): NeonNode {
 	const say = props.say;
 	const scroll = createScrollOffset(false);
 	const lines = rows(50, "Row");
-	return <View style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0, position: "relative" }}>
+	return <View style={{ flex: 1 }}>
 		<FlatList data={lines} style={styles.body} contentContainerStyle={{ paddingTop: 200 }} onScroll={scroll.onScroll} scrollEventThrottle={16}
 			renderItem={(info: ListRenderItemInfo<Line>): NeonNode => <View style={styles.row}><Text style={styles.rowText}>{info.item.text}</Text></View>} />
 		<CollapsingHeader scrollOffset={scroll.offset} expandedHeight={200} collapsedHeight={64} pinned={true}
@@ -218,10 +218,10 @@ function SliverScreen(): NeonNode {
 function WheelScreen(props: ScreenProps): NeonNode {
 	const say = props.say;
 	const hours = rows(24, "hour");
-	return <View style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0, justifyContent: "center", alignItems: "stretch" }}>
+	return <View style={{ flex: 1, justifyContent: "center", alignItems: "stretch" }}>
 		<ListWheelScrollView data={hours} itemExtent={44} magnification={1.15} style={{ height: 264, backgroundColor: "#1e1e2e" }}
 			onSelectedItemChanged={(index: number): void => { say("picked " + hours[index as int32].text); }}
-			renderItem={(info: WheelRenderItemInfo<Line>): NeonNode => <View style={{ display: "flex", height: 44, alignItems: "center", justifyContent: "center" }}>
+			renderItem={(info: WheelRenderItemInfo<Line>): NeonNode => <View style={{ height: 44, alignItems: "center", justifyContent: "center" }}>
 				<Text style={{ color: "#f9e2af", fontSize: 20 }}>{info.item.text}</Text>
 			</View>} />
 	</View>;

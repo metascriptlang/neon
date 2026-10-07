@@ -216,7 +216,7 @@ export function Dismissible(props: DismissibleProps): NeonNode {
 	});
 	const userStyle = props.style;
 	const outerStyle = accessor((): Style => {
-		const base: Style = { overflow: "hidden", position: "relative" };
+		const base: Style = { overflow: "hidden" };
 		const sized: Style = resizing() ? (vertical(direction()) ? { width: width * sizeFactor(), flexShrink: 0 } : { height: height * sizeFactor(), flexShrink: 0 }) : {};
 		return mergeStyle(mergeStyle(base, userStyle === null ? {} : (userStyle as Accessor<Style>)()), sized);
 	});
