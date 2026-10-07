@@ -779,7 +779,10 @@ final class ApisUITests: XCTestCase {
     }
 
     private func report(_ name: String) {
-        let texts = app.staticTexts.allElementsBoundByIndex.prefix(16).map { $0.label }.joined(separator: " | ")
+        func flat(_ node: XCUIElementSnapshot) -> [String] {
+            (node.elementType == .staticText ? [node.label] : []) + node.children.flatMap { flat($0) }
+        }
+        let texts = ((try? app.snapshot()).map { flat($0) } ?? []).prefix(16).joined(separator: " | ")
         print("NEON_IOS apis-\(name) \(texts)")
         let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         shot.name = "apis-\(name)"
