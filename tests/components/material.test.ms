@@ -7,6 +7,11 @@ import { Checkbox } from "../../src/components/checkbox";
 import { RadioButton, RadioGroup, RadioOption } from "../../src/components/radio";
 import { SegmentedControl } from "../../src/components/segmentedControl";
 import { Chip } from "../../src/components/chip";
+import { Card, CardActions, CardContent, CardTitle } from "../../src/components/card";
+import { Avatar } from "../../src/components/avatar";
+import { Badge } from "../../src/components/badge";
+import { Divider } from "../../src/components/divider";
+import { Text, View } from "../../src/components/primitives";
 
 function attrOf(n: MockNode, name: string): string {
 	for (const a of n.attrs) {
@@ -151,4 +156,76 @@ test "Chip without selection is a plain button and ignores presses while disable
 	setOff(false);
 	fireEvent(body, "onPress");
 	assert presses === 1, "presses: " + presses.toString();
+}
+
+test "Card is a surface over a darker elevation edge and a button once pressable" {
+	const [level, setLevel] = createSignal(2);
+	let presses = 0;
+	const root: MockNode = mockNode("root");
+	render(element(<View>
+		<Card elevation={level()} style={{ margin: 8, backgroundColor: "#fafafa" }} onPress={(e: NeonEvent): void => { presses += 1; }} accessibilityLabel="Order">
+			<CardTitle title="Order" subtitle="Two items" />
+			<CardContent><Text>Body</Text></CardContent>
+			<CardActions><Text>OK</Text></CardActions>
+		</Card>
+		<Card><Text>Plain</Text></Card>
+	</View>), mockHost(), root as unknown as HostNode);
+	const card = root.children[0].children[0];
+	assert mockToString(card) === "<pressable accessibilityRole=\"button\" accessibilityLabel=\"Order\"><view><view><text accessibilityRole=\"header\">Order</text><text>Two items</text></view><view><text>Body</text></view><view><text>OK</text></view></view></pressable>", "card: " + mockToString(card);
+	assert styleOf(card).paddingBottom === 2 && styleOf(card).margin === 8 && styleOf(card).backgroundColor === "#d0d0d0", "edge";
+	assert styleOf(card.children[0]).backgroundColor === "#fafafa", "surface takes the caller's background";
+	fireEvent(card, "onPress");
+	assert presses === 1, "pressed";
+	setLevel(9);
+	assert styleOf(card).paddingBottom === 5, "elevation clamps at 5";
+	const plain = root.children[0].children[1];
+	assert mockToString(plain) === "<view><view><text>Plain</text></view></view>", "plain: " + mockToString(plain);
+	assert styleOf(plain).paddingBottom === 1 && styleOf(plain.children[0]).backgroundColor === "#ffffff", "default surface";
+}
+
+test "Avatar shows initials or an image as one labelled round image" {
+	const [size, setSize] = createSignal(40);
+	const root: MockNode = mockNode("root");
+	render(element(<View>
+		<Avatar label="JD" size={size()} backgroundColor="#336699" />
+		<Avatar source={{ uri: "https://example.com/me.png" }} accessibilityLabel="Me" />
+	</View>), mockHost(), root as unknown as HostNode);
+	const initials = root.children[0].children[0];
+	const picture = root.children[0].children[1];
+	assert mockToString(initials) === "<view accessibilityRole=\"image\" accessibilityLabel=\"JD\"><text>JD</text></view>", "initials: " + mockToString(initials);
+	assert styleOf(initials).borderRadius === 20 && styleOf(initials).backgroundColor === "#336699", "round";
+	setSize(64);
+	assert styleOf(initials).width === 64 && styleOf(initials).borderRadius === 32, "size is reactive";
+	assert mockToString(picture) === "<view accessibilityRole=\"image\" accessibilityLabel=\"Me\"><image source=\"https://example.com/me.png\" resizeMode=\"cover\" accessibilityRole=\"image\" accessible=\"false\"></image></view>", "picture: " + mockToString(picture);
+}
+
+test "Badge holds a value or shrinks to a dot, and hides when not visible" {
+	const [count, setCount] = createSignal(3);
+	const [shown, setShown] = createSignal(true);
+	const root: MockNode = mockNode("root");
+	render(element(<View>
+		<Badge value={count().toString()} visible={shown()} />
+		<Badge />
+	</View>), mockHost(), root as unknown as HostNode);
+	const badge = root.children[0].children[0];
+	const dot = root.children[0].children[1];
+	assert mockToString(badge) === "<view accessibilityRole=\"text\" accessibilityLabel=\"3\"><text>3</text></view>", "badge: " + mockToString(badge);
+	setCount(12);
+	assert mockToString(badge).indexOf("<text>12</text>") > 0, "value follows: " + mockToString(badge);
+	assert styleOf(badge).height === 20 && styleOf(dot).height === 6, "sizes";
+	assert mockToString(dot) === "<view></view>", "dot: " + mockToString(dot);
+	setShown(false);
+	assert styleOf(badge).display === "none", "hidden";
+}
+
+test "Divider is a filled line, horizontal or vertical, with insets" {
+	const root: MockNode = mockNode("root");
+	render(element(<View>
+		<Divider inset={true} thickness={2.0} color="#ff0000" />
+		<Divider vertical={true} indent={4.0} />
+	</View>), mockHost(), root as unknown as HostNode);
+	const line = styleOf(root.children[0].children[0]);
+	const column = styleOf(root.children[0].children[1]);
+	assert line.height === 2 && line.marginLeft === 16 && line.backgroundColor === "#ff0000", "horizontal";
+	assert column.width === 1 && column.marginTop === 4 && column.backgroundColor === "#e0e0e0", "vertical";
 }
