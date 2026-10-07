@@ -51,6 +51,7 @@ export function GalleryApp(): NeonNode {
 	const [refreshes, setRefreshes] = createSignal(0);
 	const [toggle, setToggle] = createSignal(false);
 	const [notes, setNotes] = createSignal("");
+	const [image, setImage] = createSignal("loading");
 	const insets = useSafeAreaInsets();
 	const say = (s: string): void => { setStatus(s); };
 	const press = (what: string): void => {
@@ -71,7 +72,7 @@ export function GalleryApp(): NeonNode {
 		<View style={{ padding: 12, gap: 2 }}>
 			<Text style={{ color: "#cdd6f4", fontSize: 22, fontWeight: "bold" }} accessibilityRole="header">Neon gallery</Text>
 			<Text style={{ color: "#a6e3a1", fontSize: 15 }}>{`status: ${status()}`}</Text>
-			<Text style={{ color: "#6c7086", fontSize: 12 }}>{`insets ${insets().top}/${insets().bottom} · bar ${barHidden() ? "hidden" : "shown"}`}</Text>
+			<Text style={{ color: "#6c7086", fontSize: 12 }}>{`insets ${insets().top}/${insets().bottom} · bar ${barHidden() ? "hidden" : "shown"} · image ${image()}`}</Text>
 		</View>
 		<Show when={screen() === "keyboard"}>
 			<KeyboardScreen back={(): void => { setScreen("gallery"); say("back"); }} say={say} />
@@ -115,7 +116,8 @@ export function GalleryApp(): NeonNode {
 				<Section title="Image background">
 					<ImageBackground source={{ uri: "https://picsum.photos/id/29/600/240" }} resizeMode="cover"
 						style={{ height: 120, justifyContent: "flex-end", padding: 8 }} imageStyle={{ borderRadius: 8 }}
-						onLoad={(e: NeonEvent): void => { say("background loaded"); }}>
+						onLoad={(e: NeonEvent): void => { setImage("loaded"); }}
+						onError={(e: NeonEvent): void => { setImage("failed"); }}>
 						<Text style={{ color: "#ffffff", fontSize: 18, fontWeight: "bold" }}>Over the image</Text>
 					</ImageBackground>
 				</Section>

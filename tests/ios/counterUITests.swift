@@ -870,3 +870,118 @@ final class ApisUITests: XCTestCase {
         report("back-from-settings")
     }
 }
+
+final class GalleryUITests: XCTestCase {
+    private let app = XCUIApplication(bundleIdentifier: "dev.neon.NeonGallery")
+
+    override func setUp() {
+        continueAfterFailure = false
+    }
+
+    private func label(startingWith prefix: String) -> String {
+        let match = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", prefix)).firstMatch
+        return match.exists ? match.label : ""
+    }
+
+    private func status(_ text: String, timeout: TimeInterval = 10) {
+        XCTAssertTrue(app.staticTexts["status: " + text].waitForExistence(timeout: timeout), "expected status \(text); it reads \(label(startingWith: "status: "))")
+    }
+
+    private func element(_ label: String) -> XCUIElement {
+        app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", label)).firstMatch
+    }
+
+    private func report(_ name: String) {
+        print("NEON_IOS gallery-\(name) \(label(startingWith: "status: ")) \(label(startingWith: "insets "))")
+        let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        shot.name = "gallery-\(name)"
+        shot.lifetime = .keepAlways
+        add(shot)
+    }
+
+    private func scrollTo(_ target: XCUIElement) {
+        let window = app.windows.firstMatch
+        for _ in 0..<8 {
+            if target.exists && target.isHittable && target.frame.maxY < window.frame.maxY - 120 { return }
+            let start = window.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.7))
+            start.press(forDuration: 0.05, thenDragTo: window.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.4)))
+        }
+        XCTFail("could not scroll \(target) into view")
+    }
+
+    func testGalleryComponents() {
+        XCUIDevice.shared.orientation = .portrait
+        app.launch()
+        XCTAssertTrue(app.staticTexts["Neon gallery"].waitForExistence(timeout: 20))
+        status("ready")
+        report("start")
+
+        XCTAssertTrue(app.buttons["Press me"].exists, "an iOS Button is a text-only button labelled with its title, not uppercased")
+        app.buttons["Press me"].tap()
+        status("button 1")
+        app.buttons["Disabled"].tap()
+        element("Touchable opacity").tap()
+        status("opacity 2")
+        XCTAssertFalse(app.staticTexts["Touchable opacity"].exists, "a touchable is one accessibility element; its text is not separate")
+        element("Touchable highlight").tap()
+        status("highlight 3")
+        element("Touchable without feedback").tap()
+        status("plain 4")
+
+        scrollTo(app.buttons["Open modal"])
+        app.buttons["Open modal"].tap()
+        XCTAssertTrue(app.staticTexts["Modal content"].waitForExistence(timeout: 10))
+        status("modal shown")
+        XCTAssertFalse(app.buttons["Press me"].exists, "VoiceOver stays inside the modal: the app behind it is not exposed")
+        report("modal")
+        app.buttons["Close modal"].tap()
+        status("modal closed")
+        XCTAssertFalse(app.staticTexts["Modal content"].exists)
+
+        scrollTo(app.buttons["Hide status bar"])
+        app.buttons["Hide status bar"].tap()
+        status("status bar hidden")
+        report("statusbar-hidden")
+        app.buttons["Show status bar"].tap()
+        status("status bar shown")
+
+        scrollTo(app.buttons["Open keyboard screen"])
+        app.buttons["Open keyboard screen"].tap()
+        XCTAssertTrue(app.staticTexts["keyboard hidden"].waitForExistence(timeout: 10))
+        let resting = Int(label(startingWith: "status: message at ").split(separator: " ").last ?? "") ?? -1
+        XCTAssertGreaterThan(resting, 0, "the input reported its frame")
+        app.textFields["Message"].tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10))
+        let lifted = NSPredicate { [self] _, _ in
+            let y = Int(label(startingWith: "status: message at ").split(separator: " ").last ?? "") ?? resting
+            return y < resting
+        }
+        XCTAssertEqual(XCTWaiter.wait(for: [expectation(for: lifted, evaluatedWith: app)], timeout: 10), .completed,
+            "KeyboardAvoidingView lifts the input above the keyboard; it reads \(label(startingWith: "status: "))")
+        report("keyboard")
+        app.textFields["Message"].typeText("hi\n")
+        status("sent hi")
+        app.buttons["Back to gallery"].tap()
+        status("back")
+
+        let window = app.windows.firstMatch
+        let header = app.staticTexts["BUTTON"]
+        for _ in 0..<8 where !header.isHittable {
+            window.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.4)).press(forDuration: 0.05, thenDragTo: window.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.8)))
+        }
+        let top = header.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        top.press(forDuration: 0.1, thenDragTo: top.withOffset(CGVector(dx: 0, dy: 320)))
+        status("refreshed 1", timeout: 15)
+        report("refreshed")
+
+        let paragraph = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Neon clamps this paragraph")).firstMatch
+        scrollTo(paragraph)
+        XCTAssertLessThan(paragraph.frame.height, 3 * 18 + 4, "numberOfLines=2 clamps the paragraph: \(paragraph.frame)")
+        let notes = app.textViews["Notes"]
+        scrollTo(notes)
+        notes.tap()
+        notes.typeText("ab\nc")
+        status("notes 4")
+        report("notes")
+    }
+}
