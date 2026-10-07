@@ -271,9 +271,20 @@ export function createVoidHostWith(scene: Scene2D, font: FontId): VoidHost {
 	let windowFocused = true;
 	let dirtyListener: (() => void) | null = null;
 
+	let signaled = false;
+
+	const wasDirty = (): boolean => {
+		const dirty = scene.isDirty();
+		if (!dirty) { signaled = false; }
+		return dirty;
+	};
+
 	const woke = (was: boolean): void => {
-		if (was || dirtyListener === null) { return; }
-		if (scene.isDirty()) { (dirtyListener as () => void)(); }
+		if (was || signaled || dirtyListener === null) { return; }
+		if (scene.isDirty()) {
+			signaled = true;
+			(dirtyListener as () => void)();
+		}
 	};
 
 	const attached = (n: VoidNode): boolean => within(n, root);
@@ -340,7 +351,7 @@ export function createVoidHostWith(scene: Scene2D, font: FontId): VoidHost {
 	};
 
 	const setValue = (c: ClientEntry, v: TextEditingValue): void => {
-		const was = scene.isDirty();
+		const was = wasDirty();
 		c.value = v;
 		c.client.updateEditingValue(v);
 		woke(was);
@@ -348,7 +359,7 @@ export function createVoidHostWith(scene: Scene2D, font: FontId): VoidHost {
 
 	const focus = (n: VoidNode | null): void => {
 		if (n === focusedNode) { return; }
-		const was = scene.isDirty();
+		const was = wasDirty();
 		const old = focusedNode;
 		focusedNode = n;
 		if (old !== null) {
@@ -457,29 +468,36 @@ export function createVoidHostWith(scene: Scene2D, font: FontId): VoidHost {
 
 	const host: Host = {
 		createElement: (tag: string): HostNode => {
-			if (tag === "textinput") { return makeField(); }
-			if (tag === "scrollview") {
-				const n = new VoidNode(scene.mask(0.0, 0.0));
+			const was = wasDirty();
+			let n: VoidNode;
+			if (tag === "textinput") {
+				n = makeField();
+			} else if (tag === "scrollview") {
+				n = new VoidNode(scene.mask(0.0, 0.0));
 				n.scrolls = true;
 				scrollers.push(n);
-				return n;
+			} else {
+				n = new VoidNode(scene.group());
 			}
-			return new VoidNode(scene.group());
+			woke(was);
+			return n;
 		},
 		createText: (s: string): HostNode => {
-			const n = scene.label(s, TEXT_SIZE, WHITE);
-			n.setFont(font);
-			return new VoidNode(n);
+			const was = wasDirty();
+			const l = scene.label(s, TEXT_SIZE, WHITE);
+			l.setFont(font);
+			woke(was);
+			return new VoidNode(l);
 		},
 		setText: (node: HostNode, s: string): void => {
 			const n = live(node, "setText");
-			const was = scene.isDirty();
+			const was = wasDirty();
 			n.ref.setText(s);
 			woke(was);
 		},
 		setAttr: (node: HostNode, name: string, value: string): void => {
 			const n = live(node, "setAttr");
-			const was = scene.isDirty();
+			const was = wasDirty();
 			if (name === "style") {
 				n.flex = parseFlexStyle(value);
 			} else if (name === "value") {
@@ -497,7 +515,7 @@ export function createVoidHostWith(scene: Scene2D, font: FontId): VoidHost {
 		},
 		setStyle: (node: HostNode, style: Style): void => {
 			const n = live(node, "setStyle");
-			const was = scene.isDirty();
+			const was = wasDirty();
 			n.flex = asFlexStyle(style);
 			applyPaint(n, style);
 			const f = fieldOf(n);
@@ -516,7 +534,7 @@ export function createVoidHostWith(scene: Scene2D, font: FontId): VoidHost {
 			const p = live(parent, "append");
 			const c = live(child, "append");
 			refuseCycle(p, c, "append");
-			const was = scene.isDirty();
+			const was = wasDirty();
 			unlink(c, p);
 			p.ref.addChild(c.ref);
 			c.parent = p;
@@ -527,7 +545,7 @@ export function createVoidHostWith(scene: Scene2D, font: FontId): VoidHost {
 			const p = live(parent, "insertBefore");
 			const n = live(node, "insertBefore");
 			refuseCycle(p, n, "insertBefore");
-			const was = scene.isDirty();
+			const was = wasDirty();
 			if (before === null) {
 				unlink(n, p);
 				p.ref.addChild(n.ref);
@@ -559,7 +577,7 @@ export function createVoidHostWith(scene: Scene2D, font: FontId): VoidHost {
 			const n = live(node, "removeChild");
 			const idx = p.children.indexOf(n);
 			if (idx < 0) { throw new Error("removeChild: the node is not a child of the parent"); }
-			const was = scene.isDirty();
+			const was = wasDirty();
 			p.children.splice(idx, 1);
 			n.parent = null;
 			if (focusedNode !== null && within(focusedNode as VoidNode, n)) { focus(null); }
@@ -587,7 +605,7 @@ export function createVoidHostWith(scene: Scene2D, font: FontId): VoidHost {
 		scrollTo: (node: HostNode, x: number, y: number, animated: boolean): void => {
 			const n = live(node, "scrollTo");
 			if (!n.scrolls) { throw new Error("void host: scrollTo needs a scroll view, and this node is not one"); }
-			const was = scene.isDirty();
+			const was = wasDirty();
 			n.ref.scrollNodeTo(x as float32, y as float32);
 			woke(was);
 		},
@@ -651,7 +669,7 @@ export function createVoidHostWith(scene: Scene2D, font: FontId): VoidHost {
 
 	const setWindowFocus = (focused: boolean): void => {
 		if (focused === windowFocused) { return; }
-		const was = scene.isDirty();
+		const was = wasDirty();
 		windowFocused = focused;
 		if (focusedNode === null) { return; }
 		fire(focusedNode as VoidNode, focused ? "onFocus" : "onBlur", neonEvent(focused ? "focus" : "blur"));
