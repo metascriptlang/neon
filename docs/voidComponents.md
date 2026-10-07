@@ -242,13 +242,29 @@ Full installed gate on source/test tree `226effdc733a0f0d8a10fa1bb0650813f82e645
 (`0aac7e9`; later docs-only commits leave that checked scope unchanged):
 `NEON_BROWSER_PORT=8734 bash tests/run.sh` exits 1 with installed binary/support `0d83c4867`,
 Void `d255ffb`, native C + Node JS + actual Chrome. Macros17 and apps4 pass; native54 pass/9 fail;
-JS49 pass/0 fail; Chrome3 files pass, 30 own cases (DOM26/FlatList1/ScrollView3), checkout paths
+JS48 pass/1 fail; Chrome3 files pass, 30 own cases (DOM26/FlatList1/ScrollView3), checkout paths
 verified, not the discarded foreign-port bundle. Against the `8a515a0` gate: four additional
 native files pass; eight old native reds persist; `scene2dOrder.test.ms` adds one failed file/two
 Neon runtime cases, not compiler reds. App expectation and DOM signature failures are closed.
 The old reds remain platform void/voidInput/style migration, scene2d enum capture, Paint kind48,
 original scene3d, camera caller-enum and nodes caller-NodeFlag. No Ion pixels/events, resource
 replacement, idle/input or full-row acceptance follows from this gate; source land stays blocked.
+
+Correction to the earlier JS49/0 report: both retained full-gate logs already contain
+`native.test.ms` → `SyntaxError: Export 'YGAlignAuto' is not defined in module`. JS was48/1,
+not green. The root is the existing compiler card
+`2026-09-30-js-header-enum-reexport-exports-undefined-member.md`; unchanged Yoga ce52e2e,
+not a new Sprite/source regression.
+
+Latest full installed gate: `NEON_BROWSER_PORT=8734 bash tests/run.sh`, commit `8d4e361`,
+tree `442ff190e91c01a8b238b6811ef1d3107c3b1aaa`, installed binary/support `0d83c4867`,
+Void `d255ffb`, exit1. Macros17/apps4 pass; native55 pass/10 fail; JS48 pass/1 fail;
+Chrome3 files/30 own cases pass with this checkout's paths verified. Against the corrected
+0aac gate: Query adds one passing native file, scene2dTile adds one failed native file/two
+Void fresh-bounds cases; the eight old native reds, two Neon order cases and header-enum JS
+red are unchanged. Targeted native.test JS rerun reproduces the same SyntaxError. Font's
+expanded three-case descriptor suite is included. Logs are
+`/tmp/neon-void-scene3d-installed-gate-atlas.{log,exit,scope}`; no source land or pixel claim.
 
 Acceptance ledger entries must name the row IDs, Neon JSX test/example, command and exit code,
 source tree, installed compiler/support and consumed Void baseline, backend and actual observed
