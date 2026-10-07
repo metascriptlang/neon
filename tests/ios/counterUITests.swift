@@ -380,4 +380,59 @@ final class ScrollMatrixUITests: XCTestCase {
         XCTAssertEqual(launched, pid())
         report("horizontal-again")
     }
+
+    private func keyboard(_ shown: Bool) {
+        let want = "keyboard " + (shown ? "shown" : "hidden")
+        let predicate = NSPredicate { [self] _, _ in label(startingWith: "keyboard ").hasPrefix(want) && app.keyboards.count == (shown ? 1 : 0) }
+        XCTAssertEqual(XCTWaiter.wait(for: [expectation(for: predicate, evaluatedWith: app)], timeout: 10), .completed,
+            "expected \(want); app says \(label(startingWith: "keyboard ")), keyboards \(app.keyboards.count)")
+    }
+
+    func testKeyboardModes() {
+        XCUIDevice.shared.orientation = .portrait
+        app.launch()
+        XCTAssertTrue(app.staticTexts["axis horizontal"].waitForExistence(timeout: 15))
+        app.staticTexts["toggle axis"].tap()
+        XCTAssertTrue(app.staticTexts["axis vertical"].waitForExistence(timeout: 10))
+        let input = app.textFields.firstMatch
+        let one = app.staticTexts["card 1"]
+
+        input.tap()
+        keyboard(true)
+        XCTAssertTrue(label(startingWith: "keyboard ").hasSuffix("focus yes"))
+        report("keyboard-shown")
+        let start = one.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.3))
+        start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: 0, dy: -120)))
+        keyboard(false)
+        report("keyboard-dragged")
+
+        let pull = one.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.3))
+        pull.press(forDuration: 0.05, thenDragTo: pull.withOffset(CGVector(dx: 0, dy: 200)))
+        settle()
+        let before = label(startingWith: "pressed ")
+        input.tap()
+        keyboard(true)
+        one.tap()
+        keyboard(false)
+        XCTAssertEqual(label(startingWith: "pressed "), before, "with never, the first tap only dismisses the keyboard")
+        report("taps-never")
+
+        app.staticTexts["taps never"].tap()
+        XCTAssertTrue(app.staticTexts["taps always"].waitForExistence(timeout: 10))
+        input.tap()
+        keyboard(true)
+        one.tap()
+        XCTAssertTrue(app.staticTexts["pressed card 1"].waitForExistence(timeout: 10))
+        keyboard(true)
+        report("taps-always")
+
+        app.staticTexts["dismiss on-drag"].tap()
+        XCTAssertTrue(app.staticTexts["dismiss none"].waitForExistence(timeout: 10))
+        keyboard(true)
+        let again = one.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.3))
+        again.press(forDuration: 0.05, thenDragTo: again.withOffset(CGVector(dx: 0, dy: -120)))
+        settle()
+        keyboard(true)
+        report("dismiss-none")
+    }
 }
