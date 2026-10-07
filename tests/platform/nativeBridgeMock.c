@@ -25,6 +25,7 @@ typedef struct MockView {
 	char propValues[24][512];
 	int propCount;
 	float background[4];
+	char *displayList;
 } MockView;
 
 static msClosure s_mount;
@@ -135,6 +136,7 @@ void *niControlCreate(const char *kind) {
 	if (strcmp(kind, "datetimepicker") == 0) return createControl(8);
 	if (strcmp(kind, "webview") == 0) return createControl(10);
 	if (strcmp(kind, "video") == 0) return createControl(11);
+	if (strcmp(kind, "svg") == 0) return createControl(9);
 	fprintf(stderr, "mock bridge: niControlCreate has no control \"%s\"\n", kind);
 	abort();
 }
@@ -155,6 +157,10 @@ void niSetProp(void *view, const char *name, const char *value) {
 		snprintf(v->propNames[i], sizeof v->propNames[i], "%s", name);
 	}
 	snprintf(v->propValues[i], sizeof v->propValues[i], "%s", value);
+	if (strcmp(name, "displayList") == 0) {
+		free(v->displayList);
+		v->displayList = strdup(value);
+	}
 	if (strcmp(name, "statusBarTranslucent") == 0) g_translucent = strcmp(value, "true") == 0;
 	if (strcmp(name, "textSpans") == 0) {
 		// The label shows the runs' texts in order; each record starts with its text.
@@ -708,4 +714,13 @@ int32_t nmHasLabel(const char *text) {
 		if (!v->released && v->size > 0 && strcmp(v->text, text) == 0) return 1;
 	}
 	return 0;
+}
+
+// The whole display list of the live <Svg> view with this tag, or of the first live one for 0.
+const char *nmDisplayList(int32_t tag) {
+	for (MockView *v = g_views; v; v = v->next) {
+		if (v->released || v->control != 9 || (tag && v->tag != tag)) continue;
+		return v->displayList ? v->displayList : "<unset>";
+	}
+	return "<no svg view>";
 }

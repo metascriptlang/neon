@@ -58,6 +58,8 @@ void *niModalCreate(void);
 // Controls added after the first four go through one create call keyed by the wire tag:
 // "slider", "picker", "datetimepicker"; the media views "webview" and "video" are created the
 // same way and take a `command` prop ("name\x1fargument") for their imperative methods.
+// "slider", "picker", "datetimepicker", and "svg" (an <Svg>: draws its `displayList` prop,
+// grammar in src/components/svg/scene.ms encodeScene, sized by layout only).
 void *niControlCreate(const char *kind);
 void  niControlSetTag(void *control, int32_t tag);
 void  niSetProp(void *view, const char *name, const char *value);

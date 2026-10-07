@@ -14,6 +14,7 @@ export enum NativeElementKind {
 	Modal,
 	Control,
 	Media,
+	Vector,
 }
 
 interface NativeEventRoute {
@@ -55,6 +56,7 @@ export function nativeElementKind(tag: string): NativeElementKind {
 	if (tag === "modal") { return NativeElementKind.Modal; }
 	if (tag === "slider" || tag === "picker" || tag === "datetimepicker") { return NativeElementKind.Control; }
 	if (tag === "webview" || tag === "video") { return NativeElementKind.Media; }
+	if (tag === "svg") { return NativeElementKind.Vector; }
 	return NativeElementKind.View;
 }
 

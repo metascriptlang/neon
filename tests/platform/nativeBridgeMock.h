@@ -61,3 +61,4 @@ int32_t nmTagWithProp(const char *name, const char *value);
 int32_t nmHasLabel(const char *text);
 void nmSystemInsets(float top, float right, float bottom, float left);
 const char *nmLabelProp(const char *text, const char *name);
+const char *nmDisplayList(int32_t tag);
