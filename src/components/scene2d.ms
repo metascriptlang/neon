@@ -16,6 +16,8 @@ import {
 	tileGroup,
 	setTiles,
 	setRange,
+	scaleGrid,
+	setContent,
 	group,
 	rect,
 	sprite,
@@ -85,6 +87,16 @@ interface SpriteProps extends NodeProps {
 	width?: Accessor<float32> | null;
 	height?: Accessor<float32> | null;
 	imageStyle?: Accessor<ImageStyle> | null;
+}
+
+interface ScaleGridProps extends NodeProps {
+	tile: Accessor<Tile>;
+	width?: Accessor<float32> | null;
+	height?: Accessor<float32> | null;
+	borderL: Accessor<float32>;
+	borderT: Accessor<float32>;
+	borderR: Accessor<float32>;
+	borderB: Accessor<float32>;
 }
 
 interface TileGroupProps extends NodeProps {
@@ -300,6 +312,25 @@ export function Sprite(props: SpriteProps): NeonNode {
 				createEffect((): void => { node.setImageStyle(style()); });
 			}
 		});
+}
+
+export function ScaleGrid(props: ScaleGridProps): NeonNode {
+	return renderNode("ScaleGrid", props, (scene: VoidScene2D): NodeRef => scene.scaleGrid(
+		props.tile(), props.borderL(), props.borderT(), props.borderR(), props.borderB(),
+	), (node: NodeRef): void => {
+		createEffect((): void => {
+			const tile = props.tile();
+			const width: float32 = props.width === null ? tile.w :
+				(props.width as () => float32)();
+			const height: float32 = props.height === null ? tile.h :
+				(props.height as () => float32)();
+			node.setContent({
+				w: width, h: height, tile: tile,
+				borderL: props.borderL(), borderT: props.borderT(),
+				borderR: props.borderR(), borderB: props.borderB(),
+			});
+		});
+	});
 }
 
 export function Mask(props: MaskProps): NeonNode {

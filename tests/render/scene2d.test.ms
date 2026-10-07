@@ -8,7 +8,7 @@ import {
 import { NeonNode } from "../../src/render/node";
 import { Void, View, Text } from "../../src/components/primitives";
 import {
-	Scene2D, Group, Rect, Sprite, Mask, Label, TileGroup,
+	Scene2D, Group, Rect, Sprite, Mask, Label, TileGroup, ScaleGrid,
 } from "../../src/components/scene2d";
 import { Scene3D } from "../../src/components/scene3d";
 import { voidScope as Scope, VoidSpace } from "../../src/render/voidScope";
@@ -18,7 +18,7 @@ import {
 	TileCell, ALL_TILES,
 } from "../../../void/src/void2d/node";
 import {
-	rgba, whiteTile, camera, glowFilter, Smooth, ScaleMode, Bounds2D,
+	rgba, whiteTile, camera, glowFilter, Smooth, ScaleMode, Bounds2D, Tile,
 } from "../../../void/src/void2d/types";
 import { sceneViewMatrix } from "../../../void/src/void2d/scene";
 import { BlendMode } from "../../../void/src/gpu/state";
@@ -359,6 +359,60 @@ test "TileGroup defaults copy caller cells and preserve the ordinary scene paren
 	assert !node.isLive();
 	const invalid = mountError(element(<TileGroup cells={[]} />));
 	assert invalid.includes("TileGroup: mount inside Scene2D within Void");
+}
+
+test "ScaleGrid preserves its tile and borders through reactive independent dimensions" {
+	const nodes: NodeRef[] = [];
+	const [tile, setTile] = createSignal<Tile>(whiteTile(32.0, 16.0));
+	const [width, setWidth] = createSignal<float32>(64.0);
+	const [border, setBorder] = createSignal<float32>(4.0);
+	const root = mockNode("root");
+	const dispose = render(element(<Void><Scene2D><Group>
+		<ScaleGrid tile={tile()} width={width()}
+			borderL={border()} borderT={2.0} borderR={6.0} borderB={3.0}
+			ref={(value: NodeRef): void => { nodes.push(value); }} />
+		<ScaleGrid tile={tile()} borderL={1.0} borderT={1.0} borderR={1.0} borderB={1.0}
+			ref={(value: NodeRef): void => { nodes.push(value); }} />
+	</Group></Scene2D></Void>), mockHost(), root as unknown as HostNode);
+	assert nodes[0].kind() === DrawKind.ScaleGrid;
+	assert nodes[0].content().w === 64.0 && nodes[0].content().h === 16.0;
+	assert nodes[0].content().borderL === 4.0 && nodes[0].content().borderR === 6.0;
+	assert nodes[0].content().borderT === 2.0 && nodes[0].content().borderB === 3.0;
+	setWidth(80.0); setBorder(9.0); setTile(whiteTile(48.0, 24.0));
+	assert nodes[0].content().w === 80.0 && nodes[0].content().h === 24.0;
+	assert nodes[0].content().tile.w === 48.0 && nodes[0].content().tile.h === 24.0;
+	assert nodes[0].content().borderL === 9.0 && nodes[0].content().borderR === 6.0;
+	assert nodes[1].content().w === 48.0 && nodes[1].content().h === 24.0;
+	const firstParent = nodes[0].parent();
+	const secondParent = nodes[1].parent();
+	assert firstParent !== null && secondParent !== null &&
+		firstParent.id.index === secondParent.id.index;
+	dispose(); setWidth(20.0); setBorder(1.0); setTile(whiteTile(10.0, 10.0));
+	assert !nodes[0].isLive() && !nodes[1].isLive();
+}
+
+test "ScaleGrid structural remount reads current values and refuses a foreign parent" {
+	const nodes: NodeRef[] = [];
+	const [shown, setShown] = createSignal(true);
+	const [height, setHeight] = createSignal<float32>(40.0);
+	const root = mockNode("root");
+	const dispose = render(element(<Void><Scene2D>
+		{Show({ when: () => shown(), children: element(
+			<ScaleGrid tile={whiteTile(20.0, 10.0)} height={height()}
+				borderL={2.0} borderT={1.0} borderR={2.0} borderB={1.0}
+				ref={(value: NodeRef): void => { nodes.push(value); }} />
+		) })}
+	</Scene2D></Void>), mockHost(), root as unknown as HostNode);
+	setShown(false); setHeight(60.0); setShown(true);
+	assert !nodes[0].isLive() && nodes[1].content().h === 60.0;
+	assert nodes[1].content().w === 20.0;
+	dispose(); setHeight(80.0);
+	assert !nodes[1].isLive();
+	const invalid = mountError(element(
+		<ScaleGrid tile={whiteTile(1.0, 1.0)}
+			borderL={0.0} borderT={0.0} borderR={0.0} borderB={0.0} />
+	));
+	assert invalid.includes("ScaleGrid: mount inside Scene2D within Void");
 }
 
 test "Scene2D mounts real render nodes without creating host elements" {
