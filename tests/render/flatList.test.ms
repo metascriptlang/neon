@@ -51,7 +51,7 @@ function content(root: MockNode): MockNode {
 
 function rowLabel(k: MockNode): MockNode | null {
 	if (k.tag === "text") { return k; }
-	if (k.children.length > 0 && k.children[0].tag === "text") { return k.children[0]; }
+	if (k.children.length > 0) { return rowLabel(k.children[0]); }
 	return null;
 }
 
@@ -897,5 +897,88 @@ test "a grid reports one viewability token per item, indexed in the data" {
 		onViewableItemsChanged={viewabilityLog(calls)} renderItem={cellText} />), mockHost(), root as unknown as HostNode);
 	fireEventWith(scrollView(root), "onScroll", scrollEvent(50, 100, 200));
 	assert calls.length === 1 && calls[0] === "k2@2+ k3@3+ k4@4+ k5@5+ / k2@2+ k3@3+ k4@4+ k5@5+", calls.join("|");
+	dispose();
+}
+
+test "does not adjust render area until content area layed out" {
+	const root: MockNode = mockNode("root");
+	const dispose = render(element(<FlatList data={items(20)} getItemLayout={tall10} initialNumToRender={5} windowSize={10}
+		updateCellsBatchingPeriod={0} renderItem={row} />), mockHost(), root as unknown as HostNode);
+	fireEventWith(scrollView(root), "onLayout", layoutEvent(50));
+	await performAllBatches(root);
+	assert shape(root) === "c0-4 sp150", shape(root);
+	dispose();
+}
+
+test "renders empty list after batch" {
+	const root: MockNode = mockNode("root");
+	const dispose = render(element(<FlatList data={items(0)} renderItem={row} />), mockHost(), root as unknown as HostNode);
+	layOut(root, 50, 200);
+	await performAllBatches(root);
+	assert shape(root) === "", shape(root);
+	dispose();
+}
+
+test "retains initial render region when an item is appended" {
+	const root: MockNode = mockNode("root");
+	const [data, setData] = createSignal<Item[]>(items(10));
+	const dispose = render(element(<FlatList data={data()} getItemLayout={tall10} initialNumToRender={3} renderItem={row} />),
+		mockHost(), root as unknown as HostNode);
+	setData(items(11));
+	assert shape(root) === "c0-2 sp80", shape(root);
+	dispose();
+}
+
+test "constrains batch render region when an item is removed" {
+	const root: MockNode = mockNode("root");
+	const [data, setData] = createSignal<Item[]>(items(10));
+	const dispose = render(element(<FlatList data={data()} getItemLayout={tall10} initialNumToRender={1} maxToRenderPerBatch={1}
+		updateCellsBatchingPeriod={0} renderItem={row} />), mockHost(), root as unknown as HostNode);
+	layOut(root, 50, 100);
+	await performAllBatches(root);
+	setData(items(5));
+	assert shape(root) === "c0-4", shape(root);
+	dispose();
+}
+
+function stickyEvery3(count: number): int32[] {
+	const out: int32[] = [];
+	for (let i = 0; i < count; i += 3) { out.push(i as int32); }
+	return out;
+}
+
+test "renders sticky headers in viewport on batched render" {
+	const root: MockNode = mockNode("root");
+	const dispose = render(element(<FlatList data={items(10)} getItemLayout={tall10} initialNumToRender={1} windowSize={1}
+		stickyHeaderIndices={stickyEvery3(10)} updateCellsBatchingPeriod={0} renderItem={row} />), mockHost(), root as unknown as HostNode);
+	layOut(root, 50, 100);
+	await performAllBatches(root);
+	assert shape(root) === "c0-4 sp50", shape(root);
+	dispose();
+}
+
+test "keeps sticky headers above viewport visualized" {
+	const root: MockNode = mockNode("root");
+	const dispose = render(element(<FlatList data={items(20)} getItemLayout={tall10} initialNumToRender={1} windowSize={1}
+		stickyHeaderIndices={stickyEvery3(20)} updateCellsBatchingPeriod={0} renderItem={row} />), mockHost(), root as unknown as HostNode);
+	layOut(root, 50, 200);
+	await performAllBatches(root);
+	fireEventWith(scrollView(root), "onScroll", scrollEvent(150, 50, 200));
+	await performAllBatches(root);
+	assert shape(root) === "c0 sp110 c12 sp10 c14-19", shape(root);
+	dispose();
+}
+
+test "unmounts sticky headers moved below viewport" {
+	const root: MockNode = mockNode("root");
+	const dispose = render(element(<FlatList data={items(20)} getItemLayout={tall10} initialNumToRender={1} windowSize={1}
+		stickyHeaderIndices={stickyEvery3(20)} updateCellsBatchingPeriod={0} renderItem={row} />), mockHost(), root as unknown as HostNode);
+	layOut(root, 50, 200);
+	await performAllBatches(root);
+	fireEventWith(scrollView(root), "onScroll", scrollEvent(150, 50, 200));
+	await performAllBatches(root);
+	fireEventWith(scrollView(root), "onScroll", scrollEvent(0, 50, 200));
+	await performAllBatches(root);
+	assert shape(root) === "c0-4 sp150", shape(root);
 	dispose();
 }
