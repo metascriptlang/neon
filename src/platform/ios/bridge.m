@@ -471,6 +471,11 @@ static UIView *focusedInput(UIView *view) {
 - (void)viewDidLoad {
 	[super viewDidLoad];
 	g_dark = self.traitCollection.userInterfaceStyle == UIUserInterfaceStyleDark ? 1 : 0;
+	if (@available(iOS 17.0, *)) {
+		[self registerForTraitChanges:@[UITraitUserInterfaceStyle.class] withHandler:^(__kindof id<UITraitEnvironment> env, UITraitCollection *previous) {
+			publishEnvironment(g_keyboardH, env.traitCollection.userInterfaceStyle == UIUserInterfaceStyleDark ? 1 : 0);
+		}];
+	}
 	[[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(neonKeyboard:) name:UIKeyboardWillChangeFrameNotification object:nil];
 	[[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(neonKeyboardHide:) name:UIKeyboardWillHideNotification object:nil];
 	self.view.backgroundColor = [UIColor blackColor];
