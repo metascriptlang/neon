@@ -12,6 +12,7 @@ export enum NativeElementKind {
 	Indicator,
 	Image,
 	Modal,
+	Control,
 }
 
 interface NativeEventRoute {
@@ -51,6 +52,7 @@ export function nativeElementKind(tag: string): NativeElementKind {
 	if (tag === "activityindicator") { return NativeElementKind.Indicator; }
 	if (tag === "image") { return NativeElementKind.Image; }
 	if (tag === "modal") { return NativeElementKind.Modal; }
+	if (tag === "slider" || tag === "picker" || tag === "datetimepicker") { return NativeElementKind.Control; }
 	return NativeElementKind.View;
 }
 
@@ -338,6 +340,7 @@ export function createNativeEventRegistry(): NativeEventRegistry {
 			5 => "load",
 			6 => "error",
 			7 => "requestclose",
+			8 => "slidingcomplete",
 			_ => "",
 		};
 		if (type === "") { throw `native host: control phase ${phase} has no event`; }

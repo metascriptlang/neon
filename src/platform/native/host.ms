@@ -36,7 +36,7 @@ import {
 	niScrollShift, niScrollOffsetX, niScrollOffsetY,
 	niLastScrollTag, niLastScrollPhase, niLastScrollX, niLastScrollY, niLastScrollWidth, niLastScrollHeight,
 	niLastScrollContentWidth, niLastScrollContentHeight,
-	niInputCreate, niSwitchCreate, niIndicatorCreate, niImageCreate, niControlSetTag, niSetProp, niSetFocused,
+	niInputCreate, niSwitchCreate, niIndicatorCreate, niImageCreate, niControlCreate, niControlSetTag, niSetProp, niSetFocused,
 	niModalCreate, niTextAreaCreate,
 	niLastControlTag, niLastControlPhase, niLastControlValue, niLastControlWidth, niLastControlHeight,
 	niKeyboardHeight, niColorScheme, niRequestFrame,
@@ -605,6 +605,10 @@ function intrinsicFlex(n: NativeNode, flex: FlexStyle): FlexStyle {
 	if (n.isInput && flex.height === null) {
 		niMeasureText(n.view, niScreenWidth());
 		flex.height = niMeasuredH();
+	} else if (n.control === NativeElementKind.Control && flex.height === null) {
+		niMeasureText(n.view, niScreenWidth());
+		flex.height = niMeasuredH();
+		if (flex.width === null && niMeasuredW() > 0) { flex.width = niMeasuredW(); }
 	} else if (n.control === NativeElementKind.Switch && (flex.width === null || flex.height === null)) {
 		niMeasureText(n.view, niScreenWidth());
 		if (flex.width === null) { flex.width = niMeasuredW(); }
@@ -709,6 +713,8 @@ export function createNativeHost(): NativeHost {
 				n = nativeNode(niImageCreate(), false, false);
 			} else if (kind === NativeElementKind.Modal) {
 				n = nativeNode(niModalCreate(), false, false);
+			} else if (kind === NativeElementKind.Control) {
+				n = nativeNode(niControlCreate(tag), false, false);
 			} else {
 				n = nativeNode(niViewCreate(), false, false);
 			}

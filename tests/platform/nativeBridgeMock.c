@@ -21,8 +21,8 @@ typedef struct MockView {
 	int isInput;
 	int control;
 	int focused;
-	char propNames[16][40];
-	char propValues[16][128];
+	char propNames[24][40];
+	char propValues[24][512];
 	int propCount;
 	float background[4];
 } MockView;
@@ -127,6 +127,13 @@ void *niSwitchCreate(void) { return createControl(2); }
 void *niIndicatorCreate(void) { return createControl(3); }
 void *niImageCreate(void) { return createControl(4); }
 void *niModalCreate(void) { return createControl(5); }
+void *niControlCreate(const char *kind) {
+	if (strcmp(kind, "slider") == 0) return createControl(6);
+	if (strcmp(kind, "picker") == 0) return createControl(7);
+	if (strcmp(kind, "datetimepicker") == 0) return createControl(8);
+	fprintf(stderr, "mock bridge: niControlCreate has no control \"%s\"\n", kind);
+	abort();
+}
 
 void niControlSetTag(void *view, int32_t tag) {
 	MockView *v = live(view, "niControlSetTag");
@@ -139,7 +146,7 @@ void niSetProp(void *view, const char *name, const char *value) {
 	int i = 0;
 	while (i < v->propCount && strcmp(v->propNames[i], name) != 0) i++;
 	if (i == v->propCount) {
-		if (v->propCount == 16) { fprintf(stderr, "mock bridge: too many props\n"); abort(); }
+		if (v->propCount == 24) { fprintf(stderr, "mock bridge: too many props\n"); abort(); }
 		v->propCount++;
 		snprintf(v->propNames[i], sizeof v->propNames[i], "%s", name);
 	}
@@ -323,6 +330,9 @@ void niSetFont(void *label, float size, int bold) {
 void niMeasureText(void *label, float maxWidth) {
 	MockView *v = live(label, "niMeasureText");
 	if (v->control == 2) { g_measuredW = 51; g_measuredH = 31; return; }
+	if (v->control == 6) { g_measuredW = 0; g_measuredH = 31; return; }
+	if (v->control == 7) { g_measuredW = 0; g_measuredH = 44; return; }
+	if (v->control == 8) { g_measuredW = 120; g_measuredH = 36; return; }
 	float w = (float)strlen(v->text) * v->size * 0.5f;
 	int lines = 1;
 	while (maxWidth > 0 && w > maxWidth * lines) lines++;
