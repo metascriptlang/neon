@@ -60,6 +60,16 @@ def wait_foreground(predicate, what, seconds=10):
     raise LaneError("%s never took focus; focus is %r" % (what, current))
 
 
+def back_out_of_other_app(what, presses=4):
+    for _ in range(presses):
+        adb("shell", "input", "keyevent", "KEYCODE_BACK")
+        try:
+            return wait_foreground(ours, what, 4)
+        except LaneError:
+            pass
+    return wait_foreground(ours, what, 4)
+
+
 def screencap(name):
     with open(os.path.join(counter.results, "screenshots", "apis-" + name + ".png"), "wb") as out:
         out.write(subprocess.run(["adb", "exec-out", "screencap", "-p"], capture_output=True).stdout)
@@ -125,7 +135,7 @@ def lane():
     if not vibrations:
         raise LaneError("the vibrator service has no record of %s" % PACKAGE)
 
-    scroll_list.tap(texts, "type here")
+    tap_node("type here")
     window, texts = wait_for("reader off keyboard shown")
     scroll_list.tap(texts, "dismiss")
     window, texts = wait_for("reader off keyboard hidden")
@@ -147,8 +157,7 @@ def lane():
     opened = wait_foreground(lambda w: not ours(w) and w != "", "the tel: handler")
     print("NEON_ANDROID apis-url focus=%r" % opened)
     screencap("url-handler")
-    adb("shell", "input", "keyevent", "KEYCODE_BACK")
-    wait_foreground(ours, "the app after the tel: handler", 15)
+    back_out_of_other_app("the app after the tel: handler")
     window, texts = wait_for("url opened")
     shot("intents", launched)
 
@@ -169,17 +178,23 @@ def lane():
         raise LaneError("the consumed back press left the app: %r" % foreground())
     shot("back-consumed", launched)
     history = scroll_list.label(texts, "state ")
+    adb("logcat", "-c", "-b", "events")
     adb("shell", "input", "keyevent", "KEYCODE_BACK")
     wait_foreground(lambda w: not ours(w), "the default back")
     time.sleep(1)
+    finished = any("wm_finish_activity" in line and PACKAGE in line for line in adb("logcat", "-d", "-b", "events").splitlines())
     adb("shell", "monkey", "-p", PACKAGE, "-c", "android.intent.category.LAUNCHER", "1")
     wait_foreground(ours, "the app after the default back")
     window, texts = wait_for("back presses ")
     after = scroll_list.label(texts, "state ")
     presses = scroll_list.label(texts, "back presses ")
-    print("NEON_ANDROID apis-back-default pid=%s launched=%s %r state=%r" % (counter.pid(), launched, presses, after))
-    if presses != "back presses 2" or not after.startswith(history + ">background>active"):
-        raise LaneError("the default back should move the task back and keep the app: %r %r after %r" % (presses, after, history))
+    print("NEON_ANDROID apis-back-default pid=%s launched=%s activity %s %r state=%r" % (counter.pid(), launched, "finished" if finished else "moved back", presses, after))
+    if counter.pid() != launched:
+        raise LaneError("the default back killed the process: %s -> %s" % (launched, counter.pid()))
+    if finished and presses != "back presses 0":
+        raise LaneError("the platform finished the activity, so the relaunch must mount the app afresh: %r %r" % (presses, after))
+    if not finished and (presses != "back presses 2" or not after.startswith(history + ">background>active")):
+        raise LaneError("the task moved back, so the app must keep its state: %r %r after %r" % (presses, after, history))
     shot("back-default", launched)
 
 
