@@ -61,6 +61,13 @@ export interface ScrollToOffsetOptions {
 	animated?: boolean | null;
 }
 
+export interface ScrollToItemOptions {
+	item: unknown;
+	animated?: boolean | null;
+	viewPosition?: number | null;
+	viewOffset?: number | null;
+}
+
 export interface ScrollToEndOptions {
 	animated?: boolean | null;
 }
@@ -106,8 +113,9 @@ export class FlatListHandle {
 	private unmeasured: (index: number) => boolean;
 	private footerLength: () => number;
 	private interaction: () => void;
+	private indexOfItem: (item: unknown) => number;
 
-	constructor(scroll: ScrollViewHandle, frameOf: (index: number) => CellMetrics, offsetOf: (index: number) => number, count: () => number, viewport: () => number, horizontal: () => boolean, unmeasured: (index: number) => boolean, footerLength: () => number, interaction: () => void) {
+	constructor(scroll: ScrollViewHandle, frameOf: (index: number) => CellMetrics, offsetOf: (index: number) => number, count: () => number, viewport: () => number, horizontal: () => boolean, unmeasured: (index: number) => boolean, footerLength: () => number, interaction: () => void, indexOfItem: (item: unknown) => number) {
 		this.scroll = scroll;
 		this.frameOf = frameOf;
 		this.offsetOf = offsetOf;
@@ -117,6 +125,7 @@ export class FlatListHandle {
 		this.unmeasured = unmeasured;
 		this.footerLength = footerLength;
 		this.interaction = interaction;
+		this.indexOfItem = indexOfItem;
 	}
 
 	private moveTo(offset: number, animated: boolean): void {
@@ -141,6 +150,13 @@ export class FlatListHandle {
 		this.moveTo(offset, animated);
 	}
 
+	scrollToItem(params: ScrollToItemOptions): void {
+		const { animated = true, viewPosition = 0, viewOffset = 0 } = params;
+		const index = this.indexOfItem(params.item);
+		if (index < 0) { return; }
+		this.scrollToIndex({ index, animated, viewPosition, viewOffset });
+	}
+
 	recordInteraction(): void {
 		this.interaction();
 	}
@@ -162,7 +178,9 @@ export function VirtualizedList<T, D>(props: {
 	data: Accessor<D>;
 	getItem: (data: D, index: number) => T;
 	getItemCount: (data: D) => number;
-	renderItem: (info: ListRenderItemInfo<T>) => NeonNode;
+	renderItem?: ((info: ListRenderItemInfo<T>) => NeonNode) | null;
+	ListItemComponent?: ((info: ListRenderItemInfo<T>) => NeonNode) | null;
+	disableVirtualization?: Accessor<boolean> | null;
 	getItemLayout?: ((data: D, index: number) => ItemLayout) | null;
 	ListHeaderComponent?: NeonNode | null;
 	ListFooterComponent?: NeonNode | null;
@@ -214,7 +232,9 @@ export function listEngine<T, D>(props: {
 	data: Accessor<D>;
 	getItem: (data: D, index: number) => T;
 	getItemCount: (data: D) => number;
-	renderItem: (info: ListRenderItemInfo<T>) => NeonNode;
+	renderItem?: ((info: ListRenderItemInfo<T>) => NeonNode) | null;
+	ListItemComponent?: ((info: ListRenderItemInfo<T>) => NeonNode) | null;
+	disableVirtualization?: Accessor<boolean> | null;
 	getItemLayout?: ((data: D, index: number) => ItemLayout) | null;
 	ListHeaderComponent?: NeonNode | null;
 	ListFooterComponent?: NeonNode | null;
@@ -261,7 +281,16 @@ export function listEngine<T, D>(props: {
 }, who: string, columnsProp: Accessor<number> | null, columnWrapperStyle: Accessor<Style> | null): NeonNode {
 	const getItemLayout = props.getItemLayout;
 	const data = props.data;
-	const renderItem = props.renderItem;
+	const itemComponent = props.ListItemComponent;
+	const renderProp = props.renderItem;
+	if (itemComponent === null && renderProp === null) {
+		throw `${who}: Either ListItemComponent or renderItem props are required but none were found.`;
+	}
+	if (itemComponent !== null && renderProp !== null) {
+		console.warn(`${who}: Both ListItemComponent and renderItem props are present. ListItemComponent will take precedence over renderItem.`);
+	}
+	const renderItem = (itemComponent !== null ? itemComponent : renderProp) as (info: ListRenderItemInfo<T>) => NeonNode;
+	const virtualizationDisabled = (): boolean => props.disableVirtualization !== null && (props.disableVirtualization as Accessor<boolean>)();
 	const initialProp = props.initialNumToRender;
 	const initialIndexProp = props.initialScrollIndex;
 	const batchProp = props.maxToRenderPerBatch;
@@ -475,6 +504,12 @@ export function listEngine<T, D>(props: {
 		if (visibleLength <= 0.0 || metrics.getContentLength() <= 0.0) {
 			return cellsAroundViewport.last >= n ? constrainToItemCount(cellsAroundViewport, n) : cellsAroundViewport;
 		}
+		if (virtualizationDisabled()) {
+			const threshold = thresholdProp === null ? 2.0 : (thresholdProp as Accessor<number>)();
+			const distanceFromEnd = metrics.getContentLength() - visibleLength - offset;
+			const renderAhead = distanceFromEnd < threshold * visibleLength ? maxToRenderPerBatch() : 0;
+			return { first: 0, last: Math.min(cellsAroundViewport.last + renderAhead, n - 1) };
+		}
 		if (pendingScrollUpdateCount > 0) {
 			return cellsAroundViewport.last >= n ? constrainToItemCount(cellsAroundViewport, n) : cellsAroundViewport;
 		}
@@ -569,6 +604,7 @@ export function listEngine<T, D>(props: {
 		for (let r = 0; r < regions.length; r += 1) {
 			const region = regions[r];
 			if (region.isSpacer) {
+				if (virtualizationDisabled()) { continue; }
 				const highest = metrics.getHighestMeasuredCellIndex();
 				const lastIndex = r === regions.length - 1 && getItemLayout === null ? (region.last > highest ? highest : region.last) : region.last;
 				const first = metricsAt(region.first);
@@ -795,6 +831,13 @@ export function listEngine<T, D>(props: {
 			(): void => {
 				recordInteraction();
 				updateViewableItems();
+			},
+			(probe: unknown): number => {
+				const n = current === null ? 0 : itemTotal();
+				for (let i: int32 = 0; i < n; i += 1) {
+					if ((itemAt(i) as unknown) === probe) { return (i / columns) as number; }
+				}
+				return -1;
 			},
 		);
 		if (userRef !== null) { (userRef as (handle: FlatListHandle) => void)(handle as FlatListHandle); }

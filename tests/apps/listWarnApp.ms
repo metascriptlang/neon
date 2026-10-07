@@ -37,6 +37,10 @@ function main(): void {
 	const valid = mockNode("app");
 	render(element(<FlatList data={items(3)} initialScrollIndex={2} initialNumToRender={2}
 		getItemLayout={tall10} renderItem={row} />), mockHost(), valid as unknown as HostNode);
+	const both = mockNode("app");
+	render(element(<FlatList data={items(2)} getItemLayout={tall10} ListItemComponent={row} renderItem={row} />),
+		mockHost(), both as unknown as HostNode);
+	console.log(mockToString(both));
 	const empty = mockNode("app");
 	render(element(<FlatList data={items(0)} initialScrollIndex={4}
 		getItemLayout={tall10} renderItem={row} />), mockHost(), empty as unknown as HostNode);

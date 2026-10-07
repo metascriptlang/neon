@@ -110,6 +110,7 @@ export function VirtualizedSectionList<T, S>(props: {
 	ItemSeparatorComponent?: NeonNode | null;
 	SectionSeparatorComponent?: NeonNode | null;
 	stickySectionHeadersEnabled?: Accessor<boolean> | null;
+	disableVirtualization?: Accessor<boolean> | null;
 	onViewableItemsChanged?: ((info: SectionViewabilityInfo<T, S>) => void) | null;
 	ListHeaderComponent?: NeonNode | null;
 	ListFooterComponent?: NeonNode | null;
@@ -297,6 +298,7 @@ export function SectionList<T, S extends SectionBase<T>>(props: {
 	ItemSeparatorComponent?: NeonNode | null;
 	SectionSeparatorComponent?: NeonNode | null;
 	stickySectionHeadersEnabled?: Accessor<boolean> | null;
+	disableVirtualization?: Accessor<boolean> | null;
 	onViewableItemsChanged?: ((info: SectionViewabilityInfo<T, S>) => void) | null;
 	ListHeaderComponent?: NeonNode | null;
 	ListFooterComponent?: NeonNode | null;

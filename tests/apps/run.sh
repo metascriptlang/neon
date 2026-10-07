@@ -43,11 +43,12 @@ expect_known_red() {
 }
 
 warnings='initialScrollIndex "15" is not valid (list has 10 items)
-initialScrollIndex "-1" is not valid (list has 3 items)'
+initialScrollIndex "-1" is not valid (list has 3 items)
+FlatList: Both ListItemComponent and renderItem props are present. ListItemComponent will take precedence over renderItem.'
 
 expect_warnings() {
 	for target in "" "--target=js"; do
-		out=$(NO_COLOR=1 "$MSC" run $target "$1" 2>&1 >/dev/null | grep '^initialScrollIndex')
+		out=$(NO_COLOR=1 "$MSC" run $target "$1" 2>&1 >/dev/null | grep -E '^(initialScrollIndex|FlatList: Both)')
 		if [ "$out" = "$warnings" ]; then
 			echo "ok   ${target:-native} $1"
 		else

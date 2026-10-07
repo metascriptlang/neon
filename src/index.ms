@@ -36,7 +36,7 @@ export { For, ForList, Index, Show } from "./macros/ui/flow";
 export { View, Text, Pressable, TextInput, ScrollView, ScrollViewHandle, KeyboardDismissMode, KeyboardShouldPersistTaps } from "./components/primitives";
 export {
 	FlatList, FlatListHandle, ListRenderItemInfo, ItemLayout, EndReachedInfo, StartReachedInfo,
-	ScrollToIndexFailedInfo, ScrollToIndexOptions, ScrollToOffsetOptions, ScrollToEndOptions,
+	ScrollToIndexFailedInfo, ScrollToIndexOptions, ScrollToItemOptions, ScrollToOffsetOptions, ScrollToEndOptions,
 	ViewabilityConfig, ViewabilityConfigCallbackPair, ViewabilityInfo, ViewToken,
 } from "./components/flatList";
 export { VirtualizedList } from "./components/virtualizedList";

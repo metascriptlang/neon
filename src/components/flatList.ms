@@ -24,6 +24,7 @@ export {
 	ScrollToEndOptions,
 	ScrollToIndexFailedInfo,
 	ScrollToIndexOptions,
+	ScrollToItemOptions,
 	ScrollToOffsetOptions,
 	StartReachedInfo,
 	ViewabilityConfig,
@@ -34,7 +35,9 @@ export {
 
 export function FlatList<T>(props: {
 	data: Accessor<T[]>;
-	renderItem: (info: ListRenderItemInfo<T>) => NeonNode;
+	renderItem?: ((info: ListRenderItemInfo<T>) => NeonNode) | null;
+	ListItemComponent?: ((info: ListRenderItemInfo<T>) => NeonNode) | null;
+	disableVirtualization?: Accessor<boolean> | null;
 	getItemLayout?: ((data: T[], index: number) => ItemLayout) | null;
 	ListHeaderComponent?: NeonNode | null;
 	ListFooterComponent?: NeonNode | null;

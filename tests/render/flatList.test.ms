@@ -982,3 +982,76 @@ test "unmounts sticky headers moved below viewport" {
 	assert shape(root) === "c0-4 sp150", shape(root);
 	dispose();
 }
+
+test "scrollToItem scrolls to the row holding the same item, and does nothing for an equal copy" {
+	const root: MockNode = mockNode("root");
+	const handles: FlatListHandle[] = [];
+	const data = items(100);
+	const dispose = render(element(<FlatList data={data} getItemLayout={tall50}
+		ref={(h: FlatListHandle): void => { handles.push(h); }} renderItem={row} />), mockHost(), root as unknown as HostNode);
+	handles[0].scrollToItem({ item: data[40], animated: false });
+	assert scrolledTo(root) === "2000 false", scrolledTo(root);
+	handles[0].scrollToItem({ item: { id: "k10", n: 10 }, viewOffset: 5 });
+	assert scrolledTo(root) === "2000 false", "an equal copy is not the item: " + scrolledTo(root);
+	dispose();
+	const grid: MockNode = mockNode("root");
+	const gridHandles: FlatListHandle[] = [];
+	const disposeGrid = render(element(<FlatList data={data} numColumns={2} getItemLayout={tall50}
+		ref={(h: FlatListHandle): void => { gridHandles.push(h); }} renderItem={cellText} />), mockHost(), grid as unknown as HostNode);
+	gridHandles[0].scrollToItem({ item: data[41], animated: false });
+	assert scrolledTo(grid) === "1000 false", "item 41 sits in row 20: " + scrolledTo(grid);
+	disposeGrid();
+}
+
+function ListItem(info: ListRenderItemInfo<Item>): NeonNode {
+	return element(<Text>{"component " + info.item.id + "@" + info.index().toString()}</Text>);
+}
+
+test "FlatList renders ListItemComponent, which takes precedence over renderItem" {
+	const root: MockNode = mockNode("root");
+	const dispose = render(element(<FlatList data={items(2)} getItemLayout={tall10} ListItemComponent={ListItem} renderItem={row} />),
+		mockHost(), root as unknown as HostNode);
+	assert slotText(content(root)) === "component k0@0component k1@1", slotText(content(root));
+	dispose();
+	const missing = caught((): void => {
+		render(element(<FlatList data={items(2)} getItemLayout={tall10} />), mockHost(), mockNode("root") as unknown as HostNode);
+	});
+	assert missing.includes("FlatList: Either ListItemComponent or renderItem props are required but none were found."), missing;
+}
+
+test "renders initialNumToRender cells when virtualization disabled" {
+	const root: MockNode = mockNode("root");
+	const dispose = render(element(<FlatList data={items(10)} getItemLayout={tall10} initialNumToRender={5} initialScrollIndex={1}
+		disableVirtualization={true} renderItem={row} />), mockHost(), root as unknown as HostNode);
+	assert shape(root) === "c1-5", shape(root);
+	dispose();
+}
+
+test "renders no spacers up to initialScrollIndex on first render when virtualization disabled" {
+	const root: MockNode = mockNode("root");
+	const dispose = render(element(<FlatList data={items(10)} getItemLayout={tall10} initialNumToRender={2} initialScrollIndex={4}
+		maxToRenderPerBatch={1} disableVirtualization={true} renderItem={row} />), mockHost(), root as unknown as HostNode);
+	assert shape(root) === "c4-5", shape(root);
+	dispose();
+}
+
+test "renders items before initialScrollIndex on first batch tick when virtualization disabled" {
+	const root: MockNode = mockNode("root");
+	const dispose = render(element(<FlatList data={items(10)} getItemLayout={tall10} initialNumToRender={1} initialScrollIndex={5}
+		maxToRenderPerBatch={1} updateCellsBatchingPeriod={200} disableVirtualization={true} renderItem={row} />), mockHost(), root as unknown as HostNode);
+	layOut(root, 50, 100);
+	await sleepAsync(300);
+	assert shape(root) === "c0-6", shape(root);
+	dispose();
+}
+
+test "eventually renders all items when virtualization disabled" {
+	const root: MockNode = mockNode("root");
+	const dispose = render(element(<FlatList data={items(10)} getItemLayout={tall10} initialNumToRender={5} initialScrollIndex={1}
+		windowSize={1} maxToRenderPerBatch={10} updateCellsBatchingPeriod={0} disableVirtualization={true} renderItem={row} />),
+		mockHost(), root as unknown as HostNode);
+	layOut(root, 50, 100);
+	await performAllBatches(root);
+	assert shape(root) === "c0-9", shape(root);
+	dispose();
+}

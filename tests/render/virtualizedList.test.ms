@@ -167,3 +167,27 @@ test "returns the viewableItems correctly in the onViewableItemsChanged callback
 	assert calls.length === 2 && calls[1] === "i4+", "a data change resets the viewable indices: " + calls.join("|");
 	dispose();
 }
+
+function ItemComponent(info: ListRenderItemInfo<Item>): NeonNode {
+	return element(<Text>{info.item.key + "@" + info.index().toString()}</Text>);
+}
+
+test "renders simple list using ListItemComponent" {
+	const root: MockNode = mockNode("root");
+	const rows: Item[] = [{ key: "i1" }, { key: "i2" }, { key: "i3" }];
+	const dispose = render(element(<VirtualizedList data={rows} getItemLayout={tall800}
+		getItem={(d: Item[], index: number): Item => d[index]}
+		getItemCount={(d: Item[]): number => d.length}
+		ListItemComponent={ItemComponent} />), mockHost(), root as unknown as HostNode);
+	assert texts(root) === "i1@0;i2@1;i3@2;", texts(root);
+	dispose();
+}
+
+test "throws if no renderItem or ListItemComponent" {
+	const rows: Item[] = [{ key: "i1" }];
+	const msg = caught((): void => {
+		render(element(<VirtualizedList data={rows} getItem={(d: Item[], index: number): Item => d[index]}
+			getItemCount={(d: Item[]): number => d.length} />), mockHost(), mockNode("root") as unknown as HostNode);
+	});
+	assert msg.includes("VirtualizedList: Either ListItemComponent or renderItem props are required but none were found."), msg;
+}
