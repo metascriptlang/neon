@@ -1,3 +1,4 @@
+import html
 import os
 import re
 import subprocess
@@ -84,7 +85,7 @@ def dump():
     if not nodes:
         return None
     window = bounds(nodes[0][2])
-    texts = [(text, bounds(b)) for text, cls, b in nodes if cls == "android.widget.TextView"]
+    texts = [(html.unescape(text), bounds(b)) for text, cls, b in nodes if cls == "android.widget.TextView"]
     return window, texts
 
 
