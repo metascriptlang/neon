@@ -1,5 +1,6 @@
 import { createSignal } from "../../src/core/signal";
 import { Dispose } from "../../src/core/types";
+import { onCleanup } from "../../src/core/cleanup";
 import { NeonNode } from "../../src/render/node";
 import { NeonEvent } from "../../src/render/event";
 import { HostNode, MockNode, mockNode, mockHost, render } from "../../src/render/host";
@@ -8,6 +9,8 @@ import { dispatchHardwareBackPress } from "../../src/api/backHandler";
 import {
 	NavigationContainer,
 	NavigationContainerRef,
+	NavigationAction,
+	NavigationEventArg,
 	ScreenProps,
 	createNavigationContainerRef,
 	createStackNavigator,
@@ -77,6 +80,27 @@ function Sheet(props: ScreenProps<ItemParams>): NeonNode {
 	</View>;
 }
 
+let pending: NavigationAction | null = null;
+
+function Draft(props: ScreenProps<ItemParams>): NeonNode {
+	const navigation = props.navigation;
+	const [dirty, setDirty] = createSignal(true);
+	const stop = navigation.addListener("beforeRemove", (e: NavigationEventArg): void => {
+		if (!dirty()) { return; }
+		e.preventDefault();
+		pending = e.data.action;
+	});
+	onCleanup(stop);
+	return <View>
+		<Text>{dirty() ? "draft unsaved" : "draft saved"}</Text>
+		<Pressable accessibilityLabel="discard" onPress={(e: NeonEvent): void => {
+			const action = pending;
+			if (action !== null) { navigation.dispatch(action as NavigationAction); }
+		}}><Text>discard</Text></Pressable>
+		<Pressable accessibilityLabel="save draft" onPress={(e: NeonEvent): void => { setDirty(false); }}><Text>save</Text></Pressable>
+	</View>;
+}
+
 function mountStack(ref: NavigationContainerRef): MockNode {
 	if (unmount !== null) { (unmount as Dispose)(); }
 	const root: MockNode = mockNode("root");
@@ -86,6 +110,7 @@ function mountStack(ref: NavigationContainerRef): MockNode {
 			<Stack.Screen name="Detail" component={Detail} />
 			<Stack.Screen name="Edit" component={Edit} options={{ title: "Edit item" }} />
 			<Stack.Screen name="Sheet" component={Sheet} options={{ presentation: "transparentModal" }} />
+			<Stack.Screen name="Draft" component={Draft} />
 		</Stack.Navigator>
 	</NavigationContainer>, mockHost(), root as unknown as HostNode);
 	return root;
@@ -171,4 +196,22 @@ test "a transparent modal keeps the screen below it visible and has no header" {
 	assert visibleText(root) === "Items|home 0|+|open|sheet|x", visibleText(root);
 	press(root, "close sheet");
 	assert visibleText(root) === "Items|home 0|+|open", visibleText(root);
+}
+
+test "beforeRemove holds a screen with unsaved changes until its action is dispatched" {
+	pending = null;
+	const ref = createNavigationContainerRef();
+	const root = mountStack(ref);
+	ref.navigate("Draft");
+	press(root, "Back");
+	assert ref.currentPath() === "Draft", "the header back was prevented";
+	assert dispatchHardwareBackPress(), "hardware back is consumed while prevented";
+	assert ref.currentPath() === "Draft", ref.currentPath();
+	assert pending !== null && (pending as NavigationAction).type === "GO_BACK";
+	press(root, "discard");
+	assert ref.currentPath() === "Home", "the dispatched action leaves: " + ref.currentPath();
+	ref.navigate("Draft");
+	press(root, "save draft");
+	press(root, "Back");
+	assert ref.currentPath() === "Home", "a saved draft leaves at once";
 }

@@ -122,8 +122,10 @@ export function Header(props: {
 			<DrawerToggleButton tintColor={tint} />
 		</Show>
 		<Slot node={left} />
-		<Text style={{ flex: 1, color: titleColor(), fontSize: 17, fontWeight: "bold", paddingLeft: 8, paddingRight: 8, textAlign: align() }}
-			accessibilityRole="header">{props.title()}</Text>
+		<View style={{ flex: 1, flexDirection: "row", justifyContent: align() === "center" ? "center" : "flex-start", paddingLeft: 8, paddingRight: 8 }}>
+			<Text style={{ color: titleColor(), fontSize: 17, fontWeight: "bold", textAlign: align() }}
+				accessibilityRole="header">{props.title()}</Text>
+		</View>
 		<Slot node={right} />
 	</View><View style={{ height: 1, backgroundColor: HEADER_BORDER }} /></View>;
 }

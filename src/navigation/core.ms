@@ -245,7 +245,49 @@ export interface ResetState<P> {
 	routes: ResetRoute<P>[];
 }
 
-export type NavigationEvent = "focus" | "blur" | "state";
+export type NavigationEvent = "focus" | "blur" | "state" | "beforeRemove";
+
+export class NavigationAction {
+	type: string;
+	run: () => void;
+
+	constructor(type: string, run: () => void) {
+		this.type = type;
+		this.run = run;
+	}
+}
+
+export class NavigationEventData {
+	action: NavigationAction;
+
+	constructor(action: NavigationAction) {
+		this.action = action;
+	}
+}
+
+export class NavigationEventArg {
+	type: string;
+	target: string;
+	data: NavigationEventData;
+	defaultPrevented: boolean = false;
+
+	constructor(type: string, target: string, data: NavigationEventData) {
+		this.type = type;
+		this.target = target;
+		this.data = data;
+	}
+
+	preventDefault(): void {
+		this.defaultPrevented = true;
+	}
+}
+
+interface RemovalListener {
+	id: int32;
+	handler: (event: NavigationEventArg) => void;
+}
+
+function noAction(): void {}
 
 export type Unsubscribe = () => void;
 
@@ -372,8 +414,40 @@ export class Navigation<P> {
 		throw new Error("drawer action: no drawer navigator around '" + this.route.name + "'");
 	}
 
-	addListener(event: NavigationEvent, handler: () => void): Unsubscribe {
-		if (event === "state") { return this.core.addStateListener(handler); }
+	removalListeners: RemovalListener[] = [];
+	nextRemoval: int32 = 1;
+
+	dispatch(action: NavigationAction): void {
+		action.run();
+	}
+
+	emitBeforeRemove(action: NavigationAction): boolean {
+		const event = new NavigationEventArg("beforeRemove", this.route.key, new NavigationEventData(action));
+		for (const listener of this.removalListeners.slice(0, this.removalListeners.length)) {
+			listener.handler(event);
+		}
+		return event.defaultPrevented;
+	}
+
+	addListener(event: NavigationEvent, handler: (event: NavigationEventArg) => void): Unsubscribe {
+		const target = this.route.key;
+		const notify = (type: string): void => {
+			handler(new NavigationEventArg(type, target, new NavigationEventData(new NavigationAction("NONE", noAction))));
+		};
+		if (event === "state") { return this.core.addStateListener((): void => { notify("state"); }); }
+		if (event === "beforeRemove") {
+			const id = this.nextRemoval;
+			this.nextRemoval += 1;
+			this.removalListeners.push({ id, handler });
+			return (): void => {
+				for (let i = 0; i < this.removalListeners.length; i += 1) {
+					if (this.removalListeners[i].id === id) {
+						this.removalListeners.splice(i, 1);
+						return;
+					}
+				}
+			};
+		}
 		const wantFocus = event === "focus";
 		return createRoot((dispose: () => void): Unsubscribe => {
 			let first = true;
@@ -387,7 +461,7 @@ export class Navigation<P> {
 				}
 				if (now === last) { return; }
 				last = now;
-				if (now === wantFocus) { untrack((): void => { handler(); }); }
+				if (now === wantFocus) { untrack((): void => { notify(event); }); }
 			});
 			return dispose;
 		});
@@ -659,6 +733,25 @@ export class NavigatorCore<P> {
 		throw new Error("navigate: no navigator has a screen named '" + name + "'");
 	}
 
+	bypass: boolean = false;
+
+	guarded(type: string, removed: Navigation<P>[], apply: () => void): boolean {
+		if (this.bypass || removed.length === 0) {
+			apply();
+			return true;
+		}
+		const action = new NavigationAction(type, (): void => {
+			this.bypass = true;
+			apply();
+			this.bypass = false;
+		});
+		for (let i = removed.length - 1; i >= 0; i -= 1) {
+			if (removed[i].emitBeforeRemove(action)) { return false; }
+		}
+		apply();
+		return true;
+	}
+
 	navigateLocal(name: string, params: P | null): void {
 		const list = this.snapshot();
 		const at = this.indexOfName(list, name);
@@ -668,8 +761,10 @@ export class NavigatorCore<P> {
 				this.commit(list, (list.length - 1) as int32);
 				return;
 			}
-			if (params !== null) { list[at].writeParams(params); }
-			this.commit(list.slice(0, at + 1), at);
+			this.guarded("NAVIGATE", list.slice(at + 1, list.length), (): void => {
+				if (params !== null) { list[at].writeParams(params); }
+				this.commit(list.slice(0, at + 1), at);
+			});
 			return;
 		}
 		if (params !== null) { list[at].writeParams(params); }
@@ -716,9 +811,11 @@ export class NavigatorCore<P> {
 		const list = this.snapshot();
 		for (let i = 0; i < list.length; i += 1) {
 			if (list[i].route.key === key) {
-				list[i] = this.makeEntry(name, params);
-				const top = (list.length - 1) as int32;
-				this.commit(list, top);
+				const at = i;
+				this.guarded("REPLACE", [list[at]], (): void => {
+					list[at] = this.makeEntry(name, params);
+					this.commit(list, (list.length - 1) as int32);
+				});
 				return;
 			}
 		}
@@ -734,7 +831,9 @@ export class NavigatorCore<P> {
 		if (!this.isStack()) { return; }
 		const list = this.snapshot();
 		if (at >= list.length - 1) { return; }
-		this.commit(list.slice(0, at + 1), at);
+		this.guarded("POP", list.slice(at + 1, list.length), (): void => {
+			this.commit(list.slice(0, at + 1), at);
+		});
 	}
 
 	resetTo(state: ResetState<P>): void {
@@ -764,7 +863,7 @@ export class NavigatorCore<P> {
 			this.commit(full, focus);
 			return;
 		}
-		this.commit(list, at);
+		this.guarded("RESET", this.snapshot(), (): void => { this.commit(list, at); });
 	}
 
 	goBackFrom(key: string): boolean {
@@ -772,11 +871,16 @@ export class NavigatorCore<P> {
 			const list = this.snapshot();
 			if (list.length <= 1) { return false; }
 			const kept: Navigation<P>[] = [];
+			const removed: Navigation<P>[] = [];
 			for (const entry of list) {
-				if (entry.route.key !== key) { kept.push(entry); }
+				if (entry.route.key !== key) {
+					kept.push(entry);
+				} else {
+					removed.push(entry);
+				}
 			}
-			if (kept.length === list.length) { return false; }
-			this.commit(kept, (kept.length - 1) as int32);
+			if (removed.length === 0) { return false; }
+			this.guarded("GO_BACK", removed, (): void => { this.commit(kept, (kept.length - 1) as int32); });
 			return true;
 		}
 		return this.backLocal();
@@ -810,8 +914,9 @@ export class NavigatorCore<P> {
 		if (this.isStack()) {
 			const list = this.snapshot();
 			if (list.length <= 1) { return false; }
-			list.pop();
-			this.commit(list, (list.length - 1) as int32);
+			const top = list[list.length - 1];
+			const kept = list.slice(0, list.length - 1);
+			this.guarded("GO_BACK", [top], (): void => { this.commit(kept, (kept.length - 1) as int32); });
 			return true;
 		}
 		if (this.kind === NavigatorKind.Drawer && untrack((): boolean => this.drawerOpen())) {
