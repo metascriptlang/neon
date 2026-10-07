@@ -82,7 +82,17 @@ def shot(name):
     print("NEON_ANDROID controls-%s %s" % (name, " | ".join(t for t in texts() if " " in t)[:600]))
 
 
+def require_awake():
+    power = adb("shell", "dumpsys", "power", check=False)
+    awake = re.search(r"mWakefulness=(\w+)", power)
+    locked = re.search(r"isKeyguardShowing=(\w+)", adb("shell", "dumpsys", "window", check=False))
+    state = "%s keyguard=%s" % (awake.group(1) if awake else "?", locked.group(1) if locked else "?")
+    if (awake and awake.group(1) != "Awake") or (locked and locked.group(1) == "true"):
+        raise EmulatorError("the device is %s; not a Neon failure, unlock it and rerun" % state)
+
+
 def lane():
+    require_awake()
     counter.PACKAGE = PACKAGE
     scroll_list.PACKAGE = PACKAGE
     os.makedirs(os.path.join(counter.results, "screenshots"), exist_ok=True)
