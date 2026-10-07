@@ -771,6 +771,19 @@ void niScrollTo(void *scroll, float x, float y, int animated) {
 	[s setContentOffset:to animated:animated != 0];
 }
 
+void niScrollShift(void *scroll, float dx, float dy) {
+	NeonScrollView *s = (__bridge NeonScrollView *)scroll;
+	s.contentOffset = CGPointMake(s.contentOffset.x + dx, s.contentOffset.y + dy);
+}
+
+float niScrollOffsetX(void *scroll) {
+	return (float)((__bridge UIScrollView *)scroll).contentOffset.x;
+}
+
+float niScrollOffsetY(void *scroll) {
+	return (float)((__bridge UIScrollView *)scroll).contentOffset.y;
+}
+
 void niSetBackgroundColor(void *view, float r, float g, float b, float a) {
 	UIView *v = (__bridge UIView *)view;
 	v.backgroundColor = [UIColor colorWithRed:r green:g blue:b alpha:a];

@@ -182,6 +182,30 @@ void niScrollTo(void *view, float x, float y, int animated) {
 	g_scrolledAnimated = animated;
 }
 
+static int g_scrollShifts = 0;
+
+// Like UIScrollView's contentOffset write, a shift reports itself through the scroll handler
+// before it returns.
+void niScrollShift(void *view, float dx, float dy) {
+	MockView *v = live(view, "niScrollShift");
+	v->scrollX += dx;
+	v->scrollY += dy;
+	g_scrollShifts++;
+	if (!v->tag) return;
+	g_scrollTag = v->tag;
+	g_scrollPhase = 0;
+	g_scrollX = v->scrollX;
+	g_scrollY = v->scrollY;
+	g_scrollW = v->w;
+	g_scrollH = v->h;
+	g_scrollContentW = g_contentW;
+	g_scrollContentH = g_contentH;
+	call0(s_scroll);
+}
+
+float niScrollOffsetX(void *view) { return live(view, "niScrollOffsetX")->scrollX; }
+float niScrollOffsetY(void *view) { return live(view, "niScrollOffsetY")->scrollY; }
+
 void niScrollSetOption(void *view, const char *name, const char *value) {
 	(void)name; (void)value;
 	live(view, "niScrollSetOption");
@@ -499,4 +523,9 @@ static MockView *labelled(const char *text) {
 }
 
 float nmTextWidth(const char *text) { return labelled(text)->w; }
+float nmTextVisualX(const char *text) { return visualCoordinate(labelled(text), 0, 0); }
+float nmTextVisualY(const char *text) { return visualCoordinate(labelled(text), 0, 1); }
+float nmScrollOffsetX(int32_t tag) { return tagged(tag)->scrollX; }
+float nmScrollOffsetY(int32_t tag) { return tagged(tag)->scrollY; }
+int32_t nmScrollShifts(void) { return g_scrollShifts; }
 float nmTextHeight(const char *text) { return labelled(text)->h; }

@@ -1,7 +1,8 @@
 import { runApp, createNativeHost } from "../../src/platform/native/host";
-import { createSignal, Accessor } from "../../src/core/signal";
+import { createSignal, Accessor, accessor } from "../../src/core/signal";
 import { For } from "../../src/macros/ui/flow";
-import { View, Pressable, ScrollView, ScrollViewHandle, TextInput, TextInputHandle } from "../../src/components/primitives";
+import { View, Pressable, ScrollView, ScrollViewHandle, TextInput, TextInputHandle, MaintainVisibleContentPosition } from "../../src/components/primitives";
+import { element } from "../../src/macros/ui/element";
 import { Switch } from "../../src/components/switch";
 import { ActivityIndicator } from "../../src/components/activityIndicator";
 import { Image } from "../../src/components/image";
@@ -19,6 +20,7 @@ import {
 	nmTransformWrites, nmVisualX, nmVisualY, nmLayoutWidth, nmLayoutHeight, nmTouchAt, nmLastPressableTag,
 	nmLayoutX, nmLayoutY, nmRestackWrites, nmAddChildWrites, nmDetachWrites, nmPaintTag, nmPaintTextIndex,
 	nmControl, nmControlSized, nmTextWidth, nmTextHeight, nmLastControlTag, nmEnvironment, nmLastInputTag, nmFocused, nmProp,
+	nmTextVisualX, nmTextVisualY, nmScrollOffsetX, nmScrollOffsetY, nmScrollShifts,
 } from "./nativeBridgeMock.h";
 
 const PRESS: int32 = 2;
@@ -709,4 +711,151 @@ test "a native TextInput's padding reaches the native field as text insets" {
 	runApp(app);
 	assert prop(nmLastInputTag(), "textInsets") === "12,8,8,8", "insets: " + prop(nmLastInputTag(), "textInsets");
 	nmTeardown();
+}
+
+function numbers(first: number, count: number): number[] {
+	const out: number[] = [];
+	for (let i = 0; i < count; i += 1) { out.push(first + i); }
+	return out;
+}
+
+function prepended(rows: number[], count: number): number[] {
+	const out = numbers(rows[0] - count, count);
+	for (const n of rows) { out.push(n); }
+	return out;
+}
+
+function rowsOf(rows: () => number[]): NeonNode {
+	return element(<For each={rows()}>{(n: number, i: Accessor<number>): NeonNode => <View style={{ height: 50 }}><Text>{"row " + n.toString()}</Text></View>}</For>);
+}
+
+function withLoader(load: () => void, body: NeonNode): NeonNode {
+	return element(<View style={{ flex: 1 }}><Pressable onPress={(e: NeonEvent): void => { load(); }}><Text>load</Text></Pressable>{body}</View>);
+}
+
+function pressLoad(): void {
+	nmTouch(nmLastPressableTag(), PRESS);
+}
+
+function keptRows(rows: () => number[], keep: MaintainVisibleContentPosition | null, seen: (e: NeonEvent) => void): NeonNode {
+	if (keep === null) {
+		return element(<ScrollView style={{ height: 200, flexGrow: 0 }} onScroll={seen}>{rowsOf(rows)}</ScrollView>);
+	}
+	const position = keep as MaintainVisibleContentPosition;
+	return element(<ScrollView style={{ height: 200, flexGrow: 0 }} maintainVisibleContentPosition={position} onScroll={seen}>{rowsOf(rows)}</ScrollView>);
+}
+
+test "a native ScrollView with maintainVisibleContentPosition keeps its first visible row still while rows are prepended above it" {
+	const [rows, setRows] = createSignal<number[]>(numbers(0, 10));
+	let reported = -1.0;
+	runApp((): NeonNode => withLoader((): void => { setRows(prepended(rows(), 3)); },
+		keptRows(rows, { minIndexForVisible: 0 }, (e: NeonEvent): void => { reported = e.y; })));
+	const tag = nmLastScrollTag();
+	nmScroll(tag, 0, 120, 400, 200, 400, 500);
+	const before = nmTextVisualY("row 2");
+	pressLoad();
+	const after = nmTextVisualY("row 2");
+	const offset = nmScrollOffsetY(tag);
+	nmTeardown();
+	assert after === before, `row 2, the first visible row, stays at ${before}: ${after}`;
+	assert offset === 270, "the offset moves by the three 50-high rows: " + offset.toString();
+	assert reported === 270, "the shift reaches onScroll like a platform scroll: " + reported.toString();
+}
+
+test "without maintainVisibleContentPosition a native ScrollView keeps its offset and the rows move" {
+	const [rows, setRows] = createSignal<number[]>(numbers(0, 10));
+	runApp((): NeonNode => withLoader((): void => { setRows(prepended(rows(), 3)); }, keptRows(rows, null, (e: NeonEvent): void => {})));
+	const tag = nmLastScrollTag();
+	nmScroll(tag, 0, 120, 400, 200, 400, 500);
+	const before = nmTextVisualY("row 2");
+	const shifts = nmScrollShifts();
+	pressLoad();
+	const after = nmTextVisualY("row 2");
+	const offset = nmScrollOffsetY(tag);
+	const shifted = nmScrollShifts() - shifts;
+	nmTeardown();
+	assert after === before + 150, `row 2 moves down by the prepended rows: ${before} -> ${after}`;
+	assert offset === 120 && shifted === 0, `the offset stays: ${offset}, ${shifted} shifts`;
+}
+
+test "minIndexForVisible skips the children before it when the native host picks the row to keep" {
+	const [rows, setRows] = createSignal<number[]>(numbers(0, 10));
+	runApp((): NeonNode => withLoader((): void => { setRows(prepended(rows(), 2)); },
+		<ScrollView style={{ height: 200, flexGrow: 0 }} maintainVisibleContentPosition={{ minIndexForVisible: 1 }} onScroll={(e: NeonEvent): void => {}}>
+			<View style={{ height: 100 }}><Text>header</Text></View>
+			{rowsOf(rows)}
+		</ScrollView>));
+	const tag = nmLastScrollTag();
+	nmScroll(tag, 0, 50, 400, 200, 400, 600);
+	const before = nmTextVisualY("row 0");
+	pressLoad();
+	const after = nmTextVisualY("row 0");
+	const offset = nmScrollOffsetY(tag);
+	nmTeardown();
+	assert after === before && offset === 150, `the first row past the partly visible header stays: ${before} -> ${after}, offset ${offset}`;
+}
+
+test "autoscrollToTopThreshold animates to the start after the shift when the offset was within it" {
+	const [rows, setRows] = createSignal<number[]>(numbers(0, 10));
+	runApp((): NeonNode => withLoader((): void => { setRows(prepended(rows(), 2)); },
+		keptRows(rows, { minIndexForVisible: 0, autoscrollToTopThreshold: 10 }, (e: NeonEvent): void => {})));
+	const tag = nmLastScrollTag();
+	nmScroll(tag, 0, 5, 400, 200, 400, 500);
+	pressLoad();
+	const near = `${nmScrollShifts() > 0} ${nmScrolledY()} ${nmScrolledAnimated()}`;
+	nmScroll(tag, 0, 120, 400, 200, 400, 600);
+	const shifts = nmScrollShifts();
+	pressLoad();
+	const far = nmScrollOffsetY(tag);
+	const shifted = nmScrollShifts() - shifts;
+	nmTeardown();
+	assert near === "true 0 1", "shifted, then animated to the start: " + near;
+	assert far === 220 && shifted === 1, `past the threshold the offset only shifts: ${far}, ${shifted} shifts`;
+}
+
+test "a horizontal native ScrollView keeps its first visible column on the x axis" {
+	const [rows, setRows] = createSignal<number[]>(numbers(0, 10));
+	runApp((): NeonNode => withLoader((): void => { setRows(prepended(rows(), 3)); },
+		<ScrollView horizontal={true} style={{ width: 200 }} maintainVisibleContentPosition={{ minIndexForVisible: 0 }} onScroll={(e: NeonEvent): void => {}}>
+			<For each={rows()}>{(n: number, i: Accessor<number>): NeonNode => <View style={{ width: 50 }}><Text>{"col " + n.toString()}</Text></View>}</For>
+		</ScrollView>));
+	const tag = nmLastScrollTag();
+	nmScroll(tag, 120, 0, 200, 800, 500, 800);
+	const before = nmTextVisualX("col 2");
+	pressLoad();
+	const after = nmTextVisualX("col 2");
+	const offset = `${nmScrollOffsetX(tag)} ${nmScrollOffsetY(tag)}`;
+	nmTeardown();
+	assert after === before && offset === "270 0", `column 2 stays at ${before}: ${after}, offset ${offset}`;
+}
+
+test "a native FlatList with maintainVisibleContentPosition keeps the visible message still when a press loads older ones" {
+	const [data, setData] = createSignal<Entry[]>(entries(100));
+	let older = 0;
+	const app = (): NeonNode => <View style={{ flex: 1 }}>
+		<Pressable onPress={(): void => {
+			older += 1;
+			const next: Entry[] = [];
+			for (let i = 0; i < 20; i += 1) { next.push({ id: "old" + older.toString() + "_" + i.toString(), n: 1000 * older + i }); }
+			for (const entry of data()) { next.push(entry); }
+			setData(next);
+		}}><Text>load older</Text></Pressable>
+		<FlatList data={data()} style={{ flex: 1 }} getItemLayout={rowLayout} updateCellsBatchingPeriod={0}
+			maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
+			renderItem={(info: ListRenderItemInfo<Entry>): NeonNode => <View style={rowBox}><Text>{"row " + info.item.n.toString()}</Text></View>} />
+	</View>;
+	runApp(app);
+	loopUntilIdle();
+	const tag = nmLastScrollTag();
+	nmScroll(tag, 0, 1000, 400, 779, 400, 5000);
+	loopUntilIdle();
+	const before = nmTextVisualY("row 20");
+	nmTouch(nmLastPressableTag(), PRESS);
+	loopUntilIdle();
+	const after = nmTextVisualY("row 20");
+	const offset = nmScrollOffsetY(tag);
+	const height = nmContentHeight();
+	nmTeardown();
+	assert after === before, `row 20 stays at ${before}: ${after}`;
+	assert offset === 2000 && height === 6000, `the offset follows the 20 older rows: ${offset}, content ${height}`;
 }

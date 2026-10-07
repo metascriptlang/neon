@@ -6,6 +6,7 @@ import { YGNodeGetParent, YGNodeRemoveChild, YGNodeLayoutGetPadding, YGNodeLayou
 import { Style } from "../../render/style";
 import { NativeElementKind, createNativeEventRegistry, nativeElementKind, nativeFlexStyle, nativeTransform } from "./contract";
 import { publishWindow, publishKeyboard, publishColorScheme } from "../../render/environment";
+import { VisibleContentPosition, parseVisibleContent } from "../../render/visibleContent";
 import "../android/library";
 
 @passC("-I./");
@@ -28,6 +29,7 @@ import {
 	niContainerView, niScreenWidth, niScreenHeight, niViewSetTag, niViewSetPressable,
 	niLastTouchTag, niLastTouchPhase,
 	niScrollCreate, niScrollSetTag, niScrollSetContentSize, niScrollTo, niScrollSetOption,
+	niScrollShift, niScrollOffsetX, niScrollOffsetY,
 	niLastScrollTag, niLastScrollPhase, niLastScrollX, niLastScrollY, niLastScrollWidth, niLastScrollHeight,
 	niLastScrollContentWidth, niLastScrollContentHeight,
 	niInputCreate, niSwitchCreate, niIndicatorCreate, niImageCreate, niControlSetTag, niSetProp, niSetFocused,
@@ -81,6 +83,11 @@ class NativeNode {
 	measuredW: float32 = 0.0;
 	textInsets: string = "";
 	contentH: float32 = -1.0;
+	horizontal: boolean = false;
+	visibleContent: VisibleContentPosition | null = null;
+	anchor: NativeNode | null = null;
+	anchorX: float32 = 0.0;
+	anchorY: float32 = 0.0;
 
 	constructor(view: Ptr<void> | null, isText: boolean, isString: boolean) {
 		this.view = view;
@@ -305,6 +312,49 @@ function writeContentSizes(): void {
 		s.contentW = w;
 		s.contentH = h;
 		niScrollSetContentSize(s.view, w, h);
+	}
+}
+
+// RN RCTScrollViewComponentView _prepareForMaintainVisibleScrollPosition and
+// _adjustForMaintainVisibleContentPosition, around the layout pass instead of a mount.
+function prepareVisibleContent(): void {
+	for (const s of scrollNodes) {
+		s.anchor = null;
+		const position = s.visibleContent;
+		if (position === null || s.view === null || s.children.length === 0) { continue; }
+		if (!isMounted(s)) { continue; }
+		const offset = s.horizontal ? niScrollOffsetX(s.view) : niScrollOffsetY(s.view);
+		let index: int32 = 0;
+		for (const child of s.children[0].children) {
+			if (child.isString || !child.framed) { continue; }
+			index += 1;
+			if (index <= position.minIndexForVisible) { continue; }
+			s.anchor = child;
+			s.anchorX = child.x;
+			s.anchorY = child.y;
+			if ((s.horizontal ? child.x + child.w : child.y + child.h) > offset) { break; }
+		}
+	}
+}
+
+function adjustVisibleContent(): void {
+	for (const s of scrollNodes.slice(0, scrollNodes.length)) {
+		const anchor = s.anchor;
+		const position = s.visibleContent;
+		s.anchor = null;
+		if (anchor === null || position === null || s.view === null) { continue; }
+		if (s.children.length === 0 || anchor.parent !== s.children[0]) { continue; }
+		const delta = s.horizontal ? anchor.x - s.anchorX : anchor.y - s.anchorY;
+		if (Math.abs(delta) <= 0.5) { continue; }
+		const x = niScrollOffsetX(s.view);
+		const y = niScrollOffsetY(s.view);
+		niScrollShift(s.view, s.horizontal ? delta : 0.0, s.horizontal ? 0.0 : delta);
+		const threshold = position.autoscrollToTopThreshold;
+		const before = s.horizontal ? x : y;
+		if (threshold !== null && s.view !== null && before <= (threshold as number)) {
+			const keptY: float32 = s.horizontal ? niScrollOffsetY(s.view) : 0.0;
+			niScrollTo(s.view, s.horizontal ? 0.0 : x, keptY, 1);
+		}
 	}
 }
 
@@ -656,6 +706,11 @@ export function createNativeHost(): NativeHost {
 
 function writeProp(n: NativeNode, name: string, value: string): void {
 	if (n.view === null) { return; }
+	if (n.isScroll && name === "maintainVisibleContentPosition") {
+		n.visibleContent = parseVisibleContent(value);
+		return;
+	}
+	if (n.isScroll && name === "horizontal") { n.horizontal = value === "true"; }
 	if (n.isScroll && !name.startsWith("accessib")) {
 		niScrollSetOption(n.view, name, value);
 		return;
@@ -758,6 +813,7 @@ function relayoutRoot(): void {
 	}
 	layoutDirty = false;
 	root.flex = { width, height };
+	prepareVisibleContent();
 	runLayoutPass(root, width, height);
 	for (let pass = 0; pass < 3; pass += 1) {
 		let changed = false;
@@ -770,6 +826,7 @@ function relayoutRoot(): void {
 		runLayoutPass(root, width, height);
 	}
 	writeContentSizes();
+	adjustVisibleContent();
 	batched(fireLayouts);
 }
 

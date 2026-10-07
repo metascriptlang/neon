@@ -32,6 +32,11 @@ void  niScrollSetTag(void *scroll, int32_t tag);
 void  niScrollSetContentSize(void *scroll, float w, float h);
 void  niScrollTo(void *scroll, float x, float y, int animated);
 void  niScrollSetOption(void *scroll, const char *name, const char *value);
+// Shift moves the offset without animation, keeps a fling going, and waits for a frame
+// write's pending layout pass; the offset reads include a shift still waiting.
+void  niScrollShift(void *scroll, float dx, float dy);
+float niScrollOffsetX(void *scroll);
+float niScrollOffsetY(void *scroll);
 
 // --- text ---
 void  niSetText(void *label, const char *s);

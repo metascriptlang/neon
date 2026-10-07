@@ -49,6 +49,7 @@ static struct {
 	jmethodID inputInit, inputSetTag, inputSetFocused, propsSet, propsSetTag, environmentInstall, environmentScheme;
 	jmethodID toggleInit, spinnerInit, pictureInit;
 	jmethodID scrollInit, scrollSetTag, scrollSetOption, scrollSetContentSize, scrollTo, scrollAddContent, scrollDispose, viewSetClickable;
+	jmethodID scrollShift, scrollOffsetX, scrollOffsetY;
 	jmethodID viewGetParent, viewSetLayoutParams, viewSetAlpha, viewGetBackground, viewSetBackground;
 	jmethodID viewSetScaleX, viewSetScaleY, viewSetTranslationX, viewSetTranslationY, viewBringToFront;
 	jmethodID viewForceLayout, viewMeasure, viewGetMeasuredWidth, viewGetMeasuredHeight, viewSetTag, viewGetRootWindowInsets;
@@ -155,6 +156,9 @@ static void cacheJni(JNIEnv *e) {
 	J.scrollSetOption = method(e, J.scroll, "setOption", "(Ljava/lang/String;Ljava/lang/String;)V");
 	J.scrollSetContentSize = method(e, J.scroll, "setContentSize", "(II)V");
 	J.scrollTo = method(e, J.scroll, "neonScrollTo", "(IIZ)V");
+	J.scrollShift = method(e, J.scroll, "shiftBy", "(II)V");
+	J.scrollOffsetX = method(e, J.scroll, "offsetX", "()I");
+	J.scrollOffsetY = method(e, J.scroll, "offsetY", "()I");
 	J.scrollAddContent = method(e, J.scroll, "addContent", "(Landroid/view/View;)V");
 	J.scrollDispose = method(e, J.scroll, "dispose", "()V");
 	J.viewSetClickable = method(e, J.view, "setClickable", "(Z)V");
@@ -574,6 +578,26 @@ void niScrollTo(void *scroll, float x, float y, int animated) {
 	JNIEnv *e = env();
 	(*e)->CallVoidMethod(e, (jobject)scroll, J.scrollTo, px(x), px(y), animated ? JNI_TRUE : JNI_FALSE);
 	check(e, "neonScrollTo");
+}
+
+void niScrollShift(void *scroll, float dx, float dy) {
+	JNIEnv *e = env();
+	(*e)->CallVoidMethod(e, (jobject)scroll, J.scrollShift, px(dx), px(dy));
+	check(e, "shiftBy");
+}
+
+float niScrollOffsetX(void *scroll) {
+	JNIEnv *e = env();
+	jint x = (*e)->CallIntMethod(e, (jobject)scroll, J.scrollOffsetX);
+	check(e, "offsetX");
+	return x / g_density;
+}
+
+float niScrollOffsetY(void *scroll) {
+	JNIEnv *e = env();
+	jint y = (*e)->CallIntMethod(e, (jobject)scroll, J.scrollOffsetY);
+	check(e, "offsetY");
+	return y / g_density;
 }
 
 void niAddChild(void *parent, void *child) {

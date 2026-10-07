@@ -39,3 +39,8 @@ const char *nmProp(int32_t tag, const char *name);
 int32_t nmLastControlTag(int32_t kind);
 float nmTextWidth(const char *text);
 float nmTextHeight(const char *text);
+float nmTextVisualX(const char *text);
+float nmTextVisualY(const char *text);
+float nmScrollOffsetX(int32_t tag);
+float nmScrollOffsetY(int32_t tag);
+int32_t nmScrollShifts(void);

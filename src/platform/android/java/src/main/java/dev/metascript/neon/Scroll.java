@@ -15,6 +15,7 @@ import android.widget.FrameLayout;
 import android.widget.HorizontalScrollView;
 import android.widget.ScrollView;
 import android.widget.OverScroller;
+import java.lang.reflect.Field;
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
 
 public final class Scroll extends SwipeRefreshLayout {
@@ -31,6 +32,10 @@ public final class Scroll extends SwipeRefreshLayout {
 	private final int touchSlop;
 	private final OverScroller prediction;
 	private final Rect visibleFrame = new Rect();
+	private int pendingDx, pendingDy, queuedX, queuedY;
+	private boolean queuedScroll, queuedAnimated;
+	private static Field verticalFling, horizontalFling;
+	private static boolean flingFieldsRead;
 
 	public Scroll(Context context) {
 		super(context);
@@ -168,7 +173,86 @@ public final class Scroll extends SwipeRefreshLayout {
 		else ((ScrollView)scroller).smoothScrollTo(0, target);
 	}
 
+	public int offsetX() { return scroller.getScrollX() + pendingDx; }
+	public int offsetY() { return scroller.getScrollY() + pendingDy; }
+
+	public void shiftBy(int dx, int dy) {
+		pendingDx += dx;
+		pendingDy += dy;
+		if (!scroller.isLayoutRequested()) applyPending();
+	}
+
+	private void applyPending() {
+		int dx = pendingDx, dy = pendingDy;
+		pendingDx = 0;
+		pendingDy = 0;
+		if (dx != 0 || dy != 0) shiftPreservingMomentum(dx, dy);
+		if (queuedScroll) {
+			queuedScroll = false;
+			neonScrollTo(queuedX, queuedY, queuedAnimated);
+		}
+	}
+
+	private OverScroller fling() {
+		if (!flingFieldsRead) {
+			flingFieldsRead = true;
+			try {
+				verticalFling = ScrollView.class.getDeclaredField("mScroller");
+				verticalFling.setAccessible(true);
+				horizontalFling = HorizontalScrollView.class.getDeclaredField("mScroller");
+				horizontalFling.setAccessible(true);
+			} catch (ReflectiveOperationException | RuntimeException e) {
+				verticalFling = null;
+				horizontalFling = null;
+			}
+		}
+		Field field = horizontal ? horizontalFling : verticalFling;
+		if (field == null) return null;
+		try {
+			Object value = field.get(scroller);
+			return value instanceof OverScroller ? (OverScroller)value : null;
+		} catch (IllegalAccessException e) {
+			return null;
+		}
+	}
+
+	// RN ReactScrollView.scrollToPreservingMomentum: restart a running fling from the shifted
+	// offset at its current velocity, or ScrollView.computeScroll drags the offset back.
+	private void shiftPreservingMomentum(int dx, int dy) {
+		int x = scroller.getScrollX() + dx, y = scroller.getScrollY() + dy;
+		OverScroller running = fling();
+		boolean flinging = running != null && !running.isFinished();
+		int velocity = 0;
+		if (flinging) {
+			boolean moving = running.computeScrollOffset();
+			int travel = horizontal
+				? running.getFinalX() - running.getStartX()
+				: running.getFinalY() - running.getStartY();
+			velocity = moving ? (int)(running.getCurrVelocity() * Math.signum(travel)) : 0;
+			running.forceFinished(true);
+		}
+		scroller.scrollTo(x, y);
+		if (running == null && momentum) {
+			if (horizontal) ((HorizontalScrollView)scroller).fling(0);
+			else ((ScrollView)scroller).fling(0);
+		}
+		if (velocity == 0) return;
+		View content = scroller.getChildAt(0);
+		int maxX = Math.max(0, content.getWidth() - scroller.getWidth());
+		int maxY = Math.max(0, content.getHeight() - scroller.getHeight());
+		if (horizontal) running.fling(x, y, velocity, 0, 0, maxX, 0, 0);
+		else running.fling(x, y, 0, velocity, 0, 0, 0, maxY);
+		scroller.postInvalidateOnAnimation();
+	}
+
 	public void neonScrollTo(int x, int y, boolean animated) {
+		if (pendingDx != 0 || pendingDy != 0) {
+			queuedScroll = true;
+			queuedX = x;
+			queuedY = y;
+			queuedAnimated = animated;
+			return;
+		}
 		stopMomentum();
 		if (animated) {
 			if (horizontal) ((HorizontalScrollView)scroller).smoothScrollTo(x, y);
@@ -273,6 +357,7 @@ public final class Scroll extends SwipeRefreshLayout {
 			preservingOffset = dragging || momentum;
 			super.onLayout(changed, l, t, r, b);
 			preservingOffset = false;
+			applyPending();
 		}
 	}
 
@@ -304,6 +389,7 @@ public final class Scroll extends SwipeRefreshLayout {
 			preservingOffset = dragging || momentum;
 			super.onLayout(changed, l, t, r, b);
 			preservingOffset = false;
+			applyPending();
 		}
 	}
 
