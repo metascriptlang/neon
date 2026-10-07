@@ -61,6 +61,7 @@ class NativeNode {
 	isString: boolean = false;
 	isScroll: boolean = false;
 	isInput: boolean = false;
+	multiline: boolean = false;
 	control: NativeElementKind = NativeElementKind.View;
 	labelOwner: NativeNode | null = null;
 	spanOwner: NativeNode | null = null;
@@ -428,6 +429,7 @@ let root: NativeNode;
 const scrollNodes: NativeNode[] = [];
 const layoutNodes: NativeNode[] = [];
 const textNodes: NativeNode[] = [];
+const inputNodes: NativeNode[] = [];
 
 function kindOf(n: NativeNode): NativeElementKind {
 	if (n.isText) { return NativeElementKind.Text; }
@@ -541,6 +543,10 @@ function releaseNativeTree(n: NativeNode): void {
 	if (n.isText) {
 		const at = textNodes.indexOf(n);
 		if (at >= 0) { textNodes.splice(at, 1); }
+	}
+	if (n.multiline) {
+		const at = inputNodes.indexOf(n);
+		if (at >= 0) { inputNodes.splice(at, 1); }
 	}
 	if (n.view !== null) {
 		niRemoveFromParent(n.view);
@@ -736,7 +742,10 @@ function onControl(): void {
 	const value: string = niLastControlValue();
 	const width = niLastControlWidth();
 	const height = niLastControlHeight();
-	batched((): void => { eventRegistry.control(tag, phase, value, width, height); });
+	batched((): void => {
+		if (phase === 0 && nodesByTag.has(tag) && growInput(nodesByTag.get(tag) as NativeNode)) { requestLayout(); }
+		eventRegistry.control(tag, phase, value, width, height);
+	});
 }
 
 function publishEnvironment(): void {
@@ -751,7 +760,9 @@ function onEnvironment(): void {
 function intrinsicFlex(n: NativeNode, flex: FlexStyle): FlexStyle {
 	if (n.view === null) { return flex; }
 	if (n.isInput && flex.height === null) {
-		niMeasureText(n.view, niScreenWidth());
+		const width: float32 = n.multiline && n.w > 0 ? n.w : niScreenWidth();
+		niMeasureText(n.view, width);
+		n.measuredFor = width;
 		flex.height = niMeasuredH();
 	} else if (n.control === NativeElementKind.Control && flex.height === null) {
 		niMeasureText(n.view, niScreenWidth());
@@ -763,6 +774,22 @@ function intrinsicFlex(n: NativeNode, flex: FlexStyle): FlexStyle {
 		if (flex.height === null) { flex.height = niMeasuredH(); }
 	}
 	return flex;
+}
+
+// RN multiline TextInput: without a height it grows with its content; maxHeight caps it
+// through yoga and the native view scrolls past that.
+function growsWithContent(n: NativeNode): boolean {
+	if (!n.multiline || n.view === null) { return false; }
+	const own = n.styleCache;
+	return own === null || own.height === null;
+}
+
+function growInput(n: NativeNode): boolean {
+	if (!growsWithContent(n)) { return false; }
+	const before = n.flex !== null ? (n.flex as FlexStyle).height : null;
+	const own: Style = n.styleCache !== null ? n.styleCache as Style : {};
+	n.flex = intrinsicFlex(n, nativeFlexStyle(own, kindOf(n)));
+	return n.flex === null || (n.flex as FlexStyle).height !== before;
 }
 
 let frameFire: (() => void) | null = null;
@@ -853,6 +880,8 @@ export function createNativeHost(): NativeHost {
 			} else if (kind === NativeElementKind.Input) {
 				n = nativeNode(tag === "multilinetextinput" ? niTextAreaCreate() : niInputCreate(), false, false);
 				n.isInput = true;
+				n.multiline = tag === "multilinetextinput";
+				if (n.multiline) { inputNodes.push(n); }
 			} else if (kind === NativeElementKind.Switch) {
 				n = nativeNode(niSwitchCreate(), false, false);
 			} else if (kind === NativeElementKind.Indicator) {
@@ -1056,6 +1085,7 @@ function writeProp(n: NativeNode, name: string, value: string): void {
 	}
 	niSetProp(n.view, name, value);
 	if (name === "statusBarTranslucent") { requestLayout(); }
+	if (n.isInput && (name === "value" || name === "defaultValue") && growInput(n) && isMounted(n)) { requestLayout(); }
 	if (n.isText && name === "numberOfLines") {
 		remeasureText(n);
 		if (isMounted(n)) { requestLayout(); }
@@ -1173,6 +1203,10 @@ function relayoutRoot(): void {
 			if (!textNeedsRemeasure(t)) { continue; }
 			measureTextWithin(t, availableTextWidth(t));
 			changed = true;
+		}
+		for (const field of inputNodes) {
+			if (!growsWithContent(field) || !isMounted(field) || Math.abs(field.w - field.measuredFor) < 0.5) { continue; }
+			if (growInput(field)) { changed = true; }
 		}
 		if (!changed) { break; }
 		runLayoutPass(root, width, height);

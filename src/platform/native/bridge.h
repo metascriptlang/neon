@@ -63,7 +63,7 @@ void  niSetProp(void *view, const char *name, const char *value);
 void  niSetFocused(void *control, int focused);
 void  niSetControlHandler(msClosure handler);
 int   niLastControlTag(void);
-int   niLastControlPhase(void); // 0 change text, 1 focus, 2 blur, 3 submit, 4 value change, 5 load, 6 error, 7 request close, 8 sliding complete
+int   niLastControlPhase(void); // 0 change text, 1 focus, 2 blur, 3 submit, 4 value change, 5 load, 6 error, 7 request close, 8 sliding complete, 9 selection change ("start,end")
 const char *niLastControlValue(void);
 float niLastControlWidth(void);
 float niLastControlHeight(void);

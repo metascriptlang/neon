@@ -1,13 +1,14 @@
 import { runApp } from "../../src/platform/native/host";
 import { createSignal } from "../../src/core/signal";
 import { element } from "../../src/macros/ui/element";
-import { Text, View } from "../../src/components/primitives";
+import { Text, View, TextInput, TextSelection } from "../../src/components/primitives";
+import { NeonEvent } from "../../src/render/event";
 import { TextAlign } from "../../src/render/style";
 import { StatusBar } from "../../src/components/statusBar";
 import { SafeAreaView } from "../../src/components/safeAreaView";
 import { useSafeAreaInsets } from "../../src/render/environment";
 import { NeonNode } from "../../src/render/node";
-import { nmTeardown, nmSystemInsets, nmTextVisualY, nmTextWidth, nmLabelProp, nmHasLabel, nmAnyProp, nmViewsCreated, nmTagWithProp, nmTouch } from "./nativeBridgeMock.h";
+import { nmTeardown, nmSystemInsets, nmTextVisualY, nmTextWidth, nmLabelProp, nmHasLabel, nmAnyProp, nmViewsCreated, nmTagWithProp, nmTouch, nmLastInputTag, nmLayoutHeight, nmControl, nmProp } from "./nativeBridgeMock.h";
 
 test "the native host publishes how far the unsafe areas reach into its root, and a translucent StatusBar takes the root edge to edge" {
 	const insets = useSafeAreaInsets();
@@ -54,6 +55,10 @@ function anyProp(name: string): string {
 	return nmAnyProp(name);
 }
 
+function prop(tag: int32, name: string): string {
+	return nmProp(tag, name);
+}
+
 function labelProp(text: string, name: string): string {
 	return nmLabelProp(text, name);
 }
@@ -91,4 +96,42 @@ test "a nested native Text is a styled span of its outer label, and a pressable 
 		+ record + "." + field + "#ffffff" + field + "15" + field + "0" + field + "0" + field + "0" + field + "0" + field + "0", "runs: " + spans;
 	assert plain.indexOf("Grace" + field + "#ff0000" + field + "15" + field + "0") >= 0, "the span restyles: " + plain;
 	assert log === "link;", "the pressed span fires its own onPress: " + log;
+}
+
+test "a native multiline TextInput without a height grows with its text up to maxHeight" {
+	const [notes, setNotes] = createSignal("");
+	const app = (): NeonNode => <View style={{ width: 200 }}>
+		<TextInput multiline={true} value={notes()} onChangeText={(t: string): void => { setNotes(t); }} style={{ maxHeight: 80 }} onLayout={(e: NeonEvent): void => {}} />
+		<TextInput multiline={true} value={notes()} style={{ height: 40 }} />
+	</View>;
+	runApp(app);
+	const field = nmLastInputTag();
+	const empty = nmLayoutHeight(field);
+	nmControl(field, 0, "a line of text that wraps");
+	const typed = nmLayoutHeight(field);
+	setNotes("a very long note that wraps over many lines in a two hundred point wide field");
+	const capped = nmLayoutHeight(field);
+	setNotes("");
+	const cleared = nmLayoutHeight(field);
+	nmTeardown();
+	assert empty === 21 && typed === 42, `one line, then two: ${empty} ${typed}`;
+	assert capped === 80, "maxHeight caps the growth: " + capped.toString();
+	assert cleared === 21, "shrinks back: " + cleared.toString();
+}
+
+test "a native TextInput writes its selection and reports the native one" {
+	const [sel, setSel] = createSignal<TextSelection>({ start: 1, end: 3 });
+	let seen = "";
+	const app = (): NeonNode => <View>
+		<TextInput value="hello" selection={sel()} onSelectionChange={(s: TextSelection): void => { seen = `${s.start}-${s.end}`; }} />
+	</View>;
+	runApp(app);
+	const field = nmLastInputTag();
+	const written = prop(field, "selection");
+	setSel({ start: 4, end: null });
+	const caret = prop(field, "selection");
+	nmControl(field, 9, "2,5");
+	nmTeardown();
+	assert written === "1,3" && caret === "4,4", `written ${written} ${caret}`;
+	assert seen === "2-5", "reported: " + seen;
 }

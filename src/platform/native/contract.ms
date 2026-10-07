@@ -341,6 +341,7 @@ export function createNativeEventRegistry(): NativeEventRegistry {
 			6 => "error",
 			7 => "requestclose",
 			8 => "slidingcomplete",
+			9 => "selectionchange",
 			_ => "",
 		};
 		if (type === "") { throw `native host: control phase ${phase} has no event`; }

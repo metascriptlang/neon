@@ -295,6 +295,26 @@ static void publishEnvironment(float keyboard, int dark) {
 	if (self.window && self.neonAutoFocus) dispatch_async(dispatch_get_main_queue(), ^{ [self becomeFirstResponder]; });
 }
 
+- (void)textFieldDidChangeSelection:(UITextField *)field {
+	if (self.neonWriting) return;
+	UITextRange *range = field.selectedTextRange;
+	if (!range) return;
+	NSInteger start = [field offsetFromPosition:field.beginningOfDocument toPosition:range.start];
+	NSInteger end = [field offsetFromPosition:field.beginningOfDocument toPosition:range.end];
+	emitControl((int)self.tag, 9, [NSString stringWithFormat:@"%ld,%ld", (long)start, (long)end], 0, 0);
+}
+
+- (void)neonSelect:(const char *)value {
+	long start = 0, end = 0;
+	if (sscanf(value, "%ld,%ld", &start, &end) != 2) return;
+	UITextPosition *from = [self positionFromPosition:self.beginningOfDocument offset:MIN(start, (long)self.text.length)];
+	UITextPosition *to = [self positionFromPosition:self.beginningOfDocument offset:MIN(end, (long)self.text.length)];
+	if (!from || !to) return;
+	self.neonWriting = YES;
+	self.selectedTextRange = [self textRangeFromPosition:from toPosition:to];
+	self.neonWriting = NO;
+}
+
 - (void)textFieldDidBeginEditing:(UITextField *)field { emitControl((int)self.tag, 1, self.text, 0, 0); }
 - (void)textFieldDidEndEditing:(UITextField *)field { emitControl((int)self.tag, 2, self.text, 0, 0); }
 
@@ -529,6 +549,7 @@ static void setInputProp(NeonInput *input, const char *name, const char *value) 
 			[input setNeedsLayout];
 		}
 	} else if (strcmp(name, "maxLength") == 0) input.neonMaxLength = value[0] == '\0' ? -1 : atoi(value);
+	else if (strcmp(name, "selection") == 0) [input neonSelect:value];
 }
 
 // RN's multiline TextInput (RCTMultilineTextInputView): a UITextView with a
@@ -583,6 +604,12 @@ static void setInputProp(NeonInput *input, const char *name, const char *value) 
 	if (!self.neonWriting) emitControl((int)self.tag, 0, self.text, 0, 0);
 }
 
+- (void)textViewDidChangeSelection:(UITextView *)view {
+	if (self.neonWriting) return;
+	NSRange range = view.selectedRange;
+	emitControl((int)self.tag, 9, [NSString stringWithFormat:@"%lu,%lu", (unsigned long)range.location, (unsigned long)(range.location + range.length)], 0, 0);
+}
+
 - (void)textViewDidBeginEditing:(UITextView *)view { emitControl((int)self.tag, 1, self.text, 0, 0); }
 - (void)textViewDidEndEditing:(UITextView *)view { emitControl((int)self.tag, 2, self.text, 0, 0); }
 
@@ -624,6 +651,17 @@ static void setTextAreaProp(NeonTextArea *area, const char *name, const char *va
 			[area setNeedsLayout];
 		}
 	} else if (strcmp(name, "maxLength") == 0) area.neonMaxLength = value[0] == '\0' ? -1 : atoi(value);
+	else if (strcmp(name, "selection") == 0) {
+		long start = 0, end = 0;
+		if (sscanf(value, "%ld,%ld", &start, &end) == 2) {
+			NSUInteger length = area.text.length;
+			NSUInteger from = MIN((NSUInteger)MAX(0, start), length);
+			NSUInteger to = MIN((NSUInteger)MAX((long)from, end), length);
+			area.neonWriting = YES;
+			area.selectedRange = NSMakeRange(from, to - from);
+			area.neonWriting = NO;
+		}
+	}
 }
 
 static UIView *focusedInput(UIView *view) {

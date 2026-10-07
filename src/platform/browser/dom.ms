@@ -79,6 +79,9 @@ extern class Node {
 	selectedIndex: number;
 	naturalWidth: number;
 	naturalHeight: number;
+	selectionStart: number;
+	selectionEnd: number;
+	extern setSelectionRange(start: number, end: number): void;
 	extern setAttribute(name: cstring, value: cstring): void;
 	extern removeAttribute(name: cstring): void;
 	extern addEventListener(name: cstring, handler: (e: DomEvent) => void, capture: boolean): void;
@@ -606,6 +609,11 @@ function writeDomAttr(el: Node, name: string, value: string): void {
 	if (writeTextAttr(el, name, value)) { return; }
 	if (name.startsWith("statusBar")) { return; }
 	if (name === "value") { el.value = value; return; }
+	if (name === "selection") {
+		const parts: string[] = value.split(",");
+		if (parts.length === 2) { el.setSelectionRange(parseFloat(parts[0]), parseFloat(parts[1])); }
+		return;
+	}
 	if (name === "defaultValue") {
 		const current: string = el.value;
 		if (current === "") { el.value = value; }
@@ -787,6 +795,7 @@ export function domHost(): Host {
 	let baseRule = false;
 	let controlRule = false;
 	let modalRule = false;
+	let textareaRule = false;
 	const scrolls = new Map<Node, DomScrollState>();
 	const cleanups = new Map<Node, (() => void)[]>();
 	const presses = new Map<Node, boolean>();
@@ -966,7 +975,16 @@ export function domHost(): Host {
 				installScroll(el);
 				return el as unknown as HostNode;
 			}
-			if (tag === "multilinetextinput") { return document.createElement("textarea") as unknown as HostNode; }
+			if (tag === "multilinetextinput") {
+				// RN's multiline TextInput grows with its content until a height or maxHeight stops it.
+				if (!textareaRule) {
+					registerCss("neon-textarea", ".neon-textarea{field-sizing:content;resize:none}");
+					textareaRule = true;
+				}
+				const area = document.createElement("textarea");
+				area.classList.add("neon-textarea");
+				return area as unknown as HostNode;
+			}
 			if (tag === "modal") {
 				if (!modalRule) {
 					registerCss("neon-modal", MODAL_CSS);
@@ -1138,6 +1156,7 @@ export function domHost(): Host {
 				}
 				if (type === "error" && controlKinds.has(el)) { ev.value = "cannot load the image"; }
 				if (type === "changetext" || type === "input" || type === "change" || type === "submitediting") { ev.value = de.target.value; }
+				else if (type === "selectionchange") { ev.value = `${el.selectionStart},${el.selectionEnd}`; }
 				else if (type === "scroll") {
 					ev.x = el.scrollLeft;
 					ev.y = el.scrollTop;

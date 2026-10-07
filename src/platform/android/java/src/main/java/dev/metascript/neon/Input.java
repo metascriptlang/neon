@@ -47,6 +47,11 @@ public final class Input extends EditText {
 
 	public void setNeonTag(int value) { tag = value; }
 
+	@Override protected void onSelectionChanged(int start, int end) {
+		super.onSelectionChanged(start, end);
+		if (!writing && tag != 0) Props.control(tag, 9, start + "," + end, 0, 0);
+	}
+
 	public void setFocused(boolean focused) {
 		InputMethodManager manager = (InputMethodManager)getContext().getSystemService(Context.INPUT_METHOD_SERVICE);
 		if (focused) {
@@ -136,6 +141,16 @@ public final class Input extends EditText {
 				float density = getResources().getDisplayMetrics().density;
 				setPadding(Math.round(Float.parseFloat(parts[0]) * density), Math.round(Float.parseFloat(parts[1]) * density),
 					Math.round(Float.parseFloat(parts[2]) * density), Math.round(Float.parseFloat(parts[3]) * density));
+				break;
+			}
+			case "selection": {
+				String[] parts = value.split(",");
+				if (parts.length != 2) break;
+				int start = Math.max(0, Math.min(Integer.parseInt(parts[0]), length()));
+				int end = Math.max(start, Math.min(Integer.parseInt(parts[1]), length()));
+				writing = true;
+				setSelection(start, end);
+				writing = false;
 				break;
 			}
 			case "maxLength":

@@ -536,6 +536,19 @@ export class TextInputHandle {
 	}
 }
 
+// RN TextInput selection: character offsets, end exclusive; start === end is a caret.
+export interface TextSelection {
+	start: number;
+	end?: number | null;
+}
+
+function selectionOf(value: string): TextSelection {
+	const parts = value.split(",");
+	const start: number = parts.length > 0 ? parseFloat(parts[0]) : 0;
+	const end: number = parts.length > 1 ? parseFloat(parts[1]) : start;
+	return { start, end };
+}
+
 interface TextInputProps extends AccessibilityProps {
 	style?: Accessor<Style> | null;
 	class?: Accessor<string> | null;
@@ -554,6 +567,8 @@ interface TextInputProps extends AccessibilityProps {
 	maxLength?: Accessor<number> | null;
 	keyboardType?: Accessor<KeyboardType> | null;
 	returnKeyType?: Accessor<ReturnKeyType> | null;
+	selection?: Accessor<TextSelection> | null;
+	onSelectionChange?: ((selection: TextSelection) => void) | null;
 	onChangeText?: ((t: string) => void) | null;
 	onKeyPress?: ((e: NeonEvent) => void) | null;
 	onSubmitEditing?: ((e: NeonEvent) => void) | null;
@@ -596,6 +611,15 @@ export function TextInput(props: TextInputProps): NeonNode {
 		const read = returnKey as Accessor<ReturnKeyType>;
 		attrs.push(dynAttr("returnKeyType", (): string | null => { const v: ReturnKeyType = read(); return v; }));
 	}
+	const selection = props.selection;
+	if (selection !== null) {
+		attrs.push(dynAttr("selection", (): string | null => {
+			const sel = (selection as Accessor<TextSelection>)();
+			const start = Math.max(0, Math.round(sel.start));
+			const end = sel.end === null ? start : Math.max(start, Math.round(sel.end as number));
+			return `${start},${end}`;
+		}));
+	}
 	const evts: VEvent[] = interactiveEvents({
 		style: null, class: null, ref: null, onKeyDown: props.onKeyDown, onKeyUp: props.onKeyUp,
 		onFocus: null, onBlur: null, onLayout: props.onLayout,
@@ -603,6 +627,10 @@ export function TextInput(props: TextInputProps): NeonNode {
 	if (props.onChangeText !== null) {
 		const user = props.onChangeText as (t: string) => void;
 		evts.push(evt("onChangeText", (e: NeonEvent): void => { user(e.value); }));
+	}
+	if (props.onSelectionChange !== null) {
+		const user = props.onSelectionChange as (selection: TextSelection) => void;
+		evts.push(evt("onSelectionChange", (e: NeonEvent): void => { user(selectionOf(e.value)); }));
 	}
 	if (props.onKeyPress !== null) { evts.push(evt("onKeyPress", props.onKeyPress as (e: NeonEvent) => void)); }
 	if (props.onSubmitEditing !== null) { evts.push(evt("onSubmitEditing", props.onSubmitEditing as (e: NeonEvent) => void)); }
