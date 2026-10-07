@@ -348,6 +348,13 @@ static UIAccessibilityTraits roleTraits(const char *role) {
 
 static char kNeonRoleTraits;
 static char kNeonStateTraits;
+static char kNeonGroup;
+
+static BOOL groupRole(const char *role) {
+	return strcmp(role, "tablist") == 0 || strcmp(role, "radiogroup") == 0 || strcmp(role, "menu") == 0;
+}
+
+static BOOL isGroup(UIView *v) { return [objc_getAssociatedObject(v, &kNeonGroup) boolValue]; }
 
 static void applyTraits(UIView *v) {
 	NSNumber *role = objc_getAssociatedObject(v, &kNeonRoleTraits);
@@ -938,9 +945,9 @@ void niViewSetTag(void *view, int32_t tag) {
 	return [[self neonFormatter] dateFromString:neonText(text)];
 }
 - (CGSize)sizeThatFits:(CGSize)size {
-	CGSize fit = [super sizeThatFits:size];
-	if (fit.width <= 0 || fit.height <= 0) fit = self.intrinsicContentSize;
-	return fit;
+	CGSize fit = self.intrinsicContentSize;
+	if (fit.width <= 0 || fit.height <= 0) fit = [super sizeThatFits:size];
+	return CGSizeMake(MIN(fit.width, size.width), fit.height);
 }
 - (void)neonChanged { emitControl((int)self.tag, 4, [[self neonFormatter] stringFromDate:self.date], 0, 0); }
 - (void)neonSetProp:(const char *)name value:(const char *)text {
@@ -1041,7 +1048,7 @@ void niSetProp(void *view, const char *name, const char *value) {
 	if (strncmp(name, "statusBar", 9) == 0) { setStatusBar(name, text); return; }
 	if (strcmp(name, "accessibilityLabel") == 0) {
 		v.accessibilityLabel = text[0] ? [NSString stringWithUTF8String:text] : nil;
-		if ([v isKindOfClass:NeonTouchView.class] && !((NeonTouchView *)v).neonAccessibleSet) v.isAccessibilityElement = text[0] != '\0';
+		if ([v isKindOfClass:NeonTouchView.class] && !((NeonTouchView *)v).neonAccessibleSet && !isGroup(v)) v.isAccessibilityElement = text[0] != '\0';
 	}
 	else if (strcmp(name, "accessibilityHint") == 0) v.accessibilityHint = text[0] ? [NSString stringWithUTF8String:text] : nil;
 	else if (strcmp(name, "accessible") == 0) {
@@ -1051,6 +1058,12 @@ void niSetProp(void *view, const char *name, const char *value) {
 	else if (strcmp(name, "accessibilityRole") == 0) {
 		objc_setAssociatedObject(v, &kNeonRoleTraits, @(roleTraits(text)), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 		applyTraits(v);
+		BOOL group = groupRole(text);
+		objc_setAssociatedObject(v, &kNeonGroup, @(group), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+		if (group) {
+			v.accessibilityContainerType = UIAccessibilityContainerTypeSemanticGroup;
+			if ([v isKindOfClass:NeonTouchView.class] && !((NeonTouchView *)v).neonAccessibleSet) v.isAccessibilityElement = NO;
+		}
 	}
 	else if (strcmp(name, "accessibilityState") == 0) setAccessibilityState(v, text);
 	else if (strcmp(name, "overflow") == 0) v.clipsToBounds = strcmp(text, "hidden") == 0;
