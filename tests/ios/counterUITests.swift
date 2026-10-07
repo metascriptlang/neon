@@ -272,7 +272,7 @@ final class FlatListUITests: XCTestCase {
         app.staticTexts["inverted rows"].tap()
         XCTAssertTrue(app.staticTexts["pressed header 0"].waitForExistence(timeout: 10), "changing inversion preserves the mounted list state")
         RunLoop.current.run(until: Date().addingTimeInterval(1))
-        let pull = app.staticTexts["item 3"].coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.5))
+        let pull = app.windows.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.5))
         pull.press(forDuration: 0.1, thenDragTo: pull.withOffset(CGVector(dx: 0, dy: 300)))
         RunLoop.current.run(until: Date().addingTimeInterval(1))
         let visibleHeaders = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "header ")).allElementsBoundByIndex.filter { $0.isHittable }
