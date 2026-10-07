@@ -240,6 +240,14 @@ static void emitControl(int tag, int phase, NSString *value, float width, float 
 	call0(s_control);
 }
 
+void neonMediaEmit(int tag, int phase, NSString *value, float width, float height) {
+	emitControl(tag, phase, value, width, height);
+}
+
+void *neonMediaCreate(const char *kind);
+int neonMediaSetProp(UIView *view, const char *name, const char *text);
+void neonMediaRelease(UIView *view);
+
 static void publishEnvironment(float keyboard, int dark) {
 	if (keyboard == g_keyboardH && dark == g_dark) return;
 	g_keyboardH = keyboard;
@@ -1251,6 +1259,8 @@ void *niControlCreate(const char *kind) {
 	if (strcmp(kind, "slider") == 0) return CFBridgingRetain([[NeonSlider alloc] initWithFrame:CGRectZero]);
 	if (strcmp(kind, "picker") == 0) return CFBridgingRetain([NeonPicker neonPicker]);
 	if (strcmp(kind, "datetimepicker") == 0) return CFBridgingRetain([[NeonDatePicker alloc] initWithFrame:CGRectZero]);
+	void *media = neonMediaCreate(kind);
+	if (media) return media;
 	fprintf(stderr, "neon: niControlCreate has no control \"%s\"\n", kind);
 	abort();
 }
@@ -1330,6 +1340,7 @@ void niSetProp(void *view, const char *name, const char *value) {
 			strcmp(text, "justify") == 0 ? NSTextAlignmentJustified : NSTextAlignmentNatural;
 		[(id)v setTextAlignment:alignment];
 	}
+	else if (neonMediaSetProp(v, name, text)) {}
 	else if ([v isKindOfClass:UILabel.class]) {
 		UILabel *label = (UILabel *)v;
 		if (strcmp(name, "textSpans") == 0 && [v isKindOfClass:NeonLabel.class]) setLabelSpans((NeonLabel *)v, text);
@@ -1408,6 +1419,7 @@ void niViewRelease(void *view) {
 	if (view) {
 		UIView *v = (__bridge UIView *)view;
 		if ([v isKindOfClass:NeonScrollView.class]) { ((NeonScrollView *)v).delegate = nil; v.tag = 0; }
+		neonMediaRelease(v);
 		CFRelease((CFTypeRef)view);
 	}
 }

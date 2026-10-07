@@ -16,6 +16,11 @@ import "../android/library";
 
 when (ios) {
 	@compile("../ios/bridge.m", "-fobjc-arc");
+	@compile("../ios/media.m", "-fobjc-arc");
+	@passL("-framework WebKit");
+	@passL("-framework AVFoundation");
+	@passL("-framework AVKit");
+	@passL("-framework CoreMedia");
 	@passL("-framework UIKit");
 	@passL("-framework Foundation");
 	@passL("-framework CoreGraphics");
