@@ -186,6 +186,7 @@ function applyPaint(n: NativeNode, s: Style): void {
 			if (bg !== null) {
 				const c = parseHex(bg as string);
 				if (c !== null) { niSetBackgroundColor(n.view, c.r, c.g, c.b, 1.0); }
+				else if (bg === "transparent") { niSetBackgroundColor(n.view, 0.0, 0.0, 0.0, 0.0); }
 			}
 			if (s.borderRadius !== null) { niSetCornerRadius(n.view, s.borderRadius as float32); }
 			if (s.opacity !== null) { niSetOpacity(n.view, s.opacity as float32); }

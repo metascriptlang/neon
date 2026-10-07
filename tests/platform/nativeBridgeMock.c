@@ -24,6 +24,7 @@ typedef struct MockView {
 	char propNames[16][40];
 	char propValues[16][128];
 	int propCount;
+	float background[4];
 } MockView;
 
 static msClosure s_mount;
@@ -60,6 +61,7 @@ static int g_transformWrites;
 static int g_restackWrites;
 static int g_addChildWrites;
 static int g_detachWrites;
+static int g_lastViewTag;
 
 static struct MockView *tagged(int32_t tag);
 
@@ -98,6 +100,7 @@ void niViewSetTag(void *view, int32_t tag) {
 		abort();
 	}
 	v->tag = tag;
+	g_lastViewTag = tag;
 }
 
 void *niInputCreate(void) {
@@ -281,8 +284,8 @@ void niSetTransform(void *view, float scaleX, float scaleY, float translateX, fl
 }
 
 void niSetBackgroundColor(void *view, float r, float g, float b, float a) {
-	(void)r; (void)g; (void)b; (void)a;
-	live(view, "niSetBackgroundColor");
+	MockView *v = live(view, "niSetBackgroundColor");
+	v->background[0] = r; v->background[1] = g; v->background[2] = b; v->background[3] = a;
 }
 
 void niSetCornerRadius(void *view, float radius) { (void)radius; live(view, "niSetCornerRadius"); }
@@ -581,3 +584,5 @@ int32_t nmAppEvent(int32_t kind, const char *value) {
 	call0(s_app);
 	return g_appResult;
 }
+float nmBackgroundAlpha(int32_t tag) { return tagged(tag)->background[3]; }
+int32_t nmLastViewTag(void) { return g_lastViewTag; }

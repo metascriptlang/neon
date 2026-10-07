@@ -4,6 +4,7 @@ import { For } from "../../src/macros/ui/flow";
 import { View, Pressable, ScrollView, ScrollViewHandle, TextInput, TextInputHandle, MaintainVisibleContentPosition } from "../../src/components/primitives";
 import { element } from "../../src/macros/ui/element";
 import { Switch } from "../../src/components/switch";
+import { TouchableHighlight } from "../../src/components/touchable";
 import { ActivityIndicator } from "../../src/components/activityIndicator";
 import { Image } from "../../src/components/image";
 import { useColorScheme, useKeyboard, useWindowDimensions } from "../../src/render/environment";
@@ -21,6 +22,7 @@ import {
 	nmLayoutX, nmLayoutY, nmRestackWrites, nmAddChildWrites, nmDetachWrites, nmPaintTag, nmPaintTextIndex,
 	nmControl, nmControlSized, nmTextWidth, nmTextHeight, nmLastControlTag, nmEnvironment, nmLastInputTag, nmFocused, nmProp,
 	nmTextVisualX, nmTextVisualY, nmScrollOffsetX, nmScrollOffsetY, nmScrollShifts,
+	nmBackgroundAlpha, nmLastViewTag,
 } from "./nativeBridgeMock.h";
 
 const PRESS: int32 = 2;
@@ -869,5 +871,18 @@ test "a native Pressable is one accessibility element by default, and accessible
 	const quiet = nmLastPressableTag();
 	assert prop(quiet, "accessible") === "false", "opted out: " + prop(quiet, "accessible");
 	assert prop(quiet - 1, "accessible") === "true", "default: " + prop(quiet - 1, "accessible");
+	nmTeardown();
+}
+
+test "a native TouchableHighlight paints its underlay while pressed and clears it to transparent" {
+	const app = (): NeonNode => <View>
+		<TouchableHighlight underlayColor="#336699" onPress={(e: NeonEvent): void => {}}><Text>Row</Text></TouchableHighlight>
+	</View>;
+	runApp(app);
+	const tag = nmLastViewTag();
+	assert nmBackgroundAlpha(tag) === 0, "transparent at rest";
+	nmTouch(tag, 0);
+	assert nmBackgroundAlpha(tag) === 1, "the underlay paints on press in";
+	nmTouch(tag, 3);
 	nmTeardown();
 }

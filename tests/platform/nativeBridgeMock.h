@@ -48,3 +48,5 @@ void nmAppReply(const char *name, const char *value);
 const char *nmAppLog(void);
 void nmAppLogClear(void);
 int32_t nmAppEvent(int32_t kind, const char *value);
+float nmBackgroundAlpha(int32_t tag);
+int32_t nmLastViewTag(void);
