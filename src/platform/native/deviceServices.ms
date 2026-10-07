@@ -1,4 +1,6 @@
 import { niAppCall } from "./app.h";
+import { NetInfoDetails, NetInfoState, NetInfoStateType, publishNetInfo } from "../../api/netInfo";
+import { TextSlot } from "../../api/replySlot";
 
 const FIELD = "\u001f";
 const PRESENT = "=";
@@ -28,4 +30,69 @@ export function storageClear(): void {
 export function storageKeys(): string[] {
 	const reply = call("storage.keys", "");
 	return reply === "" ? [] : reply.split(FIELD);
+}
+
+function flag(text: string): boolean | null {
+	if (text === "") { return null; }
+	return text === "1";
+}
+
+export function decodeNetInfo(value: string): NetInfoState {
+	const fields = value.split(FIELD);
+	if (fields.length !== 4) { throw new Error("NetInfo: the host sent a malformed state: " + value); }
+	const type = fields[0] as NetInfoStateType;
+	const connected = flag(fields[1]);
+	const details: NetInfoDetails | null = connected === true ? { isConnectionExpensive: fields[3] === "1" } : null;
+	return { type, isConnected: connected, isInternetReachable: flag(fields[2]), details };
+}
+
+export function watchNetInfo(): void {
+	publishNetInfo(decodeNetInfo(call("netinfo.watch", "")));
+}
+
+export function refreshNetInfo(): void {
+	publishNetInfo(decodeNetInfo(call("netinfo.fetch", "")));
+}
+
+export function onNetInfoEvent(value: string): void {
+	publishNetInfo(decodeNetInfo(value));
+}
+
+interface PendingReply {
+	id: int32;
+	done: (reply: string) => void;
+}
+
+const replies: PendingReply[] = [];
+let nextReply: int32 = 1;
+
+export function request(name: string, arg: string, done: (reply: string) => void): void {
+	const id = nextReply;
+	nextReply += 1;
+	const reply = call(name, id.toString() + FIELD + arg);
+	if (reply !== "") {
+		done(reply);
+		return;
+	}
+	replies.push({ id, done });
+}
+
+export async function ask(name: string, arg: string): Promise<string> {
+	const slot = new TextSlot();
+	request(name, arg, (reply: string): void => { slot.settle(reply); });
+	return await slot.wait();
+}
+
+export function onReplyEvent(value: string): void {
+	const split = value.indexOf(FIELD);
+	const id = parseInt(split < 0 ? value : value.substring(0, split)) as int32;
+	const reply = split < 0 ? "" : value.substring(split + 1, value.length);
+	for (let i = 0; i < replies.length; i += 1) {
+		if (replies[i].id === id) {
+			const pending = replies[i];
+			replies.splice(i, 1);
+			pending.done(reply);
+			return;
+		}
+	}
 }

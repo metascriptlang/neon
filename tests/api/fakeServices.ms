@@ -1,4 +1,5 @@
 import { AppServices, AlertRequest, ShareRequest, installAppServices } from "../../src/api/services";
+import { NetInfoState, publishNetInfo } from "../../src/api/netInfo";
 
 export class FakeServices {
 	log: string[] = [];
@@ -12,6 +13,7 @@ export class FakeServices {
 	imageDone: ((width: number, height: number, error: string) => void)[] = [];
 	storedKeys: string[] = [];
 	storedValues: string[] = [];
+	network: NetInfoState = { type: "wifi", isConnected: true, isInternetReachable: true, details: { isConnectionExpensive: false } };
 
 	install(): void {
 		const services: AppServices = {
@@ -82,6 +84,14 @@ export class FakeServices {
 				this.storedValues = [];
 			},
 			storageKeys: (): string[] => { return this.storedKeys.slice(0, this.storedKeys.length); },
+			watchNetInfo: (): void => {
+				this.log.push("watchNetInfo");
+				publishNetInfo(this.network);
+			},
+			refreshNetInfo: (): void => {
+				this.log.push("refreshNetInfo");
+				publishNetInfo(this.network);
+			},
 		};
 		installAppServices(services);
 	}

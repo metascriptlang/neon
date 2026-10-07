@@ -63,6 +63,9 @@ export { Clipboard } from "./api/clipboard";
 export { AccessibilityInfo, AccessibilityChangeEventName, useScreenReaderEnabled } from "./api/accessibilityInfo";
 export { AsyncStorage, AsyncStorageHook, KeyValuePair, StringPair, useAsyncStorage } from "./api/asyncStorage";
 export {
+	NetInfo, NetInfoChangeHandler, NetInfoDetails, NetInfoState, NetInfoStateType, NetInfoUnsubscribe, useNetInfo,
+} from "./api/netInfo";
+export {
 	Animated, CompositeAnimation, useAnimatedValue, AnimatedNode, AnimatedValue, AnimatedValueXY,
 	AnimatedInterpolation, AnimatedStringInterpolation, Easing, EasingFunction, LayoutAnimation,
 	LayoutAnimationPresets, Presence, EndResult,

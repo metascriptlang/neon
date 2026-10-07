@@ -10,6 +10,7 @@ final class Modules {
 		String domain = dot < 0 ? name : name.substring(0, dot);
 		switch (domain) {
 			case "storage": return Storage.call(a, name, arg);
+			case "netinfo": return NetInfo.call(a, name, arg);
 			default: throw new IllegalArgumentException("Neon App.call: unknown command " + name);
 		}
 	}

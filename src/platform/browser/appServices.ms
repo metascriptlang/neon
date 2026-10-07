@@ -3,7 +3,9 @@ import { publishPlatform } from "../../api/platform";
 import { publishScale, publishScreen } from "../../api/dimensions";
 import { publishAppState } from "../../api/appState";
 import { publishReduceMotion } from "../../api/accessibilityInfo";
-import { storageClear, storageGet, storageKeys, storageRemove, storageSet } from "./deviceServices";
+import {
+	refreshNetInfo, storageClear, storageGet, storageKeys, storageRemove, storageSet, watchNetInfo,
+} from "./deviceServices";
 
 extern class BrowserClipboard {
 	extern readText(): Promise<string>;
@@ -183,6 +185,8 @@ const services: AppServices = {
 	storageRemove,
 	storageClear,
 	storageKeys,
+	watchNetInfo,
+	refreshNetInfo,
 };
 
 let installed = false;

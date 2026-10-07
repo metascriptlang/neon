@@ -5,13 +5,18 @@ import { AppStateStatus, publishAppState, publishMemoryWarning } from "../../api
 import { dispatchHardwareBackPress } from "../../api/backHandler";
 import { publishUrl } from "../../api/linking";
 import { publishReduceMotion, publishScreenReader } from "../../api/accessibilityInfo";
-import { storageClear, storageGet, storageKeys, storageRemove, storageSet } from "./deviceServices";
+import {
+	onNetInfoEvent, onReplyEvent, refreshNetInfo, storageClear, storageGet, storageKeys, storageRemove, storageSet,
+	watchNetInfo,
+} from "./deviceServices";
 
 when (ios) {
 	@compile("../ios/app.m", "-fobjc-arc");
 	@compile("../ios/modules.m", "-fobjc-arc");
 	@compile("../ios/storage.m", "-fobjc-arc");
+	@compile("../ios/netinfo.m", "-fobjc-arc");
 	@passL("-framework AudioToolbox");
+	@passL("-framework Network");
 } else when (android) {
 	@compile("../android/app.c");
 }
@@ -33,6 +38,8 @@ enum AppEvent {
 	MemoryWarning,
 	ReduceMotion,
 	ImageSize,
+	Reply,
+	NetInfo,
 }
 
 interface PendingImage {
@@ -90,6 +97,8 @@ function onAppEvent(): void {
 		AppEvent.MemoryWarning => publishMemoryWarning(),
 		AppEvent.ReduceMotion => publishReduceMotion(value === "1"),
 		AppEvent.ImageSize => settleImage(value),
+		AppEvent.Reply => onReplyEvent(value),
+		AppEvent.NetInfo => onNetInfoEvent(value),
 	};
 }
 
@@ -167,6 +176,8 @@ const services: AppServices = {
 	storageRemove,
 	storageClear,
 	storageKeys,
+	watchNetInfo,
+	refreshNetInfo,
 };
 
 export function installNativeAppServices(run: (fn: () => void) => void): void {

@@ -1,4 +1,5 @@
 import { AsyncStorage, KeyValuePair, StringPair, useAsyncStorage } from "../../src/api/asyncStorage";
+import { NetInfo, NetInfoState, publishNetInfo, useNetInfo } from "../../src/api/netInfo";
 import { FakeServices } from "./fakeServices";
 
 test "AsyncStorage reads null for a missing key and round-trips set, remove and clear" {
@@ -66,4 +67,33 @@ test "useAsyncStorage binds the item methods to one key" {
 	assert (await item.getItem()) === "{\"a\":1,\"b\":2}";
 	await item.removeItem();
 	assert (await item.getItem()) === null;
+}
+
+function describe(state: NetInfoState): string {
+	const type: string = state.type;
+	const connected = state.isConnected;
+	const reachable = state.isInternetReachable;
+	const details = state.details;
+	return type + " " + (connected === null ? "?" : (connected ? "up" : "down")) + " " +
+		(reachable === null ? "?" : (reachable ? "reachable" : "unreachable")) +
+		(details === null ? "" : (details.isConnectionExpensive ? " expensive" : " cheap"));
+}
+
+test "NetInfo starts the host's watch once, calls a new listener at once and then on every change" {
+	const fake = new FakeServices();
+	fake.install();
+	const seen: string[] = [];
+	const unsubscribe = NetInfo.addEventListener((state: NetInfoState): void => { seen.push(describe(state)); });
+	const network = useNetInfo();
+	assert describe(network()) === "wifi up reachable cheap";
+	publishNetInfo({ type: "cellular", isConnected: true, isInternetReachable: null, details: { isConnectionExpensive: true } });
+	publishNetInfo({ type: "cellular", isConnected: true, isInternetReachable: null, details: { isConnectionExpensive: true } });
+	publishNetInfo({ type: "none", isConnected: false, isInternetReachable: false, details: null });
+	unsubscribe();
+	publishNetInfo({ type: "wifi", isConnected: true, isInternetReachable: true, details: { isConnectionExpensive: false } });
+	assert seen.join(",") === "wifi up reachable cheap,cellular up ? expensive,none down unreachable", seen.join(",");
+	assert describe(network()) === "wifi up reachable cheap", "the accessor keeps following";
+	fake.network = { type: "ethernet", isConnected: true, isInternetReachable: true, details: { isConnectionExpensive: false } };
+	assert describe(await NetInfo.fetch()) === "ethernet up reachable cheap";
+	assert fake.joined() === "watchNetInfo;refreshNetInfo", fake.joined();
 }

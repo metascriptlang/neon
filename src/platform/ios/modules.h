@@ -10,5 +10,6 @@ void niAppEmit(int kind, NSString *value);
 NSString *niModuleCall(NSString *name, NSString *arg);
 
 NSString *niStorageCall(NSString *name, NSString *arg);
+NSString *niNetInfoCall(NSString *name, NSString *arg);
 
 #endif
