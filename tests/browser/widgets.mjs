@@ -1,13 +1,13 @@
 // Real Chrome, real mouse: builds examples/widgets/web and drives the pager, tabs, carousel,
 // accordion, data table and chips the way a user does.
 // Usage: node tests/browser/widgets.mjs <playwright index.mjs>
-import { spawn, execFileSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
+import { startServer } from "./server.mjs";
 
 const [, , playwrightPath] = process.argv;
-const port = Number(process.env.NEON_BROWSER_PORT ?? 8735);
 execFileSync(process.env.MSC ?? "msc", ["build", "--target=js", "examples/widgets/web/app.ms", "--output=out/widgets-web/app.js"], { stdio: "ignore" });
-const server = spawn("node", ["tests/browser/serve.mjs", process.cwd(), String(port)], { stdio: "ignore" });
+const { server, port } = await startServer(process.cwd());
 const { chromium } = await import(pathToFileURL(playwrightPath).href);
 const browser = await chromium.launch({ channel: process.env.NEON_CHROME_CHANNEL ?? "chrome" });
 const page = await browser.newPage({ viewport: { width: 420, height: 860 } });

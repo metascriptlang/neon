@@ -1,13 +1,13 @@
 // Real Chrome: builds examples/media/web and drives the WebView bridge, the https WebView and the
 // Video player the way a user does.
 // Usage: node tests/browser/media.mjs <playwright index.mjs> [screenshot dir]
-import { spawn, execFileSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
+import { startServer } from "./server.mjs";
 
 const [, , playwrightPath, shots] = process.argv;
-const port = Number(process.env.NEON_BROWSER_PORT ?? 8736);
 execFileSync(process.env.MSC ?? "msc", ["build", "--target=js", "examples/media/web/app.ms", "--output=out/media-web/app.js"], { stdio: "ignore" });
-const server = spawn("node", ["tests/browser/serve.mjs", process.cwd(), String(port)], { stdio: "ignore" });
+const { server, port } = await startServer(process.cwd());
 const { chromium } = await import(pathToFileURL(playwrightPath).href);
 const browser = await chromium.launch({ channel: process.env.NEON_CHROME_CHANNEL ?? "chrome" });
 const page = await browser.newPage({ viewport: { width: 420, height: 860 } });

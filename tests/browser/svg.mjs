@@ -1,13 +1,13 @@
 // Real Chrome: builds examples/svg/web, samples the pixels each <Svg> draws (the svg element
 // rasterised onto a canvas) and runs the Animated progress ring with a real click.
 // Usage: node tests/browser/svg.mjs <playwright index.mjs> [screenshot.png]
-import { spawn, execFileSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
+import { startServer } from "./server.mjs";
 
 const [, , playwrightPath, shotPath] = process.argv;
-const port = Number(process.env.NEON_BROWSER_PORT ?? 8736);
 execFileSync(process.env.MSC ?? "msc", ["build", "--target=js", "examples/svg/web/app.ms", "--output=out/svg-web/app.js"], { stdio: "ignore" });
-const server = spawn("node", ["tests/browser/serve.mjs", process.cwd(), String(port)], { stdio: "ignore" });
+const { server, port } = await startServer(process.cwd());
 const { chromium } = await import(pathToFileURL(playwrightPath).href);
 const browser = await chromium.launch({ channel: process.env.NEON_CHROME_CHANNEL ?? "chrome" });
 const page = await browser.newPage({ viewport: { width: 420, height: 860 } });
