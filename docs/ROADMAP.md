@@ -187,7 +187,7 @@ the native mock bridge (`tests/platform/nativeHost.test.ms`), Chrome
 (`tests/browser/{controls,booking}.test.ms`), and the `examples/controls` booking form on an
 iPhone 17 Pro simulator (`ControlsUITests`: UIDatePicker popover pick, UISlider drag, UIMenu
 room pick, tooltip long press, segmented/checkbox/radio/chip presses, bottom sheet, dialog,
-progress, snackbar undo and toast). Android: the APK builds and installs on the Seeker; the
+progress, snackbar undo and toast; re-run on `wt/rn-web-base`, `/private/tmp/neon-sim.AmL6AX`). Android: the APK builds and installs on the Seeker; the
 lane `tests/android/controls.py` is pending because the phone was asleep behind its keyguard.
 Not verified: any control on a real Android screen, a screen reader, `Stepper` in an app.
 
