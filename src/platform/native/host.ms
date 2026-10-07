@@ -20,6 +20,7 @@ when (ios) {
 	@passL("-framework Foundation");
 	@passL("-framework CoreGraphics");
 	@passL("-framework QuartzCore");
+	@passL("-framework CoreImage");
 } else when (android) {
 	@compile("../android/bridge.c");
 	@passL("-llog");

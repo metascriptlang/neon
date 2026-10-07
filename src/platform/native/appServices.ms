@@ -29,7 +29,15 @@ enum AppEvent {
 	Share,
 	MemoryWarning,
 	ReduceMotion,
+	ImageSize,
 }
+
+interface PendingImage {
+	id: int32;
+	done: (width: number, height: number, error: string) => void;
+}
+
+const images: PendingImage[] = [];
 
 interface PendingAlert {
 	id: int32;
@@ -78,7 +86,29 @@ function onAppEvent(): void {
 		AppEvent.Share => settleShare(value),
 		AppEvent.MemoryWarning => publishMemoryWarning(),
 		AppEvent.ReduceMotion => publishReduceMotion(value === "1"),
+		AppEvent.ImageSize => settleImage(value),
 	};
+}
+
+function settleImage(value: string): void {
+	const fields = value.split(FIELD);
+	const id = parseInt(fields[0]) as int32;
+	for (let i = 0; i < images.length; i += 1) {
+		if (images[i].id === id) {
+			const pending = images[i];
+			images.splice(i, 1);
+			const error = fields.length > 3 ? fields[3] : "";
+			pending.done(error === "" ? parseFloat(fields[1]) : 0, error === "" ? parseFloat(fields[2]) : 0, error);
+			return;
+		}
+	}
+}
+
+function imageSize(uri: string, done: (width: number, height: number, error: string) => void): void {
+	const id = nextRequest;
+	nextRequest += 1;
+	images.push({ id, done });
+	call("image.size", id.toString() + FIELD + uri);
 }
 
 let runEvent: (fn: () => void) => void = (fn: () => void): void => { fn(); };
@@ -128,6 +158,7 @@ const services: AppServices = {
 	reduceMotionEnabled: async (): Promise<boolean> => { return call("a11y.reduceMotion", "") === "1"; },
 	announce: (text: string): void => { call("a11y.announce", text); },
 	exitApp: (): void => { call("exitApp", ""); },
+	imageSize,
 };
 
 export function installNativeAppServices(run: (fn: () => void) => void): void {

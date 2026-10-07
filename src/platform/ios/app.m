@@ -146,7 +146,23 @@ static void vibrate(NSString *arg) {
 	vibrateStep(steps, 0, [fields[0] isEqualToString:@"1"], g_vibration);
 }
 
+void niImageFetch(NSString *uri, void (^done)(UIImage *image, NSString *error));
+
+// Image.getSize / Image.prefetch: "id 0x1f uri" in, NI_APP_IMAGE_SIZE "id 0x1f w 0x1f h 0x1f error" out, in pixels.
+static NSString *imageSize(NSString *arg) {
+	NSArray<NSString *> *fields = [arg componentsSeparatedByString:FIELD];
+	if (fields.count < 2) return @"";
+	NSString *requestId = fields[0];
+	niImageFetch(fields[1], ^(UIImage *image, NSString *error) {
+		CGFloat w = image ? image.size.width * image.scale : 0;
+		CGFloat h = image ? image.size.height * image.scale : 0;
+		emit(NI_APP_IMAGE_SIZE, [@[requestId, @(w).stringValue, @(h).stringValue, error ?: @""] componentsJoinedByString:FIELD]);
+	});
+	return @"";
+}
+
 static NSString *call(NSString *name, NSString *arg) {
+	if ([name isEqualToString:@"image.size"]) return imageSize(arg);
 	if ([name isEqualToString:@"platform"]) return UIDevice.currentDevice.systemVersion;
 	if ([name isEqualToString:@"isPad"]) return UIDevice.currentDevice.userInterfaceIdiom == UIUserInterfaceIdiomPad ? @"1" : @"0";
 	if ([name isEqualToString:@"pixelRatio"]) return @(UIScreen.mainScreen.scale).stringValue;

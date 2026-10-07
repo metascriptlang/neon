@@ -35,6 +35,7 @@ public final class App {
 	static final int SHARE = 5;
 	static final int MEMORY_WARNING = 6;
 	static final int REDUCE_MOTION = 7;
+	static final int IMAGE_SIZE = 8;
 
 	private static final String FIELD = "\u001f";
 	private static final String RECORD = "\u001e";
@@ -73,6 +74,13 @@ public final class App {
 			case "a11y.reduceMotion": return reduceMotion(a) ? "1" : "0";
 			case "a11y.announce": a.getWindow().getDecorView().announceForAccessibility(arg); return "";
 			case "exitApp": a.onBackPressed(); return "";
+			case "image.size": {
+				String[] fields = arg.split(FIELD, -1);
+				if (fields.length < 2) return "";
+				final String id = fields[0];
+				Picture.size(a, fields[1], (width, height, error) -> event(IMAGE_SIZE, id + FIELD + width + FIELD + height + FIELD + error));
+				return "";
+			}
 			default: throw new IllegalArgumentException("Neon App.call: unknown command " + name);
 		}
 	}

@@ -82,6 +82,7 @@ extern class Node {
 	selectionStart: number;
 	selectionEnd: number;
 	extern setSelectionRange(start: number, end: number): void;
+	extern getAttribute(name: cstring): string | null;
 	extern setAttribute(name: cstring, value: cstring): void;
 	extern removeAttribute(name: cstring): void;
 	extern addEventListener(name: cstring, handler: (e: DomEvent) => void, capture: boolean): void;
@@ -474,12 +475,53 @@ function writeControlAttr(el: Node, kind: string, name: string, value: string): 
 		return false;
 	}
 	if (kind === "image") {
-		if (name === "source") { el.setAttribute("src", value); return true; }
-		if (name === "resizeMode") { el.setAttribute("data-resize", value); return true; }
+		if (name === "source") {
+			el.setAttribute("src", value);
+			tileImage(el);
+			return true;
+		}
+		if (name === "resizeMode") {
+			el.setAttribute("data-resize", value);
+			tileImage(el);
+			return true;
+		}
+		if (name === "blurRadius") {
+			const radius = parseFloat(value);
+			swapClass(el, "neon-blur-", "");
+			if (radius > 0) {
+				const id = `neon-blur-${Math.round(radius * 10)}`;
+				if (!imageRules.has(id)) {
+					registerCss(id, `.${id}{filter:blur(${radius}px)}`);
+					imageRules.set(id, true);
+				}
+				el.classList.add(id);
+			}
+			return true;
+		}
 		if (name === "accessibilityLabel") { el.setAttribute("alt", value); }
 		return false;
 	}
 	return false;
+}
+
+// RN resizeMode repeat: an <img> cannot tile, so the element shows its source as a repeated
+// background (one class per source, since setStyle rewrites inline style whole) and pushes its
+// own picture out of its box.
+const imageRules = new Map<string, boolean>();
+const tileClasses = new Map<string, string>();
+
+function tileImage(el: Node): void {
+	swapClass(el, "neon-tile-", "");
+	if (el.getAttribute("data-resize") !== "repeat") { return; }
+	const attr = el.getAttribute("src");
+	if (attr === null || attr === "") { return; }
+	const src = attr as string;
+	if (!tileClasses.has(src)) {
+		const id = `neon-tile-${tileClasses.size}`;
+		tileClasses.set(src, id);
+		registerCss(id, `.${id}{background-image:url("${src}");background-repeat:repeat;object-position:-100000px 0}`);
+	}
+	el.classList.add(tileClasses.get(src) as string);
 }
 
 // RN Text's numberOfLines clamps with an ellipsis. Inline style belongs to

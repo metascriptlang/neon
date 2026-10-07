@@ -12,6 +12,7 @@ enum {
 	NI_APP_SHARE = 5,
 	NI_APP_MEMORY_WARNING = 6,
 	NI_APP_REDUCE_MOTION = 7,
+	NI_APP_IMAGE_SIZE = 8, // "id 0x1f width 0x1f height 0x1f error", pixels
 };
 
 const char *niAppCall(const char *name, const char *arg);

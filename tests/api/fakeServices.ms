@@ -8,6 +8,8 @@ export class FakeServices {
 	openable: boolean = true;
 	initial: string = "";
 	screenReader: boolean = false;
+	images: string[] = [];
+	imageDone: ((width: number, height: number, error: string) => void)[] = [];
 
 	install(): void {
 		const services: AppServices = {
@@ -48,6 +50,11 @@ export class FakeServices {
 			reduceMotionEnabled: async (): Promise<boolean> => { return false; },
 			announce: (text: string): void => { this.log.push("announce " + text); },
 			exitApp: (): void => { this.log.push("exitApp"); },
+			imageSize: (uri: string, done: (width: number, height: number, error: string) => void): void => {
+				this.log.push("imageSize " + uri);
+				this.images.push(uri);
+				this.imageDone.push(done);
+			},
 		};
 		installAppServices(services);
 	}

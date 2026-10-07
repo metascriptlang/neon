@@ -22,12 +22,17 @@ extern class BrowserScreen {
 
 extern class BrowserElement {
 	textContent: cstring;
+	src: cstring;
+	naturalWidth: number;
+	naturalHeight: number;
+	extern addEventListener(name: cstring, handler: (e: BrowserEvent) => void): void;
 	extern blur(): void;
 	extern setAttribute(name: cstring, value: cstring): void;
 	extern appendChild(child: BrowserElement): void;
 }
 
 extern class BrowserEvent {}
+
 
 extern class BrowserMediaQuery {
 	matches: boolean;
@@ -166,6 +171,12 @@ const services: AppServices = {
 	},
 	announce,
 	exitApp: (): void => {},
+	imageSize: (uri: string, done: (width: number, height: number, error: string) => void): void => {
+		const image = document.createElement("img");
+		image.addEventListener("load", (e: BrowserEvent): void => { done(image.naturalWidth, image.naturalHeight, ""); });
+		image.addEventListener("error", (e: BrowserEvent): void => { done(0, 0, "cannot load the image " + uri); });
+		image.src = uri;
+	},
 };
 
 let installed = false;

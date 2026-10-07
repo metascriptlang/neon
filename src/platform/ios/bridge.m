@@ -1,5 +1,6 @@
 #import <UIKit/UIKit.h>
 #import <objc/runtime.h>
+#import <CoreImage/CoreImage.h>
 #import <Foundation/Foundation.h>
 #include "runtime/promise/dispatch.h"
 #include "../native/bridge.h"
@@ -360,7 +361,25 @@ static void publishEnvironment(float keyboard, int dark) {
 
 @interface NeonImage : UIImageView
 @property (nonatomic, copy) NSString *neonUri;
+@property (nonatomic, strong) UIImage *neonRaw;
+@property (nonatomic) CGFloat neonBlur;
+@property (nonatomic) BOOL neonRepeat;
 @end
+
+// RN blurRadius: a Gaussian blur of the decoded image, cropped back to its own extent.
+static UIImage *blurredImage(UIImage *image, CGFloat radius) {
+	CIImage *input = image.CIImage ?: [CIImage imageWithCGImage:image.CGImage];
+	if (!input) return image;
+	CIFilter *blur = [CIFilter filterWithName:@"CIGaussianBlur"];
+	[blur setValue:[input imageByClampingToExtent] forKey:kCIInputImageKey];
+	[blur setValue:@(radius * image.scale) forKey:kCIInputRadiusKey];
+	CIImage *output = [blur.outputImage imageByCroppingToRect:input.extent];
+	CGImageRef cg = [[CIContext contextWithOptions:nil] createCGImage:output fromRect:input.extent];
+	if (!cg) return image;
+	UIImage *result = [UIImage imageWithCGImage:cg scale:image.scale orientation:image.imageOrientation];
+	CGImageRelease(cg);
+	return result;
+}
 
 @implementation NeonImage
 
@@ -371,14 +390,26 @@ static void publishEnvironment(float keyboard, int dark) {
 	return cache;
 }
 
+- (void)neonShow {
+	UIImage *image = self.neonRaw;
+	if (image && self.neonBlur > 0) image = blurredImage(image, self.neonBlur);
+	if (image && self.neonRepeat) image = [image resizableImageWithCapInsets:UIEdgeInsetsZero resizingMode:UIImageResizingModeTile];
+	self.image = image;
+}
+
+- (void)setNeonRawImage:(UIImage *)image {
+	self.neonRaw = image;
+	[self neonShow];
+}
+
 - (void)neonLoad:(NSString *)uri {
 	if ([uri isEqualToString:self.neonUri ?: @""]) return;
 	self.neonUri = uri;
-	self.image = nil;
+	[self setNeonRawImage:nil];
 	if (uri.length == 0) return;
 	UIImage *cached = [NeonImage.neonCache objectForKey:uri];
 	if (cached) {
-		self.image = cached;
+		[self setNeonRawImage:cached];
 		dispatch_async(dispatch_get_main_queue(), ^{
 			if ([self.neonUri isEqualToString:uri]) emitControl((int)self.tag, 5, @"", (float)cached.size.width, (float)cached.size.height);
 		});
@@ -396,12 +427,29 @@ static void publishEnvironment(float keyboard, int dark) {
 			if (!view || ![view.neonUri isEqualToString:uri]) return;
 			if (failure) { emitControl((int)view.tag, 6, failure, 0, 0); return; }
 			[NeonImage.neonCache setObject:image forKey:uri];
-			view.image = image;
+			[view setNeonRawImage:image];
 			emitControl((int)view.tag, 5, @"", (float)image.size.width, (float)image.size.height);
 		});
 	}] resume];
 }
 @end
+
+// Image.getSize / Image.prefetch (app.m "image.size"): load through the views' cache.
+void niImageFetch(NSString *uri, void (^done)(UIImage *image, NSString *error)) {
+	UIImage *cached = [NeonImage.neonCache objectForKey:uri];
+	if (cached) { dispatch_async(dispatch_get_main_queue(), ^{ done(cached, nil); }); return; }
+	NSURL *url = [NSURL URLWithString:uri];
+	if (!url) { dispatch_async(dispatch_get_main_queue(), ^{ done(nil, @"malformed URI"); }); return; }
+	[[NSURLSession.sharedSession dataTaskWithURL:url completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+		UIImage *image = data ? [UIImage imageWithData:data] : nil;
+		NSInteger status = [response isKindOfClass:NSHTTPURLResponse.class] ? ((NSHTTPURLResponse *)response).statusCode : 200;
+		NSString *failure = error ? error.localizedDescription : (status < 200 || status >= 300) ? [NSString stringWithFormat:@"HTTP %ld", (long)status] : image ? nil : @"cannot decode image";
+		dispatch_async(dispatch_get_main_queue(), ^{
+			if (!failure) [NeonImage.neonCache setObject:image forKey:uri];
+			done(failure ? nil : image, failure);
+		});
+	}] resume];
+}
 
 static NSString *neonText(const char *text) { return [NSString stringWithUTF8String:text ? text : ""]; }
 
@@ -1283,8 +1331,13 @@ void niSetProp(void *view, const char *name, const char *value) {
 		if (strcmp(name, "source") == 0) [image neonLoad:[NSString stringWithUTF8String:text]];
 		else if (strcmp(name, "resizeMode") == 0) {
 			image.contentMode = strcmp(text, "contain") == 0 ? UIViewContentModeScaleAspectFit :
-				strcmp(text, "stretch") == 0 ? UIViewContentModeScaleToFill :
+				strcmp(text, "stretch") == 0 || strcmp(text, "repeat") == 0 ? UIViewContentModeScaleToFill :
 				strcmp(text, "center") == 0 ? UIViewContentModeCenter : UIViewContentModeScaleAspectFill;
+			image.neonRepeat = strcmp(text, "repeat") == 0;
+			[image neonShow];
+		} else if (strcmp(name, "blurRadius") == 0) {
+			image.neonBlur = (CGFloat)atof(text);
+			[image neonShow];
 		}
 	}
 }

@@ -8,7 +8,8 @@ import { StatusBar } from "../../src/components/statusBar";
 import { SafeAreaView } from "../../src/components/safeAreaView";
 import { useSafeAreaInsets } from "../../src/render/environment";
 import { NeonNode } from "../../src/render/node";
-import { nmTeardown, nmSystemInsets, nmTextVisualY, nmTextWidth, nmLabelProp, nmHasLabel, nmAnyProp, nmViewsCreated, nmTagWithProp, nmTouch, nmLastInputTag, nmLayoutHeight, nmControl, nmProp } from "./nativeBridgeMock.h";
+import { nmTeardown, nmSystemInsets, nmTextVisualY, nmTextWidth, nmLabelProp, nmHasLabel, nmAnyProp, nmViewsCreated, nmTagWithProp, nmTouch, nmLastInputTag, nmLayoutHeight, nmControl, nmProp, nmAppLog, nmAppLogClear, nmAppEvent } from "./nativeBridgeMock.h";
+import { ImageLoader } from "../../src/components/image";
 
 test "the native host publishes how far the unsafe areas reach into its root, and a translucent StatusBar takes the root edge to edge" {
 	const insets = useSafeAreaInsets();
@@ -53,6 +54,10 @@ test "a native Text sends its textAlign to the label and a centred label spans i
 
 function anyProp(name: string): string {
 	return nmAnyProp(name);
+}
+
+function appLog(): string {
+	return nmAppLog();
 }
 
 function prop(tag: int32, name: string): string {
@@ -134,4 +139,24 @@ test "a native TextInput writes its selection and reports the native one" {
 	nmTeardown();
 	assert written === "1,3" && caret === "4,4", `written ${written} ${caret}`;
 	assert seen === "2-5", "reported: " + seen;
+}
+
+test "ImageLoader.getSize on the native host asks the app channel and settles on its image event" {
+	const app = (): NeonNode => <View />;
+	runApp(app);
+	nmAppLogClear();
+	let got = "";
+	ImageLoader.getSize("https://x/a.png", (w: number, h: number): void => { got = `${w}x${h}`; }, (e: Error): void => { got = "failed " + e.message; });
+	const log = appLog();
+	const id = log.substring(log.indexOf("(") + 1, log.indexOf("\u001f"));
+	nmAppEvent(8, id + "\u001f600\u001f240\u001f");
+	const ok = got;
+	ImageLoader.getSize("https://x/b.png", (w: number, h: number): void => { got = "wrong"; }, (e: Error): void => { got = "failed " + e.message; });
+	const second = appLog();
+	const next = second.substring(second.lastIndexOf("(") + 1, second.lastIndexOf("\u001f"));
+	nmAppEvent(8, next + "\u001f0\u001f0\u001fHTTP 404");
+	nmTeardown();
+	assert log === "image.size(" + id + "\u001fhttps://x/a.png)", "asked: " + log;
+	assert ok === "600x240", "size: " + ok;
+	assert got === "failed HTTP 404", "failure: " + got;
 }

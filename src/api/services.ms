@@ -36,6 +36,9 @@ export interface AppServices {
 	reduceMotionEnabled: () => Promise<boolean>;
 	announce: (text: string) => void;
 	exitApp: () => void;
+	// Loads an image into the platform's image cache and reports its pixel size; a failure
+	// reports an error message and a 0 x 0 size.
+	imageSize: (uri: string, done: (width: number, height: number, error: string) => void) => void;
 }
 
 let installed: AppServices | null = null;

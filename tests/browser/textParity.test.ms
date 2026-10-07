@@ -7,6 +7,7 @@ import { render } from "../../src/render/host";
 import { element } from "../../src/macros/ui/element";
 import { Text, View, TextInput, TextSelection } from "../../src/components/primitives";
 import { createSignal } from "../../src/core/signal";
+import { Image, ImageLoader } from "../../src/components/image";
 import { sleepAsync } from "std/core/promise";
 
 extern class HTMLElement {
@@ -108,4 +109,28 @@ test "a TextInput in Chrome sets its selection and reports the user's" {
 	await sleepAsync(50);
 	assert written === "1,3", "written: " + written;
 	assert seen === "2-5", "reported: " + seen;
+}
+
+const PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAADCAIAAAA2iEnWAAAAEElEQVR4nGP4z8AARAwoFABE0AX7pM/egAAAAABJRU5ErkJggg==";
+
+test "Image in Chrome tiles for resizeMode repeat, blurs, and ImageLoader reads the size" {
+	const mount = mountPoint("image-one");
+	render(element(<View>
+		<Image source={{ uri: PNG }} resizeMode="repeat" blurRadius={3} style={{ width: 40, height: 40 }} />
+	</View>), domHost(), mount as unknown as HostNode);
+	const look = computed("#image-one img", "'backgroundRepeat', 'filter'");
+	const tiled = js("return getComputedStyle(document.querySelector('#image-one img')).backgroundImage.startsWith('url(\"data:image/png');");
+	let size = "";
+	ImageLoader.getSize(PNG, (w: number, h: number): void => { size = `${w}x${h}`; });
+	let missing = "";
+	ImageLoader.getSize("data:image/png;base64,AAAA", (w: number, h: number): void => { missing = "loaded"; }, (e: Error): void => { missing = "failed"; });
+	let fetched = false;
+	const prefetch = async (): Promise<void> => { fetched = await ImageLoader.prefetch(PNG); };
+	prefetch();
+	await sleepAsync(200);
+	assert look === "repeat blur(3px)", "look: " + look;
+	assert tiled === "true", "the source is the tiled background";
+	assert size === "2x3", "size: " + size;
+	assert missing === "failed", "a broken image fails: " + missing;
+	assert fetched, "prefetch resolves true";
 }
