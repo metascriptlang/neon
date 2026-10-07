@@ -33,7 +33,7 @@ export { createStyles, styleOf } from "./macros/ui/style";
 export { createTheme, setTheme, themeOf, setThemeCss } from "./macros/ui/theme";
 export { For, ForList, Index, Show } from "./macros/ui/flow";
 
-export { View, Text, Pressable, TextInput, ScrollView, ScrollViewHandle, KeyboardDismissMode, KeyboardShouldPersistTaps } from "./components/primitives";
+export { View, Text, Pressable, TextInput, ScrollView, ScrollViewHandle, KeyboardDismissMode, KeyboardShouldPersistTaps, TextSelection } from "./components/primitives";
 export {
 	FlatList, FlatListHandle, ListRenderItemInfo, ItemLayout, EndReachedInfo, StartReachedInfo,
 	ScrollToIndexFailedInfo, ScrollToIndexOptions, ScrollToItemOptions, ScrollToOffsetOptions, ScrollToEndOptions,
@@ -50,6 +50,7 @@ export { AppServices, AlertRequest, AlertButtonSpec, ShareRequest, installAppSer
 export { Platform, PlatformOSType } from "./api/platform";
 export { Dimensions, DimensionsChange, DimensionsKey, ScaledSize } from "./api/dimensions";
 export { PixelRatio } from "./api/pixelRatio";
+export { StyleSheet } from "./api/styleSheet";
 export { Appearance, AppearancePreferences } from "./api/appearance";
 export { Keyboard, KeyboardEvent, KeyboardEventCoordinates, KeyboardEventName } from "./api/keyboard";
 export { AppState, AppStateEvent, AppStateStatus, useAppState } from "./api/appState";
