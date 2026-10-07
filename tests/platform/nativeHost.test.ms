@@ -670,3 +670,20 @@ test "native text wraps to the width its container gives it, so a row grows with
 	nmResize(400, 800);
 	nmTeardown();
 }
+
+test "a native FlatList that filters down to no rows shows its ListEmptyComponent" {
+	const [rows, setRows] = createSignal<Entry[]>(entries(3));
+	const app = (): NeonNode => <View style={{ flex: 1 }}>
+		<FlatList data={rows()} style={{ flex: 1 }} updateCellsBatchingPeriod={0}
+			ListEmptyComponent={<View style={{ padding: 32 }}><Text>nothing here</Text></View>}
+			renderItem={(info: ListRenderItemInfo<Entry>): NeonNode => <View style={rowBox}><Text>{info.item.id}</Text></View>} />
+	</View>;
+	runApp(app);
+	loopUntilIdle();
+	setRows([]);
+	loopUntilIdle();
+	assert nmTextHeight("nothing here") > 0, "the empty component has a frame: " + nmTextHeight("nothing here").toString();
+	setRows(entries(2));
+	loopUntilIdle();
+	nmTeardown();
+}
