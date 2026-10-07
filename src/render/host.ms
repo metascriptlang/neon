@@ -33,6 +33,8 @@ export class MockNode {
 	scrollX: number = 0;
 	scrollY: number = 0;
 	scrollAnimated: boolean = false;
+	holdsResponder: boolean = false;
+	blocksNative: boolean = false;
 
 	constructor(tag: string) {
 		this.tag = tag;
@@ -74,6 +76,8 @@ function cloneMock(n: MockNode): MockNode {
 	}
 	return c;
 }
+
+let mockResponder: MockNode | null = null;
 
 export function mockHost(): Host {
 	const overlay = mockNode("overlay");
@@ -186,7 +190,34 @@ export function mockHost(): Host {
 			fireEvent(n, focused ? "onFocus" : "onBlur");
 		},
 		overlayRoot: (node: HostNode): HostNode => overlay as unknown as HostNode,
+		setResponder: (node: HostNode | null, blockNativeResponder: boolean): void => {
+			const holder = mockResponder;
+			if (holder !== null) {
+				(holder as MockNode).holdsResponder = false;
+				(holder as MockNode).blocksNative = false;
+			}
+			mockResponder = node === null ? null : node as unknown as MockNode;
+			if (node === null) { return; }
+			const n = node as unknown as MockNode;
+			n.holdsResponder = true;
+			n.blocksNative = blockNativeResponder;
+		},
 	};
+}
+
+
+// A native touch as the hosts deliver it: the touch event on the touched node
+// and then on every ancestor, the same event each time.
+export function fireTouch(node: MockNode, name: string, x: number, y: number, timeStamp: number): void {
+	let at: MockNode | null = node;
+	while (at !== null) {
+		const e = neonEvent(eventType(name));
+		e.x = x;
+		e.y = y;
+		e.timeStamp = timeStamp;
+		fireEventWith(at as MockNode, name, e);
+		at = (at as MockNode).parent;
+	}
 }
 
 // Fire a recorded event by name (test helper — simulates a user interaction).

@@ -50,4 +50,5 @@ export interface Host {
 	// mount node puts its content (the DOM body, the native root). `node` is
 	// where the Portal sits in the tree.
 	overlayRoot?: ((node: HostNode) => HostNode) | null;
+	setResponder?: ((node: HostNode | null, blockNativeResponder: boolean) => void) | null;
 }
