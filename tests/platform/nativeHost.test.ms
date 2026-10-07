@@ -950,3 +950,16 @@ test "a native Modal fills the root above the app, takes the touches below it an
 	nmTeardown();
 	assert nmReleaseCalls() === nmViewsCreated(), "the modal layer is released";
 }
+
+test "native numberOfLines caps a wrapping label's measured height, and 0 lifts the cap" {
+	const [lines, setLines] = createSignal(1);
+	const long = "a long description that wraps onto several lines in a narrow column";
+	const app = (): NeonNode => <View style={{ width: 120 }}>
+		<Text numberOfLines={lines()}>{long}</Text>
+	</View>;
+	runApp(app);
+	assert nmTextHeight(long) === 21, "one line: " + nmTextHeight(long).toString();
+	setLines(0);
+	assert nmTextHeight(long) > 21, "unlimited wraps: " + nmTextHeight(long).toString();
+	nmTeardown();
+}

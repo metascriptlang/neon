@@ -57,6 +57,7 @@ extern class Node {
 	isConnected: boolean;
 	nodeType: number;
 	tagName: string;
+	className: string;
 	extern blur(): void;
 	extern focus(): void;
 	extern contains(node: Node): boolean;
@@ -471,8 +472,51 @@ function writeControlAttr(el: Node, kind: string, name: string, value: string): 
 	return false;
 }
 
+// RN Text's numberOfLines clamps with an ellipsis. Inline style belongs to
+// setStyle, which rewrites it whole, so these props travel as classes.
+const TEXT_CSS = ".neon-lines{display:-webkit-box !important;-webkit-box-orient:vertical;overflow:hidden}.neon-clip{text-overflow:clip}.neon-select-none{user-select:none;-webkit-user-select:none}.neon-select-text{user-select:text;-webkit-user-select:text}";
+let textRule = false;
+const lineRules = new Map<string, boolean>();
+
+function swapClass(el: Node, prefix: string, next: string): void {
+	const names: string[] = el.className.split(" ");
+	for (const n of names) {
+		if (n.startsWith(prefix)) { el.classList.remove(n); }
+	}
+	if (next !== "") { el.classList.add(next); }
+}
+
+function writeTextAttr(el: Node, name: string, value: string): boolean {
+	if (name !== "numberOfLines" && name !== "ellipsizeMode" && name !== "selectable") { return false; }
+	if (!textRule) {
+		registerCss("neon-text-props", TEXT_CSS);
+		textRule = true;
+	}
+	if (name === "numberOfLines") {
+		const clamped = value !== "" && value !== "0";
+		if (clamped && !lineRules.has(value)) {
+			registerCss(`neon-lines-${value}`, `.neon-lines-${value}{-webkit-line-clamp:${value}}`);
+			lineRules.set(value, true);
+		}
+		swapClass(el, "neon-lines", "");
+		if (clamped) {
+			el.classList.add("neon-lines");
+			el.classList.add(`neon-lines-${value}`);
+		}
+		return true;
+	}
+	if (name === "ellipsizeMode") {
+		swapClass(el, "neon-clip", value === "clip" ? "neon-clip" : "");
+		return true;
+	}
+	swapClass(el, "neon-select-", value === "false" ? "neon-select-none" : value === "true" ? "neon-select-text" : "");
+	return true;
+}
+
 function writeDomAttr(el: Node, name: string, value: string): void {
 	if (controlKinds.has(el) && writeControlAttr(el, controlKinds.get(el) as string, name, value)) { return; }
+	if (writeTextAttr(el, name, value)) { return; }
+	if (name.startsWith("statusBar")) { return; }
 	if (name === "value") { el.value = value; return; }
 	if (name === "defaultValue") {
 		const current: string = el.value;

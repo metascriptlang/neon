@@ -113,3 +113,12 @@ test "ImageBackground stretches its image under the children and keeps the box s
 	fireEvent(root.children[0].children[0], "onLoad");
 	assert loads === 1, "onLoad reaches the author";
 }
+
+test "Text forwards numberOfLines, ellipsizeMode and selectable, and stays a plain text without them" {
+	const [lines, setLines] = createSignal(2);
+	const root: MockNode = mockNode("root");
+	render(element(<View><Text numberOfLines={lines()} ellipsizeMode="middle" selectable={true}>long</Text><Text>plain</Text></View>), mockHost(), root as unknown as HostNode);
+	assert mockToString(root) === "<root><view><text numberOfLines=\"2\" ellipsizeMode=\"middle\" selectable=\"true\">long</text><text>plain</text></view></root>", "shape: " + mockToString(root);
+	setLines(0);
+	assert mockToString(root).indexOf("numberOfLines=\"0\"") > 0, "reactive";
+}

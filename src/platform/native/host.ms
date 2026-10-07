@@ -723,6 +723,10 @@ function writeProp(n: NativeNode, name: string, value: string): void {
 		return;
 	}
 	niSetProp(n.view, name, value);
+	if (n.isText && name === "numberOfLines") {
+		remeasureText(n);
+		if (isMounted(n)) { requestLayout(); }
+	}
 }
 
 function removePaintChild(p: NativeNode, n: NativeNode): void {

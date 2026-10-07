@@ -101,3 +101,16 @@ test "a StatusBar takes no space in Chrome and an ImageBackground stretches its 
 	assert sizes === "120x80 true", "the image fills the box: " + sizes;
 	assert js("return document.querySelector('statusbar') === null || getComputedStyle(document.querySelector('statusbar')).display;") === "none", "no status bar box";
 }
+
+test "Text numberOfLines clamps in Chrome and selectable={false} turns selection off" {
+	const [lines, setLines] = createSignal(2);
+	const mount = mountPoint();
+	render(element(<View style={{ width: 120 }}>
+		<Text numberOfLines={lines()} selectable={false} style={{ fontSize: 16 }}>one two three four five six seven eight nine ten eleven twelve thirteen fourteen</Text>
+	</View>), domHost(), mount as unknown as HostNode);
+	await sleepAsync(20);
+	const clamped = js("const s = document.querySelector('.neon-lines'); const lh = parseFloat(getComputedStyle(s).lineHeight) || 16 * 1.2; return `${Math.round(s.getBoundingClientRect().height / lh)} ${getComputedStyle(s).userSelect}`;");
+	assert clamped === "2 none", "two lines, no selection: " + clamped;
+	setLines(0);
+	assert js("return document.querySelector('.neon-lines') === null;") === "true", "0 lifts the clamp";
+}

@@ -727,6 +727,15 @@ void niSetProp(void *view, const char *name, const char *value) {
 		if ([v isKindOfClass:NeonTouchView.class]) ((NeonTouchView *)v).neonAccessibleSet = text[0] != '\0';
 	}
 	else if (strcmp(name, "accessibilityRole") == 0) v.accessibilityTraits = roleTraits(text);
+	else if ([v isKindOfClass:UILabel.class]) {
+		UILabel *label = (UILabel *)v;
+		if (strcmp(name, "numberOfLines") == 0) label.numberOfLines = text[0] ? atoi(text) : 0;
+		else if (strcmp(name, "ellipsizeMode") == 0) {
+			label.lineBreakMode = strcmp(text, "head") == 0 ? NSLineBreakByTruncatingHead :
+				strcmp(text, "middle") == 0 ? NSLineBreakByTruncatingMiddle :
+				strcmp(text, "clip") == 0 ? NSLineBreakByClipping : NSLineBreakByTruncatingTail;
+		}
+	}
 	else if ([v isKindOfClass:NeonModalView.class]) {
 		if (strcmp(name, "animationType") == 0) ((NeonModalView *)v).neonAnimation = [NSString stringWithUTF8String:text];
 	}

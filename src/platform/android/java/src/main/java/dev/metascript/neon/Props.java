@@ -41,6 +41,28 @@ public final class Props {
 		else if (view instanceof Spinner) ((Spinner)view).setProp(name, value);
 		else if (view instanceof Picture) ((Picture)view).setProp(name, value);
 		else if (view instanceof Overlay) ((Overlay)view).setProp(name, value);
+		else if (view instanceof android.widget.TextView) text((android.widget.TextView)view, name, value);
+	}
+
+	private static void text(android.widget.TextView label, String name, String value) {
+		switch (name) {
+			case "numberOfLines": {
+				int lines = value.isEmpty() ? 0 : Integer.parseInt(value);
+				label.setMaxLines(lines > 0 ? lines : Integer.MAX_VALUE);
+				if (lines > 0 && label.getEllipsize() == null) label.setEllipsize(android.text.TextUtils.TruncateAt.END);
+				break;
+			}
+			case "ellipsizeMode":
+				switch (value) {
+					case "head": label.setEllipsize(android.text.TextUtils.TruncateAt.START); break;
+					case "middle": label.setEllipsize(android.text.TextUtils.TruncateAt.MIDDLE); break;
+					case "clip": label.setEllipsize(null); break;
+					default: label.setEllipsize(android.text.TextUtils.TruncateAt.END); break;
+				}
+				break;
+			case "selectable": label.setTextIsSelectable("true".equals(value)); break;
+			default: break;
+		}
 	}
 
 	public static void setTag(View view, int tag) {

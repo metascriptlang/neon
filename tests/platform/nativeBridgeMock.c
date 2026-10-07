@@ -313,6 +313,9 @@ void niMeasureText(void *label, float maxWidth) {
 	float w = (float)strlen(v->text) * v->size * 0.5f;
 	int lines = 1;
 	while (maxWidth > 0 && w > maxWidth * lines) lines++;
+	for (int i = 0; i < v->propCount; i++) {
+		if (strcmp(v->propNames[i], "numberOfLines") == 0 && atoi(v->propValues[i]) > 0 && lines > atoi(v->propValues[i])) lines = atoi(v->propValues[i]);
+	}
 	g_measuredW = w < maxWidth ? w : maxWidth;
 	g_measuredH = (v->size + 4) * lines;
 }

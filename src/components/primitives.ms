@@ -101,7 +101,12 @@ export function View(props: ViewProps): NeonNode {
 	return primitive("view", props, [], interactiveEvents(props, []), props.children);
 }
 
+export type EllipsizeMode = "head" | "middle" | "tail" | "clip";
+
 interface TextProps extends HostProps {
+	numberOfLines?: Accessor<number> | null;
+	ellipsizeMode?: Accessor<EllipsizeMode> | null;
+	selectable?: Accessor<boolean> | null;
 	children?: NeonNode | null;
 }
 
@@ -113,8 +118,23 @@ function accessibleText(props: AccessibilityProps): Accessor<string> | null {
 }
 
 export function Text(props: TextProps): NeonNode {
-	const accessible = accessibleText(props);
-	return element(<text class={props.class} style={props.style} ref={props.ref} accessible={accessible} accessibilityLabel={props.accessibilityLabel} accessibilityHint={props.accessibilityHint} accessibilityRole={props.accessibilityRole}>{props.children}</text>);
+	const lines = props.numberOfLines;
+	const ellipsize = props.ellipsizeMode;
+	if (lines === null && ellipsize === null && props.selectable === null) {
+		const accessible = accessibleText(props);
+		return element(<text class={props.class} style={props.style} ref={props.ref} accessible={accessible} accessibilityLabel={props.accessibilityLabel} accessibilityHint={props.accessibilityHint} accessibilityRole={props.accessibilityRole}>{props.children}</text>);
+	}
+	const attrs: VAttr[] = [];
+	if (lines !== null) {
+		const read = lines as Accessor<number>;
+		attrs.push(dynAttr("numberOfLines", (): string | null => Math.max(0, Math.round(read())).toString()));
+	}
+	if (ellipsize !== null) {
+		const read = ellipsize as Accessor<EllipsizeMode>;
+		attrs.push(dynAttr("ellipsizeMode", (): string | null => { const m: EllipsizeMode = read(); return m; }));
+	}
+	flagAttr(attrs, "selectable", props.selectable);
+	return primitive("text", props, attrs, [], props.children);
 }
 
 // RN Pressability's two constants (Libraries/Pressability/Pressability.js):
