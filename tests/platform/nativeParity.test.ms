@@ -10,6 +10,7 @@ import { useSafeAreaInsets } from "../../src/render/environment";
 import { NeonNode } from "../../src/render/node";
 import { nmTeardown, nmSystemInsets, nmTextVisualY, nmTextWidth, nmLabelProp, nmHasLabel, nmAnyProp, nmViewsCreated, nmTagWithProp, nmTouch, nmLastInputTag, nmLayoutHeight, nmControl, nmProp, nmAppLog, nmAppLogClear, nmAppEvent, nmLastPressableTag } from "./nativeBridgeMock.h";
 import { ImageLoader } from "../../src/components/image";
+import { Dialog } from "../../src/components/dialog";
 
 test "the native host publishes how far the unsafe areas reach into its root, and a translucent StatusBar takes the root edge to edge" {
 	const insets = useSafeAreaInsets();
@@ -175,4 +176,18 @@ test "a native Pressable writes hitSlop per edge and its Android ripple through 
 	nmTeardown();
 	assert first === "4,0,8,0" && second === "4,0,12,0", `per edge: ${first} ${second}`;
 	assert ripple === "#33000000,false,", "ripple: " + ripple;
+}
+
+test "the native back press closes a shown Dialog through BackHandler" {
+	const [open, setOpen] = createSignal(true);
+	let log = "";
+	const app = (): NeonNode => <View style={{ flex: 1 }}>
+		<Dialog visible={open()} title="Leave?" onDismiss={(): void => { log += "dismiss;"; setOpen(false); }} />
+	</View>;
+	runApp(app);
+	const consumed = nmAppEvent(1, "");
+	const after = nmAppEvent(1, "");
+	nmTeardown();
+	assert consumed === 1 && log === "dismiss;", `consumed and dismissed: ${consumed} ${log}`;
+	assert after === 0, "the next back press goes to the platform: " + after.toString();
 }

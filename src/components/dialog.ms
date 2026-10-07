@@ -7,6 +7,9 @@ import { Accessor, accessor } from "../core/signal";
 import { element } from "../macros/ui/element";
 import { Show } from "../macros/ui/flow";
 import { NeonNode } from "../render/node";
+import { Host, HostNode } from "../render/hostTypes";
+import { onCleanup } from "../core/cleanup";
+import { BackHandler } from "../api/backHandler";
 import { AccessibilityProps, Pressable, Text, View } from "./primitives";
 import {
 	MATERIAL_DISABLED,
@@ -51,6 +54,19 @@ export function Scrim(props: ScrimProps): NeonNode {
 		if (dismissable() && onDismiss !== null) { (onDismiss as () => void)(); }
 	};
 	return element(<Pressable style={SCRIM} onPress={press} accessibilityLabel="Dismiss" />);
+}
+
+// react-native-paper Modal: while shown, the Android back button dismisses a dismissable
+// overlay and is consumed either way, so it never navigates away from under it.
+export function BackDismiss(props: ScrimProps): NeonNode {
+	const { dismissable, onDismiss } = props;
+	return (host: Host, parent: HostNode, before: HostNode | null): void => {
+		const subscription = BackHandler.addEventListener("hardwareBackPress", (): boolean => {
+			if (dismissable() && onDismiss !== null) { (onDismiss as () => void)(); }
+			return true;
+		});
+		onCleanup((): void => { subscription.remove(); });
+	};
 }
 
 interface DialogProps extends AccessibilityProps {
@@ -107,6 +123,7 @@ export function Dialog(props: DialogProps): NeonNode {
 		: element(<View style={DIALOG_ACTIONS}>{actions}</View>);
 	return element(<Show when={visible()}>
 		<View style={DIALOG_LAYER}>
+			<BackDismiss dismissable={canDismiss()} onDismiss={onDismiss} />
 			<Scrim dismissable={canDismiss()} onDismiss={onDismiss} />
 			<View style={card} accessibilityRole="alert" accessibilityLabel={a11y()}>
 				<Show when={title !== null}>

@@ -10,7 +10,7 @@ import { NeonNode } from "../render/node";
 import { Host, HostNode } from "../render/hostTypes";
 import { AccessibilityProps, View } from "./primitives";
 import { flagOn } from "./material";
-import { OVERLAY_LAYER, Scrim } from "./dialog";
+import { BackDismiss, OVERLAY_LAYER, Scrim } from "./dialog";
 
 interface BottomSheetProps extends AccessibilityProps {
 	visible: Accessor<boolean>;
@@ -69,6 +69,7 @@ export function BottomSheet(props: BottomSheetProps): NeonNode {
 	});
 	return element(<Show when={visible()}>
 		<View style={SHEET_LAYER}>
+			<BackDismiss dismissable={canDismiss()} onDismiss={onDismiss} />
 			<Scrim dismissable={canDismiss()} onDismiss={onDismiss} />
 			{panel}
 		</View>
