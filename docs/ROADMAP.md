@@ -202,13 +202,17 @@ actions, `addListener` for focus/blur/state/beforeRemove/tabPress); `useNavigati
 with back button and left/right slots, tab bars with icons and badges, the drawer panel, transparent
 modals, deep links through `Linking` with nested paths. Covered screens stay mounted (state kept),
 tabs mount lazily, Android back reaches the focused navigator through `BackHandler`. Exported from
-`src/index.ms`. Proven: `tests/navigation/` (5 files, 28 tests, native and JS),
+`src/index.ms`. Proven: `tests/navigation/` (6 files, 35 tests, native and JS),
 `tests/browser/navigation.test.ms` (Chrome), and the `examples/navigation` demo on an iPhone 17
 Pro simulator (`NavigationUITests`: list → detail → edit and save, back with the list's state
 kept, per-tab state, a badge, the drawer, a theme switch, rotation). The Android build and install
 of the demo succeeded on the Seeker; `tests/android/navigation.py` is pending because the phone was
-asleep behind its lock. Provisional choices are rows V1–V11 of `WORKAROUND.md`. Not verified:
-transitions and swipe gestures (none yet: no `Animated` or gesture layer on that branch), url
+asleep behind its lock. Rebased onto `wt/rn-web-base` (2026-10-08): stack push/pop slide, modal
+slide-up and transparent-modal fade on `Animated`, a drawer slide, an iOS left-edge back swipe and a
+drawer edge swipe through `PanResponder` (`tests/navigation/transition.test.ms`, 7 tests on the
+manual frame clock; Chrome checks a pushed screen moves and settles; on the simulator
+`NavigationUITests` swipes back from the left edge and swipes the drawer open). Provisional choices
+are rows V1–V11 of `WORKAROUND.md`. Not verified: gestures on a physical phone, url
 events on a device (P7), hardware back on a device, browser history.
 
 Prove each workflow through its real consumer on the declared targets. A public symbol,
