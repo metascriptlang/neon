@@ -7,6 +7,7 @@ export enum NativeElementKind {
 	View,
 	Text,
 	Scroll,
+	Input,
 }
 
 interface NativeEventRoute {
@@ -21,6 +22,7 @@ export interface NativeEventRegistry {
 	scroll: (tag: int32, x: number, y: number, width: number, height: number, contentWidth: number, contentHeight: number) => boolean;
 	scrollPhase: (tag: int32, phase: int32, x: number, y: number, width: number, height: number, contentWidth: number, contentHeight: number) => boolean;
 	layout: (tag: int32, x: number, y: number, width: number, height: number) => boolean;
+	control: (tag: int32, phase: int32, value: string, width: number, height: number) => boolean;
 }
 
 function num(v: number | null): float32 | null {
@@ -39,6 +41,7 @@ asFlexStyleBody(0);
 export function nativeElementKind(tag: string): NativeElementKind {
 	if (tag === "text") { return NativeElementKind.Text; }
 	if (tag === "scrollview") { return NativeElementKind.Scroll; }
+	if (tag === "textinput") { return NativeElementKind.Input; }
 	return NativeElementKind.View;
 }
 
@@ -276,5 +279,33 @@ export function createNativeEventRegistry(): NativeEventRegistry {
 		return fired;
 	}
 
-	return { add, remove, dispatch, scroll, scrollPhase, layout };
+	function control(tag: int32, phase: int32, value: string, width: number, height: number): boolean {
+		if (!byTag.has(tag)) { return false; }
+		const type = match (phase) {
+			0 => "changetext",
+			1 => "focus",
+			2 => "blur",
+			3 => "submitediting",
+			4 => "valuechange",
+			5 => "load",
+			6 => "error",
+			_ => "",
+		};
+		if (type === "") { throw `native host: control phase ${phase} has no event`; }
+		const timeStamp = performance.now();
+		let fired = false;
+		for (const route of byTag.get(tag) as NativeEventRoute[]) {
+			if (eventType(route.name) !== type) { continue; }
+			const event = neonEvent(type);
+			event.timeStamp = timeStamp;
+			event.value = value;
+			event.width = width;
+			event.height = height;
+			route.handler(event);
+			fired = true;
+		}
+		return fired;
+	}
+
+	return { add, remove, dispatch, scroll, scrollPhase, layout, control };
 }

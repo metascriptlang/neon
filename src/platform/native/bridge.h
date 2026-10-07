@@ -41,6 +41,21 @@ void  niMeasureText(void *label, float maxWidth);
 float niMeasuredW(void);
 float niMeasuredH(void);
 
+void *niInputCreate(void);
+void  niControlSetTag(void *control, int32_t tag);
+void  niSetProp(void *view, const char *name, const char *value);
+void  niSetFocused(void *control, int focused);
+void  niSetControlHandler(msClosure handler);
+int   niLastControlTag(void);
+int   niLastControlPhase(void); // 0 change text, 1 focus, 2 blur, 3 submit, 4 value change, 5 load, 6 error
+const char *niLastControlValue(void);
+float niLastControlWidth(void);
+float niLastControlHeight(void);
+
+void  niSetEnvironmentHandler(msClosure handler);
+float niKeyboardHeight(void);
+int   niColorScheme(void); // 0 light, 1 dark
+
 // --- events ---
 // Every touch phase fires the one handler; the tag routes to the MS-side
 // registry. The last phase's tag is readable from the () => void closure

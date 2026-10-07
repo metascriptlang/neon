@@ -3,6 +3,7 @@
 #include "runtime/promise/dispatch.h"
 #include "../native/bridge.h"
 #include "../native/loop.h"
+#include <stdlib.h>
 #include <string.h>
 
 static msClosure s_mount;
@@ -20,6 +21,13 @@ static UIView *g_container = nil;
 static float g_measuredW = 0;
 static float g_measuredH = 0;
 static CFRunLoopTimerRef g_loopTimer = NULL;
+static msClosure s_control;
+static msClosure s_environment;
+static int g_controlTag = 0, g_controlPhase = 0;
+static char *g_controlValue = NULL;
+static float g_controlW = 0, g_controlH = 0;
+static float g_keyboardH = 0;
+static int g_dark = 0;
 
 static void loopArm(int ms) {
 	if (!g_loopTimer) return;
@@ -85,6 +93,142 @@ static void call0(msClosure c) {
 }
 
 @end
+
+static void emitControl(int tag, int phase, NSString *value, float width, float height) {
+	if (tag == 0) return;
+	free(g_controlValue);
+	g_controlValue = strdup(value ? value.UTF8String : "");
+	g_controlTag = tag;
+	g_controlPhase = phase;
+	g_controlW = width;
+	g_controlH = height;
+	call0(s_control);
+}
+
+static void publishEnvironment(float keyboard, int dark) {
+	if (keyboard == g_keyboardH && dark == g_dark) return;
+	g_keyboardH = keyboard;
+	g_dark = dark;
+	call0(s_environment);
+}
+
+@interface NeonInput : UITextField <UITextFieldDelegate>
+@property (nonatomic) BOOL neonWriting;
+@property (nonatomic) BOOL neonBlurOnSubmit;
+@property (nonatomic) BOOL neonAutoFocus;
+@property (nonatomic) NSInteger neonMaxLength;
+@end
+
+@implementation NeonInput
+
+- (instancetype)initWithFrame:(CGRect)frame {
+	self = [super initWithFrame:frame];
+	if (self) {
+		self.delegate = self;
+		self.neonBlurOnSubmit = YES;
+		self.neonMaxLength = -1;
+		self.textColor = [UIColor whiteColor];
+		self.font = [UIFont systemFontOfSize:17];
+		[self addTarget:self action:@selector(neonChanged) forControlEvents:UIControlEventEditingChanged];
+	}
+	return self;
+}
+
+- (void)neonChanged {
+	if (!self.neonWriting) emitControl((int)self.tag, 0, self.text, 0, 0);
+}
+
+- (void)didMoveToWindow {
+	[super didMoveToWindow];
+	if (self.window && self.neonAutoFocus) dispatch_async(dispatch_get_main_queue(), ^{ [self becomeFirstResponder]; });
+}
+
+- (void)textFieldDidBeginEditing:(UITextField *)field { emitControl((int)self.tag, 1, self.text, 0, 0); }
+- (void)textFieldDidEndEditing:(UITextField *)field { emitControl((int)self.tag, 2, self.text, 0, 0); }
+
+- (BOOL)textFieldShouldReturn:(UITextField *)field {
+	emitControl((int)self.tag, 3, self.text, 0, 0);
+	if (self.neonBlurOnSubmit) [self resignFirstResponder];
+	return NO;
+}
+
+- (BOOL)textField:(UITextField *)field shouldChangeCharactersInRange:(NSRange)range replacementString:(NSString *)string {
+	if (self.neonMaxLength < 0) return YES;
+	return (NSInteger)(field.text.length - range.length + string.length) <= self.neonMaxLength;
+}
+
+@end
+
+static UIColor *cssColor(const char *css, UIColor *fallback) {
+	if (!css || css[0] != '#') return fallback;
+	char hex[7];
+	size_t n = strlen(css + 1);
+	if (n == 3) {
+		for (int i = 0; i < 3; i++) hex[2 * i] = hex[2 * i + 1] = css[1 + i];
+	} else if (n == 6) memcpy(hex, css + 1, 6);
+	else return fallback;
+	hex[6] = '\0';
+	char *end = NULL;
+	unsigned long rgb = strtoul(hex, &end, 16);
+	if (end != hex + 6) return fallback;
+	return [UIColor colorWithRed:((rgb >> 16) & 0xff) / 255.0 green:((rgb >> 8) & 0xff) / 255.0 blue:(rgb & 0xff) / 255.0 alpha:1];
+}
+
+static UIAccessibilityTraits roleTraits(const char *role) {
+	if (strcmp(role, "button") == 0) return UIAccessibilityTraitButton;
+	if (strcmp(role, "link") == 0) return UIAccessibilityTraitLink;
+	if (strcmp(role, "header") == 0) return UIAccessibilityTraitHeader;
+	if (strcmp(role, "image") == 0) return UIAccessibilityTraitImage;
+	if (strcmp(role, "search") == 0) return UIAccessibilityTraitSearchField;
+	if (strcmp(role, "adjustable") == 0) return UIAccessibilityTraitAdjustable;
+	if (strcmp(role, "text") == 0 || strcmp(role, "summary") == 0) return UIAccessibilityTraitStaticText;
+	if (strcmp(role, "progressbar") == 0) return UIAccessibilityTraitUpdatesFrequently;
+	return UIAccessibilityTraitNone;
+}
+
+static UIKeyboardType keyboardType(const char *value) {
+	if (strcmp(value, "numeric") == 0 || strcmp(value, "number-pad") == 0) return UIKeyboardTypeNumberPad;
+	if (strcmp(value, "decimal-pad") == 0) return UIKeyboardTypeDecimalPad;
+	if (strcmp(value, "phone-pad") == 0) return UIKeyboardTypePhonePad;
+	if (strcmp(value, "email-address") == 0) return UIKeyboardTypeEmailAddress;
+	if (strcmp(value, "url") == 0) return UIKeyboardTypeURL;
+	return UIKeyboardTypeDefault;
+}
+
+static UIReturnKeyType returnKeyType(const char *value) {
+	if (strcmp(value, "go") == 0) return UIReturnKeyGo;
+	if (strcmp(value, "next") == 0) return UIReturnKeyNext;
+	if (strcmp(value, "search") == 0) return UIReturnKeySearch;
+	if (strcmp(value, "send") == 0) return UIReturnKeySend;
+	return UIReturnKeyDone;
+}
+
+static void setInputProp(NeonInput *input, const char *name, const char *value) {
+	BOOL yes = strcmp(value, "true") == 0;
+	BOOL defaultYes = value[0] == '\0' || yes;
+	NSString *text = [NSString stringWithUTF8String:value];
+	if (strcmp(name, "value") == 0) {
+		if (![input.text isEqualToString:text]) { input.neonWriting = YES; input.text = text; input.neonWriting = NO; }
+	} else if (strcmp(name, "defaultValue") == 0) {
+		if (input.text.length == 0) input.text = text;
+	} else if (strcmp(name, "placeholder") == 0) input.placeholder = text;
+	else if (strcmp(name, "placeholderTextColor") == 0) {
+		input.attributedPlaceholder = [[NSAttributedString alloc] initWithString:input.placeholder ?: @"" attributes:@{ NSForegroundColorAttributeName: cssColor(value, UIColor.placeholderTextColor) }];
+	} else if (strcmp(name, "editable") == 0) input.enabled = defaultYes;
+	else if (strcmp(name, "secureTextEntry") == 0) input.secureTextEntry = yes;
+	else if (strcmp(name, "keyboardType") == 0) input.keyboardType = keyboardType(value);
+	else if (strcmp(name, "returnKeyType") == 0) input.returnKeyType = returnKeyType(value);
+	else if (strcmp(name, "autoCorrect") == 0) input.autocorrectionType = value[0] == '\0' ? UITextAutocorrectionTypeDefault : yes ? UITextAutocorrectionTypeYes : UITextAutocorrectionTypeNo;
+	else if (strcmp(name, "autoCapitalize") == 0) {
+		input.autocapitalizationType = strcmp(value, "none") == 0 ? UITextAutocapitalizationTypeNone :
+			strcmp(value, "words") == 0 ? UITextAutocapitalizationTypeWords :
+			strcmp(value, "characters") == 0 ? UITextAutocapitalizationTypeAllCharacters : UITextAutocapitalizationTypeSentences;
+	} else if (strcmp(name, "blurOnSubmit") == 0) input.neonBlurOnSubmit = defaultYes;
+	else if (strcmp(name, "autoFocus") == 0) {
+		input.neonAutoFocus = yes;
+		if (yes && input.window) [input becomeFirstResponder];
+	} else if (strcmp(name, "maxLength") == 0) input.neonMaxLength = value[0] == '\0' ? -1 : atoi(value);
+}
 
 static UIView *focusedInput(UIView *view) {
 	if (view.isFirstResponder && ([view isKindOfClass:UITextField.class] || [view isKindOfClass:UITextView.class])) return view;
@@ -253,11 +397,29 @@ static UIView *focusedInput(UIView *view) {
 
 - (void)viewDidLoad {
 	[super viewDidLoad];
+	g_dark = self.traitCollection.userInterfaceStyle == UIUserInterfaceStyleDark ? 1 : 0;
+	[[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(neonKeyboard:) name:UIKeyboardWillChangeFrameNotification object:nil];
+	[[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(neonKeyboardHide:) name:UIKeyboardWillHideNotification object:nil];
 	self.view.backgroundColor = [UIColor blackColor];
 	g_container = [[UIView alloc] initWithFrame:self.view.safeAreaLayoutGuide.layoutFrame];
 	g_container.userInteractionEnabled = YES;
 	[self.view addSubview:g_container];
 	call0(s_mount);
+}
+
+- (void)neonKeyboard:(NSNotification *)notification {
+	CGRect frame = [notification.userInfo[UIKeyboardFrameEndUserInfoKey] CGRectValue];
+	CGRect screen = self.view.window ? self.view.window.screen.bounds : UIScreen.mainScreen.bounds;
+	CGFloat height = CGRectGetHeight(CGRectIntersection(screen, frame));
+	CGFloat bottomInset = self.view.safeAreaInsets.bottom;
+	publishEnvironment((float)MAX(0, height - bottomInset), g_dark);
+}
+
+- (void)neonKeyboardHide:(NSNotification *)notification { publishEnvironment(0, g_dark); }
+
+- (void)traitCollectionDidChange:(UITraitCollection *)previous {
+	[super traitCollectionDidChange:previous];
+	publishEnvironment(g_keyboardH, self.traitCollection.userInterfaceStyle == UIUserInterfaceStyleDark ? 1 : 0);
 }
 
 - (void)viewDidLayoutSubviews {
@@ -343,6 +505,41 @@ void niViewSetTag(void *view, int32_t tag) {
 	UIView *v = (__bridge UIView *)view;
 	v.tag = tag;
 }
+
+void *niInputCreate(void) {
+	return CFBridgingRetain([[NeonInput alloc] initWithFrame:CGRectZero]);
+}
+
+void niControlSetTag(void *control, int32_t tag) {
+	UIView *v = (__bridge UIView *)control;
+	v.tag = tag;
+}
+
+void niSetProp(void *view, const char *name, const char *value) {
+	UIView *v = (__bridge UIView *)view;
+	const char *text = value ? value : "";
+	if (strcmp(name, "accessibilityLabel") == 0) v.accessibilityLabel = text[0] ? [NSString stringWithUTF8String:text] : nil;
+	else if (strcmp(name, "accessibilityHint") == 0) v.accessibilityHint = text[0] ? [NSString stringWithUTF8String:text] : nil;
+	else if (strcmp(name, "accessible") == 0) v.isAccessibilityElement = strcmp(text, "true") == 0;
+	else if (strcmp(name, "accessibilityRole") == 0) v.accessibilityTraits = roleTraits(text);
+	else if ([v isKindOfClass:NeonInput.class]) setInputProp((NeonInput *)v, name, text);
+}
+
+void niSetFocused(void *control, int focused) {
+	UIView *v = (__bridge UIView *)control;
+	if (focused) [v becomeFirstResponder];
+	else [v resignFirstResponder];
+}
+
+void niSetControlHandler(msClosure handler) { s_control = handler; }
+int niLastControlTag(void) { return g_controlTag; }
+int niLastControlPhase(void) { return g_controlPhase; }
+const char *niLastControlValue(void) { return g_controlValue ? g_controlValue : ""; }
+float niLastControlWidth(void) { return g_controlW; }
+float niLastControlHeight(void) { return g_controlH; }
+void niSetEnvironmentHandler(msClosure handler) { s_environment = handler; }
+float niKeyboardHeight(void) { return g_keyboardH; }
+int niColorScheme(void) { return g_dark; }
 
 void niViewSetPressable(void *view) {
 	UIView *v = (__bridge UIView *)view;

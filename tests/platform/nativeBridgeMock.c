@@ -18,6 +18,11 @@ typedef struct MockView {
 	float x, y, w, h;
 	float scaleX, scaleY, translateX, translateY;
 	float scrollX, scrollY;
+	int isInput;
+	int focused;
+	char propNames[16][40];
+	char propValues[16][128];
+	int propCount;
 } MockView;
 
 static msClosure s_mount;
@@ -26,6 +31,13 @@ static msClosure s_resize;
 static msClosure s_teardown;
 static msClosure s_scroll;
 static msClosure s_loop;
+static msClosure s_control;
+static msClosure s_environment;
+static int g_controlTag, g_controlPhase;
+static char g_controlValue[256];
+static float g_controlW, g_controlH;
+static float g_keyboardH;
+static int g_scheme;
 static MockView s_container;
 static MockView *g_views;
 static int g_scrollPhase;
@@ -47,6 +59,8 @@ static int g_transformWrites;
 static int g_restackWrites;
 static int g_addChildWrites;
 static int g_detachWrites;
+
+static struct MockView *tagged(int32_t tag);
 
 static void call0(msClosure c) {
 	if (!c.fn) return;
@@ -84,6 +98,48 @@ void niViewSetTag(void *view, int32_t tag) {
 	}
 	v->tag = tag;
 }
+
+void *niInputCreate(void) {
+	MockView *v = create(17);
+	v->isInput = 1;
+	return v;
+}
+
+void niControlSetTag(void *view, int32_t tag) {
+	MockView *v = live(view, "niControlSetTag");
+	if (!v->isInput) { fprintf(stderr, "mock bridge: niControlSetTag on a view that is not a control\n"); abort(); }
+	v->tag = tag;
+}
+
+void niSetProp(void *view, const char *name, const char *value) {
+	MockView *v = live(view, "niSetProp");
+	int i = 0;
+	while (i < v->propCount && strcmp(v->propNames[i], name) != 0) i++;
+	if (i == v->propCount) {
+		if (v->propCount == 16) { fprintf(stderr, "mock bridge: too many props\n"); abort(); }
+		v->propCount++;
+		snprintf(v->propNames[i], sizeof v->propNames[i], "%s", name);
+	}
+	snprintf(v->propValues[i], sizeof v->propValues[i], "%s", value);
+	if (v->isInput && strcmp(name, "value") == 0) snprintf(v->text, sizeof v->text, "%s", value);
+}
+
+void niSetFocused(void *view, int focused) {
+	MockView *v = live(view, "niSetFocused");
+	if (v->focused == focused) return;
+	v->focused = focused;
+	if (v->tag) nmControl(v->tag, focused ? 1 : 2, v->text);
+}
+
+void niSetControlHandler(msClosure handler) { s_control = handler; }
+int niLastControlTag(void) { return g_controlTag; }
+int niLastControlPhase(void) { return g_controlPhase; }
+const char *niLastControlValue(void) { return g_controlValue; }
+float niLastControlWidth(void) { return g_controlW; }
+float niLastControlHeight(void) { return g_controlH; }
+void niSetEnvironmentHandler(msClosure handler) { s_environment = handler; }
+float niKeyboardHeight(void) { return g_keyboardH; }
+int niColorScheme(void) { return g_scheme; }
 
 void *niScrollCreate(void) {
 	MockView *v = create(0);
@@ -283,6 +339,44 @@ void nmScroll(int32_t tag, float x, float y, float width, float height, float co
 }
 
 int32_t nmLastScrollTag(void) { return g_lastScrollTag; }
+
+void nmControlSized(int32_t tag, int32_t phase, const char *value, float width, float height) {
+	g_controlTag = tag;
+	g_controlPhase = phase;
+	snprintf(g_controlValue, sizeof g_controlValue, "%s", value);
+	g_controlW = width;
+	g_controlH = height;
+	for (MockView *v = g_views; v; v = v->next) {
+		if (!v->released && v->tag == tag && v->isInput && phase == 0) { snprintf(v->text, sizeof v->text, "%s", value); break; }
+	}
+	call0(s_control);
+}
+
+void nmControl(int32_t tag, int32_t phase, const char *value) { nmControlSized(tag, phase, value, 0, 0); }
+
+void nmEnvironment(float keyboardHeight, int32_t dark) {
+	g_keyboardH = keyboardHeight;
+	g_scheme = dark;
+	call0(s_environment);
+}
+
+int32_t nmLastInputTag(void) {
+	for (MockView *v = g_views; v; v = v->next) {
+		if (!v->released && v->isInput && v->tag) return v->tag;
+	}
+	fprintf(stderr, "mock bridge: no live tagged input\n");
+	abort();
+}
+
+int32_t nmFocused(int32_t tag) { return tagged(tag)->focused; }
+
+const char *nmProp(int32_t tag, const char *name) {
+	MockView *v = tagged(tag);
+	for (int i = 0; i < v->propCount; i++) {
+		if (strcmp(v->propNames[i], name) == 0) return v->propValues[i];
+	}
+	return "<unset>";
+}
 float nmContentWidth(void) { return g_contentW; }
 float nmContentHeight(void) { return g_contentH; }
 float nmScrolledX(void) { return g_scrolledX; }

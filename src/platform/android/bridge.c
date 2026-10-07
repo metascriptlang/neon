@@ -6,6 +6,7 @@
 #include <jni.h>
 #include <math.h>
 #include <stdlib.h>
+#include <string.h>
 #include <sys/timerfd.h>
 #include <unistd.h>
 
@@ -19,6 +20,13 @@ static msClosure s_resize;
 static msClosure s_teardown;
 static msClosure s_scroll;
 static msClosure s_loop;
+static msClosure s_control;
+static msClosure s_environment;
+static int g_controlTag, g_controlPhase;
+static char *g_controlValue;
+static float g_controlW, g_controlH;
+static float g_keyboardH;
+static int g_dark;
 static int g_lastTag;
 static int g_lastPhase;
 static int g_scrollTag;
@@ -37,7 +45,8 @@ static int g_loopFd = -1;
 
 static struct {
 	jclass view, viewGroup, frameLayout, layoutParams, textView, gradientDrawable, integer, touch;
-	jclass scroll;
+	jclass scroll, input, props, environment;
+	jmethodID inputInit, inputSetTag, inputSetFocused, propsSet, environmentInstall, environmentScheme;
 	jmethodID scrollInit, scrollSetTag, scrollSetOption, scrollSetContentSize, scrollTo, scrollAddContent, scrollDispose, viewSetClickable;
 	jmethodID viewGetParent, viewSetLayoutParams, viewSetAlpha, viewGetBackground, viewSetBackground;
 	jmethodID viewSetScaleX, viewSetScaleY, viewSetTranslationX, viewSetTranslationY, viewBringToFront;
@@ -148,6 +157,17 @@ static void cacheJni(JNIEnv *e) {
 	J.scrollAddContent = method(e, J.scroll, "addContent", "(Landroid/view/View;)V");
 	J.scrollDispose = method(e, J.scroll, "dispose", "()V");
 	J.viewSetClickable = method(e, J.view, "setClickable", "(Z)V");
+	J.input = globalClass(e, "dev/metascript/neon/Input");
+	J.inputInit = method(e, J.input, "<init>", "(Landroid/content/Context;)V");
+	J.inputSetTag = method(e, J.input, "setNeonTag", "(I)V");
+	J.inputSetFocused = method(e, J.input, "setFocused", "(Z)V");
+	J.props = globalClass(e, "dev/metascript/neon/Props");
+	J.propsSet = (*e)->GetStaticMethodID(e, J.props, "set", "(Landroid/view/View;Ljava/lang/String;Ljava/lang/String;)V");
+	check(e, "Props.set");
+	J.environment = globalClass(e, "dev/metascript/neon/Environment");
+	J.environmentInstall = (*e)->GetStaticMethodID(e, J.environment, "install", "(Landroid/view/ViewGroup;)V");
+	J.environmentScheme = (*e)->GetStaticMethodID(e, J.environment, "colorScheme", "(Landroid/content/Context;)I");
+	check(e, "Environment statics");
 
 	J.viewGetParent = method(e, J.view, "getParent", "()Landroid/view/ViewParent;");
 	J.viewSetLayoutParams = method(e, J.view, "setLayoutParams", "(Landroid/view/ViewGroup$LayoutParams;)V");
@@ -301,6 +321,8 @@ JNIEXPORT void JNICALL Java_dev_metascript_app_NativeApp_start(JNIEnv *e, jclass
 	check(e, "DisplayMetrics fields");
 	g_width = width / g_density;
 	g_height = height / g_density;
+	g_dark = (*e)->CallStaticIntMethod(e, J.environment, J.environmentScheme, context);
+	check(e, "colorScheme");
 
 	jobject container = (*e)->NewObject(e, J.frameLayout, J.frameInit, g_context);
 	check(e, "container");
@@ -308,6 +330,8 @@ JNIEXPORT void JNICALL Java_dev_metascript_app_NativeApp_start(JNIEnv *e, jclass
 	(*e)->CallVoidMethod(e, root, J.groupAddView, container);
 	check(e, "addView container");
 	g_container = (*e)->NewGlobalRef(e, container);
+	(*e)->CallStaticVoidMethod(e, J.environment, J.environmentInstall, root);
+	check(e, "Environment.install");
 	(*e)->PopLocalFrame(e, NULL);
 	call0(s_mount);
 }
@@ -382,6 +406,37 @@ JNIEXPORT void JNICALL Java_dev_metascript_neon_Scroll_scroll(JNIEnv *e, jclass 
 	call0(s_scroll);
 }
 
+JNIEXPORT void JNICALL Java_dev_metascript_neon_Props_control(JNIEnv *e, jclass cls, jint tag, jint phase, jstring value, jint width, jint height) {
+	(void)cls;
+	const char *utf = (*e)->GetStringUTFChars(e, value, NULL);
+	free(g_controlValue);
+	g_controlValue = strdup(utf ? utf : "");
+	if (utf) (*e)->ReleaseStringUTFChars(e, value, utf);
+	g_controlTag = tag;
+	g_controlPhase = phase;
+	g_controlW = width / g_density;
+	g_controlH = height / g_density;
+	call0(s_control);
+}
+
+JNIEXPORT void JNICALL Java_dev_metascript_neon_Environment_changed(JNIEnv *e, jclass cls, jint keyboardHeight, jint dark) {
+	(void)e;
+	(void)cls;
+	g_keyboardH = keyboardHeight / g_density;
+	g_dark = dark;
+	call0(s_environment);
+}
+
+void niSetControlHandler(msClosure handler) { s_control = handler; }
+int niLastControlTag(void) { return g_controlTag; }
+int niLastControlPhase(void) { return g_controlPhase; }
+const char *niLastControlValue(void) { return g_controlValue ? g_controlValue : ""; }
+float niLastControlWidth(void) { return g_controlW; }
+float niLastControlHeight(void) { return g_controlH; }
+void niSetEnvironmentHandler(msClosure handler) { s_environment = handler; }
+float niKeyboardHeight(void) { return g_keyboardH; }
+int niColorScheme(void) { return g_dark; }
+
 void niRegisterApp(msClosure mount) { s_mount = mount; }
 void niSetResizeHandler(msClosure handler) { s_resize = handler; }
 void niSetTeardownHandler(msClosure handler) { s_teardown = handler; }
@@ -437,6 +492,37 @@ void niViewSetTag(void *view, int32_t tag) {
 	(*e)->CallVoidMethod(e, (jobject)view, J.viewSetOnTouchListener, listener);
 	check(e, "setOnTouchListener");
 	(*e)->DeleteLocalRef(e, listener);
+}
+
+void *niInputCreate(void) {
+	jobject input = newView(J.input, J.inputInit);
+	JNIEnv *e = env();
+	(*e)->CallVoidMethod(e, input, J.textSetTextColor, (jint)0xffffffff);
+	(*e)->CallVoidMethod(e, input, J.textSetTextSize, 1, 17.0f);
+	check(e, "input defaults");
+	return input;
+}
+
+void niControlSetTag(void *control, int32_t tag) {
+	JNIEnv *e = env();
+	(*e)->CallVoidMethod(e, (jobject)control, J.inputSetTag, tag);
+	check(e, "setNeonTag");
+}
+
+void niSetProp(void *view, const char *name, const char *value) {
+	JNIEnv *e = env();
+	jstring key = (*e)->NewStringUTF(e, name);
+	jstring val = (*e)->NewStringUTF(e, value ? value : "");
+	(*e)->CallStaticVoidMethod(e, J.props, J.propsSet, (jobject)view, key, val);
+	check(e, "Props.set");
+	(*e)->DeleteLocalRef(e, key);
+	(*e)->DeleteLocalRef(e, val);
+}
+
+void niSetFocused(void *control, int focused) {
+	JNIEnv *e = env();
+	(*e)->CallVoidMethod(e, (jobject)control, J.inputSetFocused, focused ? JNI_TRUE : JNI_FALSE);
+	check(e, "setFocused");
 }
 
 void niViewSetPressable(void *view) {

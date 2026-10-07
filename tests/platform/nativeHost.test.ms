@@ -1,7 +1,8 @@
 import { runApp, createNativeHost } from "../../src/platform/native/host";
 import { createSignal, Accessor } from "../../src/core/signal";
 import { For } from "../../src/macros/ui/flow";
-import { View, Pressable, ScrollView, ScrollViewHandle } from "../../src/components/primitives";
+import { View, Pressable, ScrollView, ScrollViewHandle, TextInput, TextInputHandle } from "../../src/components/primitives";
+import { useColorScheme, useKeyboard, useWindowDimensions } from "../../src/render/environment";
 import { NeonNode } from "../../src/render/node";
 import { NeonEvent } from "../../src/render/event";
 import { Style } from "../../src/render/style";
@@ -14,6 +15,7 @@ import {
 	nmScrollFrameWrites, nmScreenHeightReads, nmDrag, nmPull, nmLoop,
 	nmTransformWrites, nmVisualX, nmVisualY, nmLayoutWidth, nmLayoutHeight, nmTouchAt, nmLastPressableTag,
 	nmLayoutX, nmLayoutY, nmRestackWrites, nmAddChildWrites, nmDetachWrites, nmPaintTag, nmPaintTextIndex,
+	nmControl, nmEnvironment, nmLastInputTag, nmFocused, nmProp,
 } from "./nativeBridgeMock.h";
 
 const PRESS: int32 = 2;
@@ -555,4 +557,61 @@ test "a native sticky list paints and routes its retained header above rows, the
 	assert pressed === "10;13;13;", "changing indices makes the retained row stick instead: " + pressed;
 	nmTeardown();
 	assert nmReleaseCalls() === nmViewsCreated(), "sticky wrappers leave no native view behind";
+}
+
+function prop(tag: int32, name: string): string {
+	return nmProp(tag, name);
+}
+
+test "a native TextInput writes its props, routes typing, focus and submit, and follows a controlled value" {
+	const [name, setName] = createSignal("Ada");
+	const handles: TextInputHandle[] = [];
+	let log = "";
+	const app = (): NeonNode => <View>
+		<TextInput value={name()} placeholder="Name" returnKeyType="next" accessibilityLabel="Name field"
+			ref={(h: TextInputHandle): void => { handles.push(h); }}
+			onChangeText={(t: string): void => { log += "change " + t + ";"; setName(t.toUpperCase()); }}
+			onFocus={(e: NeonEvent): void => { log += "focus;"; }}
+			onBlur={(e: NeonEvent): void => { log += "blur;"; }}
+			onSubmitEditing={(e: NeonEvent): void => { log += "submit " + e.value + ";"; }} />
+	</View>;
+	runApp(app);
+	const tag = nmLastInputTag();
+	assert prop(tag, "value") === "Ada", "initial value: " + prop(tag, "value");
+	assert prop(tag, "placeholder") === "Name", "placeholder: " + prop(tag, "placeholder");
+	assert prop(tag, "returnKeyType") === "next", "returnKeyType: " + prop(tag, "returnKeyType");
+	assert prop(tag, "accessibilityLabel") === "Name field", "label: " + prop(tag, "accessibilityLabel");
+	assert nmLayoutHeight(tag) === 21, "an input without a height takes its measured line height: " + nmLayoutHeight(tag).toString();
+	handles[0].focus();
+	assert nmFocused(tag) === 1 && handles[0].isFocused(), "focus() reaches the native field and isFocused follows it";
+	nmControl(tag, 0, "grace");
+	assert prop(tag, "value") === "GRACE", "the controlled value is written back: " + prop(tag, "value");
+	nmControl(tag, 3, "GRACE");
+	handles[0].blur();
+	assert !handles[0].isFocused(), "blur() clears isFocused";
+	assert log === "focus;change grace;submit GRACE;blur;", "event order: " + log;
+	nmTeardown();
+	assert nmReleaseCalls() === nmViewsCreated(), "the input is released with the rest";
+}
+
+test "the native host publishes window size, keyboard height and color scheme as signals" {
+	let seen = "";
+	const dims = useWindowDimensions();
+	const keyboard = useKeyboard();
+	const scheme = useColorScheme();
+	const app = (): NeonNode => <View>
+		<Text>{`${dims().width}x${dims().height} ${keyboard().visible ? "kb " + keyboard().height.toString() : "no kb"} ${scheme()}`}</Text>
+	</View>;
+	runApp(app);
+	seen = `${dims().width}x${dims().height} ${keyboard().height} ${scheme()}`;
+	assert seen === "400x800 0 light", "initial environment: " + seen;
+	nmEnvironment(300, 1);
+	seen = `${dims().width}x${dims().height} ${keyboard().height} ${scheme()}`;
+	assert seen === "400x800 300 dark", "keyboard and dark mode: " + seen;
+	nmResize(800, 400);
+	seen = `${dims().width}x${dims().height} ${keyboard().height} ${scheme()}`;
+	assert seen === "800x400 300 dark", "rotation: " + seen;
+	nmEnvironment(0, 0);
+	nmResize(400, 800);
+	nmTeardown();
 }
