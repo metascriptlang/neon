@@ -45,8 +45,9 @@ static int g_loopFd = -1;
 
 static struct {
 	jclass view, viewGroup, frameLayout, layoutParams, textView, gradientDrawable, integer, touch;
-	jclass scroll, input, props, environment;
-	jmethodID inputInit, inputSetTag, inputSetFocused, propsSet, environmentInstall, environmentScheme;
+	jclass scroll, input, props, environment, toggle, spinner, picture;
+	jmethodID inputInit, inputSetTag, inputSetFocused, propsSet, propsSetTag, environmentInstall, environmentScheme;
+	jmethodID toggleInit, spinnerInit, pictureInit;
 	jmethodID scrollInit, scrollSetTag, scrollSetOption, scrollSetContentSize, scrollTo, scrollAddContent, scrollDispose, viewSetClickable;
 	jmethodID viewGetParent, viewSetLayoutParams, viewSetAlpha, viewGetBackground, viewSetBackground;
 	jmethodID viewSetScaleX, viewSetScaleY, viewSetTranslationX, viewSetTranslationY, viewBringToFront;
@@ -164,6 +165,14 @@ static void cacheJni(JNIEnv *e) {
 	J.props = globalClass(e, "dev/metascript/neon/Props");
 	J.propsSet = (*e)->GetStaticMethodID(e, J.props, "set", "(Landroid/view/View;Ljava/lang/String;Ljava/lang/String;)V");
 	check(e, "Props.set");
+	J.propsSetTag = (*e)->GetStaticMethodID(e, J.props, "setTag", "(Landroid/view/View;I)V");
+	check(e, "Props.setTag");
+	J.toggle = globalClass(e, "dev/metascript/neon/Toggle");
+	J.toggleInit = method(e, J.toggle, "<init>", "(Landroid/content/Context;)V");
+	J.spinner = globalClass(e, "dev/metascript/neon/Spinner");
+	J.spinnerInit = method(e, J.spinner, "<init>", "(Landroid/content/Context;)V");
+	J.picture = globalClass(e, "dev/metascript/neon/Picture");
+	J.pictureInit = method(e, J.picture, "<init>", "(Landroid/content/Context;)V");
 	J.environment = globalClass(e, "dev/metascript/neon/Environment");
 	J.environmentInstall = (*e)->GetStaticMethodID(e, J.environment, "install", "(Landroid/view/ViewGroup;)V");
 	J.environmentScheme = (*e)->GetStaticMethodID(e, J.environment, "colorScheme", "(Landroid/content/Context;)I");
@@ -503,10 +512,14 @@ void *niInputCreate(void) {
 	return input;
 }
 
+void *niSwitchCreate(void) { return newView(J.toggle, J.toggleInit); }
+void *niIndicatorCreate(void) { return newView(J.spinner, J.spinnerInit); }
+void *niImageCreate(void) { return newView(J.picture, J.pictureInit); }
+
 void niControlSetTag(void *control, int32_t tag) {
 	JNIEnv *e = env();
-	(*e)->CallVoidMethod(e, (jobject)control, J.inputSetTag, tag);
-	check(e, "setNeonTag");
+	(*e)->CallStaticVoidMethod(e, J.props, J.propsSetTag, (jobject)control, tag);
+	check(e, "Props.setTag");
 }
 
 void niSetProp(void *view, const char *name, const char *value) {

@@ -2,7 +2,7 @@ import { Host, HostNode, NeonNode, render } from "../../render/host";
 import { Dispose } from "../../core/types";
 import { NeonEvent } from "../../render/event";
 import { FlexStyle, YGNode, freeLayoutTree, layoutPass as runLayoutPass } from "../../../../yoga/src/index";
-import { YGNodeGetParent, YGNodeRemoveChild } from "../../../../yoga/src/yogaH";
+import { YGNodeGetParent, YGNodeRemoveChild, YGNodeLayoutGetPadding, YGNodeLayoutGetBorder, YGNodeLayoutGetMargin, YGEdge } from "../../../../yoga/src/yogaH";
 import { Style } from "../../render/style";
 import { NativeElementKind, createNativeEventRegistry, nativeElementKind, nativeFlexStyle, nativeTransform } from "./contract";
 import { publishWindow, publishKeyboard, publishColorScheme } from "../../render/environment";
@@ -30,7 +30,7 @@ import {
 	niScrollCreate, niScrollSetTag, niScrollSetContentSize, niScrollTo, niScrollSetOption,
 	niLastScrollTag, niLastScrollPhase, niLastScrollX, niLastScrollY, niLastScrollWidth, niLastScrollHeight,
 	niLastScrollContentWidth, niLastScrollContentHeight,
-	niInputCreate, niControlSetTag, niSetProp, niSetFocused,
+	niInputCreate, niSwitchCreate, niIndicatorCreate, niImageCreate, niControlSetTag, niSetProp, niSetFocused,
 	niLastControlTag, niLastControlPhase, niLastControlValue, niLastControlWidth, niLastControlHeight,
 	niKeyboardHeight, niColorScheme,
 } from "./bridge.h";
@@ -53,6 +53,7 @@ class NativeNode {
 	isString: boolean = false;
 	isScroll: boolean = false;
 	isInput: boolean = false;
+	control: NativeElementKind = NativeElementKind.View;
 	labelOwner: NativeNode | null = null;
 	text: string = "";
 	children: NativeNode[] = [];
@@ -76,6 +77,8 @@ class NativeNode {
 	firedH: float32 = -1.0;
 	framed: boolean = false;
 	contentW: float32 = -1.0;
+	measuredFor: float32 = -1.0;
+	measuredW: float32 = 0.0;
 	contentH: float32 = -1.0;
 
 	constructor(view: Ptr<void> | null, isText: boolean, isString: boolean) {
@@ -176,9 +179,12 @@ function applyPaint(n: NativeNode, s: Style): void {
 // out text without a measure func. Fresh FlexStyle object every time — the
 function remeasureText(n: NativeNode): void {
 	if (!n.isText || n.view === null) { return; }
-	niMeasureText(n.view, niScreenWidth());
+	const available = availableTextWidth(n);
+	niMeasureText(n.view, available);
 	const w = niMeasuredW();
 	const h = niMeasuredH();
+	n.measuredFor = available;
+	n.measuredW = w;
 	const old = n.flex;
 	const fresh: FlexStyle = {};
 	if (old !== null) {
@@ -222,6 +228,30 @@ function remeasureText(n: NativeNode): void {
 	if (n.isString) { fresh.display = n.text === "" ? "none" : null; }
 	n.flex = fresh;
 }
+function horizontalInset(yg: Ptr<YGNode>, padding: boolean): float32 {
+	if (padding) {
+		return YGNodeLayoutGetPadding(yg, YGEdge.YGEdgeLeft) + YGNodeLayoutGetPadding(yg, YGEdge.YGEdgeRight)
+			+ YGNodeLayoutGetBorder(yg, YGEdge.YGEdgeLeft) + YGNodeLayoutGetBorder(yg, YGEdge.YGEdgeRight);
+	}
+	return YGNodeLayoutGetMargin(yg, YGEdge.YGEdgeLeft) + YGNodeLayoutGetMargin(yg, YGEdge.YGEdgeRight);
+}
+
+function availableTextWidth(n: NativeNode): float32 {
+	const p = n.parent;
+	if (p === null || p.yg === null || p.w <= 0) { return niScreenWidth(); }
+	let width = p.w - horizontalInset(p.yg as Ptr<YGNode>, true);
+	if (n.yg !== null) { width -= horizontalInset(n.yg as Ptr<YGNode>, false); }
+	return Math.max(0, width) as float32;
+}
+
+function textNeedsRemeasure(n: NativeNode): boolean {
+	if (!n.isText || n.view === null || !isMounted(n)) { return false; }
+	const available = availableTextWidth(n);
+	if (Math.abs(available - n.measuredFor) < 0.5) { return false; }
+	const unwrapped = n.measuredW < n.measuredFor - 0.5;
+	return !(unwrapped && available >= n.measuredW);
+}
+
 // ---- the host ----
 
 let nextTag: int32 = 1;
@@ -229,11 +259,12 @@ const eventRegistry = createNativeEventRegistry();
 let root: NativeNode;
 const scrollNodes: NativeNode[] = [];
 const layoutNodes: NativeNode[] = [];
+const textNodes: NativeNode[] = [];
 
 function kindOf(n: NativeNode): NativeElementKind {
 	if (n.isText) { return NativeElementKind.Text; }
 	if (n.isScroll) { return NativeElementKind.Scroll; }
-	if (n.isInput) { return NativeElementKind.Input; }
+	if (n.control !== NativeElementKind.View) { return n.control; }
 	return NativeElementKind.View;
 }
 
@@ -295,6 +326,10 @@ function releaseNativeTree(n: NativeNode): void {
 	}
 	const laid = layoutNodes.indexOf(n);
 	if (laid >= 0) { layoutNodes.splice(laid, 1); }
+	if (n.isText) {
+		const at = textNodes.indexOf(n);
+		if (at >= 0) { textNodes.splice(at, 1); }
+	}
 	if (n.view !== null) {
 		niRemoveFromParent(n.view);
 		niViewRelease(n.view);
@@ -324,6 +359,7 @@ function materializeString(child: NativeNode, parent: NativeNode): void {
 		return;
 	}
 	if (child.view === null) { child.view = niTextCreate(); }
+	if (textNodes.indexOf(child) < 0) { textNodes.push(child); }
 	child.isText = true;
 	child.labelOwner = child;
 	niSetText(child.view, child.text);
@@ -372,9 +408,15 @@ function onEnvironment(): void {
 }
 
 function intrinsicFlex(n: NativeNode, flex: FlexStyle): FlexStyle {
-	if (!n.isInput || n.view === null || flex.height !== null) { return flex; }
-	niMeasureText(n.view, niScreenWidth());
-	flex.height = niMeasuredH();
+	if (n.view === null) { return flex; }
+	if (n.isInput && flex.height === null) {
+		niMeasureText(n.view, niScreenWidth());
+		flex.height = niMeasuredH();
+	} else if (n.control === NativeElementKind.Switch && (flex.width === null || flex.height === null)) {
+		niMeasureText(n.view, niScreenWidth());
+		if (flex.width === null) { flex.width = niMeasuredW(); }
+		if (flex.height === null) { flex.height = niMeasuredH(); }
+	}
 	return flex;
 }
 
@@ -412,6 +454,7 @@ export function createNativeHost(): NativeHost {
 			let n: NativeNode;
 			if (kind === NativeElementKind.Text) {
 				n = nativeNode(niTextCreate(), true, false);
+				textNodes.push(n);
 			} else if (kind === NativeElementKind.Scroll) {
 				n = nativeNode(niScrollCreate(), false, false);
 				n.isScroll = true;
@@ -419,9 +462,16 @@ export function createNativeHost(): NativeHost {
 			} else if (kind === NativeElementKind.Input) {
 				n = nativeNode(niInputCreate(), false, false);
 				n.isInput = true;
+			} else if (kind === NativeElementKind.Switch) {
+				n = nativeNode(niSwitchCreate(), false, false);
+			} else if (kind === NativeElementKind.Indicator) {
+				n = nativeNode(niIndicatorCreate(), false, false);
+			} else if (kind === NativeElementKind.Image) {
+				n = nativeNode(niImageCreate(), false, false);
 			} else {
 				n = nativeNode(niViewCreate(), false, false);
 			}
+			n.control = kind === NativeElementKind.Text || kind === NativeElementKind.Scroll ? NativeElementKind.View : kind;
 			n.flex = intrinsicFlex(n, nativeFlexStyle({} as Style, kind));
 			return n as unknown as HostNode;
 		},
@@ -472,7 +522,7 @@ export function createNativeHost(): NativeHost {
 				n.eventTag = nextTag;
 				nextTag += 1;
 				if (n.view !== null && n.isScroll) { niScrollSetTag(n.view, n.eventTag); }
-				else if (n.view !== null && n.isInput) { niControlSetTag(n.view, n.eventTag); }
+				else if (n.view !== null && n.control !== NativeElementKind.View) { niControlSetTag(n.view, n.eventTag); }
 				else if (n.view !== null) { niViewSetTag(n.view, n.eventTag); }
 			}
 			eventRegistry.add(n.eventTag, name, handler);
@@ -684,6 +734,16 @@ function relayoutRoot(): void {
 	layoutDirty = false;
 	root.flex = { width, height };
 	runLayoutPass(root, width, height);
+	for (let pass = 0; pass < 3; pass += 1) {
+		let changed = false;
+		for (const t of textNodes) {
+			if (!textNeedsRemeasure(t)) { continue; }
+			remeasureText(t);
+			changed = true;
+		}
+		if (!changed) { break; }
+		runLayoutPass(root, width, height);
+	}
 	writeContentSizes();
 	batched(fireLayouts);
 }

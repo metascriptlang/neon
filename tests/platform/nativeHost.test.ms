@@ -2,6 +2,9 @@ import { runApp, createNativeHost } from "../../src/platform/native/host";
 import { createSignal, Accessor } from "../../src/core/signal";
 import { For } from "../../src/macros/ui/flow";
 import { View, Pressable, ScrollView, ScrollViewHandle, TextInput, TextInputHandle } from "../../src/components/primitives";
+import { Switch } from "../../src/components/switch";
+import { ActivityIndicator } from "../../src/components/activityIndicator";
+import { Image } from "../../src/components/image";
 import { useColorScheme, useKeyboard, useWindowDimensions } from "../../src/render/environment";
 import { NeonNode } from "../../src/render/node";
 import { NeonEvent } from "../../src/render/event";
@@ -15,7 +18,7 @@ import {
 	nmScrollFrameWrites, nmScreenHeightReads, nmDrag, nmPull, nmLoop,
 	nmTransformWrites, nmVisualX, nmVisualY, nmLayoutWidth, nmLayoutHeight, nmTouchAt, nmLastPressableTag,
 	nmLayoutX, nmLayoutY, nmRestackWrites, nmAddChildWrites, nmDetachWrites, nmPaintTag, nmPaintTextIndex,
-	nmControl, nmEnvironment, nmLastInputTag, nmFocused, nmProp,
+	nmControl, nmControlSized, nmTextWidth, nmTextHeight, nmLastControlTag, nmEnvironment, nmLastInputTag, nmFocused, nmProp,
 } from "./nativeBridgeMock.h";
 
 const PRESS: int32 = 2;
@@ -612,6 +615,58 @@ test "the native host publishes window size, keyboard height and color scheme as
 	seen = `${dims().width}x${dims().height} ${keyboard().height} ${scheme()}`;
 	assert seen === "800x400 300 dark", "rotation: " + seen;
 	nmEnvironment(0, 0);
+	nmResize(400, 800);
+	nmTeardown();
+}
+
+test "native Switch, ActivityIndicator and Image write their props, size themselves and route their events" {
+	const [on, setOn] = createSignal(false);
+	const [busy, setBusy] = createSignal(true);
+	let log = "";
+	const app = (): NeonNode => <View>
+		<Switch value={on()} onValueChange={(v: boolean): void => { log += `switch ${v};`; setOn(v); }} accessibilityLabel="Dark mode" />
+		<ActivityIndicator animating={busy()} size="large" color="#ff0000" onLayout={(e: NeonEvent): void => {}} />
+		<Image source={{ uri: "https://example.com/a.png" }} resizeMode="cover" style={{ width: 64, height: 48 }}
+			onLoad={(e: NeonEvent): void => { log += `load ${e.width}x${e.height};`; }}
+			onError={(e: NeonEvent): void => { log += `error ${e.value};`; }} />
+	</View>;
+	runApp(app);
+	const toggle = nmLastControlTag(2);
+	const spinner = nmLastControlTag(3);
+	const picture = nmLastControlTag(4);
+	assert prop(toggle, "value") === "false" && prop(toggle, "accessibilityLabel") === "Dark mode", "switch props";
+	assert `${nmLayoutWidth(toggle)}x${nmLayoutHeight(toggle)}` === "51x31", "the switch takes its native size: " + `${nmLayoutWidth(toggle)}x${nmLayoutHeight(toggle)}`;
+	assert prop(spinner, "animating") === "true" && prop(spinner, "color") === "#ff0000" && prop(spinner, "accessibilityRole") === "progressbar", "indicator props";
+	assert `${nmLayoutWidth(spinner)}x${nmLayoutHeight(spinner)}` === "36x36", "large indicator: " + `${nmLayoutWidth(spinner)}x${nmLayoutHeight(spinner)}`;
+	assert prop(picture, "source") === "https://example.com/a.png" && prop(picture, "resizeMode") === "cover", "image props";
+	assert `${nmLayoutWidth(picture)}x${nmLayoutHeight(picture)}` === "64x48", "image frame";
+	nmControl(toggle, 4, "true");
+	assert prop(toggle, "value") === "true", "the controlled switch follows its signal";
+	setBusy(false);
+	assert prop(spinner, "animating") === "false", "animating follows its signal";
+	nmControlSized(picture, 5, "", 640, 480);
+	nmControl(picture, 6, "HTTP 404");
+	assert log === "switch true;load 640x480;error HTTP 404;", "events: " + log;
+	nmTeardown();
+	assert nmReleaseCalls() === nmViewsCreated(), "controls are released";
+}
+
+test "native text wraps to the width its container gives it, so a row grows with a long description" {
+	const long = "a long description that wraps onto several lines in a narrow column";
+	const app = (): NeonNode => <View>
+		<View style={{ flexDirection: "row", padding: 10 }}>
+			<View style={{ width: 56, height: 56 }} />
+			<View style={{ flex: 1, paddingLeft: 12 }}>
+				<Text>{long}</Text>
+			</View>
+		</View>
+	</View>;
+	runApp(app);
+	const size = `${nmTextWidth(long)}x${nmTextHeight(long)}`;
+	assert size === "312x42", "the label takes the column's 312pt and wraps to two 21pt lines: " + size;
+	nmResize(800, 400);
+	const wide = `${nmTextWidth(long)}x${nmTextHeight(long)}`;
+	assert wide === "570x21", "a wider window rewraps the same label: " + wide;
 	nmResize(400, 800);
 	nmTeardown();
 }

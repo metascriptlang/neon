@@ -159,6 +159,78 @@ static void publishEnvironment(float keyboard, int dark) {
 
 @end
 
+@interface NeonSwitch : UISwitch
+@property (nonatomic) BOOL neonValue;
+@end
+
+@implementation NeonSwitch
+- (instancetype)initWithFrame:(CGRect)frame {
+	self = [super initWithFrame:frame];
+	if (self) [self addTarget:self action:@selector(neonChanged) forControlEvents:UIControlEventValueChanged];
+	return self;
+}
+- (void)neonChanged {
+	emitControl((int)self.tag, 4, self.isOn ? @"true" : @"false", 0, 0);
+	if (self.isOn != self.neonValue) [self setOn:self.neonValue animated:YES];
+}
+@end
+
+@interface NeonIndicator : UIActivityIndicatorView
+@property (nonatomic) BOOL neonAnimating;
+@end
+
+@implementation NeonIndicator
+- (void)neonApply {
+	if (self.neonAnimating) [self startAnimating];
+	else [self stopAnimating];
+}
+@end
+
+@interface NeonImage : UIImageView
+@property (nonatomic, copy) NSString *neonUri;
+@end
+
+@implementation NeonImage
+
++ (NSCache *)neonCache {
+	static NSCache *cache;
+	static dispatch_once_t once;
+	dispatch_once(&once, ^{ cache = [[NSCache alloc] init]; });
+	return cache;
+}
+
+- (void)neonLoad:(NSString *)uri {
+	if ([uri isEqualToString:self.neonUri ?: @""]) return;
+	self.neonUri = uri;
+	self.image = nil;
+	if (uri.length == 0) return;
+	UIImage *cached = [NeonImage.neonCache objectForKey:uri];
+	if (cached) {
+		self.image = cached;
+		dispatch_async(dispatch_get_main_queue(), ^{
+			if ([self.neonUri isEqualToString:uri]) emitControl((int)self.tag, 5, @"", (float)cached.size.width, (float)cached.size.height);
+		});
+		return;
+	}
+	NSURL *url = [NSURL URLWithString:uri];
+	if (!url) { emitControl((int)self.tag, 6, @"malformed URI", 0, 0); return; }
+	__weak NeonImage *weakSelf = self;
+	[[NSURLSession.sharedSession dataTaskWithURL:url completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+		UIImage *image = data ? [UIImage imageWithData:data] : nil;
+		NSInteger status = [response isKindOfClass:NSHTTPURLResponse.class] ? ((NSHTTPURLResponse *)response).statusCode : 200;
+		NSString *failure = error ? error.localizedDescription : (status < 200 || status >= 300) ? [NSString stringWithFormat:@"HTTP %ld", (long)status] : image ? nil : @"cannot decode image";
+		dispatch_async(dispatch_get_main_queue(), ^{
+			NeonImage *view = weakSelf;
+			if (!view || ![view.neonUri isEqualToString:uri]) return;
+			if (failure) { emitControl((int)view.tag, 6, failure, 0, 0); return; }
+			[NeonImage.neonCache setObject:image forKey:uri];
+			view.image = image;
+			emitControl((int)view.tag, 5, @"", (float)image.size.width, (float)image.size.height);
+		});
+	}] resume];
+}
+@end
+
 static UIColor *cssColor(const char *css, UIColor *fallback) {
 	if (!css || css[0] != '#') return fallback;
 	char hex[7];
@@ -510,6 +582,25 @@ void *niInputCreate(void) {
 	return CFBridgingRetain([[NeonInput alloc] initWithFrame:CGRectZero]);
 }
 
+void *niSwitchCreate(void) {
+	return CFBridgingRetain([[NeonSwitch alloc] initWithFrame:CGRectZero]);
+}
+
+void *niIndicatorCreate(void) {
+	NeonIndicator *indicator = [[NeonIndicator alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleMedium];
+	indicator.hidesWhenStopped = YES;
+	indicator.neonAnimating = YES;
+	[indicator neonApply];
+	return CFBridgingRetain(indicator);
+}
+
+void *niImageCreate(void) {
+	NeonImage *image = [[NeonImage alloc] initWithFrame:CGRectZero];
+	image.contentMode = UIViewContentModeScaleAspectFill;
+	image.clipsToBounds = YES;
+	return CFBridgingRetain(image);
+}
+
 void niControlSetTag(void *control, int32_t tag) {
 	UIView *v = (__bridge UIView *)control;
 	v.tag = tag;
@@ -523,6 +614,27 @@ void niSetProp(void *view, const char *name, const char *value) {
 	else if (strcmp(name, "accessible") == 0) v.isAccessibilityElement = strcmp(text, "true") == 0;
 	else if (strcmp(name, "accessibilityRole") == 0) v.accessibilityTraits = roleTraits(text);
 	else if ([v isKindOfClass:NeonInput.class]) setInputProp((NeonInput *)v, name, text);
+	else if ([v isKindOfClass:NeonSwitch.class]) {
+		NeonSwitch *s = (NeonSwitch *)v;
+		if (strcmp(name, "value") == 0) { s.neonValue = strcmp(text, "true") == 0; if (s.isOn != s.neonValue) [s setOn:s.neonValue animated:YES]; }
+		else if (strcmp(name, "disabled") == 0) s.enabled = strcmp(text, "true") != 0;
+		else if (strcmp(name, "thumbColor") == 0) s.thumbTintColor = text[0] ? cssColor(text, nil) : nil;
+		else if (strcmp(name, "trackColorOn") == 0) s.onTintColor = text[0] ? cssColor(text, nil) : nil;
+		else if (strcmp(name, "trackColorOff") == 0) { s.backgroundColor = text[0] ? cssColor(text, nil) : nil; s.layer.cornerRadius = 15.5; }
+	} else if ([v isKindOfClass:NeonIndicator.class]) {
+		NeonIndicator *i = (NeonIndicator *)v;
+		if (strcmp(name, "animating") == 0) { i.neonAnimating = strcmp(text, "false") != 0; [i neonApply]; }
+		else if (strcmp(name, "hidesWhenStopped") == 0) i.hidesWhenStopped = strcmp(text, "false") != 0;
+		else if (strcmp(name, "color") == 0) i.color = text[0] ? cssColor(text, UIColor.grayColor) : UIColor.grayColor;
+	} else if ([v isKindOfClass:NeonImage.class]) {
+		NeonImage *image = (NeonImage *)v;
+		if (strcmp(name, "source") == 0) [image neonLoad:[NSString stringWithUTF8String:text]];
+		else if (strcmp(name, "resizeMode") == 0) {
+			image.contentMode = strcmp(text, "contain") == 0 ? UIViewContentModeScaleAspectFit :
+				strcmp(text, "stretch") == 0 ? UIViewContentModeScaleToFill :
+				strcmp(text, "center") == 0 ? UIViewContentModeCenter : UIViewContentModeScaleAspectFill;
+		}
+	}
 }
 
 void niSetFocused(void *control, int focused) {

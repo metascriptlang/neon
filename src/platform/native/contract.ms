@@ -8,6 +8,9 @@ export enum NativeElementKind {
 	Text,
 	Scroll,
 	Input,
+	Switch,
+	Indicator,
+	Image,
 }
 
 interface NativeEventRoute {
@@ -42,6 +45,9 @@ export function nativeElementKind(tag: string): NativeElementKind {
 	if (tag === "text") { return NativeElementKind.Text; }
 	if (tag === "scrollview") { return NativeElementKind.Scroll; }
 	if (tag === "textinput") { return NativeElementKind.Input; }
+	if (tag === "switch") { return NativeElementKind.Switch; }
+	if (tag === "activityindicator") { return NativeElementKind.Indicator; }
+	if (tag === "image") { return NativeElementKind.Image; }
 	return NativeElementKind.View;
 }
 

@@ -18,3 +18,15 @@
 -keep class dev.metascript.neon.Environment {
 	*;
 }
+
+-keep class dev.metascript.neon.Toggle {
+	*;
+}
+
+-keep class dev.metascript.neon.Spinner {
+	*;
+}
+
+-keep class dev.metascript.neon.Picture {
+	*;
+}

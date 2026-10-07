@@ -42,6 +42,9 @@ float niMeasuredW(void);
 float niMeasuredH(void);
 
 void *niInputCreate(void);
+void *niSwitchCreate(void);
+void *niIndicatorCreate(void);
+void *niImageCreate(void);
 void  niControlSetTag(void *control, int32_t tag);
 void  niSetProp(void *view, const char *name, const char *value);
 void  niSetFocused(void *control, int focused);

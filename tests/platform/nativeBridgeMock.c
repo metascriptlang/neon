@@ -19,6 +19,7 @@ typedef struct MockView {
 	float scaleX, scaleY, translateX, translateY;
 	float scrollX, scrollY;
 	int isInput;
+	int control;
 	int focused;
 	char propNames[16][40];
 	char propValues[16][128];
@@ -102,12 +103,23 @@ void niViewSetTag(void *view, int32_t tag) {
 void *niInputCreate(void) {
 	MockView *v = create(17);
 	v->isInput = 1;
+	v->control = 1;
 	return v;
 }
 
+static void *createControl(int kind) {
+	MockView *v = create(0);
+	v->control = kind;
+	return v;
+}
+
+void *niSwitchCreate(void) { return createControl(2); }
+void *niIndicatorCreate(void) { return createControl(3); }
+void *niImageCreate(void) { return createControl(4); }
+
 void niControlSetTag(void *view, int32_t tag) {
 	MockView *v = live(view, "niControlSetTag");
-	if (!v->isInput) { fprintf(stderr, "mock bridge: niControlSetTag on a view that is not a control\n"); abort(); }
+	if (!v->control) { fprintf(stderr, "mock bridge: niControlSetTag on a view that is not a control\n"); abort(); }
 	v->tag = tag;
 }
 
@@ -269,9 +281,12 @@ void niSetFont(void *label, float size, int bold) {
 
 void niMeasureText(void *label, float maxWidth) {
 	MockView *v = live(label, "niMeasureText");
+	if (v->control == 2) { g_measuredW = 51; g_measuredH = 31; return; }
 	float w = (float)strlen(v->text) * v->size * 0.5f;
+	int lines = 1;
+	while (maxWidth > 0 && w > maxWidth * lines) lines++;
 	g_measuredW = w < maxWidth ? w : maxWidth;
-	g_measuredH = v->size + 4;
+	g_measuredH = (v->size + 4) * lines;
 }
 
 float niMeasuredW(void) { return g_measuredW; }
@@ -358,6 +373,14 @@ void nmEnvironment(float keyboardHeight, int32_t dark) {
 	g_keyboardH = keyboardHeight;
 	g_scheme = dark;
 	call0(s_environment);
+}
+
+int32_t nmLastControlTag(int32_t kind) {
+	for (MockView *v = g_views; v; v = v->next) {
+		if (!v->released && v->control == kind && v->tag) return v->tag;
+	}
+	fprintf(stderr, "mock bridge: no live tagged control of kind %d\n", kind);
+	abort();
 }
 
 int32_t nmLastInputTag(void) {
@@ -466,3 +489,14 @@ void nmTouchAt(float x, float y, int32_t phase) {
 	MockView *hit = hitView(&s_container, x, y);
 	if (hit) nmTouch(hit->tag, phase);
 }
+
+static MockView *labelled(const char *text) {
+	for (MockView *v = g_views; v; v = v->next) {
+		if (!v->released && v->size > 0 && strcmp(v->text, text) == 0) return v;
+	}
+	fprintf(stderr, "mock bridge: no live label \"%s\"\n", text);
+	abort();
+}
+
+float nmTextWidth(const char *text) { return labelled(text)->w; }
+float nmTextHeight(const char *text) { return labelled(text)->h; }
