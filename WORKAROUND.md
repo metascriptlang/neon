@@ -186,3 +186,10 @@ react-native-svg's surface in `src/components/svg/`: `<Svg>`'s children mount in
 | S7 | `scene.ms` `paint`, `SvgView.java` | Gradients always pad (`spreadMethod` is not read) and do not inherit stops through `href`; Android draws a radial gradient from its centre (no focal point: `RadialGradient` has none before API 31's two-point form) | `spreadMethod` and `href` inheritance in the encoder; Android's two-point conical gradient on API 31+ | — |
 | S8 | `src/components/svg/xml.ms` | `SvgXml` ignores `<style>` sheets and `class` (only `style=""` attributes apply), draws a nested `<svg>` as a `<g>` (its viewBox ignored), and throws on malformed XML where react-native-svg calls `onError`/shows `fallback` | CSS selectors from `<style>`; `onError`/`fallback` props | — |
 | S9 | `src/components/svg/elements.ms` | Not done: `Mask`, `Pattern`, `Image`, `TextPath`, `Marker`, `ForeignObject`, the `Symbol` component (a `<symbol>` inside `SvgXml` works with `<use>`), `SvgUri`/`SvgCss`; `strokeDasharray` takes `number[]` or a string; every reactive change re-encodes the whole scene synchronously, once per changed prop even inside one batch | the remaining elements on demand; coalescing encodes per batch | — |
+
+## Android emulator fixes (`wt/rn-android-b`, 2026-10-08, unreviewed)
+
+| # | where | decided | proper path | undo |
+|---|---|---|---|---|
+| AB1 | `examples/media/media.ms` "next site" | The example navigates the WebView by changing `source`, because on Android `injectJavaScript("location.href = …")` left `canGoBack` false and `goBack` inert (likely Chromium skipping script-added history entries without a user gesture; not proven). An app that navigates through `injectJavaScript` still hits this on Android | Measure the cause on Android and either document it as a platform rule or route script navigations through `loadUrl` in `Web.java` so history records them | Restore the `injectJavaScript` navigation in the example and `tests/android/media.py` |
+
