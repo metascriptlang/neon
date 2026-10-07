@@ -429,7 +429,12 @@ press state survived rotation and Home/resume without a PID change.
 axis replacement both ways with app state kept and the offset restarting at 0, and
 pull-to-refresh, and `testKeyboardModes` the same four keyboard modes as Android against
 `app.keyboards`; both passed on an iPhone 17 Pro simulator with the software keyboard
-2026-10-07, not on a physical phone.
+2026-10-07. On the physical iPhone 13 Pro (source `5cd5bf3`, compiler `8506eaf03`) both
+`ScrollMatrixUITests` cases and all three `FlatListUITests` cases (fixed rows, measured/sticky/
+inverted, grid and sections) passed the same evening. Two physical-only failures were the
+harness, not Neon: Control Center opened over the app by a touch during the run, and an
+downward drag starting near the bottom edge that iOS took as Reachability (the inverted drag now starts
+mid-window, `tests/ios/counterUITests.swift`). The simulator has neither.
 The real-Chrome per-module lane passed 12 ScrollView and 2 FlatList cases, including
 horizontal geometry, paging, controlled refresh and disposal. A normal
 `msc build --target=js` bundle of a horizontal 10,000-row FlatList app mounts in Chrome,
