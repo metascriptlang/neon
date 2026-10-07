@@ -164,7 +164,9 @@ export function createDrawerNavigator<P>(): DrawerNavigator<P> {
 		Group: (props: {
 			children: NeonNode;
 			screenOptions?: Accessor<ScreenOptionsOf<P>> | null;
-		}): NeonNode => groupOf<P>(collector, props.children, optionsAccessor<P>(props.screenOptions)),
+		}): NeonNode => {
+			return groupOf<P>(collector, props.children, optionsAccessor<P>(props.screenOptions));
+		},
 		Screen: (props: {
 			name: string;
 			component: (props: ScreenProps<P>) => NeonNode;

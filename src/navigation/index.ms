@@ -63,7 +63,9 @@ export {
 export {
 	BackBehavior,
 	TabNavigator,
+	TabBarPosition,
 	createBottomTabNavigator,
+	createMaterialTopTabNavigator,
 	TAB_INACTIVE,
 } from "./tabs";
 export { DrawerNavigator, DrawerPosition, createDrawerNavigator, DRAWER_WIDTH } from "./drawer";

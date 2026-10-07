@@ -10,6 +10,7 @@ import {
 	NavigationState,
 	ScreenProps,
 	createBottomTabNavigator,
+	createMaterialTopTabNavigator,
 	createDrawerNavigator,
 	createNavigationContainerRef,
 	createStackNavigator,
@@ -145,5 +146,35 @@ test "a Group hands its screenOptions to its screens, under their own options" {
 	ref.goBack();
 	ref.navigate("Titled");
 	assert visibleText(root) === "‹ Base|Own|Titled 0|+", visibleText(root);
+	dispose();
+}
+
+const TopTabs = createMaterialTopTabNavigator<string>();
+
+test "material top tabs put the bar above the screens, without a header, with a focus indicator" {
+	const root: MockNode = mockNode("root");
+	const ref = createNavigationContainerRef();
+	const dispose: Dispose = render(<NavigationContainer ref={ref}>
+		<TopTabs.Navigator>
+			<TopTabs.Screen name="Chats" component={Counted} />
+			<TopTabs.Screen name="Calls" component={Counted} />
+		</TopTabs.Navigator>
+	</NavigationContainer>, mockHost(), root as unknown as HostNode);
+	assert visibleText(root) === "Chats 0|+|Chats|Calls", "no header: " + visibleText(root);
+	const frame = root.children[0];
+	assert (frame.style as Style).flexDirection === "column-reverse", "bar on top";
+	const chats = findLabel(root, "Chats") as MockNode;
+	const calls = findLabel(root, "Calls") as MockNode;
+	const under = (tab: MockNode): string => {
+		for (const child of tab.children) {
+			const style = child.style;
+			if (style !== null && (style as Style).height === 2) { return (style as Style).backgroundColor as string; }
+		}
+		return "none";
+	};
+	assert under(chats) === DefaultTheme.colors.primary, "focused indicator";
+	press(root, "Calls");
+	assert under(calls) === DefaultTheme.colors.primary && under(chats) === DefaultTheme.colors.card;
+	assert ref.currentPath() === "Calls";
 	dispose();
 }

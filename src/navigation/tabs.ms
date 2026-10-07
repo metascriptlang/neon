@@ -14,6 +14,7 @@ import {
 	TabBarIconProps,
 	createCore,
 	currentScope,
+	mergeOptions,
 	optionsAccessor,
 } from "./core";
 import { Slot, screenView, shown } from "./header";
@@ -21,10 +22,13 @@ import { ScreenCollector, collectScreens, groupOf, readName, readOptions, screen
 
 export type BackBehavior = "firstRoute" | "initialRoute" | "history" | "none";
 
+export type TabBarPosition = "top" | "bottom";
+
 export const TAB_INACTIVE = "#8e8e93";
 
 const TAB_ITEM: Style = {
 	flex: 1,
+	position: "relative",
 	flexDirection: "column",
 	alignItems: "center",
 	justifyContent: "center",
@@ -40,6 +44,10 @@ const BADGE: Style = {
 	alignItems: "center",
 	justifyContent: "center",
 };
+
+function withoutHeader(options: Accessor<ScreenOptions>): Accessor<ScreenOptions> {
+	return accessor((): ScreenOptions => mergeOptions({ headerShown: false }, options()));
+}
 
 export function readBehavior(behavior: Accessor<BackBehavior> | null, fallback: string): string {
 	if (behavior === null) { return fallback; }
@@ -69,7 +77,11 @@ export function labelOf<P>(entry: Navigation<P>, own: string | null): string {
 	return title === null ? entry.route.name : title as string;
 }
 
-export function tabItem<P>(core: NavigatorCore<P>, entry: Navigation<P>): NeonNode {
+export function tabItem<P>(
+	core: NavigatorCore<P>,
+	entry: Navigation<P>,
+	top: Accessor<boolean>,
+): NeonNode {
 	const key = entry.route.key;
 	const focused = accessor((): boolean => core.currentKey() === key);
 	const options = accessor((): ScreenOptions => entry.options());
@@ -93,6 +105,14 @@ export function tabItem<P>(core: NavigatorCore<P>, entry: Navigation<P>): NeonNo
 		const props: TabBarIconProps = { focused: focused(), color: color(), size: 24 };
 		return (render as (props: TabBarIconProps) => NeonNode)(props);
 	});
+	const indicator = accessor((): Style => ({
+		position: "absolute",
+		left: 0,
+		right: 0,
+		bottom: 0,
+		height: 2,
+		backgroundColor: focused() ? color() : core.container.theme().colors.card,
+	}));
 	const badgeBox = accessor((): Style => ({
 		...BADGE,
 		backgroundColor: core.container.theme().colors.notification,
@@ -115,6 +135,9 @@ export function tabItem<P>(core: NavigatorCore<P>, entry: Navigation<P>): NeonNo
 				</View>
 			</Show>
 		</View>
+		<Show when={top()}>
+			<View style={indicator} />
+		</Show>
 	</Pressable>;
 }
 
@@ -125,6 +148,7 @@ export interface TabNavigator<P> {
 		screenOptions?: Accessor<ScreenOptionsOf<P>> | null;
 		backBehavior?: Accessor<BackBehavior> | null;
 		tabBarStyle?: Accessor<Style> | null;
+		tabBarPosition?: Accessor<TabBarPosition> | null;
 	}) => NeonNode;
 	Group: (props: {
 		children: NeonNode;
@@ -140,6 +164,14 @@ export interface TabNavigator<P> {
 }
 
 export function createBottomTabNavigator<P>(): TabNavigator<P> {
+	return createTabs<P>(false);
+}
+
+export function createMaterialTopTabNavigator<P>(): TabNavigator<P> {
+	return createTabs<P>(true);
+}
+
+function createTabs<P>(material: boolean): TabNavigator<P> {
 	const collector: ScreenCollector<P> = { screens: null, groups: [] };
 	return {
 		Navigator: (props: {
@@ -148,22 +180,30 @@ export function createBottomTabNavigator<P>(): TabNavigator<P> {
 			screenOptions?: Accessor<ScreenOptionsOf<P>> | null;
 			backBehavior?: Accessor<BackBehavior> | null;
 			tabBarStyle?: Accessor<Style> | null;
+			tabBarPosition?: Accessor<TabBarPosition> | null;
 		}): NeonNode => {
 			const screens = collectScreens<P>(collector, props.children);
+			const declared = readOptions<P>(props.screenOptions);
 			const core = createCore<P>({
 				kind: NavigatorKind.Tabs,
 				screens,
 				initialRouteName: readName(props.initialRouteName),
 				initialParams: null,
-				screenOptions: readOptions<P>(props.screenOptions),
+				screenOptions: material ? withoutHeader(declared) : declared,
 				backBehavior: readBehavior(props.backBehavior, "firstRoute"),
 				scope: currentScope("Tab.Navigator"),
+			});
+			const position = props.tabBarPosition;
+			const top = accessor((): boolean => {
+				if (position === null) { return material; }
+				const value: TabBarPosition = (position as Accessor<TabBarPosition>)();
+				return value === "top";
 			});
 			const own = props.tabBarStyle;
 			const bar = accessor((): Style => {
 				const base: Style = {
 					flexDirection: "row",
-					height: 56,
+					height: material ? 48 : 56,
 					backgroundColor: core.container.theme().colors.card,
 				};
 				if (own === null) { return base; }
@@ -177,13 +217,21 @@ export function createBottomTabNavigator<P>(): TabNavigator<P> {
 				return screenView<P>(core, entry);
 			};
 			const item = (entry: Navigation<P>, at: Accessor<number>): NeonNode => {
-				return tabItem<P>(core, entry);
+				return tabItem<P>(core, entry, top);
 			};
-			return <View style={{ flex: 1, flexDirection: "column" }}>
+			const frame = accessor((): Style => ({
+				flex: 1,
+				flexDirection: top() ? "column-reverse" : "column",
+			}));
+			const hairline = accessor((): Style => ({
+				height: 1,
+				backgroundColor: core.container.theme().colors.border,
+			}));
+			return <View style={frame}>
 				<View style={{ flex: 1, flexDirection: "column", position: "relative" }}>
 					<For each={mounted}>{screen}</For>
 				</View>
-				<View style={{ height: 1, backgroundColor: core.container.theme().colors.border }} />
+				<View style={hairline} />
 				<View style={bar}>
 					<For each={core.entries}>{item}</For>
 				</View>
@@ -192,7 +240,9 @@ export function createBottomTabNavigator<P>(): TabNavigator<P> {
 		Group: (props: {
 			children: NeonNode;
 			screenOptions?: Accessor<ScreenOptionsOf<P>> | null;
-		}): NeonNode => groupOf<P>(collector, props.children, optionsAccessor<P>(props.screenOptions)),
+		}): NeonNode => {
+			return groupOf<P>(collector, props.children, optionsAccessor<P>(props.screenOptions));
+		},
 		Screen: (props: {
 			name: string;
 			component: (props: ScreenProps<P>) => NeonNode;

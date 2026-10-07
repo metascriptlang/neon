@@ -36,7 +36,9 @@ export function Slot(props: { node: Accessor<NeonNode | null> }): NeonNode {
 
 function tintOf(tint: Accessor<string> | null): Accessor<string> {
 	const theme = currentScope("header button").container.theme;
-	return accessor((): string => tint === null ? theme().colors.primary : (tint as Accessor<string>)());
+	return accessor((): string => {
+		return tint === null ? theme().colors.primary : (tint as Accessor<string>)();
+	});
 }
 
 const BACK_BUTTON: Style = {
