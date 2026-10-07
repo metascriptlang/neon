@@ -740,3 +740,112 @@ final class SettingsUITests: XCTestCase {
         waitLabel("Compact", containing: "Compact layout")
     }
 }
+
+final class ApisUITests: XCTestCase {
+    private let app = XCUIApplication(bundleIdentifier: "dev.neon.NeonApis")
+
+    override func setUp() {
+        continueAfterFailure = false
+    }
+
+    private func label(startingWith prefix: String) -> String {
+        let match = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", prefix)).firstMatch
+        return match.exists ? match.label : ""
+    }
+
+    private func waitLabel(_ prefix: String, containing part: String, timeout: TimeInterval = 10) {
+        let predicate = NSPredicate { [self] _, _ in label(startingWith: prefix).contains(part) }
+        XCTAssertEqual(XCTWaiter.wait(for: [expectation(for: predicate, evaluatedWith: app)], timeout: timeout), .completed,
+            "expected \(prefix)… to contain \(part); it reads \(label(startingWith: prefix))")
+    }
+
+    private func report(_ name: String) {
+        let texts = app.staticTexts.allElementsBoundByIndex.prefix(16).map { $0.label }.joined(separator: " | ")
+        print("NEON_IOS apis-\(name) \(texts)")
+        let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        shot.name = "apis-\(name)"
+        shot.lifetime = .keepAlways
+        add(shot)
+    }
+
+    private func tap(_ text: String) {
+        let element = app.staticTexts[text]
+        XCTAssertTrue(element.waitForExistence(timeout: 10), "no \(text)")
+        element.tap()
+    }
+
+    func testAlertShareClipboardAppState() {
+        XCUIDevice.shared.orientation = .portrait
+        app.launch()
+        XCTAssertTrue(app.staticTexts["Neon APIs"].waitForExistence(timeout: 20))
+        let version = UIDevice.current.systemVersion
+        waitLabel("os ", containing: "os ios v\(version) pad no")
+        waitLabel("ratio ", containing: "ratio 3 ")
+        waitLabel("url ", containing: "can https yes")
+        let launchedActive = NSPredicate { [self] _, _ in
+            let state = label(startingWith: "state ")
+            return state == "state active" || state.hasSuffix(">active")
+        }
+        XCTAssertEqual(XCTWaiter.wait(for: [expectation(for: launchedActive, evaluatedWith: app)], timeout: 10), .completed,
+            "AppState ends active after launch; it reads \(label(startingWith: "state "))")
+        report("initial")
+
+        tap("show alert")
+        let alert = app.alerts["Neon alert"]
+        XCTAssertTrue(alert.waitForExistence(timeout: 10), "UIAlertController is shown")
+        XCTAssertTrue(alert.staticTexts["Pick one"].exists)
+        report("alert-shown")
+        alert.buttons["Confirm"].tap()
+        waitLabel("alert ", containing: "alert confirm")
+        tap("show alert")
+        XCTAssertTrue(app.alerts["Neon alert"].waitForExistence(timeout: 10))
+        app.alerts["Neon alert"].buttons["Cancel"].tap()
+        waitLabel("alert ", containing: "alert cancel")
+
+        tap("copy")
+        tap("paste")
+        waitLabel("pasted ", containing: "pasted neon-1")
+        tap("vibrate")
+        waitLabel("vibrated ", containing: "vibrated 1")
+        report("clipboard")
+
+        tap("type here")
+        waitLabel("reader ", containing: "keyboard shown")
+        tap("dismiss")
+        waitLabel("reader ", containing: "keyboard hidden")
+        tap("announce")
+
+        tap("share")
+        let copy = app.buttons["Copy"].firstMatch
+        let cell = app.cells["Copy"].firstMatch
+        let sheet = NSPredicate { _, _ in copy.exists || cell.exists }
+        XCTAssertEqual(XCTWaiter.wait(for: [expectation(for: sheet, evaluatedWith: app)], timeout: 15), .completed, "the activity sheet offers Copy")
+        report("share-sheet")
+        if copy.exists { copy.tap() } else { cell.tap() }
+        waitLabel("share ", containing: "share sharedAction")
+        report("shared")
+
+        tap("open url")
+        waitLabel("url ", containing: "url ")
+        let opened = label(startingWith: "url ")
+        print("NEON_IOS apis-tel \(opened)")
+
+        let before = label(startingWith: "state ")
+        XCUIDevice.shared.press(.home)
+        RunLoop.current.run(until: Date().addingTimeInterval(2))
+        app.activate()
+        XCTAssertTrue(app.wait(for: .runningForeground, timeout: 10))
+        waitLabel("state ", containing: String(before.dropFirst("state ".count)) + ">inactive>background>active")
+        report("appstate")
+
+        tap("settings")
+        let settings = XCUIApplication(bundleIdentifier: "com.apple.Preferences")
+        XCTAssertTrue(settings.wait(for: .runningForeground, timeout: 15), "Linking.openSettings brings Settings forward")
+        report("settings")
+        app.activate()
+        XCTAssertTrue(app.wait(for: .runningForeground, timeout: 10))
+        waitLabel("url ", containing: "url settings")
+        waitLabel("state ", containing: ">active")
+        report("back-from-settings")
+    }
+}
