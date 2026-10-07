@@ -22,6 +22,14 @@ names the card and the site, and nothing is worked around in `src/`. Rows closed
 2026-09-20 were dropped with §2 — they are in this file's history at `git show c00bd2b:BUGS.md`,
 and the invariants that outlived them were moved to the head of the test that pins each one.
 
+- **OPEN 2026-10-07 — a raw tag with an `Accessor<boolean> | null` attribute dies on C.** In
+  `probe/apps/boolAttr.ms` (`wt/rn-apps`), `function Tag(props: { on?: Accessor<boolean> | null })`
+  returning `element(<text accessible={props.on}>hi</text>)`, mounted as `<Tag on={true} />` on
+  `mockHost()`, `msc run` exits 133 (`EXC_BREAKPOINT` in `mfm_free`, a double free) and prints
+  nothing; the same shape with `Accessor<string> | null` prints the attribute. `Text` and
+  `Pressable` therefore pass `accessible` as an `Accessor<string>` (`accessibleText` in
+  `src/components/primitives.ms`). Not reduced to the macro or the compiler yet.
+
 - **OPEN 2026-10-03 — Android: the list examples' `offset` label draws "offset" without its
   number.** Seen on the Seeker in the `list-pressed.png` screenshot that `tests/android/list.py`
   writes, in two runs: 15:40, before `c12ed39`, and 16:25, after it. In the same runs the
