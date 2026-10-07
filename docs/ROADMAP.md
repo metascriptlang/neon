@@ -142,6 +142,18 @@ the Seeker; the device lane `tests/android/apis.py` is pending because the phone
 Not verified: vibration on any device (the simulator has none), a screen reader, `tel:` on a
 real phone (the simulator cannot open it), url events (P7).
 
+Bundle 3 components, 2026-10-07 night (`wt/rn-ui-comps`, msc `0d83c4867`): `Modal` (over Solid's
+`Portal`), `SafeAreaView`, `KeyboardAvoidingView`, `StatusBar`, `ImageBackground`,
+`TouchableOpacity`/`TouchableHighlight`/`TouchableWithoutFeedback`, `RefreshControl` (ScrollView and
+list `refreshControl`), `Text` `numberOfLines`/`ellipsizeMode`/`selectable`, multiline `TextInput`;
+`Pressable` accessible by default (A10) and the per-platform `Button` look (A6). Proven on the mock
+host and JS (`tests/components/*.test.ms`, `tests/apps/gallery.test.ms`), the native mock bridge
+(`tests/platform/nativeHost.test.ms`, gallery included), Chrome (`tests/browser/components.test.ms`)
+and the iPhone 17 Pro simulator (`GalleryUITests`, `/private/tmp/neon-sim.6Z5Km4`: modal over the app,
+status bar hidden/shown, keyboard lifts the input 634 → 333, pull to refresh, two-line clamp, multiline
+typing). The Android build compiles (`examples/gallery` APK); `tests/android/gallery.py` waits for the
+Seeker, locked overnight. Provisional choices are rows U1–U10 of `WORKAROUND.md`.
+
 Prove each workflow through its real consumer on the declared targets. A public symbol,
 mock pass or separate-module test artifact is not proof of the normal packaged app.
 The reactive concepts still owed live in `docs/SOLID.md`; they are dependencies of these
