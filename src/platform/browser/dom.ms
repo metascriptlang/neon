@@ -7,6 +7,7 @@ import { registerCss, collectCss, onCssChange } from "../../render/sheet";
 import { NeonEvent, neonEvent, eventType } from "../../render/event";
 import { onCleanup } from "../../core/cleanup";
 import { htmlTagFor } from "../../render/node";
+import { publishWindow, publishColorScheme } from "../../render/environment";
 import { CssStyle, applyCss, applyCssProp } from "./domCss";
 
 extern class ClassList {
@@ -110,6 +111,33 @@ extern class DomEvent {
 	defaultPrevented: boolean;
 	extern preventDefault(): void;
 	extern stopPropagation(): void;
+}
+
+extern class MediaQueryList {
+	matches: boolean;
+	extern addEventListener(name: cstring, handler: (e: DomEvent) => void): void;
+}
+
+extern class window {
+	static innerWidth: number;
+	static innerHeight: number;
+	static extern addEventListener(name: cstring, handler: (e: DomEvent) => void): void;
+	static extern matchMedia(query: cstring): MediaQueryList;
+}
+
+let environmentWatched = false;
+
+function watchEnvironment(): void {
+	if (environmentWatched) { return; }
+	environmentWatched = true;
+	const scheme = window.matchMedia("(prefers-color-scheme: dark)");
+	const publish = (): void => {
+		publishWindow(window.innerWidth, window.innerHeight);
+		publishColorScheme(scheme.matches ? "dark" : "light");
+	};
+	publish();
+	window.addEventListener("resize", (e: DomEvent): void => { publish(); });
+	scheme.addEventListener("change", (e: DomEvent): void => { publish(); });
 }
 
 extern function requestAnimationFrame(callback: (time: number) => void): number;
@@ -433,6 +461,7 @@ export function domHost(): Host {
 	// swap that touches no node.
 	onCssChange(flushSheet);
 	flushSheet();
+	watchEnvironment();
 	let scrollRule = false;
 	let controlRule = false;
 	const scrolls = new Map<Node, DomScrollState>();

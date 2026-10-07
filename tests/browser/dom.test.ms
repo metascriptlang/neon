@@ -7,6 +7,7 @@ import { createSignal } from "../../src/core/signal";
 import { createRoot } from "../../src/core/owner";
 import { HOST_MOVE_CONTRACT, RECONCILE_CONTRACT, HOST_ATTR_CONTRACT, hostMoveContract, reconcileContract, hostAttrContract } from "../render/hostContract";
 import { sleepAsync } from "std/core/promise";
+import { useWindowDimensions, useColorScheme } from "../../src/render/environment";
 
 extern class ProbeStyle {
 	backgroundColor: string;
@@ -457,4 +458,12 @@ test "ActivityIndicator and Image map onto a spinner element and an img with loa
 	assert `${probe(img).tagName} ${probe(img).getAttribute("data-resize")}` === "IMG contain", "img shape";
 	assert seen() === "load 1x1;error;", "events: " + seen();
 	probe(img).remove();
+}
+
+test "the DOM host publishes the window size and the preferred color scheme" {
+	const h = domHost();
+	const dims = useWindowDimensions();
+	const scheme = useColorScheme();
+	assert dims().width > 0 && dims().height > 0, "window size published: " + `${dims().width}x${dims().height}`;
+	assert scheme() === "light" || scheme() === "dark", "a scheme is published";
 }
