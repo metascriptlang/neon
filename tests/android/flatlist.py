@@ -202,11 +202,116 @@ def measured_lane():
     scroll_list.report("flatlist-measured-end", window, texts, launched)
 
 
+def left(texts, text):
+    return texts[text][0]
+
+
+def grid_lane():
+    scale = dp()
+    launched = counter.pid()
+    scroll_list.tap(scroll_list.state(False)[1], "grid")
+    window, texts = scroll_list.state(False)
+    for want in ["cell 0", "cell 1", "cell 2", "cell 3", "cell 4", "cell 5"]:
+        if want not in texts:
+            raise LaneError("grid mode did not mount %r; texts %s" % (want, sorted(texts)[:20]))
+    first = top(texts, "cell 0")
+    column0 = left(texts, "cell 0")
+    for cell in ["cell 1", "cell 2"]:
+        if abs(top(texts, cell) - first) > 2:
+            raise LaneError("%s is not in the first row: top %d vs %d" % (cell, top(texts, cell), first))
+    if not left(texts, "cell 0") < left(texts, "cell 1") < left(texts, "cell 2"):
+        raise LaneError("the first row is not laid out left to right: %s" % [texts["cell %d" % i] for i in range(3)])
+    row_gap = (top(texts, "cell 3") - first) / scale
+    if abs(row_gap - 68) > 2:
+        raise LaneError("rows are %.1fdp apart, expected 64dp cells plus the 4dp columnWrapperStyle margin" % row_gap)
+    if abs(left(texts, "cell 3") - left(texts, "cell 0")) > 2:
+        raise LaneError("cell 3 does not open the second row under cell 0")
+    scroll_list.report("flatlist-grid-initial", window, texts, launched)
+
+    scroll_list.tap(texts, "cell 4")
+    window, texts = scroll_list.state(False)
+    if "pressed cell 4 at 4" not in texts:
+        raise LaneError("the tap did not hit cell 4: %r" % scroll_list.label(texts, "pressed "))
+    scroll_list.tap(texts, "prepend")
+    window, texts = scroll_list.state(False)
+    if "cell 60" not in texts or abs(top(texts, "cell 60") - first) > 2 or abs(left(texts, "cell 60") - column0) > 2:
+        raise LaneError("the prepended cell 60 is not first in the first row; texts %s" % sorted(texts)[:20])
+    if abs(top(texts, "cell 0") - first) > 2 or not left(texts, "cell 60") < left(texts, "cell 0"):
+        raise LaneError("cell 0 did not move to the second column of the first row: %s" % texts.get("cell 0"))
+    if "pressed cell 4 at 4" not in texts:
+        raise LaneError("prepending lost the screen state: %r" % scroll_list.label(texts, "pressed "))
+    scroll_list.tap(texts, "cell 4")
+    window, texts = scroll_list.state(False)
+    if "pressed cell 4 at 5" not in texts:
+        raise LaneError("cell 4 does not read its new index 5 after the prepend: %r" % scroll_list.label(texts, "pressed "))
+    scroll_list.report("flatlist-grid-prepended", window, texts, launched)
+
+    for _ in range(2):
+        scroll_list.swipe_up(window)
+    window, texts = scroll_list.state(False)
+    if scroll_list.label(texts, "pressed ") != "pressed cell 4 at 5":
+        raise LaneError("a swipe that starts on a cell pressed it: %r" % scroll_list.label(texts, "pressed "))
+    frame = counter.visible_frame(window)
+    visible = [t for t in texts if t.startswith("cell ") and scroll_list.on_screen(texts, frame, t)]
+    if "cell 0" in visible or not visible:
+        raise LaneError("the grid did not scroll; visible %s" % sorted(visible))
+    target = max(visible, key=lambda t: (top(texts, t), left(texts, t)))
+    scroll_list.tap(texts, target)
+    window, texts = scroll_list.state(False)
+    if not scroll_list.label(texts, "pressed ").startswith("pressed " + target + " at "):
+        raise LaneError("the tap after scrolling did not hit %r: %r" % (target, scroll_list.label(texts, "pressed ")))
+    print("NEON_ANDROID flatlist-grid rows-apart-dp=%.1f %s" % (row_gap, scroll_list.label(texts, "pressed ")))
+    scroll_list.report("flatlist-grid-scrolled-pressed", window, texts, launched)
+
+
+def sections_lane():
+    scale = dp()
+    launched = counter.pid()
+    scroll_list.tap(scroll_list.state(False)[1], "sections")
+    window, texts = scroll_list.state(False)
+    frame = counter.visible_frame(window)
+    for want in ["Section 0", "item 0", "item 1", "Section 1", "item 100"]:
+        if want not in texts:
+            raise LaneError("sections mode did not mount %r; texts %s" % (want, sorted(texts)[:20]))
+    pinned = top(texts, "Section 0")
+    if not pinned < top(texts, "item 0") < top(texts, "item 1") < top(texts, "Section 1") < top(texts, "item 100"):
+        raise LaneError("header, items, next header are out of order: %s" % {t: texts[t] for t in ["Section 0", "item 0", "item 1", "Section 1", "item 100"]})
+    scroll_list.report("flatlist-sections-initial", window, texts, launched)
+
+    x1, y1, x2, y2 = texts["item 1"]
+    x, y = (x1 + 4 * x2) // 5, (y1 + y2) // 2
+    adb("shell", "input", "swipe", str(x), str(y), str(x), str(y - int(60 * scale)), "600")
+    window, texts = scroll_list.state(False)
+    if "Section 0" not in texts or abs(top(texts, "Section 0") - pinned) > 2 * scale:
+        raise LaneError("Section 0 left its pinned top %d after a short drag: %s" % (pinned, texts.get("Section 0")))
+    if scroll_list.label(texts, "pressed ") != "pressed none":
+        raise LaneError("scrolling pressed an item: %r" % scroll_list.label(texts, "pressed "))
+    scroll_list.report("flatlist-sections-sticky", window, texts, launched)
+
+    scroll_list.tap(texts, "section 1")
+    time.sleep(1)
+    window, texts = scroll_list.state(False)
+    if "jump waits" in scroll_list.label(texts, "pressed "):
+        raise LaneError("scrollToLocation reported an unmeasured target: %r" % scroll_list.label(texts, "pressed "))
+    if "Section 1" not in texts or abs(top(texts, "Section 1") - pinned) > 2 * scale:
+        raise LaneError("scrollToLocation(1, 0) did not bring Section 1 to the list top %d: %s" % (pinned, texts.get("Section 1")))
+    if scroll_list.on_screen(texts, frame, "Section 0") and top(texts, "Section 0") >= pinned - 2:
+        raise LaneError("Section 0 still sits at the top after Section 1 took over: %s" % texts.get("Section 0"))
+    scroll_list.tap(texts, "item 101")
+    window, texts = scroll_list.state(False)
+    if "pressed Section 1 item 1" not in texts:
+        raise LaneError("the tap did not hit item 101 as Section 1 item 1: %r" % scroll_list.label(texts, "pressed "))
+    print("NEON_ANDROID flatlist-sections pinned-top=%d %s" % (pinned, scroll_list.label(texts, "pressed ")))
+    scroll_list.report("flatlist-sections-located-pressed", window, texts, launched)
+
+
 def main():
     mode = adb("shell", "cmd", "window", "user-rotation").strip()
     try:
         lane()
         measured_lane()
+        grid_lane()
+        sections_lane()
     except EmulatorError as covered:
         print("FAIL: android flatlist " + str(covered), file=sys.stderr)
         return EMULATOR
