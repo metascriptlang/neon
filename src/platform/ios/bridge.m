@@ -133,6 +133,74 @@ static NSString *recursiveAccessibilityLabel(UIView *view) {
 
 @end
 
+// RN Text: a label whose text or span has onPress takes touches; a touch on a pressable
+// span reports with the span's tag, so the span's press fires and the label's bubbles.
+@interface NeonLabel : UILabel
+@property (nonatomic, copy) NSArray<NSValue *> *neonSpanRanges;
+@property (nonatomic, copy) NSArray<NSNumber *> *neonSpanTags;
+@property (nonatomic) int neonTouchTag;
+@end
+
+@implementation NeonLabel
+
+- (int)neonTagAt:(CGPoint)point {
+	if (self.neonSpanTags.count == 0 || self.attributedText.length == 0) return (int)self.tag;
+	NSTextStorage *storage = [[NSTextStorage alloc] initWithAttributedString:self.attributedText];
+	NSLayoutManager *layout = [[NSLayoutManager alloc] init];
+	NSTextContainer *container = [[NSTextContainer alloc] initWithSize:self.bounds.size];
+	container.lineFragmentPadding = 0;
+	container.maximumNumberOfLines = (NSUInteger)self.numberOfLines;
+	container.lineBreakMode = self.lineBreakMode;
+	[layout addTextContainer:container];
+	[storage addLayoutManager:layout];
+	CGRect used = [layout usedRectForTextContainer:container];
+	CGPoint at = CGPointMake(point.x, point.y - MAX(0, (self.bounds.size.height - used.size.height) / 2));
+	NSUInteger glyph = [layout glyphIndexForPoint:at inTextContainer:container];
+	CGRect box = [layout boundingRectForGlyphRange:NSMakeRange(glyph, 1) inTextContainer:container];
+	if (!CGRectContainsPoint(CGRectInset(box, -4, -4), at)) return (int)self.tag;
+	NSUInteger index = [layout characterIndexForGlyphAtIndex:glyph];
+	for (NSUInteger i = 0; i < self.neonSpanTags.count; i++) {
+		if (NSLocationInRange(index, self.neonSpanRanges[i].rangeValue)) return self.neonSpanTags[i].intValue;
+	}
+	return (int)self.tag;
+}
+
+- (void)neonReport:(NSSet<UITouch *> *)touches phase:(int)phase {
+	UITouch *touch = touches.anyObject;
+	CGPoint at = [touch locationInView:nil];
+	g_lastTag = self.neonTouchTag;
+	g_lastPhase = phase;
+	g_touchX = (float)at.x;
+	g_touchY = (float)at.y;
+	g_touchTime = touch.timestamp * 1000.0;
+	call0(s_touch);
+}
+
+- (void)touchesBegan:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
+	self.neonTouchTag = [self neonTagAt:[touches.anyObject locationInView:self]];
+	[self neonReport:touches phase:0];
+	[super touchesBegan:touches withEvent:event];
+}
+
+- (void)touchesMoved:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
+	[self neonReport:touches phase:4];
+	[super touchesMoved:touches withEvent:event];
+}
+
+- (void)touchesEnded:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
+	[self neonReport:touches phase:1];
+	g_lastPhase = 2;
+	call0(s_touch);
+	[super touchesEnded:touches withEvent:event];
+}
+
+- (void)touchesCancelled:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
+	[self neonReport:touches phase:3];
+	[super touchesCancelled:touches withEvent:event];
+}
+
+@end
+
 static void emitControl(int tag, int phase, NSString *value, float width, float height) {
 	if (tag == 0) return;
 	free(g_controlValue);
@@ -330,6 +398,44 @@ static UIColor *cssColor(const char *css, UIColor *fallback) {
 	unsigned long rgb = strtoul(hex, &end, 16);
 	if (end != hex + 6) return fallback;
 	return [UIColor colorWithRed:((rgb >> 16) & 0xff) / 255.0 green:((rgb >> 8) & 0xff) / 255.0 blue:(rgb & 0xff) / 255.0 alpha:1];
+}
+
+// textSpans: records split by 0x1e, fields by 0x1f: text, colour, size, bold, italic,
+// underline, line-through, press tag.
+static void setLabelSpans(NeonLabel *label, const char *text) {
+	NSMutableAttributedString *out = [[NSMutableAttributedString alloc] init];
+	NSMutableArray<NSValue *> *ranges = [NSMutableArray array];
+	NSMutableArray<NSNumber *> *tags = [NSMutableArray array];
+	NSMutableParagraphStyle *paragraph = [[NSMutableParagraphStyle alloc] init];
+	paragraph.alignment = label.textAlignment;
+	for (NSString *record in [neonText(text) componentsSeparatedByString:@"\x1e"]) {
+		NSArray<NSString *> *f = [record componentsSeparatedByString:@"\x1f"];
+		if (f.count < 8) continue;
+		CGFloat size = f[2].doubleValue > 0 ? f[2].doubleValue : 17;
+		UIFontDescriptorSymbolicTraits traits = 0;
+		if ([f[3] isEqualToString:@"1"]) traits |= UIFontDescriptorTraitBold;
+		if ([f[4] isEqualToString:@"1"]) traits |= UIFontDescriptorTraitItalic;
+		UIFont *font = [UIFont systemFontOfSize:size];
+		if (traits) {
+			UIFontDescriptor *styled = [font.fontDescriptor fontDescriptorWithSymbolicTraits:traits];
+			if (styled) font = [UIFont fontWithDescriptor:styled size:size];
+		}
+		NSMutableDictionary<NSAttributedStringKey, id> *attributes = [NSMutableDictionary dictionary];
+		attributes[NSFontAttributeName] = font;
+		attributes[NSParagraphStyleAttributeName] = paragraph;
+		attributes[NSForegroundColorAttributeName] = cssColor(f[1].UTF8String, label.textColor);
+		if ([f[5] isEqualToString:@"1"]) attributes[NSUnderlineStyleAttributeName] = @(NSUnderlineStyleSingle);
+		if ([f[6] isEqualToString:@"1"]) attributes[NSStrikethroughStyleAttributeName] = @(NSUnderlineStyleSingle);
+		NSRange range = NSMakeRange(out.length, f[0].length);
+		[out appendAttributedString:[[NSAttributedString alloc] initWithString:f[0] attributes:attributes]];
+		if (f[7].intValue != 0) {
+			[ranges addObject:[NSValue valueWithRange:range]];
+			[tags addObject:@(f[7].intValue)];
+		}
+	}
+	label.attributedText = out;
+	label.neonSpanRanges = ranges;
+	label.neonSpanTags = tags;
 }
 
 static UIAccessibilityTraits roleTraits(const char *role) {
@@ -844,7 +950,7 @@ void *niViewCreate(void) {
 }
 
 void *niTextCreate(void) {
-	UILabel *label = [[UILabel alloc] initWithFrame:CGRectZero];
+	NeonLabel *label = [[NeonLabel alloc] initWithFrame:CGRectZero];
 	label.textColor = [UIColor whiteColor];
 	label.font = [UIFont systemFontOfSize:17];
 	label.backgroundColor = [UIColor clearColor];
@@ -1106,7 +1212,8 @@ void niSetProp(void *view, const char *name, const char *value) {
 	}
 	else if ([v isKindOfClass:UILabel.class]) {
 		UILabel *label = (UILabel *)v;
-		if (strcmp(name, "numberOfLines") == 0) label.numberOfLines = text[0] ? atoi(text) : 0;
+		if (strcmp(name, "textSpans") == 0 && [v isKindOfClass:NeonLabel.class]) setLabelSpans((NeonLabel *)v, text);
+		else if (strcmp(name, "numberOfLines") == 0) label.numberOfLines = text[0] ? atoi(text) : 0;
 		else if (strcmp(name, "ellipsizeMode") == 0) {
 			label.lineBreakMode = strcmp(text, "head") == 0 ? NSLineBreakByTruncatingHead :
 				strcmp(text, "middle") == 0 ? NSLineBreakByTruncatingMiddle :
@@ -1162,6 +1269,7 @@ int niColorScheme(void) { return g_dark; }
 
 void niViewSetPressable(void *view) {
 	UIView *v = (__bridge UIView *)view;
+	if ([v isKindOfClass:NeonLabel.class]) v.userInteractionEnabled = YES;
 	if (![v isKindOfClass:NeonTouchView.class]) return;
 	NeonTouchView *touch = (NeonTouchView *)v;
 	touch.neonHandlesPress = YES;
@@ -1310,6 +1418,10 @@ void niSetOpacity(void *view, float opacity) {
 void niSetText(void *label, const char *s) {
 	UILabel *l = (__bridge UILabel *)label;
 	l.text = [NSString stringWithUTF8String:s ? s : ""];
+	if ([l isKindOfClass:NeonLabel.class]) {
+		((NeonLabel *)l).neonSpanRanges = @[];
+		((NeonLabel *)l).neonSpanTags = @[];
+	}
 }
 
 void niSetTextColor(void *label, float r, float g, float b, float a) {

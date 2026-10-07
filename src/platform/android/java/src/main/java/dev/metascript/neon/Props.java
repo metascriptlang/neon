@@ -58,6 +58,7 @@ public final class Props {
 
 	private static void text(android.widget.TextView label, String name, String value) {
 		switch (name) {
+			case "textSpans": Spans.set(label, value); break;
 			case "numberOfLines": {
 				int lines = value.isEmpty() ? 0 : Integer.parseInt(value);
 				label.setMaxLines(lines > 0 ? lines : Integer.MAX_VALUE);

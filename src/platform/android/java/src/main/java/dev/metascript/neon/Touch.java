@@ -6,14 +6,17 @@ import android.view.ViewParent;
 
 public final class Touch implements View.OnTouchListener {
 	private final int tag;
+	private int target;
 
 	public Touch(int tag) {
 		this.tag = tag;
+		this.target = tag;
 	}
 
 	@Override
 	public boolean onTouch(View view, MotionEvent event) {
-		return touch(tag, event.getActionMasked(), event.getRawX(), event.getRawY(), event.getEventTime());
+		if (event.getActionMasked() == MotionEvent.ACTION_DOWN) target = Spans.tagAt(view, event.getX(), event.getY(), tag);
+		return touch(target, event.getActionMasked(), event.getRawX(), event.getRawY(), event.getEventTime());
 	}
 
 	static void claim(View view, boolean block) {

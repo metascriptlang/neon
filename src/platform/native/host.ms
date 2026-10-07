@@ -3,7 +3,7 @@ import { Dispose } from "../../core/types";
 import { NeonEvent } from "../../render/event";
 import { FlexStyle, YGNode, freeLayoutTree, layoutPass as runLayoutPass } from "../../../../yoga/src/index";
 import { YGNodeGetParent, YGNodeRemoveChild, YGNodeLayoutGetPadding, YGNodeLayoutGetBorder, YGNodeLayoutGetMargin, YGEdge } from "../../../../yoga/src/yogaH";
-import { Style } from "../../render/style";
+import { Style, mergeStyle } from "../../render/style";
 import { NativeElementKind, createNativeEventRegistry, nativeElementKind, nativeFlexStyle, nativeTransform } from "./contract";
 import { publishWindow, publishKeyboard, publishColorScheme, publishSafeArea } from "../../render/environment";
 import { VisibleContentPosition, parseVisibleContent } from "../../render/visibleContent";
@@ -63,6 +63,8 @@ class NativeNode {
 	isInput: boolean = false;
 	control: NativeElementKind = NativeElementKind.View;
 	labelOwner: NativeNode | null = null;
+	spanOwner: NativeNode | null = null;
+	pressable: boolean = false;
 	text: string = "";
 	children: NativeNode[] = [];
 	parent: NativeNode | null = null;
@@ -339,7 +341,7 @@ function remeasureText(n: NativeNode): void {
 }
 
 function measureTextWithin(n: NativeNode, available: float32): void {
-	if (!n.isText || n.view === null) { return; }
+	if (!n.isText || n.view === null || n.spanOwner !== null) { return; }
 	niMeasureText(n.view, available);
 	const w = niMeasuredW();
 	const h = niMeasuredH();
@@ -557,15 +559,144 @@ function onResize(): void {
 	relayoutRoot();
 }
 
+// RN nested Text: a Text inside a Text is a span of the outermost label, not a view. The label
+// shows its strings in order, each in the style its span ancestors layer over the label's.
+class LabelRun {
+	text: string;
+	style: Style;
+	tag: int32;
+
+	constructor(text: string, style: Style, tag: int32) {
+		this.text = text;
+		this.style = style;
+		this.tag = tag;
+	}
+}
+
+const SPAN_RECORD = "\u001e";
+const SPAN_FIELD = "\u001f";
+
+function labelRoot(n: NativeNode): NativeNode {
+	return n.spanOwner !== null ? n.spanOwner as NativeNode : n;
+}
+
+function inLabel(n: NativeNode): boolean {
+	return (n.isText && !n.isString) || n.spanOwner !== null;
+}
+
+function hasSpans(n: NativeNode): boolean {
+	for (const c of n.children) {
+		if (c.spanOwner !== null) { return true; }
+	}
+	return false;
+}
+
+function styledRun(s: Style | null): boolean {
+	if (s === null) { return false; }
+	const deco = s.textDecorationLine;
+	return s.fontStyle === "italic" || (deco !== null && deco !== "none");
+}
+
+function labelRuns(n: NativeNode, style: Style, tag: int32, out: LabelRun[]): void {
+	for (const c of n.children) {
+		if (c.isString) {
+			if (c.text !== "") { out.push(new LabelRun(c.text, style, tag)); }
+		} else if (c.spanOwner !== null) {
+			const own = c.styleCache;
+			labelRuns(c, own === null ? style : mergeStyle(style, own as Style), c.pressable ? c.eventTag : tag, out);
+		}
+	}
+}
+
+// One run on the wire: text, colour, size, bold, italic, underline, line-through, press tag.
+function encodeRun(run: LabelRun): string {
+	const s = run.style;
+	const deco = s.textDecorationLine !== null ? (s.textDecorationLine as string) : "none";
+	const size = s.fontSize !== null ? (s.fontSize as number) : 17;
+	return run.text + SPAN_FIELD + (s.color !== null ? (s.color as string) : "") + SPAN_FIELD + size.toString()
+		+ SPAN_FIELD + (s.fontWeight !== null && s.fontWeight !== "normal" ? "1" : "0")
+		+ SPAN_FIELD + (s.fontStyle === "italic" ? "1" : "0")
+		+ SPAN_FIELD + (deco.indexOf("underline") >= 0 ? "1" : "0")
+		+ SPAN_FIELD + (deco.indexOf("line-through") >= 0 ? "1" : "0")
+		+ SPAN_FIELD + run.tag.toString();
+}
+
+// Writes the label's whole content: plain text when no span styles it, else the runs.
+function refreshLabel(root: NativeNode): void {
+	if (root.view === null) { return; }
+	if (root.isString) {
+		niSetText(root.view, root.text);
+		remeasureText(root);
+		return;
+	}
+	const base: Style = root.styleCache !== null ? root.styleCache as Style : {};
+	if (!hasSpans(root) && !styledRun(base)) {
+		let text = "";
+		for (const c of root.children) {
+			if (c.isString) { text += c.text; }
+		}
+		niSetText(root.view, text);
+	} else {
+		const runs: LabelRun[] = [];
+		labelRuns(root, base, 0, runs);
+		let encoded = "";
+		for (let i = 0; i < runs.length; i += 1) {
+			if (i > 0) { encoded += SPAN_RECORD; }
+			encoded += encodeRun(runs[i]);
+		}
+		niSetProp(root.view, "textSpans", encoded);
+	}
+	remeasureText(root);
+}
+
+function ensureTag(n: NativeNode): void {
+	if (n.eventTag !== 0) { return; }
+	n.eventTag = nextTag;
+	nextTag += 1;
+	nodesByTag.set(n.eventTag, n);
+	if (n.view !== null && n.isScroll) { niScrollSetTag(n.view, n.eventTag); }
+	else if (n.view !== null && n.control !== NativeElementKind.View) { niControlSetTag(n.view, n.eventTag); }
+	else if (n.view !== null) { niViewSetTag(n.view, n.eventTag); }
+}
+
+// A pressable span needs its label to take touches and find the span under the finger.
+function markPressable(n: NativeNode): void {
+	ensureTag(n);
+	if (n.view !== null) { niViewSetPressable(n.view); }
+}
+
+function adoptSpan(span: NativeNode, root: NativeNode): void {
+	span.spanOwner = root;
+	span.flex = null;
+	if (span.view !== null) { niRemoveFromParent(span.view); }
+	const at = textNodes.indexOf(span);
+	if (at >= 0) { textNodes.splice(at, 1); }
+	if (span.pressable) { markPressable(root); }
+	for (const c of span.children) {
+		if (!c.isString && c.isText) { adoptSpan(c, root); }
+	}
+}
+
+function releaseSpan(span: NativeNode): void {
+	span.spanOwner = null;
+	if (textNodes.indexOf(span) < 0) { textNodes.push(span); }
+	const own: Style = span.styleCache !== null ? span.styleCache as Style : {};
+	span.flex = nativeFlexStyle(own, NativeElementKind.Text);
+	applyPaint(span, own);
+	for (const c of span.children) {
+		if (c.spanOwner !== null) { adoptSpan(c, span); }
+	}
+	refreshLabel(span);
+}
+
 // A string under a Text element merges onto the parent's label (the reference
 // hosts' rule — no nested labels); under anything else it materialises its
 // own label, inheriting the parent's text paint (RN color/fontSize cascade,
 // first cut).
 function materializeString(child: NativeNode, parent: NativeNode): void {
-	if (parent.isText && parent.view !== null) {
+	if (inLabel(parent) && parent.view !== null) {
 		child.labelOwner = parent;
-		niSetText(parent.view, child.text);
-		remeasureText(parent);
+		refreshLabel(labelRoot(parent));
 		return;
 	}
 	if (child.view === null) { child.view = niTextCreate(); }
@@ -749,8 +880,7 @@ export function createNativeHost(): NativeHost {
 			n.text = s;
 			const owner = n.labelOwner !== null ? (n.labelOwner as NativeNode) : n;
 			if (owner.isText && owner.view !== null) {
-				niSetText(owner.view, s);
-				remeasureText(owner);
+				refreshLabel(labelRoot(owner));
 				requestLayout();
 			}
 		},
@@ -773,26 +903,33 @@ export function createNativeHost(): NativeHost {
 				if (p !== null) { restack(p); }
 			}
 			n.styleCache = style;
+			if (n.spanOwner !== null) {
+				refreshLabel(n.spanOwner as NativeNode);
+				if (isMounted(n)) { requestLayout(); }
+				return;
+			}
 			writeTextInsets(n, style);
 			n.flex = intrinsicFlex(n, nativeFlexStyle(style, kindOf(n)));
 			applyPaint(n, style);
-			if (n.isText) { remeasureText(n); }
+			if (n.isText && !n.isString && (hasSpans(n) || styledRun(style))) { refreshLabel(n); }
+			else if (n.isText) { remeasureText(n); }
 			if (isMounted(n)) { requestLayout(); }
 		},
 		setStyleProp: null,
 		setStyleClass: null,
 		addEvent: (node: HostNode, name: string, handler: (e: NeonEvent) => void): void => {
 			const n = node as unknown as NativeNode;
-			if (n.eventTag === 0) {
-				n.eventTag = nextTag;
-				nextTag += 1;
-				nodesByTag.set(n.eventTag, n);
-				if (n.view !== null && n.isScroll) { niScrollSetTag(n.view, n.eventTag); }
-				else if (n.view !== null && n.control !== NativeElementKind.View) { niControlSetTag(n.view, n.eventTag); }
-				else if (n.view !== null) { niViewSetTag(n.view, n.eventTag); }
-			}
+			ensureTag(n);
 			eventRegistry.add(n.eventTag, name, handler);
-			if (name === "onPress" && n.view !== null) { niViewSetPressable(n.view); }
+			if (name === "onPress" && n.view !== null) {
+				niViewSetPressable(n.view);
+				n.pressable = true;
+				const owner = n.spanOwner;
+				if (owner !== null) {
+					markPressable(owner as NativeNode);
+					refreshLabel(owner as NativeNode);
+				}
+			}
 			if (name === "onLayout" && layoutNodes.indexOf(n) < 0) { layoutNodes.push(n); }
 		},
 		append: (parent: HostNode, child: HostNode): void => {
@@ -807,6 +944,9 @@ export function createNativeHost(): NativeHost {
 			if (c.zIndex !== 0) { p.zChildren += 1; }
 			if (c.isString && !sameParent) {
 				materializeString(c, p);
+			} else if (inLabel(p)) {
+				if (!sameParent) { adoptSpan(c, labelRoot(p)); }
+				refreshLabel(labelRoot(p));
 			} else if (!sameParent && p.view !== null && c.view !== null) {
 				niAddChild(p.view, c.view);
 			} else if (sameParent && p.zChildren === 0 && c.view !== null) {
@@ -837,6 +977,9 @@ export function createNativeHost(): NativeHost {
 			if (n.zIndex !== 0) { p.zChildren += 1; }
 			if (n.isString && !sameParent) {
 				materializeString(n, p);
+			} else if (inLabel(p)) {
+				if (!sameParent) { adoptSpan(n, labelRoot(p)); }
+				refreshLabel(labelRoot(p));
 			} else if (!sameParent && p.view !== null && n.view !== null) {
 				niAddChild(p.view, n.view);
 			}
@@ -851,15 +994,11 @@ export function createNativeHost(): NativeHost {
 			p.children.splice(idx, 1);
 			if (n.zIndex !== 0) { p.zChildren -= 1; }
 			removePaintChild(p, n);
-			const owner = n.labelOwner;
-			if (n.isString && owner !== null && owner !== n && owner.view !== null) {
-				niSetText(owner.view, "");
-				remeasureText(owner);
-			}
 			n.parent = null;
 			if (isMounted(p)) { requestLayout(); }
 			freeLayoutTree(n);
 			releaseNativeTree(n);
+			if (inLabel(p)) { refreshLabel(labelRoot(p)); }
 		},
 		nextSibling: (node: HostNode): HostNode | null => {
 			const n = node as unknown as NativeNode;
@@ -941,11 +1080,15 @@ function unlinkChild(n: NativeNode, nextParent: NativeNode): void {
 	if (at >= 0) { old.children.splice(at, 1); }
 	if (n.zIndex !== 0) { old.zChildren -= 1; }
 	removePaintChild(old, n);
+	if (n.spanOwner !== null && old !== nextParent) {
+		const root = n.spanOwner as NativeNode;
+		if (!inLabel(nextParent)) { releaseSpan(n); }
+		refreshLabel(root);
+	}
 	if (n.isString && old !== nextParent) {
 		const owner = n.labelOwner;
 		if (owner !== null && owner !== n && owner.view !== null) {
-			niSetText(owner.view, "");
-			remeasureText(owner);
+			refreshLabel(labelRoot(owner));
 		}
 		if (nextParent.isText && n.view !== null) {
 			freeLayoutTree(n);
@@ -962,13 +1105,13 @@ function restack(p: NativeNode): void {
 	if (p.view === null) { return; }
 	if (p.zChildren === 0) {
 		for (const child of p.children) {
-			if (child.view !== null) { niBringChildToFront(child.view); }
+			if (child.view !== null && child.spanOwner === null) { niBringChildToFront(child.view); }
 		}
 		return;
 	}
 	let count: int32 = 0;
 	for (const child of p.children) {
-		if (child.view === null) { continue; }
+		if (child.view === null || child.spanOwner !== null) { continue; }
 		if (count < p.paintOrder.length) { p.paintOrder[count] = child; }
 		else { p.paintOrder.push(child); }
 		let at = count;

@@ -193,6 +193,7 @@ export interface TextProps extends HostProps {
 	numberOfLines?: Accessor<number> | null;
 	ellipsizeMode?: Accessor<EllipsizeMode> | null;
 	selectable?: Accessor<boolean> | null;
+	onPress?: ((e: NeonEvent) => void) | null;
 	children?: NeonNode | null;
 }
 
@@ -206,7 +207,8 @@ function accessibleText(props: AccessibilityProps): Accessor<string> | null {
 export function Text(props: TextProps): NeonNode {
 	const lines = props.numberOfLines;
 	const ellipsize = props.ellipsizeMode;
-	if (lines === null && ellipsize === null && props.selectable === null) {
+	const press = props.onPress;
+	if (lines === null && ellipsize === null && props.selectable === null && press === null) {
 		const accessible = accessibleText(props);
 		return element(<text class={props.class} style={props.style} ref={props.ref} accessible={accessible} accessibilityLabel={props.accessibilityLabel} accessibilityHint={props.accessibilityHint} accessibilityRole={props.accessibilityRole}>{props.children}</text>);
 	}
@@ -220,7 +222,14 @@ export function Text(props: TextProps): NeonNode {
 		attrs.push(dynAttr("ellipsizeMode", (): string | null => { const m: EllipsizeMode = read(); return m; }));
 	}
 	flagAttr(attrs, "selectable", props.selectable);
-	return primitive("text", props, attrs, [], props.children);
+	const evts: VEvent[] = [];
+	if (press !== null) {
+		const user = press as (e: NeonEvent) => void;
+		evts.push(evt("onPress", (e: NeonEvent): void => {
+			if (!pressSwallowed(e)) { user(e); }
+		}));
+	}
+	return primitive("text", props, attrs, evts, props.children);
 }
 
 // RN Pressability's two constants (Libraries/Pressability/Pressability.js):

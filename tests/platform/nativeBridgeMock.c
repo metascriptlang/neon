@@ -154,6 +154,22 @@ void niSetProp(void *view, const char *name, const char *value) {
 	}
 	snprintf(v->propValues[i], sizeof v->propValues[i], "%s", value);
 	if (strcmp(name, "statusBarTranslucent") == 0) g_translucent = strcmp(value, "true") == 0;
+	if (strcmp(name, "textSpans") == 0) {
+		// The label shows the runs' texts in order; each record starts with its text.
+		size_t at = 0;
+		const char *record = value;
+		while (*record && at + 1 < sizeof v->text) {
+			const char *end = record;
+			while (*end && *end != '\x1f' && *end != '\x1e') end++;
+			size_t n = (size_t)(end - record);
+			if (at + n >= sizeof v->text) n = sizeof v->text - 1 - at;
+			memcpy(v->text + at, record, n);
+			at += n;
+			while (*end && *end != '\x1e') end++;
+			record = *end ? end + 1 : end;
+		}
+		v->text[at] = 0;
+	}
 	if (v->isInput && strcmp(name, "value") == 0) snprintf(v->text, sizeof v->text, "%s", value);
 }
 

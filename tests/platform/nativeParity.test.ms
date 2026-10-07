@@ -7,7 +7,7 @@ import { StatusBar } from "../../src/components/statusBar";
 import { SafeAreaView } from "../../src/components/safeAreaView";
 import { useSafeAreaInsets } from "../../src/render/environment";
 import { NeonNode } from "../../src/render/node";
-import { nmTeardown, nmSystemInsets, nmTextVisualY, nmTextWidth, nmLabelProp } from "./nativeBridgeMock.h";
+import { nmTeardown, nmSystemInsets, nmTextVisualY, nmTextWidth, nmLabelProp, nmHasLabel, nmAnyProp, nmViewsCreated, nmTagWithProp, nmTouch } from "./nativeBridgeMock.h";
 
 test "the native host publishes how far the unsafe areas reach into its root, and a translucent StatusBar takes the root edge to edge" {
 	const insets = useSafeAreaInsets();
@@ -48,4 +48,47 @@ test "a native Text sends its textAlign to the label and a centred label spans i
 	assert right === "right 300", "right: " + right;
 	assert left === "left 26", "left keeps the text's own width: " + left;
 	assert plain === "<unset> 43", "an unaligned label sends nothing: " + plain;
+}
+
+function anyProp(name: string): string {
+	return nmAnyProp(name);
+}
+
+function labelProp(text: string, name: string): string {
+	return nmLabelProp(text, name);
+}
+
+test "a nested native Text is a styled span of its outer label, and a pressable span takes the press" {
+	const [name, setName] = createSignal("Ada");
+	const [bold, setBold] = createSignal(true);
+	let log = "";
+	const field = "\u001f";
+	const record = "\u001e";
+	const app = (): NeonNode => <View>
+		<Text style={{ color: "#ffffff", fontSize: 15 }}>Hi <Text style={{ fontWeight: bold() ? "bold" : "normal", color: "#ff0000" }}>{name()}</Text>, see <Text style={{ textDecorationLine: "underline" }} onPress={(): void => { log += "link;"; }}>terms</Text>.</Text>
+	</View>;
+	runApp(app);
+	const shown = nmHasLabel("Hi Ada, see terms.");
+	const spans = labelProp("Hi Ada, see terms.", "textSpans");
+	const labels = nmViewsCreated();
+	setName("Grace");
+	const renamed = nmHasLabel("Hi Grace, see terms.");
+	setBold(false);
+	const plain = labelProp("Hi Grace, see terms.", "textSpans");
+	const label = nmTagWithProp("textSpans", plain);
+	const fields = plain.split(record)[3].split(field);
+	const link = parseInt(fields[7]) as int32;
+	nmTouch(link, 0);
+	nmTouch(link, 1);
+	nmTouch(link, 2);
+	nmTeardown();
+	assert shown === 1 && renamed === 1, `one label shows every run in order: ${shown} ${renamed}`;
+	assert label !== link && link > 0, `the label carries a tag of its own, the span another: ${label} ${link}`;
+	assert spans === "Hi " + field + "#ffffff" + field + "15" + field + "0" + field + "0" + field + "0" + field + "0" + field + "0"
+		+ record + "Ada" + field + "#ff0000" + field + "15" + field + "1" + field + "0" + field + "0" + field + "0" + field + "0"
+		+ record + ", see " + field + "#ffffff" + field + "15" + field + "0" + field + "0" + field + "0" + field + "0" + field + "0"
+		+ record + "terms" + field + "#ffffff" + field + "15" + field + "0" + field + "0" + field + "1" + field + "0" + field + link.toString()
+		+ record + "." + field + "#ffffff" + field + "15" + field + "0" + field + "0" + field + "0" + field + "0" + field + "0", "runs: " + spans;
+	assert plain.indexOf("Grace" + field + "#ff0000" + field + "15" + field + "0") >= 0, "the span restyles: " + plain;
+	assert log === "link;", "the pressed span fires its own onPress: " + log;
 }
