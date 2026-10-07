@@ -113,11 +113,16 @@ function GridList(): NeonNode {
 			<Pressable style={styles.jump} onPress={() => setData([...data(), fresh()])}>append</Pressable>
 		</View>
 		<FlatList data={data()} style={styles.list} numColumns={3} columnWrapperStyle={{ gap: 4, marginBottom: 4 }}
-			renderItem={(info: ListRenderItemInfo<Entry>): NeonNode =>
-				<Pressable style={{ flex: 1, height: 64, padding: 12, backgroundColor: "#313244", color: "#cdd6f4" }}
-					onPress={() => setPressed("cell " + info.item.n.toString() + " at " + info.index().toString())}>
-					{"cell " + info.item.n.toString()}
-				</Pressable>} />
+			renderItem={(info: ListRenderItemInfo<Entry>): NeonNode => {
+				const [taps, setTaps] = createSignal<number>(0);
+				return <Pressable style={{ flex: 1, height: 64, padding: 12, backgroundColor: "#313244", color: "#cdd6f4" }}
+					onPress={() => {
+						setTaps(taps() + 1);
+						setPressed("cell " + info.item.n.toString() + " at " + info.index().toString());
+					}}>
+					{"cell " + info.item.n.toString() + (taps() === 0 ? "" : " tapped " + taps().toString())}
+				</Pressable>;
+			}} />
 	</View>;
 }
 

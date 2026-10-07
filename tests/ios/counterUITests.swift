@@ -315,6 +315,8 @@ final class FlatListUITests: XCTestCase {
         XCTAssertEqual(c3.minX, c0.minX, accuracy: 2, "cell 3 opens the second row")
         report("grid-initial")
 
+        app.staticTexts["cell 2"].tap()
+        XCTAssertTrue(app.staticTexts["cell 2 tapped 1"].waitForExistence(timeout: 10), "cell 2 counts its own tap: \(label(startingWith: "pressed "))")
         app.staticTexts["cell 4"].tap()
         XCTAssertTrue(app.staticTexts["pressed cell 4 at 4"].waitForExistence(timeout: 10), "the tap hits cell 4: \(label(startingWith: "pressed "))")
         app.staticTexts["prepend"].tap()
@@ -323,9 +325,17 @@ final class FlatListUITests: XCTestCase {
         XCTAssertEqual(fresh.minY, c0.minY, accuracy: 2, "cell 60 opens the first row")
         XCTAssertEqual(fresh.minX, c0.minX, accuracy: 2, "cell 60 takes the first column")
         XCTAssertEqual(app.staticTexts["cell 0"].frame.minX, c1.minX, accuracy: 2, "cell 0 moves to the second column")
-        app.staticTexts["cell 4"].tap()
-        XCTAssertTrue(app.staticTexts["pressed cell 4 at 5"].waitForExistence(timeout: 10), "cell 4 reads its new index: \(label(startingWith: "pressed "))")
+        let moved = app.staticTexts["cell 2 tapped 1"]
+        XCTAssertTrue(moved.exists, "cell 2 keeps its own counter when the prepend moves it to the second row")
+        XCTAssertEqual(moved.frame.minY, c3.minY, accuracy: 2, "cell 2 opens the second row")
+        XCTAssertEqual(moved.frame.minX, c0.minX, accuracy: 2, "cell 2 takes the first column")
         report("grid-prepended")
+        moved.tap()
+        XCTAssertTrue(app.staticTexts["cell 2 tapped 2"].waitForExistence(timeout: 10), "the moved cell counts on from its kept state")
+        XCTAssertTrue(app.staticTexts["pressed cell 2 at 3"].exists, "cell 2 reads its new index: \(label(startingWith: "pressed "))")
+        app.staticTexts["cell 4 tapped 1"].tap()
+        XCTAssertTrue(app.staticTexts["pressed cell 4 at 5"].waitForExistence(timeout: 10), "cell 4 reads its new index: \(label(startingWith: "pressed "))")
+        report("grid-moved-kept-state")
 
         app.staticTexts["sections"].tap()
         let first = app.staticTexts["Section 0"]

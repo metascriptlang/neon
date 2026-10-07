@@ -228,9 +228,14 @@ def grid_lane():
         raise LaneError("cell 3 does not open the second row under cell 0")
     scroll_list.report("flatlist-grid-initial", window, texts, launched)
 
+    column2 = left(texts, "cell 2")
+    scroll_list.tap(texts, "cell 2")
+    window, texts = scroll_list.state(False)
+    if "pressed cell 2 at 2" not in texts or "cell 2 tapped 1" not in texts:
+        raise LaneError("the tap did not hit cell 2 or its own counter: %r %s" % (scroll_list.label(texts, "pressed "), scroll_list.label(texts, "cell 2 ")))
     scroll_list.tap(texts, "cell 4")
     window, texts = scroll_list.state(False)
-    if "pressed cell 4 at 4" not in texts:
+    if "pressed cell 4 at 4" not in texts or "cell 4 tapped 1" not in texts:
         raise LaneError("the tap did not hit cell 4: %r" % scroll_list.label(texts, "pressed "))
     scroll_list.tap(texts, "prepend")
     window, texts = scroll_list.state(False)
@@ -238,13 +243,25 @@ def grid_lane():
         raise LaneError("the prepended cell 60 is not first in the first row; texts %s" % sorted(texts)[:20])
     if abs(top(texts, "cell 0") - first) > 2 or not left(texts, "cell 60") < left(texts, "cell 0"):
         raise LaneError("cell 0 did not move to the second column of the first row: %s" % texts.get("cell 0"))
+    if "cell 2 tapped 1" not in texts:
+        raise LaneError("cell 2 lost its own counter when the prepend moved it to the second row: %r" % scroll_list.label(texts, "cell 2 "))
+    if abs(top(texts, "cell 2 tapped 1") - top(texts, "cell 3")) > 2 or abs(left(texts, "cell 2 tapped 1") - column0) > 2:
+        raise LaneError("cell 2 did not move to the first column of the second row: %s vs cell 3 %s" % (texts["cell 2 tapped 1"], texts.get("cell 3")))
+    if "cell 4 tapped 1" not in texts or abs(left(texts, "cell 4 tapped 1") - column2) > 2:
+        raise LaneError("cell 4 did not keep its counter in the third column: %s" % scroll_list.label(texts, "cell 4 "))
     if "pressed cell 4 at 4" not in texts:
         raise LaneError("prepending lost the screen state: %r" % scroll_list.label(texts, "pressed "))
-    scroll_list.tap(texts, "cell 4")
+    scroll_list.report("flatlist-grid-prepended", window, texts, launched)
+    scroll_list.tap(texts, "cell 2 tapped 1")
+    window, texts = scroll_list.state(False)
+    if "pressed cell 2 at 3" not in texts or "cell 2 tapped 2" not in texts:
+        raise LaneError("the moved cell 2 does not count on from 1 at its new index 3: %r %s" % (scroll_list.label(texts, "pressed "), scroll_list.label(texts, "cell 2 ")))
+    scroll_list.tap(texts, "cell 4 tapped 1")
     window, texts = scroll_list.state(False)
     if "pressed cell 4 at 5" not in texts:
         raise LaneError("cell 4 does not read its new index 5 after the prepend: %r" % scroll_list.label(texts, "pressed "))
-    scroll_list.report("flatlist-grid-prepended", window, texts, launched)
+    print("NEON_ANDROID flatlist-grid-moved %s %s" % (scroll_list.label(texts, "cell 2 "), scroll_list.label(texts, "pressed ")))
+    scroll_list.report("flatlist-grid-moved-kept-state", window, texts, launched)
 
     for _ in range(2):
         scroll_list.swipe_up(window)
