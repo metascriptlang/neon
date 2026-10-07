@@ -649,7 +649,19 @@ function writeDomAttr(el: Node, name: string, value: string): void {
 	if (controlKinds.has(el) && writeNewControlAttr(el, controlKinds.get(el) as string, name, value)) { return; }
 	if (controlKinds.has(el) && writeControlAttr(el, controlKinds.get(el) as string, name, value)) { return; }
 	if (writeTextAttr(el, name, value)) { return; }
-	if (name.startsWith("statusBar")) { return; }
+	if (name.startsWith("statusBar") || name === "androidRipple") { return; }
+	if (name === "hitSlop") {
+		swapClass(el, "neon-slop-", "");
+		const parts: string[] = value.split(",");
+		if (parts.length !== 4) { return; }
+		const id = `neon-slop-${parts.join("-").split(".").join("_")}`;
+		if (!imageRules.has(id)) {
+			registerCss(id, `.${id}::before{content:"";position:absolute;top:-${parts[0]}px;left:-${parts[1]}px;bottom:-${parts[2]}px;right:-${parts[3]}px}`);
+			imageRules.set(id, true);
+		}
+		el.classList.add(id);
+		return;
+	}
 	if (name === "value") { el.value = value; return; }
 	if (name === "selection") {
 		const parts: string[] = value.split(",");

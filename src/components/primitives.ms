@@ -238,7 +238,39 @@ export function Text(props: TextProps): NeonNode {
 const LONG_PRESS_DELAY_MS = 500;
 const MIN_PRESS_DURATION_MS = 130;
 
+// RN Insets: how far each edge of a touch target reaches past the view.
+export interface Insets {
+	top?: number | null;
+	left?: number | null;
+	bottom?: number | null;
+	right?: number | null;
+}
+
+// RN PressableAndroidRippleConfig; a no-op off Android.
+export interface AndroidRipple {
+	color?: string | null;
+	borderless?: boolean | null;
+	radius?: number | null;
+}
+
+function insetsAttr(slop: number | Insets): string {
+	if (typeof slop === "number") {
+		const all = Math.max(0, slop as number);
+		return `${all},${all},${all},${all}`;
+	}
+	const s = slop as Insets;
+	const { top = 0, left = 0, bottom = 0, right = 0 } = s;
+	return `${Math.max(0, top)},${Math.max(0, left)},${Math.max(0, bottom)},${Math.max(0, right)}`;
+}
+
+function rippleAttr(ripple: AndroidRipple): string {
+	const { color = "", borderless = false, radius = -1 } = ripple;
+	return `${color},${borderless ? "true" : "false"},${radius >= 0 ? radius.toString() : ""}`;
+}
+
 interface PressableProps extends HostProps {
+	hitSlop?: Accessor<number | Insets> | null;
+	android_ripple?: Accessor<AndroidRipple> | null;
 	onPress?: ((e: NeonEvent) => void) | null;
 	onPressIn?: ((e: NeonEvent) => void) | null;
 	onPressOut?: ((e: NeonEvent) => void) | null;
@@ -350,7 +382,11 @@ export function Pressable(props: PressableProps): NeonNode {
 	// accessibility element whose label the host composes from its texts.
 	const declared = accessibleText(props);
 	const accessible = declared === null ? accessor((): string => "true") : declared as Accessor<string>;
-	return element(<pressable class={props.class} style={props.style} ref={props.ref} accessible={accessible} accessibilityLabel={props.accessibilityLabel} accessibilityHint={props.accessibilityHint} accessibilityRole={props.accessibilityRole} onLayout={props.onLayout} onPress={press} onPointerDown={pointerDown} onPointerUp={pointerUp} onPointerLeave={pointerLeave} onPointerCancel={pointerLeave}>{props.children}</pressable>);
+	const slop = props.hitSlop;
+	const hitSlop: Accessor<string> | null = slop === null ? null : accessor((): string => insetsAttr((slop as Accessor<number | Insets>)()));
+	const ripple = props.android_ripple;
+	const androidRipple: Accessor<string> | null = ripple === null ? null : accessor((): string => rippleAttr((ripple as Accessor<AndroidRipple>)()));
+	return element(<pressable class={props.class} style={props.style} ref={props.ref} accessible={accessible} hitSlop={hitSlop} androidRipple={androidRipple} accessibilityLabel={props.accessibilityLabel} accessibilityHint={props.accessibilityHint} accessibilityRole={props.accessibilityRole} onLayout={props.onLayout} onPress={press} onPointerDown={pointerDown} onPointerUp={pointerUp} onPointerLeave={pointerLeave} onPointerCancel={pointerLeave}>{props.children}</pressable>);
 }
 
 export interface ScrollToOptions {

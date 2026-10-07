@@ -1,14 +1,14 @@
 import { runApp } from "../../src/platform/native/host";
 import { createSignal } from "../../src/core/signal";
 import { element } from "../../src/macros/ui/element";
-import { Text, View, TextInput, TextSelection } from "../../src/components/primitives";
+import { Text, View, TextInput, TextSelection, Pressable } from "../../src/components/primitives";
 import { NeonEvent } from "../../src/render/event";
 import { TextAlign } from "../../src/render/style";
 import { StatusBar } from "../../src/components/statusBar";
 import { SafeAreaView } from "../../src/components/safeAreaView";
 import { useSafeAreaInsets } from "../../src/render/environment";
 import { NeonNode } from "../../src/render/node";
-import { nmTeardown, nmSystemInsets, nmTextVisualY, nmTextWidth, nmLabelProp, nmHasLabel, nmAnyProp, nmViewsCreated, nmTagWithProp, nmTouch, nmLastInputTag, nmLayoutHeight, nmControl, nmProp, nmAppLog, nmAppLogClear, nmAppEvent } from "./nativeBridgeMock.h";
+import { nmTeardown, nmSystemInsets, nmTextVisualY, nmTextWidth, nmLabelProp, nmHasLabel, nmAnyProp, nmViewsCreated, nmTagWithProp, nmTouch, nmLastInputTag, nmLayoutHeight, nmControl, nmProp, nmAppLog, nmAppLogClear, nmAppEvent, nmLastPressableTag } from "./nativeBridgeMock.h";
 import { ImageLoader } from "../../src/components/image";
 
 test "the native host publishes how far the unsafe areas reach into its root, and a translucent StatusBar takes the root edge to edge" {
@@ -159,4 +159,20 @@ test "ImageLoader.getSize on the native host asks the app channel and settles on
 	assert log === "image.size(" + id + "\u001fhttps://x/a.png)", "asked: " + log;
 	assert ok === "600x240", "size: " + ok;
 	assert got === "failed HTTP 404", "failure: " + got;
+}
+
+test "a native Pressable writes hitSlop per edge and its Android ripple through the prop channel" {
+	const [bottom, setBottom] = createSignal(8);
+	const app = (): NeonNode => <View>
+		<Pressable hitSlop={{ top: 4, bottom: bottom() }} android_ripple={{ color: "#33000000" }} onPress={(e: NeonEvent): void => {}}><Text>edge</Text></Pressable>
+	</View>;
+	runApp(app);
+	const button = nmLastPressableTag();
+	const first = prop(button, "hitSlop");
+	setBottom(12);
+	const second = prop(button, "hitSlop");
+	const ripple = prop(button, "androidRipple");
+	nmTeardown();
+	assert first === "4,0,8,0" && second === "4,0,12,0", `per edge: ${first} ${second}`;
+	assert ripple === "#33000000,false,", "ripple: " + ripple;
 }

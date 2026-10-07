@@ -42,6 +42,8 @@ public final class Props {
 				if (view instanceof android.view.ViewGroup) ((android.view.ViewGroup)view).setClipChildren("hidden".equals(value));
 				return;
 			case "accessibilityState": state(view, value); return;
+			case "hitSlop": Slop.set(view, value); return;
+			case "androidRipple": ripple(view, value); return;
 			case "textAlign":
 				if (view instanceof android.widget.TextView) align((android.widget.TextView)view, value);
 				return;
@@ -76,6 +78,20 @@ public final class Props {
 			case "selectable": label.setTextIsSelectable("true".equals(value)); break;
 			default: break;
 		}
+	}
+
+	// RN android_ripple: a RippleDrawable foreground over the view's background; color, borderless,
+	// radius in points. Touch drives its pressed state, since the Touch listener takes the events.
+	static void ripple(View view, String value) {
+		if (android.os.Build.VERSION.SDK_INT < 23) return;
+		if (value.isEmpty()) { view.setForeground(null); return; }
+		String[] f = value.split(",", -1);
+		int color = color(f.length > 0 ? f[0] : "", 0x33000000);
+		boolean borderless = f.length > 1 && "true".equals(f[1]);
+		android.graphics.drawable.Drawable mask = borderless ? null : new android.graphics.drawable.ColorDrawable(0xffffffff);
+		android.graphics.drawable.RippleDrawable ripple = new android.graphics.drawable.RippleDrawable(android.content.res.ColorStateList.valueOf(color), null, mask);
+		if (f.length > 2 && !f[2].isEmpty()) ripple.setRadius(Math.round(Float.parseFloat(f[2]) * view.getResources().getDisplayMetrics().density));
+		view.setForeground(ripple);
 	}
 
 	// RN ReactTextView: textAlign is the horizontal gravity, justify is inter-word justification

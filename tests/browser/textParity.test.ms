@@ -5,7 +5,8 @@ import { domHost } from "../../src/platform/browser/dom";
 import { HostNode } from "../../src/render/hostTypes";
 import { render } from "../../src/render/host";
 import { element } from "../../src/macros/ui/element";
-import { Text, View, TextInput, TextSelection } from "../../src/components/primitives";
+import { Text, View, TextInput, TextSelection, Pressable } from "../../src/components/primitives";
+import { NeonEvent } from "../../src/render/event";
 import { createSignal } from "../../src/core/signal";
 import { Image, ImageLoader } from "../../src/components/image";
 import { sleepAsync } from "std/core/promise";
@@ -133,4 +134,16 @@ test "Image in Chrome tiles for resizeMode repeat, blurs, and ImageLoader reads 
 	assert size === "2x3", "size: " + size;
 	assert missing === "failed", "a broken image fails: " + missing;
 	assert fetched, "prefetch resolves true";
+}
+
+test "a Pressable in Chrome takes a click in its hitSlop" {
+	const mount = mountPoint("slop-one");
+	let presses = 0;
+	render(element(<View style={{ padding: 40 }}>
+		<Pressable hitSlop={20} style={{ width: 40, height: 40 }} onPress={(e: NeonEvent): void => { presses += 1; }}><Text>go</Text></Pressable>
+	</View>), domHost(), mount as unknown as HostNode);
+	const hit = js("const b = document.querySelector('#slop-one button').getBoundingClientRect(); const at = document.elementFromPoint(b.left - 10, b.top - 10); at.click(); return at.tagName;");
+	const miss = js("const b = document.querySelector('#slop-one button').getBoundingClientRect(); const at = document.elementFromPoint(b.left - 30, b.top - 30); return at.tagName;");
+	assert hit === "BUTTON" && presses === 1, `10px outside is inside the slop: ${hit} ${presses}`;
+	assert miss !== "BUTTON", "30px outside is not: " + miss;
 }

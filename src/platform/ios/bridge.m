@@ -72,9 +72,19 @@ static void call0(msClosure c) {
 @interface NeonTouchView : UIView
 @property (nonatomic) BOOL neonHandlesPress;
 @property (nonatomic) BOOL neonAccessibleSet;
+@property (nonatomic) UIEdgeInsets neonHitSlop;
 @end
 
 @implementation NeonTouchView
+
+// RN hitSlop: the touch target reaches past the bounds by the slop on each edge (within the
+// superview, which hit-tests first).
+- (BOOL)pointInside:(CGPoint)point withEvent:(UIEvent *)event {
+	UIEdgeInsets slop = self.neonHitSlop;
+	if (UIEdgeInsetsEqualToEdgeInsets(slop, UIEdgeInsetsZero)) return [super pointInside:point withEvent:event];
+	CGRect area = UIEdgeInsetsInsetRect(self.bounds, UIEdgeInsetsMake(-slop.top, -slop.left, -slop.bottom, -slop.right));
+	return CGRectContainsPoint(area, point);
+}
 
 - (void)neonReport:(NSSet<UITouch *> *)touches phase:(int)phase {
 	UITouch *touch = touches.anyObject;
@@ -1289,6 +1299,13 @@ void niSetProp(void *view, const char *name, const char *value) {
 	}
 	else if (strcmp(name, "accessibilityState") == 0) setAccessibilityState(v, text);
 	else if (strcmp(name, "overflow") == 0) v.clipsToBounds = strcmp(text, "hidden") == 0;
+	else if (strcmp(name, "hitSlop") == 0) {
+		float top = 0, left = 0, bottom = 0, right = 0;
+		if ([v isKindOfClass:NeonTouchView.class] && sscanf(text, "%f,%f,%f,%f", &top, &left, &bottom, &right) == 4) {
+			((NeonTouchView *)v).neonHitSlop = UIEdgeInsetsMake(top, left, bottom, right);
+		}
+	}
+	else if (strcmp(name, "androidRipple") == 0) {}
 	else if (strcmp(name, "textAlign") == 0 && [v respondsToSelector:@selector(setTextAlignment:)]) {
 		NSTextAlignment alignment = strcmp(text, "left") == 0 ? NSTextAlignmentLeft :
 			strcmp(text, "center") == 0 ? NSTextAlignmentCenter :
