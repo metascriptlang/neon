@@ -65,3 +65,5 @@ export {
 	AnimatedInterpolation, AnimatedStringInterpolation, Easing, EasingFunction, LayoutAnimation,
 	LayoutAnimationPresets, Presence, EndResult,
 } from "./animation/index";
+
+export * from "./navigation/index";
