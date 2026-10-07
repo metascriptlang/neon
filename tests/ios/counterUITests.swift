@@ -985,3 +985,85 @@ final class GalleryUITests: XCTestCase {
         report("notes")
     }
 }
+
+final class MotionUITests: XCTestCase {
+    private let app = XCUIApplication(bundleIdentifier: "dev.neon.NeonMotion")
+
+    override func setUp() {
+        continueAfterFailure = false
+    }
+
+    private func status() -> String {
+        let match = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "fade ")).firstMatch
+        return match.exists ? match.label : ""
+    }
+
+    private func waitStatus(containing part: String) {
+        let predicate = NSPredicate { [self] _, _ in status().contains(part) }
+        XCTAssertEqual(XCTWaiter.wait(for: [expectation(for: predicate, evaluatedWith: app)], timeout: 10), .completed,
+            "expected status containing \(part); got \(status())")
+    }
+
+    private func report(_ name: String, _ detail: String) {
+        print("NEON_IOS motion-\(name) \(detail) status=\(status())")
+        let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        shot.name = "motion-\(name)"
+        shot.lifetime = .keepAlways
+        add(shot)
+    }
+
+    private func pause(_ seconds: Double) {
+        RunLoop.current.run(until: Date().addingTimeInterval(seconds))
+    }
+
+    func testAnimationsRun() {
+        XCUIDevice.shared.orientation = .portrait
+        app.launch()
+        XCTAssertTrue(app.wait(for: .runningForeground, timeout: 20))
+        XCTAssertTrue(app.staticTexts["Neon motion"].waitForExistence(timeout: 15))
+        waitStatus(containing: "fade 1")
+        report("initial", "")
+
+        let card = app.staticTexts["spring card"]
+        let restX = card.frame.minX
+        app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "spring")).firstMatch.tap()
+        pause(0.25)
+        let midX = card.frame.minX
+        report("spring-mid", "x=\(midX) rest=\(restX)")
+        XCTAssertGreaterThan(midX, restX + 5, "the card is moving")
+        waitStatus(containing: "spring 160")
+        pause(0.2)
+        let endX = card.frame.minX
+        report("spring-end", "x=\(endX) rest=\(restX)")
+        XCTAssertEqual(endX - restX, 160, accuracy: 2, "the card rests 160 pt right")
+
+        app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "fade")).firstMatch.tap()
+        pause(0.3)
+        report("fade-mid", "")
+        waitStatus(containing: "fade 0")
+        report("fade-end", "")
+
+        let after = app.staticTexts["after panel"]
+        let beforeY = after.frame.minY
+        app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "expand")).firstMatch.tap()
+        pause(0.2)
+        let midY = after.frame.minY
+        report("panel-mid", "y=\(midY) before=\(beforeY)")
+        XCTAssertGreaterThan(midY, beforeY + 5, "the panel is opening")
+        XCTAssertLessThan(midY, beforeY + 155, "the panel has not landed yet")
+        pause(1.0)
+        let endY = after.frame.minY
+        report("panel-end", "y=\(endY) before=\(beforeY)")
+        XCTAssertEqual(endY - beforeY, 160, accuracy: 2, "the text below moved by the panel height")
+
+        let title = app.staticTexts["Neon motion"]
+        let titleY = title.frame.minY
+        let row = app.staticTexts["row 3"]
+        let from = row.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        from.press(forDuration: 0.05, thenDragTo: from.withOffset(CGVector(dx: 0, dy: -260)))
+        pause(1.0)
+        let shrunkY = title.frame.minY
+        report("header-scrolled", "titleY=\(shrunkY) before=\(titleY)")
+        XCTAssertLessThan(shrunkY, titleY - 20, "the header shrinks with the scroll offset")
+    }
+}
