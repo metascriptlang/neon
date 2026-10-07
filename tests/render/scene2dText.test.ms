@@ -148,5 +148,3 @@ test "Incomplete Label selection and cursor pairs fail loudly and dispose failed
 		assert scenes[i].closed && scenes[i].nodeCount() === 0;
 	}
 }
-
-
