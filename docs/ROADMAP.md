@@ -105,6 +105,27 @@ RN's `getDerivedStateFromProps` window shift and counts the header slot. Cases:
 the `chat` mode of `examples/components/bigList.ms`, passing on the iOS simulator
 (`docs/IOS.md` §9.1); the Seeker lane is written but not yet run (`docs/ANDROID.md` §11.1).
 
+Flutter's list capabilities that RN lacks, and the gesture layer under them (`wt/rn-flutter-lists`,
+2026-10-07, provisional as `WORKAROUND.md` F1–F11): RN's responder system and `PanResponder`
+(`src/render/responder.ms`, `src/components/panResponder.ms`) over touch events every host now
+delivers with window coordinates and moves, and the optional `Host.setResponder` that keeps native
+scrolling from taking a claimed touch; `Dismissible`, `ReorderableFlatList` (drag from `drag()`,
+`onReorder(from, to)` with `to` after removal, rows keep their identity), `GridList` (`maxItemWidth`,
+Flutter's max-extent delegate) and `MasonryList`, `CollapsingHeader` and `CustomScrollView`
+slivers, and `ListWheelScrollView`. Several lists and grids in one scroll are one
+`VirtualizedList` over the slivers' rows laid end to end, which is what Flutter's viewport does with
+one shared scroll offset; pinned headers are its sticky rows. Cases:
+`tests/components/{panResponder,dismissible,reorderableList,gridList,sliver,listWheel,flutterListsApp}.test.ms`
+(native and JS), `tests/platform/nativeHost.test.ms` (a pan row inside a ScrollView takes a drag
+from the Pressable in it and blocks native scrolling), `tests/browser/gesture.test.ms`. The consumer
+is `examples/components/flutterLists.ms`: real mouse drags in Chrome pass
+(`node tests/browser/flutterlists.mjs <playwright>`: swipe to archive and delete, tap through a
+swipeable row, long-press reorder, max-extent grid and masonry, collapsing header, pinned slivers,
+wheel snap), and the iOS simulator passes `FlutterListsUITests` with the same steps
+(`/private/tmp/neon-sim-run.sh … FlutterListsUITests`, results `/private/tmp/neon-sim.f2A6ZK`).
+The Seeker lane `tests/android/flutterlists.py` is written and its APK built; its one run stopped
+at the locked screen (exit 2, `/private/tmp/neon-seeker.gbYoCQ`), so Android is not yet measured.
+
 
 ### Acceptance — three complete author workflows
 
