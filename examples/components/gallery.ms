@@ -29,15 +29,17 @@ function Section(props: { title: Accessor<string>; children: NeonNode }): NeonNo
 
 function KeyboardScreen(props: { back: () => void; say: (s: string) => void }): NeonNode {
 	const keyboard = useKeyboard();
+	const [inputY, setInputY] = createSignal<number>(-1);
 	return <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
 		<View style={{ flex: 1, padding: 16, gap: 8 }}>
 			<Button title="Back to gallery" onPress={(e: NeonEvent): void => { props.back(); }} />
 			<Text style={{ color: "#cdd6f4" }}>{`keyboard ${keyboard().visible ? Math.round(keyboard().height).toString() : "hidden"}`}</Text>
+			<Text style={{ color: "#cdd6f4" }}>{`message at ${inputY()}`}</Text>
 		</View>
 		<TextInput placeholder="Message" accessibilityLabel="Message" blurOnSubmit={true}
 			style={{ height: 44, margin: 12, paddingLeft: 10, backgroundColor: "#313244", color: "#cdd6f4", borderRadius: 8 }}
 			onSubmitEditing={(e: NeonEvent): void => { props.say(`sent ${e.value}`); }}
-			onLayout={(e: NeonEvent): void => { props.say(`message at ${Math.round(e.y)}`); }} />
+			onLayout={(e: NeonEvent): void => { setInputY(Math.round(e.y)); }} />
 	</KeyboardAvoidingView>;
 }
 

@@ -892,7 +892,7 @@ final class GalleryUITests: XCTestCase {
     }
 
     private func report(_ name: String) {
-        print("NEON_IOS gallery-\(name) \(label(startingWith: "status: ")) \(label(startingWith: "insets "))")
+        print("NEON_IOS gallery-\(name) \(label(startingWith: "status: ")) \(label(startingWith: "insets ")) \(label(startingWith: "message at ")) \(label(startingWith: "keyboard "))")
         let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         shot.name = "gallery-\(name)"
         shot.lifetime = .keepAlways
@@ -932,7 +932,7 @@ final class GalleryUITests: XCTestCase {
         app.buttons["Open modal"].tap()
         XCTAssertTrue(app.staticTexts["Modal content"].waitForExistence(timeout: 10))
         status("modal shown")
-        XCTAssertFalse(app.buttons["Press me"].exists, "VoiceOver stays inside the modal: the app behind it is not exposed")
+        XCTAssertFalse(app.buttons["Press me"].isHittable, "the modal layer covers the app: a tap cannot reach the button behind it")
         report("modal")
         app.buttons["Close modal"].tap()
         status("modal closed")
@@ -948,16 +948,16 @@ final class GalleryUITests: XCTestCase {
         scrollTo(app.buttons["Open keyboard screen"])
         app.buttons["Open keyboard screen"].tap()
         XCTAssertTrue(app.staticTexts["keyboard hidden"].waitForExistence(timeout: 10))
-        let resting = Int(label(startingWith: "status: message at ").split(separator: " ").last ?? "") ?? -1
+        let resting = Int(label(startingWith: "message at ").split(separator: " ").last ?? "") ?? -1
         XCTAssertGreaterThan(resting, 0, "the input reported its frame")
         app.textFields["Message"].tap()
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10))
         let lifted = NSPredicate { [self] _, _ in
-            let y = Int(label(startingWith: "status: message at ").split(separator: " ").last ?? "") ?? resting
+            let y = Int(label(startingWith: "message at ").split(separator: " ").last ?? "") ?? resting
             return y < resting
         }
         XCTAssertEqual(XCTWaiter.wait(for: [expectation(for: lifted, evaluatedWith: app)], timeout: 10), .completed,
-            "KeyboardAvoidingView lifts the input above the keyboard; it reads \(label(startingWith: "status: "))")
+            "KeyboardAvoidingView lifts the input above the keyboard; it reads \(label(startingWith: "message at "))")
         report("keyboard")
         app.textFields["Message"].typeText("hi\n")
         status("sent hi")

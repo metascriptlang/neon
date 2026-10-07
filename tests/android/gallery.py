@@ -159,7 +159,7 @@ def lane():
     window, texts = scroll_to("OPEN KEYBOARD SCREEN", window)
     scroll_list.tap(texts, "OPEN KEYBOARD SCREEN")
     window, texts = wait_for("keyboard hidden")
-    window, texts, before = wait_prefix("status: message at ")
+    window, texts, before = wait_prefix("message at ")
     resting = int(before.split()[-1])
     x, y = editable_centre("Message")
     adb("shell", "input", "tap", str(x), str(y))
@@ -167,8 +167,8 @@ def lane():
     lifted = resting
     while time.time() < deadline:
         window, texts = scroll_list.state(False)
-        line = status(texts)
-        if line.startswith("status: message at ") and ime_shown():
+        line = scroll_list.label(texts, "message at ")
+        if line and ime_shown():
             lifted = int(line.split()[-1])
             if lifted < resting:
                 break
