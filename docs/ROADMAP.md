@@ -85,6 +85,12 @@ mechanism approval. The reference list cases are in
 Until that approval, grid is provisional (`WORKAROUND.md` L1): an item keeps its state while
 it stays in its row and remounts when regrouping moves it to another row; the grid cases in
 `tests/render/flatList.test.ms` and `tests/browser/flatList.test.ms` pin it.
+Public `VirtualizedList` (`getItem`/`getItemCount`), viewability (`onViewableItemsChanged`,
+`viewabilityConfig`, `viewabilityConfigCallbackPairs`, `recordInteraction`) and
+`SectionList`/`VirtualizedSectionList` run on the same engine; their provisional parts are
+`WORKAROUND.md` L3–L7. Cases: `tests/render/{virtualizedList,sectionList}.test.ms`,
+`tests/components/list/viewability.test.ms`, `tests/browser/sectionList.test.ms`; the invalid
+`initialScrollIndex` warning is pinned on native and JS by `tests/apps/listWarnApp.ms`.
 
 
 ### Acceptance — three complete author workflows
