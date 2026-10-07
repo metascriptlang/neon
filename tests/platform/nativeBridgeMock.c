@@ -586,3 +586,13 @@ int32_t nmAppEvent(int32_t kind, const char *value) {
 }
 float nmBackgroundAlpha(int32_t tag) { return tagged(tag)->background[3]; }
 int32_t nmLastViewTag(void) { return g_lastViewTag; }
+
+const char *nmAnyProp(const char *name) {
+	for (MockView *v = g_views; v; v = v->next) {
+		if (v->released) continue;
+		for (int i = 0; i < v->propCount; i++) {
+			if (strcmp(v->propNames[i], name) == 0) return v->propValues[i];
+		}
+	}
+	return "<unset>";
+}

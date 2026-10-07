@@ -5,6 +5,8 @@ import { View, Pressable, ScrollView, ScrollViewHandle, TextInput, TextInputHand
 import { element } from "../../src/macros/ui/element";
 import { Switch } from "../../src/components/switch";
 import { TouchableHighlight } from "../../src/components/touchable";
+import { StatusBar } from "../../src/components/statusBar";
+import { KeyboardAvoidingView } from "../../src/components/keyboardAvoidingView";
 import { ActivityIndicator } from "../../src/components/activityIndicator";
 import { Image } from "../../src/components/image";
 import { useColorScheme, useKeyboard, useWindowDimensions } from "../../src/render/environment";
@@ -22,7 +24,7 @@ import {
 	nmLayoutX, nmLayoutY, nmRestackWrites, nmAddChildWrites, nmDetachWrites, nmPaintTag, nmPaintTextIndex,
 	nmControl, nmControlSized, nmTextWidth, nmTextHeight, nmLastControlTag, nmEnvironment, nmLastInputTag, nmFocused, nmProp,
 	nmTextVisualX, nmTextVisualY, nmScrollOffsetX, nmScrollOffsetY, nmScrollShifts,
-	nmBackgroundAlpha, nmLastViewTag,
+	nmBackgroundAlpha, nmLastViewTag, nmAnyProp,
 } from "./nativeBridgeMock.h";
 
 const PRESS: int32 = 2;
@@ -884,5 +886,38 @@ test "a native TouchableHighlight paints its underlay while pressed and clears i
 	nmTouch(tag, 0);
 	assert nmBackgroundAlpha(tag) === 1, "the underlay paints on press in";
 	nmTouch(tag, 3);
+	nmTeardown();
+}
+
+function anyProp(name: string): string {
+	return nmAnyProp(name);
+}
+
+test "a native StatusBar sends its bar style and visibility through the prop channel and takes no space" {
+	const [hidden, setHidden] = createSignal(false);
+	const app = (): NeonNode => <View>
+		<StatusBar barStyle="light-content" hidden={hidden()} />
+		<View style={{ height: 50 }} onLayout={(e: NeonEvent): void => {}} />
+	</View>;
+	runApp(app);
+	assert anyProp("statusBarStyle") === "light-content" && anyProp("statusBarHidden") === "false", "applied";
+	setHidden(true);
+	assert anyProp("statusBarHidden") === "true", "hidden follows its signal";
+	assert nmLayoutY(nmLastViewTag()) === 0, "the status bar node takes no layout space";
+	nmTeardown();
+}
+
+test "a native KeyboardAvoidingView pads by the keyboard the host publishes" {
+	const app = (): NeonNode => <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
+		<View style={{ flex: 1 }} />
+		<TextInput placeholder="Message" style={{ height: 40 }} onLayout={(e: NeonEvent): void => {}} />
+	</KeyboardAvoidingView>;
+	runApp(app);
+	const field = nmLastInputTag();
+	assert nmLayoutY(field) === 760, "at the bottom: " + nmLayoutY(field).toString();
+	nmEnvironment(300, 0);
+	assert nmLayoutY(field) === 460, "above the keyboard: " + nmLayoutY(field).toString();
+	nmEnvironment(0, 0);
+	assert nmLayoutY(field) === 760, "back down";
 	nmTeardown();
 }

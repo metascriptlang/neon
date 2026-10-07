@@ -508,10 +508,29 @@ static UIView *focusedInput(UIView *view) {
 @interface NeonVC : UIViewController
 @end
 
+static NeonVC *g_vc = nil;
+static UIStatusBarStyle g_statusBarStyle = UIStatusBarStyleDefault;
+static BOOL g_statusBarHidden = NO;
+
+// RN StatusBar on iOS: bar style and visibility through the view controller;
+// iOS has no status bar background, so that prop does nothing here.
+static void setStatusBar(const char *name, const char *value) {
+	if (strcmp(name, "statusBarStyle") == 0) {
+		g_statusBarStyle = strcmp(value, "light-content") == 0 ? UIStatusBarStyleLightContent :
+			strcmp(value, "dark-content") == 0 ? UIStatusBarStyleDarkContent : UIStatusBarStyleDefault;
+	} else if (strcmp(name, "statusBarHidden") == 0) g_statusBarHidden = strcmp(value, "true") == 0;
+	else return;
+	[g_vc setNeedsStatusBarAppearanceUpdate];
+}
+
 @implementation NeonVC
+
+- (UIStatusBarStyle)preferredStatusBarStyle { return g_statusBarStyle; }
+- (BOOL)prefersStatusBarHidden { return g_statusBarHidden; }
 
 - (void)viewDidLoad {
 	[super viewDidLoad];
+	g_vc = self;
 	g_dark = self.traitCollection.userInterfaceStyle == UIUserInterfaceStyleDark ? 1 : 0;
 	if (@available(iOS 17.0, *)) {
 		[self registerForTraitChanges:@[UITraitUserInterfaceStyle.class] withHandler:^(__kindof id<UITraitEnvironment> env, UITraitCollection *previous) {
@@ -658,6 +677,7 @@ void niControlSetTag(void *control, int32_t tag) {
 void niSetProp(void *view, const char *name, const char *value) {
 	UIView *v = (__bridge UIView *)view;
 	const char *text = value ? value : "";
+	if (strncmp(name, "statusBar", 9) == 0) { setStatusBar(name, text); return; }
 	if (strcmp(name, "accessibilityLabel") == 0) {
 		v.accessibilityLabel = text[0] ? [NSString stringWithUTF8String:text] : nil;
 		if ([v isKindOfClass:NeonTouchView.class] && !((NeonTouchView *)v).neonAccessibleSet) v.isAccessibilityElement = text[0] != '\0';

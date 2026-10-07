@@ -19,6 +19,7 @@ public final class Props {
 	}
 
 	public static void set(View view, String name, String value) {
+		if (name.startsWith("statusBar")) { SystemBars.set(view, name, value); return; }
 		switch (name) {
 			case "accessibilityLabel": view.setContentDescription(value.isEmpty() ? null : value); return;
 			case "accessibilityHint":
