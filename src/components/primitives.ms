@@ -17,7 +17,7 @@
 // macro machinery involved (the macro-side wrap in element covers the
 // same name on raw lowercase tags).
 
-import { NeonEvent } from "../render/event";
+import { NeonEvent, neonEvent } from "../render/event";
 import { Style, layerStyles } from "../render/style";
 import { onCleanup } from "../core/cleanup";
 import { Accessor, accessor, untrack } from "../core/signal";
@@ -25,6 +25,19 @@ import { element } from "../macros/ui/element";
 import { NeonNode, VAttr, VEvent, RefFn, hostElement, evt, dynAttr } from "../render/node";
 import { Host, HostNode, VoidArea } from "../render/hostTypes";
 import { visibleContentAttr } from "../render/visibleContent";
+import {
+	ClaimWatch,
+	ResponderEntry,
+	ResponderHandlers,
+	ResponderParent,
+	TouchPhase,
+	parentResponder,
+	pressSwallowed,
+	responderTouch,
+	responderUnmounted,
+	unwatchTouchClaim,
+	watchTouchClaim,
+} from "../render/responder";
 
 export type AccessibilityRole = "none" | "button" | "link" | "search" | "image" | "text" | "header" | "switch" | "checkbox" | "adjustable" | "progressbar" | "summary" | "alert";
 
@@ -94,11 +107,84 @@ function interactiveEvents(props: InteractiveProps, evts: VEvent[]): VEvent[] {
 }
 
 export interface ViewProps extends InteractiveProps {
+	onTouchStart?: ((e: NeonEvent) => void) | null;
+	onTouchMove?: ((e: NeonEvent) => void) | null;
+	onTouchEnd?: ((e: NeonEvent) => void) | null;
+	onTouchCancel?: ((e: NeonEvent) => void) | null;
+	onStartShouldSetResponder?: ((e: NeonEvent) => boolean) | null;
+	onStartShouldSetResponderCapture?: ((e: NeonEvent) => boolean) | null;
+	onMoveShouldSetResponder?: ((e: NeonEvent) => boolean) | null;
+	onMoveShouldSetResponderCapture?: ((e: NeonEvent) => boolean) | null;
+	onResponderGrant?: ((e: NeonEvent) => boolean) | null;
+	onResponderReject?: ((e: NeonEvent) => void) | null;
+	onResponderStart?: ((e: NeonEvent) => void) | null;
+	onResponderMove?: ((e: NeonEvent) => void) | null;
+	onResponderEnd?: ((e: NeonEvent) => void) | null;
+	onResponderRelease?: ((e: NeonEvent) => void) | null;
+	onResponderTerminate?: ((e: NeonEvent) => void) | null;
+	onResponderTerminationRequest?: ((e: NeonEvent) => boolean) | null;
 	children?: NeonNode | null;
 }
 
+function responderHandlers(props: ViewProps): ResponderHandlers | null {
+	const handlers: ResponderHandlers = {
+		onStartShouldSetResponder: props.onStartShouldSetResponder,
+		onStartShouldSetResponderCapture: props.onStartShouldSetResponderCapture,
+		onMoveShouldSetResponder: props.onMoveShouldSetResponder,
+		onMoveShouldSetResponderCapture: props.onMoveShouldSetResponderCapture,
+		onResponderGrant: props.onResponderGrant,
+		onResponderReject: props.onResponderReject,
+		onResponderStart: props.onResponderStart,
+		onResponderMove: props.onResponderMove,
+		onResponderEnd: props.onResponderEnd,
+		onResponderRelease: props.onResponderRelease,
+		onResponderTerminate: props.onResponderTerminate,
+		onResponderTerminationRequest: props.onResponderTerminationRequest,
+	};
+	const negotiates = handlers.onStartShouldSetResponder !== null || handlers.onStartShouldSetResponderCapture !== null ||
+		handlers.onMoveShouldSetResponder !== null || handlers.onMoveShouldSetResponderCapture !== null;
+	return negotiates ? handlers : null;
+}
+
+function touchEvent(name: string, user: ((e: NeonEvent) => void) | null, entry: ResponderEntry | null, phase: TouchPhase): VEvent | null {
+	if (user === null && entry === null) { return null; }
+	return evt(name, (e: NeonEvent): void => {
+		if (entry !== null) { responderTouch(entry as ResponderEntry, phase, e); }
+		if (user !== null) { (user as (x: NeonEvent) => void)(e); }
+	});
+}
+
 export function View(props: ViewProps): NeonNode {
-	return primitive("view", props, [], interactiveEvents(props, []), props.children);
+	const handlers = responderHandlers(props);
+	const evts = interactiveEvents(props, []);
+	const entry = handlers === null ? null : new ResponderEntry(handlers as ResponderHandlers, parentResponder());
+	const touches: VEvent[] = [];
+	const start = touchEvent("onTouchStart", props.onTouchStart, entry, TouchPhase.Start);
+	const move = touchEvent("onTouchMove", props.onTouchMove, entry, TouchPhase.Move);
+	const end = touchEvent("onTouchEnd", props.onTouchEnd, entry, TouchPhase.End);
+	const cancel = touchEvent("onTouchCancel", props.onTouchCancel, entry, TouchPhase.Cancel);
+	if (start !== null) { evts.push(start as VEvent); }
+	if (move !== null) { evts.push(move as VEvent); }
+	if (end !== null) { evts.push(end as VEvent); }
+	if (cancel !== null) { evts.push(cancel as VEvent); }
+	if (entry === null) { return primitive("view", props, [], evts, props.children); }
+	const owner = entry as ResponderEntry;
+	const kids = props.children;
+	const provided: NeonNode | null = kids === null ? null : ResponderParent.Provider({
+		value: accessor((): ResponderEntry | null => owner),
+		children: kids as NeonNode,
+	});
+	const userRef = props.ref;
+	const grab: RefFn = (node: HostNode): void => {
+		owner.node = node;
+		if (userRef !== null) { (userRef as RefFn)(node); }
+	};
+	const view = primitive("view", { style: props.style, class: props.class, ref: grab, accessible: props.accessible, accessibilityLabel: props.accessibilityLabel, accessibilityHint: props.accessibilityHint, accessibilityRole: props.accessibilityRole }, [], evts, provided);
+	return (host: Host, parent: HostNode, before: HostNode | null): void => {
+		owner.host = host;
+		onCleanup((): void => { responderUnmounted(owner); });
+		view(host, parent, before);
+	};
 }
 
 export type EllipsizeMode = "head" | "middle" | "tail" | "clip";
@@ -170,6 +256,7 @@ export function Pressable(props: PressableProps): NeonNode {
 	let outPending: NeonEvent | null = null;
 
 	let press: ((e: NeonEvent) => void) | null = null;
+	let watch: ClaimWatch | null = null;
 	let pointerDown: ((e: NeonEvent) => void) | null = null;
 	let pointerUp: ((e: NeonEvent) => void) | null = null;
 	let pointerLeave: ((e: NeonEvent) => void) | null = null;
@@ -189,6 +276,7 @@ export function Pressable(props: PressableProps): NeonNode {
 		const down = (e: NeonEvent): void => {
 			if (state !== 0) { return; }
 			state = 1;
+			watchTouchClaim(watch as ClaimWatch);
 			minHeld = false;
 			outPending = null;
 			if (onPressIn !== null) { (onPressIn as (x: NeonEvent) => void)(e); }
@@ -217,8 +305,10 @@ export function Pressable(props: PressableProps): NeonNode {
 			cancelTimer(longId);
 			longId = -1;
 			state = 0;
+			unwatchTouchClaim(watch as ClaimWatch);
 			releaseOut(e);
 			if (wasLong && onLongPress !== null) { return; }
+			if (pressSwallowed(e)) { return; }
 			if (onPress !== null) { (onPress as (x: NeonEvent) => void)(e); }
 		};
 		// Leaving the element (or the host cancelling) ends the press WITHOUT
@@ -228,17 +318,23 @@ export function Pressable(props: PressableProps): NeonNode {
 			cancelTimer(longId);
 			longId = -1;
 			state = 0;
+			unwatchTouchClaim(watch as ClaimWatch);
 			releaseOut(e);
 		};
+		watch = new ClaimWatch((): void => { leave(neonEvent("pointercancel")); });
 		pointerDown = down;
 		pointerUp = up;
 		pointerLeave = leave;
 		onCleanup((): void => {
 			cancelTimer(longId);
 			cancelTimer(minId);
+			unwatchTouchClaim(watch as ClaimWatch);
 		});
-	} else {
-		press = onPress;
+	} else if (onPress !== null) {
+		const user = onPress as (e: NeonEvent) => void;
+		press = (e: NeonEvent): void => {
+			if (!pressSwallowed(e)) { user(e); }
+		};
 	}
 
 	// RN Pressable.js: `accessible: accessible !== false`, so a Pressable is one
