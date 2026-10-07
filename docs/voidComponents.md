@@ -256,6 +256,21 @@ not green. The root is the existing compiler card
 `2026-09-30-js-header-enum-reexport-exports-undefined-member.md`; unchanged Yoga ce52e2e,
 not a new Sprite/source regression.
 
+Device consumer at `558a056` / tree `b7a23e5abec3fa9df64c3c0ed4230eecd899c6c7`:
+`msc run tests/device/scene2d.ms`, installed0d83c4867/Void d255ffb/macOS Metal, exit0.
+An existing Void window/test-driver submits12 frames of JSX Scene2D/Rect, keeps one Rect,
+checks signal x20→80 and one draw per frame, then closes the owned scene. Prepare dimensions
+are logical framebuffer/DPI (physical384×256, DPI2), not UI layout sizes. Ignoring Neon’s
+local binder produces exit1/`consumer lost its reactive Rect`; restored source diff empty,
+restored run exits0. Logs `/tmp/scene2d-device-{consumer-installed,ignored-local-red}.log`.
+This exercises a real device, not pixel readback: Screen Capture preflight is false and no
+permission request/change or screenshot was attempted. No Ion/idle/input/window-owner
+integration acceptance follows. The frame glue is deliberately in this test-driver, not a
+new app requirement or shipped renderer; this standalone `.ms` is an opt-in windowed run,
+not a hidden GUI launch from the CPU gate. Initial probe import/DPI errors were authoring
+errors corrected before these measurements. Driver failures exit explicitly rather than
+throw through Cocoa’s frame callback.
+
 Latest full installed gate: `NEON_BROWSER_PORT=8734 bash tests/run.sh`, commit `8d4e361`,
 tree `442ff190e91c01a8b238b6811ef1d3107c3b1aaa`, installed binary/support `0d83c4867`,
 Void `d255ffb`, exit1. Macros17/apps4 pass; native55 pass/10 fail; JS48 pass/1 fail;
