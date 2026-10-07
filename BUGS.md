@@ -86,14 +86,13 @@ and the invariants that outlived them were moved to the head of the test that pi
   main `4e33c9e` with msc `013853dd` (2026-09-30); the Windows run on `2f306532` found it beside the
   test file. Not yet known whether msc moved it on purpose.
 
-- **OPEN 2026-10-04 — `tests/platform/void.test.ms`, `tests/platform/voidInput.test.ms` and
-  `tests/style/style.test.ms` do not compile.** Neon's: `src/platform/void/host.ms` is written
-  against Void's `Node2D`, which Void deleted at P5 step 6; a Void node is now a row of `Scene2D`,
-  held as the struct `NodeRef` and written through binders. `msc check <file>` on msc `0f1ecc060`,
-  Void `5899f26`, Neon `349b3db` stops in each file on the host's casts out of `unknown` (24, 17 and
-  14 `cannot check a conversion from unknown`), on a `NodeRef` held as `unknown`, and on API Void
-  no longer has (`layoutStyle`, `fontId`, `label`'s colour argument). The rewrite onto a `VoidNode`
-  class that holds its `NodeRef` is `~/metascript/.wt/void-noderef-host.md`.
+- **OPEN 2026-10-07 — `src/platform/ion/window.ms` is still on the old Void API.** The Void host
+  now maps onto `Scene2D` rows through `VoidNode` (`src/platform/void/host.ms`), and
+  `tests/platform/voidInput.test.ms` and `tests/style/style.test.ms` pass on msc `8506eaf03`; the
+  window module still imports `Scene`/`scene`, calls the old `createVoidHostWith(measure, font)` and
+  compares `addFont`'s `Result` with `< 0`, and Void exports its embed view
+  (`embedRegister`, `viewCreate`) only under `windows || ios || android`, so it cannot build on macOS
+  whatever Neon does: `~/metascript/.inbox/neon/2026-10-05-void-api-drift-breaks-desktop-build.md`.
 
 - **PARKED 2026-10-11 — `tests/render/flatList.test.ms` and `tests/components/flutterListsApp.test.ms` do not compile.**
   Not Neon's: an array-destructured local of an arrow passed as a JSX attribute
@@ -115,7 +114,8 @@ and the invariants that outlived them were moved to the head of the test that pi
   value is refused against it on C and JS; with a written target type the `===` against a number then
   fails in clang. Card and the five-file matrix:
   `~/metascript/.inbox/compiler/2026-10-03-nullish-coalesce-union-into-its-superset-rejected.md`.
-  Parked at `tests/platform/void.test.ms:78`, the "parseFlexStyle" cell.
+  Parked at `tests/platform/void.test.ms`, the "parseFlexStyle maps numeric + enum keys" cell; the file
+  fails to compile on that cell alone, so `msc test tests/platform/void.test.ms` stays red until the card lands.
 
 - **PARKED 2026-09-30 — `tests/platform/native.test.ms` dies at module load on the JS lane.** Not
   Neon's: Yoga `dba68fd` re-exports its enums from `Yoga.h`, and msc `013853dd` emits
