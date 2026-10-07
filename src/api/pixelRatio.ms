@@ -1,6 +1,5 @@
 import { usePixelRatio, useFontScale } from "./dimensions";
 
-// RN's PixelRatio, over the scale the host published.
 export class PixelRatio {
 	static get(): number {
 		return usePixelRatio()();

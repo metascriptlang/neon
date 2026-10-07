@@ -1,6 +1,5 @@
 import { AppServices, AlertRequest, ShareRequest, installAppServices } from "../../src/api/services";
 
-// A host's app services that record every call and answer from fields a test sets.
 export class FakeServices {
 	log: string[] = [];
 	alerts: AlertRequest[] = [];

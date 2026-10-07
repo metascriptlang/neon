@@ -3,7 +3,6 @@ import { createRoot } from "../core/owner";
 import { createEffect } from "../core/effect";
 import { untrack } from "../core/signal";
 
-// What every RN `addEventListener`/`addListener` returns.
 export interface EventSubscription {
 	remove: () => void;
 }
@@ -13,9 +12,8 @@ interface Entry<T> {
 	handler: (value: T) => void;
 }
 
-// A handler list for the events a host pushes (memory warning, url…). Entries are keyed
-// by id: comparing function values dies at clang on C (compiler card
-// 2026-10-07-function-value-identity-dies-at-clang.md).
+// Keyed by id, not handler identity: comparing function values dies at clang on C
+// (compiler card 2026-10-07-function-value-identity-dies-at-clang.md).
 export class Listeners<T> {
 	private entries: Entry<T>[] = [];
 	private nextId: int32 = 1;
@@ -45,8 +43,6 @@ export class Listeners<T> {
 	}
 }
 
-// RN listeners fire on change only, never with the current value, and outlive the
-// component that added them: one detached root per subscription, disposed by `remove`.
 export function onChange<T>(source: Accessor<T>, changed: (value: T) => void): EventSubscription {
 	return createRoot((dispose: () => void): EventSubscription => {
 		let first = true;

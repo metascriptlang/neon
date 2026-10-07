@@ -1,6 +1,5 @@
 import { appServices } from "./services";
 
-// The community `@react-native-clipboard/clipboard` surface (RN's own Clipboard moved there).
 export class Clipboard {
 	static async getString(): Promise<string> {
 		return await appServices("Clipboard.getString").getClipboard();

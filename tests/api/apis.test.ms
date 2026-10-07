@@ -1,7 +1,7 @@
 import { createRoot } from "../../src/core/owner";
 import { createEffect } from "../../src/core/effect";
 import { publishWindow, publishKeyboard, publishColorScheme } from "../../src/render/environment";
-import { installAppServices } from "../../src/api/services";
+import { ALERT_DISMISSED, installAppServices } from "../../src/api/services";
 import { Platform } from "../../src/api/platform";
 import { Dimensions, DimensionsChange, publishScale, publishScreen } from "../../src/api/dimensions";
 import { PixelRatio } from "../../src/api/pixelRatio";
@@ -184,7 +184,7 @@ test "Alert hands the host its buttons and runs the chosen one's onPress, or onD
 	assert request.buttons[1].style === "destructive";
 	request.done(1);
 	assert chose === "delete", chose;
-	request.done(-1);
+	request.done(ALERT_DISMISSED);
 	assert chose === "dismissed", chose;
 
 	Alert.alert("Saved");

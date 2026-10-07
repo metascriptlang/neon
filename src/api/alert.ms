@@ -15,7 +15,7 @@ export interface AlertOptions {
 }
 
 when (android) {
-	// RN Android: at most three buttons (neutral, negative, positive), the last is positive.
+	// RN Android shows at most three buttons: neutral, negative, positive (the last).
 	function shown(buttons: AlertButton[]): AlertButton[] {
 		return buttons.slice(0, Math.min(3, buttons.length));
 	}
@@ -25,8 +25,6 @@ when (android) {
 	}
 }
 
-// RN's Alert. The host shows its native dialog (AlertDialog, UIAlertController, the
-// browser's confirm/alert) and reports the chosen button, which runs its onPress.
 export class Alert {
 	static alert(
 		title: string,

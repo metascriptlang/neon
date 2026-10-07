@@ -1,7 +1,5 @@
 import { appServices } from "./services";
 
-// RN's Vibration. A number vibrates that many milliseconds (iOS ignores the length, as
-// RN); an array alternates pause and vibration, starting with a pause.
 export class Vibration {
 	static vibrate(pattern: number | number[] = 400, repeat: boolean = false): void {
 		const steps: int32[] = [];

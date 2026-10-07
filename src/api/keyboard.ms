@@ -35,9 +35,6 @@ function eventFor(metrics: KeyboardMetrics): KeyboardEvent {
 	};
 }
 
-// RN's Keyboard. Hosts publish one keyboard height, so the Will/Did pairs fire together
-// once the height has changed: the show events when it becomes visible, the hide events
-// when it goes, the frame events on every change.
 export class Keyboard {
 	static addListener(
 		eventName: KeyboardEventName,

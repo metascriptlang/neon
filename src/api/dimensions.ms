@@ -2,7 +2,6 @@ import { Accessor, accessor, batch, createSignal } from "../core/signal";
 import { useWindowDimensions } from "../render/environment";
 import { EventSubscription, onChange } from "./subscription";
 
-// RN's ScaledSize.
 export interface ScaledSize {
 	width: number;
 	height: number;
@@ -22,8 +21,6 @@ const [fontScale, setFontScale] = createSignal<number>(1);
 const [screenWidth, setScreenWidth] = createSignal<number>(0);
 const [screenHeight, setScreenHeight] = createSignal<number>(0);
 
-// A host publishes the display's scale and the person's font scale when it starts and
-// whenever they change.
 export function publishScale(ratio: number, font: number): void {
 	batch((): void => {
 		if (pixelRatio() !== ratio) { setPixelRatio(ratio); }
@@ -58,7 +55,6 @@ function windowSize(): ScaledSize {
 
 function screenSize(): ScaledSize {
 	const window = useWindowDimensions()();
-	// A host that does not know the screen reports the window, as react-native-web does.
 	const width = screenWidth() > 0 ? screenWidth() : window.width;
 	const height = screenHeight() > 0 ? screenHeight() : window.height;
 	return { width, height, scale: pixelRatio(), fontScale: fontScale() };
@@ -70,8 +66,6 @@ const both: Accessor<DimensionsChange> = accessor((): DimensionsChange => ({
 }));
 
 export class Dimensions {
-	// RN's `Dimensions.get("window" | "screen")`; reading it inside a computation tracks
-	// it, so `useWindowDimensions()` and this agree.
 	static get(dim: DimensionsKey): ScaledSize {
 		return dim === "screen" ? screenSize() : windowSize();
 	}

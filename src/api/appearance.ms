@@ -5,7 +5,6 @@ export interface AppearancePreferences {
 	colorScheme: ColorScheme;
 }
 
-// RN's Appearance, over the scheme the host publishes (`useColorScheme`).
 export class Appearance {
 	static getColorScheme(): ColorScheme {
 		return useColorScheme()();

@@ -9,9 +9,6 @@ interface BackEntry {
 const entries: BackEntry[] = [];
 let nextId: int32 = 1;
 
-// RN's BackHandler: Android's hardware back. The handlers run newest first until one
-// returns true; when none does, the platform's default runs (the activity goes back).
-// Other platforms never press it.
 export class BackHandler {
 	static addEventListener(
 		eventName: "hardwareBackPress",
@@ -37,7 +34,6 @@ export class BackHandler {
 	}
 }
 
-// Called by the host on a back press; true when a handler consumed it.
 export function dispatchHardwareBackPress(): boolean {
 	const snapshot = entries.slice(0, entries.length);
 	for (let i = snapshot.length - 1; i >= 0; i -= 1) {

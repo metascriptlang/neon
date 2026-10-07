@@ -17,11 +17,9 @@ export interface ShareAction {
 	activityType: string | null;
 }
 
-// The action a host callback reports later, awaited by polling the event loop:
-// `new Promise(executor)` does not lower (compiler card
-// 2026-10-07-new-promise-executor-does-not-lower.md) and an async method of a generic class
-// is refused (sighting on card 2026-10-07-async-function-nested-in-generic-function.md);
-// WORKAROUND.md P2.
+// Polls instead of settling a `new Promise`, which does not lower (compiler card
+// 2026-10-07-new-promise-executor-does-not-lower.md); not generic, as an async method of a
+// generic class is refused (2026-10-07-async-function-nested-in-generic-function.md).
 class ShareSlot {
 	settled: boolean = false;
 	value: ShareAction = { action: "dismissedAction", activityType: null };
@@ -38,8 +36,6 @@ class ShareSlot {
 	}
 }
 
-// RN's Share. Android resolves "sharedAction" once the chooser opens, as RN does;
-// iOS resolves when the activity sheet closes; the browser when navigator.share settles.
 export class Share {
 	static sharedAction: string = "sharedAction";
 	static dismissedAction: string = "dismissedAction";

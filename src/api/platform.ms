@@ -1,10 +1,5 @@
-// RN's Platform. `OS` is decided at compile time by the `when` branch the target takes;
-// the run-time constants (`Version`, `isPad`) are published by the host when it starts.
-
 export type PlatformOSType = "ios" | "android" | "macos" | "windows" | "web" | "native";
 
-// RN's `Platform.select` argument: every field optional; `native` covers iOS and Android,
-// `default` everything not named.
 function chosen<T>(spec: {
 	ios?: T | null;
 	android?: T | null;
@@ -28,12 +23,11 @@ function chosen<T>(spec: {
 	throw new Error("Platform.select: no entry for " + os + " and no default");
 }
 
-// `select` needs its type argument written (`Platform.select<string>({ … })`) until
-// compiler card 2026-10-07-generic-not-inferred-through-optional-object-field.md lands.
+// Callers write `select`'s type argument until compiler card
+// 2026-10-07-generic-not-inferred-through-optional-object-field.md lands.
 when (android) {
 	export class Platform {
 		static OS: PlatformOSType = "android";
-		// Android's API level, as RN (`Build.VERSION.SDK_INT`).
 		static Version: number = 0;
 		static isPad: boolean = false;
 		static isTV: boolean = false;
@@ -77,7 +71,6 @@ when (android) {
 
 	export class Platform {
 		static OS: PlatformOSType = OS_NAME;
-		// The OS release string, as RN on iOS (`UIDevice.systemVersion`); "" before a host starts.
 		static Version: string = "";
 		static isPad: boolean = false;
 		static isTV: boolean = false;

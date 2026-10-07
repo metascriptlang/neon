@@ -1,18 +1,15 @@
-// The imperative half of RN's app APIs (Alert, Linking, Share, Vibration, Clipboard,
-// AccessibilityInfo, Keyboard.dismiss, BackHandler.exitApp). A host that can do them
-// installs one table when it starts (WORKAROUND.md P1); the API modules call through it.
-
 export interface AlertButtonSpec {
 	text: string;
 	style: string;
 }
+
+export const ALERT_DISMISSED: int32 = -1;
 
 export interface AlertRequest {
 	title: string;
 	message: string;
 	buttons: AlertButtonSpec[];
 	cancelable: boolean;
-	// The index into `buttons` the person chose; -1 when the alert was dismissed.
 	done: (index: int32) => void;
 }
 

@@ -7,7 +7,6 @@ export type AccessibilityChangeEventName = "screenReaderChanged" | "reduceMotion
 const [screenReader, setScreenReader] = createSignal<boolean>(false);
 const [reduceMotion, setReduceMotion] = createSignal<boolean>(false);
 
-// RN's AccessibilityInfo (TalkBack, VoiceOver, the browser cannot tell).
 export class AccessibilityInfo {
 	static async isScreenReaderEnabled(): Promise<boolean> {
 		return await appServices("AccessibilityInfo.isScreenReaderEnabled").screenReaderEnabled();

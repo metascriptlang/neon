@@ -4,13 +4,11 @@ import { EventSubscription, onChange, Listeners } from "./subscription";
 export type AppStateStatus = "active" | "background" | "inactive" | "unknown" | "extension";
 export type AppStateEvent = "change" | "memoryWarning" | "focus" | "blur";
 
-// The signal holds a string: createSignal of a literal union is refused today
-// (compiler card 2026-10-04-string-literal-union-signal-rejects-its-function-layout.md).
+// A string signal: createSignal of a literal union is refused (compiler card
+// 2026-10-04-string-literal-union-signal-rejects-its-function-layout.md).
 const [state, setState] = createSignal<string>("active");
 const memoryWarnings = new Listeners<AppStateStatus>();
 
-// RN's AppState. The host publishes the state from the platform's lifecycle: Android's
-// activity resume/pause, iOS's application notifications, the page's visibility.
 export class AppState {
 	static currentState: AppStateStatus = "active";
 	static isAvailable: boolean = true;

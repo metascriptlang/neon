@@ -7,7 +7,6 @@ export interface LinkingUrlEvent {
 
 const urls = new Listeners<LinkingUrlEvent>();
 
-// RN's Linking.
 export class Linking {
 	static async openURL(url: string): Promise<void> {
 		const opened = await appServices("Linking.openURL").openURL(url);
@@ -18,8 +17,6 @@ export class Linking {
 		return await appServices("Linking.canOpenURL").canOpenURL(url);
 	}
 
-	// The URL that launched the app, or null; "best effort": Android reads the launch
-	// intent's data, iOS and the browser give the page or launch URL they know.
 	static async getInitialURL(): Promise<string | null> {
 		const url = await appServices("Linking.getInitialURL").initialURL();
 		return url === "" ? null : url;
