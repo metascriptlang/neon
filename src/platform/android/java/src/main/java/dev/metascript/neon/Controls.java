@@ -13,6 +13,7 @@ public final class Controls {
 			case "datetimepicker": return new DateField(context);
 			case "webview": return new Web(context);
 			case "video": return new Movie(context);
+			case "svg": return new SvgView(context);
 			default: throw new IllegalArgumentException("niControlCreate has no control \"" + kind + "\"");
 		}
 	}
