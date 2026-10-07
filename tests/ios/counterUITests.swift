@@ -400,14 +400,14 @@ final class FlatListUITests: XCTestCase {
         app.launch()
         XCTAssertTrue(app.wait(for: .runningForeground, timeout: 20))
         let launched = pid()
-        app.staticTexts["chat"].tap()
+        element("chat").tap()
         XCTAssertTrue(app.staticTexts["messages 40, oldest 1000"].waitForExistence(timeout: 15), "chat mode mounts its 40 messages")
         XCTAssertTrue(app.staticTexts["message 1002"].waitForExistence(timeout: 15))
         let start = app.staticTexts["message 1002"].coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).withOffset(CGVector(dx: 0, dy: 120))
         start.press(forDuration: 0.1, thenDragTo: start.withOffset(CGVector(dx: 0, dy: -180)), withVelocity: .slow, thenHoldForDuration: 0.5)
         RunLoop.current.run(until: Date().addingTimeInterval(1.5))
         XCTAssertNotEqual(label(startingWith: "offset "), "offset 0", "the drag scrolled the chat")
-        let listTop = app.staticTexts["load older"].frame.maxY + 16
+        let listTop = element("load older").frame.maxY + 16
         let shown = messagesBelow(listTop)
         XCTAssertGreaterThan(shown.count, 2, "messages on screen below the list top")
         let kept = shown[0].label
@@ -415,7 +415,7 @@ final class FlatListUITests: XCTestCase {
         let offset = label(startingWith: "offset ")
         report("chat-before")
 
-        app.staticTexts["load older"].tap()
+        element("load older").tap()
         XCTAssertTrue(app.staticTexts["messages 60, oldest 980"].waitForExistence(timeout: 10), "load older prepends 20 messages")
         RunLoop.current.run(until: Date().addingTimeInterval(1))
         let after = app.staticTexts[kept].frame.minY
@@ -788,7 +788,7 @@ final class ApisUITests: XCTestCase {
     }
 
     private func tap(_ text: String) {
-        let element = app.staticTexts[text]
+        let element = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", text)).firstMatch
         XCTAssertTrue(element.waitForExistence(timeout: 10), "no \(text)")
         element.tap()
     }
