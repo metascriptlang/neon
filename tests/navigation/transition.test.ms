@@ -243,3 +243,36 @@ test "a tab with animation fade fades in when it gains focus; other tabs switch 
 	ref.navigate("Plain");
 	assert styleOf(screens.children[0]).opacity === null, "a plain tab does not fade";
 }
+
+const Inner = createStackNavigator<string>();
+
+function Nested(props: ScreenProps<string>): NeonNode {
+	return <Inner.Navigator>
+		<Inner.Screen name="Top" component={Named} />
+		<Inner.Screen name="Deep" component={Named} />
+	</Inner.Navigator>;
+}
+
+test "the drawer edge yields to a nested stack that can go back" {
+	const ref = createNavigationContainerRef();
+	const root: MockNode = mockNode("root");
+	render(<NavigationContainer ref={ref}>
+		<Drawer.Navigator>
+			<Drawer.Screen name="Main" component={Nested} options={{ headerShown: false }} />
+		</Drawer.Navigator>
+	</NavigationContainer>, mockHost(), root as unknown as HostNode);
+	settle();
+	drawerEdge(root);
+	ref.navigate("Deep");
+	settle();
+	let found = true;
+	try {
+		drawerEdge(root);
+	} catch (e) {
+		found = false;
+	}
+	assert !found, "no drawer edge while the stack can go back";
+	ref.goBack();
+	settle();
+	drawerEdge(root);
+}

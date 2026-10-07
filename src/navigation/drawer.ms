@@ -15,6 +15,7 @@ import {
 	Navigation,
 	NavigatorCore,
 	NavigatorKind,
+	NavigatorLink,
 	ScreenOptions,
 	ScreenOptionsOf,
 	ScreenProps,
@@ -135,9 +136,17 @@ function drawerMotion<P>(
 		return DRAWER_WIDTH;
 	};
 	const swipe = accessor((): boolean => {
+		core.currentKey();
 		const current = core.current();
 		if (current === null) { return true; }
-		return shown((current as Navigation<P>).options().swipeEnabled, true);
+		if (!shown((current as Navigation<P>).options().swipeEnabled, true)) { return false; }
+		let child = (core.link as NavigatorLink).focusedChild();
+		while (child !== null) {
+			const here = child as NavigatorLink;
+			if (here.kind === NavigatorKind.Stack && here.state().routes.length > 1) { return false; }
+			child = here.focusedChild();
+		}
+		return true;
 	});
 	const setOpen = (open: boolean): void => { core.writeDrawerOpen(open); };
 	const motion = new DrawerMotion(core.drawerOpen, setOpen, right, width, swipe);
