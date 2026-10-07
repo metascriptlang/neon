@@ -1,5 +1,6 @@
 import { Host, HostNode } from "../../src/render/hostTypes";
 import { reconcileArrays, Row, rowOf } from "../../src/render/reconcile";
+import { Style } from "../../src/render/style";
 
 export const HOST_MOVE_CONTRACT = "abc abc cab abc bac insert-throws remove-throws bac";
 export const RECONCILE_CONTRACT = "abc_ cba_ acd_ deac_ b_ _";
@@ -23,11 +24,12 @@ export function childOrder(h: Host, parent: HostNode, nodes: HostNode[], names: 
 	return out;
 }
 
-export function hostMoveContract(h: Host): string {
+export function hostMoveContract(h: Host, styleOfB: Style | null = null): string {
 	const root = h.createElement("view");
 	const a = h.createElement("view");
 	const b = h.createElement("view");
 	const c = h.createElement("view");
+	if (styleOfB !== null) { h.setStyle(b, styleOfB as Style); }
 	const nodes: HostNode[] = [a, b, c];
 	const names: string[] = ["a", "b", "c"];
 	h.append(root, a);

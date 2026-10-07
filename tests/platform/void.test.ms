@@ -6,9 +6,11 @@ import { createSignal } from "../../src/core/signal";
 import { el, attr, evt, text, dynText } from "../../src/render/node";
 import { element } from "../../src/macros/ui/element";
 import { render, HostNode } from "../../src/render/host";
-import { createVoidHost, layoutPass, parseFlexStyle, DrawKind, Node2D } from "../../src/platform/void/host";
+import { createVoidHost, layoutPass, parseFlexStyle, DrawKind, Node2D, VoidNode } from "../../src/platform/void/host";
 import { Style } from "../../src/render/style";
-import { Void, View } from "../../src/components/primitives";
+import { NeonEvent } from "../../src/render/event";
+import { Void, View, Text, ScrollView } from "../../src/components/primitives";
+import { text, scroll, numChildren, getChildAt } from "../../../void/src/void2d/node";
 import { HOST_MOVE_CONTRACT, RECONCILE_CONTRACT, hostMoveContract, reconcileContract } from "../render/hostContract";
 
 test "counter renders into Node2D tree with parsed flex styles" {
@@ -216,4 +218,101 @@ test "the void host opens no nested area, so a Void inside it fails and names th
 		render(element(<Void><View /></Void>), vh.host, vh.root as unknown as HostNode);
 	} catch (e) { caught = e.toString(); }
 	assert caught.includes("voidArea"), "error names the capability: " + caught;
+}
+
+test "a HostNode cast back to VoidNode still reaches its row" {
+	const vh = createVoidHost();
+	const node = vh.host.createText("hi");
+	const n = node as VoidNode;
+	assert n.ref.text() === "hi", "the row holds the text";
+	vh.host.setText(node, "yo");
+	assert n.ref.text() === "yo", "setText wrote the row";
+	assert (node as VoidNode) === n, "a cast hands back the same object";
+	assert n.ref.scene === vh.scene, "the row lives in the host's scene";
+}
+
+test "a zIndex sibling keeps the Host move contract" {
+	const got = hostMoveContract(createVoidHost().host, { zIndex: 5 } as Style);
+	assert got === HOST_MOVE_CONTRACT, got;
+}
+
+test "removing a node frees its rows and a later op on it names itself" {
+	const vh = createVoidHost();
+	const before = vh.scene.nodeCount();
+	render(element(<View><Text>a</Text><View /></View>), vh.host, vh.root);
+	assert vh.scene.nodeCount() > before, "mounting made rows";
+	const view = vh.host.firstChild(vh.root) as HostNode;
+	const label = vh.host.firstChild(view) as HostNode;
+	vh.host.removeChild(vh.root, view);
+	assert vh.scene.nodeCount() === before, "removing freed every row of the subtree";
+	let caught = "";
+	try {
+		vh.host.setText(label, "x");
+	} catch (e) { caught = e.toString(); }
+	assert caught.includes("setText"), "the error names the op: " + caught;
+}
+
+test "a background added after mount keeps children, order and handlers" {
+	const vh = createVoidHost();
+	let pressed = 0;
+	const node = vh.host.createElement("view");
+	const first = vh.host.createElement("view");
+	const second = vh.host.createElement("view");
+	vh.host.append(vh.root, node);
+	vh.host.append(node, first);
+	vh.host.append(node, second);
+	vh.host.addEvent(node, "onPress", (e: NeonEvent): void => { pressed = pressed + 1; });
+	vh.host.setStyle(node, { width: 100, height: 40 } as Style);
+	vh.layout(100.0, 40.0);
+	const n = node as VoidNode;
+	const row = n.ref.id.index;
+	assert n.ref.kind() === DrawKind.Group, "starts as a group";
+	vh.host.setStyle(node, { width: 100, height: 40, backgroundColor: "#3344ff" } as Style);
+	assert n.ref.kind() === DrawKind.Rect, "the background promoted the group";
+	assert n.ref.id.index === row, "same row";
+	assert n.ref.numChildren() === 2, "children kept";
+	assert n.ref.getChildAt(0).id.index === (first as VoidNode).ref.id.index, "first child kept its place";
+	assert n.ref.getChildAt(1).id.index === (second as VoidNode).ref.id.index, "second child kept its place";
+	vh.clickAt(10.0, 10.0);
+	assert pressed === 1, "the handler survived";
+	vh.host.setStyle(node, { width: 100, height: 40 } as Style);
+	assert n.ref.kind() === DrawKind.Group, "dropping the background demoted it";
+	assert n.ref.numChildren() === 2, "children kept through the demotion";
+}
+
+test "a click outside a scroll view's mask misses content it clips" {
+	const vh = createVoidHost();
+	let pressed = 0;
+	render(element(
+		<ScrollView style={{ width: 100, height: 50 }}>
+			<View style={{ width: 100, height: 200 }} onPress={(e: NeonEvent): void => { pressed = pressed + 1; }} />
+		</ScrollView>
+	), vh.host, vh.root);
+	vh.layout(100.0, 50.0);
+	vh.clickAt(10.0, 120.0);
+	assert pressed === 0, "content below the mask is clipped, so it is not hit";
+	vh.clickAt(10.0, 10.0);
+	assert pressed === 1, "content inside the mask is hit";
+}
+
+test "scrollTo moves a scroll view and refuses a plain view by name" {
+	const vh = createVoidHost();
+	render(element(
+		<ScrollView style={{ width: 100, height: 50 }}>
+			<View style={{ width: 100, height: 200 }} />
+		</ScrollView>
+	), vh.host, vh.root);
+	vh.layout(100.0, 50.0);
+	const area = vh.host.firstChild(vh.root) as HostNode;
+	const scrollTo = vh.host.scrollTo as (node: HostNode, x: number, y: number, animated: boolean) => void;
+	scrollTo(area, 0, 40, false);
+	assert (area as VoidNode).ref.scroll().y === 40.0, "the mask scrolled";
+	scrollTo(area, 0, 900, true);
+	assert (area as VoidNode).ref.scroll().y === 150.0, "the offset stops at the end of the content";
+	const plain = vh.host.createElement("view");
+	let caught = "";
+	try {
+		scrollTo(plain, 0, 10, false);
+	} catch (e) { caught = e.toString(); }
+	assert caught.includes("scrollTo"), "the error names the op: " + caught;
 }
