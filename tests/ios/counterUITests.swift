@@ -1355,24 +1355,23 @@ final class NavigationUITests: XCTestCase {
         add(shot)
     }
 
+    private func labelled(_ label: String) -> XCUIElement {
+        return app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", label)).firstMatch
+    }
+
     private func any(_ label: String, timeout: TimeInterval = 15) -> XCUIElement {
-        let element = app.descendants(matching: .any)[label].firstMatch
+        let element = labelled(label)
         XCTAssertTrue(element.waitForExistence(timeout: timeout),
             "no \(label); texts \(app.staticTexts.allElementsBoundByIndex.prefix(30).map { $0.label }) buttons \(app.buttons.allElementsBoundByIndex.prefix(30).map { $0.label })")
         return element
     }
 
     private func press(_ label: String) {
-        let button = app.buttons[label].firstMatch
-        if button.waitForExistence(timeout: 10) {
-            button.tap()
-            return
-        }
         any(label).tap()
     }
 
     private func gone(_ label: String) {
-        let element = app.descendants(matching: .any)[label].firstMatch
+        let element = labelled(label)
         let absent = NSPredicate { _, _ in !element.exists || !element.isHittable }
         XCTAssertEqual(XCTWaiter.wait(for: [expectation(for: absent, evaluatedWith: app)], timeout: 10), .completed, "\(label) is still shown")
     }
