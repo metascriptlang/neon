@@ -1,4 +1,4 @@
-import { Accessor, accessor, createSignal } from "../core/signal";
+import { Accessor, accessor, batch, createSignal } from "../core/signal";
 
 export type ColorScheme = "light" | "dark";
 
@@ -30,8 +30,10 @@ export function useKeyboard(): Accessor<KeyboardMetrics> {
 }
 
 export function publishWindow(width: number, height: number): void {
-	if (windowWidth() !== width) { setWindowWidth(width); }
-	if (windowHeight() !== height) { setWindowHeight(height); }
+	batch((): void => {
+		if (windowWidth() !== width) { setWindowWidth(width); }
+		if (windowHeight() !== height) { setWindowHeight(height); }
+	});
 }
 
 export function publishKeyboard(height: number): void {
