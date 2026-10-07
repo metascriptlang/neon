@@ -175,6 +175,22 @@ status bar hidden/shown, keyboard lifts the input 634 → 333, pull to refresh, 
 typing). The Android build compiles (`examples/gallery` APK); `tests/android/gallery.py` waits for the
 Seeker, locked overnight. Provisional choices are rows U1–U10 of `WORKAROUND.md`.
 
+Input and display controls, bundle 3 (`wt/rn-controls`, msc `0d83c4867`, 2026-10-07): RN
+community and Material controls in `src/components/`: native `Slider`, `Picker`
+(`items` array) and `DateTimePicker` (ISO text values) created through one bridge call
+(`niControlCreate`); Neon-drawn `Checkbox`, `RadioButton`/`RadioGroup`, `SegmentedControl`,
+`Chip`, `Card`, `Avatar`, `Badge`, `Divider`, `ProgressBar`, `Snackbar`, `Toast`/`ToastHost`,
+`Tooltip`, `Dialog`/`DialogAction`, `BottomSheet` and `Stepper`, with an `accessibilityState`
+wire attribute mapped by every host (`WORKAROUND.md` M1–M8, K1). Proven: mock host and JS
+(`tests/components/{controls,material,overlays}.test.ms`, `tests/apps/booking.test.ms`),
+the native mock bridge (`tests/platform/nativeHost.test.ms`), Chrome
+(`tests/browser/{controls,booking}.test.ms`), and the `examples/controls` booking form on an
+iPhone 17 Pro simulator (`ControlsUITests`: UIDatePicker popover pick, UISlider drag, UIMenu
+room pick, tooltip long press, segmented/checkbox/radio/chip presses, bottom sheet, dialog,
+progress, snackbar undo and toast). Android: the APK builds and installs on the Seeker; the
+lane `tests/android/controls.py` is pending because the phone was asleep behind its keyguard.
+Not verified: any control on a real Android screen, a screen reader, `Stepper` in an app.
+
 Prove each workflow through its real consumer on the declared targets. A public symbol,
 mock pass or separate-module test artifact is not proof of the normal packaged app.
 The reactive concepts still owed live in `docs/SOLID.md`; they are dependencies of these
