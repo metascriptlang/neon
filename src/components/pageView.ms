@@ -85,9 +85,8 @@ export class PageController {
 
 	// The page last reported by onPageSelected, a reactive read.
 	selectedPage(): number {
-		this.position.get();
 		const read = this.reader;
-		return read === null ? Math.round(this.position.peek()) : (read as () => number)();
+		return read === null ? Math.round(this.position.get()) : (read as () => number)();
 	}
 
 	animateToPage(index: number): void { this.move(index, true); }
