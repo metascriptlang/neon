@@ -687,3 +687,17 @@ test "a native FlatList that filters down to no rows shows its ListEmptyComponen
 	loopUntilIdle();
 	nmTeardown();
 }
+
+test "a label that grows inside a shrink-wrapped box is remeasured unwrapped, not at the box's old width" {
+	const [big, setBig] = createSignal(false);
+	const app = (): NeonNode => <View style={{ flexDirection: "row" }}>
+		<View style={{ padding: 16 }}>
+			<Text style={{ fontSize: big() ? 20 : 17 }}>SAVE</Text>
+		</View>
+	</View>;
+	runApp(app);
+	assert `${nmTextWidth("SAVE")}x${nmTextHeight("SAVE")}` === "34x21", "initial: " + `${nmTextWidth("SAVE")}x${nmTextHeight("SAVE")}`;
+	setBig(true);
+	assert `${nmTextWidth("SAVE")}x${nmTextHeight("SAVE")}` === "40x24", "a bigger font keeps one line: " + `${nmTextWidth("SAVE")}x${nmTextHeight("SAVE")}`;
+	nmTeardown();
+}

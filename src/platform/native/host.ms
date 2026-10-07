@@ -178,8 +178,11 @@ function applyPaint(n: NativeNode, s: Style): void {
 // Eager text measure: the bridge's measured size becomes the node's fixed w/h so yoga lays
 // out text without a measure func. Fresh FlexStyle object every time — the
 function remeasureText(n: NativeNode): void {
+	measureTextWithin(n, niScreenWidth());
+}
+
+function measureTextWithin(n: NativeNode, available: float32): void {
 	if (!n.isText || n.view === null) { return; }
-	const available = availableTextWidth(n);
 	niMeasureText(n.view, available);
 	const w = niMeasuredW();
 	const h = niMeasuredH();
@@ -738,7 +741,7 @@ function relayoutRoot(): void {
 		let changed = false;
 		for (const t of textNodes) {
 			if (!textNeedsRemeasure(t)) { continue; }
-			remeasureText(t);
+			measureTextWithin(t, availableTextWidth(t));
 			changed = true;
 		}
 		if (!changed) { break; }
