@@ -432,3 +432,44 @@ horizontal geometry, paging, controlled refresh and disposal. A normal
 `msc build --target=js` bundle of a horizontal 10,000-row FlatList app mounts in Chrome,
 and its jump to row 3000 lands at x=300000, y=0 with scroll width 1000000, no page
 error (installed msc `2d428dc42`, 2026-10-05).
+
+### 9.1 Prepared physical list acceptance — 2026-10-07
+
+Source/test tree `4484f0da16dd140a506101ea107d7f5088ec1cef`, installed compiler
+binary/support `8506eaf03`, real Ion generator from landed `94f7ad3`, Xcode 26.6 /
+iPhoneOS SDK 26.5, physical iPhone 13 Pro. Shared machine; load was not retained,
+so these are functional results, not performance evidence.
+
+The consumer is `examples/components/bigList.ms` `ListAcceptance`; assertions are
+`tests/ios/counterUITests.swift` `FlatListUITests`. A fresh Ion package installation
+under an isolated HOME generated `examples/flatlist/ios/project.ms`; no patched
+export or hand-edited generated project was used.
+
+- `xcodebuild -project <generated>/NeonFlatList.xcodeproj -target NeonFlatList
+  -configuration Debug -sdk iphoneos -jobs 1 ARCHS=arm64 ONLY_ACTIVE_ARCH=YES
+  CODE_SIGNING_ALLOWED=YES CODE_SIGN_STYLE=Automatic DEVELOPMENT_TEAM=4R7EAZY462
+  CODE_SIGN_IDENTITY="Apple Development" build` emitted `Built 44 module(s)` and
+  `** BUILD SUCCEEDED **`.
+- `xcrun devicectl device install app --device 505D81BC-8417-521C-AD69-424A9BC6E4D6
+  <products>/Debug-iphoneos/NeonFlatList.app` reported `App installed` for
+  `dev.neon.NeonFlatList`.
+- `xcodebuild build-for-testing -project tests/ios/counter.xcodeproj
+  -scheme CounterUITests -destination id=00008110-001411093CEA801E` with the same
+  signing settings built and signed the UI runner.
+- `xcodebuild test-without-building` with that project/scheme/destination and
+  `-only-testing:CounterUITests/FlatListUITests` failed before runner bootstrap:
+  `Unlock Le’s iPhone to Continue`. No interaction case ran.
+
+This proves current consumer compilation, signing and installation, not measured,
+sticky or inverted behavior on the physical phone. Unlock and keep the phone awake
+before retrying; use a fresh result bundle. Native mock or an old installed binary
+cannot close that acceptance.
+
+### 9.2 Earlier list gate boundary — 2026-10-06
+
+On source/test tree `58fa59202ac69a7cdc09ad837c60392c3cef4b85` with compiler
+binary/support `31c88d4e8`, the normal `bash tests/run.sh` gate with the configured
+Chrome runner returned 1: 142 green selections, four known-red selections,
+zero new reds. Diagnostics matched the retained main export exactly: native
+void 104, voidInput 110, style 95; JS native module export 1.
+This is not a gate verdict for the later compiler or physical acceptance fixtures.
