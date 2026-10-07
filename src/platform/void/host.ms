@@ -1,21 +1,16 @@
-// Void host — a NeonNode mounts into a void2d Node2D scene graph.
-// The same render(node, host, parent) that drives the DOM host drives
-// this; element tags all become group() containers, text nodes become label().
-// A "style" attr is a points-only string ("width:200;flexDirection:column")
-// parsed into FlexStyle → node.layoutStyle; run layoutPass(root, w, h) each
-// frame before the render walk.
-//
-// Node2D has no parent pointer and no event system, so the host keeps both in
-// side registries: parent links power insertBefore/nextSibling/move semantics,
-// the event registry powers clickAt(x, y) hit-testing (world coords = summed
-// ancestor x/y — layout output is translation-only).
-
 import { Host, HostNode } from "../../render/host";
 import { NeonEvent, neonEvent, eventType } from "../../render/event";
-import { Node2D, DrawKind, group, label, rect, addChild, addChildAt, removeChild } from "../../../../void/src/void2d/node";
-import { Color } from "../../../../void/src/void2d/types";
-import { layoutPass } from "../../../../void/src/void2d/layout";
-import { FlexStyle, FlexDirection, Justify, Align, PositionType, Wrap, Display, Overflow } from "../../../../yoga/src/index";
+import {
+	Scene2D, NodeRef, DrawKind, group, label, mask, addChild, addChildAt, getChildIndex, dispose, kind,
+	setPosition, setSize, setX, setZIndex, setAlpha, setColor, setBackground, clearBackground,
+	setText, setFont, textStyle, setTextStyle, setCursorIndex, setCursorBlinkTime,
+	local, content, scrollTo as scrollNodeTo, setScrollBounds, localToGlobal,
+} from "../../../../void/src/void2d/node";
+import { hitTest, textWidth, xForIndex, lineBoxAt } from "../../../../void/src/void2d/render";
+import { create, add, isDirty } from "../../../../void/src/void2d/scene";
+import { Color, rgba, vec2 } from "../../../../void/src/void2d/types";
+import { FontId, DEFAULT_FONT } from "../../../../void/src/void2d/font";
+import { FlexStyle, YGNode, FlexDirection, Justify, Align, PositionType, Wrap, Display, Overflow, layoutPass, freeLayoutTree } from "../../../../yoga/src/index";
 import { Style } from "../../render/style";
 import { asFlexStyleBody } from "../../macros/style/fields";
 import {
@@ -23,19 +18,53 @@ import {
 	commitText, composeText, deleteBackward, deleteForward, moveCaret,
 } from "./editing";
 
-export { layoutPass, freeLayout } from "../../../../void/src/void2d/layout";
-export { Node2D, DrawKind, group } from "../../../../void/src/void2d/node";
+export { layoutPass, freeLayoutTree } from "../../../../yoga/src/index";
+export { DrawKind } from "../../../../void/src/void2d/node";
 export { TextEditingValue, TextRange, editingValue, textRange, noRange } from "./editing";
 
 interface EventEntry {
-	node: Node2D;
+	node: VoidNode;
 	name: string;
 	handler: (e: NeonEvent) => void;
 }
 
+struct Frame {
+	x: float32;
+	y: float32;
+	w: float32;
+	h: float32;
+}
+
+export class VoidNode {
+	ref: NodeRef;
+	parent: VoidNode | null = null;
+	children: VoidNode[] = [];
+	scrolls: boolean = false;
+	disposed: boolean = false;
+	laid: Frame | null = null;
+	flex: FlexStyle | null = null;
+	lastFlex: FlexStyle | null = null;
+	yg: Ptr<YGNode> | null = null;
+
+	constructor(ref: NodeRef) {
+		this.ref = ref;
+	}
+}
+
+export function layoutGetChildren(this n: VoidNode): VoidNode[] { return n.children; }
+export function layoutGetStyle(this n: VoidNode): FlexStyle | null { return n.flex; }
+export function layoutGetLastStyle(this n: VoidNode): FlexStyle | null { return n.lastFlex; }
+export function layoutSetLastStyle(this n: VoidNode, s: FlexStyle | null): void { n.lastFlex = s; }
+export function layoutGetYg(this n: VoidNode): Ptr<YGNode> | null { return n.yg; }
+export function layoutSetYg(this n: VoidNode, yg: Ptr<YGNode> | null): void { n.yg = yg; }
+export function layoutSetFrame(this n: VoidNode, x: float32, y: float32, w: float32, h: float32): void {
+	n.ref.setPosition(x, y).setSize(w, h);
+}
+
 export interface VoidHost {
 	host: Host;
-	root: Node2D;
+	root: HostNode;
+	scene: Scene2D;
 	clickAt: (x: float32, y: float32) => void;
 	keyDown: (e: NeonEvent) => void;
 	keyUp: (e: NeonEvent) => void;
@@ -43,32 +72,12 @@ export interface VoidHost {
 	composeText: (text: string, cursor: int32) => void;
 	setWindowFocus: (focused: boolean) => void;
 	layout: (width: float32, height: float32) => void;
-	focus: (node: Node2D | null) => void;
-	focused: () => Node2D | null;
+	focus: (node: VoidNode | null) => void;
+	focused: () => VoidNode | null;
 	imeRect: () => CaretRect | null;
-	attachTextInput: (node: Node2D, client: TextInputClient, value: TextEditingValue) => void;
-	setEditingState: (node: Node2D, value: TextEditingValue) => void;
+	attachTextInput: (node: VoidNode, client: TextInputClient, value: TextEditingValue) => void;
+	setEditingState: (node: VoidNode, value: TextEditingValue) => void;
 	onDirty: (fn: () => void) => void;
-}
-
-function parentOf(links: Map<Node2D, Node2D>, child: Node2D): Node2D | null {
-	if (!links.has(child)) { return null; }
-	return links.get(child) as Node2D;
-}
-
-function detachNode(links: Map<Node2D, Node2D>, child: Node2D): void {
-	const p = parentOf(links, child);
-	if (p !== null) { p.removeChild(child); }
-	links.delete(child);
-}
-
-function childIndexOf(parent: Node2D, node: Node2D): int32 {
-	let i: int32 = 0;
-	while (i < (parent.children.length as int32)) {
-		if (parent.children[i] === node) { return i; }
-		i = i + 1;
-	}
-	return -1 as int32;
 }
 
 function styleNum(st: FlexStyle, key: string, v: float32): void {
@@ -157,35 +166,6 @@ export function parseColor(css: string): Color | null {
 	return { r: (r as float32) / scale, g: (g as float32) / scale, b: (b as float32) / scale, a: 1.0 };
 }
 
-// The paint half of the projection (docs/STYLE.md §5). A Group carrying a
-// background becomes a Rect — a Group draws nothing on its own.
-function applyTextPaint(n: Node2D, s: Style): void {
-	if (s.fontSize !== null) { n.size = s.fontSize as float32; }
-	if (s.color !== null) {
-		const c = parseColor(s.color as string);
-		if (c !== null) { n.color = c; }
-	}
-}
-
-export function applyPaint(n: Node2D, s: Style): void {
-	if (s.opacity !== null) { n.alpha = s.opacity as float32; }
-	if (s.zIndex !== null) { const z = s.zIndex as number; n.zIndex = z as int32; }
-	if (s.fontSize !== null && n.kind === DrawKind.Label) { n.size = s.fontSize as float32; }
-	const fg = s.color;
-	if (fg !== null && n.kind === DrawKind.Label) {
-		const c = parseColor(fg as string);
-		if (c !== null) { n.color = c; }
-	}
-	const bg = s.backgroundColor;
-	if (bg !== null) {
-		const c = parseColor(bg as string);
-		if (c !== null) {
-			if (n.kind === DrawKind.Group) { n.kind = DrawKind.Rect; }
-			n.color = c;
-		}
-	}
-}
-
 function num(v: number | null): float32 | null {
 	if (v === null) { return null; }
 	const n = v as number;
@@ -200,32 +180,9 @@ function dim(v: number | string | null, field: string): float32 | null {
 }
 
 asFlexStyleBody(0);
-
-function worldX(links: Map<Node2D, Node2D>, n: Node2D): float32 {
-	let x = n.x;
-	let p = parentOf(links, n);
-	while (p !== null) {
-		x = x + p.x;
-		p = parentOf(links, p);
-	}
-	return x;
-}
-
-function worldY(links: Map<Node2D, Node2D>, n: Node2D): float32 {
-	let y = n.y;
-	let p = parentOf(links, n);
-	while (p !== null) {
-		y = y + p.y;
-		p = parentOf(links, p);
-	}
-	return y;
-}
-
 const TEXT_SIZE: float32 = 16.0;
-const LINE_HEIGHT: float32 = 1.25;
 const CARET_WIDTH: float32 = 1.0;
-
-export type MeasureText = (size: float32, text: string) => float32;
+const WHITE: Color = rgba(1.0, 1.0, 1.0, 1.0);
 
 export interface CaretRect {
 	x: float32;
@@ -240,59 +197,88 @@ export interface TextInputClient {
 }
 
 interface ClientEntry {
-	node: Node2D;
+	node: VoidNode;
 	client: TextInputClient;
 	value: TextEditingValue;
 }
 
 interface Field {
-	node: Node2D;
-	label: Node2D;
-	caret: Node2D;
+	node: VoidNode;
+	label: NodeRef;
 	committed: string;
+	caret: int32;
 }
 
-interface LaidOut {
-	node: Node2D;
-	x: float32;
-	y: float32;
-	w: float32;
-	h: float32;
+function live(node: HostNode, op: string): VoidNode {
+	const n = node as VoidNode;
+	if (n.disposed) { throw new Error(`void host: ${op} on a node that was removed and freed`); }
+	return n;
 }
 
-function noMeasure(size: float32, text: string): float32 {
-	throw "void host: a TextInput needs a text measurer; create the host with createVoidHostWith(measure)";
+function within(node: VoidNode, top: VoidNode): boolean {
+	let cur: VoidNode | null = node;
+	while (cur !== null) {
+		if (cur === top) { return true; }
+		cur = (cur as VoidNode).parent;
+	}
+	return false;
+}
+
+function markDisposed(n: VoidNode): void {
+	n.disposed = true;
+	for (const c of n.children) { markDisposed(c); }
+}
+
+function applyTextPaint(label: NodeRef, s: Style): void {
+	if (s.fontSize !== null) { label.setTextStyle({ ...label.textStyle(), size: s.fontSize as float32 }); }
+	if (s.color !== null) {
+		const c = parseColor(s.color as string);
+		if (c !== null) { label.setColor(c); }
+	}
+}
+
+export function applyPaint(n: VoidNode, s: Style): void {
+	const ref = n.ref;
+	if (s.opacity !== null) { ref.setAlpha(s.opacity as float32); }
+	if (s.zIndex !== null) { const z = s.zIndex as number; ref.setZIndex(z as int32); }
+	const k = ref.kind();
+	if (k === DrawKind.Label) { applyTextPaint(ref, s); }
+	const bg = s.backgroundColor;
+	if (bg !== null) {
+		const c = parseColor(bg as string);
+		if (c !== null) {
+			if (k !== DrawKind.Group && k !== DrawKind.Rect) { throw new Error(`void host: backgroundColor on a ${k.toString()} node; Void paints a background on a plain view only`); }
+			ref.setBackground(c);
+		}
+	} else if (k === DrawKind.Rect) {
+		ref.clearBackground();
+	}
 }
 
 export function createVoidHost(): VoidHost {
-	return createVoidHostWith(noMeasure, 0 as int32);
+	return createVoidHostWith(Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0)), DEFAULT_FONT);
 }
 
-export function createVoidHostWith(measure: MeasureText, fontId: int32): VoidHost {
-	const links = new Map<Node2D, Node2D>();
+export function createVoidHostWith(scene: Scene2D, font: FontId): VoidHost {
 	const events: EventEntry[] = [];
 	const clients: ClientEntry[] = [];
 	const fields: Field[] = [];
-	const laidOut: LaidOut[] = [];
-	const root = group();
-	let focusedNode: Node2D | null = null;
+	const scrollers: VoidNode[] = [];
+	const root = new VoidNode(scene.group());
+	root.flex = {};
+	scene.add(root.ref);
+	let focusedNode: VoidNode | null = null;
 	let windowFocused = true;
 	let dirtyListener: (() => void) | null = null;
 
-	const markDirty = (): void => {
-		if (dirtyListener !== null) { (dirtyListener as () => void)(); }
+	const woke = (was: boolean): void => {
+		if (was || dirtyListener === null) { return; }
+		if (scene.isDirty()) { (dirtyListener as () => void)(); }
 	};
 
-	const attached = (n: Node2D): boolean => {
-		let cur: Node2D | null = n;
-		while (cur !== null) {
-			if (cur === root) { return true; }
-			cur = parentOf(links, cur as Node2D);
-		}
-		return false;
-	};
+	const attached = (n: VoidNode): boolean => within(n, root);
 
-	const fire = (n: Node2D, name: string, e: NeonEvent): boolean => {
+	const fire = (n: VoidNode, name: string, e: NeonEvent): boolean => {
 		let hit = false;
 		for (const entry of events) {
 			if (entry.node === n && entry.name === name) {
@@ -303,98 +289,100 @@ export function createVoidHostWith(measure: MeasureText, fontId: int32): VoidHos
 		return hit;
 	};
 
-	const hasHandler = (n: Node2D, name: string): boolean => {
+	const hasHandler = (n: VoidNode, name: string): boolean => {
 		for (const entry of events) {
 			if (entry.node === n && entry.name === name) { return true; }
 		}
 		return false;
 	};
 
-	const clientOf = (n: Node2D): ClientEntry | null => {
+	const clientOf = (n: VoidNode): ClientEntry | null => {
 		for (const c of clients) {
 			if (c.node === n) { return c; }
 		}
 		return null;
 	};
 
-	const fieldOf = (n: Node2D): Field | null => {
+	const fieldOf = (n: VoidNode): Field | null => {
 		for (const f of fields) {
 			if (f.node === n) { return f; }
 		}
 		return null;
 	};
 
-	const focusable = (n: Node2D): boolean => {
+	const focusable = (n: VoidNode): boolean => {
 		return clientOf(n) !== null || hasHandler(n, "onKeyDown") || hasHandler(n, "onKeyUp")
 			|| hasHandler(n, "onFocus") || hasHandler(n, "onBlur");
 	};
 
-	const depth = (n: Node2D): int32 => {
+	const depth = (n: VoidNode): int32 => {
 		let d: int32 = 0;
-		let p = parentOf(links, n);
+		let p = n.parent;
 		while (p !== null) {
 			d = d + 1;
-			p = parentOf(links, p as Node2D);
+			p = (p as VoidNode).parent;
 		}
 		return d;
 	};
 
-	const contains = (n: Node2D, x: float32, y: float32): boolean => {
-		const wx = worldX(links, n);
-		const wy = worldY(links, n);
-		return x >= wx && x <= wx + n.w && y >= wy && y <= wy + n.h;
+	const contains = (n: VoidNode, x: float32, y: float32): boolean => {
+		return n.ref.hitTest(vec2(x, y));
 	};
 
 	const showField = (f: Field, v: TextEditingValue): void => {
-		f.label.text = v.text;
-		f.caret.x = measure(f.label.size, v.text.substring(0, v.selection.end));
-		f.caret.h = f.label.size * LINE_HEIGHT;
-		f.caret.visible = windowFocused && focusedNode === f.node;
+		f.label.setText(v.text);
+		f.caret = v.selection.end;
+		f.label.setCursorIndex(windowFocused && focusedNode === f.node ? f.caret : -1, WHITE);
+	};
+
+	const hideCaret = (f: Field): void => {
+		f.label.setCursorIndex(-1, WHITE);
 	};
 
 	const setValue = (c: ClientEntry, v: TextEditingValue): void => {
+		const was = scene.isDirty();
 		c.value = v;
 		c.client.updateEditingValue(v);
-		markDirty();
+		woke(was);
 	};
 
-	const focus = (n: Node2D | null): void => {
+	const focus = (n: VoidNode | null): void => {
 		if (n === focusedNode) { return; }
+		const was = scene.isDirty();
 		const old = focusedNode;
 		focusedNode = n;
 		if (old !== null) {
-			fire(old as Node2D, "onBlur", neonEvent("blur"));
-			const of = fieldOf(old as Node2D);
-			if (of !== null) { (of as Field).caret.visible = false; }
+			fire(old as VoidNode, "onBlur", neonEvent("blur"));
+			const of = fieldOf(old as VoidNode);
+			if (of !== null) { hideCaret(of as Field); }
 		}
 		if (n !== null) {
-			fire(n as Node2D, "onFocus", neonEvent("focus"));
-			const nf = fieldOf(n as Node2D);
-			if (nf !== null) { (nf as Field).caret.visible = windowFocused; }
+			fire(n as VoidNode, "onFocus", neonEvent("focus"));
+			const nf = fieldOf(n as VoidNode);
+			if (nf !== null && windowFocused) { (nf as Field).label.setCursorIndex((nf as Field).caret, WHITE); }
 		}
-		markDirty();
+		woke(was);
 	};
 
-	const attachTextInput = (node: Node2D, client: TextInputClient, value: TextEditingValue): void => {
-		if (clientOf(node) !== null) { throw "attachTextInput: this node already has a text input client"; }
+	const attachTextInput = (node: VoidNode, client: TextInputClient, value: TextEditingValue): void => {
+		if (clientOf(node) !== null) { throw new Error("attachTextInput: this node already has a text input client"); }
 		clients.push({ node, client, value });
 	};
 
-	const setEditingState = (node: Node2D, value: TextEditingValue): void => {
+	const setEditingState = (node: VoidNode, value: TextEditingValue): void => {
 		const c = clientOf(node);
-		if (c === null) { throw "setEditingState: this node has no text input client"; }
+		if (c === null) { throw new Error("setEditingState: this node has no text input client"); }
 		setValue(c as ClientEntry, value);
 	};
 
-	const makeField = (): Node2D => {
-		const node = group();
-		const text = label("", TEXT_SIZE, { r: 1.0, g: 1.0, b: 1.0, a: 1.0 });
-		text.fontId = fontId;
-		const caret = rect(CARET_WIDTH, TEXT_SIZE * LINE_HEIGHT, { r: 1.0, g: 1.0, b: 1.0, a: 1.0 });
-		caret.visible = false;
-		node.addChild(text);
-		node.addChild(caret);
-		const f: Field = { node, label: text, caret, committed: "" };
+	const makeField = (): VoidNode => {
+		const node = new VoidNode(scene.group());
+		const inner = scene.label("", TEXT_SIZE, WHITE);
+		inner.setFont(font);
+		inner.setCursorBlinkTime(0.0);
+		inner.setCursorIndex(-1, WHITE);
+		node.ref.addChild(inner);
+		const f: Field = { node, label: inner, committed: "", caret: 0 };
 		fields.push(f);
 		attachTextInput(node, {
 			updateEditingValue: (v: TextEditingValue): void => {
@@ -407,7 +395,8 @@ export function createVoidHostWith(measure: MeasureText, fontId: int32): VoidHos
 				}
 			},
 			caretRect: (): CaretRect => {
-				return { x: f.caret.x, y: 0.0, w: CARET_WIDTH, h: f.label.size * LINE_HEIGHT };
+				const box = f.label.lineBoxAt(f.caret);
+				return { x: f.label.xForIndex(f.caret), y: box.top, w: CARET_WIDTH, h: box.height };
 			},
 		}, editingValue(""));
 		return node;
@@ -430,31 +419,69 @@ export function createVoidHostWith(measure: MeasureText, fontId: int32): VoidHos
 	};
 
 	const bubble = (name: string, e: NeonEvent): void => {
-		let cur: Node2D | null = focusedNode;
+		let cur: VoidNode | null = focusedNode;
 		while (cur !== null) {
-			fire(cur as Node2D, name, e);
-			cur = parentOf(links, cur as Node2D);
+			fire(cur as VoidNode, name, e);
+			cur = (cur as VoidNode).parent;
+		}
+	};
+
+	const unlink = (c: VoidNode, into: VoidNode): void => {
+		const old = c.parent;
+		if (old === null) { return; }
+		const from = old as VoidNode;
+		const at = from.children.indexOf(c);
+		if (at >= 0) { from.children.splice(at, 1); }
+		if (from !== into) { freeLayoutTree(c); }
+	};
+
+	const refuseCycle = (p: VoidNode, c: VoidNode, op: string): void => {
+		if (within(p, c)) { throw new Error(`${op}: a node cannot be placed inside itself or its own descendant`); }
+	};
+
+	const release = (n: VoidNode): void => {
+		markDisposed(n);
+		for (let i = events.length - 1; i >= 0; i -= 1) {
+			if (events[i].node.disposed) { events.splice(i, 1); }
+		}
+		for (let i = clients.length - 1; i >= 0; i -= 1) {
+			if (clients[i].node.disposed) { clients.splice(i, 1); }
+		}
+		for (let i = fields.length - 1; i >= 0; i -= 1) {
+			if (fields[i].node.disposed) { fields.splice(i, 1); }
+		}
+		for (let i = scrollers.length - 1; i >= 0; i -= 1) {
+			if (scrollers[i].disposed) { scrollers.splice(i, 1); }
 		}
 	};
 
 	const host: Host = {
 		createElement: (tag: string): HostNode => {
-			if (tag === "textinput") { return makeField() as unknown as HostNode; }
-			return group() as unknown as HostNode;
+			if (tag === "textinput") { return makeField(); }
+			if (tag === "scrollview") {
+				const n = new VoidNode(scene.mask(0.0, 0.0));
+				n.scrolls = true;
+				scrollers.push(n);
+				return n;
+			}
+			return new VoidNode(scene.group());
 		},
 		createText: (s: string): HostNode => {
-			const n = label(s, TEXT_SIZE, { r: 1.0, g: 1.0, b: 1.0, a: 1.0 });
-			n.fontId = fontId;
-			return n as unknown as HostNode;
+			const n = scene.label(s, TEXT_SIZE, WHITE);
+			n.setFont(font);
+			return new VoidNode(n);
 		},
 		setText: (node: HostNode, s: string): void => {
-			(node as unknown as Node2D).text = s;
-			markDirty();
+			const n = live(node, "setText");
+			const was = scene.isDirty();
+			n.ref.setText(s);
+			woke(was);
 		},
 		setAttr: (node: HostNode, name: string, value: string): void => {
-			const n = node as unknown as Node2D;
+			const n = live(node, "setAttr");
+			const was = scene.isDirty();
 			if (name === "style") {
-				n.layoutStyle = parseFlexStyle(value);
+				n.flex = parseFlexStyle(value);
 			} else if (name === "value") {
 				const f = fieldOf(n);
 				if (f !== null && (f as Field).committed !== value) {
@@ -462,89 +489,112 @@ export function createVoidHostWith(measure: MeasureText, fontId: int32): VoidHos
 					setValue(clientOf(n) as ClientEntry, editingValue(value));
 				}
 			}
-			markDirty();
+			woke(was);
 		},
 		removeAttr: (node: HostNode, name: string): void => {
-			if (name === "style") {
-				(node as unknown as Node2D).layoutStyle = parseFlexStyle("");
-			}
-			markDirty();
+			const n = live(node, "removeAttr");
+			if (name === "style") { n.flex = parseFlexStyle(""); }
 		},
 		setStyle: (node: HostNode, style: Style): void => {
-			const n = node as unknown as Node2D;
-			n.layoutStyle = asFlexStyle(style);
+			const n = live(node, "setStyle");
+			const was = scene.isDirty();
+			n.flex = asFlexStyle(style);
 			applyPaint(n, style);
 			const f = fieldOf(n);
 			if (f !== null) {
 				applyTextPaint((f as Field).label, style);
 				showField(f as Field, (clientOf(n) as ClientEntry).value);
 			}
-			markDirty();
+			woke(was);
 		},
 		setStyleProp: null,
 		setStyleClass: null,
 		addEvent: (node: HostNode, name: string, handler: (e: NeonEvent) => void): void => {
-			events.push({ node: node as unknown as Node2D, name, handler });
+			events.push({ node: live(node, "addEvent"), name, handler });
 		},
 		append: (parent: HostNode, child: HostNode): void => {
-			const p = parent as unknown as Node2D;
-			const c = child as unknown as Node2D;
-			detachNode(links, c);
-			p.addChild(c);
-			links.set(c, p);
-			markDirty();
+			const p = live(parent, "append");
+			const c = live(child, "append");
+			refuseCycle(p, c, "append");
+			const was = scene.isDirty();
+			unlink(c, p);
+			p.ref.addChild(c.ref);
+			c.parent = p;
+			p.children.push(c);
+			woke(was);
 		},
-		insertBefore: (parent: HostNode, node: HostNode, ref: HostNode | null): void => {
-			const p = parent as unknown as Node2D;
-			const n = node as unknown as Node2D;
-			if (ref === null) {
-				detachNode(links, n);
-				p.addChild(n);
-				links.set(n, p);
-				markDirty();
+		insertBefore: (parent: HostNode, node: HostNode, before: HostNode | null): void => {
+			const p = live(parent, "insertBefore");
+			const n = live(node, "insertBefore");
+			refuseCycle(p, n, "insertBefore");
+			const was = scene.isDirty();
+			if (before === null) {
+				unlink(n, p);
+				p.ref.addChild(n.ref);
+				n.parent = p;
+				p.children.push(n);
+				woke(was);
 				return;
 			}
-			let idx = childIndexOf(p, ref as unknown as Node2D);
-			if (idx < 0) { throw "insertBefore: the reference node is not a child of the parent"; }
-			const cur = childIndexOf(p, n);
+			const r = live(before, "insertBefore");
+			let idx = p.children.indexOf(r);
+			if (idx < 0) { throw new Error("insertBefore: the reference node is not a child of the parent"); }
+			let at = p.ref.getChildIndex(r.ref);
+			const cur = p.children.indexOf(n);
+			const voidCur = p.ref.getChildIndex(n.ref);
 			if (cur >= 0) {
-				p.removeChild(n);
+				p.children.splice(cur, 1);
 				if (cur < idx) { idx = idx - 1; }
+				if (voidCur >= 0 && voidCur < at) { at = at - 1; }
 			} else {
-				detachNode(links, n);
+				unlink(n, p);
 			}
-			p.addChildAt(n, idx);
-			links.set(n, p);
-			markDirty();
+			p.ref.addChildAt(n.ref, at);
+			n.parent = p;
+			p.children.splice(idx, 0, n);
+			woke(was);
 		},
 		removeChild: (parent: HostNode, node: HostNode): void => {
-			const p = parent as unknown as Node2D;
-			const n = node as unknown as Node2D;
-			if (childIndexOf(p, n) < 0) { throw "removeChild: the node is not a child of the parent"; }
-			p.removeChild(n);
-			links.delete(n);
-			if (focusedNode !== null && !attached(focusedNode as Node2D)) { focus(null); }
-			markDirty();
+			const p = live(parent, "removeChild");
+			const n = live(node, "removeChild");
+			const idx = p.children.indexOf(n);
+			if (idx < 0) { throw new Error("removeChild: the node is not a child of the parent"); }
+			const was = scene.isDirty();
+			p.children.splice(idx, 1);
+			n.parent = null;
+			if (focusedNode !== null && within(focusedNode as VoidNode, n)) { focus(null); }
+			freeLayoutTree(n);
+			n.ref.dispose();
+			release(n);
+			woke(was);
 		},
 		nextSibling: (node: HostNode): HostNode | null => {
-			const n = node as unknown as Node2D;
-			const p = parentOf(links, n);
+			const n = live(node, "nextSibling");
+			const p = n.parent;
 			if (p === null) { return null; }
-			const idx = childIndexOf(p, n);
-			if (idx < 0 || idx + 1 >= (p.children.length as int32)) { return null; }
-			return p.children[idx + 1] as unknown as HostNode;
+			const sibs = (p as VoidNode).children;
+			const idx = sibs.indexOf(n);
+			if (idx < 0 || idx + 1 >= sibs.length) { return null; }
+			return sibs[idx + 1];
 		},
 		firstChild: (node: HostNode): HostNode | null => {
-			const n = node as unknown as Node2D;
-			if ((n.children.length as int32) === 0) { return null; }
-			return n.children[0] as unknown as HostNode;
+			const n = live(node, "firstChild");
+			if (n.children.length === 0) { return null; }
+			return n.children[0];
 		},
 		cloneNode: null,
 		voidArea: null,
+		scrollTo: (node: HostNode, x: number, y: number, animated: boolean): void => {
+			const n = live(node, "scrollTo");
+			if (!n.scrolls) { throw new Error("void host: scrollTo needs a scroll view, and this node is not one"); }
+			const was = scene.isDirty();
+			n.ref.scrollNodeTo(x as float32, y as float32);
+			woke(was);
+		},
 	};
 
 	const clickAt = (x: float32, y: float32): void => {
-		let target: Node2D | null = null;
+		let target: VoidNode | null = null;
 		let targetDepth: int32 = -1 as int32;
 		for (const c of clients) {
 			if (attached(c.node) && contains(c.node, x, y) && depth(c.node) > targetDepth) {
@@ -559,8 +609,8 @@ export function createVoidHostWith(measure: MeasureText, fontId: int32): VoidHos
 			}
 		}
 		focus(target);
-		for (const e of events) {
-			if (e.name !== "onPress" || !attached(e.node)) { continue; }
+		for (const e of events.slice(0)) {
+			if (e.name !== "onPress" || e.node.disposed || !attached(e.node)) { continue; }
 			if (contains(e.node, x, y)) {
 				const ev = neonEvent(eventType(e.name));
 				ev.x = x;
@@ -573,7 +623,7 @@ export function createVoidHostWith(measure: MeasureText, fontId: int32): VoidHos
 	const keyDown = (e: NeonEvent): void => {
 		bubble("onKeyDown", e);
 		if (focusedNode === null) { return; }
-		const f = fieldOf(focusedNode as Node2D);
+		const f = fieldOf(focusedNode as VoidNode);
 		if (f === null) { return; }
 		const press = neonEvent("keypress");
 		press.key = e.key;
@@ -585,82 +635,97 @@ export function createVoidHostWith(measure: MeasureText, fontId: int32): VoidHos
 		bubble("onKeyUp", e);
 	};
 
-	const commit = (text: string): void => {
+	const commit = (s: string): void => {
 		if (focusedNode === null) { return; }
-		const c = clientOf(focusedNode as Node2D);
+		const c = clientOf(focusedNode as VoidNode);
 		if (c === null) { return; }
-		setValue(c as ClientEntry, commitText((c as ClientEntry).value, text));
+		setValue(c as ClientEntry, commitText((c as ClientEntry).value, s));
 	};
 
-	const compose = (text: string, cursor: int32): void => {
+	const compose = (s: string, cursor: int32): void => {
 		if (focusedNode === null) { return; }
-		const c = clientOf(focusedNode as Node2D);
+		const c = clientOf(focusedNode as VoidNode);
 		if (c === null) { return; }
-		setValue(c as ClientEntry, composeText((c as ClientEntry).value, text, cursor));
+		setValue(c as ClientEntry, composeText((c as ClientEntry).value, s, cursor));
 	};
 
 	const setWindowFocus = (focused: boolean): void => {
 		if (focused === windowFocused) { return; }
+		const was = scene.isDirty();
 		windowFocused = focused;
 		if (focusedNode === null) { return; }
-		fire(focusedNode as Node2D, focused ? "onFocus" : "onBlur", neonEvent(focused ? "focus" : "blur"));
-		const f = fieldOf(focusedNode as Node2D);
-		if (f !== null) { (f as Field).caret.visible = focused; }
-		markDirty();
+		fire(focusedNode as VoidNode, focused ? "onFocus" : "onBlur", neonEvent(focused ? "focus" : "blur"));
+		const f = fieldOf(focusedNode as VoidNode);
+		if (f !== null) { (f as Field).label.setCursorIndex(focused ? (f as Field).caret : -1, WHITE); }
+		woke(was);
 	};
 
-	const flowText = (n: Node2D): void => {
+	const flowText = (n: VoidNode): void => {
 		let x: float32 = 0.0;
 		for (const c of n.children) {
-			if (c.kind === DrawKind.Label && c.layoutStyle === null && fieldOf(n) === null) {
-				c.x = x;
-				x = x + measure(c.size, c.text);
+			if (c.ref.kind() === DrawKind.Label && c.flex === null) {
+				c.ref.setX(x);
+				x = x + c.ref.textWidth();
 			}
 			flowText(c);
 		}
 	};
 
-	const lastFrame = (n: Node2D): LaidOut | null => {
-		for (const l of laidOut) {
-			if (l.node === n) { return l; }
+	const frameOf = (n: VoidNode): Frame => {
+		const l = n.ref.local();
+		const c = n.ref.content();
+		return { x: l.x, y: l.y, w: c.w, h: c.h };
+	};
+
+	const fitScrollers = (): void => {
+		for (const n of scrollers) {
+			const own = frameOf(n);
+			let right = own.w;
+			let bottom = own.h;
+			for (const c of n.children) {
+				const f = frameOf(c);
+				if (f.x + f.w > right) { right = f.x + f.w; }
+				if (f.y + f.h > bottom) { bottom = f.y + f.h; }
+			}
+			n.ref.setScrollBounds({ xMin: 0.0, yMin: 0.0, xMax: right, yMax: bottom });
 		}
-		return null;
 	};
 
 	const layout = (w: float32, h: float32): void => {
-		if (root.layoutStyle === null) { root.layoutStyle = {}; }
 		layoutPass(root, w, h);
 		flowText(root);
-		for (const e of events) {
-			if (e.name !== "onLayout" || !attached(e.node)) { continue; }
+		fitScrollers();
+		for (const e of events.slice(0)) {
+			if (e.name !== "onLayout" || e.node.disposed || !attached(e.node)) { continue; }
 			const n = e.node;
-			const last = lastFrame(n);
-			if (last !== null && last.x === n.x && last.y === n.y && last.w === n.w && last.h === n.h) { continue; }
-			if (last === null) { laidOut.push({ node: n, x: n.x, y: n.y, w: n.w, h: n.h }); }
-			else { last.x = n.x; last.y = n.y; last.w = n.w; last.h = n.h; }
+			const now = frameOf(n);
+			const last = n.laid;
+			if (last !== null && last.x === now.x && last.y === now.y && last.w === now.w && last.h === now.h) { continue; }
+			n.laid = now;
 			const ev = neonEvent("layout");
-			ev.x = n.x;
-			ev.y = n.y;
-			ev.width = n.w;
-			ev.height = n.h;
+			ev.x = now.x;
+			ev.y = now.y;
+			ev.width = now.w;
+			ev.height = now.h;
 			e.handler(ev);
 		}
 	};
 
 	const imeRect = (): CaretRect | null => {
 		if (focusedNode === null) { return null; }
-		const n = focusedNode as Node2D;
+		const n = focusedNode as VoidNode;
 		const c = clientOf(n);
 		if (c === null) { return null; }
 		const r = (c as ClientEntry).client.caretRect();
-		return { x: worldX(links, n) + r.x, y: worldY(links, n) + r.y, w: r.w, h: r.h };
+		const at = n.ref.localToGlobal(vec2(r.x, r.y));
+		return { x: at.x, y: at.y, w: r.w, h: r.h };
 	};
 
 	return {
-		host, root, clickAt, keyDown, keyUp,
+		host, root, scene, clickAt, keyDown, keyUp,
 		commitText: commit, composeText: compose, setWindowFocus, layout,
-		focus: (n: Node2D | null): void => { focus(n); },
-		focused: (): Node2D | null => focusedNode,
+		focus: (n: VoidNode | null): void => { focus(n); },
+		focused: (): VoidNode | null => focusedNode,
 		imeRect, attachTextInput, setEditingState,
 		onDirty: (fn: () => void): void => { dirtyListener = fn; },
 	};
