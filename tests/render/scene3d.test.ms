@@ -12,7 +12,7 @@ import { MeshId, MaterialId, NO_MESH, NO_MATERIAL, DrawContext, addMaterial, rel
 import { Material, Phase } from "../../../void/src/void3d/material";
 import { MeshData } from "../../../void/src/void3d/meshData";
 import { ProjectionKind, CameraProjection } from "../../../void/src/void3d/camera";
-import { Program } from "../../../void/src/void3d/gpu3d";
+import { Program, ProgramKey, of } from "../../../void/src/void3d/gpu3d";
 import { RenderState } from "../../../void/src/gpu/state";
 import { added, litShape, meshAt, materialAt, writeTables } from "../../../void/src/test/drawHelpers";
 import { approx } from "../../../void/src/test/helpers";
@@ -242,7 +242,7 @@ test "Mesh uses seeded resources, shares default material and removes a subtree 
 	const secondMaterial: MaterialId = handle.scene.meshes[handle.scene.nodes[second.index].payload].material;
 	assert firstMaterial === secondMaterial, "default material is shared by scene meshes";
 	assert handle.context.materialAt(firstMaterial.index) === firstMaterial, "default material is real context resource";
-	assert handle.context.materials[firstMaterial.index].program === Program.Lit, "default material uses lit program";
+	assert handle.context.materials[firstMaterial.index].program === ProgramKey.of(Program.Lit), "default material uses core lit program without extra features";
 	const block = handle.context.materialBlocks[firstMaterial.index];
 	assert block.length > 0 && handle.context.uniforms.holds(block), "default material owns a live lit uniform range";
 	assert handle.context.meshPins[resource.index] === 2 && handle.context.meshHolders[resource.index] === 3, "borrowed resource retains caller hold and gains two node pins";

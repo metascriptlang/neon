@@ -196,6 +196,17 @@ Void's `docs/NEON.md` now records target drawing, checked target textures and pi
 as implemented; those APIs do not resolve these compiler/const-array blockers.
 No runtime, full-gate or pixel proof was obtained.
 
+The default-material assertion was then migrated to compare the complete
+`ProgramKey.of(Program.Lit)`, retaining all 16 cases and original JSX. Measured
+source/test tree `7834e15e86325e58c7ee833967e5c4634e96e4f8`, same installed BUILD
+and Void: `msc test tests/render/scene3d.test.ms` exits 1 with 470 errors (-1).
+Read-only candidate `/Users/le/metascript/.wt/wt-name-to-symbol/msc-n2s-r8`, owner
+arc tip `9ef213864` on main `83897c728`, reports only three errors for the same
+contract: CameraProjection signal function layout and two Void const-stack writes.
+Its `run out/scene3dConsumer.ms` reports only the two Void const-stack errors.
+The macro diagnostics disappear on this candidate, but it is not installed;
+these are build-time findings, not runtime acceptance or a land/sync authorization.
+
 A Void area speaks two vocabularies, and the author always knows which one they are in: 3D is
 written in 3D's own terms, Application UI starts at a `View`, and the one place the two meet is
 a texture.
