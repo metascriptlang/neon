@@ -870,7 +870,7 @@ void niViewSetTag(void *view, int32_t tag) {
 	if (v != self.value) self.value = v;
 	emitControl((int)self.tag, 4, [NSString stringWithFormat:@"%g", v], 0, 0);
 }
-- (void)neonDone { emitControl((int)self.tag, 7, [NSString stringWithFormat:@"%g", [self neonSnapped]], 0, 0); }
+- (void)neonDone { emitControl((int)self.tag, 8, [NSString stringWithFormat:@"%g", [self neonSnapped]], 0, 0); }
 @end
 
 @interface NeonPicker : UIButton

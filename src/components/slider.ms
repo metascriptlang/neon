@@ -1,6 +1,6 @@
 // @react-native-community/slider: a native UISlider / SeekBar, `<input type=range>` in the
 // browser. Values cross the wire as decimal text; the host reports a drag as a value change
-// (phase 4) and the release as sliding complete (phase 7).
+// (phase 4) and the release as sliding complete (phase 8; 7 is the Modal's request close).
 
 import { NeonEvent } from "../render/event";
 import { Style } from "../render/style";

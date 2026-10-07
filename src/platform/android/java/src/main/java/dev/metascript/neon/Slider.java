@@ -25,7 +25,7 @@ final class Slider extends SeekBar implements Control {
 			@Override public void onStartTrackingTouch(SeekBar bar) { tracking = true; }
 			@Override public void onStopTrackingTouch(SeekBar bar) {
 				tracking = false;
-				if (tag != 0) Props.control(tag, 7, Controls.number(valueAt(getProgress())), 0, 0);
+				if (tag != 0) Props.control(tag, 8, Controls.number(valueAt(getProgress())), 0, 0);
 			}
 		});
 	}
