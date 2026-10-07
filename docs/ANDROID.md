@@ -404,5 +404,22 @@ On source/test tree `d4f1963637acf2db1276453aaa99c44582797ed2`, installed compil
 dismissal was attempted. An earlier candidate passed scroll/press/rotate/resume, but is
 not the frozen-tree verdict.
 
+### 11.1 Physical list acceptance — 2026-10-07
+
+Source/test tree `4a4025c8962ded21c286b1a630232ceadc88f669`, installed compiler/support
+`8506eaf03`, Ion generator from landed `94f7ad3` installed under an isolated HOME, Seeker
+`SM02G40619100815` awake and unlocked. `examples/flatlist/android` now runs `ListAcceptance`,
+the same consumer as iOS; `ANDROID_SERIAL=SM02G40619100815 python3 tests/android/flatlist.py`
+drove the fixed 10,000-row lane, then measured row spacing (80/112 dp), a pinned `header 0`
+after a drag and its press, inversion keeping `pressed header 0`, an inverted drag pinning
+`header 8` at the list top and its press, and the measured end (`offset 4694`, `ends 1`,
+`item 63` and `List end` on screen). Exit 0, one pid throughout.
+
+The first run exposed an Android-only text bug: a label whose text changed after layout kept
+its old frame (`offset 340000` clipped to the 168 px of `offset 0`). `place()` gives the label
+fixed LayoutParams, so `TextView.setText` only invalidates, and `View.measure()` returned its
+cached size for the unchanged spec. `niMeasureText` now calls `forceLayout()` first; the lane
+asserts the label widens. Functional evidence only; load was not controlled.
+
 The phone lanes use vertical examples. They do not certify native horizontal gestures,
 refresh, keyboard capture or reactive axis replacement; those acceptance checks remain open.
