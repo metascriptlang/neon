@@ -164,8 +164,8 @@ static void publishEnvironment(float keyboard, int dark) {
 		[UIView animateWithDuration:0.3 animations:^{ self.alpha = 1; }];
 	} else if ([self.neonAnimation isEqualToString:@"slide"]) {
 		CGFloat height = self.window.bounds.size.height;
-		self.layer.transform = CATransform3DMakeTranslation(0, height, 0);
-		[UIView animateWithDuration:0.3 animations:^{ self.layer.transform = CATransform3DIdentity; }];
+		self.transform = CGAffineTransformMakeTranslation(0, height);
+		[UIView animateWithDuration:0.3 animations:^{ self.transform = CGAffineTransformIdentity; }];
 	}
 	UIAccessibilityPostNotification(UIAccessibilityScreenChangedNotification, self);
 }
