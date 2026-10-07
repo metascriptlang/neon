@@ -103,6 +103,17 @@ await page.waitForTimeout(400);
 const after = await box("Albums");
 check(after.y < before.y, `the banner scrolls away under the pinned header (${before.y} -> ${after.y})`);
 
+await page.getByText("wheel", { exact: true }).click();
+await page.getByText("hour 1", { exact: true }).waitFor();
+const w = await box("hour 1");
+await page.mouse.move(w.x + 10, w.y + 10);
+await page.mouse.wheel(0, 3 * 44 + 10);
+await expectStatus("status picked hour 4", "scrolling the wheel three items picks hour 4");
+await page.waitForTimeout(800);
+const centred = await box("hour 4");
+const wheelBox = await page.getByText("hour 4", { exact: true }).evaluate((el) => { let at = el; while (at && getComputedStyle(at).overflowY !== "auto" && getComputedStyle(at).overflowY !== "scroll") at = at.parentElement; const r = at.getBoundingClientRect(); return { top: r.top, height: r.height }; });
+check(Math.abs(centred.y + centred.height / 2 - (wheelBox.top + wheelBox.height / 2)) < 6, `the wheel snaps hour 4 to its centre (${centred.y + centred.height / 2} vs ${wheelBox.top + wheelBox.height / 2})`);
+
 for (const e of errors) { failed++; console.log(`uncaught ${e}`); }
 await browser.close();
 server.kill();

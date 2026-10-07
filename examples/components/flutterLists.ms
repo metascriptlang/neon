@@ -8,6 +8,7 @@ import { FlatList, ListRenderItemInfo } from "../../src/components/flatList";
 import { Dismissible, DismissDirection } from "../../src/components/dismissible";
 import { ReorderableFlatList, ReorderableRenderItemInfo } from "../../src/components/reorderableList";
 import { GridList, GridRenderItemInfo, MasonryList, MasonryRenderItemInfo } from "../../src/components/gridList";
+import { ListWheelScrollView, WheelRenderItemInfo } from "../../src/components/listWheel";
 import {
 	CollapsingHeader,
 	CustomScrollView,
@@ -214,6 +215,18 @@ function SliverScreen(): NeonNode {
 	]} />;
 }
 
+function WheelScreen(props: ScreenProps): NeonNode {
+	const say = props.say;
+	const hours = rows(24, "hour");
+	return <View style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0, justifyContent: "center", alignItems: "stretch" }}>
+		<ListWheelScrollView data={hours} itemExtent={44} magnification={1.15} style={{ height: 264, backgroundColor: "#1e1e2e" }}
+			onSelectedItemChanged={(index: number): void => { say("picked " + hours[index as int32].text); }}
+			renderItem={(info: WheelRenderItemInfo<Line>): NeonNode => <View style={{ display: "flex", height: 44, alignItems: "center", justifyContent: "center" }}>
+				<Text style={{ color: "#f9e2af", fontSize: 20 }}>{info.item.text}</Text>
+			</View>} />
+	</View>;
+}
+
 export function FlutterLists(): NeonNode {
 	const [screen, setScreen] = createSignal<int32>(0);
 	const [status, setStatus] = createSignal("ready");
@@ -230,6 +243,7 @@ export function FlutterLists(): NeonNode {
 				<Pressable style={styles.tab} onPress={() => { setMasonry(!masonry()); say(masonry() ? "masonry" : "grid"); }}>{masonry() ? "show grid" : "show masonry"}</Pressable>
 				<Pressable style={styles.tab} onPress={() => { say("header"); setScreen(3); }}>header</Pressable>
 				<Pressable style={styles.tab} onPress={() => { setScreen(4); say("slivers"); }}>slivers</Pressable>
+				<Pressable style={styles.tab} onPress={() => { setScreen(5); say("wheel"); }}>wheel</Pressable>
 			</View>
 		</View>
 		<Show when={screen() === 0}><MailScreen say={say} /></Show>
@@ -237,5 +251,6 @@ export function FlutterLists(): NeonNode {
 		<Show when={screen() === 2}><PhotoScreen say={say} masonry={masonry()} /></Show>
 		<Show when={screen() === 3}><HeaderScreen say={say} /></Show>
 		<Show when={screen() === 4}><SliverScreen /></Show>
+		<Show when={screen() === 5}><WheelScreen say={say} /></Show>
 	</View>;
 }

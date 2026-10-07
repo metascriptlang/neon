@@ -1189,7 +1189,17 @@ final class FlutterListsUITests: XCTestCase {
         settle()
         XCTAssertLessThan(app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Albums")).firstMatch.frame.minY, top, "the banner scrolled away")
         XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Albums")).firstMatch.isHittable || app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Tracks")).firstMatch.exists, "a pinned header stays at the top")
-        XCTAssertEqual(launched, pid())
         report("slivers")
+
+        app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "wheel")).firstMatch.tap()
+        XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "hour 1")).firstMatch.waitForExistence(timeout: 10))
+        let wheel = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "hour 2")).firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        wheel.press(forDuration: 0.05, thenDragTo: wheel.withOffset(CGVector(dx: 0, dy: -132)), withVelocity: .slow, thenHoldForDuration: 0.4)
+        waitStatus("status picked hour 4", "dragging the wheel three items picks hour 4")
+        settle()
+        let one = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "hour 1")).firstMatch.frame, four = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "hour 4")).firstMatch.frame
+        XCTAssertEqual(four.midY - one.midY, 0, accuracy: 200, "the wheel moved")
+        XCTAssertEqual(launched, pid())
+        report("wheel")
     }
 }

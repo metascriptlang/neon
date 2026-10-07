@@ -29,4 +29,6 @@ test "the Flutter lists example mounts every screen on the mock host" {
 	assert texts(root, []).indexOf("Collapsing") >= 0, "the header screen";
 	fireEvent(pressable(root, "slivers") as MockNode, "onPress");
 	assert texts(root, []).indexOf("Albums") >= 0, "the sliver screen: " + texts(root, []).slice(0, 12).join(",");
+	fireEvent(pressable(root, "wheel") as MockNode, "onPress");
+	assert texts(root, []).indexOf("hour 1") >= 0, "the wheel screen";
 }

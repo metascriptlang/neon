@@ -129,9 +129,18 @@ def lane():
     window, texts = scroll_list.state(False)
     if "Albums" not in texts or texts["Albums"][1] >= top:
         raise LaneError("the banner did not scroll away under the pinned header: %s -> %s" % (top, texts.get("Albums")))
+    report("slivers", window, texts, launched)
+
+    scroll_list.tap(texts, "wheel")
+    window, texts = wait_for("hour 2", 10)
+    density = int(adb("shell", "wm", "density").split()[-1]) / 160.0
+    x = (texts["hour 2"][0] + texts["hour 2"][2]) // 2
+    y = middle_y(texts, "hour 2")
+    swipe(x, y, x, y - int(132 * density), 2000)
+    window, texts = wait_status("status picked hour 4", "dragging the wheel three items picks hour 4")
     if counter.pid() != launched:
         raise LaneError("the process restarted")
-    report("slivers", window, texts, launched)
+    report("wheel", window, texts, launched)
 
 
 def main():
