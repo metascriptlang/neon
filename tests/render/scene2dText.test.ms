@@ -1,15 +1,17 @@
 import { createSignal } from "../../src/core/signal";
+import { createRoot } from "../../src/core/owner";
 import { element } from "../../src/macros/ui/element";
 import { Show } from "../../src/macros/ui/flow";
 import { HostNode, mockNode, mockHost, render } from "../../src/render/host";
+import { NeonNode } from "../../src/render/node";
 import { Void } from "../../src/components/primitives";
 import { Scene2D, Label } from "../../src/components/scene2d";
-import { NodeRef } from "../../../void/src/void2d/node";
-import { rgba } from "../../../void/src/void2d/types";
+import { NodeRef, SelectionRange, nodeCount, Scene2D as VoidScene2D } from "../../../void/src/void2d/node";
+import { rgba, Color } from "../../../void/src/void2d/types";
 import { DEFAULT_FONT } from "../../../void/src/void2d/font";
 import { TextRun, Truncate } from "../../../void/src/void2d/textLayout";
 import { calcTextWidth } from "../../../void/src/void2d/render";
-import { labelTexts, labelLines } from "../../../void/src/void2d/labelText";
+import { labelTexts, labelLines, cursorShown, advanceBlink } from "../../../void/src/void2d/labelText";
 
 function run(len: int32): TextRun {
 	return { len: len, font: DEFAULT_FONT, color: rgba(1.0, 1.0, 1.0, 1.0),
@@ -80,4 +82,71 @@ test "Label remount applies current runs and line options without changing omitt
 	dispose(); setShown(false); setWidth(2.0);
 	assert !nodes[0].isLive() && !nodes[2].isLive() && nodes[0].scene.closed;
 }
+
+test "Label selection cursor and blink parameters react and preserve omitted defaults" {
+	const nodes: NodeRef[] = [];
+	const [range, setRange] = createSignal<SelectionRange>({ start: 0, length: 2 });
+	const [color, setColor] = createSignal<Color>(rgba(0.1, 0.2, 0.3, 0.5));
+	const [cursor, setCursor] = createSignal<int32>(1);
+	const [blink, setBlink] = createSignal<float32>(0.25);
+	const root = mockNode("root");
+	const dispose = render(element(<Void><Scene2D>
+		<Label text="abcd" size={13.0} color={rgba(1.0, 1.0, 1.0, 1.0)}
+			selectionRange={range()} selectionColor={color()} cursorIndex={cursor()}
+			cursorColor={color()} cursorBlinkTime={blink()}
+			ref={(node: NodeRef): void => { nodes.push(node); }} />
+		<Label text="abcd" size={13.0} color={rgba(1.0, 1.0, 1.0, 1.0)}
+			ref={(node: NodeRef): void => { nodes.push(node); }} />
+	</Scene2D></Void>), mockHost(), root as unknown as HostNode);
+	const row = nodes[0].scene.payloads[nodes[0].id.index];
+	const sibling = nodes[1].scene.payloads[nodes[1].id.index];
+	assert labelTexts[row].selectionStart === 0 && labelTexts[row].selectionLength === 2;
+	assert labelTexts[row].selectionColor === color() && labelTexts[row].cursorColor === color();
+	assert labelTexts[row].cursorIndex === 1 && labelTexts[row].cursorBlinkTime === 0.25;
+	assert labelTexts[sibling].selectionLength === 0 && labelTexts[sibling].cursorIndex === -1;
+	assert labelTexts[sibling].cursorBlinkTime === 0.5;
+	advanceBlink(row, 0.3); assert !cursorShown(labelTexts[row]);
+	setRange({ start: 1, length: 1 }); setColor(rgba(0.6, 0.7, 0.8, 0.9)); setCursor(3);
+	assert labelTexts[row].selectionStart === 1 && labelTexts[row].selectionLength === 1;
+	assert labelTexts[row].selectionColor === color() && labelTexts[row].cursorColor === color();
+	assert labelTexts[row].cursorIndex === 3 && labelTexts[row].blinkClock === 0.0;
+	setBlink(0.0); advanceBlink(row, 10.0); assert cursorShown(labelTexts[row]);
+	setRange({ start: 0, length: 0 }); setCursor(-1);
+	assert labelTexts[row].selectionLength === 0 && !cursorShown(labelTexts[row]);
+	assert labelTexts[sibling].selectionLength === 0 && labelTexts[sibling].cursorIndex === -1;
+	dispose(); setCursor(0); setBlink(0.5);
+	assert !nodes[0].isLive() && !nodes[1].isLive() && nodes[0].scene.closed;
+}
+
+test "Incomplete Label selection and cursor pairs fail loudly and dispose failed scenes" {
+	const scenes: VoidScene2D[] = [];
+	const capture = (scene: VoidScene2D): void => { scenes.push(scene); };
+	const bad: NeonNode[] = [
+		element(<Void><Scene2D ref={capture}>
+			<Label text="a" size={13.0} color={rgba(1.0, 1.0, 1.0, 1.0)} selectionRange={{ start: 0, length: 1 }} />
+		</Scene2D></Void>),
+		element(<Void><Scene2D ref={capture}>
+			<Label text="a" size={13.0} color={rgba(1.0, 1.0, 1.0, 1.0)} selectionColor={rgba(0.0, 0.0, 1.0, 1.0)} />
+		</Scene2D></Void>),
+		element(<Void><Scene2D ref={capture}>
+			<Label text="a" size={13.0} color={rgba(1.0, 1.0, 1.0, 1.0)} cursorIndex={0} />
+		</Scene2D></Void>),
+		element(<Void><Scene2D ref={capture}>
+			<Label text="a" size={13.0} color={rgba(1.0, 1.0, 1.0, 1.0)} cursorColor={rgba(0.0, 0.0, 0.0, 1.0)} />
+		</Scene2D></Void>),
+	];
+	for (let i = 0; i < 4; i++) {
+		let message = "";
+		createRoot((dispose: () => void): void => {
+			try { bad[i](mockHost(), mockNode("root") as unknown as HostNode, null); }
+			catch (error) { message = error.toString(); }
+			finally { dispose(); }
+		});
+		const expected = i < 2 ? "Label: provide selectionRange and selectionColor together" :
+			"Label: provide cursorIndex and cursorColor together";
+		assert message.includes(expected), message;
+		assert scenes[i].closed && scenes[i].nodeCount() === 0;
+	}
+}
+
 

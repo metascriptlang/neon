@@ -47,6 +47,7 @@ import {
 	setText,
 	textStyle,
 	setTextStyle, setTextRuns, setShapingBreaks, setTruncate, setHangingIndent, setForceWidth,
+	SelectionRange, setSelectionRange, setCursorIndex, setCursorBlinkTime,
 } from "../../../void/src/void2d/node";
 import { create, close, setScaleMode } from "../../../void/src/void2d/scene";
 import {
@@ -143,6 +144,11 @@ interface LabelProps extends NodeProps {
 	truncate?: Accessor<Truncate> | null;
 	hangingIndent?: Accessor<float32> | null;
 	forceWidth?: Accessor<float32> | null;
+	selectionRange?: Accessor<SelectionRange> | null;
+	selectionColor?: Accessor<Color> | null;
+	cursorIndex?: Accessor<int32> | null;
+	cursorColor?: Accessor<Color> | null;
+	cursorBlinkTime?: Accessor<float32> | null;
 }
 
 const sceneScope = createContext<NodeRef | null>(null);
@@ -419,6 +425,12 @@ export function Label(props: LabelProps): NeonNode {
 	return renderNode("Label", props,
 		(scene: VoidScene2D): NodeRef => scene.label(props.text(), props.size(), props.color()),
 		(node: NodeRef): void => {
+			if ((props.selectionRange === null) !== (props.selectionColor === null)) {
+				throw new Error("Label: provide selectionRange and selectionColor together");
+			}
+			if ((props.cursorIndex === null) !== (props.cursorColor === null)) {
+				throw new Error("Label: provide cursorIndex and cursorColor together");
+			}
 			createEffect((): void => { node.setText(props.text()); });
 			if (props.paint === null) {
 				createEffect((): void => { node.setColor(props.color()); });
@@ -447,6 +459,20 @@ export function Label(props: LabelProps): NeonNode {
 			if (props.forceWidth !== null) {
 				const width = props.forceWidth as () => float32;
 				createEffect((): void => { node.setForceWidth(width()); });
+			}
+			if (props.selectionRange !== null) {
+				const range = props.selectionRange as () => SelectionRange;
+				const color = props.selectionColor as () => Color;
+				createEffect((): void => { node.setSelectionRange(range(), color()); });
+			}
+			if (props.cursorIndex !== null) {
+				const index = props.cursorIndex as () => int32;
+				const color = props.cursorColor as () => Color;
+				createEffect((): void => { node.setCursorIndex(index(), color()); });
+			}
+			if (props.cursorBlinkTime !== null) {
+				const seconds = props.cursorBlinkTime as () => float32;
+				createEffect((): void => { node.setCursorBlinkTime(seconds()); });
 			}
 		});
 }
