@@ -250,6 +250,31 @@ choices are rows N1–N9 of `WORKAROUND.md`; the compiler findings are cards dat
 components cannot sit in a static field), `Animated.Color`, `useNativeDriver` (accepted, every
 animation is JS-driven), LayoutAnimation `delete` and `scale*` properties.
 
+### React Native gaps (state 2026-10-08, `wt/rn-gaps`, msc `0d83c4867`)
+
+Closed on the three hosts: real safe-area insets (`niSafeAreaInset`; the root stays inside the safe
+area until `<StatusBar translucent />` takes it edge to edge), native `textAlign` (an aligned label
+spans its parent), nested `<Text>` spans in one native label (`textSpans`: colour, size, bold,
+italic, underline, line-through) with `Text.onPress` and pressable spans, multiline `TextInput`
+growth to `maxHeight` and `selection`/`onSelectionChange`, `Image` `resizeMode="repeat"`,
+`blurRadius`, `defaultSource` and `ImageLoader.getSize/prefetch`, `StyleSheet` runtime members,
+`Pressable` `hitSlop`/`android_ripple`, and Dialog/BottomSheet closing on the Android back press.
+Proof: `msc test tests/platform/nativeParity.test.ms` (mock bridge, 10 cases including the gallery's
+parity screen), `tests/components/{image,pressableParity,backDismiss}.test.ms` and
+`tests/api/styleSheet.test.ms` on both lanes, Chrome `tests/browser/textParity.test.ms` (7 cases),
+and the iPhone 17 Pro simulator (`/private/tmp/neon-sim-run.sh <wt> examples/gallery NeonGallery
+GalleryUITests`, exit 0: insets 62/34 edge to edge, span and text presses apart, input growth,
+native selection, `size 600x240`, `hairline 0.333`, a tap 18 pt outside the slop target presses,
+dialog). The gallery APK builds (ion generate + `gradlew assembleDebug`, `Spans`/`Slop`/`Picture.size` in
+the dex). Not run: the Seeker lane (`tests/android/gallery.py` `parity`, written; the phone was
+locked), so Android insets, gravity, spans, ripple, TouchDelegate slop and back dismissal are
+compile-checked only. Provisional choices: `WORKAROUND.md` U3, U8, U9, M7 (updated) and G1–G4;
+compiler cards `2026-10-08-function-component-cannot-carry-static-members.md`,
+`2026-10-08-macro-called-through-namespace-import-reaches-codegen.md` and sightings added to
+`2026-10-04-string-literal-union-signal-rejects-its-function-layout.md` and
+`2026-10-06-js-cast-object-arrow-body.md`. Not done: `pressRetentionOffset`, `onContentSizeChange`,
+`StyleSheet.create` under that name, innermost-only press for nested Text.
+
 ### Reference and ownership constraints
 
 - RN's core catalog: `packages/react-native/index.js`, component exports and app/runtime APIs.
