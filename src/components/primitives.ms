@@ -35,7 +35,7 @@ export interface AccessibilityProps {
 	accessibilityRole?: Accessor<AccessibilityRole> | null;
 }
 
-interface HostProps extends AccessibilityProps {
+export interface HostProps extends AccessibilityProps {
 	style?: Accessor<Style> | null;
 	class?: Accessor<string> | null;
 	ref?: RefFn | null;
@@ -76,7 +76,7 @@ function primitive(tag: string, props: HostProps, attrs: VAttr[], evts: VEvent[]
 	return hostElement(tag, attrs, evts, kids, style, props.ref);
 }
 
-interface InteractiveProps extends HostProps {
+export interface InteractiveProps extends HostProps {
 	onKeyDown?: ((e: NeonEvent) => void) | null;
 	onKeyUp?: ((e: NeonEvent) => void) | null;
 	onFocus?: ((e: NeonEvent) => void) | null;
@@ -93,7 +93,7 @@ function interactiveEvents(props: InteractiveProps, evts: VEvent[]): VEvent[] {
 	return evts;
 }
 
-interface ViewProps extends InteractiveProps {
+export interface ViewProps extends InteractiveProps {
 	children?: NeonNode | null;
 }
 
@@ -103,7 +103,7 @@ export function View(props: ViewProps): NeonNode {
 
 export type EllipsizeMode = "head" | "middle" | "tail" | "clip";
 
-interface TextProps extends HostProps {
+export interface TextProps extends HostProps {
 	numberOfLines?: Accessor<number> | null;
 	ellipsizeMode?: Accessor<EllipsizeMode> | null;
 	selectable?: Accessor<boolean> | null;
@@ -282,7 +282,7 @@ export interface MaintainVisibleContentPosition {
 export type KeyboardDismissMode = "none" | "on-drag" | "interactive";
 export type KeyboardShouldPersistTaps = "never" | "always" | "handled";
 
-interface ScrollViewProps {
+export interface ScrollViewProps {
 	style?: Accessor<Style> | null;
 	contentContainerStyle?: Accessor<Style> | null;
 	class?: Accessor<string> | null;

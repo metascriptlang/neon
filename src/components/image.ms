@@ -10,7 +10,7 @@ export interface ImageSource {
 
 export type ImageResizeMode = "cover" | "contain" | "stretch" | "center";
 
-interface ImageProps extends AccessibilityProps {
+export interface ImageProps extends AccessibilityProps {
 	source?: Accessor<ImageSource> | null;
 	resizeMode?: Accessor<ImageResizeMode> | null;
 	style?: Accessor<Style> | null;
