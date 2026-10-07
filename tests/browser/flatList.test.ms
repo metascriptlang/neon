@@ -3,7 +3,9 @@ import { HostNode, NeonNode } from "../../src/render/hostTypes";
 import { render } from "../../src/render/host";
 import { Style } from "../../src/render/style";
 import { element } from "../../src/macros/ui/element";
-import { Text, View } from "../../src/components/primitives";
+import { Text, TextInput, View } from "../../src/components/primitives";
+import { createSignal } from "../../src/core/signal";
+import { NeonEvent } from "../../src/render/event";
 import { FlatList, FlatListHandle, ItemLayout, ListRenderItemInfo } from "../../src/components/flatList";
 import { sleepAsync } from "std/core/promise";
 
@@ -18,6 +20,11 @@ extern class HTMLElement {
 	extern querySelectorAll(selector: cstring): ElementList;
 	extern getBoundingClientRect(): Frame;
 	extern remove(): void;
+	extern focus(): void;
+}
+
+extern class document {
+	static activeElement: HTMLElement;
 }
 
 extern class ElementList {
@@ -250,6 +257,38 @@ test "a measured two-column grid lays rows side by side, applies columnWrapperSt
 	handles[0].scrollToEnd({ animated: false });
 	await sleepAsync(200);
 	assert scroller.scrollTop === 21 * ROW - 120, "21 rows, the last holding item 40 alone: " + scroller.scrollTop.toString();
+	dispose();
+	scroller.remove();
+}
+
+function gridField(info: ListRenderItemInfo<Item>): NeonNode {
+	const n = info.item.n.toString();
+	const [taps, setTaps] = createSignal<number>(0);
+	return element(<View class={"grid-field-" + n} style={{ height: ROW, width: 90 }}>
+		<TextInput class={"grid-input-" + n} onFocus={(e: NeonEvent): void => { setTaps(taps() + 1); }} />
+		<Text>{"<" + n + "@" + info.index().toString() + "#" + taps().toString() + ">"}</Text>
+	</View>);
+}
+
+test "a prepend moves a focused grid field to the next row as the same element, still focused" {
+	const all = items(6);
+	const [data, setData] = createSignal<Item[]>(all.slice(1, 6));
+	const dispose = render(element(<FlatList data={data()} renderItem={gridField} numColumns={2}
+		getItemLayout={fixed} style={{ height: 300 }} />), domHost(), documentBody());
+	await sleepAsync(100);
+	const scroller = (documentBody() as unknown as HTMLElement).lastElementChild;
+	const field = scroller.querySelectorAll(".grid-input-2").item(0);
+	const cell = scroller.querySelectorAll(".grid-field-2").item(0);
+	field.focus();
+	const before = cell.getBoundingClientRect();
+	assert document.activeElement === field && cell.textContent === "<2@1#1>", "item 2 sits in row 0 with focus: " + cell.textContent;
+	setData(all);
+	await sleepAsync(100);
+	const after = cell.getBoundingClientRect();
+	assert scroller.querySelectorAll(".grid-field-2").item(0) === cell, "the cell element survived the prepend";
+	assert after.top === before.top + ROW && after.left === before.left - 90, "item 2 moved to the start of row 1: " + `${after.left - before.left} ${after.top - before.top}`;
+	assert cell.textContent === "<2@2#1>", "its index followed and its state stayed: " + cell.textContent;
+	assert document.activeElement === field, "the field kept the DOM focus across the move";
 	dispose();
 	scroller.remove();
 }

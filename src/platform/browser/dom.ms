@@ -24,6 +24,10 @@ extern class DomRect {
 	height: number;
 }
 
+extern class Reflect {
+	static extern has(target: Node, key: cstring): boolean;
+}
+
 extern class ResizeObserver {
 	extern observe(target: Node): void;
 	extern disconnect(): void;
@@ -60,6 +64,8 @@ extern class Node {
 	extern cloneNode(deep: boolean): Node;
 	extern appendChild(child: Node): void;
 	extern insertBefore(node: Node, ref: Node | null): void;
+	extern moveBefore(node: Node, ref: Node | null): void;
+	isConnected: boolean;
 	extern removeChild(child: Node): void;
 	value: cstring;
 	checked: boolean;
@@ -743,11 +749,14 @@ export function domHost(): Host {
 			scheduleLayouts();
 		},
 		insertBefore: (parent: HostNode, node: HostNode, ref: HostNode | null): void => {
-			(parent as unknown as Node).insertBefore(
-				node as unknown as Node,
-				ref === null ? null : (ref as unknown as Node),
-			);
 			const el = parent as unknown as Node;
+			const moved = node as unknown as Node;
+			const before = ref === null ? null : (ref as unknown as Node);
+			if (moved.isConnected && el.isConnected && Reflect.has(el, "moveBefore")) {
+				el.moveBefore(moved, before);
+			} else {
+				el.insertBefore(moved, before);
+			}
 			if (scrolls.has(el)) { (scrolls.get(el) as DomScrollState).mountRefresh(); }
 			scheduleLayouts();
 		},
