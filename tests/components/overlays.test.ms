@@ -12,6 +12,7 @@ import { Snackbar } from "../../src/components/snackbar";
 import { Toast, ToastHost, currentToast } from "../../src/components/toast";
 import { Tooltip } from "../../src/components/tooltip";
 import { Dialog, DialogAction } from "../../src/components/dialog";
+import { BottomSheet } from "../../src/components/bottomSheet";
 
 function firstTag(parent: MockNode, tag: string): MockNode {
 	for (const c of parent.children) {
@@ -174,4 +175,23 @@ test "a Dialog that is not dismissable ignores the scrim" {
 	assert mockToString(root) === "<root><view><pressable accessibilityLabel=\"Dismiss\"></pressable><view accessibilityLabel=\"\" accessibilityRole=\"alert\"><view><text>Working</text></view></view></view></root>", "untitled: " + mockToString(root);
 	fireEvent(firstTag(root.children[0], "pressable"), "onPress");
 	assert log() === "", "scrim ignored: " + log();
+}
+
+test "BottomSheet docks a handled sheet at the bottom and the scrim dismisses it" {
+	const [open, setOpen] = createSignal(true);
+	const [dismissed, setDismissed] = createSignal(0);
+	const root: MockNode = mockNode("root");
+	render(element(<BottomSheet visible={open()} height={240} accessibilityLabel="Share"
+		onDismiss={(): void => { setDismissed(dismissed() + 1); setOpen(false); }}>
+		<Text>Copy link</Text>
+	</BottomSheet>), mockHost(), root as unknown as HostNode);
+	assert mockToString(root) === "<root><view><pressable accessibilityLabel=\"Dismiss\"></pressable><view accessibilityLabel=\"Share\"><view></view><view><text>Copy link</text></view></view></view></root>", "shown: " + mockToString(root);
+	const layer = root.children[0];
+	assert (layer.style as Style).justifyContent === "flex-end" && (layer.style as Style).position === "absolute", "docked";
+	const sheet = firstTag(layer, "view");
+	assert (sheet.style as Style).height === 240 && (sheet.style as Style).borderRadius === 28, "sheet";
+	const handle = sheet.children[0].style as Style;
+	assert handle.width === 32 && handle.height === 4, "drag handle";
+	fireEvent(firstTag(layer, "pressable"), "onPress");
+	assert dismissed() === 1 && mockToString(root) === "<root></root>", "dismissed";
 }
