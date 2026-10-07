@@ -21,9 +21,7 @@ import { ScreenCollector, collectScreens, readName, readOptions, screenOf } from
 
 export type BackBehavior = "firstRoute" | "initialRoute" | "history" | "none";
 
-export const TAB_ACTIVE = "#007aff";
 export const TAB_INACTIVE = "#8e8e93";
-export const BADGE_COLOR = "#ff3b30";
 
 const TAB_ITEM: Style = {
 	flex: 1,
@@ -35,7 +33,6 @@ const TAB_ITEM: Style = {
 };
 
 const BADGE: Style = {
-	backgroundColor: BADGE_COLOR,
 	borderRadius: 9,
 	paddingLeft: 5,
 	paddingRight: 5,
@@ -80,7 +77,7 @@ export function tabItem<P>(core: NavigatorCore<P>, entry: Navigation<P>): NeonNo
 	const color = accessor((): string => {
 		const own = focused() ? options().tabBarActiveTintColor : options().tabBarInactiveTintColor;
 		if (own !== null) { return own as string; }
-		return focused() ? TAB_ACTIVE : TAB_INACTIVE;
+		return focused() ? core.container.theme().colors.primary : TAB_INACTIVE;
 	});
 	const a11y = accessor((): string => {
 		const own = options().tabBarAccessibilityLabel;
@@ -96,6 +93,10 @@ export function tabItem<P>(core: NavigatorCore<P>, entry: Navigation<P>): NeonNo
 		const props: TabBarIconProps = { focused: focused(), color: color(), size: 24 };
 		return (render as (props: TabBarIconProps) => NeonNode)(props);
 	});
+	const badgeBox = accessor((): Style => ({
+		...BADGE,
+		backgroundColor: core.container.theme().colors.notification,
+	}));
 	const press = (e: NeonEvent): void => {
 		if (untrack((): boolean => focused())) {
 			core.repressFocused();
@@ -109,7 +110,7 @@ export function tabItem<P>(core: NavigatorCore<P>, entry: Navigation<P>): NeonNo
 		<View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
 			<Text style={{ color: color(), fontSize: 12 }}>{label()}</Text>
 			<Show when={badge() !== ""}>
-				<View style={BADGE}>
+				<View style={badgeBox}>
 					<Text style={{ color: "#ffffff", fontSize: 11 }}>{badge()}</Text>
 				</View>
 			</Show>
@@ -159,7 +160,7 @@ export function createBottomTabNavigator<P>(): TabNavigator<P> {
 				const base: Style = {
 					flexDirection: "row",
 					height: 56,
-					backgroundColor: "#ffffff",
+					backgroundColor: core.container.theme().colors.card,
 				};
 				if (own === null) { return base; }
 				const extra = (own as Accessor<Style>)();
@@ -178,7 +179,7 @@ export function createBottomTabNavigator<P>(): TabNavigator<P> {
 				<View style={{ flex: 1, flexDirection: "column", position: "relative" }}>
 					<For each={mounted}>{screen}</For>
 				</View>
-				<View style={{ height: 1, backgroundColor: "#d8d8d8" }} />
+				<View style={{ height: 1, backgroundColor: core.container.theme().colors.border }} />
 				<View style={bar}>
 					<For each={core.entries}>{item}</For>
 				</View>

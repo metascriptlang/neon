@@ -185,12 +185,52 @@ export class ScreenScope {
 	}
 }
 
+export interface ThemeColors {
+	primary: string;
+	background: string;
+	card: string;
+	text: string;
+	border: string;
+	notification: string;
+}
+
+export interface Theme {
+	dark: boolean;
+	colors: ThemeColors;
+}
+
+export const DefaultTheme: Theme = {
+	dark: false,
+	colors: {
+		primary: "#007aff",
+		background: "#f2f2f2",
+		card: "#ffffff",
+		text: "#1c1c1e",
+		border: "#d8d8d8",
+		notification: "#ff3b30",
+	},
+};
+
+export const DarkTheme: Theme = {
+	dark: true,
+	colors: {
+		primary: "#0a84ff",
+		background: "#010101",
+		card: "#121212",
+		text: "#e5e5e7",
+		border: "#272729",
+		notification: "#ff453a",
+	},
+};
+
 export class ContainerState {
 	linkTo: (path: string) => boolean;
+	theme: Accessor<Theme>;
 	ready: boolean = false;
 
-	constructor(linkTo: (path: string) => boolean) {
+	constructor(linkTo: (path: string) => boolean, theme: Accessor<Theme>) {
 		this.linkTo = linkTo;
+		this.theme = theme;
 	}
 }
 
@@ -1210,6 +1250,10 @@ export function useFocusEffect(effect: () => (() => void) | null): void {
 		}
 	});
 	onCleanup(release);
+}
+
+export function useTheme(): Accessor<Theme> {
+	return currentScope("useTheme").container.theme;
 }
 
 export function useLinkTo(): (path: string) => void {

@@ -14,6 +14,9 @@ import {
 	createNavigationContainerRef,
 	createStackNavigator,
 	useNavigationState,
+	useTheme,
+	DarkTheme,
+	DefaultTheme,
 } from "../../src/navigation/index";
 import { findLabel, press, visibleText } from "./navHarness";
 
@@ -91,5 +94,36 @@ test "a right-hand drawer anchors its panel to the right edge" {
 	assert style.right === 0 && style.left === null, "anchored right";
 	press(root, "Two");
 	assert ref.currentPath() === "Two", ref.currentPath();
+	dispose();
+}
+
+function Themed(props: ScreenProps<string>): NeonNode {
+	const theme = useTheme();
+	return <Text>{theme().dark ? "dark screen" : "light screen"}</Text>;
+}
+
+function headerOf(root: MockNode): MockNode {
+	let node = root;
+	while (node.children.length > 0 && node.tag !== "text") {
+		const next = node.children[0];
+		if (next.style !== null && (next.style as Style).height === 52) { return next; }
+		node = next;
+	}
+	throw new Error("no header bar in " + visibleText(root));
+}
+
+test "the container theme colors headers and reaches screens through useTheme" {
+	const [dark, setDark] = createSignal(false);
+	const root: MockNode = mockNode("root");
+	const dispose: Dispose = render(<NavigationContainer theme={dark() ? DarkTheme : DefaultTheme}>
+		<Stack.Navigator>
+			<Stack.Screen name="Themed" component={Themed} />
+		</Stack.Navigator>
+	</NavigationContainer>, mockHost(), root as unknown as HostNode);
+	assert visibleText(root) === "Themed|light screen", visibleText(root);
+	assert (headerOf(root).style as Style).backgroundColor === "#ffffff";
+	setDark(true);
+	assert visibleText(root) === "Themed|dark screen", visibleText(root);
+	assert (headerOf(root).style as Style).backgroundColor === DarkTheme.colors.card;
 	dispose();
 }

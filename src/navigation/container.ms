@@ -1,4 +1,4 @@
-import { accessor } from "../core/signal";
+import { Accessor, accessor } from "../core/signal";
 import { onCleanup } from "../core/cleanup";
 import { Host, HostNode, NeonNode } from "../render/hostTypes";
 import { BackHandler } from "../api/backHandler";
@@ -6,7 +6,9 @@ import { Linking, LinkingUrlEvent } from "../api/linking";
 import { hasAppServices } from "../api/services";
 import {
 	ContainerState,
+	DefaultTheme,
 	DrawerAction,
+	Theme,
 	NavTarget,
 	NavigatorKind,
 	NavigatorLink,
@@ -165,8 +167,13 @@ export function NavigationContainer(props: {
 	linking?: LinkingOptions | null;
 	ref?: NavigationContainerRef | null;
 	onReady?: (() => void) | null;
+	theme?: Accessor<Theme> | null;
 }): NeonNode {
 	const link = containerLink();
+	const ownTheme = props.theme;
+	const theme = accessor((): Theme => {
+		return ownTheme === null ? DefaultTheme : (ownTheme as Accessor<Theme>)();
+	});
 	const linking = props.linking;
 	const enabled = linking !== null && (linking as LinkingOptions).enabled !== false;
 	const openURL = (url: string): boolean => {
@@ -183,7 +190,7 @@ export function NavigationContainer(props: {
 		if (target === null) { return false; }
 		return link.navigateTo(target as NavTarget);
 	};
-	const state = new ContainerState(openPath);
+	const state = new ContainerState(openPath, theme);
 	const scope = new ScreenScope(link, "", accessor((): boolean => true), null, state);
 	const ref = props.ref;
 	if (ref !== null) {

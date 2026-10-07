@@ -39,6 +39,11 @@ export {
 	StackPresentation,
 	HeaderTitleAlign,
 	useLinkTo,
+	useTheme,
+	Theme,
+	ThemeColors,
+	DefaultTheme,
+	DarkTheme,
 } from "./core";
 export {
 	LinkingScreen,
@@ -59,9 +64,7 @@ export {
 	BackBehavior,
 	TabNavigator,
 	createBottomTabNavigator,
-	TAB_ACTIVE,
 	TAB_INACTIVE,
-	BADGE_COLOR,
 } from "./tabs";
 export { DrawerNavigator, DrawerPosition, createDrawerNavigator, DRAWER_WIDTH } from "./drawer";
 export {

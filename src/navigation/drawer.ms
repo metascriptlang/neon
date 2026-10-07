@@ -15,7 +15,7 @@ import {
 	currentScope,
 	optionsAccessor,
 } from "./core";
-import { screenView, HEADER_TINT } from "./header";
+import { screenView } from "./header";
 import { ScreenCollector, collectScreens, readName, readOptions, screenOf } from "./stack";
 import { BackBehavior, labelOf, mountedEntries, readBehavior } from "./tabs";
 
@@ -40,7 +40,7 @@ export function drawerItem<P>(core: NavigatorCore<P>, entry: Navigation<P>): Neo
 	const label = accessor((): string => labelOf<P>(entry, options().drawerLabel));
 	const tint = accessor((): string => {
 		const own = options().drawerActiveTintColor;
-		return own === null ? HEADER_TINT : own as string;
+		return own === null ? core.container.theme().colors.primary : own as string;
 	});
 	const row = accessor((): Style => ({
 		flexDirection: "row",
@@ -51,11 +51,13 @@ export function drawerItem<P>(core: NavigatorCore<P>, entry: Navigation<P>): Neo
 		marginLeft: 8,
 		marginRight: 8,
 		borderRadius: 8,
-		backgroundColor: focused() ? "#e5f0ff" : "#ffffff",
+		backgroundColor: focused()
+			? (core.container.theme().dark ? "#1c2b40" : "#e5f0ff")
+			: core.container.theme().colors.card,
 	}));
 	const press = (e: NeonEvent): void => { core.navigateLocal(entry.route.name, null); };
 	const text = accessor((): Style => ({
-		color: focused() ? tint() : "#1c1c1e",
+		color: focused() ? tint() : core.container.theme().colors.text,
 		fontSize: 15,
 		fontWeight: focused() ? "bold" : "normal",
 	}));
@@ -122,7 +124,7 @@ export function createDrawerNavigator<P>(): DrawerNavigator<P> {
 					flexDirection: "column",
 					gap: 4,
 					paddingTop: 56,
-					backgroundColor: "#ffffff",
+					backgroundColor: core.container.theme().colors.card,
 				};
 				if (own === null) { return base; }
 				const extra = (own as Accessor<Style>)();

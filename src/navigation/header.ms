@@ -24,10 +24,6 @@ import {
 
 type RowList = () => Row[];
 
-export const HEADER_TINT = "#007aff";
-export const HEADER_BACKGROUND = "#ffffff";
-export const HEADER_BORDER = "#d8d8d8";
-export const TITLE_COLOR = "#1c1c1e";
 
 export function Slot(props: { node: Accessor<NeonNode | null> }): NeonNode {
 	const read = props.node;
@@ -39,7 +35,8 @@ export function Slot(props: { node: Accessor<NeonNode | null> }): NeonNode {
 }
 
 function tintOf(tint: Accessor<string> | null): Accessor<string> {
-	return accessor((): string => tint === null ? HEADER_TINT : (tint as Accessor<string>)());
+	const theme = currentScope("header button").container.theme;
+	return accessor((): string => tint === null ? theme().colors.primary : (tint as Accessor<string>)());
 }
 
 const BACK_BUTTON: Style = {
@@ -102,9 +99,10 @@ export function Header(props: {
 	menu: Accessor<boolean>;
 }): NeonNode {
 	const options = props.options;
+	const theme = currentScope("Header").container.theme;
 	const tint = accessor((): string => {
 		const color = options().headerTintColor;
-		return color === null ? HEADER_TINT : color as string;
+		return color === null ? theme().colors.primary : color as string;
 	});
 	const bar = accessor((): Style => {
 		const base: Style = {
@@ -113,7 +111,7 @@ export function Header(props: {
 			height: 52,
 			paddingLeft: 4,
 			paddingRight: 8,
-			backgroundColor: HEADER_BACKGROUND,
+			backgroundColor: theme().colors.card,
 		};
 		const extra = options().headerStyle;
 		if (extra === null) { return base; }
@@ -138,7 +136,7 @@ export function Header(props: {
 	}));
 	const titleColor = accessor((): string => {
 		const color = options().headerTintColor;
-		return color === null ? TITLE_COLOR : color as string;
+		return color === null ? theme().colors.text : color as string;
 	});
 	const titleText = accessor((): Style => ({
 		color: titleColor(),
@@ -160,7 +158,7 @@ export function Header(props: {
 				accessibilityRole="header">{props.title()}</Text>
 		</View>
 		<Slot node={right} />
-	</View><View style={{ height: 1, backgroundColor: HEADER_BORDER }} /></View>;
+	</View><View style={{ height: 1, backgroundColor: theme().colors.border }} /></View>;
 }
 
 export function titleOf<P>(entry: Navigation<P>): string {
@@ -186,6 +184,7 @@ export function screenView<P>(core: NavigatorCore<P>, entry: Navigation<P>): Neo
 		}
 		return -1;
 	});
+	const transparent = accessor((): boolean => core.isStack() && core.transparent(entry));
 	const visible = accessor((): boolean => {
 		if (!core.isStack()) { return core.currentKey() === key; }
 		const at = position();
@@ -199,6 +198,7 @@ export function screenView<P>(core: NavigatorCore<P>, entry: Navigation<P>): Neo
 		bottom: 0,
 		flexDirection: "column",
 		display: visible() ? "flex" : "none",
+		backgroundColor: transparent() ? null : core.container.theme().colors.background,
 	}));
 	const headerShown = accessor((): boolean => {
 		const presentation = options().presentation;
