@@ -70,6 +70,14 @@ export function ApiDemo(): NeonNode {
 			setUrlResult("failed");
 		}
 	};
+	const openSettings = async (): Promise<void> => {
+		try {
+			await Linking.openSettings();
+			setUrlResult("settings");
+		} catch (e) {
+			setUrlResult("no settings");
+		}
+	};
 	const checkUrl = async (): Promise<void> => {
 		setCanOpen((await Linking.canOpenURL("https://example.com")) ? "yes" : "no");
 		setReader((await AccessibilityInfo.isScreenReaderEnabled()) ? "on" : "off");
@@ -102,6 +110,7 @@ export function ApiDemo(): NeonNode {
 			}}>show alert</Pressable>
 			<Pressable style={styles.button} onPress={() => { share(); }}>share</Pressable>
 			<Pressable style={styles.button} onPress={() => { openUrl(); }}>open url</Pressable>
+			<Pressable style={styles.button} onPress={() => { openSettings(); }}>settings</Pressable>
 			<Pressable style={styles.button} onPress={() => {
 				Vibration.vibrate([0, 150, 100, 150]);
 				setVibrations(vibrations() + 1);
