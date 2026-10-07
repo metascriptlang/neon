@@ -1,9 +1,11 @@
-import { createSignal } from "../../src/core/signal";
+import { Accessor, createSignal } from "../../src/core/signal";
 import { createStyles, styleOf } from "../../src/macros/ui/style";
 import { NeonNode } from "../../src/render/node";
 import { NeonEvent } from "../../src/render/event";
 import { View, Text, Pressable } from "../../src/components/primitives";
 import { FlatList, FlatListHandle, ItemLayout, ListRenderItemInfo } from "../../src/components/flatList";
+import { Show } from "../../src/macros/ui/flow";
+import { Style } from "../../src/render/style";
 
 const ROW = 68;
 const COUNT = 10000;
@@ -35,7 +37,6 @@ function rowLayout(data: Entry[], index: number): ItemLayout {
 export function BigList(): NeonNode {
 	const started = performance.now();
 	const [mounted, setMounted] = createSignal<number>(-1);
-	// Parked: createSignal(0) infers int32 — ~/metascript/.inbox/compiler/2026-10-03-generic-inferred-from-integer-literal-is-int32.md
 	const [offset, setOffset] = createSignal<number>(0);
 	const [pressed, setPressed] = createSignal("none");
 	const data = entries();
@@ -53,5 +54,55 @@ export function BigList(): NeonNode {
 			renderItem={(info: ListRenderItemInfo<Entry>): NeonNode =>
 				<Pressable style={styles.row} onPress={() => setPressed("row " + info.item.n.toString())}
 					onLongPress={() => setPressed("long row " + info.item.n.toString())}>{"row " + info.item.n.toString()}</Pressable>} />
+	</View>;
+}
+
+function measuredRowStyle(n: number): Style {
+	return {
+		height: n % 8 === 0 ? 96 : 48 + (n % 3) * 32,
+		padding: 12, color: "#cdd6f4",
+		backgroundColor: n % 8 === 0 ? "#1e66a1" : "#313244",
+	};
+}
+
+function MeasuredStickyList(props: { inverted: Accessor<boolean> }): NeonNode {
+	const data: Entry[] = [];
+	for (let i = 0; i < 64; i += 1) { data.push({ id: "m" + i.toString(), n: i }); }
+	const [offset, setOffset] = createSignal<number>(0);
+	const [pressed, setPressed] = createSignal("none");
+	const [ends, setEnds] = createSignal<int32>(0);
+	const handles: FlatListHandle[] = [];
+	return <View style={styles.screen}>
+		<Text style={styles.title}>Measured sticky list</Text>
+		<Text style={styles.status}>{"offset " + Math.round(offset()).toString()}</Text>
+		<Text style={styles.status}>{"pressed " + pressed()}</Text>
+		<Text style={styles.status}>{"ends " + ends().toString()}</Text>
+		<Pressable style={styles.jump} onPress={() => handles[0].scrollToEnd({ animated: false })}>measured end</Pressable>
+		<FlatList data={data} style={styles.list} inverted={props.inverted}
+			stickyHeaderIndices={[0, 8, 16, 24, 32, 40, 48, 56]}
+			initialNumToRender={2} maxToRenderPerBatch={4} windowSize={3}
+			ref={(h: FlatListHandle): void => { handles.push(h); }}
+			onScroll={(e: NeonEvent): void => { setOffset(e.y); }}
+			onEndReached={() => setEnds(ends() + 1)}
+			ListFooterComponent={<View style={{ height: 48, backgroundColor: "#45475a" }}><Text style={styles.status}>List end</Text></View>}
+			renderItem={(info: ListRenderItemInfo<Entry>): NeonNode =>
+				<Pressable style={measuredRowStyle(info.item.n)}
+					onPress={() => setPressed((info.item.n % 8 === 0 ? "header " : "item ") + info.item.n.toString())}>
+					{(info.item.n % 8 === 0 ? "header " : "item ") + info.item.n.toString()}
+				</Pressable>} />
+	</View>;
+}
+
+export function ListAcceptance(): NeonNode {
+	const [mode, setMode] = createSignal<int32>(0);
+	return <View style={{ flex: 1 }}>
+		<View style={{ flexDirection: "row", gap: 8, padding: 8 }}>
+			<Pressable style={styles.jump} onPress={() => setMode(0)}>fixed rows</Pressable>
+			<Pressable style={styles.jump} onPress={() => setMode(1)}>measured rows</Pressable>
+			<Pressable style={styles.jump} onPress={() => setMode(2)}>inverted rows</Pressable>
+		</View>
+		<Show when={mode() === 0} fallback={<MeasuredStickyList inverted={mode() === 2} />}>
+			<BigList />
+		</Show>
 	</View>;
 }

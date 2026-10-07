@@ -241,4 +241,54 @@ final class FlatListUITests: XCTestCase {
 
         XCTAssertEqual(launched, pid(), "rotate, Home and resume kept the same process")
     }
+
+    func testMeasuredStickyAndInverted() {
+        XCUIDevice.shared.orientation = .portrait
+        app.launch()
+        XCTAssertTrue(app.wait(for: .runningForeground, timeout: 20))
+        let launched = pid()
+        app.staticTexts["measured rows"].tap()
+        let header = app.staticTexts["header 0"]
+        XCTAssertTrue(header.waitForExistence(timeout: 15))
+        XCTAssertTrue(app.staticTexts["item 3"].waitForExistence(timeout: 15))
+        let top = header.frame.minY
+        XCTAssertEqual(app.staticTexts["item 2"].frame.minY - app.staticTexts["item 1"].frame.minY, 80, accuracy: 2)
+        XCTAssertEqual(app.staticTexts["item 3"].frame.minY - app.staticTexts["item 2"].frame.minY, 112, accuracy: 2)
+        report("measured-initial")
+
+        let start = app.staticTexts["item 2"].coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.5))
+        start.press(forDuration: 0.1, thenDragTo: start.withOffset(CGVector(dx: 0, dy: -110)))
+        let moved = NSPredicate { [self] _, _ in
+            !label(startingWith: "offset ").isEmpty && label(startingWith: "offset ") != "offset 0"
+        }
+        let scrolled = expectation(for: moved, evaluatedWith: app)
+        XCTAssertEqual(XCTWaiter.wait(for: [scrolled], timeout: 10), .completed)
+        XCTAssertEqual(header.frame.minY, top, accuracy: 2, "the measured header remains pinned after a drag")
+        XCTAssertEqual(label(startingWith: "pressed "), "pressed none", "scrolling must cancel the row press")
+        header.tap()
+        XCTAssertTrue(app.staticTexts["pressed header 0"].waitForExistence(timeout: 10))
+        report("measured-sticky-pressed")
+
+        app.staticTexts["inverted rows"].tap()
+        XCTAssertTrue(app.staticTexts["pressed header 0"].waitForExistence(timeout: 10), "changing inversion preserves the mounted list state")
+        RunLoop.current.run(until: Date().addingTimeInterval(1))
+        let visibleHeaders = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "header ")).allElementsBoundByIndex.filter { $0.isHittable }
+        XCTAssertFalse(visibleHeaders.isEmpty, "an inverted sticky header is visible")
+        let invertedHeader = visibleHeaders.min { $0.frame.minY < $1.frame.minY }!
+        let selected = invertedHeader.label
+        invertedHeader.tap()
+        XCTAssertTrue(app.staticTexts["pressed " + selected].waitForExistence(timeout: 10), "the transformed visible header receives its press")
+        XCTAssertEqual(launched, pid(), "the measured and inverted modes share one running process")
+        report("inverted-sticky-pressed")
+
+        app.staticTexts["measured rows"].tap()
+        for _ in 0..<12 {
+            if onScreen("List end") { break }
+            app.staticTexts["measured end"].tap()
+            RunLoop.current.run(until: Date().addingTimeInterval(0.4))
+        }
+        XCTAssertTrue(onScreen("item 63"), "the measured list reaches its final item without getItemLayout")
+        XCTAssertTrue(onScreen("List end"), "the footer participates in the measured end")
+        report("measured-end")
+    }
 }
