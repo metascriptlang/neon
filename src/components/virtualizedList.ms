@@ -252,6 +252,7 @@ export function VirtualizedList<T, D>(props: {
 	onRefresh?: (() => void) | null;
 	refreshing?: Accessor<boolean> | null;
 	maintainVisibleContentPosition?: Accessor<MaintainVisibleContentPosition> | null;
+	refreshControl?: NeonNode | null;
 	onContentSizeChange?: ((width: number, height: number) => void) | null;
 	style?: Accessor<Style> | null;
 	contentContainerStyle?: Accessor<Style> | null;
@@ -307,6 +308,7 @@ export function listEngine<T, D>(props: {
 	onRefresh?: (() => void) | null;
 	refreshing?: Accessor<boolean> | null;
 	maintainVisibleContentPosition?: Accessor<MaintainVisibleContentPosition> | null;
+	refreshControl?: NeonNode | null;
 	onContentSizeChange?: ((width: number, height: number) => void) | null;
 	style?: Accessor<Style> | null;
 	contentContainerStyle?: Accessor<Style> | null;
@@ -1009,5 +1011,6 @@ export function listEngine<T, D>(props: {
 		onRefresh: props.onRefresh, refreshing: props.refreshing,
 		maintainVisibleContentPosition:
 			keepProp === null ? null : keptPosition(keepProp as KeptPosition),
+		refreshControl: props.refreshControl,
 	});
 }

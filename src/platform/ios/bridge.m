@@ -356,6 +356,8 @@ static UIView *focusedInput(UIView *view) {
 @property (nonatomic) NSInteger neonPersistTaps;
 @property (nonatomic, strong) UITapGestureRecognizer *neonKeyboardTap;
 @property (nonatomic) BOOL neonRefreshingDesired;
+@property (nonatomic, strong) UIColor *neonRefreshTint;
+@property (nonatomic, copy) NSString *neonRefreshTitle;
 - (void)neonSetContentSize:(CGSize)size;
 - (void)neonEmit:(int)phase;
 - (void)neonSetRefreshing:(BOOL)refreshing;
@@ -770,10 +772,18 @@ void niScrollSetOption(void *scroll, const char *name, const char *value) {
 			strcmp(value, "on-drag") == 0 ? UIScrollViewKeyboardDismissModeOnDrag : UIScrollViewKeyboardDismissModeNone;
 	} else if (strcmp(name, "keyboardShouldPersistTaps") == 0) {
 		s.neonPersistTaps = strcmp(value, "always") == 0 ? 1 : strcmp(value, "handled") == 0 ? 2 : 0;
+	} else if (strcmp(name, "refreshTintColor") == 0) {
+		s.neonRefreshTint = value[0] ? cssColor(value, nil) : nil;
+		s.refreshControl.tintColor = s.neonRefreshTint;
+	} else if (strcmp(name, "refreshTitle") == 0) {
+		s.neonRefreshTitle = value[0] ? [NSString stringWithUTF8String:value] : nil;
+		s.refreshControl.attributedTitle = s.neonRefreshTitle ? [[NSAttributedString alloc] initWithString:s.neonRefreshTitle] : nil;
 	} else if (strcmp(name, "refreshEnabled") == 0) {
 		if (yes && !s.refreshControl) {
 			UIRefreshControl *control = [[UIRefreshControl alloc] init];
 			[control addTarget:s action:@selector(neonRefresh:) forControlEvents:UIControlEventValueChanged];
+			control.tintColor = s.neonRefreshTint;
+			if (s.neonRefreshTitle) control.attributedTitle = [[NSAttributedString alloc] initWithString:s.neonRefreshTitle];
 			s.refreshControl = control;
 		} else if (!yes) s.refreshControl = nil;
 	} else if (strcmp(name, "refreshing") == 0) {

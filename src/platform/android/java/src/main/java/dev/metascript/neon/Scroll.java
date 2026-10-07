@@ -94,6 +94,15 @@ public final class Scroll extends SwipeRefreshLayout {
 			case "pagingEnabled": paging = yes; break;
 			case "keyboardDismissMode": dismissMode = value.isEmpty() ? "none" : value; break;
 			case "keyboardShouldPersistTaps": persistTaps = value.isEmpty() ? "never" : value; break;
+			case "refreshColors": {
+				if (value.isEmpty()) break;
+				String[] parts = value.split(",");
+				int[] colors = new int[parts.length];
+				for (int i = 0; i < parts.length; i++) colors[i] = Props.color(parts[i].trim(), 0xff000000);
+				setColorSchemeColors(colors);
+				break;
+			}
+			case "refreshBackgroundColor": setProgressBackgroundColorSchemeColor(Props.color(value, 0xffffffff)); break;
 			case "refreshEnabled": refreshEnabled = yes; setEnabled(yes && scrollEnabled); break;
 			case "refreshing": desiredRefreshing = yes; setRefreshing(yes); break;
 			default: break;

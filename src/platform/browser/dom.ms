@@ -182,6 +182,8 @@ class DomScrollState {
 	dismiss: string = "none";
 	taps: string = "never";
 	refreshEnabled: boolean = false;
+	refreshTint: string = "black";
+	refreshBackground: string = "white";
 	refreshing: boolean = false;
 	refreshPending: boolean = false;
 	touching: boolean = false;
@@ -329,7 +331,7 @@ class DomScrollState {
 	showRefresh(): void {
 		if (this.indicator === null) { return; }
 		const indicator = this.indicator as Node;
-		indicator.setAttribute("style", `position:absolute;top:8px;left:calc(50% - 14px);width:28px;height:28px;border-radius:50%;background:white;color:black;text-align:center;line-height:28px;pointer-events:none;display:${this.refreshing || this.refreshPending || this.pull > 0 ? "block" : "none"}`);
+		indicator.setAttribute("style", `position:absolute;top:8px;left:calc(50% - 14px);width:28px;height:28px;border-radius:50%;background:${this.refreshBackground};color:${this.refreshTint};text-align:center;line-height:28px;pointer-events:none;display:${this.refreshing || this.refreshPending || this.pull > 0 ? "block" : "none"}`);
 		indicator.setAttribute("aria-busy", this.refreshing || this.refreshPending ? "true" : "false");
 	}
 
@@ -360,7 +362,12 @@ class DomScrollState {
 				this.dismiss = value;
 			},
 			"keyboardShouldPersistTaps" => { this.taps = value === "" ? "never" : value; },
-			"refreshEnabled" => { this.refreshEnabled = yes; },
+			"refreshTintColor" => { this.refreshTint = value === "" ? "black" : value; this.showRefresh(); },
+			"refreshBackgroundColor" => { this.refreshBackground = value === "" ? "white" : value; this.showRefresh(); },
+			"refreshEnabled" => {
+				this.refreshEnabled = yes;
+				if (this.el.firstChild !== null) { this.mountRefresh(); }
+			},
 			"refreshing" => { this.refreshing = yes; this.refreshPending = false; this.showRefresh(); },
 			"maintainVisibleContentPosition" => {
 				this.visibleContent = parseVisibleContent(value);

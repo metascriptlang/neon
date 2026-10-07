@@ -285,6 +285,7 @@ interface ScrollViewProps {
 	onRefresh?: (() => void) | null;
 	refreshing?: Accessor<boolean> | null;
 	maintainVisibleContentPosition?: Accessor<MaintainVisibleContentPosition> | null;
+	refreshControl?: NeonNode | null;
 	children?: NeonNode | null;
 }
 
@@ -358,8 +359,10 @@ export function ScrollView(props: ScrollViewProps): NeonNode {
 		? element(<view style={contentStyle}>{props.children}</view>)
 		: element(<view style={contentStyle} onLayout={(e: NeonEvent): void => { (sizeChange as (width: number, height: number) => void)(e.width, e.height); }}>{props.children}</view>);
 	const userRef = props.ref;
+	const refreshControl = props.refreshControl;
 	const inner: NeonNode = (host: Host, node: HostNode, before: HostNode | null): void => {
 		content(host, node, before);
+		if (refreshControl !== null) { (refreshControl as NeonNode)(host, node, null); }
 		if (userRef !== null) {
 			let mounted = true;
 			onCleanup((): void => { mounted = false; });
