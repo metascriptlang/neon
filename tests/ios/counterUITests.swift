@@ -1207,3 +1207,133 @@ final class FlutterListsUITests: XCTestCase {
         report("wheel")
     }
 }
+
+final class ControlsUITests: XCTestCase {
+    private let app = XCUIApplication(bundleIdentifier: "dev.neon.NeonControls")
+
+    override func setUp() {
+        continueAfterFailure = false
+    }
+
+    private func label(startingWith prefix: String) -> String {
+        let match = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", prefix)).firstMatch
+        return match.exists ? match.label : ""
+    }
+
+    private func waitLabel(_ prefix: String, containing part: String, timeout: TimeInterval = 10) {
+        let predicate = NSPredicate { [self] _, _ in label(startingWith: prefix).contains(part) }
+        XCTAssertEqual(XCTWaiter.wait(for: [expectation(for: predicate, evaluatedWith: app)], timeout: timeout), .completed,
+            "expected \(prefix)… to contain \(part); it reads \(label(startingWith: prefix))")
+    }
+
+    private func report(_ name: String) {
+        let texts = app.staticTexts.allElementsBoundByIndex.prefix(24).map { $0.label }.joined(separator: " | ")
+        print("NEON_IOS controls-\(name) \(texts)")
+        let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        shot.name = "controls-\(name)"
+        shot.lifetime = .keepAlways
+        add(shot)
+    }
+
+    private func any(_ name: String) -> XCUIElement {
+        return app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", name)).firstMatch
+    }
+
+    private func reveal(_ element: XCUIElement) {
+        var swipes = 0
+        while (!element.exists || !element.isHittable) && swipes < 6 {
+            let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.8))
+            start.press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.45)))
+            swipes += 1
+        }
+        XCTAssertTrue(element.exists && element.isHittable, "\(element) is on screen after \(swipes) swipes")
+    }
+
+    func testBookingForm() {
+        XCUIDevice.shared.orientation = .portrait
+        app.launch()
+        XCTAssertTrue(app.staticTexts["Neon booking"].waitForExistence(timeout: 20))
+        waitLabel("status ", containing: "status idle")
+        report("start")
+
+        let date = app.datePickers.firstMatch
+        XCTAssertTrue(date.waitForExistence(timeout: 10), "the check-in UIDatePicker is on screen")
+        print("NEON_IOS controls-datepickers \(app.datePickers.allElementsBoundByIndex.map { "\($0.label)=\($0.value as? String ?? "")" })")
+        date.tap()
+        let day = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] 'October 24' OR label CONTAINS[c] '24 October'")).firstMatch
+        if day.waitForExistence(timeout: 5) {
+            day.tap()
+            report("date-popover")
+            app.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.13)).tap()
+            waitLabel("check-in ", containing: "2026-10-24")
+        } else {
+            report("date-popover-missing")
+            print("NEON_IOS controls-date-buttons \(app.buttons.allElementsBoundByIndex.prefix(40).map { $0.label })")
+            app.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.13)).tap()
+        }
+
+        let slider = app.sliders["Guests"]
+        reveal(slider)
+        slider.adjust(toNormalizedSliderPosition: 0.6)
+        waitLabel("guests ", containing: "guests 5")
+        report("slider")
+
+        let tip = any("Guest limit")
+        tip.press(forDuration: 1.0)
+        XCTAssertTrue(any("Up to 8 guests per room").waitForExistence(timeout: 5), "the tooltip shows on long press")
+        report("tooltip")
+
+        let room = app.buttons["Room type"]
+        reveal(room)
+        room.tap()
+        let suite = app.buttons["Suite"].firstMatch
+        XCTAssertTrue(suite.waitForExistence(timeout: 5), "the room menu lists Suite")
+        report("room-menu")
+        suite.tap()
+        waitLabel("room ", containing: "room Suite")
+
+        let business = any("Business")
+        reveal(business)
+        business.tap()
+        waitLabel("trip ", containing: "trip Business")
+
+        let breakfast = any("Breakfast")
+        reveal(breakfast)
+        breakfast.tap()
+        waitLabel("extras ", containing: "extras breakfast")
+        XCTAssertEqual(any("Breakfast").value as? String ?? "", "checked", "the checkbox exposes its checked state")
+
+        let cash = any("Cash")
+        reveal(cash)
+        cash.tap()
+        waitLabel("payment ", containing: "payment cash")
+
+        let sea = any("Sea view")
+        reveal(sea)
+        sea.tap()
+        waitLabel("prefs ", containing: "prefs Sea view")
+        report("form-filled")
+
+        let details = any("Details")
+        reveal(details)
+        details.tap()
+        waitLabel("details ", containing: "details Suite for 5 guests")
+        report("bottom-sheet")
+        any("Close").tap()
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'details '")).firstMatch.waitForNonExistence(timeout: 5))
+
+        any("Book").tap()
+        XCTAssertTrue(any("Confirm booking").waitForExistence(timeout: 5), "the confirm dialog opens")
+        report("dialog")
+        any("Confirm").tap()
+        waitLabel("status ", containing: "status booking")
+        report("booking")
+        waitLabel("status ", containing: "status booked", timeout: 10)
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Booked Suite for 5 guests'")).firstMatch.waitForExistence(timeout: 5), "the snackbar shows")
+        report("snackbar")
+        any("Undo").tap()
+        waitLabel("status ", containing: "status cancelled")
+        XCTAssertTrue(any("Booking cancelled").waitForExistence(timeout: 5), "the toast shows")
+        report("toast")
+    }
+}
