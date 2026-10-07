@@ -295,6 +295,66 @@ final class FlatListUITests: XCTestCase {
         XCTAssertTrue(onScreen("List end"), "the footer participates in the measured end")
         report("measured-end")
     }
+
+    func testGridAndSections() {
+        XCUIDevice.shared.orientation = .portrait
+        app.launch()
+        XCTAssertTrue(app.wait(for: .runningForeground, timeout: 20))
+        let launched = pid()
+        app.staticTexts["grid"].tap()
+        XCTAssertTrue(app.staticTexts["cell 5"].waitForExistence(timeout: 15), "grid mode mounts its first rows")
+        let c0 = app.staticTexts["cell 0"].frame
+        let c1 = app.staticTexts["cell 1"].frame
+        let c2 = app.staticTexts["cell 2"].frame
+        let c3 = app.staticTexts["cell 3"].frame
+        XCTAssertEqual(c1.minY, c0.minY, accuracy: 2, "cell 1 shares the first row")
+        XCTAssertEqual(c2.minY, c0.minY, accuracy: 2, "cell 2 shares the first row")
+        XCTAssertLessThan(c0.minX, c1.minX)
+        XCTAssertLessThan(c1.minX, c2.minX)
+        XCTAssertEqual(c3.minY - c0.minY, 68, accuracy: 2, "64pt cells plus the 4pt columnWrapperStyle margin")
+        XCTAssertEqual(c3.minX, c0.minX, accuracy: 2, "cell 3 opens the second row")
+        report("grid-initial")
+
+        app.staticTexts["cell 4"].tap()
+        XCTAssertTrue(app.staticTexts["pressed cell 4 at 4"].waitForExistence(timeout: 10), "the tap hits cell 4: \(label(startingWith: "pressed "))")
+        app.staticTexts["prepend"].tap()
+        XCTAssertTrue(app.staticTexts["cell 60"].waitForExistence(timeout: 10), "the prepended cell mounts")
+        let fresh = app.staticTexts["cell 60"].frame
+        XCTAssertEqual(fresh.minY, c0.minY, accuracy: 2, "cell 60 opens the first row")
+        XCTAssertEqual(fresh.minX, c0.minX, accuracy: 2, "cell 60 takes the first column")
+        XCTAssertEqual(app.staticTexts["cell 0"].frame.minX, c1.minX, accuracy: 2, "cell 0 moves to the second column")
+        app.staticTexts["cell 4"].tap()
+        XCTAssertTrue(app.staticTexts["pressed cell 4 at 5"].waitForExistence(timeout: 10), "cell 4 reads its new index: \(label(startingWith: "pressed "))")
+        report("grid-prepended")
+
+        app.staticTexts["sections"].tap()
+        let first = app.staticTexts["Section 0"]
+        XCTAssertTrue(first.waitForExistence(timeout: 15), "sections mode mounts")
+        XCTAssertTrue(app.staticTexts["item 100"].waitForExistence(timeout: 15), "the second section mounts")
+        let top = first.frame.minY
+        XCTAssertLessThan(top, app.staticTexts["item 0"].frame.minY)
+        XCTAssertLessThan(app.staticTexts["item 0"].frame.minY, app.staticTexts["item 1"].frame.minY)
+        XCTAssertLessThan(app.staticTexts["item 1"].frame.minY, app.staticTexts["Section 1"].frame.minY)
+        XCTAssertLessThan(app.staticTexts["Section 1"].frame.minY, app.staticTexts["item 100"].frame.minY)
+        report("sections-initial")
+
+        let start = app.staticTexts["item 1"].coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.5))
+        start.press(forDuration: 0.1, thenDragTo: start.withOffset(CGVector(dx: 0, dy: -60)), withVelocity: .slow, thenHoldForDuration: 0.5)
+        RunLoop.current.run(until: Date().addingTimeInterval(1))
+        XCTAssertLessThan(app.staticTexts["item 0"].frame.minY, top, "the drag scrolled item 0 under the header")
+        XCTAssertEqual(first.frame.minY, top, accuracy: 2, "Section 0 stays pinned while its items scroll")
+        XCTAssertEqual(label(startingWith: "pressed "), "pressed none", "scrolling must cancel the item press")
+        report("sections-sticky")
+
+        app.staticTexts["section 1"].tap()
+        RunLoop.current.run(until: Date().addingTimeInterval(1))
+        XCTAssertFalse(label(startingWith: "pressed ").hasPrefix("pressed jump waits"), "scrollToLocation reached a measured header")
+        XCTAssertEqual(app.staticTexts["Section 1"].frame.minY, top, accuracy: 2, "scrollToLocation(1, 0) brings Section 1 to the list top")
+        app.staticTexts["item 101"].tap()
+        XCTAssertTrue(app.staticTexts["pressed Section 1 item 1"].waitForExistence(timeout: 10), "item 101 is Section 1 item 1: \(label(startingWith: "pressed "))")
+        report("sections-located-pressed")
+        XCTAssertEqual(launched, pid(), "the grid and section modes share one running process")
+    }
 }
 
 final class ScrollMatrixUITests: XCTestCase {
