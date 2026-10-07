@@ -14,6 +14,7 @@ import { VisibleContentPosition, parseVisibleContent } from "../../render/visibl
 import { installBrowserAppServices } from "./appServices";
 import { installDomLayoutAnimation } from "./layoutAnimation";
 import { isMediaTag, createMediaNode, writeMediaAttr, addMediaEvent, releaseMedia } from "./media";
+import { svgMarkup } from "../../components/svg/markup";
 
 extern class ClassList {
 	extern add(name: cstring): void;
@@ -46,6 +47,7 @@ interface DomScrollOptions {
 
 extern class Node {
 	textContent: cstring;
+	innerHTML: cstring;
 	scrollLeft: number;
 	scrollTop: number;
 	scrollWidth: number;
@@ -595,7 +597,25 @@ function dateInputType(mode: string): string {
 	};
 }
 
+// <Svg>: the display list becomes the <svg> element's own markup (src/components/svg/markup.ms).
+let svgCount = 0;
+
+function writeSvgList(el: Node, value: string): void {
+	const prefix = el.getAttribute("data-neon-svg") ?? "neon-svg";
+	const m = svgMarkup(value, prefix);
+	if (m.viewBox === "") { el.removeAttribute("viewBox"); } else { el.setAttribute("viewBox", m.viewBox); }
+	if (m.preserveAspectRatio === "") { el.removeAttribute("preserveAspectRatio"); } else { el.setAttribute("preserveAspectRatio", m.preserveAspectRatio); }
+	el.innerHTML = m.body;
+}
+
 function writeNewControlAttr(el: Node, kind: string, name: string, value: string): boolean {
+	if (kind === "svg") {
+		if (name === "displayList") {
+			writeSvgList(el, value);
+			return true;
+		}
+		return false;
+	}
 	if (kind === "slider") {
 		if (name === "minimumValue") { el.setAttribute("min", value); return true; }
 		if (name === "maximumValue") { el.setAttribute("max", value); return true; }
@@ -742,6 +762,7 @@ extern class document {
 	static activeElement: Node;
 	static extern createElement(tag: cstring): Node;
 	static extern createTextNode(s: cstring): Node;
+	static extern createElementNS(ns: cstring, tag: cstring): Node;
 }
 
 // One <style> element owns every rule the program registered. Rewriting its
@@ -1053,6 +1074,18 @@ export function domHost(): Host {
 				return layer as unknown as HostNode;
 			}
 			if (isMediaTag(tag)) { return createMediaNode(tag); }
+			if (tag === "svg") {
+				if (!baseRule) {
+					registerCss("neon-base", RN_WEB_BASE_CSS);
+					baseRule = true;
+				}
+				const vector = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+				vector.classList.add(VIEW_CLASS);
+				svgCount += 1;
+				vector.setAttribute("data-neon-svg", `neon-svg${svgCount}`);
+				controlKinds.set(vector, tag);
+				return vector as unknown as HostNode;
+			}
 			if (tag === "slider" || tag === "picker" || tag === "datetimepicker") {
 				const control = document.createElement(tag === "picker" ? "select" : "input");
 				if (tag === "slider") { control.setAttribute("type", "range"); }
