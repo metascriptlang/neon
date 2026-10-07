@@ -1562,3 +1562,149 @@ final class NavigationUITests: XCTestCase {
         XCUIDevice.shared.orientation = .portrait
     }
 }
+
+final class WidgetsUITests: XCTestCase {
+    private let app = XCUIApplication(bundleIdentifier: "dev.neon.NeonWidgets")
+
+    override func setUp() {
+        continueAfterFailure = false
+    }
+
+    private func pid() -> String {
+        let text = app.debugDescription
+        guard let range = text.range(of: "pid: ") else { return "" }
+        return String(text[range.upperBound...].prefix(while: { $0.isNumber }))
+    }
+
+    private func status() -> String {
+        let match = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "status ")).firstMatch
+        return match.exists ? match.label : ""
+    }
+
+    private func waitStatus(_ prefix: String, _ why: String, timeout: TimeInterval = 10) {
+        let predicate = NSPredicate { [self] _, _ in status().hasPrefix(prefix) }
+        XCTAssertEqual(XCTWaiter.wait(for: [expectation(for: predicate, evaluatedWith: app)], timeout: timeout), .completed,
+            "\(why): expected \(prefix), app says \(status())")
+    }
+
+    private func any(_ label: String) -> XCUIElement {
+        app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", label)).firstMatch
+    }
+
+    private func starting(_ prefix: String) -> XCUIElement {
+        app.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH %@", prefix)).firstMatch
+    }
+
+    private func report(_ name: String) {
+        print("NEON_IOS widgets-\(name) pid=\(pid()) \(status())")
+        let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        shot.name = "widgets-\(name)"
+        shot.lifetime = .keepAlways
+        add(shot)
+    }
+
+    private func settle() {
+        RunLoop.current.run(until: Date().addingTimeInterval(1))
+    }
+
+    private func point(_ x: CGFloat, _ y: CGFloat) -> XCUICoordinate {
+        let window = app.windows.firstMatch
+        let origin = window.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0))
+        return origin.withOffset(CGVector(dx: window.frame.width * x, dy: y))
+    }
+
+    private func swipeAcross(_ y: CGFloat, from: CGFloat, to: CGFloat) {
+        let width = app.windows.firstMatch.frame.width
+        let start = point(from, y)
+        start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: width * (to - from), dy: 0)))
+    }
+
+    func testPagerTabsCarouselAccordionTableAndChips() {
+        XCUIDevice.shared.orientation = .portrait
+        app.launch()
+        XCTAssertTrue(app.wait(for: .runningForeground, timeout: 20))
+        XCTAssertTrue(any("Welcome").waitForExistence(timeout: 15))
+        let launched = pid()
+        let middle = app.windows.firstMatch.frame.midX
+        report("onboarding")
+
+        swipeAcross(any("Welcome").frame.midY, from: 0.8, to: 0.15)
+        waitStatus("status page 2", "a left swipe turns the onboarding page")
+        settle()
+        XCTAssertEqual(any("Sync").frame.midX, middle, accuracy: 4, "the second page settles centred")
+        report("page-2")
+        any("next").tap()
+        waitStatus("status page 3", "next turns to the last page")
+        any("page 1 of 3").tap()
+        waitStatus("status page 1", "a dot jumps back to the first page")
+        settle()
+        XCTAssertEqual(any("Welcome").frame.midX, middle, accuracy: 4, "the first page is back")
+
+        any("tabs").tap()
+        XCTAssertTrue(any("Chats 3").waitForExistence(timeout: 10))
+        swipeAcross(any("Chats 3").frame.midY, from: 0.85, to: 0.1)
+        waitStatus("status tab Status", "a swipe changes to the Status tab")
+        XCTAssertTrue(any("Status 1").waitForExistence(timeout: 5), "the lazy Status scene rendered")
+        report("tab-status")
+        any("Calls").tap()
+        waitStatus("status tab Calls", "a tab press selects Calls")
+        XCTAssertTrue(any("Calls 3").waitForExistence(timeout: 5))
+        settle()
+        let callsTop = any("Calls 1").frame.minY
+        let scroll = point(0.5, any("Calls 6").frame.midY)
+        scroll.press(forDuration: 0.05, thenDragTo: scroll.withOffset(CGVector(dx: 0, dy: -200)))
+        settle()
+        XCTAssertLessThan(any("Calls 1").frame.minY, callsTop - 20, "a vertical drag scrolls the scene inside the pager")
+        XCTAssertEqual(status(), "status tab Calls", "and does not change the tab")
+        report("tab-calls")
+
+        any("carousel").tap()
+        XCTAssertTrue(any("Slide A").waitForExistence(timeout: 10))
+        waitStatus("status slide Slide B", "auto-play moves to Slide B", timeout: 8)
+        report("carousel-autoplay")
+        any("pause").tap()
+        waitStatus("status autoplay off", "pause stops auto-play")
+        swipeAcross(any("Slide B").frame.midY, from: 0.8, to: 0.2)
+        waitStatus("status slide Slide C", "a swipe moves to Slide C")
+        settle()
+        XCTAssertEqual(any("Slide C").frame.midX, middle, accuracy: 4, "Slide C settles centred with its neighbours peeking")
+        report("carousel-swiped")
+
+        any("faq").tap()
+        XCTAssertTrue(starting("Which platforms?").waitForExistence(timeout: 10))
+        starting("Which platforms?").tap()
+        waitStatus("status faq open 1", "a question opens")
+        XCTAssertTrue(any("iOS, Android, the browser and the terminal.").waitForExistence(timeout: 5), "the answer shows")
+        settle()
+        report("faq-open")
+        starting("Is it open source?").tap()
+        waitStatus("status faq open 2", "another question closes the first")
+        settle()
+        XCTAssertFalse(any("iOS, Android, the browser and the terminal.").exists, "the first answer collapsed")
+        starting("Shipping").tap()
+        waitStatus("status shipping open", "the expansion tile opens")
+
+        any("table").tap()
+        XCTAssertTrue(starting("Calories").waitForExistence(timeout: 10))
+        starting("Calories").tap()
+        waitStatus("status sorted calories up", "a header press sorts by calories")
+        settle()
+        XCTAssertLessThan(any("Frozen yogurt").frame.minY, any("Gingerbread").frame.minY, "ascending calories")
+        starting("Calories").tap()
+        waitStatus("status sorted calories down", "a second press flips the order")
+        settle()
+        XCTAssertLessThan(any("Gingerbread").frame.minY, any("Frozen yogurt").frame.minY, "descending calories")
+        XCTAssertEqual(any("Eclair").frame.midY, any("262").frame.midY, accuracy: 2, "a row lines up across columns")
+        any("Eclair").tap()
+        waitStatus("status selected Eclair", "a row press selects it")
+        report("table")
+
+        any("chips").tap()
+        XCTAssertTrue(starting("Flexbox").waitForExistence(timeout: 10))
+        XCTAssertGreaterThan(starting("Flexbox").frame.minY, starting("Neon").frame.minY + 20, "the chips wrap onto more rows")
+        starting("Yoga").tap()
+        waitStatus("status chips Neon|Yoga", "a chip press selects it")
+        XCTAssertEqual(launched, pid())
+        report("chips")
+    }
+}
