@@ -226,3 +226,30 @@ test "measured sticky headers count the list header slot and push it out before 
 	dispose();
 	scroller.remove();
 }
+
+function gridCell(info: ListRenderItemInfo<Item>): NeonNode {
+	return element(<View class={"grid-cell-" + info.item.n.toString()} style={{ height: ROW, width: 60 }}><Text>{"<" + info.item.n.toString() + ">"}</Text></View>);
+}
+
+test "a measured two-column grid lays rows side by side, applies columnWrapperStyle and scrolls by row" {
+	const handles: FlatListHandle[] = [];
+	const dispose = render(element(<FlatList data={items(41)} renderItem={gridCell} numColumns={2}
+		columnWrapperStyle={{ gap: 10 }} style={{ height: 120 }} updateCellsBatchingPeriod={0}
+		ref={(h: FlatListHandle): void => { handles.push(h); }} />), domHost(), documentBody());
+	await sleepAsync(200);
+	const scroller = (documentBody() as unknown as HTMLElement).lastElementChild;
+	const a = scroller.querySelectorAll(".grid-cell-0").item(0).getBoundingClientRect();
+	const b = scroller.querySelectorAll(".grid-cell-1").item(0).getBoundingClientRect();
+	const c = scroller.querySelectorAll(".grid-cell-2").item(0).getBoundingClientRect();
+	assert a.top === b.top && b.left === a.left + 70, "one row, 60 px cells 10 px apart: " + `${a.left} ${b.left}`;
+	assert c.top === a.top + ROW && c.left === a.left, "the third item opens the second row";
+	handles[0].scrollToIndex({ index: 10, animated: false });
+	await sleepAsync(200);
+	assert scroller.scrollTop === 10 * ROW, "row 10 holds items 20 and 21: " + scroller.scrollTop.toString();
+	assert scroller.querySelectorAll(".grid-cell-20").length === 1, "item 20 mounted at row 10";
+	handles[0].scrollToEnd({ animated: false });
+	await sleepAsync(200);
+	assert scroller.scrollTop === 21 * ROW - 120, "21 rows, the last holding item 40 alone: " + scroller.scrollTop.toString();
+	dispose();
+	scroller.remove();
+}

@@ -725,3 +725,105 @@ test "onStartReached fires once per content length and re-arms after leaving the
 	assert starts === 3, "a changed content length can reach the start again";
 	dispose();
 }
+
+function cellText(info: ListRenderItemInfo<Item>): NeonNode {
+	return element(<Text>{"[" + info.item.id + "@" + info.index().toString() + "]"}</Text>);
+}
+
+function gridRows(root: MockNode): string {
+	const parts: string[] = [];
+	for (const k of content(root).children) {
+		if (k.tag === "") { continue; }
+		parts.push(k.children.length === 0 ? `sp${k.style!.height as number}` : slotText(k));
+	}
+	return parts.join("|");
+}
+
+test "numColumns lays items out in rows that carry columnWrapperStyle, and windows by row" {
+	const root: MockNode = mockNode("root");
+	const dispose = render(element(<FlatList data={items(5)} numColumns={2} columnWrapperStyle={{ gap: 4 }}
+		getItemLayout={tall10} renderItem={cellText} />), mockHost(), root as unknown as HostNode);
+	assert gridRows(root) === "[k0@0][k1@1]|[k2@2][k3@3]|[k4@4]", gridRows(root);
+	const first = content(root).children[0];
+	assert first.style!.flexDirection === "row" && first.style!.gap === 4, "RN's row style composed with columnWrapperStyle";
+	dispose();
+	const big: MockNode = mockNode("root");
+	const disposeBig = render(element(<FlatList data={items(100)} numColumns={2} initialNumToRender={3}
+		getItemLayout={tall10} renderItem={cellText} />), mockHost(), big as unknown as HostNode);
+	assert gridRows(big) === "[k0@0][k1@1]|[k2@2][k3@3]|[k4@4][k5@5]|sp470", "initialNumToRender and getItemLayout count rows: " + gridRows(big);
+	disposeBig();
+}
+
+test "a grid keeps an item's row state while the item stays in its row and remounts only items that change rows" {
+	const root: MockNode = mockNode("root");
+	const all = items(5);
+	const [data, setData] = createSignal<Item[]>([all[0], all[1], all[2], all[3]]);
+	let mounts = "";
+	const dispose = render(element(<FlatList data={data()} numColumns={2} getItemLayout={tall10}
+		renderItem={(info: ListRenderItemInfo<Item>): NeonNode => {
+			mounts += info.item.id;
+			return cellText(info);
+		}} />), mockHost(), root as unknown as HostNode);
+	assert mounts === "k0k1k2k3", mounts;
+	setData([all[0], all[1], all[2], all[3], all[4]]);
+	assert gridRows(root) === "[k0@0][k1@1]|[k2@2][k3@3]|[k4@4]" && mounts === "k0k1k2k3k4", "append mounts only the new item: " + mounts;
+	setData([all[1], all[0], all[2], all[3], all[4]]);
+	assert gridRows(root) === "[k1@0][k0@1]|[k2@2][k3@3]|[k4@4]" && mounts === "k0k1k2k3k4", "a reorder inside a row moves, it does not remount: " + mounts;
+	setData([all[0], all[2], all[1], all[3], all[4]]);
+	assert gridRows(root) === "[k0@0][k2@1]|[k1@2][k3@3]|[k4@4]", gridRows(root);
+	assert mounts === "k0k1k2k3k4k1k2" || mounts === "k0k1k2k3k4k2k1", "only the two items that changed rows remount: " + mounts;
+	dispose();
+}
+
+test "a grid puts ItemSeparatorComponent between rows, not between items" {
+	const root: MockNode = mockNode("root");
+	const dispose = render(element(<FlatList data={items(3)} numColumns={2} getItemLayout={tall10}
+		ItemSeparatorComponent={BetweenRows} renderItem={cellText} />), mockHost(), root as unknown as HostNode);
+	assert slotText(content(root)) === "[k0@0][k1@1]|separator|[k2@2]", slotText(content(root));
+	dispose();
+}
+
+test "numColumns refuses horizontal lists, columnWrapperStyle needs columns and the column count is fixed" {
+	const root: MockNode = mockNode("root");
+	const horizontal = caught((): void => {
+		render(element(<FlatList data={items(3)} numColumns={2} horizontal={true} renderItem={cellText} />), mockHost(), root as unknown as HostNode);
+	});
+	assert horizontal.includes("numColumns does not support horizontal"), horizontal;
+	const wrapper = caught((): void => {
+		render(element(<FlatList data={items(3)} columnWrapperStyle={{ gap: 4 }} renderItem={cellText} />), mockHost(), mockNode("root") as unknown as HostNode);
+	});
+	assert wrapper.includes("columnWrapperStyle not supported for single column lists"), wrapper;
+	const [columns, setColumns] = createSignal<number>(2);
+	render(element(<FlatList data={items(3)} numColumns={columns()} renderItem={cellText} />), mockHost(), mockNode("root") as unknown as HostNode);
+	const changed = caught((): void => { setColumns(3); });
+	assert changed.includes("Changing numColumns on the fly is not supported"), changed;
+}
+
+test "a measured grid row keeps its measured frame when regrouping changes the row's items" {
+	const root: MockNode = mockNode("root");
+	const all = items(7);
+	const [data, setData] = createSignal<Item[]>([all[0], all[1], all[2], all[3], all[4], all[5]]);
+	const handles: FlatListHandle[] = [];
+	const dispose = render(element(<FlatList data={data()} numColumns={2} updateCellsBatchingPeriod={0}
+		ref={(h: FlatListHandle): void => { handles.push(h); }} renderItem={cellText} />), mockHost(), root as unknown as HostNode);
+	layOut(root, 20, 90);
+	const heights: number[] = [30, 10, 50];
+	let y: number = 0;
+	let r = 0;
+	for (const k of content(root).children) {
+		if (k.tag === "" || k.children.length === 0) { continue; }
+		const e = neonEvent("layout");
+		e.y = y;
+		e.width = 10;
+		e.height = heights[r];
+		fireEventWith(k, "onLayout", e);
+		y += heights[r];
+		r += 1;
+	}
+	handles[0].scrollToIndex({ index: 2, animated: false });
+	assert scrollView(root).scrollY === 40, "measured row 2: " + scrollView(root).scrollY.toString();
+	setData([all[6], all[1], all[0], all[3], all[2], all[5]]);
+	handles[0].scrollToIndex({ index: 2, animated: false });
+	assert scrollView(root).scrollY === 40, "the row kept its frame under its new first item: " + scrollView(root).scrollY.toString();
+	dispose();
+}

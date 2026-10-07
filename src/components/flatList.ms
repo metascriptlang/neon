@@ -12,7 +12,7 @@ import { Style, mergeStyle } from "../render/style";
 import { ScrollView, ScrollViewHandle, View, KeyboardDismissMode, KeyboardShouldPersistTaps } from "./primitives";
 import { CellMetrics, CellRange, WindowScroll, computeWindowedRenderLimits, shouldRenderWithPriority } from "./list/virtualizeUtils";
 import { CellRenderMask } from "./list/cellRenderMask";
-import { CellSource, ListMetricsAggregator, ListOrientation } from "./list/listMetrics";
+import { CellSource, LayoutBox, ListMetricsAggregator, ListOrientation } from "./list/listMetrics";
 import { stickyTranslation } from "./list/sticky";
 
 export interface ListRenderItemInfo<T> {
@@ -159,6 +159,8 @@ export function FlatList<T>(props: {
 	scrollEventThrottle?: Accessor<number> | null;
 	horizontal?: Accessor<boolean> | null;
 	inverted?: Accessor<boolean> | null;
+	numColumns?: Accessor<number> | null;
+	columnWrapperStyle?: Accessor<Style> | null;
 	stickyHeaderIndices?: Accessor<int32[]> | null;
 	invertStickyHeaders?: Accessor<boolean> | null;
 	scrollEnabled?: Accessor<boolean> | null;
@@ -199,10 +201,29 @@ export function FlatList<T>(props: {
 	const slotStyle = (user: Accessor<Style> | null): Accessor<Style> => accessor((): Style => mergeStyle(inversionStyle(), user === null ? {} : (user as Accessor<Style>)()));
 
 	let items: T[] = [];
+	const columnsProp = props.numColumns;
+	const columnsNow = (): int32 => columnsProp === null ? 1 : (columnsProp as Accessor<number>)() as int32;
+	const columns: int32 = untrack(columnsNow);
+	const cellCount = (): int32 => columns > 1 ? ((items.length as int32) + columns - 1) / columns : items.length as int32;
+	if (columnsProp !== null || props.columnWrapperStyle !== null) {
+		createEffect((): void => {
+			const next = columnsNow();
+			const horizontalNow = isHorizontal();
+			untrack((): void => {
+				if (next !== columns) {
+					throw "FlatList: Changing numColumns on the fly is not supported. Mount a new FlatList when changing the number of columns.";
+				}
+				if (columns > 1 && horizontalNow) { throw "FlatList: numColumns does not support horizontal."; }
+				if (columns <= 1 && props.columnWrapperStyle !== null) {
+					throw "FlatList: columnWrapperStyle not supported for single column lists";
+				}
+			});
+		});
+	}
 	const metrics = new ListMetricsAggregator<T>();
 	const source: CellSource<T> = {
-		count: (): int32 => items.length as int32,
-		keyAt: (index: int32): T => items[index],
+		count: (): int32 => cellCount(),
+		keyAt: (index: int32): T => items[index * columns],
 		layoutAt: getItemLayout === null ? null : (index: int32): CellMetrics => {
 			const layout = (getItemLayout as (data: T[], index: number) => ItemLayout)(items, index as number);
 			return { index, length: layout.length, offset: layout.offset, isMounted: true };
@@ -215,7 +236,7 @@ export function FlatList<T>(props: {
 	const stickyFrame = (childIndex: int32): CellMetrics | null => {
 		if (childIndex === 0 && headerOffset === 1) { return (sticky as StickyState).header; }
 		const index = childIndex - headerOffset;
-		return index < 0 || index >= items.length ? null : metrics.getCellMetrics(index, source);
+		return index < 0 || index >= cellCount() ? null : metrics.getCellMetrics(index, source);
 	};
 	const stickyStyle = (index: () => int32): Accessor<Style> => accessor((): Style => {
 		const state = sticky as StickyState;
@@ -261,10 +282,11 @@ export function FlatList<T>(props: {
 	let renderedMask: CellRenderMask | null = null;
 	let itemCells = new Map<T, ListCell>();
 	let spacerCells = new Map<int32, ListCell>();
+	let gridRows = new Map<int32, ListCell>();
 	let updateTimeout: number = -1;
 	let hiPriInProgress = false;
 	const [cells, setCells] = createSignal<ListCell[]>([]);
-	const [itemCount, setItemCount] = createSignal<number>(0);
+	const [cellTotal, setCellTotal] = createSignal<number>(0);
 	let footerLength = 0.0;
 	let footerMeasured = props.ListFooterComponent === null;
 	let initialContentReady = false;
@@ -272,7 +294,7 @@ export function FlatList<T>(props: {
 		const index = initialScrollIndex();
 		if (!initialContentReady || !footerMeasured || index <= 0 || triggeredInitialScrollToIndex || handle === null) { return; }
 		triggeredInitialScrollToIndex = true;
-		if (index < items.length) {
+		if (index < cellCount()) {
 			(handle as FlatListHandle).scrollToIndex({ animated: false, index });
 		} else {
 			(handle as FlatListHandle).scrollToEnd({ animated: false });
@@ -336,37 +358,87 @@ export function FlatList<T>(props: {
 		return new ListCell((index: number): void => {}, (next: number): void => { setSize(next); }, (scheduleUpdate: () => void): NeonNode => element(<View style={{ width: isHorizontal() ? size() : null, height: isHorizontal() ? null : size(), flexShrink: 0 }} />));
 	};
 
+	const cellNode = (at: Accessor<number>, keyOf: () => T, row: NeonNode, scheduleUpdate: () => void, measured: (box: LayoutBox) => void): NeonNode => {
+		if (separator === null && getItemLayout !== null && props.inverted === null && sticky === null) { return row; }
+		const tail = separator === null ? null : Show({
+			when: accessor((): boolean => at() < cellTotal() - 1),
+			children: separator, fallback: null,
+		});
+		onCleanup((): void => { metrics.notifyCellUnmounted(keyOf()); });
+		const onCellLayout = getItemLayout !== null && sticky === null ? null : (e: NeonEvent): void => {
+			const box: LayoutBox = { x: e.x, y: e.y, width: e.width, height: e.height };
+			measured(box);
+			if (getItemLayout === null && metrics.notifyCellLayout(at() as int32, keyOf(), orientation(), box)) { scheduleUpdate(); }
+			if (sticky !== null) {
+				const state = sticky as StickyState;
+				state.layoutVersion.set(state.layoutVersion.peek() + 1);
+			}
+		};
+		const style = accessor((): Style => ({
+			...inversionStyle(),
+			display: "flex", flexShrink: 0,
+			flexDirection: isHorizontal() ? (isInverted() ? "row-reverse" : "row") : (isInverted() ? "column-reverse" : "column"),
+		}));
+		const inner = View({ style, onLayout: sticky === null ? onCellLayout : null, children: element(<>{row}{tail}</>) });
+		return sticky === null ? inner : View({ style: stickyStyle((): int32 => (at() as int32) + headerOffset), onLayout: onCellLayout, children: inner });
+	};
+
 	const itemCell = (item: T, index: number): ListCell => {
 		const [at, setAt] = createSignal<number>(index);
-		return new ListCell((next: number): void => { setAt(next); }, (size: number): void => {}, (scheduleUpdate: () => void): NeonNode => {
-			const row = renderItem({ item, index: at });
-			if (separator === null && getItemLayout !== null && props.inverted === null && sticky === null) { return row; }
-			const tail = separator === null ? null : Show({
-				when: accessor((): boolean => at() < itemCount() - 1),
-				children: separator, fallback: null,
-			});
-			onCleanup((): void => { metrics.notifyCellUnmounted(item); });
-			const onCellLayout = getItemLayout !== null && sticky === null ? null : (e: NeonEvent): void => {
-				if (getItemLayout === null && metrics.notifyCellLayout(at() as int32, item, orientation(), { x: e.x, y: e.y, width: e.width, height: e.height })) { scheduleUpdate(); }
-				if (sticky !== null) {
-					const state = sticky as StickyState;
-					state.layoutVersion.set(state.layoutVersion.peek() + 1);
-				}
-			};
-			const style = accessor((): Style => ({
-				...inversionStyle(),
-				display: "flex", flexShrink: 0,
-				flexDirection: isHorizontal() ? (isInverted() ? "row-reverse" : "row") : (isInverted() ? "column-reverse" : "column"),
-			}));
-			const inner = View({ style, onLayout: sticky === null ? onCellLayout : null, children: element(<>{row}{tail}</>) });
-			return sticky === null ? inner : View({ style: stickyStyle((): int32 => (at() as int32) + headerOffset), onLayout: onCellLayout, children: inner });
+		return new ListCell((next: number): void => { setAt(next); }, (size: number): void => {}, (scheduleUpdate: () => void): NeonNode =>
+			cellNode(at, (): T => item, renderItem({ item, index: at }), scheduleUpdate, (box: LayoutBox): void => {}));
+	};
+
+	const rowItems = (row: int32): T[] => {
+		const out: T[] = [];
+		const end = Math.min(items.length as int32, (row + 1) * columns);
+		for (let i = row * columns; i < end; i += 1) { out.push(items[i]); }
+		return out;
+	};
+
+	const gridRowCell = (row: int32): ListCell => {
+		const [at, setAt] = createSignal<number>(row as number);
+		const [members, setMembers] = createSignal<T[]>(rowItems(row));
+		let key: T = items[row * columns];
+		let measuredBox: LayoutBox | null = null;
+		const moveTo = (next: number): void => {
+			setAt(next);
+			const nextMembers = rowItems(next as int32);
+			const current: T[] = untrack<T[]>(members);
+			let same = current.length === nextMembers.length;
+			for (let i = 0; same && i < current.length; i += 1) { same = current[i] === nextMembers[i]; }
+			if (!same) { setMembers(nextMembers); }
+			if (nextMembers[0] === key) { return; }
+			key = nextMembers[0];
+			if (measuredBox !== null && getItemLayout === null) {
+				metrics.notifyCellLayout(next as int32, key, orientation(), measuredBox as LayoutBox);
+			}
+		};
+		return new ListCell(moveTo, (size: number): void => {}, (scheduleUpdate: () => void): NeonNode => {
+			const wrapper = props.columnWrapperStyle;
+			const rowStyle = accessor((): Style => mergeStyle({ display: "flex", flexDirection: "row" }, wrapper === null ? {} : (wrapper as Accessor<Style>)()));
+			const cells = regionNode((host: Host) => mapArray<T, Row>(members, (item: T, column: Accessor<number>): Row =>
+				makeRow(renderItem({ item, index: accessor((): number => at() * (columns as number) + column()) })), true));
+			return cellNode(at, (): T => key, View({ style: rowStyle, children: cells }), scheduleUpdate, (box: LayoutBox): void => { measuredBox = box; });
 		});
+	};
+
+	const checkGridItems = (row: int32, seen: Map<T, int32>): void => {
+		const end = Math.min(items.length as int32, (row + 1) * columns);
+		for (let i = row * columns; i < end; i += 1) {
+			if (seen.has(items[i])) {
+				throw `FlatList: the same item is at indices ${seen.get(items[i]) as int32} and ${i}; items are told apart by their identity`;
+			}
+			seen.set(items[i], i);
+		}
 	};
 
 	const buildCells = (mask: CellRenderMask): ListCell[] => {
 		const out: ListCell[] = [];
 		const nextItems = new Map<T, ListCell>();
+		const nextRows = new Map<int32, ListCell>();
 		const nextSpacers = new Map<int32, ListCell>();
+		const gridSeen = new Map<T, int32>();
 		if (headerCell !== null) { out.push(headerCell as ListCell); }
 		if (items.length === 0 && emptyCell !== null) { out.push(emptyCell as ListCell); }
 		const regions = mask.enumerateRegions();
@@ -388,6 +460,15 @@ export function FlatList<T>(props: {
 				continue;
 			}
 			for (let i = region.first; i <= region.last; i += 1) {
+				if (columns > 1) {
+					checkGridItems(i, gridSeen);
+					const rowCell = gridRows.has(i) ? gridRows.get(i) as ListCell : gridRowCell(i);
+					rowCell.index = i as number;
+					rowCell.setIndex(i as number);
+					nextRows.set(i, rowCell);
+					out.push(rowCell);
+					continue;
+				}
 				const item = items[i];
 				if (nextItems.has(item)) {
 					throw `FlatList: the same item is at rows ${(nextItems.get(item) as ListCell).index} and ${i}; rows are told apart by their item`;
@@ -400,6 +481,7 @@ export function FlatList<T>(props: {
 			}
 		}
 		itemCells = nextItems;
+		gridRows = nextRows;
 		spacerCells = nextSpacers;
 		if (footerCell !== null) { out.push(footerCell as ListCell); }
 		return out;
@@ -452,7 +534,7 @@ export function FlatList<T>(props: {
 	};
 
 	const updateCellsToRender = (): boolean => {
-		const n = items.length as int32;
+		const n = cellCount();
 		const previous = cellsAroundViewport;
 		cellsAroundViewport = adjustCellsAroundViewport(n);
 		const mask = renderMask(n);
@@ -467,7 +549,7 @@ export function FlatList<T>(props: {
 		const update = (): void => {
 			if (updateCellsToRender()) { scheduleCellsToRenderUpdate(true); }
 		};
-		if ((metrics.getAverageCellLength() > 0.0 || props.getItemLayout !== null) && hasRenderPriority(items.length as int32) && !hiPriInProgress) {
+		if ((metrics.getAverageCellLength() > 0.0 || props.getItemLayout !== null) && hasRenderPriority(cellCount()) && !hiPriInProgress) {
 			hiPriInProgress = true;
 			if (updateTimeout >= 0) {
 				clearTimeout(updateTimeout);
@@ -482,7 +564,7 @@ export function FlatList<T>(props: {
 		}
 		if (!rendered) { return; }
 		if (hiPri) { hiPriInProgress = false; }
-		if (props.getItemLayout !== null) { maybeCallOnEdgeReached(items.length as int32); }
+		if (props.getItemLayout !== null) { maybeCallOnEdgeReached(cellCount()); }
 	};
 
 	let seenCount: int32 = -1;
@@ -503,9 +585,9 @@ export function FlatList<T>(props: {
 		const next = data();
 		untrack((): void => {
 			items = next;
-			const n = items.length as int32;
+			const n = cellCount();
 			checkInitialScrollIndex(n);
-			setItemCount(n as number);
+			setCellTotal(n as number);
 			if (seenCount < 0) {
 				cellsAroundViewport = initialRegion(n);
 			} else if (n !== seenCount) {
@@ -534,7 +616,7 @@ export function FlatList<T>(props: {
 			batch((): void => { state.offset.set(offset); state.viewport.set(visibleLength); });
 		}
 		metrics.notifyListContentLayout(orientation(), e.contentWidth, e.contentHeight);
-		maybeCallOnEdgeReached(items.length as int32);
+		maybeCallOnEdgeReached(cellCount());
 		if (pendingScrollUpdateCount > 0) { pendingScrollUpdateCount -= 1; }
 		scheduleCellsToRenderUpdate(false);
 	};
@@ -543,7 +625,7 @@ export function FlatList<T>(props: {
 		if (sticky !== null) { (sticky as StickyState).viewport.set(visibleLength); }
 		if (userLayout !== null) { (userLayout as (e: NeonEvent) => void)(e); }
 		scheduleCellsToRenderUpdate(false);
-		maybeCallOnEdgeReached(items.length as int32);
+		maybeCallOnEdgeReached(cellCount());
 	};
 	const onContentSizeChange = (width: number, height: number): void => {
 		metrics.notifyListContentLayout(orientation(), width, height);
@@ -552,14 +634,14 @@ export function FlatList<T>(props: {
 		const changed = props.onContentSizeChange;
 		if (changed !== null) { (changed as (width: number, height: number) => void)(width, height); }
 		scheduleCellsToRenderUpdate(false);
-		maybeCallOnEdgeReached(items.length as int32);
+		maybeCallOnEdgeReached(cellCount());
 	};
 	const scrollRef = (h: ScrollViewHandle): void => {
 		handle = new FlatListHandle(
 			h,
 			(index: number): CellMetrics => metricsAt(index as int32),
 			(index: number): number => metrics.getCellOffsetApprox(index, source),
-			(): number => items.length,
+			(): number => cellCount() as number,
 			(): number => visibleLength,
 			isHorizontal,
 			(index: number): boolean => {
