@@ -529,3 +529,55 @@ float nmScrollOffsetX(int32_t tag) { return tagged(tag)->scrollX; }
 float nmScrollOffsetY(int32_t tag) { return tagged(tag)->scrollY; }
 int32_t nmScrollShifts(void) { return g_scrollShifts; }
 float nmTextHeight(const char *text) { return labelled(text)->h; }
+
+#include "../../src/platform/native/app.h"
+
+static msClosure s_app;
+static int g_appEvent;
+static char g_appValue[512];
+static int g_appResult;
+static char g_appLog[4096];
+static char g_appReplyNames[16][32];
+static char g_appReplyValues[16][128];
+static int g_appReplyCount;
+
+const char *niAppCall(const char *name, const char *arg) {
+	size_t used = strlen(g_appLog);
+	snprintf(g_appLog + used, sizeof g_appLog - used, "%s%s(%s)", used ? ";" : "", name, arg ? arg : "");
+	for (int i = 0; i < g_appReplyCount; i++) {
+		if (strcmp(g_appReplyNames[i], name) == 0) return g_appReplyValues[i];
+	}
+	return "";
+}
+
+void niSetAppHandler(msClosure handler) { s_app = handler; }
+int niLastAppEvent(void) { return g_appEvent; }
+const char *niLastAppValue(void) { return g_appValue; }
+void niSetAppEventResult(int result) { g_appResult = result; }
+
+void nmAppReply(const char *name, const char *value) {
+	for (int i = 0; i < g_appReplyCount; i++) {
+		if (strcmp(g_appReplyNames[i], name) == 0) {
+			snprintf(g_appReplyValues[i], sizeof g_appReplyValues[i], "%s", value);
+			return;
+		}
+	}
+	if (g_appReplyCount == 16) {
+		fprintf(stderr, "mock bridge: more than 16 app replies\n");
+		abort();
+	}
+	snprintf(g_appReplyNames[g_appReplyCount], sizeof g_appReplyNames[0], "%s", name);
+	snprintf(g_appReplyValues[g_appReplyCount], sizeof g_appReplyValues[0], "%s", value);
+	g_appReplyCount += 1;
+}
+
+const char *nmAppLog(void) { return g_appLog; }
+void nmAppLogClear(void) { g_appLog[0] = 0; }
+
+int32_t nmAppEvent(int32_t kind, const char *value) {
+	g_appEvent = kind;
+	snprintf(g_appValue, sizeof g_appValue, "%s", value);
+	g_appResult = 0;
+	call0(s_app);
+	return g_appResult;
+}

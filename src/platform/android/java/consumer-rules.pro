@@ -30,3 +30,7 @@
 -keep class dev.metascript.neon.Picture {
 	*;
 }
+
+-keep class dev.metascript.neon.App {
+	*;
+}

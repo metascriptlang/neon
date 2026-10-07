@@ -7,6 +7,7 @@ import { Style } from "../../render/style";
 import { NativeElementKind, createNativeEventRegistry, nativeElementKind, nativeFlexStyle, nativeTransform } from "./contract";
 import { publishWindow, publishKeyboard, publishColorScheme } from "../../render/environment";
 import { VisibleContentPosition, parseVisibleContent } from "../../render/visibleContent";
+import { installNativeAppServices } from "./appServices";
 import "../android/library";
 
 @passC("-I./");
@@ -521,6 +522,7 @@ export function createNativeHost(): NativeHost {
 	niSetControlHandler(onControl);
 	niSetEnvironmentHandler(onEnvironment);
 	publishEnvironment();
+	installNativeAppServices(batched);
 
 	const host: Host = {
 		createElement: (tag: string): HostNode => {

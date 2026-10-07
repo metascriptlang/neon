@@ -44,3 +44,7 @@ float nmTextVisualY(const char *text);
 float nmScrollOffsetX(int32_t tag);
 float nmScrollOffsetY(int32_t tag);
 int32_t nmScrollShifts(void);
+void nmAppReply(const char *name, const char *value);
+const char *nmAppLog(void);
+void nmAppLogClear(void);
+int32_t nmAppEvent(int32_t kind, const char *value);

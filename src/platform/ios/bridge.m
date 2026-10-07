@@ -856,3 +856,5 @@ void niSetTeardownHandler(msClosure handler) {
 void niSetLoopHandler(msClosure handler) {
 	s_loop = handler;
 }
+
+void niInvokeClosure(msClosure c) { call0(c); }

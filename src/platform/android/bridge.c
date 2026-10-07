@@ -704,3 +704,7 @@ void niMeasureText(void *label, float maxWidth) {
 
 float niMeasuredW(void) { return g_measuredW; }
 float niMeasuredH(void) { return g_measuredH; }
+
+JNIEnv *niAndroidEnv(void) { return env(); }
+jobject niAndroidContext(void) { return g_context; }
+void niInvokeClosure(msClosure c) { call0(c); }
