@@ -332,6 +332,25 @@ which `counter.dump` filtered out. `injectJavaScript("location.href = …")` lef
 `canGoBack` false and `goBack` inert on Android, so the example moves by `source`. Motion
 reported 83–85 % janky frames in `gfxinfo` on this emulator; not measured on a phone.
 
+Settings, gallery, controls and APIs lanes (2026-10-08, emulator `emulator-5554`, Pixel 9 Pro
+image, API 36, gesture navigation; an emulator, not the physical phone): `tests/android/settings.py`,
+`gallery.py`, `controls.py` and `apis.py` through `/private/tmp/neon-emu-run.sh` exit 0, and
+`scrollmatrix.py` and `list.py` stay green on the same tree. The first run found two `Input`/`Scroll`
+faults. Enter on a single-line input ran the submit on key-down, the submit focused the next input,
+and the key-up then reached that input, where `TextView.onKeyUp` moved focus on to the button below;
+`Input.onKeyUp` now consumes the single-line Enter release, as `ReactEditText` does. A vertical
+`ScrollView` and `HorizontalScrollView` measure their child unbounded and ignore its layout
+params, so the content frame shrank to its last child and lost the content container's far
+padding (`paddingBottom: 240` scrolled 1080 dp of content instead of 1320); `Scroll` now measures
+the content at the size the layout wrote. The remaining failures were in the drivers: a pull at the
+top of an already-top list refreshed once before the measured pull; the slider drag hit the
+"Guests" title rather than the `SeekBar` and started inside the back-gesture edge, closing the
+app; `counter.dump` lists TextViews only, so the `EditText` hint was not tappable, and it did not
+decode `&gt;`; the dialer needs more than one back; the 1.5 s "booking" spinner keeps uiautomator
+waiting for idle, so that state is a screenshot (`controls-booking.png`). On API 36 an unconsumed
+back finishes the root activity (`wm_finish_activity ... app-request`, the same for the stock
+DeskClock), so the APIs lane now expects a fresh mount in the same process after the relaunch.
+
 ## 10. Measured on a physical device
 
 ```bash
