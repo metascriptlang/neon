@@ -366,6 +366,18 @@ and restored run0. Logs `/tmp/scene2d-graphics-paint-device-{c094,middle-red}.lo
 This proves Metal submissions, not observed gradient/pattern pixels, idle scheduling,
 input, UI composition or Ion acceptance. Common GPU buffer reclamation is not asserted.
 
+Filter-family device3b60654/tree041fed10ad90328018666f2b3e31949775cd4553 extends
+`tests/device/scene2d.ms`:12 frames, retained filtered Rect under Mask plus real-font Label
+and scene camera. Blur→Glow→DropShadow→None, radius2→3/glow gain1→2 and shadow offsets
+4→8 are checked; active effects submit with live targets, glyph page positive, terminal
+scene closes and targets zero. Verified installed525c8ba4f start/end BUILD+binary SHA,
+Void d255/Metal: exit0. Replacing filter effect with one-time set gives exit1/filter
+family payload, restored source exactly/restored0. Logs/scopes
+`/tmp/neon-verified525-{filter-families,filter-family-red,filter-family-restored}.*`.
+The default assets/font.ttf still logs Unreadable; this consumer uses explicit readable
+../void/assets/font.ttf and proves positive glyph storage/metrics, not fallback success.
+No observed blur/glow/shadow pixels, input/idle/Ion claim. No normal-gate/source change.
+
 Candidate freshness: owner ended the standing r8 hold and began rebasing the compiler
 worktree onto main (peer message after this installed-only run). msc-n2s-r8 still exists
 but now reads changing rebased std/runtime: do not reuse it for new comparisons. Historical
