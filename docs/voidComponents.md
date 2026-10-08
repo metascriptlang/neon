@@ -280,6 +280,18 @@ Logs `/tmp/scene2d-device-camera-filter-installed.log` and
 `/tmp/scene2d-device-ignored-{camera,filter}-red.log`. This extends the same opt-in fixture;
 no observed pixels, Ion/window-owner integration, idle or input acceptance added.
 
+Real-font device extension at `6f3be5f` / tree
+`0a4ed894035b9e71eac54965627d9d97f7ed8560`, same installed0d83/Void d255/Metal:
+`msc run tests/device/scene2d.ms` exits0,12 frames, retained Label textAg→Neon/size14→18,
+positive glyph layout width and live glyph page, alongside Rect/camera/blur/target cleanup.
+Explicit font is `../void/assets/font.ttf`; unconfigured default assets/font.ttf still emits
+Unreadable, so no default-font support claim. Existing typed font-loading helper is the same
+ordinary API idiom as scene2dFont.test.ms; it does not rewrite the parked Texture Result JSX.
+Ignoring TextStyle's supplied font gives exit1/`lost its reactive real-font Label`; source
+restored exactly and run exits0. Logs `/tmp/scene2d-device-label-installed.log` and
+`/tmp/scene2d-device-ignored-font-red.log`. Glyph/device evidence is not observed pixel proof
+or Ion acceptance. Font atlas lifetime remains Void-owned, not a new Neon resource policy.
+
 Texture device consumer at `29e1e4b` / tree `9455241fab0c26d7e390fa8bfe1494d342b421bd`:
 `msc run tests/device/scene2dTexture.ms` rejects before emission on installed0d83 and r8:
 const successful upload Result `a` loses its `.value` proof inside the JSX reader. The original
