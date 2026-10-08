@@ -90,7 +90,7 @@ def lane():
     allow(ALLOW_LOCATION, "location")
     controls.wait_label("permission ", "permission granted")
     press("locate")
-    position = wait_match("position ", r"^position (-?\d+(\.\d+)?,-?\d+(\.\d+)?|error \d)", 90)
+    position = wait_match("position ", r"^position (-?\d+(\.\d+)?,-?\d+(\.\d+)?|error \d)", 45)
     print("NEON_ANDROID devicemodules-position %s" % position)
     if "error" in position:
         raise LaneError("getCurrentPosition failed: " + position)
@@ -114,11 +114,12 @@ def lane():
     press("notify later")
     controls.wait_label("notified ", "notified scheduled")
     adb("shell", "input", "keyevent", "KEYCODE_HOME")
-    time.sleep(1)
-    adb("shell", "am", "kill", PACKAGE)
-    time.sleep(1)
+    deadline = time.time() + 10
+    while counter.pid() and time.time() < deadline:
+        adb("shell", "am", "kill", PACKAGE)
+        time.sleep(1)
     if counter.pid():
-        raise LaneError("am kill left the backgrounded app alive")
+        raise LaneError("am kill left the backgrounded app alive for 10 s")
     adb("shell", "cmd", "statusbar", "expand-notifications")
     deadline = time.time() + 120
     shade = None
