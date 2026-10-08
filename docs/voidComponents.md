@@ -106,7 +106,7 @@ existing 3D Group tag silently switch meaning outside Scene3D.
 | 2D-03 | `src/void2d/node.ms` rect/setBackground/clearBackground/setBoxStyle; `src/void2d/boxStyle.ms` BoxStyle | Rect size/color/BoxStyle/core props mapped; Group background promotion/clear uses Void binders, style-slot release/reuse and full-Paint/matrix-row precedence CPU-tested installed; pixels pending. View style remains incomplete on current host | Rounded/per-edge/dashed borders, outer/inset shadow; reactive group↔paint promotion preserves children and handles, transparent paint emits nothing; `tests/integration/viewPaint.ms`, `src/test/coverageOracleCheck.ms` |
 | 2D-04 | `src/void2d/node.ms` sprite/setImageStyle; `src/void2d/types.ms` Tile/TextureSource; `src/void2d/imageStyle.ms` ImageStyle | Sprite Tile/retile/independent size/ImageStyle mapped; ObjectFit/payload lifecycle CPU-tested candidate. scene2dTile adds installed+r8 atlas UV/flip/offset/premultiplied snapshot and deferred borrowed Texture replacement/sibling/remount/disposal proof: two own pass, no upload/pixels. Two fresh-bounds queries fail in Void, parked at .inbox/void/2026-10-08-get-bounds-stale-before-frame.md; no manual sync workaround | Atlas regions, flipping/offsets, fit/crop, rounded/grayscale image and replaced texture; `src/test/tileCheck.ms`, `src/test/imageStyleCheck.ms` |
 | 2D-05 | `src/void2d/node.ms` anim/animFrames; `src/void2d/scene.ms` tick | Anim dynamic frames/fps blocked on missing Void binders; request .inbox/void/2026-10-08-animation-frame-and-rate-binders.md (factory/reader only, reader copy measured). Frame integration also missing; no static frozen tag | Frames advance on demand while playing; stop when not playing/unmounted; replacement policy must follow actual Void API rather than silently freeze a prop; `src/test/nodeCheck.ms` |
-| 2D-06 | `src/void2d/node.ms` graphics/clear; `src/void2d/graphics.ms` GraphicsOpKind and exported drawing operations | Graphics requires approved declarative op-data/replay mechanism; current helpers mutate a live NodeRef. Proposal only, no implementation or coverage claim | All exported shape/fill/stroke/curve operations are reachable; order is retained, reactive edits rebuild only their owned geometry and do not accumulate old operations; `src/test/graphicsCheck.ms` |
+| 2D-06 | `src/void2d/node.ms` graphics/clear; `src/void2d/graphics.ms` GraphicsOpKind and exported drawing operations | Declarative typed op-data snapshots/replay approved by the person; current helpers mutate a live NodeRef. Implementation and runtime coverage pending | All exported shape/fill/stroke/curve operations are reachable; order is retained, reactive edits rebuild only their owned geometry and do not accumulate old operations; `src/test/graphicsCheck.ms` |
 | 2D-07 | `src/void2d/graphics.ms` gradient/pattern/textured operations; `src/void2d/gradient.ms` GradientSpace | Same pending op-data decision; include existing gradients/stops/color-space/dither/patterns/textured shapes, not packed GPU records | Linear/radial gradients, Oklab alternatives, slash/checker patterns, texture changes and overlap pixels; `src/test/gradientCheck.ms`, `src/test/graphicsCheck.ms` |
 | 2D-08 | `src/void2d/node.ms` mask/scrollTo/scrollBy/setScrollBounds/scrollScope | Mask size/parenting/scrollX/scrollY/nullable scrollBounds mapped; clamp/resize/defaults/lifecycle CPU-tested on candidate; installed scene2dQuery also proves scroll-shifted hit geometry and every nested rotated/resized Mask clip before a frame. Actual clipping pixels/input dispatch remain pending. ScrollView remains UI over the host | Transformed clipping and scroll affect pixels and hit tests identically; bounds clamp, input over clipped content, nested scopes; `src/test/nodeCheck.ms`, `src/test/h2dOracleCheck.ms` |
 | 2D-09 | `src/void2d/node.ms` scaleGrid | ScaleGrid Tile/four borders/optional size mapped; reactive content, defaults/retile, parent/siblings/remount/disposal CPU-tested on candidate; nine-slice pixels/texture alpha pending | Resize preserves nine-slice edges and updates center without dropping texture alpha; `src/test/nodeCheck.ms`, `src/test/tileCheck.ms` |
@@ -193,8 +193,10 @@ Being exported for tests or low-level drawing does not imply it needs its own JS
   `voidHostOf(host)` lookup, no new VoidArea/Host contract field. Coordinate lifetime with the
   host owner; null-off-Void lookup remains integration work, not current lookup behavior.
 - Raw tree ordering is a Neon runtime gap (`BUGS.md`, `scene2dOrder.test.ms`). Prefer
-  reusing the host owner's VoidNode tree/order/disposal mechanism over a second bridge;
-  raw-kind/layout policy still requires the person's decision and the owner's land.
+  reusing the host owner's VoidNode tree/order/disposal mechanism over a second bridge.
+  The person approved this same-host direction: UI participates in Yoga; raw nodes do not
+  participate in Yoga or flowText; updates must wake a frame. Host/window ownership stays
+  with void-noderef-host; implementation and the owner's land remain pending.
   On `812a97a`, an owned Label at `(42,17;30×20)` survives Yoga-only layout unchanged,
   but full `VoidHost.layout(100,100)` changes x to 0 through `flowText`. Probe used installed
   `0d83c4867`/Void `d255ffb`, newly allocated owned rows, no borrowed wrapper or host edits.
@@ -202,7 +204,9 @@ Being exported for tests or low-level drawing does not imply it needs its own JS
   Raw-binder idle wake routing remains unmeasured; existing host onDirty wraps its own mutations.
 - Geometry helpers can remain imperative **data construction**. Graphics operations mutate a
   live node, so a callback that makes the app perform those mutations is not the finished JSX
-  surface. Decide a declarative operation input before claiming Graphics coverage.
+  surface. The person approved typed op-data snapshots/replay: preserve operation order,
+  rebuild only owned geometry on edits, and do not accumulate prior operations. No Graphics
+  coverage is claimed until implemented and exercised.
 - Material/Texture parent scope, ownership and replacement must be explicit. Keep the authored
   `<Mesh><Material><Texture><View>…</View></Texture></Material></Mesh>` path; resource handles
   remain available for intentional borrowing, not as a requirement to manually mount this path.
@@ -217,6 +221,15 @@ Being exported for tests or low-level drawing does not imply it needs its own JS
 - glTF coverage means the loader's existing subset, not Three.js's full importer. Its own refusals
   remain refusals; do not promise skins, imported animation channels, morphs or arbitrary files
   the baseline decoder does not support (`src/void3d/gltf.ms` loadGltf/loadGlb).
+  The person approved the GltfData policy: data plus GltfMaterialSetup, a stable owned wrapper
+  Group, atomic imported-subtree replacement when data changes, and terminal cleanup using
+  addGltfAssets/addGltfNodes/closeGltfAssets. Implementation and runtime coverage remain pending.
+- R3F supports the adapter/object-linking direction, not a universal single-host requirement:
+  at react-three-fiber d604b18, core/reconciler.tsx handleContainerEffects updates actual engine
+  links and utils.tsx invalidateInstance requests frames. Drei bf6f4ad web/Html.tsx uses a
+  separate ReactDOM root; core/RenderTexture.tsx uses a scene/portal/FBO and UV event mapping.
+  Same-host raw/UI is Neon's choice because both domains use Void; scene/texture roots remain
+  distinct where needed. This is reference-source evidence, not Neon runtime acceptance.
 - Material shader coverage is the scene programs/feature keys Void declares; custom shader compiler,
   registration/buffer/pass authoring is outside this goal (`src/void3d/gpu3d.ms` declares/drawnIn).
 - Native existing backend proof is required. Browser JS/WebGPU, new mobile hosts and macOS embed
