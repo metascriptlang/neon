@@ -831,8 +831,9 @@ static UIView *focusedInput(UIView *view) {
 	return _neonPersistTaps == 0 || !handled;
 }
 
-// RN RCTScrollView _shouldDisableScrollInteraction: a blocking responder inside keeps the
-// touch. The pan recognizer begins before the content view sees this move, so report it first.
+// RN RCTScrollViewComponentView touchesShouldCancelInContentView: the scroll view takes a drag
+// that starts on a UIControl too (UIKit's default keeps it), unless a blocking responder inside
+// holds the touch. The pan recognizer begins before the content view sees this move, so report it first.
 - (BOOL)touchesShouldCancelInContentView:(UIView *)view {
 	UIView *tagged = view;
 	while (tagged && tagged != self && !([tagged isKindOfClass:NeonTouchView.class] && tagged.tag != 0)) tagged = tagged.superview;
@@ -846,8 +847,7 @@ static UIView *focusedInput(UIView *view) {
 		call0(s_touch);
 	}
 	UIView *holder = g_responderView;
-	if (holder && [holder isDescendantOfView:self]) return NO;
-	return [super touchesShouldCancelInContentView:view];
+	return !(holder && [holder isDescendantOfView:self]);
 }
 
 - (void)neonDismissKeyboard:(UITapGestureRecognizer *)recognizer {

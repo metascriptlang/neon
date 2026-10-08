@@ -1058,6 +1058,11 @@ final class GalleryUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["hairline 0.333"].exists, "hairlineWidth on a 3x screen: \(label(startingWith: "hairline "))")
 
         let target = element("Slop target")
+        let slopAt = target.frame.minY
+        let field = selectable.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        field.press(forDuration: 0.05, thenDragTo: field.withOffset(CGVector(dx: 0, dy: -200)))
+        RunLoop.current.run(until: Date().addingTimeInterval(1))
+        XCTAssertLessThan(target.frame.minY, slopAt - 100, "a drag that starts on a TextInput scrolls its ScrollView, as RN's does")
         scrollTo(target)
         target.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).withOffset(CGVector(dx: -30, dy: 0)).tap()
         status("slop pressed")
