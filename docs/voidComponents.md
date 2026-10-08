@@ -237,16 +237,22 @@ Being exported for tests or low-level drawing does not imply it needs its own JS
 
 ## Blockers and acceptance ledger
 
-Current installed binary/support is c0949e9f2, not the earlier gate's0d83. On unchanged
-Neon439e3e9/Void d255ffb, `msc test tests/render/scene2dEffects.test.ms` fails7 with the
-first diagnostic `NodeFlag` not assignable to `BitSet<NodeFlag>`; no runtime case runs.
-Installed std/meta/node.ms `Node.flags` expects BitSet; element.ms metadata construction
-still supplies NodeFlag.StaticStorage. A no-Neon/no-macro typed assignment reproduces the
-same diagnostic (`msc run out/metaFlagType.ms`, exit1). This establishes an API mismatch,
-not a common compiler root cause or a Graphics regression. Logs
-`/tmp/scene2d-effects-graphics-restored.log`, `/tmp/meta-flag-type-c094.log`.
-Protected element.ms adaptation needs the person's approval. Graphics prototype is parked,
-production source restored exactly; prior full-gate results retain their0d83 scope only.
+Current installed binary/support is c0949e9f2; prior full-gate results retain their0d83 scope.
+On unchanged Neon439e3e9/Void d255ffb, Effects failed7 with `NodeFlag` not assignable to
+`BitSet<NodeFlag>`, even after restoring the Graphics prototype: not a Graphics regression.
+The flags type did not just change: std/meta/node.ms Node.flags was already BitSet at0d83
+(and migration648f5b431). Old0d83 meta/bridge.ms valueToNode accepted StaticStorage by ordinal;
+e8bf07bac changed it to set membership and3316d4e01 added parser-flag validation. Neon's
+singleton-enum writer was obsolete. Direct enum→BitSet assignment fails on r8 and c094;
+explicit incl prints `static true sem false` on both. Nim compiler/astdef.nim TNodeFlags
+likewise models a set; no language mechanism or JSX meaning changed.
+The person conditionally approved the protected-file correction after this trace.
+Fix eb12e2a/treeec9ea791a6c0b16d140319d19101ab9f9136c035 constructs the single-member set.
+On c094/Void d255, `msc test tests/render/{emit,element,scene2dEffects}.test.ms`: own62/13/2
+pass (total360/311/316); emit+element JS own62/13 pass (total123/74), macros17/apps4 pass.
+Logs `/tmp/neon-{emit,element,effects}-meta-flag*-c094.log`,
+`/tmp/neon-{macros,apps}-meta-flag-c094.log`, `/tmp/meta-flag-{type,set}-{c094,r8}.log`.
+No source land/full-current-gate or Graphics runtime acceptance follows from this fix.
 
 Compiler owners already recorded in `BUGS.md`/`VISION.md` keep the original macro/enum cases;
 `2026-10-04-string-literal-union-signal-rejects-its-function-layout.md` also owns the reduced
