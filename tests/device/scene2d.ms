@@ -5,7 +5,7 @@ import { Void } from "../../src/components/primitives";
 import { Scene2D, Rect, Label, Mask } from "../../src/components/scene2d";
 import { Scene2D as VoidScene2D, NodeRef, local, filter, textStyle, text, content, scroll } from "../../../void/src/void2d/node";
 import { prepare, drawScreen } from "../../../void/src/void2d/scene";
-import { rgba, Camera, blurFilter } from "../../../void/src/void2d/types";
+import { rgba, Camera, Filter, FilterKind, blurFilter, glowFilter, dropShadowFilter, noFilter } from "../../../void/src/void2d/types";
 import { renderTargetsAlive, textWidth } from "../../../void/src/void2d/render";
 import { FontId, addFont } from "../../../void/src/void2d/font";
 import { TextStyle, Align } from "../../../void/src/void2d/textLayout";
@@ -31,6 +31,18 @@ const masks: NodeRef[] = [];
 const [clipWidth, setClipWidth] = createSignal<float32>(96.0);
 const [scrollX, setScrollX] = createSignal<float32>(0.0);
 
+const [filterPhase, setFilterPhase] = createSignal<int32>(0);
+const [shift, setShift] = createSignal<float32>(4.0);
+
+function currentFilter(): Filter {
+	match (filterPhase()) {
+		0 => { return blurFilter(radius()); }
+		1 => { return glowFilter(rgba(0.0, 1.0, 0.0, 0.75), radius(), radius() - 1.0); }
+		2 => { return dropShadowFilter(rgba(0.0, 0.0, 1.0, 0.5), radius(), shift(), shift()); }
+		_ => { return noFilter(); }
+	}
+}
+
 function loadedFont(): FontId {
 	const loaded = addFont("../void/assets/font.ttf");
 	if (!loaded.ok) { fail("font fixture refused"); process.exit(1); }
@@ -55,7 +67,7 @@ function init(): void {
 		<Mask width={clipWidth()} height={64.0} scrollX={scrollX()}
 			scrollBounds={{ xMin: 0.0, yMin: 0.0, xMax: 200.0, yMax: 64.0 }}
 			ref={(node: NodeRef): void => { masks.push(node); }}>
-		<Rect width={32.0} height={32.0} color={rgba(1.0, 0.0, 0.0, 1.0)} filter={blurFilter(radius())}
+		<Rect width={32.0} height={32.0} color={rgba(1.0, 0.0, 0.0, 1.0)} filter={currentFilter()}
 			local={{ x: x(), y: 20.0, scaleX: 1.0, scaleY: 1.0,
 				rotation: 0.0, pivotX: 0.0, pivotY: 0.0 }}
 			ref={(node: NodeRef): void => { nodes.push(node); }} />
@@ -73,6 +85,8 @@ function fail(message: string): void {
 function frame(): void {
 	const scene = subject;
 	if (scene === null) { fail("consumer did not mount"); return; }
+	if (frames > 0 && frames % 3 === 0) { setFilterPhase(frames / 3); }
+	if (frames === 8) { setShift(8.0); }
 	if (frames === 5) {
 		setX(80.0); setPan(4.0); setRadius(3.0); setText("Neon"); setSize(18.0);
 		setClipWidth(128.0); setScrollX(24.0);
@@ -81,8 +95,17 @@ function frame(): void {
 		fail("consumer lost its reactive Rect"); return;
 	}
 	if (scene.cam.x !== (frames < 5 ? 0.0 : 4.0) ||
-		nodes[0].filter().radius !== (frames < 5 ? 2.0 : 3.0)) {
+		nodes[0].filter().radius !== (frames >= 9 ? 0.0 : (frames < 5 ? 2.0 : 3.0))) {
 		fail("consumer lost its reactive camera or filter"); return;
+	}
+	const active = nodes[0].filter();
+	const expected = frames < 3 ? FilterKind.Blur : (frames < 6 ? FilterKind.Glow :
+		(frames < 9 ? FilterKind.DropShadow : FilterKind.None));
+	if (active.kind !== expected || (frames >= 3 && frames < 6 &&
+		(active.gain !== (frames < 5 ? 1.0 : 2.0) || active.color.g !== 1.0)) ||
+		(frames >= 6 && frames < 9 &&
+		(active.offsetX !== (frames < 8 ? 4.0 : 8.0) || active.offsetY !== active.offsetX || active.color.b !== 1.0))) {
+		fail("consumer lost its filter family/payload"); return;
 	}
 	if (labels.length !== 1 || labels[0].text() !== (frames < 5 ? "Ag" : "Neon") ||
 		labels[0].textStyle().size !== (frames < 5 ? 14.0 : 18.0) ||
@@ -97,7 +120,7 @@ function frame(): void {
 	scene.prepare((fbWidth() as float32) / dpi, (fbHeight() as float32) / dpi, dpi);
 	beginScreenPass({ x: 0.0, y: 0.0, z: 0.2, w: 1.0 });
 	scene.drawScreen(); endPass(); commit();
-	if (drawCallCount() < 1 || renderTargetsAlive() < 1 || glyphPageCount() < 1) {
+	if (drawCallCount() < 1 || (frames < 9 && renderTargetsAlive() < 1) || glyphPageCount() < 1) {
 		fail("filtered Rect did not submit a draw with a live target"); return;
 	}
 	frames++;
@@ -107,7 +130,7 @@ function frame(): void {
 		if (!scene.closed || renderTargetsAlive() !== 0) {
 			fail("consumer did not close its scene and filter targets"); return;
 		}
-		console.log("PASS Scene2D device: 12 frames, reactive Rect/camera/blur/Label/Mask, closed targets");
+		console.log("PASS Scene2D device: 12 frames, reactive Rect/camera/Blur/Glow/DropShadow/None/Label/Mask, closed targets");
 		process.exit(0);
 	}
 }
