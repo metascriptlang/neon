@@ -1,12 +1,21 @@
 import XCTest
 
+#if targetEnvironment(simulator)
+let onSimulator = true
+#else
+let onSimulator = false
+#endif
+
 @MainActor
 final class CounterUITests: XCTestCase {
     private let app = XCUIApplication(bundleIdentifier: "dev.neon.NeonCounter")
 
-    // iPhone 17 Pro safe areas, the device tests/ios/run.sh creates.
-    private let portraitSafe = CGRect(x: 0, y: 62, width: 402, height: 778)
-    private let landscapeSafe = CGRect(x: 62, y: 0, width: 750, height: 382)
+    // Portrait window size -> (portrait, landscape) safe areas: the iPhone 17 Pro simulator
+    // tests/ios/run.sh creates, and the physical iPhone 13 Pro.
+    private let safeAreas: [CGSize: (CGRect, CGRect)] = [
+        CGSize(width: 402, height: 874): (CGRect(x: 0, y: 62, width: 402, height: 778), CGRect(x: 62, y: 0, width: 750, height: 382)),
+        CGSize(width: 390, height: 844): (CGRect(x: 0, y: 47, width: 390, height: 763), CGRect(x: 47, y: 0, width: 750, height: 369)),
+    ]
 
     override func setUp() {
         continueAfterFailure = false
@@ -36,8 +45,12 @@ final class CounterUITests: XCTestCase {
     private func check(_ name: String, value: String, parity: String) {
         let window = app.windows.firstMatch.frame
         let landscape = window.width > window.height
-        XCTAssertEqual(window.size, landscape ? CGSize(width: 874, height: 402) : CGSize(width: 402, height: 874))
-        let safe = landscape ? landscapeSafe : portraitSafe
+        let portrait = landscape ? CGSize(width: window.height, height: window.width) : window.size
+        guard let areas = safeAreas[portrait] else {
+            XCTFail("no safe areas recorded for a \(portrait) window; add this device to safeAreas")
+            return
+        }
+        let safe = landscape ? areas.1 : areas.0
         let texts = ["Neon Counter", value, parity].map { app.staticTexts[$0] }
         let pressables = ["-", "reset", "+"].map { element($0) }
         for text in texts {
@@ -859,7 +872,9 @@ final class ApisUITests: XCTestCase {
         RunLoop.current.run(until: Date().addingTimeInterval(2))
         app.activate()
         XCTAssertTrue(app.wait(for: .runningForeground, timeout: 10))
-        waitLabel("state ", containing: String(before.dropFirst("state ".count)) + ">inactive>background>active")
+        // A phone's tel: prompt can leave the app inactive when `before` is read; the simulator has none.
+        let seen = String(before.dropFirst("state ".count))
+        waitLabel("state ", containing: seen + (seen.hasSuffix(">inactive") ? "" : ">inactive") + ">background>active")
         report("appstate")
 
         tap("settings")
@@ -1316,7 +1331,10 @@ final class ControlsUITests: XCTestCase {
     }
 
     private func report(_ name: String) {
-        let texts = app.staticTexts.allElementsBoundByIndex.prefix(24).map { $0.label }.joined(separator: " | ")
+        func labels(_ node: XCUIElementSnapshot) -> [String] {
+            (node.elementType == .staticText ? [node.label] : []) + node.children.flatMap { labels($0) }
+        }
+        let texts = ((try? app.snapshot()).map { labels($0) } ?? []).prefix(24).joined(separator: " | ")
         print("NEON_IOS controls-\(name) \(texts)")
         let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         shot.name = "controls-\(name)"
@@ -1776,7 +1794,7 @@ final class DeviceUITests: XCTestCase {
         waitLabel("stored ", containing: "stored none")
         waitLabel("network ", containing: "connected yes reachable yes")
         waitLabel("permission ", containing: "permission undetermined")
-        waitLabel("device ", containing: "device iPhone iOS \(UIDevice.current.systemVersion) emulator yes")
+        waitLabel("device ", containing: "device iPhone iOS \(UIDevice.current.systemVersion) emulator \(onSimulator ? "yes" : "no")")
         waitLabel("app ", containing: "app dev.neon.NeonDevice 1.0 (1)")
         waitLabel("locale ", containing: "locale ")
         report("initial")
@@ -1799,7 +1817,15 @@ final class DeviceUITests: XCTestCase {
         allow(["Allow While Using App", "Allow Once", "Allow"])
         waitLabel("permission ", containing: "permission granted")
         tap("locate")
-        waitLabel("position ", containing: "position 10.7769,106.7009", timeout: 30)
+        if onSimulator {
+            waitLabel("position ", containing: "position 10.7769,106.7009", timeout: 30)
+        } else {
+            let fix = NSPredicate { [self] _, _ in
+                label(startingWith: "position ").range(of: #"^position -?\d+\.\d+,-?\d+\.\d+$"#, options: .regularExpression) != nil
+            }
+            XCTAssertEqual(XCTWaiter.wait(for: [expectation(for: fix, evaluatedWith: app)], timeout: 30), .completed,
+                "a phone reports a real fix: \(label(startingWith: "position "))")
+        }
         report("located")
         tap("watch location")
         let watched = NSPredicate { [self] _, _ in
@@ -2101,10 +2127,18 @@ final class CaptureUITests: XCTestCase {
         tap("camera")
         tap("open camera")
         answer(["Allow", "OK"], "camera-allow")
-        waitStatus("status camera error No camera is available on this device", "the simulator has no camera to preview")
-        report("camera-unavailable")
-        tap("take picture")
-        waitStatus("status picture error CameraView.takePictureAsync: the camera is not running", "no picture without a running camera")
+        if onSimulator {
+            waitStatus("status camera error No camera is available on this device", "the simulator has no camera to preview")
+            report("camera-unavailable")
+            tap("take picture")
+            waitStatus("status picture error CameraView.takePictureAsync: the camera is not running", "no picture without a running camera")
+        } else {
+            waitStatus("status camera ready back", "the back camera previews on a phone")
+            report("camera-ready")
+            tap("take picture")
+            waitStatus("status picture ", "the running camera takes a picture", timeout: 30)
+            report("camera-picture")
+        }
         tap("photos")
         tap("system camera")
         let refused = NSPredicate { [self] _, _ in status().hasPrefix("status camera error ImagePicker.launchCameraAsync: the camera is not available") }
