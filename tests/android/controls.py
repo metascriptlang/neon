@@ -1,3 +1,4 @@
+import html
 import os
 import re
 import subprocess
@@ -13,11 +14,18 @@ PACKAGE = "dev.neon.NeonControls"
 
 
 def nodes():
-    adb("shell", "uiautomator", "dump", "/sdcard/neon-lane.xml")
+    for attempt in range(3):
+        try:
+            adb("shell", "uiautomator", "dump", "/sdcard/neon-lane.xml")
+            break
+        except LaneError:
+            if attempt == 2:
+                raise
+            time.sleep(1)
     xml = adb("shell", "cat", "/sdcard/neon-lane.xml")
     found = []
     for node in re.findall(r"<node [^>]*>", xml):
-        attrs = dict(re.findall(r'([a-z-]+)="([^"]*)"', node))
+        attrs = {k: html.unescape(d or q) for k, d, q in re.findall(r"""([a-z-]+)=(?:"([^"]*)"|'([^']*)')""", node)}
         found.append(attrs)
     return found
 
