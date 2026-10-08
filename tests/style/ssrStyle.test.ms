@@ -45,6 +45,12 @@ test "an inline style literal serializes into the style attribute" {
 	assert renderToString(<p style={s}></p>) === "<p style=\"width:50%;opacity:0.5;color:#fff;\"></p>", "a string dimension passes through, a ratio takes no unit";
 }
 
+test "quoted inline CSS stays inside its HTML attribute" {
+	const font = styleOf({ fontFamily: "\"A&B\"" });
+	assert renderToString(<p style={font}></p>) ===
+		"<p style=\"font-family:&quot;A&amp;B&quot;;\"></p>";
+}
+
 test "a reactive whole-style thunk serializes its value at render time" {
 	const [w, setW] = createSignal(10);
 	const n: NeonNode = <div style={styleOf({ width: w() })}></div>;

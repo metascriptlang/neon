@@ -17,8 +17,16 @@ function ssrHost(): Host {
 
 const SSR_HOST: Host = ssrHost();
 
+function escapeText(value: string): string {
+	return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+}
+
+function escapeAttribute(value: string): string {
+	return escapeText(value).replaceAll("\"", "&quot;").replaceAll("'", "&#39;");
+}
+
 function serializeNode(n: MockNode): string {
-	if (n.tag === "") { return n.text; }
+	if (n.tag === "") { return escapeText(n.text); }
 	const tag = htmlTagFor(n.tag);
 	let cls = n.className;
 	let open = "<" + tag;
@@ -26,13 +34,13 @@ function serializeNode(n: MockNode): string {
 		if (a.value === null || a.name === "accessible") { continue; }
 		let v = a.value as string;
 		if (a.name === "class" && cls !== "") { v = v === "" ? cls : v + " " + cls; cls = ""; }
-		open = open + " " + a.name + "=\"" + v + "\"";
+		open = open + " " + a.name + "=\"" + escapeAttribute(v) + "\"";
 	}
-	if (cls !== "") { open = open + " class=\"" + cls + "\""; }
+	if (cls !== "") { open = open + " class=\"" + escapeAttribute(cls) + "\""; }
 	const st = n.style;
 	if (st !== null) {
 		const inline = styleToCss(st as Style);
-		if (inline !== "") { open = open + " style=\"" + inline + "\""; }
+		if (inline !== "") { open = open + " style=\"" + escapeAttribute(inline) + "\""; }
 	}
 	return open + ">" + serializeChildren(n) + "</" + tag + ">";
 }

@@ -4,6 +4,13 @@ import { Row, makeRow } from "../../src/render/reconcile";
 
 function maybeClass(): string | null { return null; }
 
+test "renderToString escapes text and quoted attributes" {
+	const node = el("div", [attr("title", "\"' & < >")], [], text("<img src=x> &amp; café"));
+	const expected = "<div title=\"&quot;&#39; &amp; &lt; &gt;\">" +
+		"&lt;img src=x&gt; &amp;amp; café</div>";
+	assert renderToString(node) === expected, renderToString(node);
+}
+
 test "renderToString serializes a static tree" {
 	const v: NeonNode = <div><p>hi</p></div>;
 	assert renderToString(v) === "<div><p>hi</p></div>", "static serialize";
