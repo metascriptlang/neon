@@ -68,7 +68,8 @@ def lane():
     controls.wait_label("permission ", "permission undetermined")
     model = adb("shell", "getprop", "ro.product.model").strip()
     release = adb("shell", "getprop", "ro.build.version.release").strip()
-    controls.wait_label("device ", "device %s Android %s emulator no" % (model, release))
+    emulated = "yes" if adb("shell", "getprop", "ro.kernel.qemu").strip() == "1" else "no"
+    controls.wait_label("device ", "device %s Android %s emulator %s" % (model, release, emulated))
     controls.wait_label("app ", "app " + PACKAGE + " ")
     shot("initial")
 
