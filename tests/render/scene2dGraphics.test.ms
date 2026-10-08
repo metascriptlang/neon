@@ -5,8 +5,12 @@ import { HostNode, mockNode, mockHost, render } from "../../src/render/host";
 import { Void } from "../../src/components/primitives";
 import { Scene2D, Graphics } from "../../src/components/scene2d";
 import { GraphicsOp } from "../../src/render/graphics";
-import { NodeRef, GraphicsMesh, Scene2D as VoidScene2D, isLive } from "../../../void/src/void2d/node";
+import { NodeRef, GraphicsMesh, Scene2D as VoidScene2D, isLive, graphics, dispose } from "../../../void/src/void2d/node";
 import { Vec2, vec2, rgba } from "../../../void/src/void2d/types";
+import {
+	fillTriangle, fillConvex, fillCircle, fillEllipse, fillPie, fillRing,
+	fillRoundedRect, strokeLine, strokePoly, strokeRect, quadBezier, cubicBezier,
+} from "../../../void/src/void2d/graphics";
 
 function geometry(node: NodeRef): GraphicsMesh {
 	return node.scene.meshes[node.scene.payloads[node.id.index]];
@@ -81,4 +85,67 @@ test "Graphics remount owns fresh geometry and rejects missing Scene2D scope" {
 		cleanup();
 	} catch (error) { message = error.message; }
 	assert message === "Graphics: mount inside Scene2D within Void";
+}
+
+test "Graphics solid shapes and curve helpers match direct Void geometry after each edit" {
+	const nodes: NodeRef[] = [];
+	const color = rgba(0.2, 0.4, 0.6, 0.8);
+	const a = vec2(0.0, 0.0);
+	const b = vec2(10.0, 0.0);
+	const c = vec2(0.0, 10.0);
+	const points: Vec2[] = [a, b, c];
+	const curve = quadBezier(a, c, b, 8);
+	const cubic = cubicBezier(a, c, vec2(8.0, 9.0), b, 7);
+	const operations: GraphicsOp[] = [
+		{ kind: "fillTriangle", a: a, b: b, c: c, color: color },
+		{ kind: "fillConvex", points: points, color: color },
+		{ kind: "strokeLine", a: a, b: b, width: 3.0, color: color },
+		{ kind: "strokePoly", points: curve, width: 2.0, closed: false, color: color },
+		{ kind: "strokePoly", points: cubic, width: 4.0, closed: true, color: color },
+		{ kind: "strokeRect", x: 1.0, y: 2.0, w: 8.0, h: 6.0,
+			width: 2.0, color: color },
+		{ kind: "fillCircle", cx: 2.0, cy: 3.0, r: 5.0, color: color },
+		{ kind: "fillEllipse", cx: 2.0, cy: 3.0, rx: 5.0, ry: 7.0, color: color },
+		{ kind: "fillRoundedRect", x: 1.0, y: 2.0, w: 8.0, h: 6.0,
+			radius: 9.0, color: color },
+		{ kind: "fillPie", cx: 2.0, cy: 3.0, r: 5.0,
+			angleStart: 0.5, angleLength: 2.0, color: color },
+		{ kind: "fillRing", cx: 2.0, cy: 3.0, outerR: 6.0, innerR: 3.0,
+			angleStart: 0.5, angleLength: 2.0, color: color },
+	];
+	const controls: ((node: NodeRef) => NodeRef)[] = [
+		(node: NodeRef): NodeRef => node.fillTriangle(a, b, c, color),
+		(node: NodeRef): NodeRef => node.fillConvex(points, color),
+		(node: NodeRef): NodeRef => node.strokeLine(a, b, 3.0, color),
+		(node: NodeRef): NodeRef => node.strokePoly(curve, 2.0, color, false),
+		(node: NodeRef): NodeRef => node.strokePoly(cubic, 4.0, color, true),
+		(node: NodeRef): NodeRef => node.strokeRect(1.0, 2.0, 8.0, 6.0, 2.0, color),
+		(node: NodeRef): NodeRef => node.fillCircle(2.0, 3.0, 5.0, color),
+		(node: NodeRef): NodeRef => node.fillEllipse(2.0, 3.0, 5.0, 7.0, color),
+		(node: NodeRef): NodeRef => node.fillRoundedRect(1.0, 2.0, 8.0, 6.0, 9.0, color),
+		(node: NodeRef): NodeRef => node.fillPie(2.0, 3.0, 5.0, 0.5, 2.0, color),
+		(node: NodeRef): NodeRef => node.fillRing(2.0, 3.0, 6.0, 3.0, 0.5, 2.0, color),
+	];
+	const [value, setValue] = createSignal<GraphicsOp[]>([]);
+	const root = mockNode("root");
+	const cleanup = render(element(<Void><Scene2D>
+		<Graphics operations={value()} ref={(node: NodeRef): void => { nodes.push(node); }} />
+	</Scene2D></Void>), mockHost(), root as unknown as HostNode);
+	try {
+		const id = nodes[0].id;
+		for (let i: int32 = 0; i < operations.length; i++) {
+			setValue([operations[i]]);
+			const control = nodes[0].scene.graphics();
+			try {
+				controls[i](control);
+				const actual = geometry(nodes[0]);
+				const expected = geometry(control);
+				assert actual.mesh.length === expected.mesh.length && actual.mesh.length > 0;
+				for (let j: int32 = 0; j < actual.mesh.length; j++) {
+					assert actual.mesh[j] === expected.mesh[j];
+				}
+				assert nodes[0].id === id && nodes.length === 1;
+			} finally { control.dispose(); }
+		}
+	} finally { cleanup(); }
 }
