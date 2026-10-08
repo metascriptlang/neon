@@ -292,6 +292,15 @@ restored exactly and run exits0. Logs `/tmp/scene2d-device-label-installed.log` 
 `/tmp/scene2d-device-ignored-font-red.log`. Glyph/device evidence is not observed pixel proof
 or Ion acceptance. Font atlas lifetime remains Void-owned, not a new Neon resource policy.
 
+Mask device extension at `8b3342d` / tree `0322c11781d7b5c0365421783b608a973ffd26c5`:
+`msc run tests/device/scene2d.ms`, same installed0d83/Void d255/Metal, exit0/12 frames.
+Rect and Label now mount under one retained Mask; width96→128 and scrollX0→24 bind before
+prepare, with existing camera/blur/glyph submission and terminal filter-target cleanup.
+Ignoring scrollTo gives exit1/`lost its reactive Mask size or scroll`; restored source diff
+empty and restored run0. Logs `/tmp/scene2d-device-mask-installed.log` and
+`/tmp/scene2d-device-ignored-scroll-red.log`. No manual bounds sync, source host edit or new
+clip mechanism. Submission checks do not establish pixel clipping, picking or Ion acceptance.
+
 Texture device consumer at `29e1e4b` / tree `9455241fab0c26d7e390fa8bfe1494d342b421bd`:
 `msc run tests/device/scene2dTexture.ms` rejects before emission on installed0d83 and r8:
 const successful upload Result `a` loses its `.value` proof inside the JSX reader. The original
