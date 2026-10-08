@@ -106,7 +106,7 @@ existing 3D Group tag silently switch meaning outside Scene3D.
 | 2D-03 | `src/void2d/node.ms` rect/setBackground/clearBackground/setBoxStyle; `src/void2d/boxStyle.ms` BoxStyle | Rect size/color/BoxStyle/core props mapped; Group background promotion/clear uses Void binders, style-slot release/reuse and full-Paint/matrix-row precedence CPU-tested installed; pixels pending. View style remains incomplete on current host | Rounded/per-edge/dashed borders, outer/inset shadow; reactive group↔paint promotion preserves children and handles, transparent paint emits nothing; `tests/integration/viewPaint.ms`, `src/test/coverageOracleCheck.ms` |
 | 2D-04 | `src/void2d/node.ms` sprite/setImageStyle; `src/void2d/types.ms` Tile/TextureSource; `src/void2d/imageStyle.ms` ImageStyle | Sprite Tile/retile/independent size/ImageStyle mapped; ObjectFit/payload lifecycle CPU-tested candidate. scene2dTile adds installed+r8 atlas UV/flip/offset/premultiplied snapshot and deferred borrowed Texture replacement/sibling/remount/disposal proof: two own pass, no upload/pixels. Two fresh-bounds queries fail in Void, parked at .inbox/void/2026-10-08-get-bounds-stale-before-frame.md; no manual sync workaround | Atlas regions, flipping/offsets, fit/crop, rounded/grayscale image and replaced texture; `src/test/tileCheck.ms`, `src/test/imageStyleCheck.ms` |
 | 2D-05 | `src/void2d/node.ms` anim/animFrames; `src/void2d/scene.ms` tick | Anim dynamic frames/fps blocked on missing Void binders; request .inbox/void/2026-10-08-animation-frame-and-rate-binders.md (factory/reader only, reader copy measured). Frame integration also missing; no static frozen tag | Frames advance on demand while playing; stop when not playing/unmounted; replacement policy must follow actual Void API rather than silently freeze a prop; `src/test/nodeCheck.ms` |
-| 2D-06 | `src/void2d/node.ms` graphics/clear; `src/void2d/graphics.ms` GraphicsOpKind and exported drawing operations | Graphics component plus typed op data in src/render/graphics.ms; first installed CPU slice covers fillRect/fillPolygon replay. Remaining operations and rendered coverage pending | All exported shape/fill/stroke/curve operations are reachable; order is retained, reactive edits rebuild only their owned geometry and do not accumulate old operations; `src/test/graphicsCheck.ms` |
+| 2D-06 | `src/void2d/node.ms` graphics/clear; `src/void2d/graphics.ms` GraphicsOpKind and exported drawing operations | Graphics component plus typed op data in src/render/graphics.ms; installed CPU replay covers twelve solid fill/stroke operations and curve-helper points; isolated Metal submission exercises triangle→rect replacement. Gradients/patterns/textures and pixel coverage pending | All exported shape/fill/stroke/curve operations are reachable; order is retained, reactive edits rebuild only their owned geometry and do not accumulate old operations; `src/test/graphicsCheck.ms` |
 | 2D-07 | `src/void2d/graphics.ms` gradient/pattern/textured operations; `src/void2d/gradient.ms` GradientSpace | Same pending op-data decision; include existing gradients/stops/color-space/dither/patterns/textured shapes, not packed GPU records | Linear/radial gradients, Oklab alternatives, slash/checker patterns, texture changes and overlap pixels; `src/test/gradientCheck.ms`, `src/test/graphicsCheck.ms` |
 | 2D-08 | `src/void2d/node.ms` mask/scrollTo/scrollBy/setScrollBounds/scrollScope | Mask size/parenting/scrollX/scrollY/nullable scrollBounds mapped; clamp/resize/defaults/lifecycle CPU-tested on candidate; installed scene2dQuery also proves scroll-shifted hit geometry and every nested rotated/resized Mask clip before a frame. Actual clipping pixels/input dispatch remain pending. ScrollView remains UI over the host | Transformed clipping and scroll affect pixels and hit tests identically; bounds clamp, input over clipped content, nested scopes; `src/test/nodeCheck.ms`, `src/test/h2dOracleCheck.ms` |
 | 2D-09 | `src/void2d/node.ms` scaleGrid | ScaleGrid Tile/four borders/optional size mapped; reactive content, defaults/retile, parent/siblings/remount/disposal CPU-tested on candidate; nine-slice pixels/texture alpha pending | Resize preserves nine-slice edges and updates center without dropping texture alpha; `src/test/nodeCheck.ms`, `src/test/tileCheck.ms` |
@@ -267,6 +267,21 @@ finished, Font317/0. Logs `/tmp/scene2d*-graphics-import-c094.log`,
 `/tmp/scene2d-graphics-no-clear-red.log`, `/tmp/neon-graphics-importers-c094.log`.
 The normal native gate includes this new file; JS skip follows the existing Void-only lane.
 Remaining baseline operations must be added before claiming Graphics coverage.
+
+Solid expansion3e2df0c/treeb9d89014e26099bd4e966e4eddd65265a3c8f477: installed c094/Void d255,
+`msc test tests/render/scene2dGraphics.test.ms` own3/317 total pass. Each additional solid
+operation matches direct Void vertex output after a reactive edit; quadBezier/cubicBezier
+stay data helpers feeding points. Deliberately adding1 to stroke width gives1 failure
+(316/1), restored317/0. Logs `/tmp/scene2d-graphics-solid-c094.log`,
+`/tmp/scene2d-graphics-width-red.log`. No gradient/pattern/texture claim.
+Isolated opt-in Metal consumer e365e5b/tree9bed14eab72c259e453ef5540fbef51951b99efc:
+`msc run tests/device/scene2dGraphics.ms`, c094/Void d255, exit0/12 frames. One retained
+Graphics changes triangle3 vertices/x20 to roundedRect(radius0)6 vertices/x80; prepare
+rebuilds mesh, each frame submits exactly one draw with live vertex-buffer storage and
+terminal scene close. Offset roundedRect x by1 gives exit1/geometry replacement, source
+restored exactly and restored run0. Logs `/tmp/scene2d-graphics-device-c094.log`,
+`/tmp/scene2d-graphics-device-shift-red.log`. This isolates Graphics submission, not observed
+pixels or GPU-buffer terminal reclamation. No Ion/input/idle/whole-row acceptance.
 
 Compiler owners already recorded in `BUGS.md`/`VISION.md` keep the original macro/enum cases;
 `2026-10-04-string-literal-union-signal-rejects-its-function-layout.md` also owns the reduced
