@@ -17,9 +17,13 @@ import {
 import {
 	Scene3D as VoidScene3D, NodeId3D, Transform3D, LightKind, LightInstance,
 	addGroup, addLightNode, addMeshNode, setLocal, setLightPower, setMeshOf,
-	remove, closeScene, addCameraNode, setCameraOf, setActiveCamera,
+	remove, insertBefore, closeScene, addCameraNode, setCameraOf, setActiveCamera,
 	setVisible, setPickable, setName, setAmbient,
 } from "../../../void/src/void3d/scene";
+import { GltfData } from "../../../void/src/void3d/gltf";
+import {
+	GltfMaterialSetup, addGltfAssets, addGltfNodes, closeGltfAssets,
+} from "../../../void/src/void3d/gltfScene";
 import {
 	Camera3D as VoidCamera3D, CameraProjection, ProjectionKind,
 } from "../../../void/src/void3d/camera";
@@ -80,6 +84,11 @@ interface MeshProps extends NodeProps {
 	geometry?: Accessor<MeshData> | null;
 	mesh?: Accessor<MeshId> | null;
 	material?: Accessor<MaterialId> | null;
+}
+
+interface GltfProps extends NodeProps {
+	data: Accessor<GltfData>;
+	setup: Accessor<GltfMaterialSetup>;
 }
 
 interface Camera3DProps {
@@ -238,6 +247,51 @@ export function Group(props: NodeProps): NeonNode {
 			ownNode(scene, node);
 			bindNode(scene, node, props, local);
 			mountNodeChildren(scope, node, props, host, parent, before);
+		});
+	};
+}
+
+function instantiateGltf(
+	scene: VoidScene3D, parent: NodeId3D, data: GltfData, setup: GltfMaterialSetup,
+): NodeId3D {
+	const added = addGltfAssets(scene.context, data, setup);
+	if (!added.ok) {
+		throw new Error("Gltf: addGltfAssets failed: " + added.error.toString());
+	}
+	const assets = added.value;
+	const staging = addGroup(scene, parent, Transform3D.identity());
+	try {
+		const mounted = addGltfNodes(scene, staging, data, assets.bindings);
+		if (!mounted.ok) {
+			throw new Error("Gltf: addGltfNodes failed: " + mounted.error.toString());
+		}
+		return staging;
+	} catch (error) {
+		const removed = remove(scene, staging);
+		throw error;
+	} finally { closeGltfAssets(assets); }
+}
+
+export function Gltf(props: GltfProps): NeonNode {
+	return (host: Host, parent: HostNode, before: HostNode | null): void => {
+		const scope = requireScene("Gltf");
+		mountOwned((): void => {
+			const scene = scope.state.handle.scene;
+			const local = localOf(props);
+			const wrapper = addGroup(scene, scope.parent, local);
+			ownNode(scene, wrapper);
+			bindNode(scene, wrapper, props, local);
+			let imported: NodeId3D | null = null;
+			createEffect((): void => {
+				const next = instantiateGltf(scene, wrapper, props.data(), props.setup());
+				const previous = imported;
+				if (previous !== null) {
+					insertBefore(scene, wrapper, next, previous);
+					const removed = remove(scene, previous);
+				}
+				imported = next;
+			});
+			mountNodeChildren(scope, wrapper, props, host, parent, before);
 		});
 	};
 }
