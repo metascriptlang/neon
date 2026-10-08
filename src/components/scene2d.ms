@@ -57,6 +57,8 @@ import { TextStyle, TextRun, Truncate } from "../../../void/src/void2d/textLayou
 import { Mat4 } from "../../../void/src/math/math3d";
 import { BoxStyle } from "../../../void/src/void2d/boxStyle";
 import { ImageStyle } from "../../../void/src/void2d/imageStyle";
+import { graphics } from "../../../void/src/void2d/node";
+import { GraphicsOp, replayGraphics } from "../render/graphics";
 
 interface Scene2DProps {
 	clear?: Accessor<Color> | null;
@@ -77,6 +79,10 @@ interface NodeProps {
 	filter?: Accessor<Filter> | null;
 	ref?: ((node: NodeRef) => void) | null;
 	children?: NeonNode | null;
+}
+
+interface GraphicsProps extends NodeProps {
+	operations: Accessor<GraphicsOp[]>;
 }
 
 interface GroupProps extends NodeProps {
@@ -424,6 +430,14 @@ export function Selection(props: SelectionProps): NeonNode {
 			createEffect((): void => { node.setColor(props.color()); });
 		}
 	});
+}
+
+export function Graphics(props: GraphicsProps): NeonNode {
+	return renderNode("Graphics", props,
+		(scene: VoidScene2D): NodeRef => scene.graphics(),
+		(node: NodeRef): void => {
+			createEffect((): void => { replayGraphics(node, props.operations()); });
+		});
 }
 
 export function Mask(props: MaskProps): NeonNode {
