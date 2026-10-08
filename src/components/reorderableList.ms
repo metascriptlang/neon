@@ -254,6 +254,7 @@ export function ReorderableFlatList<T>(props: {
 		ListFooterComponent: props.ListFooterComponent,
 		style: props.style,
 		contentContainerStyle: props.contentContainerStyle,
+		scrollEnabled: accessor((): boolean => activeIndex() < 0),
 		onScroll: (e: NeonEvent): void => {
 			offset = e.y;
 			viewport = e.height;

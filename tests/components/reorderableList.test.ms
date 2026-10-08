@@ -68,6 +68,15 @@ function order(root: MockNode): string {
 	return titles.join(",");
 }
 
+function scrollEnabledOf(n: MockNode): string {
+	for (const a of n.attrs) { if (a.name === "scrollEnabled") { return a.value ?? "null"; } }
+	for (const c of n.children) {
+		const found = scrollEnabledOf(c);
+		if (found !== "") { return found; }
+	}
+	return "";
+}
+
 test "the midpoint rule picks the slot the dragged row's centre has crossed" {
 	const h: number[] = [50, 50, 50, 50];
 	assert reorderTarget(h, 1, 20) === 1, "20 px stays";
@@ -101,8 +110,10 @@ test "a long-press drag moves a row down, opens the gap, and reorders with the r
 		fireEventWith(rowOf(root, "song " + i.toString()), "onLayout", e);
 	}
 	const target = rowOf(root, "song 1");
+	assert scrollEnabledOf(root) === "true", "the list scrolls before a drag: " + scrollEnabledOf(root);
 	fireTouch(target.children[0], "onTouchStart", 10, 75, 1);
 	drags[1]();
+	assert scrollEnabledOf(root) === "false", "drag() stops the list scrolling before the first move, so a native scroll view cannot take the gesture";
 	fireTouch(target.children[0], "onTouchMove", 10, 80, 2);
 	fireTouch(target.children[0], "onTouchMove", 10, 140, 3);
 	assert transformOf(target) === "translateY(60px)", "the row follows the touch: " + transformOf(target);
@@ -114,6 +125,7 @@ test "a long-press drag moves a row down, opens the gap, and reorders with the r
 	assert order(root) === "song 0,song 2,song 1,song 3,song 4", "reordered: " + order(root);
 	assert made === before, "no row was rendered again";
 	assert transformOf(rowOf(root, "song 1")) === "translateY(0px)", "the dropped row rests";
+	assert scrollEnabledOf(root) === "true", "the drop lets the list scroll again";
 }
 
 test "releasing a long press without moving cancels the drag" {
