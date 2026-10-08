@@ -118,7 +118,7 @@ existing 3D Group tag silently switch meaning outside Scene3D.
 | 2D-15 | `src/void2d/render.ms` hitTest/global queries and text geometry; `src/void2d/node.ms` localToGlobal/globalToLocal | Ref uses Void query APIs; scene2dQuery2 own/316 total pass installed+candidate at tree 3b6c39c1ac32162c7b6f0e098ea7a89232f2e8cc. Before-frame transforms/inverse queries, inherited visibility, collapsed scale/zero size, scroll and nested rotated/resized Mask hit clips tested; ignoring local binder gives2 failures, restored source unchanged. No new hit tester. Separate scene2dTile Sprite/nested-Rect getBounds cases fail installed+r8 (316 pass/2 fail): public bounds read cached worlds before frame, while live localToGlobal/hitTest work. Plain Void repro plus Heaps Object.getBounds syncPos reference in .inbox/void/2026-10-08-get-bounds-stale-before-frame.md; owner fix pending, no caller sync. Camera/frame pixels, press dispatch and host integration remain incomplete | Press hits what is drawn; UTF-16 index/caret/line queries match text pixels; use Void geometry, not a second measurer/hit tester; `tests/platform/voidInput.test.ms`, `src/test/textMetricsCheck.ms` |
 
 Isolated primitive device525284e/tree784bd08887aa6a35bd17047c6d9ae16b134232a5:
-`msc run tests/device/scene2dPrimitives.ms`, installed c094/Void d255/Metal, exit0,
+`msc run tests/device/scene2dPrimitives.ms`, verified installed525c8ba4f/Void d255/Metal, exit0,
 12 frames across four three-frame phases. Sole live raw node is respectively ScaleGrid,
 TileGroup, Underline and Selection, each submits a draw with live vertex-buffer storage.
 Changes within its phase prove Grid width64→80/borders, TileGroup visible count1→2 plus
@@ -132,7 +132,7 @@ was an authoring error, corrected before the successful runs; not a compiler fin
 
 ## 3D coverage
 
-Gltf first slice d57fd1f/tree1a044e83a699d412415a046fe70b129c85682efc, installed c094/Void
+Gltf first slice d57fd1f/tree1a044e83a699d412415a046fe70b129c85682efc, verified installed525c8ba4f/Void
  d255: `msc test tests/render/scene3dGltf.test.ms` own3/301 total pass. Group-only fixtures
 prove stable wrapper transform/ref, imported names/nonuniform pose, authored-child order,
 replacement/remount/cleanup, named bad graph/setup/scope, and old subtree preservation on
@@ -145,7 +145,7 @@ no-rollback-red,no-order-red}.log`, `/tmp/scene3dGltf-gltf-import-c094.log`.
 The fixtures have no meshes/materials/textures: do not infer GPU ownership, upload or
 rendering from these CPU greens. Opt-in `tests/device/scene3dGltf.ms` now preserves a
 five-mesh textured GLB consumer with intended failure/replacement/remount/terminal-resource
-assertions. `msc run tests/device/scene3dGltf.ms` (source d57fd1f, installed c094/Void d255,
+assertions. `msc run tests/device/scene3dGltf.ms` (source d57fd1f, verified installed525c8ba4f/Void d255,
 Metal) builds64 modules then aborts134 during material creation, before any frame assertion.
 Plain textureSlotMask(ProgramKey.of(Program.LitTextured)) and samplerSlotMask(UnlitTextured)
 programs independently abort134 in door.c260/269: hardcoded D3D11 metadata descriptor is
@@ -340,7 +340,7 @@ consumer successfully with the expanded union (`/tmp/graphics-paint-solid-device
 This CPU-only f253f25 measurement makes no gradient/pattern device or pixel claim; no current full gate or source land.
 
 Subsequent device proof1455a4b/treeb16101c53def7ed8770b31a679c70b05c707b880:
-`msc run tests/device/scene2dGraphicsPaint.ms`, installed c094/Void d255/Metal, exit0,
+`msc run tests/device/scene2dGraphicsPaint.ms`, verified installed525c8ba4f/Void d255/Metal, exit0,
 12 frames. One retained Graphics has five ranges: two linear gradients (stops/Oklab),
 radial Oklab, slash and checker. Frame5 changes stop/space, radius12→20, spacing7→11,
 cell4→8; vertex floats504→600 and shader records match before prepare. Each visible
@@ -469,7 +469,7 @@ direct field access prints7, equivalent TypeScript passes strict checking. Added
 variant to `2026-10-07-captured-const-nullable-struct-loses-narrowing.md`, without assuming
 shared root; no getter/cast substitution. This opt-in `.ms` is not a new CPU-gate red.
 
-Latest full installed gate: `NEON_BROWSER_PORT=8734 bash tests/run.sh`, commit `8d4e361`,
+Prior atlas full installed gate: `NEON_BROWSER_PORT=8734 bash tests/run.sh`, commit `8d4e361`,
 tree `442ff190e91c01a8b238b6811ef1d3107c3b1aaa`, installed binary/support `0d83c4867`,
 Void `d255ffb`, exit1. Macros17/apps4 pass; native55 pass/10 fail; JS48 pass/1 fail;
 Chrome3 files/30 own cases pass with this checkout's paths verified. Against the corrected
@@ -478,6 +478,35 @@ Void fresh-bounds cases; the eight old native reds, two Neon order cases and hea
 red are unchanged. Targeted native.test JS rerun reproduces the same SyntaxError. Font's
 expanded three-case descriptor suite is included. Logs are
 `/tmp/neon-void-scene3d-installed-gate-atlas.{log,exit,scope}`; no source land or pixel claim.
+
+Latest full gate: source049281c/tree370fd11cecef57859a3553c0bb42fee0286d4905,
+installed binary/support525c8ba4f (BUILD2026-10-08T09:54:47+07:00), Void d255ffb,
+port8734, exit1. Native58 pass/10 fail (+3 passing files versus atlas: Graphics,
+GraphicsPaint, Gltf; same10 failed files); JS48/1 unchanged; macros17/apps4 and own
+Chrome3/30 pass (dom26/flatList1/scrollView3, own checkout paths verified).
+Native reds: platform/{void,voidInput}, style/style, render/{scene2d,scene2dOrder,
+scene2dPaint,scene2dTile,scene3d,scene3dCamera,scene3dNodes}. Original expressions/cases
+preserved. Runtime reds are still two raw order and two fresh-bounds cases. JS header
+YGAlignAuto reexport still red. Gate artifacts retain their initial misleading filename:
+`/tmp/neon-void-scene3d-c094-gate.{scope,log,exit}`; scope, not filename, is authoritative.
+No source land, original16 runtime, resource/pixel/input/idle/Ion acceptance follows.
+
+Provenance correction: d57fd1f/7aa2e5a/1455a4b/525284e reports initially assumed c094
+without capturing BUILD per command; installed msc was synced again before those runs.
+Do not use the old `*-c094` filenames as compiler evidence. Verified525 reruns at source
+049281c capture BUILD and binary SHA at start/end: both stable for each invocation.
+Gltf CPU3/301 passes; GraphicsPaint and Primitives12-frame device consumers pass,
+both binder mutations exit1 and restored runs0; Gltf device and plain texture/sampler
+metadata probes remain134. `/tmp/neon-verified525-*.{scope,log,exit}` holds these exact
+new measurements, not a retroactive claim about uncaptured command provenance.
+
+Billboard reference follow-up (read-only during the gate): Heaps h3d/parts/Particles.hx
+386–393 allocates its packed CPU vertices, draws and disposes the transient buffer inside
+the renderer; the app does not supply buffer/frame glue. Void draw.ms527–618 owns an
+8-float Particle stream and refuses a second GPU write within one frame; Billboard's
+15-float external stream cannot safely use it unchanged. A future owned Billboard route
+must address both stride/layout and frame-coalesced uploads/context recovery; policy
+needs user approval before implementation. No new GPU ownership mechanism shipped.
 
 Acceptance ledger entries must name the row IDs, Neon JSX test/example, command and exit code,
 source tree, installed compiler/support and consumed Void baseline, backend and actual observed
