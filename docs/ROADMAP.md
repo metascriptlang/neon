@@ -46,6 +46,35 @@ dynamic branch to a static value. Detail and the refutation are in this file's h
 
 ---
 
+## Package boundary — decided 2026-10-08, relocation pending
+
+The person: Neon provides primitives at React Native's level; what an author can build from them
+is not Neon's to carry ("mình cung cấp primitive cỡ như React Native thôi, còn mấy cái người dùng
+tự build được thì mình không muốn ôm luôn"). Everything below stays in this repo for now; the
+tiers say what is core and what moves.
+
+1. **Core** — RN core's surface, or anything that needs the host and cannot be written by an
+   author: `View`, `Text`, `Image`, `ImageBackground`, `TextInput`, `Pressable`, the Touchables,
+   `ScrollView`, `FlatList` / `SectionList` / `VirtualizedList`, `RefreshControl`, `Switch`,
+   `ActivityIndicator`, `Button` (kept: RN core ships it), `Modal`, `StatusBar`, `SafeAreaView`,
+   `KeyboardAvoidingView`; `Animated`, `Easing`, `LayoutAnimation`, `PanResponder` and the
+   responder system, `StyleSheet`; the RN APIs in `src/api/` that RN core ships (Alert, Linking,
+   Share, AppState, BackHandler, Keyboard, Dimensions, PixelRatio, Platform, Appearance,
+   AccessibilityInfo, Vibration).
+2. **Native modules, opt-in** — need native code but are not RN core (RN community / Expo
+   packages): `Slider`, `Picker`, `DateTimePicker`, `WebView`, `Video`, SVG, `CameraView`,
+   `ImagePicker`, `Audio`, `Clipboard`, AsyncStorage, NetInfo, Permissions, Geolocation,
+   Haptics, DeviceInfo, Localization, Notifications. Target: one module each, built only by apps
+   that import it. When to split is open.
+3. **Composed from primitives — relocate to a UI library (`neon-ui`)**: Chip, Card, Avatar, Badge,
+   Divider, Snackbar, Toast, Tooltip, Dialog, BottomSheet, Stepper, SegmentedControl, the
+   Neon-drawn Checkbox/Radio; PageView, TabView, Carousel, Collapsible/Accordion, DataTable, Wrap;
+   Dismissible, ReorderableFlatList, GridList, MasonryList, CollapsingHeader, CustomScrollView,
+   ListWheelScrollView; navigation (`src/navigation/`). Kept with their tests as a consumer of the
+   core: they found core bugs (responder, touches inside scroll views, text measurement,
+   `textAlign`). Open: a sibling repo `~/metascript/neon-ui` (clear boundary, own gate) or a
+   package inside this repo (shared gate, core regressions surface at once).
+
 ## Next — app deliverability before full parity
 
 Approved 2026-10-05: "chốt hướng, đi rồi mình sẽ bắt tay vào làm trong session mới".
