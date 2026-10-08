@@ -1107,7 +1107,7 @@ export macro element(node: Node): Node {
 			spliceNodes: [
 				{
 					kind: NodeKind.VariableDecl, line: L, column: C,
-					flags: NodeFlag.StaticStorage,
+					flags: (0 as BitSet<NodeFlag>).incl(NodeFlag.StaticStorage),
 					declName: tplName, declType: "", declKind: DeclKind.Const,
 					nameLocation: { line: L, column: C },
 					initializer: {
