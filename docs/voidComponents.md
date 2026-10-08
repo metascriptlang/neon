@@ -130,7 +130,19 @@ Omitting staging rollback or insertBefore separately fails one assertion (299/1 
 then-two-case test), restored final301/0. Logs `/tmp/scene3d-gltf-{missing-red,c094,
 no-rollback-red,no-order-red}.log`, `/tmp/scene3dGltf-gltf-import-c094.log`.
 The fixtures have no meshes/materials/textures: do not infer GPU ownership, upload or
-rendering from these CPU greens. Resource-bearing and opt-in device consumers are next.
+rendering from these CPU greens. Opt-in `tests/device/scene3dGltf.ms` now preserves a
+five-mesh textured GLB consumer with intended failure/replacement/remount/terminal-resource
+assertions. `msc run tests/device/scene3dGltf.ms` (source d57fd1f, installed c094/Void d255,
+Metal) builds64 modules then aborts134 during material creation, before any frame assertion.
+Plain textureSlotMask(ProgramKey.of(Program.LitTextured)) and samplerSlotMask(UnlitTextured)
+programs independently abort134 in door.c260/269: hardcoded D3D11 metadata descriptor is
+null in this Metal build. Owner card
+`.inbox/void/2026-10-08-shader-slot-metadata-d3d-descriptor-null-on-metal.md` holds reductions,
+source evidence and parked sites. No shader/fallback/Void edit, no resource or frame proof.
+Logs `/tmp/scene3d-gltf-device-c094.log`, `/tmp/void-{texture,sampler}-slotmask-metal.log`.
+Initial mutable-output Vec/Span authoring errors and wrong enum-probe call/key type were
+corrected before the measured abort; they are not compiler findings. Capture/input/idle
+and actual Ion integration remain unverified.
 Original16/Camera/Nodes importer reruns retain their7/1/1 known diagnostics; no source
 land or current full gate. Native gate discovers new file; JS follows Void-only skip.
 
@@ -154,7 +166,7 @@ A resource is owned or borrowed explicitly; copying a handle is not retaining it
 | 3D-12 | `src/void3d/animation.ms` MeshFrameAnimation/addBakedFrames/bindMeshFrames/syncMeshFrame | MeshFrameAnimation uses real resource pins and terminal close; missing | Supported baked-frame stepping, validation, binding/reparent survival, stale targets and release all offscreen frame holds; `src/test/animationCheck.ms`, `src/test/lifetimeCheck.ms` |
 | 3D-13 | `src/void3d/particles.ms` ParticleEmitter/EmitterState/updateEmitter/writeInstances; `src/void3d/draw.ms` addStreamMesh/writeStream | ParticleEmitter plus streamed Mesh path; missing | Supported value/shape/state controls, deterministic seed, live instance updates/capacity, active/idle scheduling and disposal; `src/test/particlesCheck.ms`, `src/test/instanceStreamCheck.ms` |
 | 3D-14 | `src/void3d/billboard.ms` BillboardInstance/AtlasTile/Anchor; `src/void3d/draw.ms` GpuMesh.billboards | Typed BillboardInstance/atlas/anchor input still missing a chosen owned resource route. Void GpuMesh.billboards uses caller-owned EXTERNAL_GENERATION buffers (draw.ms addMesh/doomBuffersOf never rebuild/destroy them); its stride15 differs from the owned Particle stream stride8. Do not reuse addStreamMesh by reinterpreting layout or require app buffer/frame glue. Trace/ownership decision remains pending; no implementation or new renderer | Texture atlas frame/anchor/color, ordered instances and resource ownership; `src/test/billboardCheck.ms`, `tests/integration/texturedFrame.ms` |
-| 3D-15 | `src/void3d/gltf.ms` loadGltf/loadGlb/GltfData; `src/void3d/gltfScene.ms` GltfAssets/addGltfAssets/addGltfNodes | Gltf component backed by existing factories; stable wrapper, atomic group-only graph replacement/error rollback/remount/scope proven installed CPU. Decode stays API. Mesh/material/texture resources, uploads and rendered acceptance pending | Authored hierarchy/transforms/material/texture and errors, borrowed versus owned assets, repeated mount and cleanup; `tests/integration/gltfFrame.ms`, `src/test/gltfMaterialCheck.ms` |
+| 3D-15 | `src/void3d/gltf.ms` loadGltf/loadGlb/GltfData; `src/void3d/gltfScene.ms` GltfAssets/addGltfAssets/addGltfNodes | Gltf component backed by existing factories; stable wrapper, atomic group-only graph replacement/error rollback/remount/scope proven installed CPU. Decode stays API. Resource-bearing opt-in device consumer aborts in Void shader-slot metadata on Metal; .inbox/void/2026-10-08-shader-slot-metadata-d3d-descriptor-null-on-metal.md. Resource replacement/cleanup and rendered acceptance pending | Authored hierarchy/transforms/material/texture and errors, borrowed versus owned assets, repeated mount and cleanup; `tests/integration/gltfFrame.ms`, `src/test/gltfMaterialCheck.ms` |
 | 3D-16 | `src/void3d/forwardRenderer.ms` ForwardRenderer; `src/void3d/renderer.ms` Renderer | Scene renderer configuration and internal frame integration; missing | On-demand prepare→screen composition, camera/light blocks, frustum/pass lists and close/rebuild; `tests/integration/mixedFrame.ms`, `tests/integration/bothLayers.ms` |
 | 3D-17 | `src/void3d/pixelArtRenderer.ms` PixelArtRenderer/PixelArtSettings/PixelArtLook; `src/void3d/palette.ms` PaletteLut; `src/void3d/blit.ms` LowResView | Pixel-art renderer/palette/look as scene configuration; missing | Low-resolution/snap, post-pass toggles, depth source, outline/fog/saturation/palette, reactive settings and resize; compare existing renderer semantics, not a new Neon effect engine; `src/test/rendererCheck.ms`, `tests/integration/targetPresetEpoch.ms` |
 | 3D-18 | `src/void3d/dirShadowMap.ms` DirShadowMap; `src/void3d/renderer.ms` attachShadow; `src/void3d/material.ms` ShadowCasting/withShadows | Directional shadow configuration plus material cast/receive settings; missing | Dynamic caster bounds, shadows-only/off/on, supported alpha-cutout casters, bias/opacity/size, receiver pixels and resource cleanup; `src/test/dirShadowCheck.ms`, `tests/integration/dirShadow.ms` |
