@@ -2,8 +2,8 @@ import { createSignal } from "../../src/core/signal";
 import { element } from "../../src/macros/ui/element";
 import { HostNode, mockNode, mockHost, render } from "../../src/render/host";
 import { Void } from "../../src/components/primitives";
-import { Scene2D, Rect, Label } from "../../src/components/scene2d";
-import { Scene2D as VoidScene2D, NodeRef, local, filter, textStyle, text } from "../../../void/src/void2d/node";
+import { Scene2D, Rect, Label, Mask } from "../../src/components/scene2d";
+import { Scene2D as VoidScene2D, NodeRef, local, filter, textStyle, text, content, scroll } from "../../../void/src/void2d/node";
 import { prepare, drawScreen } from "../../../void/src/void2d/scene";
 import { rgba, Camera, blurFilter } from "../../../void/src/void2d/types";
 import { renderTargetsAlive, textWidth } from "../../../void/src/void2d/render";
@@ -27,6 +27,9 @@ const [radius, setRadius] = createSignal<float32>(2.0);
 const [labelText, setText] = createSignal("Ag");
 const [size, setSize] = createSignal<float32>(14.0);
 const labels: NodeRef[] = [];
+const masks: NodeRef[] = [];
+const [clipWidth, setClipWidth] = createSignal<float32>(96.0);
+const [scrollX, setScrollX] = createSignal<float32>(0.0);
 
 function loadedFont(): FontId {
 	const loaded = addFont("../void/assets/font.ttf");
@@ -49,12 +52,16 @@ function init(): void {
 	const root = mockNode("root");
 	dispose = render(element(<Void><Scene2D camera={viewport()}
 		ref={(scene: VoidScene2D): void => { subject = scene; }}>
+		<Mask width={clipWidth()} height={64.0} scrollX={scrollX()}
+			scrollBounds={{ xMin: 0.0, yMin: 0.0, xMax: 200.0, yMax: 64.0 }}
+			ref={(node: NodeRef): void => { masks.push(node); }}>
 		<Rect width={32.0} height={32.0} color={rgba(1.0, 0.0, 0.0, 1.0)} filter={blurFilter(radius())}
 			local={{ x: x(), y: 20.0, scaleX: 1.0, scaleY: 1.0,
 				rotation: 0.0, pivotX: 0.0, pivotY: 0.0 }}
 			ref={(node: NodeRef): void => { nodes.push(node); }} />
 		<Label text={labelText()} size={size()} color={rgba(1.0, 1.0, 1.0, 1.0)}
 			textStyle={styled(font)} ref={(node: NodeRef): void => { labels.push(node); }} />
+		</Mask>
 	</Scene2D></Void>), mockHost(), root as unknown as HostNode);
 }
 
@@ -68,6 +75,7 @@ function frame(): void {
 	if (scene === null) { fail("consumer did not mount"); return; }
 	if (frames === 5) {
 		setX(80.0); setPan(4.0); setRadius(3.0); setText("Neon"); setSize(18.0);
+		setClipWidth(128.0); setScrollX(24.0);
 	}
 	if (nodes.length !== 1 || nodes[0].local().x !== (frames < 5 ? 20.0 : 80.0)) {
 		fail("consumer lost its reactive Rect"); return;
@@ -80,6 +88,10 @@ function frame(): void {
 		labels[0].textStyle().size !== (frames < 5 ? 14.0 : 18.0) ||
 		labels[0].textWidth() <= 0.0) {
 		fail("consumer lost its reactive real-font Label"); return;
+	}
+	if (masks.length !== 1 || masks[0].content().w !== (frames < 5 ? 96.0 : 128.0) ||
+		masks[0].scroll().x !== (frames < 5 ? 0.0 : 24.0)) {
+		fail("consumer lost its reactive Mask size or scroll"); return;
 	}
 	const dpi: float32 = dpiScale();
 	scene.prepare((fbWidth() as float32) / dpi, (fbHeight() as float32) / dpi, dpi);
@@ -95,7 +107,7 @@ function frame(): void {
 		if (!scene.closed || renderTargetsAlive() !== 0) {
 			fail("consumer did not close its scene and filter targets"); return;
 		}
-		console.log("PASS Scene2D device: 12 frames, reactive Rect/camera/blur/real-font Label, closed targets");
+		console.log("PASS Scene2D device: 12 frames, reactive Rect/camera/blur/Label/Mask, closed targets");
 		process.exit(0);
 	}
 }
