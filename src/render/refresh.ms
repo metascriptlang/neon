@@ -1,5 +1,4 @@
 import { Host, HostNode, NeonNode } from "./hostTypes";
-import { ComponentFn } from "./node";
 import { Row, makeRow, mountAt, removeRow, place, needsStartMarker } from "./reconcile";
 import { Computation } from "../core/types";
 import { createComputation, cleanNode } from "../core/runtime";
@@ -33,16 +32,21 @@ interface TmplInstance {
 	owner: Computation;
 	sig: string;
 }
-interface CompEntry {
+class ComponentSlot<P> {
+	body: (props: P) => NeonNode;
 	sigFn: SigFn;
-	comp: ComponentFn<unknown>;
+
+	constructor(body: (props: P) => NeonNode, sigFn: SigFn) {
+		this.body = body;
+		this.sigFn = sigFn;
+	}
 }
 
 interface CompInstance {
-	entry: CompEntry;
+	render: () => NeonNode;
+	sigFn: SigFn;
 	key: string;
 	keyFile: string;
-	props: unknown;
 	host: Host;
 	parent: HostNode;
 	anchor: HostNode;
@@ -55,7 +59,7 @@ function noop(): void {}
 
 const tmplEntries = new Map<string, TmplEntry>();
 const tmplInstances = new Map<string, TmplInstance[]>();
-const compEntries = new Map<string, CompEntry>();
+const compSlots = new Map<string, unknown>();
 const compInstances = new Map<string, CompInstance[]>();
 
 function keyOf(moduleFile: string, id: string): string {
@@ -101,8 +105,7 @@ function mountTmpl(inst: TmplInstance): void {
 function mountComp(inst: CompInstance): void {
 	runWithOwner(inst.owner, (): number => untrack((): number => {
 		const row = makeRow((host: Host, parent: HostNode, before: HostNode | null): void => {
-			const node = inst.entry.comp(inst.props);
-			node(host, parent, before);
+			inst.render()(host, parent, before);
 		});
 		inst.row = row;
 		mountAt(inst.host, inst.parent, inst.anchor, row);
@@ -177,43 +180,78 @@ export function refreshRegion<P>(moduleFile: string, id: string, props: P): Neon
 	};
 }
 
-export function refreshComponentDef(moduleFile: string, id: string, sigFn: SigFn, comp: ComponentFn<unknown>): void {
-	const key = keyOf(moduleFile, id);
-	const entry = compEntries.get(key);
-	if (entry === undefined) {
-		compEntries.set(key, { sigFn: sigFn, comp: comp });
-	} else {
-		entry.sigFn = sigFn;
-		entry.comp = comp;
-	}
+function slotOf<P>(key: string, body: (props: P) => NeonNode, sigFn: SigFn): ComponentSlot<P> {
+	const found = compSlots.get(key);
+	if (found !== undefined) { return found as ComponentSlot<P>; }
+	const slot = new ComponentSlot<P>(body, sigFn);
+	compSlots.set(key, slot);
+	return slot;
 }
 
-export function refreshBoundary(moduleFile: string, id: string): (props: unknown) => NeonNode {
+export function refreshComponent<P>(
+	moduleFile: string,
+	id: string,
+	body: (props: P) => NeonNode,
+	sigFn: SigFn,
+): void {
+	const slot = slotOf<P>(keyOf(moduleFile, id), body, sigFn);
+	slot.body = body;
+	slot.sigFn = sigFn;
+}
+
+export function refreshComponent0(
+	moduleFile: string,
+	id: string,
+	body: () => NeonNode,
+	sigFn: SigFn,
+): void {
+	refreshComponent<boolean>(moduleFile, id, (unused: boolean): NeonNode => body(), sigFn);
+}
+
+export function refreshBoundary<P>(
+	moduleFile: string,
+	id: string,
+	body: (props: P) => NeonNode,
+	sigFn: SigFn,
+	props: P,
+): NeonNode {
 	const key = keyOf(moduleFile, id);
-	return (props: unknown): NeonNode => {
-		return (host: Host, parent: HostNode, before: HostNode | null): void => {
-			const entry = compEntries.get(key);
-			if (entry === undefined) { throw `neon refresh: boundary ${id} mounted before its registration in ${moduleFile}`; }
-			if (needsStartMarker(parent)) { place(host, parent, host.createText(""), before); }
-			const anchor = host.createText("");
-			place(host, parent, anchor, before);
-			const inst: CompInstance = {
-				entry: entry,
-				key: key,
-				keyFile: moduleFile,
-				props: props,
-				host: host,
-				parent: parent,
-				anchor: anchor,
-				row: makeRow((h: Host, p: HostNode, b: HostNode | null): void => { h.insertBefore(p, anchor, b); }),
-				owner: createComputation(noop, false),
-				sig: entry.sigFn(),
-			};
-			runWithOwner(inst.owner, (): number => { onCleanup((): void => { dropCompInstance(inst); }); return 0; });
-			pushComp(key, inst);
-			mountComp(inst);
+	const slot = slotOf<P>(key, body, sigFn);
+	return (host: Host, parent: HostNode, before: HostNode | null): void => {
+		if (needsStartMarker(parent)) { place(host, parent, host.createText(""), before); }
+		const anchor = host.createText("");
+		place(host, parent, anchor, before);
+		const inst: CompInstance = {
+			render: (): NeonNode => slot.body(props),
+			sigFn: (): string => slot.sigFn(),
+			key: key,
+			keyFile: moduleFile,
+			host: host,
+			parent: parent,
+			anchor: anchor,
+			row: makeRow((h: Host, p: HostNode, b: HostNode | null): void => { h.insertBefore(p, anchor, b); }),
+			owner: createComputation(noop, false),
+			sig: slot.sigFn(),
 		};
+		runWithOwner(inst.owner, (): number => { onCleanup((): void => { dropCompInstance(inst); }); return 0; });
+		pushComp(key, inst);
+		mountComp(inst);
 	};
+}
+
+export function refreshBoundary0(
+	moduleFile: string,
+	id: string,
+	body: () => NeonNode,
+	sigFn: SigFn,
+): NeonNode {
+	return refreshBoundary<boolean>(
+		moduleFile,
+		id,
+		(unused: boolean): NeonNode => body(),
+		sigFn,
+		false,
+	);
 }
 
 export function refreshModule(moduleFile: string): RefreshSummary {
@@ -228,7 +266,7 @@ export function refreshModule(moduleFile: string): RefreshSummary {
 	}
 	for (const inst of boundaries) {
 		if (inst.owner.disposed) { continue; }
-		const sig = inst.entry.sigFn();
+		const sig = inst.sigFn();
 		if (sig === inst.sig) { kept += 1; continue; }
 		rebuildComp(inst, sig);
 		remounted += 1;
@@ -252,6 +290,6 @@ export function refreshModule(moduleFile: string): RefreshSummary {
 export function refreshReset(): void {
 	tmplEntries.clear();
 	tmplInstances.clear();
-	compEntries.clear();
+	compSlots.clear();
 	compInstances.clear();
 }

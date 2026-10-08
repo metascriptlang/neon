@@ -3,7 +3,14 @@ import { createEffect } from "../../src/core/effect";
 import { Host, HostNode, NeonNode } from "../../src/render/hostTypes";
 import { MockNode, mockNode, mockHost, render, fireEvent, mockToString } from "../../src/render/host";
 import { place } from "../../src/render/reconcile";
-import { refreshTemplate, refreshRegion, refreshComponentDef, refreshBoundary, refreshModule, refreshReset } from "../../src/render/refresh";
+import {
+	refreshTemplate,
+	refreshRegion,
+	refreshComponent0,
+	refreshBoundary0,
+	refreshModule,
+	refreshReset,
+} from "../../src/render/refresh";
 
 interface CounterRegionProps {
 	count: () => number;
@@ -73,8 +80,8 @@ test "refresh: same signature re-registration keeps the mounted view" {
 test "refresh: component remount resets only that boundary's local state" {
 	refreshReset();
 	let version = 1;
-	const makeComp = (): (props: unknown) => NeonNode => {
-		return (props: unknown): NeonNode => {
+	const makeComp = (): () => NeonNode => {
+		return (): NeonNode => {
 			const [c, setC] = createSignal(0);
 			return (host: Host, parent: HostNode, before: HostNode | null): void => {
 				appendText(host, parent, before, "v" + version.toString() + ":");
@@ -85,7 +92,7 @@ test "refresh: component remount resets only that boundary's local state" {
 			};
 		};
 	};
-	refreshComponentDef("app.ms", "Counter", (): string => "s" + version.toString(), makeComp());
+	refreshComponent0("app.ms", "Counter", makeComp(), (): string => "s" + version.toString());
 	const [sibling] = createSignal(5);
 	refreshTemplate("app.ms", "sib", (): string => "s1", (host: Host, parent: HostNode, before: HostNode | null, props: unknown): void => {
 		appendText(host, parent, before, "sib:");
@@ -93,9 +100,10 @@ test "refresh: component remount resets only that boundary's local state" {
 	});
 
 	const root: MockNode = mockNode("root");
-	const boundary = refreshBoundary("app.ms", "Counter");
+	const signature = (): string => "s" + version.toString();
+	const boundary = refreshBoundary0("app.ms", "Counter", makeComp(), signature);
 	const dispose = render((host: Host, parent: HostNode, before: HostNode | null): void => {
-		boundary(null)(host, parent, null);
+		boundary(host, parent, null);
 		refreshRegion("app.ms", "sib", null)(host, parent, null);
 	}, mockHost(), root as unknown as HostNode);
 
@@ -104,7 +112,7 @@ test "refresh: component remount resets only that boundary's local state" {
 	assert mockToString(root.children[1]) === "4", "local count 4";
 
 	version = 2;
-	refreshComponentDef("app.ms", "Counter", (): string => "s" + version.toString(), makeComp());
+	refreshComponent0("app.ms", "Counter", makeComp(), (): string => "s" + version.toString());
 	const summary = refreshModule("app.ms");
 	assert summary.remounted === 1 && summary.rebuilt === 0, "one boundary remounted";
 	assert mockToString(root.children[0]) === "v2:", "new component code runs";
@@ -146,16 +154,16 @@ test "refresh: remounting a fragment boundary removes its nested regions" {
 			host.setText(node, "value:" + value().toString());
 		});
 	});
-	const component = (props: unknown): NeonNode => refreshRegion("nested.ms", "child", null);
-	refreshComponentDef("nested.ms", "parent", (): string => "1", component);
+	const component = (): NeonNode => refreshRegion("nested.ms", "child", null);
+	refreshComponent0("nested.ms", "parent", component, (): string => "1");
 	const root = mockNode("root");
 	const dispose = render((host: Host, parent: HostNode, before: HostNode | null): void => {
-		refreshBoundary("nested.ms", "parent")(null)(host, parent, before);
+		refreshBoundary0("nested.ms", "parent", component, (): string => "1")(host, parent, before);
 		place(host, parent, host.createText("|sibling"), before);
 	}, mockHost(), root as HostNode);
 	for (let generation = 2; generation <= 4; generation += 1) {
 		const signature = generation.toString();
-		refreshComponentDef("nested.ms", "parent", (): string => signature, component);
+		refreshComponent0("nested.ms", "parent", component, (): string => signature);
 		refreshModule("nested.ms");
 		assert mockToString(root) === "<root>value:1|sibling</root>", "nested fragment is replaced, not left beside its replacement";
 		const before = effectRuns;
