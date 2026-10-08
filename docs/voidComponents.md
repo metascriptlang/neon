@@ -106,7 +106,7 @@ existing 3D Group tag silently switch meaning outside Scene3D.
 | 2D-03 | `src/void2d/node.ms` rect/setBackground/clearBackground/setBoxStyle; `src/void2d/boxStyle.ms` BoxStyle | Rect size/color/BoxStyle/core props mapped; Group background promotion/clear uses Void binders, style-slot release/reuse and full-Paint/matrix-row precedence CPU-tested installed; pixels pending. View style remains incomplete on current host | Rounded/per-edge/dashed borders, outer/inset shadow; reactive group↔paint promotion preserves children and handles, transparent paint emits nothing; `tests/integration/viewPaint.ms`, `src/test/coverageOracleCheck.ms` |
 | 2D-04 | `src/void2d/node.ms` sprite/setImageStyle; `src/void2d/types.ms` Tile/TextureSource; `src/void2d/imageStyle.ms` ImageStyle | Sprite Tile/retile/independent size/ImageStyle mapped; ObjectFit/payload lifecycle CPU-tested candidate. scene2dTile adds installed+r8 atlas UV/flip/offset/premultiplied snapshot and deferred borrowed Texture replacement/sibling/remount/disposal proof: two own pass, no upload/pixels. Two fresh-bounds queries fail in Void, parked at .inbox/void/2026-10-08-get-bounds-stale-before-frame.md; no manual sync workaround | Atlas regions, flipping/offsets, fit/crop, rounded/grayscale image and replaced texture; `src/test/tileCheck.ms`, `src/test/imageStyleCheck.ms` |
 | 2D-05 | `src/void2d/node.ms` anim/animFrames; `src/void2d/scene.ms` tick | Anim dynamic frames/fps blocked on missing Void binders; request .inbox/void/2026-10-08-animation-frame-and-rate-binders.md (factory/reader only, reader copy measured). Frame integration also missing; no static frozen tag | Frames advance on demand while playing; stop when not playing/unmounted; replacement policy must follow actual Void API rather than silently freeze a prop; `src/test/nodeCheck.ms` |
-| 2D-06 | `src/void2d/node.ms` graphics/clear; `src/void2d/graphics.ms` GraphicsOpKind and exported drawing operations | Graphics component plus typed op data in src/render/graphics.ms; installed CPU replay covers solid fills/strokes plus gradients/patterns and curve-helper points; isolated Metal submission exercises triangle→rect replacement. Textures and pixel coverage pending | All exported shape/fill/stroke/curve operations are reachable; order is retained, reactive edits rebuild only their owned geometry and do not accumulate old operations; `src/test/graphicsCheck.ms` |
+| 2D-06 | `src/void2d/node.ms` graphics/clear; `src/void2d/graphics.ms` GraphicsOpKind and exported drawing operations | Graphics component plus typed op data in src/render/graphics.ms; installed CPU replay covers solid fills/strokes plus gradients/patterns and curve-helper points; isolated Metal submission exercises triangle→rect replacement. Textures parked on .inbox/compiler/2026-10-08-match-alternative-discriminant-loses-narrowing.md; pixel coverage pending | All exported shape/fill/stroke/curve operations are reachable; order is retained, reactive edits rebuild only their owned geometry and do not accumulate old operations; `src/test/graphicsCheck.ms` |
 | 2D-07 | `src/void2d/graphics.ms` gradient/pattern/textured operations; `src/void2d/gradient.ms` GradientSpace | Approved typed op-data replay maps existing gradient/stops/color-space and slash/checker helpers. Installed CPU shader-record/vertex parity and ordered reactive rebuild proven in scene2dGraphicsPaint.test.ms; gradient/pattern pixels and textured shapes pending | Linear/radial gradients, Oklab alternatives, slash/checker patterns, texture changes and overlap pixels; `src/test/gradientCheck.ms`, `src/test/graphicsCheck.ms` |
 | 2D-08 | `src/void2d/node.ms` mask/scrollTo/scrollBy/setScrollBounds/scrollScope | Mask size/parenting/scrollX/scrollY/nullable scrollBounds mapped; clamp/resize/defaults/lifecycle CPU-tested on candidate; installed scene2dQuery also proves scroll-shifted hit geometry and every nested rotated/resized Mask clip before a frame. Actual clipping pixels/input dispatch remain pending. ScrollView remains UI over the host | Transformed clipping and scroll affect pixels and hit tests identically; bounds clamp, input over clipped content, nested scopes; `src/test/nodeCheck.ms`, `src/test/h2dOracleCheck.ms` |
 | 2D-09 | `src/void2d/node.ms` scaleGrid | ScaleGrid Tile/four borders/optional size mapped; reactive content, defaults/retile, parent/siblings/remount/disposal CPU-tested on candidate; nine-slice pixels/texture alpha pending | Resize preserves nine-slice edges and updates center without dropping texture alpha; `src/test/nodeCheck.ms`, `src/test/tileCheck.ms` |
@@ -297,6 +297,32 @@ Paintkind48 remain the same known reds. Logs `/tmp/*-graphics-paint-c094.log`.
 `msc run tests/device/scene2dGraphics.ms` repeats the existing solid-only12-frame Metal
 consumer successfully with the expanded union (`/tmp/graphics-paint-solid-device-c094.log`).
 No gradient/pattern pixel or device-submission claim; no current full gate or source land.
+
+Texture validation attempt (uncommitted implementation): Void `render.ms` DrawKind.Graphics
+uses geometry.source/alphaPremultiplied for every Mesh range; gradient/pattern ranges use
+view0/false. `types.ms` TextureSource.sameAs supplies identity. Consequently textured mesh
+operations must share one source/alpha state, while independent gradient/pattern ranges
+can interleave. `node.ms` clear resets source/alpha as well as geometry/records; Texture
+remains caller-owned. No multi-view renderer or retained GPU-resource counter was added.
+The original grouped textured match arm cannot read op.tile on installed c094 (native/JS),
+reduced to two/three-tag union probes; separate-tag probe prints7/9 and equivalent TS strict
+passes. This is a compiler finding, not a request to alias/cast or split shipped arms.
+See `.inbox/compiler/2026-10-08-match-alternative-discriminant-loses-narrowing.md`.
+`tests/render/scene2dGraphicsTexture.parked.ms` keeps intended tests outside the gate;
+`out/graphicsTextureBlocked/graphics.ms` holds the failed prototype, not production truth.
+Production graphics.ms restored exactly to f253f25 and Paint315/0 rerun; no texture
+mapping, upload, lifetime runtime or new refusal acceptance claimed from the compile-red.
+
+Installed c094/Void d255/source f1f0e17 remeasurement after the flag correction:
+`msc test tests/render/scene3d.test.ms` retains all16 cases but exits1 before runtime with
+7 actual diagnostics: six caller-enum failures (LightKind/Program/Phase) and the original
+CameraProjection signal-layout refusal. Camera exits1 with VoidSpace_Scene2D (one actual
+error); Nodes exits1 with LightKind_Point (one actual error). The old hundreds of flag
+errors and previous NodeFlag collision do not recur here, but no original16 acceptance.
+Logs `/tmp/{scene3d,scene3dCamera,scene3dNodes}-post-flag-c094.log`; existing enum/signal
+cards updated, no aliases/casts/rewritten JSX. `msc run tests/device/scene2dTexture.ms`
+still exits1 on captured Result.value after the original success branch, now measured on
+c094 post-flag fix (`/tmp/scene2d-texture-device-post-flag-c094.log`); no upload occurred.
 
 Compiler owners already recorded in `BUGS.md`/`VISION.md` keep the original macro/enum cases;
 `2026-10-04-string-literal-union-signal-rejects-its-function-layout.md` also owns the reduced
