@@ -1825,7 +1825,7 @@ final class DeviceUITests: XCTestCase {
         waitLabel("notified ", containing: "notified scheduled")
         XCUIDevice.shared.press(.home)
         let banner = springboard.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", "Neon later")).firstMatch
-        XCTAssertTrue(banner.waitForExistence(timeout: 20), "the scheduled notification is presented while the app is in the background")
+        XCTAssertTrue(banner.waitForExistence(timeout: 30), "the scheduled notification is presented while the app is in the background")
         let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         shot.name = "device-notification-banner"
         shot.lifetime = .keepAlways

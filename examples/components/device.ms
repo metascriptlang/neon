@@ -154,7 +154,7 @@ export function DeviceDemo(): NeonNode {
 							setPosition(rounded(fix.coords.latitude) + "," + rounded(fix.coords.longitude));
 						},
 						(error: GeolocationError): void => { setPosition("error " + error.code.toString() + " " + error.message); },
-						{ enableHighAccuracy: true, timeout: 20000, maximumAge: 0 },
+						{ enableHighAccuracy: false, timeout: 30000, maximumAge: 0 },
 					);
 				}}>locate</Pressable>
 				<Pressable style={styles.button} onPress={() => {
@@ -172,7 +172,7 @@ export function DeviceDemo(): NeonNode {
 				<Pressable style={styles.button} onPress={() => { readBattery(); }}>battery</Pressable>
 				<Pressable style={styles.button} onPress={() => { allowNotifications(); }}>allow notifications</Pressable>
 				<Pressable style={styles.button} onPress={() => { notify("Neon reminder", 2); }}>notify</Pressable>
-				<Pressable style={styles.button} onPress={() => { notify("Neon later", 6); }}>notify later</Pressable>
+				<Pressable style={styles.button} onPress={() => { notify("Neon later", 15); }}>notify later</Pressable>
 			</View>
 		</View>
 	</ScrollView>;
