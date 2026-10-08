@@ -533,7 +533,22 @@ the renderer; the app does not supply buffer/frame glue. Void draw.ms527–618 o
 8-float Particle stream and refuses a second GPU write within one frame; Billboard's
 15-float external stream cannot safely use it unchanged. A future owned Billboard route
 must address both stride/layout and frame-coalesced uploads/context recovery; policy
-needs user approval before implementation. No new GPU ownership mechanism shipped.
+needs user approval before implementation. **NEW MECHANISM — proposed, not approved:**
+Void-owned15-float Billboard snapshots with renderer-side once-per-frame upload coalescing,
+context-loss rebuild and terminal buffer release, reusing the existing DrawContext stream
+lifetime. It can regress Particle8 layout/capacity, update-once enforcement and context
+recovery; it must be implemented/proven by its Void owner, never as a Neon buffer/frame
+workaround. Recommendation is to request that owned resource API, not demand app buffers
+or reinterpret15 as8. No new GPU ownership mechanism shipped.
+
+Owner prerequisites confirmed by neon-main (information, not approval): noderef812a97a
+is unlanded awaiting person yes/ScrollView backgroundColor answer; raw-kind option(a)
+starts on a new branch after that land and awaits confirmation in the owner's window.
+macOS embed f5a6d7c..c878fbc is also unlanded awaiting the owner's person decision about
+its red main gate/compiler ref-array destroy/trace card. Ion window migration has not
+started; it follows those lands. This session neither authorizes no-gate nor reassigns
+host/window ownership. Metal submissions cannot close the scene/HUD/texture-UI/pick/idle
+acceptance while these prerequisites are absent. User decisions are the next boundary.
 
 Acceptance ledger entries must name the row IDs, Neon JSX test/example, command and exit code,
 source tree, installed compiler/support and consumed Void baseline, backend and actual observed
