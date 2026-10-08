@@ -107,9 +107,34 @@ host op and no signal read; there is no separate BUILD phase producing data.
 
 ### Refresh lifecycle measurements
 
-`src/render/refresh.ms` is not yet connected to automatic JSX transformation,
-native HCR or Vite. Its registration/patch consumer is
-`tests/render/refresh.test.ms`; ordinary JSX still uses the lowering above.
+`src/render/refresh.ms` is the shared runtime; `src/macros/refresh.ms` `refreshPass` is the
+module pass that connects components to it. Neither delivery adapter (Vite, native HCR) exists
+yet, so nothing re-evaluates a module in a running app: the measurements below drive a
+re-registration by hand, as a re-evaluated module would.
+
+**Component boundary through the module pass.** An app names the pass in its `build.ms`
+(`globalImports: [{ from: <neon>/src/converters, modulePass: "refreshPass" }]`, as
+`tests/refresh/build.ms` does) and builds with `-d:refresh`; without the define the pass returns
+its module unchanged. A top-level function with a capitalized name, return type `NeonNode`, no
+type parameters and at most one plain parameter keeps its name and signature, but its body moves
+to `__refreshBody_X` and it returns `refreshBoundary(file, "X|<props type>", body, sig, props)`.
+`__refreshSig_X` returns a signature built at compile time from the body's node kinds,
+identifiers, literal values, member and attribute names and JSX text, so a formatting-only edit
+keeps it. Registrations and one `refreshModule(file)` are appended to the module, which is what a
+re-evaluation runs. Slots are typed per component (`ComponentSlot<P>`, keyed by file, name and
+props type text); no function is stored with its parameter erased to `unknown`.
+
+Measured 2026-10-08 on installed msc `99a851d7`, tree `d72f59c8`: `bash tests/refresh/run.sh`
+(native and `--target=js`, 4 tests each) green. An unchanged module keeps all three boundaries;
+re-registering `Counter` with a new body and signature remounts it alone: count 3 resets to 0,
+the sibling `Tally` keeps 1, the new handler adds 10 once, and the old button is dead. Removing
+JSX text from the walk turns the signature test red ("JSX text is in it").
+
+Generic components, components with two parameters or a destructured one, and capitalized
+functions returning anything else are left untransformed: an edit to one of them is not picked
+up by refresh. A pass helper outside the macro body cannot build a `Node` object literal
+(`'expr' does not exist in type 'Node'`), the same limit as reading a variant field there, so
+the pass builds its nodes inline.
 
 On 2026-10-05, installed msc `4573591e`, the JS command
 `msc test --target=js tests/render/refresh.test.ms` passed six refresh tests
@@ -133,6 +158,15 @@ did not prove module-evaluation registration. Automatic Refresh requires a
 generic module-transform prerequisite. The reference extraction/publication
 mechanism is [Solid Refresh](https://github.com/solidjs/solid-refresh),
 `src/babel/core/transform-jsx.ts` and `src/runtime/index.ts`.
+
+In real Chrome, an explicit-registration fixture replayed 28 of 28 checks on the pre-rebase
+tree `fcceb359` (msc candidate `b87bbaa4`): count 8 kept through a template publication, the new
+handler adding 2, four publications leaving one node and one handler, a body publication
+resetting only the local count, and a sibling, a textarea, undo and the page session surviving.
+The same build without listener cleanup failed 8 of 28 (a detached button kept incrementing).
+It was not re-run after the rebase onto origin's DOM host. On that host, extern DOM views must
+carry the browser's own class name: a fake name (`DomNode`) fails checked casts in Chromium with
+`ReferenceError: DomNode is not defined`.
 
 ## After mount: the wire graph
 
