@@ -237,6 +237,17 @@ Being exported for tests or low-level drawing does not imply it needs its own JS
 
 ## Blockers and acceptance ledger
 
+Current installed binary/support is c0949e9f2, not the earlier gate's0d83. On unchanged
+Neon439e3e9/Void d255ffb, `msc test tests/render/scene2dEffects.test.ms` fails7 with the
+first diagnostic `NodeFlag` not assignable to `BitSet<NodeFlag>`; no runtime case runs.
+Installed std/meta/node.ms `Node.flags` expects BitSet; element.ms metadata construction
+still supplies NodeFlag.StaticStorage. A no-Neon/no-macro typed assignment reproduces the
+same diagnostic (`msc run out/metaFlagType.ms`, exit1). This establishes an API mismatch,
+not a common compiler root cause or a Graphics regression. Logs
+`/tmp/scene2d-effects-graphics-restored.log`, `/tmp/meta-flag-type-c094.log`.
+Protected element.ms adaptation needs the person's approval. Graphics prototype is parked,
+production source restored exactly; prior full-gate results retain their0d83 scope only.
+
 Compiler owners already recorded in `BUGS.md`/`VISION.md` keep the original macro/enum cases;
 `2026-10-04-string-literal-union-signal-rejects-its-function-layout.md` also owns the reduced
 CameraProjection signal diagnostic. Void's existing const-array migration note owns findByName's
