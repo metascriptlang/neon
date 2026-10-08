@@ -119,6 +119,21 @@ existing 3D Group tag silently switch meaning outside Scene3D.
 
 ## 3D coverage
 
+Gltf first slice d57fd1f/tree1a044e83a699d412415a046fe70b129c85682efc, installed c094/Void
+ d255: `msc test tests/render/scene3dGltf.test.ms` own3/301 total pass. Group-only fixtures
+prove stable wrapper transform/ref, imported names/nonuniform pose, authored-child order,
+replacement/remount/cleanup, named bad graph/setup/scope, and old subtree preservation on
+failure. New factory subtrees are built synchronously under a staging Group; existing
+insertBefore keeps the imported slot ahead of authored children, remove rolls back failures,
+and closeGltfAssets ends factory holds. No second scene reconciler or raw side-table writes.
+Omitting staging rollback or insertBefore separately fails one assertion (299/1 with the
+then-two-case test), restored final301/0. Logs `/tmp/scene3d-gltf-{missing-red,c094,
+no-rollback-red,no-order-red}.log`, `/tmp/scene3dGltf-gltf-import-c094.log`.
+The fixtures have no meshes/materials/textures: do not infer GPU ownership, upload or
+rendering from these CPU greens. Resource-bearing and opt-in device consumers are next.
+Original16/Camera/Nodes importer reruns retain their7/1/1 known diagnostics; no source
+land or current full gate. Native gate discovers new file; JS follows Void-only skip.
+
 All scene-node entries include transforms, visibility, name, parent order/moves, error reporting
 and cleanup. Renderer/preset selection is scene configuration, not app-authored GPU passes.
 A resource is owned or borrowed explicitly; copying a handle is not retaining its resource.
@@ -139,7 +154,7 @@ A resource is owned or borrowed explicitly; copying a handle is not retaining it
 | 3D-12 | `src/void3d/animation.ms` MeshFrameAnimation/addBakedFrames/bindMeshFrames/syncMeshFrame | MeshFrameAnimation uses real resource pins and terminal close; missing | Supported baked-frame stepping, validation, binding/reparent survival, stale targets and release all offscreen frame holds; `src/test/animationCheck.ms`, `src/test/lifetimeCheck.ms` |
 | 3D-13 | `src/void3d/particles.ms` ParticleEmitter/EmitterState/updateEmitter/writeInstances; `src/void3d/draw.ms` addStreamMesh/writeStream | ParticleEmitter plus streamed Mesh path; missing | Supported value/shape/state controls, deterministic seed, live instance updates/capacity, active/idle scheduling and disposal; `src/test/particlesCheck.ms`, `src/test/instanceStreamCheck.ms` |
 | 3D-14 | `src/void3d/billboard.ms` BillboardInstance/AtlasTile/Anchor; `src/void3d/draw.ms` GpuMesh.billboards | Typed BillboardInstance/atlas/anchor input still missing a chosen owned resource route. Void GpuMesh.billboards uses caller-owned EXTERNAL_GENERATION buffers (draw.ms addMesh/doomBuffersOf never rebuild/destroy them); its stride15 differs from the owned Particle stream stride8. Do not reuse addStreamMesh by reinterpreting layout or require app buffer/frame glue. Trace/ownership decision remains pending; no implementation or new renderer | Texture atlas frame/anchor/color, ordered instances and resource ownership; `src/test/billboardCheck.ms`, `tests/integration/texturedFrame.ms` |
-| 3D-15 | `src/void3d/gltf.ms` loadGltf/loadGlb/GltfData; `src/void3d/gltfScene.ms` GltfAssets/addGltfAssets/addGltfNodes | GltfData scene component, helpers decode bytes; missing | Authored hierarchy/transforms/material/texture and errors, borrowed versus owned assets, repeated mount and cleanup; `tests/integration/gltfFrame.ms`, `src/test/gltfMaterialCheck.ms` |
+| 3D-15 | `src/void3d/gltf.ms` loadGltf/loadGlb/GltfData; `src/void3d/gltfScene.ms` GltfAssets/addGltfAssets/addGltfNodes | Gltf component backed by existing factories; stable wrapper, atomic group-only graph replacement/error rollback/remount/scope proven installed CPU. Decode stays API. Mesh/material/texture resources, uploads and rendered acceptance pending | Authored hierarchy/transforms/material/texture and errors, borrowed versus owned assets, repeated mount and cleanup; `tests/integration/gltfFrame.ms`, `src/test/gltfMaterialCheck.ms` |
 | 3D-16 | `src/void3d/forwardRenderer.ms` ForwardRenderer; `src/void3d/renderer.ms` Renderer | Scene renderer configuration and internal frame integration; missing | On-demand prepare→screen composition, camera/light blocks, frustum/pass lists and close/rebuild; `tests/integration/mixedFrame.ms`, `tests/integration/bothLayers.ms` |
 | 3D-17 | `src/void3d/pixelArtRenderer.ms` PixelArtRenderer/PixelArtSettings/PixelArtLook; `src/void3d/palette.ms` PaletteLut; `src/void3d/blit.ms` LowResView | Pixel-art renderer/palette/look as scene configuration; missing | Low-resolution/snap, post-pass toggles, depth source, outline/fog/saturation/palette, reactive settings and resize; compare existing renderer semantics, not a new Neon effect engine; `src/test/rendererCheck.ms`, `tests/integration/targetPresetEpoch.ms` |
 | 3D-18 | `src/void3d/dirShadowMap.ms` DirShadowMap; `src/void3d/renderer.ms` attachShadow; `src/void3d/material.ms` ShadowCasting/withShadows | Directional shadow configuration plus material cast/receive settings; missing | Dynamic caster bounds, shadows-only/off/on, supported alpha-cutout casters, bias/opacity/size, receiver pixels and resource cleanup; `src/test/dirShadowCheck.ms`, `tests/integration/dirShadow.ms` |
@@ -223,7 +238,8 @@ Being exported for tests or low-level drawing does not imply it needs its own JS
   the baseline decoder does not support (`src/void3d/gltf.ms` loadGltf/loadGlb).
   The person approved the GltfData policy: data plus GltfMaterialSetup, a stable owned wrapper
   Group, atomic imported-subtree replacement when data changes, and terminal cleanup using
-  addGltfAssets/addGltfNodes/closeGltfAssets. Implementation and runtime coverage remain pending.
+  addGltfAssets/addGltfNodes/closeGltfAssets. CPU group-only graph implementation is now
+  src/components/scene3d.ms Gltf; resource-bearing rendering remains pending.
 - R3F supports the adapter/object-linking direction, not a universal single-host requirement:
   at react-three-fiber d604b18, core/reconciler.tsx handleContainerEffects updates actual engine
   links and utils.tsx invalidateInstance requests frames. Drei bf6f4ad web/Html.tsx uses a
