@@ -22,6 +22,14 @@ names the card and the site, and nothing is worked around in `src/`. Rows closed
 2026-09-20 were dropped with §2 — they are in this file's history at `git show c00bd2b:BUGS.md`,
 and the invariants that outlived them were moved to the head of the test that pins each one.
 
+- **OPEN 2026-10-08 — a component without props cannot be a JSX tag.** `function Tally():
+  NeonNode { return <p>t</p>; }` used as `<Tally />` stops `msc run` (msc `99a851d7`, C) with
+  `Argument type mismatch in 'createComponent' arg 0: got function, expected function`: every
+  capitalized tag lowers to `createComponent<P>(Comp: (props: P) => NeonNode, props: P)`
+  (`src/render/component.ms` `createComponent`), which takes a one-parameter function. Examples
+  mount such a component by calling it (`App()` in `examples/voidWindow.ms`). The fix is in
+  `src/macros/ui/element.ms`, a contract that needs a yes before it changes.
+
 - **OPEN 2026-10-03 — Android: the list examples' `offset` label draws "offset" without its
   number.** Seen on the Seeker in the `list-pressed.png` screenshot that `tests/android/list.py`
   writes, in two runs: 15:40, before `c12ed39`, and 16:25, after it. In the same runs the
