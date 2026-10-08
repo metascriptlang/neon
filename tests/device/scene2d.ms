@@ -2,12 +2,14 @@ import { createSignal } from "../../src/core/signal";
 import { element } from "../../src/macros/ui/element";
 import { HostNode, mockNode, mockHost, render } from "../../src/render/host";
 import { Void } from "../../src/components/primitives";
-import { Scene2D, Rect } from "../../src/components/scene2d";
-import { Scene2D as VoidScene2D, NodeRef, local, filter } from "../../../void/src/void2d/node";
+import { Scene2D, Rect, Label } from "../../src/components/scene2d";
+import { Scene2D as VoidScene2D, NodeRef, local, filter, textStyle, text } from "../../../void/src/void2d/node";
 import { prepare, drawScreen } from "../../../void/src/void2d/scene";
 import { rgba, Camera, blurFilter } from "../../../void/src/void2d/types";
-import { renderTargetsAlive } from "../../../void/src/void2d/render";
-import { setup2d, drawCallCount } from "../../../void/src/void2d/draw";
+import { renderTargetsAlive, textWidth } from "../../../void/src/void2d/render";
+import { FontId, addFont } from "../../../void/src/void2d/font";
+import { TextStyle, Align } from "../../../void/src/void2d/textLayout";
+import { setup2d, drawCallCount, glyphPageCount } from "../../../void/src/void2d/draw";
 import { gfxSetup, fbWidth, fbHeight, dpiScale } from "../../../void/src/sokol/gpu";
 import { beginScreenPass } from "../../../void/src/gpu/target";
 import { endPass, commit } from "../../../void/src/gpu/door";
@@ -22,6 +24,20 @@ const nodes: NodeRef[] = [];
 const [x, setX] = createSignal<float32>(20.0);
 const [pan, setPan] = createSignal<float32>(0.0);
 const [radius, setRadius] = createSignal<float32>(2.0);
+const [labelText, setText] = createSignal("Ag");
+const [size, setSize] = createSignal<float32>(14.0);
+const labels: NodeRef[] = [];
+
+function loadedFont(): FontId {
+	const loaded = addFont("../void/assets/font.ttf");
+	if (!loaded.ok) { fail("font fixture refused"); process.exit(1); }
+	return loaded.value;
+}
+
+function styled(font: FontId): TextStyle {
+	return { font: font, size: 14.0, letterSpacing: 0.0, lineSpacing: 0.0,
+		maxWidth: 0.0, align: Align.Left };
+}
 
 function viewport(): Camera {
 	return { x: pan(), y: 0.0, zoom: 1.0, rotation: 0.0, anchorX: 0.0, anchorY: 0.0 };
@@ -29,6 +45,7 @@ function viewport(): Camera {
 
 function init(): void {
 	gfxSetup(); setup2d();
+	const font = loadedFont();
 	const root = mockNode("root");
 	dispose = render(element(<Void><Scene2D camera={viewport()}
 		ref={(scene: VoidScene2D): void => { subject = scene; }}>
@@ -36,6 +53,8 @@ function init(): void {
 			local={{ x: x(), y: 20.0, scaleX: 1.0, scaleY: 1.0,
 				rotation: 0.0, pivotX: 0.0, pivotY: 0.0 }}
 			ref={(node: NodeRef): void => { nodes.push(node); }} />
+		<Label text={labelText()} size={size()} color={rgba(1.0, 1.0, 1.0, 1.0)}
+			textStyle={styled(font)} ref={(node: NodeRef): void => { labels.push(node); }} />
 	</Scene2D></Void>), mockHost(), root as unknown as HostNode);
 }
 
@@ -47,7 +66,9 @@ function fail(message: string): void {
 function frame(): void {
 	const scene = subject;
 	if (scene === null) { fail("consumer did not mount"); return; }
-	if (frames === 5) { setX(80.0); setPan(4.0); setRadius(3.0); }
+	if (frames === 5) {
+		setX(80.0); setPan(4.0); setRadius(3.0); setText("Neon"); setSize(18.0);
+	}
 	if (nodes.length !== 1 || nodes[0].local().x !== (frames < 5 ? 20.0 : 80.0)) {
 		fail("consumer lost its reactive Rect"); return;
 	}
@@ -55,11 +76,16 @@ function frame(): void {
 		nodes[0].filter().radius !== (frames < 5 ? 2.0 : 3.0)) {
 		fail("consumer lost its reactive camera or filter"); return;
 	}
+	if (labels.length !== 1 || labels[0].text() !== (frames < 5 ? "Ag" : "Neon") ||
+		labels[0].textStyle().size !== (frames < 5 ? 14.0 : 18.0) ||
+		labels[0].textWidth() <= 0.0) {
+		fail("consumer lost its reactive real-font Label"); return;
+	}
 	const dpi: float32 = dpiScale();
 	scene.prepare((fbWidth() as float32) / dpi, (fbHeight() as float32) / dpi, dpi);
 	beginScreenPass({ x: 0.0, y: 0.0, z: 0.2, w: 1.0 });
 	scene.drawScreen(); endPass(); commit();
-	if (drawCallCount() < 1 || renderTargetsAlive() < 1) {
+	if (drawCallCount() < 1 || renderTargetsAlive() < 1 || glyphPageCount() < 1) {
 		fail("filtered Rect did not submit a draw with a live target"); return;
 	}
 	frames++;
@@ -69,7 +95,7 @@ function frame(): void {
 		if (!scene.closed || renderTargetsAlive() !== 0) {
 			fail("consumer did not close its scene and filter targets"); return;
 		}
-		console.log("PASS Scene2D device: 12 frames, Rect x20→80, camera0→4, blur2→3, closed targets");
+		console.log("PASS Scene2D device: 12 frames, reactive Rect/camera/blur/real-font Label, closed targets");
 		process.exit(0);
 	}
 }
