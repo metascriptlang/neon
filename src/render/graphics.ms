@@ -1,8 +1,13 @@
 import { NodeRef, clear } from "../../../void/src/void2d/node";
 import { Vec2, Color } from "../../../void/src/void2d/types";
+import { GradientSpace } from "../../../void/src/void2d/gradient";
 import {
 	fillRect, fillPolygon, fillTriangle, fillConvex, fillCircle, fillEllipse,
 	fillPie, fillRing, fillRoundedRect, strokeLine, strokePoly, strokeRect,
+	fillGradientPolygon, fillGradientPolygonOklab, fillGradientPolygonStops,
+	fillGradientRect, fillGradientRectOklab, fillGradientRectStops,
+	fillRadialGradient, fillRadialGradientOklab, fillRadialGradientStops,
+	fillSlashRect, fillCheckerRect,
 } from "../../../void/src/void2d/graphics";
 
 export struct FillRectOp {
@@ -108,9 +113,128 @@ export struct FillRingOp {
 	color: Color;
 }
 
+export struct FillGradientPolygonOp {
+	kind: "fillGradientPolygon";
+	points: Vec2[];
+	c0: Color;
+	c1: Color;
+	angle: float32;
+}
+
+export struct FillGradientPolygonOklabOp {
+	kind: "fillGradientPolygonOklab";
+	points: Vec2[];
+	c0: Color;
+	c1: Color;
+	angle: float32;
+}
+
+export struct FillGradientPolygonStopsOp {
+	kind: "fillGradientPolygonStops";
+	points: Vec2[];
+	c0: Color;
+	cMiddle: Color;
+	c1: Color;
+	middle: float32;
+	angle: float32;
+	space: GradientSpace;
+}
+
+export struct FillGradientRectOp {
+	kind: "fillGradientRect";
+	x: float32;
+	y: float32;
+	w: float32;
+	h: float32;
+	c0: Color;
+	c1: Color;
+	angle: float32;
+}
+
+export struct FillGradientRectOklabOp {
+	kind: "fillGradientRectOklab";
+	x: float32;
+	y: float32;
+	w: float32;
+	h: float32;
+	c0: Color;
+	c1: Color;
+	angle: float32;
+}
+
+export struct FillGradientRectStopsOp {
+	kind: "fillGradientRectStops";
+	x: float32;
+	y: float32;
+	w: float32;
+	h: float32;
+	c0: Color;
+	cMiddle: Color;
+	c1: Color;
+	middle: float32;
+	angle: float32;
+	space: GradientSpace;
+}
+
+export struct FillRadialGradientOp {
+	kind: "fillRadialGradient";
+	cx: float32;
+	cy: float32;
+	r: float32;
+	cInner: Color;
+	cOuter: Color;
+}
+
+export struct FillRadialGradientOklabOp {
+	kind: "fillRadialGradientOklab";
+	cx: float32;
+	cy: float32;
+	r: float32;
+	cInner: Color;
+	cOuter: Color;
+}
+
+export struct FillRadialGradientStopsOp {
+	kind: "fillRadialGradientStops";
+	cx: float32;
+	cy: float32;
+	r: float32;
+	c0: Color;
+	cMiddle: Color;
+	c1: Color;
+	middle: float32;
+	space: GradientSpace;
+}
+
+export struct FillSlashRectOp {
+	kind: "fillSlashRect";
+	x: float32;
+	y: float32;
+	w: float32;
+	h: float32;
+	background: Color;
+	stripe: Color;
+	spacing: float32;
+	width: float32;
+}
+
+export struct FillCheckerRectOp {
+	kind: "fillCheckerRect";
+	x: float32;
+	y: float32;
+	w: float32;
+	h: float32;
+	a: Color;
+	b: Color;
+	cell: float32;
+}
+
 export type GraphicsOp = FillRectOp | FillPolygonOp | FillConvexOp | FillTriangleOp |
 	StrokeLineOp | StrokePolyOp | StrokeRectOp | FillCircleOp | FillEllipseOp |
-	FillRoundedRectOp | FillPieOp | FillRingOp;
+	FillRoundedRectOp | FillPieOp | FillRingOp | FillGradientPolygonOp |
+	FillGradientPolygonOklabOp | FillGradientPolygonStopsOp | FillGradientRectOp |
+	FillGradientRectOklabOp | FillGradientRectStopsOp | FillRadialGradientOp |
+	FillRadialGradientOklabOp | FillRadialGradientStopsOp | FillSlashRectOp | FillCheckerRectOp;
 
 export function replayGraphics(node: NodeRef, operations: Span<GraphicsOp>): void {
 	node.clear();
@@ -130,6 +254,43 @@ export function replayGraphics(node: NodeRef, operations: Span<GraphicsOp>): voi
 			}
 			"fillPie" => {
 				node.fillPie(op.cx, op.cy, op.r, op.angleStart, op.angleLength, op.color);
+			}
+			"fillGradientPolygon" => {
+				node.fillGradientPolygon(op.points, op.c0, op.c1, op.angle);
+			}
+			"fillGradientPolygonOklab" => {
+				node.fillGradientPolygonOklab(op.points, op.c0, op.c1, op.angle);
+			}
+			"fillGradientPolygonStops" => {
+				node.fillGradientPolygonStops(op.points, op.c0, op.cMiddle, op.c1,
+					op.middle, op.angle, op.space);
+			}
+			"fillGradientRect" => {
+				node.fillGradientRect(op.x, op.y, op.w, op.h, op.c0, op.c1, op.angle);
+			}
+			"fillGradientRectOklab" => {
+				node.fillGradientRectOklab(op.x, op.y, op.w, op.h, op.c0, op.c1, op.angle);
+			}
+			"fillGradientRectStops" => {
+				node.fillGradientRectStops(op.x, op.y, op.w, op.h, op.c0, op.cMiddle,
+					op.c1, op.middle, op.angle, op.space);
+			}
+			"fillRadialGradient" => {
+				node.fillRadialGradient(op.cx, op.cy, op.r, op.cInner, op.cOuter);
+			}
+			"fillRadialGradientOklab" => {
+				node.fillRadialGradientOklab(op.cx, op.cy, op.r, op.cInner, op.cOuter);
+			}
+			"fillRadialGradientStops" => {
+				node.fillRadialGradientStops(op.cx, op.cy, op.r, op.c0, op.cMiddle,
+					op.c1, op.middle, op.space);
+			}
+			"fillSlashRect" => {
+				node.fillSlashRect(op.x, op.y, op.w, op.h, op.background, op.stripe,
+					op.spacing, op.width);
+			}
+			"fillCheckerRect" => {
+				node.fillCheckerRect(op.x, op.y, op.w, op.h, op.a, op.b, op.cell);
 			}
 			"fillRing" => {
 				node.fillRing(op.cx, op.cy, op.outerR, op.innerR,
