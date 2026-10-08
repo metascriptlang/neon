@@ -117,6 +117,19 @@ existing 3D Group tag silently switch meaning outside Scene3D.
 | 2D-14 | `src/void2d/node.ms` setPaint/setFilter/setColorMatrix; `src/void2d/types.ms` Filter/Smooth; `src/void2d/effect.ms` color-matrix helpers | Common Paint2D contract still blocked by installed enum/spread reds. Additional scene2dEffects cases cover all four FilterKind values, full snapshot replacement/defaults/sibling isolation/remount/disposal and independent matrix-row clear/reuse; installed and candidate 2 own/316 total pass at tree 226effdc733a0f0d8a10fa1bb0650813f82e6458. Removing filter/matrix binders gives 2/1 failures; restored source unchanged. Compositing/clipping/pixels pending | Blend/alpha/color-add/key/matrix, smooth/wrap/no-overlap and blur/glow/drop-shadow preserve compositing and clipping; `src/test/effectCheck.ms`, `tests/integration/doorBlendModes.ms` |
 | 2D-15 | `src/void2d/render.ms` hitTest/global queries and text geometry; `src/void2d/node.ms` localToGlobal/globalToLocal | Ref uses Void query APIs; scene2dQuery2 own/316 total pass installed+candidate at tree 3b6c39c1ac32162c7b6f0e098ea7a89232f2e8cc. Before-frame transforms/inverse queries, inherited visibility, collapsed scale/zero size, scroll and nested rotated/resized Mask hit clips tested; ignoring local binder gives2 failures, restored source unchanged. No new hit tester. Separate scene2dTile Sprite/nested-Rect getBounds cases fail installed+r8 (316 pass/2 fail): public bounds read cached worlds before frame, while live localToGlobal/hitTest work. Plain Void repro plus Heaps Object.getBounds syncPos reference in .inbox/void/2026-10-08-get-bounds-stale-before-frame.md; owner fix pending, no caller sync. Camera/frame pixels, press dispatch and host integration remain incomplete | Press hits what is drawn; UTF-16 index/caret/line queries match text pixels; use Void geometry, not a second measurer/hit tester; `tests/platform/voidInput.test.ms`, `src/test/textMetricsCheck.ms` |
 
+Isolated primitive device525284e/tree784bd08887aa6a35bd17047c6d9ae16b134232a5:
+`msc run tests/device/scene2dPrimitives.ms`, installed c094/Void d255/Metal, exit0,
+12 frames across four three-frame phases. Sole live raw node is respectively ScaleGrid,
+TileGroup, Underline and Selection, each submits a draw with live vertex-buffer storage.
+Changes within its phase prove Grid width64→80/borders, TileGroup visible count1→2 plus
+cell scale1→2, straight→wavy underline width32→48/h2→6, and Selection width/neighbor
+geometry. Retained node count/old-node disposal and terminal scene close are checked.
+Forcing TileGroup count1 gives exit1/TileGroup cells, production source restored exactly
+and restored run0. Logs `/tmp/scene2d-primitives-device-{c094,range-red}.log`.
+White tiles only: no uploaded atlas/sampler/resource-lifetime evidence. No observed
+nine-slice/wavy/neighbor pixels, input/idle/Ion claim. Initial missing int32 match wildcard
+was an authoring error, corrected before the successful runs; not a compiler finding.
+
 ## 3D coverage
 
 Gltf first slice d57fd1f/tree1a044e83a699d412415a046fe70b129c85682efc, installed c094/Void
