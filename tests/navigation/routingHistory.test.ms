@@ -1,4 +1,9 @@
-import { RoutePlan, RoutingError, RoutingParticipant, RoutingRegistry } from "../../src/navigation/routing";
+import {
+	RoutePlan,
+	RoutingError,
+	RoutingParticipant,
+	RoutingRegistry,
+} from "../../src/navigation/routing";
 import {
 	RoutingHistoryEntry,
 	createMemoryRoutingHistory,
@@ -51,9 +56,13 @@ test "routing sessions initialize before mount and restore snapshots on back and
 	let active = "";
 	let errors: int32 = 0;
 	const registry = new RoutingRegistry("main");
-	registry.register(participant((): string => active, (value: string): void => { active = value; }));
+	registry.register(participant(
+		(): string => active, (value: string): void => { active = value; },
+	));
 	const history = createMemoryRoutingHistory({ url: "/first", state: "" });
-	const connected = createRoutingSession(registry, history, (error: RoutingError): void => { errors += 1; });
+	const connected = createRoutingSession(
+		registry, history, (error: RoutingError): void => { errors += 1; },
+	);
 	assert connected.ok;
 	assert active === "/first";
 	if (connected.ok) {
@@ -84,7 +93,9 @@ test "request histories isolate SSR requests and refuse client navigation" {
 	right.register(participant((): string => second, (value: string): void => { second = value; }));
 	const request = createRequestRoutingHistory("/left");
 	const a = createRoutingSession(left, request, (error: RoutingError): void => {});
-	const b = createRoutingSession(right, createRequestRoutingHistory("/right"), (error: RoutingError): void => {});
+	const b = createRoutingSession(
+		right, createRequestRoutingHistory("/right"), (error: RoutingError): void => {},
+	);
 	assert a.ok && b.ok;
 	assert first === "/left" && second === "/right";
 	if (a.ok) {

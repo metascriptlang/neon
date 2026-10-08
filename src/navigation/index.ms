@@ -83,3 +83,34 @@ export {
 	NavigationContainerRef,
 	createNavigationContainerRef,
 } from "./container";
+export {
+	RoutingError,
+	RouteCodec,
+	RoutePlan,
+	RouteBinding,
+	bindRoute,
+	encodeRouteComponent,
+	decodeRouteComponent,
+	RegionAddress,
+	RegionSnapshot,
+	RoutingSnapshot,
+	RoutingParticipant,
+	RoutingRegistry,
+	decodeRoutingLocation,
+	encodeRoutingLocation,
+	createRouteParticipant,
+} from "./routing";
+export {
+	RoutingHistoryEntry,
+	RoutingHistory,
+	RoutingSession,
+	createMemoryRoutingHistory,
+	createRequestRoutingHistory,
+	createRoutingSession,
+} from "./routingHistory";
+export {
+	ChildState,
+	NavigationChild,
+	ChildNavigation,
+	createChildren,
+} from "./children";

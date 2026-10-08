@@ -73,7 +73,9 @@ test "scoped location encoding preserves primary query/hash and addresses parall
 	]);
 	assert encoded.ok;
 	if (encoded.ok) {
-		assert encoded.value === "/editor/7?document=42&__nav.inspector=%2Fmaterial%2Fcaf%C3%A9%3Ftab%3Dcolors#preview", encoded.value;
+		const expected = "/editor/7?document=42&__nav.inspector=" +
+			"%2Fmaterial%2Fcaf%C3%A9%3Ftab%3Dcolors#preview";
+		assert encoded.value === expected, encoded.value;
 		const decoded = decodeRoutingLocation("main", encoded.value);
 		assert decoded.ok;
 		if (decoded.ok) {
@@ -88,7 +90,11 @@ test "scoped location encoding preserves primary query/hash and addresses parall
 	assert !external.ok;
 }
 
-function textParticipant(scope: string, read: () => string, write: (value: string) => void): RoutingParticipant {
+function textParticipant(
+	scope: string,
+	read: () => string,
+	write: (value: string) => void,
+): RoutingParticipant {
 	return {
 		scope,
 		prepare: (address: string | null): Result<RoutePlan, RoutingError> => {
@@ -111,8 +117,12 @@ test "arbitrary participants validate all regions before committing and clear om
 	let main = "/world";
 	let inventory = "";
 	const router = new RoutingRegistry("main");
-	router.register(textParticipant("main", (): string => main, (value: string): void => { main = value; }));
-	router.register(textParticipant("inventory", (): string => inventory, (value: string): void => { inventory = value; }));
+	router.register(textParticipant(
+		"main", (): string => main, (value: string): void => { main = value; },
+	));
+	router.register(textParticipant(
+		"inventory", (): string => inventory, (value: string): void => { inventory = value; },
+	));
 	const invalid = router.apply("/world/2?__nav.inventory=%2Fbad");
 	assert !invalid.ok;
 	assert main === "/world" && inventory === "";
@@ -129,7 +139,9 @@ test "arbitrary participants validate all regions before committing and clear om
 test "registration rejects duplicate scopes and unknown regions without changing state" {
 	let main = "/first";
 	const router = new RoutingRegistry("main");
-	const participant = textParticipant("main", (): string => main, (value: string): void => { main = value; });
+	const participant = textParticipant(
+		"main", (): string => main, (value: string): void => { main = value; },
+	);
 	const unregister = router.register(participant);
 	let message = "";
 	try { router.register(participant); } catch (error) { message = error.message; }
@@ -147,7 +159,9 @@ test "snapshots are independent of URLs and restore through participant contract
 	let current = "/detail";
 	let stack = "home,detail";
 	const router = new RoutingRegistry("main");
-	const participant = textParticipant("main", (): string => current, (value: string): void => { current = value; });
+	const participant = textParticipant(
+		"main", (): string => current, (value: string): void => { current = value; },
+	);
 	participant.capture = (): string => stack;
 	participant.restore = (value: string): Result<RoutePlan, RoutingError> => {
 		return Result.ok({ commit: (): void => { stack = value; current = "/detail"; } });

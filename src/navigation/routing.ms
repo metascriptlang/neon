@@ -224,11 +224,12 @@ export function encodeRoutingLocation(
 	}
 	const primary = addresses.get(primaryScope);
 	if (primary === null) { return Result.err(RoutingError.NoMatch); }
-	const checked = try decodeRoutingLocation(primaryScope, primary as string);
+	const value = primary as string;
+	const checked = try decodeRoutingLocation(primaryScope, value);
 	if (checked.length !== 1) { return Result.err(RoutingError.DuplicateScope); }
-	const hashAt = (primary as string).indexOf("#");
-	let url = hashAt < 0 ? primary as string : (primary as string).substring(0, hashAt);
-	const hash = hashAt < 0 ? "" : (primary as string).substring(hashAt, (primary as string).length);
+	const hashAt = value.indexOf("#");
+	let url = hashAt < 0 ? value : value.substring(0, hashAt);
+	const hash = hashAt < 0 ? "" : value.substring(hashAt, value.length);
 	scopes.sort();
 	for (const scope of scopes) {
 		url += (url.indexOf("?") < 0 ? "?" : "&") + REGION_PREFIX + scope + "=" +
@@ -242,7 +243,9 @@ export class RoutingRegistry {
 	private participants: RoutingParticipant[] = [];
 
 	constructor(primaryScope: string) {
-		if (!validScope(primaryScope)) { throw new Error("routing: invalid primary scope: " + primaryScope); }
+		if (!validScope(primaryScope)) {
+			throw new Error("routing: invalid primary scope: " + primaryScope);
+		}
 		this.primaryScope = primaryScope;
 	}
 
@@ -298,7 +301,9 @@ export class RoutingRegistry {
 		const regions: RegionAddress[] = [];
 		for (const participant of this.participants) {
 			const address = try participant.address();
-			if (address !== null) { regions.push({ scope: participant.scope, address: address as string }); }
+			if (address !== null) {
+				regions.push({ scope: participant.scope, address: address as string });
+			}
 		}
 		return encodeRoutingLocation(this.primaryScope, regions);
 	}
@@ -336,4 +341,46 @@ export class RoutingRegistry {
 		plan.commit();
 		return Result.ok(null);
 	}
+}
+
+export function createRouteParticipant(
+	scope: string,
+	bindings: RouteBinding[],
+	clear: () => void,
+	capture: () => string,
+	restore: (state: string) => Result<RoutePlan, RoutingError>,
+): RoutingParticipant {
+	const ids = new Set<string>();
+	const routes = bindings.slice(0);
+	for (const binding of routes) {
+		if (ids.has(binding.id)) { throw new Error("duplicate route identity: " + binding.id); }
+		ids.add(binding.id);
+	}
+	return {
+		scope,
+		prepare: (address: string | null): Result<RoutePlan, RoutingError> => {
+			if (address === null) { return Result.ok({ commit: clear }); }
+			const plans: RoutePlan[] = [];
+			for (const binding of routes) {
+				const plan = binding.prepare(address as string);
+				if (plan.ok) { plans.push(plan.value); }
+				else if (plan.error !== RoutingError.NoMatch) { return Result.err(plan.error); }
+			}
+			if (plans.length === 0) { return Result.err(RoutingError.NoMatch); }
+			if (plans.length > 1) { return Result.err(RoutingError.AmbiguousRoute); }
+			return Result.ok(plans[0]);
+		},
+		address: (): Result<string | null, RoutingError> => {
+			let active: string | null = null;
+			for (const binding of routes) {
+				const address = try binding.address();
+				if (address === null) { continue; }
+				if (active !== null) { return Result.err(RoutingError.AmbiguousRoute); }
+				active = address;
+			}
+			return Result.ok(active);
+		},
+		capture,
+		restore,
+	};
 }

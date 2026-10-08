@@ -122,7 +122,9 @@ export class RoutingSession {
 		const synced = this.sync(replace);
 		if (!synced.ok) {
 			const restored = this.registry.restore(before);
-			if (!restored.ok) { throw new Error("routing: failed to restore after address failure"); }
+			if (!restored.ok) {
+				throw new Error("routing: failed to restore after address failure");
+			}
 		}
 		return synced;
 	}
