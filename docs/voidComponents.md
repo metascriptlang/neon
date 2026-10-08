@@ -130,6 +130,21 @@ White tiles only: no uploaded atlas/sampler/resource-lifetime evidence. No obser
 nine-slice/wavy/neighbor pixels, input/idle/Ion claim. Initial missing int32 match wildcard
 was an authoring error, corrected before the successful runs; not a compiler finding.
 
+Styling extension30e5bd8/tree4b72827581bfc401e246ce9ef3f394455b93cc8d extends that same
+opt-in consumer to21 frames (seven isolated three-frame phases). Verified installed525c8ba4f
+BUILD/binary SHA start/end, Void d255, Metal: exit0. Added Rect BoxStyle radius/borders
+and drop→inset shadow/dashed style, Sprite ImageStyle radius/grayscale/Contain→Cover,
+and Group structural→background Rect promotion on the same node (zero draws before
+promotion, positive afterward). Existing primitive phases remain. Turning ImageStyle's
+effect into a one-time set produces exit1/ImageStyle fit/radius/grayscale; source restored
+exactly and restored run0. `/tmp/neon-verified525-{styled-primitives,styled-image-red,
+styled-primitives-restored}.{scope,log,exit}` records the epoch and outputs.
+Data helpers use normal Void style APIs; no original JSX enum/spread or16-case consumer
+was rewritten. Initial wrong DrawKind import was corrected, not a compiler finding.
+White tiles only, no observed shadow/dash/grayscale/crop pixels, atlas upload or Ion claim.
+No source or normal-gate input changes; the preceding58/10+48/1 full gate remains the
+same normal input set, not evidence that this opt-in program runs through the CPU gate.
+
 ## 3D coverage
 
 Gltf first slice d57fd1f/tree1a044e83a699d412415a046fe70b129c85682efc, verified installed525c8ba4f/Void
