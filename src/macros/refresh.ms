@@ -262,9 +262,6 @@ export macro refreshPass(mod: Node): Node {
 		if (extract) {
 			sig = sig + "|captures:" + captures.join(",");
 			tmplSig = captures.join(",") + jobSig[tj];
-			if (intersects(jobNames[sj], imported)) {
-				dependents.push({ kind: NodeKind.StringLiteral, line: L, column: C, value: id });
-			}
 			if (intersects(jobNames[tj], imported)) {
 				dependents.push({ kind: NodeKind.StringLiteral, line: L, column: C, value: tid });
 			}
