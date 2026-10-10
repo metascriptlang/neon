@@ -155,6 +155,12 @@ one more `<section>`.
   one handler; the `words.ms` reload shows `a:11 pears` before any click; a compile error keeps the
   old code clickable and the fix reloads. A setup edit fails, see below.
 
+- `bash examples/refreshAndroid/drive.sh` (same day, Android 16 x86_64 emulator, a recompiler build of
+  `wt/hcr-android`, a hand-edited Gradle project whose `NativeApp` loads `files/hcr/libapp.core.so`):
+  a template text edit shows `Counter v2` with count 3 kept in the same pid, the next tap gives 4;
+  rebuild 3.9 s, delivery 0.9 s, reload 34-64 ms after delivery. Twice. Not run: arm64, a physical
+  device, setup or dependency edits, a release build.
+
 **Native setup edits and parent rebuilds are parked** on
 `~/metascript/.inbox/compiler/2026-10-10-hcr-generic-instance-typeinfo-per-generation.md`: a generic
 class instance gets a new TypeInfo per HCR generation, so reloaded code casting a slot created by
