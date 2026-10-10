@@ -7,7 +7,6 @@ import { untrack } from "../core/signal";
 import { onCleanup } from "../core/cleanup";
 
 export type SigFn = () => string;
-export type ErasedTmplFn = (host: Host, parent: HostNode, before: HostNode | null, props: unknown) => void;
 
 export interface RefreshSummary {
 	kept: int32;
@@ -15,23 +14,6 @@ export interface RefreshSummary {
 	remounted: int32;
 }
 
-interface TmplEntry {
-	sigFn: SigFn;
-	tmpl: (host: Host, parent: HostNode, before: HostNode | null, props: unknown) => void;
-}
-
-interface TmplInstance {
-	entry: TmplEntry;
-	key: string;
-	keyFile: string;
-	props: unknown;
-	host: Host;
-	parent: HostNode;
-	anchor: HostNode;
-	row: Row;
-	owner: Computation;
-	sig: string;
-}
 class ComponentSlot<P> {
 	body: (props: P) => NeonNode;
 	sigFn: SigFn;
@@ -42,7 +24,17 @@ class ComponentSlot<P> {
 	}
 }
 
-interface CompInstance {
+class TemplateSlot<E> {
+	fn: (env: E) => NeonNode;
+	sigFn: SigFn;
+
+	constructor(fn: (env: E) => NeonNode, sigFn: SigFn) {
+		this.fn = fn;
+		this.sigFn = sigFn;
+	}
+}
+
+interface Instance {
 	render: () => NeonNode;
 	sigFn: SigFn;
 	key: string;
@@ -57,52 +49,35 @@ interface CompInstance {
 
 function noop(): void {}
 
-const tmplEntries = new Map<string, TmplEntry>();
-const tmplInstances = new Map<string, TmplInstance[]>();
 const compSlots = new Map<string, unknown>();
-const compInstances = new Map<string, CompInstance[]>();
+const tmplSlots = new Map<string, unknown>();
+const compInstances = new Map<string, Instance[]>();
+const tmplInstances = new Map<string, Instance[]>();
+const moduleSigs = new Map<string, string>();
 
 function keyOf(moduleFile: string, id: string): string {
 	return moduleFile + "#" + id;
 }
 
-function pushTmpl(key: string, inst: TmplInstance): void {
-	const list = tmplInstances.get(key);
-	if (list === undefined) { tmplInstances.set(key, [inst]); } else { list.push(inst); }
-}
-
-function pushComp(key: string, inst: CompInstance): void {
-	const list = compInstances.get(key);
-	if (list === undefined) { compInstances.set(key, [inst]); } else { list.push(inst); }
-}
-
-function dropFromTmpl(list: TmplInstance[], inst: TmplInstance): boolean {
-	const at = list.indexOf(inst);
-	if (at < 0) { return false; }
-	list.splice(at, 1);
-	return true;
-}
-
-function dropFromComp(list: CompInstance[], inst: CompInstance): boolean {
-	const at = list.indexOf(inst);
-	if (at < 0) { return false; }
-	list.splice(at, 1);
-	return true;
-}
-
-
-function mountTmpl(inst: TmplInstance): void {
-	runWithOwner(inst.owner, (): number => untrack((): number => {
-		const row = makeRow((host: Host, parent: HostNode, before: HostNode | null): void => {
-			inst.entry.tmpl(host, parent, before, inst.props);
-		});
-		inst.row = row;
-		mountAt(inst.host, inst.parent, inst.anchor, row);
+function track(instances: Map<string, Instance[]>, inst: Instance): void {
+	const list = instances.get(inst.key);
+	if (list === undefined) { instances.set(inst.key, [inst]); } else { list.push(inst); }
+	runWithOwner(inst.owner, (): number => {
+		onCleanup((): void => { untrackInstance(instances, inst); });
 		return 0;
-	}));
+	});
 }
 
-function mountComp(inst: CompInstance): void {
+function untrackInstance(instances: Map<string, Instance[]>, inst: Instance): void {
+	const list = instances.get(inst.key);
+	if (list === undefined) { return; }
+	const at = list.indexOf(inst);
+	if (at < 0) { return; }
+	list.splice(at, 1);
+	if (list.length === 0) { instances.delete(inst.key); }
+}
+
+function mountInstance(inst: Instance): void {
 	runWithOwner(inst.owner, (): number => untrack((): number => {
 		const row = makeRow((host: Host, parent: HostNode, before: HostNode | null): void => {
 			inst.render()(host, parent, before);
@@ -113,78 +88,86 @@ function mountComp(inst: CompInstance): void {
 	}));
 }
 
-function rebuildTmpl(inst: TmplInstance, sig: string): void {
+function rebuild(instances: Map<string, Instance[]>, inst: Instance, sig: string): void {
 	removeRow(inst.host, inst.parent, inst.row);
 	cleanNode(inst.owner, false);
-	runWithOwner(inst.owner, (): number => { onCleanup((): void => { dropTmplInstance(inst); }); return 0; });
-	pushTmpl(inst.key, inst);
+	track(instances, inst);
 	inst.sig = sig;
-	mountTmpl(inst);
+	mountInstance(inst);
 }
 
-function rebuildComp(inst: CompInstance, sig: string): void {
-	removeRow(inst.host, inst.parent, inst.row);
-	cleanNode(inst.owner, false);
-	runWithOwner(inst.owner, (): number => { onCleanup((): void => { dropCompInstance(inst); }); return 0; });
-	pushComp(inst.key, inst);
-	inst.sig = sig;
-	mountComp(inst);
-}
-
-function dropTmplInstance(inst: TmplInstance): void {
-	const list = tmplInstances.get(inst.key);
-	if (list === undefined) { return; }
-	if (dropFromTmpl(list, inst) && list.length === 0) { tmplInstances.delete(inst.key); }
-}
-
-function dropCompInstance(inst: CompInstance): void {
-	const list = compInstances.get(inst.key);
-	if (list === undefined) { return; }
-	if (dropFromComp(list, inst) && list.length === 0) { compInstances.delete(inst.key); }
-}
-
-export function refreshTemplate(moduleFile: string, id: string, sigFn: SigFn, tmpl: ErasedTmplFn): void {
-	const key = keyOf(moduleFile, id);
-	const entry = tmplEntries.get(key);
-	if (entry === undefined) {
-		tmplEntries.set(key, { sigFn: sigFn, tmpl: tmpl });
-	} else {
-		entry.sigFn = sigFn;
-		entry.tmpl = tmpl;
-	}
-}
-
-export function refreshRegion<P>(moduleFile: string, id: string, props: P): NeonNode {
-	const key = keyOf(moduleFile, id);
+function instanceNode(
+	instances: Map<string, Instance[]>,
+	moduleFile: string,
+	key: string,
+	render: () => NeonNode,
+	sigFn: SigFn,
+): NeonNode {
 	return (host: Host, parent: HostNode, before: HostNode | null): void => {
-		const entry = tmplEntries.get(key);
-		if (entry === undefined) { throw `neon refresh: region ${id} mounted before its registration in ${moduleFile}`; }
 		if (needsStartMarker(parent)) { place(host, parent, host.createText(""), before); }
 		const anchor = host.createText("");
 		place(host, parent, anchor, before);
-		const inst: TmplInstance = {
-			entry: entry,
+		const inst: Instance = {
+			render: render,
+			sigFn: sigFn,
 			key: key,
 			keyFile: moduleFile,
-			props: props,
 			host: host,
 			parent: parent,
 			anchor: anchor,
 			row: makeRow((h: Host, p: HostNode, b: HostNode | null): void => { h.insertBefore(p, anchor, b); }),
 			owner: createComputation(noop, false),
-			sig: entry.sigFn(),
+			sig: sigFn(),
 		};
-		runWithOwner(inst.owner, (): number => { onCleanup((): void => { dropTmplInstance(inst); }); return 0; });
-		pushTmpl(key, inst);
-		mountTmpl(inst);
+		track(instances, inst);
+		mountInstance(inst);
 	};
 }
 
-function slotOf<P>(key: string, body: (props: P) => NeonNode, sigFn: SigFn): ComponentSlot<P> {
+function collect(instances: Map<string, Instance[]>, moduleFile: string): Instance[] {
+	const found: Instance[] = [];
+	for (const list of instances.values()) {
+		for (const inst of list) {
+			if (inst.keyFile === moduleFile) { found.push(inst); }
+		}
+	}
+	return found;
+}
+
+function patch(instances: Map<string, Instance[]>, found: Instance[], forced: string[]): int32[] {
+	let kept = 0 as int32;
+	let changed = 0 as int32;
+	for (const inst of found) {
+		if (inst.owner.disposed) { continue; }
+		const sig = inst.sigFn();
+		if (sig === inst.sig && forced.indexOf(inst.key) < 0) { kept += 1; continue; }
+		rebuild(instances, inst, sig);
+		changed += 1;
+	}
+	return [kept, changed];
+}
+
+function patchModule(moduleFile: string, forced: string[]): RefreshSummary {
+	const comps = collect(compInstances, moduleFile);
+	const tmpls = collect(tmplInstances, moduleFile);
+	const boundaries = patch(compInstances, comps, forced);
+	const regions = patch(tmplInstances, tmpls, forced);
+	return { kept: boundaries[0] + regions[0], rebuilt: regions[1], remounted: boundaries[1] };
+}
+
+function componentSlot<P>(key: string, body: (props: P) => NeonNode, sigFn: SigFn): ComponentSlot<P> {
 	const found = compSlots.get(key);
 	if (found !== undefined) { return found as ComponentSlot<P>; }
 	const slot = new ComponentSlot<P>(body, sigFn);
 	compSlots.set(key, slot);
+	return slot;
+}
+
+function templateSlot<E>(key: string, fn: (env: E) => NeonNode, sigFn: SigFn): TemplateSlot<E> {
+	const found = tmplSlots.get(key);
+	if (found !== undefined) { return found as TemplateSlot<E>; }
+	const slot = new TemplateSlot<E>(fn, sigFn);
+	tmplSlots.set(key, slot);
 	return slot;
 }
 
@@ -194,7 +177,7 @@ export function refreshComponent<P>(
 	body: (props: P) => NeonNode,
 	sigFn: SigFn,
 ): void {
-	const slot = slotOf<P>(keyOf(moduleFile, id), body, sigFn);
+	const slot = componentSlot<P>(keyOf(moduleFile, id), body, sigFn);
 	slot.body = body;
 	slot.sigFn = sigFn;
 }
@@ -216,27 +199,9 @@ export function refreshBoundary<P>(
 	props: P,
 ): NeonNode {
 	const key = keyOf(moduleFile, id);
-	const slot = slotOf<P>(key, body, sigFn);
-	return (host: Host, parent: HostNode, before: HostNode | null): void => {
-		if (needsStartMarker(parent)) { place(host, parent, host.createText(""), before); }
-		const anchor = host.createText("");
-		place(host, parent, anchor, before);
-		const inst: CompInstance = {
-			render: (): NeonNode => slot.body(props),
-			sigFn: (): string => slot.sigFn(),
-			key: key,
-			keyFile: moduleFile,
-			host: host,
-			parent: parent,
-			anchor: anchor,
-			row: makeRow((h: Host, p: HostNode, b: HostNode | null): void => { h.insertBefore(p, anchor, b); }),
-			owner: createComputation(noop, false),
-			sig: slot.sigFn(),
-		};
-		runWithOwner(inst.owner, (): number => { onCleanup((): void => { dropCompInstance(inst); }); return 0; });
-		pushComp(key, inst);
-		mountComp(inst);
-	};
+	const slot = componentSlot<P>(key, body, sigFn);
+	const render = (): NeonNode => slot.body(props);
+	return instanceNode(compInstances, moduleFile, key, render, (): string => slot.sigFn());
 }
 
 export function refreshBoundary0(
@@ -254,42 +219,64 @@ export function refreshBoundary0(
 	);
 }
 
+export function refreshTemplate<P, E>(
+	moduleFile: string,
+	id: string,
+	fn: (env: E) => NeonNode,
+	sigFn: SigFn,
+	setup: (props: P) => E,
+): void {
+	const slot = templateSlot<E>(keyOf(moduleFile, id), fn, sigFn);
+	slot.fn = fn;
+	slot.sigFn = sigFn;
+}
+
+export function refreshTemplate0<E>(
+	moduleFile: string,
+	id: string,
+	fn: (env: E) => NeonNode,
+	sigFn: SigFn,
+	setup: () => E,
+): void {
+	const slot = templateSlot<E>(keyOf(moduleFile, id), fn, sigFn);
+	slot.fn = fn;
+	slot.sigFn = sigFn;
+}
+
+export function refreshRegion<E>(
+	moduleFile: string,
+	id: string,
+	fn: (env: E) => NeonNode,
+	sigFn: SigFn,
+	env: E,
+): NeonNode {
+	const key = keyOf(moduleFile, id);
+	const slot = templateSlot<E>(key, fn, sigFn);
+	const render = (): NeonNode => slot.fn(env);
+	return instanceNode(tmplInstances, moduleFile, key, render, (): string => slot.sigFn());
+}
+
 export function refreshModule(moduleFile: string): RefreshSummary {
-	let kept = 0 as int32;
-	let rebuilt = 0 as int32;
-	let remounted = 0 as int32;
-	const boundaries: CompInstance[] = [];
-	for (const list of compInstances.values()) {
-		for (const inst of list) {
-			if (inst.keyFile === moduleFile) { boundaries.push(inst); }
-		}
-	}
-	for (const inst of boundaries) {
-		if (inst.owner.disposed) { continue; }
-		const sig = inst.sigFn();
-		if (sig === inst.sig) { kept += 1; continue; }
-		rebuildComp(inst, sig);
-		remounted += 1;
-	}
-	const regions: TmplInstance[] = [];
-	for (const list of tmplInstances.values()) {
-		for (const inst of list) {
-			if (inst.keyFile === moduleFile) { regions.push(inst); }
-		}
-	}
-	for (const inst of regions) {
-		if (inst.owner.disposed) { continue; }
-		const sig = inst.entry.sigFn();
-		if (sig === inst.sig) { kept += 1; continue; }
-		rebuildTmpl(inst, sig);
-		rebuilt += 1;
-	}
-	return { kept: kept, rebuilt: rebuilt, remounted: remounted };
+	return patchModule(moduleFile, []);
+}
+
+export function refreshModuleEval(
+	moduleFile: string,
+	moduleSig: string,
+	dependents: string[],
+): RefreshSummary {
+	const previous = moduleSigs.get(moduleFile);
+	moduleSigs.set(moduleFile, moduleSig);
+	if (previous === undefined || previous !== moduleSig) { return patchModule(moduleFile, []); }
+	const forced: string[] = [];
+	for (const id of dependents) { forced.push(keyOf(moduleFile, id)); }
+	return patchModule(moduleFile, forced);
 }
 
 export function refreshReset(): void {
-	tmplEntries.clear();
-	tmplInstances.clear();
 	compSlots.clear();
+	tmplSlots.clear();
 	compInstances.clear();
+	tmplInstances.clear();
+	moduleSigs.clear();
 }

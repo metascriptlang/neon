@@ -4,7 +4,7 @@ import { Host, HostNode, NeonNode } from "../../src/render/hostTypes";
 import { MockNode, mockNode, mockHost, render, fireEvent, mockToString } from "../../src/render/host";
 import { place } from "../../src/render/reconcile";
 import {
-	refreshTemplate,
+	refreshTemplate0,
 	refreshRegion,
 	refreshComponent0,
 	refreshBoundary0,
@@ -27,14 +27,32 @@ function appendDyn(host: Host, parent: HostNode, before: HostNode | null, get: (
 	createEffect((): void => { host.setText(t, get()); });
 }
 
+function counterTemplate(label: string): (props: CounterRegionProps) => NeonNode {
+	return (props: CounterRegionProps): NeonNode => {
+		return (host: Host, parent: HostNode, before: HostNode | null): void => {
+			appendText(host, parent, before, label);
+			appendDyn(host, parent, before, (): string => props.count().toString());
+			const button = host.createElement("button");
+			place(host, parent, button, before);
+			host.addEvent(button, "onPress", (): void => { props.onInc(); });
+		};
+	};
+}
+
+function counterSetup(): CounterRegionProps {
+	return { count: (): number => 0, onInc: (): void => {} };
+}
+
 function counterRegion(id: string, sig: string, label: string): void {
-	refreshTemplate("app.ms", id, (): string => sig, (host: Host, parent: HostNode, before: HostNode | null, props: CounterRegionProps): void => {
-		appendText(host, parent, before, label);
-		appendDyn(host, parent, before, (): string => props.count().toString());
-		const button = host.createElement("button");
-		place(host, parent, button, before);
-		host.addEvent(button, "onPress", (): void => { props.onInc(); });
-	});
+	refreshTemplate0("app.ms", id, counterTemplate(label), (): string => sig, counterSetup);
+}
+
+function mountCounter(id: string, props: CounterRegionProps): NeonNode {
+	return refreshRegion("app.ms", id, counterTemplate("unregistered:"), (): string => "", props);
+}
+
+function unit(): boolean {
+	return false;
 }
 
 test "refresh: template rebuild keeps the owning signal at its live value" {
@@ -46,7 +64,7 @@ test "refresh: template rebuild keeps the owning signal at its live value" {
 	};
 	counterRegion("r0", "v1", "old:");
 	const root: MockNode = mockNode("root");
-	const dispose = render(refreshRegion("app.ms", "r0", props), mockHost(), root as unknown as HostNode);
+	const dispose = render(mountCounter("r0", props), mockHost(), root as unknown as HostNode);
 
 	assert mockToString(root.children[0]) === "old:", "v1 label";
 	assert mockToString(root.children[1]) === "0", "count 0";
@@ -69,7 +87,7 @@ test "refresh: same signature re-registration keeps the mounted view" {
 	const [count] = createSignal(3);
 	counterRegion("r0", "v1", "old:");
 	const root: MockNode = mockNode("root");
-	const dispose = render(refreshRegion("app.ms", "r0", { count: (): number => count(), onInc: (): void => {} } as CounterRegionProps), mockHost(), root as unknown as HostNode);
+	const dispose = render(mountCounter("r0", { count: (): number => count(), onInc: (): void => {} } as CounterRegionProps), mockHost(), root as unknown as HostNode);
 	counterRegion("r0", "v1", "new:");
 	const summary = refreshModule("app.ms");
 	assert summary.rebuilt === 0, "same sig means no rebuild";
@@ -94,17 +112,20 @@ test "refresh: component remount resets only that boundary's local state" {
 	};
 	refreshComponent0("app.ms", "Counter", makeComp(), (): string => "s" + version.toString());
 	const [sibling] = createSignal(5);
-	refreshTemplate("app.ms", "sib", (): string => "s1", (host: Host, parent: HostNode, before: HostNode | null, props: unknown): void => {
-		appendText(host, parent, before, "sib:");
-		appendDyn(host, parent, before, (): string => sibling().toString());
-	});
+	const sib = (unused: boolean): NeonNode => {
+		return (host: Host, parent: HostNode, before: HostNode | null): void => {
+			appendText(host, parent, before, "sib:");
+			appendDyn(host, parent, before, (): string => sibling().toString());
+		};
+	};
+	refreshTemplate0("app.ms", "sib", sib, (): string => "s1", unit);
 
 	const root: MockNode = mockNode("root");
 	const signature = (): string => "s" + version.toString();
 	const boundary = refreshBoundary0("app.ms", "Counter", makeComp(), signature);
 	const dispose = render((host: Host, parent: HostNode, before: HostNode | null): void => {
 		boundary(host, parent, null);
-		refreshRegion("app.ms", "sib", null)(host, parent, null);
+		refreshRegion("app.ms", "sib", sib, (): string => "s1", false)(host, parent, null);
 	}, mockHost(), root as unknown as HostNode);
 
 	assert mockToString(root.children[0]) === "v1:", "v1 component label";
@@ -125,7 +146,7 @@ test "refresh: another module's instances are untouched" {
 	refreshReset();
 	counterRegion("r0", "v1", "old:");
 	const root: MockNode = mockNode("root");
-	const dispose = render(refreshRegion("app.ms", "r0", { count: (): number => 1, onInc: (): void => {} } as CounterRegionProps), mockHost(), root as unknown as HostNode);
+	const dispose = render(mountCounter("r0", { count: (): number => 1, onInc: (): void => {} } as CounterRegionProps), mockHost(), root as unknown as HostNode);
 	const summary = refreshModule("other.ms");
 	assert summary.rebuilt === 0 && summary.kept === 0, "only the named module patches";
 	dispose();
@@ -135,7 +156,7 @@ test "refresh: disposal drops instance records" {
 	refreshReset();
 	counterRegion("r0", "v1", "old:");
 	const root: MockNode = mockNode("root");
-	const dispose = render(refreshRegion("app.ms", "r0", { count: (): number => 1, onInc: (): void => {} } as CounterRegionProps), mockHost(), root as unknown as HostNode);
+	const dispose = render(mountCounter("r0", { count: (): number => 1, onInc: (): void => {} } as CounterRegionProps), mockHost(), root as unknown as HostNode);
 	dispose();
 	counterRegion("r0", "v2", "new:");
 	const summary = refreshModule("app.ms");
@@ -146,15 +167,19 @@ test "refresh: remounting a fragment boundary removes its nested regions" {
 	refreshReset();
 	const [value, setValue] = createSignal(1);
 	let effectRuns = 0;
-	refreshTemplate("nested.ms", "child", (): string => "child", (host: Host, parent: HostNode, before: HostNode | null, props: unknown): void => {
-		const node = host.createText("");
-		place(host, parent, node, before);
-		createEffect((): void => {
-			effectRuns += 1;
-			host.setText(node, "value:" + value().toString());
-		});
-	});
-	const component = (): NeonNode => refreshRegion("nested.ms", "child", null);
+	const child = (unused: boolean): NeonNode => {
+		return (host: Host, parent: HostNode, before: HostNode | null): void => {
+			const node = host.createText("");
+			place(host, parent, node, before);
+			createEffect((): void => {
+				effectRuns += 1;
+				host.setText(node, "value:" + value().toString());
+			});
+		};
+	};
+	const childSig = (): string => "child";
+	refreshTemplate0("nested.ms", "child", child, childSig, unit);
+	const component = (): NeonNode => refreshRegion("nested.ms", "child", child, childSig, false);
 	refreshComponent0("nested.ms", "parent", component, (): string => "1");
 	const root = mockNode("root");
 	const dispose = render((host: Host, parent: HostNode, before: HostNode | null): void => {
