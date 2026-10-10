@@ -406,3 +406,57 @@ not the frozen-tree verdict.
 
 The phone lanes use vertical examples. They do not certify native horizontal gestures,
 refresh, keyboard capture or reactive axis replacement; those acceptance checks remain open.
+
+## 12. Hot reload — 2026-10-11
+
+Edit a component on the PC and the running app shows it without a reinstall, through the
+compiler's HCR engine and Neon Refresh; what each kind of edit keeps, and the measurements, are in
+`docs/RENDER-MODEL.md` §"Refresh: what an edit keeps".
+
+```bash
+APK=<debug apk> tools/androidHcr.sh <project dir> [entry.ms]     # the loop, until interrupted
+APK=<debug apk> bash examples/refreshAndroid/drive.sh            # the 22 checks
+```
+
+The project's `build.ms` names `refreshPass` (see `examples/refreshAndroid/build.ms`). Neon must
+stay a dependency outside the project: as a project module the `--hcr` build stops with
+`HCR core module yoga/src/style.ms calls '…Destroy' which neon/src/render/style.ms generates in its
+reloadable image`.
+
+**Host contract.** The native side is `src/platform/android/bridge.c` under `-DNEON_HCR`
+(`Java_dev_metascript_app_NativeApp_launch`, `…_poll`) and `src/platform/native/host.ms`
+`pollReload`. The APK side is not generated yet: Ion's generator has no HCR variant, so the proof
+runs on a generated project edited by hand, and those edits exist nowhere in a repo:
+
+- `app/build.gradle`: no native library is packaged (the
+  `variant.sources.jniLibs.addGeneratedSourceDirectory(library)` line is removed); the images are
+  built for API 26 while the project's `minSdk` is still 23.
+- `NativeApp.java`: the static `System.loadLibrary("metascript")` becomes
+  `static void load(File dir)`, which once per process calls
+  `System.load(new File(dir, "libapp.core.so").getAbsolutePath())` and then
+  `launch(dir.getAbsolutePath(), "libapp")`; it declares `static native void launch(String dir, String stem)`
+  and `static native void poll()`.
+- `MainActivity.java`: `NativeApp.load(new File(getFilesDir(), "hcr"))` before `start`, and a
+  main-looper `Handler` that calls `NativeApp.poll()` every 100 ms and is removed in `onDestroy`.
+
+**Why this shape.**
+- The core image is loaded with `System.load`, not `dlopen` from C: ART resolves a `Java_*` symbol
+  only in a library the class loader loaded.
+- The images live in `getFilesDir()/hcr`. A debuggable app may load code copied there after
+  install (`adb push` to `/data/local/tmp`, then `run-as cp`), several generations coexist and
+  SELinux (enforcing, Android 16) denies nothing; `/data/local/tmp` itself is not executable for
+  the app.
+- A file is copied beside its target and renamed, and the `.hcrabi` goes last: the engine reads it
+  as "this build is complete", and a loaded image is never rewritten in place.
+- The engine's stdout and stderr reach the PC through logcat tag `MetaScript`; the dev loop reads
+  `HCR reloaded`, `HCR rejected` and `HCR restart required` from it and restarts the app on the
+  last answer.
+- Reference: the engine keeps Nim's model (`lib/nimhcr.nim` `loadDll` at `dcec8e1`: mtime, copy,
+  load from the launch directory). Device delivery has no Nim analog; the prior art is Flutter
+  `devfs.dart` `DevFS.update` and `run_hot.dart` `_reloadSources` at `6f0e0db`.
+
+**Windows host.** `msc` cannot spawn the NDK's `.cmd` wrappers, so the loop passes `clang.exe`
+with `--passC/--passL=--target=<triple>` and `--passL=--driver-mode=g++`.
+
+Not done: arm64 and a physical device, the Gradle build of the APK from the loop, the generator
+variant in Ion.

@@ -112,8 +112,8 @@ An app turns refresh on by naming the pass in its `build.ms`
 `-d:refresh` (Vite dev: the plugin's `compilerArgs: ["-d:refresh"]`) or `--hcr`. Without either
 define, `src/macros/refresh.ms` `refreshPass` returns every module unchanged, and a production
 `vite build` carries no refresh code. The runtime is `src/render/refresh.ms`; the two delivery
-adapters are `examples/refreshVite/` (Vite + real Chrome) and `examples/refreshNative/` (native
-HCR on the mock host), each with a driver that edits a copy of its sources.
+adapters are `examples/refreshVite/` (Vite + real Chrome), `examples/refreshNative/` (native
+HCR on the mock host) and `examples/refreshAndroid/` (HCR in an Android app, `docs/ANDROID.md` §12), each with a driver that edits a copy of its sources.
 
 | edit | what happens | why |
 |---|---|---|
@@ -153,20 +153,28 @@ one more `<section>`.
   define has no refresh code and runs. Same session id, zero navigations, same sibling DOM node.
 - `bash examples/refreshNative/drive.sh main`: template edits keep count 8 → 9 → 10 → 11 with
   one handler; the `words.ms` reload shows `a:11 pears` before any click; a compile error keeps the
-  old code clickable and the fix reloads. A setup edit fails, see below.
+  old code clickable and the fix reloads.
 
-- `bash examples/refreshAndroid/drive.sh` (same day, Android 16 x86_64 emulator, a recompiler build of
-  `wt/hcr-android`, a hand-edited Gradle project whose `NativeApp` loads `files/hcr/libapp.core.so`):
-  a template text edit shows `Counter v2` with count 3 kept in the same pid, the next tap gives 4;
-  rebuild 3.9 s, delivery 0.9 s, reload 34-64 ms after delivery. Twice. Not run: arm64, a physical
-  device, setup or dependency edits, a release build.
+**Measured 2026-10-11**, installed msc `89005562`, tree `edc50166`:
+- `bash examples/refreshNative/drive.sh main` and `parentAfterChild`: the setup edit and the parent
+  template rebuild after its child's module reloaded both answer `reloaded`, no rollback. Before
+  `89005562` both were rolled back, because a generic class instance (`TemplateSlot<E>`) had one
+  TypeInfo per HCR generation.
+- `APK=<debug apk> bash examples/refreshAndroid/drive.sh` (Android 16 x86_64 emulator, API 26
+  images, the dev loop `tools/androidHcr.sh`, a hand-edited Gradle project whose `NativeApp` loads
+  `files/hcr/libapp.core.so`): 22 of 22 checks, twice. Three template edits keep the count in one
+  process with one view and one handler; a `words.ms` edit shows without a tap; a compile error
+  leaves the app tappable and the fix reloads; a setup edit remounts the component with the new
+  handler; a core change (a new `std/hash` import) restarts the app on the delivered images with
+  no reinstall; an activity recreation after a reload remounts in the same process. Edit to
+  reloaded over 14 edits: 1351 to 4322 ms, median 2250 (warm build 1.2 to 2.2 s, delivery 0.14 to
+  1.9 s, the app polls every 100 ms). Delivery measured alone is 80 ms of `adb push` plus about
+  100 ms for the copy into the app; the 1 to 2 s cases inside the loop are not explained.
+  Rejected for a one-call delivery: `adb exec-in` (kills the remote command at EOF) and
+  `adb shell -T` (corrupts binaries from Windows). Not run: arm64, a physical device, a release
+  build, an app whose project includes Neon as a project module.
 
-**Native setup edits and parent rebuilds are parked** on
-`~/metascript/.inbox/compiler/2026-10-10-hcr-generic-instance-typeinfo-per-generation.md`: a generic
-class instance gets a new TypeInfo per HCR generation, so reloaded code casting a slot created by
-an older generation fails (`TemplateSlot<{ props: CounterProps; … }> is not TemplateSlot<{ … }>`)
-and HCR rolls the module back. A failed rebuild keeps its old signature, so the next refresh
-retries it. **A new generic instance reloads the page on Vite** (design card
+**A new generic instance reloads the page on Vite** (design card
 `~/metascript/.inbox/compiler/2026-10-10-js-generic-instance-emitted-into-defining-module.md`):
 the instance is emitted into the defining runtime module, which is not an HMR boundary.
 
