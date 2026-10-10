@@ -1,0 +1,9 @@
+{
+	"name": "neon-refresh-vite",
+	"private": true,
+	"type": "module",
+	"devDependencies": {
+		"vite": "5.4.21",
+		"vite-plugin-metascript": "file:../../../recompiler/tools/vite-plugin"
+	}
+}

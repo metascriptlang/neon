@@ -1,0 +1,10 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>Neon Refresh via Vite</title>
+<body>
+<script>
+	globalThis.process = globalThis.process || { exitCode: 0, argv: [], env: {} };
+	globalThis.__session = Math.random().toString(36).slice(2, 10);
+</script>
+<script type="module" src="./entry.js"></script>
+</body>
