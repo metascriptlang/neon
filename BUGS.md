@@ -87,6 +87,19 @@ and the invariants that outlived them were moved to the head of the test that pi
   no longer has (`layoutStyle`, `fontId`, `label`'s colour argument). The rewrite onto a `VoidNode`
   class that holds its `NodeRef` is `~/metascript/.wt/void-noderef-host.md`.
 
+- **PARKED 2026-10-10 — native refresh: a setup edit, or a parent template rebuild after its
+  child's module reloaded, is rolled back.** Not Neon's: a generic class instance gets a new
+  TypeInfo per HCR generation, so the `as TemplateSlot<E>` / `as ComponentSlot<P>` casts in
+  `src/render/refresh.ms` `templateSlot` / `componentSlot` fail in reloaded code
+  (`TemplateSlot<{ props: CounterProps; … }> is not TemplateSlot<{ … }>`). Measured with
+  `bash examples/refreshNative/drive.sh main` (scenario s2) and `parentAfterChild`, msc `5039c014`.
+  Card `~/metascript/.inbox/compiler/2026-10-10-hcr-generic-instance-typeinfo-per-generation.md`.
+
+- **PARKED 2026-10-10 — Vite refresh: an edit that adds a new generic instance reloads the page.**
+  Adding `createSignal(false)` to an accepted component module emits the `…__boolean` instance into
+  the runtime's `signal` module, which is not an HMR boundary. Design card
+  `~/metascript/.inbox/compiler/2026-10-10-js-generic-instance-emitted-into-defining-module.md`.
+
 - **PARKED 2026-10-04 — `tests/core/selectorNullable.test.ms` does not compile on the native lane.**
   Not Neon's: `createSelector` over an `int32 | null` source keys its `Map` by `int32 | null`, and
   `msc test tests/core/selectorNullable.test.ms` on `7a4af78c9` stops at `hash<int32 | null>`,
