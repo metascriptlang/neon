@@ -15,7 +15,6 @@ SERIAL=${SERIAL:-emulator-5554}
 PACKAGE=${PACKAGE:-dev.neon.NeonRefresh}
 SDK=${ANDROID_HOME:-$(cygpath -m "$LOCALAPPDATA")/Android/Sdk}
 ADB="$SDK/platform-tools/adb"
-CARD=2026-10-10-hcr-generic-instance-typeinfo-per-generation.md
 FAILED=0
 SEEN=0
 TIMES=""
@@ -114,14 +113,11 @@ reloaded "fix after the error"
 showsWithin "Counter v5;count 7;press again;tap;" 5
 check "the fix applies, count kept" "$(shown)" "Counter v5;count 7;press again;tap;"
 
-# (d) a setup edit: the handler adds 2. Rolls back today, see the card.
+# (d) a setup edit: the handler adds 2. The component remounts, so its count restarts.
 edit counter.ms 's/count() + 1/count() + 2/'
-next "^dev: device: HCR " 30
+reloaded "setup edit"
 tap tap
-case "$LINE $(shown)" in
-*"HCR reloaded"*"count 9;"*) fail "XPASS setup edit reloaded and adds 2: card $CARD is fixed, turn this into a check" ;;
-*) echo "XFAIL setup edit (card $CARD): ${LINE#dev: device: }; after a tap: $(shown)" ;;
-esac
+check "setup edit remounts the component with the new handler" "$(shown)" "Counter v5;count 2;press again;tap;"
 check "same process through every edit" "$(adb shell pidof $PACKAGE)" "$PID"
 
 # (e) a core change: the engine answers RestartRequired and the dev loop restarts the app
@@ -147,10 +143,7 @@ check "reload after the restart keeps the count" "$(shown)" "Counter v7;count 1;
 adb shell settings put system font_scale 1.0
 sleep 3
 showsWithin "Counter v7;count 0;press again;tap;" 10
-case "$(shown) $(adb shell pidof $PACKAGE)" in
-"Counter v7;count 0;press again;tap; $NEWPID") fail "XPASS activity recreation after a reload remounts: card $CARD is fixed, turn this into a check" ;;
-*) echo "XFAIL activity recreation after a reload (card $CARD): pid '$(adb shell pidof $PACKAGE)' after '$NEWPID'; $(grep "^dev: device: Error" "$LOG" | tail -1)" ;;
-esac
+check "activity recreation after a reload remounts in the same process" "$(shown) $(adb shell pidof $PACKAGE)" "Counter v7;count 0;press again;tap; $NEWPID"
 
 echo "edit to reloaded, sorted ms:$(echo $TIMES | tr ' ' '\n' | sort -n | tr '\n' ' ')"
 [ $FAILED = 0 ] && echo "RESULT PASS" || echo "RESULT FAIL"
