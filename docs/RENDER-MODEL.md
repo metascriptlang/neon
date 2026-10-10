@@ -111,7 +111,7 @@ An app turns refresh on by naming the pass in its `build.ms`
 (`globalImports: [{ from: <neon>/src/converters, modulePass: "refreshPass" }]`) and building with
 `-d:refresh` (Vite dev: the plugin's `compilerArgs: ["-d:refresh"]`) or `--hcr`. Without either
 define, `src/macros/refresh.ms` `refreshPass` returns every module unchanged, and a production
-`vite build` carries no refresh code. The runtime is `src/render/refresh.ms`; the two delivery
+`vite build` carries no refresh code. The runtime is `src/render/refresh.ms`; the delivery
 adapters are `examples/refreshVite/` (Vite + real Chrome), `examples/refreshNative/` (native
 HCR on the mock host) and `examples/refreshAndroid/` (HCR in an Android app, `docs/ANDROID.md` §12), each with a driver that edits a copy of its sources.
 
