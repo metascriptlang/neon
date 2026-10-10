@@ -54,6 +54,7 @@ const tmplSlots = new Map<string, unknown>();
 const compInstances = new Map<string, Instance[]>();
 const tmplInstances = new Map<string, Instance[]>();
 const moduleSigs = new Map<string, string>();
+const importers = new Map<string, string[]>();
 
 function keyOf(moduleFile: string, id: string): string {
 	return moduleFile + "#" + id;
@@ -92,8 +93,8 @@ function rebuild(instances: Map<string, Instance[]>, inst: Instance, sig: string
 	removeRow(inst.host, inst.parent, inst.row);
 	cleanNode(inst.owner, false);
 	track(instances, inst);
-	inst.sig = sig;
 	mountInstance(inst);
+	inst.sig = sig;
 }
 
 function instanceNode(
@@ -115,7 +116,9 @@ function instanceNode(
 			host: host,
 			parent: parent,
 			anchor: anchor,
-			row: makeRow((h: Host, p: HostNode, b: HostNode | null): void => { h.insertBefore(p, anchor, b); }),
+			row: makeRow((h: Host, p: HostNode, b: HostNode | null): void => {
+				h.insertBefore(p, anchor, b);
+			}),
 			owner: createComputation(noop, false),
 			sig: sigFn(),
 		};
@@ -155,7 +158,11 @@ function patchModule(moduleFile: string, forced: string[]): RefreshSummary {
 	return { kept: boundaries[0] + regions[0], rebuilt: regions[1], remounted: boundaries[1] };
 }
 
-function componentSlot<P>(key: string, body: (props: P) => NeonNode, sigFn: SigFn): ComponentSlot<P> {
+function componentSlot<P>(
+	key: string,
+	body: (props: P) => NeonNode,
+	sigFn: SigFn,
+): ComponentSlot<P> {
 	const found = compSlots.get(key);
 	if (found !== undefined) { return found as ComponentSlot<P>; }
 	const slot = new ComponentSlot<P>(body, sigFn);
@@ -273,10 +280,39 @@ export function refreshModuleEval(
 	return patchModule(moduleFile, forced);
 }
 
+export function refreshImports(moduleFile: string, imported: string, ids: string[]): void {
+	let keys = importers.get(imported);
+	if (keys === undefined) {
+		keys = [];
+		importers.set(imported, keys);
+	}
+	for (const id of ids) {
+		const key = keyOf(moduleFile, id);
+		if (keys.indexOf(key) < 0) { keys.push(key); }
+	}
+}
+
+export function refreshDependency(moduleKey: string): RefreshSummary {
+	const keys = importers.get(moduleKey);
+	if (keys === undefined) { return { kept: 0, rebuilt: 0, remounted: 0 }; }
+	const comps: Instance[] = [];
+	const tmpls: Instance[] = [];
+	for (const key of keys) {
+		const c = compInstances.get(key);
+		if (c !== undefined) { for (const inst of c) { comps.push(inst); } }
+		const t = tmplInstances.get(key);
+		if (t !== undefined) { for (const inst of t) { tmpls.push(inst); } }
+	}
+	const boundaries = patch(compInstances, comps, keys);
+	const regions = patch(tmplInstances, tmpls, keys);
+	return { kept: boundaries[0] + regions[0], rebuilt: regions[1], remounted: boundaries[1] };
+}
+
 export function refreshReset(): void {
 	compSlots.clear();
 	tmplSlots.clear();
 	compInstances.clear();
 	tmplInstances.clear();
 	moduleSigs.clear();
+	importers.clear();
 }

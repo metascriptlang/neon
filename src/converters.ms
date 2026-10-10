@@ -34,6 +34,8 @@ export {
 	refreshBoundary0,
 	refreshComponent,
 	refreshComponent0,
+	refreshDependency,
+	refreshImports,
 	refreshModule,
 	refreshModuleEval,
 	refreshRegion,

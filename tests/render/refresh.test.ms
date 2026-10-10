@@ -9,6 +9,8 @@ import {
 	refreshComponent0,
 	refreshBoundary0,
 	refreshModule,
+	refreshImports,
+	refreshDependency,
 	refreshReset,
 } from "../../src/render/refresh";
 
@@ -200,4 +202,56 @@ test "refresh: remounting a fragment boundary removes its nested regions" {
 	const before = effectRuns;
 	setValue(9);
 	assert effectRuns === before, "final disposal also cleans the refreshed nested effect";
+}
+
+test "refresh: a rebuild that throws is retried by the next refresh" {
+	refreshReset();
+	let failing = false;
+	let signature = "1";
+	const sigFn = (): string => signature;
+	const tmpl = (unused: boolean): NeonNode => {
+		return (host: Host, parent: HostNode, before: HostNode | null): void => {
+			if (failing) { throw "boom"; }
+			appendText(host, parent, before, "ok" + signature);
+		};
+	};
+	refreshTemplate0("retry.ms", "t", tmpl, sigFn, unit);
+	const root = mockNode("root");
+	const dispose = render(refreshRegion("retry.ms", "t", tmpl, sigFn, false), mockHost(), root as HostNode);
+	failing = true;
+	signature = "2";
+	let threw = false;
+	try {
+		refreshModule("retry.ms");
+	} catch (e) {
+		threw = true;
+	}
+	assert threw, "the failing rebuild throws";
+	failing = false;
+	const summary = refreshModule("retry.ms");
+	assert summary.rebuilt === 1, "the failed rebuild is retried, not kept";
+	assert mockToString(root) === "<root>ok2</root>", "got " + mockToString(root);
+	dispose();
+}
+
+test "refresh: a reloaded dependency rebuilds the templates registered as reading it" {
+	refreshReset();
+	let word = "apples";
+	const tmpl = (unused: boolean): NeonNode => {
+		return (host: Host, parent: HostNode, before: HostNode | null): void => {
+			appendText(host, parent, before, word);
+		};
+	};
+	const sigFn = (): string => "1";
+	refreshTemplate0("dep.ms", "t", tmpl, sigFn, unit);
+	const root = mockNode("root");
+	const dispose = render(refreshRegion("dep.ms", "t", tmpl, sigFn, false), mockHost(), root as HostNode);
+	refreshImports("dep.ms", "app/words", ["t"]);
+	word = "pears";
+	assert refreshDependency("app/other").rebuilt === 0, "an unrelated module rebuilds nothing";
+	assert mockToString(root) === "<root>apples</root>", "untouched: " + mockToString(root);
+	const summary = refreshDependency("app/words");
+	assert summary.rebuilt === 1 && summary.remounted === 0, "the reading template is rebuilt";
+	assert mockToString(root) === "<root>pears</root>", "got " + mockToString(root);
+	dispose();
 }
