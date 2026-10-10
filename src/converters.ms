@@ -35,4 +35,8 @@ export {
 	refreshComponent,
 	refreshComponent0,
 	refreshModule,
+	refreshModuleEval,
+	refreshRegion,
+	refreshTemplate,
+	refreshTemplate0,
 } from "./render/refresh";
