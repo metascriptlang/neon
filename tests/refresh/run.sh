@@ -8,4 +8,6 @@ for target in "" "--target=js"; do
 	echo "== refresh ${target:-native} boundary.ms"
 	"$MSC" test $target -d:refresh boundary.ms || fail=1
 done
+echo "== refresh native -d:hcr boundary.ms"
+"$MSC" test -d:hcr boundary.ms || fail=1
 exit $fail

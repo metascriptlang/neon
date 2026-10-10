@@ -141,7 +141,8 @@ test "refresh pass: a changed component remounts alone, its sibling keeps state"
 test "refresh pass: the signature follows text, member names and literals" {
 	assert __refreshTmplSig_SameA() === __refreshTmplSig_SameB(), "equal JSX shares a signature";
 	assert __refreshTmplSig_SameA() !== __refreshTmplSig_OtherText(), "JSX text is in it";
-	assert __refreshTmplSig_ReadsTitle() !== __refreshTmplSig_ReadsLabel(), "member names are in it";
+	const title = __refreshTmplSig_ReadsTitle();
+	assert title !== __refreshTmplSig_ReadsLabel(), "member names are in it";
 	assert __refreshSig_CountsOne() !== __refreshSig_CountsTwo(), "number literals are in it";
 	assert __refreshSig_SameA() === __refreshSig_OtherText(), "JSX stays out of the setup";
 }
@@ -159,7 +160,8 @@ test "refresh pass: a template edit keeps the component's state" {
 	refreshTemplate(thisFile(), "Counter#template", counterTemplateV2, t2, __refreshSetup_Counter);
 	const summary = refreshModule(thisFile());
 	assert summary.rebuilt === 1 && summary.remounted === 0, "one template rebuilt, no remount";
-	assert texts(root) === "<p>t2 a:3</p> <p>tally:0</p> ", "new template, count kept: " + texts(root);
+	const rebuilt = texts(root);
+	assert rebuilt === "<p>t2 a:3</p> <p>tally:0</p> ", "new template, count kept: " + rebuilt;
 	fireEvent(all(root, "button")[0], "onPress");
 	assert texts(root) === "<p>t2 a:4</p> <p>tally:0</p> ", "the kept handler adds one";
 	dispose();

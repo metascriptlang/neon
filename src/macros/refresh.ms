@@ -44,6 +44,33 @@ function intersects(names: string[], set: string[]): boolean {
 	return false;
 }
 
+function moduleKey(path: string): string {
+	let p = path.split("\\").join("/");
+	for (const ext of [".cms", ".jms", ".ms"]) {
+		if (p.endsWith(ext)) {
+			p = p.slice(0, p.length - ext.length);
+			break;
+		}
+	}
+	if (p.endsWith("/index")) p = p.slice(0, p.length - 6);
+	let parts: string[] = [];
+	for (const part of p.split("/")) {
+		if (part == ".") continue;
+		if (part == ".." && parts.length > 0 && parts[parts.length - 1] != "..") {
+			parts.pop();
+			continue;
+		}
+		parts.push(part);
+	}
+	return parts.join("/");
+}
+
+function importKey(file: string, source: string): string {
+	if (!source.startsWith(".")) return "";
+	const path = file.split("\\").join("/");
+	return moduleKey(path.slice(0, path.lastIndexOf("/")) + "/" + source);
+}
+
 export macro refreshPass(mod: Node): Node {
 	if (define("refresh") == "" && define("hcr") == "") return mod;
 	const file = expansionFile();
@@ -52,6 +79,8 @@ export macro refreshPass(mod: Node): Node {
 	const stmts = mod.programStmts;
 
 	let imported: string[] = [];
+	let importSources: string[] = [];
+	let importNames: string[][] = [];
 	let sideEffects = false;
 	let jobRoots: Node[][] = [stmts];
 	let varJobs: int32[] = [];
@@ -64,10 +93,15 @@ export macro refreshPass(mod: Node): Node {
 	for (let i = 0; i < stmts.length; i += 1) {
 		const s = stmts[i];
 		if (s.kind == NodeKind.ImportDecl) {
+			let fromSource: string[] = [];
 			for (let k = 0; k < s.importNames.length; k += 1) {
 				const alias = k < s.importAliases.length ? s.importAliases[k] : "";
-				imported.push(alias != "" ? alias : s.importNames[k]);
+				const local = alias != "" ? alias : s.importNames[k];
+				imported.push(local);
+				fromSource.push(local);
 			}
+			importSources.push(importKey(file, s.importSource));
+			importNames.push(fromSource);
 			continue;
 		}
 		let decl = s;
@@ -135,15 +169,17 @@ export macro refreshPass(mod: Node): Node {
 		declared.push(names);
 		mutable.push(lets);
 	}
-	if (compAt.length == 0) return mod;
+	if (compAt.length == 0 && define("hcr") == "") return mod;
 
 	let jobSig: string[] = [];
 	let jobNames: string[][] = [];
+	let jobTags: string[][] = [];
 	let jobReturns: int32[] = [];
 	let jobCalls: boolean[] = [];
 	for (const roots of jobRoots) {
 		let sig = "";
 		let names: string[] = [];
+		let tags: string[] = [];
 		let returns = 0 as int32;
 		let calls = false;
 		let stack: Node[] = [];
@@ -180,8 +216,8 @@ export macro refreshPass(mod: Node): Node {
 				sig = sig + ":" + m.arrowParams.join(",") + ":" + m.arrowParamTypes.join(",") +
 					":" + m.arrowReturnType;
 			} else if (m.kind == NodeKind.FunctionDecl) {
-				sig = sig + ":" + m.fnName + ":" + m.params.join(",") + ":" + m.fnParamTypes.join(",") +
-					":" + m.fnReturnType;
+				sig = sig + ":" + m.fnName + ":" + m.params.join(",") + ":" +
+					m.fnParamTypes.join(",") + ":" + m.fnReturnType;
 			} else if (m.kind == NodeKind.TypeAssertion) {
 				sig = sig + ":" + m.asType;
 			} else if (m.kind == NodeKind.ObjectLiteral) {
@@ -192,7 +228,7 @@ export macro refreshPass(mod: Node): Node {
 				sig = sig + ":" + m.propKey;
 			} else if (m.kind == NodeKind.JSXElement) {
 				sig = sig + ":" + m.jsxTag;
-				names.push(m.jsxTag);
+				tags.push(m.jsxTag);
 			} else if (m.kind == NodeKind.JSXText) {
 				sig = sig + ":" + m.jsxText;
 			} else if (m.kind == NodeKind.JSXAttribute) {
@@ -213,6 +249,7 @@ export macro refreshPass(mod: Node): Node {
 		}
 		jobSig.push(sig);
 		jobNames.push(names);
+		jobTags.push(tags);
 		jobReturns.push(returns);
 		jobCalls.push(calls);
 	}
@@ -223,6 +260,8 @@ export macro refreshPass(mod: Node): Node {
 	let out: Node[] = [];
 	let tail: Node[] = [];
 	let dependents: Node[] = [];
+	let sourceIds: Node[][] = [];
+	for (const source of importSources) sourceIds.push([]);
 	for (let i = 0; i < stmts.length; i += 1) {
 		const s = stmts[i];
 		const c = compAt.indexOf(i as int32);
@@ -250,7 +289,8 @@ export macro refreshPass(mod: Node): Node {
 		let extract = tj >= 0 && jobReturns[sj] == 0;
 		if (extract) {
 			for (const n of declared[c]) {
-				if (jobNames[tj].indexOf(n) >= 0 && captures.indexOf(n) < 0) captures.push(n);
+				const read = jobNames[tj].indexOf(n) >= 0 || jobTags[tj].indexOf(n) >= 0;
+				if (read && captures.indexOf(n) < 0) captures.push(n);
 			}
 			if (intersects(captures, mutable[c])) extract = false;
 		}
@@ -262,15 +302,40 @@ export macro refreshPass(mod: Node): Node {
 		if (extract) {
 			sig = sig + "|captures:" + captures.join(",");
 			tmplSig = captures.join(",") + jobSig[tj];
-			if (intersects(jobNames[tj], imported)) {
+			if (intersects(jobNames[tj], imported) || intersects(jobTags[tj], imported)) {
 				dependents.push({ kind: NodeKind.StringLiteral, line: L, column: C, value: tid });
+			}
+			for (let k = 0; k < importSources.length; k += 1) {
+				if (importSources[k] != "" && intersects(jobNames[tj], importNames[k])) {
+					const read: Node = {
+						kind: NodeKind.StringLiteral,
+						line: L,
+						column: C,
+						value: tid,
+					};
+					sourceIds[k].push(read);
+				}
 			}
 		} else {
 			if (tj >= 0) sig = sig + jobSig[tj];
 			const usesImports = intersects(jobNames[sj], imported) ||
-				(tj >= 0 && intersects(jobNames[tj], imported));
+				(tj >= 0 && intersects(jobNames[tj], imported)) ||
+				(tj >= 0 && intersects(jobTags[tj], imported));
 			if (usesImports) {
 				dependents.push({ kind: NodeKind.StringLiteral, line: L, column: C, value: id });
+			}
+			for (let k = 0; k < importSources.length; k += 1) {
+				const reads = intersects(jobNames[sj], importNames[k]) ||
+					(tj >= 0 && intersects(jobNames[tj], importNames[k]));
+				if (importSources[k] != "" && reads) {
+					const read: Node = {
+						kind: NodeKind.StringLiteral,
+						line: L,
+						column: C,
+						value: id,
+					};
+					sourceIds[k].push(read);
+				}
 			}
 		}
 
@@ -291,7 +356,12 @@ export macro refreshPass(mod: Node): Node {
 						kind: NodeKind.MemberExpr,
 						line: L,
 						column: C,
-						object: { kind: NodeKind.Identifier, line: L, column: C, name: "__refreshEnv" },
+						object: {
+							kind: NodeKind.Identifier,
+							line: L,
+							column: C,
+							name: "__refreshEnv",
+						},
 						property: n,
 						isOptional: false,
 					},
@@ -383,7 +453,12 @@ export macro refreshPass(mod: Node): Node {
 					kind: NodeKind.CallExpr,
 					line: L,
 					column: C,
-					callee: { kind: NodeKind.Identifier, line: L, column: C, name: "refreshRegion" },
+					callee: {
+						kind: NodeKind.Identifier,
+						line: L,
+						column: C,
+						name: "refreshRegion",
+					},
 					arguments: [
 						{ kind: NodeKind.StringLiteral, line: L, column: C, value: file },
 						{ kind: NodeKind.StringLiteral, line: L, column: C, value: tid },
@@ -393,7 +468,12 @@ export macro refreshPass(mod: Node): Node {
 							kind: NodeKind.CallExpr,
 							line: L,
 							column: C,
-							callee: { kind: NodeKind.Identifier, line: L, column: C, name: setupName },
+							callee: {
+								kind: NodeKind.Identifier,
+								line: L,
+								column: C,
+								name: setupName,
+							},
 							arguments: setupArgs,
 						},
 					],
@@ -499,19 +579,58 @@ export macro refreshPass(mod: Node): Node {
 		} });
 	}
 
+	const components = compAt.length > 0;
 	for (const t of tail) out.push(t);
-	out.push({ kind: NodeKind.ExprStmt, line: ML, column: MC, expr: {
-		kind: NodeKind.CallExpr,
-		line: ML,
-		column: MC,
-		callee: { kind: NodeKind.Identifier, line: ML, column: MC, name: "refreshModuleEval" },
-		arguments: [
-			{ kind: NodeKind.StringLiteral, line: ML, column: MC, value: file },
-			{ kind: NodeKind.StringLiteral, line: ML, column: MC, value: jobSig[0] },
-			{ kind: NodeKind.ArrayLiteral, line: ML, column: MC, elements: dependents },
-		],
-	} });
+	if (components) {
+		out.push({ kind: NodeKind.ExprStmt, line: ML, column: MC, expr: {
+			kind: NodeKind.CallExpr,
+			line: ML,
+			column: MC,
+			callee: { kind: NodeKind.Identifier, line: ML, column: MC, name: "refreshModuleEval" },
+			arguments: [
+				{ kind: NodeKind.StringLiteral, line: ML, column: MC, value: file },
+				{ kind: NodeKind.StringLiteral, line: ML, column: MC, value: jobSig[0] },
+				{ kind: NodeKind.ArrayLiteral, line: ML, column: MC, elements: dependents },
+			],
+		} });
+	}
 	if (define("hcr") != "") {
+		for (let k = 0; k < importSources.length; k += 1) {
+			if (sourceIds[k].length == 0) continue;
+			out.push({ kind: NodeKind.ExprStmt, line: ML, column: MC, expr: {
+				kind: NodeKind.CallExpr,
+				line: ML,
+				column: MC,
+				callee: { kind: NodeKind.Identifier, line: ML, column: MC, name: "refreshImports" },
+				arguments: [
+					{ kind: NodeKind.StringLiteral, line: ML, column: MC, value: file },
+					{ kind: NodeKind.StringLiteral, line: ML, column: MC, value: importSources[k] },
+					{ kind: NodeKind.ArrayLiteral, line: ML, column: MC, elements: sourceIds[k] },
+				],
+			} });
+		}
+		let reloaded: Node[] = [];
+		if (components) {
+			reloaded.push({ kind: NodeKind.ExprStmt, line: ML, column: MC, expr: {
+				kind: NodeKind.CallExpr,
+				line: ML,
+				column: MC,
+				callee: { kind: NodeKind.Identifier, line: ML, column: MC, name: "refreshModule" },
+				arguments: [{ kind: NodeKind.StringLiteral, line: ML, column: MC, value: file }],
+			} });
+		}
+		reloaded.push({ kind: NodeKind.ExprStmt, line: ML, column: MC, expr: {
+			kind: NodeKind.CallExpr,
+			line: ML,
+			column: MC,
+			callee: { kind: NodeKind.Identifier, line: ML, column: MC, name: "refreshDependency" },
+			arguments: [{
+				kind: NodeKind.StringLiteral,
+				line: ML,
+				column: MC,
+				value: moduleKey(file),
+			}],
+		} });
 		out.push({
 			kind: NodeKind.DecoratedDecl,
 			line: ML,
@@ -531,18 +650,7 @@ export macro refreshPass(mod: Node): Node {
 				fnName: "__refreshAfterReload",
 				params: [],
 				fnParamTypes: [],
-				fnBody: { kind: NodeKind.BlockStmt, line: ML, column: MC, statements: [{
-					kind: NodeKind.ExprStmt,
-					line: ML,
-					column: MC,
-					expr: {
-						kind: NodeKind.CallExpr,
-						line: ML,
-						column: MC,
-						callee: { kind: NodeKind.Identifier, line: ML, column: MC, name: "refreshModule" },
-						arguments: [{ kind: NodeKind.StringLiteral, line: ML, column: MC, value: file }],
-					},
-				}] },
+				fnBody: { kind: NodeKind.BlockStmt, line: ML, column: MC, statements: reloaded },
 				fnFlags: "",
 				fnReturnType: "void",
 				fnDefaults: [],
@@ -552,7 +660,7 @@ export macro refreshPass(mod: Node): Node {
 		});
 	}
 	when (js) {
-		if (!sideEffects) {
+		if (components && !sideEffects) {
 			out.push({ kind: NodeKind.ExprStmt, line: ML, column: MC, expr: {
 				kind: NodeKind.MacroInvocation,
 				line: ML,
