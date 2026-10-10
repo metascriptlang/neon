@@ -30,6 +30,7 @@ extern class ProbeStyle {
 	textDecorationLine: string;
 	letterSpacing: string;
 	lineHeight: string;
+	backgroundImage: string;
 }
 
 extern class ProbeClassList {
@@ -272,6 +273,15 @@ test "letterSpacing and lineHeight reach the element as pixel lengths" {
 	assert probe(el).style.letterSpacing === "2.5px", probe(el).style.letterSpacing;
 	h.setStyle(el, styleWith("lineHeight", 66));
 	assert probe(el).style.lineHeight === "66px", probe(el).style.lineHeight;
+	probe(el).remove();
+}
+
+test "backgroundImage reaches the element with every layer" {
+	const h = domHost();
+	const el = mount("view");
+	const layers = "linear-gradient(rgb(1, 2, 3), rgb(4, 5, 6)), linear-gradient(rgb(7, 8, 9), rgb(1, 1, 1))";
+	h.setStyle(el, styleWith("backgroundImage", layers));
+	assert probe(el).style.backgroundImage === layers, probe(el).style.backgroundImage;
 	probe(el).remove();
 }
 

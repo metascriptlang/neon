@@ -38,6 +38,7 @@ export const STYLE_TABLE: string[][] = [
 	["rowGap",              "number | string",   "len",  "dim",    "ignore"],
 	["columnGap",           "number | string",   "len",  "dim",    "ignore"],
 	["backgroundColor",     "string",            "word", "paint",  "paint"],
+	["backgroundImage",     "string",            "word", "ignore", "ignore"],
 	["borderWidth",         "number",            "len",  "num",    "ignore"],
 	["borderColor",         "string",            "word", "ignore", "ignore"],
 	["borderRadius",        "number",            "len",  "ignore", "ignore"],
