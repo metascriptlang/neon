@@ -2,7 +2,6 @@ import {
 	Node,
 	NodeKind,
 	DeclKind,
-	SourceLocation,
 	define,
 	expansionFile,
 	childCount,
@@ -284,7 +283,6 @@ export macro refreshPass(mod: Node): Node {
 			let reads: Node[] = [];
 			let fields: Node[] = [];
 			let keys: string[] = [];
-			let keyLocations: SourceLocation[] = [];
 			for (const n of captures) {
 				reads.push({
 					kind: NodeKind.VariableDecl,
@@ -305,13 +303,13 @@ export macro refreshPass(mod: Node): Node {
 				});
 				fields.push({ kind: NodeKind.Identifier, line: L, column: C, name: n });
 				keys.push(n);
-				keyLocations.push({ line: L, column: C });
 			}
 			if (captures.length == 0) {
 				fields.push({ kind: NodeKind.BooleanLiteral, line: L, column: C, boolValue: true });
 				keys.push("__refreshUnit");
-				keyLocations.push({ line: L, column: C });
 			}
+			let keyLocations = [decl.nameLocation];
+			while (keyLocations.length < keys.length) keyLocations.push(decl.nameLocation);
 			reads.push(original[original.length - 1]);
 			out.push({
 				kind: NodeKind.FunctionDecl,
