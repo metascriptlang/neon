@@ -46,7 +46,10 @@ function provideScope<T>(ctx: Context<T>, read: () => T, body: () => number): nu
 }
 
 export function createContext<T>(defaultValue: T): Context<T> {
-	const ctx: Context<T> = { defaultValue: defaultValue, Provider: null as (props: ProviderProps<T>) => NeonNode };
+	const ctx: Context<T> = {
+		defaultValue: defaultValue,
+		Provider: (props: ProviderProps<T>): NeonNode => props.children,
+	};
 	ctx.Provider = (props: ProviderProps<T>): NeonNode => {
 		return (host: Host, parent: HostNode, before: HostNode | null): void => {
 			provideScope<T>(ctx, props.value, (): number => { props.children(host, parent, before); return 0; });
