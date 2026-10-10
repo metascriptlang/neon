@@ -45,6 +45,8 @@ export const STYLE_TABLE: string[][] = [
 	["color",               "string",            "word", "paint",  "paint"],
 	["fontSize",            "number",            "len",  "paint",  "ignore"],
 	["fontWeight",          "FontWeight",        "word", "ignore", "paint"],
+	["letterSpacing",       "number",            "len",  "ignore", "ignore"],
+	["lineHeight",          "number",            "len",  "ignore", "ignore"],
 	["textAlign",           "TextAlign",         "word", "ignore", "ignore"],
 	["overflow",            "Overflow",          "word", "enum",   "ignore"],
 	["zIndex",              "number",            "num",  "paint",  "ignore"],

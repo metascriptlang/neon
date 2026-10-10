@@ -28,6 +28,8 @@ extern class ProbeStyle {
 	overflow: string;
 	fontStyle: string;
 	textDecorationLine: string;
+	letterSpacing: string;
+	lineHeight: string;
 }
 
 extern class ProbeClassList {
@@ -260,6 +262,16 @@ test "fontStyle and textDecorationLine reach the element" {
 	assert probe(el).style.fontStyle === "italic", "fontStyle is in the IR and the browser projects it";
 	h.setStyle(el, styleWith("textDecorationLine", "underline"));
 	assert probe(el).style.textDecorationLine === "underline", "textDecorationLine is in the IR and the browser projects it";
+	probe(el).remove();
+}
+
+test "letterSpacing and lineHeight reach the element as pixel lengths" {
+	const h = domHost();
+	const el = mount("view");
+	h.setStyle(el, styleWith("letterSpacing", 2.5));
+	assert probe(el).style.letterSpacing === "2.5px", probe(el).style.letterSpacing;
+	h.setStyle(el, styleWith("lineHeight", 66));
+	assert probe(el).style.lineHeight === "66px", probe(el).style.lineHeight;
 	probe(el).remove();
 }
 
