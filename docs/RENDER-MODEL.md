@@ -105,36 +105,71 @@ COMPILE ──► MOUNT ──► UPDATE (×n) ──► DISPOSE
 Building the node (evaluating the JSX expression) allocates a closure and performs no
 host op and no signal read; there is no separate BUILD phase producing data.
 
-### Refresh lifecycle measurements
+### Refresh: what an edit keeps
 
-`src/render/refresh.ms` is the shared runtime; `src/macros/refresh.ms` `refreshPass` is the
-module pass that connects components to it. Neither delivery adapter (Vite, native HCR) exists
-yet, so nothing re-evaluates a module in a running app: the measurements below drive a
-re-registration by hand, as a re-evaluated module would.
+An app turns refresh on by naming the pass in its `build.ms`
+(`globalImports: [{ from: <neon>/src/converters, modulePass: "refreshPass" }]`) and building with
+`-d:refresh` (Vite dev: the plugin's `compilerArgs: ["-d:refresh"]`) or `--hcr`. Without either
+define, `src/macros/refresh.ms` `refreshPass` returns every module unchanged, and a production
+`vite build` carries no refresh code. The runtime is `src/render/refresh.ms`; the two delivery
+adapters are `examples/refreshVite/` (Vite + real Chrome) and `examples/refreshNative/` (native
+HCR on the mock host), each with a driver that edits a copy of its sources.
 
-**Component boundary through the module pass.** An app names the pass in its `build.ms`
-(`globalImports: [{ from: <neon>/src/converters, modulePass: "refreshPass" }]`, as
-`tests/refresh/build.ms` does) and builds with `-d:refresh`; without the define the pass returns
-its module unchanged. A top-level function with a capitalized name, return type `NeonNode`, no
-type parameters and at most one plain parameter keeps its name and signature, but its body moves
-to `__refreshBody_X` and it returns `refreshBoundary(file, "X|<props type>", body, sig, props)`.
-`__refreshSig_X` returns a signature built at compile time from the body's node kinds,
-identifiers, literal values, member and attribute names and JSX text, so a formatting-only edit
-keeps it. Registrations and one `refreshModule(file)` are appended to the module, which is what a
-re-evaluation runs. Slots are typed per component (`ComponentSlot<P>`, keyed by file, name and
-props type text); no function is stored with its parameter erased to `unknown`.
+| edit | what happens | why |
+|---|---|---|
+| JSX/text/style in a component's final `return` | the template region is rebuilt; the component's signals, the sibling's state and the page or window survive | the returned expression is hoisted into `__refreshTmpl_X<E>(env)`; the rest of the body is `__refreshSetup_X`, which returns `{captured locals}` and is not re-run |
+| any other statement of the body (a handler, a signal) | that component remounts: its local state resets, siblings keep theirs | `__refreshSig_X` covers the setup statements and the captured names |
+| a helper module the component imports | Vite: the importer re-evaluates with an unchanged module signature and rebuilds the templates that read an import. Native: the helper's `@afterReload` calls `refreshDependency`, which rebuilds the templates its importers registered with `refreshImports` | state is kept. A handler in the setup that calls the helper keeps the old function on Vite until the component itself is edited; native forwards named functions, so it already calls the new one |
+| a compile error | the old UI keeps running and the error is shown (Vite overlay, HCR watch output); the next valid edit applies | the build fails before any module is replaced |
 
-Measured 2026-10-08 on installed msc `99a851d7`, tree `d72f59c8`: `bash tests/refresh/run.sh`
-(native and `--target=js`, 4 tests each) green. An unchanged module keeps all three boundaries;
-re-registering `Counter` with a new body and signature remounts it alone: count 3 resets to 0,
-the sibling `Tally` keeps 1, the new handler adds 10 once, and the old button is dead. Removing
-JSX text from the walk turns the signature test red ("JSX text is in it").
+Not extracted, so any edit remounts the whole component: a body with an early `return`, a final
+`return` of a bare identifier, a template that reads a reassigned `let` (the template would read
+a copy and silently stop seeing assignments), and components the pass does not transform at all
+(generic, two parameters, a destructured parameter, a return type other than `NeonNode`). A parent
+template rebuild remounts the child components it mounts, as Solid Refresh does.
 
-Generic components, components with two parameters or a destructured one, and capitalized
-functions returning anything else are left untransformed: an edit to one of them is not picked
-up by refresh. A pass helper outside the macro body cannot build a `Node` object literal
-(`'expr' does not exist in type 'Node'`), the same limit as reading a variant field there, so
-the pass builds its nodes inline.
+The template's captures are typed without the pass knowing their types: the pass runs before
+type checking, so `__refreshTmpl_X` takes one type parameter `E` and re-binds each capture by name
+(`const count = __refreshEnv.count;`), leaving the JSX untouched; the element macro expands per
+instantiation and sees concrete types. `refreshTemplate(file, id, tmpl, sig, setup)` at the module
+tail never calls `setup`: it is the witness that fixes `E`, because a bare generic function
+reference cannot be registered at top level (`cannot instantiate: 'T0'`). Slots are typed
+(`ComponentSlot<P>`, `TemplateSlot<E>`) and recovered from `Map<string, unknown>` with a checked
+class cast; a mismatched cast fails loudly (`Slot1<int32> is not Slot1<string>`).
+
+On Vite, a component module accepts its own update (`import.meta.hot.accept()`, emitted on JS when
+the module has components and no top-level statement or declaration that calls something). The
+entry module renders at top level, so it never self-accepts and an edit to it reloads the page
+instead of mounting a second app. Measured: with the entry self-accepting, every edit mounted
+one more `<section>`.
+
+**Measured 2026-10-10**, installed msc `5039c014`, tree `e0fda400`:
+- `bash tests/refresh/run.sh`: native, `--target=js` and native `-d:hcr`, 7 tests each, green.
+- `sh examples/refreshVite/run.sh` (Vite 5.4.21, Chrome 154 headless, playwright-core 1.63): 19 of
+  19 checks. Count 8 survives a template text and style edit, one click gives 9; a handler edit
+  resets to 0 and the new handler adds 2; four template edits leave one view and one handler; a
+  `words.ms` edit shows the new word with the count kept; a type error shows the overlay while the
+  old UI still clicks, and restoring the last good source clears it; `vite build` without the
+  define has no refresh code and runs. Same session id, zero navigations, same sibling DOM node.
+- `bash examples/refreshNative/drive.sh main`: template edits keep count 8 → 9 → 10 → 11 with
+  one handler; the `words.ms` reload shows `a:11 pears` before any click; a compile error keeps the
+  old code clickable and the fix reloads. A setup edit fails, see below.
+
+**Native setup edits and parent rebuilds are parked** on
+`~/metascript/.inbox/compiler/2026-10-10-hcr-generic-instance-typeinfo-per-generation.md`: a generic
+class instance gets a new TypeInfo per HCR generation, so reloaded code casting a slot created by
+an older generation fails (`TemplateSlot<{ props: CounterProps; … }> is not TemplateSlot<{ … }>`)
+and HCR rolls the module back. A failed rebuild keeps its old signature, so the next refresh
+retries it. **A new generic instance reloads the page on Vite** (design card
+`~/metascript/.inbox/compiler/2026-10-10-js-generic-instance-emitted-into-defining-module.md`):
+the instance is emitted into the defining runtime module, which is not an HMR boundary.
+
+Rejected on the way: comparing imported bindings by identity to decide which setup to remount
+(Solid Refresh's granular `dependencies`) cannot be emitted, because an imported generic function
+(`createSignal`) cannot be passed as a value without type arguments, and C refuses closure
+equality (`~/metascript/.inbox/compiler/2026-10-02-function-value-equality-c.md`). Remounting
+every setup that reads an import, the first version, reset Counter's count on every `words.ms`
+edit, because the setup reads `createSignal`.
 
 On 2026-10-05, installed msc `4573591e`, the JS command
 `msc test --target=js tests/render/refresh.test.ms` passed six refresh tests
