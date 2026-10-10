@@ -4,7 +4,14 @@
 #include <math.h>
 #include <stdlib.h>
 
+#ifdef NEON_HCR
+#include <stdio.h>
+extern void msHcrLaunch(const char *dir, const char *stem);
+extern void msHcrEngineStartLibrary(void);
+static msClosure s_reloadPoll;
+#else
 extern void MsMain(void);
+#endif
 
 static JavaVM *g_vm;
 static int g_started;
@@ -230,7 +237,11 @@ JNIEXPORT void JNICALL Java_dev_metascript_app_NativeApp_start(JNIEnv *e, jclass
 	if (!g_started) {
 		g_started = 1;
 		cacheJni(e);
+#ifdef NEON_HCR
+		msHcrEngineStartLibrary();
+#else
 		MsMain();
+#endif
 	}
 	(*e)->PushLocalFrame(e, 32);
 	g_root = (*e)->NewGlobalRef(e, root);
@@ -264,6 +275,29 @@ JNIEXPORT void JNICALL Java_dev_metascript_app_NativeApp_start(JNIEnv *e, jclass
 	(*e)->PopLocalFrame(e, NULL);
 	call0(s_mount);
 }
+
+#ifdef NEON_HCR
+JNIEXPORT void JNICALL Java_dev_metascript_app_NativeApp_launch(JNIEnv *e, jclass cls, jstring dir, jstring stem) {
+	(void)cls;
+	const char *d = (*e)->GetStringUTFChars(e, dir, NULL);
+	const char *s = (*e)->GetStringUTFChars(e, stem, NULL);
+	char log[1024];
+	snprintf(log, sizeof(log), "%s/stderr.log", d);
+	if (freopen(log, "w", stderr)) setvbuf(stderr, NULL, _IONBF, 0);
+	msHcrLaunch(d, s);
+	(*e)->ReleaseStringUTFChars(e, dir, d);
+	(*e)->ReleaseStringUTFChars(e, stem, s);
+}
+
+JNIEXPORT void JNICALL Java_dev_metascript_app_NativeApp_poll(JNIEnv *e, jclass cls) {
+	(void)e;
+	(void)cls;
+	call0(s_reloadPoll);
+}
+
+void niSetReloadPoll(msClosure poll) { s_reloadPoll = poll; }
+void niLog(const char *message) { __android_log_print(ANDROID_LOG_INFO, "Neon", "%s", message); }
+#endif
 
 JNIEXPORT void JNICALL Java_dev_metascript_app_NativeApp_resize(JNIEnv *e, jclass cls, jint width, jint height) {
 	(void)cls;

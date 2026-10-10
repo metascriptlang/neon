@@ -63,4 +63,8 @@ void *niContainerView(void);
 float niScreenWidth(void);
 float niScreenHeight(void);
 
+// --- hot reload (Android HCR builds) ---
+void  niSetReloadPoll(msClosure poll);
+void  niLog(const char *message);
+
 #endif

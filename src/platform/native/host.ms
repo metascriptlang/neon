@@ -5,6 +5,7 @@ import { FlexStyle, YGNode, freeLayoutTree, layoutPass as runLayoutPass } from "
 import { Style } from "../../render/style";
 import { NativeElementKind, createNativeEventRegistry, nativeElementKind, nativeFlexStyle } from "./contract";
 import "../android/library";
+import { reload, lastReload, reloadKindName, ReloadKind } from "std/hcr";
 
 @passC("-I./");
 
@@ -14,7 +15,11 @@ when (ios) {
 	@passL("-framework Foundation");
 	@passL("-framework CoreGraphics");
 } else when (android) {
-	@compile("../android/bridge.c");
+	when (hcr) {
+		@compile("../android/bridge.c", "-DNEON_HCR");
+	} else {
+		@compile("../android/bridge.c");
+	}
 	@passL("-llog");
 }
 
@@ -31,6 +36,8 @@ import {
 
 extern function niRegisterApp(mount: () => void): void;
 extern function niRunApp(): int32;
+extern function niSetReloadPoll(poll: () => void): void;
+extern function niLog(message: cstring): void;
 extern function niSetTouchHandler(handler: () => void): void;
 extern function niSetScrollHandler(handler: () => void): void;
 extern function niSetResizeHandler(handler: () => void): void;
@@ -560,8 +567,22 @@ function teardownApp(): void {
 	root.children = [];
 }
 
+when (android && hcr) {
+	function pollReload(): void {
+		batched((): void => {
+			const kind = reload();
+			if (kind == ReloadKind.NoChange) return;
+			const r = lastReload();
+			niLog(`HCR ${reloadKindName(kind)} [${r.modules.join(",")}] ${r.reason}`);
+		});
+	}
+}
+
 export function runApp(app: () => NeonNode): int32 {
 	mountedApp = app;
+	when (android && hcr) {
+		niSetReloadPoll(pollReload);
+	}
 	niRegisterApp(mountApp);
 	niSetTeardownHandler(teardownApp);
 	return niRunApp();
