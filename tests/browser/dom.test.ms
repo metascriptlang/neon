@@ -31,6 +31,7 @@ extern class ProbeStyle {
 	letterSpacing: string;
 	lineHeight: string;
 	backgroundImage: string;
+	clipPath: string;
 }
 
 extern class ProbeClassList {
@@ -282,6 +283,14 @@ test "backgroundImage reaches the element with every layer" {
 	const layers = "linear-gradient(rgb(1, 2, 3), rgb(4, 5, 6)), linear-gradient(rgb(7, 8, 9), rgb(1, 1, 1))";
 	h.setStyle(el, styleWith("backgroundImage", layers));
 	assert probe(el).style.backgroundImage === layers, probe(el).style.backgroundImage;
+	probe(el).remove();
+}
+
+test "clipPath reaches the element" {
+	const h = domHost();
+	const el = mount("view");
+	h.setStyle(el, styleWith("clipPath", "polygon(0px 0px, 100% 0px, 100% 100%)"));
+	assert probe(el).style.clipPath === "polygon(0px 0px, 100% 0px, 100% 100%)", probe(el).style.clipPath;
 	probe(el).remove();
 }
 

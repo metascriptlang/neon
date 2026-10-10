@@ -55,6 +55,7 @@ export const STYLE_TABLE: string[][] = [
 	["transform",           "string",            "word", "ignore", "ignore"],
 	["cursor",              "string",            "word", "ignore", "ignore"],
 	["boxShadow",           "string",            "word", "ignore", "ignore"],
+	["clipPath",            "string",            "word", "ignore", "ignore"],
 	["fontStyle",           "FontStyle",         "word", "ignore", "paint"],
 	["textDecorationLine",  "TextDecorationLine", "word", "ignore", "paint"],
 ];
