@@ -5,7 +5,6 @@
 #include <stdlib.h>
 
 #ifdef NEON_HCR
-#include <stdio.h>
 extern void msHcrLaunch(const char *dir, const char *stem);
 extern void msHcrEngineStartLibrary(void);
 static msClosure s_reloadPoll;
@@ -281,9 +280,6 @@ JNIEXPORT void JNICALL Java_dev_metascript_app_NativeApp_launch(JNIEnv *e, jclas
 	(void)cls;
 	const char *d = (*e)->GetStringUTFChars(e, dir, NULL);
 	const char *s = (*e)->GetStringUTFChars(e, stem, NULL);
-	char log[1024];
-	snprintf(log, sizeof(log), "%s/stderr.log", d);
-	if (freopen(log, "w", stderr)) setvbuf(stderr, NULL, _IONBF, 0);
 	msHcrLaunch(d, s);
 	(*e)->ReleaseStringUTFChars(e, dir, d);
 	(*e)->ReleaseStringUTFChars(e, stem, s);
@@ -296,7 +292,6 @@ JNIEXPORT void JNICALL Java_dev_metascript_app_NativeApp_poll(JNIEnv *e, jclass 
 }
 
 void niSetReloadPoll(msClosure poll) { s_reloadPoll = poll; }
-void niLog(const char *message) { __android_log_print(ANDROID_LOG_INFO, "Neon", "%s", message); }
 #endif
 
 JNIEXPORT void JNICALL Java_dev_metascript_app_NativeApp_resize(JNIEnv *e, jclass cls, jint width, jint height) {

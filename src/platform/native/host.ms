@@ -37,7 +37,6 @@ import {
 extern function niRegisterApp(mount: () => void): void;
 extern function niRunApp(): int32;
 extern function niSetReloadPoll(poll: () => void): void;
-extern function niLog(message: cstring): void;
 extern function niSetTouchHandler(handler: () => void): void;
 extern function niSetScrollHandler(handler: () => void): void;
 extern function niSetResizeHandler(handler: () => void): void;
@@ -573,7 +572,7 @@ when (android && hcr) {
 			const kind = reload();
 			if (kind == ReloadKind.NoChange) return;
 			const r = lastReload();
-			niLog(`HCR ${reloadKindName(kind)} [${r.modules.join(",")}] ${r.reason}`);
+			console.log(`HCR ${reloadKindName(kind)} [${r.modules.join(",")}] ${r.reason}`);
 		});
 	}
 }
