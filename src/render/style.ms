@@ -12,12 +12,13 @@ import { styleInterfaceBody, setStyleFieldBody, mergeStyleBody } from "../macros
 export type FlexDirection = "row" | "column" | "row-reverse" | "column-reverse";
 export type Justify = "flex-start" | "flex-end" | "center" | "space-between" | "space-around" | "space-evenly";
 export type Align = "auto" | "flex-start" | "flex-end" | "center" | "stretch" | "baseline";
-export type PositionType = "static" | "relative" | "absolute";
+export type PositionType = "static" | "relative" | "absolute" | "fixed";
 export type Wrap = "nowrap" | "wrap" | "wrap-reverse";
 export type Display = "flex" | "none";
 export type Overflow = "visible" | "hidden" | "scroll";
 export type TextAlign = "auto" | "left" | "center" | "right" | "justify";
-export type FontWeight = "normal" | "bold";
+export type FontWeight = "normal" | "bold"
+	| "100" | "200" | "300" | "400" | "500" | "600" | "700" | "800" | "900";
 export type FontStyle = "normal" | "italic";
 export type TextDecorationLine = "none" | "underline" | "line-through" | "underline line-through";
 
@@ -27,6 +28,11 @@ styleInterfaceBody(0);
 // strings at runtime, dimensions are number | string, null means unset. It is
 // the wire type of the per-property channel (setStyleProp / VDynStyle).
 export type StyleValue = number | string | null;
+
+export function isBoldWeight(weight: FontWeight | null): boolean {
+	return weight === "bold" || weight === "600" || weight === "700"
+		|| weight === "800" || weight === "900";
+}
 
 export function emptyStyle(): Style {
 	return {};

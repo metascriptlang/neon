@@ -18,9 +18,15 @@ export function createSelector<T, U>(
 	equals: (key: U, value: T) => boolean,
 ): (key: U) => boolean {
 	const subscribers = new Map<U, Source>();
-	let current: T = undefined as T;
+	let held: { value: T } | null = null;
 	const computation = createComputation(() => {
 		const value = source();
+		const prior = held;
+		if (prior === null) {
+			held = { value };
+			return;
+		}
+		const current = prior.value;
 		subscribers.forEach((entry: Source, key: U): void => {
 			if (equals(key, value) === equals(key, current)) { return; }
 			for (const observer of entry.observers) {
@@ -30,7 +36,7 @@ export function createSelector<T, U>(
 				}
 			}
 		});
-		current = value;
+		prior.value = value;
 	}, true);
 	runComputation(computation);
 
@@ -50,6 +56,10 @@ export function createSelector<T, U>(
 				});
 			}
 		}
-		return equals(key, current);
+		const now = held;
+		if (now === null) {
+			throw new Error("Selector read before initialization");
+		}
+		return equals(key, now.value);
 	};
 }

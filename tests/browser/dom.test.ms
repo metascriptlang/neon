@@ -28,6 +28,11 @@ extern class ProbeStyle {
 	overflow: string;
 	fontStyle: string;
 	textDecorationLine: string;
+	letterSpacing: string;
+	lineHeight: string;
+	backgroundImage: string;
+	clipPath: string;
+	position: string;
 }
 
 extern class ProbeClassList {
@@ -260,6 +265,49 @@ test "fontStyle and textDecorationLine reach the element" {
 	assert probe(el).style.fontStyle === "italic", "fontStyle is in the IR and the browser projects it";
 	h.setStyle(el, styleWith("textDecorationLine", "underline"));
 	assert probe(el).style.textDecorationLine === "underline", "textDecorationLine is in the IR and the browser projects it";
+	probe(el).remove();
+}
+
+test "letterSpacing and lineHeight reach the element as pixel lengths" {
+	const h = domHost();
+	const el = mount("view");
+	h.setStyle(el, styleWith("letterSpacing", 2.5));
+	assert probe(el).style.letterSpacing === "2.5px", probe(el).style.letterSpacing;
+	h.setStyle(el, styleWith("lineHeight", 66));
+	assert probe(el).style.lineHeight === "66px", probe(el).style.lineHeight;
+	probe(el).remove();
+}
+
+test "a numeric fontWeight reaches the element unchanged" {
+	const h = domHost();
+	const el = mount("view");
+	h.setStyle(el, styleWith("fontWeight", "500"));
+	assert probe(el).style.fontWeight === "500", probe(el).style.fontWeight;
+	probe(el).remove();
+}
+
+test "backgroundImage reaches the element with every layer" {
+	const h = domHost();
+	const el = mount("view");
+	const layers = "linear-gradient(rgb(1, 2, 3), rgb(4, 5, 6)), linear-gradient(rgb(7, 8, 9), rgb(1, 1, 1))";
+	h.setStyle(el, styleWith("backgroundImage", layers));
+	assert probe(el).style.backgroundImage === layers, probe(el).style.backgroundImage;
+	probe(el).remove();
+}
+
+test "position fixed reaches the element" {
+	const h = domHost();
+	const el = mount("view");
+	h.setStyle(el, styleWith("position", "fixed"));
+	assert probe(el).style.position === "fixed", probe(el).style.position;
+	probe(el).remove();
+}
+
+test "clipPath reaches the element" {
+	const h = domHost();
+	const el = mount("view");
+	h.setStyle(el, styleWith("clipPath", "polygon(0px 0px, 100% 0px, 100% 100%)"));
+	assert probe(el).style.clipPath === "polygon(0px 0px, 100% 0px, 100% 100%)", probe(el).style.clipPath;
 	probe(el).remove();
 }
 

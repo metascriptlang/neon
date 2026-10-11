@@ -3,7 +3,7 @@ import { Dispose } from "../../core/types";
 import { NeonEvent } from "../../render/event";
 import { FlexStyle, YGNode, freeLayoutTree, layoutPass as runLayoutPass } from "../../../../yoga/src/index";
 import { YGNodeGetParent, YGNodeRemoveChild, YGNodeLayoutGetPadding, YGNodeLayoutGetBorder, YGNodeLayoutGetMargin, YGEdge } from "../../../../yoga/src/yogaH";
-import { Style, mergeStyle } from "../../render/style";
+import { Style, mergeStyle, isBoldWeight } from "../../render/style";
 import { NativeElementKind, createNativeEventRegistry, nativeElementKind, nativeFlexStyle, nativeTransform } from "./contract";
 import { publishWindow, publishKeyboard, publishColorScheme, publishSafeArea } from "../../render/environment";
 import { VisibleContentPosition, parseVisibleContent } from "../../render/visibleContent";
@@ -332,7 +332,7 @@ function applyPaint(n: NativeNode, s: Style): void {
 			if (c !== null) { niSetTextColor(n.view, c.r, c.g, c.b, c.a); }
 		}
 		const size = s.fontSize !== null ? (s.fontSize as number) : 17.0;
-		const bold = s.fontWeight !== null && s.fontWeight !== "normal";
+		const bold = isBoldWeight(s.fontWeight);
 		niSetFont(n.view, size as float32, bold ? 1 : 0);
 		const align = s.textAlign !== null ? (s.textAlign as string) : "";
 		if (align !== n.textAlign) {
@@ -637,7 +637,7 @@ function encodeRun(run: LabelRun): string {
 	const deco = s.textDecorationLine !== null ? (s.textDecorationLine as string) : "none";
 	const size = s.fontSize !== null ? (s.fontSize as number) : 17;
 	return run.text + SPAN_FIELD + (s.color !== null ? (s.color as string) : "") + SPAN_FIELD + size.toString()
-		+ SPAN_FIELD + (s.fontWeight !== null && s.fontWeight !== "normal" ? "1" : "0")
+		+ SPAN_FIELD + (isBoldWeight(s.fontWeight) ? "1" : "0")
 		+ SPAN_FIELD + (s.fontStyle === "italic" ? "1" : "0")
 		+ SPAN_FIELD + (deco.indexOf("underline") >= 0 ? "1" : "0")
 		+ SPAN_FIELD + (deco.indexOf("line-through") >= 0 ? "1" : "0")
@@ -736,7 +736,7 @@ function materializeString(child: NativeNode, parent: NativeNode): void {
 			if (c !== null) { niSetTextColor(child.view, c.r, c.g, c.b, c.a); }
 		}
 		const size = ps.fontSize !== null ? (ps.fontSize as number) : 17.0;
-		const bold = ps.fontWeight !== null && ps.fontWeight !== "normal";
+		const bold = isBoldWeight(ps.fontWeight);
 		niSetFont(child.view, size as float32, bold ? 1 : 0);
 	}
 	remeasureText(child);
