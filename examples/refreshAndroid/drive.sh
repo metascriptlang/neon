@@ -58,10 +58,11 @@ edit() { T0=$(now); sed -i "$2" "$WORK/$1"; }
 reloaded() {
 	next "^dev: device: HCR " 30 || { fail "$1: no answer from the engine"; return 1; }
 	local answer=$LINE at=${LINE##* at } build deliver
+	case "$answer" in *"HCR reloaded"*) ;; *) fail "$1: ${answer#dev: device: }"; return 1 ;; esac
 	build=$(grep -E "^watch: build [0-9]+ (built|rebuilt)" "$LOG" | tail -1 | sed 's/.* in \([0-9]*\) ms.*/\1/')
 	deliver=$(grep "^dev: delivered" "$LOG" | tail -1 | sed 's/.* in \([0-9]*\) ms.*/\1/')
 	echo "timing $1: edit to reloaded $((at - T0)) ms = build $build + deliver $deliver + rest $((at - T0 - build - deliver))"
-	case "$answer" in *"HCR reloaded"*) TIMES="$TIMES $((at - T0))" ;; *) fail "$1: $answer"; return 1 ;; esac
+	TIMES="$TIMES $((at - T0))"
 }
 
 mkdir -p "$WORK"
