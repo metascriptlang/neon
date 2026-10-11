@@ -95,6 +95,16 @@ and the invariants that outlived them were moved to the head of the test that pi
   no longer has (`layoutStyle`, `fontId`, `label`'s colour argument). The rewrite onto a `VoidNode`
   class that holds its `NodeRef` is `~/metascript/.wt/void-noderef-host.md`.
 
+- **PARKED 2026-10-11 — `tests/render/flatList.test.ms` and `tests/components/flutterListsApp.test.ms` do not compile.**
+  Not Neon's: an array-destructured local of an arrow passed as a JSX attribute
+  (`const [focused, setFocused] = createSignal<boolean>(false)` in a `renderItem`) is refused as
+  `a local of another function` when an element macro nested in that arrow reads it, and the
+  explicit type argument as `Wrong number of type arguments … expected 0, got 1`
+  (`moved<Song>(…)` in `examples/components/flutterLists.ms`). Native and JS, on the compiler built
+  from recompiler origin `f421de59` alone and on `89005562`, with Neon at origin `1b7ce77`. Card
+  `~/metascript/.inbox/compiler/2026-10-11-destructured-local-in-attribute-arrow-read-by-nested-macro.md`.
+  Parked at those two files.
+
 - **PARKED 2026-10-10 — Vite refresh: an edit that adds a new generic instance reloads the page.**
   Adding `createSignal(false)` to an accepted component module emits the `…__boolean` instance into
   the runtime's `signal` module, which is not an HMR boundary. Design card
