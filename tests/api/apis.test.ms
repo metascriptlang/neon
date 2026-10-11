@@ -22,11 +22,16 @@ test "Platform names the compile-time OS and selects its entry, then native, the
 		assert Platform.select<string>({ web: "w", native: "n", default: "d" }) === "w";
 		assert Platform.select<string>({ ios: "i", native: "n", default: "d" }) === "d", "web is not native";
 	} else {
-		assert Platform.OS === "macos", "a desktop test build is macos";
-		assert Platform.select<string>({ macos: "m", default: "d" }) === "m";
+		when (windows) {
+			assert Platform.OS === "windows", "a desktop test build on Windows is windows";
+			assert Platform.select<string>({ windows: "m", default: "d" }) === "m";
+		} else {
+			assert Platform.OS === "macos", "a desktop test build is macos";
+			assert Platform.select<string>({ macos: "m", default: "d" }) === "m";
+		}
 		assert Platform.select<string>({ ios: "i", default: "d" }) === "d";
 	}
-	assert Platform.select<int32>({ android: 1, ios: 2, macos: 3, web: 3, default: 4 }) === 3;
+	assert Platform.select<int32>({ android: 1, ios: 2, macos: 3, windows: 3, web: 3, default: 4 }) === 3;
 }
 
 test "Platform.select with no matching entry and no default throws, naming the OS" {
