@@ -277,6 +277,14 @@ test "letterSpacing and lineHeight reach the element as pixel lengths" {
 	probe(el).remove();
 }
 
+test "a numeric fontWeight reaches the element unchanged" {
+	const h = domHost();
+	const el = mount("view");
+	h.setStyle(el, styleWith("fontWeight", "500"));
+	assert probe(el).style.fontWeight === "500", probe(el).style.fontWeight;
+	probe(el).remove();
+}
+
 test "backgroundImage reaches the element with every layer" {
 	const h = domHost();
 	const el = mount("view");

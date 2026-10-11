@@ -15,7 +15,7 @@
 
 import { Host, HostNode } from "../../render/hostTypes";
 import { NeonEvent, neonEvent, eventType } from "../../render/event";
-import { Style } from "../../render/style";
+import { Style, isBoldWeight } from "../../render/style";
 import { terminalStyleCoverage } from "../../macros/style/fields";
 import {
 	TerminalNode, TerminalEvent, TerminalStyle,
@@ -75,7 +75,7 @@ export function asTerminalStyle(this s: Style): TerminalStyle {
 	return {
 		color: color !== null ? ansiNameFor(color as string) : "",
 		bg: bg !== null ? ansiNameFor(bg as string) : "",
-		bold: s.fontWeight !== null && (s.fontWeight as string) === "bold",
+		bold: isBoldWeight(s.fontWeight),
 		dim: s.opacity !== null && (s.opacity as number) < 1.0,
 		italic: s.fontStyle !== null && (s.fontStyle as string) === "italic",
 		underline: s.textDecorationLine !== null && (s.textDecorationLine as string) === "underline",

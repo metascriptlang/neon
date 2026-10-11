@@ -129,6 +129,15 @@ test "terminalHost: setStyle carries text weight, not layout" {
 	assert n.style.color === "", "unset paint fields stay empty";
 }
 
+test "terminalHost: a numeric weight is bold from 600 up" {
+	const host = terminalHost();
+	const node = host.createElement("text");
+	host.setStyle(node, { fontWeight: "600" } as Style);
+	assert tn(node).style.bold === true, "600 → ansi bold";
+	host.setStyle(node, { fontWeight: "500" } as Style);
+	assert tn(node).style.bold === false, "500 stays regular";
+}
+
 test "terminalHost: a named color passes through untouched" {
 	const host = terminalHost();
 	const node = host.createElement("text");
