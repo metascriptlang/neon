@@ -6,7 +6,7 @@ const [, , root, port] = process.argv;
 const base = resolve(root);
 const types = { ".html": "text/html", ".js": "text/javascript", ".mjs": "text/javascript", ".map": "application/json" };
 
-createServer(async (req, res) => {
+const server = createServer(async (req, res) => {
 	const path = normalize(join(base, decodeURIComponent(new URL(req.url, "http://x").pathname)));
 	if (!path.startsWith(base)) {
 		res.writeHead(403).end();
@@ -18,4 +18,9 @@ createServer(async (req, res) => {
 	} catch {
 		res.writeHead(404).end();
 	}
-}).listen(Number(port), "127.0.0.1");
+});
+server.on("error", (e) => {
+	console.error(`serve.mjs: cannot listen on 127.0.0.1:${port}: ${e.code ?? e.message}`);
+	process.exit(1);
+});
+server.listen(Number(port ?? 0), "127.0.0.1", () => console.log(server.address().port));

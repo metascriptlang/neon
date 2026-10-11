@@ -19,7 +19,7 @@
 // layer array → compile-time merge or layerStyles (a reactive layer or field is
 // rejected), reactive expr → bindStyleAll, anything else → applyStaticStyle.
 
-import { Node, NodeKind, DeclKind, NodeFlag, childCount, childAt, bindSym, getType, getTypeImpl } from "std/meta";
+import { Node, NodeKind, DeclKind, NodeFlag, childCount, childAt, bindSym, getType, getTypeImpl, getImpl } from "std/meta";
 import { isReactiveExpr, isEventName, peelHidden } from "./reactive";
 
 function trimEdgeSpaces(s: string, fromStart: boolean, fromEnd: boolean): string {
@@ -228,7 +228,17 @@ export macro element(node: Node): Node {
 		const expanded = peelTypeRef(impl as Node);
 		return expanded.kind === NodeKind.TypeObject ? expanded : null;
 	}
-	function declaredProps(c: Node): Node | null {
+	// WORKAROUND.md N2.
+	function staticFieldType(sym: Node, name: string): Node | null {
+		const impl = getImpl(sym);
+		if (impl === null || (impl as Node).kind !== NodeKind.ClassDecl) { return null; }
+		for (const m of (impl as Node).classBody) {
+			if (m.kind !== NodeKind.PropertyDecl || !m.propIsStatic || m.propName !== name) { continue; }
+			if (m.propInitializer !== null) { return m.propInitializer.nodeType; }
+		}
+		return null;
+	}
+	function componentType(c: Node): Node | null {
 		const parts: string[] = c.jsxTag.split(".");
 		const sym = bindSym(parts[0]);
 		if (sym === null) {
@@ -244,6 +254,7 @@ export macro element(node: Node): Node {
 					if (holder.typExprFieldNames[j] === parts[i]) { t = holder.typExprFieldTypes[j]; }
 				}
 			}
+			if (t === null && i === 1) { t = staticFieldType(sym as Node, parts[i]); }
 			if (t === null) {
 				error("<" + c.jsxTag + "> names no field '" + parts[i] + "'", c);
 				return null;
@@ -254,6 +265,11 @@ export macro element(node: Node): Node {
 			error("<" + c.jsxTag + "> is not a component: its type is not a function", c);
 			return null;
 		}
+		return fn;
+	}
+	function declaredProps(c: Node): Node | null {
+		const fn = componentType(c);
+		if (fn === null) { return null; }
 		if (fn.typExprParams.length === 0) {
 			return { kind: NodeKind.TypeObject, line: c.line, column: c.column, typExprFieldNames: [], typExprFieldTypes: [] };
 		}
@@ -480,6 +496,69 @@ export macro element(node: Node): Node {
 		const names = t.typExprParamNames;
 		return names.length === 3 && names[0] === "host" && names[1] === "parent" && names[2] === "before";
 	}
+	function nodeSlot(t: Node): boolean {
+		const direct = peelTypeRef(t);
+		if (isNodeType(direct)) { return true; }
+		if (direct.kind !== NodeKind.TypeUnion) { return false; }
+		let hasNode = false;
+		for (const member of direct.typExprMembers) {
+			if (isNodeType(peelTypeRef(member))) { hasNode = true; }
+			else if (!(member.kind === NodeKind.Identifier && member.name === "null")) { return false; }
+		}
+		return hasNode;
+	}
+	function componentWithProps(value: Node, fn: Node): Node {
+		if (fn.typExprParams.length !== 0) { return value; }
+		return {
+			kind: NodeKind.ArrowFunction, line: value.line, column: value.column,
+			arrowParams: ["__slotProps"], arrowParamTypes: ["{}"], arrowFlags: "", arrowReturnType: "NeonNode",
+			arrowBody: {
+				kind: NodeKind.CallExpr, line: value.line, column: value.column,
+				callee: value, arguments: [],
+			},
+		};
+	}
+	function lowerNodeSlot(value: Node): Node {
+		const source = peelHidden(value);
+		if (isJsx(source)) {
+			return {
+				kind: NodeKind.MacroInvocation, line: value.line, column: value.column,
+				macroName: "element", macroArgs: [source],
+			};
+		}
+		const metadata = source.nodeType;
+		if (metadata === null) { return value; }
+		const fn = peelTypeRef(metadata as Node);
+		if (fn.kind !== NodeKind.TypeFunction || isNodeType(fn)) { return value; }
+		if (!isNodeType(peelTypeRef(fn.typExprReturn))) { return value; }
+		for (let i = 1; i < fn.typExprParams.length; i = i + 1) {
+			if (!unionHasNull(peelTypeRef(fn.typExprParams[i]))) {
+				error("a node slot component requires another parameter: pass an element with props instead", value);
+				return value;
+			}
+		}
+		if (fn.typExprParams.length > 0) {
+			const props = objectType(fn.typExprParams[0]);
+			if (props === null) {
+				error("a node slot component needs object props the macro can inspect: pass an element with props instead", value);
+				return value;
+			}
+			for (let i = 0; i < props.typExprFieldNames.length; i = i + 1) {
+				if (!unionHasNull(peelTypeRef(props.typExprFieldTypes[i]))) {
+					error("a node slot component requires prop '" + props.typExprFieldNames[i] + "': pass an element with props instead", value);
+					return value;
+				}
+			}
+		}
+		return {
+			kind: NodeKind.CallExpr, line: value.line, column: value.column,
+			callee: { kind: NodeKind.Identifier, line: value.line, column: value.column, name: "createComponent" },
+			arguments: [
+				componentWithProps(value, fn),
+				{ kind: NodeKind.ObjectLiteral, line: value.line, column: value.column, keys: [], properties: [] },
+			],
+		};
+	}
 	function isNodeArrayTyped(n: Node): boolean {
 		const t = peelHidden(n).nodeType;
 		if (t === null) { return false; }
@@ -650,10 +729,15 @@ export macro element(node: Node): Node {
 					continue;
 				}
 				keys.push(a.jsxAttrName);
-				if (reactive === 0 || isAccessorTyped(a.jsxAttrValue)) {
-					values.push(a.jsxAttrValue);
+				let given: Node = a.jsxAttrValue;
+				// WORKAROUND.md N8.
+				if (a.jsxAttrName === "style" && given.kind === NodeKind.ArrayLiteral) {
+					given = { kind: NodeKind.CallExpr, line: a.line, column: a.column, callee: { kind: NodeKind.Identifier, line: a.line, column: a.column, name: "layerStyles" }, arguments: [given] };
+				}
+				if (reactive === 0 || isAccessorTyped(given)) {
+					values.push(nodeSlot(slot as Node) ? lowerNodeSlot(given) : given);
 				} else {
-					values.push({ kind: NodeKind.CallExpr, line: a.line, column: a.column, callee: { kind: NodeKind.Identifier, line: a.line, column: a.column, name: "accessor" }, arguments: [{ kind: NodeKind.ArrowFunction, line: a.line, column: a.column, arrowParams: [], arrowParamTypes: [], arrowBody: a.jsxAttrValue, arrowFlags: "", arrowReturnType: "" }] });
+					values.push({ kind: NodeKind.CallExpr, line: a.line, column: a.column, callee: { kind: NodeKind.Identifier, line: a.line, column: a.column, name: "accessor" }, arguments: [{ kind: NodeKind.ArrowFunction, line: a.line, column: a.column, arrowParams: [], arrowParamTypes: [], arrowBody: given, arrowFlags: "", arrowReturnType: "" }] });
 				}
 			}
 		}
@@ -666,7 +750,15 @@ export macro element(node: Node): Node {
 			const only = significant[0].jsxExpr;
 			if (isNodeTyped(only) && isReactiveSelection(only)) { errNodes.push(only); errMsgs.push(reactiveNodeMsg); }
 			keys.push("children");
-			values.push(only);
+			let child = only;
+			if (declared !== null) {
+				for (let i = 0; i < declared.typExprFieldNames.length; i = i + 1) {
+					if (declared.typExprFieldNames[i] === "children" && nodeSlot(declared.typExprFieldTypes[i])) {
+						child = lowerNodeSlot(only);
+					}
+				}
+			}
+			values.push(child);
 		} else if (significant.length === 1 && significant[0].kind === NodeKind.JSXElement) {
 			keys.push("children");
 			values.push({ kind: NodeKind.MacroInvocation, line: significant[0].line, column: significant[0].column, macroName: "element", macroArgs: [significant[0]] });
@@ -700,6 +792,8 @@ export macro element(node: Node): Node {
 				tagRef = { kind: NodeKind.MemberExpr, line: c.line, column: c.column, object: tagRef, property: parts[i], isOptional: false };
 			}
 		}
+		const fn = componentType(c);
+		if (fn !== null) { tagRef = componentWithProps(tagRef, fn); }
 		return {
 			kind: NodeKind.CallExpr, line: c.line, column: c.column,
 			callee: { kind: NodeKind.Identifier, line: c.line, column: c.column, name: "createComponent" },

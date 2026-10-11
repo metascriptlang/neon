@@ -10,7 +10,6 @@
 set -e
 cd "$(dirname "$0")/../.."
 MSC=${MSC:-msc}
-PORT=${NEON_BROWSER_PORT:-8733}
 
 PW=${NEON_PLAYWRIGHT:-$PWD/tests/browser/node_modules/playwright-core/index.mjs}
 if [ ! -f "$PW" ]; then
@@ -21,9 +20,18 @@ fi
 files=$*
 if [ -z "$files" ]; then files=$(find tests/browser -name "*.test.ms" -not -path "*/node_modules/*" | sort); fi
 
-node tests/browser/serve.mjs "$PWD" "$PORT" &
+portfile=$(mktemp)
+node tests/browser/serve.mjs "$PWD" "${NEON_BROWSER_PORT:-0}" > "$portfile" &
 server=$!
-trap 'kill $server 2>/dev/null' EXIT INT TERM
+trap 'kill $server 2>/dev/null; rm -f "$portfile"' EXIT INT TERM
+while [ ! -s "$portfile" ]; do
+	if ! kill -0 $server 2>/dev/null; then
+		echo "the browser test server did not start; nothing ran" >&2
+		exit 2
+	fi
+	sleep 0.1
+done
+PORT=$(head -1 "$portfile")
 
 fail=0
 for f in $files; do

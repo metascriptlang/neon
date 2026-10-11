@@ -194,10 +194,10 @@ declaration is not in `src/platform/native/host.ms`.
   `src/platform/android/java/src/main/java/dev/metascript/neon/Scroll.java`; the reference
   controls are RN's `ReactScrollView` and `ReactHorizontalScrollView`.
 - **No echo-debug logging**: the reference `echo`es on every mount/prop/touch; we don't.
-- **Async/timers**: neon's own queue — `Pressable` already runs on the std timer
-  (ROADMAP). The ALooper+eventfd wake pattern is the piece worth re-implementing when a
-  native event loop lands; it is not needed for a first host that only renders and handles
-  input synchronously on the main thread.
+- **Async/timers**: no Neon queue. The std event loop owns timers and completions; one
+  `timerfd` on the main `ALooper` is armed for its next deadline after every JNI entry, and
+  its callback runs one loop pass inside the host's layout batch (`src/platform/native/loop.c`).
+  The reference instead woke an eventfd from a sleeping thread per timer.
 
 ## 8. Sources — what was and was not verified
 
@@ -316,6 +316,41 @@ Not measured: `pause`/`resume` beyond what the background step shows, and `destr
 second `start` on a device (the mock remount covers the host side only). Yoga nodes are freed
 through `freeLayoutTree` in the same two paths, but no test counts them.
 
+Measured 2026-10-08 on the emulator (`emulator-5554`, Pixel 9 Pro, Android 36; not the
+physical device), tree `697697f`, msc v0.3.2 `0d83c4867`, through
+`/private/tmp/neon-emu-run.sh`: `navigation.py`, `widgets.py`, `motion.py` and `media.py` exit
+0, after four first-run reds. Two were Neon: a focused `Input` removed with its screen left
+the soft keyboard up, so the next hardware back only closed it (`Input.removing` now hides
+it), and a swipe over a TabView scene's native ScrollView never reached the pager
+(`WORKAROUND.md` W9, `Scroll.report`). The rest were the drivers: `uiautomator dump` waits
+for a second without accessibility events, so during an animation it returns only after the
+end and during a loop it fails with "could not get idle state"; the motion lane now reads
+mid-animation geometry and the spin from device-side `screencap`, the carousel step reads
+one dump without waiting for a still screen, and the video step plays and pauses on the
+device before reading. The WebView exposes a page `<button>` as `android.widget.Button`,
+which `counter.dump` filtered out. `injectJavaScript("location.href = …")` left
+`canGoBack` false and `goBack` inert on Android, so the example moves by `source`. Motion
+reported 83–85 % janky frames in `gfxinfo` on this emulator; not measured on a phone.
+
+Settings, gallery, controls and APIs lanes (2026-10-08, emulator `emulator-5554`, Pixel 9 Pro
+image, API 36, gesture navigation; an emulator, not the physical phone): `tests/android/settings.py`,
+`gallery.py`, `controls.py` and `apis.py` through `/private/tmp/neon-emu-run.sh` exit 0, and
+`scrollmatrix.py` and `list.py` stay green on the same tree. The first run found two `Input`/`Scroll`
+faults. Enter on a single-line input ran the submit on key-down, the submit focused the next input,
+and the key-up then reached that input, where `TextView.onKeyUp` moved focus on to the button below;
+`Input.onKeyUp` now consumes the single-line Enter release, as `ReactEditText` does. A vertical
+`ScrollView` and `HorizontalScrollView` measure their child unbounded and ignore its layout
+params, so the content frame shrank to its last child and lost the content container's far
+padding (`paddingBottom: 240` scrolled 1080 dp of content instead of 1320); `Scroll` now measures
+the content at the size the layout wrote. The remaining failures were in the drivers: a pull at the
+top of an already-top list refreshed once before the measured pull; the slider drag hit the
+"Guests" title rather than the `SeekBar` and started inside the back-gesture edge, closing the
+app; `counter.dump` lists TextViews only, so the `EditText` hint was not tappable, and it did not
+decode `&gt;`; the dialer needs more than one back; the 1.5 s "booking" spinner keeps uiautomator
+waiting for idle, so that state is a screenshot (`controls-booking.png`). On API 36 an unconsumed
+back finishes the root activity (`wm_finish_activity ... app-request`, the same for the stock
+DeskClock), so the APIs lane now expects a fresh mount in the same process after the relaunch.
+
 ## 10. Measured on a physical device
 
 ```bash
@@ -404,8 +439,53 @@ On source/test tree `d4f1963637acf2db1276453aaa99c44582797ed2`, installed compil
 dismissal was attempted. An earlier candidate passed scroll/press/rotate/resume, but is
 not the frozen-tree verdict.
 
-The phone lanes use vertical examples. They do not certify native horizontal gestures,
-refresh, keyboard capture or reactive axis replacement; those acceptance checks remain open.
+### 11.1 Physical list acceptance — 2026-10-07
+
+Source/test tree `4a4025c8962ded21c286b1a630232ceadc88f669`, installed compiler/support
+`8506eaf03`, Ion generator from landed `94f7ad3` installed under an isolated HOME, Seeker
+`SM02G40619100815` awake and unlocked. `examples/flatlist/android` now runs `ListAcceptance`,
+the same consumer as iOS; `ANDROID_SERIAL=SM02G40619100815 python3 tests/android/flatlist.py`
+drove the fixed 10,000-row lane, then measured row spacing (80/112 dp), a pinned `header 0`
+after a drag and its press, inversion keeping `pressed header 0`, an inverted drag pinning
+`header 8` at the list top and its press, and the measured end (`offset 4694`, `ends 1`,
+`item 63` and `List end` on screen). Exit 0, one pid throughout.
+
+The first run exposed an Android-only text bug: a label whose text changed after layout kept
+its old frame (`offset 340000` clipped to the 168 px of `offset 0`). `place()` gives the label
+fixed LayoutParams, so `TextView.setText` only invalidates, and `View.measure()` returned its
+cached size for the unchanged spec. `niMeasureText` now calls `forceLayout()` first; the lane
+asserts the label widens. Functional evidence only; load was not controlled.
+
+Grid and sections (2026-10-07, source `9306954`, same Seeker, awake and unlocked):
+`/private/tmp/neon-seeker-run.sh` with `tests/android/flatlist.py` ran every lane above, then
+`grid_lane` (three cells per row 68.0 dp apart, `pressed cell 4 at 4`, a prepend that puts
+`cell 60` first and moves `cell 0` to the second column, `pressed cell 4 at 5`, a press after
+swiping) and `sections_lane` (`Section 0` pinned after a drag, `scrollToLocation(1, 0)` puts
+`Section 1` at the pinned top, `pressed Section 1 item 1`); exit 0, one pid. The mode buttons
+now wrap: five no longer fit one row. One earlier run on the rebased tree failed the existing
+long-press step (`pressed none`); an isolated long-press probe and the full rerun both passed,
+so it is recorded as an unexplained one-off, not a fix.
+
+`maintainVisibleContentPosition` (source `4ead070`): `chat_lane` in `tests/android/flatlist.py`
+(`NEON_FLATLIST_LANES=chat` selects it) drags the chat, notes the second visible message's y,
+presses `load older`, and asserts the same message within 2 dp, `messages 60, oldest 980`, and
+`message 980` above it after scrolling up. The app generated, built and installed on Seeker
+through `/private/tmp/neon-seeker-run.sh` on 2026-10-07 22:2x, but the lane did not run: the
+phone was `mWakefulness=Asleep` behind a secure keyguard, which was not bypassed. Pending the
+person's unlock. `Scroll.shiftBy` and its fling restart (reflection on `ScrollView.mScroller`,
+as RN's `ReactScrollView`) are therefore not yet measured on a device.
+
+`examples/scrollmatrix` with `tests/android/scrollmatrix.py` covers native horizontal drag
+(x moves, y stays 0, a drag presses nothing, a tap after it hits the card under the finger),
+reactive axis replacement both ways with app state kept, and pull-to-refresh closed by the
+app's `refreshing` value, then keyboard modes over the native TextInput: `on-drag` dismisses
+on a drag, `never` spends the first tap on dismissal without pressing the card, `always`
+presses with the keyboard kept, `none` keeps it across a drag (app signal and
+`dumpsys input_method` agree); exit 0 on Seeker 2026-10-07. The first runs found two `Scroll.java`
+faults, fixed in `1789560`: `SwipeRefreshLayout` caches its first child as the refresh target
+and only lays out that view, so a replaced scroller never got a frame (content vanished);
+and the old axis offset was carried into the new axis. The scroller now lives inside a stable
+target, and a new axis starts at 0 as RN's remounted native view does.
 
 ## 12. Hot reload — 2026-10-11
 

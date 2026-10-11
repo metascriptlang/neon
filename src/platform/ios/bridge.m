@@ -1,6 +1,12 @@
 #import <UIKit/UIKit.h>
+#import <objc/runtime.h>
+#import <CoreImage/CoreImage.h>
 #import <Foundation/Foundation.h>
+#include "runtime/promise/dispatch.h"
 #include "../native/bridge.h"
+#include "../native/loop.h"
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 static msClosure s_mount;
@@ -8,53 +14,738 @@ static msClosure s_touch;
 static msClosure s_resize;
 static msClosure s_scroll;
 static msClosure s_teardown;
+static msClosure s_loop;
 static int g_scrollPhase = 0;
 static int g_lastTag = 0;
 static int g_scrollTag = 0;
 static float g_scrollX = 0, g_scrollY = 0, g_scrollW = 0, g_scrollH = 0, g_scrollContentW = 0, g_scrollContentH = 0;
 static int g_lastPhase = 0;
+static float g_touchX = 0, g_touchY = 0;
+static double g_touchTime = 0;
+static __weak UIView *g_responderView = nil;
 static UIView *g_container = nil;
 static float g_measuredW = 0;
 static float g_measuredH = 0;
+static CFRunLoopTimerRef g_loopTimer = NULL;
+static msClosure s_control;
+static msClosure s_environment;
+static int g_controlTag = 0, g_controlPhase = 0;
+static char *g_controlValue = NULL;
+static float g_controlW = 0, g_controlH = 0;
+static float g_keyboardH = 0;
+static int g_dark = 0;
+
+static void loopArm(int ms) {
+	if (!g_loopTimer) return;
+	CFAbsoluteTime at = ms < 0 ? [[NSDate distantFuture] timeIntervalSinceReferenceDate] : CFAbsoluteTimeGetCurrent() + ms / 1000.0;
+	CFRunLoopTimerSetNextFireDate(g_loopTimer, at);
+}
+
+static void invoke(msClosure c) {
+	if (c.env) ((void (*)(void *))c.fn)(c.env);
+	else ((void (*)(void))c.fn)();
+}
+
+static void loopPump(CFRunLoopTimerRef timer, void *info) {
+	(void)timer;
+	(void)info;
+	if (s_loop.fn) invoke(s_loop);
+	else niLoopRun();
+	loopArm(niLoopNext());
+}
+
+static void loopStart(void) {
+	(void)msGetDispatcher();
+	CFTimeInterval never = [[NSDate distantFuture] timeIntervalSinceReferenceDate];
+	g_loopTimer = CFRunLoopTimerCreate(kCFAllocatorDefault, never, never, 0, 0, loopPump, NULL);
+	CFRunLoopAddTimer(CFRunLoopGetMain(), g_loopTimer, kCFRunLoopCommonModes);
+}
 
 static void call0(msClosure c) {
 	if (!c.fn) return;
-	if (c.env) ((void (*)(void *))c.fn)(c.env);
-	else ((void (*)(void))c.fn)();
+	invoke(c);
+	loopArm(0);
 }
 
 // Touch-forwarding view: every phase of a touch fires the one handler, with
 // the tag + phase readable via niLastTouchTag/Phase.
 @interface NeonTouchView : UIView
 @property (nonatomic) BOOL neonHandlesPress;
+@property (nonatomic) BOOL neonAccessibleSet;
+@property (nonatomic) UIEdgeInsets neonHitSlop;
 @end
 
 @implementation NeonTouchView
 
-- (void)touchesBegan:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
-	g_lastTag = (int)self.tag;
-	g_lastPhase = 0;
+// RN hitSlop: the touch target reaches past the bounds by the slop on each edge (within the
+// superview, which hit-tests first).
+- (BOOL)pointInside:(CGPoint)point withEvent:(UIEvent *)event {
+	UIEdgeInsets slop = self.neonHitSlop;
+	if (UIEdgeInsetsEqualToEdgeInsets(slop, UIEdgeInsetsZero)) return [super pointInside:point withEvent:event];
+	CGRect area = UIEdgeInsetsInsetRect(self.bounds, UIEdgeInsetsMake(-slop.top, -slop.left, -slop.bottom, -slop.right));
+	return CGRectContainsPoint(area, point);
+}
+
+// UIKit hands an untagged view's touch on to its superviews, but a UIScrollView keeps it,
+// so a listener outside the scroll view (a pager around a vertical list) never hears it.
+// The view the touch hit reports it for the first listener past the scroll view instead
+// (WORKAROUND.md W9); inside it, forwarding still reaches the listeners.
+- (NSInteger)neonReportTag:(UITouch *)touch {
+	if (self.tag != 0) return self.tag;
+	if (touch.view != self) return 0;
+	BOOL crossed = NO;
+	for (UIView *at = self.superview; at; at = at.superview) {
+		if ([at isKindOfClass:UIScrollView.class]) { crossed = YES; continue; }
+		if ([at isKindOfClass:NeonTouchView.class] && at.tag != 0) return crossed ? at.tag : 0;
+	}
+	return 0;
+}
+
+- (void)neonReport:(NSSet<UITouch *> *)touches phase:(int)phase {
+	UITouch *touch = touches.anyObject;
+	CGPoint at = [touch locationInView:nil];
+	g_lastTag = (int)[self neonReportTag:touch];
+	g_lastPhase = phase;
+	g_touchX = (float)at.x;
+	g_touchY = (float)at.y;
+	g_touchTime = touch.timestamp * 1000.0;
 	call0(s_touch);
+}
+
+- (void)touchesBegan:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
+	[self neonReport:touches phase:0];
 	[super touchesBegan:touches withEvent:event];
 }
 
+- (void)touchesMoved:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
+	[self neonReport:touches phase:4];
+	[super touchesMoved:touches withEvent:event];
+}
+
 - (void)touchesEnded:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
-	g_lastTag = (int)self.tag;
-	g_lastPhase = 1;
+	[self neonReport:touches phase:1];
+	if (self.tag != 0) {
+		g_lastPhase = 2; // the press itself, after the up
+		call0(s_touch);
+	}
+	[super touchesEnded:touches withEvent:event];
+}
+
+- (void)touchesCancelled:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
+	[self neonReport:touches phase:3];
+	[super touchesCancelled:touches withEvent:event];
+}
+
+// RN RCTViewComponentView: an accessible view without its own label speaks the
+// labels of its subviews, joined with ", " (RCTRecursiveAccessibilityLabel).
+static NSString *recursiveAccessibilityLabel(UIView *view) {
+	NSMutableString *result = nil;
+	for (UIView *subview in view.subviews) {
+		if (subview.hidden) continue;
+		NSString *label = subview.accessibilityLabel;
+		if (!label) label = recursiveAccessibilityLabel(subview);
+		if (label.length == 0) continue;
+		if (!result) result = [NSMutableString string];
+		if (result.length > 0) [result appendString:@", "];
+		[result appendString:label];
+	}
+	return result;
+}
+
+- (NSString *)accessibilityLabel {
+	NSString *label = super.accessibilityLabel;
+	if (label) return label;
+	if (self.isAccessibilityElement) return recursiveAccessibilityLabel(self);
+	return nil;
+}
+
+@end
+
+// RN Text: a label whose text or span has onPress takes touches; a touch on a pressable
+// span reports with the span's tag, so the span's press fires and the label's bubbles.
+@interface NeonLabel : UILabel
+@property (nonatomic, copy) NSArray<NSValue *> *neonSpanRanges;
+@property (nonatomic, copy) NSArray<NSNumber *> *neonSpanTags;
+@property (nonatomic) int neonTouchTag;
+@end
+
+@implementation NeonLabel
+
+- (int)neonTagAt:(CGPoint)point {
+	if (self.neonSpanTags.count == 0 || self.attributedText.length == 0) return (int)self.tag;
+	NSTextStorage *storage = [[NSTextStorage alloc] initWithAttributedString:self.attributedText];
+	NSLayoutManager *layout = [[NSLayoutManager alloc] init];
+	NSTextContainer *container = [[NSTextContainer alloc] initWithSize:self.bounds.size];
+	container.lineFragmentPadding = 0;
+	container.maximumNumberOfLines = (NSUInteger)self.numberOfLines;
+	container.lineBreakMode = self.lineBreakMode;
+	[layout addTextContainer:container];
+	[storage addLayoutManager:layout];
+	CGRect used = [layout usedRectForTextContainer:container];
+	CGPoint at = CGPointMake(point.x, point.y - MAX(0, (self.bounds.size.height - used.size.height) / 2));
+	NSUInteger glyph = [layout glyphIndexForPoint:at inTextContainer:container];
+	CGRect box = [layout boundingRectForGlyphRange:NSMakeRange(glyph, 1) inTextContainer:container];
+	if (!CGRectContainsPoint(CGRectInset(box, -4, -4), at)) return (int)self.tag;
+	NSUInteger index = [layout characterIndexForGlyphAtIndex:glyph];
+	for (NSUInteger i = 0; i < self.neonSpanTags.count; i++) {
+		if (NSLocationInRange(index, self.neonSpanRanges[i].rangeValue)) return self.neonSpanTags[i].intValue;
+	}
+	return (int)self.tag;
+}
+
+- (void)neonReport:(NSSet<UITouch *> *)touches phase:(int)phase {
+	UITouch *touch = touches.anyObject;
+	CGPoint at = [touch locationInView:nil];
+	g_lastTag = self.neonTouchTag;
+	g_lastPhase = phase;
+	g_touchX = (float)at.x;
+	g_touchY = (float)at.y;
+	g_touchTime = touch.timestamp * 1000.0;
 	call0(s_touch);
-	g_lastPhase = 2; // the press itself, after the up
+}
+
+- (void)touchesBegan:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
+	self.neonTouchTag = [self neonTagAt:[touches.anyObject locationInView:self]];
+	[self neonReport:touches phase:0];
+	[super touchesBegan:touches withEvent:event];
+}
+
+- (void)touchesMoved:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
+	[self neonReport:touches phase:4];
+	[super touchesMoved:touches withEvent:event];
+}
+
+- (void)touchesEnded:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
+	[self neonReport:touches phase:1];
+	g_lastPhase = 2;
 	call0(s_touch);
 	[super touchesEnded:touches withEvent:event];
 }
 
 - (void)touchesCancelled:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
-	g_lastTag = (int)self.tag;
-	g_lastPhase = 3;
-	call0(s_touch);
+	[self neonReport:touches phase:3];
 	[super touchesCancelled:touches withEvent:event];
 }
 
 @end
+
+static void emitControl(int tag, int phase, NSString *value, float width, float height) {
+	if (tag == 0) return;
+	free(g_controlValue);
+	g_controlValue = strdup(value ? value.UTF8String : "");
+	g_controlTag = tag;
+	g_controlPhase = phase;
+	g_controlW = width;
+	g_controlH = height;
+	call0(s_control);
+}
+
+void neonMediaEmit(int tag, int phase, NSString *value, float width, float height) {
+	emitControl(tag, phase, value, width, height);
+}
+
+void *neonMediaCreate(const char *kind);
+int neonMediaSetProp(UIView *view, const char *name, const char *text);
+void neonMediaRelease(UIView *view);
+
+static void publishEnvironment(float keyboard, int dark) {
+	if (keyboard == g_keyboardH && dark == g_dark) return;
+	g_keyboardH = keyboard;
+	g_dark = dark;
+	call0(s_environment);
+}
+
+// A Modal's layer: VoiceOver stays inside it, and its escape gesture asks the
+// app to close it (control phase 7, RN's onRequestClose).
+@interface NeonModalView : NeonTouchView
+@property (nonatomic, copy) NSString *neonAnimation;
+@end
+
+@implementation NeonModalView
+
+- (instancetype)initWithFrame:(CGRect)frame {
+	self = [super initWithFrame:frame];
+	if (self) self.accessibilityViewIsModal = YES;
+	return self;
+}
+
+- (BOOL)accessibilityPerformEscape {
+	emitControl((int)self.tag, 7, @"", 0, 0);
+	return YES;
+}
+
+- (void)didMoveToWindow {
+	[super didMoveToWindow];
+	if (!self.window) return;
+	if ([self.neonAnimation isEqualToString:@"fade"]) {
+		self.alpha = 0;
+		[UIView animateWithDuration:0.3 animations:^{ self.alpha = 1; }];
+	} else if ([self.neonAnimation isEqualToString:@"slide"]) {
+		CGFloat height = self.window.bounds.size.height;
+		self.transform = CGAffineTransformMakeTranslation(0, height);
+		[UIView animateWithDuration:0.3 animations:^{ self.transform = CGAffineTransformIdentity; }];
+	}
+	UIAccessibilityPostNotification(UIAccessibilityScreenChangedNotification, self);
+}
+
+@end
+
+@interface NeonInput : UITextField <UITextFieldDelegate>
+@property (nonatomic) BOOL neonWriting;
+@property (nonatomic) BOOL neonBlurOnSubmit;
+@property (nonatomic) BOOL neonAutoFocus;
+@property (nonatomic) NSInteger neonMaxLength;
+@property (nonatomic) UIEdgeInsets neonInsets;
+@end
+
+@implementation NeonInput
+
+- (instancetype)initWithFrame:(CGRect)frame {
+	self = [super initWithFrame:frame];
+	if (self) {
+		self.delegate = self;
+		self.neonBlurOnSubmit = YES;
+		self.neonMaxLength = -1;
+		self.textColor = [UIColor whiteColor];
+		self.font = [UIFont systemFontOfSize:17];
+		[self addTarget:self action:@selector(neonChanged) forControlEvents:UIControlEventEditingChanged];
+	}
+	return self;
+}
+
+- (CGRect)textRectForBounds:(CGRect)bounds { return UIEdgeInsetsInsetRect([super textRectForBounds:bounds], self.neonInsets); }
+- (CGRect)editingRectForBounds:(CGRect)bounds { return UIEdgeInsetsInsetRect([super editingRectForBounds:bounds], self.neonInsets); }
+- (CGRect)placeholderRectForBounds:(CGRect)bounds { return UIEdgeInsetsInsetRect([super placeholderRectForBounds:bounds], self.neonInsets); }
+
+- (CGSize)sizeThatFits:(CGSize)size {
+	CGSize fit = [super sizeThatFits:size];
+	return CGSizeMake(fit.width + self.neonInsets.left + self.neonInsets.right, fit.height + self.neonInsets.top + self.neonInsets.bottom);
+}
+
+- (void)neonChanged {
+	if (!self.neonWriting) emitControl((int)self.tag, 0, self.text, 0, 0);
+}
+
+- (void)didMoveToWindow {
+	[super didMoveToWindow];
+	if (self.window && self.neonAutoFocus) dispatch_async(dispatch_get_main_queue(), ^{ [self becomeFirstResponder]; });
+}
+
+- (void)textFieldDidChangeSelection:(UITextField *)field {
+	if (self.neonWriting) return;
+	UITextRange *range = field.selectedTextRange;
+	if (!range) return;
+	NSInteger start = [field offsetFromPosition:field.beginningOfDocument toPosition:range.start];
+	NSInteger end = [field offsetFromPosition:field.beginningOfDocument toPosition:range.end];
+	emitControl((int)self.tag, 9, [NSString stringWithFormat:@"%ld,%ld", (long)start, (long)end], 0, 0);
+}
+
+- (void)neonSelect:(const char *)value {
+	long start = 0, end = 0;
+	if (sscanf(value, "%ld,%ld", &start, &end) != 2) return;
+	UITextPosition *from = [self positionFromPosition:self.beginningOfDocument offset:MIN(start, (long)self.text.length)];
+	UITextPosition *to = [self positionFromPosition:self.beginningOfDocument offset:MIN(end, (long)self.text.length)];
+	if (!from || !to) return;
+	self.neonWriting = YES;
+	self.selectedTextRange = [self textRangeFromPosition:from toPosition:to];
+	self.neonWriting = NO;
+}
+
+- (void)textFieldDidBeginEditing:(UITextField *)field { emitControl((int)self.tag, 1, self.text, 0, 0); }
+- (void)textFieldDidEndEditing:(UITextField *)field { emitControl((int)self.tag, 2, self.text, 0, 0); }
+
+- (BOOL)textFieldShouldReturn:(UITextField *)field {
+	emitControl((int)self.tag, 3, self.text, 0, 0);
+	if (self.neonBlurOnSubmit) [self resignFirstResponder];
+	return NO;
+}
+
+- (BOOL)textField:(UITextField *)field shouldChangeCharactersInRange:(NSRange)range replacementString:(NSString *)string {
+	if (self.neonMaxLength < 0) return YES;
+	return (NSInteger)(field.text.length - range.length + string.length) <= self.neonMaxLength;
+}
+
+@end
+
+@interface NeonSwitch : UISwitch
+@property (nonatomic) BOOL neonValue;
+@end
+
+@implementation NeonSwitch
+- (instancetype)initWithFrame:(CGRect)frame {
+	self = [super initWithFrame:frame];
+	if (self) [self addTarget:self action:@selector(neonChanged) forControlEvents:UIControlEventValueChanged];
+	return self;
+}
+- (void)neonChanged {
+	emitControl((int)self.tag, 4, self.isOn ? @"true" : @"false", 0, 0);
+	if (self.isOn != self.neonValue) [self setOn:self.neonValue animated:YES];
+}
+@end
+
+@interface NeonIndicator : UIActivityIndicatorView
+@property (nonatomic) BOOL neonAnimating;
+@end
+
+@implementation NeonIndicator
+- (void)neonApply {
+	if (self.neonAnimating) [self startAnimating];
+	else [self stopAnimating];
+}
+@end
+
+@interface NeonImage : UIImageView
+@property (nonatomic, copy) NSString *neonUri;
+@property (nonatomic, strong) UIImage *neonRaw;
+@property (nonatomic) CGFloat neonBlur;
+@property (nonatomic) BOOL neonRepeat;
+@end
+
+// RN blurRadius: a Gaussian blur of the decoded image, cropped back to its own extent.
+static UIImage *blurredImage(UIImage *image, CGFloat radius) {
+	CIImage *input = image.CIImage ?: [CIImage imageWithCGImage:image.CGImage];
+	if (!input) return image;
+	CIFilter *blur = [CIFilter filterWithName:@"CIGaussianBlur"];
+	[blur setValue:[input imageByClampingToExtent] forKey:kCIInputImageKey];
+	[blur setValue:@(radius * image.scale) forKey:kCIInputRadiusKey];
+	CIImage *output = [blur.outputImage imageByCroppingToRect:input.extent];
+	CGImageRef cg = [[CIContext contextWithOptions:nil] createCGImage:output fromRect:input.extent];
+	if (!cg) return image;
+	UIImage *result = [UIImage imageWithCGImage:cg scale:image.scale orientation:image.imageOrientation];
+	CGImageRelease(cg);
+	return result;
+}
+
+@implementation NeonImage
+
++ (NSCache *)neonCache {
+	static NSCache *cache;
+	static dispatch_once_t once;
+	dispatch_once(&once, ^{ cache = [[NSCache alloc] init]; });
+	return cache;
+}
+
+- (void)neonShow {
+	UIImage *image = self.neonRaw;
+	if (image && self.neonBlur > 0) image = blurredImage(image, self.neonBlur);
+	if (image && self.neonRepeat) image = [image resizableImageWithCapInsets:UIEdgeInsetsZero resizingMode:UIImageResizingModeTile];
+	self.image = image;
+}
+
+- (void)setNeonRawImage:(UIImage *)image {
+	self.neonRaw = image;
+	[self neonShow];
+}
+
+- (void)neonLoad:(NSString *)uri {
+	if ([uri isEqualToString:self.neonUri ?: @""]) return;
+	self.neonUri = uri;
+	[self setNeonRawImage:nil];
+	if (uri.length == 0) return;
+	UIImage *cached = [NeonImage.neonCache objectForKey:uri];
+	if (cached) {
+		[self setNeonRawImage:cached];
+		dispatch_async(dispatch_get_main_queue(), ^{
+			if ([self.neonUri isEqualToString:uri]) emitControl((int)self.tag, 5, @"", (float)cached.size.width, (float)cached.size.height);
+		});
+		return;
+	}
+	NSURL *url = [NSURL URLWithString:uri];
+	if (!url) { emitControl((int)self.tag, 6, @"malformed URI", 0, 0); return; }
+	__weak NeonImage *weakSelf = self;
+	[[NSURLSession.sharedSession dataTaskWithURL:url completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+		UIImage *image = data ? [UIImage imageWithData:data] : nil;
+		NSInteger status = [response isKindOfClass:NSHTTPURLResponse.class] ? ((NSHTTPURLResponse *)response).statusCode : 200;
+		NSString *failure = error ? error.localizedDescription : (status < 200 || status >= 300) ? [NSString stringWithFormat:@"HTTP %ld", (long)status] : image ? nil : @"cannot decode image";
+		dispatch_async(dispatch_get_main_queue(), ^{
+			NeonImage *view = weakSelf;
+			if (!view || ![view.neonUri isEqualToString:uri]) return;
+			if (failure) { emitControl((int)view.tag, 6, failure, 0, 0); return; }
+			[NeonImage.neonCache setObject:image forKey:uri];
+			[view setNeonRawImage:image];
+			emitControl((int)view.tag, 5, @"", (float)image.size.width, (float)image.size.height);
+		});
+	}] resume];
+}
+@end
+
+// Image.getSize / Image.prefetch (app.m "image.size"): load through the views' cache.
+void niImageFetch(NSString *uri, void (^done)(UIImage *image, NSString *error)) {
+	UIImage *cached = [NeonImage.neonCache objectForKey:uri];
+	if (cached) { dispatch_async(dispatch_get_main_queue(), ^{ done(cached, nil); }); return; }
+	NSURL *url = [NSURL URLWithString:uri];
+	if (!url) { dispatch_async(dispatch_get_main_queue(), ^{ done(nil, @"malformed URI"); }); return; }
+	[[NSURLSession.sharedSession dataTaskWithURL:url completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+		UIImage *image = data ? [UIImage imageWithData:data] : nil;
+		NSInteger status = [response isKindOfClass:NSHTTPURLResponse.class] ? ((NSHTTPURLResponse *)response).statusCode : 200;
+		NSString *failure = error ? error.localizedDescription : (status < 200 || status >= 300) ? [NSString stringWithFormat:@"HTTP %ld", (long)status] : image ? nil : @"cannot decode image";
+		dispatch_async(dispatch_get_main_queue(), ^{
+			if (!failure) [NeonImage.neonCache setObject:image forKey:uri];
+			done(failure ? nil : image, failure);
+		});
+	}] resume];
+}
+
+static NSString *neonText(const char *text) { return [NSString stringWithUTF8String:text ? text : ""]; }
+
+static UIColor *cssColor(const char *css, UIColor *fallback) {
+	if (!css || css[0] != '#') return fallback;
+	char hex[7];
+	size_t n = strlen(css + 1);
+	if (n == 3) {
+		for (int i = 0; i < 3; i++) hex[2 * i] = hex[2 * i + 1] = css[1 + i];
+	} else if (n == 6) memcpy(hex, css + 1, 6);
+	else return fallback;
+	hex[6] = '\0';
+	char *end = NULL;
+	unsigned long rgb = strtoul(hex, &end, 16);
+	if (end != hex + 6) return fallback;
+	return [UIColor colorWithRed:((rgb >> 16) & 0xff) / 255.0 green:((rgb >> 8) & 0xff) / 255.0 blue:(rgb & 0xff) / 255.0 alpha:1];
+}
+
+// textSpans: records split by 0x1e, fields by 0x1f: text, colour, size, bold, italic,
+// underline, line-through, press tag.
+static void setLabelSpans(NeonLabel *label, const char *text) {
+	NSMutableAttributedString *out = [[NSMutableAttributedString alloc] init];
+	NSMutableArray<NSValue *> *ranges = [NSMutableArray array];
+	NSMutableArray<NSNumber *> *tags = [NSMutableArray array];
+	NSMutableParagraphStyle *paragraph = [[NSMutableParagraphStyle alloc] init];
+	paragraph.alignment = label.textAlignment;
+	for (NSString *record in [neonText(text) componentsSeparatedByString:@"\x1e"]) {
+		NSArray<NSString *> *f = [record componentsSeparatedByString:@"\x1f"];
+		if (f.count < 8) continue;
+		CGFloat size = f[2].doubleValue > 0 ? f[2].doubleValue : 17;
+		UIFontDescriptorSymbolicTraits traits = 0;
+		if ([f[3] isEqualToString:@"1"]) traits |= UIFontDescriptorTraitBold;
+		if ([f[4] isEqualToString:@"1"]) traits |= UIFontDescriptorTraitItalic;
+		UIFont *font = [UIFont systemFontOfSize:size];
+		if (traits) {
+			UIFontDescriptor *styled = [font.fontDescriptor fontDescriptorWithSymbolicTraits:traits];
+			if (styled) font = [UIFont fontWithDescriptor:styled size:size];
+		}
+		NSMutableDictionary<NSAttributedStringKey, id> *attributes = [NSMutableDictionary dictionary];
+		attributes[NSFontAttributeName] = font;
+		attributes[NSParagraphStyleAttributeName] = paragraph;
+		attributes[NSForegroundColorAttributeName] = cssColor(f[1].UTF8String, label.textColor);
+		if ([f[5] isEqualToString:@"1"]) attributes[NSUnderlineStyleAttributeName] = @(NSUnderlineStyleSingle);
+		if ([f[6] isEqualToString:@"1"]) attributes[NSStrikethroughStyleAttributeName] = @(NSUnderlineStyleSingle);
+		NSRange range = NSMakeRange(out.length, f[0].length);
+		[out appendAttributedString:[[NSAttributedString alloc] initWithString:f[0] attributes:attributes]];
+		if (f[7].intValue != 0) {
+			[ranges addObject:[NSValue valueWithRange:range]];
+			[tags addObject:@(f[7].intValue)];
+		}
+	}
+	label.attributedText = out;
+	label.neonSpanRanges = ranges;
+	label.neonSpanTags = tags;
+}
+
+static UIAccessibilityTraits roleTraits(const char *role) {
+	if (strcmp(role, "button") == 0) return UIAccessibilityTraitButton;
+	if (strcmp(role, "link") == 0) return UIAccessibilityTraitLink;
+	if (strcmp(role, "header") == 0) return UIAccessibilityTraitHeader;
+	if (strcmp(role, "image") == 0) return UIAccessibilityTraitImage;
+	if (strcmp(role, "search") == 0) return UIAccessibilityTraitSearchField;
+	if (strcmp(role, "adjustable") == 0) return UIAccessibilityTraitAdjustable;
+	if (strcmp(role, "text") == 0 || strcmp(role, "summary") == 0) return UIAccessibilityTraitStaticText;
+	if (strcmp(role, "progressbar") == 0) return UIAccessibilityTraitUpdatesFrequently;
+	if (strcmp(role, "checkbox") == 0 || strcmp(role, "radio") == 0 || strcmp(role, "tab") == 0 || strcmp(role, "togglebutton") == 0 ||
+		strcmp(role, "combobox") == 0 || strcmp(role, "menuitem") == 0) return UIAccessibilityTraitButton;
+	return UIAccessibilityTraitNone;
+}
+
+static char kNeonRoleTraits;
+static char kNeonStateTraits;
+static char kNeonGroup;
+
+static BOOL groupRole(const char *role) {
+	return strcmp(role, "tablist") == 0 || strcmp(role, "radiogroup") == 0 || strcmp(role, "menu") == 0 || strcmp(role, "alert") == 0;
+}
+
+static BOOL isGroup(UIView *v) { return [objc_getAssociatedObject(v, &kNeonGroup) boolValue]; }
+
+static void applyTraits(UIView *v) {
+	NSNumber *role = objc_getAssociatedObject(v, &kNeonRoleTraits);
+	NSNumber *state = objc_getAssociatedObject(v, &kNeonStateTraits);
+	v.accessibilityTraits = (UIAccessibilityTraits)(role.unsignedLongLongValue | state.unsignedLongLongValue);
+}
+
+static BOOL hasToken(NSArray<NSString *> *tokens, NSString *token) { return [tokens containsObject:token]; }
+
+static void setAccessibilityState(UIView *v, const char *text) {
+	NSArray<NSString *> *tokens = text[0] ? [neonText(text) componentsSeparatedByString:@","] : @[];
+	UIAccessibilityTraits traits = UIAccessibilityTraitNone;
+	if (hasToken(tokens, @"selected")) traits |= UIAccessibilityTraitSelected;
+	if (hasToken(tokens, @"disabled")) traits |= UIAccessibilityTraitNotEnabled;
+	objc_setAssociatedObject(v, &kNeonStateTraits, @(traits), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+	v.accessibilityValue = hasToken(tokens, @"checked") ? @"checked" : hasToken(tokens, @"unchecked") ? @"unchecked" :
+		hasToken(tokens, @"mixed") ? @"mixed" : hasToken(tokens, @"expanded") ? @"expanded" : hasToken(tokens, @"collapsed") ? @"collapsed" : nil;
+	applyTraits(v);
+}
+
+static UIKeyboardType keyboardType(const char *value) {
+	if (strcmp(value, "numeric") == 0 || strcmp(value, "number-pad") == 0) return UIKeyboardTypeNumberPad;
+	if (strcmp(value, "decimal-pad") == 0) return UIKeyboardTypeDecimalPad;
+	if (strcmp(value, "phone-pad") == 0) return UIKeyboardTypePhonePad;
+	if (strcmp(value, "email-address") == 0) return UIKeyboardTypeEmailAddress;
+	if (strcmp(value, "url") == 0) return UIKeyboardTypeURL;
+	return UIKeyboardTypeDefault;
+}
+
+static UIReturnKeyType returnKeyType(const char *value) {
+	if (strcmp(value, "go") == 0) return UIReturnKeyGo;
+	if (strcmp(value, "next") == 0) return UIReturnKeyNext;
+	if (strcmp(value, "search") == 0) return UIReturnKeySearch;
+	if (strcmp(value, "send") == 0) return UIReturnKeySend;
+	return UIReturnKeyDone;
+}
+
+static void setInputProp(NeonInput *input, const char *name, const char *value) {
+	BOOL yes = strcmp(value, "true") == 0;
+	BOOL defaultYes = value[0] == '\0' || yes;
+	NSString *text = [NSString stringWithUTF8String:value];
+	if (strcmp(name, "value") == 0) {
+		if (![input.text isEqualToString:text]) { input.neonWriting = YES; input.text = text; input.neonWriting = NO; }
+	} else if (strcmp(name, "defaultValue") == 0) {
+		if (input.text.length == 0) input.text = text;
+	} else if (strcmp(name, "placeholder") == 0) input.placeholder = text;
+	else if (strcmp(name, "placeholderTextColor") == 0) {
+		input.attributedPlaceholder = [[NSAttributedString alloc] initWithString:input.placeholder ?: @"" attributes:@{ NSForegroundColorAttributeName: cssColor(value, UIColor.placeholderTextColor) }];
+	} else if (strcmp(name, "editable") == 0) input.enabled = defaultYes;
+	else if (strcmp(name, "secureTextEntry") == 0) input.secureTextEntry = yes;
+	else if (strcmp(name, "keyboardType") == 0) input.keyboardType = keyboardType(value);
+	else if (strcmp(name, "returnKeyType") == 0) input.returnKeyType = returnKeyType(value);
+	else if (strcmp(name, "autoCorrect") == 0) input.autocorrectionType = value[0] == '\0' ? UITextAutocorrectionTypeDefault : yes ? UITextAutocorrectionTypeYes : UITextAutocorrectionTypeNo;
+	else if (strcmp(name, "autoCapitalize") == 0) {
+		input.autocapitalizationType = strcmp(value, "none") == 0 ? UITextAutocapitalizationTypeNone :
+			strcmp(value, "words") == 0 ? UITextAutocapitalizationTypeWords :
+			strcmp(value, "characters") == 0 ? UITextAutocapitalizationTypeAllCharacters : UITextAutocapitalizationTypeSentences;
+	} else if (strcmp(name, "blurOnSubmit") == 0) input.neonBlurOnSubmit = defaultYes;
+	else if (strcmp(name, "autoFocus") == 0) {
+		input.neonAutoFocus = yes;
+		if (yes && input.window) [input becomeFirstResponder];
+	} else if (strcmp(name, "textInsets") == 0) {
+		float left = 0, top = 0, right = 0, bottom = 0;
+		if (sscanf(value, "%f,%f,%f,%f", &left, &top, &right, &bottom) == 4) {
+			input.neonInsets = UIEdgeInsetsMake(top, left, bottom, right);
+			[input setNeedsLayout];
+		}
+	} else if (strcmp(name, "maxLength") == 0) input.neonMaxLength = value[0] == '\0' ? -1 : atoi(value);
+	else if (strcmp(name, "selection") == 0) [input neonSelect:value];
+}
+
+// RN's multiline TextInput (RCTMultilineTextInputView): a UITextView with a
+// placeholder label, the same control phases as the single-line field.
+@interface NeonTextArea : UITextView <UITextViewDelegate>
+@property (nonatomic) BOOL neonWriting;
+@property (nonatomic) BOOL neonBlurOnSubmit;
+@property (nonatomic) NSInteger neonMaxLength;
+@property (nonatomic, strong) UILabel *neonPlaceholder;
+@end
+
+@implementation NeonTextArea
+
+- (instancetype)initWithFrame:(CGRect)frame {
+	self = [super initWithFrame:frame textContainer:nil];
+	if (self) {
+		self.delegate = self;
+		self.neonMaxLength = -1;
+		self.backgroundColor = [UIColor clearColor];
+		self.textColor = [UIColor whiteColor];
+		self.font = [UIFont systemFontOfSize:17];
+		self.textContainer.lineFragmentPadding = 0;
+		self.textContainerInset = UIEdgeInsetsZero;
+		_neonPlaceholder = [[UILabel alloc] initWithFrame:CGRectZero];
+		_neonPlaceholder.textColor = UIColor.placeholderTextColor;
+		_neonPlaceholder.numberOfLines = 0;
+		[self addSubview:_neonPlaceholder];
+	}
+	return self;
+}
+
+- (void)layoutSubviews {
+	[super layoutSubviews];
+	UIEdgeInsets inset = self.textContainerInset;
+	CGFloat width = MAX(0, self.bounds.size.width - inset.left - inset.right);
+	CGSize fit = [self.neonPlaceholder sizeThatFits:CGSizeMake(width, CGFLOAT_MAX)];
+	self.neonPlaceholder.frame = CGRectMake(inset.left, inset.top, width, fit.height);
+	self.neonPlaceholder.font = self.font;
+	self.neonPlaceholder.hidden = self.text.length > 0;
+}
+
+- (void)neonSetText:(NSString *)text {
+	if ([self.text isEqualToString:text]) return;
+	self.neonWriting = YES;
+	self.text = text;
+	self.neonWriting = NO;
+	[self setNeedsLayout];
+}
+
+- (void)textViewDidChange:(UITextView *)view {
+	[self setNeedsLayout];
+	if (!self.neonWriting) emitControl((int)self.tag, 0, self.text, 0, 0);
+}
+
+- (void)textViewDidChangeSelection:(UITextView *)view {
+	if (self.neonWriting) return;
+	NSRange range = view.selectedRange;
+	emitControl((int)self.tag, 9, [NSString stringWithFormat:@"%lu,%lu", (unsigned long)range.location, (unsigned long)(range.location + range.length)], 0, 0);
+}
+
+- (void)textViewDidBeginEditing:(UITextView *)view { emitControl((int)self.tag, 1, self.text, 0, 0); }
+- (void)textViewDidEndEditing:(UITextView *)view { emitControl((int)self.tag, 2, self.text, 0, 0); }
+
+- (BOOL)textView:(UITextView *)view shouldChangeTextInRange:(NSRange)range replacementText:(NSString *)text {
+	if (self.neonBlurOnSubmit && [text isEqualToString:@"\n"]) {
+		emitControl((int)self.tag, 3, self.text, 0, 0);
+		[self resignFirstResponder];
+		return NO;
+	}
+	if (self.neonMaxLength < 0) return YES;
+	return (NSInteger)(view.text.length - range.length + text.length) <= self.neonMaxLength;
+}
+
+@end
+
+static void setTextAreaProp(NeonTextArea *area, const char *name, const char *value) {
+	BOOL yes = strcmp(value, "true") == 0;
+	BOOL defaultYes = value[0] == '\0' || yes;
+	NSString *text = [NSString stringWithUTF8String:value];
+	if (strcmp(name, "value") == 0) [area neonSetText:text];
+	else if (strcmp(name, "defaultValue") == 0) { if (area.text.length == 0) [area neonSetText:text]; }
+	else if (strcmp(name, "placeholder") == 0) { area.neonPlaceholder.text = text; [area setNeedsLayout]; }
+	else if (strcmp(name, "placeholderTextColor") == 0) area.neonPlaceholder.textColor = cssColor(value, UIColor.placeholderTextColor);
+	else if (strcmp(name, "editable") == 0) area.editable = defaultYes;
+	else if (strcmp(name, "secureTextEntry") == 0) area.secureTextEntry = yes;
+	else if (strcmp(name, "keyboardType") == 0) area.keyboardType = keyboardType(value);
+	else if (strcmp(name, "returnKeyType") == 0) area.returnKeyType = value[0] ? returnKeyType(value) : UIReturnKeyDefault;
+	else if (strcmp(name, "autoCorrect") == 0) area.autocorrectionType = value[0] == '\0' ? UITextAutocorrectionTypeDefault : yes ? UITextAutocorrectionTypeYes : UITextAutocorrectionTypeNo;
+	else if (strcmp(name, "autoCapitalize") == 0) {
+		area.autocapitalizationType = strcmp(value, "none") == 0 ? UITextAutocapitalizationTypeNone :
+			strcmp(value, "words") == 0 ? UITextAutocapitalizationTypeWords :
+			strcmp(value, "characters") == 0 ? UITextAutocapitalizationTypeAllCharacters : UITextAutocapitalizationTypeSentences;
+	} else if (strcmp(name, "blurOnSubmit") == 0) area.neonBlurOnSubmit = yes;
+	else if (strcmp(name, "autoFocus") == 0) { if (yes) dispatch_async(dispatch_get_main_queue(), ^{ [area becomeFirstResponder]; }); }
+	else if (strcmp(name, "textInsets") == 0) {
+		float left = 0, top = 0, right = 0, bottom = 0;
+		if (sscanf(value, "%f,%f,%f,%f", &left, &top, &right, &bottom) == 4) {
+			area.textContainerInset = UIEdgeInsetsMake(top, left, bottom, right);
+			[area setNeedsLayout];
+		}
+	} else if (strcmp(name, "maxLength") == 0) area.neonMaxLength = value[0] == '\0' ? -1 : atoi(value);
+	else if (strcmp(name, "selection") == 0) {
+		long start = 0, end = 0;
+		if (sscanf(value, "%ld,%ld", &start, &end) == 2) {
+			NSUInteger length = area.text.length;
+			NSUInteger from = MIN((NSUInteger)MAX(0, start), length);
+			NSUInteger to = MIN((NSUInteger)MAX((long)from, end), length);
+			area.neonWriting = YES;
+			area.selectedRange = NSMakeRange(from, to - from);
+			area.neonWriting = NO;
+		}
+	}
+}
 
 static UIView *focusedInput(UIView *view) {
 	if (view.isFirstResponder && ([view isKindOfClass:UITextField.class] || [view isKindOfClass:UITextView.class])) return view;
@@ -69,6 +760,8 @@ static UIView *focusedInput(UIView *view) {
 @property (nonatomic) NSInteger neonPersistTaps;
 @property (nonatomic, strong) UITapGestureRecognizer *neonKeyboardTap;
 @property (nonatomic) BOOL neonRefreshingDesired;
+@property (nonatomic, strong) UIColor *neonRefreshTint;
+@property (nonatomic, copy) NSString *neonRefreshTitle;
 - (void)neonSetContentSize:(CGSize)size;
 - (void)neonEmit:(int)phase;
 - (void)neonSetRefreshing:(BOOL)refreshing;
@@ -136,6 +829,25 @@ static UIView *focusedInput(UIView *view) {
 		if ([target isKindOfClass:UIControl.class] || ([target isKindOfClass:NeonTouchView.class] && ((NeonTouchView *)target).neonHandlesPress)) handled = YES;
 	}
 	return _neonPersistTaps == 0 || !handled;
+}
+
+// RN RCTScrollViewComponentView touchesShouldCancelInContentView: the scroll view takes a drag
+// that starts on a UIControl too (UIKit's default keeps it), unless a blocking responder inside
+// holds the touch. The pan recognizer begins before the content view sees this move, so report it first.
+- (BOOL)touchesShouldCancelInContentView:(UIView *)view {
+	UIView *tagged = view;
+	while (tagged && tagged != self && !([tagged isKindOfClass:NeonTouchView.class] && tagged.tag != 0)) tagged = tagged.superview;
+	if (tagged && tagged != self) {
+		CGPoint at = [self.panGestureRecognizer locationInView:nil];
+		g_lastTag = (int)tagged.tag;
+		g_lastPhase = 4;
+		g_touchX = (float)at.x;
+		g_touchY = (float)at.y;
+		g_touchTime = g_touchTime + 0.5;
+		call0(s_touch);
+	}
+	UIView *holder = g_responderView;
+	return !(holder && [holder isDescendantOfView:self]);
 }
 
 - (void)neonDismissKeyboard:(UITapGestureRecognizer *)recognizer {
@@ -219,22 +931,80 @@ static UIView *focusedInput(UIView *view) {
 @interface NeonVC : UIViewController
 @end
 
+static NeonVC *g_vc = nil;
+static UIStatusBarStyle g_statusBarStyle = UIStatusBarStyleDefault;
+static BOOL g_statusBarHidden = NO;
+
+// RN StatusBar on iOS: bar style and visibility through the view controller;
+// iOS has no status bar background, so that prop does nothing here.
+static BOOL g_edgeToEdge = NO;
+
+// The container fills the safe area; a translucent StatusBar takes it to the window's edges,
+// where RN iOS always draws, and SafeAreaView pads by what niSafeAreaInset reports.
+static CGRect containerFrame(UIView *root) {
+	return g_edgeToEdge ? root.bounds : root.safeAreaLayoutGuide.layoutFrame;
+}
+
+static void setStatusBar(const char *name, const char *value) {
+	if (strcmp(name, "statusBarTranslucent") == 0) {
+		g_edgeToEdge = strcmp(value, "true") == 0;
+		if (g_vc && g_container) g_container.frame = containerFrame(g_vc.view);
+		return;
+	}
+	if (strcmp(name, "statusBarStyle") == 0) {
+		g_statusBarStyle = strcmp(value, "light-content") == 0 ? UIStatusBarStyleLightContent :
+			strcmp(value, "dark-content") == 0 ? UIStatusBarStyleDarkContent : UIStatusBarStyleDefault;
+	} else if (strcmp(name, "statusBarHidden") == 0) g_statusBarHidden = strcmp(value, "true") == 0;
+	else return;
+	[g_vc setNeedsStatusBarAppearanceUpdate];
+}
+
 @implementation NeonVC
+
+- (UIStatusBarStyle)preferredStatusBarStyle { return g_statusBarStyle; }
+- (BOOL)prefersStatusBarHidden { return g_statusBarHidden; }
 
 - (void)viewDidLoad {
 	[super viewDidLoad];
+	g_vc = self;
+	g_dark = self.traitCollection.userInterfaceStyle == UIUserInterfaceStyleDark ? 1 : 0;
+	if (@available(iOS 17.0, *)) {
+		[self registerForTraitChanges:@[UITraitUserInterfaceStyle.class] withHandler:^(__kindof id<UITraitEnvironment> env, UITraitCollection *previous) {
+			publishEnvironment(g_keyboardH, env.traitCollection.userInterfaceStyle == UIUserInterfaceStyleDark ? 1 : 0);
+		}];
+	}
+	[[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(neonKeyboard:) name:UIKeyboardWillChangeFrameNotification object:nil];
+	[[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(neonKeyboardHide:) name:UIKeyboardWillHideNotification object:nil];
 	self.view.backgroundColor = [UIColor blackColor];
-	g_container = [[UIView alloc] initWithFrame:self.view.safeAreaLayoutGuide.layoutFrame];
+	g_container = [[UIView alloc] initWithFrame:containerFrame(self.view)];
 	g_container.userInteractionEnabled = YES;
 	[self.view addSubview:g_container];
 	call0(s_mount);
 }
 
+- (void)neonKeyboard:(NSNotification *)notification {
+	CGRect frame = [notification.userInfo[UIKeyboardFrameEndUserInfoKey] CGRectValue];
+	CGRect screen = self.view.window ? self.view.window.screen.bounds : UIScreen.mainScreen.bounds;
+	CGFloat height = CGRectGetHeight(CGRectIntersection(screen, frame));
+	CGFloat bottomInset = self.view.safeAreaInsets.bottom;
+	publishEnvironment((float)MAX(0, height - bottomInset), g_dark);
+}
+
+- (void)neonKeyboardHide:(NSNotification *)notification { publishEnvironment(0, g_dark); }
+
+- (void)traitCollectionDidChange:(UITraitCollection *)previous {
+	[super traitCollectionDidChange:previous];
+	publishEnvironment(g_keyboardH, self.traitCollection.userInterfaceStyle == UIUserInterfaceStyleDark ? 1 : 0);
+}
+
 - (void)viewDidLayoutSubviews {
 	[super viewDidLayoutSubviews];
-	CGRect frame = self.view.safeAreaLayoutGuide.layoutFrame;
-	if (CGRectEqualToRect(g_container.frame, frame)) return;
+	static CGRect lastSafe;
+	CGRect frame = containerFrame(self.view);
+	CGRect safe = self.view.safeAreaLayoutGuide.layoutFrame;
+	if (CGRectEqualToRect(g_container.frame, frame) && CGRectEqualToRect(lastSafe, safe)) return;
 	g_container.frame = frame;
+	lastSafe = safe;
 	call0(s_resize);
 }
 
@@ -265,6 +1035,7 @@ void niSetResizeHandler(msClosure handler) {
 }
 
 int niRunApp(void) {
+	loopStart();
 	@autoreleasepool {
 		return UIApplicationMain(0, nil, nil, NSStringFromClass([NeonAppDelegate class]));
 	}
@@ -282,6 +1053,17 @@ float niScreenHeight(void) {
 	return (float)g_container.bounds.size.height;
 }
 
+float niSafeAreaInset(int edge) {
+	if (!g_vc || !g_container) return 0;
+	CGRect safe = g_vc.view.safeAreaLayoutGuide.layoutFrame;
+	CGRect c = g_container.frame;
+	CGFloat inset = edge == 0 ? CGRectGetMinY(safe) - CGRectGetMinY(c)
+		: edge == 1 ? CGRectGetMaxX(c) - CGRectGetMaxX(safe)
+		: edge == 2 ? CGRectGetMaxY(c) - CGRectGetMaxY(safe)
+		: CGRectGetMinX(safe) - CGRectGetMinX(c);
+	return (float)MAX(0, inset);
+}
+
 // --- views ---
 
 void *niViewCreate(void) {
@@ -289,10 +1071,11 @@ void *niViewCreate(void) {
 }
 
 void *niTextCreate(void) {
-	UILabel *label = [[UILabel alloc] initWithFrame:CGRectZero];
+	NeonLabel *label = [[NeonLabel alloc] initWithFrame:CGRectZero];
 	label.textColor = [UIColor whiteColor];
 	label.font = [UIFont systemFontOfSize:17];
 	label.backgroundColor = [UIColor clearColor];
+	label.numberOfLines = 0;
 	return CFBridgingRetain(label);
 }
 
@@ -302,15 +1085,610 @@ void niAddChild(void *parent, void *child) {
 	[p addSubview:c];
 }
 
+void niBringChildToFront(void *child) {
+	UIView *c = (__bridge UIView *)child;
+	[c.superview bringSubviewToFront:c];
+}
+
 
 void niViewSetTag(void *view, int32_t tag) {
 	UIView *v = (__bridge UIView *)view;
 	v.tag = tag;
 }
 
+// --- controls created by name (niControlCreate) ---
+
+@interface NeonSlider : UISlider
+@property (nonatomic) float neonStep;
+@end
+
+@implementation NeonSlider
+- (instancetype)initWithFrame:(CGRect)frame {
+	self = [super initWithFrame:frame];
+	if (self) {
+		self.minimumValue = 0;
+		self.maximumValue = 1;
+		[self addTarget:self action:@selector(neonChanged) forControlEvents:UIControlEventValueChanged];
+		[self addTarget:self action:@selector(neonDone) forControlEvents:UIControlEventTouchUpInside | UIControlEventTouchUpOutside | UIControlEventTouchCancel];
+	}
+	return self;
+}
+- (CGSize)sizeThatFits:(CGSize)size { (void)size; return CGSizeMake(0, 31); }
+- (float)neonSnapped {
+	float v = self.value;
+	if (self.neonStep > 0) v = self.minimumValue + roundf((v - self.minimumValue) / self.neonStep) * self.neonStep;
+	return v;
+}
+- (void)neonChanged {
+	float v = [self neonSnapped];
+	if (v != self.value) self.value = v;
+	emitControl((int)self.tag, 4, [NSString stringWithFormat:@"%g", v], 0, 0);
+}
+- (void)neonDone { emitControl((int)self.tag, 8, [NSString stringWithFormat:@"%g", [self neonSnapped]], 0, 0); }
+@end
+
+@interface NeonPicker : UIButton
+@property (nonatomic, copy) NSArray<NSString *> *neonLabels;
+@property (nonatomic) NSInteger neonSelected;
+@property (nonatomic, copy) NSString *neonPrompt;
+@end
+
+@implementation NeonPicker
++ (instancetype)neonPicker {
+	NeonPicker *p = [NeonPicker buttonWithType:UIButtonTypeSystem];
+	UIButtonConfiguration *c = [UIButtonConfiguration grayButtonConfiguration];
+	c.image = [UIImage systemImageNamed:@"chevron.up.chevron.down"];
+	c.imagePlacement = NSDirectionalRectEdgeTrailing;
+	c.imagePadding = 6;
+	p.configuration = c;
+	p.contentHorizontalAlignment = UIControlContentHorizontalAlignmentLeading;
+	p.showsMenuAsPrimaryAction = YES;
+	p.neonLabels = @[];
+	p.neonSelected = -1;
+	return p;
+}
+- (CGSize)sizeThatFits:(CGSize)size { (void)size; return CGSizeMake(0, 44); }
+- (NSString *)accessibilityValue {
+	return self.neonSelected >= 0 && self.neonSelected < (NSInteger)self.neonLabels.count ? self.neonLabels[self.neonSelected] : nil;
+}
+- (void)neonRebuild {
+	NSMutableArray<UIMenuElement *> *actions = [NSMutableArray array];
+	__weak NeonPicker *weakSelf = self;
+	for (NSUInteger i = 0; i < self.neonLabels.count; i++) {
+		UIAction *a = [UIAction actionWithTitle:self.neonLabels[i] image:nil identifier:nil handler:^(UIAction *action) {
+			(void)action;
+			NeonPicker *me = weakSelf;
+			if (!me) return;
+			emitControl((int)me.tag, 4, [NSString stringWithFormat:@"%lu", (unsigned long)i], 0, 0);
+			[me neonRebuild];
+		}];
+		a.state = (NSInteger)i == self.neonSelected ? UIMenuElementStateOn : UIMenuElementStateOff;
+		[actions addObject:a];
+	}
+	self.menu = [UIMenu menuWithTitle:self.neonPrompt ?: @"" children:actions];
+	UIButtonConfiguration *c = self.configuration;
+	c.title = [self accessibilityValue] ?: @"";
+	self.configuration = c;
+}
+@end
+
+@interface NeonDatePicker : UIDatePicker
+@property (nonatomic, copy) NSString *neonMode;
+@end
+
+@implementation NeonDatePicker
+- (instancetype)initWithFrame:(CGRect)frame {
+	self = [super initWithFrame:frame];
+	if (self) {
+		self.neonMode = @"date";
+		self.datePickerMode = UIDatePickerModeDate;
+		self.preferredDatePickerStyle = UIDatePickerStyleCompact;
+		self.locale = [NSLocale currentLocale];
+		[self addTarget:self action:@selector(neonChanged) forControlEvents:UIControlEventValueChanged];
+	}
+	return self;
+}
+- (NSDateFormatter *)neonFormatter {
+	NSDateFormatter *f = [[NSDateFormatter alloc] init];
+	f.locale = [NSLocale localeWithLocaleIdentifier:@"en_US_POSIX"];
+	f.dateFormat = [self.neonMode isEqualToString:@"time"] ? @"HH:mm" : [self.neonMode isEqualToString:@"datetime"] ? @"yyyy-MM-dd'T'HH:mm" : @"yyyy-MM-dd";
+	return f;
+}
+- (NSDate *)neonParse:(const char *)text {
+	if (!text || !text[0]) return nil;
+	return [[self neonFormatter] dateFromString:neonText(text)];
+}
+- (CGSize)sizeThatFits:(CGSize)size {
+	CGSize fit = [self systemLayoutSizeFittingSize:UILayoutFittingCompressedSize];
+	if (fit.width <= 0 || fit.width >= size.width || fit.height <= 0) {
+		CGFloat width = [self.neonMode isEqualToString:@"time"] ? 96 : [self.neonMode isEqualToString:@"datetime"] ? 230 : 136;
+		fit = CGSizeMake(width, 35);
+	}
+	return CGSizeMake(MIN(fit.width, size.width), fit.height);
+}
+- (void)neonChanged { emitControl((int)self.tag, 4, [[self neonFormatter] stringFromDate:self.date], 0, 0); }
+- (void)neonSetProp:(const char *)name value:(const char *)text {
+	if (strcmp(name, "mode") == 0) {
+		self.neonMode = neonText(text);
+		self.datePickerMode = strcmp(text, "time") == 0 ? UIDatePickerModeTime : strcmp(text, "datetime") == 0 ? UIDatePickerModeDateAndTime : UIDatePickerModeDate;
+	} else if (strcmp(name, "display") == 0) {
+		self.preferredDatePickerStyle = strcmp(text, "inline") == 0 ? UIDatePickerStyleInline : strcmp(text, "spinner") == 0 ? UIDatePickerStyleWheels : UIDatePickerStyleCompact;
+	} else if (strcmp(name, "value") == 0) {
+		NSDate *d = [self neonParse:text];
+		if (d && ![d isEqualToDate:self.date]) [self setDate:d animated:NO];
+	} else if (strcmp(name, "minimumDate") == 0) self.minimumDate = [self neonParse:text];
+	else if (strcmp(name, "maximumDate") == 0) self.maximumDate = [self neonParse:text];
+	else if (strcmp(name, "disabled") == 0) self.enabled = strcmp(text, "true") != 0;
+	else if (strcmp(name, "accentColor") == 0) self.tintColor = text[0] ? cssColor(text, nil) : nil;
+}
+@end
+
+static void setSliderProp(NeonSlider *s, const char *name, const char *text) {
+	if (strcmp(name, "minimumValue") == 0) s.minimumValue = (float)atof(text);
+	else if (strcmp(name, "maximumValue") == 0) s.maximumValue = (float)atof(text);
+	else if (strcmp(name, "step") == 0) s.neonStep = (float)atof(text);
+	else if (strcmp(name, "value") == 0) { if (!s.isTracking) [s setValue:(float)atof(text) animated:NO]; }
+	else if (strcmp(name, "disabled") == 0) s.enabled = strcmp(text, "true") != 0;
+	else if (strcmp(name, "inverted") == 0) s.transform = strcmp(text, "true") == 0 ? CGAffineTransformMakeScale(-1, 1) : CGAffineTransformIdentity;
+	else if (strcmp(name, "minimumTrackTintColor") == 0) s.minimumTrackTintColor = text[0] ? cssColor(text, nil) : nil;
+	else if (strcmp(name, "maximumTrackTintColor") == 0) s.maximumTrackTintColor = text[0] ? cssColor(text, nil) : nil;
+	else if (strcmp(name, "thumbTintColor") == 0) s.thumbTintColor = text[0] ? cssColor(text, nil) : nil;
+}
+
+static void setPickerProp(NeonPicker *p, const char *name, const char *text) {
+	if (strcmp(name, "items") == 0) {
+		NSMutableArray<NSString *> *labels = [NSMutableArray array];
+		if (text[0]) {
+			for (NSString *record in [neonText(text) componentsSeparatedByString:@"\x1e"]) {
+				[labels addObject:[record componentsSeparatedByString:@"\x1f"].firstObject ?: @""];
+			}
+		}
+		p.neonLabels = labels;
+		[p neonRebuild];
+	} else if (strcmp(name, "selectedIndex") == 0) {
+		p.neonSelected = atoi(text);
+		[p neonRebuild];
+	} else if (strcmp(name, "prompt") == 0) {
+		p.neonPrompt = text[0] ? neonText(text) : nil;
+		[p neonRebuild];
+	} else if (strcmp(name, "disabled") == 0) p.enabled = strcmp(text, "true") != 0;
+	else if (strcmp(name, "color") == 0) p.tintColor = text[0] ? cssColor(text, nil) : nil;
+}
+
+// --- <Svg>: draws the display list of src/components/svg/scene.ms (encodeScene) ---
+
+typedef struct {
+	int kind; // 0 none, 1 colour, 2 linear, 3 radial
+	CGFloat rgba[4];
+	CGAffineTransform space;
+	CGFloat coords[5];
+	int stops;
+	CGFloat offsets[32];
+	CGFloat colors[128];
+} NeonSvgPaint;
+
+@interface NeonSvgView : UIView
+@property (nonatomic, copy) NSArray<NSString *> *neonTokens;
+@end
+
+static CGFloat svgNumber(NSArray<NSString *> *t, NSUInteger *i) {
+	if (*i >= t.count) return 0;
+	return (CGFloat)[t[(*i)++] doubleValue];
+}
+
+static void svgReadPaint(NSArray<NSString *> *t, NSUInteger *i, NeonSvgPaint *p) {
+	NSString *kind = *i < t.count ? t[(*i)++] : @"n";
+	p->kind = 0;
+	if ([kind isEqualToString:@"c"]) {
+		p->kind = 1;
+		for (int k = 0; k < 3; k++) p->rgba[k] = svgNumber(t, i) / 255.0;
+		p->rgba[3] = svgNumber(t, i);
+		return;
+	}
+	if (![kind isEqualToString:@"l"] && ![kind isEqualToString:@"r"]) return;
+	BOOL linear = [kind isEqualToString:@"l"];
+	p->kind = linear ? 2 : 3;
+	CGFloat a = svgNumber(t, i), b = svgNumber(t, i), c = svgNumber(t, i), d = svgNumber(t, i), e = svgNumber(t, i), f = svgNumber(t, i);
+	p->space = CGAffineTransformMake(a, b, c, d, e, f);
+	for (int k = 0; k < (linear ? 4 : 5); k++) p->coords[k] = svgNumber(t, i);
+	int count = (int)svgNumber(t, i);
+	p->stops = 0;
+	for (int s = 0; s < count; s++) {
+		CGFloat offset = svgNumber(t, i);
+		CGFloat r = svgNumber(t, i) / 255.0, g = svgNumber(t, i) / 255.0, bl = svgNumber(t, i) / 255.0, al = svgNumber(t, i);
+		if (p->stops == 32) continue;
+		p->offsets[p->stops] = offset;
+		p->colors[p->stops * 4] = r;
+		p->colors[p->stops * 4 + 1] = g;
+		p->colors[p->stops * 4 + 2] = bl;
+		p->colors[p->stops * 4 + 3] = al;
+		p->stops++;
+	}
+}
+
+// Fills the current clip with the gradient (the caller has clipped to the shape).
+static void svgDrawGradient(CGContextRef ctx, const NeonSvgPaint *p) {
+	CGColorSpaceRef space = CGColorSpaceCreateDeviceRGB();
+	CGGradientRef gradient = CGGradientCreateWithColorComponents(space, p->colors, p->offsets, p->stops);
+	CGContextConcatCTM(ctx, p->space);
+	CGGradientDrawingOptions extend = kCGGradientDrawsBeforeStartLocation | kCGGradientDrawsAfterEndLocation;
+	if (p->kind == 2) {
+		CGContextDrawLinearGradient(ctx, gradient, CGPointMake(p->coords[0], p->coords[1]), CGPointMake(p->coords[2], p->coords[3]), extend);
+	} else {
+		CGContextDrawRadialGradient(ctx, gradient, CGPointMake(p->coords[3], p->coords[4]), 0, CGPointMake(p->coords[0], p->coords[1]), p->coords[2], extend);
+	}
+	CGGradientRelease(gradient);
+	CGColorSpaceRelease(space);
+}
+
+// The viewBox to view mapping of SVG 1.1 §7.8 (align 0 none, 1..9 xMinYMin..xMaxYMax).
+static CGAffineTransform svgViewBox(CGSize size, CGFloat vx, CGFloat vy, CGFloat vw, CGFloat vh, int align, int slice) {
+	CGFloat sx = size.width / vw, sy = size.height / vh;
+	if (align == 0) return CGAffineTransformMake(sx, 0, 0, sy, -vx * sx, -vy * sy);
+	CGFloat s = slice ? MAX(sx, sy) : MIN(sx, sy);
+	int ax = (align - 1) % 3, ay = (align - 1) / 3;
+	return CGAffineTransformMake(s, 0, 0, s, -vx * s + (size.width - vw * s) * ax / 2.0, -vy * s + (size.height - vh * s) * ay / 2.0);
+}
+
+@implementation NeonSvgView
+- (instancetype)initWithFrame:(CGRect)frame {
+	self = [super initWithFrame:frame];
+	if (self) {
+		self.opaque = NO;
+		self.backgroundColor = UIColor.clearColor;
+		self.contentMode = UIViewContentModeRedraw;
+		self.clipsToBounds = YES;
+		self.userInteractionEnabled = NO;
+		self.accessibilityTraits = UIAccessibilityTraitImage;
+	}
+	return self;
+}
+- (CGSize)sizeThatFits:(CGSize)size { (void)size; return CGSizeZero; }
+- (BOOL)isAccessibilityElement { return self.accessibilityLabel.length > 0; }
+- (void)neonSetList:(const char *)text {
+	NSString *list = [NSString stringWithUTF8String:text];
+	self.neonTokens = list.length ? [list componentsSeparatedByString:@" "] : @[];
+	[self setNeedsDisplay];
+}
+
+- (void)neonText:(CGContextRef)ctx tokens:(NSArray<NSString *> *)t at:(NSUInteger *)i matrix:(CGAffineTransform)m {
+	int anchor = (int)svgNumber(t, i);
+	int count = (int)svgNumber(t, i);
+	NSMutableArray<NSAttributedString *> *texts = [NSMutableArray array];
+	NSMutableArray<NSArray<NSNumber *> *> *places = [NSMutableArray array];
+	NSMutableArray<UIFont *> *fonts = [NSMutableArray array];
+	for (int r = 0; r < count; r++) {
+		CGFloat hasX = svgNumber(t, i), x = svgNumber(t, i), hasY = svgNumber(t, i), y = svgNumber(t, i);
+		CGFloat dx = svgNumber(t, i), dy = svgNumber(t, i), size = svgNumber(t, i), bold = svgNumber(t, i);
+		CGFloat red = svgNumber(t, i) / 255.0, green = svgNumber(t, i) / 255.0, blue = svgNumber(t, i) / 255.0, alpha = svgNumber(t, i);
+		NSString *raw = *i < t.count ? t[(*i)++] : @"";
+		NSString *text = [raw stringByRemovingPercentEncoding] ?: raw;
+		UIFont *font = bold > 0 ? [UIFont boldSystemFontOfSize:size] : [UIFont systemFontOfSize:size];
+		UIColor *color = [UIColor colorWithRed:red green:green blue:blue alpha:alpha];
+		[texts addObject:[[NSAttributedString alloc] initWithString:text attributes:@{NSFontAttributeName: font, NSForegroundColorAttributeName: color}]];
+		[places addObject:@[@(hasX), @(x), @(hasY), @(y), @(dx), @(dy)]];
+		[fonts addObject:font];
+	}
+	// A chunk starts at every run with its own x; the anchor shifts the whole chunk.
+	CGFloat shifts[count > 0 ? count : 1];
+	int start = 0;
+	for (int r = 0; r <= count; r++) {
+		if (r == count || (r > start && places[r][0].doubleValue > 0)) {
+			CGFloat width = 0;
+			for (int k = start; k < r; k++) width += texts[k].size.width;
+			CGFloat shift = anchor == 1 ? width / 2 : anchor == 2 ? width : 0;
+			for (int k = start; k < r; k++) shifts[k] = shift;
+			start = r;
+		}
+	}
+	CGContextSaveGState(ctx);
+	CGContextConcatCTM(ctx, m);
+	CGFloat penX = 0, penY = 0;
+	for (int r = 0; r < count; r++) {
+		NSArray<NSNumber *> *p = places[r];
+		if (p[0].doubleValue > 0) penX = p[1].doubleValue;
+		if (p[2].doubleValue > 0) penY = p[3].doubleValue;
+		penX += p[4].doubleValue;
+		penY += p[5].doubleValue;
+		[texts[r] drawAtPoint:CGPointMake(penX - shifts[r], penY - fonts[r].ascender)];
+		penX += texts[r].size.width;
+	}
+	CGContextRestoreGState(ctx);
+}
+
+- (void)drawRect:(CGRect)rect {
+	(void)rect;
+	NSArray<NSString *> *t = self.neonTokens;
+	if (t.count == 0) return;
+	CGContextRef ctx = UIGraphicsGetCurrentContext();
+	CGContextSaveGState(ctx);
+	CGAffineTransform m = CGAffineTransformIdentity;
+	CGMutablePathRef path = CGPathCreateMutable();
+	NeonSvgPaint fill = {0}, stroke = {0};
+	int evenOdd = 0;
+	CGFloat width = 1, miter = 4, dashOffset = 0;
+	CGLineCap cap = kCGLineCapButt;
+	CGLineJoin join = kCGLineJoinMiter;
+	CGFloat dashes[64];
+	int dashCount = 0;
+	NSUInteger i = 0;
+	while (i < t.count) {
+		NSString *op = t[i++];
+		if (op.length != 1) continue;
+		switch ([op characterAtIndex:0]) {
+			case 'V': {
+				CGFloat vx = svgNumber(t, &i), vy = svgNumber(t, &i), vw = svgNumber(t, &i), vh = svgNumber(t, &i);
+				int align = (int)svgNumber(t, &i), slice = (int)svgNumber(t, &i);
+				CGContextConcatCTM(ctx, svgViewBox(self.bounds.size, vx, vy, vw, vh, align, slice));
+				break;
+			}
+			case 'X': {
+				CGFloat a = svgNumber(t, &i), b = svgNumber(t, &i), c = svgNumber(t, &i), d = svgNumber(t, &i), e = svgNumber(t, &i), f = svgNumber(t, &i);
+				m = CGAffineTransformMake(a, b, c, d, e, f);
+				break;
+			}
+			case 'M': { CGFloat x = svgNumber(t, &i), y = svgNumber(t, &i); CGPathMoveToPoint(path, NULL, x, y); break; }
+			case 'L': { CGFloat x = svgNumber(t, &i), y = svgNumber(t, &i); CGPathAddLineToPoint(path, NULL, x, y); break; }
+			case 'C': {
+				CGFloat x1 = svgNumber(t, &i), y1 = svgNumber(t, &i), x2 = svgNumber(t, &i), y2 = svgNumber(t, &i), x = svgNumber(t, &i), y = svgNumber(t, &i);
+				CGPathAddCurveToPoint(path, NULL, x1, y1, x2, y2, x, y);
+				break;
+			}
+			case 'Q': {
+				CGFloat x1 = svgNumber(t, &i), y1 = svgNumber(t, &i), x = svgNumber(t, &i), y = svgNumber(t, &i);
+				CGPathAddQuadCurveToPoint(path, NULL, x1, y1, x, y);
+				break;
+			}
+			case 'Z': CGPathCloseSubpath(path); break;
+			case 'F': svgReadPaint(t, &i, &fill); break;
+			case 'S': svgReadPaint(t, &i, &stroke); break;
+			case 'E': evenOdd = (int)svgNumber(t, &i); break;
+			case 'W': {
+				width = svgNumber(t, &i);
+				int c = (int)svgNumber(t, &i), j = (int)svgNumber(t, &i);
+				cap = c == 1 ? kCGLineCapRound : c == 2 ? kCGLineCapSquare : kCGLineCapButt;
+				join = j == 1 ? kCGLineJoinRound : j == 2 ? kCGLineJoinBevel : kCGLineJoinMiter;
+				miter = svgNumber(t, &i);
+				break;
+			}
+			case 'D': {
+				int count = (int)svgNumber(t, &i);
+				dashCount = 0;
+				for (int k = 0; k < count; k++) {
+					CGFloat d = svgNumber(t, &i);
+					if (dashCount < 64) dashes[dashCount++] = d;
+				}
+				dashOffset = svgNumber(t, &i);
+				break;
+			}
+			case 'O': {
+				if (fill.kind != 0) {
+					CGContextSaveGState(ctx);
+					CGContextConcatCTM(ctx, m);
+					CGContextAddPath(ctx, path);
+					if (fill.kind == 1) {
+						CGContextSetRGBFillColor(ctx, fill.rgba[0], fill.rgba[1], fill.rgba[2], fill.rgba[3]);
+						if (evenOdd) CGContextEOFillPath(ctx); else CGContextFillPath(ctx);
+					} else {
+						if (evenOdd) CGContextEOClip(ctx); else CGContextClip(ctx);
+						svgDrawGradient(ctx, &fill);
+					}
+					CGContextRestoreGState(ctx);
+				}
+				if (stroke.kind != 0 && width > 0) {
+					CGContextSaveGState(ctx);
+					CGContextConcatCTM(ctx, m);
+					CGContextAddPath(ctx, path);
+					CGContextSetLineWidth(ctx, width);
+					CGContextSetLineCap(ctx, cap);
+					CGContextSetLineJoin(ctx, join);
+					CGContextSetMiterLimit(ctx, miter);
+					CGContextSetLineDash(ctx, dashOffset, dashCount ? dashes : NULL, dashCount);
+					if (stroke.kind == 1) {
+						CGContextSetRGBStrokeColor(ctx, stroke.rgba[0], stroke.rgba[1], stroke.rgba[2], stroke.rgba[3]);
+						CGContextStrokePath(ctx);
+					} else {
+						CGContextReplacePathWithStrokedPath(ctx);
+						CGContextClip(ctx);
+						svgDrawGradient(ctx, &stroke);
+					}
+					CGContextRestoreGState(ctx);
+				}
+				CGPathRelease(path);
+				path = CGPathCreateMutable();
+				break;
+			}
+			case 'K': {
+				CGPathRef placed = CGPathCreateCopyByTransformingPath(path, &m);
+				CGContextSaveGState(ctx);
+				CGContextAddPath(ctx, placed);
+				if (CGPathIsEmpty(placed)) CGContextClipToRect(ctx, CGRectZero);
+				else if (evenOdd) CGContextEOClip(ctx);
+				else CGContextClip(ctx);
+				CGPathRelease(placed);
+				CGPathRelease(path);
+				path = CGPathCreateMutable();
+				break;
+			}
+			case 'k': CGContextRestoreGState(ctx); break;
+			case 'G': {
+				CGFloat alpha = svgNumber(t, &i);
+				CGContextSaveGState(ctx);
+				CGContextSetAlpha(ctx, alpha);
+				CGContextBeginTransparencyLayer(ctx, NULL);
+				break;
+			}
+			case 'g':
+				CGContextEndTransparencyLayer(ctx);
+				CGContextRestoreGState(ctx);
+				break;
+			case 'T': [self neonText:ctx tokens:t at:&i matrix:m]; break;
+			default:
+				fprintf(stderr, "neon: <Svg> display list has an unknown op \"%s\"\n", op.UTF8String);
+				abort();
+		}
+	}
+	CGPathRelease(path);
+	CGContextRestoreGState(ctx);
+}
+@end
+
+void *niControlCreate(const char *kind) {
+	if (strcmp(kind, "slider") == 0) return CFBridgingRetain([[NeonSlider alloc] initWithFrame:CGRectZero]);
+	if (strcmp(kind, "picker") == 0) return CFBridgingRetain([NeonPicker neonPicker]);
+	if (strcmp(kind, "datetimepicker") == 0) return CFBridgingRetain([[NeonDatePicker alloc] initWithFrame:CGRectZero]);
+	void *media = neonMediaCreate(kind);
+	if (media) return media;
+	if (strcmp(kind, "svg") == 0) return CFBridgingRetain([[NeonSvgView alloc] initWithFrame:CGRectZero]);
+	fprintf(stderr, "neon: niControlCreate has no control \"%s\"\n", kind);
+	abort();
+}
+
+void *niInputCreate(void) {
+	return CFBridgingRetain([[NeonInput alloc] initWithFrame:CGRectZero]);
+}
+
+void *niSwitchCreate(void) {
+	return CFBridgingRetain([[NeonSwitch alloc] initWithFrame:CGRectZero]);
+}
+
+void *niIndicatorCreate(void) {
+	NeonIndicator *indicator = [[NeonIndicator alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleMedium];
+	indicator.hidesWhenStopped = YES;
+	indicator.neonAnimating = YES;
+	[indicator neonApply];
+	return CFBridgingRetain(indicator);
+}
+
+void *niImageCreate(void) {
+	NeonImage *image = [[NeonImage alloc] initWithFrame:CGRectZero];
+	image.contentMode = UIViewContentModeScaleAspectFill;
+	image.clipsToBounds = YES;
+	return CFBridgingRetain(image);
+}
+
+void *niTextAreaCreate(void) {
+	return CFBridgingRetain([[NeonTextArea alloc] initWithFrame:CGRectZero]);
+}
+
+void *niModalCreate(void) {
+	return CFBridgingRetain([[NeonModalView alloc] initWithFrame:CGRectZero]);
+}
+
+void niControlSetTag(void *control, int32_t tag) {
+	UIView *v = (__bridge UIView *)control;
+	v.tag = tag;
+}
+
+void niSetProp(void *view, const char *name, const char *value) {
+	UIView *v = (__bridge UIView *)view;
+	const char *text = value ? value : "";
+	if (strncmp(name, "statusBar", 9) == 0) { setStatusBar(name, text); return; }
+	if (strcmp(name, "accessibilityLabel") == 0) {
+		v.accessibilityLabel = text[0] ? [NSString stringWithUTF8String:text] : nil;
+		if ([v isKindOfClass:NeonTouchView.class] && !((NeonTouchView *)v).neonAccessibleSet && !isGroup(v)) v.isAccessibilityElement = text[0] != '\0';
+	}
+	else if (strcmp(name, "accessibilityHint") == 0) v.accessibilityHint = text[0] ? [NSString stringWithUTF8String:text] : nil;
+	else if (strcmp(name, "accessible") == 0) {
+		v.isAccessibilityElement = strcmp(text, "true") == 0;
+		if ([v isKindOfClass:NeonTouchView.class]) ((NeonTouchView *)v).neonAccessibleSet = text[0] != '\0';
+	}
+	else if (strcmp(name, "accessibilityRole") == 0) {
+		objc_setAssociatedObject(v, &kNeonRoleTraits, @(roleTraits(text)), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+		applyTraits(v);
+		BOOL group = groupRole(text);
+		objc_setAssociatedObject(v, &kNeonGroup, @(group), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+		if (group) {
+			v.accessibilityContainerType = UIAccessibilityContainerTypeSemanticGroup;
+			if ([v isKindOfClass:NeonTouchView.class] && !((NeonTouchView *)v).neonAccessibleSet) v.isAccessibilityElement = NO;
+		}
+	}
+	else if (strcmp(name, "accessibilityState") == 0) setAccessibilityState(v, text);
+	else if (strcmp(name, "overflow") == 0) v.clipsToBounds = strcmp(text, "hidden") == 0;
+	else if (strcmp(name, "hitSlop") == 0) {
+		float top = 0, left = 0, bottom = 0, right = 0;
+		if ([v isKindOfClass:NeonTouchView.class] && sscanf(text, "%f,%f,%f,%f", &top, &left, &bottom, &right) == 4) {
+			((NeonTouchView *)v).neonHitSlop = UIEdgeInsetsMake(top, left, bottom, right);
+		}
+	}
+	else if (strcmp(name, "androidRipple") == 0) {}
+	else if (strcmp(name, "textAlign") == 0 && [v respondsToSelector:@selector(setTextAlignment:)]) {
+		NSTextAlignment alignment = strcmp(text, "left") == 0 ? NSTextAlignmentLeft :
+			strcmp(text, "center") == 0 ? NSTextAlignmentCenter :
+			strcmp(text, "right") == 0 ? NSTextAlignmentRight :
+			strcmp(text, "justify") == 0 ? NSTextAlignmentJustified : NSTextAlignmentNatural;
+		[(id)v setTextAlignment:alignment];
+	}
+	else if (neonMediaSetProp(v, name, text)) {}
+	else if ([v isKindOfClass:UILabel.class]) {
+		UILabel *label = (UILabel *)v;
+		if (strcmp(name, "textSpans") == 0 && [v isKindOfClass:NeonLabel.class]) setLabelSpans((NeonLabel *)v, text);
+		else if (strcmp(name, "numberOfLines") == 0) label.numberOfLines = text[0] ? atoi(text) : 0;
+		else if (strcmp(name, "ellipsizeMode") == 0) {
+			label.lineBreakMode = strcmp(text, "head") == 0 ? NSLineBreakByTruncatingHead :
+				strcmp(text, "middle") == 0 ? NSLineBreakByTruncatingMiddle :
+				strcmp(text, "clip") == 0 ? NSLineBreakByClipping : NSLineBreakByTruncatingTail;
+		}
+	}
+	else if ([v isKindOfClass:NeonModalView.class]) {
+		if (strcmp(name, "animationType") == 0) ((NeonModalView *)v).neonAnimation = [NSString stringWithUTF8String:text];
+	}
+	else if ([v isKindOfClass:NeonInput.class]) setInputProp((NeonInput *)v, name, text);
+	else if ([v isKindOfClass:NeonTextArea.class]) setTextAreaProp((NeonTextArea *)v, name, text);
+	else if ([v isKindOfClass:NeonSwitch.class]) {
+		NeonSwitch *s = (NeonSwitch *)v;
+		if (strcmp(name, "value") == 0) { s.neonValue = strcmp(text, "true") == 0; if (s.isOn != s.neonValue) [s setOn:s.neonValue animated:YES]; }
+		else if (strcmp(name, "disabled") == 0) s.enabled = strcmp(text, "true") != 0;
+		else if (strcmp(name, "thumbColor") == 0) s.thumbTintColor = text[0] ? cssColor(text, nil) : nil;
+		else if (strcmp(name, "trackColorOn") == 0) s.onTintColor = text[0] ? cssColor(text, nil) : nil;
+		else if (strcmp(name, "trackColorOff") == 0) { s.backgroundColor = text[0] ? cssColor(text, nil) : nil; s.layer.cornerRadius = 15.5; }
+	} else if ([v isKindOfClass:NeonIndicator.class]) {
+		NeonIndicator *i = (NeonIndicator *)v;
+		if (strcmp(name, "animating") == 0) { i.neonAnimating = strcmp(text, "false") != 0; [i neonApply]; }
+		else if (strcmp(name, "hidesWhenStopped") == 0) i.hidesWhenStopped = strcmp(text, "false") != 0;
+		else if (strcmp(name, "color") == 0) i.color = text[0] ? cssColor(text, UIColor.grayColor) : UIColor.grayColor;
+	} else if ([v isKindOfClass:NeonSlider.class]) setSliderProp((NeonSlider *)v, name, text);
+	else if ([v isKindOfClass:NeonPicker.class]) setPickerProp((NeonPicker *)v, name, text);
+	else if ([v isKindOfClass:NeonDatePicker.class]) [(NeonDatePicker *)v neonSetProp:name value:text];
+	else if ([v isKindOfClass:NeonSvgView.class]) { if (strcmp(name, "displayList") == 0) [(NeonSvgView *)v neonSetList:text]; }
+	else if ([v isKindOfClass:NeonImage.class]) {
+		NeonImage *image = (NeonImage *)v;
+		if (strcmp(name, "source") == 0) [image neonLoad:[NSString stringWithUTF8String:text]];
+		else if (strcmp(name, "resizeMode") == 0) {
+			image.contentMode = strcmp(text, "contain") == 0 ? UIViewContentModeScaleAspectFit :
+				strcmp(text, "stretch") == 0 || strcmp(text, "repeat") == 0 ? UIViewContentModeScaleToFill :
+				strcmp(text, "center") == 0 ? UIViewContentModeCenter : UIViewContentModeScaleAspectFill;
+			image.neonRepeat = strcmp(text, "repeat") == 0;
+			[image neonShow];
+		} else if (strcmp(name, "blurRadius") == 0) {
+			image.neonBlur = (CGFloat)atof(text);
+			[image neonShow];
+		}
+	}
+}
+
+void niSetFocused(void *control, int focused) {
+	UIView *v = (__bridge UIView *)control;
+	if (focused) [v becomeFirstResponder];
+	else [v resignFirstResponder];
+}
+
+void niSetControlHandler(msClosure handler) { s_control = handler; }
+int niLastControlTag(void) { return g_controlTag; }
+int niLastControlPhase(void) { return g_controlPhase; }
+const char *niLastControlValue(void) { return g_controlValue ? g_controlValue : ""; }
+float niLastControlWidth(void) { return g_controlW; }
+float niLastControlHeight(void) { return g_controlH; }
+void niSetEnvironmentHandler(msClosure handler) { s_environment = handler; }
+float niKeyboardHeight(void) { return g_keyboardH; }
+int niColorScheme(void) { return g_dark; }
+
 void niViewSetPressable(void *view) {
 	UIView *v = (__bridge UIView *)view;
-	if ([v isKindOfClass:NeonTouchView.class]) ((NeonTouchView *)v).neonHandlesPress = YES;
+	if ([v isKindOfClass:NeonLabel.class]) v.userInteractionEnabled = YES;
+	if (![v isKindOfClass:NeonTouchView.class]) return;
+	NeonTouchView *touch = (NeonTouchView *)v;
+	touch.neonHandlesPress = YES;
 }
 void niRemoveFromParent(void *child) {
 	UIView *c = (__bridge UIView *)child;
@@ -321,13 +1699,44 @@ void niViewRelease(void *view) {
 	if (view) {
 		UIView *v = (__bridge UIView *)view;
 		if ([v isKindOfClass:NeonScrollView.class]) { ((NeonScrollView *)v).delegate = nil; v.tag = 0; }
+		neonMediaRelease(v);
 		CFRelease((CFTypeRef)view);
 	}
 }
 
 void niSetFrame(void *view, float x, float y, float w, float h) {
 	UIView *v = (__bridge UIView *)view;
-	v.frame = CGRectMake(x, y, w, h);
+	// Set bounds and centre: UIKit leaves frame undefined under non-identity transforms.
+	// Preserve bounds.origin; UIScrollView stores its contentOffset there.
+	CGRect bounds = v.bounds;
+	bounds.size = CGSizeMake(w, h);
+	v.bounds = bounds;
+	v.center = CGPointMake(x + w * 0.5f, y + h * 0.5f);
+}
+
+static const void *kNeonRotationKey = &kNeonRotationKey;
+static const void *kNeonAffineKey = &kNeonAffineKey;
+
+static void neonApplyTransform(UIView *v) {
+	NSArray<NSNumber *> *affine = objc_getAssociatedObject(v, kNeonAffineKey);
+	NSNumber *rotation = objc_getAssociatedObject(v, kNeonRotationKey);
+	CGFloat sx = affine ? affine[0].doubleValue : 1, sy = affine ? affine[1].doubleValue : 1;
+	CGFloat tx = affine ? affine[2].doubleValue : 0, ty = affine ? affine[3].doubleValue : 0;
+	CGAffineTransform t = CGAffineTransformMakeTranslation(tx, ty);
+	t = CGAffineTransformRotate(t, (rotation ? rotation.doubleValue : 0) * M_PI / 180.0);
+	v.transform = CGAffineTransformScale(t, sx, sy);
+}
+
+void niSetTransform(void *view, float scaleX, float scaleY, float translateX, float translateY) {
+	UIView *v = (__bridge UIView *)view;
+	objc_setAssociatedObject(v, kNeonAffineKey, @[@(scaleX), @(scaleY), @(translateX), @(translateY)], OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+	neonApplyTransform(v);
+}
+
+void niSetRotation(void *view, float degrees) {
+	UIView *v = (__bridge UIView *)view;
+	objc_setAssociatedObject(v, kNeonRotationKey, @(degrees), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+	neonApplyTransform(v);
 }
 
 void *niScrollCreate(void) {
@@ -360,10 +1769,18 @@ void niScrollSetOption(void *scroll, const char *name, const char *value) {
 			strcmp(value, "on-drag") == 0 ? UIScrollViewKeyboardDismissModeOnDrag : UIScrollViewKeyboardDismissModeNone;
 	} else if (strcmp(name, "keyboardShouldPersistTaps") == 0) {
 		s.neonPersistTaps = strcmp(value, "always") == 0 ? 1 : strcmp(value, "handled") == 0 ? 2 : 0;
+	} else if (strcmp(name, "refreshTintColor") == 0) {
+		s.neonRefreshTint = value[0] ? cssColor(value, nil) : nil;
+		s.refreshControl.tintColor = s.neonRefreshTint;
+	} else if (strcmp(name, "refreshTitle") == 0) {
+		s.neonRefreshTitle = value[0] ? [NSString stringWithUTF8String:value] : nil;
+		s.refreshControl.attributedTitle = s.neonRefreshTitle ? [[NSAttributedString alloc] initWithString:s.neonRefreshTitle] : nil;
 	} else if (strcmp(name, "refreshEnabled") == 0) {
 		if (yes && !s.refreshControl) {
 			UIRefreshControl *control = [[UIRefreshControl alloc] init];
 			[control addTarget:s action:@selector(neonRefresh:) forControlEvents:UIControlEventValueChanged];
+			control.tintColor = s.neonRefreshTint;
+			if (s.neonRefreshTitle) control.attributedTitle = [[NSAttributedString alloc] initWithString:s.neonRefreshTitle];
 			s.refreshControl = control;
 		} else if (!yes) s.refreshControl = nil;
 	} else if (strcmp(name, "refreshing") == 0) {
@@ -382,6 +1799,19 @@ void niScrollTo(void *scroll, float x, float y, int animated) {
 	CGPoint to = CGPointMake(MIN(MAX(0, x), maxX), MIN(MAX(0, y), maxY));
 	if (animated && !CGPointEqualToPoint(s.contentOffset, to)) [s neonEmit:3];
 	[s setContentOffset:to animated:animated != 0];
+}
+
+void niScrollShift(void *scroll, float dx, float dy) {
+	NeonScrollView *s = (__bridge NeonScrollView *)scroll;
+	s.contentOffset = CGPointMake(s.contentOffset.x + dx, s.contentOffset.y + dy);
+}
+
+float niScrollOffsetX(void *scroll) {
+	return (float)((__bridge UIScrollView *)scroll).contentOffset.x;
+}
+
+float niScrollOffsetY(void *scroll) {
+	return (float)((__bridge UIScrollView *)scroll).contentOffset.y;
 }
 
 void niSetBackgroundColor(void *view, float r, float g, float b, float a) {
@@ -405,6 +1835,10 @@ void niSetOpacity(void *view, float opacity) {
 void niSetText(void *label, const char *s) {
 	UILabel *l = (__bridge UILabel *)label;
 	l.text = [NSString stringWithUTF8String:s ? s : ""];
+	if ([l isKindOfClass:NeonLabel.class]) {
+		((NeonLabel *)l).neonSpanRanges = @[];
+		((NeonLabel *)l).neonSpanTags = @[];
+	}
 }
 
 void niSetTextColor(void *label, float r, float g, float b, float a) {
@@ -435,6 +1869,15 @@ void niSetTouchHandler(msClosure handler) {
 
 int niLastTouchTag(void) { return g_lastTag; }
 int niLastTouchPhase(void) { return g_lastPhase; }
+float niLastTouchX(void) { return g_touchX; }
+float niLastTouchY(void) { return g_touchY; }
+double niLastTouchTime(void) { return g_touchTime; }
+
+void niSetResponder(void *view, int blockNativeResponder) {
+	g_responderView = blockNativeResponder ? (__bridge UIView *)view : nil;
+}
+
+void niClearResponder(void) { g_responderView = nil; }
 
 void niSetScrollHandler(msClosure handler) {
 	s_scroll = handler;
@@ -451,4 +1894,37 @@ float niLastScrollContentHeight(void) { return g_scrollContentH; }
 
 void niSetTeardownHandler(msClosure handler) {
 	s_teardown = handler;
+}
+
+void niSetLoopHandler(msClosure handler) {
+	s_loop = handler;
+}
+
+void niInvokeClosure(msClosure c) { call0(c); }
+static msClosure s_frame;
+
+@interface NeonFrameTarget : NSObject
+@end
+
+@implementation NeonFrameTarget
+- (void)tick:(CADisplayLink *)link {
+	link.paused = YES;
+	call0(s_frame);
+}
+@end
+
+static CADisplayLink *g_frameLink;
+static NeonFrameTarget *g_frameTarget;
+
+void niSetFrameHandler(msClosure handler) { s_frame = handler; }
+
+int niRequestFrame(void) {
+	if (!g_frameLink) {
+		g_frameTarget = [NeonFrameTarget new];
+		g_frameLink = [CADisplayLink displayLinkWithTarget:g_frameTarget selector:@selector(tick:)];
+		g_frameLink.paused = YES;
+		[g_frameLink addToRunLoop:[NSRunLoop mainRunLoop] forMode:NSRunLoopCommonModes];
+	}
+	g_frameLink.paused = NO;
+	return 1;
 }

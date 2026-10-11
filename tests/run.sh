@@ -3,7 +3,7 @@
 # browser lane in real Chrome.
 # js-lane skips: tests/style/style.test.ms, tests/platform/void.test.ms and
 # tests/platform/voidInput.test.ms import the Void platform host, a C-only sibling repo;
-# tests/platform/nativeHost.test.ms links the native host against a C mock bridge.
+# tests/platform/native<Name>.test.ms files link the native host against a C mock bridge.
 # tests/browser is bound to a real DOM: it has no C lowering and no `document`
 # under node, so it runs only through tests/browser/run.sh.
 MSC=${MSC:-msc}
@@ -19,7 +19,7 @@ for f in $files; do
 done
 for f in $files; do
 	case "$f" in
-	*style/style.test.ms | *platform/void.test.ms | *platform/voidInput.test.ms | *platform/nativeHost.test.ms)
+	*style/style.test.ms | *platform/void.test.ms | *platform/voidInput.test.ms | *platform/native[A-Z]*.test.ms)
 		echo "== js skip $f"
 		continue
 		;;

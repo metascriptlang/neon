@@ -1,0 +1,312 @@
+import { Accessor, accessor } from "../core/signal";
+import {
+	GestureResponderHandlers,
+	PanResponder,
+	PanResponderGestureState,
+} from "../components/panResponder";
+import { createMemo } from "../core/memo";
+import { NeonNode, Host } from "../render/hostTypes";
+import { regionNode } from "../render/node";
+import { Row, makeRow } from "../render/reconcile";
+import { Style, TextAlign } from "../render/style";
+import { Platform } from "../api/platform";
+import { AnimatedValue } from "../animation/index";
+import { StackLayout } from "./layout";
+import { NeonEvent } from "../render/event";
+import { createComponent } from "../render/component";
+import { View, Text, Pressable } from "../components/primitives";
+import { Show } from "../macros/ui/flow";
+import {
+	DrawerAction,
+	NavigatorCore,
+	Navigation,
+	NavigatorKind,
+	NavigatorLink,
+	ScopeContext,
+	ScreenOptions,
+	ScreenProps,
+	currentScope,
+	screenScope,
+} from "./core";
+
+type RowList = () => Row[];
+
+
+export function Slot(props: { node: Accessor<NeonNode | null> }): NeonNode {
+	const read = props.node;
+	return regionNode((h: Host): RowList => createMemo<Row[]>((): Row[] => {
+		const node = read();
+		if (node === null) { return [] as Row[]; }
+		return [makeRow(node as NeonNode)];
+	}));
+}
+
+function tintOf(tint: Accessor<string> | null): Accessor<string> {
+	const theme = currentScope("header button").container.theme;
+	return accessor((): string => {
+		return tint === null ? theme().colors.primary : (tint as Accessor<string>)();
+	});
+}
+
+const BACK_BUTTON: Style = {
+	flexDirection: "row",
+	alignItems: "center",
+	paddingLeft: 8,
+	paddingRight: 8,
+	height: 44,
+};
+
+const MENU_BUTTON: Style = {
+	paddingLeft: 12,
+	paddingRight: 12,
+	height: 44,
+	justifyContent: "center",
+};
+
+export function HeaderBackButton(props: {
+	label?: Accessor<string> | null;
+	tintColor?: Accessor<string> | null;
+	onPress: () => void;
+}): NeonNode {
+	const label = props.label;
+	const tint = props.tintColor;
+	const color = tintOf(tint);
+	const text = accessor((): string => label === null ? "Back" : (label as Accessor<string>)());
+	const press = props.onPress;
+	return <Pressable style={BACK_BUTTON}
+		accessibilityRole="button" accessibilityLabel="Back"
+		onPress={(e: NeonEvent): void => { press(); }}>
+		<Text style={{ color: color(), fontSize: 17 }}>{"‹ " + text()}</Text>
+	</Pressable>;
+}
+
+export function DrawerToggleButton(props: { tintColor?: Accessor<string> | null }): NeonNode {
+	const tint = props.tintColor;
+	const color = tintOf(tint);
+	const scope = currentScope("DrawerToggleButton");
+	const toggle = (e: NeonEvent): void => {
+		let link: NavigatorLink | null = scope.link;
+		while (link !== null) {
+			const here = link as NavigatorLink;
+			if (here.drawerAction(DrawerAction.Toggle)) { return; }
+			link = here.parent();
+		}
+		throw new Error("DrawerToggleButton: no drawer navigator around this screen");
+	};
+	return <Pressable style={MENU_BUTTON}
+		accessibilityRole="button" accessibilityLabel="Show navigation menu" onPress={toggle}>
+		<Text style={{ color: color(), fontSize: 22 }}>☰</Text>
+	</Pressable>;
+}
+
+export function Header(props: {
+	title: Accessor<string>;
+	options: Accessor<ScreenOptions>;
+	back: Accessor<boolean>;
+	backTitle: Accessor<string>;
+	onBack: () => void;
+	menu: Accessor<boolean>;
+}): NeonNode {
+	const options = props.options;
+	const theme = currentScope("Header").container.theme;
+	const tint = accessor((): string => {
+		const color = options().headerTintColor;
+		return color === null ? theme().colors.primary : color as string;
+	});
+	const bar = accessor((): Style => {
+		const base: Style = {
+			flexDirection: "row",
+			alignItems: "center",
+			height: 52,
+			paddingLeft: 4,
+			paddingRight: 8,
+			backgroundColor: theme().colors.card,
+		};
+		const extra = options().headerStyle;
+		if (extra === null) { return base; }
+		return { ...base, backgroundColor: (extra as Style).backgroundColor };
+	});
+	const left = accessor((): NeonNode | null => options().headerLeft);
+	const right = accessor((): NeonNode | null => options().headerRight);
+	const hasLeft = accessor((): boolean => options().headerLeft !== null);
+	const showBack = accessor((): boolean => !hasLeft() && props.back());
+	const showMenu = accessor((): boolean => !hasLeft() && !props.back() && props.menu());
+	const align = accessor((): TextAlign => {
+		const own = options().headerTitleAlign;
+		if (own !== null) { return own === "center" ? "center" : "left"; }
+		return Platform.OS === "ios" ? "center" : "left";
+	});
+	const titleBox = accessor((): Style => ({
+		flex: 1,
+		flexDirection: "row",
+		justifyContent: align() === "center" ? "center" : "flex-start",
+		paddingLeft: 8,
+		paddingRight: 8,
+	}));
+	const titleColor = accessor((): string => {
+		const color = options().headerTintColor;
+		return color === null ? theme().colors.text : color as string;
+	});
+	const titleText = accessor((): Style => ({
+		color: titleColor(),
+		fontSize: 17,
+		fontWeight: "bold",
+		textAlign: align(),
+	}));
+	const onBack = props.onBack;
+	return <View style={{ flexDirection: "column" }}><View style={bar}>
+		<Show when={showBack()}>
+			<HeaderBackButton label={props.backTitle} tintColor={tint} onPress={onBack} />
+		</Show>
+		<Show when={showMenu()}>
+			<DrawerToggleButton tintColor={tint} />
+		</Show>
+		<Slot node={left} />
+		<View style={titleBox}>
+			<Text style={titleText}
+				accessibilityRole="header">{props.title()}</Text>
+		</View>
+		<Slot node={right} />
+	</View><View style={{ height: 1, backgroundColor: theme().colors.border }} /></View>;
+}
+
+export function titleOf<P>(entry: Navigation<P>): string {
+	const options = entry.options();
+	const headerTitle = options.headerTitle;
+	if (headerTitle !== null) { return headerTitle as string; }
+	const title = options.title;
+	return title === null ? entry.route.name : title as string;
+}
+
+export function shown(value: boolean | null, fallback: boolean): boolean {
+	return value === null ? fallback : value as boolean;
+}
+
+export const EDGE_WIDTH = 24;
+
+function backGesture<P>(core: NavigatorCore<P>, entry: Navigation<P>): GestureResponderHandlers {
+	const settle = (): void => {
+		if (contained<P>(core.snapshot(), entry)) { core.settleIn(entry); }
+	};
+	const pan = PanResponder.create({
+		onMoveShouldSetPanResponder: (e: NeonEvent, g: PanResponderGestureState): boolean => {
+			return g.dx > 10 && Math.abs(g.dx) > Math.abs(g.dy) * 2;
+		},
+		onPanResponderGrant: (e: NeonEvent, g: PanResponderGestureState): void => {
+			entry.progress.stopAnimation();
+			entry.writeMotion(true);
+		},
+		onPanResponderMove: (e: NeonEvent, g: PanResponderGestureState): void => {
+			const width = core.layout.extentX();
+			const moved = width > 0 ? Math.max(0, Math.min(1, g.dx / width)) : 0;
+			entry.progress.setValue(1 - moved);
+		},
+		onPanResponderRelease: (e: NeonEvent, g: PanResponderGestureState): void => {
+			const width = core.layout.extentX();
+			const moved = width > 0 ? g.dx / width : 0;
+			if (moved > 0.35 || g.vx > 0.5) {
+				core.goBackFrom(entry.route.key);
+			}
+			settle();
+		},
+		onPanResponderTerminate: (e: NeonEvent, g: PanResponderGestureState): void => { settle(); },
+	});
+	return pan.panHandlers;
+}
+
+function contained<P>(list: Navigation<P>[], entry: Navigation<P>): boolean {
+	for (const candidate of list) {
+		if (candidate === entry) { return true; }
+	}
+	return false;
+}
+
+export function screenView<P>(core: NavigatorCore<P>, entry: Navigation<P>): NeonNode {
+	const scope = screenScope<P>(core, entry);
+	const key = entry.route.key;
+	const options = accessor((): ScreenOptions => entry.options());
+	const position = accessor((): int32 => {
+		const list = core.isStack() ? core.rendered() : core.entries();
+		for (let i = 0; i < list.length; i += 1) {
+			if (list[i].route.key === key) { return i as int32; }
+		}
+		return -1;
+	});
+	const transparent = accessor((): boolean => core.isStack() && core.transparent(entry));
+	const visible = accessor((): boolean => {
+		if (!core.isStack()) { return core.currentKey() === key; }
+		if (core.isClosing(entry)) { return true; }
+		const list = core.entries();
+		const at = position();
+		if (at < 0 || at >= list.length) { return false; }
+		if (at >= core.visibleFrom()) { return true; }
+		const top = list.length - 1;
+		return at === top - 1 && list[top].motion();
+	});
+	const frame = accessor((): Style => {
+		const base: Style = {
+			position: "absolute",
+			top: 0,
+			left: 0,
+			right: 0,
+			bottom: 0,
+			flexDirection: "column",
+			display: visible() ? "flex" : "none",
+			backgroundColor: transparent() ? null : core.container.theme().colors.background,
+		};
+		const p = entry.progress.get();
+		if (p >= 1) { return base; }
+		const kind = core.animationOf(entry);
+		if (kind === "fade") { return { ...base, opacity: p }; }
+		if (kind === "slide_from_bottom") {
+			return { ...base, transform: `translateY(${(1 - p) * core.layout.extentY()}px)` };
+		}
+		if (kind === "slide_from_right") {
+			return { ...base, transform: `translateX(${(1 - p) * core.layout.extentX()}px)` };
+		}
+		return base;
+	});
+	const headerShown = accessor((): boolean => {
+		const presentation = options().presentation;
+		const overlay = presentation !== null && presentation === "transparentModal";
+		return shown(options().headerShown, !overlay);
+	});
+	const back = accessor((): boolean => core.kind === NavigatorKind.Stack && position() > 0);
+	const backTitle = accessor((): string => {
+		const at = position();
+		if (at <= 0) { return "Back"; }
+		const own = options().headerBackTitle;
+		if (own !== null) { return own as string; }
+		return titleOf<P>(core.rendered()[at - 1]);
+	});
+	const menu = accessor((): boolean => core.kind === NavigatorKind.Drawer);
+	const title = accessor((): string => titleOf<P>(entry));
+	const swipeBack = accessor((): boolean => {
+		if (!core.isStack() || position() <= 0 || core.isClosing(entry)) { return false; }
+		if (core.animationOf(entry) !== "slide_from_right") { return false; }
+		return shown(options().gestureEnabled, Platform.OS === "ios");
+	});
+	const edge = accessor((): Style => ({
+		position: "absolute",
+		left: 0,
+		top: headerShown() ? 53 : 0,
+		bottom: 0,
+		width: EDGE_WIDTH,
+	}));
+	const handlers = backGesture<P>(core, entry);
+	const props: ScreenProps<P> = { navigation: entry, route: entry.route };
+	const body = createComponent(entry.config.component, props);
+	const goBack = (): void => { entry.goBack(); };
+	return <ScopeContext.Provider value={scope as unknown}>
+		<View style={frame}>
+			<Show when={headerShown()}>
+				<Header title={title} options={options} back={back} backTitle={backTitle}
+					onBack={goBack} menu={menu} />
+			</Show>
+			<View style={{ flex: 1, flexDirection: "column" }}>{body}</View>
+			<Show when={swipeBack()}>
+				<View {...handlers} style={edge} />
+			</Show>
+		</View>
+	</ScopeContext.Provider>;
+}

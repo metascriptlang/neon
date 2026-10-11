@@ -30,6 +30,14 @@ and the invariants that outlived them were moved to the head of the test that pi
   mount such a component by calling it (`App()` in `examples/voidWindow.ms`). The fix is in
   `src/macros/ui/element.ms`, a contract that needs a yes before it changes.
 
+- **OPEN 2026-10-07 — a raw tag with an `Accessor<boolean> | null` attribute dies on C.** In
+  `probe/apps/boolAttr.ms` (`wt/rn-apps`), `function Tag(props: { on?: Accessor<boolean> | null })`
+  returning `element(<text accessible={props.on}>hi</text>)`, mounted as `<Tag on={true} />` on
+  `mockHost()`, `msc run` exits 133 (`EXC_BREAKPOINT` in `mfm_free`, a double free) and prints
+  nothing; the same shape with `Accessor<string> | null` prints the attribute. `Text` and
+  `Pressable` therefore pass `accessible` as an `Accessor<string>` (`accessibleText` in
+  `src/components/primitives.ms`). Not reduced to the macro or the compiler yet.
+
 - **OPEN 2026-10-03 — Android: the list examples' `offset` label draws "offset" without its
   number.** Seen on the Seeker in the `list-pressed.png` screenshot that `tests/android/list.py`
   writes, in two runs: 15:40, before `c12ed39`, and 16:25, after it. In the same runs the
@@ -91,14 +99,6 @@ and the invariants that outlived them were moved to the head of the test that pi
   Adding `createSignal(false)` to an accepted component module emits the `…__boolean` instance into
   the runtime's `signal` module, which is not an HMR boundary. Design card
   `~/metascript/.inbox/compiler/2026-10-10-js-generic-instance-emitted-into-defining-module.md`.
-
-- **PARKED 2026-10-04 — `tests/core/selectorNullable.test.ms` does not compile on the native lane.**
-  Not Neon's: `createSelector` over an `int32 | null` source keys its `Map` by `int32 | null`, and
-  `msc test tests/core/selectorNullable.test.ms` on `7a4af78c9` stops at `hash<int32 | null>`,
-  `hashOf: no hash for this key type`; the same case passes with `--target=js`, and the other ten
-  cases in `tests/core/selector.test.ms` pass on both. Card:
-  `~/metascript/.inbox/compiler/2026-10-04-nullable-primitive-map-key-has-no-native-hash.md`.
-  Parked at that file.
 
 - **PARKED 2026-10-03 — `(st.width ?? 0.0) === 320.0` does not compile.** Not Neon's: with
   `st.width: float32 | string | null` the fallback joins as a new `float64` member and the present

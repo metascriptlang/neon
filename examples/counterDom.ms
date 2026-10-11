@@ -10,7 +10,7 @@ function main(): void {
 
 	const generated = generatedMain();
 	const app = element(
-		<View style={{ height: 20, display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 12, padding: 16, backgroundColor: "#1e1e2e", color: "#cdd6f4", borderRadius: 8 }}>
+		<View style={{ height: 20, alignItems: "flex-start", gap: 12, padding: 16, backgroundColor: "#1e1e2e", color: "#cdd6f4", borderRadius: 8 }}>
 			<Text>Counter!: {count() + ""}</Text>
 			<Pressable onPress={() => setCount(count() + 1)}>+</Pressable>
 			<Text>JSX above compiled to:{count}</Text>

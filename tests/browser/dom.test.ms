@@ -7,6 +7,7 @@ import { createSignal } from "../../src/core/signal";
 import { createRoot } from "../../src/core/owner";
 import { HOST_MOVE_CONTRACT, RECONCILE_CONTRACT, HOST_ATTR_CONTRACT, hostMoveContract, reconcileContract, hostAttrContract } from "../render/hostContract";
 import { sleepAsync } from "std/core/promise";
+import { useWindowDimensions, useColorScheme } from "../../src/render/environment";
 
 extern class ProbeStyle {
 	backgroundColor: string;
@@ -48,6 +49,7 @@ extern class Node {
 	textContent: string;
 	tagName: string;
 	value: string;
+	checked: boolean;
 	style: ProbeStyle;
 	classList: ProbeClassList;
 	extern getAttribute(name: cstring): string | null;
@@ -275,7 +277,10 @@ test "reconcileArrays keeps its contract on the DOM" {
 function domAttrs(n: HostNode): string {
 	const list = probe(n).attributes;
 	let out = "";
-	for (let i = 0; i < list.length; i += 1) { out = out + (out === "" ? "" : ",") + list.item(i).name + "=" + list.item(i).value; }
+	for (let i = 0; i < list.length; i += 1) {
+		const hostBase = list.item(i).name === "class" && list.item(i).value === "neon-view";
+		if (!hostBase) { out = out + (out === "" ? "" : ",") + list.item(i).name + "=" + list.item(i).value; }
+	}
 	return out === "" ? "_" : out;
 }
 
@@ -361,4 +366,128 @@ test "disposed DOM listeners cannot mutate state through retained detached nodes
 		window.eval("window.neonRetiredListenerNode.click(); delete window.neonRetiredListenerNode");
 		assert count === cycle + 1, "a detached node cannot run its disposed listener";
 	}
+}
+
+test "onLayout keeps logical parent coordinates and dimensions under inversions and scale" {
+	const h = domHost();
+	const outer = mount("view");
+	h.setStyle(outer, { paddingTop: 10, transform: "scaleY(-1)" });
+	const el = h.createElement("view");
+	h.setStyle(el, { height: 40, width: 80, transform: "scale(2)" });
+	h.insertBefore(outer, el, null);
+	let got = "";
+	h.addEvent(el, "onLayout", (e: NeonEvent): void => { got = `${e.x} ${e.y} ${e.width} ${e.height}`; });
+	await sleepAsync(100);
+	assert got === "0 10 80 40", "logical frame, not the transformed bounding rectangle: " + got;
+	probe(outer).remove();
+}
+
+test "onLayout follows a retained node moved between siblings without resizing it" {
+	const h = domHost();
+	const outer = mount("view");
+	h.setStyle(outer, { height: 40 });
+	const first = h.createElement("view");
+	const second = h.createElement("view");
+	h.setStyle(first, { height: 20 });
+	h.setStyle(second, { height: 20 });
+	h.insertBefore(outer, first, null);
+	h.insertBefore(outer, second, null);
+	let positions = "";
+	h.addEvent(second, "onLayout", (e: NeonEvent): void => { positions += `${e.y};`; });
+	await sleepAsync(100);
+	assert positions === "20;", positions;
+	h.insertBefore(outer, second, first);
+	await sleepAsync(100);
+	assert positions === "20;0;", "same node and size, new logical position: " + positions;
+	probe(outer).remove();
+}
+
+test "RN TextInput and accessibility props map onto input and ARIA attributes" {
+	const h = domHost();
+	const el = mount("textinput");
+	h.setAttr(el, "placeholder", "Email");
+	h.setAttr(el, "keyboardType", "email-address");
+	h.setAttr(el, "returnKeyType", "next");
+	h.setAttr(el, "secureTextEntry", "true");
+	h.setAttr(el, "editable", "false");
+	h.setAttr(el, "maxLength", "12");
+	h.setAttr(el, "accessibilityLabel", "Email address");
+	h.setAttr(el, "accessibilityRole", "search");
+	const got = `${probe(el).getAttribute("placeholder")} ${probe(el).getAttribute("inputmode")} ${probe(el).getAttribute("enterkeyhint")} ${probe(el).getAttribute("type")} ${probe(el).getAttribute("readonly") !== null} ${probe(el).getAttribute("maxlength")} ${probe(el).getAttribute("aria-label")} ${probe(el).getAttribute("role")}`;
+	assert got === "Email email next password true 12 Email address search", "attributes: " + got;
+	h.removeAttr(el, "accessibilityLabel");
+	assert probe(el).getAttribute("aria-label") === null, "removing the RN name removes the ARIA attribute";
+	h.setAttr(el, "editable", "true");
+	assert probe(el).getAttribute("readonly") === null, "editable again";
+	probe(el).remove();
+	const header = mount("text");
+	h.setAttr(header, "accessibilityRole", "header");
+	assert probe(header).getAttribute("role") === "heading", "header becomes an ARIA heading";
+	probe(header).remove();
+}
+
+test "Enter submits a TextInput with its value, and the focus capability moves the DOM focus" {
+	const h = domHost();
+	const el = mount("textinput");
+	h.setAttr(el, "id", "neon-submit-probe");
+	let seen = "";
+	h.addEvent(el, "onSubmitEditing", (e: NeonEvent): void => { seen += `${e.type} ${e.value};`; });
+	h.addEvent(el, "onFocus", (e: NeonEvent): void => { seen += "focus;"; });
+	h.addEvent(el, "onBlur", (e: NeonEvent): void => { seen += "blur;"; });
+	probe(el).value = "neon";
+	window.eval("document.getElementById('neon-submit-probe').dispatchEvent(new KeyboardEvent('keydown', { key: 'a' }))");
+	window.eval("document.getElementById('neon-submit-probe').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }))");
+	const focus = h.focus;
+	assert focus !== null, "the browser host advertises focus";
+	if (focus !== null) {
+		focus(el, true);
+		focus(el, false);
+	}
+	assert seen === "submitediting neon;focus;blur;", "events: " + seen;
+	probe(el).remove();
+}
+
+test "Switch is a role=switch checkbox whose change reports the new value and then returns to the controlled one" {
+	const h = domHost();
+	const el = mount("switch");
+	h.setAttr(el, "id", "neon-switch-probe");
+	h.setAttr(el, "value", "false");
+	let seen = "";
+	h.addEvent(el, "onValueChange", (e: NeonEvent): void => { seen += `${e.type} ${e.value};`; });
+	probe(el).click();
+	const shape = `${probe(el).tagName} ${probe(el).getAttribute("type")} ${probe(el).getAttribute("role")}`;
+	assert shape === "INPUT checkbox switch", "shape: " + shape;
+	assert seen === "valuechange true;", "event: " + seen;
+	assert !probe(el).checked, "an unchanged value prop pulls the checkbox back";
+	h.setAttr(el, "value", "true");
+	assert probe(el).checked, "a new value prop checks it";
+	probe(el).remove();
+}
+
+test "ActivityIndicator and Image map onto a spinner element and an img with load and error events" {
+	const h = domHost();
+	const spinner = mount("activityindicator");
+	h.setAttr(spinner, "animating", "false");
+	assert probe(spinner).getAttribute("data-animating") === "false", "animating attribute";
+	probe(spinner).remove();
+	const img = mount("image");
+	const [seen, setSeen] = createSignal("");
+	h.addEvent(img, "onLoad", (e: NeonEvent): void => { setSeen(seen() + `load ${e.width}x${e.height};`); });
+	h.addEvent(img, "onError", (e: NeonEvent): void => { setSeen(seen() + "error;"); });
+	h.setAttr(img, "resizeMode", "contain");
+	h.setAttr(img, "source", "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7");
+	await sleepAsync(200);
+	h.setAttr(img, "source", "data:image/png;base64,bm90IGFuIGltYWdl");
+	await sleepAsync(200);
+	assert `${probe(img).tagName} ${probe(img).getAttribute("data-resize")}` === "IMG contain", "img shape";
+	assert seen() === "load 1x1;error;", "events: " + seen();
+	probe(img).remove();
+}
+
+test "the DOM host publishes the window size and the preferred color scheme" {
+	const h = domHost();
+	const dims = useWindowDimensions();
+	const scheme = useColorScheme();
+	assert dims().width > 0 && dims().height > 0, "window size published: " + `${dims().width}x${dims().height}`;
+	assert scheme() === "light" || scheme() === "dark", "a scheme is published";
 }

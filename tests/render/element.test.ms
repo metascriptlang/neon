@@ -3,6 +3,10 @@ import { el, attr, text, dynText, NeonNode } from "../../src/render/node";
 import { renderToString } from "../../src/render/ssr";
 import { element } from "../../src/macros/ui/element";
 import { render, mockHost, mockNode, mockToString, fireEvent, Host, HostNode } from "../../src/render/host";
+import { createComponent } from "../../src/render/component";
+import { onCleanup } from "../../src/core/cleanup";
+import { Show } from "../../src/macros/ui/flow";
+import { accessor } from "../../src/core/signal";
 
 test "reactive element renders and updates on signal change" {
 	const [name, setName] = createSignal("world");
@@ -235,4 +239,85 @@ test "a reactive expression given to a function prop is read once, when the prop
 	assert mockToString(root) === "<root><p>NEON none</p></root>", "initial: " + mockToString(root);
 	setLoud(false);
 	assert mockToString(root) === "<root><p>NEON none</p></root>", "the chosen function stays: " + mockToString(root);
+}
+
+function NodeSlot(props: { content: NeonNode | null }): NeonNode {
+	const content = props.content;
+	if (content === null) { return element(<i>empty</i>); }
+	return content;
+}
+
+function GenericNodeSlot<T>(props: { item: T; format: (item: T) => string; content: NeonNode }): NeonNode {
+	return element(<div><b>{props.format(props.item)}</b>{props.content}</div>);
+}
+
+function SlotHeading(): NeonNode {
+	return element(<h1>heading</h1>);
+}
+
+function OptionalSlotHeading(props: { label?: string | null }): NeonNode {
+	return element(<h1>{props.label ?? "heading"}</h1>);
+}
+
+function RequiredSlotHeading(props: { title: string }): NeonNode {
+	return element(<h1>{props.title}</h1>);
+}
+
+interface SlotComponents {
+	Heading: () => NeonNode;
+}
+
+const slotComponents: SlotComponents = { Heading: SlotHeading };
+
+test "declared node slots accept named components and existing elements equivalently" {
+	assert renderToString(element(<NodeSlot content={SlotHeading} />)) === "<h1>heading</h1>", "named component";
+	assert renderToString(element(<NodeSlot content={element(<SlotHeading />)} />)) === "<h1>heading</h1>", "existing element";
+	assert renderToString(element(<NodeSlot content={SlotHeading()} />)) === "<h1>heading</h1>", "existing NeonNode";
+	assert renderToString(element(<NodeSlot content={null} />)) === "<i>empty</i>", "nullable slot";
+	assert renderToString(element(<NodeSlot content={OptionalSlotHeading} />)) === "<h1>heading</h1>", "optional props receive an empty object";
+	assert renderToString(element(<NodeSlot content={slotComponents.Heading} />)) === "<h1>heading</h1>", "dotted component";
+	assert renderToString(element(<NodeSlot content={(): NeonNode => element(<h1>heading</h1>)} />)) === "<h1>heading</h1>", "inline component";
+	assert renderToString(element(<NodeSlot content={<SlotHeading />} />)) === "<h1>heading</h1>", "JSX element slot";
+	assert renderToString(element(<NodeSlot content={() => element(<h1>heading</h1>)} />)) === "<h1>heading</h1>", "inferred inline component";
+	assert renderToString(element(<NodeSlot content={<RequiredSlotHeading title="heading" />} />)) === "<h1>heading</h1>", "required props are supplied on an element";
+}
+
+test "generic consumers normalize node slots without converting ordinary callbacks" {
+	assert renderToString(element(<GenericNodeSlot item="neon" format={shout} content={SlotHeading} />)) === "<div><b>NEON</b><h1>heading</h1></div>", "generic named slot";
+	assert renderToString(element(<GenericNodeSlot item="neon" format={shout} content={element(<SlotHeading />)} />)) === "<div><b>NEON</b><h1>heading</h1></div>", "generic element slot";
+	assert renderToString(element(<GenericNodeSlot item="neon" format={shout} content={<SlotHeading />} />)) === "<div><b>NEON</b><h1>heading</h1></div>", "generic raw JSX slot";
+}
+
+function CallbackSlot(props: { make: () => NeonNode }): NeonNode {
+	return props.make();
+}
+
+test "a component-valued ordinary callback prop is not normalized" {
+	assert renderToString(element(<CallbackSlot make={SlotHeading} />)) === "<h1>heading</h1>", "callback remains callable";
+}
+
+test "node slot component mounts once untracked and cleans up with its owner" {
+	const [value, setValue] = createSignal("first");
+	const [visible, setVisible] = createSignal(true);
+	let mounts = 0;
+	let cleanups = 0;
+	const Heading = (): NeonNode => {
+		mounts = mounts + 1;
+		value();
+		onCleanup((): void => { cleanups = cleanups + 1; });
+		return element(<h1>{value()}</h1>);
+	};
+	const view = element(<div><Show when={visible()}><NodeSlot content={Heading} /></Show></div>);
+	assert mounts === 0, "props construction does not call the component";
+	const root = mockNode("root");
+	render(view, mockHost(), root as unknown as HostNode);
+	assert mounts === 1, "component mounts once";
+	assert mockToString(root) === "<root><div><h1>first</h1></div></root>", "initial content";
+	setValue("second");
+	assert mockToString(root) === "<root><div><h1>second</h1></div></root>", "slot contents remain reactive";
+	assert mounts === 1 && cleanups === 0, "body read is untracked and update does not remount";
+	setVisible(false);
+	assert cleanups === 1, "owner disposes component once";
+	setValue("third");
+	assert mounts === 1 && cleanups === 1, "disposed slot does not run again";
 }

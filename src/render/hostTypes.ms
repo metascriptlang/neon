@@ -45,4 +45,10 @@ export interface Host {
 	cloneNode: ((node: HostNode) => HostNode) | null;
 	voidArea: ((node: HostNode) => VoidArea) | null;
 	scrollTo: ((node: HostNode, x: number, y: number, animated: boolean) => void) | null;
+	focus?: ((node: HostNode, focused: boolean) => void) | null;
+	// Optional capability: the host's top layer, where a Portal that names no
+	// mount node puts its content (the DOM body, the native root). `node` is
+	// where the Portal sits in the tree.
+	overlayRoot?: ((node: HostNode) => HostNode) | null;
+	setResponder?: ((node: HostNode | null, blockNativeResponder: boolean) => void) | null;
 }

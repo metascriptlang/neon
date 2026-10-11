@@ -187,6 +187,39 @@ version is opt-in per host, keeps core blind to platforms, and gives N vocabular
 **Projection is cached per sheet entry.** A sheet entry is a constant, so each host projects it once
 and reuses it across every element that references it.
 
+**Native transform projection (2026-10-06).** This slice keeps the existing string transform
+IR rather than introducing a second core style value representation. The compile-time-only
+normalization goal above is not a guarantee for native string transforms: see
+`src/platform/native/contract.ms` `nativeTransform` and `src/platform/native/host.ms`
+`applyPaint` for the accepted grammar and per-node cache. Layout does not parse transforms.
+Unsupported native shapes are errors, not silently ignored paint.
+
+The reference is RN `VirtualizedList.js` `styles.verticallyInverted` /
+`styles.horizontallyInverted` and `ScrollViewStickyHeader.js`'s translated wrapper. Paint
+must leave Yoga frames and scroll content offsets logical; UIKit's transformed views use
+bounds size plus centre, preserving `bounds.origin`. Browser `onLayout` likewise reports
+logical coordinates instead of the transformed bounding rectangle.
+
+Native mock geometry and real browser consumers were exercised; rebuilt phone/simulator
+acceptance is blocked by Ion's generator migration recorded in its inbox. Do not substitute
+an old installed phone binary for the changed adapters.
+
+**Sticky-list reference boundary.** RN `VirtualizedList.js`
+`_ensureClosestStickyHeader` retains the nearest preceding header outside the
+ordinary window; `ScrollViewStickyHeader.js` owns the collision interpolation.
+The corresponding Neon boundary is `FlatList` / `stickyTranslation`, pinned by
+`tests/components/list/sticky.test.ms`, `tests/browser/flatList.test.ms` and the
+native sticky press case in `tests/platform/nativeHost.test.ms`.
+
+Native stacking follows RN `UIView+React.m` `reactZIndexSortedSubviews`: stable
+equal-z sibling order and a cheap unsorted path when all z values are zero.
+Paint order must not become Yoga child order or detach a retained view, because
+scrolling and restacking must preserve the active press. On actual reparenting,
+detach the existing Yoga node before the next layout pass: a new parent can be
+visited before its old parent, so rebuilding logical children alone does not
+release Yoga's single-owner constraint.
+
+
 ---
 
 ## 6. Reactivity — static on the node, dynamic through effects

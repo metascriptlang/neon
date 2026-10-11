@@ -17,18 +17,65 @@
 // macro machinery involved (the macro-side wrap in element covers the
 // same name on raw lowercase tags).
 
-import { NeonEvent } from "../render/event";
+import { NeonEvent, neonEvent } from "../render/event";
 import { Style, layerStyles } from "../render/style";
 import { onCleanup } from "../core/cleanup";
-import { Accessor, accessor } from "../core/signal";
+import { Accessor, accessor, untrack } from "../core/signal";
 import { element } from "../macros/ui/element";
 import { NeonNode, VAttr, VEvent, RefFn, hostElement, evt, dynAttr } from "../render/node";
 import { Host, HostNode, VoidArea } from "../render/hostTypes";
+import { visibleContentAttr } from "../render/visibleContent";
+import {
+	ClaimWatch,
+	ResponderEntry,
+	ResponderHandlers,
+	ResponderParent,
+	TouchPhase,
+	parentResponder,
+	pressSwallowed,
+	responderTouch,
+	responderUnmounted,
+	unwatchTouchClaim,
+	watchTouchClaim,
+} from "../render/responder";
 
-interface HostProps {
+export type AccessibilityRole = "none" | "button" | "link" | "search" | "image" | "text" | "header" | "switch" | "checkbox" | "adjustable" | "progressbar" | "summary" | "alert" | "radio" | "radiogroup" | "tab" | "tablist" | "togglebutton" | "combobox" | "menu" | "menuitem";
+
+export interface AccessibilityProps {
+	accessible?: Accessor<boolean> | null;
+	accessibilityLabel?: Accessor<string> | null;
+	accessibilityHint?: Accessor<string> | null;
+	accessibilityRole?: Accessor<AccessibilityRole> | null;
+}
+
+export interface HostProps extends AccessibilityProps {
 	style?: Accessor<Style> | null;
 	class?: Accessor<string> | null;
 	ref?: RefFn | null;
+}
+
+export function stringAttr(attrs: VAttr[], name: string, value: Accessor<string> | null): void {
+	if (value === null) { return; }
+	const read = value as () => string;
+	attrs.push(dynAttr(name, (): string | null => read()));
+}
+
+export function flagAttr(attrs: VAttr[], name: string, value: Accessor<boolean> | null): void {
+	if (value === null) { return; }
+	const read = value as () => boolean;
+	attrs.push(dynAttr(name, (): string | null => read() ? "true" : "false"));
+}
+
+export function accessibilityAttrs(props: AccessibilityProps, attrs: VAttr[]): VAttr[] {
+	flagAttr(attrs, "accessible", props.accessible);
+	stringAttr(attrs, "accessibilityLabel", props.accessibilityLabel);
+	stringAttr(attrs, "accessibilityHint", props.accessibilityHint);
+	const role = props.accessibilityRole;
+	if (role !== null) {
+		const read = role as Accessor<AccessibilityRole>;
+		attrs.push(dynAttr("accessibilityRole", (): string | null => { const v: AccessibilityRole = read(); return v; }));
+	}
+	return attrs;
 }
 
 function primitive(tag: string, props: HostProps, attrs: VAttr[], evts: VEvent[], kids: NeonNode | null): NeonNode {
@@ -36,12 +83,13 @@ function primitive(tag: string, props: HostProps, attrs: VAttr[], evts: VEvent[]
 		const cls = props.class as () => string;
 		attrs.push(dynAttr("class", () => cls()));
 	}
+	accessibilityAttrs(props, attrs);
 	let style: (() => Style) | null = null;
 	if (props.style !== null) { style = props.style as () => Style; }
 	return hostElement(tag, attrs, evts, kids, style, props.ref);
 }
 
-interface InteractiveProps extends HostProps {
+export interface InteractiveProps extends HostProps {
 	onKeyDown?: ((e: NeonEvent) => void) | null;
 	onKeyUp?: ((e: NeonEvent) => void) | null;
 	onFocus?: ((e: NeonEvent) => void) | null;
@@ -58,20 +106,130 @@ function interactiveEvents(props: InteractiveProps, evts: VEvent[]): VEvent[] {
 	return evts;
 }
 
-interface ViewProps extends InteractiveProps {
+export interface ViewProps extends InteractiveProps {
+	onTouchStart?: ((e: NeonEvent) => void) | null;
+	onTouchMove?: ((e: NeonEvent) => void) | null;
+	onTouchEnd?: ((e: NeonEvent) => void) | null;
+	onTouchCancel?: ((e: NeonEvent) => void) | null;
+	onStartShouldSetResponder?: ((e: NeonEvent) => boolean) | null;
+	onStartShouldSetResponderCapture?: ((e: NeonEvent) => boolean) | null;
+	onMoveShouldSetResponder?: ((e: NeonEvent) => boolean) | null;
+	onMoveShouldSetResponderCapture?: ((e: NeonEvent) => boolean) | null;
+	onResponderGrant?: ((e: NeonEvent) => boolean) | null;
+	onResponderReject?: ((e: NeonEvent) => void) | null;
+	onResponderStart?: ((e: NeonEvent) => void) | null;
+	onResponderMove?: ((e: NeonEvent) => void) | null;
+	onResponderEnd?: ((e: NeonEvent) => void) | null;
+	onResponderRelease?: ((e: NeonEvent) => void) | null;
+	onResponderTerminate?: ((e: NeonEvent) => void) | null;
+	onResponderTerminationRequest?: ((e: NeonEvent) => boolean) | null;
 	children?: NeonNode | null;
+}
+
+function responderHandlers(props: ViewProps): ResponderHandlers | null {
+	const handlers: ResponderHandlers = {
+		onStartShouldSetResponder: props.onStartShouldSetResponder,
+		onStartShouldSetResponderCapture: props.onStartShouldSetResponderCapture,
+		onMoveShouldSetResponder: props.onMoveShouldSetResponder,
+		onMoveShouldSetResponderCapture: props.onMoveShouldSetResponderCapture,
+		onResponderGrant: props.onResponderGrant,
+		onResponderReject: props.onResponderReject,
+		onResponderStart: props.onResponderStart,
+		onResponderMove: props.onResponderMove,
+		onResponderEnd: props.onResponderEnd,
+		onResponderRelease: props.onResponderRelease,
+		onResponderTerminate: props.onResponderTerminate,
+		onResponderTerminationRequest: props.onResponderTerminationRequest,
+	};
+	const negotiates = handlers.onStartShouldSetResponder !== null || handlers.onStartShouldSetResponderCapture !== null ||
+		handlers.onMoveShouldSetResponder !== null || handlers.onMoveShouldSetResponderCapture !== null;
+	return negotiates ? handlers : null;
+}
+
+function touchEvent(name: string, user: ((e: NeonEvent) => void) | null, entry: ResponderEntry | null, phase: TouchPhase): VEvent | null {
+	if (user === null && entry === null) { return null; }
+	return evt(name, (e: NeonEvent): void => {
+		if (entry !== null) { responderTouch(entry as ResponderEntry, phase, e); }
+		if (user !== null) { (user as (x: NeonEvent) => void)(e); }
+	});
 }
 
 export function View(props: ViewProps): NeonNode {
-	return primitive("view", props, [], interactiveEvents(props, []), props.children);
+	const handlers = responderHandlers(props);
+	const evts = interactiveEvents(props, []);
+	const entry = handlers === null ? null : new ResponderEntry(handlers as ResponderHandlers, parentResponder());
+	const touches: VEvent[] = [];
+	const start = touchEvent("onTouchStart", props.onTouchStart, entry, TouchPhase.Start);
+	const move = touchEvent("onTouchMove", props.onTouchMove, entry, TouchPhase.Move);
+	const end = touchEvent("onTouchEnd", props.onTouchEnd, entry, TouchPhase.End);
+	const cancel = touchEvent("onTouchCancel", props.onTouchCancel, entry, TouchPhase.Cancel);
+	if (start !== null) { evts.push(start as VEvent); }
+	if (move !== null) { evts.push(move as VEvent); }
+	if (end !== null) { evts.push(end as VEvent); }
+	if (cancel !== null) { evts.push(cancel as VEvent); }
+	if (entry === null) { return primitive("view", props, [], evts, props.children); }
+	const owner = entry as ResponderEntry;
+	const kids = props.children;
+	const provided: NeonNode | null = kids === null ? null : ResponderParent.Provider({
+		value: accessor((): ResponderEntry | null => owner),
+		children: kids as NeonNode,
+	});
+	const userRef = props.ref;
+	const grab: RefFn = (node: HostNode): void => {
+		owner.node = node;
+		if (userRef !== null) { (userRef as RefFn)(node); }
+	};
+	const view = primitive("view", { style: props.style, class: props.class, ref: grab, accessible: props.accessible, accessibilityLabel: props.accessibilityLabel, accessibilityHint: props.accessibilityHint, accessibilityRole: props.accessibilityRole }, [], evts, provided);
+	return (host: Host, parent: HostNode, before: HostNode | null): void => {
+		owner.host = host;
+		onCleanup((): void => { responderUnmounted(owner); });
+		view(host, parent, before);
+	};
 }
 
-interface TextProps extends HostProps {
+export type EllipsizeMode = "head" | "middle" | "tail" | "clip";
+
+export interface TextProps extends HostProps {
+	numberOfLines?: Accessor<number> | null;
+	ellipsizeMode?: Accessor<EllipsizeMode> | null;
+	selectable?: Accessor<boolean> | null;
+	onPress?: ((e: NeonEvent) => void) | null;
 	children?: NeonNode | null;
 }
 
+function accessibleText(props: AccessibilityProps): Accessor<string> | null {
+	const flag = props.accessible;
+	if (flag === null) { return null; }
+	const read = flag as Accessor<boolean>;
+	return accessor((): string => read() ? "true" : "false");
+}
+
 export function Text(props: TextProps): NeonNode {
-	return element(<text class={props.class} style={props.style} ref={props.ref}>{props.children}</text>);
+	const lines = props.numberOfLines;
+	const ellipsize = props.ellipsizeMode;
+	const press = props.onPress;
+	if (lines === null && ellipsize === null && props.selectable === null && press === null) {
+		const accessible = accessibleText(props);
+		return element(<text class={props.class} style={props.style} ref={props.ref} accessible={accessible} accessibilityLabel={props.accessibilityLabel} accessibilityHint={props.accessibilityHint} accessibilityRole={props.accessibilityRole}>{props.children}</text>);
+	}
+	const attrs: VAttr[] = [];
+	if (lines !== null) {
+		const read = lines as Accessor<number>;
+		attrs.push(dynAttr("numberOfLines", (): string | null => Math.max(0, Math.round(read())).toString()));
+	}
+	if (ellipsize !== null) {
+		const read = ellipsize as Accessor<EllipsizeMode>;
+		attrs.push(dynAttr("ellipsizeMode", (): string | null => { const m: EllipsizeMode = read(); return m; }));
+	}
+	flagAttr(attrs, "selectable", props.selectable);
+	const evts: VEvent[] = [];
+	if (press !== null) {
+		const user = press as (e: NeonEvent) => void;
+		evts.push(evt("onPress", (e: NeonEvent): void => {
+			if (!pressSwallowed(e)) { user(e); }
+		}));
+	}
+	return primitive("text", props, attrs, evts, props.children);
 }
 
 // RN Pressability's two constants (Libraries/Pressability/Pressability.js):
@@ -80,11 +238,44 @@ export function Text(props: TextProps): NeonNode {
 const LONG_PRESS_DELAY_MS = 500;
 const MIN_PRESS_DURATION_MS = 130;
 
+// RN Insets: how far each edge of a touch target reaches past the view.
+export interface Insets {
+	top?: number | null;
+	left?: number | null;
+	bottom?: number | null;
+	right?: number | null;
+}
+
+// RN PressableAndroidRippleConfig; a no-op off Android.
+export interface AndroidRipple {
+	color?: string | null;
+	borderless?: boolean | null;
+	radius?: number | null;
+}
+
+function insetsAttr(slop: number | Insets): string {
+	if (typeof slop === "number") {
+		const all = Math.max(0, slop as number);
+		return `${all},${all},${all},${all}`;
+	}
+	const s = slop as Insets;
+	const { top = 0, left = 0, bottom = 0, right = 0 } = s;
+	return `${Math.max(0, top)},${Math.max(0, left)},${Math.max(0, bottom)},${Math.max(0, right)}`;
+}
+
+function rippleAttr(ripple: AndroidRipple): string {
+	const { color = "", borderless = false, radius = -1 } = ripple;
+	return `${color},${borderless ? "true" : "false"},${radius >= 0 ? radius.toString() : ""}`;
+}
+
 interface PressableProps extends HostProps {
+	hitSlop?: Accessor<number | Insets> | null;
+	android_ripple?: Accessor<AndroidRipple> | null;
 	onPress?: ((e: NeonEvent) => void) | null;
 	onPressIn?: ((e: NeonEvent) => void) | null;
 	onPressOut?: ((e: NeonEvent) => void) | null;
 	onLongPress?: ((e: NeonEvent) => void) | null;
+	onLayout?: ((e: NeonEvent) => void) | null;
 	delayLongPress?: Accessor<number> | null;
 	children?: NeonNode | null;
 }
@@ -106,6 +297,7 @@ export function Pressable(props: PressableProps): NeonNode {
 	let outPending: NeonEvent | null = null;
 
 	let press: ((e: NeonEvent) => void) | null = null;
+	let watch: ClaimWatch | null = null;
 	let pointerDown: ((e: NeonEvent) => void) | null = null;
 	let pointerUp: ((e: NeonEvent) => void) | null = null;
 	let pointerLeave: ((e: NeonEvent) => void) | null = null;
@@ -125,6 +317,7 @@ export function Pressable(props: PressableProps): NeonNode {
 		const down = (e: NeonEvent): void => {
 			if (state !== 0) { return; }
 			state = 1;
+			watchTouchClaim(watch as ClaimWatch);
 			minHeld = false;
 			outPending = null;
 			if (onPressIn !== null) { (onPressIn as (x: NeonEvent) => void)(e); }
@@ -153,8 +346,10 @@ export function Pressable(props: PressableProps): NeonNode {
 			cancelTimer(longId);
 			longId = -1;
 			state = 0;
+			unwatchTouchClaim(watch as ClaimWatch);
 			releaseOut(e);
 			if (wasLong && onLongPress !== null) { return; }
+			if (pressSwallowed(e)) { return; }
 			if (onPress !== null) { (onPress as (x: NeonEvent) => void)(e); }
 		};
 		// Leaving the element (or the host cancelling) ends the press WITHOUT
@@ -164,20 +359,34 @@ export function Pressable(props: PressableProps): NeonNode {
 			cancelTimer(longId);
 			longId = -1;
 			state = 0;
+			unwatchTouchClaim(watch as ClaimWatch);
 			releaseOut(e);
 		};
+		watch = new ClaimWatch((): void => { leave(neonEvent("pointercancel")); });
 		pointerDown = down;
 		pointerUp = up;
 		pointerLeave = leave;
 		onCleanup((): void => {
 			cancelTimer(longId);
 			cancelTimer(minId);
+			unwatchTouchClaim(watch as ClaimWatch);
 		});
-	} else {
-		press = onPress;
+	} else if (onPress !== null) {
+		const user = onPress as (e: NeonEvent) => void;
+		press = (e: NeonEvent): void => {
+			if (!pressSwallowed(e)) { user(e); }
+		};
 	}
 
-	return element(<pressable class={props.class} style={props.style} ref={props.ref} onPress={press} onPointerDown={pointerDown} onPointerUp={pointerUp} onPointerLeave={pointerLeave} onPointerCancel={pointerLeave}>{props.children}</pressable>);
+	// RN Pressable.js: `accessible: accessible !== false`, so a Pressable is one
+	// accessibility element whose label the host composes from its texts.
+	const declared = accessibleText(props);
+	const accessible = declared === null ? accessor((): string => "true") : declared as Accessor<string>;
+	const slop = props.hitSlop;
+	const hitSlop: Accessor<string> | null = slop === null ? null : accessor((): string => insetsAttr((slop as Accessor<number | Insets>)()));
+	const ripple = props.android_ripple;
+	const androidRipple: Accessor<string> | null = ripple === null ? null : accessor((): string => rippleAttr((ripple as Accessor<AndroidRipple>)()));
+	return element(<pressable class={props.class} style={props.style} ref={props.ref} accessible={accessible} hitSlop={hitSlop} androidRipple={androidRipple} accessibilityLabel={props.accessibilityLabel} accessibilityHint={props.accessibilityHint} accessibilityRole={props.accessibilityRole} onLayout={props.onLayout} onPress={press} onPointerDown={pointerDown} onPointerUp={pointerUp} onPointerLeave={pointerLeave} onPointerCancel={pointerLeave}>{props.children}</pressable>);
 }
 
 export interface ScrollToOptions {
@@ -206,10 +415,15 @@ export class ScrollViewHandle {
 	}
 }
 
+export interface MaintainVisibleContentPosition {
+	minIndexForVisible: number;
+	autoscrollToTopThreshold?: number | null;
+}
+
 export type KeyboardDismissMode = "none" | "on-drag" | "interactive";
 export type KeyboardShouldPersistTaps = "never" | "always" | "handled";
 
-interface ScrollViewProps {
+export interface ScrollViewProps {
 	style?: Accessor<Style> | null;
 	contentContainerStyle?: Accessor<Style> | null;
 	class?: Accessor<string> | null;
@@ -231,6 +445,8 @@ interface ScrollViewProps {
 	onMomentumScrollEnd?: ((e: NeonEvent) => void) | null;
 	onRefresh?: (() => void) | null;
 	refreshing?: Accessor<boolean> | null;
+	maintainVisibleContentPosition?: Accessor<MaintainVisibleContentPosition> | null;
+	refreshControl?: NeonNode | null;
 	children?: NeonNode | null;
 }
 
@@ -261,6 +477,14 @@ export function ScrollView(props: ScrollViewProps): NeonNode {
 	if (taps !== null) { attrs.push(dynAttr("keyboardShouldPersistTaps", (): string | null => (taps as () => string)())); }
 	const refreshing = props.refreshing;
 	if (refreshing !== null) { attrs.push(dynAttr("refreshing", (): string | null => `${(refreshing as () => boolean)()}`)); }
+	const keep = props.maintainVisibleContentPosition;
+	if (keep !== null) {
+		attrs.push(dynAttr("maintainVisibleContentPosition", (): string | null => {
+			const position = (keep as Accessor<MaintainVisibleContentPosition>)();
+			const threshold = position.autoscrollToTopThreshold;
+			return visibleContentAttr(position.minIndexForVisible, threshold);
+		}));
+	}
 	if (props.onScrollBeginDrag !== null) { evts.push(evt("onScrollBeginDrag", props.onScrollBeginDrag as (e: NeonEvent) => void)); }
 	if (props.onScrollEndDrag !== null) { evts.push(evt("onScrollEndDrag", props.onScrollEndDrag as (e: NeonEvent) => void)); }
 	if (props.onMomentumScrollBegin !== null) { evts.push(evt("onMomentumScrollBegin", props.onMomentumScrollBegin as (e: NeonEvent) => void)); }
@@ -296,8 +520,10 @@ export function ScrollView(props: ScrollViewProps): NeonNode {
 		? element(<view style={contentStyle}>{props.children}</view>)
 		: element(<view style={contentStyle} onLayout={(e: NeonEvent): void => { (sizeChange as (width: number, height: number) => void)(e.width, e.height); }}>{props.children}</view>);
 	const userRef = props.ref;
+	const refreshControl = props.refreshControl;
 	const inner: NeonNode = (host: Host, node: HostNode, before: HostNode | null): void => {
 		content(host, node, before);
+		if (refreshControl !== null) { (refreshControl as NeonNode)(host, node, null); }
 		if (userRef !== null) {
 			let mounted = true;
 			onCleanup((): void => { mounted = false; });
@@ -312,27 +538,169 @@ export function ScrollView(props: ScrollViewProps): NeonNode {
 	return primitive("scrollview", { style, class: props.class, ref: null }, attrs, evts, inner);
 }
 
-interface TextInputProps extends InteractiveProps {
+export type KeyboardType = "default" | "numeric" | "number-pad" | "decimal-pad" | "email-address" | "phone-pad" | "url";
+export type ReturnKeyType = "done" | "go" | "next" | "search" | "send";
+export type AutoCapitalize = "none" | "sentences" | "words" | "characters";
+
+export class TextInputHandle {
+	node: HostNode;
+	private host: Host;
+	private focused: () => boolean;
+	private mounted: () => boolean;
+
+	constructor(host: Host, node: HostNode, focused: () => boolean, mounted: () => boolean) {
+		this.host = host;
+		this.node = node;
+		this.focused = focused;
+		this.mounted = mounted;
+	}
+
+	focus(): void { this.setFocused(true); }
+	blur(): void { this.setFocused(false); }
+	isFocused(): boolean { return this.focused(); }
+
+	clear(): void {
+		if (!this.mounted()) { throw "TextInput.clear was called after the TextInput unmounted"; }
+		this.host.setAttr(this.node, "value", "");
+	}
+
+	private setFocused(focused: boolean): void {
+		if (!this.mounted()) { throw "TextInput focus was changed after the TextInput unmounted"; }
+		const hostFocus = this.host.focus;
+		if (hostFocus === null) { throw "TextInput.focus needs a host with the focus capability, and this host has none"; }
+		(hostFocus as (n: HostNode, f: boolean) => void)(this.node, focused);
+	}
+}
+
+// RN TextInput selection: character offsets, end exclusive; start === end is a caret.
+export interface TextSelection {
+	start: number;
+	end?: number | null;
+}
+
+function selectionOf(value: string): TextSelection {
+	const parts = value.split(",");
+	const start: number = parts.length > 0 ? parseFloat(parts[0]) : 0;
+	const end: number = parts.length > 1 ? parseFloat(parts[1]) : start;
+	return { start, end };
+}
+
+interface TextInputProps extends AccessibilityProps {
+	style?: Accessor<Style> | null;
+	class?: Accessor<string> | null;
+	ref?: ((handle: TextInputHandle) => void) | null;
 	value?: Accessor<string> | null;
+	defaultValue?: Accessor<string> | null;
+	placeholder?: Accessor<string> | null;
+	placeholderTextColor?: Accessor<string> | null;
+	editable?: Accessor<boolean> | null;
+	secureTextEntry?: Accessor<boolean> | null;
+	multiline?: Accessor<boolean> | null;
+	autoFocus?: Accessor<boolean> | null;
+	autoCorrect?: Accessor<boolean> | null;
+	autoCapitalize?: Accessor<AutoCapitalize> | null;
+	blurOnSubmit?: Accessor<boolean> | null;
+	maxLength?: Accessor<number> | null;
+	keyboardType?: Accessor<KeyboardType> | null;
+	returnKeyType?: Accessor<ReturnKeyType> | null;
+	selection?: Accessor<TextSelection> | null;
+	onSelectionChange?: ((selection: TextSelection) => void) | null;
 	onChangeText?: ((t: string) => void) | null;
 	onKeyPress?: ((e: NeonEvent) => void) | null;
 	onSubmitEditing?: ((e: NeonEvent) => void) | null;
+	onKeyDown?: ((e: NeonEvent) => void) | null;
+	onKeyUp?: ((e: NeonEvent) => void) | null;
+	onFocus?: ((e: NeonEvent) => void) | null;
+	onBlur?: ((e: NeonEvent) => void) | null;
+	onLayout?: ((e: NeonEvent) => void) | null;
 }
 
 export function TextInput(props: TextInputProps): NeonNode {
+	// RN renders a different native view for a multiline input, chosen once.
+	const multiline = props.multiline;
+	const tag = multiline !== null && untrack((): boolean => (multiline as Accessor<boolean>)()) ? "multilinetextinput" : "textinput";
 	const attrs: VAttr[] = [];
-	if (props.value !== null) {
-		const value = props.value as () => string;
-		attrs.push(dynAttr("value", () => value()));
+	stringAttr(attrs, "value", props.value);
+	stringAttr(attrs, "defaultValue", props.defaultValue);
+	stringAttr(attrs, "placeholder", props.placeholder);
+	stringAttr(attrs, "placeholderTextColor", props.placeholderTextColor);
+	flagAttr(attrs, "editable", props.editable);
+	flagAttr(attrs, "secureTextEntry", props.secureTextEntry);
+	flagAttr(attrs, "multiline", props.multiline);
+	flagAttr(attrs, "autoFocus", props.autoFocus);
+	flagAttr(attrs, "autoCorrect", props.autoCorrect);
+	flagAttr(attrs, "blurOnSubmit", props.blurOnSubmit);
+	const capitalize = props.autoCapitalize;
+	if (capitalize !== null) {
+		const read = capitalize as Accessor<AutoCapitalize>;
+		attrs.push(dynAttr("autoCapitalize", (): string | null => { const v: AutoCapitalize = read(); return v; }));
 	}
-	const evts: VEvent[] = interactiveEvents(props, []);
+	const maxLength = props.maxLength;
+	if (maxLength !== null) { attrs.push(dynAttr("maxLength", (): string | null => Math.round((maxLength as () => number)()).toString())); }
+	const keyboard = props.keyboardType;
+	if (keyboard !== null) {
+		const read = keyboard as Accessor<KeyboardType>;
+		attrs.push(dynAttr("keyboardType", (): string | null => { const v: KeyboardType = read(); return v; }));
+	}
+	const returnKey = props.returnKeyType;
+	if (returnKey !== null) {
+		const read = returnKey as Accessor<ReturnKeyType>;
+		attrs.push(dynAttr("returnKeyType", (): string | null => { const v: ReturnKeyType = read(); return v; }));
+	}
+	const selection = props.selection;
+	if (selection !== null) {
+		attrs.push(dynAttr("selection", (): string | null => {
+			const sel = (selection as Accessor<TextSelection>)();
+			const start = Math.max(0, Math.round(sel.start));
+			const end = sel.end === null ? start : Math.max(start, Math.round(sel.end as number));
+			return `${start},${end}`;
+		}));
+	}
+	const evts: VEvent[] = interactiveEvents({
+		style: null, class: null, ref: null, onKeyDown: props.onKeyDown, onKeyUp: props.onKeyUp,
+		onFocus: null, onBlur: null, onLayout: props.onLayout,
+	}, []);
 	if (props.onChangeText !== null) {
 		const user = props.onChangeText as (t: string) => void;
 		evts.push(evt("onChangeText", (e: NeonEvent): void => { user(e.value); }));
 	}
+	if (props.onSelectionChange !== null) {
+		const user = props.onSelectionChange as (selection: TextSelection) => void;
+		evts.push(evt("onSelectionChange", (e: NeonEvent): void => { user(selectionOf(e.value)); }));
+	}
 	if (props.onKeyPress !== null) { evts.push(evt("onKeyPress", props.onKeyPress as (e: NeonEvent) => void)); }
 	if (props.onSubmitEditing !== null) { evts.push(evt("onSubmitEditing", props.onSubmitEditing as (e: NeonEvent) => void)); }
-	return primitive("textinput", props, attrs, evts, null);
+	const userRef = props.ref;
+	let focused = false;
+	const userFocus = props.onFocus;
+	const userBlur = props.onBlur;
+	if (userFocus !== null || userRef !== null) {
+		evts.push(evt("onFocus", (e: NeonEvent): void => {
+			focused = true;
+			if (userFocus !== null) { (userFocus as (x: NeonEvent) => void)(e); }
+		}));
+	}
+	if (userBlur !== null || userRef !== null) {
+		evts.push(evt("onBlur", (e: NeonEvent): void => {
+			focused = false;
+			if (userBlur !== null) { (userBlur as (x: NeonEvent) => void)(e); }
+		}));
+	}
+	if (userRef === null) {
+		return primitive(tag, { style: props.style, class: props.class, ref: null }, accessibilityAttrs(props, attrs), evts, null);
+	}
+	let mountedHost: Host | null = null;
+	let mounted = false;
+	const grab: RefFn = (node: HostNode): void => {
+		(userRef as (h: TextInputHandle) => void)(new TextInputHandle(mountedHost as Host, node, (): boolean => focused, (): boolean => mounted));
+	};
+	const field = primitive(tag, { style: props.style, class: props.class, ref: grab }, accessibilityAttrs(props, attrs), evts, null);
+	return (host: Host, parent: HostNode, before: HostNode | null): void => {
+		mountedHost = host;
+		mounted = true;
+		onCleanup((): void => { mounted = false; });
+		field(host, parent, before);
+	};
 }
 
 interface VoidProps extends HostProps {

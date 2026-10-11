@@ -21,6 +21,44 @@ expect_output() {
 	done
 }
 
+# Red until the named issue is fixed. Flips the lane red the day it passes, so the
+# case gets promoted to expect_output instead of quietly guarding nothing.
+expect_known_red() {
+	out=$(NO_COLOR=1 "$MSC" run "$1" 2>&1 | grep '^<app>')
+	if [ "$out" = "$golden" ]; then
+		echo "FAIL native $1: passes now — $2 is fixed, promote this to expect_output"
+		fail=1
+	else
+		echo "red  native $1: known, $2"
+	fi
+	out=$(NO_COLOR=1 "$MSC" run --target=js "$1" 2>&1 | grep '^<app>')
+	if [ "$out" = "$golden" ]; then
+		echo "ok   js $1"
+	else
+		echo "FAIL js $1: got"
+		echo "$out" | head -4
+		fail=1
+	fi
+}
+
+warnings='initialScrollIndex "15" is not valid (list has 10 items)
+initialScrollIndex "-1" is not valid (list has 3 items)
+FlatList: Both ListItemComponent and renderItem props are present. ListItemComponent will take precedence over renderItem.'
+
+expect_warnings() {
+	for target in "" "--target=js"; do
+		out=$(NO_COLOR=1 "$MSC" run $target "$1" 2>&1 >/dev/null | grep -E '^(initialScrollIndex|FlatList: Both)')
+		if [ "$out" = "$warnings" ]; then
+			echo "ok   ${target:-native} $1"
+		else
+			echo "FAIL ${target:-native} $1: stderr warnings were"
+			echo "$out" | head -4
+			fail=1
+		fi
+	done
+}
+
 expect_output tests/apps/localSignalApp.ms
 expect_output tests/apps/moduleSignalApp.ms
+expect_warnings tests/apps/listWarnApp.ms
 exit $fail

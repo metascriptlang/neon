@@ -17,9 +17,14 @@ void  niViewSetTag(void *view, int32_t tag);
 void  niViewSetPressable(void *view);
 void *niTextCreate(void);
 void  niAddChild(void *parent, void *child);
+void  niBringChildToFront(void *child);
 void  niRemoveFromParent(void *child);
 void  niViewRelease(void *view);
 void  niSetFrame(void *view, float x, float y, float w, float h);
+// Apply the CSS-centred axis-aligned affine transform; translation is in points.
+// Keep niSetFrame and scroll metrics in untransformed layout coordinates.
+void  niSetTransform(void *view, float scaleX, float scaleY, float translateX, float translateY);
+void  niSetRotation(void *view, float degrees);
 void  niSetBackgroundColor(void *view, float r, float g, float b, float a);
 void  niSetCornerRadius(void *view, float radius);
 void  niSetOpacity(void *view, float opacity);
@@ -28,6 +33,11 @@ void  niScrollSetTag(void *scroll, int32_t tag);
 void  niScrollSetContentSize(void *scroll, float w, float h);
 void  niScrollTo(void *scroll, float x, float y, int animated);
 void  niScrollSetOption(void *scroll, const char *name, const char *value);
+// Shift moves the offset without animation, keeps a fling going, and waits for a frame
+// write's pending layout pass; the offset reads include a shift still waiting.
+void  niScrollShift(void *scroll, float dx, float dy);
+float niScrollOffsetX(void *scroll);
+float niScrollOffsetY(void *scroll);
 
 // --- text ---
 void  niSetText(void *label, const char *s);
@@ -37,13 +47,48 @@ void  niMeasureText(void *label, float maxWidth);
 float niMeasuredW(void);
 float niMeasuredH(void);
 
+void *niInputCreate(void);
+void *niTextAreaCreate(void); // the multiline TextInput: same props and control phases
+void *niSwitchCreate(void);
+void *niIndicatorCreate(void);
+void *niImageCreate(void);
+// A layer above the app for a Modal: blocks touches below it, takes the
+// platform's back/escape as control phase 7 (request close).
+void *niModalCreate(void);
+// Controls added after the first four go through one create call keyed by the wire tag:
+// "slider", "picker", "datetimepicker"; the media views "webview", "video" and "camera" are created the
+// same way and take a `command` prop ("name\x1fargument") for their imperative methods.
+// "slider", "picker", "datetimepicker", and "svg" (an <Svg>: draws its `displayList` prop,
+// grammar in src/components/svg/scene.ms encodeScene, sized by layout only).
+void *niControlCreate(const char *kind);
+void  niControlSetTag(void *control, int32_t tag);
+void  niSetProp(void *view, const char *name, const char *value);
+void  niSetFocused(void *control, int focused);
+void  niSetControlHandler(msClosure handler);
+int   niLastControlTag(void);
+int   niLastControlPhase(void); // 0 change text, 1 focus, 2 blur, 3 submit, 4 value change, 5 load, 6 error, 7 request close, 8 sliding complete, 9 selection change ("start,end"), 10 load start, 11 message, 12 should start load (the handler answers by writing the `loadDecision` prop before it returns), 13 progress, 14 end
+const char *niLastControlValue(void);
+float niLastControlWidth(void);
+float niLastControlHeight(void);
+
+void  niSetEnvironmentHandler(msClosure handler);
+float niKeyboardHeight(void);
+int   niColorScheme(void); // 0 light, 1 dark
+
 // --- events ---
 // Every touch phase fires the one handler; the tag routes to the MS-side
 // registry. The last phase's tag is readable from the () => void closure
 // (msClosure carries no args).
 void niSetTouchHandler(msClosure handler);
 int  niLastTouchTag(void);
-int  niLastTouchPhase(void); // 0 = down, 1 = up, 2 = press, 3 = cancel
+int  niLastTouchPhase(void); // 0 = down, 1 = up, 2 = press, 3 = cancel, 4 = move
+// Window coordinates in points and a millisecond clock shared by every phase of a touch.
+float niLastTouchX(void);
+float niLastTouchY(void);
+double niLastTouchTime(void);
+// The view that holds the touch; a blocking holder keeps ancestor scroll views from taking it.
+void niSetResponder(void *view, int blockNativeResponder);
+void niClearResponder(void);
 void  niSetScrollHandler(msClosure handler);
 int   niLastScrollTag(void);
 int   niLastScrollPhase(void); // 0 scroll, 1 begin drag, 2 end drag, 3 momentum begin, 4 momentum end, 5 refresh
@@ -58,10 +103,16 @@ float niLastScrollContentHeight(void);
 void  niRegisterApp(msClosure mount);
 void  niSetResizeHandler(msClosure handler);
 void  niSetTeardownHandler(msClosure handler);
+void  niSetLoopHandler(msClosure handler);
+void  niSetFrameHandler(msClosure handler);
+int   niRequestFrame(void); // 1 when a display-synchronised frame is scheduled, 0 when unsupported
 int   niRunApp(void);
 void *niContainerView(void);
 float niScreenWidth(void);
 float niScreenHeight(void);
+// How far the unsafe areas (status bar, notch, home indicator) reach into the container, in points;
+// edge 0 top, 1 right, 2 bottom, 3 left. Zero while the container sits inside the safe area.
+float niSafeAreaInset(int edge);
 
 // --- hot reload (Android HCR builds) ---
 void  niSetReloadPoll(msClosure poll);

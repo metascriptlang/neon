@@ -378,6 +378,10 @@ measurements are not claimed.
 - **multiline**: UITextField vs UITextView differ at creation; pick the wire tag in the
   `TextInput` component from a static `multiline` prop (RN picks the backing control at
   init from default props, `RCTTextInputComponentView.mm:70`).
+- **Timers**: no main-queue `dispatch_source` per timer. The std event loop owns timers;
+  one repeating `CFRunLoopTimer` in the common modes (so it fires while a scroll view
+  tracks) is set to its next deadline after every bridge entry, and fires one loop pass
+  inside the host's layout batch (`src/platform/native/loop.c`).
 - **Safe area and resize**: UIKit owns the container frame through
   `safeAreaLayoutGuide`; `viewDidLayoutSubviews` notifies `createNativeHost`, which
   refreshes the root dimensions and reruns Yoga only when the frame changes. The root's
@@ -421,10 +425,86 @@ were installed on the Wi-Fi-connected iPhone 13 Pro (`00008110-001411093CEA801E`
 device destination. FlatList had 93 rows in the initial tree and 187 after index 5000;
 press state survived rotation and Home/resume without a PID change.
 
-The phone suites exercise vertical lists. Native horizontal gestures, refresh,
-keyboard capture and reactive axis replacement were not exercised by those suites.
+`ScrollMatrixUITests` (`examples/scrollmatrix`) drives native horizontal drag and press,
+axis replacement both ways with app state kept and the offset restarting at 0, and
+pull-to-refresh, and `testKeyboardModes` the same four keyboard modes as Android against
+`app.keyboards`; both passed on an iPhone 17 Pro simulator with the software keyboard
+2026-10-07. On the physical iPhone 13 Pro (source `5cd5bf3`, compiler `8506eaf03`) both
+`ScrollMatrixUITests` cases and all three `FlatListUITests` cases (fixed rows, measured/sticky/
+inverted, grid and sections) passed the same evening. Two physical-only failures were the
+harness, not Neon: Control Center opened over the app by a touch during the run, and an
+downward drag starting near the bottom edge that iOS took as Reachability (the inverted drag now starts
+mid-window, `tests/ios/counterUITests.swift`). The simulator has neither.
 The real-Chrome per-module lane passed 12 ScrollView and 2 FlatList cases, including
 horizontal geometry, paging, controlled refresh and disposal. A normal
 `msc build --target=js` bundle of a horizontal 10,000-row FlatList app mounts in Chrome,
 and its jump to row 3000 lands at x=300000, y=0 with scroll width 1000000, no page
 error (installed msc `2d428dc42`, 2026-10-05).
+
+### 9.1 Physical list acceptance — 2026-10-07
+
+Source/test tree `4484f0da16dd140a506101ea107d7f5088ec1cef`, installed compiler
+binary/support `8506eaf03`, real Ion generator from landed `94f7ad3`, Xcode 26.6 /
+iPhoneOS SDK 26.5, physical iPhone 13 Pro. Shared machine; load was not retained,
+so these are functional results, not performance evidence.
+
+The consumer is `examples/components/bigList.ms` `ListAcceptance`; assertions are
+`tests/ios/counterUITests.swift` `FlatListUITests`. A fresh Ion package installation
+under an isolated HOME generated `examples/flatlist/ios/project.ms`; no patched
+export or hand-edited generated project was used.
+
+- `xcodebuild -project <generated>/NeonFlatList.xcodeproj -target NeonFlatList
+  -configuration Debug -sdk iphoneos -jobs 1 ARCHS=arm64 ONLY_ACTIVE_ARCH=YES
+  CODE_SIGNING_ALLOWED=YES CODE_SIGN_STYLE=Automatic DEVELOPMENT_TEAM=4R7EAZY462
+  CODE_SIGN_IDENTITY="Apple Development" build` emitted `Built 44 module(s)` and
+  `** BUILD SUCCEEDED **`.
+- `xcrun devicectl device install app --device 505D81BC-8417-521C-AD69-424A9BC6E4D6
+  <products>/Debug-iphoneos/NeonFlatList.app` reported `App installed` for
+  `dev.neon.NeonFlatList`.
+- `xcodebuild build-for-testing -project tests/ios/counter.xcodeproj
+  -scheme CounterUITests -destination id=00008110-001411093CEA801E` with the same
+  signing settings built and signed the UI runner.
+- `xcodebuild test-without-building` with that project/scheme/destination and
+  `-only-testing:CounterUITests/FlatListUITests` first failed before runner bootstrap
+  (`Unlock Le’s iPhone to Continue`). Rerun on the unlocked phone against the same
+  installed app and runner: `testMeasuredStickyAndInverted` passed (29.2 s),
+  `testTenThousandRows` passed (44.7 s), `Executed 2 tests, with 0 failures`,
+  `** TEST EXECUTE SUCCEEDED **`.
+
+The attached screenshots show header 0 pinned over measured rows at offset 267,
+header 8 pressed and still pinned after inversion with row order reversed, and the
+measured end at offset 4747 with `ends 1` and the footer in view. This closes the
+iPhone fixed/measured/sticky/inverted acceptance on the current source and compiler;
+it is functional evidence only, with no performance comparison.
+
+Grid and sections, simulator only (2026-10-07, source `9306954`, compiler `8506eaf03`;
+the iPhone was not available): `/private/tmp/neon-sim-run.sh` generated, built and installed
+the same consumer on a fresh iPhone 17 Pro simulator and ran `FlatListUITests`, 3/3 passed.
+`testGridAndSections` checks three cells per row 68 pt apart, a prepend that puts `cell 60`
+first and moves `cell 0` to the second column while `cell 4` reads index 5, `Section 0` pinned
+over a slow drag, `scrollToLocation(1, 0)` bringing `Section 1` to the list top, and a press on
+`item 101` as `Section 1 item 1`. A fast drag flings past the 149 pt first section, so the test
+drags slowly and holds. Not yet run on the physical iPhone.
+
+Grid item ownership, simulator only (2026-10-07, `wt/rn-grid-own`, compiler `0d83c4867`): each grid
+cell of `examples/components/bigList.ms` counts its own taps in a signal created inside the cell.
+`testGridAndSections` taps `cell 2` and `cell 4`, prepends, and finds `cell 2 tapped 1` opening the
+second row in the first column, then `cell 2 tapped 2` with `pressed cell 2 at 3` and
+`pressed cell 4 at 5`; it passed twice. The same run with `src/components/virtualizedList.ms` of
+`5e3fb7e` fails at "cell 2 keeps its own counter", the remount the pool removes.
+`testMeasuredStickyAndInverted` failed in all three runs, the control included (BUGS.md §3).
+
+`maintainVisibleContentPosition`, simulator only (2026-10-07, source `4ead070`, compiler
+`0d83c4867`): `FlatListUITests/testChatKeepsVisibleMessage` drags the `chat` mode to offset 170,
+presses `load older`, and `message 1002` stays at y 311.0 while the offset moves to 1610 (the 20
+older messages, 1440 pt); scrolling up shows `message 980` through 986 in order; one pid, 1/1
+passed. The screenshots before and after the press are identical below the status lines.
+
+### 9.2 Earlier list gate boundary — 2026-10-06
+
+On source/test tree `58fa59202ac69a7cdc09ad837c60392c3cef4b85` with compiler
+binary/support `31c88d4e8`, the normal `bash tests/run.sh` gate with the configured
+Chrome runner returned 1: 142 green selections, four known-red selections,
+zero new reds. Diagnostics matched the retained main export exactly: native
+void 104, voidInput 110, style 95; JS native module export 1.
+This is not a gate verdict for the later compiler or physical acceptance fixtures.

@@ -11,12 +11,15 @@ import android.view.ViewConfiguration;
 import android.view.WindowInsets;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.EditText;
+import android.widget.FrameLayout;
 import android.widget.HorizontalScrollView;
 import android.widget.ScrollView;
 import android.widget.OverScroller;
+import java.lang.reflect.Field;
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
 
 public final class Scroll extends SwipeRefreshLayout {
+	private final FrameLayout refreshTarget;
 	private ViewGroup scroller;
 	private boolean horizontal, scrollEnabled = true, paging, refreshEnabled;
 	private boolean desiredRefreshing;
@@ -26,9 +29,15 @@ public final class Scroll extends SwipeRefreshLayout {
 	private String dismissMode = "none", persistTaps = "never";
 	private float downX, downY;
 	private boolean keyboardCaptured;
+	private int reportTag;
+	private float reportDownX, reportDownY;
 	private final int touchSlop;
 	private final OverScroller prediction;
 	private final Rect visibleFrame = new Rect();
+	private int pendingDx, pendingDy, queuedX, queuedY;
+	private boolean queuedScroll, queuedAnimated;
+	private static Field verticalFling, horizontalFling;
+	private static boolean flingFieldsRead;
 
 	public Scroll(Context context) {
 		super(context);
@@ -39,6 +48,8 @@ public final class Scroll extends SwipeRefreshLayout {
 			if (!desiredRefreshing) setRefreshing(false);
 		});
 		setOnChildScrollUpCallback((parent, child) -> !scrollEnabled || scroller.canScrollVertically(-1));
+		refreshTarget = new FrameLayout(context);
+		addView(refreshTarget, new ViewGroup.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
 		replaceScroller(false);
 		setEnabled(false);
 	}
@@ -48,10 +59,8 @@ public final class Scroll extends SwipeRefreshLayout {
 	private void replaceScroller(boolean axis) {
 		stopMomentum();
 		View content = scroller != null && scroller.getChildCount() > 0 ? scroller.getChildAt(0) : null;
-		int x = scroller == null ? 0 : scroller.getScrollX();
-		int y = scroller == null ? 0 : scroller.getScrollY();
 		if (content != null) scroller.removeView(content);
-		if (scroller != null) removeView(scroller);
+		if (scroller != null) refreshTarget.removeView(scroller);
 		horizontal = axis;
 		scroller = axis ? new Horizontal(getContext()) : new Vertical(getContext());
 		scroller.setHorizontalScrollBarEnabled(horizontalIndicator);
@@ -61,12 +70,20 @@ public final class Scroll extends SwipeRefreshLayout {
 			activelyScrolling = true;
 			emit(0);
 		});
-		addView(scroller, new ViewGroup.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
+		refreshTarget.addView(scroller, new ViewGroup.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
 		if (content != null) scroller.addView(content);
-		scroller.scrollTo(x, y);
 	}
 
 	public void addContent(View content) { scroller.addView(content); }
+
+	private static boolean measureAtWrittenContentSize(View content) {
+		ViewGroup.LayoutParams params = content.getLayoutParams();
+		if (params.width < 0 || params.height < 0) return false;
+		content.measure(View.MeasureSpec.makeMeasureSpec(params.width, View.MeasureSpec.EXACTLY),
+			View.MeasureSpec.makeMeasureSpec(params.height, View.MeasureSpec.EXACTLY));
+		return true;
+	}
+
 	public void setContentSize(int width, int height) {
 		if (scroller.getChildCount() == 0) return;
 		View content = scroller.getChildAt(0);
@@ -88,6 +105,15 @@ public final class Scroll extends SwipeRefreshLayout {
 			case "pagingEnabled": paging = yes; break;
 			case "keyboardDismissMode": dismissMode = value.isEmpty() ? "none" : value; break;
 			case "keyboardShouldPersistTaps": persistTaps = value.isEmpty() ? "never" : value; break;
+			case "refreshColors": {
+				if (value.isEmpty()) break;
+				String[] parts = value.split(",");
+				int[] colors = new int[parts.length];
+				for (int i = 0; i < parts.length; i++) colors[i] = Props.color(parts[i].trim(), 0xff000000);
+				setColorSchemeColors(colors);
+				break;
+			}
+			case "refreshBackgroundColor": setProgressBackgroundColorSchemeColor(Props.color(value, 0xffffffff)); break;
 			case "refreshEnabled": refreshEnabled = yes; setEnabled(yes && scrollEnabled); break;
 			case "refreshing": desiredRefreshing = yes; setRefreshing(yes); break;
 			default: break;
@@ -167,7 +193,86 @@ public final class Scroll extends SwipeRefreshLayout {
 		else ((ScrollView)scroller).smoothScrollTo(0, target);
 	}
 
+	public int offsetX() { return scroller.getScrollX() + pendingDx; }
+	public int offsetY() { return scroller.getScrollY() + pendingDy; }
+
+	public void shiftBy(int dx, int dy) {
+		pendingDx += dx;
+		pendingDy += dy;
+		if (!scroller.isLayoutRequested()) applyPending();
+	}
+
+	private void applyPending() {
+		int dx = pendingDx, dy = pendingDy;
+		pendingDx = 0;
+		pendingDy = 0;
+		if (dx != 0 || dy != 0) shiftPreservingMomentum(dx, dy);
+		if (queuedScroll) {
+			queuedScroll = false;
+			neonScrollTo(queuedX, queuedY, queuedAnimated);
+		}
+	}
+
+	private OverScroller fling() {
+		if (!flingFieldsRead) {
+			flingFieldsRead = true;
+			try {
+				verticalFling = ScrollView.class.getDeclaredField("mScroller");
+				verticalFling.setAccessible(true);
+				horizontalFling = HorizontalScrollView.class.getDeclaredField("mScroller");
+				horizontalFling.setAccessible(true);
+			} catch (ReflectiveOperationException | RuntimeException e) {
+				verticalFling = null;
+				horizontalFling = null;
+			}
+		}
+		Field field = horizontal ? horizontalFling : verticalFling;
+		if (field == null) return null;
+		try {
+			Object value = field.get(scroller);
+			return value instanceof OverScroller ? (OverScroller)value : null;
+		} catch (IllegalAccessException e) {
+			return null;
+		}
+	}
+
+	// RN ReactScrollView.scrollToPreservingMomentum: restart a running fling from the shifted
+	// offset at its current velocity, or ScrollView.computeScroll drags the offset back.
+	private void shiftPreservingMomentum(int dx, int dy) {
+		int x = scroller.getScrollX() + dx, y = scroller.getScrollY() + dy;
+		OverScroller running = fling();
+		boolean flinging = running != null && !running.isFinished();
+		int velocity = 0;
+		if (flinging) {
+			boolean moving = running.computeScrollOffset();
+			int travel = horizontal
+				? running.getFinalX() - running.getStartX()
+				: running.getFinalY() - running.getStartY();
+			velocity = moving ? (int)(running.getCurrVelocity() * Math.signum(travel)) : 0;
+			running.forceFinished(true);
+		}
+		scroller.scrollTo(x, y);
+		if (running == null && momentum) {
+			if (horizontal) ((HorizontalScrollView)scroller).fling(0);
+			else ((ScrollView)scroller).fling(0);
+		}
+		if (velocity == 0) return;
+		View content = scroller.getChildAt(0);
+		int maxX = Math.max(0, content.getWidth() - scroller.getWidth());
+		int maxY = Math.max(0, content.getHeight() - scroller.getHeight());
+		if (horizontal) running.fling(x, y, velocity, 0, 0, maxX, 0, 0);
+		else running.fling(x, y, 0, velocity, 0, 0, 0, maxY);
+		scroller.postInvalidateOnAnimation();
+	}
+
 	public void neonScrollTo(int x, int y, boolean animated) {
+		if (pendingDx != 0 || pendingDy != 0) {
+			queuedScroll = true;
+			queuedX = x;
+			queuedY = y;
+			queuedAnimated = animated;
+			return;
+		}
 		stopMomentum();
 		if (animated) {
 			if (horizontal) ((HorizontalScrollView)scroller).smoothScrollTo(x, y);
@@ -245,10 +350,51 @@ public final class Scroll extends SwipeRefreshLayout {
 		super.onDetachedFromWindow();
 	}
 
+	// WORKAROUND.md W9 on Android: a touch no view inside claims lands on the scroller, so a
+	// listener around the scroll view (a pager around a vertical list) never hears it. Until
+	// the scroller begins its own drag, the touch is reported for the first listener from
+	// this view outwards, without the press an up on that listener's own view sends; the
+	// drag cancels the report.
+	private static int listenerFrom(View view) {
+		for (View at = view; at != null; at = at.getParent() instanceof View ? (View)at.getParent() : null) {
+			Object tag = at.getTag();
+			if (tag instanceof Integer && (Integer)tag != 0) return (Integer)tag;
+		}
+		return 0;
+	}
+
+	private void report(MotionEvent e) {
+		int action = e.getActionMasked();
+		if (action == MotionEvent.ACTION_DOWN) {
+			reportTag = listenerFrom(this);
+			reportDownX = e.getRawX();
+			reportDownY = e.getRawY();
+		}
+		if (reportTag == 0) return;
+		int tag = reportTag;
+		if (action == MotionEvent.ACTION_MOVE) {
+			float travel = horizontal ? e.getRawX() - reportDownX : e.getRawY() - reportDownY;
+			boolean room = horizontal ? scroller.canScrollHorizontally(travel < 0 ? 1 : -1) : scroller.canScrollVertically(travel < 0 ? 1 : -1);
+			if (Math.abs(travel) > touchSlop && room) {
+				reportTag = 0;
+				Touch.touch(tag, MotionEvent.ACTION_CANCEL, e.getRawX(), e.getRawY(), e.getEventTime());
+				return;
+			}
+		}
+		if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) reportTag = 0;
+		if (action == MotionEvent.ACTION_UP) action = Touch.REPORTED_UP;
+		if (action == MotionEvent.ACTION_DOWN || action == MotionEvent.ACTION_MOVE || action == Touch.REPORTED_UP || action == MotionEvent.ACTION_CANCEL) {
+			Touch.touch(tag, action, e.getRawX(), e.getRawY(), e.getEventTime());
+		}
+	}
+
 	public void dispose() { tag = 0; stopMomentum(); scroller.setOnScrollChangeListener(null); }
 
 	private final class Vertical extends ScrollView {
 		Vertical(Context context) { super(context); }
+		@Override protected void measureChildWithMargins(View child, int widthSpec, int widthUsed, int heightSpec, int heightUsed) {
+			if (!measureAtWrittenContentSize(child)) super.measureChildWithMargins(child, widthSpec, widthUsed, heightSpec, heightUsed);
+		}
 		@Override public boolean onInterceptTouchEvent(MotionEvent e) {
 			if (!scrollEnabled) return false;
 			boolean intercepted = super.onInterceptTouchEvent(e);
@@ -257,6 +403,7 @@ public final class Scroll extends SwipeRefreshLayout {
 		}
 		@Override public boolean onTouchEvent(MotionEvent e) {
 			if (!scrollEnabled) return false;
+			if (!dragging) report(e);
 			boolean handled = super.onTouchEvent(e);
 			endDrag(e);
 			return handled;
@@ -272,11 +419,15 @@ public final class Scroll extends SwipeRefreshLayout {
 			preservingOffset = dragging || momentum;
 			super.onLayout(changed, l, t, r, b);
 			preservingOffset = false;
+			applyPending();
 		}
 	}
 
 	private final class Horizontal extends HorizontalScrollView {
 		Horizontal(Context context) { super(context); }
+		@Override protected void measureChildWithMargins(View child, int widthSpec, int widthUsed, int heightSpec, int heightUsed) {
+			if (!measureAtWrittenContentSize(child)) super.measureChildWithMargins(child, widthSpec, widthUsed, heightSpec, heightUsed);
+		}
 		@Override public boolean onInterceptTouchEvent(MotionEvent e) {
 			if (!scrollEnabled) return false;
 			boolean intercepted = super.onInterceptTouchEvent(e);
@@ -285,6 +436,7 @@ public final class Scroll extends SwipeRefreshLayout {
 		}
 		@Override public boolean onTouchEvent(MotionEvent e) {
 			if (!scrollEnabled) return false;
+			if (!dragging) report(e);
 			boolean handled = super.onTouchEvent(e);
 			endDrag(e);
 			return handled;
@@ -303,6 +455,7 @@ public final class Scroll extends SwipeRefreshLayout {
 			preservingOffset = dragging || momentum;
 			super.onLayout(changed, l, t, r, b);
 			preservingOffset = false;
+			applyPending();
 		}
 	}
 

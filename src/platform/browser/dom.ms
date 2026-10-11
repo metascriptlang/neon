@@ -7,7 +7,14 @@ import { registerCss, collectCss, onCssChange } from "../../render/sheet";
 import { NeonEvent, neonEvent, eventType } from "../../render/event";
 import { onCleanup } from "../../core/cleanup";
 import { htmlTagFor } from "../../render/node";
+import { publishWindow, publishColorScheme } from "../../render/environment";
+import { publishSafeArea } from "../../render/environment";
 import { CssStyle, applyCss, applyCssProp } from "./domCss";
+import { VisibleContentPosition, parseVisibleContent } from "../../render/visibleContent";
+import { installBrowserAppServices } from "./appServices";
+import { installDomLayoutAnimation } from "./layoutAnimation";
+import { isMediaTag, createMediaNode, writeMediaAttr, addMediaEvent, releaseMedia } from "./media";
+import { svgMarkup } from "../../components/svg/markup";
 
 extern class ClassList {
 	extern add(name: cstring): void;
@@ -23,6 +30,10 @@ extern class DomRect {
 	height: number;
 }
 
+extern class Reflect {
+	static extern has(target: Node, key: cstring): boolean;
+}
+
 extern class ResizeObserver {
 	extern observe(target: Node): void;
 	extern disconnect(): void;
@@ -36,15 +47,23 @@ interface DomScrollOptions {
 
 extern class Node {
 	textContent: cstring;
+	innerHTML: cstring;
 	scrollLeft: number;
 	scrollTop: number;
 	scrollWidth: number;
 	scrollHeight: number;
 	offsetWidth: number;
 	offsetHeight: number;
+	offsetLeft: number;
+	offsetTop: number;
+	offsetParent: Node | null;
 	parentNode: Node | null;
+	isConnected: boolean;
+	nodeType: number;
 	tagName: string;
+	className: string;
 	extern blur(): void;
+	extern focus(): void;
 	extern contains(node: Node): boolean;
 	extern scroll(options: DomScrollOptions): void;
 	extern getBoundingClientRect(): DomRect;
@@ -55,12 +74,23 @@ extern class Node {
 	extern cloneNode(deep: boolean): Node;
 	extern appendChild(child: Node): void;
 	extern insertBefore(node: Node, ref: Node | null): void;
+	extern moveBefore(node: Node, ref: Node | null): void;
+	isConnected: boolean;
 	extern removeChild(child: Node): void;
 	value: cstring;
+	checked: boolean;
+	selectedIndex: number;
+	naturalWidth: number;
+	naturalHeight: number;
+	selectionStart: number;
+	selectionEnd: number;
+	extern setSelectionRange(start: number, end: number): void;
+	extern getAttribute(name: cstring): string | null;
 	extern setAttribute(name: cstring, value: cstring): void;
 	extern removeAttribute(name: cstring): void;
 	extern addEventListener(name: cstring, handler: (e: DomEvent) => void, capture: boolean): void;
 	extern removeEventListener(name: cstring, handler: (e: DomEvent) => void, capture: boolean): void;
+	extern setPointerCapture(pointerId: number): void;
 }
 
 extern class DomTouch {
@@ -79,7 +109,11 @@ extern class CSSStyleDeclaration {
 	scrollbarWidth: string;
 	touchAction: string;
 	overscrollBehaviorY: string;
+	overflowAnchor: string;
 	position: string;
+	accentColor: string;
+	color: string;
+	direction: string;
 }
 
 // Only the fields Neon projects onto NeonEvent. Each is read ONLY for the event
@@ -88,6 +122,7 @@ extern class CSSStyleDeclaration {
 // there is no way to probe for absence across the extern boundary.
 extern class DomEvent {
 	target: Node;
+	timeStamp: number;
 	clientX: number;
 	clientY: number;
 	key: string;
@@ -99,13 +134,84 @@ extern class DomEvent {
 	repeat: boolean;
 	isComposing: boolean;
 	touches: DomTouchList;
+	pointerId: number;
 	defaultPrevented: boolean;
 	extern preventDefault(): void;
 	extern stopPropagation(): void;
 }
 
+extern class MediaQueryList {
+	matches: boolean;
+	extern addEventListener(name: cstring, handler: (e: DomEvent) => void): void;
+}
+
+extern class window {
+	static innerWidth: number;
+	static innerHeight: number;
+	static extern addEventListener(name: cstring, handler: (e: DomEvent) => void): void;
+	static extern matchMedia(query: cstring): MediaQueryList;
+	static extern removeEventListener(name: cstring, handler: (e: DomEvent) => void): void;
+}
+
+// A Modal's layer covers the viewport even when the page scrolls, and its
+// animationType plays once as it appears.
+const MODAL_CSS = ".neon-modal{position:fixed !important}.neon-modal[animationtype=fade]{animation:neon-modal-fade .3s ease-out}.neon-modal[animationtype=slide]{animation:neon-modal-slide .3s ease-out}@keyframes neon-modal-fade{from{opacity:0}to{opacity:1}}@keyframes neon-modal-slide{from{transform:translateY(100vh)}to{transform:none}}";
+
+let environmentWatched = false;
+
+function watchEnvironment(): void {
+	if (environmentWatched) { return; }
+	environmentWatched = true;
+	const scheme = window.matchMedia("(prefers-color-scheme: dark)");
+	const publish = (): void => {
+		publishWindow(window.innerWidth, window.innerHeight);
+		publishColorScheme(scheme.matches ? "dark" : "light");
+	};
+	publish();
+	window.addEventListener("resize", (e: DomEvent): void => { publish(); });
+	scheme.addEventListener("change", (e: DomEvent): void => { publish(); });
+}
+
+let safeAreaWatched = false;
+
+// CSS env(safe-area-inset-*) has no script API: four hidden probes take one
+// inset each as their height, read back after every resize.
+function watchSafeArea(): void {
+	if (safeAreaWatched) { return; }
+	safeAreaWatched = true;
+	const probe = document.createElement("div");
+	probe.setAttribute("aria-hidden", "true");
+	probe.setAttribute("style", "position:fixed;left:0;top:0;width:0;height:0;overflow:hidden;visibility:hidden;pointer-events:none");
+	const edges: Node[] = [];
+	for (const edge of ["top", "right", "bottom", "left"]) {
+		const one = document.createElement("div");
+		one.setAttribute("style", `width:0;height:env(safe-area-inset-${edge}, 0px)`);
+		probe.appendChild(one);
+		edges.push(one);
+	}
+	document.body.appendChild(probe);
+	const publish = (): void => {
+		publishSafeArea(edges[0].offsetHeight, edges[1].offsetHeight, edges[2].offsetHeight, edges[3].offsetHeight);
+	};
+	publish();
+	window.addEventListener("resize", (e: DomEvent): void => { publish(); });
+}
+
 extern function requestAnimationFrame(callback: (time: number) => void): number;
 extern function cancelAnimationFrame(id: number): void;
+extern function queueMicrotask(callback: () => void): void;
+
+const ELEMENT_NODE = 1;
+
+function layoutStart(node: Node, horizontal: boolean): number {
+	let start = 0.0;
+	let at: Node | null = node;
+	while (at !== null) {
+		start += horizontal ? (at as Node).offsetLeft : (at as Node).offsetTop;
+		at = (at as Node).offsetParent;
+	}
+	return start;
+}
 
 interface DomScrollRoute {
 	type: string;
@@ -122,6 +228,8 @@ class DomScrollState {
 	dismiss: string = "none";
 	taps: string = "never";
 	refreshEnabled: boolean = false;
+	refreshTint: string = "black";
+	refreshBackground: string = "white";
 	refreshing: boolean = false;
 	refreshPending: boolean = false;
 	touching: boolean = false;
@@ -136,11 +244,76 @@ class DomScrollState {
 	lastY: number = -1;
 	indicator: Node | null = null;
 	routes: DomScrollRoute[] = [];
+	visibleContent: VisibleContentPosition | null = null;
+	anchor: Node | null = null;
+	anchorStart: number = 0;
+	shifted: boolean = false;
 
 	constructor(el: Node) { this.el = el; }
 
+	content(): Node | null {
+		let child = this.el.firstChild as Node | null;
+		while (child !== null && (child as Node).nodeType !== ELEMENT_NODE) {
+			child = (child as Node).nextSibling as Node | null;
+		}
+		return child;
+	}
+
+	// RN RCTScrollViewComponentView _prepareForMaintainVisibleScrollPosition, before a batch of
+	// host writes instead of a mount transaction.
+	prepareVisibleContent(): void {
+		this.anchor = null;
+		const position = this.visibleContent;
+		const content = this.content();
+		if (position === null || content === null || !this.el.isConnected) { return; }
+		const offset = this.horizontal ? this.el.scrollLeft : this.el.scrollTop;
+		const origin = layoutStart(content as Node, this.horizontal);
+		let index: int32 = 0;
+		let child = (content as Node).firstChild as Node | null;
+		while (child !== null) {
+			const node = child as Node;
+			child = node.nextSibling as Node | null;
+			if (node.nodeType !== ELEMENT_NODE) { continue; }
+			index += 1;
+			if (index <= (position as VisibleContentPosition).minIndexForVisible) { continue; }
+			const start = layoutStart(node, this.horizontal) - origin;
+			this.anchor = node;
+			this.anchorStart = start;
+			const length = this.horizontal ? node.offsetWidth : node.offsetHeight;
+			if (start + length > offset) { break; }
+		}
+	}
+
+	adjustVisibleContent(): void {
+		const anchor = this.anchor;
+		const position = this.visibleContent;
+		const content = this.content();
+		this.anchor = null;
+		if (anchor === null || position === null || content === null) { return; }
+		if ((anchor as Node).parentNode !== content) { return; }
+		const origin = layoutStart(content as Node, this.horizontal);
+		const delta = layoutStart(anchor as Node, this.horizontal) - origin - this.anchorStart;
+		if (Math.abs(delta) <= 0.5) { return; }
+		const before = this.horizontal ? this.el.scrollLeft : this.el.scrollTop;
+		if (this.horizontal) {
+			this.el.scrollLeft = before + delta;
+		} else {
+			this.el.scrollTop = before + delta;
+		}
+		this.shifted = (this.horizontal ? this.el.scrollLeft : this.el.scrollTop) !== before;
+		const threshold = (position as VisibleContentPosition).autoscrollToTopThreshold;
+		if (threshold !== null && before <= (threshold as number)) {
+			this.el.scroll({
+				left: this.horizontal ? 0 : this.el.scrollLeft,
+				top: this.horizontal ? this.el.scrollTop : 0,
+				behavior: "smooth",
+			});
+		}
+	}
+
 	fire(type: string): void {
 		const e = neonEvent(type);
+		e.timeStamp = performance.now();
 		e.x = this.el.scrollLeft; e.y = this.el.scrollTop;
 		e.width = this.el.offsetWidth; e.height = this.el.offsetHeight;
 		e.contentWidth = this.el.scrollWidth; e.contentHeight = this.el.scrollHeight;
@@ -197,13 +370,14 @@ class DomScrollState {
 		if (this.verticalIndicator) { this.el.classList.remove("neon-hide-vertical"); }
 		else { this.el.classList.add("neon-hide-vertical"); }
 		css.overscrollBehaviorY = this.refreshEnabled ? "contain" : "";
+		css.overflowAnchor = this.visibleContent === null ? "" : "none";
 		if (this.indicator !== null && (css.position === "" || css.position === "static")) { css.position = "relative"; }
 	}
 
 	showRefresh(): void {
 		if (this.indicator === null) { return; }
 		const indicator = this.indicator as Node;
-		indicator.setAttribute("style", `position:absolute;top:8px;left:calc(50% - 14px);width:28px;height:28px;border-radius:50%;background:white;color:black;text-align:center;line-height:28px;pointer-events:none;display:${this.refreshing || this.refreshPending || this.pull > 0 ? "block" : "none"}`);
+		indicator.setAttribute("style", `position:absolute;top:8px;left:calc(50% - 14px);width:28px;height:28px;border-radius:50%;background:${this.refreshBackground};color:${this.refreshTint};text-align:center;line-height:28px;pointer-events:none;display:${this.refreshing || this.refreshPending || this.pull > 0 ? "block" : "none"}`);
 		indicator.setAttribute("aria-busy", this.refreshing || this.refreshPending ? "true" : "false");
 	}
 
@@ -234,8 +408,16 @@ class DomScrollState {
 				this.dismiss = value;
 			},
 			"keyboardShouldPersistTaps" => { this.taps = value === "" ? "never" : value; },
-			"refreshEnabled" => { this.refreshEnabled = yes; },
+			"refreshTintColor" => { this.refreshTint = value === "" ? "black" : value; this.showRefresh(); },
+			"refreshBackgroundColor" => { this.refreshBackground = value === "" ? "white" : value; this.showRefresh(); },
+			"refreshEnabled" => {
+				this.refreshEnabled = yes;
+				if (this.el.firstChild !== null) { this.mountRefresh(); }
+			},
 			"refreshing" => { this.refreshing = yes; this.refreshPending = false; this.showRefresh(); },
+			"maintainVisibleContentPosition" => {
+				this.visibleContent = parseVisibleContent(value);
+			},
 			_ => {},
 		}
 		this.apply();
@@ -260,6 +442,314 @@ class DomScrollState {
 	}
 }
 
+function ariaRole(role: string): string | null {
+	return match (role) {
+		"header" => "heading",
+		"image" => "img",
+		"adjustable" => "slider",
+		"summary" => "region",
+		"none" => "presentation",
+		"text" => null,
+		_ => role,
+	};
+}
+
+const CONTROL_CSS = ".neon-activity{box-sizing:border-box;border-radius:50%;border:3px solid currentColor;border-top-color:transparent;animation:neon-activity-spin 0.8s linear infinite;color:#999999}.neon-activity[data-animating=false]{animation:none}.neon-activity[data-animating=false]:not([data-hides=false]){visibility:hidden}@keyframes neon-activity-spin{to{transform:rotate(360deg)}}.neon-image{object-fit:cover}.neon-image[data-resize=contain]{object-fit:contain}.neon-image[data-resize=stretch]{object-fit:fill}.neon-image[data-resize=center]{object-fit:none}.neon-image:not([src]){visibility:hidden}";
+const controlKinds = new Map<Node, string>();
+const switchValues = new Map<Node, boolean>();
+
+function writeControlAttr(el: Node, kind: string, name: string, value: string): boolean {
+	if (kind === "switch") {
+		if (name === "value") {
+			el.checked = value === "true";
+			switchValues.set(el, value === "true");
+			return true;
+		}
+		if (name === "disabled") {
+			if (value === "true") { el.setAttribute("disabled", ""); } else { el.removeAttribute("disabled"); }
+			return true;
+		}
+		return name === "thumbColor" || name === "trackColorOn" || name === "trackColorOff";
+	}
+	if (kind === "activityindicator") {
+		if (name === "animating") { el.setAttribute("data-animating", value); return true; }
+		if (name === "hidesWhenStopped") { el.setAttribute("data-hides", value); return true; }
+		if (name === "color") { el.style.color = value; return true; }
+		return false;
+	}
+	if (kind === "image") {
+		if (name === "source") {
+			el.setAttribute("src", value);
+			tileImage(el);
+			return true;
+		}
+		if (name === "resizeMode") {
+			el.setAttribute("data-resize", value);
+			tileImage(el);
+			return true;
+		}
+		if (name === "blurRadius") {
+			const radius = parseFloat(value);
+			swapClass(el, "neon-blur-", "");
+			if (radius > 0) {
+				const id = `neon-blur-${Math.round(radius * 10)}`;
+				if (!imageRules.has(id)) {
+					registerCss(id, `.${id}{filter:blur(${radius}px)}`);
+					imageRules.set(id, true);
+				}
+				el.classList.add(id);
+			}
+			return true;
+		}
+		if (name === "accessibilityLabel") { el.setAttribute("alt", value); }
+		return false;
+	}
+	return false;
+}
+
+// RN resizeMode repeat: an <img> cannot tile, so the element shows its source as a repeated
+// background (one class per source, since setStyle rewrites inline style whole) and pushes its
+// own picture out of its box.
+const imageRules = new Map<string, boolean>();
+const tileClasses = new Map<string, string>();
+
+function tileImage(el: Node): void {
+	swapClass(el, "neon-tile-", "");
+	if (el.getAttribute("data-resize") !== "repeat") { return; }
+	const attr = el.getAttribute("src");
+	if (attr === null || attr === "") { return; }
+	const src = attr as string;
+	if (!tileClasses.has(src)) {
+		const id = `neon-tile-${tileClasses.size}`;
+		tileClasses.set(src, id);
+		registerCss(id, `.${id}{background-image:url("${src}");background-repeat:repeat;object-position:-100000px 0}`);
+	}
+	el.classList.add(tileClasses.get(src) as string);
+}
+
+// RN Text's numberOfLines clamps with an ellipsis. Inline style belongs to
+// setStyle, which rewrites it whole, so these props travel as classes.
+const TEXT_CSS = ".neon-lines{display:-webkit-box !important;-webkit-box-orient:vertical;overflow:hidden}.neon-clip{text-overflow:clip}.neon-select-none{user-select:none;-webkit-user-select:none}.neon-select-text{user-select:text;-webkit-user-select:text}";
+let textRule = false;
+const lineRules = new Map<string, boolean>();
+
+function swapClass(el: Node, prefix: string, next: string): void {
+	const names: string[] = el.className.split(" ");
+	for (const n of names) {
+		if (n.startsWith(prefix)) { el.classList.remove(n); }
+	}
+	if (next !== "") { el.classList.add(next); }
+}
+
+function writeTextAttr(el: Node, name: string, value: string): boolean {
+	if (name !== "numberOfLines" && name !== "ellipsizeMode" && name !== "selectable") { return false; }
+	if (!textRule) {
+		registerCss("neon-text-props", TEXT_CSS);
+		textRule = true;
+	}
+	if (name === "numberOfLines") {
+		const clamped = value !== "" && value !== "0";
+		if (clamped && !lineRules.has(value)) {
+			registerCss(`neon-lines-${value}`, `.neon-lines-${value}{-webkit-line-clamp:${value}}`);
+			lineRules.set(value, true);
+		}
+		swapClass(el, "neon-lines", "");
+		if (clamped) {
+			el.classList.add("neon-lines");
+			el.classList.add(`neon-lines-${value}`);
+		}
+		return true;
+	}
+	if (name === "ellipsizeMode") {
+		swapClass(el, "neon-clip", value === "clip" ? "neon-clip" : "");
+		return true;
+	}
+	swapClass(el, "neon-select-", value === "false" ? "neon-select-none" : value === "true" ? "neon-select-text" : "");
+	return true;
+}
+
+function accent(el: Node): CSSStyleDeclaration {
+	return el.style as unknown as CSSStyleDeclaration;
+}
+
+function setFlag(el: Node, name: string, on: boolean): void {
+	if (on) { el.setAttribute(name, ""); } else { el.removeAttribute(name); }
+}
+
+function writePickerItems(el: Node, value: string): void {
+	const keep = el.selectedIndex;
+	el.textContent = "";
+	if (value === "") { return; }
+	for (const record of value.split("\x1e")) {
+		const option = document.createElement("option");
+		const cut = record.indexOf("\x1f");
+		option.textContent = cut < 0 ? record : record.substring(0, cut);
+		el.appendChild(option);
+	}
+	el.selectedIndex = keep;
+}
+
+function dateInputType(mode: string): string {
+	return match (mode) {
+		"time" => "time",
+		"datetime" => "datetime-local",
+		_ => "date",
+	};
+}
+
+// <Svg>: the display list becomes the <svg> element's own markup (src/components/svg/markup.ms).
+let svgCount = 0;
+
+function writeSvgList(el: Node, value: string): void {
+	const prefix = el.getAttribute("data-neon-svg") ?? "neon-svg";
+	const m = svgMarkup(value, prefix);
+	if (m.viewBox === "") { el.removeAttribute("viewBox"); } else { el.setAttribute("viewBox", m.viewBox); }
+	if (m.preserveAspectRatio === "") { el.removeAttribute("preserveAspectRatio"); } else { el.setAttribute("preserveAspectRatio", m.preserveAspectRatio); }
+	el.innerHTML = m.body;
+}
+
+function writeNewControlAttr(el: Node, kind: string, name: string, value: string): boolean {
+	if (kind === "svg") {
+		if (name === "displayList") {
+			writeSvgList(el, value);
+			return true;
+		}
+		return false;
+	}
+	if (kind === "slider") {
+		if (name === "minimumValue") { el.setAttribute("min", value); return true; }
+		if (name === "maximumValue") { el.setAttribute("max", value); return true; }
+		if (name === "step") { el.setAttribute("step", value === "0" || value === "" ? "any" : value); return true; }
+		if (name === "value") { el.value = value; return true; }
+		if (name === "disabled") { setFlag(el, "disabled", value === "true"); return true; }
+		if (name === "inverted") { accent(el).direction = value === "true" ? "rtl" : ""; return true; }
+		if (name === "minimumTrackTintColor" || name === "thumbTintColor") { accent(el).accentColor = value; return true; }
+		return name === "maximumTrackTintColor";
+	}
+	if (kind === "picker") {
+		if (name === "items") { writePickerItems(el, value); return true; }
+		if (name === "selectedIndex") { el.selectedIndex = parseInt(value) as number; return true; }
+		if (name === "disabled") { setFlag(el, "disabled", value === "true"); return true; }
+		if (name === "prompt") { el.setAttribute("title", value); return true; }
+		if (name === "color") { accent(el).color = value; return true; }
+		return name === "mode";
+	}
+	if (kind === "datetimepicker") {
+		if (name === "mode") { el.setAttribute("type", dateInputType(value)); return true; }
+		if (name === "value") { el.value = value; return true; }
+		if (name === "minimumDate") { el.setAttribute("min", value); return true; }
+		if (name === "maximumDate") { el.setAttribute("max", value); return true; }
+		if (name === "disabled") { setFlag(el, "disabled", value === "true"); return true; }
+		if (name === "accentColor") { accent(el).accentColor = value; return true; }
+		if (name === "textColor") { accent(el).color = value; return true; }
+		return name === "display";
+	}
+	return false;
+}
+
+function hasStateToken(tokens: string[], token: string): boolean {
+	return tokens.indexOf(token) >= 0;
+}
+
+function writeAccessibilityState(el: Node, value: string): void {
+	const tokens = value === "" ? [] as string[] : value.split(",");
+	if (hasStateToken(tokens, "checked")) { el.setAttribute("aria-checked", "true"); }
+	else if (hasStateToken(tokens, "unchecked")) { el.setAttribute("aria-checked", "false"); }
+	else if (hasStateToken(tokens, "mixed")) { el.setAttribute("aria-checked", "mixed"); }
+	else { el.removeAttribute("aria-checked"); }
+	if (hasStateToken(tokens, "selected")) { el.setAttribute("aria-selected", "true"); } else { el.removeAttribute("aria-selected"); }
+	if (hasStateToken(tokens, "disabled")) { el.setAttribute("aria-disabled", "true"); } else { el.removeAttribute("aria-disabled"); }
+	if (hasStateToken(tokens, "busy")) { el.setAttribute("aria-busy", "true"); } else { el.removeAttribute("aria-busy"); }
+	if (hasStateToken(tokens, "expanded")) { el.setAttribute("aria-expanded", "true"); }
+	else if (hasStateToken(tokens, "collapsed")) { el.setAttribute("aria-expanded", "false"); }
+	else { el.removeAttribute("aria-expanded"); }
+}
+
+function writeDomAttr(el: Node, name: string, value: string): void {
+	if (name === "accessibilityState") { writeAccessibilityState(el, value); return; }
+	if (controlKinds.has(el) && writeNewControlAttr(el, controlKinds.get(el) as string, name, value)) { return; }
+	if (controlKinds.has(el) && writeControlAttr(el, controlKinds.get(el) as string, name, value)) { return; }
+	if (writeTextAttr(el, name, value)) { return; }
+	if (name.startsWith("statusBar") || name === "androidRipple") { return; }
+	if (name === "hitSlop") {
+		swapClass(el, "neon-slop-", "");
+		const parts: string[] = value.split(",");
+		if (parts.length !== 4) { return; }
+		const id = `neon-slop-${parts.join("-").split(".").join("_")}`;
+		if (!imageRules.has(id)) {
+			registerCss(id, `.${id}::before{content:"";position:absolute;top:-${parts[0]}px;left:-${parts[1]}px;bottom:-${parts[2]}px;right:-${parts[3]}px}`);
+			imageRules.set(id, true);
+		}
+		el.classList.add(id);
+		return;
+	}
+	if (name === "value") { el.value = value; return; }
+	if (name === "selection") {
+		const parts: string[] = value.split(",");
+		if (parts.length === 2) { el.setSelectionRange(parseFloat(parts[0]), parseFloat(parts[1])); }
+		return;
+	}
+	if (name === "defaultValue") {
+		const current: string = el.value;
+		if (current === "") { el.value = value; }
+		return;
+	}
+	if (name === "accessibilityLabel") { el.setAttribute("aria-label", value); return; }
+	if (name === "accessibilityHint") { el.setAttribute("aria-description", value); return; }
+	if (name === "accessibilityRole") {
+		const role = ariaRole(value);
+		if (role === null) { el.removeAttribute("role"); } else { el.setAttribute("role", role as string); }
+		return;
+	}
+	if (name === "accessible" || name === "blurOnSubmit" || name === "multiline" || name === "placeholderTextColor") { return; }
+	if (name === "editable") {
+		if (value === "false") { el.setAttribute("readonly", ""); } else { el.removeAttribute("readonly"); }
+		return;
+	}
+	if (name === "secureTextEntry") {
+		el.setAttribute("type", value === "true" ? "password" : "text");
+		return;
+	}
+	if (name === "keyboardType") {
+		const mode = match (value) {
+			"numeric" | "number-pad" => "numeric",
+			"decimal-pad" => "decimal",
+			"phone-pad" => "tel",
+			"email-address" => "email",
+			"url" => "url",
+			_ => "text",
+		};
+		el.setAttribute("inputmode", mode);
+		return;
+	}
+	if (name === "returnKeyType") { el.setAttribute("enterkeyhint", value); return; }
+	if (name === "autoCapitalize") { el.setAttribute("autocapitalize", value); return; }
+	if (name === "autoCorrect") { el.setAttribute("autocorrect", value === "false" ? "off" : "on"); return; }
+	if (name === "maxLength") { el.setAttribute("maxlength", value); return; }
+	if (name === "autoFocus") {
+		if (value === "true") { el.setAttribute("autofocus", ""); } else { el.removeAttribute("autofocus"); }
+		return;
+	}
+	el.setAttribute(name, value);
+}
+
+function domAttrName(name: string): string {
+	return match (name) {
+		"accessibilityLabel" => "aria-label",
+		"accessibilityHint" => "aria-description",
+		"accessibilityRole" => "role",
+		"editable" => "readonly",
+		"keyboardType" => "inputmode",
+		"returnKeyType" => "enterkeyhint",
+		"autoCapitalize" => "autocapitalize",
+		"autoCorrect" => "autocorrect",
+		"maxLength" => "maxlength",
+		"autoFocus" => "autofocus",
+		"secureTextEntry" => "type",
+		_ => name,
+	};
+}
+
 function inputNode(node: Node): boolean { return node.tagName === "INPUT" || node.tagName === "TEXTAREA"; }
 function blurInput(): void {
 	const focused = document.activeElement;
@@ -272,6 +762,7 @@ extern class document {
 	static activeElement: Node;
 	static extern createElement(tag: cstring): Node;
 	static extern createTextNode(s: cstring): Node;
+	static extern createElementNS(ns: cstring, tag: cstring): Node;
 }
 
 // One <style> element owns every rule the program registered. Rewriting its
@@ -280,6 +771,16 @@ extern class document {
 let sheetNode: Node | null = null;
 
 const SCROLL_CLASS = "neon-scrollview";
+
+const VIEW_CLASS = "neon-view";
+const TEXT_CLASS = "neon-text";
+const RN_WEB_BASE_CSS = ":where(.neon-view){align-content:flex-start;align-items:stretch;background-color:transparent;border:0 solid black;box-sizing:border-box;display:flex;flex-basis:auto;flex-direction:column;flex-shrink:0;list-style:none;margin:0;min-height:0;min-width:0;padding:0;position:relative;text-decoration:none;z-index:0}:where(button.neon-view){font:inherit;color:inherit;text-align:inherit}:where(.neon-text){background-color:transparent;border:0 solid black;box-sizing:border-box;list-style:none;margin:0;padding:0;position:relative;text-decoration:none;white-space:pre-wrap;overflow-wrap:break-word}";
+
+function baseClassOf(el: Node): string {
+	if (el.classList.contains(VIEW_CLASS)) { return VIEW_CLASS; }
+	if (el.classList.contains(TEXT_CLASS)) { return TEXT_CLASS; }
+	return "";
+}
 
 function flushSheet(): void {
 	if (sheetNode === null) {
@@ -294,22 +795,159 @@ export function documentBody(): HostNode {
 	return document.body as unknown as HostNode;
 }
 
+class DomLayoutState {
+	node: Node;
+	handler: (e: NeonEvent) => void;
+	active: boolean = true;
+	known: boolean = false;
+	x: number = 0;
+	y: number = 0;
+	width: number = 0;
+	height: number = 0;
+
+	constructor(node: Node, handler: (e: NeonEvent) => void) {
+		this.node = node;
+		this.handler = handler;
+	}
+}
+
+interface DomTouchRoute {
+	type: string;
+	handler: (e: NeonEvent) => void;
+}
+
+const touchRoutes = new Map<Node, DomTouchRoute[]>();
+let touchElements: Node[] = [];
+let touchStamp: number = -1;
+let touchPointer: number = -1;
+let lastPointerUp: number = -1;
+let touchWatching = false;
+
+function fireTouchRoutes(el: Node, type: string, de: DomEvent): void {
+	if (!touchRoutes.has(el)) { return; }
+	for (const route of (touchRoutes.get(el) as DomTouchRoute[]).slice(0)) {
+		if (route.type !== type) { continue; }
+		const ev = neonEvent(type);
+		ev.timeStamp = de.timeStamp;
+		ev.x = de.clientX;
+		ev.y = de.clientY;
+		route.handler(ev);
+	}
+}
+
+function endTouches(type: string, de: DomEvent): void {
+	const touched = touchElements;
+	touchElements = [];
+	touchPointer = -1;
+	for (const el of touched) { fireTouchRoutes(el, type, de); }
+}
+
+// RN-web's responder listens on the document: a touch keeps reaching the views it
+// started on after the pointer leaves them.
+function watchTouches(): void {
+	if (touchWatching) { return; }
+	touchWatching = true;
+	window.addEventListener("pointermove", (de: DomEvent): void => {
+		for (const el of touchElements.slice(0)) { fireTouchRoutes(el, "touchmove", de); }
+	});
+	window.addEventListener("pointerup", (de: DomEvent): void => {
+		lastPointerUp = de.timeStamp;
+		endTouches("touchend", de);
+	});
+	window.addEventListener("pointercancel", (de: DomEvent): void => { endTouches("touchcancel", de); });
+}
+
 export function domHost(): Host {
 	// The registry may already hold rules from module init — a theme's :root
 	// among them — and from here on every change mounts itself, including a
 	// swap that touches no node.
 	onCssChange(flushSheet);
 	flushSheet();
+	watchEnvironment();
+	installBrowserAppServices();
+	watchSafeArea();
+	installDomLayoutAnimation();
 	let scrollRule = false;
+	let baseRule = false;
+	let controlRule = false;
+	let modalRule = false;
+	let textareaRule = false;
 	const scrolls = new Map<Node, DomScrollState>();
 	const cleanups = new Map<Node, (() => void)[]>();
 	const presses = new Map<Node, boolean>();
+	const layouts: DomLayoutState[] = [];
+	let layoutFrame: number = -1;
+	const keepers: DomScrollState[] = [];
+	let adjustQueued = false;
+	function adjustVisibleContent(): void {
+		adjustQueued = false;
+		for (const state of keepers.slice(0, keepers.length)) { state.adjustVisibleContent(); }
+	}
+	function prepareVisibleContent(): void {
+		if (keepers.length === 0 || adjustQueued) { return; }
+		adjustQueued = true;
+		for (const state of keepers) { state.prepareVisibleContent(); }
+		queueMicrotask(adjustVisibleContent);
+	}
+	function trackKeeper(state: DomScrollState): void {
+		const at = keepers.indexOf(state);
+		if (at >= 0) { keepers.splice(at, 1); }
+		if (state.visibleContent !== null && scrolls.has(state.el)) { keepers.push(state); }
+	}
+	function flushLayouts(): void {
+		const count = layouts.length;
+		for (let i = 0; i < count; i += 1) {
+			const state = layouts[i];
+			if (!state.active || state.node.parentNode === null) { continue; }
+			let x = 0.0;
+			let y = 0.0;
+			let ancestor: Node | null = state.node;
+			while (ancestor !== null) {
+				x += (ancestor as Node).offsetLeft;
+				y += (ancestor as Node).offsetTop;
+				ancestor = (ancestor as Node).offsetParent;
+			}
+			ancestor = state.node.parentNode;
+			while (ancestor !== null) {
+				x -= (ancestor as Node).offsetLeft;
+				y -= (ancestor as Node).offsetTop;
+				ancestor = (ancestor as Node).offsetParent;
+			}
+			const width = state.node.offsetWidth;
+			const height = state.node.offsetHeight;
+			if (state.known && x === state.x && y === state.y && width === state.width && height === state.height) { continue; }
+			state.known = true;
+			state.x = x; state.y = y; state.width = width; state.height = height;
+			const event = neonEvent("layout");
+			event.x = x; event.y = y; event.width = width; event.height = height;
+			state.handler(event);
+		}
+		let live = 0;
+		for (const state of layouts) {
+			if (state.active) { layouts[live] = state; live += 1; }
+		}
+		while (layouts.length > live) { layouts.pop(); }
+	}
+	function scheduleLayouts(): void {
+		if (layoutFrame >= 0 || layouts.length === 0) { return; }
+		layoutFrame = requestAnimationFrame((): void => {
+			layoutFrame = -1;
+			flushLayouts();
+		});
+	}
 	function releaseOne(el: Node): void {
+		releaseMedia(el as unknown as HostNode);
+		controlKinds.delete(el);
+		switchValues.delete(el);
 		if (cleanups.has(el)) {
 			for (const cleanup of cleanups.get(el) as (() => void)[]) { cleanup(); }
 			cleanups.delete(el);
 		}
-		scrolls.delete(el);
+		if (scrolls.has(el)) {
+			const state = scrolls.get(el) as DomScrollState;
+			scrolls.delete(el);
+			trackKeeper(state);
+		}
 		presses.delete(el);
 	}
 	function release(el: Node): void {
@@ -340,7 +978,8 @@ export function domHost(): Host {
 		keep(el, (): void => { state.dispose(); });
 		state.apply();
 		listen(el, "scroll", (e: DomEvent): void => {
-			if (state.touching) { state.beginDrag(); }
+			if (state.shifted && !state.touching) { state.shifted = false; }
+			else if (state.touching) { state.beginDrag(); }
 			else { state.beginMomentum(); }
 			state.fire("scroll");
 		}, false);
@@ -397,89 +1036,219 @@ export function domHost(): Host {
 	}
 	return {
 		createElement: (tag: string): HostNode => {
+			const base = tag === "view" || tag === "pressable" || tag === "scrollview" ? VIEW_CLASS : tag === "text" ? TEXT_CLASS : "";
+			if (base !== "" && !baseRule) {
+				registerCss("neon-base", RN_WEB_BASE_CSS);
+				baseRule = true;
+			}
 			if (tag === "scrollview") {
 				if (!scrollRule) {
 					registerCss(SCROLL_CLASS, `.${SCROLL_CLASS}{overflow-x:hidden;overflow-y:auto}.neon-hide-horizontal::-webkit-scrollbar:horizontal{height:0}.neon-hide-vertical::-webkit-scrollbar:vertical{width:0}@keyframes neon-refresh-spin{to{transform:rotate(360deg)}}.neon-refresh-indicator[aria-busy=true]{animation:neon-refresh-spin 1s linear infinite}`);
 					scrollRule = true;
 				}
 				const el = document.createElement("div");
+				el.classList.add(VIEW_CLASS);
 				el.classList.add(SCROLL_CLASS);
 				installScroll(el);
 				return el as unknown as HostNode;
 			}
-			return document.createElement(htmlTagFor(tag)) as unknown as HostNode;
+			if (tag === "multilinetextinput") {
+				// RN's multiline TextInput grows with its content until a height or maxHeight stops it.
+				if (!textareaRule) {
+					registerCss("neon-textarea", ".neon-textarea{field-sizing:content;resize:none}");
+					textareaRule = true;
+				}
+				const area = document.createElement("textarea");
+				area.classList.add("neon-textarea");
+				return area as unknown as HostNode;
+			}
+			if (tag === "modal") {
+				if (!modalRule) {
+					registerCss("neon-modal", MODAL_CSS);
+					modalRule = true;
+				}
+				const layer = document.createElement("div");
+				layer.classList.add("neon-modal");
+				layer.setAttribute("role", "dialog");
+				layer.setAttribute("aria-modal", "true");
+				return layer as unknown as HostNode;
+			}
+			if (isMediaTag(tag)) { return createMediaNode(tag); }
+			if (tag === "svg") {
+				if (!baseRule) {
+					registerCss("neon-base", RN_WEB_BASE_CSS);
+					baseRule = true;
+				}
+				const vector = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+				vector.classList.add(VIEW_CLASS);
+				svgCount += 1;
+				vector.setAttribute("data-neon-svg", `neon-svg${svgCount}`);
+				controlKinds.set(vector, tag);
+				return vector as unknown as HostNode;
+			}
+			if (tag === "slider" || tag === "picker" || tag === "datetimepicker") {
+				const control = document.createElement(tag === "picker" ? "select" : "input");
+				if (tag === "slider") { control.setAttribute("type", "range"); }
+				if (tag === "datetimepicker") { control.setAttribute("type", "date"); }
+				controlKinds.set(control, tag);
+				return control as unknown as HostNode;
+			}
+			if (tag === "switch" || tag === "activityindicator" || tag === "image") {
+				if (!controlRule) {
+					registerCss("neon-controls", CONTROL_CSS);
+					controlRule = true;
+				}
+				const control = document.createElement(tag === "image" ? "img" : tag === "switch" ? "input" : "div");
+				if (tag === "switch") {
+					control.setAttribute("type", "checkbox");
+					control.setAttribute("role", "switch");
+				}
+				if (tag === "activityindicator") { control.classList.add("neon-activity"); }
+				if (tag === "image") { control.classList.add("neon-image"); }
+				controlKinds.set(control, tag);
+				return control as unknown as HostNode;
+			}
+			const el = document.createElement(htmlTagFor(tag));
+			if (base !== "") { el.classList.add(base); }
+			return el as unknown as HostNode;
 		},
 		createText: (s: string): HostNode => document.createTextNode(s) as unknown as HostNode,
 		setText: (node: HostNode, s: string): void => {
+			prepareVisibleContent();
 			(node as unknown as Node).textContent = s;
 		},
 		setAttr: (node: HostNode, name: string, value: string): void => {
+			prepareVisibleContent();
+			if (writeMediaAttr(node, name, value)) { return; }
 			const el = node as unknown as Node;
-			if (name === "value") { el.value = value; return; }
-			el.setAttribute(name, value);
+			const base = name === "class" ? baseClassOf(el) : "";
+			writeDomAttr(el, name, value);
+			if (base !== "") { el.classList.add(base); }
+			if (name === "value" || name === "defaultValue") { return; }
 			if (scrolls.has(el)) {
 				if (name === "class") { el.classList.add(SCROLL_CLASS); }
-				(scrolls.get(el) as DomScrollState).setOption(name, value);
+				const state = scrolls.get(el) as DomScrollState;
+				state.setOption(name, value);
+				if (name === "maintainVisibleContentPosition") { trackKeeper(state); }
 			}
 		},
 		removeAttr: (node: HostNode, name: string): void => {
+			prepareVisibleContent();
 			const el = node as unknown as Node;
 			if (name === "value") { el.value = ""; }
-			el.removeAttribute(name);
+			const base = name === "class" ? baseClassOf(el) : "";
+			el.removeAttribute(domAttrName(name));
+			if (base !== "") { el.classList.add(base); }
 			if (scrolls.has(el)) {
 				if (name === "class") { el.classList.add(SCROLL_CLASS); }
-				(scrolls.get(el) as DomScrollState).setOption(name, "");
+				const state = scrolls.get(el) as DomScrollState;
+				state.setOption(name, "");
+				if (name === "maintainVisibleContentPosition") { trackKeeper(state); }
 			}
 		},
 		setStyle: (node: HostNode, style: Style): void => {
+			prepareVisibleContent();
 			applyCss((node as unknown as Node).style, style);
 			const el = node as unknown as Node;
 			if (scrolls.has(el)) { (scrolls.get(el) as DomScrollState).apply(); }
+			scheduleLayouts();
 		},
 		setStyleProp: (node: HostNode, name: string, value: StyleValue): void => {
+			prepareVisibleContent();
 			applyCssProp((node as unknown as Node).style, name, value);
 			const el = node as unknown as Node;
 			if (scrolls.has(el)) { (scrolls.get(el) as DomScrollState).apply(); }
+			scheduleLayouts();
 		},
 		setStyleClass: (node: HostNode, id: string, css: string): void => {
+			prepareVisibleContent();
 			registerCss(id, css);
 			(node as unknown as Node).classList.add(id);
+			scheduleLayouts();
 		},
 		addEvent: (node: HostNode, name: string, handler: (e: NeonEvent) => void): void => {
 			const type = eventType(name);
+			if (addMediaEvent(node, type, handler)) { return; }
 			// RN surface names project onto DOM listeners; e.type keeps the neon
 			// spelling so handlers compare one vocabulary on every host.
 			let domType = type;
 			if (type === "press") { domType = "click"; }
 			else if (type === "changetext") { domType = "input"; }
+			else if (type === "submitediting") { domType = "keydown"; }
+			else if (type === "valuechange") { domType = "change"; }
+			else if (type === "slidingcomplete") { domType = "change"; }
 			const el = node as unknown as Node;
+			const newControl = controlKinds.has(el) ? controlKinds.get(el) as string : "";
+			if (type === "valuechange" && newControl === "slider") { domType = "input"; }
+			if (newControl === "slider" || newControl === "picker" || newControl === "datetimepicker") {
+				listen(el, domType, (de: DomEvent): void => {
+					const ev = neonEvent(type);
+					ev.timeStamp = de.timeStamp;
+					ev.value = newControl === "picker" ? `${el.selectedIndex}` : el.value;
+					handler(ev);
+				}, false);
+				return;
+			}
 			if (type === "press" || type === "click") { presses.set(el, true); }
 			if (scrolls.has(el) && (type === "scroll" || type === "scrollbegindrag" || type === "scrollenddrag" || type === "momentumscrollbegin" || type === "momentumscrollend" || type === "refresh")) {
 				(scrolls.get(el) as DomScrollState).routes.push({ type, handler });
 				return;
 			}
-			if (type === "layout") {
-				let active = true;
-				const observer = new ResizeObserver((): void => {
-					if (!active) { return; }
-					const box = el.getBoundingClientRect();
-					const parent = el.parentNode;
-					if (parent === null) { return; }
-					const outer = (parent as Node).getBoundingClientRect();
+			if (type === "requestclose") {
+				const escape = (de: DomEvent): void => {
+					if (de.key !== "Escape") { return; }
 					const ev = neonEvent(type);
-					ev.x = box.left - outer.left + (parent as Node).scrollLeft;
-					ev.y = box.top - outer.top + (parent as Node).scrollTop;
-					ev.width = box.width;
-					ev.height = box.height;
+					ev.timeStamp = de.timeStamp;
 					handler(ev);
-				});
+				};
+				window.addEventListener("keydown", escape);
+				keep(el, (): void => { window.removeEventListener("keydown", escape); });
+				return;
+			}
+			if (type === "touchstart" || type === "touchmove" || type === "touchend" || type === "touchcancel") {
+				watchTouches();
+				if (!touchRoutes.has(el)) {
+					touchRoutes.set(el, []);
+					listen(el, "pointerdown", (de: DomEvent): void => {
+						if (de.timeStamp !== touchStamp) {
+							touchStamp = de.timeStamp;
+							touchElements = [];
+							touchPointer = de.pointerId;
+						}
+						touchElements.push(el);
+						fireTouchRoutes(el, "touchstart", de);
+					}, false);
+					keep(el, (): void => { touchRoutes.delete(el); });
+				}
+				(touchRoutes.get(el) as DomTouchRoute[]).push({ type, handler });
+				return;
+			}
+			if (type === "layout") {
+				const state = new DomLayoutState(el, handler);
+				layouts.push(state);
+				const observer = new ResizeObserver((): void => { if (state.active) { scheduleLayouts(); } });
 				observer.observe(el);
-				keep(el, (): void => { active = false; observer.disconnect(); });
+				scheduleLayouts();
+				keep(el, (): void => { state.active = false; observer.disconnect(); scheduleLayouts(); });
 				return;
 			}
 			listen(el, domType, (de: DomEvent): void => {
+				if (type === "submitediting" && (de.key !== "Enter" || de.isComposing)) { return; }
 				const ev = neonEvent(type);
-				if (type === "changetext" || type === "input" || type === "change") { ev.value = de.target.value; }
+				ev.timeStamp = de.timeStamp;
+				if (type === "valuechange") {
+					ev.value = el.checked ? "true" : "false";
+					handler(ev);
+					if (switchValues.has(el)) { el.checked = switchValues.get(el) as boolean; }
+					return;
+				}
+				if (type === "load" && controlKinds.has(el)) {
+					ev.width = el.naturalWidth;
+					ev.height = el.naturalHeight;
+				}
+				if (type === "error" && controlKinds.has(el)) { ev.value = "cannot load the image"; }
+				if (type === "changetext" || type === "input" || type === "change" || type === "submitediting") { ev.value = de.target.value; }
+				else if (type === "selectionchange") { ev.value = `${el.selectionStart},${el.selectionEnd}`; }
 				else if (type === "scroll") {
 					ev.x = el.scrollLeft;
 					ev.y = el.scrollTop;
@@ -498,29 +1267,39 @@ export function domHost(): Host {
 					ev.repeat = de.repeat;
 					ev.isComposing = de.isComposing;
 				}
-				else if (type === "press" || type === "click" || type === "dblclick" || type === "mousedown" || type === "mouseup" || type === "mousemove") {
+				else if (type === "press" || type === "click" || type === "dblclick" || type === "mousedown" || type === "mouseup" || type === "mousemove" || type.startsWith("pointer")) {
 					ev.x = de.clientX;
 					ev.y = de.clientY;
 				}
+				if (type === "press" && lastPointerUp >= 0) { ev.timeStamp = lastPointerUp; }
 				handler(ev);
 			}, false);
 		},
 		append: (parent: HostNode, child: HostNode): void => {
+			prepareVisibleContent();
 			(parent as unknown as Node).appendChild(child as unknown as Node);
 			const el = parent as unknown as Node;
 			if (scrolls.has(el)) { (scrolls.get(el) as DomScrollState).mountRefresh(); }
+			scheduleLayouts();
 		},
 		insertBefore: (parent: HostNode, node: HostNode, ref: HostNode | null): void => {
-			(parent as unknown as Node).insertBefore(
-				node as unknown as Node,
-				ref === null ? null : (ref as unknown as Node),
-			);
+			prepareVisibleContent();
 			const el = parent as unknown as Node;
+			const moved = node as unknown as Node;
+			const before = ref === null ? null : (ref as unknown as Node);
+			if (moved.isConnected && el.isConnected && Reflect.has(el, "moveBefore")) {
+				el.moveBefore(moved, before);
+			} else {
+				el.insertBefore(moved, before);
+			}
 			if (scrolls.has(el)) { (scrolls.get(el) as DomScrollState).mountRefresh(); }
+			scheduleLayouts();
 		},
 		removeChild: (parent: HostNode, node: HostNode): void => {
+			prepareVisibleContent();
 			release(node as unknown as Node);
 			(parent as unknown as Node).removeChild(node as unknown as Node);
+			scheduleLayouts();
 		},
 		nextSibling: (node: HostNode): HostNode | null => {
 			return (node as unknown as Node).nextSibling as unknown as HostNode;
@@ -532,8 +1311,21 @@ export function domHost(): Host {
 			return (node as unknown as Node).cloneNode(true) as unknown as HostNode;
 		},
 		voidArea: null,
+		overlayRoot: (node: HostNode): HostNode => document.body as unknown as HostNode,
+		focus: (node: HostNode, focused: boolean): void => {
+			const el = node as unknown as Node;
+			if (focused) { el.focus(); } else { el.blur(); }
+		},
 		scrollTo: (node: HostNode, x: number, y: number, animated: boolean): void => {
 			(node as unknown as Node).scroll({ left: x, top: y, behavior: animated ? "smooth" : "auto" });
+		},
+		setResponder: (node: HostNode | null, blockNativeResponder: boolean): void => {
+			if (node === null || touchPointer < 0) { return; }
+			try {
+				(node as unknown as Node).setPointerCapture(touchPointer);
+			} catch (e) {
+				touchPointer = -1;
+			}
 		},
 	};
 }

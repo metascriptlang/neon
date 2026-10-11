@@ -17,7 +17,7 @@ import { createSignal } from "../../src/core/signal";
 import { element } from "../../src/macros/ui/element";
 import { NeonNode } from "../../src/render/node";
 import { HostNode, MockNode, mockNode, mockHost, render, mockToString, fireEvent } from "../../src/render/host";
-import { View, TextInput, Pressable, Text } from "../../src/components/primitives";
+import { View, TextInput, TextInputHandle, Pressable, Text } from "../../src/components/primitives";
 import { NeonEvent } from "../../src/render/event";
 
 test "ref hands the completed host node to the callback" {
@@ -43,7 +43,7 @@ test "ref reaches the universal vocabulary, not just raw tags" {
 	let viewTag = "";
 	let inputTag = "";
 	const grabView: (n: HostNode) => void = (n) => { viewTag = (n as unknown as MockNode).tag; };
-	const grabInput: (n: HostNode) => void = (n) => { inputTag = (n as unknown as MockNode).tag; };
+	const grabInput = (h: TextInputHandle): void => { inputTag = (h.node as unknown as MockNode).tag; };
 	const root: MockNode = mockNode("root");
 	render(element(<View ref={grabView}><TextInput ref={grabInput} /></View>), mockHost(), root as unknown as HostNode);
 	assert viewTag === "view", "View ref, tag=" + viewTag;
