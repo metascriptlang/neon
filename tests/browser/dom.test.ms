@@ -33,6 +33,7 @@ extern class ProbeStyle {
 	backgroundImage: string;
 	clipPath: string;
 	position: string;
+	transition: string;
 }
 
 extern class ProbeClassList {
@@ -292,6 +293,14 @@ test "backgroundImage reaches the element with every layer" {
 	const layers = "linear-gradient(rgb(1, 2, 3), rgb(4, 5, 6)), linear-gradient(rgb(7, 8, 9), rgb(1, 1, 1))";
 	h.setStyle(el, styleWith("backgroundImage", layers));
 	assert probe(el).style.backgroundImage === layers, probe(el).style.backgroundImage;
+	probe(el).remove();
+}
+
+test "transition reaches the element" {
+	const h = domHost();
+	const el = mount("view");
+	h.setStyle(el, styleWith("transition", "opacity 0.6s ease"));
+	assert probe(el).style.transition === "opacity 0.6s", probe(el).style.transition;
 	probe(el).remove();
 }
 
