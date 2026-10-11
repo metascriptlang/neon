@@ -174,6 +174,15 @@ one more `<section>`.
   `adb shell -T` (corrupts binaries from Windows). Not run: arm64, a physical device, a release
   build, an app whose project includes Neon as a project module.
 
+**Measured again 2026-10-11 after merging origin `1b7ce77`**, installed msc `89005562`, tree `4d3bbc2b`:
+`sh examples/refreshVite/run.sh` 19 of 19; `examples/refreshNative/drive.sh main` six of six edits
+reload; `examples/refreshAndroid/drive.sh` 22 of 22, twice, on an APK rebuilt from this tree. With
+a compiler built from recompiler origin `f421de59` merged into `c5eeb007` the Android driver
+passed 3 of 4 warm runs (one run lost the `HCR reloaded` line after the restart while the app
+showed the new view), and the first session after that compiler first ran answered
+`restart required` to every edit
+(`~/metascript/.inbox/compiler/2026-10-07-hcr-first-warm-reload-reports-core-changed.md`).
+
 **A new generic instance reloads the page on Vite** (design card
 `~/metascript/.inbox/compiler/2026-10-10-js-generic-instance-emitted-into-defining-module.md`):
 the instance is emitted into the defining runtime module, which is not an HMR boundary.
