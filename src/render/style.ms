@@ -12,7 +12,7 @@ import { styleInterfaceBody, setStyleFieldBody, mergeStyleBody } from "../macros
 export type FlexDirection = "row" | "column" | "row-reverse" | "column-reverse";
 export type Justify = "flex-start" | "flex-end" | "center" | "space-between" | "space-around" | "space-evenly";
 export type Align = "auto" | "flex-start" | "flex-end" | "center" | "stretch" | "baseline";
-export type PositionType = "static" | "relative" | "absolute";
+export type PositionType = "static" | "relative" | "absolute" | "fixed";
 export type Wrap = "nowrap" | "wrap" | "wrap-reverse";
 export type Display = "flex" | "none";
 export type Overflow = "visible" | "hidden" | "scroll";
