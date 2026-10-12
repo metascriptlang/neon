@@ -7,7 +7,8 @@ import { createEffect } from "../core/effect";
 import { Style } from "./style";
 import { NeonEvent } from "./event";
 import { Host, HostNode, NeonNode, RefFn } from "./hostTypes";
-import { Row, place, needsStartMarker, reconcileArrays } from "./reconcile";
+import { Row, place, reconcileArrays } from "./reconcile";
+import { regionAnchor, sealRegion } from "./claim";
 import { bindText, bindAttr, bindStyleAll } from "./bind";
 
 export { NeonNode, RefFn } from "./hostTypes";
@@ -97,9 +98,7 @@ export function mountChild(host: Host, parent: HostNode, before: HostNode | null
 
 export function regionNode(fn: RegionFn): NeonNode {
 	return (host: Host, parent: HostNode, before: HostNode | null): void => {
-		if (needsStartMarker(parent)) { place(host, parent, host.createText(""), before); }
-		const anchor = host.createText("");
-		place(host, parent, anchor, before);
+		const anchor = regionAnchor(host, parent, before);
 		let current: Row[] = [];
 		const rows = fn(host);
 		createEffect(() => {
@@ -107,6 +106,7 @@ export function regionNode(fn: RegionFn): NeonNode {
 			reconcileArrays(host, parent, current, next, anchor);
 			current = next.slice(0, next.length);
 		});
+		sealRegion(host, parent, anchor);
 	};
 }
 

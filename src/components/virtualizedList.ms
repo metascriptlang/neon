@@ -7,7 +7,8 @@ import { mapArray } from "../core/array";
 import { element } from "../macros/ui/element";
 import { Show } from "../macros/ui/flow";
 import { NeonNode, regionNode } from "../render/node";
-import { Row, makeRow, moveRow, needsStartMarker, place, reconcileArrays } from "../render/reconcile";
+import { Row, makeRow, moveRow, reconcileArrays } from "../render/reconcile";
+import { regionAnchor, sealRegion } from "../render/claim";
 import { NeonEvent } from "../render/event";
 import { Host, HostNode } from "../render/hostTypes";
 import { Style, mergeStyle } from "../render/style";
@@ -600,9 +601,7 @@ export function listEngine<T, D>(props: {
 	}));
 
 	const gridRowItems = (members: Accessor<T[]>): NeonNode => (host: Host, parent: HostNode, before: HostNode | null): void => {
-		if (needsStartMarker(parent)) { place(host, parent, host.createText(""), before); }
-		const anchor = host.createText("");
-		place(host, parent, anchor, before);
+		const anchor = regionAnchor(host, parent, before);
 		let shown: T[] = [];
 		let current: Row[] = [];
 		const alive = (item: T, row: Row): boolean => gridItems.has(item) && (gridItems.get(item) as GridItem).row === row;
@@ -635,6 +634,7 @@ export function listEngine<T, D>(props: {
 				entry.container = parking;
 			}
 		});
+		sealRegion(host, parent, anchor);
 	};
 
 	const gridRowCell = (row: int32): ListCell => {

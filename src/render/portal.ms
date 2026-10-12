@@ -2,6 +2,7 @@ import { onCleanup } from "../core/cleanup";
 import { Style } from "./style";
 import { NeonNode, VAttr, VEvent, hostElement } from "./node";
 import { Host, HostNode } from "./hostTypes";
+import { unclaimed } from "./claim";
 
 interface PortalProps {
 	mount?: HostNode | null;
@@ -34,7 +35,7 @@ export function portalNode(
 		}
 		let container: HostNode | null = null;
 		const grab = (node: HostNode): void => { container = node; };
-		hostElement(tag, attrs, events, children, style, grab)(host, target, null);
+		unclaimed(host, (): void => { hostElement(tag, attrs, events, children, style, grab)(host, target, null); });
 		onCleanup((): void => {
 			if (container !== null) { host.removeChild(target, container as HostNode); }
 		});

@@ -51,4 +51,5 @@ export interface Host {
 	// where the Portal sits in the tree.
 	overlayRoot?: ((node: HostNode) => HostNode) | null;
 	setResponder?: ((node: HostNode | null, blockNativeResponder: boolean) => void) | null;
+	claim?: ((parent: HostNode, after: HostNode | null, tag: string) => HostNode | null) | null;
 }

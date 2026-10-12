@@ -1,5 +1,6 @@
 import { Host, HostNode, NeonNode } from "./hostTypes";
-import { Row, makeRow, mountAt, removeRow, place, needsStartMarker } from "./reconcile";
+import { Row, makeRow, mountAt, removeRow, place } from "./reconcile";
+import { regionAnchor, sealRegion } from "./claim";
 import { Computation } from "../core/types";
 import { createComputation, cleanNode } from "../core/runtime";
 import { runWithOwner } from "../core/owner";
@@ -237,9 +238,7 @@ function instanceNode(
 	sigFn: SigFn,
 ): NeonNode {
 	return (host: Host, parent: HostNode, before: HostNode | null): void => {
-		if (needsStartMarker(parent)) { place(host, parent, host.createText(""), before); }
-		const anchor = host.createText("");
-		place(host, parent, anchor, before);
+		const anchor = regionAnchor(host, parent, before);
 		const inst: Instance = {
 			render: render,
 			sigFn: sigFn,
@@ -261,6 +260,7 @@ function instanceNode(
 		};
 		track(instances, inst);
 		mountInstance(inst);
+		sealRegion(host, parent, anchor);
 	};
 }
 

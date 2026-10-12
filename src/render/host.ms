@@ -7,6 +7,7 @@ import { Style, StyleValue, emptyStyle, setStyleField } from "./style";
 import { Host, HostNode, NeonNode, VoidArea } from "./hostTypes";
 import { NeonEvent, neonEvent, eventType } from "./event";
 import { createRoot } from "../core/owner";
+import { beginClaim, endClaim } from "./claim";
 import { Dispose } from "../core/types";
 
 export { Host, HostNode, NeonNode, VoidArea } from "./hostTypes";
@@ -22,6 +23,24 @@ export function render(node: NeonNode, host: Host, parent: HostNode, id: string 
 			throw error;
 		}
 	}, id);
+}
+
+export function hydrate(node: NeonNode, host: Host, container: HostNode): Dispose {
+	beginClaim(host, container);
+	let dispose: Dispose;
+	try {
+		dispose = render(node, host, container, "");
+	} catch (error) {
+		endClaim(host, false);
+		throw error;
+	}
+	try {
+		endClaim(host, true);
+	} catch (error) {
+		dispose();
+		throw error;
+	}
+	return dispose;
 }
 
 // ---- Mock host: in-memory tree for tests/SSR (no browser needed) ----
@@ -195,6 +214,12 @@ export function mockHost(): Host {
 			fireEvent(n, focused ? "onFocus" : "onBlur");
 		},
 		overlayRoot: (node: HostNode): HostNode => overlay as unknown as HostNode,
+		claim: (parent: HostNode, after: HostNode | null, tag: string): HostNode | null => {
+			const p = parent as unknown as MockNode;
+			const i = after === null ? 0 : childIndex(p, after as unknown as MockNode) + 1;
+			if (i >= p.children.length || p.children[i].tag !== tag) { return null; }
+			return p.children[i] as unknown as HostNode;
+		},
 		setResponder: (node: HostNode | null, blockNativeResponder: boolean): void => {
 			const holder = mockResponder;
 			if (holder !== null) {

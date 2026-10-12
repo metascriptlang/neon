@@ -4,7 +4,8 @@ import { createRoot } from "../core/owner";
 import { Accessor, Signal, accessor, untrack } from "../core/signal";
 import { List, ListOp, listInsert, listMove, listRemove, listSet } from "../core/list";
 import { Host, HostNode, NeonNode } from "./hostTypes";
-import { Row, makeRow, place, needsStartMarker, mountAt, moveRow, removeRow, reconcileArrays } from "./reconcile";
+import { Row, makeRow, mountAt, moveRow, removeRow, reconcileArrays } from "./reconcile";
+import { regionAnchor, sealRegion } from "./claim";
 
 // The region's stores live in one object passed to every step, never captured by a nested
 // closure: src/core/array.ms keeps mapArray's stores as parameters for the same reason.
@@ -210,9 +211,7 @@ export function listRegion<Item>(
 	keyOf: ((item: Item) => number) | null,
 ): NeonNode {
 	return (host: Host, parent: HostNode, before: HostNode | null): void => {
-		if (needsStartMarker(parent)) { place(host, parent, host.createText(""), before); }
-		const anchor = host.createText("");
-		place(host, parent, anchor, before);
+		const anchor = regionAnchor(host, parent, before);
 
 		const g: Region<Item> = {
 			host: host,
@@ -252,5 +251,6 @@ export function listRegion<Item>(
 				return 0;
 			});
 		});
+		sealRegion(host, parent, anchor);
 	};
 }
