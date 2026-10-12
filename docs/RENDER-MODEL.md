@@ -309,6 +309,66 @@ No background walker, no whole-tree diff scheduler. Two update paths only:
   keeps its DOM, its focus and its scope. A plain array in `<For each={xs}>` keeps the structural
   path untouched.
 
+## Hydration — a served page's nodes become the live tree
+
+`hydrate` (`src/render/host.ms`) runs the same mount as `render`, on a host that hands out the
+nodes a parsed page already holds instead of creating them (`src/render/claim.ms`, the `claim`
+capability of `Host`). Nothing else in the mount path knows: the element macro, templates and
+the hand-written builders are unchanged.
+
+**Why by position and not by key.** Solid finds a served element through a key: the server
+writes `_hk` on every template root, the client sweeps `[_hk]` into a registry and
+`getNextElement` looks the key up (`~/projects/solid-next` at `84dada77`,
+`packages/web/src/client.ts` `getNextElement`, `gatherHydratable`). It needs the key because a
+DOM-expressions template is created detached, with no parent to look in, and its `universal`
+renderer has no hydration at all (`packages/universal/src/universal.ts` has no claim hook). A
+Neon mount has an order instead, and the order is enough:
+
+- a mount creates nodes in document order;
+- an element is put into its parent only after its own children.
+
+So the element being filled is always the last one created and not yet placed, and the node
+asked for next is that element's next unread child. Keys were rejected for that reason: they
+cost an attribute on every template root of every page and locate nothing position does not.
+The owner ids (`Computation.id`, `src/core/runtime.ms`) stay, for `createUniqueId`.
+
+**The one creation out of order** is a region's end anchor, made before the rows that sit in
+front of it. A region therefore takes its anchor from `regionAnchor` and calls `sealRegion`
+once its first rows are mounted; during hydrate the anchor is a fresh text that replaces the
+page's placeholder at that moment. A new builder that creates a node ahead of what precedes
+it in the document must do the same, or hydrate reads the wrong node; "regions the page sent
+empty fill in after hydrate" (`tests/render/hydrate.test.ms`) fails when the seal is missing.
+A subtree mounted where the page did not render it (a Portal's layer) goes through `unclaimed`.
+
+**What the server writes so a parse keeps the node list** (`serializeChildren`,
+`src/render/ssr.ms`): `<!---->` where the tree holds an empty text, which an HTML parser would
+drop, and `<!--!-->` between two adjacent texts, which it would merge. The DOM host's `claim`
+turns the first back into a text node and removes the second. Solid's counterparts are
+`<!--$-->`/`<!--/-->` around a dynamic child and `<!--!$-->` between text values
+(`packages/web/src/server.ts`, `ssrTextTail`); Neon needs no pair because it does not scan for
+a region's end.
+
+A tree that differs from the page throws, naming the missing node by tag, child index and
+path. Limits, each one loud or measured:
+
+- An element the tree leaves without children is not checked for extra ones, so a node that
+  holds children Neon does not own (a canvas, a foreign editor's mount point) hydrates.
+- A wire tag whose DOM `createElement` does more than create an element (`scrollview`,
+  `switch`, `image`, the media tags …; `createsMoreThanAnElement` in
+  `src/platform/browser/dom.ms`) refuses to hydrate.
+- Text content and attribute values are not compared; static attributes are written again.
+- Markup the parser restructures (a block inside `<p>`, a `<tr>` without `<tbody>`) arrives
+  as a different node list and fails as a mismatch.
+- Events fired before hydrate are not replayed (Solid queues them in `_$HY.events`).
+
+Measured 2026-10-13 on tree `e0c70ab823b7a09a5f995cf0eae0304d7e11921b`, msc v0.3.2 `ea7ae4d17`:
+the Geass site (`~/metascript/geass/web/src`, copied beside a link to this tree) rendered on
+the mock host and hydrated onto those nodes, `--target=js`: home 216 elements at width 1440 and
+170 at 390, `/docs` 335 and 309, four more docs pages 110–272, the 404 page 8; the host created
+0 elements in every case and the tree's serialisation was unchanged. On Chrome
+(`tests/browser/hydrate.test.ms`): 0 elements created, every element still the parsed page's
+own after a signal write, a press, a `Show` toggle and a `For` reorder.
+
 ## Emission — mechanics
 
 **Flat tier.** One statement list, temps numbered across the whole subtree (`_r0/_r1/…`
