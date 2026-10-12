@@ -400,7 +400,9 @@ reads the first `<title>`. On a client the tags it wins over stay in `document.h
 it and are read again once it unmounts; solid-meta removes them and puts them back, which
 needs the registry (measured on Geass 2026-10-13: two `Head`s with a `title` on one route
 leave two `<title>` elements after `hydrate`, where the served head had one). `renderToMarkup` keeps the first `title` and the
-first `meta` of each `name`/`property`/`http-equiv`/`charset` (solid-meta's cascading set) and
+first `meta` of each `name`/`property`/`http-equiv`/`charset` and `media` (solid-meta's
+cascading set keys a meta by `content` too, `src/index.tsx:36`, so there two descriptions that
+differ both stay; here the name decides) and
 every other tag. Served tags carry `data-neon-head`; the DOM host removes them when the first
 `Head` mounts (solid-meta removes `[data-sm]`). Limits: head tags are created again on the
 client rather than taken over, so a stylesheet link belongs in the page shell, where it is
