@@ -13,6 +13,7 @@ if [ ! -f "$WORKERD" ]; then
 	exit 2
 fi
 
+echo "== edge tests/edge/run.sh"
 mkdir -p tests/edge/out
 "$MSC" build --target=js tests/edge/pages.ms --output=tests/edge/out/pages.js
 "$MSC" build --target=js examples/site/server.ms --output=tests/edge/out/site.js
