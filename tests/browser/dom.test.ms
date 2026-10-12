@@ -35,6 +35,7 @@ extern class ProbeStyle {
 	position: string;
 	transition: string;
 	filter: string;
+	pointerEvents: string;
 }
 
 extern class ProbeClassList {
@@ -310,6 +311,14 @@ test "filter reaches the element" {
 	const el = mount("view");
 	h.setStyle(el, styleWith("filter", "invert(1)"));
 	assert probe(el).style.filter === "invert(1)", probe(el).style.filter;
+	probe(el).remove();
+}
+
+test "pointerEvents reaches the element" {
+	const h = domHost();
+	const el = mount("view");
+	h.setStyle(el, styleWith("pointerEvents", "none"));
+	assert probe(el).style.pointerEvents === "none", probe(el).style.pointerEvents;
 	probe(el).remove();
 }
 
