@@ -102,6 +102,15 @@ and the invariants that outlived them were moved to the head of the test that pi
   (`embedRegister`, `viewCreate`) only under `windows || ios || android`, so it cannot build on macOS
   whatever Neon does: `~/metascript/.inbox/neon/2026-10-05-void-api-drift-breaks-desktop-build.md`.
 
+- **PARKED 2026-10-12 — every program that imports navigation stops on the native lane.** Not
+  Neon's: msc `e8c024c8` answers `internal: a null comparison on an operand with effects reached
+  operatorLower unspilled` at `src/navigation/core.ms` (`if (params !== null)` on a captured
+  parameter). Red on native: `tests/navigation/{example,linking,nested,options,stack,transition}.test.ms`,
+  `tests/api/apis.test.ms` and `tests/refresh/navigation.ms`; the JS lane passes. The fix is
+  committed on recompiler `wt/fix-null-cmp-captured` (`ea8a11f9`), not landed; with that candidate
+  all eight pass. Card
+  `~/metascript/.inbox/compiler/2026-10-11-captured-nullable-generic-param-null-comparison-internal-error.md`.
+
 - **PARKED 2026-10-11 — `tests/render/flatList.test.ms` and `tests/components/flutterListsApp.test.ms` do not compile.**
   Not Neon's: an array-destructured local of an arrow passed as a JSX attribute
   (`const [focused, setFocused] = createSignal<boolean>(false)` in a `renderItem`) is refused as
