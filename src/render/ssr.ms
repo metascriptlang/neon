@@ -130,6 +130,18 @@ function putAttribute(names: string[], values: string[], name: string, value: st
 	values.push(value as string);
 }
 
+function textareaText(n: MockNode): string {
+	const value = attrValue(n, "value");
+	if (value !== null && value !== "") { return value as string; }
+	const initial = attrValue(n, "defaultValue");
+	return initial === null ? "" : initial as string;
+}
+
+function textareaBody(n: MockNode): string {
+	const text = textareaText(n);
+	return text.startsWith("\n") ? "\n" + escapeText(text) : escapeText(text);
+}
+
 function serializeNode(n: MockNode): string {
 	if (n.tag === "") { return escapeText(n.text); }
 	const tag = webHtmlTag(n.tag);
@@ -170,6 +182,7 @@ function serializeNode(n: MockNode): string {
 		}
 		return open + ">";
 	}
+	if (n.tag === "multilinetextinput") { return open + ">" + textareaBody(n) + "</" + tag + ">"; }
 	return open + ">" + serializeChildren(n, !rawTextTag(tag)) + "</" + tag + ">";
 }
 

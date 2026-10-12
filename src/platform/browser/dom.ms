@@ -833,7 +833,7 @@ function dropServedHead(): void {
 }
 
 function createsMoreThanAnElement(tag: string): boolean {
-	return tag === "multilinetextinput" || tag === "modal" || isMediaTag(tag) || tag === "svg"
+	return tag === "modal" || isMediaTag(tag) || tag === "svg"
 		|| tag === "slider" || tag === "picker" || tag === "datetimepicker" || tag === "image";
 }
 
@@ -849,7 +849,6 @@ export function domHost(): Host {
 	installDomLayoutAnimation();
 	const registeredRules = new Map<string, boolean>();
 	let modalRule = false;
-	let textareaRule = false;
 	const scrolls = new Map<Node, DomScrollState>();
 	const cleanups = new Map<Node, (() => void)[]>();
 	const presses = new Map<Node, boolean>();
@@ -1043,13 +1042,8 @@ export function domHost(): Host {
 			registerRules(tag);
 			if (tag === "scrollview") { return adoptScroll(document.createElement(webHtmlTag(tag))); }
 			if (tag === "multilinetextinput") {
-				// RN's multiline TextInput grows with its content until a height or maxHeight stops it.
-				if (!textareaRule) {
-					registerCss("neon-textarea", ".neon-textarea{field-sizing:content;resize:none}");
-					textareaRule = true;
-				}
-				const area = document.createElement("textarea");
-				area.classList.add("neon-textarea");
+				const area = document.createElement(webHtmlTag(tag));
+				area.classList.add(webControlClass(tag));
 				return area as unknown as HostNode;
 			}
 			if (tag === "modal") {
@@ -1322,6 +1316,12 @@ export function domHost(): Host {
 			registerRules(tag);
 			if (tag === "scrollview") { return adoptScroll(found); }
 			if (tag === "switch" || tag === "activityindicator") { return adoptControl(tag, found); }
+			if (tag === "multilinetextinput") {
+				const typed: string = found.value;
+				found.textContent = "";
+				found.value = typed;
+				found.classList.add(webControlClass(tag));
+			}
 			return found as unknown as HostNode;
 		},
 		focus: (node: HostNode, focused: boolean): void => {

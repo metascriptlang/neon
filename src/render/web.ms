@@ -17,9 +17,12 @@ export const SERVED_HEAD = "data-neon-head";
 
 export const SCROLL_CLASS = "neon-scrollview";
 export const ACTIVITY_CLASS = "neon-activity";
+export const TEXTAREA_CLASS = "neon-textarea";
 
 export const SCROLL_CSS =
 	`.${SCROLL_CLASS}{overflow-x:hidden;overflow-y:auto}.neon-hide-horizontal::-webkit-scrollbar:horizontal{height:0}.neon-hide-vertical::-webkit-scrollbar:vertical{width:0}@keyframes neon-refresh-spin{to{transform:rotate(360deg)}}.neon-refresh-indicator[aria-busy=true]{animation:neon-refresh-spin 1s linear infinite}`;
+
+export const TEXTAREA_CSS = `.${TEXTAREA_CLASS}{field-sizing:content;resize:none}`;
 
 export const CONTROL_RULES_ID = "neon-controls";
 
@@ -51,6 +54,7 @@ export function webHtmlTag(tag: string): string {
 	return match (tag) {
 		"scrollview" | "activityindicator" => "div",
 		"switch" => "input",
+		"multilinetextinput" => "textarea",
 		_ => htmlTagFor(tag),
 	};
 }
@@ -59,6 +63,7 @@ export function webControlClass(tag: string): string {
 	return match (tag) {
 		"scrollview" => SCROLL_CLASS,
 		"activityindicator" => ACTIVITY_CLASS,
+		"multilinetextinput" => TEXTAREA_CLASS,
 		_ => "",
 	};
 }
@@ -99,6 +104,9 @@ export function controlAttr(tag: string, name: string, value: string): ControlAt
 			_ => null,
 		};
 	}
+	if (tag === "multilinetextinput" && (name === "value" || name === "defaultValue")) {
+		return droppedAttribute();
+	}
 	return null;
 }
 
@@ -107,6 +115,7 @@ export function webRules(tag: string): WebRule[] {
 	if (webBaseClass(tag) !== "") { rules.push({ id: "neon-base", css: RN_WEB_BASE_CSS }); }
 	match (tag) {
 		"scrollview" => { rules.push({ id: SCROLL_CLASS, css: SCROLL_CSS }); },
+		"multilinetextinput" => { rules.push({ id: TEXTAREA_CLASS, css: TEXTAREA_CSS }); },
 		"switch" | "activityindicator" => { rules.push({ id: CONTROL_RULES_ID, css: CONTROL_CSS }); },
 		_ => {},
 	}

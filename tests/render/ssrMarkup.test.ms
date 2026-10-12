@@ -62,6 +62,18 @@ test "SSR writes Switch and ActivityIndicator as the elements, classes and rules
 	assert on.css.indexOf(".neon-activity{") >= 0, on.css;
 }
 
+test "SSR writes a multiline TextInput as a textarea holding its value" {
+	const fresh = renderToMarkup(el("multilinetextinput", [attr("defaultValue", "note"),
+		attr("multiline", "true"), attr("placeholder", "Write")], [], null));
+	assert fresh.html === "<textarea placeholder=\"Write\" class=\"neon-textarea\">note</textarea>", fresh.html;
+	assert fresh.css.indexOf(".neon-textarea{field-sizing:content;resize:none}") >= 0, fresh.css;
+	const value = renderToString(el("multilinetextinput", [attr("value", "\n<b> & co"),
+		attr("defaultValue", "ignored")], [], null));
+	assert value === "<textarea class=\"neon-textarea\">\n\n&lt;b&gt; &amp; co</textarea>", value;
+	const empty = renderToString(el("multilinetextinput", [attr("value", ""), attr("defaultValue", "kept")], [], null));
+	assert empty === "<textarea class=\"neon-textarea\">kept</textarea>", empty;
+}
+
 test "a throwing SSR mount disposes effects and cleanup" {
 	const [read, write] = createSignal<int32>(0);
 	let runs: int32 = 0;

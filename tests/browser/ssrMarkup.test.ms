@@ -121,4 +121,17 @@ when (js) {
 		assert server.indexOf("checked") >= 0, "the served switch must show its state before hydrate: " + server;
 		assert collectCss().indexOf(".neon-activity{") >= 0, collectCss();
 	}
+
+	test "server multiline TextInput is the textarea, class and text the DOM host builds" {
+		const app: NeonNode = <View>
+			<TextInput multiline={true} defaultValue="note" placeholder="Write" />
+			<TextInput multiline={true} value={"\nfirst <b> & \"second\""} editable={false} maxLength={40} />
+			<TextInput multiline={true} />
+		</View>;
+		const [server, dom, servedShape, builtShape] = serverAndDom(app);
+		assert servedShape === builtShape, server + " vs " + dom;
+		assert server.indexOf("<multilinetextinput") < 0 && server.indexOf("defaultValue") < 0, server;
+		assert server.indexOf("<textarea") >= 0, server;
+		assert collectCss().indexOf(".neon-textarea{field-sizing:content;resize:none}") >= 0, collectCss();
+	}
 }
