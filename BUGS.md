@@ -38,6 +38,17 @@ and the invariants that outlived them were moved to the head of the test that pi
   mount such a component by calling it (`App()` in `examples/voidWindow.ms`). The fix is in
   `src/macros/ui/element.ms`, a contract that needs a yes before it changes.
 
+- **OPEN 2026-10-13 — a context whose value type is an accessor cannot be given one.** With
+  `createContext<Accessor<string>>(…)` and `const [place] = createSignal("a")`,
+  `<Here.Provider value={place}>` stops at the checker on C and JS: `Type 'string' is not
+  assignable to type 'Accessor<Accessor<string>>'`. The element macro reads an accessor in a
+  prop position as a reactive expression of its result, so `value` is offered a `string`; the
+  message names neither the rule nor the way out. `useContext` returns the value as it was
+  when the reader mounted, so a signal has to travel inside the value: as a field
+  (`value={{ here: place }}`, pinned by `tests/render/context.test.ms`) or as an arrow with
+  `T = () => string`. Found by Geass (`web/src/docs.ms`, the current docs page). Solid passes
+  the accessor itself.
+
 - **OPEN 2026-10-13 — `tests/platform/nativeWidgets.test.ms` reads the Collapsible before it has finished opening.**
   The native cell loops the UI for 400 ms of wall time after `setCollapsed(false)` on a 64 ms
   animation and then asserts `box === 120`; some runs stop at `the box opened: 118`. Measured
