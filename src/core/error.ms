@@ -1,5 +1,5 @@
 import { Computation, CompState, ErrorHandler } from "./types";
-import { getOwner } from "./runtime";
+import { getOwner, inheritId } from "./runtime";
 import { runWithOwner } from "./owner";
 
 function noop(): void {}
@@ -12,6 +12,7 @@ export function catchError(tryFn: () => void, handler: ErrorHandler): void {
 		sources: [], sourceSlots: [],
 		pure: false, disposed: false,
 		owned: [], cleanups: [], owner: parent, context: parent !== null ? parent.context : null, handler: handler,
+		id: inheritId(parent, false), childCount: 0, transparent: false,
 	};
 	if (parent !== null) { parent.owned.push(scope); }
 	try {

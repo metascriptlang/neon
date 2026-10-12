@@ -72,6 +72,7 @@ export function cleanNode(node: Computation, dispose: boolean): void {
 		cleanNode(node.owned[i], true);
 	}
 	node.owned = [];
+	node.childCount = 0;
 
 	for (let i = 0; i < node.sources.length; i += 1) {
 		removeObserver(node.sources[i], node.sourceSlots[i]);
@@ -91,13 +92,45 @@ export function cleanNode(node: Computation, dispose: boolean): void {
 	node.cleanups = [];
 }
 
-export function createComputation(fn: EffectFn, pure: boolean): Computation {
+function formatId(prefix: string, index: number): string {
+	const digits = index.toString(36);
+	const extra = digits.length - 1;
+	return prefix + (extra > 0 ? String.fromCharCode(64 + extra) : "") + digits;
+}
+
+function idCounter(owner: Computation): Computation {
+	let counter = owner;
+	while (counter.transparent && counter.owner !== null) { counter = counter.owner as Computation; }
+	return counter;
+}
+
+export function carriesId(owner: Computation | null): boolean {
+	return owner !== null && idCounter(owner).id !== null;
+}
+
+export function getNextChildId(owner: Computation): string {
+	const counter = idCounter(owner);
+	const id = counter.id;
+	if (id === null) { throw new Error("getNextChildId: the owner carries no id"); }
+	const index = counter.childCount;
+	counter.childCount = index + 1;
+	return formatId(id as string, index);
+}
+
+export function inheritId(parent: Computation | null, transparent: boolean): string | null {
+	if (parent === null) { return null; }
+	if (transparent) { return parent.id; }
+	return carriesId(parent) ? getNextChildId(parent) : null;
+}
+
+export function createComputation(fn: EffectFn, pure: boolean, transparent: boolean = false): Computation {
 	const comp: Computation = {
 		observers: [], observerSlots: [],
 		fn, isRoot: false, state: CompState.Stale,
 		sources: [], sourceSlots: [],
 		pure, disposed: false,
 		owned: [], cleanups: [], owner: tlOwner, context: tlOwner !== null ? tlOwner.context : null, handler: null,
+		id: inheritId(tlOwner, transparent), childCount: 0, transparent,
 	};
 	if (tlOwner !== null) { tlOwner.owned.push(comp); }
 	return comp;

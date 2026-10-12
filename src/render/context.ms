@@ -1,6 +1,6 @@
 import { Accessor } from "../core/signal";
 import { Computation, CompState } from "../core/types";
-import { getOwner } from "../core/runtime";
+import { getOwner, inheritId } from "../core/runtime";
 import { runWithOwner } from "../core/owner";
 import { Host, HostNode, NeonNode } from "./hostTypes";
 
@@ -40,6 +40,7 @@ function provideScope<T>(ctx: Context<T>, read: () => T, body: () => number): nu
 		sources: [], sourceSlots: [],
 		pure: false, disposed: false,
 		owned: [], cleanups: [], owner: parent, context: { key: ctx as unknown, value: new Provided<T>(read), next: parent !== null ? parent.context : null }, handler: null,
+		id: inheritId(parent, false), childCount: 0, transparent: false,
 	};
 	if (parent !== null) { parent.owned.push(scope); }
 	return runWithOwner(scope, body);

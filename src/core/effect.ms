@@ -9,3 +9,9 @@ export function createEffect(fn: () => void): Dispose {
 	runComputation(comp);
 	return () => { cleanNode(comp, true); };
 }
+
+export function createBindingEffect(fn: () => void): Dispose {
+	const comp = createComputation(fn, false, true);
+	runComputation(comp);
+	return () => { cleanNode(comp, true); };
+}

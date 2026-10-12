@@ -39,4 +39,8 @@ export interface Computation {
 	owner: Computation | null;
 	context: ContextEntry | null;
 	handler: ErrorHandler | null;
+
+	id: string | null;
+	childCount: number;
+	transparent: boolean;
 }
