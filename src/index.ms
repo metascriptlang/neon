@@ -17,6 +17,7 @@ export { Host, HostNode, NeonNode } from "./render/hostTypes";
 export { render, hydrate } from "./render/host";
 export { renderToString, renderToMarkup, SsrMarkup } from "./render/ssr";
 export { isServer } from "./render/environment";
+export { Head } from "./render/head";
 export { createComponent } from "./render/component";
 export { Context, ProviderProps, createContext, useContext } from "./render/context";
 export { NeonEvent, neonEvent } from "./render/event";
