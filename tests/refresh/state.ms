@@ -320,10 +320,14 @@ test "refresh state: a remount that throws leaves the rest mounted, and the next
 	const broken = refreshModule(thisFile());
 	assert broken.remounted === 1, "the row was tried: " + broken.remounted.toString();
 	assert texts(root) === "<p>frame</p> ", "the frame stays, the row is gone: " + texts(root);
+	const shown = all(root, "text");
+	assert shown.length === 1, "one error view stands where the row was: " + shown.length.toString();
+	assert mockToString(shown[0]).indexOf(">state.ms#Row did not mount: row setup failed<") >= 0, "it says why: " + mockToString(shown[0]);
 	press(root, 0, 1);
 	assert texts(root) === "<p>frame!</p> ", "the frame still answers: " + texts(root);
 	refreshComponent<RowProps>(thisFile(), "Row|RowProps", __refreshBody_RowByTen, (): string => "fixed");
 	refreshModule(thisFile());
 	assert texts(root) === "<p>frame!</p> <p>ten a:4</p> ", "the fix mounts with the count kept: " + texts(root);
+	assert all(root, "text").length === 0, "the error view is gone: " + all(root, "text").length.toString();
 	dispose();
 }
