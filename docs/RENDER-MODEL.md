@@ -387,8 +387,12 @@ because one build can serve a page and attach to one (the test lanes do both in 
 collects strings. In Neon the tags are ordinary nodes mounted through the host into the root
 it gives (`Host.headRoot`, the shape of `overlayRoot` for `Portal`), so a reactive title is one
 `bindText` and a route that leaves takes its tags with it through `onCleanup`. The cascade
-falls out of the order: a `Head` mounts in front of what is there, the innermost `Head` mounts
-last, and a browser reads the first `<title>`. `renderToMarkup` keeps the first `title` and the
+falls out of the order: a `Head` mounts in front of what is there, so the `Head` mounted last
+(the innermost, unless a parent writes its own after the child) comes first, and a browser
+reads the first `<title>`. On a client the tags it wins over stay in `document.head` behind
+it and are read again once it unmounts; solid-meta removes them and puts them back, which
+needs the registry (measured on Geass 2026-10-13: two `Head`s with a `title` on one route
+leave two `<title>` elements after `hydrate`, where the served head had one). `renderToMarkup` keeps the first `title` and the
 first `meta` of each `name`/`property`/`http-equiv`/`charset` (solid-meta's cascading set) and
 every other tag. Served tags carry `data-neon-head`; the DOM host removes them when the first
 `Head` mounts (solid-meta removes `[data-sm]`). Limits: head tags are created again on the
