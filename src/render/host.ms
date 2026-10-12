@@ -14,8 +14,13 @@ export { bindText, writeAttr, bindAttr, bindStyleProp, applyStaticStyle, bindSty
 
 export function render(node: NeonNode, host: Host, parent: HostNode): Dispose {
 	return createRoot((dispose) => {
-		node(host, parent, null);
-		return dispose;
+		try {
+			node(host, parent, null);
+			return dispose;
+		} catch (error) {
+			dispose();
+			throw error;
+		}
 	});
 }
 
