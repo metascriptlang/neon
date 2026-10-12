@@ -369,6 +369,49 @@ the mock host and hydrated onto those nodes, `--target=js`: home 216 elements at
 (`tests/browser/hydrate.test.ms`): 0 elements created, every element still the parsed page's
 own after a signal write, a press, a `Show` toggle and a `For` reorder.
 
+## A served page — what a server render skips, the head, and links
+
+**A server render calls no `ref`** (`asServer` in `src/render/environment.ms`, read by
+`applyRef`). A ref handler expects the platform's node and on a server it would receive the
+mock host's: Geass's `ref={startMech}` ran inside the Worker and its cast to
+`HTMLCanvasElement` threw. Solid drops `ref` and event attributes when it compiles for the
+server (`~/projects/solid-next` at `84dada77`, `packages/babel-plugin/src/ssr/element.ts`,
+`key === "ref" || isEventName(key)`). Neon has one emission for every host, so the same
+decision is taken at run time; a handler is still attached to the mock node and no event ever
+reaches it. `isServer()` holds only inside the synchronous render, not for the whole program,
+because one build can serve a page and attach to one (the test lanes do both in a process).
+
+**`Head` is a portal, not a registry.** `@solidjs/meta` (`~/projects/solid-meta` at `391138e`,
+`src/index.tsx`) keeps the head in a context: every `Title`/`Meta` calls `useHead` with a
+`createUniqueId`, the provider sorts cascading tags and writes the DOM itself, and the server
+collects strings. In Neon the tags are ordinary nodes mounted through the host into the root
+it gives (`Host.headRoot`, the shape of `overlayRoot` for `Portal`), so a reactive title is one
+`bindText` and a route that leaves takes its tags with it through `onCleanup`. The cascade
+falls out of the order: a `Head` mounts in front of what is there, the innermost `Head` mounts
+last, and a browser reads the first `<title>`. `renderToMarkup` keeps the first `title` and the
+first `meta` of each `name`/`property`/`http-equiv`/`charset` (solid-meta's cascading set) and
+every other tag. Served tags carry `data-neon-head`; the DOM host removes them when the first
+`Head` mounts (solid-meta removes `[data-sm]`). Limits: head tags are created again on the
+client rather than taken over, so a stylesheet link belongs in the page shell, where it is
+not reloaded; the shell itself (`<!doctype>`, `<html>`, `<body>`, the script tag) is written by
+the server entry (`examples/site/server.ms`), not by Neon.
+
+**Links are followed by one listener** (`followLinks`, `src/platform/browser/routingHistory.ms`),
+the conditions of Solid Router's `handleAnchor` (`~/projects/solid-router` at `d0379e7`,
+`src/data/events.ts`): primary button, no modifier, no `target`, no `download`, no
+`rel="external"`, same origin. One difference, chosen: a link the routing session cannot match
+is left to the browser, so the server answers it and the 404 keeps its status; Solid navigates
+on the client to its catch-all route.
+
+Measured 2026-10-13 on tree `b514b24aff684ca7119a9aa67cdc4075a95aa605`, msc v0.3.2 `ea7ae4d17`,
+`sh tests/edge/run.sh` (workerd, then Chrome): `/` and `/docs/<slug>` answer 200 with their own
+title and description, `/docs/missing`, `/nowhere` and `/docs/start/` answer 404 with `noindex`;
+Chrome attaches to `/docs/start` with no element of the 12 added or removed, a link to another
+route changes the heading, title, description and URL with one document request in total and
+the scroll back at the top, back restores the page, and a link to no route is answered by the
+server. The debug bundles, not minified: `site.js` (server) 573 KB, 69 KB gzipped;
+`siteClient.js` 1 052 KB, 129 KB gzipped.
+
 ## Emission — mechanics
 
 **Flat tier.** One statement list, temps numbered across the whole subtree (`_r0/_r1/…`
