@@ -2,7 +2,7 @@ import { createSignal } from "../../src/core/signal";
 import { createEffect } from "../../src/core/effect";
 import { onCleanup } from "../../src/core/cleanup";
 import { Host, HostNode, NeonNode } from "../../src/render/hostTypes";
-import { el, attr, text } from "../../src/render/node";
+import { el, attr, text, dynText } from "../../src/render/node";
 import { renderToString } from "../../src/render/ssr";
 
 test "SSR emits HTML void elements without end tags" {
@@ -54,4 +54,28 @@ test "a void element with children fails and disposes mounted resources" {
 	catch (error) { message = (error as Error).message; }
 	assert message.indexOf("input") >= 0;
 	assert cleaned === 1;
+}
+
+function both(a: NeonNode, b: NeonNode): NeonNode {
+	return (host: Host, parent: HostNode, before: HostNode | null): void => {
+		a(host, parent, before);
+		b(host, parent, before);
+	};
+}
+
+test "SSR marks the text nodes an HTML parse would drop or merge" {
+	assert renderToString(el("p", [], [], dynText((): string => ""))) === "<p><!----></p>", "an empty text node";
+	assert renderToString(el("p", [], [], both(text("a"), dynText((): string => "b")))) ===
+		"<p>a<!--!-->b</p>", "two text nodes in a row";
+	assert renderToString(el("p", [], [], both(text("a"), both(dynText((): string => ""), text("b"))))) ===
+		"<p>a<!---->b</p>", "an empty one between two";
+	assert renderToString(el("p", [], [], both(text("a"), both(el("b", [], [], null), text("c"))))) ===
+		"<p>a<b></b>c</p>", "an element between two needs no mark";
+}
+
+test "SSR writes no marks where the parser reads comments as text" {
+	for (const tag of ["title", "textarea", "style", "script"]) {
+		const html = renderToString(el(tag, [], [], both(text("a"), both(dynText((): string => ""), dynText((): string => "b")))));
+		assert html === "<" + tag + ">ab</" + tag + ">", html;
+	}
 }

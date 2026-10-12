@@ -11,18 +11,18 @@ import { accessor } from "../../src/core/signal";
 test "reactive element renders and updates on signal change" {
 	const [name, setName] = createSignal("world");
 	const node = element(<p>Hi {name()}</p>);
-	assert renderToString(node) === "<p>Hi world</p>", "initial render";
+	assert renderToString(node) === "<p>Hi <!--!-->world</p>", "initial render";
 	setName("neon");
-	assert renderToString(node) === "<p>Hi neon</p>", "render updates after set";
+	assert renderToString(node) === "<p>Hi <!--!-->neon</p>", "render updates after set";
 }
 
 test "JSX bound to a const is consumed by element()" {
 	const [name, setName] = createSignal("world");
 	const view = <p>Hi {name()}</p>;
 	const node = element(view);
-	assert renderToString(node) === "<p>Hi world</p>", "const-form initial render";
+	assert renderToString(node) === "<p>Hi <!--!-->world</p>", "const-form initial render";
 	setName("neon");
-	assert renderToString(node) === "<p>Hi neon</p>", "const-form updates after set";
+	assert renderToString(node) === "<p>Hi <!--!-->neon</p>", "const-form updates after set";
 }
 
 // JSX whitespace (Babel cleanJSXElementLiteralChild). Every other JSX test in

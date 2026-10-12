@@ -91,26 +91,26 @@ test "fragments serialize every root in order" {
 	const none = renderToString(<></>);
 	assert none === "", "empty fragment root: " + none;
 	const kid = renderToString(<div><>{"a"}{"b"}</></div>);
-	assert kid === "<div>ab</div>", "fragment child: " + kid;
+	assert kid === "<div>a<!--!-->b</div>", "fragment child: " + kid;
 }
 
 test "regions serialize their current rows" {
 	const [items, _setItems] = createSignal<number[]>([1, 2]);
 	const rows = el("ul", [], [], For<number>({ each: items, children: (item, i) => <li>{"" + item}</li> }));
-	assert renderToString(rows) === "<ul><li>1</li><li>2</li></ul>", "For: " + renderToString(rows);
+	assert renderToString(rows) === "<ul><li>1</li><li>2</li><!----></ul>", "For: " + renderToString(rows);
 
 	const indexed = el("ul", [], [], Index<number>({ each: items, children: (item, i) => <li>{item().toString()}</li> }));
-	assert renderToString(indexed) === "<ul><li>1</li><li>2</li></ul>", "Index: " + renderToString(indexed);
+	assert renderToString(indexed) === "<ul><li>1</li><li>2</li><!----></ul>", "Index: " + renderToString(indexed);
 
 	// A ForList region serializes through read(), the same path a diff consumer takes: SSR never
 	// sees an op, because no region is mounted when the markup is produced.
 	const l = createList<number>([1, 2]);
 	const opRows = el("ul", [], [], ForList<number>({ each: l, children: (item) => <li>{item().toString()}</li> }));
-	assert renderToString(opRows) === "<ul><li>1</li><li>2</li></ul>", "ForList: " + renderToString(opRows);
+	assert renderToString(opRows) === "<ul><li>1</li><li>2</li><!----></ul>", "ForList: " + renderToString(opRows);
 
 	const [on, _setOn] = createSignal(true);
 	const shown = el("div", [], [], Show({ when: on, children: <span>yes</span>, fallback: <b>no</b> }));
-	assert renderToString(shown) === "<div><span>yes</span></div>", "Show: " + renderToString(shown);
+	assert renderToString(shown) === "<div><span>yes</span><!----></div>", "Show: " + renderToString(shown);
 }
 
 test "an empty list serializes through its fallback" {
@@ -120,13 +120,13 @@ test "an empty list serializes through its fallback" {
 		children: (item, i) => <li>{"" + item}</li>,
 		fallback: <li>empty</li>,
 	}));
-	assert renderToString(rows) === "<ul><li>empty</li></ul>", "fallback: " + renderToString(rows);
+	assert renderToString(rows) === "<ul><li>empty</li><!----></ul>", "fallback: " + renderToString(rows);
 }
 
 test "a region at the root of the render renders too" {
 	const [items, _setItems] = createSignal<number[]>([1, 2, 3]);
 	const rows = For<number>({ each: items, children: (item, i) => <i>{"" + item}</i> });
-	assert renderToString(rows) === "<i>1</i><i>2</i><i>3</i>", "root region: " + renderToString(rows);
+	assert renderToString(rows) === "<i>1</i><i>2</i><i>3</i><!---->", "root region: " + renderToString(rows);
 }
 
 test "the shared SSR host carries nothing over between renders" {
@@ -137,7 +137,7 @@ test "the shared SSR host carries nothing over between renders" {
 	assert first === second, "same tree twice: first=" + first + " second=" + second;
 	setItems([1, 2]);
 	const third = renderToString(rows);
-	assert third === "<ul><li>1</li><li>2</li></ul>", "a later render sees the current signal: " + third;
+	assert third === "<ul><li>1</li><li>2</li><!----></ul>", "a later render sees the current signal: " + third;
 	const plain = renderToString(<div>x</div>);
 	assert plain === "<div>x</div>", "an unrelated render is not polluted: " + plain;
 }

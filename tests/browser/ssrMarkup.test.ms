@@ -4,6 +4,7 @@ import { HostNode, NeonNode } from "../../src/render/hostTypes";
 import { View, Text, Pressable, TextInput } from "../../src/components/primitives";
 import { collectCss, resetCss } from "../../src/render/sheet";
 import { createStyles, styleOf } from "../../src/macros/ui/style";
+import { createSignal, Accessor } from "../../src/core/signal";
 
 when (js) {
 	import { domHost } from "../../src/platform/browser/dom";
@@ -39,6 +40,35 @@ when (js) {
 		try {
 			assert normalizedHtml(server) === normalizedHtml(mount.innerHTML),
 				server + " vs " + mount.innerHTML;
+		} finally { dispose(); mount.remove(); }
+	}
+
+	extern function parsedNodes(html: cstring): string from
+		"(s => { const r=document.createElement('div');r.innerHTML=s;const f=n=>n.nodeType===1?[n.localName,Array.from(n.childNodes,f).filter(x=>x!==undefined)]:n.nodeType===3?n.data:n.data===''?'':n.data==='!'?undefined:'comment '+n.data;return JSON.stringify(Array.from(r.childNodes,f).filter(x=>x!==undefined));})(#)";
+	extern function liveNodes(mount: MarkupElement): string from
+		"(r => { const f=n=>n.nodeType===1?[n.localName,Array.from(n.childNodes,f)]:n.nodeType===3?n.data:'comment '+n.data;return JSON.stringify(Array.from(r.childNodes,f));})(#)";
+
+	test "server text marks give a parsed page the node list the DOM host builds" {
+		const [on, _on] = createSignal(false);
+		const [open, _open] = createSignal(true);
+		const [blank, _blank] = createSignal("");
+		const [count, _count] = createSignal(3);
+		const [rows, _rows] = createSignal<string[]>(["a", "b"]);
+		const app: NeonNode = <View>
+			<Text>count: {count().toString()} items</Text>
+			<Text>{blank()}</Text>
+			<Show when={on()}><Text>hidden</Text></Show>
+			<Show when={open()}><Text>shown</Text></Show>
+			<For each={rows()}>{(row: string, i: Accessor<number>): NeonNode => <Text>{row}</Text>}</For>
+			<Text>tail</Text>
+		</View>;
+		const server = renderToString(app);
+		assert server.indexOf("<!---->") >= 0 && server.indexOf("<!--!-->") >= 0, server;
+		const mount = document.createElement("div");
+		document.body.appendChild(mount);
+		const dispose = render(app, domHost(), mount as unknown as HostNode);
+		try {
+			assert parsedNodes(server) === liveNodes(mount), parsedNodes(server) + " vs " + liveNodes(mount);
 		} finally { dispose(); mount.remove(); }
 	}
 }

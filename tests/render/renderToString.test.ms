@@ -19,7 +19,7 @@ test "renderToString serializes a static tree" {
 test "renderToString renders the rows of a region" {
 	const rows: Row[] = [makeRow(<li>a</li>), makeRow(<li>b</li>)];
 	const r = regionNode((h) => () => rows);
-	assert renderToString(<ul>{r}</ul>) === "<ul><li>a</li><li>b</li></ul>", renderToString(<ul>{r}</ul>);
+	assert renderToString(<ul>{r}</ul>) === "<ul><li>a</li><li>b</li><!----></ul>", renderToString(<ul>{r}</ul>);
 }
 
 test "renderToString leaves a null attr out" {

@@ -48,6 +48,13 @@ function voidTag(tag: string): boolean {
 	};
 }
 
+function rawTextTag(tag: string): boolean {
+	return match (tag.toLowerCase()) {
+		"script" | "style" | "textarea" | "title" => true,
+		_ => false,
+	};
+}
+
 function serializeNode(n: MockNode): string {
 	if (n.tag === "") { return escapeText(n.text); }
 	const tag = htmlTagFor(n.tag);
@@ -73,12 +80,24 @@ function serializeNode(n: MockNode): string {
 		}
 		return open + ">";
 	}
-	return open + ">" + serializeChildren(n) + "</" + tag + ">";
+	return open + ">" + serializeChildren(n, !rawTextTag(tag)) + "</" + tag + ">";
 }
 
-export function serializeChildren(n: MockNode): string {
+const EMPTY_TEXT = "<!---->";
+const TEXT_BREAK = "<!--!-->";
+
+export function serializeChildren(n: MockNode, marked: boolean = true): string {
 	let s = "";
-	for (const k of n.children) { s = s + serializeNode(k); }
+	let afterText = false;
+	for (const k of n.children) {
+		const isText = k.tag === "";
+		if (marked && isText) {
+			if (k.text === "") { s = s + EMPTY_TEXT; afterText = false; continue; }
+			if (afterText) { s = s + TEXT_BREAK; }
+		}
+		s = s + serializeNode(k);
+		afterText = isText;
+	}
 	return s;
 }
 

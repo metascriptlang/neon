@@ -202,7 +202,7 @@ test "a fragment inside an expression keeps its own spots and its own conditions
 test "a fragment picked by a plain value mounts once" {
 	const cond: boolean = true;
 	const v: NeonNode = <div>{cond && <><p>a</p><p>b</p></>}</div>;
-	assert renderToString(v) === "<div><p>a</p><p>b</p></div>", "static condition: " + renderToString(v);
+	assert renderToString(v) === "<div><p>a</p><p>b</p><!----></div>", "static condition: " + renderToString(v);
 }
 
 test "a fragment is a fallback" {

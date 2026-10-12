@@ -40,7 +40,7 @@ test "component nests inside a lowercase tree" {
 	const [n, setN] = createSignal(2);
 	const view = element(<div><Counter count={n()} label="x" /></div>);
 	const out = renderToString(view);
-	assert out === "<div><p class=\"x\">n=2</p></div>", "got " + out;
+	assert out === "<div><p class=\"x\">n=<!--!-->2</p></div>", "got " + out;
 }
 
 interface CardProps {
