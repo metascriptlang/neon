@@ -14,7 +14,7 @@ export { createList, List, ListOp, ListQueue } from "./core/list";
 export { Dispose } from "./core/types";
 
 export { Host, HostNode, NeonNode } from "./render/hostTypes";
-export { render } from "./render/host";
+export { render, hydrate } from "./render/host";
 export { renderToString, renderToMarkup, SsrMarkup } from "./render/ssr";
 export { createComponent } from "./render/component";
 export { Context, ProviderProps, createContext, useContext } from "./render/context";
