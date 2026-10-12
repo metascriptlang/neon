@@ -3,7 +3,8 @@ import { Row, makeRow, mountAt, removeRow, place, needsStartMarker } from "./rec
 import { Computation } from "../core/types";
 import { createComputation, cleanNode } from "../core/runtime";
 import { runWithOwner } from "../core/owner";
-import { untrack } from "../core/signal";
+import { Accessor, Setter, untrack } from "../core/signal";
+import { refreshTypeKey } from "../macros/refresh";
 import { onCleanup } from "../core/cleanup";
 
 export type SigFn = () => string;
@@ -34,9 +35,29 @@ class TemplateSlot<E> {
 	}
 }
 
+class StateCell<T> {
+	get: Accessor<T>;
+	value: T;
+
+	constructor(get: Accessor<T>, value: T) {
+		this.get = get;
+		this.value = value;
+	}
+}
+
+interface SavedState {
+	key: string;
+	type: string;
+	cell: unknown;
+}
+
 interface Instance {
 	render: () => NeonNode;
 	sigFn: SigFn;
+	type: string;
+	saved: SavedState[];
+	live: SavedState[];
+	captures: (() => void)[];
 	key: string;
 	keyFile: string;
 	host: Host;
@@ -53,7 +74,10 @@ const compSlots = new Map<string, unknown>();
 const tmplSlots = new Map<string, unknown>();
 const compInstances = new Map<string, Instance[]>();
 const tmplInstances = new Map<string, Instance[]>();
+const slotTypes = new Map<string, string>();
+const pending = new Map<string, SavedState[][]>();
 const moduleSigs = new Map<string, string>();
+let mounting: Instance | null = null;
 const importers = new Map<string, string[]>();
 
 function keyOf(moduleFile: string, id: string): string {
@@ -81,7 +105,12 @@ function untrackInstance(instances: Map<string, Instance[]>, inst: Instance): vo
 function mountInstance(inst: Instance): void {
 	runWithOwner(inst.owner, (): number => untrack((): number => {
 		const row = makeRow((host: Host, parent: HostNode, before: HostNode | null): void => {
-			inst.render()(host, parent, before);
+			const outer = mounting;
+			mounting = inst;
+			const node = inst.render();
+			mounting = outer;
+			inst.saved = [];
+			node(host, parent, before);
 		});
 		inst.row = row;
 		mountAt(inst.host, inst.parent, inst.anchor, row);
@@ -89,11 +118,79 @@ function mountInstance(inst: Instance): void {
 	}));
 }
 
+function capture(inst: Instance): void {
+	for (const read of inst.captures) { read(); }
+	inst.saved = inst.live;
+	inst.live = [];
+	inst.captures = [];
+}
+
+function within(owner: Computation, ancestor: Computation): boolean {
+	let up = owner.owner;
+	while (up !== null) {
+		if (up === ancestor) { return true; }
+		up = up.owner;
+	}
+	return false;
+}
+
+function documentOrder(inst: Instance, below: Instance[]): Instance[] {
+	if (below.length < 2) { return below; }
+	const ordered: Instance[] = [];
+	const open: HostNode[] = [];
+	let node = inst.host.firstChild(inst.parent);
+	while (node !== null) {
+		for (const other of below) {
+			if (other.anchor === node) { ordered.push(other); }
+		}
+		const child = inst.host.firstChild(node);
+		if (child !== null) {
+			open.push(node);
+			node = child;
+			continue;
+		}
+		let next = inst.host.nextSibling(node);
+		while (next === null && open.length > 0) { next = inst.host.nextSibling(open.pop() as HostNode); }
+		node = next;
+	}
+	for (const other of below) {
+		if (ordered.indexOf(other) < 0) { ordered.push(other); }
+	}
+	return ordered;
+}
+
+function stash(inst: Instance): void {
+	capture(inst);
+	const below: Instance[] = [];
+	for (const list of compInstances.values()) {
+		for (const other of list) {
+			if (other !== inst && within(other.owner, inst.owner)) { below.push(other); }
+		}
+	}
+	for (const other of documentOrder(inst, below)) {
+		capture(other);
+		let queue = pending.get(other.key);
+		if (queue === undefined) {
+			queue = [];
+			pending.set(other.key, queue);
+		}
+		queue.push(other.saved);
+	}
+}
+
+function stashed(key: string): SavedState[] {
+	const queue = pending.get(key);
+	if (queue === undefined || queue.length === 0) { return []; }
+	return queue.shift() as SavedState[];
+}
+
 function rebuild(instances: Map<string, Instance[]>, inst: Instance, sig: string): void {
+	stash(inst);
 	removeRow(inst.host, inst.parent, inst.row);
 	cleanNode(inst.owner, false);
 	track(instances, inst);
 	mountInstance(inst);
+	pending.clear();
 	inst.sig = sig;
 }
 
@@ -101,6 +198,7 @@ function instanceNode(
 	instances: Map<string, Instance[]>,
 	moduleFile: string,
 	key: string,
+	type: string,
 	render: () => NeonNode,
 	sigFn: SigFn,
 ): NeonNode {
@@ -111,6 +209,10 @@ function instanceNode(
 		const inst: Instance = {
 			render: render,
 			sigFn: sigFn,
+			type: type,
+			saved: stashed(key),
+			live: [],
+			captures: [],
 			key: key,
 			keyFile: moduleFile,
 			host: host,
@@ -150,9 +252,30 @@ function patch(instances: Map<string, Instance[]>, found: Instance[], forced: st
 	return [kept, changed];
 }
 
-function patchModule(moduleFile: string, forced: string[]): RefreshSummary {
+function enclosing(owner: Computation): Instance | null {
+	let up = owner.owner;
+	while (up !== null) {
+		for (const list of compInstances.values()) {
+			for (const inst of list) {
+				if (inst.owner === up) { return inst; }
+			}
+		}
+		up = up.owner;
+	}
+	return null;
+}
+
+function patchModule(moduleFile: string, changed: string[]): RefreshSummary {
 	const comps = collect(compInstances, moduleFile);
 	const tmpls = collect(tmplInstances, moduleFile);
+	const forced: string[] = [];
+	for (const key of changed) { forced.push(key); }
+	for (const region of tmpls) {
+		const type = slotTypes.get(region.key);
+		if (type === undefined || type === region.type) { continue; }
+		const component = enclosing(region.owner);
+		if (component !== null && forced.indexOf(component.key) < 0) { forced.push(component.key); }
+	}
 	const boundaries = patch(compInstances, comps, forced);
 	const regions = patch(tmplInstances, tmpls, forced);
 	return { kept: boundaries[0] + regions[0], rebuilt: regions[1], remounted: boundaries[1] };
@@ -160,21 +283,29 @@ function patchModule(moduleFile: string, forced: string[]): RefreshSummary {
 
 function componentSlot<P>(
 	key: string,
+	type: string,
 	body: (props: P) => NeonNode,
 	sigFn: SigFn,
 ): ComponentSlot<P> {
-	const found = compSlots.get(key);
+	const typed = key + "@" + type;
+	const found = compSlots.get(typed);
 	if (found !== undefined) { return found as ComponentSlot<P>; }
 	const slot = new ComponentSlot<P>(body, sigFn);
-	compSlots.set(key, slot);
+	compSlots.set(typed, slot);
 	return slot;
 }
 
-function templateSlot<E>(key: string, fn: (env: E) => NeonNode, sigFn: SigFn): TemplateSlot<E> {
-	const found = tmplSlots.get(key);
+function templateSlot<E>(
+	key: string,
+	type: string,
+	fn: (env: E) => NeonNode,
+	sigFn: SigFn,
+): TemplateSlot<E> {
+	const typed = key + "@" + type;
+	const found = tmplSlots.get(typed);
 	if (found !== undefined) { return found as TemplateSlot<E>; }
 	const slot = new TemplateSlot<E>(fn, sigFn);
-	tmplSlots.set(key, slot);
+	tmplSlots.set(typed, slot);
 	return slot;
 }
 
@@ -184,7 +315,10 @@ export function refreshComponent<P>(
 	body: (props: P) => NeonNode,
 	sigFn: SigFn,
 ): void {
-	const slot = componentSlot<P>(keyOf(moduleFile, id), body, sigFn);
+	const key = keyOf(moduleFile, id);
+	const type = refreshTypeKey(body);
+	slotTypes.set(key, type);
+	const slot = componentSlot<P>(key, type, body, sigFn);
 	slot.body = body;
 	slot.sigFn = sigFn;
 }
@@ -206,9 +340,10 @@ export function refreshBoundary<P>(
 	props: P,
 ): NeonNode {
 	const key = keyOf(moduleFile, id);
-	const slot = componentSlot<P>(key, body, sigFn);
+	const type = refreshTypeKey(body);
+	const slot = componentSlot<P>(key, type, body, sigFn);
 	const render = (): NeonNode => slot.body(props);
-	return instanceNode(compInstances, moduleFile, key, render, (): string => slot.sigFn());
+	return instanceNode(compInstances, moduleFile, key, type, render, (): string => slot.sigFn());
 }
 
 export function refreshBoundary0(
@@ -233,7 +368,10 @@ export function refreshTemplate<P, E>(
 	sigFn: SigFn,
 	setup: (props: P) => E,
 ): void {
-	const slot = templateSlot<E>(keyOf(moduleFile, id), fn, sigFn);
+	const key = keyOf(moduleFile, id);
+	const type = refreshTypeKey(fn);
+	slotTypes.set(key, type);
+	const slot = templateSlot<E>(key, type, fn, sigFn);
 	slot.fn = fn;
 	slot.sigFn = sigFn;
 }
@@ -245,7 +383,10 @@ export function refreshTemplate0<E>(
 	sigFn: SigFn,
 	setup: () => E,
 ): void {
-	const slot = templateSlot<E>(keyOf(moduleFile, id), fn, sigFn);
+	const key = keyOf(moduleFile, id);
+	const type = refreshTypeKey(fn);
+	slotTypes.set(key, type);
+	const slot = templateSlot<E>(key, type, fn, sigFn);
 	slot.fn = fn;
 	slot.sigFn = sigFn;
 }
@@ -258,9 +399,25 @@ export function refreshRegion<E>(
 	env: E,
 ): NeonNode {
 	const key = keyOf(moduleFile, id);
-	const slot = templateSlot<E>(key, fn, sigFn);
+	const type = refreshTypeKey(fn);
+	const slot = templateSlot<E>(key, type, fn, sigFn);
 	const render = (): NeonNode => slot.fn(env);
-	return instanceNode(tmplInstances, moduleFile, key, render, (): string => slot.sigFn());
+	return instanceNode(tmplInstances, moduleFile, key, type, render, (): string => slot.sigFn());
+}
+
+export function refreshState<T>(key: string, get: Accessor<T>, set: Setter<T>): void {
+	const inst = mounting;
+	if (inst === null) { return; }
+	const type = refreshTypeKey(get);
+	for (const kept of inst.saved) {
+		if (kept.key === key && kept.type === type) {
+			set((kept.cell as StateCell<T>).value);
+			break;
+		}
+	}
+	const cell = new StateCell<T>(get, untrack((): T => get()));
+	inst.live.push({ key: key, type: type, cell: cell });
+	inst.captures.push((): void => { cell.value = untrack((): T => cell.get()); });
 }
 
 export function refreshModule(moduleFile: string): RefreshSummary {
@@ -313,6 +470,8 @@ export function refreshReset(): void {
 	tmplSlots.clear();
 	compInstances.clear();
 	tmplInstances.clear();
+	slotTypes.clear();
+	pending.clear();
 	moduleSigs.clear();
 	importers.clear();
 }

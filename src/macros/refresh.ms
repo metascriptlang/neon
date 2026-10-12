@@ -71,6 +71,28 @@ function importKey(file: string, source: string): string {
 	return moduleKey(path.slice(0, path.lastIndexOf("/")) + "/" + source);
 }
 
+export macro refreshTypeKey(value: Node): Node {
+	let key = "";
+	const type = value.nodeType;
+	if (type !== null) {
+		let stack: Node[] = [type as Node];
+		while (stack.length > 0) {
+			const m = stack.pop() as Node;
+			key = key + "|" + m.kind.toString();
+			if (m.kind == NodeKind.Identifier) {
+				key = key + ":" + m.name;
+			} else if (m.kind == NodeKind.TypeObject) {
+				key = key + ":" + m.typExprTypeName + ":" + m.typExprFieldNames.join(",");
+			} else if (m.kind == NodeKind.TypeArray) {
+				key = key + ":" + m.typExprSize.toString();
+			}
+			const k = childCount(m);
+			for (let i = k - 1; i >= 0; i -= 1) stack.push(childAt(m, i));
+		}
+	}
+	return { kind: NodeKind.StringLiteral, line: value.line, column: value.column, value: key };
+}
+
 export macro refreshPass(mod: Node): Node {
 	if (define("refresh") == "" && define("hcr") == "") return mod;
 	const file = expansionFile();
@@ -89,6 +111,8 @@ export macro refreshPass(mod: Node): Node {
 	let tmplJob: int32[] = [];
 	let declared: string[][] = [];
 	let mutable: string[][] = [];
+	let stateAt: int32[][] = [];
+	let stateJob: int32[][] = [];
 
 	for (let i = 0; i < stmts.length; i += 1) {
 		const s = stmts[i];
@@ -157,6 +181,27 @@ export macro refreshPass(mod: Node): Node {
 				}
 			}
 		}
+		let signalAt: int32[] = [];
+		let signalJob: int32[] = [];
+		for (let b = 0; b < setup.length; b += 1) {
+			const st = setup[b];
+			if (st.kind != NodeKind.DestructuringDecl) continue;
+			const pattern = st.destrPattern;
+			const made = st.destrInit;
+			if (pattern.kind != NodeKind.ArrayPattern || made.kind != NodeKind.CallExpr) continue;
+			if (pattern.hasRestElement || pattern.patternElements.length != 2) continue;
+			if (pattern.patternElements[0].kind != NodeKind.Identifier ||
+				pattern.patternElements[1].kind != NodeKind.Identifier) {
+				continue;
+			}
+			const maker = made.callee;
+			if (maker.kind != NodeKind.Identifier || maker.name != "createSignal") continue;
+			signalAt.push(b as int32);
+			signalJob.push(jobRoots.length as int32);
+			jobRoots.push([made]);
+		}
+		stateAt.push(signalAt);
+		stateJob.push(signalJob);
 		compAt.push(i as int32);
 		setupJob.push(jobRoots.length as int32);
 		jobRoots.push(setup);
@@ -339,9 +384,35 @@ export macro refreshPass(mod: Node): Node {
 			}
 		}
 
-		let bodyBlock: Node = decl.fnBody;
+		const written: Node[] = decl.fnBody.statements;
+		let original: Node[] = [];
+		for (let b = 0; b < written.length; b += 1) {
+			const st = written[b];
+			original.push(st);
+			const at = stateAt[c].indexOf(b as int32);
+			if (at < 0) continue;
+			const made = st.destrInit;
+			const pair = st.destrPattern.patternElements;
+			const get = pair[0].name;
+			original.push({ kind: NodeKind.ExprStmt, line: st.line, column: st.column, expr: {
+				kind: NodeKind.CallExpr,
+				line: st.line,
+				column: st.column,
+				callee: { kind: NodeKind.Identifier, line: st.line, column: st.column, name: "refreshState" },
+				arguments: [
+					{
+						kind: NodeKind.StringLiteral,
+						line: st.line,
+						column: st.column,
+						value: get + "|" + made.typeArg + jobSig[stateJob[c][at]],
+					},
+					{ kind: NodeKind.Identifier, line: st.line, column: st.column, name: get },
+					{ kind: NodeKind.Identifier, line: st.line, column: st.column, name: pair[1].name },
+				],
+			} });
+		}
+		let bodyBlock: Node = { kind: NodeKind.BlockStmt, line: L, column: C, statements: original };
 		if (extract) {
-			const original: Node[] = decl.fnBody.statements;
 			let reads: Node[] = [];
 			let fields: Node[] = [];
 			let keys: string[] = [];

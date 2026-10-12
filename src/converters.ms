@@ -39,6 +39,7 @@ export {
 	refreshModule,
 	refreshModuleEval,
 	refreshRegion,
+	refreshState,
 	refreshTemplate,
 	refreshTemplate0,
 } from "./render/refresh";
