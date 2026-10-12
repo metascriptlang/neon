@@ -2,30 +2,35 @@ import { Host, HostNode } from "./hostTypes";
 import { MockNode, mockNode, mockHost, render } from "./host";
 import { NeonNode } from "./hostTypes";
 import { htmlTagFor } from "./node";
-import { registerCss } from "./sheet";
+import { collectCss, registerCss } from "./sheet";
 import { styleToCss } from "./css";
 import { Style } from "./style";
 import { webBaseClass, RN_WEB_BASE_CSS, domAttrName, domAttrValue } from "./web";
 
-function ssrHost(): Host {
+export struct SsrMarkup {
+	html: string;
+	css: string;
+}
+
+function ssrHost(register: (id: string, css: string) => void): Host {
 	const h = mockHost();
 	const createElement = h.createElement;
 	h.createElement = (tag: string): HostNode => {
 		const node = createElement(tag);
 		const base = webBaseClass(tag);
-		if (base !== "") { registerCss("neon-base", RN_WEB_BASE_CSS); }
+		if (base !== "") { register("neon-base", RN_WEB_BASE_CSS); }
 		(node as unknown as MockNode).className = base;
 		return node;
 	};
 	h.setStyleClass = (node: HostNode, id: string, css: string): void => {
-		registerCss(id, css);
+		register(id, css);
 		const element = node as unknown as MockNode;
 		element.className = element.className === "" ? id : element.className + " " + id;
 	};
 	return h;
 }
 
-const SSR_HOST: Host = ssrHost();
+const SSR_HOST: Host = ssrHost(registerCss);
 
 function escapeText(value: string): string {
 	return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
@@ -81,5 +86,19 @@ export function renderToString(n: NeonNode): string {
 	const box = mockNode("ssr-root");
 	const dispose = render(n, SSR_HOST, box as unknown as HostNode);
 	try { return serializeChildren(box); }
+	finally { dispose(); }
+}
+
+export function renderToMarkup(n: NeonNode): SsrMarkup {
+	const seen = new Map<string, boolean>();
+	let css = collectCss();
+	const host = ssrHost((id: string, rule: string): void => {
+		if (seen.has(id)) { return; }
+		seen.set(id, true);
+		css = css + rule;
+	});
+	const box = mockNode("ssr-root");
+	const dispose = render(n, host, box as unknown as HostNode);
+	try { return { html: serializeChildren(box), css: css }; }
 	finally { dispose(); }
 }
