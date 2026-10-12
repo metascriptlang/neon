@@ -187,6 +187,18 @@ function stashed(key: string): SavedState[] {
 	return queue.shift() as SavedState[];
 }
 
+function failure(message: string): NeonNode {
+	return (host: Host, parent: HostNode, before: HostNode | null): void => {
+		const box = host.createElement("view");
+		host.setStyle(box, { backgroundColor: "#900000", padding: 8 });
+		const label = host.createElement("text");
+		host.setStyle(label, { color: "#ffff00" });
+		host.append(label, host.createText(message));
+		host.append(box, label);
+		place(host, parent, box, before);
+	};
+}
+
 function rebuild(instances: Map<string, Instance[]>, inst: Instance, sig: string): void {
 	stash(inst);
 	removeRow(inst.host, inst.parent, inst.row);
@@ -204,7 +216,9 @@ function rebuild(instances: Map<string, Instance[]>, inst: Instance, sig: string
 		removeRow(inst.host, inst.parent, inst.row);
 		cleanNode(inst.owner, false);
 		track(instances, inst);
-		inst.row = makeRow((host: Host, parent: HostNode, before: HostNode | null): void => {});
+		const name = inst.key.substring(inst.key.lastIndexOf("/") + 1).split("|")[0];
+		inst.row = makeRow(failure(name + " did not mount: " + e.message));
+		mountAt(inst.host, inst.parent, inst.anchor, inst.row);
 		inst.saved = kept;
 		inst.live = [];
 		inst.captures = [];
