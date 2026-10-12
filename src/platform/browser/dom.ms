@@ -7,7 +7,7 @@ import { registerCss, collectCss, onCssChange } from "../../render/sheet";
 import { NeonEvent, neonEvent, eventType } from "../../render/event";
 import { onCleanup } from "../../core/cleanup";
 import { htmlTagFor } from "../../render/node";
-import { VIEW_CLASS, TEXT_CLASS, RN_WEB_BASE_CSS, domAttrName, domAttrValue } from "../../render/web";
+import { VIEW_CLASS, TEXT_CLASS, RN_WEB_BASE_CSS, SERVED_HEAD, domAttrName, domAttrValue } from "../../render/web";
 import { publishWindow, publishColorScheme } from "../../render/environment";
 import { publishSafeArea } from "../../render/environment";
 import { CssStyle, applyCss, applyCssProp } from "./domCss";
@@ -794,6 +794,19 @@ function watchTouches(): void {
 	window.addEventListener("pointercancel", (de: DomEvent): void => { endTouches("touchcancel", de); });
 }
 
+let servedHeadDropped = false;
+
+function dropServedHead(): void {
+	if (servedHeadDropped) { return; }
+	servedHeadDropped = true;
+	let node = document.head.firstChild as Node | null;
+	while (node !== null) {
+		const cur = node as Node;
+		node = cur.nextSibling as Node | null;
+		if (cur.nodeType === 1 && cur.getAttribute(SERVED_HEAD) !== null) { document.head.removeChild(cur); }
+	}
+}
+
 function createsMoreThanAnElement(tag: string): boolean {
 	return tag === "scrollview" || tag === "multilinetextinput" || tag === "modal" || isMediaTag(tag) || tag === "svg"
 		|| tag === "slider" || tag === "picker" || tag === "datetimepicker"
@@ -1259,6 +1272,10 @@ export function domHost(): Host {
 		},
 		voidArea: null,
 		overlayRoot: (node: HostNode): HostNode => document.body as unknown as HostNode,
+		headRoot: (node: HostNode): HostNode => {
+			dropServedHead();
+			return document.head as unknown as HostNode;
+		},
 		claim: (parent: HostNode, after: HostNode | null, tag: string): HostNode | null => {
 			const el = parent as unknown as Node;
 			let next = (after === null ? el.firstChild : (after as unknown as Node).nextSibling) as Node | null;
