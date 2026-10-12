@@ -146,6 +146,13 @@ and the invariants that outlived them were moved to the head of the test that pi
   `~/metascript/.inbox/compiler/2026-10-11-destructured-local-in-attribute-arrow-read-by-nested-macro.md`.
   Parked at those two files.
 
+- **PARKED 2026-10-13 — a JS bundle exposes its entry only through `globalThis`.** `msc build --target=js`
+  drops the entry module's `export`s, so `examples/site/server.ms` and `tests/edge/pages.ms` hand
+  their request function to the Worker with an extern that assigns a global (`serve`), and
+  `tests/edge/siteWorker.js` / `worker.js` read it after a side-effect import. Card:
+  `~/metascript/.inbox/compiler/2026-10-13-js-build-drops-the-entry-modules-exports.md`. When it
+  closes, the entries `export` their function and the workers import it by name.
+
 - **PARKED 2026-10-13 — eight native cells stop at `src/navigation/core.ms:995`.** `bash tests/run.sh`
   on `wt/rn-navigation-prod` rebased onto main `9b79fec`, msc v0.3.2 binary `ea7ae4d17`: `msc test`
   on `tests/api/apis.test.ms` and `tests/navigation/{example,linking,nested,options,routingConsumers,stack,transition}.test.ms`
