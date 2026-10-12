@@ -44,6 +44,16 @@ test "the innermost Head wins a title and a named meta, the rest of an outer Hea
 		"<link rel=\"canonical\" href=\"/docs?a=1&amp;b=2\" data-neon-head=\"\">", page.head;
 }
 
+test "metas of one name that differ in media both stay" {
+	const page = renderToMarkup(<View>
+		<Head>
+			<meta name="theme-color" media="(prefers-color-scheme: light)" content="#fff" />
+			<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#000" />
+		</Head>
+	</View>);
+	assert page.head.indexOf("content=\"#fff\"") >= 0 && page.head.indexOf("content=\"#000\"") >= 0, page.head;
+}
+
 test "two requests do not share a head" {
 	const [a, _a] = createSignal("A");
 	const [b, _b] = createSignal("B");

@@ -207,12 +207,16 @@ export function serializeChildren(n: MockNode, marked: boolean = true): string {
 function headKey(n: MockNode): string {
 	if (n.tag === "title") { return "title"; }
 	if (n.tag !== "meta") { return ""; }
+	let named = "";
+	let media = "";
 	for (const a of n.attrs) {
-		if (a.value !== null && (a.name === "name" || a.name === "property" || a.name === "http-equiv" || a.name === "charset")) {
-			return "meta " + (a.name === "charset" ? "charset" : a.value as string);
+		if (a.value === null) { continue; }
+		if (a.name === "media") { media = a.value as string; }
+		else if (named === "" && (a.name === "name" || a.name === "property" || a.name === "http-equiv" || a.name === "charset")) {
+			named = a.name === "charset" ? "charset" : a.value as string;
 		}
 	}
-	return "";
+	return named === "" ? "" : "meta " + named + " " + media;
 }
 
 function serializeHead(head: MockNode): string {
