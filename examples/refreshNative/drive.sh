@@ -22,14 +22,11 @@ PID=$!
 
 count() { grep -c -- "$1" "$LOG"; }
 alive() { kill -0 $PID 2>/dev/null; }
-# waitmore <pattern> <seconds> [alt-pattern]: wait until <pattern> (or alt) matches more lines than now
-waitmore() {
-	local p=$1 t=$2 a=${3:-}
-	local n0; n0=$(count "$p")
-	local m0=0; [ -n "$a" ] && m0=$(count "$a")
-	for i in $(seq 1 $((t * 4))); do
-		[ "$(count "$p")" -gt "$n0" ] && return 0
-		[ -n "$a" ] && [ "$(count "$a")" -gt "$m0" ] && return 0
+baseline() { PAT=$1; ALT=${2:-}; N0=$(count "$PAT"); M0=0; [ -n "$ALT" ] && M0=$(count "$ALT"); }
+waitPastBaseline() {
+	for i in $(seq 1 $(($1 * 4))); do
+		[ "$(count "$PAT")" -gt "$N0" ] && return 0
+		[ -n "$ALT" ] && [ "$(count "$ALT")" -gt "$M0" ] && return 0
 		alive || return 1
 		sleep 0.25
 	done
@@ -39,8 +36,9 @@ step() { echo "=== DRIVE $1"; }
 swap() { sleep 1; cp "$SRC/edits/$1" "$STAGE" && mv -f "$STAGE" "$WORK/$2"; }
 edit() { # edit <label> <edit file> <target> [alt-pattern]
 	step "$1: $2 -> $3"
+	baseline "RN settled" "${4:-}"
 	swap "$2" "$3"
-	waitmore "RN settled" 120 "${4:-}" || step "$1: TIMEOUT"
+	waitPastBaseline 120 || step "$1: TIMEOUT"
 }
 
 for i in $(seq 1 2400); do grep -q "RN ready" "$LOG" && break; alive || break; sleep 0.25; done
@@ -53,7 +51,7 @@ main)
 	edit "s3 template b" counter.s3b.ms counter.ms
 	edit "s4 dependency" words.s4.ms words.ms
 	edit "s5 compile error" counter.s5bad.ms counter.ms "error"
-	sleep 3; step "s5 poke while broken"; touch "$POKE"; waitmore "RN poke done" 30 || step "s5 poke TIMEOUT"
+	sleep 3; step "s5 poke while broken"; baseline "RN poke done"; touch "$POKE"; waitPastBaseline 30 || step "s5 poke TIMEOUT"
 	edit "s5 fix" counter.s5fix.ms counter.ms
 	edit "s2 setup" counter.s2setup.ms counter.ms
 	;;
