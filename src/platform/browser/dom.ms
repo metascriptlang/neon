@@ -62,6 +62,8 @@ extern class Node {
 	isConnected: boolean;
 	nodeType: number;
 	tagName: string;
+	localName: string;
+	data: string;
 	className: string;
 	extern blur(): void;
 	extern focus(): void;
@@ -78,6 +80,7 @@ extern class Node {
 	extern moveBefore(node: Node, ref: Node | null): void;
 	isConnected: boolean;
 	extern removeChild(child: Node): void;
+	extern replaceChild(node: Node, old: Node): void;
 	value: cstring;
 	checked: boolean;
 	selectedIndex: number;
@@ -791,6 +794,12 @@ function watchTouches(): void {
 	window.addEventListener("pointercancel", (de: DomEvent): void => { endTouches("touchcancel", de); });
 }
 
+function createsMoreThanAnElement(tag: string): boolean {
+	return tag === "scrollview" || tag === "multilinetextinput" || tag === "modal" || isMediaTag(tag) || tag === "svg"
+		|| tag === "slider" || tag === "picker" || tag === "datetimepicker"
+		|| tag === "switch" || tag === "activityindicator" || tag === "image";
+}
+
 export function domHost(): Host {
 	// The registry may already hold rules from module init — a theme's :root
 	// among them — and from here on every change mounts itself, including a
@@ -968,13 +977,17 @@ export function domHost(): Host {
 			if (state.taps === "never") { e.preventDefault(); e.stopPropagation(); }
 		}, true);
 	}
+	const wireBaseClass = (tag: string): string => {
+		const base = tag === "view" || tag === "pressable" || tag === "scrollview" ? VIEW_CLASS : tag === "text" ? TEXT_CLASS : "";
+		if (base !== "" && !baseRule) {
+			registerCss("neon-base", RN_WEB_BASE_CSS);
+			baseRule = true;
+		}
+		return base;
+	};
 	return {
 		createElement: (tag: string): HostNode => {
-			const base = tag === "view" || tag === "pressable" || tag === "scrollview" ? VIEW_CLASS : tag === "text" ? TEXT_CLASS : "";
-			if (base !== "" && !baseRule) {
-				registerCss("neon-base", RN_WEB_BASE_CSS);
-				baseRule = true;
-			}
+			const base = wireBaseClass(tag);
 			if (tag === "scrollview") {
 				if (!scrollRule) {
 					registerCss(SCROLL_CLASS, `.${SCROLL_CLASS}{overflow-x:hidden;overflow-y:auto}.neon-hide-horizontal::-webkit-scrollbar:horizontal{height:0}.neon-hide-vertical::-webkit-scrollbar:vertical{width:0}@keyframes neon-refresh-spin{to{transform:rotate(360deg)}}.neon-refresh-indicator[aria-busy=true]{animation:neon-refresh-spin 1s linear infinite}`);
@@ -1246,6 +1259,28 @@ export function domHost(): Host {
 		},
 		voidArea: null,
 		overlayRoot: (node: HostNode): HostNode => document.body as unknown as HostNode,
+		claim: (parent: HostNode, after: HostNode | null, tag: string): HostNode | null => {
+			const el = parent as unknown as Node;
+			let next = (after === null ? el.firstChild : (after as unknown as Node).nextSibling) as Node | null;
+			while (next !== null && (next as Node).nodeType === 8 && (next as Node).data === "!") {
+				const separator = next as Node;
+				next = separator.nextSibling as Node | null;
+				el.removeChild(separator);
+			}
+			if (next === null) { return null; }
+			const found = next as Node;
+			if (tag === "") {
+				if (found.nodeType === 3) { return found as unknown as HostNode; }
+				if (found.nodeType !== 8 || found.data !== "") { return null; }
+				const blank = document.createTextNode("");
+				el.replaceChild(blank, found);
+				return blank as unknown as HostNode;
+			}
+			if (createsMoreThanAnElement(tag)) { throw "hydrate: the DOM host cannot take over a <" + tag + "> yet"; }
+			if (found.nodeType !== 1 || found.localName !== htmlTagFor(tag)) { return null; }
+			wireBaseClass(tag);
+			return found as unknown as HostNode;
+		},
 		focus: (node: HostNode, focused: boolean): void => {
 			const el = node as unknown as Node;
 			if (focused) { el.focus(); } else { el.blur(); }
