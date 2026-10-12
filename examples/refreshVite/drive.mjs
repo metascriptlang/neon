@@ -207,6 +207,25 @@ await clicks(1);
 s = await snap();
 check("S5", "click after recovery adds 2", countOf(s.out) === n + 2, `out="${s.out}"`);
 
+n = countOf(s.out);
+const throwLine = `
+	if (count() >= 0) { throw new Error("setup failed"); }`;
+const failureText = () => page.evaluate(() => [...document.querySelectorAll("span")].map((x) => x.textContent).find((t) => t.includes("did not mount")) ?? null);
+mark = dev.lines.length;
+edit("counter.ms", "const [count, setCount] = createSignal(0);", "const [count, setCount] = createSignal(0);" + throwLine);
+const threw = await page.waitForFunction(() => document.body.textContent.includes("did not mount: setup failed"), null, { timeout: 60000 }).then(() => true, () => false);
+s = await snap();
+check("S7", "setup that throws shows the error where Counter was, sibling kept, no reload", threw && s.counters === 0 && kept(s),
+	`shown="${await failureText()}" counters=${s.counters} ${keptText(s)} vite: ${viteSince(mark)}`);
+mark = dev.lines.length;
+files["counter.ms"] = files["counter.ms"].replace(throwLine, "");
+edit("counter.ms", ">Counter v7<", ">Counter v8<");
+shown = await waitText("#title", "Counter v8");
+s = await snap();
+const cleared = await failureText();
+check("S7", "the fix mounts Counter again with its count, error gone", shown && countOf(s.out) === n && s.counters === 1 && cleared === null && kept(s),
+	`out="${s.out}" (was ${n}) counters=${s.counters} shown=${cleared} ${keptText(s)} vite: ${viteSince(mark)}`);
+
 const errors = consoleLines.filter((l) => /^\[(error|pageerror)\]/.test(l) && !/404/.test(l));
 check("dev", "no page errors in the console", errors.length === 0, errors.join(" ; ") || "(none)");
 await page.close();

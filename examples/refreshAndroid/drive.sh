@@ -120,6 +120,15 @@ reloaded "setup edit"
 check "setup edit keeps the count" "$(shown)" "Counter v5;count 7;press again;tap;"
 tap tap
 check "setup edit runs the new handler" "$(shown)" "Counter v5;count 9;press again;tap;"
+THROW=' if (count() >= 0) { throw new Error("setup failed"); }'
+edit counter.ms "s/createSignal(0);/createSignal(0);$THROW/"
+reloaded "setup that throws"
+showsWithin "counter.ms#Counter did not mount: setup failed;" 5
+check "a setup that throws draws the error where the component was" "$(shown)" "counter.ms#Counter did not mount: setup failed;"
+edit counter.ms "s/$THROW//"
+reloaded "fix after the throw"
+showsWithin "Counter v5;count 9;press again;tap;" 5
+check "the fix mounts again with the count" "$(shown)" "Counter v5;count 9;press again;tap;"
 check "same process through every edit" "$(adb shell pidof $PACKAGE)" "$PID"
 
 # (e) a core change: the engine answers RestartRequired and the dev loop restarts the app

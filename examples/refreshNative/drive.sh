@@ -54,6 +54,8 @@ main)
 	sleep 3; step "s5 poke while broken"; baseline "RN poke done"; touch "$POKE"; waitPastBaseline 30 || step "s5 poke TIMEOUT"
 	edit "s5 fix" counter.s5fix.ms counter.ms
 	edit "s2 setup" counter.s2setup.ms counter.ms
+	edit "s7 setup throws" counter.s7throw.ms counter.ms
+	edit "s7 fix" counter.s7fix.ms counter.ms
 	;;
 parent)
 	edit "s6 parent template" panel.s6.ms panel.ms
