@@ -4,7 +4,7 @@
 MSC=${MSC:-msc}
 cd "$(dirname "$0")"
 fail=0
-for file in boundary.ms state.ms; do
+for file in boundary.ms state.ms navigation.ms; do
 	for target in "" "--target=js"; do
 		echo "== refresh ${target:-native} $file"
 		"$MSC" test $target -d:refresh $file || fail=1
