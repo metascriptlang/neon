@@ -105,6 +105,7 @@ let mockResponder: MockNode | null = null;
 
 export function mockHost(): Host {
 	const overlay = mockNode("overlay");
+	const head = mockNode("head");
 	return {
 		createElement: (tag: string): HostNode => mockNode(tag) as unknown as HostNode,
 		createText: (s: string): HostNode => {
@@ -214,6 +215,7 @@ export function mockHost(): Host {
 			fireEvent(n, focused ? "onFocus" : "onBlur");
 		},
 		overlayRoot: (node: HostNode): HostNode => overlay as unknown as HostNode,
+		headRoot: (node: HostNode): HostNode => head as unknown as HostNode,
 		claim: (parent: HostNode, after: HostNode | null, tag: string): HostNode | null => {
 			const p = parent as unknown as MockNode;
 			const i = after === null ? 0 : childIndex(p, after as unknown as MockNode) + 1;

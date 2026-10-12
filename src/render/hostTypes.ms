@@ -52,4 +52,5 @@ export interface Host {
 	overlayRoot?: ((node: HostNode) => HostNode) | null;
 	setResponder?: ((node: HostNode | null, blockNativeResponder: boolean) => void) | null;
 	claim?: ((parent: HostNode, after: HostNode | null, tag: string) => HostNode | null) | null;
+	headRoot?: ((node: HostNode) => HostNode) | null;
 }
