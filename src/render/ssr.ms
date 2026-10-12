@@ -6,8 +6,14 @@ import { collectCss, registerCss } from "./sheet";
 import { styleToCss } from "./css";
 import { Style } from "./style";
 import {
+	LINES_CLASS,
 	SERVED_HEAD,
 	ScrollLook,
+	TEXT_CSS,
+	TEXT_RULES_ID,
+	clampedLines,
+	linesClass,
+	linesRule,
 	scrollLook,
 	scrollLookCss,
 	webBaseClass,
@@ -27,6 +33,10 @@ export struct SsrMarkup {
 	head: string;
 }
 
+function addClass(element: MockNode, id: string): void {
+	element.className = element.className === "" ? id : element.className + " " + id;
+}
+
 function ssrHost(register: (id: string, css: string) => void): Host {
 	const h = mockHost();
 	const createElement = h.createElement;
@@ -40,8 +50,17 @@ function ssrHost(register: (id: string, css: string) => void): Host {
 	};
 	h.setStyleClass = (node: HostNode, id: string, css: string): void => {
 		register(id, css);
-		const element = node as unknown as MockNode;
-		element.className = element.className === "" ? id : element.className + " " + id;
+		addClass(node as unknown as MockNode, id);
+	};
+	const setAttr = h.setAttr;
+	h.setAttr = (node: HostNode, name: string, value: string): void => {
+		if (name !== "numberOfLines") { setAttr(node, name, value); return; }
+		register(TEXT_RULES_ID, TEXT_CSS);
+		if (!clampedLines(value)) { return; }
+		const rule = linesRule(value);
+		register(rule.id, rule.css);
+		addClass(node as unknown as MockNode, LINES_CLASS);
+		addClass(node as unknown as MockNode, linesClass(value));
 	};
 	return h;
 }

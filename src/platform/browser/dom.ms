@@ -9,7 +9,13 @@ import { onCleanup } from "../../core/cleanup";
 import {
 	VIEW_CLASS,
 	TEXT_CLASS,
+	LINES_CLASS,
 	SCROLL_CLASS,
+	TEXT_CSS,
+	TEXT_RULES_ID,
+	clampedLines,
+	linesClass,
+	linesRule,
 	SERVED_HEAD,
 	scrollLook,
 	webBaseClass,
@@ -539,7 +545,6 @@ function tileImage(el: Node): void {
 
 // RN Text's numberOfLines clamps with an ellipsis. Inline style belongs to
 // setStyle, which rewrites it whole, so these props travel as classes.
-const TEXT_CSS = ".neon-lines{display:-webkit-box !important;-webkit-box-orient:vertical;overflow:hidden}.neon-clip{text-overflow:clip}.neon-select-none{user-select:none;-webkit-user-select:none}.neon-select-text{user-select:text;-webkit-user-select:text}";
 let textRule = false;
 const lineRules = new Map<string, boolean>();
 
@@ -554,19 +559,20 @@ function swapClass(el: Node, prefix: string, next: string): void {
 function writeTextAttr(el: Node, name: string, value: string): boolean {
 	if (name !== "numberOfLines" && name !== "ellipsizeMode" && name !== "selectable") { return false; }
 	if (!textRule) {
-		registerCss("neon-text-props", TEXT_CSS);
+		registerCss(TEXT_RULES_ID, TEXT_CSS);
 		textRule = true;
 	}
 	if (name === "numberOfLines") {
-		const clamped = value !== "" && value !== "0";
+		const clamped = clampedLines(value);
 		if (clamped && !lineRules.has(value)) {
-			registerCss(`neon-lines-${value}`, `.neon-lines-${value}{-webkit-line-clamp:${value}}`);
+			const rule = linesRule(value);
+			registerCss(rule.id, rule.css);
 			lineRules.set(value, true);
 		}
-		swapClass(el, "neon-lines", "");
+		swapClass(el, LINES_CLASS, "");
 		if (clamped) {
-			el.classList.add("neon-lines");
-			el.classList.add(`neon-lines-${value}`);
+			el.classList.add(LINES_CLASS);
+			el.classList.add(linesClass(value));
 		}
 		return true;
 	}

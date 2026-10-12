@@ -20,9 +20,26 @@ export const SCROLL_CLASS = "neon-scrollview";
 export const SCROLL_CSS =
 	`.${SCROLL_CLASS}{overflow-x:hidden;overflow-y:auto}.neon-hide-horizontal::-webkit-scrollbar:horizontal{height:0}.neon-hide-vertical::-webkit-scrollbar:vertical{width:0}@keyframes neon-refresh-spin{to{transform:rotate(360deg)}}.neon-refresh-indicator[aria-busy=true]{animation:neon-refresh-spin 1s linear infinite}`;
 
+export const LINES_CLASS = "neon-lines";
+export const TEXT_RULES_ID = "neon-text-props";
+
+export const TEXT_CSS = ".neon-lines{display:-webkit-box !important;-webkit-box-orient:vertical;overflow:hidden}.neon-clip{text-overflow:clip}.neon-select-none{user-select:none;-webkit-user-select:none}.neon-select-text{user-select:text;-webkit-user-select:text}";
+
 export struct WebRule {
 	id: string;
 	css: string;
+}
+
+export function clampedLines(value: string): boolean {
+	return value !== "" && value !== "0";
+}
+
+export function linesClass(value: string): string {
+	return `neon-lines-${value}`;
+}
+
+export function linesRule(value: string): WebRule {
+	return { id: linesClass(value), css: `.${linesClass(value)}{-webkit-line-clamp:${value}}` };
 }
 
 export function webHtmlTag(tag: string): string {

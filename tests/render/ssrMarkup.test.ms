@@ -38,6 +38,15 @@ test "SSR writes a scrollview as the div, classes and scroll style the DOM host 
 		"style=\"overflow-x:hidden;overflow-y:auto;touch-action:pan-y;scrollbar-width:auto;\"></div>", plain;
 }
 
+test "SSR writes Text numberOfLines as the clamp classes and their rules" {
+	const page = renderToMarkup(el("text", [attr("numberOfLines", "2")], [], null));
+	assert page.html === "<span class=\"neon-text neon-lines neon-lines-2\"></span>", page.html;
+	assert page.css.indexOf(".neon-lines-2{-webkit-line-clamp:2}") >= 0, page.css;
+	assert page.css.indexOf(".neon-lines{display:-webkit-box") >= 0, page.css;
+	const free = renderToString(el("text", [attr("numberOfLines", "0")], [], null));
+	assert free === "<span class=\"neon-text\"></span>", free;
+}
+
 test "a throwing SSR mount disposes effects and cleanup" {
 	const [read, write] = createSignal<int32>(0);
 	let runs: int32 = 0;

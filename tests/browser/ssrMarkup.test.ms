@@ -91,4 +91,16 @@ when (js) {
 		const [server, dom] = serverAndDom(app);
 		assert normalizedHtml(server) === normalizedHtml(dom), server + " vs " + dom;
 	}
+
+	test "server Text numberOfLines is the classes the DOM host builds" {
+		const app: NeonNode = <View>
+			<Text numberOfLines={2}>long</Text>
+			<Text numberOfLines={0}>free</Text>
+		</View>;
+		const [server, dom] = serverAndDom(app);
+		assert normalizedHtml(server) === normalizedHtml(dom), server + " vs " + dom;
+		assert server.indexOf("numberOfLines") < 0, server;
+		const css = collectCss();
+		assert css.indexOf(".neon-lines-2{-webkit-line-clamp:2}") >= 0 && css.indexOf(".neon-lines{") >= 0, css;
+	}
 }

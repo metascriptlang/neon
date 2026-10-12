@@ -150,4 +150,14 @@ when (js) {
 			assert shape(mount) === rendered(app), shape(mount);
 		} finally { dispose(); mount.remove(); }
 	}
+
+	test "hydrate takes over a clamped Text without an attribute left behind" {
+		const app: NeonNode = <View><Text numberOfLines={3}>long</Text></View>;
+		const mount = parsedPage(renderToMarkup(app).html);
+		const dispose = hydrate(app, domHost(), mount as unknown as HostNode);
+		try {
+			assert notServed(mount) === 0, notServed(mount).toString() + " elements are not the page's own";
+			assert shape(mount) === rendered(app), shape(mount) + " vs " + rendered(app);
+		} finally { dispose(); mount.remove(); }
+	}
 }
