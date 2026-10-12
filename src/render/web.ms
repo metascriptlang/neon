@@ -11,6 +11,8 @@ export const RN_WEB_BASE_CSS =
 	"box-sizing:border-box;list-style:none;margin:0;padding:0;position:relative;" +
 	"text-decoration:none;white-space:pre-wrap;overflow-wrap:break-word}";
 
+export const SERVED_HEAD = "data-neon-head";
+
 export function webBaseClass(tag: string): string {
 	return match (tag) {
 		"view" | "pressable" | "scrollview" | "svg" => VIEW_CLASS,

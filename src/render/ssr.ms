@@ -1,17 +1,18 @@
 import { Host, HostNode } from "./hostTypes";
 import { MockNode, mockNode, mockHost, render } from "./host";
 import { NeonNode } from "./hostTypes";
-import { htmlTagFor } from "./node";
+import { htmlTagFor, attr } from "./node";
 import { collectCss, registerCss } from "./sheet";
 import { styleToCss } from "./css";
 import { Style } from "./style";
-import { webBaseClass, RN_WEB_BASE_CSS, domAttrName, domAttrValue } from "./web";
+import { webBaseClass, RN_WEB_BASE_CSS, SERVED_HEAD, domAttrName, domAttrValue } from "./web";
 import { asServer } from "./environment";
 import { Dispose } from "../core/types";
 
 export struct SsrMarkup {
 	html: string;
 	css: string;
+	head: string;
 }
 
 function ssrHost(register: (id: string, css: string) => void): Host {
@@ -103,6 +104,33 @@ export function serializeChildren(n: MockNode, marked: boolean = true): string {
 	return s;
 }
 
+function headKey(n: MockNode): string {
+	if (n.tag === "title") { return "title"; }
+	if (n.tag !== "meta") { return ""; }
+	for (const a of n.attrs) {
+		if (a.value !== null && (a.name === "name" || a.name === "property" || a.name === "http-equiv" || a.name === "charset")) {
+			return "meta " + (a.name === "charset" ? "charset" : a.value as string);
+		}
+	}
+	return "";
+}
+
+function serializeHead(head: MockNode): string {
+	const seen = new Map<string, boolean>();
+	let s = "";
+	for (const k of head.children) {
+		if (k.tag === "") { continue; }
+		const key = headKey(k);
+		if (key !== "") {
+			if (seen.has(key)) { continue; }
+			seen.set(key, true);
+		}
+		k.attrs.push(attr(SERVED_HEAD, ""));
+		s = s + serializeNode(k);
+	}
+	return s;
+}
+
 function renderInto(box: MockNode, n: NeonNode, host: Host): Dispose {
 	return asServer((): Dispose => render(n, host, box as unknown as HostNode, ""));
 }
@@ -124,6 +152,9 @@ export function renderToMarkup(n: NeonNode): SsrMarkup {
 	});
 	const box = mockNode("ssr-root");
 	const dispose = renderInto(box, n, host);
-	try { return { html: serializeChildren(box), css: css }; }
+	try {
+		const head = (host.headRoot as (n: HostNode) => HostNode)(box as unknown as HostNode) as unknown as MockNode;
+		return { html: serializeChildren(box), css: css, head: serializeHead(head) };
+	}
 	finally { dispose(); }
 }
