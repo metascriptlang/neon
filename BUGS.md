@@ -38,6 +38,16 @@ and the invariants that outlived them were moved to the head of the test that pi
   mount such a component by calling it (`App()` in `examples/voidWindow.ms`). The fix is in
   `src/macros/ui/element.ms`, a contract that needs a yes before it changes.
 
+- **OPEN 2026-10-13 — `tests/platform/nativeWidgets.test.ms` reads the Collapsible before it has finished opening.**
+  The native cell loops the UI for 400 ms of wall time after `setCollapsed(false)` on a 64 ms
+  animation and then asserts `box === 120`; some runs stop at `the box opened: 118`. Measured
+  with `msc test tests/platform/nativeWidgets.test.ms` on msc v0.3.2 `ea7ae4d17`: an export of
+  main `eb16a9c` failed 1 of 8 runs at load 8; `wt/rn-navigation-prod` at `1d775db` failed 2 of 3
+  right after a full gate and 0 of 8 afterwards; in the gate on `70b1387` (load above 20) the
+  cell was red. The last frame of the animation is not guaranteed inside a wall-clock window,
+  so the cell is red by timing, on main and on a branch alike. Not yet traced to whether the
+  animation driver drops its final frame or the test should wait for the end event.
+
 - **OPEN 2026-10-12 — `renderToString` writes control wire tags as unknown HTML elements.** A
   temporary Chrome cell beside `tests/browser/ssrMarkup.test.ms` rendered
   `<View><ScrollView><Text numberOfLines={2}>long</Text></ScrollView><Switch value={true} /><ActivityIndicator /><TextInput multiline={true} defaultValue="note" /></View>`
