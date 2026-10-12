@@ -59,20 +59,27 @@ and the invariants that outlived them were moved to the head of the test that pi
   so the cell is red by timing, on main and on a branch alike. Not yet traced to whether the
   animation driver drops its final frame or the test should wait for the end event.
 
-- **OPEN 2026-10-12 — `renderToString` writes control wire tags as unknown HTML elements.** A
-  temporary Chrome cell beside `tests/browser/ssrMarkup.test.ms` rendered
-  `<View><ScrollView><Text numberOfLines={2}>long</Text></ScrollView><Switch value={true} /><ActivityIndicator /><TextInput multiline={true} defaultValue="note" /></View>`
-  with `renderToString` and with `domHost()` (`sh tests/browser/run.sh tests/browser/ssrMarkup.test.ms`,
-  exit 1). Server: `<scrollview class="neon-view">`, `<span numberOfLines="2" class="neon-text">`,
-  `<switch value="true">`, `<activityindicator animating="true" role="progressbar">`,
-  `<multilinetextinput defaultValue="note">`. DOM host: `<div class="neon-view neon-scrollview">`,
-  `<span class="neon-text neon-lines neon-lines-2">`, `<input type="checkbox" role="switch">`,
-  `<div class="neon-activity" data-animating="true" role="progressbar">`,
-  `<textarea class="neon-textarea">`. `View`, `Text`, `Pressable` and a single-line `TextInput`
-  match (the committed cell in that file). The tag, class and rule choices live in `createElement`
-  and the `write*Attr` functions of `src/platform/browser/dom.ms`; `src/render/web.ms` shares only
-  the base classes and the attribute name and value tables. Not measured: `Image`, `Modal`,
-  `Slider`, `Picker`, svg and media tags.
+- **OPEN 2026-10-13 — `renderToString` writes `image`, `modal`, `slider`, `picker`,
+  `datetimepicker`, `svg` and the media tags as unknown or attribute-heavy elements, and
+  `hydrate` refuses them.** `ScrollView`, `Text numberOfLines`, `Switch`, `ActivityIndicator` and
+  multiline `TextInput` were closed on this branch (`tests/browser/ssrMarkup.test.ms`,
+  `tests/browser/hydrate.test.ms`). Measured in Chrome with `renderToString` against `domHost()`:
+  `image` server `<image source resizeMode aria-label>` against `<img class="neon-image" src
+  data-resize alt aria-label>`; `modal` `<modal visible animationType>` against `<div
+  class="neon-modal" role="dialog" aria-modal="true">`; `slider` `<slider value minimumValue …>`
+  against `<input type="range" min max step>`; `picker` `<picker items selectedIndex>` against
+  `<select><option>…`; `datetimepicker` against `<input type="time">`; `svg` `<svg displayList>`
+  against `<svg class="neon-view" data-neon-svg>` with its markup; `video`, `webview`, `camera`
+  against `<video class="neon-video" playsinline src>`, `<iframe class="neon-webview">`,
+  `<video class="neon-camera" playsinline muted autoplay>`.
+
+- **OPEN 2026-10-13 — `ActivityIndicator color` never reaches the element.** `writeControlAttr`
+  sets `el.style.color`, and the colour is gone after the mount (not traced to the write that
+  clears it; the style the component always passes is the suspect): in `tests/browser/ssrMarkup.test.ms` the DOM
+  host builds `style="justify-content: center; align-items: center; width: 36px; height: 36px;"`
+  for `<ActivityIndicator color="#c00" size="large" />`. The server writes the same, so the two
+  agree, and the colour is lost on both until this is fixed in `src/platform/browser/dom.ms`
+  (for example a class per colour, as `hitSlop` does).
 
 - **OPEN 2026-10-07 — a raw tag with an `Accessor<boolean> | null` attribute dies on C.** In
   `probe/apps/boolAttr.ms` (`wt/rn-apps`), `function Tag(props: { on?: Accessor<boolean> | null })`

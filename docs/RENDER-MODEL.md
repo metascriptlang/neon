@@ -353,9 +353,16 @@ path. Limits, each one loud or measured:
 
 - An element the tree leaves without children is not checked for extra ones, so a node that
   holds children Neon does not own (a canvas, a foreign editor's mount point) hydrates.
-- A wire tag whose DOM `createElement` does more than create an element (`scrollview`,
-  `switch`, `image`, the media tags …; `createsMoreThanAnElement` in
-  `src/platform/browser/dom.ms`) refuses to hydrate.
+- A wire tag whose DOM `createElement` does more than create an element and that `claim` does
+  not take over yet (`image`, `modal`, `slider`, `picker`, `datetimepicker`, `svg`, the media
+  tags; `createsMoreThanAnElement` in `src/platform/browser/dom.ms`) refuses to hydrate.
+  `scrollview`, `switch`, `activityindicator` and `multilinetextinput` hydrate: the server
+  writes the element, classes and fixed attributes of `webHtmlTag`, `webControlClass` and
+  `webFixedAttrs` in `src/render/web.ms`, the rules of `webRules` reach `renderToMarkup(...).css`,
+  and `claim` leaves the host in the state `createElement` would have. A served switch carries
+  `checked` and a served textarea its text, which `claim` turns back into the property.
+  A `ScrollView` with `onRefresh` was not measured: the DOM host appends its refresh indicator
+  itself, and the server writes none.
 - Text content and attribute values are not compared; static attributes are written again.
 - Markup the parser restructures (a block inside `<p>`, a `<tr>` without `<tbody>`) arrives
   as a different node list and fails as a mismatch.
