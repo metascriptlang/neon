@@ -220,13 +220,8 @@ test "refresh: a rebuild that throws is retried by the next refresh" {
 	const dispose = render(refreshRegion("retry.ms", "t", tmpl, sigFn, false), mockHost(), root as HostNode);
 	failing = true;
 	signature = "2";
-	let threw = false;
-	try {
-		refreshModule("retry.ms");
-	} catch (e) {
-		threw = true;
-	}
-	assert threw, "the failing rebuild throws";
+	refreshModule("retry.ms");
+	assert mockToString(root).indexOf("retry.ms#t did not mount: boom") >= 0, "the failing rebuild shows why: " + mockToString(root);
 	failing = false;
 	const summary = refreshModule("retry.ms");
 	assert summary.rebuilt === 1, "the failed rebuild is retried, not kept";
