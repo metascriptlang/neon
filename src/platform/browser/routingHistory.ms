@@ -36,6 +36,14 @@ when (js) {
 	extern function readHistoryString(key: cstring): string from
 		"(k => typeof history.state?.[k] === 'string' ? history.state[k] : '')(#)";
 
+	extern class Event {
+		extern preventDefault(): void;
+	}
+
+	extern function sameOriginLink(event: Event): string from
+		"(e => { if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.altKey || e.ctrlKey || e.shiftKey) return ''; const a = e.composedPath().find(n => n instanceof Node && n.nodeName.toUpperCase() === 'A'); if (!a || a.target || !a.href || a.hasAttribute('download') || (a.getAttribute('rel') || '').split(/\\s+/).includes('external')) return ''; const u = new URL(a.href, document.baseURI); return u.origin === location.origin ? u.pathname + u.search + u.hash : ''; })(#)";
+	extern function scrollToTop(x: int32): void from "window.scrollTo(#, 0)";
+
 	function readBrowserEntry(): RoutingHistoryEntry {
 		return {
 			url: window.location.pathname + window.location.search + window.location.hash,
@@ -73,5 +81,21 @@ export function createBrowserRoutingHistory(): RoutingHistory {
 		};
 	} else {
 		throw new Error("routing: browser history requires the JavaScript browser host");
+	}
+}
+
+export function followLinks(navigate: (url: string) => boolean): Dispose {
+	when (js) {
+		const handler = (event: unknown): void => {
+			const click = event as Event;
+			const url = sameOriginLink(click);
+			if (url === "" || !navigate(url)) { return; }
+			click.preventDefault();
+			if (url.indexOf("#") < 0) { scrollToTop(0); }
+		};
+		window.addEventListener("click", handler, false);
+		return (): void => window.removeEventListener("click", handler, false);
+	} else {
+		throw new Error("routing: following links requires the JavaScript browser host");
 	}
 }
