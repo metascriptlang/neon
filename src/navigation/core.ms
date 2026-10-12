@@ -7,6 +7,7 @@ import { Style } from "../render/style";
 import { Animated, AnimatedValue, EndResult, Easing } from "../animation/index";
 import { StackLayout } from "./layout";
 import { createContext, useContext } from "../render/context";
+import { refreshKeep } from "../render/refresh";
 
 export enum NavigatorKind {
 	Container,
@@ -938,6 +939,21 @@ export class NavigatorCore<P> {
 		return list.slice(0, list.length);
 	}
 
+	routesNow(): ResetState<P> {
+		const routes: ResetRoute<P>[] = [];
+		for (const entry of this.snapshot()) {
+			routes.push({ name: entry.route.name, params: untrack((): P | null => entry.route.params()) });
+		}
+		return { index: untrack((): int32 => this.index()), routes: routes };
+	}
+
+	resumeRoutes(kept: ResetState<P>): void {
+		for (const route of kept.routes) {
+			if (this.config(route.name) === null) { return; }
+		}
+		this.resetTo(kept);
+	}
+
 	indexOfName(list: Navigation<P>[], name: string): int32 {
 		for (let i = list.length - 1; i >= 0; i -= 1) {
 			if (list[i].route.name === name) { return i as int32; }
@@ -1347,6 +1363,13 @@ export function createCore<P>(setup: NavigatorSetup<P>): NavigatorCore<P> {
 	);
 	const link = linkOf<P>(core);
 	core.start(setup.initialParams);
+	when (refresh || hcr) {
+		refreshKeep<ResetState<P>>(
+			"navigator",
+			(): ResetState<P> => core.routesNow(),
+			(kept: ResetState<P>): void => { core.resumeRoutes(kept); },
+		);
+	}
 	const scope = setup.scope;
 	const waiting = scope.link.register(scope.routeKey, link);
 	onCleanup((): void => { scope.link.unregister(scope.routeKey, link); });
