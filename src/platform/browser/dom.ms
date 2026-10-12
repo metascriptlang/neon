@@ -819,6 +819,13 @@ function watchTouches(): void {
 	window.addEventListener("pointercancel", (de: DomEvent): void => { endTouches("touchcancel", de); });
 }
 
+extern function enterHead(node: Node): void from
+	"(n => { if (n.nodeType !== 1 || n.neonKey !== undefined) return; const t = n.localName; if (t !== 'title' && t !== 'meta') return; const a = k => n.getAttribute(k); const named = a('name') ?? a('property'); if (t === 'meta' && named === null && a('http-equiv') === null && a('charset') === null) return; const key = t === 'title' ? t : JSON.stringify([named, a('http-equiv'), a('content'), a('charset'), a('media')]); const all = document.head.neonCascade ??= new Map(); const list = all.get(key) ?? []; all.set(key, list); const prev = list[list.length - 1]; list.push(n); n.neonKey = key; if (prev !== undefined) { const held = document.createComment(''); prev.replaceWith(held); prev.neonHeld = held; held.neonFor = prev; } })(#)";
+extern function leaveHead(node: Node): Node from
+	"(n => { const key = n.neonKey; if (key === undefined) return n; const list = document.head.neonCascade.get(key); const i = list.indexOf(n); list.splice(i, 1); n.neonKey = undefined; const held = n.neonHeld; if (held !== undefined) { n.neonHeld = undefined; return held; } const prev = i === list.length ? list[i - 1] : undefined; if (prev !== undefined) { prev.neonHeld.replaceWith(prev); prev.neonHeld = undefined; } return n; })(#)";
+extern function shownInHead(node: Node | null): Node | null from "(n => n !== null && n.neonHeld !== undefined ? n.neonHeld : n)(#)";
+extern function heldByHead(node: Node | null): Node | null from "(n => n !== null && n.neonFor !== undefined ? n.neonFor : n)(#)";
+
 let servedHeadDropped = false;
 
 function dropServedHead(): void {
@@ -1264,27 +1271,29 @@ export function domHost(): Host {
 		insertBefore: (parent: HostNode, node: HostNode, ref: HostNode | null): void => {
 			prepareVisibleContent();
 			const el = parent as unknown as Node;
-			const moved = node as unknown as Node;
-			const before = ref === null ? null : (ref as unknown as Node);
+			const moved = shownInHead(node as unknown as Node) as Node;
+			const before = ref === null ? null : shownInHead(ref as unknown as Node);
 			if (moved.isConnected && el.isConnected && Reflect.has(el, "moveBefore")) {
 				el.moveBefore(moved, before);
 			} else {
 				el.insertBefore(moved, before);
 			}
+			if (el === (document.head as unknown as Node)) { enterHead(moved); }
 			if (scrolls.has(el)) { (scrolls.get(el) as DomScrollState).mountRefresh(); }
 			scheduleLayouts();
 		},
 		removeChild: (parent: HostNode, node: HostNode): void => {
 			prepareVisibleContent();
 			release(node as unknown as Node);
-			(parent as unknown as Node).removeChild(node as unknown as Node);
+			const el = parent as unknown as Node;
+			el.removeChild(el === (document.head as unknown as Node) ? leaveHead(node as unknown as Node) : node as unknown as Node);
 			scheduleLayouts();
 		},
 		nextSibling: (node: HostNode): HostNode | null => {
-			return (node as unknown as Node).nextSibling as unknown as HostNode;
+			return heldByHead((shownInHead(node as unknown as Node) as Node).nextSibling as Node | null) as unknown as HostNode;
 		},
 		firstChild: (node: HostNode): HostNode | null => {
-			return (node as unknown as Node).firstChild as unknown as HostNode;
+			return heldByHead((node as unknown as Node).firstChild as Node | null) as unknown as HostNode;
 		},
 		cloneNode: (node: HostNode): HostNode => {
 			return (node as unknown as Node).cloneNode(true) as unknown as HostNode;

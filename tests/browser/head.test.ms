@@ -15,6 +15,7 @@ when (js) {
 		"((h, b) => { document.head.insertAdjacentHTML('afterbegin', h); const r=document.createElement('div');r.innerHTML=b;document.body.appendChild(r);return r; })(#, #)";
 	extern function pageTitle(unused: int32): string from "(#, document.title)";
 	extern function headCount(selector: cstring): number from "document.head.querySelectorAll(#).length";
+	extern function headComments(unused: int32): number from "(#, Array.from(document.head.childNodes).filter(n => n.nodeType === 8).length)";
 	extern function description(unused: int32): string from "(#, document.head.querySelector('meta[name=description]')?.content ?? '')";
 
 	function Page(props: { title: Accessor<string> }): NeonNode {
@@ -56,8 +57,10 @@ when (js) {
 				<Head>
 					<title>Page</title>
 					<meta name="description" content="the page" />
+					<meta name="robots" content="index" />
 				</Head>
 			</Show>
+			<Head><meta name="robots" content="index" /></Head>
 		</View>;
 	}
 
@@ -72,5 +75,26 @@ when (js) {
 			setInner(true);
 			assert pageTitle(0) === "Page" && description(0) === "the page", pageTitle(0) + " / " + description(0);
 		} finally { dispose(); mount.remove(); }
+	}
+
+	test "the document holds one title and one meta of a key, whichever Head is mounted" {
+		const shellTitles = headCount("title");
+		const shellComments = headComments(0);
+		const mount = servedPage("", "");
+		const [inner, setInner] = createSignal(true);
+		const dispose = render(<Nested inner={inner} />, domHost(), mount as unknown as HostNode);
+		try {
+			assert headCount("title") === shellTitles + 1, "titles with both mounted: " + headCount("title").toString();
+			assert headCount("meta[name=robots]") === 1, "robots with both mounted: " + headCount("meta[name=robots]").toString();
+			assert headCount("meta[name=description]") === 2, "descriptions that differ in content: " + headCount("meta[name=description]").toString();
+			setInner(false);
+			assert headCount("title") === shellTitles + 1 && pageTitle(0) === "Site", "after the inner left: " + pageTitle(0);
+			assert headCount("meta[name=robots]") === 1, "robots after the inner left: " + headCount("meta[name=robots]").toString();
+			setInner(true);
+			assert headCount("title") === shellTitles + 1 && pageTitle(0) === "Page", "after the inner returned: " + pageTitle(0);
+			assert headCount("meta[name=robots]") === 1, "robots after the inner returned: " + headCount("meta[name=robots]").toString();
+		} finally { dispose(); mount.remove(); }
+		assert headCount("title") === shellTitles && headCount("meta[name=robots]") === 0 && headComments(0) === shellComments,
+			"left behind: " + headCount("title").toString() + " titles, " + headCount("meta[name=robots]").toString() + " robots, " + headComments(0).toString() + " comments";
 	}
 }
