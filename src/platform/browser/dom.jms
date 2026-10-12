@@ -1231,6 +1231,11 @@ export function domHost(): Host {
 			}
 			listen(el, domType, (de: DomEvent): void => {
 				if (type === "submitediting" && (de.key !== "Enter" || de.isComposing)) { return; }
+				if (type === "press") {
+					let owner: Node | null = de.target;
+					while (owner !== null && !presses.has(owner as Node)) { owner = (owner as Node).parentNode; }
+					if (owner !== el) { return; }
+				}
 				const ev = neonEvent(type);
 				ev.timeStamp = de.timeStamp;
 				if (type === "valuechange") {

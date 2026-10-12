@@ -80,8 +80,23 @@ test "a Text with onPress in Chrome takes the click, and so does a pressable nes
 	const afterSpan = log;
 	log = "";
 	js("document.querySelector('#press-one > div > span').click(); return '';");
-	assert afterSpan.indexOf("terms;") === 0, "the span's own press fires first: " + afterSpan;
+	assert afterSpan === "terms;", "only the innermost Text owns the press: " + afterSpan;
 	assert log === "text;", "the outer text's press: " + log;
+}
+
+test "a plain Text descendant activates its nearest press owner, not an outer one" {
+	const mount = mountPoint("press-deep");
+	let log = "";
+	const dispose = render(element(<Text onPress={(): void => { log += "outer;"; }}>
+		<Text>plain</Text>
+		<Text onPress={(): void => { log += "inner;"; }}><Text><Text>leaf</Text></Text></Text>
+	</Text>), domHost(), mount as unknown as HostNode);
+	js("document.querySelector('#press-deep > span > span:nth-of-type(2) > span > span').click(); return '';");
+	assert log === "inner;", "the closest press owner handles a plain descendant: " + log;
+	log = "";
+	js("document.querySelector('#press-deep > span > span:nth-of-type(1)').click(); return '';");
+	assert log === "outer;", "plain text retains its outer activation: " + log;
+	dispose();
 }
 
 test "a multiline TextInput in Chrome grows with its text up to maxHeight" {
