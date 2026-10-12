@@ -45,4 +45,32 @@ when (js) {
 		} finally { dispose(); mount.remove(); }
 		assert description(0) === "", "the Head's tags stayed after dispose";
 	}
+
+	function Nested(props: { inner: Accessor<boolean> }): NeonNode {
+		return <View>
+			<Head>
+				<title>Site</title>
+				<meta name="description" content="the site" />
+			</Head>
+			<Show when={props.inner()}>
+				<Head>
+					<title>Page</title>
+					<meta name="description" content="the page" />
+				</Head>
+			</Show>
+		</View>;
+	}
+
+	test "a browser reads the Head mounted last, and the one before it again once that leaves" {
+		const mount = servedPage("", "");
+		const [inner, setInner] = createSignal(true);
+		const dispose = render(<Nested inner={inner} />, domHost(), mount as unknown as HostNode);
+		try {
+			assert pageTitle(0) === "Page" && description(0) === "the page", pageTitle(0) + " / " + description(0);
+			setInner(false);
+			assert pageTitle(0) === "Site" && description(0) === "the site", pageTitle(0) + " / " + description(0);
+			setInner(true);
+			assert pageTitle(0) === "Page" && description(0) === "the page", pageTitle(0) + " / " + description(0);
+		} finally { dispose(); mount.remove(); }
+	}
 }
