@@ -122,6 +122,36 @@ function lateTemplateV2<E>(__refreshEnv: E): NeonNode {
 	</section>;
 }
 
+function tallyCell(label: string): NeonNode {
+	const [n, setN] = createSignal(0);
+	refreshKeep("cell", (): int32 => n(), (value: int32): void => { setN(value); });
+	const inc: (e: NeonEvent) => void = () => { setN(n() + 1); };
+	return <div>
+		<p>{label + "=" + n().toString()}</p>
+		<button onPress={inc}>+</button>
+	</div>;
+}
+
+function Board(): NeonNode {
+	const [names, setNames] = createSignal(["p", "q"]);
+	return <section>
+		<For each={names()}>{(name: string, i: Accessor<number>): NeonNode => tallyCell(name)}</For>
+	</section>;
+}
+
+function boardTemplateV2<E>(__refreshEnv: E): NeonNode {
+	const names = __refreshEnv.names;
+	return <section>
+		<h1>v2</h1>
+		<For each={names()}>{(name: string, i: Accessor<number>): NeonNode => tallyCell(name)}</For>
+	</section>;
+}
+
+function boardBodyV2(): NeonNode {
+	const [names, setNames] = createSignal(["p", "q"]);
+	return refreshRegion(thisFile(), "Board#template", __refreshTmpl_Board, __refreshTmplSig_Board, { names: names });
+}
+
 function mount(node: NeonNode): [MockNode, () => void] {
 	const root: MockNode = mockNode("root");
 	const dispose = render(node, mockHost(), root as unknown as HostNode);
@@ -245,5 +275,30 @@ test "refresh state: a template registered at another capture type remounts its 
 	const summary = refreshModule(thisFile());
 	assert summary.remounted === 2, "the rows remount: " + summary.remounted.toString();
 	assert texts(root) === "<p>a:3</p> <p>b:0</p> ", "and keep their counts: " + texts(root);
+	dispose();
+}
+
+test "refresh state: state a helper keeps by hand survives a template rebuild, one cell per call" {
+	refreshReset();
+	const [root, dispose] = mount(Board());
+	press(root, 0, 2);
+	press(root, 1, 5);
+	assert texts(root) === "<p>p=2</p> <p>q=5</p> ", texts(root);
+	refreshTemplate0(thisFile(), "Board#template", boardTemplateV2, edited, __refreshSetup_Board);
+	refreshModule(thisFile());
+	assert all(root, "h1").length === 1, "the new template is mounted";
+	assert texts(root) === "<p>p=2</p> <p>q=5</p> ", "both cells kept: " + texts(root);
+	dispose();
+}
+
+test "refresh state: state kept under a template survives its component's setup edit" {
+	refreshReset();
+	const [root, dispose] = mount(Board());
+	press(root, 0, 2);
+	press(root, 1, 5);
+	refreshComponent0(thisFile(), "Board|", boardBodyV2, edited);
+	const summary = refreshModule(thisFile());
+	assert summary.remounted === 1, "the board remounts: " + summary.remounted.toString();
+	assert texts(root) === "<p>p=2</p> <p>q=5</p> ", "both cells kept: " + texts(root);
 	dispose();
 }
