@@ -2,8 +2,9 @@
 
 The person approved this direction in the `rn-navigation-prod` discussion:
 **Decompose-style navigation primitives and composition; Solid Router / TanStack
-routing contracts; Solid reactivity underneath.** This is a model decision, not
-approval of a concrete protocol or implementation.
+routing contracts; Solid reactivity underneath.** Subsequent authorization covers
+continuous implementation with reference-backed provisional choices, recorded
+here and in `WORKAROUND.md`; it does not claim final API review.
 
 ## Reference ownership
 
@@ -30,9 +31,9 @@ approval of a concrete protocol or implementation.
 
 Navigation must not require one universal stack or an application-wide screen
 hierarchy. Built-in patterns and user compositions participate in one routing
-world through a common contract. The concrete registration protocol remains to
-be designed and approved; custom compositions must not require a central switch
-on navigator kinds.
+world through a common contract. `src/navigation/routing.ms` `RoutingRegistry`
+and `bindRoute` hold the provisional registration protocol; custom compositions
+must not require a central switch on navigator kinds.
 
 Routing identifies destinations and validates their arguments. Composition
 chooses how they become active or visible. Routing must work before UI mount for
@@ -54,9 +55,22 @@ supported by that mechanism is raised as **NEW MECHANISM**, with its need and
 regression surface, before implementation. Do not combine every reference API
 into a new general-purpose framework.
 
-Next, propose the smallest shared routing contract against three consumers:
-a stack app, an editor with simultaneous panes, and a game world with overlays.
-The proposal must explain URL round-trips, history traversal, request-local SSR
-initialization, identity/lifecycle ownership and params validation. Validate with
-those consumers before treating the protocol as settled. API names, per-route
-MetaScript typing and native transition policy are not decided by this anchor.
+The three consumer axes are exercised by `examples/components/routing.ms`
+`RoutingDemo` and `tests/navigation/routingConsumers.test.ms`, with actual Chrome
+history traversal in `tests/browser/routing.test.ms`. Inventory proves UI overlay
+routing, not a running Void world's resource policy. Native transition policy
+remains provisional; `createNativeStackNavigator` still shares JS-driven frames.
+
+## Provisional choices and remaining limits
+
+- Typed route bindings close over their decoder and typed model setter rather
+  than exposing an untyped global params getter. Legacy navigators retain one
+  `P`; heterogeneous ParamList compatibility is not claimed.
+- Secondary addresses reserve the `__nav.` query namespace. This makes region
+  ownership explicit without imposing an editor/game hierarchy. Unknown scopes
+  are errors rather than ignored links.
+- Navigation snapshots are participant codecs, not serialization of arbitrary
+  reactive graphs. URL traversal can therefore restore a retained document stack
+  without promising persistence of every local edit or GPU resource.
+- Request routing initializes before mounting, on a server as on a client. What a
+  server render writes and how `hydrate` takes it over is `docs/RENDER-MODEL.md`.
