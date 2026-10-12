@@ -405,7 +405,17 @@ the conditions of Solid Router's `handleAnchor` (`~/projects/solid-router` at `d
 `src/data/events.ts`): primary button, no modifier, no `target`, no `download`, no
 `rel="external"`, same origin. One difference, chosen: a link the routing session cannot match
 is left to the browser, so the server answers it and the 404 keeps its status; Solid navigates
-on the client to its catch-all route.
+on the client to its catch-all route. After a followed link the page scrolls to the element
+the fragment names, or to the top (`scrollToHash`, `src/routers/createRouter.ts:55`); the
+browser fires no `hashchange` for it, so a consumer that wants the browser's own fragment
+navigation answers `false` for that link.
+
+**A route's state has to hold everything of the address it accepts.** A routing session writes
+`registry.address()` back into the history entry as soon as it opens, so a codec that matches
+`/docs/start?utm=1#notes` and encodes `/docs/start` rewrites the visitor's URL, and one that
+matches only the bare path answers 404 to the tagged link (both measured on `examples/site`
+and on Geass, 2026-10-13). `examples/site/site.ms` keeps the whole address as the state and
+derives the page from its path.
 
 Measured 2026-10-13 on tree `b514b24aff684ca7119a9aa67cdc4075a95aa605`, msc v0.3.2 `ea7ae4d17`,
 `sh tests/edge/run.sh` (workerd, then Chrome): `/` and `/docs/<slug>` answer 200 with their own
