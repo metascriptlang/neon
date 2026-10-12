@@ -38,6 +38,21 @@ and the invariants that outlived them were moved to the head of the test that pi
   mount such a component by calling it (`App()` in `examples/voidWindow.ms`). The fix is in
   `src/macros/ui/element.ms`, a contract that needs a yes before it changes.
 
+- **OPEN 2026-10-12 — `renderToString` writes control wire tags as unknown HTML elements.** A
+  temporary Chrome cell beside `tests/browser/ssrMarkup.test.ms` rendered
+  `<View><ScrollView><Text numberOfLines={2}>long</Text></ScrollView><Switch value={true} /><ActivityIndicator /><TextInput multiline={true} defaultValue="note" /></View>`
+  with `renderToString` and with `domHost()` (`sh tests/browser/run.sh tests/browser/ssrMarkup.test.ms`,
+  exit 1). Server: `<scrollview class="neon-view">`, `<span numberOfLines="2" class="neon-text">`,
+  `<switch value="true">`, `<activityindicator animating="true" role="progressbar">`,
+  `<multilinetextinput defaultValue="note">`. DOM host: `<div class="neon-view neon-scrollview">`,
+  `<span class="neon-text neon-lines neon-lines-2">`, `<input type="checkbox" role="switch">`,
+  `<div class="neon-activity" data-animating="true" role="progressbar">`,
+  `<textarea class="neon-textarea">`. `View`, `Text`, `Pressable` and a single-line `TextInput`
+  match (the committed cell in that file). The tag, class and rule choices live in `createElement`
+  and the `write*Attr` functions of `src/platform/browser/dom.ms`; `src/render/web.ms` shares only
+  the base classes and the attribute name and value tables. Not measured: `Image`, `Modal`,
+  `Slider`, `Picker`, svg and media tags.
+
 - **OPEN 2026-10-07 — a raw tag with an `Accessor<boolean> | null` attribute dies on C.** In
   `probe/apps/boolAttr.ms` (`wt/rn-apps`), `function Tag(props: { on?: Accessor<boolean> | null })`
   returning `element(<text accessible={props.on}>hi</text>)`, mounted as `<Tag on={true} />` on
