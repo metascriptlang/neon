@@ -118,9 +118,17 @@ HCR on the mock host) and `examples/refreshAndroid/` (HCR in an Android app, `do
 | edit | what happens | why |
 |---|---|---|
 | JSX/text/style in a component's final `return` | the template region is rebuilt; the component's signals, the sibling's state and the page or window survive | the returned expression is hoisted into `__refreshTmpl_X<E>(env)`; the rest of the body is `__refreshSetup_X`, which returns `{captured locals}` and is not re-run |
-| any other statement of the body (a handler, a signal) | that component remounts: its local state resets, siblings keep theirs | `__refreshSig_X` covers the setup statements and the captured names |
+| any other statement of the body (a handler, a new signal) | that component remounts and its signals carry their values over; siblings are untouched. A signal starts from its initial value again when its declaration (name, type argument, initial expression) or its type changed | `__refreshSig_X` covers the setup statements and the captured names. The pass inserts `refreshState(key, get, set)` after each top-level `const [get, set] = createSignal(…)`; the runtime reads the values before the teardown and sets them after the new setup created its signals |
+| JSX of a parent, or its setup | the child components under it remount with their signals carried over, matched per component in document order | before a rebuild the runtime walks the host tree under the instance and queues each child component's values under its key |
 | a helper module the component imports | Vite: the importer re-evaluates with an unchanged module signature and rebuilds the templates that read an import. Native: the helper's `@afterReload` calls `refreshDependency`, which rebuilds the templates its importers registered with `refreshImports` | state is kept. A handler in the setup that calls the helper keeps the old function on Vite until the component itself is edited; native forwards named functions, so it already calls the new one |
 | a compile error | the old UI keeps running and the error is shown (Vite overlay, HCR watch output); the next valid edit applies | the build fails before any module is replaced |
+
+Carried over: signals declared as `const [get, set] = createSignal(…)` at the top level of the
+body, and what a helper hands to `refreshKeep(key, read, write)` while it mounts (a navigator
+keeps its routes and their params this way, `src/navigation/core.ms` `createCore`; a kept stack
+that names a removed screen starts again). A `let`, a memo, an effect and host state (scroll
+offset, focus, text typed into an uncontrolled input) start again on a remount. A changed field list of a class or interface
+(a prop added to a props interface) is refused by the HCR engine with `restart required`.
 
 Not extracted, so any edit remounts the whole component: a body with an early `return`, a final
 `return` of a bare identifier, a template that reads a reassigned `let` (the template would read
@@ -135,7 +143,11 @@ instantiation and sees concrete types. `refreshTemplate(file, id, tmpl, sig, set
 tail never calls `setup`: it is the witness that fixes `E`, because a bare generic function
 reference cannot be registered at top level (`cannot instantiate: 'T0'`). Slots are typed
 (`ComponentSlot<P>`, `TemplateSlot<E>`) and recovered from `Map<string, unknown>` with a checked
-class cast; a mismatched cast fails loudly (`Slot1<int32> is not Slot1<string>`).
+class cast. That cast stops the program on a mismatch and cannot be caught, so a slot is stored
+under its key plus `refreshTypeKey(fn)`, a macro that names the instantiation's type from inside
+the generic function: an edit that changes what a template captures registers a new slot instead of
+casting the old one, and `patchModule` remounts the component whose template was registered at
+another type. A kept signal value is recovered the same way, only when the type key is equal.
 
 On Vite, a component module accepts its own update (`import.meta.hot.accept()`, emitted on JS when
 the module has components and no top-level statement or declaration that calls something). The
@@ -182,6 +194,28 @@ passed 3 of 4 warm runs (one run lost the `HCR reloaded` line after the restart 
 showed the new view), and the first session after that compiler first ran answered
 `restart required` to every edit
 (`~/metascript/.inbox/compiler/2026-10-07-hcr-first-warm-reload-reports-core-changed.md`).
+
+**Measured 2026-10-12**, installed msc `e8c024c8`, tree `45c70f7`:
+- `bash tests/refresh/run.sh`: `boundary.ms`, `state.ms` and `navigation.ms` on `--target=js`
+  green; native and native `-d:hcr` green for the first two, and for `navigation.ms` only with the
+  compiler candidate of recompiler `wt/fix-null-cmp-captured` (the installed msc stops on
+  navigation, `BUGS.md`).
+- `sh examples/refreshVite/run.sh`: 19 of 19; the handler edit keeps count 9 and the new handler
+  makes it 11.
+- Native HCR on the mock host, a copy of `examples/refreshNative` edited by hand, one session, all
+  answered `reloaded` with the counter and its sibling keeping their values: a new signal read by
+  the template; that signal's type changed from `int32` to `string`; a new component in the same
+  file mounted by the parent; a new module file imported by the parent; a component removed from
+  the parent; a handler edit. Before this tree the first of these stopped with
+  `invalid object conversion: TemplateSlot<…> is not TemplateSlot<…>` and left the component
+  unmounted. A prop added to a props interface answered `restart required` (`the layout of type
+  'CounterProps' in module 'counter' changed`), and so did every later edit of that session.
+- `examples/refreshAndroid/drive.sh`: 23 of 23, twice; a setup edit keeps count 7 and the new
+  handler makes it 9. Edit to reloaded was 5.4 to 16 s on a machine at 97 % load from four
+  compiler builds, so this run says nothing about speed. The first session after the compiler
+  changed answered `restart required` to its first edit.
+- Not run: a real desktop window (`src/platform/ion/window.ms` does not build, `BUGS.md`), a
+  physical device, kept routes on a device.
 
 **A new generic instance reloads the page on Vite** (design card
 `~/metascript/.inbox/compiler/2026-10-10-js-generic-instance-emitted-into-defining-module.md`):
