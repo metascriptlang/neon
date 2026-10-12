@@ -27,7 +27,7 @@ context value track per consumer · `createComponent` running the body untracked
 | 4 | **the third effect tier** — a deferred `createEffect`, and `onMount` | today's `createEffect` runs immediately, so it *is* Solid's `createRenderEffect`; nothing has a correct place to read a host node back | `solid-effect-tiers.md` |
 | 6 | `equals` on `createSignal` | equality is hardcoded to identity, so a value mutated in place can never announce itself and there is no always-notify signal | `solid-signal-equals.md` |
 | 7 | `<Switch>` / `<Match>`, `<Dynamic>`, `<Portal>` | no n-way choice, no component-as-a-value, no mounting outside the subtree | `solid-control-flow.md` |
-| 8 | `hydrate`, `createUniqueId`, resource serialization | SSR produces markup but nothing can attach to it | `solid-hydrate.md` |
+| 8 | ~~`hydrate`, `createUniqueId`~~; resource serialization | `hydrate` and `createUniqueId` done `3309f37` (2026-10-13): a served page's nodes become the live tree by position, without Solid's `_hk` keys (`docs/RENDER-MODEL.md` "Hydration"; `tests/render/hydrate.test.ms`, `tests/browser/hydrate.test.ms`, `tests/edge/run.sh`). Still missing: a resource's value does not travel from the server to the client, which waits on row 2 | `solid-hydrate.md` |
 
 ## Deliberately not taken
 
