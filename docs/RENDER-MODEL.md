@@ -414,6 +414,12 @@ text node so it still has a position.
 host whose `setStyleClass` registers the rule in the sheet registry, serializes the
 result, and disposes the mount. Regions, fragments, components and context scopes
 serialize through the same path every host uses (`tests/render/ssr.test.ms`).
+`renderToMarkup` is the form for a process that answers many requests: its host collects the
+rules that one render mounted into the returned `css`, after the rules registered outside any
+render (a theme's `:root`), and leaves the registry alone. A registry shared by every request
+sends each page the rules of every page rendered before it, which is why `renderToString`
+with `mountSheet()` stays the form for a process that prints one page
+(`tests/render/ssrRequest.test.ms`).
 
 ## Per-platform economics
 
