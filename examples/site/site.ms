@@ -31,48 +31,49 @@ export interface SiteModel {
 	dispose: Dispose;
 }
 
-function knownPage(page: string): boolean {
-	return page === HOME || DOCS.indexOf(page) >= 0;
+function pathOf(address: string): string {
+	let end = address.length;
+	const query = address.indexOf("?");
+	const hash = address.indexOf("#");
+	if (query >= 0) { end = query; }
+	if (hash >= 0 && hash < end) { end = hash; }
+	return address.substring(0, end);
+}
+
+function pageOf(address: string): string {
+	const path = pathOf(address);
+	if (path === "/") { return HOME; }
+	if (!path.startsWith(DOC_PREFIX)) { return ""; }
+	const slug = path.substring(DOC_PREFIX.length, path.length);
+	return DOCS.indexOf(slug) >= 0 ? slug : "";
 }
 
 export function createSite(history: RoutingHistory): Result<SiteModel, RoutingError> {
-	const page = new Signal<string>(HOME);
-	const homeCodec: RouteCodec<string> = {
-		id: "home",
-		decode: (address: string): Result<string, RoutingError> =>
-			address === "/" ? Result.ok(HOME) : Result.err(RoutingError.NoMatch),
-		encode: (name: string): Result<string, RoutingError> => Result.ok("/"),
-	};
-	const docCodec: RouteCodec<string> = {
-		id: "doc",
-		decode: (address: string): Result<string, RoutingError> => {
-			if (!address.startsWith(DOC_PREFIX)) { return Result.err(RoutingError.NoMatch); }
-			const slug = address.substring(DOC_PREFIX.length, address.length);
-			return DOCS.indexOf(slug) >= 0 ? Result.ok(slug) : Result.err(RoutingError.NoMatch);
-		},
-		encode: (slug: string): Result<string, RoutingError> => Result.ok(DOC_PREFIX + slug),
+	const address = new Signal<string>("/");
+	const pageCodec: RouteCodec<string> = {
+		id: "page",
+		decode: (requested: string): Result<string, RoutingError> =>
+			pageOf(requested) === "" ? Result.err(RoutingError.NoMatch) : Result.ok(requested),
+		encode: (held: string): Result<string, RoutingError> => Result.ok(held),
 	};
 	const registry = new RoutingRegistry("main");
 	registry.register(createRouteParticipant(
 		"main",
 		[
-			bindRoute<string>(homeCodec,
-				(): string | null => page.get() === HOME ? HOME : null,
-				(name: string): void => page.set(HOME)),
-			bindRoute<string>(docCodec,
-				(): string | null => page.get() === HOME ? null : page.get(),
-				(slug: string): void => page.set(slug)),
+			bindRoute<string>(pageCodec,
+				(): string | null => address.get(),
+				(requested: string): void => address.set(requested)),
 		],
-		(): void => page.set(HOME),
-		(): string => page.get(),
+		(): void => address.set("/"),
+		(): string => address.get(),
 		(state: string): Result<RoutePlan, RoutingError> => {
-			if (!knownPage(state)) { return Result.err(RoutingError.IncompleteSnapshot); }
-			return Result.ok({ commit: (): void => page.set(state) });
+			if (pageOf(state) === "") { return Result.err(RoutingError.IncompleteSnapshot); }
+			return Result.ok({ commit: (): void => address.set(state) });
 		},
 	));
 	const session = try createRoutingSession(registry, history, (failure: RoutingError): void => {});
 	return Result.ok({
-		page: accessor((): string => page.get()),
+		page: accessor((): string => pageOf(address.get())),
 		open: (url: string): boolean => session.navigate(url, false).ok,
 		dispose: (): void => session.dispose(),
 	});
@@ -95,6 +96,7 @@ function Doc(props: { slug: Accessor<string> }): NeonNode {
 			<Text>{"Read " + reads.get().toString()}</Text>
 		</Pressable>
 		<View style={styles.tall}></View>
+		<h2 id="notes">Notes</h2>
 	</View>;
 }
 
@@ -106,6 +108,7 @@ export function Site(props: { model: SiteModel }): NeonNode {
 			<a href="/">Home</a>
 			<a href="/docs/start">Start</a>
 			<a href="/docs/routing">Routing</a>
+			<a href="/docs/routing#notes">Notes</a>
 			<a href="/docs/missing">Missing</a>
 			<a href="https://example.com/docs/start">Elsewhere</a>
 		</nav>
