@@ -105,6 +105,11 @@ function edit(file, from, to) {
 	files[file] = text.replace(from, to);
 	writeFileSync(path, files[file]);
 }
+const markOut = () => page.evaluate(() => { document.querySelector("#out").__old = true; });
+const remounted = () => page.waitForFunction(() => {
+	const out = document.querySelector("#out");
+	return out !== null && out.__old !== true;
+}, null, { timeout: 60000 }).then(() => true, () => false);
 const viteSince = (mark) => dev.lines.slice(mark).filter((l) => /hmr|reload|error|fail/i.test(l)).map((l) => l.replace(/^\d+:\d+:\d+ [AP]M /, "")).join(" ; ") || "(none)";
 const kept = (s) => s.session === session && navigations === loadNavs && s.tallySame && s.tally === "tally: 3" && s.notes === "hello";
 const keptText = (s) => `session=${s.session === session ? "same" : s.session} navs=${navigations - loadNavs} tallyNode=${s.tallySame ? "same" : "new"} tally="${s.tally}" notes="${s.notes}"`;
@@ -125,14 +130,15 @@ check("S1", "one click after edit adds exactly 1", s.out === "clicks: 9 apples",
 
 // ---- 2. setup edit remounts the boundary
 mark = dev.lines.length;
+await markOut();
 edit("counter.ms", "setCount(count() + 1)", "setCount(count() + 2)");
-shown = await waitText("#out", "clicks: 0 apples");
+shown = await remounted();
 s = await snap();
-check("S2", "handler edit remounts Counter (count 0), sibling kept", shown && s.counters === 1 && s.title === "Counter v2" && kept(s),
+check("S2", "handler edit remounts Counter with its count kept, sibling kept", shown && s.out === "clicks: 9 apples" && s.counters === 1 && s.title === "Counter v2" && kept(s),
 	`out="${s.out}" counters=${s.counters} ${keptText(s)} vite: ${viteSince(mark)}`);
 await clicks(1);
 s = await snap();
-check("S2", "new handler adds 2", s.out === "clicks: 2 apples", `out="${s.out}"`);
+check("S2", "new handler adds 2", s.out === "clicks: 11 apples", `out="${s.out}"`);
 
 // ---- 3. four consecutive template edits
 mark = dev.lines.length;
@@ -142,11 +148,11 @@ for (const v of [3, 4, 5, 6]) {
 	all = (await waitText("#title", `Counter v${v}`)) && all;
 }
 s = await snap();
-check("S3", "four template edits applied, one view, count kept", all && s.counters === 1 && s.incs === 1 && s.out === "clicks: 2 apples" && kept(s),
+check("S3", "four template edits applied, one view, count kept", all && s.counters === 1 && s.incs === 1 && s.out === "clicks: 11 apples" && kept(s),
 	`title="${s.title}" counters=${s.counters} incButtons=${s.incs} out="${s.out}" ${keptText(s)} vite: ${viteSince(mark)}`);
 await clicks(1);
 s = await snap();
-check("S3", "one click adds exactly 2 (single handler)", s.out === "clicks: 4 apples", `out="${s.out}"`);
+check("S3", "one click adds exactly 2 (single handler)", s.out === "clicks: 13 apples", `out="${s.out}"`);
 
 // ---- 4. dependency edit
 mark = dev.lines.length;
@@ -155,8 +161,8 @@ shown = await page.waitForFunction(() => document.querySelector("#out")?.textCon
 s = await snap();
 check("S4", "words.ms edit shows new word, sibling kept, no reload", shown && s.counters === 1 && kept(s),
 	`out="${s.out}" counters=${s.counters} ${keptText(s)} vite: ${viteSince(mark)}`);
-const countKept = s.out === "clicks: 4 pears";
-check("S4", "Counter count kept across the dependency edit", countKept, `out="${s.out}" (was "clicks: 4 apples")`);
+const countKept = s.out === "clicks: 13 pears";
+check("S4", "Counter count kept across the dependency edit", countKept, `out="${s.out}" (was "clicks: 13 apples")`);
 let n = countOf(s.out);
 await clicks(1);
 s = await snap();
@@ -214,7 +220,7 @@ const code = await build.exited;
 const assets = join(work, "dist/assets");
 const js = existsSync(assets) ? readdirSync(assets).filter((f) => f.endsWith(".js")) : [];
 const bundle = js.map((f) => readFileSync(join(assets, f), "utf8")).join("\n");
-const leaks = ["refreshModuleEval", "import.meta.hot", "__refreshBody", "refreshBoundary"].filter((w) => bundle.includes(w));
+const leaks = ["refreshModuleEval", "import.meta.hot", "__refreshBody", "refreshBoundary", "refreshState"].filter((w) => bundle.includes(w));
 check("S6", "vite build without -d:refresh has no refresh hooks", code === 0 && js.length > 0 && leaks.length === 0,
 	`exit=${code} bundles=${js.join(",")} bytes=${bundle.length} leaks=[${leaks.join(",")}] vite: ${build.lines.filter((l) => /built in|error/i.test(l)).join(" ; ")}`);
 const preview = startVite(["preview"], {}, /Local:/);
