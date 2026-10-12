@@ -2,6 +2,10 @@ import { onCleanup } from "../../src/core/cleanup";
 import { Host, HostNode, NeonNode } from "../../src/render/hostTypes";
 import { el } from "../../src/render/node";
 import { renderToMarkup } from "../../src/render/ssr";
+import { render, mockHost, mockNode, mockToString } from "../../src/render/host";
+import { bindText } from "../../src/render/bind";
+import { createUniqueId } from "../../src/core/owner";
+import { createEffect } from "../../src/core/effect";
 import { cssRuleCount, registerCss, resetCss } from "../../src/render/sheet";
 import { RN_WEB_BASE_CSS } from "../../src/render/web";
 
@@ -77,4 +81,47 @@ test "the top layer of one request is empty in the next" {
 	renderToMarkup(portal);
 	renderToMarkup(portal);
 	assert found === 0;
+}
+
+function labelled(label: string): NeonNode {
+	return (host: Host, parent: HostNode, before: HostNode | null): void => {
+		const id = createUniqueId();
+		const text = host.createElement("label");
+		host.setAttr(text, "for", id);
+		const caption = host.createText("");
+		bindText(host, caption, (): string => label);
+		host.append(text, caption);
+		const input = host.createElement("input");
+		host.setAttr(input, "id", id);
+		host.insertBefore(parent, text, before);
+		host.insertBefore(parent, input, before);
+	};
+}
+
+function form(): NeonNode {
+	return (host: Host, parent: HostNode, before: HostNode | null): void => {
+		labelled("name")(host, parent, before);
+		createEffect(() => { labelled("mail")(host, parent, before); });
+	};
+}
+
+test "createUniqueId draws the same ids in every request for one tree" {
+	const first = renderToMarkup(form()).html;
+	assert first === "<label for=\"0\">name</label><input id=\"0\">" +
+		"<label for=\"10\">mail</label><input id=\"10\">", first;
+	assert renderToMarkup(classed("a", "one")).html === "<p class=\"a\">one</p>", "another tree in between";
+	assert renderToMarkup(form()).html === first, "the second request drew different ids";
+}
+
+test "a client render outside a request draws ids that never repeat" {
+	const host = mockHost();
+	const a = mockNode("root");
+	const b = mockNode("root");
+	const disposeA = render(form(), host, a as unknown as HostNode);
+	const disposeB = render(form(), host, b as unknown as HostNode);
+	const htmlA = mockToString(a);
+	const htmlB = mockToString(b);
+	disposeA();
+	disposeB();
+	assert htmlA.includes("for=\"cl-") && htmlA !== htmlB, htmlA + " | " + htmlB;
 }

@@ -1,4 +1,4 @@
-import { createEffect } from "../core/effect";
+import { createBindingEffect } from "../core/effect";
 import { Style, StyleValue, setStyleField } from "./style";
 import { Host, HostNode, RefFn } from "./hostTypes";
 
@@ -9,7 +9,7 @@ import { Host, HostNode, RefFn } from "./hostTypes";
 export function bindText(host: Host, node: HostNode, get: () => string): void {
 	let prev = "";
 	let bound = false;
-	createEffect(() => {
+	createBindingEffect(() => {
 		const v = get();
 		if (bound && v === prev) { return; }
 		bound = true;
@@ -29,7 +29,7 @@ export function writeAttr(host: Host, node: HostNode, name: string, value: strin
 export function bindAttr(host: Host, node: HostNode, name: string, get: () => string | null): void {
 	let prev: string | null = null;
 	let bound = false;
-	createEffect(() => {
+	createBindingEffect(() => {
 		const v = get();
 		if (bound && v === prev) { return; }
 		bound = true;
@@ -41,7 +41,7 @@ export function bindAttr(host: Host, node: HostNode, name: string, get: () => st
 export function bindStyleProp(host: Host, node: HostNode, own: Style, name: string, get: () => StyleValue): void {
 	let prev: StyleValue = null;
 	let bound = false;
-	createEffect(() => {
+	createBindingEffect(() => {
 		const v = get();
 		if (bound && v === prev) { return; }
 		bound = true;
@@ -67,7 +67,7 @@ export function applyStaticStyle(host: Host, node: HostNode, s: Style): void {
 // a field can fall back to an earlier layer when deselected, so the effect
 // hands the fresh merge to setStyle each time.
 export function bindStyleAll(host: Host, node: HostNode, get: () => Style): void {
-	createEffect(() => {
+	createBindingEffect(() => {
 		host.setStyle(node, get());
 	});
 }

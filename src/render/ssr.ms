@@ -84,7 +84,7 @@ export function serializeChildren(n: MockNode): string {
 
 export function renderToString(n: NeonNode): string {
 	const box = mockNode("ssr-root");
-	const dispose = render(n, SSR_HOST, box as unknown as HostNode);
+	const dispose = render(n, SSR_HOST, box as unknown as HostNode, "");
 	try { return serializeChildren(box); }
 	finally { dispose(); }
 }
@@ -98,7 +98,7 @@ export function renderToMarkup(n: NeonNode): SsrMarkup {
 		css = css + rule;
 	});
 	const box = mockNode("ssr-root");
-	const dispose = render(n, host, box as unknown as HostNode);
+	const dispose = render(n, host, box as unknown as HostNode, "");
 	try { return { html: serializeChildren(box), css: css }; }
 	finally { dispose(); }
 }

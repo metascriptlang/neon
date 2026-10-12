@@ -12,7 +12,7 @@ import { Dispose } from "../core/types";
 export { Host, HostNode, NeonNode, VoidArea } from "./hostTypes";
 export { bindText, writeAttr, bindAttr, bindStyleProp, applyStaticStyle, bindStyleAll, applyRef } from "./bind";
 
-export function render(node: NeonNode, host: Host, parent: HostNode): Dispose {
+export function render(node: NeonNode, host: Host, parent: HostNode, id: string | null = null): Dispose {
 	return createRoot((dispose) => {
 		try {
 			node(host, parent, null);
@@ -21,7 +21,7 @@ export function render(node: NeonNode, host: Host, parent: HostNode): Dispose {
 			dispose();
 			throw error;
 		}
-	});
+	}, id);
 }
 
 // ---- Mock host: in-memory tree for tests/SSR (no browser needed) ----
