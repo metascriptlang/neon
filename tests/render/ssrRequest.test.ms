@@ -8,6 +8,8 @@ import { createUniqueId } from "../../src/core/owner";
 import { createEffect } from "../../src/core/effect";
 import { cssRuleCount, registerCss, resetCss } from "../../src/render/sheet";
 import { RN_WEB_BASE_CSS } from "../../src/render/web";
+import { isServer } from "../../src/render/environment";
+import { View } from "../../src/components/primitives";
 
 function classed(id: string, label: string): NeonNode {
 	return (host: Host, parent: HostNode, before: HostNode | null): void => {
@@ -124,4 +126,32 @@ test "a client render outside a request draws ids that never repeat" {
 	disposeA();
 	disposeB();
 	assert htmlA.includes("for=\"cl-") && htmlA !== htmlB, htmlA + " | " + htmlB;
+}
+
+test "a server render runs no ref, a client render runs each once" {
+	let refs = 0;
+	const count = (n: HostNode): void => { refs += 1; };
+	const tree = (): NeonNode => <View><canvas ref={count}></canvas><View ref={count}><p>x</p></View></View>;
+	const html = renderToMarkup(tree()).html;
+	assert html.indexOf("<canvas>") >= 0, html;
+	assert refs === 0, "the server render ran " + refs.toString() + " refs";
+	const root = mockNode("root");
+	const dispose = render(tree(), mockHost(), root as unknown as HostNode);
+	dispose();
+	assert refs === 2, "the client render ran " + refs.toString() + " refs";
+}
+
+test "isServer holds during a server render and not after one, thrown or not" {
+	let during = false;
+	const probe: NeonNode = (host: Host, parent: HostNode, before: HostNode | null): void => { during = isServer(); };
+	assert !isServer(), "before any render";
+	renderToMarkup(probe);
+	assert during && !isServer(), "during and after";
+	const broken: NeonNode = (host: Host, parent: HostNode, before: HostNode | null): void => { throw "broken page"; };
+	let threw = false;
+	try { renderToMarkup(broken); } catch (e) { threw = true; }
+	assert threw && !isServer(), "after a render that threw";
+	const root = mockNode("root");
+	render(probe, mockHost(), root as unknown as HostNode)();
+	assert !during, "a client render on the mock host is not a server render";
 }

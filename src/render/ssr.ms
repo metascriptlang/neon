@@ -6,6 +6,8 @@ import { collectCss, registerCss } from "./sheet";
 import { styleToCss } from "./css";
 import { Style } from "./style";
 import { webBaseClass, RN_WEB_BASE_CSS, domAttrName, domAttrValue } from "./web";
+import { asServer } from "./environment";
+import { Dispose } from "../core/types";
 
 export struct SsrMarkup {
 	html: string;
@@ -101,9 +103,13 @@ export function serializeChildren(n: MockNode, marked: boolean = true): string {
 	return s;
 }
 
+function renderInto(box: MockNode, n: NeonNode, host: Host): Dispose {
+	return asServer((): Dispose => render(n, host, box as unknown as HostNode, ""));
+}
+
 export function renderToString(n: NeonNode): string {
 	const box = mockNode("ssr-root");
-	const dispose = render(n, SSR_HOST, box as unknown as HostNode, "");
+	const dispose = renderInto(box, n, SSR_HOST);
 	try { return serializeChildren(box); }
 	finally { dispose(); }
 }
@@ -117,7 +123,7 @@ export function renderToMarkup(n: NeonNode): SsrMarkup {
 		css = css + rule;
 	});
 	const box = mockNode("ssr-root");
-	const dispose = render(n, host, box as unknown as HostNode, "");
+	const dispose = renderInto(box, n, host);
 	try { return { html: serializeChildren(box), css: css }; }
 	finally { dispose(); }
 }

@@ -1,6 +1,7 @@
 import { createBindingEffect } from "../core/effect";
 import { Style, StyleValue, setStyleField } from "./style";
 import { Host, HostNode, RefFn } from "./hostTypes";
+import { isServer } from "./environment";
 
 // A dynamic spot re-runs whenever a source signal changes, but a derived expression
 // often maps several source values onto the SAME output ("big"/"small", a formatted
@@ -73,5 +74,6 @@ export function bindStyleAll(host: Host, node: HostNode, get: () => Style): void
 }
 
 export function applyRef(node: HostNode, fn: RefFn): void {
+	if (isServer()) { return; }
 	fn(node);
 }

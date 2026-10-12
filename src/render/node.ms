@@ -9,7 +9,7 @@ import { NeonEvent } from "./event";
 import { Host, HostNode, NeonNode, RefFn } from "./hostTypes";
 import { Row, place, reconcileArrays } from "./reconcile";
 import { regionAnchor, sealRegion } from "./claim";
-import { bindText, bindAttr, bindStyleAll } from "./bind";
+import { bindText, bindAttr, bindStyleAll, applyRef } from "./bind";
 
 export { NeonNode, RefFn } from "./hostTypes";
 
@@ -61,7 +61,7 @@ export function hostElement(
 		if (style !== null) { bindStyleAll(host, node, style as () => Style); }
 		for (const e of events) { host.addEvent(node, e.name, e.handler); }
 		if (children !== null) { (children as NeonNode)(host, node, null); }
-		if (ref !== null) { (ref as RefFn)(node); }
+		if (ref !== null) { applyRef(node, ref as RefFn); }
 		place(host, parent, node, before);
 	};
 }

@@ -37,6 +37,21 @@ export function useKeyboard(): Accessor<KeyboardMetrics> {
 	return accessor((): KeyboardMetrics => ({ visible: keyboardHeight() > 0, height: keyboardHeight() }));
 }
 
+let serverRenders = 0;
+
+export function isServer(): boolean {
+	return serverRenders > 0;
+}
+
+export function asServer<T>(run: () => T): T {
+	serverRenders += 1;
+	try {
+		return run();
+	} finally {
+		serverRenders -= 1;
+	}
+}
+
 export function publishWindow(width: number, height: number): void {
 	batch((): void => {
 		if (windowWidth() !== width) { setWindowWidth(width); }
