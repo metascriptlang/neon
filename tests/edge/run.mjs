@@ -74,7 +74,11 @@ async function routes() {
 	assert.match(doc.body, /<h1>Docs: routing<\/h1>/);
 	assert.doesNotMatch(doc.body, /padding:24px/, "a docs page carries the home page's rule");
 
-	for (const path of ["/docs/missing", "/nowhere", "/docs/start/"]) {
+	const tagged = await get(site + "/docs/routing?utm=1");
+	assert.equal(tagged.status, 200, "a query the site does not read made a page a no-match");
+	assert.match(tagged.body, /<h1>Docs: routing<\/h1>/);
+
+	for (const path of ["/docs/missing", "/nowhere", "/docs/start/", "/docs/missing?utm=1"]) {
 		const missing = await get(site + path);
 		assert.equal(missing.status, 404, path);
 		assert.match(missing.body, /<meta name="robots" content="noindex"/, path);
@@ -108,10 +112,13 @@ async function browser() {
 				if (document.readyState === "interactive") { changes.observe(document, { childList: true, subtree: true }); }
 			});
 		});
-		await page.goto(site + "/docs/start");
+		await page.goto(site + "/docs/start?utm=1#notes");
 		await page.waitForFunction("globalThis.neonSiteHydrated === 1", { timeout: 20000 });
+		assert.equal(new URL(page.url()).search + new URL(page.url()).hash, "?utm=1#notes", "opening the session rewrote the address");
+		const landed = await page.evaluate("window.scrollY");
+		assert.ok(landed > 1000, "the browser's own scroll to the fragment was lost: " + landed);
 		assert.deepEqual(errors, []);
-		assert.equal(await page.evaluate("document.querySelectorAll('#site *').length"), 12);
+		assert.equal(await page.evaluate("document.querySelectorAll('#site *').length"), 14);
 		assert.deepEqual(await page.evaluate("globalThis.neonSiteChanged"), [], "hydrate added or removed an element of the served page");
 		await page.evaluate(() => { document.querySelector("h1").served = true; });
 		assert.equal(await page.title(), "start · Neon site");
@@ -139,6 +146,15 @@ async function browser() {
 		await page.waitForFunction("document.querySelector('h1').textContent === 'Docs: routing'");
 		assert.equal(await page.title(), "routing · Neon site");
 		assert.equal(documents, 1, "history went through the server");
+
+		await page.getByRole("link", { name: "Home", exact: true }).click();
+		await page.waitForFunction("document.querySelector('h1').textContent === 'Neon site'");
+		await page.getByRole("link", { name: "Notes", exact: true }).click();
+		await page.waitForFunction("document.querySelector('h1').textContent === 'Docs: routing'");
+		assert.equal(new URL(page.url()).pathname + new URL(page.url()).hash, "/docs/routing#notes");
+		const atNotes = await page.evaluate("[window.scrollY, document.getElementById('notes').getBoundingClientRect().top, window.innerHeight]");
+		assert.ok(atNotes[0] > 1000 && atNotes[1] >= 0 && atNotes[1] < atNotes[2], "a followed link did not scroll to its fragment: " + atNotes);
+		assert.equal(documents, 1, "a link with a fragment went through the server");
 
 		const answered = page.waitForResponse((r) => r.url() === site + "/docs/missing");
 		await page.getByRole("link", { name: "Missing", exact: true }).click();
