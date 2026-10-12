@@ -1,3 +1,5 @@
+import { htmlTagFor } from "./node";
+
 export const VIEW_CLASS = "neon-view";
 export const TEXT_CLASS = "neon-text";
 
@@ -12,6 +14,79 @@ export const RN_WEB_BASE_CSS =
 	"text-decoration:none;white-space:pre-wrap;overflow-wrap:break-word}";
 
 export const SERVED_HEAD = "data-neon-head";
+
+export const SCROLL_CLASS = "neon-scrollview";
+
+export const SCROLL_CSS =
+	`.${SCROLL_CLASS}{overflow-x:hidden;overflow-y:auto}.neon-hide-horizontal::-webkit-scrollbar:horizontal{height:0}.neon-hide-vertical::-webkit-scrollbar:vertical{width:0}@keyframes neon-refresh-spin{to{transform:rotate(360deg)}}.neon-refresh-indicator[aria-busy=true]{animation:neon-refresh-spin 1s linear infinite}`;
+
+export struct WebRule {
+	id: string;
+	css: string;
+}
+
+export function webHtmlTag(tag: string): string {
+	return match (tag) {
+		"scrollview" => "div",
+		_ => htmlTagFor(tag),
+	};
+}
+
+export function webControlClass(tag: string): string {
+	return match (tag) {
+		"scrollview" => SCROLL_CLASS,
+		_ => "",
+	};
+}
+
+export function webRules(tag: string): WebRule[] {
+	const rules: WebRule[] = [];
+	if (webBaseClass(tag) !== "") { rules.push({ id: "neon-base", css: RN_WEB_BASE_CSS }); }
+	match (tag) {
+		"scrollview" => { rules.push({ id: SCROLL_CLASS, css: SCROLL_CSS }); },
+		_ => {},
+	}
+	return rules;
+}
+
+export struct ScrollLook {
+	overflowX: string;
+	overflowY: string;
+	touchAction: string;
+	scrollbarWidth: string;
+	overscrollBehaviorY: string;
+	overflowAnchor: string;
+	hideHorizontal: boolean;
+	hideVertical: boolean;
+}
+
+export function scrollLook(
+	horizontal: boolean,
+	enabled: boolean,
+	horizontalIndicator: boolean,
+	verticalIndicator: boolean,
+	refreshEnabled: boolean,
+	keepsVisibleContent: boolean,
+): ScrollLook {
+	return {
+		overflowX: enabled && horizontal ? "auto" : "hidden",
+		overflowY: enabled && !horizontal ? "auto" : "hidden",
+		touchAction: enabled ? (horizontal ? "pan-x" : "pan-y") : "none",
+		scrollbarWidth: !horizontalIndicator && !verticalIndicator ? "none" : "auto",
+		overscrollBehaviorY: refreshEnabled ? "contain" : "",
+		overflowAnchor: keepsVisibleContent ? "none" : "",
+		hideHorizontal: !horizontalIndicator,
+		hideVertical: !verticalIndicator,
+	};
+}
+
+export function scrollLookCss(look: ScrollLook): string {
+	let css = "overflow-x:" + look.overflowX + ";overflow-y:" + look.overflowY +
+		";touch-action:" + look.touchAction + ";scrollbar-width:" + look.scrollbarWidth + ";";
+	if (look.overscrollBehaviorY !== "") { css = css + "overscroll-behavior-y:" + look.overscrollBehaviorY + ";"; }
+	if (look.overflowAnchor !== "") { css = css + "overflow-anchor:" + look.overflowAnchor + ";"; }
+	return css;
+}
 
 export function webBaseClass(tag: string): string {
 	return match (tag) {

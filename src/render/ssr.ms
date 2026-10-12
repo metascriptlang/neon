@@ -1,11 +1,23 @@
 import { Host, HostNode } from "./hostTypes";
 import { MockNode, mockNode, mockHost, render } from "./host";
 import { NeonNode } from "./hostTypes";
-import { htmlTagFor, attr } from "./node";
+import { attr } from "./node";
 import { collectCss, registerCss } from "./sheet";
 import { styleToCss } from "./css";
 import { Style } from "./style";
-import { webBaseClass, RN_WEB_BASE_CSS, SERVED_HEAD, domAttrName, domAttrValue } from "./web";
+import {
+	SERVED_HEAD,
+	ScrollLook,
+	scrollLook,
+	scrollLookCss,
+	webBaseClass,
+	webControlClass,
+	webHtmlTag,
+	webRules,
+	domAttrName,
+	domAttrValue,
+} from "./web";
+import { parseVisibleContent } from "./visibleContent";
 import { asServer } from "./environment";
 import { Dispose } from "../core/types";
 
@@ -20,9 +32,10 @@ function ssrHost(register: (id: string, css: string) => void): Host {
 	const createElement = h.createElement;
 	h.createElement = (tag: string): HostNode => {
 		const node = createElement(tag);
+		for (const rule of webRules(tag)) { register(rule.id, rule.css); }
 		const base = webBaseClass(tag);
-		if (base !== "") { register("neon-base", RN_WEB_BASE_CSS); }
-		(node as unknown as MockNode).className = base;
+		const control = webControlClass(tag);
+		(node as unknown as MockNode).className = base === "" || control === "" ? base + control : base + " " + control;
 		return node;
 	};
 	h.setStyleClass = (node: HostNode, id: string, css: string): void => {
@@ -58,10 +71,42 @@ function rawTextTag(tag: string): boolean {
 	};
 }
 
+function attrValue(n: MockNode, name: string): string | null {
+	for (const a of n.attrs) {
+		if (a.name === name) { return a.value; }
+	}
+	return null;
+}
+
+function flagOr(n: MockNode, name: string, absent: boolean): boolean {
+	const v = attrValue(n, name);
+	if (v === null) { return absent; }
+	return v === "" || v === "true";
+}
+
+function scrollOf(n: MockNode): ScrollLook {
+	const keeps = attrValue(n, "maintainVisibleContentPosition");
+	return scrollLook(
+		attrValue(n, "horizontal") === "true",
+		flagOr(n, "scrollEnabled", true),
+		flagOr(n, "showsHorizontalScrollIndicator", true),
+		flagOr(n, "showsVerticalScrollIndicator", true),
+		attrValue(n, "refreshEnabled") === "true",
+		keeps !== null && parseVisibleContent(keeps as string) !== null,
+	);
+}
+
 function serializeNode(n: MockNode): string {
 	if (n.tag === "") { return escapeText(n.text); }
-	const tag = htmlTagFor(n.tag);
+	const tag = webHtmlTag(n.tag);
 	let cls = n.className;
+	let scroll = "";
+	if (n.tag === "scrollview") {
+		const look = scrollOf(n);
+		scroll = scrollLookCss(look);
+		if (look.hideHorizontal) { cls = cls + " neon-hide-horizontal"; }
+		if (look.hideVertical) { cls = cls + " neon-hide-vertical"; }
+	}
 	let open = "<" + tag;
 	for (const a of n.attrs) {
 		if (a.value === null) { continue; }
@@ -73,10 +118,8 @@ function serializeNode(n: MockNode): string {
 	}
 	if (cls !== "") { open = open + " class=\"" + escapeAttribute(cls) + "\""; }
 	const st = n.style;
-	if (st !== null) {
-		const inline = styleToCss(st as Style);
-		if (inline !== "") { open = open + " style=\"" + escapeAttribute(inline) + "\""; }
-	}
+	const inline = (st === null ? "" : styleToCss(st as Style)) + scroll;
+	if (inline !== "") { open = open + " style=\"" + escapeAttribute(inline) + "\""; }
 	if (voidTag(tag)) {
 		if (n.children.length > 0) {
 			throw new Error("SSR void element '" + tag + "' cannot have children");

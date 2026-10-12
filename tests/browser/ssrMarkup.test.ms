@@ -1,7 +1,7 @@
 import { renderToString } from "../../src/render/ssr";
 import { render } from "../../src/render/host";
 import { HostNode, NeonNode } from "../../src/render/hostTypes";
-import { View, Text, Pressable, TextInput } from "../../src/components/primitives";
+import { View, Text, Pressable, TextInput, ScrollView } from "../../src/components/primitives";
 import { collectCss, resetCss } from "../../src/render/sheet";
 import { createStyles, styleOf } from "../../src/macros/ui/style";
 import { createSignal, Accessor } from "../../src/core/signal";
@@ -20,7 +20,7 @@ when (js) {
 		static extern createElement(tag: cstring): MarkupElement;
 	}
 	extern function normalizedHtml(html: cstring): string from
-		"(s => { const r=document.createElement('div');r.innerHTML=s;const f=n=>n.nodeType===1?[n.localName,Array.from(n.attributes,a=>[a.name,a.name==='class'?a.value.split(/\\s+/).sort().join(' '):a.name==='style'?n.style.cssText:a.value]).sort((a,b)=>a[0].localeCompare(b[0])),Array.from(n.childNodes,f)]:n.nodeType===3?n.data:null;return JSON.stringify(Array.from(r.childNodes,f));})(#)";
+		"(s => { const r=document.createElement('div');r.innerHTML=s;const f=n=>n.nodeType===1?[n.localName,Array.from(n.attributes,a=>[a.name,a.name==='class'?a.value.split(/\\s+/).sort().join(' '):a.name==='style'?n.style.cssText:a.value]).filter(a=>a[0]!=='checked').concat(n.localName==='input'&&n.type==='checkbox'?[['checked property',String(n.checked)]]:[]).sort((a,b)=>a[0].localeCompare(b[0])),n.localName==='textarea'?[n.value]:Array.from(n.childNodes,f)]:n.nodeType===3?n.data:null;return JSON.stringify(Array.from(r.childNodes,f));})(#)";
 
 	test "server primitive classes and attributes match actual DOM host" {
 		assert styles.box.cssId !== null && styles.label.cssId !== null;
@@ -70,5 +70,25 @@ when (js) {
 		try {
 			assert parsedNodes(server) === liveNodes(mount), parsedNodes(server) + " vs " + liveNodes(mount);
 		} finally { dispose(); mount.remove(); }
+	}
+
+	function serverAndDom(app: NeonNode): string[] {
+		resetCss();
+		const server = renderToString(app);
+		const mount = document.createElement("div");
+		document.body.appendChild(mount);
+		const dispose = render(app, domHost(), mount as unknown as HostNode);
+		const dom = mount.innerHTML;
+		dispose();
+		mount.remove();
+		return [server, dom];
+	}
+
+	test "server ScrollView is the element and classes the DOM host builds" {
+		const app: NeonNode = <View>
+			<ScrollView horizontal={false}><Text>row</Text></ScrollView>
+		</View>;
+		const [server, dom] = serverAndDom(app);
+		assert normalizedHtml(server) === normalizedHtml(dom), server + " vs " + dom;
 	}
 }

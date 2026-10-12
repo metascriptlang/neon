@@ -3,7 +3,7 @@ import { createEffect } from "../../src/core/effect";
 import { onCleanup } from "../../src/core/cleanup";
 import { Host, HostNode, NeonNode } from "../../src/render/hostTypes";
 import { el, attr, text, dynText } from "../../src/render/node";
-import { renderToString } from "../../src/render/ssr";
+import { renderToString, renderToMarkup } from "../../src/render/ssr";
 
 test "SSR emits HTML void elements without end tags" {
 	const tags = ["area", "base", "br", "col", "embed", "hr", "img", "input",
@@ -23,6 +23,19 @@ test "SSR writes input attributes with the values the DOM host writes" {
 	const locked = renderToString(el("textinput", [attr("editable", "false"), attr("autoFocus", "true"),
 		attr("secureTextEntry", "false"), attr("accessibilityRole", "text")], [], null));
 	assert locked === "<input readonly=\"\" autofocus=\"\" type=\"text\">", locked;
+}
+
+test "SSR writes a scrollview as the div, classes and scroll style the DOM host builds" {
+	const page = renderToMarkup(el("scrollview", [attr("horizontal", "true"),
+		attr("showsHorizontalScrollIndicator", "false")], [], null));
+	assert page.html === "<div horizontal=\"true\" showsHorizontalScrollIndicator=\"false\" " +
+		"class=\"neon-view neon-scrollview neon-hide-horizontal\" " +
+		"style=\"overflow-x:auto;overflow-y:hidden;touch-action:pan-x;scrollbar-width:auto;\"></div>", page.html;
+	assert page.css.indexOf(".neon-scrollview{overflow-x:hidden;overflow-y:auto}") >= 0, page.css;
+	assert page.css.indexOf(".neon-view)") >= 0, page.css;
+	const plain = renderToString(el("scrollview", [], [], null));
+	assert plain === "<div class=\"neon-view neon-scrollview\" " +
+		"style=\"overflow-x:hidden;overflow-y:auto;touch-action:pan-y;scrollbar-width:auto;\"></div>", plain;
 }
 
 test "a throwing SSR mount disposes effects and cleanup" {

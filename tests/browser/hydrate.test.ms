@@ -2,7 +2,7 @@ import { renderToMarkup } from "../../src/render/ssr";
 import { render, hydrate } from "../../src/render/host";
 import { Host, HostNode, NeonNode } from "../../src/render/hostTypes";
 import { NeonEvent } from "../../src/render/event";
-import { View, Text, Pressable } from "../../src/components/primitives";
+import { View, Text, Pressable, ScrollView } from "../../src/components/primitives";
 import { createStyles, styleOf } from "../../src/macros/ui/style";
 import { createSignal, Accessor } from "../../src/core/signal";
 
@@ -22,6 +22,7 @@ when (js) {
 	extern function addForeignChild(node: Page): void from "(n => { const f=document.createElement('i');f.id='foreign';n.appendChild(f); })(#)";
 	extern function notServed(root: Page): number from
 		"(r => Array.from(r.querySelectorAll('*')).filter(n=>n.neonServed!==true&&n.id!=='foreign').length)(#)";
+	extern function fireScroll(node: Page): void from "(n => n.dispatchEvent(new Event('scroll')))(#)";
 	extern function shape(root: Page): string from
 		"(r => { const f=n=>n.nodeType===1?[n.localName,Array.from(n.attributes,a=>[a.name,a.name==='class'?a.value.split(/\\s+/).sort().join(' '):a.value]).sort((a,b)=>a[0].localeCompare(b[0])),n.id==='mech'?[]:Array.from(n.childNodes,f)]:n.nodeType===3?n.data:'comment '+n.data;return JSON.stringify(Array.from(r.childNodes,f)); })(#)";
 
@@ -116,5 +117,37 @@ when (js) {
 		} catch (e) { said = e.toString(); }
 		mount.remove();
 		assert said.indexOf("<h1>") >= 0 && said.indexOf("child 1 of view") >= 0, said;
+	}
+
+	function rendered(app: NeonNode): string {
+		const mount = emptyPage("div");
+		const dispose = render(app, domHost(), mount as unknown as HostNode);
+		const result = shape(mount);
+		dispose();
+		mount.remove();
+		return result;
+	}
+
+	test "hydrate takes over a served ScrollView and leaves it scrollable" {
+		let scrolls = 0;
+		const app: NeonNode = <View>
+			<ScrollView horizontal={true} showsHorizontalScrollIndicator={false}
+				onScroll={(e: NeonEvent): void => { scrolls += 1; }}>
+				<Text>row</Text>
+			</ScrollView>
+		</View>;
+		const mount = parsedPage(renderToMarkup(app).html);
+		let made = 0;
+		const host: Host = domHost();
+		const create = host.createElement;
+		host.createElement = (tag: string): HostNode => { made += 1; return create(tag); };
+		const dispose = hydrate(app, host, mount as unknown as HostNode);
+		try {
+			assert made === 0, "the host created " + made.toString() + " elements";
+			assert notServed(mount) === 0, notServed(mount).toString() + " elements are not the page's own";
+			fireScroll(pageNode(mount, ".neon-scrollview"));
+			assert scrolls === 1, "onScroll ran " + scrolls.toString() + " times";
+			assert shape(mount) === rendered(app), shape(mount);
+		} finally { dispose(); mount.remove(); }
 	}
 }

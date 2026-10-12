@@ -6,8 +6,18 @@ import { Style, StyleValue } from "../../render/style";
 import { registerCss, collectCss, onCssChange } from "../../render/sheet";
 import { NeonEvent, neonEvent, eventType } from "../../render/event";
 import { onCleanup } from "../../core/cleanup";
-import { htmlTagFor } from "../../render/node";
-import { VIEW_CLASS, TEXT_CLASS, RN_WEB_BASE_CSS, SERVED_HEAD, domAttrName, domAttrValue } from "../../render/web";
+import {
+	VIEW_CLASS,
+	TEXT_CLASS,
+	SCROLL_CLASS,
+	SERVED_HEAD,
+	scrollLook,
+	webBaseClass,
+	webHtmlTag,
+	webRules,
+	domAttrName,
+	domAttrValue,
+} from "../../render/web";
 import { publishWindow, publishColorScheme } from "../../render/environment";
 import { publishSafeArea } from "../../render/environment";
 import { CssStyle, applyCss, applyCssProp } from "./domCss";
@@ -365,16 +375,24 @@ class DomScrollState {
 
 	apply(): void {
 		const css = this.el.style as unknown as CSSStyleDeclaration;
-		css.overflowX = this.enabled && this.horizontal ? "auto" : "hidden";
-		css.overflowY = this.enabled && !this.horizontal ? "auto" : "hidden";
-		css.touchAction = this.enabled ? (this.horizontal ? "pan-x" : "pan-y") : "none";
-		css.scrollbarWidth = !this.horizontalIndicator && !this.verticalIndicator ? "none" : "auto";
-		if (this.horizontalIndicator) { this.el.classList.remove("neon-hide-horizontal"); }
-		else { this.el.classList.add("neon-hide-horizontal"); }
-		if (this.verticalIndicator) { this.el.classList.remove("neon-hide-vertical"); }
-		else { this.el.classList.add("neon-hide-vertical"); }
-		css.overscrollBehaviorY = this.refreshEnabled ? "contain" : "";
-		css.overflowAnchor = this.visibleContent === null ? "" : "none";
+		const look = scrollLook(
+			this.horizontal,
+			this.enabled,
+			this.horizontalIndicator,
+			this.verticalIndicator,
+			this.refreshEnabled,
+			this.visibleContent !== null,
+		);
+		css.overflowX = look.overflowX;
+		css.overflowY = look.overflowY;
+		css.touchAction = look.touchAction;
+		css.scrollbarWidth = look.scrollbarWidth;
+		if (look.hideHorizontal) { this.el.classList.add("neon-hide-horizontal"); }
+		else { this.el.classList.remove("neon-hide-horizontal"); }
+		if (look.hideVertical) { this.el.classList.add("neon-hide-vertical"); }
+		else { this.el.classList.remove("neon-hide-vertical"); }
+		css.overscrollBehaviorY = look.overscrollBehaviorY;
+		css.overflowAnchor = look.overflowAnchor;
 		if (this.indicator !== null && (css.position === "" || css.position === "static")) { css.position = "relative"; }
 	}
 
@@ -711,8 +729,6 @@ extern class document {
 // are first mounted, not per element, and the browser reparses one small block.
 let sheetNode: Node | null = null;
 
-const SCROLL_CLASS = "neon-scrollview";
-
 function baseClassOf(el: Node): string {
 	if (el.classList.contains(VIEW_CLASS)) { return VIEW_CLASS; }
 	if (el.classList.contains(TEXT_CLASS)) { return TEXT_CLASS; }
@@ -808,7 +824,7 @@ function dropServedHead(): void {
 }
 
 function createsMoreThanAnElement(tag: string): boolean {
-	return tag === "scrollview" || tag === "multilinetextinput" || tag === "modal" || isMediaTag(tag) || tag === "svg"
+	return tag === "multilinetextinput" || tag === "modal" || isMediaTag(tag) || tag === "svg"
 		|| tag === "slider" || tag === "picker" || tag === "datetimepicker"
 		|| tag === "switch" || tag === "activityindicator" || tag === "image";
 }
@@ -823,8 +839,7 @@ export function domHost(): Host {
 	installBrowserAppServices();
 	watchSafeArea();
 	installDomLayoutAnimation();
-	let scrollRule = false;
-	let baseRule = false;
+	const registeredRules = new Map<string, boolean>();
 	let controlRule = false;
 	let modalRule = false;
 	let textareaRule = false;
@@ -990,28 +1005,23 @@ export function domHost(): Host {
 			if (state.taps === "never") { e.preventDefault(); e.stopPropagation(); }
 		}, true);
 	}
-	const wireBaseClass = (tag: string): string => {
-		const base = tag === "view" || tag === "pressable" || tag === "scrollview" ? VIEW_CLASS : tag === "text" ? TEXT_CLASS : "";
-		if (base !== "" && !baseRule) {
-			registerCss("neon-base", RN_WEB_BASE_CSS);
-			baseRule = true;
+	function registerRules(tag: string): void {
+		for (const rule of webRules(tag)) {
+			if (registeredRules.has(rule.id)) { continue; }
+			registeredRules.set(rule.id, true);
+			registerCss(rule.id, rule.css);
 		}
-		return base;
-	};
+	}
+	function adoptScroll(el: Node): HostNode {
+		el.classList.add(VIEW_CLASS);
+		el.classList.add(SCROLL_CLASS);
+		installScroll(el);
+		return el as unknown as HostNode;
+	}
 	return {
 		createElement: (tag: string): HostNode => {
-			const base = wireBaseClass(tag);
-			if (tag === "scrollview") {
-				if (!scrollRule) {
-					registerCss(SCROLL_CLASS, `.${SCROLL_CLASS}{overflow-x:hidden;overflow-y:auto}.neon-hide-horizontal::-webkit-scrollbar:horizontal{height:0}.neon-hide-vertical::-webkit-scrollbar:vertical{width:0}@keyframes neon-refresh-spin{to{transform:rotate(360deg)}}.neon-refresh-indicator[aria-busy=true]{animation:neon-refresh-spin 1s linear infinite}`);
-					scrollRule = true;
-				}
-				const el = document.createElement("div");
-				el.classList.add(VIEW_CLASS);
-				el.classList.add(SCROLL_CLASS);
-				installScroll(el);
-				return el as unknown as HostNode;
-			}
+			registerRules(tag);
+			if (tag === "scrollview") { return adoptScroll(document.createElement(webHtmlTag(tag))); }
 			if (tag === "multilinetextinput") {
 				// RN's multiline TextInput grows with its content until a height or maxHeight stops it.
 				if (!textareaRule) {
@@ -1035,10 +1045,6 @@ export function domHost(): Host {
 			}
 			if (isMediaTag(tag)) { return createMediaNode(tag); }
 			if (tag === "svg") {
-				if (!baseRule) {
-					registerCss("neon-base", RN_WEB_BASE_CSS);
-					baseRule = true;
-				}
 				const vector = document.createElementNS("http://www.w3.org/2000/svg", "svg");
 				vector.classList.add(VIEW_CLASS);
 				svgCount += 1;
@@ -1068,7 +1074,8 @@ export function domHost(): Host {
 				controlKinds.set(control, tag);
 				return control as unknown as HostNode;
 			}
-			const el = document.createElement(htmlTagFor(tag));
+			const el = document.createElement(webHtmlTag(tag));
+			const base = webBaseClass(tag);
 			if (base !== "") { el.classList.add(base); }
 			return el as unknown as HostNode;
 		},
@@ -1293,9 +1300,12 @@ export function domHost(): Host {
 				el.replaceChild(blank, found);
 				return blank as unknown as HostNode;
 			}
-			if (createsMoreThanAnElement(tag)) { throw "hydrate: the DOM host cannot take over a <" + tag + "> yet"; }
-			if (found.nodeType !== 1 || found.localName !== htmlTagFor(tag)) { return null; }
-			wireBaseClass(tag);
+			if (createsMoreThanAnElement(tag)) {
+				throw "hydrate: the DOM host cannot take over a <" + tag + "> yet";
+			}
+			if (found.nodeType !== 1 || found.localName !== webHtmlTag(tag)) { return null; }
+			registerRules(tag);
+			if (tag === "scrollview") { return adoptScroll(found); }
 			return found as unknown as HostNode;
 		},
 		focus: (node: HostNode, focused: boolean): void => {
