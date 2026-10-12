@@ -58,6 +58,7 @@ interface Instance {
 	saved: SavedState[];
 	live: SavedState[];
 	captures: (() => void)[];
+	broken: boolean;
 	key: string;
 	keyFile: string;
 	host: Host;
@@ -118,6 +119,7 @@ function mountInstance(inst: Instance): void {
 }
 
 function capture(inst: Instance): void {
+	if (inst.broken) { return; }
 	for (const read of inst.captures) { read(); }
 	inst.saved = inst.live;
 	inst.live = [];
@@ -190,9 +192,26 @@ function rebuild(instances: Map<string, Instance[]>, inst: Instance, sig: string
 	removeRow(inst.host, inst.parent, inst.row);
 	cleanNode(inst.owner, false);
 	track(instances, inst);
-	mountInstance(inst);
+	const kept = inst.saved;
+	const outer = mounting;
+	try {
+		mountInstance(inst);
+		inst.broken = false;
+		inst.sig = sig;
+	} catch (e) {
+		mounting = outer;
+		console.log("refresh: " + inst.key + " did not mount: " + e.message);
+		removeRow(inst.host, inst.parent, inst.row);
+		cleanNode(inst.owner, false);
+		track(instances, inst);
+		inst.row = makeRow((host: Host, parent: HostNode, before: HostNode | null): void => {});
+		inst.saved = kept;
+		inst.live = [];
+		inst.captures = [];
+		inst.broken = true;
+		inst.sig = "";
+	}
 	pending.clear();
-	inst.sig = sig;
 }
 
 function instanceNode(
@@ -214,6 +233,7 @@ function instanceNode(
 			saved: stashed(key),
 			live: [],
 			captures: [],
+			broken: false,
 			key: key,
 			keyFile: moduleFile,
 			host: host,
