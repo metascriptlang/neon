@@ -36,11 +36,11 @@ class TemplateSlot<E> {
 }
 
 class StateCell<T> {
-	get: Accessor<T>;
+	read: () => T;
 	value: T;
 
-	constructor(get: Accessor<T>, value: T) {
-		this.get = get;
+	constructor(read: () => T, value: T) {
+		this.read = read;
 		this.value = value;
 	}
 }
@@ -107,10 +107,9 @@ function mountInstance(inst: Instance): void {
 		const row = makeRow((host: Host, parent: HostNode, before: HostNode | null): void => {
 			const outer = mounting;
 			mounting = inst;
-			const node = inst.render();
+			inst.render()(host, parent, before);
 			mounting = outer;
 			inst.saved = [];
-			node(host, parent, before);
 		});
 		inst.row = row;
 		mountAt(inst.host, inst.parent, inst.anchor, row);
@@ -162,9 +161,11 @@ function documentOrder(inst: Instance, below: Instance[]): Instance[] {
 function stash(inst: Instance): void {
 	capture(inst);
 	const below: Instance[] = [];
-	for (const list of compInstances.values()) {
-		for (const other of list) {
-			if (other !== inst && within(other.owner, inst.owner)) { below.push(other); }
+	for (const instances of [compInstances, tmplInstances]) {
+		for (const list of instances.values()) {
+			for (const other of list) {
+				if (other !== inst && within(other.owner, inst.owner)) { below.push(other); }
+			}
 		}
 	}
 	for (const other of documentOrder(inst, below)) {
@@ -405,19 +406,27 @@ export function refreshRegion<E>(
 	return instanceNode(tmplInstances, moduleFile, key, type, render, (): string => slot.sigFn());
 }
 
-export function refreshState<T>(key: string, get: Accessor<T>, set: Setter<T>): void {
+export function refreshKeep<T>(key: string, read: () => T, write: (value: T) => void): void {
 	const inst = mounting;
 	if (inst === null) { return; }
-	const type = refreshTypeKey(get);
-	for (const kept of inst.saved) {
-		if (kept.key === key && kept.type === type) {
-			set((kept.cell as StateCell<T>).value);
-			break;
-		}
+	const type = refreshTypeKey(read);
+	let nth = 0;
+	for (const earlier of inst.live) {
+		if (earlier.key === key) { nth += 1; }
 	}
-	const cell = new StateCell<T>(get, untrack((): T => get()));
+	let seen = 0;
+	for (const kept of inst.saved) {
+		if (kept.key !== key) { continue; }
+		if (seen === nth && kept.type === type) { write((kept.cell as StateCell<T>).value); }
+		seen += 1;
+	}
+	const cell = new StateCell<T>(read, untrack(read));
 	inst.live.push({ key: key, type: type, cell: cell });
-	inst.captures.push((): void => { cell.value = untrack((): T => cell.get()); });
+	inst.captures.push((): void => { cell.value = untrack(cell.read); });
+}
+
+export function refreshState<T>(key: string, get: Accessor<T>, set: Setter<T>): void {
+	refreshKeep<T>(key, (): T => get(), (value: T): void => { set(value); });
 }
 
 export function refreshModule(moduleFile: string): RefreshSummary {
