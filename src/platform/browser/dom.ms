@@ -7,6 +7,7 @@ import { registerCss, collectCss, onCssChange } from "../../render/sheet";
 import { NeonEvent, neonEvent, eventType } from "../../render/event";
 import { onCleanup } from "../../core/cleanup";
 import { htmlTagFor } from "../../render/node";
+import { VIEW_CLASS, TEXT_CLASS, RN_WEB_BASE_CSS, domAttrName, domAttrValue } from "../../render/web";
 import { publishWindow, publishColorScheme } from "../../render/environment";
 import { publishSafeArea } from "../../render/environment";
 import { CssStyle, applyCss, applyCssProp } from "./domCss";
@@ -442,18 +443,6 @@ class DomScrollState {
 	}
 }
 
-function ariaRole(role: string): string | null {
-	return match (role) {
-		"header" => "heading",
-		"image" => "img",
-		"adjustable" => "slider",
-		"summary" => "region",
-		"none" => "presentation",
-		"text" => null,
-		_ => role,
-	};
-}
-
 const CONTROL_CSS = ".neon-activity{box-sizing:border-box;border-radius:50%;border:3px solid currentColor;border-top-color:transparent;animation:neon-activity-spin 0.8s linear infinite;color:#999999}.neon-activity[data-animating=false]{animation:none}.neon-activity[data-animating=false]:not([data-hides=false]){visibility:hidden}@keyframes neon-activity-spin{to{transform:rotate(360deg)}}.neon-image{object-fit:cover}.neon-image[data-resize=contain]{object-fit:contain}.neon-image[data-resize=stretch]{object-fit:fill}.neon-image[data-resize=center]{object-fit:none}.neon-image:not([src]){visibility:hidden}";
 const controlKinds = new Map<Node, string>();
 const switchValues = new Map<Node, boolean>();
@@ -694,60 +683,9 @@ function writeDomAttr(el: Node, name: string, value: string): void {
 		if (current === "") { el.value = value; }
 		return;
 	}
-	if (name === "accessibilityLabel") { el.setAttribute("aria-label", value); return; }
-	if (name === "accessibilityHint") { el.setAttribute("aria-description", value); return; }
-	if (name === "accessibilityRole") {
-		const role = ariaRole(value);
-		if (role === null) { el.removeAttribute("role"); } else { el.setAttribute("role", role as string); }
-		return;
-	}
-	if (name === "accessible" || name === "blurOnSubmit" || name === "multiline" || name === "placeholderTextColor") { return; }
-	if (name === "editable") {
-		if (value === "false") { el.setAttribute("readonly", ""); } else { el.removeAttribute("readonly"); }
-		return;
-	}
-	if (name === "secureTextEntry") {
-		el.setAttribute("type", value === "true" ? "password" : "text");
-		return;
-	}
-	if (name === "keyboardType") {
-		const mode = match (value) {
-			"numeric" | "number-pad" => "numeric",
-			"decimal-pad" => "decimal",
-			"phone-pad" => "tel",
-			"email-address" => "email",
-			"url" => "url",
-			_ => "text",
-		};
-		el.setAttribute("inputmode", mode);
-		return;
-	}
-	if (name === "returnKeyType") { el.setAttribute("enterkeyhint", value); return; }
-	if (name === "autoCapitalize") { el.setAttribute("autocapitalize", value); return; }
-	if (name === "autoCorrect") { el.setAttribute("autocorrect", value === "false" ? "off" : "on"); return; }
-	if (name === "maxLength") { el.setAttribute("maxlength", value); return; }
-	if (name === "autoFocus") {
-		if (value === "true") { el.setAttribute("autofocus", ""); } else { el.removeAttribute("autofocus"); }
-		return;
-	}
-	el.setAttribute(name, value);
-}
-
-function domAttrName(name: string): string {
-	return match (name) {
-		"accessibilityLabel" => "aria-label",
-		"accessibilityHint" => "aria-description",
-		"accessibilityRole" => "role",
-		"editable" => "readonly",
-		"keyboardType" => "inputmode",
-		"returnKeyType" => "enterkeyhint",
-		"autoCapitalize" => "autocapitalize",
-		"autoCorrect" => "autocorrect",
-		"maxLength" => "maxlength",
-		"autoFocus" => "autofocus",
-		"secureTextEntry" => "type",
-		_ => name,
-	};
+	const mapped = domAttrValue(name, value);
+	if (mapped === null) { el.removeAttribute(domAttrName(name)); return; }
+	el.setAttribute(domAttrName(name), mapped as string);
 }
 
 function inputNode(node: Node): boolean { return node.tagName === "INPUT" || node.tagName === "TEXTAREA"; }
@@ -771,10 +709,6 @@ extern class document {
 let sheetNode: Node | null = null;
 
 const SCROLL_CLASS = "neon-scrollview";
-
-const VIEW_CLASS = "neon-view";
-const TEXT_CLASS = "neon-text";
-const RN_WEB_BASE_CSS = ":where(.neon-view){align-content:flex-start;align-items:stretch;background-color:transparent;border:0 solid black;box-sizing:border-box;display:flex;flex-basis:auto;flex-direction:column;flex-shrink:0;list-style:none;margin:0;min-height:0;min-width:0;padding:0;position:relative;text-decoration:none;z-index:0}:where(button.neon-view){font:inherit;color:inherit;text-align:inherit}:where(.neon-text){background-color:transparent;border:0 solid black;box-sizing:border-box;list-style:none;margin:0;padding:0;position:relative;text-decoration:none;white-space:pre-wrap;overflow-wrap:break-word}";
 
 function baseClassOf(el: Node): string {
 	if (el.classList.contains(VIEW_CLASS)) { return VIEW_CLASS; }
