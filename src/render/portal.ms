@@ -1,11 +1,14 @@
 import { onCleanup } from "../core/cleanup";
+import { Accessor } from "../core/signal";
 import { Style } from "./style";
 import { NeonNode, VAttr, VEvent, hostElement } from "./node";
 import { Host, HostNode } from "./hostTypes";
 import { unclaimed } from "./claim";
+import { makeRow, mountAt } from "./reconcile";
 
 interface PortalProps {
 	mount?: HostNode | null;
+	style?: Accessor<Style> | null;
 	children?: NeonNode | null;
 }
 
@@ -13,7 +16,9 @@ interface PortalProps {
 // node — `mount`, or the host's overlay root — while they stay in this owner,
 // so context and cleanup follow the Portal's place in the tree.
 export function Portal(props: PortalProps): NeonNode {
-	return portalNode(props.mount, "view", [], [], null, props.children);
+	const style = props.style;
+	const paint = style === null ? null : (): Style => (style as Accessor<Style>)();
+	return portalNode(props.mount, "view", [], [], paint, props.children);
 }
 
 export function portalNode(
@@ -35,7 +40,8 @@ export function portalNode(
 		}
 		let container: HostNode | null = null;
 		const grab = (node: HostNode): void => { container = node; };
-		unclaimed(host, (): void => { hostElement(tag, attrs, events, children, style, grab)(host, target, null); });
+		const physical = makeRow(hostElement(tag, attrs, events, children, style, grab));
+		unclaimed(host, (): void => { mountAt(host, target, null, physical); });
 		onCleanup((): void => {
 			if (container !== null) { host.removeChild(target, container as HostNode); }
 		});

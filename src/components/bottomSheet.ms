@@ -1,5 +1,3 @@
-// Flutter showModalBottomSheet as a component: a scrim and a sheet docked at the bottom with the
-// Material 3 drag handle. An absolutely positioned layer: place it last, at the root of the screen.
 // Native hosts paint one uniform radius, so the sheet's bottom corners round as well.
 
 import { Style, layerStyles } from "../render/style";
@@ -7,6 +5,7 @@ import { Accessor, accessor } from "../core/signal";
 import { element } from "../macros/ui/element";
 import { Show } from "../macros/ui/flow";
 import { NeonNode } from "../render/node";
+import { Portal } from "../render/portal";
 import { Host, HostNode } from "../render/hostTypes";
 import { AccessibilityProps, View } from "./primitives";
 import { flagOn } from "./material";
@@ -69,10 +68,10 @@ export function BottomSheet(props: BottomSheetProps): NeonNode {
 		children: body,
 	});
 	return element(<Show when={visible()}>
-		<View style={SHEET_LAYER}>
+		<Portal style={SHEET_LAYER}>
 			<BackDismiss dismissable={canDismiss()} onDismiss={onDismiss} />
 			<Scrim dismissable={canDismiss()} onDismiss={onDismiss} />
 			{panel}
-		</View>
+		</Portal>
 	</Show>);
 }

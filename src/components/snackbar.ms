@@ -1,5 +1,4 @@
 // react-native-paper Snackbar with Flutter SnackBar's look and its 4 s default duration.
-// An absolutely positioned layer pinned to the bottom: place it last, at the root of the screen.
 
 import { NeonEvent } from "../render/event";
 import { Style, layerStyles } from "../render/style";
@@ -8,7 +7,8 @@ import { Cleanup } from "../core/types";
 import { Accessor, accessor } from "../core/signal";
 import { element } from "../macros/ui/element";
 import { Show } from "../macros/ui/flow";
-import { NeonNode } from "../render/node";
+import { NeonNode, attr, dynAttr } from "../render/node";
+import { portalNode } from "../render/portal";
 import { Host, HostNode } from "../render/hostTypes";
 import { AccessibilityProps, Pressable, Text, View } from "./primitives";
 import { colorOr } from "./material";
@@ -106,17 +106,21 @@ export function Snackbar(props: SnackbarProps): NeonNode {
 		: element(<View style={SNACKBAR_MESSAGE}>
 			<Text style={SNACKBAR_TEXT}>{text()}</Text>
 		</View>);
-	const bar = element(<Show when={visible()}>
-		<View style={layer} accessibilityRole="alert" accessibilityLabel={a11y()}>
-			{body}
-			<Show when={hasAction}>
-				<Pressable style={SNACKBAR_ACTION_BOX} onPress={pressAction}
-					accessibilityRole="button" accessibilityLabel={label()}>
-					<Text style={actionText}>{label().toUpperCase()}</Text>
-				</Pressable>
-			</Show>
-		</View>
-	</Show>);
+	const content = element(<>
+		{body}
+		<Show when={hasAction}>
+			<Pressable style={SNACKBAR_ACTION_BOX} onPress={pressAction}
+				accessibilityRole="button" accessibilityLabel={label()}>
+				<Text style={actionText}>{label().toUpperCase()}</Text>
+			</Pressable>
+		</Show>
+	</>);
+	const floating = portalNode(
+		null, "view",
+		[dynAttr("accessibilityLabel", (): string | null => a11y()), attr("accessibilityRole", "alert")],
+		[], (): Style => layer(), content,
+	);
+	const bar = element(<Show when={visible()}>{floating}</Show>);
 	return (host: Host, parent: HostNode, before: HostNode | null): void => {
 		const ms = (): int32 => duration === null
 			? SNACKBAR_DURATION_MS

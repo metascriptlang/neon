@@ -63,3 +63,38 @@ test "a Portal keeps its owner's context and mounts into a named node" {
 	assert mockToString(target) === "<target><view><text>dark</text></view></target>", "portal: " + mockToString(target);
 	assert mockToString(root) === "<root><view></view></root>", "the app tree keeps no node: " + mockToString(root);
 }
+
+test "Portal styles its physical container reactively and releases it with its owner" {
+	const [width, setWidth] = createSignal<float64>(100);
+	const host = mockHost();
+	const root = mockNode("root");
+	const dispose = render(element(<View style={{ width: 20, height: 20, overflow: "hidden" }}>
+		<Portal style={{ position: "absolute", top: 0, left: 0, width: width(), height: 50 }}><Text>floating</Text></Portal>
+	</View>), host, root as unknown as HostNode);
+	const overlay = overlayOf(host);
+	assert mockToString(root).indexOf("floating") < 0;
+	const box = overlay.children[0];
+	assert box.style !== null;
+	assert (box.style as Style).position === "absolute" && (box.style as Style).width === 100;
+	setWidth(200);
+	assert (box.style as Style).width === 200;
+	dispose();
+	assert overlay.children.length === 0;
+	setWidth(300);
+	assert overlay.children.length === 0;
+}
+
+test "Modal hides exactly once when its physical overlay root is also the logical render parent" {
+	const [open, setOpen] = createSignal(true);
+	const host = mockHost();
+	const root = mockNode("root");
+	host.overlayRoot = (node: HostNode): HostNode => root as unknown as HostNode;
+	const dispose = render(element(<Modal visible={open()}><Text>same root</Text></Modal>), host, root as unknown as HostNode);
+	assert mockToString(root).indexOf("same root") >= 0;
+	setOpen(false);
+	assert mockToString(root) === "<root></root>";
+	setOpen(true);
+	assert mockToString(root).indexOf("same root") >= 0;
+	dispose();
+	assert mockToString(root) === "<root></root>";
+}

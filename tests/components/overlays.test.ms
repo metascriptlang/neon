@@ -6,7 +6,7 @@ import { flush } from "../../src/core/runtime";
 import { createSignal } from "../../src/core/signal";
 import { sleepAsync } from "std/core/promise";
 import { element } from "../../src/macros/ui/element";
-import { HostNode, MockNode, mockNode, mockHost, render, mockToString, fireEvent } from "../../src/render/host";
+import { Host, HostNode, MockNode, mockNode, mockHost, render, mockToString, fireEvent } from "../../src/render/host";
 import { Style } from "../../src/render/style";
 import { Text, View } from "../../src/components/primitives";
 import { Snackbar } from "../../src/components/snackbar";
@@ -16,6 +16,12 @@ import { Dialog, DialogAction } from "../../src/components/dialog";
 import { BottomSheet } from "../../src/components/bottomSheet";
 import { StepItem, Stepper } from "../../src/components/stepper";
 import { NeonNode } from "../../src/render/node";
+
+function screenHost(root: MockNode): Host {
+	const host = mockHost();
+	host.overlayRoot = (node: HostNode): HostNode => root as unknown as HostNode;
+	return host;
+}
 
 function firstTag(parent: MockNode, tag: string): MockNode {
 	for (const c of parent.children) {
@@ -37,12 +43,12 @@ test "Snackbar shows a bottom alert with its action, and the action dismisses it
 	const root: MockNode = mockNode("root");
 	render(element(<Snackbar visible={open()} message="Saved" actionLabel="Undo"
 		onActionPress={(): void => { setLog((p: string): string => p + "undo;"); }}
-		onDismiss={(): void => { setLog((p: string): string => p + "dismiss;"); setOpen(false); }} />), mockHost(), root as unknown as HostNode);
+		onDismiss={(): void => { setLog((p: string): string => p + "dismiss;"); setOpen(false); }} />), screenHost(root), root as unknown as HostNode);
 	assert mockToString(root) === "<root></root>", "hidden: " + mockToString(root);
 	setOpen(true);
 	flush();
 	assert mockToString(root) === "<root><view accessibilityLabel=\"Saved\" accessibilityRole=\"alert\"><view><text>Saved</text></view><pressable accessible=\"true\" accessibilityLabel=\"Undo\" accessibilityRole=\"button\"><text>UNDO</text></pressable></view></root>", "shown: " + mockToString(root);
-	const bar = root.children[0];
+	const bar = firstTag(root, "view");
 	const layer = bar.style as Style;
 	assert layer.position === "absolute" && layer.bottom === 8 && layer.backgroundColor === "#323232", "pinned to the bottom";
 	fireEvent(bar.children[1], "onPress");
@@ -56,7 +62,7 @@ test "Snackbar dismisses itself after its duration and not while hidden" {
 	const [dismissed, setDismissed] = createSignal(0);
 	const root: MockNode = mockNode("root");
 	render(element(<Snackbar visible={open()} duration={120}
-		onDismiss={(): void => { setDismissed(dismissed() + 1); setOpen(false); }}><Text>Archived</Text></Snackbar>), mockHost(), root as unknown as HostNode);
+		onDismiss={(): void => { setDismissed(dismissed() + 1); setOpen(false); }}><Text>Archived</Text></Snackbar>), screenHost(root), root as unknown as HostNode);
 	await sleepAsync(200);
 	assert dismissed() === 0, "no timer while hidden";
 	setOpen(true);
@@ -79,8 +85,8 @@ test "Snackbar takes paper's action object and an accent colour" {
 	const root: MockNode = mockNode("root");
 	render(element(<Snackbar visible={true} message="Deleted" actionColor="#ffcc80"
 		action={{ label: "Retry", onPress: (): void => { setLog((p: string): string => p + "retry;"); } }}
-		onDismiss={(): void => { setLog((p: string): string => p + "dismiss;"); }} />), mockHost(), root as unknown as HostNode);
-	const button = root.children[0].children[1];
+		onDismiss={(): void => { setLog((p: string): string => p + "dismiss;"); }} />), screenHost(root), root as unknown as HostNode);
+	const button = firstTag(root, "view").children[1];
 	assert mockToString(button) === "<pressable accessible=\"true\" accessibilityLabel=\"Retry\" accessibilityRole=\"button\"><text>RETRY</text></pressable>", "action: " + mockToString(button);
 	assert (button.children[0].style as Style).color === "#ffcc80", "accent";
 	fireEvent(button, "onPress");
@@ -90,12 +96,12 @@ test "Snackbar takes paper's action object and an accent colour" {
 
 test "Toast.show reaches the ToastHost, Toast.hide and the timer take it away" {
 	const root: MockNode = mockNode("root");
-	render(element(<ToastHost />), mockHost(), root as unknown as HostNode);
+	render(element(<ToastHost />), screenHost(root), root as unknown as HostNode);
 	assert mockToString(root) === "<root></root>", "idle: " + mockToString(root);
 	Toast.show({ text1: "Saved", text2: "Draft stored", type: "success" });
 	flush();
 	assert mockToString(root) === "<root><view><view accessibilityLabel=\"Saved, Draft stored\" accessibilityRole=\"alert\"><view></view><view><text>Saved</text><text>Draft stored</text></view></view></view></root>", "shown: " + mockToString(root);
-	const layer = root.children[0];
+	const layer = firstTag(root, "view");
 	assert (layer.style as Style).bottom === 40 && (layer.style as Style).position === "absolute", "near the bottom";
 	assert (layer.children[0].children[0].style as Style).backgroundColor === "#4caf50", "success dot";
 	Toast.hide();
@@ -104,7 +110,7 @@ test "Toast.show reaches the ToastHost, Toast.hide and the timer take it away" {
 	Toast.show({ text1: "Offline", type: "error", position: "top", visibilityTime: 120 });
 	flush();
 	assert mockToString(root) === "<root><view><view accessibilityLabel=\"Offline\" accessibilityRole=\"alert\"><view></view><view><text>Offline</text></view></view></view></root>", "one line: " + mockToString(root);
-	assert (root.children[0].style as Style).top === 40, "top position";
+	assert (firstTag(root, "view").style as Style).top === 40, "top position";
 	await sleepAsync(40);
 	assert currentToast() !== null, "still up";
 	await sleepAsync(160);
@@ -113,7 +119,7 @@ test "Toast.show reaches the ToastHost, Toast.hide and the timer take it away" {
 
 test "a second Toast.show replaces the first and restarts the timer" {
 	const root: MockNode = mockNode("root");
-	render(element(<ToastHost />), mockHost(), root as unknown as HostNode);
+	render(element(<ToastHost />), screenHost(root), root as unknown as HostNode);
 	Toast.show({ text1: "One", visibilityTime: 150 });
 	flush();
 	await sleepAsync(100);
@@ -134,7 +140,7 @@ test "Tooltip shows its title above the child on a long press and leaves after t
 	const root: MockNode = mockNode("root");
 	render(element(<Tooltip title="Delete" enterTouchDelay={60} leaveTouchDelay={120}>
 		<Text>trash</Text>
-	</Tooltip>), mockHost(), root as unknown as HostNode);
+	</Tooltip>), screenHost(root), root as unknown as HostNode);
 	const wrapper = root.children[0];
 	assert mockToString(root) === "<root><pressable accessible=\"true\" accessibilityHint=\"Delete\"><text>trash</text></pressable></root>", "idle: " + mockToString(root);
 	fireEvent(wrapper, "onPointerDown");
@@ -164,12 +170,12 @@ test "Dialog lays a scrim under a titled card, and the scrim and the actions dis
 			<DialogAction label="Discard" color="#b3261e" onPress={(): void => { setLog(log() + "discard;"); }} />
 		</View>}>
 		<Text>The draft will be lost.</Text>
-	</Dialog>), mockHost(), root as unknown as HostNode);
+	</Dialog>), screenHost(root), root as unknown as HostNode);
 	assert mockToString(root) === "<root></root>", "hidden: " + mockToString(root);
 	setOpen(true);
 	flush();
 	assert mockToString(root) === "<root><view><pressable accessible=\"true\" accessibilityLabel=\"Dismiss\"></pressable><view accessibilityLabel=\"Discard draft?\" accessibilityRole=\"alert\"><text accessibilityRole=\"header\">Discard draft?</text><view><text>The draft will be lost.</text></view><view><view><pressable accessible=\"true\" accessibilityLabel=\"Cancel\" accessibilityRole=\"button\"><text>Cancel</text></pressable><pressable accessible=\"true\" accessibilityLabel=\"Discard\" accessibilityRole=\"button\"><text>Discard</text></pressable></view></view></view></view></root>", "shown: " + mockToString(root);
-	const layer = root.children[0];
+	const layer = firstTag(root, "view");
 	const scrim = firstTag(layer, "pressable");
 	const scrimStyle = scrim.style as Style;
 	assert scrimStyle.backgroundColor === "#000000" && scrimStyle.opacity === 0.5 && scrimStyle.position === "absolute", "scrim";
@@ -180,7 +186,7 @@ test "Dialog lays a scrim under a titled card, and the scrim and the actions dis
 	assert log() === "dismiss;" && mockToString(root) === "<root></root>", "scrim dismissed: " + log();
 	setOpen(true);
 	flush();
-	const actions = firstTag(lastTag(firstTag(root.children[0], "view"), "view"), "view");
+	const actions = firstTag(lastTag(firstTag(firstTag(root, "view"), "view"), "view"), "view");
 	fireEvent(actions.children[1], "onPress");
 	flush();
 	fireEvent(actions.children[0], "onPress");
@@ -194,9 +200,9 @@ test "a Dialog that is not dismissable ignores the scrim" {
 	const root: MockNode = mockNode("root");
 	render(element(<Dialog visible={true} dismissable={false} onDismiss={(): void => { setLog("dismiss"); }}>
 		<Text>Working</Text>
-	</Dialog>), mockHost(), root as unknown as HostNode);
+	</Dialog>), screenHost(root), root as unknown as HostNode);
 	assert mockToString(root) === "<root><view><pressable accessible=\"true\" accessibilityLabel=\"Dismiss\"></pressable><view accessibilityLabel=\"\" accessibilityRole=\"alert\"><view><text>Working</text></view></view></view></root>", "untitled: " + mockToString(root);
-	fireEvent(firstTag(root.children[0], "pressable"), "onPress");
+	fireEvent(firstTag(firstTag(root, "view"), "pressable"), "onPress");
 	flush();
 	assert log() === "", "scrim ignored: " + log();
 }
@@ -208,9 +214,9 @@ test "BottomSheet docks a handled sheet at the bottom and the scrim dismisses it
 	render(element(<BottomSheet visible={open()} height={240} accessibilityLabel="Share"
 		onDismiss={(): void => { setDismissed(dismissed() + 1); setOpen(false); }}>
 		<Text>Copy link</Text>
-	</BottomSheet>), mockHost(), root as unknown as HostNode);
+	</BottomSheet>), screenHost(root), root as unknown as HostNode);
 	assert mockToString(root) === "<root><view><pressable accessible=\"true\" accessibilityLabel=\"Dismiss\"></pressable><view accessibilityLabel=\"Share\"><view></view><view><text>Copy link</text></view></view></view></root>", "shown: " + mockToString(root);
-	const layer = root.children[0];
+	const layer = firstTag(root, "view");
 	assert (layer.style as Style).justifyContent === "flex-end" && (layer.style as Style).position === "absolute", "docked";
 	const sheet = firstTag(layer, "view");
 	assert (sheet.style as Style).height === 240 && (sheet.style as Style).borderRadius === 28, "sheet";
@@ -234,7 +240,7 @@ test "Stepper numbers its steps, checks the done ones and drives the active step
 		renderContent={(i: int32): NeonNode => <Text>{"body " + i.toString()}</Text>}
 		onStepTapped={(i: int32): void => { setLog(log() + "tap" + i.toString() + ";"); setCurrent(i); }}
 		onStepContinue={(): void => { setLog(log() + "continue;"); setCurrent(current() + 1); }}
-		onStepCancel={(): void => { setLog(log() + "cancel;"); }} />), mockHost(), root as unknown as HostNode);
+		onStepCancel={(): void => { setLog(log() + "cancel;"); }} />), screenHost(root), root as unknown as HostNode);
 	const text = mockToString(root);
 	assert text.indexOf("<pressable accessible=\"true\" accessibilityLabel=\"Cart, step 1 of 3, completed\" accessibilityRole=\"button\"><view><text>✓</text></view>") > 0, "done: " + text;
 	assert text.indexOf("<pressable accessible=\"true\" accessibilityLabel=\"Shipping, step 2 of 3\" accessibilityRole=\"button\"><view><text>2</text></view><view><text>Shipping</text><text>Address and speed</text></view></pressable>") > 0, "active: " + text;
@@ -259,4 +265,33 @@ test "Stepper numbers its steps, checks the done ones and drives the active step
 	flush();
 	assert log() === "cancel;continue;tap2;tap0;", "taps: " + log();
 	assert mockToString(root).indexOf("<text>body 0</text>") > 0 && mockToString(root).indexOf("✓") < 0, "back to the first: " + mockToString(root);
+}
+
+test "screen overlays escape a clipped ancestor and disappear with visibility and ownership" {
+	const [open, setOpen] = createSignal(true);
+	const host = mockHost();
+	const root = mockNode("root");
+	const dispose = render(element(<View style={{ width: 20, height: 20, overflow: "hidden" }}>
+		<Dialog visible={open()} title="Floating dialog"><Text>Dialog content</Text></Dialog>
+		<BottomSheet visible={open()} height={240}><Text>Sheet content</Text></BottomSheet>
+		<Snackbar visible={open()} message="Floating snackbar" />
+		<ToastHost />
+	</View>), host, root as unknown as HostNode);
+	const overlay = (host.overlayRoot as (node: HostNode) => HostNode)(root as unknown as HostNode) as unknown as MockNode;
+	Toast.show({ text1: "Floating toast", autoHide: false });
+	assert mockToString(root) === "<root><view></view></root>", "app: " + mockToString(root);
+	const floating = mockToString(overlay);
+	assert floating.indexOf("Dialog content") >= 0 && floating.indexOf("Sheet content") >= 0;
+	assert floating.indexOf("Floating snackbar") >= 0 && floating.indexOf("Floating toast") >= 0;
+	assert overlay.children.length === 4;
+	setOpen(false);
+	Toast.hide();
+	assert overlay.children.length === 0;
+	setOpen(true);
+	Toast.show({ text1: "Unmounted toast", autoHide: false });
+	dispose();
+	assert overlay.children.length === 0;
+	Toast.hide();
+	setOpen(false);
+	assert overlay.children.length === 0;
 }

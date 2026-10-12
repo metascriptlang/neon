@@ -1,7 +1,3 @@
-// react-native-toast-message: `<ToastHost />` placed once, last, at the root of the app, and an
-// imperative `Toast.show(...)` / `Toast.hide()` that reaches it through a module signal. The look
-// is the Android toast: a dark pill near the bottom, so `position` defaults to "bottom".
-
 import { Style, layerStyles } from "../render/style";
 import { createRenderEffect } from "../core/effect";
 import { Cleanup } from "../core/types";
@@ -9,6 +5,7 @@ import { Accessor, accessor, createSignal } from "../core/signal";
 import { element } from "../macros/ui/element";
 import { Show } from "../macros/ui/flow";
 import { NeonNode } from "../render/node";
+import { Portal } from "../render/portal";
 import { Host, HostNode } from "../render/hostTypes";
 import { Text, View } from "./primitives";
 
@@ -137,7 +134,7 @@ export function ToastHost(props: ToastHostProps): NeonNode {
 		return t.text2 === "" ? t.text1 : t.text1 + ", " + t.text2;
 	});
 	const view = element(<Show when={shown() !== null}>
-		<View style={layer}>
+		<Portal style={layer}>
 			<View style={TOAST_PILL} accessibilityRole="alert" accessibilityLabel={label()}>
 				<View style={dot} />
 				<View style={TOAST_BODY}>
@@ -147,7 +144,7 @@ export function ToastHost(props: ToastHostProps): NeonNode {
 					</Show>
 				</View>
 			</View>
-		</View>
+		</Portal>
 	</Show>);
 	return (host: Host, parent: HostNode, before: HostNode | null): void => {
 		createRenderEffect<ToastShown | null>(

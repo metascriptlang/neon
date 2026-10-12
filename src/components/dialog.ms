@@ -1,5 +1,4 @@
 // react-native-paper Dialog with the Material 3 AlertDialog look: a scrim and a centred card.
-// An absolutely positioned layer over its parent: place it last, at the root of the screen.
 
 import { NeonEvent } from "../render/event";
 import { Style, layerStyles } from "../render/style";
@@ -7,6 +6,7 @@ import { Accessor, accessor } from "../core/signal";
 import { element } from "../macros/ui/element";
 import { Show } from "../macros/ui/flow";
 import { NeonNode } from "../render/node";
+import { Portal } from "../render/portal";
 import { Host, HostNode } from "../render/hostTypes";
 import { onCleanup } from "../core/cleanup";
 import { BackHandler } from "../api/backHandler";
@@ -122,7 +122,7 @@ export function Dialog(props: DialogProps): NeonNode {
 		? element(<View />)
 		: element(<View style={DIALOG_ACTIONS}>{actions}</View>);
 	return element(<Show when={visible()}>
-		<View style={DIALOG_LAYER}>
+		<Portal style={DIALOG_LAYER}>
 			<BackDismiss dismissable={canDismiss()} onDismiss={onDismiss} />
 			<Scrim dismissable={canDismiss()} onDismiss={onDismiss} />
 			<View style={card} accessibilityRole="alert" accessibilityLabel={a11y()}>
@@ -132,7 +132,7 @@ export function Dialog(props: DialogProps): NeonNode {
 				<View style={DIALOG_CONTENT}>{props.children}</View>
 				<Show when={actions !== null}>{actionRow}</Show>
 			</View>
-		</View>
+		</Portal>
 	</Show>);
 }
 
