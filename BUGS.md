@@ -22,6 +22,14 @@ names the card and the site, and nothing is worked around in `src/`. Rows closed
 2026-09-20 were dropped with §2 — they are in this file's history at `git show c00bd2b:BUGS.md`,
 and the invariants that outlived them were moved to the head of the test that pins each one.
 
+- **OPEN 2026-10-12 — a component tag that omits a required prop compiles and then crashes.**
+  `interface BadgeProps { label: Accessor<string>; suffix: Accessor<string>; }` mounted as
+  `<Badge label="a" />` builds on msc `e8c024c8` (C) and the test binary ends with status
+  `0xC0000005` when the body calls `props.suffix()`. Found by the refresh edit battery: adding a
+  prop to a props interface before the parent passes it was accepted. Not reduced past this
+  program; not measured on JS or for a `string` prop. The props object is built by
+  `src/macros/ui/element.ms`, a contract that needs a yes before it changes.
+
 - **OPEN 2026-10-08 — a component without props cannot be a JSX tag.** `function Tally():
   NeonNode { return <p>t</p>; }` used as `<Tally />` stops `msc run` (msc `99a851d7`, C) with
   `Argument type mismatch in 'createComponent' arg 0: got function, expected function`: every
@@ -106,7 +114,10 @@ and the invariants that outlived them were moved to the head of the test that pi
 
 - **PARKED 2026-10-10 — Vite refresh: an edit that adds a new generic instance reloads the page.**
   Adding `createSignal(false)` to an accepted component module emits the `…__boolean` instance into
-  the runtime's `signal` module, which is not an HMR boundary. Design card
+  the runtime's `signal` module, which is not an HMR boundary. Measured again 2026-10-12: adding a
+  signal and reading it in the template reloads the page too, because the template's capture type
+  changes and `refreshRegion<E>` / `TemplateSlot<E>` are instantiated in `render/refresh`. On native
+  HCR the same edit reloads with state kept. Design card
   `~/metascript/.inbox/compiler/2026-10-10-js-generic-instance-emitted-into-defining-module.md`.
 
 - **PARKED 2026-10-03 — `(st.width ?? 0.0) === 320.0` does not compile.** Not Neon's: with
