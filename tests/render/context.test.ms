@@ -313,3 +313,21 @@ test "a provider of another context between does not hide the outer one" {
 	render(app, mockHost(), mockNode("root") as unknown as HostNode);
 	assert seen === "blue" && inner === 7, "both providers answered: " + seen + " " + inner.toString();
 }
+
+interface Where { here: Accessor<string>; }
+const [nowhere, _nowhere] = createSignal("none");
+const WhereContext = createContext<Where>({ here: nowhere });
+
+function WhereReader(): NeonNode {
+	const where = useContext(WhereContext);
+	return <p>{where.here()}</p>;
+}
+
+test "a signal reaches a reader through a context as a field of the value" {
+	const [place, setPlace] = createSignal("a");
+	const root = mockNode("root");
+	render(<WhereContext.Provider value={{ here: place }}><WhereReader /></WhereContext.Provider>, mockHost(), root as unknown as HostNode);
+	assert mockToString(root) === "<root><p>a</p></root>", mockToString(root);
+	setPlace("b");
+	assert mockToString(root) === "<root><p>b</p></root>", mockToString(root);
+}
