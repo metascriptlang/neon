@@ -1,0 +1,6 @@
+{
+	"private": true,
+	"devDependencies": {
+		"workerd": "1.20261006.1"
+	}
+}
