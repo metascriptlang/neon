@@ -114,11 +114,12 @@ reloaded "fix after the error"
 showsWithin "Counter v5;count 7;press again;tap;" 5
 check "the fix applies, count kept" "$(shown)" "Counter v5;count 7;press again;tap;"
 
-# (d) a setup edit: the handler adds 2. The component remounts, so its count restarts.
+# (d) a setup edit: the handler adds 2. The component remounts and its signals keep their values.
 edit counter.ms 's/count() + 1/count() + 2/'
 reloaded "setup edit"
+check "setup edit keeps the count" "$(shown)" "Counter v5;count 7;press again;tap;"
 tap tap
-check "setup edit remounts the component with the new handler" "$(shown)" "Counter v5;count 2;press again;tap;"
+check "setup edit runs the new handler" "$(shown)" "Counter v5;count 9;press again;tap;"
 check "same process through every edit" "$(adb shell pidof $PACKAGE)" "$PID"
 
 # (e) a core change: the engine answers RestartRequired and the dev loop restarts the app
