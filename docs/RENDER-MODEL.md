@@ -122,7 +122,7 @@ HCR on the mock host) and `examples/refreshAndroid/` (HCR in an Android app, `do
 | JSX of a parent, or its setup | the child components under it remount with their signals carried over, matched per component in document order | before a rebuild the runtime walks the host tree under the instance and queues each child component's values under its key |
 | a helper module the component imports | Vite: the importer re-evaluates with an unchanged module signature and rebuilds the templates that read an import. Native: the helper's `@afterReload` calls `refreshDependency`, which rebuilds the templates its importers registered with `refreshImports` | state is kept. A handler in the setup that calls the helper keeps the old function on Vite until the component itself is edited; native forwards named functions, so it already calls the new one |
 | a compile error | the old UI keeps running and the error is shown (Vite overlay, HCR watch output); the next valid edit applies | the build fails before any module is replaced |
-| new code that throws while a component remounts | that component is left unmounted and the message is logged (`refresh: <key> did not mount: …`); the rest of the app keeps running, and the component's next edit mounts it with the values it had | `rebuild` catches the throw, removes what was placed and keeps the values read before the teardown |
+| new code that throws while a component remounts | a red box with the message (`<file>#<Component> did not mount: …`) stands where that component was, and the message is logged with the full key; the rest of the app keeps running, and the component's next edit mounts it with the values it had | `rebuild` catches the throw, removes what was placed, mounts the box in the instance's row and keeps the values read before the teardown |
 
 Carried over: signals declared as `const [get, set] = createSignal(…)` at the top level of the
 body, and what a helper hands to `refreshKeep(key, read, write)` while it mounts (a navigator
@@ -217,6 +217,18 @@ showed the new view), and the first session after that compiler first ran answer
   changed answered `restart required` to its first edit.
 - Not run: a real desktop window (`src/platform/ion/window.ms` does not build, `BUGS.md`), a
   physical device, kept routes on a device.
+
+**Measured 2026-10-12 (evening)**, installed msc `e8c024c8`, tree `6a5349c`, a setup edit that
+throws and then its fix on each adapter:
+- `sh examples/refreshVite/run.sh`: 21 of 21; the box shows `counter.ms#Counter did not mount:
+  setup failed`, the sibling keeps its node, tally and typed text, no page error is logged, and
+  the fix mounts the counter with count 19.
+- `bash examples/refreshNative/drive.sh main`: eight of eight edits `reloaded`, twice; the box
+  stands between the heading and the tally (`b=5` kept), and the fix shows `a:16`.
+- `examples/refreshAndroid/drive.sh`: 25 of 25, twice; a screenshot shows the red box with yellow
+  text at the top of the window. Edit to reloaded in the quieter run: 1.9 to 4.3 s over eight
+  edits, of which the PC build is 1.5 to 3.1 s and delivery 0.15 to 2.3 s; the second run, beside
+  another session's compiler corpus, took 9.9 to 16.5 s.
 
 **A new generic instance reloads the page on Vite** (design card
 `~/metascript/.inbox/compiler/2026-10-10-js-generic-instance-emitted-into-defining-module.md`):

@@ -495,7 +495,7 @@ compiler's HCR engine and Neon Refresh; what each kind of edit keeps, and the me
 
 ```bash
 APK=<debug apk> tools/androidHcr.sh <project dir> [entry.ms]     # the loop, until interrupted
-APK=<debug apk> bash examples/refreshAndroid/drive.sh            # the 22 checks
+APK=<debug apk> bash examples/refreshAndroid/drive.sh            # the checks, PASS or FAIL per line
 ```
 
 The project's `build.ms` names `refreshPass` (see `examples/refreshAndroid/build.ms`). Neon must
