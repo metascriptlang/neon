@@ -32,7 +32,7 @@ function kebabCase(name: string): string {
 // A bare number is points, which on the web is px; a string is already CSS.
 function cssLen(name: string, v: number | string | null): string {
 	if (v === null) { return ""; }
-	if (typeof v === "string") { return kebabCase(name) + ":" + (v as string) + ";"; }
+	if (typeof v === "string") { return v === "" ? "" : kebabCase(name) + ":" + (v as string) + ";"; }
 	return kebabCase(name) + ":" + `${v as number}` + "px;";
 }
 
@@ -48,7 +48,7 @@ function cssRatio(name: string, v: number | null): string {
 }
 
 function cssWord(name: string, v: string | null): string {
-	if (v === null) { return ""; }
+	if (v === null || v === "") { return ""; }
 	return kebabCase(name) + ":" + (v as string) + ";";
 }
 

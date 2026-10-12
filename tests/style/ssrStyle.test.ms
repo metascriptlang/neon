@@ -45,6 +45,13 @@ test "an inline style literal serializes into the style attribute" {
 	assert renderToString(<p style={s}></p>) === "<p style=\"width:50%;opacity:0.5;color:#fff;\"></p>", "a string dimension passes through, a ratio takes no unit";
 }
 
+test "an empty value writes no declaration, as an empty CSSOM write sets none" {
+	const s = styleOf({ color: "", width: "", opacity: 0.5 });
+	assert renderToString(<p style={s}></p>) === "<p style=\"opacity:0.5;\"></p>", renderToString(<p style={s}></p>);
+	const none = styleOf({ color: "" });
+	assert renderToString(<p style={none}></p>) === "<p></p>", renderToString(<p style={none}></p>);
+}
+
 test "quoted inline CSS stays inside its HTML attribute" {
 	const font = styleOf({ fontFamily: "\"A&B\"" });
 	assert renderToString(<p style={font}></p>) ===
