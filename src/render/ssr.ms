@@ -207,16 +207,27 @@ export function serializeChildren(n: MockNode, marked: boolean = true): string {
 function headKey(n: MockNode): string {
 	if (n.tag === "title") { return "title"; }
 	if (n.tag !== "meta") { return ""; }
-	let named = "";
-	let media = "";
+	let named: string | null = null;
+	let property: string | null = null;
+	let httpEquiv: string | null = null;
+	let content: string | null = null;
+	let charset: string | null = null;
+	let media: string | null = null;
 	for (const a of n.attrs) {
-		if (a.value === null) { continue; }
-		if (a.name === "media") { media = a.value as string; }
-		else if (named === "" && (a.name === "name" || a.name === "property" || a.name === "http-equiv" || a.name === "charset")) {
-			named = a.name === "charset" ? "charset" : a.value as string;
-		}
+		if (a.name === "name") { named = a.value; }
+		else if (a.name === "property") { property = a.value; }
+		else if (a.name === "http-equiv") { httpEquiv = a.value; }
+		else if (a.name === "content") { content = a.value; }
+		else if (a.name === "charset") { charset = a.value; }
+		else if (a.name === "media") { media = a.value; }
 	}
-	return named === "" ? "" : "meta " + named + " " + media;
+	if (named === null) { named = property; }
+	if (named === null && httpEquiv === null && charset === null) { return ""; }
+	return keyPart(named) + keyPart(httpEquiv) + keyPart(content) + keyPart(charset) + keyPart(media);
+}
+
+function keyPart(value: string | null): string {
+	return value === null ? "\n-" : "\n+" + value;
 }
 
 function serializeHead(head: MockNode): string {

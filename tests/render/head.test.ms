@@ -10,6 +10,7 @@ function Page(props: { title: Accessor<string> }): NeonNode {
 		<Head>
 			<title>{props.title()}</title>
 			<meta name="description" content="the page's own" />
+			<meta name="robots" content="index" />
 		</Head>
 		<Text>body</Text>
 	</View>;
@@ -21,6 +22,7 @@ function Layout(props: { children: NeonNode }): NeonNode {
 			<title>Site</title>
 			<meta name="description" content="the layout's" />
 			<meta name="theme-color" content="#101418" />
+			<meta name="robots" content="index" />
 			<link rel="canonical" href="/docs?a=1&b=2" />
 		</Head>
 		{props.children}
@@ -32,14 +34,17 @@ test "a server render returns what Head holds beside the body, not inside it" {
 	const page = renderToMarkup(<Page title={title} />);
 	assert page.html.indexOf("<title") < 0 && page.html.indexOf("body") >= 0, page.html;
 	assert page.head === "<title data-neon-head=\"\">Docs &amp; more</title>" +
-		"<meta name=\"description\" content=\"the page&#39;s own\" data-neon-head=\"\">", page.head;
+		"<meta name=\"description\" content=\"the page&#39;s own\" data-neon-head=\"\">" +
+		"<meta name=\"robots\" content=\"index\" data-neon-head=\"\">", page.head;
 }
 
-test "the innermost Head wins a title and a named meta, the rest of an outer Head stays" {
+test "the innermost Head wins a title and a meta of one name and content, a meta that differs in content stays" {
 	const [title, _t] = createSignal("Accounts");
 	const page = renderToMarkup(<Layout><Page title={title} /></Layout>);
 	assert page.head === "<title data-neon-head=\"\">Accounts</title>" +
 		"<meta name=\"description\" content=\"the page&#39;s own\" data-neon-head=\"\">" +
+		"<meta name=\"robots\" content=\"index\" data-neon-head=\"\">" +
+		"<meta name=\"description\" content=\"the layout&#39;s\" data-neon-head=\"\">" +
 		"<meta name=\"theme-color\" content=\"#101418\" data-neon-head=\"\">" +
 		"<link rel=\"canonical\" href=\"/docs?a=1&amp;b=2\" data-neon-head=\"\">", page.head;
 }
