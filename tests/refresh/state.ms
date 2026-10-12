@@ -152,6 +152,16 @@ function boardBodyV2(): NeonNode {
 	return refreshRegion(thisFile(), "Board#template", __refreshTmpl_Board, __refreshTmplSig_Board, { names: names });
 }
 
+function RowBroken(props: RowProps): NeonNode {
+	const [count, setCount] = createSignal(0);
+	if (count() >= 0) { throw new Error("row setup failed"); }
+	const inc: (e: NeonEvent) => void = () => { setCount(count() + 1); };
+	return <div>
+		<p>{props.label() + ":" + count().toString()}</p>
+		<button onPress={inc}>+</button>
+	</div>;
+}
+
 function mount(node: NeonNode): [MockNode, () => void] {
 	const root: MockNode = mockNode("root");
 	const dispose = render(node, mockHost(), root as unknown as HostNode);
@@ -300,5 +310,20 @@ test "refresh state: state kept under a template survives its component's setup 
 	const summary = refreshModule(thisFile());
 	assert summary.remounted === 1, "the board remounts: " + summary.remounted.toString();
 	assert texts(root) === "<p>p=2</p> <p>q=5</p> ", "both cells kept: " + texts(root);
+	dispose();
+}
+test "refresh state: a remount that throws leaves the rest mounted, and the next edit recovers with the count" {
+	refreshReset();
+	const [root, dispose] = mount(Frame());
+	press(root, 1, 4);
+	refreshComponent<RowProps>(thisFile(), "Row|RowProps", __refreshBody_RowBroken, edited);
+	const broken = refreshModule(thisFile());
+	assert broken.remounted === 1, "the row was tried: " + broken.remounted.toString();
+	assert texts(root) === "<p>frame</p> ", "the frame stays, the row is gone: " + texts(root);
+	press(root, 0, 1);
+	assert texts(root) === "<p>frame!</p> ", "the frame still answers: " + texts(root);
+	refreshComponent<RowProps>(thisFile(), "Row|RowProps", __refreshBody_RowByTen, (): string => "fixed");
+	refreshModule(thisFile());
+	assert texts(root) === "<p>frame!</p> <p>ten a:4</p> ", "the fix mounts with the count kept: " + texts(root);
 	dispose();
 }
