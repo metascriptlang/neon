@@ -1016,7 +1016,10 @@ export function domHost(): Host {
 		registeredRules.set(id, true);
 		registerCss(id, css);
 	}
+	const tagsWithRules = new Map<string, boolean>();
 	function registerRules(tag: string): void {
+		if (tagsWithRules.has(tag)) { return; }
+		tagsWithRules.set(tag, true);
 		for (const rule of webRules(tag)) { registerOnce(rule.id, rule.css); }
 	}
 	function adoptControl(tag: string, el: Node): HostNode {
