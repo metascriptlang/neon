@@ -42,7 +42,7 @@ function shows(root: HTMLElement, text: string): boolean {
 test "the booking form runs in Chrome on neon-ui controls, ARIA state and the overlay flow" {
 	const mount = document.createElement("div");
 	document.body.appendChild(mount);
-	render(element(<BookingForm />), domHost(), mount as unknown as HostNode);
+	const dispose = render(element(<BookingForm />), domHost(), mount as unknown as HostNode);
 	await sleepAsync(50);
 	labelled(mount, "Check-in date").click();
 	flush();
@@ -67,14 +67,17 @@ test "the booking form runs in Chrome on neon-ui controls, ARIA state and the ov
 	assert labelled(mount, "Cash").getAttribute("aria-checked") === "true" && shows(mount, "payment cash"), "radio";
 	labelled(mount, "Book").click();
 	flush();
-	assert shows(mount, "Confirm booking"), "dialog";
-	labelled(mount, "Confirm").click();
+	assert shows(document.body, "Confirm booking") && !shows(mount, "Confirm booking"), "the dialog escapes the form";
+	labelled(document.body, "Confirm").click();
 	flush();
 	assert shows(mount, "status booking"), "booking";
 	await sleepAsync(1800);
-	assert shows(mount, "status booked") && shows(mount, "Booked Suite for 8 guests"), "snackbar: " + mount.textContent.substring(0, 300);
-	labelled(mount, "Undo").click();
+	assert shows(mount, "status booked") && shows(document.body, "Booked Suite for 8 guests") && !shows(mount, "Booked Suite for 8 guests"), "snackbar";
+	labelled(document.body, "Undo").click();
 	flush();
-	assert shows(mount, "status cancelled") && shows(mount, "Booking cancelled"), "toast";
+	assert shows(mount, "status cancelled") && shows(document.body, "Booking cancelled"), "toast";
+	dispose();
+	flush();
+	assert !shows(document.body, "Booking cancelled"), "owner cleanup removes the portal toast";
 	mount.remove();
 }
