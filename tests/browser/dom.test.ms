@@ -34,6 +34,7 @@ extern class ProbeStyle {
 	clipPath: string;
 	position: string;
 	transition: string;
+	filter: string;
 }
 
 extern class ProbeClassList {
@@ -301,6 +302,14 @@ test "transition reaches the element" {
 	const el = mount("view");
 	h.setStyle(el, styleWith("transition", "opacity 0.6s ease"));
 	assert probe(el).style.transition === "opacity 0.6s", probe(el).style.transition;
+	probe(el).remove();
+}
+
+test "filter reaches the element" {
+	const h = domHost();
+	const el = mount("view");
+	h.setStyle(el, styleWith("filter", "invert(1)"));
+	assert probe(el).style.filter === "invert(1)", probe(el).style.filter;
 	probe(el).remove();
 }
 
