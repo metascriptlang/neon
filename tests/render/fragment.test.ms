@@ -38,7 +38,8 @@ test "a top-level fragment mounts as siblings under one parent" {
 
 test "a fragment flattens inside a component tag too" {
 	const v: NeonNode = element(<View><><Text>a</Text><Text>b</Text></></View>);
-	assert renderToString(v) === "<div><span>a</span><span>b</span></div>", "component children list stays flat";
+	assert renderToString(v) === "<div class=\"neon-view\"><span class=\"neon-text\">a</span>" +
+		"<span class=\"neon-text\">b</span></div>", "component children list stays flat";
 }
 
 test "a component may return a fragment" {

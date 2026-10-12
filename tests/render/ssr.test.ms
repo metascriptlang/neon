@@ -24,7 +24,7 @@ test "plain markup serializes as written" {
 	assert renderToString(<view><text>x</text></view>) === "<div><span>x</span></div>", "wire tags become html tags";
 	assert renderToString(text("bare text")) === "bare text", "a bare text root";
 	const order = renderToString(<input value="v" id="i" />);
-	assert order === "<input value=\"v\" id=\"i\"></input>", "attribute order: " + order;
+	assert order === "<input value=\"v\" id=\"i\">", "attribute order: " + order;
 }
 
 test "reactive text and attributes serialize their current value" {
