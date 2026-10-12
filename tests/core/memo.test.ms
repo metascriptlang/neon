@@ -24,6 +24,24 @@ test "memo with truthiness equals collapses truthy to truthy" {
 	assert runs === 2, "re-ran when truthiness flipped to falsy";
 }
 
+test "memo initializes boolean without a forged null value" {
+	const [read, write] = createSignal<boolean>(false);
+	const memo = createMemo<boolean>(() => read());
+	assert !memo();
+	write(true);
+	assert memo();
+}
+
+test "memo permits a real nullable result" {
+	const [read, write] = createSignal<string | null>(null);
+	const memo = createMemo<string | null>(() => read());
+	assert memo() === null;
+	write("ready");
+	assert memo() === "ready";
+	write(null);
+	assert memo() === null;
+}
+
 test "createMemo returns a nominal Accessor" {
 	const [n, setN] = createSignal<number>(1);
 	const m: Accessor<number> = createMemo(() => n() * 2);
