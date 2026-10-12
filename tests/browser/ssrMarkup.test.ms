@@ -2,6 +2,8 @@ import { renderToString } from "../../src/render/ssr";
 import { render } from "../../src/render/host";
 import { HostNode, NeonNode } from "../../src/render/hostTypes";
 import { View, Text, Pressable, TextInput, ScrollView } from "../../src/components/primitives";
+import { Switch } from "../../src/components/switch";
+import { ActivityIndicator } from "../../src/components/activityIndicator";
 import { collectCss, resetCss } from "../../src/render/sheet";
 import { createStyles, styleOf } from "../../src/macros/ui/style";
 import { createSignal, Accessor } from "../../src/core/signal";
@@ -19,8 +21,10 @@ when (js) {
 		static body: MarkupElement;
 		static extern createElement(tag: cstring): MarkupElement;
 	}
-	extern function normalizedHtml(html: cstring): string from
-		"(s => { const r=document.createElement('div');r.innerHTML=s;const f=n=>n.nodeType===1?[n.localName,Array.from(n.attributes,a=>[a.name,a.name==='class'?a.value.split(/\\s+/).sort().join(' '):a.name==='style'?n.style.cssText:a.value]).filter(a=>a[0]!=='checked').concat(n.localName==='input'&&n.type==='checkbox'?[['checked property',String(n.checked)]]:[]).sort((a,b)=>a[0].localeCompare(b[0])),n.localName==='textarea'?[n.value]:Array.from(n.childNodes,f)]:n.nodeType===3?n.data:null;return JSON.stringify(Array.from(r.childNodes,f));})(#)";
+	extern function normalized(root: MarkupElement): string from
+		"(r => { const f=n=>n.nodeType===1?[n.localName,Array.from(n.attributes,a=>[a.name,a.name==='class'?a.value.split(/\\s+/).sort().join(' '):a.name==='style'?n.style.cssText:a.value]).filter(a=>a[0]!=='checked').concat(n.localName==='input'&&n.type==='checkbox'?[['checked property',String(n.checked)]]:[]).sort((a,b)=>a[0].localeCompare(b[0])),n.localName==='textarea'?[n.value]:Array.from(n.childNodes,f)]:n.nodeType===3?n.data:null;return JSON.stringify(Array.from(r.childNodes,f));})(#)";
+	extern function parsedMarkup(html: cstring): MarkupElement from
+		"(s => { const r=document.createElement('div');r.innerHTML=s;return r; })(#)";
 
 	test "server primitive classes and attributes match actual DOM host" {
 		assert styles.box.cssId !== null && styles.label.cssId !== null;
@@ -38,7 +42,7 @@ when (js) {
 		document.body.appendChild(mount);
 		const dispose = render(app, domHost(), mount as unknown as HostNode);
 		try {
-			assert normalizedHtml(server) === normalizedHtml(mount.innerHTML),
+			assert normalized(parsedMarkup(server)) === normalized(mount),
 				server + " vs " + mount.innerHTML;
 		} finally { dispose(); mount.remove(); }
 	}
@@ -78,18 +82,18 @@ when (js) {
 		const mount = document.createElement("div");
 		document.body.appendChild(mount);
 		const dispose = render(app, domHost(), mount as unknown as HostNode);
-		const dom = mount.innerHTML;
+		const result = [server, mount.innerHTML, normalized(parsedMarkup(server)), normalized(mount)];
 		dispose();
 		mount.remove();
-		return [server, dom];
+		return result;
 	}
 
 	test "server ScrollView is the element and classes the DOM host builds" {
 		const app: NeonNode = <View>
 			<ScrollView horizontal={false}><Text>row</Text></ScrollView>
 		</View>;
-		const [server, dom] = serverAndDom(app);
-		assert normalizedHtml(server) === normalizedHtml(dom), server + " vs " + dom;
+		const [server, dom, servedShape, builtShape] = serverAndDom(app);
+		assert servedShape === builtShape, server + " vs " + dom;
 	}
 
 	test "server Text numberOfLines is the classes the DOM host builds" {
@@ -97,10 +101,24 @@ when (js) {
 			<Text numberOfLines={2}>long</Text>
 			<Text numberOfLines={0}>free</Text>
 		</View>;
-		const [server, dom] = serverAndDom(app);
-		assert normalizedHtml(server) === normalizedHtml(dom), server + " vs " + dom;
+		const [server, dom, servedShape, builtShape] = serverAndDom(app);
+		assert servedShape === builtShape, server + " vs " + dom;
 		assert server.indexOf("numberOfLines") < 0, server;
 		const css = collectCss();
 		assert css.indexOf(".neon-lines-2{-webkit-line-clamp:2}") >= 0 && css.indexOf(".neon-lines{") >= 0, css;
+	}
+
+	test "server Switch and ActivityIndicator are the elements and classes the DOM host builds" {
+		const app: NeonNode = <View>
+			<Switch value={true} accessibilityLabel="Wi-Fi" />
+			<Switch value={false} disabled={true} thumbColor="#fff" trackColorOn="#0a0" trackColorOff="#ccc" />
+			<ActivityIndicator />
+			<ActivityIndicator animating={false} hidesWhenStopped={false} color="#c00" size="large" />
+		</View>;
+		const [server, dom, servedShape, builtShape] = serverAndDom(app);
+		assert servedShape === builtShape, server + " vs " + dom;
+		assert server.indexOf("<switch") < 0 && server.indexOf("<activityindicator") < 0, server;
+		assert server.indexOf("checked") >= 0, "the served switch must show its state before hydrate: " + server;
+		assert collectCss().indexOf(".neon-activity{") >= 0, collectCss();
 	}
 }

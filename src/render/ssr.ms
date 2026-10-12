@@ -6,8 +6,11 @@ import { collectCss, registerCss } from "./sheet";
 import { styleToCss } from "./css";
 import { Style } from "./style";
 import {
+	ControlAttr,
 	LINES_CLASS,
 	SERVED_HEAD,
+	controlAttr,
+	webFixedAttrs,
 	ScrollLook,
 	TEXT_CSS,
 	TEXT_RULES_ID,
@@ -46,6 +49,7 @@ function ssrHost(register: (id: string, css: string) => void): Host {
 		const base = webBaseClass(tag);
 		const control = webControlClass(tag);
 		(node as unknown as MockNode).className = base === "" || control === "" ? base + control : base + " " + control;
+		for (const fixed of webFixedAttrs(tag)) { (node as unknown as MockNode).attrs.push(fixed); }
 		return node;
 	};
 	h.setStyleClass = (node: HostNode, id: string, css: string): void => {
@@ -115,6 +119,17 @@ function scrollOf(n: MockNode): ScrollLook {
 	);
 }
 
+function putAttribute(names: string[], values: string[], name: string, value: string | null): void {
+	const at = names.indexOf(name);
+	if (value === null) {
+		if (at >= 0) { names.splice(at, 1); values.splice(at, 1); }
+		return;
+	}
+	if (at >= 0) { values[at] = value as string; return; }
+	names.push(name);
+	values.push(value as string);
+}
+
 function serializeNode(n: MockNode): string {
 	if (n.tag === "") { return escapeText(n.text); }
 	const tag = webHtmlTag(n.tag);
@@ -126,14 +141,24 @@ function serializeNode(n: MockNode): string {
 		if (look.hideHorizontal) { cls = cls + " neon-hide-horizontal"; }
 		if (look.hideVertical) { cls = cls + " neon-hide-vertical"; }
 	}
-	let open = "<" + tag;
+	const names: string[] = [];
+	const values: string[] = [];
 	for (const a of n.attrs) {
 		if (a.value === null) { continue; }
+		const control = controlAttr(n.tag, a.name, a.value as string);
+		if (control !== null) {
+			const written = control as ControlAttr;
+			if (written.name !== "") { putAttribute(names, values, written.name, written.value); }
+			continue;
+		}
 		const mapped = domAttrValue(a.name, a.value as string);
-		if (mapped === null) { continue; }
-		let v = mapped as string;
-		if (a.name === "class" && cls !== "") { v = v === "" ? cls : v + " " + cls; cls = ""; }
-		open = open + " " + domAttrName(a.name) + "=\"" + escapeAttribute(v) + "\"";
+		let v = mapped === null ? "" : mapped as string;
+		if (mapped !== null && a.name === "class" && cls !== "") { v = v === "" ? cls : v + " " + cls; cls = ""; }
+		putAttribute(names, values, domAttrName(a.name), mapped === null ? null : v);
+	}
+	let open = "<" + tag;
+	for (let i = 0; i < names.length; i += 1) {
+		open = open + " " + names[i] + "=\"" + escapeAttribute(values[i]) + "\"";
 	}
 	if (cls !== "") { open = open + " class=\"" + escapeAttribute(cls) + "\""; }
 	const st = n.style;

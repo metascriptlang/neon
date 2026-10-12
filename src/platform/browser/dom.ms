@@ -9,16 +9,22 @@ import { onCleanup } from "../../core/cleanup";
 import {
 	VIEW_CLASS,
 	TEXT_CLASS,
+	CONTROL_CSS,
+	CONTROL_RULES_ID,
+	ControlAttr,
 	LINES_CLASS,
 	SCROLL_CLASS,
 	TEXT_CSS,
 	TEXT_RULES_ID,
+	controlAttr,
 	clampedLines,
 	linesClass,
 	linesRule,
 	SERVED_HEAD,
 	scrollLook,
 	webBaseClass,
+	webControlClass,
+	webFixedAttrs,
 	webHtmlTag,
 	webRules,
 	domAttrName,
@@ -470,28 +476,25 @@ class DomScrollState {
 	}
 }
 
-const CONTROL_CSS = ".neon-activity{box-sizing:border-box;border-radius:50%;border:3px solid currentColor;border-top-color:transparent;animation:neon-activity-spin 0.8s linear infinite;color:#999999}.neon-activity[data-animating=false]{animation:none}.neon-activity[data-animating=false]:not([data-hides=false]){visibility:hidden}@keyframes neon-activity-spin{to{transform:rotate(360deg)}}.neon-image{object-fit:cover}.neon-image[data-resize=contain]{object-fit:contain}.neon-image[data-resize=stretch]{object-fit:fill}.neon-image[data-resize=center]{object-fit:none}.neon-image:not([src]){visibility:hidden}";
 const controlKinds = new Map<Node, string>();
 const switchValues = new Map<Node, boolean>();
 
 function writeControlAttr(el: Node, kind: string, name: string, value: string): boolean {
-	if (kind === "switch") {
-		if (name === "value") {
+	if (kind === "switch" || kind === "activityindicator") {
+		const written = controlAttr(kind, name, value);
+		if (written === null) { return false; }
+		const control = written as ControlAttr;
+		if (kind === "switch" && name === "value") {
 			el.checked = value === "true";
 			switchValues.set(el, value === "true");
 			return true;
 		}
-		if (name === "disabled") {
-			if (value === "true") { el.setAttribute("disabled", ""); } else { el.removeAttribute("disabled"); }
-			return true;
+		if (control.name !== "") {
+			if (control.value === null) { el.removeAttribute(control.name); }
+			else { el.setAttribute(control.name, control.value as string); }
 		}
-		return name === "thumbColor" || name === "trackColorOn" || name === "trackColorOff";
-	}
-	if (kind === "activityindicator") {
-		if (name === "animating") { el.setAttribute("data-animating", value); return true; }
-		if (name === "hidesWhenStopped") { el.setAttribute("data-hides", value); return true; }
-		if (name === "color") { el.style.color = value; return true; }
-		return false;
+		if (control.color !== "") { el.style.color = control.color; }
+		return true;
 	}
 	if (kind === "image") {
 		if (name === "source") {
@@ -831,8 +834,7 @@ function dropServedHead(): void {
 
 function createsMoreThanAnElement(tag: string): boolean {
 	return tag === "multilinetextinput" || tag === "modal" || isMediaTag(tag) || tag === "svg"
-		|| tag === "slider" || tag === "picker" || tag === "datetimepicker"
-		|| tag === "switch" || tag === "activityindicator" || tag === "image";
+		|| tag === "slider" || tag === "picker" || tag === "datetimepicker" || tag === "image";
 }
 
 export function domHost(): Host {
@@ -846,7 +848,6 @@ export function domHost(): Host {
 	watchSafeArea();
 	installDomLayoutAnimation();
 	const registeredRules = new Map<string, boolean>();
-	let controlRule = false;
 	let modalRule = false;
 	let textareaRule = false;
 	const scrolls = new Map<Node, DomScrollState>();
@@ -1011,12 +1012,25 @@ export function domHost(): Host {
 			if (state.taps === "never") { e.preventDefault(); e.stopPropagation(); }
 		}, true);
 	}
+	function registerOnce(id: string, css: string): void {
+		if (registeredRules.has(id)) { return; }
+		registeredRules.set(id, true);
+		registerCss(id, css);
+	}
 	function registerRules(tag: string): void {
-		for (const rule of webRules(tag)) {
-			if (registeredRules.has(rule.id)) { continue; }
-			registeredRules.set(rule.id, true);
-			registerCss(rule.id, rule.css);
+		for (const rule of webRules(tag)) { registerOnce(rule.id, rule.css); }
+	}
+	function adoptControl(tag: string, el: Node): HostNode {
+		const control = webControlClass(tag);
+		if (control !== "") { el.classList.add(control); }
+		for (const fixed of webFixedAttrs(tag)) { el.setAttribute(fixed.name, fixed.value as string); }
+		if (tag === "switch") {
+			const on = el.checked;
+			el.removeAttribute("checked");
+			el.checked = on;
 		}
+		controlKinds.set(el, tag);
+		return el as unknown as HostNode;
 	}
 	function adoptScroll(el: Node): HostNode {
 		el.classList.add(VIEW_CLASS);
@@ -1065,18 +1079,13 @@ export function domHost(): Host {
 				controlKinds.set(control, tag);
 				return control as unknown as HostNode;
 			}
-			if (tag === "switch" || tag === "activityindicator" || tag === "image") {
-				if (!controlRule) {
-					registerCss("neon-controls", CONTROL_CSS);
-					controlRule = true;
-				}
-				const control = document.createElement(tag === "image" ? "img" : tag === "switch" ? "input" : "div");
-				if (tag === "switch") {
-					control.setAttribute("type", "checkbox");
-					control.setAttribute("role", "switch");
-				}
-				if (tag === "activityindicator") { control.classList.add("neon-activity"); }
-				if (tag === "image") { control.classList.add("neon-image"); }
+			if (tag === "switch" || tag === "activityindicator") {
+				return adoptControl(tag, document.createElement(webHtmlTag(tag)));
+			}
+			if (tag === "image") {
+				registerOnce(CONTROL_RULES_ID, CONTROL_CSS);
+				const control = document.createElement("img");
+				control.classList.add("neon-image");
 				controlKinds.set(control, tag);
 				return control as unknown as HostNode;
 			}
@@ -1312,6 +1321,7 @@ export function domHost(): Host {
 			if (found.nodeType !== 1 || found.localName !== webHtmlTag(tag)) { return null; }
 			registerRules(tag);
 			if (tag === "scrollview") { return adoptScroll(found); }
+			if (tag === "switch" || tag === "activityindicator") { return adoptControl(tag, found); }
 			return found as unknown as HostNode;
 		},
 		focus: (node: HostNode, focused: boolean): void => {

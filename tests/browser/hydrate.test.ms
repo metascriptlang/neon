@@ -3,6 +3,8 @@ import { render, hydrate } from "../../src/render/host";
 import { Host, HostNode, NeonNode } from "../../src/render/hostTypes";
 import { NeonEvent } from "../../src/render/event";
 import { View, Text, Pressable, ScrollView } from "../../src/components/primitives";
+import { Switch } from "../../src/components/switch";
+import { ActivityIndicator } from "../../src/components/activityIndicator";
 import { createStyles, styleOf } from "../../src/macros/ui/style";
 import { createSignal, Accessor } from "../../src/core/signal";
 
@@ -23,6 +25,8 @@ when (js) {
 	extern function notServed(root: Page): number from
 		"(r => Array.from(r.querySelectorAll('*')).filter(n=>n.neonServed!==true&&n.id!=='foreign').length)(#)";
 	extern function fireScroll(node: Page): void from "(n => n.dispatchEvent(new Event('scroll')))(#)";
+	extern function isChecked(node: Page): boolean from "(#).checked";
+	extern function toggle(node: Page): void from "(n => { n.checked = !n.checked; n.dispatchEvent(new Event('change')); })(#)";
 	extern function shape(root: Page): string from
 		"(r => { const f=n=>n.nodeType===1?[n.localName,Array.from(n.attributes,a=>[a.name,a.name==='class'?a.value.split(/\\s+/).sort().join(' '):a.value]).sort((a,b)=>a[0].localeCompare(b[0])),n.id==='mech'?[]:Array.from(n.childNodes,f)]:n.nodeType===3?n.data:'comment '+n.data;return JSON.stringify(Array.from(r.childNodes,f)); })(#)";
 
@@ -158,6 +162,31 @@ when (js) {
 		try {
 			assert notServed(mount) === 0, notServed(mount).toString() + " elements are not the page's own";
 			assert shape(mount) === rendered(app), shape(mount) + " vs " + rendered(app);
+		} finally { dispose(); mount.remove(); }
+	}
+
+	test "hydrate takes over a served Switch and ActivityIndicator" {
+		const [on, setOn] = createSignal(true);
+		let changes = "";
+		const app: NeonNode = <View>
+			<Switch value={on()} onValueChange={(v: boolean): void => { changes = changes + v.toString(); }} />
+			<ActivityIndicator animating={on()} color="#c00" />
+		</View>;
+		const mount = parsedPage(renderToMarkup(app).html);
+		let made = 0;
+		const host: Host = domHost();
+		const create = host.createElement;
+		host.createElement = (tag: string): HostNode => { made += 1; return create(tag); };
+		const dispose = hydrate(app, host, mount as unknown as HostNode);
+		try {
+			assert made === 0, "the host created " + made.toString() + " elements";
+			assert notServed(mount) === 0, notServed(mount).toString() + " elements are not the page's own";
+			assert shape(mount) === rendered(app), shape(mount) + " vs " + rendered(app);
+			assert isChecked(pageNode(mount, "input")), "the served switch lost its state";
+			toggle(pageNode(mount, "input"));
+			assert changes === "false", "onValueChange saw '" + changes + "'";
+			setOn(false);
+			assert isChecked(pageNode(mount, "input")) === false, "the switch did not follow its signal";
 		} finally { dispose(); mount.remove(); }
 	}
 }

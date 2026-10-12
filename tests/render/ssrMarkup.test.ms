@@ -47,6 +47,21 @@ test "SSR writes Text numberOfLines as the clamp classes and their rules" {
 	assert free === "<span class=\"neon-text\"></span>", free;
 }
 
+test "SSR writes Switch and ActivityIndicator as the elements, classes and rules the DOM host builds" {
+	const on = renderToMarkup(el("switch", [attr("value", "true"), attr("disabled", "false"),
+		attr("thumbColor", "#fff")], [], null));
+	assert on.html === "<input type=\"checkbox\" role=\"switch\" checked=\"\">", on.html;
+	const off = renderToString(el("switch", [attr("value", "false"), attr("disabled", "true"),
+		attr("accessibilityRole", "button")], [], null));
+	assert off === "<input type=\"checkbox\" role=\"button\" disabled=\"\">", off;
+	const spinner = renderToMarkup(el("activityindicator", [attr("animating", "false"),
+		attr("hidesWhenStopped", "false"), attr("accessibilityRole", "progressbar")], [], null));
+	assert spinner.html === "<div data-animating=\"false\" data-hides=\"false\" role=\"progressbar\" " +
+		"class=\"neon-activity\"></div>", spinner.html;
+	assert spinner.css.indexOf(".neon-activity[data-animating=false]{animation:none}") >= 0, spinner.css;
+	assert on.css.indexOf(".neon-activity{") >= 0, on.css;
+}
+
 test "a throwing SSR mount disposes effects and cleanup" {
 	const [read, write] = createSignal<int32>(0);
 	let runs: int32 = 0;

@@ -1,4 +1,4 @@
-import { htmlTagFor } from "./node";
+import { VAttr, attr, htmlTagFor } from "./node";
 
 export const VIEW_CLASS = "neon-view";
 export const TEXT_CLASS = "neon-text";
@@ -16,9 +16,14 @@ export const RN_WEB_BASE_CSS =
 export const SERVED_HEAD = "data-neon-head";
 
 export const SCROLL_CLASS = "neon-scrollview";
+export const ACTIVITY_CLASS = "neon-activity";
 
 export const SCROLL_CSS =
 	`.${SCROLL_CLASS}{overflow-x:hidden;overflow-y:auto}.neon-hide-horizontal::-webkit-scrollbar:horizontal{height:0}.neon-hide-vertical::-webkit-scrollbar:vertical{width:0}@keyframes neon-refresh-spin{to{transform:rotate(360deg)}}.neon-refresh-indicator[aria-busy=true]{animation:neon-refresh-spin 1s linear infinite}`;
+
+export const CONTROL_RULES_ID = "neon-controls";
+
+export const CONTROL_CSS = ".neon-activity{box-sizing:border-box;border-radius:50%;border:3px solid currentColor;border-top-color:transparent;animation:neon-activity-spin 0.8s linear infinite;color:#999999}.neon-activity[data-animating=false]{animation:none}.neon-activity[data-animating=false]:not([data-hides=false]){visibility:hidden}@keyframes neon-activity-spin{to{transform:rotate(360deg)}}.neon-image{object-fit:cover}.neon-image[data-resize=contain]{object-fit:contain}.neon-image[data-resize=stretch]{object-fit:fill}.neon-image[data-resize=center]{object-fit:none}.neon-image:not([src]){visibility:hidden}";
 
 export const LINES_CLASS = "neon-lines";
 export const TEXT_RULES_ID = "neon-text-props";
@@ -44,7 +49,8 @@ export function linesRule(value: string): WebRule {
 
 export function webHtmlTag(tag: string): string {
 	return match (tag) {
-		"scrollview" => "div",
+		"scrollview" | "activityindicator" => "div",
+		"switch" => "input",
 		_ => htmlTagFor(tag),
 	};
 }
@@ -52,8 +58,48 @@ export function webHtmlTag(tag: string): string {
 export function webControlClass(tag: string): string {
 	return match (tag) {
 		"scrollview" => SCROLL_CLASS,
+		"activityindicator" => ACTIVITY_CLASS,
 		_ => "",
 	};
+}
+
+export function webFixedAttrs(tag: string): VAttr[] {
+	if (tag !== "switch") { return []; }
+	return [attr("type", "checkbox"), attr("role", "switch")];
+}
+
+export struct ControlAttr {
+	name: string;
+	value: string | null;
+	color: string;
+}
+
+function flagAttribute(name: string, value: string): ControlAttr {
+	return { name: name, value: value === "true" ? "" : null, color: "" };
+}
+
+function droppedAttribute(): ControlAttr {
+	return { name: "", value: null, color: "" };
+}
+
+export function controlAttr(tag: string, name: string, value: string): ControlAttr | null {
+	if (tag === "switch") {
+		return match (name) {
+			"value" => flagAttribute("checked", value),
+			"disabled" => flagAttribute("disabled", value),
+			"thumbColor" | "trackColorOn" | "trackColorOff" => droppedAttribute(),
+			_ => null,
+		};
+	}
+	if (tag === "activityindicator") {
+		return match (name) {
+			"animating" => ({ name: "data-animating", value: value, color: "" }),
+			"hidesWhenStopped" => ({ name: "data-hides", value: value, color: "" }),
+			"color" => ({ name: "", value: null, color: value }),
+			_ => null,
+		};
+	}
+	return null;
 }
 
 export function webRules(tag: string): WebRule[] {
@@ -61,6 +107,7 @@ export function webRules(tag: string): WebRule[] {
 	if (webBaseClass(tag) !== "") { rules.push({ id: "neon-base", css: RN_WEB_BASE_CSS }); }
 	match (tag) {
 		"scrollview" => { rules.push({ id: SCROLL_CLASS, css: SCROLL_CSS }); },
+		"switch" | "activityindicator" => { rules.push({ id: CONTROL_RULES_ID, css: CONTROL_CSS }); },
 		_ => {},
 	}
 	return rules;
