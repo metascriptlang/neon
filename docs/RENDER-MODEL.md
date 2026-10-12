@@ -122,6 +122,7 @@ HCR on the mock host) and `examples/refreshAndroid/` (HCR in an Android app, `do
 | JSX of a parent, or its setup | the child components under it remount with their signals carried over, matched per component in document order | before a rebuild the runtime walks the host tree under the instance and queues each child component's values under its key |
 | a helper module the component imports | Vite: the importer re-evaluates with an unchanged module signature and rebuilds the templates that read an import. Native: the helper's `@afterReload` calls `refreshDependency`, which rebuilds the templates its importers registered with `refreshImports` | state is kept. A handler in the setup that calls the helper keeps the old function on Vite until the component itself is edited; native forwards named functions, so it already calls the new one |
 | a compile error | the old UI keeps running and the error is shown (Vite overlay, HCR watch output); the next valid edit applies | the build fails before any module is replaced |
+| new code that throws while a component remounts | that component is left unmounted and the message is logged (`refresh: <key> did not mount: …`); the rest of the app keeps running, and the component's next edit mounts it with the values it had | `rebuild` catches the throw, removes what was placed and keeps the values read before the teardown |
 
 Carried over: signals declared as `const [get, set] = createSignal(…)` at the top level of the
 body, and what a helper hands to `refreshKeep(key, read, write)` while it mounts (a navigator
