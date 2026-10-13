@@ -144,14 +144,8 @@ and the invariants that outlived them were moved to the head of the test that pi
   ion `7463096`, at 96 DPI, driven by window messages posted to the Ion window: three clicks logged
   `press count=3`; `ab cd`, Backspace and Enter logged each `changetext` and `submit "ab c"`; a
   resize from 624×321 to 884×461 re-ran `onLayout` (header 576 → 836 wide); closing the window
-  exits 0. Not run: an IME, a DPI change.
-
-- **OPEN 2026-10-13 — on the void host a `<Text>`'s `color` and `fontSize` do not reach its text.**
-  `<Text style={{ color: "#ff0000", fontSize: 20 }}>Hello</Text>` mounted on `createVoidHostWith`
-  leaves its piece white at size 16: `applyPaint` (`src/platform/void/host.ms`) paints text only on
-  a `Label` row, and a `Text` element is a `Group` whose pieces are its label children. A
-  `TextInput` keeps its colour (`tests/platform/voidInput.test.ms`). Seen in
-  `examples/voidWindow.ms`, where every `Text` draws white.
+  exits 0. Not run: an IME, a DPI change. `tests/run.sh` builds the example on a Windows host and
+  skips it by name elsewhere.
 
 - **PARKED 2026-10-11 — `tests/render/flatList.test.ms` and `tests/components/flutterListsApp.test.ms` do not compile.**
   Not Neon's: an array-destructured local of an arrow passed as a JSX attribute
