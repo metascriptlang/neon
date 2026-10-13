@@ -12,16 +12,16 @@ import {
 } from "../../../../ion/src/index";
 import { embedRegister, viewCreate, viewResize, viewFrame, viewDestroy, viewSwapChain, currentView, gfxSetup, ViewId, ViewInvalid } from "../../../../void/src/sokol/gpu";
 import { setup2d } from "../../../../void/src/void2d/draw";
-import { addFont } from "../../../../void/src/void2d/font";
-import { TextLayout, TextStyle } from "../../../../void/src/void2d/textLayout";
-import { Scene, scene, add, present } from "../../../../void/src/void2d/scene";
-import { Color } from "../../../../void/src/void2d/types";
+import { addFont, FontId, DEFAULT_FONT } from "../../../../void/src/void2d/font";
+import { Scene2D } from "../../../../void/src/void2d/node";
+import { create, close, present } from "../../../../void/src/void2d/scene";
+import { Color, rgba } from "../../../../void/src/void2d/types";
 import { Window } from "../../../../ion/src/windowManager";
 import { exit } from "std/process";
 import { Host, HostNode, NeonNode, VoidArea, render } from "../../render/host";
 import { NeonEvent, neonEvent } from "../../render/event";
 import { Style } from "../../render/style";
-import { VoidHost, createVoidHostWith, asFlexStyle, parseColor } from "../void/host";
+import { VoidHost, VoidNode, createVoidHostWith, asFlexStyle, parseColor } from "../void/host";
 
 const PAGE = "data:text/html,<body style='margin:0;background:transparent'></body>";
 const POINTER_BUTTON: int32 = 1 as int32;
@@ -50,7 +50,6 @@ interface Area {
 	surface: int32;
 	view: ViewId;
 	vh: VoidHost;
-	scene: Scene;
 	width: int32;
 	height: int32;
 	scale: float32;
@@ -58,7 +57,7 @@ interface Area {
 }
 
 const _areas: Area[] = [];
-let _fontId: int32 = -1 as int32;
+let _font: FontId = DEFAULT_FONT;
 let _wired = false;
 
 function areaOfSurface(surface: int32): Area | null {
@@ -98,7 +97,7 @@ function drawCurrent(): void {
 	}
 	const area = a as Area;
 	area.vh.layout(logicalWidth(area), logicalHeight(area));
-	area.scene.present();
+	area.vh.scene.present();
 	const r = area.vh.imeRect();
 	if (r !== null) {
 		const s = area.scale;
@@ -188,18 +187,11 @@ function wireInput(): void {
 	});
 }
 
-function advanceWidth(text: string, style: TextStyle): float32 {
-	const l = TextLayout.layout(text, style);
-	if (l.glyphs.length === 0) { return 0.0; }
-	const last = l.glyphs[l.glyphs.length - 1];
-	return last.x + last.advance;
-}
-
 function applyAreaStyle(area: Area, style: Style): void {
-	area.vh.root.layoutStyle = asFlexStyle(style);
+	(area.vh.root as VoidNode).flex = asFlexStyle(style);
 	if (style.backgroundColor !== null) {
 		const c = parseColor(style.backgroundColor as string);
-		if (c !== null) { area.scene.clear = c as Color; }
+		if (c !== null) { area.vh.scene.clear = c as Color; }
 	}
 	renderSurfaceRequestFrame(area.surface);
 }
@@ -217,12 +209,8 @@ function windowHost(win: Window): Host {
 		const surface = renderSurfaceCreate(win, SurfaceBelow);
 		if (surface === RenderSurfaceInvalid) { throw "Ion window host: renderSurfaceCreate failed"; }
 		renderSurfaceSetFramePolicy(surface, FrameOnDemand);
-		const vh = createVoidHostWith((size: float32, text: string): float32 => advanceWidth(text, {
-			font: _fontId, size, letterSpacing: 0.0, lineSpacing: 0.0, maxWidth: 0.0, align: 0.0,
-		}), _fontId);
-		const sc = scene({ r: 0.0, g: 0.0, b: 0.0, a: 1.0 });
-		sc.add(vh.root);
-		const area: Area = { surface, view: ViewInvalid, vh, scene: sc, width: 0 as int32, height: 0 as int32, scale: 1.0, composing: false };
+		const vh = createVoidHostWith(Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0)), _font);
+		const area: Area = { surface, view: ViewInvalid, vh, width: 0 as int32, height: 0 as int32, scale: 1.0, composing: false };
 		_areas.push(area);
 		current = area;
 		if (pendingStyle !== null) { applyAreaStyle(area, pendingStyle as Style); }
@@ -234,6 +222,7 @@ function windowHost(win: Window): Host {
 				const i = _areas.indexOf(area);
 				if (i >= 0) { _areas.splice(i, 1); }
 				current = null;
+				vh.scene.close();
 				if (area.view !== ViewInvalid) { viewDestroy(area.view); }
 				renderSurfaceRelease(surface);
 			},
@@ -276,11 +265,12 @@ export function runWindow(opts: DesktopOptions, app: () => NeonNode): int32 {
 	const win = createWindow("main", defaultOptions(opts.title, opts.width as int32, opts.height as int32, PAGE));
 	if (win === null) { return 1; }
 	webviewSetVisible(win, false);
-	_fontId = addFont(opts.font);
-	if (_fontId < (0 as int32)) {
-		console.log(`neon: cannot load the font ${opts.font}`);
+	const font = addFont(opts.font);
+	if (!font.ok) {
+		console.log(`neon: cannot load the font ${opts.font}: ${font.error.toString()}`);
 		return 3;
 	}
+	_font = font.value;
 	wireInput();
 	const host = windowHost(win);
 	const dispose = render((h: Host, p: HostNode, b: HostNode | null): void => { app()(h, p, b); }, host, windowNode("window"));
