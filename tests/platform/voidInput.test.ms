@@ -250,3 +250,19 @@ test "a text field keeps its text color when it has a background" {
 	assert Math.abs(f.ref.paint().color.r - 0x31 / 255.0) < 0.001 && Math.abs(f.ref.paint().color.b - 0x44 / 255.0) < 0.001, "the field paints the background";
 	assert labelOf(f).paint().color.r === 1.0, "the label keeps the text color, got r=" + labelOf(f).paint().color.r.toString();
 }
+
+test "a Text's color and fontSize reach every text piece inside it, and follow a style change" {
+	const vh = host();
+	const [red, setRed] = createSignal(true);
+	const [n, setN] = createSignal(7);
+	render(element(<View><Text style={{ color: red() ? "#ff0000" : "#00ff00", fontSize: 20 }}>Count: {n().toString()}</Text></View>), vh.host, vh.root);
+	const line = top(vh).children[0];
+	for (const piece of line.children) {
+		assert piece.ref.paint().color.r === 1.0 && piece.ref.paint().color.g === 0.0, "piece \"" + piece.ref.text() + "\" is red";
+		assert piece.ref.textStyle().size === 20.0, "piece \"" + piece.ref.text() + "\" is 20, got " + piece.ref.textStyle().size.toString();
+	}
+	setRed(false);
+	for (const piece of line.children) {
+		assert piece.ref.paint().color.g === 1.0 && piece.ref.paint().color.r === 0.0, "piece \"" + piece.ref.text() + "\" turned green";
+	}
+}
