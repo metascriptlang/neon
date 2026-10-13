@@ -67,14 +67,7 @@ function kebabCase(name: string): string {
 
 // A bare number is points, which on the web is px — except for the ratios,
 // which are unitless in CSS too.
-function browserProjection(name: string): string {
-	for (const row of STYLE_TABLE) {
-		if (row[0] === name) { return row[2]; }
-	}
-	return "";
-}
-
-function cssDecl(name: string, folded: string, foldedIsNumber: boolean, numberToken: string): string {
+function cssDecl(name: string, projection: string, folded: string, foldedIsNumber: boolean, numberToken: string): string {
 	// A token stays a variable in the rule. That is the whole point of themes on
 	// the web: the value lives in the theme's :root rule, so swapping a theme
 	// changes one variable and never rewrites, re-hashes or re-registers this.
@@ -86,8 +79,6 @@ function cssDecl(name: string, folded: string, foldedIsNumber: boolean, numberTo
 	// The :root value carries no unit, so a length property multiplies it by 1px
 	// here: CSS has no cast, and calc is the only way to give a bare number a
 	// unit at the site that needs one.
-	const projection = browserProjection(name);
-	if (projection === "") { return ""; }
 	if (numberToken !== "") {
 		if (projection === "num") {
 			return kebabCase(name) + ":var(--" + numberToken + ");";
@@ -326,15 +317,18 @@ export macro createStyles(node: Node): Node {
 		if (emitCss && fields.length > 0 && vGroups.length === 0) {
 			let decls = "";
 			let spelled = true;
-			for (let b = 0; b < names.length; b += 1) {
-				unfoldable = false;
-				const isText = foldsToText(fields[b], 0);
-				let folded = "";
-				if (numberTokens[b] === "") {
-					folded = isText ? textOf(fields[b], 0) : numberOf(fields[b], 0).toString();
+			for (const row of STYLE_TABLE) {
+				for (let b = 0; b < names.length; b += 1) {
+					if (names[b] !== row[0]) { continue; }
+					unfoldable = false;
+					const isText = foldsToText(fields[b], 0);
+					let folded = "";
+					if (numberTokens[b] === "") {
+						folded = isText ? textOf(fields[b], 0) : numberOf(fields[b], 0).toString();
+					}
+					if (unfoldable) { spelled = false; }
+					decls = decls + cssDecl(names[b], row[2], folded, !isText, numberTokens[b]);
 				}
-				if (unfoldable) { spelled = false; }
-				decls = decls + cssDecl(names[b], folded, !isText, numberTokens[b]);
 			}
 			if (spelled && decls !== "") {
 				const readable = readableNames ? sheet.keys[e] + "_" : "";

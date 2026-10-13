@@ -20,6 +20,8 @@ const sheet = createStyles({
 	},
 	lengthsAsText: { flexBasis: "auto", width: "50%", margin: "auto", top: "10%" },
 	emptyValues: { color: "", width: "", opacity: 0.5 },
+	longhandFirst: { paddingLeft: 24, padding: 8, flexGrow: 0, flex: 1, rowGap: 4, gap: 2, marginTop: 3, margin: 1 },
+	shorthandFirst: { padding: 8, paddingLeft: 24, flex: 1, flexGrow: 0, gap: 2, rowGap: 4, margin: 1, marginTop: 3 },
 });
 
 function declarations(body: string): string[] {
@@ -67,5 +69,14 @@ test "the baked rule spells every table field as the runtime does" {
 test "an empty value bakes no declaration, as the runtime writes none" {
 	when (js) {
 		assert sameDeclarations(sheet.emptyValues) === "", sameDeclarations(sheet.emptyValues);
+	}
+}
+
+test "a longhand wins over its shorthand in the baked rule whatever the source order, as inline" {
+	when (js) {
+		const inline = "flex:1;flex-grow:0;margin:1px;margin-top:3px;padding:8px;padding-left:24px;gap:2px;row-gap:4px;";
+		assert styleToCss(sheet.longhandFirst) === inline && styleToCss(sheet.shorthandFirst) === inline, styleToCss(sheet.longhandFirst);
+		assert bakedBody(sheet.longhandFirst) === inline, bakedBody(sheet.longhandFirst);
+		assert bakedBody(sheet.shorthandFirst) === inline, bakedBody(sheet.shorthandFirst);
 	}
 }

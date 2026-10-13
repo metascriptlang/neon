@@ -27,7 +27,7 @@ test "a module const, same module or imported, bakes into the class rule" {
 	assert geass.bar.paddingLeft === 24 && geass.bar.width === 28, "both lanes read the folded values";
 	assert geass.bar.clipPath === "polygon(0 0, 100% 0, calc(100% - 14px) 100%, 0 100%)", geass.bar.clipPath as string;
 	when (js) {
-		assert baked(geass.bar) === rule(geass.bar) + "padding-left:24px;width:28px;clip-path:polygon(0 0, 100% 0, calc(100% - 14px) 100%, 0 100%);background-image:url(data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=);}",
+		assert baked(geass.bar) === rule(geass.bar) + "width:28px;padding-left:24px;background-image:url(data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=);clip-path:polygon(0 0, 100% 0, calc(100% - 14px) 100%, 0 100%);}",
 			baked(geass.bar);
 	} else {
 		assert geass.bar.cssId === null, "no css metadata off the browser lane";
@@ -41,7 +41,7 @@ test "an imported const resolves its own module's names, not the caller's" {
 test "a negative literal bakes with its sign" {
 	assert geass.pin.top === -8 && geass.pin.left === -63 && geass.pin.marginRight === -6, "native reads the signs";
 	when (js) {
-		assert baked(geass.pin) === rule(geass.pin) + "top:-8px;left:-63px;margin-right:-6px;z-index:2;}", baked(geass.pin);
+		assert baked(geass.pin) === rule(geass.pin) + "margin-right:-6px;top:-8px;left:-63px;z-index:2;}", baked(geass.pin);
 	}
 }
 
@@ -62,7 +62,7 @@ test "arithmetic folds to the value the program computes" {
 	assert geass.math.width === 44 && geass.math.height === 3 && geass.math.flex === 0.75 && geass.math.minWidth === -24 && geass.math.maxHeight === -3, "integer constants divide as integers, toward zero";
 	assert geass.math.fontFamily === "3px", "a number added before the string adds first";
 	when (js) {
-		assert baked(geass.math) === rule(geass.math) + "width:44px;height:3px;flex:0.75;min-width:-24px;font-family:3px;max-height:-3px;}", baked(geass.math);
+		assert baked(geass.math) === rule(geass.math) + "flex:0.75;width:44px;height:3px;min-width:-24px;max-height:-3px;font-family:3px;}", baked(geass.math);
 	}
 }
 

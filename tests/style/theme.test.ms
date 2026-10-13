@@ -33,7 +33,7 @@ test "a token reads as its value on both lanes" {
 test "the browser rule holds the variable, not the value" {
 	when (js) {
 		assert s.btn.cssId !== null, "a token entry still becomes one class";
-		assert s.btn.css === "." + (s.btn.cssId as string) + "{padding:calc(var(--sp2) * 1px);opacity:var(--o5);background-color:var(--brand);}",
+		assert s.btn.css === "." + (s.btn.cssId as string) + "{padding:calc(var(--sp2) * 1px);background-color:var(--brand);opacity:var(--o5);}",
 			"a length token gets its unit here, a unitless one and a string token do not";
 	} else {
 		assert s.btn.cssId === null, "no css metadata off the browser lane";
