@@ -67,11 +67,11 @@ function kebabCase(name: string): string {
 
 // A bare number is points, which on the web is px — except for the ratios,
 // which are unitless in CSS too.
-function isUnitless(name: string): boolean {
+function browserProjection(name: string): string {
 	for (const row of STYLE_TABLE) {
-		if (row[0] === name) { return row[2] === "num"; }
+		if (row[0] === name) { return row[2]; }
 	}
-	return false;
+	return "";
 }
 
 function cssDecl(name: string, folded: string, foldedIsNumber: boolean, numberToken: string): string {
@@ -86,13 +86,16 @@ function cssDecl(name: string, folded: string, foldedIsNumber: boolean, numberTo
 	// The :root value carries no unit, so a length property multiplies it by 1px
 	// here: CSS has no cast, and calc is the only way to give a bare number a
 	// unit at the site that needs one.
+	const projection = browserProjection(name);
+	if (projection === "") { return ""; }
 	if (numberToken !== "") {
-		if (isUnitless(name)) {
+		if (projection === "num") {
 			return kebabCase(name) + ":var(--" + numberToken + ");";
 		}
 		return kebabCase(name) + ":calc(var(--" + numberToken + ") * 1px);";
 	}
-	const unit = foldedIsNumber && !isUnitless(name) ? "px" : "";
+	if (!foldedIsNumber && folded === "") { return ""; }
+	const unit = foldedIsNumber && projection === "len" ? "px" : "";
 	return kebabCase(name) + ":" + folded + unit + ";";
 }
 
