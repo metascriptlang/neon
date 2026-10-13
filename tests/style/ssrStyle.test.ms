@@ -41,11 +41,11 @@ test "the runtime spelling equals the rule the macro baked" {
 	}
 }
 
-const WIDE = 700;
+let wide = 700;
 const MONO = "monospace";
 const geass = createStyles({
 	layered: { zIndex: 2, opacity: 0.5, width: 10 },
-	computed: { width: WIDE, top: -8, zIndex: 2, fontFamily: "x, " + MONO },
+	computed: { width: wide, top: -8, zIndex: 2, fontFamily: "x, " + MONO },
 });
 
 test "a baked rule spells every unitless field as the runtime does" {
