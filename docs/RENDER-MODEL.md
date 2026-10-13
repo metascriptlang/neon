@@ -215,8 +215,7 @@ showed the new view), and the first session after that compiler first ran answer
   handler makes it 9. Edit to reloaded was 5.4 to 16 s on a machine at 97 % load from four
   compiler builds, so this run says nothing about speed. The first session after the compiler
   changed answered `restart required` to its first edit.
-- Not run: a real desktop window (`src/platform/ion/window.ms` does not build, `BUGS.md`), a
-  physical device, kept routes on a device.
+- Not run: a real desktop window, a physical device, kept routes on a device.
 
 **Measured 2026-10-12 (evening)**, installed msc `e8c024c8`, tree `6a5349c`, a setup edit that
 throws and then its fix on each adapter:

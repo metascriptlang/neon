@@ -105,7 +105,7 @@ Inside a Void view there are only Void components: `Text` and `View` become void
 ## What this means per repo
 
 - **Neon** (`~/metascript/neon`) owns **Layer A** and the **Host contract**. It contains no B+C code. Adding a platform = implementing `Host` + binding to that platform's B+C (native objects, or Void).
-- **Void** (`~/metascript/void`) owns **Layers B+C** and the embed drivers a host drives. The Host adapter that lets Neon's Layer A drive a `Scene2D` through `NodeRef` binders lives on Neon's side, in `src/platform/void/host.ms`; it is still written against the deleted `Node2D` and does not build on Void's `main` (`BUGS.md` §3). Void-standalone uses B+C without Layer A (imperative).
+- **Void** (`~/metascript/void`) owns **Layers B+C** and the embed drivers a host drives. The Host adapter that lets Neon's Layer A drive a `Scene2D` through `NodeRef` binders lives on Neon's side, in `src/platform/void/host.ms`. Void-standalone uses B+C without Layer A (imperative).
 - They meet only at the **Host interface**. No reconciler in Void; no renderer in Neon.
 
 ## Consequence for Layer B quality
