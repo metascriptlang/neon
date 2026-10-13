@@ -185,7 +185,10 @@ version is opt-in per host, keeps core blind to platforms, and gives N vocabular
 > field, which is what makes this layering safe to rely on.
 
 **Projection is cached per sheet entry.** A sheet entry is a constant, so each host projects it once
-and reuses it across every element that references it.
+and reuses it across every element that references it. On a host with a stylesheet the entry reaches
+a node as its class whether the element is a tag or a component (`View`, `Text`), so server markup
+carries the class rather than an inline copy; a merged or computed style stays inline
+(`src/render/bind.ms` `bindStyleAll`).
 
 **Native transform projection (2026-10-06).** This slice keeps the existing string transform
 IR rather than introducing a second core style value representation. The compile-time-only
