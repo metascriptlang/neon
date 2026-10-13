@@ -137,13 +137,21 @@ and the invariants that outlived them were moved to the head of the test that pi
   main `4e33c9e` with msc `013853dd` (2026-09-30); the Windows run on `2f306532` found it beside the
   test file. Not yet known whether msc moved it on purpose.
 
-- **OPEN 2026-10-07 — `src/platform/ion/window.ms` is still on the old Void API.** The Void host
-  now maps onto `Scene2D` rows through `VoidNode` (`src/platform/void/host.ms`), and
-  `tests/platform/voidInput.test.ms` and `tests/style/style.test.ms` pass on msc `8506eaf03`; the
-  window module still imports `Scene`/`scene`, calls the old `createVoidHostWith(measure, font)` and
-  compares `addFont`'s `Result` with `< 0`, and Void exports its embed view
-  (`embedRegister`, `viewCreate`) only under `windows || ios || android`, so it cannot build on macOS
-  whatever Neon does: `~/metascript/.inbox/neon/2026-10-05-void-api-drift-breaks-desktop-build.md`.
+- **OPEN 2026-10-07 — the Ion window host builds on Windows only.** Void exports its embed view
+  (`embedRegister`, `viewCreate` in `void/src/sokol/gpu.ms`) only under `windows || ios || android`,
+  so `src/platform/ion/window.ms` cannot build on macOS or Linux whatever Neon does. On Windows it
+  builds and runs again. Measured 2026-10-13 with `examples/voidWindow.ms` on void `5dbcb662` and
+  ion `7463096`, at 96 DPI, driven by window messages posted to the Ion window: three clicks logged
+  `press count=3`; `ab cd`, Backspace and Enter logged each `changetext` and `submit "ab c"`; a
+  resize from 624×321 to 884×461 re-ran `onLayout` (header 576 → 836 wide); closing the window
+  exits 0. Not run: an IME, a DPI change.
+
+- **OPEN 2026-10-13 — on the void host a `<Text>`'s `color` and `fontSize` do not reach its text.**
+  `<Text style={{ color: "#ff0000", fontSize: 20 }}>Hello</Text>` mounted on `createVoidHostWith`
+  leaves its piece white at size 16: `applyPaint` (`src/platform/void/host.ms`) paints text only on
+  a `Label` row, and a `Text` element is a `Group` whose pieces are its label children. A
+  `TextInput` keeps its colour (`tests/platform/voidInput.test.ms`). Seen in
+  `examples/voidWindow.ms`, where every `Text` draws white.
 
 - **PARKED 2026-10-11 — `tests/render/flatList.test.ms` and `tests/components/flutterListsApp.test.ms` do not compile.**
   Not Neon's: an array-destructured local of an arrow passed as a JSX attribute
