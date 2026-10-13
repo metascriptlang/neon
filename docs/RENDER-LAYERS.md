@@ -95,7 +95,7 @@ Void has a second role beside "the platform": **one native component among the o
 - **The first outer host: an Ion window** (`src/platform/ion/window.ms`). It accepts only the `void` tag, so a desktop app is one full-window `<Void>`.
 
 **What is missing:**
-- **The native hosts, still in progress.** A component needs a host tree to sit in. The first UIKit host exists (`src/platform/ios/host.ms`, `docs/IOS.md`) but does not implement `voidArea` yet. Android follows (`docs/ANDROID.md`), and both belong to `ROADMAP.md` Next #1, Mobile App Foundation.
+- **The native hosts, still in progress.** A component needs a host tree to sit in. The native host (`src/platform/native/host.ms`, with the UIKit bridge `src/platform/ios/bridge.m` and the Android bridge `src/platform/android/bridge.c`; `docs/IOS.md`, `docs/ANDROID.md`) sets `voidArea: null`, so a `<Void>` inside it fails at mount. Both belong to `ROADMAP.md` Next #1, Mobile App Foundation. The desktop hosts follow on the same bridge (`VISION.md`, `docs/WINDOWS.md`).
 - **More than one area per Ion window.** The window host refuses a second `<Void>`; a Void area beside other elements needs Ion to give a surface a frame of its own (`VISION.md` "Window, frame and input").
 
 Inside a Void view there are only Void components: `Text` and `View` become void2d, and no native view is ever a child of a Void view (`VISION.md` "Worlds, nested one way").
