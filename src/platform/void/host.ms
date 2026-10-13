@@ -3,10 +3,10 @@ import { NeonEvent, neonEvent, eventType } from "../../render/event";
 import {
 	Scene2D, NodeRef, DrawKind, group, label, mask, addChild, addChildAt, getChildIndex, dispose, kind,
 	setPosition, setSize, setX, setZIndex, setAlpha, setColor, setBackground, clearBackground,
-	setText, setFont, textStyle, setTextStyle, setCursorIndex, setCursorBlinkTime,
+	setText, text as labelText, setFont, textStyle, setTextStyle, setCursorIndex, setCursorBlinkTime,
 	local, content, scrollTo as scrollNodeTo, setScrollBounds, localToGlobal,
 } from "../../../../void/src/void2d/node";
-import { hitTest, textWidth, xForIndex, lineBoxAt } from "../../../../void/src/void2d/render";
+import { hitTest, xForIndex, lineBoxAt } from "../../../../void/src/void2d/render";
 import { create, add, isDirty } from "../../../../void/src/void2d/scene";
 import { Color, rgba, vec2 } from "../../../../void/src/void2d/types";
 import { FontId, DEFAULT_FONT } from "../../../../void/src/void2d/font";
@@ -683,7 +683,7 @@ export function createVoidHostWith(scene: Scene2D, font: FontId): VoidHost {
 		for (const c of n.children) {
 			if (c.ref.kind() === DrawKind.Label && c.flex === null) {
 				c.ref.setX(x);
-				x = x + c.ref.textWidth();
+				x = x + c.ref.xForIndex(c.ref.labelText().length as int32);
 			}
 			flowText(c);
 		}
