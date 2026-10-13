@@ -1,6 +1,6 @@
 # Windows Host
 
-Status: decided 2026-10-14; the View slice is built ("Built: View" below), text and everything after it is not. The Windows Application UI world is a native host behind
+Status: decided 2026-10-14; the View and Text slices are built ("Built: View", "Built: Text" below), everything after them is not. The Windows Application UI world is a native host behind
 `src/platform/native/bridge.h`, like iOS and Android (`IOS.md`, `ANDROID.md`), and its components
 are Neon's own views drawn on DirectComposition. This document keeps the decision, the reference it
 is ported from, the paths rejected and the one measurement taken. `VISION.md` "Worlds, nested one
@@ -125,10 +125,41 @@ scaled box. Facts that took the measurement to find:
 Not measured: a DPI other than 96 (frames, radius and translation scale by `GetDpiForWindow`, but only 96 ran),
 resize, a second window, device loss.
 
+## Built: Text
+
+`dwriteText.cpp` is `niTextCreate`, `niSetText`, `niSetTextColor`, `niSetFont`, `niMeasureText`, `niMeasuredW`
+and `niMeasuredH` on DirectWrite, drawn with Direct2D into a drawing surface. A text label is a view whose
+visual's content is that surface, and it draws on its own visual: Neon never gives a Text a background
+(`host.ms` `applyPaint` skips it), so `niSetBackgroundColor` on a Text aborts by name instead of clearing a
+colour into the same surface as RNW does. The seam gained `IDrawingSurface` (`BeginDrawD2D(dpi)` returns the
+`ID2D1DeviceContext`, origin at the surface's top-left in DIPs at that dpi; `EndDraw`),
+`ICompositionContext::CreateDrawingSurface` and `IVisual::Content`; `Content` replaces a colour brush and a
+later `Brush` replaces the surface. `Size` now marks colour content dirty only while a colour is set, which
+was the trap that cleared a text surface on every frame change. The bridge draws the dirty labels in
+`niwPump` after the loop runs and before `Commit`.
+
+Measure is `ceil(width × scale) / scale` of `IDWriteTextLayout::GetMetrics` `width` and `height` at
+`maxWidth`, Segoe UI, weight 700 when bold else 400, no font fallback set. `niSetProp(textAlign)` is
+implemented (`auto`/`left`, `right`, `center`, `justify`); every other prop, `numberOfLines` and `textSpans`
+among them, aborts by name. Invalid UTF-8 in `niSetText` aborts.
+
+Measured 2026-10-14 on tree `adc65f5aa1e924966dbfb94989dd803e73179342`, 96 dpi, `msc build
+examples/windowsNative/text.ms` then `out/windowsText.exe --check`: all 13 checks hold. The centre of a 96 px
+bold `I` is `(255,255,255)`; a label's box corner shows the parent's blue; 1116 pixels of a 32 px `Hello
+Windows` are within 60 of its yellow; 3 wrapped lines at `maxWidth` 200 measure 180x80 against DirectWrite's
+179.17x79.80 (the harness measures with its own factory and allows one device pixel above); a right-aligned
+label has 273 pixels in its right half and none in its left; a label changed from red `A` to `Updated text`
+by a timer shows 0 red pixels and 822 mint ones. `out/windowsNative.exe --check` still matches 11 of 11.
+The harness now pumps for 500 ms before sampling: with 30 pumps, which took under 100 ms, the
+pixel counts varied run to run and a `setTimeout` did not fire.
+
+Not measured: a DPI other than 96, resize of a text label, emoji and other colour fonts, text the system
+falls back for, a label wider than its frame after pixel rounding (its layout box is the frame, so it wraps).
+
 ## Port map: Text, TextInput, UI Automation
 
-Read 2026-10-14 in RNW at `1f59db1`, paths under `vnext/Microsoft.ReactNative/Fabric/`; nothing below
-is built or run yet. `WTI` is `Composition/TextInput/WindowsTextInputComponentView.cpp`.
+Read 2026-10-14 in RNW at `1f59db1`, paths under `vnext/Microsoft.ReactNative/Fabric/`; only the Text part below
+is built, in "Built: Text"; TextInput and UI Automation are not. `WTI` is `Composition/TextInput/WindowsTextInputComponentView.cpp`.
 
 **Text.**
 - **Measure.** `platform/react/renderer/textlayoutmanager/WindowsTextLayoutManager.cpp`
