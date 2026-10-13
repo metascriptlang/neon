@@ -33,8 +33,10 @@ MINGW* | MSYS* | CYGWIN*)
 	"$MSC" build examples/voidWindow.ms --output=out/voidWindow.exe || fail=1
 	echo "== desktop examples/windowsNative/app.ms"
 	"$MSC" build examples/windowsNative/app.ms --output=out/windowsNative.exe || fail=1
+	echo "== desktop examples/windowsNative/text.ms"
+	"$MSC" build examples/windowsNative/text.ms --output=out/windowsText.exe || fail=1
 	;;
-*) echo "== desktop skip examples/voidWindow.ms and examples/windowsNative/app.ms: both are Windows-only" ;;
+*) echo "== desktop skip examples/voidWindow.ms and examples/windowsNative: Windows-only" ;;
 esac
 tests/browser/run.sh || fail=1
 sh tests/edge/run.sh || fail=1
