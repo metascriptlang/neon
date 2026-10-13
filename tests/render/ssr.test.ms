@@ -48,7 +48,8 @@ test "a style serializes inline, or as a sheet class where the entry carries one
 		assert beside === "<div class=\"outer\" style=\"" + BOX_CSS + "\"></div>", "sheet entry beside a class attr: " + beside;
 	}
 	const whole = renderToString(<div style={boxOf()}></div>);
-	assert whole === "<div style=\"" + BOX_CSS + "\"></div>", "whole-style thunk: " + whole;
+	const wholeWant = id !== null ? "<div class=\"" + (id as string) + "\"></div>" : "<div style=\"" + BOX_CSS + "\"></div>";
+	assert whole === wholeWant, "whole-style thunk returning a sheet entry: " + whole;
 }
 
 test "a render registers the rule of the sheet entry it used" {
