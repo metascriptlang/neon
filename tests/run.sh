@@ -27,6 +27,13 @@ for f in $files; do
 	echo "== js $f"
 	"$MSC" test --target=js "$f" || fail=1
 done
+case "$(uname -s)" in
+MINGW* | MSYS* | CYGWIN*)
+	echo "== desktop examples/voidWindow.ms"
+	"$MSC" build examples/voidWindow.ms --output=out/voidWindow.exe || fail=1
+	;;
+*) echo "== desktop skip examples/voidWindow.ms: Void's embed view is Windows-only on the desktop" ;;
+esac
 tests/browser/run.sh || fail=1
 sh tests/edge/run.sh || fail=1
 exit $fail
