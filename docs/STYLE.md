@@ -188,7 +188,9 @@ version is opt-in per host, keeps core blind to platforms, and gives N vocabular
 and reuses it across every element that references it. On a host with a stylesheet the entry reaches
 a node as its class whether the element is a tag or a component (`View`, `Text`), so server markup
 carries the class rather than an inline copy; a merged or computed style stays inline
-(`src/render/bind.ms` `bindStyleAll`).
+(`src/render/bind.ms` `bindStyleAll`). The macro bakes the rule only from literals and theme tokens,
+so an entry holding any other value (a constant, a concatenation, a negative number) gets no class
+and stays inline whole (`createStyles` in `src/macros/ui/style.ms`).
 
 **Native transform projection (2026-10-06).** This slice keeps the existing string transform
 IR rather than introducing a second core style value representation. The compile-time-only
