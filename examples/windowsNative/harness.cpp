@@ -3,10 +3,13 @@
 #include <d2d1_1.h>
 #include <dcomp.h>
 #include <dwmapi.h>
+#include <dwrite.h>
 #include <wrl/client.h>
 #include <cstdio>
 #include <cstdlib>
+#include <cmath>
 #include <cstring>
+#include <map>
 #include <string>
 #include <vector>
 #include "harness.h"
@@ -21,12 +24,33 @@ struct Expectation {
 	int x, y, r, g, b;
 };
 
+struct Centre {
+	std::string name, layout;
+	int left, top, r, g, b;
+};
+
+struct Count {
+	std::string name;
+	int x, y, width, height, r, g, b, tolerance, minCount, maxCount;
+};
+
+struct SizeCheck {
+	std::string layout, text;
+	float fontSize;
+	int bold;
+	float maxWidth;
+};
+
 const int kTolerance = 3;
 
 HWND g_window = nullptr;
 bool g_check = false;
 UINT g_dpi = 96;
 std::vector<Expectation> g_expectations;
+std::vector<Centre> g_centres;
+std::vector<Count> g_counts;
+std::vector<SizeCheck> g_sizes;
+std::map<std::string, std::pair<float, float>> g_layouts;
 ComPtr<ID3D11Device> g_d3d;
 ComPtr<ID2D1Factory1> g_d2dFactory;
 ComPtr<ID2D1Device> g_d2dDevice;
@@ -59,26 +83,99 @@ bool pumpMessages() {
 	return true;
 }
 
+bool ownsPoint(POINT at) { return GetAncestor(WindowFromPoint(at), GA_ROOT) == g_window; }
+
+int checkPoint(HDC screen, POINT origin, const std::string &name, int x, int y, int er, int eg, int eb) {
+	POINT at = {origin.x + MulDiv(x, g_dpi, 96), origin.y + MulDiv(y, g_dpi, 96)};
+	if (!ownsPoint(at)) {
+		printf("%-26s (%3d,%3d) the point is not over the harness window\n", name.c_str(), x, y);
+		return 1;
+	}
+	COLORREF c = GetPixel(screen, at.x, at.y);
+	int r = GetRValue(c), g = GetGValue(c), b = GetBValue(c);
+	bool ok = abs(r - er) <= kTolerance && abs(g - eg) <= kTolerance && abs(b - eb) <= kTolerance;
+	printf("%-26s (%3d,%3d) expected %3d %3d %3d  actual %3d %3d %3d  %s\n", name.c_str(), x, y, er, eg, eb, r, g, b, ok ? "ok" : "FAIL");
+	return ok ? 0 : 1;
+}
+
+int checkCount(HDC screen, POINT origin, const Count &c) {
+	int left = origin.x + MulDiv(c.x, g_dpi, 96), top = origin.y + MulDiv(c.y, g_dpi, 96);
+	int width = MulDiv(c.width, g_dpi, 96), height = MulDiv(c.height, g_dpi, 96);
+	POINT corners[] = {{left, top}, {left + width - 1, top}, {left, top + height - 1}, {left + width - 1, top + height - 1}};
+	for (POINT corner : corners) {
+		if (!ownsPoint(corner)) {
+			printf("%-26s box (%d,%d %dx%d) is not over the harness window\n", c.name.c_str(), c.x, c.y, c.width, c.height);
+			return 1;
+		}
+	}
+	BITMAPINFO info = {};
+	info.bmiHeader.biSize = sizeof info.bmiHeader;
+	info.bmiHeader.biWidth = width;
+	info.bmiHeader.biHeight = -height;
+	info.bmiHeader.biPlanes = 1;
+	info.bmiHeader.biBitCount = 32;
+	info.bmiHeader.biCompression = BI_RGB;
+	unsigned char *bits = nullptr;
+	HDC memory = CreateCompatibleDC(screen);
+	HBITMAP bitmap = CreateDIBSection(memory, &info, DIB_RGB_COLORS, (void **)&bits, nullptr, 0);
+	HGDIOBJ previous = SelectObject(memory, bitmap);
+	BitBlt(memory, 0, 0, width, height, screen, left, top, SRCCOPY);
+	int count = 0;
+	for (int i = 0; i < width * height; i++) {
+		const unsigned char *p = bits + i * 4;
+		if (abs(p[2] - c.r) <= c.tolerance && abs(p[1] - c.g) <= c.tolerance && abs(p[0] - c.b) <= c.tolerance) count += 1;
+	}
+	SelectObject(memory, previous);
+	DeleteObject(bitmap);
+	DeleteDC(memory);
+	bool ok = count >= c.minCount && count <= c.maxCount;
+	printf("%-26s box (%3d,%3d %3dx%3d) pixels within %d of %3d %3d %3d: %5d, expected %d..%d  %s\n", c.name.c_str(), c.x, c.y, c.width, c.height,
+		c.tolerance, c.r, c.g, c.b, count, c.minCount, c.maxCount, ok ? "ok" : "FAIL");
+	return ok ? 0 : 1;
+}
+
+int checkSize(const SizeCheck &c) {
+	auto found = g_layouts.find(c.layout);
+	if (found == g_layouts.end()) {
+		printf("%-26s no layout was reported for it\n", c.layout.c_str());
+		return 1;
+	}
+	ComPtr<IDWriteFactory> factory;
+	must(DWriteCreateFactory(DWRITE_FACTORY_TYPE_ISOLATED, __uuidof(IDWriteFactory), (IUnknown **)factory.GetAddressOf()), "DWriteCreateFactory");
+	ComPtr<IDWriteTextFormat> format;
+	must(factory->CreateTextFormat(L"Segoe UI", nullptr, c.bold ? DWRITE_FONT_WEIGHT_BOLD : DWRITE_FONT_WEIGHT_NORMAL, DWRITE_FONT_STYLE_NORMAL,
+		DWRITE_FONT_STRETCH_NORMAL, c.fontSize, L"en-us", &format), "CreateTextFormat");
+	std::wstring wide(c.text.begin(), c.text.end());
+	ComPtr<IDWriteTextLayout> layout;
+	must(factory->CreateTextLayout(wide.c_str(), (UINT32)wide.size(), format.Get(), c.maxWidth, 100000.0f, &layout), "CreateTextLayout");
+	DWRITE_TEXT_METRICS metrics;
+	must(layout->GetMetrics(&metrics), "GetMetrics");
+	float pixel = 96.0f / g_dpi, slack = 0.01f;
+	float w = found->second.first, h = found->second.second;
+	bool ok = w >= metrics.width - slack && w <= metrics.width + pixel + slack && h >= metrics.height - slack && h <= metrics.height + pixel + slack;
+	printf("%-26s layout %.2fx%.2f, DirectWrite %.2fx%.2f, allowed up to one device pixel above  %s\n", c.layout.c_str(), w, h, metrics.width,
+		metrics.height, ok ? "ok" : "FAIL");
+	return ok ? 0 : 1;
+}
+
 int sample() {
 	POINT origin = {0, 0};
 	ClientToScreen(g_window, &origin);
 	HDC screen = GetDC(nullptr);
 	int failures = 0;
 	printf("dpi %u\n", g_dpi);
-	for (const Expectation &e : g_expectations) {
-		POINT at = {origin.x + MulDiv(e.x, g_dpi, 96), origin.y + MulDiv(e.y, g_dpi, 96)};
-		if (GetAncestor(WindowFromPoint(at), GA_ROOT) != g_window) {
-			printf("%-22s (%3d,%3d) the point is not over the harness window\n", e.name.c_str(), e.x, e.y);
+	for (const Expectation &e : g_expectations) failures += checkPoint(screen, origin, e.name, e.x, e.y, e.r, e.g, e.b);
+	for (const Centre &c : g_centres) {
+		auto found = g_layouts.find(c.layout);
+		if (found == g_layouts.end()) {
+			printf("%-26s no layout was reported for %s\n", c.name.c_str(), c.layout.c_str());
 			failures += 1;
 			continue;
 		}
-		COLORREF c = GetPixel(screen, at.x, at.y);
-		int r = GetRValue(c), g = GetGValue(c), b = GetBValue(c);
-		bool ok = abs(r - e.r) <= kTolerance && abs(g - e.g) <= kTolerance && abs(b - e.b) <= kTolerance;
-		printf("%-22s (%3d,%3d) expected %3d %3d %3d  actual %3d %3d %3d  %s\n", e.name.c_str(), e.x, e.y, e.r, e.g, e.b, r, g, b,
-			ok ? "ok" : "FAIL");
-		if (!ok) failures += 1;
+		failures += checkPoint(screen, origin, c.name, c.left + (int)(found->second.first / 2), c.top + (int)(found->second.second / 2), c.r, c.g, c.b);
 	}
+	for (const Count &c : g_counts) failures += checkCount(screen, origin, c);
+	for (const SizeCheck &c : g_sizes) failures += checkSize(c);
 	ReleaseDC(nullptr, screen);
 	fflush(stdout);
 	return failures;
@@ -131,11 +228,26 @@ void harnessExpect(const char *name, int x, int y, int r, int g, int b) {
 	g_expectations.push_back({name, x, y, r, g, b});
 }
 
+void harnessLayout(const char *name, float width, float height) { g_layouts[name] = {width, height}; }
+
+void harnessExpectCentre(const char *name, const char *layout, int left, int top, int r, int g, int b) {
+	g_centres.push_back({name, layout, left, top, r, g, b});
+}
+
+void harnessExpectCount(const char *name, int x, int y, int width, int height, int r, int g, int b, int tolerance, int minCount, int maxCount) {
+	g_counts.push_back({name, x, y, width, height, r, g, b, tolerance, minCount, maxCount});
+}
+
+void harnessExpectSize(const char *layout, const char *text, float fontSize, int bold, float maxWidth) {
+	g_sizes.push_back({layout, text, fontSize, bold, maxWidth});
+}
+
 int harnessRun(void) {
 	int status = 0;
 	if (g_check) {
 		SetForegroundWindow(g_window);
-		for (int i = 0; i < 30; i++) {
+		ULONGLONG settled = GetTickCount64() + 500;
+		for (int i = 0; i < 30 || GetTickCount64() < settled; i++) {
 			niwPump();
 			pumpMessages();
 			DwmFlush();
