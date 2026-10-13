@@ -53,6 +53,7 @@ function ssrHost(register: (id: string, css: string) => void): Host {
 		return node;
 	};
 	h.setStyleClass = (node: HostNode, id: string, css: string): void => {
+		if (id === "") { return; }
 		register(id, css);
 		addClass(node as unknown as MockNode, id);
 	};

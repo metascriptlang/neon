@@ -10,7 +10,7 @@ import { createStyles, styleOf } from "../../src/macros/ui/style";
 import { sleepAsync } from "std/core/promise";
 import { NeonEvent } from "../../src/render/event";
 import { For } from "../../src/macros/ui/flow";
-import { Accessor } from "../../src/core/signal";
+import { Accessor, createSignal } from "../../src/core/signal";
 import { ScrollView, Text, View, Pressable } from "../../src/components/primitives";
 
 extern class HTMLElement {
@@ -44,6 +44,7 @@ function computed(selector: string, fields: string): string {
 
 const sheet = createStyles({
 	row: { flexDirection: "row", position: "absolute" },
+	wide: { flexDirection: "row", paddingLeft: 24 },
 });
 
 test "a View in Chrome is a positioned flex column that can shrink below its content" {
@@ -112,4 +113,21 @@ test "a class prop keeps the View base" {
 	await sleepAsync(0);
 	const got = js("const v = document.querySelector('#base-class > div'); return `${v.classList.contains('mine')} ${getComputedStyle(v).display}`;");
 	assert got === "true flex", "class and base: " + got;
+}
+
+test "a View whose style moves between sheet entries and an inline style keeps only the current one" {
+	const mount = mountPoint("base-swap");
+	const [pick, setPick] = createSignal(0);
+	render(element(<View style={pick() === 0 ? sheet.row : pick() === 1 ? sheet.wide : styleOf({ paddingTop: 7 })} />), domHost(), mount as unknown as HostNode);
+	const shape = (): string => js(`const n = document.querySelector('#base-swap > div'); return n.className + '|' + n.getAttribute('style');`);
+	const row = sheet.row.cssId as string;
+	const wide = sheet.wide.cssId as string;
+	assert shape() === "neon-view " + row + "|null", shape();
+	setPick(1);
+	assert shape() === "neon-view " + wide + "|null", shape();
+	assert computed("#base-swap > div", "'position', 'paddingLeft'") === "relative 24px", computed("#base-swap > div", "'position', 'paddingLeft'");
+	setPick(2);
+	assert shape() === "neon-view|padding-top: 7px;", shape();
+	setPick(0);
+	assert shape() === "neon-view " + row + "|", shape();
 }

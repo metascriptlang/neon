@@ -15,6 +15,7 @@ import { styleToCss } from "../../src/render/css";
 import { createStyles, styleOf } from "../../src/macros/ui/style";
 import { resetCss, cssRuleCount, mountSheet } from "../../src/render/sheet";
 import { createSignal } from "../../src/core/signal";
+import { View, Text } from "../../src/components/primitives";
 
 const sheet = createStyles({
 	btn: { padding: 8, backgroundColor: "#334" },
@@ -76,6 +77,17 @@ test "a class from a sheet joins the class attribute already on the node" {
 	when (js) {
 		const n: NeonNode = <div class="x" style={sheet.btn}></div>;
 		assert renderToString(n) === "<div class=\"x " + (sheet.btn.cssId as string) + "\"></div>", "one class attribute, not two";
+	}
+}
+
+test "a sheet entry on a View serializes as a class, as it does on a tag" {
+	resetCss();
+	const html = renderToString(<View style={sheet.btn}><Text style={sheet.btn}>hi</Text></View>);
+	when (js) {
+		const id = sheet.btn.cssId as string;
+		assert html === "<div class=\"neon-view " + id + "\"><span class=\"neon-text " + id + "\">hi</span></div>", html;
+	} else {
+		assert html === "<div class=\"neon-view\" style=\"padding:8px;background-color:#334;\"><span class=\"neon-text\" style=\"padding:8px;background-color:#334;\">hi</span></div>", html;
 	}
 }
 

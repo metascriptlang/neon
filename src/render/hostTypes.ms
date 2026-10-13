@@ -30,7 +30,8 @@ export interface Host {
 	// Optional capability: a host with a stylesheet takes a shared style as a
 	// named rule plus a class instead of writing every field onto the node.
 	// `null` means "no stylesheet" (every native host) and src/render/host.ms
-	// applies the fields through setStyle — same pixels, more writes.
+	// applies the fields through setStyle — same pixels, more writes. A node
+	// holds one sheet class: a new id replaces the last, and "" removes it.
 	setStyleClass: ((node: HostNode, id: string, css: string) => void) | null;
 	addEvent: (node: HostNode, name: string, handler: (e: NeonEvent) => void) => void;
 	append: (parent: HostNode, child: HostNode) => void;

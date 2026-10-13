@@ -823,6 +823,8 @@ extern function enterHead(node: Node): void from
 	"(n => { if (n.nodeType !== 1 || n.neonKey !== undefined) return; const t = n.localName; if (t !== 'title' && t !== 'meta') return; const a = k => n.getAttribute(k); const named = a('name') ?? a('property'); if (t === 'meta' && named === null && a('http-equiv') === null && a('charset') === null) return; const key = t === 'title' ? t : JSON.stringify([named, a('http-equiv'), a('content'), a('charset'), a('media')]); const all = document.head.neonCascade ??= new Map(); const list = all.get(key) ?? []; all.set(key, list); const prev = list[list.length - 1]; list.push(n); n.neonKey = key; if (prev !== undefined) { const held = document.createComment(''); prev.replaceWith(held); prev.neonHeld = held; held.neonFor = prev; } })(#)";
 extern function leaveHead(node: Node): Node from
 	"(n => { const key = n.neonKey; if (key === undefined) return n; const list = document.head.neonCascade.get(key); const i = list.indexOf(n); list.splice(i, 1); n.neonKey = undefined; const held = n.neonHeld; if (held !== undefined) { n.neonHeld = undefined; return held; } const prev = i === list.length ? list[i - 1] : undefined; if (prev !== undefined) { prev.neonHeld.replaceWith(prev); prev.neonHeld = undefined; } return n; })(#)";
+extern function swapSheetClass(node: Node, id: cstring): void from
+	"((n, id) => { const was = n.neonSheet; if (was !== undefined && was !== id) n.classList.remove(was); if (id !== '') n.classList.add(id); n.neonSheet = id === '' ? undefined : id; })(#, #)";
 extern function shownInHead(node: Node | null): Node | null from "(n => n !== null && n.neonHeld !== undefined ? n.neonHeld : n)(#)";
 extern function heldByHead(node: Node | null): Node | null from "(n => n !== null && n.neonFor !== undefined ? n.neonFor : n)(#)";
 
@@ -1148,8 +1150,8 @@ export function domHost(): Host {
 		},
 		setStyleClass: (node: HostNode, id: string, css: string): void => {
 			prepareVisibleContent();
-			registerCss(id, css);
-			(node as unknown as Node).classList.add(id);
+			if (id !== "") { registerCss(id, css); }
+			swapSheetClass(node as unknown as Node, id);
 			scheduleLayouts();
 		},
 		addEvent: (node: HostNode, name: string, handler: (e: NeonEvent) => void): void => {
