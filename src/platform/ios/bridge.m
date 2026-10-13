@@ -79,56 +79,6 @@ static void call0(msClosure c) {
 	return CGRectContainsPoint(area, point);
 }
 
-// UIKit hands an untagged view's touch on to its superviews, but a UIScrollView keeps it,
-// so a listener outside the scroll view (a pager around a vertical list) never hears it.
-// The view the touch hit reports it for the first listener past the scroll view instead
-// (WORKAROUND.md W9); inside it, forwarding still reaches the listeners.
-- (NSInteger)neonReportTag:(UITouch *)touch {
-	if (self.tag != 0) return self.tag;
-	if (touch.view != self) return 0;
-	BOOL crossed = NO;
-	for (UIView *at = self.superview; at; at = at.superview) {
-		if ([at isKindOfClass:UIScrollView.class]) { crossed = YES; continue; }
-		if ([at isKindOfClass:NeonTouchView.class] && at.tag != 0) return crossed ? at.tag : 0;
-	}
-	return 0;
-}
-
-- (void)neonReport:(NSSet<UITouch *> *)touches phase:(int)phase {
-	UITouch *touch = touches.anyObject;
-	CGPoint at = [touch locationInView:nil];
-	g_lastTag = (int)[self neonReportTag:touch];
-	g_lastPhase = phase;
-	g_touchX = (float)at.x;
-	g_touchY = (float)at.y;
-	g_touchTime = touch.timestamp * 1000.0;
-	call0(s_touch);
-}
-
-- (void)touchesBegan:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
-	[self neonReport:touches phase:0];
-	[super touchesBegan:touches withEvent:event];
-}
-
-- (void)touchesMoved:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
-	[self neonReport:touches phase:4];
-	[super touchesMoved:touches withEvent:event];
-}
-
-- (void)touchesEnded:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
-	[self neonReport:touches phase:1];
-	if (self.tag != 0) {
-		g_lastPhase = 2; // the press itself, after the up
-		call0(s_touch);
-	}
-	[super touchesEnded:touches withEvent:event];
-}
-
-- (void)touchesCancelled:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
-	[self neonReport:touches phase:3];
-	[super touchesCancelled:touches withEvent:event];
-}
-
 // RN RCTViewComponentView: an accessible view without its own label speaks the
 // labels of its subviews, joined with ", " (RCTRecursiveAccessibilityLabel).
 static NSString *recursiveAccessibilityLabel(UIView *view) {
@@ -154,12 +104,9 @@ static NSString *recursiveAccessibilityLabel(UIView *view) {
 
 @end
 
-// RN Text: a label whose text or span has onPress takes touches; a touch on a pressable
-// span reports with the span's tag, so the span's press fires and the label's bubbles.
 @interface NeonLabel : UILabel
 @property (nonatomic, copy) NSArray<NSValue *> *neonSpanRanges;
 @property (nonatomic, copy) NSArray<NSNumber *> *neonSpanTags;
-@property (nonatomic) int neonTouchTag;
 @end
 
 @implementation NeonLabel
@@ -186,38 +133,94 @@ static NSString *recursiveAccessibilityLabel(UIView *view) {
 	return (int)self.tag;
 }
 
-- (void)neonReport:(NSSet<UITouch *> *)touches phase:(int)phase {
-	UITouch *touch = touches.anyObject;
-	CGPoint at = [touch locationInView:nil];
-	g_lastTag = self.neonTouchTag;
+@end
+
+@interface NeonRootTouchHandler : UIGestureRecognizer <UIGestureRecognizerDelegate>
+@property (nonatomic, strong) UITouch *primaryTouch;
+@property (nonatomic) int primaryTag;
+@end
+
+@implementation NeonRootTouchHandler
+
+- (instancetype)init {
+	if ((self = [super initWithTarget:nil action:nil])) {
+		self.cancelsTouchesInView = NO;
+		self.delaysTouchesBegan = NO;
+		self.delaysTouchesEnded = NO;
+		self.delegate = self;
+	}
+	return self;
+}
+
+- (void)neonEmit:(int)phase {
+	CGPoint at = [self.primaryTouch locationInView:nil];
+	g_lastTag = self.primaryTag;
 	g_lastPhase = phase;
 	g_touchX = (float)at.x;
 	g_touchY = (float)at.y;
-	g_touchTime = touch.timestamp * 1000.0;
+	g_touchTime = self.primaryTouch.timestamp * 1000.0;
 	call0(s_touch);
 }
 
 - (void)touchesBegan:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
-	self.neonTouchTag = [self neonTagAt:[touches.anyObject locationInView:self]];
-	[self neonReport:touches phase:0];
 	[super touchesBegan:touches withEvent:event];
+	for (UITouch *touch in touches) {
+		if (self.primaryTouch) { [self ignoreTouch:touch forEvent:event]; continue; }
+		self.primaryTouch = touch;
+		self.primaryTag = 0;
+		for (UIView *at = touch.view; at; at = at.superview) {
+			int tag = [at isKindOfClass:NeonLabel.class]
+				? [(NeonLabel *)at neonTagAt:[touch locationInView:at]] : (int)at.tag;
+			if (tag != 0) { self.primaryTag = tag; break; }
+			if (at == self.view) break;
+		}
+		[self neonEmit:0];
+	}
+	self.state = UIGestureRecognizerStateBegan;
 }
 
 - (void)touchesMoved:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
-	[self neonReport:touches phase:4];
 	[super touchesMoved:touches withEvent:event];
+	if (![touches containsObject:self.primaryTouch]) return;
+	[self neonEmit:4];
+	self.state = UIGestureRecognizerStateChanged;
 }
 
 - (void)touchesEnded:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
-	[self neonReport:touches phase:1];
-	g_lastPhase = 2;
-	call0(s_touch);
 	[super touchesEnded:touches withEvent:event];
+	if (![touches containsObject:self.primaryTouch]) return;
+	[self neonEmit:1];
+	[self neonEmit:2];
+	self.primaryTouch = nil;
+	self.state = UIGestureRecognizerStateEnded;
 }
 
 - (void)touchesCancelled:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
-	[self neonReport:touches phase:3];
 	[super touchesCancelled:touches withEvent:event];
+	if (![touches containsObject:self.primaryTouch]) return;
+	[self neonEmit:3];
+	self.primaryTouch = nil;
+	self.state = UIGestureRecognizerStateCancelled;
+}
+
+- (void)reset {
+	[super reset];
+	if (self.primaryTouch) { [self neonEmit:3]; self.primaryTouch = nil; }
+}
+
+- (BOOL)canPreventGestureRecognizer:(UIGestureRecognizer *)other { return NO; }
+
+- (BOOL)canBePreventedByGestureRecognizer:(UIGestureRecognizer *)other {
+	return ![other.view isDescendantOfView:self.view];
+}
+
+- (BOOL)gestureRecognizer:(UIGestureRecognizer *)recognizer shouldRequireFailureOfGestureRecognizer:(UIGestureRecognizer *)other {
+	return [self canBePreventedByGestureRecognizer:other];
+}
+
+- (BOOL)gestureRecognizer:(UIGestureRecognizer *)recognizer shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)other {
+	if ([self canBePreventedByGestureRecognizer:other]) { self.enabled = NO; self.enabled = YES; }
+	return NO;
 }
 
 @end
@@ -905,6 +908,7 @@ static void setStatusBar(const char *name, const char *value) {
 	self.view.backgroundColor = [UIColor blackColor];
 	g_container = [[UIView alloc] initWithFrame:containerFrame(self.view)];
 	g_container.userInteractionEnabled = YES;
+	[g_container addGestureRecognizer:[[NeonRootTouchHandler alloc] init]];
 	[self.view addSubview:g_container];
 	call0(s_mount);
 }
