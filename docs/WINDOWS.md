@@ -22,8 +22,10 @@ Reference: `~/projects/react-native-windows`, shallow clone at `1f59db1` (2026-1
 host what Nim is to the compiler: follow it where it can be followed, and record where it cannot.
 
 The one planned divergence is the compositor, because of the constraint below. Every other layer
-ports RNW's mechanism. RNW's code is C++/WinRT; the port is plain C++ over COM, built by `msc` with
-clang/mingw like Ion's `src/platform/windows/*.cpp`.
+ports RNW's mechanism. RNW's code is C++/WinRT; the port is plain C++ over COM, built by `msc` like
+Ion's `src/platform/windows/*.cpp`. `msc` compiles C++ against the mingw-w64 headers bundled with its
+Zig (`~/.metascript/zig/lib/libc/include/any-windows-any/`), not the Windows SDK's, so a header the
+port needs is checked there.
 
 ## Why DirectComposition and not RNW's compositor
 
@@ -47,12 +49,14 @@ clang/mingw like Ion's `src/platform/windows/*.cpp`.
   `EXPERIMENTAL_IDCompositionDevice6`; `ui/gl/direct_composition_support.cc` `DCompositionCreateDevice3`)
   and scrolls with DirectManipulation (`content/browser/renderer_host/direct_manipulation_helper_win.cc`).
 - **What it lacks, and the substitute.** No `InteractionTracker`: DirectManipulation with
-  `DCompManipulationCompositor` (`directmanipulation.h`, present in the SDK and in mingw). No
+  `DCompManipulationCompositor` (`directmanipulation.h`, in the SDK and in msc's Zig headers). No
   expression animations: `IDCompositionAnimation` curves (`dcompanimation.h`). Shadows and blur are
   `IDCompositionShadowEffect` / `IDCompositionGaussianBlurEffect` (`IDCompositionDevice3`).
   When an app needs what only WinRT composition has, a second `ICompositionContext` on
-  `Windows.UI.Composition` is added beside the DComp one, as RNW keeps two; mingw ships
-  `windows.ui.composition.h` and `windows.ui.composition.interop.h`.
+  `Windows.UI.Composition` is added beside the DComp one, as RNW keeps two. msc's Zig headers lack
+  `windows.ui.composition.h` and `windows.ui.composition.interop.h` (a standalone mingw-w64 has them),
+  so that context starts by bringing those headers in. `directmanipulation.h`, `dcompanimation.h`,
+  `textserv.h`, `uiautomationcore.h`, `dwrite.h` and `d2d1_1.h` are there.
 
 ## Rejected
 
@@ -67,7 +71,7 @@ clang/mingw like Ion's `src/platform/windows/*.cpp`.
 
 ## Measured
 
-2026-10-14, `msc` v0.3.3 (`~/.metascript/BUILD` `26150233`), clang 23.1.0, Windows 11, 96 dpi. A
+2026-10-14, `msc` v0.3.3 (`~/.metascript/BUILD` `26150233`), its Zig 0.16.0, Windows 11, 96 dpi. A
 probe of about 150 lines, not tracked: one `.ms` that `@compile`s one `.cpp` and links `d3d11`,
 `dxgi`, `d2d1`, `dwrite`, `dcomp`, `dwmapi`, `gdi32`, `user32`, `uuid`. It creates a
 `WS_EX_NOREDIRECTIONBITMAP` window, a D3D11 device with BGRA support, a D2D device on it,
