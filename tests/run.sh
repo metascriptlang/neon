@@ -31,8 +31,10 @@ case "$(uname -s)" in
 MINGW* | MSYS* | CYGWIN*)
 	echo "== desktop examples/voidWindow.ms"
 	"$MSC" build examples/voidWindow.ms --output=out/voidWindow.exe || fail=1
+	echo "== desktop examples/windowsNative/app.ms"
+	"$MSC" build examples/windowsNative/app.ms --output=out/windowsNative.exe || fail=1
 	;;
-*) echo "== desktop skip examples/voidWindow.ms: Void's embed view is Windows-only on the desktop" ;;
+*) echo "== desktop skip examples/voidWindow.ms and examples/windowsNative/app.ms: both are Windows-only" ;;
 esac
 tests/browser/run.sh || fail=1
 sh tests/edge/run.sh || fail=1
