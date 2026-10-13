@@ -71,12 +71,16 @@ function ssrHost(register: (id: string, css: string) => void): Host {
 
 const SSR_HOST: Host = ssrHost(registerCss);
 
+function withEntity(value: string, char: string, entity: string): string {
+	return value.indexOf(char) < 0 ? value : value.replaceAll(char, entity);
+}
+
 function escapeText(value: string): string {
-	return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+	return withEntity(withEntity(withEntity(value, "&", "&amp;"), "<", "&lt;"), ">", "&gt;");
 }
 
 function escapeAttribute(value: string): string {
-	return escapeText(value).replaceAll("\"", "&quot;").replaceAll("'", "&#39;");
+	return withEntity(withEntity(escapeText(value), "\"", "&quot;"), "'", "&#39;");
 }
 
 function voidTag(tag: string): boolean {
