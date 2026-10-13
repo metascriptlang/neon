@@ -125,6 +125,69 @@ scaled box. Facts that took the measurement to find:
 Not measured: a DPI other than 96 (frames, radius and translation scale by `GetDpiForWindow`, but only 96 ran),
 resize, a second window, device loss.
 
+## Port map: Text, TextInput, UI Automation
+
+Read 2026-10-14 in RNW at `1f59db1`, paths under `vnext/Microsoft.ReactNative/Fabric/`; nothing below
+is built or run yet. `WTI` is `Composition/TextInput/WindowsTextInputComponentView.cpp`.
+
+**Text.**
+- **Measure.** `platform/react/renderer/textlayoutmanager/WindowsTextLayoutManager.cpp`
+  `TextLayoutManager::measure` builds an `IDWriteTextLayout` per call (cached globally). The format
+  is Segoe UI, the weight cast straight to `DWRITE_FONT_WEIGHT`, and the constraint is the layout
+  box. Ellipsis is `SetTrimming` with `CreateEllipsisTrimmingSign`; `numberOfLines` only clamps the
+  measured height. RNW sets no `IDWriteFontFallback` and no antialias mode, so fallback is
+  DirectWrite's implicit one.
+- **Draw.** `Composition/ParagraphComponentView.cpp` `DrawText` draws into a surface the size of the
+  frame in pixels, on a DC whose DPI is 96 × scale, with `DrawTextLayout(…, ENABLE_COLOR_FONT)`
+  (`Composition/TextDrawing.cpp`). Per-run colour is a drawing effect; underline and strike are
+  layout ranges.
+- **Neon mapping.** `niMeasureText` lays out at `maxWidth` and keeps
+  `ceil(width × scale) / scale` (and the same for height) for `niMeasuredW/H`. The ceil matters
+  because `host.ms` `measureTextWithin` turns the measured size into a fixed width and height, with
+  no yoga measure function; iOS's `niMeasureText` ceils too. Use `width`, not
+  `widthIncludingTrailingWhitespace`. Bold is weight 700, otherwise 400. `niSetFont` and
+  `niSetTextColor` run on every paint, so a change marks the label dirty only when a value differs.
+- **Seam.** The seam grows a drawing surface in the shape of RNW's `CreateDrawingSurfaceBrush`
+  (`Composition/CompositionContextHelper.cpp`): the context creates it, it begins a draw at a DPI,
+  and a visual takes it as content. `DCompVisual::Size` marks colour content dirty today, so a
+  visual that owns a text surface must not have that content overwritten.
+
+**TextInput.**
+- **Mechanism.** Windowless RichEdit: `LoadLibrary("Msftedit.dll")` and `CreateTextServices`
+  (`WTI`). The host is an `ITextHost` that reports `TXTBIT_D2DDWRITE`, and drawing is
+  `ITextServices2::TxDrawD2D` on the composition surface's D2D context, not GDI. Initialisation
+  sets plain-text mode, `SES_USECTF` (IME through TSF) and the change/selection event mask. Every
+  key, character, mouse, focus and clipboard message reaches RichEdit through `TxSendMessage`;
+  Enter is caught first for submit. The caret is a separate visual that blinks through an opacity
+  animation, driven by `TxCreateCaret`, `TxSetCaretPos` and `TxShowCaret`.
+- **Neon mapping.** Phase 0 comes from `EN_CHANGE`, with a host-write flag so a `value` set by Neon
+  does not echo back (iOS does the same). Phases 1 and 2 come from `niSetFocused`, phase 3 from
+  Enter, phase 9 from `EN_SELCHANGE` as "start,end". `editable`, `secureTextEntry` and `maxLength`
+  map to `TXTBIT_READONLY`, `TXTBIT_USEPASSWORD` and `EM_LIMITTEXT`. Derive `TxGetPropertyBits` from
+  the input's state; RNW's version returns a constant mask.
+- **Header gap.** msc's Zig `textserv.h` has `ITextHost`, `ITextServices` and `CreateTextServices`
+  but no `ITextServices2`, `TxDrawD2D`, `TXTBIT_D2DDWRITE` or `TXTBIT_D2DSIMPLETYPOGRAPHY`; the SDK
+  `TextServ.h` 10.0.26100 has them. RNW itself declares the `ITextServices2` IID locally
+  (`8D33F741-CF58-11CE-A89D-00AA006CADC5`); the port declares that interface's vtable the same way.
+  `EM_SETDPI` is absent too (`WM_USER + 328`).
+- **What the window owner has to give.** Keyboard focus on a real HWND, `TranslateMessage` in the
+  pump, the forwarded key, character, mouse, wheel and focus messages, `SetCapture`,
+  `WM_SETCURSOR`, `WM_DPICHANGED`, and the HWND for caret and IME placement.
+
+**UI Automation.**
+- **Mechanism.** A root provider (`Composition/CompositionRootAutomationProvider.cpp`) is the
+  fragment root, with `UiaHostProviderFromHwnd` as its host provider. Each view gets a fragment
+  (`Composition/CompositionDynamicAutomationProvider.cpp`) with RuntimeId
+  `{UiaAppendRuntimeId, tag}`, bounds from the view rect plus the root's screen origin, and the
+  Invoke, Value, Toggle, Scroll, RangeValue and Selection patterns. Events are raised only when
+  `UiaClientsAreListening`. RNW leaves `WM_GETOBJECT` to the app (`CompositionHwndHost::UiaProvider`).
+- **Owner.** The window owner answers `WM_GETOBJECT` (`UiaRootObjectId`) with
+  `UiaReturnRawElementProvider`. Every interface and function named here is in msc's Zig headers
+  (`uiautomationcore.h`, `uiautomationcoreapi.h`).
+
+Not verified: TSF IME without `ITextHost2`; the `TxDrawD2D` rectangle's unit above 96 dpi;
+mingw-compiled `ITextHost` and UIA providers called by the system's Msftedit and UIAutomationCore.
+
 ## What Ion has to give
 
 Ion's Windows window owns the `IDCompositionDevice` and its tree (`composition.cpp` `ionCompInit`);
