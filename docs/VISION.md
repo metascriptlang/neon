@@ -106,6 +106,7 @@ for free. Without these, face 2 below cannot carry a real app's UI.
 | world | host | `View` / `Text` become |
 |---|---|---|
 | Application UI, iOS / Android | native, React Native's model | `UIView`, `android.view.View` / `UILabel`, `TextView` |
+| Application UI, desktop | native on an Ion window, React Native's model | AppKit views (macOS), GTK3 widgets (Linux), Neon's own views on DirectComposition (Windows, `WINDOWS.md`) |
 | Application UI, browser | DOM, react-native-web's model | `<div>` / `<span>` |
 | Void, on every platform, browser included | void host (`src/platform/void/host.ms`) | void2d rect / void2d text |
 | Terminal | terminal host (`src/platform/terminal/host.ms`) | ANSI lines; it speaks its own tags (`<box>`, `<text>`) today |
@@ -218,6 +219,28 @@ An app may hold several independent `<Void>` tags. That is an anti-pattern, but 
   frame, while the Void viewport follows only in Void's next frame. The area then trails its
   frame by one visible step. A surface per tag has no such lag, because the compositor moves it
   with its parent.
+
+## Three pieces: Ion → Neon → Void
+
+A game engine owns window, events, sound and rendering in one piece. MetaScript splits that into
+three pieces that compose: **Ion** owns the window and everything around it, **Neon** owns the app's
+tree and what it shows, **Void** owns the pixels of a GPU area. One row per concern; the pointer is
+where it is written down.
+
+| concern | owner | written down in |
+|---|---|---|
+| window, lifecycle, multiple windows | Ion | `ion/src/windowManager.ms`; capability matrix in `ion/TODO.md` |
+| events and input: capture, routing into a region, focus, IME | Ion delivers, Neon dispatches to its nodes | `ion/src/input.ms`, `ion/docs/RENDER-SURFACE.md`; `src/platform/void/host.ms` `clickAt`, `src/platform/native/host.ms` |
+| frame clock, one vsync source per window | Ion | `ion/docs/RENDER-SURFACE.md` "Driving the renderer"; "Window, frame and input" below |
+| render surface, a GPU region in the window | Ion hosts, Void draws | `ion/docs/RENDER-SURFACE.md`, `void/docs/EMBED.md` |
+| native content root, the region a native UI tree lives in | Ion, not built yet | `WINDOWS.md` "What Ion has to give" |
+| webview | Ion; Neon lays it out as an element | `ionWebviewSetFrame` in `ion/src/platform/bridge.h`; "Worlds, nested one way" above |
+| native chrome: tray, menu bar, dialogs, notifications, hotkeys, keychain, updates | Ion | `ion/TODO.md` capability matrix |
+| generator, build, packaging | Ion | `ion/docs/PROJECT-GENERATOR.md`; `PROJECT-GENERATOR.md` here keeps what Neon still asks of it |
+| UI tree, reactivity, reconcile, layout | Neon | `RENDER-MODEL.md`, `RENDER-LAYERS.md` Layer A |
+| Application UI host: `View` and `Text` as platform views | Neon | `src/platform/native/host.ms`, `IOS.md`, `ANDROID.md`, `WINDOWS.md` |
+| pixels inside a `<Void>`, 2D and 3D | Void | `RENDER-LAYERS.md` Layers B and C, `void/docs/EMBED.md` |
+| audio | open | Neon builds expo-av's `Audio` on Android, iOS and the browser (`ROADMAP.md`); who owns it on the desktop, and whether Neon is the right layer, is to be discussed |
 
 ## Window, frame and input: Ion and Neon
 
