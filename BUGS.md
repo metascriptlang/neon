@@ -59,6 +59,13 @@ and the invariants that outlived them were moved to the head of the test that pi
   so the cell is red by timing, on main and on a branch alike. Not yet traced to whether the
   animation driver drops its final frame or the test should wait for the end event.
 
+- **OPEN 2026-10-14 — `tests/browser/flatList.test.ms` counts the 10000-row window after a fixed 100 ms.**
+  The cell sleeps 100 ms after mounting and asserts more than 10 rows are in the DOM; in the full
+  gate on `wt/neon-win-desktop` at `7903b18` (Windows, msc `9a4775dc`) it read `10` and failed, and
+  `tests/browser/run.sh tests/browser/flatList.test.ms` right after was green 3 of 3. The window
+  grows past the initial render on a later batch, so under load the count can still be the
+  initial 10: red by timing. Not yet decided whether the test should wait for the window to settle.
+
 - **OPEN 2026-10-13 — `renderToString` writes `image`, `modal`, `slider`, `picker`,
   `datetimepicker`, `svg` and the media tags as unknown or attribute-heavy elements, and
   `hydrate` refuses them.** `ScrollView`, `Text numberOfLines`, `Switch`, `ActivityIndicator` and
