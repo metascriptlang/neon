@@ -7,7 +7,11 @@ set -e
 cd "$(dirname "$0")/../.."
 MSC=${MSC:-msc}
 
-WORKERD=${NEON_WORKERD:-$PWD/tests/edge/node_modules/workerd/bin/workerd}
+case "$(uname -s)" in
+MINGW* | MSYS* | CYGWIN*) WORKERD_BIN=$PWD/tests/edge/node_modules/@cloudflare/workerd-windows-64/bin/workerd.exe ;;
+*) WORKERD_BIN=$PWD/tests/edge/node_modules/workerd/bin/workerd ;;
+esac
+WORKERD=${NEON_WORKERD:-$WORKERD_BIN}
 if [ ! -f "$WORKERD" ]; then
 	echo "workerd not found at $WORKERD — run: npm install --prefix tests/edge" >&2
 	exit 2
