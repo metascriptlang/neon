@@ -72,16 +72,39 @@ function ssrHost(register: (id: string, css: string) => void): Host {
 
 const SSR_HOST: Host = ssrHost(registerCss);
 
-function withEntity(value: string, char: string, entity: string): string {
-	return value.indexOf(char) < 0 ? value : value.replaceAll(char, entity);
+function entityOf(c: int32, quoted: boolean): string {
+	return match (c) {
+		38 => "&amp;",
+		60 => "&lt;",
+		62 => "&gt;",
+		34 => quoted ? "&quot;" : "",
+		39 => quoted ? "&#39;" : "",
+		_ => "",
+	};
+}
+
+function escaped(value: string, quoted: boolean): string {
+	let out = "";
+	let last = 0;
+	const n = value.length;
+	for (let i = 0; i < n; i += 1) {
+		const c = value.charCodeAt(i);
+		if (c > 62 || c < 34) { continue; }
+		const e = entityOf(c, quoted);
+		if (e === "") { continue; }
+		out = out + value.slice(last, i) + e;
+		last = i + 1;
+	}
+	if (last === 0) { return value; }
+	return out + value.slice(last);
 }
 
 function escapeText(value: string): string {
-	return withEntity(withEntity(withEntity(value, "&", "&amp;"), "<", "&lt;"), ">", "&gt;");
+	return escaped(value, false);
 }
 
 function escapeAttribute(value: string): string {
-	return withEntity(withEntity(escapeText(value), "\"", "&quot;"), "'", "&#39;");
+	return escaped(value, true);
 }
 
 function voidTag(tag: string): boolean {
