@@ -41,6 +41,12 @@ Application UI world         native host (iOS, Android, desktop) or DOM host (br
   `View` and `<Void>`, and layout places it. Like a native view, it never lives inside a Void area.
   On the desktop this is Ion's webview laid out as an element (`ionWebviewSetFrame` in
   `ion/src/platform/bridge.h`: once it is called, native layout owns the frame).
+- **The desktop Application UI world is a native host too, the React Native model.** It runs on an
+  Ion window behind the same `src/platform/native/bridge.h` as iOS and Android, and the webview is
+  one of its elements, not the root. macOS maps `View` and `Text` to AppKit views and Linux to GTK3
+  widgets. Windows has no widget layer worth mapping, so, as React Native for Windows does, its
+  components are Neon's own views on the OS compositor: RNW's Fabric component views ported onto
+  DirectComposition (`WINDOWS.md`, decided 2026-10-14).
 - **A game is an app whose only child is one `<Void>` filling the window.** It uses the same
   interface as an app, with no separate mode for games.
 - **An application UI can live entirely in Void,** the way Flutter does, and that is also an
@@ -245,10 +251,6 @@ or its laziest.
   and nothing overlaps it.
 - **One Yoga tree or two.** Either the Void world runs its own layout from the size the Application
   UI gives the `<Void>` tag, or one Yoga tree runs through the boundary.
-- **What `View` and `Text` are on the desktop.** The desktop Application UI world is a native host
-  on an Ion window, and a webview is one of its elements, not the root. What `View` and `Text`
-  map to there is open: AppKit, Win32 or GTK widgets, or nothing yet while the first desktop apps
-  are entirely Void.
 - **One animation model for both worlds.** Native animation runs on the platform compositor's
   thread, while Void animates on its own clock. The Animation API in `ROADMAP.md` has to drive
   both, with the same timing curve.
