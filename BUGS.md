@@ -147,15 +147,6 @@ and the invariants that outlived them were moved to the head of the test that pi
   exits 0. Not run: an IME, a DPI change. `tests/run.sh` builds the example on a Windows host and
   skips it by name elsewhere.
 
-- **PARKED 2026-10-14 — a browser app built with the refresh pass stops at its first mount.** Not
-  Neon's: any module pass, one that returns `mod` unchanged included, makes msc drop the `from "…"`
-  template of an `extern function`, so `shownInHead`, `heldByHead`, `enterHead` and `leaveHead` of
-  `src/platform/browser/dom.ms` are emitted as calls to names that do not exist and the page throws
-  `ReferenceError: shownInHead is not defined` in `insertBefore`. Red: `sh examples/refreshVite/run.sh`
-  (no `#out` within 60 s) and every app whose `build.ms` names `modulePass: "refreshPass"`; `msc test`
-  and the Chrome lane run without a module pass and pass. Card
-  `~/metascript/.inbox/compiler/2026-10-14-module-pass-drops-extern-from-template.md`.
-
 - **PARKED 2026-10-14 — an Ion project manifest inside Neon cannot be evaluated.** Not Neon's: Ion's
   generator runs the manifest with `msc run --target=raiser` beside it, Neon's `build.ms`
   `globalImports` brings in `src/core/runtime.ms`, and Raiser has no `String.fromCharCode`, so even a
