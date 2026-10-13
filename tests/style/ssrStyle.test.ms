@@ -41,6 +41,27 @@ test "the runtime spelling equals the rule the macro baked" {
 	}
 }
 
+const WIDE = 700;
+const MONO = "monospace";
+const geass = createStyles({
+	layered: { zIndex: 2, opacity: 0.5, width: 10 },
+	computed: { width: WIDE, top: -8, zIndex: 2, fontFamily: "x, " + MONO },
+});
+
+test "a baked rule spells every unitless field as the runtime does" {
+	when (js) {
+		const css = geass.layered.css as string;
+		assert css.indexOf("z-index:2;") >= 0 && css.indexOf("opacity:0.5;") >= 0 && css.indexOf("width:10px;") >= 0, css;
+	}
+}
+
+test "an entry with a value the macro cannot spell keeps every field inline" {
+	assert geass.computed.cssId === null, "no class rule that would drop the computed fields";
+	const html = renderToString(<View style={geass.computed}></View>);
+	assert html === "<div class=\"neon-view\" style=\"" + styleToCss(geass.computed) + "\"></div>", html;
+	assert styleToCss(geass.computed).indexOf("width:700px;") >= 0 && styleToCss(geass.computed).indexOf("top:-8px;") >= 0 && styleToCss(geass.computed).indexOf("font-family:x, monospace;") >= 0, styleToCss(geass.computed);
+}
+
 test "an inline style literal serializes into the style attribute" {
 	const s = styleOf({ width: "50%", opacity: 0.5, color: "#fff" });
 	assert renderToString(<p style={s}></p>) === "<p style=\"width:50%;opacity:0.5;color:#fff;\"></p>", "a string dimension passes through, a ratio takes no unit";

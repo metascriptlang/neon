@@ -36,6 +36,7 @@
 
 import { Node, NodeKind, SourceLocation, isFloatLiteral, intValue, floatValue, stringValue } from "std/meta";
 import { Style } from "../../render/style";
+import { STYLE_TABLE } from "../style/fields";
 
 export function styleOf(s: Style): Style {
 	return s;
@@ -67,8 +68,10 @@ function kebabCase(name: string): string {
 // A bare number is points, which on the web is px — except for the ratios,
 // which are unitless in CSS too.
 function isUnitless(name: string): boolean {
-	return name === "flex" || name === "flexGrow" || name === "flexShrink"
-		|| name === "aspectRatio" || name === "opacity";
+	for (const row of STYLE_TABLE) {
+		if (row[0] === name) { return row[2] === "num"; }
+	}
+	return false;
 }
 
 function cssDecl(name: string, v: Node, token: string, tokenIsText: boolean): string {
@@ -282,10 +285,13 @@ export macro createStyles(node: Node): Node {
 		// swap rules without a frame of wrong styling).
 		if (emitCss && fields.length > 0 && vGroups.length === 0) {
 			let decls = "";
+			let spelled = true;
 			for (let b = 0; b < names.length; b += 1) {
-				decls = decls + cssDecl(names[b], fields[b], tokens[b], tokenTexts[b]);
+				const decl = cssDecl(names[b], fields[b], tokens[b], tokenTexts[b]);
+				if (decl === "") { spelled = false; }
+				decls = decls + decl;
 			}
-			if (decls !== "") {
+			if (spelled && decls !== "") {
 				const readable = readableNames ? sheet.keys[e] + "_" : "";
 				const id = "n_" + readable + hashText(decls).toString();
 				const loc = locs[0];
