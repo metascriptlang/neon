@@ -237,8 +237,10 @@ test "text pieces inside one element flow one after another on the line" {
 	vh.layout(200.0, 20.0);
 	const line = top(vh).children[0];
 	assert line.children[0].ref.local().x === 0.0, "first piece at the start";
+	const first = line.children[0].ref;
 	const second = line.children[1].ref.local().x;
-	assert second === line.children[0].ref.textWidth() && second > 0.0, "second piece after 'Count: ': " + second.toString();
+	assert first.text() === "Count: ", "first piece keeps its trailing space: \"" + first.text() + "\"";
+	assert second > first.textWidth(), "second piece after the space that ends 'Count: ': " + second.toString() + " against " + first.textWidth().toString();
 }
 
 test "a text field keeps its text color when it has a background" {
