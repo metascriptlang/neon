@@ -156,6 +156,13 @@ and the invariants that outlived them were moved to the head of the test that pi
   and the Chrome lane run without a module pass and pass. Card
   `~/metascript/.inbox/compiler/2026-10-14-module-pass-drops-extern-from-template.md`.
 
+- **PARKED 2026-10-14 — an Ion project manifest inside Neon cannot be evaluated.** Not Neon's: Ion's
+  generator runs the manifest with `msc run --target=raiser` beside it, Neon's `build.ms`
+  `globalImports` brings in `src/core/runtime.ms`, and Raiser has no `String.fromCharCode`, so even a
+  one-line `console.log` under Neon's root stops at type check (msc `26150233`). Blocks building
+  `examples/voidWindow.ms` from an Ion-generated Visual Studio project. Card
+  `~/metascript/.inbox/compiler/2026-10-14-raiser-string-fromcharcode.md`.
+
 - **PARKED 2026-10-11 — `tests/render/flatList.test.ms` and `tests/components/flutterListsApp.test.ms` do not compile.**
   Not Neon's: an array-destructured local of an arrow passed as a JSX attribute
   (`const [focused, setFocused] = createSignal<boolean>(false)` in a `renderItem`) is refused as
