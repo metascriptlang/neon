@@ -4,21 +4,40 @@
 #include <dxgi1_2.h>
 #include <wrl/client.h>
 #include <algorithm>
-#include <cstdio>
-#include <cstdlib>
+#include <memory>
 #include <vector>
 #include "dcompComposition.h"
+#include "must.h"
 
 using Microsoft::WRL::ComPtr;
 
 namespace {
 
-void must(HRESULT hr, const char *what) {
-	if (SUCCEEDED(hr)) return;
-	fprintf(stderr, "neon windows bridge: %s failed, HRESULT 0x%08lx\n", what, (unsigned long)hr);
-	fflush(stderr);
-	abort();
-}
+class DCompDrawingSurface : public IDrawingSurface {
+public:
+	explicit DCompDrawingSurface(ComPtr<IDCompositionSurface> surface) : surface(surface) {}
+
+	void *BeginDrawD2D(float dpi) override {
+		if (dc) must(E_UNEXPECTED, "BeginDraw during a draw");
+		POINT origin = {};
+		must(surface->BeginDraw(nullptr, __uuidof(ID2D1DeviceContext), (void **)dc.GetAddressOf(), &origin), "BeginDraw");
+		float unit = 96.0f / dpi;
+		dc->SetDpi(dpi, dpi);
+		dc->SetTransform(D2D1::Matrix3x2F::Translation(origin.x * unit, origin.y * unit));
+		return dc.Get();
+	}
+
+	void EndDraw() override {
+		if (!dc) must(E_UNEXPECTED, "EndDraw without BeginDraw");
+		must(surface->EndDraw(), "EndDraw");
+		dc.Reset();
+	}
+
+	ComPtr<IDCompositionSurface> surface;
+
+private:
+	ComPtr<ID2D1DeviceContext> dc;
+};
 
 class DCompContext;
 
@@ -34,6 +53,7 @@ public:
 	void Offset(float x, float y) override;
 	void CornerRadius(float radius) override;
 	void Brush(Color color) override;
+	void Content(IDrawingSurface *surface) override;
 	void Sync();
 
 private:
@@ -58,6 +78,13 @@ public:
 		ComPtr<IDCompositionVisual2> visual;
 		must(device->CreateVisual(&visual), "CreateVisual");
 		return new DCompVisual(this, visual);
+	}
+
+	IDrawingSurface *CreateDrawingSurface(int32_t pixelWidth, int32_t pixelHeight) override {
+		ComPtr<IDCompositionSurface> surface;
+		must(device->CreateSurface((UINT)pixelWidth, (UINT)pixelHeight, DXGI_FORMAT_B8G8R8A8_UNORM,
+			DXGI_ALPHA_MODE_PREMULTIPLIED, &surface), "CreateSurface");
+		return new DCompDrawingSurface(surface);
 	}
 
 	void Commit() override {
@@ -119,7 +146,7 @@ void DCompVisual::Size(float w, float h) {
 	if (w == width && h == height) return;
 	width = w;
 	height = h;
-	contentDirty = true;
+	if (color.a > 0) contentDirty = true;
 	markDirty();
 }
 
@@ -141,21 +168,22 @@ void DCompVisual::Brush(Color c) {
 	markDirty();
 }
 
+void DCompVisual::Content(IDrawingSurface *surface) {
+	color = {0, 0, 0, 0};
+	contentDirty = false;
+	must(visual->SetContent(surface ? static_cast<DCompDrawingSurface *>(surface)->surface.Get() : nullptr), "SetContent");
+}
+
 void DCompVisual::Sync() {
 	pending = false;
 	if (contentDirty) {
 		contentDirty = false;
 		if (color.a > 0 && width > 0 && height > 0) {
-			ComPtr<IDCompositionSurface> surface;
-			must(context->device->CreateSurface((UINT)width, (UINT)height, DXGI_FORMAT_B8G8R8A8_UNORM,
-				DXGI_ALPHA_MODE_PREMULTIPLIED, &surface), "CreateSurface");
-			ComPtr<ID2D1DeviceContext> dc;
-			POINT origin = {};
-			must(surface->BeginDraw(nullptr, __uuidof(ID2D1DeviceContext), (void **)dc.GetAddressOf(), &origin), "BeginDraw");
-			dc->SetTransform(D2D1::Matrix3x2F::Translation((float)origin.x, (float)origin.y));
+			std::unique_ptr<IDrawingSurface> surface(context->CreateDrawingSurface((int32_t)width, (int32_t)height));
+			ID2D1DeviceContext *dc = static_cast<ID2D1DeviceContext *>(surface->BeginDrawD2D(96.0f));
 			dc->Clear(D2D1::ColorF(color.r, color.g, color.b, color.a));
-			must(surface->EndDraw(), "EndDraw");
-			must(visual->SetContent(surface.Get()), "SetContent");
+			surface->EndDraw();
+			must(visual->SetContent(static_cast<DCompDrawingSurface *>(surface.get())->surface.Get()), "SetContent");
 		} else {
 			must(visual->SetContent(nullptr), "SetContent");
 		}
