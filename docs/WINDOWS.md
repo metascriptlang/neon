@@ -1,6 +1,6 @@
 # Windows Host
 
-Status: decided 2026-10-14, nothing built. The Windows Application UI world is a native host behind
+Status: decided 2026-10-14; the View slice is built ("Built: View" below), text and everything after it is not. The Windows Application UI world is a native host behind
 `src/platform/native/bridge.h`, like iOS and Android (`IOS.md`, `ANDROID.md`), and its components
 are Neon's own views drawn on DirectComposition. This document keeps the decision, the reference it
 is ported from, the paths rejected and the one measurement taken. `VISION.md` "Worlds, nested one
@@ -87,6 +87,39 @@ corner pixel is outside the rounded clip. A screen capture showed the rounded ca
 
 Not measured: drawing inside Ion's DComp tree (Ion exposes no device or visual yet, see below), a
 DPI other than 96, DirectManipulation, RichEdit windowless, UI Automation.
+
+## Built: View
+
+`src/platform/windows/` holds the bridge. `bridge.cpp` implements the view-tree half of `bridge.h` over
+`composition.h` (`ICompositionContext`, `IVisual`, named after RNW's `CompositionSwitcher.idl`);
+`dcompComposition.cpp` is its one implementation, on `IDCompositionDevice2`. The bridge creates no window:
+`handoff.h` is the whole surface the owner of the window uses (`niwAttach`, `niwPump`, `niwShutdown`).
+`examples/windowsNative/` is the owner for now and plays Ion's part; `--check` samples its own window.
+Every `bridge.h` function not implemented aborts with its name, and `niAppCall` answers only the queries
+`installNativeAppServices` makes at startup.
+
+A build links the bridge only when the entry module imports `src/platform/windows/library`; `host.ms` has no
+Windows block, so the mock-bridge tests, which also see `windows` as true on this box, link their own mock.
+
+Measured 2026-10-14 on the setup above, 96 dpi, `msc build examples/windowsNative/app.ms` then
+`out/windowsNative.exe --check`: all 11 sampled pixels match (tolerance 3), among them the half-opacity child
+`(141,185,236)` against an expected `(142,185,236)`, a `rgba(0,0,0,0.5)` background `(14,58,109)`, a point
+inside a rounded child's box and outside its corner, and a point in a `scale(0.5)` child's box outside its
+scaled box. Facts that took the measurement to find:
+
+- `msc` compiles `.cpp` with Zig's bundled mingw-w64 headers, not the Windows SDK headers `clang` uses by
+  default: `IDCompositionVisual3` does not exist there, so opacity is an `IDCompositionEffectGroup` on the visual
+  and `IDCompositionRectangleClip` comes from `IDCompositionDevice2`.
+- A visual's rounded `IDCompositionRectangleClip` is in its local space before `SetTransform`, so a scaled
+  rounded view scales its corner radius, and the clip also clips the visual's children (RNW's
+  `SetClippingPath`, `CompositionViewComponentView.cpp` `updateClippingPath`).
+- `SetTransform` is applied before `SetOffsetX/Y`: a transform about the view's centre is built in local
+  coordinates and the frame position goes into the offset.
+- `ID2D1DeviceContext::Clear` on an `IDCompositionSurface` with `DXGI_ALPHA_MODE_PREMULTIPLIED` takes a
+  straight-alpha colour and premultiplies it.
+
+Not measured: a DPI other than 96 (frames, radius and translation scale by `GetDpiForWindow`, but only 96 ran),
+resize, a second window, device loss.
 
 ## What Ion has to give
 
