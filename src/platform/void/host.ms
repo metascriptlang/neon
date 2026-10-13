@@ -42,6 +42,7 @@ export class VoidNode {
 	scrolls: boolean = false;
 	disposed: boolean = false;
 	laid: Frame | null = null;
+	style: Style | null = null;
 	flex: FlexStyle | null = null;
 	lastFlex: FlexStyle | null = null;
 	yg: Ptr<YGNode> | null = null;
@@ -235,6 +236,10 @@ function applyTextPaint(label: NodeRef, s: Style): void {
 		const c = parseColor(s.color as string);
 		if (c !== null) { label.setColor(c); }
 	}
+}
+
+function inheritTextPaint(child: VoidNode, parent: VoidNode): void {
+	if (parent.style !== null && child.ref.kind() === DrawKind.Label) { applyTextPaint(child.ref, parent.style as Style); }
 }
 
 export function applyPaint(n: VoidNode, s: Style): void {
@@ -517,7 +522,9 @@ export function createVoidHostWith(scene: Scene2D, font: FontId): VoidHost {
 			const n = live(node, "setStyle");
 			const was = wasDirty();
 			n.flex = asFlexStyle(style);
+			n.style = style;
 			applyPaint(n, style);
+			for (const c of n.children) { inheritTextPaint(c, n); }
 			const f = fieldOf(n);
 			if (f !== null) {
 				applyTextPaint((f as Field).label, style);
@@ -539,6 +546,7 @@ export function createVoidHostWith(scene: Scene2D, font: FontId): VoidHost {
 			p.ref.addChild(c.ref);
 			c.parent = p;
 			p.children.push(c);
+			inheritTextPaint(c, p);
 			woke(was);
 		},
 		insertBefore: (parent: HostNode, node: HostNode, before: HostNode | null): void => {
@@ -551,6 +559,7 @@ export function createVoidHostWith(scene: Scene2D, font: FontId): VoidHost {
 				p.ref.addChild(n.ref);
 				n.parent = p;
 				p.children.push(n);
+				inheritTextPaint(n, p);
 				woke(was);
 				return;
 			}
@@ -570,6 +579,7 @@ export function createVoidHostWith(scene: Scene2D, font: FontId): VoidHost {
 			p.ref.addChildAt(n.ref, at);
 			n.parent = p;
 			p.children.splice(idx, 0, n);
+			inheritTextPaint(n, p);
 			woke(was);
 		},
 		removeChild: (parent: HostNode, node: HostNode): void => {
