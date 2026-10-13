@@ -171,6 +171,14 @@ and the invariants that outlived them were moved to the head of the test that pi
   `~/metascript/.inbox/compiler/2026-10-13-js-build-drops-the-entry-modules-exports.md`. When it
   closes, the entries `export` their function and the workers import it by name.
 
+- **PARKED 2026-10-14 — `createStyles` takes no breakpoint table.** The surface approved on
+  2026-10-14 is `createStyles({ sidebar: { when: { wide: { … } } } }, screen)` beside every existing
+  one-argument call, and a macro cannot take an optional or rest parameter or share its name with a
+  second macro (msc v0.3.3 `58df78b3f`). Card
+  `~/metascript/.inbox/compiler/2026-10-14-a-macro-cannot-take-an-optional-or-rest-parameter.md`.
+  Parked at `src/macros/ui/style.ms` `createStyles`, still one argument; the class channel the
+  breakpoint rules need is in (`bindStyleAll`).
+
 - **PARKED 2026-10-13 — eight native cells stop at `src/navigation/core.ms:995`.** `bash tests/run.sh`
   on `wt/rn-navigation-prod` rebased onto main `9b79fec`, msc v0.3.2 binary `ea7ae4d17`: `msc test`
   on `tests/api/apis.test.ms` and `tests/navigation/{example,linking,nested,options,routingConsumers,stack,transition}.test.ms`
