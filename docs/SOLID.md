@@ -32,8 +32,7 @@ context value track per consumer · `createComponent` running the body untracked
 ## Taken from Solid 2.0: ref directive factories
 
 Reference: Solid `2.0.0-rc.15`, `packages/solid/CHEATSHEET.md` "Refs and directives",
-`documentation/solid-2.0/MIGRATION.md` (`use:` removed, ref factories, array refs),
-`.changeset/refs-after-attributes.md` (a ref runs after attributes and spread, before children);
+`documentation/solid-2.0/MIGRATION.md` (`use:` removed, ref factories, array refs);
 dom-expressions `dom-next`, `packages/runtime/src/client.js` `ref` and `applyRef`, and
 `packages/babel-plugin-jsx/src/dom/element.ts` (the `ref` branch of the attribute loop).
 
@@ -45,7 +44,9 @@ dom-expressions `dom-next`, `packages/runtime/src/client.js` `ref` and `applyRef
   untracked (`setupRef`), so its effects and `onCleanup` belong to the component; the function it
   returns is the apply phase, untracked (`applyRef`). Solid runs the apply phase with no owner;
   Neon keeps the mounting owner, which the in-tree `StatusBar` and `WebView` refs rely on. `docs/RENDER-MODEL.md`
-  "Lifecycle" gives the order against attributes and children.
+  "Refs" gives the details.
+- Not taken: Solid 2.0 runs a ref after attributes and before children. Neon keeps React's
+  innermost-first order for `ref`, which is component and event surface.
 - `use:` is not adopted: Solid 2.0 removed it too.
 - Divergence from Solid: `<Void ref>` receives a `VoidAreaHandle` (`docs/VISION.md`), not a node.
 
