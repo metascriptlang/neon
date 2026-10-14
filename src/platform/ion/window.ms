@@ -235,7 +235,7 @@ function wireInput(): void {
 	onImePreedit((window: int32, text: string, cursor: int32): void => {
 		const a = areaOfWindow(window);
 		if (a === null) { return; }
-		(a as Area).hub.preedit({ text, cursorUtf8Offset: cursor });
+		(a as Area).hub.preedit({ text, cursor });
 		(a as Area).composing = text.length > 0;
 		(a as Area).vh.composeText(text, cursor);
 	});

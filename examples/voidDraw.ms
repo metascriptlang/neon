@@ -40,7 +40,7 @@ function drawing(): (area: VoidAreaHandle) => void {
 			console.log(`key ${action} scancode=${e.scancode} unshifted=${e.unshifted} text="${e.text}"`);
 		});
 		area.onText((text: string): void => { console.log(`text "${text}"`); });
-		area.onPreedit((e: AreaPreedit): void => { console.log(`preedit "${e.text}" cursorUtf8Offset=${e.cursorUtf8Offset}`); });
+		area.onPreedit((e: AreaPreedit): void => { console.log(`preedit "${e.text}" cursor=${e.cursor}`); });
 		area.onPointer((e: AreaPointerEvent): void => {
 			const kind = e.kind === AreaPointerKind.Button ? "button" : e.kind === AreaPointerKind.Wheel ? "wheel" : e.kind === AreaPointerKind.Leave ? "leave" : "motion";
 			console.log(`pointer ${kind} px=${e.pixelX},${e.pixelY} button=${e.button} pressed=${e.pressed}`);

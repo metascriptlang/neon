@@ -73,7 +73,7 @@ test "the handle reports size and scale and forwards raw input to its subscriber
 		handle = h;
 		h.onKey((e: AreaKeyEvent): void => { log.push("key:" + e.text + ":" + e.scancode.toString() + ":" + e.unshifted.toString()); });
 		h.onText((t: string): void => { log.push("text:" + t); });
-		h.onPreedit((e: AreaPreedit): void => { log.push("preedit:" + e.text + ":" + e.cursorUtf8Offset.toString()); });
+		h.onPreedit((e: AreaPreedit): void => { log.push("preedit:" + e.text + ":" + e.cursor.toString()); });
 		h.onPointer((e: AreaPointerEvent): void => { log.push("pointer:" + e.pixelX.toString() + ":" + (e.kind === AreaPointerKind.Wheel ? "wheel" : "other")); });
 		h.onFocus((f: boolean): void => { log.push("focus:" + f.toString()); });
 		h.onResize((e: AreaResize): void => { log.push("resize:" + e.pixelWidth.toString() + "x" + e.pixelHeight.toString()); });
@@ -83,7 +83,7 @@ test "the handle reports size and scale and forwards raw input to its subscriber
 	hub.resize({ pixelWidth: 800, pixelHeight: 600, scale: 1.5 });
 	hub.key(keyEvent("a"));
 	hub.text("b");
-	hub.preedit({ text: "c", cursorUtf8Offset: 1 });
+	hub.preedit({ text: "c", cursor: 1 });
 	hub.pointer({ kind: AreaPointerKind.Wheel, pixelX: 3.0, pixelY: 4.0, button: 0, pressed: false, dx: 0.0, dy: -1.0 });
 	hub.focus(true);
 	const h = handle as VoidAreaHandle;

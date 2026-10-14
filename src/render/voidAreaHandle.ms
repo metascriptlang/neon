@@ -46,7 +46,7 @@ export struct AreaPointerEvent {
 
 export struct AreaPreedit {
 	text: string;
-	cursorUtf8Offset: int32;
+	cursor: int32;
 }
 
 export struct AreaResize {
