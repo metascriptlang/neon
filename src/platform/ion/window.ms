@@ -1,14 +1,12 @@
 // An Ion window whose content is one full-window <Void>: the window is the outer
-// host, it accepts only the `void` tag, and its voidArea opens an Ion render
-// surface drawn by a Void view (void/docs/EMBED.md).
+// host, it accepts only the `void` tag, and its voidArea parents a visual holding
+// the swapchain of a Void view under the window's root (void/docs/EMBED.md).
 
 import {
-	createWindow, defaultOptions, runLoop, webviewSetVisible,
-	onInput, onKey, onText, onImePreedit, onSurfaceFocus, onSurfaceResize, onSurfaceFrame,
-	renderSurfaceCreate, renderSurfaceAttachSwapChain, renderSurfaceSetImeRect,
-	renderSurfaceSetFramePolicy, renderSurfaceRequestFrame, renderSurfaceRelease,
-	SurfaceBelow, RenderSurfaceInvalid, FrameOnDemand,
-	KeyEvent, KeyAction, KeyMod, keyName,
+	createWindow, defaultOptions, runLoop, windowRoot, windowDevice, commit, setImeRect,
+	setFramePolicy, requestFrame, FrameOnDemand,
+	onPointer, onKey, onText, onImePreedit, onFocus, onResize, onFrame,
+	PointerEvent, PointerKind, KeyEvent, KeyAction, KeyMod, Window, keyName,
 } from "../../../../ion/src/index";
 import { embedRegister, viewCreate, viewResize, viewFrame, viewDestroy, viewSwapChain, currentView, gfxSetup, ViewId, ViewInvalid } from "../../../../void/src/sokol/gpu";
 import { setup2d } from "../../../../void/src/void2d/draw";
@@ -16,15 +14,19 @@ import { addFont, FontId, DEFAULT_FONT } from "../../../../void/src/void2d/font"
 import { Scene2D } from "../../../../void/src/void2d/node";
 import { create, close, present } from "../../../../void/src/void2d/scene";
 import { Color, rgba } from "../../../../void/src/void2d/types";
-import { Window } from "../../../../ion/src/windowManager";
 import { exit } from "std/process";
 import { Host, HostNode, NeonNode, VoidArea, render } from "../../render/host";
 import { NeonEvent, neonEvent } from "../../render/event";
 import { Style } from "../../render/style";
 import { VoidHost, VoidNode, createVoidHostWith, asFlexStyle, parseColor } from "../void/host";
 
-const PAGE = "data:text/html,<body style='margin:0;background:transparent'></body>";
-const POINTER_BUTTON: int32 = 1 as int32;
+when (windows) {
+	@compile("./voidVisual.cpp");
+}
+@include("./voidVisual.h");
+
+extern function voidVisualAttach(device: Ptr<void>, root: Ptr<void>, swapChain: int64): Ptr<void>;
+extern function voidVisualDetach(root: Ptr<void>, visual: Ptr<void>): void;
 
 export interface DesktopOptions {
 	title: string;
@@ -47,8 +49,9 @@ function windowNode(tag: string): HostNode {
 }
 
 interface Area {
-	surface: int32;
+	win: Window;
 	view: ViewId;
+	visual: Ptr<void> | null;
 	vh: VoidHost;
 	width: int32;
 	height: int32;
@@ -60,9 +63,9 @@ const _areas: Area[] = [];
 let _font: FontId = DEFAULT_FONT;
 let _wired = false;
 
-function areaOfSurface(surface: int32): Area | null {
+function areaOfWindow(window: int32): Area | null {
 	for (const a of _areas) {
-		if (a.surface === surface) { return a; }
+		if (a.win.id === window) { return a; }
 	}
 	return null;
 }
@@ -101,12 +104,12 @@ function drawCurrent(): void {
 	const r = area.vh.imeRect();
 	if (r !== null) {
 		const s = area.scale;
-		renderSurfaceSetImeRect(area.surface, (r.x * s) as int32, (r.y * s) as int32, (r.w * s) as int32, (r.h * s) as int32);
+		setImeRect(area.win, (r.x * s) as int32, (r.y * s) as int32, (r.w * s) as int32, (r.h * s) as int32);
 	}
 }
 
-function resized(surface: int32, width: int32, height: int32, scale: float64): void {
-	const a = areaOfSurface(surface);
+function resized(window: int32, width: int32, height: int32, scale: float64): void {
+	const a = areaOfWindow(window);
 	if (a === null || width <= (0 as int32) || height <= (0 as int32)) { return; }
 	const area = a as Area;
 	area.width = width;
@@ -114,14 +117,17 @@ function resized(surface: int32, width: int32, height: int32, scale: float64): v
 	area.scale = scale as float32;
 	if (area.view === ViewInvalid) {
 		area.view = viewCreate(0 as int64, width, height, area.scale);
-		if (!renderSurfaceAttachSwapChain(surface, viewSwapChain(area.view))) {
-			console.log(`neon: surface ${surface} refused the swapchain of view ${area.view}`);
+		const visual = voidVisualAttach(windowDevice(area.win), windowRoot(area.win), viewSwapChain(area.view));
+		if (visual === null) {
+			console.log(`neon: window ${window} refused the swapchain of view ${area.view}`);
 			exit(4);
 		}
+		area.visual = visual;
+		commit(area.win);
 	} else {
 		viewResize(area.view, width, height, area.scale);
 	}
-	renderSurfaceRequestFrame(surface);
+	requestFrame(area.win);
 }
 
 function printable(text: string): boolean {
@@ -149,18 +155,20 @@ function wireInput(): void {
 	if (_wired) { return; }
 	_wired = true;
 	embedRegister(initGpu, drawCurrent);
-	onSurfaceResize(resized);
-	onSurfaceFrame((surface: int32, timeMs: float64): void => {
-		const a = areaOfSurface(surface);
+	onResize(resized);
+	onFrame((window: int32, timeMs: float64): void => {
+		const a = areaOfWindow(window);
 		if (a !== null && (a as Area).view !== ViewInvalid) { viewFrame((a as Area).view); }
 	});
-	onInput((type: int32, x: float64, y: float64, button: float64, pressed: float64): void => {
-		if (type !== POINTER_BUTTON || pressed === 0.0 || _areas.length === 0) { return; }
-		const a = _areas[0];
-		a.vh.clickAt((x as float32) * logicalWidth(a), (y as float32) * logicalHeight(a));
+	onPointer((e: PointerEvent): void => {
+		if (e.kind !== PointerKind.Button || !e.pressed) { return; }
+		const a = areaOfWindow(e.window);
+		if (a === null) { return; }
+		const area = a as Area;
+		area.vh.clickAt((e.x as float32) / area.scale, (e.y as float32) / area.scale);
 	});
 	onKey((e: KeyEvent): void => {
-		const a = areaOfSurface(e.surface);
+		const a = areaOfWindow(e.window);
 		if (a === null) { return; }
 		const area = a as Area;
 		const ev = keyEvent(e, area.composing);
@@ -171,18 +179,18 @@ function wireInput(): void {
 		area.vh.keyDown(ev);
 		if (printable(e.text) && !ev.ctrlKey && !ev.altKey && !ev.metaKey) { area.vh.commitText(e.text); }
 	});
-	onText((surface: int32, text: string): void => {
-		const a = areaOfSurface(surface);
+	onText((window: int32, text: string): void => {
+		const a = areaOfWindow(window);
 		if (a !== null) { (a as Area).vh.commitText(text); }
 	});
-	onImePreedit((surface: int32, text: string, cursor: int32): void => {
-		const a = areaOfSurface(surface);
+	onImePreedit((window: int32, text: string, cursor: int32): void => {
+		const a = areaOfWindow(window);
 		if (a === null) { return; }
 		(a as Area).composing = text.length > 0;
 		(a as Area).vh.composeText(text, cursor);
 	});
-	onSurfaceFocus((surface: int32, focused: boolean): void => {
-		const a = areaOfSurface(surface);
+	onFocus((window: int32, focused: boolean): void => {
+		const a = areaOfWindow(window);
 		if (a !== null) { (a as Area).vh.setWindowFocus(focused); }
 	});
 }
@@ -193,7 +201,7 @@ function applyAreaStyle(area: Area, style: Style): void {
 		const c = parseColor(style.backgroundColor as string);
 		if (c !== null) { area.vh.scene.clear = c as Color; }
 	}
-	renderSurfaceRequestFrame(area.surface);
+	requestFrame(area.win);
 }
 
 function windowHost(win: Window): Host {
@@ -206,15 +214,13 @@ function windowHost(win: Window): Host {
 
 	const openArea = (node: HostNode): VoidArea => {
 		if (current !== null) { refuse("a second <Void> was mounted"); }
-		const surface = renderSurfaceCreate(win, SurfaceBelow);
-		if (surface === RenderSurfaceInvalid) { throw "Ion window host: renderSurfaceCreate failed"; }
-		renderSurfaceSetFramePolicy(surface, FrameOnDemand);
+		setFramePolicy(win, FrameOnDemand);
 		const vh = createVoidHostWith(Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0)), _font);
-		const area: Area = { surface, view: ViewInvalid, vh, width: 0 as int32, height: 0 as int32, scale: 1.0, composing: false };
+		const area: Area = { win, view: ViewInvalid, visual: null, vh, width: 0 as int32, height: 0 as int32, scale: 1.0, composing: false };
 		_areas.push(area);
 		current = area;
 		if (pendingStyle !== null) { applyAreaStyle(area, pendingStyle as Style); }
-		vh.onDirty((): void => { renderSurfaceRequestFrame(surface); });
+		vh.onDirty((): void => { requestFrame(win); });
 		return {
 			host: vh.host,
 			root: vh.root as unknown as HostNode,
@@ -223,8 +229,12 @@ function windowHost(win: Window): Host {
 				if (i >= 0) { _areas.splice(i, 1); }
 				current = null;
 				vh.scene.close();
+				if (area.visual !== null) {
+					voidVisualDetach(windowRoot(win), area.visual as Ptr<void>);
+					area.visual = null;
+					commit(win);
+				}
 				if (area.view !== ViewInvalid) { viewDestroy(area.view); }
-				renderSurfaceRelease(surface);
 			},
 		};
 	};
@@ -262,9 +272,8 @@ function windowHost(win: Window): Host {
 }
 
 export function runWindow(opts: DesktopOptions, app: () => NeonNode): int32 {
-	const win = createWindow("main", defaultOptions(opts.title, opts.width as int32, opts.height as int32, PAGE));
+	const win = createWindow("main", defaultOptions(opts.title, opts.width as int32, opts.height as int32));
 	if (win === null) { return 1; }
-	webviewSetVisible(win, false);
 	const font = addFont(opts.font);
 	if (!font.ok) {
 		console.log(`neon: cannot load the font ${opts.font}: ${font.error.toString()}`);
