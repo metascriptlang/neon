@@ -1,6 +1,5 @@
 // A counter and a text field inside one full-window <Void> of an Ion window.
 //   msc build examples/voidWindow.ms --output=out/voidWindow.exe
-//   cp ../ion/vendor/webview2/runtime/x64/WebView2Loader.dll out/
 //   out/voidWindow.exe            (run from the neon checkout: the font path is relative)
 
 import { createSignal } from "../src/core/signal";

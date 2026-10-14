@@ -144,8 +144,11 @@ and the invariants that outlived them were moved to the head of the test that pi
   ion `7463096`, at 96 DPI, driven by window messages posted to the Ion window: three clicks logged
   `press count=3`; `ab cd`, Backspace and Enter logged each `changetext` and `submit "ab c"`; a
   resize from 624×321 to 884×461 re-ran `onLayout` (header 576 → 836 wide); closing the window
-  exits 0. Not run: an IME, a DPI change. `tests/run.sh` builds the example on a Windows host and
-  skips it by name elsewhere.
+  exits 0. Re-measured 2026-10-15 after the move to Ion's window-content API (ion `b8d739d`, void `640ed0ea`,
+  msc `9cf5708c`, 96 DPI, same driver): the same log, `layout header 576x32` then `836x32` for a resize
+  from 624×321 to 884×461, exit 0, and the background, button and field colours read back from
+  `PrintWindow` at the start, after typing and after the resize. Not run: an IME, a DPI change.
+  `tests/run.sh` builds the example on a Windows host and skips it by name elsewhere.
 
 - **PARKED 2026-10-15 — an Ion-generated Windows project of a Neon app does not compile.** Not Neon's:
   the manifest now evaluates (msc `9cf5708c`), but the entry module Ion writes into the output
