@@ -9,6 +9,7 @@ import { NeonEvent, neonEvent, eventType } from "./event";
 import { createRoot } from "../core/owner";
 import { beginClaim, endClaim } from "./claim";
 import { Dispose } from "../core/types";
+import { AreaHub, createAreaHub } from "./voidAreaHandle";
 
 export { Host, HostNode, NeonNode, VoidArea } from "./hostTypes";
 export { bindText, writeAttr, bindAttr, bindStyleProp, applyStaticStyle, bindStyleAll, applyRef, setupRef, composeRefs } from "./bind";
@@ -102,6 +103,20 @@ function cloneMock(n: MockNode): MockNode {
 }
 
 let mockResponder: MockNode | null = null;
+
+interface MockHub {
+	outer: MockNode;
+	hub: AreaHub;
+}
+
+const mockHubs: MockHub[] = [];
+
+export function mockAreaHub(outer: MockNode): AreaHub {
+	for (const m of mockHubs) {
+		if (m.outer === outer) { return m.hub; }
+	}
+	throw "mockAreaHub: this node opened no void area";
+}
 
 export function mockHost(): Host {
 	const overlay = mockNode("overlay");
@@ -198,9 +213,19 @@ export function mockHost(): Host {
 			const root = mockNode("voidroot");
 			root.parent = outer;
 			outer.children.push(root);
+			const hub = createAreaHub({
+				initialPixelWidth: 0,
+				initialPixelHeight: 0,
+				requestFrame: (): void => { outer.attrs.push(attr("frameRequested", "true")); },
+				setImeRect: (pixelX: int32, pixelY: int32, pixelW: int32, pixelH: int32): void => {
+					outer.attrs.push(attr("imeRect", pixelX.toString() + "," + pixelY.toString() + "," + pixelW.toString() + "," + pixelH.toString()));
+				},
+			});
+			mockHubs.push({ outer, hub });
 			return {
 				host: mockHost(),
 				root: root as unknown as HostNode,
+				hub: hub,
 				release: (): void => { outer.attrs.push(attr("released", "true")); },
 			};
 		},

@@ -1,6 +1,8 @@
 import { createSignal } from "../../src/core/signal";
 import { element } from "../../src/macros/ui/element";
-import { HostNode, MockNode, mockNode, mockHost, render, mockToString } from "../../src/render/host";
+import { Host, HostNode, MockNode, mockNode, mockHost, render, mockToString, mockAreaHub } from "../../src/render/host";
+import { VoidAreaHandle, AreaKeyAction, AreaPointerKind, AreaKeyEvent, AreaKeyMod, AreaPointerEvent, AreaPreedit, AreaResize } from "../../src/render/voidAreaHandle";
+import { onCleanup } from "../../src/core/cleanup";
 import { createContext, useContext } from "../../src/render/context";
 import { Void, View, Text } from "../../src/components/primitives";
 
@@ -43,4 +45,87 @@ test "context and signals cross into the area" {
 	assert mockToString(root).indexOf("<text>blue1</text>") >= 0, "context read inside: " + mockToString(root);
 	setN(2);
 	assert mockToString(root).indexOf("<text>blue2</text>") >= 0, "signal tracked inside: " + mockToString(root);
+}
+
+function keyEvent(text: string): AreaKeyEvent {
+	return { action: AreaKeyAction.Press, key: 65, scancode: 30, mods: 0 as BitSet<AreaKeyMod>, consumedMods: 0 as BitSet<AreaKeyMod>, unshifted: 97, text };
+}
+
+test "the ref of a Void receives the area handle, not the outer node, before the children mount" {
+	let handle: VoidAreaHandle | null = null;
+	const order: string[] = [];
+	const root: MockNode = mockNode("root");
+	const grab = (h: VoidAreaHandle): void => {
+		handle = h;
+		order.push("void");
+	};
+	const grabView: (n: HostNode) => void = (n) => { order.push("view"); };
+	render(element(<Void ref={grab}><View ref={grabView} /></Void>), mockHost(), root as unknown as HostNode);
+	assert handle !== null, "ref ran with a handle";
+	assert order.join(",") === "void,view", "the Void ref ran before its children mounted: " + order.join(",");
+}
+
+test "the handle reports size and scale and forwards raw input to its subscribers" {
+	const root: MockNode = mockNode("root");
+	let handle: VoidAreaHandle | null = null;
+	const log: string[] = [];
+	const grab = (h: VoidAreaHandle): void => {
+		handle = h;
+		h.onKey((e: AreaKeyEvent): void => { log.push("key:" + e.text + ":" + e.scancode.toString() + ":" + e.unshifted.toString()); });
+		h.onText((t: string): void => { log.push("text:" + t); });
+		h.onPreedit((e: AreaPreedit): void => { log.push("preedit:" + e.text + ":" + e.cursorUtf8Offset.toString()); });
+		h.onPointer((e: AreaPointerEvent): void => { log.push("pointer:" + e.pixelX.toString() + ":" + (e.kind === AreaPointerKind.Wheel ? "wheel" : "other")); });
+		h.onFocus((f: boolean): void => { log.push("focus:" + f.toString()); });
+		h.onResize((e: AreaResize): void => { log.push("resize:" + e.pixelWidth.toString() + "x" + e.pixelHeight.toString()); });
+	};
+	render(element(<Void ref={grab}><View /></Void>), mockHost(), root as unknown as HostNode);
+	const hub = mockAreaHub(root.children[0]);
+	hub.resize({ pixelWidth: 800, pixelHeight: 600, scale: 1.5 });
+	hub.key(keyEvent("a"));
+	hub.text("b");
+	hub.preedit({ text: "c", cursorUtf8Offset: 1 });
+	hub.pointer({ kind: AreaPointerKind.Wheel, pixelX: 3.0, pixelY: 4.0, button: 0, pressed: false, dx: 0.0, dy: -1.0 });
+	hub.focus(true);
+	const h = handle as VoidAreaHandle;
+	assert h.pixelWidth() === 800 && h.pixelHeight() === 600, "size " + h.pixelWidth().toString();
+	assert h.scale() === 1.5, "scale";
+	assert log.join(",") === "resize:800x600,key:a:30:97,text:b,preedit:c:1,pointer:3:wheel,focus:true", log.join(",");
+	h.requestFrame();
+	h.setImeRect(1, 2, 3, 4);
+	assert mockToString(root).indexOf("frameRequested=\"true\"") >= 0, "requestFrame reached the host";
+	assert mockToString(root).indexOf("imeRect=\"1,2,3,4\"") >= 0, "setImeRect reached the host";
+}
+
+test "a subscription ends on unsubscribe and when the owner disposes" {
+	const root: MockNode = mockNode("root");
+	const log: string[] = [];
+	let off: (() => void) | null = null;
+	const grab = (h: VoidAreaHandle): void => {
+		h.onText((t: string): void => { log.push("kept:" + t); });
+		off = h.onText((t: string): void => { log.push("dropped:" + t); });
+	};
+	const dispose = render(element(<Void ref={grab}><View /></Void>), mockHost(), root as unknown as HostNode);
+	const hub = mockAreaHub(root.children[0]);
+	(off as () => void)();
+	hub.text("1");
+	dispose();
+	hub.text("2");
+	assert log.join(",") === "kept:1", log.join(",");
+}
+
+function drawing(log: string[]): (h: VoidAreaHandle) => void {
+	onCleanup((): void => { log.push("setup cleanup"); });
+	return (h: VoidAreaHandle): void => { log.push("apply"); };
+}
+
+test "a directive factory and a plain callback both receive the handle" {
+	const root: MockNode = mockNode("root");
+	const log: string[] = [];
+	const plain = (h: VoidAreaHandle): void => { log.push("plain"); };
+	const dispose = render((h: Host, p: HostNode, b: HostNode | null): void => {
+		element(<Void ref={[drawing(log), plain]}><View /></Void>)(h, p, b);
+	}, mockHost(), root as unknown as HostNode);
+	assert log.join(",") === "apply,plain", log.join(",");
+	dispose();
+	assert log.join(",") === "apply,plain,setup cleanup", log.join(",");
 }

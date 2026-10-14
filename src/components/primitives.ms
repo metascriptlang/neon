@@ -24,6 +24,8 @@ import { Accessor, accessor, untrack } from "../core/signal";
 import { element } from "../macros/ui/element";
 import { NeonNode, VAttr, VEvent, RefFn, hostElement, evt, dynAttr } from "../render/node";
 import { Host, HostNode, VoidArea } from "../render/hostTypes";
+import { VoidAreaHandle } from "../render/voidAreaHandle";
+import { applyRef } from "../render/bind";
 import { visibleContentAttr } from "../render/visibleContent";
 import {
 	ClaimWatch,
@@ -703,18 +705,26 @@ export function TextInput(props: TextInputProps): NeonNode {
 	};
 }
 
-interface VoidProps extends HostProps {
+interface VoidProps extends AccessibilityProps {
+	style?: Accessor<Style> | null;
+	class?: Accessor<string> | null;
+	ref?: ((handle: VoidAreaHandle) => void) | null;
 	children?: NeonNode | null;
 }
 
 export function Void(props: VoidProps): NeonNode {
 	const kids = props.children;
+	const userRef = props.ref;
 	const area: NeonNode = (host: Host, node: HostNode, before: HostNode | null): void => {
 		const open = host.voidArea;
 		if (open === null) { throw "<Void> needs a host with the voidArea capability, and this host has none"; }
 		const a = (open as (n: HostNode) => VoidArea)(node);
-		onCleanup((): void => { a.release(); });
+		onCleanup((): void => {
+			a.hub.close();
+			a.release();
+		});
+		if (userRef !== null) { applyRef(a.hub.handle, userRef as (handle: VoidAreaHandle) => void); }
 		if (kids !== null) { (kids as NeonNode)(a.host, a.root, null); }
 	};
-	return primitive("void", props, [], [], area);
+	return primitive("void", { style: props.style, class: props.class, ref: null, accessible: props.accessible, accessibilityLabel: props.accessibilityLabel, accessibilityHint: props.accessibilityHint, accessibilityRole: props.accessibilityRole }, [], [], area);
 }

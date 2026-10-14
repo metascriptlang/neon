@@ -1,5 +1,6 @@
 import { Style, StyleValue } from "./style";
 import { NeonEvent } from "./event";
+import { AreaHub } from "./voidAreaHandle";
 
 export type HostNode = unknown;
 
@@ -12,6 +13,7 @@ export type NeonNode = (host: Host, parent: HostNode, before: HostNode | null) =
 export interface VoidArea {
 	host: Host;
 	root: HostNode;
+	hub: AreaHub;
 	release: () => void;
 }
 
