@@ -4,7 +4,7 @@
 
 import {
 	createWindow, defaultOptions, runLoop, windowRoot, windowDevice, commit, setImeRect,
-	setFramePolicy, requestFrame, FrameOnDemand,
+	setFramePolicy, requestFrame, FrameOnDemand, pixelWidth, pixelHeight,
 	onPointer, onKey, onText, onImePreedit, onFocus, onResize, onFrame,
 	PointerEvent, PointerKind, KeyEvent, KeyAction, KeyMod, Window, keyName,
 } from "../../../../ion/src/index";
@@ -17,6 +17,9 @@ import { Color, rgba } from "../../../../void/src/void2d/types";
 import { exit } from "std/process";
 import { Host, HostNode, NeonNode, VoidArea, render } from "../../render/host";
 import { NeonEvent, neonEvent } from "../../render/event";
+import {
+	AreaHub, VoidAreaHandle, AreaKeyEvent, AreaKeyAction, AreaKeyMod, AreaPointerEvent, AreaPointerKind, createAreaHub,
+} from "../../render/voidAreaHandle";
 import { Style } from "../../render/style";
 import { VoidHost, VoidNode, createVoidHostWith, asFlexStyle, parseColor } from "../void/host";
 
@@ -57,6 +60,7 @@ interface Area {
 	height: int32;
 	scale: float32;
 	composing: boolean;
+	hub: AreaHub;
 }
 
 const _areas: Area[] = [];
@@ -75,6 +79,13 @@ function areaOfView(view: ViewId): Area | null {
 		if (a.view === view) { return a; }
 	}
 	return null;
+}
+
+export function areaScene(handle: VoidAreaHandle): Scene2D {
+	for (const a of _areas) {
+		if (a.hub.handle === handle) { return a.vh.scene; }
+	}
+	throw "areaScene: this handle belongs to no open Void area of an Ion window";
 }
 
 export function voidHostOf(host: Host): VoidHost {
@@ -108,6 +119,39 @@ function drawCurrent(): void {
 	}
 }
 
+function areaKey(e: KeyEvent): AreaKeyEvent {
+	return {
+		action: match (e.action) {
+			KeyAction.Release => AreaKeyAction.Release,
+			KeyAction.Repeat => AreaKeyAction.Repeat,
+			_ => AreaKeyAction.Press,
+		},
+		key: e.key,
+		scancode: e.scancode,
+		mods: (e.mods as uint16) as BitSet<AreaKeyMod>,
+		consumedMods: (e.consumedMods as uint16) as BitSet<AreaKeyMod>,
+		unshifted: e.unshifted,
+		text: e.text,
+	};
+}
+
+function areaPointer(e: PointerEvent): AreaPointerEvent {
+	return {
+		kind: match (e.kind) {
+			PointerKind.Motion => AreaPointerKind.Motion,
+			PointerKind.Wheel => AreaPointerKind.Wheel,
+			PointerKind.Leave => AreaPointerKind.Leave,
+			_ => AreaPointerKind.Button,
+		},
+		pixelX: e.x,
+		pixelY: e.y,
+		button: e.button,
+		pressed: e.pressed,
+		dx: e.dx,
+		dy: e.dy,
+	};
+}
+
 function resized(window: int32, width: int32, height: int32, scale: float64): void {
 	const a = areaOfWindow(window);
 	if (a === null || width <= (0 as int32) || height <= (0 as int32)) { return; }
@@ -115,6 +159,7 @@ function resized(window: int32, width: int32, height: int32, scale: float64): vo
 	area.width = width;
 	area.height = height;
 	area.scale = scale as float32;
+	area.hub.resize({ pixelWidth: width, pixelHeight: height, scale: area.scale });
 	if (area.view === ViewInvalid) {
 		area.view = viewCreate(0 as int64, width, height, area.scale);
 		const visual = voidVisualAttach(windowDevice(area.win), windowRoot(area.win), viewSwapChain(area.view));
@@ -161,16 +206,18 @@ function wireInput(): void {
 		if (a !== null && (a as Area).view !== ViewInvalid) { viewFrame((a as Area).view); }
 	});
 	onPointer((e: PointerEvent): void => {
-		if (e.kind !== PointerKind.Button || !e.pressed) { return; }
 		const a = areaOfWindow(e.window);
 		if (a === null) { return; }
 		const area = a as Area;
+		area.hub.pointer(areaPointer(e));
+		if (e.kind !== PointerKind.Button || !e.pressed) { return; }
 		area.vh.clickAt((e.x as float32) / area.scale, (e.y as float32) / area.scale);
 	});
 	onKey((e: KeyEvent): void => {
 		const a = areaOfWindow(e.window);
 		if (a === null) { return; }
 		const area = a as Area;
+		area.hub.key(areaKey(e));
 		const ev = keyEvent(e, area.composing);
 		if (e.action === KeyAction.Release) {
 			area.vh.keyUp(ev);
@@ -181,17 +228,22 @@ function wireInput(): void {
 	});
 	onText((window: int32, text: string): void => {
 		const a = areaOfWindow(window);
-		if (a !== null) { (a as Area).vh.commitText(text); }
+		if (a === null) { return; }
+		(a as Area).hub.text(text);
+		(a as Area).vh.commitText(text);
 	});
 	onImePreedit((window: int32, text: string, cursor: int32): void => {
 		const a = areaOfWindow(window);
 		if (a === null) { return; }
+		(a as Area).hub.preedit({ text, cursorUtf8Offset: cursor });
 		(a as Area).composing = text.length > 0;
 		(a as Area).vh.composeText(text, cursor);
 	});
 	onFocus((window: int32, focused: boolean): void => {
 		const a = areaOfWindow(window);
-		if (a !== null) { (a as Area).vh.setWindowFocus(focused); }
+		if (a === null) { return; }
+		(a as Area).hub.focus(focused);
+		(a as Area).vh.setWindowFocus(focused);
 	});
 }
 
@@ -216,7 +268,13 @@ function windowHost(win: Window): Host {
 		if (current !== null) { refuse("a second <Void> was mounted"); }
 		setFramePolicy(win, FrameOnDemand);
 		const vh = createVoidHostWith(Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0)), _font);
-		const area: Area = { win, view: ViewInvalid, visual: null, vh, width: 0 as int32, height: 0 as int32, scale: 1.0, composing: false };
+		const hub = createAreaHub({
+			initialPixelWidth: pixelWidth(win),
+			initialPixelHeight: pixelHeight(win),
+			requestFrame: (): void => { requestFrame(win); },
+			setImeRect: (pixelX: int32, pixelY: int32, pixelW: int32, pixelH: int32): void => { setImeRect(win, pixelX, pixelY, pixelW, pixelH); },
+		});
+		const area: Area = { win, view: ViewInvalid, visual: null, vh, width: 0 as int32, height: 0 as int32, scale: 1.0, composing: false, hub };
 		_areas.push(area);
 		current = area;
 		if (pendingStyle !== null) { applyAreaStyle(area, pendingStyle as Style); }
@@ -224,6 +282,7 @@ function windowHost(win: Window): Host {
 		return {
 			host: vh.host,
 			root: vh.root as unknown as HostNode,
+			hub,
 			release: (): void => {
 				const i = _areas.indexOf(area);
 				if (i >= 0) { _areas.splice(i, 1); }
