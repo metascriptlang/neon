@@ -5,6 +5,7 @@
 #   main:   s1 template-only, s3 repeated templates, s4 dependency, s5 compile error + fix, s2 setup edit
 #   parent: s6 template edit of a component that mounts a child component (fresh session)
 #   parentAfterChild: s1, then s6 (the child's module has been reloaded once)
+#   soak:   $SOAK (default 80) random template, setup and dependency edits, with the host's working set at start and end
 SRC=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(cd "$SRC/../.." && pwd)
 WORK=$ROOT/out/refreshNative
@@ -63,6 +64,24 @@ parent)
 parentAfterChild)
 	edit "s1 template-only" counter.s1.ms counter.ms
 	edit "s6 parent template" panel.s6.ms panel.ms
+	;;
+soak)
+	mem() { step "mem $1 $(powershell -NoProfile -Command "(Get-Process host -ErrorAction SilentlyContinue | Where-Object { \$_.Path -like '*refreshNative*' }).WorkingSet64")"; }
+	POOL=(counter.s1.ms:counter.ms counter.s3a.ms:counter.ms counter.s3b.ms:counter.ms counter.s2setup.ms:counter.ms words.s4.ms:words.ms)
+	PRISTINE=$ROOT/out/refreshNative.pristine
+	mkdir -p "$PRISTINE"; cp "$SRC/counter.ms" "$SRC/words.ms" "$PRISTINE/"
+	declare -A CUR=([counter.ms]=pristine [words.ms]=pristine)
+	mem start
+	for n in $(seq 1 "${SOAK:-80}"); do
+		pick=${POOL[$((RANDOM % ${#POOL[@]}))]}; from=${pick%%:*}; to=${pick##*:}
+		[ "${CUR[$to]}" = "$from" ] && from=pristine
+		CUR[$to]=$from
+		step "soak $n: $from -> $to"
+		baseline "RN settled"
+		if [ "$from" = pristine ]; then sleep 1; cp "$PRISTINE/$to" "$STAGE" && mv -f "$STAGE" "$WORK/$to"; else swap "$from" "$to"; fi
+		waitPastBaseline 120 || step "soak $n: TIMEOUT"
+	done
+	mem end
 	;;
 *) step "unknown plan $PLAN" ;;
 esac
