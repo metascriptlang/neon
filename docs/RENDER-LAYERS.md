@@ -36,7 +36,7 @@ nextSibling(node)                    // list reconciliation
 
 Each platform implements `Host`. The reconciler never knows what a "node" really is — a `UIView`, a DOM `Node`, or a row of a Void `Scene2D`. `mockHost()` (`host.ms:97`) is a ~50-line in-memory reference implementation.
 
-`HostNode` is `unknown` (`src/render/hostTypes.ms`), and each host's node is a class (`MockNode`, `NativeNode`, `TerminalNode`; the extern `Node` in `src/platform/browser/dom.ms`). A host reads its own node back with a cast the compiler tests, so a node from another host stops the program with `invalid object conversion` instead of reading foreign memory. `Handle<T>` (`std/ffi`, keeps an object alive while C holds its address) is not used: no Neon object is handed to C — native callbacks are closures registered once (`niSetTouchHandler` in `src/platform/ios/bridge.m`), and native views are platform pointers.
+`HostNode` is `unknown` (`src/render/hostTypes.ms`), and each host's node is a class (`MockNode`, `NativeNode`, `TerminalNode`; the extern `Node` in `src/platform/browser/dom.jms`). A host reads its own node back with a cast the compiler tests, so a node from another host stops the program with `invalid object conversion` instead of reading foreign memory. `Handle<T>` (`std/ffi`, keeps an object alive while C holds its address) is not used: no Neon object is handed to C — native callbacks are closures registered once (`niSetTouchHandler` in `src/platform/ios/bridge.m`), and native views are platform pointers.
 
 **This is the React host-config / R3F pattern, exactly:**
 - React = reconciler; ReactDOM / React Native / R3F = Host implementations over DOM / native / THREE.
@@ -116,6 +116,6 @@ This is why Void's Tier 0/1/2 quality work (lazy transforms, culling, batching, 
 
 ## References
 
-- **Neon**: `src/render/host.ms` (Host contract + `mockHost`), `src/render/reconcile.ms` (reconciler), `src/render/node.ms` (VNode), `src/platform/browser/dom.ms` (DOM Host reference).
+- **Neon**: `src/render/host.ms` (Host contract + `mockHost`), `src/render/reconcile.ms` (reconciler), `src/render/node.ms` (VNode), `src/platform/browser/dom.jms` (DOM Host reference).
 - **Void**: `docs/VOID2D.md` "Where it sits", `src/void2d/{node,draw}.ms` (Layer B), `src/sokol/{bridge,gpu}` (Layer C), `docs/HEAPS.md` (Layer-B quality parity plan).
 - **Analogues**: React host-config (`react-reconciler`), React-Three-Fiber (R3F), React Native.

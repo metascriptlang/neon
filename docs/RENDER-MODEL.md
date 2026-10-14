@@ -354,7 +354,7 @@ path. Limits, each one loud or measured:
   holds children Neon does not own (a canvas, a foreign editor's mount point) hydrates.
 - A wire tag whose DOM `createElement` does more than create an element and that `claim` does
   not take over yet (`image`, `modal`, `slider`, `picker`, `datetimepicker`, `svg`, the media
-  tags; `createsMoreThanAnElement` in `src/platform/browser/dom.ms`) refuses to hydrate.
+  tags; `createsMoreThanAnElement` in `src/platform/browser/dom.jms`) refuses to hydrate.
   `scrollview`, `switch`, `activityindicator` and `multilinetextinput` hydrate: the server
   writes the element, classes and fixed attributes of `webHtmlTag`, `webControlClass` and
   `webFixedAttrs` in `src/render/web.ms`, the rules of `webRules` reach `renderToMarkup(...).css`,

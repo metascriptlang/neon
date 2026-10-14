@@ -21,5 +21,5 @@ echo "== edge tests/edge/run.sh"
 mkdir -p tests/edge/out
 "$MSC" build --target=js tests/edge/pages.ms --output=tests/edge/out/pages.js
 "$MSC" build --target=js examples/site/server.ms --output=tests/edge/out/site.js
-"$MSC" build --target=js examples/site/client.ms --output=tests/edge/out/siteClient.js
+"$MSC" build --target=js examples/site/client.jms --output=tests/edge/out/siteClient.js
 node tests/edge/run.mjs "$WORKERD" "${NEON_PLAYWRIGHT:-$PWD/tests/browser/node_modules/playwright-core/index.mjs}"

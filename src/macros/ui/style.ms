@@ -46,7 +46,7 @@ function isPlatformName(k: string): boolean {
 	return k === "web" || k === "ios" || k === "android" || k === "macos";
 }
 
-// CSS spelling of a style field. Kept beside applyCss (platform/browser/dom.ms)
+// CSS spelling of a style field. Kept beside applyCss (platform/browser/dom.jms)
 // rather than shared with it: that one writes into the CSSOM, which takes
 // camelCase names and per-property strings, while a stylesheet rule needs
 // kebab-case text. tests/render/styleCss.test.ms pins the two against each

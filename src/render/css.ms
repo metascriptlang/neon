@@ -3,7 +3,7 @@
 //
 // Third spelling of the same vocabulary, beside the rule text the macro bakes
 // at expansion (macros/ui/style.ms cssDecl) and the CSSOM writes in
-// platform/browser/dom.ms. Kept apart for the same reason those two are: each
+// platform/browser/dom.jms. Kept apart for the same reason those two are: each
 // consumes a different form — a Node at expansion, a CSSOM object, a runtime
 // Style. tests/render/ssrStyle.test.ms pins this one against the macro's rule
 // text so the pair cannot drift apart silently.

@@ -78,7 +78,7 @@ and the invariants that outlived them were moved to the head of the test that pi
   clears it; the style the component always passes is the suspect): in `tests/browser/ssrMarkup.test.ms` the DOM
   host builds `style="justify-content: center; align-items: center; width: 36px; height: 36px;"`
   for `<ActivityIndicator color="#c00" size="large" />`. The server writes the same, so the two
-  agree, and the colour is lost on both until this is fixed in `src/platform/browser/dom.ms`
+  agree, and the colour is lost on both until this is fixed in `src/platform/browser/dom.jms`
   (for example a class per colour, as `hitSlop` does).
 
 - **OPEN 2026-10-07 — a raw tag with an `Accessor<boolean> | null` attribute dies on C.** In

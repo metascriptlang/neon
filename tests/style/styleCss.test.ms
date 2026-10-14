@@ -6,7 +6,7 @@
 // spend bytes on rules a native binary can never use.
 //
 // The rule text is asserted literally. That is deliberate: the macro spells CSS
-// (kebab-case, px) independently of applyCss in platform/browser/dom.ms, so
+// (kebab-case, px) independently of applyCss in platform/browser/dom.jms, so
 // this assertion is the thing that catches the two drifting apart.
 
 import { NeonNode } from "../../src/render/node";
