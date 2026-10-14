@@ -258,8 +258,8 @@ or its laziest.
   allocation at high polling rates.
   Today `<Void ref={handle => …}>` hands the app a `VoidAreaHandle`
   (`src/render/voidAreaHandle.ms`): pixel size, scale, `onResize`, `requestFrame`, raw `onKey`
-  (scancode, mods, consumed mods, unshifted, text, action), `onText`, `onPreedit` (the cursor is
-  Ion's UTF-8 byte offset, passed through), `onPointer` (button, motion, wheel, leave, in window
+  (scancode, mods, consumed mods, unshifted, text, action), `onText`, `onPreedit` (the cursor in
+  UTF-16 units of the text, the unit of every MetaScript string index, as Ion reports it), `onPointer` (button, motion, wheel, leave, in window
   pixels as Ion reports them), `onFocus` and `setImeRect`. Subscriptions end with the `<Void>`'s
   owner, handle subscribers see each event before Neon routes it to the area's focused node, and an
   Ion window host reaches the area's `Scene2D` through `areaScene(handle)`
