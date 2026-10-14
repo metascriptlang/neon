@@ -36,8 +36,8 @@ port needs is checked there.
   Mica/Acrylic backdrops are external content: they render below the compositor's output through a
   hole, and "it's not possible to have compositor content behind external content". Neon's model
   puts a `<WebView>` and a `<Void>` (a swapchain) as elements among native views; Ion's DComp tree
-  already composes a transparent WebView2 over a swapchain (`ion/docs/RENDER-SURFACE.md`
-  `SurfaceBelow`, `ion/src/platform/windows/core/composition.cpp`).
+  already composes a transparent WebView2 over a swapchain (`ion/docs/WINDOW-CONTENT.md`,
+  `ion/src/platform/windows/core/composition.cpp`).
 - **It brings WinAppSDK with it.** C++/WinRT, MSVC, the WinAppSDK runtime and its packaging, and an
   Ion window rebuilt on `AppWindow` + `DesktopChildSiteBridge` (RNW `CompositionHwndHost.cpp`).
   RNW's CLI also requires Visual Studio 18.6 (`cli/src/utils/msbuildtools.ts` `findAvailableVersion`),
@@ -219,19 +219,19 @@ is built, in "Built: Text"; TextInput and UI Automation are not. `WTI` is `Compo
 Not verified: TSF IME without `ITextHost2`; the `TxDrawD2D` rectangle's unit above 96 dpi;
 mingw-compiled `ITextHost` and UIA providers called by the system's Msftedit and UIAutomationCore.
 
-## What Ion has to give
+## What Ion gives
 
-Ion's Windows window owns the `IDCompositionDevice` and its tree (`composition.cpp` `ionCompInit`);
-`ionRenderSurfaceLayer` returns `nullptr` on Windows and no device leaves the module. The host needs,
-per window, a content root it can parent visuals to, z-ordered with the webview and render surfaces,
-plus the device (or a D2D-capable device) to create surfaces on, and pointer, key, IME, focus and
-DPI events for that region. macOS (an `NSView` container in the content view) and Linux (a GTK3
-widget, since Ion links `gtk+-3.0` and `webkit2gtk-4.1`, `ion/src/ipc.ms`) need the same contract.
-Brief: `~/metascript/.wt/ion-native-content-root-prompt.md`.
+Ion's window is an empty root, and the contract is in `ion/docs/WINDOW-CONTENT.md` and `ion/src/platform/bridge.h`.
+On Windows `windowRoot` is the window's root `IDCompositionVisual*` and `windowDevice` an `IDCompositionDevice*`
+created on a D2D device, so `CreateSurface` hands out D2D-drawable surfaces; `commit` commits the transaction.
+Pointer, key, text, IME, focus, resize and frame records arrive per window in client-area pixels, and Ion does
+no hit-testing: the host parents its visuals under the root, z-orders them, and routes input itself. macOS (the
+content view) and Linux (a `GtkFixed`) give the same contract. `src/platform/ion/window.ms` is the first host
+on it, for a full-window `<Void>`; the native host of this document is not on it yet.
 
 ## Order
 
-1. Ion's content root on Windows, then this probe again inside an Ion window.
+1. This probe again inside an Ion window, on Ion's content root (`windowRoot`, `windowDevice`).
 2. The bridge, smallest runnable first: View (frame, background, corner radius, opacity), Text with
    `niMeasureText` on DirectWrite, Pressable input, then ScrollView, then TextInput, then UIA. Each
    step runs a Neon example in an Ion window and keeps the mock-bridge tests

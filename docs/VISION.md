@@ -39,8 +39,8 @@ Application UI world         native host (iOS, Android, desktop) or DOM host (br
   they are void2d. No native view and no DOM element ever lives inside a GPU surface.
 - **An embedded browser is one more element of the Application UI world.** `<WebView>` sits beside
   `View` and `<Void>`, and layout places it. Like a native view, it never lives inside a Void area.
-  On the desktop this is Ion's webview laid out as an element (`ionWebviewSetFrame` in
-  `ion/src/platform/bridge.h`: once it is called, native layout owns the frame).
+  On the desktop this is Ion's webview laid out as an element: the host parents `webviewNode` where
+  its tree puts it and tells Ion the bounds (`ionWebviewSetBounds` in `ion/src/platform/bridge.h`).
 - **The desktop Application UI world is a native host too, the React Native model.** It runs on an
   Ion window behind the same `src/platform/native/bridge.h` as iOS and Android, and the webview is
   one of its elements, not the root. macOS maps `View` and `Text` to AppKit views and Linux to GTK3
@@ -93,7 +93,7 @@ for free. Without these, face 2 below cannot carry a real app's UI.
   are invisible to a screen reader. Void keeps a semantics tree beside its node tree and mirrors
   it to the platform's accessibility API, as Flutter does.
 - **Text input.** `TextInput` with committed and composing text runs inside a Void area on the
-  void host, which places the IME candidate window at the caret (`renderSurfaceSetImeRect`).
+  void host, which places the IME candidate window at the caret (`setImeRect`).
   Selection and clipboard are still missing.
 - **Focus.** Focus inside one Void area exists; keyboard focus and tab order running through the
   boundary in both directions, from native views into a Void area and back out, do not.
@@ -230,11 +230,11 @@ where it is written down.
 | concern | owner | written down in |
 |---|---|---|
 | window, lifecycle, multiple windows | Ion | `ion/src/windowManager.ms`; capability matrix in `ion/TODO.md` |
-| events and input: capture, routing into a region, focus, IME | Ion delivers, Neon dispatches to its nodes | `ion/src/input.ms`, `ion/docs/RENDER-SURFACE.md`; `src/platform/void/host.ms` `clickAt`, `src/platform/native/host.ms` |
-| frame clock, one vsync source per window | Ion | `ion/docs/RENDER-SURFACE.md` "Driving the renderer"; "Window, frame and input" below |
-| render surface, a GPU region in the window | Ion hosts, Void draws | `ion/docs/RENDER-SURFACE.md`, `void/docs/EMBED.md` |
-| native content root, the region a native UI tree lives in | Ion, not built yet | `WINDOWS.md` "What Ion has to give" |
-| webview | Ion; Neon lays it out as an element | `ionWebviewSetFrame` in `ion/src/platform/bridge.h`; "Worlds, nested one way" above |
+| events and input: capture, routing into a region, focus, IME | Ion delivers, Neon dispatches to its nodes | `ion/src/input.ms`, `ion/docs/WINDOW-CONTENT.md`; `src/platform/void/host.ms` `clickAt`, `src/platform/native/host.ms` |
+| frame clock, one vsync source per window | Ion | `ion/docs/WINDOW-CONTENT.md` "Frame clock"; "Window, frame and input" below |
+| a GPU region in the window | Neon parents a visual on Ion's root, Void draws | `ion/docs/WINDOW-CONTENT.md`, `src/platform/ion/window.ms`, `void/docs/EMBED.md` |
+| native content root, the region a native UI tree lives in | Ion gives the root and device, Neon builds on them | `WINDOWS.md` "What Ion gives" |
+| webview | Ion; Neon lays it out as an element | `ionWebviewNode`, `ionWebviewSetBounds` in `ion/src/platform/bridge.h`; "Worlds, nested one way" above |
 | native chrome: tray, menu bar, dialogs, notifications, hotkeys, keychain, updates | Ion | `ion/TODO.md` capability matrix |
 | generator, build, packaging | Ion | `ion/docs/PROJECT-GENERATOR.md`; `PROJECT-GENERATOR.md` here keeps what Neon still asks of it |
 | UI tree, reactivity, reconcile, layout | Neon | `RENDER-MODEL.md`, `RENDER-LAYERS.md` Layer A |
@@ -247,7 +247,7 @@ where it is written down.
 Whether an app is application UI, a game, or both at once, each part runs at its most native cost,
 or its laziest.
 
-- **One vsync source per window, owned by Ion.** Each rendering area declares its own frame policy.
+- **One vsync source per window, owned by Ion.** Each window declares its frame policy.
   Application UI redraws on demand, when something changed. A Void area is on demand or continuous.
   An idle app draws nothing.
 - **A Void area's frame never passes through reconcile.** It has its own clock. The host drives Void
@@ -256,14 +256,13 @@ or its laziest.
 - **What a game needs is exposed through Neon, not around it:** raw and relative pointer input,
   pointer lock, exclusive fullscreen, vsync mode. Input reaches a Void area without a per-event
   allocation at high polling rates.
-- **Ion treats a surface and a webview alike:** each is an element with a frame that layout sets,
-  a z-order and its own input region. Today only the webview has a frame (`ionWebviewSetFrame`).
-  A render surface always fills the window (`ionRenderSurfaceSyncFrame`) and its input sink is one
-  per process (`ionRenderSurfaceSetInputSink`). Ion's frame clock exists: a surface declares
-  `FrameOnDemand` or `FrameContinuous` and draws on `onSurfaceFrame` (`ion/docs/RENDER-SURFACE.md`).
-  An app that is one full-window `<Void>` does not need the first two, and it runs today on Windows:
-  `runWindow` in `src/platform/ion/window.ms`, measured in `ROADMAP.md` "Recently done". Everything
-  else does.
+- **Ion holds no element tree.** A window is an empty root; a Void visual, a webview and native views
+  are all nodes the app parents in it, positions and hit-tests itself, forwarding a pointer event to
+  a webview with `ionWebviewForwardPointer`. Ion's frame clock is per window: `FrameOnDemand` or
+  `FrameContinuous`, drawn on `onFrame` (`ion/docs/WINDOW-CONTENT.md`). An app that is one
+  full-window `<Void>` runs today on Windows: `runWindow` in `src/platform/ion/window.ms`, measured
+  in `ROADMAP.md` "Recently done" and `BUGS.md`. A Void area beside other elements waits on a host
+  that places and hit-tests more than one visual.
 - **Audio never goes through the tree.** It runs on the device's own thread; Neon only carries
   control.
 
