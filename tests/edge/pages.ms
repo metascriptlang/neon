@@ -22,14 +22,10 @@ function Broken(): NeonNode {
 	};
 }
 
-function page(path: string): string {
+export function page(path: string): string {
 	let node: NeonNode = <Home />;
 	if (path === "/guide") { node = <Guide />; }
 	if (path === "/broken") { node = <Broken />; }
 	const markup = renderToMarkup(node);
 	return "<style>" + markup.css + "</style>" + markup.html;
 }
-
-extern function serve(render: (path: string) => string): void from "(globalThis.neonEdgePage = #)";
-
-serve(page);

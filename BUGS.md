@@ -164,13 +164,6 @@ and the invariants that outlived them were moved to the head of the test that pi
   `~/metascript/.inbox/compiler/2026-10-11-destructured-local-in-attribute-arrow-read-by-nested-macro.md`.
   Parked at those two files.
 
-- **PARKED 2026-10-13 — a JS bundle exposes its entry only through `globalThis`.** `msc build --target=js`
-  drops the entry module's `export`s, so `examples/site/server.ms` and `tests/edge/pages.ms` hand
-  their request function to the Worker with an extern that assigns a global (`serve`), and
-  `tests/edge/siteWorker.js` / `worker.js` read it after a side-effect import. Card:
-  `~/metascript/.inbox/compiler/2026-10-13-js-build-drops-the-entry-modules-exports.md`. When it
-  closes, the entries `export` their function and the workers import it by name.
-
 - **PARKED 2026-10-14 — `createStyles` takes no breakpoint table.** The surface approved on
   2026-10-14 is `createStyles({ sidebar: { when: { wide: { … } } } }, screen)` beside every existing
   one-argument call, and a macro cannot take an optional or rest parameter or share its name with a
