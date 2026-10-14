@@ -474,7 +474,7 @@ test "static attr, static text, event and ref beside a component" {
 	mount(host, directRoot as unknown as HostNode, null);
 
 	assert mockToString(directRoot) === "<root><div id=\"top\" class=\"c\"><p class=\"g\">n=1</p><button type=\"button\">go</button><p>tail</p></div></root>", "golden: " + mockToString(directRoot);
-	assert directSeen === "<button type=\"button\"></button>", "ref saw the node before its children: " + directSeen;
+	assert directSeen === "<button type=\"button\">go</button>", "ref saw the finished node: " + directSeen;
 
 	fireEvent((directRoot as MockNode).children[0].children[1], "onPress");
 	assert directHits === 1, "one hit: " + directHits.toString();
@@ -928,7 +928,7 @@ test "present on*/ref/style through a nullable type attach — flat tier" {
 
 	const dDiv = (directRoot as MockNode).children[0];
 	assert mockToString(directRoot) === "<root><div><p class=\"g\">n=1</p><button type=\"button\">go</button><p>x</p></div></root>", "golden: " + mockToString(directRoot);
-	assert seen === "<button type=\"button\"></button>", "ref saw the node before its children: " + seen;
+	assert seen === "<button type=\"button\">go</button>", "ref saw the finished node: " + seen;
 	fireEvent(dDiv.children[1], "onPress");
 	assert hits === 1, "one hit: " + hits.toString();
 	assert cssAt(dDiv, 1) === "margin:2px;", "static style: " + cssAt(dDiv, 1);

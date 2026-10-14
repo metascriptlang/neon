@@ -1,5 +1,6 @@
 import { createBindingEffect } from "../core/effect";
 import { untrack } from "../core/signal";
+import { getOwner } from "../core/runtime";
 import { Style, StyleValue, setStyleField } from "./style";
 import { Host, HostNode } from "./hostTypes";
 import { isServer } from "./environment";
@@ -75,6 +76,9 @@ export function bindStyleAll(host: Host, node: HostNode, get: () => Style): void
 }
 
 export function setupRef<T>(setup: () => T): T {
+	if (getOwner() === null) {
+		throw "a ref directive factory ran with no owner, so its onCleanup and effects would never be disposed: mount the element inside render() or a component";
+	}
 	return untrack(setup);
 }
 

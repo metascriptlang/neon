@@ -51,7 +51,7 @@ function keyEvent(text: string): AreaKeyEvent {
 	return { action: AreaKeyAction.Press, key: 65, scancode: 30, mods: 0 as BitSet<AreaKeyMod>, consumedMods: 0 as BitSet<AreaKeyMod>, unshifted: 97, text };
 }
 
-test "the ref of a Void receives the area handle, not the outer node, before the children mount" {
+test "the ref of a Void receives the area handle, not the outer node, after the children mount" {
 	let handle: VoidAreaHandle | null = null;
 	const order: string[] = [];
 	const root: MockNode = mockNode("root");
@@ -62,7 +62,7 @@ test "the ref of a Void receives the area handle, not the outer node, before the
 	const grabView: (n: HostNode) => void = (n) => { order.push("view"); };
 	render(element(<Void ref={grab}><View ref={grabView} /></Void>), mockHost(), root as unknown as HostNode);
 	assert handle !== null, "ref ran with a handle";
-	assert order.join(",") === "void,view", "the Void ref ran before its children mounted: " + order.join(",");
+	assert order.join(",") === "view,void", "the Void ref ran after its children mounted: " + order.join(",");
 }
 
 test "the handle reports size and scale and forwards raw input to its subscribers" {

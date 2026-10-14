@@ -1,12 +1,17 @@
 // ref — the escape hatch to the host node. The callback fires once per mount
 // with the node the element became.
 //
-// ref � the escape hatch to the host node, and Solid 2.0's directive surface
-// (docs/SOLID.md "Refs and directives"). A ref runs after its element's attributes and
-// before its children, a parent's before a child's, and always before the site root is
-// placed. `ref={[a, b]}` applies in source order; a call such as `ref={tooltip(opts)}` is
-// a directive factory whose setup runs in the current owner and whose returned function
-// is the apply phase.
+// Ordering follows REACT, not Solid, decided 2026-09-18 after reading both: ref is
+// component/event surface, and the standing rule is reactivity = Solid, component and
+// event surface = React Native. React attaches refs innermost-first, after the subtree
+// is built (`~/projects/react/packages/react-reconciler/src/ReactFiberCommitWork.js`:
+// recursivelyTraverseLayoutEffects `:682` `:627` before safelyAttachRef `:700` `:641`).
+// Solid is the one that differs — dom-expressions unshifts `use(ref, el)` onto the
+// element's own exprs (`packages/babel-plugin-jsx-dom-expressions/src/dom/element.js`
+// `:676` `:694` `:704`) while transformChildren pushes each child's afterwards
+// (`:1122`), so a parent's ref runs BEFORE any child's. The cells below pin React's
+// order: innermost-first, and a ref already sees a bound reactive child. What all three
+// agree on: ref fires before the site root is placed.
 
 import { createSignal } from "../../src/core/signal";
 import { createEffect } from "../../src/core/effect";
@@ -48,14 +53,13 @@ test "ref reaches the universal vocabulary, not just raw tags" {
 	assert inputTag === "textinput", "TextInput ref, tag=" + inputTag;
 }
 
-test "ref fires before a reactive child is bound" {
+test "ref fires after a reactive child is bound" {
 	const [n, _setN] = createSignal(7);
 	let seen = "";
 	const grab: (h: HostNode) => void = (h) => { seen = mockToString(h as unknown as MockNode); };
 	const root: MockNode = mockNode("root");
 	render(element(<p ref={grab}>{n().toString()}</p>), mockHost(), root as unknown as HostNode);
-	assert seen === "<p></p>", "ref saw the node before its reactive child, seen=" + seen;
-	assert mockToString(root) === "<root><p>7</p></root>", "the child is bound afterwards: " + mockToString(root);
+	assert seen === "<p>7</p>", "ref saw the bound child, seen=" + seen;
 }
 
 test "a callback prop crosses raw when it is named, not only when it is a literal" {
@@ -85,25 +89,24 @@ test "ref fires before the site root is placed" {
 	assert kidsAtRef === 0, "ref ran before the root was placed, kids=" + kidsAtRef.toString();
 }
 
-test "nested refs fire outermost first, in the template path" {
+test "nested refs fire innermost first, each with its own children complete" {
 	let order = "";
 	const root: MockNode = mockNode("root");
-	const outer: (h: HostNode) => void = (h) => { order = order + "outer"; };
-	const inner: (h: HostNode) => void = (h) => { order = order + "inner"; };
+	const outer: (h: HostNode) => void = (h) => { order = order + "outer" + (h as unknown as MockNode).children.length.toString(); };
+	const inner: (h: HostNode) => void = (h) => { order = order + "inner" + (h as unknown as MockNode).children.length.toString(); };
 	render(element(<div ref={outer}><p ref={inner}>hi</p></div>), mockHost(), root as unknown as HostNode);
-	assert order === "outerinner", "order=" + order;
+	assert order === "inner1outer1", "order=" + order;
 }
 
-test "a ref runs after the attributes and before the children, in the flat path" {
-	const [n, _setN] = createSignal("a");
-	let seen = "";
+test "innermost first and after its subtree, in the flat path too" {
 	let order = "";
+	let seen = "";
 	const root: MockNode = mockNode("root");
 	const outer: (h: HostNode) => void = (h) => { order = order + "outer"; seen = mockToString(h as unknown as MockNode); };
 	const inner: (h: HostNode) => void = (h) => { order = order + "inner"; };
-	render(element(<div class="box" title={n()} ref={outer}><View ref={inner}><Text>x</Text></View></div>), mockHost(), root as unknown as HostNode);
-	assert seen === "<div class=\"box\" title=\"a\"></div>", "attributes set, no child yet: " + seen;
-	assert order === "outerinner", "order=" + order;
+	render(element(<div class="box" ref={outer}><View ref={inner}><Text>x</Text></View></div>), mockHost(), root as unknown as HostNode);
+	assert order === "innerouter", "order=" + order;
+	assert seen === "<div class=\"box\"><view><text>x</text></view></div>", "outer saw its finished subtree: " + seen;
 }
 
 test "a nested ref sees its parent inside the template" {
@@ -133,7 +136,7 @@ test "ref arrays work in the flat path and on a component" {
 	const log: string[] = [];
 	const root: MockNode = mockNode("root");
 	render(element(<div ref={[stamp(log, "d1"), stamp(log, "d2")]}><View ref={[stamp(log, "v1"), stamp(log, "v2")]}><Text>x</Text></View></div>), mockHost(), root as unknown as HostNode);
-	assert log.join(",") === "d1,d2,v1,v2", "order=" + log.join(",");
+	assert log.join(",") === "v1,v2,d1,d2", "order=" + log.join(",");
 }
 
 test "a typed handle ref takes an array" {
@@ -141,7 +144,9 @@ test "a typed handle ref takes an array" {
 	const a = (h: TextInputHandle): void => { log.push("a"); };
 	const b = (h: TextInputHandle): void => { log.push("b"); };
 	const root: MockNode = mockNode("root");
-	render(element(<TextInput ref={[a, b]} />), mockHost(), root as unknown as HostNode);
+	render((h: Host, p: HostNode, bf: HostNode | null): void => {
+		element(<TextInput ref={[a, b]} />)(h, p, bf);
+	}, mockHost(), root as unknown as HostNode);
 	assert log.join(",") === "a,b", "order=" + log.join(",");
 }
 
@@ -218,4 +223,29 @@ test "a cleanup registered in the apply phase belongs to the mounting owner" {
 	assert log.length === 0, "not yet";
 	dispose();
 	assert log.join(",") === "apply cleanup", log.join(",");
+}
+
+test "a directive factory with no owner stops with an error that names the case" {
+	const log: string[] = [];
+	const [n, _setN] = createSignal(1);
+	const read = (): number => n();
+	const mount = element(<p ref={tooltip(log, read)}>hi</p>);
+	let refused = "";
+	try {
+		mount(mockHost(), mockNode("root") as unknown as HostNode, null);
+	} catch (e) {
+		refused = (e as Error).message;
+	}
+	assert refused.indexOf("a ref directive factory ran with no owner") === 0, "refused=" + refused;
+}
+
+test "a nested ref sees its parent in the flat path too" {
+	let parentTag = "?";
+	const root: MockNode = mockNode("root");
+	const grab: (h: HostNode) => void = (h) => {
+		const p = (h as unknown as MockNode).parent;
+		parentTag = p === null ? "<none>" : p.tag;
+	};
+	render(element(<div><Text>x</Text><p ref={grab}>hi</p></div>), mockHost(), root as unknown as HostNode);
+	assert parentTag === "div", "parent=" + parentTag;
 }

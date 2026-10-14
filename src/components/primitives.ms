@@ -723,8 +723,8 @@ export function Void(props: VoidProps): NeonNode {
 			a.hub.close();
 			a.release();
 		});
-		if (userRef !== null) { applyRef(a.hub.handle, userRef as (handle: VoidAreaHandle) => void); }
 		if (kids !== null) { (kids as NeonNode)(a.host, a.root, null); }
+		if (userRef !== null) { applyRef(a.hub.handle, userRef as (handle: VoidAreaHandle) => void); }
 	};
 	return primitive("void", { style: props.style, class: props.class, ref: null, accessible: props.accessible, accessibilityLabel: props.accessibilityLabel, accessibilityHint: props.accessibilityHint, accessibilityRole: props.accessibilityRole }, [], [], area);
 }

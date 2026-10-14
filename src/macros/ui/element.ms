@@ -1060,8 +1060,6 @@ export macro element(node: Node): Node {
 				}
 			}
 
-			if (wRef !== null) { pushRef(wStmts, elVar, wRef as Node, el.line, el.column); }
-
 			let lastVar = "";
 			let lastIdx = 0 - 1;
 			let slot = 0;
@@ -1135,6 +1133,8 @@ export macro element(node: Node): Node {
 				}
 				slot = slot + 1;
 			}
+
+			if (wRef !== null) { pushRef(wStmts, elVar, wRef as Node, el.line, el.column); }
 		}
 
 		const tplRoot = emitBuild(node);
@@ -1411,11 +1411,11 @@ export macro element(node: Node): Node {
 					}
 				}
 
-				if (refFor !== null) { pushRef(stmts, rName, refFor as Node, el.line, el.column); }
-
 				emitKids(el.jsxChildren, rName, false);
 
-				pushInsert(parentVar, ident(rName, el.line, el.column), atRoot, el.line, el.column);
+				if (!atRoot) { pushInsert(parentVar, ident(rName, el.line, el.column), atRoot, el.line, el.column); }
+				if (refFor !== null) { pushRef(stmts, rName, refFor as Node, el.line, el.column); }
+				if (atRoot) { pushInsert(parentVar, ident(rName, el.line, el.column), atRoot, el.line, el.column); }
 			}
 		}
 	}
