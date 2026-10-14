@@ -147,12 +147,14 @@ and the invariants that outlived them were moved to the head of the test that pi
   exits 0. Not run: an IME, a DPI change. `tests/run.sh` builds the example on a Windows host and
   skips it by name elsewhere.
 
-- **PARKED 2026-10-14 — an Ion project manifest inside Neon cannot be evaluated.** Not Neon's: Ion's
-  generator runs the manifest with `msc run --target=raiser` beside it, Neon's `build.ms`
-  `globalImports` brings in `src/core/runtime.ms`, and Raiser has no `String.fromCharCode`, so even a
-  one-line `console.log` under Neon's root stops at type check (msc `26150233`). Blocks building
-  `examples/voidWindow.ms` from an Ion-generated Visual Studio project. Card
-  `~/metascript/.inbox/compiler/2026-10-14-raiser-string-fromcharcode.md`.
+- **PARKED 2026-10-15 — an Ion-generated Windows project of a Neon app does not compile.** Not Neon's:
+  the manifest now evaluates (msc `9cf5708c`), but the entry module Ion writes into the output
+  (`<Target>/<Target>.ms`: `@link` of the `.res`, then `import` of the app's entry) sits outside
+  Neon's tree, and msc takes `build.ms` from the entry's directory upward
+  (`recompiler/docs/PACKAGE.md` "Discovery"), so Neon's `globalImports` never apply and MSBuild
+  stops at `52 type error(s)`: `Undefined variable 'bindAttr'` (12), `'accessor'` (10), `'place'` (9),
+  `'createComponent'` (9). Blocks `examples/voidWindow.ms` from an Ion-generated project. Note
+  `~/metascript/.inbox/ion/2026-10-15-generated-entry-loses-app-build-ms.md`.
 
 - **PARKED 2026-10-11 — `tests/render/flatList.test.ms` and `tests/components/flutterListsApp.test.ms` do not compile.**
   Not Neon's: an array-destructured local of an arrow passed as a JSX attribute
