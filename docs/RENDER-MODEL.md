@@ -102,6 +102,23 @@ COMPILE ──► MOUNT ──► UPDATE (×n) ──► DISPOSE
 - **DISPOSE**: owner-tree teardown — deterministic, recursive, fires `onCleanup`,
   kills every subscription underneath. Never waits for GC.
 
+**When a ref runs.** Within one element, MOUNT goes: create the host node, attributes and
+events, then the `ref`, then the children, then the node is placed (Solid 2.0's order,
+`.changeset/refs-after-attributes.md`). A parent's ref therefore runs before its children's, a
+ref sees a reactive child unbound, and a static child already inside a cloned template. A
+`ref={[a, b]}` applies its entries in source order, flattening nested arrays and dropping
+`null`. A call such as `ref={tooltip(opts)}` is a directive factory: `setupRef` evaluates the
+call (or the array, so every factory) in the mounting owner, untracked, and `applyRef` runs the
+function it returned untracked, in the mounting owner. dom-expressions runs it with no owner;
+Neon keeps the owner because `StatusBar` and `WebView` register their `createEffect` and
+`onCleanup` inside a ref callback, and an unowned callback would drop them silently. `<Void>` runs
+its ref inside the area, after the host opened it and before its children mount, with the
+`VoidAreaHandle` rather than the host node. `hostElement` in `src/render/node.ms`, which the
+`View` / `Text` / `Pressable` / `TextInput` components build on, still applies its ref after the
+children. A component's ref prop is evaluated where its props are built: inside a parent's mount
+it runs in that owner, while an `element(<Void ref={f()}/>)` that is itself the root of a call is
+evaluated before `render` opens its root, so a setup there has no owner.
+
 Building the node (evaluating the JSX expression) allocates a closure and performs no
 host op and no signal read; there is no separate BUILD phase producing data.
 
@@ -468,7 +485,8 @@ The typed style channel splits by shape: an object literal writes its static fie
 once and plants `bindStyleProp` per reactive field; a layer array merges at compile
 time or goes through `layerStyles` (a reactive layer or field is rejected); a reactive
 expression is `bindStyleAll`; anything else is `applyStaticStyle`. A `ref` runs
-innermost-first, before the root is placed (React's order).
+after the element's attributes and before its children, outermost first, and before the
+root is placed (Solid 2.0's order, "Lifecycle" above).
 
 **Template tier.** A pure subtree has a static skeleton, so it is built once and
 duplicated per mount, and each dynamic spot is reached by a walk path computed at

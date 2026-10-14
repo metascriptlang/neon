@@ -29,6 +29,26 @@ context value track per consumer · `createComponent` running the body untracked
 | 7 | `<Switch>` / `<Match>`, `<Dynamic>`, `<Portal>` | no n-way choice, no component-as-a-value, no mounting outside the subtree | `solid-control-flow.md` |
 | 8 | ~~`hydrate`, `createUniqueId`~~; resource serialization | `hydrate` and `createUniqueId` done `3309f37` (2026-10-13): a served page's nodes become the live tree by position, without Solid's `_hk` keys (`docs/RENDER-MODEL.md` "Hydration"; `tests/render/hydrate.test.ms`, `tests/browser/hydrate.test.ms`, `tests/edge/run.sh`). Still missing: a resource's value does not travel from the server to the client, which waits on row 2 | `solid-hydrate.md` |
 
+## Taken from Solid 2.0: ref directive factories
+
+Reference: Solid `2.0.0-rc.15`, `packages/solid/CHEATSHEET.md` "Refs and directives",
+`documentation/solid-2.0/MIGRATION.md` (`use:` removed, ref factories, array refs),
+`.changeset/refs-after-attributes.md` (a ref runs after attributes and spread, before children);
+dom-expressions `dom-next`, `packages/runtime/src/client.js` `ref` and `applyRef`, and
+`packages/babel-plugin-jsx/src/dom/element.ts` (the `ref` branch of the attribute loop).
+
+- `ref={fn}`, `ref={[a, b]}` and `ref={tooltip(opts)}` on elements and on components that forward
+  `ref`. The array is composed at compile time (`composeRefs`), so a component still sees one
+  function; nested arrays and `null` entries flatten away, an empty array is an error, and only a
+  literal array is taken: an array held in a variable is a type error. Solid flattens at runtime.
+- Two phases, as in Solid: the factory call is the setup phase, in the mounting owner and
+  untracked (`setupRef`), so its effects and `onCleanup` belong to the component; the function it
+  returns is the apply phase, untracked (`applyRef`). Solid runs the apply phase with no owner;
+  Neon keeps the mounting owner, which the in-tree `StatusBar` and `WebView` refs rely on. `docs/RENDER-MODEL.md`
+  "Lifecycle" gives the order against attributes and children.
+- `use:` is not adopted: Solid 2.0 removed it too.
+- Divergence from Solid: `<Void ref>` receives a `VoidAreaHandle` (`docs/VISION.md`), not a node.
+
 ## Deliberately not taken
 
 - `children()` / `Children.map` / `cloneElement` — the one-NeonNode arc (2026-09-19) settled that

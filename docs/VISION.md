@@ -256,6 +256,15 @@ or its laziest.
 - **What a game needs is exposed through Neon, not around it:** raw and relative pointer input,
   pointer lock, exclusive fullscreen, vsync mode. Input reaches a Void area without a per-event
   allocation at high polling rates.
+  Today `<Void ref={handle => …}>` hands the app a `VoidAreaHandle`
+  (`src/render/voidAreaHandle.ms`): pixel size, scale, `onResize`, `requestFrame`, raw `onKey`
+  (scancode, mods, consumed mods, unshifted, text, action), `onText`, `onPreedit` (the cursor is
+  Ion's UTF-8 byte offset, passed through), `onPointer` (button, motion, wheel, leave, in window
+  pixels as Ion reports them), `onFocus` and `setImeRect`. Subscriptions end with the `<Void>`'s
+  owner, handle subscribers see each event before Neon routes it to the area's focused node, and an
+  Ion window host reaches the area's `Scene2D` through `areaScene(handle)`
+  (`src/platform/ion/window.ms`, `examples/voidDraw.ms`). Relative pointer, pointer lock,
+  exclusive fullscreen and vsync mode are not in it, and the allocation per event is not measured.
 - **Ion holds no element tree.** A window is an empty root; a Void visual, a webview and native views
   are all nodes the app parents in it, positions and hit-tests itself, forwarding a pointer event to
   a webview with `ionWebviewForwardPointer`. Ion's frame clock is per window: `FrameOnDemand` or
