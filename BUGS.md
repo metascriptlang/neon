@@ -164,11 +164,12 @@ and the invariants that outlived them were moved to the head of the test that pi
   `~/metascript/.inbox/compiler/2026-10-11-destructured-local-in-attribute-arrow-read-by-nested-macro.md`.
   Parked at those two files.
 
-- **PARKED 2026-10-14 — `createStyles` takes no breakpoint table.** The surface approved on
-  2026-10-14 is `createStyles({ sidebar: { when: { wide: { … } } } }, screen)` beside every existing
-  one-argument call, and a macro cannot take an optional or rest parameter or share its name with a
-  second macro (msc v0.3.3 `58df78b3f`). Card
-  `~/metascript/.inbox/compiler/2026-10-14-a-macro-cannot-take-an-optional-or-rest-parameter.md`.
+- **PARKED 2026-10-14 — `createStyles` takes no breakpoint table.** Decided 2026-10-15 (StyleX's
+  form): `export const screen = createBreakpoints({ wide: 900 })`, and a sheet names it as a key,
+  `createStyles({ sidebar: { when: { [screen.wide]: { … } } } })`, so the checker sees `screen.wide`
+  and the macro reads 900 at expansion. A computed key reaches the macro as the text `__computed__`
+  with its expression gone, and ordinary code stores it under that name (msc v0.3.3). Card
+  `~/metascript/.inbox/compiler/2026-10-14-computed-object-key-becomes-literal-computed.md`.
   Parked at `src/macros/ui/style.ms` `createStyles`, still one argument; the class channel the
   breakpoint rules need is in (`bindStyleAll`).
 
