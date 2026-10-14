@@ -9,15 +9,6 @@
 //
 // Component tags, Show and For do NOT flatten: their structure changes at
 // runtime, so they stay runtime calls through createComponent.
-//
-// The emitted code calls bindText / bindAttr / createComponent / mountChild /
-// place / text / dynText by name and types its params as Host / HostNode, so all
-// of those must be in scope at the call site. Attr classification: string
-// literal → setAttr once, on* → addEvent, any other expr → one createEffect
-// around setAttr (1 dynamic spot = 1 effect); a non-literal style splits by
-// shape: object literal → static fields once + bindStyleProp per reactive field,
-// layer array → compile-time merge or layerStyles (a reactive layer or field is
-// rejected), reactive expr → bindStyleAll, anything else → applyStaticStyle.
 
 import { Node, NodeKind, DeclKind, NodeFlag, childCount, childAt, bindSym, getType, getTypeImpl, getImpl } from "std/meta";
 import { isReactiveExpr, isEventName, peelHidden } from "./reactive";
@@ -408,24 +399,55 @@ export macro element(node: Node): Node {
 			return;
 		}
 		let allStatic = true;
+		let reactive = false;
+		const read: Node[] = [];
 		for (const layer of sv.elements) {
 			if (layer.kind !== NodeKind.ObjectLiteral) {
-				if (isReactiveExpr(layer) || isAccessorTyped(layer)) {
-					errNodes.push(layer);
-					errMsgs.push("a reactive style layer is not supported yet — merge it in a whole-style expression instead: style={layerStyles([base, pick()])}");
-					return;
+				if (isAccessorTyped(layer)) {
+					reactive = true;
+					read.push({ kind: NodeKind.CallExpr, line: layer.line, column: layer.column, callee: layer, arguments: [] });
+				} else {
+					if (isReactiveExpr(layer)) { reactive = true; }
+					read.push(layer);
 				}
 				allStatic = false;
 				continue;
 			}
+			const fields: Node[] = [];
 			for (let i = 0; i < layer.keys.length; i = i + 1) {
 				const fv = layer.properties[i];
-				if (isReactiveExpr(fv) || isAccessorTyped(fv)) {
-					errNodes.push(fv);
-					errMsgs.push("a reactive style field inside a layer array is not supported yet — pass it in a plain object style: style={{ " + layer.keys[i] + ": ... }}");
-					return;
+				if (isAccessorTyped(fv)) {
+					reactive = true;
+					fields.push({ kind: NodeKind.CallExpr, line: fv.line, column: fv.column, callee: fv, arguments: [] });
+				} else {
+					if (isReactiveExpr(fv)) { reactive = true; }
+					fields.push(fv);
 				}
 			}
+			read.push({ kind: NodeKind.ObjectLiteral, line: layer.line, column: layer.column, properties: fields, keys: layer.keys });
+		}
+		if (reactive) {
+			into.push({
+				kind: NodeKind.ExprStmt, line: ln, column: col,
+				expr: {
+					kind: NodeKind.CallExpr, line: ln, column: col,
+					callee: { kind: NodeKind.Identifier, line: ln, column: col, name: "bindStyleAll" },
+					arguments: [
+						{ kind: NodeKind.Identifier, line: ln, column: col, name: "host" },
+						{ kind: NodeKind.Identifier, line: ln, column: col, name: nodeVar },
+						{
+							kind: NodeKind.ArrowFunction, line: ln, column: col,
+							arrowParams: [], arrowParamTypes: [], arrowFlags: "", arrowReturnType: "",
+							arrowBody: {
+								kind: NodeKind.CallExpr, line: ln, column: col,
+								callee: { kind: NodeKind.Identifier, line: ln, column: col, name: "layerStyles" },
+								arguments: [{ kind: NodeKind.ArrayLiteral, line: sv.line, column: sv.column, elements: read }],
+							},
+						},
+					],
+				},
+			});
+			return;
 		}
 		if (!allStatic) {
 			pushStyleConst(into, {

@@ -777,8 +777,6 @@ test "{props.children} carrying a node with live text tracks the signal" {
 	assert mockToString(directRoot) === "<root><section title=\"t\"><p>hi binh</p></section></root>", "golden after set: " + mockToString(directRoot);
 }
 
-// ---- Lát 0.8: a reactive layer is rejected; the escape hatch is a whole-style layerStyles call ----
-
 test "layerStyles over a reactive layer as a whole-style expression tracks the signal" {
 	const [h, setH] = createSignal<number>(5);
 	const pick = (): Style => { const s: Style = { height: h() }; return s; };
@@ -789,6 +787,54 @@ test "layerStyles over a reactive layer as a whole-style expression tracks the s
 	assert cssAt(directRoot, 0) === "width:200px;height:5px;", "golden: " + cssAt(directRoot, 0);
 	setH(9);
 	assert cssAt(directRoot, 0) === "width:200px;height:9px;", "golden after set: " + cssAt(directRoot, 0);
+}
+
+test "a reactive field in a layer over a sheet entry tracks the signal — template tier" {
+	const [h, setH] = createSignal<number>(5);
+	const host = mockHost();
+	const directRoot = mockNode("root");
+	const mount = element(<div style={[layerSheet.box, { height: h() }]}><p>a</p></div>);
+	mount(host, directRoot as unknown as HostNode, null);
+	assert cssAt(directRoot, 0) === "width:200px;height:5px;", "golden: " + cssAt(directRoot, 0);
+	setH(9);
+	assert cssAt(directRoot, 0) === "width:200px;height:9px;", "golden after set: " + cssAt(directRoot, 0);
+}
+
+test "a reactive field in the first literal layer stays under a later static one — flat tier" {
+	const [w, setW] = createSignal<number>(1);
+	const [n, setN] = createSignal<number>(1);
+	const host = mockHost();
+	const directRoot = mockNode("root");
+	const mount = element(<div style={[{ width: w(), height: 5 }, { height: 2 }]}><Gauge count={n()} label="g" /></div>);
+	mount(host, directRoot as unknown as HostNode, null);
+	assert cssAt(directRoot, 0) === "width:1px;height:2px;", "golden: " + cssAt(directRoot, 0);
+	setW(4);
+	assert cssAt(directRoot, 0) === "width:4px;height:2px;", "golden after set: " + cssAt(directRoot, 0);
+}
+
+test "a reactive layer call tracks the signal without a layerStyles wrapper" {
+	const [h, setH] = createSignal<number>(5);
+	const pick = (): Style => { const s: Style = { height: h() }; return s; };
+	const host = mockHost();
+	const directRoot = mockNode("root");
+	const mount = element(<div style={[layerSheet.box, pick()]}><p>a</p></div>);
+	mount(host, directRoot as unknown as HostNode, null);
+	assert cssAt(directRoot, 0) === "width:200px;height:5px;", "golden: " + cssAt(directRoot, 0);
+	setH(9);
+	assert cssAt(directRoot, 0) === "width:200px;height:9px;", "golden after set: " + cssAt(directRoot, 0);
+}
+
+test "an accessor layer and an accessor field are read inside the layering effect" {
+	const [h, setH] = createSignal<number>(5);
+	const acc = createMemo((): Style => { const s: Style = { height: h() }; return s; });
+	const op = createMemo((): number => h() / 10);
+	const host = mockHost();
+	const directRoot = mockNode("root");
+	const mount = element(<div style={[layerSheet.box, acc, { opacity: op }]}><p>a</p></div>);
+	mount(host, directRoot as unknown as HostNode, null);
+	assert cssAt(directRoot, 0) === "width:200px;height:5px;opacity:0.5;", "golden: " + cssAt(directRoot, 0);
+	setH(9);
+	assert cssAt(directRoot, 0) === "width:200px;height:9px;opacity:0.9;", "golden after set: " + cssAt(directRoot, 0);
 }
 
 // ---- Lát 0.9: whitespace-only text around a single child does not change the wrapping ----
