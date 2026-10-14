@@ -1,6 +1,7 @@
 import { createBindingEffect } from "../core/effect";
+import { untrack } from "../core/signal";
 import { Style, StyleValue, setStyleField } from "./style";
-import { Host, HostNode, RefFn } from "./hostTypes";
+import { Host, HostNode } from "./hostTypes";
 import { isServer } from "./environment";
 
 // A dynamic spot re-runs whenever a source signal changes, but a derived expression
@@ -73,7 +74,19 @@ export function bindStyleAll(host: Host, node: HostNode, get: () => Style): void
 	});
 }
 
-export function applyRef(node: HostNode, fn: RefFn): void {
+export function setupRef<T>(setup: () => T): T {
+	return untrack(setup);
+}
+
+export function applyRef<T>(target: T, fn: (target: T) => void): void {
 	if (isServer()) { return; }
-	fn(node);
+	untrack((): void => { fn(target); });
+}
+
+export function composeRefs<T>(fns: (((target: T) => void) | null)[]): (target: T) => void {
+	return (target: T): void => {
+		for (const fn of fns) {
+			if (fn !== null) { (fn as (target: T) => void)(target); }
+		}
+	};
 }

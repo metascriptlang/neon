@@ -11,7 +11,7 @@ import { beginClaim, endClaim } from "./claim";
 import { Dispose } from "../core/types";
 
 export { Host, HostNode, NeonNode, VoidArea } from "./hostTypes";
-export { bindText, writeAttr, bindAttr, bindStyleProp, applyStaticStyle, bindStyleAll, applyRef } from "./bind";
+export { bindText, writeAttr, bindAttr, bindStyleProp, applyStaticStyle, bindStyleAll, applyRef, setupRef, composeRefs } from "./bind";
 
 export function render(node: NeonNode, host: Host, parent: HostNode, id: string | null = null): Dispose {
 	return createRoot((dispose) => {

@@ -30,6 +30,8 @@ expect_reject tests/macros/reactiveLayerFieldRejected.ms "a reactive style field
 expect_reject tests/macros/reactiveLayerFieldMixedRejected.ms "a reactive style field inside a layer array is not supported yet"
 expect_reject tests/macros/refLiteralRejected.ms "arg 1: got string, expected function"
 expect_reject tests/macros/refLiteralRootRejected.ms "arg 1: got string, expected function"
+expect_reject tests/macros/refEmptyArrayRejected.ms "a ref array needs at least one ref"
+expect_reject tests/macros/refArrayEntryRejected.ms "Type .string. is not assignable to type .function . null."
 expect_reject tests/macros/reactiveLayerRejected.ms "a reactive style layer is not supported yet"
 expect_reject tests/macros/accessorLayerRejected.ms "a reactive style layer is not supported yet"
 expect_reject tests/macros/optChangeTextTemplateRejected.ms "a nullable onChangeText handler is not supported yet"

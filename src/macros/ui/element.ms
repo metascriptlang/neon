@@ -362,6 +362,60 @@ export macro element(node: Node): Node {
 		args.push({ kind: NodeKind.Identifier, line: ln, column: col, name: name });
 		pushIfPresent(into, name, value, { kind: NodeKind.CallExpr, line: ln, column: col, callee: callee, arguments: args }, otherwise, ln, col);
 	}
+	function flattenRefs(v: Node, into: Node[]): void {
+		if (v.kind === NodeKind.ArrayLiteral) {
+			for (const e of v.elements) { flattenRefs(e, into); }
+		} else if (v.kind !== NodeKind.NullLiteral) {
+			into.push(v);
+		}
+	}
+	function setupRefCall(inner: Node): Node {
+		return {
+			kind: NodeKind.CallExpr, line: inner.line, column: inner.column,
+			callee: ident("setupRef", inner.line, inner.column),
+			arguments: [{
+				kind: NodeKind.ArrowFunction, line: inner.line, column: inner.column,
+				arrowParams: [], arrowParamTypes: [], arrowFlags: "", arrowReturnType: "",
+				arrowBody: inner,
+			}],
+		};
+	}
+	// A ref array is composed at compile time (nested arrays and null entries
+	// flatten away); a call is a directive factory, so its setup runs here, in the
+	// current owner and untracked, while the function it returns is the apply phase.
+	function refSource(v: Node): Node {
+		if (v.kind === NodeKind.ArrayLiteral) {
+			let fns: Node[] = [];
+			flattenRefs(v, fns);
+			if (fns.length === 0) {
+				errNodes.push(v);
+				errMsgs.push("a ref array needs at least one ref: ref={[a, b]}");
+				return v;
+			}
+			return setupRefCall({
+				kind: NodeKind.CallExpr, line: v.line, column: v.column,
+				callee: ident("composeRefs", v.line, v.column),
+				arguments: [{ kind: NodeKind.ArrayLiteral, line: v.line, column: v.column, elements: fns }],
+			});
+		}
+		if (v.kind === NodeKind.CallExpr) { return setupRefCall(v); }
+		return v;
+	}
+	function pushRef(into: Node[], elVar: string, v: Node, ln: int32, col: int32): void {
+		const source = refSource(v);
+		if (v.kind !== NodeKind.ArrayLiteral && presentKind(v) !== "") {
+			pushWhenPresent(into, ident("applyRef", ln, col), [ident(elVar, ln, col)], source, [], ln, col);
+		} else {
+			into.push({
+				kind: NodeKind.ExprStmt, line: ln, column: col,
+				expr: {
+					kind: NodeKind.CallExpr, line: ln, column: col,
+					callee: ident("applyRef", ln, col),
+					arguments: [ident(elVar, ln, col), source],
+				},
+			});
+		}
+	}
 	function pushAttrWhenPresent(into: Node[], elName: string, attrName: string, value: Node, otherwise: Node[], ln: int32, col: int32): void {
 		const name = "_o" + optIdx.toString();
 		optIdx = optIdx + 1;
@@ -734,6 +788,7 @@ export macro element(node: Node): Node {
 				if (a.jsxAttrName === "style" && given.kind === NodeKind.ArrayLiteral) {
 					given = { kind: NodeKind.CallExpr, line: a.line, column: a.column, callee: { kind: NodeKind.Identifier, line: a.line, column: a.column, name: "layerStyles" }, arguments: [given] };
 				}
+				if (a.jsxAttrName === "ref") { given = refSource(given); }
 				if (reactive === 0 || isAccessorTyped(given)) {
 					values.push(nodeSlot(slot as Node) ? lowerNodeSlot(given) : given);
 				} else {
@@ -1005,6 +1060,8 @@ export macro element(node: Node): Node {
 				}
 			}
 
+			if (wRef !== null) { pushRef(wStmts, elVar, wRef as Node, el.line, el.column); }
+
 			let lastVar = "";
 			let lastIdx = 0 - 1;
 			let slot = 0;
@@ -1077,19 +1134,6 @@ export macro element(node: Node): Node {
 					}
 				}
 				slot = slot + 1;
-			}
-
-			if (wRef !== null && presentKind(wRef as Node) !== "") {
-				pushWhenPresent(wStmts, ident("applyRef", el.line, el.column), [ident(elVar, el.line, el.column)], wRef as Node, [], el.line, el.column);
-			} else if (wRef !== null) {
-				wStmts.push({
-					kind: NodeKind.ExprStmt, line: el.line, column: el.column,
-					expr: {
-						kind: NodeKind.CallExpr, line: el.line, column: el.column,
-						callee: ident("applyRef", el.line, el.column),
-						arguments: [ident(elVar, el.line, el.column), wRef as Node],
-					},
-				});
 			}
 		}
 
@@ -1367,20 +1411,9 @@ export macro element(node: Node): Node {
 					}
 				}
 
-				emitKids(el.jsxChildren, rName, false);
+				if (refFor !== null) { pushRef(stmts, rName, refFor as Node, el.line, el.column); }
 
-				if (refFor !== null && presentKind(refFor as Node) !== "") {
-					pushWhenPresent(stmts, { kind: NodeKind.Identifier, line: el.line, column: el.column, name: "applyRef" }, [{ kind: NodeKind.Identifier, line: el.line, column: el.column, name: rName }], refFor as Node, [], el.line, el.column);
-				} else if (refFor !== null) {
-					stmts.push({
-						kind: NodeKind.ExprStmt, line: el.line, column: el.column,
-						expr: {
-							kind: NodeKind.CallExpr, line: el.line, column: el.column,
-							callee: { kind: NodeKind.Identifier, line: el.line, column: el.column, name: "applyRef" },
-							arguments: [{ kind: NodeKind.Identifier, line: el.line, column: el.column, name: rName }, refFor as Node],
-						},
-					});
-				}
+				emitKids(el.jsxChildren, rName, false);
 
 				pushInsert(parentVar, ident(rName, el.line, el.column), atRoot, el.line, el.column);
 			}

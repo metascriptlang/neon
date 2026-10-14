@@ -18,7 +18,7 @@ export { renderToString } from "./render/ssr";
 export { createComponent } from "./render/component";
 export { Accessor, accessor } from "./core/signal";
 export { Template, createTemplate, instantiate, mountTemplate, childOf, siblingOf } from "./render/template";
-export { render, bindText, bindAttr, writeAttr, bindStyleAll, bindStyleProp, applyStaticStyle, applyRef } from "./render/host";
+export { render, bindText, bindAttr, writeAttr, bindStyleAll, bindStyleProp, applyStaticStyle, applyRef, setupRef, composeRefs } from "./render/host";
 export { Row, makeRow, rowOf, place, mountAt, moveRow, removeRow, reconcileArrays } from "./render/reconcile";
 export { Host, HostNode, NeonNode } from "./render/hostTypes";
 export { Style, StyleValue, emptyStyle, mergeStyle, layerStyles } from "./render/style";
