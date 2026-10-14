@@ -466,8 +466,10 @@ Attr classification: a string literal is one `setAttr`, `on*` is `addEvent`, any
 expression is one `bindAttr` effect per spot (a `null` value removes the attribute).
 The typed style channel splits by shape: an object literal writes its static fields
 once and plants `bindStyleProp` per reactive field; a layer array merges at compile
-time or goes through `layerStyles` (a reactive layer or field is rejected); a reactive
-expression is `bindStyleAll`; anything else is `applyStaticStyle`. A `ref` runs
+time, goes through `layerStyles` once, or, when a layer or a field is reactive (an
+accessor is called), through one `bindStyleAll` over `layerStyles`, the lowering a
+component's `style` array takes too; a reactive expression is `bindStyleAll`; anything
+else is `applyStaticStyle`. A `ref` runs
 innermost-first, before the root is placed (React's order).
 
 **Template tier.** A pure subtree has a static skeleton, so it is built once and
