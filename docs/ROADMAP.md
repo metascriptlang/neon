@@ -280,7 +280,7 @@ slide-up and transparent-modal fade on `Animated`, a drawer slide, an iOS left-e
 drawer edge swipe through `PanResponder` (`tests/navigation/transition.test.ms`, 7 tests on the
 manual frame clock; Chrome checks a pushed screen moves and settles; on the simulator
 `NavigationUITests` swipes back from the left edge and swipes the drawer open). Provisional choices
-are rows V1–V11 of `WORKAROUND.md`. Not verified: gestures on a physical phone, url
+are rows V2–V11 of `WORKAROUND.md`. Not verified: gestures on a physical phone, url
 events on a device (P7), hardware back on a device, browser history.
 
 Device and storage modules (`wt/rn-device`, msc `0d83c4867`, 2026-10-08): the first hand-ported
