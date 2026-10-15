@@ -2,6 +2,7 @@ import { createSignal, untrack, Accessor } from "../../src/core/signal";
 import { createMemo } from "../../src/core/memo";
 import { createEffect } from "../../src/core/effect";
 import { createRoot } from "../../src/core/owner";
+import { Cleanup } from "../../src/core/types";
 import { flush } from "../../src/core/runtime";
 
 test "signal creation has correct initial value" {
@@ -19,10 +20,10 @@ test "effect runs on creation and on signal update" {
 	const [count, setCount] = createSignal(0);
 	let effectRuns = 0;
 
-	createEffect(() => {
-		count(); // Subscribe
-		effectRuns++;
-	});
+	createEffect<int32>(
+		(p: int32 | null): int32 => count(),
+		(v: int32, p: int32 | null): Cleanup | null => { effectRuns++; return null; },
+	);
 
 	setCount(1);
 	assert effectRuns === 2;
@@ -112,7 +113,7 @@ test "equals compares the next value with the staged one" {
 test "equals false wakes a subscriber on every write" {
 	const [x, setX] = createSignal(1, { equals: false });
 	let runs = 0;
-	createEffect(() => { x(); runs += 1; });
+	createEffect<int32>((p: int32 | null): int32 => x(), (v: int32, p: int32 | null): Cleanup | null => { runs += 1; return null; });
 	setX(1);
 	setX(1);
 	assert runs === 3, "ran " + runs.toString();
@@ -139,7 +140,14 @@ test "untrack reads without subscribing" {
 	const [x, setX] = createSignal(1);
 	const [y, setY] = createSignal(1);
 	let runs = 0;
-	createEffect(() => { x(); untrack(() => y()); runs += 1; });
+	createEffect<int32>(
+		(p: int32 | null): int32 => {
+			const seen = x();
+			untrack(() => y());
+			return seen;
+		},
+		(v: int32, p: int32 | null): Cleanup | null => { runs += 1; return null; },
+	);
 	setY(2);
 	assert runs === 1, "y is not a dependency";
 	setX(2);
@@ -149,7 +157,7 @@ test "untrack reads without subscribing" {
 test "an effect may write a plain signal" {
 	const [x, setX] = createSignal(1);
 	createRoot((d) => {
-		createEffect(() => { setX(7); });
+		createEffect<boolean>((p: boolean | null): boolean => true, (v: boolean, p: boolean | null): Cleanup | null => { setX(7); return null; });
 		flush();
 		d();
 	});

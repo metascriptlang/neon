@@ -1,4 +1,4 @@
-export type EffectFn = () => void;
+export type Cleanup = () => void;
 export type Dispose = () => void;
 export type ErrorHandler = (err: Error) => void;
 
@@ -62,6 +62,8 @@ export interface Computation extends Source {
 	nextHeap: Computation | null;
 	prevHeap: Computation | null;
 	run: ((self: Computation, create: boolean) => int32) | null;
+	apply: ((self: Computation) => void) | null;
+	cleanup: Cleanup | null;
 	type: int32;
 	unobserved: (() => void) | null;
 
@@ -70,7 +72,7 @@ export interface Computation extends Source {
 	firstChild: Computation | null;
 	nextSibling: Computation | null;
 	prevSibling: Computation | null;
-	disposal: EffectFn[] | null;
+	disposal: Cleanup[] | null;
 	context: ContextEntry | null;
 	handler: ErrorHandler | null;
 	id: string | null;

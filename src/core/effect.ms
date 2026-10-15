@@ -1,35 +1,123 @@
-import { Computation, Dispose, EFFECT_RENDER, EFFECT_USER, RUN_UNCHANGED } from "./types";
-import { createComputed, startEffect, queueEffect, disposeNode, onServer } from "./runtime";
-import { untrack } from "./signal";
+import { Computation, Cleanup, EFFECT_RENDER, EFFECT_USER, RUN_UNCHANGED } from "./types";
+import { createEffectNode, startEffect, isDisposed, onServer, createOwner } from "./runtime";
+import { runWithOwner } from "./owner";
+import { Cell } from "./signal";
 
-function noop(): void {}
+export interface EffectOptions {
+	defer?: boolean;
+	transparent?: boolean;
+}
 
-function effectRun(fn: () => void): (self: Computation, create: boolean) => int32 {
+export interface EffectBundle<T> {
+	effect: (value: T, prev: T | null) => Cleanup | null;
+	error: (err: Error, cleanup: Cleanup) => void;
+}
+
+class EffectState<T> {
+	latest: Cell<T> | null = null;
+	applied: T | null = null;
+	failure: Error | null = null;
+}
+
+function computePhase<T>(state: EffectState<T>, compute: (prev: T | null) => T, catches: boolean): (self: Computation, create: boolean) => int32 {
+	const step = (): void => {
+		const held = state.latest;
+		if (held === null) {
+			state.latest = new Cell<T>(compute(null));
+		} else {
+			held.value = compute(held.value);
+		}
+	};
 	return (self: Computation, create: boolean): int32 => {
-		fn();
+		if (!catches) {
+			step();
+			return RUN_UNCHANGED;
+		}
+		try {
+			step();
+			state.failure = null;
+		} catch (e) {
+			state.failure = e;
+		}
 		return RUN_UNCHANGED;
 	};
 }
 
-export function createEffect(fn: () => void): Dispose {
-	if (onServer()) { return noop; }
-	const node = createComputed(effectRun(fn), EFFECT_USER, true, false, null);
-	queueEffect(node);
-	return () => { disposeNode(node); };
+function effectPhase<T>(
+	state: EffectState<T>,
+	effect: (value: T, prev: T | null) => Cleanup | null,
+	onError: ((err: Error, cleanup: Cleanup) => void) | null,
+): (self: Computation) => void {
+	return (self: Computation): void => {
+		const held = state.latest;
+		const failure = state.failure;
+		if (failure !== null) {
+			if (held !== null) { state.applied = held.value; }
+			if (onError === null) {
+				console.error(failure);
+				return;
+			}
+			onError(failure, (): void => {
+				const last = self.cleanup;
+				self.cleanup = null;
+				if (last !== null) { last(); }
+			});
+			return;
+		}
+		if (held === null) { throw new Error("effect applied before its compute produced a value"); }
+		const prev = state.applied;
+		state.applied = held.value;
+		const last = self.cleanup;
+		self.cleanup = null;
+		if (last !== null) { last(); }
+		const next = effect(held.value, prev);
+		if (isDisposed(self)) {
+			if (next !== null) { next(); }
+		} else {
+			self.cleanup = next;
+		}
+	};
 }
 
-export function onMount(fn: () => void): void {
-	createEffect((): void => { untrack(fn); });
+function serverEffect<T>(compute: (prev: T | null) => T, effect: ((value: T, prev: T | null) => Cleanup | null) | null, defer: boolean): void {
+	const owner = createOwner();
+	const value = runWithOwner(owner, (): T => compute(null));
+	if (effect !== null && !defer) { effect(value, null); }
 }
 
-export function createRenderEffect(fn: () => void): Dispose {
-	const node = createComputed(effectRun(fn), EFFECT_RENDER, true, false, null);
-	startEffect(node);
-	return () => { disposeNode(node); };
+export function createEffect<T>(
+	compute: (prev: T | null) => T,
+	effect: ((value: T, prev: T | null) => Cleanup | null) | EffectBundle<T>,
+	options?: EffectOptions,
+): void {
+	const transparent = options !== undefined && options.transparent === true;
+	const defer = options !== undefined && options.defer === true;
+	if (onServer()) {
+		serverEffect<T>(compute, null, defer);
+		return;
+	}
+	const state = new EffectState<T>();
+	let node: Computation;
+	if (typeof effect === "function") {
+		node = createEffectNode(computePhase<T>(state, compute, true), effectPhase<T>(state, effect, null), EFFECT_USER, transparent);
+	} else {
+		node = createEffectNode(computePhase<T>(state, compute, true), effectPhase<T>(state, effect.effect, effect.error), EFFECT_USER, transparent);
+	}
+	startEffect(node, defer);
 }
 
-export function createBindingEffect(fn: () => void): Dispose {
-	const node = createComputed(effectRun(fn), EFFECT_RENDER, true, true, null);
-	startEffect(node);
-	return () => { disposeNode(node); };
+export function createRenderEffect<T>(
+	compute: (prev: T | null) => T,
+	effect: (value: T, prev: T | null) => Cleanup | null,
+	options?: EffectOptions,
+): void {
+	const transparent = options !== undefined && options.transparent === true;
+	const defer = options !== undefined && options.defer === true;
+	if (onServer()) {
+		serverEffect<T>(compute, effect, defer);
+		return;
+	}
+	const state = new EffectState<T>();
+	const node = createEffectNode(computePhase<T>(state, compute, false), effectPhase<T>(state, effect, null), EFFECT_RENDER, transparent);
+	startEffect(node, defer);
 }

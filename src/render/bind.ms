@@ -1,4 +1,5 @@
-import { createBindingEffect } from "../core/effect";
+import { createRenderEffect } from "../core/effect";
+import { Cleanup } from "../core/types";
 import { untrack } from "../core/signal";
 import { getOwner } from "../core/runtime";
 import { Style, StyleValue, setStyleField, emptyStyle } from "./style";
@@ -17,13 +18,17 @@ export function bindText(host: Host, node: HostNode, get: () => string): void {
 function followText(host: Host, node: HostNode, get: () => string): void {
 	let prev = "";
 	let bound = false;
-	createBindingEffect(() => {
-		const v = get();
-		if (bound && v === prev) { return; }
-		bound = true;
-		prev = v;
-		host.setText(node, v);
-	});
+	createRenderEffect<string>(
+		(last: string | null): string => get(),
+		(v: string, before: string | null): Cleanup | null => {
+			if (bound && v === prev) { return null; }
+			bound = true;
+			prev = v;
+			host.setText(node, v);
+			return null;
+		},
+		{ transparent: true },
+	);
 }
 
 export function writeAttr(host: Host, node: HostNode, name: string, value: string | null): void {
@@ -42,13 +47,17 @@ export function bindAttr(host: Host, node: HostNode, name: string, get: () => st
 function followAttr(host: Host, node: HostNode, name: string, get: () => string | null): void {
 	let prev: string | null = null;
 	let bound = false;
-	createBindingEffect(() => {
-		const v = get();
-		if (bound && v === prev) { return; }
-		bound = true;
-		prev = v;
-		writeAttr(host, node, name, v);
-	});
+	createRenderEffect<string | null>(
+		(last: string | null): string | null => get(),
+		(v: string | null, before: string | null): Cleanup | null => {
+			if (bound && v === prev) { return null; }
+			bound = true;
+			prev = v;
+			writeAttr(host, node, name, v);
+			return null;
+		},
+		{ transparent: true },
+	);
 }
 
 function writeStyleProp(host: Host, node: HostNode, own: Style, name: string, v: StyleValue): void {
@@ -66,13 +75,17 @@ export function bindStyleProp(host: Host, node: HostNode, own: Style, name: stri
 function followStyleProp(host: Host, node: HostNode, own: Style, name: string, get: () => StyleValue): void {
 	let prev: StyleValue = null;
 	let bound = false;
-	createBindingEffect(() => {
-		const v = get();
-		if (bound && v === prev) { return; }
-		bound = true;
-		prev = v;
-		writeStyleProp(host, node, own, name, v);
-	});
+	createRenderEffect<StyleValue>(
+		(last: StyleValue): StyleValue => get(),
+		(v: StyleValue, before: StyleValue): Cleanup | null => {
+			if (bound && v === prev) { return null; }
+			bound = true;
+			prev = v;
+			writeStyleProp(host, node, own, name, v);
+			return null;
+		},
+		{ transparent: true },
+	);
 }
 
 export function applyStaticStyle(host: Host, node: HostNode, s: Style): void {
@@ -100,19 +113,23 @@ function followStyleAll(host: Host, node: HostNode, get: () => Style): void {
 	const setCls = host.setStyleClass;
 	let classed = false;
 	let inlined = false;
-	createBindingEffect(() => {
-		const s = get();
-		const id = s.cssId;
-		if (id !== null && setCls !== null) {
-			if (inlined) { host.setStyle(node, emptyStyle()); inlined = false; }
-			setCls(node, id as string, s.css === null ? "" : s.css as string);
-			classed = true;
-			return;
-		}
-		if (classed && setCls !== null) { setCls(node, "", ""); classed = false; }
-		host.setStyle(node, s);
-		inlined = true;
-	});
+	createRenderEffect<Style>(
+		(last: Style | null): Style => get(),
+		(s: Style, before: Style | null): Cleanup | null => {
+			const id = s.cssId;
+			if (id !== null && setCls !== null) {
+				if (inlined) { host.setStyle(node, emptyStyle()); inlined = false; }
+				setCls(node, id as string, s.css === null ? "" : s.css as string);
+				classed = true;
+				return null;
+			}
+			if (classed && setCls !== null) { setCls(node, "", ""); classed = false; }
+			host.setStyle(node, s);
+			inlined = true;
+			return null;
+		},
+		{ transparent: true },
+	);
 }
 
 export function setupRef<T>(setup: () => T): T {

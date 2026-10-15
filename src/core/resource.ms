@@ -1,6 +1,7 @@
 import { Accessor, Signal, accessor, createSignal, untrack } from "./signal";
 import { createRenderEffect } from "./effect";
 import { onCleanup } from "./cleanup";
+import { Cleanup } from "./types";
 
 export enum ResourceState {
 	Unresolved,
@@ -55,10 +56,13 @@ export function createResource<S, T, E>(source: () => S, fetcher: (source: S) =>
 		});
 	}
 
-	createRenderEffect((): void => {
-		const input = source();
-		untrack((): void => { load(input); });
-	});
+	createRenderEffect<S>(
+		(prev: S | null): S => source(),
+		(input: S, prev: S | null): Cleanup | null => {
+			load(input);
+			return null;
+		},
+	);
 
 	const loading = accessor((): boolean => {
 		const s = state();

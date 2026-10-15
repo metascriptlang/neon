@@ -3,12 +3,13 @@ import { createSignal, Accessor } from "../../src/core/signal";
 import { createEffect, createRenderEffect } from "../../src/core/effect";
 import { createRoot } from "../../src/core/owner";
 import { flush } from "../../src/core/runtime";
+import { Cleanup } from "../../src/core/types";
 
 test "memo without equals propagates every distinct value" {
 	const [n, setN] = createSignal(1);
 	const m = createMemo<int32>((): int32 => n());
 	let runs = 0;
-	createEffect(() => { m(); runs = runs + 1; });
+	createEffect<int32>((p: int32 | null): int32 => m(), (v: int32, p: int32 | null): Cleanup | null => { runs = runs + 1; return null; });
 	assert runs === 1, "ran once on creation";
 	setN(2);
 	assert runs === 2, "downstream re-ran on change";
@@ -18,7 +19,7 @@ test "memo with truthiness equals collapses truthy to truthy" {
 	const [n, setN] = createSignal(1);
 	const cond = createMemo<int32>((): int32 => n(), { equals: (a: int32, b: int32): boolean => (a !== 0) === (b !== 0) });
 	let runs = 0;
-	createEffect(() => { cond(); runs = runs + 1; });
+	createEffect<int32>((p: int32 | null): int32 => cond(), (v: int32, p: int32 | null): Cleanup | null => { runs = runs + 1; return null; });
 	assert runs === 1, "ran once on creation";
 	setN(2);
 	assert runs === 1, "no downstream re-run when truthiness unchanged";
@@ -139,7 +140,7 @@ test "an observed ownerless memo stays subscribed" {
 		const a = createMemo<int32>((): int32 => { aRuns += 1; return x(); });
 		const b = createMemo<int32>((): int32 => { bRuns += 1; return y(); });
 		const c = createMemo<int32>((): int32 => a() + b());
-		createRenderEffect(() => { value = c(); });
+		createRenderEffect<int32>((p: int32 | null): int32 => c(), (v: int32, p: int32 | null): Cleanup | null => { value = v; return null; });
 	});
 	flush();
 	assert value === 20 && aRuns === 1 && bRuns === 1;
@@ -172,7 +173,7 @@ test "a memo equals skips a value it counts as unchanged" {
 	const a = createMemo<int32>((): int32 => x(), { equals: (prev: int32, next: int32): boolean => prev + 1 === next });
 	let runs = 0;
 	createRoot((d) => {
-		createEffect(() => { a(); runs += 1; });
+		createEffect<int32>((p: int32 | null): int32 => a(), (v: int32, p: int32 | null): Cleanup | null => { runs += 1; return null; });
 	});
 	flush();
 	assert a() === 0 && runs === 1;
@@ -195,7 +196,7 @@ test "a memo with equals false wakes its subscriber on every recompute" {
 	const a = createMemo<int32>((): int32 => { x(); return 7; }, { equals: false });
 	let runs = 0;
 	createRoot((d) => {
-		createEffect(() => { a(); runs += 1; });
+		createEffect<int32>((p: int32 | null): int32 => a(), (v: int32, p: int32 | null): Cleanup | null => { runs += 1; return null; });
 	});
 	flush();
 	assert runs === 1;
@@ -248,7 +249,7 @@ test "a memo reports its previous value to its next compute" {
 		return x();
 	});
 	createRoot((d) => {
-		createEffect(() => { a(); });
+		createEffect<int32>((p: int32 | null): int32 => a(), (v: int32, p: int32 | null): Cleanup | null => null);
 	});
 	flush();
 	assert first, "the first run saw null";
@@ -264,7 +265,7 @@ test "unobserved fires when the last subscriber of a memo goes away" {
 	let dispose: (() => void) | null = null;
 	createRoot((d) => {
 		dispose = d;
-		createRenderEffect(() => { m(); });
+		createRenderEffect<int32>((p: int32 | null): int32 => m(), (v: int32, p: int32 | null): Cleanup | null => null);
 	});
 	flush();
 	assert fired === 0, "an observed memo stays";

@@ -2,6 +2,7 @@ import { createSignal } from "../../src/core/signal";
 import { createMemo } from "../../src/core/memo";
 import { createEffect } from "../../src/core/effect";
 import { createRoot } from "../../src/core/owner";
+import { Cleanup } from "../../src/core/types";
 import { flush } from "../../src/core/runtime";
 
 test "a memo reading a signal and a memo of that signal runs once per write" {
@@ -351,7 +352,7 @@ test "an effect reads the value a memo chain settled on" {
 		const [x, setX] = createSignal(1);
 		const a = createMemo<int32>((): int32 => x() * 2);
 		const b = createMemo<int32>((): int32 => a() + 1);
-		createEffect(() => { seen = b(); });
+		createEffect<int32>((p: int32 | null): int32 => b(), (v: int32, p: int32 | null): Cleanup | null => { seen = v; return null; });
 		flush();
 		assert seen === 3, "got " + seen.toString();
 		setX(5);

@@ -3,8 +3,8 @@ import { createMemo } from "../../src/core/memo";
 import { createEffect, createRenderEffect } from "../../src/core/effect";
 import { createRoot, runWithOwner } from "../../src/core/owner";
 import { onCleanup } from "../../src/core/cleanup";
-import { flush, getOwner } from "../../src/core/runtime";
-import { Computation, Dispose } from "../../src/core/types";
+import { flush, getOwner, disposeNode } from "../../src/core/runtime";
+import { Computation, Dispose, Cleanup } from "../../src/core/types";
 
 function childrenOf(owner: Computation): int32 {
 	let n: int32 = 0;
@@ -85,7 +85,7 @@ test "a cleanup that disposes its root during a memo recompute runs once" {
 			}
 			return current;
 		});
-		createEffect(() => { memo(); });
+		createEffect<boolean>((p: boolean | null): boolean => { memo(); return true; }, (v: boolean, p: boolean | null): Cleanup | null => null);
 	});
 	flush();
 	setVersion(1);
@@ -101,7 +101,7 @@ test "cleanups unwind children first, later registrations before earlier" {
 		onCleanup(() => { order.push("A"); });
 		onCleanup(() => { order.push("B"); });
 		createRoot((d2) => { onCleanup(() => { order.push("C"); }); });
-		createEffect(() => { onCleanup(() => { order.push("D"); }); });
+		createEffect<boolean>((p: boolean | null): boolean => { onCleanup(() => { order.push("D"); }); return true; }, (v: boolean, p: boolean | null): Cleanup | null => null);
 	});
 	flush();
 	const s = stop;
@@ -115,11 +115,15 @@ test "nested effects clean up newest first, then their parent" {
 	let stop: Dispose | null = null;
 	createRoot((dispose) => {
 		stop = dispose;
-		createEffect(() => {
-			onCleanup(() => { order.push("parent"); });
-			createEffect(() => { onCleanup(() => { order.push("a"); }); });
-			createEffect(() => { onCleanup(() => { order.push("b"); }); });
-		});
+		createEffect<boolean>(
+			(p: boolean | null): boolean => {
+				onCleanup(() => { order.push("parent"); });
+				createEffect<boolean>((q: boolean | null): boolean => { onCleanup(() => { order.push("a"); }); return true; }, (v: boolean, q: boolean | null): Cleanup | null => null);
+				createEffect<boolean>((q: boolean | null): boolean => { onCleanup(() => { order.push("b"); }); return true; }, (v: boolean, q: boolean | null): Cleanup | null => null);
+				return true;
+			},
+			(v: boolean, p: boolean | null): Cleanup | null => null,
+		);
 	});
 	flush();
 	const s = stop;
@@ -135,13 +139,13 @@ test "sibling roots unwind newest first, each as children then its own cleanup" 
 		stop = dispose;
 		createRoot((d2) => {
 			onCleanup(() => { order.push("SUBTREE 1"); });
-			createEffect(() => { onCleanup(() => { order.push("+A1"); }); });
-			createEffect(() => { onCleanup(() => { order.push("+B1"); }); });
+			createEffect<boolean>((p: boolean | null): boolean => { onCleanup(() => { order.push("+A1"); }); return true; }, (v: boolean, p: boolean | null): Cleanup | null => null);
+			createEffect<boolean>((p: boolean | null): boolean => { onCleanup(() => { order.push("+B1"); }); return true; }, (v: boolean, p: boolean | null): Cleanup | null => null);
 		});
 		createRoot((d2) => {
 			onCleanup(() => { order.push("SUBTREE 2"); });
-			createEffect(() => { onCleanup(() => { order.push("+A2"); }); });
-			createEffect(() => { onCleanup(() => { order.push("+B2"); }); });
+			createEffect<boolean>((p: boolean | null): boolean => { onCleanup(() => { order.push("+A2"); }); return true; }, (v: boolean, p: boolean | null): Cleanup | null => null);
+			createEffect<boolean>((p: boolean | null): boolean => { onCleanup(() => { order.push("+B2"); }); return true; }, (v: boolean, p: boolean | null): Cleanup | null => null);
 		});
 		onCleanup(() => { order.push("ROOT"); });
 	});
@@ -155,11 +159,11 @@ test "sibling roots unwind newest first, each as children then its own cleanup" 
 test "a cleanup of an inner root does not fire for an unrelated disposal" {
 	let fired = 0;
 	createRoot((d) => {
-		createEffect(() => { onCleanup(() => { fired += 1; }); });
+		createEffect<boolean>((p: boolean | null): boolean => { onCleanup(() => { fired += 1; }); return true; }, (v: boolean, p: boolean | null): Cleanup | null => null);
 		let stop: Dispose | null = null;
 		createRoot((d2) => {
 			stop = d2;
-			createEffect(() => {});
+			createEffect<boolean>((p: boolean | null): boolean => true, (v: boolean, p: boolean | null): Cleanup | null => null);
 		});
 		const s = stop;
 		assert s !== null;
@@ -171,20 +175,20 @@ test "a cleanup of an inner root does not fire for an unrelated disposal" {
 
 test "disposing one child leaves its siblings linked to their owner" {
 	let owner: Computation | null = null;
-	let disposeMiddle: Dispose | null = null;
+	let middle: Computation | null = null;
 	let ran = "";
 	createRoot((d) => {
 		owner = getOwner();
-		createEffect(() => { onCleanup(() => { ran += "a"; }); });
-		disposeMiddle = createEffect(() => { onCleanup(() => { ran += "b"; }); });
-		createEffect(() => { onCleanup(() => { ran += "c"; }); });
+		createEffect<boolean>((p: boolean | null): boolean => { onCleanup(() => { ran += "a"; }); return true; }, (v: boolean, p: boolean | null): Cleanup | null => null);
+		createEffect<boolean>((p: boolean | null): boolean => { middle = getOwner(); onCleanup(() => { ran += "b"; }); return true; }, (v: boolean, p: boolean | null): Cleanup | null => null);
+		createEffect<boolean>((p: boolean | null): boolean => { onCleanup(() => { ran += "c"; }); return true; }, (v: boolean, p: boolean | null): Cleanup | null => null);
 	});
 	flush();
 	const o = owner;
-	const m = disposeMiddle;
+	const m = middle;
 	assert o !== null && m !== null;
 	assert childrenOf(o) === 3;
-	m();
+	disposeNode(m);
 	assert childrenOf(o) === 2, "the middle child left the chain";
 	assert ran === "b";
 	flush();
@@ -193,23 +197,23 @@ test "disposing one child leaves its siblings linked to their owner" {
 
 test "disposing the first or the last child unlinks it from the chain" {
 	let owner: Computation | null = null;
-	let stopFirst: Dispose | null = null;
-	let stopLast: Dispose | null = null;
+	let first: Computation | null = null;
+	let last: Computation | null = null;
 	createRoot((d) => {
 		owner = getOwner();
-		stopFirst = createEffect(() => {});
-		createEffect(() => {});
-		stopLast = createEffect(() => {});
+		createEffect<boolean>((p: boolean | null): boolean => { first = getOwner(); return true; }, (v: boolean, p: boolean | null): Cleanup | null => null);
+		createEffect<boolean>((p: boolean | null): boolean => true, (v: boolean, p: boolean | null): Cleanup | null => null);
+		createEffect<boolean>((p: boolean | null): boolean => { last = getOwner(); return true; }, (v: boolean, p: boolean | null): Cleanup | null => null);
 	});
 	flush();
 	const o = owner;
-	const f = stopFirst;
-	const l = stopLast;
+	const f = first;
+	const l = last;
 	assert o !== null && f !== null && l !== null;
 	assert childrenOf(o) === 3;
-	f();
+	disposeNode(f);
 	assert childrenOf(o) === 2;
-	l();
+	disposeNode(l);
 	assert childrenOf(o) === 1;
 }
 
@@ -219,10 +223,10 @@ test "a lazy memo that loses its reader leaves the chain and its siblings stay o
 	const [tick, setTick] = createSignal(0);
 	createRoot((d) => {
 		owner = getOwner();
-		createEffect(() => { tick(); });
+		createEffect<boolean>((p: boolean | null): boolean => { tick(); return true; }, (v: boolean, p: boolean | null): Cleanup | null => null);
 		const m1 = createMemo<int32>((): int32 => tick() * 2, { lazy: true });
-		createRenderEffect(() => { if (read()) { m1(); } });
-		createEffect(() => { tick(); });
+		createRenderEffect<boolean>((p: boolean | null): boolean => { if (read()) { m1(); } return true; }, (v: boolean, p: boolean | null): Cleanup | null => null);
+		createEffect<boolean>((p: boolean | null): boolean => { tick(); return true; }, (v: boolean, p: boolean | null): Cleanup | null => null);
 	});
 	flush();
 	const o = owner;
@@ -243,10 +247,14 @@ test "getOwner inside an effect is a new owner under the root's" {
 		const owner = getOwner();
 		assert owner !== null;
 		let inside = false;
-		createRenderEffect(() => {
-			const e = getOwner();
-			inside = e !== null && e !== owner && e.parent === owner;
-		});
+		createRenderEffect<boolean>(
+			(p: boolean | null): boolean => {
+				const e = getOwner();
+				inside = e !== null && e !== owner && e.parent === owner;
+				return true;
+			},
+			(v: boolean, p: boolean | null): Cleanup | null => null,
+		);
 		assert inside;
 	});
 }
@@ -267,25 +275,29 @@ test "runWithOwner reads do not subscribe the computation that called it" {
 	const o = owner;
 	let runs = 0;
 	createRoot((d) => {
-		createRenderEffect(() => {
-			runs += 1;
-			runWithOwner(o, () => x());
-		});
+		createRenderEffect<boolean>(
+			(p: boolean | null): boolean => {
+				runs += 1;
+				runWithOwner(o, () => x());
+				return true;
+			},
+			(v: boolean, p: boolean | null): Cleanup | null => null,
+		);
 	});
 	setX(1);
 	flush();
 	assert runs === 1, "ran " + runs.toString();
 }
 
-test "a signal written inside a root's body reaches an effect created in it once" {
+test "two signal writes inside a root's body rerun an effect created in it once" {
 	const [x, setX] = createSignal(0);
 	let runs = 0;
 	createRoot((d) => {
-		createEffect(() => { x(); runs += 1; });
+		createEffect<boolean>((p: boolean | null): boolean => { x(); runs += 1; return true; }, (v: boolean, p: boolean | null): Cleanup | null => null);
 		setX(1);
 		setX(2);
 	});
-	assert runs === 1, "ran " + runs.toString();
+	assert runs === 2, "the creation run and one rerun for both writes: " + runs.toString();
 }
 
 test "onCleanup hands back the function it registered" {

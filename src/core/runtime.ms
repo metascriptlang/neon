@@ -136,22 +136,12 @@ function adjustHeight(el: Computation): void {
 	}
 }
 
-function visitHeapNode(el: Computation): void {
-	if (el.type !== EFFECT_PURE) {
-		deleteFromHeap(el);
-		el.config = el.config | CONFIG_MODIFIED;
-		if (el.type === EFFECT_RENDER) { renderQueue.push(el); } else { userQueue.push(el); }
-	} else {
-		recompute(el, false);
-	}
-}
-
 function runHeap(): void {
 	heapMarked = false;
 	for (heapMin = 0; heapMin <= heapMax; heapMin += 1) {
 		let el = heapHead[heapMin];
 		while (el !== null) {
-			if ((el.flags & REACTIVE_IN_HEAP) !== 0) { visitHeapNode(el); } else { adjustHeight(el); }
+			if ((el.flags & REACTIVE_IN_HEAP) !== 0) { recompute(el, false); } else { adjustHeight(el); }
 			el = heapHead[heapMin];
 		}
 	}
@@ -325,6 +315,13 @@ export function disposeChildren(node: Computation, self: boolean): void {
 		node.nextSibling = null;
 	}
 	runDisposal(node);
+	if (self) {
+		const last = node.cleanup;
+		if (last !== null) {
+			node.cleanup = null;
+			last();
+		}
+	}
 }
 
 export function disposeNode(node: Computation): void {
@@ -332,6 +329,7 @@ export function disposeNode(node: Computation): void {
 	unobserved(node);
 	node.parent = null;
 	node.run = null;
+	node.apply = null;
 }
 
 function findHandler(from: Computation | null): ErrorHandler | null {
@@ -353,7 +351,7 @@ function newNode(config: int32, flags: int32, computed: boolean, run: ((self: Co
 	return {
 		subs: null, subsTail: null, config, computed, commit: null,
 		deps: null, depsTail: null, depGen: 0, flags, height: 0, nextHeap: null, prevHeap: null,
-		run, type, unobserved: null,
+		run, apply: null, cleanup: null, type, unobserved: null,
 		parent, parentComputed: null, firstChild: null, nextSibling: null, prevSibling: null,
 		disposal: null, context: parent !== null ? parent.context : null, handler: null,
 		id: null, childCount: 0,
@@ -389,15 +387,27 @@ export function createComputed(
 	return node;
 }
 
-export function startEffect(node: Computation): void {
+export function createEffectNode(
+	run: (self: Computation, create: boolean) => int32,
+	apply: (self: Computation) => void,
+	type: int32,
+	transparent: boolean,
+): Computation {
+	const node = createComputed(run, type, true, transparent, null);
 	node.config = node.config & ~CONFIG_AUTO_DISPOSE;
-	recompute(node, true);
+	node.apply = apply;
+	return node;
 }
 
-export function queueEffect(node: Computation): void {
-	node.config = (node.config & ~CONFIG_AUTO_DISPOSE) | CONFIG_MODIFIED;
-	enqueueSub(node);
-	schedule();
+export function startEffect(node: Computation, defer: boolean): void {
+	recompute(node, true);
+	if (defer || (node.flags & REACTIVE_DISPOSED) !== 0) { return; }
+	if (node.type === EFFECT_RENDER) {
+		runEffectNode(node);
+	} else {
+		userQueue.push(node);
+		schedule();
+	}
 }
 
 function recompute(el: Computation, create: boolean): void {
@@ -439,6 +449,12 @@ function recompute(el: Computation, create: boolean): void {
 	if ((el.flags & REACTIVE_DISPOSED) !== 0) {
 		clearDeps(el);
 		return;
+	}
+	if (el.type !== EFFECT_PURE) {
+		el.config = el.config | CONFIG_MODIFIED;
+		if (!create) {
+			if (el.type === EFFECT_RENDER) { renderQueue.push(el); } else { userQueue.push(el); }
+		}
 	}
 	if (result !== RUN_UNCHANGED) {
 		if (el.subs !== null) { insertSubs(el); }
@@ -550,10 +566,29 @@ function commitPendingNodes(): void {
 	}
 }
 
-function runEffectNode(node: Computation): void {
+export function runEffectNode(node: Computation): void {
 	if ((node.config & CONFIG_MODIFIED) === 0 || (node.flags & REACTIVE_DISPOSED) !== 0) { return; }
 	node.config = node.config & ~CONFIG_MODIFIED;
-	recompute(node, false);
+	const apply = node.apply;
+	if (apply === null) { return; }
+	const oldOwner = currentOwner;
+	const prevTracking = tracking;
+	currentOwner = null;
+	tracking = false;
+	try {
+		apply(node);
+	} catch (e) {
+		const h = findHandler(node);
+		if (h !== null) {
+			disposeNode(node);
+			(h as ErrorHandler)(e);
+		} else {
+			throw e;
+		}
+	} finally {
+		currentOwner = oldOwner;
+		tracking = prevTracking;
+	}
 }
 
 function runQueue(first: boolean): void {

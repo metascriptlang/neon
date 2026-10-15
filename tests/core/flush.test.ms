@@ -2,12 +2,14 @@ import { createSignal } from "../../src/core/signal";
 import { createEffect, createRenderEffect } from "../../src/core/effect";
 import { createRoot } from "../../src/core/owner";
 import { flush } from "../../src/core/runtime";
-import { Dispose } from "../../src/core/types";
+import { Dispose, Cleanup } from "../../src/core/types";
 
 test "flush(fn) batches writes into one effect run" {
 	const [x, setX] = createSignal(10);
 	let runs = 0;
-	createRoot((d) => { createEffect(() => { x(); runs += 1; }); });
+	createRoot((d) => {
+		createEffect<int32>((p: int32 | null): int32 => x(), (v: int32, p: int32 | null): Cleanup | null => { runs += 1; return null; });
+	});
 	flush();
 	assert runs === 1;
 	flush(() => {
@@ -22,7 +24,9 @@ test "flush(fn) batches writes into one effect run" {
 test "an effect runs once per flush, not once per write" {
 	const [x, setX] = createSignal(10);
 	let runs = 0;
-	createRoot((d) => { createEffect(() => { x(); runs += 1; }); });
+	createRoot((d) => {
+		createEffect<int32>((p: int32 | null): int32 => x(), (v: int32, p: int32 | null): Cleanup | null => { runs += 1; return null; });
+	});
 	flush();
 	setX(20);
 	assert runs === 2;
@@ -33,7 +37,9 @@ test "an effect runs once per flush, not once per write" {
 test "flush() inside an effect is a no-op" {
 	const [a, setA] = createSignal(10);
 	let runs = 0;
-	createRoot((d) => { createEffect(() => { a(); runs += 1; flush(); }); });
+	createRoot((d) => {
+		createEffect<int32>((p: int32 | null): int32 => a(), (v: int32, p: int32 | null): Cleanup | null => { runs += 1; flush(); return null; });
+	});
 	flush();
 	assert runs === 1;
 	setA(20);
@@ -43,7 +49,9 @@ test "flush() inside an effect is a no-op" {
 test "flush(fn) returns the value of fn after draining" {
 	const [x, setX] = createSignal(10);
 	let seen = 0;
-	createRoot((d) => { createEffect(() => { seen = x(); }); });
+	createRoot((d) => {
+		createEffect<int32>((p: int32 | null): int32 => x(), (v: int32, p: int32 | null): Cleanup | null => { seen = v; return null; });
+	});
 	flush();
 	const result = flush(() => {
 		setX(20);
@@ -59,7 +67,12 @@ test "a nested flush(fn) drains at each level" {
 	const [y, setY] = createSignal(10);
 	let runs = 0;
 	let sum = 0;
-	createRoot((d) => { createEffect(() => { sum = x() + y(); runs += 1; }); });
+	createRoot((d) => {
+		createEffect<int32>(
+			(p: int32 | null): int32 => x() + y(),
+			(v: int32, p: int32 | null): Cleanup | null => { sum = v; runs += 1; return null; },
+		);
+	});
 	flush();
 	flush(() => {
 		setX(20);
@@ -79,7 +92,7 @@ test "a nested flush(fn) drains at each level" {
 test "an effect created inside flush(fn) first runs when the flush ends" {
 	const log: string[] = [];
 	flush(() => {
-		createEffect(() => { log.push("effect"); });
+		createEffect<boolean>((p: boolean | null): boolean => true, (v: boolean, p: boolean | null): Cleanup | null => { log.push("effect"); return null; });
 		log.push("body");
 	});
 	assert log.join(",") === "body,effect", "got " + log.join(",");
@@ -89,8 +102,8 @@ test "a render effect runs before the user effects of the same flush" {
 	const [x, setX] = createSignal(0);
 	const log: string[] = [];
 	createRoot((d) => {
-		createEffect(() => { log.push("user " + x().toString()); });
-		createRenderEffect(() => { log.push("render " + x().toString()); });
+		createEffect<int32>((p: int32 | null): int32 => x(), (v: int32, p: int32 | null): Cleanup | null => { log.push("user " + v.toString()); return null; });
+		createRenderEffect<int32>((p: int32 | null): int32 => x(), (v: int32, p: int32 | null): Cleanup | null => { log.push("render " + v.toString()); return null; });
 	});
 	flush();
 	log.push("--");
@@ -104,8 +117,11 @@ test "flush(fn) leaves the scheduler usable after an effect throws" {
 	let seenC = -1;
 	let message = "";
 	createRoot((d) => {
-		createEffect(() => { if (a() === 1) { throw new Error("boom"); } });
-		createEffect(() => { seenC = c(); });
+		createEffect<int32>(
+			(p: int32 | null): int32 => a(),
+			(v: int32, p: int32 | null): Cleanup | null => { if (v === 1) { throw new Error("boom"); } return null; },
+		);
+		createEffect<int32>((p: int32 | null): int32 => c(), (v: int32, p: int32 | null): Cleanup | null => { seenC = v; return null; });
 	});
 	flush();
 	try {
@@ -122,7 +138,9 @@ test "flush(fn) leaves the scheduler usable after fn itself throws" {
 	const [c, setC] = createSignal(0);
 	let seenC = -1;
 	let message = "";
-	createRoot((d) => { createEffect(() => { seenC = c(); }); });
+	createRoot((d) => {
+		createEffect<int32>((p: int32 | null): int32 => c(), (v: int32, p: int32 | null): Cleanup | null => { seenC = v; return null; });
+	});
 	flush();
 	try {
 		flush(() => { throw new Error("body"); });
@@ -142,8 +160,8 @@ test "a loop that keeps rescheduling itself is stopped with an error" {
 	try {
 		createRoot((d) => {
 			stop = d;
-			createEffect(() => { setYy(x() + 1); });
-			createEffect(() => { setX(y() + 1); });
+			createEffect<int32>((p: int32 | null): int32 => x(), (v: int32, p: int32 | null): Cleanup | null => { setYy(v + 1); return null; });
+			createEffect<int32>((p: int32 | null): int32 => y(), (v: int32, p: int32 | null): Cleanup | null => { setX(v + 1); return null; });
 		});
 	} catch (e) {
 		message = e.message;
@@ -155,7 +173,9 @@ test "a loop that keeps rescheduling itself is stopped with an error" {
 	flush();
 	let seen = -1;
 	const [z, setZ] = createSignal(0);
-	createRoot((d) => { createEffect(() => { seen = z(); }); });
+	createRoot((d) => {
+		createEffect<int32>((p: int32 | null): int32 => z(), (v: int32, p: int32 | null): Cleanup | null => { seen = v; return null; });
+	});
 	setZ(4);
 	assert seen === 4, "the scheduler recovered: " + seen.toString();
 }
