@@ -441,7 +441,6 @@ class SsrNode {
 	owed: int32 = 0;
 	collects: boolean = false;
 	drops: boolean = false;
-	kids: SsrNode[] = [];
 
 	constructor(tag: string, info: TagInfo) {
 		this.tag = tag;
@@ -455,6 +454,7 @@ class SsrWrite {
 	register: (id: string, css: string) => void;
 	head: SsrNode = new SsrNode("head", PLAIN);
 	overlay: SsrNode = new SsrNode("overlay", PLAIN);
+	headKids: SsrNode[] = [];
 	done: boolean = false;
 
 	constructor(register: (id: string, css: string) => void) {
@@ -471,15 +471,16 @@ function writable(n: SsrNode): SsrNode {
 	return n;
 }
 
-function collect(p: SsrNode, n: SsrNode, ref: HostNode | null): void {
+function collect(w: SsrWrite, p: SsrNode, n: SsrNode, ref: HostNode | null): void {
 	n.parent = p;
-	const at = ref === null ? -1 : p.kids.indexOf(ref as unknown as SsrNode);
-	if (at < 0) { p.kids.push(n); } else { p.kids.splice(at, 0, n); }
+	const kids = w.headKids;
+	const at = ref === null ? -1 : kids.indexOf(ref as unknown as SsrNode);
+	if (at < 0) { kids.push(n); } else { kids.splice(at, 0, n); }
 }
 
-function writeInto(p: SsrNode, n: SsrNode, ref: HostNode | null): void {
+function writeInto(w: SsrWrite, p: SsrNode, n: SsrNode, ref: HostNode | null): void {
 	if (p.drops) { return; }
-	if (p.collects) { collect(p, n, ref); return; }
+	if (p.collects) { collect(w, p, n, ref); return; }
 	if (ref !== null) {
 		throw new Error("SSR writer: <" + p.tag + "> got a child in front of another; the server writes in document order");
 	}
@@ -586,18 +587,18 @@ function writerHost(w: SsrWrite): Host {
 		},
 		addEvent: (node: HostNode, name: string, handler: (e: NeonEvent) => void): void => {},
 		append: (parent: HostNode, child: HostNode): void => {
-			writeInto(parent as unknown as SsrNode, child as unknown as SsrNode, null);
+			writeInto(w, parent as unknown as SsrNode, child as unknown as SsrNode, null);
 		},
 		insertBefore: (parent: HostNode, node: HostNode, ref: HostNode | null): void => {
-			writeInto(parent as unknown as SsrNode, node as unknown as SsrNode, ref);
+			writeInto(w, parent as unknown as SsrNode, node as unknown as SsrNode, ref);
 		},
 		removeChild: (parent: HostNode, node: HostNode): void => {
 			const p = parent as unknown as SsrNode;
 			const n = node as unknown as SsrNode;
 			if (p.drops) { return; }
 			if (p.collects) {
-				const at = p.kids.indexOf(n);
-				if (at >= 0) { p.kids.splice(at, 1); }
+				const at = w.headKids.indexOf(n);
+				if (at >= 0) { w.headKids.splice(at, 1); }
 				n.parent = null;
 				return;
 			}
@@ -608,7 +609,7 @@ function writerHost(w: SsrWrite): Host {
 			const n = node as unknown as SsrNode;
 			const p = n.parent;
 			if (p !== null && (p as SsrNode).collects) {
-				const kids = (p as SsrNode).kids;
+				const kids = w.headKids;
 				const at = kids.indexOf(n);
 				return at >= 0 && at + 1 < kids.length ? kids[at + 1] as unknown as HostNode : null;
 			}
@@ -620,7 +621,7 @@ function writerHost(w: SsrWrite): Host {
 			if (!n.collects) {
 				throw new Error("SSR writer: <" + n.tag + "> was read back as a tree; only the head root keeps its children");
 			}
-			return n.kids.length === 0 ? null : n.kids[0] as unknown as HostNode;
+			return w.headKids.length === 0 ? null : w.headKids[0] as unknown as HostNode;
 		},
 		cloneNode: null,
 		voidArea: null,
@@ -630,10 +631,10 @@ function writerHost(w: SsrWrite): Host {
 	};
 }
 
-function writtenHead(head: SsrNode): string {
+function writtenHead(kids: SsrNode[]): string {
 	const seen = new Map<string, boolean>();
 	let s = "";
-	for (const k of head.kids) {
+	for (const k of kids) {
 		if (k.tag === "") { continue; }
 		const key = headKey(k.tag, k.names, k.values);
 		if (key !== "") {
@@ -653,7 +654,7 @@ function writeRender(n: NeonNode, w: SsrWrite): SsrMarkup {
 	const root = new SsrNode("ssr-root", PLAIN);
 	const dispose = asServer((): Dispose => render(n, writerHost(w), root as unknown as HostNode, ""));
 	try {
-		return { html: root.body, css: "", head: writtenHead(w.head) };
+		return { html: root.body, css: "", head: writtenHead(w.headKids) };
 	}
 	finally {
 		w.done = true;
