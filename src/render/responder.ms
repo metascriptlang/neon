@@ -1,7 +1,7 @@
 // RN ResponderEventPlugin over one touch. Hosts deliver touch events deepest first;
 // only the first delivery of a native event negotiates, so ancestors see it once.
 
-import { NeonEvent } from "./event";
+import { NeonEvent, neonEvent } from "./event";
 import { Host, HostNode } from "./hostTypes";
 import { createContext, useContext, Context } from "./context";
 
@@ -286,11 +286,10 @@ export function responderUnmounted(entry: ResponderEntry): void {
 	entry.mounted = false;
 	if (responder !== entry) { return; }
 	responder = null;
-	const e: NeonEvent = {
-		type: "responderterminate", timeStamp: history.mostRecentTimeStamp, value: "",
-		x: history.currentX, y: history.currentY, width: 0, height: 0, contentWidth: 0, contentHeight: 0,
-		key: "", code: "", altKey: false, ctrlKey: false, metaKey: false, shiftKey: false, repeat: false, isComposing: false,
-	};
+	const e = neonEvent("responderterminate");
+	e.timeStamp = history.mostRecentTimeStamp;
+	e.x = history.currentX;
+	e.y = history.currentY;
 	tell(entry.handlers.onResponderTerminate, e);
 	release(entry);
 }

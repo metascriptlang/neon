@@ -29,12 +29,26 @@ export interface NeonEvent {
 	shiftKey: boolean;
 	repeat: boolean;
 	isComposing: boolean;
+	scancode: number;      // the platform's physical key code, as the window reports it
+	mods: number;          // modifier bit set as the window reports it; the four *Key flags are the portable reading
+	consumedMods: number;  // the modifiers that already shaped `key`/`text`
+	unshifted: number;     // the code point the key makes with no modifier, 0 when none
+	text: string;          // keydown: the text the key types; onTextInput: the committed text; onPreedit: the composing text
+	cursor: number;        // onPreedit: the caret inside `text`, in UTF-16 units
+	button: number;        // pointer events: the window's numbering, Ion's 1 left, 2 right, 3 middle; 0 when none is held
+	pressed: boolean;      // pointer events: a button is held
+	locationX: number;     // pointer events: x relative to the node the handler is on, in layout points
+	locationY: number;
+	deltaX: number;        // onWheel, in wheel notches as the window reports them (Ion: dy > 0 is away from the user)
+	deltaY: number;
 }
 
 export function neonEvent(type: string): NeonEvent {
 	return {
 		type, timeStamp: 0, value: "", x: 0, y: 0, width: 0, height: 0, contentWidth: 0, contentHeight: 0, key: "", code: "",
 		altKey: false, ctrlKey: false, metaKey: false, shiftKey: false, repeat: false, isComposing: false,
+		scancode: 0, mods: 0, consumedMods: 0, unshifted: 0, text: "", cursor: 0,
+		button: 0, pressed: false, locationX: 0, locationY: 0, deltaX: 0, deltaY: 0,
 	};
 }
 
