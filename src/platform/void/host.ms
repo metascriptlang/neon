@@ -44,6 +44,7 @@ struct Frame {
 
 export class VoidNode {
 	ref: NodeRef;
+	raw: boolean;
 	parent: VoidNode | null = null;
 	children: VoidNode[] = [];
 	scroller: NodeRef | null = null;
@@ -64,8 +65,9 @@ export class VoidNode {
 	spans: TextSpan[] | null = null;
 	boxed: boolean = false;
 
-	constructor(ref: NodeRef) {
+	constructor(ref: NodeRef, raw: boolean = false) {
 		this.ref = ref;
+		this.raw = raw;
 	}
 }
 
@@ -75,9 +77,24 @@ function childHolder(n: VoidNode): NodeRef {
 }
 
 export function layoutGetChildren(this n: VoidNode): VoidNode[] { return n.children; }
-export function layoutGetStyle(this n: VoidNode): FlexStyle | null { return n.flex; }
+export function layoutGetStyle(this n: VoidNode): FlexStyle | null {
+	return n.raw ? null : n.flex;
+}
 export function layoutGetLastStyle(this n: VoidNode): FlexStyle | null { return n.lastFlex; }
 export function layoutSetLastStyle(this n: VoidNode, s: FlexStyle | null): void { n.lastFlex = s; }
+function freeNestedLayouts(n: VoidNode): void {
+	for (const c of n.children) {
+		freeNestedLayouts(c);
+		if (n.raw && c.yg !== null) { freeLayoutTree(c); }
+	}
+}
+
+export function freeVoidLayoutTree(n: VoidNode): void {
+	// Yoga's recursive clear cannot retain pointers to independently owned nested islands.
+	freeNestedLayouts(n);
+	freeLayoutTree(n);
+}
+
 export function layoutGetYg(this n: VoidNode): Ptr<YGNode> | null { return n.yg; }
 export function layoutSetYg(this n: VoidNode, yg: Ptr<YGNode> | null): void { n.yg = yg; }
 export function layoutSetFrame(this n: VoidNode, x: float32, y: float32, w: float32, h: float32): void {
@@ -108,6 +125,7 @@ export interface VoidHost {
 	attachTextInput: (node: VoidNode, client: TextInputClient, value: TextEditingValue) => void;
 	setEditingState: (node: VoidNode, value: TextEditingValue) => void;
 	onDirty: (fn: () => void) => void;
+	mutate: (body: () => void) => void;
 }
 
 function styleNum(st: FlexStyle, key: string, v: float32): void {
@@ -512,7 +530,12 @@ export function createVoidHost(): VoidHost {
 	return createVoidHostWith(Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0)), DEFAULT_FONT);
 }
 
-export function createVoidHostWith(scene: Scene2D, font: FontId, defaultFamily: string | null = null): VoidHost {
+export function createVoidHostWith(
+	scene: Scene2D,
+	font: FontId,
+	defaultFamily: string | null = null,
+	scene2dScope: boolean = false,
+): VoidHost {
 	const events: EventEntry[] = [];
 	const clients: ClientEntry[] = [];
 	const fields: Field[] = [];
@@ -525,16 +548,17 @@ export function createVoidHostWith(scene: Scene2D, font: FontId, defaultFamily: 
 	let dirtyListener: (() => void) | null = null;
 
 	let signaled = false;
+	let sceneChangePending = false;
 
 	const wasDirty = (): boolean => {
-		const dirty = scene.isDirty();
+		const dirty = scene.isDirty() || sceneChangePending;
 		if (!dirty) { signaled = false; }
 		return dirty;
 	};
 
 	const woke = (was: boolean): void => {
 		if (was || signaled || dirtyListener === null) { return; }
-		if (scene.isDirty()) {
+		if (sceneChangePending || scene.isDirty()) {
 			signaled = true;
 			(dirtyListener as () => void)();
 		}
@@ -809,7 +833,7 @@ export function createVoidHostWith(scene: Scene2D, font: FontId, defaultFamily: 
 		const from = old as VoidNode;
 		const at = from.children.indexOf(c);
 		if (at >= 0) { from.children.splice(at, 1); }
-		if (from !== into) { freeLayoutTree(c); }
+		if (from !== into) { freeVoidLayoutTree(c); }
 	};
 
 	const refuseIntoText = (p: VoidNode, op: string): void => {
@@ -838,8 +862,8 @@ export function createVoidHostWith(scene: Scene2D, font: FontId, defaultFamily: 
 
 	const free = (n: VoidNode): void => {
 		if (focusedNode !== null && within(focusedNode as VoidNode, n)) { focus(null); }
-		freeLayoutTree(n);
-		n.ref.dispose();
+		freeVoidLayoutTree(n);
+		if (n.ref.isLive()) { n.ref.dispose(); }
 		release(n);
 	};
 
@@ -851,8 +875,20 @@ export function createVoidHostWith(scene: Scene2D, font: FontId, defaultFamily: 
 		refreshParagraph(n);
 		woke(was);
 	};
+
+	const validatePlacement = (parent: VoidNode, child: VoidNode): void => {
+		if (scene2dScope && (parent === root || parent.raw) && !child.raw &&
+			child.ref.kind() === DrawKind.Label && child.ref.labelText() !== "") {
+			throw new Error("Scene2D: raw text requires Label");
+		}
+	};
+
 	const host: Host = {
 		createElement: (tag: string): HostNode => {
+			if (scene2dScope && tag !== "view" && tag !== "text" && tag !== "textinput" &&
+				tag !== "pressable" && tag !== "scrollview") {
+				throw new Error("Scene2D: host element <" + tag + "> needs its UI host");
+			}
 			const was = wasDirty();
 			let n: VoidNode;
 			if (tag === "textinput") {
@@ -881,6 +917,11 @@ export function createVoidHostWith(scene: Scene2D, font: FontId, defaultFamily: 
 		},
 		setText: (node: HostNode, s: string): void => {
 			const n = live(node, "setText");
+			const up = n.parent;
+			if (scene2dScope && s !== "" && !n.raw && up !== null &&
+				(up === root || up.raw)) {
+				throw new Error("Scene2D: raw text requires Label");
+			}
 			const was = wasDirty();
 			n.ref.setText(s);
 			woke(was);
@@ -947,6 +988,7 @@ export function createVoidHostWith(scene: Scene2D, font: FontId, defaultFamily: 
 			const c = live(child, "append");
 			refuseCycle(p, c, "append");
 			refuseIntoText(p, "append");
+			validatePlacement(p, c);
 			const was = wasDirty();
 			unlink(c, p);
 			c.parent = p;
@@ -962,6 +1004,7 @@ export function createVoidHostWith(scene: Scene2D, font: FontId, defaultFamily: 
 			refuseCycle(p, n, "insertBefore");
 			refuseIntoText(p, "insertBefore");
 			if (focusedNode !== null && within(focusedNode as VoidNode, n) && !attached(p)) { focus(null); }
+			validatePlacement(p, n);
 			const was = wasDirty();
 			if (before === null) {
 				unlink(n, p);
@@ -1236,7 +1279,7 @@ export function createVoidHostWith(scene: Scene2D, font: FontId, defaultFamily: 
 		}
 		let x: float32 = 0.0;
 		for (const c of n.children) {
-			if (c.ref.kind() === DrawKind.Label && c.flex === null) {
+			if (!c.raw && c.ref.kind() === DrawKind.Label && c.flex === null) {
 				c.ref.setX(x);
 				x = x + c.ref.xForIndex(c.ref.labelText().length as int32);
 			}
@@ -1264,8 +1307,20 @@ export function createVoidHostWith(scene: Scene2D, font: FontId, defaultFamily: 
 		}
 	};
 
+	const layoutIslands = (n: VoidNode): void => {
+		for (const c of n.children) {
+			if (n.raw && !c.raw && c.flex !== null) {
+				const box = n.ref.content();
+				layoutPass(c, box.w, box.h);
+			}
+			layoutIslands(c);
+		}
+	};
+
 	const layout = (w: float32, h: float32): void => {
+		sceneChangePending = false;
 		layoutPass(root, w, h);
+		layoutIslands(root);
 		flowText(root);
 		fitScrollers();
 		for (const e of events.slice(0)) {
@@ -1306,5 +1361,21 @@ export function createVoidHostWith(scene: Scene2D, font: FontId, defaultFamily: 
 		focused: (): VoidNode | null => focusedNode,
 		imeRect, attachTextInput, setEditingState,
 		onDirty: (fn: () => void): void => { dirtyListener = fn; },
+		mutate: (body: () => void): void => {
+			const was = wasDirty();
+			const clear = scene.clear;
+			const camera = scene.cam;
+			const smooth = scene.defaultSmooth;
+			const scale = scene.scaleMode;
+			const width = scene.designW;
+			const height = scene.designH;
+			try { body(); } finally {
+				if (clear != scene.clear || camera != scene.cam || smooth !== scene.defaultSmooth ||
+					scale !== scene.scaleMode || width !== scene.designW || height !== scene.designH) {
+					sceneChangePending = true;
+				}
+				woke(was);
+			}
+		},
 	};
 }

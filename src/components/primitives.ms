@@ -107,9 +107,6 @@ function uiParent(tag: string, node: NeonNode): NeonNode {
 		if (scope === VoidSpace.Scene3D) {
 			throw new Error("<" + tag + "> belongs in <Void>, <Texture> or a 2D parent, not directly in <Scene3D>");
 		}
-		if (scope === VoidSpace.Scene2D) {
-			throw new Error("<" + tag + ">: Scene2D UI host is not connected yet");
-		}
 		node(host, parent, before);
 	};
 }

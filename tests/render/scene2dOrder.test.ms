@@ -1,11 +1,13 @@
-import { createSignal, Accessor } from "../../src/core/signal";
+import { createSignal, Accessor, accessor } from "../../src/core/signal";
 import { element } from "../../src/macros/ui/element";
 import { For } from "../../src/macros/ui/flow";
-import { HostNode, mockNode, mockHost, render } from "../../src/render/host";
+import { Host, HostNode, mockNode, mockHost, render } from "../../src/render/host";
 import { NeonNode } from "../../src/render/node";
-import { Void } from "../../src/components/primitives";
+import { Void, View, Text, TextInput, TextInputHandle } from "../../src/components/primitives";
 import { Scene2D, Group, Rect } from "../../src/components/scene2d";
-import { NodeRef, Scene2D as VoidScene2D, refOf, getChildIndex } from "../../../void/src/void2d/node";
+import { NodeRef, Scene2D as VoidScene2D, refOf, getChildAt, getChildIndex } from "../../../void/src/void2d/node";
+import { VoidNode, layoutPass } from "../../src/platform/void/host";
+import { local, content, isLive } from "../../../void/src/void2d/node";
 import { rgba } from "../../../void/src/void2d/types";
 
 test "For reorders raw Scene2D nodes without remounting their owners" {
@@ -14,8 +16,8 @@ test "For reorders raw Scene2D nodes without remounting their owners" {
 	const [items, setItems] = createSignal<number[]>([1, 2, 3]);
 	const root = mockNode("root");
 	const dispose = render(element(<Void><Scene2D
-		ref={(scene: VoidScene2D): void => { roots.push(scene.refOf(scene.root)); }}>
-		{For<number>({ each: () => items(), usesIndex: false,
+		ref={(scene: VoidScene2D): void => { roots.push(scene.refOf(scene.root).getChildAt(0)); }}>
+		{For<number>({ each: accessor(() => items()), usesIndex: false,
 			children: (item: number, index: Accessor<number>): NeonNode => element(
 				<Rect width={2.0} height={3.0} color={rgba(1.0, 1.0, 1.0, 1.0)}
 					ref={(node: NodeRef): void => { nodes.push(node); }} />
@@ -42,7 +44,7 @@ test "For inserts a raw node before its existing sibling inside a Group" {
 	const root = mockNode("root");
 	const dispose = render(element(<Void><Scene2D><Group
 		ref={(node: NodeRef): void => { groups.push(node); }}>
-		{For<number>({ each: () => items(), usesIndex: false,
+		{For<number>({ each: accessor(() => items()), usesIndex: false,
 			children: (item: number, index: Accessor<number>): NeonNode => element(
 				<Rect width={2.0} height={3.0} color={rgba(1.0, 1.0, 1.0, 1.0)}
 					ref={(node: NodeRef): void => { nodes.push(node); }} />
@@ -58,4 +60,79 @@ test "For inserts a raw node before its existing sibling inside a Group" {
 		assert first >= 0 && first < inserted && inserted < second;
 	} finally { dispose(); }
 	assert !parent.isLive() && parent.scene.closed;
+}
+
+
+test "Scene2D UI and raw children share actual VoidNode parent and layout contract" {
+	const parents: VoidNode[] = [];
+	const views: VoidNode[] = [];
+	const fields: VoidNode[] = [];
+	const raw: NodeRef[] = [];
+	const capture: NeonNode = (host: Host, parent: HostNode, before: HostNode | null): void => {
+		parents.push(parent as VoidNode);
+	};
+	const root = mockNode("root");
+	const dispose = render(element(<Void><Scene2D><Group width={120.0} height={80.0}>
+		{capture}
+		<View style={{ width: 40, height: 20 }}
+			ref={(node: HostNode): void => { views.push(node as VoidNode); }}>
+			<Text>UI</Text>
+			<TextInput value={"field"}
+				ref={(handle: TextInputHandle): void => { fields.push(handle.node as VoidNode); }} />
+		</View>
+		<Rect width={2.0} height={3.0} color={rgba(1.0, 1.0, 1.0, 1.0)}
+			ref={(node: NodeRef): void => { raw.push(node); }} />
+	</Group></Scene2D></Void>), mockHost(), root as unknown as HostNode);
+	const parent = parents[0];
+	const view = views[0];
+	try {
+		assert parent.raw && view.parent === parent && !view.raw;
+		assert view.children.length === 2 && fields[0].parent === view;
+		assert parent.ref.getChildIndex(view.ref) < parent.ref.getChildIndex(raw[0]);
+		const box = parent.ref.content();
+		layoutPass(view, box.w, box.h);
+		assert view.ref.content().w === 40.0 && view.ref.content().h === 20.0;
+	} finally { dispose(); }
+	assert parent.disposed && view.disposed && fields[0].disposed;
+	assert !raw[0].isLive() && parent.ref.scene.closed;
+}
+
+test "Scene2D releases root UI wrappers and original failure after partial child mount" {
+	const views: VoidNode[] = [];
+	const scenes: VoidScene2D[] = [];
+	const nodes: NodeRef[] = [];
+	const failed: NeonNode = (host: Host, parent: HostNode, before: HostNode | null): void => {
+		element(<View ref={(node: HostNode): void => { views.push(node as VoidNode); }} />)(
+			host, parent, before,
+		);
+		element(<Rect width={2.0} height={3.0} color={rgba(1.0, 1.0, 1.0, 1.0)}
+			ref={(node: NodeRef): void => { nodes.push(node); }} />)(host, parent, before);
+		throw new Error("original child failure");
+	};
+	const root = mockNode("root");
+	let message = "";
+	try {
+		render(element(<Void><Scene2D
+			ref={(scene: VoidScene2D): void => { scenes.push(scene); }}>
+			{failed}
+		</Scene2D></Void>), mockHost(), root as unknown as HostNode);
+	} catch (error) { message = error.message; }
+	assert message === "original child failure";
+	assert scenes[0].closed && !nodes[0].isLive();
+	assert views[0].disposed && views[0].yg === null;
+}
+
+test "Scene2D keeps direct visible text, intrinsic and nested Void refusals" {
+	const root = mockNode("root");
+	const cases: NeonNode[] = [
+		element(<Void><Scene2D>not a Label</Scene2D></Void>),
+		element(<Void><Scene2D><div /></Scene2D></Void>),
+		element(<Void><Scene2D><Void /></Scene2D></Void>),
+	];
+	for (const app of cases) {
+		let message = "";
+		try { render(app, mockHost(), root as unknown as HostNode); }
+		catch (error) { message = error.message; }
+		assert message.includes("Scene2D");
+	}
 }

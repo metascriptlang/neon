@@ -5,6 +5,9 @@ import { onCleanup } from "../core/cleanup";
 import { createContext, useContext } from "../render/context";
 import { VoidSpace, voidScope } from "../render/voidScope";
 import { Host, HostNode, NeonNode } from "../render/hostTypes";
+import { place } from "../render/reconcile";
+import { createVoidHostWith, VoidHost, VoidNode, freeVoidLayoutTree } from "../platform/void/host";
+import { DEFAULT_FONT } from "../../../void/src/void2d/font";
 import {
 	Scene2D as VoidScene2D,
 	NodeRef,
@@ -26,8 +29,6 @@ import {
 	sprite,
 	mask,
 	label,
-	refOf,
-	addChild,
 	isLive,
 	dispose,
 	setLocal,
@@ -163,7 +164,7 @@ interface LabelProps extends NodeProps {
 	cursorBlinkTime?: Accessor<float32> | null;
 }
 
-const sceneScope = createContext<NodeRef | null>(null);
+const sceneScope = createContext<VoidHost | null>(null);
 
 function mountOwned(body: () => void): void {
 	const dispose = createRoot((dispose) => {
@@ -176,7 +177,7 @@ function mountOwned(body: () => void): void {
 	onCleanup(dispose);
 }
 
-function requireScene(tag: string): NodeRef {
+function requireScene(tag: string): VoidHost {
 	if (useContext(voidScope) !== VoidSpace.Scene2D) {
 		throw new Error(tag + ": mount inside Scene2D within Void");
 	}
@@ -185,14 +186,19 @@ function requireScene(tag: string): NodeRef {
 	return under;
 }
 
+function bindScene(body: () => void): void {
+	const vh = requireScene("Scene2D");
+	createEffect((): void => { vh.mutate(body); });
+}
+
 function bindNode(tag: string, node: NodeRef, props: NodeProps): void {
 	if (props.local !== null) {
 		const local = props.local as () => Local2D;
-		createEffect((): void => { node.setLocal(local()); });
+		bindScene((): void => { node.setLocal(local()); });
 	}
 	if (props.paint !== null) {
 		const readPaint = props.paint as () => Paint2D;
-		createEffect((): void => {
+		bindScene((): void => {
 			const value = readPaint();
 			const row = node.paint().colorMatrixRow;
 			if (value.colorMatrixRow !== NO_COLOR_MATRIX_ROW && value.colorMatrixRow !== row) {
@@ -203,15 +209,15 @@ function bindNode(tag: string, node: NodeRef, props: NodeProps): void {
 	}
 	if (props.colorMatrix !== null) {
 		const matrix = props.colorMatrix as () => Mat4;
-		createEffect((): void => { node.setColorMatrix(matrix()); });
+		bindScene((): void => { node.setColorMatrix(matrix()); });
 	}
 	if (props.order !== null) {
 		const order = props.order as () => Order2D;
-		createEffect((): void => { node.setOrder(order()); });
+		bindScene((): void => { node.setOrder(order()); });
 	}
 	if (props.filter !== null) {
 		const filter = props.filter as () => Filter;
-		createEffect((): void => { node.setFilter(filter()); });
+		bindScene((): void => { node.setFilter(filter()); });
 	}
 }
 
@@ -222,21 +228,27 @@ function renderNode(
 	bind: (node: NodeRef) => void,
 ): NeonNode {
 	return (host: Host, parent: HostNode, before: HostNode | null): void => {
-		const under = requireScene(tag);
+		const vh = requireScene(tag);
 		mountOwned((): void => {
-			const scene = under.scene;
-			const node = make(scene);
-			onCleanup((): void => { if (node.isLive()) { node.dispose(); } });
-			under.addChild(node);
-			bind(node);
-			bindNode(tag, node, props);
-			if (props.ref !== null) { (props.ref as (node: NodeRef) => void)(node); }
-			const children = props.children;
-			if (children !== null) {
-				sceneScope.Provider({ value: accessor(() => node), children: children })(
-					host, parent, before,
-				);
-			}
+			vh.mutate((): void => {
+				const node = make(vh.scene);
+				const wrapped = new VoidNode(node, true);
+				onCleanup((): void => {
+					if (wrapped.disposed) { return; }
+					const up = wrapped.parent;
+					if (up !== null) { host.removeChild(up, wrapped); }
+					else {
+						if (node.isLive()) { node.dispose(); }
+						wrapped.disposed = true;
+					}
+				});
+				place(host, parent, wrapped, before);
+				bind(node);
+				bindNode(tag, node, props);
+				if (props.ref !== null) { (props.ref as (node: NodeRef) => void)(node); }
+				const children = props.children;
+				if (children !== null) { children(host, wrapped, null); }
+			});
 		});
 	};
 }
@@ -248,18 +260,27 @@ export function Scene2D(props: Scene2DProps): NeonNode {
 		}
 		mountOwned((): void => {
 			const scene = VoidScene2D.create(rgba(0.0, 0.0, 0.0, 0.0));
-			onCleanup((): void => { scene.close(); });
+			const vh = createVoidHostWith(scene, DEFAULT_FONT, true);
+			onCleanup((): void => {
+				const root = vh.root as VoidNode;
+				for (let i = root.children.length - 1; i >= 0; i -= 1) {
+					vh.host.removeChild(root, root.children[i]);
+				}
+				freeVoidLayoutTree(root);
+				root.disposed = true;
+				scene.close();
+			});
 			if (props.clear !== null) {
 				const clear = props.clear as () => Color;
-				createEffect((): void => { scene.clear = clear(); });
+				createEffect((): void => { vh.mutate((): void => { scene.clear = clear(); }); });
 			}
 			if (props.camera !== null) {
 				const camera = props.camera as () => Camera;
-				createEffect((): void => { scene.cam = camera(); });
+				createEffect((): void => { vh.mutate((): void => { scene.cam = camera(); }); });
 			}
 			if (props.smooth !== null) {
 				const smooth = props.smooth as () => boolean;
-				createEffect((): void => { scene.defaultSmooth = smooth(); });
+				createEffect((): void => { vh.mutate((): void => { scene.defaultSmooth = smooth(); }); });
 			}
 			if (props.scaleMode !== null || props.designW !== null || props.designH !== null) {
 				createEffect((): void => {
@@ -269,33 +290,18 @@ export function Scene2D(props: Scene2DProps): NeonNode {
 						(props.designW as () => float32)();
 					const height: float32 = props.designH === null ? 0.0 :
 						(props.designH as () => float32)();
-					scene.setScaleMode(mode, width, height);
+					vh.mutate((): void => { scene.setScaleMode(mode, width, height); });
 				});
 			}
 			if (props.ref !== null) { (props.ref as (scene: VoidScene2D) => void)(scene); }
 			const children = props.children;
 			if (children !== null) {
-				const root = scene.refOf(scene.root);
-				const sceneHost: Host = {
-					...host,
-					createText: (text: string): HostNode => {
-						if (text !== "") { throw new Error("Scene2D: raw text requires Label"); }
-						return host.createText(text);
-					},
-					setText: (node: HostNode, text: string): void => {
-						if (text !== "") { throw new Error("Scene2D: raw text requires Label"); }
-						host.setText(node, text);
-					},
-					createElement: (tag: string): HostNode => {
-						throw new Error("Scene2D: host element <" + tag + "> needs its UI host");
-					},
-				};
 				voidScope.Provider({
 					value: accessor(() => VoidSpace.Scene2D),
 					children: sceneScope.Provider({
-						value: accessor(() => root), children: children,
+						value: accessor(() => vh), children: children,
 					}),
-				})(sceneHost, parent, before);
+				})(vh.host, vh.root, null);
 			}
 		});
 	};
@@ -306,7 +312,7 @@ export function Group(props: GroupProps): NeonNode {
 		(node: NodeRef): void => {
 			if (props.width !== null || props.height !== null) {
 				const initial = node.content();
-				createEffect((): void => {
+				bindScene((): void => {
 					const width = props.width === null ? initial.w : (props.width as () => float32)();
 					const height = props.height === null ? initial.h : (props.height as () => float32)();
 					node.setSize(width, height);
@@ -314,7 +320,7 @@ export function Group(props: GroupProps): NeonNode {
 			}
 			if (props.background !== null) {
 				const background = props.background as () => Color | null;
-				createEffect((): void => {
+				bindScene((): void => {
 					const color = background();
 					if (color === null) { node.clearBackground(); }
 					else {
@@ -329,9 +335,9 @@ export function Group(props: GroupProps): NeonNode {
 export function TileGroup(props: TileGroupProps): NeonNode {
 	return renderNode("TileGroup", props, (scene: VoidScene2D): NodeRef => scene.tileGroup(),
 		(node: NodeRef): void => {
-			createEffect((): void => { node.setTiles(props.cells()); });
+			bindScene((): void => { node.setTiles(props.cells()); });
 			if (props.first !== null || props.count !== null) {
-				createEffect((): void => {
+				bindScene((): void => {
 					const first: int32 = props.first === null ? 0 : (props.first as () => int32)();
 					const count: int32 = props.count === null ? ALL_TILES :
 						(props.count as () => int32)();
@@ -348,13 +354,13 @@ export function Rect(props: RectProps): NeonNode {
 	return renderNode("Rect", props,
 		(scene: VoidScene2D): NodeRef => scene.rect(props.width(), props.height(), props.color()),
 		(node: NodeRef): void => {
-			createEffect((): void => { node.setSize(props.width(), props.height()); });
+			bindScene((): void => { node.setSize(props.width(), props.height()); });
 			if (props.boxStyle !== null) {
 				const style = props.boxStyle as () => BoxStyle;
-				createEffect((): void => { node.setBoxStyle(style()); });
+				bindScene((): void => { node.setBoxStyle(style()); });
 			}
 			if (props.paint === null) {
-				createEffect((): void => { node.setColor(props.color()); });
+				bindScene((): void => { node.setColor(props.color()); });
 			}
 		});
 }
@@ -362,7 +368,7 @@ export function Rect(props: RectProps): NeonNode {
 export function Sprite(props: SpriteProps): NeonNode {
 	return renderNode("Sprite", props, (scene: VoidScene2D): NodeRef => scene.sprite(props.tile()),
 		(node: NodeRef): void => {
-			createEffect((): void => {
+			bindScene((): void => {
 				const tile = props.tile();
 				const width: float32 = props.width === null ? tile.w :
 					(props.width as () => float32)();
@@ -372,7 +378,7 @@ export function Sprite(props: SpriteProps): NeonNode {
 			});
 			if (props.imageStyle !== null) {
 				const style = props.imageStyle as () => ImageStyle;
-				createEffect((): void => { node.setImageStyle(style()); });
+				bindScene((): void => { node.setImageStyle(style()); });
 			}
 		});
 }
@@ -381,7 +387,7 @@ export function ScaleGrid(props: ScaleGridProps): NeonNode {
 	return renderNode("ScaleGrid", props, (scene: VoidScene2D): NodeRef => scene.scaleGrid(
 		props.tile(), props.borderL(), props.borderT(), props.borderR(), props.borderB(),
 	), (node: NodeRef): void => {
-		createEffect((): void => {
+		bindScene((): void => {
 			const tile = props.tile();
 			const width: float32 = props.width === null ? tile.w :
 				(props.width as () => float32)();
@@ -400,7 +406,7 @@ export function Underline(props: UnderlineProps): NeonNode {
 	return renderNode("Underline", props, (scene: VoidScene2D): NodeRef => scene.underline(
 		props.width(), props.thickness(), props.color(), props.wavy(),
 	), (node: NodeRef): void => {
-		createEffect((): void => {
+		bindScene((): void => {
 			const thickness = props.thickness();
 			const wavy = props.wavy();
 			node.setContent({
@@ -409,7 +415,7 @@ export function Underline(props: UnderlineProps): NeonNode {
 			});
 		});
 		if (props.paint === null) {
-			createEffect((): void => { node.setColor(props.color()); });
+			bindScene((): void => { node.setColor(props.color()); });
 		}
 	});
 }
@@ -419,7 +425,7 @@ export function Selection(props: SelectionProps): NeonNode {
 		props.width(), props.height(), props.color(), props.prevOffsetX(), props.prevWidth(),
 		props.nextOffsetX(), props.nextWidth(),
 	), (node: NodeRef): void => {
-		createEffect((): void => {
+		bindScene((): void => {
 			node.setContent({
 				...node.content(), w: props.width(), h: props.height(),
 				borderL: props.prevOffsetX(), borderT: props.prevWidth(),
@@ -427,7 +433,7 @@ export function Selection(props: SelectionProps): NeonNode {
 			});
 		});
 		if (props.paint === null) {
-			createEffect((): void => { node.setColor(props.color()); });
+			bindScene((): void => { node.setColor(props.color()); });
 		}
 	});
 }
@@ -436,7 +442,7 @@ export function Graphics(props: GraphicsProps): NeonNode {
 	return renderNode("Graphics", props,
 		(scene: VoidScene2D): NodeRef => scene.graphics(),
 		(node: NodeRef): void => {
-			createEffect((): void => { replayGraphics(node, props.operations()); });
+			bindScene((): void => { replayGraphics(node, props.operations()); });
 		});
 }
 
@@ -446,7 +452,7 @@ export function Mask(props: MaskProps): NeonNode {
 		(node: NodeRef): void => {
 			const scrolling = props.scrollX !== null || props.scrollY !== null ||
 				props.scrollBounds !== null;
-			createEffect((): void => {
+			bindScene((): void => {
 				node.setSize(props.width(), props.height());
 				if (scrolling) {
 					const bounds: Bounds2D | null = props.scrollBounds === null ? null :
@@ -471,48 +477,48 @@ export function Label(props: LabelProps): NeonNode {
 			if ((props.cursorIndex === null) !== (props.cursorColor === null)) {
 				throw new Error("Label: provide cursorIndex and cursorColor together");
 			}
-			createEffect((): void => { node.setText(props.text()); });
+			bindScene((): void => { node.setText(props.text()); });
 			if (props.paint === null) {
-				createEffect((): void => { node.setColor(props.color()); });
+				bindScene((): void => { node.setColor(props.color()); });
 			}
-			createEffect((): void => {
+			bindScene((): void => {
 				const style = props.textStyle === null ? node.textStyle() :
 					(props.textStyle as () => TextStyle)();
 				node.setTextStyle({ ...style, size: props.size() });
 			});
 			if (props.textRuns !== null) {
 				const runs = props.textRuns as () => TextRun[];
-				createEffect((): void => { node.setTextRuns(runs()); });
+				bindScene((): void => { node.setTextRuns(runs()); });
 			}
 			if (props.shapingBreaks !== null) {
 				const breaks = props.shapingBreaks as () => int32[];
-				createEffect((): void => { node.setShapingBreaks(breaks()); });
+				bindScene((): void => { node.setShapingBreaks(breaks()); });
 			}
 			if (props.truncate !== null) {
 				const truncate = props.truncate as () => Truncate;
-				createEffect((): void => { node.setTruncate(truncate()); });
+				bindScene((): void => { node.setTruncate(truncate()); });
 			}
 			if (props.hangingIndent !== null) {
 				const indent = props.hangingIndent as () => float32;
-				createEffect((): void => { node.setHangingIndent(indent()); });
+				bindScene((): void => { node.setHangingIndent(indent()); });
 			}
 			if (props.forceWidth !== null) {
 				const width = props.forceWidth as () => float32;
-				createEffect((): void => { node.setForceWidth(width()); });
+				bindScene((): void => { node.setForceWidth(width()); });
 			}
 			if (props.selectionRange !== null) {
 				const range = props.selectionRange as () => SelectionRange;
 				const color = props.selectionColor as () => Color;
-				createEffect((): void => { node.setSelectionRange(range(), color()); });
+				bindScene((): void => { node.setSelectionRange(range(), color()); });
 			}
 			if (props.cursorIndex !== null) {
 				const index = props.cursorIndex as () => int32;
 				const color = props.cursorColor as () => Color;
-				createEffect((): void => { node.setCursorIndex(index(), color()); });
+				bindScene((): void => { node.setCursorIndex(index(), color()); });
 			}
 			if (props.cursorBlinkTime !== null) {
 				const seconds = props.cursorBlinkTime as () => float32;
-				createEffect((): void => { node.setCursorBlinkTime(seconds()); });
+				bindScene((): void => { node.setCursorBlinkTime(seconds()); });
 			}
 		});
 }
