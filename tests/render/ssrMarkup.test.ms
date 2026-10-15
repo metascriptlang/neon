@@ -45,6 +45,8 @@ test "SSR writes Text numberOfLines as the clamp classes and their rules" {
 	assert page.css.indexOf(".neon-lines{display:-webkit-box") >= 0, page.css;
 	const free = renderToString(el("text", [attr("numberOfLines", "0")], [], null));
 	assert free === "<span class=\"neon-text\"></span>", free;
+	const marked = renderToString(el("text", [attr("class", "x&y"), attr("numberOfLines", "2\"")], [], null));
+	assert marked === "<span class=\"x&amp;y neon-text neon-lines neon-lines-2&quot;\"></span>", "each class escaped once: " + marked;
 }
 
 test "SSR writes Switch and ActivityIndicator as the elements, classes and rules the DOM host builds" {

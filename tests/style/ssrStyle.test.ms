@@ -99,6 +99,8 @@ test "a class from a sheet joins the class attribute already on the node" {
 	when (js || server) {
 		const n: NeonNode = <div class="x" style={sheet.btn}></div>;
 		assert renderToString(n) === "<div class=\"x " + (sheet.btn.cssId as string) + "\"></div>", "one class attribute, not two";
+		const marked: NeonNode = <div class={"x&\"y"} style={sheet.btn}></div>;
+		assert renderToString(marked) === "<div class=\"x&amp;&quot;y " + (sheet.btn.cssId as string) + "\"></div>", "each class escaped once";
 	}
 }
 
