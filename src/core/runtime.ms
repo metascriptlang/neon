@@ -4,7 +4,7 @@ import {
 	REACTIVE_DISPOSED, REACTIVE_LAZY, REACTIVE_MISSED_WAKE, REACTIVE_REASK, REACTIVE_PROBED,
 	STATUS_PENDING, STATUS_ERROR, STATUS_UNINITIALIZED,
 	CONFIG_OWNED_WRITE, CONFIG_TRANSPARENT, CONFIG_AUTO_DISPOSE, CONFIG_STAGED, CONFIG_PROMOTED, CONFIG_ROOT, CONFIG_MODIFIED,
-	CONFIG_DORMANT_QUEUED, CONFIG_VERDICT, EFFECT_PURE, EFFECT_RENDER, EFFECT_USER, RUN_UNCHANGED, RUN_STAGED,
+	CONFIG_DORMANT_QUEUED, CONFIG_VERDICT, CONFIG_REDERIVE, EFFECT_PURE, EFFECT_RENDER, EFFECT_USER, RUN_UNCHANGED, RUN_STAGED,
 } from "./types";
 
 const LOOP_LIMIT: int32 = 100000;
@@ -358,6 +358,43 @@ function findHandler(from: Computation | null): ErrorHandler | null {
 	return null;
 }
 
+export type StatusRoute = (node: Computation, flags: int32, error: Error | null) => boolean;
+
+let statusRoute: StatusRoute | null = null;
+let boundarySweep: (() => void) | null = null;
+let heldRun: ((node: Computation) => boolean) | null = null;
+
+export function installBoundaryHooks(route: StatusRoute, sweep: () => void, held: (node: Computation) => boolean): void {
+	statusRoute = route;
+	boundarySweep = sweep;
+	heldRun = held;
+}
+
+export function requeueEffect(node: Computation): void {
+	if (node.type === EFFECT_RENDER) { renderQueue.push(node); } else { userQueue.push(node); }
+}
+
+function routeStatus(node: Computation, flags: int32, error: Error | null): boolean {
+	const route = statusRoute;
+	return route !== null && route(node, flags, error);
+}
+
+function sweepBoundaries(): void {
+	const sweep = boundarySweep;
+	if (sweep !== null) { sweep(); }
+}
+
+export function linkDependency(dep: Source, sub: Computation): void { link(dep, sub); }
+
+export function recomputeNode(node: Computation): void { recompute(node, false); }
+
+export function wakeNode(node: Computation): void {
+	enqueueSub(node);
+	schedule();
+}
+
+export function requestFlush(): void { schedule(); }
+
 function hasPendingSource(el: Computation, source: Computation): boolean {
 	const list = el.pendingSources;
 	if (list === null) { return false; }
@@ -450,7 +487,7 @@ function propagateStatus(el: Computation, error: Error): void {
 	for (let l = el.subs; l !== null; l = l.nextSub) {
 		const sub = l.sub;
 		sub.time = clock;
-		if ((sub.config & CONFIG_VERDICT) !== 0 || (pending && l.gen !== sub.depGen) || (!pending && sub.type !== EFFECT_PURE)) {
+		if ((sub.config & (CONFIG_VERDICT | CONFIG_REDERIVE)) !== 0 || (pending && l.gen !== sub.depGen) || (!pending && sub.type !== EFFECT_PURE)) {
 			enqueueSub(sub);
 			scheduled = true;
 			continue;
@@ -735,10 +772,20 @@ function recompute(el: Computation, create: boolean): void {
 		enqueueSub(el);
 		schedule();
 	}
-	if (thrown !== null && el.type === EFFECT_RENDER && (el.status & STATUS_ERROR) !== 0) {
-		escape(thrown);
-	}
+	if (el.type === EFFECT_RENDER) { reportRenderEffect(el); }
 	settle();
+}
+
+function reportRenderEffect(el: Computation): void {
+	if ((el.status & STATUS_ERROR) !== 0) {
+		routeStatus(el, 0, null);
+		const error = statusError(el);
+		if (!routeStatus(el, STATUS_ERROR, error)) { escape(error); }
+	} else if ((el.status & STATUS_PENDING) !== 0) {
+		routeStatus(el, STATUS_PENDING, statusError(el));
+	} else {
+		routeStatus(el, 0, null);
+	}
 }
 
 // Parked on ~/metascript/.inbox/compiler/2026-10-15-throw-of-a-nullable-error-after-an-instanceof-test-dies-at-clang.md: this was an inline `throw thrown`.
@@ -933,6 +980,8 @@ function commitPendingNodes(): void {
 
 export function runEffectNode(node: Computation, firstApply: boolean): void {
 	if ((node.config & CONFIG_MODIFIED) === 0 || (node.flags & REACTIVE_DISPOSED) !== 0) { return; }
+	const held = heldRun;
+	if (held !== null && held(node)) { return; }
 	node.config = node.config & ~CONFIG_MODIFIED;
 	const apply = node.apply;
 	if (apply === null) { return; }
@@ -944,12 +993,18 @@ export function runEffectNode(node: Computation, firstApply: boolean): void {
 		apply(node);
 	} catch (e) {
 		const h = findHandler(node);
-		if (h === null) {
-			haltReactivity(e);
-			throw e;
+		if (h !== null) {
+			disposeNode(node);
+			(h as ErrorHandler)(e);
+		} else {
+			node.pendingSources = null;
+			node.status = STATUS_ERROR;
+			node.error = e;
+			if (!routeStatus(node, STATUS_ERROR, e)) {
+				haltReactivity(e);
+				throw e;
+			}
 		}
-		disposeNode(node);
-		(h as ErrorHandler)(e);
 	} finally {
 		currentOwner = oldOwner;
 		tracking = prevTracking;
@@ -977,6 +1032,7 @@ function flushOnce(): void {
 		runHeap();
 		commitPendingNodes();
 		clock += 1;
+		sweepBoundaries();
 		scheduled = heapMax >= heapMin || pendingNodes.length !== 0;
 		runQueue(true);
 		runQueue(false);

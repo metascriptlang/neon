@@ -32,6 +32,7 @@ export const CONFIG_ROOT: int32 = 1 << 23;
 export const CONFIG_MODIFIED: int32 = 1 << 24;
 export const CONFIG_DORMANT_QUEUED: int32 = 1 << 25;
 export const CONFIG_VERDICT: int32 = 1 << 26;
+export const CONFIG_REDERIVE: int32 = 1 << 27;
 
 export const EFFECT_PURE: int32 = 0;
 export const EFFECT_RENDER: int32 = 1;
