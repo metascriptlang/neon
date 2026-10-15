@@ -6,7 +6,7 @@ export { createEffect, createRenderEffect, onSettled, EffectOptions, EffectBundl
 export { createMemo } from "./core/memo";
 export { createSelector } from "./core/selector";
 export { createRoot, runWithOwner, createUniqueId } from "./core/owner";
-export { getOwner } from "./core/runtime";
+export { getOwner, flush } from "./core/runtime";
 export { onCleanup } from "./core/cleanup";
 export { catchError } from "./core/error";
 export { mapArray, mapArrayKeyedBy, mapArrayByPosition, repeat } from "./core/array";
