@@ -35,7 +35,7 @@ struct Count {
 };
 
 struct SizeCheck {
-	std::string layout, text;
+	std::string layout, text, family;
 	float fontSize;
 	int bold;
 	float maxWidth;
@@ -143,7 +143,8 @@ int checkSize(const SizeCheck &c) {
 	ComPtr<IDWriteFactory> factory;
 	must(DWriteCreateFactory(DWRITE_FACTORY_TYPE_ISOLATED, __uuidof(IDWriteFactory), (IUnknown **)factory.GetAddressOf()), "DWriteCreateFactory");
 	ComPtr<IDWriteTextFormat> format;
-	must(factory->CreateTextFormat(L"Segoe UI", nullptr, c.bold ? DWRITE_FONT_WEIGHT_BOLD : DWRITE_FONT_WEIGHT_NORMAL, DWRITE_FONT_STYLE_NORMAL,
+	std::wstring family(c.family.begin(), c.family.end());
+	must(factory->CreateTextFormat(family.c_str(), nullptr, c.bold ? DWRITE_FONT_WEIGHT_BOLD : DWRITE_FONT_WEIGHT_NORMAL, DWRITE_FONT_STYLE_NORMAL,
 		DWRITE_FONT_STRETCH_NORMAL, c.fontSize, L"en-us", &format), "CreateTextFormat");
 	std::wstring wide(c.text.begin(), c.text.end());
 	ComPtr<IDWriteTextLayout> layout;
@@ -275,8 +276,12 @@ void harnessExpectCount(const char *name, int x, int y, int width, int height, i
 	g_counts.push_back({name, x, y, width, height, r, g, b, tolerance, minCount, maxCount});
 }
 
+void harnessExpectSizeIn(const char *layout, const char *text, const char *family, float fontSize, int bold, float maxWidth) {
+	g_sizes.push_back({layout, text, family, fontSize, bold, maxWidth});
+}
+
 void harnessExpectSize(const char *layout, const char *text, float fontSize, int bold, float maxWidth) {
-	g_sizes.push_back({layout, text, fontSize, bold, maxWidth});
+	harnessExpectSizeIn(layout, text, "Segoe UI", fontSize, bold, maxWidth);
 }
 
 int harnessRun(void) {
