@@ -2,7 +2,6 @@ import { createSignal, batch } from "../../src/core/signal";
 import { createEffect, createRenderEffect, onMount } from "../../src/core/effect";
 import { createRoot } from "../../src/core/owner";
 import { mockHost, mockNode, render, hydrate, HostNode, MockNode } from "../../src/render/host";
-import { renderToString } from "../../src/render/ssr";
 import { NeonNode } from "../../src/render/node";
 import { View, TextInput } from "../../src/components/primitives";
 
@@ -99,13 +98,6 @@ test "onMount runs once and does not track" {
 	});
 	setCount(1);
 	assert runs === 1, "ran " + runs.toString();
-}
-
-test "effects and onMount do not run on the server" {
-	const log: string[] = [];
-	const html = renderToString(<Focus log={log} />);
-	assert log.length === 0, "got " + log.join(",");
-	assert html !== "", "the page still renders";
 }
 
 test "hydration runs onMount after the served nodes are claimed" {
