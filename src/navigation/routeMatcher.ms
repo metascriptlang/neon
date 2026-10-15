@@ -159,15 +159,19 @@ function encodeSegment(segment: string): string {
 	return encoded;
 }
 
+export function encodePattern(pattern: string): string {
+	const parts: string[] = [];
+	for (const part of pattern.split("/")) {
+		parts.push(part.startsWith(":") || part.startsWith("*") ? part : encodeSegment(part));
+	}
+	return parts.join("/");
+}
+
 export function routePatterns(path: string, base: string, leaf: boolean): string[] {
 	const patterns: string[] = [];
 	for (const expanded of expandOptionals(path)) {
 		const joined = joinPaths(base, expanded);
-		const parts: string[] = [];
-		for (const part of (leaf ? joined : beforeSplat(joined)).split("/")) {
-			parts.push(part.startsWith(":") || part.startsWith("*") ? part : encodeSegment(part));
-		}
-		patterns.push(parts.join("/"));
+		patterns.push(encodePattern(leaf ? joined : beforeSplat(joined)));
 	}
 	return patterns;
 }
