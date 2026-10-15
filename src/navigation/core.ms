@@ -1,4 +1,4 @@
-import { Accessor, Setter, accessor, batch, createSignal, untrack } from "../core/signal";
+import { Accessor, Setter, Signal, accessor, batch, createSignal, untrack } from "../core/signal";
 import { createRenderEffect } from "../core/effect";
 import { createRoot } from "../core/owner";
 import { onCleanup } from "../core/cleanup";
@@ -283,7 +283,12 @@ export interface ScreenProps<P> {
 	route: Route<P>;
 }
 
+export function readRegistrationKey(read: Accessor<string> | null): string {
+	return read === null ? "[]" : (read as Accessor<string>)();
+}
+
 export class ScreenConfig<P> {
+	navigationKey: Accessor<string> | null = null;
 	name: string;
 	component: (props: ScreenProps<P>) => NeonNode;
 	options: Accessor<ScreenOptions> | null;
@@ -387,6 +392,8 @@ interface StateListener {
 }
 
 export class Navigation<P> {
+	registrationKey: string;
+	revision: Signal<int32> = new Signal<int32>(0);
 	core: NavigatorCore<P>;
 	route: Route<P>;
 	config: ScreenConfig<P>;
@@ -410,6 +417,7 @@ export class Navigation<P> {
 		markVisited: Setter<boolean>,
 	) {
 		this.core = core;
+		this.registrationKey = readRegistrationKey(config.navigationKey);
 		this.route = route;
 		this.config = config;
 		this.writeParams = writeParams;
@@ -458,6 +466,7 @@ export class Navigation<P> {
 	}
 
 	options(): ScreenOptions {
+		this.revision.get();
 		const core = this.core;
 		const declared = this.config.options;
 		const base = declared === null
@@ -725,6 +734,74 @@ export class NavigatorCore<P> {
 
 	hasRoute(name: string): boolean {
 		return this.config(name) !== null;
+	}
+
+	reconfigure(screens: ScreenConfig<P>[]): void {
+		if (screens.length === 0) {
+			throw new Error("a navigator needs at least one Screen after a conditional update");
+		}
+		const previous = this.snapshot();
+		let unchanged = screens.length === this.screens.length;
+		for (let i = 0; i < screens.length && unchanged; i += 1) {
+			if (screens[i] !== this.screens[i]) { unchanged = false; }
+		}
+		for (const entry of previous) {
+			if (entry.registrationKey !== readRegistrationKey(entry.config.navigationKey)) {
+				unchanged = false;
+			}
+		}
+		if (unchanged) { return; }
+		const focused = this.current();
+		this.screens = screens;
+		const kept: Navigation<P>[] = [];
+		for (const entry of previous) {
+			const config = this.config(entry.route.name);
+			if (config !== null && entry.registrationKey === readRegistrationKey(config.navigationKey)) {
+				entry.config = config as ScreenConfig<P>;
+				entry.revision.set(entry.revision.peek() + 1);
+				kept.push(entry);
+			} else { entry.progress.stopAnimation(); }
+		}
+		let list = kept;
+		let at: int32 = 0;
+		if (this.isStack()) {
+			if (list.length === 0) {
+				const name = this.hasRoute(this.initialName) ? this.initialName : screens[0].name;
+				list.push(this.makeEntry(name, null));
+			}
+			at = Math.min(untrack((): int32 => this.index()), list.length - 1) as int32;
+		} else {
+			list = [];
+			for (const config of screens) {
+				let found: Navigation<P> | null = null;
+				for (const entry of kept) {
+					if (entry.route.name === config.name) { found = entry; }
+				}
+				list.push(found === null ? this.makeEntry(config.name, null) : found as Navigation<P>);
+			}
+			if (focused !== null) {
+				for (let i = 0; i < list.length; i += 1) {
+					if (list[i].route.name === (focused as Navigation<P>).route.name) { at = i as int32; }
+				}
+			}
+		}
+		const history: string[] = [];
+		for (const key of this.history) {
+			for (const entry of list) {
+				if (entry.route.key === key) { history.push(key); }
+			}
+		}
+		if (history.length === 0) { history.push(list[at].route.key); }
+		this.history = history;
+		for (const entry of untrack((): Navigation<P>[] => this.closing())) { entry.progress.stopAnimation(); }
+		batch((): void => {
+			this.writeClosing([]);
+			this.writeEntries(list);
+			this.writeIndex(at);
+			list[at].markVisited(true);
+		});
+		this.notify();
+		this.container.changed();
 	}
 
 	routeNames(): string[] {

@@ -1,24 +1,24 @@
 import { Accessor, accessor, untrack } from "../core/signal";
-import { Host, HostNode, NeonNode } from "../render/hostTypes";
+import { NeonNode } from "../render/hostTypes";
 import { NeonEvent } from "../render/event";
 import { Style } from "../render/style";
 import { StackLayout } from "./layout";
-import { mockHost, mockNode } from "../render/host";
 import { View } from "../components/primitives";
 import { For } from "../macros/ui/flow";
 import {
 	Navigation,
 	NavigatorKind,
-	ScreenConfig,
 	ScreenOptions,
 	ScreenOptionsOf,
 	ScreenProps,
 	createCore,
-	mergeOptions,
 	optionsAccessor,
 	currentScope,
 } from "./core";
 import { screenView } from "./header";
+import {
+	createScreenCollector, collectScreens, groupOf, screenOf, watchScreens,
+} from "./screenCollection";
 
 const STACK_FRAME: Style = {
 	flex: 1,
@@ -26,76 +26,6 @@ const STACK_FRAME: Style = {
 	position: "relative",
 	overflow: "hidden",
 };
-
-export interface ScreenCollector<P> {
-	screens: ScreenConfig<P>[] | null;
-	groups: Accessor<ScreenOptions>[];
-}
-
-function withGroups(
-	groups: Accessor<ScreenOptions>[],
-	own: Accessor<ScreenOptions> | null,
-): Accessor<ScreenOptions> | null {
-	if (groups.length === 0) { return own; }
-	return accessor((): ScreenOptions => {
-		let merged: ScreenOptions = {};
-		for (const group of groups) { merged = mergeOptions(merged, group()); }
-		return own === null ? merged : mergeOptions(merged, (own as Accessor<ScreenOptions>)());
-	});
-}
-
-export function groupOf<P>(
-	collector: ScreenCollector<P>,
-	children: NeonNode,
-	screenOptions: Accessor<ScreenOptions> | null,
-): NeonNode {
-	return (host: Host, parent: HostNode, before: HostNode | null): void => {
-		if (collector.screens === null) {
-			throw new Error("a Group must be a child of its Navigator");
-		}
-		const pushed = screenOptions !== null;
-		if (pushed) { collector.groups.push(screenOptions as Accessor<ScreenOptions>); }
-		children(host, parent, before);
-		if (pushed) { collector.groups.pop(); }
-	};
-}
-
-export function collectScreens<P>(
-	collector: ScreenCollector<P>,
-	children: NeonNode,
-): ScreenConfig<P>[] {
-	const found: ScreenConfig<P>[] = [];
-	collector.screens = found;
-	const parent = mockNode("screens");
-	children(mockHost(), parent, null);
-	collector.screens = null;
-	if (parent.children.length > 0) {
-		throw new Error("a navigator's children must be Screen elements");
-	}
-	return found;
-}
-
-export function screenOf<P>(
-	collector: ScreenCollector<P>,
-	name: string,
-	component: (props: ScreenProps<P>) => NeonNode,
-	options: Accessor<ScreenOptions> | null,
-	initialParams: P | null,
-	parseParams: ((values: Map<string, string>) => P) | null,
-): NeonNode {
-	const config = new ScreenConfig<P>(name, component, options, initialParams, parseParams);
-	return (host: Host, parent: HostNode, before: HostNode | null): void => {
-		const list = collector.screens;
-		if (list === null) {
-			throw new Error("Screen '" + name + "' must be a child of its Navigator");
-		}
-		for (const screen of list as ScreenConfig<P>[]) {
-			if (screen.name === name) { throw new Error("two screens are named '" + name + "'"); }
-		}
-		config.options = withGroups(collector.groups.slice(0, collector.groups.length), options);
-		(list as ScreenConfig<P>[]).push(config);
-	};
-}
 
 export function readName(name: Accessor<string> | null): string | null {
 	if (name === null) { return null; }
@@ -120,6 +50,7 @@ export interface StackNavigator<P> {
 	Group: (props: {
 		children: NeonNode;
 		screenOptions?: Accessor<ScreenOptionsOf<P>> | null;
+		navigationKey?: Accessor<string> | null;
 	}) => NeonNode;
 	Screen: (props: {
 		name: string;
@@ -127,18 +58,20 @@ export interface StackNavigator<P> {
 		options?: Accessor<ScreenOptionsOf<P>> | null;
 		initialParams?: P | null;
 		parseParams?: ((values: Map<string, string>) => P) | null;
+		navigationKey?: Accessor<string> | null;
 	}) => NeonNode;
 }
 
 export function createStackNavigator<P>(): StackNavigator<P> {
-	const collector: ScreenCollector<P> = { screens: null, groups: [] };
+	const collector = createScreenCollector();
 	return {
 		Navigator: (props: {
 			children: NeonNode;
 			initialRouteName?: Accessor<string> | null;
 			screenOptions?: Accessor<ScreenOptionsOf<P>> | null;
 		}): NeonNode => {
-			const screens = collectScreens<P>(collector, props.children);
+			const collection = collectScreens<P>(collector, props.children);
+			const screens = untrack(() => collection.read());
 			const core = createCore<P>({
 				kind: NavigatorKind.Stack,
 				screens,
@@ -148,6 +81,7 @@ export function createStackNavigator<P>(): StackNavigator<P> {
 				backBehavior: "history",
 				scope: currentScope("Stack.Navigator"),
 			});
+			watchScreens<P>(collection, core);
 			const screen = (entry: Navigation<P>, at: Accessor<number>): NeonNode => {
 				return screenView<P>(core, entry);
 			};
@@ -160,8 +94,11 @@ export function createStackNavigator<P>(): StackNavigator<P> {
 		Group: (props: {
 			children: NeonNode;
 			screenOptions?: Accessor<ScreenOptionsOf<P>> | null;
+			navigationKey?: Accessor<string> | null;
 		}): NeonNode => {
-			return groupOf<P>(collector, props.children, optionsAccessor<P>(props.screenOptions));
+			return groupOf(
+				collector, props.children, optionsAccessor<P>(props.screenOptions), props.navigationKey,
+			);
 		},
 		Screen: (props: {
 			name: string;
@@ -169,6 +106,7 @@ export function createStackNavigator<P>(): StackNavigator<P> {
 			options?: Accessor<ScreenOptionsOf<P>> | null;
 			initialParams?: P | null;
 			parseParams?: ((values: Map<string, string>) => P) | null;
+			navigationKey?: Accessor<string> | null;
 		}): NeonNode => screenOf<P>(
 			collector,
 			props.name,
@@ -176,6 +114,7 @@ export function createStackNavigator<P>(): StackNavigator<P> {
 			optionsAccessor<P>(props.options),
 			props.initialParams,
 			props.parseParams,
+			props.navigationKey,
 		),
 	};
 }
