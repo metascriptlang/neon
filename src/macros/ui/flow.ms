@@ -18,15 +18,21 @@ function fallbackRow(fb: NeonNode | null): (() => Row) | null {
 	return (): Row => makeRow(view);
 }
 
+function indexRead(declared: boolean | null): boolean {
+	return declared === null ? true : (declared as boolean);
+}
+
 export function For<T>(props: {
 	each: Accessor<T[]>;
 	children: (item: T, index: Accessor<number>) => NeonNode;
 	fallback?: NeonNode | null;
+	usesIndex?: boolean | null;
 }): NeonNode {
 	return regionNode((h) => mapArray<T, Row>(
 		props.each,
 		(item: T, index: Accessor<number>): Row => makeRow(props.children(item, index)),
 		fallbackRow(props.fallback),
+		indexRead(props.usesIndex),
 	));
 }
 
@@ -35,12 +41,14 @@ export function ForKeyedBy<T, K>(props: {
 	keyed: (item: T) => K;
 	children: (item: Accessor<T>, index: Accessor<number>) => NeonNode;
 	fallback?: NeonNode | null;
+	usesIndex?: boolean | null;
 }): NeonNode {
 	return regionNode((h) => mapArrayKeyedBy<T, K, Row>(
 		props.each,
 		props.keyed,
 		(item: Accessor<T>, index: Accessor<number>): Row => makeRow(props.children(item, index)),
 		fallbackRow(props.fallback),
+		indexRead(props.usesIndex),
 	));
 }
 

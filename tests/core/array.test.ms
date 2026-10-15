@@ -859,3 +859,170 @@ test "map.ts:391 keyed false survives random edits: rows stay per position and s
 		d();
 	});
 }
+
+class Plain {
+	id: number;
+	value: number;
+
+	constructor(id: number, value: number) {
+		this.id = id;
+		this.value = value;
+	}
+}
+
+test "map.ts:75 default mode told the row never reads its index refuses a row that does" {
+	createRoot((d) => {
+		const [src, setSrc] = createSignal<number[]>([1, 2]);
+		const m = mapArray<number, number>(src, (v, i) => i(), null, false);
+		let caught = "";
+		try { m(); } catch (e) { caught = e.toString(); }
+		assert caught.includes("no index accessor"), "reading the index of a row emitted as index-free raises: " + caught;
+		d();
+	});
+}
+
+test "map.ts:97 keyed by a function told the row never reads its index refuses a row that does" {
+	createRoot((d) => {
+		const [src, setSrc] = createSignal<Item[]>([{ id: 1, label: "a" }]);
+		const m = mapArrayKeyedBy<Item, number, number>(src, (r) => r.id, (item, i) => i(), null, false);
+		let caught = "";
+		try { m(); } catch (e) { caught = e.toString(); }
+		assert caught.includes("no index accessor"), "reading the index of a row emitted as index-free raises: " + caught;
+		d();
+	});
+}
+
+test "map.ts:330 told the row reads its index, both modes keep the live index" {
+	createRoot((d) => {
+		const [ids, setIds] = createSignal<number[]>([5, 6, 7]);
+		const byIdentity = mapArray<number, Mapped>(ids, (v, i) => new Mapped(v.toString(), i), null, true);
+		const [items, setItems] = createSignal<Item[]>([{ id: 1, label: "a" }, { id: 2, label: "b" }]);
+		const byKey = mapArrayKeyedBy<Item, number, Mapped>(items, (r) => r.id, (item, i) => new Mapped(item().id.toString(), i), null, true);
+		const a = byIdentity();
+		const b = byKey();
+		setIds([7, 5]);
+		setItems([{ id: 2, label: "b" }, { id: 1, label: "a" }]);
+		const a2 = byIdentity();
+		const b2 = byKey();
+		assert a2[0].index() === 0 && a2[1].index() === 1, "identity rows follow the reorder";
+		assert b2[0].index() === 0 && b2[1].index() === 1, "keyed rows follow the reorder";
+		assert a[0] === a2[1] && b[0] === b2[1], "the rows were kept, only their index moved";
+		d();
+	});
+}
+
+test "map.ts:330 default mode without the index reorders, rebuilds the empty fallback and disposes" {
+	createRoot((d) => {
+		const [src, setSrc] = createSignal<number[]>([1, 2, 3]);
+		let built = 0;
+		let disposed = 0;
+		const m = mapArray<number, number>(src, (v, i) => { built = built + 1; onCleanup(() => { disposed = disposed + 1; }); return v * 10; }, () => -1, false);
+		const out = m();
+		assert out[0] === 10 && out[2] === 30, "mapped without an index";
+		setSrc([3, 1, 2]);
+		const out2 = m();
+		assert built === 3, "a reorder builds nothing: " + built.toString();
+		assert out2[0] === 30 && out2[1] === 10 && out2[2] === 20, "rows followed the reorder";
+		setSrc([2]);
+		assert m()[0] === 20 && disposed === 2, "removed rows disposed: " + disposed.toString();
+		setSrc([]);
+		assert m()[0] === -1 && disposed === 3, "the fallback shows and the last row is gone: " + disposed.toString();
+		setSrc([4, 5]);
+		const out3 = m();
+		assert out3.length === 2 && out3[1] === 50 && built === 5, "rows return after the fallback: " + built.toString();
+		d();
+	});
+}
+
+test "map.ts:330 keyed by a function without the index keeps rows per key and the item live" {
+	createRoot((d) => {
+		const [src, setSrc] = createSignal<Item[]>([{ id: 1, label: "a" }, { id: 2, label: "b" }, { id: 3, label: "c" }]);
+		let built = 0;
+		let disposed = 0;
+		const m = mapArrayKeyedBy<Item, number, Labelled>(src, (r) => r.id, (item, i) => { built = built + 1; onCleanup(() => { disposed = disposed + 1; }); return new Labelled(accessor((): string => item().label)); }, () => new Labelled(accessor((): string => "empty")), false);
+		const out = m();
+		setSrc([{ id: 3, label: "c2" }, { id: 1, label: "a" }, { id: 4, label: "d" }]);
+		const out2 = m();
+		assert built === 4, "only key 4 is new: " + built.toString();
+		assert disposed === 1, "only key 2 is gone: " + disposed.toString();
+		assert out2[0] === out[2] && out2[1] === out[0], "rows follow their keys";
+		assert out2[0].label() === "c2" && out2[2].label() === "d", "kept rows show the current item";
+		setSrc([]);
+		assert m()[0].label() === "empty" && disposed === 4, "the fallback shows after the last row: " + disposed.toString();
+		d();
+	});
+}
+
+test "map.ts:391 default mode without the index survives random edits: every row maps its item, none leaks" {
+	createRoot((d) => {
+		const [src, setSrc] = createSignal<number[]>([1, 2, 3]);
+		const gone: boolean[] = [];
+		let live = 0;
+		const m = mapArray<number, Plain>(src, (v, i) => {
+			const id = gone.length;
+			gone.push(false);
+			live = live + 1;
+			onCleanup(() => {
+				assert !gone[id], "row " + id.toString() + " disposed twice";
+				gone[id] = true;
+				live = live - 1;
+			});
+			return new Plain(id, v);
+		}, null, false);
+		m();
+		let cur: number[] = [1, 2, 3];
+		for (let step = 0; step < 400; step += 1) {
+			cur = nextList(cur, false);
+			setSrc(cur);
+			const out = m();
+			assert out.length === cur.length, "step " + step.toString() + ": length";
+			assert live === cur.length, "step " + step.toString() + ": live rows " + live.toString() + " for " + cur.length.toString() + " items";
+			for (let j = 0; j < cur.length; j += 1) {
+				assert out[j].value === cur[j], "step " + step.toString() + ": row " + j.toString() + " maps its item";
+			}
+		}
+		d();
+	});
+}
+
+test "map.ts:391 keyed by a function without the index survives random edits: rows follow keys and items" {
+	createRoot((d) => {
+		const [src, setSrc] = createSignal<Item[]>([{ id: 1, label: "1.0" }, { id: 2, label: "2.0" }]);
+		const gone: boolean[] = [];
+		const serialOfKey = new Map<number, number>();
+		let live = 0;
+		let version = 0;
+		const m = mapArrayKeyedBy<Item, number, Tracked>(src, (r) => r.id, (item, i) => {
+			const id = gone.length;
+			gone.push(false);
+			live = live + 1;
+			serialOfKey.set(item().id, id);
+			onCleanup(() => {
+				assert !gone[id], "row " + id.toString() + " disposed twice";
+				gone[id] = true;
+				live = live - 1;
+			});
+			return new Tracked(id, item().id, accessor((): number => item().label.length), accessor((): number => 0));
+		}, null, false);
+		m();
+		let keys: number[] = [1, 2];
+		for (let step = 0; step < 400; step += 1) {
+			keys = noDuplicates(nextList(keys, false));
+			version = version + 1;
+			const items: Item[] = [];
+			for (const k of keys) { items.push({ id: k, label: k.toString() + "." + version.toString() }); }
+			const before = new Map<number, number>();
+			for (const k of keys) { if (serialOfKey.has(k) && !gone[serialOfKey.get(k) as number]) { before.set(k, serialOfKey.get(k) as number); } }
+			setSrc(items);
+			const out = m();
+			assert out.length === keys.length, "step " + step.toString() + ": length";
+			assert live === keys.length, "step " + step.toString() + ": live rows " + live.toString() + " for " + keys.length.toString() + " keys";
+			for (let j = 0; j < keys.length; j += 1) {
+				assert out[j].value === keys[j], "step " + step.toString() + ": slot " + j.toString() + " holds the row of its key";
+				assert out[j].item() === items[j].label.length, "step " + step.toString() + ": slot " + j.toString() + " shows the current item";
+				if (before.has(keys[j])) { assert out[j].id === before.get(keys[j]) as number, "step " + step.toString() + ": key " + keys[j].toString() + " kept its row"; }
+			}
+		}
+		d();
+	});
+}

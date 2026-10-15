@@ -10,7 +10,7 @@
 // Component tags, Show and For do NOT flatten: their structure changes at
 // runtime, so they stay runtime calls through createComponent.
 
-import { Node, NodeKind, DeclKind, NodeFlag, bindSym, getType, getTypeImpl, getImpl, define } from "std/meta";
+import { Node, NodeKind, DeclKind, NodeFlag, childCount, childAt, bindSym, getType, getTypeImpl, getImpl, define } from "std/meta";
 import { isReactiveExpr, isEventName, peelHidden } from "./reactive";
 
 function trimEdgeSpaces(s: string, fromStart: boolean, fromEnd: boolean): string {
@@ -689,6 +689,24 @@ export macro element(node: Node): Node {
 		if (t !== null && t.kind === NodeKind.TypeFunction) { return t.typExprParams.length; }
 		return 0;
 	}
+	function readsName(n: Node, name: string): boolean {
+		if (n.kind === NodeKind.Identifier && n.name === name) { return true; }
+		const c = childCount(n);
+		for (let i = 0; i < c; i = i + 1) {
+			if (readsName(childAt(n, i), name)) { return true; }
+		}
+		return false;
+	}
+	function rowUsesIndex(row: Node): boolean {
+		const r = peelHidden(row);
+		if (r.kind !== NodeKind.ArrowFunction) { return true; }
+		let declared: string[] = [];
+		for (const p of r.arrowParams) {
+			if (!p.startsWith("__msPad")) { declared.push(p); }
+		}
+		if (declared.length < 2) { return false; }
+		return readsName(r.arrowBody, declared[1]);
+	}
 	function isFunctionValued(n: Node): boolean {
 		if (n.kind === NodeKind.ArrowFunction || n.kind === NodeKind.FunctionExpr) { return true; }
 		const t = peelHidden(n).nodeType;
@@ -869,6 +887,18 @@ export macro element(node: Node): Node {
 				kind: NodeKind.MacroInvocation, line: c.line, column: c.column, macroName: "element",
 				macroArgs: [{ kind: NodeKind.JSXFragment, line: c.line, column: c.column, jsxFragChildren: c.jsxChildren }],
 			});
+		}
+		if (tag === "For" || tag === "ForKeyedBy") {
+			let written = false;
+			let rowAt = -1;
+			for (let i = 0; i < keys.length; i = i + 1) {
+				if (keys[i] === "usesIndex") { written = true; }
+				if (keys[i] === "children") { rowAt = i; }
+			}
+			if (!written && rowAt >= 0) {
+				keys.push("usesIndex");
+				values.push({ kind: NodeKind.BooleanLiteral, line: c.line, column: c.column, boolValue: rowUsesIndex(values[rowAt]) });
+			}
 		}
 		// A dotted tag (Palettes.tone) resolves through member access, not a flat
 		// name: fold the parts so the checker sees Palettes.tone and types the call

@@ -25,7 +25,7 @@ class IndexCell {
 }
 
 const noIndex: Accessor<number> = accessor((): number => {
-	throw new Error("mapArray: a position-keyed row receives its index as a number, it has no index accessor");
+	throw new Error("mapArray: this row has no index accessor: a position-keyed row receives its index as a number, and a row emitted as not reading its index never gets one");
 });
 
 function disposeAll(ds: (() => void)[]): void {
@@ -36,10 +36,12 @@ export function mapArray<T, U>(
 	list: () => T[],
 	mapFn: (item: T, index: Accessor<number>) => U,
 	fallback: (() => U) | null = null,
+	usesIndex: boolean = true,
 ): () => U[] {
 	return mapRows<T, T, U>(
 		list,
 		MapMode.Identity,
+		usesIndex,
 		(items: T[]): T[] => items.slice(0, items.length),
 		(item: T, pos: number, cell: Signal<T> | null, index: Accessor<number>): U => mapFn(item, index),
 		fallback,
@@ -51,10 +53,12 @@ export function mapArrayKeyedBy<T, K, U>(
 	keyOf: (item: T) => K,
 	mapFn: (item: Accessor<T>, index: Accessor<number>) => U,
 	fallback: (() => U) | null = null,
+	usesIndex: boolean = true,
 ): () => U[] {
 	return mapRows<T, K, U>(
 		list,
 		MapMode.Keyed,
+		usesIndex,
 		(items: T[]): K[] => {
 			const ks: K[] = new Array(items.length);
 			for (let j = 0; j < items.length; j += 1) { ks[j] = keyOf(items[j]); }
@@ -76,6 +80,7 @@ export function mapArrayByPosition<T, U>(
 	return mapRows<T, number, U>(
 		list,
 		MapMode.Position,
+		false,
 		(items: T[]): number[] => [],
 		(item: T, pos: number, cell: Signal<T> | null, index: Accessor<number>): U => {
 			const c = cell as Signal<T>;
@@ -88,13 +93,14 @@ export function mapArrayByPosition<T, U>(
 function mapRows<T, K, U>(
 	list: () => T[],
 	mode: MapMode,
+	usesIndex: boolean,
 	keysOf: (items: T[]) => K[],
 	make: (item: T, pos: number, cell: Signal<T> | null, index: Accessor<number>) => U,
 	fallback: (() => U) | null,
 ): () => U[] {
 	const hasKeys = mode !== MapMode.Position;
 	const hasCells = mode !== MapMode.Identity;
-	const hasIdx = mode !== MapMode.Position;
+	const hasIdx = mode !== MapMode.Position && usesIndex;
 	let keys: K[] = [];
 	let mapped: U[] = [];
 	let disposers: (() => void)[] = [];

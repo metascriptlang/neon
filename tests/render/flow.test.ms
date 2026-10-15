@@ -423,6 +423,46 @@ test "For renders a row that never names its index" {
 	d();
 }
 
+test "map.ts:330 For keeps the index live wherever the row names it" {
+	const [items, setItems] = createSignal<string[]>(["a", "b"]);
+	const [view, d] = mountedText(element(
+		<ul>
+			<For each={items()}>{(s: string, i: Accessor<number>): NeonNode => element(<li title={i().toString()}>{`${s}${i()}`}</li>)}</For>
+		</ul>
+	));
+	assert view() === "<root><ul><li title=\"0\">a0</li><li title=\"1\">b1</li></ul></root>", "initial: " + view();
+	setItems(["b", "a"]);
+	assert view() === "<root><ul><li title=\"0\">b0</li><li title=\"1\">a1</li></ul></root>", "attribute and template literal follow the reorder: " + view();
+	d();
+}
+
+test "map.ts:97 For keyed by a function keeps the index live when the row reads it and renders when it does not" {
+	const [rows, setRows] = createSignal<Keyed[]>([{ id: 1, label: "a" }, { id: 2, label: "b" }]);
+	const key = (r: Keyed): number => r.id;
+	const [withIndex, d1] = mountedText(element(<ul><For each={rows()} keyed={key}>{(r: Accessor<Keyed>, i: Accessor<number>): NeonNode => element(<li>{r().label + i().toString()}</li>)}</For></ul>));
+	const [without, d2] = mountedText(element(<ul><For each={rows()} keyed={key}>{(r: Accessor<Keyed>, i: Accessor<number>): NeonNode => element(<li>{r().label}</li>)}</For></ul>));
+	assert withIndex() === "<root><ul><li>a0</li><li>b1</li></ul></root>", "indexed: " + withIndex();
+	assert without() === "<root><ul><li>a</li><li>b</li></ul></root>", "plain: " + without();
+	setRows([{ id: 2, label: "b2" }, { id: 3, label: "c" }, { id: 1, label: "a2" }]);
+	assert withIndex() === "<root><ul><li>b20</li><li>c1</li><li>a22</li></ul></root>", "indexes follow insert and move: " + withIndex();
+	assert without() === "<root><ul><li>b2</li><li>c</li><li>a2</li></ul></root>", "rows follow insert and move: " + without();
+	setRows([]);
+	assert without() === "<root><ul></ul></root>", "emptied: " + without();
+	d1();
+	d2();
+}
+
+test "map.ts:75 a row that reads its index after usesIndex={false} was written on the tag raises at mount" {
+	const [items, _s] = createSignal<string[]>(["a"]);
+	let caught = "";
+	try {
+		mountedText(element(<ul><For each={items()} usesIndex={false}>{labelFromIndex}</For></ul>));
+	} catch (e) {
+		caught = e.toString();
+	}
+	assert caught.includes("no index accessor"), "the engine names the missing index: " + caught;
+}
+
 let flowBuilds = 0;
 
 function labelAndIndexRow(r: Accessor<Keyed>, i: Accessor<number>): NeonNode {
@@ -433,6 +473,10 @@ function labelAndIndexRow(r: Accessor<Keyed>, i: Accessor<number>): NeonNode {
 function countedRow(x: string, i: Accessor<number>): NeonNode {
 	flowBuilds = flowBuilds + 1;
 	return element(<li>{x}</li>);
+}
+
+function labelFromIndex(x: string, i: Accessor<number>): NeonNode {
+	return element(<li>{x + i().toString()}</li>);
 }
 
 function plainRow(x: string, i: Accessor<number>): NeonNode {
