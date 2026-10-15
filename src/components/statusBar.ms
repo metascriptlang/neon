@@ -1,6 +1,6 @@
 import { Style } from "../render/style";
 import { Accessor, createSignal, untrack } from "../core/signal";
-import { createEffect } from "../core/effect";
+import { createRenderEffect } from "../core/effect";
 import { onCleanup } from "../core/cleanup";
 import { NeonNode, hostElement } from "../render/node";
 import { Host, HostNode } from "../render/hostTypes";
@@ -80,7 +80,7 @@ export function StatusBar(props: StatusBarProps): NeonNode {
 		const entry = new StatusBarEntry(host, node, props);
 		stack.push(entry);
 		bump();
-		createEffect((): void => {
+		createRenderEffect((): void => {
 			revision();
 			if (stack.length > 0 && stack[stack.length - 1] === entry) { writeMerged(entry); }
 		});

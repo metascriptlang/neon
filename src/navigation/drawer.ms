@@ -1,5 +1,5 @@
 import { Accessor, Setter, accessor, createSignal, untrack } from "../core/signal";
-import { createEffect } from "../core/effect";
+import { createRenderEffect } from "../core/effect";
 import { Animated, AnimatedValue, EndResult, Easing } from "../animation/index";
 import {
 	GestureResponderHandlers,
@@ -151,7 +151,7 @@ function drawerMotion<P>(
 	const setOpen = (open: boolean): void => { core.writeDrawerOpen(open); };
 	const motion = new DrawerMotion(core.drawerOpen, setOpen, right, width, swipe);
 	let first = true;
-	createEffect((): void => {
+	createRenderEffect((): void => {
 		const open = core.drawerOpen();
 		if (first) {
 			first = false;

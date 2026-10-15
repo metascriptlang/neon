@@ -1,5 +1,5 @@
 import { Accessor, Setter, accessor, batch, createSignal, untrack } from "../core/signal";
-import { createEffect } from "../core/effect";
+import { createRenderEffect } from "../core/effect";
 import { createRoot } from "../core/owner";
 import { onCleanup } from "../core/cleanup";
 import { NeonNode } from "../render/hostTypes";
@@ -546,7 +546,7 @@ export class Navigation<P> {
 		return createRoot((dispose: () => void): Unsubscribe => {
 			let first = true;
 			let last = false;
-			createEffect((): void => {
+			createRenderEffect((): void => {
 				const now = this.focusedNow();
 				if (first) {
 					first = false;
@@ -1412,7 +1412,7 @@ export function useFocusEffect(effect: () => (() => void) | null): void {
 		cleanup = null;
 		if (done !== null) { (done as () => void)(); }
 	};
-	createEffect((): void => {
+	createRenderEffect((): void => {
 		if (focused()) {
 			untrack((): void => { cleanup = effect(); });
 		} else {

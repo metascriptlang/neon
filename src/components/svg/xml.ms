@@ -5,7 +5,7 @@
 // Malformed XML is an error that names the position.
 
 import { Accessor } from "../../core/signal";
-import { createEffect } from "../../core/effect";
+import { createRenderEffect } from "../../core/effect";
 import { Style } from "../../render/style";
 import { Host, HostNode } from "../../render/hostTypes";
 import { NeonNode } from "../../render/node";
@@ -216,7 +216,7 @@ function documentContent(xml: Accessor<string>, owned: string[]): NeonNode {
 	return (host: Host, parent: HostNode, before: HostNode | null): void => {
 		let placed: SvgNode[] = [];
 		let written: string[] = [];
-		createEffect((): void => {
+		createRenderEffect((): void => {
 			const doc = parseSvgXml(xml());
 			for (const n of placed) { host.removeChild(parent, n as unknown as HostNode); }
 			for (const name of written) { host.removeAttr(parent, name); }

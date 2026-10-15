@@ -10,6 +10,12 @@ export function createEffect(fn: () => void): Dispose {
 	return () => { cleanNode(comp, true); };
 }
 
+export function createRenderEffect(fn: () => void): Dispose {
+	const comp = createComputation(fn, false);
+	runComputation(comp);
+	return () => { cleanNode(comp, true); };
+}
+
 export function createBindingEffect(fn: () => void): Dispose {
 	const comp = createComputation(fn, false, true);
 	runComputation(comp);

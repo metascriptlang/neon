@@ -1,5 +1,5 @@
 import { Signal, Accessor, accessor, untrack } from "../core/signal";
-import { createEffect } from "../core/effect";
+import { createRenderEffect } from "../core/effect";
 import { createRoot } from "../core/owner";
 import { Dispose } from "../core/types";
 import { Easing, EasingFunction, easingOr } from "./easing";
@@ -89,7 +89,7 @@ export class AnimatedNode {
 		const id = listenerId();
 		let primed = false;
 		const dispose = createRoot((d: Dispose): Dispose => {
-			createEffect((): void => {
+			createRenderEffect((): void => {
 				const value = this.get();
 				if (!primed) {
 					primed = true;
@@ -226,7 +226,7 @@ export class AnimatedValue extends AnimatedNode {
 	track(target: AnimatedNode, make: (toValue: number) => Animation, callback: EndCallback | null): void {
 		this.stopTracking();
 		this.tracking = createRoot((d: Dispose): Dispose => {
-			createEffect((): void => {
+			createRenderEffect((): void => {
 				const toValue = target.get();
 				untrack((): void => { this.animate(make(toValue), callback); });
 			});

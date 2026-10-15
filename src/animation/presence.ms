@@ -1,5 +1,5 @@
 import { Accessor, accessor, createSignal, untrack } from "../core/signal";
-import { createEffect } from "../core/effect";
+import { createRenderEffect } from "../core/effect";
 import { element } from "../macros/ui/element";
 import { Show } from "../macros/ui/flow";
 import { NeonNode } from "../render/node";
@@ -46,7 +46,7 @@ export function Presence(props: PresenceProps): NeonNode {
 	const kind = (): PresenceType => type === null ? "fade" : (type as Accessor<PresenceType>)();
 	const ms = (): number => duration === null ? 220 : (duration as Accessor<number>)();
 	const span = (): number => distance === null ? 24 : (distance as Accessor<number>)();
-	createEffect((): void => {
+	createRenderEffect((): void => {
 		const show = when();
 		if (first) {
 			first = false;

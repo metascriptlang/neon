@@ -3,7 +3,7 @@
 // is the Android toast: a dark pill near the bottom, so `position` defaults to "bottom".
 
 import { Style, layerStyles } from "../render/style";
-import { createEffect } from "../core/effect";
+import { createRenderEffect } from "../core/effect";
 import { onCleanup } from "../core/cleanup";
 import { Accessor, accessor, createSignal } from "../core/signal";
 import { element } from "../macros/ui/element";
@@ -154,7 +154,7 @@ export function ToastHost(props: ToastHostProps): NeonNode {
 		</View>
 	</Show>);
 	return (host: Host, parent: HostNode, before: HostNode | null): void => {
-		createEffect((): void => {
+		createRenderEffect((): void => {
 			const t = shown();
 			if (t === null || !(t as ToastShown).autoHide) { return; }
 			const id = setTimeout((): void => {

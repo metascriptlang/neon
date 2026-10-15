@@ -6,7 +6,7 @@
 
 import { Style } from "../render/style";
 import { Accessor, accessor, createSignal } from "../core/signal";
-import { createEffect } from "../core/effect";
+import { createRenderEffect } from "../core/effect";
 import { onCleanup } from "../core/cleanup";
 import { element } from "../macros/ui/element";
 import { NeonNode, VAttr, dynAttr, hostElement } from "../render/node";
@@ -62,7 +62,7 @@ export function ProgressBar(props: ProgressBarProps): NeonNode {
 	const isIndeterminate = (): boolean => flagOn(indeterminate);
 	const amount = (): float64 => progress === null ? 0.0 : (progress as Accessor<float64>)();
 	const [phase, setPhase] = createSignal(0);
-	createEffect((): void => {
+	createRenderEffect((): void => {
 		if (!isIndeterminate()) { return; }
 		const steps = sweepSteps();
 		const id = setInterval((): void => { setPhase((phase() + 1) % steps); }, STEP_MS);
