@@ -178,10 +178,10 @@ function regions(): NeonNode {
 		<Drawn />
 		<For each={[3, 4]} keyed={false}>{(v: Accessor<number>, i: number): NeonNode => <Drawn />}</For>
 		<ForList each={list}>{(v: Accessor<number>): NeonNode => <Drawn />}</ForList>
-		<ErrorBoundary fallback={(err: Error, reset: () => void): NeonNode => <Drawn />}>
+		<Errored fallback={(err: Accessor<Error>, reset: () => void): NeonNode => <Drawn />}>
 			<Drawn />
 			{failing}
-		</ErrorBoundary>
+		</Errored>
 		<Drawn />
 	</View>;
 }

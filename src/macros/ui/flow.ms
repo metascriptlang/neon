@@ -10,9 +10,11 @@ import { createErrorBoundary, routeThrown } from "../../core/boundary";
 import { createOwner, getOwner, flush } from "../../core/runtime";
 import { runWithOwner } from "../../core/owner";
 import { Computation, NotReadyError, ContextEntry } from "../../core/types";
+import { isServer } from "../../render/environment";
+import { serverCaught } from "../../render/ssr";
 import { NeonNode, regionNode } from "../../render/node";
 import { Host, HostNode } from "../../render/hostTypes";
-import { Row, makeRow } from "../../render/reconcile";
+import { Row, makeRow, mountAt, removeRow } from "../../render/reconcile";
 import { List } from "../../core/list";
 import { listRegion } from "../../render/listRegion";
 
@@ -111,53 +113,84 @@ export function ErrorBoundary(props: {
 	});
 }
 
-function mountGuarded(mount: () => void): void {
+class MountedState {
+	failed: boolean = false;
+}
+
+function mountGuarded(mount: () => void, state: MountedState): void {
 	try {
 		mount();
 	} catch (e) {
 		if (e instanceof NotReadyError) { throw e; }
 		routeThrown(e);
+		state.failed = true;
 	}
 }
 
-function mountedUnder(children: NeonNode, context: ContextEntry | null): NeonNode {
+function mountedUnder(children: NeonNode, context: ContextEntry | null, state: MountedState): NeonNode {
 	return (host: Host, parent: HostNode, before: HostNode | null): void => {
 		const scope = createOwner();
 		scope.context = context;
 		runWithOwner(scope, (): number => {
-			mountGuarded((): void => { children(host, parent, before); });
+			mountGuarded((): void => { children(host, parent, before); }, state);
 			return 0;
 		});
 	};
+}
+
+type ErroredFallback = (err: Accessor<Error>, reset: () => void) => NeonNode;
+
+function errorRows(children: NeonNode, fallbackOf: ErroredFallback, failure: Signal<Error | null>, state: MountedState, server: boolean): Accessor<Row[]> {
+	let content: NeonNode | null = null;
+	let fallback: NeonNode | null = null;
+	const showsContent = createErrorBoundary<boolean>(
+		(): boolean => {
+			const failed = failure.get();
+			if (failed !== null) { throw failed; }
+			content = mountedUnder(children, (getOwner() as Computation).context, state);
+			return true;
+		},
+		(err: Accessor<Error>, reset: () => void): boolean => {
+			const caught = err();
+			failure.set(caught);
+			const shown = server ? serverCaught(caught) : err;
+			fallback = (host: Host, parent: HostNode, before: HostNode | null): void => {
+				mountGuarded((): void => {
+					fallbackOf(shown, (): void => { flush((): number => { failure.set(null); reset(); return 0; }); })(host, parent, before);
+				}, state);
+			};
+			return false;
+		},
+	);
+	return createMemo<Row[]>(() => [makeRow(showsContent() ? (content as NeonNode) : (fallback as NeonNode))]);
+}
+
+function settledOnServer(rows: Accessor<Row[]>, state: MountedState): Accessor<Row[]> {
+	const settled = makeRow((host: Host, parent: HostNode, before: HostNode | null): void => {
+		const first = rows()[0];
+		mountAt(host, parent, before, first);
+		if (!state.failed) { return; }
+		flush();
+		removeRow(host, parent, first);
+		mountAt(host, parent, before, rows()[0]);
+	});
+	return accessor((): Row[] => [settled]);
 }
 
 export function Errored(props: {
 	children: NeonNode;
 	fallback: (err: Accessor<Error>, reset: () => void) => NeonNode;
 }): NeonNode {
-	return regionNode((h) => {
+	return (host: Host, parent: HostNode, before: HostNode | null): void => {
 		const failure = new Signal<Error | null>(null, null, true);
-		let content: NeonNode | null = null;
-		let fallback: NeonNode | null = null;
-		const showsContent = createErrorBoundary<boolean>(
-			(): boolean => {
-				const failed = failure.get();
-				if (failed !== null) { throw failed; }
-				content = mountedUnder(props.children, (getOwner() as Computation).context);
-				return true;
-			},
-			(err: Accessor<Error>, reset: () => void): boolean => {
-				failure.set(err());
-				fallback = (host: Host, parent: HostNode, before: HostNode | null): void => {
-					mountGuarded((): void => {
-						props.fallback(err, (): void => { flush((): number => { failure.set(null); reset(); return 0; }); })(host, parent, before);
-					});
-				};
-				return false;
-			},
-		);
-		return createMemo<Row[]>(() => [makeRow(showsContent() ? (content as NeonNode) : (fallback as NeonNode))]);
-	});
+		const state = new MountedState();
+		const server = isServer();
+		regionNode((h) => {
+			const rows = errorRows(props.children, props.fallback, failure, state, server);
+			return server ? settledOnServer(rows, state) : rows;
+		})(host, parent, before);
+		if (!server && state.failed) { flush(); }
+	};
 }
 
 function shownRows(on: boolean, children: NeonNode, fallback: NeonNode | null): Row[] {

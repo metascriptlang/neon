@@ -51,10 +51,10 @@ function fixtures(): NeonNode {
 		<ForList each={list}>{(v: Accessor<number>): NeonNode => <Text>{v().toString()}</Text>}</ForList>
 		<View><Show when={on}><Text>first</Text></Show><Text>after</Text></View>
 		<For each={[1, 2]}>{(n: number, i: Accessor<number>): NeonNode => <Show when={on}><Text>{n.toString()}</Text><Ided /></Show>}</For>
-		<ErrorBoundary fallback={(err: Error, reset: () => void): NeonNode => <Text>caught {err.message}</Text>}>
+		<Errored fallback={(err: Accessor<Error>, reset: () => void): NeonNode => <Text>caught {err().message}</Text>}>
 			<Text>partial</Text>
 			{boom}
-		</ErrorBoundary>
+		</Errored>
 		<Ided />
 		<Portal><Text>over</Text></Portal>
 		<Text>{"a"}{"b"}{""}{"<&>"}</Text>

@@ -30,6 +30,16 @@ import {
 import { parseVisibleContent } from "./visibleContent";
 import { asServer } from "./environment";
 import { Dispose } from "../core/types";
+import { Accessor, accessor } from "../core/signal";
+
+export class SafeError extends Error {}
+
+// server/signals.ts:3535 ssrSanitizeError: a build without `debug` hands the fallback one generic Error per caught error
+export function serverCaught(error: Error): Accessor<Error> {
+	let wire = error;
+	when (debug) {} else { if (!(error instanceof SafeError)) { wire = new Error("Internal Server Error"); } }
+	return accessor((): Error => wire);
+}
 
 export struct SsrMarkup {
 	html: string;
