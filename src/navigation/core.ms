@@ -8,6 +8,7 @@ import { Animated, AnimatedValue, EndResult, Easing } from "../animation/index";
 import { StackLayout } from "./layout";
 import { createContext, useContext } from "../render/context";
 import { refreshKeep } from "../render/refresh";
+import { ChildNavigation, ChildState, createChildren } from "./children";
 
 export enum NavigatorKind {
 	Container,
@@ -356,6 +357,12 @@ interface PendingEntry {
 	target: NavTarget;
 }
 
+interface RouteSeed<P> {
+	key: string;
+	name: string;
+	params: P | null;
+}
+
 interface SeedEntry {
 	routeKey: string;
 	state: NavigationState;
@@ -635,8 +642,8 @@ export interface NavigatorSetup<P> {
 export class NavigatorCore<P> {
 	kind: NavigatorKind;
 	screens: ScreenConfig<P>[];
+	routes: ChildNavigation<RouteSeed<P>, Navigation<P>>;
 	entries: Accessor<Navigation<P>[]>;
-	writeEntries: Setter<Navigation<P>[]>;
 	index: Accessor<int32>;
 	writeIndex: Setter<int32>;
 	drawerOpen: Accessor<boolean>;
@@ -664,8 +671,6 @@ export class NavigatorCore<P> {
 	constructor(
 		kind: NavigatorKind,
 		screens: ScreenConfig<P>[],
-		entries: Accessor<Navigation<P>[]>,
-		writeEntries: Setter<Navigation<P>[]>,
 		index: Accessor<int32>,
 		writeIndex: Setter<int32>,
 		drawerOpen: Accessor<boolean>,
@@ -679,8 +684,13 @@ export class NavigatorCore<P> {
 	) {
 		this.kind = kind;
 		this.screens = screens;
-		this.entries = entries;
-		this.writeEntries = writeEntries;
+		this.routes = createChildren<RouteSeed<P>, Navigation<P>>(
+			[],
+			(seed: Accessor<RouteSeed<P>>, active: Accessor<boolean>): Navigation<P> => {
+				return this.instantiate(untrack((): RouteSeed<P> => seed()));
+			},
+		);
+		this.entries = this.routes.instances;
 		this.index = index;
 		this.writeIndex = writeIndex;
 		this.drawerOpen = drawerOpen;
@@ -738,12 +748,13 @@ export class NavigatorCore<P> {
 				kept.push(entry);
 			} else { entry.progress.stopAnimation(); }
 		}
-		let list = kept;
+		let list: RouteSeed<P>[] = [];
+		for (const entry of kept) { list.push(this.seedOf(entry)); }
 		let at: int32 = 0;
 		if (this.isStack()) {
 			if (list.length === 0) {
 				const name = this.hasRoute(this.initialName) ? this.initialName : screens[0].name;
-				list.push(this.makeEntry(name, null));
+				list.push(this.seed(name, null));
 			}
 			at = Math.min(untrack((): int32 => this.index()), list.length - 1) as int32;
 		} else {
@@ -753,28 +764,26 @@ export class NavigatorCore<P> {
 				for (const entry of kept) {
 					if (entry.route.name === config.name) { found = entry; }
 				}
-				list.push(found === null ? this.makeEntry(config.name, null) : found as Navigation<P>);
+				list.push(found === null ? this.seed(config.name, null) : this.seedOf(found as Navigation<P>));
 			}
 			if (focused !== null) {
 				for (let i = 0; i < list.length; i += 1) {
-					if (list[i].route.name === (focused as Navigation<P>).route.name) { at = i as int32; }
+					if (list[i].name === (focused as Navigation<P>).route.name) { at = i as int32; }
 				}
 			}
 		}
 		const history: string[] = [];
 		for (const key of this.history) {
-			for (const entry of list) {
-				if (entry.route.key === key) { history.push(key); }
+			for (const seed of list) {
+				if (seed.key === key) { history.push(key); }
 			}
 		}
-		if (history.length === 0) { history.push(list[at].route.key); }
+		if (history.length === 0) { history.push(list[at].key); }
 		this.history = history;
 		for (const entry of untrack((): Navigation<P>[] => this.closing())) { entry.progress.stopAnimation(); }
 		batch((): void => {
 			this.writeClosing([]);
-			this.writeEntries(list);
-			this.writeIndex(at);
-			list[at].markVisited(true);
+			this.place(list, at);
 		});
 		this.notify();
 		this.container.changed();
@@ -811,21 +820,40 @@ export class NavigatorCore<P> {
 		return at >= 0 && at < list.length ? list[at] : null;
 	}
 
-	makeEntry(name: string, params: P | null): Navigation<P> {
+	seed(name: string, params: P | null): RouteSeed<P> {
 		const screen = this.config(name);
 		if (screen === null) {
 			throw new Error("navigator has no screen named '" + name + "'");
 		}
 		const config = screen as ScreenConfig<P>;
-		const initial = params !== null ? params : config.initialParams;
-		const [read, write] = createSignal<P | null>(initial);
+		const key = name + "-" + this.nextKey.toString();
+		this.nextKey += 1;
+		return { key, name, params: params !== null ? params : config.initialParams };
+	}
+
+	seedOf(entry: Navigation<P>): RouteSeed<P> {
+		return {
+			key: entry.route.key,
+			name: entry.route.name,
+			params: untrack((): P | null => entry.route.params()),
+		};
+	}
+
+	routeSeeds(): RouteSeed<P>[] {
+		const list: RouteSeed<P>[] = [];
+		for (const entry of this.snapshot()) { list.push(this.seedOf(entry)); }
+		return list;
+	}
+
+	instantiate(seed: RouteSeed<P>): Navigation<P> {
+		const config = this.config(seed.name) as ScreenConfig<P>;
+		const name = seed.name;
+		const [read, write] = createSignal<P | null>(seed.params);
 		const empty: ScreenOptions = {};
 		const [overrides, writeOverrides] = createSignal<ScreenOptions>(empty);
 		const [visited, markVisited] = createSignal<boolean>(false);
 		const [motion, writeMotion] = createSignal<boolean>(false);
-		const key = name + "-" + this.nextKey.toString();
-		this.nextKey += 1;
-		const route = new Route<P>(key, name, read);
+		const route = new Route<P>(seed.key, name, read);
 		const entry = new Navigation<P>(
 			this,
 			route,
@@ -843,23 +871,17 @@ export class NavigatorCore<P> {
 
 	start(initialParams: P | null): void {
 		if (this.isStack()) {
-			const first = this.makeEntry(this.initialName, initialParams);
-			first.markVisited(true);
-			this.commit([first], 0);
+			this.commit([this.seed(this.initialName, initialParams)], 0);
 			return;
 		}
-		const list: Navigation<P>[] = [];
+		const list: RouteSeed<P>[] = [];
 		let at: int32 = 0;
 		for (let i = 0; i < this.screens.length; i += 1) {
 			const name = this.screens[i].name;
-			const entry = this.makeEntry(name, name === this.initialName ? initialParams : null);
-			if (name === this.initialName) {
-				at = i as int32;
-				entry.markVisited(true);
-			}
-			list.push(entry);
+			if (name === this.initialName) { at = i as int32; }
+			list.push(this.seed(name, name === this.initialName ? initialParams : null));
 		}
-		this.history = [list[at].route.key];
+		this.history = [list[at].key];
 		this.commit(list, at);
 	}
 
@@ -950,18 +972,25 @@ export class NavigatorCore<P> {
 		if (!contains(before, top)) { this.animateIn(top); }
 	}
 
-	commit(list: Navigation<P>[], at: int32): void {
+	place(list: RouteSeed<P>[], at: int32): void {
+		const state: ChildState<RouteSeed<P>>[] = [];
+		for (let i = 0; i < list.length; i += 1) {
+			state.push({ key: list[i].key, configuration: list[i], active: i === at });
+		}
+		this.routes.navigate(state);
+		this.writeIndex(at);
+		this.snapshot()[at].markVisited(true);
+	}
+
+	commit(list: RouteSeed<P>[], at: int32): void {
 		const before = this.snapshot();
 		const focusedBefore = this.current();
-		batch((): void => {
-			this.writeEntries(list);
-			this.writeIndex(at);
-			list[at].markVisited(true);
-		});
+		batch((): void => { this.place(list, at); });
+		const after = this.snapshot();
 		if (this.isStack()) {
-			this.transition(before, list);
-		} else if (focusedBefore !== list[at]) {
-			this.animateIn(list[at]);
+			this.transition(before, after);
+		} else if (focusedBefore !== after[at]) {
+			this.animateIn(after[at]);
 		}
 		this.notify();
 		this.container.changed();
@@ -1053,25 +1082,26 @@ export class NavigatorCore<P> {
 
 	navigateLocal(name: string, params: P | null): void {
 		const list = this.snapshot();
+		const seeds = this.routeSeeds();
 		const at = this.indexOfName(list, name);
 		if (this.isStack()) {
 			if (at < 0) {
-				list.push(this.makeEntry(name, params));
-				this.commit(list, (list.length - 1) as int32);
+				seeds.push(this.seed(name, params));
+				this.commit(seeds, (seeds.length - 1) as int32);
 				return;
 			}
 			this.guarded("NAVIGATE", list.slice(at + 1, list.length), (): void => {
 				if (params !== null) { list[at].writeParams(params); }
-				this.commit(list.slice(0, at + 1), at);
+				this.commit(seeds.slice(0, at + 1), at);
 			});
 			return;
 		}
 		if (params !== null) { list[at].writeParams(params); }
-		this.focusIndex(list, at);
+		this.focusIndex(seeds, at);
 	}
 
-	focusIndex(list: Navigation<P>[], at: int32): void {
-		const key = list[at].route.key;
+	focusIndex(list: RouteSeed<P>[], at: int32): void {
+		const key = list[at].key;
 		const kept: string[] = [];
 		for (const visited of this.history) {
 			if (visited !== key) { kept.push(visited); }
@@ -1086,8 +1116,8 @@ export class NavigatorCore<P> {
 
 	push(name: string, params: P | null): void {
 		if (this.isStack() && this.hasRoute(name)) {
-			const list = this.snapshot();
-			list.push(this.makeEntry(name, params));
+			const list = this.routeSeeds();
+			list.push(this.seed(name, params));
 			this.commit(list, (list.length - 1) as int32);
 			return;
 		}
@@ -1108,12 +1138,13 @@ export class NavigatorCore<P> {
 			return;
 		}
 		const list = this.snapshot();
+		const seeds = this.routeSeeds();
 		for (let i = 0; i < list.length; i += 1) {
 			if (list[i].route.key === key) {
 				const at = i;
 				this.guarded("REPLACE", [list[at]], (): void => {
-					list[at] = this.makeEntry(name, params);
-					this.commit(list, (list.length - 1) as int32);
+					seeds[at] = this.seed(name, params);
+					this.commit(seeds, (seeds.length - 1) as int32);
 				});
 				return;
 			}
@@ -1129,17 +1160,18 @@ export class NavigatorCore<P> {
 	popTo(at: int32): void {
 		if (!this.isStack()) { return; }
 		const list = this.snapshot();
+		const seeds = this.routeSeeds();
 		if (at >= list.length - 1) { return; }
 		this.guarded("POP", list.slice(at + 1, list.length), (): void => {
-			this.commit(list.slice(0, at + 1), at);
+			this.commit(seeds.slice(0, at + 1), at);
 		});
 	}
 
 	resetTo(state: ResetState<P>): void {
-		const list: Navigation<P>[] = [];
+		const list: RouteSeed<P>[] = [];
 		for (const route of state.routes) {
 			const params = route.params;
-			list.push(this.makeEntry(route.name, params === null ? null : params));
+			list.push(this.seed(route.name, params === null ? null : params));
 		}
 		if (list.length === 0) {
 			throw new Error("reset: a navigation state needs at least one route");
@@ -1148,19 +1180,19 @@ export class NavigatorCore<P> {
 		let at = (list.length - 1) as int32;
 		if (wanted !== null) { at = wanted as int32; }
 		if (!this.isStack()) {
-			const full: Navigation<P>[] = [];
+			const full: RouteSeed<P>[] = [];
 			let focus: int32 = 0;
 			for (let i = 0; i < this.screens.length; i += 1) {
 				const name = this.screens[i].name;
-				let entry: Navigation<P> | null = null;
+				let entry: RouteSeed<P> | null = null;
 				for (const given of list) {
-					if (given.route.name === name) { entry = given; }
+					if (given.name === name) { entry = given; }
 				}
-				if (entry === null) { entry = this.makeEntry(name, null); }
-				if (name === list[at].route.name) { focus = i as int32; }
-				full.push(entry as Navigation<P>);
+				if (entry === null) { entry = this.seed(name, null); }
+				if (name === list[at].name) { focus = i as int32; }
+				full.push(entry as RouteSeed<P>);
 			}
-			this.history = [full[focus].route.key];
+			this.history = [full[focus].key];
 			this.commit(full, focus);
 			return;
 		}
@@ -1171,11 +1203,11 @@ export class NavigatorCore<P> {
 		if (this.isStack()) {
 			const list = this.snapshot();
 			if (list.length <= 1) { return false; }
-			const kept: Navigation<P>[] = [];
+			const kept: RouteSeed<P>[] = [];
 			const removed: Navigation<P>[] = [];
 			for (const entry of list) {
 				if (entry.route.key !== key) {
-					kept.push(entry);
+					kept.push(this.seedOf(entry));
 				} else {
 					removed.push(entry);
 				}
@@ -1219,7 +1251,7 @@ export class NavigatorCore<P> {
 			const list = this.snapshot();
 			if (list.length <= 1) { return false; }
 			const top = list[list.length - 1];
-			const kept = list.slice(0, list.length - 1);
+			const kept = this.routeSeeds().slice(0, list.length - 1);
 			this.guarded("GO_BACK", [top], (): void => {
 				this.commit(kept, (kept.length - 1) as int32);
 			});
@@ -1233,11 +1265,11 @@ export class NavigatorCore<P> {
 		if (goal < 0) { return false; }
 		if (this.backBehavior === "history") {
 			this.history.pop();
-			const list = this.snapshot();
+			const list = this.routeSeeds();
 			batch((): void => { this.commit(list, goal); });
 			return true;
 		}
-		this.focusIndex(this.snapshot(), goal);
+		this.focusIndex(this.routeSeeds(), goal);
 		return true;
 	}
 
@@ -1447,8 +1479,6 @@ export function createCore<P>(setup: NavigatorSetup<P>): NavigatorCore<P> {
 		}
 		initial = named as string;
 	}
-	const empty: Navigation<P>[] = [];
-	const [entries, writeEntries] = createSignal<Navigation<P>[]>(empty);
 	const [index, writeIndex] = createSignal<int32>(0);
 	const [drawerOpen, writeDrawerOpen] = createSignal<boolean>(false);
 	const none: Navigation<P>[] = [];
@@ -1456,8 +1486,6 @@ export function createCore<P>(setup: NavigatorSetup<P>): NavigatorCore<P> {
 	const core = new NavigatorCore<P>(
 		setup.kind,
 		setup.screens,
-		entries,
-		writeEntries,
 		index,
 		writeIndex,
 		drawerOpen,
