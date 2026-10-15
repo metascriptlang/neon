@@ -1,6 +1,7 @@
 import { NeonNode } from "../../src/render/hostTypes";
 import { element } from "../../src/macros/ui/element";
 import { HostNode, MockNode, mockNode, mockHost, render, mockToString } from "../../src/render/host";
+import { RoutingSnapshot } from "../../src/navigation/routing";
 import { createMemoryRoutingHistory } from "../../src/navigation/routingHistory";
 import {
 	LayoutProps,
@@ -144,6 +145,23 @@ test "each tab keeps its stack and its mounted screens while the other tab is sh
 	assert visibleText(root) === "thread 7", visibleText(root);
 	assert history.read().url === "/inbox/7", history.read().url;
 	assert mounts === "feed;post;post;thread;thread;", mounts;
+	router.dispose();
+}
+
+test "an entry whose router state does not parse opens from its address" {
+	const history = createMemoryRoutingHistory({ url: "/feed", state: "" });
+	const created = createRouter(appRoutes(), history);
+	assert created.ok;
+	if (!created.ok) { return; }
+	const router = created.value;
+	const root = mounted(router);
+	const broken: RoutingSnapshot = { regions: [{ scope: "main", state: "not json" }] };
+	history.push({ url: "/inbox/9", state: JSON.stringify(broken) });
+	assert history.go(-1);
+	assert visibleText(root) === "feed", visibleText(root);
+	assert history.go(1);
+	assert visibleText(root) === "thread 9", visibleText(root);
+	assert router.location().pathname === "/inbox/9", router.location().pathname;
 	router.dispose();
 }
 
