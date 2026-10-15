@@ -85,6 +85,13 @@ function childIndex(parent: MockNode, node: MockNode): number {
 	return -1;
 }
 
+function lastChildIndex(parent: MockNode, node: MockNode): number {
+	for (let i = parent.children.length - 1; i >= 0; i -= 1) {
+		if (parent.children[i] === node) { return i; }
+	}
+	return -1;
+}
+
 // Mirror DOM move semantics: inserting a node already in the tree first detaches it.
 function detach(n: MockNode): void {
 	const p = n.parent;
@@ -180,10 +187,10 @@ export function mockHost(): Host {
 			const n = node as unknown as MockNode;
 			let target: number = p.children.length;
 			if (ref !== null) {
-				target = childIndex(p, ref as unknown as MockNode);
+				target = lastChildIndex(p, ref as unknown as MockNode);
 				if (target < 0) { throw "insertBefore: the reference node is not a child of the parent"; }
 			}
-			const curIdx = childIndex(p, n);
+			const curIdx = n.parent === p ? childIndex(p, n) : -1;
 			if (curIdx >= 0) {
 				p.children.splice(curIdx, 1);
 				if (curIdx < target) { target -= 1; }
