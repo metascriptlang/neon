@@ -158,6 +158,27 @@ routing. `navigatorMotion.ms` stays the transition engine.
 - Traversal asks `onBeforeNavigate` down the active branch, returns the browser to
   where it was on a refusal, and otherwise applies the stored keys level by level
   with mirroring suppressed. An entry without usable state resolves from its address.
+- History and traversal are `src/navigation/webHistory.ms` `createWebHistory`, a
+  participant like any other: register it, open the session, then `enable(session)`.
+  Where it leaves `WebHistoryNavigation.kt`, and why:
+  - The routing history stores the entry's index beside its state (`__neonIndex`,
+    TanStack's shape), because one session entry carries every region; a refusal goes
+    back by the session's tracked position, not by `baseIndexOffset`.
+  - Decompose's `isEnabled` flag cannot suppress mirroring: the registry commits a plan
+    inside `batch`, so the mirror runs after the flag is reset. Each restore or resolve
+    commit bumps a signal the mirror reads instead.
+  - One render effect walks the active branch from the root, and a pop records its
+    count when the level changes: a disposed child publishes `[]` and queued effects
+    run last in first out, so a per-level effect would read disposed models.
+  - Nested entries are built as push and rewrite build them. Decompose's `history()`
+    adds every node of an item's history, which by reading lists an item twice at
+    depth three; not run in Kotlin.
+  - An entry without state resolves from its address, as this design says, and asks no
+    `onBeforeNavigate`; Decompose ignores such an entry. `onBeforeNavigate` is asked on
+    every restore, also one that changes only another region.
+  - The key tree is a preorder list until the compiler card on JSON of a type holding
+    an array of itself lands (parked in `BUGS.md`). There is no `schemaVersion` or
+    `onRecreate`; undecodable state takes the session's `IncompleteSnapshot` path.
 - Reload restores the entry's structure (a TanStack mask with `unmaskOnReload:
   false`); a presentation can resolve from the address on reload instead, which is
   Next's hard navigation.
@@ -297,9 +318,10 @@ same JS-driven frames.
   address, `pathFromState` reports one), and its snapshot holds the root state's
   route names and string params. It registers when its node is built and, until it
   mounts, reports the address it was asked to open, so an app builds its tree, opens
-  the routing session, then mounts or hydrates. Until the binding lands, a navigation
-  made in the app changes the model first and the app records it with
-  `session.sync`, as a custom composition does.
+  the routing session, then mounts or hydrates. Until the container's navigators
+  publish `WebNavigation` to `createWebHistory`, a navigation made in the app changes
+  the model first and the app records it with `session.sync`, as a custom composition
+  does.
 - Typed route bindings close over their decoder and typed model setter rather
   than exposing an untyped global params getter. Legacy navigators retain one
   `P`; heterogeneous ParamList compatibility is not claimed.
@@ -310,7 +332,7 @@ same JS-driven frames.
   reactive graphs. URL traversal can therefore restore a retained document stack
   without promising persistence of every local edit or GPU resource.
 - The route tree shorthand has layout levels only; Stack and Tabs as levels come with
-  the binding. It takes `path` strings only, and the web navigation adapters take a
+  the binding's cold resolution and href walk, which are not written yet. It takes `path` strings only, and the web navigation adapters take a
   required options object, until two compiler cards land (both parked in `BUGS.md`).
   Its `<A>` renders a web `<a>`; on a native host that is a plain view until `<A>`
   and React Navigation's `Link` become one through the binding.
