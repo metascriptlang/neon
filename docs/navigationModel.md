@@ -77,17 +77,16 @@ same JS-driven frames.
   button, the motion kind and the drawer swipe read what the renderer passes
   (`createNavigatorMotion(core, stacked)`, `screenView(…, menu)`) or the
   `NavigatorLink.canPop` capability.
-- The models diverge from Decompose where it fails loud or lacks a mechanism:
-  identity is a `key` function, not configuration equality; `pop` on one item and
-  `popTo` past the end throw instead of doing nothing or taking the whole stack;
-  navigation is synchronous, without `onComplete`, and a change made while one
+- The models diverge from Decompose where Neon lacks a mechanism: identity is a
+  `key` function, not configuration equality; `pop` and `popTo` return whether they
+  popped, where Decompose passes it to `onComplete`; navigation is synchronous, without `onComplete`, and a change made while one
   applies throws instead of queueing (`Relay.kt`); every page stays created, with
   no `pageStatus`; there is no back handler or saved-state serializer. `selectNext`
   and `selectPrev` take `circular` as a required argument until the compiler card
   on default parameters of generic class methods lands.
-- A stack holds the routes up to its focused one, so a reset or restored state
-  whose `index` is below its last route drops the routes above it, as
-  `@react-navigation/stack` `StackView` renders such a state.
+- A stack's focused route is its last: a reset or restored state keeps every route
+  and focuses the last whatever its `index`, as React Navigation's
+  `StackRouter.getRehydratedState` does for a state that is not `stale: false`.
 - Transitions belong to the render layer, as Decompose's
   `Children(animation = stackAnimation())`: `navigatorMotion.ms` diffs the route
   children, keeps a leaving screen rendered until its exit ends
