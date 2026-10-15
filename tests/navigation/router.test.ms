@@ -160,6 +160,17 @@ test "a request answers with the route's status, a guard's redirect and its loca
 	assert !visited.go(-2);
 }
 
+test "an address ending in a slash is redirected for good to the one without it" {
+	const request = opened(siteRoutes(), createRequestRoutingHistory("/docs/start/?utm=1")).response();
+	assert request.status === 308;
+	assert request.location === "/docs/start?utm=1", request.location ?? "";
+	const root = opened(siteRoutes(), createRequestRoutingHistory("/")).response();
+	assert root.status === 200 && root.location === null;
+	const cold = memory("/docs/start//#notes");
+	opened(siteRoutes(), cold);
+	assert cold.read().url === "/docs/start#notes", cold.read().url;
+}
+
 test "a redirect loop fails loudly, naming where it started" {
 	const routes = createRoutes([
 		{ path: "/a", component: Home, guard: (p: Map<string, string>, f: RouteMatch): GuardDecision => redirect("/b") },

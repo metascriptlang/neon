@@ -16,6 +16,7 @@ import { GuardDecision, RouteEntry, RouteMatch, RouteNode, RouteTree, createRout
 import { PathMatch, createMatcher, expandOptionals, normalizePath } from "./routeMatcher";
 
 const MAX_REDIRECTS: int32 = 20;
+const PERMANENT_REDIRECT: int32 = 308;
 
 export interface LayoutProps {
 	children: NeonNode;
@@ -96,10 +97,33 @@ interface Resolved {
 	redirect: int32;
 }
 
+function pathnameOf(address: string): string {
+	let end = address.length;
+	const query = address.indexOf("?");
+	const hash = address.indexOf("#");
+	if (query >= 0) { end = query; }
+	if (hash >= 0 && hash < end) { end = hash; }
+	return address.substring(0, end);
+}
+
+function withoutTrailingSlash(address: string): string | null {
+	const pathname = pathnameOf(address);
+	let end = pathname.length;
+	while (end > 1 && pathname[end - 1] === "/") { end -= 1; }
+	if (end === pathname.length) { return null; }
+	return pathname.substring(0, end) + address.substring(pathname.length, address.length);
+}
+
 function follow(tree: RouteTree, address: string): Result<Resolved, RoutingError> {
 	let at = address;
 	let first: int32 = 0;
 	for (let hop: int32 = 0; hop <= MAX_REDIRECTS; hop += 1) {
+		const trimmed = withoutTrailingSlash(at);
+		if (trimmed !== null) {
+			if (first === 0) { first = PERMANENT_REDIRECT; }
+			at = trimmed as string;
+			continue;
+		}
 		const resolved = try tree.resolve(at);
 		const next = resolved.redirect;
 		if (next === null) {
@@ -111,15 +135,6 @@ function follow(tree: RouteTree, address: string): Result<Resolved, RoutingError
 	throw new Error(
 		"routing: more than " + MAX_REDIRECTS.toString() + " redirects from \"" + address + "\"",
 	);
-}
-
-function pathnameOf(address: string): string {
-	let end = address.length;
-	const query = address.indexOf("?");
-	const hash = address.indexOf("#");
-	if (query >= 0) { end = query; }
-	if (hash >= 0 && hash < end) { end = hash; }
-	return address.substring(0, end);
 }
 
 export class Router {
