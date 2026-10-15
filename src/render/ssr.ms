@@ -207,24 +207,26 @@ function elementMarkup(
 		if (look.hideHorizontal) { cls = cls + " neon-hide-horizontal"; }
 		if (look.hideVertical) { cls = cls + " neon-hide-vertical"; }
 	}
-	const outNames: string[] = [];
-	const outValues: string[] = [];
-	for (let i = 0; i < names.length; i += 1) {
-		const raw = values[i];
-		const control = controlAttr(wire, names[i], raw);
-		if (control !== null) {
-			const written = control as ControlAttr;
-			if (written.name !== "") { putAttribute(outNames, outValues, written.name, written.value); }
-			continue;
-		}
-		const mapped = domAttrValue(names[i], raw);
-		let v = mapped === null ? "" : mapped as string;
-		if (mapped !== null && names[i] === "class" && cls !== "") { v = v === "" ? cls : v + " " + cls; cls = ""; }
-		putAttribute(outNames, outValues, domAttrName(names[i]), mapped === null ? null : v);
-	}
 	let open = "<" + tag;
-	for (let i = 0; i < outNames.length; i += 1) {
-		open = open + " " + outNames[i] + "=\"" + escapeAttribute(outValues[i]) + "\"";
+	if (names.length > 0) {
+		const outNames: string[] = [];
+		const outValues: string[] = [];
+		for (let i = 0; i < names.length; i += 1) {
+			const raw = values[i];
+			const control = controlAttr(wire, names[i], raw);
+			if (control !== null) {
+				const written = control as ControlAttr;
+				if (written.name !== "") { putAttribute(outNames, outValues, written.name, written.value); }
+				continue;
+			}
+			const mapped = domAttrValue(names[i], raw);
+			let v = mapped === null ? "" : mapped as string;
+			if (mapped !== null && names[i] === "class" && cls !== "") { v = v === "" ? cls : v + " " + cls; cls = ""; }
+			putAttribute(outNames, outValues, domAttrName(names[i]), mapped === null ? null : v);
+		}
+		for (let i = 0; i < outNames.length; i += 1) {
+			open = open + " " + outNames[i] + "=\"" + escapeAttribute(outValues[i]) + "\"";
+		}
 	}
 	if (cls !== "") { open = open + " class=\"" + escapeAttribute(cls) + "\""; }
 	const inline = (style === null ? "" : styleToCss(style as Style)) + scroll;
