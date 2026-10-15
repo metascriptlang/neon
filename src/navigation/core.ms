@@ -156,10 +156,17 @@ export interface RouteKey {
 	name: string;
 }
 
+export interface NavigationRoute {
+	key: string;
+	name: string;
+	params: Map<string, string> | null;
+	state: NavigationState | null;
+}
+
 export interface NavigationState {
 	index: int32;
 	routeNames: string[];
-	routes: RouteKey[];
+	routes: NavigationRoute[];
 }
 
 export interface NavigatorLink {
@@ -174,6 +181,7 @@ export interface NavigatorLink {
 	drawerAction: (action: DrawerAction) => boolean;
 	isFocused: Accessor<boolean>;
 	register: (routeKey: string, child: NavigatorLink) => NavTarget | null;
+	seedFor: (routeKey: string) => NavigationState | null;
 	unregister: (routeKey: string, child: NavigatorLink) => void;
 	focusedChild: () => NavigatorLink | null;
 	focusedRoute: () => RouteKey | null;
@@ -294,6 +302,7 @@ export class ScreenConfig<P> {
 	options: Accessor<ScreenOptions> | null;
 	initialParams: P | null;
 	parseParams: ((values: Map<string, string>) => P) | null;
+	stringifyParams: ((params: P) => Map<string, string>) | null = null;
 
 	constructor(
 		name: string,
@@ -384,6 +393,11 @@ interface ChildEntry {
 interface PendingEntry {
 	routeKey: string;
 	target: NavTarget;
+}
+
+interface SeedEntry {
+	routeKey: string;
+	state: NavigationState;
 }
 
 interface StateListener {
@@ -677,6 +691,7 @@ export class NavigatorCore<P> {
 	link: NavigatorLink | null = null;
 	children: ChildEntry[] = [];
 	pending: PendingEntry[] = [];
+	seeds: SeedEntry[] = [];
 	history: string[] = [];
 	listeners: StateListener[] = [];
 	nextKey: int32 = 1;
@@ -1310,6 +1325,48 @@ export class NavigatorCore<P> {
 		return null;
 	}
 
+	seedFor(routeKey: string): NavigationState | null {
+		for (let i = 0; i < this.seeds.length; i += 1) {
+			if (this.seeds[i].routeKey === routeKey) {
+				const state = this.seeds[i].state;
+				this.seeds.splice(i, 1);
+				return state;
+			}
+		}
+		return null;
+	}
+
+	restore(state: NavigationState): void {
+		const routes: ResetRoute<P>[] = [];
+		for (const route of state.routes) {
+			const screen = this.config(route.name);
+			if (screen === null) {
+				throw new Error("initialState: no screen named '" + route.name + "'");
+			}
+			const parse = (screen as ScreenConfig<P>).parseParams;
+			const values = route.params;
+			let params: P | null = null;
+			if (values !== null) {
+				if (parse === null) {
+					throw new Error("initialState: screen '" + route.name + "' has params but no parseParams");
+				}
+				params = (parse as (values: Map<string, string>) => P)(values as Map<string, string>);
+			}
+			routes.push({ name: route.name, params });
+		}
+		const index: int32 | null = state.index;
+		this.resetTo({ index, routes });
+		const list = this.snapshot();
+		for (let i = 0; i < state.routes.length; i += 1) {
+			const child = state.routes[i].state;
+			if (child === null) { continue; }
+			for (let j = 0; j < list.length; j += 1) {
+				const same = this.isStack() ? i === j : list[j].route.name === state.routes[i].name;
+				if (same) { this.seeds.push({ routeKey: list[j].route.key, state: child as NavigationState }); }
+			}
+		}
+	}
+
 	unregister(routeKey: string, child: NavigatorLink): void {
 		for (let i = 0; i < this.children.length; i += 1) {
 			if (this.children[i].routeKey === routeKey && this.children[i].link === child) {
@@ -1343,11 +1400,23 @@ export class NavigatorCore<P> {
 	}
 
 	trackedState(): NavigationState {
-		const routes: RouteKey[] = [];
+		const routes: NavigationRoute[] = [];
 		for (const entry of this.entries()) {
-			routes.push({ key: entry.route.key, name: entry.route.name });
+			const key = entry.route.key;
+			let child: NavigationState | null = null;
+			for (const each of this.children) {
+				if (each.routeKey === key) { child = each.link.state(); }
+			}
+			routes.push({ key, name: entry.route.name, params: this.encodeParams(entry), state: child });
 		}
 		return { index: this.index(), routeNames: this.routeNames(), routes };
+	}
+
+	encodeParams(entry: Navigation<P>): Map<string, string> | null {
+		const write = entry.config.stringifyParams;
+		const params = entry.route.params();
+		if (write === null || params === null) { return null; }
+		return (write as (params: P) => Map<string, string>)(params as P);
 	}
 
 	describe(): string {
@@ -1382,6 +1451,7 @@ export function linkOf<P>(core: NavigatorCore<P>): NavigatorLink {
 		register: (routeKey: string, child: NavigatorLink): NavTarget | null => {
 			return core.register(routeKey, child);
 		},
+		seedFor: (routeKey: string): NavigationState | null => core.seedFor(routeKey),
 		unregister: (routeKey: string, child: NavigatorLink): void => {
 			core.unregister(routeKey, child);
 		},
@@ -1439,7 +1509,9 @@ export function createCore<P>(setup: NavigatorSetup<P>): NavigatorCore<P> {
 		setup.scope,
 	);
 	const link = linkOf<P>(core);
-	core.start(setup.initialParams);
+	const scope = setup.scope;
+	const seed = scope.link.seedFor(scope.routeKey);
+	if (seed === null) { core.start(setup.initialParams); } else { core.restore(seed as NavigationState); }
 	when (refresh || hcr) {
 		refreshKeep<ResetState<P>>(
 			"navigator",
@@ -1447,7 +1519,6 @@ export function createCore<P>(setup: NavigatorSetup<P>): NavigatorCore<P> {
 			(kept: ResetState<P>): void => { core.resumeRoutes(kept); },
 		);
 	}
-	const scope = setup.scope;
 	const waiting = scope.link.register(scope.routeKey, link);
 	onCleanup((): void => { scope.link.unregister(scope.routeKey, link); });
 	if (waiting !== null) { core.navigateTo(waiting as NavTarget); }

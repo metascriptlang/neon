@@ -158,6 +158,7 @@ export function screenOf<P>(
 	options: Accessor<ScreenOptions> | null,
 	initialParams: P | null,
 	parseParams: ((values: Map<string, string>) => P) | null,
+	stringifyParams: ((params: P) => Map<string, string>) | null,
 	navigationKey: Accessor<string> | null,
 ): NeonNode {
 	return (host: Host, parent: HostNode, before: HostNode | null): void => {
@@ -171,6 +172,7 @@ export function screenOf<P>(
 		}
 		const config = new ScreenConfig<P>(name, component, options, initialParams, parseParams);
 		config.options = withGroups(useContext(collector.groups), options);
+		config.stringifyParams = stringifyParams;
 		config.navigationKey = withKeys(useContext(collector.keys), navigationKey);
 		collection.add(config, parent, before);
 	};

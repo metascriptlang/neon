@@ -72,6 +72,14 @@ export class NavigationContainerRef {
 		return false;
 	}
 
+	getRootState(): NavigationState {
+		const link = this.link;
+		if (link === null) {
+			throw new Error("getRootState: the navigation container is not mounted yet");
+		}
+		return (link as NavigatorLink).state();
+	}
+
 	getCurrentRoute(): RouteKey | null {
 		const root = this.root();
 		if (root === null) { return null; }
@@ -115,9 +123,10 @@ export function createNavigationContainerRef(): NavigationContainerRef {
 	return new NavigationContainerRef();
 }
 
-function containerLink(): NavigatorLink {
+function containerLink(initialState: NavigationState | null): NavigatorLink {
 	let root: NavigatorLink | null = null;
 	let waiting: NavTarget | null = null;
+	let seed = initialState;
 	return {
 		kind: NavigatorKind.Container,
 		hasRoute: (name: string): boolean => {
@@ -144,6 +153,11 @@ function containerLink(): NavigatorLink {
 			waiting = null;
 			return target;
 		},
+		seedFor: (routeKey: string): NavigationState | null => {
+			const state = seed;
+			seed = null;
+			return state;
+		},
 		unregister: (routeKey: string, child: NavigatorLink): void => {
 			if (root === child) { root = null; }
 		},
@@ -168,9 +182,10 @@ export function NavigationContainer(props: {
 	ref?: NavigationContainerRef | null;
 	onReady?: (() => void) | null;
 	onStateChange?: ((state: NavigationState) => void) | null;
+	initialState?: NavigationState | null;
 	theme?: Accessor<Theme> | null;
 }): NeonNode {
-	const link = containerLink();
+	const link = containerLink(props.initialState);
 	const ownTheme = props.theme;
 	const theme = accessor((): Theme => {
 		return ownTheme === null ? DefaultTheme : (ownTheme as Accessor<Theme>)();

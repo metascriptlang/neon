@@ -10,6 +10,7 @@ export {
 	NavTarget,
 	RouteKey,
 	NavigationState,
+	NavigationRoute,
 	NavigatorLink,
 	ScreenScope,
 	ContainerState,

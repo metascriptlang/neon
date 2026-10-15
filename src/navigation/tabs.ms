@@ -179,6 +179,7 @@ export interface TabNavigator<P> {
 		options?: Accessor<ScreenOptionsOf<P>> | null;
 		initialParams?: P | null;
 		parseParams?: ((values: Map<string, string>) => P) | null;
+		stringifyParams?: ((params: P) => Map<string, string>) | null;
 		navigationKey?: Accessor<string> | null;
 	}) => NeonNode;
 }
@@ -274,6 +275,7 @@ function createTabs<P>(material: boolean): TabNavigator<P> {
 			options?: Accessor<ScreenOptionsOf<P>> | null;
 			initialParams?: P | null;
 			parseParams?: ((values: Map<string, string>) => P) | null;
+			stringifyParams?: ((params: P) => Map<string, string>) | null;
 			navigationKey?: Accessor<string> | null;
 		}): NeonNode => screenOf<P>(
 			collector,
@@ -282,6 +284,7 @@ function createTabs<P>(material: boolean): TabNavigator<P> {
 			optionsAccessor<P>(props.options),
 			props.initialParams,
 			props.parseParams,
+			props.stringifyParams,
 			props.navigationKey,
 		),
 	};

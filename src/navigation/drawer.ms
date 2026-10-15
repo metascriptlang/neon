@@ -219,6 +219,7 @@ export interface DrawerNavigator<P> {
 		options?: Accessor<ScreenOptionsOf<P>> | null;
 		initialParams?: P | null;
 		parseParams?: ((values: Map<string, string>) => P) | null;
+		stringifyParams?: ((params: P) => Map<string, string>) | null;
 		navigationKey?: Accessor<string> | null;
 	}) => NeonNode;
 }
@@ -330,6 +331,7 @@ export function createDrawerNavigator<P>(): DrawerNavigator<P> {
 			options?: Accessor<ScreenOptionsOf<P>> | null;
 			initialParams?: P | null;
 			parseParams?: ((values: Map<string, string>) => P) | null;
+			stringifyParams?: ((params: P) => Map<string, string>) | null;
 			navigationKey?: Accessor<string> | null;
 		}): NeonNode => screenOf<P>(
 			collector,
@@ -338,6 +340,7 @@ export function createDrawerNavigator<P>(): DrawerNavigator<P> {
 			optionsAccessor<P>(props.options),
 			props.initialParams,
 			props.parseParams,
+			props.stringifyParams,
 			props.navigationKey,
 		),
 	};
