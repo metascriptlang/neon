@@ -1,8 +1,8 @@
-import { createSignal } from "../../src/core/signal";
+import { createSignal, Accessor } from "../../src/core/signal";
 import { flush, resetErrorHalt } from "../../src/core/runtime";
 import { createEffect, createRenderEffect, EffectBundle } from "../../src/core/effect";
 import { createRoot } from "../../src/core/owner";
-import { catchError } from "../../src/core/error";
+import { createErrorBoundary } from "../../src/core/boundary";
 import { Cleanup } from "../../src/core/types";
 
 test "a compute throw with no handler skips the run and leaves the system alive" {
@@ -126,7 +126,8 @@ test "an error that recovers before the effect phase never reaches the handler" 
 	assert ran.join(",") === "0,2", "and skips the success arm: " + ran.join(",");
 }
 
-test "a handler that rethrows escalates to the nearest catchError" {
+// effect.ts:152-244 notifyEffectStatus: an error arm that rethrows passes the error on to the nearest boundary
+test "an error arm that rethrows escalates to the nearest boundary" {
 	const [armed, setArmed] = createSignal(false);
 	const log: string[] = [];
 	const bundle: EffectBundle<int32> = {
@@ -134,9 +135,14 @@ test "a handler that rethrows escalates to the nearest catchError" {
 		error: (err: Error, cleanup: Cleanup): void => { log.push("handler saw it"); throw err; },
 	};
 	createRoot((d) => {
-		catchError(() => {
-			createEffect<int32>((p: int32 | null): int32 => { if (armed()) { throw new Error("boom-compute"); } return 0; }, bundle);
-		}, (err: Error) => { log.push("caught:" + err.message); });
+		const shown = createErrorBoundary<string>(
+			(): string => {
+				createEffect<int32>((p: int32 | null): int32 => { if (armed()) { throw new Error("boom-compute"); } return 0; }, bundle);
+				return "content";
+			},
+			(e: Accessor<Error>, reset: () => void): string => { log.push("caught:" + e().message); return "errored"; },
+		);
+		createRenderEffect<string>((p: string | null): string => shown(), (v: string, p: string | null): Cleanup | null => null);
 		return 0;
 	});
 	assert log.length === 0, "nothing failed yet";
@@ -144,7 +150,8 @@ test "a handler that rethrows escalates to the nearest catchError" {
 	assert log.join(",") === "handler saw it,caught:boom-compute", "got " + log.join(",");
 }
 
-test "an effect-phase throw is not routed to the bundle handler" {
+// createErrorBoundary.test.ts:404
+test "an effect-phase throw is not routed to the error arm but to the boundary" {
 	const [armed, setArmed] = createSignal(false);
 	const log: string[] = [];
 	const bundle: EffectBundle<boolean> = {
@@ -152,16 +159,21 @@ test "an effect-phase throw is not routed to the bundle handler" {
 		error: (err: Error, cleanup: Cleanup): void => { log.push("handler:" + err.message); },
 	};
 	createRoot((d) => {
-		catchError(() => {
-			createEffect<boolean>((p: boolean | null): boolean => armed(), bundle);
-		}, (err: Error) => { log.push("caught:" + err.message); });
+		const shown = createErrorBoundary<string>(
+			(): string => {
+				createEffect<boolean>((p: boolean | null): boolean => armed(), bundle);
+				return "content";
+			},
+			(e: Accessor<Error>, reset: () => void): string => { log.push("caught:" + e().message); return "errored"; },
+		);
+		createRenderEffect<string>((p: string | null): string => shown(), (v: string, p: string | null): Cleanup | null => null);
 		return 0;
 	});
 	setArmed(true);
 	assert log.join(",") === "caught:boom-effect", "got " + log.join(",");
 }
 
-test "an effect-phase throw with no catchError escapes and halts the scheduler" {
+test "an effect-phase throw with no boundary escapes and halts the scheduler" {
 	const log: string[] = [];
 	const [beat, setBeat] = createSignal(0);
 	const [armed, setArmed] = createSignal(false);

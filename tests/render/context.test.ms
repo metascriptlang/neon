@@ -6,10 +6,9 @@ import { Host, HostNode, MockNode, mockNode, mockHost, render, mockToString } fr
 import { Context, createContext, useContext, ContextNotFoundError, NoOwnerError } from "../../src/render/context";
 import { onCleanup } from "../../src/core/cleanup";
 import { createRoot } from "../../src/core/owner";
-import { catchError } from "../../src/core/error";
 import { resetErrorHalt } from "../../src/core/runtime";
 import { Dispose } from "../../src/core/types";
-import { For, ForUnkeyed, Show } from "../../src/macros/ui/flow";
+import { Errored, For, ForUnkeyed, Show } from "../../src/macros/ui/flow";
 
 interface Theme { accent: string; }
 
@@ -311,17 +310,15 @@ test "a root created under a provider reads it" {
 	assert seen === "blue", "the root saw the provider: " + seen;
 }
 
-test "a catchError scope under a provider reads it" {
+test "an Errored scope under a provider reads it" {
 	const T = createContext<Theme>({ accent: "red" });
 	let seen = "";
 	const consumer: NeonNode = (host: Host, parent: HostNode, before: HostNode | null): void => {
-		catchError((): void => {
-			seen = useContext(T).accent;
-		}, (err: Error): void => {});
+		Errored({ children: (h: Host, p: HostNode, b: HostNode | null): void => { seen = useContext(T).accent; }, fallback: (err: Accessor<Error>, reset: () => void): NeonNode => (h: Host, p: HostNode, b: HostNode | null): void => {} })(host, parent, before);
 	};
 	const app: NeonNode = T.provider({ value: accessor((): Theme => ({ accent: "blue" })), children: consumer });
 	render(app, mockHost(), mockNode("root") as unknown as HostNode);
-	assert seen === "blue", "the catchError scope saw the provider: " + seen;
+	assert seen === "blue", "the Errored scope saw the provider: " + seen;
 }
 
 test "a provider of another context between does not hide the outer one" {

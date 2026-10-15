@@ -3,11 +3,11 @@
 // undefined after it, so the scheduler stops accepting work instead of applying half of an update.
 // The reference also asserts what console.error was called with; a test here cannot observe the console, so the halt message
 // and the cause logged beside it are not pinned.
-import { createSignal } from "../../src/core/signal";
+import { createSignal, Accessor } from "../../src/core/signal";
 import { createAsyncMemo } from "../../src/core/memo";
 import { createEffect, createRenderEffect, EffectBundle } from "../../src/core/effect";
 import { createRoot } from "../../src/core/owner";
-import { catchError } from "../../src/core/error";
+import { createErrorBoundary } from "../../src/core/boundary";
 import { flush, resetErrorHalt } from "../../src/core/runtime";
 import { Cleanup } from "../../src/core/types";
 import { Gate, rejectedWhenOpen, release } from "./asyncClock";
@@ -28,22 +28,27 @@ test "flush after a halt does nothing and does not throw" {
 	resetErrorHalt();
 }
 
-// errorHalt.test.ts "does not halt when an error boundary handles the error" (catchError is this core's handler until step A2b)
+// errorHalt.test.ts "does not halt when an error boundary handles the error"
 test "a handled effect-phase error does not halt the system" {
 	const [a, setA] = createSignal<int32>(0);
 	const [c, setC] = createSignal<int32>(0);
 	const seenC: int32[] = [];
 	const handled: string[] = [];
 	createRoot((d) => {
-		catchError((): void => {
-			createEffect<int32>((p: int32 | null): int32 => a(), (v: int32, p: int32 | null): Cleanup | null => { if (v === 1) { throw new Error("boom"); } return null; });
-		}, (err: Error): void => { handled.push(err.message); });
+		const shown = createErrorBoundary<string>(
+			(): string => {
+				createEffect<int32>((p: int32 | null): int32 => a(), (v: int32, p: int32 | null): Cleanup | null => { if (v === 1) { throw new Error("boom"); } return null; });
+				return "content";
+			},
+			(e: Accessor<Error>, reset: () => void): string => { handled.push(e().message); return "errored"; },
+		);
+		createRenderEffect<string>((p: string | null): string => shown(), (v: string, p: string | null): Cleanup | null => null);
 		createEffect<int32>((p: int32 | null): int32 => c(), (v: int32, p: int32 | null): Cleanup | null => { seenC.push(v); return null; });
 		return 0;
 	});
 	seenC.length = 0;
 	setA(1);
-	assert handled.join(",") === "boom", "the handler took it: " + handled.join(",");
+	assert handled.join(",") === "boom", "the boundary took it: " + handled.join(",");
 	setC(3);
 	assert seenC.join(",") === "3", "and the system kept running: " + seenC.join(",");
 }
@@ -96,8 +101,8 @@ test "an unhandled rejection read by an effect skips its run and leaves the syst
 	assert log.join(",") === "beat=0,beat=1", "and the rest of the graph still does: " + log.join(",");
 }
 
-// effect-error-phases.test.ts "handler rethrow escalates ...": the handler of an async rejection that rethrows reaches the nearest handler
-test "an error arm that rethrows a rejection escalates to the nearest handler" {
+// effect-error-phases.test.ts "handler rethrow escalates ...": the error arm of an async rejection that rethrows reaches the nearest boundary
+test "an error arm that rethrows a rejection escalates to the nearest boundary" {
 	const gate = new Gate();
 	const log: string[] = [];
 	const bundle: EffectBundle<int32> = {
@@ -105,10 +110,15 @@ test "an error arm that rethrows a rejection escalates to the nearest handler" {
 		error: (err: Error, cleanup: Cleanup): void => { log.push("arm saw " + err.message); throw err; },
 	};
 	createRoot((d) => {
-		catchError((): void => {
-			const m = createAsyncMemo((p: int32 | null): Promise<int32> => rejectedWhenOpen(gate, new Error("boom-escalate")));
-			createEffect<int32>((p: int32 | null): int32 => m(), bundle);
-		}, (err: Error): void => { log.push("caught " + err.message); });
+		const shown = createErrorBoundary<string>(
+			(): string => {
+				const m = createAsyncMemo((p: int32 | null): Promise<int32> => rejectedWhenOpen(gate, new Error("boom-escalate")));
+				createEffect<int32>((p: int32 | null): int32 => m(), bundle);
+				return "content";
+			},
+			(e: Accessor<Error>, reset: () => void): string => { log.push("caught " + e().message); return "errored"; },
+		);
+		createRenderEffect<string>((p: string | null): string => shown(), (v: string, p: string | null): Cleanup | null => null);
 		return 0;
 	});
 	await release(gate);
