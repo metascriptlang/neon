@@ -1,4 +1,5 @@
 import { Host, HostNode } from "../../render/host";
+import { TextSpan } from "../../render/hostTypes";
 import { NeonEvent, neonEvent, eventType } from "../../render/event";
 import {
 	Scene2D, NodeRef, DrawKind, group, label, mask, addChild, addChildAt, getChildIndex, dispose, kind,
@@ -60,6 +61,7 @@ export class VoidNode {
 	styledRuns: boolean = false;
 	paraStale: boolean = false;
 	cell: float32 = 0.0;
+	spans: TextSpan[] | null = null;
 
 	constructor(ref: NodeRef) {
 		this.ref = ref;
@@ -364,6 +366,20 @@ function lineColor(s: Style, line: string, color: Color): Color {
 	return d !== null && (d as string).indexOf(line) >= 0 ? color : CLEAR;
 }
 
+// A data span's run, read straight from its own style over the Text's, with no merged Style built.
+function spanRun(text: string, own: Style, base: Style, font: FontId, baseColor: Color): TextRun {
+	if (own.fontSize !== null && own.fontSize !== base.fontSize) {
+		throw new Error("void host: a span changes fontSize, and a Void paragraph has one size; set fontSize on the Text");
+	}
+	const color = colorOr(own.color !== null ? own.color : base.color, baseColor);
+	const bg = own.backgroundColor !== null ? own.backgroundColor : base.backgroundColor;
+	const deco: Style = own.textDecorationLine !== null ? own : base;
+	return {
+		len: text.length as int32, font, color, background: colorOr(bg, CLEAR),
+		underline: lineColor(deco, "underline", color), wavy: false, strikethrough: lineColor(deco, "line-through", color),
+	};
+}
+
 function runOf(piece: Piece, font: FontId, base: Color): TextRun {
 	const s = piece.style;
 	const color = colorOr(s.color, base);
@@ -566,11 +582,17 @@ export function createVoidHostWith(scene: Scene2D, font: FontId): VoidHost {
 		}
 		root.paraStale = false;
 		const base: Style = root.style !== null ? root.style as Style : {};
-		const plain = plainText(root);
+		const data = root.spans;
+		const plain = data !== null ? null : plainText(root);
 		const pieces: Piece[] = [];
 		let text = "";
 		let styled = false;
-		if (plain !== null) {
+		if (data !== null) {
+			for (const s of data as TextSpan[]) {
+				text += s.text;
+				if (s.style !== null) { styled = true; }
+			}
+		} else if (plain !== null) {
 			text = plain as string;
 		} else {
 			collectPieces(root, base, false, pieces);
@@ -591,7 +613,16 @@ export function createVoidHostWith(scene: Scene2D, font: FontId): VoidHost {
 		}
 		const baseColor = colorOr(base.color, WHITE);
 		label.setText(text);
-		if (styled) {
+		if (styled && data !== null) {
+			const runs: TextRun[] = [];
+			const none: Style = {};
+			for (const s of data as TextSpan[]) {
+				runs.push(spanRun(s.text, s.style !== null ? s.style as Style : none, base, font, baseColor));
+			}
+			label.setColor(WHITE);
+			label.setTextRuns(runs);
+			root.styledRuns = true;
+		} else if (styled) {
 			const runs: TextRun[] = [];
 			for (const piece of pieces) {
 				if (piece.style.fontSize !== base.fontSize) {
@@ -629,6 +660,7 @@ export function createVoidHostWith(scene: Scene2D, font: FontId): VoidHost {
 			throw new Error("void host: a View inside a Text is an inline view, which the Void host does not place yet; put it beside the Text");
 		}
 		if (n.isText && n.cell > 0.0) { throw new Error("void host: cellWidth belongs on the outermost Text"); }
+		if (n.isText && n.spans !== null) { throw new Error("void host: spans belong on the outermost Text"); }
 		if (n.isText && hasHandler(n, "onPress")) {
 			throw new Error("void host: onPress on a Text inside a Text needs per-span hit-testing, which the Void host does not do yet");
 		}
@@ -905,6 +937,14 @@ export function createVoidHostWith(scene: Scene2D, font: FontId): VoidHost {
 		},
 		cloneNode: null,
 		voidArea: null,
+		setSpans: (node: HostNode, spans: TextSpan[]): void => {
+			const n = live(node, "setSpans");
+			if (!n.isText || n.spanOwner !== null) { throw new Error("void host: spans belong on the outermost Text"); }
+			const was = wasDirty();
+			n.spans = spans;
+			refreshParagraph(n);
+			woke(was);
+		},
 		scrollTo: (node: HostNode, x: number, y: number, animated: boolean): void => {
 			const n = live(node, "scrollTo");
 			const m = n.scroller;

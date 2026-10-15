@@ -14,6 +14,8 @@ import { create, paint as paintScene, isDirty } from "../../../void/src/void2d/s
 import { frameEnd } from "../../../void/src/void2d/draw";
 import { xForIndex, textWidth, lineBoxAt } from "../../../void/src/void2d/render";
 import { TextRun } from "../../../void/src/void2d/textLayout";
+import { TextSpan } from "../../src/render/hostTypes";
+import { Style } from "../../src/render/style";
 import { rgba } from "../../../void/src/void2d/types";
 import { labelTexts } from "../../../void/src/void2d/labelText";
 import { FontId, DEFAULT_FONT, addFont } from "../../../void/src/void2d/font";
@@ -325,6 +327,24 @@ test "cellWidth puts every grapheme of the paragraph on a fixed cell, and follow
 	assert label.xForIndex(2) === 14.0, "cells of 7: " + label.xForIndex(2).toString();
 }
 
+test "spans draw as one paragraph label on the Void host, with no node per span" {
+	const vh = host();
+	const red: Style = { color: "#ff0000", textDecorationLine: "underline" };
+	const [spans, setSpans] = createSignal<TextSpan[]>([{ text: "error", style: red }, { text: ": not found" }]);
+	render(element(<View style={{ width: 300 }}><Text spans={spans()} /></View>), vh.host, vh.root);
+	const text = top(vh).children[0];
+	const label = paragraph(text);
+	assert label.text() === "error: not found", "one paragraph: \"" + label.text() + "\"";
+	assert text.children.length === 0 && text.ref.numChildren() === 1, "no host node per span";
+	const runs = runsOf(vh, label);
+	assert runs.length === 2 && runs[0].len === 5 && runs[1].len === 11, "a run per span";
+	assert runs[0].color.r === 1.0 && runs[0].color.g === 0.0 && runs[0].underline.r === 1.0 && runs[1].color.g === 1.0, "only the first span is red and underlined";
+	setSpans([{ text: "warning", style: { color: "#0000ff" } }, { text: ": slow" }]);
+	assert label.text() === "warning: slow" && runsOf(vh, label)[0].len === 7 && runsOf(vh, label)[0].color.b === 1.0, "a new line of spans: \"" + label.text() + "\"";
+	setSpans([{ text: "plain" }]);
+	assert label.text() === "plain" && runsOf(vh, label).length === 0, "unstyled spans draw without runs";
+}
+
 test "what a Void paragraph cannot draw yet is refused by name" {
 	let message = "";
 	const a = host();
@@ -350,6 +370,12 @@ test "what a Void paragraph cannot draw yet is refused by name" {
 		render(element(<Text>a <Text cellWidth={8}>b</Text></Text>), d.host, d.root);
 	} catch (e) { message = e.message; }
 	assert message.indexOf("outermost Text") >= 0, "cellWidth on a nested Text: " + message;
+	message = "";
+	const e = host();
+	try {
+		render(element(<Text>a <Text spans={[{ text: "b" }]} /></Text>), e.host, e.root);
+	} catch (err) { message = err.message; }
+	assert message.indexOf("spans belong on the outermost Text") >= 0, "spans on a nested Text: " + message;
 }
 
 test "a key event carries the physical detail the window supplied, to the focused node and its parents" {
