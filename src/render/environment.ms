@@ -1,4 +1,5 @@
 import { Accessor, accessor, batch, createSignal } from "../core/signal";
+import { onServer, getServerDepth, setServerDepth } from "../core/runtime";
 
 export type ColorScheme = "light" | "dark";
 
@@ -37,18 +38,17 @@ export function useKeyboard(): Accessor<KeyboardMetrics> {
 	return accessor((): KeyboardMetrics => ({ visible: keyboardHeight() > 0, height: keyboardHeight() }));
 }
 
-let serverRenders = 0;
-
 export function isServer(): boolean {
-	return serverRenders > 0;
+	return onServer();
 }
 
 export function asServer<T>(run: () => T): T {
-	serverRenders += 1;
+	const depth = getServerDepth();
+	setServerDepth(depth + 1);
 	try {
 		return run();
 	} finally {
-		serverRenders -= 1;
+		setServerDepth(depth);
 	}
 }
 

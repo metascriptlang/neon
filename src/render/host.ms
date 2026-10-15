@@ -7,6 +7,7 @@ import { Style, StyleValue, emptyStyle, setStyleField } from "./style";
 import { Host, HostNode, NeonNode, VoidArea } from "./hostTypes";
 import { NeonEvent, neonEvent, eventType } from "./event";
 import { createRoot } from "../core/owner";
+import { enterRoot, leaveRoot } from "../core/runtime";
 import { beginClaim, endClaim } from "./claim";
 import { Dispose } from "../core/types";
 
@@ -26,21 +27,28 @@ export function render(node: NeonNode, host: Host, parent: HostNode, id: string 
 }
 
 export function hydrate(node: NeonNode, host: Host, container: HostNode): Dispose {
-	beginClaim(host, container);
-	let dispose: Dispose;
+	enterRoot();
+	let completed = false;
 	try {
-		dispose = render(node, host, container, "");
-	} catch (error) {
-		endClaim(host, false);
-		throw error;
+		beginClaim(host, container);
+		let dispose: Dispose;
+		try {
+			dispose = render(node, host, container, "");
+		} catch (error) {
+			endClaim(host, false);
+			throw error;
+		}
+		try {
+			endClaim(host, true);
+		} catch (error) {
+			dispose();
+			throw error;
+		}
+		completed = true;
+		return dispose;
+	} finally {
+		leaveRoot(completed);
 	}
-	try {
-		endClaim(host, true);
-	} catch (error) {
-		dispose();
-		throw error;
-	}
-	return dispose;
 }
 
 // ---- Mock host: in-memory tree for tests/SSR (no browser needed) ----
