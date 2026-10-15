@@ -1,5 +1,5 @@
 import { mapArray, mapArrayKeyedBy, mapArrayByPosition, repeat } from "../../src/core/array";
-import { createSignal, accessor, Accessor } from "../../src/core/signal";
+import { createSignal, accessor, Accessor, Setter } from "../../src/core/signal";
 import { createRoot } from "../../src/core/owner";
 import { onCleanup } from "../../src/core/cleanup";
 import { createRenderEffect } from "../../src/core/effect";
@@ -1408,6 +1408,417 @@ test "map.ts:454 keyed by a function: an item replaced under a kept key writes i
 		setSrc([12, 23]);
 		assert consumerRuns === 1, "no new mapped array: " + consumerRuns.toString();
 		assert slots[0]() === 12 && slots[1]() === 23, "the cells took the new items";
+		d();
+	});
+}
+
+interface Piece {
+	id: number;
+}
+
+class Born<T> {
+	item: T;
+	seq: number;
+
+	constructor(item: T, seq: number) {
+		this.item = item;
+		this.seq = seq;
+	}
+}
+
+class Side<T> {
+	made: number;
+	disposed: number[];
+	rows: () => Born<T>[];
+
+	constructor() {
+		this.made = 0;
+		this.disposed = [];
+		this.rows = (): Born<T>[] => [];
+	}
+
+	make(item: T): Born<T> {
+		const born = new Born<T>(item, this.made);
+		this.made += 1;
+		const disposed = this.disposed;
+		const seq = born.seq;
+		onCleanup(() => { disposed.push(seq); });
+		return born;
+	}
+}
+
+class Twin<T> {
+	fast: Side<T>;
+	oracle: Side<T>;
+	idOf: (item: T) => number;
+	setFast: Setter<T[]>;
+	setOracle: Setter<T[]>;
+
+	constructor(initial: T[], idOf: (item: T) => number) {
+		this.fast = new Side<T>();
+		this.oracle = new Side<T>();
+		this.idOf = idOf;
+		const [srcFast, setFast] = createSignal<T[]>(initial);
+		const [srcOracle, setOracle] = createSignal<T[]>(initial);
+		const fast = this.fast;
+		const oracle = this.oracle;
+		fast.rows = mapArray<T, Born<T>>(srcFast, (item, i) => fast.make(item), null, false);
+		oracle.rows = mapArray<T, Born<T>>(srcOracle, (item, i) => oracle.make(item), null, true);
+		this.setFast = setFast;
+		this.setOracle = setOracle;
+		fast.rows();
+		oracle.rows();
+	}
+
+	items(): T[] {
+		const out: T[] = [];
+		for (const born of this.oracle.rows()) { out.push(born.item); }
+		return out;
+	}
+
+	step(next: T[]): void {
+		this.setFast(next);
+		this.setOracle(next);
+		this.agree();
+	}
+
+	listOf(rows: Born<T>[], seqs: boolean): string {
+		const out: number[] = [];
+		for (const born of rows) { out.push(seqs ? born.seq : this.idOf(born.item)); }
+		return out.join(",");
+	}
+
+	agree(): void {
+		const f = this.fast.rows();
+		const o = this.oracle.rows();
+		ensure(f.length === o.length, "length " + f.length.toString() + " against the general path's " + o.length.toString());
+		ensure(this.listOf(f, false) === this.listOf(o, false), "items in the same order as the general path");
+		ensure(this.listOf(f, true) === this.listOf(o, true), "the same owners at the same positions as the general path");
+		ensure(this.fast.disposed.join(",") === this.oracle.disposed.join(","), "the same owners disposed in the same order as the general path");
+	}
+}
+
+function pieces(n: number): Piece[] {
+	const out: Piece[] = [];
+	for (let i = 0; i < n; i += 1) { out.push({ id: i }); }
+	return out;
+}
+
+function pieceId(p: Piece): number {
+	return p.id;
+}
+
+function numberId(n: number): number {
+	return n;
+}
+
+function rotateFront<T>(a: T[]): T[] {
+	const out: T[] = [];
+	for (let i = 1; i < a.length; i += 1) { out.push(a[i]); }
+	out.push(a[0]);
+	return out;
+}
+
+function rotateBack<T>(a: T[]): T[] {
+	const out: T[] = [a[a.length - 1]];
+	for (let i = 0; i < a.length - 1; i += 1) { out.push(a[i]); }
+	return out;
+}
+
+function reversed<T>(a: T[]): T[] {
+	const out: T[] = [];
+	for (let i = a.length - 1; i >= 0; i -= 1) { out.push(a[i]); }
+	return out;
+}
+
+function without<T>(a: T[], at: number): T[] {
+	const out: T[] = [];
+	for (let i = 0; i < a.length; i += 1) { if (i !== at) { out.push(a[i]); } }
+	return out;
+}
+
+function displace<T>(a: T[], k: number): T[] {
+	const next: T[] = [];
+	for (const x of a) { next.push(x); }
+	for (let i = 0; i < k; i += 1) {
+		const from = Math.floor(((i + 1) * next.length) / (k + 2));
+		const row = next[from];
+		next.splice(from, 1);
+		next.splice((from + 7) % next.length, 0, row);
+	}
+	return next;
+}
+
+function shuffled<T>(a: T[]): T[] {
+	const out: T[] = [];
+	for (const x of a) { out.push(x); }
+	for (let i = out.length - 1; i > 0; i -= 1) {
+		const j = pick(i + 1);
+		const t = out[i];
+		out[i] = out[j];
+		out[j] = t;
+	}
+	return out;
+}
+
+test "smallmove.test.ts:157 rotating forward and back moves the owners with their items and builds nothing" {
+	createRoot((d) => {
+		const twin = new Twin<Piece>(pieces(300), pieceId);
+		for (const forward of [true, false, true, true]) {
+			twin.step(forward ? rotateFront(twin.items()) : rotateBack(twin.items()));
+		}
+		assert twin.fast.made === 300 && twin.fast.disposed.length === 0, "no row built or disposed: " + twin.fast.made.toString();
+		assert twin.fast.rows()[0].item === twin.items()[0], "row 0 holds the item at 0";
+		d();
+	});
+}
+
+test "smallmove.test.ts:118 a window of 66 changed rows and a window of 65 both agree with the general path" {
+	for (const window of [66, 65]) {
+		createRoot((d) => {
+			const src = pieces(100 + window);
+			const twin = new Twin<Piece>(src, pieceId);
+			const next: Piece[] = [];
+			for (let i = 0; i < 100; i += 1) { next.push(src[i]); }
+			const tail: Piece[] = [];
+			for (let i = 100; i < src.length; i += 1) { tail.push(src[i]); }
+			for (const p of rotateFront(tail)) { next.push(p); }
+			twin.step(next);
+			assert twin.fast.made === src.length, "window " + window.toString() + ": no row built";
+			d();
+		});
+	}
+}
+
+test "smallmove.test.ts:137 a block of 32 displaced rows and a block of 33 both agree with the general path" {
+	for (const k of [32, 33]) {
+		createRoot((d) => {
+			const src = pieces(400);
+			const twin = new Twin<Piece>(src, pieceId);
+			const next: Piece[] = [];
+			for (let i = k; i < src.length; i += 1) { next.push(src[i]); }
+			for (let i = 0; i < k; i += 1) { next.push(src[i]); }
+			twin.step(next);
+			assert twin.fast.made === 400 && twin.fast.disposed.length === 0, "k=" + k.toString() + ": nothing built or disposed";
+			d();
+		});
+	}
+}
+
+test "smallmove.test.ts:170 scattered displacements of 3 to 8 rows agree with the general path" {
+	createRoot((d) => {
+		const twin = new Twin<Piece>(pieces(500), pieceId);
+		for (let k = 3; k <= 8; k += 1) { twin.step(displace(twin.items(), k)); }
+		assert twin.fast.made === 500, "no row built";
+		d();
+	});
+}
+
+test "smallmove.test.ts:188 an adjacent swap of rows 1 and 998 agrees with the general path" {
+	createRoot((d) => {
+		const twin = new Twin<Piece>(pieces(1000), pieceId);
+		const next = twin.items();
+		const t = next[1];
+		next[1] = next[998];
+		next[998] = t;
+		twin.step(next);
+		assert twin.fast.rows()[1].item === next[1] && twin.fast.rows()[998].item === next[998], "the two rows swapped";
+		d();
+	});
+}
+
+test "smallmove.test.ts:200 a shrink that drops five rows and rotates the rest disposes the same owners" {
+	createRoot((d) => {
+		const twin = new Twin<Piece>(pieces(300), pieceId);
+		const src = twin.items();
+		const kept: Piece[] = [];
+		for (let i = 0; i < src.length; i += 1) { if (i < 100 || i >= 105) { kept.push(src[i]); } }
+		twin.step(rotateFront(kept));
+		assert twin.fast.disposed.length === 5, "five rows disposed: " + twin.fast.disposed.length.toString();
+		d();
+	});
+}
+
+test "smallmove.test.ts:213 a rotation that also grows agrees with the general path" {
+	createRoot((d) => {
+		const twin = new Twin<Piece>(pieces(200), pieceId);
+		const next = rotateFront(twin.items());
+		next.push({ id: 9999 });
+		twin.step(next);
+		assert twin.fast.made === 201, "one row built";
+		d();
+	});
+}
+
+test "smallmove.test.ts:223 a replacement inside the window builds one row and disposes the old one" {
+	createRoot((d) => {
+		const twin = new Twin<Piece>(pieces(200), pieceId);
+		const next = twin.items();
+		next[100] = { id: 424242 };
+		twin.step(next);
+		assert twin.fast.made === 201 && twin.fast.disposed.length === 1, "one built, one disposed";
+		d();
+	});
+}
+
+test "smallmove.test.ts:236 a full replace builds every row and disposes every old one" {
+	createRoot((d) => {
+		const twin = new Twin<Piece>(pieces(1000), pieceId);
+		twin.step(pieces(1000));
+		assert twin.fast.made === 2000 && twin.fast.disposed.length === 1000, "a thousand rows each way";
+		d();
+	});
+}
+
+test "smallmove.test.ts:248 a displaced identity that also occurs in an aligned run keeps occurrence-order pairing" {
+	createRoot((d) => {
+		const a: Piece = { id: 1 };
+		const b: Piece = { id: 2 };
+		const c: Piece = { id: 3 };
+		const filler: Piece[] = [];
+		for (let i = 0; i < 100; i += 1) { filler.push({ id: 1000 + i }); }
+		const src: Piece[] = [a, b, a, c];
+		for (const f of filler) { src.push(f); }
+		const twin = new Twin<Piece>(src, pieceId);
+		const next: Piece[] = [b, a, c, a];
+		for (const f of rotateFront(filler)) { next.push(f); }
+		twin.step(next);
+		d();
+	});
+}
+
+test "smallmove.test.ts:264 duplicates only among displaced rows pair ascending on both sides" {
+	createRoot((d) => {
+		const a: Piece = { id: 1 };
+		const filler: Piece[] = [];
+		for (let i = 0; i < 200; i += 1) { filler.push({ id: 1000 + i }); }
+		const src: Piece[] = [a, a];
+		for (const f of filler) { src.push(f); }
+		const twin = new Twin<Piece>(src, pieceId);
+		const next: Piece[] = [];
+		for (const f of filler) { next.push(f); }
+		next.push(a);
+		next.push(a);
+		twin.step(next);
+		d();
+	});
+}
+
+test "smallmove.test.ts:275 removing one of two equal items disposes the same occurrence as the general path" {
+	createRoot((d) => {
+		const a: Piece = { id: 1 };
+		const filler: Piece[] = [];
+		for (let i = 0; i < 200; i += 1) { filler.push({ id: 1000 + i }); }
+		const src: Piece[] = [a];
+		for (let i = 0; i < 100; i += 1) { src.push(filler[i]); }
+		src.push(a);
+		for (let i = 100; i < 200; i += 1) { src.push(filler[i]); }
+		const twin = new Twin<Piece>(src, pieceId);
+		const next: Piece[] = [a];
+		for (let i = 0; i < 100; i += 1) { next.push(filler[i]); }
+		const tail: Piece[] = [];
+		for (let i = 100; i < 200; i += 1) { tail.push(filler[i]); }
+		for (const f of rotateFront(tail)) { next.push(f); }
+		twin.step(next);
+		assert twin.fast.disposed.length === 1, "one owner disposed";
+		d();
+	});
+}
+
+test "smallmove.test.ts:287 random duplicate-heavy reorders always agree with the general path" {
+	createRoot((d) => {
+		const base = pieces(120);
+		const start: Piece[] = [];
+		for (const p of base) { start.push(p); }
+		for (let i = 0; i < 30; i += 1) { start.push(base[i]); }
+		const twin = new Twin<Piece>(start, pieceId);
+		for (let round = 0; round < 200; round += 1) {
+			const next = twin.items();
+			const moves = 1 + pick(6);
+			for (let m = 0; m < moves; m += 1) {
+				const from = pick(next.length);
+				const row = next[from];
+				next.splice(from, 1);
+				next.splice(pick(next.length), 0, row);
+			}
+			if (pick(4) === 0) { next.splice(pick(next.length), 1); }
+			twin.step(next);
+		}
+		d();
+	});
+}
+
+test "map.ts:459 a reverse and a shuffle of a large list agree with the general path" {
+	createRoot((d) => {
+		const twin = new Twin<Piece>(pieces(300), pieceId);
+		twin.step(reversed(twin.items()));
+		twin.step(shuffled(twin.items()));
+		twin.step(shuffled(twin.items()));
+		assert twin.fast.made === 300 && twin.fast.disposed.length === 0, "a reorder builds and disposes nothing";
+		d();
+	});
+}
+
+test "map.ts:459 removing one row from the front, middle and end of a large list disposes that row" {
+	for (const at of [0, 150, 299]) {
+		createRoot((d) => {
+			const twin = new Twin<Piece>(pieces(300), pieceId);
+			const gone = twin.items()[at];
+			twin.step(without(twin.items(), at));
+			assert twin.fast.disposed.length === 1 && twin.fast.disposed[0] === at, "row " + at.toString() + " disposed: " + twin.fast.disposed.join(",");
+			assert twin.fast.rows().length === 299, "299 left";
+			d();
+		});
+	}
+}
+
+test "map.ts:459 number items take the same path: rotate, swap, remove one and a displacement agree" {
+	createRoot((d) => {
+		const start: number[] = [];
+		for (let i = 0; i < 1000; i += 1) { start.push(i); }
+		const twin = new Twin<number>(start, numberId);
+		twin.step(rotateFront(twin.items()));
+		twin.step(rotateBack(twin.items()));
+		const swapped = twin.items();
+		const t = swapped[1];
+		swapped[1] = swapped[998];
+		swapped[998] = t;
+		twin.step(swapped);
+		twin.step(without(twin.items(), 500));
+		twin.step(displace(twin.items(), 5));
+		assert twin.fast.made === 1000 && twin.fast.disposed.length === 1, "one row disposed, none built";
+		d();
+	});
+}
+
+test "map.ts:459 a large list survives random edits and agrees with the general path" {
+	createRoot((d) => {
+		const twin = new Twin<Piece>(pieces(150), pieceId);
+		for (let round = 0; round < 150; round += 1) {
+			const next = twin.items();
+			const ops = 1 + pick(3);
+			for (let k = 0; k < ops; k += 1) {
+				const op = pick(4);
+				if (op === 0 && next.length > 80) {
+					next.splice(pick(next.length), 1);
+				} else if (op === 1) {
+					const fresh: Piece = { id: 100000 + round * 10 + k };
+					next.splice(pick(next.length + 1), 0, fresh);
+				} else if (op === 2 && next.length > 1) {
+					const from = pick(next.length);
+					const row = next[from];
+					next.splice(from, 1);
+					next.splice(pick(next.length + 1), 0, row);
+				} else if (next.length > 1) {
+					const i = pick(next.length);
+					const j = pick(next.length);
+					const t = next[i];
+					next[i] = next[j];
+					next[j] = t;
+				}
+			}
+			twin.step(next);
+		}
 		d();
 	});
 }

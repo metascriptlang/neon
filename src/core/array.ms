@@ -90,6 +90,144 @@ export function mapArrayByPosition<T, U>(
 	);
 }
 
+const smallMoveMinWindow = 64;
+const smallMoveMaxDisplaced = 32;
+const smallMoveCompareBudget = 256;
+
+class SmallMove<U> {
+	mapped: U[];
+	disposers: (() => void)[];
+	leavers: (() => void)[];
+
+	constructor(mapped: U[], disposers: (() => void)[], leavers: (() => void)[]) {
+		this.mapped = mapped;
+		this.disposers = disposers;
+		this.leavers = leavers;
+	}
+}
+
+function smallMove<K, U>(
+	oldKeys: K[],
+	oldLen: number,
+	newKeys: K[],
+	newLen: number,
+	start: number,
+	end: number,
+	newEnd: number,
+	oldMapped: U[],
+	oldDisposers: (() => void)[],
+): SmallMove<U> | null {
+	const mid = start + Math.floor((newEnd - start) / 2);
+	const probeHi = Math.min(end, mid + smallMoveMaxDisplaced);
+	let at = Math.max(start, mid - smallMoveMaxDisplaced);
+	while (at <= probeHi && oldKeys[at] !== newKeys[mid]) { at += 1; }
+	if (at > probeHi) { return null; }
+
+	const oldEnd = oldLen - 1;
+	const lastNew = newLen - 1;
+	const srcPos: number[] = [];
+	const dstPos: number[] = [];
+	const runs: number[] = [];
+	let budget: number = smallMoveCompareBudget;
+	let i = start;
+	let j = start;
+	let inRun = false;
+	while (i <= oldEnd && j <= lastNew) {
+		const oldKey = oldKeys[i];
+		const newKey = newKeys[j];
+		if (oldKey === newKey) {
+			if (!inRun) {
+				runs.push(i);
+				runs.push(j);
+				runs.push(0);
+				inRun = true;
+			}
+			runs[runs.length - 1] += 1;
+			i += 1;
+			j += 1;
+			continue;
+		}
+		inRun = false;
+		let del: number = -1;
+		let lim = Math.min(Math.min(smallMoveMaxDisplaced - srcPos.length, oldEnd - i), budget);
+		for (let a = 1; a <= lim; a += 1) {
+			if (oldKeys[i + a] === newKey) { del = a; break; }
+		}
+		budget -= del === -1 ? lim : del;
+		let ins: number = -1;
+		lim = Math.min(Math.min(smallMoveMaxDisplaced - dstPos.length, lastNew - j), budget);
+		for (let a = 1; a <= lim; a += 1) {
+			if (newKeys[j + a] === oldKey) { ins = a; break; }
+		}
+		budget -= ins === -1 ? lim : ins;
+		if (del !== -1 && (ins === -1 || del <= ins)) {
+			for (let a = 0; a < del; a += 1) { srcPos.push(i); i += 1; }
+			continue;
+		}
+		if (ins !== -1) {
+			for (let a = 0; a < ins; a += 1) { dstPos.push(j); j += 1; }
+			continue;
+		}
+		if (budget <= 0 || srcPos.length === smallMoveMaxDisplaced || dstPos.length === smallMoveMaxDisplaced) { return null; }
+		srcPos.push(i);
+		dstPos.push(j);
+		i += 1;
+		j += 1;
+	}
+	while (i <= oldEnd) {
+		if (srcPos.length === smallMoveMaxDisplaced) { return null; }
+		srcPos.push(i);
+		i += 1;
+	}
+	while (j <= lastNew) {
+		if (dstPos.length === smallMoveMaxDisplaced) { return null; }
+		dstPos.push(j);
+		j += 1;
+	}
+
+	const consumed: boolean[] = [];
+	for (let a = 0; a < srcPos.length; a += 1) { consumed.push(false); }
+	const pairedSrc: number[] = [];
+	for (let b = 0; b < dstPos.length; b += 1) {
+		const want = newKeys[dstPos[b]];
+		let found: number = -1;
+		for (let a = 0; a < srcPos.length; a += 1) {
+			if (!consumed[a] && oldKeys[srcPos[a]] === want) { found = a; break; }
+		}
+		if (found === -1) { return null; }
+		consumed[found] = true;
+		pairedSrc.push(found);
+	}
+	for (let a = 0; a < srcPos.length; a += 1) {
+		const displaced = oldKeys[srcPos[a]];
+		for (let r = 0; r < runs.length; r += 3) {
+			const runEnd = runs[r] + runs[r + 2];
+			for (let p = runs[r]; p < runEnd; p += 1) {
+				if (oldKeys[p] === displaced) { return null; }
+			}
+		}
+	}
+
+	const mapped = oldMapped.slice(0, newLen);
+	const disposers = oldDisposers.slice(0, newLen);
+	for (let r = 0; r < runs.length; r += 3) {
+		if (runs[r] === runs[r + 1]) { continue; }
+		for (let a = 0; a < runs[r + 2]; a += 1) {
+			mapped[runs[r + 1] + a] = oldMapped[runs[r] + a];
+			disposers[runs[r + 1] + a] = oldDisposers[runs[r] + a];
+		}
+	}
+	for (let b = 0; b < dstPos.length; b += 1) {
+		mapped[dstPos[b]] = oldMapped[srcPos[pairedSrc[b]]];
+		disposers[dstPos[b]] = oldDisposers[srcPos[pairedSrc[b]]];
+	}
+	const leavers: (() => void)[] = [];
+	for (let a = 0; a < srcPos.length; a += 1) {
+		if (!consumed[a]) { leavers.push(oldDisposers[srcPos[a]]); }
+	}
+	return new SmallMove<U>(mapped, disposers, leavers);
+}
+
 function mapRows<T, K, U>(
 	list: () => T[],
 	mode: MapMode,
@@ -227,6 +365,19 @@ function mapRows<T, K, U>(
 				}
 				keys = newKeys;
 				return mapped;
+			}
+
+			if (!hasCells && !hasIdx && newLen <= len && end - start > smallMoveMinWindow) {
+				const moved = smallMove<K, U>(keys, len, newKeys, newLen, start, end, newEnd, mapped, disposers);
+				if (moved !== null) {
+					const done = moved as SmallMove<U>;
+					mapped = done.mapped;
+					disposers = done.disposers;
+					keys = newKeys;
+					len = newLen;
+					disposeAll(done.leavers);
+					return mapped;
+				}
 			}
 
 			const dif = newLen - len;
