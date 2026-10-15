@@ -10,7 +10,7 @@ import {
 } from "../../../../ion/src/index";
 import { embedRegister, viewCreate, viewResize, viewFrame, viewDestroy, viewSwapChain, currentView, gfxSetup, ViewId, ViewInvalid } from "../../../../void/src/sokol/gpu";
 import { setup2d } from "../../../../void/src/void2d/draw";
-import { addFont, FontId, DEFAULT_FONT } from "../../../../void/src/void2d/font";
+import { addFont, registerFace, FontId, FontStyle as FaceStyle, DEFAULT_FONT } from "../../../../void/src/void2d/font";
 import { Scene2D } from "../../../../void/src/void2d/node";
 import { create, close, present } from "../../../../void/src/void2d/scene";
 import { Color, rgba } from "../../../../void/src/void2d/types";
@@ -77,6 +77,7 @@ export function frameCounts(): number[] { return [_requested, _drawn]; }
 
 const _areas: Area[] = [];
 let _font: FontId = DEFAULT_FONT;
+let _family: string | null = null;
 let _wired = false;
 
 function areaOfWindow(window: int32): Area | null {
@@ -298,7 +299,7 @@ function windowHost(win: Window): Host {
 	const openArea = (node: HostNode): VoidArea => {
 		if (current !== null) { refuse("a second <Void> was mounted"); }
 		setFramePolicy(win, FrameOnDemand);
-		const vh = createVoidHostWith(Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0)), _font);
+		const vh = createVoidHostWith(Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0)), _font, _family);
 		const hub = createAreaHub({
 			initialPixelWidth: pixelWidth(win),
 			initialPixelHeight: pixelHeight(win),
@@ -373,6 +374,8 @@ export function runWindow(opts: DesktopOptions, app: () => NeonNode): int32 {
 		return 3;
 	}
 	_font = font.value;
+	registerFace(opts.font, opts.font, 400, FaceStyle.Normal);
+	_family = opts.font;
 	wireInput();
 	installCaptureServices(ionCaptureServices);
 	installAppServices(ionAppServices);

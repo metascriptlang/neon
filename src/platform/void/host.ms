@@ -12,9 +12,9 @@ import { TextRun } from "../../../../void/src/void2d/textLayout";
 import { hitTest, xForIndex, lineBoxAt, indexAt } from "../../../../void/src/void2d/render";
 import { create, add, isDirty } from "../../../../void/src/void2d/scene";
 import { Color, rgba, vec2 } from "../../../../void/src/void2d/types";
-import { FontId, DEFAULT_FONT } from "../../../../void/src/void2d/font";
+import { FontId, DEFAULT_FONT, FontStyle as FaceStyle, SizeAdjust, resolveFont } from "../../../../void/src/void2d/font";
 import { FlexStyle, YGNode, FlexDirection, Justify, Align, PositionType, Wrap, Display, Overflow, layoutPass, freeLayoutTree } from "../../../../yoga/src/index";
-import { Style } from "../../render/style";
+import { Style, FontWeight } from "../../render/style";
 import { asFlexStyleBody } from "../../macros/style/fields";
 import {
 	TextEditingValue, editingValue, isEmptyRange,
@@ -343,17 +343,39 @@ function spanRun(text: string, own: Style, base: Style, font: FontId, baseColor:
 	const color = colorOr(own.color !== null ? own.color : base.color, baseColor);
 	const bg = own.backgroundColor !== null ? own.backgroundColor : base.backgroundColor;
 	const deco: Style = own.textDecorationLine !== null ? own : base;
+	const line = own.textDecorationStyle !== null ? own.textDecorationStyle : base.textDecorationStyle;
+	if (line !== null && line !== "solid" && line !== "wavy") {
+		throw new Error(`void host: textDecorationStyle "${line as string}" is not drawn on the Void host yet; solid and wavy are`);
+	}
 	return {
 		len: text.length as int32, font, color, background: colorOr(bg, CLEAR),
-		underline: lineColor(deco, "underline", color), wavy: false, strikethrough: lineColor(deco, "line-through", color),
+		underline: lineColor(deco, "underline", color), wavy: line === "wavy", strikethrough: lineColor(deco, "line-through", color),
 	};
+}
+
+function weightOf(w: FontWeight | null): int32 {
+	if (w === null || w === "normal") { return 400; }
+	if (w === "bold") { return 700; }
+	return parseInt(w as string) as int32;
+}
+
+function decorated(s: Style): boolean {
+	const d = s.textDecorationLine;
+	return d !== null && d !== "none";
+}
+
+interface ResolvedFont {
+	family: string;
+	weight: int32;
+	italic: boolean;
+	id: FontId;
 }
 
 export function createVoidHost(): VoidHost {
 	return createVoidHostWith(Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0)), DEFAULT_FONT);
 }
 
-export function createVoidHostWith(scene: Scene2D, font: FontId): VoidHost {
+export function createVoidHostWith(scene: Scene2D, font: FontId, defaultFamily: string | null = null): VoidHost {
 	const events: EventEntry[] = [];
 	const clients: ClientEntry[] = [];
 	const fields: Field[] = [];
@@ -507,9 +529,35 @@ export function createVoidHostWith(scene: Scene2D, font: FontId): VoidHost {
 		return l;
 	};
 
+	const resolved: ResolvedFont[] = [];
+
+	const fontOf = (own: Style, base: Style): FontId => {
+		const named = own.fontFamily !== null ? own.fontFamily : base.fontFamily;
+		const weight = weightOf(own.fontWeight !== null ? own.fontWeight : base.fontWeight);
+		const slant = own.fontStyle !== null ? own.fontStyle : base.fontStyle;
+		const italic = slant === "italic";
+		if (named === null && weight === 400 && !italic) { return font; }
+		const fam = named !== null ? named as string : defaultFamily;
+		if (fam === null) {
+			throw new Error(`void host: a Text asks for weight ${weight}${italic ? " italic" : ""} and names no fontFamily, and this host has no default family`);
+		}
+		const family = fam as string;
+		for (const r of resolved) {
+			if (r.weight === weight && r.italic === italic && r.family === family) { return r.id; }
+		}
+		const got = resolveFont({
+			family, weight, style: italic ? FaceStyle.Italic : FaceStyle.Normal, features: [], fallbacks: [], sizeAdjust: SizeAdjust.None,
+		});
+		if (!got.ok) {
+			throw new Error(`void host: font family "${family}" has no registered face (${got.error.toString()}); register its files with registerFace`);
+		}
+		resolved.push({ family, weight, italic, id: got.value });
+		return got.value;
+	};
+
 	const waiting: VoidNode[] = [];
 
-	// One label per Text: its spans in order, and a run per span once any span is styled.
+	// One label per Text: its spans in order, and a run per span once a span is styled or the Text is decorated.
 	const refreshParagraph = (root: VoidNode): void => {
 		if (root.disposed) { return; }
 		if (!attached(root)) {
@@ -539,12 +587,15 @@ export function createVoidHostWith(scene: Scene2D, font: FontId): VoidHost {
 			label.setTextStyle({ ...label.textStyle(), size: base.fontSize as float32 });
 		}
 		const baseColor = colorOr(base.color, WHITE);
+		const none: Style = {};
+		const baseFont = fontOf(none, base);
+		if (label.textStyle().font !== baseFont) { label.setFont(baseFont); }
 		label.setText(text);
-		if (styled) {
+		if (styled || decorated(base)) {
 			const runs: TextRun[] = [];
-			const none: Style = {};
 			for (const s of spans) {
-				runs.push(spanRun(s.text, s.style !== null ? s.style as Style : none, base, font, baseColor));
+				const own: Style = s.style !== null ? s.style as Style : none;
+				runs.push(spanRun(s.text, own, base, s.style !== null ? fontOf(own, base) : baseFont, baseColor));
 			}
 			label.setColor(WHITE);
 			label.setTextRuns(runs);
