@@ -216,19 +216,21 @@ function elementMarkup(
 			const control = controlAttr(wire, names[i], raw);
 			if (control !== null) {
 				const written = control as ControlAttr;
-				if (written.name !== "") { putAttribute(outNames, outValues, written.name, written.value); }
+				if (written.name !== "") {
+					putAttribute(outNames, outValues, written.name, written.value === null ? null : escapeAttribute(written.value as string));
+				}
 				continue;
 			}
 			const mapped = domAttrValue(names[i], raw);
-			let v = mapped === null ? "" : mapped as string;
+			let v = mapped === null ? "" : escapeAttribute(mapped as string);
 			if (mapped !== null && names[i] === "class" && cls !== "") { v = v === "" ? cls : v + " " + cls; cls = ""; }
 			putAttribute(outNames, outValues, domAttrName(names[i]), mapped === null ? null : v);
 		}
 		for (let i = 0; i < outNames.length; i += 1) {
-			open = open + " " + outNames[i] + "=\"" + escapeAttribute(outValues[i]) + "\"";
+			open = open + " " + outNames[i] + "=\"" + outValues[i] + "\"";
 		}
 	}
-	if (cls !== "") { open = open + " class=\"" + escapeAttribute(cls) + "\""; }
+	if (cls !== "") { open = open + " class=\"" + cls + "\""; }
 	const inline = (style === null ? "" : styleToCss(style as Style)) + scroll;
 	if (inline !== "") { open = open + " style=\"" + escapeAttribute(inline) + "\""; }
 	if (info.empty) {
@@ -254,7 +256,7 @@ class TagInfo {
 
 	constructor(tag: string) {
 		this.html = webHtmlTag(tag);
-		this.baseClass = baseClassOf(tag);
+		this.baseClass = escapeAttribute(baseClassOf(tag));
 		this.rules = webRules(tag);
 		for (const fixed of webFixedAttrs(tag)) {
 			this.fixedNames.push(fixed.name);
@@ -303,7 +305,7 @@ function ssrHost(register: (id: string, css: string) => void): Host {
 	h.createElement = (tag: string): HostNode => {
 		const node = createElement(tag);
 		for (const rule of webRules(tag)) { register(rule.id, rule.css); }
-		(node as unknown as MockNode).className = baseClassOf(tag);
+		(node as unknown as MockNode).className = escapeAttribute(baseClassOf(tag));
 		for (const fixed of webFixedAttrs(tag)) { (node as unknown as MockNode).attrs.push(fixed); }
 		return node;
 	};
@@ -311,7 +313,7 @@ function ssrHost(register: (id: string, css: string) => void): Host {
 		if (id === "") { return; }
 		register(id, css);
 		const n = node as unknown as MockNode;
-		n.className = joinClass(n.className, id);
+		n.className = joinClass(n.className, escapeAttribute(id));
 	};
 	const setAttr = h.setAttr;
 	h.setAttr = (node: HostNode, name: string, value: string): void => {
@@ -321,7 +323,7 @@ function ssrHost(register: (id: string, css: string) => void): Host {
 		const rule = linesRule(value);
 		register(rule.id, rule.css);
 		const n = node as unknown as MockNode;
-		n.className = joinClass(joinClass(n.className, LINES_CLASS), linesClass(value));
+		n.className = joinClass(joinClass(n.className, LINES_CLASS), escapeAttribute(linesClass(value)));
 	};
 	return h;
 }
@@ -567,7 +569,7 @@ function writerHost(w: SsrWrite): Host {
 			if (!clampedLines(value)) { return; }
 			const rule = linesRule(value);
 			w.register(rule.id, rule.css);
-			n.className = joinClass(joinClass(n.className, LINES_CLASS), linesClass(value));
+			n.className = joinClass(joinClass(n.className, LINES_CLASS), escapeAttribute(linesClass(value)));
 		},
 		removeAttr: (node: HostNode, name: string): void => {
 			const n = writable(node as unknown as SsrNode);
@@ -585,7 +587,7 @@ function writerHost(w: SsrWrite): Host {
 			if (id === "") { return; }
 			w.register(id, css);
 			const n = writable(node as unknown as SsrNode);
-			n.className = joinClass(n.className, id);
+			n.className = joinClass(n.className, escapeAttribute(id));
 		},
 		addEvent: (node: HostNode, name: string, handler: (e: NeonEvent) => void): void => {},
 		append: (parent: HostNode, child: HostNode): void => {
