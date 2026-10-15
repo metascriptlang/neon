@@ -487,19 +487,27 @@ and the Android emulator, with `onLongPress`'s timer never fired. After it, both
 
 ## Void JSX todo
 
-Normal task-by-task work, not a persistent goal or automatic execution loop. Existing
-implementations and evidence stay; blockers remain with their repo owners. Choose the
-next runnable item with the person, rather than repeat unchanged submission-only checks.
+Ordinary todos, not persistent goal automation. The 2026-10-15 audit/parallel campaign
+executes ready items in the approved scope; external blockers stay with their owners.
+No repeated unchanged submission demos or inferred protected-contract permissions.
 
 - [x] ~~Inventory the Void baseline~~ — `docs/voidComponents.md`, 37 rows at Void d255ffb.
 - [ ] Consume compiler fixes and make the original sixteen Scene3D cases and authored
   enum/spread/Result consumers run on the installed toolchain; preserve their expressions.
-- [ ] Integrate consumed host/embed/window work: actual raw/UI parent/order/cleanup,
-  raw exclusion from Yoga and flowText, frame wake; `void-noderef-host` retains ownership.
+- [x] ~~Route raw/UI through actual VoidNode parent/order/cleanup and existing wake~~ —
+  scoped CPU pins; raw excluded Yoga/flowText, UI islands reuse Yoga. Runtime proof
+  is not scene presentation; partial-mount/boundary follow-up remains in BUGS.md.
+- [ ] Finish detached-subtree rollback and initial ErrorBoundary reset cleanup;
+  retain enabled regressions. Checker-flow owner card and protected-renderer approval
+  remain separate dependencies, not permission to rewrite consumers.
+- [ ] Connect distinct scene hosts to area frame/layout/font/input ownership. Host/embed/
+  window prerequisites consumed; raw kinds belong this arc, closed host arc owns no new work.
 - [ ] Finish raw2D gaps: Anim binders, textured Graphics, texture upload/replacement,
   fresh bounds and observed output. Keep existing core/style/text/filter coverage.
-- [ ] Finish 3D resource lifecycle: Material/Light binders, mesh/material/texture replacement
-  and resource-bearing Gltf rollback/remount/terminal cleanup.
+- [x] ~~Prove resource-bearing Gltf rollback/remount/terminal cleanup~~ — real textured
+  five-mesh Metal consumer12 frames, CPU material/uniform rollback; no pixels/Ion claim.
+- [ ] Finish remaining 3D resource lifecycle: Material/Light binders and mesh/material/
+  texture replacement. Preserve owner APIs and borrowing/atomic replacement contracts.
 - [ ] Map transform/baked animation and particles. Decide Billboard ownership before
   implementing its proposed owned15-float/coalesced-upload route.
 - [ ] Map renderer settings, pixel-art/palette, directional shadows and moving materials

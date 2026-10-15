@@ -24,7 +24,62 @@ A **reference consumer** is existing Void code to follow, not evidence that Neon
 Every row requires a Neon JSX consumer before it can be accepted. Component/prop assignments
 in missing rows are candidate mappings; unchosen names and ownership details are not approvals.
 
-## Current proof boundary
+## Current audit — 2026-10-15
+
+The baseline inventory above is not a fresh inventory of consumed Void `f874af6a4`.
+New layer/render-order/camera-layer and HDR/tone/bloom APIs remain mapping candidates,
+not silently accepted coverage. No percentage or whole-row completion follows.
+
+- Main `743c79c` host/ScrollView and Ion `1b3d40c` macOS prerequisites are consumed.
+  Actual raw/UI operations now reuse `src/platform/void/host.ms`; area presentation,
+  per-scene font/input/frame registration and real Ion acceptance remain absent.
+- Frozen `2f27d19`/tree `24153969eaa7f724160b75bd0652cee4cdcf018d`, installed
+  binary/support `15b93cbba`, Void `f874af6a4`, Yoga `ce52e2e`, Ion `1b3d40c`:
+  `NO_COLOR=1 NEON_BROWSER_PORT=8734 bash tests/run.sh` exits1. Native143/8,
+  JS119/4 with28 skipped; macros17, app target-runs6, refresh runs9,
+  Chrome22 requested files/144 cases and edge3 scenario groups pass. Identical
+  source/binary/BUILD/dependency HEADs before/after; no same-epoch main control.
+  Raw log/scope: `/tmp/neon-void-audit-current-full-gate.{log,scope.json}`.
+  This supersedes no historical epoch and proves neither pixels nor idle/input.
+- Gate failures: native FlutterLists, Void host nullish union, FlatList macro capture,
+  Graphics/GraphicsPaint computed-discriminant C move, Paint kind48, Tile's two
+  fresh-bounds cases, and original16 Scene3D projection layout. JS FlutterLists,
+  FlatList, native header reexport and new VoidRaw's unsupported pointer arithmetic.
+  The latter is a runner omission, fixed by native-only selection in `d7108a3`;
+  selection check changes only that file, not native discovery. No later whole-gate
+  totals claimed. Compiler cards preserve expressions and remain owner work.
+- Real textured Gltf: `msc run tests/device/scene3dGltf.ms` on `ffd54e0`/tree
+  `092fa5fe228084e1de06f1f9ee1e54d35ad1e08e`, stable `15b93cbba`/Void `f874af6a4`,
+  exits0:12 frames/5 meshes, invalid-root failure preservation, replacement,
+  hide/remount and terminal GPU resource reclamation. Exact Gltf source files remain
+  unchanged through `2f27d19`. Metadata probes return1/1; old Metal abort is resolved.
+  CPU fixture has5 own/303 total cases including actual material/uniform rollback.
+  These are resource/submission proofs, not observed pixels or Ion composition.
+- Fresh host review found rollback/Row, raw text-paint inheritance and onLayout wake
+  regressions. `a88943e` and `e8384d2` fix the latter two through existing host paths;
+  new pins go322/1→323/0 and323/1→324/0, input importer330/0. Scopes record the
+  respective precommit HEAD plus WIP, not retrospective committed executions.
+  Independent native follow-up `5307a1f9` confirms only those two fixes. Raw rollback
+  remains partial: detached Group children bypass wrapper/Yoga release. On `16d8a1f`/
+  tree `cee747f46bb06642243def3ddece5857a38e74a0` plus recorded WIP, the new Order pin
+  leaves321 pass/2 fail (detached cleanup and independent boundary reset). Intended
+  descendant-removal loop then prevents runtime proof: three-line Group consumer
+  check exceeds30s; removing only that loop checks133 modules. Stable compiler15;
+  `/tmp/neon-void-audit-current-detached-{rollback-red,loop-consumer,loop-consumer-control}.scope.json`
+  record exact source/BUILD/binary/deps. This is not a completed cleanup fix; owner
+  card and parked sites are in `BUGS.md`. No helper/alias workaround.
+- Initial ErrorBoundary reset still leaves `<root>fallbackgood</root>` in the unbatched
+  pure-mock control, including isolated main. Native and JS diagnostic batches around
+  initial render change that to `<root>good</root>` on16d8/treecee plus WIP, stable15; this isolates
+  initial publication ordering, not an accepted implementation. Commands/scopes:
+  `/tmp/neon-void-audit-current-boundary-initial-{current-control,batch-diagnostic,batch-diagnostic-js}.{log,scope.json}`.
+  Production and enabled pins remain unbatched; protected renderer approval pending.
+  Original16 Scene3D cases/118 assertions remain.
+
+## Historical proof boundary — through verified525
+
+The following observations retain their historical source/toolchain identities;
+they are not current status claims. The current audit above supersedes stale blockers.
 
 `src/components/scene3d.ms` exports Scene3D, Group, Mesh, Light and Camera3D.
 `src/components/primitives.ms` supplies Void/View/Text/Pressable/TextInput.
@@ -53,9 +108,9 @@ are not deployed acceptance, full gate or pixels. Earlier five-case observations
 were incorrectly labelled `8506eaf03` without checking BUILD at invocation; current
 measurements above supersede that unpinned attribution.
 
-This slice does not yet attach to an area/frame. View/Text/Pressable/TextInput under
-Scene2D therefore fail loudly instead of silently mounting into the HUD; their
-camera-scoped UI mapping remains required, not removed from the goal. Full paint wins
+At this historical epoch the slice did not attach to an area/frame and UI under
+Scene2D failed loudly. Current same-host UI mapping above supersedes that refusal;
+camera-scoped presentation still remains required. Full paint wins
 over a Rect/Label color prop; Label size overrides the size in a supplied TextStyle.
 Refs expose real Void scenes/NodeRefs for queries, not a substitute for missing
 component/frame integration. colorMatrix uses Void's setColorMatrix data API;
@@ -541,14 +596,12 @@ recovery; it must be implemented/proven by its Void owner, never as a Neon buffe
 workaround. Recommendation is to request that owned resource API, not demand app buffers
 or reinterpret15 as8. No new GPU ownership mechanism shipped.
 
-Owner prerequisites confirmed by neon-main (information, not approval): noderef812a97a
-is unlanded awaiting person yes/ScrollView backgroundColor answer; raw-kind option(a)
-starts on a new branch after that land and awaits confirmation in the owner's window.
-macOS embed f5a6d7c..c878fbc is also unlanded awaiting the owner's person decision about
-its red main gate/compiler ref-array destroy/trace card. Ion window migration has not
-started; it follows those lands. This session neither authorizes no-gate nor reassigns
-host/window ownership. Metal submissions cannot close the scene/HUD/texture-UI/pick/idle
-acceptance while these prerequisites are absent. User decisions are the next boundary.
+The earlier owner-prerequisite report is superseded: main743c79c's VoidNode/ScrollView,
+Voidf874af6a4's macOS embed and Ion1b3d40c's layer events are consumed. Actual Neon
+scene registration/frame/font/input integration remains unimplemented, not an unlanded
+host-owner prerequisite. Raw-kind work belongs this arc; no unrelated ownership,
+no-gate or push permission follows from peer reports. Metal submissions still cannot
+close scene/HUD/texture-UI/pick/idle acceptance.
 
 Acceptance ledger entries must name the row IDs, Neon JSX test/example, command and exit code,
 source tree, installed compiler/support and consumed Void baseline, backend and actual observed

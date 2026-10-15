@@ -71,17 +71,27 @@ and the invariants that outlived them were moved to the head of the test that pi
   (`src/core/runtime.ms`) leaves its loop at 1 000 000 passes with work still queued; Solid 2.0
   throws at 100 000 (`~/projects/solid-next` `84dada77`, `packages/signals/src/core/scheduler.ts:1309-1315`).
 
-- **OPEN — raw Scene2D `For` does not reorder or insert before existing Void siblings.**
-  `msc test tests/render/scene2dOrder.test.ms` reaches runtime: 314 imported tests pass,
-  both own cases fail (reorder without remount; insertion inside Group). Same result with
-  the held `msc-n2s-r8` candidate. Source baseline `6a658ec`, tree
-  `2cba3c3072ebaab3b53bf363de74083cee183ee5`, plus the new fixture. This is a Neon
-  runtime finding, not one of the compiler known reds. `scene2d.ms` `renderNode` appends
-  directly while `reconcile.ms` `moveRow` only moves Host spans; the raw nodes never enter
-  those spans. The existing host in `wt/void-noderef-host` (`812a97a`, `VoidNode` and
-  `insertBefore` in `src/platform/void/host.ms`) already owns sibling/order/disposal logic.
-  Prefer extending that host for raw kinds with yoga skipped, rather than duplicating it.
-  Host-owner land and the person's design decision remain pending; no bridge implemented.
+- **OPEN 2026-10-15 — reset after an initial ErrorBoundary mount failure leaves its fallback mounted.**
+  Pin: `tests/render/errorBoundaryInitialReset.test.ms`; native and JS commands
+  `msc test --no-color [--target=js] tests/render/errorBoundaryInitialReset.test.ms`
+  fail its own reset assertion. Expected `<root>good</root>`, actual
+  `<root>fallbackgood</root>`. Pure mock host, no Void or GPU. Measured on
+  `d7108a3`/tree `b1239731441359b01fa2d2e7b845e50b7ac88d60` plus recorded WIP;
+  pin source SHA256 `8848197a7768a222bed4194f525965044dd077c13229ed98733b9598ac3de98b`,
+  then committed as `16d8a1f`. Scopes/logs:
+  `/tmp/neon-void-audit-current-boundary-initial-pin-{c,js}.{log,scope.json}`.
+  Isolated main `c68683d` control gives the same output; the first mixed-import control
+  was invalid due to duplicate Row identities. This is separate from raw-node rollback:
+  moving raw placement after successful mount restores remount but cannot remove the
+  canonical fallback ghost. `src/render/node.ms` `regionNode` is protected; no batching
+  workaround or contract edit applied. Original raw `For` order pins now pass through
+  the existing host; their source/evidence stays in `docs/voidComponents.md`.
+
+- **PARKED — detached raw subtree rollback.** Site: `src/components/scene2d.ms`
+  `renderNode` detached-root catch; pin: `tests/render/scene2dOrder.test.ms`
+  "failed detached raw subtree releases mounted UI wrappers and Yoga state".
+  Owner card: `~/metascript/.inbox/compiler/2026-10-08-navigation-generic-closure-flow-check-timeout.md`.
+  Intended descendant cleanup remains unverified WIP; no source-shape workaround.
 
 - **OPEN 2026-10-12 — a component tag that omits a required prop compiles and then crashes.**
   `interface BadgeProps { label: Accessor<string>; suffix: Accessor<string>; }` mounted as
