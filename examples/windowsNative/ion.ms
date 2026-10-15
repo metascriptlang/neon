@@ -7,7 +7,8 @@ import { runNativeWindow, nativeWindowOptions } from "../../src/platform/windows
 import { createStyles, styleOf } from "../../src/macros/ui/style";
 import { NeonNode } from "../../src/render/node";
 import { View } from "../../src/components/primitives";
-import { harnessIsCheck, harnessExpect, harnessSample, harnessResizeClient } from "./harness.h";
+import { harnessIsCheck, harnessExpect, harnessSample } from "./harness.h";
+import { setSize, Window } from "../../../ion/src/index";
 import { exit } from "std/process";
 
 when (windows) {
@@ -69,11 +70,11 @@ const afterResize = (): void => {
 	harnessExpect("parent unmoved", 100, 200, 28, 115, 217);
 	exit(harnessSample(TITLE));
 };
-exit(runNativeWindow(options, App, check ? (): void => {
+exit(runNativeWindow(options, App, check ? (win: Window): void => {
 	setTimeout((): void => {
 		const failures = harnessSample(TITLE);
 		if (failures !== 0) { exit(failures); }
-		harnessResizeClient(TITLE, 800, 400);
+		setSize(win, 800, 400);
 		setTimeout(afterResize, 700);
 	}, 700);
 } : null));

@@ -261,14 +261,6 @@ int harnessSample(const char *title) {
 	return failures == 0 ? 0 : 1;
 }
 
-void harnessResizeClient(const char *title, int logicalWidth, int logicalHeight) {
-	HWND window = findOwnWindow(title);
-	UINT dpi = GetDpiForWindow(window);
-	RECT frame = {0, 0, MulDiv(logicalWidth, dpi, 96), MulDiv(logicalHeight, dpi, 96)};
-	AdjustWindowRectExForDpi(&frame, (DWORD)GetWindowLongW(window, GWL_STYLE), FALSE, (DWORD)GetWindowLongW(window, GWL_EXSTYLE), dpi);
-	SetWindowPos(window, nullptr, 0, 0, frame.right - frame.left, frame.bottom - frame.top, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
-}
-
 void harnessExpect(const char *name, int x, int y, int r, int g, int b) {
 	g_expectations.push_back({name, x, y, r, g, b});
 }

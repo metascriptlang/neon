@@ -14,7 +14,6 @@ void harnessExpectSize(const char *layout, const char *text, float fontSize, int
 int harnessRun(void);
 int harnessIsCheck(void);
 int harnessSample(const char *title);
-void harnessResizeClient(const char *title, int logicalWidth, int logicalHeight);
 
 #ifdef __cplusplus
 }

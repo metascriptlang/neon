@@ -29,7 +29,7 @@ export function nativeWindowOptions(title: string, width: number, height: number
 
 let attached = false;
 
-export function runNativeWindow(opts: NativeWindowOptions, app: () => NeonNode, onMounted: (() => void) | null): int32 {
+export function runNativeWindow(opts: NativeWindowOptions, app: () => NeonNode, onMounted: ((win: Window) => void) | null): int32 {
 	const options = defaultOptions(opts.title, opts.width as int32, opts.height as int32);
 	options.alwaysOnTop = opts.topmost;
 	options.decorations = opts.decorations;
@@ -51,7 +51,7 @@ export function runNativeWindow(opts: NativeWindowOptions, app: () => NeonNode, 
 		attached = true;
 		niwAttach(windowDevice(win), windowRoot(win), dpi, logicalWidth, logicalHeight);
 		runApp(app);
-		if (onMounted !== null) { (onMounted as () => void)(); }
+		if (onMounted !== null) { (onMounted as (win: Window) => void)(win); }
 	});
 	onFrame((window: int32, timeMs: float64): void => {
 		if (window === win.id && attached) { niwFrame(); }
