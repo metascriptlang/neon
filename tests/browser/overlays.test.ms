@@ -1,6 +1,7 @@
 import { createSignal } from "../../src/core/signal";
 import { Dimensions } from "../../src/api/dimensions";
 import { HostNode } from "../../src/render/hostTypes";
+import { ElementHandle } from "../../src/render/measure";
 import { render } from "../../src/render/host";
 import { domHost, documentBody } from "../../src/platform/browser/dom";
 import { element } from "../../src/macros/ui/element";
@@ -32,7 +33,7 @@ function near(a: float64, b: float64): boolean { return Math.abs(a - b) < 0.01; 
 test "screen overlays use viewport geometry outside a clipped app and retain reactive dismissal" {
 	const [open, setOpen] = createSignal(true);
 	const roots: HostNode[] = [];
-	const dispose = render(element(<View ref={(node: HostNode): void => { roots.push(node); }} style={{ width: 24, height: 24, overflow: "hidden", position: "relative" }}>
+	const dispose = render(element(<View ref={(h: ElementHandle): void => { roots.push(h.node); }} style={{ width: 24, height: 24, overflow: "hidden", position: "relative" }}>
 		<Dialog visible={open()} title="Portal dialog"><Text>Dialog body</Text></Dialog>
 		<BottomSheet visible={open()} height={240} accessibilityLabel="Portal sheet"><Text>Sheet body</Text></BottomSheet>
 		<Snackbar visible={open()} message="Portal snackbar" />

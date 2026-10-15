@@ -24,6 +24,7 @@ import { HostNode, MockNode, mockNode, mockHost, render, mockToString, fireEvent
 import { View, ViewHandle, TextInput, TextInputHandle, Pressable, Text } from "../../src/components/primitives";
 import { NeonEvent } from "../../src/render/event";
 import { flush } from "../../src/core/runtime";
+import { ElementHandle } from "../../src/render/measure";
 
 test "ref hands the completed host node to the callback" {
 	let seen = "";
@@ -68,7 +69,7 @@ test "a callback prop crosses raw when it is named, not only when it is a litera
 	let hits = 0;
 	const inc: (e: NeonEvent) => void = (e) => { hits = hits + 1; };
 	let seenTag = "";
-	const grab: (h: HostNode) => void = (h) => { seenTag = (h as unknown as MockNode).tag; };
+	const grab = (h: ElementHandle): void => { seenTag = (h.node as unknown as MockNode).tag; };
 	const root: MockNode = mockNode("root");
 	render(element(<Pressable onPress={inc} ref={grab}><Text>+</Text></Pressable>), mockHost(), root as unknown as HostNode);
 	fireEvent(root.children[0], "onPress");

@@ -12,6 +12,8 @@ import { Host, HostNode, NeonNode, RefFn } from "./hostTypes";
 import { Row, BUILT_IN_PLACE, makeRow, place, reconcileArrays, mountAt, removeRow } from "./reconcile";
 import { regionAnchor, regionParent, sealRegion, serverRegionStart, serverRegionEnd, unclaimed, claimMark, claimRewind, ClaimMark } from "./claim";
 import { getOwner, isServer } from "../core/runtime";
+import { ElementRef, ElementHandle } from "./measure";
+import { onCleanup } from "../core/cleanup";
 import { bindText, bindAttr, bindStyleAll, applyRef } from "./bind";
 
 export { NeonNode, RefFn } from "./hostTypes";
@@ -69,6 +71,7 @@ export function hostElement(
 	children: NeonNode | null,
 	style: (() => Style) | null,
 	ref: RefFn | null,
+	elementRef: ElementRef | null = null,
 ): NeonNode {
 	return (host: Host, parent: HostNode, before: HostNode | null): void => {
 		const node = host.createElement(tag);
@@ -83,6 +86,11 @@ export function hostElement(
 		for (const e of events) { host.addEvent(node, e.name, e.handler); }
 		if (children !== null) { (children as NeonNode)(host, node, null); }
 		if (ref !== null) { applyRef(node, ref as RefFn); }
+		if (elementRef !== null && !isServer()) {
+			let mounted = true;
+			onCleanup((): void => { mounted = false; });
+			(elementRef as ElementRef)(new ElementHandle(host, node, (): boolean => mounted));
+		}
 		place(host, parent, node, before);
 	};
 }

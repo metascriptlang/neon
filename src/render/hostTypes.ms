@@ -7,6 +7,20 @@ export type HostNode = unknown;
 
 export type RefFn = (node: HostNode) => void;
 
+export struct MeasureRect {
+	x: float64;
+	y: float64;
+	width: float64;
+	height: float64;
+}
+
+export enum MeasureError {
+	NotMounted,
+	NotLaidOut,
+	NotAncestor,
+	Unsupported,
+}
+
 // What a JSX expression becomes on every target: a function that puts the nodes
 // it owns into `parent`, in front of `before`.
 export type NeonNode = (host: Host, parent: HostNode, before: HostNode | null) => void;
@@ -67,6 +81,8 @@ export interface Host {
 	scrollTo: ((node: HostNode, x: number, y: number, animated: boolean) => void) | null;
 	measureText: ((text: string, style: Style) => TextMeasure) | null;
 	focus?: ((node: HostNode, focused: boolean) => void) | null;
+	measureInWindow?: ((node: HostNode) => Result<MeasureRect, MeasureError>) | null;
+	measureLayout?: ((node: HostNode, ancestor: HostNode) => Result<MeasureRect, MeasureError>) | null;
 	// Optional capability: the host's top layer, where a Portal that names no
 	// mount node puts its content (the DOM body, the native root). `node` is
 	// where the Portal sits in the tree.
