@@ -106,7 +106,9 @@ component or `src/render`.
 - A guard runs before a match commits, on the server as on the client (TanStack
   `beforeLoad` timing). It returns a decision (continue, redirect, not found) instead
   of throwing, as the rest of Neon routing returns `Result`; a request history turns
-  a redirect into 3xx and not-found into 404.
+  a redirect into 3xx and not-found into 404. Not found makes the route not match and
+  ranking continues, as a codec failure does, so a catch-all route with status 404
+  renders it (Next renders the nearest `not-found`).
 
 **Navigation (presence)** owns which destinations are present and active, their order
 and history, retention and lifecycle, generic over a configuration with a key. It
