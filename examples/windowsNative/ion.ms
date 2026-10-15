@@ -62,7 +62,6 @@ if (check) {
 
 const options = nativeWindowOptions(TITLE, 600, 320);
 options.topmost = check;
-options.decorations = !check;
 const afterResize = (): void => {
 	harnessExpect("pin moved", 770, 370, 255, 210, 63);
 	harnessExpect("pin's old place", 570, 290, 16, 24, 32);

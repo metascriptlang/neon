@@ -91,7 +91,6 @@ if (check) {
 setTimeout((): void => { setUpdated(true); }, 100);
 const options = nativeWindowOptions(TITLE, 640, 360);
 options.topmost = check;
-options.decorations = !check;
 exit(runNativeWindow(options, App, check ? (): void => {
 	setTimeout((): void => { exit(harnessSample(TITLE)); }, 700);
 } : null));
