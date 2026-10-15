@@ -11,10 +11,16 @@ The code is the truth for everything else: `src/platform/void/host.ms` (`refresh
   - styled runs;
   - inline views as placeholders with an explicit alignment and baseline;
   - press, hover, cursor and accessibility per span.
-- **A data door beside it.** This is Flutter's `Text.rich(TextSpan)`, for content that is already data, such as
-  terminal and editor lines. The prop name and its element shape were still open when this was written. The
-  proposal is `spans`, each `{ text, style, …Text props }`, so that a span is the data form of a nested `<Text>`.
-  Both doors lower to the same paragraph host call.
+- **A data door beside it**, decided 2026-10-15: `<Text spans={…}>`, each `TextSpan { text, style? }`
+  (`src/render/hostTypes.ms`). It is Flutter's `Text.rich(TextSpan)`, for content that is already data, such as
+  terminal and editor lines. A span is the data form of a nested `<Text>`.
+  - On a host with the `setSpans` capability (Void), the spans go straight into the paragraph's runs, with no
+    node per span.
+  - On any other host, `src/components/primitives.ms` `spanNodes` lays them out as nested Texts, keeping each
+    span's nodes by position.
+  - Rejected: `runs` as `{ len, color… }` beside one string. Its only gain is skipping a substring per span
+    (about 0.05 ms per frame, measured below). Against that, the lengths must sum to the string's UTF-16 length,
+    a terminal parser that counts code points breaks it, and the fields are void2d's rather than Text's.
 - **Damage per Solid binding, not per tree diff.** Each change is classed with Flutter's `RenderComparison`
   levels:
   - text, font, size or spacing: `layout`;
@@ -118,11 +124,21 @@ busy with other sessions. This slice is tree `6a9d6858`.
 All 80 rows new text is slower by about the cost of wrapping, which the void2d rows above isolate. Before this slice a
 label never wrapped.
 
+Spans against plain text, 80 rows of 120 characters all new every frame, 400 frames, two alternating runs, tree
+`9ef44f1a`. The probe is `tests/zzprobe/spansBench.ms`, uncommitted.
+
+| rows | ms per frame | building the lines | reactive set |
+|---|---|---|---|
+| plain text | 3.32–3.39 | 0.34 | 0.07 |
+| 8 spans of 15 characters, two shared styles | 3.59–3.74 | 0.38–0.40 | 0.22–0.24 |
+
+Off-screen rows cost nothing: the list is virtualized, holding only the visible lines.
+
 ## Order
 
 1. Paragraph on the Void host: done, with the yoga measure hook outstanding.
-2. Carry runs and the damage level through `src/render/hostTypes.ms`; add the data door. `cellWidth` →
-   `setForceWidth` is done on Void.
+2. The data door: done. `spans`, and `setSpans` on Void. `cellWidth` → `setForceWidth`: done on Void.
+   Damage per binding needs no contract field: a host compares a node's last style with the new one.
 3. Paint-only updates: on Void after the Void request lands; DirectWrite keeps its layout.
 4. Per-span press, hover, cursor and accessibility.
 5. Placeholders (inline views).
