@@ -212,17 +212,10 @@ and the invariants that outlived them were moved to the head of the test that pi
   around outside the repo, the canvas draws in Chrome (docs/RENDER-LAYERS.md). Parked at `examples/voidCanvas.ms`,
   built natively only.
 
-- **PARKED 2026-10-16 — every `<NavigationContainer ref={…}>` stops the build.** Not Neon's: the element
-  macro reads a component's props through `getTypeImpl`, and `NavigationContainerRef` reaches itself through
-  `NavigatorLink`. msc then throws `getTypeImpl: unnamed or alias type cycle (Ref)` on any named class or
-  interface that refers to itself. Red on main `c1a28b8` with msc `0f8278bc`: 9 files of `tests/navigation/`
-  (auth, containerRouting, example, linking, nested, options, stack, state, transition) on native and JS, plus
-  the three `refresh … navigation.ms` runs. Card: `~/metascript/.inbox/compiler/2026-10-16-get-type-impl-self-reference-cycle.md`.
-
 - **PARKED 2026-10-15 — `tests/platform/voidInput.test.ms` aborts on C.** Not Neon's: after `default font
   assets/font.ttf did not load`, the native run panics with signal 6 in Void `wrapText`
   (`void/src/void2d/textLayout.ms:1366`), the empty-slice-to-`Span` case of compiler card
-  `~/metascript/.inbox/compiler/2026-10-15-c-span-of-an-empty-array-panics-on-null-payload.md`. It arrived with
+  `~/metascript/.inbox/compiler/2026-10-16-empty-array-range-slice-null-payload.md`. It arrived with
   the origin commits pulled at `4718a2f`, and it is red on `fb2285e` alone. Measured by the navigation session's gate on
   `1ad74a7`, msc `15b93cbba` (`~/metascript/.wt/artifacts/rn-navigation-prod/gate-navmodels-fb2285e/gate.log`).
 
