@@ -4,7 +4,6 @@ import { Alert } from "../../src/api/alert";
 import { AsyncStorage } from "../../src/api/asyncStorage";
 import { Linking } from "../../src/api/linking";
 import { ionAppServices } from "../../src/platform/ion/appServices";
-import "../../../ion/src/index";
 
 test "the microphone permission on an Ion host is the OS's answer, and another permission is refused by name" {
 	installAppServices(ionAppServices);
