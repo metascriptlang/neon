@@ -76,7 +76,9 @@ It gets runs only once a span styles a piece.
 Refused by name until the slice that adds each one:
 - a `View` inside a `Text` (inline views);
 - `onPress` on a nested `Text` (per-span hit-testing);
-- a nested `fontSize` (a void2d label has one size).
+- a nested `fontSize` (a void2d label has one size);
+- `cellWidth` on a nested Text. `<Text cellWidth={n}>` maps to void2d `setForceWidth`, so grapheme k sits at k×n. The
+  browser and native hosts refuse `cellWidth` by name.
 
 **A Text's height does not yet come from its content.** Yoga's binding has no measure hook; the request, approved
 2026-09-30 and still waiting on a session started in `~/metascript/yoga`, is
@@ -119,8 +121,8 @@ label never wrapped.
 ## Order
 
 1. Paragraph on the Void host: done, with the yoga measure hook outstanding.
-2. Carry runs and the damage level through `src/render/hostTypes.ms`; add the data door; add `cellWidth` →
-   `setForceWidth`.
+2. Carry runs and the damage level through `src/render/hostTypes.ms`; add the data door. `cellWidth` →
+   `setForceWidth` is done on Void.
 3. Paint-only updates: on Void after the Void request lands; DirectWrite keeps its layout.
 4. Per-span press, hover, cursor and accessibility.
 5. Placeholders (inline views).
