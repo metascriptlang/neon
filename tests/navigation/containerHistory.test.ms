@@ -466,3 +466,18 @@ test "routing history refuses a nested screen with an exact path" {
 	assert message === "NavigationContainer: routing history joins each level's path, so screen " +
 		"'Product' cannot take an exact path", message;
 }
+
+test "a traversal to an entry whose nested stored key does not decode opens its address" {
+	const app = startApp({ url: "/", state: "" });
+	assert app.ref.linkTo("/shop/product/5");
+	const stored = app.memory.read();
+	assert stored.state.includes(":true"), stored.state;
+	app.memory.replace({ url: stored.url, state: stored.state.replace(":true", ":maybe") });
+	assert app.memory.go(-2);
+	assert app.ref.currentPath() === "Home", app.ref.currentPath();
+	take();
+	assert app.memory.go(2);
+	assert app.ref.currentPath() === "Shop>Product", app.ref.currentPath();
+	assert visibleText(app.root).indexOf("product 5") >= 0, visibleText(app.root);
+	assert finish(app) === 0, "routing errors";
+}

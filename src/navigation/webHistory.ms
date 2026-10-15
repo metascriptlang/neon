@@ -186,20 +186,25 @@ function decodeHistory(state: string): Result<KeyNode[], RoutingError> {
 	return Result.ok(roots);
 }
 
-function applyKeys(navigation: WebNavigationNode, nodes: KeyNode[]): void {
+function applyKeys(navigation: WebNavigationNode, nodes: KeyNode[]): boolean {
 	const keys: string[] = [];
 	for (const node of nodes) { keys.push(node.key); }
 	const applied = flush((): Result<void, WebNavigationError> => navigation.navigate(keys));
-	if (!applied.ok) { throw new Error("web history: a stored key does not decode"); }
+	if (!applied.ok) { return false; }
 	const items = published(navigation);
 	for (let i = 0; i < items.length; i += 1) {
 		const child = childNavigation(items[i]);
 		if (child === null) { continue; }
-		if (i >= nodes.length) {
-			throw new Error("web history: no stored history for item " + i.toString());
-		}
-		applyKeys(child as WebNavigationNode, nodes[i].children);
+		if (i >= nodes.length) { return false; }
+		if (!applyKeys(child as WebNavigationNode, nodes[i].children)) { return false; }
 	}
+	return true;
+}
+
+function keyTreeOf(nodes: HistoryNode[]): KeyNode[] {
+	const keys: KeyNode[] = [];
+	for (const node of nodes) { keys.push({ key: node.key, children: keyTreeOf(node.children) }); }
+	return keys;
 }
 
 function allowsTraversal(navigation: WebNavigationNode): boolean {
@@ -442,10 +447,33 @@ export function createWebHistory(
 				return Result.ok(address);
 			},
 			capture: (): string => encodeHistory(current()),
-			restore: (state: string): Result<RoutePlan, RoutingError> => {
-				const stored = try decodeHistory(state);
+			restore: (state: string, address: string | null): Result<RoutePlan, RoutingError> => {
+				const stored = decodeHistory(state);
+				if (!stored.ok && address === null) { return Result.err(stored.error); }
 				if (!allowsTraversal(navigation)) { return Result.err(RoutingError.Refused); }
-				return Result.ok(suppressed((): void => applyKeys(navigation, stored)));
+				if (!stored.ok) {
+					const plan = try resolve(address);
+					return Result.ok(suppressed(plan.commit));
+				}
+				const nodes = stored.value;
+				return Result.ok(suppressed((): void => {
+					const live = keyTreeOf(nodeHistory(navigation));
+					if (applyKeys(navigation, nodes)) { return; }
+					if (!applyKeys(navigation, live)) {
+						throw new Error("web history: the live keys do not apply again");
+					}
+					if (address === null) {
+						throw new Error("web history: unusable stored keys have no address");
+					}
+					const plan = resolve(address);
+					if (!plan.ok) {
+						throw new Error(
+							"web history: stored keys that do not apply fall back to an address " +
+							"that does not resolve: " + plan.error.toString(),
+						);
+					}
+					plan.value.commit();
+				}));
 			},
 		},
 		enable: (session: RoutingSession): Dispose => {

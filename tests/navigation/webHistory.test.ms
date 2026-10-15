@@ -2,7 +2,13 @@ import { Accessor, Signal } from "../../src/core/signal";
 import { Dispose } from "../../src/core/types";
 import { NavigationChild } from "../../src/navigation/children";
 import { ChildStack, createChildStack } from "../../src/navigation/childStack";
-import { RoutePlan, RoutingError, RoutingParticipant, RoutingRegistry } from "../../src/navigation/routing";
+import {
+	RoutePlan,
+	RoutingError,
+	RoutingParticipant,
+	RoutingRegistry,
+	RoutingSnapshot,
+} from "../../src/navigation/routing";
 import {
 	RoutingHistory,
 	RoutingHistoryEntry,
@@ -366,6 +372,57 @@ test "an entry without state resolves from its address" {
 	assert popped === "go -1;", popped;
 	assert fixture.memory.read().url === "/home", fixture.memory.read().url;
 	assert finish(fixture) === 0, "routing errors";
+}
+
+function storedWith(fixture: Fixture, from: string, to: string): string {
+	const state = fixture.memory.read().state;
+	if (!state.includes(from)) { throw new Error("web history test: no " + from + " in " + state); }
+	return state.replace(from, to);
+}
+
+test "an entry whose stored keys do not decode resolves from its address" {
+	const fixture = start("/home", null);
+	fixture.stack.push(screen("detail"));
+	const undecodable = storedWith(fixture, "detail/", "detail");
+	fixture.memory.replace({ url: "/detail", state: undecodable });
+	fixture.stack.pop();
+	take(fixture.log);
+	assert fixture.memory.go(1);
+	assert names(fixture.stack) === "home,detail", names(fixture.stack);
+	assert take(fixture.log) === "", "a resolved entry writes nothing";
+	assert finish(fixture) === 0, "routing errors";
+}
+
+test "an entry whose nested stored keys do not decode resolves from its address" {
+	const fixture = start("/home", null);
+	fixture.stack.push(screen("inner"));
+	const undecodable = storedWith(fixture, "inner:b", "outer:b");
+	fixture.memory.replace({ url: "/detail", state: undecodable });
+	assert fixture.memory.go(-2);
+	assert names(fixture.stack) === "home", names(fixture.stack);
+	take(fixture.log);
+	assert fixture.memory.go(2);
+	assert names(fixture.stack) === "home,detail", names(fixture.stack);
+	assert take(fixture.log) === "", "a resolved entry writes nothing";
+	assert finish(fixture) === 0, "routing errors";
+}
+
+test "an entry whose key tree is malformed resolves from its address, or is reported" {
+	const fixture = start("/home", null);
+	const malformed: RoutingSnapshot = {
+		regions: [{ scope: "main", state: "{\"nodes\":[{\"key\":\"home/\",\"children\":2}]}" }],
+	};
+	fixture.memory.push({ url: "/detail", state: JSON.stringify(malformed) });
+	assert fixture.memory.go(-1);
+	assert fixture.memory.go(1);
+	assert names(fixture.stack) === "home,detail", names(fixture.stack);
+	assert fixture.log.errors === 0, fixture.log.errors.toString();
+	fixture.memory.push({ url: "/no/match", state: JSON.stringify(malformed) });
+	assert fixture.memory.go(-1);
+	assert fixture.memory.go(1);
+	assert fixture.log.errors === 1, fixture.log.errors.toString();
+	assert names(fixture.stack) === "home,detail", names(fixture.stack);
+	assert finish(fixture) === 1, "the unresolvable entry is the one routing error";
 }
 
 test "an entry the binding pushes keeps the other regions' parts" {
