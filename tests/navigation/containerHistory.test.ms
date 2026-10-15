@@ -365,3 +365,40 @@ test "enableHistory needs routing and a mounted container" {
 	dispose();
 	assert finish(app) === 0, "routing errors";
 }
+
+test "routing history refuses a nested screen with an exact path" {
+	const exactLinking: LinkingOptions = {
+		prefixes: [],
+		enabled: false,
+		config: {
+			screens: [
+				{ name: "Home", path: "" },
+				{
+					name: "Shop",
+					path: "shop",
+					screens: [
+						{ name: "Catalog", path: "" },
+						{ name: "Product", path: "product/:id", exact: true },
+					],
+				},
+			],
+		},
+	};
+	const registry = new RoutingRegistry("main");
+	let message = "";
+	const dispose = createRoot((stop: Dispose): Dispose => {
+		try {
+			NavigationContainer({
+				children: shell(),
+				linking: exactLinking,
+				routing: { registry, scope: "main" },
+			});
+		} catch (e) {
+			message = (e as Error).message;
+		}
+		return stop;
+	});
+	dispose();
+	assert message === "NavigationContainer: routing history joins each level's path, so screen " +
+		"'Product' cannot take an exact path", message;
+}
