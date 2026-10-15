@@ -231,7 +231,7 @@ export function MasonryList<T>(props: {
 		if (width() <= 0) { return out; }
 		for (let c = 0; c < metrics().columns; c += 1) { out.push(c as number); }
 		return out;
-	}, (a: number[], b: number[]): boolean => a.length === b.length);
+	}, { equals: (a: number[], b: number[]): boolean => a.length === b.length });
 	const header = props.ListHeaderComponent;
 	const footer = props.ListFooterComponent;
 	const userStyle = props.style;
