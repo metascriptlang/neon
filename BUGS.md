@@ -157,19 +157,17 @@ and the invariants that outlived them were moved to the head of the test that pi
   back to index 0 and writes only the child's entries, prefixed by the inactive outer nodes). Measured on
   the route tree: Home → `/feed` → `/feed/1` → `/inbox` → `/feed/1`, then back reaches `/feed` and
   `go(-1)` returns false while Home is still in the model. Webhistory probe: `go -2;replace /inner/c;push
-  /inner/d;` where the outer entry needs `go -1`. Fixing it diverges from Decompose and waits for the
-  person's word.
+  /inner/d;` where the outer entry needs `go -1`. A key change at the same length rewrites too (a tab
+  switch, `setParams`, a stack `replace`): a tab switch at index 1 writes `go -1;replace /t/inbox;` and
+  lands at index 0; `setParams` at index 2 writes `go -2;replace /shop;push /shop/p/6;`. Expo replaces the
+  entry when the index does not change (`getBrowserHistoryForHistoryChange.ts`). Owner: `webHistory.ms`
+  `mirrorChange`. Fixing it diverges from Decompose and waits for the person's word.
 
 - **OPEN 2026-10-16 — a navigation issued while a rewrite's browser `go` is in flight misorders history.**
   The session has one landing slot and Chrome's `go` is asynchronous: in `tests/browser/routerLevels.test.ms`
   back from `/inbox/8` stayed on `/inbox/8` until the test waited 100 ms after a tab switch. Decompose
   swaps one popstate listener the same way (`WebHistoryNavigation.kt` `onPop`/`onRewrite`); the fix is
   not traced yet.
-
-- **OPEN 2026-10-16 — popping a stack screen runs its component again.** Measured in the mock host on
-  `wt/nav-container-history`: after `linkTo("/shop/product/5")`, one `ref.goBack()` logs a second
-  `product;` mount. By reading, `navigatorMotion.ms` moves the leaving entry into `closing` and `For`
-  mounts it again for the exit animation. Not checked on the base before the container history.
 
 - **PARKED 2026-10-16 — the route tree shorthand takes no typed route.** Not Neon's: `RouteConfig` would
   take `{ route: thread, component: Thread }` through a field typed `{ node: RouteNode }`, and msc refuses a
