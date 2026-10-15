@@ -13,6 +13,9 @@ import {
 	createRoutes,
 	useParams,
 } from "../../src/navigation/router";
+import { visibleText } from "./navHarness";
+
+let mounts = "";
 
 function Shell(props: LayoutProps): NeonNode {
 	return <main>{props.children}</main>;
@@ -23,10 +26,12 @@ function Home(): NeonNode {
 }
 
 function Feed(): NeonNode {
+	mounts += "feed;";
 	return <h1>feed</h1>;
 }
 
 function Post(): NeonNode {
+	mounts += "post;";
 	return <h1>{"post " + (useParams().get("post") ?? "")}</h1>;
 }
 
@@ -35,6 +40,7 @@ function Inbox(): NeonNode {
 }
 
 function Thread(): NeonNode {
+	mounts += "thread;";
 	return <h1>{"thread " + (useParams().get("id") ?? "")}</h1>;
 }
 
@@ -88,51 +94,56 @@ test "a cold address opens its tab on the stack's initial route below the destin
 	if (!created.ok) { return; }
 	const router = created.value;
 	const root = mounted(router);
-	assert shown(root) === "<main><h1>inbox</h1><h1>thread 42</h1></main>", shown(root);
+	assert visibleText(root) === "thread 42", visibleText(root);
+	assert shown(root).includes("<h1>inbox</h1>"), shown(root);
 	assert history.read().url === "/inbox/42", history.read().url;
 	assert router.location().pathname === "/inbox/42";
 	assert router.navigate("/feed");
-	assert shown(root) === "<main><h1>feed</h1></main>", shown(root);
+	assert visibleText(root) === "feed", visibleText(root);
 	router.dispose();
 }
 
 test "the initial route goes below a cold address only, not below an in-app one" {
 	const router = opened("/");
 	const root = mounted(router);
-	assert shown(root) === "<h1>home</h1>", shown(root);
+	assert visibleText(root) === "home", visibleText(root);
 	assert router.navigate("/inbox/42");
-	assert shown(root) === "<main><h1>thread 42</h1></main>", shown(root);
+	assert visibleText(root) === "thread 42", visibleText(root);
+	assert !shown(root).includes("<h1>inbox</h1>"), shown(root);
 	router.dispose();
 }
 
-test "each tab keeps its stack while the other tab is shown" {
+test "each tab keeps its stack and its mounted screens while the other tab is shown" {
+	mounts = "";
 	const history = createMemoryRoutingHistory({ url: "/feed", state: "" });
 	const created = createRouter(appRoutes(), history);
 	assert created.ok;
 	if (!created.ok) { return; }
 	const router = created.value;
 	const root = mounted(router);
-	assert shown(root) === "<main><h1>feed</h1></main>", shown(root);
+	assert visibleText(root) === "feed", visibleText(root);
 	assert router.navigate("/feed/1");
-	assert shown(root) === "<main><h1>feed</h1><h1>post 1</h1></main>", shown(root);
+	assert visibleText(root) === "post 1", visibleText(root);
 	assert history.go(-1);
-	assert shown(root) === "<main><h1>feed</h1></main>", shown(root);
+	assert visibleText(root) === "feed", visibleText(root);
 	assert history.read().url === "/feed", history.read().url;
 	assert history.go(1);
-	assert shown(root) === "<main><h1>feed</h1><h1>post 1</h1></main>", shown(root);
+	assert visibleText(root) === "post 1", visibleText(root);
 	assert router.navigate("/inbox/7");
-	assert shown(root) === "<main><h1>inbox</h1><h1>thread 7</h1></main>", shown(root);
+	assert visibleText(root) === "thread 7", visibleText(root);
 	assert history.read().url === "/inbox/7", history.read().url;
 	assert router.navigate("/feed/1");
-	assert shown(root) === "<main><h1>feed</h1><h1>post 1</h1></main>", shown(root);
+	assert visibleText(root) === "post 1", visibleText(root);
 	assert history.read().url === "/feed/1", history.read().url;
 	assert router.navigate("/inbox/7");
-	assert shown(root) === "<main><h1>inbox</h1><h1>thread 7</h1></main>", shown(root);
+	assert visibleText(root) === "thread 7", visibleText(root);
 	assert router.navigate("/inbox/8");
-	assert shown(root) === "<main><h1>inbox</h1><h1>thread 7</h1><h1>thread 8</h1></main>", shown(root);
+	assert visibleText(root) === "thread 8", visibleText(root);
+	assert shown(root).includes("<h1>thread 7</h1>"), shown(root);
 	assert history.go(-1);
-	assert shown(root) === "<main><h1>inbox</h1><h1>thread 7</h1></main>", shown(root);
+	assert visibleText(root) === "thread 7", visibleText(root);
 	assert history.read().url === "/inbox/7", history.read().url;
+	assert mounts === "feed;post;post;thread;thread;", mounts;
 	router.dispose();
 }
 

@@ -14,6 +14,7 @@ import {
 	createRoutes,
 	useParams,
 } from "../../src/navigation/index";
+import { visibleText } from "../navigation/navHarness";
 
 function Shell(props: LayoutProps): NeonNode {
 	return <main>{props.children}</main>;
@@ -71,10 +72,10 @@ test "back and forward walk each tab's stack in real browser history" {
 		assert history.go(-1);
 		await sleepAsync(100);
 		assert history.read().url === "/feed", history.read().url;
-		assert shown(root) === "<main><h1>feed</h1></main>", shown(root);
+		assert visibleText(root) === "feed", visibleText(root);
 		assert history.go(1);
 		await sleepAsync(100);
-		assert shown(root) === "<main><h1>feed</h1><h1>post 1</h1></main>", shown(root);
+		assert visibleText(root) === "post 1", visibleText(root);
 
 		assert router.navigate("/inbox/7");
 		await sleepAsync(100);
@@ -85,12 +86,13 @@ test "back and forward walk each tab's stack in real browser history" {
 		await sleepAsync(100);
 		assert history.read().url === "/inbox/7", history.read().url;
 		assert router.location().pathname === "/inbox/7", router.location().pathname;
-		assert shown(root) === "<main><h1>inbox</h1><h1>thread 7</h1></main>", shown(root);
+		assert visibleText(root) === "thread 7", visibleText(root);
+		assert shown(root).includes("<h1>inbox</h1>"), shown(root);
 
 		assert router.navigate("/feed/1");
 		await sleepAsync(100);
 		assert history.read().url === "/feed/1", history.read().url;
-		assert shown(root) === "<main><h1>feed</h1><h1>post 1</h1></main>", shown(root);
+		assert visibleText(root) === "post 1", visibleText(root);
 	} finally {
 		router.dispose();
 		history.replace(original);
