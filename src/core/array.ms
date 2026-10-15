@@ -14,7 +14,7 @@ class IndexCell {
 	}
 
 	read(): number {
-		if (this.sig === null) { this.sig = new Signal<number>(this.pos); }
+		if (this.sig === null) { this.sig = new Signal<number>(this.pos, null, true); }
 		return (this.sig as Signal<number>).get();
 	}
 
@@ -269,7 +269,7 @@ function mapRows<T, K, U>(
 			fresh.push(d);
 			let cell: Signal<T> | null = null;
 			if (hasCells) {
-				const c = new Signal<T>(item);
+				const c = new Signal<T>(item, null, true);
 				cellStore[pos] = c;
 				cell = c;
 			}
