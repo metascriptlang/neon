@@ -618,13 +618,20 @@ function encodeSpan(text: string, own: Style | null, base: Style, tag: int32): s
 		+ SPAN_FIELD + tag.toString();
 }
 
+function refuseLineStyle(s: Style | null): void {
+	if (s === null || s.textDecorationStyle === null || s.textDecorationStyle === "solid") { return; }
+	throw `native host: textDecorationStyle "${s.textDecorationStyle as string}" is not drawn by the platform text stacks yet; solid is`;
+}
+
 // Writes the label's whole content: plain text when no span styles it, else the runs.
 function refreshLabel(n: NativeNode): void {
 	if (n.view === null) { return; }
 	const base: Style = n.styleCache !== null ? n.styleCache as Style : {};
 	const spans: TextSpan[] = n.spanData !== null ? n.spanData as TextSpan[] : [];
+	refuseLineStyle(base);
 	let rich = styledRun(base);
 	for (const span of spans) {
+		refuseLineStyle(span.style);
 		if (span.style !== null || span.onPress !== null) { rich = true; }
 	}
 	if (!rich) {
