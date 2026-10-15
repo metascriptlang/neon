@@ -1,6 +1,6 @@
 import { NeonNode } from "../../src/render/node";
 import { MockNode, mockHost, render, mockToString } from "../../src/render/host";
-import { createSignal, Accessor } from "../../src/core/signal";
+import { createSignal, accessor, Accessor } from "../../src/core/signal";
 import { element } from "../../src/macros/ui/element";
 import { renderToString } from "../../src/render/ssr";
 
@@ -229,6 +229,32 @@ test "disposing the view stops the when expression" {
 	d();
 	setCount(2);
 	assert whenExecuted === 1, "never again after dispose: " + whenExecuted.toString();
+}
+
+// flow.ts:226 the branch is made inside the memo that selects it: it lives until the selection changes and no longer
+test "a shown branch and a shown fallback follow their signal while shown and stop reading it once the condition flips" {
+	const [on, setOn] = createSignal(true);
+	const [label, setLabel] = createSignal("a");
+	let branchReads = 0;
+	let fallbackReads = 0;
+	const branch = accessor((): string => { branchReads = branchReads + 1; return label(); });
+	const fallback = accessor((): string => { fallbackReads = fallbackReads + 1; return label(); });
+	const [read, d] = mounted(element(<div><Show when={on()} fallback={<i>{fallback()}</i>}><span>{branch()}</span></Show></div>));
+	assert read() === "<root><div><span>a</span></div></root>" && branchReads === 1 && fallbackReads === 0, "created: " + read();
+	setLabel("b");
+	setLabel("c");
+	assert read() === "<root><div><span>c</span></div></root>" && branchReads === 3, "the branch follows while it stays shown: " + branchReads.toString();
+	setOn(false);
+	assert read() === "<root><div><i>c</i></div></root>" && fallbackReads === 1, "flipped to the fallback: " + read();
+	setLabel("d");
+	setLabel("e");
+	assert read() === "<root><div><i>e</i></div></root>" && fallbackReads === 3, "the fallback follows while it is shown: " + fallbackReads.toString();
+	assert branchReads === 3, "the branch's binding was disposed with the branch: " + branchReads.toString();
+	setOn(true);
+	setLabel("f");
+	assert read() === "<root><div><span>f</span></div></root>" && branchReads === 5, "the branch is back and follows: " + branchReads.toString();
+	assert fallbackReads === 3, "the fallback's binding was disposed with the fallback: " + fallbackReads.toString();
+	d();
 }
 
 // a bare Accessor reads by calling it, like the boolean one
