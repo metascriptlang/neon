@@ -1,6 +1,7 @@
 #!/bin/sh
 # Neon test gate — every test file runs native, then --target=js, then the
-# browser lane in real Chrome, then the edge lane in workerd.
+# SSR parity lane under -d:server, then the browser lane in real Chrome, then the
+# edge lane in workerd.
 # js-lane skips: tests/style/style.test.ms, tests/platform/void.test.ms and
 # tests/platform/voidInput.test.ms import the Void platform host, a C-only sibling repo;
 # tests/platform/ionAudio.test.ms imports Ion's audio device, C-only;
@@ -51,6 +52,7 @@ MINGW* | MSYS* | CYGWIN*)
 	;;
 *) echo "== desktop skip examples/voidWindow.ms, examples/voidDraw.ms, examples/voidInputs.ms, examples/desktopAudio.ms and examples/windowsNative: Windows-only" ;;
 esac
+sh tests/ssrParity/run.sh || fail=1
 tests/browser/run.sh || fail=1
 sh tests/edge/run.sh || fail=1
 exit $fail
