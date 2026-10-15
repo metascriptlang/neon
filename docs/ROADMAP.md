@@ -221,7 +221,9 @@ App APIs, bundles 2/3 (`wt/rn-apis`, msc `0d83c4867`, 2026-10-07): `src/api/` ho
 Platform, Dimensions, PixelRatio, Appearance, Keyboard, AppState, BackHandler, Alert, Linking,
 Share, Vibration, Clipboard (the community package's surface) and AccessibilityInfo, exported
 from `src/index.ms`; listeners return subscriptions and the reactive ones also read as Accessors
-(`useAppState`, `useScreenReaderEnabled`). Hosts install them (`WORKAROUND.md` P1–P9). Proven:
+(`useAppState`, `useScreenReaderEnabled`). Browser only, absent from native builds: the page's
+scroll offset and range, `useWindowScrollPosition` / `useWindowScrollRange` (`src/api/pageScroll.ms`,
+proven by `tests/browser/pageScroll.test.ms`). Hosts install them (`WORKAROUND.md` P1–P9). Proven:
 `tests/api/apis.test.ms` (16, native and JS), `tests/platform/nativeApis.test.ms` (7, mock
 bridge), `tests/browser/apis.test.ms` (9, Chrome), and the `examples/apis` demo on an iPhone 17
 Pro simulator, iOS 26.5 (`ApisUITests`: UIAlertController choice, copy/paste, the share sheet's
