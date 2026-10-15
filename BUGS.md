@@ -189,6 +189,13 @@ and the invariants that outlived them were moved to the head of the test that pi
   then `createRoutes` takes `path` strings only, and a typed route is matched through `createRouteTree`.
   Card `~/metascript/.inbox/compiler/2026-10-16-a-generic-interface-instance-is-refused-where-a-narrower-interface-is-expected.md`.
 
+- **PARKED 2026-10-16 — the refresh lane cannot build navigation.** Not Neon's: any module pass, even one
+  that returns the module unchanged, drops the pattern of a destructuring `for…of`, and `route.ms`
+  `searchText` iterates its search map with `for (const [name, value] of search)`. `tests/refresh/run.sh`
+  fails `navigation.ms` on native, JS and `-d:hcr` with `Undefined variable 'name'`, and so would refresh
+  and hot reload of any app that imports `src/navigation/index`. Gate `gate-slice2-c3e8464/`. Card
+  `~/metascript/.inbox/compiler/2026-10-16-a-module-pass-drops-the-pattern-of-a-for-of-destructure.md`.
+
 - **PARKED 2026-10-16 — web navigation adapters take a required options object.** Not Neon's: Decompose's
   adapters default every option, but msc builds a `= {}` default of a generic interface parameter as an
   empty object (JS reads its fields as present, C reads past a zero-size allocation). Until then
