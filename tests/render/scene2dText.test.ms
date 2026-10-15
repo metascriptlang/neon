@@ -41,7 +41,9 @@ test "Label owns run and shaping-break snapshots and binds line options reactive
 	assert labelTexts[row].shapingBreaks[0] === 2;
 	assert labelLines(row).truncate === Truncate.None;
 	assert labelLines(row).hangingIndent === 3.0 && labelLines(row).forceWidth === 8.0;
-	assert node.calcTextWidth("abc") === 24.0;
+	const measured = node.calcTextWidth("abc");
+	if (!measured.ok) { throw new Error("text fixture: " + measured.error.toString()); }
+	assert measured.value === 24.0;
 	initialRuns[0].len = 1; initialBreaks[0] = 999;
 	assert labelTexts[row].runs[0].len === 2 && labelTexts[row].shapingBreaks[0] === 2;
 	setRuns([run(4)]); setBreaks([1, 3]); setTruncate(Truncate.End); setIndent(6.0); setWidth(10.0);

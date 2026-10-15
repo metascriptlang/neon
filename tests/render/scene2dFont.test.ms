@@ -27,6 +27,12 @@ function styled(font: FontId, size: float32, spacing: float32, width: float32): 
 	return { font: font, size: size, letterSpacing: spacing, lineSpacing: 0.0, maxWidth: width, align: Align.Left };
 }
 
+function requiredLayout(text: string, style: TextStyle): TextLayout {
+	const result = TextLayout.layout(text, style);
+	if (!result.ok) { throw new Error("font fixture: " + result.error.toString()); }
+	return result.value;
+}
+
 test "Label with a real font measures and queries the same glyph layout as Void" {
 	const font = loadedFont();
 	assert fontFace(font) >= 0;
@@ -39,7 +45,7 @@ test "Label with a real font measures and queries the same glyph layout as Void"
 	</Scene2D></Void>), mockHost(), root as unknown as HostNode);
 	const node = nodes[0];
 	assert node.textStyle().font === font && node.textStyle().size === 13.0;
-	const direct = TextLayout.layout("ab\ncd", styled(font, 13.0, 0.0, 0.0));
+	const direct = requiredLayout("ab\ncd", styled(font, 13.0, 0.0, 0.0));
 	const actual = node.textLayout();
 	assert actual.width > 0.0 && actual.height > 0.0;
 	assert actual.glyphs.length === 4 && actual.lines.length === 2;
@@ -70,11 +76,11 @@ test "Label updates borrowed font style size and wrapping without stale measurem
 	assert node.textWidth() > initialWidth * 1.9;
 	setStyle(styled(secondFont, 99.0, 1.0, 35.0));
 	assert node.id === id && node.textStyle().font === secondFont && node.textStyle().size === 26.0;
-	const direct = TextLayout.layout(text(), styled(secondFont, 26.0, 1.0, 35.0));
+	const direct = requiredLayout(text(), styled(secondFont, 26.0, 1.0, 35.0));
 	assert node.textLayout().lines.length > 1;
 	assert node.textWidth() === direct.width && node.textHeight() === direct.height;
 	setText("a🙂b");
-	const changed = TextLayout.layout(text(), styled(secondFont, 26.0, 1.0, 35.0));
+	const changed = requiredLayout(text(), styled(secondFont, 26.0, 1.0, 35.0));
 	assert node.textWidth() === changed.width && node.textLayout().glyphs.length === changed.glyphs.length;
 	assert node.textLayout().glyphs[2].charIndex === 2;
 	assert node.textLayout().glyphs[2].index === 3;
@@ -119,7 +125,7 @@ test "Label keeps resolved fallback and synthetic faces through borrowed font re
 		for (const next of fonts) {
 			setFont(next);
 			const actual = node.textLayout();
-			const expected = TextLayout.layout("AV你", styled(next, 14.0, 0.0, 0.0));
+			const expected = requiredLayout("AV你", styled(next, 14.0, 0.0, 0.0));
 			assert node.id === id && nodes.length === 1;
 			assert node.textStyle().font === next && node.textStyle().size === 14.0;
 			assert actual.glyphs.length === 3 && actual.width > 0.0;
