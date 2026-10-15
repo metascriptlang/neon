@@ -352,13 +352,20 @@ function leafOf(branch: Branch): RouteNode {
 	return branch.levels[branch.levels.length - 1].node;
 }
 
+function acceptsAll(branch: Branch): boolean {
+	for (const level of branch.levels) {
+		if (!level.node.acceptsAll) { return false; }
+	}
+	return true;
+}
+
 function checkShapes(branches: Branch[], places: Placed[]): void {
 	for (let i: int32 = 0; i < branches.length; i += 1) {
 		for (let j: int32 = 0; j < i; j += 1) {
 			const earlier = leafOf(branches[j]);
 			const later = leafOf(branches[i]);
 			const same = branches[j].shape === branches[i].shape;
-			if (same && earlier !== later && earlier.acceptsAll) {
+			if (same && earlier !== later && acceptsAll(branches[j])) {
 				throw new Error(
 					"routing: \"" + labelFor(places, earlier) + "\" and \"" +
 						labelFor(places, later) + "\" match the same addresses",

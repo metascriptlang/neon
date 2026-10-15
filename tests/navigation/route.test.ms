@@ -171,6 +171,12 @@ test "a route whose codec refuses the params falls through to the next one" {
 	const onlyTyped = route<UserParams>("users/:id", { params: userCodec });
 	const only = createRouteTree([{ node: onlyTyped.node }]);
 	assert chainOf(only, "/users/ada") === "NoMatch";
+	const person = route<UserParams>("people/:id", { params: userCodec });
+	const profile = path("");
+	const byName = path("people/:name");
+	const nested = createRouteTree([{ node: person.node, children: [leaf(profile)] }, leaf(byName)]);
+	assert matched(nested, "/people/7").chain[1].node === profile.node;
+	assert matched(nested, "/people/ada").chain[0].node === byName.node;
 }
 
 test "two routes of the same shape are refused, naming both" {
