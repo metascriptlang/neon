@@ -166,6 +166,16 @@ and the invariants that outlived them were moved to the head of the test that pi
   swaps one popstate listener the same way (`WebHistoryNavigation.kt` `onPop`/`onRewrite`); the fix is
   not traced yet.
 
+- **OPEN 2026-10-16 — popping a stack screen runs its component again.** Measured in the mock host on
+  `wt/nav-container-history`: after `linkTo("/shop/product/5")`, one `ref.goBack()` logs a second
+  `product;` mount. By reading, `navigatorMotion.ms` moves the leaving entry into `closing` and `For`
+  mounts it again for the exit animation. Not checked on the base before the container history.
+
+- **PARKED 2026-10-16 — container history reads the pages key through `StoredPages`.** Not Neon's:
+  `webNavigation.ms` and `containerHistory.ms` both declaring a private `struct PagesKey` and parsing it
+  with `JSON.parse` fails at clang on C. Until then `containerHistory.ms` names its copy `StoredPages`.
+  Card `~/metascript/.inbox/compiler/2026-10-15-std-generic-instance-takes-an-imported-modules-same-named-type.md`.
+
 - **PARKED 2026-10-16 — the route tree shorthand takes no typed route.** Not Neon's: `RouteConfig` would
   take `{ route: thread, component: Thread }` through a field typed `{ node: RouteNode }`, and msc refuses a
   `RouteDef<P>` there because a generic interface instance is not assignable to a narrower interface. Until
