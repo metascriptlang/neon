@@ -7,7 +7,6 @@ export { createMemo, refresh } from "./core/memo";
 export { createRoot, runWithOwner, createUniqueId } from "./core/owner";
 export { getOwner, flush, isPending, latest, resetErrorHalt } from "./core/runtime";
 export { onCleanup } from "./core/cleanup";
-export { catchError } from "./core/error";
 export { createErrorBoundary, createLoadingBoundary } from "./core/boundary";
 export { mapArray, mapArrayKeyedBy, mapArrayByPosition, repeat } from "./core/array";
 export { createList, List, ListOp, ListQueue } from "./core/list";

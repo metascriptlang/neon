@@ -1,5 +1,5 @@
 import {
-	Computation, Source, Link, ErrorHandler, NotReadyError,
+	Computation, Source, Link, NotReadyError,
 	REACTIVE_CHECK, REACTIVE_DIRTY, REACTIVE_RECOMPUTING_DEPS, REACTIVE_IN_HEAP, REACTIVE_IN_HEAP_HEIGHT,
 	REACTIVE_DISPOSED, REACTIVE_LAZY, REACTIVE_MISSED_WAKE, REACTIVE_REASK, REACTIVE_PROBED,
 	STATUS_PENDING, STATUS_ERROR, STATUS_UNINITIALIZED,
@@ -348,16 +348,6 @@ export function disposeNode(node: Computation): void {
 	node.apply = null;
 }
 
-function findHandler(from: Computation | null): ErrorHandler | null {
-	let o = from;
-	while (o !== null) {
-		const h = o.handler;
-		if (h !== null) { return h; }
-		o = o.parent;
-	}
-	return null;
-}
-
 export type StatusRoute = (node: Computation, flags: int32, error: Error | null) => boolean;
 
 let statusRoute: StatusRoute | null = null;
@@ -630,7 +620,7 @@ function newNode(config: int32, flags: int32, computed: boolean, run: ((self: Co
 		deps: null, depsTail: null, depGen: 0, flags, height: 0, nextHeap: null, prevHeap: null,
 		run, apply: null, cleanup: null, type, unobserved: null,
 		parent, parentComputed: null, firstChild: null, nextSibling: null, prevSibling: null,
-		disposal: null, context: parent !== null ? parent.context : null, handler: null,
+		disposal: null, context: parent !== null ? parent.context : null,
 		id: null, childCount: 0,
 		status: computed ? STATUS_UNINITIALIZED : 0, error: null, flight: 0, pendingSources: null, blocked: false, reask: false, visitedAt: 0, time: clock,
 	};
@@ -727,14 +717,6 @@ function recompute(el: Computation, create: boolean): void {
 		el.reask = reask && thrown instanceof NotReadyError;
 	}
 	if (thrown !== null) {
-		if (!(thrown instanceof NotReadyError)) {
-			const h = el.type === EFFECT_RENDER ? findHandler(el) : null;
-			if (h !== null) {
-				disposeNode(el);
-				h(thrown);
-				return;
-			}
-		}
 		failPass(el, thrown, wasPendingSource, outgoingPending);
 	} else {
 		clearStatus(el);
@@ -992,18 +974,12 @@ export function runEffectNode(node: Computation, firstApply: boolean): void {
 	try {
 		apply(node);
 	} catch (e) {
-		const h = findHandler(node);
-		if (h !== null) {
-			disposeNode(node);
-			(h as ErrorHandler)(e);
-		} else {
-			node.pendingSources = null;
-			node.status = STATUS_ERROR;
-			node.error = e;
-			if (!routeStatus(node, STATUS_ERROR, e)) {
-				haltReactivity(e);
-				throw e;
-			}
+		node.pendingSources = null;
+		node.status = STATUS_ERROR;
+		node.error = e;
+		if (!routeStatus(node, STATUS_ERROR, e)) {
+			haltReactivity(e);
+			throw e;
 		}
 	} finally {
 		currentOwner = oldOwner;

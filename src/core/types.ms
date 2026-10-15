@@ -1,6 +1,5 @@
 export type Cleanup = () => void;
 export type Dispose = () => void;
-export type ErrorHandler = (err: Error) => void;
 
 export interface ContextEntry {
 	key: unknown;
@@ -82,7 +81,6 @@ export interface Computation extends Source {
 	prevSibling: Computation | null;
 	disposal: Cleanup[] | null;
 	context: ContextEntry | null;
-	handler: ErrorHandler | null;
 	id: string | null;
 	childCount: int32;
 

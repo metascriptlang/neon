@@ -4,8 +4,7 @@
 
 import { mapArray, mapArrayKeyedBy, mapArrayByPosition, repeat } from "../../core/array";
 import { createMemo } from "../../core/memo";
-import { Accessor, Signal, accessor, createSignal } from "../../core/signal";
-import { catchError } from "../../core/error";
+import { Accessor, Signal, accessor } from "../../core/signal";
 import { createErrorBoundary, routeThrown } from "../../core/boundary";
 import { createOwner, getOwner, flush } from "../../core/runtime";
 import { runWithOwner } from "../../core/owner";
@@ -90,27 +89,6 @@ export function ForList<T>(props: {
 	keyed?: ((item: T) => number) | null;
 }): NeonNode {
 	return listRegion<T>(props.each, props.children, props.keyed);
-}
-
-export function ErrorBoundary(props: {
-	children: NeonNode;
-	fallback: (err: Error, reset: () => void) => NeonNode;
-}): NeonNode {
-	return regionNode((h) => {
-		const [failed, setFailed] = createSignal<Error | null>(null);
-		const reset = (): void => { setFailed(null); };
-		const guarded: NeonNode = (host: Host, parent: HostNode, before: HostNode | null): void => {
-			catchError(
-				(): void => { props.children(host, parent, before); },
-				(err: Error): void => { setFailed(err); },
-			);
-		};
-		return createMemo<Row[]>(() => {
-			const err = failed();
-			if (err !== null) { return [makeRow(props.fallback(err as Error, reset))]; }
-			return [makeRow(guarded)];
-		});
-	});
 }
 
 class MountedState {
