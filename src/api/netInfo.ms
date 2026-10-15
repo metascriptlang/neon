@@ -21,9 +21,7 @@ export type NetInfoUnsubscribe = () => void;
 
 const UNKNOWN: NetInfoState = { type: "unknown", isConnected: null, isInternetReachable: null, details: null };
 
-const currentSignal = createSignal<NetInfoState>(UNKNOWN);
-const current = currentSignal[0];
-const setCurrent = currentSignal[1];
+const [current, setCurrent] = createSignal<NetInfoState>(UNKNOWN);
 let watchedBy: int32 = -1;
 
 function watch(api: string): void {
