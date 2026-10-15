@@ -774,11 +774,38 @@ export macro element(node: Node): Node {
 	node = flattenFragments(lowerFlowTree(node));
 
 
+	const keyedMsg = "<For keyed> takes true, false or a key function, written in place: the row's parameters differ in each case, so a computed value cannot choose between them";
+	function forByKeyed(c: Node): Node {
+		if (c.jsxTag !== "For") { return c; }
+		let at = -1;
+		for (let i = 0; i < c.jsxAttrs.length; i = i + 1) {
+			const a = c.jsxAttrs[i];
+			if (a.kind === NodeKind.JSXAttribute && a.jsxAttrName === "keyed") { at = i; }
+		}
+		if (at < 0) { return c; }
+		const keyed = c.jsxAttrs[at];
+		const value = peelHidden(keyed.jsxAttrValue);
+		let tag = "For";
+		let keep = false;
+		if (value.kind === NodeKind.BooleanLiteral) {
+			if (!value.boolValue) { tag = "ForUnkeyed"; }
+		} else if (isFunctionValued(value)) {
+			tag = "ForKeyedBy";
+			keep = true;
+		} else {
+			error(keyedMsg, keyed);
+		}
+		let attrs: Node[] = [];
+		for (let i = 0; i < c.jsxAttrs.length; i = i + 1) {
+			if (i !== at || keep) { attrs.push(c.jsxAttrs[i]); }
+		}
+		return { kind: NodeKind.JSXElement, line: c.line, column: c.column, jsxTag: tag, jsxAttrs: attrs, jsxChildren: c.jsxChildren, jsxSelfClosing: c.jsxSelfClosing };
+	}
 	function componentCall(given: Node): Node {
 		const asContext = isContextTag(given);
 		const c: Node = asContext
 			? { kind: NodeKind.JSXElement, line: given.line, column: given.column, jsxTag: given.jsxTag + ".provider", jsxAttrs: given.jsxAttrs, jsxChildren: given.jsxChildren, jsxSelfClosing: given.jsxSelfClosing }
-			: given;
+			: forByKeyed(given);
 		let keys: string[] = [];
 		let values: Node[] = [];
 		const declared = declaredProps(c);

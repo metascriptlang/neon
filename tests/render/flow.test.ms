@@ -1,7 +1,7 @@
 import { el, text, dynText, NeonNode } from "../../src/render/node";
 import { MockNode, mockHost, render, mockToString } from "../../src/render/host";
 import { Host, HostNode } from "../../src/render/hostTypes";
-import { For, ForKeyedBy, Index, Show } from "../../src/macros/ui/flow";
+import { For, ForKeyedBy, ForUnkeyed, Repeat, Index, Show } from "../../src/macros/ui/flow";
 import { createSignal, accessor, Accessor } from "../../src/core/signal";
 import { element } from "../../src/macros/ui/element";
 import { createComponent } from "../../src/render/component";
@@ -489,4 +489,200 @@ test "For renders a row that never names its index" {
 	setItems(["b", "a", "c"]);
 	assert view().indexOf("c") >= 0, "reorder and append still work: " + view();
 	d();
+}
+
+let flowBuilds = 0;
+
+function labelAndIndexRow(r: Accessor<Keyed>, i: Accessor<number>): NeonNode {
+	flowBuilds = flowBuilds + 1;
+	return element(<li>{r().label + i().toString()}</li>);
+}
+
+function countedRow(x: string, i: Accessor<number>): NeonNode {
+	flowBuilds = flowBuilds + 1;
+	return element(<li>{x}</li>);
+}
+
+function plainRow(x: string, i: Accessor<number>): NeonNode {
+	return element(<li>{x}</li>);
+}
+
+function positionRow(x: Accessor<string>, i: number): NeonNode {
+	flowBuilds = flowBuilds + 1;
+	return element(<li>{x() + i.toString()}</li>);
+}
+
+function countedIndexRow(i: number): NeonNode {
+	flowBuilds = flowBuilds + 1;
+	return element(<li>{i.toString()}</li>);
+}
+
+test "BUGS.md <For key>: a keyed row shows the new item when the key stays, through the tag" {
+	const [rows, setRows] = createSignal<Keyed[]>([{ id: 1, label: "a" }, { id: 2, label: "b" }]);
+	const [view, d] = mountedText(element(<ul><For each={rows()} keyed={(r: Keyed): number => r.id}>{keyedRow}</For></ul>));
+	assert view() === "<root><ul><li>a</li><li>b</li></ul></root>", "initial: " + view();
+	setRows([{ id: 2, label: "b2" }, { id: 1, label: "a2" }]);
+	assert view() === "<root><ul><li>b2</li><li>a2</li></ul></root>", "reordered with the new items: " + view();
+	d();
+}
+
+test "For keyed with a string key and a row that reads the index accessor, through the tag" {
+	const [rows, setRows] = createSignal<Keyed[]>([{ id: 1, label: "a" }, { id: 2, label: "b" }]);
+	flowBuilds = 0;
+	const [view, d] = mountedText(element(
+		<ul><For each={rows()} keyed={(r: Keyed): string => "k" + r.id.toString()}>{labelAndIndexRow}</For></ul>
+	));
+	assert view() === "<root><ul><li>a0</li><li>b1</li></ul></root>", "initial: " + view();
+	setRows([{ id: 3, label: "c" }, { id: 2, label: "b2" }, { id: 1, label: "a2" }]);
+	assert view() === "<root><ul><li>c0</li><li>b21</li><li>a22</li></ul></root>", "insert, move and new items: " + view();
+	assert flowBuilds === 3, "only the inserted key built a row: " + flowBuilds.toString();
+	d();
+}
+
+test "For keyed={true} and a bare keyed are the default identity mode, through the tag" {
+	const [xs, setXs] = createSignal<string[]>(["a", "b"]);
+	flowBuilds = 0;
+	const [explicit, d1] = mountedText(element(<ul><For each={xs()} keyed={true}>{countedRow}</For></ul>));
+	const [bare, d2] = mountedText(element(<ul><For each={xs()} keyed>{plainRow}</For></ul>));
+	setXs(["b", "a"]);
+	assert explicit() === "<root><ul><li>b</li><li>a</li></ul></root>" && bare() === explicit(), "both reorder: " + explicit() + " " + bare();
+	assert flowBuilds === 2, "identity rows are reused on a reorder: " + flowBuilds.toString();
+	d1(); d2();
+}
+
+test "For keyed={false} replaces Index: rows live per position and show the new value in place, through the tag" {
+	const [xs, setXs] = createSignal<string[]>(["a", "b"]);
+	flowBuilds = 0;
+	const [view, d] = mountedText(element(<ul><For each={xs()} keyed={false}>{positionRow}</For></ul>));
+	assert view() === "<root><ul><li>a0</li><li>b1</li></ul></root>", "initial: " + view();
+	setXs(["b", "a", "c"]);
+	assert view() === "<root><ul><li>b0</li><li>a1</li><li>c2</li></ul></root>", "values changed in place, one row appended: " + view();
+	assert flowBuilds === 3, "no row rebuilt: " + flowBuilds.toString();
+	setXs(["z"]);
+	assert view() === "<root><ul><li>z0</li></ul></root>", "shrink: " + view();
+	d();
+}
+
+const abcd: string[] = ["a", "b", "c", "d"];
+
+function reorderings(): string[][] {
+	return [
+		["b", "c", "d"], ["a", "c", "d"], ["a", "b", "d"], ["a", "b", "c"],
+		["c", "d"], ["b", "d"], ["b", "c"], ["a", "d"], ["a", "c"], ["a", "b"],
+		["a"], ["b"], ["c"], ["d"], [],
+		["b", "a", "c", "d"], ["c", "b", "a", "d"], ["d", "b", "c", "a"],
+		["b", "c", "d", "a"], ["c", "d", "a", "b"], ["d", "a", "b", "c"],
+		["d", "c", "b", "a"],
+		["e", "f", "g", "h"],
+		["a", "b", "c", "d", "e", "f"],
+		["x", "a", "y", "b", "z"],
+		["milk", "bread", "chips", "cookie", "honey"], ["chips", "bread", "cookie", "milk", "honey"],
+	];
+}
+
+function rowsBefore(xs: string[], tail: string): string {
+	let out = "";
+	for (const x of xs) { out = out + "<li>" + x + "</li>"; }
+	return "<root><ul>" + out + tail + "</ul></root>";
+}
+
+test "for.nonkeyed.spec.tsx:99 For keyed={false} renders every removal, swap, rotation and replacement before a sibling" {
+	const [xs, setXs] = createSignal<string[]>(abcd);
+	const [view, d] = mountedText(element(<ul><For each={xs()} keyed={false}>{(x: Accessor<string>, i: number): NeonNode => element(<li>{x()}</li>)}</For><b>z</b></ul>));
+	assert view() === rowsBefore(abcd, "<b>z</b>"), "initial: " + view();
+	for (const c of reorderings()) {
+		setXs(c);
+		assert view() === rowsBefore(c, "<b>z</b>"), "after " + c.join(",") + ": " + view();
+		setXs(abcd);
+		assert view() === rowsBefore(abcd, "<b>z</b>"), "back to abcd after " + c.join(",") + ": " + view();
+	}
+	d();
+}
+
+test "for.nonkeyed.spec.tsx:99 For (identity) renders every removal, swap, rotation and replacement before a sibling" {
+	const [xs, setXs] = createSignal<string[]>(abcd);
+	const [view, d] = mountedText(element(<ul><For each={xs()}>{(x: string, i: Accessor<number>): NeonNode => element(<li>{x}</li>)}</For><b>z</b></ul>));
+	assert view() === rowsBefore(abcd, "<b>z</b>"), "initial: " + view();
+	for (const c of reorderings()) {
+		setXs(c);
+		assert view() === rowsBefore(c, "<b>z</b>"), "after " + c.join(",") + ": " + view();
+		setXs(abcd);
+		assert view() === rowsBefore(abcd, "<b>z</b>"), "back to abcd after " + c.join(",") + ": " + view();
+	}
+	d();
+}
+
+test "for.nonkeyed.spec.tsx:99 For keyed by a function renders every removal, swap, rotation and replacement before a sibling" {
+	const [xs, setXs] = createSignal<string[]>(abcd);
+	const [view, d] = mountedText(element(<ul><For each={xs()} keyed={(x: string): string => x}>{(x: Accessor<string>, i: Accessor<number>): NeonNode => element(<li>{x()}</li>)}</For><b>z</b></ul>));
+	assert view() === rowsBefore(abcd, "<b>z</b>"), "initial: " + view();
+	for (const c of reorderings()) {
+		setXs(c);
+		assert view() === rowsBefore(c, "<b>z</b>"), "after " + c.join(",") + ": " + view();
+		setXs(abcd);
+		assert view() === rowsBefore(abcd, "<b>z</b>"), "back to abcd after " + c.join(",") + ": " + view();
+	}
+	d();
+}
+
+test "For keyed={false} fallback shows on empty and yields to rows, through the tag" {
+	const [xs, setXs] = createSignal<string[]>([]);
+	const [view, d] = mountedText(element(<ul><For each={xs()} keyed={false} fallback={<li>none</li>}>{(x: Accessor<string>, i: number): NeonNode => element(<li>{x()}</li>)}</For></ul>));
+	assert view() === "<root><ul><li>none</li></ul></root>", "empty: " + view();
+	setXs(["a"]);
+	assert view() === "<root><ul><li>a</li></ul></root>", "rows: " + view();
+	setXs([]);
+	assert view() === "<root><ul><li>none</li></ul></root>", "empty again: " + view();
+	d();
+}
+
+function repeatRow(i: number): NeonNode {
+	return element(<li>{i.toString()}</li>);
+}
+
+test "Repeat renders one row per index and keeps its rows when only the count changes" {
+	const [n, setN] = createSignal<number>(2);
+	flowBuilds = 0;
+	const [view, d] = mountedText(element(<ul><Repeat count={n()}>{countedIndexRow}</Repeat></ul>));
+	assert view() === "<root><ul><li>0</li><li>1</li></ul></root>", "initial: " + view();
+	setN(4);
+	assert view() === "<root><ul><li>0</li><li>1</li><li>2</li><li>3</li></ul></root>", "grown: " + view();
+	assert flowBuilds === 4, "the first two rows were kept: " + flowBuilds.toString();
+	setN(1);
+	assert view() === "<root><ul><li>0</li></ul></root>", "shrunk: " + view();
+	assert flowBuilds === 4, "shrinking builds nothing: " + flowBuilds.toString();
+	d();
+}
+
+test "Repeat takes a named row, a from offset that slides the window, and keeps the overlap" {
+	const [start, setStart] = createSignal<number>(1);
+	const [view, d] = mountedText(element(<ul><Repeat count={3} from={start()}>{repeatRow}</Repeat></ul>));
+	assert view() === "<root><ul><li>1</li><li>2</li><li>3</li></ul></root>", "window 1..3: " + view();
+	setStart(3);
+	assert view() === "<root><ul><li>3</li><li>4</li><li>5</li></ul></root>", "window 3..5: " + view();
+	setStart(0);
+	assert view() === "<root><ul><li>0</li><li>1</li><li>2</li></ul></root>", "backward disjoint jump: " + view();
+	d();
+}
+
+test "Repeat fallback shows when the count is 0 and yields to rows" {
+	const [n, setN] = createSignal<number>(0);
+	const [view, d] = mountedText(element(<ul><Repeat count={n()} fallback={<li>none</li>}>{repeatRow}</Repeat></ul>));
+	assert view() === "<root><ul><li>none</li></ul></root>", "empty: " + view();
+	setN(2);
+	assert view() === "<root><ul><li>0</li><li>1</li></ul></root>", "rows: " + view();
+	setN(0);
+	assert view() === "<root><ul><li>none</li></ul></root>", "empty again: " + view();
+	d();
+}
+
+test "Repeat refuses a fractional count through the tag" {
+	const [n, setN] = createSignal<number>(1.5);
+	let caught = "";
+	try {
+		const [view, d] = mountedText(element(<ul><Repeat count={n()}>{repeatRow}</Repeat></ul>));
+		view();
+		d();
+	} catch (e) { caught = e.toString(); }
+	assert caught.includes("Repeat: count"), "the count is named: " + caught;
 }

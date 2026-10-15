@@ -65,7 +65,7 @@ export function Repeat(props: {
 	return regionNode((h) => repeat<Row>(
 		props.count,
 		(index: number): Row => makeRow(props.children(index)),
-		props.from,
+		props.from === null ? null : (props.from as () => number),
 		fallbackRow(props.fallback),
 	));
 }
@@ -73,9 +73,9 @@ export function Repeat(props: {
 export function ForList<T>(props: {
 	each: List<T>;
 	children: (item: Accessor<T>) => NeonNode;
-	key?: ((item: T) => number) | null;
+	keyed?: ((item: T) => number) | null;
 }): NeonNode {
-	return listRegion<T>(props.each, props.children, props.key);
+	return listRegion<T>(props.each, props.children, props.keyed);
 }
 
 export function Index<T>(props: {

@@ -204,7 +204,7 @@ test "a keyed list reuses the row of the same key and shows the new item" {
 		let builds = 0;
 		const ul = el("ul", [], [], ForList<Keyed>({
 			each: l,
-			key: (k: Keyed): number => k.id,
+			keyed: (k: Keyed): number => k.id,
 			children: (item) => { builds = builds + 1; return <li>{item().label}</li>; },
 		}));
 		const host = mockHost();
@@ -229,7 +229,7 @@ test "a duplicate key in replaceAll raises and names the key" {
 			const l = createList<Keyed>([{ id: 1, label: "a" }, { id: 2, label: "b" }]);
 			const ul = el("ul", [], [], ForList<Keyed>({
 				each: l,
-				key: (k: Keyed): number => k.id,
+				keyed: (k: Keyed): number => k.id,
 				children: (item) => <li>{item().label}</li>,
 			}));
 			const host = mockHost();
