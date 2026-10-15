@@ -4,7 +4,6 @@
 // list only known at runtime (src/components/primitives.ms).
 
 import { createRenderEffect } from "../core/effect";
-import { untrack } from "../core/signal";
 import { Style } from "./style";
 import { NeonEvent } from "./event";
 import { Host, HostNode, NeonNode, RefFn } from "./hostTypes";
@@ -98,24 +97,31 @@ export function mountChild(host: Host, parent: HostNode, before: HostNode | null
 	for (const n of ns) { n(host, parent, before); }
 }
 
-// On the server a region writes its rows and then its anchor, in document order. A
-// row list that changes while its rows render (an ErrorBoundary that caught) takes
-// back what it wrote and writes the new rows before the anchor follows.
+// On the server a region writes its rows and then its anchor, in document order. The
+// rows are read in the effect the client keeps them in, so they are owned and numbered
+// as the client's; a row list that changes while its rows render (an ErrorBoundary that
+// caught) takes back what it wrote and writes the new rows before the anchor follows.
 function serverRegion(host: Host, parent: HostNode, before: HostNode | null, fn: RegionFn): void {
 	serverRegionStart(host, parent, before);
 	const rows = fn(host);
+	let next: Row[] = [];
+	let written = false;
+	createRenderEffect(() => {
+		if (written) { throw new Error("SSR: a region's rows changed after the server wrote it; set the signal before the content that reads it"); }
+		next = rows();
+	});
 	let shown: Row[] = [];
-	let next = untrack(rows);
 	for (let pass = 0; !sameRows(next, shown); pass += 1) {
 		if (pass === 100) { throw new Error("SSR: a region's rows kept changing while it rendered"); }
-		for (const r of shown) { removeRow(host, parent, r); }
-		for (const r of next) {
-			if (shown.includes(r)) { throw new Error("SSR: a region's rows changed while it rendered and kept a row it had written"); }
+		const taken = shown;
+		for (const r of taken) { removeRow(host, parent, r); }
+		shown = next;
+		for (const r of shown) {
+			if (taken.includes(r)) { throw new Error("SSR: a region's rows changed while it rendered and kept a row it had written"); }
 			mountAt(host, parent, before, r);
 		}
-		shown = next;
-		next = untrack(rows);
 	}
+	written = true;
 	serverRegionEnd(host, parent, before);
 }
 

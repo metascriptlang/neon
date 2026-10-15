@@ -10,6 +10,8 @@ import { cssRuleCount, registerCss, resetCss } from "../../src/render/sheet";
 import { RN_WEB_BASE_CSS } from "../../src/render/web";
 import { isServer } from "../../src/render/environment";
 import { View } from "../../src/components/primitives";
+import { createSignal, Accessor } from "../../src/core/signal";
+import { createList } from "../../src/core/list";
 
 function classed(id: string, label: string): NeonNode {
 	return (host: Host, parent: HostNode, before: HostNode | null): void => {
@@ -154,4 +156,48 @@ test "isServer holds during a server render and not after one, thrown or not" {
 	const root = mockNode("root");
 	render(probe, mockHost(), root as unknown as HostNode)();
 	assert !during, "a client render on the mock host is not a server render";
+}
+
+const drawn: string[] = [];
+
+function Drawn(): NeonNode {
+	drawn.push(createUniqueId());
+	return <p>x</p>;
+}
+
+function regions(): NeonNode {
+	const [on, setOn] = createSignal(true);
+	const list = createList<number>([7, 8]);
+	return <View>
+		<Drawn />
+		<For each={[1, 2]}>{(n: number, i: Accessor<number>): NeonNode => <View><Drawn /><Show when={on}><Drawn /></Show></View>}</For>
+		<Drawn />
+		<Index each={[3, 4]}>{(v: Accessor<number>, i: number): NeonNode => <Drawn />}</Index>
+		<ForList each={list}>{(v: Accessor<number>): NeonNode => <Drawn />}</ForList>
+		<ErrorBoundary fallback={(err: Error, reset: () => void): NeonNode => <Drawn />}>
+			<Drawn />
+			{failing}
+		</ErrorBoundary>
+		<Drawn />
+	</View>;
+}
+
+const failing: NeonNode = (host: Host, parent: HostNode, before: HostNode | null): void => {
+	throw new Error("fails while it mounts");
+};
+
+function drawnBy(paint: () => void): string {
+	drawn.length = 0;
+	paint();
+	return drawn.join(" ");
+}
+
+test "the server draws the ids the client draws, inside every kind of region" {
+	const server = drawnBy((): void => { renderToMarkup(regions()); });
+	const client = drawnBy((): void => {
+		const root = mockNode("root");
+		const dispose = render(regions(), mockHost(), root as unknown as HostNode, "");
+		dispose();
+	});
+	assert server === client, "server " + server + " | client " + client;
 }

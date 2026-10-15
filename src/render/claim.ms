@@ -139,9 +139,9 @@ export function sealRegion(host: Host, parent: HostNode, anchor: HostNode): void
 	c.open[c.open.length - 1].last = anchor;
 }
 
-// The server writes a region's rows straight away, without the effect the client
-// keeps them in; that effect's id slot is taken all the same, so every id after the
-// region matches the client's.
+// A ForList on the server writes its rows without the effect the client follows its
+// list with; that effect's id slot is taken all the same, so every id after the list
+// matches the client's.
 export function skipRegionEffect(): void {
 	const o = getOwner();
 	if (carriesId(o)) { getNextChildId(o as Computation); }
@@ -152,6 +152,5 @@ export function serverRegionStart(host: Host, parent: HostNode, before: HostNode
 }
 
 export function serverRegionEnd(host: Host, parent: HostNode, before: HostNode | null): void {
-	skipRegionEffect();
 	place(host, parent, host.createText(""), before);
 }

@@ -5,7 +5,7 @@ import { Accessor, Signal, accessor, untrack } from "../core/signal";
 import { List, ListOp, listInsert, listMove, listRemove, listSet } from "../core/list";
 import { Host, HostNode, NeonNode } from "./hostTypes";
 import { Row, makeRow, mountAt, moveRow, removeRow, reconcileArrays } from "./reconcile";
-import { regionAnchor, sealRegion, serverRegionStart, serverRegionEnd } from "./claim";
+import { regionAnchor, sealRegion, serverRegionStart, serverRegionEnd, skipRegionEffect } from "./claim";
 import { isServer } from "./environment";
 
 // The region's stores live in one object passed to every step, never captured by a nested
@@ -222,6 +222,7 @@ export function listRegion<Item>(
 					return makeRow(row(accessor((): Item => v)));
 				}));
 			}
+			skipRegionEffect();
 			serverRegionEnd(host, parent, before);
 			return;
 		}
