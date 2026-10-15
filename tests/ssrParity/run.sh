@@ -27,6 +27,22 @@ same() {
 }
 same "js server = recorded" tests/ssrParity/pages.expected.txt "$out/js.server.txt" "cp $out/js.server.txt tests/ssrParity/pages.expected.txt"
 same "c server = js server" "$out/js.server.txt" "$out/c.server.txt"
+needs() {
+	if log=$("$MSC" build $2 "tests/ssrParity/$1.ms" --output="$out/$1" 2>&1); then
+		echo "FAIL ssrParity $1 $3: a plain build must not compile"
+		fail=1
+	elif echo "$log" | grep -q "renderTo[A-Za-z]* needs a -d:server build"; then
+		echo "ok   ssrParity $1 $3: a plain build names the case"
+	else
+		echo "FAIL ssrParity $1 $3: a plain build failed without naming the case"
+		echo "$log" | head -5
+		fail=1
+	fi
+}
+for pin in needsServer needsServerBarrel needsServerPrelude; do
+	needs $pin "" c
+	needs $pin "--target=js" js
+done
 files=$(grep -rl -e renderToString -e renderToMarkup tests --include="*.test.ms" | grep -v "^tests/browser/" | sort)
 for f in $files; do
 	echo "== server native $f"
