@@ -1,7 +1,7 @@
 import { mapArray, mapArrayKeyedBy, mapArrayByPosition, repeat, smallMoveHits } from "../../src/core/array";
 import { createSignal, accessor, Accessor, Setter } from "../../src/core/signal";
 import { createRoot, runWithOwner } from "../../src/core/owner";
-import { getOwner } from "../../src/core/runtime";
+import { getOwner, flush } from "../../src/core/runtime";
 import { onCleanup } from "../../src/core/cleanup";
 import { createRenderEffect } from "../../src/core/effect";
 import { createMemo } from "../../src/core/memo";
@@ -25,6 +25,13 @@ function openScope(): Scope {
 		return 0;
 	});
 	return scope;
+}
+
+function failure(fn: () => void): string {
+	let caught = "";
+	try { fn(); } catch (e) { caught = e.toString(); }
+	flush();
+	return caught;
 }
 
 interface Id {
@@ -255,13 +262,12 @@ test "map.ts:111 a row that throws mid-pass commits nothing and disposes only th
 	const before = m();
 	assert built === 3, "three rows";
 	armed = true;
-	setSrc([3, 5, 4, 1]);
-	let caught = "";
-	try { m(); } catch (e) { caught = e.toString(); }
-	assert caught.includes("row 4"), "the row's error reaches the caller: " + caught;
+	const caught = failure(() => { setSrc([3, 5, 4, 1]); });
+	assert caught.includes("row 4"), "the row's error reaches the writer: " + caught;
 	assert disposed === 1 && live[5] === false, "only the row built in the aborted pass (5) was disposed: " + disposed.toString();
 	assert live[1] && live[2] && live[3], "surviving rows are untouched, including the one the new list drops (2)";
 	armed = false;
+	setSrc([3, 5, 4, 1]);
 	const after = m();
 	assert after.length === 4 && after[0] === 3 && after[1] === 5 && after[2] === 4 && after[3] === 1, "the retry maps the new list";
 	assert live[1] && !live[2] && live[3] && live[4] && live[5], "balance after the retry: " + disposed.toString();
@@ -272,9 +278,7 @@ test "map.ts:111 a row that throws mid-pass commits nothing and disposes only th
 test "mapArray lets a row that throws reach the caller" {
 	createRoot((d) => {
 		const [src, setSrc] = createSignal<number[]>([1, 2, 3]);
-		const m = mapArray<number, number>(src, (v, i) => { throw new Error("row " + v.toString()); });
-		let caught = "";
-		try { m(); } catch (e) { caught = e.toString(); }
+		const caught = failure(() => { mapArray<number, number>(src, (v, i) => { throw new Error("row " + v.toString()); }); });
 		assert caught.includes("row 1"), "the first row is the one that raised: " + caught;
 		d();
 	});
@@ -555,7 +559,7 @@ test "repeat.test.ts:187 repeat disposes the rows that leave the window when fro
 	assert m().join(",") === "1,2,3", "window 1..3";
 	setFrom(3);
 	assert m().join(",") === "3,4,5", "window 3..5";
-	assert cleanups.length === 2 && cleanups.includes(1) && cleanups.includes(2), "rows 1 and 2 left, row 3 stayed: " + cleanups.join(",");
+	assert cleanups.length === 2 && cleanups.includes(1) && cleanups.includes(2), "rows 1 and 2 left, row 3 stayed: " + cleanups.join(",";
 	scope.dispose();
 }
 
@@ -601,7 +605,7 @@ test "repeat.test.ts:317 repeat slides the window backwards: departing rows are 
 	const second = m();
 	assert second[0].index === 1 && second[1].index === 2 && second[2].index === 3, "window 1..3";
 	assert second[2] === retained, "the overlap row is the same instance, now at the tail";
-	assert disposed.length === 2 && disposed.includes(4) && disposed.includes(5), "only the departing rows were disposed: " + disposed.join(",");
+	assert disposed.length === 2 && disposed.includes(4) && disposed.includes(5), "only the departing rows were disposed: " + disposed.join(",";
 	scope.dispose();
 }
 
@@ -661,27 +665,28 @@ test "map.ts:692 repeat that throws mid-pass commits nothing and disposes only w
 	}));
 	m();
 	armed = true;
-	setN(5);
-	let caught = "";
-	try { m(); } catch (e) { caught = e.toString(); }
-	assert caught.includes("row 3"), "the error reaches the caller: " + caught;
+	const caught = failure(() => { setN(5); });
+	assert caught.includes("row 3"), "the error reaches the writer: " + caught;
 	assert disposed === 1, "only row 2, built by the aborted pass, was disposed: " + disposed.toString();
 	armed = false;
-	assert m().join(",") === "0,1,2,3,4", "the retry keeps rows 0 and 1";
+	setN(4);
+	assert m().join(",") === "0,1,2,3", "the retry keeps rows 0 and 1";
 	scope.dispose();
 }
 
 test "repeat refuses a count that is not a non-negative integer" {
 	const scope = openScope();
-	const [n, setN] = createSignal<number>(2.5);
+	const [first, setFirst] = createSignal<number>(2.5);
+	let caught = failure(() => { runWithOwner(scope.owner, () => repeat<number>(first, (i) => i)); });
+	assert caught.includes("Repeat: count"), "a fractional count at creation named: " + caught;
+	const [n, setN] = createSignal<number>(2);
 	const m = runWithOwner(scope.owner, () => repeat<number>(n, (i) => i));
-	let caught = "";
-	try { m(); } catch (e) { caught = e.toString(); }
-	assert caught.includes("Repeat: count"), "fractional count named: " + caught;
-	setN(-1);
-	caught = "";
-	try { m(); } catch (e) { caught = e.toString(); }
-	assert caught.includes("Repeat: count"), "negative count named: " + caught;
+	assert m().join(",") === "0,1", "a whole count maps";
+	caught = failure(() => { setN(2.5); });
+	assert caught.includes("Repeat: count"), "a fractional count written later named: " + caught;
+	caught = failure(() => { setN(-1); });
+	assert caught.includes("Repeat: count"), "a negative count written later named: " + caught;
+	assert m().join(",") === "0,1", "the refused counts left the rows as they were";
 	scope.dispose();
 }
 
@@ -877,9 +882,7 @@ class Plain {
 test "map.ts:75 default mode told the row never reads its index refuses a row that does" {
 	createRoot((d) => {
 		const [src, setSrc] = createSignal<number[]>([1, 2]);
-		const m = mapArray<number, number>(src, (v, i) => i(), null, false);
-		let caught = "";
-		try { m(); } catch (e) { caught = e.toString(); }
+		const caught = failure(() => { mapArray<number, number>(src, (v, i) => i(), null, false); });
 		assert caught.includes("no index accessor"), "reading the index of a row emitted as index-free raises: " + caught;
 		d();
 	});
@@ -888,9 +891,7 @@ test "map.ts:75 default mode told the row never reads its index refuses a row th
 test "map.ts:97 keyed by a function told the row never reads its index refuses a row that does" {
 	createRoot((d) => {
 		const [src, setSrc] = createSignal<Item[]>([{ id: 1, label: "a" }]);
-		const m = mapArrayKeyedBy<Item, number, number>(src, (r) => r.id, (item, i) => i(), null, false);
-		let caught = "";
-		try { m(); } catch (e) { caught = e.toString(); }
+		const caught = failure(() => { mapArrayKeyedBy<Item, number, number>(src, (r) => r.id, (item, i) => i(), null, false); });
 		assert caught.includes("no index accessor"), "reading the index of a row emitted as index-free raises: " + caught;
 		d();
 	});
@@ -1085,12 +1086,6 @@ function engine(mode: number, src: Accessor<number[]>, led: Ledger, fault: Fault
 	}, fallback, false);
 }
 
-function failure(m: () => number[]): string {
-	let caught = "";
-	try { m(); } catch (e) { caught = e.toString(); }
-	return caught;
-}
-
 function allGone(led: Ledger, ids: number[]): void {
 	for (const id of ids) { ensure(led.live(id) === 0, "row " + id.toString() + " is disposed when the list is: " + led.live(id).toString()); }
 }
@@ -1104,15 +1099,14 @@ function survivorsKeepTheirOwners(mode: number): void {
 	const before = m();
 	ensure(before.join(",") === "1,2,3", "first pass");
 	fault.bad = [9];
-	setSrc([3, 9, 1, 2]);
-	const caught = failure(m);
-	ensure(caught.includes("row 9"), "the row's error reaches the caller: " + caught);
+	const caught = failure(() => { setSrc([3, 9, 1, 2]); });
+	ensure(caught.includes("row 9"), "the row's error reaches the writer: " + caught);
 	ensure(led.live(1) === 1 && led.live(2) === 1 && led.live(3) === 1, "surviving rows keep their owners");
 	ensure(led.made(9) === 1 && led.live(9) === 0, "the owner the aborted pass created is disposed with it");
 	setSrc([1, 2, 3]);
 	ensure(m() === before, "the engine still holds the list from before the aborted pass");
-	setSrc([3, 9, 1, 2]);
 	fault.bad = [];
+	setSrc([3, 9, 1, 2]);
 	ensure(m().join(",") === "3,9,1,2", "the retry maps the new list");
 	ensure(led.made(1) === 1 && led.made(2) === 1 && led.made(3) === 1, "no surviving row is rebuilt");
 	ensure(led.made(9) === 2 && led.live(9) === 1, "the failed row is built again by the retry");
@@ -1128,12 +1122,11 @@ function removalWhileStillFailing(mode: number): void {
 	const m = runWithOwner(scope.owner, () => engine(mode, src, led, fault, null));
 	m();
 	fault.bad = [9];
-	setSrc([1, 2, 9, 3]);
-	ensure(failure(m).includes("row 9"), "a failing insert before 3 aborts");
-	setSrc([1, 2, 9]);
-	ensure(failure(m).includes("row 9"), "dropping 3 while 9 still fails aborts again");
+	ensure(failure(() => { setSrc([1, 2, 9, 3]); }).includes("row 9"), "a failing insert before 3 aborts");
+	ensure(failure(() => { setSrc([1, 2, 9]); }).includes("row 9"), "dropping 3 while 9 still fails aborts again");
 	ensure(led.live(3) === 1, "an aborted pass disposes no row it removes");
 	fault.bad = [];
+	setSrc([1, 2, 9]);
 	ensure(m().join(",") === "1,2,9", "the retry lands");
 	ensure(led.made(3) === 1 && led.count("-", 3) === 1, "the real row 3 is disposed exactly once");
 	scope.dispose();
@@ -1146,11 +1139,11 @@ function initialCreateRetries(mode: number): void {
 		const fault = new Fault();
 		fault.bad = [9];
 		const [src, setSrc] = createSignal<number[]>([1, 9, 2]);
-		const m = engine(mode, src, led, fault, null);
-		ensure(failure(m).includes("row 9"), "the first pass fails");
+		ensure(failure(() => { engine(mode, src, led, fault, null); }).includes("row 9"), "the first pass fails at creation");
 		allGone(led, [1, 2, 9]);
 		fault.bad = [];
-		ensure(m().join(",") === "1,9,2", "the retry builds the list");
+		const m = engine(mode, src, led, fault, null);
+		ensure(m().join(",") === "1,9,2", "a second engine over the same list builds it");
 		ensure(led.live(1) === 1 && led.live(9) === 1 && led.live(2) === 1, "one live owner per row, none left by the aborted pass");
 		d();
 		allGone(led, [1, 2, 9]);
@@ -1166,10 +1159,10 @@ function abortedFallbackLeaksNothing(mode: number): void {
 	const m = runWithOwner(scope.owner, () => engine(mode, src, led, fault, () => { led.build(0); fbFault.check(0); return 0; }));
 	ensure(m().join(",") === "1", "one row");
 	fbFault.bad = [0];
-	setSrc([]);
-	ensure(failure(m).includes("row 0"), "the fallback's error reaches the caller");
+	ensure(failure(() => { setSrc([]); }).includes("row 0"), "the fallback's error reaches the writer");
 	ensure(led.made(0) === 1 && led.live(0) === 0, "the aborted fallback's owner is disposed");
 	fbFault.bad = [];
+	setSrc([]);
 	ensure(m().join(",") === "0", "the retry shows the fallback");
 	ensure(led.live(0) === 1, "one live fallback owner: " + led.live(0).toString());
 	setSrc([4]);
@@ -1186,10 +1179,10 @@ function failingRowsAbortTogether(mode: number): void {
 	const m = runWithOwner(scope.owner, () => engine(mode, src, led, fault, null));
 	m();
 	fault.bad = [7, 8];
-	setSrc([7, 1, 8, 2]);
-	ensure(failure(m).includes("row 7"), "the first failing row raises");
+	ensure(failure(() => { setSrc([7, 1, 8, 2]); }).includes("row 7"), "the first failing row raises");
 	ensure(led.live(1) === 1 && led.live(2) === 1 && led.live(7) === 0 && led.live(8) === 0, "nothing the pass built survives it");
 	fault.bad = [];
+	setSrc([7, 1, 8, 2]);
 	ensure(m().join(",") === "7,1,8,2", "both rows land together on the retry");
 	ensure(led.made(1) === 1 && led.made(2) === 1, "rows 1 and 2 were never rebuilt");
 	scope.dispose();
@@ -1208,8 +1201,7 @@ function removedRowsOutliveTheNewOnes(mode: number): void {
 	m();
 	ensure(led.log.slice(at, led.log.length).join(" ") === "+9 -2", "the new row is built before the removed row is disposed: " + led.log.slice(at, led.log.length).join(" "));
 	fault.bad = [8];
-	setSrc([1, 8]);
-	failure(m);
+	failure(() => { setSrc([1, 8]); });
 	ensure(led.live(9) === 1 && led.live(3) === 1, "a pass that fails disposes none of the rows it would have removed");
 	scope.dispose();
 }
@@ -1218,8 +1210,8 @@ test "notready-safety.test.ts:96 identity mode: a failing insert in a reorder ke
 test "notready-safety.test.ts:96 keyed by a function: a failing insert in a reorder keeps every surviving row" { survivorsKeepTheirOwners(1); }
 test "notready-safety.test.ts:125 identity mode: removal while the insert still fails disposes the real row once" { removalWhileStillFailing(0); }
 test "notready-safety.test.ts:125 keyed by a function: removal while the insert still fails disposes the real row once" { removalWhileStillFailing(1); }
-test "notready-safety.test.ts:152 identity mode: an initial create that fails retries cleanly" { initialCreateRetries(0); }
-test "notready-safety.test.ts:152 keyed by a function: an initial create that fails retries cleanly" { initialCreateRetries(1); }
+test "notready-safety.test.ts:152 identity mode: an initial create that fails leaves no row alive" { initialCreateRetries(0); }
+test "notready-safety.test.ts:152 keyed by a function: an initial create that fails leaves no row alive" { initialCreateRetries(1); }
 test "notready-safety.test.ts:202 identity mode: an aborted fallback leaks no owner across retries" { abortedFallbackLeaksNothing(0); }
 test "notready-safety.test.ts:202 keyed by a function: an aborted fallback leaks no owner across retries" { abortedFallbackLeaksNothing(1); }
 test "notready-safety.test.ts:446 identity mode: two failing rows in one pass abort and land together" { failingRowsAbortTogether(0); }
@@ -1242,15 +1234,14 @@ test "notready-safety.test.ts:250 position mode: an aborted grow keeps every row
 	const before = m();
 	assert before.join(",") === "0,1", "two rows";
 	fault.bad = [99];
-	setSrc([11, 21, 99]);
-	assert failure(m).includes("row 99"), "the new position's error reaches the caller";
+	assert failure(() => { setSrc([11, 21, 99]); }).includes("row 99"), "the new position's error reaches the writer";
 	assert slots[0]() === 11 && slots[1]() === 21, "map.ts:437 the scan wrote the kept cells before row 2 failed, the abort does not take it back: " + slots[0]().toString() + "," + slots[1]().toString();
 	assert led.live(0) === 1 && led.live(1) === 1 && led.made(2) === 1 && led.live(2) === 0, "row owners as before, the aborted row disposed";
 	setSrc([10, 20]);
 	assert m() === before, "the engine still holds the list from before the aborted pass";
 	assert slots[0]() === 10 && slots[1]() === 20, "the pass that restores the list writes the kept cells back";
-	setSrc([11, 21, 99]);
 	fault.bad = [];
+	setSrc([11, 21, 99]);
 	assert m().join(",") === "0,1,2", "the retry grows the list";
 	assert slots[0]() === 11 && slots[1]() === 21 && slots[2]() === 99, "cells follow the retry";
 	assert led.made(0) === 1 && led.made(1) === 1 && led.made(2) === 2, "positions 0 and 1 were never rebuilt";
@@ -1273,10 +1264,10 @@ test "notready-safety.test.ts:250 keyed by a function: the scan wrote the kept k
 	}, null, false));
 	m();
 	fault.bad = [99];
-	setSrc([12, 23, 99]);
-	assert failure(m).includes("row 99"), "the new key's error reaches the caller";
+	assert failure(() => { setSrc([12, 23, 99]); }).includes("row 99"), "the new key's error reaches the writer";
 	assert slots[0]() === 12 && slots[1]() === 23, "map.ts:437 kept keys show their new item although the pass aborted: " + slots[0]().toString() + "," + slots[1]().toString();
 	fault.bad = [];
+	setSrc([12, 23, 99]);
 	assert m().join(",") === "11,22,99", "the retry keeps both built rows and builds only key 9";
 	assert slots[0]() === 12 && slots[1]() === 23, "the cells keep the new items";
 	scope.dispose();
@@ -1298,11 +1289,10 @@ test "notready-safety.test.ts:96 an aborted pass leaves the index cells: the kep
 	const one = indexOfOne as Accessor<number>;
 	assert one() === 0, "row 1 sits at 0";
 	fault.bad = [9];
-	setSrc([3, 9, 1, 2]);
-	assert failure(m).includes("row 9"), "the pass aborts";
+	assert failure(() => { setSrc([3, 9, 1, 2]); }).includes("row 9"), "the pass aborts";
 	assert one() === 0, "the aborted pass wrote no index: " + one().toString();
 	fault.bad = [];
-	m();
+	setSrc([3, 9, 1, 2]);
 	assert one() === 2, "the retry moves row 1 to 2: " + one().toString();
 	scope.dispose();
 }
@@ -1315,15 +1305,15 @@ test "notready-safety.test.ts:352 repeat: a disjoint window shift with a failing
 	const m = runWithOwner(scope.owner, () => repeat<number>(() => 3, (i) => { led.build(i); fault.check(i); return i; }, from));
 	assert m().join(",") === "0,1,2", "window 0..2";
 	fault.bad = [11];
-	setFrom(10);
-	assert failure(m).includes("row 11"), "row 11 fails";
+	assert failure(() => { setFrom(10); }).includes("row 11"), "row 11 fails";
 	assert led.live(0) === 1 && led.live(1) === 1 && led.live(2) === 1, "the old rows are alive until the new window lands";
 	assert led.live(10) === 0 && led.live(11) === 0, "what the pass built is gone";
 	fault.bad = [];
-	assert m().join(",") === "10,11,12", "the retry lands the window";
-	assert led.live(0) === 0 && led.live(10) === 1 && led.made(0) === 1, "old rows go with the commit";
+	setFrom(11);
+	assert m().join(",") === "11,12,13", "the retry lands the window";
+	assert led.live(0) === 0 && led.live(11) === 1 && led.made(0) === 1, "old rows go with the commit";
 	scope.dispose();
-	allGone(led, [0, 1, 2, 10, 11, 12]);
+	allGone(led, [0, 1, 2, 10, 11, 12, 13]);
 }
 
 test "notready-safety.test.ts:402 repeat: an aborted fallback leaks no owner across retries" {
@@ -1334,10 +1324,11 @@ test "notready-safety.test.ts:402 repeat: an aborted fallback leaks no owner acr
 	const m = runWithOwner(scope.owner, () => repeat<number>(n, (i) => i, null, () => { led.build(0); fbFault.check(0); return -1; }));
 	assert m().join(",") === "0", "one row";
 	fbFault.bad = [0];
-	setN(0);
-	assert failure(m).includes("row 0"), "the fallback's error reaches the caller";
+	assert failure(() => { setN(0); }).includes("row 0"), "the fallback's error reaches the writer";
 	assert led.live(0) === 0, "the aborted fallback's owner is disposed";
 	fbFault.bad = [];
+	setN(1);
+	setN(0);
 	assert m().join(",") === "-1" && led.live(0) === 1, "one live fallback owner: " + led.live(0).toString();
 	scope.dispose();
 	allGone(led, [0]);
@@ -1361,12 +1352,11 @@ function unchangedListKeepsTheMappedArray(mode: number): void {
 	});
 	ensure(memoRuns === 1 && consumerRuns === 1, "first run");
 	setSrc([1, 2, 3]);
-	ensure(memoRuns === 2, "the memo saw the new array: " + memoRuns.toString());
-	ensure(consumerRuns === 1, "the consumer of the memo did not re-run: " + consumerRuns.toString());
+	ensure(memoRuns === 1 && consumerRuns === 1, "the unchanged list kept the mapped array, so the memo reading it did not re-run: " + memoRuns.toString());
 	setSrc([1, 2, 3]);
-	ensure(memoRuns === 3 && consumerRuns === 1, "again");
+	ensure(memoRuns === 1 && consumerRuns === 1, "again");
 	setSrc([2, 1, 3]);
-	ensure(memoRuns === 4 && consumerRuns === 2, "a reorder is a new mapped array: " + consumerRuns.toString());
+	ensure(memoRuns === 2 && consumerRuns === 2, "a reorder is a new mapped array: " + memoRuns.toString() + "," + consumerRuns.toString());
 	scope.dispose();
 }
 
@@ -1389,9 +1379,9 @@ test "map.ts:454 position mode: an unchanged list keeps the mapped array identit
 		return 0;
 	});
 	setSrc([5, 6]);
-	assert memoRuns === 2 && consumerRuns === 1, "same values: the consumer did not re-run: " + consumerRuns.toString();
+	assert memoRuns === 1 && consumerRuns === 1, "same values: the memo and the consumer did not re-run: " + memoRuns.toString();
 	setSrc([7, 6]);
-	assert memoRuns === 3 && consumerRuns === 1, "a changed value is a cell write, not a new array: " + consumerRuns.toString();
+	assert memoRuns === 1 && consumerRuns === 1, "a changed value is a cell write, not a new array: " + memoRuns.toString();
 	assert slots[0]() === 7 && slots[1]() === 6, "the cell took the new value";
 	scope.dispose();
 }
@@ -1863,7 +1853,7 @@ test "map.ts:459 removing one row from the front, middle and end of a large list
 		const twin = runWithOwner(scope.owner, () => new Twin<Piece>(pieces(300), pieceId));
 		const gone = twin.items()[at];
 		expectHits(hitsOf(twin, without(twin.items(), at)), 0, "map.ts:466 removing row " + at.toString() + " leaves the trims a window of nothing, the general path is already cheap");
-		assert twin.fast.disposed.length === 1 && twin.fast.disposed[0] === at, "row " + at.toString() + " disposed: " + twin.fast.disposed.join(",");
+		assert twin.fast.disposed.length === 1 && twin.fast.disposed[0] === at, "row " + at.toString() + " disposed: " + twin.fast.disposed.join(",";
 		assert twin.fast.rows().length === 299, "299 left";
 		scope.dispose();
 	}
@@ -1914,6 +1904,264 @@ test "map.ts:459 a large list survives random edits and agrees with the general 
 			}
 		}
 		twin.step(next);
+	}
+	scope.dispose();
+}
+
+class Trace {
+	last: Map<string, string>;
+	runs: Map<string, number>;
+	cleaned: Map<string, number>;
+
+	constructor() {
+		this.last = new Map<string, string>();
+		this.runs = new Map<string, number>();
+		this.cleaned = new Map<string, number>();
+	}
+
+	saw(id: string, v: string): void {
+		this.last.set(id, v);
+		this.runs.set(id, this.ran(id) + 1);
+	}
+
+	left(id: string): void {
+		this.cleaned.set(id, this.gone(id) + 1);
+	}
+
+	at(id: string): string {
+		return this.last.has(id) ? (this.last.get(id) as string) : "-";
+	}
+
+	ran(id: string): number {
+		return this.runs.has(id) ? (this.runs.get(id) as number) : 0;
+	}
+
+	gone(id: string): number {
+		return this.cleaned.has(id) ? (this.cleaned.get(id) as number) : 0;
+	}
+
+	view(ids: string[]): string {
+		const parts: string[] = [];
+		for (const id of ids) { parts.push(id + "=" + this.at(id)); }
+		return parts.join(" ");
+	}
+}
+
+class Consumer {
+	runs: number;
+
+	constructor() {
+		this.runs = 0;
+	}
+}
+
+function consume<U>(scope: Scope, m: () => U[]): Consumer {
+	const c = new Consumer();
+	runWithOwner(scope.owner, (): number => {
+		createRenderEffect<U[]>(
+			(p: U[] | null): U[] => m(),
+			(v: U[], p: U[] | null): Cleanup | null => { c.runs += 1; return null; },
+		);
+		return 0;
+	});
+	return c;
+}
+
+function watch(t: Trace, id: string, read: () => string): void {
+	createRenderEffect<string>(
+		(p: string | null): string => read(),
+		(v: string, p: string | null): Cleanup | null => { t.saw(id, v); return null; },
+	);
+	onCleanup(() => { t.left(id); });
+}
+
+test "map.ts:88 a row effect keeps reading its index through a reorder, an insert and a removal while the list's consumer re-runs" {
+	const scope = openScope();
+	const a: Id = { id: "a" };
+	const b: Id = { id: "b" };
+	const c: Id = { id: "c" };
+	const d: Id = { id: "d" };
+	const [src, setSrc] = createSignal<Id[]>([a, b, c]);
+	const t = new Trace();
+	const m = runWithOwner(scope.owner, () => mapArray<Id, string>(src, (v, i) => {
+		watch(t, v.id, (): string => i().toString());
+		return v.id;
+	}));
+	const consumer = consume<string>(scope, m);
+	assert t.view(["a", "b", "c"]) === "a=0 b=1 c=2", "mounted: " + t.view(["a", "b", "c"]);
+
+	setSrc([b, a, c]);
+	assert consumer.runs === 2, "the reorder re-ran the consumer: " + consumer.runs.toString();
+	assert t.view(["a", "b", "c"]) === "a=1 b=0 c=2", "the reorder reached the row effects: " + t.view(["a", "b", "c"]);
+	assert t.gone("a") === 0 && t.gone("b") === 0 && t.gone("c") === 0, "a reorder disposes no row";
+
+	setSrc([d, b, a, c]);
+	assert t.view(["d", "b", "a", "c"]) === "d=0 b=1 a=2 c=3", "the insert reached the row effects: " + t.view(["d", "b", "a", "c"]);
+	assert t.gone("a") === 0 && t.gone("b") === 0 && t.gone("c") === 0, "an insert disposes no row";
+
+	const bRuns = t.ran("b");
+	const cRuns = t.ran("c");
+	setSrc([d, a]);
+	assert t.view(["d", "a"]) === "d=0 a=1", "the removal reached the row effects: " + t.view(["d", "a"]);
+	assert t.gone("b") === 1 && t.gone("c") === 1 && t.gone("a") === 0 && t.gone("d") === 0, "the removed rows' cleanups ran once, the others' not at all";
+	setSrc([a, d]);
+	assert t.ran("b") === bRuns && t.ran("c") === cRuns, "a removed row's effect stays quiet";
+
+	scope.dispose();
+	assert t.gone("a") === 1 && t.gone("d") === 1 && t.gone("b") === 1 && t.gone("c") === 1, "disposing the owner disposes each remaining row once";
+}
+
+test "map.ts:88 keyed false: a row effect keeps reading its item cell through a reorder, an insert and a removal while the list's consumer re-runs" {
+	const scope = openScope();
+	const [src, setSrc] = createSignal<number[]>([10, 20, 30]);
+	const t = new Trace();
+	const m = runWithOwner(scope.owner, () => mapArrayByPosition<number, number>(src, (item, pos) => {
+		watch(t, "p" + pos.toString(), (): string => item().toString());
+		return pos;
+	}));
+	const consumer = consume<number>(scope, m);
+	assert t.view(["p0", "p1", "p2"]) === "p0=10 p1=20 p2=30", "mounted: " + t.view(["p0", "p1", "p2"]);
+
+	setSrc([20, 10, 30]);
+	assert t.view(["p0", "p1", "p2"]) === "p0=20 p1=10 p2=30", "the reorder reached the row effects: " + t.view(["p0", "p1", "p2"]);
+	assert t.gone("p0") === 0 && t.gone("p1") === 0 && t.gone("p2") === 0, "a reorder disposes no row";
+	assert consumer.runs === 1, "positions keep their rows, so the consumer did not re-run: " + consumer.runs.toString();
+
+	setSrc([20, 10, 30, 40]);
+	assert t.view(["p0", "p1", "p2", "p3"]) === "p0=20 p1=10 p2=30 p3=40", "the append reached the row effects: " + t.view(["p0", "p1", "p2", "p3"]);
+	assert consumer.runs === 2, "the append re-ran the consumer: " + consumer.runs.toString();
+
+	const p2Runs = t.ran("p2");
+	setSrc([20, 11]);
+	assert t.view(["p0", "p1"]) === "p0=20 p1=11", "the removal reached the row effects: " + t.view(["p0", "p1"]);
+	assert t.gone("p2") === 1 && t.gone("p3") === 1 && t.gone("p0") === 0 && t.gone("p1") === 0, "the removed rows' cleanups ran once, the others' not at all";
+	setSrc([21, 12]);
+	assert t.ran("p2") === p2Runs, "a removed row's effect stays quiet";
+
+	scope.dispose();
+	assert t.gone("p0") === 1 && t.gone("p1") === 1 && t.gone("p2") === 1 && t.gone("p3") === 1, "disposing the owner disposes each remaining row once";
+}
+
+test "map.ts:88 keyed by a function: a row effect keeps reading its item and index through a reorder, an insert and a removal while the list's consumer re-runs" {
+	const scope = openScope();
+	const [src, setSrc] = createSignal<Item[]>([{ id: 1, label: "a" }, { id: 2, label: "b" }, { id: 3, label: "c" }]);
+	const t = new Trace();
+	const m = runWithOwner(scope.owner, () => mapArrayKeyedBy<Item, number, number>(src, (r) => r.id, (item, i) => {
+		const id = item().id;
+		watch(t, "k" + id.toString(), (): string => item().label + i().toString());
+		return id;
+	}));
+	const consumer = consume<number>(scope, m);
+	assert t.view(["k1", "k2", "k3"]) === "k1=a0 k2=b1 k3=c2", "mounted: " + t.view(["k1", "k2", "k3"]);
+
+	setSrc([{ id: 2, label: "B" }, { id: 1, label: "A" }, { id: 3, label: "c" }]);
+	assert consumer.runs === 2, "the reorder re-ran the consumer: " + consumer.runs.toString();
+	assert t.view(["k1", "k2", "k3"]) === "k1=A1 k2=B0 k3=c2", "the reorder and the new items reached the row effects: " + t.view(["k1", "k2", "k3"]);
+	assert t.gone("k1") === 0 && t.gone("k2") === 0 && t.gone("k3") === 0, "a reorder disposes no row";
+
+	setSrc([{ id: 4, label: "d" }, { id: 2, label: "B" }, { id: 1, label: "A" }, { id: 3, label: "c" }]);
+	assert t.view(["k4", "k2", "k1", "k3"]) === "k4=d0 k2=B1 k1=A2 k3=c3", "the insert reached the row effects: " + t.view(["k4", "k2", "k1", "k3"]);
+
+	const k2Runs = t.ran("k2");
+	setSrc([{ id: 4, label: "d" }, { id: 1, label: "A" }]);
+	assert t.view(["k4", "k1"]) === "k4=d0 k1=A1", "the removal reached the row effects: " + t.view(["k4", "k1"]);
+	assert t.gone("k2") === 1 && t.gone("k3") === 1 && t.gone("k1") === 0 && t.gone("k4") === 0, "the removed rows' cleanups ran once, the others' not at all";
+	setSrc([{ id: 1, label: "Z" }, { id: 4, label: "d" }]);
+	assert t.ran("k2") === k2Runs, "a removed row's effect stays quiet";
+	assert t.view(["k1", "k4"]) === "k1=Z0 k4=d1", "the survivors still follow: " + t.view(["k1", "k4"]);
+
+	scope.dispose();
+	assert t.gone("k1") === 1 && t.gone("k4") === 1 && t.gone("k2") === 1 && t.gone("k3") === 1, "disposing the owner disposes each remaining row once";
+}
+
+test "map.ts:624 repeat: a row effect keeps reading its own signal through a grow and a shrink while the consumer re-runs" {
+	const scope = openScope();
+	const [n, setN] = createSignal<number>(2);
+	const [tick, setTick] = createSignal<number>(0);
+	const t = new Trace();
+	const m = runWithOwner(scope.owner, () => repeat<number>(n, (i) => {
+		watch(t, "r" + i.toString(), (): string => (tick() + i).toString());
+		return i;
+	}));
+	const consumer = consume<number>(scope, m);
+	assert t.view(["r0", "r1"]) === "r0=0 r1=1", "mounted: " + t.view(["r0", "r1"]);
+
+	setN(4);
+	assert consumer.runs === 2, "the grow re-ran the consumer: " + consumer.runs.toString();
+	setTick(10);
+	assert t.view(["r0", "r1", "r2", "r3"]) === "r0=10 r1=11 r2=12 r3=13", "every row, kept or new, follows its signal: " + t.view(["r0", "r1", "r2", "r3"]);
+	assert t.gone("r0") === 0 && t.gone("r1") === 0, "a grow disposes no row";
+
+	const r3Runs = t.ran("r3");
+	setN(2);
+	assert t.gone("r2") === 1 && t.gone("r3") === 1 && t.gone("r0") === 0 && t.gone("r1") === 0, "the shrink ran the leaving rows' cleanups once";
+	setTick(20);
+	assert t.view(["r0", "r1"]) === "r0=20 r1=21", "the rows that stayed follow after the shrink: " + t.view(["r0", "r1"]);
+	assert t.ran("r3") === r3Runs, "a removed row's effect stays quiet";
+
+	scope.dispose();
+	assert t.gone("r0") === 1 && t.gone("r1") === 1 && t.gone("r2") === 1 && t.gone("r3") === 1, "disposing the owner disposes each remaining row once";
+}
+
+function consumerKeepsEveryRow(mode: number): void {
+	const scope = openScope();
+	const led = new Ledger();
+	const fault = new Fault();
+	const [src, setSrc] = createSignal<number[]>([1, 2, 3]);
+	const m = runWithOwner(scope.owner, () => engine(mode, src, led, fault, null));
+	const consumer = consume<number>(scope, m);
+	setSrc([3, 1, 2]);
+	ensure(consumer.runs === 2, "the reorder re-ran the consumer: " + consumer.runs.toString());
+	ensure(led.live(1) === 1 && led.live(2) === 1 && led.live(3) === 1, "a reorder leaves every row alive");
+	setSrc([3, 1, 2, 4]);
+	ensure(led.live(4) === 1 && led.live(1) === 1 && led.live(2) === 1 && led.live(3) === 1, "an insert leaves every row alive");
+	setSrc([4, 2]);
+	ensure(led.live(1) === 0 && led.live(3) === 0 && led.live(2) === 1 && led.live(4) === 1, "a removal disposes exactly the removed rows");
+	ensure(led.count("-", 1) === 1 && led.count("-", 3) === 1 && led.made(1) === 1 && led.made(3) === 1, "each removed row is disposed once and never rebuilt");
+	scope.dispose();
+	allGone(led, [1, 2, 3, 4]);
+	ensure(led.count("-", 2) === 1 && led.count("-", 4) === 1, "disposing the owner disposes each remaining row once");
+}
+
+test "map.ts:88 identity mode: a re-running consumer disposes no row, a removal disposes the removed row once and the owner disposes the rest once" { consumerKeepsEveryRow(0); }
+test "map.ts:88 keyed by a function: a re-running consumer disposes no row, a removal disposes the removed row once and the owner disposes the rest once" { consumerKeepsEveryRow(1); }
+
+function ownerSize(n: Computation): number {
+	let total: number = 1;
+	let child = n.firstChild;
+	while (child !== null) {
+		total += ownerSize(child as Computation);
+		child = (child as Computation).nextSibling;
+	}
+	return total;
+}
+
+test "mapArray.test.ts:165 full replacements keep the map's owner tree the size it was, one owner per live row" {
+	const scope = openScope();
+	let sample: Computation | null = null;
+	const make = (): Id[] => {
+		const items: Id[] = [];
+		for (let i = 0; i < 50; i += 1) { items.push({ id: i.toString() }); }
+		return items;
+	};
+	const [src, setSrc] = createSignal<Id[]>(make());
+	const m = runWithOwner(scope.owner, () => mapArray<Id, number>(src, (v, i) => {
+		sample = getOwner();
+		return 1;
+	}, null, false));
+	consume<number>(scope, m);
+	const mapOwnerAtMount = (sample as Computation).parent as Computation;
+	assert mapOwnerAtMount.parent === scope.owner, "the map's owner is a child of the scope that created the map";
+	const initial = ownerSize(scope.owner as Computation);
+	for (let round = 0; round < 10; round += 1) {
+		setSrc(make());
+		const rowAfter = sample as Computation;
+		const mapOwner = rowAfter.parent as Computation;
+		let rows: number = 0;
+		let child = mapOwner.firstChild;
+		while (child !== null) { rows += 1; child = (child as Computation).nextSibling; }
+		assert rows === 50, "the map's owner holds one owner per live row: " + rows.toString();
+		assert ownerSize(scope.owner as Computation) === initial, "round " + round.toString() + ": the owner tree did not grow: " + ownerSize(scope.owner as Computation).toString() + " against " + initial.toString();
 	}
 	scope.dispose();
 }

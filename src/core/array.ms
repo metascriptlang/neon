@@ -1,6 +1,8 @@
-import { onCleanup } from "./cleanup";
-import { createRoot } from "./owner";
-import { untrack, accessor, Accessor, Signal } from "./signal";
+import { Computation } from "./types";
+import { getOwner, createOwner, disposeNode, disposeChildren } from "./runtime";
+import { runWithOwner } from "./owner";
+import { createMemo } from "./memo";
+import { accessor, Accessor, Signal } from "./signal";
 
 enum MapMode { Identity, Keyed, Position }
 
@@ -28,8 +30,8 @@ const noIndex: Accessor<number> = accessor((): number => {
 	throw new Error("mapArray: this row has no index accessor: a position-keyed row receives its index as a number, and a row emitted as not reading its index never gets one");
 });
 
-function disposeAll(ds: (() => void)[]): void {
-	for (const d of ds) { d(); }
+function disposeAll(nodes: Computation[]): void {
+	for (const n of nodes) { disposeNode(n); }
 }
 
 export function mapArray<T, U>(
@@ -37,7 +39,7 @@ export function mapArray<T, U>(
 	mapFn: (item: T, index: Accessor<number>) => U,
 	fallback: (() => U) | null = null,
 	usesIndex: boolean = true,
-): () => U[] {
+): Accessor<U[]> {
 	return mapRows<T, T, U>(
 		list,
 		MapMode.Identity,
@@ -54,7 +56,7 @@ export function mapArrayKeyedBy<T, K, U>(
 	mapFn: (item: Accessor<T>, index: Accessor<number>) => U,
 	fallback: (() => U) | null = null,
 	usesIndex: boolean = true,
-): () => U[] {
+): Accessor<U[]> {
 	return mapRows<T, K, U>(
 		list,
 		MapMode.Keyed,
@@ -76,7 +78,7 @@ export function mapArrayByPosition<T, U>(
 	list: () => T[],
 	mapFn: (item: Accessor<T>, index: number) => U,
 	fallback: (() => U) | null = null,
-): () => U[] {
+): Accessor<U[]> {
 	return mapRows<T, number, U>(
 		list,
 		MapMode.Position,
@@ -102,12 +104,12 @@ export function smallMoveHits(): number {
 
 class SmallMove<U> {
 	mapped: U[];
-	disposers: (() => void)[];
-	leavers: (() => void)[];
+	nodes: Computation[];
+	leavers: Computation[];
 
-	constructor(mapped: U[], disposers: (() => void)[], leavers: (() => void)[]) {
+	constructor(mapped: U[], nodes: Computation[], leavers: Computation[]) {
 		this.mapped = mapped;
-		this.disposers = disposers;
+		this.nodes = nodes;
 		this.leavers = leavers;
 	}
 }
@@ -121,7 +123,7 @@ function smallMove<K, U>(
 	end: number,
 	newEnd: number,
 	oldMapped: U[],
-	oldDisposers: (() => void)[],
+	oldNodes: Computation[],
 ): SmallMove<U> | null {
 	const mid = start + Math.floor((newEnd - start) / 2);
 	const probeHi = Math.min(end, mid + smallMoveMaxDisplaced);
@@ -216,23 +218,23 @@ function smallMove<K, U>(
 
 	smallMoveCount += 1;
 	const mapped = oldMapped.slice(0, newLen);
-	const disposers = oldDisposers.slice(0, newLen);
+	const nodes = oldNodes.slice(0, newLen);
 	for (let r = 0; r < runs.length; r += 3) {
 		if (runs[r] === runs[r + 1]) { continue; }
 		for (let a = 0; a < runs[r + 2]; a += 1) {
 			mapped[runs[r + 1] + a] = oldMapped[runs[r] + a];
-			disposers[runs[r + 1] + a] = oldDisposers[runs[r] + a];
+			nodes[runs[r + 1] + a] = oldNodes[runs[r] + a];
 		}
 	}
 	for (let b = 0; b < dstPos.length; b += 1) {
 		mapped[dstPos[b]] = oldMapped[srcPos[pairedSrc[b]]];
-		disposers[dstPos[b]] = oldDisposers[srcPos[pairedSrc[b]]];
+		nodes[dstPos[b]] = oldNodes[srcPos[pairedSrc[b]]];
 	}
-	const leavers: (() => void)[] = [];
+	const leavers: Computation[] = [];
 	for (let a = 0; a < srcPos.length; a += 1) {
-		if (!consumed[a]) { leavers.push(oldDisposers[srcPos[a]]); }
+		if (!consumed[a]) { leavers.push(oldNodes[srcPos[a]]); }
 	}
-	return new SmallMove<U>(mapped, disposers, leavers);
+	return new SmallMove<U>(mapped, nodes, leavers);
 }
 
 function mapRows<T, K, U>(
@@ -242,31 +244,32 @@ function mapRows<T, K, U>(
 	keysOf: (items: T[]) => K[],
 	make: (item: T, pos: number, cell: Signal<T> | null, index: Accessor<number>) => U,
 	fallback: (() => U) | null,
-): () => U[] {
+): Accessor<U[]> {
+	const owner = createOwner();
 	const hasKeys = mode !== MapMode.Position;
 	const hasCells = mode !== MapMode.Identity;
 	const hasIdx = mode !== MapMode.Position && usesIndex;
 	let keys: K[] = [];
 	let mapped: U[] = [];
-	let disposers: (() => void)[] = [];
+	let nodes: Computation[] = [];
 	let cells: Signal<T>[] = [];
 	let idxs: IndexCell[] = [];
 	let len = 0;
-	let fbLive = false;
-	let fbDispose: (() => void) | null = null;
+	let fbNode: Computation | null = null;
 
 	function makeRowInto(
 		item: T,
 		pos: number,
 		mapStore: U[],
-		dispStore: (() => void)[],
+		nodeStore: Computation[],
 		cellStore: Signal<T>[],
 		idxStore: IndexCell[],
-		fresh: (() => void)[],
+		fresh: Computation[],
 	): void {
-		mapStore[pos] = createRoot((d) => {
-			dispStore[pos] = d;
-			fresh.push(d);
+		const node = createOwner();
+		nodeStore[pos] = node;
+		fresh.push(node);
+		mapStore[pos] = runWithOwner<U>(node, (): U => {
 			let cell: Signal<T> | null = null;
 			if (hasCells) {
 				const c = new Signal<T>(item, null, true);
@@ -284,42 +287,36 @@ function mapRows<T, K, U>(
 	}
 
 	function dropFallback(): void {
-		if (fbLive && fbDispose !== null) { (fbDispose as () => void)(); }
-		fbDispose = null;
-		fbLive = false;
+		if (fbNode !== null) { disposeNode(fbNode as Computation); }
+		fbNode = null;
 	}
 
-	onCleanup(() => {
-		disposeAll(disposers);
-		dropFallback();
-	});
-
-	return () => {
+	return createMemo<U[]>((): U[] => {
+		owner.parentComputed = getOwner();
 		const newItems = list();
 		const newLen = newItems.length;
-		return untrack((): U[] => {
+		return runWithOwner<U[]>(owner, (): U[] => {
 			if (newLen === 0) {
 				if (len !== 0) {
-					const gone = disposers;
 					keys = [];
 					mapped = [];
-					disposers = [];
+					nodes = [];
 					cells = [];
 					idxs = [];
 					len = 0;
-					disposeAll(gone);
+					disposeChildren(owner, false);
 				}
-				if (fallback !== null && !fbLive) {
+				if (fallback !== null && fbNode === null) {
 					const fb = fallback as () => U;
+					const node = createOwner();
 					let row: U;
 					try {
-						row = createRoot((d) => { fbDispose = d; return fb(); });
+						row = runWithOwner<U>(node, fb);
 					} catch (e) {
-						if (fbDispose !== null) { (fbDispose as () => void)(); }
-						fbDispose = null;
+						disposeNode(node);
 						throw e;
 					}
-					fbLive = true;
+					fbNode = node;
 					const shown: U[] = [];
 					shown.push(row);
 					mapped = shown;
@@ -331,13 +328,13 @@ function mapRows<T, K, U>(
 
 			if (len === 0) {
 				const firstMapped: U[] = new Array(newLen);
-				const firstDisposers: (() => void)[] = new Array(newLen);
+				const firstNodes: Computation[] = new Array(newLen);
 				const firstCells: Signal<T>[] = new Array(hasCells ? newLen : 0);
 				const firstIdxs: IndexCell[] = new Array(hasIdx ? newLen : 0);
-				const fresh: (() => void)[] = [];
+				const fresh: Computation[] = [];
 				try {
 					for (let j = 0; j < newLen; j += 1) {
-						makeRowInto(newItems[j], j, firstMapped, firstDisposers, firstCells, firstIdxs, fresh);
+						makeRowInto(newItems[j], j, firstMapped, firstNodes, firstCells, firstIdxs, fresh);
 					}
 				} catch (e) {
 					disposeAll(fresh);
@@ -345,7 +342,7 @@ function mapRows<T, K, U>(
 				}
 				dropFallback();
 				mapped = firstMapped;
-				disposers = firstDisposers;
+				nodes = firstNodes;
 				cells = firstCells;
 				idxs = firstIdxs;
 				keys = newKeys;
@@ -373,11 +370,11 @@ function mapRows<T, K, U>(
 			}
 
 			if (!hasCells && !hasIdx && newLen <= len && end - start > smallMoveMinWindow) {
-				const moved = smallMove<K, U>(keys, len, newKeys, newLen, start, end, newEnd, mapped, disposers);
+				const moved = smallMove<K, U>(keys, len, newKeys, newLen, start, end, newEnd, mapped, nodes);
 				if (moved !== null) {
 					const done = moved as SmallMove<U>;
 					mapped = done.mapped;
-					disposers = done.disposers;
+					nodes = done.nodes;
 					keys = newKeys;
 					len = newLen;
 					disposeAll(done.leavers);
@@ -388,7 +385,7 @@ function mapRows<T, K, U>(
 			const dif = newLen - len;
 			const temp: U[] = new Array(newLen);
 			const tempFilled: boolean[] = new Array(newLen);
-			const tempDisposers: (() => void)[] = new Array(newLen);
+			const tempNodes: Computation[] = new Array(newLen);
 			const tempCells: Signal<T>[] = new Array(hasCells ? newLen : 0);
 			const tempIdxs: IndexCell[] = new Array(hasIdx ? newLen : 0);
 			for (let k = 0; k < newLen; k += 1) { tempFilled[k] = false; }
@@ -403,7 +400,7 @@ function mapRows<T, K, U>(
 				}
 			}
 
-			const removed: (() => void)[] = [];
+			const removed: Computation[] = [];
 			for (let i = start; i <= end; i += 1) {
 				if (hasKeys) {
 					const k = keys[i];
@@ -412,7 +409,7 @@ function mapRows<T, K, U>(
 						if (j !== -1) {
 							temp[j] = mapped[i];
 							tempFilled[j] = true;
-							tempDisposers[j] = disposers[i];
+							tempNodes[j] = nodes[i];
 							if (hasCells) { tempCells[j] = cells[i]; }
 							if (hasIdx) { tempIdxs[j] = idxs[i]; }
 							newIndices.set(k, newIndicesNext[j]);
@@ -420,14 +417,14 @@ function mapRows<T, K, U>(
 						}
 					}
 				}
-				removed.push(disposers[i]);
+				removed.push(nodes[i]);
 			}
 
-			const fresh: (() => void)[] = [];
+			const fresh: Computation[] = [];
 			try {
 				for (let j = start; j <= newEnd; j += 1) {
 					if (tempFilled[j]) { continue; }
-					makeRowInto(newItems[j], j, temp, tempDisposers, tempCells, tempIdxs, fresh);
+					makeRowInto(newItems[j], j, temp, tempNodes, tempCells, tempIdxs, fresh);
 				}
 			} catch (e) {
 				disposeAll(fresh);
@@ -436,7 +433,7 @@ function mapRows<T, K, U>(
 
 			for (let i = 0; i < start; i += 1) {
 				temp[i] = mapped[i];
-				tempDisposers[i] = disposers[i];
+				tempNodes[i] = nodes[i];
 				if (hasCells) { tempCells[i] = cells[i]; }
 				if (hasIdx) { tempIdxs[i] = idxs[i]; }
 			}
@@ -446,7 +443,7 @@ function mapRows<T, K, U>(
 			}
 			for (let j = newEnd + 1; j < newLen; j += 1) {
 				temp[j] = mapped[j - dif];
-				tempDisposers[j] = disposers[j - dif];
+				tempNodes[j] = nodes[j - dif];
 				if (hasCells) {
 					tempCells[j] = cells[j - dif];
 					tempCells[j].set(newItems[j]);
@@ -458,7 +455,7 @@ function mapRows<T, K, U>(
 			}
 
 			mapped = temp;
-			disposers = tempDisposers;
+			nodes = tempNodes;
 			cells = tempCells;
 			idxs = tempIdxs;
 			keys = newKeys;
@@ -466,7 +463,7 @@ function mapRows<T, K, U>(
 			disposeAll(removed);
 			return mapped;
 		});
-	};
+	});
 }
 
 export function repeat<U>(
@@ -474,26 +471,21 @@ export function repeat<U>(
 	mapFn: (index: number) => U,
 	from: (() => number) | null = null,
 	fallback: (() => U) | null = null,
-): () => U[] {
+): Accessor<U[]> {
+	const owner = createOwner();
 	let mapped: U[] = [];
-	let disposers: (() => void)[] = [];
+	let nodes: Computation[] = [];
 	let offset: int32 = 0;
 	let len: int32 = 0;
-	let fbLive = false;
-	let fbDispose: (() => void) | null = null;
+	let fbNode: Computation | null = null;
 
 	function dropFallback(): void {
-		if (fbLive && fbDispose !== null) { (fbDispose as () => void)(); }
-		fbDispose = null;
-		fbLive = false;
+		if (fbNode !== null) { disposeNode(fbNode as Computation); }
+		fbNode = null;
 	}
 
-	onCleanup(() => {
-		disposeAll(disposers);
-		dropFallback();
-	});
-
-	return () => {
+	return createMemo<U[]>((): U[] => {
+		owner.parentComputed = getOwner();
 		const wanted = count();
 		const origin = from === null ? 0 : (from as () => number)();
 		if (wanted < 0 || Math.floor(wanted) !== wanted) {
@@ -504,27 +496,26 @@ export function repeat<U>(
 		}
 		const newLen = wanted as int32;
 		const start = origin as int32;
-		return untrack((): U[] => {
+		return runWithOwner<U[]>(owner, (): U[] => {
 			if (newLen === 0) {
 				if (len !== 0) {
-					const gone = disposers;
 					mapped = [];
-					disposers = [];
+					nodes = [];
 					len = 0;
 					offset = 0;
-					disposeAll(gone);
+					disposeChildren(owner, false);
 				}
-				if (fallback !== null && !fbLive) {
+				if (fallback !== null && fbNode === null) {
 					const fb = fallback as () => U;
+					const node = createOwner();
 					let row: U;
 					try {
-						row = createRoot((d) => { fbDispose = d; return fb(); });
+						row = runWithOwner<U>(node, fb);
 					} catch (e) {
-						if (fbDispose !== null) { (fbDispose as () => void)(); }
-						fbDispose = null;
+						disposeNode(node);
 						throw e;
 					}
-					fbLive = true;
+					fbNode = node;
 					const shown: U[] = [];
 					shown.push(row);
 					mapped = shown;
@@ -538,20 +529,19 @@ export function repeat<U>(
 			const keepEnd = to < prevTo ? to : prevTo;
 
 			const next: U[] = new Array(newLen);
-			const nextDisposers: (() => void)[] = new Array(newLen);
+			const nextNodes: Computation[] = new Array(newLen);
 			for (let i = keepStart; i < keepEnd; i += 1) {
 				next[i - start] = mapped[i - offset];
-				nextDisposers[i - start] = disposers[i - offset];
+				nextNodes[i - start] = nodes[i - offset];
 			}
-			const fresh: (() => void)[] = [];
+			const fresh: Computation[] = [];
 			try {
 				for (let i = start; i < to; i += 1) {
 					if (i >= keepStart && i < keepEnd) { continue; }
-					next[i - start] = createRoot((d) => {
-						nextDisposers[i - start] = d;
-						fresh.push(d);
-						return mapFn(i);
-					});
+					const node = createOwner();
+					nextNodes[i - start] = node;
+					fresh.push(node);
+					next[i - start] = runWithOwner<U>(node, (): U => mapFn(i));
 				}
 			} catch (e) {
 				disposeAll(fresh);
@@ -562,14 +552,14 @@ export function repeat<U>(
 				dropFallback();
 			} else {
 				for (let i = offset; i < prevTo; i += 1) {
-					if (i < start || i >= to) { disposers[i - offset](); }
+					if (i < start || i >= to) { disposeNode(nodes[i - offset]); }
 				}
 			}
 			mapped = next;
-			disposers = nextDisposers;
+			nodes = nextNodes;
 			offset = start;
 			len = newLen;
 			return mapped;
 		});
-	};
+	});
 }
