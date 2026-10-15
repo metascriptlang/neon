@@ -1,8 +1,8 @@
 // Neon's public surface. Platform hosts stay out on purpose — a program picks
 // exactly one and pays for exactly one.
 
-export { Signal, createSignal, untrack, batch, accessor, valueOf, Accessor, Setter } from "./core/signal";
-export { createEffect, createRenderEffect, onMount } from "./core/effect";
+export { Signal, createSignal, untrack, accessor, valueOf, Accessor, Setter } from "./core/signal";
+export { createEffect, createRenderEffect, onSettled, EffectOptions, EffectBundle } from "./core/effect";
 export { createMemo } from "./core/memo";
 export { createSelector } from "./core/selector";
 export { createRoot, runWithOwner, createUniqueId } from "./core/owner";
@@ -11,7 +11,7 @@ export { onCleanup } from "./core/cleanup";
 export { catchError } from "./core/error";
 export { mapArray, indexArray } from "./core/array";
 export { createList, List, ListOp, ListQueue } from "./core/list";
-export { Dispose } from "./core/types";
+export { Dispose, Cleanup } from "./core/types";
 
 export { Host, HostNode, NeonNode } from "./render/hostTypes";
 export { render, hydrate } from "./render/host";

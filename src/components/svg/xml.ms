@@ -6,6 +6,7 @@
 
 import { Accessor } from "../../core/signal";
 import { createRenderEffect } from "../../core/effect";
+import { Cleanup } from "../../core/types";
 import { Style } from "../../render/style";
 import { Host, HostNode } from "../../render/hostTypes";
 import { NeonNode } from "../../render/node";
@@ -216,24 +217,27 @@ function documentContent(xml: Accessor<string>, owned: string[]): NeonNode {
 	return (host: Host, parent: HostNode, before: HostNode | null): void => {
 		let placed: SvgNode[] = [];
 		let written: string[] = [];
-		createRenderEffect((): void => {
-			const doc = parseSvgXml(xml());
-			for (const n of placed) { host.removeChild(parent, n as unknown as HostNode); }
-			for (const name of written) { host.removeAttr(parent, name); }
-			placed = [];
-			written = [];
-			doc.attrs.forEach((value: string, name: string): void => {
-				if (owned.indexOf(name) >= 0) { return; }
-				host.setAttr(parent, name, value);
-				written.push(name);
-			});
-			const children: SvgNode[] = [];
-			for (const child of doc.children) { children.push(child); }
-			for (const child of children) {
-				host.insertBefore(parent, child as unknown as HostNode, before);
-				placed.push(child);
-			}
-		});
+		createRenderEffect<SvgNode>(
+			(prev: SvgNode | null): SvgNode => parseSvgXml(xml()),
+			(doc: SvgNode, prev: SvgNode | null): Cleanup | null => {
+				for (const n of placed) { host.removeChild(parent, n as unknown as HostNode); }
+				for (const name of written) { host.removeAttr(parent, name); }
+				placed = [];
+				written = [];
+				doc.attrs.forEach((value: string, name: string): void => {
+					if (owned.indexOf(name) >= 0) { return; }
+					host.setAttr(parent, name, value);
+					written.push(name);
+				});
+				const children: SvgNode[] = [];
+				for (const child of doc.children) { children.push(child); }
+				for (const child of children) {
+					host.insertBefore(parent, child as unknown as HostNode, before);
+					placed.push(child);
+				}
+				return null;
+			},
+		);
 	};
 }
 

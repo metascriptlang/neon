@@ -1,5 +1,6 @@
 import { Accessor, Signal, accessor, untrack } from "../core/signal";
 import { createRenderEffect } from "../core/effect";
+import { Cleanup } from "../core/types";
 import { Animated, AnimatedValue, EndResult, Easing } from "../animation/index";
 import { Navigation, NavigatorCore, StackAnimation } from "./core";
 
@@ -163,10 +164,15 @@ export function createNavigatorMotion<P>(
 	stacked: boolean,
 ): NavigatorMotion<P> {
 	const motion = new NavigatorMotion<P>(core, stacked);
-	createRenderEffect((): void => {
-		const list = core.entries();
-		const at = core.index();
-		untrack((): void => { motion.changed(list, at); });
-	});
+	createRenderEffect<Navigation<P>[]>(
+		(prev: Navigation<P>[] | null): Navigation<P>[] => {
+			core.index();
+			return core.entries();
+		},
+		(list: Navigation<P>[], prev: Navigation<P>[] | null): Cleanup | null => {
+			motion.changed(list, core.index());
+			return null;
+		},
+	);
 	return motion;
 }

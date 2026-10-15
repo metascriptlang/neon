@@ -1,5 +1,6 @@
 import { Accessor, Setter, accessor, batch, createSignal, untrack } from "../core/signal";
 import { createRenderEffect } from "../core/effect";
+import { Cleanup } from "../core/types";
 import { Animated, AnimatedValue, EndResult, Easing } from "../animation/index";
 import {
 	GestureResponderHandlers,
@@ -199,15 +200,11 @@ function drawerMotion<P>(
 	});
 	const setOpen = (next: boolean): void => { writeOpen(next); };
 	const motion = new DrawerMotion(open, setOpen, right, width, swipe);
-	let first = true;
-	createRenderEffect((): void => {
-		const shown = open();
-		if (first) {
-			first = false;
-			return;
-		}
-		untrack((): void => { motion.run(shown); });
-	});
+	createRenderEffect<boolean>(
+		(prev: boolean | null): boolean => open(),
+		(shown: boolean, prev: boolean | null): Cleanup | null => { motion.run(shown); return null; },
+		{ defer: true },
+	);
 	return motion;
 }
 

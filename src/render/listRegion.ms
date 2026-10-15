@@ -1,6 +1,8 @@
 import { createRenderEffect } from "../core/effect";
+import { Cleanup } from "../core/types";
 import { onCleanup } from "../core/cleanup";
-import { createRoot } from "../core/owner";
+import { createRoot, runWithOwner } from "../core/owner";
+import { getOwner } from "../core/runtime";
 import { Accessor, Signal, accessor, untrack } from "../core/signal";
 import { List, ListOp, listInsert, listMove, listRemove, listSet } from "../core/list";
 import { Host, HostNode, NeonNode } from "./hostTypes";
@@ -42,7 +44,7 @@ function buildRow<Item>(
 ): void {
 	const r = createRoot((d) => {
 		dispStore.push(d);
-		const cell = new Signal<Item>(v);
+		const cell = new Signal<Item>(v, null, true);
 		cellStore.push(cell);
 		return makeRow(g.row(accessor((): Item => cell.get())));
 	});
@@ -59,7 +61,7 @@ function buildRowAt<Item>(
 ): void {
 	const r = createRoot((d) => {
 		dispStore[i] = d;
-		const cell = new Signal<Item>(v);
+		const cell = new Signal<Item>(v, null, true);
 		cellStore[i] = cell;
 		return makeRow(g.row(accessor((): Item => cell.get())));
 	});
@@ -251,21 +253,25 @@ export function listRegion<Item>(
 
 		// The queue is taken before it is applied, not cleared after: an op that raises inside a row
 		// body then leaves the region inconsistent and loud, never re-applied on the next bump.
-		createRenderEffect(() => {
-			const items = list.read();
-			const pending = q.ops;
-			const fromReset = q.reset;
-			q.ops = [];
-			q.reset = false;
-			untrack((): number => {
-				if (fromReset) {
-					resetTo<Item>(g, items);
-				} else {
-					for (let k = 0; k < pending.length; k += 1) { applyOp<Item>(g, pending[k]); }
-				}
-				return 0;
-			});
-		});
+		const owner = getOwner();
+		createRenderEffect<Item[]>(
+			(prev: Item[] | null): Item[] => list.read(),
+			(items: Item[], prev: Item[] | null): Cleanup | null => {
+				const pending = q.ops;
+				const fromReset = q.reset;
+				q.ops = [];
+				q.reset = false;
+				runWithOwner(owner, (): number => {
+					if (fromReset) {
+						resetTo<Item>(g, items);
+					} else {
+						for (let k = 0; k < pending.length; k += 1) { applyOp<Item>(g, pending[k]); }
+					}
+					return 0;
+				});
+				return null;
+			},
+		);
 		sealRegion(host, parent, anchor);
 	};
 }

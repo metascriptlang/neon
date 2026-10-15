@@ -77,7 +77,7 @@ function mapArrayBy<T, K, U>(list: () => T[], keysOf: (items: T[]) => KeyScan<K>
 			const cell: IndexCell = { pos, getter: null, setter: null };
 			const index = accessor((): number => {
 				if (cell.getter === null) {
-					const [g, s] = createSignal(cell.pos);
+					const [g, s] = createSignal(cell.pos, { ownedWrite: true });
 					cell.getter = g;
 					cell.setter = s;
 				}
@@ -230,7 +230,7 @@ export function indexArray<T, U>(list: () => T[], mapFn: (v: Accessor<T>, index:
 	function makeRowInto(item: T, pos: number, mapStore: U[], dispStore: (() => void)[], setStore: Setter<T>[]): void {
 		const row = createRoot((d) => {
 			dispStore.push(d);
-			const [val, setVal] = createSignal(item);
+			const [val, setVal] = createSignal(item, { ownedWrite: true });
 			setStore.push(setVal);
 			return mapFn(val, pos);
 		});

@@ -4,6 +4,7 @@
 // list only known at runtime (src/components/primitives.ms).
 
 import { createRenderEffect } from "../core/effect";
+import { Cleanup } from "../core/types";
 import { Style } from "./style";
 import { NeonEvent } from "./event";
 import { Host, HostNode, NeonNode, RefFn } from "./hostTypes";
@@ -106,10 +107,14 @@ function serverRegion(host: Host, parent: HostNode, before: HostNode | null, fn:
 	const rows = fn(host);
 	let next: Row[] = [];
 	let written = false;
-	createRenderEffect(() => {
-		if (written) { throw new Error("SSR: a region's rows changed after the server wrote it; set the signal before the content that reads it"); }
-		next = rows();
-	});
+	createRenderEffect<Row[]>(
+		(prev: Row[] | null): Row[] => rows(),
+		(value: Row[], prev: Row[] | null): Cleanup | null => {
+			if (written) { throw new Error("SSR: a region's rows changed after the server wrote it; set the signal before the content that reads it"); }
+			next = value;
+			return null;
+		},
+	);
 	let shown: Row[] = [];
 	for (let pass = 0; !sameRows(next, shown); pass += 1) {
 		if (pass === 100) { throw new Error("SSR: a region's rows kept changing while it rendered"); }
@@ -139,11 +144,14 @@ export function regionNode(fn: RegionFn): NeonNode {
 		const anchor = regionAnchor(host, parent, before);
 		let current: Row[] = [];
 		const rows = fn(host);
-		createRenderEffect(() => {
-			const next = rows();
-			reconcileArrays(host, parent, current, next, anchor);
-			current = next.slice(0, next.length);
-		});
+		createRenderEffect<Row[]>(
+			(prev: Row[] | null): Row[] => rows(),
+			(next: Row[], prev: Row[] | null): Cleanup | null => {
+				reconcileArrays(host, parent, current, next, anchor);
+				current = next.slice(0, next.length);
+				return null;
+			},
+		);
 		sealRegion(host, parent, anchor);
 	};
 }

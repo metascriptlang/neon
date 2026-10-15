@@ -4,6 +4,7 @@
 
 import { Accessor, accessor, untrack } from "../core/signal";
 import { createRenderEffect } from "../core/effect";
+import { Cleanup } from "../core/types";
 import { onCleanup } from "../core/cleanup";
 import { NeonNode } from "../render/node";
 import { Style } from "../render/style";
@@ -83,9 +84,13 @@ export function Carousel<T>(props: {
 		if (!untrack<boolean>(autoPlays) || held) { return; }
 		timer = setTimeout(advance, untrack<number>(interval)) as number;
 	};
-	createRenderEffect((): void => {
-		if (autoPlays()) { schedule(); } else { cancel(); }
-	});
+	createRenderEffect<boolean>(
+		(prev: boolean | null): boolean => autoPlays(),
+		(playing: boolean, prev: boolean | null): Cleanup | null => {
+			if (playing) { schedule(); } else { cancel(); }
+			return null;
+		},
+	);
 
 	const stateChanged = (state: PageScrollState): void => {
 		if (state === "dragging") {

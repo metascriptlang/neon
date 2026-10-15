@@ -1,5 +1,6 @@
 import { Accessor, Setter, Signal, accessor, batch, createSignal, untrack } from "../core/signal";
 import { createRenderEffect } from "../core/effect";
+import { Cleanup } from "../core/types";
 import { createRoot } from "../core/owner";
 import { onCleanup } from "../core/cleanup";
 import { NeonNode } from "../render/hostTypes";
@@ -525,19 +526,14 @@ export class Navigation<P> {
 		}
 		const wantFocus = event === "focus";
 		return createRoot((dispose: () => void): Unsubscribe => {
-			let first = true;
-			let last = false;
-			createRenderEffect((): void => {
-				const now = this.focusedNow();
-				if (first) {
-					first = false;
-					last = now;
-					return;
-				}
-				if (now === last) { return; }
-				last = now;
-				if (now === wantFocus) { untrack((): void => { notify(event); }); }
-			});
+			createRenderEffect<boolean>(
+				(prev: boolean | null): boolean => this.focusedNow(),
+				(now: boolean, prev: boolean | null): Cleanup | null => {
+					if (prev === null || now === (prev as boolean)) { return null; }
+					if (now === wantFocus) { notify(event); }
+					return null;
+				},
+			);
 			return dispose;
 		});
 	}
@@ -1203,22 +1199,15 @@ export function useNavigationState<T>(selector: (state: NavigationState) => T): 
 	return accessor((): T => selector(link.state()));
 }
 
-export function useFocusEffect(effect: () => (() => void) | null): void {
+export function useFocusEffect(effect: () => Cleanup | null): void {
 	const focused = currentScope("useFocusEffect").focused;
-	let cleanup: (() => void) | null = null;
-	const release = (): void => {
-		const done = cleanup;
-		cleanup = null;
-		if (done !== null) { (done as () => void)(); }
-	};
-	createRenderEffect((): void => {
-		if (focused()) {
-			untrack((): void => { cleanup = effect(); });
-		} else {
-			untrack((): void => { release(); });
-		}
-	});
-	onCleanup(release);
+	createRenderEffect<boolean>(
+		(prev: boolean | null): boolean => focused(),
+		(isFocused: boolean, prev: boolean | null): Cleanup | null => {
+			if (isFocused) { return effect(); }
+			return null;
+		},
+	);
 }
 
 export function useTheme(): Accessor<Theme> {

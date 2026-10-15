@@ -1,5 +1,6 @@
-import { Accessor, Signal, accessor, untrack } from "../core/signal";
+import { Accessor, Signal, accessor } from "../core/signal";
 import { createEffect } from "../core/effect";
+import { Cleanup } from "../core/types";
 import { onCleanup } from "../core/cleanup";
 import { Host, HostNode, NeonNode } from "../render/hostTypes";
 import { MockNode, mockHost, mockNode } from "../render/host";
@@ -28,7 +29,7 @@ export class ScreenCollection<P> {
 	host: Host;
 	parent: MockNode;
 	entries: RegisteredScreen<P>[] = [];
-	version: Signal<int32> = new Signal<int32>(0);
+	version: Signal<int32> = new Signal<int32>(0, null, true);
 
 	constructor() {
 		this.host = mockHost();
@@ -145,10 +146,10 @@ export function collectScreens<P>(
 }
 
 export function watchScreens<P>(collection: ScreenCollection<P>, core: NavigatorCore<P>): void {
-	createEffect((): void => {
-		const screens = collection.read();
-		untrack((): void => core.reconfigure(screens));
-	});
+	createEffect<ScreenConfig<P>[]>(
+		(prev: ScreenConfig<P>[] | null): ScreenConfig<P>[] => collection.read(),
+		(screens: ScreenConfig<P>[], prev: ScreenConfig<P>[] | null): Cleanup | null => { core.reconfigure(screens); return null; },
+	);
 }
 
 export function screenOf<P>(

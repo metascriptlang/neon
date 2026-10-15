@@ -5,6 +5,7 @@
 
 import { Accessor, accessor, createSignal, untrack } from "../core/signal";
 import { createRenderEffect } from "../core/effect";
+import { Cleanup } from "../core/types";
 import { onCleanup } from "../core/cleanup";
 import { For } from "../macros/ui/flow";
 import { element } from "../macros/ui/element";
@@ -73,14 +74,9 @@ export function Collapsible(props: {
 			if (onAnimationEnd !== null) { (onAnimationEnd as () => void)(); }
 		});
 	};
-	let first = true;
-	createRenderEffect((): void => {
-		const closing = collapsed();
-		if (first) {
-			first = false;
-			return;
-		}
-		untrack<number>((): number => {
+	createRenderEffect<boolean>(
+		(prev: boolean | null): boolean => collapsed(),
+		(closing: boolean, prev: boolean | null): Cleanup | null => {
 			setMoving(true);
 			if (closing) {
 				run(0);
@@ -88,9 +84,10 @@ export function Collapsible(props: {
 				setOpen(true);
 				if (measured() > 0) { run(1); } else { waiting = true; }
 			}
-			return 0;
-		});
-	});
+			return null;
+		},
+		{ defer: true },
+	);
 
 	const outer = accessor((): Style => {
 		const user = props.style;

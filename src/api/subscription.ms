@@ -1,7 +1,7 @@
 import { Accessor } from "../core/signal";
 import { createRoot } from "../core/owner";
 import { createRenderEffect } from "../core/effect";
-import { untrack } from "../core/signal";
+import { Cleanup } from "../core/types";
 
 export interface EventSubscription {
 	remove: () => void;
@@ -45,15 +45,11 @@ export class Listeners<T> {
 
 export function onChange<T>(source: Accessor<T>, changed: (value: T) => void): EventSubscription {
 	return createRoot((dispose: () => void): EventSubscription => {
-		let first = true;
-		createRenderEffect((): void => {
-			const value = source();
-			if (first) {
-				first = false;
-				return;
-			}
-			untrack((): void => { changed(value); });
-		});
+		createRenderEffect<T>(
+			(prev: T | null): T => source(),
+			(value: T, prev: T | null): Cleanup | null => { changed(value); return null; },
+			{ defer: true },
+		);
 		return { remove: dispose };
 	});
 }

@@ -4,7 +4,7 @@
 import { NeonEvent } from "../render/event";
 import { Style, layerStyles } from "../render/style";
 import { createRenderEffect } from "../core/effect";
-import { onCleanup } from "../core/cleanup";
+import { Cleanup } from "../core/types";
 import { Accessor, accessor } from "../core/signal";
 import { element } from "../macros/ui/element";
 import { Show } from "../macros/ui/flow";
@@ -66,11 +66,14 @@ export function autoDismiss(
 	duration: () => int32,
 	onDismiss: (() => void) | null,
 ): void {
-	createRenderEffect((): void => {
-		if (!visible() || onDismiss === null) { return; }
-		const id = setTimeout((): void => { (onDismiss as () => void)(); }, duration()) as int32;
-		onCleanup((): void => { clearTimeout(id); });
-	});
+	createRenderEffect<int32>(
+		(prev: int32 | null): int32 => visible() && onDismiss !== null ? duration() : -1,
+		(wait: int32, prev: int32 | null): Cleanup | null => {
+			if (wait < 0) { return null; }
+			const id = setTimeout((): void => { (onDismiss as () => void)(); }, wait) as int32;
+			return (): void => { clearTimeout(id); };
+		},
+	);
 }
 
 export function Snackbar(props: SnackbarProps): NeonNode {

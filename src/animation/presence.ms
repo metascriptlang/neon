@@ -1,5 +1,6 @@
 import { Accessor, accessor, createSignal, untrack } from "../core/signal";
 import { createRenderEffect } from "../core/effect";
+import { Cleanup } from "../core/types";
 import { element } from "../macros/ui/element";
 import { Show } from "../macros/ui/flow";
 import { NeonNode } from "../render/node";
@@ -42,17 +43,12 @@ export function Presence(props: PresenceProps): NeonNode {
 	const progress = new AnimatedValue(initial ? 1 : 0);
 	const [mounted, setMounted] = createSignal(initial);
 	let running: CompositeAnimation | null = null;
-	let first = true;
 	const kind = (): PresenceType => type === null ? "fade" : (type as Accessor<PresenceType>)();
 	const ms = (): number => duration === null ? 220 : (duration as Accessor<number>)();
 	const span = (): number => distance === null ? 24 : (distance as Accessor<number>)();
-	createRenderEffect((): void => {
-		const show = when();
-		if (first) {
-			first = false;
-			return;
-		}
-		untrack((): void => {
+	createRenderEffect<boolean>(
+		(prev: boolean | null): boolean => when(),
+		(show: boolean, prev: boolean | null): Cleanup | null => {
 			if (running !== null) { (running as CompositeAnimation).stop(); }
 			if (show) { setMounted(true); }
 			const animation = Animated.timing(progress, {
@@ -71,8 +67,10 @@ export function Presence(props: PresenceProps): NeonNode {
 					if (onExited !== null) { (onExited as () => void)(); }
 				}
 			});
-		});
-	});
+			return null;
+		},
+		{ defer: true },
+	);
 	const box = accessor((): Style => {
 		const p = progress.get();
 		const base: Style = style === null ? {} : (style as Accessor<Style>)();

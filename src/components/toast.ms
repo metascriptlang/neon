@@ -4,7 +4,7 @@
 
 import { Style, layerStyles } from "../render/style";
 import { createRenderEffect } from "../core/effect";
-import { onCleanup } from "../core/cleanup";
+import { Cleanup } from "../core/types";
 import { Accessor, accessor, createSignal } from "../core/signal";
 import { element } from "../macros/ui/element";
 import { Show } from "../macros/ui/flow";
@@ -150,14 +150,16 @@ export function ToastHost(props: ToastHostProps): NeonNode {
 		</View>
 	</Show>);
 	return (host: Host, parent: HostNode, before: HostNode | null): void => {
-		createRenderEffect((): void => {
-			const t = shown();
-			if (t === null || !(t as ToastShown).autoHide) { return; }
-			const id = setTimeout((): void => {
-				if (shown() === t) { setShown(null); }
-			}, (t as ToastShown).visibilityTime) as int32;
-			onCleanup((): void => { clearTimeout(id); });
-		});
+		createRenderEffect<ToastShown | null>(
+			(prev: ToastShown | null): ToastShown | null => shown(),
+			(t: ToastShown | null, prev: ToastShown | null): Cleanup | null => {
+				if (t === null || !(t as ToastShown).autoHide) { return null; }
+				const id = setTimeout((): void => {
+					if (shown() === t) { setShown(null); }
+				}, (t as ToastShown).visibilityTime) as int32;
+				return (): void => { clearTimeout(id); };
+			},
+		);
 		view(host, parent, before);
 	};
 }
