@@ -16,8 +16,17 @@ The code is the truth for everything else: `src/platform/void/host.ms` (`refresh
   terminal and editor lines. A span is the data form of a nested `<Text>`.
   - On a host with the `setSpans` capability (Void), the spans go straight into the paragraph's runs, with no
     node per span.
-  - On any other host, `src/components/primitives.ms` `spanNodes` lays them out as nested Texts, keeping each
+  - On any other host, `src/render/spanHost.ms` `spanNodes` lays them out as nested Texts, keeping each
     span's nodes by position.
+- **One mechanism for both doors**, decided 2026-10-15. This is RN Fabric's, where nested `<Text>` and `RawText` are
+  shadow nodes with no view, and `ParagraphShadowNode` flattens them into one `AttributedString`.
+  - On a host with `setSpans`, a Text's children render into `SPAN_HOST` (`src/render/spanHost.ms`), whose nodes are
+    plain records. The outermost Text flattens its records and hands the host the same `TextSpan[]` the `spans`
+    prop does.
+  - It does that once per update, from a deferred `createEffect` that runs after every render effect of the update.
+    A paragraph of one string skips the effect and goes straight to the host.
+  - Hosts that draw nested text as real nodes keep them: DOM and SSR (`<span>`s, CSS classes, hydration), the mock
+    host and, until per-span press moves to `setSpans`, native.
   - Rejected: `runs` as `{ len, color… }` beside one string. Its only gain is skipping a substring per span
     (about 0.05 ms per frame, measured below). Against that, the lengths must sum to the string's UTF-16 length,
     a terminal parser that counts code points breaks it, and the fields are void2d's rather than Text's.
@@ -75,9 +84,8 @@ React Native `18f5ddb`, react-native-windows `1f59db1`, Flutter `6f0e0db`, Skia 
 
 ## Void today
 
-`createVoidHostWith` gives each outermost `<Text>` one void2d label. Strings and nested Texts inside it are spans with
-no scene node: a span's handle is a freed row, so any use of it fails loud. The label wraps at the Text's laid width.
-It gets runs only once a span styles a piece.
+`createVoidHostWith` gives each `<Text>` one void2d label, filled through `setSpans`; a Text has no host children,
+and `append` into one is refused. The label wraps at the Text's laid width. It gets runs only once a span is styled.
 
 Refused by name until the slice that adds each one:
 - a `View` inside a `Text` (inline views);
@@ -125,7 +133,7 @@ All 80 rows new text is slower by about the cost of wrapping, which the void2d r
 label never wrapped.
 
 Spans against plain text, 80 rows of 120 characters all new every frame, 400 frames, two alternating runs, tree
-`9ef44f1a`. The probe is `tests/zzprobe/spansBench.ms`, uncommitted.
+`9ef44f1a`, before nested Texts moved onto `SPAN_HOST`. The probe is `tests/zzprobe/spansBench.ms`, uncommitted.
 
 | rows | ms per frame | building the lines | reactive set |
 |---|---|---|---|
@@ -133,6 +141,18 @@ Spans against plain text, 80 rows of 120 characters all new every frame, 400 fra
 | 8 spans of 15 characters, two shared styles | 3.59–3.74 | 0.38–0.40 | 0.22–0.24 |
 
 Off-screen rows cost nothing: the list is virtualized, holding only the visible lines.
+
+The same 80×120 rows with 8 spans per row written as nested JSX `<Text>`, three pairs of `main` (`8d5c0cf`) and
+`SPAN_HOST` run alternately on a busy box:
+
+| rows | `main` | `SPAN_HOST` |
+|---|---|---|
+| plain text | 3.44–3.71 ms | 3.40–3.51 ms |
+| spans | 3.76–4.11 ms | 3.72–3.75 ms |
+| nested JSX | 5.86–7.04 ms (reactive set 2.30–2.96) | 4.08–4.22 ms (reactive set 0.60–0.67) |
+
+On `main`, each of a row's eight string bindings rebuilt the paragraph on its own, so a row was rebuilt eight times
+per frame.
 
 ## Order
 
