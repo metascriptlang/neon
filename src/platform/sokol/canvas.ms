@@ -1,6 +1,6 @@
 import { gfxSetup, fbWidth, fbHeight, dpiScale } from "../../../../void/src/sokol/gpu";
 import { setup2d } from "../../../../void/src/void2d/draw";
-import { addFont, FontId } from "../../../../void/src/void2d/font";
+import { addFont, registerFace, FontId, FontStyle as FaceStyle } from "../../../../void/src/void2d/font";
 import { present } from "../../../../void/src/void2d/scene";
 import { Host, HostNode, NeonNode, render } from "../../render/host";
 import {
@@ -36,6 +36,7 @@ export function canvasOptions(width: number, height: number): CanvasOptions {
 interface Canvas {
 	app: () => NeonNode;
 	font: FontId;
+	family: string;
 	area: WindowArea | null;
 	owed: boolean;
 	dispose: (() => void) | null;
@@ -57,6 +58,7 @@ function canvasHost(c: Canvas): Host {
 	return windowHost({
 		name: "sokol canvas",
 		font: c.font,
+		family: c.family,
 		pixelWidth: (): int32 => fbWidth(),
 		pixelHeight: (): int32 => fbHeight(),
 		requestFrame: (): void => { c.owed = true; },
@@ -108,7 +110,8 @@ export function runCanvas(opts: CanvasOptions, app: () => NeonNode): int32 {
 		console.log(`neon: cannot load the font ${opts.font}: ${font.error.toString()}`);
 		return 3;
 	}
-	_canvas = { app, font: font.value, area: null, owed: true, dispose: null };
+	registerFace(opts.font, opts.font, 400, FaceStyle.Normal);
+	_canvas = { app, font: font.value, family: opts.font, area: null, owed: true, dispose: null };
 	voidRun(opts.width as int32, opts.height as int32, initCanvas, frameCanvas);
 	const c = running();
 	if (c.dispose !== null) { (c.dispose as () => void)(); }
