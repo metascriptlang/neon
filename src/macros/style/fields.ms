@@ -45,13 +45,13 @@ export const STYLE_TABLE: string[][] = [
 	["opacity",             "number",            "num",  "paint",  "paint"],
 	["color",               "string",            "word", "paint",  "paint"],
 	["fontSize",            "number",            "len",  "paint",  "ignore"],
-	["fontWeight",          "FontWeight",        "word", "ignore", "paint"],
+	["fontWeight",          "FontWeight",        "word", "paint",  "paint"],
 	["letterSpacing",       "number",            "len",  "ignore", "ignore"],
 	["lineHeight",          "number",            "len",  "ignore", "ignore"],
 	["textAlign",           "TextAlign",         "word", "ignore", "ignore"],
 	["overflow",            "Overflow",          "word", "enum",   "ignore"],
 	["zIndex",              "number",            "num",  "paint",  "ignore"],
-	["fontFamily",          "string",            "word", "ignore", "ignore"],
+	["fontFamily",          "string",            "word", "paint",  "ignore"],
 	["transform",           "string",            "word", "ignore", "ignore"],
 	["cursor",              "string",            "word", "ignore", "ignore"],
 	["boxShadow",           "string",            "word", "ignore", "ignore"],
@@ -59,8 +59,9 @@ export const STYLE_TABLE: string[][] = [
 	["transition",          "string",            "word", "ignore", "ignore"],
 	["filter",              "string",            "word", "ignore", "ignore"],
 	["pointerEvents",       "string",            "word", "ignore", "ignore"],
-	["fontStyle",           "FontStyle",         "word", "ignore", "paint"],
-	["textDecorationLine",  "TextDecorationLine", "word", "ignore", "paint"],
+	["fontStyle",           "FontStyle",         "word", "paint",  "paint"],
+	["textDecorationLine",  "TextDecorationLine", "word", "paint",  "paint"],
+	["textDecorationStyle", "TextDecorationStyle", "word", "paint", "ignore"],
 ];
 
 export const STYLE_CLASS_FIELDS: string[][] = [
