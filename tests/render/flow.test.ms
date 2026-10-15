@@ -1,7 +1,7 @@
 import { el, text, dynText, NeonNode } from "../../src/render/node";
 import { MockNode, mockHost, render, mockToString } from "../../src/render/host";
 import { Host, HostNode } from "../../src/render/hostTypes";
-import { For, Index, Show } from "../../src/macros/ui/flow";
+import { For, ForKeyedBy, Index, Show } from "../../src/macros/ui/flow";
 import { createSignal, accessor, Accessor } from "../../src/core/signal";
 import { element } from "../../src/macros/ui/element";
 import { createComponent } from "../../src/render/component";
@@ -377,56 +377,86 @@ interface Keyed {
 	label: string;
 }
 
-function keyedRow(r: Keyed, i: Accessor<number>): NeonNode {
-	return element(<li>{r.label}</li>);
+function keyedRow(r: Accessor<Keyed>, i: Accessor<number>): NeonNode {
+	return element(<li>{r().label}</li>);
 }
 
-test "For with a key reuses rows across fresh objects that carry the same keys" {
-	const [rows, setRows] = createSignal<Keyed[]>([{ id: 1, label: "a" }, { id: 2, label: "b" }]);
-	let builds = 0;
-	const row = (r: Keyed, i: Accessor<number>): NeonNode => { builds = builds + 1; return element(<li>{r.label}</li>); };
-	const [view, d] = mountedText(element(<ul><For each={rows()} key={(r: Keyed): number => r.id}>{row}</For></ul>));
-	assert view().indexOf("a") >= 0 && view().indexOf("b") >= 0, "both rows rendered: " + view();
-	assert builds === 2, "two rows built";
-	setRows([{ id: 2, label: "b2" }, { id: 1, label: "a2" }]);
-	assert builds === 2, "a reorder of fresh objects with the same keys builds nothing";
-	assert view().indexOf("b") < view().indexOf("a"), "the rows moved, not rebuilt: " + view();
-	d();
+function keyOf(r: Keyed): number {
+	return r.id;
 }
 
-test "For with a key inserts and removes by key" {
-	const [rows, setRows] = createSignal<Keyed[]>([{ id: 1, label: "a" }, { id: 2, label: "b" }]);
-	let builds = 0;
-	const row = (r: Keyed, i: Accessor<number>): NeonNode => { builds = builds + 1; return element(<li>{r.label + i.toString()}</li>); };
-	const [view, d] = mountedText(element(<ul><For each={rows()} key={(r: Keyed): number => r.id}>{row}</For></ul>));
-	assert builds === 2, "two rows built";
-	setRows([{ id: 3, label: "c" }, { id: 1, label: "a" }, { id: 2, label: "b" }]);
-	assert builds === 3, "one build for the inserted key";
-	assert view().indexOf("c0") >= 0 && view().indexOf("a1") >= 0 && view().indexOf("b2") >= 0, "indexes follow the move: " + view();
-	setRows([{ id: 2, label: "b" }]);
-	assert builds === 3, "removal builds nothing";
-	assert view().indexOf("b0") >= 0 && view().indexOf("a") < 0, "only the survivor is left: " + view();
-	d();
-}
-
-test "For with a key refuses two rows sharing a key" {
-	const [rows, setRows] = createSignal<Keyed[]>([{ id: 1, label: "a" }, { id: 1, label: "b" }]);
-	let caught = "";
-	try {
-		const [view, d] = mountedText(element(<ul><For each={rows()} key={(r: Keyed): number => r.id}>{keyedRow}</For></ul>));
-		view();
+test "ForKeyedBy reuses rows across fresh objects that carry the same keys and shows their new items" {
+	createRoot((d) => {
+		const [rows, setRows] = createSignal<Keyed[]>([{ id: 1, label: "a" }, { id: 2, label: "b" }]);
+		let builds = 0;
+		const ul = el("ul", [], [], ForKeyedBy<Keyed, number>({
+			each: rows,
+			keyed: keyOf,
+			children: (r, i) => { builds = builds + 1; return <li>{r().label}</li>; },
+		}));
+		const host = mockHost();
+		const root = host.createElement("root");
+		render(ul, host, root);
+		const ulNode = (root as unknown as MockNode).children[0];
+		assert listText(ulNode) === "ab", "both rows rendered: " + listText(ulNode);
+		assert builds === 2, "two rows built";
+		setRows([{ id: 2, label: "b2" }, { id: 1, label: "a2" }]);
+		assert builds === 2, "a reorder of fresh objects with the same keys builds nothing";
+		assert listText(ulNode) === "b2a2", "the rows moved and show their new items: " + listText(ulNode);
 		d();
-	} catch (e) { caught = e.toString(); }
-	assert caught !== "", "a duplicate key raises through the tag";
-	assert caught.includes("1"), "the message names the key value: " + caught;
+	});
 }
 
-test "For takes a key beside a fallback" {
+test "ForKeyedBy inserts and removes by key and keeps the index accessor live" {
+	createRoot((d) => {
+		const [rows, setRows] = createSignal<Keyed[]>([{ id: 1, label: "a" }, { id: 2, label: "b" }]);
+		let builds = 0;
+		const ul = el("ul", [], [], ForKeyedBy<Keyed, number>({
+			each: rows,
+			keyed: keyOf,
+			children: (r, i) => { builds = builds + 1; return <li>{r().label + i().toString()}</li>; },
+		}));
+		const host = mockHost();
+		const root = host.createElement("root");
+		render(ul, host, root);
+		const ulNode = (root as unknown as MockNode).children[0];
+		assert builds === 2, "two rows built";
+		setRows([{ id: 3, label: "c" }, { id: 1, label: "a" }, { id: 2, label: "b" }]);
+		assert builds === 3, "one build for the inserted key";
+		assert listText(ulNode) === "c0a1b2", "indexes follow the move: " + listText(ulNode);
+		setRows([{ id: 2, label: "b" }]);
+		assert builds === 3, "removal builds nothing";
+		assert listText(ulNode) === "b0", "only the survivor is left: " + listText(ulNode);
+		d();
+	});
+}
+
+test "ForKeyedBy takes a string key and pairs rows sharing a key by occurrence" {
+	createRoot((d) => {
+		const [rows, setRows] = createSignal<Keyed[]>([{ id: 1, label: "a" }, { id: 1, label: "b" }]);
+		let builds = 0;
+		const ul = el("ul", [], [], ForKeyedBy<Keyed, string>({
+			each: rows,
+			keyed: (r: Keyed): string => "k" + r.id.toString(),
+			children: (r, i) => { builds = builds + 1; return <li>{r().label}</li>; },
+		}));
+		const host = mockHost();
+		const root = host.createElement("root");
+		render(ul, host, root);
+		const ulNode = (root as unknown as MockNode).children[0];
+		assert listText(ulNode) === "ab" && builds === 2, "a shared key mounts both rows: " + listText(ulNode);
+		setRows([{ id: 1, label: "b2" }]);
+		assert listText(ulNode) === "b2" && builds === 2, "the first row of the key stays and shows the new item: " + listText(ulNode);
+		d();
+	});
+}
+
+test "ForKeyedBy takes a fallback" {
 	createRoot((d) => {
 		const [rows, setRows] = createSignal<Keyed[]>([]);
-		const ul = el("ul", [], [], For<Keyed>({
+		const ul = el("ul", [], [], ForKeyedBy<Keyed, number>({
 			each: rows,
-			key: (r: Keyed): number => r.id,
+			keyed: keyOf,
 			children: keyedRow,
 			fallback: <li>empty</li>,
 		}));

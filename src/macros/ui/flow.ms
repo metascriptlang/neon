@@ -1,15 +1,10 @@
-// Control flow — For / Index / Show. Each returns a region NeonNode. The reactive
-// engines (mapArray/indexArray) and the host reconciler do the work; these are thin
-// wrappers, mirroring the reference's
-// <For>/<Index>/<Show> = thin wrappers over the array helpers + a condition memo.
-// A row is described here and mounted by the reconciler at its final position, so
-// nothing below touches the host.
+// Control flow — For / ForKeyedBy / ForUnkeyed / Repeat / Show. Each returns a region NeonNode;
+// the engines in core/array.ms and the host reconciler do the work. A row is described here and
+// mounted by the reconciler at its final position, so nothing below touches the host.
 
-import { mapArray, mapArrayKeyed, indexArray } from "../../core/array";
+import { mapArray, mapArrayKeyedBy, mapArrayByPosition, repeat } from "../../core/array";
 import { createMemo } from "../../core/memo";
 import { Accessor, createSignal } from "../../core/signal";
-import { createRoot } from "../../core/owner";
-import { onCleanup } from "../../core/cleanup";
 import { catchError } from "../../core/error";
 import { NeonNode, regionNode } from "../../render/node";
 import { Host, HostNode } from "../../render/hostTypes";
@@ -17,46 +12,62 @@ import { Row, makeRow } from "../../render/reconcile";
 import { List } from "../../core/list";
 import { listRegion } from "../../render/listRegion";
 
-// Wrap a row list with an empty-state fallback. The fallback lives in its own root and is
-// disposed the moment rows return (and rebuilt on the next empty), so it never leaks.
-function withFallback(mapped: () => Row[], fb: NeonNode): () => Row[] {
-	let fbRow: Row | null = null;
-	let fbDispose: (() => void) | null = null;
-	onCleanup(() => { if (fbDispose !== null) { fbDispose(); fbDispose = null; fbRow = null; } });
-	return () => {
-		const rows = mapped();
-		if (rows.length > 0) {
-			if (fbDispose !== null) { fbDispose(); fbDispose = null; fbRow = null; }
-			return rows;
-		}
-		if (fbRow === null) {
-			fbRow = createRoot((d) => { fbDispose = d; return makeRow(fb); });
-		}
-		return [fbRow as Row];
-	};
+function fallbackRow(fb: NeonNode | null): (() => Row) | null {
+	if (fb === null) { return null; }
+	const view = fb as NeonNode;
+	return (): Row => makeRow(view);
 }
 
-// Value-keyed list: rows reused by item identity, or by key when one is given; reorder
-// moves DOM, never rebuilds.
 export function For<T>(props: {
 	each: Accessor<T[]>;
 	children: (item: T, index: Accessor<number>) => NeonNode;
-	key?: ((item: T) => number) | null;
-	usesIndex?: boolean | null;
 	fallback?: NeonNode | null;
 }): NeonNode {
-	return regionNode((h) => {
-		const keyOf = props.key;
-		const declared = props.usesIndex;
-		const usesIndex = declared === null ? true : (declared as boolean);
-		const row = (item: T, idx: Accessor<number>): Row => makeRow(props.children(item, idx));
-		const mapped = keyOf === null
-			? mapArray<T, Row>(props.each, row, usesIndex)
-			: mapArrayKeyed<T, Row>(props.each, keyOf as (item: T) => number, row, usesIndex);
-		const fb = props.fallback;
-		if (fb === null) { return mapped; }
-		return withFallback(mapped, fb as NeonNode);
-	});
+	return regionNode((h) => mapArray<T, Row>(
+		props.each,
+		(item: T, index: Accessor<number>): Row => makeRow(props.children(item, index)),
+		fallbackRow(props.fallback),
+	));
+}
+
+export function ForKeyedBy<T, K>(props: {
+	each: Accessor<T[]>;
+	keyed: (item: T) => K;
+	children: (item: Accessor<T>, index: Accessor<number>) => NeonNode;
+	fallback?: NeonNode | null;
+}): NeonNode {
+	return regionNode((h) => mapArrayKeyedBy<T, K, Row>(
+		props.each,
+		props.keyed,
+		(item: Accessor<T>, index: Accessor<number>): Row => makeRow(props.children(item, index)),
+		fallbackRow(props.fallback),
+	));
+}
+
+export function ForUnkeyed<T>(props: {
+	each: Accessor<T[]>;
+	children: (item: Accessor<T>, index: number) => NeonNode;
+	fallback?: NeonNode | null;
+}): NeonNode {
+	return regionNode((h) => mapArrayByPosition<T, Row>(
+		props.each,
+		(item: Accessor<T>, index: number): Row => makeRow(props.children(item, index)),
+		fallbackRow(props.fallback),
+	));
+}
+
+export function Repeat(props: {
+	count: Accessor<number>;
+	from?: Accessor<number> | null;
+	fallback?: NeonNode | null;
+	children: (index: number) => NeonNode;
+}): NeonNode {
+	return regionNode((h) => repeat<Row>(
+		props.count,
+		(index: number): Row => makeRow(props.children(index)),
+		props.from,
+		fallbackRow(props.fallback),
+	));
 }
 
 export function ForList<T>(props: {
@@ -67,18 +78,12 @@ export function ForList<T>(props: {
 	return listRegion<T>(props.each, props.children, props.key);
 }
 
-// Index-keyed list: rows fixed per slot; value change updates the row's signal in place.
 export function Index<T>(props: {
 	each: Accessor<T[]>;
 	children: (item: Accessor<T>, index: number) => NeonNode;
 	fallback?: NeonNode | null;
 }): NeonNode {
-	return regionNode((h) => {
-		const mapped = indexArray<T, Row>(props.each, (item, idx) => makeRow(props.children(item, idx)));
-		const fb = props.fallback;
-		if (fb === null) { return mapped; }
-		return withFallback(mapped, fb as NeonNode);
-	});
+	return ForUnkeyed<T>(props);
 }
 
 export function ErrorBoundary(props: {
