@@ -8,6 +8,7 @@ import { createRoot } from "../../src/core/owner";
 import { createErrorBoundary } from "../../src/core/boundary";
 import { flush, resetErrorHalt } from "../../src/core/runtime";
 import { Cleanup } from "../../src/core/types";
+import { onCleanup } from "../../src/core/cleanup";
 
 function watch<T>(read: Accessor<T>): void {
 	createRenderEffect<T>((p: T | null): T => read(), (v: T, p: T | null): Cleanup | null => null);
@@ -428,4 +429,42 @@ test "reset while the source still fails keeps the fallback" {
 	(resetFn as () => void)();
 	flush();
 	assert result === "error try 2", "still failing after reset: " + result;
+}
+
+// boundaries.ts:575-580 a tree carrying a status is not read, so neither the fallback nor the error passing by re-runs the content;
+// :464-468 reset recomputes only the readers that failed. The content's owner, its siblings and their cleanups live through both.
+test "the content stays alive behind the fallback and reset recomputes only what failed" {
+	const [id, setId] = createSignal<string>("bad");
+	let siblingRuns = 0;
+	let siblingCleanups = 0;
+	let contentRuns = 0;
+	let result = "";
+	let resetFn: (() => void) | null = null;
+	createRoot((dispose) => {
+		const b = createErrorBoundary<string>(
+			(): string => {
+				contentRuns += 1;
+				const sibling = createMemo<int32>((p: int32 | null): int32 => { siblingRuns += 1; onCleanup((): void => { siblingCleanups += 1; }); return siblingRuns; });
+				const data = createMemo<string>((p: string | null): string => {
+					const now = id();
+					if (now !== "1") { throw new Error("Item " + now + " not found"); }
+					return "ok";
+				});
+				createRenderEffect<int32>((p: int32 | null): int32 => sibling(), (v: int32, p: int32 | null): Cleanup | null => null);
+				createRenderEffect<string>((p: string | null): string => data(), (v: string, p: string | null): Cleanup | null => null);
+				return "content";
+			},
+			(e: Accessor<Error>, reset: () => void): string => { resetFn = reset; return "error"; },
+		);
+		createRenderEffect<string>((p: string | null): string => { result = b(); return result; }, (v: string, p: string | null): Cleanup | null => null);
+		return 0;
+	});
+	flush();
+	assert result === "error", "failed: " + result;
+	assert contentRuns === 1 && siblingRuns === 1 && siblingCleanups === 0, "the content lives behind the fallback: " + contentRuns.toString() + "/" + siblingRuns.toString() + "/" + siblingCleanups.toString();
+	setId("1");
+	(resetFn as () => void)();
+	flush();
+	assert result === "content", "recovered: " + result;
+	assert contentRuns === 1 && siblingRuns === 1 && siblingCleanups === 0, "the sibling kept its state through reset: " + contentRuns.toString() + "/" + siblingRuns.toString() + "/" + siblingCleanups.toString();
 }
