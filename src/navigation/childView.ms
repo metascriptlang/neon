@@ -51,7 +51,10 @@ export function renderStack<C, T>(
 	stack: ChildStack<C, T>,
 	render: (child: NavigationChild<C, T>) => NeonNode,
 ): NeonNode {
-	return renderChildren<C, T>((): NavigationChild<C, T>[] => stack.items(), activeFrame<C, T>(render));
+	return renderChildren<C, T>(
+		(): NavigationChild<C, T>[] => stack.items(),
+		activeFrame<C, T>(render),
+	);
 }
 
 export function renderStackTop<C, T>(

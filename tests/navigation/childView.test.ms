@@ -1,6 +1,13 @@
 import { Accessor, Signal } from "../../src/core/signal";
 import { NeonNode } from "../../src/render/hostTypes";
-import { HostNode, MockNode, mockNode, mockHost, render, mockToString } from "../../src/render/host";
+import {
+	HostNode,
+	MockNode,
+	mockNode,
+	mockHost,
+	render,
+	mockToString,
+} from "../../src/render/host";
 import { NavigationChild } from "../../src/navigation/children";
 import { createChildStack } from "../../src/navigation/childStack";
 import { createChildPages } from "../../src/navigation/childPages";
@@ -53,7 +60,11 @@ test "a covered stack screen is hidden and keeps its state until it is uncovered
 }
 
 test "a tab keeps its component state across a switch away and back" {
-	const pages = createChildPages<string, string>({ items: ["feed", "inbox"], selectedIndex: 0 }, named, instance);
+	const pages = createChildPages<string, string>(
+		{ items: ["feed", "inbox"], selectedIndex: 0 },
+		named,
+		instance,
+	);
 	const root = mounted(renderPages<string, string>(pages, screen));
 	bump("feed");
 	assert visibleText(root) === "feed 1", visibleText(root);
