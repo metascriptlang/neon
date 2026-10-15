@@ -165,14 +165,22 @@ function spanNodes(read: Accessor<TextSpan[]>): NeonNode {
 		const shown: HostNode[] = [];
 		const words: HostNode[] = [];
 		const styles: (Style | null)[] = [];
+		let latest: TextSpan[] = [];
 		createBindingEffect((): void => {
 			const spans = read();
+			latest = spans;
 			for (let i = 0; i < spans.length; i += 1) {
 				const s = spans[i];
 				if (i >= shown.length) {
 					const el = host.createElement("text");
 					const word = host.createText(s.text);
 					host.append(el, word);
+					const at = i;
+					host.addEvent(el, "onPress", (e: NeonEvent): void => {
+						if (at >= latest.length) { return; }
+						const press = latest[at].onPress;
+						if (press !== null) { (press as (e: NeonEvent) => void)(e); }
+					});
 					host.insertBefore(parent, el, before);
 					shown.push(el);
 					words.push(word);

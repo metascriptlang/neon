@@ -4,6 +4,7 @@ import { MockNode, mockNode, mockHost, render, mockToString, HostNode } from "..
 import { Style } from "../../src/render/style";
 import { Text } from "../../src/components/primitives";
 import { TextSpan } from "../../src/render/hostTypes";
+import { NeonEvent, neonEvent } from "../../src/render/event";
 
 const RED: Style = { color: "#ff0000" };
 const BLUE: Style = { color: "#0000ff" };
@@ -38,4 +39,18 @@ test "a Text takes spans or children, not both" {
 		render(element(<Text spans={[{ text: "a" }]}>b</Text>), mockHost(), mockNode("root") as unknown as HostNode);
 	} catch (e) { message = e.message; }
 	assert message.indexOf("spans or children") >= 0, message;
+}
+
+test "on a host without setSpans, a span's onPress is its nested Text's press, and follows a new handler" {
+	const root: MockNode = mockNode("root");
+	let log = "";
+	const [spans, setSpans] = createSignal<TextSpan[]>([{ text: "a" }, { text: "b", onPress: (e: NeonEvent): void => { log += "first;"; } }]);
+	render(element(<Text spans={spans()} />), mockHost(), root as unknown as HostNode);
+	const second = root.children[0].children[1];
+	second.events[0].handler(neonEvent("press"));
+	setSpans([{ text: "a" }, { text: "b", onPress: (e: NeonEvent): void => { log += "second;"; } }]);
+	second.events[0].handler(neonEvent("press"));
+	setSpans([{ text: "a" }, { text: "b" }]);
+	second.events[0].handler(neonEvent("press"));
+	assert log === "first;second;", log;
 }
