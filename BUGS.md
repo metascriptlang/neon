@@ -183,6 +183,13 @@ and the invariants that outlived them were moved to the head of the test that pi
   `PrintWindow` at the start, after typing and after the resize. Not run: an IME, a DPI change.
   `tests/run.sh` builds the example on a Windows host and skips it by name elsewhere.
 
+- **PARKED 2026-10-16 — every `<NavigationContainer ref={…}>` stops the build.** Not Neon's: the element
+  macro reads a component's props through `getTypeImpl`, and `NavigationContainerRef` reaches itself through
+  `NavigatorLink`. msc then throws `getTypeImpl: unnamed or alias type cycle (Ref)` on any named class or
+  interface that refers to itself. Red on main `c1a28b8` with msc `0f8278bc`: 9 files of `tests/navigation/`
+  (auth, containerRouting, example, linking, nested, options, stack, state, transition) on native and JS, plus
+  the three `refresh … navigation.ms` runs. Card: `~/metascript/.inbox/compiler/2026-10-16-get-type-impl-self-reference-cycle.md`.
+
 - **PARKED 2026-10-15 — `tests/platform/voidInput.test.ms` aborts on C.** Not Neon's: after `default font
   assets/font.ttf did not load`, the native run panics with signal 6 in Void `wrapText`
   (`void/src/void2d/textLayout.ms:1366`), the empty-slice-to-`Span` case of compiler card
@@ -248,8 +255,9 @@ and the invariants that outlived them were moved to the head of the test that pi
   Neon's: Yoga `dba68fd` re-exports its enums from `Yoga.h`, and msc `013853dd` emits
   `export var YGAlign_YGAlignAuto` beside an export list that names `YGAlignAuto`, so node stops at
   `SyntaxError: Export 'YGAlignAuto' is not defined in module`. The same on an export of main
-  `4e33c9e`; the file was not in the known-red set of msc `227ebc34` with Yoga `f5a811d`. Card and
-  repro: `~/metascript/.inbox/compiler/2026-09-30-js-header-enum-reexport-exports-undefined-member.md`.
+  `4e33c9e`; the file was not in the known-red set of msc `227ebc34` with Yoga `f5a811d`. The first card
+  left the inbox while the bug stayed; still red on msc `0f8278bc`, where a direct import from the header
+  fails too. Card and repro: `~/metascript/.inbox/compiler/2026-10-16-js-header-enum-member-unbound.md`.
   Parked at that file's JS lane; nothing in Neon changes.
 
 - **PARKED 2026-09-25 — `tests/render/reconcile.test.ms` does not compile on the native lane since
