@@ -1,16 +1,20 @@
-import { createSignal } from "../../src/core/signal";
+import { createSignal, Accessor } from "../../src/core/signal";
 import { element } from "../../src/macros/ui/element";
 import { render } from "../../src/render/host";
 import { NeonEvent, neonEvent } from "../../src/render/event";
 import { View, Text, TextInput, Pressable } from "../../src/components/primitives";
+import { ForList } from "../../src/macros/ui/flow";
+import { createList } from "../../src/core/list";
+import { NeonNode } from "../../src/render/node";
 import {
 	createVoidHostWith, VoidHost, VoidNode, TextEditingValue, editingValue, CaretRect,
 } from "../../src/platform/void/host";
-import { Scene2D, NodeRef, text, paint, textStyle, local, getChildAt, clearChanges } from "../../../void/src/void2d/node";
+import { Scene2D, NodeRef, DrawKind, Changed, text, paint, textStyle, local, getChildAt, clearChanges } from "../../../void/src/void2d/node";
 import { create, paint as paintScene, isDirty } from "../../../void/src/void2d/scene";
 import { frameEnd } from "../../../void/src/void2d/draw";
 import { xForIndex, textWidth } from "../../../void/src/void2d/render";
 import { rgba } from "../../../void/src/void2d/types";
+import { labelTexts } from "../../../void/src/void2d/labelText";
 import { FontId, DEFAULT_FONT, addFont } from "../../../void/src/void2d/font";
 
 const FONT_PATH = "../void/assets/font.ttf";
@@ -395,4 +399,54 @@ test "a focused component places the IME rect with its imeRect prop, in its own 
 	r = vh.imeRect() as CaretRect;
 	assert r.x === 30.0, "the rect follows the signal: " + r.x.toString();
 	assert woke === 2, "moving it asks for a frame: " + woke.toString();
+}
+
+interface Line {
+	id: number;
+	text: string;
+}
+
+function lineRow(item: Accessor<Line>): NeonNode {
+	return element(<Text>{item().text}</Text>);
+}
+
+function shapeAll(n: VoidNode): void {
+	if (n.ref.kind() === DrawKind.Label) { n.ref.textWidth(); }
+	for (const c of n.children) { shapeAll(c); }
+}
+
+// Labels whose text or style changed since the last paint, or whose shaped layout is out of date.
+function textTouched(vh: VoidHost, n: VoidNode): number {
+	let count: number = 0;
+	if (n.ref.kind() === DrawKind.Label) {
+		const row = n.ref.id.index;
+		if (labelTexts[vh.scene.payloads[row]].stale || vh.scene.changed[row].has(Changed.Text)) { count = 1; }
+	}
+	for (const c of n.children) { count = count + textTouched(vh, c); }
+	return count;
+}
+
+test "a ForList scroll moves 59 of 60 rows without reshaping or rebuilding them" {
+	const vh = host();
+	const items: Line[] = [];
+	for (let i = 0; i < 60; i += 1) { items.push({ id: i, text: "row " + i.toString() }); }
+	const rows = createList<Line>(items);
+	render(element(<View style={{ width: 300, height: 1200 }}>{ForList<Line>({ each: rows, children: lineRow })}</View>), vh.host, vh.root);
+	vh.layout(300.0, 1200.0);
+	shapeAll(vh.root as VoidNode);
+	settle(vh);
+	const root = vh.root as VoidNode;
+	const before = top(vh).children.slice(0);
+	assert before.length === 61 && textTouched(vh, root) === 0, "60 rows and the region anchor, all shaped and painted: " + textTouched(vh, root).toString();
+	rows.remove(0);
+	rows.push({ id: 60, text: "row 60" });
+	assert textTouched(vh, root) === 1, "after the ops only the pushed row's label is new: " + textTouched(vh, root).toString();
+	vh.layout(300.0, 1200.0);
+	const after = top(vh).children;
+	assert after.length === 61 && after[60] === before[60], "still 60 rows before the same anchor";
+	for (let i = 0; i < 59; i += 1) {
+		assert after[i] === before[i + 1], "row " + (i + 1).toString() + " kept its node";
+	}
+	assert textTouched(vh, root) === 1, "a layout pass touched no kept row's text: " + textTouched(vh, root).toString();
+	assert after[0].ref.local().y === 0.0, "the kept row 1 now sits at the top, y=" + after[0].ref.local().y.toString();
 }
