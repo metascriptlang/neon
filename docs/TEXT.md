@@ -90,9 +90,12 @@ React Native `18f5ddb`, react-native-windows `1f59db1`, Flutter `6f0e0db`, Skia 
 `createVoidHostWith` gives each `<Text>` one void2d label, filled through `setSpans`; a Text has no host children,
 and `append` into one is refused. The label wraps at the Text's laid width. It gets runs only once a span is styled.
 
+A press over a span with `onPress` fires that span's handler and not its Text's (`clickAt`, `spanAt`): the point's
+grapheme comes from void2d `indexAt` and `xForIndex`, and a point past a line's end hits no span. Like every Void Text,
+a Text that takes presses needs a height until yoga has its measure hook.
+
 Refused by name until the slice that adds each one:
 - a `View` inside a `Text` (inline views);
-- `onPress` on a nested `Text` (per-span hit-testing);
 - a nested `fontSize` (a void2d label has one size);
 - `cellWidth` on a nested Text. `<Text cellWidth={n}>` maps to void2d `setForceWidth`, so grapheme k sits at k×n. The
   browser and native hosts refuse `cellWidth` by name.
@@ -164,6 +167,7 @@ per frame.
    Damage per binding needs no contract field: a host compares a node's last style with the new one.
 3. Paint-only updates: done on Windows (DirectWrite keeps one layout per label and recolours through drawing effects;
    `docs/WINDOWS.md` "Built: styled runs"); on Void once the Void request lands.
-4. Per-span press, hover, cursor and accessibility.
+4. Per-span press: done on Void, native (tags) and Windows (DirectWrite hit-testing). Hover, cursor and accessibility
+   per span are not built: Void has no accessibility tree, and the Windows bridge has no UI Automation yet.
 5. Placeholders (inline views).
 6. iOS and Android on the same contract.
