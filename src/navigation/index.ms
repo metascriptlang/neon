@@ -119,3 +119,4 @@ export {
 	ChildNavigation,
 	createChildren,
 } from "./children";
+export { ChildStack, createChildStack } from "./childStack";
