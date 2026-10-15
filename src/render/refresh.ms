@@ -1,3 +1,4 @@
+import { setTextContent } from "./spanHost";
 import { Host, HostNode, NeonNode } from "./hostTypes";
 import { Row, makeRow, mountAt, removeRow, place } from "./reconcile";
 import { regionAnchor, sealRegion } from "./claim";
@@ -194,7 +195,7 @@ function failure(message: string): NeonNode {
 		host.setStyle(box, { backgroundColor: "#900000", padding: 8 });
 		const label = host.createElement("text");
 		host.setStyle(label, { color: "#ffff00" });
-		host.append(label, host.createText(message));
+		setTextContent(host, label, message);
 		host.append(box, label);
 		place(host, parent, box, before);
 	};

@@ -518,25 +518,13 @@ test "native materialized string labels participate in paint order and reuse the
 	assert nmViewsCreated() === created + 1 && nmPaintTextIndex(parentTag, "label") === -1 && nmPaintTextIndex(nextParentTag, "label") === 0,
 		"moving a materialized label to another view reuses it and removes it from its old paint order";
 	const text = host.createElement("text");
-	host.addEvent(text, "onLayout", (e: NeonEvent): void => {});
 	host.append(native.rootNode, text);
-	const textTag = nmPaintTag(0, 2);
-	const releases = nmReleaseCalls();
-	host.append(text, label);
-	assert nmReleaseCalls() === releases + 1 && nmPaintTextIndex(nextParentTag, "label") === -1,
-		"moving into Text releases the standalone label and merges into its owner";
-	const beforeRematerialize = nmViewsCreated();
-	host.append(q, label);
-	assert nmViewsCreated() === beforeRematerialize + 1 && nmPaintTextIndex(nextParentTag, "label") === 0,
-		"moving out of Text materializes one fresh label";
-	assert nmPaintTextIndex(0, "label") === -1 && nmPaintTag(0, 2) === textTag, "the old Text owner is cleared, not replaced";
+	let refused = "";
+	try { host.append(text, label); } catch (e) { refused = e.toString(); }
+	assert refused.indexOf("arrives through setSpans") >= 0, "a string is not appended into a Text: " + refused;
+	assert nmPaintTextIndex(nextParentTag, "label") === 0, "the refused move leaves the label where it was";
 	host.removeChild(q, label);
 	assert nmPaintTextIndex(nextParentTag, "label") === -1, "removed labels cannot remain in paint order";
-	const merged = host.createText("merged");
-	host.append(text, merged);
-	assert nmPaintTextIndex(0, "merged") === 2, "the Text owner paints its merged child";
-	host.removeChild(text, merged);
-	assert nmPaintTextIndex(0, "merged") === -1, "removing a merged string also clears its Text owner";
 	host.removeChild(native.rootNode, text);
 	host.removeChild(native.rootNode, q);
 	host.removeChild(native.rootNode, p);

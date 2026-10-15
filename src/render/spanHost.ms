@@ -238,3 +238,14 @@ export function paragraphChildren(kids: NeonNode | null, spans: Accessor<TextSpa
 		});
 	};
 }
+
+// A label a framework site builds by hand: its one string goes through setSpans where the host takes them.
+export function setTextContent(host: Host, label: HostNode, s: string): void {
+	const set = host.setSpans;
+	if (set !== null) {
+		const one: TextSpan[] = [{ text: s }];
+		(set as (node: HostNode, spans: TextSpan[]) => void)(label, one);
+		return;
+	}
+	host.append(label, host.createText(s));
+}
