@@ -379,8 +379,6 @@ export class Navigation<P> {
 	writeParams: Setter<P | null>;
 	overrides: Accessor<ScreenOptions>;
 	writeOverrides: Setter<ScreenOptions>;
-	visited: Accessor<boolean>;
-	markVisited: Setter<boolean>;
 
 	constructor(
 		core: NavigatorCore<P>,
@@ -389,8 +387,6 @@ export class Navigation<P> {
 		writeParams: Setter<P | null>,
 		overrides: Accessor<ScreenOptions>,
 		writeOverrides: Setter<ScreenOptions>,
-		visited: Accessor<boolean>,
-		markVisited: Setter<boolean>,
 	) {
 		this.core = core;
 		this.registrationKey = readRegistrationKey(config.navigationKey);
@@ -399,8 +395,6 @@ export class Navigation<P> {
 		this.writeParams = writeParams;
 		this.overrides = overrides;
 		this.writeOverrides = writeOverrides;
-		this.visited = visited;
-		this.markVisited = markVisited;
 	}
 
 	goBack(): void {
@@ -774,7 +768,6 @@ export class NavigatorCore<P> {
 		const [read, write] = createSignal<P | null>(seed.params);
 		const empty: ScreenOptions = {};
 		const [overrides, writeOverrides] = createSignal<ScreenOptions>(empty);
-		const [visited, markVisited] = createSignal<boolean>(false);
 		const route = new Route<P>(seed.key, name, read);
 		const entry = new Navigation<P>(
 			this,
@@ -783,8 +776,6 @@ export class NavigatorCore<P> {
 			write,
 			overrides,
 			writeOverrides,
-			visited,
-			markVisited,
 		);
 		return entry;
 	}
@@ -794,17 +785,9 @@ export class NavigatorCore<P> {
 	}
 
 	apply(change: () => void): void {
-		flush((): void => {
-			change();
-			this.markCurrent();
-		});
+		flush(change);
 		this.notify();
 		this.container.changed();
-	}
-
-	markCurrent(): void {
-		const current = this.current();
-		if (current !== null) { (current as Navigation<P>).markVisited(true); }
 	}
 
 	notify(): void {
@@ -1157,7 +1140,6 @@ export function createCore<P>(setup: NavigatorSetup<P>): NavigatorCore<P> {
 	const scope = setup.scope;
 	const core = new NavigatorCore<P>(setup, initial, scope.link.seedFor(scope.routeKey));
 	const link = linkOf<P>(core);
-	core.markCurrent();
 	core.notify();
 	core.container.changed();
 	when (refresh || hcr) {

@@ -1,4 +1,5 @@
 import { Accessor, accessor, untrack } from "../core/signal";
+import { createMemo } from "../core/memo";
 import { NeonNode } from "../render/hostTypes";
 import { NeonEvent } from "../render/event";
 import { Style } from "../render/style";
@@ -68,14 +69,30 @@ export function readBehavior(behavior: Accessor<BackBehavior> | null, fallback: 
 	});
 }
 
+function holds(keys: string[], key: string): boolean {
+	for (const known of keys) {
+		if (known === key) { return true; }
+	}
+	return false;
+}
+
+function withKey(seen: string[] | null, key: string): string[] {
+	if (seen === null) { return [key]; }
+	return holds(seen, key) ? seen : [...seen, key];
+}
+
 export function mountedEntries<P>(core: NavigatorCore<P>): Accessor<Navigation<P>[]> {
+	const visited = createMemo<string[]>(
+		(seen: string[] | null): string[] => withKey(seen, core.currentKey()),
+	);
 	return accessor((): Navigation<P>[] => {
 		const kept: Navigation<P>[] = [];
 		const focused = core.currentKey();
+		const seen = visited();
 		for (const entry of core.entries()) {
 			const options = entry.options();
 			if (shown(options.unmountOnBlur, false) && entry.route.key !== focused) { continue; }
-			if (entry.visited() || !shown(options.lazy, true)) { kept.push(entry); }
+			if (holds(seen, entry.route.key) || !shown(options.lazy, true)) { kept.push(entry); }
 		}
 		return kept;
 	});
