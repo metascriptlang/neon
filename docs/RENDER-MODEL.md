@@ -351,10 +351,10 @@ it in the document must do the same, or hydrate reads the wrong node; "regions t
 empty fill in after hydrate" (`tests/render/hydrate.test.ms`) fails when the seal is missing.
 A subtree mounted where the page did not render it (a Portal's layer) goes through `unclaimed`.
 
-**What the server writes so a parse keeps the node list** (`serializeChildren`,
-`src/render/ssr.ms`): `<!---->` where the tree holds an empty text, which an HTML parser would
-drop, and `<!--!-->` between two adjacent texts, which it would merge. The DOM host's `claim`
-turns the first back into a text node and removes the second. Solid's counterparts are
+**What the server writes so a parse keeps the node list** (`src/render/ssr.ms`): `<!---->`
+where the tree holds an empty text, which an HTML parser would drop, and `<!--!-->` between two
+adjacent texts, which it would merge. The DOM host's `claim` turns the first back into a text
+node and removes the second. Solid's counterparts are
 `<!--$-->`/`<!--/-->` around a dynamic child and `<!--!$-->` between text values
 (`packages/web/src/server.ts`, `ssrTextTail`); Neon needs no pair because it does not scan for
 a region's end.
@@ -391,13 +391,12 @@ own after a signal write, a press, a `Show` toggle and a `For` reorder.
 
 **A server render calls no `ref`** (`asServer` in `src/render/environment.ms`, read by
 `applyRef`). A ref handler expects the platform's node and on a server it would receive the
-mock host's: Geass's `ref={startMech}` ran inside the Worker and its cast to
+writer's record: Geass's `ref={startMech}` ran inside the Worker and its cast to
 `HTMLCanvasElement` threw. Solid drops `ref` and event attributes when it compiles for the
 server (`~/projects/solid-next` at `84dada77`, `packages/babel-plugin/src/ssr/element.ts`,
 `key === "ref" || isEventName(key)`). Neon has one emission for every host, so the same
-decision is taken at run time; a handler is still attached to the mock node and no event ever
-reaches it. `isServer()` holds only inside the synchronous render, not for the whole program,
-because one build can serve a page and attach to one (the test lanes do both in a process).
+decision is taken at run time; the writer drops an event handler. `isServer()` holds only
+inside the synchronous render, not for the whole program.
 
 **`Head` is a portal, not a registry.** `@solidjs/meta` (`~/projects/solid-meta` at `391138e`,
 `src/index.tsx`) keeps the head in a context: every `Title`/`Meta` calls `useHead` with a
@@ -579,16 +578,21 @@ into the region's parent, which is how a row made of a fragment, a component or 
 nested region gets a span without anyone counting nodes; an empty row gets one empty
 text node so it still has a position.
 
-**Server rendering.** `renderToString` (`src/render/ssr.ms`) renders the node on a mock
-host whose `setStyleClass` registers the rule in the sheet registry, serializes the
-result, and disposes the mount. Regions, fragments, components and context scopes
-serialize through the same path every host uses (`tests/render/ssr.test.ms`).
-`renderToMarkup` is the form for a process that answers many requests: its host collects the
-rules that one render mounted into the returned `css`, after the rules registered outside any
-render (a theme's `:root`), and leaves the registry alone. A registry shared by every request
-sends each page the rules of every page rendered before it, which is why `renderToString`
-with `mountSheet()` stays the form for a process that prints one page
-(`tests/render/ssrRequest.test.ms`).
+**Server rendering.** There is one server renderer, and only a `-d:server` build has it:
+`renderToString` and `renderToMarkup` (`src/render/ssr.ms`) are a compile error in any other
+build, naming the flag at the call. Solid keeps its server renderer out of the browser bundle
+by resolving `@solidjs/web` to a server entry under the `node` and `worker` export conditions
+(`~/projects/solid-next` at `84dada77`, `packages/web/package.json` `exports["."]`); its
+browser entry keeps a `renderToString` that logs and returns `undefined`
+(`packages/web/src/server-mock.ts`, `throwInBrowser`), where a Neon build stops, because the
+flag is known at compile time. `renderToMarkup` is the form for a process that answers many
+requests: it collects the rules that one render mounted into the returned `css`, after the rules
+registered outside any render (a theme's `:root`), and leaves the registry alone. A registry
+shared by every request sends each page the rules of every page rendered before it, which is
+why `renderToString` with `mountSheet()` stays the form for a process that prints one page
+(`tests/render/ssrRequest.test.ms`). The Chrome lane hydrates pages a `-d:server` build wrote
+(`tests/browser/serveApps.ms`), as Solid's hydration specs replay what its server specs
+recorded (`packages/web/test/hydration/slot-hydration-3567.spec.tsx`, `loadArtifact`).
 
 ## Per-platform economics
 
