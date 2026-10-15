@@ -5,7 +5,7 @@ import { createVoidHostWith, VoidHost, VoidNode } from "../../src/platform/void/
 import { Style } from "../../src/render/style";
 import {
 	group, label, rect, local, content, setPosition, setSize,
-	getChildIndex, isLive, clearChanges, text, parent, kind, DrawKind, paint,
+	getChildIndex, isLive, clearChanges, text, textStyle, parent, kind, DrawKind, paint,
 } from "../../../void/src/void2d/node";
 import { Scene2D } from "../../../void/src/void2d/node";
 import { addFont } from "../../../void/src/void2d/font";
@@ -74,6 +74,34 @@ test "full layout preserves raw Label pose and size while UI text still flows" {
 		assert raw.yg === null;
 		assert second.ref.local().x > 0.0 && second.ref.local().x < 99.0,
 			"UI Label still takes inline flow position";
+	} finally { vh.scene.close(); }
+}
+
+test "UI parent text paint never overwrites raw Label props on insertion restyle or reorder" {
+	const vh = host();
+	try {
+		const parent = vh.host.createElement("view") as VoidNode;
+		vh.host.append(vh.root, parent);
+		vh.host.setStyle(parent, { color: "#ff0000", fontSize: 32 } as Style);
+		const first = new VoidNode(vh.scene.label("raw first", 16.0, rgba(0.0, 1.0, 0.0, 1.0)), true);
+		const second = new VoidNode(vh.scene.label("raw second", 16.0, rgba(0.0, 1.0, 0.0, 1.0)), true);
+		const ui = vh.host.createText("UI") as VoidNode;
+		vh.host.append(parent, first);
+		vh.host.append(parent, second);
+		vh.host.append(parent, ui);
+		const firstId = first.ref.id;
+		const secondId = second.ref.id;
+		assert first.ref.textStyle().size === 16.0 && first.ref.paint().color.g === 1.0;
+		assert second.ref.textStyle().size === 16.0 && second.ref.paint().color.g === 1.0;
+		assert ui.ref.textStyle().size === 32.0 && ui.ref.paint().color.r === 1.0;
+		vh.host.setStyle(parent, { color: "#0000ff", fontSize: 40 } as Style);
+		assert first.ref.textStyle().size === 16.0 && first.ref.paint().color.g === 1.0;
+		assert ui.ref.textStyle().size === 40.0 && ui.ref.paint().color.b === 1.0;
+		vh.host.insertBefore(parent, second, first);
+		assert parent.children[0] === second && parent.children[1] === first;
+		assert first.ref.id === firstId && second.ref.id === secondId;
+		assert first.ref.textStyle().size === 16.0 && first.ref.paint().color.g === 1.0;
+		assert second.ref.textStyle().size === 16.0 && second.ref.paint().color.g === 1.0;
 	} finally { vh.scene.close(); }
 }
 

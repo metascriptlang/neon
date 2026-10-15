@@ -346,7 +346,7 @@ function applyTextPaint(label: NodeRef, s: Style): void {
 }
 
 function inheritTextPaint(child: VoidNode, parent: VoidNode): void {
-	if (parent.style !== null && child.ref.kind() === DrawKind.Label) { applyTextPaint(child.ref, parent.style as Style); }
+	if (!child.raw && parent.style !== null && child.ref.kind() === DrawKind.Label) { applyTextPaint(child.ref, parent.style as Style); }
 }
 
 export function applyPaint(n: VoidNode, s: Style): void {
