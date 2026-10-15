@@ -7,6 +7,7 @@ import { Context, createContext, useContext, ContextNotFoundError, NoOwnerError 
 import { onCleanup } from "../../src/core/cleanup";
 import { createRoot } from "../../src/core/owner";
 import { catchError } from "../../src/core/error";
+import { resetErrorHalt } from "../../src/core/runtime";
 import { Dispose } from "../../src/core/types";
 import { For, ForUnkeyed, Show } from "../../src/macros/ui/flow";
 
@@ -530,6 +531,7 @@ test "a component under a default-less provider throws ContextNotFoundError when
 	} catch (e) {
 		caught = e;
 	}
+	resetErrorHalt();
 	assert caught !== null && caught instanceof ContextNotFoundError, "mounting the reader without its provider throws ContextNotFoundError";
 }
 

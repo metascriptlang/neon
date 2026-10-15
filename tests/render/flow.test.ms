@@ -6,6 +6,7 @@ import { createSignal, accessor, Accessor } from "../../src/core/signal";
 import { element } from "../../src/macros/ui/element";
 import { createComponent } from "../../src/render/component";
 import { createRoot } from "../../src/core/owner";
+import { resetErrorHalt } from "../../src/core/runtime";
 
 function listText(node: MockNode): string {
 	let s = "";
@@ -438,6 +439,7 @@ test "map.ts:75 a row that reads its index after usesIndex={false} was written o
 	} catch (e) {
 		caught = e.toString();
 	}
+	resetErrorHalt();
 	assert caught.includes("no index accessor"), "the engine names the missing index: " + caught;
 }
 
@@ -638,6 +640,7 @@ test "Repeat refuses a fractional count through the tag" {
 		view();
 		d();
 	} catch (e) { caught = e.toString(); }
+	resetErrorHalt();
 	assert caught.includes("Repeat: count"), "the count is named: " + caught;
 }
 
