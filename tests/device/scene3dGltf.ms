@@ -1,5 +1,6 @@
 import { readFile } from "std/fs";
-import { createSignal } from "../../src/core/signal";
+import { createSignal, accessor } from "../../src/core/signal";
+import { onCleanup } from "../../src/core/cleanup";
 import { element } from "../../src/macros/ui/element";
 import { Show } from "../../src/macros/ui/flow";
 import { HostNode, mockNode, mockHost, render } from "../../src/render/host";
@@ -72,6 +73,7 @@ function mounted(value: Scene3DHandle): void {
 	const made = ForwardRenderer.create(value.context, { x: 0.02, y: 0.04, z: 0.1, w: 1.0 });
 	if (!made.ok) { fail("forward renderer creation"); unreachable; }
 	forward = made.value;
+	onCleanup((): void => { closeForward(forward); });
 	baseMeshes = value.context.liveMeshes();
 	baseMaterials = value.context.liveMaterials();
 }
@@ -80,8 +82,8 @@ function init(): void {
 	gfxSetup();
 	baseBuffers = liveBuffers(); baseImages = liveImages(); baseViews = liveViews();
 	cleanup = render(element(<Void><Scene3D ambient={vec3(1.0, 1.0, 1.0)} ref={mounted}>
-		<Camera3D position={vec3(0.0, 0.0, -3.0)} />
-		{Show({ when: () => shown(), children: element(
+		<Camera3D active={true} position={vec3(0.2, 0.0, 7.0)} />
+		{Show({ when: accessor(() => shown()), children: element(
 			<Gltf data={data()} setup={setup()}
 				ref={(node: NodeId3D): void => { wrappers.push(node); }} />
 		) })}
@@ -139,10 +141,9 @@ function frame(): void {
 		if (wrappers.length !== 2 || handle.scene.isLive(wrappers[0])) {
 			fail("wrapper replacement or remount identity"); return;
 		}
-		closeForward(forward);
 		const dispose = cleanup;
 		if (dispose !== null) { dispose(); }
-		if (!handle.scene.closed || !context.closed || liveBuffers() !== baseBuffers ||
+		if (!forward.closed || !handle.scene.closed || !context.closed || liveBuffers() !== baseBuffers ||
 			liveImages() !== baseImages || liveViews() !== baseViews) {
 			fail("terminal GPU resource reclamation"); return;
 		}

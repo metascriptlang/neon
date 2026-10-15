@@ -1,11 +1,20 @@
-import { createSignal } from "../../src/core/signal";
+import { createSignal, accessor } from "../../src/core/signal";
+import { onCleanup } from "../../src/core/cleanup";
 import { element } from "../../src/macros/ui/element";
 import { Show } from "../../src/macros/ui/flow";
 import { HostNode, mockNode, mockHost, render } from "../../src/render/host";
 import { Void } from "../../src/components/primitives";
 import { Scene3D, Scene3DHandle, Gltf, Group } from "../../src/components/scene3d";
-import { GltfData } from "../../../void/src/void3d/gltf";
-import { GltfMaterialSetup } from "../../../void/src/void3d/gltfScene";
+import {
+	GltfData, GltfAlphaMode, IDENTITY_TEXTURE_TRANSFORM, NO_TEXTURE_INDEX,
+} from "../../../void/src/void3d/gltf";
+import {
+	GltfMaterialSetup, GltfSceneError, addGltfAssets, closeGltfAssets,
+} from "../../../void/src/void3d/gltfScene";
+import { DrawContext, closeContext } from "../../../void/src/void3d/draw";
+import { MATERIAL_UNIFORM_LENGTH } from "../../../void/src/void3d/gpu3d";
+import { ForwardRenderer, create, closeForward } from "../../../void/src/void3d/forwardRenderer";
+import { liveRanges, freeRanges } from "../../../void/src/void3d/uniformPool";
 import { Transform3D, NodeId3D, findByName } from "../../../void/src/void3d/scene";
 import { vec3 } from "../../../void/src/math/math3d";
 import { RenderState } from "../../../void/src/gpu/state";
@@ -86,7 +95,7 @@ test "Gltf remount owns a fresh wrapper and does not revive removed imported nod
 	const [name, setName] = createSignal("first");
 	const cleanup = render(element(<Void><Scene3D
 		ref={(value: Scene3DHandle): void => { handle = value; }}>
-		{Show({ when: () => shown(), children: element(
+		{Show({ when: accessor(() => shown()), children: element(
 			<Gltf data={model(name(), false)} setup={setup(false)}
 				ref={(node: NodeId3D): void => { wrappers.push(node); }} />
 		) })}
@@ -113,4 +122,80 @@ test "Gltf rejects a missing Scene3D scope with its own tag name" {
 		cleanup();
 	} catch (error) { message = error.message; }
 	assert message === "Gltf: mount inside Scene3D within Void";
+}
+
+function materialModel(name: string, badGraph: boolean, count: int32): GltfData {
+	let data = model(name, badGraph);
+	for (let i = 0; i < count; i++) {
+		data.materials.push({
+			texture: NO_TEXTURE_INDEX, doubleSided: false, alphaMode: GltfAlphaMode.Opaque, alphaKill: 0.0,
+			emissiveTexture: NO_TEXTURE_INDEX, emissive: vec3(0.0, 0.0, 0.0), emissiveStrength: 1.0,
+			normalTexture: NO_TEXTURE_INDEX, uvTransform: IDENTITY_TEXTURE_TRANSFORM,
+		});
+	}
+	return data;
+}
+
+test "Gltf initial graph/setup failures and terminal disposal close renderer once before context" {
+	for (let scenario = 0; scenario < 3; scenario++) {
+		const badGraph = scenario === 0;
+		const badSetup = scenario === 1;
+		const handles: Scene3DHandle[] = [];
+		const renderers: ForwardRenderer[] = [];
+		let closes: int32 = 0;
+		let message = "";
+		try {
+			const cleanup = render(element(<Void><Scene3D
+				ref={(value: Scene3DHandle): void => {
+					handles.push(value);
+					const made = ForwardRenderer.create(value.context, { x: 0.0, y: 0.0, z: 0.0, w: 1.0 });
+					assert made.ok;
+					if (!made.ok) { throw new Error("test: ForwardRenderer.create failed"); }
+					renderers.push(made.value);
+					onCleanup((): void => {
+						assert !value.context.closed && !value.scene.closed;
+						closeForward(renderers[0]);
+						closes += 1;
+					});
+				}}>
+				<Gltf data={materialModel("root", badGraph, 2)} setup={setup(badSetup)} />
+			</Scene3D></Void>), mockHost(), mockNode("root") as unknown as HostNode);
+			cleanup();
+		} catch (error) { message = error.message; }
+		const expected = badSetup ? "Gltf: addGltfAssets failed: BadSetup"
+			: badGraph ? "Gltf: addGltfNodes failed: InvalidData" : "";
+		assert message === expected;
+		assert handles.length === 1 && renderers.length === 1 && closes === 1;
+		assert renderers[0].closed && renderers[0].core.closed;
+		assert handles[0].scene.closed && handles[0].context.closed;
+		assert handles[0].context.liveMeshes() === 0 && handles[0].context.liveMaterials() === 0;
+		assert handles[0].context.liveTextures() === 0 && handles[0].context.uniforms.liveRanges() === 0;
+	}
+}
+
+test "Gltf partial factory failure releases real material holds and reuses uniform ranges" {
+	const context = DrawContext.withUniformCapacity(2 * MATERIAL_UNIFORM_LENGTH);
+	try {
+		const refused = addGltfAssets(context, materialModel("root", false, 3), setup(false));
+		if (refused.ok) { closeGltfAssets(refused.value); assert false; return; }
+		assert refused.error === GltfSceneError.UniformsFull;
+		assert context.materialHolders.length === 2;
+		assert context.materialHolders[0] === 0 && context.materialHolders[1] === 0;
+		assert context.liveMaterials() === 0 && context.liveMeshes() === 0 && context.liveTextures() === 0;
+		assert context.uniforms.used === 2 * MATERIAL_UNIFORM_LENGTH;
+		assert context.uniforms.liveRanges() === 0 && context.uniforms.freeRanges() === 2;
+		const recovered = addGltfAssets(context, materialModel("root", false, 2), setup(false));
+		assert recovered.ok;
+		if (!recovered.ok) { return; }
+		try {
+			assert context.liveMaterials() === 2 && context.uniforms.liveRanges() === 2;
+			assert context.uniforms.used === 2 * MATERIAL_UNIFORM_LENGTH;
+			for (const id of recovered.value.materials) {
+				assert context.hasMaterial(id) && context.materialHolders[id.index] === 1;
+				assert id.generation === 2;
+			}
+		} finally { closeGltfAssets(recovered.value); }
+		assert context.liveMaterials() === 0 && context.uniforms.liveRanges() === 0;
+	} finally { closeContext(context); }
+	assert context.closed;
 }
