@@ -44,8 +44,8 @@ function App(): NeonNode {
 	setTimeout((): void => { counts("idle"); }, 2300);
 	setTimeout((): void => { counts("idle 650 ms later"); }, 2950);
 	return element(
-		<Void style={{ backgroundColor: "#1e1e2e" }}>
-			<View style={{ flexGrow: 1 }} focusable imeRect={{ x: 0, y: 0, width: 8, height: 16 }}
+		<Void style={{ backgroundColor: "#1e1e2e", padding: 20 }}>
+			<View style={{ flexGrow: 1, pointerEvents: "box-only" }} focusable imeRect={{ x: 0, y: 0, width: 8, height: 16 }}
 				onLayout={(e: NeonEvent): void => { console.log(`layout ${e.width}x${e.height} pixelRatio=${PixelRatio.get()} device ${PixelRatio.getPixelSizeForLayoutSize(e.width)}x${PixelRatio.getPixelSizeForLayoutSize(e.height)}`); }}
 				onKeyDown={(e: NeonEvent): void => { console.log(`keydown key=${e.key} code=${e.code} scancode=${e.scancode} mods=${e.mods} consumed=${e.consumedMods} unshifted=${e.unshifted} text="${e.text}" repeat=${e.repeat}`); }}
 				onKeyUp={(e: NeonEvent): void => { console.log(`keyup code=${e.code} scancode=${e.scancode}`); }}
