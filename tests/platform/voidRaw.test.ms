@@ -223,6 +223,32 @@ test "scene property changes wake once without engine dirty and unchanged values
 	} finally { vh.scene.close(); }
 }
 
+test "scene changes from onLayout are consumed before the next clean-frame wake" {
+	const vh = host();
+	let wakes: int32 = 0;
+	let layouts: int32 = 0;
+	vh.onDirty((): void => { wakes += 1; });
+	try {
+		const view = vh.host.createElement("view") as VoidNode;
+		vh.host.setStyle(view, { width: 40, height: 20 } as Style);
+		vh.host.append(vh.root, view);
+		const raw = new VoidNode(vh.scene.group(), true);
+		vh.host.append(vh.root, raw);
+		vh.host.addEvent(view, "onLayout", (): void => {
+			layouts += 1;
+			vh.mutate((): void => { vh.scene.clear = rgba(0.3, 0.0, 0.0, 1.0); });
+		});
+		settle(vh);
+		assert layouts === 1 && !vh.scene.isDirty();
+		const before = wakes;
+		vh.mutate((): void => { raw.ref.setPosition(10.0, 0.0); });
+		assert wakes === before + 1;
+		settle(vh);
+		vh.mutate((): void => { raw.ref.setPosition(20.0, 0.0); });
+		assert wakes === before + 2 && layouts === 1;
+	} finally { vh.scene.close(); }
+}
+
 test "scoped host rejects direct raw text and intrinsics but allows mapped UI text" {
 	const vh = host(true);
 	try {

@@ -1318,7 +1318,6 @@ export function createVoidHostWith(
 	};
 
 	const layout = (w: float32, h: float32): void => {
-		sceneChangePending = false;
 		layoutPass(root, w, h);
 		layoutIslands(root);
 		flowText(root);
@@ -1337,6 +1336,7 @@ export function createVoidHostWith(
 			ev.height = now.h;
 			e.handler(ev);
 		}
+		sceneChangePending = false;
 	};
 
 	const imeRect = (): CaretRect | null => {
