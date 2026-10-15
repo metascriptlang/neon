@@ -160,7 +160,7 @@ falls back for, a label wider than its frame after pixel rounding (its layout bo
 ## Built: Ion window and Pressable
 
 `src/platform/windows/ion.ms` `runNativeWindow(options, app, onMounted)` creates an Ion window with no webview and
-runs the app under Ion's `runLoop`. The first `onResize` record (Ion queues one when it creates the window) gives the
+runs the app under Ion's `runLoop`; `onMounted` receives the Ion `Window`. The first `onResize` record (Ion queues one when it creates the window) gives the
 DPI and the client size: it calls `niwAttach(windowDevice, windowRoot, dpi, logicalW, logicalH)` and `runApp`. Every
 later record calls `niwResize`, which sets the screen size, re-applies frames, corner radii and text surfaces when the
 DPI changed, and runs the host's resize handler (a relayout). `src/platform/ion/window.ms` is the pattern for this wiring.
@@ -196,9 +196,9 @@ Measured 2026-10-15 on tree `67268ba2b71069d8fa23b270bb0f773f7c2efaae`, 96 dpi, 
 - `msc build examples/windowsNative/ion.ms` then `out/windowsIon.exe --check`: 12 of 12 pixels, then the window is
   resized to a client of 800x400 and 4 of 4 more (a pin anchored right and bottom moved from (570,290) to (770,370)).
   `ionText.ms` (the `text.ms` content in an Ion window) matches 13 of 13. `out/windowsNative.exe --check` 11 of 11 and
-  `out/windowsText.exe --check` 13 of 13 still hold; `tests/platform/nativeHost.test.ms` 395 tests green. The check
-  windows are borderless and topmost: Ion's Windows `createWindow(width, height)` is the outer size, so a decorated
-  window has a smaller client than asked for, and Ion's `setSize` and `setAlwaysOnTop` are no-ops there.
+  `out/windowsText.exe --check` 13 of 13 still hold; `tests/platform/nativeHost.test.ms` 395 tests green.
+- Again on Ion `6d324a6` and BUILD `cf18cd1d`, with decorated topmost check windows: `ion.ms` resizes through Ion's
+  `setSize(win, 800, 400)`, which sizes the client in DIPs, and matches 16 of 16; `ionText.ms` 13 of 13.
 - Idle: `out/windowsIonPress.exe` ran 6 s with no input and `niwFrame` ran once (the mount's frame), counted with a
   temporary counter that is not committed.
 - `examples/windowsNative/ionPress.ms` driven by PostMessage mouse messages to its window (client 384x221):
@@ -285,9 +285,8 @@ created on a D2D device, so `CreateSurface` hands out D2D-drawable surfaces; `co
 Pointer, key, text, IME, focus, resize and frame records arrive per window in client-area pixels, and Ion does
 no hit-testing: the host parents its visuals under the root, z-orders them, and routes input itself. macOS (the
 content view) and Linux (a `GtkFixed`) give the same contract. `src/platform/ion/window.ms` is the first host
-on it, for a full-window `<Void>`; `src/platform/windows/ion.ms` hosts the native host of this document. What
-measuring it showed Ion does not give: on Windows `createWindow(width, height)` is the outer window size, not the
-client size, and `setSize`, `setPosition`, `setAlwaysOnTop` and `setDecorations` are stubs after creation.
+on it, for a full-window `<Void>`; `src/platform/windows/ion.ms` hosts the native host of this document.
+`createWindow(width, height)` and `setSize` size the client area in DIPs on Windows since Ion `6d324a6`, as on macOS.
 
 ## Order
 
