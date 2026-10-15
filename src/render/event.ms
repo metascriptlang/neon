@@ -37,7 +37,7 @@ export interface NeonEvent {
 	cursor: number;        // onPreedit: the caret inside `text`, in UTF-16 units
 	button: number;        // pointer events: the window's numbering, Ion's 1 left, 2 right, 3 middle; 0 when none is held
 	pressed: boolean;      // pointer events: a button is held
-	locationX: number;     // pointer events: x relative to the node the handler is on, in layout points
+	locationX: number;     // pointer events: x relative to the target, the deepest node the pointer hit (RN's locationX), in layout points
 	locationY: number;
 	deltaX: number;        // onWheel, in wheel notches as the window reports them (Ion: dy > 0 is away from the user)
 	deltaY: number;

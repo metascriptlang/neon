@@ -243,13 +243,30 @@ function within(node: VoidNode, top: VoidNode): boolean {
 	return false;
 }
 
-function deepestAt(n: VoidNode, x: float32, y: float32, accepts: ((n: VoidNode) => boolean) | null): VoidNode | null {
-	for (let i = n.children.length - 1; i >= 0; i -= 1) {
-		const c = n.children[i];
-		if (c.disposed) { continue; }
-		const hit = deepestAt(c, x, y, accepts);
-		if (hit !== null) { return hit; }
+// RN's pointerEvents: "none" hides the node and its subtree, "box-none" only the node, "box-only" only its children.
+function pointerMode(n: VoidNode): string {
+	if (n.style === null) { return "auto"; }
+	const m = (n.style as Style).pointerEvents;
+	if (m === null) { return "auto"; }
+	const mode = m as string;
+	if (mode !== "auto" && mode !== "none" && mode !== "box-none" && mode !== "box-only") {
+		throw new Error(`void host: pointerEvents "${mode}" is not auto, none, box-none or box-only`);
 	}
+	return mode;
+}
+
+function deepestAt(n: VoidNode, x: float32, y: float32, accepts: ((n: VoidNode) => boolean) | null): VoidNode | null {
+	const mode = pointerMode(n);
+	if (mode === "none") { return null; }
+	if (mode !== "box-only") {
+		for (let i = n.children.length - 1; i >= 0; i -= 1) {
+			const c = n.children[i];
+			if (c.disposed) { continue; }
+			const hit = deepestAt(c, x, y, accepts);
+			if (hit !== null) { return hit; }
+		}
+	}
+	if (mode === "box-none") { return null; }
 	if (accepts !== null && !(accepts as (n: VoidNode) => boolean)(n)) { return null; }
 	return n.ref.hitTest(vec2(x, y)) ? n : null;
 }
@@ -672,18 +689,18 @@ export function createVoidHostWith(scene: Scene2D, font: FontId): VoidHost {
 		return false;
 	};
 
-	// Bubbles from the deepest node under the point; each handler's locationX/Y is relative to the node it sits on.
+	// Bubbles from the deepest node under the point; locationX/Y are relative to that target.
 	const pointerAt = (name: string, x: float32, y: float32, ev: NeonEvent): void => {
 		if (!anyHandler(name)) { return; }
-		let cur = deepestAt(root, x, y, null);
+		const target = deepestAt(root, x, y, null);
+		if (target === null) { return; }
+		const at = (target as VoidNode).ref.globalToLocal(vec2(x, y));
+		ev.locationX = at.x;
+		ev.locationY = at.y;
+		let cur: VoidNode | null = target;
 		while (cur !== null) {
 			const n = cur as VoidNode;
-			if (!n.disposed) {
-				const at = n.ref.globalToLocal(vec2(x, y));
-				ev.locationX = at.x;
-				ev.locationY = at.y;
-				fire(n, name, ev);
-			}
+			if (!n.disposed) { fire(n, name, ev); }
 			cur = n.parent;
 		}
 	};

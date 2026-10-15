@@ -324,7 +324,7 @@ function seen(who: string, sink: string[]): (e: NeonEvent) => void {
 	};
 }
 
-test "pointer events go to the deepest node under the pointer, bubble, and carry local coordinates" {
+test "pointer events go to the deepest node under the pointer, bubble, and carry coordinates relative to that target" {
 	const vh = host();
 	const log: string[] = [];
 	render(element(
@@ -336,20 +336,54 @@ test "pointer events go to the deepest node under the pointer, bubble, and carry
 	), vh.host, vh.root);
 	vh.layout(300.0, 100.0);
 	vh.pointerDown(30.0, 35.0, 0);
-	assert log.join("|") === "inner:pointerdown@10,15/30,35 b0 down d0,0|outer:pointerdown@30,35/30,35 b0 down d0,0", "down: " + log.join("|");
+	assert log.join("|") === "inner:pointerdown@10,15/30,35 b0 down d0,0|outer:pointerdown@10,15/30,35 b0 down d0,0", "down: " + log.join("|");
 	log.length = 0;
 	vh.pointerMove(31.0, 36.0, 0, true);
 	vh.pointerUp(31.0, 36.0, 0);
 	vh.wheel(31.0, 36.0, 0.0, -3.0);
-	assert log.join("|") === "inner:pointermove@11,16/31,36 b0 down d0,0|outer:pointermove@31,36/31,36 b0 down d0,0"
-		+ "|inner:pointerup@11,16/31,36 b0 up d0,0|outer:pointerup@31,36/31,36 b0 up d0,0"
-		+ "|inner:wheel@11,16/31,36 b0 up d0,-3|outer:wheel@31,36/31,36 b0 up d0,-3", "move, up, wheel: " + log.join("|");
+	assert log.join("|") === "inner:pointermove@11,16/31,36 b0 down d0,0|outer:pointermove@11,16/31,36 b0 down d0,0"
+		+ "|inner:pointerup@11,16/31,36 b0 up d0,0|outer:pointerup@11,16/31,36 b0 up d0,0"
+		+ "|inner:wheel@11,16/31,36 b0 up d0,-3|outer:wheel@11,16/31,36 b0 up d0,-3", "move, up, wheel: " + log.join("|");
 	log.length = 0;
 	vh.pointerMove(200.0, 90.0, 0, false);
 	assert log.join("|") === "outer:pointermove@200,90/200,90 b0 up d0,0", "outside the inner node only the outer hears: " + log.join("|");
 	log.length = 0;
 	vh.pointerMove(290.0, 190.0, 0, false);
 	assert log.length === 0, "outside everything nothing is heard: " + log.join("|");
+}
+
+function pressedWith(mode: string, x: float32, y: float32): string {
+	const vh = host();
+	const log: string[] = [];
+	render(element(
+		<View style={{ width: 200, height: 100, pointerEvents: mode }} onPointerDown={seen("outer", log)}>
+			<View style={{ width: 100, height: 50 }} onPointerDown={seen("inner", log)} />
+		</View>
+	), vh.host, vh.root);
+	vh.layout(200.0, 100.0);
+	vh.pointerDown(x, y, 1);
+	return log.join("|");
+}
+
+test "pointerEvents auto, none, box-none and box-only choose the target" {
+	assert pressedWith("auto", 10.0, 10.0) === "inner:pointerdown@10,10/10,10 b1 down d0,0|outer:pointerdown@10,10/10,10 b1 down d0,0", "auto: " + pressedWith("auto", 10.0, 10.0);
+	assert pressedWith("none", 10.0, 10.0) === "", "none hides the node and its subtree: " + pressedWith("none", 10.0, 10.0);
+	assert pressedWith("box-none", 10.0, 10.0) === "inner:pointerdown@10,10/10,10 b1 down d0,0|outer:pointerdown@10,10/10,10 b1 down d0,0", "box-none: the child is the target, the event still bubbles: " + pressedWith("box-none", 10.0, 10.0);
+	assert pressedWith("box-none", 150.0, 80.0) === "", "box-none: the box itself is no target: " + pressedWith("box-none", 150.0, 80.0);
+	assert pressedWith("box-only", 10.0, 10.0) === "outer:pointerdown@10,10/10,10 b1 down d0,0", "box-only: the box is the target, its child inert: " + pressedWith("box-only", 10.0, 10.0);
+	assert pressedWith("box-only", 150.0, 80.0) === "outer:pointerdown@150,80/150,80 b1 down d0,0", "box-only outside the child: " + pressedWith("box-only", 150.0, 80.0);
+}
+
+test "a box-only parent takes the focus from its focusable child" {
+	const vh = host();
+	render(element(
+		<View style={{ width: 200, height: 100, pointerEvents: "box-only" }} focusable>
+			<View style={{ width: 100, height: 50 }} focusable />
+		</View>
+	), vh.host, vh.root);
+	vh.layout(200.0, 100.0);
+	vh.clickAt(10.0, 10.0);
+	assert vh.focused() === top(vh), "the box, not its child, took the press";
 }
 
 test "pressing a component with a pointer, wheel or text handler, or focusable, focuses it, and onPress still fires" {
