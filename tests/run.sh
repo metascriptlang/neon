@@ -37,6 +37,8 @@ MINGW* | MSYS* | CYGWIN*)
 	"$MSC" build examples/voidDraw.ms --output=out/voidDraw.exe || fail=1
 	echo "== desktop examples/voidInputs.ms"
 	"$MSC" build examples/voidInputs.ms --output=out/voidInputs.exe || fail=1
+	echo "== desktop examples/voidCanvas.ms"
+	"$MSC" build examples/voidCanvas.ms --output=out/voidCanvas.exe || fail=1
 	echo "== desktop examples/desktopAudio.ms"
 	"$MSC" build examples/desktopAudio.ms --output=out/desktopAudio.exe || fail=1
 	echo "== desktop examples/windowsNative/app.ms"
@@ -50,7 +52,7 @@ MINGW* | MSYS* | CYGWIN*)
 	echo "== desktop examples/windowsNative/ionPress.ms"
 	"$MSC" build examples/windowsNative/ionPress.ms --output=out/windowsIonPress.exe || fail=1
 	;;
-*) echo "== desktop skip examples/voidWindow.ms, examples/voidDraw.ms, examples/voidInputs.ms, examples/desktopAudio.ms and examples/windowsNative: Windows-only" ;;
+*) echo "== desktop skip examples/voidWindow.ms, examples/voidDraw.ms, examples/voidInputs.ms, examples/voidCanvas.ms, examples/desktopAudio.ms and examples/windowsNative: Windows-only" ;;
 esac
 sh tests/ssrParity/run.sh || fail=1
 tests/browser/run.sh || fail=1
