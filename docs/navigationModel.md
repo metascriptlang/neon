@@ -147,8 +147,11 @@ routing. `navigatorMotion.ms` stays the transition engine.
   resolution only, because in-app navigation already has a real history.
 - In-app `navigate(href)` and `<A>`: match the href, walk the live models from the
   root while each level's active destination equals the matched one, and apply the
-  first differing level's operation: push or pop back on a stack, select a page,
-  activate a slot (Expo `resolveNavigationDestination`).
+  first differing level's operation: select a page, activate a slot, and on a stack
+  what Expo's default `NAVIGATE` does (Expo `resolveNavigationDestination`; its
+  `StackRouter.tsx` `NAVIGATE` branch): update the top in place when it is the same
+  route, otherwise push. Popping back to an earlier entry is `dismissTo`, an explicit
+  call, so a link to a tab's root from deep in its stack pushes that root again.
 - History: the binding diffs the models' published items onto the routing session as
   Decompose `enableWebHistory` does. Same keys replace the URL, more keys push, fewer
   keys go back by the count (and replace when the browser has fewer entries), and
@@ -332,8 +335,13 @@ same JS-driven frames.
 - Navigation snapshots are participant codecs, not serialization of arbitrary
   reactive graphs. URL traversal can therefore restore a retained document stack
   without promising persistence of every local edit or GPU resource.
-- The route tree shorthand has layout levels only; Stack and Tabs as levels come with
-  the binding's cold resolution and href walk, which are not written yet. It takes `path` strings only, and the web navigation adapters take a
+- Stack and Tabs are levels of the route tree shorthand (`src/navigation/router.ms`),
+  each backed by `createChildStack` or `createChildPages` and mirrored through
+  `createWebHistory`; a hash-only navigation still records itself with `session.sync`.
+  Their renderers (`childView.ms`) are the smallest that draw a model: a stack draws
+  every entry without hiding covered ones, and tabs mount only the selected page, so a
+  tab's screens keep their stack but lose component state on a switch. A tab switch
+  replaces the browser entry, as Decompose's pages adapter does. It takes `path` strings only, and the web navigation adapters take a
   required options object, until two compiler cards land (both parked in `BUGS.md`).
   Its `<A>` renders a web `<a>`; on a native host that is a plain view until `<A>`
   and React Navigation's `Link` become one through the binding.
