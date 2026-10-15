@@ -43,10 +43,10 @@ never() {
 	done
 }
 
-ROUTING="./routing ./routingHistory ./routeMatcher"
+ROUTING="./routing ./routingHistory ./route ./routeMatcher"
 MODELS="./children ./childStack ./childPages ./childSlot ./childPanels"
 
-only routing "../core/* $ROUTING" routing routingHistory routeMatcher
+only routing "../core/* $ROUTING" routing routingHistory route routeMatcher
 only navigation "../core/* $MODELS" children childStack childPages childSlot childPanels
 never rendering "$ROUTING ./linking" navigatorMotion header layout
 

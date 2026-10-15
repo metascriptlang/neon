@@ -106,6 +106,28 @@ export {
 	createRouteParticipant,
 } from "./routing";
 export {
+	ParamsCodec,
+	GuardAction,
+	GuardDecision,
+	proceed,
+	redirect,
+	notFound,
+	RouteNode,
+	RouteDef,
+	RouteOptions,
+	PathOptions,
+	RouteEntry,
+	MatchedRoute,
+	RouteMatch,
+	RouteResolution,
+	RouteTree,
+	route,
+	path,
+	hrefOf,
+	paramsOf,
+	createRouteTree,
+} from "./route";
+export {
 	RoutingHistoryEntry,
 	RoutingHistory,
 	RoutingSession,
