@@ -262,8 +262,9 @@ test "map.ts:111 a row that throws mid-pass commits nothing and disposes only th
 	const before = m();
 	assert built === 3, "three rows";
 	armed = true;
-	const caught = failure(() => { setSrc([3, 5, 4, 1]); });
-	assert caught.includes("row 4"), "the row's error reaches the writer: " + caught;
+	setSrc([3, 5, 4, 1]);
+	const caught = failure(() => { m(); });
+	assert caught.includes("row 4"), "the row's error reaches the reader: " + caught;
 	assert disposed === 1 && live[5] === false, "only the row built in the aborted pass (5) was disposed: " + disposed.toString();
 	assert live[1] && live[2] && live[3], "surviving rows are untouched, including the one the new list drops (2)";
 	armed = false;
@@ -275,10 +276,11 @@ test "map.ts:111 a row that throws mid-pass commits nothing and disposes only th
 	scope.dispose();
 }
 
-test "mapArray lets a row that throws reach the caller" {
+test "mapArray lets a row that throws reach the reader" {
 	createRoot((d) => {
 		const [src, setSrc] = createSignal<number[]>([1, 2, 3]);
-		const caught = failure(() => { mapArray<number, number>(src, (v, i) => { throw new Error("row " + v.toString()); }); });
+		const m = mapArray<number, number>(src, (v, i) => { throw new Error("row " + v.toString()); });
+		const caught = failure(() => { m(); });
 		assert caught.includes("row 1"), "the first row is the one that raised: " + caught;
 		d();
 	});
@@ -665,8 +667,9 @@ test "map.ts:692 repeat that throws mid-pass commits nothing and disposes only w
 	}));
 	m();
 	armed = true;
-	const caught = failure(() => { setN(5); });
-	assert caught.includes("row 3"), "the error reaches the writer: " + caught;
+	setN(5);
+	const caught = failure(() => { m(); });
+	assert caught.includes("row 3"), "the error reaches the reader: " + caught;
 	assert disposed === 1, "only row 2, built by the aborted pass, was disposed: " + disposed.toString();
 	armed = false;
 	setN(4);
@@ -677,16 +680,21 @@ test "map.ts:692 repeat that throws mid-pass commits nothing and disposes only w
 test "repeat refuses a count that is not a non-negative integer" {
 	const scope = openScope();
 	const [first, setFirst] = createSignal<number>(2.5);
-	let caught = failure(() => { runWithOwner(scope.owner, () => repeat<number>(first, (i) => i)); });
+	const fractional = runWithOwner(scope.owner, () => repeat<number>(first, (i) => i));
+	let caught = failure(() => { fractional(); });
 	assert caught.includes("Repeat: count"), "a fractional count at creation named: " + caught;
 	const [n, setN] = createSignal<number>(2);
-	const m = runWithOwner(scope.owner, () => repeat<number>(n, (i) => i));
+	let built = 0;
+	const m = runWithOwner(scope.owner, () => repeat<number>(n, (i) => { built = built + 1; return i; }));
 	assert m().join(",") === "0,1", "a whole count maps";
-	caught = failure(() => { setN(2.5); });
+	setN(2.5);
+	caught = failure(() => { m(); });
 	assert caught.includes("Repeat: count"), "a fractional count written later named: " + caught;
-	caught = failure(() => { setN(-1); });
+	setN(-1);
+	caught = failure(() => { m(); });
 	assert caught.includes("Repeat: count"), "a negative count written later named: " + caught;
-	assert m().join(",") === "0,1", "the refused counts left the rows as they were";
+	setN(2);
+	assert m().join(",") === "0,1" && built === 2, "the refused counts left the rows as they were: " + built.toString();
 	scope.dispose();
 }
 
@@ -882,7 +890,8 @@ class Plain {
 test "map.ts:75 default mode told the row never reads its index refuses a row that does" {
 	createRoot((d) => {
 		const [src, setSrc] = createSignal<number[]>([1, 2]);
-		const caught = failure(() => { mapArray<number, number>(src, (v, i) => i(), null, false); });
+		const m = mapArray<number, number>(src, (v, i) => i(), null, false);
+		const caught = failure(() => { m(); });
 		assert caught.includes("no index accessor"), "reading the index of a row emitted as index-free raises: " + caught;
 		d();
 	});
@@ -891,7 +900,8 @@ test "map.ts:75 default mode told the row never reads its index refuses a row th
 test "map.ts:97 keyed by a function told the row never reads its index refuses a row that does" {
 	createRoot((d) => {
 		const [src, setSrc] = createSignal<Item[]>([{ id: 1, label: "a" }]);
-		const caught = failure(() => { mapArrayKeyedBy<Item, number, number>(src, (r) => r.id, (item, i) => i(), null, false); });
+		const m = mapArrayKeyedBy<Item, number, number>(src, (r) => r.id, (item, i) => i(), null, false);
+		const caught = failure(() => { m(); });
 		assert caught.includes("no index accessor"), "reading the index of a row emitted as index-free raises: " + caught;
 		d();
 	});
@@ -1099,8 +1109,9 @@ function survivorsKeepTheirOwners(mode: number): void {
 	const before = m();
 	ensure(before.join(",") === "1,2,3", "first pass");
 	fault.bad = [9];
-	const caught = failure(() => { setSrc([3, 9, 1, 2]); });
-	ensure(caught.includes("row 9"), "the row's error reaches the writer: " + caught);
+	setSrc([3, 9, 1, 2]);
+	const caught = failure(() => { m(); });
+	ensure(caught.includes("row 9"), "the row's error reaches the reader: " + caught);
 	ensure(led.live(1) === 1 && led.live(2) === 1 && led.live(3) === 1, "surviving rows keep their owners");
 	ensure(led.made(9) === 1 && led.live(9) === 0, "the owner the aborted pass created is disposed with it");
 	setSrc([1, 2, 3]);
@@ -1122,8 +1133,10 @@ function removalWhileStillFailing(mode: number): void {
 	const m = runWithOwner(scope.owner, () => engine(mode, src, led, fault, null));
 	m();
 	fault.bad = [9];
-	ensure(failure(() => { setSrc([1, 2, 9, 3]); }).includes("row 9"), "a failing insert before 3 aborts");
-	ensure(failure(() => { setSrc([1, 2, 9]); }).includes("row 9"), "dropping 3 while 9 still fails aborts again");
+	setSrc([1, 2, 9, 3]);
+	ensure(failure(() => { m(); }).includes("row 9"), "a failing insert before 3 aborts");
+	setSrc([1, 2, 9]);
+	ensure(failure(() => { m(); }).includes("row 9"), "dropping 3 while 9 still fails aborts again");
 	ensure(led.live(3) === 1, "an aborted pass disposes no row it removes");
 	fault.bad = [];
 	setSrc([1, 2, 9]);
@@ -1139,7 +1152,8 @@ function initialCreateRetries(mode: number): void {
 		const fault = new Fault();
 		fault.bad = [9];
 		const [src, setSrc] = createSignal<number[]>([1, 9, 2]);
-		ensure(failure(() => { engine(mode, src, led, fault, null); }).includes("row 9"), "the first pass fails at creation");
+		const broken = engine(mode, src, led, fault, null);
+		ensure(failure(() => { broken(); }).includes("row 9"), "the first pass fails at creation");
 		allGone(led, [1, 2, 9]);
 		fault.bad = [];
 		const m = engine(mode, src, led, fault, null);
@@ -1159,7 +1173,8 @@ function abortedFallbackLeaksNothing(mode: number): void {
 	const m = runWithOwner(scope.owner, () => engine(mode, src, led, fault, () => { led.build(0); fbFault.check(0); return 0; }));
 	ensure(m().join(",") === "1", "one row");
 	fbFault.bad = [0];
-	ensure(failure(() => { setSrc([]); }).includes("row 0"), "the fallback's error reaches the writer");
+	setSrc([]);
+	ensure(failure(() => { m(); }).includes("row 0"), "the fallback's error reaches the reader");
 	ensure(led.made(0) === 1 && led.live(0) === 0, "the aborted fallback's owner is disposed");
 	fbFault.bad = [];
 	setSrc([]);
@@ -1179,7 +1194,8 @@ function failingRowsAbortTogether(mode: number): void {
 	const m = runWithOwner(scope.owner, () => engine(mode, src, led, fault, null));
 	m();
 	fault.bad = [7, 8];
-	ensure(failure(() => { setSrc([7, 1, 8, 2]); }).includes("row 7"), "the first failing row raises");
+	setSrc([7, 1, 8, 2]);
+	ensure(failure(() => { m(); }).includes("row 7"), "the first failing row raises");
 	ensure(led.live(1) === 1 && led.live(2) === 1 && led.live(7) === 0 && led.live(8) === 0, "nothing the pass built survives it");
 	fault.bad = [];
 	setSrc([7, 1, 8, 2]);
@@ -1201,7 +1217,8 @@ function removedRowsOutliveTheNewOnes(mode: number): void {
 	m();
 	ensure(led.log.slice(at, led.log.length).join(" ") === "+9 -2", "the new row is built before the removed row is disposed: " + led.log.slice(at, led.log.length).join(" "));
 	fault.bad = [8];
-	failure(() => { setSrc([1, 8]); });
+	setSrc([1, 8]);
+	failure(() => { m(); });
 	ensure(led.live(9) === 1 && led.live(3) === 1, "a pass that fails disposes none of the rows it would have removed");
 	scope.dispose();
 }
@@ -1234,7 +1251,8 @@ test "notready-safety.test.ts:250 position mode: an aborted grow keeps every row
 	const before = m();
 	assert before.join(",") === "0,1", "two rows";
 	fault.bad = [99];
-	assert failure(() => { setSrc([11, 21, 99]); }).includes("row 99"), "the new position's error reaches the writer";
+	setSrc([11, 21, 99]);
+	assert failure(() => { m(); }).includes("row 99"), "the new position's error reaches the reader";
 	assert slots[0]() === 11 && slots[1]() === 21, "map.ts:437 the scan wrote the kept cells before row 2 failed, the abort does not take it back: " + slots[0]().toString() + "," + slots[1]().toString();
 	assert led.live(0) === 1 && led.live(1) === 1 && led.made(2) === 1 && led.live(2) === 0, "row owners as before, the aborted row disposed";
 	setSrc([10, 20]);
@@ -1264,7 +1282,8 @@ test "notready-safety.test.ts:250 keyed by a function: the scan wrote the kept k
 	}, null, false));
 	m();
 	fault.bad = [99];
-	assert failure(() => { setSrc([12, 23, 99]); }).includes("row 99"), "the new key's error reaches the writer";
+	setSrc([12, 23, 99]);
+	assert failure(() => { m(); }).includes("row 99"), "the new key's error reaches the reader";
 	assert slots[0]() === 12 && slots[1]() === 23, "map.ts:437 kept keys show their new item although the pass aborted: " + slots[0]().toString() + "," + slots[1]().toString();
 	fault.bad = [];
 	setSrc([12, 23, 99]);
@@ -1289,7 +1308,8 @@ test "notready-safety.test.ts:96 an aborted pass leaves the index cells: the kep
 	const one = indexOfOne as Accessor<number>;
 	assert one() === 0, "row 1 sits at 0";
 	fault.bad = [9];
-	assert failure(() => { setSrc([3, 9, 1, 2]); }).includes("row 9"), "the pass aborts";
+	setSrc([3, 9, 1, 2]);
+	assert failure(() => { m(); }).includes("row 9"), "the pass aborts";
 	assert one() === 0, "the aborted pass wrote no index: " + one().toString();
 	fault.bad = [];
 	setSrc([3, 9, 1, 2]);
@@ -1305,7 +1325,8 @@ test "notready-safety.test.ts:352 repeat: a disjoint window shift with a failing
 	const m = runWithOwner(scope.owner, () => repeat<number>(() => 3, (i) => { led.build(i); fault.check(i); return i; }, from));
 	assert m().join(",") === "0,1,2", "window 0..2";
 	fault.bad = [11];
-	assert failure(() => { setFrom(10); }).includes("row 11"), "row 11 fails";
+	setFrom(10);
+	assert failure(() => { m(); }).includes("row 11"), "row 11 fails";
 	assert led.live(0) === 1 && led.live(1) === 1 && led.live(2) === 1, "the old rows are alive until the new window lands";
 	assert led.live(10) === 0 && led.live(11) === 0, "what the pass built is gone";
 	fault.bad = [];
@@ -1324,7 +1345,8 @@ test "notready-safety.test.ts:402 repeat: an aborted fallback leaks no owner acr
 	const m = runWithOwner(scope.owner, () => repeat<number>(n, (i) => i, null, () => { led.build(0); fbFault.check(0); return -1; }));
 	assert m().join(",") === "0", "one row";
 	fbFault.bad = [0];
-	assert failure(() => { setN(0); }).includes("row 0"), "the fallback's error reaches the writer";
+	setN(0);
+	assert failure(() => { m(); }).includes("row 0"), "the fallback's error reaches the reader";
 	assert led.live(0) === 0, "the aborted fallback's owner is disposed";
 	fbFault.bad = [];
 	setN(1);
