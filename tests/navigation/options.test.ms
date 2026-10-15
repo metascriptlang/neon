@@ -23,6 +23,8 @@ import {
 	DarkTheme,
 	DefaultTheme,
 } from "../../src/navigation/index";
+import { backAccessibilityLabel } from "../../src/navigation/header";
+import { tabAccessibilityLabel } from "../../src/navigation/tabs";
 import { findLabel, press, visibleText } from "./navHarness";
 
 const Tab = createBottomTabNavigator<string>();
@@ -223,4 +225,12 @@ test "Link opens a path, tabPress can be prevented and onStateChange reports eac
 	assert ref.currentPath() === "Second", "a prevented tabPress keeps the tab: " + ref.currentPath();
 	assert seen.join(",") === "Second,Landing,Second", seen.join(",");
 	dispose();
+}
+
+test "the back button and an iOS tab carry React Navigation's accessibility labels" {
+	assert backAccessibilityLabel("Items") === "Items, back";
+	assert backAccessibilityLabel("Back") === "Go back";
+	assert backAccessibilityLabel("") === "Go back";
+	assert tabAccessibilityLabel("Search", 1, 3, "ios") === "Search, tab, 2 of 3";
+	assert tabAccessibilityLabel("Search", 1, 3, "android") === "Search";
 }

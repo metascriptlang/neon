@@ -4,6 +4,7 @@ import { NeonEvent } from "../render/event";
 import { Style } from "../render/style";
 import { View, Text, Pressable } from "../components/primitives";
 import { For, Show } from "../macros/ui/flow";
+import { Platform } from "../api/platform";
 import {
 	Navigation,
 	NavigatorCore,
@@ -82,6 +83,11 @@ export function labelOf<P>(entry: Navigation<P>, own: string | null): string {
 	return title === null ? entry.route.name : title as string;
 }
 
+export function tabAccessibilityLabel(label: string, at: int32, count: int32, os: string): string {
+	if (os !== "ios") { return label; }
+	return label + ", tab, " + (at + 1).toString() + " of " + count.toString();
+}
+
 export function tabItem<P>(
 	core: NavigatorCore<P>,
 	entry: Navigation<P>,
@@ -98,7 +104,13 @@ export function tabItem<P>(
 	});
 	const a11y = accessor((): string => {
 		const own = options().tabBarAccessibilityLabel;
-		return own === null ? label() : own as string;
+		if (own !== null) { return own as string; }
+		const all = core.entries();
+		let at: int32 = 0;
+		for (let i = 0; i < all.length; i += 1) {
+			if (all[i].route.key === key) { at = i as int32; }
+		}
+		return tabAccessibilityLabel(label(), at, all.length as int32, Platform.OS);
 	});
 	const badge = accessor((): string => {
 		const value = options().tabBarBadge;

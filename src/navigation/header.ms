@@ -63,6 +63,10 @@ const MENU_BUTTON: Style = {
 	justifyContent: "center",
 };
 
+export function backAccessibilityLabel(label: string): string {
+	return label !== "" && label !== "Back" ? label + ", back" : "Go back";
+}
+
 export function HeaderBackButton(props: {
 	label?: Accessor<string> | null;
 	tintColor?: Accessor<string> | null;
@@ -74,7 +78,7 @@ export function HeaderBackButton(props: {
 	const text = accessor((): string => label === null ? "Back" : (label as Accessor<string>)());
 	const press = props.onPress;
 	return <Pressable style={BACK_BUTTON}
-		accessibilityRole="button" accessibilityLabel="Back"
+		accessibilityRole="button" accessibilityLabel={backAccessibilityLabel(text())}
 		onPress={(e: NeonEvent): void => { press(); }}>
 		<Text style={{ color: color(), fontSize: 17 }}>{"‹ " + text()}</Text>
 	</Pressable>;

@@ -56,7 +56,7 @@ test "the navigation demo runs in Chrome: stack with params, kept state, tabs, b
 	press("Save");
 	await sleepAsync(500);
 	assert shows("Void renderer") && shows("Item number 2"), "saved: " + shown();
-	press("Back");
+	press("Items, back");
 	await sleepAsync(500);
 	assert shows("Home taps 1") && shows("Void renderer"), "list kept its state: " + shown();
 

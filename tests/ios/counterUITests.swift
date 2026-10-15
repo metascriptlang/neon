@@ -1504,7 +1504,7 @@ final class NavigationUITests: XCTestCase {
 
         press("Open Void shader")
         _ = any("Item number 2")
-        _ = any("Back")
+        _ = any("Items, back")
         report("detail")
 
         press("Edit item")
@@ -1519,7 +1519,7 @@ final class NavigationUITests: XCTestCase {
         _ = any("Void renderer")
         report("saved")
 
-        press("Back")
+        press("Items, back")
         _ = any("Home taps 1")
         _ = any("Open Void renderer")
         report("back-kept-state")
@@ -1539,7 +1539,7 @@ final class NavigationUITests: XCTestCase {
         gone("Close navigation menu")
         _ = any("Home taps 1")
 
-        press("Search")
+        press("Search, tab, 2 of 3")
         _ = any("Searches 0")
         press("Increment search")
         _ = any("Searches 1")
@@ -1547,13 +1547,13 @@ final class NavigationUITests: XCTestCase {
         RunLoop.current.run(until: Date().addingTimeInterval(1))
         report("search-badge")
 
-        press("Profile")
+        press("Profile, tab, 3 of 3")
         _ = any("Profile taps 0")
         press("Increment profile")
         _ = any("Profile taps 1")
-        press("Search")
+        press("Search, tab, 2 of 3")
         _ = any("Searches 1")
-        press("Home")
+        press("Home, tab, 1 of 3")
         _ = any("Home taps 1")
         report("tabs-kept-state")
 
