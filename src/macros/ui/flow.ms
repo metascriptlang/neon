@@ -4,7 +4,7 @@
 
 import { mapArray, mapArrayKeyedBy, mapArrayByPosition, repeat } from "../../core/array";
 import { createMemo } from "../../core/memo";
-import { Accessor, createSignal } from "../../core/signal";
+import { Accessor, accessor, createSignal } from "../../core/signal";
 import { catchError } from "../../core/error";
 import { NeonNode, regionNode } from "../../render/node";
 import { Host, HostNode } from "../../render/hostTypes";
@@ -107,6 +107,12 @@ export function ErrorBoundary(props: {
 	});
 }
 
+function shownRows(on: boolean, children: NeonNode, fallback: NeonNode | null): Row[] {
+	if (on) { return [makeRow(children)]; }
+	if (fallback !== null) { return [makeRow(fallback as NeonNode)]; }
+	return [] as Row[];
+}
+
 // Conditional: children rebuild only when the condition's truthiness flips (equals memo).
 export function Show(props: {
 	when: Accessor<boolean>;
@@ -115,11 +121,50 @@ export function Show(props: {
 }): NeonNode {
 	return regionNode((h) => {
 		const cond = createMemo<boolean>(() => props.when());
-		return createMemo<Row[]>(() => {
-			if (cond()) { return [makeRow(props.children)]; }
-			const fb = props.fallback;
-			if (fb !== null) { return [makeRow(fb as NeonNode)]; }
-			return [] as Row[];
-		});
+		return createMemo<Row[]>(() => shownRows(cond(), props.children, props.fallback));
 	});
+}
+
+export function ShowKeyed(props: {
+	when: Accessor<boolean>;
+	children: NeonNode;
+	fallback?: NeonNode | null;
+}): NeonNode {
+	return regionNode((h) => createMemo<Row[]>(() => shownRows(props.when(), props.children, props.fallback)));
+}
+
+export function ShowWith<T>(props: {
+	when: Accessor<boolean>;
+	value: Accessor<T>;
+	children: (value: Accessor<T>) => NeonNode;
+	fallback?: NeonNode | null;
+}): NeonNode {
+	const narrowed = accessor((): T => {
+		if (!props.when()) { throw new Error("<Show>: the narrowed value was read while its condition is false"); }
+		return props.value();
+	});
+	return Show({
+		when: props.when,
+		children: (host: Host, parent: HostNode, before: HostNode | null): void => { props.children(narrowed)(host, parent, before); },
+		fallback: props.fallback,
+	});
+}
+
+export function ShowKeyedWith<T>(props: {
+	when: Accessor<boolean>;
+	value: Accessor<T>;
+	children: (value: T) => NeonNode;
+	fallback?: NeonNode | null;
+}): NeonNode {
+	return ShowKeyed({
+		when: props.when,
+		children: (host: Host, parent: HostNode, before: HostNode | null): void => { props.children(props.value())(host, parent, before); },
+		fallback: props.fallback,
+	});
+}
+
+export function showWhen<M>(source: () => M, use: (value: Accessor<M>) => NeonNode): NeonNode {
+	return (host: Host, parent: HostNode, before: HostNode | null): void => {
+		use(createMemo(source))(host, parent, before);
+	};
 }

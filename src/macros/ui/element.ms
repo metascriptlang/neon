@@ -819,11 +819,98 @@ export macro element(node: Node): Node {
 		}
 		return { kind: NodeKind.JSXElement, line: c.line, column: c.column, jsxTag: tag, jsxAttrs: attrs, jsxChildren: c.jsxChildren, jsxSelfClosing: c.jsxSelfClosing };
 	}
+	const showKeyedMsg = "<Show keyed> takes true or false, written in place: a function child receives an Accessor of the value, or the value itself when keyed, so a computed value cannot choose between them";
+	const showArityMsg = "a <Show> function child takes one parameter, the narrowed value";
+	let showIdx = 0;
+	function showCall(c: Node): Node {
+		let whenAt = -1;
+		let keyedAt = -1;
+		for (let i = 0; i < c.jsxAttrs.length; i = i + 1) {
+			const a = c.jsxAttrs[i];
+			if (a.kind !== NodeKind.JSXAttribute) { continue; }
+			if (a.jsxAttrName === "when") { whenAt = i; }
+			if (a.jsxAttrName === "keyed") { keyedAt = i; }
+		}
+		if (whenAt < 0) {
+			error("<Show> requires the 'when' prop", c);
+			return componentOf(c);
+		}
+		let keyed = false;
+		if (keyedAt >= 0) {
+			const k = peelHidden(c.jsxAttrs[keyedAt].jsxAttrValue);
+			if (k.kind === NodeKind.BooleanLiteral) { keyed = k.boolValue; } else { error(showKeyedMsg, c.jsxAttrs[keyedAt]); }
+		}
+		let significant: Node[] = [];
+		for (const k of c.jsxChildren) {
+			if (!(k.kind === NodeKind.JSXText && cleanJsxText(k.jsxText) === "")) { significant.push(k); }
+		}
+		let withValue = false;
+		if (significant.length === 1 && significant[0].kind === NodeKind.JSXExpressionContainer) {
+			const only = significant[0].jsxExpr;
+			if (isFunctionValued(only) && !isNodeTyped(only)) {
+				const arity = rowArity(only);
+				if (arity > 1) { error(showArityMsg, only); }
+				withValue = arity === 1;
+			}
+		}
+		const ln = c.line;
+		const col = c.column;
+		const given = c.jsxAttrs[whenAt].jsxAttrValue;
+		const source: Node = isAccessorTyped(given)
+			? { kind: NodeKind.CallExpr, line: ln, column: col, callee: given, arguments: [] }
+			: given;
+		const name = "_s" + showIdx.toString();
+		showIdx = showIdx + 1;
+		const read: Node = { kind: NodeKind.CallExpr, line: ln, column: col, callee: ident(name, ln, col), arguments: [] };
+		function truthy(of: Node): Node {
+			return {
+				kind: NodeKind.ConditionalExpr, line: ln, column: col, ternaryCondition: of,
+				ternaryConsequent: { kind: NodeKind.BooleanLiteral, line: ln, column: col, boolValue: true },
+				ternaryAlternate: { kind: NodeKind.BooleanLiteral, line: ln, column: col, boolValue: false },
+			};
+		}
+		function attr(attrName: string, value: Node): Node {
+			return { kind: NodeKind.JSXAttribute, line: ln, column: col, jsxAttrName: attrName, jsxAttrValue: value };
+		}
+		function unwrapped(of: Node): Node {
+			return { kind: NodeKind.TypeAssertion, line: ln, column: col, asExpr: of, asType: "!" };
+		}
+		const plain = !keyed && !withValue;
+		let tag = "Show";
+		let attrs: Node[] = [];
+		for (let i = 0; i < c.jsxAttrs.length; i = i + 1) {
+			if (i === whenAt) { attrs.push(attr("when", truthy(plain ? source : read))); }
+			else if (i !== keyedAt) { attrs.push(c.jsxAttrs[i]); }
+		}
+		if (keyed && !withValue) { tag = "ShowKeyed"; }
+		if (!keyed && withValue) { tag = "ShowWith"; attrs.push(attr("value", unwrapped(read))); }
+		if (keyed && withValue) { tag = "ShowKeyedWith"; attrs.push(attr("value", unwrapped(read))); }
+		const inner = componentOf({ kind: NodeKind.JSXElement, line: ln, column: col, jsxTag: tag, jsxAttrs: attrs, jsxChildren: c.jsxChildren, jsxSelfClosing: c.jsxSelfClosing });
+		if (plain) { return inner; }
+		return {
+			kind: NodeKind.CallExpr, line: ln, column: col, callee: ident("showWhen", ln, col),
+			arguments: [
+				{ kind: NodeKind.ArrowFunction, line: ln, column: col, arrowParams: [], arrowParamTypes: [], arrowBody: source, arrowFlags: "", arrowReturnType: "" },
+				{ kind: NodeKind.ArrowFunction, line: ln, column: col, arrowParams: [name], arrowParamTypes: [""], arrowBody: inner, arrowFlags: "", arrowReturnType: "" },
+			],
+		};
+	}
+	function contextProvider(given: Node): Node {
+		let valued = false;
+		for (const a of given.jsxAttrs) {
+			if (a.kind === NodeKind.JSXAttribute && a.jsxAttrName === "value") { valued = true; }
+		}
+		if (!valued) {
+			error("<" + given.jsxTag + "> needs a value prop: a context provider without one has nothing to provide", given);
+		}
+		return { kind: NodeKind.JSXElement, line: given.line, column: given.column, jsxTag: given.jsxTag + ".provider", jsxAttrs: given.jsxAttrs, jsxChildren: given.jsxChildren, jsxSelfClosing: given.jsxSelfClosing };
+	}
 	function componentCall(given: Node): Node {
-		const asContext = isContextTag(given);
-		const c: Node = asContext
-			? { kind: NodeKind.JSXElement, line: given.line, column: given.column, jsxTag: given.jsxTag + ".provider", jsxAttrs: given.jsxAttrs, jsxChildren: given.jsxChildren, jsxSelfClosing: given.jsxSelfClosing }
-			: forByKeyed(given);
+		const c = isContextTag(given) ? contextProvider(given) : given;
+		if (c.jsxTag === "Show") { return showCall(c); }
+		return componentOf(forByKeyed(c));
+	}
+	function componentOf(c: Node): Node {
 		let keys: string[] = [];
 		let values: Node[] = [];
 		const declared = declaredProps(c);
@@ -858,9 +945,6 @@ export macro element(node: Node): Node {
 			}
 		}
 		const tag = c.jsxTag;
-		if (asContext && keys.indexOf("value") < 0) {
-			error("<" + given.jsxTag + "> needs a value prop: a context provider without one has nothing to provide", given);
-		}
 		let significant: Node[] = [];
 		for (const k of c.jsxChildren) {
 			if (!(k.kind === NodeKind.JSXText && cleanJsxText(k.jsxText) === "")) { significant.push(k); }

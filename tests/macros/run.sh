@@ -40,4 +40,7 @@ expect_reject tests/macros/contextProviderDotRejected.ms "<Tone.Provider> names 
 expect_reject tests/macros/contextProviderValueMissingRejected.ms "<Tone> needs a value prop"
 expect_reject tests/macros/contextProviderValueTypeRejected.ms "Type 'int32' is not assignable to type 'string'"
 expect_reject tests/macros/forKeyedComputedRejected.ms "<For keyed> takes true, false or a key function, written in place"
+expect_reject tests/macros/showKeyedComputedRejected.ms "<Show keyed> takes true or false, written in place"
+expect_reject tests/macros/showFunctionArityRejected.ms "a <Show> function child takes one parameter, the narrowed value"
+expect_reject tests/macros/showWhenMissingRejected.ms "<Show> requires the 'when' prop"
 exit $fail
