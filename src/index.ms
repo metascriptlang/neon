@@ -19,7 +19,7 @@ export { renderToString, renderToMarkup, SsrMarkup } from "./render/ssr";
 export { isServer } from "./render/environment";
 export { Head } from "./render/head";
 export { createComponent } from "./render/component";
-export { Context, ProviderProps, createContext, useContext } from "./render/context";
+export { Context, ContextNotFoundError, NoOwnerError, createContext, useContext } from "./render/context";
 export { NeonEvent, neonEvent } from "./render/event";
 export { Row, makeRow, rowOf, place, mountAt, moveRow, removeRow, reconcileArrays } from "./render/reconcile";
 

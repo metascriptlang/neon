@@ -229,7 +229,7 @@ export macro element(node: Node): Node {
 		}
 		return null;
 	}
-	function componentType(c: Node): Node | null {
+	function tagType(c: Node): Node | null {
 		const parts: string[] = c.jsxTag.split(".");
 		const sym = bindSym(parts[0]);
 		if (sym === null) {
@@ -251,6 +251,18 @@ export macro element(node: Node): Node {
 				return null;
 			}
 		}
+		return t;
+	}
+	function isContextTag(c: Node): boolean {
+		const t = tagType(c);
+		if (t === null) { return false; }
+		const generic = peelTypeRef(t as Node);
+		if (generic.kind !== NodeKind.TypeGeneric) { return false; }
+		const base = generic.typExprBase;
+		return base.kind === NodeKind.Identifier && base.name === "Context";
+	}
+	function componentType(c: Node): Node | null {
+		const t = tagType(c);
 		const fn = t === null ? null : peelTypeRef(t as Node);
 		if (fn === null || fn.kind !== NodeKind.TypeFunction) {
 			error("<" + c.jsxTag + "> is not a component: its type is not a function", c);
@@ -784,7 +796,11 @@ export macro element(node: Node): Node {
 	node = flattenFragments(lowerFlowTree(node));
 
 
-	function componentCall(c: Node): Node {
+	function componentCall(given: Node): Node {
+		const asContext = isContextTag(given);
+		const c: Node = asContext
+			? { kind: NodeKind.JSXElement, line: given.line, column: given.column, jsxTag: given.jsxTag + ".provider", jsxAttrs: given.jsxAttrs, jsxChildren: given.jsxChildren, jsxSelfClosing: given.jsxSelfClosing }
+			: given;
 		let keys: string[] = [];
 		let values: Node[] = [];
 		const declared = declaredProps(c);
@@ -819,6 +835,9 @@ export macro element(node: Node): Node {
 			}
 		}
 		const tag = c.jsxTag;
+		if (asContext && keys.indexOf("value") < 0) {
+			error("<" + given.jsxTag + "> needs a value prop: a context provider without one has nothing to provide", given);
+		}
 		let significant: Node[] = [];
 		for (const k of c.jsxChildren) {
 			if (!(k.kind === NodeKind.JSXText && cleanJsxText(k.jsxText) === "")) { significant.push(k); }
@@ -858,8 +877,8 @@ export macro element(node: Node): Node {
 				values.push({ kind: NodeKind.BooleanLiteral, line: c.line, column: c.column, boolValue: rowUsesIndex(values[rowAt]) });
 			}
 		}
-		// A dotted tag (Ctx.Provider) resolves through member access, not a flat
-		// name: fold the parts so the checker sees Ctx.Provider and types the call
+		// A dotted tag (Palettes.tone) resolves through member access, not a flat
+		// name: fold the parts so the checker sees Palettes.tone and types the call
 		// through the field's declared component type.
 		let tagRef: Node = { kind: NodeKind.Identifier, line: c.line, column: c.column, name: tag };
 		if (tag.indexOf(".") >= 0) {

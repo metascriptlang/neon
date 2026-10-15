@@ -54,9 +54,9 @@ test "a provider scope carries the insertion point into its child" {
 	const host = mockHost();
 	const root = twoSiblings(host);
 	const app: NeonNode = element(
-		<T.Provider value={{ accent: "blue" }}>
+		<T value={{ accent: "blue" }}>
 			<div>{useContext(T).accent}</div>
-		</T.Provider>
+		</T>
 	);
 	mountBefore(app, host, root as unknown as HostNode, tailOf(root));
 	assert mockToString(root) === "<root><a></a><div>blue</div><z></z></root>", "got " + mockToString(root);

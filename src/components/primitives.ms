@@ -208,7 +208,7 @@ export function View(props: ViewProps): NeonNode {
 	if (entry === null) { return primitive("view", props, attrs, evts, props.children); }
 	const owner = entry as ResponderEntry;
 	const kids = props.children;
-	const provided: NeonNode | null = kids === null ? null : ResponderParent.Provider({
+	const provided: NeonNode | null = kids === null ? null : ResponderParent.provider({
 		value: accessor((): ResponderEntry | null => owner),
 		children: kids as NeonNode,
 	});

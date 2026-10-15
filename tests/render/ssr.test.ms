@@ -91,9 +91,9 @@ test "components and context scopes serialize through" {
 
 	const T = createContext<Skin>({ accent: "light" });
 	const scoped = renderToString(
-		<T.Provider value={{ accent: "dark" }}>
+		<T value={{ accent: "dark" }}>
 			<div>{useContext(T).accent}</div>
-		</T.Provider>
+		</T>
 	);
 	assert scoped === "<div>dark</div>", "provider scope: " + scoped;
 }

@@ -11,7 +11,7 @@ function mountRows(n: number): number {
 	const app: NeonNode = (host: Host, parent: HostNode, before: HostNode | null): void => {
 		for (let i = 0; i < n; i += 1) {
 			const v = i;
-			T.Provider({ value: accessor((): number => v), children: consumer })(host, parent, before);
+			T.provider({ value: accessor((): number => v), children: consumer })(host, parent, before);
 		}
 	};
 	const root: MockNode = mockNode("root");

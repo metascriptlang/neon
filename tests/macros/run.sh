@@ -36,4 +36,7 @@ expect_reject tests/macros/componentUnknownPropRejected.ms "<Badge> has no prop 
 expect_reject tests/macros/componentMixedAccessorRejected.ms "prop 'value' of <Count> mixes Accessor with another type"
 expect_reject tests/macros/componentNotInScopeRejected.ms "<Missing> is not a component in scope"
 expect_reject tests/macros/componentSlotRequiredPropsRejected.ms "a node slot component requires prop 'title': pass an element with props instead"
+expect_reject tests/macros/contextProviderDotRejected.ms "<Tone.Provider> names no field 'Provider'"
+expect_reject tests/macros/contextProviderValueMissingRejected.ms "<Tone> needs a value prop"
+expect_reject tests/macros/contextProviderValueTypeRejected.ms "Type 'int32' is not assignable to type 'string'"
 exit $fail
