@@ -1,5 +1,5 @@
 import { Computation, Cleanup, EFFECT_RENDER, EFFECT_USER, RUN_UNCHANGED } from "./types";
-import { createEffectNode, startEffect, isDisposed, onServer, createOwner } from "./runtime";
+import { createEffectNode, startEffect, isDisposed, onServer, getOwner, createOwner, carriesId, getNextChildId } from "./runtime";
 import { runWithOwner } from "./owner";
 import { Cell } from "./signal";
 
@@ -120,4 +120,23 @@ export function createRenderEffect<T>(
 	const state = new EffectState<T>();
 	const node = createEffectNode(computePhase<T>(state, compute, false), effectPhase<T>(state, effect, null), EFFECT_RENDER, transparent);
 	startEffect(node, defer);
+}
+
+export function onSettled(callback: () => Cleanup | null): void {
+	const owner = getOwner();
+	if (onServer()) {
+		if (carriesId(owner)) { getNextChildId(owner as Computation); }
+		return;
+	}
+	const owned = owner !== null;
+	createEffect<boolean>(
+		(prev: boolean | null): boolean => true,
+		(value: boolean, prev: boolean | null): Cleanup | null => {
+			const cleanup = callback();
+			if (!owned && cleanup !== null) {
+				throw new Error("[SETTLED_CLEANUP_UNOWNED] onSettled returned a cleanup in an unowned scope; a cleanup can only be honored under an owner. Call it from a component or root.");
+			}
+			return cleanup;
+		},
+	);
 }

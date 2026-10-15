@@ -1,5 +1,5 @@
 import { createSignal } from "../../src/core/signal";
-import { createEffect, createRenderEffect } from "../../src/core/effect";
+import { createEffect, createRenderEffect, onSettled } from "../../src/core/effect";
 import { createMemo } from "../../src/core/memo";
 import { createRoot, createUniqueId } from "../../src/core/owner";
 import { getOwner, flush, setServerDepth } from "../../src/core/runtime";
@@ -198,4 +198,27 @@ test "on the server a render effect applies once and a user effect never does" {
 		setServerDepth(0);
 	}
 	assert user === 0 && render === 1, "user " + user.toString() + " render " + render.toString();
+}
+
+function settledTree(): string {
+	const ids: string[] = [];
+	createRoot((dispose) => {
+		onSettled(() => null);
+		ids.push(createUniqueId());
+		dispose();
+	}, "");
+	return ids.join(" ");
+}
+
+test "onSettled takes a child id on the server as on the client" {
+	const client = settledTree();
+	setServerDepth(1);
+	let server = "";
+	try {
+		server = settledTree();
+	} finally {
+		setServerDepth(0);
+	}
+	assert client === "1", client;
+	assert server === client, "server " + server + " client " + client;
 }
