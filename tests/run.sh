@@ -33,12 +33,14 @@ MINGW* | MSYS* | CYGWIN*)
 	"$MSC" build examples/voidWindow.ms --output=out/voidWindow.exe || fail=1
 	echo "== desktop examples/voidDraw.ms"
 	"$MSC" build examples/voidDraw.ms --output=out/voidDraw.exe || fail=1
+	echo "== desktop examples/voidInputs.ms"
+	"$MSC" build examples/voidInputs.ms --output=out/voidInputs.exe || fail=1
 	echo "== desktop examples/windowsNative/app.ms"
 	"$MSC" build examples/windowsNative/app.ms --output=out/windowsNative.exe || fail=1
 	echo "== desktop examples/windowsNative/text.ms"
 	"$MSC" build examples/windowsNative/text.ms --output=out/windowsText.exe || fail=1
 	;;
-*) echo "== desktop skip examples/voidWindow.ms, examples/voidDraw.ms and examples/windowsNative: Windows-only" ;;
+*) echo "== desktop skip examples/voidWindow.ms, examples/voidDraw.ms, examples/voidInputs.ms and examples/windowsNative: Windows-only" ;;
 esac
 tests/browser/run.sh || fail=1
 sh tests/edge/run.sh || fail=1
