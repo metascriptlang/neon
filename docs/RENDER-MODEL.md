@@ -439,6 +439,27 @@ matches only the bare path answers 404 to the tagged link (both measured on `exa
 and on Geass, 2026-10-13). `examples/site/site.ms` keeps the whole address as the state and
 derives the page from its path.
 
+**A path whose page is the same for every request is rendered to a file at build time.**
+The site lists those paths (`staticPaths` in `examples/site/site.ms`), because a route
+codec only decodes and cannot be enumerated; the edge lane asks the built site Worker in
+workerd for each and writes `out/static/<path>.html` plus `404.html` (`prerender`,
+`tests/edge/run.mjs`). That is Astro's Cloudflare prerenderer (`~/projects/astro` at
+`7492974`, `packages/integrations/cloudflare/src/prerenderer.ts`, `getStaticPaths` and
+`render`): the bytes come from the same bundle and runtime that answer live requests, and a
+render that fails fails the build. Astro requests a prerendered page with no query and no
+headers (`packages/astro/src/core/request.ts`), so a page that reads either is not static;
+the lane checks the query half by comparing each page with the same path plus `?utm=1`.
+Geass reads the User-Agent for its layout width, so its docs stay on the Worker until the
+width no longer decides the markup. Files use Astro's `'file'` layout (`/docs/start` →
+`docs/start.html`): the `'directory'` layout's `docs/start/index.html` would be served at
+`/docs/start/`, which `examples/site` answers with 404. Serving the files ahead of the
+Worker is the deployment's job (Workers Static Assets, or `run_worker_first` exclusions).
+What a prerendered page saves is the Worker's render, measured 2026-10-15 on tree
+`69c8920f26d68c66727a7886a05ae97300e7ff93` with the `-d:server` bundle in Node:
+`respond("/docs/start")` 0.017–0.031 ms per request for its 1 433 bytes, three runs of 2 000
+at load 17–27 on 14 cores. The rest is the platform serving a file instead of starting the
+Worker, which a local run cannot measure.
+
 Measured 2026-10-13 on tree `b514b24aff684ca7119a9aa67cdc4075a95aa605`, msc v0.3.2 `ea7ae4d17`,
 `sh tests/edge/run.sh` (workerd, then Chrome): `/` and `/docs/<slug>` answer 200 with their own
 title and description, `/docs/missing`, `/nowhere` and `/docs/start/` answer 404 with `noindex`;
