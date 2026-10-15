@@ -21,6 +21,7 @@ import {
 	AreaHub, VoidAreaHandle, AreaKeyEvent, AreaKeyAction, AreaKeyMod, AreaPointerEvent, AreaPointerKind, createAreaHub,
 } from "../../render/voidAreaHandle";
 import { Style } from "../../render/style";
+import { publishScale } from "../../api/dimensions";
 import { VoidHost, VoidNode, createVoidHostWith, asFlexStyle, parseColor } from "../void/host";
 
 when (windows) {
@@ -60,8 +61,15 @@ interface Area {
 	height: int32;
 	scale: float32;
 	composing: boolean;
+	held: int32;
 	hub: AreaHub;
 }
+
+// [frames the scene's dirty wake requested, frames drawn], since the process began.
+let _requested = 0;
+let _drawn = 0;
+
+export function frameCounts(): number[] { return [_requested, _drawn]; }
 
 const _areas: Area[] = [];
 let _font: FontId = DEFAULT_FONT;
@@ -110,6 +118,7 @@ function drawCurrent(): void {
 		exit(3);
 	}
 	const area = a as Area;
+	_drawn = _drawn + 1;
 	area.vh.layout(logicalWidth(area), logicalHeight(area));
 	area.vh.scene.present();
 	const r = area.vh.imeRect();
@@ -159,6 +168,7 @@ function resized(window: int32, width: int32, height: int32, scale: float64): vo
 	area.width = width;
 	area.height = height;
 	area.scale = scale as float32;
+	publishScale(scale, 1);
 	area.hub.resize({ pixelWidth: width, pixelHeight: height, scale: area.scale });
 	if (area.view === ViewInvalid) {
 		area.view = viewCreate(0 as int64, width, height, area.scale);
@@ -190,6 +200,11 @@ function keyEvent(e: KeyEvent, composing: boolean): NeonEvent {
 	ev.shiftKey = e.mods.has(KeyMod.Shift);
 	ev.repeat = e.action === KeyAction.Repeat;
 	ev.isComposing = composing;
+	ev.scancode = e.scancode;
+	ev.mods = (e.mods as uint16) as number;
+	ev.consumedMods = (e.consumedMods as uint16) as number;
+	ev.unshifted = e.unshifted;
+	ev.text = e.text;
 	if (printable(e.text)) { ev.key = e.text; }
 	else if (e.unshifted >= (32 as int32) && e.unshifted !== (127 as int32) && ev.code.startsWith("Key")) { ev.key = String.fromCharCode(e.unshifted); }
 	else { ev.key = ev.code; }
@@ -210,8 +225,20 @@ function wireInput(): void {
 		if (a === null) { return; }
 		const area = a as Area;
 		area.hub.pointer(areaPointer(e));
-		if (e.kind !== PointerKind.Button || !e.pressed) { return; }
-		area.vh.clickAt((e.x as float32) / area.scale, (e.y as float32) / area.scale);
+		const x = (e.x as float32) / area.scale;
+		const y = (e.y as float32) / area.scale;
+		if (e.kind === PointerKind.Motion) {
+			area.vh.pointerMove(x, y, area.held, area.held > (0 as int32));
+		} else if (e.kind === PointerKind.Wheel) {
+			area.vh.wheel(x, y, e.dx as float32, e.dy as float32);
+		} else if (e.kind === PointerKind.Button && e.pressed) {
+			area.held = e.button;
+			area.vh.pointerDown(x, y, e.button);
+			area.vh.clickAt(x, y);
+		} else if (e.kind === PointerKind.Button) {
+			if (area.held === e.button) { area.held = 0 as int32; }
+			area.vh.pointerUp(x, y, e.button);
+		}
 	});
 	onKey((e: KeyEvent): void => {
 		const a = areaOfWindow(e.window);
@@ -230,7 +257,7 @@ function wireInput(): void {
 		const a = areaOfWindow(window);
 		if (a === null) { return; }
 		(a as Area).hub.text(text);
-		(a as Area).vh.commitText(text);
+		(a as Area).vh.textInput(text);
 	});
 	onImePreedit((window: int32, text: string, cursor: int32): void => {
 		const a = areaOfWindow(window);
@@ -274,11 +301,14 @@ function windowHost(win: Window): Host {
 			requestFrame: (): void => { requestFrame(win); },
 			setImeRect: (pixelX: int32, pixelY: int32, pixelW: int32, pixelH: int32): void => { setImeRect(win, pixelX, pixelY, pixelW, pixelH); },
 		});
-		const area: Area = { win, view: ViewInvalid, visual: null, vh, width: 0 as int32, height: 0 as int32, scale: 1.0, composing: false, hub };
+		const area: Area = { win, view: ViewInvalid, visual: null, vh, width: 0 as int32, height: 0 as int32, scale: 1.0, composing: false, held: 0 as int32, hub };
 		_areas.push(area);
 		current = area;
 		if (pendingStyle !== null) { applyAreaStyle(area, pendingStyle as Style); }
-		vh.onDirty((): void => { requestFrame(win); });
+		vh.onDirty((): void => {
+			_requested = _requested + 1;
+			requestFrame(win);
+		});
 		return {
 			host: vh.host,
 			root: vh.root as unknown as HostNode,
