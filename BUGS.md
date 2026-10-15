@@ -171,11 +171,6 @@ and the invariants that outlived them were moved to the head of the test that pi
   `product;` mount. By reading, `navigatorMotion.ms` moves the leaving entry into `closing` and `For`
   mounts it again for the exit animation. Not checked on the base before the container history.
 
-- **PARKED 2026-10-16 — container history reads the pages key through `StoredPages`.** Not Neon's:
-  `webNavigation.ms` and `containerHistory.ms` both declaring a private `struct PagesKey` and parsing it
-  with `JSON.parse` fails at clang on C. Until then `containerHistory.ms` names its copy `StoredPages`.
-  Card `~/metascript/.inbox/compiler/2026-10-15-std-generic-instance-takes-an-imported-modules-same-named-type.md`.
-
 - **PARKED 2026-10-16 — the route tree shorthand takes no typed route.** Not Neon's: `RouteConfig` would
   take `{ route: thread, component: Thread }` through a field typed `{ node: RouteNode }`, and msc refuses a
   `RouteDef<P>` there because a generic interface instance is not assignable to a narrower interface. Until
