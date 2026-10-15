@@ -50,6 +50,7 @@ export {
 	LinkingOptions,
 	decodeComponent,
 	pathOf,
+	pathFromState,
 	targetFromPath,
 	targetFromURL,
 } from "./linking";

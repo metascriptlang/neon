@@ -1,4 +1,5 @@
-import { NavTarget } from "./core";
+import { NavTarget, NavigationState } from "./core";
+import { encodeRouteComponent } from "./routing";
 
 export interface LinkingScreen {
 	name: string;
@@ -56,6 +57,17 @@ function patternSegments(path: string, owner: int32): Segment[] {
 	return segments;
 }
 
+function screenSegments(screen: LinkingScreen, prefix: Segment[], depth: int32): Segment[] {
+	const exact = screen.exact;
+	const fromRoot = exact !== null && (exact as boolean);
+	const segments: Segment[] = fromRoot ? [] : prefix.slice(0, prefix.length);
+	const own = screen.path;
+	if (own !== null) {
+		for (const segment of patternSegments(own as string, depth)) { segments.push(segment); }
+	}
+	return segments;
+}
+
 function collect(
 	screens: LinkingScreen[],
 	chain: string[],
@@ -67,12 +79,7 @@ function collect(
 		const nextChain = chain.slice(0, chain.length);
 		nextChain.push(screen.name);
 		const own = screen.path;
-		const exact = screen.exact;
-		const fromRoot = exact !== null && (exact as boolean);
-		let segments: Segment[] = fromRoot ? [] : prefix.slice(0, prefix.length);
-		if (own !== null) {
-			for (const segment of patternSegments(own as string, depth)) { segments.push(segment); }
-		}
+		const segments = screenSegments(screen, prefix, depth);
 		const nested = screen.screens;
 		if (nested !== null) { collect(nested as LinkingScreen[], nextChain, segments, out); }
 		if (own !== null) {
@@ -211,4 +218,94 @@ export function targetFromURL(url: string, options: LinkingOptions): NavTarget |
 	const path = pathOf(url, options.prefixes);
 	if (path === null) { return null; }
 	return targetFromPath(path as string, options.config);
+}
+
+function findScreen(screens: LinkingScreen[], name: string): LinkingScreen | null {
+	for (const screen of screens) {
+		if (screen.name === name) { return screen; }
+	}
+	return null;
+}
+
+function unclaimedQuery(
+	params: Map<string, string> | null,
+	segments: Segment[],
+	depth: int32,
+): string {
+	if (params === null) { return ""; }
+	const held = params as Map<string, string>;
+	const keys: string[] = [];
+	for (const key of held) {
+		let claimed = false;
+		for (const segment of segments) {
+			if (segment.param && segment.owner === depth && segment.text === key) {
+				claimed = true;
+			}
+		}
+		if (!claimed) { keys.push(key); }
+	}
+	keys.sort();
+	const pairs: string[] = [];
+	for (const key of keys) {
+		pairs.push(encodeRouteComponent(key) + "=" + encodeRouteComponent(held.get(key) ?? ""));
+	}
+	return pairs.join("&");
+}
+
+export function pathFromState(state: NavigationState, config: LinkingConfig): string | null {
+	if (state.routes.length === 0) { return null; }
+	let path = "";
+	let query = "";
+	let current: NavigationState | null = state;
+	while (current !== null) {
+		const here = current as NavigationState;
+		let route = here.routes[here.index];
+		let hit = findScreen(config.screens, route.name);
+		let segments: Segment[] = [];
+		const owned: (Map<string, string> | null)[] = [];
+		while (hit !== null) {
+			const screen = hit as LinkingScreen;
+			segments = screenSegments(screen, segments, owned.length as int32);
+			owned.push(route.params);
+			const nested = route.state;
+			const children = screen.screens;
+			if (nested === null || children === null) { break; }
+			const inner = nested as NavigationState;
+			const next = inner.routes[inner.index];
+			const child = findScreen(children as LinkingScreen[], next.name);
+			if (child === null) { break; }
+			route = next;
+			hit = child;
+		}
+		const depth = (owned.length as int32) - 1;
+		if (depth < 0) {
+			path += "/" + encodeRouteComponent(route.name);
+		} else {
+			const pieces: string[] = [];
+			for (const segment of segments) {
+				if (segment.wildcard) {
+					pieces.push(encodeRouteComponent(route.name));
+				} else if (!segment.param) {
+					pieces.push(encodeRouteComponent(segment.text));
+				} else {
+					const values = owned[segment.owner];
+					let value: string | null = null;
+					if (values !== null) {
+						value = (values as Map<string, string>).get(segment.text);
+					}
+					if (value !== null) {
+						pieces.push(encodeRouteComponent(value as string));
+					} else if (!segment.optional) {
+						return null;
+					}
+				}
+			}
+			path += "/" + pieces.join("/");
+		}
+		const rest = route.state;
+		if (rest === null) { query = unclaimedQuery(route.params, segments, depth); }
+		current = rest;
+	}
+	path = "/" + splitPath(path).join("/");
+	return query === "" ? path : path + "?" + query;
 }

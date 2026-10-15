@@ -8,10 +8,13 @@ import {
 	LinkingOptions,
 	NavTarget,
 	NavigationContainer,
+	NavigationRoute,
+	NavigationState,
 	ScreenProps,
 	createNavigationContainerRef,
 	createStackNavigator,
 	decodeComponent,
+	pathFromState,
 	pathOf,
 	targetFromPath,
 	targetFromURL,
@@ -85,6 +88,98 @@ test "a fragment after the query is dropped, not read into the last value" {
 	const fragment = targetFromPath("user/ana?tab=likes#top", config);
 	assert describe(fragment) === "Profile(name=ana,tab=likes)", describe(fragment);
 	assert describe(targetFromPath("shop/product/4#top", config)) === "Shop>Product(id=4)";
+}
+
+function stateOfTarget(target: NavTarget): NavigationState {
+	const child = target.child;
+	return {
+		index: 0,
+		routeNames: [],
+		routes: [{
+			key: target.name,
+			name: target.name,
+			params: target.values,
+			state: child === null ? null : stateOfTarget(child as NavTarget),
+		}],
+	};
+}
+
+function roundTrip(path: string): string {
+	const target = targetFromPath(path, config);
+	if (target === null) { return "no match"; }
+	return pathFromState(stateOfTarget(target as NavTarget), config) ?? "null";
+}
+
+function routeOf(
+	name: string,
+	params: Map<string, string> | null,
+	state: NavigationState | null,
+): NavigationRoute {
+	return { key: name, name, params, state };
+}
+
+function stateOf(index: int32, routes: NavigationRoute[]): NavigationState {
+	return { index, routeNames: [], routes };
+}
+
+function paramsOf(key: string, value: string): Map<string, string> {
+	const values = new Map<string, string>();
+	values.set(key, value);
+	return values;
+}
+
+test "pathFromState inverts targetFromPath for nested, optional, exact and wildcard patterns" {
+	assert roundTrip("shop/product/42") === "/shop/product/42", roundTrip("shop/product/42");
+	assert roundTrip("/shop/") === "/shop", roundTrip("/shop/");
+	assert roundTrip("shop/product/7/reviews") === "/shop/product/7/reviews";
+	assert roundTrip("shop/product/7/reviews/3") === "/shop/product/7/reviews/3";
+	assert roundTrip("user/ana%20b") === "/user/ana%20b", roundTrip("user/ana%20b");
+	const escaped = "user/caf%C3%A9%2Fx";
+	assert roundTrip(escaped) === "/" + escaped, roundTrip(escaped);
+	assert roundTrip("nowhere/at/all") === "/Missing", roundTrip("nowhere/at/all");
+}
+
+test "params no pattern claims become a sorted escaped query on the focused route only" {
+	assert roundTrip("user/ana?tab=likes&a=1%262&x") === "/user/ana?a=1%262&tab=likes&x=",
+		roundTrip("user/ana?tab=likes&a=1%262&x");
+	const values = paramsOf("id", "9");
+	values.set("sort", "asc");
+	const product = routeOf("Product", values, null);
+	const shop = routeOf("Shop", paramsOf("ignored", "1"), stateOf(0, [product]));
+	assert pathFromState(stateOf(0, [shop]), config) === "/shop/product/9?sort=asc";
+}
+
+test "pathFromState reads the focused route of each level, tabs and stacks alike" {
+	const tabs = stateOf(1, [
+		routeOf("Shop", null, null),
+		routeOf("Profile", paramsOf("name", "bo"), null),
+	]);
+	assert pathFromState(tabs, config) === "/user/bo";
+	const pages = [
+		routeOf("Catalog", null, null),
+		routeOf("Product", paramsOf("id", "3"), null),
+		routeOf("Reviews", paramsOf("id", "3"), null),
+	];
+	const second = stateOf(0, [routeOf("Shop", null, stateOf(1, pages))]);
+	const third = stateOf(0, [routeOf("Shop", null, stateOf(2, pages))]);
+	assert pathFromState(second, config) === "/shop/product/3";
+	assert pathFromState(third, config) === "/shop/product/3/reviews";
+}
+
+test "a route the config does not name keeps its route name in the path" {
+	assert pathFromState(stateOf(0, [routeOf("Settings", null, null)]), config) === "/Settings";
+	const advanced = stateOf(0, [routeOf("Advanced", null, null)]);
+	const deep = stateOf(0, [routeOf("Settings", null, advanced)]);
+	assert pathFromState(deep, config) === "/Settings/Advanced";
+	const gallery = stateOf(0, [routeOf("Gallery", null, null)]);
+	const unmapped = stateOf(0, [routeOf("Shop", null, gallery)]);
+	assert pathFromState(unmapped, config) === "/shop/Gallery";
+}
+
+test "a state with no routes or a missing required param has no path" {
+	assert pathFromState(stateOf(0, []), config) === null;
+	const bare = stateOf(0, [routeOf("Shop", null, stateOf(0, [routeOf("Product", null, null)]))]);
+	assert pathFromState(bare, config) === null;
 }
 
 interface OrderParams {
