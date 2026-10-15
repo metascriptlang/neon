@@ -1,6 +1,7 @@
 import { HostNode } from "../../render/hostTypes";
 import { NeonEvent, neonEvent } from "../../render/event";
 import { registerCss } from "../../render/sheet";
+import { registerMediaElement } from "./domCapabilities";
 
 extern class CameraClassList {
 	extern add(name: cstring): void;
@@ -83,7 +84,7 @@ function placeMirror(state: CameraState): void {
 	if (mirrored(state)) { state.el.classList.add("neon-camera-mirror"); } else { state.el.classList.remove("neon-camera-mirror"); }
 }
 
-export function createCameraNode(): HostNode {
+function createCameraNode(): HostNode {
 	if (!cssDone) {
 		registerCss("neon-camera", CAMERA_CSS);
 		cssDone = true;
@@ -98,10 +99,6 @@ export function createCameraNode(): HostNode {
 	cameras.set(node, state);
 	restart(state);
 	return node;
-}
-
-export function isCameraNode(node: HostNode): boolean {
-	return cameras.has(node);
 }
 
 function command(state: CameraState, value: string): void {
@@ -127,7 +124,7 @@ function command(state: CameraState, value: string): void {
 	throw new Error(`CameraView: the browser host has no command "${name}"`);
 }
 
-export function writeCameraAttr(node: HostNode, name: string, value: string): boolean {
+function writeCameraAttr(node: HostNode, name: string, value: string): boolean {
 	if (!cameras.has(node)) { return false; }
 	const state = cameras.get(node) as CameraState;
 	if (name === "facing") {
@@ -159,16 +156,23 @@ export function writeCameraAttr(node: HostNode, name: string, value: string): bo
 	return false;
 }
 
-export function addCameraEvent(node: HostNode, type: string, handler: (e: NeonEvent) => void): boolean {
+function addCameraEvent(node: HostNode, type: string, handler: (e: NeonEvent) => void): boolean {
 	if (!cameras.has(node) || type === "layout") { return false; }
 	(cameras.get(node) as CameraState).routes.push({ type, handler });
 	return true;
 }
 
-export function releaseCamera(node: HostNode): void {
+function releaseCamera(node: HostNode): void {
 	if (!cameras.has(node)) { return; }
 	const state = cameras.get(node) as CameraState;
 	state.released = true;
 	stopCamera(state.el);
 	cameras.delete(node);
 }
+
+registerMediaElement("camera", {
+	create: (tag: string): HostNode => createCameraNode(),
+	writeAttr: writeCameraAttr,
+	addEvent: addCameraEvent,
+	release: releaseCamera,
+});

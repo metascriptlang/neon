@@ -37,7 +37,7 @@ import { CssStyle, applyCss, applyCssProp } from "./domCss";
 import { VisibleContentPosition, parseVisibleContent } from "../../render/visibleContent";
 import { installBrowserAppServices } from "./appServices";
 import { installDomLayoutAnimation } from "./layoutAnimation";
-import { isMediaTag, createMediaNode, writeMediaAttr, addMediaEvent, releaseMedia } from "./media";
+import { isMediaTag, createMediaNode, writeMediaAttr, addMediaEvent, releaseMedia } from "./domCapabilities";
 import { svgMarkup } from "../../components/svg/markup";
 
 extern class ClassList {

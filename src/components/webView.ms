@@ -6,6 +6,10 @@ import { Host, HostNode } from "../render/hostTypes";
 import { NeonNode, VAttr, VEvent, hostElement, evt, dynAttr } from "../render/node";
 import { appServices, hasAppServices } from "../api/services";
 
+when (js && !server) {
+	import "../platform/browser/media";
+}
+
 export interface WebViewSource {
 	uri?: string | null;
 	html?: string | null;

@@ -6,6 +6,10 @@ import { Host, HostNode } from "../render/hostTypes";
 import { NeonNode, VAttr, VEvent, hostElement, evt, dynAttr } from "../render/node";
 import { AccessibilityProps, accessibilityAttrs } from "./primitives";
 
+when (js && !server) {
+	import "../platform/browser/media";
+}
+
 export interface VideoSource {
 	uri: string;
 }
