@@ -11,6 +11,10 @@ import { isServer } from "./environment";
 // value is kept and an identical one is dropped.
 export function bindText(host: Host, node: HostNode, get: () => string): void {
 	if (isServer()) { host.setText(node, untrack(get)); return; }
+	followText(host, node, get);
+}
+
+function followText(host: Host, node: HostNode, get: () => string): void {
 	let prev = "";
 	let bound = false;
 	createBindingEffect(() => {
@@ -32,6 +36,10 @@ export function writeAttr(host: Host, node: HostNode, name: string, value: strin
 
 export function bindAttr(host: Host, node: HostNode, name: string, get: () => string | null): void {
 	if (isServer()) { writeAttr(host, node, name, untrack(get)); return; }
+	followAttr(host, node, name, get);
+}
+
+function followAttr(host: Host, node: HostNode, name: string, get: () => string | null): void {
 	let prev: string | null = null;
 	let bound = false;
 	createBindingEffect(() => {
@@ -52,6 +60,10 @@ function writeStyleProp(host: Host, node: HostNode, own: Style, name: string, v:
 
 export function bindStyleProp(host: Host, node: HostNode, own: Style, name: string, get: () => StyleValue): void {
 	if (isServer()) { writeStyleProp(host, node, own, name, untrack(get)); return; }
+	followStyleProp(host, node, own, name, get);
+}
+
+function followStyleProp(host: Host, node: HostNode, own: Style, name: string, get: () => StyleValue): void {
 	let prev: StyleValue = null;
 	let bound = false;
 	createBindingEffect(() => {
@@ -81,6 +93,10 @@ export function applyStaticStyle(host: Host, node: HostNode, s: Style): void {
 // clears the one left behind.
 export function bindStyleAll(host: Host, node: HostNode, get: () => Style): void {
 	if (isServer()) { applyStaticStyle(host, node, untrack(get)); return; }
+	followStyleAll(host, node, get);
+}
+
+function followStyleAll(host: Host, node: HostNode, get: () => Style): void {
 	const setCls = host.setStyleClass;
 	let classed = false;
 	let inlined = false;
