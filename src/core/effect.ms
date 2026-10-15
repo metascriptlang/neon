@@ -8,6 +8,7 @@ export interface EffectOptions {
 	transparent?: boolean;
 }
 
+// parked: the reference returns Cleanup | void; ~/metascript/.inbox/compiler/2026-10-15-void-member-of-a-union-passes-the-checker-and-dies-at-clang.md
 export interface EffectBundle<T> {
 	effect: (value: T, prev: T | null) => Cleanup | null;
 	error: (err: Error, cleanup: Cleanup) => void;
