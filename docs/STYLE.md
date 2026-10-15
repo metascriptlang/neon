@@ -11,8 +11,12 @@ root fix (recompiler bug051): the macro round-trip dropped ObjectLiteral `keyLoc
 excess/duplicate-key diagnostics were location-gated → silently swallowed, dying later in C.
 Value normalization (§4 job 3) waits for S2 paint; `@comptime` fold (§4 job 6) is deliberately NOT
 done — see the §4 note. Projection caching (§5) landed for the browser: a static sheet entry becomes
-one class + one rule (`src/render/sheet.ms`, `Host.setStyleClass`), and a theme token spells
-`var(--name)` so swapping a theme changes one variable instead of rewriting any rule.
+one class + one rule (`src/render/sheet.ms`, `Host.setStyleClass`). A `-d:server` build bakes the
+same class and resolves platform blocks as `web` on every backend, because its output is html for a
+browser: before, a C server wrote each entry inline and recomputed it per render (−16.9% instructions
+on the C bench once baked, measured 2026-10-15), and C and JS servers wrote different pages. A
+theme token spells `var(--name)` so swapping a theme changes one variable instead of rewriting any
+rule.
 
 **Rule for this file** (same as `BUGS.md`): every compiler capability claimed in §7 is a MEASUREMENT
 with the command that produced it. If you can't reproduce it, re-measure and rewrite the row — do
