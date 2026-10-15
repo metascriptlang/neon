@@ -99,6 +99,29 @@ test "a saved state mounts again as the same screens with their params" {
 	assert again.canGoBack(), "the restored stack keeps the screen below";
 }
 
+test "an initial stack state whose index is below its last route focuses the last route" {
+	const ids = new Map<string, string>();
+	ids.set("id", "4");
+	const stack: NavigationState = {
+		index: 0,
+		routeNames: [],
+		routes: [
+			{ key: "", name: "List", params: null, state: null },
+			{ key: "", name: "Detail", params: ids, state: null },
+		],
+	};
+	const state: NavigationState = {
+		index: 0,
+		routeNames: [],
+		routes: [{ key: "", name: "Home", params: null, state: stack }],
+	};
+	const ref = createNavigationContainerRef();
+	const root = mountApp(ref, state, []);
+	assert ref.currentPath() === "Home>Detail", ref.currentPath();
+	assert visibleText(root).indexOf("detail 4") >= 0, visibleText(root);
+	assert ref.canGoBack(), "the route below the focused one is kept";
+}
+
 test "an initial state naming no screen fails at mount" {
 	const state: NavigationState = {
 		index: 0,

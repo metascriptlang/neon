@@ -45,14 +45,8 @@ export function readOptions(
 	return options as Accessor<ScreenOptions>;
 }
 
-function stackModel<P>(
-	core: NavigatorCore<P>,
-	restored: RouteSeed<P>[] | null,
-	at: int32,
-): NavigatorModel<P> {
-	const initial = restored === null
-		? [core.seed(core.initialName, null)]
-		: (restored as RouteSeed<P>[]).slice(0, at + 1);
+function stackModel<P>(core: NavigatorCore<P>, restored: RouteSeed<P>[] | null): NavigatorModel<P> {
+	const initial = restored === null ? [core.seed(core.initialName, null)] : restored as RouteSeed<P>[];
 	const stack = createChildStack<RouteSeed<P>, Navigation<P>>(
 		initial,
 		seedKey,
@@ -138,10 +132,9 @@ function stackModel<P>(
 			});
 		},
 		reset: (list: RouteSeed<P>[], at: int32): void => {
-			const kept = list.slice(0, at + 1);
 			core.guarded("RESET", core.snapshot(), (): void => {
 				core.apply((): void => {
-					stack.navigate((current: RouteSeed<P>[]): RouteSeed<P>[] => kept);
+					stack.navigate((current: RouteSeed<P>[]): RouteSeed<P>[] => list);
 				});
 			});
 		},
@@ -207,7 +200,7 @@ export function createStackNavigator<P>(): StackNavigator<P> {
 					core: NavigatorCore<P>,
 					restored: RouteSeed<P>[] | null,
 					at: int32,
-				): NavigatorModel<P> => stackModel<P>(core, restored, at),
+				): NavigatorModel<P> => stackModel<P>(core, restored),
 			});
 			watchScreens<P>(collection, core);
 			const transitions = createNavigatorMotion<P>(core, true);

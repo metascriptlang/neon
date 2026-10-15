@@ -168,17 +168,18 @@ test "navigate to a route already in the stack goes back to it" {
 	assert !ref.canGoBack();
 }
 
-test "a reset whose index is below its last route keeps the routes up to the focused one" {
+test "a reset whose index is below its last route keeps every route and focuses the last" {
 	const ref = createNavigationContainerRef();
 	mountStack(ref);
 	(homeNavigation as Navigation<ItemParams>).reset({
 		index: 0,
 		routes: [{ name: "Home" }, { name: "Detail", params: { id: 3, title: "Three" } }],
 	});
-	assert ref.currentPath() === "Home", ref.currentPath();
-	const routes = ref.getRootState().routes.length;
-	assert routes === 1, "the route above the focused one is dropped: " + routes.toString();
-	assert !ref.canGoBack();
+	assert ref.currentPath() === "Detail", ref.currentPath();
+	const state = ref.getRootState();
+	assert state.routes.length === 2, "every route is kept: " + state.routes.length.toString();
+	assert state.index === 1, "a stack focuses its last route: " + state.index.toString();
+	assert ref.canGoBack();
 }
 
 test "hardware back pops the stack, then is left to the system at the root" {
