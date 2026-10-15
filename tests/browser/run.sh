@@ -6,9 +6,6 @@
 # beside the test file where the compiler cannot prefix the entry with that root, and then
 # runs it under node, where `document` does not exist; that run is expected to fail and
 # its status is discarded. The artifacts it leaves are what Chrome loads.
-# A page the server wrote is rendered once per run by a -d:server build of
-# tests/browser/serveApps.ms, which the test pages read as globalThis.neonServed: the
-# client build holds no server renderer.
 # Setup once per checkout: npm install --prefix tests/browser
 set -e
 cd "$(dirname "$0")/../.."

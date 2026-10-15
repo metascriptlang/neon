@@ -1,10 +1,6 @@
 #!/bin/sh
-# SSR lane: the only lane that renders to a string, because only a -d:server build can.
-# pages.ms prints every page without a byte-exact test, built for JS and for C and held to
-# the recorded bytes in pages.expected.txt, the way Solid's server specs write artifacts
-# under test/harness/__artifacts__ that a changed render must re-record; the C server must
-# also write the JS server's bytes. Every test file that renders to a string runs under
-# -d:server on both backends, where its exact asserts hold the same bytes.
+# SSR lane: the only lane that renders to a string, since only a -d:server build can.
+# pages.expected.txt holds the recorded bytes; C must write the bytes JS writes.
 MSC=${MSC:-msc}
 cd "$(dirname "$0")/../.."
 out=tests/ssrParity/out
