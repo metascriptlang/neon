@@ -4,7 +4,7 @@ import { Host, HostNode, MockNode, mockNode, mockHost, render, mockToString, moc
 import { VoidAreaHandle, AreaKeyAction, AreaPointerKind, AreaKeyEvent, AreaKeyMod, AreaPointerEvent, AreaPreedit, AreaResize } from "../../src/render/voidAreaHandle";
 import { onCleanup } from "../../src/core/cleanup";
 import { createContext, useContext } from "../../src/render/context";
-import { Void, View, Text } from "../../src/components/primitives";
+import { Void, View, ViewHandle, Text } from "../../src/components/primitives";
 
 test "Void mounts its children into the area the host opens" {
 	const root: MockNode = mockNode("root");
@@ -59,7 +59,7 @@ test "the ref of a Void receives the area handle, not the outer node, after the 
 		handle = h;
 		order.push("void");
 	};
-	const grabView: (n: HostNode) => void = (n) => { order.push("view"); };
+	const grabView: (h: ViewHandle) => void = (h) => { order.push("view"); };
 	render(element(<Void ref={grab}><View ref={grabView} /></Void>), mockHost(), root as unknown as HostNode);
 	assert handle !== null, "ref ran with a handle";
 	assert order.join(",") === "view,void", "the Void ref ran after its children mounted: " + order.join(",");

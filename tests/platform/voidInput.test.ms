@@ -2,7 +2,7 @@ import { createSignal, Accessor } from "../../src/core/signal";
 import { element } from "../../src/macros/ui/element";
 import { render } from "../../src/render/host";
 import { NeonEvent, neonEvent } from "../../src/render/event";
-import { View, Text, TextInput, Pressable } from "../../src/components/primitives";
+import { View, ViewHandle, Text, TextInput, Pressable } from "../../src/components/primitives";
 import { ForList, Show } from "../../src/macros/ui/flow";
 import { createList } from "../../src/core/list";
 import { NeonNode } from "../../src/render/node";
@@ -135,7 +135,7 @@ test "keys go to the focused node and bubble to its parents" {
 	let inner: VoidNode | null = null;
 	render(element(
 		<View onKeyDown={(e: NeonEvent): void => { order = order + "outer:" + e.key + " "; }}>
-			<View ref={(n: HostNode): void => { inner = n as VoidNode; }} onKeyDown={(e: NeonEvent): void => { order = order + "inner:" + e.key + " "; }} />
+			<View ref={(h: ViewHandle): void => { inner = h.node as VoidNode; }} onKeyDown={(e: NeonEvent): void => { order = order + "inner:" + e.key + " "; }} />
 		</View>
 	), vh.host, vh.root);
 	vh.keyDown(key("a"));
@@ -398,7 +398,7 @@ test "a key event carries the physical detail the window supplied, to the focuse
 	let inner: VoidNode | null = null;
 	render(element(
 		<View onKeyDown={(e: NeonEvent): void => { seen = seen + "outer "; }}>
-			<View ref={(n: HostNode): void => { inner = n as VoidNode; }}
+			<View ref={(h: ViewHandle): void => { inner = h.node as VoidNode; }}
 				onKeyDown={(e: NeonEvent): void => { seen = seen + `${e.scancode} ${e.mods} ${e.consumedMods} ${e.unshifted} ${e.text} `; }} />
 		</View>
 	), vh.host, vh.root);
@@ -421,7 +421,7 @@ test "a focused View hears committed and composing text, and a TextInput keeps i
 		<View style={{ width: 300, height: 100 }}
 			onTextInput={(e: NeonEvent): void => { log = log + "outer:" + e.text + " "; }}>
 			<View style={{ width: 100, height: 20 }}
-				ref={(n: HostNode): void => { plain = n as VoidNode; }}
+				ref={(h: ViewHandle): void => { plain = h.node as VoidNode; }}
 				onTextInput={(e: NeonEvent): void => { log = log + "text:" + e.text + " "; }}
 				onPreedit={(e: NeonEvent): void => { log = log + "pre:" + e.text + "@" + e.cursor.toString() + " "; }} />
 			<TextInput style={{ width: 100, height: 20 }} />
@@ -538,7 +538,7 @@ test "a focused component places the IME rect with its imeRect prop, in its own 
 	let node: VoidNode | null = null;
 	render(element(
 		<View style={{ width: 300, height: 100, paddingLeft: 20, paddingTop: 30 }}>
-			<View style={{ width: 200, height: 24 }} ref={(n: HostNode): void => { node = n as VoidNode; }}
+			<View style={{ width: 200, height: 24 }} ref={(h: ViewHandle): void => { node = h.node as VoidNode; }}
 				imeRect={{ x: at(), y: 4, width: 8, height: 16 }} focusable />
 		</View>
 	), vh.host, vh.root);

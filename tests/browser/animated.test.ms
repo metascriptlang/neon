@@ -2,7 +2,7 @@ import { domHost, documentBody } from "../../src/platform/browser/dom";
 import { HostNode } from "../../src/render/hostTypes";
 import { render } from "../../src/render/host";
 import { element } from "../../src/macros/ui/element";
-import { View, Pressable } from "../../src/components/primitives";
+import { View, ViewHandle, Pressable } from "../../src/components/primitives";
 import { createSignal } from "../../src/core/signal";
 import { sleepAsync } from "std/core/promise";
 import { Animated } from "../../src/animation/animated";
@@ -54,7 +54,7 @@ test "Animated.View opacity and translate change across real animation frames" {
 test "LayoutAnimation.configureNext transitions a height change in the browser" {
 	const [open, setOpen] = createSignal(false);
 	const nodes: HostNode[] = [];
-	render(element(<View ref={(n: HostNode): void => { nodes.push(n); }} style={{ width: 100, height: open() ? 200 : 20, backgroundColor: "#0a0" }} />), domHost(), documentBody());
+	render(element(<View ref={(h: ViewHandle): void => { nodes.push(h.node); }} style={{ width: 100, height: open() ? 200 : 20, backgroundColor: "#0a0" }} />), domHost(), documentBody());
 	const el = probe(nodes[0]);
 	assert el.offsetHeight === 20;
 	LayoutAnimation.configureNext(LayoutAnimation.create(400, "linear", "opacity"));

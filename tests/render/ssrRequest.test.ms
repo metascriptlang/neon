@@ -9,7 +9,7 @@ import { createRenderEffect } from "../../src/core/effect";
 import { cssRuleCount, registerCss, resetCss } from "../../src/render/sheet";
 import { RN_WEB_BASE_CSS } from "../../src/render/web";
 import { isServer } from "../../src/render/environment";
-import { View } from "../../src/components/primitives";
+import { View, ViewHandle } from "../../src/components/primitives";
 import { createSignal, Accessor } from "../../src/core/signal";
 import { createList } from "../../src/core/list";
 
@@ -133,7 +133,8 @@ test "a client render outside a request draws ids that never repeat" {
 test "a server render runs no ref, a client render runs each once" {
 	let refs = 0;
 	const count = (n: HostNode): void => { refs += 1; };
-	const tree = (): NeonNode => <View><canvas ref={count}></canvas><View ref={count}><p>x</p></View></View>;
+	const countView = (h: ViewHandle): void => { refs += 1; };
+	const tree = (): NeonNode => <View><canvas ref={count}></canvas><View ref={countView}><p>x</p></View></View>;
 	const html = renderToMarkup(tree()).html;
 	assert html.indexOf("<canvas>") >= 0, html;
 	assert refs === 0, "the server render ran " + refs.toString() + " refs";
