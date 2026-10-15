@@ -9,8 +9,10 @@ import { createSignal } from "../../src/core/signal";
 import { createRoot } from "../../src/core/owner";
 import { sleepAsync } from "std/core/promise";
 import { element } from "../../src/macros/ui/element";
-import { NeonEvent } from "../../src/render/event";
-import { HostNode, mockNode, mockHost, render, fireEvent } from "../../src/render/host";
+import { NeonEvent, neonEvent, eventType } from "../../src/render/event";
+import {
+	HostNode, MockNode, mockNode, mockHost, render, fireEvent, fireEventWith,
+} from "../../src/render/host";
 import { Pressable, Text } from "../../src/components/primitives";
 import { flush } from "../../src/core/runtime";
 
@@ -152,6 +154,7 @@ test "a custom delayLongPress is honored" {
 	});
 
 	const btn = root.children[0];
+	assert btn.events.length === 4, "long-only without onPress keeps four pointer listeners";
 	fireEvent(btn, "onPointerDown");
 	flush();
 	await sleepAsync(60);
@@ -180,4 +183,102 @@ test "a press drives a signal end to end" {
 	fireEvent(btn, "onPointerUp");
 	flush();
 	assert count() === 2, "count " + count().toString();
+}
+
+test "in-out gesture tier accepts independent semantic activation without feedback" {
+	const root = mockNode("root");
+	let log = "";
+	const dispose = createRoot((end: () => void): () => void => {
+		render(element(<Pressable
+			onPressIn={(): void => { log += "in;"; }}
+			onPressOut={(): void => { log += "out;"; }}
+			onPress={(): void => { log += "press;"; }} />), mockHost(), root as unknown as HostNode);
+		return end;
+	});
+	fireEvent(root.children[0], "onPress");
+	assert log === "press;", "semantic activation: " + log;
+	assert root.children[0].events.length === 5, "four pointer routes plus semantic press";
+	dispose();
+}
+
+test "long-only gesture tier accepts semantic activation without a long press" {
+	const root = mockNode("root");
+	let log = "";
+	const dispose = createRoot((end: () => void): () => void => {
+		render(element(<Pressable
+			onLongPress={(): void => { log += "long;"; }}
+			onPress={(): void => { log += "press;"; }} />), mockHost(), root as unknown as HostNode);
+		return end;
+	});
+	fireEvent(root.children[0], "onPress");
+	assert log === "press;", "semantic activation: " + log;
+	dispose();
+}
+
+function physical(node: MockNode, name: string): void {
+	const e = neonEvent(eventType(name));
+	e.pointerOrigin = true;
+	fireEventWith(node, name, e);
+}
+
+test "gesture physical release and tagged click activate once while semantic click stays independent" {
+	const root = mockNode("root");
+	let hits = 0;
+	const dispose = createRoot((end: () => void): () => void => {
+		render(element(<Pressable onPressIn={(): void => {}}
+			onPress={(): void => { hits += 1; }} />), mockHost(), root as unknown as HostNode);
+		return end;
+	});
+	const button = root.children[0];
+	physical(button, "onPointerDown");
+	physical(button, "onPress");
+	assert hits === 0, "Void ordering must not activate on down/clickAt";
+	physical(button, "onPointerUp");
+	physical(button, "onPress");
+	assert hits === 1, "release and native/browser duplicate: " + hits.toString();
+	fireEvent(button, "onPress");
+	assert hits === 2, "independent semantic activation";
+	dispose();
+}
+
+test "leave and cancel never resurrect a gesture through a tagged click" {
+	for (const cancel of ["onPointerLeave", "onPointerCancel"]) {
+		const root = mockNode("root");
+		let hits = 0;
+		const dispose = createRoot((end: () => void): () => void => {
+			render(element(<Pressable onPressIn={(): void => {}}
+				onPress={(): void => { hits += 1; }} />), mockHost(), root as unknown as HostNode);
+			return end;
+		});
+		const button = root.children[0];
+		physical(button, "onPointerDown");
+		physical(button, cancel);
+		physical(button, "onPointerUp");
+		physical(button, "onPress");
+		assert hits === 0, cancel + " must not press";
+		fireEvent(button, "onPress");
+		assert hits === 1, "semantic activation after " + cancel;
+		dispose();
+	}
+}
+
+test "long gesture tagged click stays suppressed but later semantic activation works" {
+	const root = mockNode("root");
+	const [log, setLog] = createSignal("");
+	const dispose = createRoot((end: () => void): () => void => {
+		render(element(<Pressable delayLongPress={60}
+			onLongPress={(): void => { setLog(log() + "long;"); }}
+			onPress={(): void => { setLog(log() + "press;"); }} />),
+			mockHost(), root as unknown as HostNode);
+		return end;
+	});
+	const button = root.children[0];
+	physical(button, "onPointerDown");
+	await sleepAsync(180);
+	physical(button, "onPointerUp");
+	physical(button, "onPress");
+	assert log() === "long;", "long then duplicate: " + log();
+	fireEvent(button, "onPress");
+	assert log() === "long;press;", "semantic activation: " + log();
+	dispose();
 }

@@ -239,6 +239,7 @@ function fireRoutes(routes: NativeEventRoute[], type: string, x: number, y: numb
 	for (const route of routes) {
 		if (eventType(route.name) !== type) { continue; }
 		const event = neonEvent(type);
+		event.pointerOrigin = true;
 		event.x = x;
 		event.y = y;
 		event.timeStamp = timeStamp;

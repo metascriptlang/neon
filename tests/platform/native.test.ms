@@ -164,3 +164,25 @@ test "native transform refuses unsupported functions, units, junk and non-finite
 		assert caught.includes("native host:") && caught.includes("transform"), "must fail loudly: " + css;
 	}
 }
+
+test "native physical phases and touch routes carry pointer provenance and disappear on removal" {
+	const registry = createNativeEventRegistry();
+	let log = "";
+	for (const name of ["onPointerDown", "onPointerUp", "onPress", "onPointerCancel",
+		"onPointerLeave", "onPointerMove", "onTouchStart", "onTouchEnd", "onTouchCancel",
+		"onTouchMove"]) {
+		registry.add(17, name, (e: NeonEvent): void => {
+			assert e.pointerOrigin, e.type + " has physical provenance";
+			log += e.type + ";";
+		});
+	}
+	for (const phase of [0, 1, 2, 3, 4]) {
+		assert registry.dispatch(17, phase, 0, 0, 0), "zero coordinates do not erase provenance";
+		registry.touch(17, phase, 0, 0, 0);
+	}
+	assert log === "pointerdown;touchstart;pointerup;touchend;press;" +
+		"pointercancel;pointerleave;touchcancel;pointermove;touchmove;", log;
+	registry.remove(17);
+	assert !registry.dispatch(17, 2, 0, 0, 0) && !registry.touch(17, 0, 0, 0, 0),
+		"teardown removes both routes";
+}

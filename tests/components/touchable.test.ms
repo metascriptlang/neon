@@ -124,3 +124,25 @@ test "TouchableWithoutFeedback presses, long-presses and keeps its accessibility
 	await sleepAsync(200);
 	assert log() === "press;long;", "press then long press: " + log();
 }
+
+test "Touchable semantic activation respects enabled disabled enabled without feedback" {
+	const root = mockNode("root");
+	const [off, setOff] = createSignal(false);
+	let hits = 0;
+	const dispose = createRoot((end: () => void): () => void => {
+		render(element(<TouchableOpacity disabled={off()} style={{ opacity: 0.9 }}
+			onPress={(): void => { hits += 1; }}><Text>Tap</Text></TouchableOpacity>),
+			mockHost(), root as unknown as HostNode);
+		return end;
+	});
+	const button = root.children[0];
+	fireEvent(button, "onPress");
+	assert hits === 1 && styleOf(button).opacity === 0.9, "enabled with no feedback";
+	setOff(true);
+	fireEvent(button, "onPress");
+	assert hits === 1 && styleOf(button).opacity === 0.9, "disabled stays quiet";
+	setOff(false);
+	fireEvent(button, "onPress");
+	assert hits === 2 && styleOf(button).opacity === 0.9, "re-enabled with no feedback";
+	dispose();
+}

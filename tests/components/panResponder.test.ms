@@ -78,8 +78,14 @@ test "a pan that claims on a move cancels the press of a Pressable inside it" {
 	up.timeStamp = 3;
 	fireTouch(button, "onTouchEnd", 40, 10, 3);
 	fireEventWith(button, "onPointerUp", up);
+	const duplicate = neonEvent("press");
+	duplicate.pointerOrigin = true;
+	duplicate.timeStamp = 3;
+	fireEventWith(button, "onPress", duplicate);
 	assert log.indexOf("press") < 0, "the swipe does not press: " + log.join(",");
 	assert log[0] === "in", "the press began: " + log.join(",");
+	fireEventWith(button, "onPress", neonEvent("press"));
+	assert log[log.length - 1] === "press", "later semantic activation remains independent";
 }
 
 test "a plain tap through a pan row still presses" {
@@ -95,6 +101,7 @@ test "a plain tap through a pan row still presses" {
 	fireTouch(button, "onTouchMove", 12, 10, 2);
 	fireTouch(button, "onTouchEnd", 12, 10, 3);
 	const press = neonEvent("press");
+	press.pointerOrigin = true;
 	press.timeStamp = 3;
 	fireEventWith(button, "onPress", press);
 	assert log.join(",") === "press", "pressed: " + log.join(",");
@@ -139,4 +146,32 @@ test "a responder that refuses termination keeps the touch" {
 	fireTouch(leaf, "onTouchMove", 0, 10, 2);
 	assert log.join(",") === "rejected", "outer is rejected: " + log.join(",");
 	assert root.children[0].children[0].holdsResponder, "inner still holds";
+}
+
+test "cheap Pressable filters only pointer-origin activation after a claimed drag" {
+	let hits = 0;
+	const pan = PanResponder.create({
+		onMoveShouldSetPanResponder: (e: NeonEvent, g: PanResponderGestureState): boolean =>
+			Math.abs(g.dx) > 10,
+	});
+	const root = mount((): NeonNode => <View {...pan.panHandlers}>
+		<Pressable onPress={(): void => { hits += 1; }} />
+	</View>);
+	const button = root.children[0].children[0];
+	fireTouch(button, "onTouchStart", 10, 10, 100);
+	fireTouch(button, "onTouchMove", 40, 10, 110);
+	const press = neonEvent("press");
+	press.pointerOrigin = true;
+	press.timeStamp = 120;
+	fireEventWith(button, "onPress", press);
+	assert hits === 0, "active claim suppresses physical press";
+	const semantic = neonEvent("press");
+	semantic.timeStamp = 120;
+	fireEventWith(button, "onPress", semantic);
+	assert hits === 1, "active claim does not suppress semantic activation";
+	fireTouch(button, "onTouchEnd", 40, 10, 120);
+	fireEventWith(button, "onPress", press);
+	assert hits === 1, "claimed release suppresses physical duplicate";
+	fireEventWith(button, "onPress", semantic);
+	assert hits === 2, "identical timestamp does not make semantic activation physical";
 }

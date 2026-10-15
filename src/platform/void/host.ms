@@ -1215,6 +1215,7 @@ export function createVoidHostWith(
 		lastY = y;
 		const ev = neonEvent(type);
 		ev.timeStamp = performance.now();
+		ev.pointerOrigin = true;
 		ev.x = x;
 		ev.y = y;
 		ev.button = button;
@@ -1306,6 +1307,7 @@ export function createVoidHostWith(
 		const n = node as VoidNode;
 		if (n.disposed || !attached(n) || !within(under as VoidNode, n)) { return; }
 		const ev = neonEvent("press");
+		ev.pointerOrigin = true;
 		ev.x = x;
 		ev.y = y;
 		ev.timeStamp = timeStamp;

@@ -216,6 +216,9 @@ extern class DomEvent {
 	extern stopPropagation(): void;
 }
 
+extern function pointerOrigin(e: DomEvent): boolean from
+	"((e) => typeof e.pointerType === 'string' && e.pointerType.length > 0)(#)";
+
 extern class MediaQueryList {
 	matches: boolean;
 	extern addEventListener(name: cstring, handler: (e: DomEvent) => void): void;
@@ -845,6 +848,7 @@ function fireTouchRoutes(el: Node, type: string, de: DomEvent): void {
 	for (const route of (touchRoutes.get(el) as DomTouchRoute[]).slice(0)) {
 		if (route.type !== type) { continue; }
 		const ev = neonEvent(type);
+		ev.pointerOrigin = pointerOrigin(de);
 		ev.timeStamp = de.timeStamp;
 		ev.x = de.clientX;
 		ev.y = de.clientY;
@@ -1159,6 +1163,7 @@ export function domHost(): Host {
 				return control as unknown as HostNode;
 			}
 			const el = document.createElement(webHtmlTag(tag));
+			if (tag === "pressable") { presses.set(el, true); }
 			const base = webBaseClass(tag);
 			if (base !== "") { el.classList.add(base); }
 			return el as unknown as HostNode;
@@ -1280,6 +1285,7 @@ export function domHost(): Host {
 					if (owner !== el) { return; }
 				}
 				const ev = neonEvent(type);
+				ev.pointerOrigin = pointerOrigin(de);
 				ev.timeStamp = de.timeStamp;
 				if (type === "valuechange") {
 					ev.value = el.checked ? "true" : "false";
@@ -1316,7 +1322,9 @@ export function domHost(): Host {
 					ev.x = de.clientX;
 					ev.y = de.clientY;
 				}
-				if (type === "press" && lastPointerUp >= 0) { ev.timeStamp = lastPointerUp; }
+				if (type === "press" && ev.pointerOrigin && lastPointerUp >= 0) {
+					ev.timeStamp = lastPointerUp;
+				}
 				handler(ev);
 			}, false);
 		},

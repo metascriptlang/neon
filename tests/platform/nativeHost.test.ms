@@ -42,6 +42,8 @@ import { HOST_PARK_CONTRACT, hostParkContract } from "../render/hostContract";
 import { devDriver } from "../../src/devtools/driver";
 import { ControlSession, handleRequest } from "../../src/devtools/control";
 
+import { sleepAsync } from "std/core/promise";
+
 const PRESS: int32 = 2;
 
 test "the native host keeps the park contract and release frees the parked views" {
@@ -1179,4 +1181,47 @@ test "the control channel drives the native host: the tree, a press by text thro
 	nmTeardown();
 	nmLoop();
 	assert devDriver() === null, "teardown drops the driver";
+}
+
+test "native gesture registration marks view pressable and phase zero one two activates only on release" {
+	let log = "";
+	runApp((): NeonNode => <Pressable onPressIn={(): void => { log += "in;"; }}
+		onPress={(e: NeonEvent): void => { log += e.pointerOrigin ? "press;" : "unmarked;"; }} />);
+	const tag = nmLastPressableTag();
+	assert tag > 0, "onPress registration marks the actual native view pressable";
+	nmTouchFull(tag, 0, 10, 10, 7000);
+	assert log === "in;", "down does not activate";
+	nmTouchFull(tag, 1, 10, 10, 7010);
+	nmTouchFull(tag, 2, 10, 10, 7010);
+	assert log === "in;press;", "up activates once, phase2 is duplicate: " + log;
+	nmTouchFull(tag, 0, 10, 10, 8000);
+	nmTouchFull(tag, 3, 10, 10, 8010);
+	nmTouchFull(tag, 1, 10, 10, 8010);
+	nmTouchFull(tag, 2, 10, 10, 8010);
+	assert log === "in;press;in;", "cancel cannot resurrect through phase2: " + log;
+	nmTeardown();
+	nmTouchFull(tag, 0, 10, 10, 9000);
+	nmTouchFull(tag, 1, 10, 10, 9010);
+	nmTouchFull(tag, 2, 10, 10, 9010);
+	assert log === "in;press;in;", "no route survives teardown";
+	assert nmReleaseCalls() === nmViewsCreated(), "views released";
+}
+
+test "native long gesture phase two stays suppressed and teardown cancels pending timers" {
+	const [log, setLog] = createSignal("");
+	runApp((): NeonNode => <Pressable delayLongPress={60}
+		onLongPress={(): void => { setLog(log() + "long;"); }}
+		onPress={(): void => { setLog(log() + "press;"); }} />);
+	const tag = nmLastPressableTag();
+	nmTouch(tag, 0);
+	await sleepAsync(180);
+	nmTouch(tag, 1);
+	nmTouch(tag, 2);
+	assert log() === "long;", "long press is not followed by phase2 activation: " + log();
+	nmTouch(tag, 0);
+	nmTeardown();
+	await sleepAsync(180);
+	nmTouch(tag, 2);
+	assert log() === "long;", "teardown removes routes and pending long timer: " + log();
+	assert nmReleaseCalls() === nmViewsCreated(), "views released";
 }
