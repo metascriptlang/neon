@@ -1,6 +1,6 @@
 import { Accessor, Setter, Signal, accessor, createSignal, untrack } from "../core/signal";
 import { flush } from "../core/runtime";
-import { createRenderEffect } from "../core/effect";
+import { createEffect, createRenderEffect } from "../core/effect";
 import { Cleanup } from "../core/types";
 import { createRoot } from "../core/owner";
 import { onCleanup } from "../core/cleanup";
@@ -786,8 +786,6 @@ export class NavigatorCore<P> {
 
 	apply(change: () => void): void {
 		flush(change);
-		this.notify();
-		this.container.changed();
 	}
 
 	notify(): void {
@@ -1142,6 +1140,19 @@ export function createCore<P>(setup: NavigatorSetup<P>): NavigatorCore<P> {
 	const link = linkOf<P>(core);
 	core.notify();
 	core.container.changed();
+	createEffect<boolean>(
+		(prev: boolean | null): boolean => {
+			core.entries();
+			core.index();
+			return true;
+		},
+		(changed: boolean, prev: boolean | null): Cleanup | null => {
+			core.notify();
+			core.container.changed();
+			return null;
+		},
+		{ defer: true },
+	);
 	when (refresh || hcr) {
 		refreshKeep<ResetState<P>>(
 			"navigator",
