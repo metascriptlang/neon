@@ -1,4 +1,5 @@
-import { createSignal, batch } from "../../src/core/signal";
+import { createSignal } from "../../src/core/signal";
+import { flush } from "../../src/core/runtime";
 import { createEffect, createRenderEffect, onMount } from "../../src/core/effect";
 import { createRoot } from "../../src/core/owner";
 import { mockHost, mockNode, render, hydrate, HostNode, MockNode } from "../../src/render/host";
@@ -34,9 +35,9 @@ test "deferred effects run in creation order after a nested root" {
 	assert log.join(",") === "body,outer,inner", "got " + log.join(",");
 }
 
-test "an effect created in a batch runs when the batch ends" {
+test "an effect created in flush(fn) runs when it ends" {
 	const log: string[] = [];
-	batch(() => {
+	flush(() => {
 		createEffect(() => { log.push("effect"); });
 		log.push("body");
 	});

@@ -1,5 +1,5 @@
-import { Accessor, accessor, batch, createSignal } from "../core/signal";
-import { onServer, getServerDepth, setServerDepth } from "../core/runtime";
+import { Accessor, accessor, createSignal } from "../core/signal";
+import { onServer, getServerDepth, setServerDepth, flush } from "../core/runtime";
 
 export type ColorScheme = "light" | "dark";
 
@@ -45,7 +45,7 @@ export function asServer<T>(run: () => T): T {
 }
 
 export function publishWindow(width: number, height: number): void {
-	batch((): void => {
+	flush((): void => {
 		if (windowWidth() !== width) { setWindowWidth(width); }
 		if (windowHeight() !== height) { setWindowHeight(height); }
 	});
@@ -79,7 +79,7 @@ export function useSafeAreaInsets(): Accessor<EdgeInsets> {
 }
 
 export function publishSafeArea(top: number, right: number, bottom: number, left: number): void {
-	batch((): void => {
+	flush((): void => {
 		if (insetTop() !== top) { setInsetTop(top); }
 		if (insetRight() !== right) { setInsetRight(right); }
 		if (insetBottom() !== bottom) { setInsetBottom(bottom); }

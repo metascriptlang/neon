@@ -1,16 +1,16 @@
-import { createSignal, untrack, batch } from "../../src/core/signal";
+import { createSignal, untrack } from "../../src/core/signal";
 import { createEffect } from "../../src/core/effect";
 import { createRoot, runWithOwner } from "../../src/core/owner";
-import { getOwner } from "../../src/core/runtime";
+import { getOwner, flush } from "../../src/core/runtime";
 
-test "a throw inside batch does not freeze later reactivity" {
+test "a throw inside flush(fn) does not freeze later reactivity" {
 	const [a, setA] = createSignal(0);
 	let runs = 0;
 	createEffect(() => { a(); runs = runs + 1; });
 	const before = runs;
-	try { batch(() => { throw new Error("boom"); }); } catch (e) { }
+	try { flush(() => { throw new Error("boom"); }); } catch (e) { }
 	setA(1);
-	assert runs > before, "a leaked batch depth stops every future drain";
+	assert runs > before, "a leaked sync depth stops every future drain";
 }
 
 test "a throw inside an effect does not kill the scheduler" {

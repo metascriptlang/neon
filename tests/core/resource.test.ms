@@ -1,5 +1,6 @@
 import { createSignal } from "../../src/core/signal";
 import { createRoot } from "../../src/core/owner";
+import { flush } from "../../src/core/runtime";
 import { createResource, ResourceState } from "../../src/core/resource";
 import { sleepAsync } from "std/core/promise";
 
@@ -23,6 +24,7 @@ test "a resource goes pending, then ready with its value, then refreshing while 
 	const [log, setLog] = createSignal("");
 	createRoot((): void => {
 		const [item, actions] = createResource(id, lookup);
+		flush();
 		setLog(`${actions.state().toString()} ${actions.loading()} ${item() === null};`);
 		const report = (): void => {
 			const v = item();

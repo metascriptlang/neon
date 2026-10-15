@@ -1,31 +1,56 @@
-// Memo - Cached Computation Primitive
-// Like a derived signal that only recomputes when dependencies change
+import { Computation, EFFECT_PURE, RUN_UNCHANGED, RUN_PUBLISHED, RUN_STAGED } from "./types";
+import { Cell, Accessor, accessor, isEqual } from "./signal";
+import { createComputed, readSource, isStaged } from "./runtime";
 
-import { Signal, Accessor, accessor } from "./signal";
-import { createComputation, runComputation } from "./runtime";
+export interface MemoOptions<T> {
+	equals?: ((a: T, b: T) => boolean) | false;
+	lazy?: boolean;
+	unobserved?: () => void;
+}
 
-export function createMemo<T>(fn: () => T, equals: ((a: T, b: T) => boolean) | null = null): Accessor<T> {
-	let signal: Signal<T> | null = null;
-
-	// Pure computation → drains in the updates phase before effects, so a downstream
-	// effect never reads a stale memo (no glitch). Owned by the current scope.
-	const comp = createComputation(() => {
-		const value = fn();
-		const held = signal;
-		if (held === null) {
-			signal = new Signal<T>(value);
-			return;
+export function createMemo<T>(compute: (prev: T | null) => T, options?: MemoOptions<T>): Accessor<T> {
+	let cell: Cell<T> | null = null;
+	let equals: ((a: T, b: T) => boolean) | null = null;
+	let lazy = false;
+	let hook: (() => void) | null = null;
+	if (options !== undefined) {
+		const given = options.equals;
+		if (typeof given === "function") {
+			equals = given;
+		} else if (given === false) {
+			equals = (a: T, b: T): boolean => false;
 		}
-		if (equals !== null && equals(held.peek(), value)) { return; }
-		held.set(value);
-	}, true);
-	runComputation(comp);
+		lazy = options.lazy === true;
+		hook = options.unobserved === undefined ? null : options.unobserved;
+	}
 
-	return accessor(() => {
-		const held = signal;
+	const run = (self: Computation, create: boolean): int32 => {
+		const held = cell;
+		if (held === null) {
+			const fresh = new Cell<T>(compute(null));
+			cell = fresh;
+			self.commit = (): void => { fresh.value = fresh.pending; };
+			return RUN_PUBLISHED;
+		}
+		const prev = isStaged(self) ? held.pending : held.value;
+		const next = compute(prev);
+		if (isEqual(equals, prev, next)) { return RUN_UNCHANGED; }
+		if (create) {
+			held.value = next;
+			held.pending = next;
+			return RUN_PUBLISHED;
+		}
+		held.pending = next;
+		return RUN_STAGED;
+	};
+	const node = createComputed(run, EFFECT_PURE, lazy, false, hook);
+
+	return accessor((): T => {
+		const staged = readSource(node);
+		const held = cell;
 		if (held === null) {
 			throw new Error("Memo accessed before initialization");
 		}
-		return held.get();
+		return staged ? held.pending : held.value;
 	});
 }

@@ -1,45 +1,57 @@
-// Signal — reactive state cell. Solid.js-style fine-grained reactivity over the graph
-// engine in runtime.ms: reading inside a running computation links both ways; setting
-// marks observers Stale and drains the effect queue.
+import { Source, CONFIG_OWNED_WRITE } from "./types";
+import { newSource, readSource, isStaged, writeSource, isTracking, setTracking } from "./runtime";
 
-import { Source, CompState } from "./types";
-import { getListener, registerDependency, enqueue, runQueue, getBatchDepth, setBatchDepth, setListener } from "./runtime";
-
-export class Signal<T> {
-	private value: T;
-	private node: Source;
+export class Cell<T> {
+	value: T;
+	pending: T;
 
 	constructor(initialValue: T) {
 		this.value = initialValue;
-		this.node = { observers: [], observerSlots: [] };
+		this.pending = initialValue;
+	}
+}
+
+export interface SignalOptions<T> {
+	equals?: ((a: T, b: T) => boolean) | false;
+	ownedWrite?: boolean;
+}
+
+export function isEqual<T>(equals: ((a: T, b: T) => boolean) | null, a: T, b: T): boolean {
+	return equals === null ? a === b : equals(a, b);
+}
+
+export class Signal<T> {
+	private cell: Cell<T>;
+	private node: Source;
+	private equals: ((a: T, b: T) => boolean) | null;
+
+	constructor(initialValue: T, equals: ((a: T, b: T) => boolean) | null = null, ownedWrite: boolean = false) {
+		this.cell = new Cell<T>(initialValue);
+		this.node = newSource(ownedWrite ? CONFIG_OWNED_WRITE : 0);
+		this.equals = equals;
 	}
 
 	get(): T {
-		const l = getListener();
-		if (l !== null) { registerDependency(this.node, l); }
-		return this.value;
+		return readSource(this.node) ? this.cell.pending : this.cell.value;
 	}
 
 	peek(): T {
-		return this.value;
+		return isStaged(this.node) ? this.cell.pending : this.cell.value;
 	}
 
 	set(newValue: T): void {
-		if (this.value === newValue) return;
-		this.value = newValue;
-		const observers = this.node.observers;
-		for (let i = 0; i < observers.length; i += 1) {
-			const o = observers[i];
-			if (!o.disposed && o.state === CompState.Clean) {
-				o.state = CompState.Stale;
-				enqueue(o);
-			}
+		if (isEqual(this.equals, this.peek(), newValue)) { return; }
+		const wasStaged = isStaged(this.node);
+		this.cell.pending = newValue;
+		if (this.node.commit === null) {
+			const cell = this.cell;
+			this.node.commit = (): void => { cell.value = cell.pending; };
 		}
-		if (getBatchDepth() === 0) { runQueue(); }
+		writeSource(this.node, wasStaged);
 	}
 
 	update(fn: (current: T) => T): void {
-		this.set(fn(this.value));
+		this.set(fn(this.peek()));
 	}
 }
 
@@ -54,8 +66,19 @@ export function valueOf<T>(this a: Accessor<T>): T {
 	return a();
 }
 
-export function createSignal<T>(initialValue: T): [Accessor<T>, Setter<T>] {
-	const signal = new Signal<T>(initialValue);
+export function createSignal<T>(initialValue: T, options?: SignalOptions<T>): [Accessor<T>, Setter<T>] {
+	let equals: ((a: T, b: T) => boolean) | null = null;
+	let ownedWrite = false;
+	if (options !== undefined) {
+		const given = options.equals;
+		if (typeof given === "function") {
+			equals = given;
+		} else if (given === false) {
+			equals = (a: T, b: T): boolean => false;
+		}
+		ownedWrite = options.ownedWrite === true;
+	}
+	const signal = new Signal<T>(initialValue, equals, ownedWrite);
 	return [
 		accessor(() => signal.get()),
 		(v: T | ((prev: T) => T)) => {
@@ -68,24 +91,12 @@ export function createSignal<T>(initialValue: T): [Accessor<T>, Setter<T>] {
 	];
 }
 
-// Read without subscribing.
 export function untrack<T>(fn: () => T): T {
-	const prev = getListener();
-	setListener(null);
+	const prev = isTracking();
+	setTracking(false);
 	try {
 		return fn();
 	} finally {
-		setListener(prev);
+		setTracking(prev);
 	}
-}
-
-// Defer effect drain until the outermost batch completes.
-export function batch(fn: () => void): void {
-	setBatchDepth(getBatchDepth() + 1);
-	try {
-		fn();
-	} finally {
-		setBatchDepth(getBatchDepth() - 1);
-	}
-	if (getBatchDepth() === 0) { runQueue(); }
 }
