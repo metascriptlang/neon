@@ -992,11 +992,8 @@ export class NavigatorCore<P> {
 
 	bypass: boolean = false;
 
-	guarded(type: string, removed: Navigation<P>[], apply: () => void): boolean {
-		if (this.bypass || removed.length === 0) {
-			apply();
-			return true;
-		}
+	allows(type: string, removed: Navigation<P>[], apply: () => void): boolean {
+		if (this.bypass || removed.length === 0) { return true; }
 		const action = new NavigationAction(type, (): void => {
 			this.bypass = true;
 			apply();
@@ -1005,6 +1002,11 @@ export class NavigatorCore<P> {
 		for (let i = removed.length - 1; i >= 0; i -= 1) {
 			if (removed[i].emitBeforeRemove(action)) { return false; }
 		}
+		return true;
+	}
+
+	guarded(type: string, removed: Navigation<P>[], apply: () => void): boolean {
+		if (!this.allows(type, removed, apply)) { return false; }
 		apply();
 		return true;
 	}

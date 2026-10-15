@@ -171,6 +171,13 @@ function stackModel<P>(core: NavigatorCore<P>, restored: RouteSeed<P>[] | null):
 				parametersMapper: (
 					child: NavigationChild<RouteSeed<P>, Navigation<P>>,
 				): Map<string, string> | null => map.parameters(child.instance),
+				onBeforeNavigate: (): boolean => {
+					const list = core.snapshot();
+					const top = list[list.length - 1];
+					return core.allows("GO_BACK", [top], (): void => {
+						core.apply((): void => { without(top.route.key); });
+					});
+				},
 				childSelector: (
 					child: NavigationChild<RouteSeed<P>, Navigation<P>>,
 				): WebNavigationOwner | null => map.child(child.instance),

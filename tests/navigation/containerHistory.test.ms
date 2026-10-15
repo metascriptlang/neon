@@ -13,6 +13,8 @@ import {
 	RoutingRegistry,
 	RoutingSession,
 	Navigation,
+	NavigationAction,
+	NavigationEventArg,
 	ScreenProps,
 	createBottomTabNavigator,
 	createDrawerNavigator,
@@ -337,6 +339,47 @@ test "a traversal lands with the drawer closed" {
 	assert app.memory.go(-1);
 	assert findLabel(app.root, "Close navigation menu") === null, "the traversal closed the drawer";
 	assert take() === "", "a traversal writes nothing";
+	assert finish(app) === 0, "routing errors";
+}
+
+test "setParams rewrites the entry it changes" {
+	const app = startApp({ url: "/", state: "" });
+	assert app.ref.linkTo("/shop/product/5");
+	take();
+	(log.product as Navigation<ItemParams>).setParams({ id: "6" });
+	assert app.memory.read().url === "/shop/product/6", app.memory.read().url;
+	assert visibleText(app.root).indexOf("product 6") >= 0, visibleText(app.root);
+	assert app.memory.go(-1);
+	assert app.ref.currentPath() === "Shop>Catalog", app.ref.currentPath();
+	assert app.memory.go(1);
+	assert visibleText(app.root).indexOf("product 6") >= 0, visibleText(app.root);
+	assert finish(app) === 0, "routing errors";
+}
+
+let refused: NavigationAction | null = null;
+
+test "browser back stays on a screen whose beforeRemove prevents it" {
+	const app = startApp({ url: "/", state: "" });
+	assert app.ref.linkTo("/shop/product/5");
+	take();
+	refused = null;
+	const product = log.product as Navigation<ItemParams>;
+	const stop = product.addListener("beforeRemove", (e: NavigationEventArg): void => {
+		e.preventDefault();
+		refused = e.data.action;
+	});
+	assert app.memory.go(-1);
+	assert app.ref.currentPath() === "Shop>Product", app.ref.currentPath();
+	assert app.memory.read().url === "/shop/product/5", app.memory.read().url;
+	const back = take();
+	assert back === "go 1;", "the session returns to the screen it kept: " + back;
+	assert refused !== null && (refused as NavigationAction).type === "GO_BACK";
+	stop();
+	product.dispatch(refused as NavigationAction);
+	assert app.ref.currentPath() === "Shop>Catalog", app.ref.currentPath();
+	const left = take();
+	assert left === "go -1;", left;
+	assert app.memory.read().url === "/shop", app.memory.read().url;
 	assert finish(app) === 0, "routing errors";
 }
 
