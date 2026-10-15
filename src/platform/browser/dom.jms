@@ -1400,6 +1400,7 @@ export function domHost(): Host {
 				return blank as unknown as HostNode;
 			}
 			if (found.nodeType !== 1 || found.localName !== (tag === "image" ? IMAGE_TAG : webHtmlTag(tag))) { return null; }
+			if (tag === "pressable") { presses.set(found, true); }
 			registerRules(tag);
 			if (isMediaTag(tag)) { return adoptMedia(found as unknown as HostNode, tag); }
 			if (tag === "image") { return adoptImage(found); }

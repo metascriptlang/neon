@@ -1,6 +1,6 @@
 import { domHost, documentBody } from "../../src/platform/browser/dom";
 import { HostNode } from "../../src/render/hostTypes";
-import { render } from "../../src/render/host";
+import { render, hydrate } from "../../src/render/host";
 import { element } from "../../src/macros/ui/element";
 import { NeonEvent } from "../../src/render/event";
 import { createSignal } from "../../src/core/signal";
@@ -10,6 +10,7 @@ import { TouchableOpacity } from "../../src/components/touchable";
 
 extern class HTMLElement {
 	tagName: string;
+	extern remove(): void;
 }
 
 function probe(node: HostNode): HTMLElement {
@@ -26,6 +27,8 @@ extern function childTextClick(node: HTMLElement): void from "#.firstChild.click
 extern function focusInputAndClick(node: HTMLElement): boolean from
 	"((n) => { const input = document.createElement('input'); document.body.appendChild(input); input.focus(); n.click(); const kept = document.activeElement === input; input.remove(); return kept; })(#)";
 extern function opacity(node: HTMLElement): string from "#.style.opacity";
+extern function servedActivationMount(): HTMLElement from
+	"(() => { const root=document.createElement('div'); const parent=document.createElement('button'); parent.setAttribute('aria-label','activation-hydrated-parent'); const child=document.createElement('button'); child.setAttribute('aria-label','activation-hydrated-child'); const text=document.createElement('span'); text.textContent='hydrated passive label'; child.appendChild(text); const view=document.createElement('div'); view.setAttribute('aria-label','activation-hydrated-view'); const label=document.createElement('span'); label.textContent='hydrated generic label'; view.appendChild(label); parent.append(child,view); root.appendChild(parent); document.body.appendChild(root); return root; })()";
 
 test "DOM gesture semantic MouseEvent programmatic and empty pointerType activate without feedback" {
 	const [log, setLog] = createSignal("");
@@ -110,6 +113,42 @@ test "DOM long-only child without onPress does not activate its Pressable parent
 	childTextClick(find("activation-passive-child"));
 	assert hits === 0, "callback-less child remains semantic owner";
 	dispose();
+}
+
+test "hydrate preserves passive press ownership identity generic View routing and cleanup" {
+	let hits = 0;
+	const app = element(<Pressable accessibilityLabel="activation-hydrated-parent"
+		onPress={(): void => { hits += 1; }}>
+		<Pressable accessibilityLabel="activation-hydrated-child" onLongPress={(): void => {}}>
+			<Text>hydrated passive label</Text>
+		</Pressable>
+		<View accessibilityLabel="activation-hydrated-view" onPointerDown={(): void => {}}>
+			<Text>hydrated generic label</Text>
+		</View>
+	</Pressable>);
+	const mount = servedActivationMount();
+	const child = find("activation-hydrated-child");
+	const parent = find("activation-hydrated-parent");
+	const host = domHost();
+	let made = 0;
+	const create = host.createElement;
+	host.createElement = (tag: string): HostNode => { made += 1; return create(tag); };
+	const dispose = hydrate(app, host, mount as unknown as HostNode);
+	try {
+		assert made === 0, "hydrate must claim existing nodes";
+		assert find("activation-hydrated-child") === child &&
+			find("activation-hydrated-parent") === parent, "hydrate preserves identity";
+		childTextClick(child);
+		assert hits === 0, "claimed callback-less child remains semantic owner";
+		childTextClick(find("activation-hydrated-view"));
+		assert hits === 1, "claimed generic pointer View does not steal parent press";
+		host.removeChild(parent as unknown as HostNode, child as unknown as HostNode);
+		host.append(parent as unknown as HostNode, child as unknown as HostNode);
+		childTextClick(child);
+		assert hits === 2, "release cleans claimed intrinsic owner";
+	} finally { dispose(); mount.remove(); }
+	semantic(parent, "programmatic");
+	assert hits === 2, "hydrated parent listener cannot fire after teardown";
 }
 
 test "DOM generic pointer View does not steal its parent semantic press" {
