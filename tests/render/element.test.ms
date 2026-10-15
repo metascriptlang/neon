@@ -1,7 +1,7 @@
 import { createSignal, Accessor } from "../../src/core/signal";
 import { NeonNode } from "../../src/render/node";
 import { element } from "../../src/macros/ui/element";
-import { render, mockHost, mockNode, mockToString, fireEvent, Host, HostNode } from "../../src/render/host";
+import { render, mockHost, mockNode, mockToString, fireEvent, Host, HostNode, MockNode } from "../../src/render/host";
 import { onCleanup } from "../../src/core/cleanup";
 import { Show } from "../../src/macros/ui/flow";
 
@@ -147,4 +147,190 @@ test "node slot component mounts once untracked and cleans up with its owner" {
 	assert cleanups === 1, "owner disposes component once";
 	setValue("third");
 	assert mounts === 1 && cleanups === 1, "disposed slot does not run again";
+}
+
+function mounted(view: NeonNode): MockNode {
+	const root = mockNode("root");
+	render(view, mockHost(), root as unknown as HostNode);
+	return root;
+}
+
+test "reactive element renders and updates on signal change" {
+	const [name, setName] = createSignal("world");
+	const root = mounted(element(<p>Hi {name()}</p>));
+	assert mockToString(root) === "<root><p>Hi world</p></root>", "initial render: " + mockToString(root);
+	setName("neon");
+	assert mockToString(root) === "<root><p>Hi neon</p></root>", "render updates after set: " + mockToString(root);
+}
+
+test "JSX bound to a const is consumed by element()" {
+	const [name, setName] = createSignal("world");
+	const view = <p>Hi {name()}</p>;
+	const root = mounted(element(view));
+	assert mockToString(root) === "<root><p>Hi world</p></root>", "const-form initial render: " + mockToString(root);
+	setName("neon");
+	assert mockToString(root) === "<root><p>Hi neon</p></root>", "const-form updates after set: " + mockToString(root);
+}
+
+test "whitespace-only children between elements are dropped" {
+	const root = mounted(element(
+		<div>
+			<p>x</p>
+			<b>y</b>
+		</div>
+	));
+	assert mockToString(root) === "<root><div><p>x</p><b>y</b></div></root>", "indentation between elements: " + mockToString(root);
+}
+
+test "a same-line space between elements is significant and kept" {
+	const root = mounted(element(<p><b>a</b> <i>c</i></p>));
+	assert mockToString(root) === "<root><p><b>a</b> <i>c</i></p></root>", "single space has no newline: " + mockToString(root);
+}
+
+test "text spanning lines is rejoined with single spaces" {
+	const root = mounted(element(
+		<p>
+			hello
+			world
+		</p>
+	));
+	assert mockToString(root) === "<root><p>hello world</p></root>", "indentation stripped, lines joined: " + mockToString(root);
+}
+
+test "text alone on its own line keeps its content" {
+	const withAttr = mounted(element(
+		<p a="1">
+			hello
+		</p>
+	));
+	assert mockToString(withAttr) === "<root><p a=\"1\">hello</p></root>", "attributed element keeps text: " + mockToString(withAttr);
+	const noAttr = mounted(element(
+		<p>
+			hello
+		</p>
+	));
+	assert mockToString(noAttr) === "<root><p>hello</p></root>", "unattributed element keeps text: " + mockToString(noAttr);
+}
+
+test "single-line text passes through byte for byte" {
+	const trailing = mounted(element(<p>Count: </p>));
+	assert mockToString(trailing) === "<root><p>Count: </p></root>", "trailing space kept: " + mockToString(trailing);
+	const padded = mounted(element(<p>  spaced  </p>));
+	assert mockToString(padded) === "<root><p>  spaced  </p></root>", "inner padding kept: " + mockToString(padded);
+}
+
+test "text around an element on separate lines keeps both runs" {
+	const root = mounted(element(
+		<div>
+			text before
+			<b>bold</b>
+			text after
+		</div>
+	));
+	assert mockToString(root) === "<root><div>text before<b>bold</b>text after</div></root>", "both text runs survive: " + mockToString(root);
+}
+
+test "dynamic attr tracks its signal" {
+	const [cls, setCls] = createSignal("red");
+	const root = mounted(element(<p class={cls()}>x</p>));
+	assert mockToString(root) === "<root><p class=\"red\">x</p></root>", "initial snapshot: " + mockToString(root);
+	setCls("blue");
+	assert mockToString(root) === "<root><p class=\"blue\">x</p></root>", "snapshot follows set: " + mockToString(root);
+}
+
+test "mixed static and dynamic attrs keep source order" {
+	const [x, setX] = createSignal("2");
+	const root = mounted(element(<div a="1" b={x()} c="3"></div>));
+	assert mockToString(root) === "<root><div a=\"1\" b=\"2\" c=\"3\"></div></root>", "source order preserved: " + mockToString(root);
+	setX("9");
+	assert mockToString(root) === "<root><div a=\"1\" b=\"9\" c=\"3\"></div></root>", "middle attr updates in place: " + mockToString(root);
+}
+
+test "the same JSX const consumed twice yields independent trees" {
+	const [a, setA] = createSignal("x");
+	const view = <p>{a()}</p>;
+	const one = mounted(element(view));
+	const two = mounted(element(view));
+	assert mockToString(one) === "<root><p>x</p></root>" && mockToString(two) === "<root><p>x</p></root>", "both trees start alike: " + mockToString(one) + " " + mockToString(two);
+	setA("y");
+	assert mockToString(one) === "<root><p>y</p></root>", "first tree reactive: " + mockToString(one);
+	assert mockToString(two) === "<root><p>y</p></root>", "second tree reactive: " + mockToString(two);
+}
+
+interface Limits {
+	label: string;
+	format: (n: number) => string;
+	onEndReachedThreshold?: Accessor<number> | null;
+}
+
+function Limited(props: Limits): NeonNode {
+	const threshold = props.onEndReachedThreshold;
+	return element(<p>{props.label + " " + props.format(1) + " " + (threshold === null ? "none" : (threshold as Accessor<number>)().toString())}</p>);
+}
+
+function twice(n: number): string { return (n * 2).toString(); }
+
+test "a named function crosses to a component's function prop as written" {
+	const plain = mounted(element(<Limited label="x" format={twice} />));
+	assert mockToString(plain) === "<root><p>x 2 none</p></root>", "non-generic: " + mockToString(plain);
+	const generic = mounted(element(<Picked data={words} format={shout} />));
+	assert mockToString(generic) === "<root><p>NEON none</p></root>", "generic, T bound by the named function: " + mockToString(generic);
+}
+
+test "an on-named Accessor prop takes a literal" {
+	const plain = mounted(element(<Limited label="x" format={twice} onEndReachedThreshold={2} />));
+	assert mockToString(plain) === "<root><p>x 2 2</p></root>", "non-generic literal: " + mockToString(plain);
+	const generic = mounted(element(<Picked data={words} format={shout} onEndReachedThreshold={3} />));
+	assert mockToString(generic) === "<root><p>NEON 3</p></root>", "generic literal: " + mockToString(generic);
+}
+
+function GenericNodeSlot<T>(props: { item: T; format: (item: T) => string; content: NeonNode }): NeonNode {
+	return element(<div><b>{props.format(props.item)}</b>{props.content}</div>);
+}
+
+function SlotHeading(): NeonNode {
+	return element(<h1>heading</h1>);
+}
+
+function OptionalSlotHeading(props: { label?: string | null }): NeonNode {
+	return element(<h1>{props.label ?? "heading"}</h1>);
+}
+
+function RequiredSlotHeading(props: { title: string }): NeonNode {
+	return element(<h1>{props.title}</h1>);
+}
+
+interface SlotComponents {
+	Heading: () => NeonNode;
+}
+
+const slotComponents: SlotComponents = { Heading: SlotHeading };
+
+test "declared node slots accept named components and existing elements equivalently" {
+	const heading = "<root><h1>heading</h1></root>";
+	assert mockToString(mounted(element(<NodeSlot content={SlotHeading} />))) === heading, "named component";
+	assert mockToString(mounted(element(<NodeSlot content={element(<SlotHeading />)} />))) === heading, "existing element";
+	assert mockToString(mounted(element(<NodeSlot content={SlotHeading()} />))) === heading, "existing NeonNode";
+	assert mockToString(mounted(element(<NodeSlot content={null} />))) === "<root><i>empty</i></root>", "nullable slot";
+	assert mockToString(mounted(element(<NodeSlot content={OptionalSlotHeading} />))) === heading, "optional props receive an empty object";
+	assert mockToString(mounted(element(<NodeSlot content={slotComponents.Heading} />))) === heading, "dotted component";
+	assert mockToString(mounted(element(<NodeSlot content={(): NeonNode => element(<h1>heading</h1>)} />))) === heading, "inline component";
+	assert mockToString(mounted(element(<NodeSlot content={<SlotHeading />} />))) === heading, "JSX element slot";
+	assert mockToString(mounted(element(<NodeSlot content={() => element(<h1>heading</h1>)} />))) === heading, "inferred inline component";
+	assert mockToString(mounted(element(<NodeSlot content={<RequiredSlotHeading title="heading" />} />))) === heading, "required props are supplied on an element";
+}
+
+test "generic consumers normalize node slots without converting ordinary callbacks" {
+	const both = "<root><div><b>NEON</b><h1>heading</h1></div></root>";
+	assert mockToString(mounted(element(<GenericNodeSlot item="neon" format={shout} content={SlotHeading} />))) === both, "generic named slot";
+	assert mockToString(mounted(element(<GenericNodeSlot item="neon" format={shout} content={element(<SlotHeading />)} />))) === both, "generic element slot";
+	assert mockToString(mounted(element(<GenericNodeSlot item="neon" format={shout} content={<SlotHeading />} />))) === both, "generic raw JSX slot";
+}
+
+function CallbackSlot(props: { make: () => NeonNode }): NeonNode {
+	return props.make();
+}
+
+test "a component-valued ordinary callback prop is not normalized" {
+	assert mockToString(mounted(element(<CallbackSlot make={SlotHeading} />))) === "<root><h1>heading</h1></root>", "callback remains callable";
 }
