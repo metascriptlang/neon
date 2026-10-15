@@ -640,3 +640,69 @@ test "Repeat refuses a fractional count through the tag" {
 	} catch (e) { caught = e.toString(); }
 	assert caught.includes("Repeat: count"), "the count is named: " + caught;
 }
+
+test "map.ts:88 For: a binding inside a row keeps following its own signal through a reorder, an insert and a removal" {
+	const [xs, setXs] = createSignal<string[]>(["a", "b"]);
+	const [tag, setTag] = createSignal<string>("!");
+	const [view, d] = mountedText(element(<ul><For each={xs()}>{(s: string, i: Accessor<number>): NeonNode => element(<li>{s + tag()}</li>)}</For></ul>));
+	assert view() === "<root><ul><li>a!</li><li>b!</li></ul></root>", "initial: " + view();
+	setXs(["b", "a"]);
+	setTag("?");
+	assert view() === "<root><ul><li>b?</li><li>a?</li></ul></root>", "rows that moved follow the signal: " + view();
+	setXs(["c", "b", "a"]);
+	setTag("#");
+	assert view() === "<root><ul><li>c#</li><li>b#</li><li>a#</li></ul></root>", "rows that stayed and the row that came follow it: " + view();
+	setXs(["a"]);
+	setTag("%");
+	assert view() === "<root><ul><li>a%</li></ul></root>", "the row left after a removal follows it: " + view();
+	d();
+}
+
+test "map.ts:88 ForKeyedBy: a binding inside a row keeps following its own signal through a reorder, an insert and a removal" {
+	const [rows, setRows] = createSignal<Keyed[]>([{ id: 1, label: "a" }, { id: 2, label: "b" }]);
+	const [tag, setTag] = createSignal<string>("!");
+	const key = (r: Keyed): number => r.id;
+	const [view, d] = mountedText(element(<ul><For each={rows()} keyed={key}>{(r: Accessor<Keyed>, i: Accessor<number>): NeonNode => element(<li>{r().label + tag()}</li>)}</For></ul>));
+	assert view() === "<root><ul><li>a!</li><li>b!</li></ul></root>", "initial: " + view();
+	setRows([{ id: 2, label: "B" }, { id: 1, label: "A" }]);
+	setTag("?");
+	assert view() === "<root><ul><li>B?</li><li>A?</li></ul></root>", "rows that moved follow the signal: " + view();
+	setRows([{ id: 3, label: "c" }, { id: 2, label: "B" }, { id: 1, label: "A" }]);
+	setTag("#");
+	assert view() === "<root><ul><li>c#</li><li>B#</li><li>A#</li></ul></root>", "rows that stayed and the row that came follow it: " + view();
+	setRows([{ id: 1, label: "A" }]);
+	setTag("%");
+	assert view() === "<root><ul><li>A%</li></ul></root>", "the row left after a removal follows it: " + view();
+	d();
+}
+
+test "map.ts:88 For keyed={false}: a binding inside a row keeps following its own signal through a reorder, an insert and a removal" {
+	const [xs, setXs] = createSignal<string[]>(["a", "b"]);
+	const [tag, setTag] = createSignal<string>("!");
+	const [view, d] = mountedText(element(<ul><For each={xs()} keyed={false}>{(x: Accessor<string>, i: number): NeonNode => element(<li>{x() + tag()}</li>)}</For></ul>));
+	assert view() === "<root><ul><li>a!</li><li>b!</li></ul></root>", "initial: " + view();
+	setXs(["b", "a"]);
+	setTag("?");
+	assert view() === "<root><ul><li>b?</li><li>a?</li></ul></root>", "rows that changed value follow the signal: " + view();
+	setXs(["c", "b", "a"]);
+	setTag("#");
+	assert view() === "<root><ul><li>c#</li><li>b#</li><li>a#</li></ul></root>", "rows that stayed and the row that came follow it: " + view();
+	setXs(["a"]);
+	setTag("%");
+	assert view() === "<root><ul><li>a%</li></ul></root>", "the row left after a removal follows it: " + view();
+	d();
+}
+
+test "map.ts:624 Repeat: a binding inside a row keeps following its own signal through a grow and a shrink" {
+	const [n, setN] = createSignal<number>(2);
+	const [tag, setTag] = createSignal<string>("!");
+	const [view, d] = mountedText(element(<ul><Repeat count={n()}>{(i: number): NeonNode => element(<li>{i.toString() + tag()}</li>)}</Repeat></ul>));
+	assert view() === "<root><ul><li>0!</li><li>1!</li></ul></root>", "initial: " + view();
+	setN(4);
+	setTag("?");
+	assert view() === "<root><ul><li>0?</li><li>1?</li><li>2?</li><li>3?</li></ul></root>", "kept and new rows follow the signal: " + view();
+	setN(1);
+	setTag("#");
+	assert view() === "<root><ul><li>0#</li></ul></root>", "the row left after a shrink follows it: " + view();
+	d();
+}
