@@ -163,3 +163,19 @@ export {
 	useMatch,
 	A,
 } from "./router";
+export {
+	WebNavigationError,
+	WebKeySerializer,
+	WebNavigationOwner,
+	WebHistoryItem,
+	WebNavigation,
+	WebNavigationNode,
+	webNavigationNode,
+	StackWebNavigationOptions,
+	PagesWebNavigationOptions,
+	PanelsHistoryKey,
+	PanelsWebNavigationOptions,
+	childStackWebNavigation,
+	childPagesWebNavigation,
+	childPanelsWebNavigation,
+} from "./webNavigation";
