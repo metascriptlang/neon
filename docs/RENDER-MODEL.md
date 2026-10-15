@@ -590,9 +590,12 @@ requests: it collects the rules that one render mounted into the returned `css`,
 registered outside any render (a theme's `:root`), and leaves the registry alone. A registry
 shared by every request sends each page the rules of every page rendered before it, which is
 why `renderToString` with `mountSheet()` stays the form for a process that prints one page
-(`tests/render/ssrRequest.test.ms`). The Chrome lane hydrates pages a `-d:server` build wrote
+(`tests/render/ssrRequestServer.test.ms`). The Chrome lane hydrates pages a `-d:server` build wrote
 (`tests/browser/serveApps.ms`), as Solid's hydration specs replay what its server specs
-recorded (`packages/web/test/hydration/slot-hydration-3567.spec.tsx`, `loadArtifact`).
+recorded (`packages/web/test/hydration/slot-hydration-3567.spec.tsx`, `loadArtifact`). A test
+that renders to a string sits in `<name>Server.test.ms` beside the client file and runs only under
+`-d:server`, as Solid keeps `packages/web/test/server/*.spec.tsx` apart from the client specs and
+excludes them from the client run (`packages/web/vite.config.mjs`).
 
 ## Per-platform economics
 
