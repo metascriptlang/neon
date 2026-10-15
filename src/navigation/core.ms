@@ -1,4 +1,5 @@
-import { Accessor, Setter, Signal, accessor, batch, createSignal, untrack } from "../core/signal";
+import { Accessor, Setter, Signal, accessor, createSignal, untrack } from "../core/signal";
+import { flush } from "../core/runtime";
 import { createRenderEffect } from "../core/effect";
 import { Cleanup } from "../core/types";
 import { createRoot } from "../core/owner";
@@ -793,7 +794,7 @@ export class NavigatorCore<P> {
 	}
 
 	apply(change: () => void): void {
-		batch((): void => {
+		flush((): void => {
 			change();
 			this.markCurrent();
 		});

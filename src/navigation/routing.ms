@@ -1,4 +1,4 @@
-import { batch } from "../core/signal";
+import { flush } from "../core/runtime";
 import { Dispose } from "../core/types";
 
 export enum RoutingError {
@@ -287,7 +287,7 @@ export class RoutingRegistry {
 			plans.push(try participant.prepare(requested.get(participant.scope)));
 		}
 		return Result.ok({ commit: (): void => {
-			batch((): void => { for (const plan of plans) { plan.commit(); } });
+			flush((): void => { for (const plan of plans) { plan.commit(); } });
 		} });
 	}
 
@@ -332,7 +332,7 @@ export class RoutingRegistry {
 			plans.push(try participant.restore(state as string));
 		}
 		return Result.ok({ commit: (): void => {
-			batch((): void => { for (const plan of plans) { plan.commit(); } });
+			flush((): void => { for (const plan of plans) { plan.commit(); } });
 		} });
 	}
 

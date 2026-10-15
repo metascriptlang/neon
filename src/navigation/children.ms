@@ -1,4 +1,4 @@
-import { Accessor, Signal, accessor, batch } from "../core/signal";
+import { Accessor, Signal, accessor } from "../core/signal";
 import { Computation, Dispose } from "../core/types";
 import { createRoot, runWithOwner } from "../core/owner";
 import { getOwner } from "../core/runtime";
@@ -85,7 +85,8 @@ export function createChildren<C, T>(
 		const previous = owned;
 		owned = new Map<string, OwnedChild<C, T>>();
 		for (const key of previous) { (previous.get(key) as OwnedChild<C, T>).dispose(); }
-		batch((): void => { state.set([]); children.set([]); });
+		state.set([]);
+		children.set([]);
 	};
 	const navigate = (next: ChildState<C>[]): void => {
 		if (disposed) { throw new Error("navigation: children are disposed"); }
@@ -112,27 +113,25 @@ export function createChildren<C, T>(
 			throw error;
 		}
 		try {
-			batch((): void => {
-				for (const key of owned) {
-					if (!desired.has(key)) { (owned.get(key) as OwnedChild<C, T>).dispose(); }
-				}
-				const snapshot: ChildState<C>[] = [];
-				const visible: NavigationChild<C, T>[] = [];
-				for (const config of next) {
-					const child = desired.get(config.key) as OwnedChild<C, T>;
-					child.configuration.set(config.configuration);
-					child.active.set(config.active);
-					snapshot.push({
-						key: config.key,
-						configuration: config.configuration,
-						active: config.active,
-					});
-					visible.push(child.child);
-				}
-				owned = desired;
-				state.set(snapshot);
-				children.set(visible);
-			});
+			for (const key of owned) {
+				if (!desired.has(key)) { (owned.get(key) as OwnedChild<C, T>).dispose(); }
+			}
+			const snapshot: ChildState<C>[] = [];
+			const visible: NavigationChild<C, T>[] = [];
+			for (const config of next) {
+				const child = desired.get(config.key) as OwnedChild<C, T>;
+				child.configuration.set(config.configuration);
+				child.active.set(config.active);
+				snapshot.push({
+					key: config.key,
+					configuration: config.configuration,
+					active: config.active,
+				});
+				visible.push(child.child);
+			}
+			owned = desired;
+			state.set(snapshot);
+			children.set(visible);
 		} finally { changing = false; }
 	};
 	navigate(initial);
