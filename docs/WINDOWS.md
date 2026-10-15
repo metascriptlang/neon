@@ -103,7 +103,8 @@ and `text.ms` own a plain Win32 window (`niwPump`), and `src/platform/windows/io
 Every `bridge.h` function not implemented aborts with its name, and `niAppCall` answers only the queries
 `installNativeAppServices` makes at startup. App services do not go through it on an Ion window. `ion.ms` hands
 `useAppServices` the services of `src/platform/ion/appServices.ms`, the same ones the full-window `<Void>` installs.
-In them, the clipboard goes through Ion, and every other service throws an error that names it.
+In them, the clipboard and the microphone permission go through Ion, and every other service throws an error
+that names it.
 
 A build links the bridge only when the entry module imports `src/platform/windows/library`; `host.ms` has no
 Windows block, so the mock-bridge tests, which also see `windows` as true on this box, link their own mock.
