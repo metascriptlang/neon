@@ -44,10 +44,10 @@ never() {
 }
 
 ROUTING="./routing ./routingHistory"
-MODELS="./children ./childStack ./childPages ./childSlot"
+MODELS="./children ./childStack ./childPages ./childSlot ./childPanels"
 
 only routing "../core/* $ROUTING" routing routingHistory
-only navigation "../core/* $MODELS" children childStack childPages childSlot
+only navigation "../core/* $MODELS" children childStack childPages childSlot childPanels
 never rendering "$ROUTING ./linking" navigatorMotion header layout
 
 if [ $fail -eq 0 ]; then echo "layers: ok"; fi
