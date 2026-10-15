@@ -42,6 +42,19 @@ and the invariants that outlived them were moved to the head of the test that pi
   before the fallback renders outside a dev build and serializes that same record for hydrate
   (`~/projects/solid-next` `84dada77`, `documentation/solid-2.0/12-ssr-http.md:139-145`).
 
+- **OPEN 2026-10-15 — a read inside `runWithOwner` subscribes the effect that called it.**
+  `createRenderEffect(() => { runs += 1; runWithOwner(owner, (): number => a()); })`, then `setA(1)`,
+  prints `runs 2` on C and `--target=js` (msc v0.3.4 `15b93cbba`, copy of main `c68683d` `src`).
+  `runWithOwner` (`src/core/owner.ms`) swaps the owner and keeps the listener; Solid 1.x
+  (`~/projects/solid` `25138e1c`, `reactive/signal.ts:1055-1059`) and 2.0 clear the listener, so the
+  same program runs the effect once.
+
+- **OPEN 2026-10-15 — an effect that feeds itself stops without an error.**
+  `createRenderEffect(() => { const v = n(); if (v < 3000000) { setN(v + 1); } })` leaves `n` at
+  `1000001` and throws nothing, on C and `--target=js` (same build and copy). `runQueue`
+  (`src/core/runtime.ms`) leaves its loop at 1 000 000 passes with work still queued; Solid 2.0
+  throws at 100 000 (`~/projects/solid-next` `84dada77`, `packages/signals/src/core/scheduler.ts:1309-1315`).
+
 - **OPEN 2026-10-12 — a component tag that omits a required prop compiles and then crashes.**
   `interface BadgeProps { label: Accessor<string>; suffix: Accessor<string>; }` mounted as
   `<Badge label="a" />` builds on msc `e8c024c8` (C) and the test binary ends with status
