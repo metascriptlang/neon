@@ -100,6 +100,7 @@ function detach(n: MockNode): void {
 function cloneMock(n: MockNode): MockNode {
 	const c = mockNode(n.tag);
 	c.text = n.text;
+	c.className = n.className;
 	c.style = n.style;
 	for (const a of n.attrs) { c.attrs.push(attr(a.name, a.value)); }
 	for (const k of n.children) {

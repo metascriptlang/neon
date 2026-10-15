@@ -21,7 +21,7 @@ test "plain markup serializes as written" {
 	assert renderToString(<div></div>) === "<div></div>", "empty element: " + renderToString(<div></div>);
 	assert renderToString(<div class="box">hi</div>) === "<div class=\"box\">hi</div>", "attr + text";
 	assert renderToString(<ul><li>a</li><li>b</li></ul>) === "<ul><li>a</li><li>b</li></ul>", "nested";
-	assert renderToString(<view><text>x</text></view>) === "<div><span>x</span></div>", "wire tags become html tags";
+	assert renderToString(<view><text>x</text></view>) === "<div class=\"neon-view\"><span class=\"neon-text\">x</span></div>", "wire tags become html tags with their base class";
 	assert renderToString(text("bare text")) === "bare text", "a bare text root";
 	const order = renderToString(<input value="v" id="i" />);
 	assert order === "<input value=\"v\" id=\"i\">", "attribute order: " + order;
