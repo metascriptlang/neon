@@ -1,4 +1,4 @@
-import { mapArray, mapArrayKeyedBy, mapArrayByPosition, repeat } from "../../src/core/array";
+import { mapArray, mapArrayKeyedBy, mapArrayByPosition, repeat, smallMoveHits } from "../../src/core/array";
 import { createSignal, accessor, Accessor, Setter } from "../../src/core/signal";
 import { createRoot } from "../../src/core/owner";
 import { onCleanup } from "../../src/core/cleanup";
@@ -1499,6 +1499,16 @@ class Twin<T> {
 	}
 }
 
+function hitsOf<T>(twin: Twin<T>, next: T[]): number {
+	const before = smallMoveHits();
+	twin.step(next);
+	return smallMoveHits() - before;
+}
+
+function expectHits(got: number, want: number, why: string): void {
+	ensure(got === want, why + ": " + got.toString() + " fast-path commits, want " + want.toString());
+}
+
 function pieces(n: number): Piece[] {
 	const out: Piece[] = [];
 	for (let i = 0; i < n; i += 1) { out.push({ id: i }); }
@@ -1562,11 +1572,46 @@ function shuffled<T>(a: T[]): T[] {
 	return out;
 }
 
+function rotationHits(mode: number): number {
+	let hits: number = 0;
+	createRoot((d) => {
+		const base = pieces(200);
+		const [src, setSrc] = createSignal<Piece[]>(base);
+		let m: () => number[] = (): number[] => [];
+		if (mode === 0) {
+			m = mapArray<Piece, number>(src, (p, i) => p.id, null, false);
+		} else if (mode === 1) {
+			m = mapArray<Piece, number>(src, (p, i) => p.id, null, true);
+		} else if (mode === 2) {
+			m = mapArrayKeyedBy<Piece, number, number>(src, pieceId, (item, i) => item().id, null, false);
+		} else if (mode === 3) {
+			m = mapArrayKeyedBy<Piece, number, number>(src, pieceId, (item, i) => item().id, null, true);
+		} else {
+			m = mapArrayByPosition<Piece, number>(src, (item, pos) => pos);
+		}
+		m();
+		const before = smallMoveHits();
+		setSrc(rotateFront(base));
+		m();
+		hits = smallMoveHits() - before;
+		d();
+	});
+	return hits;
+}
+
+test "smallmove.test.ts:114 only an identity row that reads no index takes the fast path" {
+	expectHits(rotationHits(0), 1, "smallmove.test.ts:96 identity rows without an index");
+	expectHits(rotationHits(1), 0, "smallmove.test.ts:114 identity rows that read their index");
+	expectHits(rotationHits(2), 0, "map.ts:469 keyed rows with cells");
+	expectHits(rotationHits(3), 0, "map.ts:469 keyed rows with cells and an index");
+	expectHits(rotationHits(4), 0, "map.ts:469 position rows");
+}
+
 test "smallmove.test.ts:157 rotating forward and back moves the owners with their items and builds nothing" {
 	createRoot((d) => {
 		const twin = new Twin<Piece>(pieces(300), pieceId);
 		for (const forward of [true, false, true, true]) {
-			twin.step(forward ? rotateFront(twin.items()) : rotateBack(twin.items()));
+			expectHits(hitsOf(twin, forward ? rotateFront(twin.items()) : rotateBack(twin.items())), 1, "smallmove.test.ts:96 a rotation of 300 rows, forward " + forward.toString());
 		}
 		assert twin.fast.made === 300 && twin.fast.disposed.length === 0, "no row built or disposed: " + twin.fast.made.toString();
 		assert twin.fast.rows()[0].item === twin.items()[0], "row 0 holds the item at 0";
@@ -1584,7 +1629,7 @@ test "smallmove.test.ts:118 a window of 66 changed rows and a window of 65 both 
 			const tail: Piece[] = [];
 			for (let i = 100; i < src.length; i += 1) { tail.push(src[i]); }
 			for (const p of rotateFront(tail)) { next.push(p); }
-			twin.step(next);
+			expectHits(hitsOf(twin, next), window === 66 ? 1 : 0, "smallmove.test.ts:131 window " + window.toString());
 			assert twin.fast.made === src.length, "window " + window.toString() + ": no row built";
 			d();
 		});
@@ -1599,7 +1644,37 @@ test "smallmove.test.ts:137 a block of 32 displaced rows and a block of 33 both 
 			const next: Piece[] = [];
 			for (let i = k; i < src.length; i += 1) { next.push(src[i]); }
 			for (let i = 0; i < k; i += 1) { next.push(src[i]); }
-			twin.step(next);
+			expectHits(hitsOf(twin, next), k === 32 ? 1 : 0, "smallmove.test.ts:148 k=" + k.toString());
+			assert twin.fast.made === 400 && twin.fast.disposed.length === 0, "k=" + k.toString() + ": nothing built or disposed";
+			d();
+		});
+	}
+}
+
+test "smallmove.test.ts:131 the window gate holds when the two ends of the window swap" {
+	for (const window of [66, 65]) {
+		createRoot((d) => {
+			const src = pieces(100 + window);
+			const twin = new Twin<Piece>(src, pieceId);
+			const next: Piece[] = [];
+			for (const p of src) { next.push(p); }
+			next[100] = src[src.length - 1];
+			next[src.length - 1] = src[100];
+			expectHits(hitsOf(twin, next), window === 66 ? 1 : 0, "smallmove.test.ts:131 swapped ends, window " + window.toString());
+			d();
+		});
+	}
+}
+
+test "smallmove.test.ts:148 a block of 32 moved to the front engages and a block of 33 does not" {
+	for (const k of [32, 33]) {
+		createRoot((d) => {
+			const src = pieces(400);
+			const twin = new Twin<Piece>(src, pieceId);
+			const next: Piece[] = [];
+			for (let i = src.length - k; i < src.length; i += 1) { next.push(src[i]); }
+			for (let i = 0; i < src.length - k; i += 1) { next.push(src[i]); }
+			expectHits(hitsOf(twin, next), k === 32 ? 1 : 0, "smallmove.test.ts:148 block to the front, k=" + k.toString());
 			assert twin.fast.made === 400 && twin.fast.disposed.length === 0, "k=" + k.toString() + ": nothing built or disposed";
 			d();
 		});
@@ -1609,7 +1684,9 @@ test "smallmove.test.ts:137 a block of 32 displaced rows and a block of 33 both 
 test "smallmove.test.ts:170 scattered displacements of 3 to 8 rows agree with the general path" {
 	createRoot((d) => {
 		const twin = new Twin<Piece>(pieces(500), pieceId);
+		const before = smallMoveHits();
 		for (let k = 3; k <= 8; k += 1) { twin.step(displace(twin.items(), k)); }
+		assert smallMoveHits() > before, "smallmove.test.ts:184 the fast path takes some of the scatters: " + (smallMoveHits() - before).toString();
 		assert twin.fast.made === 500, "no row built";
 		d();
 	});
@@ -1622,7 +1699,7 @@ test "smallmove.test.ts:188 an adjacent swap of rows 1 and 998 agrees with the g
 		const t = next[1];
 		next[1] = next[998];
 		next[998] = t;
-		twin.step(next);
+		expectHits(hitsOf(twin, next), 1, "smallmove.test.ts:195 swapping rows 1 and 998");
 		assert twin.fast.rows()[1].item === next[1] && twin.fast.rows()[998].item === next[998], "the two rows swapped";
 		d();
 	});
@@ -1634,7 +1711,7 @@ test "smallmove.test.ts:200 a shrink that drops five rows and rotates the rest d
 		const src = twin.items();
 		const kept: Piece[] = [];
 		for (let i = 0; i < src.length; i += 1) { if (i < 100 || i >= 105) { kept.push(src[i]); } }
-		twin.step(rotateFront(kept));
+		expectHits(hitsOf(twin, rotateFront(kept)), 1, "smallmove.test.ts:207 a shrink that rotates");
 		assert twin.fast.disposed.length === 5, "five rows disposed: " + twin.fast.disposed.length.toString();
 		d();
 	});
@@ -1645,7 +1722,7 @@ test "smallmove.test.ts:213 a rotation that also grows agrees with the general p
 		const twin = new Twin<Piece>(pieces(200), pieceId);
 		const next = rotateFront(twin.items());
 		next.push({ id: 9999 });
-		twin.step(next);
+		expectHits(hitsOf(twin, next), 0, "smallmove.test.ts:218 a rotation that grows");
 		assert twin.fast.made === 201, "one row built";
 		d();
 	});
@@ -1656,7 +1733,7 @@ test "smallmove.test.ts:223 a replacement inside the window builds one row and d
 		const twin = new Twin<Piece>(pieces(200), pieceId);
 		const next = twin.items();
 		next[100] = { id: 424242 };
-		twin.step(next);
+		expectHits(hitsOf(twin, next), 0, "smallmove.test.ts:230 a replacement inside the window");
 		assert twin.fast.made === 201 && twin.fast.disposed.length === 1, "one built, one disposed";
 		d();
 	});
@@ -1665,7 +1742,7 @@ test "smallmove.test.ts:223 a replacement inside the window builds one row and d
 test "smallmove.test.ts:236 a full replace builds every row and disposes every old one" {
 	createRoot((d) => {
 		const twin = new Twin<Piece>(pieces(1000), pieceId);
-		twin.step(pieces(1000));
+		expectHits(hitsOf(twin, pieces(1000)), 0, "smallmove.test.ts:240 a full replace");
 		assert twin.fast.made === 2000 && twin.fast.disposed.length === 1000, "a thousand rows each way";
 		d();
 	});
@@ -1683,7 +1760,38 @@ test "smallmove.test.ts:248 a displaced identity that also occurs in an aligned 
 		const twin = new Twin<Piece>(src, pieceId);
 		const next: Piece[] = [b, a, c, a];
 		for (const f of rotateFront(filler)) { next.push(f); }
-		twin.step(next);
+		expectHits(hitsOf(twin, next), 0, "smallmove.test.ts:259 a displaced identity that also sits in an aligned run");
+		d();
+	});
+}
+
+test "map.ts:260 the same shape with a distinct row in place of the duplicate takes the fast path" {
+	createRoot((d) => {
+		const a: Piece = { id: 1 };
+		const a2: Piece = { id: 1 };
+		const b: Piece = { id: 2 };
+		const c: Piece = { id: 3 };
+		const filler: Piece[] = [];
+		for (let i = 0; i < 100; i += 1) { filler.push({ id: 1000 + i }); }
+		const src: Piece[] = [a, b, a2, c];
+		for (const f of filler) { src.push(f); }
+		const twin = new Twin<Piece>(src, pieceId);
+		const next: Piece[] = [b, a, c, a2];
+		for (const f of rotateFront(filler)) { next.push(f); }
+		expectHits(hitsOf(twin, next), 1, "smallmove.test.ts:259 without the duplicate the same move is a small move");
+		d();
+	});
+}
+
+test "map.ts:260 a number displaced into an aligned run that holds the same number declines" {
+	createRoot((d) => {
+		const src: number[] = [1, 2, 1, 3];
+		for (let i = 0; i < 100; i += 1) { src.push(1000 + i); }
+		const twin = new Twin<number>(src, numberId);
+		const next: number[] = [2, 1, 3, 1];
+		for (let i = 1; i < 100; i += 1) { next.push(1000 + i); }
+		next.push(1000);
+		expectHits(hitsOf(twin, next), 0, "smallmove.test.ts:259 equal numbers are one identity");
 		d();
 	});
 }
@@ -1700,7 +1808,7 @@ test "smallmove.test.ts:264 duplicates only among displaced rows pair ascending 
 		for (const f of filler) { next.push(f); }
 		next.push(a);
 		next.push(a);
-		twin.step(next);
+		expectHits(hitsOf(twin, next), 1, "map.ts:254 two equal rows that both leave the front, neither inside an aligned run");
 		d();
 	});
 }
@@ -1720,7 +1828,7 @@ test "smallmove.test.ts:275 removing one of two equal items disposes the same oc
 		const tail: Piece[] = [];
 		for (let i = 100; i < 200; i += 1) { tail.push(filler[i]); }
 		for (const f of rotateFront(tail)) { next.push(f); }
-		twin.step(next);
+		expectHits(hitsOf(twin, next), 1, "map.ts:254 the second of two equal rows leaves, the first sits in the kept prefix");
 		assert twin.fast.disposed.length === 1, "one owner disposed";
 		d();
 	});
@@ -1733,6 +1841,7 @@ test "smallmove.test.ts:287 random duplicate-heavy reorders always agree with th
 		for (const p of base) { start.push(p); }
 		for (let i = 0; i < 30; i += 1) { start.push(base[i]); }
 		const twin = new Twin<Piece>(start, pieceId);
+		const before = smallMoveHits();
 		for (let round = 0; round < 200; round += 1) {
 			const next = twin.items();
 			const moves = 1 + pick(6);
@@ -1745,6 +1854,7 @@ test "smallmove.test.ts:287 random duplicate-heavy reorders always agree with th
 			if (pick(4) === 0) { next.splice(pick(next.length), 1); }
 			twin.step(next);
 		}
+		assert smallMoveHits() > before, "the fuzz reaches the fast path: " + (smallMoveHits() - before).toString();
 		d();
 	});
 }
@@ -1752,9 +1862,9 @@ test "smallmove.test.ts:287 random duplicate-heavy reorders always agree with th
 test "map.ts:459 a reverse and a shuffle of a large list agree with the general path" {
 	createRoot((d) => {
 		const twin = new Twin<Piece>(pieces(300), pieceId);
-		twin.step(reversed(twin.items()));
-		twin.step(shuffled(twin.items()));
-		twin.step(shuffled(twin.items()));
+		expectHits(hitsOf(twin, reversed(twin.items())), 0, "map.ts:205 a reverse is past the compare budget");
+		expectHits(hitsOf(twin, shuffled(twin.items())), 0, "map.ts:205 a shuffle is past the compare budget");
+		expectHits(hitsOf(twin, shuffled(twin.items())), 0, "map.ts:205 a second shuffle");
 		assert twin.fast.made === 300 && twin.fast.disposed.length === 0, "a reorder builds and disposes nothing";
 		d();
 	});
@@ -1765,7 +1875,7 @@ test "map.ts:459 removing one row from the front, middle and end of a large list
 		createRoot((d) => {
 			const twin = new Twin<Piece>(pieces(300), pieceId);
 			const gone = twin.items()[at];
-			twin.step(without(twin.items(), at));
+			expectHits(hitsOf(twin, without(twin.items(), at)), 0, "map.ts:466 removing row " + at.toString() + " leaves the trims a window of nothing, the general path is already cheap");
 			assert twin.fast.disposed.length === 1 && twin.fast.disposed[0] === at, "row " + at.toString() + " disposed: " + twin.fast.disposed.join(",");
 			assert twin.fast.rows().length === 299, "299 left";
 			d();
@@ -1778,15 +1888,15 @@ test "map.ts:459 number items take the same path: rotate, swap, remove one and a
 		const start: number[] = [];
 		for (let i = 0; i < 1000; i += 1) { start.push(i); }
 		const twin = new Twin<number>(start, numberId);
-		twin.step(rotateFront(twin.items()));
-		twin.step(rotateBack(twin.items()));
+		expectHits(hitsOf(twin, rotateFront(twin.items())), 1, "smallmove.test.ts:96 numbers rotate forward");
+		expectHits(hitsOf(twin, rotateBack(twin.items())), 1, "smallmove.test.ts:96 numbers rotate back");
 		const swapped = twin.items();
 		const t = swapped[1];
 		swapped[1] = swapped[998];
 		swapped[998] = t;
-		twin.step(swapped);
-		twin.step(without(twin.items(), 500));
-		twin.step(displace(twin.items(), 5));
+		expectHits(hitsOf(twin, swapped), 1, "smallmove.test.ts:195 numbers swap");
+		expectHits(hitsOf(twin, without(twin.items(), 500)), 0, "map.ts:466 numbers lose one row");
+		expectHits(hitsOf(twin, displace(twin.items(), 5)), 1, "smallmove.test.ts:184 numbers displace five");
 		assert twin.fast.made === 1000 && twin.fast.disposed.length === 1, "one row disposed, none built";
 		d();
 	});

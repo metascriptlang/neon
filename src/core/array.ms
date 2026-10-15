@@ -94,6 +94,12 @@ const smallMoveMinWindow = 64;
 const smallMoveMaxDisplaced = 32;
 const smallMoveCompareBudget = 256;
 
+let smallMoveCount = 0;
+
+export function smallMoveHits(): number {
+	return smallMoveCount;
+}
+
 class SmallMove<U> {
 	mapped: U[];
 	disposers: (() => void)[];
@@ -208,6 +214,7 @@ function smallMove<K, U>(
 		}
 	}
 
+	smallMoveCount += 1;
 	const mapped = oldMapped.slice(0, newLen);
 	const disposers = oldDisposers.slice(0, newLen);
 	for (let r = 0; r < runs.length; r += 3) {
