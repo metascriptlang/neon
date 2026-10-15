@@ -27,7 +27,7 @@ test "plain markup serializes as written" {
 	assert order === "<input value=\"v\" id=\"i\">", "attribute order: " + order;
 }
 
-test "script and style text is written raw, closing tags inside it are broken" {
+test "script and style text is written raw with closing tags broken, title text is escaped" {
 	const css = renderToString(<style>{".a > .b { content: \"&\" }"}</style>);
 	assert css === "<style>.a > .b { content: \"&\" }</style>", "no entity in a style: " + css;
 	const closing = renderToString(<style>{"a{}</style><b>"}</style>);
@@ -35,6 +35,8 @@ test "script and style text is written raw, closing tags inside it are broken" {
 	const [code, setCode] = createSignal("if (a < b && c) { x = \"</SCRIPT>\"; }");
 	const script = renderToString(<script>{code()}</script>);
 	assert script === "<script>if (a < b && c) { x = \"</\\u0053CRIPT>\"; }</script>", "a closing script tag is escaped as JS: " + script;
+	const title = renderToString(<title>{"a & <b>"}</title>);
+	assert title === "<title>a &amp; &lt;b&gt;</title>", "a title decodes entities, so its text is escaped: " + title;
 }
 
 test "reactive text and attributes serialize their current value" {
