@@ -160,7 +160,8 @@ and the invariants that outlived them were moved to the head of the test that pi
 
 - **PARKED 2026-10-16 — the refresh lane cannot build navigation.** Not Neon's: any module pass, even one
   that returns the module unchanged, drops the pattern of a destructuring `for…of`, and `route.ms`
-  `searchText` iterates its search map with `for (const [name, value] of search)`. `tests/refresh/run.sh`
+  `searchText` iterates its search map with `for (const [name, value] of search)`, as `webHistory.ms`
+  `collectAddress`, `addressOf` and `sameParameters` do. `tests/refresh/run.sh`
   fails `navigation.ms` on native, JS and `-d:hcr` with `Undefined variable 'name'`, and so would refresh
   and hot reload of any app that imports `src/navigation/index`. Gate `gate-slice2-c3e8464/`. Card
   `~/metascript/.inbox/compiler/2026-10-16-a-module-pass-drops-the-pattern-of-a-for-of-destructure.md`.
