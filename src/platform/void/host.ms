@@ -4,7 +4,7 @@ import {
 	Scene2D, NodeRef, DrawKind, group, label, mask, addChild, addChildAt, getChildIndex, dispose, kind,
 	setPosition, setSize, setX, setZIndex, setAlpha, setColor, setBackground, clearBackground,
 	setText, text as labelText, setFont, textStyle, setTextStyle, setCursorIndex, setCursorBlinkTime,
-	local, content, scrollTo as scrollNodeTo, setScrollBounds, localToGlobal,
+	local, content, scrollTo as scrollNodeTo, setScrollBounds, localToGlobal, globalToLocal,
 } from "../../../../void/src/void2d/node";
 import { hitTest, xForIndex, lineBoxAt } from "../../../../void/src/void2d/render";
 import { create, add, isDirty } from "../../../../void/src/void2d/scene";
@@ -46,6 +46,8 @@ export class VoidNode {
 	flex: FlexStyle | null = null;
 	lastFlex: FlexStyle | null = null;
 	yg: Ptr<YGNode> | null = null;
+	focusAttr: boolean = false;
+	imeBox: CaretRect | null = null;
 
 	constructor(ref: NodeRef) {
 		this.ref = ref;
@@ -67,6 +69,11 @@ export interface VoidHost {
 	root: HostNode;
 	scene: Scene2D;
 	clickAt: (x: float32, y: float32) => void;
+	pointerDown: (x: float32, y: float32, button: int32) => void;
+	pointerMove: (x: float32, y: float32, button: int32, pressed: boolean) => void;
+	pointerUp: (x: float32, y: float32, button: int32) => void;
+	wheel: (x: float32, y: float32, dx: float32, dy: float32) => void;
+	textInput: (text: string) => void;
 	keyDown: (e: NeonEvent) => void;
 	keyUp: (e: NeonEvent) => void;
 	commitText: (text: string) => void;
@@ -182,6 +189,10 @@ function dim(v: number | string | null, field: string): float32 | null {
 
 asFlexStyleBody(0);
 const TEXT_SIZE: float32 = 16.0;
+const FOCUS_HANDLERS = [
+	"onKeyDown", "onKeyUp", "onFocus", "onBlur", "onTextInput", "onPreedit",
+	"onPointerDown", "onPointerMove", "onPointerUp", "onWheel",
+];
 const CARET_WIDTH: float32 = 1.0;
 const WHITE: Color = rgba(1.0, 1.0, 1.0, 1.0);
 
@@ -190,6 +201,13 @@ export interface CaretRect {
 	y: float32;
 	w: float32;
 	h: float32;
+}
+
+// "x,y,w,h" from the imeRect attribute; anything else is a bug in the producer, so it fails loud.
+function parseCaretRect(s: string): CaretRect {
+	const p = s.split(",");
+	if (p.length !== 4) { throw new Error(`void host: imeRect "${s}" is not "x,y,width,height"`); }
+	return { x: parseFloat(p[0]) as float32, y: parseFloat(p[1]) as float32, w: parseFloat(p[2]) as float32, h: parseFloat(p[3]) as float32 };
 }
 
 export interface TextInputClient {
@@ -223,6 +241,17 @@ function within(node: VoidNode, top: VoidNode): boolean {
 		cur = (cur as VoidNode).parent;
 	}
 	return false;
+}
+
+function deepestAt(n: VoidNode, x: float32, y: float32, accepts: ((n: VoidNode) => boolean) | null): VoidNode | null {
+	for (let i = n.children.length - 1; i >= 0; i -= 1) {
+		const c = n.children[i];
+		if (c.disposed) { continue; }
+		const hit = deepestAt(c, x, y, accepts);
+		if (hit !== null) { return hit; }
+	}
+	if (accepts !== null && !(accepts as (n: VoidNode) => boolean)(n)) { return null; }
+	return n.ref.hitTest(vec2(x, y)) ? n : null;
 }
 
 function markDisposed(n: VoidNode): void {
@@ -327,18 +356,11 @@ export function createVoidHostWith(scene: Scene2D, font: FontId): VoidHost {
 	};
 
 	const focusable = (n: VoidNode): boolean => {
-		return clientOf(n) !== null || hasHandler(n, "onKeyDown") || hasHandler(n, "onKeyUp")
-			|| hasHandler(n, "onFocus") || hasHandler(n, "onBlur");
-	};
-
-	const depth = (n: VoidNode): int32 => {
-		let d: int32 = 0;
-		let p = n.parent;
-		while (p !== null) {
-			d = d + 1;
-			p = (p as VoidNode).parent;
+		if (clientOf(n) !== null || n.focusAttr) { return true; }
+		for (const name of FOCUS_HANDLERS) {
+			if (hasHandler(n, name)) { return true; }
 		}
-		return d;
+		return false;
 	};
 
 	const contains = (n: VoidNode, x: float32, y: float32): boolean => {
@@ -374,6 +396,7 @@ export function createVoidHostWith(scene: Scene2D, font: FontId): VoidHost {
 		}
 		if (n !== null) {
 			fire(n as VoidNode, "onFocus", neonEvent("focus"));
+			if ((n as VoidNode).imeBox !== null && dirtyListener !== null) { (dirtyListener as () => void)(); }
 			const nf = fieldOf(n as VoidNode);
 			if (nf !== null && windowFocused) { (nf as Field).label.setCursorIndex((nf as Field).caret, WHITE); }
 		}
@@ -505,6 +528,11 @@ export function createVoidHostWith(scene: Scene2D, font: FontId): VoidHost {
 			const was = wasDirty();
 			if (name === "style") {
 				n.flex = parseFlexStyle(value);
+			} else if (name === "focusable") {
+				n.focusAttr = value === "true";
+			} else if (name === "imeRect") {
+				n.imeBox = parseCaretRect(value);
+				if (focusedNode === n && dirtyListener !== null) { (dirtyListener as () => void)(); }
 			} else if (name === "value") {
 				const f = fieldOf(n);
 				if (f !== null && (f as Field).committed !== value) {
@@ -517,6 +545,8 @@ export function createVoidHostWith(scene: Scene2D, font: FontId): VoidHost {
 		removeAttr: (node: HostNode, name: string): void => {
 			const n = live(node, "removeAttr");
 			if (name === "style") { n.flex = parseFlexStyle(""); }
+			else if (name === "focusable") { n.focusAttr = false; }
+			else if (name === "imeRect") { n.imeBox = null; }
 		},
 		setStyle: (node: HostNode, style: Style): void => {
 			const n = live(node, "setStyle");
@@ -622,20 +652,7 @@ export function createVoidHostWith(scene: Scene2D, font: FontId): VoidHost {
 	};
 
 	const clickAt = (x: float32, y: float32): void => {
-		let target: VoidNode | null = null;
-		let targetDepth: int32 = -1 as int32;
-		for (const c of clients) {
-			if (attached(c.node) && contains(c.node, x, y) && depth(c.node) > targetDepth) {
-				target = c.node;
-				targetDepth = depth(c.node);
-			}
-		}
-		for (const e of events) {
-			if (attached(e.node) && focusable(e.node) && contains(e.node, x, y) && depth(e.node) > targetDepth) {
-				target = e.node;
-				targetDepth = depth(e.node);
-			}
-		}
+		const target = deepestAt(root, x, y, focusable);
 		focus(target);
 		for (const e of events.slice(0)) {
 			if (e.name !== "onPress" || e.node.disposed || !attached(e.node)) { continue; }
@@ -646,6 +663,57 @@ export function createVoidHostWith(scene: Scene2D, font: FontId): VoidHost {
 				e.handler(ev);
 			}
 		}
+	};
+
+	const anyHandler = (name: string): boolean => {
+		for (const entry of events) {
+			if (entry.name === name && !entry.node.disposed && attached(entry.node)) { return true; }
+		}
+		return false;
+	};
+
+	// Bubbles from the deepest node under the point; each handler's locationX/Y is relative to the node it sits on.
+	const pointerAt = (name: string, x: float32, y: float32, ev: NeonEvent): void => {
+		if (!anyHandler(name)) { return; }
+		let cur = deepestAt(root, x, y, null);
+		while (cur !== null) {
+			const n = cur as VoidNode;
+			if (!n.disposed) {
+				const at = n.ref.globalToLocal(vec2(x, y));
+				ev.locationX = at.x;
+				ev.locationY = at.y;
+				fire(n, name, ev);
+			}
+			cur = n.parent;
+		}
+	};
+
+	const pointerEvent = (type: string, x: float32, y: float32, button: int32, pressed: boolean): NeonEvent => {
+		const ev = neonEvent(type);
+		ev.x = x;
+		ev.y = y;
+		ev.button = button;
+		ev.pressed = pressed;
+		return ev;
+	};
+
+	const pointerDown = (x: float32, y: float32, button: int32): void => {
+		pointerAt("onPointerDown", x, y, pointerEvent("pointerdown", x, y, button, true));
+	};
+
+	const pointerMove = (x: float32, y: float32, button: int32, pressed: boolean): void => {
+		pointerAt("onPointerMove", x, y, pointerEvent("pointermove", x, y, button, pressed));
+	};
+
+	const pointerUp = (x: float32, y: float32, button: int32): void => {
+		pointerAt("onPointerUp", x, y, pointerEvent("pointerup", x, y, button, false));
+	};
+
+	const wheel = (x: float32, y: float32, dx: float32, dy: float32): void => {
+		const ev = pointerEvent("wheel", x, y, 0 as int32, false);
+		ev.deltaX = dx;
+		ev.deltaY = dy;
+		pointerAt("onWheel", x, y, ev);
 	};
 
 	const keyDown = (e: NeonEvent): void => {
@@ -673,8 +741,27 @@ export function createVoidHostWith(scene: Scene2D, font: FontId): VoidHost {
 	const compose = (s: string, cursor: int32): void => {
 		if (focusedNode === null) { return; }
 		const c = clientOf(focusedNode as VoidNode);
-		if (c === null) { return; }
+		if (c === null) {
+			const ev = neonEvent("preedit");
+			ev.text = s;
+			ev.cursor = cursor;
+			bubble("onPreedit", ev);
+			return;
+		}
 		setValue(c as ClientEntry, composeText((c as ClientEntry).value, s, cursor));
+	};
+
+	// Text the window delivers on its own (an IME commit): a text input client edits, any other focused node hears onTextInput.
+	// A typed key's text reaches a client through commitText and a handler through the key event's `text`, so no key is heard twice.
+	const textInput = (s: string): void => {
+		if (focusedNode === null) { return; }
+		if (clientOf(focusedNode as VoidNode) !== null) {
+			commit(s);
+			return;
+		}
+		const ev = neonEvent("textinput");
+		ev.text = s;
+		bubble("onTextInput", ev);
 	};
 
 	const setWindowFocus = (focused: boolean): void => {
@@ -743,14 +830,19 @@ export function createVoidHostWith(scene: Scene2D, font: FontId): VoidHost {
 		if (focusedNode === null) { return null; }
 		const n = focusedNode as VoidNode;
 		const c = clientOf(n);
-		if (c === null) { return null; }
+		if (c === null) {
+			if (n.imeBox === null) { return null; }
+			const box = n.imeBox as CaretRect;
+			const at = n.ref.localToGlobal(vec2(box.x, box.y));
+			return { x: at.x, y: at.y, w: box.w, h: box.h };
+		}
 		const r = (c as ClientEntry).client.caretRect();
 		const at = n.ref.localToGlobal(vec2(r.x, r.y));
 		return { x: at.x, y: at.y, w: r.w, h: r.h };
 	};
 
 	return {
-		host, root, scene, clickAt, keyDown, keyUp,
+		host, root, scene, clickAt, pointerDown, pointerMove, pointerUp, wheel, textInput, keyDown, keyUp,
 		commitText: commit, composeText: compose, setWindowFocus, layout,
 		focus: (n: VoidNode | null): void => { focus(n); },
 		focused: (): VoidNode | null => focusedNode,

@@ -91,7 +91,23 @@ function primitive(tag: string, props: HostProps, attrs: VAttr[], evts: VEvent[]
 	return hostElement(tag, attrs, evts, kids, style, props.ref);
 }
 
+// Where the IME candidate window goes, in the component's own layout points.
+export interface ImeRect {
+	x: number;
+	y: number;
+	width: number;
+	height: number;
+}
+
 export interface InteractiveProps extends HostProps {
+	focusable?: Accessor<boolean> | null;
+	imeRect?: Accessor<ImeRect> | null;
+	onTextInput?: ((e: NeonEvent) => void) | null;
+	onPreedit?: ((e: NeonEvent) => void) | null;
+	onPointerDown?: ((e: NeonEvent) => void) | null;
+	onPointerMove?: ((e: NeonEvent) => void) | null;
+	onPointerUp?: ((e: NeonEvent) => void) | null;
+	onWheel?: ((e: NeonEvent) => void) | null;
 	onKeyDown?: ((e: NeonEvent) => void) | null;
 	onKeyUp?: ((e: NeonEvent) => void) | null;
 	onFocus?: ((e: NeonEvent) => void) | null;
@@ -105,7 +121,26 @@ function interactiveEvents(props: InteractiveProps, evts: VEvent[]): VEvent[] {
 	if (props.onFocus !== null) { evts.push(evt("onFocus", props.onFocus as (e: NeonEvent) => void)); }
 	if (props.onBlur !== null) { evts.push(evt("onBlur", props.onBlur as (e: NeonEvent) => void)); }
 	if (props.onLayout !== null) { evts.push(evt("onLayout", props.onLayout as (e: NeonEvent) => void)); }
+	if (props.onTextInput !== null) { evts.push(evt("onTextInput", props.onTextInput as (e: NeonEvent) => void)); }
+	if (props.onPreedit !== null) { evts.push(evt("onPreedit", props.onPreedit as (e: NeonEvent) => void)); }
+	if (props.onPointerDown !== null) { evts.push(evt("onPointerDown", props.onPointerDown as (e: NeonEvent) => void)); }
+	if (props.onPointerMove !== null) { evts.push(evt("onPointerMove", props.onPointerMove as (e: NeonEvent) => void)); }
+	if (props.onPointerUp !== null) { evts.push(evt("onPointerUp", props.onPointerUp as (e: NeonEvent) => void)); }
+	if (props.onWheel !== null) { evts.push(evt("onWheel", props.onWheel as (e: NeonEvent) => void)); }
 	return evts;
+}
+
+function interactiveAttrs(props: InteractiveProps, attrs: VAttr[]): VAttr[] {
+	flagAttr(attrs, "focusable", props.focusable);
+	const rect = props.imeRect;
+	if (rect !== null) {
+		const read = rect as Accessor<ImeRect>;
+		attrs.push(dynAttr("imeRect", (): string | null => {
+			const r = read();
+			return r.x.toString() + "," + r.y.toString() + "," + r.width.toString() + "," + r.height.toString();
+		}));
+	}
+	return attrs;
 }
 
 export interface ViewProps extends InteractiveProps {
@@ -169,7 +204,8 @@ export function View(props: ViewProps): NeonNode {
 	if (move !== null) { evts.push(move as VEvent); }
 	if (end !== null) { evts.push(end as VEvent); }
 	if (cancel !== null) { evts.push(cancel as VEvent); }
-	if (entry === null) { return primitive("view", props, [], evts, props.children); }
+	const attrs = interactiveAttrs(props, []);
+	if (entry === null) { return primitive("view", props, attrs, evts, props.children); }
 	const owner = entry as ResponderEntry;
 	const kids = props.children;
 	const provided: NeonNode | null = kids === null ? null : ResponderParent.Provider({
@@ -181,7 +217,7 @@ export function View(props: ViewProps): NeonNode {
 		owner.node = node;
 		if (userRef !== null) { (userRef as RefFn)(node); }
 	};
-	const view = primitive("view", { style: props.style, class: props.class, ref: grab, accessible: props.accessible, accessibilityLabel: props.accessibilityLabel, accessibilityHint: props.accessibilityHint, accessibilityRole: props.accessibilityRole }, [], evts, provided);
+	const view = primitive("view", { style: props.style, class: props.class, ref: grab, accessible: props.accessible, accessibilityLabel: props.accessibilityLabel, accessibilityHint: props.accessibilityHint, accessibilityRole: props.accessibilityRole }, attrs, evts, provided);
 	return (host: Host, parent: HostNode, before: HostNode | null): void => {
 		owner.host = host;
 		onCleanup((): void => { responderUnmounted(owner); });

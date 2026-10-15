@@ -2,7 +2,7 @@ import { createSignal } from "../../src/core/signal";
 import { element } from "../../src/macros/ui/element";
 import { render } from "../../src/render/host";
 import { NeonEvent, neonEvent } from "../../src/render/event";
-import { View, Text, TextInput } from "../../src/components/primitives";
+import { View, Text, TextInput, Pressable } from "../../src/components/primitives";
 import {
 	createVoidHostWith, VoidHost, VoidNode, TextEditingValue, editingValue, CaretRect,
 } from "../../src/platform/void/host";
@@ -265,4 +265,134 @@ test "a Text's color and fontSize reach every text piece inside it, and follow a
 	for (const piece of line.children) {
 		assert piece.ref.paint().color.g === 1.0 && piece.ref.paint().color.r === 0.0, "piece \"" + piece.ref.text() + "\" turned green";
 	}
+}
+
+test "a key event carries the physical detail the window supplied, to the focused node and its parents" {
+	const vh = host();
+	let seen = "";
+	let inner: VoidNode | null = null;
+	render(element(
+		<View onKeyDown={(e: NeonEvent): void => { seen = seen + "outer "; }}>
+			<View ref={(n: HostNode): void => { inner = n as VoidNode; }}
+				onKeyDown={(e: NeonEvent): void => { seen = seen + `${e.scancode} ${e.mods} ${e.consumedMods} ${e.unshifted} ${e.text} `; }} />
+		</View>
+	), vh.host, vh.root);
+	vh.focus(inner);
+	const e = key("A");
+	e.scancode = 30;
+	e.mods = 1;
+	e.consumedMods = 1;
+	e.unshifted = 97;
+	e.text = "A";
+	vh.keyDown(e);
+	assert seen === "30 1 1 97 A outer ", "seen: " + seen;
+}
+
+test "a focused View hears committed and composing text, and a TextInput keeps its own path" {
+	const vh = host();
+	let log = "";
+	let plain: VoidNode | null = null;
+	render(element(
+		<View style={{ width: 300, height: 100 }}
+			onTextInput={(e: NeonEvent): void => { log = log + "outer:" + e.text + " "; }}>
+			<View style={{ width: 100, height: 20 }}
+				ref={(n: HostNode): void => { plain = n as VoidNode; }}
+				onTextInput={(e: NeonEvent): void => { log = log + "text:" + e.text + " "; }}
+				onPreedit={(e: NeonEvent): void => { log = log + "pre:" + e.text + "@" + e.cursor.toString() + " "; }} />
+			<TextInput style={{ width: 100, height: 20 }} />
+		</View>
+	), vh.host, vh.root);
+	vh.layout(300.0, 100.0);
+	vh.focus(plain);
+	vh.composeText("ni", 2);
+	vh.textInput("你");
+	vh.commitText("typed");
+	assert log === "pre:ni@2 text:你 outer:你 ", "a typed key's text is not a second text event: " + log;
+	vh.focus(top(vh).children[1]);
+	vh.textInput("é");
+	assert log === "pre:ni@2 text:你 outer:你 ", "the TextInput took the text, nothing bubbled: " + log;
+	assert labelOf(top(vh).children[1]).text() === "é", "the field shows the commit";
+}
+
+function seen(who: string, sink: string[]): (e: NeonEvent) => void {
+	return (e: NeonEvent): void => {
+		sink.push(`${who}:${e.type}@${e.locationX},${e.locationY}/${e.x},${e.y} b${e.button} ${e.pressed ? "down" : "up"} d${e.deltaX},${e.deltaY}`);
+	};
+}
+
+test "pointer events go to the deepest node under the pointer, bubble, and carry local coordinates" {
+	const vh = host();
+	const log: string[] = [];
+	render(element(
+		<View style={{ width: 300, height: 100, paddingLeft: 20, paddingTop: 20 }}
+			onPointerDown={seen("outer", log)} onPointerMove={seen("outer", log)} onPointerUp={seen("outer", log)} onWheel={seen("outer", log)}>
+			<View style={{ width: 100, height: 50 }}
+				onPointerDown={seen("inner", log)} onPointerMove={seen("inner", log)} onPointerUp={seen("inner", log)} onWheel={seen("inner", log)} />
+		</View>
+	), vh.host, vh.root);
+	vh.layout(300.0, 100.0);
+	vh.pointerDown(30.0, 35.0, 0);
+	assert log.join("|") === "inner:pointerdown@10,15/30,35 b0 down d0,0|outer:pointerdown@30,35/30,35 b0 down d0,0", "down: " + log.join("|");
+	log.length = 0;
+	vh.pointerMove(31.0, 36.0, 0, true);
+	vh.pointerUp(31.0, 36.0, 0);
+	vh.wheel(31.0, 36.0, 0.0, -3.0);
+	assert log.join("|") === "inner:pointermove@11,16/31,36 b0 down d0,0|outer:pointermove@31,36/31,36 b0 down d0,0"
+		+ "|inner:pointerup@11,16/31,36 b0 up d0,0|outer:pointerup@31,36/31,36 b0 up d0,0"
+		+ "|inner:wheel@11,16/31,36 b0 up d0,-3|outer:wheel@31,36/31,36 b0 up d0,-3", "move, up, wheel: " + log.join("|");
+	log.length = 0;
+	vh.pointerMove(200.0, 90.0, 0, false);
+	assert log.join("|") === "outer:pointermove@200,90/200,90 b0 up d0,0", "outside the inner node only the outer hears: " + log.join("|");
+	log.length = 0;
+	vh.pointerMove(290.0, 190.0, 0, false);
+	assert log.length === 0, "outside everything nothing is heard: " + log.join("|");
+}
+
+test "pressing a component with a pointer, wheel or text handler, or focusable, focuses it, and onPress still fires" {
+	const vh = host();
+	let pressed = 0;
+	render(element(
+		<View style={{ width: 400, height: 50, flexDirection: "row" }}>
+			<View style={{ width: 100, height: 50 }} onPointerDown={(e: NeonEvent): void => {}} />
+			<View style={{ width: 100, height: 50 }} onWheel={(e: NeonEvent): void => {}} />
+			<View style={{ width: 100, height: 50 }} focusable />
+			<Pressable style={{ width: 100, height: 50 }} onPress={(): void => { pressed = pressed + 1; }} />
+		</View>
+	), vh.host, vh.root);
+	vh.layout(400.0, 50.0);
+	const row = top(vh);
+	vh.clickAt(10.0, 10.0);
+	assert vh.focused() === row.children[0], "onPointerDown makes it focusable";
+	vh.clickAt(110.0, 10.0);
+	assert vh.focused() === row.children[1], "onWheel makes it focusable";
+	vh.clickAt(210.0, 10.0);
+	assert vh.focused() === row.children[2], "the focusable prop makes it focusable";
+	vh.clickAt(310.0, 10.0);
+	assert pressed === 1, "onPress fired once";
+	assert vh.focused() === null, "a pressable with no key handler takes no focus";
+}
+
+test "a focused component places the IME rect with its imeRect prop, in its own coordinates" {
+	const vh = host();
+	const [at, setAt] = createSignal(3);
+	let woke = 0;
+	let node: VoidNode | null = null;
+	render(element(
+		<View style={{ width: 300, height: 100, paddingLeft: 20, paddingTop: 30 }}>
+			<View style={{ width: 200, height: 24 }} ref={(n: HostNode): void => { node = n as VoidNode; }}
+				imeRect={{ x: at(), y: 4, width: 8, height: 16 }} focusable />
+		</View>
+	), vh.host, vh.root);
+	vh.layout(300.0, 100.0);
+	assert vh.imeRect() === null, "no focus, no rect";
+	settle(vh);
+	vh.onDirty((): void => { woke = woke + 1; });
+	vh.focus(node);
+	let r = vh.imeRect() as CaretRect;
+	assert r.x === 23.0 && r.y === 34.0 && r.w === 8.0 && r.h === 16.0, `rect ${r.x},${r.y} ${r.w}x${r.h}`;
+	assert woke === 1, "focusing it asks for a frame so Ion hears the rect: " + woke.toString();
+	setAt(10);
+	r = vh.imeRect() as CaretRect;
+	assert r.x === 30.0, "the rect follows the signal: " + r.x.toString();
+	assert woke === 2, "moving it asks for a frame: " + woke.toString();
 }
