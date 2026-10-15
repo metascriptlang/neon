@@ -174,11 +174,28 @@ test "a request URL applied before the container mounts opens the nested screen 
 		early = addressOf(registry);
 	});
 	assert errors.length === 0;
-	assert early === "error NoMatch", early;
+	assert early === "/shop/product/42", early;
 	assert app.ref.currentPath() === "Shop>Product", app.ref.currentPath();
 	assert visibleText(app.root).indexOf("product 42") >= 0, visibleText(app.root);
 	assert addressOf(registry) === "/shop/product/42", addressOf(registry);
 	assert app.ref.canGoBack(), "the catalog below the product is kept";
+	app.dispose();
+}
+
+test "a writable history opened before mount records the URL the container will open" {
+	const registry = new RoutingRegistry("main");
+	const errors: RoutingError[] = [];
+	const history = createMemoryRoutingHistory({ url: "/shop/product/42", state: "" });
+	let session: RoutingSession | null = null;
+	const app = startApp(registry, "main", (): void => {
+		session = open(registry, history, errors);
+	});
+	assert history.read().url === "/shop/product/42", history.read().url;
+	assert app.ref.currentPath() === "Shop>Product", app.ref.currentPath();
+	assert visibleText(app.root).indexOf("product 42") >= 0, visibleText(app.root);
+	assert addressOf(registry) === "/shop/product/42", addressOf(registry);
+	assert errors.length === 0;
+	(session as RoutingSession).dispose();
 	app.dispose();
 }
 
@@ -302,10 +319,13 @@ test "a snapshot restored before the container mounts seeds the nested tree" {
 	before.dispose();
 	const registry = new RoutingRegistry("main");
 	let restored = false;
+	let early = "";
 	const app = startApp(registry, "main", (): void => {
 		restored = registry.restore(snapshot).ok;
+		early = addressOf(registry);
 	});
 	assert restored;
+	assert early === "/shop/product/9", early;
 	assert app.ref.currentPath() === "Shop>Product", app.ref.currentPath();
 	assert visibleText(app.root).indexOf("product 9") >= 0, visibleText(app.root);
 	assert app.ref.canGoBack();

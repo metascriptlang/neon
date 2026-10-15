@@ -266,11 +266,16 @@ function containerParticipant(
 	link: NavigatorLink,
 	config: LinkingConfig,
 ): RoutingParticipant {
+	let unmountedAddress: string | null = null;
+	const mounted = (): boolean => link.state().routes.length > 0;
 	return {
 		scope,
 		prepare: (address: string | null): Result<RoutePlan, RoutingError> => {
 			if (address === null) {
-				return Result.ok({ commit: (): void => link.restore(emptyState()) });
+				return Result.ok({ commit: (): void => {
+					unmountedAddress = null;
+					link.restore(emptyState());
+				} });
 			}
 			const path = address as string;
 			const target = targetFromPath(path, config);
@@ -279,9 +284,11 @@ function containerParticipant(
 				if (!link.navigateTo(target as NavTarget)) {
 					throw new Error("routing: no navigator has a screen for '" + path + "'");
 				}
+				unmountedAddress = path;
 			} });
 		},
 		address: (): Result<string | null, RoutingError> => {
+			if (!mounted()) { return Result.ok(unmountedAddress); }
 			const path: string | null = pathFromState(link.state(), config);
 			return Result.ok(path);
 		},
@@ -290,10 +297,16 @@ function containerParticipant(
 			const parsed = JSON.parse<StateSnapshot>(state);
 			if (!parsed.ok) { return Result.err(RoutingError.IncompleteSnapshot); }
 			if (parsed.value.routes.length === 0) {
-				return Result.ok({ commit: (): void => link.restore(emptyState()) });
+				return Result.ok({ commit: (): void => {
+					unmountedAddress = null;
+					link.restore(emptyState());
+				} });
 			}
 			const restored = try stateOfSnapshot(parsed.value);
-			return Result.ok({ commit: (): void => link.restore(restored) });
+			return Result.ok({ commit: (): void => {
+				unmountedAddress = pathFromState(restored, config);
+				link.restore(restored);
+			} });
 		},
 	};
 }
