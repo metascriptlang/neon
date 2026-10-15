@@ -409,6 +409,14 @@ bundle needed `netInfo.ms` read by index (W6). Provisional: `WORKAROUND.md` X1â€
 `2026-10-08-test-block-awaiting-a-rejected-nullable-promise-segfaults.md` and
 `2026-10-07-js-outer-function-made-async-by-nested-async.md`.
 
+On the desktop (2026-10-15, Ion `ad6a4ed`), `src/platform/ion/audio.ms` maps the same services onto Ion's audio
+device, installed by both Ion hosts. `examples/desktopAudio.ms` on Windows plays the chime through
+`Audio.Sound.createAsync` to its end: 800 ms, 14 progress updates at 50 ms, `didJustFinish` once. Calling the
+services directly, a `.wav` recording that runs 700 ms, pauses for 300 ms and runs 700 ms more lasts 1370 ms, and a
+second sound loads it at 1370 ms. A `.m4a` preset, an `https:` or `data:` uri, and a `file:` uri with escapes are each
+refused by name (`tests/platform/ionAudio.test.ms`). The desktop records `.wav` only. It has no media picker, and
+`Recording` through `Audio` waits on desktop `Permissions`, which no Ion host installs yet.
+
 ### Reference and ownership constraints
 
 - RN's core catalog: `packages/react-native/index.js`, component exports and app/runtime APIs.

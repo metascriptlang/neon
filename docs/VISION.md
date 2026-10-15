@@ -240,7 +240,7 @@ where it is written down.
 | UI tree, reactivity, reconcile, layout | Neon | `RENDER-MODEL.md`, `RENDER-LAYERS.md` Layer A |
 | Application UI host: `View` and `Text` as platform views | Neon | `src/platform/native/host.ms`, `IOS.md`, `ANDROID.md`, `WINDOWS.md` |
 | pixels inside a `<Void>`, 2D and 3D | Void | `RENDER-LAYERS.md` Layers B and C, `void/docs/EMBED.md` |
-| audio | open | Neon builds expo-av's `Audio` on Android, iOS and the browser (`ROADMAP.md`); who owns it on the desktop, and whether Neon is the right layer, is to be discussed |
+| audio on the desktop | Ion owns the device, Neon the API (decided 2026-10-15) | Ion opens and runs the device (`ion/src/audio.ms`); Neon keeps expo-av's `Audio` as the one API and decides what plays, mixes and stops (`src/platform/ion/audio.ms`); Void stays out |
 
 ## Window, frame and input: Ion and Neon
 
