@@ -177,14 +177,6 @@ and the invariants that outlived them were moved to the head of the test that pi
   `682b18673`). Card `~/metascript/.inbox/compiler/2026-10-07-element-macro-type-cycle-on-generic-interface-field-without-its-parameter.md`.
   Parked at that branch; `src/macros/ui/style.ms` `createStyles` on main has no breakpoints.
 
-- **PARKED 2026-10-13 — eight native cells stop at `src/navigation/core.ms:995`.** `bash tests/run.sh`
-  on `wt/rn-navigation-prod` rebased onto main `9b79fec`, msc v0.3.2 binary `ea7ae4d17`: `msc test`
-  on `tests/api/apis.test.ms` and `tests/navigation/{example,linking,nested,options,routingConsumers,stack,transition}.test.ms`
-  prints `internal: a null comparison on an operand with effects reached operatorLower unspilled`
-  at `core.ms:995:16` (`navigateLocal`); the same files pass with `--target=js`. Card
-  `~/metascript/.inbox/compiler/2026-10-11-captured-generic-nullable-null-compare-unspilled.md`.
-  Parked at `src/navigation/core.ms:995`, left as written.
-
 - **PARKED 2026-10-10 — Vite refresh: an edit that adds a new generic instance reloads the page.**
   Adding `createSignal(false)` to an accepted component module emits the `…__boolean` instance into
   the runtime's `signal` module, which is not an HMR boundary. Measured again 2026-10-12: adding a
