@@ -75,6 +75,15 @@ same JS-driven frames.
   children, keeps a leaving screen rendered until its exit ends
   (`AbstractStackAnimation.kt`), and snaps when the screen set changes. A host that
   wants platform transitions renders the same children its own way.
+- `NavigationContainer` joins a registry through `routing={{ registry, scope }}`:
+  its `linking.config` is the participant's codec (`targetFromPath` opens an
+  address, `pathFromState` reports one), and its snapshot holds the root state's
+  route names and string params. It registers when its node is built and, until it
+  mounts, reports the address it was asked to open, so an app builds its tree, opens
+  the routing session, then mounts or hydrates. A navigation made in the app changes
+  the model first and the app records it with `session.sync`, as a custom
+  composition does; mirroring a navigator's pushes and pops into browser history
+  (Decompose `enableWebHistory`) is not ported.
 - Typed route bindings close over their decoder and typed model setter rather
   than exposing an untyped global params getter. Legacy navigators retain one
   `P`; heterogeneous ParamList compatibility is not claimed.
