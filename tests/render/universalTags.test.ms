@@ -71,3 +71,15 @@ test "the terminal host maps the vocabulary onto its boxes" {
 	assert p.tag === "box", "pressable→" + p.tag;
 	assert hr.tag === "hr", "native terminal tags pass: " + hr.tag;
 }
+
+test "a container with no children mounts empty, several mount in order" {
+	const empty = mockNode("root");
+	render(element(<View />), mockHost(), empty as unknown as HostNode);
+	assert mockToString(empty) === "<root><view></view></root>", "empty View: " + mockToString(empty);
+	const many = mockNode("root");
+	render(element(<View><Text>a</Text>mid<Text>b</Text></View>), mockHost(), many as unknown as HostNode);
+	assert mockToString(many) === "<root><view><text>a</text>mid<text>b</text></view></root>", "several: " + mockToString(many);
+	const label = mockNode("root");
+	render(element(<Pressable>go</Pressable>), mockHost(), label as unknown as HostNode);
+	assert mockToString(label) === "<root><pressable accessible=\"true\">go</pressable></root>", "text only: " + mockToString(label);
+}
