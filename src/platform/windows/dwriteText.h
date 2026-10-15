@@ -9,6 +9,7 @@ public:
 	void SetColor(Color color);
 	void SetFont(float size, bool bold);
 	void SetAlignment(const char *value);
+	void Invalidate() { dirty = true; }
 	void Measure(float maxWidth, float scale, float *width, float *height);
 	bool NeedsDraw(int32_t pixelWidth, int32_t pixelHeight) const;
 	void Draw(ICompositionContext *context, IVisual *visual, int32_t pixelWidth, int32_t pixelHeight, float scale);

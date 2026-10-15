@@ -27,6 +27,8 @@ struct View {
 	float x = 0, y = 0, w = 0, h = 0;
 	float scaleX = 1, scaleY = 1, translateX = 0, translateY = 0, rotation = 0;
 	bool transformed = false;
+	float radius = 0;
+	bool pressable = false;
 	std::unique_ptr<TextLabel> label;
 	bool labelQueued = false;
 };
@@ -39,7 +41,23 @@ float g_height = 0;
 float g_measuredW = 0;
 float g_measuredH = 0;
 std::vector<View *> g_dirtyLabels;
-msClosure s_mount, s_resize, s_teardown, s_loop, s_frame, s_touch, s_scroll, s_control, s_environment, s_app;
+msClosure s_mount, s_resize, s_teardown, s_loop, s_frame, s_touch, s_scroll, s_control, s_environment, s_app, s_requester;
+bool g_frameRequested = false;
+bool g_frameWanted = false;
+bool g_inFrame = false;
+
+struct Touch {
+	bool active = false;
+	std::vector<View *> chain;
+};
+
+Touch g_touch;
+int32_t g_touchTag = 0;
+int32_t g_touchPhase = 0;
+float g_touchX = 0;
+float g_touchY = 0;
+double g_touchTime = 0;
+View *g_responder = nullptr;
 
 [[noreturn]] void fail(const char *message) {
 	fprintf(stderr, "neon windows bridge: %s\n", message);
@@ -67,6 +85,7 @@ void requireAttached(const char *what) {
 
 void release(View *view) {
 	if (--view->refs > 0) return;
+	if (g_responder == view) g_responder = nullptr;
 	if (view->labelQueued) g_dirtyLabels.erase(std::remove(g_dirtyLabels.begin(), g_dirtyLabels.end(), view), g_dirtyLabels.end());
 	for (View *child : view->children) {
 		view->visual->Remove(child->visual);
@@ -86,7 +105,18 @@ void detach(View *child) {
 	release(child);
 }
 
+void requestHostFrame() {
+	if (g_frameRequested || !s_requester.fn) return;
+	g_frameRequested = true;
+	invoke(s_requester);
+}
+
+void changed() {
+	if (!g_inFrame) requestHostFrame();
+}
+
 void queueLabel(View *view) {
+	changed();
 	if (view->labelQueued) return;
 	view->labelQueued = true;
 	g_dirtyLabels.push_back(view);
@@ -139,6 +169,78 @@ void applyGeometry(View *view) {
 
 View *as(void *view) { return static_cast<View *>(view); }
 
+void rescale(View *parent) {
+	for (View *child : parent->children) {
+		applyGeometry(child);
+		child->visual->CornerRadius(child->radius * g_scale);
+		if (child->label) child->label->Invalidate();
+		rescale(child);
+	}
+}
+
+bool toLocal(const View *view, float px, float py, float *lx, float *ly) {
+	float radians = view->rotation * 3.14159265358979f / 180.0f;
+	float c = cosf(radians), s = sinf(radians);
+	float m11 = view->scaleX * c, m12 = view->scaleX * s, m21 = -view->scaleY * s, m22 = view->scaleY * c;
+	float det = m11 * m22 - m12 * m21;
+	if (det == 0) return false;
+	float cx = view->w / 2, cy = view->h / 2;
+	float dx = px - (view->x + cx + view->translateX), dy = py - (view->y + cy + view->translateY);
+	*lx = cx + (dx * m22 - dy * m21) / det;
+	*ly = cy + (dy * m11 - dx * m12) / det;
+	return true;
+}
+
+View *hit(View *view, float px, float py) {
+	float lx, ly;
+	if (!toLocal(view, px, py, &lx, &ly)) return nullptr;
+	bool inside = lx >= 0 && lx <= view->w && ly >= 0 && ly <= view->h;
+	bool clipsChildren = view->radius > 0;
+	if (inside || !clipsChildren) {
+		for (auto child = view->children.rbegin(); child != view->children.rend(); ++child) {
+			if (View *found = hit(*child, lx, ly)) return found;
+		}
+	}
+	return inside && (!view->label || view->pressable) ? view : nullptr;
+}
+
+View *hitTest(float x, float y) {
+	for (auto child = g_container->children.rbegin(); child != g_container->children.rend(); ++child) {
+		if (View *found = hit(*child, x, y)) return found;
+	}
+	return nullptr;
+}
+
+bool within(const View *at, const View *ancestor) {
+	for (; at; at = at->parent) {
+		if (at == ancestor) return true;
+	}
+	return false;
+}
+
+double nowMs() {
+	LARGE_INTEGER frequency, counter;
+	QueryPerformanceFrequency(&frequency);
+	QueryPerformanceCounter(&counter);
+	return (double)counter.QuadPart * 1000.0 / (double)frequency.QuadPart;
+}
+
+void report(View *view, int32_t phase, float x, float y, double time) {
+	g_touchTag = view->tag;
+	g_touchPhase = phase;
+	g_touchX = x;
+	g_touchY = y;
+	g_touchTime = time;
+	invoke(s_touch);
+}
+
+void endTouch() {
+	std::vector<View *> chain;
+	chain.swap(g_touch.chain);
+	g_touch.active = false;
+	for (View *view : chain) release(view);
+}
+
 }
 
 extern "C" {
@@ -151,6 +253,79 @@ void niwAttach(void *dcompDevice2, void *parentVisual2, float dpi, float logical
 	g_scale = dpi / 96.0f;
 	g_width = logicalWidth;
 	g_height = logicalHeight;
+}
+
+void niwResize(float dpi, float logicalWidth, float logicalHeight) {
+	requireAttached("niwResize");
+	float scale = dpi / 96.0f;
+	bool rescaled = scale != g_scale;
+	g_scale = scale;
+	g_width = logicalWidth;
+	g_height = logicalHeight;
+	if (rescaled) rescale(g_container);
+	if (s_resize.fn) invoke(s_resize);
+	changed();
+}
+
+void niwFrame(void) {
+	requireAttached("niwFrame");
+	g_frameRequested = false;
+	g_inFrame = true;
+	if (s_loop.fn) invoke(s_loop);
+	else niLoopRun();
+	if (g_frameWanted) {
+		g_frameWanted = false;
+		if (s_frame.fn) invoke(s_frame);
+	}
+	drawLabels();
+	g_context->Commit();
+	g_inFrame = false;
+}
+
+void niwSetFrameRequester(msClosure requester) { s_requester = requester; }
+
+void niwPointer(int kind, float pixelX, float pixelY) {
+	requireAttached("niwPointer");
+	if (!s_touch.fn) return;
+	float x = pixelX / g_scale, y = pixelY / g_scale;
+	double time = nowMs();
+	if (kind == NIW_POINTER_DOWN) {
+		if (g_touch.active) return;
+		for (View *at = hitTest(x, y); at && at != g_container; at = at->parent) {
+			if (at->tag == 0) continue;
+			at->refs += 1;
+			g_touch.chain.push_back(at);
+		}
+		g_touch.active = !g_touch.chain.empty();
+		if (!g_touch.active) return;
+		std::vector<View *> chain = g_touch.chain;
+		for (View *view : chain) report(view, 0, x, y, time);
+	} else if (!g_touch.active) {
+		return;
+	} else if (kind == NIW_POINTER_MOVE) {
+		std::vector<View *> chain = g_touch.chain;
+		for (View *view : chain) report(view, 4, x, y, time);
+	} else if (kind == NIW_POINTER_UP) {
+		View *at = hitTest(x, y);
+		std::vector<View *> chain = g_touch.chain;
+		for (View *view : chain) {
+			if (within(at, view)) {
+				report(view, 1, x, y, time);
+				report(view, 2, x, y, time);
+			} else {
+				report(view, 3, x, y, time);
+			}
+		}
+		endTouch();
+	} else if (kind == NIW_POINTER_CANCEL) {
+		std::vector<View *> chain = g_touch.chain;
+		for (View *view : chain) report(view, 3, x, y, time);
+		endTouch();
+	} else {
+		char message[64];
+		snprintf(message, sizeof message, "niwPointer kind %d", kind);
+		fail(message);
+	}
 }
 
 int niwPump(void) {
@@ -183,6 +358,17 @@ void *niTextCreate(void) {
 
 void niViewSetTag(void *view, int32_t tag) { as(view)->tag = tag; }
 
+void niViewSetPressable(void *view) { as(view)->pressable = true; }
+
+int niLastTouchTag(void) { return g_touchTag; }
+int niLastTouchPhase(void) { return g_touchPhase; }
+float niLastTouchX(void) { return g_touchX; }
+float niLastTouchY(void) { return g_touchY; }
+double niLastTouchTime(void) { return g_touchTime; }
+
+void niSetResponder(void *view, int blockNativeResponder) { g_responder = blockNativeResponder ? as(view) : nullptr; }
+void niClearResponder(void) { g_responder = nullptr; }
+
 void niAddChild(void *parent, void *child) {
 	View *p = as(parent), *c = as(child);
 	c->refs += 1;
@@ -190,6 +376,7 @@ void niAddChild(void *parent, void *child) {
 	p->visual->InsertAt(c->visual, (int32_t)p->children.size());
 	p->children.push_back(c);
 	c->parent = p;
+	changed();
 }
 
 void niBringChildToFront(void *child) {
@@ -200,9 +387,13 @@ void niBringChildToFront(void *child) {
 	p->children.erase(std::remove(p->children.begin(), p->children.end(), c), p->children.end());
 	p->visual->InsertAt(c->visual, (int32_t)p->children.size());
 	p->children.push_back(c);
+	changed();
 }
 
-void niRemoveFromParent(void *child) { detach(as(child)); }
+void niRemoveFromParent(void *child) {
+	detach(as(child));
+	changed();
+}
 
 void niViewRelease(void *view) { release(as(view)); }
 
@@ -213,6 +404,7 @@ void niSetFrame(void *view, float x, float y, float w, float h) {
 	v->w = w;
 	v->h = h;
 	applyGeometry(v);
+	changed();
 }
 
 void niSetTransform(void *view, float scaleX, float scaleY, float translateX, float translateY) {
@@ -222,22 +414,32 @@ void niSetTransform(void *view, float scaleX, float scaleY, float translateX, fl
 	v->translateX = translateX;
 	v->translateY = translateY;
 	applyGeometry(v);
+	changed();
 }
 
 void niSetRotation(void *view, float degrees) {
 	View *v = as(view);
 	v->rotation = degrees;
 	applyGeometry(v);
+	changed();
 }
 
 void niSetBackgroundColor(void *view, float r, float g, float b, float a) {
 	if (as(view)->label) unimplemented("niSetBackgroundColor on a Text");
 	as(view)->visual->Brush(Color{r, g, b, a});
+	changed();
 }
 
-void niSetCornerRadius(void *view, float radius) { as(view)->visual->CornerRadius(radius * g_scale); }
+void niSetCornerRadius(void *view, float radius) {
+	as(view)->radius = radius;
+	as(view)->visual->CornerRadius(radius * g_scale);
+	changed();
+}
 
-void niSetOpacity(void *view, float opacity) { as(view)->visual->Opacity(opacity); }
+void niSetOpacity(void *view, float opacity) {
+	as(view)->visual->Opacity(opacity);
+	changed();
+}
 
 void niRegisterApp(msClosure mount) { s_mount = mount; }
 void niSetResizeHandler(msClosure handler) { s_resize = handler; }
@@ -250,12 +452,18 @@ void niSetControlHandler(msClosure handler) { s_control = handler; }
 void niSetEnvironmentHandler(msClosure handler) { s_environment = handler; }
 void niSetAppHandler(msClosure handler) { s_app = handler; }
 
-int niRequestFrame(void) { return 0; }
+int niRequestFrame(void) {
+	if (!s_requester.fn) return 0;
+	g_frameWanted = true;
+	requestHostFrame();
+	return 1;
+}
 
 int niRunApp(void) {
 	requireAttached("niRunApp");
 	if (!s_mount.fn) fail("niRunApp before niRegisterApp");
 	invoke(s_mount);
+	changed();
 	return 0;
 }
 
@@ -304,7 +512,6 @@ const char *niAppCall(const char *name, const char *arg) {
 
 #define UNIMPLEMENTED(ret, name, params) ret name params { unimplemented(#name); }
 
-UNIMPLEMENTED(void, niViewSetPressable, (void *view))
 UNIMPLEMENTED(void *, niScrollCreate, (void))
 UNIMPLEMENTED(void, niScrollSetTag, (void *scroll, int32_t tag))
 UNIMPLEMENTED(void, niScrollSetContentSize, (void *scroll, float w, float h))
@@ -327,13 +534,6 @@ UNIMPLEMENTED(int, niLastControlPhase, (void))
 UNIMPLEMENTED(const char *, niLastControlValue, (void))
 UNIMPLEMENTED(float, niLastControlWidth, (void))
 UNIMPLEMENTED(float, niLastControlHeight, (void))
-UNIMPLEMENTED(int, niLastTouchTag, (void))
-UNIMPLEMENTED(int, niLastTouchPhase, (void))
-UNIMPLEMENTED(float, niLastTouchX, (void))
-UNIMPLEMENTED(float, niLastTouchY, (void))
-UNIMPLEMENTED(double, niLastTouchTime, (void))
-UNIMPLEMENTED(void, niSetResponder, (void *view, int blockNativeResponder))
-UNIMPLEMENTED(void, niClearResponder, (void))
 UNIMPLEMENTED(int, niLastScrollTag, (void))
 UNIMPLEMENTED(int, niLastScrollPhase, (void))
 UNIMPLEMENTED(float, niLastScrollX, (void))
@@ -376,6 +576,7 @@ void niSetProp(void *view, const char *name, const char *value) {
 		queueLabel(as(view));
 		return;
 	}
+	if (!strncmp(name, "accessib", 8)) return;
 	char what[128];
 	snprintf(what, sizeof what, "niSetProp(%s)", name);
 	unimplemented(what);
