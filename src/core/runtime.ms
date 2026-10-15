@@ -11,6 +11,9 @@ let tlBatchDepth: number = 0;
 let tlRunning: boolean = false;
 let tlUpdates: Computation[] = [];
 let tlEffects: Computation[] = [];
+let tlUserEffects: Computation[] = [];
+let tlRootDepth: number = 0;
+let tlServerDepth: number = 0;
 
 export function getListener(): Computation | null { return tlListener; }
 export function setListener(c: Computation | null): void { tlListener = c; }
@@ -18,6 +21,26 @@ export function getOwner(): Computation | null { return tlOwner; }
 export function setOwner(o: Computation | null): void { tlOwner = o; }
 export function getBatchDepth(): number { return tlBatchDepth; }
 export function setBatchDepth(d: number): void { tlBatchDepth = d; }
+export function onServer(): boolean { return tlServerDepth > 0; }
+export function getServerDepth(): number { return tlServerDepth; }
+export function setServerDepth(d: number): void { tlServerDepth = d; }
+
+export function deferringUserEffects(): boolean {
+	return tlRootDepth > 0 || tlBatchDepth > 0 || tlRunning;
+}
+
+export function queueUserEffect(comp: Computation): void {
+	tlUserEffects.push(comp);
+}
+
+export function enterRoot(): void { tlRootDepth += 1; }
+
+export function leaveRoot(completed: boolean): void {
+	tlRootDepth -= 1;
+	if (deferringUserEffects()) { return; }
+	if (!completed) { tlUserEffects = []; return; }
+	runQueue();
+}
 
 // Link a source and the running computation both ways. Dedup so a signal read twice in
 // one run does not accumulate duplicate observer entries.
@@ -128,7 +151,7 @@ export function createComputation(fn: EffectFn, pure: boolean, transparent: bool
 		observers: [], observerSlots: [],
 		fn, isRoot: false, state: CompState.Stale,
 		sources: [], sourceSlots: [],
-		pure, disposed: false,
+		pure, user: false, disposed: false,
 		owned: [], cleanups: [], owner: tlOwner, context: tlOwner !== null ? tlOwner.context : null, handler: null,
 		id: inheritId(tlOwner, transparent), childCount: 0, transparent,
 	};
@@ -179,7 +202,7 @@ export function updateComputation(comp: Computation): void {
 
 // Enqueue a marked observer for the next drain.
 export function enqueue(comp: Computation): void {
-	if (comp.pure) { tlUpdates.push(comp); } else { tlEffects.push(comp); }
+	if (comp.pure) { tlUpdates.push(comp); } else if (comp.user) { tlUserEffects.push(comp); } else { tlEffects.push(comp); }
 }
 
 // Drain pure (memos) then effects, re-entrancy-guarded. The queues may grow mid-drain
@@ -189,16 +212,20 @@ export function runQueue(): void {
 	tlRunning = true;
 	let guard = 0;
 	try {
-		while ((tlUpdates.length > 0 || tlEffects.length > 0) && guard < 1000000) {
+		while ((tlUpdates.length > 0 || tlEffects.length > 0 || (tlRootDepth === 0 && tlUserEffects.length > 0)) && guard < 1000000) {
 			guard += 1;
 			if (tlUpdates.length > 0) {
 				const c = tlUpdates[tlUpdates.length - 1];
 				tlUpdates.pop();
 				updateComputation(c);
-			} else {
+			} else if (tlEffects.length > 0) {
 				const c = tlEffects[tlEffects.length - 1];
 				tlEffects.pop();
 				updateComputation(c);
+			} else {
+				const users = tlUserEffects;
+				tlUserEffects = [];
+				for (const c of users) { updateComputation(c); }
 			}
 		}
 	} finally {

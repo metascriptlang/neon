@@ -2,7 +2,7 @@
 // exactly one and pays for exactly one.
 
 export { Signal, createSignal, untrack, batch, accessor, valueOf, Accessor, Setter } from "./core/signal";
-export { createEffect } from "./core/effect";
+export { createEffect, createRenderEffect, onMount } from "./core/effect";
 export { createMemo } from "./core/memo";
 export { createSelector } from "./core/selector";
 export { createRoot, runWithOwner, createUniqueId } from "./core/owner";

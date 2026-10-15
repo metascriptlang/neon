@@ -38,7 +38,7 @@ function provideScope<T>(ctx: Context<T>, read: () => T, body: () => number): nu
 		observers: [], observerSlots: [],
 		fn: noop, isRoot: false, state: CompState.Clean,
 		sources: [], sourceSlots: [],
-		pure: false, disposed: false,
+		pure: false, user: false, disposed: false,
 		owned: [], cleanups: [], owner: parent, context: { key: ctx as unknown, value: new Provided<T>(read), next: parent !== null ? parent.context : null }, handler: null,
 		id: inheritId(parent, false), childCount: 0, transparent: false,
 	};

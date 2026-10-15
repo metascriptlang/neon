@@ -1,6 +1,6 @@
 import { createList, listInsert, listMove, listRemove, listSet } from "../../src/core/list";
 import { createRoot } from "../../src/core/owner";
-import { createEffect } from "../../src/core/effect";
+import { createRenderEffect } from "../../src/core/effect";
 
 test "createList reads its items through read, length and at" {
 	const l = createList<number>([1, 2, 3]);
@@ -77,7 +77,7 @@ test "every command bumps the version once" {
 	createRoot((d) => {
 		const l = createList<number>([1]);
 		let runs = 0;
-		createEffect(() => { l.length(); runs = runs + 1; });
+		createRenderEffect(() => { l.length(); runs = runs + 1; });
 		assert runs === 1, "the effect ran once";
 		l.push(2);
 		assert runs === 2, "push";

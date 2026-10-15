@@ -1,5 +1,5 @@
 import { Accessor, Setter, accessor, createSignal, untrack } from "../core/signal";
-import { createEffect } from "../core/effect";
+import { createRenderEffect } from "../core/effect";
 import { Animated, AnimatedValue, EndResult, Easing } from "../animation/index";
 import {
 	GestureResponderHandlers,
@@ -17,14 +17,15 @@ import {
 	NavigatorKind,
 	NavigatorLink,
 	ScreenOptions,
-	ScreenOptionsOf,
 	ScreenProps,
 	createCore,
 	currentScope,
-	optionsAccessor,
 } from "./core";
 import { EDGE_WIDTH, screenView, shown } from "./header";
-import { ScreenCollector, collectScreens, groupOf, readName, readOptions, screenOf } from "./stack";
+import { readName, readOptions } from "./stack";
+import {
+	createScreenCollector, collectScreens, groupOf, screenOf, watchScreens,
+} from "./screenCollection";
 import { BackBehavior, labelOf, mountedEntries, readBehavior } from "./tabs";
 
 export const DRAWER_WIDTH = 280;
@@ -151,7 +152,7 @@ function drawerMotion<P>(
 	const setOpen = (open: boolean): void => { core.writeDrawerOpen(open); };
 	const motion = new DrawerMotion(core.drawerOpen, setOpen, right, width, swipe);
 	let first = true;
-	createEffect((): void => {
+	createRenderEffect((): void => {
 		const open = core.drawerOpen();
 		if (first) {
 			first = false;
@@ -200,45 +201,50 @@ export interface DrawerNavigator<P> {
 	Navigator: (props: {
 		children: NeonNode;
 		initialRouteName?: Accessor<string> | null;
-		screenOptions?: Accessor<ScreenOptionsOf<P>> | null;
+		screenOptions?: Accessor<ScreenOptions> | null;
 		backBehavior?: Accessor<BackBehavior> | null;
 		drawerStyle?: Accessor<Style> | null;
 		drawerPosition?: Accessor<DrawerPosition> | null;
 	}) => NeonNode;
 	Group: (props: {
 		children: NeonNode;
-		screenOptions?: Accessor<ScreenOptionsOf<P>> | null;
+		screenOptions?: Accessor<ScreenOptions> | null;
+		navigationKey?: Accessor<string> | null;
 	}) => NeonNode;
 	Screen: (props: {
 		name: string;
 		component: (props: ScreenProps<P>) => NeonNode;
-		options?: Accessor<ScreenOptionsOf<P>> | null;
+		options?: Accessor<ScreenOptions> | null;
 		initialParams?: P | null;
 		parseParams?: ((values: Map<string, string>) => P) | null;
+		stringifyParams?: ((params: P) => Map<string, string>) | null;
+		navigationKey?: Accessor<string> | null;
 	}) => NeonNode;
 }
 
 export function createDrawerNavigator<P>(): DrawerNavigator<P> {
-	const collector: ScreenCollector<P> = { screens: null, groups: [] };
+	const collector = createScreenCollector();
 	return {
 		Navigator: (props: {
 			children: NeonNode;
 			initialRouteName?: Accessor<string> | null;
-			screenOptions?: Accessor<ScreenOptionsOf<P>> | null;
+			screenOptions?: Accessor<ScreenOptions> | null;
 			backBehavior?: Accessor<BackBehavior> | null;
 			drawerStyle?: Accessor<Style> | null;
 			drawerPosition?: Accessor<DrawerPosition> | null;
 		}): NeonNode => {
-			const screens = collectScreens<P>(collector, props.children);
+			const collection = collectScreens<P>(collector, props.children);
+			const screens = untrack(() => collection.read());
 			const core = createCore<P>({
 				kind: NavigatorKind.Drawer,
 				screens,
 				initialRouteName: readName(props.initialRouteName),
 				initialParams: null,
-				screenOptions: readOptions<P>(props.screenOptions),
+				screenOptions: readOptions(props.screenOptions),
 				backBehavior: readBehavior(props.backBehavior, "firstRoute"),
 				scope: currentScope("Drawer.Navigator"),
 			});
+			watchScreens<P>(collection, core);
 			const own = props.drawerStyle;
 			const side = props.drawerPosition;
 			const right = accessor((): boolean => {
@@ -310,23 +316,30 @@ export function createDrawerNavigator<P>(): DrawerNavigator<P> {
 		},
 		Group: (props: {
 			children: NeonNode;
-			screenOptions?: Accessor<ScreenOptionsOf<P>> | null;
+			screenOptions?: Accessor<ScreenOptions> | null;
+			navigationKey?: Accessor<string> | null;
 		}): NeonNode => {
-			return groupOf<P>(collector, props.children, optionsAccessor<P>(props.screenOptions));
+			return groupOf(
+				collector, props.children, props.screenOptions, props.navigationKey,
+			);
 		},
 		Screen: (props: {
 			name: string;
 			component: (props: ScreenProps<P>) => NeonNode;
-			options?: Accessor<ScreenOptionsOf<P>> | null;
+			options?: Accessor<ScreenOptions> | null;
 			initialParams?: P | null;
 			parseParams?: ((values: Map<string, string>) => P) | null;
+			stringifyParams?: ((params: P) => Map<string, string>) | null;
+			navigationKey?: Accessor<string> | null;
 		}): NeonNode => screenOf<P>(
 			collector,
 			props.name,
 			props.component,
-			optionsAccessor<P>(props.options),
+			props.options,
 			props.initialParams,
 			props.parseParams,
+			props.stringifyParams,
+			props.navigationKey,
 		),
 	};
 }

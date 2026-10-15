@@ -185,7 +185,15 @@ version is opt-in per host, keeps core blind to platforms, and gives N vocabular
 > field, which is what makes this layering safe to rely on.
 
 **Projection is cached per sheet entry.** A sheet entry is a constant, so each host projects it once
-and reuses it across every element that references it.
+and reuses it across every element that references it. On a host with a stylesheet the entry reaches
+a node as its class whether the element is a tag or a component (`View`, `Text`), so server markup
+carries the class rather than an inline copy; a merged or computed style stays inline
+(`src/render/bind.ms` `bindStyleAll`). The macro bakes the rule from values it can fold at
+expansion: literals, a negative, a `const` (same module or imported, followed to its initializer),
+number arithmetic, string `+`, and a theme token (a string token inside a concatenation spells
+`var(--x)`). An entry holding any other value (a `let`, a call, a number token inside arithmetic or
+text) gets no class and stays inline whole (`createStyles` in `src/macros/ui/style.ms`;
+`tests/style/styleFold.test.ms`).
 
 **Native transform projection (2026-10-06).** This slice keeps the existing string transform
 IR rather than introducing a second core style value representation. The compile-time-only

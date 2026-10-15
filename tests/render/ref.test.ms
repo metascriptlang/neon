@@ -167,6 +167,7 @@ test "ref apply is untracked: a signal read in it does not re-run the mount" {
 }
 
 function tooltip(log: string[], source: () => number): (h: HostNode) => void {
+	log.push("setup");
 	createEffect(() => { log.push("effect" + source().toString()); });
 	onCleanup(() => { log.push("cleanup"); });
 	return (h: HostNode): void => { log.push("apply" + source().toString()); };
@@ -178,11 +179,11 @@ test "a directive factory sets up in the current owner and applies as the return
 	const root: MockNode = mockNode("root");
 	const read = (): number => n();
 	const dispose = render(element(<p ref={tooltip(log, read)}>hi</p>), mockHost(), root as unknown as HostNode);
-	assert log.join(",") === "effect1,apply1", "setup before apply: " + log.join(",");
+	assert log.join(",") === "setup,apply1,effect1", "setup before apply, its effect after the mount: " + log.join(",");
 	setN(2);
-	assert log.join(",") === "effect1,apply1,effect2", "the setup effect lives on, the apply does not rerun: " + log.join(",");
+	assert log.join(",") === "setup,apply1,effect1,effect2", "the setup effect lives on, the apply does not rerun: " + log.join(",");
 	dispose();
-	assert log.join(",") === "effect1,apply1,effect2,cleanup", "the owner's disposal runs the setup cleanup: " + log.join(",");
+	assert log.join(",") === "setup,apply1,effect1,effect2,cleanup", "the owner's disposal runs the setup cleanup: " + log.join(",");
 }
 
 function readingFactory(source: () => number): (h: HostNode) => void {
@@ -212,7 +213,7 @@ test "an array mixes a factory and a plain callback" {
 	const read = (): number => n();
 	const root: MockNode = mockNode("root");
 	render(element(<p ref={[tooltip(log, read), stamp(log, "plain")]}>hi</p>), mockHost(), root as unknown as HostNode);
-	assert log.join(",") === "effect5,apply5,plain", "order=" + log.join(",");
+	assert log.join(",") === "setup,apply5,plain,effect5", "order=" + log.join(",");
 }
 
 test "a cleanup registered in the apply phase belongs to the mounting owner" {

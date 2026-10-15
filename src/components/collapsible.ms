@@ -4,7 +4,7 @@
 // heightFactor); once open and at rest the box lets the content size itself again.
 
 import { Accessor, accessor, createSignal, untrack } from "../core/signal";
-import { createEffect } from "../core/effect";
+import { createRenderEffect } from "../core/effect";
 import { onCleanup } from "../core/cleanup";
 import { For } from "../macros/ui/flow";
 import { element } from "../macros/ui/element";
@@ -74,7 +74,7 @@ export function Collapsible(props: {
 		});
 	};
 	let first = true;
-	createEffect((): void => {
+	createRenderEffect((): void => {
 		const closing = collapsed();
 		if (first) {
 			first = false;

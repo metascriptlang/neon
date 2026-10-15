@@ -231,7 +231,7 @@ test "focus and blur reach a screen when its route, tab or drawer item changes" 
 	const root = mountApp(ref);
 	assert visibleText(root).indexOf("list focused") >= 0, visibleText(root);
 	press(root, "item 3");
-	press(root, "Back");
+	press(root, "Items, back");
 	press(root, "Search");
 	ref.navigate("Home");
 	ref.navigate("Settings");

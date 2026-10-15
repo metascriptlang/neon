@@ -1,6 +1,6 @@
 import { Style } from "../render/style";
 import { Accessor, createSignal, untrack } from "../core/signal";
-import { createEffect } from "../core/effect";
+import { createRenderEffect } from "../core/effect";
 import { onCleanup } from "../core/cleanup";
 import { NeonNode, hostElement } from "../render/node";
 import { Host, HostNode } from "../render/hostTypes";
@@ -32,11 +32,7 @@ class StatusBarEntry {
 // the rest. The status bar itself is one per app, so the top entry's hidden
 // node carries the merged values to the host.
 const stack: StatusBarEntry[] = [];
-// Indexed, not destructured: module-scope destructuring temps collide in a JS bundle (compiler
-// card 2026-10-08-js-bundle-module-scope-destructuring-temps-collide.md, WORKAROUND.md W6).
-const revisionSignal = createSignal<number>(0);
-const revision = revisionSignal[0];
-const setRevision = revisionSignal[1];
+const [revision, setRevision] = createSignal<number>(0);
 
 function bump(): void {
 	setRevision(untrack((): number => revision()) + 1);
@@ -80,7 +76,7 @@ export function StatusBar(props: StatusBarProps): NeonNode {
 		const entry = new StatusBarEntry(host, node, props);
 		stack.push(entry);
 		bump();
-		createEffect((): void => {
+		createRenderEffect((): void => {
 			revision();
 			if (stack.length > 0 && stack[stack.length - 1] === entry) { writeMerged(entry); }
 		});

@@ -3,7 +3,7 @@
 // viewportFraction for peeking neighbours, which the parallax mode shrinks.
 
 import { Accessor, accessor, untrack } from "../core/signal";
-import { createEffect } from "../core/effect";
+import { createRenderEffect } from "../core/effect";
 import { onCleanup } from "../core/cleanup";
 import { NeonNode } from "../render/node";
 import { Style } from "../render/style";
@@ -83,7 +83,7 @@ export function Carousel<T>(props: {
 		if (!untrack<boolean>(autoPlays) || held) { return; }
 		timer = setTimeout(advance, untrack<number>(interval)) as number;
 	};
-	createEffect((): void => {
+	createRenderEffect((): void => {
 		if (autoPlays()) { schedule(); } else { cancel(); }
 	});
 

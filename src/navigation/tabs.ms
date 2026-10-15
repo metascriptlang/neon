@@ -4,12 +4,12 @@ import { NeonEvent } from "../render/event";
 import { Style } from "../render/style";
 import { View, Text, Pressable } from "../components/primitives";
 import { For, Show } from "../macros/ui/flow";
+import { Platform } from "../api/platform";
 import {
 	Navigation,
 	NavigatorCore,
 	NavigatorKind,
 	ScreenOptions,
-	ScreenOptionsOf,
 	ScreenProps,
 	TabBarIconProps,
 	createCore,
@@ -17,10 +17,12 @@ import {
 	mergeOptions,
 	NavigationAction,
 	noAction,
-	optionsAccessor,
 } from "./core";
 import { Slot, screenView, shown } from "./header";
-import { ScreenCollector, collectScreens, groupOf, readName, readOptions, screenOf } from "./stack";
+import { readName, readOptions } from "./stack";
+import {
+	createScreenCollector, collectScreens, groupOf, screenOf, watchScreens,
+} from "./screenCollection";
 
 export type BackBehavior = "firstRoute" | "initialRoute" | "history" | "none";
 
@@ -79,6 +81,11 @@ export function labelOf<P>(entry: Navigation<P>, own: string | null): string {
 	return title === null ? entry.route.name : title as string;
 }
 
+export function tabAccessibilityLabel(label: string, at: int32, count: int32, os: string): string {
+	if (os !== "ios") { return label; }
+	return label + ", tab, " + (at + 1).toString() + " of " + count.toString();
+}
+
 export function tabItem<P>(
 	core: NavigatorCore<P>,
 	entry: Navigation<P>,
@@ -95,7 +102,13 @@ export function tabItem<P>(
 	});
 	const a11y = accessor((): string => {
 		const own = options().tabBarAccessibilityLabel;
-		return own === null ? label() : own as string;
+		if (own !== null) { return own as string; }
+		const all = core.entries();
+		let at: int32 = 0;
+		for (let i = 0; i < all.length; i += 1) {
+			if (all[i].route.key === key) { at = i as int32; }
+		}
+		return tabAccessibilityLabel(label(), at, all.length as int32, Platform.OS);
 	});
 	const badge = accessor((): string => {
 		const value = options().tabBarBadge;
@@ -148,21 +161,24 @@ export interface TabNavigator<P> {
 	Navigator: (props: {
 		children: NeonNode;
 		initialRouteName?: Accessor<string> | null;
-		screenOptions?: Accessor<ScreenOptionsOf<P>> | null;
+		screenOptions?: Accessor<ScreenOptions> | null;
 		backBehavior?: Accessor<BackBehavior> | null;
 		tabBarStyle?: Accessor<Style> | null;
 		tabBarPosition?: Accessor<TabBarPosition> | null;
 	}) => NeonNode;
 	Group: (props: {
 		children: NeonNode;
-		screenOptions?: Accessor<ScreenOptionsOf<P>> | null;
+		screenOptions?: Accessor<ScreenOptions> | null;
+		navigationKey?: Accessor<string> | null;
 	}) => NeonNode;
 	Screen: (props: {
 		name: string;
 		component: (props: ScreenProps<P>) => NeonNode;
-		options?: Accessor<ScreenOptionsOf<P>> | null;
+		options?: Accessor<ScreenOptions> | null;
 		initialParams?: P | null;
 		parseParams?: ((values: Map<string, string>) => P) | null;
+		stringifyParams?: ((params: P) => Map<string, string>) | null;
+		navigationKey?: Accessor<string> | null;
 	}) => NeonNode;
 }
 
@@ -175,18 +191,19 @@ export function createMaterialTopTabNavigator<P>(): TabNavigator<P> {
 }
 
 function createTabs<P>(material: boolean): TabNavigator<P> {
-	const collector: ScreenCollector<P> = { screens: null, groups: [] };
+	const collector = createScreenCollector();
 	return {
 		Navigator: (props: {
 			children: NeonNode;
 			initialRouteName?: Accessor<string> | null;
-			screenOptions?: Accessor<ScreenOptionsOf<P>> | null;
+			screenOptions?: Accessor<ScreenOptions> | null;
 			backBehavior?: Accessor<BackBehavior> | null;
 			tabBarStyle?: Accessor<Style> | null;
 			tabBarPosition?: Accessor<TabBarPosition> | null;
 		}): NeonNode => {
-			const screens = collectScreens<P>(collector, props.children);
-			const declared = readOptions<P>(props.screenOptions);
+			const collection = collectScreens<P>(collector, props.children);
+			const screens = untrack(() => collection.read());
+			const declared = readOptions(props.screenOptions);
 			const core = createCore<P>({
 				kind: NavigatorKind.Tabs,
 				screens,
@@ -196,6 +213,7 @@ function createTabs<P>(material: boolean): TabNavigator<P> {
 				backBehavior: readBehavior(props.backBehavior, "firstRoute"),
 				scope: currentScope("Tab.Navigator"),
 			});
+			watchScreens<P>(collection, core);
 			const position = props.tabBarPosition;
 			const top = accessor((): boolean => {
 				if (position === null) { return material; }
@@ -242,23 +260,30 @@ function createTabs<P>(material: boolean): TabNavigator<P> {
 		},
 		Group: (props: {
 			children: NeonNode;
-			screenOptions?: Accessor<ScreenOptionsOf<P>> | null;
+			screenOptions?: Accessor<ScreenOptions> | null;
+			navigationKey?: Accessor<string> | null;
 		}): NeonNode => {
-			return groupOf<P>(collector, props.children, optionsAccessor<P>(props.screenOptions));
+			return groupOf(
+				collector, props.children, props.screenOptions, props.navigationKey,
+			);
 		},
 		Screen: (props: {
 			name: string;
 			component: (props: ScreenProps<P>) => NeonNode;
-			options?: Accessor<ScreenOptionsOf<P>> | null;
+			options?: Accessor<ScreenOptions> | null;
 			initialParams?: P | null;
 			parseParams?: ((values: Map<string, string>) => P) | null;
+			stringifyParams?: ((params: P) => Map<string, string>) | null;
+			navigationKey?: Accessor<string> | null;
 		}): NeonNode => screenOf<P>(
 			collector,
 			props.name,
 			props.component,
-			optionsAccessor<P>(props.options),
+			props.options,
 			props.initialParams,
 			props.parseParams,
+			props.stringifyParams,
+			props.navigationKey,
 		),
 	};
 }

@@ -2,7 +2,7 @@
 // computation created under it (cascading through the owned tree).
 
 import { Computation, Dispose, CompState } from "./types";
-import { getOwner, setOwner, getListener, setListener, cleanNode, carriesId, getNextChildId, inheritId } from "./runtime";
+import { getOwner, setOwner, getListener, setListener, cleanNode, carriesId, getNextChildId, inheritId, enterRoot, leaveRoot } from "./runtime";
 
 function noop(): void {}
 
@@ -13,18 +13,23 @@ export function createRoot<T>(fn: (dispose: Dispose) => T, id: string | null = n
 		observers: [], observerSlots: [],
 		fn: noop, isRoot: true, state: CompState.Clean,
 		sources: [], sourceSlots: [],
-		pure: false, disposed: false,
+		pure: false, user: false, disposed: false,
 		owned: [], cleanups: [], owner: prevOwner, context: prevOwner !== null ? prevOwner.context : null, handler: null,
 		id: id !== null ? id : inheritId(prevOwner, false), childCount: 0, transparent: false,
 	};
 	setOwner(root);
 	setListener(null);
 	const dispose: Dispose = () => { cleanNode(root, true); };
+	enterRoot();
+	let completed = false;
 	try {
-		return fn(dispose);
+		const result = fn(dispose);
+		completed = true;
+		return result;
 	} finally {
 		setOwner(prevOwner);
 		setListener(prevListener);
+		leaveRoot(completed);
 	}
 }
 

@@ -171,3 +171,50 @@ test "an explicit prop after a spread wins on a component too" {
 	const n = view({ title: accessor(() => "early"), body: accessor(() => "b") });
 	assert renderToString(n) === "<div id=\"late\">b</div>", "explicit prop overrides the spread";
 }
+
+// The spread reads its fields from the value's type, whatever form the compiler
+// hands the macro: a named type nested in another type reaches it as a name,
+// not unfolded, and `objectType` unfolds it.
+
+class Badge {
+	id: string = "b1";
+	title: string = "bt";
+}
+
+type AliasedAttrs = Attrs;
+
+interface Holder {
+	attrs: Attrs;
+	badge: Badge;
+	aliased: AliasedAttrs;
+}
+
+test "a class-typed value spreads its fields" {
+	const b = new Badge();
+	const n: NeonNode = element(<div {...b}>hi</div>);
+	assert renderToString(n) === "<div id=\"b1\" title=\"bt\">hi</div>", "class fields land as attrs";
+}
+
+test "an interface-typed field of another type spreads its fields" {
+	function view(h: Holder): NeonNode {
+		return element(<div {...h.attrs}>hi</div>);
+	}
+	const h: Holder = { attrs: { id: "x", title: "t" }, badge: new Badge(), aliased: { id: "y", title: null } };
+	assert renderToString(view(h)) === "<div id=\"x\" title=\"t\">hi</div>", "nested interface field";
+}
+
+test "a class-typed field of another type spreads its fields" {
+	function view(h: Holder): NeonNode {
+		return element(<div {...h.badge}>hi</div>);
+	}
+	const h: Holder = { attrs: { id: "x", title: "t" }, badge: new Badge(), aliased: { id: "y", title: null } };
+	assert renderToString(view(h)) === "<div id=\"b1\" title=\"bt\">hi</div>", "nested class field";
+}
+
+test "a field whose type is an alias of an interface spreads its fields" {
+	function view(h: Holder): NeonNode {
+		return element(<div {...h.aliased}>hi</div>);
+	}
+	const h: Holder = { attrs: { id: "x", title: "t" }, badge: new Badge(), aliased: { id: "y", title: null } };
+	assert renderToString(view(h)) === "<div id=\"y\">hi</div>", "aliased interface field";
+}

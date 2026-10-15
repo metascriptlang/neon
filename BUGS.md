@@ -22,6 +22,39 @@ names the card and the site, and nothing is worked around in `src/`. Rows closed
 2026-09-20 were dropped with §2 — they are in this file's history at `git show c00bd2b:BUGS.md`,
 and the invariants that outlived them were moved to the head of the test that pins each one.
 
+- **OPEN 2026-10-15 — `<For key>` keeps showing the old item when a new object arrives under the same key.**
+  `<For each={rows()} key={(r: Keyed): number => r.id}>{row}</For>` over `[{id:1,label:"a"},{id:2,label:"b"}]`,
+  then `setRows([{id:2,label:"b2"},{id:1,label:"a2"}])`, prints `<ul><li>b</li><li>a</li></ul>`:
+  the rows reorder and keep the labels they were built with. Measured with `msc test` and
+  `msc test --target=js` on msc v0.3.4 `15b93cbba` over a copy of main `c68683d` `src`. The row receives
+  the raw item and is reused by key (`src/macros/ui/flow.ms` `For`, `src/core/array.ms` `mapArrayKeyed`);
+  `tests/render/flow.test.ms` checks only the order. `ForList` passes an `Accessor<T>` row and stays
+  current (`tests/render/forList.test.ms`), as Solid 2.0's `For keyed={fn}` does. The fix changes the row
+  type in `src/macros/ui/element.ms`, a contract that needs a yes before it changes.
+
+- **OPEN 2026-10-15 — a server render writes a caught error's message into the page.**
+  `<ErrorBoundary fallback={(err: Error, reset: () => void): NeonNode => <p>{err.message}</p>}>` around a
+  component that throws `new Error("db password=hunter2 at 10.0.0.5")` renders
+  `<p>db password=hunter2 at 10.0.0.5</p><!----><!---->` through `renderToString` on C, `--target=js` and
+  `-d:server` (msc v0.3.4 `15b93cbba`, copy of main `c68683d` `src`). The boundary hands its fallback the
+  thrown `Error` on the server as on the client (`src/macros/ui/flow.ms` `ErrorBoundary`). Solid 1.x leaks
+  the same way (solid issue #3468); Solid 2.0 replaces the error with a generic "Internal Server Error"
+  before the fallback renders outside a dev build and serializes that same record for hydrate
+  (`~/projects/solid-next` `84dada77`, `documentation/solid-2.0/12-ssr-http.md:139-145`).
+
+- **OPEN 2026-10-15 — a read inside `runWithOwner` subscribes the effect that called it.**
+  `createRenderEffect(() => { runs += 1; runWithOwner(owner, (): number => a()); })`, then `setA(1)`,
+  prints `runs 2` on C and `--target=js` (msc v0.3.4 `15b93cbba`, copy of main `c68683d` `src`).
+  `runWithOwner` (`src/core/owner.ms`) swaps the owner and keeps the listener; Solid 1.x
+  (`~/projects/solid` `25138e1c`, `reactive/signal.ts:1055-1059`) and 2.0 clear the listener, so the
+  same program runs the effect once.
+
+- **OPEN 2026-10-15 — an effect that feeds itself stops without an error.**
+  `createRenderEffect(() => { const v = n(); if (v < 3000000) { setN(v + 1); } })` leaves `n` at
+  `1000001` and throws nothing, on C and `--target=js` (same build and copy). `runQueue`
+  (`src/core/runtime.ms`) leaves its loop at 1 000 000 passes with work still queued; Solid 2.0
+  throws at 100 000 (`~/projects/solid-next` `84dada77`, `packages/signals/src/core/scheduler.ts:1309-1315`).
+
 - **OPEN 2026-10-12 — a component tag that omits a required prop compiles and then crashes.**
   `interface BadgeProps { label: Accessor<string>; suffix: Accessor<string>; }` mounted as
   `<Badge label="a" />` builds on msc `e8c024c8` (C) and the test binary ends with status
@@ -78,7 +111,7 @@ and the invariants that outlived them were moved to the head of the test that pi
   clears it; the style the component always passes is the suspect): in `tests/browser/ssrMarkup.test.ms` the DOM
   host builds `style="justify-content: center; align-items: center; width: 36px; height: 36px;"`
   for `<ActivityIndicator color="#c00" size="large" />`. The server writes the same, so the two
-  agree, and the colour is lost on both until this is fixed in `src/platform/browser/dom.ms`
+  agree, and the colour is lost on both until this is fixed in `src/platform/browser/dom.jms`
   (for example a class per colour, as `hitSlop` does).
 
 - **OPEN 2026-10-07 — a raw tag with an `Accessor<boolean> | null` attribute dies on C.** In
@@ -150,6 +183,18 @@ and the invariants that outlived them were moved to the head of the test that pi
   `PrintWindow` at the start, after typing and after the resize. Not run: an IME, a DPI change.
   `tests/run.sh` builds the example on a Windows host and skips it by name elsewhere.
 
+- **PARKED 2026-10-14 — an Ion project manifest inside Neon cannot be evaluated.** Not Neon's: Ion's
+  generator runs the manifest with `msc run --target=raiser` beside it, Neon's `build.ms`
+  `globalImports` brings in `src/core/runtime.ms`, and Raiser has no `String.fromCharCode`, so even a
+  one-line `console.log` under Neon's root stops at type check (msc `26150233`). Blocks building
+  `examples/voidWindow.ms` from an Ion-generated Visual Studio project, and since `createUniqueId`
+  (`runtime.ms:121`) every device lane: `bash tests/ios/run.sh` stops at step `generate` on msc
+  `a7b08f008` (2026-10-15). Card
+  `~/metascript/.inbox/compiler/2026-10-15-raiser-has-no-string-fromcharcode.md`.
+  Answered on the Windows machine: the card is fixed and gone from the inbox. On msc `a2b3e36a`,
+  `String.fromCharCode(72)` runs under `--target=raiser` from Neon's root, and an Ion-generated project of
+  `examples/voidWindow.ms` builds (`32c2643`). The device lanes were not re-run there.
+
 - **PARKED 2026-10-11 — `tests/render/flatList.test.ms` and `tests/components/flutterListsApp.test.ms` do not compile.**
   Not Neon's: an array-destructured local of an arrow passed as a JSX attribute
   (`const [focused, setFocused] = createSignal<boolean>(false)` in a `renderItem`) is refused as
@@ -160,20 +205,16 @@ and the invariants that outlived them were moved to the head of the test that pi
   `~/metascript/.inbox/compiler/2026-10-11-destructured-local-in-attribute-arrow-read-by-nested-macro.md`.
   Parked at those two files.
 
-- **PARKED 2026-10-13 — a JS bundle exposes its entry only through `globalThis`.** `msc build --target=js`
-  drops the entry module's `export`s, so `examples/site/server.ms` and `tests/edge/pages.ms` hand
-  their request function to the Worker with an extern that assigns a global (`serve`), and
-  `tests/edge/siteWorker.js` / `worker.js` read it after a side-effect import. Card:
-  `~/metascript/.inbox/compiler/2026-10-13-js-build-drops-the-entry-modules-exports.md`. When it
-  closes, the entries `export` their function and the workers import it by name.
-
-- **PARKED 2026-10-13 — eight native cells stop at `src/navigation/core.ms:995`.** `bash tests/run.sh`
-  on `wt/rn-navigation-prod` rebased onto main `9b79fec`, msc v0.3.2 binary `ea7ae4d17`: `msc test`
-  on `tests/api/apis.test.ms` and `tests/navigation/{example,linking,nested,options,routingConsumers,stack,transition}.test.ms`
-  prints `internal: a null comparison on an operand with effects reached operatorLower unspilled`
-  at `core.ms:995:16` (`navigateLocal`); the same files pass with `--target=js`. Card
-  `~/metascript/.inbox/compiler/2026-10-11-captured-generic-nullable-null-compare-unspilled.md`.
-  Parked at `src/navigation/core.ms:995`, left as written.
+- **PARKED 2026-10-14 — `createStyles` takes no breakpoint table.** Decided 2026-10-15 (StyleX's
+  form): `export const screen = createBreakpoints({ wide: 900 })`, and a sheet names it as a key,
+  `createStyles({ sidebar: { when: { [screen.wide]: { … } } } })`, so the checker sees `screen.wide`
+  and the macro reads 900 at expansion. Written on branch `park/breakpoints` (`89b2050`: web
+  `@media`, native and inline styles bound to the window width, blocks kept through `mergeStyle`).
+  Blocks it: `Style` becomes recursive (`media: StyleMedia[]`, `StyleMedia.style: Style`), and
+  `getTypeImpl` throws "unnamed or alias type cycle (Ref)" on a non-generic interface whose field
+  reaches a recursive one, so `<Ctx.Provider>` stops compiling (`tests/render/ssr.test.ms`, msc
+  `682b18673`). Card `~/metascript/.inbox/compiler/2026-10-07-element-macro-type-cycle-on-generic-interface-field-without-its-parameter.md`.
+  Parked at that branch; `src/macros/ui/style.ms` `createStyles` on main has no breakpoints.
 
 - **PARKED 2026-10-10 — Vite refresh: an edit that adds a new generic instance reloads the page.**
   Adding `createSignal(false)` to an accepted component module emits the `…__boolean` instance into

@@ -10,7 +10,7 @@ export function catchError(tryFn: () => void, handler: ErrorHandler): void {
 		observers: [], observerSlots: [],
 		fn: noop, isRoot: false, state: CompState.Clean,
 		sources: [], sourceSlots: [],
-		pure: false, disposed: false,
+		pure: false, user: false, disposed: false,
 		owned: [], cleanups: [], owner: parent, context: parent !== null ? parent.context : null, handler: handler,
 		id: inheritId(parent, false), childCount: 0, transparent: false,
 	};

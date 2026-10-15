@@ -1,4 +1,5 @@
 import { Accessor, accessor, batch, createSignal } from "../core/signal";
+import { onServer, getServerDepth, setServerDepth } from "../core/runtime";
 
 export type ColorScheme = "light" | "dark";
 
@@ -12,18 +13,10 @@ export interface KeyboardMetrics {
 	height: number;
 }
 
-const windowWidthSignal = createSignal<number>(0);
-const windowWidth = windowWidthSignal[0];
-const setWindowWidth = windowWidthSignal[1];
-const windowHeightSignal = createSignal<number>(0);
-const windowHeight = windowHeightSignal[0];
-const setWindowHeight = windowHeightSignal[1];
-const keyboardHeightSignal = createSignal<number>(0);
-const keyboardHeight = keyboardHeightSignal[0];
-const setKeyboardHeight = keyboardHeightSignal[1];
-const darkSignal = createSignal<boolean>(false);
-const dark = darkSignal[0];
-const setDark = darkSignal[1];
+const [windowWidth, setWindowWidth] = createSignal<number>(0);
+const [windowHeight, setWindowHeight] = createSignal<number>(0);
+const [keyboardHeight, setKeyboardHeight] = createSignal<number>(0);
+const [dark, setDark] = createSignal<boolean>(false);
 
 export function useWindowDimensions(): Accessor<WindowDimensions> {
 	return accessor((): WindowDimensions => ({ width: windowWidth(), height: windowHeight() }));
@@ -37,18 +30,17 @@ export function useKeyboard(): Accessor<KeyboardMetrics> {
 	return accessor((): KeyboardMetrics => ({ visible: keyboardHeight() > 0, height: keyboardHeight() }));
 }
 
-let serverRenders = 0;
-
 export function isServer(): boolean {
-	return serverRenders > 0;
+	return onServer();
 }
 
 export function asServer<T>(run: () => T): T {
-	serverRenders += 1;
+	const depth = getServerDepth();
+	setServerDepth(depth + 1);
 	try {
 		return run();
 	} finally {
-		serverRenders -= 1;
+		setServerDepth(depth);
 	}
 }
 
@@ -77,18 +69,10 @@ export interface EdgeInsets {
 	left: number;
 }
 
-const insetTopSignal = createSignal<number>(0);
-const insetTop = insetTopSignal[0];
-const setInsetTop = insetTopSignal[1];
-const insetRightSignal = createSignal<number>(0);
-const insetRight = insetRightSignal[0];
-const setInsetRight = insetRightSignal[1];
-const insetBottomSignal = createSignal<number>(0);
-const insetBottom = insetBottomSignal[0];
-const setInsetBottom = insetBottomSignal[1];
-const insetLeftSignal = createSignal<number>(0);
-const insetLeft = insetLeftSignal[0];
-const setInsetLeft = insetLeftSignal[1];
+const [insetTop, setInsetTop] = createSignal<number>(0);
+const [insetRight, setInsetRight] = createSignal<number>(0);
+const [insetBottom, setInsetBottom] = createSignal<number>(0);
+const [insetLeft, setInsetLeft] = createSignal<number>(0);
 
 export function useSafeAreaInsets(): Accessor<EdgeInsets> {
 	return accessor((): EdgeInsets => ({ top: insetTop(), right: insetRight(), bottom: insetBottom(), left: insetLeft() }));

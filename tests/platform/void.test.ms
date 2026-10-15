@@ -12,7 +12,7 @@ import { Void, View, Text, ScrollView, Pressable } from "../../src/components/pr
 import { HOST_MOVE_CONTRACT, RECONCILE_CONTRACT, hostMoveContract, reconcileContract } from "../render/hostContract";
 import { FlexStyle } from "../../../yoga/src/index";
 import {
-	DrawKind, kind, text, paint, order, textStyle, local, content, scroll, numChildren, getChildAt,
+	DrawKind, NodeRef, kind, text, paint, order, textStyle, local, content, scroll, numChildren, getChildAt, parent,
 } from "../../../void/src/void2d/node";
 
 function flexOf(n: VoidNode): FlexStyle { return n.flex as FlexStyle; }
@@ -299,6 +299,28 @@ test "a click outside a scroll view's mask misses content it clips" {
 	assert pressed === 1, "content inside the mask is hit";
 }
 
+test "a scroll view paints its background behind the content it scrolls" {
+	const vh = createVoidHost();
+	render(element(
+		<ScrollView style={{ width: 100, height: 50, backgroundColor: "#203040" }}>
+			<View style={{ width: 100, height: 200 }} />
+		</ScrollView>
+	), vh.host, vh.root);
+	vh.layout(100.0, 50.0);
+	const area = vh.host.firstChild(vh.root) as VoidNode;
+	assert area.ref.kind() === DrawKind.Rect, "the scroll view's own box carries the background";
+	const mask = area.scroller as NodeRef;
+	assert mask.kind() === DrawKind.Mask, "the content sits in a mask inside it";
+	assert mask.content().w === 100.0 && mask.content().h === 50.0, "the mask fills the scroll view";
+	assert (area.children[0].ref.parent() as NodeRef).id === mask.id, "the child hangs under the mask";
+	const scrollTo = vh.host.scrollTo as (node: HostNode, x: number, y: number, animated: boolean) => void;
+	scrollTo(area, 0, 40, false);
+	assert mask.scroll().y === 40.0, "the mask scrolled";
+	assert area.ref.local().y === 0.0 && area.ref.kind() === DrawKind.Rect, "the background stayed put";
+	vh.host.setStyle(area, { width: 100, height: 50 } as Style);
+	assert area.ref.kind() === DrawKind.Group, "dropping the background demotes the box, not the mask";
+}
+
 test "scrollTo moves a scroll view and refuses a plain view by name" {
 	const vh = createVoidHost();
 	render(element(
@@ -310,9 +332,10 @@ test "scrollTo moves a scroll view and refuses a plain view by name" {
 	const area = vh.host.firstChild(vh.root) as HostNode;
 	const scrollTo = vh.host.scrollTo as (node: HostNode, x: number, y: number, animated: boolean) => void;
 	scrollTo(area, 0, 40, false);
-	assert (area as VoidNode).ref.scroll().y === 40.0, "the mask scrolled";
+	const mask = (area as VoidNode).scroller as NodeRef;
+	assert mask.scroll().y === 40.0, "the mask scrolled";
 	scrollTo(area, 0, 900, true);
-	assert (area as VoidNode).ref.scroll().y === 150.0, "the offset stops at the end of the content";
+	assert mask.scroll().y === 150.0, "the offset stops at the end of the content";
 	const plain = vh.host.createElement("view");
 	let caught = "";
 	try {

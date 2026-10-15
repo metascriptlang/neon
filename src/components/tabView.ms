@@ -3,7 +3,7 @@
 // between the measured tabs, lazy scenes, and a scrollable bar that centres its tab.
 
 import { Accessor, accessor, createSignal, untrack } from "../core/signal";
-import { createEffect } from "../core/effect";
+import { createRenderEffect } from "../core/effect";
 import { For, Show } from "../macros/ui/flow";
 import { element } from "../macros/ui/element";
 import { NeonNode, VAttr, dynAttr, evt, hostElement } from "../render/node";
@@ -94,7 +94,7 @@ export function TabBar(props: {
 	};
 
 	// tabs.dart _TabBarState._scrollToCurrentIndex: a scrollable bar centres its tab.
-	createEffect((): void => {
+	createRenderEffect((): void => {
 		if (!scrolls()) { return; }
 		const at = index() as int32;
 		const all = layouts();
@@ -197,7 +197,7 @@ export function TabView(props: {
 	// A controlled index moves the pages; a swipe reports through onPageSelected first, so
 	// the index it echoes back already matches.
 	if (indexProp !== null) {
-		createEffect((): void => {
+		createRenderEffect((): void => {
 			const wanted = (indexProp as Accessor<number>)();
 			if (untrack<number>(selected) !== wanted) { controller.setPage(wanted); }
 		});

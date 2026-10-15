@@ -34,8 +34,9 @@
 // cannot enumerate defines today. Opening it to arbitrary `-d:` flags needs the
 // define table exposed to macro expansion — a compiler feature, filed not built.
 
-import { Node, NodeKind, SourceLocation, isFloatLiteral, intValue, floatValue, stringValue } from "std/meta";
+import { Node, NodeKind, DeclKind, SourceLocation, isFloatLiteral, intValue, floatValue, stringValue, getImpl } from "std/meta";
 import { Style } from "../../render/style";
+import { STYLE_TABLE } from "../style/fields";
 
 export function styleOf(s: Style): Style {
 	return s;
@@ -45,7 +46,7 @@ function isPlatformName(k: string): boolean {
 	return k === "web" || k === "ios" || k === "android" || k === "macos";
 }
 
-// CSS spelling of a style field. Kept beside applyCss (platform/browser/dom.ms)
+// CSS spelling of a style field. Kept beside applyCss (platform/browser/dom.jms)
 // rather than shared with it: that one writes into the CSSOM, which takes
 // camelCase names and per-property strings, while a stylesheet rule needs
 // kebab-case text. tests/render/styleCss.test.ms pins the two against each
@@ -66,12 +67,7 @@ function kebabCase(name: string): string {
 
 // A bare number is points, which on the web is px — except for the ratios,
 // which are unitless in CSS too.
-function isUnitless(name: string): boolean {
-	return name === "flex" || name === "flexGrow" || name === "flexShrink"
-		|| name === "aspectRatio" || name === "opacity";
-}
-
-function cssDecl(name: string, v: Node, token: string, tokenIsText: boolean): string {
+function cssDecl(name: string, projection: string, folded: string, foldedIsNumber: boolean, numberToken: string): string {
 	// A token stays a variable in the rule. That is the whole point of themes on
 	// the web: the value lives in the theme's :root rule, so swapping a theme
 	// changes one variable and never rewrites, re-hashes or re-registers this.
@@ -83,24 +79,15 @@ function cssDecl(name: string, v: Node, token: string, tokenIsText: boolean): st
 	// The :root value carries no unit, so a length property multiplies it by 1px
 	// here: CSS has no cast, and calc is the only way to give a bare number a
 	// unit at the site that needs one.
-	if (token !== "") {
-		if (tokenIsText || isUnitless(name)) {
-			return kebabCase(name) + ":var(--" + token + ");";
+	if (numberToken !== "") {
+		if (projection === "num") {
+			return kebabCase(name) + ":var(--" + numberToken + ");";
 		}
-		return kebabCase(name) + ":calc(var(--" + token + ") * 1px);";
+		return kebabCase(name) + ":calc(var(--" + numberToken + ") * 1px);";
 	}
-	if (v.kind === NodeKind.NumberLiteral) {
-		// Two accessors, not one: the macro VM picks typed opcodes from the static
-		// type, so a `number`-returning reader computes on the wrong field for
-		// whichever of int/float it wasn't compiled for.
-		const n = isFloatLiteral(v) ? floatValue(v).toString() : intValue(v).toString();
-		const unit = isUnitless(name) ? "" : "px";
-		return kebabCase(name) + ":" + n + unit + ";";
-	}
-	if (v.kind === NodeKind.StringLiteral) {
-		return kebabCase(name) + ":" + stringValue(v) + ";";
-	}
-	return "";
+	if (!foldedIsNumber && folded === "") { return ""; }
+	const unit = foldedIsNumber && projection === "len" ? "px" : "";
+	return kebabCase(name) + ":" + folded + unit + ";";
 }
 
 // djb2. The name must be stable across builds and identical on both backends,
@@ -142,6 +129,82 @@ export macro createStyles(node: Node): Node {
 		const readableNames = false;
 	}
 
+	let unfoldable = false;
+	function themeToken(x: Node): string {
+		if (x.kind !== NodeKind.MemberExpr) { return ""; }
+		const obT = x.object.nodeType;
+		if (obT === null || obT.kind !== NodeKind.TypeGeneric) { return ""; }
+		const base = obT.typExprBase;
+		if (base.kind !== NodeKind.Identifier || base.name !== "Theme") { return ""; }
+		return x.property;
+	}
+	function typeName(x: Node): string {
+		const t = x.nodeType;
+		if (t === null || t.kind !== NodeKind.Identifier) { return ""; }
+		return t.name;
+	}
+	function isIntType(x: Node): boolean {
+		const t = typeName(x);
+		return t === "int8" || t === "int16" || t === "int32" || t === "int64" || t === "uint8" || t === "uint16" || t === "uint32" || t === "uint64";
+	}
+	function constInitializer(x: Node): Node | null {
+		if (x.kind !== NodeKind.Identifier) { return null; }
+		const d = getImpl(x);
+		if (d === null || d.kind !== NodeKind.VariableDecl || d.declKind !== DeclKind.Const) { return null; }
+		return d.initializer;
+	}
+	function foldsToText(x: Node, depth: number): boolean {
+		if (depth > 32) { return false; }
+		if (x.kind === NodeKind.StringLiteral) { return true; }
+		if (x.kind === NodeKind.MemberExpr) { return typeName(x) === "string"; }
+		if (x.kind === NodeKind.BinaryExpr) { return x.operator === "+" && (foldsToText(x.left, depth + 1) || foldsToText(x.right, depth + 1)); }
+		const init = constInitializer(x);
+		return init !== null && foldsToText(init as Node, depth + 1);
+	}
+	function numberOf(x: Node, depth: number): float64 {
+		if (depth > 32) { unfoldable = true; return 0; }
+		if (x.kind === NodeKind.NumberLiteral) {
+			return isFloatLiteral(x) ? floatValue(x) : (intValue(x) as float64);
+		}
+		if (x.kind === NodeKind.UnaryExpr && x.unaryOp === "-") {
+			return -numberOf(x.operand, depth + 1);
+		}
+		if (x.kind === NodeKind.BinaryExpr) {
+			const l = numberOf(x.left, depth + 1);
+			const r = numberOf(x.right, depth + 1);
+			if (x.operator === "+") { return l + r; }
+			if (x.operator === "-") { return l - r; }
+			if (x.operator === "*") { return l * r; }
+			if (x.operator === "/" && r !== 0) {
+				const q = l / r;
+				if (!isIntType(x)) { return q; }
+				return q < 0 ? Math.ceil(q) : Math.floor(q);
+			}
+			unfoldable = true;
+			return 0;
+		}
+		const init = constInitializer(x);
+		if (init === null) { unfoldable = true; return 0; }
+		return numberOf(init as Node, depth + 1);
+	}
+	function textOf(x: Node, depth: number): string {
+		if (depth > 32) { unfoldable = true; return ""; }
+		if (x.kind === NodeKind.StringLiteral) { return stringValue(x); }
+		if (x.kind === NodeKind.MemberExpr) {
+			const tok = themeToken(x);
+			if (tok === "") { unfoldable = true; return ""; }
+			return "var(--" + tok + ")";
+		}
+		if (x.kind === NodeKind.BinaryExpr && x.operator === "+") {
+			const l = foldsToText(x.left, depth + 1) ? textOf(x.left, depth + 1) : numberOf(x.left, depth + 1).toString();
+			const r = foldsToText(x.right, depth + 1) ? textOf(x.right, depth + 1) : numberOf(x.right, depth + 1).toString();
+			return l + r;
+		}
+		const init = constInitializer(x);
+		if (init === null) { unfoldable = true; return ""; }
+		return textOf(init as Node, depth + 1);
+	}
+
 	let entries: Node[] = [];
 	for (let e = 0; e < sheet.properties.length; e += 1) {
 		const v = sheet.properties[e];
@@ -151,8 +214,7 @@ export macro createStyles(node: Node): Node {
 		let fields: Node[] = [];
 		let names: string[] = [];
 		let locs: SourceLocation[] = [];
-		let tokens: string[] = [];
-		let tokenTexts: boolean[] = [];
+		let numberTokens: string[] = [];
 		let overlay: Node | null = null;
 		let vGroups: string[] = [];
 		let vGroupOf: string[] = [];
@@ -216,24 +278,10 @@ export macro createStyles(node: Node): Node {
 			// `theme.sp2` and `cfg.gap` are the same syntax, so a token is
 			// recognized by TYPE: themeOf brands its result Theme<T>, which is
 			// transparent everywhere else and survives here only as the name.
-			let tok = "";
-			let tokText = false;
-			if (fv.kind === NodeKind.MemberExpr) {
-				const obT = fv.object.nodeType;
-				if (obT !== null && obT.kind === NodeKind.TypeGeneric) {
-					const base = obT.typExprBase;
-					if (base.kind === NodeKind.Identifier && base.name === "Theme") {
-						tok = fv.property;
-						const fT = fv.nodeType;
-						if (fT !== null && fT.kind === NodeKind.Identifier && fT.name === "string") { tokText = true; }
-					}
-				}
-			}
 			fields.push(fv);
 			names.push(name);
 			locs.push(v.keyLocations[i]);
-			tokens.push(tok);
-			tokenTexts.push(tokText);
+			numberTokens.push(foldsToText(fv, 0) ? "" : themeToken(fv));
 		}
 		if (overlay !== null) {
 			const ov = overlay as Node;
@@ -243,25 +291,12 @@ export macro createStyles(node: Node): Node {
 				if (pv.kind === NodeKind.CallExpr) {
 					error("a style field cannot call a function — a signal read here would be a frozen snapshot, not reactive (put reactive fields on the element: style={{ width: w() }})", pv);
 				}
-				let ptok = "";
-				let ptokText = false;
-				if (pv.kind === NodeKind.MemberExpr) {
-					const pobT = pv.object.nodeType;
-					if (pobT !== null && pobT.kind === NodeKind.TypeGeneric) {
-						const pbase = pobT.typExprBase;
-						if (pbase.kind === NodeKind.Identifier && pbase.name === "Theme") {
-							ptok = pv.property;
-							const pfT = pv.nodeType;
-							if (pfT !== null && pfT.kind === NodeKind.Identifier && pfT.name === "string") { ptokText = true; }
-						}
-					}
-				}
+				const ptok = foldsToText(pv, 0) ? "" : themeToken(pv);
 				let replaced = false;
 				for (let b = 0; b < names.length; b += 1) {
 					if (names[b] === pname) {
 						fields[b] = pv;
-						tokens[b] = ptok;
-						tokenTexts[b] = ptokText;
+						numberTokens[b] = ptok;
 						replaced = true;
 					}
 				}
@@ -269,8 +304,7 @@ export macro createStyles(node: Node): Node {
 					fields.push(pv);
 					names.push(pname);
 					locs.push(ov.keyLocations[j]);
-					tokens.push(ptok);
-					tokenTexts.push(ptokText);
+					numberTokens.push(ptok);
 				}
 			}
 		}
@@ -282,10 +316,21 @@ export macro createStyles(node: Node): Node {
 		// swap rules without a frame of wrong styling).
 		if (emitCss && fields.length > 0 && vGroups.length === 0) {
 			let decls = "";
-			for (let b = 0; b < names.length; b += 1) {
-				decls = decls + cssDecl(names[b], fields[b], tokens[b], tokenTexts[b]);
+			let spelled = true;
+			for (const row of STYLE_TABLE) {
+				for (let b = 0; b < names.length; b += 1) {
+					if (names[b] !== row[0]) { continue; }
+					unfoldable = false;
+					const isText = foldsToText(fields[b], 0);
+					let folded = "";
+					if (numberTokens[b] === "") {
+						folded = isText ? textOf(fields[b], 0) : numberOf(fields[b], 0).toString();
+					}
+					if (unfoldable) { spelled = false; }
+					decls = decls + cssDecl(names[b], row[2], folded, !isText, numberTokens[b]);
+				}
 			}
-			if (decls !== "") {
+			if (spelled && decls !== "") {
 				const readable = readableNames ? sheet.keys[e] + "_" : "";
 				const id = "n_" + readable + hashText(decls).toString();
 				const loc = locs[0];

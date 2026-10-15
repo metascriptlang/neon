@@ -1,5 +1,5 @@
 import { Accessor, Signal, accessor, createSignal, untrack } from "./signal";
-import { createEffect } from "./effect";
+import { createRenderEffect } from "./effect";
 import { onCleanup } from "./cleanup";
 
 export enum ResourceState {
@@ -55,7 +55,7 @@ export function createResource<S, T, E>(source: () => S, fetcher: (source: S) =>
 		});
 	}
 
-	createEffect((): void => {
+	createRenderEffect((): void => {
 		const input = source();
 		untrack((): void => { load(input); });
 	});

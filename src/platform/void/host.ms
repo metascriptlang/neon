@@ -41,7 +41,7 @@ export class VoidNode {
 	ref: NodeRef;
 	parent: VoidNode | null = null;
 	children: VoidNode[] = [];
-	scrolls: boolean = false;
+	scroller: NodeRef | null = null;
 	disposed: boolean = false;
 	laid: Frame | null = null;
 	style: Style | null = null;
@@ -66,6 +66,11 @@ export class VoidNode {
 	}
 }
 
+function childHolder(n: VoidNode): NodeRef {
+	const s = n.scroller;
+	return s !== null ? s as NodeRef : n.ref;
+}
+
 const NO_CHILDREN: VoidNode[] = [];
 
 export function layoutGetChildren(this n: VoidNode): VoidNode[] { return n.isText ? NO_CHILDREN : n.children; }
@@ -76,6 +81,8 @@ export function layoutGetYg(this n: VoidNode): Ptr<YGNode> | null { return n.yg;
 export function layoutSetYg(this n: VoidNode, yg: Ptr<YGNode> | null): void { n.yg = yg; }
 export function layoutSetFrame(this n: VoidNode, x: float32, y: float32, w: float32, h: float32): void {
 	n.ref.setPosition(x, y).setSize(w, h);
+	const s = n.scroller;
+	if (s !== null) { (s as NodeRef).setSize(w, h); }
 }
 
 export interface VoidHost {
@@ -705,8 +712,10 @@ export function createVoidHostWith(scene: Scene2D, font: FontId): VoidHost {
 			if (tag === "textinput") {
 				n = makeField();
 			} else if (tag === "scrollview") {
-				n = new VoidNode(scene.mask(0.0, 0.0));
-				n.scrolls = true;
+				n = new VoidNode(scene.group());
+				const m = scene.mask(0.0, 0.0);
+				n.ref.addChild(m);
+				n.scroller = m;
 				scrollers.push(n);
 			} else {
 				n = new VoidNode(scene.group());
@@ -806,7 +815,7 @@ export function createVoidHostWith(scene: Scene2D, font: FontId): VoidHost {
 				refreshParagraph(paragraphOf(p));
 			} else {
 				if (old !== null) { unadopt(c); } else { drawn(c); }
-				p.ref.addChild(c.ref);
+				childHolder(p).addChild(c.ref);
 				inheritTextPaint(c, p);
 				if (waiting.length > 0) { refreshWaiting(); }
 			}
@@ -835,7 +844,7 @@ export function createVoidHostWith(scene: Scene2D, font: FontId): VoidHost {
 			if (old !== null) { unadopt(n); } else { drawn(n); }
 			if (before === null) {
 				unlink(n, p);
-				p.ref.addChild(n.ref);
+				childHolder(p).addChild(n.ref);
 				n.parent = p;
 				p.children.push(n);
 				inheritTextPaint(n, p);
@@ -847,9 +856,9 @@ export function createVoidHostWith(scene: Scene2D, font: FontId): VoidHost {
 			const r = live(before, "insertBefore");
 			let idx = p.children.indexOf(r);
 			if (idx < 0) { throw new Error("insertBefore: the reference node is not a child of the parent"); }
-			let at = p.ref.getChildIndex(r.ref);
+			let at = childHolder(p).getChildIndex(r.ref);
 			const cur = p.children.indexOf(n);
-			const voidCur = p.ref.getChildIndex(n.ref);
+			const voidCur = childHolder(p).getChildIndex(n.ref);
 			if (cur >= 0) {
 				p.children.splice(cur, 1);
 				if (cur < idx) { idx = idx - 1; }
@@ -857,7 +866,7 @@ export function createVoidHostWith(scene: Scene2D, font: FontId): VoidHost {
 			} else {
 				unlink(n, p);
 			}
-			p.ref.addChildAt(n.ref, at);
+			childHolder(p).addChildAt(n.ref, at);
 			n.parent = p;
 			p.children.splice(idx, 0, n);
 			inheritTextPaint(n, p);
@@ -898,9 +907,10 @@ export function createVoidHostWith(scene: Scene2D, font: FontId): VoidHost {
 		voidArea: null,
 		scrollTo: (node: HostNode, x: number, y: number, animated: boolean): void => {
 			const n = live(node, "scrollTo");
-			if (!n.scrolls) { throw new Error("void host: scrollTo needs a scroll view, and this node is not one"); }
+			const m = n.scroller;
+			if (m === null) { throw new Error("void host: scrollTo needs a scroll view, and this node is not one"); }
 			const was = wasDirty();
-			n.ref.scrollNodeTo(x as float32, y as float32);
+			(m as NodeRef).scrollNodeTo(x as float32, y as float32);
 			woke(was);
 		},
 	};
@@ -1061,7 +1071,7 @@ export function createVoidHostWith(scene: Scene2D, font: FontId): VoidHost {
 				if (f.x + f.w > right) { right = f.x + f.w; }
 				if (f.y + f.h > bottom) { bottom = f.y + f.h; }
 			}
-			n.ref.setScrollBounds({ xMin: 0.0, yMin: 0.0, xMax: right, yMax: bottom });
+			(n.scroller as NodeRef).setScrollBounds({ xMin: 0.0, yMin: 0.0, xMax: right, yMax: bottom });
 		}
 	};
 

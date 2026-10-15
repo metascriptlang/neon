@@ -1,4 +1,4 @@
-import { createEffect } from "../core/effect";
+import { createRenderEffect } from "../core/effect";
 import { onCleanup } from "../core/cleanup";
 import { createRoot } from "../core/owner";
 import { Accessor, Signal, accessor, untrack } from "../core/signal";
@@ -236,7 +236,7 @@ export function listRegion<Item>(
 
 		// The queue is taken before it is applied, not cleared after: an op that raises inside a row
 		// body then leaves the region inconsistent and loud, never re-applied on the next bump.
-		createEffect(() => {
+		createRenderEffect(() => {
 			const items = list.read();
 			const pending = q.ops;
 			const fromReset = q.reset;

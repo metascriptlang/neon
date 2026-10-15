@@ -16,7 +16,7 @@ function document(page: NeonNode): string {
 		"</div><script type=\"module\" src=\"/client.js\"></script></body></html>";
 }
 
-function respond(url: string): SiteResponse {
+export function respond(url: string): SiteResponse {
 	const site = createSite(createRequestRoutingHistory(url));
 	if (!site.ok) {
 		return { status: site.error === RoutingError.NoMatch ? 404 : 400, body: document(<NotFound />) };
@@ -28,7 +28,3 @@ function respond(url: string): SiteResponse {
 		model.dispose();
 	}
 }
-
-extern function serve(respond: (url: string) => SiteResponse): void from "(globalThis.neonSite = #)";
-
-serve(respond);

@@ -147,7 +147,7 @@ macros/ui.*            ~?? ───── macros/ui/element.ms 66 ✓ (mảnh)
                               └── macros/ui/style.ms   6  (stub)
 macros/state.*              ───── KHÔNG có tương đương
 
-platform/browser/*          ───── platform/browser/dom.ms 102 ✓ (1 phần)
+platform/browser/*          ───── platform/browser/dom.jms 102 ✓ (1 phần)
 platform/ios/*              ───── KHÔNG có
 platform/android/*          ───── KHÔNG có
 platform/terminal/*         ───── KHÔNG có
@@ -226,7 +226,7 @@ Tham chiếu: `docs/LANG-METAPROGRAMMING.md` L481-485 của recompiler.
 
 ### `@target("c") / @target("js")` (chưa xong)
 
-`docs/LANG-METAPROGRAMMING.md` L368: PARSED nhưng expansion **chưa xong**. Port `platform/browser/dom.ms` hiện chạy vì code không cần nhánh tĩnh. **Khi port iOS/Android cần `@target` để chọn backend → sẽ kẹt** cho đến khi MetaScript implement Phase F.
+`docs/LANG-METAPROGRAMMING.md` L368: PARSED nhưng expansion **chưa xong**. Port `platform/browser/dom.jms` hiện chạy vì code không cần nhánh tĩnh. **Khi port iOS/Android cần `@target` để chọn backend → sẽ kẹt** cho đến khi MetaScript implement Phase F.
 
 ---
 

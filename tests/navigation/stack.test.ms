@@ -133,7 +133,7 @@ test "navigate pushes with params, the header backs to the screen below with its
 	press(root, "open 7");
 	assert visibleText(root) === "‹ Items|Detail|detail 7 Seven|edit|rename", visibleText(root);
 	assert ref.currentPath() === "Detail" && ref.canGoBack();
-	press(root, "Back");
+	press(root, "Items, back");
 	assert visibleText(root) === "Items|home 2|+|open", "state kept: " + visibleText(root);
 	assert homeBodies === 1, "home mounted once: " + homeBodies.toString();
 }
@@ -203,7 +203,7 @@ test "beforeRemove holds a screen with unsaved changes until its action is dispa
 	const ref = createNavigationContainerRef();
 	const root = mountStack(ref);
 	ref.navigate("Draft");
-	press(root, "Back");
+	press(root, "Items, back");
 	assert ref.currentPath() === "Draft", "the header back was prevented";
 	assert dispatchHardwareBackPress(), "hardware back is consumed while prevented";
 	assert ref.currentPath() === "Draft", ref.currentPath();
@@ -212,6 +212,6 @@ test "beforeRemove holds a screen with unsaved changes until its action is dispa
 	assert ref.currentPath() === "Home", "the dispatched action leaves: " + ref.currentPath();
 	ref.navigate("Draft");
 	press(root, "save draft");
-	press(root, "Back");
+	press(root, "Items, back");
 	assert ref.currentPath() === "Home", "a saved draft leaves at once";
 }

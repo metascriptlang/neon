@@ -32,6 +32,7 @@ export interface Computation {
 	sources: Source[];
 	sourceSlots: number[];
 	pure: boolean;
+	user: boolean;
 	disposed: boolean;
 
 	owned: Computation[];

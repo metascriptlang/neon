@@ -88,7 +88,7 @@ def lane():
     wait_for("Home taps 1")
     tap("Open Void shader")
     wait_for("Item number 2")
-    wait_for("Back")
+    wait_for("Items, back")
     shot("detail", launched)
 
     tap("Edit item")

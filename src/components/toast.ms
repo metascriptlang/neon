@@ -3,7 +3,7 @@
 // is the Android toast: a dark pill near the bottom, so `position` defaults to "bottom".
 
 import { Style, layerStyles } from "../render/style";
-import { createEffect } from "../core/effect";
+import { createRenderEffect } from "../core/effect";
 import { onCleanup } from "../core/cleanup";
 import { Accessor, accessor, createSignal } from "../core/signal";
 import { element } from "../macros/ui/element";
@@ -51,11 +51,7 @@ const TOAST_NONE: ToastShown = {
 	autoHide: false,
 };
 
-// Indexed, not destructured: module-scope destructuring temps collide in a JS bundle (compiler
-// card 2026-10-08-js-bundle-module-scope-destructuring-temps-collide.md, WORKAROUND.md W6).
-const shownSignal = createSignal<ToastShown | null>(null);
-const shown = shownSignal[0];
-const setShown = shownSignal[1];
+const [shown, setShown] = createSignal<ToastShown | null>(null);
 
 function showToast(options: ToastOptions): void {
 	const {
@@ -154,7 +150,7 @@ export function ToastHost(props: ToastHostProps): NeonNode {
 		</View>
 	</Show>);
 	return (host: Host, parent: HostNode, before: HostNode | null): void => {
-		createEffect((): void => {
+		createRenderEffect((): void => {
 			const t = shown();
 			if (t === null || !(t as ToastShown).autoHide) { return; }
 			const id = setTimeout((): void => {

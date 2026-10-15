@@ -3,7 +3,7 @@
 // here are the same thing written by hand, for a tag, an attr list or an event
 // list only known at runtime (src/components/primitives.ms).
 
-import { createEffect } from "../core/effect";
+import { createRenderEffect } from "../core/effect";
 import { Style } from "./style";
 import { NeonEvent } from "./event";
 import { Host, HostNode, NeonNode, RefFn } from "./hostTypes";
@@ -101,7 +101,7 @@ export function regionNode(fn: RegionFn): NeonNode {
 		const anchor = regionAnchor(host, parent, before);
 		let current: Row[] = [];
 		const rows = fn(host);
-		createEffect(() => {
+		createRenderEffect(() => {
 			const next = rows();
 			reconcileArrays(host, parent, current, next, anchor);
 			current = next.slice(0, next.length);

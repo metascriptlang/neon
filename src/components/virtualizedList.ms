@@ -1,5 +1,5 @@
 import { Accessor, Signal, accessor, createSignal, batch, untrack } from "../core/signal";
-import { createEffect } from "../core/effect";
+import { createRenderEffect } from "../core/effect";
 import { onCleanup } from "../core/cleanup";
 import { createRoot, runWithOwner } from "../core/owner";
 import { getOwner } from "../core/runtime";
@@ -358,7 +358,7 @@ export function listEngine<T, D>(props: {
 		return out;
 	};
 	if (columnsProp !== null || columnWrapperStyle !== null) {
-		createEffect((): void => {
+		createRenderEffect((): void => {
 			const next = columnsNow();
 			const horizontalNow = isHorizontal();
 			untrack((): void => {
@@ -605,7 +605,7 @@ export function listEngine<T, D>(props: {
 		let shown: T[] = [];
 		let current: Row[] = [];
 		const alive = (item: T, row: Row): boolean => gridItems.has(item) && (gridItems.get(item) as GridItem).row === row;
-		createEffect((): void => {
+		createRenderEffect((): void => {
 			const next = members();
 			untrack((): void => {
 				const rows: Row[] = [];
@@ -879,7 +879,7 @@ export function listEngine<T, D>(props: {
 
 	let seenCount: int32 = -1;
 	if (sticky !== null) {
-		createEffect((): void => {
+		createRenderEffect((): void => {
 			const next = (props.stickyHeaderIndices as Accessor<int32[]>)();
 			untrack((): void => {
 				for (const index of next) { if (index < 0) { throw `${who}: stickyHeaderIndices must be non-negative`; } }
@@ -891,7 +891,7 @@ export function listEngine<T, D>(props: {
 			});
 		});
 	}
-	createEffect((): void => {
+	createRenderEffect((): void => {
 		const next = data();
 		untrack((): void => {
 			current = next;

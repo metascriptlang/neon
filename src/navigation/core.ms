@@ -1,5 +1,5 @@
-import { Accessor, Setter, accessor, batch, createSignal, untrack } from "../core/signal";
-import { createEffect } from "../core/effect";
+import { Accessor, Setter, Signal, accessor, batch, createSignal, untrack } from "../core/signal";
+import { createRenderEffect } from "../core/effect";
 import { createRoot } from "../core/owner";
 import { onCleanup } from "../core/cleanup";
 import { NeonNode } from "../render/hostTypes";
@@ -61,45 +61,6 @@ export interface ScreenOptions {
 	unmountOnBlur?: boolean | null;
 }
 
-export interface ScreenOptionsOf<P> extends ScreenOptions {}
-
-export function plainOptions<P>(o: ScreenOptionsOf<P>): ScreenOptions {
-	return {
-		title: o.title,
-		presentation: o.presentation,
-		animation: o.animation,
-		animationDuration: o.animationDuration,
-		gestureEnabled: o.gestureEnabled,
-		swipeEnabled: o.swipeEnabled,
-		headerTitleAlign: o.headerTitleAlign,
-		headerShown: o.headerShown,
-		headerTitle: o.headerTitle,
-		headerBackTitle: o.headerBackTitle,
-		headerTintColor: o.headerTintColor,
-		headerStyle: o.headerStyle,
-		headerLeft: o.headerLeft,
-		headerRight: o.headerRight,
-		tabBarLabel: o.tabBarLabel,
-		tabBarBadge: o.tabBarBadge,
-		tabBarIcon: o.tabBarIcon,
-		tabBarActiveTintColor: o.tabBarActiveTintColor,
-		tabBarInactiveTintColor: o.tabBarInactiveTintColor,
-		tabBarAccessibilityLabel: o.tabBarAccessibilityLabel,
-		drawerLabel: o.drawerLabel,
-		drawerActiveTintColor: o.drawerActiveTintColor,
-		lazy: o.lazy,
-		unmountOnBlur: o.unmountOnBlur,
-	};
-}
-
-export function optionsAccessor<P>(
-	declared: Accessor<ScreenOptionsOf<P>> | null,
-): Accessor<ScreenOptions> | null {
-	if (declared === null) { return null; }
-	const read = declared as Accessor<ScreenOptionsOf<P>>;
-	return accessor((): ScreenOptions => plainOptions<P>(read()));
-}
-
 export function mergeOptions(base: ScreenOptions, over: ScreenOptions): ScreenOptions {
 	return {
 		title: over.title !== null ? over.title : base.title,
@@ -156,10 +117,17 @@ export interface RouteKey {
 	name: string;
 }
 
+export interface NavigationRoute {
+	key: string;
+	name: string;
+	params: Map<string, string> | null;
+	state: NavigationState | null;
+}
+
 export interface NavigationState {
 	index: int32;
 	routeNames: string[];
-	routes: RouteKey[];
+	routes: NavigationRoute[];
 }
 
 export interface NavigatorLink {
@@ -174,6 +142,7 @@ export interface NavigatorLink {
 	drawerAction: (action: DrawerAction) => boolean;
 	isFocused: Accessor<boolean>;
 	register: (routeKey: string, child: NavigatorLink) => NavTarget | null;
+	seedFor: (routeKey: string) => NavigationState | null;
 	unregister: (routeKey: string, child: NavigatorLink) => void;
 	focusedChild: () => NavigatorLink | null;
 	focusedRoute: () => RouteKey | null;
@@ -283,12 +252,18 @@ export interface ScreenProps<P> {
 	route: Route<P>;
 }
 
+export function readRegistrationKey(read: Accessor<string> | null): string {
+	return read === null ? "[]" : (read as Accessor<string>)();
+}
+
 export class ScreenConfig<P> {
+	navigationKey: Accessor<string> | null = null;
 	name: string;
 	component: (props: ScreenProps<P>) => NeonNode;
 	options: Accessor<ScreenOptions> | null;
 	initialParams: P | null;
 	parseParams: ((values: Map<string, string>) => P) | null;
+	stringifyParams: ((params: P) => Map<string, string>) | null = null;
 
 	constructor(
 		name: string,
@@ -381,12 +356,19 @@ interface PendingEntry {
 	target: NavTarget;
 }
 
+interface SeedEntry {
+	routeKey: string;
+	state: NavigationState;
+}
+
 interface StateListener {
 	id: int32;
 	handler: () => void;
 }
 
 export class Navigation<P> {
+	registrationKey: string;
+	revision: Signal<int32> = new Signal<int32>(0);
 	core: NavigatorCore<P>;
 	route: Route<P>;
 	config: ScreenConfig<P>;
@@ -410,6 +392,7 @@ export class Navigation<P> {
 		markVisited: Setter<boolean>,
 	) {
 		this.core = core;
+		this.registrationKey = readRegistrationKey(config.navigationKey);
 		this.route = route;
 		this.config = config;
 		this.writeParams = writeParams;
@@ -458,6 +441,7 @@ export class Navigation<P> {
 	}
 
 	options(): ScreenOptions {
+		this.revision.get();
 		const core = this.core;
 		const declared = this.config.options;
 		const base = declared === null
@@ -546,7 +530,7 @@ export class Navigation<P> {
 		return createRoot((dispose: () => void): Unsubscribe => {
 			let first = true;
 			let last = false;
-			createEffect((): void => {
+			createRenderEffect((): void => {
 				const now = this.focusedNow();
 				if (first) {
 					first = false;
@@ -668,6 +652,7 @@ export class NavigatorCore<P> {
 	link: NavigatorLink | null = null;
 	children: ChildEntry[] = [];
 	pending: PendingEntry[] = [];
+	seeds: SeedEntry[] = [];
 	history: string[] = [];
 	listeners: StateListener[] = [];
 	nextKey: int32 = 1;
@@ -725,6 +710,74 @@ export class NavigatorCore<P> {
 
 	hasRoute(name: string): boolean {
 		return this.config(name) !== null;
+	}
+
+	reconfigure(screens: ScreenConfig<P>[]): void {
+		if (screens.length === 0) {
+			throw new Error("a navigator needs at least one Screen after a conditional update");
+		}
+		const previous = this.snapshot();
+		let unchanged = screens.length === this.screens.length;
+		for (let i = 0; i < screens.length && unchanged; i += 1) {
+			if (screens[i] !== this.screens[i]) { unchanged = false; }
+		}
+		for (const entry of previous) {
+			if (entry.registrationKey !== readRegistrationKey(entry.config.navigationKey)) {
+				unchanged = false;
+			}
+		}
+		if (unchanged) { return; }
+		const focused = this.current();
+		this.screens = screens;
+		const kept: Navigation<P>[] = [];
+		for (const entry of previous) {
+			const config = this.config(entry.route.name);
+			if (config !== null && entry.registrationKey === readRegistrationKey(config.navigationKey)) {
+				entry.config = config as ScreenConfig<P>;
+				entry.revision.set(entry.revision.peek() + 1);
+				kept.push(entry);
+			} else { entry.progress.stopAnimation(); }
+		}
+		let list = kept;
+		let at: int32 = 0;
+		if (this.isStack()) {
+			if (list.length === 0) {
+				const name = this.hasRoute(this.initialName) ? this.initialName : screens[0].name;
+				list.push(this.makeEntry(name, null));
+			}
+			at = Math.min(untrack((): int32 => this.index()), list.length - 1) as int32;
+		} else {
+			list = [];
+			for (const config of screens) {
+				let found: Navigation<P> | null = null;
+				for (const entry of kept) {
+					if (entry.route.name === config.name) { found = entry; }
+				}
+				list.push(found === null ? this.makeEntry(config.name, null) : found as Navigation<P>);
+			}
+			if (focused !== null) {
+				for (let i = 0; i < list.length; i += 1) {
+					if (list[i].route.name === (focused as Navigation<P>).route.name) { at = i as int32; }
+				}
+			}
+		}
+		const history: string[] = [];
+		for (const key of this.history) {
+			for (const entry of list) {
+				if (entry.route.key === key) { history.push(key); }
+			}
+		}
+		if (history.length === 0) { history.push(list[at].route.key); }
+		this.history = history;
+		for (const entry of untrack((): Navigation<P>[] => this.closing())) { entry.progress.stopAnimation(); }
+		batch((): void => {
+			this.writeClosing([]);
+			this.writeEntries(list);
+			this.writeIndex(at);
+			list[at].markVisited(true);
+		});
+		this.notify();
+		this.container.changed();
 	}
 
 	routeNames(): string[] {
@@ -1233,6 +1286,48 @@ export class NavigatorCore<P> {
 		return null;
 	}
 
+	seedFor(routeKey: string): NavigationState | null {
+		for (let i = 0; i < this.seeds.length; i += 1) {
+			if (this.seeds[i].routeKey === routeKey) {
+				const state = this.seeds[i].state;
+				this.seeds.splice(i, 1);
+				return state;
+			}
+		}
+		return null;
+	}
+
+	restore(state: NavigationState): void {
+		const routes: ResetRoute<P>[] = [];
+		for (const route of state.routes) {
+			const screen = this.config(route.name);
+			if (screen === null) {
+				throw new Error("initialState: no screen named '" + route.name + "'");
+			}
+			const parse = (screen as ScreenConfig<P>).parseParams;
+			const values = route.params;
+			let params: P | null = null;
+			if (values !== null) {
+				if (parse === null) {
+					throw new Error("initialState: screen '" + route.name + "' has params but no parseParams");
+				}
+				params = (parse as (values: Map<string, string>) => P)(values as Map<string, string>);
+			}
+			routes.push({ name: route.name, params });
+		}
+		const index: int32 | null = state.index;
+		this.resetTo({ index, routes });
+		const list = this.snapshot();
+		for (let i = 0; i < state.routes.length; i += 1) {
+			const child = state.routes[i].state;
+			if (child === null) { continue; }
+			for (let j = 0; j < list.length; j += 1) {
+				const same = this.isStack() ? i === j : list[j].route.name === state.routes[i].name;
+				if (same) { this.seeds.push({ routeKey: list[j].route.key, state: child as NavigationState }); }
+			}
+		}
+	}
+
 	unregister(routeKey: string, child: NavigatorLink): void {
 		for (let i = 0; i < this.children.length; i += 1) {
 			if (this.children[i].routeKey === routeKey && this.children[i].link === child) {
@@ -1266,11 +1361,23 @@ export class NavigatorCore<P> {
 	}
 
 	trackedState(): NavigationState {
-		const routes: RouteKey[] = [];
+		const routes: NavigationRoute[] = [];
 		for (const entry of this.entries()) {
-			routes.push({ key: entry.route.key, name: entry.route.name });
+			const key = entry.route.key;
+			let child: NavigationState | null = null;
+			for (const each of this.children) {
+				if (each.routeKey === key) { child = each.link.state(); }
+			}
+			routes.push({ key, name: entry.route.name, params: this.encodeParams(entry), state: child });
 		}
 		return { index: this.index(), routeNames: this.routeNames(), routes };
+	}
+
+	encodeParams(entry: Navigation<P>): Map<string, string> | null {
+		const write = entry.config.stringifyParams;
+		const params = entry.route.params();
+		if (write === null || params === null) { return null; }
+		return (write as (params: P) => Map<string, string>)(params as P);
 	}
 
 	describe(): string {
@@ -1305,6 +1412,7 @@ export function linkOf<P>(core: NavigatorCore<P>): NavigatorLink {
 		register: (routeKey: string, child: NavigatorLink): NavTarget | null => {
 			return core.register(routeKey, child);
 		},
+		seedFor: (routeKey: string): NavigationState | null => core.seedFor(routeKey),
 		unregister: (routeKey: string, child: NavigatorLink): void => {
 			core.unregister(routeKey, child);
 		},
@@ -1362,7 +1470,9 @@ export function createCore<P>(setup: NavigatorSetup<P>): NavigatorCore<P> {
 		setup.scope,
 	);
 	const link = linkOf<P>(core);
-	core.start(setup.initialParams);
+	const scope = setup.scope;
+	const seed = scope.link.seedFor(scope.routeKey);
+	if (seed === null) { core.start(setup.initialParams); } else { core.restore(seed as NavigationState); }
 	when (refresh || hcr) {
 		refreshKeep<ResetState<P>>(
 			"navigator",
@@ -1370,7 +1480,6 @@ export function createCore<P>(setup: NavigatorSetup<P>): NavigatorCore<P> {
 			(kept: ResetState<P>): void => { core.resumeRoutes(kept); },
 		);
 	}
-	const scope = setup.scope;
 	const waiting = scope.link.register(scope.routeKey, link);
 	onCleanup((): void => { scope.link.unregister(scope.routeKey, link); });
 	if (waiting !== null) { core.navigateTo(waiting as NavTarget); }
@@ -1412,7 +1521,7 @@ export function useFocusEffect(effect: () => (() => void) | null): void {
 		cleanup = null;
 		if (done !== null) { (done as () => void)(); }
 	};
-	createEffect((): void => {
+	createRenderEffect((): void => {
 		if (focused()) {
 			untrack((): void => { cleanup = effect(); });
 		} else {

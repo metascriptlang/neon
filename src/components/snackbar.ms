@@ -3,7 +3,7 @@
 
 import { NeonEvent } from "../render/event";
 import { Style, layerStyles } from "../render/style";
-import { createEffect } from "../core/effect";
+import { createRenderEffect } from "../core/effect";
 import { onCleanup } from "../core/cleanup";
 import { Accessor, accessor } from "../core/signal";
 import { element } from "../macros/ui/element";
@@ -66,7 +66,7 @@ export function autoDismiss(
 	duration: () => int32,
 	onDismiss: (() => void) | null,
 ): void {
-	createEffect((): void => {
+	createRenderEffect((): void => {
 		if (!visible() || onDismiss === null) { return; }
 		const id = setTimeout((): void => { (onDismiss as () => void)(); }, duration()) as int32;
 		onCleanup((): void => { clearTimeout(id); });

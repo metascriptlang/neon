@@ -24,7 +24,7 @@ Workspace rules (toolchain, compiler boundary, arcs and cards, code style) are i
 - `src/render/` — renderer-agnostic: `hostTypes.ms` (the `Host` contract and `NeonNode`), `node.ms` (hand-written builders), `bind.ms` (one effect per dynamic spot), `reconcile.ms`, `component.ms`, `context.ms`, `template.ms`, `style.ms` / `css.ms` / `sheet.ms`, `ssr.ms`, `host.ms` (render + the mock host).
 - `src/macros/ui/` — `element.ms` (JSX → NeonNode), `flow.ms` (`Show` / `For`), `reactive.ms`, `style.ms` (`createStyles`), `theme.ms`. `src/converters.ms` is the JSX converter every consumer names in `globalImports`.
 - `src/components/primitives.ms` — `View`, `Text`, `TextInput`, `Pressable`.
-- `src/platform/` — `browser/dom.ms` (JS), `terminal/`, `void/host.ms` (Void scene graph + yoga). `deps/yoga` is a symlink into `~/metascript/yoga`. iOS and Android hosts are not written; nothing in the compiler blocks them.
+- `src/platform/` — `browser/dom.jms` (JS), `terminal/`, `void/host.ms` (Void scene graph + yoga). `deps/yoga` is a symlink into `~/metascript/yoga`. iOS and Android hosts are not written; nothing in the compiler blocks them.
 - `tests/` mirrors `src/`: `core/`, `render/`, `style/`, `platform/`, plus `macros/` (programs the checker must reject), `apps/`, and `browser/` (real Chrome).
 
 Platform and backend are `when` blocks: `when (macos) { @passL("-framework Metal"); }`, `when (js) { … }`. A branch not taken is never type-checked, so it may call APIs the other target lacks. One backend-agnostic extern surface with the directives gated around it is the shape to copy (`~/metascript/void/src/sokol/gpu.ms`). Flags: `msc --help-defines`.

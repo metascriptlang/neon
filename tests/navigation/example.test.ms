@@ -29,7 +29,7 @@ test "the navigation example walks list, detail, edit, tabs, drawer and a deep l
 	press(root, "Save");
 	assert navigationRef.currentPath() === "Main>Home>Detail", navigationRef.currentPath();
 	assert visibleText(root).indexOf("Void renderer|Item number 2") >= 0, visibleText(root);
-	press(root, "Back");
+	press(root, "Items, back");
 	assert visibleText(root).indexOf("Home taps 1") >= 0, "list state kept: " + visibleText(root);
 	assert visibleText(root).indexOf("Void renderer") >= 0, visibleText(root);
 
