@@ -94,25 +94,31 @@ export function cleanNode(node: Computation, dispose: boolean): void {
 	for (let i = node.owned.length - 1; i >= 0; i -= 1) {
 		cleanNode(node.owned[i], true);
 	}
-	node.owned = [];
+	if (node.owned.length > 0) { node.owned = []; }
 	node.childCount = 0;
 
-	for (let i = 0; i < node.sources.length; i += 1) {
-		removeObserver(node.sources[i], node.sourceSlots[i]);
+	if (node.sources.length > 0) {
+		for (let i = 0; i < node.sources.length; i += 1) {
+			removeObserver(node.sources[i], node.sourceSlots[i]);
+		}
+		node.sources = [];
+		node.sourceSlots = [];
 	}
-	node.sources = [];
-	node.sourceSlots = [];
 
-	for (let i = 0; i < node.observers.length; i += 1) {
-		removeSourceFromObserver(node.observers[i], node.observerSlots[i]);
+	if (node.observers.length > 0) {
+		for (let i = 0; i < node.observers.length; i += 1) {
+			removeSourceFromObserver(node.observers[i], node.observerSlots[i]);
+		}
+		node.observers = [];
+		node.observerSlots = [];
 	}
-	node.observers = [];
-	node.observerSlots = [];
 
-	for (let i = node.cleanups.length - 1; i >= 0; i -= 1) {
-		node.cleanups[i]();
+	if (node.cleanups.length > 0) {
+		for (let i = node.cleanups.length - 1; i >= 0; i -= 1) {
+			node.cleanups[i]();
+		}
+		node.cleanups = [];
 	}
-	node.cleanups = [];
 }
 
 function formatId(prefix: string, index: number): string {
