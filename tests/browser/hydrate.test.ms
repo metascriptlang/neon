@@ -1,16 +1,20 @@
-import { renderToMarkup } from "../../src/render/ssr";
 import { render, hydrate } from "../../src/render/host";
 import { Host, HostNode, NeonNode } from "../../src/render/hostTypes";
 import { NeonEvent } from "../../src/render/event";
-import { View, Text, Pressable, ScrollView, TextInput } from "../../src/components/primitives";
-import { Switch } from "../../src/components/switch";
-import { ActivityIndicator } from "../../src/components/activityIndicator";
-import { createStyles, styleOf } from "../../src/macros/ui/style";
+import { View } from "../../src/components/primitives";
 import { createSignal, Accessor } from "../../src/core/signal";
 
 when (js) {
 	import { domHost } from "../../src/platform/browser/dom";
-	const styles = createStyles({ box: { padding: 8 }, label: { color: "#334" } });
+	import {
+		clampedApp,
+		docs,
+		plainTextareaApp,
+		scrollApp,
+		servedPart,
+		switchApp,
+		textareaApp,
+	} from "./servedApps";
 
 	extern class Page {
 		textContent: string;
@@ -33,25 +37,6 @@ when (js) {
 	extern function shape(root: Page): string from
 		"(r => { const f=n=>n.nodeType===1?[n.localName,Array.from(n.attributes,a=>[a.name,a.name==='class'?a.value.split(/\\s+/).sort().join(' '):a.value]).sort((a,b)=>a[0].localeCompare(b[0])),n.id==='mech'?[]:Array.from(n.childNodes,f)]:n.nodeType===3?n.data:'comment '+n.data;return JSON.stringify(Array.from(r.childNodes,f)); })(#)";
 
-	function docs(
-		name: Accessor<string>,
-		blank: Accessor<string>,
-		open: Accessor<boolean>,
-		rows: Accessor<string[]>,
-		press: (e: NeonEvent) => void,
-		mech: (n: HostNode) => void,
-	): NeonNode {
-		return <View accessibilityLabel="Docs" style={styles.box}>
-			<Text style={styles.label}>Hi {name()}</Text>
-			<Text>{blank()}</Text>
-			<Pressable accessibilityLabel="Copy" onPress={press}><Text>copy</Text></Pressable>
-			<Show when={open()}><p id="shown">shown</p></Show>
-			<For each={rows()}>{(row: string, i: Accessor<number>): NeonNode => <span class="row">{row}</span>}</For>
-			<canvas id="mech" ref={mech}></canvas>
-			<a href="/docs" title={name()}>docs &amp; more</a>
-		</View>;
-	}
-
 	function freshShape(name: string, open: boolean, rows: string[]): string {
 		const [n, _n] = createSignal(name);
 		const [b, _b] = createSignal("");
@@ -66,11 +51,7 @@ when (js) {
 	}
 
 	test "hydrate attaches a tree to a parsed page without creating an element" {
-		const [n, _n] = createSignal("Ann");
-		const [b, _b] = createSignal("");
-		const [o, _o] = createSignal(true);
-		const [r, _r] = createSignal<string[]>(["a", "b", "c"]);
-		const sent = renderToMarkup(docs(n, b, o, r, (e: NeonEvent): void => {}, (node: HostNode): void => {})).html;
+		const sent = servedPart("docs", "html");
 		assert sent.indexOf("<!---->") >= 0 && sent.indexOf("<!--!-->") >= 0, sent;
 
 		const mount = parsedPage(sent);
@@ -137,13 +118,8 @@ when (js) {
 
 	test "hydrate takes over a served ScrollView and leaves it scrollable" {
 		let scrolls = 0;
-		const app: NeonNode = <View>
-			<ScrollView horizontal={true} showsHorizontalScrollIndicator={false}
-				onScroll={(e: NeonEvent): void => { scrolls += 1; }}>
-				<Text>row</Text>
-			</ScrollView>
-		</View>;
-		const mount = parsedPage(renderToMarkup(app).html);
+		const app: NeonNode = scrollApp((e: NeonEvent): void => { scrolls += 1; });
+		const mount = parsedPage(servedPart("scroll", "html"));
 		let made = 0;
 		const host: Host = domHost();
 		const create = host.createElement;
@@ -159,8 +135,8 @@ when (js) {
 	}
 
 	test "hydrate takes over a clamped Text without an attribute left behind" {
-		const app: NeonNode = <View><Text numberOfLines={3}>long</Text></View>;
-		const mount = parsedPage(renderToMarkup(app).html);
+		const app: NeonNode = clampedApp();
+		const mount = parsedPage(servedPart("clamped", "html"));
 		const dispose = hydrate(app, domHost(), mount as unknown as HostNode);
 		try {
 			assert notServed(mount) === 0, notServed(mount).toString() + " elements are not the page's own";
@@ -171,11 +147,8 @@ when (js) {
 	test "hydrate takes over a served Switch and ActivityIndicator" {
 		const [on, setOn] = createSignal(true);
 		let changes = "";
-		const app: NeonNode = <View>
-			<Switch value={on()} onValueChange={(v: boolean): void => { changes = changes + v.toString(); }} />
-			<ActivityIndicator animating={on()} color="#c00" />
-		</View>;
-		const mount = parsedPage(renderToMarkup(app).html);
+		const app: NeonNode = switchApp(on, (v: boolean): void => { changes = changes + v.toString(); });
+		const mount = parsedPage(servedPart("switch", "html"));
 		let made = 0;
 		const host: Host = domHost();
 		const create = host.createElement;
@@ -195,10 +168,8 @@ when (js) {
 
 	test "hydrate takes over a served multiline TextInput and keeps what was typed before it" {
 		let heard = "";
-		const app: NeonNode = <View>
-			<TextInput multiline={true} defaultValue="note" onChangeText={(t: string): void => { heard = t; }} />
-		</View>;
-		const mount = parsedPage(renderToMarkup(app).html);
+		const app: NeonNode = textareaApp((t: string): void => { heard = t; });
+		const mount = parsedPage(servedPart("textarea", "html"));
 		const field = pageNode(mount, "textarea");
 		assert fieldValue(field) === "note", "the served textarea shows its default: " + fieldValue(field);
 		typeInto(field, "typed early");
@@ -217,8 +188,8 @@ when (js) {
 	}
 
 	test "hydrate leaves a served multiline TextInput shaped like a fresh render" {
-		const app: NeonNode = <View><TextInput multiline={true} defaultValue="note" /></View>;
-		const mount = parsedPage(renderToMarkup(app).html);
+		const app: NeonNode = plainTextareaApp();
+		const mount = parsedPage(servedPart("plainTextarea", "html"));
 		const dispose = hydrate(app, domHost(), mount as unknown as HostNode);
 		try {
 			assert shape(mount) === rendered(app), shape(mount) + " vs " + rendered(app);

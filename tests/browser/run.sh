@@ -6,6 +6,9 @@
 # beside the test file where the compiler cannot prefix the entry with that root, and then
 # runs it under node, where `document` does not exist; that run is expected to fail and
 # its status is discarded. The artifacts it leaves are what Chrome loads.
+# A page the server wrote is rendered once per run by a -d:server build of
+# tests/browser/serveApps.ms, which the test pages read as globalThis.neonServed: the
+# client build holds no server renderer.
 # Setup once per checkout: npm install --prefix tests/browser
 set -e
 cd "$(dirname "$0")/../.."
@@ -33,6 +36,12 @@ while [ ! -s "$portfile" ]; do
 done
 PORT=$(head -1 "$portfile")
 
+mkdir -p tests/browser/out
+"$MSC" build --target=js -d:server tests/browser/serveApps.ms --output=tests/browser/out/serveApps.js >/dev/null 2>&1 ||
+	{ echo "the server pages did not build; run: $MSC build --target=js -d:server tests/browser/serveApps.ms" >&2; exit 2; }
+node tests/browser/out/serveApps.js > tests/browser/out/neon-served.json ||
+	{ echo "the server pages did not render; run: node tests/browser/out/serveApps.js" >&2; exit 2; }
+
 fail=0
 for f in $files; do
 	echo "== browser $f"
@@ -50,6 +59,7 @@ for f in $files; do
 		continue
 	fi
 	cp tests/browser/page.html "$out/neon-test.html"
+	cp tests/browser/out/neon-served.json "$out/neon-served.json"
 	node tests/browser/runner.mjs "$PW" "$PORT" "$f" "$out/neon-test.html" || fail=1
 done
 exit $fail
