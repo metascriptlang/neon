@@ -6,7 +6,6 @@ import { Host, HostNode } from "../render/hostTypes";
 import { NeonNode, VAttr, VEvent, hostElement, evt, dynAttr } from "../render/node";
 import { AccessibilityProps, accessibilityAttrs } from "./primitives";
 import { Permissions, PermissionResponse } from "../api/permissions";
-import { TextSlot } from "../api/replySlot";
 
 export type CameraType = "back" | "front";
 export type FlashMode = "off" | "on" | "auto";
@@ -43,7 +42,7 @@ export interface CameraViewProps extends AccessibilityProps {
 
 interface PendingPicture {
 	id: int32;
-	slot: TextSlot;
+	resolve: (reply: string) => void;
 }
 
 const FIELD = "\x1f";
@@ -69,7 +68,7 @@ class CameraSlot {
 			if (this.pictures[i].id === id) {
 				const pending = this.pictures[i];
 				this.pictures.splice(i, 1);
-				pending.slot.settle(cut < 0 ? "" : value.substring(cut + 1, value.length));
+				pending.resolve(cut < 0 ? "" : value.substring(cut + 1, value.length));
 				return;
 			}
 		}
@@ -79,7 +78,7 @@ class CameraSlot {
 		this.mounted = false;
 		const pending = this.pictures.slice(0, this.pictures.length);
 		this.pictures.splice(0, this.pictures.length);
-		for (const picture of pending) { picture.slot.settle("error" + FIELD + "the CameraView was unmounted before the picture was taken"); }
+		for (const picture of pending) { picture.resolve("error" + FIELD + "the CameraView was unmounted before the picture was taken"); }
 	}
 }
 
@@ -112,10 +111,10 @@ export class CameraViewHandle {
 		}
 		const id = nextPicture;
 		nextPicture += 1;
-		const slot = new TextSlot();
-		this.slot.command("takePicture", id.toString() + FIELD + quality.toString() + FIELD + ((options.base64 ?? false) ? "1" : "0"));
-		this.slot.pictures.push({ id, slot });
-		const reply = await slot.wait();
+		const reply = await new Promise<string>((resolve) => {
+			this.slot.command("takePicture", id.toString() + FIELD + quality.toString() + FIELD + ((options.base64 ?? false) ? "1" : "0"));
+			this.slot.pictures.push({ id, resolve });
+		});
 		const picture = decodePicture(reply);
 		return picture;
 	}

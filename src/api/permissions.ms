@@ -1,6 +1,5 @@
 import { PermissionReply, appServices } from "./services";
 import { Alert, AlertButton } from "./alert";
-import { TextSlot } from "./replySlot";
 
 export type PermissionStatus = "granted" | "denied" | "undetermined";
 export type PermissionName = "camera" | "microphone" | "location" | "notifications";
@@ -106,15 +105,15 @@ export interface AndroidPermissionResults {
 const NO_RATIONALE: Rationale = { title: "", message: "" };
 
 async function showRationale(rationale: Rationale): Promise<void> {
-	const shown = new TextSlot();
-	const buttons: AlertButton[] = [];
-	const neutral = rationale.buttonNeutral ?? "";
-	const negative = rationale.buttonNegative ?? "";
-	if (neutral !== "") { buttons.push({ text: neutral, onPress: (): void => { shown.settle("neutral"); } }); }
-	if (negative !== "") { buttons.push({ text: negative, onPress: (): void => { shown.settle("negative"); } }); }
-	buttons.push({ text: rationale.buttonPositive ?? "OK", onPress: (): void => { shown.settle("positive"); } });
-	Alert.alert(rationale.title, rationale.message, buttons, { onDismiss: (): void => { shown.settle("dismissed"); } });
-	await shown.wait();
+	await new Promise<void>((resolve) => {
+		const buttons: AlertButton[] = [];
+		const neutral = rationale.buttonNeutral ?? "";
+		const negative = rationale.buttonNegative ?? "";
+		if (neutral !== "") { buttons.push({ text: neutral, onPress: (): void => { resolve(); } }); }
+		if (negative !== "") { buttons.push({ text: negative, onPress: (): void => { resolve(); } }); }
+		buttons.push({ text: rationale.buttonPositive ?? "OK", onPress: (): void => { resolve(); } });
+		Alert.alert(rationale.title, rationale.message, buttons, { onDismiss: (): void => { resolve(); } });
+	});
 }
 
 export class PermissionsAndroid {

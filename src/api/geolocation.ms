@@ -1,6 +1,5 @@
 import { LocationFix, LocationRequest, appServices } from "./services";
 import { Permissions, PermissionResponse } from "./permissions";
-import { sleepAsync } from "std/core/promise";
 
 export interface GeolocationCoordinates {
 	latitude: number;
@@ -266,23 +265,6 @@ function expoRequest(options: LocationOptions, watching: boolean): LocationReque
 	};
 }
 
-// Polls a slot instead of settling a `new Promise` (WORKAROUND P2).
-class FixSlot {
-	settled: boolean = false;
-	fix: LocationFix = deniedFix();
-
-	settle(fix: LocationFix): void {
-		if (this.settled) { return; }
-		this.fix = fix;
-		this.settled = true;
-	}
-
-	async wait(): Promise<LocationFix> {
-		while (!this.settled) { await sleepAsync(16); }
-		return this.fix;
-	}
-}
-
 function objectOrThrow(fix: LocationFix): LocationObject {
 	if (fix.code !== 0) { throw new Error(fix.message); }
 	return locationObject(fix);
@@ -298,16 +280,16 @@ export class Location {
 	}
 
 	static async getCurrentPositionAsync(options: LocationOptions = {}): Promise<LocationObject> {
-		const slot = new FixSlot();
-		if (!(await authorized())) {
-			slot.settle(deniedFix());
-		} else {
-			appServices("Location.getCurrentPositionAsync").locationCurrent(expoRequest(options, false), (fix: LocationFix): void => {
-				slot.settle(fix);
+		let fix = deniedFix();
+		if (await authorized()) {
+			fix = await new Promise<LocationFix>((resolve) => {
+				appServices("Location.getCurrentPositionAsync").locationCurrent(expoRequest(options, false), (current: LocationFix): void => {
+					resolve(current);
+				});
 			});
 		}
-		const position = objectOrThrow(await slot.wait());
-		return position;
+		const location = objectOrThrow(fix);
+		return location;
 	}
 
 	static async watchPositionAsync(

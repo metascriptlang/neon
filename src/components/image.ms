@@ -4,7 +4,6 @@ import { Accessor, accessor, createSignal, untrack } from "../core/signal";
 import { NeonNode, VAttr, VEvent, RefFn, hostElement, evt, dynAttr } from "../render/node";
 import { AccessibilityProps, accessibilityAttrs } from "./primitives";
 import { appServices } from "../api/services";
-import { sleepAsync } from "std/core/promise";
 
 export interface ImageSource {
 	uri: string;
@@ -26,23 +25,6 @@ export interface ImageProps extends AccessibilityProps {
 	onLayout?: ((e: NeonEvent) => void) | null;
 }
 
-// Polls like Share.share (WORKAROUND.md P2): `new Promise(executor)` does not lower.
-class PrefetchSlot {
-	settled: boolean = false;
-	ok: boolean = false;
-
-	settle(ok: boolean): void {
-		if (this.settled) { return; }
-		this.ok = ok;
-		this.settled = true;
-	}
-
-	async wait(): Promise<boolean> {
-		while (!this.settled) { await sleepAsync(16); }
-		return this.ok;
-	}
-}
-
 // RN's Image statics. A function component cannot carry members in msc (compiler card
 // 2026-10-08-function-component-cannot-carry-static-members.md, WORKAROUND.md G1), so RN's
 // `Image.getSize` / `Image.prefetch` are `ImageLoader.getSize` / `ImageLoader.prefetch`.
@@ -58,11 +40,11 @@ export class ImageLoader {
 	}
 
 	static async prefetch(uri: string): Promise<boolean> {
-		const slot = new PrefetchSlot();
-		appServices("Image.prefetch").imageSize(uri, (width: number, height: number, error: string): void => {
-			slot.settle(error === "");
+		return await new Promise<boolean>((resolve) => {
+			appServices("Image.prefetch").imageSize(uri, (width: number, height: number, error: string): void => {
+				resolve(error === "");
+			});
 		});
-		return await slot.wait();
 	}
 }
 
