@@ -231,6 +231,8 @@ export interface TextProps extends HostProps {
 	numberOfLines?: Accessor<number> | null;
 	ellipsizeMode?: Accessor<EllipsizeMode> | null;
 	selectable?: Accessor<boolean> | null;
+	// Neon's own, for terminals and editors: every grapheme takes this many points, on the Void host only.
+	cellWidth?: Accessor<number> | null;
 	onPress?: ((e: NeonEvent) => void) | null;
 	children?: NeonNode | null;
 }
@@ -246,7 +248,8 @@ export function Text(props: TextProps): NeonNode {
 	const lines = props.numberOfLines;
 	const ellipsize = props.ellipsizeMode;
 	const press = props.onPress;
-	if (lines === null && ellipsize === null && props.selectable === null && press === null) {
+	const cell = props.cellWidth;
+	if (lines === null && ellipsize === null && props.selectable === null && press === null && cell === null) {
 		const accessible = accessibleText(props);
 		return element(<text class={props.class} style={props.style} ref={props.ref} accessible={accessible} accessibilityLabel={props.accessibilityLabel} accessibilityHint={props.accessibilityHint} accessibilityRole={props.accessibilityRole}>{props.children}</text>);
 	}
@@ -260,6 +263,10 @@ export function Text(props: TextProps): NeonNode {
 		attrs.push(dynAttr("ellipsizeMode", (): string | null => { const m: EllipsizeMode = read(); return m; }));
 	}
 	flagAttr(attrs, "selectable", props.selectable);
+	if (cell !== null) {
+		const read = cell as Accessor<number>;
+		attrs.push(dynAttr("cellWidth", (): string | null => read().toString()));
+	}
 	const evts: VEvent[] = [];
 	if (press !== null) {
 		const user = press as (e: NeonEvent) => void;

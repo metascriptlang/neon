@@ -312,6 +312,19 @@ test "a nested Text's colour and content changes reach its run, and the runs go 
 	assert runsOf(vh, label).length === 0, "no styled span left, so no runs";
 }
 
+test "cellWidth puts every grapheme of the paragraph on a fixed cell, and follows a change" {
+	const vh = host();
+	const [cell, setCell] = createSignal(10);
+	render(element(<View style={{ width: 300 }}><Text cellWidth={cell()}>ab<Text style={{ color: "#ff0000" }}>cd</Text></Text></View>), vh.host, vh.root);
+	vh.layout(300.0, 100.0);
+	const label = paragraph(top(vh).children[0]);
+	label.textWidth();
+	assert label.xForIndex(1) === 10.0 && label.xForIndex(3) === 30.0, "cells of 10: " + label.xForIndex(1).toString() + ", " + label.xForIndex(3).toString();
+	setCell(7);
+	label.textWidth();
+	assert label.xForIndex(2) === 14.0, "cells of 7: " + label.xForIndex(2).toString();
+}
+
 test "what a Void paragraph cannot draw yet is refused by name" {
 	let message = "";
 	const a = host();
@@ -331,6 +344,12 @@ test "what a Void paragraph cannot draw yet is refused by name" {
 		render(element(<Text style={{ fontSize: 14 }}>a <Text style={{ fontSize: 20 }}>b</Text></Text>), c.host, c.root);
 	} catch (e) { message = e.message; }
 	assert message.indexOf("one size") >= 0, "a nested fontSize: " + message;
+	message = "";
+	const d = host();
+	try {
+		render(element(<Text>a <Text cellWidth={8}>b</Text></Text>), d.host, d.root);
+	} catch (e) { message = e.message; }
+	assert message.indexOf("outermost Text") >= 0, "cellWidth on a nested Text: " + message;
 }
 
 test "a key event carries the physical detail the window supplied, to the focused node and its parents" {

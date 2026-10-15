@@ -5,7 +5,7 @@ import {
 	setPosition, setSize, setX, setZIndex, setAlpha, setColor, setBackground, clearBackground,
 	setText, text as labelText, setFont, textStyle, setTextStyle, setCursorIndex, setCursorBlinkTime,
 	local, content, scrollTo as scrollNodeTo, setScrollBounds, localToGlobal, globalToLocal,
-	isLive, setTextRuns, setMaxWidth,
+	isLive, setTextRuns, setMaxWidth, setForceWidth,
 } from "../../../../void/src/void2d/node";
 import { TextRun } from "../../../../void/src/void2d/textLayout";
 import { hitTest, xForIndex, lineBoxAt } from "../../../../void/src/void2d/render";
@@ -59,6 +59,7 @@ export class VoidNode {
 	para: NodeRef | null = null;
 	styledRuns: boolean = false;
 	paraStale: boolean = false;
+	cell: float32 = 0.0;
 
 	constructor(ref: NodeRef) {
 		this.ref = ref;
@@ -573,6 +574,7 @@ export function createVoidHostWith(scene: Scene2D, font: FontId): VoidHost {
 		}
 		if (root.para === null) {
 			const made = textLabel("");
+			if (root.cell > 0.0) { made.setForceWidth(root.cell); }
 			root.ref.addChild(made);
 			root.para = made;
 		}
@@ -619,6 +621,7 @@ export function createVoidHostWith(scene: Scene2D, font: FontId): VoidHost {
 		if (!n.isString && !n.isText) {
 			throw new Error("void host: a View inside a Text is an inline view, which the Void host does not place yet; put it beside the Text");
 		}
+		if (n.isText && n.cell > 0.0) { throw new Error("void host: cellWidth belongs on the outermost Text"); }
 		if (n.isText && hasHandler(n, "onPress")) {
 			throw new Error("void host: onPress on a Text inside a Text needs per-span hit-testing, which the Void host does not do yet");
 		}
@@ -736,6 +739,12 @@ export function createVoidHostWith(scene: Scene2D, font: FontId): VoidHost {
 				n.flex = parseFlexStyle(value);
 			} else if (name === "focusable") {
 				n.focusAttr = value === "true";
+			} else if (name === "cellWidth") {
+				if (!n.isText || n.spanOwner !== null) { throw new Error("void host: cellWidth belongs on the outermost Text"); }
+				const cell = parseFloat(value) as float32;
+				if (!(cell >= 0.0)) { throw new Error(`void host: cellWidth "${value}" is not zero or more points`); }
+				n.cell = cell;
+				if (n.para !== null) { (n.para as NodeRef).setForceWidth(cell); }
 			} else if (name === "imeRect") {
 				n.imeBox = parseCaretRect(value);
 				if (focusedNode === n && dirtyListener !== null) { (dirtyListener as () => void)(); }
@@ -753,6 +762,10 @@ export function createVoidHostWith(scene: Scene2D, font: FontId): VoidHost {
 			if (name === "style") { n.flex = parseFlexStyle(""); }
 			else if (name === "focusable") { n.focusAttr = false; }
 			else if (name === "imeRect") { n.imeBox = null; }
+			else if (name === "cellWidth") {
+				n.cell = 0.0;
+				if (n.para !== null) { (n.para as NodeRef).setForceWidth(0.0); }
+			}
 		},
 		setStyle: (node: HostNode, style: Style): void => {
 			const n = live(node, "setStyle");
