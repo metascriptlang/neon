@@ -150,15 +150,6 @@ and the invariants that outlived them were moved to the head of the test that pi
   `PrintWindow` at the start, after typing and after the resize. Not run: an IME, a DPI change.
   `tests/run.sh` builds the example on a Windows host and skips it by name elsewhere.
 
-- **PARKED 2026-10-15 — an Ion-generated Windows project of a Neon app does not compile.** Not Neon's:
-  the manifest now evaluates (msc `9cf5708c`), but the entry module Ion writes into the output
-  (`<Target>/<Target>.ms`: `@link` of the `.res`, then `import` of the app's entry) sits outside
-  Neon's tree, and msc takes `build.ms` from the entry's directory upward
-  (`recompiler/docs/PACKAGE.md` "Discovery"), so Neon's `globalImports` never apply and MSBuild
-  stops at `52 type error(s)`: `Undefined variable 'bindAttr'` (12), `'accessor'` (10), `'place'` (9),
-  `'createComponent'` (9). Blocks `examples/voidWindow.ms` from an Ion-generated project. Note
-  `~/metascript/.inbox/ion/2026-10-15-generated-entry-loses-app-build-ms.md`.
-
 - **PARKED 2026-10-15 — `tests/components/svg/svg.test.ms` does not compile.** Not Neon's: after the
   test's `createSignal<float64>(40)`, `mapArray<float64, Row>` (a `<For>` over `float64[]`) is refused at
   `cell.setter = s` in `src/core/array.ms` with `Type 'function' is not assignable to type 'Setter<number> | null'`.
