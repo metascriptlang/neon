@@ -2,6 +2,7 @@
 // drives this; here the host ops map to real document.* / Node APIs.
 
 import { Host, HostNode, TextMeasure } from "../../render/host";
+import { MeasureRect, MeasureError } from "../../render/hostTypes";
 import { Style, StyleValue } from "../../render/style";
 import { registerCss, collectCss, onCssChange } from "../../render/sheet";
 import { NeonEvent, neonEvent, eventType } from "../../render/event";
@@ -61,6 +62,8 @@ extern class DomRect {
 	height: number;
 }
 
+extern class DomRectList { length: int32; }
+
 extern class Reflect {
 	static extern has(target: Node, key: cstring): boolean;
 }
@@ -89,6 +92,8 @@ extern class Node {
 	offsetHeight: number;
 	offsetLeft: number;
 	offsetTop: number;
+	clientLeft: number;
+	clientTop: number;
 	offsetParent: Node | null;
 	parentNode: Node | null;
 	isConnected: boolean;
@@ -102,6 +107,7 @@ extern class Node {
 	extern contains(node: Node): boolean;
 	extern scroll(options: DomScrollOptions): void;
 	extern getBoundingClientRect(): DomRect;
+	extern getClientRects(): DomRectList;
 	style: CssStyle;
 	classList: ClassList;
 	nextSibling: Node;
@@ -126,6 +132,43 @@ extern class Node {
 	extern addEventListener(name: cstring, handler: (e: DomEvent) => void, capture: boolean): void;
 	extern removeEventListener(name: cstring, handler: (e: DomEvent) => void, capture: boolean): void;
 	extern setPointerCapture(pointerId: number): void;
+}
+
+function cssomLayoutOrigin(node: Node): [float64, float64] {
+	let x = 0.0;
+	let y = 0.0;
+	let at: Node | null = node;
+	while (at !== null) {
+		const current = at as Node;
+		x += current.offsetLeft;
+		y += current.offsetTop;
+		const parent = current.offsetParent;
+		if (parent !== null) {
+			x += (parent as Node).clientLeft;
+			y += (parent as Node).clientTop;
+		}
+		at = parent;
+	}
+	return [x, y];
+}
+
+function measureDomWindow(node: HostNode): Result<MeasureRect, MeasureError> {
+	const el = node as unknown as Node;
+	if (!el.isConnected) { return Result.err(MeasureError.NotMounted); }
+	if (el.getClientRects().length === 0) { return Result.err(MeasureError.NotLaidOut); }
+	const rect = el.getBoundingClientRect();
+	return Result.ok({ x: rect.left, y: rect.top, width: rect.width, height: rect.height });
+}
+
+function measureDomLayout(node: HostNode, ancestor: HostNode): Result<MeasureRect, MeasureError> {
+	const el = node as unknown as Node;
+	const parent = ancestor as unknown as Node;
+	if (!el.isConnected || !parent.isConnected) { return Result.err(MeasureError.NotMounted); }
+	if (!parent.contains(el)) { return Result.err(MeasureError.NotAncestor); }
+	if (el.getClientRects().length === 0 || parent.getClientRects().length === 0) { return Result.err(MeasureError.NotLaidOut); }
+	const [x, y] = cssomLayoutOrigin(el);
+	const [parentX, parentY] = cssomLayoutOrigin(parent);
+	return Result.ok({ x: x - parentX, y: y - parentY, width: el.offsetWidth, height: el.offsetHeight });
 }
 
 extern class DomTouch {
@@ -1324,6 +1367,8 @@ export function domHost(): Host {
 			return (node as unknown as Node).cloneNode(true) as unknown as HostNode;
 		},
 		voidArea: null,
+		measureInWindow: measureDomWindow,
+		measureLayout: measureDomLayout,
 		overlayRoot: (node: HostNode): HostNode => document.body as unknown as HostNode,
 		headRoot: (node: HostNode): HostNode => {
 			dropServedHead();
