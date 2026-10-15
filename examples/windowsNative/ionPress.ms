@@ -8,6 +8,7 @@ import { createSignal } from "../../src/core/signal";
 import { NeonNode } from "../../src/render/node";
 import { NeonEvent } from "../../src/render/event";
 import { View, Text, Pressable } from "../../src/components/primitives";
+import { niwStoredAccessibility } from "../../src/platform/windows/handoff.h";
 import { exit } from "std/process";
 
 const styles = createStyles({
@@ -38,7 +39,7 @@ function note(what: string): (e: NeonEvent) => void {
 
 function App(): NeonNode {
 	return <View style={styles.base}>
-		<Pressable style={styles.a} onPress={pressed("A")}>
+		<Pressable style={styles.a} accessibilityLabel="Press A" onPress={pressed("A")}>
 			<Text style={styles.label}>{"A " + count()}</Text>
 		</Pressable>
 		<Pressable style={styles.b} onPress={pressed("B")} />
@@ -49,4 +50,6 @@ function App(): NeonNode {
 	</View>;
 }
 
-exit(runNativeWindow(nativeWindowOptions("Neon press on Ion", 400, 260), App, null));
+exit(runNativeWindow(nativeWindowOptions("Neon press on Ion", 400, 260), App, (): void => {
+	console.log(`stored label "Press A" on ${niwStoredAccessibility("accessibilityLabel", "Press A")} view, accessible "true" on ${niwStoredAccessibility("accessible", "true")} views`);
+}));

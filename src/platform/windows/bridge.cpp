@@ -4,7 +4,9 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <map>
 #include <memory>
+#include <string>
 #include <vector>
 #include "composition.h"
 #include "dcompComposition.h"
@@ -29,6 +31,7 @@ struct View {
 	bool transformed = false;
 	float radius = 0;
 	bool pressable = false;
+	std::map<std::string, std::string> accessibility;
 	std::unique_ptr<TextLabel> label;
 	bool labelQueued = false;
 };
@@ -169,6 +172,18 @@ void applyGeometry(View *view) {
 
 View *as(void *view) { return static_cast<View *>(view); }
 
+bool isAccessibilityProp(const char *name) {
+	return !strcmp(name, "accessible") || !strcmp(name, "accessibilityLabel") || !strcmp(name, "accessibilityHint") ||
+		!strcmp(name, "accessibilityRole") || !strcmp(name, "accessibilityState");
+}
+
+int countStored(const View *view, const char *name, const char *value) {
+	auto found = view->accessibility.find(name);
+	int count = found != view->accessibility.end() && found->second == value ? 1 : 0;
+	for (const View *child : view->children) count += countStored(child, name, value);
+	return count;
+}
+
 void rescale(View *parent) {
 	for (View *child : parent->children) {
 		applyGeometry(child);
@@ -283,6 +298,11 @@ void niwFrame(void) {
 }
 
 void niwSetFrameRequester(msClosure requester) { s_requester = requester; }
+
+int niwStoredAccessibility(const char *name, const char *value) {
+	requireAttached("niwStoredAccessibility");
+	return countStored(g_container, name, value);
+}
 
 void niwPointer(int kind, float pixelX, float pixelY) {
 	requireAttached("niwPointer");
@@ -576,7 +596,10 @@ void niSetProp(void *view, const char *name, const char *value) {
 		queueLabel(as(view));
 		return;
 	}
-	if (!strncmp(name, "accessib", 8)) return;
+	if (isAccessibilityProp(name)) {
+		as(view)->accessibility[name] = value;
+		return;
+	}
 	char what[128];
 	snprintf(what, sizeof what, "niSetProp(%s)", name);
 	unimplemented(what);

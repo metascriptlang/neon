@@ -186,8 +186,9 @@ DPI changed, and runs the host's resize handler (a relayout). `src/platform/ion/
   lifted; Windows cancels instead, so `<Pressable onPress>` does not fire for down inside and up outside. Leave and focus
   loss cancel. `niLastTouchTag/Phase/X/Y/Time` read the last report; the time is the performance counter in
   milliseconds. `niSetResponder` and `niClearResponder` store the view only: no ScrollView exists to consume it.
-- **Accessibility props.** `niSetProp` accepts any name starting `accessib` and drops it: `<Pressable>` always writes
-  `accessible`, and the UI Automation slice that would use them is not built. Every other unknown prop still aborts.
+- **Accessibility props.** `niSetProp` stores `accessible`, `accessibilityLabel`, `accessibilityHint`, `accessibilityRole`
+  and `accessibilityState` on the view, for the UI Automation slice; nothing exposes them yet. Any other name, an
+  `accessib*` one included, still aborts by name. `ionPress.ms` logs how many views store a given value.
 
 Measured 2026-10-15 on tree `67268ba2b71069d8fa23b270bb0f773f7c2efaae`, 96 dpi, msc v0.3.3 (BUILD `9cf5708c`), Ion
 `e28af34`, one build at a time:

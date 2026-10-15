@@ -24,6 +24,7 @@ void niwFrame(void);
 void niwResize(float dpi, float logicalWidth, float logicalHeight);
 void niwPointer(int kind, float pixelX, float pixelY);
 void niwSetFrameRequester(msClosure requester);
+int niwStoredAccessibility(const char *name, const char *value);
 void niwShutdown(void);
 
 #ifdef __cplusplus
