@@ -20,7 +20,6 @@ function rowNumbers(): number[] {
 }
 
 export function ScrollList(): NeonNode {
-	// Parked: createSignal(0) infers int32 — ~/metascript/.inbox/compiler/2026-10-03-generic-inferred-from-integer-literal-is-int32.md
 	const [offset, setOffset] = createSignal<number>(0);
 	const [pressed, setPressed] = createSignal("none");
 	const rows = rowNumbers();
