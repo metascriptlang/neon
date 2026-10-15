@@ -6,7 +6,7 @@ import {
 	setPosition, setSize, setX, setZIndex, setAlpha, setColor, setBackground, clearBackground,
 	setText, text as labelText, setFont, textStyle, setTextStyle, setCursorIndex, setCursorBlinkTime,
 	local, content, scrollTo as scrollNodeTo, setScrollBounds, localToGlobal, globalToLocal,
-	isLive, setTextRuns, setMaxWidth, setForceWidth,
+	setTextRuns, setMaxWidth, setForceWidth,
 } from "../../../../void/src/void2d/node";
 import { TextRun } from "../../../../void/src/void2d/textLayout";
 import { hitTest, xForIndex, lineBoxAt } from "../../../../void/src/void2d/render";
@@ -14,7 +14,7 @@ import { create, add, isDirty } from "../../../../void/src/void2d/scene";
 import { Color, rgba, vec2 } from "../../../../void/src/void2d/types";
 import { FontId, DEFAULT_FONT } from "../../../../void/src/void2d/font";
 import { FlexStyle, YGNode, FlexDirection, Justify, Align, PositionType, Wrap, Display, Overflow, layoutPass, freeLayoutTree } from "../../../../yoga/src/index";
-import { Style, mergeStyle } from "../../render/style";
+import { Style } from "../../render/style";
 import { asFlexStyleBody } from "../../macros/style/fields";
 import {
 	TextEditingValue, editingValue, isEmptyRange,
@@ -51,12 +51,8 @@ export class VoidNode {
 	yg: Ptr<YGNode> | null = null;
 	focusAttr: boolean = false;
 	imeBox: CaretRect | null = null;
-	// RN nested Text: a Text inside a Text, and every string in one, is a span of the outermost Text,
-	// which draws them all as one paragraph label; a span has no scene node of its own.
+	// A Text draws its spans (src/render/spanHost.ms) as one paragraph label.
 	isText: boolean = false;
-	isString: boolean = false;
-	chars: string = "";
-	spanOwner: VoidNode | null = null;
 	para: NodeRef | null = null;
 	styledRuns: boolean = false;
 	paraStale: boolean = false;
@@ -73,9 +69,7 @@ function childHolder(n: VoidNode): NodeRef {
 	return s !== null ? s as NodeRef : n.ref;
 }
 
-const NO_CHILDREN: VoidNode[] = [];
-
-export function layoutGetChildren(this n: VoidNode): VoidNode[] { return n.isText ? NO_CHILDREN : n.children; }
+export function layoutGetChildren(this n: VoidNode): VoidNode[] { return n.children; }
 export function layoutGetStyle(this n: VoidNode): FlexStyle | null { return n.flex; }
 export function layoutGetLastStyle(this n: VoidNode): FlexStyle | null { return n.lastFlex; }
 export function layoutSetLastStyle(this n: VoidNode, s: FlexStyle | null): void { n.lastFlex = s; }
@@ -282,7 +276,7 @@ function pointerMode(n: VoidNode): string {
 function deepestAt(n: VoidNode, x: float32, y: float32, accepts: ((n: VoidNode) => boolean) | null): VoidNode | null {
 	const mode = pointerMode(n);
 	if (mode === "none") { return null; }
-	if (mode !== "box-only" && !n.isText) {
+	if (mode !== "box-only") {
 		for (let i = n.children.length - 1; i >= 0; i -= 1) {
 			const c = n.children[i];
 			if (c.disposed) { continue; }
@@ -330,35 +324,10 @@ export function applyPaint(n: VoidNode, s: Style): void {
 	}
 }
 
-function inParagraph(p: VoidNode): boolean {
-	return p.isText || p.spanOwner !== null;
-}
-
-function paragraphOf(n: VoidNode): VoidNode {
-	return n.spanOwner !== null ? n.spanOwner as VoidNode : n;
-}
-
 function colorOr(css: string | null, fallback: Color): Color {
 	if (css === null) { return fallback; }
 	const c = parseColor(css as string);
 	return c !== null ? c as Color : fallback;
-}
-
-interface Piece {
-	text: string;
-	style: Style;
-	own: boolean;
-}
-
-function collectPieces(n: VoidNode, style: Style, own: boolean, out: Piece[]): void {
-	for (const c of n.children) {
-		if (c.isString) {
-			if (c.chars !== "") { out.push({ text: c.chars, style, own }); }
-		} else {
-			const s = c.style;
-			collectPieces(c, s === null ? style : mergeStyle(style, s as Style), own || s !== null, out);
-		}
-	}
 }
 
 function lineColor(s: Style, line: string, color: Color): Color {
@@ -377,15 +346,6 @@ function spanRun(text: string, own: Style, base: Style, font: FontId, baseColor:
 	return {
 		len: text.length as int32, font, color, background: colorOr(bg, CLEAR),
 		underline: lineColor(deco, "underline", color), wavy: false, strikethrough: lineColor(deco, "line-through", color),
-	};
-}
-
-function runOf(piece: Piece, font: FontId, base: Color): TextRun {
-	const s = piece.style;
-	const color = colorOr(s.color, base);
-	return {
-		len: piece.text.length as int32, font, color, background: colorOr(s.backgroundColor, CLEAR),
-		underline: lineColor(s, "underline", color), wavy: false, strikethrough: lineColor(s, "line-through", color),
 	};
 }
 
@@ -547,30 +507,9 @@ export function createVoidHostWith(scene: Scene2D, font: FontId): VoidHost {
 		return l;
 	};
 
-	// The handle a string holds until it draws on its own: a freed row, so any use of it fails loud.
-	const undrawn: NodeRef = scene.group();
-	undrawn.dispose();
-
-	const drawn = (n: VoidNode): void => {
-		if (!n.ref.isLive()) {
-			n.ref = n.isString ? textLabel(n.chars) : scene.group();
-			if (n.style !== null && !n.isString) { applyPaint(n, n.style as Style); }
-		}
-	};
-
-	// The strings of a Text with no nested Text, joined; null when a span needs runs.
-	const plainText = (root: VoidNode): string | null => {
-		let text = "";
-		for (const c of root.children) {
-			if (!c.isString) { return null; }
-			text += c.chars;
-		}
-		return text;
-	};
-
 	const waiting: VoidNode[] = [];
 
-	// One label per outermost Text: its strings in order, a run per piece once any span styles one.
+	// One label per Text: its spans in order, and a run per span once any span is styled.
 	const refreshParagraph = (root: VoidNode): void => {
 		if (root.disposed) { return; }
 		if (!attached(root)) {
@@ -582,24 +521,15 @@ export function createVoidHostWith(scene: Scene2D, font: FontId): VoidHost {
 		}
 		root.paraStale = false;
 		const base: Style = root.style !== null ? root.style as Style : {};
-		const data = root.spans;
-		const plain = data !== null ? null : plainText(root);
-		const pieces: Piece[] = [];
+		const spans: TextSpan[] = root.spans !== null ? root.spans as TextSpan[] : [];
 		let text = "";
 		let styled = false;
-		if (data !== null) {
-			for (const s of data as TextSpan[]) {
-				text += s.text;
-				if (s.style !== null) { styled = true; }
+		for (const s of spans) {
+			if (s.onPress !== null) {
+				throw new Error("void host: onPress on a span needs per-span hit-testing, which the Void host does not do yet");
 			}
-		} else if (plain !== null) {
-			text = plain as string;
-		} else {
-			collectPieces(root, base, false, pieces);
-			for (const piece of pieces) {
-				text += piece.text;
-				if (piece.own) { styled = true; }
-			}
+			text += s.text;
+			if (s.style !== null) { styled = true; }
 		}
 		if (root.para === null) {
 			const made = textLabel("");
@@ -613,22 +543,11 @@ export function createVoidHostWith(scene: Scene2D, font: FontId): VoidHost {
 		}
 		const baseColor = colorOr(base.color, WHITE);
 		label.setText(text);
-		if (styled && data !== null) {
+		if (styled) {
 			const runs: TextRun[] = [];
 			const none: Style = {};
-			for (const s of data as TextSpan[]) {
+			for (const s of spans) {
 				runs.push(spanRun(s.text, s.style !== null ? s.style as Style : none, base, font, baseColor));
-			}
-			label.setColor(WHITE);
-			label.setTextRuns(runs);
-			root.styledRuns = true;
-		} else if (styled) {
-			const runs: TextRun[] = [];
-			for (const piece of pieces) {
-				if (piece.style.fontSize !== base.fontSize) {
-					throw new Error("void host: a Text inside a Text changes fontSize, and a Void paragraph has one size; set fontSize on the outer Text");
-				}
-				runs.push(runOf(piece, font, baseColor));
 			}
 			label.setColor(WHITE);
 			label.setTextRuns(runs);
@@ -646,41 +565,12 @@ export function createVoidHostWith(scene: Scene2D, font: FontId): VoidHost {
 	const refreshWaiting = (): void => {
 		for (let i = waiting.length - 1; i >= 0; i -= 1) {
 			const n = waiting[i];
-			if (n.disposed || !n.paraStale || n.spanOwner !== null) {
+			if (n.disposed || !n.paraStale) {
 				waiting.splice(i, 1);
 			} else if (attached(n)) {
 				waiting.splice(i, 1);
 				refreshParagraph(n);
 			}
-		}
-	};
-
-	const adopt = (n: VoidNode, root: VoidNode): void => {
-		if (!n.isString && !n.isText) {
-			throw new Error("void host: a View inside a Text is an inline view, which the Void host does not place yet; put it beside the Text");
-		}
-		if (n.isText && n.cell > 0.0) { throw new Error("void host: cellWidth belongs on the outermost Text"); }
-		if (n.isText && n.spans !== null) { throw new Error("void host: spans belong on the outermost Text"); }
-		if (n.isText && hasHandler(n, "onPress")) {
-			throw new Error("void host: onPress on a Text inside a Text needs per-span hit-testing, which the Void host does not do yet");
-		}
-		n.spanOwner = root;
-		if (n.para !== null) {
-			(n.para as NodeRef).dispose();
-			n.para = null;
-			n.styledRuns = false;
-		}
-		if (n.ref.isLive()) { n.ref.dispose(); }
-		for (const c of n.children) { adopt(c, root); }
-	};
-
-	// A span moved out of every Text draws on its own again.
-	const unadopt = (n: VoidNode): void => {
-		n.spanOwner = null;
-		drawn(n);
-		if (n.isText) {
-			for (const c of n.children) { adopt(c, n); }
-			refreshParagraph(n);
 		}
 	};
 
@@ -715,6 +605,10 @@ export function createVoidHostWith(scene: Scene2D, font: FontId): VoidHost {
 		const at = from.children.indexOf(c);
 		if (at >= 0) { from.children.splice(at, 1); }
 		if (from !== into) { freeLayoutTree(c); }
+	};
+
+	const refuseIntoText = (p: VoidNode, op: string): void => {
+		if (p.isText) { throw new Error(`void host: ${op} into a Text; a Text's content arrives through setSpans, so render it with the Text component`); }
 	};
 
 	const refuseCycle = (p: VoidNode, c: VoidNode, op: string): void => {
@@ -760,17 +654,15 @@ export function createVoidHostWith(scene: Scene2D, font: FontId): VoidHost {
 			return n;
 		},
 		createText: (s: string): HostNode => {
-			const n = new VoidNode(undrawn);
-			n.isString = true;
-			n.chars = s;
+			const was = wasDirty();
+			const n = new VoidNode(textLabel(s));
+			woke(was);
 			return n;
 		},
 		setText: (node: HostNode, s: string): void => {
 			const n = live(node, "setText");
 			const was = wasDirty();
-			n.chars = s;
-			if (n.spanOwner !== null) { refreshParagraph(n.spanOwner as VoidNode); }
-			else if (n.ref.isLive()) { n.ref.setText(s); }
+			n.ref.setText(s);
 			woke(was);
 		},
 		setAttr: (node: HostNode, name: string, value: string): void => {
@@ -781,7 +673,7 @@ export function createVoidHostWith(scene: Scene2D, font: FontId): VoidHost {
 			} else if (name === "focusable") {
 				n.focusAttr = value === "true";
 			} else if (name === "cellWidth") {
-				if (!n.isText || n.spanOwner !== null) { throw new Error("void host: cellWidth belongs on the outermost Text"); }
+				if (!n.isText) { throw new Error("void host: cellWidth belongs on a Text"); }
 				const cell = parseFloat(value) as float32;
 				if (!(cell >= 0.0)) { throw new Error(`void host: cellWidth "${value}" is not zero or more points`); }
 				n.cell = cell;
@@ -813,11 +705,6 @@ export function createVoidHostWith(scene: Scene2D, font: FontId): VoidHost {
 			const was = wasDirty();
 			n.flex = asFlexStyle(style);
 			n.style = style;
-			if (n.spanOwner !== null) {
-				refreshParagraph(n.spanOwner as VoidNode);
-				woke(was);
-				return;
-			}
 			applyPaint(n, style);
 			if (n.isText) { refreshParagraph(n); }
 			else { for (const c of n.children) { inheritTextPaint(c, n); } }
@@ -837,43 +724,22 @@ export function createVoidHostWith(scene: Scene2D, font: FontId): VoidHost {
 			const p = live(parent, "append");
 			const c = live(child, "append");
 			refuseCycle(p, c, "append");
+			refuseIntoText(p, "append");
 			const was = wasDirty();
-			const old = c.spanOwner;
 			unlink(c, p);
 			c.parent = p;
 			p.children.push(c);
-			if (inParagraph(p)) {
-				adopt(c, paragraphOf(p));
-				refreshParagraph(paragraphOf(p));
-			} else {
-				if (old !== null) { unadopt(c); } else { drawn(c); }
-				childHolder(p).addChild(c.ref);
-				inheritTextPaint(c, p);
-				if (waiting.length > 0) { refreshWaiting(); }
-			}
-			if (old !== null && old !== c.spanOwner) { refreshParagraph(old as VoidNode); }
+			childHolder(p).addChild(c.ref);
+			inheritTextPaint(c, p);
+			if (waiting.length > 0) { refreshWaiting(); }
 			woke(was);
 		},
 		insertBefore: (parent: HostNode, node: HostNode, before: HostNode | null): void => {
 			const p = live(parent, "insertBefore");
 			const n = live(node, "insertBefore");
 			refuseCycle(p, n, "insertBefore");
+			refuseIntoText(p, "insertBefore");
 			const was = wasDirty();
-			const old = n.spanOwner;
-			if (inParagraph(p)) {
-				const cur = p.children.indexOf(n);
-				if (cur >= 0) { p.children.splice(cur, 1); } else { unlink(n, p); }
-				const idx = before === null ? p.children.length : p.children.indexOf(live(before, "insertBefore"));
-				if (idx < 0) { throw new Error("insertBefore: the reference node is not a child of the parent"); }
-				p.children.splice(idx, 0, n);
-				n.parent = p;
-				adopt(n, paragraphOf(p));
-				refreshParagraph(paragraphOf(p));
-				if (old !== null && old !== n.spanOwner) { refreshParagraph(old as VoidNode); }
-				woke(was);
-				return;
-			}
-			if (old !== null) { unadopt(n); } else { drawn(n); }
 			if (before === null) {
 				unlink(n, p);
 				childHolder(p).addChild(n.ref);
@@ -881,7 +747,6 @@ export function createVoidHostWith(scene: Scene2D, font: FontId): VoidHost {
 				p.children.push(n);
 				inheritTextPaint(n, p);
 				if (waiting.length > 0) { refreshWaiting(); }
-				if (old !== null) { refreshParagraph(old as VoidNode); }
 				woke(was);
 				return;
 			}
@@ -903,7 +768,6 @@ export function createVoidHostWith(scene: Scene2D, font: FontId): VoidHost {
 			p.children.splice(idx, 0, n);
 			inheritTextPaint(n, p);
 			if (waiting.length > 0) { refreshWaiting(); }
-			if (old !== null) { refreshParagraph(old as VoidNode); }
 			woke(was);
 		},
 		removeChild: (parent: HostNode, node: HostNode): void => {
@@ -916,9 +780,8 @@ export function createVoidHostWith(scene: Scene2D, font: FontId): VoidHost {
 			n.parent = null;
 			if (focusedNode !== null && within(focusedNode as VoidNode, n)) { focus(null); }
 			freeLayoutTree(n);
-			if (n.ref.isLive()) { n.ref.dispose(); }
+			n.ref.dispose();
 			release(n);
-			if (inParagraph(p)) { refreshParagraph(paragraphOf(p)); }
 			woke(was);
 		},
 		nextSibling: (node: HostNode): HostNode | null => {
@@ -939,7 +802,7 @@ export function createVoidHostWith(scene: Scene2D, font: FontId): VoidHost {
 		voidArea: null,
 		setSpans: (node: HostNode, spans: TextSpan[]): void => {
 			const n = live(node, "setSpans");
-			if (!n.isText || n.spanOwner !== null) { throw new Error("void host: spans belong on the outermost Text"); }
+			if (!n.isText) { throw new Error("void host: spans belong on a Text"); }
 			const was = wasDirty();
 			n.spans = spans;
 			refreshParagraph(n);

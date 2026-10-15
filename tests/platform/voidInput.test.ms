@@ -9,7 +9,7 @@ import { NeonNode } from "../../src/render/node";
 import {
 	createVoidHostWith, VoidHost, VoidNode, TextEditingValue, editingValue, CaretRect,
 } from "../../src/platform/void/host";
-import { Scene2D, NodeRef, DrawKind, Changed, text, paint, textStyle, local, getChildAt, clearChanges, isLive, numChildren } from "../../../void/src/void2d/node";
+import { Scene2D, NodeRef, DrawKind, Changed, text, paint, textStyle, local, getChildAt, clearChanges, numChildren } from "../../../void/src/void2d/node";
 import { create, paint as paintScene, isDirty } from "../../../void/src/void2d/scene";
 import { frameEnd } from "../../../void/src/void2d/draw";
 import { xForIndex, textWidth, lineBoxAt } from "../../../void/src/void2d/render";
@@ -254,7 +254,7 @@ test "a Text's strings draw in order as one paragraph label, and a string change
 	const text = top(vh).children[0];
 	assert paragraph(text).text() === "Count: 7", "one label holds both strings: \"" + paragraph(text).text() + "\"";
 	assert text.ref.numChildren() === 1, "the paragraph label is the Text's only scene child, got " + text.ref.numChildren().toString();
-	assert !text.children[0].ref.isLive() && !text.children[1].ref.isLive(), "the strings are spans with no label of their own";
+	assert text.children.length === 0, "the strings are spans, not host nodes";
 	setN(8);
 	assert paragraph(text).text() === "Count: 8", "the changed string reaches the paragraph: \"" + paragraph(text).text() + "\"";
 	assert runsOf(vh, paragraph(text)).length === 0, "an unstyled paragraph draws without runs";

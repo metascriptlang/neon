@@ -14,6 +14,7 @@ export type NeonNode = (host: Host, parent: HostNode, before: HostNode | null) =
 export interface TextSpan {
 	text: string;
 	style?: Style | null;
+	onPress?: ((e: NeonEvent) => void) | null;
 }
 
 export interface VoidArea {
@@ -62,8 +63,8 @@ export interface Host {
 	setResponder?: ((node: HostNode | null, blockNativeResponder: boolean) => void) | null;
 	claim?: ((parent: HostNode, after: HostNode | null, tag: string) => HostNode | null) | null;
 	headRoot?: ((node: HostNode) => HostNode) | null;
-	// Optional capability: a host that draws a Text as one paragraph takes its spans whole.
-	// `null` means src/components/primitives.ms lays the spans out as nested Texts —
-	// the same text, a node per span.
+	// Optional capability: a host that draws a Text as one paragraph takes its spans whole, and a
+	// Text's children never reach it as nodes (src/render/spanHost.ms). `null` means the host lays
+	// nested Texts out itself, and `spans` become nested Texts — the same text, a node per span.
 	setSpans?: ((node: HostNode, spans: TextSpan[]) => void) | null;
 }

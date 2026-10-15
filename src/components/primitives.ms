@@ -18,13 +18,13 @@
 // same name on raw lowercase tags).
 
 import { NeonEvent, neonEvent } from "../render/event";
-import { Style, layerStyles, emptyStyle } from "../render/style";
+import { Style, layerStyles } from "../render/style";
 import { onCleanup } from "../core/cleanup";
 import { Accessor, accessor, untrack } from "../core/signal";
 import { element } from "../macros/ui/element";
 import { NeonNode, VAttr, VEvent, RefFn, hostElement, evt, dynAttr } from "../render/node";
 import { Host, HostNode, VoidArea, TextSpan } from "../render/hostTypes";
-import { createBindingEffect } from "../core/effect";
+import { paragraphChildren } from "../render/spanHost";
 import { VoidAreaHandle } from "../render/voidAreaHandle";
 import { applyRef } from "../render/bind";
 import { visibleContentAttr } from "../render/visibleContent";
@@ -240,48 +240,6 @@ export interface TextProps extends HostProps {
 	children?: NeonNode | null;
 }
 
-// A host with setSpans takes them whole; any other gets a nested Text per span, kept by position.
-function spanNodes(read: Accessor<TextSpan[]>): NeonNode {
-	return (host: Host, parent: HostNode, before: HostNode | null): void => {
-		const direct = host.setSpans;
-		if (direct !== null) {
-			const set = direct as (node: HostNode, spans: TextSpan[]) => void;
-			createBindingEffect((): void => { set(parent, read()); });
-			return;
-		}
-		const shown: HostNode[] = [];
-		const words: HostNode[] = [];
-		const styles: (Style | null)[] = [];
-		createBindingEffect((): void => {
-			const spans = read();
-			for (let i = 0; i < spans.length; i += 1) {
-				const s = spans[i];
-				if (i >= shown.length) {
-					const el = host.createElement("text");
-					const word = host.createText(s.text);
-					host.append(el, word);
-					host.insertBefore(parent, el, before);
-					shown.push(el);
-					words.push(word);
-					styles.push(null);
-				} else {
-					host.setText(words[i], s.text);
-				}
-				const own: Style | null = s.style !== null ? s.style as Style : null;
-				if (own !== styles[i]) {
-					host.setStyle(shown[i], own !== null ? own as Style : emptyStyle());
-					styles[i] = own;
-				}
-			}
-			while (shown.length > spans.length) {
-				host.removeChild(parent, shown.pop() as HostNode);
-				words.pop();
-				styles.pop();
-			}
-		});
-	};
-}
-
 function accessibleText(props: AccessibilityProps): Accessor<string> | null {
 	const flag = props.accessible;
 	if (flag === null) { return null; }
@@ -298,7 +256,7 @@ export function Text(props: TextProps): NeonNode {
 	if (spans !== null && props.children !== null) { throw new Error("<Text> takes spans or children, not both"); }
 	if (lines === null && ellipsize === null && props.selectable === null && press === null && cell === null && spans === null) {
 		const accessible = accessibleText(props);
-		return element(<text class={props.class} style={props.style} ref={props.ref} accessible={accessible} accessibilityLabel={props.accessibilityLabel} accessibilityHint={props.accessibilityHint} accessibilityRole={props.accessibilityRole}>{props.children}</text>);
+		return element(<text class={props.class} style={props.style} ref={props.ref} accessible={accessible} accessibilityLabel={props.accessibilityLabel} accessibilityHint={props.accessibilityHint} accessibilityRole={props.accessibilityRole}>{paragraphChildren(props.children, null)}</text>);
 	}
 	const attrs: VAttr[] = [];
 	if (lines !== null) {
@@ -321,7 +279,7 @@ export function Text(props: TextProps): NeonNode {
 			if (!pressSwallowed(e)) { user(e); }
 		}));
 	}
-	return primitive("text", props, attrs, evts, spans !== null ? spanNodes(spans as Accessor<TextSpan[]>) : props.children);
+	return primitive("text", props, attrs, evts, paragraphChildren(props.children, spans));
 }
 
 // RN Pressability's two constants (Libraries/Pressability/Pressability.js):
