@@ -19,14 +19,16 @@ function contains<P>(list: Navigation<P>[], entry: Navigation<P>): boolean {
 
 export class NavigatorMotion<P> {
 	core: NavigatorCore<P>;
+	stacked: boolean;
 	closing: Signal<Navigation<P>[]> = new Signal<Navigation<P>[]>([]);
 	motions: Map<string, ScreenMotion> = new Map<string, ScreenMotion>();
 	previous: Navigation<P>[] = [];
 	focusedBefore: Navigation<P> | null = null;
 	epoch: int32 = 0;
 
-	constructor(core: NavigatorCore<P>) {
+	constructor(core: NavigatorCore<P>, stacked: boolean) {
 		this.core = core;
+		this.stacked = stacked;
 		this.epoch = core.screenEpoch;
 	}
 
@@ -57,7 +59,7 @@ export class NavigatorMotion<P> {
 		const options = entry.options();
 		const own = options.animation;
 		if (own !== null && own !== "default") { return own as StackAnimation; }
-		if (!this.core.isStack()) { return "none"; }
+		if (!this.stacked) { return "none"; }
 		const presentation = options.presentation;
 		if (presentation !== null && presentation === "modal") { return "slide_from_bottom"; }
 		if (presentation !== null && presentation === "transparentModal") { return "fade"; }
@@ -137,7 +139,7 @@ export class NavigatorMotion<P> {
 			this.snap(list);
 			return;
 		}
-		if (!this.core.isStack()) {
+		if (!this.stacked) {
 			if (focused !== null && focusedBefore !== focused) { this.animateIn(focused as Navigation<P>); }
 			return;
 		}
@@ -156,8 +158,11 @@ export class NavigatorMotion<P> {
 	}
 }
 
-export function createNavigatorMotion<P>(core: NavigatorCore<P>): NavigatorMotion<P> {
-	const motion = new NavigatorMotion<P>(core);
+export function createNavigatorMotion<P>(
+	core: NavigatorCore<P>,
+	stacked: boolean,
+): NavigatorMotion<P> {
+	const motion = new NavigatorMotion<P>(core, stacked);
 	createRenderEffect((): void => {
 		const list = core.entries();
 		const at = core.index();

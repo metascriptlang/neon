@@ -20,7 +20,6 @@ import {
 	DrawerAction,
 	NavigatorCore,
 	Navigation,
-	NavigatorKind,
 	NavigatorLink,
 	ScopeContext,
 	ScreenOptions,
@@ -231,29 +230,42 @@ function contained<P>(list: Navigation<P>[], entry: Navigation<P>): boolean {
 	return false;
 }
 
+function transparentOf<P>(entry: Navigation<P>): boolean {
+	const presentation = entry.options().presentation;
+	return presentation !== null && presentation === "transparentModal";
+}
+
+function visibleFrom<P>(list: Navigation<P>[]): int32 {
+	let at = (list.length - 1) as int32;
+	while (at > 0 && transparentOf<P>(list[at])) { at -= 1; }
+	return at;
+}
+
 export function screenView<P>(
 	core: NavigatorCore<P>,
 	motion: NavigatorMotion<P>,
 	entry: Navigation<P>,
+	menu: boolean,
 ): NeonNode {
 	const scope = screenScope<P>(core, entry);
 	const key = entry.route.key;
+	const stacked = motion.stacked;
 	const options = accessor((): ScreenOptions => entry.options());
 	const position = accessor((): int32 => {
-		const list = core.isStack() ? motion.rendered() : core.entries();
+		const list = motion.rendered();
 		for (let i = 0; i < list.length; i += 1) {
 			if (list[i].route.key === key) { return i as int32; }
 		}
 		return -1;
 	});
-	const transparent = accessor((): boolean => core.isStack() && core.transparent(entry));
+	const transparent = accessor((): boolean => stacked && transparentOf<P>(entry));
 	const visible = accessor((): boolean => {
-		if (!core.isStack()) { return core.currentKey() === key; }
+		if (!stacked) { return core.currentKey() === key; }
 		if (motion.isClosing(entry)) { return true; }
 		const list = core.entries();
 		const at = position();
 		if (at < 0 || at >= list.length) { return false; }
-		if (at >= core.visibleFrom()) { return true; }
+		if (at >= visibleFrom<P>(list)) { return true; }
 		const top = list.length - 1;
 		return at === top - 1 && motion.of(list[top]).moving.get();
 	});
@@ -285,7 +297,7 @@ export function screenView<P>(
 		const overlay = presentation !== null && presentation === "transparentModal";
 		return shown(options().headerShown, !overlay);
 	});
-	const back = accessor((): boolean => core.kind === NavigatorKind.Stack && position() > 0);
+	const back = accessor((): boolean => stacked && position() > 0);
 	const backTitle = accessor((): string => {
 		const at = position();
 		if (at <= 0) { return "Back"; }
@@ -293,10 +305,10 @@ export function screenView<P>(
 		if (own !== null) { return own as string; }
 		return titleOf<P>(motion.rendered()[at - 1]);
 	});
-	const menu = accessor((): boolean => core.kind === NavigatorKind.Drawer);
+	const showMenu = accessor((): boolean => menu);
 	const title = accessor((): string => titleOf<P>(entry));
 	const swipeBack = accessor((): boolean => {
-		if (!core.isStack() || position() <= 0 || motion.isClosing(entry)) { return false; }
+		if (!stacked || position() <= 0 || motion.isClosing(entry)) { return false; }
 		if (motion.animationOf(entry) !== "slide_from_right") { return false; }
 		return shown(options().gestureEnabled, Platform.OS === "ios");
 	});
@@ -315,7 +327,7 @@ export function screenView<P>(
 		<View style={frame}>
 			<Show when={headerShown()}>
 				<Header title={title} options={options} back={back} backTitle={backTitle}
-					onBack={goBack} menu={menu} />
+					onBack={goBack} menu={showMenu} />
 			</Show>
 			<View style={{ flex: 1, flexDirection: "column" }}>{body}</View>
 			<Show when={swipeBack()}>

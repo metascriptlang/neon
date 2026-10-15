@@ -7,7 +7,6 @@ import { Style } from "../render/style";
 import { StackLayout } from "./layout";
 import { createContext, useContext } from "../render/context";
 import { refreshKeep } from "../render/refresh";
-import { ChildNavigation, ChildState, createChildren } from "./children";
 
 export enum NavigatorKind {
 	Container,
@@ -137,6 +136,7 @@ export interface NavigatorLink {
 	pushTo: (name: string) => boolean;
 	backLocal: () => boolean;
 	canBackLocal: () => boolean;
+	canPop: () => boolean;
 	popToTop: () => boolean;
 	handleBack: () => boolean;
 	drawerAction: (action: DrawerAction) => boolean;
@@ -348,10 +348,14 @@ interface PendingEntry {
 	target: NavTarget;
 }
 
-interface RouteSeed<P> {
+export interface RouteSeed<P> {
 	key: string;
 	name: string;
 	params: P | null;
+}
+
+export function seedKey<P>(seed: RouteSeed<P>): string {
+	return seed.key;
 }
 
 interface SeedEntry {
@@ -615,27 +619,42 @@ export function deepestFocused(link: NavigatorLink): NavigatorLink {
 	return current;
 }
 
+export interface NavigatorModel<P> {
+	entries: Accessor<Navigation<P>[]>;
+	index: Accessor<int32>;
+	arrange: (kept: Navigation<P>[], focused: Navigation<P> | null) => void;
+	navigate: (name: string, params: P | null) => void;
+	push: (name: string, params: P | null) => boolean;
+	replace: (key: string, name: string, params: P | null) => void;
+	popTo: (at: int32) => void;
+	reset: (list: RouteSeed<P>[], at: int32) => void;
+	goBackFrom: (key: string) => boolean;
+	canBack: () => boolean;
+	back: () => boolean;
+	canPop: () => boolean;
+	drawer: (action: DrawerAction) => boolean;
+}
+
 export interface NavigatorSetup<P> {
 	kind: NavigatorKind;
 	screens: ScreenConfig<P>[];
 	initialRouteName: string | null;
-	initialParams: P | null;
 	screenOptions: Accessor<ScreenOptions>;
-	backBehavior: string;
 	scope: ScreenScope;
+	model: (
+		core: NavigatorCore<P>,
+		restored: RouteSeed<P>[] | null,
+		at: int32,
+	) => NavigatorModel<P>;
 }
 
 export class NavigatorCore<P> {
 	kind: NavigatorKind;
 	screens: ScreenConfig<P>[];
-	routes: ChildNavigation<RouteSeed<P>, Navigation<P>>;
+	model: NavigatorModel<P>;
 	entries: Accessor<Navigation<P>[]>;
 	index: Accessor<int32>;
-	writeIndex: Setter<int32>;
-	drawerOpen: Accessor<boolean>;
-	writeDrawerOpen: Setter<boolean>;
 	screenOptions: Accessor<ScreenOptions>;
-	backBehavior: string;
 	initialName: string;
 	parent: NavigatorLink | null;
 	parentKey: string;
@@ -646,50 +665,32 @@ export class NavigatorCore<P> {
 	children: ChildEntry[] = [];
 	pending: PendingEntry[] = [];
 	seeds: SeedEntry[] = [];
-	history: string[] = [];
 	listeners: StateListener[] = [];
 	nextKey: int32 = 1;
 	nextListener: int32 = 1;
 	screenEpoch: int32 = 0;
 	layout: StackLayout = new StackLayout();
 
-	constructor(
-		kind: NavigatorKind,
-		screens: ScreenConfig<P>[],
-		index: Accessor<int32>,
-		writeIndex: Setter<int32>,
-		drawerOpen: Accessor<boolean>,
-		writeDrawerOpen: Setter<boolean>,
-		screenOptions: Accessor<ScreenOptions>,
-		backBehavior: string,
-		initialName: string,
-		scope: ScreenScope,
-	) {
-		this.kind = kind;
-		this.screens = screens;
-		this.routes = createChildren<RouteSeed<P>, Navigation<P>>(
-			[],
-			(seed: Accessor<RouteSeed<P>>, active: Accessor<boolean>): Navigation<P> => {
-				return this.instantiate(untrack((): RouteSeed<P> => seed()));
-			},
-		);
-		this.entries = this.routes.instances;
-		this.index = index;
-		this.writeIndex = writeIndex;
-		this.drawerOpen = drawerOpen;
-		this.writeDrawerOpen = writeDrawerOpen;
-		this.screenOptions = screenOptions;
-		this.backBehavior = backBehavior;
+	constructor(setup: NavigatorSetup<P>, initialName: string, restored: NavigationState | null) {
+		this.kind = setup.kind;
+		this.screens = setup.screens;
+		this.screenOptions = setup.screenOptions;
 		this.initialName = initialName;
+		const scope = setup.scope;
 		this.parent = scope.link;
 		this.parentKey = scope.routeKey;
 		this.focused = scope.focused;
 		this.parentNavigation = scope.navigation;
 		this.container = scope.container;
-	}
-
-	isStack(): boolean {
-		return this.kind === NavigatorKind.Stack;
+		if (restored === null) {
+			this.model = setup.model(this, null, 0);
+		} else {
+			const state = restored as NavigationState;
+			const list = this.restoredSeeds(state);
+			this.model = setup.model(this, list, this.resetIndex(list, state.index));
+		}
+		this.entries = this.model.entries;
+		this.index = this.model.index;
 	}
 
 	config(name: string): ScreenConfig<P> | null {
@@ -729,61 +730,14 @@ export class NavigatorCore<P> {
 				kept.push(entry);
 			}
 		}
-		let list: RouteSeed<P>[] = [];
-		for (const entry of kept) { list.push(this.seedOf(entry)); }
-		let at: int32 = 0;
-		if (this.isStack()) {
-			if (list.length === 0) {
-				const name = this.hasRoute(this.initialName) ? this.initialName : screens[0].name;
-				list.push(this.seed(name, null));
-			}
-			at = Math.min(untrack((): int32 => this.index()), list.length - 1) as int32;
-		} else {
-			list = [];
-			for (const config of screens) {
-				let found: Navigation<P> | null = null;
-				for (const entry of kept) {
-					if (entry.route.name === config.name) { found = entry; }
-				}
-				list.push(found === null ? this.seed(config.name, null) : this.seedOf(found as Navigation<P>));
-			}
-			if (focused !== null) {
-				for (let i = 0; i < list.length; i += 1) {
-					if (list[i].name === (focused as Navigation<P>).route.name) { at = i as int32; }
-				}
-			}
-		}
-		const history: string[] = [];
-		for (const key of this.history) {
-			for (const seed of list) {
-				if (seed.key === key) { history.push(key); }
-			}
-		}
-		if (history.length === 0) { history.push(list[at].key); }
-		this.history = history;
 		this.screenEpoch += 1;
-		batch((): void => { this.place(list, at); });
-		this.notify();
-		this.container.changed();
+		this.model.arrange(kept, focused);
 	}
 
 	routeNames(): string[] {
 		const names: string[] = [];
 		for (const screen of this.screens) { names.push(screen.name); }
 		return names;
-	}
-
-	transparent(entry: Navigation<P>): boolean {
-		const presentation = entry.options().presentation;
-		return presentation !== null && presentation === "transparentModal";
-	}
-
-	visibleFrom(): int32 {
-		const list = this.entries();
-		let at = (list.length - 1) as int32;
-		if (!this.isStack()) { return this.index(); }
-		while (at > 0 && this.transparent(list[at])) { at -= 1; }
-		return at;
 	}
 
 	currentKey(): string {
@@ -817,12 +771,6 @@ export class NavigatorCore<P> {
 		};
 	}
 
-	routeSeeds(): RouteSeed<P>[] {
-		const list: RouteSeed<P>[] = [];
-		for (const entry of this.snapshot()) { list.push(this.seedOf(entry)); }
-		return list;
-	}
-
 	instantiate(seed: RouteSeed<P>): Navigation<P> {
 		const config = this.config(seed.name) as ScreenConfig<P>;
 		const name = seed.name;
@@ -844,36 +792,22 @@ export class NavigatorCore<P> {
 		return entry;
 	}
 
-	start(initialParams: P | null): void {
-		if (this.isStack()) {
-			this.commit([this.seed(this.initialName, initialParams)], 0);
-			return;
-		}
-		const list: RouteSeed<P>[] = [];
-		let at: int32 = 0;
-		for (let i = 0; i < this.screens.length; i += 1) {
-			const name = this.screens[i].name;
-			if (name === this.initialName) { at = i as int32; }
-			list.push(this.seed(name, name === this.initialName ? initialParams : null));
-		}
-		this.history = [list[at].key];
-		this.commit(list, at);
+	child(seed: Accessor<RouteSeed<P>>, active: Accessor<boolean>): Navigation<P> {
+		return this.instantiate(untrack((): RouteSeed<P> => seed()));
 	}
 
-	place(list: RouteSeed<P>[], at: int32): void {
-		const state: ChildState<RouteSeed<P>>[] = [];
-		for (let i = 0; i < list.length; i += 1) {
-			state.push({ key: list[i].key, configuration: list[i], active: i === at });
-		}
-		this.routes.navigate(state);
-		this.writeIndex(at);
-		this.snapshot()[at].markVisited(true);
-	}
-
-	commit(list: RouteSeed<P>[], at: int32): void {
-		batch((): void => { this.place(list, at); });
+	apply(change: () => void): void {
+		batch((): void => {
+			change();
+			this.markCurrent();
+		});
 		this.notify();
 		this.container.changed();
+	}
+
+	markCurrent(): void {
+		const current = this.current();
+		if (current !== null) { (current as Navigation<P>).markVisited(true); }
 	}
 
 	notify(): void {
@@ -961,46 +895,11 @@ export class NavigatorCore<P> {
 	}
 
 	navigateLocal(name: string, params: P | null): void {
-		const list = this.snapshot();
-		const seeds = this.routeSeeds();
-		const at = this.indexOfName(list, name);
-		if (this.isStack()) {
-			if (at < 0) {
-				seeds.push(this.seed(name, params));
-				this.commit(seeds, (seeds.length - 1) as int32);
-				return;
-			}
-			this.guarded("NAVIGATE", list.slice(at + 1, list.length), (): void => {
-				if (params !== null) { list[at].writeParams(params); }
-				this.commit(seeds.slice(0, at + 1), at);
-			});
-			return;
-		}
-		if (params !== null) { list[at].writeParams(params); }
-		this.focusIndex(seeds, at);
-	}
-
-	focusIndex(list: RouteSeed<P>[], at: int32): void {
-		const key = list[at].key;
-		const kept: string[] = [];
-		for (const visited of this.history) {
-			if (visited !== key) { kept.push(visited); }
-		}
-		kept.push(key);
-		this.history = kept;
-		batch((): void => {
-			this.commit(list, at);
-			if (this.kind === NavigatorKind.Drawer) { this.writeDrawerOpen(false); }
-		});
+		this.model.navigate(name, params);
 	}
 
 	push(name: string, params: P | null): void {
-		if (this.isStack() && this.hasRoute(name)) {
-			const list = this.routeSeeds();
-			list.push(this.seed(name, params));
-			this.commit(list, (list.length - 1) as int32);
-			return;
-		}
+		if (this.hasRoute(name) && this.model.push(name, params)) { return; }
 		if (params === null) {
 			let link = this.parent;
 			while (link !== null) {
@@ -1013,38 +912,30 @@ export class NavigatorCore<P> {
 	}
 
 	replaceRoute(key: string, name: string, params: P | null): void {
-		if (!this.isStack()) {
-			this.navigate(name, params);
-			return;
-		}
-		const list = this.snapshot();
-		const seeds = this.routeSeeds();
-		for (let i = 0; i < list.length; i += 1) {
-			if (list[i].route.key === key) {
-				const at = i;
-				this.guarded("REPLACE", [list[at]], (): void => {
-					seeds[at] = this.seed(name, params);
-					this.commit(seeds, (seeds.length - 1) as int32);
-				});
-				return;
-			}
-		}
+		this.model.replace(key, name, params);
 	}
 
 	popCount(count: int32): void {
-		const list = this.snapshot();
-		const keep = Math.max(1, list.length - count);
+		const keep = Math.max(1, this.snapshot().length - count);
 		this.popTo((keep - 1) as int32);
 	}
 
 	popTo(at: int32): void {
-		if (!this.isStack()) { return; }
-		const list = this.snapshot();
-		const seeds = this.routeSeeds();
-		if (at >= list.length - 1) { return; }
-		this.guarded("POP", list.slice(at + 1, list.length), (): void => {
-			this.commit(seeds.slice(0, at + 1), at);
-		});
+		this.model.popTo(at);
+	}
+
+	resetIndex(list: RouteSeed<P>[], wanted: int32 | null): int32 {
+		if (list.length === 0) {
+			throw new Error("reset: a navigation state needs at least one route");
+		}
+		const at = wanted === null ? (list.length - 1) as int32 : wanted as int32;
+		if (at < 0 || at >= list.length) {
+			throw new Error(
+				"reset: index " + at.toString() +
+				" is outside " + list.length.toString() + " routes",
+			);
+		}
+		return at;
 	}
 
 	resetTo(state: ResetState<P>): void {
@@ -1053,116 +944,23 @@ export class NavigatorCore<P> {
 			const params = route.params;
 			list.push(this.seed(route.name, params === null ? null : params));
 		}
-		if (list.length === 0) {
-			throw new Error("reset: a navigation state needs at least one route");
-		}
-		const wanted = state.index;
-		let at = (list.length - 1) as int32;
-		if (wanted !== null) { at = wanted as int32; }
-		if (!this.isStack()) {
-			const full: RouteSeed<P>[] = [];
-			let focus: int32 = 0;
-			for (let i = 0; i < this.screens.length; i += 1) {
-				const name = this.screens[i].name;
-				let entry: RouteSeed<P> | null = null;
-				for (const given of list) {
-					if (given.name === name) { entry = given; }
-				}
-				if (entry === null) { entry = this.seed(name, null); }
-				if (name === list[at].name) { focus = i as int32; }
-				full.push(entry as RouteSeed<P>);
-			}
-			this.history = [full[focus].key];
-			this.commit(full, focus);
-			return;
-		}
-		this.guarded("RESET", this.snapshot(), (): void => { this.commit(list, at); });
+		this.model.reset(list, this.resetIndex(list, state.index));
 	}
 
 	goBackFrom(key: string): boolean {
-		if (this.isStack()) {
-			const list = this.snapshot();
-			if (list.length <= 1) { return false; }
-			const kept: RouteSeed<P>[] = [];
-			const removed: Navigation<P>[] = [];
-			for (const entry of list) {
-				if (entry.route.key !== key) {
-					kept.push(this.seedOf(entry));
-				} else {
-					removed.push(entry);
-				}
-			}
-			if (removed.length === 0) { return false; }
-			this.guarded("GO_BACK", removed, (): void => {
-				this.commit(kept, (kept.length - 1) as int32);
-			});
-			return true;
-		}
-		return this.backLocal();
+		return this.model.goBackFrom(key);
 	}
 
 	canBackLocal(): boolean {
-		if (this.isStack()) { return untrack((): Navigation<P>[] => this.entries()).length > 1; }
-		const open = untrack((): boolean => this.drawerOpen());
-		if (this.kind === NavigatorKind.Drawer && open) { return true; }
-		return this.backTarget() >= 0;
-	}
-
-	backTarget(): int32 {
-		const list = untrack((): Navigation<P>[] => this.entries());
-		const at = untrack((): int32 => this.index());
-		const behavior = this.backBehavior;
-		if (behavior === "none") { return -1; }
-		if (behavior === "history") {
-			if (this.history.length < 2) { return -1; }
-			const previous = this.history[this.history.length - 2];
-			for (let i = 0; i < list.length; i += 1) {
-				if (list[i].route.key === previous) { return i as int32; }
-			}
-			return -1;
-		}
-		let goal: int32 = 0;
-		if (behavior === "initialRoute") { goal = this.indexOfName(list, this.initialName); }
-		return goal === at || goal < 0 ? -1 : goal;
+		return this.model.canBack();
 	}
 
 	backLocal(): boolean {
-		if (this.isStack()) {
-			const list = this.snapshot();
-			if (list.length <= 1) { return false; }
-			const top = list[list.length - 1];
-			const kept = this.routeSeeds().slice(0, list.length - 1);
-			this.guarded("GO_BACK", [top], (): void => {
-				this.commit(kept, (kept.length - 1) as int32);
-			});
-			return true;
-		}
-		if (this.kind === NavigatorKind.Drawer && untrack((): boolean => this.drawerOpen())) {
-			this.writeDrawerOpen(false);
-			return true;
-		}
-		const goal = this.backTarget();
-		if (goal < 0) { return false; }
-		if (this.backBehavior === "history") {
-			this.history.pop();
-			const list = this.routeSeeds();
-			batch((): void => { this.commit(list, goal); });
-			return true;
-		}
-		this.focusIndex(this.routeSeeds(), goal);
-		return true;
+		return this.model.back();
 	}
 
 	drawerLocal(action: DrawerAction): boolean {
-		if (this.kind !== NavigatorKind.Drawer) { return false; }
-		const open = untrack((): boolean => this.drawerOpen());
-		const next = match (action) {
-			DrawerAction.Open => true,
-			DrawerAction.Close => false,
-			DrawerAction.Toggle => !open,
-		};
-		this.writeDrawerOpen(next);
-		return true;
+		return this.model.drawer(action);
 	}
 
 	navigateTo(target: NavTarget): boolean {
@@ -1209,8 +1007,8 @@ export class NavigatorCore<P> {
 		return null;
 	}
 
-	restore(state: NavigationState): void {
-		const routes: ResetRoute<P>[] = [];
+	restoredSeeds(state: NavigationState): RouteSeed<P>[] {
+		const list: RouteSeed<P>[] = [];
 		for (const route of state.routes) {
 			const screen = this.config(route.name);
 			if (screen === null) {
@@ -1225,19 +1023,21 @@ export class NavigatorCore<P> {
 				}
 				params = (parse as (values: Map<string, string>) => P)(values as Map<string, string>);
 			}
-			routes.push({ name: route.name, params });
+			list.push({ key: "", name: route.name, params });
 		}
-		const index: int32 | null = state.index;
-		this.resetTo({ index, routes });
-		const list = this.snapshot();
-		for (let i = 0; i < state.routes.length; i += 1) {
+		for (let i = 0; i < list.length; i += 1) {
+			list[i] = this.seed(list[i].name, list[i].params);
 			const child = state.routes[i].state;
-			if (child === null) { continue; }
-			for (let j = 0; j < list.length; j += 1) {
-				const same = this.isStack() ? i === j : list[j].route.name === state.routes[i].name;
-				if (same) { this.seeds.push({ routeKey: list[j].route.key, state: child as NavigationState }); }
+			if (child !== null) {
+				this.seeds.push({ routeKey: list[i].key, state: child as NavigationState });
 			}
 		}
+		return list;
+	}
+
+	restore(state: NavigationState): void {
+		const list = this.restoredSeeds(state);
+		this.model.reset(list, this.resetIndex(list, state.index));
 	}
 
 	unregister(routeKey: string, child: NavigatorLink): void {
@@ -1306,15 +1106,12 @@ export function linkOf<P>(core: NavigatorCore<P>): NavigatorLink {
 		kind: core.kind,
 		hasRoute: (name: string): boolean => core.hasRoute(name),
 		navigateTo: (target: NavTarget): boolean => core.navigateTo(target),
-		pushTo: (name: string): boolean => {
-			if (!core.isStack() || !core.hasRoute(name)) { return false; }
-			core.push(name, null);
-			return true;
-		},
+		pushTo: (name: string): boolean => core.hasRoute(name) && core.model.push(name, null),
 		backLocal: (): boolean => core.backLocal(),
 		canBackLocal: (): boolean => core.canBackLocal(),
+		canPop: (): boolean => core.model.canPop(),
 		popToTop: (): boolean => {
-			if (!core.isStack() || !core.canBackLocal()) { return false; }
+			if (!untrack((): boolean => core.model.canPop())) { return false; }
 			core.popTo(0);
 			return true;
 		},
@@ -1360,24 +1157,12 @@ export function createCore<P>(setup: NavigatorSetup<P>): NavigatorCore<P> {
 		}
 		initial = named as string;
 	}
-	const [index, writeIndex] = createSignal<int32>(0);
-	const [drawerOpen, writeDrawerOpen] = createSignal<boolean>(false);
-	const core = new NavigatorCore<P>(
-		setup.kind,
-		setup.screens,
-		index,
-		writeIndex,
-		drawerOpen,
-		writeDrawerOpen,
-		setup.screenOptions,
-		setup.backBehavior,
-		initial,
-		setup.scope,
-	);
-	const link = linkOf<P>(core);
 	const scope = setup.scope;
-	const seed = scope.link.seedFor(scope.routeKey);
-	if (seed === null) { core.start(setup.initialParams); } else { core.restore(seed as NavigationState); }
+	const core = new NavigatorCore<P>(setup, initial, scope.link.seedFor(scope.routeKey));
+	const link = linkOf<P>(core);
+	core.markCurrent();
+	core.notify();
+	core.container.changed();
 	when (refresh || hcr) {
 		refreshKeep<ResetState<P>>(
 			"navigator",

@@ -5,13 +5,19 @@ import { Style } from "../render/style";
 import { StackLayout } from "./layout";
 import { View } from "../components/primitives";
 import { For } from "../macros/ui/flow";
+import { createChildStack } from "./childStack";
 import {
 	Navigation,
+	NavigatorCore,
 	NavigatorKind,
+	NavigatorModel,
+	RouteSeed,
 	ScreenOptions,
 	ScreenProps,
 	createCore,
 	currentScope,
+	DrawerAction,
+	seedKey,
 } from "./core";
 import { screenView } from "./header";
 import { createNavigatorMotion } from "./navigatorMotion";
@@ -37,6 +43,119 @@ export function readOptions(
 ): Accessor<ScreenOptions> {
 	if (options === null) { return accessor((): ScreenOptions => ({})); }
 	return options as Accessor<ScreenOptions>;
+}
+
+function stackModel<P>(core: NavigatorCore<P>, restored: RouteSeed<P>[] | null): NavigatorModel<P> {
+	const initial = restored === null ? [core.seed(core.initialName, null)] : restored as RouteSeed<P>[];
+	const stack = createChildStack<RouteSeed<P>, Navigation<P>>(
+		initial,
+		seedKey,
+		(seed: Accessor<RouteSeed<P>>, active: Accessor<boolean>): Navigation<P> => {
+			return core.child(seed, active);
+		},
+	);
+	const entries = stack.instances;
+	const without = (key: string): void => {
+		stack.navigate((current: RouteSeed<P>[]): RouteSeed<P>[] => {
+			const kept: RouteSeed<P>[] = [];
+			for (const seed of current) {
+				if (seed.key !== key) { kept.push(seed); }
+			}
+			return kept;
+		});
+	};
+	const back = (): boolean => {
+		const list = core.snapshot();
+		if (list.length <= 1) { return false; }
+		core.guarded("GO_BACK", [list[list.length - 1]], (): void => {
+			core.apply((): void => { stack.pop(); });
+		});
+		return true;
+	};
+	return {
+		entries,
+		index: accessor((): int32 => (entries().length - 1) as int32),
+		arrange: (kept: Navigation<P>[], focused: Navigation<P> | null): void => {
+			const list: RouteSeed<P>[] = [];
+			for (const entry of kept) { list.push(core.seedOf(entry)); }
+			if (list.length === 0) {
+				const name = core.hasRoute(core.initialName)
+					? core.initialName
+					: core.screens[0].name;
+				list.push(core.seed(name, null));
+			}
+			core.apply((): void => {
+				stack.navigate((current: RouteSeed<P>[]): RouteSeed<P>[] => list);
+			});
+		},
+		navigate: (name: string, params: P | null): void => {
+			const list = core.snapshot();
+			const at = core.indexOfName(list, name);
+			if (at < 0) {
+				const seed = core.seed(name, params);
+				core.apply((): void => { stack.push(seed); });
+				return;
+			}
+			core.guarded("NAVIGATE", list.slice(at + 1, list.length), (): void => {
+				if (params !== null) { list[at].writeParams(params); }
+				core.apply((): void => { stack.popTo(at); });
+			});
+		},
+		push: (name: string, params: P | null): boolean => {
+			const seed = core.seed(name, params);
+			core.apply((): void => { stack.push(seed); });
+			return true;
+		},
+		replace: (key: string, name: string, params: P | null): void => {
+			for (const entry of core.snapshot()) {
+				if (entry.route.key === key) {
+					core.guarded("REPLACE", [entry], (): void => {
+						const seed = core.seed(name, params);
+						core.apply((): void => {
+							stack.navigate((current: RouteSeed<P>[]): RouteSeed<P>[] => {
+								for (let i = 0; i < current.length; i += 1) {
+									if (current[i].key === key) { current[i] = seed; }
+								}
+								return current;
+							});
+						});
+					});
+					return;
+				}
+			}
+		},
+		popTo: (at: int32): void => {
+			const list = core.snapshot();
+			if (at >= list.length - 1) { return; }
+			core.guarded("POP", list.slice(at + 1, list.length), (): void => {
+				core.apply((): void => { stack.popTo(at); });
+			});
+		},
+		reset: (list: RouteSeed<P>[], at: int32): void => {
+			core.guarded("RESET", core.snapshot(), (): void => {
+				core.apply((): void => {
+					stack.navigate((current: RouteSeed<P>[]): RouteSeed<P>[] => list);
+				});
+			});
+		},
+		goBackFrom: (key: string): boolean => {
+			const list = core.snapshot();
+			if (list.length <= 1) { return false; }
+			const removed: Navigation<P>[] = [];
+			for (const entry of list) {
+				if (entry.route.key === key) { removed.push(entry); }
+			}
+			if (removed.length === 0) { return false; }
+			core.guarded("GO_BACK", removed, (): void => {
+				core.apply((): void => { without(key); });
+			});
+			return true;
+		},
+		canBack: (): boolean => untrack((): Navigation<P>[] => entries()).length > 1,
+		back,
+		canPop: (): boolean => entries().length > 1,
+		drawer: (action: DrawerAction): boolean => false,
+	};
 }
 
 export interface StackNavigator<P> {
@@ -75,15 +194,18 @@ export function createStackNavigator<P>(): StackNavigator<P> {
 				kind: NavigatorKind.Stack,
 				screens,
 				initialRouteName: readName(props.initialRouteName),
-				initialParams: null,
 				screenOptions: readOptions(props.screenOptions),
-				backBehavior: "history",
 				scope: currentScope("Stack.Navigator"),
+				model: (
+					core: NavigatorCore<P>,
+					restored: RouteSeed<P>[] | null,
+					at: int32,
+				): NavigatorModel<P> => stackModel<P>(core, restored),
 			});
 			watchScreens<P>(collection, core);
-			const transitions = createNavigatorMotion<P>(core);
+			const transitions = createNavigatorMotion<P>(core, true);
 			const screen = (entry: Navigation<P>, at: Accessor<number>): NeonNode => {
-				return screenView<P>(core, transitions, entry);
+				return screenView<P>(core, transitions, entry, false);
 			};
 			const rendered = accessor((): Navigation<P>[] => transitions.rendered());
 			const measure = (e: NeonEvent): void => { core.layout.measure(e); };

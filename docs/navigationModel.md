@@ -64,12 +64,29 @@ same JS-driven frames.
 
 ## Provisional choices and remaining limits
 
-- The built-in navigators hold their routes as `createChildren` children: a route's
-  key, its seed (name and initial params) and its active flag are the child state,
-  and its `Navigation<P>` is the child instance (`core.ms` `place`). Decompose's
-  `childStack` is `children` plus a transformer (`ChildStackFactory.kt`); Neon's
-  stack, tabs and drawer still share one `NavigatorCore` whose operations branch on
-  the navigator kind.
+- The built-in navigators are compositions of two public models over
+  `createChildren`: `createChildStack` (`childStack.ms`, Decompose `childStack`)
+  under the stack, `createChildPages` (`childPages.ms`, Decompose `childPages`)
+  under tabs and drawer. A route's key, seed (name and initial params) and active
+  flag are the child state; its `Navigation<P>` is the child instance
+  (`NavigatorCore.child`). `NavigatorCore` keeps what every navigator shares
+  (screens, route keys, `beforeRemove` guards, nested links, state and restore) and
+  hands each operation to the `NavigatorModel` its navigator builds: `stackModel`,
+  `pagesModel` with `backBehavior` history, and `drawerModel`, which keeps the open
+  flag beside the pages. No operation compares `NavigatorKind`; the header back
+  button, the motion kind and the drawer swipe read what the renderer passes
+  (`createNavigatorMotion(core, stacked)`, `screenView(…, menu)`) or the
+  `NavigatorLink.canPop` capability.
+- The models diverge from Decompose where Neon lacks a mechanism: identity is a
+  `key` function, not configuration equality; `pop` and `popTo` return whether they
+  popped, where Decompose passes it to `onComplete`; navigation is synchronous, without `onComplete`, and a change made while one
+  applies throws instead of queueing (`Relay.kt`); every page stays created, with
+  no `pageStatus`; there is no back handler or saved-state serializer. `selectNext`
+  and `selectPrev` take `circular` as a required argument until the compiler card
+  on default parameters of generic class methods lands.
+- A stack's focused route is its last: a reset or restored state keeps every route
+  and focuses the last whatever its `index`, as React Navigation's
+  `StackRouter.getRehydratedState` does for a state that is not `stale: false`.
 - Transitions belong to the render layer, as Decompose's
   `Children(animation = stackAnimation())`: `navigatorMotion.ms` diffs the route
   children, keeps a leaving screen rendered until its exit ends
