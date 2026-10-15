@@ -18,104 +18,96 @@ function listText(node: MockNode): string {
 }
 
 test "For reactive list reuses rows on reorder, creates only new" {
-	createRoot((d) => {
-		const [items, setItems] = createSignal<number[]>([1, 2, 3]);
-		let creates = 0;
-		const ul = el("ul", [], [], For<number>({
-			each: items,
-			children: (item, i) => { creates = creates + 1; return <li>{"" + item}</li>; },
-		}));
-		const host = mockHost();
-		const root = host.createElement("root");
-		render(ul, host, root);
-		const ulNode = (root as unknown as MockNode).children[0];
-		assert listText(ulNode) === "123", "initial";
-		assert creates === 3, "3 rows created";
-		setItems([3, 1, 2]);
-		assert listText(ulNode) === "312", "reordered";
-		assert creates === 3, "no new creates on reorder";
-		setItems([3, 1, 2, 4]);
-		assert listText(ulNode) === "3124", "append";
-		assert creates === 4, "one create for new item";
-		setItems([2]);
-		assert listText(ulNode) === "2", "shrink";
-		assert creates === 4, "no creates on removal";
-		d();
-	});
+	const [items, setItems] = createSignal<number[]>([1, 2, 3]);
+	let creates = 0;
+	const ul = el("ul", [], [], For<number>({
+		each: items,
+		children: (item, i) => { creates = creates + 1; return <li>{"" + item}</li>; },
+	}));
+	const host = mockHost();
+	const root = host.createElement("root");
+	const d = render(ul, host, root);
+	const ulNode = (root as unknown as MockNode).children[0];
+	assert listText(ulNode) === "123", "initial";
+	assert creates === 3, "3 rows created";
+	setItems([3, 1, 2]);
+	assert listText(ulNode) === "312", "reordered";
+	assert creates === 3, "no new creates on reorder";
+	setItems([3, 1, 2, 4]);
+	assert listText(ulNode) === "3124", "append";
+	assert creates === 4, "one create for new item";
+	setItems([2]);
+	assert listText(ulNode) === "2", "shrink";
+	assert creates === 4, "no creates on removal";
+	d();
 }
 
 // PARKED: both fallback cells take the call form because a JSX value in an attribute of a generic
 // tag never lowers — `<For each={xs} fallback={<li/>}>` is refused. Card:
 // ~/metascript/.inbox/compiler/2026-09-19-jsx-converter-skipped-in-generic-call-inside-macro-arg.md
 test "For fallback shows when empty" {
-	createRoot((d) => {
-		const [items, setItems] = createSignal<number[]>([1]);
-		const ul = el("ul", [], [], For<number>({
-			each: items,
-			children: (item, i) => <li>{"" + item}</li>,
-			fallback: <li>empty</li>,
-		}));
-		const host = mockHost();
-		const root = host.createElement("root");
-		render(ul, host, root);
-		const ulNode = (root as unknown as MockNode).children[0];
-		assert listText(ulNode) === "1", "has item";
-		setItems([]);
-		assert listText(ulNode) === "empty", "fallback shown";
-		setItems([5]);
-		assert listText(ulNode) === "5", "back to item";
-		d();
-	});
+	const [items, setItems] = createSignal<number[]>([1]);
+	const ul = el("ul", [], [], For<number>({
+		each: items,
+		children: (item, i) => <li>{"" + item}</li>,
+		fallback: <li>empty</li>,
+	}));
+	const host = mockHost();
+	const root = host.createElement("root");
+	const d = render(ul, host, root);
+	const ulNode = (root as unknown as MockNode).children[0];
+	assert listText(ulNode) === "1", "has item";
+	setItems([]);
+	assert listText(ulNode) === "empty", "fallback shown";
+	setItems([5]);
+	assert listText(ulNode) === "5", "back to item";
+	d();
 }
 
 test "Show swaps child/fallback and stays stable while true" {
-	createRoot((d) => {
-		const [n, setN] = createSignal(1);
-		const div = el("div", [], [], Show({
-			when: accessor(() => n() > 0),
-			children: <span>on</span>,
-			fallback: <span>off</span>,
-		}));
-		const host = mockHost();
-		const root = host.createElement("root");
-		render(div, host, root);
-		const divNode = (root as unknown as MockNode).children[0];
+	const [n, setN] = createSignal(1);
+	const div = el("div", [], [], Show({
+		when: accessor(() => n() > 0),
+		children: <span>on</span>,
+		fallback: <span>off</span>,
+	}));
+	const host = mockHost();
+	const root = host.createElement("root");
+	const d = render(div, host, root);
+	const divNode = (root as unknown as MockNode).children[0];
 
-		assert divNode.children[0].children[0].text === "on", "initial on";
-		const firstSpan = divNode.children[0];
-		setN(2);
-		assert divNode.children[0].children[0].text === "on", "still on";
-		assert divNode.children[0] === firstSpan, "same node — not rebuilt while truthy";
-		setN(0);
-		assert divNode.children[0].children[0].text === "off", "fallback off";
-		setN(5);
-		assert divNode.children[0].children[0].text === "on", "on again";
-		d();
-	});
+	assert divNode.children[0].children[0].text === "on", "initial on";
+	const firstSpan = divNode.children[0];
+	setN(2);
+	assert divNode.children[0].children[0].text === "on", "still on";
+	assert divNode.children[0] === firstSpan, "same node — not rebuilt while truthy";
+	setN(0);
+	assert divNode.children[0].children[0].text === "off", "fallback off";
+	setN(5);
+	assert divNode.children[0].children[0].text === "on", "on again";
+	d();
 }
 
 test "For fallback reactive scope is disposed when rows return" {
-	createRoot((d) => {
-		const [items, setItems] = createSignal<number[]>([]);
-		const [label, setLabel] = createSignal("empty");
-		let fbRuns = 0;
-		const fbTick = (): string => { fbRuns = fbRuns + 1; return label(); };
-		const ul = el("ul", [], [], For<number>({
-			each: items,
-			children: (item, i) => <li>{"" + item}</li>,
-			fallback: <li>{fbTick()}</li>,
-		}));
-		const host = mockHost();
-		const root = host.createElement("root");
-		render(ul, host, root);
-		assert fbRuns === 1, "fallback effect ran once when empty";
-		setLabel("none");
-		assert fbRuns === 2, "fallback effect reactive while shown";
-		setItems([1]);
-		setLabel("ignored");
-		assert fbRuns === 2, "fallback effect disposed once rows returned";
-		d();
-	});
+	const [items, setItems] = createSignal<number[]>([]);
+	const [label, setLabel] = createSignal("empty");
+	let fbRuns = 0;
+	const fbTick = (): string => { fbRuns = fbRuns + 1; return label(); };
+	const ul = el("ul", [], [], For<number>({
+		each: items,
+		children: (item, i) => <li>{"" + item}</li>,
+		fallback: <li>{fbTick()}</li>,
+	}));
+	const host = mockHost();
+	const root = host.createElement("root");
+	const d = render(ul, host, root);
+	assert fbRuns === 1, "fallback effect ran once when empty";
+	setLabel("none");
+	assert fbRuns === 2, "fallback effect reactive while shown";
+	setItems([1]);
+	setLabel("ignored");
+	assert fbRuns === 2, "fallback effect disposed once rows returned";
+	d();
 }
 
 test "For fallback reactive scope is disposed with the list" {
@@ -141,24 +133,22 @@ test "For fallback reactive scope is disposed with the list" {
 }
 
 test "an accessor feeds For.each directly and the row index is an Accessor" {
-	createRoot((d) => {
-		const [items, setItems] = createSignal<number[]>([7, 8]);
-		const ul = el("ul", [], [], For<number>({
-			each: items,
-			children: (item, i) => {
-				const idx: Accessor<number> = i;
-				return <li>{"" + item + "@" + idx()}</li>;
-			},
-		}));
-		const host = mockHost();
-		const root = host.createElement("root");
-		render(ul, host, root);
-		const ulNode = (root as unknown as MockNode).children[0];
-		assert listText(ulNode) === "7@08@1", "initial";
-		setItems([8, 7]);
-		assert listText(ulNode) === "8@07@1", "reordered rows keep live indexes";
-		d();
-	});
+	const [items, setItems] = createSignal<number[]>([7, 8]);
+	const ul = el("ul", [], [], For<number>({
+		each: items,
+		children: (item, i) => {
+			const idx: Accessor<number> = i;
+			return <li>{"" + item + "@" + idx()}</li>;
+		},
+	}));
+	const host = mockHost();
+	const root = host.createElement("root");
+	const d = render(ul, host, root);
+	const ulNode = (root as unknown as MockNode).children[0];
+	assert listText(ulNode) === "7@08@1", "initial";
+	setItems([8, 7]);
+	assert listText(ulNode) === "8@07@1", "reordered rows keep live indexes";
+	d();
 }
 
 function mountedText(view: NeonNode): [() => string, () => void] {
@@ -255,53 +245,49 @@ test "a ?? <X/> child mounts the node when present and the JSX arm when null" {
 }
 
 test "Show mounts its branch untracked" {
-	createRoot((d) => {
-		const [on, setOn] = createSignal(true);
-		const [n, setN] = createSignal(0);
-		let builds = 0;
-		const child: NeonNode = (h: Host, p: HostNode, b: HostNode | null): void => {
-			builds = builds + 1;
-			const label = n().toString();
-			const built: NeonNode = <span>{label}</span>;
-			built(h, p, b);
-		};
-		const div = el("div", [], [], Show({ when: on, children: child }));
-		const host = mockHost();
-		const root = host.createElement("root");
-		render(div, host, root);
-		assert builds === 1, "branch built once on mount";
-		setN(5);
-		assert builds === 1, "a signal read while mounting does not rebuild the branch";
-		setOn(false);
-		setOn(true);
-		assert builds === 2, "flipping the condition still rebuilds";
-		d();
-	});
+	const [on, setOn] = createSignal(true);
+	const [n, setN] = createSignal(0);
+	let builds = 0;
+	const child: NeonNode = (h: Host, p: HostNode, b: HostNode | null): void => {
+		builds = builds + 1;
+		const label = n().toString();
+		const built: NeonNode = <span>{label}</span>;
+		built(h, p, b);
+	};
+	const div = el("div", [], [], Show({ when: on, children: child }));
+	const host = mockHost();
+	const root = host.createElement("root");
+	const d = render(div, host, root);
+	assert builds === 1, "branch built once on mount";
+	setN(5);
+	assert builds === 1, "a signal read while mounting does not rebuild the branch";
+	setOn(false);
+	setOn(true);
+	assert builds === 2, "flipping the condition still rebuilds";
+	d();
 }
 
 test "Show mounts its fallback untracked" {
-	createRoot((d) => {
-		const [on, setOn] = createSignal(false);
-		const [n, setN] = createSignal(0);
-		let builds = 0;
-		const fb: NeonNode = (h: Host, p: HostNode, b: HostNode | null): void => {
-			builds = builds + 1;
-			const label = n().toString();
-			const built: NeonNode = <i>{label}</i>;
-			built(h, p, b);
-		};
-		const div = el("div", [], [], Show({ when: on, children: <span>on</span>, fallback: fb }));
-		const host = mockHost();
-		const root = host.createElement("root");
-		render(div, host, root);
-		assert builds === 1, "fallback built once on mount";
-		setN(5);
-		assert builds === 1, "a signal read while mounting does not rebuild the fallback";
-		setOn(true);
-		setOn(false);
-		assert builds === 2, "flipping the condition still rebuilds the fallback";
-		d();
-	});
+	const [on, setOn] = createSignal(false);
+	const [n, setN] = createSignal(0);
+	let builds = 0;
+	const fb: NeonNode = (h: Host, p: HostNode, b: HostNode | null): void => {
+		builds = builds + 1;
+		const label = n().toString();
+		const built: NeonNode = <i>{label}</i>;
+		built(h, p, b);
+	};
+	const div = el("div", [], [], Show({ when: on, children: <span>on</span>, fallback: fb }));
+	const host = mockHost();
+	const root = host.createElement("root");
+	const d = render(div, host, root);
+	assert builds === 1, "fallback built once on mount";
+	setN(5);
+	assert builds === 1, "a signal read while mounting does not rebuild the fallback";
+	setOn(true);
+	setOn(false);
+	assert builds === 2, "flipping the condition still rebuilds the fallback";
+	d();
 }
 
 interface Keyed {
@@ -318,91 +304,83 @@ function keyOf(r: Keyed): number {
 }
 
 test "ForKeyedBy reuses rows across fresh objects that carry the same keys and shows their new items" {
-	createRoot((d) => {
-		const [rows, setRows] = createSignal<Keyed[]>([{ id: 1, label: "a" }, { id: 2, label: "b" }]);
-		let builds = 0;
-		const ul = el("ul", [], [], ForKeyedBy<Keyed, number>({
-			each: rows,
-			keyed: keyOf,
-			children: (r, i) => { builds = builds + 1; return <li>{r().label}</li>; },
-		}));
-		const host = mockHost();
-		const root = host.createElement("root");
-		render(ul, host, root);
-		const ulNode = (root as unknown as MockNode).children[0];
-		assert listText(ulNode) === "ab", "both rows rendered: " + listText(ulNode);
-		assert builds === 2, "two rows built";
-		setRows([{ id: 2, label: "b2" }, { id: 1, label: "a2" }]);
-		assert builds === 2, "a reorder of fresh objects with the same keys builds nothing";
-		assert listText(ulNode) === "b2a2", "the rows moved and show their new items: " + listText(ulNode);
-		d();
-	});
+	const [rows, setRows] = createSignal<Keyed[]>([{ id: 1, label: "a" }, { id: 2, label: "b" }]);
+	let builds = 0;
+	const ul = el("ul", [], [], ForKeyedBy<Keyed, number>({
+		each: rows,
+		keyed: keyOf,
+		children: (r, i) => { builds = builds + 1; return <li>{r().label}</li>; },
+	}));
+	const host = mockHost();
+	const root = host.createElement("root");
+	const d = render(ul, host, root);
+	const ulNode = (root as unknown as MockNode).children[0];
+	assert listText(ulNode) === "ab", "both rows rendered: " + listText(ulNode);
+	assert builds === 2, "two rows built";
+	setRows([{ id: 2, label: "b2" }, { id: 1, label: "a2" }]);
+	assert builds === 2, "a reorder of fresh objects with the same keys builds nothing";
+	assert listText(ulNode) === "b2a2", "the rows moved and show their new items: " + listText(ulNode);
+	d();
 }
 
 test "ForKeyedBy inserts and removes by key and keeps the index accessor live" {
-	createRoot((d) => {
-		const [rows, setRows] = createSignal<Keyed[]>([{ id: 1, label: "a" }, { id: 2, label: "b" }]);
-		let builds = 0;
-		const ul = el("ul", [], [], ForKeyedBy<Keyed, number>({
-			each: rows,
-			keyed: keyOf,
-			children: (r, i) => { builds = builds + 1; return <li>{r().label + i().toString()}</li>; },
-		}));
-		const host = mockHost();
-		const root = host.createElement("root");
-		render(ul, host, root);
-		const ulNode = (root as unknown as MockNode).children[0];
-		assert builds === 2, "two rows built";
-		setRows([{ id: 3, label: "c" }, { id: 1, label: "a" }, { id: 2, label: "b" }]);
-		assert builds === 3, "one build for the inserted key";
-		assert listText(ulNode) === "c0a1b2", "indexes follow the move: " + listText(ulNode);
-		setRows([{ id: 2, label: "b" }]);
-		assert builds === 3, "removal builds nothing";
-		assert listText(ulNode) === "b0", "only the survivor is left: " + listText(ulNode);
-		d();
-	});
+	const [rows, setRows] = createSignal<Keyed[]>([{ id: 1, label: "a" }, { id: 2, label: "b" }]);
+	let builds = 0;
+	const ul = el("ul", [], [], ForKeyedBy<Keyed, number>({
+		each: rows,
+		keyed: keyOf,
+		children: (r, i) => { builds = builds + 1; return <li>{r().label + i().toString()}</li>; },
+	}));
+	const host = mockHost();
+	const root = host.createElement("root");
+	const d = render(ul, host, root);
+	const ulNode = (root as unknown as MockNode).children[0];
+	assert builds === 2, "two rows built";
+	setRows([{ id: 3, label: "c" }, { id: 1, label: "a" }, { id: 2, label: "b" }]);
+	assert builds === 3, "one build for the inserted key";
+	assert listText(ulNode) === "c0a1b2", "indexes follow the move: " + listText(ulNode);
+	setRows([{ id: 2, label: "b" }]);
+	assert builds === 3, "removal builds nothing";
+	assert listText(ulNode) === "b0", "only the survivor is left: " + listText(ulNode);
+	d();
 }
 
 test "ForKeyedBy takes a string key and pairs rows sharing a key by occurrence" {
-	createRoot((d) => {
-		const [rows, setRows] = createSignal<Keyed[]>([{ id: 1, label: "a" }, { id: 1, label: "b" }]);
-		let builds = 0;
-		const ul = el("ul", [], [], ForKeyedBy<Keyed, string>({
-			each: rows,
-			keyed: (r: Keyed): string => "k" + r.id.toString(),
-			children: (r, i) => { builds = builds + 1; return <li>{r().label}</li>; },
-		}));
-		const host = mockHost();
-		const root = host.createElement("root");
-		render(ul, host, root);
-		const ulNode = (root as unknown as MockNode).children[0];
-		assert listText(ulNode) === "ab" && builds === 2, "a shared key mounts both rows: " + listText(ulNode);
-		setRows([{ id: 1, label: "b2" }]);
-		assert listText(ulNode) === "b2" && builds === 2, "the first row of the key stays and shows the new item: " + listText(ulNode);
-		d();
-	});
+	const [rows, setRows] = createSignal<Keyed[]>([{ id: 1, label: "a" }, { id: 1, label: "b" }]);
+	let builds = 0;
+	const ul = el("ul", [], [], ForKeyedBy<Keyed, string>({
+		each: rows,
+		keyed: (r: Keyed): string => "k" + r.id.toString(),
+		children: (r, i) => { builds = builds + 1; return <li>{r().label}</li>; },
+	}));
+	const host = mockHost();
+	const root = host.createElement("root");
+	const d = render(ul, host, root);
+	const ulNode = (root as unknown as MockNode).children[0];
+	assert listText(ulNode) === "ab" && builds === 2, "a shared key mounts both rows: " + listText(ulNode);
+	setRows([{ id: 1, label: "b2" }]);
+	assert listText(ulNode) === "b2" && builds === 2, "the first row of the key stays and shows the new item: " + listText(ulNode);
+	d();
 }
 
 test "ForKeyedBy takes a fallback" {
-	createRoot((d) => {
-		const [rows, setRows] = createSignal<Keyed[]>([]);
-		const ul = el("ul", [], [], ForKeyedBy<Keyed, number>({
-			each: rows,
-			keyed: keyOf,
-			children: keyedRow,
-			fallback: <li>empty</li>,
-		}));
-		const host = mockHost();
-		const root = host.createElement("root");
-		render(ul, host, root);
-		const ulNode = (root as unknown as MockNode).children[0];
-		assert listText(ulNode) === "empty", "the fallback shows while the list is empty";
-		setRows([{ id: 4, label: "d" }]);
-		assert listText(ulNode) === "d", "the keyed row replaces the fallback";
-		setRows([]);
-		assert listText(ulNode) === "empty", "the fallback comes back";
-		d();
-	});
+	const [rows, setRows] = createSignal<Keyed[]>([]);
+	const ul = el("ul", [], [], ForKeyedBy<Keyed, number>({
+		each: rows,
+		keyed: keyOf,
+		children: keyedRow,
+		fallback: <li>empty</li>,
+	}));
+	const host = mockHost();
+	const root = host.createElement("root");
+	const d = render(ul, host, root);
+	const ulNode = (root as unknown as MockNode).children[0];
+	assert listText(ulNode) === "empty", "the fallback shows while the list is empty";
+	setRows([{ id: 4, label: "d" }]);
+	assert listText(ulNode) === "d", "the keyed row replaces the fallback";
+	setRows([]);
+	assert listText(ulNode) === "empty", "the fallback comes back";
+	d();
 }
 
 test "For gives a row that names its index a live index through the tag" {
