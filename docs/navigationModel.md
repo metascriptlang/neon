@@ -127,7 +127,10 @@ never knows a URL, a pattern or a component.
   address part and nested child (the last is active), `navigate(keys)` to apply a
   traversal, and `onBeforeNavigate()` to refuse one. Defaults are Decompose's: every
   stack entry is a history entry; pages expose only the selected page and replace;
-  panels follow `PanelsWebNavigation`.
+  panels follow `PanelsWebNavigation`. The adapters are in
+  `src/navigation/webNavigation.ms`; `webNavigationNode` erases a typed one to string
+  keys, as `bindRoute` erases a codec, and decodes every key before applying any,
+  where Decompose's binding can throw after applying a parent level.
 - A navigation requested while one applies is queued (`Relay.kt`).
 
 **Rendering (presentation)** draws a model: outlet, stack with motion, header and
@@ -184,7 +187,20 @@ const routes = createRoutes([
 ```
 
 `path` gives untyped routes whose params are strings; `route` gives typed ones.
-Solid Router's names are kept where the meaning is the same. The React Navigation
+Solid Router's names are kept where the meaning is the same.
+
+`src/navigation/router.ms` compiles the tree into one `RouteTree`, and `createRouter`
+makes it one participant of scope `main`. A layout keeps its instance while the routes
+under it change; a page is replaced when its matched path changes and kept when only
+the search does, through an outlet keyed by route and path as Solid's `routeStates`
+is. A leaf takes a component and a level with children a layout or nothing; anything
+else throws at the declaration, as the tree's own errors do. Redirects are followed
+before mount, at most 20, and the history entry ends on the last address (TanStack
+`followRedirect`, `load-client.ts`). A path ending in `/` is redirected for good
+(308) to the one without it, as Next's default `trailingSlash: false` does
+(`load-custom-routes.ts`, the `/:path+/` redirect), so a page has one address on a
+server, in static output and in the browser. `Router.response()` gives a server the
+first redirect's status and final location, or the route's status. The React Navigation
 surface (`createStackNavigator`, `NavigationContainer` with `linking`) is a second
 shorthand over the same models. An author whose URL shape differs from the navigation
 shape skips the tree and composes the models and the binding directly.
@@ -293,6 +309,11 @@ same JS-driven frames.
 - Navigation snapshots are participant codecs, not serialization of arbitrary
   reactive graphs. URL traversal can therefore restore a retained document stack
   without promising persistence of every local edit or GPU resource.
+- The route tree shorthand has layout levels only; Stack and Tabs as levels come with
+  the binding. It takes `path` strings only, and the web navigation adapters take a
+  required options object, until two compiler cards land (both parked in `BUGS.md`).
+  Its `<A>` renders a web `<a>`; on a native host that is a plain view until `<A>`
+  and React Navigation's `Link` become one through the binding.
 - Request routing initializes before mounting, on a server as on a client. What a
   server render writes and how `hydrate` takes it over is `docs/RENDER-MODEL.md`.
 - Not in the first version of the layers: data loading per route (Solid `preload`,
