@@ -1,4 +1,4 @@
-import { createSignal } from "../../src/core/signal";
+import { accessor, createSignal } from "../../src/core/signal";
 import { element } from "../../src/macros/ui/element";
 import { Show } from "../../src/macros/ui/flow";
 import { HostNode, mockNode, mockHost, render } from "../../src/render/host";
@@ -25,7 +25,7 @@ test "raw filters replace every Void kind without remounting or changing sibling
 	const root = mockNode("root");
 	const dispose = render(element(<Void><Scene2D
 		ref={(scene: VoidScene2D): void => { scenes.push(scene); }}>
-		{Show({ when: () => shown(), children: element(
+		{Show({ when: accessor(() => shown()), children: element(
 			<Group filter={readFilter()}
 				ref={(node: NodeRef): void => { nodes.push(node); }}>
 				<Rect width={4.0} height={5.0} color={rgba(1.0, 1.0, 1.0, 1.0)}
@@ -77,7 +77,7 @@ test "filter replacement preserves independent color matrix rows and releases th
 	const root = mockNode("root");
 	const dispose = render(element(<Void><Scene2D
 		ref={(scene: VoidScene2D): void => { scenes.push(scene); }}>
-		{Show({ when: () => shown(), children: element(
+		{Show({ when: accessor(() => shown()), children: element(
 			<Rect width={4.0} height={5.0} color={rgba(1.0, 1.0, 1.0, 1.0)}
 				filter={value()} colorMatrix={matrix()}
 				ref={(node: NodeRef): void => { nodes.push(node); }} />

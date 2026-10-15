@@ -1,4 +1,4 @@
-import { createSignal } from "../../src/core/signal";
+import { accessor, createSignal } from "../../src/core/signal";
 import { element } from "../../src/macros/ui/element";
 import { Show } from "../../src/macros/ui/flow";
 import { HostNode, mockNode, mockHost, render } from "../../src/render/host";
@@ -64,7 +64,7 @@ test "Graphics remount owns fresh geometry and rejects missing Scene2D scope" {
 	}];
 	const root = mockNode("root");
 	const dispose = render(element(<Void><Scene2D>
-		{Show({ when: () => shown(), children: element(
+		{Show({ when: accessor(() => shown()), children: element(
 			<Graphics operations={operations}
 				ref={(node: NodeRef): void => { nodes.push(node); }} />
 		) })}

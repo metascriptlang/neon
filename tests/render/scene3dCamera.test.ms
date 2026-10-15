@@ -1,4 +1,4 @@
-import { createSignal } from "../../src/core/signal";
+import { accessor, createSignal } from "../../src/core/signal";
 import { element } from "../../src/macros/ui/element";
 import { Show } from "../../src/macros/ui/flow";
 import { HostNode, mockNode, mockHost, render } from "../../src/render/host";
@@ -18,7 +18,7 @@ function resolved(handle: Scene3DHandle): VoidCamera3D {
 }
 
 test "Camera3D follows parent translation roll and scale through Void world binding" {
-	let handle: Scene3DHandle = null as unknown as Scene3DHandle;
+	let handle: Scene3DHandle | null = null;
 	const [x, setX] = createSignal<float32>(1.0);
 	const [roll, setRoll] = createSignal<float32>(0.0);
 	const root = mockNode("root");
@@ -30,6 +30,7 @@ test "Camera3D follows parent translation roll and scale through Void world bind
 			</Group>
 		</Scene3D>
 	</Void>), mockHost(), root as unknown as HostNode);
+	if (handle === null) { throw new Error("fixture: handle ref did not mount"); }
 	const initial = resolved(handle);
 	assert initial.position === vec3(1.0, 2.0, 12.0);
 	setX(3.0); setRoll(0.5);
@@ -42,7 +43,7 @@ test "Camera3D follows parent translation roll and scale through Void world bind
 }
 
 test "Camera3D retains local yaw pitch and restores a surviving world camera after subtree removal" {
-	let handle: Scene3DHandle = null as unknown as Scene3DHandle;
+	let handle: Scene3DHandle | null = null;
 	const [yaw, setYaw] = createSignal<float32>(0.7);
 	const [pitch, setPitch] = createSignal<float32>(-0.3);
 	const [shown, setShown] = createSignal(true);
@@ -50,11 +51,12 @@ test "Camera3D retains local yaw pitch and restores a surviving world camera aft
 	const dispose = render(element(<Void>
 		<Scene3D ref={(value: Scene3DHandle): void => { handle = value; }}>
 			<Camera3D active={true} position={vec3(1.0, 2.0, 3.0)} yaw={yaw()} pitch={pitch()} />
-			{Show({ when: () => shown(), children: element(
+			{Show({ when: accessor(() => shown()), children: element(
 				<Group position={vec3(20.0, 0.0, 0.0)}><Camera3D active={true} /></Group>
 			) })}
 		</Scene3D>
 	</Void>), mockHost(), root as unknown as HostNode);
+	if (handle === null) { throw new Error("fixture: handle ref did not mount"); }
 	assert resolved(handle).position.x === 20.0;
 	setShown(false);
 	const selected = handle.camera;
@@ -76,7 +78,7 @@ test "Camera3D retains local yaw pitch and restores a surviving world camera aft
 }
 
 test "Camera3D rejects an inherited foreign scene scope and closes failed owners" {
-	let handle: Scene3DHandle = null as unknown as Scene3DHandle;
+	let handle: Scene3DHandle | null = null;
 	const root = mockNode("root");
 	let failure = "";
 	try {
@@ -88,5 +90,6 @@ test "Camera3D rejects an inherited foreign scene scope and closes failed owners
 		dispose();
 	} catch (error) { failure = error.toString(); }
 	assert failure.includes("Camera3D: mount inside Scene3D within Void");
+	if (handle === null) { throw new Error("fixture: handle ref did not mount"); }
 	assert handle.scene.closed && handle.context.closed && handle.scene.nodeCount() === 0;
 }

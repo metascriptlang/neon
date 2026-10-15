@@ -1,4 +1,4 @@
-import { createSignal } from "../../src/core/signal";
+import { accessor, createSignal } from "../../src/core/signal";
 import { createRoot } from "../../src/core/owner";
 import { element } from "../../src/macros/ui/element";
 import { Show } from "../../src/macros/ui/flow";
@@ -65,7 +65,7 @@ test "Label remount applies current runs and line options without changing omitt
 	const dispose = render(element(<Void><Scene2D>
 		<Label text="ab" size={13.0} color={rgba(1.0, 1.0, 1.0, 1.0)}
 			ref={(node: NodeRef): void => { nodes.push(node); }} />
-		{Show({ when: () => shown(), children: element(
+		{Show({ when: accessor(() => shown()), children: element(
 			<Label text="ab" size={13.0} color={rgba(1.0, 1.0, 1.0, 1.0)}
 				textRuns={runs()} forceWidth={width()}
 				ref={(node: NodeRef): void => { nodes.push(node); }} />

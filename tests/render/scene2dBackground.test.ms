@@ -1,4 +1,4 @@
-import { createSignal } from "../../src/core/signal";
+import { accessor, createSignal } from "../../src/core/signal";
 import { element } from "../../src/macros/ui/element";
 import { Show } from "../../src/macros/ui/flow";
 import { HostNode, mockNode, mockHost, render } from "../../src/render/host";
@@ -59,7 +59,7 @@ test "Group omitted background stays structural and remount restores current fil
 	const root = mockNode("root");
 	const dispose = render(element(<Void><Scene2D>
 		<Group height={7.0} ref={(node: NodeRef): void => { nodes.push(node); }} />
-		{Show({ when: () => shown(), children: element(
+		{Show({ when: accessor(() => shown()), children: element(
 			<Group width={12.0} background={background()} paint={full()} colorMatrix={colorMatrixGrayscale(0.5)}
 				ref={(node: NodeRef): void => { nodes.push(node); }} />
 		) })}

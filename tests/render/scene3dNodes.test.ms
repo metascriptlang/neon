@@ -1,4 +1,4 @@
-import { createSignal } from "../../src/core/signal";
+import { accessor, createSignal } from "../../src/core/signal";
 import { element } from "../../src/macros/ui/element";
 import { Show } from "../../src/macros/ui/flow";
 import { HostNode, mockNode, mockHost, render } from "../../src/render/host";
@@ -10,7 +10,7 @@ import { added, litShape } from "../../../void/src/test/drawHelpers";
 import { Vec3, vec3 } from "../../../void/src/math/math3d";
 
 test "Group Mesh Light visibility pickability and names react through Void binders" {
-	let handle: Scene3DHandle = null as unknown as Scene3DHandle;
+	let handle: Scene3DHandle | null = null;
 	let mesh = NO_MESH;
 	const nodes: NodeId3D[] = [];
 	const [visible, setVisible] = createSignal(false);
@@ -29,6 +29,7 @@ test "Group Mesh Light visibility pickability and names react through Void binde
 				ref={(value: NodeId3D): void => { nodes.push(value); }} />
 		</Scene3D>
 	</Void>), mockHost(), root as unknown as HostNode);
+	if (handle === null) { throw new Error("fixture: handle ref did not mount"); }
 	for (const id of nodes) {
 		assert !handle.scene.nodes[id.index].flags.has(NodeFlag.Visible);
 		assert handle.scene.nodes[id.index].flags.has(NodeFlag.Pickable);
@@ -48,7 +49,7 @@ test "Group Mesh Light visibility pickability and names react through Void binde
 }
 
 test "Omitted node flags preserve Void defaults and remount reads current values" {
-	let handle: Scene3DHandle = null as unknown as Scene3DHandle;
+	let handle: Scene3DHandle | null = null;
 	const nodes: NodeId3D[] = [];
 	const [shown, setShown] = createSignal(true);
 	const [visible, setVisible] = createSignal(false);
@@ -57,12 +58,13 @@ test "Omitted node flags preserve Void defaults and remount reads current values
 	const dispose = render(element(<Void>
 		<Scene3D ref={(value: Scene3DHandle): void => { handle = value; }}>
 			<Group ref={(value: NodeId3D): void => { nodes.push(value); }} />
-			{Show({ when: () => shown(), children: element(
+			{Show({ when: accessor(() => shown()), children: element(
 				<Group visible={visible()} name={name()}
 					ref={(value: NodeId3D): void => { nodes.push(value); }} />
 			) })}
 		</Scene3D>
 	</Void>), mockHost(), root as unknown as HostNode);
+	if (handle === null) { throw new Error("fixture: handle ref did not mount"); }
 	assert handle.scene.nodes[nodes[0].index].flags.has(NodeFlag.Visible);
 	assert !handle.scene.nodes[nodes[0].index].flags.has(NodeFlag.Pickable);
 	assert handle.scene.nodes[nodes[0].index].name === "";
@@ -75,9 +77,9 @@ test "Omitted node flags preserve Void defaults and remount reads current values
 }
 
 test "Scene3D ambient follows its signal without changing sibling scenes or Void defaults" {
-	let first: Scene3DHandle = null as unknown as Scene3DHandle;
-	let second: Scene3DHandle = null as unknown as Scene3DHandle;
-	let defaults: Scene3DHandle = null as unknown as Scene3DHandle;
+	let first: Scene3DHandle | null = null;
+	let second: Scene3DHandle | null = null;
+	let defaults: Scene3DHandle | null = null;
 	const [ambient, setAmbient] = createSignal<Vec3>(vec3(0.1, 0.2, 0.3));
 	const root = mockNode("root");
 	const dispose = render(element(<Void>
@@ -87,8 +89,11 @@ test "Scene3D ambient follows its signal without changing sibling scenes or Void
 			ref={(value: Scene3DHandle): void => { second = value; }} />
 		<Scene3D ref={(value: Scene3DHandle): void => { defaults = value; }} />
 	</Void>), mockHost(), root as unknown as HostNode);
+	if (first === null) { throw new Error("fixture: first ref did not mount"); }
 	assert first.scene.ambientLight === vec3(0.1, 0.2, 0.3);
+	if (second === null) { throw new Error("fixture: second ref did not mount"); }
 	assert second.scene.ambientLight === vec3(0.7, 0.8, 0.9);
+	if (defaults === null) { throw new Error("fixture: defaults ref did not mount"); }
 	assert defaults.scene.ambientLight === vec3(0.5, 0.5, 0.5);
 	setAmbient(vec3(0.4, 0.5, 0.6));
 	assert first.scene.ambientLight === vec3(0.4, 0.5, 0.6);

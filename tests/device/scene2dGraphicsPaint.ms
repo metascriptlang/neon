@@ -1,4 +1,4 @@
-import { createSignal } from "../../src/core/signal";
+import { accessor, createSignal } from "../../src/core/signal";
 import { element } from "../../src/macros/ui/element";
 import { Show } from "../../src/macros/ui/flow";
 import { HostNode, mockNode, mockHost, render } from "../../src/render/host";
@@ -18,7 +18,7 @@ import { endPass, commit } from "../../../void/src/gpu/door";
 @include("../../../void/src/sokol/bridge.h");
 extern function voidRun(w: int32, h: int32, init: () => void, frame: () => void): void;
 
-let scene: VoidScene2D = null as unknown as VoidScene2D;
+let scene: VoidScene2D | null = null;
 let cleanup: (() => void) | null = null;
 let frames: int32 = 0;
 const nodes: NodeRef[] = [];
@@ -48,7 +48,7 @@ function operations(): GraphicsOp[] {
 function init(): void {
 	gfxSetup(); setup2d();
 	cleanup = render(element(<Void><Scene2D ref={(value: VoidScene2D): void => { scene = value; }}>
-		{Show({ when: () => shown(), children: element(
+		{Show({ when: accessor(() => shown()), children: element(
 			<Graphics operations={operations()} ref={(node: NodeRef): void => { nodes.push(node); }} />
 		) })}
 	</Scene2D></Void>), mockHost(), mockNode("root") as unknown as HostNode);
@@ -60,6 +60,7 @@ function fail(message: string): void {
 }
 
 function frame(): void {
+	if (scene === null) { fail("consumer did not mount"); return; }
 	if (frames === 5) { setChanged(true); }
 	if (frames === 7) { setShown(false); }
 	if (frames === 9) { setShown(true); }

@@ -1,4 +1,4 @@
-import { createSignal } from "../../src/core/signal";
+import { accessor, createSignal } from "../../src/core/signal";
 import { element } from "../../src/macros/ui/element";
 import { Show } from "../../src/macros/ui/flow";
 import { HostNode, mockNode, mockHost, render } from "../../src/render/host";
@@ -50,7 +50,7 @@ function init(): void {
 	// Parked: ~/metascript/.inbox/compiler/2026-10-07-captured-const-nullable-struct-loses-narrowing.md.
 	dispose = render(element(<Void><Scene2D
 		ref={(scene: VoidScene2D): void => { subject = scene; }}>
-		{Show({ when: () => shown(), children: element(
+		{Show({ when: accessor(() => shown()), children: element(
 			<Sprite tile={selectedTile()} width={32.0} height={32.0}
 				ref={(node: NodeRef): void => { nodes.push(node); }} />
 		) })}

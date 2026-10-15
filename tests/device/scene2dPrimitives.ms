@@ -1,4 +1,4 @@
-import { createSignal } from "../../src/core/signal";
+import { accessor, createSignal } from "../../src/core/signal";
 import { element } from "../../src/macros/ui/element";
 import { Show } from "../../src/macros/ui/flow";
 import { HostNode, mockNode, mockHost, render } from "../../src/render/host";
@@ -17,7 +17,7 @@ import { endPass, commit } from "../../../void/src/gpu/door";
 @include("../../../void/src/sokol/bridge.h");
 extern function voidRun(w: int32, h: int32, init: () => void, frame: () => void): void;
 
-let scene: VoidScene2D = null as unknown as VoidScene2D;
+let scene: VoidScene2D | null = null;
 let cleanup: (() => void) | null = null;
 let frames: int32 = 0;
 const nodes: NodeRef[] = [];
@@ -49,29 +49,29 @@ function styledImage(): ImageStyle {
 function init(): void {
 	gfxSetup(); setup2d();
 	cleanup = render(element(<Void><Scene2D ref={(value: VoidScene2D): void => { scene = value; }}>
-		{Show({ when: () => phase() === 0, children: element(
+		{Show({ when: accessor(() => phase() === 0), children: element(
 			<ScaleGrid tile={whiteTile(32.0, 32.0)} width={changed() ? 80.0 : 64.0} height={48.0}
 				borderL={8.0} borderT={8.0} borderR={8.0} borderB={8.0} ref={capture} />
 		) })}
-		{Show({ when: () => phase() === 1, children: element(
+		{Show({ when: accessor(() => phase() === 1), children: element(
 			<TileGroup cells={cells()} count={changed() ? 2 : 1} ref={capture} />
 		) })}
-		{Show({ when: () => phase() === 2, children: element(
+		{Show({ when: accessor(() => phase() === 2), children: element(
 			<Underline width={changed() ? 48.0 : 32.0} thickness={2.0} wavy={changed()}
 				color={rgba(0.0, 1.0, 0.0, 1.0)} ref={capture} />
 		) })}
-		{Show({ when: () => phase() === 3, children: element(
+		{Show({ when: accessor(() => phase() === 3), children: element(
 			<Selection width={changed() ? 48.0 : 32.0} height={14.0}
 				color={rgba(0.0, 0.0, 1.0, 0.7)} prevOffsetX={changed() ? 4.0 : 0.0}
 				prevWidth={16.0} nextOffsetX={8.0} nextWidth={10.0} ref={capture} />
 		) })}
-		{Show({ when: () => phase() === 4, children: element(
+		{Show({ when: accessor(() => phase() === 4), children: element(
 			<Rect width={64.0} height={48.0} color={rgba(0.0, 1.0, 0.0, 1.0)} boxStyle={styledBox()} ref={capture} />
 		) })}
-		{Show({ when: () => phase() === 5, children: element(
+		{Show({ when: accessor(() => phase() === 5), children: element(
 			<Sprite tile={whiteTile(24.0, 12.0)} width={64.0} height={48.0} imageStyle={styledImage()} ref={capture} />
 		) })}
-		{Show({ when: () => phase() === 6, children: element(
+		{Show({ when: accessor(() => phase() === 6), children: element(
 			<Group width={64.0} height={48.0} background={changed() ? rgba(0.0, 0.0, 1.0, 1.0) : null} ref={capture} />
 		) })}
 	</Scene2D></Void>), mockHost(), mockNode("root") as unknown as HostNode);
@@ -83,6 +83,7 @@ function fail(message: string): void {
 }
 
 function frame(): void {
+	if (scene === null) { fail("consumer did not mount"); return; }
 	if (frames > 0 && frames % 3 === 0) {
 		setPhase(frames / 3); setChanged(false);
 	}
@@ -119,7 +120,8 @@ function frame(): void {
 		4 => {
 			const style = boxStyles[scene.payloads[node.id.index]];
 			if (style.radii.topLeft !== (changed() ? 8.0 : 4.0) ||
-				style.borders.left !== (changed() ? 3.0 : 1.0) || style.shadowInset !== changed()) {
+				style.borders.left !== (changed() ? 3.0 : 1.0) || style.shadows.length !== 1 ||
+				style.shadows[0].inset !== changed()) {
 				fail("BoxStyle border/radius/shadow"); return;
 			}
 		}

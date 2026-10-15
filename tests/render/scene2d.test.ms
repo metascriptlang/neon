@@ -1,4 +1,4 @@
-import { createSignal } from "../../src/core/signal";
+import { accessor, createSignal } from "../../src/core/signal";
 import { createRoot } from "../../src/core/owner";
 import { element } from "../../src/macros/ui/element";
 import { Show } from "../../src/macros/ui/flow";
@@ -53,8 +53,8 @@ function mountError(node: NeonNode): string {
 }
 
 test "Scene2D scale modes and design size react independently and stop at disposal" {
-	let first: VoidScene2D = null as unknown as VoidScene2D;
-	let second: VoidScene2D = null as unknown as VoidScene2D;
+	let first: VoidScene2D | null = null;
+	let second: VoidScene2D | null = null;
 	const [width, setWidth] = createSignal<float32>(200.0);
 	const [height, setHeight] = createSignal<float32>(100.0);
 	const [mode, setMode] = createSignal<ScaleMode>(ScaleMode.LetterBox);
@@ -65,7 +65,9 @@ test "Scene2D scale modes and design size react independently and stop at dispos
 		<Scene2D scaleMode={ScaleMode.Stretch} designW={100.0} designH={100.0}
 			ref={(value: VoidScene2D): void => { second = value; }} />
 	</Void>), mockHost(), root as unknown as HostNode);
+	if (first === null) { throw new Error("fixture: first ref did not mount"); }
 	const letterBox = sceneViewMatrix(first, 800.0, 600.0);
+	if (second === null) { throw new Error("fixture: second ref did not mount"); }
 	const stretch = sceneViewMatrix(second, 800.0, 600.0);
 	assert letterBox.a === 4.0 && letterBox.d === 4.0;
 	assert letterBox.tx === 0.0 && letterBox.ty === 100.0;
@@ -87,9 +89,9 @@ test "Scene2D scale modes and design size react independently and stop at dispos
 }
 
 test "Scene2D Fixed Zoom AutoZoom and omitted design values keep Void semantics" {
-	let scene: VoidScene2D = null as unknown as VoidScene2D;
-	let noDesign: VoidScene2D = null as unknown as VoidScene2D;
-	let onlyWidth: VoidScene2D = null as unknown as VoidScene2D;
+	let scene: VoidScene2D | null = null;
+	let noDesign: VoidScene2D | null = null;
+	let onlyWidth: VoidScene2D | null = null;
 	const [mode, setMode] = createSignal<ScaleMode>(ScaleMode.Fixed);
 	const root = mockNode("root");
 	const dispose = render(element(<Void>
@@ -100,6 +102,7 @@ test "Scene2D Fixed Zoom AutoZoom and omitted design values keep Void semantics"
 		<Scene2D designW={100.0}
 			ref={(value: VoidScene2D): void => { onlyWidth = value; }} />
 	</Void>), mockHost(), root as unknown as HostNode);
+	if (scene === null) { throw new Error("fixture: scene ref did not mount"); }
 	const fixed = sceneViewMatrix(scene, 900.0, 600.0);
 	assert fixed.a === 1.0 && fixed.d === 1.0;
 	assert fixed.tx === 250.0 && fixed.ty === 150.0;
@@ -111,7 +114,9 @@ test "Scene2D Fixed Zoom AutoZoom and omitted design values keep Void semantics"
 	const autoZoom = sceneViewMatrix(scene, 900.0, 600.0);
 	assert autoZoom.a === 2.0 && autoZoom.d === 2.0;
 	assert autoZoom.tx === 50.0 && autoZoom.ty === 0.0;
+	if (noDesign === null) { throw new Error("fixture: noDesign ref did not mount"); }
 	assert noDesign.designW === 0.0 && noDesign.designH === 0.0;
+	if (onlyWidth === null) { throw new Error("fixture: onlyWidth ref did not mount"); }
 	assert onlyWidth.scaleMode === ScaleMode.Resize && onlyWidth.designH === 0.0;
 	const identity = sceneViewMatrix(noDesign, 900.0, 600.0);
 	assert identity.a === 1.0 && identity.d === 1.0;
@@ -121,14 +126,14 @@ test "Scene2D Fixed Zoom AutoZoom and omitted design values keep Void semantics"
 }
 
 test "Rect boxStyle updates its owned payload and reuses it after removal" {
-	let scene: VoidScene2D = null as unknown as VoidScene2D;
+	let scene: VoidScene2D | null = null;
 	const nodes: NodeRef[] = [];
 	const [radius, setRadius] = createSignal<float32>(4.0);
 	const [shown, setShown] = createSignal(true);
 	const root = mockNode("root");
 	const dispose = render(element(<Void>
 		<Scene2D ref={(value: VoidScene2D): void => { scene = value; }}>
-			{Show({ when: () => shown(), children: element(
+			{Show({ when: accessor(() => shown()), children: element(
 				<Rect width={50.0} height={30.0} color={rgba(1.0, 0.0, 0.0, 1.0)}
 					boxStyle={BoxStyle.create(
 						uniformRadii(radius()), uniformBorders(2.0), rgba(0.0, 0.0, 1.0, 1.0),
@@ -137,9 +142,11 @@ test "Rect boxStyle updates its owned payload and reuses it after removal" {
 			) })}
 		</Scene2D>
 	</Void>), mockHost(), root as unknown as HostNode);
+	if (scene === null) { throw new Error("fixture: scene ref did not mount"); }
 	const row = scene.payloads[nodes[0].id.index];
 	assert row >= 0 && boxStyles[row].radii.topLeft === 4.0;
-	assert boxStyles[row].borders.right === 2.0 && boxStyles[row].shadowBlur === 3.0;
+	assert boxStyles[row].borders.right === 2.0 && boxStyles[row].shadows.length === 1 &&
+		boxStyles[row].shadows[0].blur === 3.0;
 	setRadius(9.0);
 	assert scene.payloads[nodes[0].id.index] === row && boxStyles[row].radii.topRight === 9.0;
 	setShown(false);
@@ -153,7 +160,7 @@ test "Rect boxStyle updates its owned payload and reuses it after removal" {
 }
 
 test "Sprite imageStyle and independent fitted size react without replacing its payload" {
-	let scene: VoidScene2D = null as unknown as VoidScene2D;
+	let scene: VoidScene2D | null = null;
 	const nodes: NodeRef[] = [];
 	const [width, setWidth] = createSignal<float32>(80.0);
 	const [tileWidth, setTileWidth] = createSignal<float32>(64.0);
@@ -162,13 +169,14 @@ test "Sprite imageStyle and independent fitted size react without replacing its 
 	const root = mockNode("root");
 	const dispose = render(element(<Void>
 		<Scene2D ref={(value: VoidScene2D): void => { scene = value; }}>
-			{Show({ when: () => shown(), children: element(
+			{Show({ when: accessor(() => shown()), children: element(
 				<Sprite tile={whiteTile(tileWidth(), 32.0)} width={width()} height={80.0}
 					imageStyle={imageStyle(uniformRadii(3.0), gray(), ObjectFit.Contain)}
 					ref={(value: NodeRef): void => { nodes.push(value); }} />
 			) })}
 		</Scene2D>
 	</Void>), mockHost(), root as unknown as HostNode);
+	if (scene === null) { throw new Error("fixture: scene ref did not mount"); }
 	const row = scene.payloads[nodes[0].id.index];
 	const initial = fitImage(nodes[0].content().tile, 80.0, 80.0, imageStyles[row].fit);
 	assert initial.w === 80.0 && initial.h === 40.0 && initial.y === 20.0;
@@ -222,7 +230,7 @@ test "Sprite exposes remaining ObjectFit values and partial dimensions follow re
 }
 
 test "Mask scroll bounds clamp requested offsets on resize and clear without stale state" {
-	let scene: VoidScene2D = null as unknown as VoidScene2D;
+	let scene: VoidScene2D | null = null;
 	const masks: NodeRef[] = [];
 	const [width, setWidth] = createSignal<float32>(50.0);
 	const [x, setX] = createSignal<float32>(180.0);
@@ -233,7 +241,7 @@ test "Mask scroll bounds clamp requested offsets on resize and clear without sta
 	const root = mockNode("root");
 	const dispose = render(element(<Void>
 		<Scene2D ref={(value: VoidScene2D): void => { scene = value; }}>
-			{Show({ when: () => shown(), children: element(
+			{Show({ when: accessor(() => shown()), children: element(
 				<Mask width={width()} height={40.0} scrollX={x()} scrollY={y()}
 					scrollBounds={bounds()}
 					ref={(value: NodeRef): void => { masks.push(value); }}>
@@ -243,6 +251,7 @@ test "Mask scroll bounds clamp requested offsets on resize and clear without sta
 			<Mask width={10.0} height={10.0} />
 		</Scene2D>
 	</Void>), mockHost(), root as unknown as HostNode);
+	if (scene === null) { throw new Error("fixture: scene ref did not mount"); }
 	const row = scene.payloads[masks[0].id.index];
 	assert scene.scrolls.length === 1;
 	assert masks[0].scroll().bounded;
@@ -289,7 +298,7 @@ test "Mask omitted scroll axes retain Void defaults and resized bounds restore r
 }
 
 test "TileGroup replaces cells and visible range and reuses its owned payload" {
-	let scene: VoidScene2D = null as unknown as VoidScene2D;
+	let scene: VoidScene2D | null = null;
 	const nodes: NodeRef[] = [];
 	const [cells, setCells] = createSignal<TileCell[]>([cell(0.0), cell(8.0)]);
 	const [first, setFirst] = createSignal<int32>(0);
@@ -299,13 +308,14 @@ test "TileGroup replaces cells and visible range and reuses its owned payload" {
 	const dispose = render(element(<Void>
 		<Scene2D ref={(value: VoidScene2D): void => { scene = value; }}>
 			<Group local={translated(3.0, 4.0)}>
-				{Show({ when: () => shown(), children: element(
+				{Show({ when: accessor(() => shown()), children: element(
 					<TileGroup cells={cells()} first={first()} count={count()}
 						ref={(value: NodeRef): void => { nodes.push(value); }} />
 				) })}
 			</Group>
 		</Scene2D>
 	</Void>), mockHost(), root as unknown as HostNode);
+	if (scene === null) { throw new Error("fixture: scene ref did not mount"); }
 	const row = scene.payloads[nodes[0].id.index];
 	assert nodes[0].kind() === DrawKind.TileGroup;
 	assert scene.tileCells[row].length === 2 && scene.tileGroups[row].count === ALL_TILES;
@@ -323,8 +333,8 @@ test "TileGroup replaces cells and visible range and reuses its owned payload" {
 }
 
 test "TileGroup rejects negative ranges with named errors and cleans failed mounts" {
-	let firstScene: VoidScene2D = null as unknown as VoidScene2D;
-	let countScene: VoidScene2D = null as unknown as VoidScene2D;
+	let firstScene: VoidScene2D | null = null;
+	let countScene: VoidScene2D | null = null;
 	const badFirst = mountError(element(<Void>
 		<Scene2D ref={(value: VoidScene2D): void => { firstScene = value; }}>
 			<TileGroup cells={[]} first={-1} />
@@ -337,18 +347,21 @@ test "TileGroup rejects negative ranges with named errors and cleans failed moun
 	</Void>));
 	assert badFirst.includes("TileGroup: first/count must be nonnegative");
 	assert badCount.includes("TileGroup: first/count must be nonnegative");
+	if (firstScene === null) { throw new Error("fixture: firstScene ref did not mount"); }
+	if (countScene === null) { throw new Error("fixture: countScene ref did not mount"); }
 	assert firstScene.closed && countScene.closed;
 	assert firstScene.nodeCount() === 0 && countScene.nodeCount() === 0;
 }
 
 test "TileGroup defaults copy caller cells and preserve the ordinary scene parent guard" {
-	let node: NodeRef = null as unknown as NodeRef;
+	let node: NodeRef | null = null;
 	let authored: TileCell[] = [cell(1.0)];
 	const root = mockNode("root");
 	const dispose = render(element(<Void><Scene2D>
 		<TileGroup cells={authored} local={translated(3.0, 4.0)}
 			ref={(value: NodeRef): void => { node = value; }} />
 	</Scene2D></Void>), mockHost(), root as unknown as HostNode);
+	if (node === null) { throw new Error("fixture: node ref did not mount"); }
 	const row = node.scene.payloads[node.id.index];
 	assert node.scene.tileGroups[row].first === 0;
 	assert node.scene.tileGroups[row].count === ALL_TILES;
@@ -397,7 +410,7 @@ test "ScaleGrid structural remount reads current values and refuses a foreign pa
 	const [height, setHeight] = createSignal<float32>(40.0);
 	const root = mockNode("root");
 	const dispose = render(element(<Void><Scene2D>
-		{Show({ when: () => shown(), children: element(
+		{Show({ when: accessor(() => shown()), children: element(
 			<ScaleGrid tile={whiteTile(20.0, 10.0)} height={height()}
 				borderL={2.0} borderT={1.0} borderR={2.0} borderB={1.0}
 				ref={(value: NodeRef): void => { nodes.push(value); }} />
@@ -416,7 +429,7 @@ test "ScaleGrid structural remount reads current values and refuses a foreign pa
 }
 
 test "Underline maps straight and wavy geometry and reactive color without replacing the node" {
-	let node: NodeRef = null as unknown as NodeRef;
+	let node: NodeRef | null = null;
 	const [width, setWidth] = createSignal<float32>(40.0);
 	const [thickness, setThickness] = createSignal<float32>(2.0);
 	const [wavy, setWavy] = createSignal(true);
@@ -427,6 +440,7 @@ test "Underline maps straight and wavy geometry and reactive color without repla
 			color={rgba(red(), 0.0, 0.0, 1.0)}
 			ref={(value: NodeRef): void => { node = value; }} />
 	</Scene2D></Void>), mockHost(), root as unknown as HostNode);
+	if (node === null) { throw new Error("fixture: node ref did not mount"); }
 	assert node.kind() === DrawKind.Underline;
 	assert node.content().w === 40.0 && node.content().h === 6.0;
 	assert node.content().borderL === 2.0 && node.content().borderT === 1.0;
@@ -445,7 +459,7 @@ test "Selection maps all neighbor geometry and remount reads current reactive va
 	const [shown, setShown] = createSignal(true);
 	const root = mockNode("root");
 	const dispose = render(element(<Void><Scene2D><Group>
-		{Show({ when: () => shown(), children: element(
+		{Show({ when: accessor(() => shown()), children: element(
 			<Selection width={width()} height={12.0} color={rgba(0.0, 0.0, 1.0, 0.5)}
 				prevOffsetX={offset()} prevWidth={30.0}
 				nextOffsetX={offset() + 2.0} nextWidth={width() * 0.5}
@@ -474,7 +488,7 @@ test "Selection maps all neighbor geometry and remount reads current reactive va
 }
 
 test "Scene2D mounts real render nodes without creating host elements" {
-	let scene: VoidScene2D = null as unknown as VoidScene2D;
+	let scene: VoidScene2D | null = null;
 	const nodes: NodeRef[] = [];
 	const root: MockNode = mockNode("root");
 	const dispose = render(element(<Void>
@@ -492,6 +506,7 @@ test "Scene2D mounts real render nodes without creating host elements" {
 			</Group>
 		</Scene2D>
 	</Void>), mockHost(), root as unknown as HostNode);
+	if (scene === null) { throw new Error("fixture: scene ref did not mount"); }
 	assert scene.nodeCount() === 6;
 	assert nodes[0].kind() === DrawKind.Group;
 	assert nodes[1].kind() === DrawKind.Rect;
@@ -514,7 +529,7 @@ test "Scene2D mounts real render nodes without creating host elements" {
 }
 
 test "Scene2D camera and raw node geometry follow signals and stop on disposal" {
-	let scene: VoidScene2D = null as unknown as VoidScene2D;
+	let scene: VoidScene2D | null = null;
 	const nodes: NodeRef[] = [];
 	const [x, setX] = createSignal<float32>(2.0);
 	const [width, setWidth] = createSignal<float32>(10.0);
@@ -538,6 +553,7 @@ test "Scene2D camera and raw node geometry follow signals and stop on disposal" 
 	if (group !== null) { assert group.local().x === 8.0 && group.local().y === 3.0; }
 	assert nodes[0].content().w === 25.0;
 	assert nodes[1].text() === "second";
+	if (scene === null) { throw new Error("fixture: scene ref did not mount"); }
 	assert scene.cam.zoom === 2.0;
 	dispose();
 	setX(9.0); setWidth(99.0); setZoom(3.0); setLabel("disposed");
@@ -545,14 +561,14 @@ test "Scene2D camera and raw node geometry follow signals and stop on disposal" 
 }
 
 test "Sprite retile and structural removal keep the scene and sibling alive" {
-	let scene: VoidScene2D = null as unknown as VoidScene2D;
+	let scene: VoidScene2D | null = null;
 	const nodes: NodeRef[] = [];
 	const [size, setSize] = createSignal<float32>(4.0);
 	const [shown, setShown] = createSignal(true);
 	const root = mockNode("root");
 	const dispose = render(element(<Void>
 		<Scene2D ref={(value: VoidScene2D): void => { scene = value; }}>
-			{Show({ when: () => shown(), children: element(
+			{Show({ when: accessor(() => shown()), children: element(
 				<Group ref={(value: NodeRef): void => { nodes.push(value); }}>
 					<Sprite tile={whiteTile(size(), size())}
 						ref={(value: NodeRef): void => { nodes.push(value); }} />
@@ -562,6 +578,7 @@ test "Sprite retile and structural removal keep the scene and sibling alive" {
 				ref={(value: NodeRef): void => { nodes.push(value); }} />
 		</Scene2D>
 	</Void>), mockHost(), root as unknown as HostNode);
+	if (scene === null) { throw new Error("fixture: scene ref did not mount"); }
 	assert scene.nodeCount() === 4;
 	setSize(11.0);
 	assert nodes[1].content().tile.w === 11.0 && nodes[1].content().w === 11.0;
@@ -608,7 +625,7 @@ test "raw 2D paint order filter and label size update through Void binders" {
 }
 
 test "colorMatrix owns its row across paint changes clearing remount and disposal" {
-	let scene: VoidScene2D = null as unknown as VoidScene2D;
+	let scene: VoidScene2D | null = null;
 	const nodes: NodeRef[] = [];
 	const [amount, setAmount] = createSignal<float32>(1.0);
 	const [alpha, setAlpha] = createSignal<float32>(1.0);
@@ -616,7 +633,7 @@ test "colorMatrix owns its row across paint changes clearing remount and disposa
 	const root = mockNode("root");
 	const dispose = render(element(<Void>
 		<Scene2D ref={(value: VoidScene2D): void => { scene = value; }}>
-			{Show({ when: () => shown(), children: element(
+			{Show({ when: accessor(() => shown()), children: element(
 				<Rect width={10.0} height={20.0} color={rgba(1.0, 1.0, 1.0, 1.0)}
 					colorMatrix={colorMatrixGrayscale(amount())}
 					paint={{
@@ -631,6 +648,7 @@ test "colorMatrix owns its row across paint changes clearing remount and disposa
 		</Scene2D>
 	</Void>), mockHost(), root as unknown as HostNode);
 	const row = nodes[0].paint().colorMatrixRow;
+	if (scene === null) { throw new Error("fixture: scene ref did not mount"); }
 	assert row >= 0 && scene.colorMatrices.length === 1;
 	setAlpha(0.5); setAmount(0.5);
 	assert nodes[0].paint().colorMatrixRow === row && nodes[0].paint().alpha === 0.5;
@@ -652,7 +670,7 @@ test "colorMatrix owns its row across paint changes clearing remount and disposa
 }
 
 test "paint rejects selecting another matrix row and cleans up failed mount" {
-	let scene: VoidScene2D = null as unknown as VoidScene2D;
+	let scene: VoidScene2D | null = null;
 	const error = mountError(element(<Void>
 		<Scene2D ref={(value: VoidScene2D): void => { scene = value; }}>
 			<Rect width={10.0} height={20.0} color={rgba(1.0, 1.0, 1.0, 1.0)}
@@ -665,11 +683,12 @@ test "paint rejects selecting another matrix row and cleans up failed mount" {
 		</Scene2D>
 	</Void>));
 	assert error.includes("Rect") && error.includes("colorMatrixRow");
+	if (scene === null) { throw new Error("fixture: scene ref did not mount"); }
 	assert scene.closed && scene.nodeCount() === 0;
 }
 
 test "Scene2D scene values react and a failed child mount closes the scene" {
-	let scene: VoidScene2D = null as unknown as VoidScene2D;
+	let scene: VoidScene2D | null = null;
 	const [red, setRed] = createSignal<float32>(0.2);
 	const [smooth, setSmooth] = createSignal(true);
 	const root = mockNode("root");
@@ -678,6 +697,7 @@ test "Scene2D scene values react and a failed child mount closes the scene" {
 			ref={(value: VoidScene2D): void => { scene = value; }} />
 	</Void>), mockHost(), root as unknown as HostNode);
 	setRed(0.7); setSmooth(false);
+	if (scene === null) { throw new Error("fixture: scene ref did not mount"); }
 	assert scene.clear.r === 0.7 && !scene.defaultSmooth;
 	dispose();
 	setRed(0.9); setSmooth(true);
