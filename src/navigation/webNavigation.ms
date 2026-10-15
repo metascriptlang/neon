@@ -131,7 +131,7 @@ function historyItem<C>(
 	};
 }
 
-function pagesSerializer<C>(serializer: WebKeySerializer<C>): WebKeySerializer<Pages<C>> {
+export function pagesSerializer<C>(serializer: WebKeySerializer<C>): WebKeySerializer<Pages<C>> {
 	return {
 		encode: (pages: Pages<C>): string => {
 			const items: string[] = [];

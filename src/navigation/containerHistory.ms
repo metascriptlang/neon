@@ -22,9 +22,11 @@ import { RoutePlan, RoutingError, RoutingParticipant } from "./routing";
 import { RoutingSession } from "./routingHistory";
 import {
 	WebHistoryItem,
+	WebKeySerializer,
 	WebNavigationError,
 	WebNavigationNode,
 	WebNavigationOwner,
+	pagesSerializer,
 } from "./webNavigation";
 import { createWebHistory } from "./webHistory";
 
@@ -40,10 +42,10 @@ export interface ContainerHistory {
 	enable: (session: RoutingSession) => Dispose;
 }
 
-struct StoredPages {
-	items: string[];
-	selectedIndex: int32;
-}
+const rawKeys: WebKeySerializer<string> = {
+	encode: (key: string): string => key,
+	decode: (text: string): Result<string, WebNavigationError> => Result.ok(text),
+};
 
 interface Pending {
 	keys: string[];
@@ -59,7 +61,7 @@ function decodePending(keys: string[]): Result<Pending | null, WebNavigationErro
 	if (keys.length === 0 || (keys.length === 1 && keys[0] === "")) { return Result.ok(null); }
 	const routes: NavigationRoute[] = [];
 	if (keys.length === 1) {
-		const pages = JSON.parse<StoredPages>(keys[0]);
+		const pages = pagesSerializer<string>(rawKeys).decode(keys[0]);
 		if (pages.ok) {
 			for (const item of pages.value.items) {
 				const stored = decodeSeedRoute(item);
