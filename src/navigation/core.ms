@@ -29,6 +29,8 @@ export enum DrawerAction {
 	Toggle,
 }
 
+export const DRAWER_OPEN_KEY = "drawer-open";
+
 export interface TabBarIconProps {
 	focused: boolean;
 	color: string;

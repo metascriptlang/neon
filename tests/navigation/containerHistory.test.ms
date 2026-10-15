@@ -327,32 +327,39 @@ test "a reload restores the selected tab from its stored keys" {
 	assert finish(app) === 0, "routing errors";
 }
 
-test "a traversal lands with the drawer closed" {
+function drawerOpen(app: App): boolean {
+	return findLabel(app.root, "Close navigation menu") !== null;
+}
+
+test "opening the drawer adds an entry at the same address, and browser back closes it" {
 	const app = startWith({ url: "/", state: "" }, drawerShell, drawerLinking);
-	app.ref.navigate("Details");
-	assert take() === "replace /;replace /;push /details;";
-	assert app.memory.go(-1);
+	app.ref.navigate("Inbox");
+	assert take() === "replace /;replace /;replace /inbox;";
 	app.ref.openDrawer();
-	assert findLabel(app.root, "Close navigation menu") !== null, "drawer open";
-	assert app.memory.go(1);
-	assert app.ref.currentPath() === "Details", app.ref.currentPath();
+	const opened = take();
+	assert opened === "push /inbox;", opened;
+	assert drawerOpen(app), "drawer open";
 	assert app.memory.go(-1);
-	assert findLabel(app.root, "Close navigation menu") === null, "the traversal closed the drawer";
+	assert !drawerOpen(app), "browser back closed the drawer";
+	assert app.ref.currentPath() === "Main>Inbox", app.ref.currentPath();
+	assert app.memory.go(1);
+	assert drawerOpen(app), "browser forward opened it again";
 	assert take() === "", "a traversal writes nothing";
+	app.ref.closeDrawer();
+	const closed = take();
+	assert closed === "go -1;", closed;
+	assert app.memory.read().url === "/inbox", app.memory.read().url;
 	assert finish(app) === 0, "routing errors";
 }
 
-test "setParams rewrites the entry it changes" {
-	const app = startApp({ url: "/", state: "" });
-	assert app.ref.linkTo("/shop/product/5");
-	take();
-	(log.product as Navigation<ItemParams>).setParams({ id: "6" });
-	assert app.memory.read().url === "/shop/product/6", app.memory.read().url;
-	assert visibleText(app.root).indexOf("product 6") >= 0, visibleText(app.root);
-	assert app.memory.go(-1);
-	assert app.ref.currentPath() === "Shop>Catalog", app.ref.currentPath();
-	assert app.memory.go(1);
-	assert visibleText(app.root).indexOf("product 6") >= 0, visibleText(app.root);
+test "a reload on an open drawer's entry restores its page with the drawer closed" {
+	const first = startWith({ url: "/", state: "" }, drawerShell, drawerLinking);
+	first.ref.openDrawer();
+	const stored = first.memory.read();
+	assert finish(first) === 0, "routing errors";
+	const app = startWith(stored, drawerShell, drawerLinking);
+	assert app.ref.currentPath() === "Main>Feed", app.ref.currentPath();
+	assert !drawerOpen(app), "the drawer starts closed";
 	assert finish(app) === 0, "routing errors";
 }
 

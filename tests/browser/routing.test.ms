@@ -14,6 +14,7 @@ import {
 	RoutingRegistry,
 	RoutingSession,
 	ScreenProps,
+	createDrawerNavigator,
 	createNavigationContainerRef,
 	createRoutingSession,
 	createStackNavigator,
@@ -316,6 +317,59 @@ test "browser back stays on a stack screen whose beforeRemove prevents it" {
 		assert app.errors.length === 0, app.errors.length.toString();
 	} finally {
 		guarded = false;
+		unmount(app, mount);
+		history.replace(original);
+	}
+}
+
+const Side = createDrawerNavigator<string>();
+
+const sideLinking: LinkingOptions = {
+	prefixes: [],
+	enabled: false,
+	config: { screens: [{ name: "One", path: "one" }, { name: "Two", path: "two" }] },
+};
+
+function Page(props: ScreenProps<string>): NeonNode {
+	return <Text>{"Page " + props.route.name}</Text>;
+}
+
+function drawerShown(): boolean {
+	return js("String(!!document.querySelector('[aria-label=\"Close navigation menu\"]'))") ===
+		"true";
+}
+
+test "opening a drawer adds a browser entry that browser back closes" {
+	const history = createBrowserRoutingHistory();
+	const original = history.read();
+	history.replace({ url: "/one", state: "" });
+	const ref = createNavigationContainerRef();
+	const mount = document.createElement("div");
+	document.body.appendChild(mount);
+	const app = mountOnBrowser(<Side.Navigator>
+		<Side.Screen name="One" component={Page} />
+		<Side.Screen name="Two" component={Page} />
+	</Side.Navigator>, sideLinking, ref, mount);
+	try {
+		const start = app.session.index();
+		ref.openDrawer();
+		assert app.session.index() === start + 1, app.session.index().toString();
+		assert history.read().url === "/one", history.read().url;
+		await sleepAsync(400);
+		assert drawerShown(), "the drawer opened";
+		assert history.go(-1);
+		await sleepAsync(400);
+		assert !drawerShown(), "browser back closed the drawer";
+		assert app.session.index() === start, app.session.index().toString();
+		assert history.go(1);
+		await sleepAsync(400);
+		assert drawerShown(), "browser forward opened it again";
+		ref.closeDrawer();
+		await sleepAsync(400);
+		assert app.session.index() === start, app.session.index().toString();
+		assert history.read().url === "/one", history.read().url;
+		assert app.errors.length === 0, app.errors.length.toString();
+	} finally {
 		unmount(app, mount);
 		history.replace(original);
 	}

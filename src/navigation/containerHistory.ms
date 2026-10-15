@@ -1,6 +1,7 @@
 import { Signal, accessor, untrack } from "../core/signal";
 import { Dispose } from "../core/types";
 import {
+	DRAWER_OPEN_KEY,
 	NavTarget,
 	NavigationRoute,
 	NavigationState,
@@ -60,7 +61,7 @@ function routeOf(stored: SeedRoute): NavigationRoute {
 function decodePending(keys: string[]): Result<Pending | null, WebNavigationError> {
 	if (keys.length === 0 || (keys.length === 1 && keys[0] === "")) { return Result.ok(null); }
 	const routes: NavigationRoute[] = [];
-	if (keys.length === 1) {
+	if (keys.length === 1 || (keys.length === 2 && keys[1] === DRAWER_OPEN_KEY)) {
 		const pages = pagesSerializer<string>(rawKeys).decode(keys[0]);
 		if (pages.ok) {
 			for (const item of pages.value.items) {
