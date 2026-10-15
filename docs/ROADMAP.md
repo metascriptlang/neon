@@ -172,7 +172,7 @@ indicator, scene scroll inside the pager, auto-play, pause and drag, accordion, 
 wrapped chips) and the iPhone 17 Pro simulator (`WidgetsUITests`, the same steps,
 `/private/tmp/neon-sim.V0gFm7`), after two native fixes found there: a swipe over a scene's vertical
 ScrollView now reaches the pager (W9) and a first opening of a Collapsible is measured (W8). The
-web bundles of every example load again (W6). The Seeker lane `tests/android/widgets.py` is written
+web bundles of every example load again. The Seeker lane `tests/android/widgets.py` is written
 and not run (the phone is locked overnight); Android is not measured, and W9 names the swipe over a
 native ScrollView as its likely gap. Not verified: a screen reader on any of these widgets.
 
@@ -403,8 +403,7 @@ the mount error and refuses a picture, the simulated system camera opens and can
 to its end, the microphone prompt is answered. The APK builds with the provider and permissions; the
 lane `tests/android/capture.py` is written and not run (Seeker locked, emulator reserved). Not
 verified: Android at runtime, a real camera preview or picture on iOS/Android, recording on iOS (the
-host's audio input times out; `NEON_IOS_RECORD=1`), real microphone capture in Chrome. The web
-bundle needed `netInfo.ms` read by index (W6). Provisional: `WORKAROUND.md` X1–X6; compiler cards
+host's audio input times out; `NEON_IOS_RECORD=1`), real microphone capture in Chrome. Provisional: `WORKAROUND.md` X1–X6; compiler cards
 `2026-10-08-arrow-with-a-function-return-type-does-not-parse.md` and sightings added to
 `2026-10-08-test-block-awaiting-a-rejected-nullable-promise-segfaults.md` and
 `2026-10-07-js-outer-function-made-async-by-nested-async.md`.
