@@ -128,8 +128,8 @@ export macro element(node: Node): Node {
 				error("a spread needs a typed object: annotate the value being spread", a as Node);
 				continue;
 			}
-			const t = peelTypeRef(argType as Node);
-			if (t.kind !== NodeKind.TypeObject || t.typExprFieldNames.length === 0) {
+			const t = objectType(argType);
+			if (t === null || t.typExprFieldNames.length === 0) {
 				error("a spread needs an object type with named fields — a map or an index signature has no names to read at compile time", a as Node);
 				continue;
 			}
