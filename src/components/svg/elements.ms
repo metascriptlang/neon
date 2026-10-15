@@ -11,6 +11,10 @@ import { place } from "../../render/reconcile";
 import { AccessibilityProps, accessibilityAttrs, stringAttr } from "../primitives";
 import { SvgScene, encodeScene, sceneChanged, sceneHost } from "./scene";
 
+when (js && !server) {
+	import "../../platform/browser/svg";
+}
+
 export type NumberProp = float64 | string;
 export type NumberArrayProp = float64[] | string;
 export type FillRule = "nonzero" | "evenodd";

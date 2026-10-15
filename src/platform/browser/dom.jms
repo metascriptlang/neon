@@ -37,8 +37,7 @@ import { CssStyle, applyCss, applyCssProp } from "./domCss";
 import { VisibleContentPosition, parseVisibleContent } from "../../render/visibleContent";
 import { installBrowserAppServices } from "./appServices";
 import { installDomLayoutAnimation } from "./layoutAnimation";
-import { isMediaTag, createMediaNode, writeMediaAttr, addMediaEvent, releaseMedia } from "./domCapabilities";
-import { svgMarkup } from "../../components/svg/markup";
+import { isMediaTag, createMediaNode, writeMediaAttr, addMediaEvent, releaseMedia, writeSvgList } from "./domCapabilities";
 
 extern class ClassList {
 	extern add(name: cstring): void;
@@ -643,21 +642,13 @@ function dateInputType(mode: string): string {
 	};
 }
 
-// <Svg>: the display list becomes the <svg> element's own markup (src/components/svg/markup.ms).
+// <Svg>: the display list becomes the <svg> element's own markup (src/platform/browser/svg.jms).
 let svgCount = 0;
-
-function writeSvgList(el: Node, value: string): void {
-	const prefix = el.getAttribute("data-neon-svg") ?? "neon-svg";
-	const m = svgMarkup(value, prefix);
-	if (m.viewBox === "") { el.removeAttribute("viewBox"); } else { el.setAttribute("viewBox", m.viewBox); }
-	if (m.preserveAspectRatio === "") { el.removeAttribute("preserveAspectRatio"); } else { el.setAttribute("preserveAspectRatio", m.preserveAspectRatio); }
-	el.innerHTML = m.body;
-}
 
 function writeNewControlAttr(el: Node, kind: string, name: string, value: string): boolean {
 	if (kind === "svg") {
 		if (name === "displayList") {
-			writeSvgList(el, value);
+			writeSvgList(el as unknown as HostNode, value);
 			return true;
 		}
 		return false;
