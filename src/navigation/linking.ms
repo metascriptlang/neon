@@ -161,13 +161,13 @@ export function pathOf(url: string, prefixes: string[]): string | null {
 export function targetFromPath(path: string, config: LinkingConfig): NavTarget | null {
 	let route = path;
 	let query = "";
+	const hash = route.indexOf("#");
+	if (hash >= 0) { route = route.substring(0, hash); }
 	const mark = route.indexOf("?");
 	if (mark >= 0) {
 		query = route.substring(mark + 1, route.length);
 		route = route.substring(0, mark);
 	}
-	const hash = route.indexOf("#");
-	if (hash >= 0) { route = route.substring(0, hash); }
 	const parts = splitPath(route);
 	const candidates: Candidate[] = [];
 	collect(config.screens, [], [], candidates);

@@ -81,6 +81,12 @@ test "the longest matching prefix wins and a foreign URL is not a link" {
 	assert targetFromURL("other://shop", options) === null;
 }
 
+test "a fragment after the query is dropped, not read into the last value" {
+	const fragment = targetFromPath("user/ana?tab=likes#top", config);
+	assert describe(fragment) === "Profile(name=ana,tab=likes)", describe(fragment);
+	assert describe(targetFromPath("shop/product/4#top", config)) === "Shop>Product(id=4)";
+}
+
 interface OrderParams {
 	order: string;
 }
