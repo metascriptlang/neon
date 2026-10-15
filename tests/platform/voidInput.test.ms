@@ -9,14 +9,14 @@ import { NeonNode } from "../../src/render/node";
 import {
 	createVoidHostWith, VoidHost, VoidNode, TextEditingValue, editingValue, CaretRect,
 } from "../../src/platform/void/host";
-import { Scene2D, NodeRef, DrawKind, Changed, text, paint, textStyle, local, getChildAt, clearChanges, numChildren } from "../../../void/src/void2d/node";
+import { Scene2D, NodeRef, DrawKind, Changed, text, paint, textStyle, local, getChildAt, clearChanges, numChildren, localToGlobal } from "../../../void/src/void2d/node";
 import { create, paint as paintScene, isDirty } from "../../../void/src/void2d/scene";
 import { frameEnd } from "../../../void/src/void2d/draw";
 import { xForIndex, textWidth, lineBoxAt } from "../../../void/src/void2d/render";
 import { TextRun } from "../../../void/src/void2d/textLayout";
 import { TextSpan } from "../../src/render/hostTypes";
 import { Style } from "../../src/render/style";
-import { rgba } from "../../../void/src/void2d/types";
+import { rgba, vec2, Vec2 } from "../../../void/src/void2d/types";
 import { labelTexts } from "../../../void/src/void2d/labelText";
 import { FontId, DEFAULT_FONT, addFont } from "../../../void/src/void2d/font";
 
@@ -345,6 +345,26 @@ test "spans draw as one paragraph label on the Void host, with no node per span"
 	assert label.text() === "plain" && runsOf(vh, label).length === 0, "unstyled spans draw without runs";
 }
 
+test "a press over a nested Text's run fires that run's onPress, and the plain text around it does not" {
+	const vh = host();
+	let link = 0;
+	let outer = 0;
+	render(element(<View style={{ width: 400 }}><Text style={{ height: 30 }} onPress={(): void => { outer += 1; }}>plain <Text onPress={(): void => { link += 1; }}>link</Text> tail</Text></View>), vh.host, vh.root);
+	vh.layout(400.0, 100.0);
+	const label = paragraph(top(vh).children[0]);
+	label.textWidth();
+	const at = (index: int32): Vec2 => label.localToGlobal(vec2(label.xForIndex(index) + 1.0, label.lineBoxAt(index).top + 2.0));
+	const inLink = at(7);
+	vh.clickAt(inLink.x, inLink.y);
+	assert link === 1 && outer === 0, "a press inside \"link\" is the run's: link=" + link.toString() + " outer=" + outer.toString();
+	const inPlain = at(1);
+	vh.clickAt(inPlain.x, inPlain.y);
+	assert link === 1 && outer === 1, "a press on the plain text is the Text's: link=" + link.toString() + " outer=" + outer.toString();
+	const pastEnd = label.localToGlobal(vec2(label.textWidth() + 40.0, label.lineBoxAt(0).top + 2.0));
+	vh.clickAt(pastEnd.x, pastEnd.y);
+	assert link === 1, "past the line's end there is no run";
+}
+
 test "what a Void paragraph cannot draw yet is refused by name" {
 	let message = "";
 	const a = host();
@@ -352,12 +372,6 @@ test "what a Void paragraph cannot draw yet is refused by name" {
 		render(element(<Text>a <View style={{ width: 4, height: 4 }} /></Text>), a.host, a.root);
 	} catch (e) { message = e.message; }
 	assert message.indexOf("inline view") >= 0, "a View inside a Text: " + message;
-	message = "";
-	const b = host();
-	try {
-		render(element(<Text>a <Text onPress={(): void => {}}>b</Text></Text>), b.host, b.root);
-	} catch (e) { message = e.message; }
-	assert message.indexOf("per-span hit-testing") >= 0, "onPress on a nested Text: " + message;
 	message = "";
 	const c = host();
 	try {

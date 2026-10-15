@@ -9,7 +9,7 @@ import {
 	setTextRuns, setMaxWidth, setForceWidth,
 } from "../../../../void/src/void2d/node";
 import { TextRun } from "../../../../void/src/void2d/textLayout";
-import { hitTest, xForIndex, lineBoxAt } from "../../../../void/src/void2d/render";
+import { hitTest, xForIndex, lineBoxAt, indexAt } from "../../../../void/src/void2d/render";
 import { create, add, isDirty } from "../../../../void/src/void2d/scene";
 import { Color, rgba, vec2 } from "../../../../void/src/void2d/types";
 import { FontId, DEFAULT_FONT } from "../../../../void/src/void2d/font";
@@ -525,9 +525,6 @@ export function createVoidHostWith(scene: Scene2D, font: FontId): VoidHost {
 		let text = "";
 		let styled = false;
 		for (const s of spans) {
-			if (s.onPress !== null) {
-				throw new Error("void host: onPress on a span needs per-span hit-testing, which the Void host does not do yet");
-			}
 			text += s.text;
 			if (s.style !== null) { styled = true; }
 		}
@@ -818,11 +815,41 @@ export function createVoidHostWith(scene: Scene2D, font: FontId): VoidHost {
 		},
 	};
 
+	// The span of a Text under a point: the grapheme the point falls in, none past a line's end.
+	const spanAt = (n: VoidNode, x: float32, y: float32): TextSpan | null => {
+		if (!n.isText || n.para === null || n.spans === null) { return null; }
+		const label = n.para as NodeRef;
+		const at = label.globalToLocal(vec2(x, y));
+		let index = label.indexAt(at.x, at.y);
+		if (index > 0 && label.xForIndex(index) > at.x) { index -= 1; }
+		const line = label.lineBoxAt(index);
+		if (at.x < line.x || at.x > line.x + line.width) { return null; }
+		let start: int32 = 0;
+		for (const s of n.spans as TextSpan[]) {
+			const end = start + (s.text.length as int32);
+			if (index >= start && index < end) { return s; }
+			start = end;
+		}
+		return null;
+	};
+
 	const clickAt = (x: float32, y: float32): void => {
 		const target = deepestAt(root, x, y, focusable);
 		focus(target);
+		const under = deepestAt(root, x, y, null);
+		let spanText: VoidNode | null = null;
+		if (under !== null) {
+			const span = spanAt(under as VoidNode, x, y);
+			if (span !== null && span.onPress !== null) {
+				spanText = under;
+				const ev = neonEvent("press");
+				ev.x = x;
+				ev.y = y;
+				(span.onPress as (e: NeonEvent) => void)(ev);
+			}
+		}
 		for (const e of events.slice(0)) {
-			if (e.name !== "onPress" || e.node.disposed || !attached(e.node)) { continue; }
+			if (e.name !== "onPress" || e.node.disposed || !attached(e.node) || e.node === spanText) { continue; }
 			if (contains(e.node, x, y)) {
 				const ev = neonEvent(eventType(e.name));
 				ev.x = x;
