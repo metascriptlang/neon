@@ -233,21 +233,24 @@ function renderNode(
 			vh.mutate((): void => {
 				const node = make(vh.scene);
 				const wrapped = new VoidNode(node, true);
-				onCleanup((): void => {
-					if (wrapped.disposed) { return; }
-					const up = wrapped.parent;
-					if (up !== null) { host.removeChild(up, wrapped); }
-					else {
-						if (node.isLive()) { node.dispose(); }
-						wrapped.disposed = true;
+				try {
+					place(host, parent, wrapped, before);
+					bind(node);
+					bindNode(tag, node, props);
+					if (props.ref !== null) { (props.ref as (node: NodeRef) => void)(node); }
+					const children = props.children;
+					if (children !== null) { children(host, wrapped, null); }
+				} catch (error) {
+					if (!wrapped.disposed) {
+						const up = wrapped.parent;
+						if (up !== null) { host.removeChild(up, wrapped); }
+						else {
+							if (node.isLive()) { node.dispose(); }
+							wrapped.disposed = true;
+						}
 					}
-				});
-				place(host, parent, wrapped, before);
-				bind(node);
-				bindNode(tag, node, props);
-				if (props.ref !== null) { (props.ref as (node: NodeRef) => void)(node); }
-				const children = props.children;
-				if (children !== null) { children(host, wrapped, null); }
+					throw error;
+				}
 			});
 		});
 	};

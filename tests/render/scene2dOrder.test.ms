@@ -1,6 +1,6 @@
 import { createSignal, Accessor, accessor } from "../../src/core/signal";
 import { element } from "../../src/macros/ui/element";
-import { For } from "../../src/macros/ui/flow";
+import { For, Show } from "../../src/macros/ui/flow";
 import { Host, HostNode, mockNode, mockHost, render } from "../../src/render/host";
 import { NeonNode } from "../../src/render/node";
 import { Void, View, Text, TextInput, TextInputHandle } from "../../src/components/primitives";
@@ -62,6 +62,29 @@ test "For inserts a raw node before its existing sibling inside a Group" {
 	assert !parent.isLive() && parent.scene.closed;
 }
 
+
+test "Show owns effects while the host removes raw subtrees exactly once" {
+	const nodes: NodeRef[] = [];
+	const [shown, setShown] = createSignal(true);
+	const dispose = render(element(<Void><Scene2D>
+		{Show({ when: accessor(() => shown()), children: element(
+			<Group ref={(node: NodeRef): void => { nodes.push(node); }}>
+				<Rect width={2.0} height={3.0} color={rgba(1.0, 1.0, 1.0, 1.0)}
+					ref={(node: NodeRef): void => { nodes.push(node); }} />
+			</Group>
+		) })}
+	</Scene2D></Void>), mockHost(), mockNode("root"));
+	assert nodes.length === 2;
+	setShown(false);
+	assert !nodes[0].isLive() && !nodes[1].isLive();
+	setShown(true);
+	assert nodes.length === 4 && nodes[2].isLive() && nodes[3].isLive();
+	assert nodes[0].id !== nodes[2].id;
+	setShown(false);
+	assert !nodes[2].isLive() && !nodes[3].isLive();
+	dispose();
+	assert nodes[0].scene.closed;
+}
 
 test "Scene2D UI and raw children share actual VoidNode parent and layout contract" {
 	const parents: VoidNode[] = [];

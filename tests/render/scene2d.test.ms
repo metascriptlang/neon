@@ -6,6 +6,7 @@ import {
 	HostNode, MockNode, mockNode, mockHost, render, mockToString,
 } from "../../src/render/host";
 import { NeonNode } from "../../src/render/node";
+import { VoidNode } from "../../src/platform/void/host";
 import { Void, View, Text } from "../../src/components/primitives";
 import {
 	Scene2D, Group, Rect, Sprite, Mask, Label, TileGroup, ScaleGrid, Underline, Selection,
@@ -487,7 +488,7 @@ test "Selection maps all neighbor geometry and remount reads current reactive va
 	)).includes("Selection: mount inside Scene2D within Void");
 }
 
-test "Scene2D mounts real render nodes without creating host elements" {
+test "Scene2D mounts real render nodes without leaking host elements into HUD" {
 	let scene: VoidScene2D | null = null;
 	const nodes: NodeRef[] = [];
 	const root: MockNode = mockNode("root");
@@ -507,7 +508,7 @@ test "Scene2D mounts real render nodes without creating host elements" {
 		</Scene2D>
 	</Void>), mockHost(), root as unknown as HostNode);
 	if (scene === null) { throw new Error("fixture: scene ref did not mount"); }
-	assert scene.nodeCount() === 6;
+	assert scene.nodeCount() === 7;
 	assert nodes[0].kind() === DrawKind.Group;
 	assert nodes[1].kind() === DrawKind.Rect;
 	assert nodes[2].kind() === DrawKind.Sprite;
@@ -579,16 +580,16 @@ test "Sprite retile and structural removal keep the scene and sibling alive" {
 		</Scene2D>
 	</Void>), mockHost(), root as unknown as HostNode);
 	if (scene === null) { throw new Error("fixture: scene ref did not mount"); }
-	assert scene.nodeCount() === 4;
+	assert scene.nodeCount() === 6;
 	setSize(11.0);
 	assert nodes[1].content().tile.w === 11.0 && nodes[1].content().w === 11.0;
 	setShown(false);
-	assert !scene.closed && scene.nodeCount() === 2;
+	assert !scene.closed && scene.nodeCount() === 4;
 	assert !nodes[0].isLive() && !nodes[1].isLive();
 	assert nodes[2].isLive();
 	setSize(15.0);
 	setShown(true);
-	assert scene.nodeCount() === 4 && nodes[4].content().w === 15.0;
+	assert scene.nodeCount() === 6 && nodes[4].content().w === 15.0;
 	dispose();
 	assert scene.closed;
 }
@@ -702,10 +703,13 @@ test "Scene2D scene values react and a failed child mount closes the scene" {
 	dispose();
 	setRed(0.9); setSmooth(true);
 	assert scene.closed && scene.clear.r === 0.7 && !scene.defaultSmooth;
+	const failedChild: NeonNode = (): void => { throw new Error("Scene2D child failure"); };
 	const failed = mountError(element(<Void>
-		<Scene2D ref={(value: VoidScene2D): void => { scene = value; }}><View /></Scene2D>
+		<Scene2D ref={(value: VoidScene2D): void => { scene = value; }}>
+			<View />{failedChild}
+		</Scene2D>
 	</Void>));
-	assert failed.includes("Scene2D") && scene.closed && scene.nodeCount() === 0;
+	assert failed.includes("Scene2D child failure") && scene.closed && scene.nodeCount() === 0;
 }
 
 test "raw 2D components reject missing or nested scene parents" {
@@ -742,9 +746,19 @@ test "unmapped nested Void cannot bypass the Scene2D host boundary" {
 	assert error.includes("void") && error.includes("Scene2D");
 }
 
-test "unmapped View and Text under Scene2D fail loud instead of mounting on the HUD host" {
-	const view = mountError(element(<Void><Scene2D><View /></Scene2D></Void>));
-	const text = mountError(element(<Void><Scene2D><Text>not HUD</Text></Scene2D></Void>));
-	assert view.includes("View") && view.includes("Scene2D");
-	assert text.includes("Text") && text.includes("Scene2D");
+test "View and Text under Scene2D share its native scene without leaking into HUD" {
+	const scenes: VoidScene2D[] = [];
+	const ui: VoidNode[] = [];
+	const root = mockNode("root");
+	const dispose = render(element(<Void><Scene2D
+		ref={(scene: VoidScene2D): void => { scenes.push(scene); }}>
+		<View ref={(node: HostNode): void => { ui.push(node as VoidNode); }}>
+			<Text ref={(node: HostNode): void => { ui.push(node as VoidNode); }}>UI</Text>
+		</View>
+	</Scene2D></Void>), mockHost(), root);
+	assert ui.length === 2 && ui[0].parent === ui[1];
+	assert ui[0].ref.scene === scenes[0] && ui[1].ref.scene === scenes[0];
+	assert mockToString(root) === "<root><void><voidroot></voidroot></void></root>";
+	dispose();
+	assert ui[0].disposed && ui[1].disposed && scenes[0].closed;
 }
