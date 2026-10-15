@@ -78,14 +78,17 @@ async function routes() {
 	assert.equal(tagged.status, 200, "a query the site does not read made a page a no-match");
 	assert.match(tagged.body, /<h1>Docs: routing<\/h1>/);
 
-	for (const path of ["/docs/missing", "/nowhere", "/docs/start/", "/docs/missing?utm=1"]) {
+	for (const path of ["/docs/missing", "/nowhere", "/docs/missing?utm=1"]) {
 		const missing = await get(site + path);
 		assert.equal(missing.status, 404, path);
 		assert.match(missing.body, /<meta name="robots" content="noindex"/, path);
 		assert.match(missing.body, /<h1>Not found<\/h1>/, path);
 	}
+	const slashed = await fetch(site + "/docs/start/?utm=1", { redirect: "manual" });
+	assert.equal(slashed.status, 308, "an address ending in a slash is not redirected for good");
+	assert.equal(slashed.headers.get("location"), "/docs/start?utm=1");
 	assert.deepEqual(await get(site + "/"), home, "the home page changed after other requests");
-	console.log("PASS: workerd routes each request through its own registry and answers a no-match with 404");
+	console.log("PASS: workerd routes each request through its own router, answers a no-match with 404 and a trailing slash with 308");
 }
 
 async function prerender() {
@@ -140,7 +143,7 @@ async function browser() {
 		assert.deepEqual(errors, []);
 		assert.equal(await page.evaluate("document.querySelectorAll('#site *').length"), 14);
 		assert.deepEqual(await page.evaluate("globalThis.neonSiteChanged"), [], "hydrate added or removed an element of the served page");
-		await page.evaluate(() => { document.querySelector("h1").served = true; });
+		await page.evaluate(() => { document.querySelector("nav").served = true; });
 		assert.equal(await page.title(), "start · Neon site");
 		assert.equal(await page.locator("head [data-neon-head]").count(), 0, "served head tags stayed beside the client's");
 		assert.equal(await page.locator("head title").count(), 1);
@@ -154,7 +157,9 @@ async function browser() {
 		assert.equal(new URL(page.url()).pathname, "/docs/routing");
 		assert.equal(await page.title(), "routing · Neon site");
 		assert.equal(await page.locator("meta[name=description]").getAttribute("content"), "Docs: routing");
-		assert.equal(await page.evaluate("document.querySelector('h1').served"), true, "a navigation replaced the heading");
+		assert.equal(await page.evaluate("document.querySelector('nav').served"), true, "a navigation replaced the layout");
+		assert.equal(await page.getByRole("link", { name: "Routing", exact: true }).getAttribute("aria-current"), "page");
+		assert.equal(await page.getByRole("link", { name: "Start", exact: true }).getAttribute("aria-current"), null);
 		assert.equal(await page.evaluate("window.scrollY"), 0, "a followed link left the page scrolled");
 		assert.equal(documents, 1, "a link reloaded the page");
 
@@ -176,16 +181,17 @@ async function browser() {
 		assert.ok(atNotes[0] > 1000 && atNotes[1] >= 0 && atNotes[1] < atNotes[2], "a followed link did not scroll to its fragment: " + atNotes);
 		assert.equal(documents, 1, "a link with a fragment went through the server");
 
-		const answered = page.waitForResponse((r) => r.url() === site + "/docs/missing");
 		await page.getByRole("link", { name: "Missing", exact: true }).click();
-		assert.equal((await answered).status(), 404, "a link to no route is the server's to answer");
 		await page.waitForFunction("document.querySelector('h1').textContent === 'Not found'");
-		assert.equal(documents, 2);
+		assert.equal(new URL(page.url()).pathname, "/docs/missing");
+		assert.equal(await page.title(), "Not found · Neon site");
+		assert.equal(await page.evaluate("document.querySelector('nav').served"), true, "a page with no route replaced the layout");
+		assert.equal(documents, 1, "a link to no page went through the server");
 		assert.deepEqual(errors, []);
 	} finally {
 		await chrome.close();
 	}
-	console.log("PASS: Chrome hydrates the served route, follows links without a reload and leaves a no-match to the server");
+	console.log("PASS: Chrome hydrates the served route, follows links without a reload and renders a no-match in the layout");
 }
 
 try {

@@ -2,12 +2,14 @@ import { NeonNode } from "../../src/render/hostTypes";
 import { renderToMarkup } from "../../src/render/ssr";
 import { RoutingError } from "../../src/navigation/routing";
 import { createRequestRoutingHistory } from "../../src/navigation/routingHistory";
-import { Site, NotFound, createSite } from "./site";
+import { RouterProvider, createRouter } from "../../src/navigation/router";
+import { NotFound, routes } from "./site";
 
 export { staticPaths } from "./site";
 
 struct SiteResponse {
 	status: int32;
+	location: string | null;
 	body: string;
 }
 
@@ -19,14 +21,22 @@ function document(page: NeonNode): string {
 }
 
 export function respond(url: string): SiteResponse {
-	const site = createSite(createRequestRoutingHistory(url));
-	if (!site.ok) {
-		return { status: site.error === RoutingError.NoMatch ? 404 : 400, body: document(<NotFound />) };
+	const opened = createRouter(routes, createRequestRoutingHistory(url));
+	if (!opened.ok) {
+		return {
+			status: opened.error === RoutingError.NoMatch ? 404 : 400,
+			location: null,
+			body: document(<NotFound />),
+		};
 	}
-	const model = site.value;
+	const router = opened.value;
 	try {
-		return { status: 200, body: document(<Site model={model} />) };
+		const response = router.response();
+		if (response.location !== null) {
+			return { status: response.status, location: response.location, body: "" };
+		}
+		return { status: response.status, location: null, body: document(<RouterProvider router={router} />) };
 	} finally {
-		model.dispose();
+		router.dispose();
 	}
 }

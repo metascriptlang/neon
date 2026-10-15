@@ -83,9 +83,9 @@ function main(): void {
 	for (const path of ["/", "/guide"]) {
 		console.log("== edge " + path + "\n" + page(path));
 	}
-	for (const url of ["/", "/docs/start", "/docs/routing?x=1#top", "/docs/missing", "/nowhere"]) {
+	for (const url of ["/", "/docs/start", "/docs/routing?x=1#top", "/docs/missing", "/nowhere", "/docs/start/"]) {
 		const r = respond(url);
-		console.log("== site " + url + " " + r.status.toString() + "\n" + r.body);
+		console.log("== site " + url + " " + r.status.toString() + " " + (r.location ?? "") + "\n" + r.body);
 	}
 }
 main();
