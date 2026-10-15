@@ -3,16 +3,17 @@ import { element } from "../../src/macros/ui/element";
 import { render } from "../../src/render/host";
 import { NeonEvent, neonEvent } from "../../src/render/event";
 import { View, Text, TextInput, Pressable } from "../../src/components/primitives";
-import { ForList } from "../../src/macros/ui/flow";
+import { ForList, Show } from "../../src/macros/ui/flow";
 import { createList } from "../../src/core/list";
 import { NeonNode } from "../../src/render/node";
 import {
 	createVoidHostWith, VoidHost, VoidNode, TextEditingValue, editingValue, CaretRect,
 } from "../../src/platform/void/host";
-import { Scene2D, NodeRef, DrawKind, Changed, text, paint, textStyle, local, getChildAt, clearChanges } from "../../../void/src/void2d/node";
+import { Scene2D, NodeRef, DrawKind, Changed, text, paint, textStyle, local, getChildAt, clearChanges, isLive, numChildren } from "../../../void/src/void2d/node";
 import { create, paint as paintScene, isDirty } from "../../../void/src/void2d/scene";
 import { frameEnd } from "../../../void/src/void2d/draw";
-import { xForIndex, textWidth } from "../../../void/src/void2d/render";
+import { xForIndex, textWidth, lineBoxAt } from "../../../void/src/void2d/render";
+import { TextRun } from "../../../void/src/void2d/textLayout";
 import { rgba } from "../../../void/src/void2d/types";
 import { labelTexts } from "../../../void/src/void2d/labelText";
 import { FontId, DEFAULT_FONT, addFont } from "../../../void/src/void2d/font";
@@ -52,6 +53,15 @@ function field(vh: VoidHost): VoidNode {
 
 function labelOf(n: VoidNode): NodeRef {
 	return n.ref.getChildAt(0);
+}
+
+function paragraph(text: VoidNode): NodeRef {
+	if (text.para === null) { throw new Error("this Text has no paragraph label"); }
+	return text.para as NodeRef;
+}
+
+function runsOf(vh: VoidHost, label: NodeRef): Vec<TextRun> {
+	return labelTexts[vh.scene.payloads[label.id.index]].runs;
 }
 
 test "a click focuses the text field and typed text reaches onChangeText" {
@@ -230,21 +240,22 @@ test "every label the host makes draws in the host's font" {
 	const vh = createVoidHostWith(Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0)), second);
 	render(element(<View><Text>hi</Text><TextInput /></View>), vh.host, vh.root);
 	const view = top(vh);
-	assert view.children[0].children[0].ref.textStyle().font === second, "text label font";
+	assert paragraph(view.children[0]).textStyle().font === second, "text label font";
 	assert labelOf(view.children[1]).textStyle().font === second, "text field label font";
 }
 
-test "text pieces inside one element flow one after another on the line" {
+test "a Text's strings draw in order as one paragraph label, and a string change rewrites it" {
 	const vh = host();
 	const [n, setN] = createSignal(7);
 	render(element(<View style={{ width: 200, height: 20 }}><Text>Count: {n().toString()}</Text></View>), vh.host, vh.root);
 	vh.layout(200.0, 20.0);
-	const line = top(vh).children[0];
-	assert line.children[0].ref.local().x === 0.0, "first piece at the start";
-	const first = line.children[0].ref;
-	const second = line.children[1].ref.local().x;
-	assert first.text() === "Count: ", "first piece keeps its trailing space: \"" + first.text() + "\"";
-	assert second > first.textWidth(), "second piece after the space that ends 'Count: ': " + second.toString() + " against " + first.textWidth().toString();
+	const text = top(vh).children[0];
+	assert paragraph(text).text() === "Count: 7", "one label holds both strings: \"" + paragraph(text).text() + "\"";
+	assert text.ref.numChildren() === 1, "the paragraph label is the Text's only scene child, got " + text.ref.numChildren().toString();
+	assert !text.children[0].ref.isLive() && !text.children[1].ref.isLive(), "the strings are spans with no label of their own";
+	setN(8);
+	assert paragraph(text).text() === "Count: 8", "the changed string reaches the paragraph: \"" + paragraph(text).text() + "\"";
+	assert runsOf(vh, paragraph(text)).length === 0, "an unstyled paragraph draws without runs";
 }
 
 test "a text field keeps its text color when it has a background" {
@@ -255,20 +266,71 @@ test "a text field keeps its text color when it has a background" {
 	assert labelOf(f).paint().color.r === 1.0, "the label keeps the text color, got r=" + labelOf(f).paint().color.r.toString();
 }
 
-test "a Text's color and fontSize reach every text piece inside it, and follow a style change" {
+test "a Text's color and fontSize reach its paragraph, and follow a style change" {
 	const vh = host();
 	const [red, setRed] = createSignal(true);
 	const [n, setN] = createSignal(7);
 	render(element(<View><Text style={{ color: red() ? "#ff0000" : "#00ff00", fontSize: 20 }}>Count: {n().toString()}</Text></View>), vh.host, vh.root);
-	const line = top(vh).children[0];
-	for (const piece of line.children) {
-		assert piece.ref.paint().color.r === 1.0 && piece.ref.paint().color.g === 0.0, "piece \"" + piece.ref.text() + "\" is red";
-		assert piece.ref.textStyle().size === 20.0, "piece \"" + piece.ref.text() + "\" is 20, got " + piece.ref.textStyle().size.toString();
-	}
+	const label = paragraph(top(vh).children[0]);
+	assert label.paint().color.r === 1.0 && label.paint().color.g === 0.0, "the paragraph is red";
+	assert label.textStyle().size === 20.0, "the paragraph is 20, got " + label.textStyle().size.toString();
 	setRed(false);
-	for (const piece of line.children) {
-		assert piece.ref.paint().color.g === 1.0 && piece.ref.paint().color.r === 0.0, "piece \"" + piece.ref.text() + "\" turned green";
-	}
+	assert label.paint().color.g === 1.0 && label.paint().color.r === 0.0, "the paragraph turned green";
+}
+
+test "a nested Text is a run of the outer Text's paragraph, which wraps at the Text's laid width" {
+	const vh = host();
+	render(element(<View style={{ width: 120 }}><Text>Hello there <Text style={{ color: "#ff0000" }}>big red words</Text> and a long tail that wraps</Text></View>), vh.host, vh.root);
+	vh.layout(120.0, 300.0);
+	const text = top(vh).children[0];
+	const label = paragraph(text);
+	assert label.text() === "Hello there big red words and a long tail that wraps", "one paragraph: \"" + label.text() + "\"";
+	assert text.ref.numChildren() === 1, "no scene node for the nested Text, got " + text.ref.numChildren().toString();
+	const runs = runsOf(vh, label);
+	assert runs.length === 3 && runs[0].len === 12 && runs[1].len === 13 && runs[2].len === 27, "three runs over the pieces, got " + runs.length.toString();
+	assert runs[0].color.g === 1.0 && runs[1].color.r === 1.0 && runs[1].color.g === 0.0 && runs[2].color.g === 1.0, "only the nested run is red";
+	assert label.paint().color.g === 1.0, "a styled paragraph draws its runs untinted";
+	assert label.textWidth() <= 120.0, "the paragraph wraps inside 120, got " + label.textWidth().toString();
+	assert label.lineBoxAt(label.text().length as int32 - 1).top > 0.0, "the tail lands on a later line";
+}
+
+test "a nested Text's colour and content changes reach its run, and the runs go when the last styled span does" {
+	const vh = host();
+	const [hot, setHot] = createSignal(true);
+	const [word, setWord] = createSignal("red");
+	const [shown, setShown] = createSignal(true);
+	render(element(<View style={{ width: 300 }}><Text>a <Show when={shown()}><Text style={{ color: hot() ? "#ff0000" : "#0000ff", textDecorationLine: "underline" }}>{word()}</Text></Show> b</Text></View>), vh.host, vh.root);
+	const label = paragraph(top(vh).children[0]);
+	assert label.text() === "a red b", "start: \"" + label.text() + "\"";
+	assert runsOf(vh, label)[1].underline.r === 1.0, "the underline takes the run colour";
+	setHot(false);
+	assert runsOf(vh, label)[1].color.b === 1.0 && runsOf(vh, label)[1].color.r === 0.0, "the run turned blue";
+	setWord("blue");
+	assert label.text() === "a blue b" && runsOf(vh, label)[1].len === 4, "the run follows its string: \"" + label.text() + "\"";
+	setShown(false);
+	assert label.text() === "a  b", "the span left: \"" + label.text() + "\"";
+	assert runsOf(vh, label).length === 0, "no styled span left, so no runs";
+}
+
+test "what a Void paragraph cannot draw yet is refused by name" {
+	let message = "";
+	const a = host();
+	try {
+		render(element(<Text>a <View style={{ width: 4, height: 4 }} /></Text>), a.host, a.root);
+	} catch (e) { message = e.message; }
+	assert message.indexOf("inline view") >= 0, "a View inside a Text: " + message;
+	message = "";
+	const b = host();
+	try {
+		render(element(<Text>a <Text onPress={(): void => {}}>b</Text></Text>), b.host, b.root);
+	} catch (e) { message = e.message; }
+	assert message.indexOf("per-span hit-testing") >= 0, "onPress on a nested Text: " + message;
+	message = "";
+	const c = host();
+	try {
+		render(element(<Text style={{ fontSize: 14 }}>a <Text style={{ fontSize: 20 }}>b</Text></Text>), c.host, c.root);
+	} catch (e) { message = e.message; }
+	assert message.indexOf("one size") >= 0, "a nested fontSize: " + message;
 }
 
 test "a key event carries the physical detail the window supplied, to the focused node and its parents" {
@@ -445,12 +507,20 @@ function lineRow(item: Accessor<Line>): NeonNode {
 }
 
 function shapeAll(n: VoidNode): void {
+	if (n.para !== null) {
+		(n.para as NodeRef).textWidth();
+		return;
+	}
 	if (n.ref.kind() === DrawKind.Label) { n.ref.textWidth(); }
 	for (const c of n.children) { shapeAll(c); }
 }
 
 // Labels whose text or style changed since the last paint, or whose shaped layout is out of date.
 function textTouched(vh: VoidHost, n: VoidNode): number {
+	if (n.para !== null) {
+		const row = (n.para as NodeRef).id.index;
+		return labelTexts[vh.scene.payloads[row]].stale || vh.scene.changed[row].has(Changed.Text) ? 1 : 0;
+	}
 	let count: number = 0;
 	if (n.ref.kind() === DrawKind.Label) {
 		const row = n.ref.id.index;
