@@ -82,6 +82,9 @@ export {
 	Calendar, Locale, LocalizeLocale, NumberFormatSettings, getCalendars, getCountry, getCurrencies, getLocales,
 	getLocalizeLocales, getNumberFormatSettings, getTemperatureUnit, getTimeZone, uses24HourClock, usesMetricSystem,
 } from "./api/localization";
+when (js) {
+	export { ScrollPosition, useWindowScrollPosition, useWindowScrollRange } from "./api/pageScroll";
+}
 export {
 	DEFAULT_ACTION_IDENTIFIER, Notification, NotificationBehavior, NotificationContent, NotificationContentInput,
 	NotificationHandler, NotificationRequest, NotificationRequestInput, NotificationResponse, NotificationTriggerInput,

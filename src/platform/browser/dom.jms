@@ -32,6 +32,7 @@ import {
 } from "../../render/web";
 import { publishWindow, publishColorScheme } from "../../render/environment";
 import { publishSafeArea } from "../../render/environment";
+import { publishPageScroll } from "../../api/pageScroll";
 import { CssStyle, applyCss, applyCssProp } from "./domCss";
 import { VisibleContentPosition, parseVisibleContent } from "../../render/visibleContent";
 import { installBrowserAppServices } from "./appServices";
@@ -75,6 +76,8 @@ extern class Node {
 	scrollTop: number;
 	scrollWidth: number;
 	scrollHeight: number;
+	clientWidth: number;
+	clientHeight: number;
 	offsetWidth: number;
 	offsetHeight: number;
 	offsetLeft: number;
@@ -174,6 +177,8 @@ extern class MediaQueryList {
 extern class window {
 	static innerWidth: number;
 	static innerHeight: number;
+	static scrollX: number;
+	static scrollY: number;
 	static extern addEventListener(name: cstring, handler: (e: DomEvent) => void): void;
 	static extern matchMedia(query: cstring): MediaQueryList;
 	static extern removeEventListener(name: cstring, handler: (e: DomEvent) => void): void;
@@ -196,6 +201,28 @@ function watchEnvironment(): void {
 	publish();
 	window.addEventListener("resize", (e: DomEvent): void => { publish(); });
 	scheme.addEventListener("change", (e: DomEvent): void => { publish(); });
+}
+
+let pageScrollWatched = false;
+
+function watchPageScroll(): void {
+	if (pageScrollWatched) { return; }
+	pageScrollWatched = true;
+	const root = document.documentElement;
+	const publish = (): void => {
+		publishPageScroll(
+			window.scrollX,
+			window.scrollY,
+			Math.max(0, root.scrollWidth - root.clientWidth),
+			Math.max(0, root.scrollHeight - root.clientHeight),
+		);
+	};
+	publish();
+	window.addEventListener("scroll", (e: DomEvent): void => { publish(); });
+	window.addEventListener("resize", (e: DomEvent): void => { publish(); });
+	const observer = new ResizeObserver(publish);
+	observer.observe(root);
+	observer.observe(document.body);
 }
 
 let safeAreaWatched = false;
@@ -726,6 +753,7 @@ function blurInput(): void {
 
 extern class document {
 	static body: Node;
+	static documentElement: Node;
 	static head: Node;
 	static activeElement: Node;
 	static extern createElement(tag: cstring): Node;
@@ -855,6 +883,7 @@ export function domHost(): Host {
 	watchEnvironment();
 	installBrowserAppServices();
 	watchSafeArea();
+	watchPageScroll();
 	installDomLayoutAnimation();
 	const registeredRules = new Map<string, boolean>();
 	let modalRule = false;
