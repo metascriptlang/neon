@@ -145,3 +145,21 @@ export { ChildStack, createChildStack } from "./childStack";
 export { Pages, ChildPages, createChildPages } from "./childPages";
 export { ChildSlot, createChildSlot } from "./childSlot";
 export { ChildPanelsMode, Panels, ChildPanels, createChildPanels } from "./childPanels";
+export {
+	LayoutProps,
+	RouteConfig,
+	RouteView,
+	Routes,
+	RouterLocation,
+	RouterResponse,
+	NavigateOptions,
+	Router,
+	createRoutes,
+	createRouter,
+	RouterProvider,
+	useParams,
+	useNavigate,
+	useLocation,
+	useMatch,
+	A,
+} from "./router";
