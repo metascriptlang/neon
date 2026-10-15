@@ -37,6 +37,7 @@ export interface NeonEvent {
 	cursor: number;        // onPreedit: the caret inside `text`, in UTF-16 units
 	button: number;        // pointer events: the window's numbering, Ion's 1 left, 2 right, 3 middle; 0 when none is held
 	pressed: boolean;      // pointer events: a button is held
+	pointerOrigin: boolean;
 	locationX: number;     // pointer events: x relative to the target, the deepest node the pointer hit (RN's locationX), in layout points
 	locationY: number;
 	deltaX: number;        // onWheel, in the unit deltaMode names, with Ion's signs: dy > 0 is away from the user
@@ -53,7 +54,7 @@ export function neonEvent(type: string): NeonEvent {
 		type, timeStamp: 0, value: "", x: 0, y: 0, width: 0, height: 0, contentWidth: 0, contentHeight: 0, key: "", code: "",
 		altKey: false, ctrlKey: false, metaKey: false, shiftKey: false, repeat: false, isComposing: false,
 		scancode: 0, mods: 0, consumedMods: 0, unshifted: 0, text: "", cursor: 0,
-		button: 0, pressed: false, locationX: 0, locationY: 0, deltaX: 0, deltaY: 0, deltaMode: DOM_DELTA_PIXEL,
+		button: 0, pressed: false, pointerOrigin: false, locationX: 0, locationY: 0, deltaX: 0, deltaY: 0, deltaMode: DOM_DELTA_PIXEL,
 		propagationStopped: false,
 	};
 }
