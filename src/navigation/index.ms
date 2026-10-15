@@ -179,3 +179,4 @@ export {
 	childPagesWebNavigation,
 	childPanelsWebNavigation,
 } from "./webNavigation";
+export { WebHistory, createWebHistory } from "./webHistory";
