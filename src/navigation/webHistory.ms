@@ -15,6 +15,7 @@ import { WebHistoryItem, WebNavigationError, WebNavigationNode, WebNavigationOwn
 export interface WebHistory {
 	participant: RoutingParticipant;
 	enable: (session: RoutingSession) => Dispose;
+	suppressed: (commit: () => void) => RoutePlan;
 }
 
 interface HistoryNode {
@@ -389,11 +390,12 @@ export function createWebHistory(
 	let applying = false;
 	const suppressed = (commit: () => void): RoutePlan => ({
 		commit: (): void => flush((): void => {
+			const outer = applying;
 			applying = true;
 			try {
 				commit();
 			} finally {
-				applying = false;
+				applying = outer;
 			}
 			applied.set(applied.peek() + 1);
 		}),
@@ -459,5 +461,6 @@ export function createWebHistory(
 				return dispose;
 			});
 		},
+		suppressed,
 	};
 }

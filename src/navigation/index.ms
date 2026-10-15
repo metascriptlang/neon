@@ -145,8 +145,12 @@ export { ChildStack, createChildStack } from "./childStack";
 export { Pages, ChildPages, createChildPages } from "./childPages";
 export { ChildSlot, createChildSlot } from "./childSlot";
 export { ChildPanelsMode, Panels, ChildPanels, createChildPanels } from "./childPanels";
+export { renderStack, renderStackTop, renderPages } from "./childView";
 export {
 	LayoutProps,
+	RouteNavigator,
+	Stack,
+	Tabs,
 	RouteConfig,
 	RouteView,
 	Routes,

@@ -121,8 +121,10 @@ test "a layout keeps its instance while the page under it is replaced per path p
 	assert history.go(-1);
 	assert mockToString(root) === "<root><main><h1>doc routing</h1></main></root>", mockToString(root);
 	assert history.read().url === "/docs/routing";
-	assert router.navigate("/nowhere");
+	assert router.navigate("/nowhere/deep");
 	assert mockToString(root) === "<root><main><h1>missing</h1></main></root>", mockToString(root);
+	assert history.read().url === "/nowhere/deep", history.read().url;
+	assert router.location().pathname === "/nowhere/deep", router.location().pathname;
 	assert router.response().status === 404;
 	router.dispose();
 }
