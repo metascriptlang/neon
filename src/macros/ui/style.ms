@@ -106,7 +106,7 @@ export macro createStyles(node: Node): Node {
 	if (sheet.kind !== NodeKind.ObjectLiteral) {
 		error("createStyles takes an object literal: createStyles({ name: { ... } })", node);
 	}
-	when (js) {
+	when (js || server) {
 		const activePlatform = "web";
 	} else when (ios) {
 		const activePlatform = "ios";
@@ -118,7 +118,7 @@ export macro createStyles(node: Node): Node {
 		const activePlatform = "";
 	}
 
-	when (js) {
+	when (js || server) {
 		const emitCss = true;
 	} else {
 		const emitCss = false;

@@ -6,7 +6,8 @@
 //
 // Both lanes run this file: the js lane exercises the class route, the native
 // lane pins that the same tree serializes inline, because the macro bakes no
-// CSS metadata off the browser lane.
+// CSS metadata off the browser lane. A -d:server build writes html for a browser
+// on every backend, so there the native lane takes the class route too.
 
 import { NeonNode } from "../../src/render/node";
 import { renderToString } from "../../src/render/ssr";
@@ -24,7 +25,7 @@ const sheet = createStyles({
 test "a static sheet entry serializes as a class and registers its rule" {
 	resetCss();
 	const html = renderToString(<div style={sheet.btn}>hi</div>);
-	when (js) {
+	when (js || server) {
 		const id = sheet.btn.cssId as string;
 		assert html === "<div class=\"" + id + "\">hi</div>", "class, no inline copy of the rule";
 		assert cssRuleCount() === 1, "rendering the node mounted the rule";
@@ -36,7 +37,7 @@ test "a static sheet entry serializes as a class and registers its rule" {
 }
 
 test "the runtime spelling equals the rule the macro baked" {
-	when (js) {
+	when (js || server) {
 		assert (sheet.btn.css as string) === "." + (sheet.btn.cssId as string) + "{" + styleToCss(sheet.btn) + "}", "one vocabulary, two spellings, same text";
 	}
 }
@@ -49,7 +50,7 @@ const geass = createStyles({
 });
 
 test "a baked rule spells every unitless field as the runtime does" {
-	when (js) {
+	when (js || server) {
 		const css = geass.layered.css as string;
 		assert css.indexOf("z-index:2;") >= 0 && css.indexOf("opacity:0.5;") >= 0 && css.indexOf("width:10px;") >= 0, css;
 	}
@@ -95,7 +96,7 @@ test "per-property thunks land over the static base" {
 }
 
 test "a class from a sheet joins the class attribute already on the node" {
-	when (js) {
+	when (js || server) {
 		const n: NeonNode = <div class="x" style={sheet.btn}></div>;
 		assert renderToString(n) === "<div class=\"x " + (sheet.btn.cssId as string) + "\"></div>", "one class attribute, not two";
 	}
@@ -104,7 +105,7 @@ test "a class from a sheet joins the class attribute already on the node" {
 test "a sheet entry on a View serializes as a class, as it does on a tag" {
 	resetCss();
 	const html = renderToString(<View style={sheet.btn}><Text style={sheet.btn}>hi</Text></View>);
-	when (js) {
+	when (js || server) {
 		const id = sheet.btn.cssId as string;
 		assert html === "<div class=\"neon-view " + id + "\"><span class=\"neon-text " + id + "\">hi</span></div>", html;
 	} else {
