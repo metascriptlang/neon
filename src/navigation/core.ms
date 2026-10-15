@@ -1137,6 +1137,7 @@ export function createCore<P>(setup: NavigatorSetup<P>): NavigatorCore<P> {
 	}
 	const scope = setup.scope;
 	const core = new NavigatorCore<P>(setup, initial, scope.link.seedFor(scope.routeKey));
+	flush();
 	const link = linkOf<P>(core);
 	core.notify();
 	core.container.changed();
