@@ -333,9 +333,20 @@ same JS-driven frames.
     the exit animation keeps it registered.
   - Neon reuses a route by key, so a traversal writes params into a live route that
     keeps its key; Decompose configurations are immutable.
-  - `setParams` changes the key and so rewrites, where Expo replaces the entry.
-  - A tab switch replaces the entry; opening the drawer adds none and a traversal
-    closes it, where Expo adds one. Browser back does not consult `beforeRemove`.
+  - `setParams` changes the key and so rewrites, where Expo replaces the entry
+    (`BaseRouter.tsx` `SET_PARAMS` declares nothing); below a pushed entry that drops
+    the earlier entries (`BUGS.md`).
+  - Opening the drawer adds an entry at the same address and closing it goes back one,
+    as Expo's `DrawerRouter` adds a drawer history item. The open item carries the
+    selected page's address and no child, since the URL comes from the last item. A
+    traversal restores the stored open state; a reload, or a traversal into a drawer
+    not mounted yet, lands closed. Pushing in a parent stack while the drawer is open
+    keeps the open entry, where Expo replaces it.
+  - Browser back asks `beforeRemove` of each stack's top screen down the active branch
+    and returns the browser on a refusal, as Expo refuses a prevented restore
+    (`global-state/browserHistory.ts`). `onBeforeNavigate` carries no target
+    (Decompose's contract), so a forward traversal asks too, and the action handed
+    over is `GO_BACK`.
   - With routing on, a nested screen whose linking path is `exact` is refused: each
     level's part joins its parent's.
   - An undecodable stored key throws when applied, and a malformed state reports
