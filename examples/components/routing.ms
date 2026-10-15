@@ -1,6 +1,7 @@
 import { Accessor, Signal, accessor } from "../../src/core/signal";
 import { createEffect } from "../../src/core/effect";
-import { Dispose } from "../../src/core/types";
+import { createRoot } from "../../src/core/owner";
+import { Cleanup, Dispose } from "../../src/core/types";
 import { NeonNode } from "../../src/render/hostTypes";
 import { View, Text, Pressable } from "../../src/components/primitives";
 import { Show, For } from "../../src/macros/ui/flow";
@@ -166,17 +167,23 @@ export function createRoutingDemo(history: RoutingHistory): Result<RoutingDemoMo
 			};
 		},
 	);
-	const stop = createEffect((): void => {
-		const ids = documents.get();
-		const state: ChildState<string>[] = [];
-		for (let i = 0; i < ids.length; i += 1) {
-			state.push({
-				key: i.toString() + ":" + ids[i],
-				configuration: ids[i],
-				active: i === ids.length - 1,
-			});
-		}
-		components.navigate(state);
+	const stop = createRoot((d: Dispose): Dispose => {
+		createEffect<string[]>(
+			(prev: string[] | null): string[] => documents.get(),
+			(ids: string[], prev: string[] | null): Cleanup | null => {
+				const state: ChildState<string>[] = [];
+				for (let i = 0; i < ids.length; i += 1) {
+					state.push({
+						key: i.toString() + ":" + ids[i],
+						configuration: ids[i],
+						active: i === ids.length - 1,
+					});
+				}
+				components.navigate(state);
+				return null;
+			},
+		);
+		return d;
 	});
 	return Result.ok({
 		document,

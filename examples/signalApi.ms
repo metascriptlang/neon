@@ -2,6 +2,7 @@
 
 import { createSignal, batch, untrack } from "../src/core/signal";
 import { createEffect } from "../src/core/effect";
+import { Cleanup } from "../src/core/types";
 
 test "getter returns correct value" {
 	const [val, setVal] = createSignal(42);
@@ -12,11 +13,14 @@ test "untrack reads without subscribing" {
 	let untrackedEffectCount = 0;
 	const [x, setX] = createSignal(10);
 	const [y, setY] = createSignal(20);
-	createEffect(() => {
-		x();
-		const yVal = untrack(() => y());
-		untrackedEffectCount = untrackedEffectCount + 1;
-	});
+	createEffect<int32>(
+		(prev: int32 | null): int32 => x(),
+		(xVal: int32, prev: int32 | null): Cleanup | null => {
+			const yVal = untrack(() => y());
+			untrackedEffectCount = untrackedEffectCount + 1;
+			return null;
+		},
+	);
 	assert untrackedEffectCount === 1 : "effect ran once initially";
 	setY(99);
 	assert untrackedEffectCount === 1 : "effect did NOT re-run on untracked signal change";
@@ -27,10 +31,10 @@ test "untrack reads without subscribing" {
 test "batch defers effect execution" {
 	let batchEffectCount = 0;
 	const [a, setA] = createSignal(0);
-	createEffect(() => {
-		a();
-		batchEffectCount = batchEffectCount + 1;
-	});
+	createEffect<int32>(
+		(prev: int32 | null): int32 => a(),
+		(value: int32, prev: int32 | null): Cleanup | null => { batchEffectCount = batchEffectCount + 1; return null; },
+	);
 	assert batchEffectCount === 1 : "effect ran once initially";
 	batch(() => {
 		setA(1);
@@ -45,11 +49,10 @@ test "batch with multiple signals" {
 	let multiEffectCount = 0;
 	const [p, setP] = createSignal(0);
 	const [q, setQ] = createSignal(0);
-	createEffect(() => {
-		p();
-		q();
-		multiEffectCount = multiEffectCount + 1;
-	});
+	createEffect<int32>(
+		(prev: int32 | null): int32 => p() + q(),
+		(sum: int32, prev: int32 | null): Cleanup | null => { multiEffectCount = multiEffectCount + 1; return null; },
+	);
 	assert multiEffectCount === 1 : "multi-signal effect ran once initially";
 	batch(() => {
 		setP(10);
