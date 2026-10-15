@@ -2,7 +2,7 @@ import { createRenderEffect } from "../core/effect";
 import { onCleanup } from "../core/cleanup";
 import { createRoot } from "../core/owner";
 import { Accessor, Signal, accessor, untrack } from "../core/signal";
-import { List, ListOp, listInsert, listMove, listRemove, listSet } from "../core/list";
+import { List, ListOp, listInsert, listMove, listRemove, listSet, matchByIds } from "../core/list";
 import { Host, HostNode, NeonNode } from "./hostTypes";
 import { Row, makeRow, mountAt, moveRow, removeRow, reconcileArrays } from "./reconcile";
 import { regionAnchor, sealRegion, serverRegionStart, serverRegionEnd, skipRegionEffect } from "./claim";
@@ -123,25 +123,6 @@ function moveRowTo<Item>(g: Region<Item>, from: number, to: number): void {
 // Each new row takes the old row that carries the same item — by number key when the list has one,
 // by item identity otherwise, which is what <For> does. A row's DOM and its reactive scope belong to
 // the item, not to the slot, so a replaceAll that reorders moves nodes instead of rewriting values.
-function matchByIds<K>(oldIds: K[], newIds: K[], out: number[]): void {
-	const byId = new Map<K, number>();
-	for (let i = 0; i < oldIds.length; i += 1) {
-		const k = oldIds[i];
-		if (byId.has(k)) { continue; }
-		byId.set(k, i);
-	}
-	for (let j = 0; j < newIds.length; j += 1) {
-		const k = newIds[j];
-		if (!byId.has(k)) {
-			out[j] = -1;
-			continue;
-		}
-		const at = byId.get(k) as number;
-		out[j] = at;
-		byId.set(k, -1);
-	}
-}
-
 function resetTo<Item>(g: Region<Item>, items: Item[]): void {
 	const have = g.rows.length;
 	const n = items.length;
@@ -166,7 +147,7 @@ function resetTo<Item>(g: Region<Item>, items: Item[]): void {
 	} else {
 		const oldIds: Item[] = new Array(have);
 		for (let i = 0; i < have; i += 1) { oldIds[i] = g.cells[i].peek(); }
-		matchByIds<Item>(oldIds, items, reuse);
+		g.list.matchByIdentity(oldIds, items, reuse);
 	}
 
 	const nextRows: Row[] = new Array(n);
