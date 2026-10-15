@@ -162,8 +162,9 @@ and the invariants that outlived them were moved to the head of the test that pi
 
 - **OPEN 2026-10-16 — a navigation issued while a rewrite's browser `go` is in flight misorders history.**
   The session has one landing slot and Chrome's `go` is asynchronous: in `tests/browser/routerLevels.test.ms`
-  back from `/inbox/8` stayed on `/inbox/8` until the test waited 100 ms after a tab switch. The `Relay`
-  queue the design names (`Relay.kt`) is the fix; it waits for neon-solid2's `children.ms`.
+  back from `/inbox/8` stayed on `/inbox/8` until the test waited 100 ms after a tab switch. Decompose
+  swaps one popstate listener the same way (`WebHistoryNavigation.kt` `onPop`/`onRewrite`); the fix is
+  not traced yet.
 
 - **PARKED 2026-10-16 — the route tree shorthand takes no typed route.** Not Neon's: `RouteConfig` would
   take `{ route: thread, component: Thread }` through a field typed `{ node: RouteNode }`, and msc refuses a
