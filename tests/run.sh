@@ -39,6 +39,12 @@ MINGW* | MSYS* | CYGWIN*)
 	"$MSC" build examples/windowsNative/app.ms --output=out/windowsNative.exe || fail=1
 	echo "== desktop examples/windowsNative/text.ms"
 	"$MSC" build examples/windowsNative/text.ms --output=out/windowsText.exe || fail=1
+	echo "== desktop examples/windowsNative/ion.ms"
+	"$MSC" build examples/windowsNative/ion.ms --output=out/windowsIon.exe || fail=1
+	echo "== desktop examples/windowsNative/ionText.ms"
+	"$MSC" build examples/windowsNative/ionText.ms --output=out/windowsIonText.exe || fail=1
+	echo "== desktop examples/windowsNative/ionPress.ms"
+	"$MSC" build examples/windowsNative/ionPress.ms --output=out/windowsIonPress.exe || fail=1
 	;;
 *) echo "== desktop skip examples/voidWindow.ms, examples/voidDraw.ms, examples/voidInputs.ms and examples/windowsNative: Windows-only" ;;
 esac

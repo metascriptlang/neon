@@ -224,6 +224,51 @@ void harnessStart(int logicalWidth, int logicalHeight) {
 	niwAttach(g_dcomp.Get(), g_root.Get(), (float)g_dpi, (float)MulDiv(client.right, 96, g_dpi), (float)MulDiv(client.bottom, 96, g_dpi));
 }
 
+int harnessIsCheck(void) { return wcsstr(GetCommandLineW(), L"--check") != nullptr; }
+
+static HWND findOwnWindow(const char *title) {
+	struct Search {
+		const wchar_t *title;
+		HWND found;
+	} search = {nullptr, nullptr};
+	std::wstring wide(title, title + strlen(title));
+	search.title = wide.c_str();
+	EnumWindows([](HWND window, LPARAM param) -> BOOL {
+		Search *search = reinterpret_cast<Search *>(param);
+		DWORD owner = 0;
+		GetWindowThreadProcessId(window, &owner);
+		wchar_t text[256];
+		GetWindowTextW(window, text, 256);
+		if (owner == GetCurrentProcessId() && IsWindowVisible(window) && wcscmp(text, search->title) == 0) search->found = window;
+		return search->found ? FALSE : TRUE;
+	}, reinterpret_cast<LPARAM>(&search));
+	if (!search.found) must(E_FAIL, "no window of this process has the expected title");
+	return search.found;
+}
+
+int harnessSample(const char *title) {
+	g_window = findOwnWindow(title);
+	g_dpi = GetDpiForWindow(g_window);
+	SetForegroundWindow(g_window);
+	DwmFlush();
+	DwmFlush();
+	int failures = sample();
+	g_expectations.clear();
+	g_centres.clear();
+	g_counts.clear();
+	g_sizes.clear();
+	g_layouts.clear();
+	return failures == 0 ? 0 : 1;
+}
+
+void harnessResizeClient(const char *title, int logicalWidth, int logicalHeight) {
+	HWND window = findOwnWindow(title);
+	UINT dpi = GetDpiForWindow(window);
+	RECT frame = {0, 0, MulDiv(logicalWidth, dpi, 96), MulDiv(logicalHeight, dpi, 96)};
+	AdjustWindowRectExForDpi(&frame, (DWORD)GetWindowLongW(window, GWL_STYLE), FALSE, (DWORD)GetWindowLongW(window, GWL_EXSTYLE), dpi);
+	SetWindowPos(window, nullptr, 0, 0, frame.right - frame.left, frame.bottom - frame.top, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+}
+
 void harnessExpect(const char *name, int x, int y, int r, int g, int b) {
 	g_expectations.push_back({name, x, y, r, g, b});
 }

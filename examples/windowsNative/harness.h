@@ -12,6 +12,9 @@ void harnessExpectCentre(const char *name, const char *layout, int left, int top
 void harnessExpectCount(const char *name, int x, int y, int width, int height, int r, int g, int b, int tolerance, int minCount, int maxCount);
 void harnessExpectSize(const char *layout, const char *text, float fontSize, int bold, float maxWidth);
 int harnessRun(void);
+int harnessIsCheck(void);
+int harnessSample(const char *title);
+void harnessResizeClient(const char *title, int logicalWidth, int logicalHeight);
 
 #ifdef __cplusplus
 }
