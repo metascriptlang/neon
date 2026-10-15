@@ -165,6 +165,6 @@ export function ShowKeyedWith<T>(props: {
 
 export function showWhen<M>(source: () => M, use: (value: Accessor<M>) => NeonNode): NeonNode {
 	return (host: Host, parent: HostNode, before: HostNode | null): void => {
-		use(createMemo(source))(host, parent, before);
+		use(createMemo<M>((prev: M | null): M => source()))(host, parent, before);
 	};
 }
