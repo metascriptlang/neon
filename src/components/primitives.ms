@@ -683,7 +683,15 @@ interface TextInputProps extends AccessibilityProps {
 export function TextInput(props: TextInputProps): NeonNode {
 	// RN renders a different native view for a multiline input, chosen once.
 	const multiline = props.multiline;
-	const tag = multiline !== null && untrack((): boolean => (multiline as Accessor<boolean>)()) ? "multilinetextinput" : "textinput";
+	const multilineHost = multiline !== null && untrack((): boolean => (multiline as Accessor<boolean>)());
+	const tag = multilineHost ? "multilinetextinput" : "textinput";
+	const secureTextEntry = props.secureTextEntry;
+	const validateSecureEntry = (): void => {
+		if (secureTextEntry !== null && (secureTextEntry as Accessor<boolean>)()
+			&& (multilineHost || (multiline !== null && (multiline as Accessor<boolean>)()))) {
+			throw new Error("TextInput secureTextEntry is unsupported with multiline");
+		}
+	};
 	const attrs: VAttr[] = [];
 	stringAttr(attrs, "value", props.value);
 	stringAttr(attrs, "defaultValue", props.defaultValue);
@@ -692,6 +700,15 @@ export function TextInput(props: TextInputProps): NeonNode {
 	flagAttr(attrs, "editable", props.editable);
 	flagAttr(attrs, "secureTextEntry", props.secureTextEntry);
 	flagAttr(attrs, "multiline", props.multiline);
+	for (const a of attrs) {
+		if (a.name === "value" || a.name === "defaultValue" || a.name === "secureTextEntry" || a.name === "multiline") {
+			const read = a.dyn;
+			a.dyn = (): string | null => {
+				validateSecureEntry();
+				return read();
+			};
+		}
+	}
 	flagAttr(attrs, "autoFocus", props.autoFocus);
 	flagAttr(attrs, "autoCorrect", props.autoCorrect);
 	flagAttr(attrs, "blurOnSubmit", props.blurOnSubmit);
