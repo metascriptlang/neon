@@ -405,3 +405,27 @@ test "a user effect's run waits behind the error fallback until recovery" {
 	assert result === "content", "recovered: " + result;
 	assert log.join(",") === "user 0,user 1", "and the run goes once, with the latest value: " + log.join(",");
 }
+
+// boundaries.ts:464 reset recomputes the failing sources; one that still fails keeps the fallback
+test "reset while the source still fails keeps the fallback" {
+	let tries = 0;
+	let result = "";
+	let resetFn: (() => void) | null = null;
+	createRoot((dispose) => {
+		const data = createMemo<string>((p: string | null): string => {
+			tries = tries + 1;
+			throw new Error("try " + tries.toString());
+		});
+		const b = createErrorBoundary<string>(
+			(): string => data(),
+			(e: Accessor<Error>, reset: () => void): string => { resetFn = reset; return "error " + e().message; },
+		);
+		createRenderEffect<string>((p: string | null): string => { result = b(); return result; }, (v: string, p: string | null): Cleanup | null => null);
+		return 0;
+	});
+	flush();
+	assert result === "error try 1", "failed: " + result;
+	(resetFn as () => void)();
+	flush();
+	assert result === "error try 2", "still failing after reset: " + result;
+}

@@ -4,8 +4,12 @@
 
 import { mapArray, mapArrayKeyedBy, mapArrayByPosition, repeat } from "../../core/array";
 import { createMemo } from "../../core/memo";
-import { Accessor, accessor, createSignal } from "../../core/signal";
+import { Accessor, Signal, accessor, createSignal } from "../../core/signal";
 import { catchError } from "../../core/error";
+import { createErrorBoundary, routeThrown } from "../../core/boundary";
+import { createOwner, getOwner, flush } from "../../core/runtime";
+import { runWithOwner } from "../../core/owner";
+import { Computation, NotReadyError, ContextEntry } from "../../core/types";
 import { NeonNode, regionNode } from "../../render/node";
 import { Host, HostNode } from "../../render/hostTypes";
 import { Row, makeRow } from "../../render/reconcile";
@@ -104,6 +108,55 @@ export function ErrorBoundary(props: {
 			if (err !== null) { return [makeRow(props.fallback(err as Error, reset))]; }
 			return [makeRow(guarded)];
 		});
+	});
+}
+
+function mountGuarded(mount: () => void): void {
+	try {
+		mount();
+	} catch (e) {
+		if (e instanceof NotReadyError) { throw e; }
+		routeThrown(e);
+	}
+}
+
+function mountedUnder(children: NeonNode, context: ContextEntry | null): NeonNode {
+	return (host: Host, parent: HostNode, before: HostNode | null): void => {
+		const scope = createOwner();
+		scope.context = context;
+		runWithOwner(scope, (): number => {
+			mountGuarded((): void => { children(host, parent, before); });
+			return 0;
+		});
+	};
+}
+
+export function Errored(props: {
+	children: NeonNode;
+	fallback: (err: Accessor<Error>, reset: () => void) => NeonNode;
+}): NeonNode {
+	return regionNode((h) => {
+		const failure = new Signal<Error | null>(null, null, true);
+		let content: NeonNode | null = null;
+		let fallback: NeonNode | null = null;
+		const showsContent = createErrorBoundary<boolean>(
+			(): boolean => {
+				const failed = failure.get();
+				if (failed !== null) { throw failed; }
+				content = mountedUnder(props.children, (getOwner() as Computation).context);
+				return true;
+			},
+			(err: Accessor<Error>, reset: () => void): boolean => {
+				failure.set(err());
+				fallback = (host: Host, parent: HostNode, before: HostNode | null): void => {
+					mountGuarded((): void => {
+						props.fallback(err, (): void => { flush((): number => { failure.set(null); reset(); return 0; }); })(host, parent, before);
+					});
+				};
+				return false;
+			},
+		);
+		return createMemo<Row[]>(() => [makeRow(showsContent() ? (content as NeonNode) : (fallback as NeonNode))]);
 	});
 }
 

@@ -147,6 +147,16 @@ function catchStatus(node: Computation, flags: int32, error: Error | null): bool
 	return false;
 }
 
+export function routeThrown(error: Error): void {
+	const owner = getOwner();
+	if (owner !== null) {
+		owner.status = owner.status | STATUS_ERROR;
+		owner.error = error;
+		if (catchStatus(owner, STATUS_ERROR, error)) { return; }
+	}
+	throw error;
+}
+
 // boundaries.ts:295 prune
 function prune(b: Boundary): int32 {
 	const mask = unsettled(b);
