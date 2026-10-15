@@ -183,6 +183,18 @@ and the invariants that outlived them were moved to the head of the test that pi
   `PrintWindow` at the start, after typing and after the resize. Not run: an IME, a DPI change.
   `tests/run.sh` builds the example on a Windows host and skips it by name elsewhere.
 
+- **PARKED 2026-10-15 — `tests/platform/voidInput.test.ms` aborts on C.** Not Neon's: after `default font
+  assets/font.ttf did not load`, the native run panics with signal 6 in Void `wrapText`
+  (`void/src/void2d/textLayout.ms:1366`), the empty-slice-to-`Span` case of compiler card
+  `~/metascript/.inbox/compiler/2026-10-15-c-span-of-an-empty-array-panics-on-null-payload.md`. It arrived with
+  the origin commits pulled at `4718a2f`, and it is red on `fb2285e` alone. Measured by the navigation session's gate on
+  `1ad74a7`, msc `15b93cbba` (`~/metascript/.wt/artifacts/rn-navigation-prod/gate-navmodels-fb2285e/gate.log`).
+
+- **PARKED 2026-10-15 — `tests/platform/ionAudio.test.ms` cannot resolve Ion's audio module on this machine.**
+  Not Neon's: native `Cannot resolve module '../../../../ion/src/audio'`, because local Ion main `1b3d40c`
+  lacks the audio API, which is on Ion origin `a853b2e`. Ion note
+  `~/metascript/.inbox/ion/2026-10-15-local-main-diverged-from-window-content.md`. Same gate log as the row above.
+
 - **PARKED 2026-10-14 — an Ion project manifest inside Neon cannot be evaluated.** Not Neon's: Ion's
   generator runs the manifest with `msc run --target=raiser` beside it, Neon's `build.ms`
   `globalImports` brings in `src/core/runtime.ms`, and Raiser has no `String.fromCharCode`, so even a
