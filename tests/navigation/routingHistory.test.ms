@@ -84,6 +84,27 @@ test "routing sessions initialize before mount and restore snapshots on back and
 	assert errors === 0;
 }
 
+test "an entry whose snapshot does not parse resolves from its address" {
+	let active = "";
+	let errors: int32 = 0;
+	const registry = new RoutingRegistry("main");
+	registry.register(participant(
+		(): string => active, (value: string): void => { active = value; },
+	));
+	const history = createMemoryRoutingHistory({ url: "/first", state: "" });
+	const connected = createRoutingSession(
+		registry, history, (error: RoutingError): void => { errors += 1; },
+	);
+	assert connected.ok;
+	history.push({ url: "/second", state: "not json" });
+	assert history.go(-1);
+	assert active === "/first", active;
+	assert history.go(1);
+	assert active === "/second", active;
+	assert errors === 0, errors.toString();
+	if (connected.ok) { connected.value.dispose(); }
+}
+
 test "request histories isolate SSR requests and refuse client navigation" {
 	let first = "";
 	let second = "";
