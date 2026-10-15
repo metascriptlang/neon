@@ -311,6 +311,17 @@ test "a tab switch replaces the entry" {
 	assert finish(app) === 0, "routing errors";
 }
 
+test "a reload restores the selected tab from its stored keys" {
+	const first = startWith({ url: "/feed", state: "" }, tabShell, tabLinking);
+	first.ref.navigate("Inbox");
+	const stored = first.memory.read();
+	assert finish(first) === 0, "routing errors";
+	const app = startWith(stored, tabShell, tabLinking);
+	assert visibleText(app.root).indexOf("inbox") >= 0, visibleText(app.root);
+	assert app.memory.read().state === stored.state, "the restored keys are the stored keys";
+	assert finish(app) === 0, "routing errors";
+}
+
 test "a traversal lands with the drawer closed" {
 	const app = startWith({ url: "/", state: "" }, drawerShell, drawerLinking);
 	app.ref.navigate("Details");
