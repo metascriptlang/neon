@@ -10,6 +10,7 @@ import { isServer } from "./environment";
 // count). Writing it again is a host touch that changes nothing, so the last written
 // value is kept and an identical one is dropped.
 export function bindText(host: Host, node: HostNode, get: () => string): void {
+	if (isServer()) { host.setText(node, untrack(get)); return; }
 	let prev = "";
 	let bound = false;
 	createBindingEffect(() => {
@@ -30,6 +31,7 @@ export function writeAttr(host: Host, node: HostNode, name: string, value: strin
 }
 
 export function bindAttr(host: Host, node: HostNode, name: string, get: () => string | null): void {
+	if (isServer()) { writeAttr(host, node, name, untrack(get)); return; }
 	let prev: string | null = null;
 	let bound = false;
 	createBindingEffect(() => {
@@ -41,7 +43,15 @@ export function bindAttr(host: Host, node: HostNode, name: string, get: () => st
 	});
 }
 
+function writeStyleProp(host: Host, node: HostNode, own: Style, name: string, v: StyleValue): void {
+	const setProp = host.setStyleProp;
+	if (setProp !== null) { setProp(node, name, v); return; }
+	setStyleField(own, name, v);
+	host.setStyle(node, own);
+}
+
 export function bindStyleProp(host: Host, node: HostNode, own: Style, name: string, get: () => StyleValue): void {
+	if (isServer()) { writeStyleProp(host, node, own, name, untrack(get)); return; }
 	let prev: StyleValue = null;
 	let bound = false;
 	createBindingEffect(() => {
@@ -49,10 +59,7 @@ export function bindStyleProp(host: Host, node: HostNode, own: Style, name: stri
 		if (bound && v === prev) { return; }
 		bound = true;
 		prev = v;
-		const setProp = host.setStyleProp;
-		if (setProp !== null) { setProp(node, name, v); return; }
-		setStyleField(own, name, v);
-		host.setStyle(node, own);
+		writeStyleProp(host, node, own, name, v);
 	});
 }
 
@@ -73,6 +80,7 @@ export function applyStaticStyle(host: Host, node: HostNode, s: Style): void {
 // outrank (a breakpoint's) still applies; switching between the two channels
 // clears the one left behind.
 export function bindStyleAll(host: Host, node: HostNode, get: () => Style): void {
+	if (isServer()) { applyStaticStyle(host, node, untrack(get)); return; }
 	const setCls = host.setStyleClass;
 	let classed = false;
 	let inlined = false;

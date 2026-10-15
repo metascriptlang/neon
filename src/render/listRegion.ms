@@ -5,7 +5,8 @@ import { Accessor, Signal, accessor, untrack } from "../core/signal";
 import { List, ListOp, listInsert, listMove, listRemove, listSet } from "../core/list";
 import { Host, HostNode, NeonNode } from "./hostTypes";
 import { Row, makeRow, mountAt, moveRow, removeRow, reconcileArrays } from "./reconcile";
-import { regionAnchor, sealRegion } from "./claim";
+import { regionAnchor, sealRegion, serverRegionStart, serverRegionEnd } from "./claim";
+import { isServer } from "./environment";
 
 // The region's stores live in one object passed to every step, never captured by a nested
 // closure: src/core/array.ms keeps mapArray's stores as parameters for the same reason.
@@ -211,6 +212,19 @@ export function listRegion<Item>(
 	keyOf: ((item: Item) => number) | null,
 ): NeonNode {
 	return (host: Host, parent: HostNode, before: HostNode | null): void => {
+		if (isServer()) {
+			serverRegionStart(host, parent, before);
+			const disposers: (() => void)[] = [];
+			onCleanup(() => { for (const d of disposers) { d(); } });
+			for (const v of untrack((): Item[] => list.read())) {
+				mountAt(host, parent, before, createRoot((d) => {
+					disposers.push(d);
+					return makeRow(row(accessor((): Item => v)));
+				}));
+			}
+			serverRegionEnd(host, parent, before);
+			return;
+		}
 		const anchor = regionAnchor(host, parent, before);
 
 		const g: Region<Item> = {

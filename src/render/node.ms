@@ -4,11 +4,13 @@
 // list only known at runtime (src/components/primitives.ms).
 
 import { createRenderEffect } from "../core/effect";
+import { untrack } from "../core/signal";
 import { Style } from "./style";
 import { NeonEvent } from "./event";
 import { Host, HostNode, NeonNode, RefFn } from "./hostTypes";
-import { Row, place, reconcileArrays } from "./reconcile";
-import { regionAnchor, sealRegion } from "./claim";
+import { Row, place, reconcileArrays, mountAt, removeRow } from "./reconcile";
+import { regionAnchor, sealRegion, serverRegionStart, serverRegionEnd } from "./claim";
+import { isServer } from "./environment";
 import { bindText, bindAttr, bindStyleAll, applyRef } from "./bind";
 
 export { NeonNode, RefFn } from "./hostTypes";
@@ -96,8 +98,38 @@ export function mountChild(host: Host, parent: HostNode, before: HostNode | null
 	for (const n of ns) { n(host, parent, before); }
 }
 
+// On the server a region writes its rows and then its anchor, in document order. A
+// row list that changes while its rows render (an ErrorBoundary that caught) takes
+// back what it wrote and writes the new rows before the anchor follows.
+function serverRegion(host: Host, parent: HostNode, before: HostNode | null, fn: RegionFn): void {
+	serverRegionStart(host, parent, before);
+	const rows = fn(host);
+	let shown: Row[] = [];
+	let next = untrack(rows);
+	for (let pass = 0; !sameRows(next, shown); pass += 1) {
+		if (pass === 100) { throw new Error("SSR: a region's rows kept changing while it rendered"); }
+		for (const r of shown) { removeRow(host, parent, r); }
+		for (const r of next) {
+			if (shown.includes(r)) { throw new Error("SSR: a region's rows changed while it rendered and kept a row it had written"); }
+			mountAt(host, parent, before, r);
+		}
+		shown = next;
+		next = untrack(rows);
+	}
+	serverRegionEnd(host, parent, before);
+}
+
+function sameRows(a: Row[], b: Row[]): boolean {
+	if (a.length !== b.length) { return false; }
+	for (let i = 0; i < a.length; i += 1) {
+		if (a[i] !== b[i]) { return false; }
+	}
+	return true;
+}
+
 export function regionNode(fn: RegionFn): NeonNode {
 	return (host: Host, parent: HostNode, before: HostNode | null): void => {
+		if (isServer()) { serverRegion(host, parent, before, fn); return; }
 		const anchor = regionAnchor(host, parent, before);
 		let current: Row[] = [];
 		const rows = fn(host);

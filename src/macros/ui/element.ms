@@ -10,7 +10,7 @@
 // Component tags, Show and For do NOT flatten: their structure changes at
 // runtime, so they stay runtime calls through createComponent.
 
-import { Node, NodeKind, DeclKind, NodeFlag, childCount, childAt, bindSym, getType, getTypeImpl, getImpl } from "std/meta";
+import { Node, NodeKind, DeclKind, NodeFlag, childCount, childAt, bindSym, getType, getTypeImpl, getImpl, define } from "std/meta";
 import { isReactiveExpr, isEventName, peelHidden } from "./reactive";
 
 function trimEdgeSpaces(s: string, fromStart: boolean, fromEnd: boolean): string {
@@ -924,7 +924,10 @@ export macro element(node: Node): Node {
 		return false;
 	}
 
-	if (node.kind === NodeKind.JSXElement && isPureSubtree(node)) {
+	// A -d:server build writes markup in document order (src/render/ssr.ms), and a
+	// template fills its holes after the skeleton is built, so the server keeps the
+	// flat emission below.
+	if (define("server") === "" && node.kind === NodeKind.JSXElement && isPureSubtree(node)) {
 		let bStmts: Node[] = [];
 		let wStmts: Node[] = [];
 		let bIdx = 0;

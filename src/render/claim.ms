@@ -1,5 +1,7 @@
 import { Host, HostNode } from "./hostTypes";
 import { place, needsStartMarker } from "./reconcile";
+import { Computation } from "../core/types";
+import { getOwner, carriesId, getNextChildId } from "../core/runtime";
 
 interface Open {
 	node: HostNode;
@@ -135,4 +137,21 @@ export function sealRegion(host: Host, parent: HostNode, anchor: HostNode): void
 	}
 	host.removeChild(parent, served);
 	c.open[c.open.length - 1].last = anchor;
+}
+
+// The server writes a region's rows straight away, without the effect the client
+// keeps them in; that effect's id slot is taken all the same, so every id after the
+// region matches the client's.
+export function skipRegionEffect(): void {
+	const o = getOwner();
+	if (carriesId(o)) { getNextChildId(o as Computation); }
+}
+
+export function serverRegionStart(host: Host, parent: HostNode, before: HostNode | null): void {
+	if (needsStartMarker(parent)) { place(host, parent, host.createText(""), before); }
+}
+
+export function serverRegionEnd(host: Host, parent: HostNode, before: HostNode | null): void {
+	skipRegionEffect();
+	place(host, parent, host.createText(""), before);
 }
