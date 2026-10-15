@@ -183,6 +183,12 @@ and the invariants that outlived them were moved to the head of the test that pi
   `PrintWindow` at the start, after typing and after the resize. Not run: an IME, a DPI change.
   `tests/run.sh` builds the example on a Windows host and skips it by name elsewhere.
 
+- **PARKED 2026-10-16 — the route tree shorthand takes no typed route.** Not Neon's: `RouteConfig` would
+  take `{ route: thread, component: Thread }` through a field typed `{ node: RouteNode }`, and msc refuses a
+  `RouteDef<P>` there because a generic interface instance is not assignable to a narrower interface. Until
+  then `createRoutes` takes `path` strings only, and a typed route is matched through `createRouteTree`.
+  Card `~/metascript/.inbox/compiler/2026-10-16-a-generic-interface-instance-is-refused-where-a-narrower-interface-is-expected.md`.
+
 - **PARKED 2026-10-15 — `tests/platform/voidInput.test.ms` aborts on C.** Not Neon's: after `default font
   assets/font.ttf did not load`, the native run panics with signal 6 in Void `wrapText`
   (`void/src/void2d/textLayout.ms:1366`), the empty-slice-to-`Span` case of compiler card
