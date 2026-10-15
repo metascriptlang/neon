@@ -1,5 +1,4 @@
 import { createSignal, Accessor } from "../../src/core/signal";
-import { createRoot } from "../../src/core/owner";
 import { onCleanup } from "../../src/core/cleanup";
 import { createEffect } from "../../src/core/effect";
 import { Cleanup } from "../../src/core/types";
@@ -71,30 +70,25 @@ test "null attr: static writes nothing, reactive removes then writes back on eve
 	const [t, setT] = createSignal<string | null>("a");
 	const host = mockHost();
 	const root: MockNode = mockNode("root");
-	createRoot((dispose) => {
-		const mount = element(<div title={t()} id={s}>x</div>);
-		mount(host, root as unknown as HostNode, null);
-		mount(host, root as unknown as HostNode, null);
-		assert mockToString(root) === "<root><div title=\"a\">x</div><div title=\"a\">x</div></root>", "mount: " + mockToString(root);
-		setT(null);
-		assert mockToString(root) === "<root><div>x</div><div>x</div></root>", "null: " + mockToString(root);
-		setT("b");
-		assert mockToString(root) === "<root><div title=\"b\">x</div><div title=\"b\">x</div></root>", "back: " + mockToString(root);
-		dispose();
-		return 0;
-	});
+	const mount = element(<div title={t()} id={s}>x</div>);
+	const first = render(mount, host, root as unknown as HostNode);
+	const second = render(mount, host, root as unknown as HostNode);
+	assert mockToString(root) === "<root><div title=\"a\">x</div><div title=\"a\">x</div></root>", "mount: " + mockToString(root);
+	setT(null);
+	assert mockToString(root) === "<root><div>x</div><div>x</div></root>", "null: " + mockToString(root);
+	setT("b");
+	assert mockToString(root) === "<root><div title=\"b\">x</div><div title=\"b\">x</div></root>", "back: " + mockToString(root);
+	first();
+	second();
 }
 
 test "null attr at mount: a reactive spot that starts null never shows" {
 	const [t, setT] = createSignal<string | null>(null);
 	const host = mockHost();
 	const root: MockNode = mockNode("root");
-	createRoot((dispose) => {
-		render(element(<div title={t()}>x</div>), host, root as unknown as HostNode);
-		assert mockToString(root) === "<root><div>x</div></root>", "mount: " + mockToString(root);
-		setT("a");
-		assert mockToString(root) === "<root><div title=\"a\">x</div></root>", "write: " + mockToString(root);
-		dispose();
-		return 0;
-	});
+	const dispose = render(element(<div title={t()}>x</div>), host, root as unknown as HostNode);
+	assert mockToString(root) === "<root><div>x</div></root>", "mount: " + mockToString(root);
+	setT("a");
+	assert mockToString(root) === "<root><div title=\"a\">x</div></root>", "write: " + mockToString(root);
+	dispose();
 }

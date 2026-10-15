@@ -6,6 +6,7 @@ import { NeonNode, regionNode } from "../../src/render/node";
 import { Host, HostNode, MockNode, mockNode, mockHost, mockToString } from "../../src/render/host";
 import { Row, makeRow } from "../../src/render/reconcile";
 import { createContext, useContext } from "../../src/render/context";
+import { Dispose } from "../../src/core/types";
 
 interface Theme { accent: string; }
 
@@ -63,22 +64,22 @@ test "a provider scope carries the insertion point into its child" {
 }
 
 test "a region anchors in front of the sibling and grows on its own side" {
-	createRoot((dispose) => {
-		const host = mockHost();
-		const root = twoSiblings(host);
-		const [list, setList] = createSignal<number[]>([1, 2]);
-		const region = regionNode((h) => {
-			return mapArray<number, Row>(() => list(), (v, i) => makeRow(<li>{"" + v}</li>));
-		});
-		mountBefore(region, host, root as unknown as HostNode, tailOf(root));
-		assert mockToString(root) === "<root><a></a><li>1</li><li>2</li><z></z></root>", "initial: " + mockToString(root);
-		setList([1, 2, 3]);
-		assert mockToString(root) === "<root><a></a><li>1</li><li>2</li><li>3</li><z></z></root>", "append stays on the region side: " + mockToString(root);
-		setList([3]);
-		assert mockToString(root) === "<root><a></a><li>3</li><z></z></root>", "shrink leaves the siblings alone: " + mockToString(root);
-		dispose();
-		return 0;
+	const host = mockHost();
+	const root = twoSiblings(host);
+	const [list, setList] = createSignal<number[]>([1, 2]);
+	const region = regionNode((h) => {
+		return mapArray<number, Row>(() => list(), (v, i) => makeRow(<li>{"" + v}</li>));
 	});
+	const dispose = createRoot((d): Dispose => {
+		mountBefore(region, host, root as unknown as HostNode, tailOf(root));
+		return d;
+	});
+	assert mockToString(root) === "<root><a></a><li>1</li><li>2</li><z></z></root>", "initial: " + mockToString(root);
+	setList([1, 2, 3]);
+	assert mockToString(root) === "<root><a></a><li>1</li><li>2</li><li>3</li><z></z></root>", "append stays on the region side: " + mockToString(root);
+	setList([3]);
+	assert mockToString(root) === "<root><a></a><li>3</li><z></z></root>", "shrink leaves the siblings alone: " + mockToString(root);
+	dispose();
 }
 
 test "a null insertion point still appends at the end" {
