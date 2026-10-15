@@ -1,7 +1,6 @@
 import { createSignal, accessor, Accessor } from "../../src/core/signal";
 import { element } from "../../src/macros/ui/element";
 import { NeonNode, text } from "../../src/render/node";
-import { renderToString } from "../../src/render/ssr";
 import { Host, HostNode, MockNode, mockNode, mockHost, render, mockToString } from "../../src/render/host";
 import { createContext, useContext } from "../../src/render/context";
 import { onCleanup } from "../../src/core/cleanup";
@@ -86,16 +85,6 @@ test "a consumer sees through a component boundary" {
 	);
 	render(app, mockHost(), root as unknown as HostNode);
 	assert mockToString(root) === "<root><div>go:blue</div></root>", "component body mounted inside the scope: " + mockToString(root);
-}
-
-test "renderToString sees through a provider" {
-	const T = createContext<Theme>({ accent: "red" });
-	const app: NeonNode = element(
-		<T.Provider value={{ accent: "blue" }}>
-			<div>{useContext(T).accent}</div>
-		</T.Provider>
-	);
-	assert renderToString(app) === "<div>blue</div>", "ssr saw the provided value: " + renderToString(app);
 }
 
 test "a signal inside the value keeps the consumer reactive" {

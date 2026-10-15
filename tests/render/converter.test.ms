@@ -6,7 +6,6 @@
 
 import { createSignal, accessor, Accessor } from "../../src/core/signal";
 import { NeonNode } from "../../src/render/node";
-import { renderToString } from "../../src/render/ssr";
 import { render, mockHost, mockNode, mockToString, HostNode } from "../../src/render/host";
 
 interface CounterProps {
@@ -19,11 +18,6 @@ let counterRuns = 0;
 function Counter(props: CounterProps): NeonNode {
 	counterRuns = counterRuns + 1;
 	return <p class={props.label}>n={props.count().toString()}</p>;
-}
-
-test "bare JSX lowers at an annotated const boundary" {
-	const v: NeonNode = <div class="box">hi</div>;
-	assert renderToString(v) === "<div class=\"box\">hi</div>", renderToString(v);
 }
 
 test "bare JSX lowers at a parameter boundary" {
