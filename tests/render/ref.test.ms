@@ -15,6 +15,7 @@
 
 import { createSignal } from "../../src/core/signal";
 import { createEffect } from "../../src/core/effect";
+import { Cleanup } from "../../src/core/types";
 import { createRoot } from "../../src/core/owner";
 import { onCleanup } from "../../src/core/cleanup";
 import { element } from "../../src/macros/ui/element";
@@ -156,10 +157,14 @@ test "ref apply is untracked: a signal read in it does not re-run the mount" {
 	const read: (h: HostNode) => void = (h) => { n(); };
 	const root: MockNode = mockNode("root");
 	createRoot((dispose) => {
-		createEffect(() => {
-			mounts = mounts + 1;
-			element(<p ref={read}>hi</p>)(mockHost(), root as unknown as HostNode, null);
-		});
+		createEffect<int32>(
+			(p: int32 | null): int32 => {
+				mounts = mounts + 1;
+				element(<p ref={read}>hi</p>)(mockHost(), root as unknown as HostNode, null);
+				return 0;
+			},
+			(v: int32, p: int32 | null): Cleanup | null => null,
+		);
 		return 0;
 	});
 	setN(1);
@@ -168,7 +173,10 @@ test "ref apply is untracked: a signal read in it does not re-run the mount" {
 
 function tooltip(log: string[], source: () => number): (h: HostNode) => void {
 	log.push("setup");
-	createEffect(() => { log.push("effect" + source().toString()); });
+	createEffect<number>(
+		(p: number | null): number => source(),
+		(value: number, p: number | null): Cleanup | null => { log.push("effect" + value.toString()); return null; },
+	);
 	onCleanup(() => { log.push("cleanup"); });
 	return (h: HostNode): void => { log.push("apply" + source().toString()); };
 }
@@ -197,10 +205,14 @@ test "a directive factory sets up untracked: a signal read in setup does not re-
 	const read = (): number => n();
 	const root: MockNode = mockNode("root");
 	createRoot((dispose) => {
-		createEffect(() => {
-			mounts = mounts + 1;
-			element(<p ref={readingFactory(read)}>hi</p>)(mockHost(), root as unknown as HostNode, null);
-		});
+		createEffect<int32>(
+			(p: int32 | null): int32 => {
+				mounts = mounts + 1;
+				element(<p ref={readingFactory(read)}>hi</p>)(mockHost(), root as unknown as HostNode, null);
+				return 0;
+			},
+			(v: int32, p: int32 | null): Cleanup | null => null,
+		);
 		return 0;
 	});
 	setN(1);

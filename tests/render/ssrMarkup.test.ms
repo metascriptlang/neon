@@ -1,5 +1,6 @@
 import { createSignal } from "../../src/core/signal";
 import { createRenderEffect } from "../../src/core/effect";
+import { Cleanup } from "../../src/core/types";
 import { onCleanup } from "../../src/core/cleanup";
 import { Host, HostNode, NeonNode } from "../../src/render/hostTypes";
 import { el, attr, text, dynText } from "../../src/render/node";
@@ -81,7 +82,10 @@ test "a throwing SSR mount disposes effects and cleanup" {
 	let runs: int32 = 0;
 	let cleaned: int32 = 0;
 	const failing: NeonNode = (host: Host, parent: HostNode, before: HostNode | null): void => {
-		createRenderEffect((): void => { read(); runs += 1; });
+		createRenderEffect<int32>(
+			(p: int32 | null): int32 => read(),
+			(v: int32, p: int32 | null): Cleanup | null => { runs += 1; return null; },
+		);
 		onCleanup((): void => { cleaned += 1; });
 		throw new Error("SSR mount failed");
 	};

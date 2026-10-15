@@ -6,6 +6,7 @@ import { render, mockHost, mockNode, mockToString } from "../../src/render/host"
 import { bindText } from "../../src/render/bind";
 import { createUniqueId } from "../../src/core/owner";
 import { createRenderEffect } from "../../src/core/effect";
+import { Cleanup } from "../../src/core/types";
 import { cssRuleCount, registerCss, resetCss } from "../../src/render/sheet";
 import { RN_WEB_BASE_CSS } from "../../src/render/web";
 import { isServer } from "../../src/render/environment";
@@ -105,7 +106,10 @@ function labelled(label: string): NeonNode {
 function form(): NeonNode {
 	return (host: Host, parent: HostNode, before: HostNode | null): void => {
 		labelled("name")(host, parent, before);
-		createRenderEffect(() => { labelled("mail")(host, parent, before); });
+		createRenderEffect<int32>(
+			(p: int32 | null): int32 => { labelled("mail")(host, parent, before); return 0; },
+			(v: int32, p: int32 | null): Cleanup | null => null,
+		);
 	};
 }
 

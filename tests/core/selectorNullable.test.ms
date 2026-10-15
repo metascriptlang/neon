@@ -1,5 +1,6 @@
 import { createSignal } from "../../src/core/signal";
 import { createRenderEffect } from "../../src/core/effect";
+import { Cleanup } from "../../src/core/types";
 import { createRoot } from "../../src/core/owner";
 import { createSelector } from "../../src/core/selector";
 
@@ -15,7 +16,10 @@ test "a nullable source can enter and clear a selection" {
 		const selected = createSelector(id);
 		let value = false;
 		let runs = 0;
-		createRenderEffect(() => { value = selected(0); runs += 1; });
+		createRenderEffect<boolean>(
+			(p: boolean | null): boolean => selected(0),
+			(v: boolean, p: boolean | null): Cleanup | null => { value = v; runs += 1; return null; },
+		);
 		assert !value && runs === 1;
 		setId(0);
 		assert value && runs === 2;

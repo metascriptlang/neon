@@ -1,5 +1,6 @@
 import { createRoot } from "../../src/core/owner";
 import { createEffect } from "../../src/core/effect";
+import { Cleanup } from "../../src/core/types";
 import { publishWindow, publishKeyboard, publishColorScheme } from "../../src/render/environment";
 import { ALERT_DISMISSED, installAppServices } from "../../src/api/services";
 import { Dimensions, DimensionsChange, publishScale, publishScreen } from "../../src/api/dimensions";
@@ -130,7 +131,10 @@ test "AppState follows the published state for currentState, the accessor and ch
 	const blur = AppState.addEventListener("blur", (s: AppStateStatus): void => { blurs.push(s as string); });
 	let tracked = "";
 	const dispose = createRoot((d: () => void): () => void => {
-		createEffect((): void => { tracked += (state() as string) + ";"; });
+		createEffect<string>(
+			(p: string | null): string => state() as string,
+			(value: string, p: string | null): Cleanup | null => { tracked += value + ";"; return null; },
+		);
 		return d;
 	});
 	publishAppState("inactive");

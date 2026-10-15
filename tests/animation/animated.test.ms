@@ -7,6 +7,7 @@ import { Easing } from "../../src/animation/easing";
 import { useManualFrames, setFrameDriver } from "../../src/animation/frame";
 import { NeonEvent, neonEvent } from "../../src/render/event";
 import { createEffect } from "../../src/core/effect";
+import { Cleanup } from "../../src/core/types";
 import { createRoot } from "../../src/core/owner";
 
 class Probe extends CompositeAnimation {
@@ -515,10 +516,14 @@ test "a style effect reading a value re-runs once per frame" {
 	let runs = 0;
 	let seen = -1.0;
 	createRoot((dispose: () => void): void => {
-		createEffect((): void => {
-			seen = v.get();
-			runs += 1;
-		});
+		createEffect<number>(
+			(p: number | null): number => v.get(),
+			(value: number, p: number | null): Cleanup | null => {
+				seen = value;
+				runs += 1;
+				return null;
+			},
+		);
 	});
 	Animated.timing(v, { toValue: 1, duration: 64, easing: Easing.linear }).start();
 	clock.advance(16);

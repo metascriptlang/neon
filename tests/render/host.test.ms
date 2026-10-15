@@ -2,6 +2,7 @@ import { createSignal, Accessor } from "../../src/core/signal";
 import { createRoot } from "../../src/core/owner";
 import { onCleanup } from "../../src/core/cleanup";
 import { createEffect } from "../../src/core/effect";
+import { Cleanup } from "../../src/core/types";
 import { NeonNode, el, text, dynText } from "../../src/render/node";
 import { element } from "../../src/macros/ui/element";
 import { HostNode, MockNode, mockNode, mockHost, render, mockToString } from "../../src/render/host";
@@ -24,7 +25,10 @@ interface ProbeProps {
 }
 
 function Probe(props: ProbeProps): NeonNode {
-	createEffect(() => { props.label(); probeEffectRuns = probeEffectRuns + 1; });
+	createEffect<string>(
+		(p: string | null): string => props.label(),
+		(label: string, p: string | null): Cleanup | null => { probeEffectRuns = probeEffectRuns + 1; return null; },
+	);
 	onCleanup(() => { probeCleanups = probeCleanups + 1; });
 	return element(<p>{props.label()}</p>);
 }
