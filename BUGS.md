@@ -189,6 +189,13 @@ and the invariants that outlived them were moved to the head of the test that pi
   then `createRoutes` takes `path` strings only, and a typed route is matched through `createRouteTree`.
   Card `~/metascript/.inbox/compiler/2026-10-16-a-generic-interface-instance-is-refused-where-a-narrower-interface-is-expected.md`.
 
+- **PARKED 2026-10-16 — web navigation adapters take a required options object.** Not Neon's: Decompose's
+  adapters default every option, but msc builds a `= {}` default of a generic interface parameter as an
+  empty object (JS reads its fields as present, C reads past a zero-size allocation). Until then
+  `childStackWebNavigation`, `childPagesWebNavigation` and `childPanelsWebNavigation` take `options`
+  without a default, and callers pass `{}`. Card
+  `~/metascript/.inbox/compiler/2026-10-16-an-empty-object-literal-default-of-a-generic-interface-parameter-is-not-typed-against-it.md`.
+
 - **PARKED 2026-10-15 — `tests/platform/voidInput.test.ms` aborts on C.** Not Neon's: after `default font
   assets/font.ttf did not load`, the native run panics with signal 6 in Void `wrapText`
   (`void/src/void2d/textLayout.ms:1366`), the empty-slice-to-`Span` case of compiler card
