@@ -43,7 +43,7 @@ Application UI world         native host (iOS, Android, desktop) or DOM host (br
   its tree puts it and tells Ion the bounds (`ionWebviewSetBounds` in `ion/src/platform/bridge.h`).
 - **The desktop Application UI world is a native host too, the React Native model.** It runs on an
   Ion window behind the same `src/platform/native/bridge.h` as iOS and Android, and the webview is
-  one of its elements, not the root. macOS maps `View` and `Text` to AppKit views and Linux to GTK3
+  one of its elements, not the root. macOS maps `View` and `Text` to AppKit views and Linux to GTK4
   widgets. Windows has no widget layer worth mapping, so, as React Native for Windows does, its
   components are Neon's own views on the OS compositor: RNW's Fabric component views ported onto
   DirectComposition (`WINDOWS.md`, decided 2026-10-14).
@@ -106,7 +106,7 @@ for free. Without these, face 2 below cannot carry a real app's UI.
 | world | host | `View` / `Text` become |
 |---|---|---|
 | Application UI, iOS / Android | native, React Native's model | `UIView`, `android.view.View` / `UILabel`, `TextView` |
-| Application UI, desktop | native on an Ion window, React Native's model | AppKit views (macOS), GTK3 widgets (Linux), Neon's own views on DirectComposition (Windows, `WINDOWS.md`) |
+| Application UI, desktop | native on an Ion window, React Native's model | AppKit views (macOS), GTK4 widgets (Linux), Neon's own views on DirectComposition (Windows, `WINDOWS.md`) |
 | Application UI, browser | DOM, react-native-web's model | `<div>` / `<span>` |
 | Void, on every platform, browser included | void host (`src/platform/void/host.ms`) | void2d rect / void2d text |
 | Terminal | terminal host (`src/platform/terminal/host.ms`) | ANSI lines; it speaks its own tags (`<box>`, `<text>`) today |
