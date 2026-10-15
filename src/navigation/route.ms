@@ -434,7 +434,13 @@ function parseSearch(query: string): Result<Map<string, string>, RoutingError> {
 	return Result.ok(search);
 }
 
-function matchAddress(ranked: Branch[], address: string): Result<RouteMatch, RoutingError> {
+interface Address {
+	pathname: string;
+	search: Map<string, string>;
+	hash: string;
+}
+
+function splitAddress(address: string): Result<Address, RoutingError> {
 	const hashAt = address.indexOf("#");
 	const hash = hashAt < 0 ? "" : address.substring(hashAt + 1, address.length);
 	const rest = hashAt < 0 ? address : address.substring(0, hashAt);
@@ -442,28 +448,45 @@ function matchAddress(ranked: Branch[], address: string): Result<RouteMatch, Rou
 	const pathname = queryAt < 0 ? rest : rest.substring(0, queryAt);
 	const _decoded = try decodeRouteComponent(pathname);
 	const search = try parseSearch(queryAt < 0 ? "" : rest.substring(queryAt + 1, rest.length));
+	return Result.ok({ pathname, search, hash });
+}
+
+function matchAddress(ranked: Branch[], address: string): Result<RouteMatch, RoutingError> {
+	const parts = try splitAddress(address);
 	for (const branch of ranked) {
-		const chain = matchBranch(branch, pathname);
-		if (chain !== null) { return Result.ok({ chain: chain as MatchedRoute[], search, hash }); }
+		const chain = matchBranch(branch, parts.pathname);
+		if (chain !== null) {
+			return Result.ok({ chain: chain as MatchedRoute[], search: parts.search, hash: parts.hash });
+		}
 	}
 	return Result.err(RoutingError.NoMatch);
 }
 
-function resolveAddress(ranked: Branch[], address: string): Result<RouteResolution, RoutingError> {
-	const found = try matchAddress(ranked, address);
+function decide(found: RouteMatch): GuardDecision {
 	for (const level of found.chain) {
 		const guard = level.node.guard;
 		if (guard === null) { continue; }
 		const decision = guard(level.params, found);
+		if (decision.action !== GuardAction.Continue) { return decision; }
+	}
+	return proceed();
+}
+
+function resolveAddress(ranked: Branch[], address: string): Result<RouteResolution, RoutingError> {
+	const parts = try splitAddress(address);
+	for (const branch of ranked) {
+		const chain = matchBranch(branch, parts.pathname);
+		if (chain === null) { continue; }
+		const found: RouteMatch = { chain: chain as MatchedRoute[], search: parts.search, hash: parts.hash };
+		const decision = decide(found);
+		if (decision.action === GuardAction.NotFound) { continue; }
 		if (decision.action === GuardAction.Redirect) {
 			return Result.ok({ match: found, status: decision.status, redirect: decision.address });
 		}
-		if (decision.action === GuardAction.NotFound) {
-			return Result.ok({ match: found, status: 404, redirect: null });
-		}
+		const leaf = found.chain[found.chain.length - 1].node;
+		return Result.ok({ match: found, status: leaf.status, redirect: null });
 	}
-	const leaf = found.chain[found.chain.length - 1].node;
-	return Result.ok({ match: found, status: leaf.status, redirect: null });
+	return Result.err(RoutingError.NoMatch);
 }
 
 function buildPath(pattern: string, values: Map<string, string>): Result<string, RoutingError> {

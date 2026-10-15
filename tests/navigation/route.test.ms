@@ -250,9 +250,10 @@ test "guards run root to leaf and the first decision that is not continue wins" 
 			return params.id === 1 ? redirect("/account/users/2", 308) : proceed();
 		},
 	});
+	const fallback = path("*", { status: 404 });
 	const tree = createRouteTree([
 		{ node: account.node, children: [{ node: user.node }] },
-		leaf(path("*", { status: 404 })),
+		leaf(fallback),
 	]);
 	const passed = tree.resolve("/account/users/7?session=s");
 	assert passed.ok;
@@ -279,7 +280,12 @@ test "guards run root to leaf and the first decision that is not continue wins" 
 	if (missing.ok) {
 		assert missing.value.status === 404;
 		assert missing.value.redirect === null;
+		assert missing.value.match.chain[0].node === fallback.node;
 	}
+	const alone = createRouteTree([{ node: account.node, children: [{ node: user.node }] }]);
+	const refused = alone.resolve("/account/users/0?session=s");
+	assert !refused.ok;
+	if (!refused.ok) { assert refused.error === RoutingError.NoMatch; }
 	const unknown = tree.resolve("/nothing/here");
 	assert unknown.ok;
 	if (unknown.ok) {
