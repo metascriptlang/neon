@@ -434,7 +434,8 @@ browser fires no `hashchange` for it, so a consumer that wants the browser's own
 navigation answers `false` for that link.
 
 **A route's state has to hold everything of the address it accepts.** A routing session writes
-`registry.address()` back into the history entry as soon as it opens, so a codec that matches
+`registry.address()` back into the history entry as soon as it opens, and after a back or
+forward whose entry lands on another address, so a codec that matches
 `/docs/start?utm=1#notes` and encodes `/docs/start` rewrites the visitor's URL, and one that
 matches only the bare path answers 404 to the tagged link (both measured on `examples/site`
 and on Geass, 2026-10-13). The route tree shorthand (`src/navigation/router.ms` `Router`)

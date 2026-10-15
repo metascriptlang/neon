@@ -195,8 +195,8 @@ under it change; a page is replaced when its matched path changes and kept when 
 the search does, through an outlet keyed by route and path as Solid's `routeStates`
 is. A leaf takes a component and a level with children a layout or nothing; anything
 else throws at the declaration, as the tree's own errors do. Redirects are followed
-before mount, at most 20, and the history entry ends on the last address (TanStack
-`followRedirect`, `load-client.ts`). A path ending in `/` is redirected for good
+before mount, at most 20, and the history entry ends on the last address, on a back or
+forward as on a link (TanStack `followRedirect`, `load-client.ts`, replaces on any load). A path ending in `/` is redirected for good
 (308) to the one without it, as Next's default `trailingSlash: false` does
 (`load-custom-routes.ts`, the `/:path+/` redirect), so a page has one address on a
 server, in static output and in the browser. `Router.response()` gives a server the
