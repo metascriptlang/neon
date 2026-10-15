@@ -203,6 +203,14 @@ and the invariants that outlived them were moved to the head of the test that pi
   without a default, and callers pass `{}`. Card
   `~/metascript/.inbox/compiler/2026-10-16-an-empty-object-literal-default-of-a-generic-interface-parameter-is-not-typed-against-it.md`.
 
+- **PARKED 2026-10-16 — web history stores its key tree as a preorder list.** Not Neon's: Decompose keeps
+  each entry's keys as a `SerializableNode` holding a list of itself, and msc refuses `JSON.stringify` and
+  `JSON.parse<T>` of a type whose array field holds that same type, on C and JS. Until then
+  `src/navigation/webHistory.ms` writes the tree as `StoredNode { key, children }` in preorder
+  (`StoredNode`, `StoredHistory`, `storeNodes`, `readLevel`, `decodeHistory`), where `children` counts the direct
+  children that follow, and it rebuilds the tree on read. Card
+  `~/metascript/.inbox/compiler/2026-10-16-json-refuses-a-self-referential-type.md`.
+
 - **PARKED 2026-10-15 — `tests/platform/voidInput.test.ms` aborts on C.** Not Neon's: after `default font
   assets/font.ttf did not load`, the native run panics with signal 6 in Void `wrapText`
   (`void/src/void2d/textLayout.ms:1366`), the empty-slice-to-`Span` case of compiler card
