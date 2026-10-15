@@ -3,15 +3,15 @@
 
 export { Signal, createSignal, untrack, accessor, valueOf, Accessor, Setter } from "./core/signal";
 export { createEffect, createRenderEffect, onSettled, EffectOptions, EffectBundle } from "./core/effect";
-export { createMemo } from "./core/memo";
+export { createMemo, createAsyncMemo, refresh } from "./core/memo";
 export { createSelector } from "./core/selector";
 export { createRoot, runWithOwner, createUniqueId } from "./core/owner";
-export { getOwner, flush } from "./core/runtime";
+export { getOwner, flush, isPending, latest, resetErrorHalt } from "./core/runtime";
 export { onCleanup } from "./core/cleanup";
 export { catchError } from "./core/error";
 export { mapArray, mapArrayKeyedBy, mapArrayByPosition, repeat } from "./core/array";
 export { createList, List, ListOp, ListQueue } from "./core/list";
-export { Dispose, Cleanup } from "./core/types";
+export { Dispose, Cleanup, NotReadyError } from "./core/types";
 
 export { Host, HostNode, NeonNode } from "./render/hostTypes";
 export { render, hydrate } from "./render/host";
