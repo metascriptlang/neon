@@ -3,6 +3,7 @@ import { createSignal, accessor, Accessor } from "../../src/core/signal";
 import { createRoot } from "../../src/core/owner";
 import { onCleanup } from "../../src/core/cleanup";
 import { createRenderEffect } from "../../src/core/effect";
+import { createMemo } from "../../src/core/memo";
 
 interface Id {
 	id: string;
@@ -1023,6 +1024,390 @@ test "map.ts:391 keyed by a function without the index survives random edits: ro
 				if (before.has(keys[j])) { assert out[j].id === before.get(keys[j]) as number, "step " + step.toString() + ": key " + keys[j].toString() + " kept its row"; }
 			}
 		}
+		d();
+	});
+}
+
+class Ledger {
+	log: string[];
+
+	constructor() {
+		this.log = [];
+	}
+
+	build(id: number): void {
+		const log = this.log;
+		log.push("+" + id.toString());
+		onCleanup(() => { log.push("-" + id.toString()); });
+	}
+
+	count(mark: string, id: number): number {
+		const want = mark + id.toString();
+		let n = 0;
+		for (const entry of this.log) { if (entry === want) { n += 1; } }
+		return n;
+	}
+
+	made(id: number): number {
+		return this.count("+", id);
+	}
+
+	live(id: number): number {
+		return this.count("+", id) - this.count("-", id);
+	}
+}
+
+function ensure(ok: boolean, why: string): void {
+	if (!ok) { throw new Error(why); }
+}
+
+class Fault {
+	bad: number[];
+
+	constructor() {
+		this.bad = [];
+	}
+
+	check(v: number): void {
+		for (const b of this.bad) {
+			if (b === v) { throw new Error("row " + v.toString()); }
+		}
+	}
+}
+
+function engine(mode: number, src: Accessor<number[]>, led: Ledger, fault: Fault, fallback: (() => number) | null): () => number[] {
+	if (mode === 0) {
+		return mapArray<number, number>(src, (v, i) => { led.build(v); fault.check(v); return v; }, fallback, false);
+	}
+	return mapArrayKeyedBy<number, number, number>(src, (x) => x, (item, i) => {
+		const v = item();
+		led.build(v);
+		fault.check(v);
+		return v;
+	}, fallback, false);
+}
+
+function failure(m: () => number[]): string {
+	let caught = "";
+	try { m(); } catch (e) { caught = e.toString(); }
+	return caught;
+}
+
+function allGone(led: Ledger, ids: number[]): void {
+	for (const id of ids) { ensure(led.live(id) === 0, "row " + id.toString() + " is disposed when the list is: " + led.live(id).toString()); }
+}
+
+function survivorsKeepTheirOwners(mode: number): void {
+	createRoot((d) => {
+		const led = new Ledger();
+		const fault = new Fault();
+		const [src, setSrc] = createSignal<number[]>([1, 2, 3]);
+		const m = engine(mode, src, led, fault, null);
+		const before = m();
+		ensure(before.join(",") === "1,2,3", "first pass");
+		fault.bad = [9];
+		setSrc([3, 9, 1, 2]);
+		const caught = failure(m);
+		ensure(caught.includes("row 9"), "the row's error reaches the caller: " + caught);
+		ensure(led.live(1) === 1 && led.live(2) === 1 && led.live(3) === 1, "surviving rows keep their owners");
+		ensure(led.made(9) === 1 && led.live(9) === 0, "the owner the aborted pass created is disposed with it");
+		setSrc([1, 2, 3]);
+		ensure(m() === before, "the engine still holds the list from before the aborted pass");
+		setSrc([3, 9, 1, 2]);
+		fault.bad = [];
+		ensure(m().join(",") === "3,9,1,2", "the retry maps the new list");
+		ensure(led.made(1) === 1 && led.made(2) === 1 && led.made(3) === 1, "no surviving row is rebuilt");
+		ensure(led.made(9) === 2 && led.live(9) === 1, "the failed row is built again by the retry");
+		d();
+		allGone(led, [1, 2, 3, 9]);
+	});
+}
+
+function removalWhileStillFailing(mode: number): void {
+	createRoot((d) => {
+		const led = new Ledger();
+		const fault = new Fault();
+		const [src, setSrc] = createSignal<number[]>([1, 2, 3]);
+		const m = engine(mode, src, led, fault, null);
+		m();
+		fault.bad = [9];
+		setSrc([1, 2, 9, 3]);
+		ensure(failure(m).includes("row 9"), "a failing insert before 3 aborts");
+		setSrc([1, 2, 9]);
+		ensure(failure(m).includes("row 9"), "dropping 3 while 9 still fails aborts again");
+		ensure(led.live(3) === 1, "an aborted pass disposes no row it removes");
+		fault.bad = [];
+		ensure(m().join(",") === "1,2,9", "the retry lands");
+		ensure(led.made(3) === 1 && led.count("-", 3) === 1, "the real row 3 is disposed exactly once");
+		d();
+		allGone(led, [1, 2, 3, 9]);
+	});
+}
+
+function initialCreateRetries(mode: number): void {
+	createRoot((d) => {
+		const led = new Ledger();
+		const fault = new Fault();
+		fault.bad = [9];
+		const [src, setSrc] = createSignal<number[]>([1, 9, 2]);
+		const m = engine(mode, src, led, fault, null);
+		ensure(failure(m).includes("row 9"), "the first pass fails");
+		allGone(led, [1, 2, 9]);
+		fault.bad = [];
+		ensure(m().join(",") === "1,9,2", "the retry builds the list");
+		ensure(led.live(1) === 1 && led.live(9) === 1 && led.live(2) === 1, "one live owner per row, none left by the aborted pass");
+		d();
+		allGone(led, [1, 2, 9]);
+	});
+}
+
+function abortedFallbackLeaksNothing(mode: number): void {
+	createRoot((d) => {
+		const led = new Ledger();
+		const fault = new Fault();
+		const fbFault = new Fault();
+		const [src, setSrc] = createSignal<number[]>([1]);
+		const m = engine(mode, src, led, fault, () => { led.build(0); fbFault.check(0); return 0; });
+		ensure(m().join(",") === "1", "one row");
+		fbFault.bad = [0];
+		setSrc([]);
+		ensure(failure(m).includes("row 0"), "the fallback's error reaches the caller");
+		ensure(led.made(0) === 1 && led.live(0) === 0, "the aborted fallback's owner is disposed");
+		fbFault.bad = [];
+		ensure(m().join(",") === "0", "the retry shows the fallback");
+		ensure(led.live(0) === 1, "one live fallback owner: " + led.live(0).toString());
+		setSrc([4]);
+		ensure(m().join(",") === "4" && led.live(0) === 0, "rows replace the fallback and dispose it");
+		d();
+		allGone(led, [0, 1, 4]);
+	});
+}
+
+function failingRowsAbortTogether(mode: number): void {
+	createRoot((d) => {
+		const led = new Ledger();
+		const fault = new Fault();
+		const [src, setSrc] = createSignal<number[]>([1, 2]);
+		const m = engine(mode, src, led, fault, null);
+		m();
+		fault.bad = [7, 8];
+		setSrc([7, 1, 8, 2]);
+		ensure(failure(m).includes("row 7"), "the first failing row raises");
+		ensure(led.live(1) === 1 && led.live(2) === 1 && led.live(7) === 0 && led.live(8) === 0, "nothing the pass built survives it");
+		fault.bad = [];
+		ensure(m().join(",") === "7,1,8,2", "both rows land together on the retry");
+		ensure(led.made(1) === 1 && led.made(2) === 1, "rows 1 and 2 were never rebuilt");
+		d();
+		allGone(led, [1, 2, 7, 8]);
+	});
+}
+
+function removedRowsOutliveTheNewOnes(mode: number): void {
+	createRoot((d) => {
+		const led = new Ledger();
+		const fault = new Fault();
+		const [src, setSrc] = createSignal<number[]>([1, 2, 3]);
+		const m = engine(mode, src, led, fault, null);
+		m();
+		const at = led.log.length;
+		setSrc([1, 9, 3]);
+		m();
+		ensure(led.log.slice(at, led.log.length).join(" ") === "+9 -2", "the new row is built before the removed row is disposed: " + led.log.slice(at, led.log.length).join(" "));
+		fault.bad = [8];
+		setSrc([1, 8]);
+		failure(m);
+		ensure(led.live(9) === 1 && led.live(3) === 1, "a pass that fails disposes none of the rows it would have removed");
+		d();
+	});
+}
+
+test "notready-safety.test.ts:96 identity mode: a failing insert in a reorder keeps every surviving row" { survivorsKeepTheirOwners(0); }
+test "notready-safety.test.ts:96 keyed by a function: a failing insert in a reorder keeps every surviving row" { survivorsKeepTheirOwners(1); }
+test "notready-safety.test.ts:125 identity mode: removal while the insert still fails disposes the real row once" { removalWhileStillFailing(0); }
+test "notready-safety.test.ts:125 keyed by a function: removal while the insert still fails disposes the real row once" { removalWhileStillFailing(1); }
+test "notready-safety.test.ts:152 identity mode: an initial create that fails retries cleanly" { initialCreateRetries(0); }
+test "notready-safety.test.ts:152 keyed by a function: an initial create that fails retries cleanly" { initialCreateRetries(1); }
+test "notready-safety.test.ts:202 identity mode: an aborted fallback leaks no owner across retries" { abortedFallbackLeaksNothing(0); }
+test "notready-safety.test.ts:202 keyed by a function: an aborted fallback leaks no owner across retries" { abortedFallbackLeaksNothing(1); }
+test "notready-safety.test.ts:446 identity mode: two failing rows in one pass abort and land together" { failingRowsAbortTogether(0); }
+test "notready-safety.test.ts:446 keyed by a function: two failing rows in one pass abort and land together" { failingRowsAbortTogether(1); }
+test "map.ts:118 identity mode: removed rows are disposed after the pass's new rows are built" { removedRowsOutliveTheNewOnes(0); }
+test "map.ts:118 keyed by a function: removed rows are disposed after the pass's new rows are built" { removedRowsOutliveTheNewOnes(1); }
+
+test "notready-safety.test.ts:250 position mode: an aborted grow leaves every row and cell as before" {
+	createRoot((d) => {
+		const led = new Ledger();
+		const fault = new Fault();
+		const slots: Accessor<number>[] = [];
+		const [src, setSrc] = createSignal<number[]>([10, 20]);
+		const m = mapArrayByPosition<number, number>(src, (item, pos) => {
+			led.build(pos);
+			fault.check(item());
+			slots.push(item);
+			return pos;
+		});
+		const before = m();
+		assert before.join(",") === "0,1", "two rows";
+		fault.bad = [99];
+		setSrc([11, 21, 99]);
+		assert failure(m).includes("row 99"), "the new position's error reaches the caller";
+		assert slots[0]() === 10 && slots[1]() === 20, "an aborted pass leaves the cells of the rows it kept: " + slots[0]().toString() + "," + slots[1]().toString();
+		assert led.live(0) === 1 && led.live(1) === 1 && led.made(2) === 1 && led.live(2) === 0, "row owners as before, the aborted row disposed";
+		setSrc([10, 20]);
+		assert m() === before, "the engine still holds the list from before the aborted pass";
+		setSrc([11, 21, 99]);
+		fault.bad = [];
+		assert m().join(",") === "0,1,2", "the retry grows the list";
+		assert slots[0]() === 11 && slots[1]() === 21 && slots[2]() === 99, "cells follow the retry";
+		assert led.made(0) === 1 && led.made(1) === 1 && led.made(2) === 2, "positions 0 and 1 were never rebuilt";
+		d();
+		allGone(led, [0, 1, 2]);
+	});
+}
+
+test "notready-safety.test.ts:250 keyed by a function: an aborted pass leaves the item cells of the rows it kept" {
+	createRoot((d) => {
+		const led = new Ledger();
+		const slots: Accessor<number>[] = [];
+		const fault = new Fault();
+		const [src, setSrc] = createSignal<number[]>([11, 22]);
+		const m = mapArrayKeyedBy<number, number, number>(src, (x) => Math.floor(x / 10), (item, i) => {
+			const v = item();
+			led.build(v);
+			fault.check(v);
+			slots.push(item);
+			return v;
+		}, null, false);
+		m();
+		fault.bad = [99];
+		setSrc([12, 23, 99]);
+		assert failure(m).includes("row 99"), "the new key's error reaches the caller";
+		assert slots[0]() === 11 && slots[1]() === 22, "kept keys still show their item from before the pass: " + slots[0]().toString() + "," + slots[1]().toString();
+		fault.bad = [];
+		m();
+		assert slots[0]() === 12 && slots[1]() === 23, "the retry writes the new items";
+		d();
+	});
+}
+
+test "notready-safety.test.ts:96 an aborted pass leaves the index cells: the kept row still reads its old index" {
+	createRoot((d) => {
+		const led = new Ledger();
+		const fault = new Fault();
+		let indexOfOne: Accessor<number> | null = null;
+		const [src, setSrc] = createSignal<number[]>([1, 2, 3]);
+		const m = mapArray<number, number>(src, (v, i) => {
+			led.build(v);
+			fault.check(v);
+			if (v === 1) { indexOfOne = i; }
+			return v;
+		}, null, true);
+		m();
+		const one = indexOfOne as Accessor<number>;
+		assert one() === 0, "row 1 sits at 0";
+		fault.bad = [9];
+		setSrc([3, 9, 1, 2]);
+		assert failure(m).includes("row 9"), "the pass aborts";
+		assert one() === 0, "the aborted pass wrote no index: " + one().toString();
+		fault.bad = [];
+		m();
+		assert one() === 2, "the retry moves row 1 to 2: " + one().toString();
+		d();
+	});
+}
+
+test "notready-safety.test.ts:352 repeat: a disjoint window shift with a failing row keeps the old rows until commit" {
+	createRoot((d) => {
+		const led = new Ledger();
+		const fault = new Fault();
+		const [from, setFrom] = createSignal<number>(0);
+		const m = repeat<number>(() => 3, (i) => { led.build(i); fault.check(i); return i; }, from);
+		assert m().join(",") === "0,1,2", "window 0..2";
+		fault.bad = [11];
+		setFrom(10);
+		assert failure(m).includes("row 11"), "row 11 fails";
+		assert led.live(0) === 1 && led.live(1) === 1 && led.live(2) === 1, "the old rows are alive until the new window lands";
+		assert led.live(10) === 0 && led.live(11) === 0, "what the pass built is gone";
+		fault.bad = [];
+		assert m().join(",") === "10,11,12", "the retry lands the window";
+		assert led.live(0) === 0 && led.live(10) === 1 && led.made(0) === 1, "old rows go with the commit";
+		d();
+		allGone(led, [0, 1, 2, 10, 11, 12]);
+	});
+}
+
+test "notready-safety.test.ts:402 repeat: an aborted fallback leaks no owner across retries" {
+	createRoot((d) => {
+		const led = new Ledger();
+		const fbFault = new Fault();
+		const [n, setN] = createSignal<number>(1);
+		const m = repeat<number>(n, (i) => i, null, () => { led.build(0); fbFault.check(0); return -1; });
+		assert m().join(",") === "0", "one row";
+		fbFault.bad = [0];
+		setN(0);
+		assert failure(m).includes("row 0"), "the fallback's error reaches the caller";
+		assert led.live(0) === 0, "the aborted fallback's owner is disposed";
+		fbFault.bad = [];
+		assert m().join(",") === "-1" && led.live(0) === 1, "one live fallback owner: " + led.live(0).toString();
+		d();
+		allGone(led, [0]);
+	});
+}
+
+function unchangedListKeepsTheMappedArray(mode: number): void {
+	createRoot((d) => {
+		const led = new Ledger();
+		const fault = new Fault();
+		const [src, setSrc] = createSignal<number[]>([1, 2, 3]);
+		const m = engine(mode, src, led, fault, null);
+		let memoRuns = 0;
+		const mapped = createMemo((): number[] => { memoRuns += 1; return m(); });
+		let consumerRuns = 0;
+		createRenderEffect(() => { mapped(); consumerRuns += 1; });
+		ensure(memoRuns === 1 && consumerRuns === 1, "first run");
+		setSrc([1, 2, 3]);
+		ensure(memoRuns === 2, "the memo saw the new array: " + memoRuns.toString());
+		ensure(consumerRuns === 1, "the consumer of the memo did not re-run: " + consumerRuns.toString());
+		setSrc([1, 2, 3]);
+		ensure(memoRuns === 3 && consumerRuns === 1, "again");
+		setSrc([2, 1, 3]);
+		ensure(memoRuns === 4 && consumerRuns === 2, "a reorder is a new mapped array: " + consumerRuns.toString());
+		d();
+	});
+}
+
+test "map.ts:454 identity mode: an unchanged list keeps the mapped array identity, so a consumer does not re-run" { unchangedListKeepsTheMappedArray(0); }
+test "map.ts:454 keyed by a function: an unchanged list keeps the mapped array identity, so a consumer does not re-run" { unchangedListKeepsTheMappedArray(1); }
+
+test "map.ts:454 position mode: an unchanged list keeps the mapped array identity and still writes the cells" {
+	createRoot((d) => {
+		const slots: Accessor<number>[] = [];
+		const [src, setSrc] = createSignal<number[]>([5, 6]);
+		const m = mapArrayByPosition<number, number>(src, (item, pos) => { slots.push(item); return pos; });
+		let memoRuns = 0;
+		const mapped = createMemo((): number[] => { memoRuns += 1; return m(); });
+		let consumerRuns = 0;
+		createRenderEffect(() => { mapped(); consumerRuns += 1; });
+		setSrc([5, 6]);
+		assert memoRuns === 2 && consumerRuns === 1, "same values: the consumer did not re-run: " + consumerRuns.toString();
+		setSrc([7, 6]);
+		assert memoRuns === 3 && consumerRuns === 1, "a changed value is a cell write, not a new array: " + consumerRuns.toString();
+		assert slots[0]() === 7 && slots[1]() === 6, "the cell took the new value";
+		d();
+	});
+}
+
+test "map.ts:454 keyed by a function: an item replaced under a kept key writes its cell and keeps the mapped array" {
+	createRoot((d) => {
+		const slots: Accessor<number>[] = [];
+		const [src, setSrc] = createSignal<number[]>([11, 22]);
+		const m = mapArrayKeyedBy<number, number, number>(src, (x) => Math.floor(x / 10), (item, i) => { slots.push(item); return item(); }, null, false);
+		let consumerRuns = 0;
+		const mapped = createMemo((): number[] => m());
+		createRenderEffect(() => { mapped(); consumerRuns += 1; });
+		setSrc([12, 23]);
+		assert consumerRuns === 1, "no new mapped array: " + consumerRuns.toString();
+		assert slots[0]() === 12 && slots[1]() === 23, "the cells took the new items";
 		d();
 	});
 }

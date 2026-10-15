@@ -211,7 +211,6 @@ function mapRows<T, K, U>(
 			let start = 0;
 			const minLen = len < newLen ? len : newLen;
 			while (start < minLen && (!hasKeys || keys[start] === newKeys[start])) {
-				if (hasCells) { cells[start].set(newItems[start]); }
 				start += 1;
 			}
 
@@ -223,6 +222,9 @@ function mapRows<T, K, U>(
 			}
 
 			if (start === newLen && len === newLen) {
+				if (hasCells) {
+					for (let j = 0; j < start; j += 1) { cells[j].set(newItems[j]); }
+				}
 				keys = newKeys;
 				return mapped;
 			}
@@ -279,7 +281,10 @@ function mapRows<T, K, U>(
 			for (let i = 0; i < start; i += 1) {
 				temp[i] = mapped[i];
 				tempDisposers[i] = disposers[i];
-				if (hasCells) { tempCells[i] = cells[i]; }
+				if (hasCells) {
+					tempCells[i] = cells[i];
+					tempCells[i].set(newItems[i]);
+				}
 				if (hasIdx) { tempIdxs[i] = idxs[i]; }
 			}
 			for (let j = start; j <= newEnd; j += 1) {
