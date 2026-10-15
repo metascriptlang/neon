@@ -167,11 +167,13 @@ and the invariants that outlived them were moved to the head of the test that pi
 - **PARKED 2026-10-14 — `createStyles` takes no breakpoint table.** Decided 2026-10-15 (StyleX's
   form): `export const screen = createBreakpoints({ wide: 900 })`, and a sheet names it as a key,
   `createStyles({ sidebar: { when: { [screen.wide]: { … } } } })`, so the checker sees `screen.wide`
-  and the macro reads 900 at expansion. A computed key reaches the macro as the text `__computed__`
-  with its expression gone, and ordinary code stores it under that name (msc v0.3.3). Card
-  `~/metascript/.inbox/compiler/2026-10-14-computed-object-key-becomes-literal-computed.md`.
-  Parked at `src/macros/ui/style.ms` `createStyles`, still one argument; the class channel the
-  breakpoint rules need is in (`bindStyleAll`).
+  and the macro reads 900 at expansion. Written on branch `park/breakpoints` (`89b2050`: web
+  `@media`, native and inline styles bound to the window width, blocks kept through `mergeStyle`).
+  Blocks it: `Style` becomes recursive (`media: StyleMedia[]`, `StyleMedia.style: Style`), and
+  `getTypeImpl` throws "unnamed or alias type cycle (Ref)" on a non-generic interface whose field
+  reaches a recursive one, so `<Ctx.Provider>` stops compiling (`tests/render/ssr.test.ms`, msc
+  `682b18673`). Card `~/metascript/.inbox/compiler/2026-10-07-element-macro-type-cycle-on-generic-interface-field-without-its-parameter.md`.
+  Parked at that branch; `src/macros/ui/style.ms` `createStyles` on main has no breakpoints.
 
 - **PARKED 2026-10-13 — eight native cells stop at `src/navigation/core.ms:995`.** `bash tests/run.sh`
   on `wt/rn-navigation-prod` rebased onto main `9b79fec`, msc v0.3.2 binary `ea7ae4d17`: `msc test`
