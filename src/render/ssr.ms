@@ -23,6 +23,7 @@ import {
 	webControlClass,
 	webHtmlTag,
 	webRules,
+	WebRule,
 	domAttrName,
 	domAttrValue,
 } from "./web";
@@ -189,6 +190,7 @@ function textareaBody(names: string[], values: string[]): string {
 // MockNode, the writer its own record, and both come through here.
 function elementMarkup(
 	wire: string,
+	info: TagInfo,
 	names: string[],
 	values: string[],
 	className: string,
@@ -196,7 +198,7 @@ function elementMarkup(
 	inner: string,
 	childCount: int32,
 ): string {
-	const tag = webHtmlTag(wire);
+	const tag = info.html;
 	let cls = className;
 	let scroll = "";
 	if (wire === "scrollview") {
@@ -227,7 +229,7 @@ function elementMarkup(
 	if (cls !== "") { open = open + " class=\"" + escapeAttribute(cls) + "\""; }
 	const inline = (style === null ? "" : styleToCss(style as Style)) + scroll;
 	if (inline !== "") { open = open + " style=\"" + escapeAttribute(inline) + "\""; }
-	if (voidTag(tag)) {
+	if (info.empty) {
 		if (childCount > 0) {
 			throw new Error("SSR void element '" + tag + "' cannot have children");
 		}
@@ -235,6 +237,41 @@ function elementMarkup(
 	}
 	if (wire === "multilinetextinput") { return open + ">" + textareaBody(names, values) + "</" + tag + ">"; }
 	return open + ">" + inner + "</" + tag + ">";
+}
+
+// What the markup needs from a wire tag, worked out once per tag.
+class TagInfo {
+	html: string;
+	baseClass: string;
+	rules: WebRule[];
+	fixedNames: string[] = [];
+	fixedValues: string[] = [];
+	empty: boolean;
+	marked: boolean;
+	raw: string;
+
+	constructor(tag: string) {
+		this.html = webHtmlTag(tag);
+		this.baseClass = baseClassOf(tag);
+		this.rules = webRules(tag);
+		for (const fixed of webFixedAttrs(tag)) {
+			this.fixedNames.push(fixed.name);
+			this.fixedValues.push(fixed.value as string);
+		}
+		this.empty = voidTag(this.html);
+		this.marked = !rawTextTag(this.html);
+		this.raw = scriptOrStyle(this.html);
+	}
+}
+
+const TAGS = new Map<string, TagInfo>();
+
+function tagInfo(tag: string): TagInfo {
+	const known = TAGS.get(tag);
+	if (known !== null) { return known; }
+	const info = new TagInfo(tag);
+	TAGS.set(tag, info);
+	return info;
 }
 
 const EMPTY_TEXT = "<!---->";
@@ -303,13 +340,13 @@ function attrValues(n: MockNode): string[] {
 
 function serializeNode(n: MockNode): string {
 	if (n.tag === "") { return escapeText(n.text); }
-	const tag = webHtmlTag(n.tag);
-	const inner = voidTag(tag) || n.tag === "multilinetextinput" ? "" : serializeChildren(n, !rawTextTag(tag));
-	return elementMarkup(n.tag, attrNames(n), attrValues(n), n.className, n.style, inner, n.children.length);
+	const info = tagInfo(n.tag);
+	const inner = info.empty || n.tag === "multilinetextinput" ? "" : serializeChildren(n, info.marked);
+	return elementMarkup(n.tag, info, attrNames(n), attrValues(n), n.className, n.style, inner, n.children.length);
 }
 
 export function serializeChildren(n: MockNode, marked: boolean = true): string {
-	const raw = scriptOrStyle(webHtmlTag(n.tag));
+	const raw = tagInfo(n.tag).raw;
 	let s = "";
 	let afterText = false;
 	for (const k of n.children) {
@@ -338,9 +375,9 @@ function serializeHead(head: MockNode): string {
 		}
 		names.push(SERVED_HEAD);
 		values.push("");
-		const tag = webHtmlTag(k.tag);
-		const inner = voidTag(tag) ? "" : serializeChildren(k, !rawTextTag(tag));
-		s = s + elementMarkup(k.tag, names, values, k.className, k.style, inner, k.children.length);
+		const info = tagInfo(k.tag);
+		const inner = info.empty ? "" : serializeChildren(k, info.marked);
+		s = s + elementMarkup(k.tag, info, names, values, k.className, k.style, inner, k.children.length);
 	}
 	return s;
 }
@@ -392,8 +429,7 @@ class SsrNode {
 	style: Style | null = null;
 	body: string = "";
 	count: int32 = 0;
-	marked: boolean = true;
-	raw: string = "";
+	info: TagInfo;
 	afterText: boolean = false;
 	parent: SsrNode | null = null;
 	prev: SsrNode | null = null;
@@ -407,15 +443,18 @@ class SsrNode {
 	drops: boolean = false;
 	kids: SsrNode[] = [];
 
-	constructor(tag: string) {
+	constructor(tag: string, info: TagInfo) {
 		this.tag = tag;
+		this.info = info;
 	}
 }
 
+const PLAIN = new TagInfo("");
+
 class SsrWrite {
 	register: (id: string, css: string) => void;
-	head: SsrNode = new SsrNode("head");
-	overlay: SsrNode = new SsrNode("overlay");
+	head: SsrNode = new SsrNode("head", PLAIN);
+	overlay: SsrNode = new SsrNode("overlay", PLAIN);
 	done: boolean = false;
 
 	constructor(register: (id: string, css: string) => void) {
@@ -463,15 +502,15 @@ function writeInto(p: SsrNode, n: SsrNode, ref: HostNode | null): void {
 	p.last = n;
 	p.count += 1;
 	if (n.tag === "") {
-		if (p.marked) {
+		if (p.info.marked) {
 			if (n.text === "") { p.body += EMPTY_TEXT; p.afterText = false; return; }
 			if (p.afterText) { p.body += TEXT_BREAK; }
 		}
-		p.body += p.raw === "" ? escapeText(n.text) : rawText(p.raw, n.text);
+		p.body += p.info.raw === "" ? escapeText(n.text) : rawText(p.info.raw, n.text);
 		p.afterText = true;
 		return;
 	}
-	p.body += elementMarkup(n.tag, n.names, n.values, n.className, n.style, n.body, n.count);
+	p.body += elementMarkup(n.tag, n.info, n.names, n.values, n.className, n.style, n.body, n.count);
 	n.body = "";
 	p.afterText = false;
 }
@@ -500,20 +539,18 @@ function takeBack(p: SsrNode, n: SsrNode): void {
 function writerHost(w: SsrWrite): Host {
 	return {
 		createElement: (tag: string): HostNode => {
-			const n = new SsrNode(tag);
-			for (const rule of webRules(tag)) { w.register(rule.id, rule.css); }
-			n.className = baseClassOf(tag);
-			for (const fixed of webFixedAttrs(tag)) {
-				n.names.push(fixed.name);
-				n.values.push(fixed.value as string);
+			const info = tagInfo(tag);
+			const n = new SsrNode(tag, info);
+			for (const rule of info.rules) { w.register(rule.id, rule.css); }
+			n.className = info.baseClass;
+			for (let i = 0; i < info.fixedNames.length; i += 1) {
+				n.names.push(info.fixedNames[i]);
+				n.values.push(info.fixedValues[i]);
 			}
-			const html = webHtmlTag(tag);
-			n.marked = !rawTextTag(html);
-			n.raw = scriptOrStyle(html);
 			return n as unknown as HostNode;
 		},
 		createText: (s: string): HostNode => {
-			const n = new SsrNode("");
+			const n = new SsrNode("", PLAIN);
 			n.text = s;
 			return n as unknown as HostNode;
 		},
@@ -607,13 +644,13 @@ function writtenHead(head: SsrNode): string {
 		const values = k.values.slice(0, k.values.length);
 		names.push(SERVED_HEAD);
 		values.push("");
-		s = s + elementMarkup(k.tag, names, values, k.className, k.style, k.body, k.count);
+		s = s + elementMarkup(k.tag, k.info, names, values, k.className, k.style, k.body, k.count);
 	}
 	return s;
 }
 
 function writeRender(n: NeonNode, w: SsrWrite): SsrMarkup {
-	const root = new SsrNode("ssr-root");
+	const root = new SsrNode("ssr-root", PLAIN);
 	const dispose = asServer((): Dispose => render(n, writerHost(w), root as unknown as HostNode, ""));
 	try {
 		return { html: root.body, css: "", head: writtenHead(w.head) };
