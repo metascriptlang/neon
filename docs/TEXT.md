@@ -25,8 +25,11 @@ The code is the truth for everything else: `src/platform/void/host.ms` (`refresh
     prop does.
   - It does that once per update, from a deferred `createEffect` that runs after every render effect of the update.
     A paragraph of one string skips the effect and goes straight to the host.
-  - Hosts that draw nested text as real nodes keep them: DOM and SSR (`<span>`s, CSS classes, hydration), the mock
-    host and, until per-span press moves to `setSpans`, native.
+  - The native host takes spans too (`setSpansOf` in `src/platform/native/host.ms`). A span with `onPress` keeps its
+    own tag by position, and a touch on it bubbles from its Text. The `textSpans` wire format the bridges read is
+    unchanged (`tests/platform/nativeParity.test.ms`).
+  - Hosts that draw nested text as real nodes keep them: DOM and SSR (`<span>`s, CSS classes, hydration), and the mock
+    host. A framework site that builds a label by hand writes its string through `setTextContent`.
   - Rejected: `runs` as `{ len, color… }` beside one string. Its only gain is skipping a substring per span
     (about 0.05 ms per frame, measured below). Against that, the lengths must sum to the string's UTF-16 length,
     a terminal parser that counts code points breaks it, and the fields are void2d's rather than Text's.
