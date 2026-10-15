@@ -572,6 +572,18 @@ into the region's parent, which is how a row made of a fragment, a component or 
 nested region gets a span without anyone counting nodes; an empty row gets one empty
 text node so it still has a position.
 
+**Show.** `<Show when={x}>` takes any value and tests its truthiness (MetaScript's: a `number`, `string`
+or `boolean` by its zero value, a class by non-null; a nullable union `T | null` is a null check only,
+which is a compiler card, not a Show rule). The element macro (`showCall`, `src/macros/ui/element.ms`)
+picks the engine from `keyed` and the child, as `For` does from `keyed`: an element child is `Show`;
+`keyed` is `ShowKeyed` and rebuilds when the value changes; a function child is `ShowWith`, which
+receives an `Accessor<T>` of the value with `null` removed and throws when it is read while the
+condition is false; `keyed` plus a function child is `ShowKeyedWith`, which receives the value itself.
+`keyed` is written `true` or `false` in place — a computed value is a compile error, as on `For`. The
+function and keyed forms evaluate `when` once per change in a memo created at mount (`showWhen`), so
+the child's reads and the condition share one evaluation. Reference: solid-next
+`packages/solid/src/client/flow.ts:164-250`; pins `tests/render/show.test.ms`.
+
 **Server rendering.** `renderToString` (`src/render/ssr.ms`) renders the node on a mock
 host whose `setStyleClass` registers the rule in the sheet registry, serializes the
 result, and disposes the mount. Regions, fragments, components and context scopes
@@ -956,6 +968,31 @@ Not measured, and why: Chrome (the win is allocation and closure count, and the 
 coarsens at 0.1 ms to the size of four of these six cells); and whether the macro picks `false` on a
 given tag, because the only runtime observable of the choice is the raise, so the table above is the
 evidence that the false path is taken at all.
+
+### 2026-10-15 — the same flag on the Solid 2.0 `mapArray` engine
+
+`mapArray` / `mapArrayKeyedBy` take the flag again (`usesIndex`, solid-next `packages/signals/src/map.ts:75`
+and `:97`, where the reference decides it from `map.length > 1`; Neon decides it in the element macro, so
+`For` and `ForKeyedBy` pass what `rowUsesIndex` read). `/tmp/s2b/b1b/bench/indexFlagCost.ms`, release C
+build, N = 5000, 10 rounds, the three variants alternating inside one round of one process, every cell
+the MIN, load 28 on a shared machine (so read the ratios, not the milliseconds). `base` is the engine at
+`b0125c8` with no flag; `with index` is the new engine told the row reads its index; `no index` is told it
+does not.
+
+| op, 5000 rows | identity base | with index | no index | no index ÷ base | keyed base | with index | no index | no index ÷ base |
+|---|---|---|---|---|---|---|---|---|
+| build | 1.055 | 1.055 | 0.907 | 0.86 | 2.195 | 2.142 | 1.278 | 0.58 |
+| swap | 0.478 | 0.478 | 0.433 | 0.91 | 0.743 | 0.755 | 0.525 | 0.71 |
+| reverse | 0.481 | 0.461 | 0.427 | 0.89 | 0.611 | 0.612 | 0.501 | 0.82 |
+| move 1 | 0.465 | 0.465 | 0.430 | 0.92 | 0.681 | 0.673 | 0.510 | 0.75 |
+| remove half | 0.770 | 0.749 | 0.668 | 0.87 | 1.135 | 1.042 | 0.925 | 0.82 |
+| add 1 | 0.096 | 0.091 | 0.059 | 0.61 | 0.204 | 0.205 | 0.127 | 0.62 |
+
+Verdict: every cell is cheaper without the index, and the flag costs the rows that read their index
+nothing (`with index` ≈ `base`). The remove-half inversion of the 2026-09-21 table is gone on this engine.
+A row emitted index-free raises if it reads its index (pinned by `tests/core/array.test.ms` and
+`tests/render/flow.test.ms`), and the macro's decision is pinned per row shape by
+`tests/render/forIndexElision.test.ms`. Not measured: Chrome and the JS backend.
 
 ### 2026-09-21 — one op per edit against a rebuilt array, and where the last O(n) actually lives
 
