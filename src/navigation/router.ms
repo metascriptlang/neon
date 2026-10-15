@@ -756,11 +756,11 @@ function participantOf(router: Router, web: WebHistory, tree: RouteTree, root: L
 			const entry: RouterEntry = { web: web.participant.capture(), address };
 			return JSON.stringify(entry);
 		},
-		restore: (state: string): Result<RoutePlan, RoutingError> => {
+		restore: (state: string, address: string | null): Result<RoutePlan, RoutingError> => {
 			const parsed = JSON.parse<RouterEntry>(state);
 			if (!parsed.ok) { return Result.err(RoutingError.IncompleteSnapshot); }
 			const entry = parsed.value;
-			const plan = try web.participant.restore(entry.web);
+			const plan = try web.participant.restore(entry.web, address);
 			const resolved = try follow(tree, entry.address);
 			return Result.ok(web.suppressed((): void => {
 				plan.commit();

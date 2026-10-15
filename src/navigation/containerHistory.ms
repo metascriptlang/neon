@@ -380,9 +380,9 @@ export function createContainerHistory(
 				return web.participant.address();
 			},
 			capture: (): string => root.empty() ? "" : web.participant.capture(),
-			restore: (state: string): Result<RoutePlan, RoutingError> => {
+			restore: (state: string, address: string | null): Result<RoutePlan, RoutingError> => {
 				if (state === "") { return web.participant.prepare(null); }
-				return web.participant.restore(state);
+				return web.participant.restore(state, address);
 			},
 		},
 		enable: web.enable,

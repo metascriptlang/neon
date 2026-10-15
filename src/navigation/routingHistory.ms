@@ -89,7 +89,7 @@ function restoreEntry(
 	if (entry.state === "") { return registry.apply(entry.url); }
 	const decoded = JSON.parse<RoutingSnapshot>(entry.state);
 	if (!decoded.ok) { return Result.err(RoutingError.IncompleteSnapshot); }
-	return registry.restore(decoded.value);
+	return registry.restore(decoded.value, entry.url);
 }
 
 export class RoutingSession {
