@@ -5,7 +5,7 @@ import { createList } from "../../src/core/list";
 import { Accessor } from "../../src/core/signal";
 import { createRoot } from "../../src/core/owner";
 import { onCleanup } from "../../src/core/cleanup";
-import { createEffect } from "../../src/core/effect";
+import { createRenderEffect } from "../../src/core/effect";
 
 // PARKED: every cell takes the call form ForList<T>({…}) rather than <ForList each={l}>. A row of
 // ForList carries Accessor<T>, and a generic component whose row carries a distinct alias cannot be
@@ -331,7 +331,7 @@ test "a row that reads the list length stays reactive beside the ops" {
 	createRoot((d) => {
 		const l = createList<number>([1, 2]);
 		let runs = 0;
-		createEffect(() => { l.length(); runs = runs + 1; });
+		createRenderEffect(() => { l.length(); runs = runs + 1; });
 		const ul = el("ul", [], [], ForList<number>({ each: l, children: numberRow }));
 		const host = mockHost();
 		const root = host.createElement("root");

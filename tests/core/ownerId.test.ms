@@ -1,5 +1,5 @@
 import { createSignal } from "../../src/core/signal";
-import { createEffect, createBindingEffect } from "../../src/core/effect";
+import { createRenderEffect, createBindingEffect } from "../../src/core/effect";
 import { createMemo } from "../../src/core/memo";
 import { createRoot, createUniqueId } from "../../src/core/owner";
 import { getOwner } from "../../src/core/runtime";
@@ -14,7 +14,7 @@ test "an owner outside an id-carrying root has no id" {
 	let seen: string[] = [];
 	createRoot((dispose) => {
 		seen.push(ownerId());
-		createEffect(() => { seen.push(ownerId()); });
+		createRenderEffect(() => { seen.push(ownerId()); });
 		dispose();
 	});
 	assert seen.join(" ") === "none none", seen.join(" ");
@@ -24,12 +24,12 @@ test "children of an id-carrying root count up from it, nested ones from their p
 	let seen: string[] = [];
 	createRoot((dispose) => {
 		seen.push(ownerId());
-		createEffect(() => {
+		createRenderEffect(() => {
 			seen.push(ownerId());
-			createEffect(() => { seen.push(ownerId()); });
-			createEffect(() => { seen.push(ownerId()); });
+			createRenderEffect(() => { seen.push(ownerId()); });
+			createRenderEffect(() => { seen.push(ownerId()); });
 		});
-		createEffect(() => { seen.push(ownerId()); });
+		createRenderEffect(() => { seen.push(ownerId()); });
 		const double = createMemo<number>(() => { seen.push(ownerId()); return 2; });
 		double();
 		dispose();
@@ -40,7 +40,7 @@ test "children of an id-carrying root count up from it, nested ones from their p
 test "a child index past one base-36 digit carries its length" {
 	let last = "";
 	createRoot((dispose) => {
-		for (let i = 0; i < 37; i += 1) { createEffect(() => { last = ownerId(); }); }
+		for (let i = 0; i < 37; i += 1) { createRenderEffect(() => { last = ownerId(); }); }
 		dispose();
 	}, "r");
 	assert last === "[rA10]", last;
@@ -51,9 +51,9 @@ test "a binding effect shares its owner's id and counter" {
 	createRoot((dispose) => {
 		createBindingEffect(() => {
 			seen.push(ownerId());
-			createEffect(() => { seen.push(ownerId()); });
+			createRenderEffect(() => { seen.push(ownerId()); });
 		});
-		createEffect(() => { seen.push(ownerId()); });
+		createRenderEffect(() => { seen.push(ownerId()); });
 		dispose();
 	}, "");
 	assert seen.join(" ") === "[] [0] [1]", seen.join(" ");
@@ -73,9 +73,9 @@ test "a re-run hands its children the same ids again" {
 	const [count, setCount] = createSignal(0);
 	let seen: string[] = [];
 	createRoot((dispose) => {
-		createEffect(() => {
+		createRenderEffect(() => {
 			count();
-			createEffect(() => { seen.push(ownerId()); });
+			createRenderEffect(() => { seen.push(ownerId()); });
 			seen.push(createUniqueId());
 		});
 		setCount(1);
@@ -89,7 +89,7 @@ test "createUniqueId is the same in two renders of one tree and counts alone out
 		let ids: string[] = [];
 		createRoot((dispose) => {
 			ids.push(createUniqueId());
-			createEffect(() => { ids.push(createUniqueId()); });
+			createRenderEffect(() => { ids.push(createUniqueId()); });
 			ids.push(createUniqueId());
 			dispose();
 		}, "");

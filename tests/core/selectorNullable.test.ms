@@ -1,5 +1,5 @@
 import { createSignal } from "../../src/core/signal";
-import { createEffect } from "../../src/core/effect";
+import { createRenderEffect } from "../../src/core/effect";
 import { createRoot } from "../../src/core/owner";
 import { createSelector } from "../../src/core/selector";
 
@@ -15,7 +15,7 @@ test "a nullable source can enter and clear a selection" {
 		const selected = createSelector(id);
 		let value = false;
 		let runs = 0;
-		createEffect(() => { value = selected(0); runs += 1; });
+		createRenderEffect(() => { value = selected(0); runs += 1; });
 		assert !value && runs === 1;
 		setId(0);
 		assert value && runs === 2;

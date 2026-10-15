@@ -3,7 +3,7 @@ import { MockNode, mockHost, render, mockToString } from "../../src/render/host"
 import { Host, HostNode } from "../../src/render/hostTypes";
 import { element } from "../../src/macros/ui/element";
 import { createSignal } from "../../src/core/signal";
-import { createEffect } from "../../src/core/effect";
+import { createRenderEffect } from "../../src/core/effect";
 import { onCleanup } from "../../src/core/cleanup";
 import { createRoot } from "../../src/core/owner";
 
@@ -51,7 +51,7 @@ test "a throw in a later effect swaps in the fallback" {
 		const [a, setA] = createSignal(0);
 		const thrown = new Error("late 7");
 		const late: NeonNode = (host: Host, parent: HostNode, before: HostNode | null): void => {
-			createEffect(() => { if (a() === 1) { throw thrown; } });
+			createRenderEffect(() => { if (a() === 1) { throw thrown; } });
 			text("ok")(host, parent, before);
 		};
 		let seen: Error | null = null;
@@ -75,7 +75,7 @@ test "the failed subtree is torn down before the fallback mounts" {
 		let cleaned = 0;
 		const late: NeonNode = (host: Host, parent: HostNode, before: HostNode | null): void => {
 			onCleanup(() => { cleaned = cleaned + 1; });
-			createEffect(() => { if (a() === 1) { throw new Error("late"); } });
+			createRenderEffect(() => { if (a() === 1) { throw new Error("late"); } });
 			text("ok")(host, parent, before);
 		};
 		const [view, dispose] = mounted(ErrorBoundary({
@@ -94,7 +94,7 @@ test "reset re-mounts the children" {
 		const [a, setA] = createSignal(0);
 		let again: (() => void) | null = null;
 		const late: NeonNode = (host: Host, parent: HostNode, before: HostNode | null): void => {
-			createEffect(() => { if (a() === 1) { throw new Error("late"); } });
+			createRenderEffect(() => { if (a() === 1) { throw new Error("late"); } });
 			text("ok")(host, parent, before);
 		};
 		const [view, dispose] = mounted(ErrorBoundary({
@@ -115,7 +115,7 @@ test "ErrorBoundary works written as a tag" {
 	createRoot((d) => {
 		const [a, setA] = createSignal(0);
 		const late: NeonNode = (host: Host, parent: HostNode, before: HostNode | null): void => {
-			createEffect(() => { if (a() === 1) { throw new Error("tag 7"); } });
+			createRenderEffect(() => { if (a() === 1) { throw new Error("tag 7"); } });
 			text("ok")(host, parent, before);
 		};
 		const fb = (err: Error, reset: () => void): NeonNode => element(<b>{"caught " + err.message}</b>);
@@ -155,13 +155,13 @@ test "a sibling of the boundary keeps running after the boundary fails" {
 		const [b, setB] = createSignal(0);
 		let seen = 0;
 		const late: NeonNode = (host: Host, parent: HostNode, before: HostNode | null): void => {
-			createEffect(() => { if (a() === 1) { throw new Error("late"); } });
+			createRenderEffect(() => { if (a() === 1) { throw new Error("late"); } });
 		};
 		const [view, dispose] = mounted(el("div", [], [], ErrorBoundary({
 			children: late,
 			fallback: (err: Error, reset: () => void): NeonNode => el("b", [], [], text("caught")),
 		})));
-		createEffect(() => { b(); seen = seen + 1; });
+		createRenderEffect(() => { b(); seen = seen + 1; });
 		setA(1);
 		const before = seen;
 		setB(1);

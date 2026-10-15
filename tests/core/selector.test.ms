@@ -1,5 +1,5 @@
 import { createSignal, batch, untrack } from "../../src/core/signal";
-import { createEffect } from "../../src/core/effect";
+import { createRenderEffect } from "../../src/core/effect";
 import { createMemo } from "../../src/core/memo";
 import { createRoot } from "../../src/core/owner";
 import { createSelector } from "../../src/core/selector";
@@ -23,7 +23,7 @@ test "a thousand rows update only the entering and leaving selection" {
 		const values: boolean[] = new Array(1000);
 		let runs = 0;
 		function mountRow(key: int32): void {
-			createEffect(() => {
+			createRenderEffect(() => {
 				values[key] = selected(key);
 				runs += 1;
 			});
@@ -52,13 +52,13 @@ test "multiple listeners share a key and repeated reads do not duplicate notific
 		let secondRuns = 0;
 		let first = false;
 		let second = false;
-		const stopFirst = createEffect(() => {
+		const stopFirst = createRenderEffect(() => {
 			const once = selected(0);
 			first = selected(0);
 			assert once === first;
 			firstRuns += 1;
 		});
-		createEffect(() => { second = selected(0); secondRuns += 1; });
+		createRenderEffect(() => { second = selected(0); secondRuns += 1; });
 		setId(0);
 		assert firstRuns === 2 && secondRuns === 2 && first && second;
 		stopFirst();
@@ -76,8 +76,8 @@ test "a custom comparator notifies only keys whose matching state changes" {
 		let secondRuns = 0;
 		let first = false;
 		let second = false;
-		createEffect(() => { first = selected(1); firstRuns += 1; });
-		createEffect(() => { second = selected(2); secondRuns += 1; });
+		createRenderEffect(() => { first = selected(1); firstRuns += 1; });
+		createRenderEffect(() => { second = selected(2); secondRuns += 1; });
 		setId(1);
 		assert firstRuns === 2 && first && secondRuns === 1 && !second;
 		setId(2);
@@ -99,8 +99,8 @@ test "a comparator can use a key type different from its source" {
 		let runs = 0;
 		let first = false;
 		let second = false;
-		createEffect(() => { first = selected("1"); runs += 1; });
-		createEffect(() => { second = selected("2"); runs += 1; });
+		createRenderEffect(() => { first = selected("1"); runs += 1; });
+		createRenderEffect(() => { second = selected("2"); runs += 1; });
 		runs = 0;
 		setId(1);
 		assert runs === 1 && first && !second;
@@ -117,7 +117,7 @@ test "retracking replaces an old key subscription and disposal removes the new o
 		const selected = createSelector(id);
 		let runs = 0;
 		let value = false;
-		const stop = createEffect(() => { value = selected(key()); runs += 1; });
+		const stop = createRenderEffect(() => { value = selected(key()); runs += 1; });
 		setKey(2);
 		assert runs === 2 && !value;
 		setId(0);
@@ -127,7 +127,7 @@ test "retracking replaces an old key subscription and disposal removes the new o
 		stop();
 		setId(0);
 		assert runs === 3 && value, "disposed computation is not queued";
-		createEffect(() => { value = selected(0); runs += 1; });
+		createRenderEffect(() => { value = selected(0); runs += 1; });
 		assert runs === 4 && value;
 		setId(2);
 		assert runs === 5 && !value, "a removed key can be subscribed again";
@@ -139,7 +139,7 @@ test "untracked selector reads see the latest value without subscribing their ca
 		const [id, setId] = createSignal<int32>(0);
 		const selected = createSelector(id);
 		let runs = 0;
-		createEffect(() => { untrack(() => selected(1)); runs += 1; });
+		createRenderEffect(() => { untrack(() => selected(1)); runs += 1; });
 		setId(1);
 		assert runs === 1 && selected(1) && !selected(0);
 	});
@@ -152,7 +152,7 @@ test "selector and derived memos settle before an effect reading the source" {
 		const label = createMemo(() => selected(1) ? "chosen" : "idle");
 		let seen = "";
 		let runs = 0;
-		createEffect(() => { seen = id().toString() + ":" + label(); runs += 1; });
+		createRenderEffect(() => { seen = id().toString() + ":" + label(); runs += 1; });
 		assert seen === "0:idle";
 		setId(1);
 		assert seen === "1:chosen" && runs === 2;
@@ -169,9 +169,9 @@ test "a batched selection change skips its intermediate key" {
 		let middle = false;
 		let last = false;
 		let runs = 0;
-		createEffect(() => { first = selected(1); runs += 1; });
-		createEffect(() => { middle = selected(2); runs += 1; });
-		createEffect(() => { last = selected(3); runs += 1; });
+		createRenderEffect(() => { first = selected(1); runs += 1; });
+		createRenderEffect(() => { middle = selected(2); runs += 1; });
+		createRenderEffect(() => { last = selected(3); runs += 1; });
 		runs = 0;
 		batch(() => { setId(2); setId(3); });
 		assert runs === 2 && !first && !middle && last;
@@ -188,7 +188,7 @@ test "disposing the selector owner stops its source and preserves the cached sel
 		});
 		let runs = 0;
 		let value = false;
-		const stopReader = createEffect(() => { value = selected(1); runs += 1; });
+		const stopReader = createRenderEffect(() => { value = selected(1); runs += 1; });
 		setId(2);
 		assert runs === 2 && !value;
 		stopSelector();
@@ -207,8 +207,8 @@ test "object keys compare by identity even when their fields match" {
 		let first = false;
 		let second = false;
 		let runs = 0;
-		createEffect(() => { first = selected(firstKey); runs += 1; });
-		createEffect(() => { second = selected(secondKey); runs += 1; });
+		createRenderEffect(() => { first = selected(firstKey); runs += 1; });
+		createRenderEffect(() => { second = selected(secondKey); runs += 1; });
 		assert first && !second;
 		runs = 0;
 		setItem(secondKey);

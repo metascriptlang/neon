@@ -1,5 +1,5 @@
 import { createSignal } from "../../src/core/signal";
-import { createEffect } from "../../src/core/effect";
+import { createRenderEffect } from "../../src/core/effect";
 import { onCleanup } from "../../src/core/cleanup";
 import { createRoot } from "../../src/core/owner";
 import { catchError } from "../../src/core/error";
@@ -17,7 +17,7 @@ test "an effect under catchError routes a later throw to the handler" {
 	const thrown = new Error("late 7");
 	let seen: Error | null = null;
 	catchError(() => {
-		createEffect(() => { if (a() === 1) { throw thrown; } });
+		createRenderEffect(() => { if (a() === 1) { throw thrown; } });
 	}, (err: Error) => { seen = err; });
 	assert seen === null, "nothing failed on the first run";
 	setA(1);
@@ -38,7 +38,7 @@ test "the nearest handler wins" {
 
 test "a throw with no handler still escapes" {
 	const [a, setA] = createSignal(0);
-	createEffect(() => { if (a() === 1) { throw new Error("loud"); } });
+	createRenderEffect(() => { if (a() === 1) { throw new Error("loud"); } });
 	let escaped = "";
 	try { setA(1); } catch (e) { escaped = e.message; }
 	assert escaped === "loud", "an unhandled throw is never swallowed: [" + escaped + "]";
@@ -50,7 +50,7 @@ test "a computation that threw is disposed, not re-run" {
 	let handled = 0;
 	let cleaned = 0;
 	catchError(() => {
-		createEffect(() => {
+		createRenderEffect(() => {
 			runs = runs + 1;
 			onCleanup(() => { cleaned = cleaned + 1; });
 			if (a() > 0) { throw new Error("boom"); }
@@ -76,7 +76,7 @@ test "catchError restores the owner it ran under" {
 		let sameOwner = false;
 		let ran = 0;
 		catchError(() => { throw new Error("boom"); }, (err: Error) => { ran = ran + 1; });
-		createEffect(() => { sameOwner = true; ran = ran + 1; });
+		createRenderEffect(() => { sameOwner = true; ran = ran + 1; });
 		assert ran === 2, "the scope did not leak: ran=" + ran.toString();
 		assert sameOwner, "an effect still mounts after a caught error";
 		dispose();
