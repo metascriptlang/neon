@@ -81,6 +81,40 @@ function escapeAttribute(value: string): string {
 	return escaped(value, true);
 }
 
+function scriptOrStyle(tag: string): string {
+	const name = tag.toLowerCase();
+	return name === "script" || name === "style" ? name : "";
+}
+
+// The parser decodes no entity inside <script> or <style>, so their text is written
+// as is; a "<script" or "<style" in it, which could end the element, gets its first
+// letter escaped the way the script or the style reads it back.
+function rawText(name: string, text: string): string {
+	let out = "";
+	let last = 0;
+	let at = text.indexOf("<");
+	while (at >= 0) {
+		const from = at + 1 < text.length && text.charCodeAt(at + 1) === 47 ? at + 2 : at + 1;
+		if (namedAt(text, from, name)) {
+			const upper = text.charCodeAt(from) === 83;
+			const letter = name === "style" ? (upper ? "\\53 " : "\\73 ") : (upper ? "\\u0053" : "\\u0073");
+			out = out + text.slice(last, from) + letter;
+			last = from + 1;
+		}
+		at = text.indexOf("<", at + 1);
+	}
+	if (last === 0) { return text; }
+	return out + text.slice(last);
+}
+
+function namedAt(text: string, at: int32, name: string): boolean {
+	if (at + name.length > text.length) { return false; }
+	for (let i = 0; i < name.length; i += 1) {
+		if ((text.charCodeAt(at + i) | 32) !== name.charCodeAt(i)) { return false; }
+	}
+	return true;
+}
+
 function voidTag(tag: string): boolean {
 	return match (tag.toLowerCase()) {
 		"area" | "base" | "br" | "col" | "embed" | "hr" | "img" | "input" |
@@ -275,6 +309,7 @@ function serializeNode(n: MockNode): string {
 }
 
 export function serializeChildren(n: MockNode, marked: boolean = true): string {
+	const raw = scriptOrStyle(webHtmlTag(n.tag));
 	let s = "";
 	let afterText = false;
 	for (const k of n.children) {
@@ -283,7 +318,7 @@ export function serializeChildren(n: MockNode, marked: boolean = true): string {
 			if (k.text === "") { s = s + EMPTY_TEXT; afterText = false; continue; }
 			if (afterText) { s = s + TEXT_BREAK; }
 		}
-		s = s + serializeNode(k);
+		s = s + (isText && raw !== "" ? rawText(raw, k.text) : serializeNode(k));
 		afterText = isText;
 	}
 	return s;
@@ -358,6 +393,7 @@ class SsrNode {
 	body: string = "";
 	count: int32 = 0;
 	marked: boolean = true;
+	raw: string = "";
 	afterText: boolean = false;
 	parent: SsrNode | null = null;
 	prev: SsrNode | null = null;
@@ -431,7 +467,7 @@ function writeInto(p: SsrNode, n: SsrNode, ref: HostNode | null): void {
 			if (n.text === "") { p.body += EMPTY_TEXT; p.afterText = false; return; }
 			if (p.afterText) { p.body += TEXT_BREAK; }
 		}
-		p.body += escapeText(n.text);
+		p.body += p.raw === "" ? escapeText(n.text) : rawText(p.raw, n.text);
 		p.afterText = true;
 		return;
 	}
@@ -471,7 +507,9 @@ function writerHost(w: SsrWrite): Host {
 				n.names.push(fixed.name);
 				n.values.push(fixed.value as string);
 			}
-			n.marked = !rawTextTag(webHtmlTag(tag));
+			const html = webHtmlTag(tag);
+			n.marked = !rawTextTag(html);
+			n.raw = scriptOrStyle(html);
 			return n as unknown as HostNode;
 		},
 		createText: (s: string): HostNode => {

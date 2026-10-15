@@ -27,6 +27,16 @@ test "plain markup serializes as written" {
 	assert order === "<input value=\"v\" id=\"i\">", "attribute order: " + order;
 }
 
+test "script and style text is written raw, closing tags inside it are broken" {
+	const css = renderToString(<style>{".a > .b { content: \"&\" }"}</style>);
+	assert css === "<style>.a > .b { content: \"&\" }</style>", "no entity in a style: " + css;
+	const closing = renderToString(<style>{"a{}</style><b>"}</style>);
+	assert closing === "<style>a{}</\\73 tyle><b></style>", "a closing style tag is escaped as CSS: " + closing;
+	const [code, setCode] = createSignal("if (a < b && c) { x = \"</SCRIPT>\"; }");
+	const script = renderToString(<script>{code()}</script>);
+	assert script === "<script>if (a < b && c) { x = \"</\\u0053CRIPT>\"; }</script>", "a closing script tag is escaped as JS: " + script;
+}
+
 test "reactive text and attributes serialize their current value" {
 	const [n, _setN] = createSignal(7);
 	const [cls, _setCls] = createSignal("on");
