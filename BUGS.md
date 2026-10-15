@@ -22,6 +22,10 @@ names the card and the site, and nothing is worked around in `src/`. Rows closed
 2026-09-20 were dropped with §2 — they are in this file's history at `git show c00bd2b:BUGS.md`,
 and the invariants that outlived them were moved to the head of the test that pins each one.
 
+- **OPEN 2026-10-16 — touches do not reach the sokol canvas.** `src/platform/sokol/input.ms`
+  `deliverAppEvent` takes the four `Touches*` events and does nothing with them, so a phone browser cannot
+  press, scroll or focus the canvas once events arrive.
+
 - **OPEN 2026-10-15 — `<For key>` keeps showing the old item when a new object arrives under the same key.**
   `<For each={rows()} key={(r: Keyed): number => r.id}>{row}</For>` over `[{id:1,label:"a"},{id:2,label:"b"}]`,
   then `setRows([{id:2,label:"b2"},{id:1,label:"a2"}])`, prints `<ul><li>b</li><li>a</li></ul>`:
@@ -182,6 +186,31 @@ and the invariants that outlived them were moved to the head of the test that pi
   from 624×321 to 884×461, exit 0, and the background, button and field colours read back from
   `PrintWindow` at the start, after typing and after the resize. Not run: an IME, a DPI change.
   `tests/run.sh` builds the example on a Windows host and skips it by name elsewhere.
+
+- **PARKED 2026-10-16 — the sokol canvas receives no input, and Escape ends it.** Not Neon's: Void's window
+  driver (`void/src/sokol/bridgeWin.c` and `bridgeWeb.c`, `_event`) keeps every `sapp_event` to itself, and
+  `voidRun` takes only `init` and `frame`, so no key, char, pointer, wheel or focus reaches MetaScript. The
+  same `_event` calls `sapp_request_quit()` on Escape: in headless Chrome, after a click and an Escape press,
+  the frame callback stopped at 178 calls and never ran again. sokol_app also reports no IME composition on
+  any platform, so `onPreedit` cannot fire there. Neon's half is `src/platform/sokol/input.ms`
+  (`deliverAppEvent`, `flushKey`), pinned by `tests/platform/sokolInput.test.ms`. Parked at
+  `src/platform/sokol/canvas.ms` `runCanvas`, which calls `voidRun` with no event closure. Note
+  `~/metascript/.inbox/void/2026-10-16-sokol-window-driver-for-neon-canvas.md`.
+
+- **PARKED 2026-10-16 — the native sokol canvas draws every frame.** Not Neon's: sokol_app presents after
+  every frame callback, and a skipped frame flips the window between the last two drawn frames (measured in
+  docs/RENDER-LAYERS.md). Parked at `src/platform/sokol/canvas.ms` `skippedFrameKeepsPicture`, false natively.
+  Same Void note as the row above.
+
+- **PARKED 2026-10-16 — `runCanvas` does not build for the browser from the repo.** Not Neon's: yoga has no
+  `--os=emcc` branch (`~/metascript/.inbox/yoga/2026-10-03-yogah-has-no-web-branch-voids-wasm-cannot-link-sync.md`);
+  the emitted C passes a derived interface as its base without a cast at `src/components/primitives.ms`
+  (`~/metascript/.inbox/compiler/2026-10-16-derived-interface-passed-as-base-without-cast.md`); and
+  `setTimeout` does not link under `--os=emcc`, `wasm-ld: undefined symbol: msSetTimeout`, because only the
+  native runtime's `dispatchFull.c` defines it
+  (`~/metascript/.inbox/compiler/2026-10-16-settimeout-does-not-link-under-emcc.md`). With all three worked
+  around outside the repo, the canvas draws in Chrome (docs/RENDER-LAYERS.md). Parked at `examples/voidCanvas.ms`,
+  built natively only.
 
 - **PARKED 2026-10-16 — every `<NavigationContainer ref={…}>` stops the build.** Not Neon's: the element
   macro reads a component's props through `getTypeImpl`, and `NavigationContainerRef` reaches itself through
