@@ -767,7 +767,7 @@ export class NavigatorCore<P> {
 		const name = seed.name;
 		const [read, write] = createSignal<P | null>(seed.params);
 		const empty: ScreenOptions = {};
-		const [overrides, writeOverrides] = createSignal<ScreenOptions>(empty);
+		const [overrides, writeOverrides] = createSignal<ScreenOptions>(empty, { ownedWrite: true });
 		const route = new Route<P>(seed.key, name, read);
 		const entry = new Navigation<P>(
 			this,
