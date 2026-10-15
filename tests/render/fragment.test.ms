@@ -4,6 +4,7 @@ import { element } from "../../src/macros/ui/element";
 import { createSignal, Accessor } from "../../src/core/signal";
 import { createRoot } from "../../src/core/owner";
 import { For, Show } from "../../src/macros/ui/flow";
+import { View, Text } from "../../src/components/primitives";
 
 function Pair(props: { label: Accessor<string> }): NeonNode {
 	return element(<><p>r1</p><p>r2</p></>);
@@ -183,4 +184,39 @@ test "a fragment is a fallback" {
 		assert boxOf(root) === "<div><p>a</p></div>", "children: " + boxOf(root);
 		dispose();
 	});
+}
+
+function mounted(view: NeonNode): MockNode {
+	const host = mockHost();
+	const root = host.createElement("root");
+	render(view, host, root);
+	return root as unknown as MockNode;
+}
+
+test "a fragment child flattens into its parent" {
+	const root = mounted(element(<div><><p>a</p><p>b</p></></div>));
+	assert mockToString(root) === "<root><div><p>a</p><p>b</p></div></root>", "no wrapper node: " + mockToString(root);
+}
+
+test "nested fragments flatten all the way" {
+	const root = mounted(element(<div><><p>a</p><><p>b</p><p>c</p></></></div>));
+	assert mockToString(root) === "<root><div><p>a</p><p>b</p><p>c</p></div></root>", "one flat child list: " + mockToString(root);
+}
+
+test "a fragment flattens inside a component tag too" {
+	const root = mounted(element(<View><><Text>a</Text><Text>b</Text></></View>));
+	assert mockToString(root) === "<root><view><text>a</text><text>b</text></view></root>", "component children list stays flat: " + mockToString(root);
+}
+
+test "a fragment picked by a plain value mounts once" {
+	const cond: boolean = true;
+	const root = mounted(<div>{cond && <><p>a</p><p>b</p></>}</div>);
+	assert mockToString(root) === "<root><div><p>a</p><p>b</p></div></root>", "static condition: " + mockToString(root);
+}
+
+function passThrough(n: NeonNode): NeonNode { return n; }
+
+test "a fragment handed to a function that takes a NeonNode mounts every root" {
+	const root = mounted(<div>{passThrough(<><p>a</p><p>b</p></>)}</div>);
+	assert mockToString(root) === "<root><div><p>a</p><p>b</p></div></root>", "through a call: " + mockToString(root);
 }
