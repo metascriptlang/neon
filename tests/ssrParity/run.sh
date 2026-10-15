@@ -39,7 +39,7 @@ for pin in needsServer needsServerBarrel needsServerPrelude; do
 	needs $pin "" c
 	needs $pin "--target=js" js
 done
-files=$(grep -rl -e renderToString -e renderToMarkup tests --include="*.test.ms" | grep -v "^tests/browser/" | sort)
+files=$(find tests -name "*Server.test.ms" | sort)
 for f in $files; do
 	echo "== server native $f"
 	"$MSC" test -d:server "$f" || fail=1
