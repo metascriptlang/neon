@@ -14,6 +14,7 @@ import {
 	currentScope,
 } from "./core";
 import { screenView } from "./header";
+import { createNavigatorMotion } from "./navigatorMotion";
 import {
 	createScreenCollector, collectScreens, groupOf, screenOf, watchScreens,
 } from "./screenCollection";
@@ -80,10 +81,11 @@ export function createStackNavigator<P>(): StackNavigator<P> {
 				scope: currentScope("Stack.Navigator"),
 			});
 			watchScreens<P>(collection, core);
+			const transitions = createNavigatorMotion<P>(core);
 			const screen = (entry: Navigation<P>, at: Accessor<number>): NeonNode => {
-				return screenView<P>(core, entry);
+				return screenView<P>(core, transitions, entry);
 			};
-			const rendered = accessor((): Navigation<P>[] => core.rendered());
+			const rendered = accessor((): Navigation<P>[] => transitions.rendered());
 			const measure = (e: NeonEvent): void => { core.layout.measure(e); };
 			return <View style={STACK_FRAME} onLayout={measure}>
 				<For each={rendered}>{screen}</For>

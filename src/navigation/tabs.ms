@@ -19,6 +19,7 @@ import {
 	noAction,
 } from "./core";
 import { Slot, screenView, shown } from "./header";
+import { createNavigatorMotion } from "./navigatorMotion";
 import { readName, readOptions } from "./stack";
 import {
 	createScreenCollector, collectScreens, groupOf, screenOf, watchScreens,
@@ -234,8 +235,9 @@ function createTabs<P>(material: boolean): TabNavigator<P> {
 				return { ...base, backgroundColor: background };
 			});
 			const mounted = mountedEntries<P>(core);
+			const transitions = createNavigatorMotion<P>(core);
 			const screen = (entry: Navigation<P>, at: Accessor<number>): NeonNode => {
-				return screenView<P>(core, entry);
+				return screenView<P>(core, transitions, entry);
 			};
 			const item = (entry: Navigation<P>, at: Accessor<number>): NeonNode => {
 				return tabItem<P>(core, entry, top);

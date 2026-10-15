@@ -22,6 +22,7 @@ import {
 	currentScope,
 } from "./core";
 import { EDGE_WIDTH, screenView, shown } from "./header";
+import { createNavigatorMotion } from "./navigatorMotion";
 import { readName, readOptions } from "./stack";
 import {
 	createScreenCollector, collectScreens, groupOf, screenOf, watchScreens,
@@ -292,8 +293,9 @@ export function createDrawerNavigator<P>(): DrawerNavigator<P> {
 				width: EDGE_WIDTH,
 			}));
 			const edgeHandlers = motion.edgeHandlers();
+			const transitions = createNavigatorMotion<P>(core);
 			const screen = (entry: Navigation<P>, at: Accessor<number>): NeonNode => {
-				return screenView<P>(core, entry);
+				return screenView<P>(core, transitions, entry);
 			};
 			const item = (entry: Navigation<P>, at: Accessor<number>): NeonNode => {
 				return drawerItem<P>(core, entry);

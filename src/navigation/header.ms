@@ -28,6 +28,7 @@ import {
 	currentScope,
 	screenScope,
 } from "./core";
+import { NavigatorMotion } from "./navigatorMotion";
 
 type RowList = () => Row[];
 
@@ -188,22 +189,27 @@ export function shown(value: boolean | null, fallback: boolean): boolean {
 
 export const EDGE_WIDTH = 24;
 
-function backGesture<P>(core: NavigatorCore<P>, entry: Navigation<P>): GestureResponderHandlers {
+function backGesture<P>(
+	core: NavigatorCore<P>,
+	motion: NavigatorMotion<P>,
+	entry: Navigation<P>,
+): GestureResponderHandlers {
+	const own = motion.of(entry);
 	const settle = (): void => {
-		if (contained<P>(core.snapshot(), entry)) { core.settleIn(entry); }
+		if (contained<P>(core.snapshot(), entry)) { motion.settleIn(entry); }
 	};
 	const pan = PanResponder.create({
 		onMoveShouldSetPanResponder: (e: NeonEvent, g: PanResponderGestureState): boolean => {
 			return g.dx > 10 && Math.abs(g.dx) > Math.abs(g.dy) * 2;
 		},
 		onPanResponderGrant: (e: NeonEvent, g: PanResponderGestureState): void => {
-			entry.progress.stopAnimation();
-			entry.writeMotion(true);
+			own.progress.stopAnimation();
+			own.moving.set(true);
 		},
 		onPanResponderMove: (e: NeonEvent, g: PanResponderGestureState): void => {
 			const width = core.layout.extentX();
 			const moved = width > 0 ? Math.max(0, Math.min(1, g.dx / width)) : 0;
-			entry.progress.setValue(1 - moved);
+			own.progress.setValue(1 - moved);
 		},
 		onPanResponderRelease: (e: NeonEvent, g: PanResponderGestureState): void => {
 			const width = core.layout.extentX();
@@ -225,12 +231,16 @@ function contained<P>(list: Navigation<P>[], entry: Navigation<P>): boolean {
 	return false;
 }
 
-export function screenView<P>(core: NavigatorCore<P>, entry: Navigation<P>): NeonNode {
+export function screenView<P>(
+	core: NavigatorCore<P>,
+	motion: NavigatorMotion<P>,
+	entry: Navigation<P>,
+): NeonNode {
 	const scope = screenScope<P>(core, entry);
 	const key = entry.route.key;
 	const options = accessor((): ScreenOptions => entry.options());
 	const position = accessor((): int32 => {
-		const list = core.isStack() ? core.rendered() : core.entries();
+		const list = core.isStack() ? motion.rendered() : core.entries();
 		for (let i = 0; i < list.length; i += 1) {
 			if (list[i].route.key === key) { return i as int32; }
 		}
@@ -239,13 +249,13 @@ export function screenView<P>(core: NavigatorCore<P>, entry: Navigation<P>): Neo
 	const transparent = accessor((): boolean => core.isStack() && core.transparent(entry));
 	const visible = accessor((): boolean => {
 		if (!core.isStack()) { return core.currentKey() === key; }
-		if (core.isClosing(entry)) { return true; }
+		if (motion.isClosing(entry)) { return true; }
 		const list = core.entries();
 		const at = position();
 		if (at < 0 || at >= list.length) { return false; }
 		if (at >= core.visibleFrom()) { return true; }
 		const top = list.length - 1;
-		return at === top - 1 && list[top].motion();
+		return at === top - 1 && motion.of(list[top]).moving.get();
 	});
 	const frame = accessor((): Style => {
 		const base: Style = {
@@ -258,9 +268,9 @@ export function screenView<P>(core: NavigatorCore<P>, entry: Navigation<P>): Neo
 			display: visible() ? "flex" : "none",
 			backgroundColor: transparent() ? null : core.container.theme().colors.background,
 		};
-		const p = entry.progress.get();
+		const p = motion.of(entry).progress.get();
 		if (p >= 1) { return base; }
-		const kind = core.animationOf(entry);
+		const kind = motion.animationOf(entry);
 		if (kind === "fade") { return { ...base, opacity: p }; }
 		if (kind === "slide_from_bottom") {
 			return { ...base, transform: `translateY(${(1 - p) * core.layout.extentY()}px)` };
@@ -281,13 +291,13 @@ export function screenView<P>(core: NavigatorCore<P>, entry: Navigation<P>): Neo
 		if (at <= 0) { return "Back"; }
 		const own = options().headerBackTitle;
 		if (own !== null) { return own as string; }
-		return titleOf<P>(core.rendered()[at - 1]);
+		return titleOf<P>(motion.rendered()[at - 1]);
 	});
 	const menu = accessor((): boolean => core.kind === NavigatorKind.Drawer);
 	const title = accessor((): string => titleOf<P>(entry));
 	const swipeBack = accessor((): boolean => {
-		if (!core.isStack() || position() <= 0 || core.isClosing(entry)) { return false; }
-		if (core.animationOf(entry) !== "slide_from_right") { return false; }
+		if (!core.isStack() || position() <= 0 || motion.isClosing(entry)) { return false; }
+		if (motion.animationOf(entry) !== "slide_from_right") { return false; }
 		return shown(options().gestureEnabled, Platform.OS === "ios");
 	});
 	const edge = accessor((): Style => ({
@@ -297,7 +307,7 @@ export function screenView<P>(core: NavigatorCore<P>, entry: Navigation<P>): Neo
 		bottom: 0,
 		width: EDGE_WIDTH,
 	}));
-	const handlers = backGesture<P>(core, entry);
+	const handlers = backGesture<P>(core, motion, entry);
 	const props: ScreenProps<P> = { navigation: entry, route: entry.route };
 	const body = createComponent(entry.config.component, props);
 	const goBack = (): void => { entry.goBack(); };

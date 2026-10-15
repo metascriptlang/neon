@@ -34,7 +34,6 @@ export {
 	useIsFocused,
 	useFocusEffect,
 	useNavigationState,
-	STACK_DURATION,
 	StackAnimation,
 	StackPresentation,
 	HeaderTitleAlign,
@@ -54,6 +53,12 @@ export {
 	targetFromPath,
 	targetFromURL,
 } from "./linking";
+export {
+	STACK_DURATION,
+	ScreenMotion,
+	NavigatorMotion,
+	createNavigatorMotion,
+} from "./navigatorMotion";
 export { Header, HeaderBackButton, DrawerToggleButton } from "./header";
 export { Link } from "./link";
 export {

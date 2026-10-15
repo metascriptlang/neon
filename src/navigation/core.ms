@@ -4,7 +4,6 @@ import { createRoot } from "../core/owner";
 import { onCleanup } from "../core/cleanup";
 import { NeonNode } from "../render/hostTypes";
 import { Style } from "../render/style";
-import { Animated, AnimatedValue, EndResult, Easing } from "../animation/index";
 import { StackLayout } from "./layout";
 import { createContext, useContext } from "../render/context";
 import { refreshKeep } from "../render/refresh";
@@ -338,15 +337,6 @@ export function noAction(): void {}
 
 export type Unsubscribe = () => void;
 
-export const STACK_DURATION = 350;
-
-function contains<T>(list: T[], item: T): boolean {
-	for (const candidate of list) {
-		if (candidate === item) { return true; }
-	}
-	return false;
-}
-
 interface ChildEntry {
 	routeKey: string;
 	link: NavigatorLink;
@@ -384,9 +374,6 @@ export class Navigation<P> {
 	writeOverrides: Setter<ScreenOptions>;
 	visited: Accessor<boolean>;
 	markVisited: Setter<boolean>;
-	progress: AnimatedValue = new AnimatedValue(1);
-	motion: Accessor<boolean>;
-	writeMotion: Setter<boolean>;
 
 	constructor(
 		core: NavigatorCore<P>,
@@ -407,8 +394,6 @@ export class Navigation<P> {
 		this.writeOverrides = writeOverrides;
 		this.visited = visited;
 		this.markVisited = markVisited;
-		this.motion = visited;
-		this.writeMotion = markVisited;
 	}
 
 	goBack(): void {
@@ -664,8 +649,7 @@ export class NavigatorCore<P> {
 	listeners: StateListener[] = [];
 	nextKey: int32 = 1;
 	nextListener: int32 = 1;
-	closing: Accessor<Navigation<P>[]>;
-	writeClosing: Setter<Navigation<P>[]>;
+	screenEpoch: int32 = 0;
 	layout: StackLayout = new StackLayout();
 
 	constructor(
@@ -675,8 +659,6 @@ export class NavigatorCore<P> {
 		writeIndex: Setter<int32>,
 		drawerOpen: Accessor<boolean>,
 		writeDrawerOpen: Setter<boolean>,
-		closing: Accessor<Navigation<P>[]>,
-		writeClosing: Setter<Navigation<P>[]>,
 		screenOptions: Accessor<ScreenOptions>,
 		backBehavior: string,
 		initialName: string,
@@ -695,8 +677,6 @@ export class NavigatorCore<P> {
 		this.writeIndex = writeIndex;
 		this.drawerOpen = drawerOpen;
 		this.writeDrawerOpen = writeDrawerOpen;
-		this.closing = closing;
-		this.writeClosing = writeClosing;
 		this.screenOptions = screenOptions;
 		this.backBehavior = backBehavior;
 		this.initialName = initialName;
@@ -746,7 +726,7 @@ export class NavigatorCore<P> {
 				entry.config = config as ScreenConfig<P>;
 				entry.revision.set(entry.revision.peek() + 1);
 				kept.push(entry);
-			} else { entry.progress.stopAnimation(); }
+			}
 		}
 		let list: RouteSeed<P>[] = [];
 		for (const entry of kept) { list.push(this.seedOf(entry)); }
@@ -780,11 +760,8 @@ export class NavigatorCore<P> {
 		}
 		if (history.length === 0) { history.push(list[at].key); }
 		this.history = history;
-		for (const entry of untrack((): Navigation<P>[] => this.closing())) { entry.progress.stopAnimation(); }
-		batch((): void => {
-			this.writeClosing([]);
-			this.place(list, at);
-		});
+		this.screenEpoch += 1;
+		batch((): void => { this.place(list, at); });
 		this.notify();
 		this.container.changed();
 	}
@@ -852,7 +829,6 @@ export class NavigatorCore<P> {
 		const empty: ScreenOptions = {};
 		const [overrides, writeOverrides] = createSignal<ScreenOptions>(empty);
 		const [visited, markVisited] = createSignal<boolean>(false);
-		const [motion, writeMotion] = createSignal<boolean>(false);
 		const route = new Route<P>(seed.key, name, read);
 		const entry = new Navigation<P>(
 			this,
@@ -864,8 +840,6 @@ export class NavigatorCore<P> {
 			visited,
 			markVisited,
 		);
-		entry.motion = motion;
-		entry.writeMotion = writeMotion;
 		return entry;
 	}
 
@@ -885,93 +859,6 @@ export class NavigatorCore<P> {
 		this.commit(list, at);
 	}
 
-	rendered(): Navigation<P>[] {
-		const list = this.entries();
-		const leaving = this.closing();
-		if (leaving.length === 0) { return list; }
-		const all = list.slice(0, list.length);
-		for (const entry of leaving) {
-			if (!contains(all, entry)) { all.push(entry); }
-		}
-		return all;
-	}
-
-	isClosing(entry: Navigation<P>): boolean {
-		return contains(this.closing(), entry);
-	}
-
-	animationOf(entry: Navigation<P>): StackAnimation {
-		const options = entry.options();
-		const own = options.animation;
-		if (own !== null && own !== "default") { return own as StackAnimation; }
-		if (!this.isStack()) { return "none"; }
-		const presentation = options.presentation;
-		if (presentation !== null && presentation === "modal") { return "slide_from_bottom"; }
-		if (presentation !== null && presentation === "transparentModal") { return "fade"; }
-		return "slide_from_right";
-	}
-
-	durationOf(entry: Navigation<P>): number {
-		const own = entry.options().animationDuration;
-		return own === null ? STACK_DURATION : own as number;
-	}
-
-	animateIn(entry: Navigation<P>): void {
-		const kind = untrack((): StackAnimation => this.animationOf(entry));
-		if (kind === "none") {
-			entry.progress.setValue(1);
-			return;
-		}
-		entry.progress.setValue(0);
-		entry.writeMotion(true);
-		const duration = untrack((): number => this.durationOf(entry));
-		Animated.timing(entry.progress, { toValue: 1, duration, easing: Easing.out(Easing.cubic) })
-			.start((result: EndResult): void => {
-				if (result.finished) { entry.writeMotion(false); }
-			});
-	}
-
-	settleIn(entry: Navigation<P>): void {
-		const duration = untrack((): number => this.durationOf(entry));
-		Animated.timing(entry.progress, { toValue: 1, duration, easing: Easing.out(Easing.cubic) })
-			.start((result: EndResult): void => {
-				if (result.finished) { entry.writeMotion(false); }
-			});
-	}
-
-	animateOut(entry: Navigation<P>): void {
-		const kind = untrack((): StackAnimation => this.animationOf(entry));
-		if (kind === "none") { return; }
-		const leaving = untrack((): Navigation<P>[] => this.closing());
-		const next = leaving.slice(0, leaving.length);
-		next.push(entry);
-		this.writeClosing(next);
-		entry.writeMotion(true);
-		const duration = untrack((): number => this.durationOf(entry));
-		Animated.timing(entry.progress, { toValue: 0, duration, easing: Easing.in(Easing.cubic) })
-			.start((result: EndResult): void => {
-				const now = untrack((): Navigation<P>[] => this.closing());
-				const kept: Navigation<P>[] = [];
-				for (const other of now) {
-					if (other !== entry) { kept.push(other); }
-				}
-				this.writeClosing(kept);
-				entry.writeMotion(false);
-			});
-	}
-
-	transition(before: Navigation<P>[], list: Navigation<P>[]): void {
-		if (!this.isStack() || before.length === 0 || list.length === 0) { return; }
-		const previous = before[before.length - 1];
-		const top = list[list.length - 1];
-		if (previous === top) { return; }
-		if (!contains(list, previous) && contains(before, top)) {
-			this.animateOut(previous);
-			return;
-		}
-		if (!contains(before, top)) { this.animateIn(top); }
-	}
-
 	place(list: RouteSeed<P>[], at: int32): void {
 		const state: ChildState<RouteSeed<P>>[] = [];
 		for (let i = 0; i < list.length; i += 1) {
@@ -983,15 +870,7 @@ export class NavigatorCore<P> {
 	}
 
 	commit(list: RouteSeed<P>[], at: int32): void {
-		const before = this.snapshot();
-		const focusedBefore = this.current();
 		batch((): void => { this.place(list, at); });
-		const after = this.snapshot();
-		if (this.isStack()) {
-			this.transition(before, after);
-		} else if (focusedBefore !== after[at]) {
-			this.animateIn(after[at]);
-		}
 		this.notify();
 		this.container.changed();
 	}
@@ -1481,8 +1360,6 @@ export function createCore<P>(setup: NavigatorSetup<P>): NavigatorCore<P> {
 	}
 	const [index, writeIndex] = createSignal<int32>(0);
 	const [drawerOpen, writeDrawerOpen] = createSignal<boolean>(false);
-	const none: Navigation<P>[] = [];
-	const [closing, writeClosing] = createSignal<Navigation<P>[]>(none);
 	const core = new NavigatorCore<P>(
 		setup.kind,
 		setup.screens,
@@ -1490,8 +1367,6 @@ export function createCore<P>(setup: NavigatorSetup<P>): NavigatorCore<P> {
 		writeIndex,
 		drawerOpen,
 		writeDrawerOpen,
-		closing,
-		writeClosing,
 		setup.screenOptions,
 		setup.backBehavior,
 		initial,
