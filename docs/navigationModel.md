@@ -87,14 +87,22 @@ component or `src/render`.
   no pattern groups its children without adding a segment (TanStack pathless `id`,
   Expo `(group)`). A typed route closes over its codec and exposes an untyped node to
   the tree, as `bindRoute` does, so one tree holds routes of different param types.
-- Matching ports Solid `createMatcher`, `scoreRoute` and `expandOptionals`.
+- Matching ports Solid `createMatcher`, `scoreRoute` and `expandOptionals`
+  (`src/navigation/routeMatcher.ms`); `createRouteTree` in `src/navigation/route.ms`
+  breaks a score tie by Next's segment order (static before param before splat, then
+  shorter) and then by declaration. Param values are decoded, as Next does; Solid
+  leaves them encoded.
 - A codec that fails to decode makes its route not match, and ranking continues
   (Solid `matchFilters`), so `/users/:id` with an integer codec and `/users/:slug`
   coexist.
-- Building a tree throws, naming both routes, for two routes of the same shape, param
-  names that differ only by symbols, a splat that is not last, or a required and an
-  optional splat at one level (Next `validate-app-paths.ts`). These are author errors
-  at the declaration, not runtime input.
+- Building a tree throws, naming both routes, for a route that can never match, param
+  names that differ only by symbols or repeat down one chain, and a splat that is not
+  last (Next `validate-app-paths.ts`). Next refuses two routes of one shape because
+  they "cannot be distinguished from each other when matching URLs"; with codecs they
+  can, so the error fires when every level of the earlier-ranked route accepts any
+  value, and two splats at one level are that case. A Solid splat `*name` also matches
+  no segment, so Next's required and optional splats are one kind here. These are
+  author errors at the declaration, not runtime input.
 - A guard runs before a match commits, on the server as on the client (TanStack
   `beforeLoad` timing). It returns a decision (continue, redirect, not found) instead
   of throwing, as the rest of Neon routing returns `Result`; a request history turns
