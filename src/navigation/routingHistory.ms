@@ -11,6 +11,7 @@ export struct RoutingHistoryEntry {
 export interface RoutingHistory {
 	writable: boolean;
 	read: () => RoutingHistoryEntry;
+	index: () => int32;
 	push: (entry: RoutingHistoryEntry) => void;
 	replace: (entry: RoutingHistoryEntry) => void;
 	go: (delta: int32) => boolean;
@@ -33,6 +34,7 @@ export function createMemoryRoutingHistory(initial: RoutingHistoryEntry): Routin
 	return {
 		writable: true,
 		read,
+		index: (): int32 => index,
 		push: (entry: RoutingHistoryEntry): void => {
 			entries = entries.slice(0, index + 1);
 			entries.push({ url: entry.url, state: entry.state });
@@ -72,6 +74,7 @@ export function createRequestRoutingHistory(url: string): RoutingHistory {
 	return {
 		writable: false,
 		read: (): RoutingHistoryEntry => ({ url, state: "" }),
+		index: (): int32 => 0,
 		push: (entry: RoutingHistoryEntry): void => refuse(),
 		replace: (entry: RoutingHistoryEntry): void => refuse(),
 		go: (delta: int32): boolean => { refuse(); return false; },
@@ -95,6 +98,8 @@ export class RoutingSession {
 	private unsubscribe: Dispose;
 	private disposed: boolean = false;
 	private previous: RoutingHistoryEntry;
+	private position: int32;
+	private landing: (() => void) | null = null;
 
 	constructor(
 		registry: RoutingRegistry,
@@ -104,14 +109,28 @@ export class RoutingSession {
 		this.registry = registry;
 		this.history = history;
 		this.previous = history.read();
+		this.position = history.index();
 		this.unsubscribe = history.listen((entry: RoutingHistoryEntry): void => {
+			const landing = this.landing;
+			if (landing !== null) {
+				this.landing = null;
+				this.previous = entry;
+				this.position = this.history.index();
+				landing();
+				return;
+			}
 			const restored = restoreEntry(this.registry, entry);
 			if (!restored.ok) {
+				if (restored.error === RoutingError.Refused &&
+					this.go(this.position - this.history.index(), (): void => {})) {
+					return;
+				}
 				if (this.history.writable) { this.history.replace(this.previous); }
 				onError(restored.error);
 				return;
 			}
 			this.previous = entry;
+			this.position = this.history.index();
 			const landed = this.registry.address();
 			if (this.history.writable && landed.ok && landed.value !== entry.url) { this.sync(true); }
 		});
@@ -141,7 +160,20 @@ export class RoutingSession {
 		if (replace) { this.history.replace(entry); }
 		else { this.history.push(entry); }
 		this.previous = entry;
+		this.position = this.history.index();
 		return Result.ok(null);
+	}
+
+	index(): int32 {
+		return this.history.index();
+	}
+
+	go(delta: int32, landed: () => void): boolean {
+		this.checkWritable();
+		this.landing = landed;
+		if (this.history.go(delta)) { return true; }
+		this.landing = null;
+		return false;
 	}
 
 	dispose(): void {

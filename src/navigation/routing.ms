@@ -9,6 +9,7 @@ export enum RoutingError {
 	UnknownScope,
 	AmbiguousRoute,
 	IncompleteSnapshot,
+	Refused,
 }
 
 export interface RouteCodec<P> {
