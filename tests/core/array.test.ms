@@ -1234,7 +1234,7 @@ test "notready-safety.test.ts:446 keyed by a function: two failing rows in one p
 test "map.ts:118 identity mode: removed rows are disposed after the pass's new rows are built" { removedRowsOutliveTheNewOnes(0); }
 test "map.ts:118 keyed by a function: removed rows are disposed after the pass's new rows are built" { removedRowsOutliveTheNewOnes(1); }
 
-test "notready-safety.test.ts:250 position mode: an aborted grow leaves every row and cell as before" {
+test "notready-safety.test.ts:250 position mode: an aborted grow keeps every row and the engine list, the kept cells carry the scan's write" {
 	createRoot((d) => {
 		const led = new Ledger();
 		const fault = new Fault();
@@ -1251,10 +1251,11 @@ test "notready-safety.test.ts:250 position mode: an aborted grow leaves every ro
 		fault.bad = [99];
 		setSrc([11, 21, 99]);
 		assert failure(m).includes("row 99"), "the new position's error reaches the caller";
-		assert slots[0]() === 10 && slots[1]() === 20, "an aborted pass leaves the cells of the rows it kept: " + slots[0]().toString() + "," + slots[1]().toString();
+		assert slots[0]() === 11 && slots[1]() === 21, "map.ts:437 the scan wrote the kept cells before row 2 failed, the abort does not take it back: " + slots[0]().toString() + "," + slots[1]().toString();
 		assert led.live(0) === 1 && led.live(1) === 1 && led.made(2) === 1 && led.live(2) === 0, "row owners as before, the aborted row disposed";
 		setSrc([10, 20]);
 		assert m() === before, "the engine still holds the list from before the aborted pass";
+		assert slots[0]() === 10 && slots[1]() === 20, "the pass that restores the list writes the kept cells back";
 		setSrc([11, 21, 99]);
 		fault.bad = [];
 		assert m().join(",") === "0,1,2", "the retry grows the list";
@@ -1265,7 +1266,7 @@ test "notready-safety.test.ts:250 position mode: an aborted grow leaves every ro
 	});
 }
 
-test "notready-safety.test.ts:250 keyed by a function: an aborted pass leaves the item cells of the rows it kept" {
+test "notready-safety.test.ts:250 keyed by a function: the scan wrote the kept keys' cells when the new key aborts the pass" {
 	createRoot((d) => {
 		const led = new Ledger();
 		const slots: Accessor<number>[] = [];
@@ -1282,10 +1283,10 @@ test "notready-safety.test.ts:250 keyed by a function: an aborted pass leaves th
 		fault.bad = [99];
 		setSrc([12, 23, 99]);
 		assert failure(m).includes("row 99"), "the new key's error reaches the caller";
-		assert slots[0]() === 11 && slots[1]() === 22, "kept keys still show their item from before the pass: " + slots[0]().toString() + "," + slots[1]().toString();
+		assert slots[0]() === 12 && slots[1]() === 23, "map.ts:437 kept keys show their new item although the pass aborted: " + slots[0]().toString() + "," + slots[1]().toString();
 		fault.bad = [];
-		m();
-		assert slots[0]() === 12 && slots[1]() === 23, "the retry writes the new items";
+		assert m().join(",") === "11,22,99", "the retry keeps both built rows and builds only key 9";
+		assert slots[0]() === 12 && slots[1]() === 23, "the cells keep the new items";
 		d();
 	});
 }
