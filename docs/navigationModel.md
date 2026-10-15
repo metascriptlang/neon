@@ -317,15 +317,30 @@ same JS-driven frames.
   children, keeps a leaving screen rendered until its exit ends
   (`AbstractStackAnimation.kt`), and snaps when the screen set changes. A host that
   wants platform transitions renders the same children its own way.
-- `NavigationContainer` joins a registry through `routing={{ registry, scope }}`:
-  its `linking.config` is the participant's codec (`targetFromPath` opens an
-  address, `pathFromState` reports one), and its snapshot holds the root state's
-  route names and string params. It registers when its node is built and, until it
-  mounts, reports the address it was asked to open, so an app builds its tree, opens
-  the routing session, then mounts or hydrates. Until the container's navigators
-  publish `WebNavigation` to `createWebHistory`, a navigation made in the app changes
-  the model first and the app records it with `session.sync`, as a custom composition
-  does.
+- `NavigationContainer` joins a registry through `routing={{ registry, scope }}` with
+  the participant of `createWebHistory` (`containerHistory.ms`). It registers when its
+  node is built and, until it mounts, reports the address it was asked to open, so an
+  app builds its tree, opens the routing session, then mounts or hydrates. After
+  mount, `ref.enableHistory(session)` turns the mirror on, as a Decompose app calls
+  `enableWebHistory`; turning it on by itself would need the session to announce that
+  it opened, a new mechanism. Each navigator publishes its routes as `WebNavigation`,
+  keyed by route key, name and string params, with path parts from the screens'
+  `linking` paths; a cold open or an entry without state resolves through
+  `targetFromPath`. Where it leaves Decompose and Expo, and why:
+  - A traversal into a navigator that has not mounted yet holds the stored keys and
+    seeds it with them when it mounts, as React Navigation restores a saved state;
+    Decompose has no mount gap. A navigator inside a closing screen is skipped, since
+    the exit animation keeps it registered.
+  - Neon reuses a route by key, so a traversal writes params into a live route that
+    keeps its key; Decompose configurations are immutable.
+  - `setParams` changes the key and so rewrites, where Expo replaces the entry.
+  - A tab switch replaces the entry; opening the drawer adds none and a traversal
+    closes it, where Expo adds one. Browser back does not consult `beforeRemove`.
+  - With routing on, a nested screen whose linking path is `exact` is refused: each
+    level's part joins its parent's.
+  - An undecodable stored key throws when applied, and a malformed state reports
+    `IncompleteSnapshot`; neither falls back to the address yet (Decompose checks a
+    schema version and recreates, `WebHistoryNavigation.kt:34-43`).
 - Typed route bindings close over their decoder and typed model setter rather
   than exposing an untyped global params getter. Legacy navigators retain one
   `P`; heterogeneous ParamList compatibility is not claimed.
