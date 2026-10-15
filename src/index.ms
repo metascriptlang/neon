@@ -3,7 +3,7 @@
 
 export { Signal, createSignal, untrack, accessor, valueOf, Accessor, Setter } from "./core/signal";
 export { createEffect, createRenderEffect, onSettled, EffectOptions, EffectBundle } from "./core/effect";
-export { createMemo, createAsyncMemo, refresh } from "./core/memo";
+export { createMemo, refresh } from "./core/memo";
 export { createRoot, runWithOwner, createUniqueId } from "./core/owner";
 export { getOwner, flush, isPending, latest, resetErrorHalt } from "./core/runtime";
 export { onCleanup } from "./core/cleanup";

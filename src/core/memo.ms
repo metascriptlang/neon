@@ -132,7 +132,7 @@ export function createMemo<T>(compute: (prev: T | null) => T, options?: MemoOpti
 	return buildMemo<T, T>(compute, (self: Computation, result: T, land: (self: Computation, value: T) => void): T => result, options);
 }
 
-// Parked on ~/metascript/.inbox/compiler/2026-10-16-overloads-differing-only-in-a-function-parameters-return-type-pick-the-first.md: Solid 2.0 has one `createMemo` for both computes.
+// Parked on ~/metascript/.inbox/compiler/2026-10-16-function-returning-one-member-is-refused-where-a-function-returning-the-union-is-expected.md and its two siblings: Solid 2.0 has one `createMemo` whose compute returns `Promise<T> | T`; this engine entry is not exported and merges into it.
 export function createAsyncMemo<T>(compute: (prev: T | null) => Promise<T>, options?: MemoOptions<T>): Accessor<T> {
 	return buildMemo<T, Promise<T>>(compute, (self: Computation, result: Promise<T>, land: (self: Computation, value: T) => void): T => awaitResult<T>(self, result, land), options);
 }
