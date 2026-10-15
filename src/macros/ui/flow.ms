@@ -109,7 +109,7 @@ export function Show(props: {
 	fallback?: NeonNode | null;
 }): NeonNode {
 	return regionNode((h) => {
-		const cond = createMemo(() => props.when(), (a, b) => a === b);
+		const cond = createMemo<boolean>(() => props.when());
 		return createMemo<Row[]>(() => {
 			if (cond()) { return [makeRow(props.children)]; }
 			const fb = props.fallback;
