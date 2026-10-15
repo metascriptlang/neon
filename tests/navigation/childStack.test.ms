@@ -72,7 +72,7 @@ test "push and pop move the active child to the top and dispose the popped owner
 	assert names(stack) === "list;detail;edit*;", names(stack);
 	assert stack.backStack().length === 2;
 	assert !list.active(), "a covered child is inactive";
-	stack.pop();
+	assert stack.pop();
 	assert names(stack) === "list;detail*;", names(stack);
 	assert disposed === "edit;", disposed;
 	assert stack.items()[0].instance === list, "a kept child keeps its instance";
@@ -84,12 +84,14 @@ test "push and pop move the active child to the top and dispose the popped owner
 test "popTo keeps the children up to an index and disposes the rest" {
 	const stack = makeStack(["a", "b", "c", "d"]);
 	const b = stack.items()[1].instance;
-	stack.popTo(1);
+	assert stack.popTo(1);
 	assert names(stack) === "a;b*;", names(stack);
 	assert disposedAll(["c", "d"]), disposed;
 	assert stack.active().instance === b && b.active(), "b is the kept active child";
-	stack.popTo(1);
+	assert !stack.popTo(1), "popTo the top reports that nothing was popped";
 	assert names(stack) === "a;b*;", "popTo the top changes nothing: " + names(stack);
+	assert !stack.popTo(5), "popTo past the top reports that nothing was popped";
+	assert names(stack) === "a;b*;", names(stack);
 	stack.dispose();
 }
 
@@ -131,14 +133,11 @@ test "navigate applies a transformer to the configurations and updates kept chil
 	stack.dispose();
 }
 
-test "a stack fails loudly when it would be empty, pop has no back stack or popTo is out of range" {
+test "a stack fails loudly when it would be empty or popTo gets a negative index" {
 	const stack = makeStack(["only"]);
-	const pop = failure((): void => { stack.pop(); });
-	assert pop === "child stack: pop needs a back stack, the stack has one item", pop;
-	const above = failure((): void => { stack.popTo(1); });
-	assert above === "child stack: popTo index 1 is outside a stack of 1", above;
+	assert !stack.pop(), "pop without a back stack reports that nothing was popped";
 	const below = failure((): void => { stack.popTo(-1); });
-	assert below === "child stack: popTo index -1 is outside a stack of 1", below;
+	assert below === "child stack: popTo index must not be negative, got -1", below;
 	const empty = failure((): void => {
 		stack.navigate((configurations: Screen[]): Screen[] => []);
 	});

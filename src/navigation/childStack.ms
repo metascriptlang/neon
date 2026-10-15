@@ -52,25 +52,19 @@ export class ChildStack<C, T> {
 		});
 	}
 
-	pop(): void {
-		this.navigate((stack: C[]): C[] => {
-			if (stack.length < 2) {
-				throw new Error("child stack: pop needs a back stack, the stack has one item");
-			}
-			return stack.slice(0, stack.length - 1);
-		});
+	pop(): boolean {
+		if (this.configurations().length < 2) { return false; }
+		this.navigate((stack: C[]): C[] => stack.slice(0, stack.length - 1));
+		return true;
 	}
 
-	popTo(index: int32): void {
-		this.navigate((stack: C[]): C[] => {
-			if (index < 0 || index >= stack.length) {
-				throw new Error(
-					"child stack: popTo index " + index.toString() +
-					" is outside a stack of " + stack.length.toString(),
-				);
-			}
-			return stack.slice(0, index + 1);
-		});
+	popTo(index: int32): boolean {
+		if (index < 0) {
+			throw new Error("child stack: popTo index must not be negative, got " + index.toString());
+		}
+		if (index >= this.configurations().length - 1) { return false; }
+		this.navigate((stack: C[]): C[] => stack.slice(0, index + 1));
+		return true;
 	}
 
 	replaceCurrent(configuration: C): void {
