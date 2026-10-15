@@ -1,4 +1,5 @@
-import { Accessor, Signal, accessor, createSignal, batch, untrack } from "../core/signal";
+import { Accessor, Signal, accessor, createSignal, untrack } from "../core/signal";
+import { flush } from "../core/runtime";
 import { createRenderEffect } from "../core/effect";
 import { Cleanup } from "../core/types";
 import { onCleanup } from "../core/cleanup";
@@ -808,7 +809,7 @@ export function listEngine<T, D>(props: {
 		const mask = renderMask(n);
 		if (cellsAroundViewport.first === previous.first && cellsAroundViewport.last === previous.last && renderedMask !== null && mask.equals(renderedMask as CellRenderMask)) { return false; }
 		renderedMask = mask;
-		batch((): void => { setCells(buildCells(mask)); });
+		flush((): void => { setCells(buildCells(mask)); });
 		return true;
 	};
 
@@ -911,7 +912,7 @@ export function listEngine<T, D>(props: {
 			const first = seenCount < 0;
 			seenCount = n;
 			renderedMask = renderMask(n);
-			batch((): void => { setCells(buildCells(renderedMask as CellRenderMask)); });
+			flush((): void => { setCells(buildCells(renderedMask as CellRenderMask)); });
 			if (!first) {
 				for (const tuple of viewables) { tuple.helper.resetViewableIndices(); }
 				scheduleCellsToRenderUpdate(true);
@@ -936,7 +937,7 @@ export function listEngine<T, D>(props: {
 		visibleLength = isHorizontal() ? e.width : e.height;
 		if (sticky !== null) {
 			const state = sticky as StickyState;
-			batch((): void => { state.offset.set(offset); state.viewport.set(visibleLength); });
+			flush((): void => { state.offset.set(offset); state.viewport.set(visibleLength); });
 		}
 		metrics.notifyListContentLayout(orientation(), e.contentWidth, e.contentHeight);
 		maybeCallOnEdgeReached(cellCount());

@@ -1,4 +1,4 @@
-import { batch } from "../core/signal";
+import { flush } from "../core/runtime";
 
 export interface FrameDriver {
 	now: () => number;
@@ -67,7 +67,7 @@ function runFrame(): void {
 	const time = currentDriver().now();
 	const due = pending;
 	pending = [];
-	batch((): void => {
+	flush((): void => {
 		for (const request of due) {
 			if (request.live) { request.callback(time); }
 		}
