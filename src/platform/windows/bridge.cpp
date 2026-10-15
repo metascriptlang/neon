@@ -644,6 +644,11 @@ void niSetProp(void *view, const char *name, const char *value) {
 		queueLabel(as(view));
 		return;
 	}
+	if (as(view)->label && !strcmp(name, "fontFamily")) {
+		as(view)->label->SetFamily(value);
+		queueLabel(as(view));
+		return;
+	}
 	if (as(view)->label && !strcmp(name, "textAlign")) {
 		as(view)->label->SetAlignment(value);
 		queueLabel(as(view));

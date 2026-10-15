@@ -30,6 +30,7 @@ public:
 	void SetRuns(const char *encoded);
 	void SetColor(Color color);
 	void SetFont(float size, bool bold);
+	void SetFamily(const char *utf8);
 	void SetAlignment(const char *value);
 	void Invalidate() { paintDirty = true; }
 	void Measure(float maxWidth, float scale, float *width, float *height);
@@ -47,6 +48,7 @@ private:
 	Color color = {0, 0, 0, 1};
 	float size = 17;
 	bool bold = false;
+	std::wstring family = L"Segoe UI";
 	int alignment = 0;
 	bool layoutStale = true;
 	bool paintDirty = true;

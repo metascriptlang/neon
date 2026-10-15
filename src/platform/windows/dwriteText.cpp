@@ -140,6 +140,21 @@ void TextLabel::SetFont(float s, bool b) {
 	layoutStale = true;
 }
 
+void TextLabel::SetFamily(const char *utf8) {
+	std::wstring next = utf8[0] ? widen(utf8, strlen(utf8), "fontFamily is") : std::wstring(L"Segoe UI");
+	if (next == family) return;
+	if (utf8[0]) {
+		ComPtr<IDWriteFontCollection> fonts;
+		must(factory()->GetSystemFontCollection(&fonts), "GetSystemFontCollection");
+		UINT32 index = 0;
+		BOOL exists = FALSE;
+		must(fonts->FindFamilyName(next.c_str(), &index, &exists), "FindFamilyName");
+		if (!exists) refuse("fontFamily names no font family installed on this system:", utf8);
+	}
+	family = next;
+	layoutStale = true;
+}
+
 void TextLabel::SetAlignment(const char *value) {
 	int next;
 	if (!strcmp(value, "auto") || !strcmp(value, "left")) next = DWRITE_TEXT_ALIGNMENT_LEADING;
@@ -155,7 +170,7 @@ void TextLabel::SetAlignment(const char *value) {
 IDWriteTextLayout *TextLabel::Layout(float width, float height) {
 	if (layoutStale || !layout) {
 		ComPtr<IDWriteTextFormat> format;
-		must(factory()->CreateTextFormat(L"Segoe UI", nullptr, bold ? DWRITE_FONT_WEIGHT_BOLD : DWRITE_FONT_WEIGHT_NORMAL,
+		must(factory()->CreateTextFormat(family.c_str(), nullptr, bold ? DWRITE_FONT_WEIGHT_BOLD : DWRITE_FONT_WEIGHT_NORMAL,
 			DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL, size, L"", &format), "CreateTextFormat");
 		layout.Reset();
 		must(factory()->CreateTextLayout(text.c_str(), (UINT32)text.size(), format.Get(), width, height, &layout), "CreateTextLayout");
