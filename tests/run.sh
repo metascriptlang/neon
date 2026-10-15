@@ -3,6 +3,7 @@
 # browser lane in real Chrome, then the edge lane in workerd.
 # js-lane skips: tests/style/style.test.ms, tests/platform/void.test.ms and
 # tests/platform/voidInput.test.ms import the Void platform host, a C-only sibling repo;
+# tests/platform/ionAudio.test.ms imports Ion's audio device, C-only;
 # tests/platform/native<Name>.test.ms files link the native host against a C mock bridge.
 # tests/browser is bound to a real DOM: it has no C lowering and no `document`
 # under node, so it runs only through tests/browser/run.sh.
@@ -19,7 +20,7 @@ for f in $files; do
 done
 for f in $files; do
 	case "$f" in
-	*style/style.test.ms | *platform/void.test.ms | *platform/voidInput.test.ms | *platform/native[A-Z]*.test.ms)
+	*style/style.test.ms | *platform/void.test.ms | *platform/voidInput.test.ms | *platform/ionAudio.test.ms | *platform/native[A-Z]*.test.ms)
 		echo "== js skip $f"
 		continue
 		;;
@@ -35,6 +36,8 @@ MINGW* | MSYS* | CYGWIN*)
 	"$MSC" build examples/voidDraw.ms --output=out/voidDraw.exe || fail=1
 	echo "== desktop examples/voidInputs.ms"
 	"$MSC" build examples/voidInputs.ms --output=out/voidInputs.exe || fail=1
+	echo "== desktop examples/desktopAudio.ms"
+	"$MSC" build examples/desktopAudio.ms --output=out/desktopAudio.exe || fail=1
 	echo "== desktop examples/windowsNative/app.ms"
 	"$MSC" build examples/windowsNative/app.ms --output=out/windowsNative.exe || fail=1
 	echo "== desktop examples/windowsNative/text.ms"
@@ -46,7 +49,7 @@ MINGW* | MSYS* | CYGWIN*)
 	echo "== desktop examples/windowsNative/ionPress.ms"
 	"$MSC" build examples/windowsNative/ionPress.ms --output=out/windowsIonPress.exe || fail=1
 	;;
-*) echo "== desktop skip examples/voidWindow.ms, examples/voidDraw.ms, examples/voidInputs.ms and examples/windowsNative: Windows-only" ;;
+*) echo "== desktop skip examples/voidWindow.ms, examples/voidDraw.ms, examples/voidInputs.ms, examples/desktopAudio.ms and examples/windowsNative: Windows-only" ;;
 esac
 tests/browser/run.sh || fail=1
 sh tests/edge/run.sh || fail=1
