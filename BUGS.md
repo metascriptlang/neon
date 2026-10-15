@@ -151,8 +151,10 @@ and the invariants that outlived them were moved to the head of the test that pi
   generator runs the manifest with `msc run --target=raiser` beside it, Neon's `build.ms`
   `globalImports` brings in `src/core/runtime.ms`, and Raiser has no `String.fromCharCode`, so even a
   one-line `console.log` under Neon's root stops at type check (msc `26150233`). Blocks building
-  `examples/voidWindow.ms` from an Ion-generated Visual Studio project. Card
-  `~/metascript/.inbox/compiler/2026-10-14-raiser-string-fromcharcode.md`.
+  `examples/voidWindow.ms` from an Ion-generated Visual Studio project, and since `createUniqueId`
+  (`runtime.ms:121`) every device lane: `bash tests/ios/run.sh` stops at step `generate` on msc
+  `a7b08f008` (2026-10-15). Card
+  `~/metascript/.inbox/compiler/2026-10-15-raiser-has-no-string-fromcharcode.md`.
 
 - **PARKED 2026-10-11 — `tests/render/flatList.test.ms` and `tests/components/flutterListsApp.test.ms` do not compile.**
   Not Neon's: an array-destructured local of an arrow passed as a JSX attribute
