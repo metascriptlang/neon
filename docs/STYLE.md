@@ -212,9 +212,37 @@ must leave Yoga frames and scroll content offsets logical; UIKit's transformed v
 bounds size plus centre, preserving `bounds.origin`. Browser `onLayout` likewise reports
 logical coordinates instead of the transformed bounding rectangle.
 
-Native mock geometry and real browser consumers were exercised; rebuilt phone/simulator
-acceptance is blocked by Ion's generator migration recorded in its inbox. Do not substitute
-an old installed phone binary for the changed adapters.
+Native transform/layout contracts are pinned in `tests/platform/nativeHost.test.ms`;
+the measurement consumer below has a rebuilt UIKit fixture. An old installed phone
+binary cannot certify changes to these adapters.
+
+**Layout and window measurements.** Public primitive refs use `ElementHandle`
+(`src/render/measure.ms`); intrinsic lowercase JSX refs stay platform-native.
+The coordinate policy follows RN `ReactCommon/react/renderer/dom/DOM.cpp`
+`measureInWindow` / `measureLayout` at `693e9628e8c18cbb37e587a568e948a55f3180e3`:
+window bounds include scroll and transforms; ancestor layout excludes both.
+`onLayout` remains parent-local layout, not a movement notification. Geometry is
+an unclipped axis-aligned bounding box, not visibility or a pixel readback.
+
+Receiving a ref does not establish layout readiness. Queries are deferred through
+the frame scheduler; unsupported targets and unavailable layout report errors,
+not fabricated zero bounds. An Android frame callback can precede View layout;
+`NotLaidOut` requires a later query, not an inferred offset. Disposal drops queued
+callbacks; it does not retarget stale handles to replacement elements. Native
+window queries read current view geometry, not an animation presentation layer.
+See `tests/render/measure.test.ms`, `tests/components/measurement.test.ms` and
+`tests/platform/nativeMeasurement.test.ms` for lifecycle/error checks.
+
+Browser ancestor layout currently has CSSOM integer precision (`offsetLeft` /
+`offsetWidth`); window bounds retain DOM rectangle fractions. Native layout uses
+Yoga's precision. This is not exact subpixel parity: applications needing it
+require a different, independently proven DOM layout-coordinate strategy.
+Subtracting transformed viewport rectangles is not that strategy: ancestor
+scale doubles the local offset. Border/static-wrapper/scroll/scale controls and
+the rounding ceiling are pinned in `tests/browser/measurement.test.ms`; real
+UIKit conversion is exercised by `tests/ios/measurement/app.ms` and its driver.
+Relative-only rectangle comparisons would cancel a missing window origin, so the
+driver also compares public window coordinates with `XCUIElement.frame`.
 
 **Sticky-list reference boundary.** RN `VirtualizedList.js`
 `_ensureClosestStickyHeader` retains the nearest preceding header outside the
