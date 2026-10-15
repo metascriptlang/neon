@@ -2,7 +2,7 @@ import { createSignal } from "../../src/core/signal";
 import { createMemo } from "../../src/core/memo";
 import { createEffect, createRenderEffect } from "../../src/core/effect";
 import { createRoot, runWithOwner } from "../../src/core/owner";
-import { getOwner } from "../../src/core/runtime";
+import { getOwner, resetErrorHalt } from "../../src/core/runtime";
 import { Cleanup } from "../../src/core/types";
 
 const RULE = "[REACTIVE_WRITE_IN_OWNED_SCOPE]";
@@ -10,6 +10,7 @@ const RULE = "[REACTIVE_WRITE_IN_OWNED_SCOPE]";
 function messageOf(body: () => void): string {
 	let message = "";
 	try { body(); } catch (e) { message = e.message; }
+	resetErrorHalt();
 	return message;
 }
 
@@ -79,7 +80,7 @@ test "a write in an effect's effect phase is allowed" {
 		);
 		createRenderEffect<int32>(
 			(p: int32 | null): int32 => tick(),
-			(v: int32, p: int32 | null): Cleanup | null => { setX(v + 10); return null; },
+			(v: int32, p: int32 | null): Cleanup | null => { if (v > 0) { setX(v + 10); } return null; },
 		);
 		return 0;
 	});

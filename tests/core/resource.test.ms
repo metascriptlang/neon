@@ -70,16 +70,16 @@ test "a stale response never overwrites a newer one" {
 }
 
 test "refetch reloads the same source and mutate writes the value locally" {
-	const [count, setCount] = createSignal<int32>(0);
+	let calls = 0;
 	const [log, setLog] = createSignal("");
 	createRoot((): void => {
 		const [item, actions] = createResource((): int32 => 5, (id: int32): Promise<Result<string, LoadError>> => {
-			setCount(count() + 1);
+			calls += 1;
 			return lookup(id);
 		});
 		setTimeout((): void => { actions.mutate("local"); setLog(item() as string); actions.refetch(); }, 60);
 		setTimeout((): void => { setLog(log() + " " + (item() as string)); }, 150);
 	});
 	await sleepAsync(250);
-	assert log() === "local item 5" && count() === 2, "mutate then refetch: " + log() + " count " + count().toString();
+	assert log() === "local item 5" && calls === 2, "mutate then refetch: " + log() + " calls " + calls.toString();
 }

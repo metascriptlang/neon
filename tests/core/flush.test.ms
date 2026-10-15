@@ -1,7 +1,7 @@
 import { createSignal } from "../../src/core/signal";
 import { createEffect, createRenderEffect } from "../../src/core/effect";
 import { createRoot } from "../../src/core/owner";
-import { flush } from "../../src/core/runtime";
+import { flush, resetErrorHalt } from "../../src/core/runtime";
 import { Dispose, Cleanup } from "../../src/core/types";
 
 test "flush(fn) batches writes into one effect run" {
@@ -131,7 +131,10 @@ test "flush(fn) leaves the scheduler usable after an effect throws" {
 	}
 	assert message === "boom", "got " + message;
 	setC(3);
-	assert seenC === 3, "a later write still drains: " + seenC.toString();
+	assert seenC !== 3, "the halted scheduler drains nothing";
+	resetErrorHalt();
+	setC(4);
+	assert seenC === 4, "a later write drains once the halt is reset: " + seenC.toString();
 }
 
 test "flush(fn) leaves the scheduler usable after fn itself throws" {

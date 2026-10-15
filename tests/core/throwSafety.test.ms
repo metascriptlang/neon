@@ -1,7 +1,7 @@
 import { createSignal, untrack } from "../../src/core/signal";
 import { createEffect } from "../../src/core/effect";
 import { createRoot, runWithOwner } from "../../src/core/owner";
-import { getOwner, flush } from "../../src/core/runtime";
+import { getOwner, flush, resetErrorHalt } from "../../src/core/runtime";
 import { Cleanup } from "../../src/core/types";
 
 test "a throw inside flush(fn) does not freeze later reactivity" {
@@ -14,7 +14,7 @@ test "a throw inside flush(fn) does not freeze later reactivity" {
 	assert runs > before, "a leaked sync depth stops every future drain";
 }
 
-test "a throw inside an effect does not kill the scheduler" {
+test "a throw inside an effect halts the scheduler until it is reset" {
 	const [a, setA] = createSignal(0);
 	const [b, setB] = createSignal(0);
 	createEffect<int32>(
@@ -26,7 +26,10 @@ test "a throw inside an effect does not kill the scheduler" {
 	try { setA(1); } catch (e) { }
 	const before = seen;
 	setB(1);
-	assert seen > before, "a leaked running flag makes runQueue a permanent no-op";
+	assert seen === before, "a halted scheduler runs nothing";
+	resetErrorHalt();
+	setB(2);
+	assert seen > before, "a reset scheduler drains again: a leaked running flag would make runQueue a permanent no-op";
 }
 
 test "a throw inside untrack restores the listener" {

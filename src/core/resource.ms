@@ -26,9 +26,9 @@ async function settleResource<T, E>(request: Promise<Result<T, E>>, done: (resul
 }
 
 export function createResource<S, T, E>(source: () => S, fetcher: (source: S) => Promise<Result<T, E>>): [Accessor<T | null>, ResourceActions<T, E>] {
-	const valueCell = new Signal<T[]>([]);
-	const [failure, setFailure] = createSignal<E | null>(null);
-	const stateCell = new Signal<ResourceState>(ResourceState.Unresolved);
+	const valueCell = new Signal<T[]>([], null, true);
+	const [failure, setFailure] = createSignal<E | null>(null, { ownedWrite: true });
+	const stateCell = new Signal<ResourceState>(ResourceState.Unresolved, null, true);
 	const value = accessor((): T | null => {
 		const held = valueCell.get();
 		return held.length === 0 ? null : held[0];

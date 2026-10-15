@@ -3,6 +3,7 @@ import { createRenderEffect } from "../../src/core/effect";
 import { onCleanup } from "../../src/core/cleanup";
 import { createRoot } from "../../src/core/owner";
 import { catchError } from "../../src/core/error";
+import { resetErrorHalt } from "../../src/core/runtime";
 import { Cleanup } from "../../src/core/types";
 
 test "catchError catches a throw in its own body" {
@@ -64,6 +65,7 @@ test "a throw with no handler still escapes" {
 	let escaped = "";
 	try { setA(1); } catch (e) { escaped = e.message; }
 	assert escaped === "loud", "an unhandled throw is never swallowed: [" + escaped + "]";
+	resetErrorHalt();
 }
 
 test "an effect-phase throw with no handler still escapes" {
@@ -75,6 +77,7 @@ test "an effect-phase throw with no handler still escapes" {
 	let escaped = "";
 	try { setA(1); } catch (e) { escaped = e.message; }
 	assert escaped === "loud apply", "an unhandled throw is never swallowed: [" + escaped + "]";
+	resetErrorHalt();
 }
 
 test "a computation that threw is disposed, not re-run" {

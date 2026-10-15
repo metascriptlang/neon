@@ -1,6 +1,7 @@
 import { createSignal } from "../../src/core/signal";
 import { onSettled } from "../../src/core/effect";
 import { createRoot } from "../../src/core/owner";
+import { resetErrorHalt } from "../../src/core/runtime";
 import { Cleanup } from "../../src/core/types";
 import { mockHost, mockNode, render, hydrate, HostNode, MockNode } from "../../src/render/host";
 import { renderToString } from "../../src/render/ssr";
@@ -71,6 +72,7 @@ test "an onSettled with no owner rejects a returned cleanup" {
 	} catch (e) {
 		message = e.message;
 	}
+	resetErrorHalt();
 	assert message.indexOf("[SETTLED_CLEANUP_UNOWNED]") === 0, "got [" + message + "]";
 	assert cleaned === 0, "the cleanup is never run";
 }
@@ -89,6 +91,7 @@ test "a nested onSettled rejects a returned cleanup even under an owner" {
 	} catch (e) {
 		message = e.message;
 	}
+	resetErrorHalt();
 	assert message.indexOf("[SETTLED_CLEANUP_UNOWNED]") === 0, "got [" + message + "]";
 	assert cleaned === 0, "the cleanup is never run";
 }

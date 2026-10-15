@@ -1,5 +1,5 @@
 import { createSignal } from "../../src/core/signal";
-import { flush } from "../../src/core/runtime";
+import { flush, resetErrorHalt } from "../../src/core/runtime";
 import { createEffect, createRenderEffect, EffectBundle } from "../../src/core/effect";
 import { createRoot } from "../../src/core/owner";
 import { catchError } from "../../src/core/error";
@@ -42,6 +42,7 @@ test "the same unhandled compute throw in a render effect escapes" {
 	let escaped = "";
 	try { setArmed(true); } catch (e) { escaped = e.message; }
 	assert escaped === "boom-render", "a render effect keeps its compute error loud: [" + escaped + "]";
+	resetErrorHalt();
 }
 
 test "a bundle handler receives the thrown Error and no other arm runs" {
@@ -160,7 +161,7 @@ test "an effect-phase throw is not routed to the bundle handler" {
 	assert log.join(",") === "caught:boom-effect", "got " + log.join(",");
 }
 
-test "an effect-phase throw with no catchError escapes and the scheduler survives" {
+test "an effect-phase throw with no catchError escapes and halts the scheduler" {
 	const log: string[] = [];
 	const [beat, setBeat] = createSignal(0);
 	const [armed, setArmed] = createSignal(false);
@@ -182,5 +183,8 @@ test "an effect-phase throw with no catchError escapes and the scheduler survive
 	assert escaped === "boom-effect", "the throw reached the caller: [" + escaped + "]";
 	assert log.length === 0, "the bundle handler did not fire: " + log.join(",");
 	setBeat(1);
-	assert log.join(",") === "beat=1", "the scheduler drains afterwards: " + log.join(",");
+	assert log.length === 0, "a halted scheduler runs nothing: " + log.join(",");
+	resetErrorHalt();
+	setBeat(2);
+	assert log.join(",") === "beat=2", "reset lets the graph run again: " + log.join(",");
 }

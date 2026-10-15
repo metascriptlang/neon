@@ -1,4 +1,4 @@
-import { Computation, Cleanup, EFFECT_RENDER, EFFECT_USER, RUN_UNCHANGED } from "./types";
+import { Computation, Cleanup, EFFECT_RENDER, EFFECT_USER, RUN_UNCHANGED, STATUS_ERROR } from "./types";
 import { createEffectNode, startEffect, isDisposed, onServer, getOwner, createOwner, carriesId, getNextChildId } from "./runtime";
 import { runWithOwner } from "./owner";
 import { Cell } from "./signal";
@@ -17,28 +17,15 @@ export interface EffectBundle<T> {
 class EffectState<T> {
 	latest: Cell<T> | null = null;
 	applied: T | null = null;
-	failure: Error | null = null;
 }
 
-function computePhase<T>(state: EffectState<T>, compute: (prev: T | null) => T, catches: boolean): (self: Computation, create: boolean) => int32 {
-	const step = (): void => {
+function computePhase<T>(state: EffectState<T>, compute: (prev: T | null) => T): (self: Computation, create: boolean) => int32 {
+	return (self: Computation, create: boolean): int32 => {
 		const held = state.latest;
 		if (held === null) {
 			state.latest = new Cell<T>(compute(null));
 		} else {
 			held.value = compute(held.value);
-		}
-	};
-	return (self: Computation, create: boolean): int32 => {
-		if (!catches) {
-			step();
-			return RUN_UNCHANGED;
-		}
-		try {
-			step();
-			state.failure = null;
-		} catch (e) {
-			state.failure = e;
 		}
 		return RUN_UNCHANGED;
 	};
@@ -51,7 +38,7 @@ function effectPhase<T>(
 ): (self: Computation) => void {
 	return (self: Computation): void => {
 		const held = state.latest;
-		const failure = state.failure;
+		const failure = (self.status & STATUS_ERROR) !== 0 ? self.error : null;
 		if (failure !== null) {
 			if (held !== null) { state.applied = held.value; }
 			if (onError === null) {
@@ -100,9 +87,9 @@ export function createEffect<T>(
 	const state = new EffectState<T>();
 	let node: Computation;
 	if (typeof effect === "function") {
-		node = createEffectNode(computePhase<T>(state, compute, true), effectPhase<T>(state, effect, null), EFFECT_USER, transparent);
+		node = createEffectNode(computePhase<T>(state, compute), effectPhase<T>(state, effect, null), EFFECT_USER, transparent);
 	} else {
-		node = createEffectNode(computePhase<T>(state, compute, true), effectPhase<T>(state, effect.effect, effect.error), EFFECT_USER, transparent);
+		node = createEffectNode(computePhase<T>(state, compute), effectPhase<T>(state, effect.effect, effect.error), EFFECT_USER, transparent);
 	}
 	startEffect(node, defer);
 }
@@ -119,7 +106,7 @@ export function createRenderEffect<T>(
 		return;
 	}
 	const state = new EffectState<T>();
-	const node = createEffectNode(computePhase<T>(state, compute, false), effectPhase<T>(state, effect, null), EFFECT_RENDER, transparent);
+	const node = createEffectNode(computePhase<T>(state, compute), effectPhase<T>(state, effect, null), EFFECT_RENDER, transparent);
 	startEffect(node, defer);
 }
 
