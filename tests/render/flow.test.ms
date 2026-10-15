@@ -1,7 +1,7 @@
 import { el, text, dynText, NeonNode } from "../../src/render/node";
 import { MockNode, mockHost, render, mockToString } from "../../src/render/host";
 import { Host, HostNode } from "../../src/render/hostTypes";
-import { For, ForKeyedBy, ForUnkeyed, Repeat, Index, Show } from "../../src/macros/ui/flow";
+import { For, ForKeyedBy, ForUnkeyed, Repeat, Show } from "../../src/macros/ui/flow";
 import { createSignal, accessor, Accessor } from "../../src/core/signal";
 import { element } from "../../src/macros/ui/element";
 import { createComponent } from "../../src/render/component";
@@ -64,74 +64,6 @@ test "For fallback shows when empty" {
 		assert listText(ulNode) === "empty", "fallback shown";
 		setItems([5]);
 		assert listText(ulNode) === "5", "back to item";
-		d();
-	});
-}
-
-let indexRowCreates = 0;
-
-function indexRow(item: Accessor<number>, i: number): NeonNode {
-	indexRowCreates = indexRowCreates + 1;
-	return element(<li>{"" + item()}</li>);
-}
-
-test "Index as a JSX tag updates a row value in place and grows with the list" {
-	createRoot((d) => {
-		indexRowCreates = 0;
-		const [items, setItems] = createSignal<number[]>([1, 2]);
-		const host = mockHost();
-		const root = host.createElement("root");
-		render(element(<ul><Index each={items()}>{indexRow}</Index></ul>), host, root);
-		const ulNode = (root as unknown as MockNode).children[0];
-		assert listText(ulNode) === "12", "initial: " + listText(ulNode);
-		setItems([9, 2]);
-		assert listText(ulNode) === "92", "value updated in place: " + listText(ulNode);
-		assert indexRowCreates === 2, "no recreate on value change: " + indexRowCreates.toString();
-		setItems([9, 2, 3]);
-		assert listText(ulNode) === "923", "append mounts the new row: " + listText(ulNode);
-		d();
-	});
-}
-
-test "Index updates row value in place, no recreate" {
-	createRoot((d) => {
-		const [items, setItems] = createSignal<number[]>([1, 2, 3]);
-		let creates = 0;
-		const ul = el("ul", [], [], Index<number>({
-			each: items,
-			children: (item, i) => { creates = creates + 1; return <li>{"" + item()}</li>; },
-		}));
-		const host = mockHost();
-		const root = host.createElement("root");
-		render(ul, host, root);
-		const ulNode = (root as unknown as MockNode).children[0];
-		assert listText(ulNode) === "123", "initial";
-		assert creates === 3, "3 created";
-		setItems([9, 2, 3]);
-		assert listText(ulNode) === "923", "value updated in place";
-		assert creates === 3, "no recreate on value change";
-		d();
-	});
-}
-
-test "Index grows and shrinks with the list" {
-	createRoot((d) => {
-		const [items, setItems] = createSignal<number[]>([1]);
-		const ul = el("ul", [], [], Index<number>({
-			each: items,
-			children: (item, i) => <li>{"" + item()}</li>,
-		}));
-		const host = mockHost();
-		const root = host.createElement("root");
-		render(ul, host, root);
-		const ulNode = (root as unknown as MockNode).children[0];
-		assert listText(ulNode) === "1", "initial row";
-		setItems([1, 2]);
-		assert listText(ulNode) === "12", "append mounts the new row: " + listText(ulNode);
-		setItems([1, 2, 3]);
-		assert listText(ulNode) === "123", "a second append too: " + listText(ulNode);
-		setItems([1]);
-		assert listText(ulNode) === "1", "shrinking removes the tail: " + listText(ulNode);
 		d();
 	});
 }
@@ -550,7 +482,7 @@ test "For keyed={true} and a bare keyed are the default identity mode, through t
 	d1(); d2();
 }
 
-test "For keyed={false} replaces Index: rows live per position and show the new value in place, through the tag" {
+test "For keyed={false} keeps rows per position and shows the new value in place, through the tag" {
 	const [xs, setXs] = createSignal<string[]>(["a", "b"]);
 	flowBuilds = 0;
 	const [view, d] = mountedText(element(<ul><For each={xs()} keyed={false}>{positionRow}</For></ul>));

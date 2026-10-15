@@ -33,7 +33,7 @@ function anchorAt<Item>(g: Region<Item>, i: number): HostNode | null {
 }
 
 // Op stores grow by push; reading a slot past what the array holds segfaults on C, it is
-// not an undefined (src/core/array.ms indexArray). resetTo's next-lists are the exception:
+// not an undefined (src/core/array.ms mapRows). resetTo's next-lists are the exception:
 // exact-size prealloc, every slot written before any read (mapArray makeRowInto).
 function buildRow<Item>(
 	g: Region<Item>,

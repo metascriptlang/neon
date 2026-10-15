@@ -12,7 +12,6 @@ import { Cleanup } from "../../src/core/types";
 // ForList carries Accessor<T>, and a generic component whose row carries a distinct alias cannot be
 // instantiated through createComponent, which is what a tag lowers to:
 // ~/metascript/.inbox/compiler/2026-09-20-generic-callee-type-param-through-distinct-alias.md
-// (the same block that keeps <Index> off the tag surface).
 
 function rowText(node: MockNode): string {
 	let s = "";

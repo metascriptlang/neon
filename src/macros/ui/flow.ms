@@ -78,14 +78,6 @@ export function ForList<T>(props: {
 	return listRegion<T>(props.each, props.children, props.keyed);
 }
 
-export function Index<T>(props: {
-	each: Accessor<T[]>;
-	children: (item: Accessor<T>, index: number) => NeonNode;
-	fallback?: NeonNode | null;
-}): NeonNode {
-	return ForUnkeyed<T>(props);
-}
-
 export function ErrorBoundary(props: {
 	children: NeonNode;
 	fallback: (err: Error, reset: () => void) => NeonNode;
