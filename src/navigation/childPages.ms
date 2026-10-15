@@ -73,7 +73,9 @@ export class ChildPages<C, T> {
 	}
 
 	select(index: int32): void {
-		this.navigate((pages: Pages<C>): Pages<C> => ({ items: pages.items, selectedIndex: index }));
+		this.navigate((pages: Pages<C>): Pages<C> => {
+			return { items: pages.items, selectedIndex: index };
+		});
 	}
 
 	selectNext(circular: boolean): void {

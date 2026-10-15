@@ -34,7 +34,9 @@ function makePages(items: string[], selectedIndex: int32): ChildPages<string, Pa
 
 function names(pages: ChildPages<string, PageInstance>): string {
 	let out = "";
-	for (const child of pages.items()) { out += child.instance.name + (child.active() ? "*" : "") + ";"; }
+	for (const child of pages.items()) {
+		out += child.instance.name + (child.active() ? "*" : "") + ";";
+	}
 	return out;
 }
 
@@ -103,7 +105,9 @@ test "select out of range fails loudly and changes nothing" {
 	const initial = failure((): void => { makePages(["a"], 1); });
 	assert initial === "child pages: selectedIndex 1 is outside 1 pages", initial;
 	const duplicate = failure((): void => {
-		pages.navigate((current: Pages<string>): Pages<string> => ({ items: ["a", "a"], selectedIndex: 0 }));
+		pages.navigate((current: Pages<string>): Pages<string> => {
+			return { items: ["a", "a"], selectedIndex: 0 };
+		});
 	});
 	assert duplicate === "duplicate child key: a", duplicate;
 	pages.dispose();

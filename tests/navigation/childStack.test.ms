@@ -44,7 +44,9 @@ function makeStack(names: string[]): ChildStack<Screen, ScreenInstance> {
 
 function names(stack: ChildStack<Screen, ScreenInstance>): string {
 	let out = "";
-	for (const child of stack.items()) { out += child.instance.name + (child.active() ? "*" : "") + ";"; }
+	for (const child of stack.items()) {
+		out += child.instance.name + (child.active() ? "*" : "") + ";";
+	}
 	return out;
 }
 
@@ -143,7 +145,8 @@ test "a stack fails loudly when it would be empty, pop has no back stack or popT
 	assert empty === "child stack: a stack must not be empty", empty;
 	const duplicate = failure((): void => { stack.push(screen("only")); });
 	assert duplicate === "duplicate child key: only", duplicate;
-	assert names(stack) === "only*;", "a refused change leaves the stack as it was: " + names(stack);
+	const after = names(stack);
+	assert after === "only*;", "a refused change leaves the stack as it was: " + after;
 	assert disposed === "", disposed;
 	const initial = failure((): void => { makeStack([]); });
 	assert initial === "child stack: a stack must not be empty", initial;
