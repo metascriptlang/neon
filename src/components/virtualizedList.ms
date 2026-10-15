@@ -132,7 +132,7 @@ class StickyState {
 	offset: Signal<number> = new Signal<number>(0);
 	viewport: Signal<number> = new Signal<number>(0);
 	layoutVersion: Signal<int32> = new Signal<int32>(0);
-	indicesVersion: Signal<int32> = new Signal<int32>(0);
+	indicesVersion: Signal<int32> = new Signal<int32>(0, null, true);
 	header: CellMetrics | null = null;
 }
 
@@ -442,8 +442,8 @@ export function listEngine<T, D>(props: {
 	const listOwner = getOwner();
 	let updateTimeout: number = -1;
 	let hiPriInProgress = false;
-	const [cells, setCells] = createSignal<ListCell[]>([]);
-	const [cellTotal, setCellTotal] = createSignal<number>(0);
+	const [cells, setCells] = createSignal<ListCell[]>([], { ownedWrite: true });
+	const [cellTotal, setCellTotal] = createSignal<number>(0, { ownedWrite: true });
 	let footerLength = 0.0;
 	let footerMeasured = props.ListFooterComponent === null;
 	let initialContentReady = false;
@@ -561,7 +561,7 @@ export function listEngine<T, D>(props: {
 	};
 
 	const spacerCell = (): ListCell => {
-		const [size, setSize] = createSignal<number>(0);
+		const [size, setSize] = createSignal<number>(0, { ownedWrite: true });
 		return new ListCell((index: number): void => {}, (next: number): void => { setSize(next); }, (scheduleUpdate: () => void): NeonNode => element(<View style={{ width: isHorizontal() ? size() : null, height: isHorizontal() ? null : size(), flexShrink: 0 }} />));
 	};
 
@@ -592,13 +592,13 @@ export function listEngine<T, D>(props: {
 	};
 
 	const itemCell = (item: T, index: number): ListCell => {
-		const [at, setAt] = createSignal<number>(index);
+		const [at, setAt] = createSignal<number>(index, { ownedWrite: true });
 		return new ListCell((next: number): void => { setAt(next); }, (size: number): void => {}, (scheduleUpdate: () => void): NeonNode =>
 			cellNode(at, (): T => item, renderItem({ item, index: at }), scheduleUpdate, (box: LayoutBox): void => {}));
 	};
 
 	const gridItem = (item: T, index: int32): GridItem => runWithOwner(listOwner, (): GridItem => createRoot((dispose: () => void): GridItem => {
-		const [at, setAt] = createSignal<number>(index as number);
+		const [at, setAt] = createSignal<number>(index as number, { ownedWrite: true });
 		return new GridItem(makeRow(renderItem({ item, index: at })), dispose, (next: number): void => { setAt(next); }, index / columns);
 	}));
 
@@ -641,8 +641,8 @@ export function listEngine<T, D>(props: {
 	};
 
 	const gridRowCell = (row: int32): ListCell => {
-		const [at, setAt] = createSignal<number>(row as number);
-		const [members, setMembers] = createSignal<T[]>(rowItems(row));
+		const [at, setAt] = createSignal<number>(row as number, { ownedWrite: true });
+		const [members, setMembers] = createSignal<T[]>(rowItems(row), { ownedWrite: true });
 		let key: T = itemAt(row * columns);
 		let measuredBox: LayoutBox | null = null;
 		const moveTo = (next: number): void => {
