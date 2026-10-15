@@ -161,12 +161,14 @@ function drawerModel<P>(
 		back,
 		canPop: pages.canPop,
 		drawer: (action: DrawerAction): boolean => {
-			const next = match (action) {
-				DrawerAction.Open => true,
-				DrawerAction.Close => false,
-				DrawerAction.Toggle => !untrack((): boolean => open()),
-			};
-			writeOpen(next);
+			writeOpen((current: boolean): boolean => {
+				const next = match (action) {
+					DrawerAction.Open => true,
+					DrawerAction.Close => false,
+					DrawerAction.Toggle => !current,
+				};
+				return next;
+			});
 			return true;
 		},
 	};
