@@ -6,7 +6,14 @@ import { Style } from "../render/style";
 import { View, Text, Pressable } from "../components/primitives";
 import { For, Show } from "../macros/ui/flow";
 import { Platform } from "../api/platform";
-import { Pages, createChildPages } from "./childPages";
+import { NavigationChild } from "./children";
+import { ChildPages, Pages, createChildPages } from "./childPages";
+import {
+	WebNavigationNode,
+	WebNavigationOwner,
+	childPagesWebNavigation,
+	webNavigationNode,
+} from "./webNavigation";
 import {
 	DrawerAction,
 	Navigation,
@@ -14,6 +21,7 @@ import {
 	NavigatorKind,
 	NavigatorModel,
 	RouteSeed,
+	RouteWebMap,
 	ScreenOptions,
 	ScreenProps,
 	TabBarIconProps,
@@ -229,15 +237,24 @@ export function pagesModel<P>(
 	);
 	const entries = pages.instances;
 	let history: string[] = [initial.items[initial.selectedIndex].key];
-	const focus = (at: int32): void => {
-		const key = core.snapshot()[at].route.key;
+	const visit = (key: string): void => {
 		const kept: string[] = [];
 		for (const visited of history) {
 			if (visited !== key) { kept.push(visited); }
 		}
 		kept.push(key);
 		history = kept;
+	};
+	const focus = (at: int32): void => {
+		visit(core.snapshot()[at].route.key);
 		core.apply((): void => { pages.select(at); });
+	};
+	const selectedOf = (
+		current: ChildPages<RouteSeed<P>, Navigation<P>>,
+	): Navigation<P> | null => {
+		const selected = current.selected();
+		if (selected === null) { return null; }
+		return (selected as NavigationChild<RouteSeed<P>, Navigation<P>>).instance;
 	};
 	const backTarget = (): int32 => {
 		const list = core.snapshot();
@@ -325,6 +342,36 @@ export function pagesModel<P>(
 		back,
 		canPop: (): boolean => false,
 		drawer: (action: DrawerAction): boolean => false,
+		webNavigation: (map: RouteWebMap<P>): WebNavigationNode => {
+			const web = childPagesWebNavigation<RouteSeed<P>, Navigation<P>>(pages, map.serializer, {
+				pathMapper: (current: ChildPages<RouteSeed<P>, Navigation<P>>): string | null => {
+					const selected = selectedOf(current);
+					return selected === null ? null : map.path(selected as Navigation<P>);
+				},
+				parametersMapper: (
+					current: ChildPages<RouteSeed<P>, Navigation<P>>,
+				): Map<string, string> | null => {
+					const selected = selectedOf(current);
+					return selected === null ? null : map.parameters(selected as Navigation<P>);
+				},
+				childSelector: (
+					child: NavigationChild<RouteSeed<P>, Navigation<P>>,
+				): WebNavigationOwner | null => map.child(child.instance),
+			});
+			return webNavigationNode<Pages<RouteSeed<P>>>({
+				serializer: web.serializer,
+				history: web.history,
+				onBeforeNavigate: web.onBeforeNavigate,
+				navigate: (keys: Pages<RouteSeed<P>>[]): void => {
+					core.apply((): void => {
+						web.navigate(keys);
+						core.restoreParams(keys[keys.length - 1].items);
+					});
+					const current = core.current();
+					if (current !== null) { visit((current as Navigation<P>).route.key); }
+				},
+			});
+		},
 	};
 }
 

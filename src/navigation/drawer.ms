@@ -21,11 +21,13 @@ import {
 	NavigatorLink,
 	NavigatorModel,
 	RouteSeed,
+	RouteWebMap,
 	ScreenOptions,
 	ScreenProps,
 	createCore,
 	currentScope,
 } from "./core";
+import { WebNavigationError, WebNavigationNode } from "./webNavigation";
 import { EDGE_WIDTH, screenView, shown } from "./header";
 import { createNavigatorMotion } from "./navigatorMotion";
 import { readName, readOptions } from "./stack";
@@ -170,6 +172,18 @@ function drawerModel<P>(
 				return next;
 			});
 			return true;
+		},
+		webNavigation: (map: RouteWebMap<P>): WebNavigationNode => {
+			const web = pages.webNavigation(map);
+			return {
+				history: web.history,
+				onBeforeNavigate: web.onBeforeNavigate,
+				navigate: (keys: string[]): Result<void, WebNavigationError> => {
+					const applied = web.navigate(keys);
+					if (applied.ok) { writeOpen(false); }
+					return applied;
+				},
+			};
 		},
 	};
 }

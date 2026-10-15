@@ -382,7 +382,7 @@ export function createWebHistory(
 	navigation: WebNavigationNode,
 	resolve: (address: string | null) => Result<RoutePlan, RoutingError>,
 ): WebHistory {
-	const applied = new Signal<int32>(0);
+	const applied = new Signal<int32>(0, null, true);
 	let pending: HistoryNode[] | null = null;
 	let reported = false;
 	const current = (): HistoryNode[] => {

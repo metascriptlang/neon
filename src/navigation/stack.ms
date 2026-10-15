@@ -5,13 +5,21 @@ import { Style } from "../render/style";
 import { StackLayout } from "./layout";
 import { View } from "../components/primitives";
 import { For } from "../macros/ui/flow";
+import { NavigationChild } from "./children";
 import { createChildStack } from "./childStack";
+import {
+	WebNavigationNode,
+	WebNavigationOwner,
+	childStackWebNavigation,
+	webNavigationNode,
+} from "./webNavigation";
 import {
 	Navigation,
 	NavigatorCore,
 	NavigatorKind,
 	NavigatorModel,
 	RouteSeed,
+	RouteWebMap,
 	ScreenOptions,
 	ScreenProps,
 	createCore,
@@ -155,6 +163,30 @@ function stackModel<P>(core: NavigatorCore<P>, restored: RouteSeed<P>[] | null):
 		back,
 		canPop: (): boolean => entries().length > 1,
 		drawer: (action: DrawerAction): boolean => false,
+		webNavigation: (map: RouteWebMap<P>): WebNavigationNode => {
+			const web = childStackWebNavigation<RouteSeed<P>, Navigation<P>>(stack, map.serializer, {
+				pathMapper: (child: NavigationChild<RouteSeed<P>, Navigation<P>>): string | null => {
+					return map.path(child.instance);
+				},
+				parametersMapper: (
+					child: NavigationChild<RouteSeed<P>, Navigation<P>>,
+				): Map<string, string> | null => map.parameters(child.instance),
+				childSelector: (
+					child: NavigationChild<RouteSeed<P>, Navigation<P>>,
+				): WebNavigationOwner | null => map.child(child.instance),
+			});
+			return webNavigationNode<RouteSeed<P>>({
+				serializer: web.serializer,
+				history: web.history,
+				onBeforeNavigate: web.onBeforeNavigate,
+				navigate: (history: RouteSeed<P>[]): void => {
+					core.apply((): void => {
+						web.navigate(history);
+						core.restoreParams(history);
+					});
+				},
+			});
+		},
 	};
 }
 
