@@ -27,6 +27,8 @@ extern function childTextClick(node: HTMLElement): void from "#.firstChild.click
 extern function focusInputAndClick(node: HTMLElement): boolean from
 	"((n) => { const input = document.createElement('input'); document.body.appendChild(input); input.focus(); n.click(); const kept = document.activeElement === input; input.remove(); return kept; })(#)";
 extern function opacity(node: HTMLElement): string from "#.style.opacity";
+extern function appendBarePressable(node: HTMLElement): void from
+	"#.appendChild(document.createElement('button'))";
 extern function servedActivationMount(): HTMLElement from
 	"(() => { const root=document.createElement('div'); const parent=document.createElement('button'); parent.setAttribute('aria-label','activation-hydrated-parent'); const child=document.createElement('button'); child.setAttribute('aria-label','activation-hydrated-child'); const text=document.createElement('span'); text.textContent='hydrated passive label'; child.appendChild(text); const view=document.createElement('div'); view.setAttribute('aria-label','activation-hydrated-view'); const label=document.createElement('span'); label.textContent='hydrated generic label'; view.appendChild(label); parent.append(child,view); root.appendChild(parent); document.body.appendChild(root); return root; })()";
 
@@ -228,4 +230,32 @@ test "DOM nearest press registration cleanup restores outer ownership" {
 	semantic(probe(child), "programmatic");
 	assert log === "child;parent;", "removed registration and listeners are cleaned";
 	host.removeChild(documentBody(), parent);
+}
+
+test "DOM fully passive intrinsic owners release on root disposal after creation and claim" {
+	for (const claiming of [false, true]) {
+		const host = domHost();
+		let hits = 0;
+		const disposeOuter = render(element(<Pressable accessibilityLabel="activation-disposal-parent"
+			onPress={(): void => { hits += 1; }} />), host, documentBody());
+		const parent = find("activation-disposal-parent");
+		let disposeInner: (() => void) | null = null;
+		try {
+			if (claiming) { appendBarePressable(parent); }
+			const app = element(<Pressable accessibilityLabel="activation-disposal-child" />);
+			disposeInner = claiming
+				? hydrate(app, host, parent as unknown as HostNode)
+				: render(app, host, parent as unknown as HostNode);
+			const child = find("activation-disposal-child");
+			semantic(child, "programmatic");
+			assert hits === 0, "live passive child owns activation";
+			(disposeInner as () => void)();
+			semantic(child, "programmatic");
+			assert hits === 1, "disposed passive child no longer blocks its live parent: " + (claiming ? "claim" : "create");
+		} finally {
+			if (disposeInner !== null) { (disposeInner as () => void)(); }
+			disposeOuter();
+			host.removeChild(documentBody(), parent as unknown as HostNode);
+		}
+	}
 }

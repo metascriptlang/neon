@@ -1163,7 +1163,10 @@ export function domHost(): Host {
 				return control as unknown as HostNode;
 			}
 			const el = document.createElement(webHtmlTag(tag));
-			if (tag === "pressable") { presses.set(el, true); }
+			if (tag === "pressable") {
+				presses.set(el, true);
+				keep(el, (): void => { presses.delete(el); });
+			}
 			const base = webBaseClass(tag);
 			if (base !== "") { el.classList.add(base); }
 			return el as unknown as HostNode;
@@ -1400,7 +1403,10 @@ export function domHost(): Host {
 				return blank as unknown as HostNode;
 			}
 			if (found.nodeType !== 1 || found.localName !== (tag === "image" ? IMAGE_TAG : webHtmlTag(tag))) { return null; }
-			if (tag === "pressable") { presses.set(found, true); }
+			if (tag === "pressable") {
+				presses.set(found, true);
+				keep(found, (): void => { presses.delete(found); });
+			}
 			registerRules(tag);
 			if (isMediaTag(tag)) { return adoptMedia(found as unknown as HostNode, tag); }
 			if (tag === "image") { return adoptImage(found); }
