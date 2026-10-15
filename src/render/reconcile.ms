@@ -60,14 +60,9 @@ export function mountAt(host: Host, parent: HostNode, before: HostNode | null, r
 	activeRow = r;
 	try {
 		runWithOwner(r.owner, (): number => untrack((): number => { r.view(host, parent, before); return 0; }));
+		if (r.start === null) { place(host, parent, host.createText(""), before); }
 	} finally {
 		activeRow = prev;
-	}
-	if (r.start === null) {
-		const empty = host.createText("");
-		place(host, parent, empty, before);
-		r.start = empty;
-		r.end = empty;
 	}
 }
 

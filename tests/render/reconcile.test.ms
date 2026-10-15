@@ -1,5 +1,8 @@
-import { mockHost, MockNode, HostNode, Host, NeonNode } from "../../src/render/host";
+import { mockHost, MockNode, HostNode, Host, NeonNode, render, mockToString } from "../../src/render/host";
 import { reconcileArrays, Row, rowOf, makeRow, place, moveRow, removeRow } from "../../src/render/reconcile";
+import { text, regionNode } from "../../src/render/node";
+import { createMemo } from "../../src/core/memo";
+import { createSignal } from "../../src/core/signal";
 
 function seq(parent: HostNode): string {
 	const p = parent as unknown as MockNode;
@@ -216,4 +219,20 @@ test "fragment rows of one to three nodes survive random reorder, drop and remou
 	}
 	assert multi > 1000, "the fuzz exercised multi-node rows: " + multi.toString();
 	assert fails === 0, fails.toString() + " of 2400 steps lost or misplaced a node, first: " + firstMismatch;
+}
+
+const mountsNothing: NeonNode = (host: Host, parent: HostNode, before: HostNode | null): void => {};
+
+test "an enclosing row keeps its end when a nested region's empty row goes away" {
+	const [outerOn, setOuterOn] = createSignal(true);
+	const [innerOn, setInnerOn] = createSignal(true);
+	const inner = regionNode((h) => createMemo<Row[]>(() => innerOn() ? [makeRow(mountsNothing)] : [] as Row[]));
+	const outer = regionNode((h) => createMemo<Row[]>(() => [makeRow(outerOn() ? inner : text("fallback"))]));
+	const host = mockHost();
+	const root = host.createElement("root");
+	const dispose = render(outer, host, root);
+	setInnerOn(false);
+	setOuterOn(false);
+	assert mockToString(root as unknown as MockNode) === "<root>fallback</root>", mockToString(root as unknown as MockNode);
+	dispose();
 }
