@@ -547,7 +547,7 @@ cost.
 is deferred to mount, runs once, and whatever it returns mounts at the component's own
 position. `children` is always ONE NeonNode — a single child is passed as is, several
 are wrapped in a root fragment — so a component places them with `{props.children}`.
-A `Context.Provider` is the same shape with the call wrapped in the provider's scope.
+A context tag (`<Ctx value=…>`) is the same shape with the call wrapped in the provider's scope.
 
 **Fragments.** `<>…</>` owns no host node. In child position it is not emitted at all:
 the macro splices its children into the parent's child list at COMPILE time
@@ -1077,7 +1077,7 @@ The shape (`src/render/context.ms`): a Provider's scope carries one `context` en
 keyed by the context object and linked (`next`) to the entry that scope inherited. Every computation,
 root and `catchError` scope inherits its owner's entry when it is created, so `useContext` walks the
 providers above it, never the owners in between, to the first entry with its key. The value is held as
-`unknown` and read back with `entry.value as Provided<T>`, a cast the compiler tests on C and JS.
+`unknown` and read back with `entry.value as Held<T>`, a cast the compiler tests on C and JS.
 
 The inheritance is Solid's: a new computation takes its owner's `context` object
 (`packages/solid/src/reactive/signal.ts:1444` at `0af2c2b4`), a provider replaces it with a spread copy
@@ -1218,8 +1218,8 @@ names nothing in scope is a macro error (`tests/macros/run.sh`). `For`/`Index`
 `each`, `Show` `when` and `FlatList` `data` are `Accessor<…>` too, so a hand-written
 call passes a signal (`each: items`) or `accessor(() => expr)`. `View`/`Text`/`Pressable`/`TextInput` declare `style?: Accessor<Style>
 | null`, `class?: Accessor<string> | null`, `delayLongPress?: Accessor<number> |
-null`, `value?: Accessor<string> | null`; `Context.Provider` takes `value:
-Accessor<T>` and widens it into `provideScope`'s thunk. An object-literal prop is
+null`, `value?: Accessor<string> | null`; `Context.provider` (the tag `<Ctx value=…>`) takes `value:
+Accessor<T>` and reads it once when it mounts. An object-literal prop is
 stamped by the field's payload type (`style={{ gap: 12 }}` against
 `Accessor<{ gap: number }>`), which is why a value prop must be `Accessor<T>` and
 not a bare `() => T`: a plain thunk field gives the literal no expected type.
