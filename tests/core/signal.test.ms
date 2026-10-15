@@ -120,7 +120,7 @@ test "equals false wakes a subscriber on every write" {
 }
 
 test "an owned reader sees the staged value while a flush runs" {
-	const [x, setX] = createSignal(1);
+	const [x, setX] = createSignal(1, { ownedWrite: true });
 	let owned = -1;
 	let bare = -1;
 	createRoot((d) => {

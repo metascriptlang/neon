@@ -2,11 +2,12 @@ import {
 	Computation, Source, Link, ErrorHandler,
 	REACTIVE_CHECK, REACTIVE_DIRTY, REACTIVE_RECOMPUTING_DEPS, REACTIVE_IN_HEAP, REACTIVE_IN_HEAP_HEIGHT,
 	REACTIVE_DISPOSED, REACTIVE_LAZY, REACTIVE_MISSED_WAKE,
-	CONFIG_TRANSPARENT, CONFIG_AUTO_DISPOSE, CONFIG_STAGED, CONFIG_PROMOTED, CONFIG_ROOT, CONFIG_MODIFIED,
+	CONFIG_OWNED_WRITE, CONFIG_TRANSPARENT, CONFIG_AUTO_DISPOSE, CONFIG_STAGED, CONFIG_PROMOTED, CONFIG_ROOT, CONFIG_MODIFIED,
 	CONFIG_DORMANT_QUEUED, EFFECT_PURE, EFFECT_RENDER, RUN_UNCHANGED, RUN_STAGED,
 } from "./types";
 
 const LOOP_LIMIT: int32 = 100000;
+const OWNED_WRITE_MESSAGE: string = "[REACTIVE_WRITE_IN_OWNED_SCOPE] Writing to reactive state inside an owned scope (component, computation) is not allowed. Move the write outside or set the `ownedWrite` option if this is intentional.";
 
 let currentOwner: Computation | null = null;
 let tracking: boolean = false;
@@ -543,6 +544,10 @@ function stageNode(el: Source): void {
 	el.config = el.config | CONFIG_STAGED;
 	pendingNodes.push(el);
 	if (!running) { unflushedStaged = true; }
+}
+
+export function assertWritable(el: Source): void {
+	if (currentOwner !== null && (el.config & CONFIG_OWNED_WRITE) === 0) { throw new Error(OWNED_WRITE_MESSAGE); }
 }
 
 export function writeSource(el: Source, wasStaged: boolean): void {

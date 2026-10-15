@@ -289,17 +289,6 @@ test "runWithOwner reads do not subscribe the computation that called it" {
 	assert runs === 1, "ran " + runs.toString();
 }
 
-test "two signal writes inside a root's body rerun an effect created in it once" {
-	const [x, setX] = createSignal(0);
-	let runs = 0;
-	createRoot((d) => {
-		createEffect<boolean>((p: boolean | null): boolean => { x(); runs += 1; return true; }, (v: boolean, p: boolean | null): Cleanup | null => null);
-		setX(1);
-		setX(2);
-	});
-	assert runs === 2, "the creation run and one rerun for both writes: " + runs.toString();
-}
-
 test "onCleanup hands back the function it registered" {
 	let n = 0;
 	createRoot((d) => {

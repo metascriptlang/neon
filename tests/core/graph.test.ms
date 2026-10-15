@@ -8,7 +8,7 @@ import { flush } from "../../src/core/runtime";
 test "a memo reading a signal and a memo of that signal runs once per write" {
 	let runs = 0;
 	createRoot((d) => {
-		const [x, setX] = createSignal(2);
+		const [x, setX] = createSignal(2, { ownedWrite: true });
 		const a = createMemo<int32>((): int32 => x() - 1);
 		const b = createMemo<int32>((): int32 => x() + a());
 		const c = createMemo<string>((): string => { runs += 1; return "c: " + b().toString(); });
@@ -26,7 +26,7 @@ test "a memo reading a signal and a memo of that signal runs once per write" {
 test "a diamond runs its join once per write" {
 	let runs = 0;
 	createRoot((d) => {
-		const [x, setX] = createSignal("a");
+		const [x, setX] = createSignal("a", { ownedWrite: true });
 		const a = createMemo<string>((): string => x());
 		const b = createMemo<string>((): string => x());
 		const c = createMemo<string>((): string => { runs += 1; return a() + " " + b(); });
@@ -42,7 +42,7 @@ test "a diamond runs its join once per write" {
 test "a diamond with a tail runs the tail once per write" {
 	let runs = 0;
 	createRoot((d) => {
-		const [x, setX] = createSignal("a");
+		const [x, setX] = createSignal("a", { ownedWrite: true });
 		const a = createMemo<string>((): string => x());
 		const b = createMemo<string>((): string => x());
 		const c = createMemo<string>((): string => a() + " " + b());
@@ -59,7 +59,7 @@ test "a diamond with a tail runs the tail once per write" {
 test "a memo that settles on the same value does not wake its subscriber" {
 	let runs = 0;
 	createRoot((d) => {
-		const [x, setX] = createSignal("a");
+		const [x, setX] = createSignal("a", { ownedWrite: true });
 		const a = createMemo<string>((): string => { x(); return "foo"; });
 		const b = createMemo<string>((): string => { runs += 1; return a(); });
 		assert b() === "foo";
@@ -76,7 +76,7 @@ test "a jagged diamond with two tails runs every node once per write" {
 	let eRuns = 0;
 	let fRuns = 0;
 	createRoot((dispose) => {
-		const [x, setX] = createSignal("a");
+		const [x, setX] = createSignal("a", { ownedWrite: true });
 		const a = createMemo<string>((): string => x());
 		const b = createMemo<string>((): string => x());
 		const c = createMemo<string>((): string => b());
@@ -99,7 +99,7 @@ test "a jagged diamond with two tails runs every node once per write" {
 test "a subscriber updates when one of its dependencies keeps its value" {
 	let runs = 0;
 	createRoot((d) => {
-		const [x, setX] = createSignal("a");
+		const [x, setX] = createSignal("a", { ownedWrite: true });
 		const a = createMemo<string>((): string => x());
 		const b = createMemo<string>((): string => { x(); return "c"; });
 		const c = createMemo<string>((): string => { runs += 1; return a() + " " + b(); });
@@ -115,7 +115,7 @@ test "a subscriber updates when one of its dependencies keeps its value" {
 test "a subscriber updates when two of three dependencies keep their value" {
 	let runs = 0;
 	createRoot((d) => {
-		const [x, setX] = createSignal("a");
+		const [x, setX] = createSignal("a", { ownedWrite: true });
 		const b = createMemo<string>((): string => x());
 		const c = createMemo<string>((): string => { x(); return "c"; });
 		const dd = createMemo<string>((): string => { x(); return "d"; });
@@ -250,9 +250,9 @@ test "a join with a stale and an unchanged branch runs once per write" {
 
 test "a memo follows the branch its condition picks" {
 	createRoot((d) => {
-		const [i, setI] = createSignal(true);
-		const [t, setT] = createSignal(1);
-		const [e, setE] = createSignal(2);
+		const [i, setI] = createSignal(true, { ownedWrite: true });
+		const [t, setT] = createSignal(1, { ownedWrite: true });
+		const [e, setE] = createSignal(2, { ownedWrite: true });
 		let evals = 0;
 		const f = createMemo<int32>((): int32 => { evals += 1; return i() ? t() : e(); });
 		assert f() === 1;
@@ -282,7 +282,7 @@ test "a dependency discovered mid-run is brought up to date before its reader" {
 	createRoot((dispose) => {
 		let order = "";
 		let readE: (() => int32) | null = null;
-		const [a, setA] = createSignal(0);
+		const [a, setA] = createSignal(0, { ownedWrite: true });
 		const b = createMemo<int32>((): int32 => { order += "b"; return a() + 1; });
 		const c = createMemo<int32>((): int32 => {
 			order += "c";
@@ -349,7 +349,7 @@ test "a same-value write under a memo's own run does not schedule it again" {
 test "an effect reads the value a memo chain settled on" {
 	let seen = -1;
 	createRoot((d) => {
-		const [x, setX] = createSignal(1);
+		const [x, setX] = createSignal(1, { ownedWrite: true });
 		const a = createMemo<int32>((): int32 => x() * 2);
 		const b = createMemo<int32>((): int32 => a() + 1);
 		createEffect<int32>((p: int32 | null): int32 => b(), (v: int32, p: int32 | null): Cleanup | null => { seen = v; return null; });

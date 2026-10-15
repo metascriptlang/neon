@@ -449,7 +449,9 @@ export function refreshKeep<T>(key: string, read: () => T, write: (value: T) => 
 	let seen = 0;
 	for (const kept of inst.saved) {
 		if (kept.key !== key) { continue; }
-		if (seen === nth && kept.type === type) { write((kept.cell as StateCell<T>).value); }
+		if (seen === nth && kept.type === type) {
+			runWithOwner(null, (): number => { write((kept.cell as StateCell<T>).value); return 0; });
+		}
 		seen += 1;
 	}
 	const cell = new StateCell<T>(read, untrack(read));

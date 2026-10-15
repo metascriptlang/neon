@@ -1,5 +1,5 @@
 import { Source, CONFIG_OWNED_WRITE } from "./types";
-import { newSource, readSource, isStaged, writeSource, isTracking, setTracking } from "./runtime";
+import { newSource, readSource, isStaged, writeSource, assertWritable, isTracking, setTracking } from "./runtime";
 
 export class Cell<T> {
 	value: T;
@@ -40,6 +40,7 @@ export class Signal<T> {
 	}
 
 	set(newValue: T): void {
+		assertWritable(this.node);
 		if (isEqual(this.equals, this.peek(), newValue)) { return; }
 		const wasStaged = isStaged(this.node);
 		this.cell.pending = newValue;

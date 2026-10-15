@@ -22,10 +22,11 @@ async function slowThenFast(id: int32): Promise<Result<string, LoadError>> {
 test "a resource goes pending, then ready with its value, then refreshing while keeping it" {
 	const [id, setId] = createSignal<int32>(1);
 	const [log, setLog] = createSignal("");
+	let first = "";
 	createRoot((): void => {
 		const [item, actions] = createResource(id, lookup);
 		flush();
-		setLog(`${actions.state().toString()} ${actions.loading()} ${item() === null};`);
+		first = `${actions.state().toString()} ${actions.loading()} ${item() === null};`;
 		const report = (): void => {
 			const v = item();
 			setLog(log() + `${actions.state().toString()} ${actions.loading()} ${v === null ? "-" : v as string};`);
@@ -34,6 +35,7 @@ test "a resource goes pending, then ready with its value, then refreshing while 
 		setTimeout((): void => { setId(2); report(); }, 100);
 		setTimeout(report, 200);
 	});
+	setLog(first);
 	await sleepAsync(300);
 	assert log() === "Pending true true;Ready false item 1;Refreshing true item 1;Ready false item 2;", "states: " + log();
 }
