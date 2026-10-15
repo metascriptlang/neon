@@ -112,6 +112,8 @@ export class RoutingSession {
 				return;
 			}
 			this.previous = entry;
+			const landed = this.registry.address();
+			if (this.history.writable && landed.ok && landed.value !== entry.url) { this.sync(true); }
 		});
 	}
 

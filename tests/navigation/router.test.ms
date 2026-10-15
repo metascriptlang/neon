@@ -26,6 +26,7 @@ import {
 
 let layouts: int32 = 0;
 let docs: int32 = 0;
+let signedIn = true;
 let go: ((href: string, options?: NavigateOptions | null) => boolean) | null = null;
 
 function Shell(props: LayoutProps): NeonNode {
@@ -169,6 +170,32 @@ test "an address ending in a slash is redirected for good to the one without it"
 	const cold = memory("/docs/start//#notes");
 	opened(siteRoutes(), cold);
 	assert cold.read().url === "/docs/start#notes", cold.read().url;
+}
+
+test "going back to an address whose guard now redirects rewrites that entry to where it went" {
+	signedIn = true;
+	const routes = createRoutes([
+		{ path: "/", component: Home },
+		{
+			path: "/settings",
+			component: Home,
+			guard: (params: Map<string, string>, found: RouteMatch): GuardDecision => {
+				return signedIn ? proceed() : redirect("/signin");
+			},
+		},
+		{ path: "/signin", component: Missing },
+	]);
+	const history = memory("/");
+	const router = opened(routes, history);
+	assert router.navigate("/settings");
+	assert router.navigate("/");
+	signedIn = false;
+	assert history.go(-1);
+	assert history.read().url === "/signin", history.read().url;
+	assert router.location().pathname === "/signin";
+	assert history.go(1);
+	assert history.read().url === "/";
+	router.dispose();
 }
 
 test "a redirect loop fails loudly, naming where it started" {
