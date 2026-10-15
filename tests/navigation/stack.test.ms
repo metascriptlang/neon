@@ -7,6 +7,7 @@ import { HostNode, MockNode, mockNode, mockHost, render } from "../../src/render
 import { View, Text, Pressable } from "../../src/components/primitives";
 import { dispatchHardwareBackPress } from "../../src/api/backHandler";
 import {
+	Navigation,
 	NavigationContainer,
 	NavigationContainerRef,
 	NavigationAction,
@@ -27,9 +28,11 @@ interface ItemParams {
 const Stack = createStackNavigator<ItemParams>();
 
 let homeBodies = 0;
+let homeNavigation: Navigation<ItemParams> | null = null;
 
 function Home(props: ScreenProps<ItemParams>): NeonNode {
 	homeBodies += 1;
+	homeNavigation = props.navigation;
 	const [count, setCount] = createSignal<int32>(0);
 	const navigation = props.navigation;
 	return <View>
@@ -162,6 +165,19 @@ test "navigate to a route already in the stack goes back to it" {
 	press(root, "edit");
 	ref.navigate("Home");
 	assert ref.currentPath() === "Home", ref.currentPath();
+	assert !ref.canGoBack();
+}
+
+test "a reset whose index is below its last route keeps the routes up to the focused one" {
+	const ref = createNavigationContainerRef();
+	mountStack(ref);
+	(homeNavigation as Navigation<ItemParams>).reset({
+		index: 0,
+		routes: [{ name: "Home" }, { name: "Detail", params: { id: 3, title: "Three" } }],
+	});
+	assert ref.currentPath() === "Home", ref.currentPath();
+	const routes = ref.getRootState().routes.length;
+	assert routes === 1, "the route above the focused one is dropped: " + routes.toString();
 	assert !ref.canGoBack();
 }
 
