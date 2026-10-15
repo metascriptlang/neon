@@ -1,4 +1,5 @@
-import { Accessor, Setter, accessor, batch, createSignal, untrack } from "../core/signal";
+import { Accessor, Setter, accessor, createSignal, untrack } from "../core/signal";
+import { flush } from "../core/runtime";
 import { createRenderEffect } from "../core/effect";
 import { Cleanup } from "../core/types";
 import { Animated, AnimatedValue, EndResult, Easing } from "../animation/index";
@@ -146,7 +147,7 @@ function drawerModel<P>(
 		index: pages.index,
 		arrange: pages.arrange,
 		navigate: (name: string, params: P | null): void => {
-			batch((): void => {
+			flush((): void => {
 				pages.navigate(name, params);
 				writeOpen(false);
 			});
@@ -281,7 +282,7 @@ export function createDrawerNavigator<P>(): DrawerNavigator<P> {
 			const collection = collectScreens<P>(collector, props.children);
 			const screens = untrack(() => collection.read());
 			const behavior = readBehavior(props.backBehavior, "firstRoute");
-			const [open, writeOpen] = createSignal<boolean>(false);
+			const [open, writeOpen] = createSignal<boolean>(false, { ownedWrite: true });
 			const core = createCore<P>({
 				kind: NavigatorKind.Drawer,
 				screens,
