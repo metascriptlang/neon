@@ -280,16 +280,13 @@ export class Location {
 	}
 
 	static async getCurrentPositionAsync(options: LocationOptions = {}): Promise<LocationObject> {
-		let fix = deniedFix();
-		if (await authorized()) {
-			fix = await new Promise<LocationFix>((resolve) => {
-				appServices("Location.getCurrentPositionAsync").locationCurrent(expoRequest(options, false), (current: LocationFix): void => {
-					resolve(current);
-				});
+		if (!(await authorized())) { return objectOrThrow(deniedFix()); }
+		const fix = await new Promise<LocationFix>((resolve) => {
+			appServices("Location.getCurrentPositionAsync").locationCurrent(expoRequest(options, false), (current: LocationFix): void => {
+				resolve(current);
 			});
-		}
-		const location = objectOrThrow(fix);
-		return location;
+		});
+		return objectOrThrow(fix);
 	}
 
 	static async watchPositionAsync(
