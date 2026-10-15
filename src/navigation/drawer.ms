@@ -17,11 +17,9 @@ import {
 	NavigatorKind,
 	NavigatorLink,
 	ScreenOptions,
-	ScreenOptionsOf,
 	ScreenProps,
 	createCore,
 	currentScope,
-	optionsAccessor,
 } from "./core";
 import { EDGE_WIDTH, screenView, shown } from "./header";
 import { readName, readOptions } from "./stack";
@@ -203,20 +201,20 @@ export interface DrawerNavigator<P> {
 	Navigator: (props: {
 		children: NeonNode;
 		initialRouteName?: Accessor<string> | null;
-		screenOptions?: Accessor<ScreenOptionsOf<P>> | null;
+		screenOptions?: Accessor<ScreenOptions> | null;
 		backBehavior?: Accessor<BackBehavior> | null;
 		drawerStyle?: Accessor<Style> | null;
 		drawerPosition?: Accessor<DrawerPosition> | null;
 	}) => NeonNode;
 	Group: (props: {
 		children: NeonNode;
-		screenOptions?: Accessor<ScreenOptionsOf<P>> | null;
+		screenOptions?: Accessor<ScreenOptions> | null;
 		navigationKey?: Accessor<string> | null;
 	}) => NeonNode;
 	Screen: (props: {
 		name: string;
 		component: (props: ScreenProps<P>) => NeonNode;
-		options?: Accessor<ScreenOptionsOf<P>> | null;
+		options?: Accessor<ScreenOptions> | null;
 		initialParams?: P | null;
 		parseParams?: ((values: Map<string, string>) => P) | null;
 		stringifyParams?: ((params: P) => Map<string, string>) | null;
@@ -230,7 +228,7 @@ export function createDrawerNavigator<P>(): DrawerNavigator<P> {
 		Navigator: (props: {
 			children: NeonNode;
 			initialRouteName?: Accessor<string> | null;
-			screenOptions?: Accessor<ScreenOptionsOf<P>> | null;
+			screenOptions?: Accessor<ScreenOptions> | null;
 			backBehavior?: Accessor<BackBehavior> | null;
 			drawerStyle?: Accessor<Style> | null;
 			drawerPosition?: Accessor<DrawerPosition> | null;
@@ -242,7 +240,7 @@ export function createDrawerNavigator<P>(): DrawerNavigator<P> {
 				screens,
 				initialRouteName: readName(props.initialRouteName),
 				initialParams: null,
-				screenOptions: readOptions<P>(props.screenOptions),
+				screenOptions: readOptions(props.screenOptions),
 				backBehavior: readBehavior(props.backBehavior, "firstRoute"),
 				scope: currentScope("Drawer.Navigator"),
 			});
@@ -318,17 +316,17 @@ export function createDrawerNavigator<P>(): DrawerNavigator<P> {
 		},
 		Group: (props: {
 			children: NeonNode;
-			screenOptions?: Accessor<ScreenOptionsOf<P>> | null;
+			screenOptions?: Accessor<ScreenOptions> | null;
 			navigationKey?: Accessor<string> | null;
 		}): NeonNode => {
 			return groupOf(
-				collector, props.children, optionsAccessor<P>(props.screenOptions), props.navigationKey,
+				collector, props.children, props.screenOptions, props.navigationKey,
 			);
 		},
 		Screen: (props: {
 			name: string;
 			component: (props: ScreenProps<P>) => NeonNode;
-			options?: Accessor<ScreenOptionsOf<P>> | null;
+			options?: Accessor<ScreenOptions> | null;
 			initialParams?: P | null;
 			parseParams?: ((values: Map<string, string>) => P) | null;
 			stringifyParams?: ((params: P) => Map<string, string>) | null;
@@ -337,7 +335,7 @@ export function createDrawerNavigator<P>(): DrawerNavigator<P> {
 			collector,
 			props.name,
 			props.component,
-			optionsAccessor<P>(props.options),
+			props.options,
 			props.initialParams,
 			props.parseParams,
 			props.stringifyParams,

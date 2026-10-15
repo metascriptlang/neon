@@ -9,10 +9,8 @@ import {
 	Navigation,
 	NavigatorKind,
 	ScreenOptions,
-	ScreenOptionsOf,
 	ScreenProps,
 	createCore,
-	optionsAccessor,
 	currentScope,
 } from "./core";
 import { screenView } from "./header";
@@ -33,29 +31,28 @@ export function readName(name: Accessor<string> | null): string | null {
 	return untrack((): string => read());
 }
 
-export function readOptions<P>(
-	options: Accessor<ScreenOptionsOf<P>> | null,
+export function readOptions(
+	options: Accessor<ScreenOptions> | null,
 ): Accessor<ScreenOptions> {
-	const plain = optionsAccessor<P>(options);
-	if (plain === null) { return accessor((): ScreenOptions => ({})); }
-	return plain as Accessor<ScreenOptions>;
+	if (options === null) { return accessor((): ScreenOptions => ({})); }
+	return options as Accessor<ScreenOptions>;
 }
 
 export interface StackNavigator<P> {
 	Navigator: (props: {
 		children: NeonNode;
 		initialRouteName?: Accessor<string> | null;
-		screenOptions?: Accessor<ScreenOptionsOf<P>> | null;
+		screenOptions?: Accessor<ScreenOptions> | null;
 	}) => NeonNode;
 	Group: (props: {
 		children: NeonNode;
-		screenOptions?: Accessor<ScreenOptionsOf<P>> | null;
+		screenOptions?: Accessor<ScreenOptions> | null;
 		navigationKey?: Accessor<string> | null;
 	}) => NeonNode;
 	Screen: (props: {
 		name: string;
 		component: (props: ScreenProps<P>) => NeonNode;
-		options?: Accessor<ScreenOptionsOf<P>> | null;
+		options?: Accessor<ScreenOptions> | null;
 		initialParams?: P | null;
 		parseParams?: ((values: Map<string, string>) => P) | null;
 		stringifyParams?: ((params: P) => Map<string, string>) | null;
@@ -69,7 +66,7 @@ export function createStackNavigator<P>(): StackNavigator<P> {
 		Navigator: (props: {
 			children: NeonNode;
 			initialRouteName?: Accessor<string> | null;
-			screenOptions?: Accessor<ScreenOptionsOf<P>> | null;
+			screenOptions?: Accessor<ScreenOptions> | null;
 		}): NeonNode => {
 			const collection = collectScreens<P>(collector, props.children);
 			const screens = untrack(() => collection.read());
@@ -78,7 +75,7 @@ export function createStackNavigator<P>(): StackNavigator<P> {
 				screens,
 				initialRouteName: readName(props.initialRouteName),
 				initialParams: null,
-				screenOptions: readOptions<P>(props.screenOptions),
+				screenOptions: readOptions(props.screenOptions),
 				backBehavior: "history",
 				scope: currentScope("Stack.Navigator"),
 			});
@@ -94,17 +91,17 @@ export function createStackNavigator<P>(): StackNavigator<P> {
 		},
 		Group: (props: {
 			children: NeonNode;
-			screenOptions?: Accessor<ScreenOptionsOf<P>> | null;
+			screenOptions?: Accessor<ScreenOptions> | null;
 			navigationKey?: Accessor<string> | null;
 		}): NeonNode => {
 			return groupOf(
-				collector, props.children, optionsAccessor<P>(props.screenOptions), props.navigationKey,
+				collector, props.children, props.screenOptions, props.navigationKey,
 			);
 		},
 		Screen: (props: {
 			name: string;
 			component: (props: ScreenProps<P>) => NeonNode;
-			options?: Accessor<ScreenOptionsOf<P>> | null;
+			options?: Accessor<ScreenOptions> | null;
 			initialParams?: P | null;
 			parseParams?: ((values: Map<string, string>) => P) | null;
 			stringifyParams?: ((params: P) => Map<string, string>) | null;
@@ -113,7 +110,7 @@ export function createStackNavigator<P>(): StackNavigator<P> {
 			collector,
 			props.name,
 			props.component,
-			optionsAccessor<P>(props.options),
+			props.options,
 			props.initialParams,
 			props.parseParams,
 			props.stringifyParams,

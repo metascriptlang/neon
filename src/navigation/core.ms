@@ -61,45 +61,6 @@ export interface ScreenOptions {
 	unmountOnBlur?: boolean | null;
 }
 
-export interface ScreenOptionsOf<P> extends ScreenOptions {}
-
-export function plainOptions<P>(o: ScreenOptionsOf<P>): ScreenOptions {
-	return {
-		title: o.title,
-		presentation: o.presentation,
-		animation: o.animation,
-		animationDuration: o.animationDuration,
-		gestureEnabled: o.gestureEnabled,
-		swipeEnabled: o.swipeEnabled,
-		headerTitleAlign: o.headerTitleAlign,
-		headerShown: o.headerShown,
-		headerTitle: o.headerTitle,
-		headerBackTitle: o.headerBackTitle,
-		headerTintColor: o.headerTintColor,
-		headerStyle: o.headerStyle,
-		headerLeft: o.headerLeft,
-		headerRight: o.headerRight,
-		tabBarLabel: o.tabBarLabel,
-		tabBarBadge: o.tabBarBadge,
-		tabBarIcon: o.tabBarIcon,
-		tabBarActiveTintColor: o.tabBarActiveTintColor,
-		tabBarInactiveTintColor: o.tabBarInactiveTintColor,
-		tabBarAccessibilityLabel: o.tabBarAccessibilityLabel,
-		drawerLabel: o.drawerLabel,
-		drawerActiveTintColor: o.drawerActiveTintColor,
-		lazy: o.lazy,
-		unmountOnBlur: o.unmountOnBlur,
-	};
-}
-
-export function optionsAccessor<P>(
-	declared: Accessor<ScreenOptionsOf<P>> | null,
-): Accessor<ScreenOptions> | null {
-	if (declared === null) { return null; }
-	const read = declared as Accessor<ScreenOptionsOf<P>>;
-	return accessor((): ScreenOptions => plainOptions<P>(read()));
-}
-
 export function mergeOptions(base: ScreenOptions, over: ScreenOptions): ScreenOptions {
 	return {
 		title: over.title !== null ? over.title : base.title,
