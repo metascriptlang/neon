@@ -4,7 +4,7 @@ import { renderToString } from "../../src/render/ssr";
 import { createComponent } from "../../src/render/component";
 import { createContext, useContext } from "../../src/render/context";
 import { createList } from "../../src/core/list";
-import { For, ForList, Index, Show } from "../../src/macros/ui/flow";
+import { For, ForList, ForUnkeyed, Show } from "../../src/macros/ui/flow";
 import { createStyles, styleOf } from "../../src/macros/ui/style";
 import { Style } from "../../src/render/style";
 import { collectCss, resetCss } from "../../src/render/sheet";
@@ -112,8 +112,8 @@ test "regions serialize their current rows" {
 	const rows = el("ul", [], [], For<number>({ each: items, children: (item, i) => <li>{"" + item}</li> }));
 	assert renderToString(rows) === "<ul><li>1</li><li>2</li><!----></ul>", "For: " + renderToString(rows);
 
-	const indexed = el("ul", [], [], Index<number>({ each: items, children: (item, i) => <li>{item().toString()}</li> }));
-	assert renderToString(indexed) === "<ul><li>1</li><li>2</li><!----></ul>", "Index: " + renderToString(indexed);
+	const indexed = el("ul", [], [], ForUnkeyed<number>({ each: items, children: (item, i) => <li>{item().toString()}</li> }));
+	assert renderToString(indexed) === "<ul><li>1</li><li>2</li><!----></ul>", "ForUnkeyed: " + renderToString(indexed);
 
 	// A ForList region serializes through read(), the same path a diff consumer takes: SSR never
 	// sees an op, because no region is mounted when the markup is produced.

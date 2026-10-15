@@ -921,7 +921,7 @@ export function listEngine<T, D>(props: {
 	);
 
 	const scheduleUpdate = (): void => { scheduleCellsToRenderUpdate(false); };
-	const cellRows = regionNode((host: Host) => mapArray<ListCell, Row>(cells, (cell: ListCell, i: Accessor<number>): Row => makeRow(cell.make(scheduleUpdate)), false));
+	const cellRows = regionNode((host: Host) => mapArray<ListCell, Row>(cells, (cell: ListCell, i: Accessor<number>): Row => makeRow(cell.make(scheduleUpdate))));
 	const rows: NeonNode = columns <= 1 ? cellRows : (host: Host, parent: HostNode, before: HostNode | null): void => {
 		parking = parent;
 		cellRows(host, parent, before);

@@ -39,4 +39,5 @@ expect_reject tests/macros/componentSlotRequiredPropsRejected.ms "a node slot co
 expect_reject tests/macros/contextProviderDotRejected.ms "<Tone.Provider> names no field 'Provider'"
 expect_reject tests/macros/contextProviderValueMissingRejected.ms "<Tone> needs a value prop"
 expect_reject tests/macros/contextProviderValueTypeRejected.ms "Type 'int32' is not assignable to type 'string'"
+expect_reject tests/macros/forKeyedComputedRejected.ms "<For keyed> takes true, false or a key function, written in place"
 exit $fail

@@ -176,7 +176,7 @@ function regions(): NeonNode {
 		<Drawn />
 		<For each={[1, 2]}>{(n: number, i: Accessor<number>): NeonNode => <View><Drawn /><Show when={on}><Drawn /></Show></View>}</For>
 		<Drawn />
-		<Index each={[3, 4]}>{(v: Accessor<number>, i: number): NeonNode => <Drawn />}</Index>
+		<For each={[3, 4]} keyed={false}>{(v: Accessor<number>, i: number): NeonNode => <Drawn />}</For>
 		<ForList each={list}>{(v: Accessor<number>): NeonNode => <Drawn />}</ForList>
 		<ErrorBoundary fallback={(err: Error, reset: () => void): NeonNode => <Drawn />}>
 			<Drawn />

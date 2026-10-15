@@ -47,7 +47,7 @@ function fixtures(): NeonNode {
 		<Show when={false} fallback={<Text>fallback</Text>}><Text>hidden</Text></Show>
 		<Ided />
 		<For each={none} fallback={<Text>none</Text>}>{(n: number, i: Accessor<number>): NeonNode => <Text>{n.toString()}</Text>}</For>
-		<Index each={[1, 2]}>{(v: Accessor<number>, i: number): NeonNode => <Text>{v().toString()}</Text>}</Index>
+		<For each={[1, 2]} keyed={false}>{(v: Accessor<number>, i: number): NeonNode => <Text>{v().toString()}</Text>}</For>
 		<ForList each={list}>{(v: Accessor<number>): NeonNode => <Text>{v().toString()}</Text>}</ForList>
 		<View><Show when={on}><Text>first</Text></Show><Text>after</Text></View>
 		<For each={[1, 2]}>{(n: number, i: Accessor<number>): NeonNode => <Show when={on}><Text>{n.toString()}</Text><Ided /></Show>}</For>

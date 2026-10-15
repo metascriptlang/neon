@@ -9,7 +9,7 @@ export { createRoot, runWithOwner, createUniqueId } from "./core/owner";
 export { getOwner } from "./core/runtime";
 export { onCleanup } from "./core/cleanup";
 export { catchError } from "./core/error";
-export { mapArray, indexArray } from "./core/array";
+export { mapArray, mapArrayKeyedBy, mapArrayByPosition, repeat } from "./core/array";
 export { createList, List, ListOp, ListQueue } from "./core/list";
 export { Dispose, Cleanup } from "./core/types";
 
@@ -33,7 +33,7 @@ export { onCssChange, registerCss, collectCss, mountSheet, cssRuleCount, resetCs
 export { element } from "./macros/ui/element";
 export { createStyles, styleOf } from "./macros/ui/style";
 export { createTheme, setTheme, themeOf, setThemeCss } from "./macros/ui/theme";
-export { For, ForList, Index, Show } from "./macros/ui/flow";
+export { For, ForKeyedBy, ForUnkeyed, Repeat, ForList, Show } from "./macros/ui/flow";
 
 export { View, Text, Pressable, TextInput, ScrollView, ScrollViewHandle, KeyboardDismissMode, KeyboardShouldPersistTaps, TextSelection } from "./components/primitives";
 export {

@@ -8,7 +8,7 @@ import { onCleanup } from "../../src/core/cleanup";
 import { createRoot } from "../../src/core/owner";
 import { catchError } from "../../src/core/error";
 import { Dispose } from "../../src/core/types";
-import { For, Index, Show } from "../../src/macros/ui/flow";
+import { For, ForUnkeyed, Show } from "../../src/macros/ui/flow";
 
 interface Theme { accent: string; }
 
@@ -154,13 +154,13 @@ test "a For row reads the provider above the list" {
 	assert mockToString(root) === "<root><ul><li>blue1</li><li>blue2</li></ul></root>", "a row added later saw the provider: " + mockToString(root);
 }
 
-test "an Index row reads the provider above the list" {
+test "a position-keyed For row reads the provider above the list" {
 	const T = createContext<Theme>({ accent: "red" });
 	const [items, setItems] = createSignal<number[]>([1, 2]);
 	const root: MockNode = mockNode("root");
 	const app: NeonNode = T.provider({
 		value: accessor((): Theme => ({ accent: "blue" })),
-		children: element(<ul>{Index<number>({
+		children: element(<ul>{ForUnkeyed<number>({
 			each: items,
 			children: (n: Accessor<number>, i: number): NeonNode => <li>{useContext(T).accent + n().toString()}</li>,
 		})}</ul>),
