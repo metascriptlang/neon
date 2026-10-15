@@ -1,4 +1,5 @@
 import { createSignal } from "../../src/core/signal";
+import { resetErrorHalt } from "../../src/core/runtime";
 import { element } from "../../src/macros/ui/element";
 import { NeonNode } from "../../src/render/hostTypes";
 import { HostNode, MockNode, mockNode, mockHost, render, fireEventWith } from "../../src/render/host";
@@ -128,6 +129,7 @@ test "VirtualizedList names itself when getItem returns one item for two rows" {
 			getItemCount={(d: Page): number => 2}
 			renderItem={itemText} />), mockHost(), root as unknown as HostNode);
 	});
+	resetErrorHalt();
 	assert msg.includes("VirtualizedList: the same item is at rows 0 and 1"), msg;
 }
 
