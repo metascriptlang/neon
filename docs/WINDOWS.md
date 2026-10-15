@@ -214,6 +214,32 @@ text is not re-measured on it), a second window, device loss, a minimized or clo
 middle button, `hitSlop`, `pointerEvents`, mouse capture leaving the window with the button held (the PostMessage driver
 posted an up outside the client, not a real drag out of the window), and a physical foreground session.
 
+## Built: styled runs, recolour without a relayout, press on a run
+
+`src/platform/windows/dwriteText.cpp` `TextLabel` keeps one `IDWriteTextLayout` per label and reads Neon's `textSpans`
+(`src/platform/native/host.ms` `encodeSpan`). It changes the layout according to what changed:
+- Text, size, weight, italic, underline or line-through rebuild the layout.
+- A new width only breaks lines again (`SetMaxWidth`), so `niMeasureText` and the draw share one layout.
+- A change that leaves every run's text and shape as they were only redraws. Each run's colour reaches its glyphs
+  at draw time through `SetDrawingEffect`, which is applied at drawing time (learn.microsoft.com,
+  `IDWriteTextLayout::SetDrawingEffect`).
+
+On a press, `bridge.cpp` `niwPointer` hit-tests the label's layout (`TagAt`, `HitTestPoint`), and a pressable run
+reports first, as its own tag, as the iOS and Android bridges do.
+
+This goes further than RNW, which drops its layout on every state and builds a new one (`ParagraphComponentView.cpp:125`,
+`1f59db1`), so a colour change there costs a full layout.
+
+Measured 2026-10-15, tree `faf6e462`, 96 DPI, msc `a2b3e36a`, Ion `c995edb`. `out/windowsIonText.exe --check` passes,
+and on top of the 13 earlier expectations:
+- A nested `<Text style={{ color }} onPress>` run draws red inside white text.
+- Recoloured to blue, it shows blue pixels and no red left, and `niwLayoutsBuilt()` counts 0 layouts built by the
+  change.
+- Pressing along y=320 every 4 px fires the run's `onPress` 33 times, the first at x=116, past the run's leading
+  "white ", and never over the plain text.
+
+`text.ms` 13/13, `ion.ms` 16/16 and `app.ms` 11/11 still hold.
+
 ## Port map: Text, TextInput, UI Automation
 
 Read 2026-10-14 in RNW at `1f59db1`, paths under `vnext/Microsoft.ReactNative/Fabric/`; only the Text part below

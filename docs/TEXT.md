@@ -162,7 +162,8 @@ per frame.
 1. Paragraph on the Void host: done, with the yoga measure hook outstanding.
 2. The data door: done. `spans`, and `setSpans` on Void. `cellWidth` → `setForceWidth`: done on Void.
    Damage per binding needs no contract field: a host compares a node's last style with the new one.
-3. Paint-only updates: on Void after the Void request lands; DirectWrite keeps its layout.
+3. Paint-only updates: done on Windows (DirectWrite keeps one layout per label and recolours through drawing effects;
+   `docs/WINDOWS.md` "Built: styled runs"); on Void once the Void request lands.
 4. Per-span press, hover, cursor and accessibility.
 5. Placeholders (inline views).
 6. iOS and Android on the same contract.
