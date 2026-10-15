@@ -48,6 +48,12 @@ function pageOf(address: string): string {
 	return DOCS.indexOf(slug) >= 0 ? slug : "";
 }
 
+export function staticPaths(): string[] {
+	const paths = ["/"];
+	for (const slug of DOCS) { paths.push(DOC_PREFIX + slug); }
+	return paths;
+}
+
 export function createSite(history: RoutingHistory): Result<SiteModel, RoutingError> {
 	const address = new Signal<string>("/");
 	const pageCodec: RouteCodec<string> = {

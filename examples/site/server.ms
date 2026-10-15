@@ -4,6 +4,8 @@ import { RoutingError } from "../../src/navigation/routing";
 import { createRequestRoutingHistory } from "../../src/navigation/routingHistory";
 import { Site, NotFound, createSite } from "./site";
 
+export { staticPaths } from "./site";
+
 struct SiteResponse {
 	status: int32;
 	body: string;

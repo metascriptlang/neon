@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -88,6 +88,26 @@ async function routes() {
 	console.log("PASS: workerd routes each request through its own registry and answers a no-match with 404");
 }
 
+async function prerender() {
+	const { staticPaths } = await import(pathToFileURL(join(here, "out/site.js")).href);
+	const out = join(here, "out/static");
+	rmSync(out, { recursive: true, force: true });
+	const paths = staticPaths();
+	assert.deepEqual(paths, ["/", "/docs/start", "/docs/routing"]);
+	for (const path of paths) {
+		const page = await get(site + path);
+		assert.equal(page.status, 200, path);
+		assert.deepEqual(await get(site + path + "?utm=1"), page, "a static page differs by its query: " + path);
+		const file = join(out, (path === "/" ? "/index" : path) + ".html");
+		mkdirSync(dirname(file), { recursive: true });
+		writeFileSync(file, page.body);
+	}
+	const missing = await get(site + "/nowhere");
+	assert.equal(missing.status, 404);
+	writeFileSync(join(out, "404.html"), missing.body);
+	console.log("PASS: every static path renders 200 the same for any query and is written to out/static, with 404.html");
+}
+
 async function browser() {
 	const { chromium } = await import(pathToFileURL(playwright).href);
 	const chrome = await chromium.launch({ channel: process.env.NEON_CHROME_CHANNEL ?? "chrome" });
@@ -171,6 +191,7 @@ async function browser() {
 try {
 	await pages();
 	await routes();
+	await prerender();
 	await browser();
 } finally {
 	server.kill();
