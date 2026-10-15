@@ -13,7 +13,7 @@ import {
 	storageClear, storageGet, storageKeys, storageRemove, storageSet, watchNetInfo,
 } from "./deviceServices";
 import { publishNotificationEvent } from "../../api/notifications";
-import { installCaptureServices } from "../../api/captureServices";
+import { CaptureServices, installCaptureServices } from "../../api/captureServices";
 import { nativeCaptureServices, onRecordingEvent, onSoundEvent } from "./captureServices";
 
 when (ios) {
@@ -225,11 +225,18 @@ const services: AppServices = {
 	lastNotificationResponse,
 };
 
+let capture: CaptureServices = nativeCaptureServices;
+
+// A desktop owner that runs the audio device itself (Ion) answers capture in place of the bridge.
+export function useCaptureServices(services: CaptureServices): void {
+	capture = services;
+}
+
 export function installNativeAppServices(run: (fn: () => void) => void): void {
 	runEvent = run;
 	niSetAppHandler(onAppEventBatched);
 	installAppServices(services);
-	installCaptureServices(nativeCaptureServices);
+	installCaptureServices(capture);
 	publishPlatform(call("platform", ""), call("isPad", "") === "1");
 	publishScale(parseFloat(call("pixelRatio", "")), parseFloat(call("fontScale", "")));
 	const screen = call("screen", "").split(FIELD);

@@ -4,6 +4,8 @@ import {
 } from "../../../../ion/src/index";
 import "./library";
 import { runApp } from "../native/host";
+import { useCaptureServices } from "../native/appServices";
+import { ionCaptureServices } from "../ion/audio";
 import { NeonNode } from "../../render/node";
 import { niwAttach, niwFrame, niwResize, niwPointer, niwShutdown } from "./handoff.h";
 
@@ -37,6 +39,7 @@ export function runNativeWindow(opts: NativeWindowOptions, app: () => NeonNode, 
 	if (created === null) { return 1; }
 	const win: Window = created;
 	setFramePolicy(win, FrameOnDemand);
+	useCaptureServices(ionCaptureServices);
 	niwSetFrameRequester((): void => { requestFrame(win); });
 
 	onResize((window: int32, width: int32, height: int32, scale: float64): void => {

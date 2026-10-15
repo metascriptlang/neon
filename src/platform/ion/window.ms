@@ -22,6 +22,8 @@ import {
 } from "../../render/voidAreaHandle";
 import { Style } from "../../render/style";
 import { publishScale } from "../../api/dimensions";
+import { installCaptureServices } from "../../api/captureServices";
+import { ionCaptureServices } from "./audio";
 import { VoidHost, VoidNode, createVoidHostWith, asFlexStyle, parseColor } from "../void/host";
 
 when (windows) {
@@ -370,6 +372,7 @@ export function runWindow(opts: DesktopOptions, app: () => NeonNode): int32 {
 	}
 	_font = font.value;
 	wireInput();
+	installCaptureServices(ionCaptureServices);
 	const host = windowHost(win);
 	const dispose = render((h: Host, p: HostNode, b: HostNode | null): void => { app()(h, p, b); }, host, windowNode("window"));
 	runLoop();
