@@ -121,3 +121,4 @@ export {
 } from "./children";
 export { ChildStack, createChildStack } from "./childStack";
 export { Pages, ChildPages, createChildPages } from "./childPages";
+export { ChildSlot, createChildSlot } from "./childSlot";
