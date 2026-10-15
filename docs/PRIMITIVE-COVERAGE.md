@@ -2,7 +2,7 @@
 
 Neon has most of the familiar building-block families, but not their complete contracts. The largest gaps are input/activation safety, focus and accessibility, editing semantics, portable typography, image loading and a few accepted-but-unimplemented behaviors. Adding more named widgets would not close these gaps.
 
-This is a read-only implementation audit dated 2026-10-15, not an implementation plan, release gate or claim that every prop was enumerated. No builds, tests, devices or assistive technologies were driven. Source findings below are not runtime reproductions.
+The original scan is a read-only implementation audit dated 2026-10-15, not an implementation plan, release gate or claim that every prop was enumerated. That scan drove no builds, tests, devices or assistive technologies. Its source findings are not runtime reproductions; subsequent regression pointers are separated below.
 
 ## Scope and reference boundary
 
@@ -22,6 +22,14 @@ Source snapshots:
 `RN/` below means `packages/react-native/` in the [RN snapshot](https://github.com/facebook/react-native/tree/693e9628e8c18cbb37e587a568e948a55f3180e3/packages/react-native); `VL/` means its sibling `packages/virtualized-lists/`. `F/` means `packages/flutter/lib/` in the [Flutter snapshot](https://github.com/flutter/flutter/tree/f101991378559ed38c9887e382066bb7ee3a17f0/packages/flutter/lib). Neon paths are repository-relative. Symbols, not line numbers alone, identify the compared contracts.
 
 Five parallel reports covered RN components, RN nonvisual APIs, Flutter layout/scroll, Flutter input/semantics and Flutter animation/system/drawing foundations. The parent inspected the reports and implementation paths, rejecting the overstatements listed below. File fingerprints remained unchanged across the scan. Local evidence is under `out/probe/primitiveAudit/`; the retained audit archive is `~/metascript/.wt/audits/rn-components-primitives-2026-10-15.tar.gz`. Neither is a replacement for the source anchors here.
+
+## Regression follow-ups to this snapshot
+
+The historical findings below are not a live list of unfixed bugs. These programs pin later scoped contracts; they do not establish whole-host or full-prop parity.
+
+- **S1, multiline rejection:** `tests/components/secureTextInput.test.ms` and `tests/browser/secureTextInput.test.ms`. These do not close the separate Void single-line masking risk.
+- **S2, activation and owner lifetime:** `tests/render/press.test.ms`, `tests/browser/pressableActivation.test.ms`, its real-input driver `tests/browser/pressableActivation.mjs`, `tests/platform/nativeHost.test.ms` and `tests/platform/voidActivation.test.ms`. Native key/AT producers remain separate gaps. Constructed DOM hydration is not nested-button HTML-parser proof; bridge/scene fixtures are not device, AT or pixel certificates.
+- **G15, root discoverability:** `tests/api/primitiveExports.test.ms` holds root-import consumers of existing implementations, not inherited-prop, rendering, SSR or device parity.
 
 ## Already supplied, including different API shapes
 

@@ -14,9 +14,9 @@ code, answers that.
 **Rule for this file:** every number is a measurement with the command that produced it. A row that
 cannot be reproduced is re-measured and rewritten, never corrected on top.
 
-Source-only compatibility findings, including secure-input and alternate-activation risks, are
-indexed in [the RN/Flutter primitive audit](docs/PRIMITIVE-COVERAGE.md#security-and-activation-findings).
-They have explicit source/host boundaries and are not reproduced runtime failure rows.
+Baseline compatibility findings and later scoped regression pointers are indexed in
+[the dated RN/Flutter primitive audit](docs/PRIMITIVE-COVERAGE.md).
+Historical risk labels are not automatically open runtime rows or whole-host parity claims.
 
 ---
 ## §3 — Neon-side and environment
