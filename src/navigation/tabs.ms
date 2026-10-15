@@ -5,10 +5,14 @@ import { Style } from "../render/style";
 import { View, Text, Pressable } from "../components/primitives";
 import { For, Show } from "../macros/ui/flow";
 import { Platform } from "../api/platform";
+import { Pages, createChildPages } from "./childPages";
 import {
+	DrawerAction,
 	Navigation,
 	NavigatorCore,
 	NavigatorKind,
+	NavigatorModel,
+	RouteSeed,
 	ScreenOptions,
 	ScreenProps,
 	TabBarIconProps,
@@ -17,6 +21,7 @@ import {
 	mergeOptions,
 	NavigationAction,
 	noAction,
+	seedKey,
 } from "./core";
 import { Slot, screenView, shown } from "./header";
 import { createNavigatorMotion } from "./navigatorMotion";
@@ -158,6 +163,154 @@ export function tabItem<P>(
 	</Pressable>;
 }
 
+function startPages<P>(core: NavigatorCore<P>): Pages<RouteSeed<P>> {
+	const items: RouteSeed<P>[] = [];
+	let selectedIndex: int32 = 0;
+	for (let i = 0; i < core.screens.length; i += 1) {
+		const name = core.screens[i].name;
+		if (name === core.initialName) { selectedIndex = i as int32; }
+		items.push(core.seed(name, null));
+	}
+	return { items, selectedIndex };
+}
+
+function resetPages<P>(
+	core: NavigatorCore<P>,
+	list: RouteSeed<P>[],
+	at: int32,
+): Pages<RouteSeed<P>> {
+	const items: RouteSeed<P>[] = [];
+	let selectedIndex: int32 = 0;
+	for (let i = 0; i < core.screens.length; i += 1) {
+		const name = core.screens[i].name;
+		let entry: RouteSeed<P> | null = null;
+		for (const given of list) {
+			if (given.name === name) { entry = given; }
+		}
+		if (entry === null) { entry = core.seed(name, null); }
+		if (name === list[at].name) { selectedIndex = i as int32; }
+		items.push(entry as RouteSeed<P>);
+	}
+	return { items, selectedIndex };
+}
+
+export function pagesModel<P>(
+	core: NavigatorCore<P>,
+	behavior: string,
+	restored: RouteSeed<P>[] | null,
+	at: int32,
+): NavigatorModel<P> {
+	const initial = restored === null
+		? startPages<P>(core)
+		: resetPages<P>(core, restored as RouteSeed<P>[], at);
+	const pages = createChildPages<RouteSeed<P>, Navigation<P>>(
+		initial,
+		seedKey,
+		(seed: Accessor<RouteSeed<P>>, active: Accessor<boolean>): Navigation<P> => {
+			return core.child(seed, active);
+		},
+	);
+	const entries = pages.instances;
+	let history: string[] = [initial.items[initial.selectedIndex].key];
+	const focus = (at: int32): void => {
+		const key = core.snapshot()[at].route.key;
+		const kept: string[] = [];
+		for (const visited of history) {
+			if (visited !== key) { kept.push(visited); }
+		}
+		kept.push(key);
+		history = kept;
+		core.apply((): void => { pages.select(at); });
+	};
+	const backTarget = (): int32 => {
+		const list = core.snapshot();
+		const at = untrack((): int32 => pages.selectedIndex());
+		if (behavior === "none") { return -1; }
+		if (behavior === "history") {
+			if (history.length < 2) { return -1; }
+			const previous = history[history.length - 2];
+			for (let i = 0; i < list.length; i += 1) {
+				if (list[i].route.key === previous) { return i as int32; }
+			}
+			return -1;
+		}
+		let goal: int32 = 0;
+		if (behavior === "initialRoute") { goal = core.indexOfName(list, core.initialName); }
+		return goal === at || goal < 0 ? -1 : goal;
+	};
+	const back = (): boolean => {
+		const goal = backTarget();
+		if (goal < 0) { return false; }
+		if (behavior === "history") {
+			history.pop();
+			core.apply((): void => { pages.select(goal); });
+			return true;
+		}
+		focus(goal);
+		return true;
+	};
+	return {
+		entries,
+		index: accessor((): int32 => pages.selectedIndex()),
+		arrange: (kept: Navigation<P>[], focused: Navigation<P> | null): void => {
+			const items: RouteSeed<P>[] = [];
+			for (const config of core.screens) {
+				let found: Navigation<P> | null = null;
+				for (const entry of kept) {
+					if (entry.route.name === config.name) { found = entry; }
+				}
+				items.push(found === null
+					? core.seed(config.name, null)
+					: core.seedOf(found as Navigation<P>));
+			}
+			let selectedIndex: int32 = 0;
+			if (focused !== null) {
+				for (let i = 0; i < items.length; i += 1) {
+					if (items[i].name === (focused as Navigation<P>).route.name) {
+						selectedIndex = i as int32;
+					}
+				}
+			}
+			const visited: string[] = [];
+			for (const key of history) {
+				for (const seed of items) {
+					if (seed.key === key) { visited.push(key); }
+				}
+			}
+			if (visited.length === 0) { visited.push(items[selectedIndex].key); }
+			history = visited;
+			core.apply((): void => {
+				pages.navigate((current: Pages<RouteSeed<P>>): Pages<RouteSeed<P>> => {
+					return { items, selectedIndex };
+				});
+			});
+		},
+		navigate: (name: string, params: P | null): void => {
+			const list = core.snapshot();
+			const at = core.indexOfName(list, name);
+			if (params !== null) { list[at].writeParams(params); }
+			focus(at);
+		},
+		push: (name: string, params: P | null): boolean => false,
+		replace: (key: string, name: string, params: P | null): void => {
+			core.navigate(name, params);
+		},
+		popTo: (at: int32): void => {},
+		reset: (list: RouteSeed<P>[], at: int32): void => {
+			const next = resetPages<P>(core, list, at);
+			history = [next.items[next.selectedIndex].key];
+			core.apply((): void => {
+				pages.navigate((current: Pages<RouteSeed<P>>): Pages<RouteSeed<P>> => next);
+			});
+		},
+		goBackFrom: (key: string): boolean => back(),
+		canBack: (): boolean => backTarget() >= 0,
+		back,
+		canPop: (): boolean => false,
+		drawer: (action: DrawerAction): boolean => false,
+	};
+}
+
 export interface TabNavigator<P> {
 	Navigator: (props: {
 		children: NeonNode;
@@ -205,14 +358,18 @@ function createTabs<P>(material: boolean): TabNavigator<P> {
 			const collection = collectScreens<P>(collector, props.children);
 			const screens = untrack(() => collection.read());
 			const declared = readOptions(props.screenOptions);
+			const behavior = readBehavior(props.backBehavior, "firstRoute");
 			const core = createCore<P>({
 				kind: NavigatorKind.Tabs,
 				screens,
 				initialRouteName: readName(props.initialRouteName),
-				initialParams: null,
 				screenOptions: material ? withoutHeader(declared) : declared,
-				backBehavior: readBehavior(props.backBehavior, "firstRoute"),
 				scope: currentScope("Tab.Navigator"),
+				model: (
+					core: NavigatorCore<P>,
+					restored: RouteSeed<P>[] | null,
+					at: int32,
+				): NavigatorModel<P> => pagesModel<P>(core, behavior, restored, at),
 			});
 			watchScreens<P>(collection, core);
 			const position = props.tabBarPosition;
@@ -235,9 +392,9 @@ function createTabs<P>(material: boolean): TabNavigator<P> {
 				return { ...base, backgroundColor: background };
 			});
 			const mounted = mountedEntries<P>(core);
-			const transitions = createNavigatorMotion<P>(core);
+			const transitions = createNavigatorMotion<P>(core, false);
 			const screen = (entry: Navigation<P>, at: Accessor<number>): NeonNode => {
-				return screenView<P>(core, transitions, entry);
+				return screenView<P>(core, transitions, entry, false);
 			};
 			const item = (entry: Navigation<P>, at: Accessor<number>): NeonNode => {
 				return tabItem<P>(core, entry, top);

@@ -172,6 +172,7 @@ function containerLink(initialState: NavigationState | null): NavigatorLink {
 		pushTo: (name: string): boolean => false,
 		backLocal: (): boolean => false,
 		canBackLocal: (): boolean => false,
+		canPop: (): boolean => false,
 		popToTop: (): boolean => false,
 		handleBack: (): boolean => root !== null && (root as NavigatorLink).handleBack(),
 		drawerAction: (action: DrawerAction): boolean => false,
