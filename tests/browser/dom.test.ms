@@ -28,6 +28,7 @@ extern class ProbeStyle {
 	overflow: string;
 	fontStyle: string;
 	textDecorationLine: string;
+	textDecorationStyle: string;
 	letterSpacing: string;
 	lineHeight: string;
 	backgroundImage: string;
@@ -261,13 +262,15 @@ test "overflow reaches the element" {
 	probe(el).remove();
 }
 
-test "fontStyle and textDecorationLine reach the element" {
+test "fontStyle, textDecorationLine and textDecorationStyle reach the element" {
 	const h = domHost();
 	const el = mount("view");
 	h.setStyle(el, styleWith("fontStyle", "italic"));
 	assert probe(el).style.fontStyle === "italic", "fontStyle is in the IR and the browser projects it";
 	h.setStyle(el, styleWith("textDecorationLine", "underline"));
 	assert probe(el).style.textDecorationLine === "underline", "textDecorationLine is in the IR and the browser projects it";
+	h.setStyle(el, styleWith("textDecorationStyle", "wavy"));
+	assert probe(el).style.textDecorationStyle === "wavy", "textDecorationStyle is in the IR and the browser projects it";
 	probe(el).remove();
 }
 

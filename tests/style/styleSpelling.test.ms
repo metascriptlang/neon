@@ -16,7 +16,7 @@ const sheet = createStyles({
 		opacity: 0.5, color: "#333", fontSize: 12, fontWeight: "bold", letterSpacing: 0.5, lineHeight: 18,
 		textAlign: "left", overflow: "hidden", zIndex: 3, fontFamily: "serif", transform: "rotate(1deg)",
 		cursor: "pointer", boxShadow: "none", clipPath: "none", transition: "none", filter: "none",
-		pointerEvents: "none", fontStyle: "italic", textDecorationLine: "underline",
+		pointerEvents: "none", fontStyle: "italic", textDecorationLine: "underline", textDecorationStyle: "wavy",
 	},
 	lengthsAsText: { flexBasis: "auto", width: "50%", margin: "auto", top: "10%" },
 	emptyValues: { color: "", width: "", opacity: 0.5 },

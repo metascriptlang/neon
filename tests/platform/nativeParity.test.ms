@@ -106,6 +106,15 @@ test "a nested native Text is a styled span of its outer label, and a pressable 
 	assert log === "link;", "the pressed span fires its own onPress: " + log;
 }
 
+test "a native Text refuses a decoration line style its platform text stack does not draw" {
+	let refused = "";
+	try {
+		runApp((): NeonNode => <View><Text>a <Text style={{ textDecorationLine: "underline", textDecorationStyle: "wavy" }}>b</Text></Text></View>);
+	} catch (e) { refused = e.toString(); }
+	nmTeardown();
+	assert refused.indexOf("wavy") >= 0 && refused.indexOf("is not drawn by the platform text stacks yet") >= 0, "wavy: " + refused;
+}
+
 test "a native multiline TextInput without a height grows with its text up to maxHeight" {
 	const [notes, setNotes] = createSignal("");
 	const app = (): NeonNode => <View style={{ width: 200 }}>

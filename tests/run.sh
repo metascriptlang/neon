@@ -2,8 +2,8 @@
 # Neon test gate — every test file runs native, then --target=js, then the
 # SSR parity lane under -d:server, then the browser lane in real Chrome, then the
 # edge lane in workerd.
-# js-lane skips: tests/style/style.test.ms, tests/platform/void.test.ms and
-# tests/platform/voidInput.test.ms import the Void platform host, a C-only sibling repo;
+# js-lane skips: tests/style/style.test.ms, tests/platform/void.test.ms,
+# tests/platform/voidInput.test.ms and voidFont.test.ms import the Void platform host, a C-only sibling repo;
 # tests/platform/ionAudio.test.ms and ionAppServices.test.ms import Ion's runtime, C-only;
 # tests/platform/native<Name>.test.ms files link the native host against a C mock bridge.
 # tests/browser is bound to a real DOM: it has no C lowering and no `document`
@@ -21,7 +21,7 @@ for f in $files; do
 done
 for f in $files; do
 	case "$f" in
-	*style/style.test.ms | *platform/void.test.ms | *platform/voidInput.test.ms | *platform/ionAudio.test.ms | *platform/ionAppServices.test.ms | *platform/native[A-Z]*.test.ms)
+	*style/style.test.ms | *platform/void.test.ms | *platform/voidInput.test.ms | *platform/voidFont.test.ms | *platform/ionAudio.test.ms | *platform/ionAppServices.test.ms | *platform/native[A-Z]*.test.ms)
 		echo "== js skip $f"
 		continue
 		;;
