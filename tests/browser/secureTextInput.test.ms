@@ -120,3 +120,39 @@ test "Chrome rejects secure entry on a fixed textarea even after multiline becom
 	assert secureMultilineDiagnostic(message), "fixed-tag rejection: " + message;
 	dispose();
 }
+
+test "Chrome rejects requested multiline on a password input alone and batched with value or defaultValue" {
+	for (const channel of [0, 1, 2]) {
+		const [multiline, setMultiline] = createSignal(false);
+		const [value, setValue] = createSignal("original");
+		const id = `secure-requested-${channel}`;
+		const mount = mountPoint(id);
+		const content = channel === 2
+			? element(<TextInput multiline={multiline()} secureTextEntry={true} defaultValue={value()} />)
+			: element(<TextInput multiline={multiline()} secureTextEntry={true} value={value()} />);
+		const dispose = render(content, domHost(), mount as unknown as HostNode);
+		js(`globalThis.secureRequestedWrites = 0; const el = document.querySelector('#${id} input'); for (const name of ['value', 'defaultValue']) { const d = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, name); Object.defineProperty(el, name, { get() { return d.get.call(this); }, set(v) { if (v.includes('private-token')) globalThis.secureRequestedWrites++; d.set.call(this, v); } }); } return 1;`);
+		let message = "";
+		try {
+			batch((): void => {
+				if (channel !== 0) { setValue("private-token-transition"); }
+				setMultiline(true);
+			});
+		} catch (e) { message = e.toString(); }
+		assert secureMultilineDiagnostic(message), "requested multiline rejection: " + message;
+		assert js(`const el = document.querySelector('#${id} input'); return el.type + ' ' + el.value + ' ' + el.defaultValue + ' ' + globalThis.secureRequestedWrites;`).indexOf("private-token") < 0, "no final secret";
+		assert js("return globalThis.secureRequestedWrites;") === "0", "no transient value or defaultValue write";
+		dispose();
+	}
+}
+
+test "Chrome preserves nonsecure input updates after requested multiline becomes true" {
+	const [multiline, setMultiline] = createSignal(false);
+	const [value, setValue] = createSignal("public");
+	const mount = mountPoint("secure-requested-control");
+	const dispose = render(element(<TextInput multiline={multiline()} secureTextEntry={false} value={value()} />), domHost(), mount as unknown as HostNode);
+	setMultiline(true);
+	setValue("next");
+	assert js("const el = document.querySelector('#secure-requested-control input'); return el.type + ' ' + el.value;") === "text next", "nonsecure fixed host remains usable";
+	dispose();
+}

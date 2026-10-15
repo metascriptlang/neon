@@ -89,3 +89,44 @@ test "a multiline host stays unsupported for secure entry after its multiline pr
 	assert secureMultilineDiagnostic(message), "case-naming rejection without secret: " + message;
 	dispose();
 }
+
+test "a secure single-line host rejects requested multiline changes alone and with value or defaultValue" {
+	for (const channel of [0, 1, 2]) {
+		const [multiline, setMultiline] = createSignal(false);
+		const [value, setValue] = createSignal("original");
+		const root = mockNode("root");
+		const host = mockHost();
+		const setAttr = host.setAttr;
+		let secretWrites = 0;
+		host.setAttr = (node: HostNode, name: string, text: string): void => {
+			if (text.indexOf("private-token") >= 0) { secretWrites += 1; }
+			setAttr(node, name, text);
+		};
+		const content = channel === 2
+			? element(<TextInput multiline={multiline()} secureTextEntry={true} defaultValue={value()} />)
+			: element(<TextInput multiline={multiline()} secureTextEntry={true} value={value()} />);
+		const dispose = render(content, host, root as unknown as HostNode);
+		assert root.children[0].tag === "textinput", "initial host is single-line";
+		let message = "";
+		try {
+			batch((): void => {
+				if (channel !== 0) { setValue("private-token-transition"); }
+				setMultiline(true);
+			});
+		} catch (e) { message = e.toString(); }
+		assert secureMultilineDiagnostic(message), "requested multiline rejection: " + message;
+		assert secretWrites === 0 && mockToString(root).indexOf("private-token") < 0, "no transient or final secret write";
+		dispose();
+	}
+}
+
+test "a nonsecure single-line host allows requested multiline and value changes" {
+	const [multiline, setMultiline] = createSignal(false);
+	const [value, setValue] = createSignal("public");
+	const root = mockNode("root");
+	const dispose = render(element(<TextInput multiline={multiline()} secureTextEntry={false} value={value()} />), mockHost(), root as unknown as HostNode);
+	setMultiline(true);
+	setValue("next");
+	assert root.children[0].tag === "textinput" && mockToString(root).indexOf('value="next"') >= 0, "fixed host remains usable";
+	dispose();
+}
