@@ -1,6 +1,5 @@
 import { Accessor } from "../core/signal";
-import { Computation, CompState } from "../core/types";
-import { getOwner, inheritId } from "../core/runtime";
+import { getOwner, createOwner } from "../core/runtime";
 import { runWithOwner } from "../core/owner";
 import { Host, HostNode, NeonNode } from "./hostTypes";
 
@@ -19,8 +18,6 @@ class Provided<T> {
 	constructor(read: () => T) { this.read = read; }
 }
 
-function noop(): void {}
-
 export function useContext<T>(ctx: Context<T>): T {
 	const key: unknown = ctx;
 	const owner = getOwner();
@@ -34,15 +31,8 @@ export function useContext<T>(ctx: Context<T>): T {
 
 function provideScope<T>(ctx: Context<T>, read: () => T, body: () => number): number {
 	const parent = getOwner();
-	const scope: Computation = {
-		observers: [], observerSlots: [],
-		fn: noop, isRoot: false, state: CompState.Clean,
-		sources: [], sourceSlots: [],
-		pure: false, user: false, disposed: false,
-		owned: [], cleanups: [], owner: parent, context: { key: ctx as unknown, value: new Provided<T>(read), next: parent !== null ? parent.context : null }, handler: null,
-		id: inheritId(parent, false), childCount: 0, transparent: false,
-	};
-	if (parent !== null) { parent.owned.push(scope); }
+	const scope = createOwner();
+	scope.context = { key: ctx as unknown, value: new Provided<T>(read), next: parent !== null ? parent.context : null };
 	return runWithOwner(scope, body);
 }
 
