@@ -1,6 +1,6 @@
 # Windows Host
 
-Status: decided 2026-10-14; the View and Text slices are built ("Built: View", "Built: Text" below), everything after them is not. The Windows Application UI world is a native host behind
+Status: decided 2026-10-14; the View, Text and Pressable slices are built, hosted in an Ion window ("Built: View", "Built: Text", "Built: Ion window and Pressable" below), everything after them is not. The Windows Application UI world is a native host behind
 `src/platform/native/bridge.h`, like iOS and Android (`IOS.md`, `ANDROID.md`), and its components
 are Neon's own views drawn on DirectComposition. This document keeps the decision, the reference it
 is ported from, the paths rejected and the one measurement taken. `VISION.md` "Worlds, nested one
@@ -97,8 +97,9 @@ DPI other than 96, DirectManipulation, RichEdit windowless, UI Automation.
 `src/platform/windows/` holds the bridge. `bridge.cpp` implements the view-tree half of `bridge.h` over
 `composition.h` (`ICompositionContext`, `IVisual`, named after RNW's `CompositionSwitcher.idl`);
 `dcompComposition.cpp` is its one implementation, on `IDCompositionDevice2`. The bridge creates no window:
-`handoff.h` is the whole surface the owner of the window uses (`niwAttach`, `niwPump`, `niwShutdown`).
-`examples/windowsNative/` is the owner for now and plays Ion's part; `--check` samples its own window.
+`handoff.h` is the whole surface the owner of the window uses. Two owners exist: `examples/windowsNative/app.ms`
+and `text.ms` own a plain Win32 window (`niwPump`), and `src/platform/windows/ion.ms` owns an Ion window
+("Built: Ion window and Pressable"); `--check` samples the owner's own window.
 Every `bridge.h` function not implemented aborts with its name, and `niAppCall` answers only the queries
 `installNativeAppServices` makes at startup.
 
@@ -155,6 +156,62 @@ pixel counts varied run to run and a `setTimeout` did not fire.
 
 Not measured: a DPI other than 96, resize of a text label, emoji and other colour fonts, text the system
 falls back for, a label wider than its frame after pixel rounding (its layout box is the frame, so it wraps).
+
+## Built: Ion window and Pressable
+
+`src/platform/windows/ion.ms` `runNativeWindow(options, app, onMounted)` creates an Ion window with no webview and
+runs the app under Ion's `runLoop`. The first `onResize` record (Ion queues one when it creates the window) gives the
+DPI and the client size: it calls `niwAttach(windowDevice, windowRoot, dpi, logicalW, logicalH)` and `runApp`. Every
+later record calls `niwResize`, which sets the screen size, re-applies frames, corner radii and text surfaces when the
+DPI changed, and runs the host's resize handler (a relayout). `src/platform/ion/window.ms` is the pattern for this wiring.
+
+- **Frames on demand.** The window runs `FrameOnDemand`. The bridge calls a requester closure (`niwSetFrameRequester`,
+  which `ion.ms` points at Ion's `requestFrame`) when a bridge call changed something, or when Neon's frame driver calls
+  `niRequestFrame` (which answers 1 under an owner that set a requester and 0 under the Win32 harness, so the harness
+  keeps its 16 ms timer). Ion's frame record calls `niwFrame`: the host's loop handler, Neon's pending frame callback,
+  the dirty text labels, then the DComp `Commit`. Timers and promises run in Ion's own `msRunOnce`, so `niwFrame` never
+  waits on `niLoopNext`. A change made during `niwFrame` is committed by that frame and asks for no further one.
+- **Pointer.** `ion.ms` forwards Ion's left-button down and up, motion and leave records, and a focus loss, as
+  `niwPointer(down | up | move | cancel, pixelX, pixelY)`. The bridge divides by the scale to window points and hit-tests
+  its view tree: children in reverse child order (child order is z-order, `niBringChildToFront` reorders it), each view's
+  point taken back through its `niSetTransform` / `niSetRotation` matrix about its centre, children tried when the point
+  is inside the view or the view does not clip (a corner radius clips, as in the visual), the view itself when the point
+  is inside it. A Text is hit only when `niViewSetPressable` marked it, as on iOS (`NeonLabel`). RNW's
+  `ViewComponentView::hitTest` has the same order and the same clip rule; Neon's host passes no `pointerEvents`
+  (`style/fields.ms` ignores it on native), so none is applied. A rounded corner does not shrink the hit area.
+- **Phases.** A down starts a touch on the chain of tagged views from the hit view up to the root and reports phase 0 to
+  each, innermost first, as iOS does through the responder chain; a move while the touch is held reports 4. An up
+  hit-tests again: a chain view that still contains the point gets 1 then 2 (press), a chain view that does not gets 3
+  (cancel, which Neon turns into `pointercancel` and `pointerleave`). iOS and Android report 1 and 2 wherever the finger
+  lifted; Windows cancels instead, so `<Pressable onPress>` does not fire for down inside and up outside. Leave and focus
+  loss cancel. `niLastTouchTag/Phase/X/Y/Time` read the last report; the time is the performance counter in
+  milliseconds. `niSetResponder` and `niClearResponder` store the view only: no ScrollView exists to consume it.
+- **Accessibility props.** `niSetProp` accepts any name starting `accessib` and drops it: `<Pressable>` always writes
+  `accessible`, and the UI Automation slice that would use them is not built. Every other unknown prop still aborts.
+
+Measured 2026-10-15 on tree `67268ba2b71069d8fa23b270bb0f773f7c2efaae`, 96 dpi, msc v0.3.3 (BUILD `9cf5708c`), Ion
+`e28af34`, one build at a time:
+
+- `msc build examples/windowsNative/ion.ms` then `out/windowsIon.exe --check`: 12 of 12 pixels, then the window is
+  resized to a client of 800x400 and 4 of 4 more (a pin anchored right and bottom moved from (570,290) to (770,370)).
+  `ionText.ms` (the `text.ms` content in an Ion window) matches 13 of 13. `out/windowsNative.exe --check` 11 of 11 and
+  `out/windowsText.exe --check` 13 of 13 still hold; `tests/platform/nativeHost.test.ms` 395 tests green. The check
+  windows are borderless and topmost: Ion's Windows `createWindow(width, height)` is the outer size, so a decorated
+  window has a smaller client than asked for, and Ion's `setSize` and `setAlwaysOnTop` are no-ops there.
+- Idle: `out/windowsIonPress.exe` ran 6 s with no input and `niwFrame` ran once (the mount's frame), counted with a
+  temporary counter that is not committed.
+- `examples/windowsNative/ionPress.ms` driven by PostMessage mouse messages to its window (client 384x221):
+  `press A 1 at 50,50` (inside), `press A 2 at 90,50` (on A's Text, bubbled to A), nothing for a click on the background,
+  nothing for down in A and up outside, `press A 3` for down in A, a move inside, up inside, `press B` on B's left half and
+  nothing on its right half under a later sibling View, `press C` inside a `scale(0.5)` Pressable's visual box and nothing
+  in its layout box outside it, `press E` inside a `rotate(90deg)` Pressable's visual box (outside its layout box) and
+  `press D` at a point where E's unrotated layout box lies over D. A Pressable with `onPressIn` and `onPressOut` logged
+  `in D`, `press D`, `out D`, and for down inside, up outside `in D`, `out D` and no press.
+
+Not measured: a DPI other than 96 (the `niwResize` path that re-applies the tree has never run with a changed DPI, and
+text is not re-measured on it), a second window, device loss, a minimized or cloaked window, touch and pen, a right or
+middle button, `hitSlop`, `pointerEvents`, mouse capture leaving the window with the button held (the PostMessage driver
+posted an up outside the client, not a real drag out of the window), and a physical foreground session.
 
 ## Port map: Text, TextInput, UI Automation
 
@@ -227,12 +284,14 @@ created on a D2D device, so `CreateSurface` hands out D2D-drawable surfaces; `co
 Pointer, key, text, IME, focus, resize and frame records arrive per window in client-area pixels, and Ion does
 no hit-testing: the host parents its visuals under the root, z-orders them, and routes input itself. macOS (the
 content view) and Linux (a `GtkFixed`) give the same contract. `src/platform/ion/window.ms` is the first host
-on it, for a full-window `<Void>`; the native host of this document is not on it yet.
+on it, for a full-window `<Void>`; `src/platform/windows/ion.ms` hosts the native host of this document. What
+measuring it showed Ion does not give: on Windows `createWindow(width, height)` is the outer window size, not the
+client size, and `setSize`, `setPosition`, `setAlwaysOnTop` and `setDecorations` are stubs after creation.
 
 ## Order
 
-1. This probe again inside an Ion window, on Ion's content root (`windowRoot`, `windowDevice`).
-2. The bridge, smallest runnable first: View (frame, background, corner radius, opacity), Text with
-   `niMeasureText` on DirectWrite, Pressable input, then ScrollView, then TextInput, then UIA. Each
-   step runs a Neon example in an Ion window and keeps the mock-bridge tests
-   (`tests/platform/native*.test.ms`) green.
+1. ~~This probe again inside an Ion window, on Ion's content root (`windowRoot`, `windowDevice`).~~ Done in
+   "Built: Ion window and Pressable".
+2. The bridge, smallest runnable first: ~~View~~, ~~Text with `niMeasureText` on DirectWrite~~, ~~Pressable input~~,
+   then ScrollView, then TextInput, then UIA. Each step runs a Neon example in an Ion window and keeps the mock-bridge
+   tests (`tests/platform/native*.test.ms`) green.
