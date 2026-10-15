@@ -143,6 +143,7 @@ export interface NavigatorLink {
 	isFocused: Accessor<boolean>;
 	register: (routeKey: string, child: NavigatorLink) => NavTarget | null;
 	seedFor: (routeKey: string) => NavigationState | null;
+	restore: (state: NavigationState) => void;
 	unregister: (routeKey: string, child: NavigatorLink) => void;
 	focusedChild: () => NavigatorLink | null;
 	focusedRoute: () => RouteKey | null;
@@ -1324,6 +1325,7 @@ export function linkOf<P>(core: NavigatorCore<P>): NavigatorLink {
 			return core.register(routeKey, child);
 		},
 		seedFor: (routeKey: string): NavigationState | null => core.seedFor(routeKey),
+		restore: (state: NavigationState): void => core.restore(state),
 		unregister: (routeKey: string, child: NavigatorLink): void => {
 			core.unregister(routeKey, child);
 		},

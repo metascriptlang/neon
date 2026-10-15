@@ -12,6 +12,7 @@ import {
 	NavTarget,
 	NavigatorKind,
 	NavigatorLink,
+	NavigationRoute,
 	NavigationState,
 	RouteKey,
 	ScopeContext,
@@ -19,7 +20,31 @@ import {
 	deepestFocused,
 	navigateUp,
 } from "./core";
-import { LinkingOptions, targetFromPath, targetFromURL } from "./linking";
+import {
+	LinkingConfig,
+	LinkingOptions,
+	pathFromState,
+	targetFromPath,
+	targetFromURL,
+} from "./linking";
+import { RoutePlan, RoutingError, RoutingParticipant, RoutingRegistry } from "./routing";
+
+export interface ContainerRouting {
+	registry: RoutingRegistry;
+	scope: string;
+}
+
+struct RouteSnapshot {
+	name: string;
+	hasParams: boolean;
+	paramPairs: string[];
+	nested: StateSnapshot[];
+}
+
+struct StateSnapshot {
+	index: int32;
+	routes: RouteSnapshot[];
+}
 
 export class NavigationContainerRef {
 	link: NavigatorLink | null = null;
@@ -123,9 +148,14 @@ export function createNavigationContainerRef(): NavigationContainerRef {
 	return new NavigationContainerRef();
 }
 
+function emptyState(): NavigationState {
+	return { index: 0, routeNames: [], routes: [] };
+}
+
 function containerLink(initialState: NavigationState | null): NavigatorLink {
 	let root: NavigatorLink | null = null;
 	let waiting: NavTarget | null = null;
+	let initial = initialState;
 	let seed = initialState;
 	return {
 		kind: NavigatorKind.Container,
@@ -149,6 +179,7 @@ function containerLink(initialState: NavigationState | null): NavigatorLink {
 		register: (routeKey: string, child: NavigatorLink): NavTarget | null => {
 			if (root !== null) { throw new Error("NavigationContainer holds one root navigator"); }
 			root = child;
+			initial = child.state();
 			const target = waiting;
 			waiting = null;
 			return target;
@@ -158,16 +189,112 @@ function containerLink(initialState: NavigationState | null): NavigatorLink {
 			seed = null;
 			return state;
 		},
+		restore: (state: NavigationState): void => {
+			const wanted = state.routes.length === 0 ? initial : state;
+			if (root === null) {
+				seed = wanted;
+				waiting = null;
+				return;
+			}
+			(root as NavigatorLink).restore(wanted as NavigationState);
+		},
 		unregister: (routeKey: string, child: NavigatorLink): void => {
 			if (root === child) { root = null; }
 		},
 		focusedChild: (): NavigatorLink | null => root,
 		focusedRoute: (): RouteKey | null => null,
 		state: (): NavigationState => root === null
-			? { index: 0, routeNames: [], routes: [] }
+			? emptyState()
 			: (root as NavigatorLink).state(),
 		parent: (): NavigatorLink | null => null,
 		describe: (): string => root === null ? "" : (root as NavigatorLink).describe(),
+	};
+}
+
+function snapshotOf(state: NavigationState): StateSnapshot {
+	const routes: RouteSnapshot[] = [];
+	for (const route of state.routes) {
+		const paramPairs: string[] = [];
+		const values = route.params;
+		if (values !== null) {
+			for (const key of values as Map<string, string>) {
+				paramPairs.push(key);
+				paramPairs.push((values as Map<string, string>).get(key) ?? "");
+			}
+		}
+		const nested = route.state;
+		routes.push({
+			name: route.name,
+			hasParams: values !== null,
+			paramPairs,
+			nested: nested === null ? [] : [snapshotOf(nested as NavigationState)],
+		});
+	}
+	return { index: state.index, routes };
+}
+
+function stateOfSnapshot(snapshot: StateSnapshot): Result<NavigationState, RoutingError> {
+	const count = snapshot.routes.length;
+	if (count === 0 || snapshot.index < 0 || snapshot.index >= count) {
+		return Result.err(RoutingError.IncompleteSnapshot);
+	}
+	const routes: NavigationRoute[] = [];
+	for (const route of snapshot.routes) {
+		if (route.paramPairs.length % 2 !== 0 || route.nested.length > 1) {
+			return Result.err(RoutingError.IncompleteSnapshot);
+		}
+		let params: Map<string, string> | null = null;
+		if (route.hasParams) {
+			const values = new Map<string, string>();
+			for (let i = 0; i < route.paramPairs.length; i += 2) {
+				values.set(route.paramPairs[i], route.paramPairs[i + 1]);
+			}
+			params = values;
+		}
+		let state: NavigationState | null = null;
+		if (route.nested.length === 1) {
+			const nested = try stateOfSnapshot(route.nested[0]);
+			state = nested;
+		}
+		routes.push({ key: "", name: route.name, params, state });
+	}
+	return Result.ok({ index: snapshot.index, routeNames: [], routes });
+}
+
+function containerParticipant(
+	scope: string,
+	link: NavigatorLink,
+	config: LinkingConfig,
+): RoutingParticipant {
+	return {
+		scope,
+		prepare: (address: string | null): Result<RoutePlan, RoutingError> => {
+			if (address === null) {
+				return Result.ok({ commit: (): void => link.restore(emptyState()) });
+			}
+			const path = address as string;
+			const target = targetFromPath(path, config);
+			if (target === null) { return Result.err(RoutingError.NoMatch); }
+			return Result.ok({ commit: (): void => {
+				if (!link.navigateTo(target as NavTarget)) {
+					throw new Error("routing: no navigator has a screen for '" + path + "'");
+				}
+			} });
+		},
+		address: (): Result<string | null, RoutingError> => {
+			const path: string | null = pathFromState(link.state(), config);
+			return Result.ok(path);
+		},
+		capture: (): string => JSON.stringify(snapshotOf(link.state())),
+		restore: (state: string): Result<RoutePlan, RoutingError> => {
+			const parsed = JSON.parse<StateSnapshot>(state);
+			if (!parsed.ok) { return Result.err(RoutingError.IncompleteSnapshot); }
+			if (parsed.value.routes.length === 0) {
+				return Result.ok({ commit: (): void => link.restore(emptyState()) });
+			}
+			const restored = try stateOfSnapshot(parsed.value);
+			return Result.ok({ commit: (): void => link.restore(restored) });
+		},
 	};
 }
 
@@ -184,6 +311,7 @@ export function NavigationContainer(props: {
 	onStateChange?: ((state: NavigationState) => void) | null;
 	initialState?: NavigationState | null;
 	theme?: Accessor<Theme> | null;
+	routing?: ContainerRouting | null;
 }): NeonNode {
 	const link = containerLink(props.initialState);
 	const ownTheme = props.theme;
@@ -191,6 +319,19 @@ export function NavigationContainer(props: {
 		return ownTheme === null ? DefaultTheme : (ownTheme as Accessor<Theme>)();
 	});
 	const linking = props.linking;
+	const routing = props.routing;
+	if (routing !== null) {
+		if (linking === null) {
+			throw new Error("NavigationContainer: routing needs a linking config");
+		}
+		const joined = routing as ContainerRouting;
+		const participant = containerParticipant(
+			joined.scope,
+			link,
+			(linking as LinkingOptions).config,
+		);
+		onCleanup(joined.registry.register(participant));
+	}
 	const enabled = linking !== null && (linking as LinkingOptions).enabled !== false;
 	const openURL = (url: string): boolean => {
 		if (!enabled) { return false; }

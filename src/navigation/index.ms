@@ -83,6 +83,7 @@ export {
 	DRAWER_DURATION,
 } from "./drawer";
 export {
+	ContainerRouting,
 	NavigationContainer,
 	NavigationContainerRef,
 	createNavigationContainerRef,
