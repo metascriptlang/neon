@@ -1,5 +1,5 @@
 #!/bin/sh
-# Neon edge lane: a page built with --target=js answers requests inside workerd, the
+# Neon edge lane: a page built with --target=js -d:server answers requests inside workerd, the
 # Cloudflare Workers runtime, served locally from tests/edge/config.capnp.
 # The routed site of examples/site answers from a second worker and Chrome hydrates what it sent.
 # Setup once per checkout: npm install --prefix tests/edge, and --prefix tests/browser for Chrome
@@ -19,7 +19,7 @@ fi
 
 echo "== edge tests/edge/run.sh"
 mkdir -p tests/edge/out
-"$MSC" build --target=js tests/edge/pages.ms --output=tests/edge/out/pages.js
-"$MSC" build --target=js examples/site/server.ms --output=tests/edge/out/site.js
+"$MSC" build --target=js -d:server tests/edge/pages.ms --output=tests/edge/out/pages.js
+"$MSC" build --target=js -d:server examples/site/server.ms --output=tests/edge/out/site.js
 "$MSC" build --target=js examples/site/client.jms --output=tests/edge/out/siteClient.js
 node tests/edge/run.mjs "$WORKERD" "${NEON_PLAYWRIGHT:-$PWD/tests/browser/node_modules/playwright-core/index.mjs}"
