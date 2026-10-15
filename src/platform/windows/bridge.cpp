@@ -52,6 +52,9 @@ bool g_inFrame = false;
 struct Touch {
 	bool active = false;
 	std::vector<View *> chain;
+	// A pressable run of a label under the finger reports first, as its own tag, the way iOS and Android do.
+	int32_t spanTag = 0;
+	View *spanLabel = nullptr;
 };
 
 Touch g_touch;
@@ -206,24 +209,36 @@ bool toLocal(const View *view, float px, float py, float *lx, float *ly) {
 	return true;
 }
 
-View *hit(View *view, float px, float py) {
+View *hit(View *view, float px, float py, float *foundX, float *foundY) {
 	float lx, ly;
 	if (!toLocal(view, px, py, &lx, &ly)) return nullptr;
 	bool inside = lx >= 0 && lx <= view->w && ly >= 0 && ly <= view->h;
 	bool clipsChildren = view->radius > 0;
 	if (inside || !clipsChildren) {
 		for (auto child = view->children.rbegin(); child != view->children.rend(); ++child) {
-			if (View *found = hit(*child, lx, ly)) return found;
+			if (View *found = hit(*child, lx, ly, foundX, foundY)) return found;
 		}
 	}
-	return inside && (!view->label || view->pressable) ? view : nullptr;
+	if (!inside || (view->label && !view->pressable)) return nullptr;
+	*foundX = lx;
+	*foundY = ly;
+	return view;
 }
 
-View *hitTest(float x, float y) {
+View *hitTest(float x, float y, float *localX = nullptr, float *localY = nullptr) {
+	float lx = 0, ly = 0;
 	for (auto child = g_container->children.rbegin(); child != g_container->children.rend(); ++child) {
-		if (View *found = hit(*child, x, y)) return found;
+		if (View *found = hit(*child, x, y, &lx, &ly)) {
+			if (localX) *localX = lx;
+			if (localY) *localY = ly;
+			return found;
+		}
 	}
 	return nullptr;
+}
+
+int32_t spanTagAt(View *view, float lx, float ly) {
+	return view && view->label ? view->label->TagAt(lx, ly) : 0;
 }
 
 bool within(const View *at, const View *ancestor) {
@@ -240,6 +255,15 @@ double nowMs() {
 	return (double)counter.QuadPart * 1000.0 / (double)frequency.QuadPart;
 }
 
+void reportTag(int32_t tag, int32_t phase, float x, float y, double time) {
+	g_touchTag = tag;
+	g_touchPhase = phase;
+	g_touchX = x;
+	g_touchY = y;
+	g_touchTime = time;
+	invoke(s_touch);
+}
+
 void report(View *view, int32_t phase, float x, float y, double time) {
 	g_touchTag = view->tag;
 	g_touchPhase = phase;
@@ -253,6 +277,9 @@ void endTouch() {
 	std::vector<View *> chain;
 	chain.swap(g_touch.chain);
 	g_touch.active = false;
+	g_touch.spanTag = 0;
+	if (g_touch.spanLabel) release(g_touch.spanLabel);
+	g_touch.spanLabel = nullptr;
 	for (View *view : chain) release(view);
 }
 
@@ -299,6 +326,8 @@ void niwFrame(void) {
 
 void niwSetFrameRequester(msClosure requester) { s_requester = requester; }
 
+int niwLayoutsBuilt(void) { return TextLabel::LayoutsBuilt(); }
+
 int niwStoredAccessibility(const char *name, const char *value) {
 	requireAttached("niwStoredAccessibility");
 	return countStored(g_container, name, value);
@@ -311,22 +340,40 @@ void niwPointer(int kind, float pixelX, float pixelY) {
 	double time = nowMs();
 	if (kind == NIW_POINTER_DOWN) {
 		if (g_touch.active) return;
-		for (View *at = hitTest(x, y); at && at != g_container; at = at->parent) {
+		float lx = 0, ly = 0;
+		View *top = hitTest(x, y, &lx, &ly);
+		g_touch.spanTag = spanTagAt(top, lx, ly);
+		if (g_touch.spanTag != 0) {
+			top->refs += 1;
+			g_touch.spanLabel = top;
+		}
+		for (View *at = top; at && at != g_container; at = at->parent) {
 			if (at->tag == 0) continue;
 			at->refs += 1;
 			g_touch.chain.push_back(at);
 		}
-		g_touch.active = !g_touch.chain.empty();
+		g_touch.active = !g_touch.chain.empty() || g_touch.spanTag != 0;
 		if (!g_touch.active) return;
+		if (g_touch.spanTag != 0) reportTag(g_touch.spanTag, 0, x, y, time);
 		std::vector<View *> chain = g_touch.chain;
 		for (View *view : chain) report(view, 0, x, y, time);
 	} else if (!g_touch.active) {
 		return;
 	} else if (kind == NIW_POINTER_MOVE) {
+		if (g_touch.spanTag != 0) reportTag(g_touch.spanTag, 4, x, y, time);
 		std::vector<View *> chain = g_touch.chain;
 		for (View *view : chain) report(view, 4, x, y, time);
 	} else if (kind == NIW_POINTER_UP) {
-		View *at = hitTest(x, y);
+		float lx = 0, ly = 0;
+		View *at = hitTest(x, y, &lx, &ly);
+		if (g_touch.spanTag != 0) {
+			if (at == g_touch.spanLabel && spanTagAt(at, lx, ly) == g_touch.spanTag) {
+				reportTag(g_touch.spanTag, 1, x, y, time);
+				reportTag(g_touch.spanTag, 2, x, y, time);
+			} else {
+				reportTag(g_touch.spanTag, 3, x, y, time);
+			}
+		}
 		std::vector<View *> chain = g_touch.chain;
 		for (View *view : chain) {
 			if (within(at, view)) {
@@ -338,6 +385,7 @@ void niwPointer(int kind, float pixelX, float pixelY) {
 		}
 		endTouch();
 	} else if (kind == NIW_POINTER_CANCEL) {
+		if (g_touch.spanTag != 0) reportTag(g_touch.spanTag, 3, x, y, time);
 		std::vector<View *> chain = g_touch.chain;
 		for (View *view : chain) report(view, 3, x, y, time);
 		endTouch();
@@ -591,6 +639,11 @@ float niMeasuredW(void) { return g_measuredW; }
 float niMeasuredH(void) { return g_measuredH; }
 
 void niSetProp(void *view, const char *name, const char *value) {
+	if (as(view)->label && !strcmp(name, "textSpans")) {
+		as(view)->label->SetRuns(value);
+		queueLabel(as(view));
+		return;
+	}
 	if (as(view)->label && !strcmp(name, "textAlign")) {
 		as(view)->label->SetAlignment(value);
 		queueLabel(as(view));
