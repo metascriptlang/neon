@@ -1,4 +1,5 @@
-import { Accessor, accessor, createSignal, untrack } from "../core/signal";
+import { Accessor, accessor, untrack } from "../core/signal";
+import { createMemo } from "../core/memo";
 import { element } from "../macros/ui/element";
 import { Show } from "../macros/ui/flow";
 import { NeonNode } from "../render/node";
@@ -22,6 +23,12 @@ import {
 	ViewToken,
 	listEngine,
 } from "./virtualizedList";
+
+interface SectionLayout<S> {
+	sections: S[];
+	starts: int32[];
+	total: int32;
+}
 
 export interface SectionBase<T> {
 	data: T[];
@@ -170,28 +177,20 @@ export function VirtualizedSectionList<T, S>(props: {
 	const stickyHeaders = stickyProp !== null && untrack((): boolean => (stickyProp as Accessor<boolean>)());
 	const listHeaderOffset: int32 = props.ListHeaderComponent === null ? 0 : 1;
 
-	let laidOut: S[] | null = null;
-	let snapshot: S[] = [];
-	let starts: int32[] = [];
-	let total: int32 = 0;
-	let layoutCount: int32 = 0;
-	const [version, setVersion] = createSignal<int32>(0);
-	const layoutOf = (sections: S[]): void => {
-		if (laidOut !== null && laidOut === sections) { return; }
-		const next: int32[] = [];
-		let at: int32 = 0;
-		for (const section of sections) {
-			next.push(at);
-			at += (getItemCount(section) as int32) + 2;
-		}
-		laidOut = sections;
-		snapshot = sections;
-		starts = next;
-		total = at;
-		layoutCount += 1;
-		setVersion(layoutCount);
-	};
+	const layout = createMemo<SectionLayout<S>>((): SectionLayout<S> => {
+		const sections = props.sections();
+		return untrack((): SectionLayout<S> => {
+			const starts: int32[] = [];
+			let total: int32 = 0;
+			for (const section of sections) {
+				starts.push(total);
+				total += (getItemCount(section) as int32) + 2;
+			}
+			return { sections, starts, total };
+		});
+	});
 	const sectionAt = (flat: int32): int32 => {
+		const starts = layout().starts;
 		let low: int32 = 0;
 		let high: int32 = (starts.length as int32) - 1;
 		while (low < high) {
@@ -205,11 +204,10 @@ export function VirtualizedSectionList<T, S>(props: {
 	const headers = new Map<S, SectionCell<T, S>>();
 	const footers = new Map<S, SectionCell<T, S>>();
 	const cellAt = (sections: S[], index: number): SectionCell<T, S> => {
-		layoutOf(sections);
 		const flat = index as int32;
 		const s = sectionAt(flat);
 		const section = sections[s];
-		const local = flat - starts[s] - 1;
+		const local = flat - layout().starts[s] - 1;
 		if (local === -1 || local === (getItemCount(section) as int32)) {
 			const kind = local === -1 ? SectionCellKind.Header : SectionCellKind.Footer;
 			const cache = local === -1 ? headers : footers;
@@ -230,15 +228,9 @@ export function VirtualizedSectionList<T, S>(props: {
 			return renderFooter === null ? emptyCell : (renderFooter as (info: SectionInfo<S>) => NeonNode)({ section: cell.section as S });
 		}
 		const flat = info.index;
-		const sectionIndex = (): int32 => {
-			version();
-			return sectionAt(flat() as int32);
-		};
-		const local = accessor((): number => {
-			const s = sectionIndex();
-			return flat() - (starts[s] as number) - 1;
-		});
-		const section = accessor((): S => snapshot[sectionIndex()]);
+		const sectionIndex = (): int32 => sectionAt(flat() as int32);
+		const local = accessor((): number => flat() - (layout().starts[sectionIndex()] as number) - 1);
+		const section = accessor((): S => layout().sections[sectionIndex()]);
 		const node = renderItem({ item: cell.item as T, index: local, section });
 		if (sectionSeparator === null && itemSeparator === null) { return node; }
 		const last = accessor((): boolean => local() >= getItemCount(section()) - 1);
@@ -252,11 +244,12 @@ export function VirtualizedSectionList<T, S>(props: {
 		const out: SectionViewToken<T, S>[] = [];
 		for (const token of cells) {
 			const flat = token.index as int32;
-			if (flat >= total) { continue; }
+			const laid = layout();
+			if (flat >= laid.total) { continue; }
 			const s = sectionAt(flat);
 			const cell = token.item;
 			if (cell.kind === SectionCellKind.Item) {
-				out.push({ item: cell.item, index: (flat - starts[s] - 1) as number, section: snapshot[s], isViewable: token.isViewable });
+				out.push({ item: cell.item, index: (flat - laid.starts[s] - 1) as number, section: laid.sections[s], isViewable: token.isViewable });
 			} else {
 				out.push({ item: null, index: null, section: cell.section as S, isViewable: token.isViewable });
 			}
@@ -268,16 +261,12 @@ export function VirtualizedSectionList<T, S>(props: {
 		...props,
 		data: props.sections,
 		getItem: cellAt,
-		getItemCount: (sections: S[]): number => {
-			layoutOf(sections);
-			return total as number;
-		},
+		getItemCount: (sections: S[]): number => layout().total as number,
 		renderItem: renderCell,
 		ItemSeparatorComponent: null,
 		stickyHeaderIndices: !stickyHeaders ? null : accessor((): int32[] => {
-			version();
 			const out: int32[] = [];
-			for (const at of starts) { out.push(at + listHeaderOffset); }
+			for (const at of layout().starts) { out.push(at + listHeaderOffset); }
 			return out;
 		}),
 		onViewableItemsChanged: sectionChanged === null ? null : (info: ViewabilityInfo<SectionCell<T, S>>): void => {
@@ -290,7 +279,10 @@ export function VirtualizedSectionList<T, S>(props: {
 		viewabilityConfigCallbackPairs: null,
 		ref: (list: FlatListHandle): void => {
 			if (userRef === null) { return; }
-			(userRef as (handle: SectionListHandle) => void)(new SectionListHandle(list, (sectionIndex: int32): int32 => sectionIndex < starts.length ? starts[sectionIndex] : total, stickyHeaders));
+			(userRef as (handle: SectionListHandle) => void)(new SectionListHandle(list, (sectionIndex: int32): int32 => {
+				const laid = layout();
+				return sectionIndex < laid.starts.length ? laid.starts[sectionIndex] : laid.total;
+			}, stickyHeaders));
 		},
 	}, "VirtualizedSectionList", null, null);
 }
