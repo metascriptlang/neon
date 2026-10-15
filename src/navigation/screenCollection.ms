@@ -146,9 +146,9 @@ export function collectScreens<P>(
 }
 
 export function watchScreens<P>(collection: ScreenCollection<P>, core: NavigatorCore<P>): void {
-	createEffect<ScreenConfig<P>[]>(
-		(prev: ScreenConfig<P>[] | null): ScreenConfig<P>[] => collection.read(),
-		(screens: ScreenConfig<P>[], prev: ScreenConfig<P>[] | null): Cleanup | null => { core.reconfigure(screens); return null; },
+	createEffect<int32>(
+		(prev: int32 | null): int32 => { collection.read(); return 0; },
+		(settled: int32, prev: int32 | null): Cleanup | null => { core.reconfigure(collection.read()); return null; },
 	);
 }
 
