@@ -118,6 +118,7 @@ class NativeNode {
 	measuredW: float32 = 0.0;
 	textInsets: string = "";
 	textAlign: string = "";
+	fontFamily: string = "";
 	minFromMeasure: boolean = false;
 	contentH: float32 = -1.0;
 	horizontal: boolean = false;
@@ -336,6 +337,7 @@ function applyPaint(n: NativeNode, s: Style): void {
 		const size = s.fontSize !== null ? (s.fontSize as number) : 17.0;
 		const bold = isBoldWeight(s.fontWeight);
 		niSetFont(n.view, size as float32, bold ? 1 : 0);
+		sendFontFamily(n, s.fontFamily !== null ? s.fontFamily as string : "");
 		const align = s.textAlign !== null ? (s.textAlign as string) : "";
 		if (align !== n.textAlign) {
 			n.textAlign = align;
@@ -592,6 +594,18 @@ function onResize(): void {
 const SPAN_RECORD = "\u001e";
 const SPAN_FIELD = "\u001f";
 
+when (ios || android) {
+	function sendFontFamily(n: NativeNode, family: string): void {
+		if (family !== "") { throw `native host: fontFamily "${family}" is not wired to this platform's text stack yet`; }
+	}
+} else {
+	function sendFontFamily(n: NativeNode, family: string): void {
+		if (family === n.fontFamily || n.view === null) { return; }
+		n.fontFamily = family;
+		niSetProp(n.view, "fontFamily", family);
+	}
+}
+
 // The Text a pressable span's tag belongs to, for touches that bubble up from the span.
 const spanTagOwner: Map<int32, NativeNode> = new Map();
 
@@ -604,6 +618,9 @@ function styledRun(s: Style | null): boolean {
 // One run on the wire: text, colour, size, bold, italic, underline, line-through, press tag.
 // A span's own style lays over the Text's field by field.
 function encodeSpan(text: string, own: Style | null, base: Style, tag: int32): string {
+	if (own !== null && own.fontFamily !== null && own.fontFamily !== base.fontFamily) {
+		throw `native host: a span changes fontFamily to "${own.fontFamily as string}", and a native label has one family; set fontFamily on the Text`;
+	}
 	const color = own !== null && own.color !== null ? own.color : base.color;
 	const size = own !== null && own.fontSize !== null ? own.fontSize : base.fontSize;
 	const weight = own !== null && own.fontWeight !== null ? own.fontWeight : base.fontWeight;
@@ -729,6 +746,7 @@ function materializeString(child: NativeNode, parent: NativeNode): void {
 		const size = ps.fontSize !== null ? (ps.fontSize as number) : 17.0;
 		const bold = isBoldWeight(ps.fontWeight);
 		niSetFont(child.view, size as float32, bold ? 1 : 0);
+		sendFontFamily(child, ps.fontFamily !== null ? ps.fontFamily as string : "");
 	}
 	remeasureText(child);
 	if (child.styleCache !== null) { applyPaint(child, child.styleCache); }
