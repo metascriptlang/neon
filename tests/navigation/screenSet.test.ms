@@ -1,4 +1,5 @@
 import { createSignal } from "../../src/core/signal";
+import { resetErrorHalt } from "../../src/core/runtime";
 import { NeonNode } from "../../src/render/hostTypes";
 import { HostNode, mockHost, mockNode, render } from "../../src/render/host";
 import { Text } from "../../src/components/primitives";
@@ -48,6 +49,7 @@ test "a stack whose only screen goes away throws, naming the case" {
 		</Stack.Navigator>
 	</NavigationContainer>, mockHost(), root as unknown as HostNode);
 	assert failureOf((): void => { setPresent(false); }) === EMPTY_AFTER_UPDATE;
+	resetErrorHalt();
 	dispose();
 }
 
@@ -63,6 +65,7 @@ test "a tab navigator whose only screen goes away throws, naming the case" {
 		</Tab.Navigator>
 	</NavigationContainer>, mockHost(), root as unknown as HostNode);
 	assert failureOf((): void => { setPresent(false); }) === EMPTY_AFTER_UPDATE;
+	resetErrorHalt();
 	dispose();
 }
 
@@ -78,6 +81,7 @@ test "a drawer navigator whose only screen goes away throws, naming the case" {
 		</Drawer.Navigator>
 	</NavigationContainer>, mockHost(), root as unknown as HostNode);
 	assert failureOf((): void => { setPresent(false); }) === EMPTY_AFTER_UPDATE;
+	resetErrorHalt();
 	dispose();
 }
 
