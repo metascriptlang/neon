@@ -127,8 +127,8 @@ export function groupOf(
 		const keys = useContext(collector.keys).slice(0);
 		if (screenOptions !== null) { groups.push(screenOptions as Accessor<ScreenOptions>); }
 		if (navigationKey !== null) { keys.push(navigationKey as Accessor<string>); }
-		const keyed = collector.keys.Provider({ value: accessor(() => keys), children });
-		collector.groups.Provider({ value: accessor(() => groups), children: keyed })(
+		const keyed = collector.keys.provider({ value: accessor(() => keys), children });
+		collector.groups.provider({ value: accessor(() => groups), children: keyed })(
 			host, parent, before,
 		);
 	};
@@ -139,7 +139,7 @@ export function collectScreens<P>(
 	children: NeonNode,
 ): ScreenCollection<P> {
 	const collection = new ScreenCollection<P>();
-	collector.scope.Provider({ value: accessor((): unknown => collection), children })(
+	collector.scope.provider({ value: accessor((): unknown => collection), children })(
 		collection.host, collection.parent as unknown as HostNode, null,
 	);
 	return collection;

@@ -390,9 +390,9 @@ export function NavigationContainer(props: {
 	const children = props.children;
 	const ready = props.onReady;
 	return (host: Host, parent: HostNode, before: HostNode | null): void => {
-		const body: NeonNode = <ScopeContext.Provider value={scope as unknown}>
+		const body: NeonNode = <ScopeContext value={scope as unknown}>
 			{children}
-		</ScopeContext.Provider>;
+		</ScopeContext>;
 		body(host, parent, before);
 		state.ready = true;
 		if (enabled && hasAppServices()) { openInitialURL(openURL); }
