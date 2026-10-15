@@ -70,7 +70,7 @@ test "a nested createRoot keeps the owner it was created under" {
 		let seen: Computation | null = null;
 		createRoot((innerDispose) => {
 			const inner = getOwner() as Computation;
-			seen = inner.owner;
+			seen = inner.parent;
 			innerDispose();
 		});
 		assert seen === outer, "the inner root points at the outer owner";
@@ -78,19 +78,15 @@ test "a nested createRoot keeps the owner it was created under" {
 	});
 }
 
-test "a nested createRoot is not disposed with the owner it was created under" {
+test "a nested createRoot is disposed with the owner it was created under" {
 	let cleaned = 0;
-	let disposeInner: (() => void) | null = null;
 	createRoot((outerDispose) => {
 		createRoot((innerDispose) => {
-			disposeInner = innerDispose;
 			onCleanup(() => { cleaned = cleaned + 1; });
 		});
 		outerDispose();
 	});
-	assert cleaned === 0, "disposing the outer owner left the inner root alive";
-	(disposeInner as () => void)();
-	assert cleaned === 1, "the inner root tears down through its own dispose";
+	assert cleaned === 1, "disposing the outer owner tore down the inner root";
 }
 
 test "disposing a root drops its owner link" {
@@ -100,7 +96,7 @@ test "disposing a root drops its owner link" {
 			inner = getOwner();
 			innerDispose();
 		});
-		assert (inner as Computation).owner === null, "a disposed root no longer points at its owner";
+		assert (inner as Computation).parent === null, "a disposed root no longer points at its owner";
 		outerDispose();
 	});
 }

@@ -2,7 +2,7 @@ import { Host, HostNode, NeonNode } from "./hostTypes";
 import { Row, makeRow, mountAt, removeRow, place } from "./reconcile";
 import { regionAnchor, sealRegion } from "./claim";
 import { Computation } from "../core/types";
-import { createComputation, cleanNode } from "../core/runtime";
+import { createOwner, disposeChildren, isDisposed } from "../core/runtime";
 import { runWithOwner } from "../core/owner";
 import { Accessor, Setter, untrack } from "../core/signal";
 import { refreshTypeKey } from "../macros/refresh";
@@ -70,8 +70,6 @@ interface Instance {
 	sig: string;
 }
 
-function noop(): void {}
-
 const compSlots = new Map<string, unknown>();
 const tmplSlots = new Map<string, unknown>();
 const compInstances = new Map<string, Instance[]>();
@@ -128,10 +126,10 @@ function capture(inst: Instance): void {
 }
 
 function within(owner: Computation, ancestor: Computation): boolean {
-	let up = owner.owner;
+	let up = owner.parent;
 	while (up !== null) {
 		if (up === ancestor) { return true; }
-		up = up.owner;
+		up = up.parent;
 	}
 	return false;
 }
@@ -203,7 +201,7 @@ function failure(message: string): NeonNode {
 function rebuild(instances: Map<string, Instance[]>, inst: Instance, sig: string): void {
 	stash(inst);
 	removeRow(inst.host, inst.parent, inst.row);
-	cleanNode(inst.owner, false);
+	disposeChildren(inst.owner, false);
 	track(instances, inst);
 	const kept = inst.saved;
 	const outer = mounting;
@@ -215,7 +213,7 @@ function rebuild(instances: Map<string, Instance[]>, inst: Instance, sig: string
 		mounting = outer;
 		console.log("refresh: " + inst.key + " did not mount: " + e.message);
 		removeRow(inst.host, inst.parent, inst.row);
-		cleanNode(inst.owner, false);
+		disposeChildren(inst.owner, false);
 		track(instances, inst);
 		const name = inst.key.substring(inst.key.lastIndexOf("/") + 1).split("|")[0];
 		inst.row = makeRow(failure(name + " did not mount: " + e.message));
@@ -255,7 +253,7 @@ function instanceNode(
 			row: makeRow((h: Host, p: HostNode, b: HostNode | null): void => {
 				h.insertBefore(p, anchor, b);
 			}),
-			owner: createComputation(noop, false),
+			owner: createOwner(),
 			sig: sigFn(),
 		};
 		track(instances, inst);
@@ -278,7 +276,7 @@ function patch(instances: Map<string, Instance[]>, found: Instance[], forced: st
 	let kept = 0 as int32;
 	let changed = 0 as int32;
 	for (const inst of found) {
-		if (inst.owner.disposed) { continue; }
+		if (isDisposed(inst.owner)) { continue; }
 		const sig = inst.sigFn();
 		if (sig === inst.sig && forced.indexOf(inst.key) < 0) { kept += 1; continue; }
 		rebuild(instances, inst, sig);
@@ -288,14 +286,14 @@ function patch(instances: Map<string, Instance[]>, found: Instance[], forced: st
 }
 
 function enclosing(owner: Computation): Instance | null {
-	let up = owner.owner;
+	let up = owner.parent;
 	while (up !== null) {
 		for (const list of compInstances.values()) {
 			for (const inst of list) {
 				if (inst.owner === up) { return inst; }
 			}
 		}
-		up = up.owner;
+		up = up.parent;
 	}
 	return null;
 }

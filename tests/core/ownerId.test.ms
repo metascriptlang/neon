@@ -2,7 +2,7 @@ import { createSignal } from "../../src/core/signal";
 import { createRenderEffect, createBindingEffect } from "../../src/core/effect";
 import { createMemo } from "../../src/core/memo";
 import { createRoot, createUniqueId } from "../../src/core/owner";
-import { getOwner } from "../../src/core/runtime";
+import { getOwner, flush } from "../../src/core/runtime";
 import { Computation } from "../../src/core/types";
 
 function ownerId(): string {
@@ -79,6 +79,7 @@ test "a re-run hands its children the same ids again" {
 			seen.push(createUniqueId());
 		});
 		setCount(1);
+		flush();
 		dispose();
 	}, "");
 	assert seen.join(" ") === "[00] 01 [00] 01", seen.join(" ");
