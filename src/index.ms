@@ -44,6 +44,20 @@ export {
 	ScrollToIndexFailedInfo, ScrollToIndexOptions, ScrollToItemOptions, ScrollToOffsetOptions, ScrollToEndOptions,
 	ViewabilityConfig, ViewabilityConfigCallbackPair, ViewabilityInfo, ViewToken,
 } from "./components/flatList";
+export { TextInputHandle } from "./components/primitives";
+export { Image, ImageProps, ImageSource, ImageResizeMode, ImageLoader } from "./components/image";
+export { Modal, ModalAnimationType } from "./components/modal";
+export { SafeAreaView } from "./components/safeAreaView";
+export { KeyboardAvoidingView, KeyboardAvoidingBehavior } from "./components/keyboardAvoidingView";
+export { RefreshControl } from "./components/refreshControl";
+export { Switch } from "./components/switch";
+export { ActivityIndicator, IndicatorSize } from "./components/activityIndicator";
+export { Portal } from "./render/portal";
+export {
+	TouchableOpacity,
+	TouchableHighlight,
+	TouchableWithoutFeedback,
+} from "./components/touchable";
 export { VirtualizedList } from "./components/virtualizedList";
 export {
 	SectionBase, SectionInfo, SectionList, SectionListHandle, SectionListRenderItemInfo,
