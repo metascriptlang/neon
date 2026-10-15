@@ -182,7 +182,13 @@ routing. `navigatorMotion.ms` stays the transition engine.
     every restore, also one that changes only another region.
   - The key tree is a preorder list until the compiler card on JSON of a type holding
     an array of itself lands (parked in `BUGS.md`). There is no `schemaVersion` or
-    `onRecreate`; undecodable state takes the session's `IncompleteSnapshot` path.
+    `onRecreate`, where Decompose recreates on a version mismatch: state that cannot be
+    used resolves from the entry's address, which the registry passes to each region's
+    `restore`. A malformed tree resolves before anything applies; a nested key that
+    does not decode is found only after its parent level applied, since its decoder
+    belongs to the child those keys create, so the binding puts the previous keys back
+    and resolves, in one batch. With no address for the region, a malformed tree
+    reports `IncompleteSnapshot`. `onBeforeNavigate` is asked before the fallback.
 - Reload restores the entry's structure (a TanStack mask with `unmaskOnReload:
   false`); a presentation can resolve from the address on reload instead, which is
   Next's hard navigation.
@@ -349,9 +355,6 @@ same JS-driven frames.
     over is `GO_BACK`.
   - With routing on, a nested screen whose linking path is `exact` is refused: each
     level's part joins its parent's.
-  - An undecodable stored key throws when applied, and a malformed state reports
-    `IncompleteSnapshot`; neither falls back to the address yet (Decompose checks a
-    schema version and recreates, `WebHistoryNavigation.kt:34-43`).
 - Typed route bindings close over their decoder and typed model setter rather
   than exposing an untyped global params getter. Legacy navigators retain one
   `P`; heterogeneous ParamList compatibility is not claimed.
@@ -364,10 +367,11 @@ same JS-driven frames.
 - Stack and Tabs are levels of the route tree shorthand (`src/navigation/router.ms`),
   each backed by `createChildStack` or `createChildPages` and mirrored through
   `createWebHistory`; a hash-only navigation still records itself with `session.sync`.
-  Their renderers (`childView.ms`) are the smallest that draw a model: a stack draws
-  every entry without hiding covered ones, and tabs mount only the selected page, so a
-  tab's screens keep their stack but lose component state on a switch. A tab switch
-  replaces the browser entry, as Decompose's pages adapter does. It takes `path` strings only, and the web navigation adapters take a
+  Their renderers (`childView.ms`) keep every stack entry mounted and show only the
+  top, and keep a tab mounted from its first selection, hiding the inactive ones (React
+  Navigation `CardStack` with `detachInactiveScreens`, the lazy tabs of
+  `BottomTabView`). Neither animates, and no option unmounts or pops a tab on blur. A
+  tab switch replaces the browser entry, as Decompose's pages adapter does. It takes `path` strings only, and the web navigation adapters take a
   required options object, until two compiler cards land (both parked in `BUGS.md`).
   Its `<A>` renders a web `<a>`; on a native host that is a plain view until `<A>`
   and React Navigation's `Link` become one through the binding.
