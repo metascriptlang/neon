@@ -58,11 +58,23 @@ into a new general-purpose framework.
 The three consumer axes are exercised by `examples/components/routing.ms`
 `RoutingDemo` and `tests/navigation/routingConsumers.test.ms`, with actual Chrome
 history traversal in `tests/browser/routing.test.ms`. Inventory proves UI overlay
-routing, not a running Void world's resource policy. Native transition policy
-remains provisional; `createNativeStackNavigator` still shares JS-driven frames.
+routing, not a running Void world's resource policy. Transitions are a render-layer
+choice, outside the navigation model; `createNativeStackNavigator` renders with the
+same JS-driven frames.
 
 ## Provisional choices and remaining limits
 
+- The built-in navigators hold their routes as `createChildren` children: a route's
+  key, its seed (name and initial params) and its active flag are the child state,
+  and its `Navigation<P>` is the child instance (`core.ms` `place`). Decompose's
+  `childStack` is `children` plus a transformer (`ChildStackFactory.kt`); Neon's
+  stack, tabs and drawer still share one `NavigatorCore` whose operations branch on
+  the navigator kind.
+- Transitions belong to the render layer, as Decompose's
+  `Children(animation = stackAnimation())`: `navigatorMotion.ms` diffs the route
+  children, keeps a leaving screen rendered until its exit ends
+  (`AbstractStackAnimation.kt`), and snaps when the screen set changes. A host that
+  wants platform transitions renders the same children its own way.
 - Typed route bindings close over their decoder and typed model setter rather
   than exposing an untyped global params getter. Legacy navigators retain one
   `P`; heterogeneous ParamList compatibility is not claimed.
