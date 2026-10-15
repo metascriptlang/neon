@@ -159,6 +159,12 @@ and the invariants that outlived them were moved to the head of the test that pi
   `'createComponent'` (9). Blocks `examples/voidWindow.ms` from an Ion-generated project. Note
   `~/metascript/.inbox/ion/2026-10-15-generated-entry-loses-app-build-ms.md`.
 
+- **PARKED 2026-10-15 — `tests/components/svg/svg.test.ms` does not compile.** Not Neon's: after the
+  test's `createSignal<float64>(40)`, `mapArray<float64, Row>` (a `<For>` over `float64[]`) is refused at
+  `cell.setter = s` in `src/core/array.ms` with `Type 'function' is not assignable to type 'Setter<number> | null'`.
+  Native and JS, on BUILD `cf18cd1d`; the gate passed it at 04:37 the same day with Neon's tree unchanged. Card
+  `~/metascript/.inbox/compiler/2026-10-15-generic-instance-cache-setter-number-float64.md`. Parked at that file.
+
 - **PARKED 2026-10-11 — `tests/render/flatList.test.ms` and `tests/components/flutterListsApp.test.ms` do not compile.**
   Not Neon's: an array-destructured local of an arrow passed as a JSX attribute
   (`const [focused, setFocused] = createSignal<boolean>(false)` in a `renderItem`) is refused as
