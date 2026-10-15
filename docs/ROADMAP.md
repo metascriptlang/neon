@@ -496,10 +496,11 @@ No repeated unchanged submission demos or inferred protected-contract permission
   enum/spread/Result consumers run on the installed toolchain; preserve their expressions.
 - [x] ~~Route raw/UI through actual VoidNode parent/order/cleanup and existing wake~~ —
   scoped CPU pins; raw excluded Yoga/flowText, UI islands reuse Yoga. Runtime proof
-  is not scene presentation; partial-mount/boundary follow-up remains in BUGS.md.
-- [ ] Finish detached-subtree rollback and initial ErrorBoundary reset cleanup;
-  retain enabled regressions. Checker-flow owner card and protected-renderer approval
-  remain separate dependencies, not permission to rewrite consumers.
+  is not scene presentation; partial-mount follow-up remains in BUGS.md.
+- [x] ~~Fix initial ErrorBoundary reset and repeated failure cleanup~~ — existing region
+  transaction; original and nested pins pass C/JS, affected host/Chrome checks green.
+- [ ] Finish detached-subtree rollback; retain enabled regression. Existing checker-flow
+  owner card blocks validation, not permission to rewrite consumers.
 - [ ] Connect distinct scene hosts to area frame/layout/font/input ownership. Host/embed/
   window prerequisites consumed; raw kinds belong this arc, closed host arc owns no new work.
 - [ ] Finish raw2D gaps: Anim binders, textured Graphics, texture upload/replacement,

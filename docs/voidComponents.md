@@ -68,13 +68,28 @@ not silently accepted coverage. No percentage or whole-row completion follows.
   `/tmp/neon-void-audit-current-detached-{rollback-red,loop-consumer,loop-consumer-control}.scope.json`
   record exact source/BUILD/binary/deps. This is not a completed cleanup fix; owner
   card and parked sites are in `BUGS.md`. No helper/alias workaround.
-- Initial ErrorBoundary reset still leaves `<root>fallbackgood</root>` in the unbatched
-  pure-mock control, including isolated main. Native and JS diagnostic batches around
-  initial render change that to `<root>good</root>` on16d8/treecee plus WIP, stable15; this isolates
-  initial publication ordering, not an accepted implementation. Commands/scopes:
-  `/tmp/neon-void-audit-current-boundary-initial-{current-control,batch-diagnostic,batch-diagnostic-js}.{log,scope.json}`.
-  Production and enabled pins remain unbatched; protected renderer approval pending.
-  Original16 Scene3D cases/118 assertions remain.
+- Initial ErrorBoundary reset is fixed in `a6eaf87` (committed tree
+  `79cf887299ed1ce5e807b9c1c4ebc819a1fd4301`), through existing `batch` in
+  `src/render/node.ms` `regionNode`. Only the bounded protected renderer fix was
+  approved; Host/signal/JSX API and scheduler stay unchanged. Tests remain unbatched.
+  `tests/render/errorBoundaryInitialReset.test.ms` retains the original first case
+  byte-for-byte and adds nested siblings, repeated failure/reset and cleanup lifetimes.
+  Native298/2→300/0, JS61/2→63/0; actual executions used `67d94e8`/
+  tree `6f3b702e74a6b3ee13f3201947c3f1f7725fae5b` plus recorded WIP, stable15.
+  Not postcommit executions: `/tmp/neon-void-audit-current-initial-reset-two-{red,green}-{c,js}.{log,scope.json}`.
+  Review `2768976e` found no issue with this bounded publication fix. Reference:
+  `~/projects/dom-expressions/packages/dom-expressions/src/universal.js` `insert`
+  retains insertion state in the effect result; `~/projects/solid/packages/solid/src/reactive/signal.ts`
+  `runComputation` guards result publication. Compatible invariant, not literal port.
+- Affected verification on that same67d/WIP epoch: native30/30 and JS23/23 requested-file
+  invocations, Chrome4 files/57 own cases pass. Preserved checker consumer still
+  exceeds25s/exit124; all55 command scopes stable,54 exit0. Exact commands/identities/
+  outputs: `out/region502cd25f/{initial,discovery,results}.json` and per-command logs/scopes.
+  Parent checked scopes/current source tuple and review patch SHA256
+  `d9138b7aea1769b0a8f4d9af70d81194941707b8d0b6b1092e9bec1f52aa9cc0` before commit.
+  Identity covers tracked diff/index, binary SHA, BUILD and dependency HEADs, not
+  recursive support/dependency working-tree hashes. No full-gate, main-control,
+  raw rollback, GPU/pixels/Ion/input/idle acceptance follows. Original16/118 preserved.
 
 ## Historical proof boundary — through verified525
 
