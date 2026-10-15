@@ -97,7 +97,9 @@ registers its `font` file as that family. A weight or slant the family has no fi
 Ghostty, WezTerm, DirectWrite and CSS `font-synthesis` do (RN iOS takes the nearest weight instead,
 `RCTFont.mm:480`), and the person chose synthesis on 2026-10-16. A family with no registered face, or a weight asked
 for with no family at all, is refused by name. `textDecorationStyle: "wavy"` maps to the run's `wavy`. The native
-hosts refuse every line style but `solid`, and they do not read `fontFamily` yet.
+hosts refuse every line style but `solid`. They take one `fontFamily` per Text and refuse a span that changes it;
+Windows draws the family through DirectWrite (an installed family only), and iOS and Android refuse it by name until
+a device lane proves them.
 
 A press over a span with `onPress` fires that span's handler and not its Text's (`clickAt`, `spanAt`): the point's
 grapheme comes from void2d `indexAt` and `xForIndex`, and a point past a line's end hits no span. Like every Void Text,
