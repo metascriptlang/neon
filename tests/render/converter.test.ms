@@ -48,3 +48,10 @@ test "a component returns bare JSX and stays reactive" {
 	assert mockToString(root) === "<root><div><p class=\"c\">n=5</p></div></root>", "after set: " + mockToString(root);
 	assert counterRuns === 1, "signal change must not re-run the body";
 }
+
+test "bare JSX lowers at an annotated const boundary" {
+	const v: NeonNode = <div class="box">hi</div>;
+	const root = mockNode("root");
+	render(v, mockHost(), root as unknown as HostNode);
+	assert mockToString(root) === "<root><div class=\"box\">hi</div></root>", mockToString(root);
+}
