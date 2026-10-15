@@ -1,4 +1,5 @@
-import { Accessor, Signal, accessor, untrack } from "../core/signal";
+import { Accessor, Signal, untrack } from "../core/signal";
+import { createMemo } from "../core/memo";
 import { createRenderEffect } from "../core/effect";
 import { Cleanup } from "../core/types";
 import { Animated, AnimatedValue, EndResult, Easing } from "../animation/index";
@@ -9,6 +10,7 @@ export const STACK_DURATION = 350;
 export class ScreenMotion {
 	progress: AnimatedValue = new AnimatedValue(1);
 	moving: Signal<boolean> = new Signal<boolean>(false);
+	exited: Signal<boolean> = new Signal<boolean>(false);
 }
 
 function contains<P>(list: Navigation<P>[], entry: Navigation<P>): boolean {
@@ -18,19 +20,28 @@ function contains<P>(list: Navigation<P>[], entry: Navigation<P>): boolean {
 	return false;
 }
 
+export interface MotionPlan<P> {
+	list: Navigation<P>[];
+	rendered: Navigation<P>[];
+	focused: Navigation<P> | null;
+	leaving: Navigation<P>[];
+	entering: Navigation<P> | null;
+	halted: Navigation<P>[];
+	epoch: int32;
+}
+
 export class NavigatorMotion<P> {
 	core: NavigatorCore<P>;
 	stacked: boolean;
-	closing: Signal<Navigation<P>[]> = new Signal<Navigation<P>[]>([]);
 	motions: Map<string, ScreenMotion> = new Map<string, ScreenMotion>();
-	previous: Navigation<P>[] = [];
-	focusedBefore: Navigation<P> | null = null;
-	epoch: int32 = 0;
+	plan: Accessor<MotionPlan<P>>;
 
 	constructor(core: NavigatorCore<P>, stacked: boolean) {
 		this.core = core;
 		this.stacked = stacked;
-		this.epoch = core.screenEpoch;
+		this.plan = createMemo<MotionPlan<P>>(
+			(prev: MotionPlan<P> | null): MotionPlan<P> => this.derive(prev, core.entries(), core.index()),
+		);
 	}
 
 	of(entry: Navigation<P>): ScreenMotion {
@@ -42,18 +53,11 @@ export class NavigatorMotion<P> {
 	}
 
 	rendered(): Navigation<P>[] {
-		const list = this.core.entries();
-		const leaving = this.closing.get();
-		if (leaving.length === 0) { return list; }
-		const all = list.slice(0, list.length);
-		for (const entry of leaving) {
-			if (!contains(all, entry)) { all.push(entry); }
-		}
-		return all;
+		return this.plan().rendered;
 	}
 
 	isClosing(entry: Navigation<P>): boolean {
-		return contains(this.closing.get(), entry);
+		return contains(this.plan().leaving, entry);
 	}
 
 	animationOf(entry: Navigation<P>): StackAnimation {
@@ -94,67 +98,74 @@ export class NavigatorMotion<P> {
 	}
 
 	animateOut(entry: Navigation<P>): void {
-		const kind = untrack((): StackAnimation => this.animationOf(entry));
-		if (kind === "none") {
-			this.motions.delete(entry.route.key);
-			return;
-		}
 		const motion = this.of(entry);
-		const leaving = this.closing.peek();
-		const next = leaving.slice(0, leaving.length);
-		next.push(entry);
-		this.closing.set(next);
 		motion.moving.set(true);
 		const duration = untrack((): number => this.durationOf(entry));
 		Animated.timing(motion.progress, { toValue: 0, duration, easing: Easing.in(Easing.cubic) })
 			.start((result: EndResult): void => {
-				const kept: Navigation<P>[] = [];
-				for (const other of this.closing.peek()) {
-					if (other !== entry) { kept.push(other); }
-				}
-				this.closing.set(kept);
 				motion.moving.set(false);
-				this.motions.delete(entry.route.key);
+				motion.exited.set(true);
 			});
 	}
 
-	snap(list: Navigation<P>[]): void {
-		for (const entry of this.closing.peek()) { this.of(entry).progress.stopAnimation(); }
-		for (const entry of this.previous) {
-			if (!contains(list, entry)) {
-				this.of(entry).progress.stopAnimation();
-				this.motions.delete(entry.route.key);
-			}
-		}
-		this.closing.set([]);
-	}
-
-	changed(list: Navigation<P>[], at: int32): void {
-		const before = this.previous;
-		const focusedBefore = this.focusedBefore;
+	derive(prev: MotionPlan<P> | null, list: Navigation<P>[], at: int32): MotionPlan<P> {
+		const before = prev === null ? [] as Navigation<P>[] : prev.list;
+		const focusedBefore = prev === null ? null : prev.focused;
 		const focused = at >= 0 && at < list.length ? list[at] : null;
-		this.previous = list.slice(0, list.length);
-		this.focusedBefore = focused;
-		if (this.epoch !== this.core.screenEpoch) {
-			this.epoch = this.core.screenEpoch;
-			this.snap(list);
-			return;
+		const epoch = this.core.screenEpoch;
+		const candidates: Navigation<P>[] = [];
+		const halted: Navigation<P>[] = [];
+		let entering: Navigation<P> | null = null;
+		if (prev !== null && prev.epoch !== epoch) {
+			for (const entry of prev.leaving) { halted.push(entry); }
+			for (const entry of before) {
+				if (!contains(list, entry)) { halted.push(entry); }
+			}
+			return { list, rendered: list, focused, leaving: [], entering, halted, epoch };
+		}
+		if (prev !== null) {
+			for (const entry of prev.leaving) { candidates.push(entry); }
 		}
 		if (!this.stacked) {
-			if (focused !== null && focusedBefore !== focused) { this.animateIn(focused as Navigation<P>); }
-			return;
+			if (focused !== null && focusedBefore !== focused) { entering = focused; }
+		} else if (before.length > 0 && list.length > 0) {
+			const previousTop = before[before.length - 1];
+			const top = list[list.length - 1];
+			if (previousTop !== top) {
+				if (!contains(list, previousTop) && contains(before, top)) {
+					const kind = untrack((): StackAnimation => this.animationOf(previousTop));
+					if (kind !== "none") { candidates.push(previousTop); }
+				} else if (!contains(before, top)) {
+					entering = top;
+				}
+			}
 		}
-		if (before.length === 0 || list.length === 0) { return; }
-		const previousTop = before[before.length - 1];
-		const top = list[list.length - 1];
-		if (previousTop === top) { return; }
-		if (!contains(list, previousTop) && contains(before, top)) {
-			this.animateOut(previousTop);
-			return;
+		const leaving: Navigation<P>[] = [];
+		for (const entry of candidates) {
+			if (!this.of(entry).exited.get()) { leaving.push(entry); }
 		}
-		if (!contains(before, top)) { this.animateIn(top); }
-		for (const entry of before) {
-			if (!contains(list, entry) && entry !== previousTop) { this.motions.delete(entry.route.key); }
+		let rendered = list;
+		if (leaving.length > 0) {
+			rendered = list.slice(0, list.length);
+			for (const entry of leaving) {
+				if (!contains(rendered, entry)) { rendered.push(entry); }
+			}
+		}
+		return { list, rendered, focused, leaving, entering, halted, epoch };
+	}
+
+	run(plan: MotionPlan<P>, prev: MotionPlan<P> | null): void {
+		for (const entry of plan.halted) { this.of(entry).progress.stopAnimation(); }
+		const applied = prev === null ? [] as Navigation<P>[] : prev.leaving;
+		for (const entry of plan.leaving) {
+			if (!contains(applied, entry)) { this.animateOut(entry); }
+		}
+		const entering = plan.entering;
+		if (entering !== null) { this.animateIn(entering as Navigation<P>); }
+		if (prev !== null) {
+			for (const entry of prev.rendered) {
+				if (!contains(plan.rendered, entry)) { this.motions.delete(entry.route.key); }
+			}
 		}
 	}
 }
@@ -164,13 +175,10 @@ export function createNavigatorMotion<P>(
 	stacked: boolean,
 ): NavigatorMotion<P> {
 	const motion = new NavigatorMotion<P>(core, stacked);
-	createRenderEffect<Navigation<P>[]>(
-		(prev: Navigation<P>[] | null): Navigation<P>[] => {
-			core.index();
-			return core.entries();
-		},
-		(list: Navigation<P>[], prev: Navigation<P>[] | null): Cleanup | null => {
-			motion.changed(list, core.index());
+	createRenderEffect<MotionPlan<P>>(
+		(prev: MotionPlan<P> | null): MotionPlan<P> => motion.plan(),
+		(plan: MotionPlan<P>, prev: MotionPlan<P> | null): Cleanup | null => {
+			motion.run(plan, prev);
 			return null;
 		},
 	);
