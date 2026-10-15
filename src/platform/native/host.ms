@@ -3,6 +3,7 @@ import { TextSpan } from "../../render/hostTypes";
 import { spanParagraph } from "../../render/spanHost";
 import { Accessor } from "../../core/signal";
 import { Dispose } from "../../core/types";
+import { MeasureRect, MeasureError } from "../../render/hostTypes";
 import { NeonEvent } from "../../render/event";
 import { FlexStyle, YGNode, freeLayoutTree, layoutPass as runLayoutPass } from "../../../../yoga/src/index";
 import { YGNodeGetParent, YGNodeRemoveChild, YGNodeLayoutGetPadding, YGNodeLayoutGetBorder, YGNodeLayoutGetMargin, YGEdge } from "../../../../yoga/src/yogaH";
@@ -45,6 +46,7 @@ import {
 	niViewCreate, niTextCreate, niAddChild, niBringChildToFront, niRemoveFromParent, niViewRelease, niSetFrame,
 	niSetBackgroundColor, niSetCornerRadius, niSetOpacity, niSetTransform, niSetRotation,
 	niSetText, niSetTextColor, niSetFont, niMeasureText, niMeasuredW, niMeasuredH,
+	niMeasureInWindow, niMeasurementX, niMeasurementY, niMeasurementW, niMeasurementH,
 	niContainerView, niScreenWidth, niScreenHeight, niViewSetTag, niViewSetPressable,
 	niLastTouchTag, niLastTouchPhase, niLastTouchX, niLastTouchY, niLastTouchTime, niSetResponder, niClearResponder,
 	niScrollCreate, niScrollSetTag, niScrollSetContentSize, niScrollTo, niScrollSetOption,
@@ -907,6 +909,7 @@ export interface NativeHost {
 export function createNativeHost(): NativeHost {
 	const container = niContainerView();
 	root = nativeNode(container, false, false);
+	const ownedRoot = root;
 	root.flex = { width: niScreenWidth(), height: niScreenHeight() };
 	niSetTouchHandler(onTouch);
 	niSetScrollHandler(onScroll);
@@ -1095,6 +1098,8 @@ export function createNativeHost(): NativeHost {
 		paragraph: (host: Host, node: HostNode, before: HostNode | null, kids: NeonNode | null, spans: Accessor<TextSpan[]> | null): void => {
 			spanParagraph(deliverSpans, node, kids, spans);
 		},
+		measureInWindow: (node: HostNode): Result<MeasureRect, MeasureError> => measureNativeWindow(node as unknown as NativeNode, ownedRoot),
+		measureLayout: (node: HostNode, ancestor: HostNode): Result<MeasureRect, MeasureError> => measureNativeLayout(node as unknown as NativeNode, ancestor as unknown as NativeNode, ownedRoot),
 		overlayRoot: (node: HostNode): HostNode => root as unknown as HostNode,
 		focus: (node: HostNode, focused: boolean): void => {
 			const n = node as unknown as NativeNode;
@@ -1251,6 +1256,49 @@ function relayoutRoot(): void {
 	writeContentSizes();
 	adjustVisibleContent();
 	batched(fireLayouts);
+}
+
+function nativeMeasurementError(node: NativeNode, ownedRoot: NativeNode): MeasureError | null {
+	if (root !== ownedRoot) { return MeasureError.NotMounted; }
+	if (layoutDirty) { relayoutRoot(); }
+	if (!isMounted(node)) { return MeasureError.NotMounted; }
+	if (node.view === null || node.isString || node.spanOwner !== null) { return MeasureError.Unsupported; }
+	if (node !== root && !node.framed) { return MeasureError.NotLaidOut; }
+	let at: NativeNode | null = node;
+	while (at !== null) {
+		const current = at as NativeNode;
+		const style = current.styleCache;
+		if (style !== null && (style as Style).display === "none") { return MeasureError.NotLaidOut; }
+		at = current.parent;
+	}
+	return null;
+}
+
+function measureNativeWindow(node: NativeNode, ownedRoot: NativeNode): Result<MeasureRect, MeasureError> {
+	const error = nativeMeasurementError(node, ownedRoot);
+	if (error !== null) { return Result.err(error as MeasureError); }
+	const ready = niMeasureInWindow(node.view);
+	if (ready < 0) { return Result.err(MeasureError.NotMounted); }
+	if (ready === 0) { return Result.err(MeasureError.NotLaidOut); }
+	return Result.ok({ x: niMeasurementX(), y: niMeasurementY(), width: niMeasurementW(), height: niMeasurementH() });
+}
+
+function measureNativeLayout(node: NativeNode, ancestor: NativeNode, ownedRoot: NativeNode): Result<MeasureRect, MeasureError> {
+	const error = nativeMeasurementError(node, ownedRoot);
+	if (error !== null) { return Result.err(error as MeasureError); }
+	const parentError = nativeMeasurementError(ancestor, ownedRoot);
+	if (parentError !== null) { return Result.err(parentError as MeasureError); }
+	let x = 0.0;
+	let y = 0.0;
+	let at: NativeNode | null = node;
+	while (at !== ancestor) {
+		if (at === null) { return Result.err(MeasureError.NotAncestor); }
+		const current = at as NativeNode;
+		x += current.x;
+		y += current.y;
+		at = current.parent;
+	}
+	return Result.ok({ x, y, width: node.w, height: node.h });
 }
 
 let mountedApp: (() => NeonNode) | null = null;

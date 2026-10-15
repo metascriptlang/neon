@@ -365,6 +365,22 @@ void niMeasureText(void *label, float maxWidth) {
 float niMeasuredW(void) { return g_measuredW; }
 float niMeasuredH(void) { return g_measuredH; }
 
+static double g_measurement[4];
+static int32_t g_measurementReady;
+void nmMeasurementRect(double x, double y, double width, double height, int32_t ready) {
+	g_measurement[0] = x; g_measurement[1] = y;
+	g_measurement[2] = width; g_measurement[3] = height;
+	g_measurementReady = ready;
+}
+int32_t niMeasureInWindow(void *view) {
+	live(view, "niMeasureInWindow");
+	return g_measurementReady;
+}
+double niMeasurementX(void) { return g_measurement[0]; }
+double niMeasurementY(void) { return g_measurement[1]; }
+double niMeasurementW(void) { return g_measurement[2]; }
+double niMeasurementH(void) { return g_measurement[3]; }
+
 void niSetTouchHandler(msClosure handler) { s_touch = handler; }
 int niLastTouchTag(void) { return g_lastTag; }
 int niLastTouchPhase(void) { return g_lastPhase; }

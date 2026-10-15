@@ -59,9 +59,9 @@ static int g_loopFd = -1;
 
 static struct {
 	jclass view, viewGroup, frameLayout, layoutParams, textView, gradientDrawable, integer, touch;
-	jclass scroll, input, props, environment, picture;
+	jclass scroll, input, props, environment, picture, measurement;
 	jobject loader;
-	jmethodID loadClass;
+	jmethodID loadClass, measurementInWindow;
 	jmethodID inputInit, inputSetTag, inputSetFocused, inputRemoving, propsSet, propsSetTag, environmentInstall, environmentScheme;
 	jmethodID pictureInit;
 	jmethodID scrollInit, scrollSetTag, scrollSetOption, scrollSetContentSize, scrollTo, scrollAddContent, scrollDispose, viewSetClickable;
@@ -159,6 +159,9 @@ static jobject staticObject(JNIEnv *e, const char *cls, const char *name, const 
 
 static void cacheJni(JNIEnv *e) {
 	J.view = globalClass(e, "android/view/View");
+	J.measurement = globalClass(e, "dev/metascript/neon/Measurement");
+	J.measurementInWindow = (*e)->GetStaticMethodID(e, J.measurement, "inWindow", "(Landroid/view/View;)[F");
+	check(e, "Measurement.inWindow");
 	J.viewGroup = globalClass(e, "android/view/ViewGroup");
 	J.frameLayout = globalClass(e, "android/widget/FrameLayout");
 	J.layoutParams = globalClass(e, "android/widget/FrameLayout$LayoutParams");
@@ -921,6 +924,23 @@ void niMeasureText(void *label, float maxWidth) {
 
 float niMeasuredW(void) { return g_measuredW; }
 float niMeasuredH(void) { return g_measuredH; }
+
+static jfloat g_measurement[4];
+int32_t niMeasureInWindow(void *view) {
+	memset(g_measurement, 0, sizeof g_measurement);
+	JNIEnv *e = env();
+	jfloatArray rect = (*e)->CallStaticObjectMethod(e, J.measurement, J.measurementInWindow, (jobject)view);
+	check(e, "Measurement.inWindow");
+	if (!rect) return 0;
+	(*e)->GetFloatArrayRegion(e, rect, 0, 4, g_measurement);
+	check(e, "Measurement rectangle");
+	(*e)->DeleteLocalRef(e, rect);
+	return 1;
+}
+double niMeasurementX(void) { return g_measurement[0] / g_density; }
+double niMeasurementY(void) { return g_measurement[1] / g_density; }
+double niMeasurementW(void) { return g_measurement[2] / g_density; }
+double niMeasurementH(void) { return g_measurement[3] / g_density; }
 
 JNIEnv *niAndroidEnv(void) { return env(); }
 jobject niAndroidContext(void) { return g_context; }

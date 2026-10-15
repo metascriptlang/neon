@@ -1309,6 +1309,20 @@ void niMeasureText(void *label, float maxWidth) {
 float niMeasuredW(void) { return g_measuredW; }
 float niMeasuredH(void) { return g_measuredH; }
 
+static CGRect g_measurement;
+int32_t niMeasureInWindow(void *view) {
+	g_measurement = CGRectZero;
+	UIView *v = (__bridge UIView *)view;
+	if (!v.window) return -1;
+	if (v.hidden) return 0;
+	g_measurement = [v convertRect:v.bounds toView:v.window];
+	return 1;
+}
+double niMeasurementX(void) { return g_measurement.origin.x; }
+double niMeasurementY(void) { return g_measurement.origin.y; }
+double niMeasurementW(void) { return g_measurement.size.width; }
+double niMeasurementH(void) { return g_measurement.size.height; }
+
 // --- events ---
 
 void niSetTouchHandler(msClosure handler) {

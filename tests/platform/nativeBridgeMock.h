@@ -1,4 +1,5 @@
 #include <stdint.h>
+void nmMeasurementRect(double x, double y, double width, double height, int32_t ready);
 int32_t nmViewsCreated(void);
 int32_t nmReleaseCalls(void);
 void nmTouch(int32_t tag, int32_t phase);

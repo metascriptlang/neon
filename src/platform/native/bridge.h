@@ -46,6 +46,11 @@ void  niSetFont(void *label, float size, int bold);
 void  niMeasureText(void *label, float maxWidth);
 float niMeasuredW(void);
 float niMeasuredH(void);
+int32_t niMeasureInWindow(void *view);
+double niMeasurementX(void);
+double niMeasurementY(void);
+double niMeasurementW(void);
+double niMeasurementH(void);
 
 void *niInputCreate(void);
 void *niTextAreaCreate(void); // the multiline TextInput: same props and control phases
