@@ -187,8 +187,9 @@ routing. `navigatorMotion.ms` stays the transition engine.
     `restore`. A malformed tree resolves before anything applies; a nested key that
     does not decode is found only after its parent level applied, since its decoder
     belongs to the child those keys create, so the binding puts the previous keys back
-    and resolves, in one batch. With no address for the region, a malformed tree
-    reports `IncompleteSnapshot`. `onBeforeNavigate` is asked before the fallback.
+    and resolves, in one batch. An entry whose whole snapshot, or whose router state,
+    does not parse resolves from its address the same way. With no address for the
+    region, a malformed tree reports `IncompleteSnapshot`. `onBeforeNavigate` is asked before the fallback.
 - Reload restores the entry's structure (a TanStack mask with `unmaskOnReload:
   false`); a presentation can resolve from the address on reload instead, which is
   Next's hard navigation.
