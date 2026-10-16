@@ -1,6 +1,6 @@
 import { NeonNode } from "../../src/render/node";
 import { element } from "../../src/macros/ui/element";
-import { renderToString } from "../../src/render/ssr";
+import { HostNode, mockHost, mockNode, render } from "../../src/render/host";
 import { createSignal, Accessor } from "../../src/core/signal";
 
 let seen = "";
@@ -43,7 +43,8 @@ function namedRow(s: string, i: Accessor<number>): NeonNode {
 
 function decided(view: NeonNode): string {
 	seen = "unset";
-	renderToString(view);
+	const dispose = render(view, mockHost(), mockNode("root") as unknown as HostNode);
+	dispose();
 	return seen;
 }
 

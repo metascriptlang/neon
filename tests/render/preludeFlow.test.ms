@@ -3,28 +3,6 @@ import { render, mockHost, mockNode, mockToString, HostNode } from "../../src/re
 import { element } from "../../src/macros/ui/element";
 import { createSignal, Accessor } from "../../src/core/signal";
 
-function indexedRow(n: Accessor<number>, i: number): NeonNode {
-	return element(<li>{n().toString() + i.toString()}</li>);
-}
-
-function keyedNumberRow(n: Accessor<number>, i: Accessor<number>): NeonNode {
-	return element(<li>{n().toString() + i().toString()}</li>);
-}
-
-function repeatedRow(i: number): NeonNode {
-	return element(<li>{i.toString()}</li>);
-}
-
-test "the For keyed modes and Repeat are in scope without an import" {
-	const [xs, _x] = createSignal<number[]>([7, 8]);
-	const byPosition: NeonNode = element(<ul><For each={xs()} keyed={false}>{indexedRow}</For></ul>);
-	assert renderToString(byPosition) === "<ul><li>70</li><li>81</li><!----></ul>", "keyed={false}";
-	const byKey: NeonNode = element(<ul><For each={xs()} keyed={(n: number): number => n}>{keyedNumberRow}</For></ul>);
-	assert renderToString(byKey) === "<ul><li>70</li><li>81</li><!----></ul>", "keyed={fn}";
-	const counted: NeonNode = element(<ul><Repeat count={2}>{repeatedRow}</Repeat></ul>);
-	assert renderToString(counted) === "<ul><li>0</li><li>1</li><!----></ul>", "Repeat";
-}
-
 function orNone(maybe: NeonNode | null): NeonNode {
 	return <div>{maybe ?? <i>none</i>}</div>;
 }
@@ -69,4 +47,26 @@ test "the flow tags are in scope without an import" {
 	assert mountedText(shown) === "<root><div><b>y</b></div></root>", "Show tag: " + mountedText(shown);
 	const each: NeonNode = element(<ul><For each={xs()}>{(n: number, i: Accessor<number>): NeonNode => element(<li>{n.toString()}</li>)}</For></ul>);
 	assert mountedText(each) === "<root><ul><li>1</li></ul></root>", "For tag: " + mountedText(each);
+}
+
+function indexedRow(n: Accessor<number>, i: number): NeonNode {
+	return element(<li>{n().toString() + i.toString()}</li>);
+}
+
+function keyedNumberRow(n: Accessor<number>, i: Accessor<number>): NeonNode {
+	return element(<li>{n().toString() + i().toString()}</li>);
+}
+
+function repeatedRow(i: number): NeonNode {
+	return element(<li>{i.toString()}</li>);
+}
+
+test "the For keyed modes and Repeat are in scope without an import" {
+	const [xs, _x] = createSignal<number[]>([7, 8]);
+	const byPosition: NeonNode = element(<ul><For each={xs()} keyed={false}>{indexedRow}</For></ul>);
+	assert mountedText(byPosition) === "<root><ul><li>70</li><li>81</li></ul></root>", "keyed={false}: " + mountedText(byPosition);
+	const byKey: NeonNode = element(<ul><For each={xs()} keyed={(n: number): number => n}>{keyedNumberRow}</For></ul>);
+	assert mountedText(byKey) === "<root><ul><li>70</li><li>81</li></ul></root>", "keyed={fn}: " + mountedText(byKey);
+	const counted: NeonNode = element(<ul><Repeat count={2}>{repeatedRow}</Repeat></ul>);
+	assert mountedText(counted) === "<root><ul><li>0</li><li>1</li></ul></root>", "Repeat: " + mountedText(counted);
 }
