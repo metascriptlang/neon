@@ -252,7 +252,7 @@ function view(router: Router, level: Level, depth: int32): NeonNode {
 	} else {
 		body = outlet(router, depth + 1);
 	}
-	return <RouteContext.Provider value={scope}>{body}</RouteContext.Provider>;
+	return <RouteContext value={scope}>{body}</RouteContext>;
 }
 
 function outlet(router: Router, depth: int32): NeonNode {
@@ -277,7 +277,7 @@ function outlet(router: Router, depth: int32): NeonNode {
 
 export function RouterProvider(props: { router: Router }): NeonNode {
 	const router = props.router;
-	return <RouterContext.Provider value={router}>{outlet(router, 0)}</RouterContext.Provider>;
+	return <RouterContext value={router}>{outlet(router, 0)}</RouterContext>;
 }
 
 function useRouter(caller: string): Router {
