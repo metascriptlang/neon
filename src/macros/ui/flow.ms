@@ -1,10 +1,10 @@
-// Control flow — For / ForKeyedBy / ForUnkeyed / Repeat / Show. Each returns a region NeonNode;
+// Control flow — For / ForKeyedBy / ForUnkeyed / Repeat / Show / Match. Each returns a region NeonNode;
 // the engines in core/array.ms and the host reconciler do the work. A row is described here and
 // mounted by the reconciler at its final position, so nothing below touches the host.
 
 import { mapArray, mapArrayKeyedBy, mapArrayByPosition, repeat } from "../../core/array";
 import { createMemo } from "../../core/memo";
-import { Accessor, Signal, accessor } from "../../core/signal";
+import { Accessor, Signal, accessor, untrack } from "../../core/signal";
 import { createErrorBoundary, createLoadingBoundary, routeThrown } from "../../core/boundary";
 import { createOwner, getOwner, getNextChildId, flush, disposeChildren, enterRoot, leaveRoot } from "../../core/runtime";
 import { onCleanup } from "../../core/cleanup";
@@ -498,4 +498,110 @@ export function showWhen<M>(source: () => M, use: (value: Accessor<M>) => NeonNo
 	return (host: Host, parent: HostNode, before: HostNode | null): void => {
 		use(createMemo<M>((prev: M | null): M => source()))(host, parent, before);
 	};
+}
+
+export class BoundCase {
+	test: Accessor<boolean>;
+	follow: () => void;
+	content: () => NeonNode;
+	constructor(test: Accessor<boolean>, follow: () => void, content: () => NeonNode) {
+		this.test = test;
+		this.follow = follow;
+		this.content = content;
+	}
+}
+
+export class CaseArm {
+	bind: (earlier: Accessor<boolean>) => BoundCase;
+	constructor(bind: (earlier: Accessor<boolean>) => BoundCase) {
+		this.bind = bind;
+	}
+}
+
+function noFollow(): void {}
+
+function narrowedCase<T>(earlier: Accessor<boolean>, when: Accessor<boolean>, value: Accessor<T>): Accessor<T> {
+	return accessor((): T => {
+		if (untrack((): boolean => earlier()) || !when()) { throw new Error("<Case>: the narrowed value was read while its case is not selected"); }
+		return value();
+	});
+}
+
+export function Case(props: {
+	when: Accessor<boolean>;
+	children: NeonNode;
+}): CaseArm {
+	return new CaseArm((earlier: Accessor<boolean>): BoundCase => new BoundCase(props.when, noFollow, (): NeonNode => props.children));
+}
+
+export function CaseKeyed(props: {
+	when: Accessor<boolean>;
+	children: NeonNode;
+}): CaseArm {
+	return new CaseArm((earlier: Accessor<boolean>): BoundCase => new BoundCase(props.when, (): void => { props.when(); }, (): NeonNode => props.children));
+}
+
+export function CaseWith<T>(props: {
+	when: Accessor<boolean>;
+	value: Accessor<T>;
+	children: (value: Accessor<T>) => NeonNode;
+}): CaseArm {
+	return new CaseArm((earlier: Accessor<boolean>): BoundCase => {
+		const narrowed = narrowedCase<T>(earlier, props.when, props.value);
+		return new BoundCase(props.when, noFollow, (): NeonNode => (host: Host, parent: HostNode, before: HostNode | null): void => { props.children(narrowed)(host, parent, before); });
+	});
+}
+
+export function CaseKeyedWith<T>(props: {
+	when: Accessor<boolean>;
+	value: Accessor<T>;
+	children: (value: T) => NeonNode;
+}): CaseArm {
+	return new CaseArm((earlier: Accessor<boolean>): BoundCase => new BoundCase(props.when, (): void => { props.when(); }, (): NeonNode => (host: Host, parent: HostNode, before: HostNode | null): void => { props.children(props.value())(host, parent, before); }));
+}
+
+export function caseWhen<M>(source: () => M, use: (value: Accessor<M>) => CaseArm): CaseArm {
+	return new CaseArm((earlier: Accessor<boolean>): BoundCase => {
+		const value = createMemo<M>((prev: M | null): M => earlier() ? (prev as M) : source());
+		return use(value).bind(earlier);
+	});
+}
+
+function unmatchedRows(fallback: NeonNode | null): Row[] {
+	if (fallback === null) { return [] as Row[]; }
+	return [makeRow(fallback as NeonNode)];
+}
+
+export function Match(props: {
+	cases: CaseArm[];
+	fallback?: NeonNode | null;
+}): NeonNode {
+	return regionNode((h) => {
+		const owner = getOwner();
+		const bound: BoundCase[] = [];
+		const taken: Accessor<boolean>[] = [];
+		const never = accessor((): boolean => false);
+		const selected = createMemo<int32>((): int32 => {
+			for (let i = 0; i < props.cases.length; i = i + 1) {
+				if (i === bound.length) {
+					const at = i;
+					const earlier = at === 0 ? never : taken[at - 1];
+					runWithOwner(owner, (): number => {
+						const arm = props.cases[at].bind(earlier);
+						bound.push(arm);
+						taken.push(createMemo<boolean>((): boolean => earlier() || arm.test()));
+						return 0;
+					});
+				}
+				if (taken[i]()) { return i; }
+			}
+			return -1;
+		});
+		return createMemo<Row[]>(() => {
+			const at = selected();
+			if (at < 0) { return unmatchedRows(props.fallback); }
+			bound[at].follow();
+			return [makeRow(bound[at].content())];
+		});
+	});
 }

@@ -819,10 +819,44 @@ export macro element(node: Node): Node {
 		}
 		return { kind: NodeKind.JSXElement, line: c.line, column: c.column, jsxTag: tag, jsxAttrs: attrs, jsxChildren: c.jsxChildren, jsxSelfClosing: c.jsxSelfClosing };
 	}
-	const showKeyedMsg = "<Show keyed> takes true or false, written in place: a function child receives an Accessor of the value, or the value itself when keyed, so a computed value cannot choose between them";
-	const showArityMsg = "a <Show> function child takes one parameter, the narrowed value";
 	let showIdx = 0;
-	function showCall(c: Node): Node {
+	function flowItem(made: Node, base: string): Node {
+		if (base === "Show") { return made; }
+		return { kind: NodeKind.CallExpr, line: made.line, column: made.column, callee: made.arguments[0], arguments: [made.arguments[1]] };
+	}
+	const matchWhenMsg = "<Match> takes no 'when': Solid's <Match when> is <Case when> here, so write <Match fallback={…}><Case when={…}>…</Case></Match>";
+	const matchChildMsg = "<Match> holds only <Case> branches: write the branch as <Case when={…}>…</Case>";
+	const strayCaseMsg = "<Case> is only a direct child of <Match>: write <Match><Case when={…}>…</Case></Match>, or <Show when={…}> for a single condition";
+	function matchCall(c: Node): Node {
+		const ln = c.line;
+		const col = c.column;
+		let bad = false;
+		let attrs: Node[] = [];
+		for (const a of c.jsxAttrs) {
+			if (a.kind === NodeKind.JSXAttribute && a.jsxAttrName === "when") {
+				error(matchWhenMsg, a);
+				bad = true;
+			} else {
+				attrs.push(a);
+			}
+		}
+		let arms: Node[] = [];
+		for (const k of c.jsxChildren) {
+			if (k.kind === NodeKind.JSXText && cleanJsxText(k.jsxText) === "") { continue; }
+			if (k.kind === NodeKind.JSXElement && k.jsxTag === "Case") {
+				arms.push(whenFlow(k, "Case"));
+			} else {
+				error(matchChildMsg, k);
+				bad = true;
+			}
+		}
+		if (bad) { return { kind: NodeKind.NullLiteral, line: ln, column: col }; }
+		attrs.push({ kind: NodeKind.JSXAttribute, line: ln, column: col, jsxAttrName: "cases", jsxAttrValue: { kind: NodeKind.ArrayLiteral, line: ln, column: col, elements: arms } });
+		return componentOf({ kind: NodeKind.JSXElement, line: ln, column: col, jsxTag: "Match", jsxAttrs: attrs, jsxChildren: [], jsxSelfClosing: true });
+	}
+	function whenFlow(c: Node, base: string): Node {
+		const showKeyedMsg = "<" + base + " keyed> takes true or false, written in place: a function child receives an Accessor of the value, or the value itself when keyed, so a computed value cannot choose between them";
+		const showArityMsg = "a <" + base + "> function child takes one parameter, the narrowed value";
 		let whenAt = -1;
 		let keyedAt = -1;
 		for (let i = 0; i < c.jsxAttrs.length; i = i + 1) {
@@ -832,8 +866,8 @@ export macro element(node: Node): Node {
 			if (a.jsxAttrName === "keyed") { keyedAt = i; }
 		}
 		if (whenAt < 0) {
-			error("<Show> requires the 'when' prop", c);
-			return componentOf(c);
+			error("<" + base + "> requires the 'when' prop", c);
+			return flowItem(componentOf(c), base);
 		}
 		let keyed = false;
 		if (keyedAt >= 0) {
@@ -876,19 +910,19 @@ export macro element(node: Node): Node {
 			return { kind: NodeKind.TypeAssertion, line: ln, column: col, asExpr: of, asType: "!" };
 		}
 		const plain = !keyed && !withValue;
-		let tag = "Show";
+		let tag = base;
 		let attrs: Node[] = [];
 		for (let i = 0; i < c.jsxAttrs.length; i = i + 1) {
 			if (i === whenAt) { attrs.push(attr("when", truthy(plain ? source : read))); }
 			else if (i !== keyedAt) { attrs.push(c.jsxAttrs[i]); }
 		}
-		if (keyed && !withValue) { tag = "ShowKeyed"; }
-		if (!keyed && withValue) { tag = "ShowWith"; attrs.push(attr("value", unwrapped(read))); }
-		if (keyed && withValue) { tag = "ShowKeyedWith"; attrs.push(attr("value", unwrapped(read))); }
-		const inner = componentOf({ kind: NodeKind.JSXElement, line: ln, column: col, jsxTag: tag, jsxAttrs: attrs, jsxChildren: c.jsxChildren, jsxSelfClosing: c.jsxSelfClosing });
+		if (keyed && !withValue) { tag = base + "Keyed"; }
+		if (!keyed && withValue) { tag = base + "With"; attrs.push(attr("value", unwrapped(read))); }
+		if (keyed && withValue) { tag = base + "KeyedWith"; attrs.push(attr("value", unwrapped(read))); }
+		const inner = flowItem(componentOf({ kind: NodeKind.JSXElement, line: ln, column: col, jsxTag: tag, jsxAttrs: attrs, jsxChildren: c.jsxChildren, jsxSelfClosing: c.jsxSelfClosing }), base);
 		if (plain) { return inner; }
 		return {
-			kind: NodeKind.CallExpr, line: ln, column: col, callee: ident("showWhen", ln, col),
+			kind: NodeKind.CallExpr, line: ln, column: col, callee: ident(base === "Show" ? "showWhen" : "caseWhen", ln, col),
 			arguments: [
 				{ kind: NodeKind.ArrowFunction, line: ln, column: col, arrowParams: [], arrowParamTypes: [], arrowBody: source, arrowFlags: "", arrowReturnType: "" },
 				{ kind: NodeKind.ArrowFunction, line: ln, column: col, arrowParams: [name], arrowParamTypes: [""], arrowBody: inner, arrowFlags: "", arrowReturnType: "" },
@@ -906,8 +940,13 @@ export macro element(node: Node): Node {
 		return { kind: NodeKind.JSXElement, line: given.line, column: given.column, jsxTag: given.jsxTag + ".provider", jsxAttrs: given.jsxAttrs, jsxChildren: given.jsxChildren, jsxSelfClosing: given.jsxSelfClosing };
 	}
 	function componentCall(given: Node): Node {
+		if (given.jsxTag === "Match") { return matchCall(given); }
+		if (given.jsxTag === "Case") {
+			error(strayCaseMsg, given);
+			return { kind: NodeKind.NullLiteral, line: given.line, column: given.column };
+		}
 		const c = isContextTag(given) ? contextProvider(given) : given;
-		if (c.jsxTag === "Show") { return showCall(c); }
+		if (c.jsxTag === "Show") { return whenFlow(c, "Show"); }
 		return componentOf(forByKeyed(c));
 	}
 	function componentOf(c: Node): Node {
