@@ -10,7 +10,7 @@ import {
 	encodeRouteComponent,
 } from "./routing";
 import { RoutingSession } from "./routingHistory";
-import { WebHistoryItem, WebNavigationNode, WebNavigationOwner } from "./webNavigation";
+import { WebHistoryItem, WebNavigationError, WebNavigationNode, WebNavigationOwner } from "./webNavigation";
 
 export interface WebHistory {
 	participant: RoutingParticipant;
@@ -187,7 +187,7 @@ function decodeHistory(state: string): Result<KeyNode[], RoutingError> {
 function applyKeys(navigation: WebNavigationNode, nodes: KeyNode[]): void {
 	const keys: string[] = [];
 	for (const node of nodes) { keys.push(node.key); }
-	const applied = navigation.navigate(keys);
+	const applied = flush((): Result<void, WebNavigationError> => navigation.navigate(keys));
 	if (!applied.ok) { throw new Error("web history: a stored key does not decode"); }
 	const items = published(navigation);
 	for (let i = 0; i < items.length; i += 1) {
@@ -386,9 +386,15 @@ export function createWebHistory(
 	const current = (): HistoryNode[] => {
 		return pending === null ? nodeHistory(navigation) : pending as HistoryNode[];
 	};
+	let applying = false;
 	const suppressed = (commit: () => void): RoutePlan => ({
 		commit: (): void => flush((): void => {
-			commit();
+			applying = true;
+			try {
+				commit();
+			} finally {
+				applying = false;
+			}
 			applied.set(applied.peek() + 1);
 		}),
 	});
@@ -441,7 +447,7 @@ export function createWebHistory(
 						return applied.get();
 					},
 					(epoch: int32, prev: int32 | null): Cleanup | null => {
-						if (record === null || epoch !== seen) {
+						if (record === null || applying || epoch !== seen) {
 							seen = epoch;
 							record = recordLevel(navigation);
 							return null;
