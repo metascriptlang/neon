@@ -63,9 +63,20 @@ when (server) {
 	}
 }
 
-function awaitResult<T>(self: Computation, compute: (prev: T | null) => Promise<T>, prev: T | null, land: (self: Computation, value: T) => void, ctx: ServerContext | null): T {
+export interface Adopter<T> {
+	has: (id: string) => boolean;
+	read: (id: string, trace: () => void) => T;
+}
+
+function awaitResult<T>(self: Computation, compute: (prev: T | null) => Promise<T>, prev: T | null, land: (self: Computation, value: T) => void, ctx: ServerContext | null, adopter: Adopter<T> | null): T {
 	when (server) {
 		if (ctx !== null) { return serverResult<T>(ctx, self, compute, prev); }
+	}
+	const adoptedId = self.id;
+	if (adopter !== null && adoptedId !== null && adopter.has(adoptedId)) {
+		return adopter.read(adoptedId, (): void => {
+			watch<T>(compute(prev), (value: Cell<T> | null, failure: Error | null): void => {});
+		});
 	}
 	const result = compute(prev);
 	const id = beginFlight(self);
@@ -168,9 +179,10 @@ export function createMemo<T>(compute: (prev: T | null) => T, options?: MemoOpti
 }
 
 // Parked on ~/metascript/.inbox/compiler/2026-10-16-function-returning-one-member-is-refused-where-a-function-returning-the-union-is-expected.md and its two siblings: Solid 2.0 has one `createMemo` whose compute returns `Promise<T> | T`; this engine entry is not exported and merges into it.
-export function createAsyncMemo<T>(compute: (prev: T | null) => Promise<T>, options?: MemoOptions<T>): Accessor<T> {
+export function createAsyncMemo<T>(compute: (prev: T | null) => Promise<T>, options?: MemoOptions<T>, adopter?: Adopter<T>): Accessor<T> {
 	const ctx = serverContext();
-	return buildMemo<T>((self: Computation, prev: T | null, land: (self: Computation, value: T) => void): T => awaitResult<T>(self, compute, prev, land, ctx), options);
+	const adopting = adopter === undefined ? null : adopter;
+	return buildMemo<T>((self: Computation, prev: T | null, land: (self: Computation, value: T) => void): T => awaitResult<T>(self, compute, prev, land, ctx, adopting), options);
 }
 
 export function refresh<T>(target: Accessor<T>): void {
