@@ -1,0 +1,61 @@
+import { NeonNode } from "../../src/render/hostTypes";
+import { createAsyncMemo } from "../../src/core/memo";
+import { Loading } from "../../src/macros/ui/flow";
+import { View, Text } from "../../src/components/primitives";
+import { createStyles, styleOf } from "../../src/macros/ui/style";
+import { dynText, el } from "../../src/render/node";
+import { renderToStream, streamRender, StreamSink } from "../../src/render/ssr";
+
+const looks = createStyles({ page: { padding: 6 }, late: { margin: 2 } });
+
+async function held(gate: Promise<int32>): Promise<int32> {
+	return await gate;
+}
+
+function slowText(gate: Promise<int32>): NeonNode {
+	return (host, parent, before): void => {
+		const data = createAsyncMemo((p: int32 | null): Promise<int32> => held(gate));
+		el("p", [], [], dynText((): string => "slow=" + data().toString()))(host, parent, before);
+	};
+}
+
+function slowPage(gate: Promise<int32>): NeonNode {
+	return <View style={looks.page}>
+		<Text>head</Text>
+		<Loading fallback={<Text>waiting</Text>}>
+			{slowText(gate)}
+			<View style={looks.late}><Text>after the wait</Text></View>
+		</Loading>
+		<Text>tail</Text>
+	</View>;
+}
+
+export function slowStream(gate: Promise<int32>, sink: StreamSink): void {
+	streamRender(slowPage(gate)).pipe(sink);
+}
+
+export async function slowAwaited(gate: Promise<int32>): Promise<string> {
+	const out = await renderToStream(slowPage(gate));
+	return "<style>" + out.css + "</style>" + out.html;
+}
+
+function nestedPage(outer: Promise<int32>, inner: Promise<int32>): NeonNode {
+	return <View style={looks.page}>
+		<Loading fallback={<Text>outer waits</Text>}>
+			{slowText(outer)}
+			<Loading fallback={<Text>inner waits</Text>}>
+				<View style={looks.late}><Text>inner content</Text></View>
+				{slowText(inner)}
+			</Loading>
+		</Loading>
+	</View>;
+}
+
+export function nestedStream(outer: Promise<int32>, inner: Promise<int32>, sink: StreamSink): void {
+	streamRender(nestedPage(outer, inner)).pipe(sink);
+}
+
+export async function nestedAwaited(outer: Promise<int32>, inner: Promise<int32>): Promise<string> {
+	const out = await renderToStream(nestedPage(outer, inner));
+	return "<style>" + out.css + "</style>" + out.html;
+}
