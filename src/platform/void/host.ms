@@ -519,6 +519,12 @@ export function createVoidHostWith(scene: Scene2D, font: FontId, defaultFamily: 
 
 	const attached = (n: VoidNode): boolean => within(n, root);
 
+	const askLayout = (): void => {
+		if (signaled || dirtyListener === null) { return; }
+		signaled = true;
+		(dirtyListener as () => void)();
+	};
+
 	const fire = (n: VoidNode, name: string, e: NeonEvent): boolean => {
 		const due: ((e: NeonEvent) => void)[] = [];
 		for (const entry of events) {
@@ -885,6 +891,7 @@ export function createVoidHostWith(scene: Scene2D, font: FontId, defaultFamily: 
 		setStyle: (node: HostNode, style: Style): void => {
 			const n = live(node, "setStyle");
 			const was = wasDirty();
+			const laidBefore = n.flex;
 			n.flex = asFlexStyle(style);
 			n.style = style;
 			applyPaint(n, style);
@@ -896,6 +903,7 @@ export function createVoidHostWith(scene: Scene2D, font: FontId, defaultFamily: 
 				showField(f as Field, (clientOf(n) as ClientEntry).value);
 			}
 			woke(was);
+			if ((laidBefore !== null || n.flex !== null) && attached(n)) { askLayout(); }
 		},
 		setStyleProp: null,
 		setStyleClass: null,

@@ -731,3 +731,18 @@ test "pointer and wheel events carry the window's modifiers and a time" {
 	].join("|"), log.join("|");
 	assert times[0] > 0 && times[1] >= times[0] && times[4] >= times[3], "timeStamps rise: " + times.join(",");
 }
+
+test "a style change that only moves layout asks the window for a frame" {
+	const vh = host();
+	let woke = 0;
+	vh.onDirty((): void => { woke = woke + 1; });
+	const [rowHeight, setRowHeight] = createSignal<number>(0);
+	render(element(<View style={{ width: 400 }}><View style={{ height: rowHeight() }} /><View style={{ height: 10 }} /></View>), vh.host, vh.root);
+	vh.layout(400.0, 300.0);
+	settle(vh);
+	const before = woke;
+	setRowHeight(18);
+	assert woke === before + 1, "a height-only change woke the host: " + (woke - before).toString();
+	vh.layout(400.0, 300.0);
+	assert top(vh).children[1].ref.local().y === 18.0, "the next layout moves the row below: y=" + top(vh).children[1].ref.local().y.toString();
+}
