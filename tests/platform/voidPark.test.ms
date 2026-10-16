@@ -140,7 +140,7 @@ test "a Loading whose content read a pending value frees the partial nodes and s
 	};
 	const dispose = render(app, vh.host, vh.root);
 	assert partial.length === 1 && partial[0].disposed && !partial[0].ref.isLive(), "the first attempt's partial node is freed, not left parked";
-	assert (vh.root as VoidNode).children[0].children[0].chars === "caught", "the fallback shows";
+	assert (vh.root as VoidNode).children[0].children[0].ref.text() === "caught", "the fallback shows";
 	await release(gate);
 	assert partial.length === 2 && partial[1].ref.isLive(), "the settled attempt built its own nodes";
 	assert (vh.root as VoidNode).children.indexOf(partial[1]) >= 0, "and they are in the root";
