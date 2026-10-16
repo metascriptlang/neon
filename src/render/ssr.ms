@@ -1,11 +1,11 @@
 import { Accessor, accessor } from "../core/signal";
+import { sanitized } from "../core/serverContext";
 
-export class SafeError extends Error {}
+export { SafeError } from "../core/serverContext";
 
 // server/signals.ts:3535 ssrSanitizeError: a build without `debug` hands the fallback one generic Error per caught error
 export function serverCaught(error: Error): Accessor<Error> {
-	let wire = error;
-	when (debug) {} else { if (!(error instanceof SafeError)) { wire = new Error("Internal Server Error"); } }
+	const wire = sanitized(error);
 	return accessor((): Error => wire);
 }
 

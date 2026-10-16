@@ -1,5 +1,6 @@
 import { Computation, NotReadyError, EFFECT_PURE, RUN_UNCHANGED, RUN_PUBLISHED, RUN_STAGED } from "./types";
 import { Cell, Accessor, accessor, isEqual, untrack } from "./signal";
+import { ServerContext, serverContext } from "./serverContext";
 import { createComputed, readSource, isStaged, writeSource, beginFlight, endFlight, landFlight, failFlight, markRefresh } from "./runtime";
 
 export interface MemoOptions<T> {
@@ -34,7 +35,39 @@ async function watch<T>(promise: Promise<T>, done: (value: Cell<T> | null, failu
 	done(value, failure);
 }
 
-function awaitResult<T>(self: Computation, result: Promise<T>, land: (self: Computation, value: T) => void): T {
+when (server) {
+	import { ServerSlot, sanitized } from "./serverContext";
+
+	function serverResult<T>(ctx: ServerContext, self: Computation, compute: (prev: T | null) => Promise<T>, prev: T | null): T {
+		const id = self.id;
+		if (id === null) { throw new Error("[SERVER_ASYNC_WITHOUT_ID] an async memo on the server needs an owner id; render it under a root that carries one"); }
+		const known = ctx.slots.get(id);
+		if (known !== null) {
+			if (known.failure !== null) { throw known.failure; }
+			if (known.settled) { return (known.cell as Cell<T>).value; }
+			throw new NotReadyError(self);
+		}
+		const slot = new ServerSlot();
+		ctx.slots.set(id, slot);
+		ctx.started.push(id);
+		ctx.waits.push(watch<T>(compute(prev), (value: Cell<T> | null, failure: Error | null): void => {
+			if (failure !== null) {
+				slot.failure = sanitized(failure);
+			} else if (value !== null) {
+				slot.json = JSON.stringify<T>(value.value);
+				slot.cell = value as unknown;
+			}
+			slot.settled = true;
+		}));
+		throw new NotReadyError(self);
+	}
+}
+
+function awaitResult<T>(self: Computation, compute: (prev: T | null) => Promise<T>, prev: T | null, land: (self: Computation, value: T) => void, ctx: ServerContext | null): T {
+	when (server) {
+		if (ctx !== null) { return serverResult<T>(ctx, self, compute, prev); }
+	}
+	const result = compute(prev);
 	const id = beginFlight(self);
 	const outcome = new Outcome<T>();
 	watch<T>(result, (value: Cell<T> | null, failure: Error | null): void => {
@@ -59,7 +92,7 @@ function awaitResult<T>(self: Computation, result: Promise<T>, land: (self: Comp
 	return settled.value;
 }
 
-function buildMemo<T, R>(compute: (prev: T | null) => R, answer: (self: Computation, result: R, land: (self: Computation, value: T) => void) => T, options?: MemoOptions<T>): Accessor<T> {
+function buildMemo<T>(produce: (self: Computation, prev: T | null, land: (self: Computation, value: T) => void) => T, options?: MemoOptions<T>): Accessor<T> {
 	let cell: Cell<T> | null = null;
 	let equals: ((a: T, b: T) => boolean) | null = null;
 	let lazy = false;
@@ -98,11 +131,13 @@ function buildMemo<T, R>(compute: (prev: T | null) => R, answer: (self: Computat
 	const run = (self: Computation, create: boolean): int32 => {
 		const held = cell;
 		if (held === null) {
-			publishFirst(self, answer(self, compute(null), land));
+			// Parked on ~/metascript/.inbox/compiler/2026-10-15-c-runs-the-enclosing-call-of-a-throwing-argument.md: on C a throwing argument still runs publishFirst once, so the call is its own statement.
+			const first = produce(self, null, land);
+			publishFirst(self, first);
 			return RUN_PUBLISHED;
 		}
 		const prev = isStaged(self) ? held.pending : held.value;
-		const next = answer(self, compute(prev), land);
+		const next = produce(self, prev, land);
 		if (isEqual(equals, prev, next)) { return RUN_UNCHANGED; }
 		if (create) {
 			held.value = next;
@@ -129,12 +164,13 @@ function buildMemo<T, R>(compute: (prev: T | null) => R, answer: (self: Computat
 }
 
 export function createMemo<T>(compute: (prev: T | null) => T, options?: MemoOptions<T>): Accessor<T> {
-	return buildMemo<T, T>(compute, (self: Computation, result: T, land: (self: Computation, value: T) => void): T => result, options);
+	return buildMemo<T>((self: Computation, prev: T | null, land: (self: Computation, value: T) => void): T => compute(prev), options);
 }
 
 // Parked on ~/metascript/.inbox/compiler/2026-10-16-function-returning-one-member-is-refused-where-a-function-returning-the-union-is-expected.md and its two siblings: Solid 2.0 has one `createMemo` whose compute returns `Promise<T> | T`; this engine entry is not exported and merges into it.
 export function createAsyncMemo<T>(compute: (prev: T | null) => Promise<T>, options?: MemoOptions<T>): Accessor<T> {
-	return buildMemo<T, Promise<T>>(compute, (self: Computation, result: Promise<T>, land: (self: Computation, value: T) => void): T => awaitResult<T>(self, result, land), options);
+	const ctx = serverContext();
+	return buildMemo<T>((self: Computation, prev: T | null, land: (self: Computation, value: T) => void): T => awaitResult<T>(self, compute, prev, land, ctx), options);
 }
 
 export function refresh<T>(target: Accessor<T>): void {
