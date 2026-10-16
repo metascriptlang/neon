@@ -406,14 +406,31 @@ export function createVoidHostWith(scene: Scene2D, font: FontId, defaultFamily: 
 	const attached = (n: VoidNode): boolean => within(n, root);
 
 	const fire = (n: VoidNode, name: string, e: NeonEvent): boolean => {
-		let hit = false;
+		const due: ((e: NeonEvent) => void)[] = [];
 		for (const entry of events) {
-			if (entry.node === n && entry.name === name) {
-				entry.handler(e);
-				hit = true;
-			}
+			if (entry.node === n && entry.name === name) { due.push(entry.handler); }
 		}
-		return hit;
+		for (const handler of due) {
+			if (n.disposed) { break; }
+			handler(e);
+		}
+		return due.length > 0;
+	};
+
+	const pathFrom = (n: VoidNode | null): VoidNode[] => {
+		const path: VoidNode[] = [];
+		let cur = n;
+		while (cur !== null) {
+			path.push(cur as VoidNode);
+			cur = (cur as VoidNode).parent;
+		}
+		return path;
+	};
+
+	const fireAlong = (path: VoidNode[], name: string, e: NeonEvent): void => {
+		for (const n of path) {
+			if (!n.disposed) { fire(n, name, e); }
+		}
 	};
 
 	const hasHandler = (n: VoidNode, name: string): boolean => {
@@ -639,11 +656,7 @@ export function createVoidHostWith(scene: Scene2D, font: FontId, defaultFamily: 
 	};
 
 	const bubble = (name: string, e: NeonEvent): void => {
-		let cur: VoidNode | null = focusedNode;
-		while (cur !== null) {
-			fire(cur as VoidNode, name, e);
-			cur = (cur as VoidNode).parent;
-		}
+		fireAlong(pathFrom(focusedNode), name, e);
 	};
 
 	const unlink = (c: VoidNode, into: VoidNode): void => {
@@ -955,12 +968,7 @@ export function createVoidHostWith(scene: Scene2D, font: FontId, defaultFamily: 
 		const at = (target as VoidNode).ref.globalToLocal(vec2(x, y));
 		ev.locationX = at.x;
 		ev.locationY = at.y;
-		let cur: VoidNode | null = target;
-		while (cur !== null) {
-			const n = cur as VoidNode;
-			if (!n.disposed) { fire(n, name, ev); }
-			cur = n.parent;
-		}
+		fireAlong(pathFrom(target), name, ev);
 	};
 
 	const pointerEvent = (type: string, x: float32, y: float32, button: int32, pressed: boolean): NeonEvent => {
