@@ -255,12 +255,32 @@ function loadingRows(host: Host, children: NeonNode, fallback: NeonNode | null):
 	});
 }
 
+function loadingOnServer(children: NeonNode, fallback: NeonNode | null): Accessor<Row[]> {
+	const state = new MountedState();
+	const context = (getOwner() as Computation).context;
+	return spanOfMounted((host: Host, parent: HostNode, before: HostNode | null): Row | null => {
+		const content = makeRow(mountedUnder(children, context, state));
+		try {
+			mountAt(host, parent, before, content);
+			return content;
+		} catch (e) {
+			if (!(e instanceof NotReadyError)) { throw e; }
+		}
+		removeRow(host, parent, content);
+		disposeChildren(state.scope as Computation, true);
+		if (fallback === null) { return null; }
+		const waiting = makeRow(fallback as NeonNode);
+		mountAt(host, parent, before, waiting);
+		return waiting;
+	});
+}
+
 export function Loading(props: {
 	children: NeonNode;
 	fallback?: NeonNode | null;
 }): NeonNode {
 	return (host: Host, parent: HostNode, before: HostNode | null): void => {
-		regionNode((h) => loadingRows(h, props.children, props.fallback))(host, parent, before);
+		regionNode((h) => isServer() ? loadingOnServer(props.children, props.fallback) : loadingRows(h, props.children, props.fallback))(host, parent, before);
 	};
 }
 
