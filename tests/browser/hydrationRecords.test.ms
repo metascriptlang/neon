@@ -4,7 +4,7 @@ import { createSignal } from "../../src/core/signal";
 import { createEffect } from "../../src/core/effect";
 import { createRoot } from "../../src/core/owner";
 import { Cleanup } from "../../src/core/types";
-import { hasRecord, takeRecord, takeError, clearRecords, scriptLiteral } from "../../src/render/hydrationRecords";
+import { hasRecord, readRecord, readError, clearRecords, scriptLiteral } from "../../src/render/hydrationRecords";
 import { traceRun } from "../../src/render/traceRun";
 
 when (js) {
@@ -57,7 +57,7 @@ when (js) {
 		parseScripts(valueScript("w1", JSON.stringify<Note>(awkward)));
 		whileHydrating((): void => {
 			assert hasRecord("w1"), "the script's record is the client's";
-			const back = takeRecord<Note>("w1");
+			const back = readRecord<Note>("w1");
 			assert back.text === awkward.text && back.n === awkward.n, back.text;
 		});
 		clearRecords();
@@ -68,9 +68,9 @@ when (js) {
 		const basket: Basket = { items: [awkward, { text: "plain", n: 2 }], total: 0.1 };
 		parseScripts(valueScript("w2", JSON.stringify<Basket>(basket)) + errorScript("w3", "the \"server\" </script> failed\nline two  "));
 		whileHydrating((): void => {
-			const back = takeRecord<Basket>("w2");
+			const back = readRecord<Basket>("w2");
 			assert back.items.length === 2 && back.items[0].text === awkward.text && back.items[1].n === 2 && back.total === 0.1, back.items[0].text;
-			assert takeError("w3") === "the \"server\" </script> failed\nline two  ", "the error message came back unchanged";
+			assert readError("w3") === "the \"server\" </script> failed\nline two  ", "the error message came back unchanged";
 		});
 		clearRecords();
 	}

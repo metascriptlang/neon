@@ -1,7 +1,7 @@
 import { NeonNode } from "../../src/render/node";
 import { hydrate, mockHost, mockNode, HostNode, Host } from "../../src/render/host";
 import {
-	hasRecord, hasError, takeRecord, takeError, putRecord, putError, clearRecords, scriptLiteral,
+	hasRecord, hasError, readRecord, readError, putRecord, putError, clearRecords, scriptLiteral,
 } from "../../src/render/hydrationRecords";
 
 interface Note {
@@ -30,18 +30,22 @@ function failure(read: () => void): string {
 	return "";
 }
 
-test "a record is read while hydrating and reading it consumes it" {
+test "a record is read while hydrating and reading it leaves it there for the whole hydration" {
 	clearRecords();
 	putRecord("t0", JSON.stringify<Note>({ text: "hi", n: 7 }));
 	assert !hasRecord("t0"), "a record is not visible before hydrate";
 	whileHydrating((): void => {
 		assert hasRecord("t0"), "the record is visible while hydrating";
 		assert !hasRecord("t1"), "an id the server did not write has no record";
-		const note = takeRecord<Note>("t0");
+		const note = readRecord<Note>("t0");
 		assert note.text === "hi" && note.n === 7, note.text;
-		assert !hasRecord("t0"), "reading consumed the record";
-		assert failure((): void => { takeRecord<Note>("t0"); }).indexOf("t0") >= 0, "a second read names its id";
+		assert hasRecord("t0"), "reading did not consume the record";
+		const again = readRecord<Note>("t0");
+		assert again.text === "hi" && again.n === 7, "a second read gives the same value";
+		assert failure((): void => { readRecord<Note>("t1"); }).indexOf("t1") >= 0, "a read of an absent id names it";
 	});
+	assert !hasRecord("t0"), "after hydration ends the record is no longer read";
+	assert failure((): void => { readRecord<Note>("t0"); }).indexOf("t0") >= 0, "a read after the end names its id";
 	clearRecords();
 }
 
@@ -49,8 +53,8 @@ test "a record outside hydrate is not read, and the refusal names its id" {
 	clearRecords();
 	putRecord("o1", JSON.stringify<Note>({ text: "late", n: 1 }));
 	assert !hasRecord("o1");
-	assert failure((): void => { takeRecord<Note>("o1"); }).indexOf("o1") >= 0, "the throw names the id";
-	whileHydrating((): void => { assert hasRecord("o1"), "the record was not consumed by the refused read"; });
+	assert failure((): void => { readRecord<Note>("o1"); }).indexOf("o1") >= 0, "the throw names the id";
+	whileHydrating((): void => { assert hasRecord("o1"), "the refused read left the record"; });
 	clearRecords();
 }
 
@@ -58,7 +62,9 @@ test "a record that does not decode throws naming its id" {
 	clearRecords();
 	putRecord("bad.1", "{\"text\":5}");
 	whileHydrating((): void => {
-		assert failure((): void => { takeRecord<Note>("bad.1"); }).indexOf("bad.1") >= 0, "the throw names the id";
+		const said = failure((): void => { readRecord<Note>("bad.1"); });
+		assert said.indexOf("bad.1") >= 0, "the throw names the id: " + said;
+		assert said.indexOf("field 'text': expected string") >= 0, "the throw carries the decoder's own text: " + said;
 	});
 	clearRecords();
 }
@@ -70,11 +76,13 @@ test "an error record is read apart from a value record" {
 	whileHydrating((): void => {
 		assert hasError("e0") && !hasRecord("e0"), "e0 is an error record only";
 		assert hasRecord("v0") && !hasError("v0"), "v0 is a value record only";
-		assert takeError("e0") === "the server failed";
-		assert !hasError("e0"), "reading consumed the error";
-		const basket = takeRecord<Basket>("v0");
+		assert readError("e0") === "the server failed";
+		assert hasError("e0") && readError("e0") === "the server failed", "reading did not consume the error";
+		const basket = readRecord<Basket>("v0");
 		assert basket.items.length === 2 && basket.items[1].text === "b" && basket.total === 2.5, "the array and number fields came back";
-		assert failure((): void => { takeError("v0"); }).indexOf("v0") >= 0, "an error read of a value record names its id";
+		const second = readRecord<Basket>("v0");
+		assert second.items.length === 2 && second.total === 2.5, "an array record reads again";
+		assert failure((): void => { readError("v0"); }).indexOf("v0") >= 0, "an error read of a value record names its id";
 	});
 	clearRecords();
 }
@@ -85,7 +93,7 @@ test "a record with script-breaking and non-ASCII text decodes to the value it w
 	clearRecords();
 	putRecord("w0", JSON.stringify<Note>(awkward));
 	whileHydrating((): void => {
-		const back = takeRecord<Note>("w0");
+		const back = readRecord<Note>("w0");
 		assert back.text === awkward.text && back.n === awkward.n, back.text;
 	});
 	clearRecords();

@@ -7,7 +7,7 @@ when (js) {
 	extern function jsHas(table: cstring, id: cstring): boolean from
 		"((t, i) => { const h = globalThis._$HY; return h !== undefined && h[t] !== undefined && Object.hasOwn(h[t], i); })(#, #)";
 	extern function jsRead(table: cstring, id: cstring): cstring from
-		"((t, i) => { const v = globalThis._$HY[t][i]; delete globalThis._$HY[t][i]; return v; })(#, #)";
+		"(globalThis._$$HY[#][#])";
 	extern function jsWrite(table: cstring, id: cstring, value: cstring): void from
 		"((t, i, v) => { const h = (globalThis._$HY ??= { r: {}, e: {} }); h[t] ??= {}; h[t][i] = v; })(#, #, #)";
 	extern function jsClear(): void from "(delete globalThis._$$HY)";
@@ -22,17 +22,14 @@ function has(table: string, id: string): boolean {
 	}
 }
 
-function take(table: string, id: string): string {
+function read(table: string, id: string): string {
 	if (!has(table, id)) {
 		throw new Error("hydrate: the page has no " + (table === "r" ? "record" : "error record") + " for " + id + " to read");
 	}
 	when (js) {
 		return jsRead(table, id);
 	} else {
-		const map = table === "r" ? values : errors;
-		const text = map.get(id) as string;
-		map.delete(id);
-		return text;
+		return (table === "r" ? values : errors).get(id) as string;
 	}
 }
 
@@ -44,14 +41,14 @@ export function hasError(id: string): boolean {
 	return has("e", id);
 }
 
-export function takeRecord<T>(id: string): T {
-	const decoded = JSON.parse<T>(take("r", id));
-	if (!decoded.ok) { throw new Error("hydrate: the record for " + id + " does not decode"); }
+export function readRecord<T>(id: string): T {
+	const decoded = JSON.parse<T>(read("r", id));
+	if (!decoded.ok) { throw new Error("hydrate: the record for " + id + " does not decode: " + decoded.error); }
 	return decoded.value;
 }
 
-export function takeError(id: string): string {
-	return take("e", id);
+export function readError(id: string): string {
+	return read("e", id);
 }
 
 export function putRecord(id: string, json: string): void {
