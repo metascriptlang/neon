@@ -17,6 +17,7 @@ int harnessIsCheck(void);
 int harnessSample(const char *title);
 void harnessWheel(const char *title, int x, int y, int delta);
 void harnessClick(const char *title, int x, int y);
+int harnessPostKeys(const char *title, const char *keys);
 
 #ifdef __cplusplus
 }

@@ -8,6 +8,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cmath>
+#include <cctype>
 #include <cstring>
 #include <map>
 #include <string>
@@ -273,6 +274,19 @@ void harnessClick(const char *title, int x, int y) {
 	HWND window = findOwnWindow(title);
 	PostMessageW(window, WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(x, y));
 	PostMessageW(window, WM_LBUTTONUP, 0, MAKELPARAM(x, y));
+}
+
+int harnessPostKeys(const char *title, const char *keys) {
+	HWND window = findOwnWindow(title);
+	if (!window) return 1;
+	for (const char *c = keys; *c; c++) {
+		UINT vk = *c == '\b' ? VK_BACK : *c == '\r' ? VK_RETURN : *c == ' ' ? VK_SPACE : (UINT)toupper((unsigned char)*c);
+		UINT scan = MapVirtualKeyW(vk, MAPVK_VK_TO_VSC);
+		LPARAM down = 1 | ((LPARAM)scan << 16);
+		PostMessageW(window, WM_KEYDOWN, vk, down);
+		PostMessageW(window, WM_KEYUP, vk, down | (LPARAM)0xC0000000);
+	}
+	return 0;
 }
 
 void harnessExpect(const char *name, int x, int y, int r, int g, int b) {
