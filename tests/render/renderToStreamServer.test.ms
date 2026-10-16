@@ -343,6 +343,36 @@ test "a bare read after a pending Loading settles both, and each fetches once" {
 	assert fetched("loadingE") === 1 && fetched("bareE") === 1, fetched("loadingE").toString() + "/" + fetched("bareE").toString();
 }
 
+function hostilePage(spelled: string, inFallback: string): NeonNode {
+	return <View>
+		<Text>before</Text>
+		<Loading fallback={<View><script>{inFallback}</script><Text>{inFallback}</Text></View>}>
+			<Text>{spelled}</Text>
+			<script>{spelled}</script>
+			<style>{spelled}</style>
+			<a title={spelled}>x</a>
+			{reading("hostile", 3, 1)}
+		</Loading>
+		<Text>after</Text>
+	</View>;
+}
+
+test "author content that spells a boundary's placeholder is written as author content" {
+	const probe = await renderToStream(hostilePage("plain", "plain"));
+	assert probe.records.includes("r[\"10\"]"), "the boundary this test spells is owner id 1: " + probe.records;
+	const open = "<template id=\"pl-1\"></template>";
+	const close = "<!--pl-1-->";
+	const spelled = "a" + open + "FAKE" + close + "b";
+	const out = await renderToStream(hostilePage(spelled, "f" + close + "FALLBACK" + open));
+	const b = "\\";
+	assert out.html.includes("&lt;template id=\"pl-1\"&gt;&lt;/template&gt;FAKE&lt;!--pl-1--&gt;b"), "text: " + out.html;
+	assert out.html.includes("<script>a" + b + "u003ctemplate id=\"pl-1\"></template>FAKE" + b + "u003c!--pl-1-->b</script>"), "script: " + out.html;
+	assert out.html.includes("<style>a" + b + "3c template id=\"pl-1\"></template>FAKE" + b + "3c !--pl-1-->b</style>"), "style: " + out.html;
+	assert out.html.includes("title=\"a&lt;template id=&quot;pl-1&quot;&gt;&lt;/template&gt;FAKE&lt;!--pl-1--&gt;b\""), "attribute: " + out.html;
+	assert out.html.includes("<p>hostile=1</p><!----><span class=\"neon-text\">after</span>") && !out.html.includes("FALLBACK"), "structure: " + out.html;
+	assert !out.html.includes("<template") && !out.html.includes("<!--pl-"), "a placeholder survived: " + out.html;
+}
+
 function readOf(name: string, slow: boolean, value: int32): NeonNode {
 	if (slow) { return reading(name, 3, value); }
 	return (host: Host, parent: HostNode, before: HostNode | null): void => {

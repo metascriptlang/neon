@@ -122,6 +122,27 @@ when (server) {
 		return out + text.slice(last);
 	}
 
+	function startsAt(text: string, at: int32, prefix: string): boolean {
+		return text.slice(at, at + prefix.length) === prefix;
+	}
+
+	function withoutPlaceholder(name: string, text: string): string {
+		if (text.indexOf("pl-") < 0) { return text; }
+		const lt = name === "style" ? "\\3c " : "\\u003c";
+		let out = "";
+		let last = 0;
+		let at = text.indexOf("<");
+		while (at >= 0) {
+			if (startsAt(text, at, PLACEHOLDER_OPEN) || startsAt(text, at, PLACEHOLDER_END)) {
+				out = out + text.slice(last, at) + lt;
+				last = at + 1;
+			}
+			at = text.indexOf("<", at + 1);
+		}
+		if (last === 0) { return text; }
+		return out + text.slice(last);
+	}
+
 	function namedAt(text: string, at: int32, name: string): boolean {
 		if (at + name.length > text.length) { return false; }
 		for (let i = 0; i < name.length; i += 1) {
@@ -358,6 +379,7 @@ when (server) {
 		overlay: SsrNode = new SsrNode("overlay", PLAIN);
 		headKids: SsrNode[] = [];
 		done: boolean = false;
+		stitched: boolean = false;
 		headFront: SsrNode | null = null;
 
 		constructor(register: (id: string, css: string) => void) {
@@ -416,7 +438,7 @@ when (server) {
 				if (n.text === "") { p.body += EMPTY_TEXT; p.afterText = false; return; }
 				if (p.afterText) { p.body += TEXT_BREAK; }
 			}
-			p.body += p.info.raw === "" ? escapeText(n.text) : rawText(p.info.raw, n.text);
+			p.body += p.info.raw === "" ? escapeText(n.text) : rawText(p.info.raw, w.stitched ? withoutPlaceholder(p.info.raw, n.text) : n.text);
 			p.afterText = true;
 			return;
 		}
@@ -693,6 +715,7 @@ when (server) {
 		constructor() {
 			const book = this.book;
 			this.write = new SsrWrite((id: string, rule: string): void => { book.add(id, rule); });
+			this.write.stitched = true;
 		}
 	}
 
