@@ -775,6 +775,7 @@ when (server) {
 		sink: StreamSink | null = null;
 		consumer: string = "";
 		scripted: boolean = false;
+		readableView: unknown | null = null;
 		over: boolean = false;
 		ended: boolean = false;
 		failure: Error | null = null;
@@ -836,6 +837,43 @@ when (server) {
 			await this.finished;
 			if (this.failure !== null) { throw this.failure; }
 			return this.result;
+		}
+	}
+
+	when (js) {
+		extern class WritableStream {}
+		extern class ReadableStream {}
+		extern class TransformStream {
+			readable: ReadableStream;
+			writable: WritableStream;
+		}
+		extern function newTransform(): TransformStream from "new TransformStream()";
+
+		interface WebSink {
+			write: (chunk: string) => void;
+			end: () => void;
+			closed: Promise<void>;
+		}
+
+		// A write still in flight when the lock is released is dropped by workerd, so end waits for the chain
+		extern function webSink(w: WritableStream): WebSink from
+			"((w) => { const writer = w.getWriter(); const encoder = new TextEncoder(); let tail = Promise.resolve(); let finish; const closed = new Promise((r) => { finish = r; }); return { write: (s) => { tail = tail.then(() => writer.write(encoder.encode(s))); tail.catch(() => {}); }, end: () => { tail = tail.then(() => { writer.releaseLock(); return w.close(); }); tail.then(finish, finish); }, closed }; })(#)";
+
+		export function pipeTo(this r: StreamRender, w: WritableStream): Promise<void> {
+			r.claim("pipeTo");
+			const sink = webSink(w);
+			r.attach(sink);
+			return sink.closed;
+		}
+
+		export function readable(this r: StreamRender): ReadableStream {
+			if (r.readableView !== null) { return r.readableView as ReadableStream; }
+			r.claim("readable");
+			const pair = newTransform();
+			const sink = webSink(pair.writable);
+			r.attach(sink);
+			r.readableView = pair.readable as unknown;
+			return pair.readable;
 		}
 	}
 
