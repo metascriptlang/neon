@@ -662,3 +662,72 @@ test "a press handler that mounts a pressable does not break the press dispatch"
 	vh.clickAt(10.0, 10.0);
 	assert more() && presses === 1, "the press mounted a pressable and fired once: " + presses.toString();
 }
+
+test "a pressed node keeps the pointer until that button's release, with coordinates relative to it outside its box" {
+	const vh = host();
+	const log: string[] = [];
+	render(element(
+		<View style={{ width: 300, height: 100 }} onPointerMove={seen("outer", log)} onPointerUp={seen("outer", log)}>
+			<View style={{ width: 100, height: 50 }} onPointerDown={seen("inner", log)} onPointerMove={seen("inner", log)} onPointerUp={seen("inner", log)} />
+		</View>
+	), vh.host, vh.root);
+	vh.layout(300.0, 100.0);
+	vh.pointerDown(10.0, 10.0, 0);
+	log.length = 0;
+	vh.pointerMove(250.0, 80.0, 0, true);
+	vh.pointerDown(250.0, 80.0, 2);
+	vh.pointerUp(250.0, 80.0, 2);
+	vh.pointerUp(260.0, 90.0, 0);
+	assert log.join("|") === "inner:pointermove@250,80/250,80 b0 down d0,0|outer:pointermove@250,80/250,80 b0 down d0,0"
+		+ "|inner:pointerdown@250,80/250,80 b2 down d0,0"
+		+ "|inner:pointerup@250,80/250,80 b2 up d0,0|outer:pointerup@250,80/250,80 b2 up d0,0"
+		+ "|inner:pointerup@260,90/260,90 b0 up d0,0|outer:pointerup@260,90/260,90 b0 up d0,0", "captured: " + log.join("|");
+	log.length = 0;
+	vh.pointerMove(250.0, 80.0, 0, false);
+	assert log.join("|") === "outer:pointermove@250,80/250,80 b0 up d0,0", "released, the node under the pointer hears again: " + log.join("|");
+}
+
+test "a captured node that unmounts gives the pointer back to the node under it" {
+	const vh = host();
+	const [shown, setShown] = createSignal<boolean>(true);
+	const log: string[] = [];
+	render(element(
+		<View style={{ width: 300, height: 100 }} onPointerMove={seen("outer", log)}>
+			{Show({ when: shown, children: element(
+				<View style={{ width: 100, height: 50 }} onPointerDown={(e: NeonEvent): void => { setShown(false); }} onPointerMove={seen("inner", log)} />
+			) })}
+		</View>
+	), vh.host, vh.root);
+	vh.layout(300.0, 100.0);
+	vh.pointerDown(10.0, 10.0, 0);
+	vh.layout(300.0, 100.0);
+	vh.pointerMove(250.0, 80.0, 0, true);
+	assert log.join("|") === "outer:pointermove@250,80/250,80 b0 down d0,0", "the gone node hears nothing: " + log.join("|");
+}
+
+test "pointer and wheel events carry the window's modifiers and a time" {
+	const vh = host();
+	const log: string[] = [];
+	const times: number[] = [];
+	const mods = (e: NeonEvent): void => {
+		log.push(`${e.type} shift=${e.shiftKey} ctrl=${e.ctrlKey} alt=${e.altKey} meta=${e.metaKey} mods=${e.mods}`);
+		times.push(e.timeStamp);
+	};
+	render(element(
+		<View style={{ width: 100, height: 100 }} onPointerDown={mods} onPointerMove={mods} onPointerUp={mods} onWheel={mods} />
+	), vh.host, vh.root);
+	vh.layout(100.0, 100.0);
+	vh.pointerDown(10.0, 10.0, 0, 1);
+	vh.pointerMove(20.0, 10.0, 0, true, 5);
+	vh.pointerUp(20.0, 10.0, 0, 2);
+	vh.wheel(20.0, 10.0, 0.0, 1.0, 8);
+	vh.pointerMove(30.0, 10.0, 0, false);
+	assert log.join("|") === [
+		"pointerdown shift=true ctrl=false alt=false meta=false mods=1",
+		"pointermove shift=true ctrl=false alt=true meta=false mods=5",
+		"pointerup shift=false ctrl=true alt=false meta=false mods=2",
+		"wheel shift=false ctrl=false alt=false meta=true mods=8",
+		"pointermove shift=false ctrl=false alt=false meta=false mods=0",
+	].join("|"), log.join("|");
+	assert times[0] > 0 && times[1] >= times[0] && times[4] >= times[3], "timeStamps rise: " + times.join(",");
+}

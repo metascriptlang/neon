@@ -80,7 +80,7 @@ function canvas(log: string[]): SokolInput {
 				}}
 				onKeyUp={(e: NeonEvent): void => { log.push(`keyup ${e.code}`); }}
 				onTextInput={(e: NeonEvent): void => { log.push(`textinput ${e.text}`); }}
-				onPointerDown={(e: NeonEvent): void => { log.push(`down ${e.x},${e.y} b${e.button}`); }}
+				onPointerDown={(e: NeonEvent): void => { log.push(`down ${e.x},${e.y} b${e.button}${e.shiftKey ? " shift" : ""}${e.ctrlKey ? " ctrl" : ""}`); }}
 				onPointerUp={(e: NeonEvent): void => { log.push(`up ${e.x},${e.y} b${e.button}`); }}
 				onPointerMove={(e: NeonEvent): void => { log.push(`move ${e.x},${e.y}`); }}
 				onWheel={(e: NeonEvent): void => { log.push(`wheel ${e.deltaX},${e.deltaY}`); }}
@@ -175,4 +175,14 @@ test "an INVALID event is refused by name" {
 		message = (e as Error).message;
 	}
 	assert message === "sokol input: an event of type INVALID reached the canvas", message;
+}
+
+test "a mouse event's modifiers reach the pointer handler" {
+	const log: string[] = [];
+	const s = canvas(log);
+	deliverAppEvent(s, { ...mouse(AppEventType.MouseDown, 20.0, 40.0), modifiers: 3 as uint32 });
+	deliverAppEvent(s, mouse(AppEventType.MouseUp, 20.0, 40.0));
+	deliverAppEvent(s, { ...mouse(AppEventType.MouseDown, 20.0, 40.0), modifiers: 2 as uint32 });
+	const all = log.join("|");
+	assert all.indexOf("down 10,20 b1 shift ctrl|") >= 0 && all.indexOf("down 10,20 b1 ctrl") >= 0 && all.indexOf("down 10,20 b1|") < 0, all;
 }
