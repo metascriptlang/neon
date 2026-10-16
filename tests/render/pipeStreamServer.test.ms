@@ -301,6 +301,24 @@ test "a rule only a fragment needs travels in front of that fragment, once, and 
 	assert out.css.includes("padding:3px") && out.css.includes("padding:9px"), out.css;
 }
 
+function sharedRulePage(): NeonNode {
+	return <View style={looks.shellLook}>
+		<Loading fallback={<Text>wait</Text>}>
+			{reading("shared", 4, 5)}
+			<View style={looks.lateLook}><Text>{"in"}</Text></View>
+		</Loading>
+		<View style={looks.lateLook}><Text>{"shell"}</Text></View>
+	</View>;
+}
+
+test "a rule a fragment and a later element of the shell both use is written with the shell and not repeated" {
+	const c = new Collected();
+	await streamed(sharedRulePage(), c);
+	assert c.chunks.length === 2, c.chunks.length.toString();
+	assert c.chunks[0].includes("padding:9px"), "the shell holds the rule its own element uses: " + c.chunks[0];
+	assert !c.chunks[1].includes("padding:9px"), "the fragment does not repeat it: " + c.chunks[1];
+}
+
 test "a rejected read under Errored streams the caught fallback and its error record" {
 	const failing: NeonNode = (host: Host, parent: HostNode, before: HostNode | null): void => {
 		const data = createAsyncMemo((p: int32 | null): Promise<int32> => afterFail(4, new Error("db password=hunter2")));
@@ -325,12 +343,20 @@ test "a rejected read under Errored streams the caught fallback and its error re
 	assert applied(c) === out.html, applied(c) + " | " + out.html;
 }
 
-async function lateFailure(c: Collected): Promise<string> {
+async function lateFailure(c: Collected, inSpot: boolean): Promise<string> {
 	const thrown = new Flag(false);
 	const content: NeonNode = (host: Host, parent: HostNode, before: HostNode | null): void => {
-		reading("late", 3, 1)(host, parent, before);
-		thrown.up = true;
-		throw new Error("thrown after the wait");
+		const data = createAsyncMemo((p: int32 | null): Promise<int32> => after(3, 1));
+		const fail = (): string => {
+			const v = data();
+			thrown.up = true;
+			throw new Error("thrown after the wait");
+		};
+		if (inSpot) {
+			el("p", [], [], dynText(fail))(host, parent, before);
+		} else {
+			fail();
+		}
 	};
 	const app: NeonNode = (host: Host, parent: HostNode, before: HostNode | null): void => {
 		Loading({ children: content, fallback: waiting })(host, parent, before);
@@ -349,7 +375,15 @@ async function lateFailure(c: Collected): Promise<string> {
 
 test "a boundary that fails after the shell ends the stream with the shell alone, and the awaited form rejects" {
 	const c = new Collected();
-	const message = await lateFailure(c);
+	const message = await lateFailure(c, false);
+	assert message === "thrown after the wait", "[" + message + "]";
+	assert c.chunks.length === 1 && c.ended === 1, "the shell, then the end: " + c.chunks.length.toString() + "/" + c.ended.toString();
+	assert count(c.chunks[0], "<b>loading</b>") === 2, c.chunks[0];
+}
+
+test "a text spot that fails once its source settled ends the stream the same way: the shell alone, and the awaited form rejects" {
+	const c = new Collected();
+	const message = await lateFailure(c, true);
 	assert message === "thrown after the wait", "[" + message + "]";
 	assert c.chunks.length === 1 && c.ended === 1, "the shell, then the end: " + c.chunks.length.toString() + "/" + c.ended.toString();
 	assert count(c.chunks[0], "<b>loading</b>") === 2, c.chunks[0];

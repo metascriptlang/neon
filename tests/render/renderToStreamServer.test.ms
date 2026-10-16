@@ -190,7 +190,8 @@ async function budgetFailure(): Promise<string> {
 		burn += 1;
 		createRoot((dispose: () => void): number => {
 			const data = createAsyncMemo((p: int32 | null): Promise<int32> => immediately(1));
-			el("p", [], [], dynText((): string => data().toString()))(host, parent, before);
+			const read = data();
+			el("p", [], [], text(read.toString()))(host, parent, before);
 			return 0;
 		}, "u" + burn.toString());
 	};
@@ -232,10 +233,10 @@ test "a Loading whose content does not pend runs its body once beside a sibling 
 	const out = await renderToStream(app);
 	assert out.html === "<p>ready</p><!----><p>sibA=5</p><!---->", out.html;
 	assert ran("ready-a") === 1, "the settled sibling ran " + ran("ready-a").toString() + " times";
-	assert ran("pends-a") === 2, "the pending one ran " + ran("pends-a").toString() + " times";
+	assert ran("pends-a") === 1, "the pending one ran " + ran("pends-a").toString() + " times";
 }
 
-test "two pending Loadings with a ready one between them run each body once per own pass" {
+test "two pending Loadings with a ready one between them run each body once" {
 	const app: NeonNode = (host: Host, parent: HostNode, before: HostNode | null): void => {
 		Loading({ children: counted("slow-b", reading("slowB", 20, 1)), fallback: waiting })(host, parent, before);
 		Loading({ children: counted("ready-b", el("p", [], [], text("ready"))), fallback: waiting })(host, parent, before);
@@ -243,11 +244,11 @@ test "two pending Loadings with a ready one between them run each body once per 
 	};
 	const out = await renderToStream(app);
 	assert out.html === "<p>slowB=1</p><!----><p>ready</p><!----><p>quickB=2</p><!---->", out.html;
-	assert ran("ready-b") === 1 && ran("slow-b") === 2 && ran("quick-b") === 2, ran("slow-b").toString() + "/" + ran("ready-b").toString() + "/" + ran("quick-b").toString();
+	assert ran("ready-b") === 1 && ran("slow-b") === 1 && ran("quick-b") === 1, ran("slow-b").toString() + "/" + ran("ready-b").toString() + "/" + ran("quick-b").toString();
 	assert fetched("slowB") === 1 && fetched("quickB") === 1, "once each";
 }
 
-test "a pending Loading inside a pending Loading re-runs alone" {
+test "a pending Loading inside a pending Loading runs each body once" {
 	const inner: NeonNode = (host: Host, parent: HostNode, before: HostNode | null): void => {
 		Loading({ children: counted("inner-c", reading("innerC", 5, 2)), fallback: el("i", [], [], text("inner waits")) })(host, parent, before);
 	};
@@ -257,12 +258,12 @@ test "a pending Loading inside a pending Loading re-runs alone" {
 	};
 	const out = await renderToStream(Loading({ children: counted("outer-c", outer), fallback: waiting }));
 	assert out.html === "<p>outerC=1</p><p>innerC=2</p><!----><!---->", out.html;
-	assert ran("outer-c") === 2, "the outer body ran " + ran("outer-c").toString() + " times, once per outer pass";
-	assert ran("inner-c") === 2, "the inner body ran " + ran("inner-c").toString() + " times";
+	assert ran("outer-c") === 1, "the outer body ran " + ran("outer-c").toString() + " times";
+	assert ran("inner-c") === 1, "the inner body ran " + ran("inner-c").toString() + " times";
 	assert fetched("outerC") === 1 && fetched("innerC") === 1, "once each";
 }
 
-test "a Loading settled inside a pending Loading's second pass is not run again when the outer one waits twice" {
+test "a Loading inside a Loading that waits twice runs neither body again" {
 	const inner: NeonNode = (host: Host, parent: HostNode, before: HostNode | null): void => {
 		Loading({ children: counted("inner-d", reading("innerD", 4, 2)), fallback: waiting })(host, parent, before);
 	};
@@ -273,7 +274,7 @@ test "a Loading settled inside a pending Loading's second pass is not run again 
 	};
 	const out = await renderToStream(Loading({ children: counted("outer-d", outer), fallback: waiting }));
 	assert out.html.includes("<p>firstD=1</p><p>innerD=2</p><!----><p>lastD=3</p>"), out.html;
-	assert ran("outer-d") === 3, "first read, last read, settled: " + ran("outer-d").toString();
+	assert ran("outer-d") === 1 && ran("inner-d") === 1, "outer " + ran("outer-d").toString() + ", inner " + ran("inner-d").toString();
 	assert fetched("innerD") === 1 && fetched("lastD") === 1, "once each";
 }
 
@@ -339,7 +340,7 @@ test "a bare read after a pending Loading settles both, and each fetches once" {
 	};
 	const out = await renderToStream(app);
 	assert out.html === "<p>loadingE=1</p><!----><p>bareE=2</p>", out.html;
-	assert ran("loading-e") === 3, "the first root pass, the second root pass, one re-run; the first pass's loop ran nothing: " + ran("loading-e").toString();
+	assert ran("loading-e") === 2, "the first root pass, then the second root pass its bare read forced: " + ran("loading-e").toString();
 	assert fetched("loadingE") === 1 && fetched("bareE") === 1, fetched("loadingE").toString() + "/" + fetched("bareE").toString();
 }
 

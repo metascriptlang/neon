@@ -53,7 +53,7 @@ when (server) {
 	import { parseVisibleContent } from "./visibleContent";
 	import { asServer } from "./environment";
 	import { Computation, Dispose, NotReadyError } from "../core/types";
-	import { ServerContext, Fragments, Hole, ServerMarks, MAX_PASSES, withServerContext, pendingWaits, unconverged } from "../core/serverContext";
+	import { ServerContext, Fragments, Hole, Rules, ServerMarks, MAX_PASSES, withServerContext, pendingWaits, unconverged } from "../core/serverContext";
 	import { scriptLiteral } from "./hydrationRecords";
 
 	function joinClass(className: string, id: string): string {
@@ -396,11 +396,19 @@ when (server) {
 		done: boolean = false;
 		stitched: boolean = false;
 		headFront: SsrNode | null = null;
+		held: Rules | null = null;
 
 		constructor(register: (id: string, css: string) => void) {
 			this.register = register;
 			this.head.collects = true;
 			this.overlay.drops = true;
+		}
+
+		note(id: string, css: string): void {
+			const hold = this.held;
+			if (hold === null) { this.register(id, css); return; }
+			hold.ids.push(id);
+			hold.css.push(css);
 		}
 	}
 
@@ -511,7 +519,7 @@ when (server) {
 			createElement: (tag: string): HostNode => {
 				const info = tagInfo(tag);
 				const n = new SsrNode(tag, info);
-				for (const rule of info.rules) { w.register(rule.id, rule.css); }
+				for (const rule of info.rules) { w.note(rule.id, rule.css); }
 				n.className = info.baseClass;
 				for (let i = 0; i < info.fixedNames.length; i += 1) {
 					n.names.push(info.fixedNames[i]);
@@ -530,10 +538,10 @@ when (server) {
 			setAttr: (node: HostNode, name: string, value: string): void => {
 				const n = writable(node as unknown as SsrNode);
 				if (name !== "numberOfLines") { upsertAttr(n.names, n.values, name, value); return; }
-				w.register(TEXT_RULES_ID, TEXT_CSS);
+				w.note(TEXT_RULES_ID, TEXT_CSS);
 				if (!clampedLines(value)) { return; }
 				const rule = linesRule(value);
-				w.register(rule.id, rule.css);
+				w.note(rule.id, rule.css);
 				n.className = joinClass(joinClass(n.className, LINES_CLASS), escapeAttribute(linesClass(value)));
 			},
 			removeAttr: (node: HostNode, name: string): void => {
@@ -550,7 +558,7 @@ when (server) {
 			},
 			setStyleClass: (node: HostNode, id: string, css: string): void => {
 				if (id === "") { return; }
-				w.register(id, css);
+				w.note(id, css);
 				const n = writable(node as unknown as SsrNode);
 				n.className = joinClass(n.className, escapeAttribute(id));
 			},
@@ -723,6 +731,14 @@ when (server) {
 				return holder;
 			},
 			html: (holder: unknown): string => (holder as SsrNode).body,
+			rules: (hold: Rules | null): Rules | null => {
+				const prev = w.held;
+				w.held = hold;
+				return prev;
+			},
+			replay: (hold: Rules): void => {
+				for (let i = 0; i < hold.ids.length; i += 1) { w.note(hold.ids[i], hold.css[i]); }
+			},
 			pend: (node: unknown, hole: Hole): void => {
 				const n = node as SsrNode;
 				n.hole = hole;
@@ -844,6 +860,8 @@ when (server) {
 		pass: StreamPass = new StreamPass();
 		finished: Promise<void>;
 		pieces: Piece[] = [];
+		waitingIds: string[] = [];
+		waitingHtml: string[] = [];
 		sent: int32 = 0;
 		cssSent: int32 = 0;
 		recorded: Map<string, boolean> = new Map<string, boolean>();
@@ -860,12 +878,33 @@ when (server) {
 			this.finished = drive(this, n);
 		}
 
+		// A fragment swaps a placeholder the page must already hold: one that settles before the shell, or before the fragment its placeholder sits in, waits for it.
+		placed(id: string): boolean {
+			const marker = PLACEHOLDER_OPEN + id + "\"></template>";
+			for (const piece of this.pieces) { if (piece.html.indexOf(marker) >= 0) { return true; } }
+			return false;
+		}
+
 		cut(id: string, html: string): void {
+			if (id !== "" && !this.placed(id)) {
+				this.waitingIds.push(id);
+				this.waitingHtml.push(html);
+				return;
+			}
 			const css = this.pass.book.css;
 			const fresh = css.slice(this.cssSent, css.length);
 			this.cssSent = css.length;
 			this.pieces.push(new Piece(id, html, fresh, recordScripts(this.ctx, this.recorded)));
 			this.flush();
+			for (let i = 0; i < this.waitingIds.length; i += 1) {
+				if (!this.placed(this.waitingIds[i])) { continue; }
+				const next = this.waitingIds[i];
+				const nextHtml = this.waitingHtml[i];
+				this.waitingIds.splice(i, 1);
+				this.waitingHtml.splice(i, 1);
+				this.cut(next, nextHtml);
+				return;
+			}
 		}
 
 		chunkOf(piece: Piece): string {

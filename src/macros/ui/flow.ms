@@ -10,12 +10,13 @@ import { createOwner, getOwner, getNextChildId, flush, disposeChildren, enterRoo
 import { onCleanup } from "../../core/cleanup";
 import { runWithOwner } from "../../core/owner";
 import { Computation, NotReadyError, ContextEntry } from "../../core/types";
-import { ServerContext, ServerMarks, MAX_PASSES, serverContext, withServerContext, pendingWaits, unconverged } from "../../core/serverContext";
+import { Hole, Rules, ServerContext, ServerMarks, MAX_PASSES, serverContext, withServerContext, pendingWaits, unconverged } from "../../core/serverContext";
 import { isServer, asServer } from "../../render/environment";
 import { serverCaught } from "../../render/ssr";
 import { NeonNode, regionNode } from "../../render/node";
 import { Host, HostNode } from "../../render/hostTypes";
 import { Row, makeRow, mountAt, removeRow, place } from "../../render/reconcile";
+import { HOLES_DONE, HOLES_WAIT, runHoles } from "../../render/bind";
 import { List } from "../../core/list";
 import { listRegion } from "../../render/listRegion";
 import { unclaimed, claimMark, claimRewind } from "../../render/claim";
@@ -316,10 +317,22 @@ class Life {
 }
 
 class Pending {
+	scope: Computation;
 	source: Computation;
+	holes: Hole[] = [];
+	markup: string = "";
+	rules: Rules | null = null;
 
-	constructor(source: Computation) {
+	constructor(scope: Computation, source: Computation) {
+		this.scope = scope;
 		this.source = source;
+	}
+
+	sources(): Computation[] {
+		if (this.holes.length === 0) { return [this.source]; }
+		const open: Computation[] = [];
+		for (const h of this.holes) { if (h.value === null) { open.push(h.source); } }
+		return open;
 	}
 }
 
@@ -335,12 +348,15 @@ function placeholder(marks: ServerMarks, id: string, fallback: NeonNode | null):
 	};
 }
 
-function rerunContent(ctx: ServerContext, host: Host, holder: HostNode, scope: Computation, children: NeonNode, state: MountedState, pending: Pending): boolean {
+function rerunContent(ctx: ServerContext, marks: ServerMarks, host: Host, holder: HostNode, scope: Computation, children: NeonNode, state: MountedState, pending: Pending): boolean {
 	return asServer((): boolean => withServerContext(ctx, (): boolean => {
 		const again = makeRow((h: Host, p: HostNode, b: HostNode | null): void => { mountIn(scope, children, state, h, p, b); });
 		again.owner = scope;
 		let settled = false;
 		let completed = false;
+		const outer = ctx.holes;
+		const mine: Hole[] = [];
+		ctx.holes = mine;
 		enterRoot();
 		try {
 			mountAt(host, holder, null, again);
@@ -350,10 +366,16 @@ function rerunContent(ctx: ServerContext, host: Host, holder: HostNode, scope: C
 			if (!(e instanceof NotReadyError)) { throw e; }
 			pending.source = (e as NotReadyError).source;
 		} finally {
+			ctx.holes = outer;
 			leaveRoot(completed);
 		}
-		if (!settled) { disposeChildren(scope, false); }
-		return settled;
+		if (!settled) { disposeChildren(scope, false); return false; }
+		const html = marks.html(holder);
+		const live = marks.kept(html, mine);
+		if (live.length === 0) { return true; }
+		pending.holes = live;
+		pending.markup = html;
+		return false;
 	}));
 }
 
@@ -362,10 +384,23 @@ async function settleContent(ctx: ServerContext, marks: ServerMarks, id: string,
 	let settled = false;
 	try {
 		while (!settled) {
-			for (const w of pendingWaits(ctx, [pending.source])) { await w; }
+			for (const w of pendingWaits(ctx, pending.sources())) { await w; }
 			if (life.dead) { return; }
 			if (passes >= MAX_PASSES) { throw unconverged("<Loading> at owner id \"" + id + "\""); }
 			passes += 1;
+			if (pending.holes.length > 0) {
+				const state = runHoles(ctx, pending.holes);
+				if (state === HOLES_DONE) {
+					if (pending.rules !== null) { marks.replay(pending.rules as Rules); }
+					ctx.fragments.set(id, marks.fill(pending.markup, pending.holes));
+					settled = true;
+					continue;
+				}
+				if (state === HOLES_WAIT) { continue; }
+				disposeChildren(pending.scope, false);
+				pending.holes = [];
+				pending.rules = null;
+			}
 			const holder = marks.holder(beside) as HostNode;
 			if (marks.within(id, (): boolean => again(holder))) {
 				ctx.fragments.set(id, marks.html(holder));
@@ -392,16 +427,42 @@ function loadingOnServer(children: NeonNode, fallback: NeonNode | null): Accesso
 	const contentId = clientContentId(parent, boundary);
 	return spanOfMounted((host: Host, parent: HostNode, before: HostNode | null): Row | null => {
 		const ctx = serverContext();
+		const marks = ctx === null ? null : (ctx as ServerContext).marks;
+		const beside = marks === null ? null : (marks as ServerMarks).holder(parent) as HostNode;
 		const content = makeRow(mountedUnder(children, context, state, contentId));
 		let source: Computation | null = null;
+		const outer = ctx === null ? null : (ctx as ServerContext).holes;
+		const mine: Hole[] = [];
+		const rules = new Rules();
+		let outerRules: Rules | null = null;
+		if (marks !== null) {
+			(ctx as ServerContext).holes = mine;
+			outerRules = (marks as ServerMarks).rules(rules);
+		}
 		try {
 			mountAt(host, parent, before, content);
 		} catch (e) {
 			if (!(e instanceof NotReadyError)) { throw e; }
 			source = (e as NotReadyError).source;
+		} finally {
+			if (marks !== null) {
+				(ctx as ServerContext).holes = outer;
+				(marks as ServerMarks).rules(outerRules);
+			}
 		}
-		if (source === null) { return content; }
 		const scope = state.scope as Computation;
+		let held: Hole[] = [];
+		let markup = "";
+		if (source === null) {
+			if (marks === null) { return content; }
+			markup = (marks as ServerMarks).take(content.start as HostNode);
+			held = (marks as ServerMarks).kept(markup, mine);
+			if (held.length === 0) {
+				(marks as ServerMarks).replay(rules);
+				return content;
+			}
+			source = held[0].source;
+		}
 		removeRow(host, parent, content);
 		if (ctx === null) {
 			disposeChildren(scope, true);
@@ -411,18 +472,23 @@ function loadingOnServer(children: NeonNode, fallback: NeonNode | null): Accesso
 			return waiting;
 		}
 		const served = ctx as ServerContext;
-		const pending = new Pending(source as Computation);
-		disposeChildren(scope, false);
-		const marks = served.marks;
+		const pending = new Pending(scope, source as Computation);
 		if (marks === null) { throw new Error("SSR: a Loading under a server context that has no writer to hold its placeholder"); }
+		if (held.length === 0) {
+			disposeChildren(scope, false);
+			(marks as ServerMarks).replay(rules);
+		} else {
+			pending.holes = held;
+			pending.markup = markup;
+			pending.rules = rules;
+		}
 		const id = boundary.id;
 		if (id === null) { throw new Error("[SSR_LOADING_WITHOUT_ID] a Loading on the server needs an owner id; render it under a root that carries one"); }
-		const beside = marks.holder(parent) as HostNode;
-		const waiting = makeRow(placeholder(marks, id as string, fallback));
+		const waiting = makeRow(placeholder(marks as ServerMarks, id as string, fallback));
 		mountAt(host, parent, before, waiting);
 		const life = new Life();
 		onCleanup((): void => { life.dead = true; });
-		served.loops.push(settleContent(served, marks, id as string, pending, life, beside, (holder: HostNode): boolean => rerunContent(served, host, holder, scope, children, state, pending)));
+		served.loops.push(settleContent(served, marks as ServerMarks, id as string, pending, life, beside as HostNode, (holder: HostNode): boolean => rerunContent(served, marks as ServerMarks, host, holder, scope, children, state, pending)));
 		return waiting;
 	});
 }

@@ -38,12 +38,20 @@ export class Hole {
 	}
 }
 
+// The style rules a mount registered while its markup was held back: they travel with that markup, not with the shell.
+export class Rules {
+	ids: string[] = [];
+	css: string[] = [];
+}
+
 export interface ServerMarks {
 	open: (id: string) => unknown;
 	close: (id: string) => unknown;
 	holder: (beside: unknown) => unknown;
 	html: (holder: unknown) => string;
 	within: (id: string, run: () => boolean) => boolean;
+	rules: (hold: Rules | null) => Rules | null;
+	replay: (hold: Rules) => void;
 	pend: (node: unknown, hole: Hole) => void;
 	take: (first: unknown) => string;
 	kept: (markup: string, holes: Hole[]) => Hole[];
