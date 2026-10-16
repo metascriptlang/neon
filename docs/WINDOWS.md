@@ -1,6 +1,6 @@
 # Windows Host
 
-Status: decided 2026-10-14; the View, Text and Pressable slices are built, hosted in an Ion window ("Built: View", "Built: Text", "Built: Ion window and Pressable" below), everything after them is not. The Windows Application UI world is a native host behind
+Status: decided 2026-10-14; the View, Text, Pressable and ScrollView slices are built, hosted in an Ion window ("Built: View", "Built: Text", "Built: Ion window and Pressable", "Built: ScrollView" below), everything after them is not. The Windows Application UI world is a native host behind
 `src/platform/native/bridge.h`, like iOS and Android (`IOS.md`, `ANDROID.md`), and its components
 are Neon's own views drawn on DirectComposition. This document keeps the decision, the reference it
 is ported from, the paths rejected and the one measurement taken. `VISION.md` "Worlds, nested one
@@ -188,7 +188,7 @@ DPI changed, and runs the host's resize handler (a relayout). `src/platform/ion/
   (cancel, which Neon turns into `pointercancel` and `pointerleave`). iOS and Android report 1 and 2 wherever the finger
   lifted; Windows cancels instead, so `<Pressable onPress>` does not fire for down inside and up outside. Leave and focus
   loss cancel. `niLastTouchTag/Phase/X/Y/Time` read the last report; the time is the performance counter in
-  milliseconds. `niSetResponder` and `niClearResponder` store the view only: no ScrollView exists to consume it.
+  milliseconds. `niSetResponder` and `niClearResponder` store the view only: a ScrollView scrolls by the wheel alone, so no touch is taken from it.
 - **Accessibility props.** `niSetProp` stores `accessible`, `accessibilityLabel`, `accessibilityHint`, `accessibilityRole`
   and `accessibilityState` on the view, for the UI Automation slice; nothing exposes them yet. Any other name, an
   `accessib*` one included, still aborts by name. `ionPress.ms` logs how many views store a given value.
@@ -242,6 +242,51 @@ and on top of the 13 earlier expectations:
   "white ", and never over the plain text.
 
 `text.ms` 13/13, `ion.ms` 16/16 and `app.ms` 11/11 still hold.
+
+## Built: ScrollView
+
+`src/platform/windows/scrollView.cpp` `Scroller` is RNW's `CompScrollerVisual` (`Fabric/Composition/CompositionContextHelper.cpp`
+at `1f59db1`) without its `InteractionTracker`, which DirectComposition does not have. `niScrollCreate` gives the scroll view a
+content visual, and the bridge parents the ScrollView's children under it. The content visual's offset is minus the scroll
+position (RNW drives the offset with the expression `-tracker.Position`, `:816`). The scroll visual clips its children to its
+bounds, as RNW's inset clip does (`:801`): the seam gained `IVisual::ClipsChildren`, a rectangle clip without a radius. Hit-testing
+adds the position to a point before it tries the children, so a press lands on the content now under the pointer.
+
+- **Wheel.** `ion.ms` forwards Ion's wheel records as `niwWheel(x, y, notchesX, notchesY)`. The bridge hit-tests the point and
+  walks from the view it finds up to the root. The first ScrollView that can move in that direction scrolls, and a ScrollView
+  already at its limit passes the wheel to the one above it. This is RNW's `OnPointerWheelChanged`
+  (`ScrollViewComponentView.cpp:964`): one notch is `WHEEL_DELTA`, 120 points, the move is animated, and a wheel during a move
+  adds to the target (`ScrollBy`, `:1136`). The animation lasts 5 ms per pixel, at least 50 ms and at most 1000 ms, from RNW's
+  `GetPositionAnimation` (`:1123`). The curve is a cubic ease-out, which was not compared with RNW's keyframe easing. A
+  horizontal wheel follows `WM_MOUSEHWHEEL`, where positive means right. `scrollEnabled={false}` stops the wheel only;
+  `scrollTo` still moves, as RNW's `scrollTo` comment says (`ScrollViewComponentView.cpp:1194`).
+- **Bounds.** The position stays within 0 and content minus frame. It is clamped again when the content size or the frame
+  changes, as the tracker's `MaxPosition` does (`UpdateMaxPosition`, `:1194`).
+- **Events.** A frame steps each moving ScrollView before Neon's loop runs. Each position change reports phase 0 (`onScroll`)
+  with the offset, the frame size and the content size, which is at least the frame size (`getScrollMetrics`,
+  `ScrollViewComponentView.cpp:1300`). A wheel or `scrollTo` reports no drag or momentum phases, as in RNW, where a move from a
+  `Try*` request carries a request id and fires neither. An animated move asks Ion for frames until it ends, then asks for none.
+- **Options.** `horizontal` and `scrollEnabled` are read. The scroll bar props and the keyboard props are accepted and do
+  nothing, because this host draws no scroll bar and has no software keyboard. `pagingEnabled`, `refreshEnabled` and
+  `refreshing` abort by name when true, and so does any other option.
+
+Measured 2026-10-16, msc BUILD `5631dd3e5`, Ion `b9b5e8b`, 96 DPI. `msc build examples/windowsNative/ionScroll.ms` then
+`out/windowsIonScroll.exe --check` exits 0. The check posts real `WM_MOUSEWHEEL` and `WM_LBUTTONDOWN`/`UP` messages to the window:
+- Before input, a 200x200 ScrollView of ten 100-point bands shows bands 0 and 1. The pixel below it is the window background, so
+  the clip holds, and no `onScroll` fired.
+- Two notches down move it to y=240 in 165 `onScroll` events over the animation, the last at exactly 240. Bands 2 and 3 are
+  then where 0 and 1 were.
+- A click at band 3's new place presses band 3.
+- `scrollTo({ y: 900, animated: false })` clamps to 800 and shows bands 8 and 9.
+- A wheel outside the ScrollView fires no event and moves nothing.
+
+`ion.ms` 16/16, `ionText.ms`, `app.ms` 11/11 and `text.ms` 13/13 still pass.
+
+Not built or measured:
+- Touch and pen panning: RNW redirects touch to its `VisualInteractionSource` (`CompositionContextHelper.cpp:828`); here that is
+  DirectManipulation, not built. Mouse drag does not scroll, in RNW either.
+- Keyboard scrolling (RNW `OnKeyDown`, arrows and Page keys), scroll bars, inertia, paging and snap points, pull to refresh.
+- Nested ScrollViews in a real window, and a DPI other than 96.
 
 ## Port map: Text, TextInput, UI Automation
 
@@ -322,5 +367,5 @@ on it, for a full-window `<Void>`; `src/platform/windows/ion.ms` hosts the nativ
 1. ~~This probe again inside an Ion window, on Ion's content root (`windowRoot`, `windowDevice`).~~ Done in
    "Built: Ion window and Pressable".
 2. The bridge, smallest runnable first: ~~View~~, ~~Text with `niMeasureText` on DirectWrite~~, ~~Pressable input~~,
-   then ScrollView, then TextInput, then UIA. Each step runs a Neon example in an Ion window and keeps the mock-bridge
+   ~~ScrollView~~, then TextInput, then UIA. Each step runs a Neon example in an Ion window and keeps the mock-bridge
    tests (`tests/platform/native*.test.ms`) green.
