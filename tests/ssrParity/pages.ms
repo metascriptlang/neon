@@ -153,7 +153,7 @@ async function main(): Promise<void> {
 		console.log("== edge " + path + "\n" + page(path));
 	}
 	for (const url of ["/", "/docs/start", "/docs/routing?x=1#top", "/docs/missing", "/nowhere", "/docs/start/"]) {
-		const r = respond(url);
+		const r = await respond(url);
 		console.log("== site " + url + " " + r.status.toString() + " " + (r.location ?? "") + "\n" + r.body);
 	}
 	await dumpAwaited("async", asyncPage());
