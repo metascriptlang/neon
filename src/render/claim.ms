@@ -30,6 +30,10 @@ function reading(host: Host): Claim | null {
 	return c;
 }
 
+export function hydrating(): boolean {
+	return active !== null;
+}
+
 function pathOf(c: Claim): string {
 	let s = "the container";
 	for (let i = 1; i < c.open.length; i += 1) { s = (i === 1 ? "" : s + " > ") + c.open[i].tag; }
