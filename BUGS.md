@@ -203,8 +203,8 @@ and the invariants that outlived them were moved to the head of the test that pi
   Same Void note as the row above.
 
 - **PARKED 2026-10-16 — `runCanvas` does not build for the browser from the repo.** Not Neon's. Yoga links under
-  `--os=emcc` since yoga `b2d4f7e` (not yet run through `runCanvas`); still open: the emitted C passes a derived interface as its base without a cast at `src/components/primitives.ms`
-  (`~/metascript/.inbox/compiler/2026-10-16-derived-interface-passed-as-base-without-cast.md`); and
+  `--os=emcc` since yoga `b2d4f7e`, and the derived-interface upcast at `src/components/primitives.ms` is a
+  typed C cast since recompiler `20d78d7d3`; neither has been run through `runCanvas` under emcc yet. Still open:
   `setTimeout` does not link under `--os=emcc`, `wasm-ld: undefined symbol: msSetTimeout`, because only the
   native runtime's `dispatchFull.c` defines it
   (`~/metascript/.inbox/compiler/2026-10-16-settimeout-does-not-link-under-emcc.md`). With these and yoga worked
