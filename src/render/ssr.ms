@@ -53,7 +53,7 @@ when (server) {
 	import { parseVisibleContent } from "./visibleContent";
 	import { asServer } from "./environment";
 	import { Computation, Dispose, NotReadyError } from "../core/types";
-	import { ServerContext, Fragments, ServerMarks, MAX_PASSES, withServerContext, pendingWaits, unconverged } from "../core/serverContext";
+	import { ServerContext, Fragments, Hole, ServerMarks, MAX_PASSES, withServerContext, pendingWaits, unconverged } from "../core/serverContext";
 	import { scriptLiteral } from "./hydrationRecords";
 
 	function joinClass(className: string, id: string): string {
@@ -321,6 +321,14 @@ when (server) {
 	const EMPTY_TEXT = "<!---->";
 	const TEXT_BREAK = "<!--!-->";
 
+	function holeMark(h: Hole): string {
+		return "<!--pl-#" + h.id + "-->";
+	}
+
+	function holeBreak(h: Hole): string {
+		return "<!--pl-^" + h.id + "-->";
+	}
+
 	function headKey(tag: string, names: string[], values: string[]): string {
 		if (tag === "title") { return "title"; }
 		if (tag !== "meta") { return ""; }
@@ -358,6 +366,8 @@ when (server) {
 		count: int32 = 0;
 		info: TagInfo;
 		afterText: boolean = false;
+		hole: Hole | null = null;
+		held: Hole | null = null;
 		parent: SsrNode | null = null;
 		prev: SsrNode | null = null;
 		next: SsrNode | null = null;
@@ -410,6 +420,7 @@ when (server) {
 	}
 
 	function writeInto(w: SsrWrite, p: SsrNode, n: SsrNode, ref: HostNode | null): void {
+		if (n.held !== null && (p.drops || p.collects || p.info.raw !== "")) { throw new NotReadyError((n.held as Hole).source); }
 		if (p.drops) { return; }
 		if (p.collects) { collect(w, p, n, ref); return; }
 		if (ref !== null) {
@@ -438,10 +449,30 @@ when (server) {
 			p.afterText = false;
 			return;
 		}
+		if (n.hole !== null) {
+			const h = n.hole as Hole;
+			h.marked = p.info.marked;
+			if (p.info.marked && p.afterText) {
+				const before = n.prev;
+				if (before !== null && (before as SsrNode).hole !== null) {
+					h.lead = 2;
+					h.after = (before as SsrNode).hole;
+				} else {
+					h.lead = 1;
+				}
+			}
+			p.body += holeMark(h);
+			p.afterText = true;
+			if (p.held === null) { p.held = h; }
+			return;
+		}
 		if (n.tag === "") {
 			if (p.info.marked) {
 				if (n.text === "") { p.body += EMPTY_TEXT; p.afterText = false; return; }
-				if (p.afterText) { p.body += TEXT_BREAK; }
+				if (p.afterText) {
+					const before = n.prev;
+					p.body += before !== null && (before as SsrNode).hole !== null ? holeBreak((before as SsrNode).hole as Hole) : TEXT_BREAK;
+				}
 			}
 			p.body += p.info.raw === "" ? escapeText(n.text) : rawText(p.info.raw, w.stitched ? withoutPlaceholder(p.info.raw, n.text) : n.text);
 			p.afterText = true;
@@ -450,6 +481,7 @@ when (server) {
 		p.body += elementMarkup(n.tag, n.info, n.names, n.values, n.className, n.style, n.body, n.count);
 		n.body = "";
 		p.afterText = false;
+		if (n.held !== null && p.held === null) { p.held = n.held; }
 	}
 
 	// A region that re-renders on the server takes back the rows it just wrote, which
@@ -469,6 +501,7 @@ when (server) {
 		p.body = p.body.slice(0, n.at);
 		p.count = n.index;
 		p.afterText = n.textBefore;
+		if (p.held !== null && p.body.indexOf("<!--pl-#") < 0) { p.held = null; }
 		p.last = n.prev;
 		if (n.prev !== null) { (n.prev as SsrNode).next = null; }
 	}
@@ -652,6 +685,25 @@ when (server) {
 		return n as unknown as HostNode;
 	}
 
+	function textOf(h: Hole): string {
+		if (h.value === null) { throw new Error("SSR writer: a hole was filled before its text was known"); }
+		return h.value as string;
+	}
+
+	function holeText(h: Hole): string {
+		const v = textOf(h);
+		if (!h.marked) { return escapeText(v); }
+		if (v === "") { return EMPTY_TEXT; }
+		const breaks = h.lead === 1 || (h.lead === 2 && textOf(h.after as Hole) !== "");
+		return (breaks ? TEXT_BREAK : "") + escapeText(v);
+	}
+
+	function swapped(markup: string, marker: string, text: string): string {
+		const at = markup.indexOf(marker);
+		if (at < 0) { return markup; }
+		return markup.slice(0, at) + text + markup.slice(at + marker.length);
+	}
+
 	function stitchMarks(w: SsrWrite): ServerMarks {
 		const fronts = new Map<string, SsrNode>();
 		return {
@@ -665,11 +717,34 @@ when (server) {
 			close: (id: string): unknown => rawNode(PLACEHOLDER_END + id + "-->"),
 			holder: (beside: unknown): unknown => {
 				const like = beside as SsrNode;
+				if (like.last !== null && (like.last as SsrNode).hole !== null) { throw new NotReadyError(((like.last as SsrNode).hole as Hole).source); }
 				const holder = new SsrNode(like.tag, like.info);
 				holder.afterText = like.afterText;
 				return holder;
 			},
 			html: (holder: unknown): string => (holder as SsrNode).body,
+			pend: (node: unknown, hole: Hole): void => {
+				const n = node as SsrNode;
+				n.hole = hole;
+				n.held = hole;
+			},
+			take: (first: unknown): string => {
+				const n = first as SsrNode;
+				return n.parent === null ? "" : (n.parent as SsrNode).body.slice(n.at);
+			},
+			kept: (markup: string, holes: Hole[]): Hole[] => {
+				const live: Hole[] = [];
+				for (const h of holes) { if (markup.indexOf(holeMark(h)) >= 0) { live.push(h); } }
+				return live;
+			},
+			fill: (markup: string, holes: Hole[]): string => {
+				let out = markup;
+				for (const h of holes) {
+					out = swapped(out, holeMark(h), holeText(h));
+					out = swapped(out, holeBreak(h), h.marked && textOf(h) !== "" ? TEXT_BREAK : "");
+				}
+				return out;
+			},
 			within: (id: string, run: () => boolean): boolean => {
 				const outer = w.headFront;
 				w.headFront = fronts.get(id);

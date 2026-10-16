@@ -18,12 +18,36 @@ export class ServerSlot {
 	failure: Error | null = null;
 }
 
+// A text spot whose read was not ready: the writer keeps a marker where its text goes and the
+// spot's own thunk is run again, under the owner it was made in, once its source has settled.
+export class Hole {
+	id: string;
+	get: () => string;
+	owner: Computation | null;
+	source: Computation;
+	value: string | null = null;
+	marked: boolean = true;
+	lead: int32 = 0;
+	after: Hole | null = null;
+
+	constructor(id: string, get: () => string, owner: Computation | null, source: Computation) {
+		this.id = id;
+		this.get = get;
+		this.owner = owner;
+		this.source = source;
+	}
+}
+
 export interface ServerMarks {
 	open: (id: string) => unknown;
 	close: (id: string) => unknown;
 	holder: (beside: unknown) => unknown;
 	html: (holder: unknown) => string;
 	within: (id: string, run: () => boolean) => boolean;
+	pend: (node: unknown, hole: Hole) => void;
+	take: (first: unknown) => string;
+	kept: (markup: string, holes: Hole[]) => Hole[];
+	fill: (markup: string, holes: Hole[]) => string;
 }
 
 export class Fragments {
@@ -47,6 +71,8 @@ export class ServerContext {
 	fragments: Fragments = new Fragments();
 	failure: Error | null = null;
 	marks: ServerMarks | null = null;
+	holes: Hole[] | null = null;
+	holeCount: int32 = 0;
 }
 
 export function pendingWaits(ctx: ServerContext, sources: Computation[]): Promise<void>[] {
