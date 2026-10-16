@@ -91,6 +91,32 @@ async function routes() {
 	console.log("PASS: workerd routes each request through its own router, answers a no-match with 404 and a trailing slash with 308");
 }
 
+async function notes() {
+	const alpha = await get(site + "/notes/alpha");
+	assert.equal(alpha.status, 200);
+	assert.match(alpha.body, /<p id="note">Note alpha read at render<\/p>/, "the served page lacks the data the request read");
+	assert.doesNotMatch(alpha.body, /Loading note/, "the served page holds the fallback of a read that settled");
+	const records = alpha.body.match(/<script>\(self\._\$HY[^<]*<\/script>/g) ?? [];
+	assert.equal(records.length, 1, "the served page holds " + records.length + " record scripts");
+	assert.ok(alpha.body.indexOf(records[0]) > alpha.body.indexOf("</div>"), "the record does not follow the markup");
+	assert.ok(alpha.body.indexOf(records[0]) < alpha.body.indexOf("/client.js"), "the record comes after the client script");
+	assert.match(records[0], /\.r\["\d+"\]="\{\\"slug\\":\\"alpha\\",\\"text\\":\\"Note alpha read at render\\"\}"/);
+
+	const beta = await get(site + "/notes/beta?utm=1");
+	assert.match(beta.body, /<p id="note">Note beta read at render<\/p>/, "a second slug did not read its own data");
+	assert.doesNotMatch(beta.body, /Note alpha/);
+	assert.equal((beta.body.match(/<script>\(self\._\$HY/g) ?? []).length, 1);
+	assert.equal((await get(site + "/notes/gamma")).status, 404);
+
+	for (const path of ["/", "/docs/start"]) {
+		assert.doesNotMatch((await get(site + path)).body, /_\$HY/, "a route with no async read carries a record: " + path);
+	}
+	const api = await get(site + "/api/note/beta");
+	assert.equal(api.status, 200);
+	assert.deepEqual(JSON.parse(api.body), { slug: "beta", text: "Note beta read from the api" });
+	console.log("PASS: workerd renders the async read of /notes/:slug into the page with one record, and no other route carries one");
+}
+
 async function prerender() {
 	const { staticPaths } = await import(pathToFileURL(join(here, "out/site.js")).href);
 	const out = join(here, "out/static");
@@ -194,11 +220,75 @@ async function browser() {
 	console.log("PASS: Chrome hydrates the served route, follows links without a reload and renders a no-match in the layout");
 }
 
+async function hydratedNotes() {
+	const { chromium } = await import(pathToFileURL(playwright).href);
+	const chrome = await chromium.launch({ channel: process.env.NEON_CHROME_CHANNEL ?? "chrome" });
+	try {
+		const page = await chrome.newPage();
+		const errors = [];
+		const reads = [];
+		let documents = 0;
+		page.on("pageerror", (e) => errors.push(String(e)));
+		page.on("request", (r) => {
+			if (r.resourceType() === "document") { documents += 1; }
+			if (new URL(r.url()).pathname.startsWith("/api/")) { reads.push(new URL(r.url()).pathname); }
+		});
+		await page.addInitScript(() => {
+			globalThis.neonSiteChanged = [];
+			globalThis.neonSiteFallback = 0;
+			const changes = new MutationObserver((records) => {
+				for (const record of records) {
+					if (!(record.target instanceof Element) || record.target.closest("#site") === null) { continue; }
+					for (const node of [...record.addedNodes, ...record.removedNodes]) {
+						if (node.nodeType === 1) { globalThis.neonSiteChanged.push(node.localName); }
+					}
+					if (record.target.textContent.includes("Loading note")) { globalThis.neonSiteFallback += 1; }
+				}
+			});
+			document.addEventListener("readystatechange", () => {
+				if (document.readyState === "interactive") { changes.observe(document, { childList: true, subtree: true, characterData: true }); }
+			});
+		});
+		await page.goto(site + "/notes/alpha");
+		await page.waitForFunction("globalThis.neonSiteHydrated === 1", { timeout: 20000 });
+		await new Promise((wake) => setTimeout(wake, 500));
+		assert.deepEqual(reads, [], "hydrate sent data requests: " + reads);
+		assert.equal(await page.locator("#note").innerText(), "Note alpha read at render");
+		assert.deepEqual(await page.evaluate("globalThis.neonSiteChanged"), [], "hydrate added or removed an element of the served page");
+		assert.equal(await page.evaluate("globalThis.neonSiteFallback"), 0, "the page showed the fallback");
+		assert.deepEqual(errors, []);
+
+		await page.getByRole("link", { name: "Home", exact: true }).click();
+		await page.waitForFunction("document.querySelector('h1').textContent === 'Neon site'");
+		assert.deepEqual(reads, []);
+		await page.goBack();
+		await page.waitForFunction("document.querySelector('#note')?.textContent === 'Note alpha read from the api'");
+		assert.deepEqual(reads, ["/api/note/alpha"], "a client navigation to the route did not load its data once");
+
+		await page.evaluate(() => {
+			const link = document.createElement("a");
+			link.href = "/notes/beta";
+			link.textContent = "Beta";
+			document.querySelector("nav").append(link);
+		});
+		await page.getByRole("link", { name: "Beta", exact: true }).click();
+		await page.waitForFunction("document.querySelector('#note')?.textContent === 'Note beta read from the api'");
+		assert.deepEqual(reads, ["/api/note/alpha", "/api/note/beta"]);
+		assert.equal(documents, 1, "a link reloaded the page");
+		assert.deepEqual(errors, []);
+	} finally {
+		await chrome.close();
+	}
+	console.log("PASS: Chrome hydrates the page that holds the async read with no data request and no fallback, and a client navigation to the route still loads its data");
+}
+
 try {
 	await pages();
 	await routes();
+	await notes();
 	await prerender();
 	await browser();
+	await hydratedNotes();
 } finally {
 	server.kill();
 }
