@@ -58,6 +58,11 @@ function failsWhenOne(a: () => int32): void {
 	);
 }
 
+function lastPlaced(parent: HostNode): VoidNode {
+	const kids = (parent as VoidNode).children;
+	return kids[kids.length - 1];
+}
+
 const caughtView = (err: Accessor<Error>, reset: () => void): NeonNode => el("view", [], [], text("caught"));
 
 test "an Errored that fails while its content mounts frees the partial nodes, and reset mounts fresh ones" {
@@ -68,7 +73,7 @@ test "an Errored that fails while its content mounts frees the partial nodes, an
 	const content: NeonNode = (host: Host, parent: HostNode, before: HostNode | null): void => {
 		attempts = attempts + 1;
 		el("view", [], [], text("partial"))(host, parent, before);
-		seen.push((vh.root as VoidNode).children[0]);
+		seen.push(lastPlaced(parent));
 		if (attempts < 2) { throw new Error("attempt"); }
 	};
 	render(Errored({
@@ -89,7 +94,7 @@ test "disposing an Errored with its content parked frees the parked nodes after 
 		onCleanup(() => { liveAtCleanup = (node as VoidNode).ref.isLive(); });
 		failsWhenOne(a);
 		el("view", [], [], text("ok"))(host, parent, before);
-		node = (vh.root as VoidNode).children[0];
+		node = lastPlaced(parent);
 	};
 	const dispose = render(Errored({ children: content, fallback: caughtView }), vh.host, vh.root);
 	const parked = node as VoidNode;
