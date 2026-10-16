@@ -20,9 +20,11 @@ when (js) {
 
 	const waiting: NeonNode = el("b", [], [], text("loading"));
 	let slowSettled = false;
+	let shellRead = true;
 
 	async function slowValue(ms: int32): Promise<int32> {
 		await sleepAsync(ms);
+		while (!shellRead) { await sleepAsync(1); }
 		slowSettled = true;
 		return 7;
 	}
@@ -58,9 +60,11 @@ when (js) {
 
 	test "the first chunk of the readable arrives before the slow read settles" {
 		slowSettled = false;
-		const r = streamRender(page(40));
+		shellRead = false;
+		const r = streamRender(page(5));
 		const first = await readFirst(readable(r));
 		assert !slowSettled, "the slow read had settled before the shell arrived";
+		shellRead = true;
 		assert first.includes("<b>loading</b>") && !first.includes("slow="), first;
 		await r.markup();
 		assert slowSettled, "the render finished";

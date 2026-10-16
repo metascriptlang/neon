@@ -27,19 +27,47 @@ function reading(name: string, ms: int32, value: int32): NeonNode {
 	};
 }
 
+class Flag {
+	up: boolean;
+
+	constructor(up: boolean) {
+		this.up = up;
+	}
+}
+
+// The slow sibling settles only after the quick one's fragment was written, so the order holds under any load.
+async function afterFlag(flag: Flag, value: int32): Promise<int32> {
+	while (!flag.up) { await sleepAsync(1); }
+	return value;
+}
+
+function readingAfter(name: string, flag: Flag, value: int32): NeonNode {
+	return (host: Host, parent: HostNode, before: HostNode | null): void => {
+		const data = createAsyncMemo((p: int32 | null): Promise<int32> => afterFlag(flag, value));
+		el("p", [], [], dynText((): string => name + "=" + data().toString()))(host, parent, before);
+	};
+}
+
 class Collected {
 	chunks: string[] = [];
 	ended: int32 = 0;
+	quickWritten: Flag = new Flag(false);
 }
 
 function sinkOf(c: Collected): StreamSink {
-	return { write: (chunk: string): void => { c.chunks.push(chunk); }, end: (): void => { c.ended += 1; } };
+	return {
+		write: (chunk: string): void => {
+			c.chunks.push(chunk);
+			if (c.chunks.length >= 2) { c.quickWritten.up = true; }
+		},
+		end: (): void => { c.ended += 1; },
+	};
 }
 
-function siblings(firstMs: int32, secondMs: int32): NeonNode {
+function siblings(slowFirst: boolean, quickWritten: Flag): NeonNode {
 	return (host: Host, parent: HostNode, before: HostNode | null): void => {
-		Loading({ children: reading("first", firstMs, 1), fallback: waiting })(host, parent, before);
-		Loading({ children: reading("second", secondMs, 2), fallback: waiting })(host, parent, before);
+		Loading({ children: slowFirst ? readingAfter("first", quickWritten, 1) : reading("first", 3, 1), fallback: waiting })(host, parent, before);
+		Loading({ children: slowFirst ? reading("second", 3, 2) : readingAfter("second", quickWritten, 2), fallback: waiting })(host, parent, before);
 	};
 }
 
@@ -115,7 +143,7 @@ async function streamed(view: NeonNode, c: Collected): Promise<SsrMarkup> {
 
 test "siblings stream in the order their waits end, after one shell holding both fallbacks" {
 	const c = new Collected();
-	const out = await streamed(siblings(25, 3), c);
+	const out = await streamed(siblings(true, c.quickWritten), c);
 	assert c.chunks.length === 3 && c.ended === 1, "shell and two fragments, ended once: " + c.chunks.length.toString() + "/" + c.ended.toString();
 	const ids = placeholders(c.chunks[0]);
 	assert ids.length === 2, c.chunks[0];
@@ -127,7 +155,7 @@ test "siblings stream in the order their waits end, after one shell holding both
 
 test "the same siblings with their delays swapped stream in the swapped order" {
 	const c = new Collected();
-	const out = await streamed(siblings(3, 25), c);
+	const out = await streamed(siblings(false, c.quickWritten), c);
 	const ids = placeholders(c.chunks[0]);
 	assert c.chunks.length === 3, c.chunks.length.toString();
 	assert fragmentId(c.chunks[1]) === ids[0] && fragmentId(c.chunks[2]) === ids[1], fragmentId(c.chunks[1]) + "," + fragmentId(c.chunks[2]) + " against " + ids.join(",");
@@ -214,7 +242,7 @@ test "the swap function is sent once, before the first call, however many bounda
 
 test "a second consumer of the same render throws and the first keeps its stream" {
 	const c = new Collected();
-	const r = streamRender(siblings(8, 3));
+	const r = streamRender(siblings(true, c.quickWritten));
 	r.pipe(sinkOf(c));
 	let message = "";
 	try {
@@ -230,17 +258,17 @@ test "a second consumer of the same render throws and the first keeps its stream
 
 test "awaiting the render beside a pipe gives the awaited form of renderToStream" {
 	const c = new Collected();
-	const beside = await streamed(siblings(8, 3), c);
-	const alone = await renderToStream(siblings(8, 3));
+	const beside = await streamed(siblings(true, c.quickWritten), c);
+	const alone = await renderToStream(siblings(true, new Flag(true)));
 	assert beside.html === alone.html && beside.css === alone.css && beside.head === alone.head, beside.html + " | " + alone.html;
 	assert beside.records === alone.records, beside.records + " | " + alone.records;
 }
 
 test "a sink attached after the boundaries settled receives the chunks an early sink received" {
 	const early = new Collected();
-	await streamed(siblings(8, 3), early);
+	await streamed(nested(3, 8), early);
 	const late = new Collected();
-	const r = streamRender(siblings(8, 3));
+	const r = streamRender(nested(3, 8));
 	await r.markup();
 	r.pipe(sinkOf(late));
 	assert late.chunks.length === early.chunks.length && late.ended === 1, late.chunks.length.toString() + "/" + early.chunks.length.toString();
@@ -298,13 +326,15 @@ test "a rejected read under Errored streams the caught fallback and its error re
 }
 
 async function lateFailure(c: Collected): Promise<string> {
+	const thrown = new Flag(false);
 	const content: NeonNode = (host: Host, parent: HostNode, before: HostNode | null): void => {
 		reading("late", 3, 1)(host, parent, before);
+		thrown.up = true;
 		throw new Error("thrown after the wait");
 	};
 	const app: NeonNode = (host: Host, parent: HostNode, before: HostNode | null): void => {
 		Loading({ children: content, fallback: waiting })(host, parent, before);
-		Loading({ children: reading("other", 30, 2), fallback: waiting })(host, parent, before);
+		Loading({ children: readingAfter("other", thrown, 2), fallback: waiting })(host, parent, before);
 	};
 	const r = streamRender(app);
 	r.pipe(sinkOf(c));

@@ -21,11 +21,28 @@ function reading(name: string, ms: int32, value: int32): NeonNode {
 	};
 }
 
-function page(): NeonNode {
+class Flag {
+	up: boolean = false;
+}
+
+// The outer boundary settles only after the quick sibling's fragment was written, so the chunk order holds under any load.
+async function afterFlag(flag: Flag, value: int32): Promise<int32> {
+	while (!flag.up) { await sleepAsync(1); }
+	return value;
+}
+
+function readingAfter(name: string, flag: Flag, value: int32): NeonNode {
+	return (host: Host, parent: HostNode, before: HostNode | null): void => {
+		const data = createAsyncMemo((p: int32 | null): Promise<int32> => afterFlag(flag, value));
+		el("p", [], [], dynText((): string => name + "=" + data().toString()))(host, parent, before);
+	};
+}
+
+function page(quickWritten: Flag): NeonNode {
 	return <View style={looks.shell}>
 		<Text>top</Text>
 		<Loading fallback={<Text>wait outer</Text>}>
-			{reading("outer", 40, 1)}
+			{readingAfter("outer", quickWritten, 1)}
 			<View style={looks.late}><Text>{"a < b & \"c\""}</Text></View>
 			<Loading fallback={<Text>wait inner</Text>}>{reading("inner", 30, 2)}</Loading>
 		</Loading>
@@ -37,8 +54,9 @@ function page(): NeonNode {
 async function main(): Promise<void> {
 	const chunks: string[] = [];
 	let ended = 0;
-	const r = streamRender(page());
-	r.pipe({ write: (chunk: string): void => { chunks.push(chunk); }, end: (): void => { ended += 1; } });
+	const quickWritten = new Flag();
+	const r = streamRender(page(quickWritten));
+	r.pipe({ write: (chunk: string): void => { chunks.push(chunk); if (chunks.length >= 2) { quickWritten.up = true; } }, end: (): void => { ended += 1; } });
 	await r.markup();
 	for (let i = 0; i < chunks.length; i += 1) { console.log("chunk " + i.toString() + ": " + chunks[i]); }
 	console.log("ended " + ended.toString());
