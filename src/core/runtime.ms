@@ -11,6 +11,26 @@ const LOOP_LIMIT: int32 = 100000;
 when (debug) {
 	const OWNED_WRITE_MESSAGE: string = "[REACTIVE_WRITE_IN_OWNED_SCOPE] Writing to reactive state inside an owned scope (component, computation) is not allowed. Move the write outside or set the `ownedWrite` option if this is intentional.";
 	const REFRESH_OWNED_MESSAGE: string = "[REACTIVE_WRITE_IN_OWNED_SCOPE] Calling refresh() inside an owned scope (component, computation) is not allowed. Move the invalidation outside pure computation.";
+	let strictLabel: string | null = null;
+
+	export function swapStrictLabel(label: string | null): string | null {
+		const prev = strictLabel;
+		strictLabel = label;
+		return prev;
+	}
+
+	function assertTrackedRead(el: Source): void {
+		const label = strictLabel;
+		if (label === null) { return; }
+		if (el.computed) {
+			const status = (el as Computation).status;
+			if ((status & STATUS_PENDING) !== 0) {
+				throw new Error("[PENDING_ASYNC_UNTRACKED_READ] Reading a pending async value directly in " + label + ". Async values must be read within a tracking scope (JSX, a memo, or an effect's compute function).");
+			}
+			if ((status & STATUS_ERROR) !== 0) { return; }
+		}
+		throw new Error("[STRICT_READ_UNTRACKED] Reactive value read directly in " + label + " will not update. Move it into a tracking scope (JSX, a memo, or an effect's compute function).");
+	}
 }
 
 let currentOwner: Computation | null = null;
@@ -696,6 +716,7 @@ function recompute(el: Computation, create: boolean): void {
 	const oldOwner = currentOwner;
 	const prevTracking = tracking;
 	const oldHeight = el.height;
+	when (debug) { const prevLabel = swapStrictLabel(null); }
 	currentOwner = el;
 	tracking = true;
 	deferDepth += 1;
@@ -712,6 +733,7 @@ function recompute(el: Computation, create: boolean): void {
 	} catch (e) {
 		thrown = e;
 	} finally {
+		when (debug) { swapStrictLabel(prevLabel); }
 		tracking = prevTracking;
 		currentOwner = oldOwner;
 		deferDepth -= 1;
@@ -914,6 +936,7 @@ export function readSource(el: Source): boolean {
 	if (verdictOpen) {
 		staged = verdictRead(el, c);
 	} else {
+		when (debug) { assertTrackedRead(el); }
 		if (c !== null && tracking) {
 			link(el, c);
 			if (el.computed) { pullComputed(el as Computation, c); }
@@ -977,6 +1000,7 @@ export function runEffectNode(node: Computation, firstApply: boolean): void {
 	const prevTracking = tracking;
 	if (!firstApply) { currentOwner = null; }
 	tracking = false;
+	when (debug) { const prevLabel = swapStrictLabel(null); }
 	try {
 		apply(node);
 	} catch (e) {
@@ -988,6 +1012,7 @@ export function runEffectNode(node: Computation, firstApply: boolean): void {
 			throw e;
 		}
 	} finally {
+		when (debug) { swapStrictLabel(prevLabel); }
 		currentOwner = oldOwner;
 		tracking = prevTracking;
 	}

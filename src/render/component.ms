@@ -7,6 +7,7 @@ import { Host, HostNode, NeonNode } from "./hostTypes";
 
 export function createComponent<P>(Comp: (props: P) => NeonNode, props: P): NeonNode {
 	return (host: Host, parent: HostNode, before: HostNode | null): void => {
-		untrack((): number => { Comp(props)(host, parent, before); return 0; });
+		const mount = untrack((): NeonNode => Comp(props), "a component body");
+		untrack((): number => { mount(host, parent, before); return 0; });
 	};
 }

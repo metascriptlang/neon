@@ -1,5 +1,6 @@
 import { Source, CONFIG_OWNED_WRITE } from "./types";
 import { newSource, readSource, isStaged, writeSource, assertWritable, isTracking, setTracking } from "./runtime";
+when (debug) { import { swapStrictLabel } from "./runtime"; }
 
 export class Cell<T> {
 	value: T;
@@ -92,12 +93,14 @@ export function createSignal<T>(initialValue: T, options?: SignalOptions<T>): [A
 	];
 }
 
-export function untrack<T>(fn: () => T): T {
+export function untrack<T>(fn: () => T, label: string | null = null): T {
 	const prev = isTracking();
 	setTracking(false);
+	when (debug) { const prevLabel = swapStrictLabel(label); }
 	try {
 		return fn();
 	} finally {
+		when (debug) { swapStrictLabel(prevLabel); }
 		setTracking(prev);
 	}
 }
