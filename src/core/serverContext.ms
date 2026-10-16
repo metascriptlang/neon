@@ -21,13 +21,27 @@ export interface ServerMarks {
 	within: (id: string, run: () => boolean) => boolean;
 }
 
+export class Fragments {
+	markup: Map<string, string> = new Map<string, string>();
+	settled: ((id: string) => void) | null = null;
+
+	set(id: string, html: string): void {
+		this.markup.set(id, html);
+		if (this.settled !== null) { (this.settled as (id: string) => void)(id); }
+	}
+
+	get(id: string): string | null {
+		return this.markup.get(id);
+	}
+}
+
 export class ServerContext {
 	slots: Map<string, ServerSlot> = new Map<string, ServerSlot>();
 	started: string[] = [];
 	waits: Promise<void>[] = [];
 	every: Promise<void>[] = [];
 	loops: Promise<void>[] = [];
-	fragments: Map<string, string> = new Map<string, string>();
+	fragments: Fragments = new Fragments();
 	failure: Error | null = null;
 	marks: ServerMarks | null = null;
 }

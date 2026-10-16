@@ -9,6 +9,8 @@ rm -f "$out"/*.txt
 fail=0
 "$MSC" build --target=js -d:server tests/ssrParity/pages.ms --output="$out/pages.server.js" && node "$out/pages.server.js" > "$out/js.server.txt" || { echo "FAIL ssrParity js server: build or run"; fail=1; }
 "$MSC" build -d:server tests/ssrParity/pages.ms --output="$out/pages.server" && "$out/pages.server" > "$out/c.server.txt" || { echo "FAIL ssrParity c server: build or run"; fail=1; }
+"$MSC" build --target=js -d:server tests/ssrParity/streams.ms --output="$out/streams.server.js" && node "$out/streams.server.js" > "$out/streams.js.txt" || { echo "FAIL ssrParity streams js server: build or run"; fail=1; }
+"$MSC" build -d:server tests/ssrParity/streams.ms --output="$out/streams.server" && "$out/streams.server" > "$out/streams.c.txt" || { echo "FAIL ssrParity streams c server: build or run"; fail=1; }
 same() {
 	if [ ! -s "$2" ] || [ ! -s "$3" ]; then
 		return
@@ -23,6 +25,8 @@ same() {
 }
 same "js server = recorded" tests/ssrParity/pages.expected.txt "$out/js.server.txt" "cp $out/js.server.txt tests/ssrParity/pages.expected.txt"
 same "c server = js server" "$out/js.server.txt" "$out/c.server.txt"
+same "streamed chunks, js server = recorded" tests/ssrParity/streams.expected.txt "$out/streams.js.txt" "cp $out/streams.js.txt tests/ssrParity/streams.expected.txt"
+same "streamed chunks, c server = js server" "$out/streams.js.txt" "$out/streams.c.txt"
 needs() {
 	if log=$("$MSC" build $2 "tests/ssrParity/$1.ms" --output="$out/$1" 2>&1); then
 		echo "FAIL ssrParity $1 $3: a plain build must not compile"

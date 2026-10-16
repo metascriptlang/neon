@@ -16,6 +16,11 @@ export struct SsrMarkup {
 	records: string;
 }
 
+export interface StreamSink {
+	write: (chunk: string) => void;
+	end: () => void;
+}
+
 when (server) {
 	import { Host, HostNode, NeonNode } from "./hostTypes";
 	import { render } from "./host";
@@ -48,7 +53,7 @@ when (server) {
 	import { parseVisibleContent } from "./visibleContent";
 	import { asServer } from "./environment";
 	import { Dispose, NotReadyError } from "../core/types";
-	import { ServerContext, ServerMarks, MAX_PASSES, withServerContext, takeWaits, awaitable, unconverged } from "../core/serverContext";
+	import { ServerContext, Fragments, ServerMarks, MAX_PASSES, withServerContext, takeWaits, awaitable, unconverged } from "../core/serverContext";
 	import { scriptLiteral } from "./hydrationRecords";
 
 	function joinClass(className: string, id: string): string {
@@ -627,11 +632,15 @@ when (server) {
 		return "<script>(self._$HY||(self._$HY={r:{},e:{}}))." + table + "[\"" + scriptLiteral(id) + "\"]=\"" + scriptLiteral(text) + "\"</script>";
 	}
 
-	function recordScripts(ctx: ServerContext): string {
+	function recordScripts(ctx: ServerContext, written: Map<string, boolean> | null): string {
 		let out = "";
 		for (const id of recordIds(ctx)) {
 			const slot = ctx.slots.get(id);
 			if (slot === null) { continue; }
+			if (written !== null) {
+				if (!slot.settled || written.has(id)) { continue; }
+				written.set(id, true);
+			}
 			out += slot.failure === null ? recordScript("r", id, slot.json) : recordScript("e", id, (slot.failure as Error).message);
 		}
 		return out;
@@ -673,7 +682,7 @@ when (server) {
 		};
 	}
 
-	function stitched(html: string, fragments: Map<string, string>): string {
+	function stitched(html: string, fragments: Fragments): string {
 		let from = html.indexOf(PLACEHOLDER_OPEN);
 		if (from < 0) { return html; }
 		let out = "";
@@ -737,32 +746,144 @@ when (server) {
 		return ids;
 	}
 
-	export async function renderToStream(n: NeonNode): Promise<SsrMarkup> {
-		const ctx = new ServerContext();
-		let pass = new StreamPass();
-		ctx.marks = stitchMarks(pass.write);
-		for (let rounds = 1; !rootSettled(ctx, pass, n); rounds += 1) {
-			if (rounds >= MAX_PASSES) { throw unconverged("the render"); }
-			for (const w of awaitable(ctx, takeWaits(ctx))) { await w; }
-			pass = new StreamPass();
-			ctx.marks = stitchMarks(pass.write);
+	// Solid's REPLACE_SCRIPT cut to the swap: $df and $dfr as one function, with none of the hydration
+	// route (_$HY.f), ledger (_$HY.v), announce (_$HY.fe), retry queue (_$HY.dq), $dfl, stylesheet gates or head ops
+	const REPLACE_SCRIPT = "function $df(e,n,o,t){if(!(n=document.getElementById(e)))return 0;if(!(o=document.getElementById(\"pl-\"+e)))return 0;for(;o&&(8!==o.nodeType||o.nodeValue!==\"pl-\"+e);)t=o.nextSibling,o.remove(),o=t;o.replaceWith(n.content),n.remove();return 1}";
+
+	class Piece {
+		id: string;
+		html: string;
+		css: string;
+		records: string;
+
+		constructor(id: string, html: string, css: string, records: string) {
+			this.id = id;
+			this.html = html;
+			this.css = css;
+			this.records = records;
 		}
-		let failure: Error | null = null;
-		let html = "";
-		let head = "";
-		try {
-			for (let at = 0; at < ctx.loops.length; at += 1) { await ctx.loops[at]; }
-			failure = ctx.failure;
-			if (failure === null) {
-				html = stitched(pass.root.body, ctx.fragments);
-				head = writtenHead(pass.write.headKids);
+	}
+
+	export class StreamRender {
+		ctx: ServerContext = new ServerContext();
+		pass: StreamPass = new StreamPass();
+		finished: Promise<void>;
+		pieces: Piece[] = [];
+		sent: int32 = 0;
+		cssSent: int32 = 0;
+		recorded: Map<string, boolean> = new Map<string, boolean>();
+		sink: StreamSink | null = null;
+		consumer: string = "";
+		scripted: boolean = false;
+		over: boolean = false;
+		ended: boolean = false;
+		failure: Error | null = null;
+		result: SsrMarkup = { html: "", css: "", head: "", records: "" };
+
+		constructor(n: NeonNode) {
+			this.finished = drive(this, n);
+		}
+
+		cut(id: string, html: string): void {
+			const css = this.pass.book.css;
+			const fresh = css.slice(this.cssSent, css.length);
+			this.cssSent = css.length;
+			this.pieces.push(new Piece(id, html, fresh, recordScripts(this.ctx, this.recorded)));
+			this.flush();
+		}
+
+		chunkOf(piece: Piece): string {
+			const style = piece.css === "" ? "" : "<style>" + piece.css + "</style>";
+			if (piece.id === "") { return style + piece.html + piece.records; }
+			const call = "$df(\"" + scriptLiteral(piece.id) + "\")";
+			const script = this.scripted ? call : REPLACE_SCRIPT + ";" + call;
+			this.scripted = true;
+			return style + "<template id=\"" + piece.id + "\">" + piece.html + "</template>" + piece.records + "<script>" + script + "</script>";
+		}
+
+		flush(): void {
+			if (this.sink === null || this.ended) { return; }
+			const sink = this.sink as StreamSink;
+			while (this.sent < this.pieces.length) {
+				const piece = this.pieces[this.sent];
+				this.sent += 1;
+				sink.write(this.chunkOf(piece));
 			}
-		} finally {
-			pass.write.done = true;
-			pass.dispose();
+			if (!this.over) { return; }
+			this.ended = true;
+			if (this.failure !== null) { console.error("renderToStream: the stream ended early: " + (this.failure as Error).message); }
+			sink.end();
 		}
-		if (failure !== null) { throw failure; }
-		return { html: html, css: pass.book.css, head: head, records: recordScripts(ctx) };
+
+		claim(name: string): void {
+			if (this.consumer !== "") {
+				throw new Error("renderToStream result was already consumed via `" + this.consumer + "`; cannot also consume it via `" + name + "`. Use exactly one of `pipe`, `pipeTo`, or `readable`.");
+			}
+			this.consumer = name;
+		}
+
+		attach(sink: StreamSink): void {
+			this.sink = sink;
+			this.flush();
+		}
+
+		pipe(sink: StreamSink): void {
+			this.claim("pipe");
+			this.attach(sink);
+		}
+
+		async markup(): Promise<SsrMarkup> {
+			await this.finished;
+			if (this.failure !== null) { throw this.failure; }
+			return this.result;
+		}
+	}
+
+	async function drive(r: StreamRender, n: NeonNode): Promise<void> {
+		const ctx = r.ctx;
+		ctx.fragments.settled = (id: string): void => {
+			if (ctx.failure === null) { r.cut(id, ctx.fragments.get(id) as string); }
+		};
+		try {
+			ctx.marks = stitchMarks(r.pass.write);
+			for (let rounds = 1; !rootSettled(ctx, r.pass, n); rounds += 1) {
+				if (rounds >= MAX_PASSES) { throw unconverged("the render"); }
+				for (const w of awaitable(ctx, takeWaits(ctx))) { await w; }
+				r.pass = new StreamPass();
+				ctx.marks = stitchMarks(r.pass.write);
+			}
+			r.cut("", r.pass.root.body);
+			const pass = r.pass;
+			let html = "";
+			let head = "";
+			try {
+				for (let at = 0; at < ctx.loops.length; at += 1) { await ctx.loops[at]; }
+				if (ctx.failure === null) {
+					html = stitched(pass.root.body, ctx.fragments);
+					head = writtenHead(pass.write.headKids);
+				}
+			} finally {
+				pass.write.done = true;
+				pass.dispose();
+			}
+			if (ctx.failure !== null) { throw ctx.failure; }
+			r.result = { html: html, css: pass.book.css, head: head, records: recordScripts(ctx, null) };
+		} catch (e) {
+			r.failure = e;
+		}
+		r.over = true;
+		r.flush();
+	}
+
+	// Parked on ~/metascript/.inbox/compiler/2026-10-16-await-of-a-user-thenable-is-not-unwrapped.md: Solid's one thenable object needs `await` to take a class with `then`
+	export function streamRender(n: NeonNode): StreamRender {
+		return new StreamRender(n);
+	}
+
+	// Parked on ~/metascript/.inbox/compiler/2026-10-08-test-block-awaiting-a-rejected-nullable-promise-segfaults.md (2026-10-16 sighting): `return await r.markup()` here kills the C binary when the render fails
+	export function renderToStream(n: NeonNode): Promise<SsrMarkup> {
+		const r = streamRender(n);
+		return r.markup();
 	}
 } else {
 	import { Node } from "std/meta";
@@ -777,5 +898,9 @@ when (server) {
 
 	export macro renderToStream(node: Node): Node {
 		error("renderToStream needs a -d:server build", node);
+	}
+
+	export macro streamRender(node: Node): Node {
+		error("streamRender needs a -d:server build", node);
 	}
 }
