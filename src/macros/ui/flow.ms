@@ -18,7 +18,7 @@ import { Host, HostNode } from "../../render/hostTypes";
 import { Row, makeRow, mountAt, removeRow, place } from "../../render/reconcile";
 import { List } from "../../core/list";
 import { listRegion } from "../../render/listRegion";
-import { unclaimed } from "../../render/claim";
+import { unclaimed, claimMark, claimRewind } from "../../render/claim";
 
 function fallbackRow(fb: NeonNode | null): (() => Row) | null {
 	if (fb === null) { return null; }
@@ -128,6 +128,23 @@ function mountedUnder(children: NeonNode, context: ContextEntry | null, state: M
 	};
 }
 
+function mountContent(host: Host, holder: HostNode, parent: HostNode, before: HostNode | null, row: Row, firstMount: boolean): void {
+	const mark = firstMount ? claimMark(host) : null;
+	try {
+		if (mark === null) { mountAt(host, holder, null, row); } else { mountAt(host, parent, before, row); }
+	} catch (e) {
+		row.keep = null;
+		if (mark === null) {
+			removeRow(host, holder, row);
+		} else {
+			row.start = null;
+			row.end = null;
+		}
+		claimRewind(host, mark);
+		throw e;
+	}
+}
+
 function newHolder(host: Host): HostNode {
 	let holder: HostNode | null = null;
 	unclaimed(host, (): void => { holder = host.createElement("view"); });
@@ -228,27 +245,21 @@ export function Errored(props: {
 	};
 }
 
-function loadingRows(host: Host, children: NeonNode, fallback: NeonNode | null): Accessor<Row[]> {
+function loadingRows(host: Host, parent: HostNode, before: HostNode | null, children: NeonNode, fallback: NeonNode | null): Accessor<Row[]> {
 	const state = new MountedState();
 	const holder = newHolder(host);
 	onCleanup((): void => { host.release(holder); });
 	let contentRow: Row | null = null;
+	let firstMount = true;
 	const showsContent = createLoadingBoundary<boolean>(
 		(): boolean => {
 			if (contentRow !== null) { throw new Error("[LOADING_CONTENT_RERUN] a Loading's content was mounted again while an earlier mount stood"); }
 			const row = makeRow(mountedUnder(children, (getOwner() as Computation).context, state));
 			row.keep = holder;
+			const first = firstMount;
+			firstMount = false;
+			mountContent(host, holder, parent, before, row, first);
 			contentRow = row;
-			try {
-				mountAt(host, holder, null, row);
-			} catch (e) {
-				if (e instanceof NotReadyError) {
-					row.keep = null;
-					removeRow(host, holder, row);
-					contentRow = null;
-				}
-				throw e;
-			}
 			return true;
 		},
 		(): boolean => false,
@@ -374,7 +385,7 @@ export function Loading(props: {
 	fallback?: NeonNode | null;
 }): NeonNode {
 	return (host: Host, parent: HostNode, before: HostNode | null): void => {
-		regionNode((h) => isServer() ? loadingOnServer(props.children, props.fallback) : loadingRows(h, props.children, props.fallback))(host, parent, before);
+		regionNode((h) => isServer() ? loadingOnServer(props.children, props.fallback) : loadingRows(h, parent, before, props.children, props.fallback))(host, parent, before);
 	};
 }
 

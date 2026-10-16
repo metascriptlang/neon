@@ -34,6 +34,32 @@ export function hydrating(): boolean {
 	return active !== null;
 }
 
+export function claiming(host: Host): boolean {
+	return reading(host) !== null;
+}
+
+export interface ClaimMark {
+	depth: number;
+	last: HostNode | null;
+	count: number;
+}
+
+export function claimMark(host: Host): ClaimMark | null {
+	const c = reading(host);
+	if (c === null) { return null; }
+	const top = c.open[c.open.length - 1];
+	return { depth: c.open.length, last: top.last, count: top.count };
+}
+
+export function claimRewind(host: Host, mark: ClaimMark | null): void {
+	const c = reading(host);
+	if (c === null || mark === null) { return; }
+	while (c.open.length > mark.depth) { c.open.pop(); }
+	const top = c.open[c.open.length - 1];
+	top.last = mark.last;
+	top.count = mark.count;
+}
+
 function pathOf(c: Claim): string {
 	let s = "the container";
 	for (let i = 1; i < c.open.length; i += 1) { s = (i === 1 ? "" : s + " > ") + c.open[i].tag; }
