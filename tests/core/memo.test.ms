@@ -56,9 +56,11 @@ test "memo permits a real nullable result" {
 test "memo initializes boolean and array values before exposing an accessor" {
 	const [n, setN] = createSignal(0);
 	let comparisons: int32 = 0;
-	const cond = createMemo<boolean>(() => n() > 0, (a, b) => {
-		comparisons += 1;
-		return a === b;
+	const cond = createMemo<boolean>(() => n() > 0, {
+		equals: (a: boolean, b: boolean): boolean => {
+			comparisons += 1;
+			return a === b;
+		},
 	});
 	const list = createMemo<int32[]>(() => [n(), n() + 1]);
 	assert !cond() && list()[0] === 0 && list()[1] === 1;
