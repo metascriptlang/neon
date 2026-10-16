@@ -11,6 +11,7 @@
 #include "composition.h"
 #include "dcompComposition.h"
 #include "dwriteText.h"
+#include "textInput.h"
 #include "handoff.h"
 #include "scrollView.h"
 extern "C" {
@@ -36,6 +37,8 @@ struct View {
 	std::unique_ptr<TextLabel> label;
 	std::unique_ptr<Scroller> scroller;
 	bool labelQueued = false;
+	std::unique_ptr<TextInput> input;
+	bool inputQueued = false;
 };
 
 ICompositionContext *g_context = nullptr;
@@ -46,6 +49,23 @@ float g_height = 0;
 float g_measuredW = 0;
 float g_measuredH = 0;
 std::vector<View *> g_dirtyLabels;
+std::vector<View *> g_dirtyInputs;
+View *g_focusedInput = nullptr;
+View *g_pressedInput = nullptr;
+bool g_windowFocused = true;
+int g_ionCursor = 0;
+float g_caret[4];
+
+struct ControlReport {
+	int32_t tag;
+	int32_t phase;
+	std::string value;
+};
+
+std::vector<ControlReport> g_reports;
+int32_t g_controlTag = 0;
+int32_t g_controlPhase = 0;
+std::string g_controlValue;
 msClosure s_mount, s_resize, s_teardown, s_loop, s_frame, s_touch, s_scroll, s_control, s_environment, s_app, s_requester;
 bool g_frameRequested = false;
 bool g_frameWanted = false;
@@ -100,8 +120,12 @@ IVisual *childHost(View *view) { return view->scroller ? view->scroller->content
 void release(View *view) {
 	if (--view->refs > 0) return;
 	if (g_responder == view) g_responder = nullptr;
+	if (g_focusedInput == view) g_focusedInput = nullptr;
+	if (g_pressedInput == view) g_pressedInput = nullptr;
 	if (view->labelQueued) g_dirtyLabels.erase(std::remove(g_dirtyLabels.begin(), g_dirtyLabels.end(), view), g_dirtyLabels.end());
 	if (view->scroller) g_scrolls.erase(std::remove(g_scrolls.begin(), g_scrolls.end(), view), g_scrolls.end());
+	if (view->inputQueued) g_dirtyInputs.erase(std::remove(g_dirtyInputs.begin(), g_dirtyInputs.end(), view), g_dirtyInputs.end());
+	view->input.reset();
 	for (View *child : view->children) {
 		childHost(view)->Remove(child->visual);
 		child->parent = nullptr;
@@ -149,6 +173,82 @@ void drawLabels() {
 	}
 }
 
+void queueInput(View *view) {
+	changed();
+	if (view->inputQueued) return;
+	view->inputQueued = true;
+	g_dirtyInputs.push_back(view);
+}
+
+void reportControl(View *view, int32_t phase, const std::string &value) {
+	if (view->tag != 0) g_reports.push_back({view->tag, phase, value});
+}
+
+void flushReports() {
+	while (!g_reports.empty()) {
+		ControlReport next = g_reports.front();
+		g_reports.erase(g_reports.begin());
+		g_controlTag = next.tag;
+		g_controlPhase = next.phase;
+		g_controlValue = next.value;
+		if (s_control.fn) invoke(s_control);
+	}
+}
+
+void blurInput(View *view) {
+	if (g_focusedInput != view) return;
+	g_focusedInput = nullptr;
+	view->input->Focus(false);
+	reportControl(view, kInputBlur, view->input->Text());
+}
+
+void focusInput(View *view) {
+	if (g_focusedInput == view) return;
+	if (g_focusedInput) blurInput(g_focusedInput);
+	g_focusedInput = view;
+	view->input->WindowFocus(g_windowFocused);
+	view->input->Focus(true);
+	reportControl(view, kInputFocus, view->input->Text());
+}
+
+struct InputSink : TextInputSink {
+	void InputReport(TextInput *input, int phase, const std::string &value) override {
+		View *view = static_cast<View *>(input->Owner());
+		reportControl(view, phase, value);
+		if (phase == kInputSubmit && input->BlursOnSubmit()) blurInput(view);
+	}
+	void InputDirty(TextInput *input) override { queueInput(static_cast<View *>(input->Owner())); }
+};
+
+InputSink g_inputSink;
+
+bool isMounted(const View *view) {
+	for (; view; view = view->parent) {
+		if (view == g_container) return true;
+	}
+	return false;
+}
+
+void pixelBox(const View *view, int32_t *pixelWidth, int32_t *pixelHeight) {
+	*pixelWidth = (int32_t)(roundf((view->x + view->w) * g_scale) - roundf(view->x * g_scale));
+	*pixelHeight = (int32_t)(roundf((view->y + view->h) * g_scale) - roundf(view->y * g_scale));
+}
+
+void drawInputs() {
+	std::vector<View *> due;
+	due.swap(g_dirtyInputs);
+	for (View *view : due) {
+		view->inputQueued = false;
+		if (isMounted(view) && view->input->TakeAutoFocus()) focusInput(view);
+		int32_t pixelWidth, pixelHeight;
+		pixelBox(view, &pixelWidth, &pixelHeight);
+		if (view->input->NeedsDraw(pixelWidth, pixelHeight)) view->input->Draw(g_context, view->visual, pixelWidth, pixelHeight, g_scale);
+	}
+	flushReports();
+}
+
+TextInput *inputOf(void *view) { return static_cast<View *>(view)->input.get(); }
+
 TextLabel *labelOf(void *view, const char *what) {
 	View *v = static_cast<View *>(view);
 	if (!v->label) {
@@ -177,6 +277,7 @@ void applyGeometry(View *view) {
 		view->scroller->Clamp(view->w, view->h);
 		applyScroll(view);
 	}
+	if (view->input) queueInput(view);
 
 	bool identity = view->scaleX == 1 && view->scaleY == 1 && view->translateX == 0 && view->translateY == 0 && view->rotation == 0;
 	if (identity && !view->transformed) return;
@@ -212,6 +313,7 @@ void rescale(View *parent) {
 		applyGeometry(child);
 		child->visual->CornerRadius(child->radius * g_scale);
 		if (child->label) child->label->Invalidate();
+		if (child->input) queueInput(child);
 		rescale(child);
 	}
 }
@@ -333,6 +435,35 @@ Scroller *scrollerOf(void *scroll, const char *what) {
 	return v->scroller.get();
 }
 
+// A TextInput takes the pointer from down to up, as a UITextField does, so no touch chain starts on it.
+bool pointInput(int kind, float x, float y) {
+	float lx = 0, ly = 0;
+	View *top = g_touch.active ? nullptr : hitTest(x, y, &lx, &ly);
+	if (kind == NIW_POINTER_MOVE) g_ionCursor = top && top->input ? 2 : 0;
+	if (kind == NIW_POINTER_DOWN && top && top->input && !g_pressedInput) {
+		g_pressedInput = top;
+		focusInput(top);
+		top->input->Pointer(kind, lx * g_scale, ly * g_scale);
+		flushReports();
+		return true;
+	}
+	if (!g_pressedInput) return false;
+	View *pressed = g_pressedInput;
+	float px = x, py = y;
+	for (const View *at = pressed; at && at != g_container; at = at->parent) {
+		px -= at->x;
+		py -= at->y;
+		if (at != pressed && at->scroller) {
+			px += at->scroller->x;
+			py += at->scroller->y;
+		}
+	}
+	if (kind == NIW_POINTER_UP || kind == NIW_POINTER_CANCEL) g_pressedInput = nullptr;
+	pressed->input->Pointer(kind, px * g_scale, py * g_scale);
+	flushReports();
+	return true;
+}
+
 void endTouch() {
 	std::vector<View *> chain;
 	chain.swap(g_touch.chain);
@@ -380,6 +511,7 @@ void niwFrame(void) {
 		g_frameWanted = false;
 		if (s_frame.fn) invoke(s_frame);
 	}
+	drawInputs();
 	drawLabels();
 	g_context->Commit();
 	g_inFrame = false;
@@ -400,6 +532,7 @@ void niwPointer(int kind, float pixelX, float pixelY) {
 	if (!s_touch.fn) return;
 	float x = pixelX / g_scale, y = pixelY / g_scale;
 	double time = nowMs();
+	if (pointInput(kind, x, y)) return;
 	if (kind == NIW_POINTER_DOWN) {
 		if (g_touch.active) return;
 		float lx = 0, ly = 0;
@@ -474,6 +607,7 @@ int niwPump(void) {
 	reportScrolls();
 	if (s_loop.fn) invoke(s_loop);
 	else niLoopRun();
+	drawInputs();
 	drawLabels();
 	g_context->Commit();
 	return niLoopNext();
@@ -546,6 +680,85 @@ void *niTextCreate(void) {
 	return view;
 }
 
+void *createInput(bool multiline, const char *what) {
+	requireAttached(what);
+	View *view = new View();
+	view->visual = g_context->CreateSpriteVisual();
+	view->input.reset(new TextInput(&g_inputSink, view, multiline));
+	queueInput(view);
+	return view;
+}
+
+void *niInputCreate(void) { return createInput(false, "niInputCreate"); }
+void *niTextAreaCreate(void) { return createInput(true, "niTextAreaCreate"); }
+
+void niControlSetTag(void *control, int32_t tag) {
+	if (!as(control)->input) unimplemented("niControlSetTag on a control that is not a TextInput");
+	as(control)->tag = tag;
+}
+
+void niSetFocused(void *control, int focused) {
+	if (!as(control)->input) unimplemented("niSetFocused on a control that is not a TextInput");
+	if (focused) focusInput(as(control));
+	else blurInput(as(control));
+	flushReports();
+}
+
+int niLastControlTag(void) { return g_controlTag; }
+int niLastControlPhase(void) { return g_controlPhase; }
+const char *niLastControlValue(void) { return g_controlValue.c_str(); }
+float niLastControlWidth(void) { return 0; }
+float niLastControlHeight(void) { return 0; }
+
+void niwKey(int action, int ionScancode, int ctrl, const char *text) {
+	if (!g_focusedInput) return;
+	g_focusedInput->input->Key(action, ionScancode, ctrl != 0, text ? text : "");
+	flushReports();
+}
+
+void niwText(const char *text) {
+	if (!g_focusedInput) return;
+	g_focusedInput->input->Insert(text ? text : "");
+	flushReports();
+}
+
+void niwPreedit(const char *text, int cursor) {
+	if (!g_focusedInput) return;
+	g_focusedInput->input->Preedit(text ? text : "", cursor);
+	flushReports();
+}
+
+void niwFocus(int focused) {
+	g_windowFocused = focused != 0;
+	if (g_focusedInput) g_focusedInput->input->WindowFocus(g_windowFocused);
+}
+
+int niwIonCursor(void) { return g_ionCursor; }
+
+int niwFocusedCaret(void) {
+	if (!g_focusedInput) return 0;
+	float x, y, w, h;
+	if (!g_focusedInput->input->CaretRect(&x, &y, &w, &h)) return 0;
+	for (const View *at = g_focusedInput; at && at != g_container; at = at->parent) {
+		x += roundf(at->x * g_scale);
+		y += roundf(at->y * g_scale);
+		if (at != g_focusedInput && at->scroller) {
+			x -= roundf(at->scroller->x * g_scale);
+			y -= roundf(at->scroller->y * g_scale);
+		}
+	}
+	g_caret[0] = x;
+	g_caret[1] = y;
+	g_caret[2] = w;
+	g_caret[3] = h;
+	return 1;
+}
+
+int niwCaretPixelX(void) { return (int)g_caret[0]; }
+int niwCaretPixelY(void) { return (int)g_caret[1]; }
+int niwCaretPixelW(void) { return (int)g_caret[2]; }
+int niwCaretPixelH(void) { return (int)g_caret[3]; }
+
 void niViewSetTag(void *view, int32_t tag) { as(view)->tag = tag; }
 
 void niViewSetPressable(void *view) { as(view)->pressable = true; }
@@ -616,6 +829,10 @@ void niSetRotation(void *view, float degrees) {
 
 void niSetBackgroundColor(void *view, float r, float g, float b, float a) {
 	if (as(view)->label) unimplemented("niSetBackgroundColor on a Text");
+	if (as(view)->input) {
+		as(view)->input->SetBackground(Color{r, g, b, a});
+		return;
+	}
 	as(view)->visual->Brush(Color{r, g, b, a});
 	changed();
 }
@@ -702,20 +919,11 @@ const char *niAppCall(const char *name, const char *arg) {
 
 #define UNIMPLEMENTED(ret, name, params) ret name params { unimplemented(#name); }
 
-UNIMPLEMENTED(void *, niInputCreate, (void))
-UNIMPLEMENTED(void *, niTextAreaCreate, (void))
 UNIMPLEMENTED(void *, niSwitchCreate, (void))
 UNIMPLEMENTED(void *, niIndicatorCreate, (void))
 UNIMPLEMENTED(void *, niImageCreate, (void))
 UNIMPLEMENTED(void *, niModalCreate, (void))
 UNIMPLEMENTED(void *, niControlCreate, (const char *kind))
-UNIMPLEMENTED(void, niControlSetTag, (void *control, int32_t tag))
-UNIMPLEMENTED(void, niSetFocused, (void *control, int focused))
-UNIMPLEMENTED(int, niLastControlTag, (void))
-UNIMPLEMENTED(int, niLastControlPhase, (void))
-UNIMPLEMENTED(const char *, niLastControlValue, (void))
-UNIMPLEMENTED(float, niLastControlWidth, (void))
-UNIMPLEMENTED(float, niLastControlHeight, (void))
 UNIMPLEMENTED(void, niSetReloadPoll, (msClosure poll))
 UNIMPLEMENTED(int, niLastAppEvent, (void))
 UNIMPLEMENTED(const char *, niLastAppValue, (void))
@@ -727,17 +935,29 @@ void niSetText(void *label, const char *s) {
 }
 
 void niSetTextColor(void *label, float r, float g, float b, float a) {
+	if (TextInput *input = inputOf(label)) {
+		input->SetColor(Color{r, g, b, a});
+		return;
+	}
 	labelOf(label, "niSetTextColor")->SetColor(Color{r, g, b, a});
 	queueLabel(as(label));
 }
 
 void niSetFont(void *label, float size, int bold) {
+	if (TextInput *input = inputOf(label)) {
+		input->SetFont(size, bold != 0);
+		return;
+	}
 	labelOf(label, "niSetFont")->SetFont(size, bold != 0);
 	queueLabel(as(label));
 }
 
 void niMeasureText(void *label, float maxWidth) {
 	requireAttached("niMeasureText");
+	if (TextInput *input = inputOf(label)) {
+		input->Measure(maxWidth, g_scale, &g_measuredW, &g_measuredH);
+		return;
+	}
 	labelOf(label, "niMeasureText")->Measure(maxWidth, g_scale, &g_measuredW, &g_measuredH);
 }
 
@@ -745,6 +965,7 @@ float niMeasuredW(void) { return g_measuredW; }
 float niMeasuredH(void) { return g_measuredH; }
 
 void niSetProp(void *view, const char *name, const char *value) {
+	if (as(view)->input && as(view)->input->SetProp(name, value)) return;
 	if (as(view)->label && !strcmp(name, "textSpans")) {
 		as(view)->label->SetRuns(value);
 		queueLabel(as(view));
