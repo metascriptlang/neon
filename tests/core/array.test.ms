@@ -561,7 +561,7 @@ test "repeat.test.ts:187 repeat disposes the rows that leave the window when fro
 	assert m().join(",") === "1,2,3", "window 1..3";
 	setFrom(3);
 	assert m().join(",") === "3,4,5", "window 3..5";
-	assert cleanups.length === 2 && cleanups.includes(1) && cleanups.includes(2), "rows 1 and 2 left, row 3 stayed: " + cleanups.join(",";
+	assert cleanups.length === 2 && cleanups.includes(1) && cleanups.includes(2), "rows 1 and 2 left, row 3 stayed: " + cleanups.join(",");
 	scope.dispose();
 }
 
@@ -607,7 +607,7 @@ test "repeat.test.ts:317 repeat slides the window backwards: departing rows are 
 	const second = m();
 	assert second[0].index === 1 && second[1].index === 2 && second[2].index === 3, "window 1..3";
 	assert second[2] === retained, "the overlap row is the same instance, now at the tail";
-	assert disposed.length === 2 && disposed.includes(4) && disposed.includes(5), "only the departing rows were disposed: " + disposed.join(",";
+	assert disposed.length === 2 && disposed.includes(4) && disposed.includes(5), "only the departing rows were disposed: " + disposed.join(",");
 	scope.dispose();
 }
 
@@ -1875,7 +1875,7 @@ test "map.ts:459 removing one row from the front, middle and end of a large list
 		const twin = runWithOwner(scope.owner, () => new Twin<Piece>(pieces(300), pieceId));
 		const gone = twin.items()[at];
 		expectHits(hitsOf(twin, without(twin.items(), at)), 0, "map.ts:466 removing row " + at.toString() + " leaves the trims a window of nothing, the general path is already cheap");
-		assert twin.fast.disposed.length === 1 && twin.fast.disposed[0] === at, "row " + at.toString() + " disposed: " + twin.fast.disposed.join(",";
+		assert twin.fast.disposed.length === 1 && twin.fast.disposed[0] === at, "row " + at.toString() + " disposed: " + twin.fast.disposed.join(",");
 		assert twin.fast.rows().length === 299, "299 left";
 		scope.dispose();
 	}
