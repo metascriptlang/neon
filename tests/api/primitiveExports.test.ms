@@ -164,11 +164,11 @@ test "public Portal keeps context at a named mount and stops after disposal" {
 	const [width, setWidth] = createSignal<float64>(20);
 	const root = mockNode("root");
 	const target = mockNode("target");
-	const dispose = render(element(<Tone.Provider value={{ name: "scoped" }}>
+	const dispose = render(element(<Tone value={{ name: "scoped" }}>
 		<Portal mount={target as unknown as HostNode} style={{ width: width() }}>
 			<Text>{useContext(Tone).name}</Text>
 		</Portal>
-	</Tone.Provider>), mockHost(), root as unknown as HostNode);
+	</Tone>), mockHost(), root as unknown as HostNode);
 	assert mockToString(target) === "<target><view><text>scoped</text></view></target>";
 	const container = target.children[0];
 	setWidth(40);
