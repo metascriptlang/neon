@@ -106,6 +106,28 @@ export {
 	createRouteParticipant,
 } from "./routing";
 export {
+	ParamsCodec,
+	GuardAction,
+	GuardDecision,
+	proceed,
+	redirect,
+	notFound,
+	RouteNode,
+	RouteDef,
+	RouteOptions,
+	PathOptions,
+	RouteEntry,
+	MatchedRoute,
+	RouteMatch,
+	RouteResolution,
+	RouteTree,
+	route,
+	path,
+	hrefOf,
+	paramsOf,
+	createRouteTree,
+} from "./route";
+export {
 	RoutingHistoryEntry,
 	RoutingHistory,
 	RoutingSession,
@@ -121,3 +143,44 @@ export {
 } from "./children";
 export { ChildStack, createChildStack } from "./childStack";
 export { Pages, ChildPages, createChildPages } from "./childPages";
+export { ChildSlot, createChildSlot } from "./childSlot";
+export { ChildPanelsMode, Panels, ChildPanels, createChildPanels } from "./childPanels";
+export { renderStack, renderStackTop, renderPages } from "./childView";
+export {
+	LayoutProps,
+	RouteNavigator,
+	Stack,
+	Tabs,
+	RouteConfig,
+	RouteView,
+	Routes,
+	RouterLocation,
+	RouterResponse,
+	NavigateOptions,
+	Router,
+	createRoutes,
+	createRouter,
+	RouterProvider,
+	useParams,
+	useNavigate,
+	useLocation,
+	useMatch,
+	A,
+} from "./router";
+export {
+	WebNavigationError,
+	WebKeySerializer,
+	WebNavigationOwner,
+	WebHistoryItem,
+	WebNavigation,
+	WebNavigationNode,
+	webNavigationNode,
+	StackWebNavigationOptions,
+	PagesWebNavigationOptions,
+	PanelsHistoryKey,
+	PanelsWebNavigationOptions,
+	childStackWebNavigation,
+	childPagesWebNavigation,
+	childPanelsWebNavigation,
+} from "./webNavigation";
+export { WebHistory, createWebHistory } from "./webHistory";

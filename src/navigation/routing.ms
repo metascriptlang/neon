@@ -1,4 +1,4 @@
-import { batch } from "../core/signal";
+import { flush } from "../core/runtime";
 import { Dispose } from "../core/types";
 
 export enum RoutingError {
@@ -9,6 +9,7 @@ export enum RoutingError {
 	UnknownScope,
 	AmbiguousRoute,
 	IncompleteSnapshot,
+	Refused,
 }
 
 export interface RouteCodec<P> {
@@ -141,7 +142,7 @@ export interface RoutingParticipant {
 	prepare: (address: string | null) => Result<RoutePlan, RoutingError>;
 	address: () => Result<string | null, RoutingError>;
 	capture: () => string;
-	restore: (state: string) => Result<RoutePlan, RoutingError>;
+	restore: (state: string, address: string | null) => Result<RoutePlan, RoutingError>;
 }
 
 const REGION_PREFIX = "__nav.";
@@ -287,7 +288,7 @@ export class RoutingRegistry {
 			plans.push(try participant.prepare(requested.get(participant.scope)));
 		}
 		return Result.ok({ commit: (): void => {
-			batch((): void => { for (const plan of plans) { plan.commit(); } });
+			flush((): void => { for (const plan of plans) { plan.commit(); } });
 		} });
 	}
 
@@ -316,9 +317,18 @@ export class RoutingRegistry {
 		return { regions };
 	}
 
-	prepareRestore(snapshot: RoutingSnapshot): Result<RoutePlan, RoutingError> {
+	prepareRestore(
+		snapshot: RoutingSnapshot,
+		url: string | null = null,
+	): Result<RoutePlan, RoutingError> {
 		if (snapshot.regions.length !== this.participants.length) {
 			return Result.err(RoutingError.IncompleteSnapshot);
+		}
+		const addresses = new Map<string, string>();
+		if (url !== null) {
+			for (const region of try decodeRoutingLocation(this.primaryScope, url as string)) {
+				addresses.set(region.scope, region.address);
+			}
 		}
 		const states = new Map<string, string>();
 		for (const region of snapshot.regions) {
@@ -329,15 +339,15 @@ export class RoutingRegistry {
 		for (const participant of this.participants) {
 			const state = states.get(participant.scope);
 			if (state === null) { return Result.err(RoutingError.IncompleteSnapshot); }
-			plans.push(try participant.restore(state as string));
+			plans.push(try participant.restore(state as string, addresses.get(participant.scope)));
 		}
 		return Result.ok({ commit: (): void => {
-			batch((): void => { for (const plan of plans) { plan.commit(); } });
+			flush((): void => { for (const plan of plans) { plan.commit(); } });
 		} });
 	}
 
-	restore(snapshot: RoutingSnapshot): Result<void, RoutingError> {
-		const plan = try this.prepareRestore(snapshot);
+	restore(snapshot: RoutingSnapshot, url: string | null = null): Result<void, RoutingError> {
+		const plan = try this.prepareRestore(snapshot, url);
 		plan.commit();
 		return Result.ok(null);
 	}
@@ -348,7 +358,7 @@ export function createRouteParticipant(
 	bindings: RouteBinding[],
 	clear: () => void,
 	capture: () => string,
-	restore: (state: string) => Result<RoutePlan, RoutingError>,
+	restore: (state: string, address: string | null) => Result<RoutePlan, RoutingError>,
 ): RoutingParticipant {
 	const ids = new Set<string>();
 	const routes = bindings.slice(0);

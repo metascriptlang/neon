@@ -27,7 +27,7 @@ export converter jsxToNode(n: Node): NeonNode {
 	return { kind: NodeKind.MacroInvocation, line: n.line, column: n.column, macroName: "element", macroArgs: [n] };
 }
 
-export { For, ForList, Index, Show, ErrorBoundary } from "./macros/ui/flow";
+export { For, ForKeyedBy, ForUnkeyed, Repeat, ForList, Show, ShowKeyed, ShowWith, ShowKeyedWith, showWhen, Errored, Loading } from "./macros/ui/flow";
 export { refreshPass } from "./macros/refresh";
 export {
 	refreshBoundary,

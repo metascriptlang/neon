@@ -1,6 +1,7 @@
 import { Style } from "../render/style";
 import { Accessor, createSignal, untrack } from "../core/signal";
 import { createRenderEffect } from "../core/effect";
+import { Cleanup } from "../core/types";
 import { onCleanup } from "../core/cleanup";
 import { NeonNode, hostElement } from "../render/node";
 import { Host, HostNode } from "../render/hostTypes";
@@ -32,7 +33,7 @@ class StatusBarEntry {
 // the rest. The status bar itself is one per app, so the top entry's hidden
 // node carries the merged values to the host.
 const stack: StatusBarEntry[] = [];
-const [revision, setRevision] = createSignal<number>(0);
+const [revision, setRevision] = createSignal<number>(0, { ownedWrite: true });
 
 function bump(): void {
 	setRevision(untrack((): number => revision()) + 1);
@@ -62,11 +63,20 @@ function mergedFlag(pick: (p: StatusBarProps) => Accessor<boolean> | null): stri
 	return "false";
 }
 
-function writeMerged(top: StatusBarEntry): void {
-	top.host.setAttr(top.node, "statusBarStyle", mergedStyle());
-	top.host.setAttr(top.node, "statusBarBackgroundColor", mergedColor());
-	top.host.setAttr(top.node, "statusBarHidden", mergedFlag((p: StatusBarProps): Accessor<boolean> | null => p.hidden));
-	top.host.setAttr(top.node, "statusBarTranslucent", mergedFlag((p: StatusBarProps): Accessor<boolean> | null => p.translucent));
+function merged(): string[] {
+	return [
+		mergedStyle(),
+		mergedColor(),
+		mergedFlag((p: StatusBarProps): Accessor<boolean> | null => p.hidden),
+		mergedFlag((p: StatusBarProps): Accessor<boolean> | null => p.translucent),
+	];
+}
+
+function writeMerged(top: StatusBarEntry, values: string[]): void {
+	top.host.setAttr(top.node, "statusBarStyle", values[0]);
+	top.host.setAttr(top.node, "statusBarBackgroundColor", values[1]);
+	top.host.setAttr(top.node, "statusBarHidden", values[2]);
+	top.host.setAttr(top.node, "statusBarTranslucent", values[3]);
 }
 
 const HIDDEN: Style = { display: "none" };
@@ -76,14 +86,20 @@ export function StatusBar(props: StatusBarProps): NeonNode {
 		const entry = new StatusBarEntry(host, node, props);
 		stack.push(entry);
 		bump();
-		createRenderEffect((): void => {
-			revision();
-			if (stack.length > 0 && stack[stack.length - 1] === entry) { writeMerged(entry); }
-		});
+		createRenderEffect<string[]>(
+			(prev: string[] | null): string[] => {
+				revision();
+				return stack.length > 0 && stack[stack.length - 1] === entry ? merged() : [];
+			},
+			(values: string[], prev: string[] | null): Cleanup | null => {
+				if (values.length > 0) { writeMerged(entry, values); }
+				return null;
+			},
+		);
 		onCleanup((): void => {
 			const at = stack.indexOf(entry);
 			if (at >= 0) { stack.splice(at, 1); }
-			if (stack.length === 0) { writeMerged(entry); }
+			if (stack.length === 0) { writeMerged(entry, merged()); }
 			bump();
 		});
 	};

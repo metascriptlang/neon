@@ -53,8 +53,8 @@ static vs dynamic; it is *does the SHAPE of this subtree change while it runs?*
 
 A dynamic VALUE (`{count()}`, `class={cls()}`, `style={s()}`) never changes the node
 count, so a fully reactive element is still template-emitted: six changing text spots
-are six effects over a skeleton whose shape never moves. A dynamic STRUCTURE (`<For>`,
-`<Show>`, `<Index>`, a component) is a NeonNode produced at run time and called where
+are six render effects over a skeleton whose shape never moves. A dynamic STRUCTURE (`<For>`,
+`<Show>`, `<Repeat>`, a component) is a NeonNode produced at run time and called where
 it stands; the macro never guesses a node count.
 
 A `{child}` expression is routed by its TYPE (`isNodeType`: a function type whose
@@ -84,20 +84,25 @@ sets one to `null` and the runtime takes the coarser path with the same result.
 
 ```
 COMPILE ──► MOUNT ──► UPDATE (×n) ──► DISPOSE
- macro      call       effects fire     owner tree
- expand     ONCE       individually     kills subtree
+ macro      call       flush runs the   owner tree
+ expand     ONCE       dirty effects    kills subtree
 ```
 
 - **COMPILE** (macro): JSX → a NeonNode. Static facts (tags, static attrs, which spots
   are dynamic, the walk path to each) are decided here, never re-derived at runtime.
 - **MOUNT** (`render`, or a parent node calling a child): the node runs once. Static
-  text/attrs are applied and never touched again; every dynamic spot plants ONE effect
-  whose first run subscribes it to the signals it reads; a component runs its body
+  text/attrs are applied and never touched again; every dynamic spot plants ONE render effect
+  (`createRenderEffect`: a compute that reads the signals and subscribes to them, an apply that
+  writes the host) whose first run happens at mount; a component runs its body
   exactly once (untracked, under the mounting owner) and its result is called at the
-  same position; a region plants an anchor + a reconcile effect; a fragment owns no
+  same position; a region plants an anchor + a reconcile render effect; a fragment owns no
   host node and places each of its roots in front of `before`.
-- **UPDATE**: no render. A signal notifies exactly its subscribed effects; each
-  performs one host op. Cost = number of spots that actually changed, independent of
+- **UPDATE**: no render. A write marks the computations that read it, and a flush runs the
+  marked render effects, then the user effects (`createEffect`, `onSettled`), which never run on
+  the server; each render effect performs one host op. A write outside `flush(fn)` flushes at once
+  today, where Solid defers to a microtask and C has none (compiler card
+  `2026-10-15-await-of-a-settled-promise-continues-synchronously-on-c.md`); `flush(fn)` groups
+  its writes into one drain. Cost = number of spots that actually changed, independent of
   tree size.
 - **DISPOSE**: owner-tree teardown — deterministic, recursive, fires `onCleanup`,
   kills every subscription underneath. Never waits for GC.
@@ -315,10 +320,22 @@ No background walker, no whole-tree diff scheduler. Two update paths only:
   and touches no node. No op reads the list, builds an array or diffs. A row of a `ForList` carries
   `Accessor<T>` rather than bare `T`, which is what lets `set` be a signal write instead of a
   rebuild. `replaceAll` is the escape hatch: it drops the queue, matches each new item to the row
-  that carried it — by the optional `key` function when one is given, by item identity otherwise,
+  that carried it — by the optional `keyed` function when one is given, by item identity otherwise,
   like `<For>` — and hands the result to `reconcileArrays`, so a reorder still moves nodes and a row
   keeps its DOM, its focus and its scope. A plain array in `<For each={xs}>` keeps the structural
   path untouched.
+
+## Boundaries — `Errored` and `Loading` keep their content behind the fallback
+
+`<Errored>` over `createErrorBoundary` and `<Loading>` over `createLoadingBoundary`
+(`errorRows` and `loadingRows` in `src/macros/ui/flow.ms`) mount their children once. While the
+fallback shows, the children's host nodes and state stay alive behind it and come back as the
+same nodes when the boundary clears; the content is not rebuilt, as in Solid, where the boundary
+holds it as a value. Where the nodes wait, and how a region inside them finds its parent,
+are `docs/REFERENCE.md` RD-5 and RD-6; this section does not restate them. A reset recomputes only
+the effect that failed, and content that never finished mounting is freed, not kept
+(`tests/render/erroredKeep.test.ms`). On the server `Errored` sends a generic error outside a dev
+build (`tests/render/errorBoundaryServer.test.ms`).
 
 ## Hydration — a served page's nodes become the live tree
 
@@ -351,10 +368,10 @@ it in the document must do the same, or hydrate reads the wrong node; "regions t
 empty fill in after hydrate" (`tests/render/hydrate.test.ms`) fails when the seal is missing.
 A subtree mounted where the page did not render it (a Portal's layer) goes through `unclaimed`.
 
-**What the server writes so a parse keeps the node list** (`serializeChildren`,
-`src/render/ssr.ms`): `<!---->` where the tree holds an empty text, which an HTML parser would
-drop, and `<!--!-->` between two adjacent texts, which it would merge. The DOM host's `claim`
-turns the first back into a text node and removes the second. Solid's counterparts are
+**What the server writes so a parse keeps the node list** (`src/render/ssr.ms`): `<!---->`
+where the tree holds an empty text, which an HTML parser would drop, and `<!--!-->` between two
+adjacent texts, which it would merge. The DOM host's `claim` turns the first back into a text
+node and removes the second. Solid's counterparts are
 `<!--$-->`/`<!--/-->` around a dynamic child and `<!--!$-->` between text values
 (`packages/web/src/server.ts`, `ssrTextTail`); Neon needs no pair because it does not scan for
 a region's end.
@@ -391,13 +408,12 @@ own after a signal write, a press, a `Show` toggle and a `For` reorder.
 
 **A server render calls no `ref`** (`asServer` in `src/render/environment.ms`, read by
 `applyRef`). A ref handler expects the platform's node and on a server it would receive the
-mock host's: Geass's `ref={startMech}` ran inside the Worker and its cast to
+writer's record: Geass's `ref={startMech}` ran inside the Worker and its cast to
 `HTMLCanvasElement` threw. Solid drops `ref` and event attributes when it compiles for the
 server (`~/projects/solid-next` at `84dada77`, `packages/babel-plugin/src/ssr/element.ts`,
 `key === "ref" || isEventName(key)`). Neon has one emission for every host, so the same
-decision is taken at run time; a handler is still attached to the mock node and no event ever
-reaches it. `isServer()` holds only inside the synchronous render, not for the whole program,
-because one build can serve a page and attach to one (the test lanes do both in a process).
+decision is taken at run time; the writer drops an event handler. `isServer()` holds only
+inside the synchronous render, not for the whole program.
 
 **`Head` is a portal, not a registry.** `@solidjs/meta` (`~/projects/solid-meta` at `391138e`,
 `src/index.tsx`) keeps the head in a context: every `Title`/`Meta` calls `useHead` with a
@@ -425,23 +441,26 @@ the server entry (`examples/site/server.ms`), not by Neon.
 **Links are followed by one listener** (`followLinks`, `src/platform/browser/routingHistory.ms`),
 the conditions of Solid Router's `handleAnchor` (`~/projects/solid-router` at `d0379e7`,
 `src/data/events.ts`): primary button, no modifier, no `target`, no `download`, no
-`rel="external"`, same origin. One difference, chosen: a link the routing session cannot match
-is left to the browser, so the server answers it and the 404 keeps its status; Solid navigates
-on the client to its catch-all route. After a followed link the page scrolls to the element
+`rel="external"`, same origin. A link the routing session cannot match is left to the browser,
+so the server answers it; a route tree with a catch-all route matches every link, so a missing
+page renders on the client inside its layout, as Solid's catch-all does, and only a request
+gets the 404 status (`examples/site`). After a followed link the page scrolls to the element
 the fragment names, or to the top (`scrollToHash`, `src/routers/createRouter.ts:55`); the
 browser fires no `hashchange` for it, so a consumer that wants the browser's own fragment
 navigation answers `false` for that link.
 
 **A route's state has to hold everything of the address it accepts.** A routing session writes
-`registry.address()` back into the history entry as soon as it opens, so a codec that matches
+`registry.address()` back into the history entry as soon as it opens, and after a back or
+forward whose entry lands on another address, so a codec that matches
 `/docs/start?utm=1#notes` and encodes `/docs/start` rewrites the visitor's URL, and one that
 matches only the bare path answers 404 to the tagged link (both measured on `examples/site`
-and on Geass, 2026-10-13). `examples/site/site.ms` keeps the whole address as the state and
-derives the page from its path.
+and on Geass, 2026-10-13). The route tree shorthand (`src/navigation/router.ms` `Router`)
+keeps the whole address as its state and derives the match from it.
 
 **A path whose page is the same for every request is rendered to a file at build time.**
-The site lists those paths (`staticPaths` in `examples/site/site.ms`), because a route
-codec only decodes and cannot be enumerated; the edge lane asks the built site Worker in
+The route tree lists those paths (`RouteTree.staticPaths`): a route without params is one
+path, a route with params lists its values through `paths`, and a catch-all is left out, because
+a route codec only decodes and cannot be enumerated. The edge lane asks the built site Worker in
 workerd for each and writes `out/static/<path>.html` plus `404.html` (`prerender`,
 `tests/edge/run.mjs`). That is Astro's Cloudflare prerenderer (`~/projects/astro` at
 `7492974`, `packages/integrations/cloudflare/src/prerenderer.ts`, `getStaticPaths` and
@@ -452,7 +471,7 @@ the lane checks the query half by comparing each page with the same path plus `?
 Geass reads the User-Agent for its layout width, so its docs stay on the Worker until the
 width no longer decides the markup. Files use Astro's `'file'` layout (`/docs/start` →
 `docs/start.html`): the `'directory'` layout's `docs/start/index.html` would be served at
-`/docs/start/`, which `examples/site` answers with 404. Serving the files ahead of the
+`/docs/start/`, which the route tree shorthand redirects to `/docs/start` with 308. Serving the files ahead of the
 Worker is the deployment's job (Workers Static Assets, or `run_worker_first` exclusions).
 What a prerendered page saves is the Worker's render, measured 2026-10-15 on tree
 `69c8920f26d68c66727a7886a05ae97300e7ff93` with the `-d:server` bundle in Node:
@@ -460,14 +479,18 @@ What a prerendered page saves is the Worker's render, measured 2026-10-15 on tre
 at load 17–27 on 14 cores. The rest is the platform serving a file instead of starting the
 Worker, which a local run cannot measure.
 
-Measured 2026-10-13 on tree `b514b24aff684ca7119a9aa67cdc4075a95aa605`, msc v0.3.2 `ea7ae4d17`,
-`sh tests/edge/run.sh` (workerd, then Chrome): `/` and `/docs/<slug>` answer 200 with their own
-title and description, `/docs/missing`, `/nowhere` and `/docs/start/` answer 404 with `noindex`;
-Chrome attaches to `/docs/start` with no element of the 12 added or removed, a link to another
-route changes the heading, title, description and URL with one document request in total and
-the scroll back at the top, back restores the page, and a link to no route is answered by the
-server. The debug bundles, not minified: `site.js` (server) 573 KB, 69 KB gzipped;
-`siteClient.js` 1 052 KB, 129 KB gzipped.
+Measured 2026-10-16 on tree `25f5f65aa491f01e7b4d6e80400a7c27a5b4caad`, msc v0.3.4 `15b93cbba`,
+`sh tests/edge/run.sh` (workerd, then Chrome), with the site on the route tree shorthand:
+`/` and `/docs/<slug>` answer 200 with their own title and description, `/docs/missing`,
+`/nowhere` and `/docs/missing?utm=1` answer 404 with `noindex`, and `/docs/start/?utm=1` answers
+308 to `/docs/start?utm=1`. Chrome attaches to `/docs/start` with no element of the 14 added or
+removed; a link to another doc keeps the layout's `nav` element, replaces the page, and changes
+the heading, title, description, `aria-current` and URL with one document request in total and
+the scroll back at the top; back restores the page; a link to no page renders Not found in the
+layout without a request. The debug bundles, not minified: `site.js` (server) 781 KB, 94 KB
+gzipped; `siteClient.js` 1 270 KB, 155 KB gzipped. The site before the shorthand (`56102ef`),
+built by the same msc: 655 KB, 79 KB gzipped, and 1 145 KB, 141 KB gzipped, so the shorthand,
+its matcher and its outlet cost about 14 KB gzipped in each bundle.
 
 ## Emission — mechanics
 
@@ -547,7 +570,7 @@ cost.
 is deferred to mount, runs once, and whatever it returns mounts at the component's own
 position. `children` is always ONE NeonNode — a single child is passed as is, several
 are wrapped in a root fragment — so a component places them with `{props.children}`.
-A `Context.Provider` is the same shape with the call wrapped in the provider's scope.
+A context tag (`<Ctx value=…>`) is the same shape with the call wrapped in the provider's scope.
 
 **Fragments.** `<>…</>` owns no host node. In child position it is not emitted at all:
 the macro splices its children into the parent's child list at COMPILE time
@@ -559,9 +582,9 @@ lowers through the converter to a multi-root NeonNode. There is no fragment-spec
 rule left — where no NeonNode is expected (`a ?? <>…</>`) the compiler rejects a fragment
 with the same error it gives an element there.
 
-**Regions.** `For` / `Index` / `Show` (`src/macros/ui/flow.ms`) each return
+**Regions.** `For` / `Repeat` / `Show` (`src/macros/ui/flow.ms`) each return
 `regionNode(fn)` (`src/render/node.ms`): an anchor text node placed at the region's
-position, plus one effect that reconciles the region's rows in front of that anchor.
+position, plus one render effect that reconciles the region's rows in front of that anchor.
 A `Row` (`src/render/reconcile.ms`) is a NeonNode plus the span of host nodes it
 produced (`start`…`end`) and the owner it was created under. `reconcileArrays` mounts
 a row that is not in the host yet directly at its final position (`mountAt`), moves a
@@ -572,16 +595,36 @@ into the region's parent, which is how a row made of a fragment, a component or 
 nested region gets a span without anyone counting nodes; an empty row gets one empty
 text node so it still has a position.
 
-**Server rendering.** `renderToString` (`src/render/ssr.ms`) renders the node on a mock
-host whose `setStyleClass` registers the rule in the sheet registry, serializes the
-result, and disposes the mount. Regions, fragments, components and context scopes
-serialize through the same path every host uses (`tests/render/ssr.test.ms`).
-`renderToMarkup` is the form for a process that answers many requests: its host collects the
-rules that one render mounted into the returned `css`, after the rules registered outside any
-render (a theme's `:root`), and leaves the registry alone. A registry shared by every request
-sends each page the rules of every page rendered before it, which is why `renderToString`
-with `mountSheet()` stays the form for a process that prints one page
-(`tests/render/ssrRequest.test.ms`).
+**Show.** `<Show when={x}>` takes any value and tests its truthiness (MetaScript's: a `number`, `string`
+or `boolean` by its zero value, a class by non-null; a nullable union `T | null` is a null check only,
+which is a compiler card, not a Show rule). The element macro (`showCall`, `src/macros/ui/element.ms`)
+picks the engine from `keyed` and the child, as `For` does from `keyed`: an element child is `Show`;
+`keyed` is `ShowKeyed` and rebuilds when the value changes; a function child is `ShowWith`, which
+receives an `Accessor<T>` of the value with `null` removed and throws when it is read while the
+condition is false; `keyed` plus a function child is `ShowKeyedWith`, which receives the value itself.
+`keyed` is written `true` or `false` in place — a computed value is a compile error, as on `For`. The
+function and keyed forms evaluate `when` once per change in a memo created at mount (`showWhen`), so
+the child's reads and the condition share one evaluation. Reference: solid-next
+`packages/solid/src/client/flow.ts:164-250`; pins `tests/render/show.test.ms`.
+
+**Server rendering.** There is one server renderer, and only a `-d:server` build has it:
+`renderToString` and `renderToMarkup` (`src/render/ssr.ms`) are a compile error in any other
+build, naming the flag at the call. Solid keeps its server renderer out of the browser bundle
+by resolving `@solidjs/web` to a server entry under the `node` and `worker` export conditions
+(`~/projects/solid-next` at `84dada77`, `packages/web/package.json` `exports["."]`); its
+browser entry keeps a `renderToString` that logs and returns `undefined`
+(`packages/web/src/server-mock.ts`, `throwInBrowser`), where a Neon build stops, because the
+flag is known at compile time. `renderToMarkup` is the form for a process that answers many
+requests: it collects the rules that one render mounted into the returned `css`, after the rules
+registered outside any render (a theme's `:root`), and leaves the registry alone. A registry
+shared by every request sends each page the rules of every page rendered before it, which is
+why `renderToString` with `mountSheet()` stays the form for a process that prints one page
+(`tests/render/ssrRequestServer.test.ms`). The Chrome lane hydrates pages a `-d:server` build wrote
+(`tests/browser/serveApps.ms`), as Solid's hydration specs replay what its server specs
+recorded (`packages/web/test/hydration/slot-hydration-3567.spec.tsx`, `loadArtifact`). A test
+that renders to a string sits in `<name>Server.test.ms` beside the client file and runs only under
+`-d:server`, as Solid keeps `packages/web/test/server/*.spec.tsx` apart from the client specs and
+excludes them from the client run (`packages/web/vite.config.mjs`).
 
 ## Per-platform economics
 
@@ -601,6 +644,10 @@ for N mounts of a 6-cell row (N = 1000 unless the table says otherwise), MIN acr
 rounds and runs (a mean bakes one CPU-stolen round into the answer). Until 2026-09-19 Neon had two
 emitters — a description tree mounted by a shared walker ("tree") and mount
 instructions emitted per site ("direct") — and the first two tables compare them.
+
+Sections dated before 2026-10-15 measure the engine as it was before the Solid 2.0 migration, and
+they are kept as history of those numbers: the names in them (`mapArrayKeyed`, the `key` prop of `For` and `ForList`, now `keyed`) are the old engine's, and
+the 2026-10-15 sections re-measure on the 2.0 engine.
 
 ### 2026-08-11/12 — real DOM, headless Chrome
 
@@ -941,7 +988,7 @@ index parameter, which the element macro now decides by reading the row arrow's 
 Verdict: five cells of six get 22–33% cheaper and one gets 61% dearer. Remove-half is the only cell
 that DISPOSES rows, and a root holding fewer closures costing more to dispose is backwards; three
 hypotheses were tested and refuted (a shared accessor captured by every row, the zero-length setter
-arrays, run order), so it is open in BUGS.md §7 rather than explained here. The same inversion was
+arrays, run order), so it was left open in BUGS.md §7 rather than explained here; the 2026-10-15 section below finds it gone on the 2.0 engine. The same inversion was
 seen on 2026-09-20 by a hand-copied index-free `mapArray` in another arc, so it belongs to dropping
 the machinery, not to this implementation.
 
@@ -956,6 +1003,31 @@ Not measured, and why: Chrome (the win is allocation and closure count, and the 
 coarsens at 0.1 ms to the size of four of these six cells); and whether the macro picks `false` on a
 given tag, because the only runtime observable of the choice is the raise, so the table above is the
 evidence that the false path is taken at all.
+
+### 2026-10-15 — the same flag on the Solid 2.0 `mapArray` engine
+
+`mapArray` / `mapArrayKeyedBy` take the flag again (`usesIndex`, solid-next `packages/signals/src/map.ts:75`
+and `:97`, where the reference decides it from `map.length > 1`; Neon decides it in the element macro, so
+`For` and `ForKeyedBy` pass what `rowUsesIndex` read). `/tmp/s2b/b1b/bench/indexFlagCost.ms`, release C
+build, N = 5000, 10 rounds, the three variants alternating inside one round of one process, every cell
+the MIN, load 28 on a shared machine (so read the ratios, not the milliseconds). `base` is the engine at
+`b0125c8` with no flag; `with index` is the new engine told the row reads its index; `no index` is told it
+does not.
+
+| op, 5000 rows | identity base | with index | no index | no index ÷ base | keyed base | with index | no index | no index ÷ base |
+|---|---|---|---|---|---|---|---|---|
+| build | 1.055 | 1.055 | 0.907 | 0.86 | 2.195 | 2.142 | 1.278 | 0.58 |
+| swap | 0.478 | 0.478 | 0.433 | 0.91 | 0.743 | 0.755 | 0.525 | 0.71 |
+| reverse | 0.481 | 0.461 | 0.427 | 0.89 | 0.611 | 0.612 | 0.501 | 0.82 |
+| move 1 | 0.465 | 0.465 | 0.430 | 0.92 | 0.681 | 0.673 | 0.510 | 0.75 |
+| remove half | 0.770 | 0.749 | 0.668 | 0.87 | 1.135 | 1.042 | 0.925 | 0.82 |
+| add 1 | 0.096 | 0.091 | 0.059 | 0.61 | 0.204 | 0.205 | 0.127 | 0.62 |
+
+Verdict: every cell is cheaper without the index, and the flag costs the rows that read their index
+nothing (`with index` ≈ `base`). The remove-half inversion of the 2026-09-21 table is gone on this engine.
+A row emitted index-free raises if it reads its index (pinned by `tests/core/array.test.ms` and
+`tests/render/flow.test.ms`), and the macro's decision is pinned per row shape by
+`tests/render/forIndexElision.test.ms`. Not measured: Chrome and the JS backend.
 
 ### 2026-09-21 — one op per edit against a rebuilt array, and where the last O(n) actually lives
 
@@ -1073,13 +1145,13 @@ not a change inside this one.
 
 ### 2026-10-04 — a provider's value on its owner, against typed slots on the context
 
-The shape (`src/render/context.ms`): a Provider's scope carries one `context` entry on its own owner,
+The shape (`src/render/context.ms`): a provider's scope (`<Ctx value>`) carries one `context` entry on its own owner,
 keyed by the context object and linked (`next`) to the entry that scope inherited. Every computation,
-root and `catchError` scope inherits its owner's entry when it is created, so `useContext` walks the
+root and boundary scope inherits its owner's entry when it is created, so `useContext` walks the
 providers above it, never the owners in between, to the first entry with its key. The value is held as
-`unknown` and read back with `entry.value as Provided<T>`, a cast the compiler tests on C and JS.
+`unknown` and read back with `entry.value as Held<T>`, a cast the compiler tests on C and JS.
 
-The inheritance is Solid's: a new computation takes its owner's `context` object
+The inheritance is Solid 1.x's (read then, not re-read on 2.0): a new computation takes its owner's `context` object
 (`packages/solid/src/reactive/signal.ts:1444` at `0af2c2b4`), a provider replaces it with a spread copy
 holding its value (`:1762`), and `useContext` reads `Owner.context[id]` once (`:1216`). Neon links the
 entries instead of copying them: providing costs one entry, not a copy of every context above, and a
@@ -1087,14 +1159,14 @@ read walks only the providers on its path. Before 2026-10-04 Neon walked `owner.
 Nim Neon (`~/projects/neon/src/core/component.nim:45`, `ComponentContext.data: Table[string, pointer]`
 walked through `parent`), whose `cast[pointer]` in and `cast[T]` out read memory unchecked.
 
-Rejected: typed slots on `Context<T>` (`510b5cf`). Each Provider pushed `{ owner, read }` into
+Rejected: typed slots on `Context<T>` (`510b5cf`). Each provider pushed `{ owner, read }` into
 `ctx.slots` and every `useContext` scanned the slots at each owner on its walk, so with N live
 providers of one context a read costs O(N) and mounting N provider rows O(N²). It kept the value
 typed without `unknown`; the cost below is why it went. Not taken either: a `Map` keyed by owner on
 the context, offered as a stopgap while the compiler still refused `as Provided<T>`; the cast was
 fixed in the compiler instead (recompiler `paper/NIM-REF.md` CK-127).
 
-How it was measured. `bench/providerRows.ms`: N Provider rows of one context, each mounting one
+How it was measured. `bench/providerRows.ms`: N provider rows of one context, each mounting one
 consumer, on the mock host; mount time in ms, lower is better. msc v0.3.0 (`0f1ecc060`), release C
 and `--target=js` on node v24.1.0; slots = tree `16bd9048` (`510b5cf`), owner = tree `585c0f60`;
 one full series each, then 3 alternating rounds at 8000 rows; load 16 on 14 cores.
@@ -1139,7 +1211,7 @@ min of 7, three rounds: walk 57.9–84.2 ms C / 16.2–31.4 ms JS, inherited 52.
 2. **A component body runs exactly once** — any second run is a serious bug
    (`bodyRuns`-counter test pattern).
 3. **Every dynamic spot = one effect, created at mount, under the mounting
-   owner** — never at build time.
+   owner**, a render effect — never at build time.
 3a. **Only a spot that can observe something gets a computation.** Solid's rule
    (`babel-plugin-jsx-dom-expressions`): an expression carrying a call or a
    property read is reactive; a bare identifier or literal is resolved once at
@@ -1214,12 +1286,12 @@ is `Accessor<T>` (or `Accessor<T> | null`) and the value is not already an
 `Accessor`; every other prop crosses as written, whatever its name or shape, so
 `renderItem={row}` and `onEndReachedThreshold={1}` both land on their declared types.
 An undeclared prop, a field mixing `Accessor` with a non-null type, or a tag that
-names nothing in scope is a macro error (`tests/macros/run.sh`). `For`/`Index`
-`each`, `Show` `when` and `FlatList` `data` are `Accessor<…>` too, so a hand-written
+names nothing in scope is a macro error (`tests/macros/run.sh`). `For` `each`,
+`Repeat` `count`, `Show` `when` and `FlatList` `data` are `Accessor<…>` too, so a hand-written
 call passes a signal (`each: items`) or `accessor(() => expr)`. `View`/`Text`/`Pressable`/`TextInput` declare `style?: Accessor<Style>
 | null`, `class?: Accessor<string> | null`, `delayLongPress?: Accessor<number> |
-null`, `value?: Accessor<string> | null`; `Context.Provider` takes `value:
-Accessor<T>` and widens it into `provideScope`'s thunk. An object-literal prop is
+null`, `value?: Accessor<string> | null`; `Context.provider` (the tag `<Ctx value=…>`) takes `value:
+Accessor<T>` and reads it once when it mounts. An object-literal prop is
 stamped by the field's payload type (`style={{ gap: 12 }}` against
 `Accessor<{ gap: number }>`), which is why a value prop must be `Accessor<T>` and
 not a bare `() => T`: a plain thunk field gives the literal no expected type.

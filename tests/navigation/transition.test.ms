@@ -107,6 +107,33 @@ test "a pop slides the screen out to the right and unmounts it when it is gone" 
 	assert list.length === 1 && shown(list[0]), "only Home is left";
 }
 
+let mounts = "";
+
+function Counted(props: ScreenProps<string>): NeonNode {
+	mounts += props.route.name + ";";
+	return <View><Text>{"screen " + props.route.name}</Text></View>;
+}
+
+test "a pop keeps the leaving screen as the instance it was, through its exit" {
+	const ref = createNavigationContainerRef();
+	const root: MockNode = mockNode("root");
+	render(<NavigationContainer ref={ref}>
+		<Stack.Navigator>
+			<Stack.Screen name="Home" component={Counted} />
+			<Stack.Screen name="Detail" component={Counted} />
+		</Stack.Navigator>
+	</NavigationContainer>, mockHost(), root as unknown as HostNode);
+	ref.navigate("Detail");
+	settle();
+	const leaving = frames(root)[1];
+	mounts = "";
+	ref.goBack();
+	assert frames(root)[1] === leaving, "the exit animates the mounted screen";
+	settle();
+	assert mounts === "", "nothing mounts again on a pop: " + mounts;
+	assert frames(root).length === 1, "the screen unmounts once it is gone";
+}
+
 test "a modal slides up, a transparent modal fades, animation none switches at once" {
 	const ref = createNavigationContainerRef();
 	const root = mount(ref);

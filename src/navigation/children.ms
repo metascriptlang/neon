@@ -1,7 +1,7 @@
-import { Accessor, Signal, accessor, batch } from "../core/signal";
+import { Accessor, Signal, accessor } from "../core/signal";
 import { Computation, Dispose } from "../core/types";
 import { createRoot, runWithOwner } from "../core/owner";
-import { getOwner } from "../core/runtime";
+import { flush, getOwner } from "../core/runtime";
 import { onCleanup } from "../core/cleanup";
 
 export interface ChildState<C> {
@@ -46,8 +46,8 @@ function ownChild<C, T>(
 	factory: (configuration: Accessor<C>, active: Accessor<boolean>) => T,
 	owner: Computation | null,
 ): OwnedChild<C, T> {
-	const value = new Signal<C>(configuration.configuration);
-	const active = new Signal<boolean>(configuration.active);
+	const value = new Signal<C>(configuration.configuration, null, true);
+	const active = new Signal<boolean>(configuration.active, null, true);
 	const read = accessor((): C => value.get());
 	const focused = accessor((): boolean => active.get());
 	return runWithOwner(owner, (): OwnedChild<C, T> => {
@@ -74,8 +74,8 @@ export function createChildren<C, T>(
 	factory: (configuration: Accessor<C>, active: Accessor<boolean>) => T,
 ): ChildNavigation<C, T> {
 	const owner = getOwner();
-	const state = new Signal<ChildState<C>[]>([]);
-	const children = new Signal<NavigationChild<C, T>[]>([]);
+	const state = new Signal<ChildState<C>[]>([], null, true);
+	const children = new Signal<NavigationChild<C, T>[]>([], null, true);
 	let owned = new Map<string, OwnedChild<C, T>>();
 	let disposed = false;
 	let changing = false;
@@ -85,7 +85,8 @@ export function createChildren<C, T>(
 		const previous = owned;
 		owned = new Map<string, OwnedChild<C, T>>();
 		for (const key of previous) { (previous.get(key) as OwnedChild<C, T>).dispose(); }
-		batch((): void => { state.set([]); children.set([]); });
+		state.set([]);
+		children.set([]);
 	};
 	const navigate = (next: ChildState<C>[]): void => {
 		if (disposed) { throw new Error("navigation: children are disposed"); }
@@ -112,7 +113,7 @@ export function createChildren<C, T>(
 			throw error;
 		}
 		try {
-			batch((): void => {
+			flush((): void => {
 				for (const key of owned) {
 					if (!desired.has(key)) { (owned.get(key) as OwnedChild<C, T>).dispose(); }
 				}

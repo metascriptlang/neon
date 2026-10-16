@@ -1,6 +1,9 @@
 import { runApp, createNativeHost } from "../../src/platform/native/host";
 import { createSignal, Accessor, accessor } from "../../src/core/signal";
-import { For } from "../../src/macros/ui/flow";
+import { For, Errored } from "../../src/macros/ui/flow";
+import { createRenderEffect } from "../../src/core/effect";
+import { Cleanup } from "../../src/core/types";
+import { Host, HostNode } from "../../src/render/hostTypes";
 import { View, Pressable, ScrollView, ScrollViewHandle, TextInput, TextInputHandle, MaintainVisibleContentPosition } from "../../src/components/primitives";
 import { element } from "../../src/macros/ui/element";
 import { Switch } from "../../src/components/switch";
@@ -33,8 +36,26 @@ import {
 	nmTouchFull, nmResponderTag, nmResponderBlocks, nmOpacity,
 } from "./nativeBridgeMock.h";
 import { PanResponder, PanResponderGestureState } from "../../src/components/panResponder";
+import { HOST_PARK_CONTRACT, hostParkContract } from "../render/hostContract";
 
 const PRESS: int32 = 2;
+
+test "the native host keeps the park contract and release frees the parked views" {
+	const host = createNativeHost().host;
+	const got = hostParkContract(host);
+	assert got === HOST_PARK_CONTRACT, got;
+
+	const created = nmViewsCreated();
+	const released = nmReleaseCalls();
+	const holder = host.createElement("view");
+	const parked = host.createElement("view");
+	host.append(parked, host.createElement("view"));
+	host.insertBefore(holder, parked, null);
+	assert nmViewsCreated() - created === 3, "the holder, the parked node and its child are three views";
+	assert nmReleaseCalls() === released, "parking releases nothing";
+	host.release(holder);
+	assert nmReleaseCalls() - released === 3, "release frees the parked subtree with the holder: " + (nmReleaseCalls() - released).toString();
+}
 
 test "removed rows and a torn-down app release native views and routes exactly once" {
 	const [rows, setRows] = createSignal<number[]>([1, 2, 3]);
@@ -1077,4 +1098,30 @@ test "a native view whose style drops its background and opacity goes back to cl
 	nmTeardown();
 	assert liftedOpacity === 0.5 && liftedAlpha === 1, `lifted ${liftedOpacity} ${liftedAlpha}`;
 	assert restingOpacity === 1 && restingAlpha === 0, `resting ${restingOpacity} ${restingAlpha}`;
+}
+
+test "a focused native TextInput in content that an Errored parks loses its focus" {
+	const [broken, setBroken] = createSignal(0);
+	const handles: TextInputHandle[] = [];
+	let log = "";
+	const boom: NeonNode = (host: Host, parent: HostNode, before: HostNode | null): void => {
+		createRenderEffect<int32>(
+			(p: int32 | null): int32 => broken(),
+			(v: int32, p: int32 | null): Cleanup | null => { if (v === 1) { throw new Error("late"); } return null; },
+		);
+	};
+	const app = (): NeonNode => <View>
+		<Errored fallback={() => <Text>sorry</Text>}>
+			<TextInput ref={(h: TextInputHandle): void => { handles.push(h); }} onBlur={(e: NeonEvent): void => { log += "blur;"; }} />
+			{boom}
+		</Errored>
+	</View>;
+	runApp(app);
+	const tag = nmLastInputTag();
+	handles[0].focus();
+	assert nmFocused(tag) === 1, "the input is focused while its content shows";
+	setBroken(1);
+	assert nmFocused(tag) === 0 && log === "blur;", "parking the content took the focus away: " + log;
+	assert !handles[0].isFocused(), "and the handle follows";
+	nmTeardown();
 }

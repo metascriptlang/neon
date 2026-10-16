@@ -76,9 +76,10 @@ and the invariants that outlived them were moved to the head of the test that pi
   `src/macros/ui/element.ms`, a contract that needs a yes before it changes.
 
 - **OPEN 2026-10-13 — a context whose value type is an accessor cannot be given one.** With
-  `createContext<Accessor<string>>(…)` and `const [place] = createSignal("a")`,
-  `<Here.Provider value={place}>` stops at the checker on C and JS: `Type 'string' is not
-  assignable to type 'Accessor<Accessor<string>>'`. The element macro reads an accessor in a
+  `createContext<Accessor<string>>()` and `const [place] = createSignal("a")`,
+  `<Here value={place}>` stops at the checker: `Type 'string' is not
+  assignable to type 'Accessor<Accessor<string>>'` (re-measured 2026-10-16 on msc v0.3.4
+  `cb45fe201` with `msc test` on C, at the tip of `wt/neon-solid2`). The element macro reads an accessor in a
   prop position as a reactive expression of its result, so `value` is offered a `string`; the
   message names neither the rule nor the way out. `useContext` returns the value as it was
   when the reader mounted, so a signal has to travel inside the value: as a field
@@ -137,8 +138,9 @@ and the invariants that outlived them were moved to the head of the test that pi
   text, then the styled size** (the person's report, Seeker, FlatList build of 16:25). Not
   reproduced by machine: two screen recordings of `adb shell input swipe 600 2300 600 700 40` and
   `… 600 2500 600 300 15` flings (355 and 252 frames) were scanned for the height of every bright
-  text run in the label column, and every run measured the 37 px median. `createEffect` runs
-  `setStyle` before the row's label exists (`src/render/node.ms` `hostElement`) and `niTextCreate`
+  text run in the label column, and every run measured the 37 px median. `hostElement`
+  (`src/render/node.ms`) binds the style, a render effect (`bindStyleAll`, `src/render/bind.ms`), before it
+  mounts the children, so `setStyle` runs before the row's label exists, and `niTextCreate`
   starts a label at 17 sp, so a late style is ruled out. Next: record the screen while a hand
   swipe reproduces it.
 
@@ -186,6 +188,52 @@ and the invariants that outlived them were moved to the head of the test that pi
   from 624×321 to 884×461, exit 0, and the background, button and field colours read back from
   `PrintWindow` at the start, after typing and after the resize. Not run: an IME, a DPI change.
   `tests/run.sh` builds the example on a Windows host and skips it by name elsewhere.
+
+- **OPEN 2026-10-16 — a rewrite below an outer entry drops the outer entries from browser history.**
+  `webHistory.ms` follows Decompose (`WebHistoryNavigation.kt` `subscribe`: a child's `onRewrite` goes
+  back to index 0 and writes only the child's entries, prefixed by the inactive outer nodes). Measured on
+  the route tree: Home → `/feed` → `/feed/1` → `/inbox` → `/feed/1`, then back reaches `/feed` and
+  `go(-1)` returns false while Home is still in the model. Webhistory probe: `go -2;replace /inner/c;push
+  /inner/d;` where the outer entry needs `go -1`. A key change at the same length rewrites too (a tab
+  switch, `setParams`, a stack `replace`): a tab switch at index 1 writes `go -1;replace /t/inbox;` and
+  lands at index 0; `setParams` at index 2 writes `go -2;replace /shop;push /shop/p/6;`. Expo replaces the
+  entry when the index does not change (`getBrowserHistoryForHistoryChange.ts`). Owner: `webHistory.ms`
+  `mirrorChange`. Fixing it diverges from Decompose and waits for the person's word.
+
+- **OPEN 2026-10-16 — a navigation issued while a rewrite's browser `go` is in flight misorders history.**
+  The session has one landing slot and Chrome's `go` is asynchronous: in `tests/browser/routerLevels.test.ms`
+  back from `/inbox/8` stayed on `/inbox/8` until the test waited 100 ms after a tab switch. Decompose
+  swaps one popstate listener the same way (`WebHistoryNavigation.kt` `onPop`/`onRewrite`); the fix is
+  not traced yet.
+
+- **PARKED 2026-10-16 — the route tree shorthand takes no typed route.** Not Neon's: `RouteConfig` would
+  take `{ route: thread, component: Thread }` through a field typed `{ node: RouteNode }`, and msc refuses a
+  `RouteDef<P>` there because a generic interface instance is not assignable to a narrower interface. Until
+  then `createRoutes` takes `path` strings only, and a typed route is matched through `createRouteTree`.
+  Card `~/metascript/.inbox/compiler/2026-10-16-a-generic-interface-instance-is-refused-where-a-narrower-interface-is-expected.md`.
+
+- **PARKED 2026-10-16 — the refresh lane cannot build navigation.** Not Neon's: any module pass, even one
+  that returns the module unchanged, drops the pattern of a destructuring `for…of`, and `route.ms`
+  `searchText` iterates its search map with `for (const [name, value] of search)`, as `webHistory.ms`
+  `collectAddress`, `addressOf` and `sameParameters` do. `tests/refresh/run.sh`
+  fails `navigation.ms` on native, JS and `-d:hcr` with `Undefined variable 'name'`, and so would refresh
+  and hot reload of any app that imports `src/navigation/index`. Gate `gate-slice2-c3e8464/`. Card
+  `~/metascript/.inbox/compiler/2026-10-16-a-module-pass-drops-the-pattern-of-a-for-of-destructure.md`.
+
+- **PARKED 2026-10-16 — web navigation adapters take a required options object.** Not Neon's: Decompose's
+  adapters default every option, but msc builds a `= {}` default of a generic interface parameter as an
+  empty object (JS reads its fields as present, C reads past a zero-size allocation). Until then
+  `childStackWebNavigation`, `childPagesWebNavigation` and `childPanelsWebNavigation` take `options`
+  without a default, and callers pass `{}`. Card
+  `~/metascript/.inbox/compiler/2026-10-16-an-empty-object-literal-default-of-a-generic-interface-parameter-is-not-typed-against-it.md`.
+
+- **PARKED 2026-10-16 — web history stores its key tree as a preorder list.** Not Neon's: Decompose keeps
+  each entry's keys as a `SerializableNode` holding a list of itself, and msc refuses `JSON.stringify` and
+  `JSON.parse<T>` of a type whose array field holds that same type, on C and JS. Until then
+  `src/navigation/webHistory.ms` writes the tree as `StoredNode { key, children }` in preorder
+  (`StoredNode`, `StoredHistory`, `storeNodes`, `readLevel`, `decodeHistory`), where `children` counts the direct
+  children that follow, and it rebuilds the tree on read. Card
+  `~/metascript/.inbox/compiler/2026-10-16-json-refuses-a-self-referential-type.md`.
 
 - **PARKED 2026-10-16 — the sokol canvas receives no input, and Escape ends it.** Not Neon's: Void's window
   driver (`void/src/sokol/bridgeWin.c` and `bridgeWeb.c`, `_event`) keeps every `sapp_event` to itself, and
@@ -252,7 +300,7 @@ and the invariants that outlived them were moved to the head of the test that pi
   `@media`, native and inline styles bound to the window width, blocks kept through `mergeStyle`).
   Blocks it: `Style` becomes recursive (`media: StyleMedia[]`, `StyleMedia.style: Style`), and
   `getTypeImpl` throws "unnamed or alias type cycle (Ref)" on a non-generic interface whose field
-  reaches a recursive one, so `<Ctx.Provider>` stops compiling (`tests/render/ssr.test.ms`, msc
+  reaches a recursive one, so a provider tag stops compiling (`<Ctx.Provider>` when measured; the 2.0 tag `<Ctx value>` is not re-measured) (`tests/render/ssr.test.ms`, msc
   `682b18673`). Card `~/metascript/.inbox/compiler/2026-10-07-element-macro-type-cycle-on-generic-interface-field-without-its-parameter.md`.
   Parked at that branch; `src/macros/ui/style.ms` `createStyles` on main has no breakpoints.
 
@@ -307,32 +355,6 @@ and the invariants that outlived them were moved to the head of the test that pi
   Parked at `src/render/listRegion.ms`, where every step takes a `Region<Item>` object and the anchor is
   read through `anchorAt<Item>(g, i)` of the same instantiation.
 
-- **PARKED 2026-09-21 — `<ForList each={list}>` cannot be written as a tag.** Same root as `<Index>`
-  below: a `ForList` row carries `Accessor<T>`, and a generic callee cannot bind its type parameter
-  through a `distinct` alias at `createComponent`. Third sighting on
-  `~/metascript/.inbox/compiler/2026-09-20-generic-callee-type-param-through-distinct-alias.md`. Parked at
-  `tests/render/forList.test.ms`, whose cells take the call form `ForList<T>({ each: l, children: row })`;
-  nothing worked around in `src/`.
-
-- **PARKED 2026-09-21 — `<For each={xs} fallback={<li/>}>` cannot be written as a tag.** Not Neon's: a
-  JSX value in an attribute of a GENERIC component tag never lowers, while the identical attribute on a
-  non-generic tag does — `<Show fallback={<b/>}>` is green because `Show` is not generic. Two controls in
-  one file isolate it (`Plain` non-generic builds, `Gen<T>` with the same attribute and the same child
-  errors "JSX expression must be consumed by a macro"); the child's shape is irrelevant. Second sighting
-  on `~/metascript/.inbox/compiler/2026-09-19-jsx-converter-skipped-in-generic-call-inside-macro-arg.md`.
-  Parked at `tests/render/flow.test.ms`, the two fallback cells, which use the call form
-  `For<T>({ …, fallback: <li/> })` instead; nothing worked around in `src/`.
-
-- **PARKED 2026-09-20 — `<Index each={xs()}>{row}</Index>` is refused at `createComponent`, so the
-  index-keyed list has no JSX surface.** Not Neon's: reduced to 11 lines with no JSX and no Neon
-  import — a generic callee passed as a value argument cannot bind its own type parameter through a
-  `distinct` alias. Three green controls isolate it (explicit `T`; the same structure with a
-  NON-distinct alias; a `T[]` wrapper). `<For>` is green as a tag because its row carries `T` bare,
-  while `Index<T>`'s carries `Accessor<T>` and `Accessor<T> = distinct (() => T)`. Card, park site and
-  the controls: `~/metascript/.inbox/compiler/2026-09-20-generic-callee-type-param-through-distinct-alias.md`.
-  Parked at `tests/render/flow.test.ms` above the two `Index<number>({…})` cells; nothing worked
-  around in `src/`.
-
 - **PARKED 2026-09-17 (one-NeonNode arc) — flow lowering does not cover `||`, `??` or
   `.map(namedFn)`.** Only `&&`, the ternary and `.map(arrow)` are lowered (`lowerFlowTree` in
   `element.ms`). Measured 2026-09-19 on msc v0.2.55 (`bce99dbf`), each form on its own:
@@ -380,19 +402,6 @@ and the invariants that outlived them were moved to the head of the test that pi
 
 A compiler debt is not one of these: the twelve this section used to carry moved to
 `~/metascript/.inbox/compiler/2026-09-20-neon-bugs-md-compiler-rows-handover.md` on 2026-09-20.
-
-- **OPEN 2026-09-21 — removing half a list is 1,6x SLOWER when the row has no index.** Measured
-  `probe/m/indexFlagCost.ms`, 5000 rows, release, min of 10 rounds with both variants interleaved in
-  one process: every other cell gets 22–33% faster when `mapArray` is told the row never reads its
-  index (build 1,10 → 0,82 ms, swap 0,286 → 0,219, reverse 0,262 → 0,205, move-1 0,290 → 0,204,
-  add-1 0,060 → 0,040) while remove-half goes 0,273 → 0,440. Remove-half is the only cell that
-  DISPOSES rows (2500 of them), so a root that holds fewer closures appears to cost more to dispose,
-  which is backwards. Three hypotheses tested and refuted, each in its own interleaved run: a shared
-  `unreadIndex` accessor captured by every row (per-row accessor inverts the same way), the
-  zero-length setter arrays (full-length arrays invert the same way), and run order. Not reduced below
-  Neon, so it is not a compiler card yet. The arc `row-reconcile-moves` hit the same inversion on
-  2026-09-20 with a hand-copied index-free `mapArray`, which makes this an independent second sighting,
-  not an artefact of one implementation.
 
 - **Neon `probe/` housekeeping** — `macro_disambig` / `macro_lenval` still assert the formerly-WRONG
   values (deliberate RED bracket-tests); `macro_narrow` N1 is red BY DESIGN (Nhịp-2 marker). Rewrite

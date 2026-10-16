@@ -1,9 +1,16 @@
 import { createSignal } from "../../src/core/signal";
-import { createRenderEffect, createBindingEffect } from "../../src/core/effect";
+import { createEffect, createRenderEffect, onSettled } from "../../src/core/effect";
 import { createMemo } from "../../src/core/memo";
 import { createRoot, createUniqueId } from "../../src/core/owner";
-import { getOwner } from "../../src/core/runtime";
-import { Computation } from "../../src/core/types";
+import { getOwner, flush, setServerDepth } from "../../src/core/runtime";
+import { Computation, Cleanup } from "../../src/core/types";
+
+function renderEffect(compute: () => void): void {
+	createRenderEffect<boolean>(
+		(p: boolean | null): boolean => { compute(); return true; },
+		(v: boolean, p: boolean | null): Cleanup | null => null,
+	);
+}
 
 function ownerId(): string {
 	const id = (getOwner() as Computation).id;
@@ -14,7 +21,7 @@ test "an owner outside an id-carrying root has no id" {
 	let seen: string[] = [];
 	createRoot((dispose) => {
 		seen.push(ownerId());
-		createRenderEffect(() => { seen.push(ownerId()); });
+		renderEffect(() => { seen.push(ownerId()); });
 		dispose();
 	});
 	assert seen.join(" ") === "none none", seen.join(" ");
@@ -24,12 +31,12 @@ test "children of an id-carrying root count up from it, nested ones from their p
 	let seen: string[] = [];
 	createRoot((dispose) => {
 		seen.push(ownerId());
-		createRenderEffect(() => {
+		renderEffect(() => {
 			seen.push(ownerId());
-			createRenderEffect(() => { seen.push(ownerId()); });
-			createRenderEffect(() => { seen.push(ownerId()); });
+			renderEffect(() => { seen.push(ownerId()); });
+			renderEffect(() => { seen.push(ownerId()); });
 		});
-		createRenderEffect(() => { seen.push(ownerId()); });
+		renderEffect(() => { seen.push(ownerId()); });
 		const double = createMemo<number>(() => { seen.push(ownerId()); return 2; });
 		double();
 		dispose();
@@ -40,23 +47,59 @@ test "children of an id-carrying root count up from it, nested ones from their p
 test "a child index past one base-36 digit carries its length" {
 	let last = "";
 	createRoot((dispose) => {
-		for (let i = 0; i < 37; i += 1) { createRenderEffect(() => { last = ownerId(); }); }
+		for (let i = 0; i < 37; i += 1) { renderEffect(() => { last = ownerId(); }); }
 		dispose();
 	}, "r");
 	assert last === "[rA10]", last;
 }
 
-test "a binding effect shares its owner's id and counter" {
+test "a transparent render effect shares its owner's id and counter" {
 	let seen: string[] = [];
 	createRoot((dispose) => {
-		createBindingEffect(() => {
-			seen.push(ownerId());
-			createRenderEffect(() => { seen.push(ownerId()); });
-		});
-		createRenderEffect(() => { seen.push(ownerId()); });
+		createRenderEffect<boolean>(
+			(p: boolean | null): boolean => {
+				seen.push(ownerId());
+				renderEffect(() => { seen.push(ownerId()); });
+				return true;
+			},
+			(v: boolean, p: boolean | null): Cleanup | null => null,
+			{ transparent: true },
+		);
+		renderEffect(() => { seen.push(ownerId()); });
 		dispose();
 	}, "");
 	assert seen.join(" ") === "[] [0] [1]", seen.join(" ");
+}
+
+test "a transparent user effect shares its owner's id and counter" {
+	let seen: string[] = [];
+	createRoot((dispose) => {
+		createEffect<boolean>(
+			(p: boolean | null): boolean => {
+				seen.push(ownerId());
+				renderEffect(() => { seen.push(ownerId()); });
+				return true;
+			},
+			(v: boolean, p: boolean | null): Cleanup | null => null,
+			{ transparent: true },
+		);
+		renderEffect(() => { seen.push(ownerId()); });
+		dispose();
+	}, "");
+	assert seen.join(" ") === "[] [0] [1]", seen.join(" ");
+}
+
+test "a plain render effect takes a child id of its own" {
+	let seen: string[] = [];
+	createRoot((dispose) => {
+		renderEffect(() => {
+			seen.push(ownerId());
+			renderEffect(() => { seen.push(ownerId()); });
+		});
+		renderEffect(() => { seen.push(ownerId()); });
+		dispose();
+	}, "");
+	assert seen.join(" ") === "[0] [00] [1]", seen.join(" ");
 }
 
 test "a root under an id-carrying owner takes the next child id" {
@@ -72,15 +115,18 @@ test "a root under an id-carrying owner takes the next child id" {
 test "a re-run hands its children the same ids again" {
 	const [count, setCount] = createSignal(0);
 	let seen: string[] = [];
+	let stop: (() => void) | null = null;
 	createRoot((dispose) => {
-		createRenderEffect(() => {
+		stop = dispose;
+		renderEffect(() => {
 			count();
-			createRenderEffect(() => { seen.push(ownerId()); });
+			renderEffect(() => { seen.push(ownerId()); });
 			seen.push(createUniqueId());
 		});
-		setCount(1);
-		dispose();
 	}, "");
+	setCount(1);
+	flush();
+	(stop as () => void)();
 	assert seen.join(" ") === "[00] 01 [00] 01", seen.join(" ");
 }
 
@@ -89,7 +135,7 @@ test "createUniqueId is the same in two renders of one tree and counts alone out
 		let ids: string[] = [];
 		createRoot((dispose) => {
 			ids.push(createUniqueId());
-			createRenderEffect(() => { ids.push(createUniqueId()); });
+			renderEffect(() => { ids.push(createUniqueId()); });
 			ids.push(createUniqueId());
 			dispose();
 		}, "");
@@ -103,4 +149,76 @@ test "createUniqueId is the same in two renders of one tree and counts alone out
 	let b = "";
 	createRoot((dispose) => { b = createUniqueId(); dispose(); });
 	assert a !== b && a.startsWith("cl-") && b.startsWith("cl-"), a + " " + b;
+}
+
+function effectTree(): string {
+	const ids: string[] = [];
+	createRoot((dispose) => {
+		createEffect<boolean>(
+			(p: boolean | null): boolean => { ids.push(ownerId()); return true; },
+			(v: boolean, p: boolean | null): Cleanup | null => null,
+		);
+		renderEffect(() => { ids.push(ownerId()); });
+		ids.push(createUniqueId());
+		dispose();
+	}, "");
+	return ids.join(" ");
+}
+
+test "an effect takes the same child ids on the server as on the client" {
+	const client = effectTree();
+	setServerDepth(1);
+	let server = "";
+	try {
+		server = effectTree();
+	} finally {
+		setServerDepth(0);
+	}
+	assert client === "[0] [1] 2", client;
+	assert server === client, "server " + server + " client " + client;
+}
+
+test "on the server a render effect applies once and a user effect never does" {
+	let user = 0;
+	let render = 0;
+	setServerDepth(1);
+	try {
+		createRoot((dispose) => {
+			createEffect<boolean>(
+				(p: boolean | null): boolean => true,
+				(v: boolean, p: boolean | null): Cleanup | null => { user += 1; return null; },
+			);
+			createRenderEffect<boolean>(
+				(p: boolean | null): boolean => true,
+				(v: boolean, p: boolean | null): Cleanup | null => { render += 1; return null; },
+			);
+			dispose();
+		}, "");
+	} finally {
+		setServerDepth(0);
+	}
+	assert user === 0 && render === 1, "user " + user.toString() + " render " + render.toString();
+}
+
+function settledTree(): string {
+	const ids: string[] = [];
+	createRoot((dispose) => {
+		onSettled(() => null);
+		ids.push(createUniqueId());
+		dispose();
+	}, "");
+	return ids.join(" ");
+}
+
+test "onSettled takes a child id on the server as on the client" {
+	const client = settledTree();
+	setServerDepth(1);
+	let server = "";
+	try {
+		server = settledTree();
+	} finally {
+		setServerDepth(0);
+	}
+	assert client === "1", client;
+	assert server === client, "server " + server + " client " + client;
 }

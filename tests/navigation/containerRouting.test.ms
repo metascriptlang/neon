@@ -339,10 +339,10 @@ test "a malformed or out of range snapshot is refused before anything changes" {
 	const text = registry.restore({ regions: [{ scope: "main", state: "not json" }] });
 	assert !text.ok;
 	if (!text.ok) { assert text.error === RoutingError.IncompleteSnapshot; }
-	const home = "{\"name\":\"Home\",\"hasParams\":false,\"paramPairs\":[],\"nested\":[]}";
+	const home = JSON.stringify("{\"key\":\"Home-1\",\"name\":\"Home\",\"hasParams\":false,\"paramPairs\":[]}");
 	const outOfRange = registry.restore({ regions: [{
 		scope: "main",
-		state: "{\"index\":5,\"routes\":[" + home + "]}",
+		state: "{\"nodes\":[{\"key\":" + home + ",\"children\":5}]}",
 	}] });
 	assert !outOfRange.ok;
 	if (!outOfRange.ok) { assert outOfRange.error === RoutingError.IncompleteSnapshot; }

@@ -38,9 +38,9 @@ test "context and signals cross into the area" {
 	const [n, setN] = createSignal(1);
 	const root: MockNode = mockNode("root");
 	render(element(
-		<T.Provider value={{ accent: "blue" }}>
+		<T value={{ accent: "blue" }}>
 			<Void><Text>{useContext(T).accent}{n().toString()}</Text></Void>
-		</T.Provider>
+		</T>
 	), mockHost(), root as unknown as HostNode);
 	assert mockToString(root).indexOf("<text>blue1</text>") >= 0, "context read inside: " + mockToString(root);
 	setN(2);

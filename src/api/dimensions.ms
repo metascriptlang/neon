@@ -1,4 +1,5 @@
-import { Accessor, accessor, batch, createSignal } from "../core/signal";
+import { Accessor, accessor, createSignal } from "../core/signal";
+import { flush } from "../core/runtime";
 import { useWindowDimensions } from "../render/environment";
 import { EventSubscription, onChange } from "./subscription";
 
@@ -22,14 +23,14 @@ const [screenWidth, setScreenWidth] = createSignal<number>(0);
 const [screenHeight, setScreenHeight] = createSignal<number>(0);
 
 export function publishScale(ratio: number, font: number): void {
-	batch((): void => {
+	flush((): void => {
 		if (pixelRatio() !== ratio) { setPixelRatio(ratio); }
 		if (fontScale() !== font) { setFontScale(font); }
 	});
 }
 
 export function publishScreen(width: number, height: number): void {
-	batch((): void => {
+	flush((): void => {
 		if (screenWidth() !== width) { setScreenWidth(width); }
 		if (screenHeight() !== height) { setScreenHeight(height); }
 	});

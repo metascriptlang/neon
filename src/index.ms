@@ -1,17 +1,16 @@
 // Neon's public surface. Platform hosts stay out on purpose — a program picks
 // exactly one and pays for exactly one.
 
-export { Signal, createSignal, untrack, batch, accessor, valueOf, Accessor, Setter } from "./core/signal";
-export { createEffect, createRenderEffect, onMount } from "./core/effect";
-export { createMemo } from "./core/memo";
-export { createSelector } from "./core/selector";
+export { Signal, createSignal, untrack, accessor, valueOf, Accessor, Setter } from "./core/signal";
+export { createEffect, createRenderEffect, onSettled, EffectOptions, EffectBundle } from "./core/effect";
+export { createMemo, refresh } from "./core/memo";
 export { createRoot, runWithOwner, createUniqueId } from "./core/owner";
-export { getOwner } from "./core/runtime";
+export { getOwner, flush, isPending, latest, resetErrorHalt } from "./core/runtime";
 export { onCleanup } from "./core/cleanup";
-export { catchError } from "./core/error";
-export { mapArray, indexArray } from "./core/array";
+export { createErrorBoundary, createLoadingBoundary } from "./core/boundary";
+export { mapArray, mapArrayKeyedBy, mapArrayByPosition, repeat } from "./core/array";
 export { createList, List, ListOp, ListQueue } from "./core/list";
-export { Dispose } from "./core/types";
+export { Dispose, Cleanup, NotReadyError } from "./core/types";
 
 export { Host, HostNode, NeonNode } from "./render/hostTypes";
 export { render, hydrate } from "./render/host";
@@ -19,7 +18,7 @@ export { renderToString, renderToMarkup, SsrMarkup } from "./render/ssr";
 export { isServer } from "./render/environment";
 export { Head } from "./render/head";
 export { createComponent } from "./render/component";
-export { Context, ProviderProps, createContext, useContext } from "./render/context";
+export { Context, ContextNotFoundError, NoOwnerError, createContext, useContext } from "./render/context";
 export { NeonEvent, neonEvent } from "./render/event";
 export { Row, makeRow, rowOf, place, mountAt, moveRow, removeRow, reconcileArrays } from "./render/reconcile";
 
@@ -33,7 +32,7 @@ export { onCssChange, registerCss, collectCss, mountSheet, cssRuleCount, resetCs
 export { element } from "./macros/ui/element";
 export { createStyles, styleOf } from "./macros/ui/style";
 export { createTheme, setTheme, themeOf, setThemeCss } from "./macros/ui/theme";
-export { For, ForList, Index, Show } from "./macros/ui/flow";
+export { For, ForKeyedBy, ForUnkeyed, Repeat, ForList, Show, ShowKeyed, ShowWith, ShowKeyedWith, Errored, Loading } from "./macros/ui/flow";
 
 export { View, Text, Pressable, TextInput, ScrollView, ScrollViewHandle, KeyboardDismissMode, KeyboardShouldPersistTaps, TextSelection } from "./components/primitives";
 export {

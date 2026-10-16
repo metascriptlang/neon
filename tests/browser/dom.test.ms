@@ -5,7 +5,7 @@ import { NeonEvent } from "../../src/render/event";
 import { bindAttr } from "../../src/render/host";
 import { createSignal } from "../../src/core/signal";
 import { createRoot } from "../../src/core/owner";
-import { HOST_MOVE_CONTRACT, RECONCILE_CONTRACT, HOST_ATTR_CONTRACT, hostMoveContract, reconcileContract, hostAttrContract } from "../render/hostContract";
+import { HOST_MOVE_CONTRACT, RECONCILE_CONTRACT, HOST_ATTR_CONTRACT, hostMoveContract, reconcileContract, hostAttrContract, HOST_PARK_CONTRACT, hostParkContract } from "../render/hostContract";
 import { sleepAsync } from "std/core/promise";
 import { useWindowDimensions, useColorScheme } from "../../src/render/environment";
 
@@ -346,6 +346,11 @@ test "the DOM defines the host move contract" {
 	assert got === HOST_MOVE_CONTRACT, got;
 }
 
+test "the DOM keeps the park contract" {
+	const got = hostParkContract(domHost());
+	assert got === HOST_PARK_CONTRACT, got;
+}
+
 test "reconcileArrays keeps its contract on the DOM" {
 	const got = reconcileContract(domHost());
 	assert got === RECONCILE_CONTRACT, got;
@@ -444,6 +449,23 @@ test "disposed DOM listeners cannot mutate state through retained detached nodes
 		window.eval("window.neonRetiredListenerNode.click(); delete window.neonRetiredListenerNode");
 		assert count === cycle + 1, "a detached node cannot run its disposed listener";
 	}
+}
+
+test "listeners added with no owner attach and are released by the host" {
+	const h = domHost();
+	const parent = documentBody();
+	let presses = 0;
+	const el = h.createElement("pressable");
+	h.setAttr(el, "id", "neon-ownerless-listener");
+	h.append(parent, el);
+	h.addEvent(el, "onPress", (e: NeonEvent): void => { presses += 1; });
+	window.eval("document.getElementById('neon-ownerless-listener').click()");
+	assert presses === 1, "an ownerless press listener attaches";
+	window.eval("window.neonOwnerlessNode = document.getElementById('neon-ownerless-listener')");
+	h.removeChild(parent, el);
+	h.release(el);
+	window.eval("window.neonOwnerlessNode.click(); delete window.neonOwnerlessNode");
+	assert presses === 1, "release removes the ownerless listener";
 }
 
 test "onLayout keeps logical parent coordinates and dimensions under inversions and scale" {

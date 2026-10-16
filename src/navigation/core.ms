@@ -1,5 +1,7 @@
-import { Accessor, Setter, Signal, accessor, batch, createSignal, untrack } from "../core/signal";
-import { createRenderEffect } from "../core/effect";
+import { Accessor, Setter, Signal, accessor, createSignal, untrack } from "../core/signal";
+import { flush } from "../core/runtime";
+import { createEffect, createRenderEffect } from "../core/effect";
+import { Cleanup } from "../core/types";
 import { createRoot } from "../core/owner";
 import { onCleanup } from "../core/cleanup";
 import { NeonNode } from "../render/hostTypes";
@@ -7,6 +9,12 @@ import { Style } from "../render/style";
 import { StackLayout } from "./layout";
 import { createContext, useContext } from "../render/context";
 import { refreshKeep } from "../render/refresh";
+import {
+	WebKeySerializer,
+	WebNavigationError,
+	WebNavigationNode,
+	WebNavigationOwner,
+} from "./webNavigation";
 
 export enum NavigatorKind {
 	Container,
@@ -20,6 +28,8 @@ export enum DrawerAction {
 	Close,
 	Toggle,
 }
+
+export const DRAWER_OPEN_KEY = "drawer-open";
 
 export interface TabBarIconProps {
 	focused: boolean;
@@ -129,6 +139,16 @@ export interface NavigationState {
 	routes: NavigationRoute[];
 }
 
+export interface WebRoutes {
+	path: (name: string, values: Map<string, string> | null) => string | null;
+	parameters: (
+		routeKey: string,
+		name: string,
+		values: Map<string, string> | null,
+	) => Map<string, string> | null;
+	child: (routeKey: string, name: string) => WebNavigationOwner | null;
+}
+
 export interface NavigatorLink {
 	kind: NavigatorKind;
 	hasRoute: (name: string) => boolean;
@@ -150,6 +170,52 @@ export interface NavigatorLink {
 	state: () => NavigationState;
 	parent: () => NavigatorLink | null;
 	describe: () => string;
+	webNavigation: (routes: WebRoutes) => WebNavigationNode;
+	screen: () => unknown;
+	nested: (routeKey: string) => NavigatorLink | null;
+	seedNested: (routeKey: string, state: NavigationState | null) => void;
+}
+
+export interface SeedRoute {
+	key: string;
+	name: string;
+	params: Map<string, string> | null;
+}
+
+struct SeedKey {
+	key: string;
+	name: string;
+	hasParams: boolean;
+	paramPairs: string[];
+}
+
+export function encodeSeedRoute(route: SeedRoute): string {
+	const paramPairs: string[] = [];
+	const values = route.params;
+	if (values !== null) {
+		for (const key of values as Map<string, string>) {
+			paramPairs.push(key);
+			paramPairs.push((values as Map<string, string>).get(key) ?? "");
+		}
+	}
+	const stored: SeedKey = { key: route.key, name: route.name, hasParams: values !== null, paramPairs };
+	return JSON.stringify(stored);
+}
+
+export function decodeSeedRoute(text: string): SeedRoute | null {
+	const parsed = JSON.parse<SeedKey>(text);
+	if (!parsed.ok) { return null; }
+	const stored = parsed.value;
+	if (stored.name === "" || stored.paramPairs.length % 2 !== 0) { return null; }
+	let params: Map<string, string> | null = null;
+	if (stored.hasParams) {
+		const values = new Map<string, string>();
+		for (let i = 0; i < stored.paramPairs.length; i += 2) {
+			values.set(stored.paramPairs[i], stored.paramPairs[i + 1]);
+		}
+		params = values;
+	}
+	return { key: stored.key, name: stored.name, params };
 }
 
 export class ScreenScope {
@@ -377,8 +443,6 @@ export class Navigation<P> {
 	writeParams: Setter<P | null>;
 	overrides: Accessor<ScreenOptions>;
 	writeOverrides: Setter<ScreenOptions>;
-	visited: Accessor<boolean>;
-	markVisited: Setter<boolean>;
 
 	constructor(
 		core: NavigatorCore<P>,
@@ -387,8 +451,6 @@ export class Navigation<P> {
 		writeParams: Setter<P | null>,
 		overrides: Accessor<ScreenOptions>,
 		writeOverrides: Setter<ScreenOptions>,
-		visited: Accessor<boolean>,
-		markVisited: Setter<boolean>,
 	) {
 		this.core = core;
 		this.registrationKey = readRegistrationKey(config.navigationKey);
@@ -397,8 +459,6 @@ export class Navigation<P> {
 		this.writeParams = writeParams;
 		this.overrides = overrides;
 		this.writeOverrides = writeOverrides;
-		this.visited = visited;
-		this.markVisited = markVisited;
 	}
 
 	goBack(): void {
@@ -430,6 +490,7 @@ export class Navigation<P> {
 
 	setParams(params: P): void {
 		this.writeParams(params);
+		this.core.container.changed();
 	}
 
 	setOptions(options: ScreenOptions): void {
@@ -525,19 +586,14 @@ export class Navigation<P> {
 		}
 		const wantFocus = event === "focus";
 		return createRoot((dispose: () => void): Unsubscribe => {
-			let first = true;
-			let last = false;
-			createRenderEffect((): void => {
-				const now = this.focusedNow();
-				if (first) {
-					first = false;
-					last = now;
-					return;
-				}
-				if (now === last) { return; }
-				last = now;
-				if (now === wantFocus) { untrack((): void => { notify(event); }); }
-			});
+			createRenderEffect<boolean>(
+				(prev: boolean | null): boolean => this.focusedNow(),
+				(now: boolean, prev: boolean | null): Cleanup | null => {
+					if (prev === null || now === (prev as boolean)) { return null; }
+					if (now === wantFocus) { notify(event); }
+					return null;
+				},
+			);
 			return dispose;
 		});
 	}
@@ -633,6 +689,14 @@ export interface NavigatorModel<P> {
 	back: () => boolean;
 	canPop: () => boolean;
 	drawer: (action: DrawerAction) => boolean;
+	webNavigation: (map: RouteWebMap<P>) => WebNavigationNode;
+}
+
+export interface RouteWebMap<P> {
+	serializer: WebKeySerializer<RouteSeed<P>>;
+	path: (entry: Navigation<P>) => string | null;
+	parameters: (entry: Navigation<P>) => Map<string, string> | null;
+	child: (entry: Navigation<P>) => WebNavigationOwner | null;
 }
 
 export interface NavigatorSetup<P> {
@@ -763,6 +827,72 @@ export class NavigatorCore<P> {
 		return { key, name, params: params !== null ? params : config.initialParams };
 	}
 
+	adopt(key: string, name: string, params: P | null): RouteSeed<P> {
+		if (key === "") { return this.seed(name, params); }
+		const screen = this.config(name);
+		if (screen === null) {
+			throw new Error("navigator has no screen named '" + name + "'");
+		}
+		const dash = key.lastIndexOf("-");
+		if (dash >= 0) {
+			const counted = parseInt(key.substring(dash + 1, key.length));
+			if (counted >= this.nextKey) { this.nextKey = (counted + 1) as int32; }
+		}
+		return {
+			key,
+			name,
+			params: params !== null ? params : (screen as ScreenConfig<P>).initialParams,
+		};
+	}
+
+	seedSerializer(): WebKeySerializer<RouteSeed<P>> {
+		return {
+			encode: (seed: RouteSeed<P>): string => {
+				for (const entry of this.snapshot()) {
+					if (entry.route.key === seed.key) {
+						return encodeSeedRoute({
+							key: seed.key,
+							name: seed.name,
+							params: this.encodeParams(entry),
+						});
+					}
+				}
+				throw new Error("web history: no live route has the key " + seed.key);
+			},
+			decode: (text: string): Result<RouteSeed<P>, WebNavigationError> => {
+				const route = decodeSeedRoute(text);
+				if (route === null) { return Result.err(WebNavigationError.UndecodableKey); }
+				const stored = route as SeedRoute;
+				const screen = this.config(stored.name);
+				if (screen === null) { return Result.err(WebNavigationError.UndecodableKey); }
+				const values = stored.params;
+				let params: P | null = null;
+				if (values !== null) {
+					const parse = (screen as ScreenConfig<P>).parseParams;
+					if (parse === null) { return Result.err(WebNavigationError.UndecodableKey); }
+					params = (parse as (values: Map<string, string>) => P)(values as Map<string, string>);
+				}
+				return Result.ok(this.adopt(stored.key, stored.name, params));
+			},
+		};
+	}
+
+	webNavigation(routes: WebRoutes): WebNavigationNode {
+		const values = (entry: Navigation<P>): Map<string, string> | null => this.encodeParams(entry);
+		return this.model.webNavigation({
+			serializer: this.seedSerializer(),
+			path: (entry: Navigation<P>): string | null => {
+				return routes.path(entry.route.name, values(entry));
+			},
+			parameters: (entry: Navigation<P>): Map<string, string> | null => {
+				return routes.parameters(entry.route.key, entry.route.name, values(entry));
+			},
+			child: (entry: Navigation<P>): WebNavigationOwner | null => {
+				return routes.child(entry.route.key, entry.route.name);
+			},
+		});
+	}
+
 	seedOf(entry: Navigation<P>): RouteSeed<P> {
 		return {
 			key: entry.route.key,
@@ -776,8 +906,7 @@ export class NavigatorCore<P> {
 		const name = seed.name;
 		const [read, write] = createSignal<P | null>(seed.params);
 		const empty: ScreenOptions = {};
-		const [overrides, writeOverrides] = createSignal<ScreenOptions>(empty);
-		const [visited, markVisited] = createSignal<boolean>(false);
+		const [overrides, writeOverrides] = createSignal<ScreenOptions>(empty, { ownedWrite: true });
 		const route = new Route<P>(seed.key, name, read);
 		const entry = new Navigation<P>(
 			this,
@@ -786,8 +915,6 @@ export class NavigatorCore<P> {
 			write,
 			overrides,
 			writeOverrides,
-			visited,
-			markVisited,
 		);
 		return entry;
 	}
@@ -797,17 +924,7 @@ export class NavigatorCore<P> {
 	}
 
 	apply(change: () => void): void {
-		batch((): void => {
-			change();
-			this.markCurrent();
-		});
-		this.notify();
-		this.container.changed();
-	}
-
-	markCurrent(): void {
-		const current = this.current();
-		if (current !== null) { (current as Navigation<P>).markVisited(true); }
+		flush(change);
 	}
 
 	notify(): void {
@@ -877,11 +994,8 @@ export class NavigatorCore<P> {
 
 	bypass: boolean = false;
 
-	guarded(type: string, removed: Navigation<P>[], apply: () => void): boolean {
-		if (this.bypass || removed.length === 0) {
-			apply();
-			return true;
-		}
+	allows(type: string, removed: Navigation<P>[], apply: () => void): boolean {
+		if (this.bypass || removed.length === 0) { return true; }
 		const action = new NavigationAction(type, (): void => {
 			this.bypass = true;
 			apply();
@@ -890,6 +1004,11 @@ export class NavigatorCore<P> {
 		for (let i = removed.length - 1; i >= 0; i -= 1) {
 			if (removed[i].emitBeforeRemove(action)) { return false; }
 		}
+		return true;
+	}
+
+	guarded(type: string, removed: Navigation<P>[], apply: () => void): boolean {
+		if (!this.allows(type, removed, apply)) { return false; }
 		apply();
 		return true;
 	}
@@ -1026,7 +1145,7 @@ export class NavigatorCore<P> {
 			list.push({ key: "", name: route.name, params });
 		}
 		for (let i = 0; i < list.length; i += 1) {
-			list[i] = this.seed(list[i].name, list[i].params);
+			list[i] = this.adopt(state.routes[i].key, list[i].name, list[i].params);
 			const child = state.routes[i].state;
 			if (child !== null) {
 				this.seeds.push({ routeKey: list[i].key, state: child as NavigationState });
@@ -1047,6 +1166,42 @@ export class NavigatorCore<P> {
 				return;
 			}
 		}
+	}
+
+	nestedLink(routeKey: string): NavigatorLink | null {
+		for (const entry of this.children) {
+			if (entry.routeKey === routeKey && this.holds(entry.link.screen())) { return entry.link; }
+		}
+		return null;
+	}
+
+	holds(screen: unknown): boolean {
+		for (const entry of this.snapshot()) {
+			if ((entry as unknown) === screen) { return true; }
+		}
+		return false;
+	}
+
+	restoreParams(seeds: RouteSeed<P>[]): void {
+		for (const entry of this.snapshot()) {
+			for (const seed of seeds) {
+				if (seed.key === entry.route.key && seed.params !== null) { entry.writeParams(seed.params); }
+			}
+		}
+	}
+
+	seedNested(routeKey: string, state: NavigationState | null): void {
+		const seeds: SeedEntry[] = [];
+		for (const entry of this.seeds) {
+			if (entry.routeKey !== routeKey) { seeds.push(entry); }
+		}
+		const pending: PendingEntry[] = [];
+		for (const entry of this.pending) {
+			if (entry.routeKey !== routeKey) { pending.push(entry); }
+		}
+		if (state !== null) { seeds.push({ routeKey, state: state as NavigationState }); }
+		this.seeds = seeds;
+		this.pending = pending;
 	}
 
 	focusedChild(): NavigatorLink | null {
@@ -1136,6 +1291,12 @@ export function linkOf<P>(core: NavigatorCore<P>): NavigatorLink {
 		state: (): NavigationState => core.trackedState(),
 		parent: (): NavigatorLink | null => core.parent,
 		describe: (): string => core.describe(),
+		webNavigation: (routes: WebRoutes): WebNavigationNode => core.webNavigation(routes),
+		screen: (): unknown => core.parentNavigation,
+		nested: (routeKey: string): NavigatorLink | null => core.nestedLink(routeKey),
+		seedNested: (routeKey: string, state: NavigationState | null): void => {
+			core.seedNested(routeKey, state);
+		},
 	};
 	core.link = link;
 	return link;
@@ -1159,10 +1320,23 @@ export function createCore<P>(setup: NavigatorSetup<P>): NavigatorCore<P> {
 	}
 	const scope = setup.scope;
 	const core = new NavigatorCore<P>(setup, initial, scope.link.seedFor(scope.routeKey));
+	flush();
 	const link = linkOf<P>(core);
-	core.markCurrent();
 	core.notify();
 	core.container.changed();
+	createEffect<boolean>(
+		(prev: boolean | null): boolean => {
+			core.entries();
+			core.index();
+			return true;
+		},
+		(changed: boolean, prev: boolean | null): Cleanup | null => {
+			core.notify();
+			core.container.changed();
+			return null;
+		},
+		{ defer: true },
+	);
 	when (refresh || hcr) {
 		refreshKeep<ResetState<P>>(
 			"navigator",
@@ -1203,22 +1377,15 @@ export function useNavigationState<T>(selector: (state: NavigationState) => T): 
 	return accessor((): T => selector(link.state()));
 }
 
-export function useFocusEffect(effect: () => (() => void) | null): void {
+export function useFocusEffect(effect: () => Cleanup | null): void {
 	const focused = currentScope("useFocusEffect").focused;
-	let cleanup: (() => void) | null = null;
-	const release = (): void => {
-		const done = cleanup;
-		cleanup = null;
-		if (done !== null) { (done as () => void)(); }
-	};
-	createRenderEffect((): void => {
-		if (focused()) {
-			untrack((): void => { cleanup = effect(); });
-		} else {
-			untrack((): void => { release(); });
-		}
-	});
-	onCleanup(release);
+	createRenderEffect<boolean>(
+		(prev: boolean | null): boolean => focused(),
+		(isFocused: boolean, prev: boolean | null): Cleanup | null => {
+			if (isFocused) { return effect(); }
+			return null;
+		},
+	);
 }
 
 export function useTheme(): Accessor<Theme> {

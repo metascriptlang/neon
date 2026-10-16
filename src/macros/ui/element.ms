@@ -229,7 +229,7 @@ export macro element(node: Node): Node {
 		}
 		return null;
 	}
-	function componentType(c: Node): Node | null {
+	function tagType(c: Node): Node | null {
 		const parts: string[] = c.jsxTag.split(".");
 		const sym = bindSym(parts[0]);
 		if (sym === null) {
@@ -251,6 +251,18 @@ export macro element(node: Node): Node {
 				return null;
 			}
 		}
+		return t;
+	}
+	function isContextTag(c: Node): boolean {
+		const t = tagType(c);
+		if (t === null) { return false; }
+		const generic = peelTypeRef(t as Node);
+		if (generic.kind !== NodeKind.TypeGeneric) { return false; }
+		const base = generic.typExprBase;
+		return base.kind === NodeKind.Identifier && base.name === "Context";
+	}
+	function componentType(c: Node): Node | null {
+		const t = tagType(c);
 		const fn = t === null ? null : peelTypeRef(t as Node);
 		if (fn === null || fn.kind !== NodeKind.TypeFunction) {
 			error("<" + c.jsxTag + "> is not a component: its type is not a function", c);
@@ -677,8 +689,6 @@ export macro element(node: Node): Node {
 		if (t !== null && t.kind === NodeKind.TypeFunction) { return t.typExprParams.length; }
 		return 0;
 	}
-	// A row that rebinds the index name is not detected, so it reads as a use and
-	// keeps the machinery.
 	function readsName(n: Node, name: string): boolean {
 		if (n.kind === NodeKind.Identifier && n.name === name) { return true; }
 		const c = childCount(n);
@@ -687,8 +697,6 @@ export macro element(node: Node): Node {
 		}
 		return false;
 	}
-	// A For row that never names its index parameter lets mapArray drop the per-row
-	// index cell, accessor and setter; anything the macro cannot read says it does.
 	function rowUsesIndex(row: Node): boolean {
 		const r = peelHidden(row);
 		if (r.kind !== NodeKind.ArrowFunction) { return true; }
@@ -784,7 +792,125 @@ export macro element(node: Node): Node {
 	node = flattenFragments(lowerFlowTree(node));
 
 
-	function componentCall(c: Node): Node {
+	const keyedMsg = "<For keyed> takes true, false or a key function, written in place: the row's parameters differ in each case, so a computed value cannot choose between them";
+	function forByKeyed(c: Node): Node {
+		if (c.jsxTag !== "For") { return c; }
+		let at = -1;
+		for (let i = 0; i < c.jsxAttrs.length; i = i + 1) {
+			const a = c.jsxAttrs[i];
+			if (a.kind === NodeKind.JSXAttribute && a.jsxAttrName === "keyed") { at = i; }
+		}
+		if (at < 0) { return c; }
+		const keyed = c.jsxAttrs[at];
+		const value = peelHidden(keyed.jsxAttrValue);
+		let tag = "For";
+		let keep = false;
+		if (value.kind === NodeKind.BooleanLiteral) {
+			if (!value.boolValue) { tag = "ForUnkeyed"; }
+		} else if (isFunctionValued(value)) {
+			tag = "ForKeyedBy";
+			keep = true;
+		} else {
+			error(keyedMsg, keyed);
+		}
+		let attrs: Node[] = [];
+		for (let i = 0; i < c.jsxAttrs.length; i = i + 1) {
+			if (i !== at || keep) { attrs.push(c.jsxAttrs[i]); }
+		}
+		return { kind: NodeKind.JSXElement, line: c.line, column: c.column, jsxTag: tag, jsxAttrs: attrs, jsxChildren: c.jsxChildren, jsxSelfClosing: c.jsxSelfClosing };
+	}
+	const showKeyedMsg = "<Show keyed> takes true or false, written in place: a function child receives an Accessor of the value, or the value itself when keyed, so a computed value cannot choose between them";
+	const showArityMsg = "a <Show> function child takes one parameter, the narrowed value";
+	let showIdx = 0;
+	function showCall(c: Node): Node {
+		let whenAt = -1;
+		let keyedAt = -1;
+		for (let i = 0; i < c.jsxAttrs.length; i = i + 1) {
+			const a = c.jsxAttrs[i];
+			if (a.kind !== NodeKind.JSXAttribute) { continue; }
+			if (a.jsxAttrName === "when") { whenAt = i; }
+			if (a.jsxAttrName === "keyed") { keyedAt = i; }
+		}
+		if (whenAt < 0) {
+			error("<Show> requires the 'when' prop", c);
+			return componentOf(c);
+		}
+		let keyed = false;
+		if (keyedAt >= 0) {
+			const k = peelHidden(c.jsxAttrs[keyedAt].jsxAttrValue);
+			if (k.kind === NodeKind.BooleanLiteral) { keyed = k.boolValue; } else { error(showKeyedMsg, c.jsxAttrs[keyedAt]); }
+		}
+		let significant: Node[] = [];
+		for (const k of c.jsxChildren) {
+			if (!(k.kind === NodeKind.JSXText && cleanJsxText(k.jsxText) === "")) { significant.push(k); }
+		}
+		let withValue = false;
+		if (significant.length === 1 && significant[0].kind === NodeKind.JSXExpressionContainer) {
+			const only = significant[0].jsxExpr;
+			if (isFunctionValued(only) && !isNodeTyped(only)) {
+				const arity = rowArity(only);
+				if (arity > 1) { error(showArityMsg, only); }
+				withValue = arity === 1;
+			}
+		}
+		const ln = c.line;
+		const col = c.column;
+		const given = c.jsxAttrs[whenAt].jsxAttrValue;
+		const source: Node = isAccessorTyped(given)
+			? { kind: NodeKind.CallExpr, line: ln, column: col, callee: given, arguments: [] }
+			: given;
+		const name = "_s" + showIdx.toString();
+		showIdx = showIdx + 1;
+		const read: Node = { kind: NodeKind.CallExpr, line: ln, column: col, callee: ident(name, ln, col), arguments: [] };
+		function truthy(of: Node): Node {
+			return {
+				kind: NodeKind.ConditionalExpr, line: ln, column: col, ternaryCondition: of,
+				ternaryConsequent: { kind: NodeKind.BooleanLiteral, line: ln, column: col, boolValue: true },
+				ternaryAlternate: { kind: NodeKind.BooleanLiteral, line: ln, column: col, boolValue: false },
+			};
+		}
+		function attr(attrName: string, value: Node): Node {
+			return { kind: NodeKind.JSXAttribute, line: ln, column: col, jsxAttrName: attrName, jsxAttrValue: value };
+		}
+		function unwrapped(of: Node): Node {
+			return { kind: NodeKind.TypeAssertion, line: ln, column: col, asExpr: of, asType: "!" };
+		}
+		const plain = !keyed && !withValue;
+		let tag = "Show";
+		let attrs: Node[] = [];
+		for (let i = 0; i < c.jsxAttrs.length; i = i + 1) {
+			if (i === whenAt) { attrs.push(attr("when", truthy(plain ? source : read))); }
+			else if (i !== keyedAt) { attrs.push(c.jsxAttrs[i]); }
+		}
+		if (keyed && !withValue) { tag = "ShowKeyed"; }
+		if (!keyed && withValue) { tag = "ShowWith"; attrs.push(attr("value", unwrapped(read))); }
+		if (keyed && withValue) { tag = "ShowKeyedWith"; attrs.push(attr("value", unwrapped(read))); }
+		const inner = componentOf({ kind: NodeKind.JSXElement, line: ln, column: col, jsxTag: tag, jsxAttrs: attrs, jsxChildren: c.jsxChildren, jsxSelfClosing: c.jsxSelfClosing });
+		if (plain) { return inner; }
+		return {
+			kind: NodeKind.CallExpr, line: ln, column: col, callee: ident("showWhen", ln, col),
+			arguments: [
+				{ kind: NodeKind.ArrowFunction, line: ln, column: col, arrowParams: [], arrowParamTypes: [], arrowBody: source, arrowFlags: "", arrowReturnType: "" },
+				{ kind: NodeKind.ArrowFunction, line: ln, column: col, arrowParams: [name], arrowParamTypes: [""], arrowBody: inner, arrowFlags: "", arrowReturnType: "" },
+			],
+		};
+	}
+	function contextProvider(given: Node): Node {
+		let valued = false;
+		for (const a of given.jsxAttrs) {
+			if (a.kind === NodeKind.JSXAttribute && a.jsxAttrName === "value") { valued = true; }
+		}
+		if (!valued) {
+			error("<" + given.jsxTag + "> needs a value prop: a context provider without one has nothing to provide", given);
+		}
+		return { kind: NodeKind.JSXElement, line: given.line, column: given.column, jsxTag: given.jsxTag + ".provider", jsxAttrs: given.jsxAttrs, jsxChildren: given.jsxChildren, jsxSelfClosing: given.jsxSelfClosing };
+	}
+	function componentCall(given: Node): Node {
+		const c = isContextTag(given) ? contextProvider(given) : given;
+		if (c.jsxTag === "Show") { return showCall(c); }
+		return componentOf(forByKeyed(c));
+	}
+	function componentOf(c: Node): Node {
 		let keys: string[] = [];
 		let values: Node[] = [];
 		const declared = declaredProps(c);
@@ -846,7 +972,7 @@ export macro element(node: Node): Node {
 				macroArgs: [{ kind: NodeKind.JSXFragment, line: c.line, column: c.column, jsxFragChildren: c.jsxChildren }],
 			});
 		}
-		if (tag === "For") {
+		if (tag === "For" || tag === "ForKeyedBy") {
 			let written = false;
 			let rowAt = -1;
 			for (let i = 0; i < keys.length; i = i + 1) {
@@ -858,8 +984,8 @@ export macro element(node: Node): Node {
 				values.push({ kind: NodeKind.BooleanLiteral, line: c.line, column: c.column, boolValue: rowUsesIndex(values[rowAt]) });
 			}
 		}
-		// A dotted tag (Ctx.Provider) resolves through member access, not a flat
-		// name: fold the parts so the checker sees Ctx.Provider and types the call
+		// A dotted tag (Palettes.tone) resolves through member access, not a flat
+		// name: fold the parts so the checker sees Palettes.tone and types the call
 		// through the field's declared component type.
 		let tagRef: Node = { kind: NodeKind.Identifier, line: c.line, column: c.column, name: tag };
 		if (tag.indexOf(".") >= 0) {

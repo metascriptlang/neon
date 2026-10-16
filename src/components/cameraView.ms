@@ -7,6 +7,10 @@ import { NeonNode, VAttr, VEvent, hostElement, evt, dynAttr } from "../render/no
 import { AccessibilityProps, accessibilityAttrs } from "./primitives";
 import { Permissions, PermissionResponse } from "../api/permissions";
 
+when (js && !server) {
+	import "../platform/browser/camera";
+}
+
 export type CameraType = "back" | "front";
 export type FlashMode = "off" | "on" | "auto";
 

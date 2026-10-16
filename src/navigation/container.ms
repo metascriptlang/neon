@@ -1,5 +1,7 @@
-import { Accessor, accessor } from "../core/signal";
+import { Accessor, Signal, accessor } from "../core/signal";
 import { onCleanup } from "../core/cleanup";
+import { createEffect } from "../core/effect";
+import { Cleanup, Dispose } from "../core/types";
 import { Host, HostNode, NeonNode } from "../render/hostTypes";
 import { BackHandler } from "../api/backHandler";
 import { Linking, LinkingUrlEvent } from "../api/linking";
@@ -12,43 +14,37 @@ import {
 	NavTarget,
 	NavigatorKind,
 	NavigatorLink,
-	NavigationRoute,
 	NavigationState,
 	RouteKey,
 	ScopeContext,
 	ScreenScope,
+	WebRoutes,
 	deepestFocused,
 	navigateUp,
 } from "./core";
-import {
-	LinkingConfig,
-	LinkingOptions,
-	pathFromState,
-	targetFromPath,
-	targetFromURL,
-} from "./linking";
-import { RoutePlan, RoutingError, RoutingParticipant, RoutingRegistry } from "./routing";
+import { LinkingOptions, targetFromPath, targetFromURL } from "./linking";
+import { RoutingRegistry } from "./routing";
+import { RoutingSession } from "./routingHistory";
+import { WebNavigationNode } from "./webNavigation";
+import { ContainerSlot, createContainerHistory } from "./containerHistory";
 
 export interface ContainerRouting {
 	registry: RoutingRegistry;
 	scope: string;
 }
 
-struct RouteSnapshot {
-	name: string;
-	hasParams: boolean;
-	paramPairs: string[];
-	nested: StateSnapshot[];
-}
-
-struct StateSnapshot {
-	index: int32;
-	routes: RouteSnapshot[];
-}
-
 export class NavigationContainerRef {
 	link: NavigatorLink | null = null;
 	linkPath: (path: string) => boolean = (path: string): boolean => false;
+	history: ((session: RoutingSession) => Dispose) | null = null;
+
+	enableHistory(session: RoutingSession): Dispose {
+		const history = this.history;
+		if (history === null) {
+			throw new Error("enableHistory: the NavigationContainer has no routing");
+		}
+		return (history as (session: RoutingSession) => Dispose)(session);
+	}
 
 	isReady(): boolean {
 		return this.root() !== null;
@@ -152,12 +148,16 @@ function emptyState(): NavigationState {
 	return { index: 0, routeNames: [], routes: [] };
 }
 
-function containerLink(initialState: NavigationState | null): NavigatorLink {
+function containerLink(initialState: NavigationState | null): ContainerSlot {
 	let root: NavigatorLink | null = null;
 	let waiting: NavTarget | null = null;
 	let initial = initialState;
 	let seed = initialState;
-	return {
+	const seedRoot = (state: NavigationState | null): void => {
+		seed = state === null ? initial : state;
+		if (state !== null) { waiting = null; }
+	};
+	const link: NavigatorLink = {
 		kind: NavigatorKind.Container,
 		hasRoute: (name: string): boolean => {
 			return root !== null && (root as NavigatorLink).hasRoute(name);
@@ -209,106 +209,18 @@ function containerLink(initialState: NavigationState | null): NavigatorLink {
 			: (root as NavigatorLink).state(),
 		parent: (): NavigatorLink | null => null,
 		describe: (): string => root === null ? "" : (root as NavigatorLink).describe(),
+		webNavigation: (routes: WebRoutes): WebNavigationNode => {
+			throw new Error("NavigationContainer publishes its history through its root navigator");
+		},
+		screen: (): unknown => null,
+		nested: (routeKey: string): NavigatorLink | null => root,
+		seedNested: (routeKey: string, state: NavigationState | null): void => seedRoot(state),
 	};
-}
-
-function snapshotOf(state: NavigationState): StateSnapshot {
-	const routes: RouteSnapshot[] = [];
-	for (const route of state.routes) {
-		const paramPairs: string[] = [];
-		const values = route.params;
-		if (values !== null) {
-			for (const key of values as Map<string, string>) {
-				paramPairs.push(key);
-				paramPairs.push((values as Map<string, string>).get(key) ?? "");
-			}
-		}
-		const nested = route.state;
-		routes.push({
-			name: route.name,
-			hasParams: values !== null,
-			paramPairs,
-			nested: nested === null ? [] : [snapshotOf(nested as NavigationState)],
-		});
-	}
-	return { index: state.index, routes };
-}
-
-function stateOfSnapshot(snapshot: StateSnapshot): Result<NavigationState, RoutingError> {
-	const count = snapshot.routes.length;
-	if (count === 0 || snapshot.index < 0 || snapshot.index >= count) {
-		return Result.err(RoutingError.IncompleteSnapshot);
-	}
-	const routes: NavigationRoute[] = [];
-	for (const route of snapshot.routes) {
-		if (route.paramPairs.length % 2 !== 0 || route.nested.length > 1) {
-			return Result.err(RoutingError.IncompleteSnapshot);
-		}
-		let params: Map<string, string> | null = null;
-		if (route.hasParams) {
-			const values = new Map<string, string>();
-			for (let i = 0; i < route.paramPairs.length; i += 2) {
-				values.set(route.paramPairs[i], route.paramPairs[i + 1]);
-			}
-			params = values;
-		}
-		let state: NavigationState | null = null;
-		if (route.nested.length === 1) {
-			const nested = try stateOfSnapshot(route.nested[0]);
-			state = nested;
-		}
-		routes.push({ key: "", name: route.name, params, state });
-	}
-	return Result.ok({ index: snapshot.index, routeNames: [], routes });
-}
-
-function containerParticipant(
-	scope: string,
-	link: NavigatorLink,
-	config: LinkingConfig,
-): RoutingParticipant {
-	let unmountedAddress: string | null = null;
-	const mounted = (): boolean => link.state().routes.length > 0;
 	return {
-		scope,
-		prepare: (address: string | null): Result<RoutePlan, RoutingError> => {
-			if (address === null) {
-				return Result.ok({ commit: (): void => {
-					unmountedAddress = null;
-					link.restore(emptyState());
-				} });
-			}
-			const path = address as string;
-			const target = targetFromPath(path, config);
-			if (target === null) { return Result.err(RoutingError.NoMatch); }
-			return Result.ok({ commit: (): void => {
-				if (!link.navigateTo(target as NavTarget)) {
-					throw new Error("routing: no navigator has a screen for '" + path + "'");
-				}
-				unmountedAddress = path;
-			} });
-		},
-		address: (): Result<string | null, RoutingError> => {
-			if (!mounted()) { return Result.ok(unmountedAddress); }
-			const path: string | null = pathFromState(link.state(), config);
-			return Result.ok(path);
-		},
-		capture: (): string => JSON.stringify(snapshotOf(link.state())),
-		restore: (state: string): Result<RoutePlan, RoutingError> => {
-			const parsed = JSON.parse<StateSnapshot>(state);
-			if (!parsed.ok) { return Result.err(RoutingError.IncompleteSnapshot); }
-			if (parsed.value.routes.length === 0) {
-				return Result.ok({ commit: (): void => {
-					unmountedAddress = null;
-					link.restore(emptyState());
-				} });
-			}
-			const restored = try stateOfSnapshot(parsed.value);
-			return Result.ok({ commit: (): void => {
-				unmountedAddress = pathFromState(restored, config);
-				link.restore(restored);
-			} });
-		},
+		link,
+		root: (): NavigatorLink | null => root,
+		waiting: (): NavTarget | null => waiting,
+		seedRoot,
 	};
 }
 
@@ -327,25 +239,14 @@ export function NavigationContainer(props: {
 	theme?: Accessor<Theme> | null;
 	routing?: ContainerRouting | null;
 }): NeonNode {
-	const link = containerLink(props.initialState);
+	const slot = containerLink(props.initialState);
+	const link = slot.link;
 	const ownTheme = props.theme;
 	const theme = accessor((): Theme => {
 		return ownTheme === null ? DefaultTheme : (ownTheme as Accessor<Theme>)();
 	});
 	const linking = props.linking;
 	const routing = props.routing;
-	if (routing !== null) {
-		if (linking === null) {
-			throw new Error("NavigationContainer: routing needs a linking config");
-		}
-		const joined = routing as ContainerRouting;
-		const participant = containerParticipant(
-			joined.scope,
-			link,
-			(linking as LinkingOptions).config,
-		);
-		onCleanup(joined.registry.register(participant));
-	}
 	const enabled = linking !== null && (linking as LinkingOptions).enabled !== false;
 	const openURL = (url: string): boolean => {
 		if (!enabled) { return false; }
@@ -362,11 +263,53 @@ export function NavigationContainer(props: {
 		return link.navigateTo(target as NavTarget);
 	};
 	const state = new ContainerState(openPath, theme);
+	const changes = new Signal<int32>(0, null, true);
 	const stateChange = props.onStateChange;
-	if (stateChange !== null) {
-		const report = stateChange as (state: NavigationState) => void;
-		state.changed = (): void => {
-			if (state.ready) { report(link.state()); }
+	state.changed = (): void => {
+		changes.set(changes.peek() + 1);
+		if (stateChange !== null && state.ready) {
+			(stateChange as (state: NavigationState) => void)(link.state());
+		}
+	};
+	let history: ((session: RoutingSession) => Dispose) | null = null;
+	if (routing !== null) {
+		if (linking === null) {
+			throw new Error("NavigationContainer: routing needs a linking config");
+		}
+		const joined = routing as ContainerRouting;
+		const revision = new Signal<int32>(0, null, true);
+		const web = createContainerHistory(
+			joined.scope,
+			slot,
+			(linking as LinkingOptions).config,
+			revision,
+		);
+		onCleanup(joined.registry.register(web.participant));
+		createEffect<int32>(
+			(prev: int32 | null): int32 => changes.get(),
+			(count: int32, prev: int32 | null): Cleanup | null => {
+				revision.set(revision.peek() + 1);
+				return null;
+			},
+			{ defer: true },
+		);
+		const stops: Dispose[] = [];
+		onCleanup((): void => {
+			for (const stop of stops.slice(0, stops.length)) { stop(); }
+		});
+		history = (session: RoutingSession): Dispose => {
+			if (!state.ready) {
+				throw new Error("enableHistory: the NavigationContainer is not mounted yet");
+			}
+			const mirror = web.enable(session);
+			let stopped = false;
+			const stop = (): void => {
+				if (stopped) { return; }
+				stopped = true;
+				mirror();
+			};
+			stops.push(stop);
+			return stop;
 		};
 	}
 	const scope = new ScreenScope(link, "", accessor((): boolean => true), null, state);
@@ -375,6 +318,7 @@ export function NavigationContainer(props: {
 		const handle = ref as NavigationContainerRef;
 		handle.link = link;
 		handle.linkPath = openPath;
+		handle.history = history;
 	}
 	const back = BackHandler.addEventListener(
 		"hardwareBackPress",
@@ -390,9 +334,9 @@ export function NavigationContainer(props: {
 	const children = props.children;
 	const ready = props.onReady;
 	return (host: Host, parent: HostNode, before: HostNode | null): void => {
-		const body: NeonNode = <ScopeContext.Provider value={scope as unknown}>
+		const body: NeonNode = <ScopeContext value={scope as unknown}>
 			{children}
-		</ScopeContext.Provider>;
+		</ScopeContext>;
 		body(host, parent, before);
 		state.ready = true;
 		if (enabled && hasAppServices()) { openInitialURL(openURL); }

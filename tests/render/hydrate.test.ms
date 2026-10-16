@@ -5,6 +5,7 @@ import { render, hydrate, mockHost, mockNode, mockToString, fireEvent, MockNode,
 import { View, Text, Pressable } from "../../src/components/primitives";
 import { Portal } from "../../src/render/portal";
 import { NeonEvent } from "../../src/render/event";
+import { Errored } from "../../src/macros/ui/flow";
 
 function silence(n: MockNode): void {
 	n.events = [];
@@ -120,6 +121,28 @@ test "Show and For toggle and reorder on the page's nodes after hydrate" {
 	setOn(true);
 	setXs([2, 3, 1, 4]);
 	assert mockToString(root) === flowsAt(true, [2, 3, 1, 4]), mockToString(root);
+}
+
+function guarded(on: Accessor<boolean>): NeonNode {
+	return <View>
+		<Errored fallback={() => <b>sorry</b>}><Text>fine</Text><Show when={on()}><Text>on</Text></Show></Errored>
+		<Text>end</Text>
+	</View>;
+}
+
+test "hydrate takes an Errored's content from the page and creates only the holder it parks content in" {
+	const [on, _o] = createSignal(false);
+	const root = served(guarded(on));
+	const before = mockToString(root);
+
+	const made: Made = { elements: 0, texts: 0 };
+	const [liveOn, setOn] = createSignal(false);
+	hydrate(guarded(liveOn), countingHost(made), root as unknown as HostNode);
+	assert made.elements === 1, "made " + made.elements.toString() + " elements";
+	assert mockToString(root) === before, mockToString(root);
+	setOn(true);
+	const [shown, _s] = createSignal(true);
+	assert mockToString(root) === mockToString(served(guarded(shown))), mockToString(root);
 }
 
 test "regions the page sent empty fill in after hydrate" {

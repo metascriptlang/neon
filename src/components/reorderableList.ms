@@ -2,7 +2,8 @@
 // renderItem receives drag(), the dragged row follows the touch, the others open a gap,
 // and the drop reports onReorder(from, to) with `to` the index after removal.
 
-import { Accessor, accessor, createSignal, untrack, batch } from "../core/signal";
+import { Accessor, accessor, createSignal, untrack } from "../core/signal";
+import { flush } from "../core/runtime";
 import { onCleanup } from "../core/cleanup";
 import { element } from "../macros/ui/element";
 import { NeonNode } from "../render/node";
@@ -120,11 +121,9 @@ export function ReorderableFlatList<T>(props: {
 		activeItem = null;
 		granted = false;
 		dragDelta = 0;
-		batch((): void => {
-			setActiveIndex(-1);
-			setTargetIndex(-1);
-			setTranslation(0);
-		});
+		setActiveIndex(-1);
+		setTargetIndex(-1);
+		setTranslation(0);
 	};
 
 	const slotTop = (index: int32): number => {
@@ -137,7 +136,7 @@ export function ReorderableFlatList<T>(props: {
 		const from = untrack<number>(activeIndex) as int32;
 		const scrolled = offset - grantOffset;
 		const moved = dragDelta + scrolled;
-		batch((): void => {
+		flush((): void => {
 			setTranslation(moved);
 			setTargetIndex(reorderTarget(snapshot, from, moved) as number);
 		});
@@ -171,7 +170,7 @@ export function ReorderableFlatList<T>(props: {
 		granted = false;
 		dragDelta = 0;
 		grantOffset = offset;
-		batch((): void => {
+		flush((): void => {
 			setActiveIndex(index);
 			setTargetIndex(index);
 			setTranslation(0);
@@ -184,13 +183,13 @@ export function ReorderableFlatList<T>(props: {
 		const from = untrack<number>(activeIndex) as int32;
 		const to = untrack<number>(targetIndex) as int32;
 		if (from < 0) {
-			reset();
+			flush(reset);
 			return;
 		}
 		const settle = slotTop(to) - slotTop(from) + (to > from ? snapshot[to] - activeHeight : 0);
 		const commit = (): void => {
 			drop = null;
-			batch((): void => {
+			flush((): void => {
 				reset();
 				if (to !== from) { onReorder(from as number, to as number); }
 			});
@@ -238,7 +237,7 @@ export function ReorderableFlatList<T>(props: {
 			drag: (): void => { startDrag(item, untrack<number>(index)); },
 		});
 		return element(<View {...handlers} style={rowStyle(item, index)}
-			onTouchEnd={(e: NeonEvent): void => { if (activeItem === item && !granted) { reset(); } }}
+			onTouchEnd={(e: NeonEvent): void => { if (activeItem === item && !granted) { flush(reset); } }}
 			onLayout={(e: NeonEvent): void => { heights.set(item, e.height); }}>{body}</View>);
 	};
 

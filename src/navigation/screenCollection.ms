@@ -1,5 +1,6 @@
-import { Accessor, Signal, accessor, untrack } from "../core/signal";
+import { Accessor, Signal, accessor } from "../core/signal";
 import { createEffect } from "../core/effect";
+import { Cleanup } from "../core/types";
 import { onCleanup } from "../core/cleanup";
 import { Host, HostNode, NeonNode } from "../render/hostTypes";
 import { MockNode, mockHost, mockNode } from "../render/host";
@@ -28,7 +29,7 @@ export class ScreenCollection<P> {
 	host: Host;
 	parent: MockNode;
 	entries: RegisteredScreen<P>[] = [];
-	version: Signal<int32> = new Signal<int32>(0);
+	version: Signal<int32> = new Signal<int32>(0, null, true);
 
 	constructor() {
 		this.host = mockHost();
@@ -126,8 +127,8 @@ export function groupOf(
 		const keys = useContext(collector.keys).slice(0);
 		if (screenOptions !== null) { groups.push(screenOptions as Accessor<ScreenOptions>); }
 		if (navigationKey !== null) { keys.push(navigationKey as Accessor<string>); }
-		const keyed = collector.keys.Provider({ value: accessor(() => keys), children });
-		collector.groups.Provider({ value: accessor(() => groups), children: keyed })(
+		const keyed = collector.keys.provider({ value: accessor(() => keys), children });
+		collector.groups.provider({ value: accessor(() => groups), children: keyed })(
 			host, parent, before,
 		);
 	};
@@ -138,17 +139,17 @@ export function collectScreens<P>(
 	children: NeonNode,
 ): ScreenCollection<P> {
 	const collection = new ScreenCollection<P>();
-	collector.scope.Provider({ value: accessor((): unknown => collection), children })(
+	collector.scope.provider({ value: accessor((): unknown => collection), children })(
 		collection.host, collection.parent as unknown as HostNode, null,
 	);
 	return collection;
 }
 
 export function watchScreens<P>(collection: ScreenCollection<P>, core: NavigatorCore<P>): void {
-	createEffect((): void => {
-		const screens = collection.read();
-		untrack((): void => core.reconfigure(screens));
-	});
+	createEffect<int32>(
+		(prev: int32 | null): int32 => { collection.read(); return 0; },
+		(settled: int32, prev: int32 | null): Cleanup | null => { core.reconfigure(collection.read()); return null; },
+	);
 }
 
 export function screenOf<P>(

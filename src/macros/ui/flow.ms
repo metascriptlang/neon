@@ -1,105 +1,293 @@
-// Control flow — For / Index / Show. Each returns a region NeonNode. The reactive
-// engines (mapArray/indexArray) and the host reconciler do the work; these are thin
-// wrappers, mirroring the reference's
-// <For>/<Index>/<Show> = thin wrappers over the array helpers + a condition memo.
-// A row is described here and mounted by the reconciler at its final position, so
-// nothing below touches the host.
+// Control flow — For / ForKeyedBy / ForUnkeyed / Repeat / Show. Each returns a region NeonNode;
+// the engines in core/array.ms and the host reconciler do the work. A row is described here and
+// mounted by the reconciler at its final position, so nothing below touches the host.
 
-import { mapArray, mapArrayKeyed, indexArray } from "../../core/array";
+import { mapArray, mapArrayKeyedBy, mapArrayByPosition, repeat } from "../../core/array";
 import { createMemo } from "../../core/memo";
-import { Accessor, createSignal } from "../../core/signal";
-import { createRoot } from "../../core/owner";
+import { Accessor, Signal, accessor } from "../../core/signal";
+import { createErrorBoundary, createLoadingBoundary, routeThrown } from "../../core/boundary";
+import { createOwner, getOwner, flush, disposeChildren } from "../../core/runtime";
 import { onCleanup } from "../../core/cleanup";
-import { catchError } from "../../core/error";
+import { runWithOwner } from "../../core/owner";
+import { Computation, NotReadyError, ContextEntry } from "../../core/types";
+import { isServer } from "../../render/environment";
+import { serverCaught } from "../../render/ssr";
 import { NeonNode, regionNode } from "../../render/node";
 import { Host, HostNode } from "../../render/hostTypes";
-import { Row, makeRow } from "../../render/reconcile";
+import { Row, makeRow, mountAt, removeRow } from "../../render/reconcile";
 import { List } from "../../core/list";
 import { listRegion } from "../../render/listRegion";
+import { unclaimed } from "../../render/claim";
 
-// Wrap a row list with an empty-state fallback. The fallback lives in its own root and is
-// disposed the moment rows return (and rebuilt on the next empty), so it never leaks.
-function withFallback(mapped: () => Row[], fb: NeonNode): () => Row[] {
-	let fbRow: Row | null = null;
-	let fbDispose: (() => void) | null = null;
-	onCleanup(() => { if (fbDispose !== null) { fbDispose(); fbDispose = null; fbRow = null; } });
-	return () => {
-		const rows = mapped();
-		if (rows.length > 0) {
-			if (fbDispose !== null) { fbDispose(); fbDispose = null; fbRow = null; }
-			return rows;
-		}
-		if (fbRow === null) {
-			fbRow = createRoot((d) => { fbDispose = d; return makeRow(fb); });
-		}
-		return [fbRow as Row];
-	};
+function fallbackRow(fb: NeonNode | null): (() => Row) | null {
+	if (fb === null) { return null; }
+	const view = fb as NeonNode;
+	return (): Row => makeRow(view);
 }
 
-// Value-keyed list: rows reused by item identity, or by key when one is given; reorder
-// moves DOM, never rebuilds.
+function indexRead(declared: boolean | null): boolean {
+	return declared === null ? true : (declared as boolean);
+}
+
 export function For<T>(props: {
 	each: Accessor<T[]>;
 	children: (item: T, index: Accessor<number>) => NeonNode;
-	key?: ((item: T) => number) | null;
+	fallback?: NeonNode | null;
 	usesIndex?: boolean | null;
+}): NeonNode {
+	return regionNode((h) => mapArray<T, Row>(
+		props.each,
+		(item: T, index: Accessor<number>): Row => makeRow(props.children(item, index)),
+		fallbackRow(props.fallback),
+		indexRead(props.usesIndex),
+	));
+}
+
+export function ForKeyedBy<T, K>(props: {
+	each: Accessor<T[]>;
+	keyed: (item: T) => K;
+	children: (item: Accessor<T>, index: Accessor<number>) => NeonNode;
+	fallback?: NeonNode | null;
+	usesIndex?: boolean | null;
+}): NeonNode {
+	return regionNode((h) => mapArrayKeyedBy<T, K, Row>(
+		props.each,
+		props.keyed,
+		(item: Accessor<T>, index: Accessor<number>): Row => makeRow(props.children(item, index)),
+		fallbackRow(props.fallback),
+		indexRead(props.usesIndex),
+	));
+}
+
+export function ForUnkeyed<T>(props: {
+	each: Accessor<T[]>;
+	children: (item: Accessor<T>, index: number) => NeonNode;
 	fallback?: NeonNode | null;
 }): NeonNode {
-	return regionNode((h) => {
-		const keyOf = props.key;
-		const declared = props.usesIndex;
-		const usesIndex = declared === null ? true : (declared as boolean);
-		const row = (item: T, idx: Accessor<number>): Row => makeRow(props.children(item, idx));
-		const mapped = keyOf === null
-			? mapArray<T, Row>(props.each, row, usesIndex)
-			: mapArrayKeyed<T, Row>(props.each, keyOf as (item: T) => number, row, usesIndex);
-		const fb = props.fallback;
-		if (fb === null) { return mapped; }
-		return withFallback(mapped, fb as NeonNode);
-	});
+	return regionNode((h) => mapArrayByPosition<T, Row>(
+		props.each,
+		(item: Accessor<T>, index: number): Row => makeRow(props.children(item, index)),
+		fallbackRow(props.fallback),
+	));
+}
+
+export function Repeat(props: {
+	count: Accessor<number>;
+	from?: Accessor<number> | null;
+	fallback?: NeonNode | null;
+	children: (index: number) => NeonNode;
+}): NeonNode {
+	return regionNode((h) => repeat<Row>(
+		props.count,
+		(index: number): Row => makeRow(props.children(index)),
+		props.from === null ? null : (props.from as () => number),
+		fallbackRow(props.fallback),
+	));
 }
 
 export function ForList<T>(props: {
 	each: List<T>;
 	children: (item: Accessor<T>) => NeonNode;
-	key?: ((item: T) => number) | null;
+	keyed?: ((item: T) => number) | null;
 }): NeonNode {
-	return listRegion<T>(props.each, props.children, props.key);
+	return listRegion<T>(props.each, props.children, props.keyed);
 }
 
-// Index-keyed list: rows fixed per slot; value change updates the row's signal in place.
-export function Index<T>(props: {
-	each: Accessor<T[]>;
-	children: (item: Accessor<T>, index: number) => NeonNode;
+class MountedState {
+	failed: boolean = false;
+	contentFailed: boolean = false;
+	scope: Computation | null = null;
+}
+
+function mountGuarded(mount: () => void, state: MountedState): boolean {
+	try {
+		mount();
+		return true;
+	} catch (e) {
+		if (e instanceof NotReadyError) { throw e; }
+		routeThrown(e);
+		state.failed = true;
+		return false;
+	}
+}
+
+function mountedUnder(children: NeonNode, context: ContextEntry | null, state: MountedState): NeonNode {
+	return (host: Host, parent: HostNode, before: HostNode | null): void => {
+		const scope = createOwner();
+		scope.context = context;
+		state.scope = scope;
+		runWithOwner(scope, (): number => {
+			if (!mountGuarded((): void => { children(host, parent, before); }, state)) { state.contentFailed = true; }
+			return 0;
+		});
+	};
+}
+
+function newHolder(host: Host): HostNode {
+	let holder: HostNode | null = null;
+	unclaimed(host, (): void => { holder = host.createElement("view"); });
+	return holder as HostNode;
+}
+
+type ErroredFallback = (err: Accessor<Error>, reset: () => void) => NeonNode;
+
+function errorRows(host: Host, children: NeonNode, fallbackOf: ErroredFallback, failure: Signal<Error | null>, state: MountedState, server: boolean): Accessor<Row[]> {
+	let content: NeonNode | null = null;
+	let fallback: NeonNode | null = null;
+	let contentRow: Row | null = null;
+	let boundaryOwner: Computation | null = null;
+	const holder = newHolder(host);
+	onCleanup((): void => { host.release(holder); });
+	const showsContent = createErrorBoundary<boolean>(
+		(): boolean => {
+			const failed = failure.get();
+			if (failed !== null) { throw failed; }
+			if (content === null) {
+				const tree = getOwner() as Computation;
+				boundaryOwner = tree.parent;
+				content = mountedUnder(children, tree.context, state);
+			}
+			return true;
+		},
+		(err: Accessor<Error>, reset: () => void): boolean => {
+			const caught = err();
+			failure.set(caught);
+			const shown = server ? serverCaught(caught) : err;
+			fallback = (host: Host, parent: HostNode, before: HostNode | null): void => {
+				mountGuarded((): void => {
+					fallbackOf(shown, (): void => { flush((): number => { failure.set(null); reset(); return 0; }); })(host, parent, before);
+				}, state);
+			};
+			return false;
+		},
+	);
+	return createMemo<Row[]>(() => {
+		if (showsContent()) {
+			if (contentRow === null) {
+				const row = runWithOwner(boundaryOwner, (): Row => makeRow(content as NeonNode));
+				row.keep = server ? null : holder;
+				contentRow = row;
+			}
+			return [contentRow as Row];
+		}
+		if (server || state.contentFailed) {
+			if (contentRow !== null) { (contentRow as Row).keep = null; }
+			contentRow = null;
+			state.contentFailed = false;
+			if (state.scope !== null) { disposeChildren(state.scope as Computation, true); }
+		}
+		return [makeRow(fallback as NeonNode)];
+	});
+}
+
+type RowMount = (host: Host, parent: HostNode, before: HostNode | null) => Row | null;
+
+function spanOfMounted(mount: RowMount): Accessor<Row[]> {
+	let self: Row | null = null;
+	const outer = makeRow((host: Host, parent: HostNode, before: HostNode | null): void => {
+		const inner = mount(host, parent, before);
+		if (inner === null) { return; }
+		(self as Row).start = (inner as Row).start;
+		(self as Row).end = (inner as Row).end;
+	});
+	self = outer;
+	return accessor((): Row[] => [outer]);
+}
+
+function settledOnServer(rows: Accessor<Row[]>, state: MountedState): Accessor<Row[]> {
+	return spanOfMounted((host: Host, parent: HostNode, before: HostNode | null): Row | null => {
+		let shown = rows()[0];
+		mountAt(host, parent, before, shown);
+		if (!state.failed) { return shown; }
+		flush();
+		removeRow(host, parent, shown);
+		shown = rows()[0];
+		mountAt(host, parent, before, shown);
+		return shown;
+	});
+}
+
+export function Errored(props: {
+	children: NeonNode;
+	fallback: (err: Accessor<Error>, reset: () => void) => NeonNode;
+}): NeonNode {
+	return (host: Host, parent: HostNode, before: HostNode | null): void => {
+		const failure = new Signal<Error | null>(null, null, true);
+		const state = new MountedState();
+		const server = isServer();
+		regionNode((h) => {
+			const rows = errorRows(h, props.children, props.fallback, failure, state, server);
+			return server ? settledOnServer(rows, state) : rows;
+		})(host, parent, before);
+		if (!server && state.failed) { flush(); }
+	};
+}
+
+function loadingRows(host: Host, children: NeonNode, fallback: NeonNode | null): Accessor<Row[]> {
+	const state = new MountedState();
+	const holder = newHolder(host);
+	onCleanup((): void => { host.release(holder); });
+	let contentRow: Row | null = null;
+	const showsContent = createLoadingBoundary<boolean>(
+		(): boolean => {
+			if (contentRow !== null) { throw new Error("[LOADING_CONTENT_RERUN] a Loading's content was mounted again while an earlier mount stood"); }
+			const row = makeRow(mountedUnder(children, (getOwner() as Computation).context, state));
+			row.keep = holder;
+			contentRow = row;
+			try {
+				mountAt(host, holder, null, row);
+			} catch (e) {
+				if (e instanceof NotReadyError) {
+					row.keep = null;
+					removeRow(host, holder, row);
+					contentRow = null;
+				}
+				throw e;
+			}
+			return true;
+		},
+		(): boolean => false,
+	);
+	return createMemo<Row[]>(() => {
+		if (showsContent()) { return [contentRow as Row]; }
+		if (fallback === null) { return [] as Row[]; }
+		return [makeRow(fallback as NeonNode)];
+	});
+}
+
+function loadingOnServer(children: NeonNode, fallback: NeonNode | null): Accessor<Row[]> {
+	const state = new MountedState();
+	const context = (getOwner() as Computation).context;
+	return spanOfMounted((host: Host, parent: HostNode, before: HostNode | null): Row | null => {
+		const content = makeRow(mountedUnder(children, context, state));
+		try {
+			mountAt(host, parent, before, content);
+			return content;
+		} catch (e) {
+			if (!(e instanceof NotReadyError)) { throw e; }
+		}
+		removeRow(host, parent, content);
+		disposeChildren(state.scope as Computation, true);
+		if (fallback === null) { return null; }
+		const waiting = makeRow(fallback as NeonNode);
+		mountAt(host, parent, before, waiting);
+		return waiting;
+	});
+}
+
+export function Loading(props: {
+	children: NeonNode;
 	fallback?: NeonNode | null;
 }): NeonNode {
-	return regionNode((h) => {
-		const mapped = indexArray<T, Row>(props.each, (item, idx) => makeRow(props.children(item, idx)));
-		const fb = props.fallback;
-		if (fb === null) { return mapped; }
-		return withFallback(mapped, fb as NeonNode);
-	});
+	return (host: Host, parent: HostNode, before: HostNode | null): void => {
+		regionNode((h) => isServer() ? loadingOnServer(props.children, props.fallback) : loadingRows(h, props.children, props.fallback))(host, parent, before);
+	};
 }
 
-export function ErrorBoundary(props: {
-	children: NeonNode;
-	fallback: (err: Error, reset: () => void) => NeonNode;
-}): NeonNode {
-	return regionNode((h) => {
-		const [failed, setFailed] = createSignal<Error | null>(null);
-		const reset = (): void => { setFailed(null); };
-		const guarded: NeonNode = (host: Host, parent: HostNode, before: HostNode | null): void => {
-			catchError(
-				(): void => { props.children(host, parent, before); },
-				(err: Error): void => { setFailed(err); },
-			);
-		};
-		return createMemo<Row[]>(() => {
-			const err = failed();
-			if (err !== null) { return [makeRow(props.fallback(err as Error, reset))]; }
-			return [makeRow(guarded)];
-		});
-	});
+function shownRows(on: boolean, children: NeonNode, fallback: NeonNode | null): Row[] {
+	if (on) { return [makeRow(children)]; }
+	if (fallback !== null) { return [makeRow(fallback as NeonNode)]; }
+	return [] as Row[];
 }
 
 // Conditional: children rebuild only when the condition's truthiness flips (equals memo).
@@ -109,12 +297,51 @@ export function Show(props: {
 	fallback?: NeonNode | null;
 }): NeonNode {
 	return regionNode((h) => {
-		const cond = createMemo(() => props.when(), (a, b) => a === b);
-		return createMemo<Row[]>(() => {
-			if (cond()) { return [makeRow(props.children)]; }
-			const fb = props.fallback;
-			if (fb !== null) { return [makeRow(fb as NeonNode)]; }
-			return [] as Row[];
-		});
+		const cond = createMemo<boolean>(() => props.when());
+		return createMemo<Row[]>(() => shownRows(cond(), props.children, props.fallback));
 	});
+}
+
+export function ShowKeyed(props: {
+	when: Accessor<boolean>;
+	children: NeonNode;
+	fallback?: NeonNode | null;
+}): NeonNode {
+	return regionNode((h) => createMemo<Row[]>(() => shownRows(props.when(), props.children, props.fallback)));
+}
+
+export function ShowWith<T>(props: {
+	when: Accessor<boolean>;
+	value: Accessor<T>;
+	children: (value: Accessor<T>) => NeonNode;
+	fallback?: NeonNode | null;
+}): NeonNode {
+	const narrowed = accessor((): T => {
+		if (!props.when()) { throw new Error("<Show>: the narrowed value was read while its condition is false"); }
+		return props.value();
+	});
+	return Show({
+		when: props.when,
+		children: (host: Host, parent: HostNode, before: HostNode | null): void => { props.children(narrowed)(host, parent, before); },
+		fallback: props.fallback,
+	});
+}
+
+export function ShowKeyedWith<T>(props: {
+	when: Accessor<boolean>;
+	value: Accessor<T>;
+	children: (value: T) => NeonNode;
+	fallback?: NeonNode | null;
+}): NeonNode {
+	return ShowKeyed({
+		when: props.when,
+		children: (host: Host, parent: HostNode, before: HostNode | null): void => { props.children(props.value())(host, parent, before); },
+		fallback: props.fallback,
+	});
+}
+
+export function showWhen<M>(source: () => M, use: (value: Accessor<M>) => NeonNode): NeonNode {
+	return (host: Host, parent: HostNode, before: HostNode | null): void => {
+		use(createMemo<M>((prev: M | null): M => source()))(host, parent, before);
+	};
 }

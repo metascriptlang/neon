@@ -1,5 +1,4 @@
-import { Accessor, createSignal } from "../../src/core/signal";
-import { createResource } from "../../src/core/resource";
+import { Accessor, accessor, createSignal } from "../../src/core/signal";
 import { createStyles, styleOf } from "../../src/macros/ui/style";
 import { NeonNode } from "../../src/render/node";
 import { NeonEvent } from "../../src/render/event";
@@ -10,7 +9,7 @@ import { Button } from "../../src/components/button";
 import { Switch } from "../../src/components/switch";
 import { ActivityIndicator } from "../../src/components/activityIndicator";
 import { Show } from "../../src/macros/ui/flow";
-import { Product, CatalogError, fetchProducts, saveProduct, setOffline, formatPrice } from "./catalogData";
+import { Product, CatalogError, saveProduct, setOffline, formatPrice } from "./catalogData";
 
 const styles = createStyles({
 	screen: { flex: 1, flexDirection: "column", backgroundColor: "#1e1e2e" },
@@ -194,14 +193,17 @@ export function CatalogApp(): NeonNode {
 	const [query, setQuery] = createSignal("");
 	const [offline, setOfflineSignal] = createSignal(false);
 	const [current, setCurrent] = createSignal<Product | null>(null);
-	const [items, actions] = createResource(query, fetchProducts);
+	// parked: the product list returns with an async memo, see ~/metascript/.inbox/compiler/2026-10-16-function-returning-one-member-is-refused-where-a-function-returning-the-union-is-expected.md
+	const items = accessor((): Product[] | null => null);
+	const idle = accessor((): boolean => false);
+	const noError = accessor((): CatalogError | null => null);
 	const product = (): Product => current() as Product;
 	return <View style={{ flex: 1 }}>
 		<Show when={screen() === 0}>
 			<ProductList query={query()} setQuery={(q: string): void => { setQuery(q); }}
-				items={items()} loading={actions.loading()} error={actions.error()}
-				offline={offline()} setOffline={(v: boolean): void => { setOfflineSignal(v); setOffline(v); actions.refetch(); }}
-				retry={(): void => { actions.refetch(); }}
+				items={items()} loading={idle()} error={noError()}
+				offline={offline()} setOffline={(v: boolean): void => { setOfflineSignal(v); setOffline(v); }}
+				retry={(): void => {}}
 				open={(p: Product): void => { setCurrent(p); setScreen(1); }} />
 		</Show>
 		<Show when={screen() === 1 && current() !== null}>
@@ -209,7 +211,7 @@ export function CatalogApp(): NeonNode {
 		</Show>
 		<Show when={screen() === 2 && current() !== null}>
 			<ProductEdit product={product()} cancel={(): void => { setScreen(1); }}
-				saved={(p: Product): void => { setCurrent(p); actions.refetch(); setScreen(1); }} />
+				saved={(p: Product): void => { setCurrent(p); setScreen(1); }} />
 		</Show>
 	</View>;
 }

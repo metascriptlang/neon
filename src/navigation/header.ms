@@ -323,7 +323,7 @@ export function screenView<P>(
 	const props: ScreenProps<P> = { navigation: entry, route: entry.route };
 	const body = createComponent(entry.config.component, props);
 	const goBack = (): void => { entry.goBack(); };
-	return <ScopeContext.Provider value={scope as unknown}>
+	return <ScopeContext value={scope as unknown}>
 		<View style={frame}>
 			<Show when={headerShown()}>
 				<Header title={title} options={options} back={back} backTitle={backTitle}
@@ -334,5 +334,5 @@ export function screenView<P>(
 				<View {...handlers} style={edge} />
 			</Show>
 		</View>
-	</ScopeContext.Provider>;
+	</ScopeContext>;
 }

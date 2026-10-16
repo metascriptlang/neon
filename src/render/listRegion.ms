@@ -1,11 +1,13 @@
 import { createRenderEffect } from "../core/effect";
+import { Cleanup } from "../core/types";
 import { onCleanup } from "../core/cleanup";
-import { createRoot } from "../core/owner";
+import { createRoot, runWithOwner } from "../core/owner";
+import { getOwner } from "../core/runtime";
 import { Accessor, Signal, accessor, untrack } from "../core/signal";
 import { List, ListOp, listInsert, listMove, listRemove, listSet, matchByIds } from "../core/list";
 import { Host, HostNode, NeonNode } from "./hostTypes";
 import { Row, makeRow, mountAt, moveRow, removeRow, reconcileArrays } from "./reconcile";
-import { regionAnchor, sealRegion, serverRegionStart, serverRegionEnd, skipRegionEffect } from "./claim";
+import { regionAnchor, regionParent, sealRegion, serverRegionStart, serverRegionEnd, skipRegionEffect } from "./claim";
 import { isServer } from "./environment";
 
 // The region's stores live in one object passed to every step, never captured by a nested
@@ -14,6 +16,7 @@ interface Region<Item> {
 	host: Host;
 	parent: HostNode;
 	anchor: HostNode;
+	placed: boolean;
 	list: List<Item>;
 	row: (item: Accessor<Item>) => NeonNode;
 	// Zero or one key function: a nullable function of Item in a field of this generic interface is
@@ -31,7 +34,7 @@ function anchorAt<Item>(g: Region<Item>, i: number): HostNode | null {
 }
 
 // Op stores grow by push; reading a slot past what the array holds segfaults on C, it is
-// not an undefined (src/core/array.ms indexArray). resetTo's next-lists are the exception:
+// not an undefined (src/core/array.ms mapRows). resetTo's next-lists are the exception:
 // exact-size prealloc, every slot written before any read (mapArray makeRowInto).
 function buildRow<Item>(
 	g: Region<Item>,
@@ -42,7 +45,7 @@ function buildRow<Item>(
 ): void {
 	const r = createRoot((d) => {
 		dispStore.push(d);
-		const cell = new Signal<Item>(v);
+		const cell = new Signal<Item>(v, null, true);
 		cellStore.push(cell);
 		return makeRow(g.row(accessor((): Item => cell.get())));
 	});
@@ -59,7 +62,7 @@ function buildRowAt<Item>(
 ): void {
 	const r = createRoot((d) => {
 		dispStore[i] = d;
-		const cell = new Signal<Item>(v);
+		const cell = new Signal<Item>(v, null, true);
 		cellStore[i] = cell;
 		return makeRow(g.row(accessor((): Item => cell.get())));
 	});
@@ -213,6 +216,7 @@ export function listRegion<Item>(
 			host: host,
 			parent: parent,
 			anchor: anchor,
+			placed: false,
 			list: list,
 			row: row,
 			keys: keyOf === null ? [] : [keyOf as (item: Item) => number],
@@ -232,21 +236,27 @@ export function listRegion<Item>(
 
 		// The queue is taken before it is applied, not cleared after: an op that raises inside a row
 		// body then leaves the region inconsistent and loud, never re-applied on the next bump.
-		createRenderEffect(() => {
-			const items = list.read();
-			const pending = q.ops;
-			const fromReset = q.reset;
-			q.ops = [];
-			q.reset = false;
-			untrack((): number => {
-				if (fromReset) {
-					resetTo<Item>(g, items);
-				} else {
-					for (let k = 0; k < pending.length; k += 1) { applyOp<Item>(g, pending[k]); }
-				}
-				return 0;
-			});
-		});
+		const owner = getOwner();
+		createRenderEffect<Item[]>(
+			(prev: Item[] | null): Item[] => list.read(),
+			(items: Item[], prev: Item[] | null): Cleanup | null => {
+				const pending = q.ops;
+				const fromReset = q.reset;
+				q.ops = [];
+				q.reset = false;
+				if (g.placed) { g.parent = regionParent(host, anchor, "ForList"); }
+				runWithOwner(owner, (): number => {
+					if (fromReset) {
+						resetTo<Item>(g, items);
+					} else {
+						for (let k = 0; k < pending.length; k += 1) { applyOp<Item>(g, pending[k]); }
+					}
+					return 0;
+				});
+				g.placed = true;
+				return null;
+			},
+		);
 		sealRegion(host, parent, anchor);
 	};
 }

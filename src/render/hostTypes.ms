@@ -53,6 +53,8 @@ export interface Host {
 	append: (parent: HostNode, child: HostNode) => void;
 	insertBefore: (parent: HostNode, node: HostNode, ref: HostNode | null) => void;
 	removeChild: (parent: HostNode, node: HostNode) => void;
+	parentOf: (node: HostNode) => HostNode | null;
+	release: (node: HostNode) => void;
 	nextSibling: (node: HostNode) => HostNode | null;
 	firstChild: (node: HostNode) => HostNode | null;
 	// Optional capability: a host that can duplicate a built subtree cheaply

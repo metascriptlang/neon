@@ -1,60 +1,64 @@
 import { Accessor } from "../core/signal";
-import { Computation, CompState } from "../core/types";
-import { getOwner, inheritId } from "../core/runtime";
+import { getOwner, createOwner } from "../core/runtime";
 import { runWithOwner } from "../core/owner";
 import { Host, HostNode, NeonNode } from "./hostTypes";
 
-export interface ProviderProps<T> {
-	value: Accessor<T>;
-	children: NeonNode;
+export class NoOwnerError extends Error {
+	constructor() { super("Context can only be accessed under a reactive root."); }
+}
+
+export class ContextNotFoundError extends Error {
+	constructor() { super("Context must either be created with a default value or a value must be provided before accessing it."); }
+}
+
+class ContextKey {}
+
+class Held<T> {
+	value: T;
+	constructor(value: T) { this.value = value; }
 }
 
 export interface Context<T> {
-	defaultValue: T;
-	Provider: (props: ProviderProps<T>) => NeonNode;
+	key: ContextKey;
+	fallback: Held<T> | null;
+	provider: (props: { value: Accessor<T>; children: NeonNode }) => NeonNode;
 }
-
-class Provided<T> {
-	read: () => T;
-	constructor(read: () => T) { this.read = read; }
-}
-
-function noop(): void {}
 
 export function useContext<T>(ctx: Context<T>): T {
-	const key: unknown = ctx;
 	const owner = getOwner();
-	let entry = owner !== null ? owner.context : null;
+	if (owner === null) { throw new NoOwnerError(); }
+	let entry = owner.context;
 	while (entry !== null) {
-		if (entry.key === key) { return (entry.value as Provided<T>).read(); }
+		if (entry.key === ctx.key) { return (entry.value as Held<T>).value; }
 		entry = entry.next;
 	}
-	return ctx.defaultValue;
+	const fallback = ctx.fallback;
+	if (fallback === null) { throw new ContextNotFoundError(); }
+	return fallback.value;
 }
 
-function provideScope<T>(ctx: Context<T>, read: () => T, body: () => number): number {
-	const parent = getOwner();
-	const scope: Computation = {
-		observers: [], observerSlots: [],
-		fn: noop, isRoot: false, state: CompState.Clean,
-		sources: [], sourceSlots: [],
-		pure: false, user: false, disposed: false,
-		owned: [], cleanups: [], owner: parent, context: { key: ctx as unknown, value: new Provided<T>(read), next: parent !== null ? parent.context : null }, handler: null,
-		id: inheritId(parent, false), childCount: 0, transparent: false,
+function newContext<T>(fallback: Held<T> | null): Context<T> {
+	const key = new ContextKey();
+	return {
+		key: key,
+		fallback: fallback,
+		provider: (props: { value: Accessor<T>; children: NeonNode }): NeonNode => {
+			return (host: Host, parent: HostNode, before: HostNode | null): void => {
+				const scope = createOwner();
+				runWithOwner(scope, (): number => {
+					scope.context = { key: key, value: new Held<T>(props.value()), next: scope.context };
+					props.children(host, parent, before);
+					return 0;
+				});
+			};
+		},
 	};
-	if (parent !== null) { parent.owned.push(scope); }
-	return runWithOwner(scope, body);
+}
+
+export function createContext<T>(): Context<T> {
+	return newContext<T>(null);
 }
 
 export function createContext<T>(defaultValue: T): Context<T> {
-	const ctx: Context<T> = {
-		defaultValue: defaultValue,
-		Provider: (props: ProviderProps<T>): NeonNode => props.children,
-	};
-	ctx.Provider = (props: ProviderProps<T>): NeonNode => {
-		return (host: Host, parent: HostNode, before: HostNode | null): void => {
-			provideScope<T>(ctx, props.value, (): number => { props.children(host, parent, before); return 0; });
-		};
-	};
-	return ctx;
+	return newContext<T>(new Held<T>(defaultValue));
 }

@@ -1,5 +1,7 @@
-import { Accessor, Setter, accessor, batch, createSignal, untrack } from "../core/signal";
-import { createRenderEffect } from "../core/effect";
+import { Accessor, Setter, accessor, createSignal, untrack } from "../core/signal";
+import { flush } from "../core/runtime";
+import { createEffect, createRenderEffect } from "../core/effect";
+import { Cleanup } from "../core/types";
 import { Animated, AnimatedValue, EndResult, Easing } from "../animation/index";
 import {
 	GestureResponderHandlers,
@@ -12,6 +14,7 @@ import { Style } from "../render/style";
 import { View, Text, Pressable } from "../components/primitives";
 import { For, Show } from "../macros/ui/flow";
 import {
+	DRAWER_OPEN_KEY,
 	DrawerAction,
 	Navigation,
 	NavigatorCore,
@@ -19,11 +22,18 @@ import {
 	NavigatorLink,
 	NavigatorModel,
 	RouteSeed,
+	RouteWebMap,
 	ScreenOptions,
 	ScreenProps,
 	createCore,
 	currentScope,
 } from "./core";
+import {
+	WebHistoryItem,
+	WebNavigationError,
+	WebNavigationNode,
+	WebNavigationOwner,
+} from "./webNavigation";
 import { EDGE_WIDTH, screenView, shown } from "./header";
 import { createNavigatorMotion } from "./navigatorMotion";
 import { readName, readOptions } from "./stack";
@@ -128,6 +138,19 @@ class DrawerMotion {
 	}
 }
 
+function branchAddress(
+	item: WebHistoryItem<string>,
+	parts: string[],
+	parameters: Map<string, string>,
+): void {
+	if (item.path !== "") { parts.push(item.path); }
+	for (const [name, value] of item.parameters) { parameters.set(name, value); }
+	const owner = item.child;
+	if (owner === null) { return; }
+	const items = (owner as WebNavigationOwner).webNavigation.history();
+	if (items.length > 0) { branchAddress(items[items.length - 1], parts, parameters); }
+}
+
 function drawerModel<P>(
 	pages: NavigatorModel<P>,
 	open: Accessor<boolean>,
@@ -145,7 +168,7 @@ function drawerModel<P>(
 		index: pages.index,
 		arrange: pages.arrange,
 		navigate: (name: string, params: P | null): void => {
-			batch((): void => {
+			flush((): void => {
 				pages.navigate(name, params);
 				writeOpen(false);
 			});
@@ -159,13 +182,40 @@ function drawerModel<P>(
 		back,
 		canPop: pages.canPop,
 		drawer: (action: DrawerAction): boolean => {
-			const next = match (action) {
-				DrawerAction.Open => true,
-				DrawerAction.Close => false,
-				DrawerAction.Toggle => !untrack((): boolean => open()),
-			};
-			writeOpen(next);
+			writeOpen((current: boolean): boolean => {
+				const next = match (action) {
+					DrawerAction.Open => true,
+					DrawerAction.Close => false,
+					DrawerAction.Toggle => !current,
+				};
+				return next;
+			});
 			return true;
+		},
+		webNavigation: (map: RouteWebMap<P>): WebNavigationNode => {
+			const web = pages.webNavigation(map);
+			return {
+				history: accessor((): WebHistoryItem<string>[] => {
+					const items = web.history();
+					if (!open()) { return items; }
+					const parts: string[] = [];
+					const parameters = new Map<string, string>();
+					branchAddress(items[items.length - 1], parts, parameters);
+					const opened = items.slice(0, items.length);
+					opened.push({ key: DRAWER_OPEN_KEY, path: parts.join("/"), parameters, child: null });
+					return opened;
+				}),
+				onBeforeNavigate: web.onBeforeNavigate,
+				navigate: (keys: string[]): Result<void, WebNavigationError> => {
+					const opened = keys.length === 2 && keys[1] === DRAWER_OPEN_KEY;
+					if (keys.length !== 1 && !opened) {
+						return Result.err(WebNavigationError.UndecodableKey);
+					}
+					const applied = web.navigate([keys[0]]);
+					if (applied.ok) { writeOpen(opened); }
+					return applied;
+				},
+			};
 		},
 	};
 }
@@ -173,7 +223,6 @@ function drawerModel<P>(
 function drawerMotion<P>(
 	core: NavigatorCore<P>,
 	open: Accessor<boolean>,
-	writeOpen: Setter<boolean>,
 	right: Accessor<boolean>,
 	own: Accessor<Style> | null,
 ): DrawerMotion {
@@ -197,17 +246,15 @@ function drawerMotion<P>(
 		}
 		return true;
 	});
-	const setOpen = (next: boolean): void => { writeOpen(next); };
+	const setOpen = (next: boolean): void => {
+		core.drawerLocal(next ? DrawerAction.Open : DrawerAction.Close);
+	};
 	const motion = new DrawerMotion(open, setOpen, right, width, swipe);
-	let first = true;
-	createRenderEffect((): void => {
-		const shown = open();
-		if (first) {
-			first = false;
-			return;
-		}
-		untrack((): void => { motion.run(shown); });
-	});
+	createRenderEffect<boolean>(
+		(prev: boolean | null): boolean => open(),
+		(shown: boolean, prev: boolean | null): Cleanup | null => { motion.run(shown); return null; },
+		{ defer: true },
+	);
 	return motion;
 }
 
@@ -284,7 +331,7 @@ export function createDrawerNavigator<P>(): DrawerNavigator<P> {
 			const collection = collectScreens<P>(collector, props.children);
 			const screens = untrack(() => collection.read());
 			const behavior = readBehavior(props.backBehavior, "firstRoute");
-			const [open, writeOpen] = createSignal<boolean>(false);
+			const [open, writeOpen] = createSignal<boolean>(false, { ownedWrite: true });
 			const core = createCore<P>({
 				kind: NavigatorKind.Drawer,
 				screens,
@@ -301,6 +348,14 @@ export function createDrawerNavigator<P>(): DrawerNavigator<P> {
 				},
 			});
 			watchScreens<P>(collection, core);
+			createEffect<boolean>(
+				(prev: boolean | null): boolean => open(),
+				(shown: boolean, prev: boolean | null): Cleanup | null => {
+					core.container.changed();
+					return null;
+				},
+				{ defer: true },
+			);
 			const own = props.drawerStyle;
 			const side = props.drawerPosition;
 			const right = accessor((): boolean => {
@@ -308,7 +363,7 @@ export function createDrawerNavigator<P>(): DrawerNavigator<P> {
 				const value: DrawerPosition = (side as Accessor<DrawerPosition>)();
 				return value === "right";
 			});
-			const motion = drawerMotion<P>(core, open, writeOpen, right, own);
+			const motion = drawerMotion<P>(core, open, right, own);
 			const panel = accessor((): Style => {
 				const base: Style = {
 					position: "absolute",
@@ -333,7 +388,7 @@ export function createDrawerNavigator<P>(): DrawerNavigator<P> {
 						: base.backgroundColor,
 				};
 			});
-			const close = (e: NeonEvent): void => { writeOpen(false); };
+			const close = (e: NeonEvent): void => { core.drawerLocal(DrawerAction.Close); };
 			const mounted = mountedEntries<P>(core);
 			const backdrop = accessor((): Style => ({
 				...BACKDROP,

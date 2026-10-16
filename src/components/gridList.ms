@@ -72,7 +72,7 @@ export function GridList<T>(props: {
 		}
 		return maxExtentColumns(w, (maxProp as Accessor<number>)(), spacing);
 	});
-	const columns = createMemo<number[]>((): number[] => width() <= 0 ? [] : [metrics().columns as number], (a: number[], b: number[]): boolean => a.length === b.length && (a.length === 0 || a[0] === b[0]));
+	const columns = createMemo<number[]>((): number[] => width() <= 0 ? [] : [metrics().columns as number], { equals: (a: number[], b: number[]): boolean => a.length === b.length && (a.length === 0 || a[0] === b[0]) });
 	const itemWidth = accessor((): number => metrics().itemWidth);
 	const cellStyle = (index: Accessor<number>): Accessor<Style> => accessor((): Style => {
 		const m = metrics();
@@ -231,7 +231,7 @@ export function MasonryList<T>(props: {
 		if (width() <= 0) { return out; }
 		for (let c = 0; c < metrics().columns; c += 1) { out.push(c as number); }
 		return out;
-	}, (a: number[], b: number[]): boolean => a.length === b.length);
+	}, { equals: (a: number[], b: number[]): boolean => a.length === b.length });
 	const header = props.ListHeaderComponent;
 	const footer = props.ListFooterComponent;
 	const userStyle = props.style;

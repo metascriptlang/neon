@@ -1,5 +1,6 @@
 import { createSignal } from "../../src/core/signal";
 import { createEffect } from "../../src/core/effect";
+import { Cleanup } from "../../src/core/types";
 import { Host, HostNode, NeonNode } from "../../src/render/hostTypes";
 import { MockNode, mockNode, mockHost, render, fireEvent, mockToString } from "../../src/render/host";
 import { place } from "../../src/render/reconcile";
@@ -26,7 +27,10 @@ function appendText(host: Host, parent: HostNode, before: HostNode | null, s: st
 function appendDyn(host: Host, parent: HostNode, before: HostNode | null, get: () => string): void {
 	const t = host.createText("");
 	place(host, parent, t, before);
-	createEffect((): void => { host.setText(t, get()); });
+	createEffect<string>(
+		(p: string | null): string => get(),
+		(value: string, p: string | null): Cleanup | null => { host.setText(t, value); return null; },
+	);
 }
 
 function counterTemplate(label: string): (props: CounterRegionProps) => NeonNode {
@@ -173,10 +177,14 @@ test "refresh: remounting a fragment boundary removes its nested regions" {
 		return (host: Host, parent: HostNode, before: HostNode | null): void => {
 			const node = host.createText("");
 			place(host, parent, node, before);
-			createEffect((): void => {
-				effectRuns += 1;
-				host.setText(node, "value:" + value().toString());
-			});
+			createEffect<number>(
+				(p: number | null): number => value(),
+				(seen: number, p: number | null): Cleanup | null => {
+					effectRuns += 1;
+					host.setText(node, "value:" + seen.toString());
+					return null;
+				},
+			);
 		};
 	};
 	const childSig = (): string => "child";

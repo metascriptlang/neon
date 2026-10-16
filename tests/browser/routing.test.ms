@@ -8,10 +8,13 @@ import { Text } from "../../src/components/primitives";
 import {
 	LinkingOptions,
 	NavigationContainer,
+	NavigationContainerRef,
+	NavigationEventArg,
 	RoutingError,
 	RoutingRegistry,
 	RoutingSession,
 	ScreenProps,
+	createDrawerNavigator,
 	createNavigationContainerRef,
 	createRoutingSession,
 	createStackNavigator,
@@ -104,8 +107,15 @@ function Catalog(props: ScreenProps<ItemParams>): NeonNode {
 	return <Text>Catalog page</Text>;
 }
 
+let guarded = false;
+
 function Product(props: ScreenProps<ItemParams>): NeonNode {
 	const params = props.route.params;
+	if (guarded) {
+		props.navigation.addListener("beforeRemove", (e: NavigationEventArg): void => {
+			e.preventDefault();
+		});
+	}
 	return <Text>{"Product " + (params() === null ? "-" : (params() as ItemParams).id)}</Text>;
 }
 
@@ -174,5 +184,193 @@ test "a built-in stack follows browser back and forward through the routing regi
 			mount.remove();
 			history.replace(original);
 		}
+	}
+}
+
+test "a built-in stack on browser history records in-app navigation and follows back and forward" {
+	const history = createBrowserRoutingHistory();
+	const original = history.read();
+	history.replace({ url: "/store", state: "" });
+	const registry = new RoutingRegistry("main");
+	const ref = createNavigationContainerRef();
+	const errors: RoutingError[] = [];
+	const mount = document.createElement("div");
+	document.body.appendChild(mount);
+	let opened: RoutingSession | null = null;
+	const dispose = createRoot((stop: Dispose): Dispose => {
+		const app = NavigationContainer({
+			children: <Store.Navigator>
+				<Store.Screen name="Catalog" component={Catalog} />
+				<Store.Screen name="Product" component={Product}
+					parseParams={parseItem} stringifyParams={stringifyItem} />
+			</Store.Navigator>,
+			linking: storeLinking,
+			ref,
+			routing: { registry, scope: "main" },
+		});
+		const created = createRoutingSession(registry, history, (failure: RoutingError): void => {
+			errors.push(failure);
+		});
+		if (created.ok) { opened = created.value; }
+		app(domHost(), mount as unknown as HostNode, null);
+		return stop;
+	});
+	assert opened !== null;
+	if (opened !== null) {
+		const session = opened as RoutingSession;
+		const stop = ref.enableHistory(session);
+		try {
+			assert history.read().url === "/store", history.read().url;
+			const start = session.index();
+			assert ref.linkTo("/store/product/42");
+			assert history.read().url === "/store/product/42", history.read().url;
+			assert session.index() === start + 1, session.index().toString();
+			assert js("document.body.innerText").indexOf("Product 42") >= 0;
+			ref.goBack();
+			await sleepAsync(100);
+			assert history.read().url === "/store", history.read().url;
+			assert session.index() === start, session.index().toString();
+			assert history.go(1);
+			await sleepAsync(100);
+			assert ref.currentPath() === "Product", ref.currentPath();
+			assert js("document.body.innerText").indexOf("Product 42") >= 0;
+			assert history.go(-1);
+			await sleepAsync(100);
+			assert ref.currentPath() === "Catalog", ref.currentPath();
+			assert history.read().url === "/store", history.read().url;
+			assert errors.length === 0, errors.length.toString();
+		} finally {
+			stop();
+			session.dispose();
+			dispose();
+			mount.remove();
+			history.replace(original);
+		}
+	}
+}
+
+interface Mounted {
+	session: RoutingSession;
+	errors: RoutingError[];
+	stop: Dispose;
+	dispose: Dispose;
+}
+
+function mountOnBrowser(
+	content: NeonNode,
+	options: LinkingOptions,
+	ref: NavigationContainerRef,
+	mount: HTMLElement,
+): Mounted {
+	const history = createBrowserRoutingHistory();
+	const registry = new RoutingRegistry("main");
+	const errors: RoutingError[] = [];
+	let opened: RoutingSession | null = null;
+	const dispose = createRoot((stop: Dispose): Dispose => {
+		const app = NavigationContainer({
+			children: content,
+			linking: options,
+			ref,
+			routing: { registry, scope: "main" },
+		});
+		const created = createRoutingSession(registry, history, (failure: RoutingError): void => {
+			errors.push(failure);
+		});
+		if (!created.ok) { throw new Error("session: " + created.error.toString()); }
+		opened = created.value;
+		app(domHost(), mount as unknown as HostNode, null);
+		return stop;
+	});
+	const session = opened as RoutingSession;
+	return { session, errors, stop: ref.enableHistory(session), dispose };
+}
+
+function unmount(app: Mounted, mount: HTMLElement): void {
+	app.stop();
+	app.session.dispose();
+	app.dispose();
+	mount.remove();
+}
+
+test "browser back stays on a stack screen whose beforeRemove prevents it" {
+	const history = createBrowserRoutingHistory();
+	const original = history.read();
+	history.replace({ url: "/store", state: "" });
+	const ref = createNavigationContainerRef();
+	const mount = document.createElement("div");
+	document.body.appendChild(mount);
+	guarded = true;
+	const app = mountOnBrowser(<Store.Navigator>
+		<Store.Screen name="Catalog" component={Catalog} />
+		<Store.Screen name="Product" component={Product}
+			parseParams={parseItem} stringifyParams={stringifyItem} />
+	</Store.Navigator>, storeLinking, ref, mount);
+	try {
+		assert ref.linkTo("/store/product/42");
+		const at = app.session.index();
+		assert history.go(-1);
+		await sleepAsync(200);
+		assert ref.currentPath() === "Product", ref.currentPath();
+		assert history.read().url === "/store/product/42", history.read().url;
+		assert app.session.index() === at, app.session.index().toString();
+		assert js("document.body.innerText").indexOf("Product 42") >= 0;
+		assert app.errors.length === 0, app.errors.length.toString();
+	} finally {
+		guarded = false;
+		unmount(app, mount);
+		history.replace(original);
+	}
+}
+
+const Side = createDrawerNavigator<string>();
+
+const sideLinking: LinkingOptions = {
+	prefixes: [],
+	enabled: false,
+	config: { screens: [{ name: "One", path: "one" }, { name: "Two", path: "two" }] },
+};
+
+function Page(props: ScreenProps<string>): NeonNode {
+	return <Text>{"Page " + props.route.name}</Text>;
+}
+
+function drawerShown(): boolean {
+	return js("String(!!document.querySelector('[aria-label=\"Close navigation menu\"]'))") ===
+		"true";
+}
+
+test "opening a drawer adds a browser entry that browser back closes" {
+	const history = createBrowserRoutingHistory();
+	const original = history.read();
+	history.replace({ url: "/one", state: "" });
+	const ref = createNavigationContainerRef();
+	const mount = document.createElement("div");
+	document.body.appendChild(mount);
+	const app = mountOnBrowser(<Side.Navigator>
+		<Side.Screen name="One" component={Page} />
+		<Side.Screen name="Two" component={Page} />
+	</Side.Navigator>, sideLinking, ref, mount);
+	try {
+		const start = app.session.index();
+		ref.openDrawer();
+		assert app.session.index() === start + 1, app.session.index().toString();
+		assert history.read().url === "/one", history.read().url;
+		await sleepAsync(400);
+		assert drawerShown(), "the drawer opened";
+		assert history.go(-1);
+		await sleepAsync(400);
+		assert !drawerShown(), "browser back closed the drawer";
+		assert app.session.index() === start, app.session.index().toString();
+		assert history.go(1);
+		await sleepAsync(400);
+		assert drawerShown(), "browser forward opened it again";
+		ref.closeDrawer();
+		await sleepAsync(400);
+		assert app.session.index() === start, app.session.index().toString();
+		assert history.read().url === "/one", history.read().url;
+		assert app.errors.length === 0, app.errors.length.toString();
+	} finally {
+		unmount(app, mount);
+		history.replace(original);
 	}
 }

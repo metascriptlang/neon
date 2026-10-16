@@ -1,5 +1,6 @@
 when (js) {
-	import { Accessor, accessor, batch, createSignal } from "../core/signal";
+	import { Accessor, accessor, createSignal } from "../core/signal";
+	import { flush } from "../core/runtime";
 
 	export interface ScrollPosition {
 		x: number;
@@ -20,7 +21,7 @@ when (js) {
 	}
 
 	export function publishPageScroll(x: number, y: number, maxX: number, maxY: number): void {
-		batch((): void => {
+		flush((): void => {
 			if (offsetX() !== x) { setOffsetX(x); }
 			if (offsetY() !== y) { setOffsetY(y); }
 			if (rangeX() !== maxX) { setRangeX(maxX); }

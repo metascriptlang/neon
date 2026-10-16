@@ -6,7 +6,6 @@
 
 import { createSignal, accessor, Accessor } from "../../src/core/signal";
 import { NeonNode } from "../../src/render/node";
-import { renderToString } from "../../src/render/ssr";
 import { render, mockHost, mockNode, mockToString, HostNode } from "../../src/render/host";
 
 interface CounterProps {
@@ -19,11 +18,6 @@ let counterRuns = 0;
 function Counter(props: CounterProps): NeonNode {
 	counterRuns = counterRuns + 1;
 	return <p class={props.label}>n={props.count().toString()}</p>;
-}
-
-test "bare JSX lowers at an annotated const boundary" {
-	const v: NeonNode = <div class="box">hi</div>;
-	assert renderToString(v) === "<div class=\"box\">hi</div>", renderToString(v);
 }
 
 test "bare JSX lowers at a parameter boundary" {
@@ -53,4 +47,11 @@ test "a component returns bare JSX and stays reactive" {
 	setN(5);
 	assert mockToString(root) === "<root><div><p class=\"c\">n=5</p></div></root>", "after set: " + mockToString(root);
 	assert counterRuns === 1, "signal change must not re-run the body";
+}
+
+test "bare JSX lowers at an annotated const boundary" {
+	const v: NeonNode = <div class="box">hi</div>;
+	const root = mockNode("root");
+	render(v, mockHost(), root as unknown as HostNode);
+	assert mockToString(root) === "<root><div class=\"box\">hi</div></root>", mockToString(root);
 }

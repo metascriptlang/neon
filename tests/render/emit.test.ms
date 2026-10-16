@@ -268,8 +268,8 @@ function countingHost(counter: number[]): Host {
 		},
 		createText: h.createText, setText: h.setText, setAttr: h.setAttr, removeAttr: h.removeAttr,
 		setStyle: h.setStyle, setStyleProp: h.setStyleProp, setStyleClass: h.setStyleClass, addEvent: h.addEvent, append: h.append,
-		insertBefore: h.insertBefore, removeChild: h.removeChild,
-		nextSibling: h.nextSibling, firstChild: h.firstChild, cloneNode: h.cloneNode, voidArea: h.voidArea, scrollTo: h.scrollTo,
+		insertBefore: h.insertBefore, removeChild: h.removeChild, parentOf: h.parentOf, release: h.release,
+		nextSibling: h.nextSibling, firstChild: h.firstChild, cloneNode: h.cloneNode, voidArea: h.voidArea, scrollTo: h.scrollTo, measureText: h.measureText,
 	};
 }
 
@@ -321,8 +321,8 @@ function textCountingHost(counter: number[]): Host {
 			h.setText(node, value);
 		},
 		setAttr: h.setAttr, removeAttr: h.removeAttr, setStyle: h.setStyle, setStyleProp: h.setStyleProp, setStyleClass: h.setStyleClass, addEvent: h.addEvent,
-		append: h.append, insertBefore: h.insertBefore, removeChild: h.removeChild,
-		nextSibling: h.nextSibling, firstChild: h.firstChild, cloneNode: h.cloneNode, voidArea: h.voidArea, scrollTo: h.scrollTo,
+		append: h.append, insertBefore: h.insertBefore, removeChild: h.removeChild, parentOf: h.parentOf, release: h.release,
+		nextSibling: h.nextSibling, firstChild: h.firstChild, cloneNode: h.cloneNode, voidArea: h.voidArea, scrollTo: h.scrollTo, measureText: h.measureText,
 	};
 }
 
@@ -361,11 +361,12 @@ test "template mode on a cloneNode:null host falls back and renders the same" {
 	const host: Host = {
 		createElement: base.createElement, createText: base.createText, setText: base.setText,
 		setAttr: base.setAttr, removeAttr: base.removeAttr, setStyle: base.setStyle, setStyleProp: base.setStyleProp, setStyleClass: base.setStyleClass, addEvent: base.addEvent,
-		append: base.append, insertBefore: base.insertBefore, removeChild: base.removeChild,
+		append: base.append, insertBefore: base.insertBefore, removeChild: base.removeChild, parentOf: base.parentOf, release: base.release,
 		nextSibling: base.nextSibling, firstChild: base.firstChild,
 		cloneNode: null,
 		voidArea: null,
 		scrollTo: null,
+		measureText: null,
 	};
 
 	const directRoot = mockNode("root");
@@ -556,7 +557,7 @@ test "a whole-style call tracks the signal — flat tier" {
 test "an accessor-typed style and a ternary style track the signal" {
 	const [pad, setPad] = createSignal<number>(10);
 	const [n, setN] = createSignal<number>(1);
-	const memoStyle = createMemo((): Style => { const st: Style = { padding: pad() }; return st; });
+	const memoStyle = createMemo<Style>((): Style => { const st: Style = { padding: pad() }; return st; });
 	const small: Style = { margin: 1 };
 	const big: Style = { margin: 2 };
 	const host = mockHost();
@@ -826,8 +827,8 @@ test "a reactive layer call tracks the signal without a layerStyles wrapper" {
 
 test "an accessor layer and an accessor field are read inside the layering effect" {
 	const [h, setH] = createSignal<number>(5);
-	const acc = createMemo((): Style => { const s: Style = { height: h() }; return s; });
-	const op = createMemo((): number => h() / 10);
+	const acc = createMemo<Style>((): Style => { const s: Style = { height: h() }; return s; });
+	const op = createMemo<number>((): number => h() / 10);
 	const host = mockHost();
 	const directRoot = mockNode("root");
 	const mount = element(<div style={[layerSheet.box, acc, { opacity: op }]}><p>a</p></div>);

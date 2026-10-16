@@ -113,7 +113,7 @@ function transformNumber(ref p: TransformCursor, length: boolean): float64 {
 	let value: float64 = 0;
 	let digits: int32 = 0;
 	while (p.at < p.css.length && transformDigit(p.css.charCodeAt(p.at))) {
-		value = value * 10 + (p.css.charCodeAt(p.at) - 48) as float64;
+		value = value * 10 + ((p.css.charCodeAt(p.at) - 48) as float64);
 		p.at += 1;
 		digits += 1;
 	}

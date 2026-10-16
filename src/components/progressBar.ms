@@ -7,7 +7,7 @@
 import { Style } from "../render/style";
 import { Accessor, accessor, createSignal } from "../core/signal";
 import { createRenderEffect } from "../core/effect";
-import { onCleanup } from "../core/cleanup";
+import { Cleanup } from "../core/types";
 import { element } from "../macros/ui/element";
 import { NeonNode, VAttr, dynAttr, hostElement } from "../render/node";
 import { defaultRole, layered } from "./drawn";
@@ -62,12 +62,15 @@ export function ProgressBar(props: ProgressBarProps): NeonNode {
 	const isIndeterminate = (): boolean => flagOn(indeterminate);
 	const amount = (): float64 => progress === null ? 0.0 : (progress as Accessor<float64>)();
 	const [phase, setPhase] = createSignal(0);
-	createRenderEffect((): void => {
-		if (!isIndeterminate()) { return; }
-		const steps = sweepSteps();
-		const id = setInterval((): void => { setPhase((phase() + 1) % steps); }, STEP_MS);
-		onCleanup((): void => { clearInterval(id); });
-	});
+	createRenderEffect<boolean>(
+		(prev: boolean | null): boolean => isIndeterminate(),
+		(sweeping: boolean, prev: boolean | null): Cleanup | null => {
+			if (!sweeping) { return null; }
+			const steps = sweepSteps();
+			const id = setInterval((): void => { setPhase((phase() + 1) % steps); }, STEP_MS);
+			return (): void => { clearInterval(id); };
+		},
+	);
 	const span = (): BarSpan => isIndeterminate() ? sweepSpan(phase()) : determinateSpan(amount());
 	const shown = (): boolean => visible === null || (visible as Accessor<boolean>)();
 	const track = (): Style => {

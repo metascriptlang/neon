@@ -4,6 +4,7 @@
 
 import { Accessor, accessor, createSignal, untrack } from "../core/signal";
 import { createRenderEffect } from "../core/effect";
+import { Cleanup } from "../core/types";
 import { For, Show } from "../macros/ui/flow";
 import { element } from "../macros/ui/element";
 import { NeonNode, VAttr, dynAttr, evt, hostElement } from "../render/node";
@@ -94,16 +95,21 @@ export function TabBar(props: {
 	};
 
 	// tabs.dart _TabBarState._scrollToCurrentIndex: a scrollable bar centres its tab.
-	createRenderEffect((): void => {
-		if (!scrolls()) { return; }
-		const at = index() as int32;
-		const all = layouts();
-		const width = viewport();
-		if (scroller === null || at < 0 || at >= all.length || width <= 0) { return; }
-		const tab = all[at];
-		const target = Math.max(0, tab.x + tab.width / 2 - width / 2);
-		(scroller as ScrollViewHandle).scrollTo({ x: target, y: 0, animated: true });
-	});
+	createRenderEffect<number>(
+		(prev: number | null): number => {
+			if (!scrolls()) { return -1; }
+			const at = index() as int32;
+			const all = layouts();
+			const width = viewport();
+			if (at < 0 || at >= all.length || width <= 0) { return -1; }
+			const tab = all[at];
+			return Math.max(0, tab.x + tab.width / 2 - width / 2);
+		},
+		(target: number, prev: number | null): Cleanup | null => {
+			if (target >= 0 && scroller !== null) { (scroller as ScrollViewHandle).scrollTo({ x: target, y: 0, animated: true }); }
+			return null;
+		},
+	);
 
 	const tab = (route: TabRoute, at: Accessor<number>): NeonNode => {
 		const focused = (): boolean => index() === at();
@@ -197,10 +203,13 @@ export function TabView(props: {
 	// A controlled index moves the pages; a swipe reports through onPageSelected first, so
 	// the index it echoes back already matches.
 	if (indexProp !== null) {
-		createRenderEffect((): void => {
-			const wanted = (indexProp as Accessor<number>)();
-			if (untrack<number>(selected) !== wanted) { controller.setPage(wanted); }
-		});
+		createRenderEffect<number>(
+			(prev: number | null): number => (indexProp as Accessor<number>)(),
+			(wanted: number, prev: number | null): Cleanup | null => {
+				if (selected() !== wanted) { controller.setPage(wanted); }
+				return null;
+			},
+		);
 	}
 
 	const isLazy = (): boolean => lazyProp !== null && (lazyProp as Accessor<boolean>)();

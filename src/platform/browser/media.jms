@@ -1,7 +1,7 @@
 import { HostNode } from "../../render/hostTypes";
 import { NeonEvent, neonEvent } from "../../render/event";
 import { registerCss } from "../../render/sheet";
-import { addCameraEvent, createCameraNode, isCameraNode, releaseCamera, writeCameraAttr } from "./camera";
+import { MediaElement, registerMediaElement } from "./domCapabilities";
 
 extern class MediaClassList {
 	extern add(name: cstring): void;
@@ -377,12 +377,7 @@ function listenVideo(state: MediaState): void {
 	});
 }
 
-export function isMediaTag(tag: string): boolean {
-	return tag === "webview" || tag === "video" || tag === "camera";
-}
-
-export function createMediaNode(tag: string): HostNode {
-	if (tag === "camera") { return createCameraNode(); }
+function createMediaNode(tag: string): HostNode {
 	if (!cssDone) {
 		registerCss("neon-media", MEDIA_CSS);
 		cssDone = true;
@@ -405,28 +400,21 @@ export function createMediaNode(tag: string): HostNode {
 	return el as unknown as HostNode;
 }
 
-export function isMediaNode(node: HostNode): boolean {
-	return states.has(node as unknown as Node) || isCameraNode(node);
-}
-
-export function writeMediaAttr(node: HostNode, name: string, value: string): boolean {
-	if (writeCameraAttr(node, name, value)) { return true; }
+function writeMediaAttr(node: HostNode, name: string, value: string): boolean {
 	const el = node as unknown as Node;
 	if (!states.has(el)) { return false; }
 	const state = states.get(el) as MediaState;
 	return state.kind === "webview" ? writeFrameAttr(state, name, value) : writeVideoAttr(state, name, value);
 }
 
-export function addMediaEvent(node: HostNode, type: string, handler: (e: NeonEvent) => void): boolean {
-	if (addCameraEvent(node, type, handler)) { return true; }
+function addMediaEvent(node: HostNode, type: string, handler: (e: NeonEvent) => void): boolean {
 	const el = node as unknown as Node;
 	if (!states.has(el) || type === "layout") { return false; }
 	(states.get(el) as MediaState).routes.push({ type, handler });
 	return true;
 }
 
-export function releaseMedia(node: HostNode): void {
-	releaseCamera(node);
+function releaseMedia(node: HostNode): void {
 	const el = node as unknown as Node;
 	if (!states.has(el)) { return; }
 	const state = states.get(el) as MediaState;
@@ -435,3 +423,7 @@ export function releaseMedia(node: HostNode): void {
 	if (state.kind === "video") { el.pause(); }
 	states.delete(el);
 }
+
+const mediaElement: MediaElement = { create: createMediaNode, writeAttr: writeMediaAttr, addEvent: addMediaEvent, release: releaseMedia };
+registerMediaElement("webview", mediaElement);
+registerMediaElement("video", mediaElement);

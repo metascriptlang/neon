@@ -1,7 +1,7 @@
 import { Signal, Accessor, accessor, untrack } from "../core/signal";
 import { createRenderEffect } from "../core/effect";
 import { createRoot } from "../core/owner";
-import { Dispose } from "../core/types";
+import { Cleanup, Dispose } from "../core/types";
 import { Easing, EasingFunction, easingOr } from "./easing";
 import { Animation, EndCallback, EndResult } from "./animation";
 
@@ -87,16 +87,12 @@ export class AnimatedNode {
 
 	addListener(callback: ValueListener): string {
 		const id = listenerId();
-		let primed = false;
 		const dispose = createRoot((d: Dispose): Dispose => {
-			createRenderEffect((): void => {
-				const value = this.get();
-				if (!primed) {
-					primed = true;
-					return;
-				}
-				untrack((): void => { callback({ value }); });
-			});
+			createRenderEffect<number>(
+				(prev: number | null): number => this.get(),
+				(value: number, prev: number | null): Cleanup | null => { callback({ value }); return null; },
+				{ defer: true },
+			);
 			return d;
 		});
 		derivedListeners.push({ node: this, entry: { id, callback, dispose } });
@@ -133,7 +129,7 @@ export class AnimatedValue extends AnimatedNode {
 		super();
 		this.value = value;
 		this.startingValue = value;
-		this.signal = new Signal<number>(value);
+		this.signal = new Signal<number>(value, null, true);
 	}
 
 	get(): number {
@@ -226,10 +222,10 @@ export class AnimatedValue extends AnimatedNode {
 	track(target: AnimatedNode, make: (toValue: number) => Animation, callback: EndCallback | null): void {
 		this.stopTracking();
 		this.tracking = createRoot((d: Dispose): Dispose => {
-			createRenderEffect((): void => {
-				const toValue = target.get();
-				untrack((): void => { this.animate(make(toValue), callback); });
-			});
+			createRenderEffect<number>(
+				(prev: number | null): number => target.get(),
+				(toValue: number, prev: number | null): Cleanup | null => { this.animate(make(toValue), callback); return null; },
+			);
 			return d;
 		});
 	}

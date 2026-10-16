@@ -4,11 +4,12 @@
 // list only known at runtime (src/components/primitives.ms).
 
 import { createRenderEffect } from "../core/effect";
+import { Cleanup } from "../core/types";
 import { Style } from "./style";
 import { NeonEvent } from "./event";
 import { Host, HostNode, NeonNode, RefFn } from "./hostTypes";
 import { Row, place, reconcileArrays, mountAt, removeRow } from "./reconcile";
-import { regionAnchor, sealRegion, serverRegionStart, serverRegionEnd } from "./claim";
+import { regionAnchor, regionParent, sealRegion, serverRegionStart, serverRegionEnd } from "./claim";
 import { isServer } from "./environment";
 import { bindText, bindAttr, bindStyleAll, applyRef } from "./bind";
 
@@ -99,17 +100,21 @@ export function mountChild(host: Host, parent: HostNode, before: HostNode | null
 
 // On the server a region writes its rows and then its anchor, in document order. The
 // rows are read in the effect the client keeps them in, so they are owned and numbered
-// as the client's; a row list that changes while its rows render (an ErrorBoundary that
+// as the client's; a row list that changes while its rows render (an Errored boundary that
 // caught) takes back what it wrote and writes the new rows before the anchor follows.
 function serverRegion(host: Host, parent: HostNode, before: HostNode | null, fn: RegionFn): void {
 	serverRegionStart(host, parent, before);
 	const rows = fn(host);
 	let next: Row[] = [];
 	let written = false;
-	createRenderEffect(() => {
-		if (written) { throw new Error("SSR: a region's rows changed after the server wrote it; set the signal before the content that reads it"); }
-		next = rows();
-	});
+	createRenderEffect<Row[]>(
+		(prev: Row[] | null): Row[] => rows(),
+		(value: Row[], prev: Row[] | null): Cleanup | null => {
+			if (written) { throw new Error("SSR: a region's rows changed after the server wrote it; set the signal before the content that reads it"); }
+			next = value;
+			return null;
+		},
+	);
 	let shown: Row[] = [];
 	for (let pass = 0; !sameRows(next, shown); pass += 1) {
 		if (pass === 100) { throw new Error("SSR: a region's rows kept changing while it rendered"); }
@@ -138,12 +143,18 @@ export function regionNode(fn: RegionFn): NeonNode {
 		if (isServer()) { serverRegion(host, parent, before, fn); return; }
 		const anchor = regionAnchor(host, parent, before);
 		let current: Row[] = [];
+		let mounted = false;
 		const rows = fn(host);
-		createRenderEffect(() => {
-			const next = rows();
-			reconcileArrays(host, parent, current, next, anchor);
-			current = next.slice(0, next.length);
-		});
+		createRenderEffect<Row[]>(
+			(prev: Row[] | null): Row[] => rows(),
+			(next: Row[], prev: Row[] | null): Cleanup | null => {
+				const at = mounted ? regionParent(host, anchor, "regionNode") : parent;
+				reconcileArrays(host, at, current, next, anchor);
+				mounted = true;
+				current = next.slice(0, next.length);
+				return null;
+			},
+		);
 		sealRegion(host, parent, anchor);
 	};
 }

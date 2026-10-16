@@ -1,6 +1,10 @@
 # Neon Framework - Technical Deep Dive
 
 **Last Updated**: 2025-12-20
+
+> This file describes the original Nim Neon (`~/projects/neon`), not this repository. The API
+> names in it (`Index`, `batch`, `Provider`, and the rest) are the Nim API's, kept as the reference
+> the port was made from; `src/index.ms` and `docs/REFERENCE.md` say what Neon does now.
 **Analysis**: Cross-platform UI framework with compile-time metaprogramming
 
 ---

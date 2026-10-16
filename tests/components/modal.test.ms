@@ -55,7 +55,7 @@ test "a Portal keeps its owner's context and mounts into a named node" {
 	const T = createContext<Tone>({ name: "plain" });
 	const target = mockNode("target");
 	const root: MockNode = mockNode("root");
-	render(element(<T.Provider value={{ name: "dark" }}><View><Portal mount={target as unknown as HostNode}><Text>{useContext(T).name}</Text></Portal></View></T.Provider>), mockHost(), root as unknown as HostNode);
+	render(element(<T value={{ name: "dark" }}><View><Portal mount={target as unknown as HostNode}><Text>{useContext(T).name}</Text></Portal></View></T>), mockHost(), root as unknown as HostNode);
 	assert mockToString(target) === "<target><view><text>dark</text></view></target>", "portal: " + mockToString(target);
 	assert mockToString(root) === "<root><view></view></root>", "the app tree keeps no node: " + mockToString(root);
 }

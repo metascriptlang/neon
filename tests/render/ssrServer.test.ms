@@ -4,7 +4,7 @@ import { renderToString } from "../../src/render/ssr";
 import { createComponent } from "../../src/render/component";
 import { createContext, useContext } from "../../src/render/context";
 import { createList } from "../../src/core/list";
-import { For, ForList, Index, Show } from "../../src/macros/ui/flow";
+import { For, ForList, ForUnkeyed, Show } from "../../src/macros/ui/flow";
 import { createStyles, styleOf } from "../../src/macros/ui/style";
 import { Style } from "../../src/render/style";
 import { collectCss, resetCss } from "../../src/render/sheet";
@@ -48,29 +48,21 @@ test "reactive text and attributes serialize their current value" {
 	assert both === "<p class=\"on\">7</p>", "both: " + both;
 }
 
-test "a style serializes inline, or as a sheet class where the entry carries one" {
-	const id = sheet.box.cssId;
+test "a sheet entry serializes as a class" {
+	const id = sheet.box.cssId as string;
 	const entry = renderToString(<div style={sheet.box}></div>);
 	const beside = renderToString(<div class="outer" style={sheet.box}></div>);
-	if (id !== null) {
-		assert entry === "<div class=\"" + (id as string) + "\"></div>", "sheet entry: " + entry;
-		assert beside === "<div class=\"outer " + (id as string) + "\"></div>", "sheet entry beside a class attr: " + beside;
-	} else {
-		assert entry === "<div style=\"" + BOX_CSS + "\"></div>", "sheet entry: " + entry;
-		assert beside === "<div class=\"outer\" style=\"" + BOX_CSS + "\"></div>", "sheet entry beside a class attr: " + beside;
-	}
+	assert entry === "<div class=\"" + id + "\"></div>", "sheet entry: " + entry;
+	assert beside === "<div class=\"outer " + id + "\"></div>", "sheet entry beside a class attr: " + beside;
 	const whole = renderToString(<div style={boxOf()}></div>);
-	const wholeWant = id !== null ? "<div class=\"" + (id as string) + "\"></div>" : "<div style=\"" + BOX_CSS + "\"></div>";
-	assert whole === wholeWant, "whole-style thunk returning a sheet entry: " + whole;
+	assert whole === "<div class=\"" + id + "\"></div>", "whole-style thunk returning a sheet entry: " + whole;
 }
 
 test "a render registers the rule of the sheet entry it used" {
-	when (js) {
-		resetCss();
-		renderToString(<div style={sheet.box}></div>);
-		const css = collectCss();
-		assert css === "." + (sheet.box.cssId as string) + "{" + BOX_CSS + "}", "css: " + css;
-	}
+	resetCss();
+	renderToString(<div style={sheet.box}></div>);
+	const css = collectCss();
+	assert css === "." + (sheet.box.cssId as string) + "{" + BOX_CSS + "}", "css: " + css;
 }
 
 interface Skin { accent: string; }
@@ -91,9 +83,9 @@ test "components and context scopes serialize through" {
 
 	const T = createContext<Skin>({ accent: "light" });
 	const scoped = renderToString(
-		<T.Provider value={{ accent: "dark" }}>
+		<T value={{ accent: "dark" }}>
 			<div>{useContext(T).accent}</div>
-		</T.Provider>
+		</T>
 	);
 	assert scoped === "<div>dark</div>", "provider scope: " + scoped;
 }
@@ -112,8 +104,8 @@ test "regions serialize their current rows" {
 	const rows = el("ul", [], [], For<number>({ each: items, children: (item, i) => <li>{"" + item}</li> }));
 	assert renderToString(rows) === "<ul><li>1</li><li>2</li><!----></ul>", "For: " + renderToString(rows);
 
-	const indexed = el("ul", [], [], Index<number>({ each: items, children: (item, i) => <li>{item().toString()}</li> }));
-	assert renderToString(indexed) === "<ul><li>1</li><li>2</li><!----></ul>", "Index: " + renderToString(indexed);
+	const indexed = el("ul", [], [], ForUnkeyed<number>({ each: items, children: (item, i) => <li>{item().toString()}</li> }));
+	assert renderToString(indexed) === "<ul><li>1</li><li>2</li><!----></ul>", "ForUnkeyed: " + renderToString(indexed);
 
 	// A ForList region serializes through read(), the same path a diff consumer takes: SSR never
 	// sees an op, because no region is mounted when the markup is produced.
@@ -142,7 +134,7 @@ test "a region at the root of the render renders too" {
 	assert renderToString(rows) === "<i>1</i><i>2</i><i>3</i><!---->", "root region: " + renderToString(rows);
 }
 
-test "the shared SSR host carries nothing over between renders" {
+test "a render carries nothing over to the next" {
 	const [items, setItems] = createSignal<number[]>([1]);
 	const rows = el("ul", [], [], For<number>({ each: items, children: (item, i) => <li>{"" + item}</li> }));
 	const first = renderToString(rows);

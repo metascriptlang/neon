@@ -150,6 +150,14 @@ export function sceneHost(scene: SvgScene): Host {
 			asNode(node).parent = null;
 			sceneChanged(scene);
 		},
+		parentOf: (node: HostNode): HostNode | null => {
+			const p = asNode(node).parent;
+			if (p === null) { return null; }
+			return p as unknown as HostNode;
+		},
+		release: (node: HostNode): void => {
+			if (asNode(node).parent !== null) { throw "release: the node still has a parent; remove it first"; }
+		},
 		nextSibling: (node: HostNode): HostNode | null => {
 			const n = asNode(node);
 			const p = n.parent;

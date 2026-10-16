@@ -239,7 +239,7 @@ export function View(props: ViewProps): NeonNode {
 	let mountedOn: Host | null = null;
 	let mounted = false;
 	const kids = props.children;
-	const provided: NeonNode | null = entry === null || kids === null ? kids : ResponderParent.Provider({
+	const provided: NeonNode | null = entry === null || kids === null ? kids : ResponderParent.provider({
 		value: accessor((): ResponderEntry | null => entry),
 		children: kids as NeonNode,
 	});

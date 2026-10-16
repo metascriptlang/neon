@@ -125,6 +125,12 @@ export function regionAnchor(host: Host, parent: HostNode, before: HostNode | nu
 	return anchor;
 }
 
+export function regionParent(host: Host, anchor: HostNode, region: string): HostNode {
+	const p = host.parentOf(anchor);
+	if (p === null) { throw region + ": the region's anchor has no parent at an update, so there is nowhere to put its rows"; }
+	return p as HostNode;
+}
+
 export function sealRegion(host: Host, parent: HostNode, anchor: HostNode): void {
 	const c = reading(host);
 	if (c === null) { return; }

@@ -227,13 +227,7 @@ function findScreen(screens: LinkingScreen[], name: string): LinkingScreen | nul
 	return null;
 }
 
-function unclaimedQuery(
-	params: Map<string, string> | null,
-	segments: Segment[],
-	depth: int32,
-): string {
-	if (params === null) { return ""; }
-	const held = params as Map<string, string>;
+function unclaimedKeys(held: Map<string, string>, segments: Segment[], depth: int32): string[] {
 	const keys: string[] = [];
 	for (const key of held) {
 		let claimed = false;
@@ -245,6 +239,17 @@ function unclaimedQuery(
 		if (!claimed) { keys.push(key); }
 	}
 	keys.sort();
+	return keys;
+}
+
+function unclaimedQuery(
+	params: Map<string, string> | null,
+	segments: Segment[],
+	depth: int32,
+): string {
+	if (params === null) { return ""; }
+	const held = params as Map<string, string>;
+	const keys = unclaimedKeys(held, segments, depth);
 	const pairs: string[] = [];
 	for (const key of keys) {
 		pairs.push(encodeRouteComponent(key) + "=" + encodeRouteComponent(held.get(key) ?? ""));
@@ -308,4 +313,60 @@ export function pathFromState(state: NavigationState, config: LinkingConfig): st
 	}
 	path = "/" + splitPath(path).join("/");
 	return query === "" ? path : path + "?" + query;
+}
+
+function ownSegments(screens: LinkingScreen[] | null, name: string): Segment[] | null {
+	const screen = screens === null ? null : findScreen(screens as LinkingScreen[], name);
+	if (screen === null) { return null; }
+	const own = (screen as LinkingScreen).path;
+	return own === null ? [] : patternSegments(own as string, 0);
+}
+
+export function screenPathPart(
+	screens: LinkingScreen[] | null,
+	name: string,
+	values: Map<string, string> | null,
+): string {
+	const segments = ownSegments(screens, name);
+	if (segments === null) { return encodeRouteComponent(name); }
+	const pieces: string[] = [];
+	for (const segment of segments as Segment[]) {
+		if (segment.wildcard) {
+			pieces.push(encodeRouteComponent(name));
+		} else if (!segment.param) {
+			pieces.push(encodeRouteComponent(segment.text));
+		} else {
+			let value: string | null = null;
+			if (values !== null) { value = (values as Map<string, string>).get(segment.text); }
+			if (value !== null) {
+				pieces.push(encodeRouteComponent(value as string));
+			} else if (!segment.optional) {
+				throw new Error(
+					"linking: screen '" + name + "' has no value for its path param ':" +
+					segment.text + "'",
+				);
+			}
+		}
+	}
+	return pieces.join("/");
+}
+
+export function screenQuery(
+	screens: LinkingScreen[] | null,
+	name: string,
+	values: Map<string, string> | null,
+): Map<string, string> | null {
+	if (values === null) { return null; }
+	const held = values as Map<string, string>;
+	const segments = ownSegments(screens, name);
+	const query = new Map<string, string>();
+	for (const key of unclaimedKeys(held, segments === null ? [] : segments as Segment[], 0)) {
+		query.set(key, held.get(key) ?? "");
+	}
+	return query;
+}
+
+export function nestedScreens(screens: LinkingScreen[] | null, name: string): LinkingScreen[] | null {
+	const screen = screens === null ? null : findScreen(screens as LinkingScreen[], name);
+	return screen === null ? null : (screen as LinkingScreen).screens;
 }

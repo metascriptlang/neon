@@ -1,6 +1,7 @@
 import { createList, listInsert, listMove, listRemove, listSet } from "../../src/core/list";
 import { createRoot } from "../../src/core/owner";
 import { createRenderEffect } from "../../src/core/effect";
+import { Cleanup } from "../../src/core/types";
 
 test "createList reads its items through read, length and at" {
 	const l = createList<number>([1, 2, 3]);
@@ -74,25 +75,29 @@ test "replaceAll drops the queued ops and asks for a reset" {
 }
 
 test "every command bumps the version once" {
-	createRoot((d) => {
-		const l = createList<number>([1]);
-		let runs = 0;
-		createRenderEffect(() => { l.length(); runs = runs + 1; });
-		assert runs === 1, "the effect ran once";
-		l.push(2);
-		assert runs === 2, "push";
-		l.insert(0, 0);
-		assert runs === 3, "insert";
-		l.move(0, 1);
-		assert runs === 4, "move";
-		l.set(0, 4);
-		assert runs === 5, "set";
-		l.remove(0);
-		assert runs === 6, "remove";
-		l.replaceAll([1, 2]);
-		assert runs === 7, "replaceAll";
-		d();
+	const l = createList<number>([1]);
+	let runs = 0;
+	const stop = createRoot((d) => {
+		createRenderEffect<number>(
+			(p: number | null): number => l.length(),
+			(v: number, p: number | null): Cleanup | null => { runs = runs + 1; return null; },
+		);
+		return d;
 	});
+	assert runs === 1, "the effect ran once";
+	l.push(2);
+	assert runs === 2, "push";
+	l.insert(0, 0);
+	assert runs === 3, "insert";
+	l.move(0, 1);
+	assert runs === 4, "move";
+	l.set(0, 4);
+	assert runs === 5, "set";
+	l.remove(0);
+	assert runs === 6, "remove";
+	l.replaceAll([1, 2]);
+	assert runs === 7, "replaceAll";
+	stop();
 }
 
 test "two consumers each get every op" {

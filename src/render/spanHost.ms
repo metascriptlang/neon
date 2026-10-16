@@ -7,7 +7,8 @@ import { Host, HostNode, NeonNode, TextSpan } from "./hostTypes";
 import { Style, mergeStyle, emptyStyle } from "./style";
 import { NeonEvent } from "./event";
 import { Accessor, createSignal, untrack } from "../core/signal";
-import { createEffect, createBindingEffect } from "../core/effect";
+import { createRenderEffect } from "../core/effect";
+import { Cleanup } from "../core/types";
 
 class Paragraph {
 	version: number = 0;
@@ -129,6 +130,10 @@ export const SPAN_HOST: Host = {
 		if (n.parent !== spanOf(parent)) { throw new Error("removeChild: the span is not a child of the parent"); }
 		detach(n);
 	},
+	parentOf: (node: HostNode): HostNode | null => spanOf(node).parent,
+	release: (node: HostNode): void => {
+		if (spanOf(node).parent !== null) { throw new Error("release: the span still has a parent; remove it first"); }
+	},
 	nextSibling: (node: HostNode): HostNode | null => {
 		const n = spanOf(node);
 		const p = n.parent;
@@ -167,8 +172,7 @@ function spanNodes(read: Accessor<TextSpan[]>): NeonNode {
 		const words: HostNode[] = [];
 		const styles: (Style | null)[] = [];
 		let latest: TextSpan[] = [];
-		createBindingEffect((): void => {
-			const spans = read();
+		createRenderEffect<TextSpan[]>((prev: TextSpan[] | null): TextSpan[] => read(), (spans: TextSpan[], prev: TextSpan[] | null): Cleanup | null => {
 			latest = spans;
 			for (let i = 0; i < spans.length; i += 1) {
 				const s = spans[i];
@@ -200,7 +204,8 @@ function spanNodes(read: Accessor<TextSpan[]>): NeonNode {
 				words.pop();
 				styles.pop();
 			}
-		});
+			return null;
+		}, { transparent: true });
 	};
 }
 
@@ -222,11 +227,15 @@ export function paragraphChildren(kids: NeonNode | null, spans: Accessor<TextSpa
 		const deliver = set as (node: HostNode, spans: TextSpan[]) => void;
 		if (spans !== null) {
 			const read = spans as Accessor<TextSpan[]>;
-			createBindingEffect((): void => { deliver(node, read()); });
+			createRenderEffect<TextSpan[]>(
+				(prev: TextSpan[] | null): TextSpan[] => read(),
+				(value: TextSpan[], prev: TextSpan[] | null): Cleanup | null => { deliver(node, value); return null; },
+				{ transparent: true },
+			);
 			return;
 		}
 		const root = new SpanNode(false);
-		const [changed, setChanged] = createSignal<number>(0);
+		const [changed, setChanged] = createSignal<number>(0, { ownedWrite: true });
 		const para = new Paragraph((v: number): void => { setChanged(v); }, (text: string): void => {
 			const one: TextSpan[] = [{ text }];
 			deliver(node, one);
@@ -241,10 +250,13 @@ export function paragraphChildren(kids: NeonNode | null, spans: Accessor<TextSpa
 			deliver(node, out);
 		};
 		flush();
-		createEffect((): void => {
-			changed();
-			if (para.version !== para.delivered) { untrack(flush); }
-		});
+		createRenderEffect<number>(
+			(prev: number | null): number => changed(),
+			(value: number, prev: number | null): Cleanup | null => {
+				if (para.version !== para.delivered) { untrack(flush); }
+				return null;
+			},
+		);
 	};
 }
 

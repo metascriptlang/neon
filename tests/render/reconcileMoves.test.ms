@@ -29,10 +29,13 @@ function countingHost(): Host {
 		insertBefore: (p: HostNode, n: HostNode, ref: HostNode | null): void => { inserts = inserts + 1; h.insertBefore(p, n, ref); },
 		removeChild: (p: HostNode, n: HostNode): void => { removes = removes + 1; h.removeChild(p, n); },
 		nextSibling: h.nextSibling,
+		parentOf: h.parentOf,
+		release: h.release,
 		firstChild: h.firstChild,
 		cloneNode: null,
 		voidArea: null,
 		scrollTo: null,
+		measureText: null,
 	};
 }
 

@@ -3,6 +3,10 @@ import {
 } from "./captureServices";
 import { Permissions, PermissionResponse } from "./permissions";
 
+when (js && !server) {
+	import "../platform/browser/captureServices";
+}
+
 export interface AVPlaybackSource {
 	uri: string;
 }

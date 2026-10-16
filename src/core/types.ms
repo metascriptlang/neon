@@ -1,47 +1,104 @@
-// Reactive graph shapes — shared by signal/effect/memo/cleanup/owner to avoid cyclic imports.
-
-export enum CompState { Clean, Stale }
-
-export type EffectFn = () => void;
+export type Cleanup = () => void;
 export type Dispose = () => void;
-export type ErrorHandler = (err: Error) => void;
 
-// The context a provider scope carries: `key` is the context object itself
-// (identity by creation, not by name), `value` the provider's typed holder.
 export interface ContextEntry {
 	key: unknown;
 	value: unknown;
 	next: ContextEntry | null;
 }
 
-// The observable half of the graph: a Signal's node, or a memo's own node.
-export interface Source {
-	observers: Computation[];
-	observerSlots: number[];
+export const REACTIVE_CHECK: int32 = 1 << 0;
+export const REACTIVE_DIRTY: int32 = 1 << 1;
+export const REACTIVE_RECOMPUTING_DEPS: int32 = 1 << 2;
+export const REACTIVE_IN_HEAP: int32 = 1 << 3;
+export const REACTIVE_IN_HEAP_HEIGHT: int32 = 1 << 4;
+export const REACTIVE_DISPOSED: int32 = 1 << 6;
+export const REACTIVE_LAZY: int32 = 1 << 9;
+export const REACTIVE_MISSED_WAKE: int32 = 1 << 12;
+export const REACTIVE_REASK: int32 = 1 << 13;
+export const REACTIVE_PROBED: int32 = 1 << 14;
+
+export const STATUS_PENDING: int32 = 1 << 0;
+export const STATUS_ERROR: int32 = 1 << 1;
+export const STATUS_UNINITIALIZED: int32 = 1 << 2;
+
+export const CONFIG_OWNED_WRITE: int32 = 1 << 0;
+export const CONFIG_TRANSPARENT: int32 = 1 << 2;
+export const CONFIG_AUTO_DISPOSE: int32 = 1 << 5;
+export const CONFIG_STAGED: int32 = 1 << 7;
+export const CONFIG_PROMOTED: int32 = 1 << 22;
+export const CONFIG_ROOT: int32 = 1 << 23;
+export const CONFIG_MODIFIED: int32 = 1 << 24;
+export const CONFIG_DORMANT_QUEUED: int32 = 1 << 25;
+export const CONFIG_VERDICT: int32 = 1 << 26;
+export const CONFIG_REDERIVE: int32 = 1 << 27;
+
+export const EFFECT_PURE: int32 = 0;
+export const EFFECT_RENDER: int32 = 1;
+export const EFFECT_USER: int32 = 2;
+
+export const RUN_UNCHANGED: int32 = 0;
+export const RUN_PUBLISHED: int32 = 1;
+export const RUN_STAGED: int32 = 2;
+
+export interface Link {
+	dep: Source;
+	sub: Computation;
+	nextDep: Link | null;
+	prevSub: Link | null;
+	nextSub: Link | null;
+	gen: int32;
 }
 
-// A reactive computation (effect/memo) — also an owner scope, and (for memos) a Source.
-// A root created by createRoot is a Computation with isRoot=true and a no-op fn.
-export interface Computation {
-	observers: Computation[];
-	observerSlots: number[];
+// `commit` and `run` close over the typed Cell only, never their own node: --gc=drc has
+// no cycle collector, so a node that reaches itself through its closure leaks.
+export interface Source {
+	subs: Link | null;
+	subsTail: Link | null;
+	config: int32;
+	computed: boolean;
+	commit: (() => void) | null;
+}
 
-	fn: EffectFn;
-	isRoot: boolean;
-	state: CompState;
-	sources: Source[];
-	sourceSlots: number[];
-	pure: boolean;
-	user: boolean;
-	disposed: boolean;
+export interface Computation extends Source {
+	deps: Link | null;
+	depsTail: Link | null;
+	depGen: int32;
+	flags: int32;
+	height: int32;
+	nextHeap: Computation | null;
+	prevHeap: Computation | null;
+	run: ((self: Computation, create: boolean) => int32) | null;
+	apply: ((self: Computation) => void) | null;
+	cleanup: Cleanup | null;
+	type: int32;
+	unobserved: (() => void) | null;
 
-	owned: Computation[];
-	cleanups: EffectFn[];
-	owner: Computation | null;
+	parent: Computation | null;
+	parentComputed: Computation | null;
+	firstChild: Computation | null;
+	nextSibling: Computation | null;
+	prevSibling: Computation | null;
+	disposal: Cleanup[] | null;
 	context: ContextEntry | null;
-	handler: ErrorHandler | null;
-
 	id: string | null;
-	childCount: number;
-	transparent: boolean;
+	childCount: int32;
+
+	status: int32;
+	error: Error | null;
+	flight: int32;
+	pendingSources: Computation[] | null;
+	blocked: boolean;
+	reask: boolean;
+	visitedAt: int32;
+	time: int32;
+}
+
+export class NotReadyError extends Error {
+	source: Computation;
+
+	constructor(source: Computation) {
+		super("[NOT_READY] a read of an async value that has not settled yet");
+		this.source = source;
+	}
 }

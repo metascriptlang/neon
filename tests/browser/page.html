@@ -4,6 +4,7 @@
 <body>
 <script type="module">
 globalThis.process = { exitCode: 0 };
+globalThis.neonServed = await (await fetch("./neon-served.json")).json();
 const lines = [];
 const real = console.log;
 console.log = (...a) => { lines.push(a.join(" ")); real(...a); };

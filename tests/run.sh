@@ -1,8 +1,8 @@
 #!/bin/sh
-# Neon test gate — every test file runs native, then --target=js, then the
-# SSR parity lane under -d:server, then the browser lane in real Chrome, then the
-# edge lane in workerd.
-# js-lane skips: tests/style/style.test.ms, tests/platform/void.test.ms,
+# Neon test gate — every test file but the browser ones and the *Server.test.ms files runs
+# native, then --target=js. The *Server.test.ms files run in the SSR lane under -d:server, the
+# one build with a server renderer. Then the browser lane in real Chrome, then the edge lane in workerd.
+# js-lane skips: tests/style/style.test.ms, tests/platform/void.test.ms, tests/platform/voidPark.test.ms,
 # tests/platform/voidInput.test.ms, voidFont.test.ms, windowHost.test.ms and sokolInput.test.ms import the Void platform
 # host, a C-only sibling repo; tests/platform/ionAudio.test.ms and ionAppServices.test.ms import Ion's runtime, C-only;
 # tests/platform/native<Name>.test.ms files link the native host against a C mock bridge.
@@ -10,9 +10,10 @@
 # under node, so it runs only through tests/browser/run.sh.
 MSC=${MSC:-msc}
 cd "$(dirname "$0")/.."
-files=$(find tests -name "*.test.ms" -not -path "tests/browser/*" | sort)
+files=$(find tests -name "*.test.ms" -not -name "*Server.test.ms" -not -path "tests/browser/*" | sort)
 fail=0
 tests/macros/run.sh || fail=1
+tests/navigation/layers.sh || fail=1
 tests/apps/run.sh || fail=1
 tests/refresh/run.sh || fail=1
 for f in $files; do
@@ -21,7 +22,7 @@ for f in $files; do
 done
 for f in $files; do
 	case "$f" in
-	*style/style.test.ms | *platform/void.test.ms | *platform/voidInput.test.ms | *platform/voidFont.test.ms | *platform/windowHost.test.ms | *platform/sokolInput.test.ms | *platform/ionAudio.test.ms | *platform/ionAppServices.test.ms | *platform/native[A-Z]*.test.ms)
+	*style/style.test.ms | *platform/void.test.ms | *platform/voidInput.test.ms | *platform/voidPark.test.ms | *platform/voidFont.test.ms | *platform/windowHost.test.ms | *platform/sokolInput.test.ms | *platform/ionAudio.test.ms | *platform/ionAppServices.test.ms | *platform/native[A-Z]*.test.ms)
 		echo "== js skip $f"
 		continue
 		;;

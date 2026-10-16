@@ -5,7 +5,7 @@ import { NeonEvent } from "../render/event";
 import { Style, layerStyles } from "../render/style";
 import { Accessor, accessor } from "../core/signal";
 import { element } from "../macros/ui/element";
-import { Index, Show } from "../macros/ui/flow";
+import { ForUnkeyed, Show } from "../macros/ui/flow";
 import { NeonNode } from "../render/node";
 import { Host, HostNode } from "../render/hostTypes";
 import { Pressable, Text, View } from "./primitives";
@@ -169,6 +169,6 @@ export function Stepper(props: StepperProps): NeonNode {
 			</View>
 		</View>);
 	};
-	const list = Index<StepItem>({ each: steps, children: step, fallback: null });
+	const list = ForUnkeyed<StepItem>({ each: steps, children: step, fallback: null });
 	return element(<View style={root}>{list}</View>);
 }

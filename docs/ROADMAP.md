@@ -31,7 +31,7 @@ stays; no React hook aliases.
 | 2 | `Accessor<T> = distinct (() => T)`; `createSignal`/`createMemo` return it; `accessor()` | neon core | done, re-measured 2026-09-19 (`src/core/signal.ms:46`, `probe/rm1_distinct.ms`): the alias, `accessor()` and `valueOf` are all live |
 | 3 | checker reads a value through the `valueOf` protocol where a bare read would fail (replaced the source-typed auto-call 2026-09-14) | compiler | done, re-measured 2026-09-19 (`probe/rm3_valueof.ms`): `const [x] = createSignal(2); x * 2` prints `4` with no call |
 | 4 | props contract: every value prop is `Accessor<T>`; the macro wraps every value, literals too | neon macros | done, re-measured 2026-09-19 (`probe/rm4_props.ms`): `label="hi"` enters an `Accessor<string>` prop and `count={n()}` stays reactive (`hi:1` → `hi:2`). `propValueNode` no longer exists — one NeonNode replaced it |
-| 5 | `{a && <X/>}` / ternary / `.map` lower to `Show`/`For` | neon macros | done for the three forms, re-measured 2026-09-20: `&&` (`probe/rm5a_and.ms`), `?:` (`rm5b_ternary.ms`) and `{xs.map((v: number): NeonNode => element(<s/>))}` (`rm5h_mapOneParam.ms`) each mount and update. `.map` lowers a row without an index only; a row with an index, `number` or `Accessor<number>`, is refused with a message that names `<For>` (`tests/macros/mapIndexRowRejected.ms`), and `.map(namedFn)` whose callback does not fit `map` is a permanent rejection (`mapNamedRowRejected.ms`), not a parked gap. `||` stays PARKED (BUGS §3). `lowerJsxChild` no longer exists. The macro emits bare `Show` / `For` calls; `src/converters.ms` re-exports them, so the prelude carries them into every file (`tests/render/preludeFlow.test.ms`). `<Index>` as a TAG is rejected at `createComponent`, reduced 2026-09-20 to a generic callee that cannot bind its own type parameter through a `distinct` alias — card `~/metascript/.inbox/compiler/2026-09-20-generic-callee-type-param-through-distinct-alias.md` |
+| 5 | `{a && <X/>}` / ternary / `.map` lower to `Show`/`For` | neon macros | done for the three forms, re-measured 2026-09-20: `&&` (`probe/rm5a_and.ms`), `?:` (`rm5b_ternary.ms`) and `{xs.map((v: number): NeonNode => element(<s/>))}` (`rm5h_mapOneParam.ms`) each mount and update. `.map` lowers a row without an index only; a row with an index, `number` or `Accessor<number>`, is refused with a message that names `<For>` (`tests/macros/mapIndexRowRejected.ms`), and `.map(namedFn)` whose callback does not fit `map` is a permanent rejection (`mapNamedRowRejected.ms`), not a parked gap. `||` stays PARKED (BUGS §3). `lowerJsxChild` no longer exists. The macro emits bare `Show` / `For` calls; `src/converters.ms` re-exports them, so the prelude carries them into every file (`tests/render/preludeFlow.test.ms`). |
 | 6 | error on an implicit accessor read at function-body time (`const d = count * 2`) | compiler | dropped 2026-09-14: with `valueOf` an alias keeps the accessor, and a body-time operand read is an ordinary one-time value |
 | 7 | real fragments: flatten in child position; multi-root at top level | neon | done 2026-09-15, root fragment and fragment rows 2026-09-19 with one NeonNode (`msc test tests/render/fragment.test.ms` rc=0 on C and `--target=js`; `tests/macros/run.sh` rc=0) — a fragment child is flattened at compile time, a root fragment places every root in front of `before`, a row may be a fragment, and inside an expression a fragment lowers exactly as an element does (`&&` / `?:` arm → `Show`, prop value or argument → converter) |
 
@@ -449,7 +449,7 @@ JSX consumers after a protocol sync.
 
 Do not restart implemented spread/classification or style-table generation from stale
 roadmap rows: inspect `tests/render/spread.test.ms` and `src/macros/style/fields.ms`.
-ErrorBoundary is existing; `docs/SOLID.md` owns its remaining concepts. Basic typography,
+`Errored` is existing; `docs/SOLID.md` owns the remaining Solid concepts. Basic typography,
 runtime adaptation and accessibility precede more pseudo-state or animation machinery.
 
 Timing is std's `setTimeout`, with no Host timer. The iOS and Android adapters pump the
@@ -466,7 +466,7 @@ and the Android emulator, with `onLongPress`'s timer never fired. After it, both
 - List ecosystem contracts beyond the RN list reference catalog already approved above.
 - Full Material/Cupertino-style catalogs, gesture arbitration, complex animation graphs
   and pseudo-state surfaces beyond the common workflows.
-- SSR hydration/resource serialization when a real SSR consumer needs them.
+- Serializing async values from the server to the client when a real SSR consumer needs it.
 - Terminal parity and GPU embedding across every host; self-sizing Void Text remains
   required for the applicable app/editor workflow, not silently removed.
 - Void's own vocabulary inside a Void area (`VISION.md` "Inside a Void area"): `Scene3D`, `Group`, `Mesh`,

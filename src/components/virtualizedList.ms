@@ -1,5 +1,7 @@
-import { Accessor, Signal, accessor, createSignal, batch, untrack } from "../core/signal";
+import { Accessor, Signal, accessor, createSignal, untrack } from "../core/signal";
+import { flush } from "../core/runtime";
 import { createRenderEffect } from "../core/effect";
+import { Cleanup } from "../core/types";
 import { onCleanup } from "../core/cleanup";
 import { createRoot, runWithOwner } from "../core/owner";
 import { getOwner } from "../core/runtime";
@@ -130,7 +132,7 @@ class StickyState {
 	offset: Signal<number> = new Signal<number>(0);
 	viewport: Signal<number> = new Signal<number>(0);
 	layoutVersion: Signal<int32> = new Signal<int32>(0);
-	indicesVersion: Signal<int32> = new Signal<int32>(0);
+	indicesVersion: Signal<int32> = new Signal<int32>(0, null, true);
 	header: CellMetrics | null = null;
 }
 
@@ -358,19 +360,19 @@ export function listEngine<T, D>(props: {
 		return out;
 	};
 	if (columnsProp !== null || columnWrapperStyle !== null) {
-		createRenderEffect((): void => {
-			const next = columnsNow();
-			const horizontalNow = isHorizontal();
-			untrack((): void => {
-				if (next !== columns) {
+		createRenderEffect<[int32, boolean]>(
+			(prev: [int32, boolean] | null): [int32, boolean] => [columnsNow(), isHorizontal()],
+			(now: [int32, boolean], prev: [int32, boolean] | null): Cleanup | null => {
+				if (now[0] !== columns) {
 					throw `${who}: Changing numColumns on the fly is not supported. Mount a new ${who} when changing the number of columns.`;
 				}
-				if (columns > 1 && horizontalNow) { throw `${who}: numColumns does not support horizontal.`; }
+				if (columns > 1 && now[1]) { throw `${who}: numColumns does not support horizontal.`; }
 				if (columns <= 1 && columnWrapperStyle !== null) {
 					throw `${who}: columnWrapperStyle not supported for single column lists`;
 				}
-			});
-		});
+				return null;
+			},
+		);
 	}
 	const metrics = new ListMetricsAggregator<T>();
 	const source: CellSource<T> = {
@@ -440,8 +442,8 @@ export function listEngine<T, D>(props: {
 	const listOwner = getOwner();
 	let updateTimeout: number = -1;
 	let hiPriInProgress = false;
-	const [cells, setCells] = createSignal<ListCell[]>([]);
-	const [cellTotal, setCellTotal] = createSignal<number>(0);
+	const [cells, setCells] = createSignal<ListCell[]>([], { ownedWrite: true });
+	const [cellTotal, setCellTotal] = createSignal<number>(0, { ownedWrite: true });
 	let footerLength = 0.0;
 	let footerMeasured = props.ListFooterComponent === null;
 	let initialContentReady = false;
@@ -559,7 +561,7 @@ export function listEngine<T, D>(props: {
 	};
 
 	const spacerCell = (): ListCell => {
-		const [size, setSize] = createSignal<number>(0);
+		const [size, setSize] = createSignal<number>(0, { ownedWrite: true });
 		return new ListCell((index: number): void => {}, (next: number): void => { setSize(next); }, (scheduleUpdate: () => void): NeonNode => element(<View style={{ width: isHorizontal() ? size() : null, height: isHorizontal() ? null : size(), flexShrink: 0 }} />));
 	};
 
@@ -590,13 +592,13 @@ export function listEngine<T, D>(props: {
 	};
 
 	const itemCell = (item: T, index: number): ListCell => {
-		const [at, setAt] = createSignal<number>(index);
+		const [at, setAt] = createSignal<number>(index, { ownedWrite: true });
 		return new ListCell((next: number): void => { setAt(next); }, (size: number): void => {}, (scheduleUpdate: () => void): NeonNode =>
 			cellNode(at, (): T => item, renderItem({ item, index: at }), scheduleUpdate, (box: LayoutBox): void => {}));
 	};
 
 	const gridItem = (item: T, index: int32): GridItem => runWithOwner(listOwner, (): GridItem => createRoot((dispose: () => void): GridItem => {
-		const [at, setAt] = createSignal<number>(index as number);
+		const [at, setAt] = createSignal<number>(index as number, { ownedWrite: true });
 		return new GridItem(makeRow(renderItem({ item, index: at })), dispose, (next: number): void => { setAt(next); }, index / columns);
 	}));
 
@@ -605,9 +607,9 @@ export function listEngine<T, D>(props: {
 		let shown: T[] = [];
 		let current: Row[] = [];
 		const alive = (item: T, row: Row): boolean => gridItems.has(item) && (gridItems.get(item) as GridItem).row === row;
-		createRenderEffect((): void => {
-			const next = members();
-			untrack((): void => {
+		createRenderEffect<T[]>(
+			(prev: T[] | null): T[] => members(),
+			(next: T[], prev: T[] | null): Cleanup | null => {
 				const rows: Row[] = [];
 				const here = new Map<T, boolean>();
 				for (const item of next) {
@@ -623,8 +625,9 @@ export function listEngine<T, D>(props: {
 				reconcileArrays(host, parent, staying, rows, anchor);
 				shown = next;
 				current = rows;
-			});
-		});
+				return null;
+			},
+		);
 		onCleanup((): void => {
 			for (let i = 0; i < shown.length; i += 1) {
 				if (!alive(shown[i], current[i]) || parking === null) { continue; }
@@ -638,8 +641,8 @@ export function listEngine<T, D>(props: {
 	};
 
 	const gridRowCell = (row: int32): ListCell => {
-		const [at, setAt] = createSignal<number>(row as number);
-		const [members, setMembers] = createSignal<T[]>(rowItems(row));
+		const [at, setAt] = createSignal<number>(row as number, { ownedWrite: true });
+		const [members, setMembers] = createSignal<T[]>(rowItems(row), { ownedWrite: true });
 		let key: T = itemAt(row * columns);
 		let measuredBox: LayoutBox | null = null;
 		const moveTo = (next: number): void => {
@@ -806,7 +809,7 @@ export function listEngine<T, D>(props: {
 		const mask = renderMask(n);
 		if (cellsAroundViewport.first === previous.first && cellsAroundViewport.last === previous.last && renderedMask !== null && mask.equals(renderedMask as CellRenderMask)) { return false; }
 		renderedMask = mask;
-		batch((): void => { setCells(buildCells(mask)); });
+		flush((): void => { setCells(buildCells(mask)); });
 		return true;
 	};
 
@@ -879,21 +882,22 @@ export function listEngine<T, D>(props: {
 
 	let seenCount: int32 = -1;
 	if (sticky !== null) {
-		createRenderEffect((): void => {
-			const next = (props.stickyHeaderIndices as Accessor<int32[]>)();
-			untrack((): void => {
+		createRenderEffect<int32[]>(
+			(prev: int32[] | null): int32[] => (props.stickyHeaderIndices as Accessor<int32[]>)(),
+			(next: int32[], prev: int32[] | null): Cleanup | null => {
 				for (const index of next) { if (index < 0) { throw `${who}: stickyHeaderIndices must be non-negative`; } }
 				if (next.length > 0 && isHorizontal()) { throw `${who}: stickyHeaderIndices does not support horizontal lists`; }
 				stickyIndices = next;
 				const state = sticky as StickyState;
 				state.indicesVersion.set(state.indicesVersion.peek() + 1);
 				if (seenCount >= 0) { updateCellsToRender(); }
-			});
-		});
+				return null;
+			},
+		);
 	}
-	createRenderEffect((): void => {
-		const next = data();
-		untrack((): void => {
+	createRenderEffect<D>(
+		(prev: D | null): D => data(),
+		(next: D, prev: D | null): Cleanup | null => {
 			current = next;
 			const n = cellCount();
 			checkInitialScrollIndex(n);
@@ -908,16 +912,17 @@ export function listEngine<T, D>(props: {
 			const first = seenCount < 0;
 			seenCount = n;
 			renderedMask = renderMask(n);
-			batch((): void => { setCells(buildCells(renderedMask as CellRenderMask)); });
+			flush((): void => { setCells(buildCells(renderedMask as CellRenderMask)); });
 			if (!first) {
 				for (const tuple of viewables) { tuple.helper.resetViewableIndices(); }
 				scheduleCellsToRenderUpdate(true);
 			}
-		});
-	});
+			return null;
+		},
+	);
 
 	const scheduleUpdate = (): void => { scheduleCellsToRenderUpdate(false); };
-	const cellRows = regionNode((host: Host) => mapArray<ListCell, Row>(cells, (cell: ListCell, i: Accessor<number>): Row => makeRow(cell.make(scheduleUpdate)), false));
+	const cellRows = regionNode((host: Host) => mapArray<ListCell, Row>(cells, (cell: ListCell, i: Accessor<number>): Row => makeRow(cell.make(scheduleUpdate))));
 	const rows: NeonNode = columns <= 1 ? cellRows : (host: Host, parent: HostNode, before: HostNode | null): void => {
 		parking = parent;
 		cellRows(host, parent, before);
@@ -932,7 +937,7 @@ export function listEngine<T, D>(props: {
 		visibleLength = isHorizontal() ? e.width : e.height;
 		if (sticky !== null) {
 			const state = sticky as StickyState;
-			batch((): void => { state.offset.set(offset); state.viewport.set(visibleLength); });
+			flush((): void => { state.offset.set(offset); state.viewport.set(visibleLength); });
 		}
 		metrics.notifyListContentLayout(orientation(), e.contentWidth, e.contentHeight);
 		maybeCallOnEdgeReached(cellCount());

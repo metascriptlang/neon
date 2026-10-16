@@ -6,6 +6,7 @@ import { Style, StyleValue } from "../../render/style";
 import { registerCss, collectCss, onCssChange } from "../../render/sheet";
 import { NeonEvent, neonEvent, eventType } from "../../render/event";
 import { onCleanup } from "../../core/cleanup";
+import { getOwner } from "../../core/runtime";
 import {
 	VIEW_CLASS,
 	TEXT_CLASS,
@@ -37,8 +38,7 @@ import { CssStyle, applyCss, applyCssProp } from "./domCss";
 import { VisibleContentPosition, parseVisibleContent } from "../../render/visibleContent";
 import { installBrowserAppServices } from "./appServices";
 import { installDomLayoutAnimation } from "./layoutAnimation";
-import { isMediaTag, createMediaNode, writeMediaAttr, addMediaEvent, releaseMedia } from "./media";
-import { svgMarkup } from "../../components/svg/markup";
+import { isMediaTag, createMediaNode, writeMediaAttr, addMediaEvent, releaseMedia, writeSvgList } from "./domCapabilities";
 
 extern class ClassList {
 	extern add(name: cstring): void;
@@ -686,21 +686,13 @@ function dateInputType(mode: string): string {
 	};
 }
 
-// <Svg>: the display list becomes the <svg> element's own markup (src/components/svg/markup.ms).
+// <Svg>: the display list becomes the <svg> element's own markup (src/platform/browser/svg.jms).
 let svgCount = 0;
-
-function writeSvgList(el: Node, value: string): void {
-	const prefix = el.getAttribute("data-neon-svg") ?? "neon-svg";
-	const m = svgMarkup(value, prefix);
-	if (m.viewBox === "") { el.removeAttribute("viewBox"); } else { el.setAttribute("viewBox", m.viewBox); }
-	if (m.preserveAspectRatio === "") { el.removeAttribute("preserveAspectRatio"); } else { el.setAttribute("preserveAspectRatio", m.preserveAspectRatio); }
-	el.innerHTML = m.body;
-}
 
 function writeNewControlAttr(el: Node, kind: string, name: string, value: string): boolean {
 	if (kind === "svg") {
 		if (name === "displayList") {
-			writeSvgList(el, value);
+			writeSvgList(el as unknown as HostNode, value);
 			return true;
 		}
 		return false;
@@ -1020,7 +1012,7 @@ export function domHost(): Host {
 	function keep(el: Node, cleanup: () => void): void {
 		if (!cleanups.has(el)) {
 			cleanups.set(el, []);
-			onCleanup((): void => { releaseOne(el); });
+			if (getOwner() !== null) { onCleanup((): void => { releaseOne(el); }); }
 		}
 		(cleanups.get(el) as (() => void)[]).push(cleanup);
 	}
@@ -1363,6 +1355,15 @@ export function domHost(): Host {
 			const el = parent as unknown as Node;
 			el.removeChild(el === (document.head as unknown as Node) ? leaveHead(node as unknown as Node) : node as unknown as Node);
 			scheduleLayouts();
+		},
+		parentOf: (node: HostNode): HostNode | null => {
+			const p = (shownInHead(node as unknown as Node) as Node).parentNode;
+			if (p === null) { return null; }
+			return p as unknown as HostNode;
+		},
+		release: (node: HostNode): void => {
+			if ((shownInHead(node as unknown as Node) as Node).parentNode !== null) { throw "release: the node still has a parent; remove it first"; }
+			release(node as unknown as Node);
 		},
 		nextSibling: (node: HostNode): HostNode | null => {
 			return heldByHead((shownInHead(node as unknown as Node) as Node).nextSibling as Node | null) as unknown as HostNode;

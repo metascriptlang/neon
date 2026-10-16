@@ -446,7 +446,7 @@ function textNeedsRemeasure(n: NativeNode): boolean {
 let nextTag: int32 = 1;
 const eventRegistry = createNativeEventRegistry();
 const nodesByTag = new Map<int32, NativeNode>();
-let root: NativeNode;
+let root: NativeNode = nativeNode(null, false, false);
 const scrollNodes: NativeNode[] = [];
 const layoutNodes: NativeNode[] = [];
 const textNodes: NativeNode[] = [];
@@ -546,6 +546,11 @@ function isMounted(n: NativeNode): boolean {
 		current = current.parent;
 	}
 	return false;
+}
+
+function blurInputs(n: NativeNode): void {
+	if (n.isInput && n.view !== null) { niSetFocused(n.view, 0); }
+	for (const child of n.children) { blurInputs(child); }
 }
 
 function releaseNativeTree(n: NativeNode): void {
@@ -1017,6 +1022,7 @@ export function createNativeHost(): NativeHost {
 			if (ref === node) { return; }
 			const sameParent = n.parent === p;
 			const wasMounted = isMounted(n);
+			if (wasMounted && !isMounted(p)) { blurInputs(n); }
 			const current = sameParent ? childIndex(p, n) : -1;
 			if (sameParent && current === idx - 1) { return; }
 			if (sameParent && current < idx) { idx -= 1; }
@@ -1042,6 +1048,17 @@ export function createNativeHost(): NativeHost {
 			removePaintChild(p, n);
 			n.parent = null;
 			if (isMounted(p)) { requestLayout(); }
+			freeLayoutTree(n);
+			releaseNativeTree(n);
+		},
+		parentOf: (node: HostNode): HostNode | null => {
+			const p = (node as unknown as NativeNode).parent;
+			if (p === null) { return null; }
+			return p as unknown as HostNode;
+		},
+		release: (node: HostNode): void => {
+			const n = node as unknown as NativeNode;
+			if (n.parent !== null) { throw "release: the node still has a parent; remove it first"; }
 			freeLayoutTree(n);
 			releaseNativeTree(n);
 		},

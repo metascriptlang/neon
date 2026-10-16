@@ -1,38 +1,48 @@
-import { createSignal, untrack, batch } from "../../src/core/signal";
+import { createSignal, untrack } from "../../src/core/signal";
 import { createEffect } from "../../src/core/effect";
 import { createRoot, runWithOwner } from "../../src/core/owner";
-import { getOwner } from "../../src/core/runtime";
+import { getOwner, flush, resetErrorHalt } from "../../src/core/runtime";
+import { Cleanup } from "../../src/core/types";
 
-test "a throw inside batch does not freeze later reactivity" {
+test "a throw inside flush(fn) does not freeze later reactivity" {
 	const [a, setA] = createSignal(0);
 	let runs = 0;
-	createEffect(() => { a(); runs = runs + 1; });
+	createEffect<int32>((p: int32 | null): int32 => a(), (v: int32, p: int32 | null): Cleanup | null => { runs = runs + 1; return null; });
 	const before = runs;
-	try { batch(() => { throw new Error("boom"); }); } catch (e) { }
+	try { flush(() => { throw new Error("boom"); }); } catch (e) { }
 	setA(1);
-	assert runs > before, "a leaked batch depth stops every future drain";
+	assert runs > before, "a leaked sync depth stops every future drain";
 }
 
-test "a throw inside an effect does not kill the scheduler" {
+test "a throw inside an effect halts the scheduler until it is reset" {
 	const [a, setA] = createSignal(0);
 	const [b, setB] = createSignal(0);
-	createEffect(() => { if (a() === 1) { throw new Error("boom"); } });
+	createEffect<int32>(
+		(p: int32 | null): int32 => a(),
+		(v: int32, p: int32 | null): Cleanup | null => { if (v === 1) { throw new Error("boom"); } return null; },
+	);
 	let seen = 0;
-	createEffect(() => { b(); seen = seen + 1; });
+	createEffect<int32>((p: int32 | null): int32 => b(), (v: int32, p: int32 | null): Cleanup | null => { seen = seen + 1; return null; });
 	try { setA(1); } catch (e) { }
 	const before = seen;
 	setB(1);
-	assert seen > before, "a leaked running flag makes runQueue a permanent no-op";
+	assert seen === before, "a halted scheduler runs nothing";
+	resetErrorHalt();
+	setB(2);
+	assert seen > before, "a reset scheduler drains again: a leaked running flag would make runQueue a permanent no-op";
 }
 
 test "a throw inside untrack restores the listener" {
 	const [a, setA] = createSignal(0);
 	let runs = 0;
-	createEffect(() => {
-		runs = runs + 1;
-		try { untrack(() => { throw new Error("boom"); }); } catch (e) { }
-		a();
-	});
+	createEffect<int32>(
+		(p: int32 | null): int32 => {
+			runs = runs + 1;
+			try { untrack(() => { throw new Error("boom"); }); } catch (e) { }
+			return a();
+		},
+		(v: int32, p: int32 | null): Cleanup | null => null,
+	);
 	const before = runs;
 	setA(1);
 	assert runs > before, "a leaked null listener stops the reads after it from tracking";

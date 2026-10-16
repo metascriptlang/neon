@@ -14,7 +14,7 @@ function chain(B: Context<number>, depth: number, leaf: NeonNode): NeonNode {
 	let node = leaf;
 	for (let d = 0; d < depth; d += 1) {
 		const inner = node;
-		node = B.Provider({ value: accessor((): number => 1), children: inner });
+		node = B.provider({ value: accessor((): number => 1), children: inner });
 	}
 	return node;
 }
@@ -38,7 +38,7 @@ function measure(depth: number, providers: boolean): number {
 		for (let i = 0; i < READS; i += 1) { sink += useContext(A); }
 		readNs = (performance.now() - t0) * 1000000 / READS;
 	};
-	const app: NeonNode = A.Provider({ value: accessor((): number => 7), children: providers ? chain(B, depth, consumer) : roots(depth, consumer) });
+	const app: NeonNode = A.provider({ value: accessor((): number => 7), children: providers ? chain(B, depth, consumer) : roots(depth, consumer) });
 	const root: MockNode = mockNode("root");
 	render(app, mockHost(), root as unknown as HostNode);
 	return readNs;
