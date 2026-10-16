@@ -43,9 +43,6 @@ test "For reactive list reuses rows on reorder, creates only new" {
 	d();
 }
 
-// PARKED: both fallback cells take the call form because a JSX value in an attribute of a generic
-// tag never lowers — `<For each={xs} fallback={<li/>}>` is refused. Card:
-// ~/metascript/.inbox/compiler/2026-09-19-jsx-converter-skipped-in-generic-call-inside-macro-arg.md
 test "For fallback shows when empty" {
 	const [items, setItems] = createSignal<number[]>([1]);
 	const ul = el("ul", [], [], For<number>({
@@ -62,6 +59,15 @@ test "For fallback shows when empty" {
 	assert listText(ulNode) === "empty", "fallback shown";
 	setItems([5]);
 	assert listText(ulNode) === "5", "back to item";
+	d();
+}
+
+test "For with a fallback is written as a tag" {
+	const [items, setItems] = createSignal<number[]>([1]);
+	const [view, d] = mountedText(element(<ul><For each={items()} fallback={<li>empty</li>}>{(n: number, i: Accessor<number>): NeonNode => element(<li>{n.toString()}</li>)}</For></ul>));
+	assert view() === "<root><ul><li>1</li></ul></root>", "item: " + view();
+	setItems([]);
+	assert view() === "<root><ul><li>empty</li></ul></root>", "fallback: " + view();
 	d();
 }
 

@@ -9,10 +9,6 @@ import { createRenderEffect } from "../../src/core/effect";
 import { resetErrorHalt } from "../../src/core/runtime";
 import { Cleanup, Dispose } from "../../src/core/types";
 
-// PARKED: every cell takes the call form ForList<T>({…}) rather than <ForList each={l}>. A row of
-// ForList carries Accessor<T>, and a generic component whose row carries a distinct alias cannot be
-// instantiated through createComponent, which is what a tag lowers to:
-// ~/metascript/.inbox/compiler/2026-09-20-generic-callee-type-param-through-distinct-alias.md
 
 function rowText(node: MockNode): string {
 	let s = "";
@@ -31,6 +27,18 @@ function numberRow(item: Accessor<number>): NeonNode {
 interface Keyed {
 	id: number;
 	label: string;
+}
+
+test "ForList is written as a tag" {
+	const l = createList<number>([1, 2]);
+	const host = mockHost();
+	const root = host.createElement("root");
+	const d = render(<ul><ForList each={l}>{numberRow}</ForList></ul>, host, root);
+	const ulNode = (root as unknown as MockNode).children[0];
+	assert rowText(ulNode) === "12", "initial: " + rowText(ulNode);
+	l.push(3);
+	assert rowText(ulNode) === "123", "after push: " + rowText(ulNode);
+	d();
 }
 
 test "ForList mounts one row per item" {
