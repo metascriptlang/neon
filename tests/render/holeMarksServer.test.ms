@@ -20,6 +20,8 @@ function mountParts(host: Host, parent: HostNode, marks: ServerMarks | null, par
 			hole.value = part.slice(2);
 			(marks as ServerMarks).pend(node, hole);
 			holes.push(hole);
+			const open = (serverContext() as ServerContext).holes;
+			if (open !== null) { (open as Hole[]).push(hole); }
 		} else {
 			node = host.createText(part.slice(2));
 		}
@@ -121,7 +123,10 @@ test "a holder beside a late text spot is refused, because its first text would 
 		const marks = (serverContext() as ServerContext).marks as ServerMarks;
 		try { marks.holder(parent); first = "held"; } catch (e) { first = "refused"; }
 		const node = host.createText("");
-		marks.pend(node, new Hole("0", (): string => "", null, createOwner()));
+		const hole = new Hole("0", (): string => "", null, createOwner());
+		hole.value = "";
+		marks.pend(node, hole);
+		((serverContext() as ServerContext).holes as Hole[]).push(hole);
 		place(host, parent, node, null);
 		try { marks.holder(parent); second = "held"; } catch (e) { second = e instanceof NotReadyError ? "refused" : "other"; }
 	};
