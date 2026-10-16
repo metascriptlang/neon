@@ -1,4 +1,5 @@
-import { createSignal, batch } from "../../src/core/signal";
+import { createSignal } from "../../src/core/signal";
+import { flush, resetErrorHalt } from "../../src/core/runtime";
 import { element } from "../../src/macros/ui/element";
 import { HostNode, MockNode, mockNode, mockHost, render, mockToString, fireEventWith } from "../../src/render/host";
 import { TextInput, TextInputHandle } from "../../src/components/primitives";
@@ -22,6 +23,7 @@ test "secure multiline value is rejected before any host value write or ref" {
 	try {
 		render(element(<TextInput multiline={true} secureTextEntry={true} value="private-token" ref={(h: TextInputHandle): void => { refs += 1; }} />), host, root as unknown as HostNode);
 	} catch (e) { message = e.toString(); }
+	resetErrorHalt();
 	assert secureMultilineDiagnostic(message), "case-naming rejection without secret: " + message;
 	assert root.children.length === 0 && secretWrites === 0 && refs === 0, "no mounted node, secret write or ref";
 }
@@ -32,6 +34,7 @@ test "secure multiline defaultValue is rejected before mounting" {
 	try {
 		render(element(<TextInput multiline={true} secureTextEntry={true} defaultValue="private-token-default" />), mockHost(), root as unknown as HostNode);
 	} catch (e) { message = e.toString(); }
+	resetErrorHalt();
 	assert secureMultilineDiagnostic(message), "case-naming rejection without secret: " + message;
 	assert root.children.length === 0, mockToString(root);
 }
@@ -71,7 +74,8 @@ test "a mounted multiline field rejects batched secure and value changes before 
 	const root = mockNode("root");
 	const dispose = render(element(<TextInput multiline={true} secureTextEntry={secure()} value={value()} />), mockHost(), root as unknown as HostNode);
 	let message = "";
-	try { batch((): void => { setValue("private-token-update"); setSecure(true); }); } catch (e) { message = e.toString(); }
+	try { flush((): void => { setValue("private-token-update"); setSecure(true); }); } catch (e) { message = e.toString(); }
+	resetErrorHalt();
 	assert secureMultilineDiagnostic(message), "case-naming rejection without secret: " + message;
 	assert mockToString(root).indexOf("private-token") < 0, "new secret never reaches existing multiline node: " + mockToString(root);
 	dispose();
@@ -86,6 +90,7 @@ test "a multiline host stays unsupported for secure entry after its multiline pr
 	assert root.children[0].tag === "multilinetextinput", "host tag is fixed";
 	let message = "";
 	try { setSecure(true); } catch (e) { message = e.toString(); }
+	resetErrorHalt();
 	assert secureMultilineDiagnostic(message), "case-naming rejection without secret: " + message;
 	dispose();
 }
@@ -109,11 +114,12 @@ test "a secure single-line host rejects requested multiline changes alone and wi
 		assert root.children[0].tag === "textinput", "initial host is single-line";
 		let message = "";
 		try {
-			batch((): void => {
+			flush((): void => {
 				if (channel !== 0) { setValue("private-token-transition"); }
 				setMultiline(true);
 			});
 		} catch (e) { message = e.toString(); }
+		resetErrorHalt();
 		assert secureMultilineDiagnostic(message), "requested multiline rejection: " + message;
 		assert secretWrites === 0 && mockToString(root).indexOf("private-token") < 0, "no transient or final secret write";
 		dispose();

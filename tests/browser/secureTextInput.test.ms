@@ -2,7 +2,8 @@ import { domHost } from "../../src/platform/browser/dom";
 import { HostNode } from "../../src/render/hostTypes";
 import { render } from "../../src/render/host";
 import { element } from "../../src/macros/ui/element";
-import { createSignal, batch } from "../../src/core/signal";
+import { createSignal } from "../../src/core/signal";
+import { flush, resetErrorHalt } from "../../src/core/runtime";
 import { TextInput, TextInputHandle } from "../../src/components/primitives";
 
 extern class HTMLElement {
@@ -42,6 +43,7 @@ test "Chrome never mounts a secure multiline value as an unmasked textarea" {
 	try {
 		render(element(<TextInput multiline={true} secureTextEntry={true} value="private-token" ref={(h: TextInputHandle): void => { refs += 1; }} />), domHost(), mount as unknown as HostNode);
 	} catch (e) { message = e.toString(); }
+	resetErrorHalt();
 	assert mount.querySelector("textarea") === null, "unsupported textarea mounted: " + js("const el = document.querySelector('#secure-invalid-value textarea'); return el ? el.type + ' ' + el.value : 'none';");
 	assert secureMultilineDiagnostic(message) && refs === 0, "case-naming rejection, no secret or ref: " + message;
 }
@@ -52,6 +54,7 @@ test "Chrome never mounts a secure multiline defaultValue" {
 	try {
 		render(element(<TextInput multiline={true} secureTextEntry={true} defaultValue="private-token-default" />), domHost(), mount as unknown as HostNode);
 	} catch (e) { message = e.toString(); }
+	resetErrorHalt();
 	assert mount.querySelector("textarea") === null && secureMultilineDiagnostic(message), "secure multiline defaultValue refused: " + message;
 }
 
@@ -90,7 +93,8 @@ test "Chrome rejects batched secure and value updates before a mounted textarea 
 	const dispose = render(element(<TextInput multiline={true} secureTextEntry={secure()} value={value()} />), domHost(), mount as unknown as HostNode);
 	js("globalThis.secureWrites = 0; const el = document.querySelector('#secure-reactive-value textarea'); const d = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value'); Object.defineProperty(el, 'value', { get() { return d.get.call(this); }, set(v) { if (v.includes('private-token')) globalThis.secureWrites++; d.set.call(this, v); } }); return 1;");
 	let message = "";
-	try { batch((): void => { setValue("private-token-update"); setSecure(true); }); } catch (e) { message = e.toString(); }
+	try { flush((): void => { setValue("private-token-update"); setSecure(true); }); } catch (e) { message = e.toString(); }
+	resetErrorHalt();
 	assert js("const el = document.querySelector('#secure-reactive-value textarea'); return el.value + ' ' + globalThis.secureWrites;") === "public notes 0", "no transient or final secret value write";
 	assert secureMultilineDiagnostic(message), "reactive rejection: " + message;
 	dispose();
@@ -102,7 +106,8 @@ test "Chrome rejects batched secure and defaultValue updates on an existing text
 	const mount = mountPoint("secure-reactive-default");
 	const dispose = render(element(<TextInput multiline={true} secureTextEntry={secure()} defaultValue={value()} />), domHost(), mount as unknown as HostNode);
 	let message = "";
-	try { batch((): void => { setValue("private-token-default-update"); setSecure(true); }); } catch (e) { message = e.toString(); }
+	try { flush((): void => { setValue("private-token-default-update"); setSecure(true); }); } catch (e) { message = e.toString(); }
+	resetErrorHalt();
 	assert js("const el = document.querySelector('#secure-reactive-default textarea'); return el.value.includes('private-token') || el.defaultValue.includes('private-token');") === "false", "no secret default value";
 	assert secureMultilineDiagnostic(message), "reactive default rejection: " + message;
 	dispose();
@@ -117,6 +122,7 @@ test "Chrome rejects secure entry on a fixed textarea even after multiline becom
 	assert mount.querySelector("textarea") !== null, "host tag remains textarea";
 	let message = "";
 	try { setSecure(true); } catch (e) { message = e.toString(); }
+	resetErrorHalt();
 	assert secureMultilineDiagnostic(message), "fixed-tag rejection: " + message;
 	dispose();
 }
@@ -134,11 +140,12 @@ test "Chrome rejects requested multiline on a password input alone and batched w
 		js(`globalThis.secureRequestedWrites = 0; const el = document.querySelector('#${id} input'); for (const name of ['value', 'defaultValue']) { const d = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, name); Object.defineProperty(el, name, { get() { return d.get.call(this); }, set(v) { if (v.includes('private-token')) globalThis.secureRequestedWrites++; d.set.call(this, v); } }); } return 1;`);
 		let message = "";
 		try {
-			batch((): void => {
+			flush((): void => {
 				if (channel !== 0) { setValue("private-token-transition"); }
 				setMultiline(true);
 			});
 		} catch (e) { message = e.toString(); }
+		resetErrorHalt();
 		assert secureMultilineDiagnostic(message), "requested multiline rejection: " + message;
 		assert js(`const el = document.querySelector('#${id} input'); return el.type + ' ' + el.value + ' ' + el.defaultValue + ' ' + globalThis.secureRequestedWrites;`).indexOf("private-token") < 0, "no final secret";
 		assert js("return globalThis.secureRequestedWrites;") === "0", "no transient value or defaultValue write";
