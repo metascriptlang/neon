@@ -48,7 +48,8 @@ when (server) {
 	import { parseVisibleContent } from "./visibleContent";
 	import { asServer } from "./environment";
 	import { Dispose, NotReadyError } from "../core/types";
-import { ServerContext, withServerContext } from "../core/serverContext";
+	import { ServerContext, withServerContext } from "../core/serverContext";
+	import { scriptLiteral } from "./hydrationRecords";
 
 	function joinClass(className: string, id: string): string {
 		return className === "" ? id : className + " " + id;
@@ -591,25 +592,8 @@ import { ServerContext, withServerContext } from "../core/serverContext";
 
 	const MAX_PASSES = 10000;
 
-	function hex4(code: int32): string {
-		return ("0000" + code.toString(16)).slice(-4);
-	}
-
-	function scriptString(value: string): string {
-		let out = "";
-		let last = 0;
-		for (let i = 0; i < value.length; i += 1) {
-			const c = value.charCodeAt(i);
-			if (c >= 32 && c !== 34 && c !== 60 && c !== 92 && c !== 0x2028 && c !== 0x2029) { continue; }
-			const e = c === 34 ? "\\\"" : c === 92 ? "\\\\" : "\\u" + hex4(c);
-			out = out + value.slice(last, i) + e;
-			last = i + 1;
-		}
-		return last === 0 ? value : out + value.slice(last);
-	}
-
 	function recordScript(table: string, id: string, text: string): string {
-		return "<script>(self._$HY||(self._$HY={r:{},e:{}}))." + table + "[\"" + scriptString(id) + "\"]=\"" + scriptString(text) + "\"</script>";
+		return "<script>(self._$HY||(self._$HY={r:{},e:{}}))." + table + "[\"" + scriptLiteral(id) + "\"]=\"" + scriptLiteral(text) + "\"</script>";
 	}
 
 	function recordScripts(ctx: ServerContext): string {

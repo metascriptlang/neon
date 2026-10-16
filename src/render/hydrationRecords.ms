@@ -79,13 +79,19 @@ export function clearRecords(): void {
 	}
 }
 
+function hex4(code: int32): string {
+	return ("0000" + code.toString(16)).slice(-4);
+}
+
 export function scriptLiteral(text: string): string {
-	return text
-		.split("\\").join("\\\\")
-		.split("\"").join("\\\"")
-		.split("<").join("\\u003c")
-		.split("\u2028").join("\\u2028")
-		.split("\u2029").join("\\u2029")
-		.split("\n").join("\\n")
-		.split("\r").join("\\r");
+	let out = "";
+	let last = 0;
+	for (let i = 0; i < text.length; i += 1) {
+		const c = text.charCodeAt(i);
+		if (c >= 32 && c !== 34 && c !== 60 && c !== 92 && c !== 0x2028 && c !== 0x2029) { continue; }
+		const e = c === 34 ? "\\\"" : c === 92 ? "\\\\" : "\\u" + hex4(c);
+		out = out + text.slice(last, i) + e;
+		last = i + 1;
+	}
+	return last === 0 ? text : out + text.slice(last);
 }

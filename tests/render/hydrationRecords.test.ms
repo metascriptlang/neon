@@ -101,6 +101,7 @@ test "scriptLiteral escapes what a script string cannot hold" {
 	assert scriptLiteral("a\\b\"c") === "a\\\\b\\\"c", scriptLiteral("a\\b\"c");
 }
 
-test "scriptLiteral keeps a message with a line break on one line" {
-	assert scriptLiteral("one\ntwo\r") === "one\\ntwo\\r", scriptLiteral("one\ntwo\r");
+test "scriptLiteral keeps a message with a line break or a control character on one line" {
+	assert scriptLiteral("one\ntwo\r") === "one\\u000atwo\\u000d", scriptLiteral("one\ntwo\r");
+	assert scriptLiteral("a\tb\u0001") === "a\\u0009b\\u0001", scriptLiteral("a\tb\u0001");
 }
