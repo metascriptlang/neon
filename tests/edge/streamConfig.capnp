@@ -1,7 +1,10 @@
 using Workerd = import "/workerd/workerd.capnp";
 
 const config :Workerd.Config = (
-	services = [(name = "stream", worker = .stream)],
+	services = [
+		(name = "stream", worker = .stream),
+		(name = "internet", network = (allow = ["local"])),
+	],
 	sockets = [(name = "http", address = "127.0.0.1:0", http = (), service = "stream")],
 );
 

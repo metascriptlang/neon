@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
+import { createServer as createHttpServer } from "node:http";
 import { createServer } from "node:net";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -22,6 +23,17 @@ function freePort() {
 }
 
 const origin = `http://127.0.0.1:${await freePort()}`;
+
+// The worker's slow read is a subrequest to this server, which answers it only once the test has the shell.
+let shellRead = () => {};
+const shellSeen = new Promise((seen) => { shellRead = seen; });
+const gate = createHttpServer(async (_request, answer) => {
+	await shellSeen;
+	answer.end("1");
+});
+await new Promise((listening) => gate.listen(0, "127.0.0.1", listening));
+const gateUrl = `http://127.0.0.1:${gate.address().port}/`;
+
 const server = spawn(workerd, [
 	"serve", join(here, "streamConfig.capnp"),
 	"--socket-addr", `http=${new URL(origin).host}`,
@@ -54,7 +66,7 @@ async function streaming() {
 	assert.match(awaited, /slow=1/);
 	assert.match(awaited, /after the wait/);
 
-	const response = await fetch(origin + "/stream");
+	const response = await fetch(origin + "/stream?gate=" + encodeURIComponent(gateUrl));
 	assert.equal(response.status, 200);
 	const reader = response.body.getReader();
 	const decoder = new TextDecoder();
@@ -65,7 +77,7 @@ async function streaming() {
 	assert.doesNotMatch(shell, /slow=/, "the first chunk holds no content of the slow read");
 	assert.doesNotMatch(shell, /\$df\(/, "the first chunk holds no swap");
 
-	assert.equal(await (await fetch(origin + "/release")).text(), "released");
+	shellRead();
 	let body = shell;
 	for (;;) {
 		const next = await reader.read();
@@ -88,11 +100,12 @@ async function streaming() {
 	} finally {
 		await chrome.close();
 	}
-	console.log("PASS: workerd streams the shell before the slow read settles, and the page the stream builds shows the awaited page's text");
+	console.log("PASS: workerd streams the shell before the slow read is answered, and the page the stream builds shows the awaited page's text");
 }
 
 try {
 	await streaming();
 } finally {
 	server.kill();
+	gate.close();
 }

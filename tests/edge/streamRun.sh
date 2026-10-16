@@ -1,6 +1,6 @@
 #!/bin/sh
 # Neon edge lane, streaming: a worker answers with a streamed render (a Response over the render's
-# readable), and the client reads the shell before the slow read is allowed to settle.
+# readable), and the client reads the shell before the slow read is answered.
 # Setup once per checkout: npm install --prefix tests/edge, and --prefix tests/browser for Chrome
 set -e
 cd "$(dirname "$0")/../.."
