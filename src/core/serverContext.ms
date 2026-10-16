@@ -54,7 +54,7 @@ export function pendingWaits(ctx: ServerContext, sources: Computation[]): Promis
 	for (const source of sources) {
 		const id = source.id;
 		const slot = id === null ? null : ctx.slots.get(id);
-		if (slot === null) { throw new Error("[SERVER_WAIT_WITHOUT_SLOT] a pending read names a source that has no server slot"); }
+		if (slot === null) { throw new Error("[SERVER_WAIT_WITHOUT_SLOT] a pending read names an async memo that has no server slot: create the memo inside the render that reads it, not before renderToStream or streamRender starts"); }
 		waits.push(slot.wait);
 	}
 	return waits;
