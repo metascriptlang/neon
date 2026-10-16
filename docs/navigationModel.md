@@ -164,9 +164,10 @@ routing. `navigatorMotion.ms` stays the transition engine.
   - The routing history stores the entry's index beside its state (`__neonIndex`,
     TanStack's shape), because one session entry carries every region; a refusal goes
     back by the session's tracked position, not by `baseIndexOffset`.
-  - Decompose's `isEnabled` flag cannot suppress mirroring: the registry commits a plan
-    inside `flush`, so the mirror runs after the flag is reset. Each restore or resolve
-    commit bumps a signal the mirror reads instead.
+  - A traversal applies each level inside its own `flush`, so the next level reads its
+    committed children. The mirror skips while a commit applies (Decompose's `isEnabled`)
+    and also reads an epoch the commit bumps, because the registry's own drain runs after
+    the flag is reset.
   - One render effect walks the active branch from the root, and a pop records its
     count when the level changes: a disposed child publishes `[]` and queued effects
     run last in first out, so a per-level effect would read disposed models.
