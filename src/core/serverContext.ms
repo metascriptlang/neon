@@ -6,7 +6,10 @@ export function sanitized(error: Error): Error {
 	return wire;
 }
 
+async function noWait(): Promise<void> {}
+
 export class ServerSlot {
+	wait: Promise<void> = noWait();
 	settled: boolean = false;
 	json: string = "";
 	cell: unknown;

@@ -36,9 +36,15 @@ async function watch<T>(promise: Promise<T>, done: (value: Cell<T> | null, failu
 }
 
 when (server) {
+	import { sleepAsync } from "std/core/promise";
 	import { ServerSlot, sanitized } from "./serverContext";
 
-	function serverResult<T>(ctx: ServerContext, self: Computation, compute: (prev: T | null) => Promise<T>, prev: T | null): T {
+	async function landAfterTurn(run: () => void): Promise<void> {
+		await sleepAsync(0);
+		run();
+	}
+
+	function serverResult<T>(ctx: ServerContext, self: Computation, compute: (prev: T | null) => Promise<T>, prev: T | null, landValue: (self: Computation, value: T) => void): T {
 		const id = self.id;
 		if (id === null) { throw new Error("[SERVER_ASYNC_WITHOUT_ID] an async memo on the server needs an owner id; render it under a root that carries one"); }
 		const known = ctx.slots.get(id);
@@ -50,7 +56,17 @@ when (server) {
 		const slot = new ServerSlot();
 		ctx.slots.set(id, slot);
 		ctx.started.push(id);
-		ctx.waits.push(watch<T>(compute(prev), (value: Cell<T> | null, failure: Error | null): void => {
+		const result = compute(prev);
+		const flight = beginFlight(self);
+		const outcome = new Outcome<T>();
+		const land = (value: Cell<T> | null, failure: Error | null): void => {
+			if (failure !== null) {
+				failFlight(self, flight, failure);
+			} else if (value !== null) {
+				landFlight(self, flight, (): void => landValue(self, value.value));
+			}
+		};
+		slot.wait = watch<T>(result, (value: Cell<T> | null, failure: Error | null): void => {
 			if (failure !== null) {
 				slot.failure = sanitized(failure);
 			} else if (value !== null) {
@@ -58,7 +74,17 @@ when (server) {
 				slot.cell = value as unknown;
 			}
 			slot.settled = true;
-		}));
+			if (outcome.isSync) {
+				outcome.value = value;
+				outcome.failure = slot.failure;
+			} else {
+				land(value, slot.failure);
+			}
+		});
+		outcome.isSync = false;
+		// C continues the watch synchronously for a promise settled before the read (compiler card 2026-10-15-await-of-a-settled-promise-continues-synchronously-on-c): land after this read has thrown, as JS does.
+		if (slot.settled) { slot.wait = landAfterTurn((): void => land(outcome.value, outcome.failure)); }
+		ctx.waits.push(slot.wait);
 		throw new NotReadyError(self);
 	}
 }
@@ -70,7 +96,7 @@ export interface Adopter<T> {
 
 function awaitResult<T>(self: Computation, compute: (prev: T | null) => Promise<T>, prev: T | null, land: (self: Computation, value: T) => void, ctx: ServerContext | null, adopter: Adopter<T> | null): T {
 	when (server) {
-		if (ctx !== null) { return serverResult<T>(ctx, self, compute, prev); }
+		if (ctx !== null) { return serverResult<T>(ctx, self, compute, prev, land); }
 	}
 	const adoptedId = self.id;
 	if (adopter !== null && adoptedId !== null && adopter.has(adoptedId)) {
