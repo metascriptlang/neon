@@ -128,14 +128,18 @@ function errorRows(host: Host, children: NeonNode, fallbackOf: ErroredFallback, 
 	let content: NeonNode | null = null;
 	let fallback: NeonNode | null = null;
 	let contentRow: Row | null = null;
-	const home = getOwner();
+	let boundaryOwner: Computation | null = null;
 	const holder = host.createElement("view");
 	onCleanup((): void => { host.release(holder); });
 	const showsContent = createErrorBoundary<boolean>(
 		(): boolean => {
 			const failed = failure.get();
 			if (failed !== null) { throw failed; }
-			if (content === null) { content = mountedUnder(children, (getOwner() as Computation).context, state); }
+			if (content === null) {
+				const tree = getOwner() as Computation;
+				boundaryOwner = tree.parent;
+				content = mountedUnder(children, tree.context, state);
+			}
 			return true;
 		},
 		(err: Accessor<Error>, reset: () => void): boolean => {
@@ -153,7 +157,7 @@ function errorRows(host: Host, children: NeonNode, fallbackOf: ErroredFallback, 
 	return createMemo<Row[]>(() => {
 		if (showsContent()) {
 			if (contentRow === null) {
-				const row = runWithOwner(home, (): Row => makeRow(content as NeonNode));
+				const row = runWithOwner(boundaryOwner, (): Row => makeRow(content as NeonNode));
 				row.keep = server ? null : holder;
 				contentRow = row;
 			}
