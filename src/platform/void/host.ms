@@ -1008,6 +1008,11 @@ export function createVoidHostWith(scene: Scene2D, font: FontId, defaultFamily: 
 			refreshParagraph(n);
 			woke(was);
 		},
+		focus: (node: HostNode, focused: boolean): void => {
+			const n = live(node, "focus");
+			if (focused) { focus(n); }
+			else if (focusedNode === n) { focus(null); }
+		},
 		scrollTo: (node: HostNode, x: number, y: number, animated: boolean): void => {
 			const n = live(node, "scrollTo");
 			const m = n.scroller;

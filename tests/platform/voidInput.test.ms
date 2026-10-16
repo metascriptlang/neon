@@ -746,3 +746,16 @@ test "a style change that only moves layout asks the window for a frame" {
 	vh.layout(400.0, 300.0);
 	assert top(vh).children[1].ref.local().y === 18.0, "the next layout moves the row below: y=" + top(vh).children[1].ref.local().y.toString();
 }
+
+test "a View's handle focuses it on the Void host and blur clears it" {
+	const vh = host();
+	let log = "";
+	let grid: ViewHandle | null = null;
+	render(element(<View ref={(h: ViewHandle): void => { grid = h; h.focus(); }} focusable={true}
+		onFocus={(e: NeonEvent): void => { log += "focus;"; }} onBlur={(e: NeonEvent): void => { log += "blur;"; }} />), vh.host, vh.root);
+	assert log === "focus;", "focused on mount: " + log;
+	(grid as ViewHandle).blur();
+	assert log === "focus;blur;", "blur: " + log;
+	(grid as ViewHandle).blur();
+	assert log === "focus;blur;", "a second blur of an unfocused view fires nothing: " + log;
+}
