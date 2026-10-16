@@ -21,7 +21,7 @@ function writeCountingHost(attrWrites: number[], textWrites: number[]): Host {
 			h.setAttr(node, name, value);
 		},
 		removeAttr: h.removeAttr, setStyle: h.setStyle, setStyleProp: h.setStyleProp, setStyleClass: h.setStyleClass, addEvent: h.addEvent,
-		append: h.append, insertBefore: h.insertBefore, removeChild: h.removeChild,
+		append: h.append, insertBefore: h.insertBefore, removeChild: h.removeChild, parentOf: h.parentOf, release: h.release,
 		nextSibling: h.nextSibling, firstChild: h.firstChild, cloneNode: h.cloneNode, voidArea: h.voidArea, scrollTo: h.scrollTo,
 	};
 }

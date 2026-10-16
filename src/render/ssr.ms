@@ -501,6 +501,14 @@ when (server) {
 				if (w.done) { return; }
 				takeBack(p, n);
 			},
+			parentOf: (node: HostNode): HostNode | null => {
+				const p = (node as unknown as SsrNode).parent;
+				if (p === null) { return null; }
+				return p as unknown as HostNode;
+			},
+			release: (node: HostNode): void => {
+				if ((node as unknown as SsrNode).parent !== null) { throw "release: the node still has a parent; remove it first"; }
+			},
 			nextSibling: (node: HostNode): HostNode | null => {
 				const n = node as unknown as SsrNode;
 				const p = n.parent;

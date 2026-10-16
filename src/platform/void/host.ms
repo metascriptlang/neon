@@ -705,6 +705,13 @@ export function createVoidHostWith(scene: Scene2D, font: FontId): VoidHost {
 		}
 	};
 
+	const free = (n: VoidNode): void => {
+		if (focusedNode !== null && within(focusedNode as VoidNode, n)) { focus(null); }
+		freeLayoutTree(n);
+		if (n.ref.isLive()) { n.ref.dispose(); }
+		release(n);
+	};
+
 	const host: Host = {
 		createElement: (tag: string): HostNode => {
 			const was = wasDirty();
@@ -882,11 +889,20 @@ export function createVoidHostWith(scene: Scene2D, font: FontId): VoidHost {
 			const was = wasDirty();
 			p.children.splice(idx, 1);
 			n.parent = null;
-			if (focusedNode !== null && within(focusedNode as VoidNode, n)) { focus(null); }
-			freeLayoutTree(n);
-			if (n.ref.isLive()) { n.ref.dispose(); }
-			release(n);
+			free(n);
 			if (inParagraph(p)) { refreshParagraph(paragraphOf(p)); }
+			woke(was);
+		},
+		parentOf: (node: HostNode): HostNode | null => {
+			const p = live(node, "parentOf").parent;
+			if (p === null) { return null; }
+			return p as HostNode;
+		},
+		release: (node: HostNode): void => {
+			const n = live(node, "release");
+			if (n.parent !== null) { throw new Error("release: the node still has a parent; remove it first"); }
+			const was = wasDirty();
+			free(n);
 			woke(was);
 		},
 		nextSibling: (node: HostNode): HostNode | null => {

@@ -1048,6 +1048,17 @@ export function createNativeHost(): NativeHost {
 			releaseNativeTree(n);
 			if (inLabel(p)) { refreshLabel(labelRoot(p)); }
 		},
+		parentOf: (node: HostNode): HostNode | null => {
+			const p = (node as unknown as NativeNode).parent;
+			if (p === null) { return null; }
+			return p as unknown as HostNode;
+		},
+		release: (node: HostNode): void => {
+			const n = node as unknown as NativeNode;
+			if (n.parent !== null) { throw "release: the node still has a parent; remove it first"; }
+			freeLayoutTree(n);
+			releaseNativeTree(n);
+		},
 		nextSibling: (node: HostNode): HostNode | null => {
 			const n = node as unknown as NativeNode;
 			const p = n.parent;

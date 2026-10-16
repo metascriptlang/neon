@@ -268,7 +268,7 @@ function countingHost(counter: number[]): Host {
 		},
 		createText: h.createText, setText: h.setText, setAttr: h.setAttr, removeAttr: h.removeAttr,
 		setStyle: h.setStyle, setStyleProp: h.setStyleProp, setStyleClass: h.setStyleClass, addEvent: h.addEvent, append: h.append,
-		insertBefore: h.insertBefore, removeChild: h.removeChild,
+		insertBefore: h.insertBefore, removeChild: h.removeChild, parentOf: h.parentOf, release: h.release,
 		nextSibling: h.nextSibling, firstChild: h.firstChild, cloneNode: h.cloneNode, voidArea: h.voidArea, scrollTo: h.scrollTo,
 	};
 }
@@ -321,7 +321,7 @@ function textCountingHost(counter: number[]): Host {
 			h.setText(node, value);
 		},
 		setAttr: h.setAttr, removeAttr: h.removeAttr, setStyle: h.setStyle, setStyleProp: h.setStyleProp, setStyleClass: h.setStyleClass, addEvent: h.addEvent,
-		append: h.append, insertBefore: h.insertBefore, removeChild: h.removeChild,
+		append: h.append, insertBefore: h.insertBefore, removeChild: h.removeChild, parentOf: h.parentOf, release: h.release,
 		nextSibling: h.nextSibling, firstChild: h.firstChild, cloneNode: h.cloneNode, voidArea: h.voidArea, scrollTo: h.scrollTo,
 	};
 }
@@ -361,7 +361,7 @@ test "template mode on a cloneNode:null host falls back and renders the same" {
 	const host: Host = {
 		createElement: base.createElement, createText: base.createText, setText: base.setText,
 		setAttr: base.setAttr, removeAttr: base.removeAttr, setStyle: base.setStyle, setStyleProp: base.setStyleProp, setStyleClass: base.setStyleClass, addEvent: base.addEvent,
-		append: base.append, insertBefore: base.insertBefore, removeChild: base.removeChild,
+		append: base.append, insertBefore: base.insertBefore, removeChild: base.removeChild, parentOf: base.parentOf, release: base.release,
 		nextSibling: base.nextSibling, firstChild: base.firstChild,
 		cloneNode: null,
 		voidArea: null,

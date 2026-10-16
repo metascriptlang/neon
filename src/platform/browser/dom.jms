@@ -1312,6 +1312,15 @@ export function domHost(): Host {
 			el.removeChild(el === (document.head as unknown as Node) ? leaveHead(node as unknown as Node) : node as unknown as Node);
 			scheduleLayouts();
 		},
+		parentOf: (node: HostNode): HostNode | null => {
+			const p = (shownInHead(node as unknown as Node) as Node).parentNode;
+			if (p === null) { return null; }
+			return p as unknown as HostNode;
+		},
+		release: (node: HostNode): void => {
+			if ((shownInHead(node as unknown as Node) as Node).parentNode !== null) { throw "release: the node still has a parent; remove it first"; }
+			release(node as unknown as Node);
+		},
 		nextSibling: (node: HostNode): HostNode | null => {
 			return heldByHead((shownInHead(node as unknown as Node) as Node).nextSibling as Node | null) as unknown as HostNode;
 		},
