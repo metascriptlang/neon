@@ -1,5 +1,7 @@
+import { sleepAsync } from "std/core/promise";
 import { NeonNode } from "../../src/render/hostTypes";
-import { renderToMarkup } from "../../src/render/ssr";
+import { renderToMarkup, renderToStream } from "../../src/render/ssr";
+import { createAsyncMemo } from "../../src/core/memo";
 import { Host, HostNode } from "../../src/render/hostTypes";
 import { View, Text, Pressable, ScrollView, TextInput } from "../../src/components/primitives";
 import { Switch } from "../../src/components/switch";
@@ -68,6 +70,37 @@ function fixtures(): NeonNode {
 	</View>;
 }
 
+async function afterStr(ms: int32, value: string): Promise<string> {
+	await sleepAsync(ms);
+	return value;
+}
+
+async function afterInt(ms: int32, value: int32): Promise<int32> {
+	await sleepAsync(ms);
+	return value;
+}
+
+function Visits(): NeonNode {
+	const visits = createAsyncMemo((p: int32 | null): Promise<int32> => afterInt(2, 1234));
+	return <Text>{visits} visits</Text>;
+}
+
+function Profile(): NeonNode {
+	const name = createAsyncMemo((p: string | null): Promise<string> => afterStr(4, "Ada </b> & \"Lovelace\""));
+	return <View>
+		<Text>{name}</Text>
+		<Loading fallback={<Text>counting</Text>}><Visits /></Loading>
+	</View>;
+}
+
+function asyncPage(): NeonNode {
+	return <View accessibilityLabel="Profile">
+		<Head><title>Profile</title></Head>
+		<Loading fallback={<Text>loading</Text>}><Profile /></Loading>
+		<Text>footer</Text>
+	</View>;
+}
+
 function dump(name: string, node: NeonNode): void {
 	const markup = renderToMarkup(node);
 	console.log("== " + name + " html\n" + markup.html);
@@ -75,7 +108,15 @@ function dump(name: string, node: NeonNode): void {
 	console.log("== " + name + " css\n" + markup.css);
 }
 
-function main(): void {
+async function dumpAwaited(name: string, node: NeonNode): Promise<void> {
+	const markup = await renderToStream(node);
+	console.log("== " + name + " html\n" + markup.html);
+	console.log("== " + name + " head\n" + markup.head);
+	console.log("== " + name + " css\n" + markup.css);
+	console.log("== " + name + " records\n" + markup.records);
+}
+
+async function main(): Promise<void> {
 	const rows: number[] = [];
 	for (let i = 0; i < 20; i += 1) { rows.push(i); }
 	dump("rows", rowsPage(rows));
@@ -87,5 +128,6 @@ function main(): void {
 		const r = respond(url);
 		console.log("== site " + url + " " + r.status.toString() + " " + (r.location ?? "") + "\n" + r.body);
 	}
+	await dumpAwaited("async", asyncPage());
 }
-main();
+await main();
