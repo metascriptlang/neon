@@ -459,9 +459,11 @@ function spanRun(text: string, own: Style, base: Style, font: FontId, baseColor:
 	if (line !== null && line !== "solid" && line !== "wavy") {
 		throw new Error(`void host: textDecorationStyle "${line as string}" is not drawn on the Void host yet; solid and wavy are`);
 	}
+	const decoCss = own.textDecorationColor !== null ? own.textDecorationColor : base.textDecorationColor;
+	const decoColor = decoCss !== null ? colorOf(decoCss as string, "textDecorationColor") : color;
 	return {
 		len: text.length as int32, font, color, background: colorOr(bg, CLEAR),
-		underline: lineColor(deco, "underline", color), wavy: line === "wavy", strikethrough: lineColor(deco, "line-through", color),
+		underline: lineColor(deco, "underline", decoColor), wavy: line === "wavy", strikethrough: lineColor(deco, "line-through", decoColor),
 	};
 }
 

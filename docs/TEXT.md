@@ -96,8 +96,9 @@ A Text's or span's `fontFamily`, `fontWeight` and `fontStyle` pick its face thro
 registers its `font` file as that family. A weight or slant the family has no file for is synthesised by void2d, as
 Ghostty, WezTerm, DirectWrite and CSS `font-synthesis` do (RN iOS takes the nearest weight instead,
 `RCTFont.mm:480`), and the person chose synthesis on 2026-10-16. A family with no registered face, or a weight asked
-for with no family at all, is refused by name. `textDecorationStyle: "wavy"` maps to the run's `wavy`. The native
-hosts refuse every line style but `solid`. They take one `fontFamily` per Text and refuse a span that changes it;
+for with no family at all, is refused by name. `textDecorationStyle: "wavy"` maps to the run's `wavy`, and
+`textDecorationColor` colours the run's underline and line-through (a terminal's SGR 58), the text colour when unset.
+The native hosts refuse every line style but `solid`, and refuse `textDecorationColor` by name. They take one `fontFamily` per Text and refuse a span that changes it;
 Windows draws the family through DirectWrite (an installed family only), and iOS and Android refuse it by name until
 a device lane proves them.
 

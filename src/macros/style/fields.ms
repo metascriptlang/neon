@@ -62,6 +62,7 @@ export const STYLE_TABLE: string[][] = [
 	["fontStyle",           "FontStyle",         "word", "paint",  "paint"],
 	["textDecorationLine",  "TextDecorationLine", "word", "paint",  "paint"],
 	["textDecorationStyle", "TextDecorationStyle", "word", "paint", "ignore"],
+	["textDecorationColor", "string",            "word", "paint",  "ignore"],
 ];
 
 export const STYLE_CLASS_FIELDS: string[][] = [

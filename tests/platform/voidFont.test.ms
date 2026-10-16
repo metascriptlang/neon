@@ -135,3 +135,16 @@ test "measuring a family the host cannot find is refused by name" {
 	} catch (e) { message = e.message; }
 	assert message.indexOf(`font family "Nowhere Grotesk" has no registered face`) >= 0, "unknown family: " + message;
 }
+
+test "a span's textDecorationColor colours its underline and line-through, not its text" {
+	const vh = host();
+	render(element(<View style={{ width: 300 }}><Text style={{ color: "#ffffff" }} spans={[
+		{ text: "spell ", style: { textDecorationLine: "underline", textDecorationStyle: "wavy", textDecorationColor: "#ff5050" } },
+		{ text: "gone ", style: { textDecorationLine: "line-through", textDecorationColor: "#00ff00" } },
+		{ text: "plain", style: { textDecorationLine: "underline" } },
+	]} /></View>), vh.host, vh.root);
+	const runs = runsOf(vh, paragraph(top(vh).children[0]));
+	assert runs[0].wavy && runs[0].underline.r > 0.99 && runs[0].underline.g < 0.32 && runs[0].color.g > 0.99, "red wavy underline under white text";
+	assert runs[1].strikethrough.g > 0.99 && runs[1].strikethrough.r < 0.01 && runs[1].underline.a === 0.0, "green line-through";
+	assert runs[2].underline.r > 0.99 && runs[2].underline.g > 0.99, "no decoration colour keeps the text colour";
+}
