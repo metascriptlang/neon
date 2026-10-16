@@ -75,10 +75,11 @@ export interface StackWebNavigationOptions<C, T> {
 }
 
 export interface PagesWebNavigationOptions<C, T> {
-	pathMapper?: ((pages: ChildPages<C, T>) => string | null) | null;
-	parametersMapper?: ((pages: ChildPages<C, T>) => Map<string, string> | null) | null;
+	pathMapper?: ((page: NavigationChild<C, T>) => string | null) | null;
+	parametersMapper?: ((page: NavigationChild<C, T>) => Map<string, string> | null) | null;
 	onBeforeNavigate?: (() => boolean) | null;
 	childSelector?: ((child: NavigationChild<C, T>) => WebNavigationOwner | null) | null;
+	visited?: ((pages: ChildPages<C, T>) => int32[]) | null;
 }
 
 export interface PanelsHistoryKey<MC, DC, EC> {
@@ -243,28 +244,44 @@ export function childPagesWebNavigation<C, T>(
 	const parametersMapper = options.parametersMapper;
 	const onBeforeNavigate = options.onBeforeNavigate;
 	const childSelector = options.childSelector;
+	const visited = options.visited;
 	return {
 		serializer: pagesSerializer<C>(serializer),
 		history: accessor((): WebHistoryItem<Pages<C> >[] => {
+			const children = pages.items();
 			const items: C[] = [];
-			for (const child of pages.items()) { items.push(child.configuration()); }
-			const selected = pages.selected();
-			return [historyItem<Pages<C>>(
-				{ items, selectedIndex: pages.selectedIndex() },
-				pathMapper === null ? null : pathMapper(pages),
-				parametersMapper === null ? null : parametersMapper(pages),
-				childSelector === null || selected === null
-					? null
-					: childSelector(selected as NavigationChild<C, T>),
-			)];
+			for (const child of children) { items.push(child.configuration()); }
+			const selectedIndex = pages.selectedIndex();
+			const order = visited === null || selectedIndex < 0 ? [selectedIndex] : visited(pages);
+			if (order.length === 0 || order[order.length - 1] !== selectedIndex) {
+				throw new Error("child pages web navigation: the visited pages do not end with the selected one");
+			}
+			const history: WebHistoryItem<Pages<C> >[] = [];
+			for (const at of order) {
+				if (at >= children.length) {
+					throw new Error("child pages web navigation: visited page " + at.toString() + " does not exist");
+				}
+				const page: NavigationChild<C, T> | null = at < 0 ? null : children[at];
+				history.push(historyItem<Pages<C>>(
+					{ items, selectedIndex: at },
+					pathMapper === null || page === null ? null : pathMapper(page as NavigationChild<C, T>),
+					parametersMapper === null || page === null
+						? null
+						: parametersMapper(page as NavigationChild<C, T>),
+					childSelector === null || page === null
+						? null
+						: childSelector(page as NavigationChild<C, T>),
+				));
+			}
+			return history;
 		}),
 		onBeforeNavigate: onBeforeNavigate === null ? allow : onBeforeNavigate,
 		navigate: (history: Pages<C>[]): void => {
 			if (history.length === 0) {
 				throw new Error("child pages web navigation: an empty history");
 			}
-			const first = history[0];
-			pages.navigate((current: Pages<C>): Pages<C> => first);
+			const last = history[history.length - 1];
+			pages.navigate((current: Pages<C>): Pages<C> => last);
 		},
 	};
 }

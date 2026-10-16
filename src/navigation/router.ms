@@ -444,19 +444,17 @@ function createLevel(
 		}
 		const pages = createChildPages<Stop, Place>({ items, selectedIndex }, stopKey, factory);
 		const web = childPagesWebNavigation<Stop, Place>(pages, serializer, {
-			pathMapper: (current: ChildPages<Stop, Place>): string | null => {
-				const selected = current.selected();
-				if (selected === null) { return null; }
-				return (selected as NavigationChild<Stop, Place>).configuration().part;
-			},
-			parametersMapper: (current: ChildPages<Stop, Place>): Map<string, string> | null => {
-				const selected = current.selected();
-				if (selected === null) { return null; }
-				const stop = (selected as NavigationChild<Stop, Place>).configuration();
+			pathMapper: (page: NavigationChild<Stop, Place>): string | null => page.configuration().part,
+			parametersMapper: (page: NavigationChild<Stop, Place>): Map<string, string> | null => {
+				const stop = page.configuration();
 				return leafView(routes, stop) ? stop.search : null;
 			},
 			childSelector: (child: NavigationChild<Stop, Place>): WebNavigationOwner | null => {
 				return nested(child.instance);
+			},
+			visited: (current: ChildPages<Stop, Place>): int32[] => {
+				const at = current.selectedIndex();
+				return at === 0 ? [at] : [0, at];
 			},
 		});
 		return {

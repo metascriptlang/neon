@@ -207,11 +207,12 @@ function drawerModel<P>(
 				}),
 				onBeforeNavigate: web.onBeforeNavigate,
 				navigate: (keys: string[]): Result<void, WebNavigationError> => {
-					const opened = keys.length === 2 && keys[1] === DRAWER_OPEN_KEY;
-					if (keys.length !== 1 && !opened) {
+					const opened = keys.length > 1 && keys[keys.length - 1] === DRAWER_OPEN_KEY;
+					const pageKeys = opened ? keys.slice(0, keys.length - 1) : keys;
+					if (pageKeys.length === 0 || pageKeys.includes(DRAWER_OPEN_KEY)) {
 						return Result.err(WebNavigationError.UndecodableKey);
 					}
-					const applied = web.navigate([keys[0]]);
+					const applied = web.navigate(pageKeys);
 					if (applied.ok) { writeOpen(opened); }
 					return applied;
 				},

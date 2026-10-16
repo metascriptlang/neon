@@ -93,6 +93,21 @@ test "back and forward walk each tab's stack in real browser history" {
 		await sleepAsync(100);
 		assert history.read().url === "/feed/1", history.read().url;
 		assert visibleText(root) === "post 1", visibleText(root);
+
+		assert router.navigate("/inbox/7");
+		await sleepAsync(100);
+		assert history.read().url === "/inbox/7", history.read().url;
+		assert history.go(-1);
+		await sleepAsync(100);
+		assert visibleText(root) === "inbox", visibleText(root);
+		assert history.go(-1);
+		await sleepAsync(100);
+		assert history.read().url === "/feed/1", history.read().url;
+		assert visibleText(root) === "post 1", visibleText(root);
+		assert history.go(-1);
+		await sleepAsync(100);
+		assert history.read().url === "/feed", history.read().url;
+		assert visibleText(root) === "feed", visibleText(root);
 	} finally {
 		router.dispose();
 		history.replace(original);

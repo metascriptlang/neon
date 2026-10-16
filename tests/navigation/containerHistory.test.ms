@@ -139,6 +139,30 @@ function tabShell(): NeonNode {
 	</Tabs.Navigator>;
 }
 
+function Profile(props: ScreenProps<string>): NeonNode {
+	return <Text>profile</Text>;
+}
+
+const visitLinking: LinkingOptions = {
+	prefixes: [],
+	enabled: false,
+	config: {
+		screens: [
+			{ name: "Feed", path: "feed" },
+			{ name: "Inbox", path: "inbox" },
+			{ name: "Profile", path: "profile" },
+		],
+	},
+};
+
+function visitShell(): NeonNode {
+	return <Tabs.Navigator backBehavior="history">
+		<Tabs.Screen name="Feed" component={Feed} />
+		<Tabs.Screen name="Inbox" component={Inbox} />
+		<Tabs.Screen name="Profile" component={Profile} />
+	</Tabs.Navigator>;
+}
+
 function MainScreen(props: ScreenProps<string>): NeonNode {
 	return <Menu.Navigator>
 		<Menu.Screen name="Feed" component={Feed} />
@@ -305,14 +329,46 @@ test "a reload restores the stored tree before mount and keeps its keys" {
 	assert finish(app) === 0, "routing errors";
 }
 
-test "a tab switch replaces the entry" {
+test "a switch away from the first tab adds an entry that back leaves, in the app as in the browser" {
 	const app = startWith({ url: "/feed", state: "" }, tabShell, tabLinking);
 	take();
 	app.ref.navigate("Inbox");
 	const switched = take();
-	assert switched === "replace /inbox;", switched;
-	assert app.memory.index() === 0, app.memory.index().toString();
+	assert switched === "push /inbox;", switched;
+	assert app.memory.index() === 1, app.memory.index().toString();
 	assert visibleText(app.root).indexOf("inbox") >= 0, visibleText(app.root);
+	assert app.memory.go(-1);
+	assert app.ref.currentPath() === "Feed", app.ref.currentPath();
+	assert app.memory.go(1);
+	assert app.ref.currentPath() === "Inbox", app.ref.currentPath();
+	assert take() === "", "a traversal writes nothing";
+	app.ref.goBack();
+	const back = take();
+	assert back === "go -1;", back;
+	assert app.ref.currentPath() === "Feed", app.ref.currentPath();
+	assert finish(app) === 0, "routing errors";
+}
+
+test "tabs with a history back behavior walk the visits back in the browser" {
+	const app = startWith({ url: "/feed", state: "" }, visitShell, visitLinking);
+	take();
+	app.ref.navigate("Inbox");
+	app.ref.navigate("Profile");
+	const visited = take();
+	assert visited === "push /inbox;push /profile;", visited;
+	app.ref.navigate("Inbox");
+	const revisited = take();
+	assert revisited === "go -1;replace /profile;push /inbox;", revisited;
+	assert app.memory.go(-1);
+	assert app.ref.currentPath() === "Profile", app.ref.currentPath();
+	assert app.memory.go(-1);
+	assert app.ref.currentPath() === "Feed", app.ref.currentPath();
+	assert app.memory.go(2);
+	assert app.ref.currentPath() === "Inbox", app.ref.currentPath();
+	assert take() === "", "a traversal writes nothing";
+	app.ref.goBack();
+	assert take() === "go -1;";
+	assert app.ref.currentPath() === "Profile", app.ref.currentPath();
 	assert finish(app) === 0, "routing errors";
 }
 
@@ -334,7 +390,8 @@ function drawerOpen(app: App): boolean {
 test "opening the drawer adds an entry at the same address, and browser back closes it" {
 	const app = startWith({ url: "/", state: "" }, drawerShell, drawerLinking);
 	app.ref.navigate("Inbox");
-	assert take() === "replace /;replace /;replace /inbox;";
+	const switched = take();
+	assert switched === "replace /;replace /;push /inbox;", switched;
 	app.ref.openDrawer();
 	const opened = take();
 	assert opened === "push /inbox;", opened;
@@ -390,16 +447,21 @@ test "browser back stays on a screen whose beforeRemove prevents it" {
 	assert finish(app) === 0, "routing errors";
 }
 
-test "setParams rewrites the entry it changes" {
+test "setParams replaces the entry it changes and keeps the ones below" {
 	const app = startApp({ url: "/", state: "" });
 	assert app.ref.linkTo("/shop/product/5");
 	take();
 	(log.product as Navigation<ItemParams>).setParams({ id: "6" });
+	const replaced = take();
+	assert replaced === "replace /shop/product/6;", replaced;
+	assert app.memory.index() === 2, app.memory.index().toString();
 	assert app.memory.read().url === "/shop/product/6", app.memory.read().url;
 	assert visibleText(app.root).indexOf("product 6") >= 0, visibleText(app.root);
 	assert app.memory.go(-1);
 	assert app.ref.currentPath() === "Shop>Catalog", app.ref.currentPath();
-	assert app.memory.go(1);
+	assert app.memory.go(-1);
+	assert app.ref.currentPath() === "Home", app.ref.currentPath();
+	assert app.memory.go(2);
 	assert visibleText(app.root).indexOf("product 6") >= 0, visibleText(app.root);
 	assert finish(app) === 0, "routing errors";
 }

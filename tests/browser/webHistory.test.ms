@@ -51,11 +51,7 @@ function section(configuration: Accessor<string>, active: Accessor<boolean>): Se
 		{ items: ["feed", "inbox"], selectedIndex: 0 }, nameKey, pageInstance,
 	);
 	const web = childPagesWebNavigation<string, string>(pages, plain(), {
-		pathMapper: (current: ChildPages<string, string>): string | null => {
-			const selected = current.selected();
-			if (selected === null) { return null; }
-			return (selected as NavigationChild<string, string>).configuration();
-		},
+		pathMapper: (page: NavigationChild<string, string>): string | null => page.configuration(),
 	});
 	return { pages, web: { webNavigation: webNavigationNode<Pages<string>>(web) } };
 }

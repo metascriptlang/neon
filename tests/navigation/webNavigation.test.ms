@@ -287,11 +287,7 @@ test "pages publish one entry for the selected page" {
 	const pages = makePages(["home", "search", "profile"], 0);
 	const search = fixedOwner("results");
 	const web = childPagesWebNavigation<string, string>(pages, prefixed("page:"), {
-		pathMapper: (current: ChildPages<string, string>): string | null => {
-			const selected = current.selected();
-			if (selected === null) { return null; }
-			return (selected as NavigationChild<string, string>).instance;
-		},
+		pathMapper: (page: NavigationChild<string, string>): string | null => page.instance,
 		childSelector: (child: NavigationChild<string, string>): WebNavigationOwner | null => {
 			return child.instance === "search" ? search : null;
 		},
@@ -305,6 +301,43 @@ test "pages publish one entry for the selected page" {
 	history = web.history();
 	assert history.length === 1 && history[0].key.selectedIndex === 1;
 	assert history[0].path === "search" && history[0].child === search;
+	pages.dispose();
+}
+
+test "pages publish the visited pages before the selected one, each with its own part and child" {
+	const pages = makePages(["home", "search", "profile"], 0);
+	const search = fixedOwner("results");
+	const web = childPagesWebNavigation<string, string>(pages, prefixed("page:"), {
+		pathMapper: (page: NavigationChild<string, string>): string | null => page.instance,
+		childSelector: (child: NavigationChild<string, string>): WebNavigationOwner | null => {
+			return child.instance === "search" ? search : null;
+		},
+		visited: (current: ChildPages<string, string>): int32[] => {
+			const at = current.selectedIndex();
+			return at === 0 ? [at] : [1, at];
+		},
+	});
+	const node = webNavigationNode<Pages<string>>(web);
+	assert web.history().length === 1, web.history().length.toString();
+	pages.select(2);
+	const history = web.history();
+	assert history.length === 2, history.length.toString();
+	assert history[0].key.selectedIndex === 1 && history[0].path === "search" && history[0].child === search;
+	assert history[1].key.selectedIndex === 2 && history[1].path === "profile" && history[1].child === null;
+	const keys = [node.history()[0].key];
+	assert node.navigate(keys).ok;
+	assert pages.selectedIndex() === 1, pages.selectedIndex().toString();
+	pages.dispose();
+}
+
+test "pages refuse visited pages that do not end with the selected one" {
+	const pages = makePages(["home", "search"], 1);
+	const web = childPagesWebNavigation<string, string>(pages, prefixed("page:"), {
+		visited: (current: ChildPages<string, string>): int32[] => [0],
+	});
+	let message = "";
+	try { web.history(); } catch (error) { message = error.message; }
+	assert message === "child pages web navigation: the visited pages do not end with the selected one", message;
 	pages.dispose();
 }
 

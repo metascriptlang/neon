@@ -148,6 +148,35 @@ test "each tab keeps its stack and its mounted screens while the other tab is sh
 	router.dispose();
 }
 
+test "browser back from another tab returns to the first tab where it was, then down its stack" {
+	const history = createMemoryRoutingHistory({ url: "/", state: "" });
+	const created = createRouter(appRoutes(), history);
+	assert created.ok;
+	if (!created.ok) { return; }
+	const router = created.value;
+	const root = mounted(router);
+	assert router.navigate("/feed");
+	assert router.navigate("/feed/1");
+	assert router.navigate("/inbox");
+	assert visibleText(root) === "inbox", visibleText(root);
+	assert history.index() === 3, history.index().toString();
+	assert history.go(-1);
+	assert visibleText(root) === "post 1", visibleText(root);
+	assert history.read().url === "/feed/1", history.read().url;
+	assert history.go(-1);
+	assert visibleText(root) === "feed", visibleText(root);
+	assert history.go(-1);
+	assert visibleText(root) === "home", visibleText(root);
+	assert history.go(3);
+	assert visibleText(root) === "inbox", visibleText(root);
+	assert router.navigate("/feed/1");
+	assert visibleText(root) === "post 1", visibleText(root);
+	assert history.index() === 2, history.index().toString();
+	assert history.go(-2);
+	assert visibleText(root) === "home", visibleText(root);
+	router.dispose();
+}
+
 test "an entry whose router state does not parse opens from its address" {
 	const history = createMemoryRoutingHistory({ url: "/feed", state: "" });
 	const created = createRouter(appRoutes(), history);
