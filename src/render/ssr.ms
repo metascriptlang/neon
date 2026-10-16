@@ -358,6 +358,7 @@ when (server) {
 		overlay: SsrNode = new SsrNode("overlay", PLAIN);
 		headKids: SsrNode[] = [];
 		done: boolean = false;
+		headFront: SsrNode | null = null;
 
 		constructor(register: (id: string, css: string) => void) {
 			this.register = register;
@@ -378,6 +379,7 @@ when (server) {
 		const kids = w.headKids;
 		const at = ref === null ? -1 : kids.indexOf(ref as unknown as SsrNode);
 		if (at < 0) { kids.push(n); } else { kids.splice(at, 0, n); }
+		if (ref !== null && w.headFront === (ref as unknown as SsrNode)) { w.headFront = n; }
 	}
 
 	function writeInto(w: SsrWrite, p: SsrNode, n: SsrNode, ref: HostNode | null): void {
@@ -536,6 +538,7 @@ when (server) {
 				if (!n.collects) {
 					throw new Error("SSR writer: <" + n.tag + "> was read back as a tree; only the head root keeps its children");
 				}
+				if (w.headFront !== null) { return w.headFront as unknown as HostNode; }
 				return w.headKids.length === 0 ? null : w.headKids[0] as unknown as HostNode;
 			},
 			cloneNode: null,
@@ -618,9 +621,16 @@ when (server) {
 		return n as unknown as HostNode;
 	}
 
-	function stitchMarks(): ServerMarks {
+	function stitchMarks(w: SsrWrite): ServerMarks {
+		const fronts = new Map<string, SsrNode>();
 		return {
-			open: (id: string): unknown => rawNode(PLACEHOLDER_OPEN + id + "\"></template>"),
+			open: (id: string): unknown => {
+				const front = new SsrNode("", PLAIN);
+				const at = w.headFront === null ? 0 : w.headKids.indexOf(w.headFront as SsrNode);
+				w.headKids.splice(at < 0 ? 0 : at, 0, front);
+				fronts.set(id, front);
+				return rawNode(PLACEHOLDER_OPEN + id + "\"></template>");
+			},
 			close: (id: string): unknown => rawNode(PLACEHOLDER_END + id + "-->"),
 			holder: (beside: unknown): unknown => {
 				const like = beside as SsrNode;
@@ -629,6 +639,15 @@ when (server) {
 				return holder;
 			},
 			html: (holder: unknown): string => (holder as SsrNode).body,
+			within: (id: string, run: () => boolean): boolean => {
+				const outer = w.headFront;
+				w.headFront = fronts.get(id);
+				try {
+					return run();
+				} finally {
+					w.headFront = outer;
+				}
+			},
 		};
 	}
 
@@ -692,11 +711,12 @@ when (server) {
 	export async function renderToStream(n: NeonNode): Promise<SsrMarkup> {
 		const ctx = new ServerContext();
 		let pass = new StreamPass();
-		ctx.marks = stitchMarks();
+		ctx.marks = stitchMarks(pass.write);
 		for (let rounds = 1; !rootSettled(ctx, pass, n); rounds += 1) {
 			if (rounds >= MAX_PASSES) { throw unconverged("the render"); }
 			for (const w of awaitable(ctx, takeWaits(ctx))) { await w; }
 			pass = new StreamPass();
+			ctx.marks = stitchMarks(pass.write);
 		}
 		let failure: Error | null = null;
 		let html = "";

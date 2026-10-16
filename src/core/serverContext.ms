@@ -18,6 +18,7 @@ export interface ServerMarks {
 	close: (id: string) => unknown;
 	holder: (beside: unknown) => unknown;
 	html: (holder: unknown) => string;
+	within: (id: string, run: () => boolean) => boolean;
 }
 
 export class ServerContext {

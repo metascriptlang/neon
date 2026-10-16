@@ -308,7 +308,7 @@ async function settleContent(ctx: ServerContext, marks: ServerMarks, id: string,
 			if (passes >= MAX_PASSES) { throw unconverged("<Loading> at owner id \"" + id + "\""); }
 			passes += 1;
 			const holder = marks.holder(beside) as HostNode;
-			if (again(holder)) {
+			if (marks.within(id, (): boolean => again(holder))) {
 				ctx.fragments.set(id, marks.html(holder));
 				settled = true;
 			} else {

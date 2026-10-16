@@ -4,6 +4,7 @@ import { Host, HostNode } from "../../src/render/hostTypes";
 import { Accessor } from "../../src/core/signal";
 import { createAsyncMemo, createMemo } from "../../src/core/memo";
 import { onCleanup } from "../../src/core/cleanup";
+import { Head } from "../../src/render/head";
 import { Loading, Errored } from "../../src/macros/ui/flow";
 import { createStyles, styleOf } from "../../src/macros/ui/style";
 import { createRoot, createUniqueId } from "../../src/core/owner";
@@ -392,6 +393,28 @@ test "a Loading that waited writes the bytes a single pass writes, whatever its 
 	const e = await renderToStream(regionsShape(true));
 	const f = await renderToStream(regionsShape(false));
 	assert e.html === f.html && e.html.includes("reg=6"), "regions: " + e.html + " | " + f.html;
+}
+
+function headShape(slow: boolean): NeonNode {
+	return <View>
+		<Head><title>first</title><meta name="description" content="first" /></Head>
+		<Loading fallback={<Text>wait</Text>}>
+			<Head><title>inside</title><meta name="robots" content="inside" /></Head>
+			<Head><meta name="robots" content="inside again" /></Head>
+			{readOf("head", slow, 1)}
+		</Loading>
+		<Loading fallback={<Text>wait</Text>}>
+			<Head><meta name="author" content="second loading" /></Head>
+			{readOf("head2", slow, 2)}
+		</Loading>
+		<Head><title>last</title></Head>
+	</View>;
+}
+
+test "a Head inside a Loading that waited takes the place in the head it takes in a single pass" {
+	const waited = await renderToStream(headShape(true));
+	const single = await renderToStream(headShape(false));
+	assert waited.head === single.head, waited.head + " | " + single.head;
 }
 
 async function lateFailure(): Promise<string> {
