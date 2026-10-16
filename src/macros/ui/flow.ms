@@ -10,7 +10,7 @@ import { createOwner, getOwner, getNextChildId, flush, disposeChildren, enterRoo
 import { onCleanup } from "../../core/cleanup";
 import { runWithOwner } from "../../core/owner";
 import { Computation, NotReadyError, ContextEntry } from "../../core/types";
-import { ServerContext, ServerMarks, MAX_PASSES, serverContext, withServerContext, takeWaits, awaitable, unconverged } from "../../core/serverContext";
+import { ServerContext, ServerMarks, MAX_PASSES, serverContext, withServerContext, pendingWaits, unconverged } from "../../core/serverContext";
 import { isServer, asServer } from "../../render/environment";
 import { serverCaught } from "../../render/ssr";
 import { NeonNode, regionNode } from "../../render/node";
@@ -315,6 +315,14 @@ class Life {
 	dead: boolean = false;
 }
 
+class Pending {
+	source: Computation;
+
+	constructor(source: Computation) {
+		this.source = source;
+	}
+}
+
 function placeholder(marks: ServerMarks, id: string, fallback: NeonNode | null): NeonNode {
 	return (host: Host, parent: HostNode, before: HostNode | null): void => {
 		place(host, parent, marks.open(id) as HostNode, before);
@@ -327,7 +335,7 @@ function placeholder(marks: ServerMarks, id: string, fallback: NeonNode | null):
 	};
 }
 
-function rerunContent(ctx: ServerContext, host: Host, holder: HostNode, scope: Computation, children: NeonNode, state: MountedState): boolean {
+function rerunContent(ctx: ServerContext, host: Host, holder: HostNode, scope: Computation, children: NeonNode, state: MountedState, pending: Pending): boolean {
 	return asServer((): boolean => withServerContext(ctx, (): boolean => {
 		const again = makeRow((h: Host, p: HostNode, b: HostNode | null): void => { mountIn(scope, children, state, h, p, b); });
 		again.owner = scope;
@@ -340,6 +348,7 @@ function rerunContent(ctx: ServerContext, host: Host, holder: HostNode, scope: C
 			completed = true;
 		} catch (e) {
 			if (!(e instanceof NotReadyError)) { throw e; }
+			pending.source = (e as NotReadyError).source;
 		} finally {
 			leaveRoot(completed);
 		}
@@ -348,13 +357,12 @@ function rerunContent(ctx: ServerContext, host: Host, holder: HostNode, scope: C
 	}));
 }
 
-async function settleContent(ctx: ServerContext, marks: ServerMarks, id: string, first: Promise<void>[], life: Life, beside: HostNode, again: (holder: HostNode) => boolean): Promise<void> {
-	let waits = first;
+async function settleContent(ctx: ServerContext, marks: ServerMarks, id: string, pending: Pending, life: Life, beside: HostNode, again: (holder: HostNode) => boolean): Promise<void> {
 	let passes = 1;
 	let settled = false;
 	try {
 		while (!settled) {
-			for (const w of awaitable(ctx, waits)) { await w; }
+			for (const w of pendingWaits(ctx, [pending.source])) { await w; }
 			if (life.dead) { return; }
 			if (passes >= MAX_PASSES) { throw unconverged("<Loading> at owner id \"" + id + "\""); }
 			passes += 1;
@@ -362,8 +370,6 @@ async function settleContent(ctx: ServerContext, marks: ServerMarks, id: string,
 			if (marks.within(id, (): boolean => again(holder))) {
 				ctx.fragments.set(id, marks.html(holder));
 				settled = true;
-			} else {
-				waits = takeWaits(ctx);
 			}
 		}
 	} catch (e) {
@@ -387,21 +393,14 @@ function loadingOnServer(children: NeonNode, fallback: NeonNode | null): Accesso
 	return spanOfMounted((host: Host, parent: HostNode, before: HostNode | null): Row | null => {
 		const ctx = serverContext();
 		const content = makeRow(mountedUnder(children, context, state, contentId));
-		const outer: Promise<void>[] = ctx === null ? [] : ctx.waits;
-		if (ctx !== null) { ctx.waits = []; }
-		let mounted = false;
+		let source: Computation | null = null;
 		try {
 			mountAt(host, parent, before, content);
-			mounted = true;
 		} catch (e) {
 			if (!(e instanceof NotReadyError)) { throw e; }
-		} finally {
-			if (ctx !== null && mounted) {
-				for (const w of ctx.waits) { outer.push(w); }
-				ctx.waits = outer;
-			}
+			source = (e as NotReadyError).source;
 		}
-		if (mounted) { return content; }
+		if (source === null) { return content; }
 		const scope = state.scope as Computation;
 		removeRow(host, parent, content);
 		if (ctx === null) {
@@ -412,8 +411,7 @@ function loadingOnServer(children: NeonNode, fallback: NeonNode | null): Accesso
 			return waiting;
 		}
 		const served = ctx as ServerContext;
-		const pending = takeWaits(served);
-		served.waits = outer;
+		const pending = new Pending(source as Computation);
 		disposeChildren(scope, false);
 		const marks = served.marks;
 		if (marks === null) { throw new Error("SSR: a Loading under a server context that has no writer to hold its placeholder"); }
@@ -424,7 +422,7 @@ function loadingOnServer(children: NeonNode, fallback: NeonNode | null): Accesso
 		mountAt(host, parent, before, waiting);
 		const life = new Life();
 		onCleanup((): void => { life.dead = true; });
-		served.loops.push(settleContent(served, marks, id as string, pending, life, beside, (holder: HostNode): boolean => rerunContent(served, host, holder, scope, children, state)));
+		served.loops.push(settleContent(served, marks, id as string, pending, life, beside, (holder: HostNode): boolean => rerunContent(served, host, holder, scope, children, state, pending)));
 		return waiting;
 	});
 }

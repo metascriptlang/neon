@@ -52,8 +52,8 @@ when (server) {
 	} from "./web";
 	import { parseVisibleContent } from "./visibleContent";
 	import { asServer } from "./environment";
-	import { Dispose, NotReadyError } from "../core/types";
-	import { ServerContext, Fragments, ServerMarks, MAX_PASSES, withServerContext, takeWaits, awaitable, unconverged } from "../core/serverContext";
+	import { Computation, Dispose, NotReadyError } from "../core/types";
+	import { ServerContext, Fragments, ServerMarks, MAX_PASSES, withServerContext, pendingWaits, unconverged } from "../core/serverContext";
 	import { scriptLiteral } from "./hydrationRecords";
 
 	function joinClass(className: string, id: string): string {
@@ -728,13 +728,13 @@ when (server) {
 		}
 	}
 
-	function rootSettled(ctx: ServerContext, pass: StreamPass, n: NeonNode): boolean {
-		return withServerContext(ctx, (): boolean => {
+	function rootPending(ctx: ServerContext, pass: StreamPass, n: NeonNode): Computation | null {
+		return withServerContext(ctx, (): Computation | null => {
 			try {
 				pass.dispose = asServer((): Dispose => render(n, writerHost(pass.write), pass.root as unknown as HostNode, ""));
-				return true;
+				return null;
 			} catch (e) {
-				if (e instanceof NotReadyError) { return false; }
+				if (e instanceof NotReadyError) { return (e as NotReadyError).source; }
 				throw e;
 			}
 		});
@@ -884,11 +884,15 @@ when (server) {
 		};
 		try {
 			ctx.marks = stitchMarks(r.pass.write);
-			for (let rounds = 1; !rootSettled(ctx, r.pass, n); rounds += 1) {
+			let rounds = 1;
+			let pending = rootPending(ctx, r.pass, n);
+			while (pending !== null) {
 				if (rounds >= MAX_PASSES) { throw unconverged("the render"); }
-				for (const w of awaitable(ctx, takeWaits(ctx))) { await w; }
+				for (const w of pendingWaits(ctx, [pending as Computation])) { await w; }
 				r.pass = new StreamPass();
 				ctx.marks = stitchMarks(r.pass.write);
+				rounds += 1;
+				pending = rootPending(ctx, r.pass, n);
 			}
 			r.cut("", r.pass.root.body);
 			const pass = r.pass;

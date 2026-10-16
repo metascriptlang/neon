@@ -37,9 +37,7 @@ function readOf(ctx: ServerContext, read: () => int32): string {
 }
 
 async function settle(ctx: ServerContext): Promise<void> {
-	const waits = ctx.waits;
-	ctx.waits = [];
-	for (const w of waits) { await w; }
+	for (const id of ctx.started) { await ctx.slots.get(id).wait; }
 }
 
 test "a memo created outside a pending read returns its settled value on the second read, computed once" {

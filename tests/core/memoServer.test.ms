@@ -38,9 +38,7 @@ function thrownBy(read: () => int32): Error | null {
 }
 
 async function settle(ctx: ServerContext): Promise<void> {
-	const waits = ctx.waits;
-	ctx.waits = [];
-	for (const w of waits) { await w; }
+	for (const id of ctx.started) { await ctx.slots.get(id).wait; }
 }
 
 function called(name: string): int32 {
@@ -53,12 +51,12 @@ test "a pending async memo throws NotReadyError, then a memo at the same owner i
 	const ctx = new ServerContext();
 	const first = mounted(ctx, "adopt", 4, 42);
 	assert thrownBy(first) instanceof NotReadyError, "pending read";
-	assert ctx.waits.length === 1 && ctx.started.length === 1, "one flight";
+	assert ctx.started.length === 1, "one flight";
 	await settle(ctx);
 	const again = mounted(ctx, "adopt", 4, 42);
 	assert again() === 42, "adopted";
 	assert called("adopt") === 1, "compute ran once: " + called("adopt").toString();
-	assert ctx.waits.length === 0, "the adopted memo started nothing";
+	assert ctx.started.length === 1, "the adopted memo started nothing";
 	assert ctx.slots.get(ctx.started[0]).json === "42", "the record is the value's JSON";
 }
 
@@ -67,7 +65,7 @@ test "a pending slot read again before it settles joins the flight and starts no
 	mounted(ctx, "join", 4, 1);
 	const second = mounted(ctx, "join", 4, 1);
 	assert thrownBy(second) instanceof NotReadyError, "still pending";
-	assert called("join") === 1 && ctx.waits.length === 1, "one flight";
+	assert called("join") === 1 && ctx.started.length === 1, "one flight";
 	await settle(ctx);
 }
 

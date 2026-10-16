@@ -84,7 +84,6 @@ when (server) {
 		outcome.isSync = false;
 		// C continues the watch synchronously for a promise settled before the read (compiler card 2026-10-15-await-of-a-settled-promise-continues-synchronously-on-c): land after this read has thrown, as JS does.
 		if (slot.settled) { slot.wait = landAfterTurn((): void => land(outcome.value, outcome.failure)); }
-		ctx.waits.push(slot.wait);
 		throw new NotReadyError(self);
 	}
 }
