@@ -127,7 +127,10 @@ never knows a URL, a pattern or a component.
   address part and nested child (the last is active), `navigate(keys)` to apply a
   traversal, and `onBeforeNavigate()` to refuse one. Defaults are Decompose's: every
   stack entry is a history entry; pages expose only the selected page and replace;
-  panels follow `PanelsWebNavigation`. The adapters are in
+  panels follow `PanelsWebNavigation`. Pages take `visited`, the pages a back walks
+  before the selected one, and map a path, parameters and child per page, where
+  Decompose maps the whole `ChildPages`, because each visited page is its own item.
+  The adapters are in
   `src/navigation/webNavigation.ms`; `webNavigationNode` erases a typed one to string
   keys, as `bindRoute` erases a codec, and decodes every key before applying any,
   where Decompose's binding can throw after applying a parent level.
@@ -153,9 +156,11 @@ routing. `navigatorMotion.ms` stays the transition engine.
   route, otherwise push. Popping back to an earlier entry is `dismissTo`, an explicit
   call, so a link to a tab's root from deep in its stack pushes that root again.
 - History: the binding diffs the models' published items onto the routing session as
-  Decompose `enableWebHistory` does. Same keys replace the URL, more keys push, fewer
-  keys go back by the count (and replace when the browser has fewer entries), and
-  anything else rewrites. The URL joins the active branch's parts top to bottom, each
+  Decompose `enableWebHistory` does, so browser back walks what the models' own back
+  walks. A change rewrites from the first item whose key differs: same keys replace the
+  URL, more keys push, fewer keys go back by the count (and replace when the browser has
+  fewer entries), and otherwise the browser goes back to the first changed entry,
+  replaces it and pushes the rest. The URL joins the active branch's parts top to bottom, each
   part encoded by that level's route. The entry state carries the tree of keys in the
   `__neonRouting` slot that `src/platform/browser/routingHistory.ms` already writes.
 - Traversal asks `onBeforeNavigate` down the active branch, returns the browser to
@@ -176,6 +181,13 @@ routing. `navigatorMotion.ms` stays the transition engine.
   - One render effect walks the active branch from the root, and a pop records its
     count when the level changes: a disposed child publishes `[]` and queued effects
     run last in first out, so a per-level effect would read disposed models.
+  - A change rewrites from the first item whose key differs, and a nested change stays
+    inside its active item's entries. Decompose rewrites from the browser's first
+    entry, and a nested rewrite passes up only the child's entries (`subscribe`,
+    `onRewrite`), so the entries of the items before the active one were lost: a tab
+    switch at `/feed/1` under `/` dropped `/`, and `setParams` two entries deep dropped
+    both below it. Pushes, pops and same-key changes write what Decompose writes. An
+    entry before the change keeps the keys it was written with, as Expo's snapshots do.
   - Nested entries are built as push and rewrite build them. Decompose's `history()`
     adds every node of an item's history, which by reading lists an item twice at
     depth three; not run in Kotlin.
@@ -209,9 +221,9 @@ const thread = route(":id", { params: { parse: …, stringify: … } });
 const routes = createRoutes([
   { path: "/", component: Home },
   { path: "/blog/:slug", component: Post },
-  { layout: Tabs, children: [
+  { layout: AppShell, navigator: Tabs, children: [
     { path: "/feed", component: Feed },
-    { path: "/inbox", layout: Stack, children: [
+    { path: "/inbox", navigator: Stack, children: [
       { path: "", component: Inbox },
       { route: thread, component: Thread },
     ] },
@@ -342,9 +354,16 @@ same JS-driven frames.
     the exit animation keeps it registered.
   - Neon reuses a route by key, so a traversal writes params into a live route that
     keeps its key; Decompose configurations are immutable.
-  - `setParams` changes the key and so rewrites, where Expo replaces the entry
-    (`BaseRouter.tsx` `SET_PARAMS` declares nothing); below a pushed entry that drops
-    the earlier entries (`BUGS.md`).
+  - `setParams` changes the key and so replaces the entry it changes, as Expo's
+    `SET_PARAMS` does (`BaseRouter.tsx` declares nothing).
+  - Tabs and drawer publish the pages their `backBehavior` walks back (`pagesModel`
+    `backPath`), so browser back is the in-app back: `firstRoute` (the default, as
+    Expo's) adds the first page before another selected one, `initialRoute` the
+    initial one, `none` nothing, and `history` the visits without repeats. Expo keeps
+    the browser log apart from the tab history, so its browser walks every visit
+    (`TabRouter.tsx` `getBrowserHistoryForAction`) while its back walks the tab
+    history; here both walk the tab history, and revisiting a tab rewrites the entries
+    after the first visit it moves.
   - Opening the drawer adds an entry at the same address and closing it goes back one,
     as Expo's `DrawerRouter` adds a drawer history item. The open item carries the
     selected page's address and no child, since the URL comes from the last item. A
@@ -374,7 +393,11 @@ same JS-driven frames.
   top, and keep a tab mounted from its first selection, hiding the inactive ones (React
   Navigation `CardStack` with `detachInactiveScreens`, the lazy tabs of
   `BottomTabView`). Neither animates, and no option unmounts or pops a tab on blur. A
-  tab switch replaces the browser entry, as Decompose's pages adapter does. It takes `path` strings only, and the web navigation adapters take a
+  tab level publishes its first tab before another selected one, Expo's default
+  `backBehavior: "firstRoute"`, so browser back from the inbox returns to the feed tab
+  as it was; a route tree has no `backBehavior` option yet. Tabs are declared as a
+  `navigator` beside the `layout`: the layout is the frame the author draws, the
+  navigator the model it drives, so any frame drives any model. It takes `path` strings only, and the web navigation adapters take a
   required options object, until two compiler cards land (both parked in `BUGS.md`).
   Its `<A>` renders a web `<a>`; on a native host that is a plain view until `<A>`
   and React Navigation's `Link` become one through the binding.
