@@ -658,6 +658,7 @@ export class Router {
 	private history: RoutingHistory;
 	private session: RoutingSession | null = null;
 	private stop: Dispose | null = null;
+	private group: (change: () => void) => void = (change: () => void): void => { flush(change); };
 
 	constructor(routes: Routes, root: Level, current: Signal<Resolved>, history: RoutingHistory) {
 		this.routes = routes;
@@ -675,17 +676,19 @@ export class Router {
 		return levelView(this.routes, this.root);
 	}
 
-	connect(session: RoutingSession, stop: Dispose | null): void {
+	connect(session: RoutingSession, stop: Dispose | null, group: (change: () => void) => void): void {
 		this.session = session;
 		this.stop = stop;
+		this.group = group;
 	}
 
 	apply(resolved: Resolved, replace: boolean): Walked {
-		return flush((): Walked => {
-			const walked = walk(this.routes, this.root, targetOf(resolved, replace), 0);
+		let walked = Walked.Unchanged;
+		this.group((): void => {
+			walked = walk(this.routes, this.root, targetOf(resolved, replace), 0);
 			this.current.set(resolved);
-			return walked;
 		});
+		return walked;
 	}
 
 	settle(resolved: Resolved, stored: string): void {
@@ -801,7 +804,7 @@ export function createRouter(routes: Routes, history: RoutingHistory): Result<Ro
 		return Result.err(opened.error);
 	}
 	const session = opened.value;
-	router.connect(session, history.writable ? web.enable(session) : null);
+	router.connect(session, history.writable ? web.enable(session) : null, web.grouped);
 	seeding.cold = false;
 	return Result.ok(router);
 }

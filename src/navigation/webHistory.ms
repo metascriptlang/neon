@@ -16,6 +16,7 @@ export interface WebHistory {
 	participant: RoutingParticipant;
 	enable: (session: RoutingSession) => Dispose;
 	suppressed: (commit: () => void) => RoutePlan;
+	grouped: (change: () => void) => void;
 }
 
 interface HistoryNode {
@@ -388,6 +389,18 @@ export function createWebHistory(
 		return pending === null ? nodeHistory(navigation) : pending as HistoryNode[];
 	};
 	let applying = false;
+	let holding = false;
+	const released = new Signal<int32>(0, null, true);
+	const grouped = (change: () => void): void => {
+		const outer = holding;
+		holding = true;
+		try {
+			flush(change);
+		} finally {
+			holding = outer;
+		}
+		if (!outer) { released.set(released.peek() + 1); }
+	};
 	const suppressed = (commit: () => void): RoutePlan => ({
 		commit: (): void => flush((): void => {
 			const outer = applying;
@@ -446,9 +459,11 @@ export function createWebHistory(
 				createRenderEffect<int32>(
 					(prev: int32 | null): int32 => {
 						recordLevel(navigation);
+						released.get();
 						return applied.get();
 					},
 					(epoch: int32, prev: int32 | null): Cleanup | null => {
+						if (holding) { return null; }
 						if (record === null || applying || epoch !== seen) {
 							seen = epoch;
 							record = recordLevel(navigation);
@@ -462,5 +477,6 @@ export function createWebHistory(
 			});
 		},
 		suppressed,
+		grouped,
 	};
 }
