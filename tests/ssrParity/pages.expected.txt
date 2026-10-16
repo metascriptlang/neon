@@ -35,7 +35,7 @@ line</textarea><span class="neon-text neon-lines neon-lines-2">clamped</span><st
 == async css
 :where(.neon-view){align-content:flex-start;align-items:stretch;background-color:transparent;border:0 solid black;box-sizing:border-box;display:flex;flex-basis:auto;flex-direction:column;flex-shrink:0;list-style:none;margin:0;min-height:0;min-width:0;padding:0;position:relative;text-decoration:none;z-index:0}:where(button.neon-view){font:inherit;color:inherit;text-align:inherit}:where(.neon-text){background-color:transparent;border:0 solid black;box-sizing:border-box;list-style:none;margin:0;padding:0;position:relative;text-decoration:none;white-space:pre-wrap;overflow-wrap:break-word}
 == async records
-<script>(self._$HY||(self._$HY={r:{},e:{}})).r["10"]="\"Ada \u003c/b> & \\\"Lovelace\\\"\""</script><script>(self._$HY||(self._$HY={r:{},e:{}})).r["120"]="1234"</script>
+<script>(self._$HY||(self._$HY={r:{},e:{}})).r["0000"]="\"Ada \u003c/b> & \\\"Lovelace\\\"\""</script><script>(self._$HY||(self._$HY={r:{},e:{}})).r["0001000"]="1234"</script>
 == boundaries html
 <div class="neon-view">lead<!--!-->&lt;/script&gt;&lt;template id="pl-1"&gt;&lt;/template&gt;<script>\u003c!--pl-1--> \u003ctemplate id="pl-1"></script><div class="neon-view"><span class="neon-text">a1<!--!-->=<!--!-->1</span><span class="neon-text">a2<!--!-->=<!--!-->2</span><!----></div><!----><span class="neon-text">no wait</span><!----><div class="neon-view"><span class="neon-text">b1<!--!-->=<!--!-->1</span><span class="neon-text">b2<!--!-->=<!--!-->2</span><!----></div><!----></div>
 == boundaries head
@@ -43,4 +43,4 @@ line</textarea><span class="neon-text neon-lines neon-lines-2">clamped</span><st
 == boundaries css
 :where(.neon-view){align-content:flex-start;align-items:stretch;background-color:transparent;border:0 solid black;box-sizing:border-box;display:flex;flex-basis:auto;flex-direction:column;flex-shrink:0;list-style:none;margin:0;min-height:0;min-width:0;padding:0;position:relative;text-decoration:none;z-index:0}:where(button.neon-view){font:inherit;color:inherit;text-align:inherit}:where(.neon-text){background-color:transparent;border:0 solid black;box-sizing:border-box;list-style:none;margin:0;padding:0;position:relative;text-decoration:none;white-space:pre-wrap;overflow-wrap:break-word}
 == boundaries records
-<script>(self._$HY||(self._$HY={r:{},e:{}})).r["10"]="1"</script><script>(self._$HY||(self._$HY={r:{},e:{}})).r["120"]="2"</script><script>(self._$HY||(self._$HY={r:{},e:{}})).r["50"]="1"</script><script>(self._$HY||(self._$HY={r:{},e:{}})).r["520"]="2"</script>
+<script>(self._$HY||(self._$HY={r:{},e:{}})).r["0000"]="1"</script><script>(self._$HY||(self._$HY={r:{},e:{}})).r["0001000"]="2"</script><script>(self._$HY||(self._$HY={r:{},e:{}})).r["8000"]="1"</script><script>(self._$HY||(self._$HY={r:{},e:{}})).r["8001000"]="2"</script>

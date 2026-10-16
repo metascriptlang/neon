@@ -4,6 +4,7 @@ import { Loading } from "../../src/macros/ui/flow";
 import { createAsyncMemo } from "../../src/core/memo";
 import { resetErrorHalt } from "../../src/core/runtime";
 import { Gate, gated, release } from "../core/asyncClock";
+import { loadingIdsApp, loadingIdsClient } from "../browser/boundaryPages";
 
 function silence(n: MockNode): void {
 	n.events = [];
@@ -82,4 +83,11 @@ test "a served Loading whose read is still pending on the client claims the serv
 	assert made.elements === 2, "the content mounted fresh when it landed: " + made.elements.toString();
 	assert mockToString(root) === "<root><div><p>n8</p></div></root>", "landed: " + mockToString(root);
 	dispose();
+}
+
+test "a Loading on the client draws the owner ids the server draws for the same tree" {
+	const loading = mockNode("div");
+	const disposeLoading = render(loadingIdsApp(), mockHost(), loading as unknown as HostNode, "");
+	assert mockToString(loading) === loadingIdsClient, mockToString(loading);
+	disposeLoading();
 }

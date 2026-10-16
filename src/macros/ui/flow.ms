@@ -6,7 +6,7 @@ import { mapArray, mapArrayKeyedBy, mapArrayByPosition, repeat } from "../../cor
 import { createMemo } from "../../core/memo";
 import { Accessor, Signal, accessor } from "../../core/signal";
 import { createErrorBoundary, createLoadingBoundary, routeThrown } from "../../core/boundary";
-import { createOwner, getOwner, flush, disposeChildren, enterRoot, leaveRoot } from "../../core/runtime";
+import { createOwner, getOwner, getNextChildId, flush, disposeChildren, enterRoot, leaveRoot } from "../../core/runtime";
 import { onCleanup } from "../../core/cleanup";
 import { runWithOwner } from "../../core/owner";
 import { Computation, NotReadyError, ContextEntry } from "../../core/types";
@@ -119,9 +119,9 @@ function mountIn(scope: Computation, children: NeonNode, state: MountedState, ho
 	});
 }
 
-function mountedUnder(children: NeonNode, context: ContextEntry | null, state: MountedState): NeonNode {
+function mountedUnder(children: NeonNode, context: ContextEntry | null, state: MountedState, id: string | null = null): NeonNode {
 	return (host: Host, parent: HostNode, before: HostNode | null): void => {
-		const scope = createOwner();
+		const scope = createOwner(id);
 		scope.context = context;
 		state.scope = scope;
 		mountIn(scope, children, state, host, parent, before);
@@ -331,13 +331,22 @@ async function settleContent(ctx: ServerContext, marks: ServerMarks, id: string,
 	}
 }
 
+function clientContentId(parent: Computation, boundary: Computation): string | null {
+	if (boundary.id === null) { return null; }
+	getNextChildId(parent);
+	getNextChildId(parent);
+	return boundary.id + "00";
+}
+
 function loadingOnServer(children: NeonNode, fallback: NeonNode | null): Accessor<Row[]> {
 	const state = new MountedState();
-	const boundary = getOwner() as Computation;
-	const context = boundary.context;
+	const parent = getOwner() as Computation;
+	const context = parent.context;
+	const boundary = createOwner();
+	const contentId = clientContentId(parent, boundary);
 	return spanOfMounted((host: Host, parent: HostNode, before: HostNode | null): Row | null => {
 		const ctx = serverContext();
-		const content = makeRow(mountedUnder(children, context, state));
+		const content = makeRow(mountedUnder(children, context, state, contentId));
 		const outer: Promise<void>[] = ctx === null ? [] : ctx.waits;
 		if (ctx !== null) { ctx.waits = []; }
 		let mounted = false;
@@ -368,7 +377,7 @@ function loadingOnServer(children: NeonNode, fallback: NeonNode | null): Accesso
 		disposeChildren(scope, false);
 		const marks = served.marks;
 		if (marks === null) { throw new Error("SSR: a Loading under a server context that has no writer to hold its placeholder"); }
-		const id = scope.id;
+		const id = boundary.id;
 		if (id === null) { throw new Error("[SSR_LOADING_WITHOUT_ID] a Loading on the server needs an owner id; render it under a root that carries one"); }
 		const beside = marks.holder(parent) as HostNode;
 		const waiting = makeRow(placeholder(marks, id as string, fallback));

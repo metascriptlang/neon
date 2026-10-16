@@ -325,3 +325,79 @@ test "an error record shows the server's message in the nearest Errored and a re
 		clearRecords();
 	}
 }
+
+function loadingPage(gate: Gate, dep: Accessor<int32>, readInBody: boolean): NeonNode {
+	return (host: Host, parent: HostNode, before: HostNode | null): void => {
+		el("div", [], [], Loading({
+			fallback: el("b", [], [], text("loading")),
+			children: (h: Host, p: HostNode, b: HostNode | null): void => {
+				const data = createAsyncMemo((q: Note | null): Promise<Note> => loadNote(gate, dep()));
+				if (readInBody) {
+					const note = data();
+					el("p", [], [], text(note.text + "=" + note.n.toString()))(h, p, b);
+				} else {
+					line((): string => data().text + "=" + data().n.toString())(h, p, b);
+				}
+			},
+		}))(host, parent, before);
+	};
+}
+
+function servedLoading(): MockNode {
+	return served(el("div", [], [], Loading({ fallback: el("b", [], [], text("loading")), children: line((): string => "srv=7") })));
+}
+
+test "a served Loading claims its content when the async read in the content's body adopts the server's record" {
+	clearRecords();
+	startCounting();
+	try {
+		putRecord("0000", JSON.stringify<Note>({ text: "srv", n: 7 }));
+		const root = servedLoading();
+		const before = mockToString(root);
+		const pageNode = root.children[0].children[0];
+		const gate = new Gate();
+		const [dep, _setDep] = createSignal<int32>(1);
+		const dispose = hydrate(loadingPage(gate, dep, true), mockHost(), root as unknown as HostNode);
+		try {
+			assert mockToString(root) === before, mockToString(root);
+			assert root.children[0].children[0] === pageNode, "the content is the page's own <p>";
+			when (js) {
+				assert requestsSent() === 0, "the trace run swapped fetch: " + requestsSent().toString();
+			}
+		} finally {
+			dispose();
+		}
+	} finally {
+		stopCounting();
+		clearRecords();
+	}
+}
+
+test "a served Loading with an adopted record in an effect keeps its content through a refetch and updates the page's own node" {
+	clearRecords();
+	startCounting();
+	try {
+		putRecord("0000", JSON.stringify<Note>({ text: "srv", n: 7 }));
+		const root = servedLoading();
+		const before = mockToString(root);
+		const pageNode = root.children[0].children[0];
+		const gate = new Gate();
+		const [dep, setDep] = createSignal<int32>(1);
+		const dispose = hydrate(loadingPage(gate, dep, false), mockHost(), root as unknown as HostNode);
+		try {
+			assert mockToString(root) === before, mockToString(root);
+			assert root.children[0].children[0] === pageNode, "the content is the page's own <p>";
+			setDep(2);
+			flush();
+			assert mockToString(root) === before, "the refetch keeps the content shown: " + mockToString(root);
+			await release(gate);
+			assert mockToString(root) === "<root><div><p>live=2</p></div></root>", mockToString(root);
+			assert root.children[0].children[0] === pageNode, "the same <p> shows the new value";
+		} finally {
+			dispose();
+		}
+	} finally {
+		stopCounting();
+		clearRecords();
+	}
+}
