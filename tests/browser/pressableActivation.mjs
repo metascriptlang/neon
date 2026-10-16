@@ -12,14 +12,13 @@ let failed = 0;
 try {
 	const page = await browser.newPage();
 	page.on("pageerror", (e) => { failed++; console.log(`uncaught ${e}`); });
-	await page.goto(`http://127.0.0.1:${port}/tests/browser/page.html`);
-	await page.evaluate(async () => { await import("/out/pressable-activation/app.js"); });
+	await page.goto(`http://127.0.0.1:${port}/tests/browser/pressableActivation.html`);
 	const gesture = page.locator('[aria-label="Gesture"]');
 	await gesture.waitFor();
 	const log = () => page.locator('#activation-log').textContent();
 	async function check(action, expected, why) {
 		await page.reload();
-		await page.evaluate(async () => { await import("/out/pressable-activation/app.js"); });
+		await gesture.waitFor();
 		await page.evaluate(() => document.addEventListener("click", (e) => console.log("click metadata " + JSON.stringify({ class: e.constructor.name, pointerType: e.pointerType ?? null, ownPointerType: Object.hasOwn(e, "pointerType"), detail: e.detail })), true));
 		await action();
 		await page.waitForTimeout(220);
