@@ -18,7 +18,8 @@ if [ ! -f "$PW" ]; then
 fi
 
 files=$*
-if [ -z "$files" ]; then files=$(find tests/browser -name "*.test.ms" -not -path "*/node_modules/*" | sort); fi
+all=0
+if [ -z "$files" ]; then all=1; files=$(find tests/browser -name "*.test.ms" -not -path "*/node_modules/*" | sort); fi
 
 portfile=$(mktemp)
 node tests/browser/serve.mjs "$PWD" "${NEON_BROWSER_PORT:-0}" > "$portfile" &
@@ -59,4 +60,8 @@ for f in $files; do
 	cp tests/browser/out/neon-served.json "$out/neon-served.json"
 	node tests/browser/runner.mjs "$PW" "$PORT" "$f" "$out/neon-test.html" || fail=1
 done
+if [ $all = 1 ]; then
+	echo "== browser tests/browser/streamed.mjs"
+	node tests/browser/streamed.mjs "$PW" || fail=1
+fi
 exit $fail

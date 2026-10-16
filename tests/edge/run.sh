@@ -23,3 +23,4 @@ mkdir -p tests/edge/out
 "$MSC" build --target=js -d:server examples/site/server.ms --output=tests/edge/out/site.js
 "$MSC" build --target=js examples/site/client.jms --output=tests/edge/out/siteClient.js
 node tests/edge/run.mjs "$WORKERD" "${NEON_PLAYWRIGHT:-$PWD/tests/browser/node_modules/playwright-core/index.mjs}"
+sh tests/edge/streamRun.sh
