@@ -183,6 +183,34 @@ and the invariants that outlived them were moved to the head of the test that pi
   `PrintWindow` at the start, after typing and after the resize. Not run: an IME, a DPI change.
   `tests/run.sh` builds the example on a Windows host and skips it by name elsewhere.
 
+- **PARKED 2026-10-16 — the route tree shorthand takes no typed route.** Not Neon's: `RouteConfig` would
+  take `{ route: thread, component: Thread }` through a field typed `{ node: RouteNode }`, and msc refuses a
+  `RouteDef<P>` there because a generic interface instance is not assignable to a narrower interface. Until
+  then `createRoutes` takes `path` strings only, and a typed route is matched through `createRouteTree`.
+  Card `~/metascript/.inbox/compiler/2026-10-16-a-generic-interface-instance-is-refused-where-a-narrower-interface-is-expected.md`.
+
+- **PARKED 2026-10-16 — the refresh lane cannot build navigation.** Not Neon's: any module pass, even one
+  that returns the module unchanged, drops the pattern of a destructuring `for…of`, and `route.ms`
+  `searchText` iterates its search map with `for (const [name, value] of search)`. `tests/refresh/run.sh`
+  fails `navigation.ms` on native, JS and `-d:hcr` with `Undefined variable 'name'`, and so would refresh
+  and hot reload of any app that imports `src/navigation/index`. Gate `gate-slice2-c3e8464/`. Card
+  `~/metascript/.inbox/compiler/2026-10-16-a-module-pass-drops-the-pattern-of-a-for-of-destructure.md`.
+
+- **PARKED 2026-10-16 — web navigation adapters take a required options object.** Not Neon's: Decompose's
+  adapters default every option, but msc builds a `= {}` default of a generic interface parameter as an
+  empty object (JS reads its fields as present, C reads past a zero-size allocation). Until then
+  `childStackWebNavigation`, `childPagesWebNavigation` and `childPanelsWebNavigation` take `options`
+  without a default, and callers pass `{}`. Card
+  `~/metascript/.inbox/compiler/2026-10-16-an-empty-object-literal-default-of-a-generic-interface-parameter-is-not-typed-against-it.md`.
+
+- **PARKED 2026-10-16 — web history stores its key tree as a preorder list.** Not Neon's: Decompose keeps
+  each entry's keys as a `SerializableNode` holding a list of itself, and msc refuses `JSON.stringify` and
+  `JSON.parse<T>` of a type whose array field holds that same type, on C and JS. Until then
+  `src/navigation/webHistory.ms` writes the tree as `StoredNode { key, children }` in preorder
+  (`StoredNode`, `StoredHistory`, `storeNodes`, `readLevel`, `decodeHistory`), where `children` counts the direct
+  children that follow, and it rebuilds the tree on read. Card
+  `~/metascript/.inbox/compiler/2026-10-16-json-refuses-a-self-referential-type.md`.
+
 - **PARKED 2026-10-15 — `tests/platform/voidInput.test.ms` aborts on C.** Not Neon's: after `default font
   assets/font.ttf did not load`, the native run panics with signal 6 in Void `wrapText`
   (`void/src/void2d/textLayout.ms:1366`), the empty-slice-to-`Span` case of compiler card

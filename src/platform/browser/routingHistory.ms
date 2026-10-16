@@ -4,6 +4,7 @@ import { RoutingHistory, RoutingHistoryEntry } from "../../navigation/routingHis
 when (js) {
 	interface BrowserRoutingState {
 		__neonRouting: string;
+		__neonIndex: int32;
 	}
 
 	extern class BrowserLocation {
@@ -35,6 +36,8 @@ when (js) {
 
 	extern function readHistoryString(key: cstring): string from
 		"(k => typeof history.state?.[k] === 'string' ? history.state[k] : '')(#)";
+	extern function readHistoryIndex(key: cstring): int32 from
+		"(k => Number.isInteger(history.state?.[k]) ? history.state[k] : 0)(#)";
 
 	extern class Event {
 		extern preventDefault(): void;
@@ -58,11 +61,18 @@ export function createBrowserRoutingHistory(): RoutingHistory {
 		return {
 			writable: true,
 			read: readBrowserEntry,
+			index: (): int32 => readHistoryIndex("__neonIndex"),
 			push: (entry: RoutingHistoryEntry): void => {
-				window.history.pushState({ __neonRouting: entry.state }, "", entry.url);
+				window.history.pushState({
+					__neonRouting: entry.state,
+					__neonIndex: readHistoryIndex("__neonIndex") + 1,
+				}, "", entry.url);
 			},
 			replace: (entry: RoutingHistoryEntry): void => {
-				window.history.replaceState({ __neonRouting: entry.state }, "", entry.url);
+				window.history.replaceState({
+					__neonRouting: entry.state,
+					__neonIndex: readHistoryIndex("__neonIndex"),
+				}, "", entry.url);
 			},
 			go: (delta: int32): boolean => {
 				if (delta === 0) { return false; }

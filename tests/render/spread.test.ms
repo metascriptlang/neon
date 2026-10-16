@@ -6,12 +6,12 @@
 
 import { createSignal, Accessor, accessor } from "../../src/core/signal";
 import { NeonNode } from "../../src/render/node";
-import { renderToString } from "../../src/render/ssr";
-import { Style } from "../../src/render/style";
 import { element } from "../../src/macros/ui/element";
 import { Show } from "../../src/macros/ui/flow";
 import { NeonEvent } from "../../src/render/event";
-import { render, mockHost, mockNode, mockToString, fireEvent, HostNode } from "../../src/render/host";
+import { render, mockHost, mockNode, mockToString, fireEvent, HostNode, MockNode } from "../../src/render/host";
+import { Style } from "../../src/render/style";
+import { styleToCss } from "../../src/render/css";
 
 interface Attrs {
 	id: string;
@@ -22,18 +22,12 @@ interface Reactive {
 	title: Accessor<string>;
 }
 
-interface Handlers {
-	onPress: (e: NeonEvent) => void;
-}
-
 interface Styled {
 	style: Style;
 }
 
-test "an object literal spread contributes one attr per field" {
-	const p = { id: "x", title: "t" };
-	const n: NeonNode = element(<div {...p}>hi</div>);
-	assert renderToString(n) === "<div id=\"x\" title=\"t\">hi</div>", "both fields land as attrs";
+interface Handlers {
+	onPress: (e: NeonEvent) => void;
 }
 
 test "a spread inside a container element expands the same way" {
@@ -46,33 +40,6 @@ test "a spread inside a container element expands the same way" {
 	assert mockToString(root.children[0]) === "<div><span id=\"x\">hi</span></div>", "nested spread expands";
 }
 
-test "an explicit attr after a spread wins and keeps the spread's position" {
-	const p = { id: "x", title: "t" };
-	const n: NeonNode = element(<div {...p} id="late">hi</div>);
-	assert renderToString(n) === "<div id=\"late\" title=\"t\">hi</div>", "later explicit attr wins in place";
-}
-
-test "a spread after an explicit attr wins" {
-	const p = { id: "x" };
-	const n: NeonNode = element(<div id="early" class="c" {...p}>hi</div>);
-	assert renderToString(n) === "<div id=\"x\" class=\"c\">hi</div>", "later spread wins in place";
-}
-
-test "the later of two spreads wins" {
-	const a = { id: "a", title: "ta" };
-	const b = { id: "b" };
-	const n: NeonNode = element(<div {...a} {...b}>hi</div>);
-	assert renderToString(n) === "<div id=\"b\" title=\"ta\">hi</div>", "second spread overrides the first";
-}
-
-test "a null field removes the attribute" {
-	function view(p: Attrs): NeonNode {
-		return element(<div {...p}>hi</div>);
-	}
-	assert renderToString(view({ id: "x", title: null })) === "<div id=\"x\">hi</div>", "null field is absent";
-	assert renderToString(view({ id: "x", title: "t" })) === "<div id=\"x\" title=\"t\">hi</div>", "set field is present";
-}
-
 test "a null field removes an attribute already written by an earlier prop" {
 	function view(p: Attrs): NeonNode {
 		return element(<div title="early" {...p}>hi</div>);
@@ -81,17 +48,6 @@ test "a null field removes an attribute already written by an earlier prop" {
 	const root = mockNode("root");
 	render(view({ id: "x", title: null }), host, root as unknown as HostNode);
 	assert mockToString(root.children[0]) === "<div id=\"x\">hi</div>", "null erases the earlier title";
-}
-
-test "an Accessor field stays reactive" {
-	const [t, setT] = createSignal("a");
-	function view(p: Reactive): NeonNode {
-		return element(<div {...p}>hi</div>);
-	}
-	const n = view({ title: t });
-	assert renderToString(n) === "<div title=\"a\">hi</div>", "initial accessor read";
-	setT("b");
-	assert renderToString(n) === "<div title=\"b\">hi</div>", "accessor tracks the signal";
 }
 
 test "an on* field becomes an event" {
@@ -104,20 +60,6 @@ test "an on* field becomes an event" {
 	render(view({ onPress: (e: NeonEvent) => { hits = hits + 1; } }), host, root as unknown as HostNode);
 	fireEvent(root.children[0], "onPress");
 	assert hits === 1, "spread handler fired";
-}
-
-test "a style field replaces an earlier style instead of merging" {
-	function view(p: Styled): NeonNode {
-		return element(<div style={{ width: 1 }} {...p}>hi</div>);
-	}
-	assert renderToString(view({ style: { height: 2 } })) === "<div style=\"height:2px;\">hi</div>", "spread style replaces";
-}
-
-test "an explicit style after a spread replaces the spread's style" {
-	function view(p: Styled): NeonNode {
-		return element(<div {...p} style={{ width: 1 }}>hi</div>);
-	}
-	assert renderToString(view({ style: { height: 2 } })) === "<div style=\"width:1px;\">hi</div>", "explicit style wins";
 }
 
 test "attrs on both sides of a spread each keep their own position" {
@@ -141,8 +83,68 @@ test "an Accessor field updates the attribute of a mounted node" {
 	assert mockToString(root.children[0]) === "<div title=\"b\">hi</div>", "after set: " + mockToString(root.children[0]);
 }
 
-// A capitalized tag takes the same expansion, then the V1 prop contract wraps
-// each value in accessor() unless it already is one.
+function mounted(view: NeonNode): MockNode {
+	const root = mockNode("root");
+	render(view, mockHost(), root as unknown as HostNode);
+	return root;
+}
+
+function styleOf(div: MockNode): string {
+	return div.style === null ? "(none)" : styleToCss(div.style as Style);
+}
+
+test "an object literal spread contributes one attr per field" {
+	const p = { id: "x", title: "t" };
+	const root = mounted(element(<div {...p}>hi</div>));
+	assert mockToString(root) === "<root><div id=\"x\" title=\"t\">hi</div></root>", "both fields land as attrs: " + mockToString(root);
+}
+
+test "an explicit attr after a spread wins and keeps the spread's position" {
+	const p = { id: "x", title: "t" };
+	const root = mounted(element(<div {...p} id="late">hi</div>));
+	assert mockToString(root) === "<root><div id=\"late\" title=\"t\">hi</div></root>", "later explicit attr wins in place: " + mockToString(root);
+}
+
+test "a spread after an explicit attr wins" {
+	const p = { id: "x" };
+	const root = mounted(element(<div id="early" class="c" {...p}>hi</div>));
+	assert mockToString(root) === "<root><div id=\"x\" class=\"c\">hi</div></root>", "later spread wins in place: " + mockToString(root);
+}
+
+test "the later of two spreads wins" {
+	const a = { id: "a", title: "ta" };
+	const b = { id: "b" };
+	const root = mounted(element(<div {...a} {...b}>hi</div>));
+	assert mockToString(root) === "<root><div id=\"b\" title=\"ta\">hi</div></root>", "second spread overrides the first: " + mockToString(root);
+}
+
+test "a null field removes the attribute" {
+	function view(p: Attrs): NeonNode {
+		return element(<div {...p}>hi</div>);
+	}
+	const absent = mounted(view({ id: "x", title: null }));
+	assert mockToString(absent) === "<root><div id=\"x\">hi</div></root>", "null field is absent: " + mockToString(absent);
+	const present = mounted(view({ id: "x", title: "t" }));
+	assert mockToString(present) === "<root><div id=\"x\" title=\"t\">hi</div></root>", "set field is present: " + mockToString(present);
+}
+
+test "a style field replaces an earlier style instead of merging" {
+	function view(p: Styled): NeonNode {
+		return element(<div style={{ width: 1 }} {...p}>hi</div>);
+	}
+	const root = mounted(view({ style: { height: 2 } }));
+	assert mockToString(root) === "<root><div>hi</div></root>", "style is not an attr: " + mockToString(root);
+	assert styleOf(root.children[0]) === "height:2px;", "spread style replaces: " + styleOf(root.children[0]);
+}
+
+test "an explicit style after a spread replaces the spread's style" {
+	function view(p: Styled): NeonNode {
+		return element(<div {...p} style={{ width: 1 }}>hi</div>);
+	}
+	const root = mounted(view({ style: { height: 2 } }));
+	assert mockToString(root) === "<root><div>hi</div></root>", "style is not an attr: " + mockToString(root);
+	assert styleOf(root.children[0]) === "width:1px;", "explicit style wins: " + styleOf(root.children[0]);
+}
 
 interface CardProps {
 	title: Accessor<string>;
@@ -158,23 +160,19 @@ test "a spread onto a component forwards its props and keeps them reactive" {
 	function view(p: CardProps): NeonNode {
 		return element(<Card {...p} />);
 	}
-	const n = view({ title: t, body: accessor(() => "b") });
-	assert renderToString(n) === "<div id=\"a\">b</div>", "component spread initial";
+	const root = mounted(view({ title: t, body: accessor(() => "b") }));
+	assert mockToString(root) === "<root><div id=\"a\">b</div></root>", "component spread initial: " + mockToString(root);
 	setT("z");
-	assert renderToString(n) === "<div id=\"z\">b</div>", "component spread stays reactive";
+	assert mockToString(root) === "<root><div id=\"z\">b</div></root>", "component spread stays reactive: " + mockToString(root);
 }
 
 test "an explicit prop after a spread wins on a component too" {
 	function view(p: CardProps): NeonNode {
 		return element(<Card {...p} title="late" />);
 	}
-	const n = view({ title: accessor(() => "early"), body: accessor(() => "b") });
-	assert renderToString(n) === "<div id=\"late\">b</div>", "explicit prop overrides the spread";
+	const root = mounted(view({ title: accessor(() => "early"), body: accessor(() => "b") }));
+	assert mockToString(root) === "<root><div id=\"late\">b</div></root>", "explicit prop overrides the spread: " + mockToString(root);
 }
-
-// The spread reads its fields from the value's type, whatever form the compiler
-// hands the macro: a named type nested in another type reaches it as a name,
-// not unfolded, and `objectType` unfolds it.
 
 class Badge {
 	id: string = "b1";
@@ -191,8 +189,8 @@ interface Holder {
 
 test "a class-typed value spreads its fields" {
 	const b = new Badge();
-	const n: NeonNode = element(<div {...b}>hi</div>);
-	assert renderToString(n) === "<div id=\"b1\" title=\"bt\">hi</div>", "class fields land as attrs";
+	const root = mounted(element(<div {...b}>hi</div>));
+	assert mockToString(root) === "<root><div id=\"b1\" title=\"bt\">hi</div></root>", "class fields land as attrs: " + mockToString(root);
 }
 
 test "an interface-typed field of another type spreads its fields" {
@@ -200,7 +198,8 @@ test "an interface-typed field of another type spreads its fields" {
 		return element(<div {...h.attrs}>hi</div>);
 	}
 	const h: Holder = { attrs: { id: "x", title: "t" }, badge: new Badge(), aliased: { id: "y", title: null } };
-	assert renderToString(view(h)) === "<div id=\"x\" title=\"t\">hi</div>", "nested interface field";
+	const root = mounted(view(h));
+	assert mockToString(root) === "<root><div id=\"x\" title=\"t\">hi</div></root>", "nested interface field: " + mockToString(root);
 }
 
 test "a class-typed field of another type spreads its fields" {
@@ -208,7 +207,8 @@ test "a class-typed field of another type spreads its fields" {
 		return element(<div {...h.badge}>hi</div>);
 	}
 	const h: Holder = { attrs: { id: "x", title: "t" }, badge: new Badge(), aliased: { id: "y", title: null } };
-	assert renderToString(view(h)) === "<div id=\"b1\" title=\"bt\">hi</div>", "nested class field";
+	const root = mounted(view(h));
+	assert mockToString(root) === "<root><div id=\"b1\" title=\"bt\">hi</div></root>", "nested class field: " + mockToString(root);
 }
 
 test "a field whose type is an alias of an interface spreads its fields" {
@@ -216,5 +216,6 @@ test "a field whose type is an alias of an interface spreads its fields" {
 		return element(<div {...h.aliased}>hi</div>);
 	}
 	const h: Holder = { attrs: { id: "x", title: "t" }, badge: new Badge(), aliased: { id: "y", title: null } };
-	assert renderToString(view(h)) === "<div id=\"y\">hi</div>", "aliased interface field";
+	const root = mounted(view(h));
+	assert mockToString(root) === "<root><div id=\"y\">hi</div></root>", "aliased interface field: " + mockToString(root);
 }

@@ -5,9 +5,8 @@ import { createSignal, accessor, Accessor } from "../../src/core/signal";
 import { onCleanup } from "../../src/core/cleanup";
 import { element } from "../../src/macros/ui/element";
 import { el, attr, text, dynText, NeonNode } from "../../src/render/node";
-import { renderToString } from "../../src/render/ssr";
 import { createComponent } from "../../src/render/component";
-import { render, mockHost, mockNode, mockToString, HostNode } from "../../src/render/host";
+import { render, mockHost, mockNode, mockToString, HostNode, MockNode } from "../../src/render/host";
 import { Show, For } from "../../src/macros/ui/flow";
 
 interface CounterProps {
@@ -36,60 +35,12 @@ test "capitalized tag defers and renders through createComponent" {
 	assert counterRuns === 1, "prop change must not re-run the body";
 }
 
-test "component nests inside a lowercase tree" {
-	const [n, setN] = createSignal(2);
-	const view = element(<div><Counter count={n()} label="x" /></div>);
-	const out = renderToString(view);
-	assert out === "<div><p class=\"x\">n=<!--!-->2</p></div>", "got " + out;
-}
-
-interface CardProps {
-	title: Accessor<string>;
-	children: NeonNode;
-}
-
-function Card(props: CardProps): NeonNode {
-	return <section title={props.title()}>{props.children}</section>;
-}
-
-test "single element child passes as the children prop" {
-	const view = element(<Card title="t"><p>inner</p></Card>);
-	const out = renderToString(view);
-	assert out === "<section title=\"t\"><p>inner</p></section>", "got " + out;
-}
-
 interface WrapProps {
 	children: NeonNode;
 }
 
 function Wrap(props: WrapProps): NeonNode {
 	return element(<ul>{props.children}</ul>);
-}
-
-test "one element child arrives as one NeonNode" {
-	const out = renderToString(element(<Wrap><li>a</li></Wrap>));
-	assert out === "<ul><li>a</li></ul>", "got " + out;
-}
-
-test "several children arrive as one NeonNode that places every root" {
-	const out = renderToString(element(<Wrap><li>a</li><li>b</li></Wrap>));
-	assert out === "<ul><li>a</li><li>b</li></ul>", "got " + out;
-}
-
-test "one text child arrives as one NeonNode" {
-	const out = renderToString(element(<Wrap>plain</Wrap>));
-	assert out === "<ul>plain</ul>", "got " + out;
-}
-
-test "text beside an element keeps source order inside the one NeonNode" {
-	const out = renderToString(element(<Wrap>lead<li>a</li>tail</Wrap>));
-	assert out === "<ul>lead<li>a</li>tail</ul>", "got " + out;
-}
-
-test "a NeonNode value as the only child crosses as itself" {
-	const item: NeonNode = element(<li>held</li>);
-	const out = renderToString(element(<Wrap>{item}</Wrap>));
-	assert out === "<ul><li>held</li></ul>", "got " + out;
 }
 
 test "a For call as the only child mounts its rows" {
@@ -228,6 +179,58 @@ test "a destructured props parameter reads bare and stays reactive" {
 	assert mockToString(root) === "<root><p class=\"d\">n=7</p></root>", "after set: " + mockToString(root);
 }
 
+function mounted(view: NeonNode): MockNode {
+	const root = mockNode("root");
+	render(view, mockHost(), root as unknown as HostNode);
+	return root;
+}
+
+test "component nests inside a lowercase tree" {
+	const [n, setN] = createSignal(2);
+	const root = mounted(element(<div><Counter count={n()} label="x" /></div>));
+	assert mockToString(root) === "<root><div><p class=\"x\">n=2</p></div></root>", "got " + mockToString(root);
+}
+
+interface CardProps {
+	title: Accessor<string>;
+	children: NeonNode;
+}
+
+function Card(props: CardProps): NeonNode {
+	return <section title={props.title()}>{props.children}</section>;
+}
+
+test "single element child passes as the children prop" {
+	const root = mounted(element(<Card title="t"><p>inner</p></Card>));
+	assert mockToString(root) === "<root><section title=\"t\"><p>inner</p></section></root>", "got " + mockToString(root);
+}
+
+test "one element child arrives as one NeonNode" {
+	const root = mounted(element(<Wrap><li>a</li></Wrap>));
+	assert mockToString(root) === "<root><ul><li>a</li></ul></root>", "got " + mockToString(root);
+}
+
+test "several children arrive as one NeonNode that places every root" {
+	const root = mounted(element(<Wrap><li>a</li><li>b</li></Wrap>));
+	assert mockToString(root) === "<root><ul><li>a</li><li>b</li></ul></root>", "got " + mockToString(root);
+}
+
+test "one text child arrives as one NeonNode" {
+	const root = mounted(element(<Wrap>plain</Wrap>));
+	assert mockToString(root) === "<root><ul>plain</ul></root>", "got " + mockToString(root);
+}
+
+test "text beside an element keeps source order inside the one NeonNode" {
+	const root = mounted(element(<Wrap>lead<li>a</li>tail</Wrap>));
+	assert mockToString(root) === "<root><ul>lead<li>a</li>tail</ul></root>", "got " + mockToString(root);
+}
+
+test "a NeonNode value as the only child crosses as itself" {
+	const item: NeonNode = element(<li>held</li>);
+	const root = mounted(element(<Wrap>{item}</Wrap>));
+	assert mockToString(root) === "<root><ul><li>held</li></ul></root>", "got " + mockToString(root);
+}
+
 interface StyledProps {
 	style: Accessor<{ gap: number }>;
 	label: Accessor<string>;
@@ -238,6 +241,6 @@ function Styled(props: StyledProps): NeonNode {
 }
 
 test "an object literal prop is stamped by the accessor's declared payload" {
-	const view = element(<Styled style={{ gap: 12 }} label="s" />);
-	assert renderToString(view) === "<p class=\"s\">12</p>", "got " + renderToString(view);
+	const root = mounted(element(<Styled style={{ gap: 12 }} label="s" />));
+	assert mockToString(root) === "<root><p class=\"s\">12</p></root>", "got " + mockToString(root);
 }

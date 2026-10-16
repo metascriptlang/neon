@@ -33,6 +33,12 @@ while [ ! -s "$portfile" ]; do
 done
 PORT=$(head -1 "$portfile")
 
+mkdir -p tests/browser/out
+"$MSC" build --target=js -d:server tests/browser/serveApps.ms --output=tests/browser/out/serveApps.js >/dev/null 2>&1 ||
+	{ echo "the server pages did not build; run: $MSC build --target=js -d:server tests/browser/serveApps.ms" >&2; exit 2; }
+node tests/browser/out/serveApps.js > tests/browser/out/neon-served.json ||
+	{ echo "the server pages did not render; run: node tests/browser/out/serveApps.js" >&2; exit 2; }
+
 fail=0
 for f in $files; do
 	echo "== browser $f"
@@ -50,6 +56,7 @@ for f in $files; do
 		continue
 	fi
 	cp tests/browser/page.html "$out/neon-test.html"
+	cp tests/browser/out/neon-served.json "$out/neon-served.json"
 	node tests/browser/runner.mjs "$PW" "$PORT" "$f" "$out/neon-test.html" || fail=1
 done
 exit $fail

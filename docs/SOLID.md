@@ -38,23 +38,19 @@ dom-expressions `dom-next`, `packages/runtime/src/client.js` `ref` and `applyRef
 - `ref={fn}`, `ref={[a, b]}` and `ref={tooltip(opts)}` on elements and on components that forward
   `ref`. The array is composed at compile time (`composeRefs`), so a component still sees one
   function; nested arrays and `null` entries flatten away, an empty array is an error, and only a
-  literal array is taken: an array held in a variable is a type error. Solid flattens at runtime.
+  literal array is taken: an array held in a variable is a type error (`docs/REFERENCE.md` RD-1).
 - Two phases, as in Solid: the factory call is the setup phase, in the mounting owner and
   untracked (`setupRef`), so its effects and `onCleanup` belong to the component; the function it
-  returns is the apply phase, untracked (`applyRef`). Solid runs the apply phase with no owner;
-  Neon keeps the mounting owner, which the in-tree `StatusBar` and `WebView` refs rely on. `docs/RENDER-MODEL.md`
-  "Refs" gives the details.
-- Not taken: Solid 2.0 runs a ref after attributes and before children. Neon keeps React's
-  innermost-first order for `ref`, which is component and event surface.
+  returns is the apply phase, untracked (`applyRef`), under the mounting owner (`docs/REFERENCE.md`
+  RD-2). `docs/RENDER-MODEL.md` "Refs" gives the details.
+- Ref order is React's, innermost first (`docs/REFERENCE.md` SF-2).
 - `use:` is not adopted: Solid 2.0 removed it too.
-- Divergence from Solid: `<Void ref>` receives a `VoidAreaHandle` (`docs/VISION.md`), not a node.
+- `<Void ref>` receives a `VoidAreaHandle` (`docs/REFERENCE.md` RD-3).
 
 ## Deliberately not taken
 
-- `children()` / `Children.map` / `cloneElement` — the one-NeonNode arc (2026-09-19) settled that
-  `children` is one `NeonNode`; inspecting or rewriting a child list is not a thing Neon does.
-- `mergeProps` / `splitProps` — replaced by the compile-time spread-props contract: props are
-  pure-JS objects and `{...props}` is resolved by type, not merged at runtime.
+`children()`, `mergeProps` / `splitProps` and the rest of Neon's departures from Solid are recorded
+in `docs/REFERENCE.md`.
 
 ## Using this file
 

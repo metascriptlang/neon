@@ -1,7 +1,7 @@
 #!/bin/sh
-# Neon test gate — every test file runs native, then --target=js, then the
-# SSR parity lane under -d:server, then the browser lane in real Chrome, then the
-# edge lane in workerd.
+# Neon test gate — every test file but the browser ones and the *Server.test.ms files runs
+# native, then --target=js. The *Server.test.ms files run in the SSR lane under -d:server, the
+# one build with a server renderer. Then the browser lane in real Chrome, then the edge lane in workerd.
 # js-lane skips: tests/style/style.test.ms, tests/platform/void.test.ms and
 # tests/platform/voidInput.test.ms import the Void platform host, a C-only sibling repo;
 # tests/platform/ionAudio.test.ms imports Ion's audio device, C-only;
@@ -10,9 +10,10 @@
 # under node, so it runs only through tests/browser/run.sh.
 MSC=${MSC:-msc}
 cd "$(dirname "$0")/.."
-files=$(find tests -name "*.test.ms" -not -path "tests/browser/*" | sort)
+files=$(find tests -name "*.test.ms" -not -name "*Server.test.ms" -not -path "tests/browser/*" | sort)
 fail=0
 tests/macros/run.sh || fail=1
+tests/navigation/layers.sh || fail=1
 tests/apps/run.sh || fail=1
 tests/refresh/run.sh || fail=1
 for f in $files; do

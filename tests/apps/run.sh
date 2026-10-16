@@ -58,7 +58,24 @@ expect_warnings() {
 	done
 }
 
+bundles=$(mktemp -d)
+trap 'rm -rf "$bundles"' EXIT
+
+expect_bundle() {
+	bad=0
+	NO_COLOR=1 "$MSC" build --target=js --output="$bundles/$1.js" "tests/apps/$1.ms" >/dev/null 2>&1
+	for m in $2; do
+		grep -q "^// --- Module: .*/src/$m ---\$" "$bundles/$1.js" 2>/dev/null || { echo "FAIL bundle $1: missing $m"; bad=1; }
+	done
+	for m in $3; do
+		grep -q "^// --- Module: .*/src/$m ---\$" "$bundles/$1.js" 2>/dev/null && { echo "FAIL bundle $1: carries $m"; bad=1; }
+	done
+	[ $bad = 0 ] && echo "ok   bundle $1" || fail=1
+}
+
 expect_output tests/apps/localSignalApp.ms
 expect_output tests/apps/moduleSignalApp.ms
 expect_warnings tests/apps/listWarnApp.ms
+expect_bundle bundlePlainApp "platform/browser/dom" "platform/browser/media platform/browser/camera platform/browser/captureServices platform/browser/svg components/svg/markup components/svg/scene"
+expect_bundle bundleSvgApp "platform/browser/svg components/svg/markup" "platform/browser/media platform/browser/camera platform/browser/captureServices"
 exit $fail

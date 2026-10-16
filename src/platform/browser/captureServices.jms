@@ -1,6 +1,6 @@
 import {
 	CaptureServices, PickReply, PickRequest, PickedAsset, RecordingSetup, RecordingState, SoundSetup, SoundState,
-	idleRecording, unloadedSound,
+	idleRecording, installCaptureServices, unloadedSound,
 } from "../../api/captureServices";
 import { TextSlot } from "../../api/replySlot";
 
@@ -384,7 +384,7 @@ async function recordingCommand(id: int32, command: string, value: number): Prom
 	return recording.state();
 }
 
-export const browserCaptureServices: CaptureServices = {
+const browserCaptureServices: CaptureServices = {
 	pickMedia,
 	soundLoad,
 	soundCommand,
@@ -392,3 +392,5 @@ export const browserCaptureServices: CaptureServices = {
 	recordingPrepare,
 	recordingCommand,
 };
+
+installCaptureServices(browserCaptureServices);

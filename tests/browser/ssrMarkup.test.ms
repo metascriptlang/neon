@@ -1,16 +1,18 @@
-import { renderToString } from "../../src/render/ssr";
 import { render } from "../../src/render/host";
 import { HostNode, NeonNode } from "../../src/render/hostTypes";
-import { View, Text, Pressable, TextInput, ScrollView } from "../../src/components/primitives";
-import { Switch } from "../../src/components/switch";
-import { ActivityIndicator } from "../../src/components/activityIndicator";
-import { collectCss, resetCss } from "../../src/render/sheet";
-import { createStyles, styleOf } from "../../src/macros/ui/style";
-import { createSignal, Accessor } from "../../src/core/signal";
 
 when (js) {
 	import { domHost } from "../../src/platform/browser/dom";
-	const styles = createStyles({ box: { padding: 8 }, label: { color: "#334" } });
+	import {
+		linesApp,
+		marksApp,
+		primitivesApp,
+		scrollViewApp,
+		servedPart,
+		styles,
+		switchesApp,
+		textareasApp,
+	} from "./servedApps";
 
 	extern class MarkupElement {
 		innerHTML: string;
@@ -28,16 +30,9 @@ when (js) {
 
 	test "server primitive classes and attributes match actual DOM host" {
 		assert styles.box.cssId !== null && styles.label.cssId !== null;
-		const app: NeonNode = <View accessibilityLabel="Page" style={styles.box}>
-			<Text style={styles.label}>café &amp; · …</Text>
-			<Pressable accessibilityLabel="Open"><Text>go</Text></Pressable>
-			<TextInput editable={false} secureTextEntry={true} keyboardType="number-pad" maxLength={4}
-				autoCorrect={false} accessibilityRole="search" placeholder="PIN" />
-			<TextInput editable={true} autoFocus={false} accessibilityLabel="Name" />
-		</View>;
-		resetCss();
-		const server = renderToString(app);
-		assert collectCss().indexOf("white-space:pre-wrap") >= 0;
+		const app: NeonNode = primitivesApp();
+		const server = servedPart("primitives", "html");
+		assert servedPart("primitives", "css").indexOf("white-space:pre-wrap") >= 0;
 		const mount = document.createElement("div");
 		document.body.appendChild(mount);
 		const dispose = render(app, domHost(), mount as unknown as HostNode);
@@ -53,20 +48,8 @@ when (js) {
 		"(r => { const f=n=>n.nodeType===1?[n.localName,Array.from(n.childNodes,f)]:n.nodeType===3?n.data:'comment '+n.data;return JSON.stringify(Array.from(r.childNodes,f));})(#)";
 
 	test "server text marks give a parsed page the node list the DOM host builds" {
-		const [on, _on] = createSignal(false);
-		const [open, _open] = createSignal(true);
-		const [blank, _blank] = createSignal("");
-		const [count, _count] = createSignal(3);
-		const [rows, _rows] = createSignal<string[]>(["a", "b"]);
-		const app: NeonNode = <View>
-			<Text>count: {count().toString()} items</Text>
-			<Text>{blank()}</Text>
-			<Show when={on()}><Text>hidden</Text></Show>
-			<Show when={open()}><Text>shown</Text></Show>
-			<For each={rows()}>{(row: string, i: Accessor<number>): NeonNode => <Text>{row}</Text>}</For>
-			<Text>tail</Text>
-		</View>;
-		const server = renderToString(app);
+		const app: NeonNode = marksApp();
+		const server = servedPart("marks", "html");
 		assert server.indexOf("<!---->") >= 0 && server.indexOf("<!--!-->") >= 0, server;
 		const mount = document.createElement("div");
 		document.body.appendChild(mount);
@@ -76,9 +59,8 @@ when (js) {
 		} finally { dispose(); mount.remove(); }
 	}
 
-	function serverAndDom(app: NeonNode): string[] {
-		resetCss();
-		const server = renderToString(app);
+	function serverAndDom(name: cstring, app: NeonNode): string[] {
+		const server = servedPart(name, "html");
 		const mount = document.createElement("div");
 		document.body.appendChild(mount);
 		const dispose = render(app, domHost(), mount as unknown as HostNode);
@@ -89,49 +71,32 @@ when (js) {
 	}
 
 	test "server ScrollView is the element and classes the DOM host builds" {
-		const app: NeonNode = <View>
-			<ScrollView horizontal={false}><Text>row</Text></ScrollView>
-		</View>;
-		const [server, dom, servedShape, builtShape] = serverAndDom(app);
+		const [server, dom, servedShape, builtShape] = serverAndDom("scrollView", scrollViewApp());
 		assert servedShape === builtShape, server + " vs " + dom;
 	}
 
 	test "server Text numberOfLines is the classes the DOM host builds" {
-		const app: NeonNode = <View>
-			<Text numberOfLines={2}>long</Text>
-			<Text numberOfLines={0}>free</Text>
-		</View>;
-		const [server, dom, servedShape, builtShape] = serverAndDom(app);
+		const [server, dom, servedShape, builtShape] = serverAndDom("lines", linesApp());
 		assert servedShape === builtShape, server + " vs " + dom;
 		assert server.indexOf("numberOfLines") < 0, server;
-		const css = collectCss();
+		const css = servedPart("lines", "css");
 		assert css.indexOf(".neon-lines-2{-webkit-line-clamp:2}") >= 0 && css.indexOf(".neon-lines{") >= 0, css;
 	}
 
 	test "server Switch and ActivityIndicator are the elements and classes the DOM host builds" {
-		const app: NeonNode = <View>
-			<Switch value={true} accessibilityLabel="Wi-Fi" />
-			<Switch value={false} disabled={true} thumbColor="#fff" trackColorOn="#0a0" trackColorOff="#ccc" />
-			<ActivityIndicator />
-			<ActivityIndicator animating={false} hidesWhenStopped={false} color="#c00" size="large" />
-		</View>;
-		const [server, dom, servedShape, builtShape] = serverAndDom(app);
+		const [server, dom, servedShape, builtShape] = serverAndDom("switches", switchesApp());
 		assert servedShape === builtShape, server + " vs " + dom;
 		assert server.indexOf("<switch") < 0 && server.indexOf("<activityindicator") < 0, server;
 		assert server.indexOf("checked") >= 0, "the served switch must show its state before hydrate: " + server;
-		assert collectCss().indexOf(".neon-activity{") >= 0, collectCss();
+		assert servedPart("switches", "css").indexOf(".neon-activity{") >= 0, servedPart("switches", "css");
 	}
 
 	test "server multiline TextInput is the textarea, class and text the DOM host builds" {
-		const app: NeonNode = <View>
-			<TextInput multiline={true} defaultValue="note" placeholder="Write" />
-			<TextInput multiline={true} value={"\nfirst <b> & \"second\""} editable={false} maxLength={40} />
-			<TextInput multiline={true} />
-		</View>;
-		const [server, dom, servedShape, builtShape] = serverAndDom(app);
+		const [server, dom, servedShape, builtShape] = serverAndDom("textareas", textareasApp());
 		assert servedShape === builtShape, server + " vs " + dom;
 		assert server.indexOf("<multilinetextinput") < 0 && server.indexOf("defaultValue") < 0, server;
 		assert server.indexOf("<textarea") >= 0, server;
-		assert collectCss().indexOf(".neon-textarea{field-sizing:content;resize:none}") >= 0, collectCss();
+		assert servedPart("textareas", "css").indexOf(".neon-textarea{field-sizing:content;resize:none}") >= 0,
+			servedPart("textareas", "css");
 	}
 }

@@ -351,10 +351,10 @@ it in the document must do the same, or hydrate reads the wrong node; "regions t
 empty fill in after hydrate" (`tests/render/hydrate.test.ms`) fails when the seal is missing.
 A subtree mounted where the page did not render it (a Portal's layer) goes through `unclaimed`.
 
-**What the server writes so a parse keeps the node list** (`serializeChildren`,
-`src/render/ssr.ms`): `<!---->` where the tree holds an empty text, which an HTML parser would
-drop, and `<!--!-->` between two adjacent texts, which it would merge. The DOM host's `claim`
-turns the first back into a text node and removes the second. Solid's counterparts are
+**What the server writes so a parse keeps the node list** (`src/render/ssr.ms`): `<!---->`
+where the tree holds an empty text, which an HTML parser would drop, and `<!--!-->` between two
+adjacent texts, which it would merge. The DOM host's `claim` turns the first back into a text
+node and removes the second. Solid's counterparts are
 `<!--$-->`/`<!--/-->` around a dynamic child and `<!--!$-->` between text values
 (`packages/web/src/server.ts`, `ssrTextTail`); Neon needs no pair because it does not scan for
 a region's end.
@@ -391,13 +391,12 @@ own after a signal write, a press, a `Show` toggle and a `For` reorder.
 
 **A server render calls no `ref`** (`asServer` in `src/render/environment.ms`, read by
 `applyRef`). A ref handler expects the platform's node and on a server it would receive the
-mock host's: Geass's `ref={startMech}` ran inside the Worker and its cast to
+writer's record: Geass's `ref={startMech}` ran inside the Worker and its cast to
 `HTMLCanvasElement` threw. Solid drops `ref` and event attributes when it compiles for the
 server (`~/projects/solid-next` at `84dada77`, `packages/babel-plugin/src/ssr/element.ts`,
 `key === "ref" || isEventName(key)`). Neon has one emission for every host, so the same
-decision is taken at run time; a handler is still attached to the mock node and no event ever
-reaches it. `isServer()` holds only inside the synchronous render, not for the whole program,
-because one build can serve a page and attach to one (the test lanes do both in a process).
+decision is taken at run time; the writer drops an event handler. `isServer()` holds only
+inside the synchronous render, not for the whole program.
 
 **`Head` is a portal, not a registry.** `@solidjs/meta` (`~/projects/solid-meta` at `391138e`,
 `src/index.tsx`) keeps the head in a context: every `Title`/`Meta` calls `useHead` with a
@@ -425,23 +424,26 @@ the server entry (`examples/site/server.ms`), not by Neon.
 **Links are followed by one listener** (`followLinks`, `src/platform/browser/routingHistory.ms`),
 the conditions of Solid Router's `handleAnchor` (`~/projects/solid-router` at `d0379e7`,
 `src/data/events.ts`): primary button, no modifier, no `target`, no `download`, no
-`rel="external"`, same origin. One difference, chosen: a link the routing session cannot match
-is left to the browser, so the server answers it and the 404 keeps its status; Solid navigates
-on the client to its catch-all route. After a followed link the page scrolls to the element
+`rel="external"`, same origin. A link the routing session cannot match is left to the browser,
+so the server answers it; a route tree with a catch-all route matches every link, so a missing
+page renders on the client inside its layout, as Solid's catch-all does, and only a request
+gets the 404 status (`examples/site`). After a followed link the page scrolls to the element
 the fragment names, or to the top (`scrollToHash`, `src/routers/createRouter.ts:55`); the
 browser fires no `hashchange` for it, so a consumer that wants the browser's own fragment
 navigation answers `false` for that link.
 
 **A route's state has to hold everything of the address it accepts.** A routing session writes
-`registry.address()` back into the history entry as soon as it opens, so a codec that matches
+`registry.address()` back into the history entry as soon as it opens, and after a back or
+forward whose entry lands on another address, so a codec that matches
 `/docs/start?utm=1#notes` and encodes `/docs/start` rewrites the visitor's URL, and one that
 matches only the bare path answers 404 to the tagged link (both measured on `examples/site`
-and on Geass, 2026-10-13). `examples/site/site.ms` keeps the whole address as the state and
-derives the page from its path.
+and on Geass, 2026-10-13). The route tree shorthand (`src/navigation/router.ms` `Router`)
+keeps the whole address as its state and derives the match from it.
 
 **A path whose page is the same for every request is rendered to a file at build time.**
-The site lists those paths (`staticPaths` in `examples/site/site.ms`), because a route
-codec only decodes and cannot be enumerated; the edge lane asks the built site Worker in
+The route tree lists those paths (`RouteTree.staticPaths`): a route without params is one
+path, a route with params lists its values through `paths`, and a catch-all is left out, because
+a route codec only decodes and cannot be enumerated. The edge lane asks the built site Worker in
 workerd for each and writes `out/static/<path>.html` plus `404.html` (`prerender`,
 `tests/edge/run.mjs`). That is Astro's Cloudflare prerenderer (`~/projects/astro` at
 `7492974`, `packages/integrations/cloudflare/src/prerenderer.ts`, `getStaticPaths` and
@@ -452,7 +454,7 @@ the lane checks the query half by comparing each page with the same path plus `?
 Geass reads the User-Agent for its layout width, so its docs stay on the Worker until the
 width no longer decides the markup. Files use Astro's `'file'` layout (`/docs/start` →
 `docs/start.html`): the `'directory'` layout's `docs/start/index.html` would be served at
-`/docs/start/`, which `examples/site` answers with 404. Serving the files ahead of the
+`/docs/start/`, which the route tree shorthand redirects to `/docs/start` with 308. Serving the files ahead of the
 Worker is the deployment's job (Workers Static Assets, or `run_worker_first` exclusions).
 What a prerendered page saves is the Worker's render, measured 2026-10-15 on tree
 `69c8920f26d68c66727a7886a05ae97300e7ff93` with the `-d:server` bundle in Node:
@@ -460,14 +462,18 @@ What a prerendered page saves is the Worker's render, measured 2026-10-15 on tre
 at load 17–27 on 14 cores. The rest is the platform serving a file instead of starting the
 Worker, which a local run cannot measure.
 
-Measured 2026-10-13 on tree `b514b24aff684ca7119a9aa67cdc4075a95aa605`, msc v0.3.2 `ea7ae4d17`,
-`sh tests/edge/run.sh` (workerd, then Chrome): `/` and `/docs/<slug>` answer 200 with their own
-title and description, `/docs/missing`, `/nowhere` and `/docs/start/` answer 404 with `noindex`;
-Chrome attaches to `/docs/start` with no element of the 12 added or removed, a link to another
-route changes the heading, title, description and URL with one document request in total and
-the scroll back at the top, back restores the page, and a link to no route is answered by the
-server. The debug bundles, not minified: `site.js` (server) 573 KB, 69 KB gzipped;
-`siteClient.js` 1 052 KB, 129 KB gzipped.
+Measured 2026-10-16 on tree `25f5f65aa491f01e7b4d6e80400a7c27a5b4caad`, msc v0.3.4 `15b93cbba`,
+`sh tests/edge/run.sh` (workerd, then Chrome), with the site on the route tree shorthand:
+`/` and `/docs/<slug>` answer 200 with their own title and description, `/docs/missing`,
+`/nowhere` and `/docs/missing?utm=1` answer 404 with `noindex`, and `/docs/start/?utm=1` answers
+308 to `/docs/start?utm=1`. Chrome attaches to `/docs/start` with no element of the 14 added or
+removed; a link to another doc keeps the layout's `nav` element, replaces the page, and changes
+the heading, title, description, `aria-current` and URL with one document request in total and
+the scroll back at the top; back restores the page; a link to no page renders Not found in the
+layout without a request. The debug bundles, not minified: `site.js` (server) 781 KB, 94 KB
+gzipped; `siteClient.js` 1 270 KB, 155 KB gzipped. The site before the shorthand (`56102ef`),
+built by the same msc: 655 KB, 79 KB gzipped, and 1 145 KB, 141 KB gzipped, so the shorthand,
+its matcher and its outlet cost about 14 KB gzipped in each bundle.
 
 ## Emission — mechanics
 
@@ -584,16 +590,24 @@ function and keyed forms evaluate `when` once per change in a memo created at mo
 the child's reads and the condition share one evaluation. Reference: solid-next
 `packages/solid/src/client/flow.ts:164-250`; pins `tests/render/show.test.ms`.
 
-**Server rendering.** `renderToString` (`src/render/ssr.ms`) renders the node on a mock
-host whose `setStyleClass` registers the rule in the sheet registry, serializes the
-result, and disposes the mount. Regions, fragments, components and context scopes
-serialize through the same path every host uses (`tests/render/ssr.test.ms`).
-`renderToMarkup` is the form for a process that answers many requests: its host collects the
-rules that one render mounted into the returned `css`, after the rules registered outside any
-render (a theme's `:root`), and leaves the registry alone. A registry shared by every request
-sends each page the rules of every page rendered before it, which is why `renderToString`
-with `mountSheet()` stays the form for a process that prints one page
-(`tests/render/ssrRequest.test.ms`).
+**Server rendering.** There is one server renderer, and only a `-d:server` build has it:
+`renderToString` and `renderToMarkup` (`src/render/ssr.ms`) are a compile error in any other
+build, naming the flag at the call. Solid keeps its server renderer out of the browser bundle
+by resolving `@solidjs/web` to a server entry under the `node` and `worker` export conditions
+(`~/projects/solid-next` at `84dada77`, `packages/web/package.json` `exports["."]`); its
+browser entry keeps a `renderToString` that logs and returns `undefined`
+(`packages/web/src/server-mock.ts`, `throwInBrowser`), where a Neon build stops, because the
+flag is known at compile time. `renderToMarkup` is the form for a process that answers many
+requests: it collects the rules that one render mounted into the returned `css`, after the rules
+registered outside any render (a theme's `:root`), and leaves the registry alone. A registry
+shared by every request sends each page the rules of every page rendered before it, which is
+why `renderToString` with `mountSheet()` stays the form for a process that prints one page
+(`tests/render/ssrRequestServer.test.ms`). The Chrome lane hydrates pages a `-d:server` build wrote
+(`tests/browser/serveApps.ms`), as Solid's hydration specs replay what its server specs
+recorded (`packages/web/test/hydration/slot-hydration-3567.spec.tsx`, `loadArtifact`). A test
+that renders to a string sits in `<name>Server.test.ms` beside the client file and runs only under
+`-d:server`, as Solid keeps `packages/web/test/server/*.spec.tsx` apart from the client specs and
+excludes them from the client run (`packages/web/vite.config.mjs`).
 
 ## Per-platform economics
 

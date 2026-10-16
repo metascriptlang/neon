@@ -1,6 +1,10 @@
 import { PickReply, PickRequest, PickedAsset, captureServices } from "./captureServices";
 import { Permissions, PermissionResponse } from "./permissions";
 
+when (js && !server) {
+	import "../platform/browser/captureServices";
+}
+
 export type MediaType = "images" | "videos";
 export type CameraType = "back" | "front";
 

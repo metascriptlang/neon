@@ -48,29 +48,21 @@ test "reactive text and attributes serialize their current value" {
 	assert both === "<p class=\"on\">7</p>", "both: " + both;
 }
 
-test "a style serializes inline, or as a sheet class where the entry carries one" {
-	const id = sheet.box.cssId;
+test "a sheet entry serializes as a class" {
+	const id = sheet.box.cssId as string;
 	const entry = renderToString(<div style={sheet.box}></div>);
 	const beside = renderToString(<div class="outer" style={sheet.box}></div>);
-	if (id !== null) {
-		assert entry === "<div class=\"" + (id as string) + "\"></div>", "sheet entry: " + entry;
-		assert beside === "<div class=\"outer " + (id as string) + "\"></div>", "sheet entry beside a class attr: " + beside;
-	} else {
-		assert entry === "<div style=\"" + BOX_CSS + "\"></div>", "sheet entry: " + entry;
-		assert beside === "<div class=\"outer\" style=\"" + BOX_CSS + "\"></div>", "sheet entry beside a class attr: " + beside;
-	}
+	assert entry === "<div class=\"" + id + "\"></div>", "sheet entry: " + entry;
+	assert beside === "<div class=\"outer " + id + "\"></div>", "sheet entry beside a class attr: " + beside;
 	const whole = renderToString(<div style={boxOf()}></div>);
-	const wholeWant = id !== null ? "<div class=\"" + (id as string) + "\"></div>" : "<div style=\"" + BOX_CSS + "\"></div>";
-	assert whole === wholeWant, "whole-style thunk returning a sheet entry: " + whole;
+	assert whole === "<div class=\"" + id + "\"></div>", "whole-style thunk returning a sheet entry: " + whole;
 }
 
 test "a render registers the rule of the sheet entry it used" {
-	when (js) {
-		resetCss();
-		renderToString(<div style={sheet.box}></div>);
-		const css = collectCss();
-		assert css === "." + (sheet.box.cssId as string) + "{" + BOX_CSS + "}", "css: " + css;
-	}
+	resetCss();
+	renderToString(<div style={sheet.box}></div>);
+	const css = collectCss();
+	assert css === "." + (sheet.box.cssId as string) + "{" + BOX_CSS + "}", "css: " + css;
 }
 
 interface Skin { accent: string; }
@@ -142,7 +134,7 @@ test "a region at the root of the render renders too" {
 	assert renderToString(rows) === "<i>1</i><i>2</i><i>3</i><!---->", "root region: " + renderToString(rows);
 }
 
-test "the shared SSR host carries nothing over between renders" {
+test "a render carries nothing over to the next" {
 	const [items, setItems] = createSignal<number[]>([1]);
 	const rows = el("ul", [], [], For<number>({ each: items, children: (item, i) => <li>{"" + item}</li> }));
 	const first = renderToString(rows);

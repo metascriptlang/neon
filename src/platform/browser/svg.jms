@@ -1,0 +1,21 @@
+import { HostNode } from "../../render/hostTypes";
+import { svgMarkup } from "../../components/svg/markup";
+import { installSvgWriter } from "./domCapabilities";
+
+extern class Node {
+	innerHTML: cstring;
+	extern getAttribute(name: cstring): string | null;
+	extern setAttribute(name: cstring, value: cstring): void;
+	extern removeAttribute(name: cstring): void;
+}
+
+function writeSvgList(node: HostNode, list: string): void {
+	const el = node as unknown as Node;
+	const prefix = el.getAttribute("data-neon-svg") ?? "neon-svg";
+	const m = svgMarkup(list, prefix);
+	if (m.viewBox === "") { el.removeAttribute("viewBox"); } else { el.setAttribute("viewBox", m.viewBox); }
+	if (m.preserveAspectRatio === "") { el.removeAttribute("preserveAspectRatio"); } else { el.setAttribute("preserveAspectRatio", m.preserveAspectRatio); }
+	el.innerHTML = m.body;
+}
+
+installSvgWriter(writeSvgList);

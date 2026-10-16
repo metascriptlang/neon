@@ -1,0 +1,154 @@
+import { createSignal, Accessor, accessor } from "../../src/core/signal";
+import { NeonNode } from "../../src/render/node";
+import { renderToString } from "../../src/render/ssr";
+import { Style } from "../../src/render/style";
+import { element } from "../../src/macros/ui/element";
+
+interface Attrs {
+	id: string;
+	title: string | null;
+}
+
+interface Reactive {
+	title: Accessor<string>;
+}
+
+interface Styled {
+	style: Style;
+}
+
+test "an object literal spread contributes one attr per field" {
+	const p = { id: "x", title: "t" };
+	const n: NeonNode = element(<div {...p}>hi</div>);
+	assert renderToString(n) === "<div id=\"x\" title=\"t\">hi</div>", "both fields land as attrs";
+}
+
+test "an explicit attr after a spread wins and keeps the spread's position" {
+	const p = { id: "x", title: "t" };
+	const n: NeonNode = element(<div {...p} id="late">hi</div>);
+	assert renderToString(n) === "<div id=\"late\" title=\"t\">hi</div>", "later explicit attr wins in place";
+}
+
+test "a spread after an explicit attr wins" {
+	const p = { id: "x" };
+	const n: NeonNode = element(<div id="early" class="c" {...p}>hi</div>);
+	assert renderToString(n) === "<div id=\"x\" class=\"c\">hi</div>", "later spread wins in place";
+}
+
+test "the later of two spreads wins" {
+	const a = { id: "a", title: "ta" };
+	const b = { id: "b" };
+	const n: NeonNode = element(<div {...a} {...b}>hi</div>);
+	assert renderToString(n) === "<div id=\"b\" title=\"ta\">hi</div>", "second spread overrides the first";
+}
+
+test "a null field removes the attribute" {
+	function view(p: Attrs): NeonNode {
+		return element(<div {...p}>hi</div>);
+	}
+	assert renderToString(view({ id: "x", title: null })) === "<div id=\"x\">hi</div>", "null field is absent";
+	assert renderToString(view({ id: "x", title: "t" })) === "<div id=\"x\" title=\"t\">hi</div>", "set field is present";
+}
+
+test "an Accessor field stays reactive" {
+	const [t, setT] = createSignal("a");
+	function view(p: Reactive): NeonNode {
+		return element(<div {...p}>hi</div>);
+	}
+	const n = view({ title: t });
+	assert renderToString(n) === "<div title=\"a\">hi</div>", "initial accessor read";
+	setT("b");
+	assert renderToString(n) === "<div title=\"b\">hi</div>", "accessor tracks the signal";
+}
+
+test "a style field replaces an earlier style instead of merging" {
+	function view(p: Styled): NeonNode {
+		return element(<div style={{ width: 1 }} {...p}>hi</div>);
+	}
+	assert renderToString(view({ style: { height: 2 } })) === "<div style=\"height:2px;\">hi</div>", "spread style replaces";
+}
+
+test "an explicit style after a spread replaces the spread's style" {
+	function view(p: Styled): NeonNode {
+		return element(<div {...p} style={{ width: 1 }}>hi</div>);
+	}
+	assert renderToString(view({ style: { height: 2 } })) === "<div style=\"width:1px;\">hi</div>", "explicit style wins";
+}
+
+
+// A capitalized tag takes the same expansion, then the V1 prop contract wraps
+// each value in accessor() unless it already is one.
+
+interface CardProps {
+	title: Accessor<string>;
+	body: Accessor<string>;
+}
+
+function Card(props: CardProps): NeonNode {
+	return element(<div id={props.title()}>{props.body()}</div>);
+}
+test "a spread onto a component forwards its props and keeps them reactive" {
+	const [t, setT] = createSignal("a");
+	function view(p: CardProps): NeonNode {
+		return element(<Card {...p} />);
+	}
+	const n = view({ title: t, body: accessor(() => "b") });
+	assert renderToString(n) === "<div id=\"a\">b</div>", "component spread initial";
+	setT("z");
+	assert renderToString(n) === "<div id=\"z\">b</div>", "component spread stays reactive";
+}
+
+test "an explicit prop after a spread wins on a component too" {
+	function view(p: CardProps): NeonNode {
+		return element(<Card {...p} title="late" />);
+	}
+	const n = view({ title: accessor(() => "early"), body: accessor(() => "b") });
+	assert renderToString(n) === "<div id=\"late\">b</div>", "explicit prop overrides the spread";
+}
+
+// The spread reads its fields from the value's type, whatever form the compiler
+// hands the macro: a named type nested in another type reaches it as a name,
+// not unfolded, and `objectType` unfolds it.
+
+class Badge {
+	id: string = "b1";
+	title: string = "bt";
+}
+
+type AliasedAttrs = Attrs;
+
+interface Holder {
+	attrs: Attrs;
+	badge: Badge;
+	aliased: AliasedAttrs;
+}
+
+test "a class-typed value spreads its fields" {
+	const b = new Badge();
+	const n: NeonNode = element(<div {...b}>hi</div>);
+	assert renderToString(n) === "<div id=\"b1\" title=\"bt\">hi</div>", "class fields land as attrs";
+}
+
+test "an interface-typed field of another type spreads its fields" {
+	function view(h: Holder): NeonNode {
+		return element(<div {...h.attrs}>hi</div>);
+	}
+	const h: Holder = { attrs: { id: "x", title: "t" }, badge: new Badge(), aliased: { id: "y", title: null } };
+	assert renderToString(view(h)) === "<div id=\"x\" title=\"t\">hi</div>", "nested interface field";
+}
+
+test "a class-typed field of another type spreads its fields" {
+	function view(h: Holder): NeonNode {
+		return element(<div {...h.badge}>hi</div>);
+	}
+	const h: Holder = { attrs: { id: "x", title: "t" }, badge: new Badge(), aliased: { id: "y", title: null } };
+	assert renderToString(view(h)) === "<div id=\"b1\" title=\"bt\">hi</div>", "nested class field";
+}
+
+test "a field whose type is an alias of an interface spreads its fields" {
+	function view(h: Holder): NeonNode {
+		return element(<div {...h.aliased}>hi</div>);
+	}
+	const h: Holder = { attrs: { id: "x", title: "t" }, badge: new Badge(), aliased: { id: "y", title: null } };
+	assert renderToString(view(h)) === "<div id=\"y\">hi</div>", "aliased interface field";
+}
