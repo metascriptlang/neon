@@ -234,7 +234,7 @@ export function paragraphChildren(kids: NeonNode | null, spans: Accessor<TextSpa
 			return;
 		}
 		const root = new SpanNode(false);
-		const [changed, setChanged] = createSignal<number>(0);
+		const [changed, setChanged] = createSignal<number>(0, { ownedWrite: true });
 		const para = new Paragraph((v: number): void => { setChanged(v); }, (text: string): void => {
 			const one: TextSpan[] = [{ text }];
 			deliver(node, one);
