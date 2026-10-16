@@ -6,7 +6,8 @@ import { mapArray, mapArrayKeyedBy, mapArrayByPosition, repeat } from "../../cor
 import { createMemo } from "../../core/memo";
 import { Accessor, Signal, accessor } from "../../core/signal";
 import { createErrorBoundary, routeThrown } from "../../core/boundary";
-import { createOwner, getOwner, flush } from "../../core/runtime";
+import { createOwner, getOwner, flush, disposeChildren } from "../../core/runtime";
+import { onCleanup } from "../../core/cleanup";
 import { runWithOwner } from "../../core/owner";
 import { Computation, NotReadyError, ContextEntry } from "../../core/types";
 import { isServer } from "../../render/environment";
@@ -93,15 +94,19 @@ export function ForList<T>(props: {
 
 class MountedState {
 	failed: boolean = false;
+	contentFailed: boolean = false;
+	scope: Computation | null = null;
 }
 
-function mountGuarded(mount: () => void, state: MountedState): void {
+function mountGuarded(mount: () => void, state: MountedState): boolean {
 	try {
 		mount();
+		return true;
 	} catch (e) {
 		if (e instanceof NotReadyError) { throw e; }
 		routeThrown(e);
 		state.failed = true;
+		return false;
 	}
 }
 
@@ -109,8 +114,9 @@ function mountedUnder(children: NeonNode, context: ContextEntry | null, state: M
 	return (host: Host, parent: HostNode, before: HostNode | null): void => {
 		const scope = createOwner();
 		scope.context = context;
+		state.scope = scope;
 		runWithOwner(scope, (): number => {
-			mountGuarded((): void => { children(host, parent, before); }, state);
+			if (!mountGuarded((): void => { children(host, parent, before); }, state)) { state.contentFailed = true; }
 			return 0;
 		});
 	};
@@ -118,14 +124,18 @@ function mountedUnder(children: NeonNode, context: ContextEntry | null, state: M
 
 type ErroredFallback = (err: Accessor<Error>, reset: () => void) => NeonNode;
 
-function errorRows(children: NeonNode, fallbackOf: ErroredFallback, failure: Signal<Error | null>, state: MountedState, server: boolean): Accessor<Row[]> {
+function errorRows(host: Host, children: NeonNode, fallbackOf: ErroredFallback, failure: Signal<Error | null>, state: MountedState, server: boolean): Accessor<Row[]> {
 	let content: NeonNode | null = null;
 	let fallback: NeonNode | null = null;
+	let contentRow: Row | null = null;
+	const home = getOwner();
+	const holder = host.createElement("view");
+	onCleanup((): void => { host.release(holder); });
 	const showsContent = createErrorBoundary<boolean>(
 		(): boolean => {
 			const failed = failure.get();
 			if (failed !== null) { throw failed; }
-			content = mountedUnder(children, (getOwner() as Computation).context, state);
+			if (content === null) { content = mountedUnder(children, (getOwner() as Computation).context, state); }
 			return true;
 		},
 		(err: Accessor<Error>, reset: () => void): boolean => {
@@ -140,7 +150,23 @@ function errorRows(children: NeonNode, fallbackOf: ErroredFallback, failure: Sig
 			return false;
 		},
 	);
-	return createMemo<Row[]>(() => [makeRow(showsContent() ? (content as NeonNode) : (fallback as NeonNode))]);
+	return createMemo<Row[]>(() => {
+		if (showsContent()) {
+			if (contentRow === null) {
+				const row = runWithOwner(home, (): Row => makeRow(content as NeonNode));
+				row.keep = server ? null : holder;
+				contentRow = row;
+			}
+			return [contentRow as Row];
+		}
+		if (server || state.contentFailed) {
+			if (contentRow !== null) { (contentRow as Row).keep = null; }
+			contentRow = null;
+			state.contentFailed = false;
+			if (state.scope !== null) { disposeChildren(state.scope as Computation, true); }
+		}
+		return [makeRow(fallback as NeonNode)];
+	});
 }
 
 function settledOnServer(rows: Accessor<Row[]>, state: MountedState): Accessor<Row[]> {
@@ -164,7 +190,7 @@ export function Errored(props: {
 		const state = new MountedState();
 		const server = isServer();
 		regionNode((h) => {
-			const rows = errorRows(props.children, props.fallback, failure, state, server);
+			const rows = errorRows(h, props.children, props.fallback, failure, state, server);
 			return server ? settledOnServer(rows, state) : rows;
 		})(host, parent, before);
 		if (!server && state.failed) { flush(); }

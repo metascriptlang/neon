@@ -76,7 +76,7 @@ test "a throw in a later effect swaps in the fallback" {
 	dispose();
 }
 
-test "the failed subtree is torn down when the fallback shows" {
+test "the failed subtree is kept behind the fallback and cleaned up with the Errored" {
 	const [a, setA] = createSignal(0);
 	let cleaned = 0;
 	const late: NeonNode = (host: Host, parent: HostNode, before: HostNode | null): void => {
@@ -89,11 +89,13 @@ test "the failed subtree is torn down when the fallback shows" {
 		fallback: (err: Accessor<Error>, reset: () => void): NeonNode => el("b", [], [], text("caught")),
 	}));
 	setA(1);
-	assert cleaned > 0, "the children's cleanups ran";
+	assert view().includes("caught"), "the fallback shows: " + view();
+	assert cleaned === 0, "the content is parked, not torn down: " + cleaned.toString();
 	dispose();
+	assert cleaned === 1, "the content's cleanup ran when the Errored was disposed: " + cleaned.toString();
 }
 
-test "reset re-mounts the children" {
+test "reset recomputes the failed effect and keeps the children" {
 	const [a, setA] = createSignal(0);
 	let again: (() => void) | null = null;
 	let mounts = 0;
@@ -110,8 +112,8 @@ test "reset re-mounts the children" {
 	assert view().includes("caught"), "failed first: " + view();
 	setA(0);
 	(again as () => void)();
-	assert view().includes("ok") && !view().includes("caught"), "reset rebuilt the children: " + view();
-	assert mounts === 2, "the children were built again, not kept: " + mounts.toString();
+	assert view().includes("ok") && !view().includes("caught"), "reset brought the children back: " + view();
+	assert mounts === 1, "the children were kept, not built again: " + mounts.toString();
 	dispose();
 }
 
