@@ -1,11 +1,13 @@
 // Parking on the void host. tests/platform/void.test.ms does not compile while its
 // "parseFlexStyle maps numeric + enum keys" cell is parked (BUGS.md), so these cells live here.
 
-import { Accessor, createSignal } from "../../src/core/signal";
+import { Accessor, accessor, createSignal } from "../../src/core/signal";
+import { createAsyncMemo } from "../../src/core/memo";
 import { createRenderEffect } from "../../src/core/effect";
 import { Cleanup } from "../../src/core/types";
 import { onCleanup } from "../../src/core/cleanup";
-import { Errored } from "../../src/macros/ui/flow";
+import { Errored, Loading } from "../../src/macros/ui/flow";
+import { Gate, gated, release } from "../core/asyncClock";
 import { render } from "../../src/render/host";
 import { Host, HostNode } from "../../src/render/hostTypes";
 import { el, text, regionNode, NeonNode } from "../../src/render/node";
@@ -120,4 +122,27 @@ test "a focused TextInput in content that gets parked loses focus, and the node 
 	(again as () => void)();
 	assert (vh.root as VoidNode).children.indexOf(input) >= 0, "the same input came back";
 	assert vh.focused() === null, "and is not focused again";
+}
+
+test "a Loading whose content read a pending value frees the partial nodes and shows the new ones when it settles" {
+	const vh = createVoidHost();
+	const gate = new Gate();
+	const partial: VoidNode[] = [];
+	const content = (data: Accessor<int32>): NeonNode => (host: Host, parent: HostNode, before: HostNode | null): void => {
+		el("view", [], [], text("partial"))(host, parent, before);
+		partial.push((parent as VoidNode).children[0]);
+		const v = data();
+		el("view", [], [], text(v.toString()))(host, parent, before);
+	};
+	const app: NeonNode = (host: Host, parent: HostNode, before: HostNode | null): void => {
+		const data = createAsyncMemo((p: int32 | null): Promise<int32> => gated(gate, 7));
+		Loading({ children: content(data), fallback: caughtView(accessor((): Error => new Error("x")), (): void => {}) })(host, parent, before);
+	};
+	const dispose = render(app, vh.host, vh.root);
+	assert partial.length === 1 && partial[0].disposed && !partial[0].ref.isLive(), "the first attempt's partial node is freed, not left parked";
+	assert (vh.root as VoidNode).children[0].children[0].chars === "caught", "the fallback shows";
+	await release(gate);
+	assert partial.length === 2 && partial[1].ref.isLive(), "the settled attempt built its own nodes";
+	assert (vh.root as VoidNode).children.indexOf(partial[1]) >= 0, "and they are in the root";
+	dispose();
 }

@@ -32,7 +32,7 @@ export { onCssChange, registerCss, collectCss, mountSheet, cssRuleCount, resetCs
 export { element } from "./macros/ui/element";
 export { createStyles, styleOf } from "./macros/ui/style";
 export { createTheme, setTheme, themeOf, setThemeCss } from "./macros/ui/theme";
-export { For, ForKeyedBy, ForUnkeyed, Repeat, ForList, Show, ShowKeyed, ShowWith, ShowKeyedWith, Errored } from "./macros/ui/flow";
+export { For, ForKeyedBy, ForUnkeyed, Repeat, ForList, Show, ShowKeyed, ShowWith, ShowKeyedWith, Errored, Loading } from "./macros/ui/flow";
 
 export { View, Text, Pressable, TextInput, ScrollView, ScrollViewHandle, KeyboardDismissMode, KeyboardShouldPersistTaps, TextSelection } from "./components/primitives";
 export {

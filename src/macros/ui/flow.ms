@@ -5,7 +5,7 @@
 import { mapArray, mapArrayKeyedBy, mapArrayByPosition, repeat } from "../../core/array";
 import { createMemo } from "../../core/memo";
 import { Accessor, Signal, accessor } from "../../core/signal";
-import { createErrorBoundary, routeThrown } from "../../core/boundary";
+import { createErrorBoundary, createLoadingBoundary, routeThrown } from "../../core/boundary";
 import { createOwner, getOwner, flush, disposeChildren } from "../../core/runtime";
 import { onCleanup } from "../../core/cleanup";
 import { runWithOwner } from "../../core/owner";
@@ -198,6 +198,47 @@ export function Errored(props: {
 			return server ? settledOnServer(rows, state) : rows;
 		})(host, parent, before);
 		if (!server && state.failed) { flush(); }
+	};
+}
+
+function loadingRows(host: Host, children: NeonNode, fallback: NeonNode | null): Accessor<Row[]> {
+	const state = new MountedState();
+	const holder = host.createElement("view");
+	onCleanup((): void => { host.release(holder); });
+	let contentRow: Row | null = null;
+	const showsContent = createLoadingBoundary<boolean>(
+		(): boolean => {
+			if (contentRow !== null) { throw new Error("[LOADING_CONTENT_RERUN] a Loading's content was mounted again while an earlier mount stood"); }
+			const row = makeRow(mountedUnder(children, (getOwner() as Computation).context, state));
+			row.keep = holder;
+			contentRow = row;
+			try {
+				mountAt(host, holder, null, row);
+			} catch (e) {
+				if (e instanceof NotReadyError) {
+					row.keep = null;
+					removeRow(host, holder, row);
+					contentRow = null;
+				}
+				throw e;
+			}
+			return true;
+		},
+		(): boolean => false,
+	);
+	return createMemo<Row[]>(() => {
+		if (showsContent()) { return [contentRow as Row]; }
+		if (fallback === null) { return [] as Row[]; }
+		return [makeRow(fallback as NeonNode)];
+	});
+}
+
+export function Loading(props: {
+	children: NeonNode;
+	fallback?: NeonNode | null;
+}): NeonNode {
+	return (host: Host, parent: HostNode, before: HostNode | null): void => {
+		regionNode((h) => loadingRows(h, props.children, props.fallback))(host, parent, before);
 	};
 }
 
