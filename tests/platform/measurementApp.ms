@@ -48,4 +48,3 @@ export function MeasurementApp(): NeonNode {
 		</ScrollView>
 	</View>;
 }
-
