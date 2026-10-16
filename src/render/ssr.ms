@@ -48,7 +48,7 @@ when (server) {
 	import { parseVisibleContent } from "./visibleContent";
 	import { asServer } from "./environment";
 	import { Dispose, NotReadyError } from "../core/types";
-	import { ServerContext, withServerContext } from "../core/serverContext";
+	import { ServerContext, ServerMarks, MAX_PASSES, withServerContext, takeWaits, awaitable, unconverged } from "../core/serverContext";
 	import { scriptLiteral } from "./hydrationRecords";
 
 	function joinClass(className: string, id: string): string {
@@ -290,6 +290,8 @@ when (server) {
 		return info;
 	}
 
+	const PLACEHOLDER_OPEN = "<template id=\"pl-";
+	const PLACEHOLDER_END = "<!--pl-";
 	const EMPTY_TEXT = "<!---->";
 	const TEXT_BREAK = "<!--!-->";
 
@@ -340,6 +342,7 @@ when (server) {
 		owed: int32 = 0;
 		collects: boolean = false;
 		drops: boolean = false;
+		raw: string = "";
 
 		constructor(tag: string, info: TagInfo) {
 			this.tag = tag;
@@ -401,6 +404,11 @@ when (server) {
 		if (p.last !== null) { (p.last as SsrNode).next = n; }
 		p.last = n;
 		p.count += 1;
+		if (n.raw !== "") {
+			p.body += n.raw;
+			p.afterText = false;
+			return;
+		}
 		if (n.tag === "") {
 			if (p.info.marked) {
 				if (n.text === "") { p.body += EMPTY_TEXT; p.afterText = false; return; }
@@ -590,8 +598,6 @@ when (server) {
 		return markupOf(n);
 	}
 
-	const MAX_PASSES = 10000;
-
 	function recordScript(table: string, id: string, text: string): string {
 		return "<script>(self._$HY||(self._$HY={r:{},e:{}}))." + table + "[\"" + scriptLiteral(id) + "\"]=\"" + scriptLiteral(text) + "\"</script>";
 	}
@@ -606,37 +612,108 @@ when (server) {
 		return out;
 	}
 
-	function passOver(ctx: ServerContext, n: NeonNode): SsrMarkup | null {
-		ctx.waiting = [];
-		return withServerContext(ctx, (): SsrMarkup | null => {
+	function rawNode(markup: string): HostNode {
+		const n = new SsrNode("", PLAIN);
+		n.raw = markup;
+		return n as unknown as HostNode;
+	}
+
+	function stitchMarks(): ServerMarks {
+		return {
+			open: (id: string): unknown => rawNode(PLACEHOLDER_OPEN + id + "\"></template>"),
+			close: (id: string): unknown => rawNode(PLACEHOLDER_END + id + "-->"),
+			holder: (beside: unknown): unknown => {
+				const like = beside as SsrNode;
+				const holder = new SsrNode(like.tag, like.info);
+				holder.afterText = like.afterText;
+				return holder;
+			},
+			html: (holder: unknown): string => (holder as SsrNode).body,
+		};
+	}
+
+	function stitched(html: string, fragments: Map<string, string>): string {
+		let from = html.indexOf(PLACEHOLDER_OPEN);
+		if (from < 0) { return html; }
+		let out = "";
+		let at = 0;
+		while (from >= 0) {
+			const idAt = from + PLACEHOLDER_OPEN.length;
+			const idEnd = html.indexOf("\"></template>", idAt);
+			const id = html.slice(idAt, idEnd);
+			const end = PLACEHOLDER_END + id + "-->";
+			const to = html.indexOf(end, idEnd);
+			const settled = fragments.get(id);
+			if (idEnd < 0 || to < 0 || settled === null) {
+				throw new Error("SSR: the placeholder of boundary \"" + id + "\" has no settled content to take its place");
+			}
+			out = out + html.slice(at, from) + stitched(settled as string, fragments);
+			at = to + end.length;
+			from = html.indexOf(PLACEHOLDER_OPEN, at);
+		}
+		return out + html.slice(at);
+	}
+
+	class CssBook {
+		seen: Map<string, boolean> = new Map<string, boolean>();
+		css: string = collectCss();
+
+		add(id: string, rule: string): void {
+			if (this.seen.has(id)) { return; }
+			this.seen.set(id, true);
+			this.css = this.css + rule;
+		}
+	}
+
+	class StreamPass {
+		book: CssBook = new CssBook();
+		write: SsrWrite;
+		root: SsrNode = new SsrNode("ssr-root", PLAIN);
+		dispose: Dispose = (): void => {};
+
+		constructor() {
+			const book = this.book;
+			this.write = new SsrWrite((id: string, rule: string): void => { book.add(id, rule); });
+		}
+	}
+
+	function rootSettled(ctx: ServerContext, pass: StreamPass, n: NeonNode): boolean {
+		return withServerContext(ctx, (): boolean => {
 			try {
-				return markupOf(n);
+				pass.dispose = asServer((): Dispose => render(n, writerHost(pass.write), pass.root as unknown as HostNode, ""));
+				return true;
 			} catch (e) {
-				if (e instanceof NotReadyError) { return null; }
+				if (e instanceof NotReadyError) { return false; }
 				throw e;
 			}
 		});
 	}
 
-	function unconverged(ctx: ServerContext): Error {
-		const where = ctx.waiting.length === 0 ? "the render" : "<Loading> at owner id \"" + ctx.waiting.join("\", \"") + "\"";
-		return new Error("SSR: " + where + " did not converge after " + MAX_PASSES.toString() + " passes; an async memo is created under a new owner id on every pass, so no settled answer is ever found again");
-	}
-
 	export async function renderToStream(n: NeonNode): Promise<SsrMarkup> {
 		const ctx = new ServerContext();
-		for (let pass = 1; pass <= MAX_PASSES; pass += 1) {
-			const settled = passOver(ctx, n);
-			if (ctx.waits.length === 0) {
-				if (settled === null) { throw new Error("SSR: a read was not ready and nothing is awaited; the render cannot settle"); }
-				const markup = settled as SsrMarkup;
-				return { html: markup.html, css: markup.css, head: markup.head, records: recordScripts(ctx) };
-			}
-			const waits = ctx.waits;
-			ctx.waits = [];
-			for (const w of waits) { await w; }
+		let pass = new StreamPass();
+		ctx.marks = stitchMarks();
+		for (let rounds = 1; !rootSettled(ctx, pass, n); rounds += 1) {
+			if (rounds >= MAX_PASSES) { throw unconverged("the render"); }
+			for (const w of awaitable(ctx, takeWaits(ctx))) { await w; }
+			pass = new StreamPass();
 		}
-		throw unconverged(ctx);
+		let failure: Error | null = null;
+		let html = "";
+		let head = "";
+		try {
+			for (let at = 0; at < ctx.loops.length; at += 1) { await ctx.loops[at]; }
+			failure = ctx.failure;
+			if (failure === null) {
+				html = stitched(pass.root.body, ctx.fragments);
+				head = writtenHead(pass.write.headKids);
+			}
+		} finally {
+			pass.write.done = true;
+			pass.dispose();
+		}
+		if (failure !== null) { throw failure; }
+		return { html: html, css: pass.book.css, head: head, records: recordScripts(ctx) };
 	}
 } else {
 	import { Node } from "std/meta";

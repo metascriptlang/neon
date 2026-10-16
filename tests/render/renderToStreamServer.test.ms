@@ -2,7 +2,8 @@ import { sleepAsync } from "std/core/promise";
 import { el, text, dynText, NeonNode } from "../../src/render/node";
 import { Host, HostNode } from "../../src/render/hostTypes";
 import { Accessor } from "../../src/core/signal";
-import { createAsyncMemo } from "../../src/core/memo";
+import { createAsyncMemo, createMemo } from "../../src/core/memo";
+import { onCleanup } from "../../src/core/cleanup";
 import { Loading, Errored } from "../../src/macros/ui/flow";
 import { createStyles, styleOf } from "../../src/macros/ui/style";
 import { createRoot, createUniqueId } from "../../src/core/owner";
@@ -205,4 +206,219 @@ test "a render that never converges names its Loading and fails" {
 	const message = await budgetFailure();
 	assert message.includes("<Loading> at owner id \"") && message.includes("did not converge after 10000 passes"), "[" + message + "]";
 	assert message.endsWith("(rendered 10000 times)"), message;
+}
+
+const bodies: string[] = [];
+
+function counted(name: string, inner: NeonNode): NeonNode {
+	return (host: Host, parent: HostNode, before: HostNode | null): void => {
+		bodies.push(name);
+		inner(host, parent, before);
+	};
+}
+
+function ran(name: string): int32 {
+	let n = 0;
+	for (const b of bodies) { if (b === name) { n += 1; } }
+	return n;
+}
+
+test "a Loading whose content does not pend runs its body once beside a sibling that does" {
+	const app: NeonNode = (host: Host, parent: HostNode, before: HostNode | null): void => {
+		Loading({ children: counted("ready-a", el("p", [], [], text("ready"))), fallback: waiting })(host, parent, before);
+		Loading({ children: counted("pends-a", reading("sibA", 8, 5)), fallback: waiting })(host, parent, before);
+	};
+	const out = await renderToStream(app);
+	assert out.html === "<p>ready</p><!----><p>sibA=5</p><!---->", out.html;
+	assert ran("ready-a") === 1, "the settled sibling ran " + ran("ready-a").toString() + " times";
+	assert ran("pends-a") === 2, "the pending one ran " + ran("pends-a").toString() + " times";
+}
+
+test "two pending Loadings with a ready one between them run each body once per own pass" {
+	const app: NeonNode = (host: Host, parent: HostNode, before: HostNode | null): void => {
+		Loading({ children: counted("slow-b", reading("slowB", 20, 1)), fallback: waiting })(host, parent, before);
+		Loading({ children: counted("ready-b", el("p", [], [], text("ready"))), fallback: waiting })(host, parent, before);
+		Loading({ children: counted("quick-b", reading("quickB", 3, 2)), fallback: waiting })(host, parent, before);
+	};
+	const out = await renderToStream(app);
+	assert out.html === "<p>slowB=1</p><!----><p>ready</p><!----><p>quickB=2</p><!---->", out.html;
+	assert ran("ready-b") === 1 && ran("slow-b") === 2 && ran("quick-b") === 2, ran("slow-b").toString() + "/" + ran("ready-b").toString() + "/" + ran("quick-b").toString();
+	assert fetched("slowB") === 1 && fetched("quickB") === 1, "once each";
+}
+
+test "a pending Loading inside a pending Loading re-runs alone" {
+	const inner: NeonNode = (host: Host, parent: HostNode, before: HostNode | null): void => {
+		Loading({ children: counted("inner-c", reading("innerC", 5, 2)), fallback: el("i", [], [], text("inner waits")) })(host, parent, before);
+	};
+	const outer: NeonNode = (host: Host, parent: HostNode, before: HostNode | null): void => {
+		reading("outerC", 5, 1)(host, parent, before);
+		inner(host, parent, before);
+	};
+	const out = await renderToStream(Loading({ children: counted("outer-c", outer), fallback: waiting }));
+	assert out.html === "<p>outerC=1</p><p>innerC=2</p><!----><!---->", out.html;
+	assert ran("outer-c") === 2, "the outer body ran " + ran("outer-c").toString() + " times, once per outer pass";
+	assert ran("inner-c") === 2, "the inner body ran " + ran("inner-c").toString() + " times";
+	assert fetched("outerC") === 1 && fetched("innerC") === 1, "once each";
+}
+
+test "a Loading settled inside a pending Loading's second pass is not run again when the outer one waits twice" {
+	const inner: NeonNode = (host: Host, parent: HostNode, before: HostNode | null): void => {
+		Loading({ children: counted("inner-d", reading("innerD", 4, 2)), fallback: waiting })(host, parent, before);
+	};
+	const outer: NeonNode = (host: Host, parent: HostNode, before: HostNode | null): void => {
+		reading("firstD", 3, 1)(host, parent, before);
+		inner(host, parent, before);
+		reading("lastD", 12, 3)(host, parent, before);
+	};
+	const out = await renderToStream(Loading({ children: counted("outer-d", outer), fallback: waiting }));
+	assert out.html.includes("<p>firstD=1</p><p>innerD=2</p><!----><p>lastD=3</p>"), out.html;
+	assert ran("outer-d") === 3, "first read, last read, settled: " + ran("outer-d").toString();
+	assert fetched("innerD") === 1 && fetched("lastD") === 1, "once each";
+}
+
+test "a settled Loading's owners stay alive until every boundary has settled" {
+	const events: string[] = [];
+	const ready: NeonNode = (host: Host, parent: HostNode, before: HostNode | null): void => {
+		onCleanup((): void => { events.push("cleanup ready"); });
+		el("p", [], [], text("ready"))(host, parent, before);
+	};
+	const slow: NeonNode = (host: Host, parent: HostNode, before: HostNode | null): void => {
+		const data = createAsyncMemo((p: int32 | null): Promise<int32> => {
+			events.push("fetch slow");
+			return after(10, 1);
+		});
+		el("p", [], [], dynText((): string => { events.push("read slow"); return data().toString(); }))(host, parent, before);
+	};
+	const app: NeonNode = (host: Host, parent: HostNode, before: HostNode | null): void => {
+		Loading({ children: ready, fallback: waiting })(host, parent, before);
+		Loading({ children: slow, fallback: waiting })(host, parent, before);
+	};
+	const out = await renderToStream(app);
+	assert out.html.includes("<p>ready</p>") && out.html.includes("<p>1</p>"), out.html;
+	let lastRead = -1;
+	for (let i = 0; i < events.length; i += 1) { if (events[i] === "read slow") { lastRead = i; } }
+	const cleaned = events.indexOf("cleanup ready");
+	assert cleaned > lastRead, "the settled sibling was cleaned up at " + cleaned.toString() + ", the slow read last ran at " + lastRead.toString() + ": " + events.join(",");
+}
+
+function sameIdsPage(slow: boolean): NeonNode {
+	const content: NeonNode = (host: Host, parent: HostNode, before: HostNode | null): void => {
+		Identified()(host, parent, before);
+		if (slow) {
+			reading("ids", 4, 9)(host, parent, before);
+		} else {
+			const data = createMemo((p: int32 | null): int32 => 9);
+			el("p", [], [], dynText((): string => "ids=" + data().toString()))(host, parent, before);
+		}
+		Identified()(host, parent, before);
+	};
+	const fallback: NeonNode = (host: Host, parent: HostNode, before: HostNode | null): void => {
+		Identified()(host, parent, before);
+		Identified()(host, parent, before);
+		Identified()(host, parent, before);
+	};
+	return <View>
+		<Identified />
+		<Loading fallback={fallback}>{content}</Loading>
+		<Identified />
+	</View>;
+}
+
+test "a Loading that waited gives its content and its next sibling the ids a single pass gives" {
+	const waited = await renderToStream(sameIdsPage(true));
+	const single = await renderToStream(sameIdsPage(false));
+	assert waited.html === single.html, waited.html + " | " + single.html;
+	assert waited.html.includes("ids=9"), waited.html;
+}
+
+test "a bare read after a pending Loading settles both, and each fetches once" {
+	const app: NeonNode = (host: Host, parent: HostNode, before: HostNode | null): void => {
+		Loading({ children: counted("loading-e", reading("loadingE", 25, 1)), fallback: waiting })(host, parent, before);
+		reading("bareE", 3, 2)(host, parent, before);
+	};
+	const out = await renderToStream(app);
+	assert out.html === "<p>loadingE=1</p><!----><p>bareE=2</p>", out.html;
+	assert ran("loading-e") === 3, "the first root pass, the second root pass, one re-run; the first pass's loop ran nothing: " + ran("loading-e").toString();
+	assert fetched("loadingE") === 1 && fetched("bareE") === 1, fetched("loadingE").toString() + "/" + fetched("bareE").toString();
+}
+
+function readOf(name: string, slow: boolean, value: int32): NeonNode {
+	if (slow) { return reading(name, 3, value); }
+	return (host: Host, parent: HostNode, before: HostNode | null): void => {
+		const data = createMemo((p: int32 | null): int32 => value);
+		el("p", [], [], dynText((): string => name + "=" + data().toString()))(host, parent, before);
+	};
+}
+
+function textShape(slow: boolean): NeonNode {
+	return <Text>
+		{"lead"}
+		<Loading fallback={<Text>wait</Text>}>{"x"}{readOf("t", slow, 4)}{"y"}</Loading>
+		{"tail"}
+	</Text>;
+}
+
+function rowsShape(slow: boolean): NeonNode {
+	return <View>
+		<For each={[1, 2, 3]}>{(n: number, i: Accessor<number>): NeonNode =>
+			<View>
+				<Identified />
+				<Loading fallback={<Identified />}>{readOf("row" + n.toString(), slow, n as int32)}<Identified /></Loading>
+				<Identified />
+			</View>}</For>
+		<Identified />
+	</View>;
+}
+
+function regionsShape(slow: boolean): NeonNode {
+	return <View>
+		<Loading fallback={<Text>wait</Text>}>
+			<Show when={true}><Text>on</Text><Identified /></Show>
+			<For each={[1, 2]} fallback={<Text>none</Text>}>{(n: number, i: Accessor<number>): NeonNode => <Text>{n.toString()}</Text>}</For>
+			{readOf("reg", slow, 6)}
+			<Show when={false} fallback={<Identified />}><Text>off</Text></Show>
+		</Loading>
+		<Identified />
+	</View>;
+}
+
+test "a Loading that waited writes the bytes a single pass writes, whatever its content holds" {
+	const a = await renderToStream(textShape(true));
+	const b = await renderToStream(textShape(false));
+	assert a.html === b.html && a.html.includes("<!--!-->"), "text: " + a.html + " | " + b.html;
+	const c = await renderToStream(rowsShape(true));
+	const d = await renderToStream(rowsShape(false));
+	assert c.html === d.html && c.html.includes("row3=3"), "rows: " + c.html + " | " + d.html;
+	const e = await renderToStream(regionsShape(true));
+	const f = await renderToStream(regionsShape(false));
+	assert e.html === f.html && e.html.includes("reg=6"), "regions: " + e.html + " | " + f.html;
+}
+
+async function lateFailure(): Promise<string> {
+	const content: NeonNode = (host: Host, parent: HostNode, before: HostNode | null): void => {
+		reading("late", 3, 1)(host, parent, before);
+		throw new Error("thrown after the wait");
+	};
+	let message = "";
+	try {
+		await renderToStream(Loading({ children: content, fallback: waiting }));
+	} catch (e) {
+		message = e.message;
+	}
+	return message;
+}
+
+test "content that throws after its Loading waited fails the render with that error" {
+	const message = await lateFailure();
+	assert message === "thrown after the wait", "[" + message + "]";
+}
+
+test "a Loading without a fallback is replaced by its settled content" {
+	const app: NeonNode = (host: Host, parent: HostNode, before: HostNode | null): void => {
+		el("i", [], [], text("first"))(host, parent, before);
+		Loading({ children: reading("bare", 3, 5) })(host, parent, before);
+		el("i", [], [], text("last"))(host, parent, before);
+	};
+	const out = await renderToStream(app);
+	assert out.html === "<i>first</i><p>bare=5</p><!----><i>last</i>", out.html;
 }
