@@ -6,6 +6,7 @@ import { element } from "../../src/macros/ui/element";
 import { ScrollView, ScrollViewHandle, View, Pressable, KeyboardShouldPersistTaps, KeyboardDismissMode } from "../../src/components/primitives";
 import { sleepAsync } from "std/core/promise";
 import { createSignal } from "../../src/core/signal";
+import { resetErrorHalt } from "../../src/core/runtime";
 import { For } from "../../src/macros/ui/flow";
 import { Accessor } from "../../src/core/signal";
 
@@ -157,6 +158,7 @@ test "interactive keyboard dismissal rejects explicitly on the browser" {
 	let caught = "";
 	try { render(element(<ScrollView keyboardDismissMode={"interactive"} />), domHost(), documentBody()); }
 	catch (e) { caught = e.toString(); }
+	resetErrorHalt();
 	assert caught.includes("interactive") && caught.includes("browser"), "names the unsupported native interaction: " + caught;
 }
 
