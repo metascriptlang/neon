@@ -613,3 +613,52 @@ test "a ForList scroll moves 59 of 60 rows without reshaping or rebuilding them"
 	assert textTouched(vh, root) === 1, "a layout pass touched no kept row's text: " + textTouched(vh, root).toString();
 	assert after[0].ref.local().y === 0.0, "the kept row 1 now sits at the top, y=" + after[0].ref.local().y.toString();
 }
+
+test "a pointer, key or press handler that mounts or unmounts handler-bearing nodes does not break the dispatch" {
+	const vh = host();
+	const [open, setOpen] = createSignal<boolean>(false);
+	const log: string[] = [];
+	let inner: VoidNode | null = null;
+	render(element(
+		<View style={{ width: 400, height: 300 }}
+			onPointerUp={(e: NeonEvent): void => { log.push("outer up"); setOpen(!open()); }}
+			onKeyDown={(e: NeonEvent): void => { log.push("outer key"); }}>
+			{Show({ when: open, children: element(
+				<View ref={(h: ViewHandle): void => { inner = h.node as VoidNode; }} style={{ width: 400, height: 300 }} focusable
+					onPointerUp={(e: NeonEvent): void => { log.push("inner up"); }}
+					onKeyDown={(e: NeonEvent): void => { log.push("inner key"); setOpen(false); }} />
+			) })}
+		</View>
+	), vh.host, vh.root);
+	vh.layout(400.0, 300.0);
+	vh.pointerDown(100.0, 100.0, 0);
+	vh.pointerUp(100.0, 100.0, 0);
+	assert open() && log.join("|") === "outer up", "mounted from a pointer handler; the new node missed the event that made it: " + log.join("|");
+	log.length = 0;
+	vh.layout(400.0, 300.0);
+	vh.pointerUp(100.0, 100.0, 0);
+	assert !open() && log.join("|") === "inner up|outer up", "unmounted from the parent's handler after the target heard it: " + log.join("|");
+	setOpen(true);
+	vh.layout(400.0, 300.0);
+	log.length = 0;
+	vh.focus(inner);
+	vh.keyDown(key("a"));
+	assert !open() && log.join("|") === "inner key|outer key", "a key handler that unmounts its own node, and the parent still hears it: " + log.join("|");
+}
+
+test "a press handler that mounts a pressable does not break the press dispatch" {
+	const vh = host();
+	const [more, setMore] = createSignal<boolean>(false);
+	let presses = 0;
+	render(element(
+		<View style={{ width: 200, height: 100 }}>
+			<Pressable style={{ width: 200, height: 50 }} onPress={(): void => { presses = presses + 1; setMore(true); }} />
+			{Show({ when: more, children: element(
+				<Pressable style={{ width: 200, height: 50 }} onPress={(): void => { presses = presses + 100; }} />
+			) })}
+		</View>
+	), vh.host, vh.root);
+	vh.layout(200.0, 100.0);
+	vh.clickAt(10.0, 10.0);
+	assert more() && presses === 1, "the press mounted a pressable and fired once: " + presses.toString();
+}
