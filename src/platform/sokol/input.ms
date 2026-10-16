@@ -254,6 +254,7 @@ function pointer(s: SokolInput, e: AppEvent, kind: AreaPointerKind, button: int3
 		pressed,
 		dx: motion ? e.mouseDx as float64 : wheel ? -(e.scrollX as float64) : 0.0,
 		dy: motion ? e.mouseDy as float64 : wheel ? e.scrollY as float64 : 0.0,
+		mods: modsOf(e),
 	});
 }
 

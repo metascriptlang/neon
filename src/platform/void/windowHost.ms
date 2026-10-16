@@ -4,10 +4,10 @@ import {
 	AreaHub,
 	AreaKeyAction,
 	AreaKeyEvent,
-	AreaKeyMod,
 	AreaPointerEvent,
 	AreaPointerKind,
 	createAreaHub,
+	setEventMods,
 } from "../../render/voidAreaHandle";
 import { Style } from "../../render/style";
 import { publishScale } from "../../api/dimensions";
@@ -149,14 +149,10 @@ function printable(text: string): boolean {
 export function areaKeyEvent(e: AreaKeyEvent, code: string, composing: boolean): NeonEvent {
 	const ev = neonEvent(e.action === AreaKeyAction.Release ? "keyup" : "keydown");
 	ev.code = code;
-	ev.altKey = e.mods.has(AreaKeyMod.Alt);
-	ev.ctrlKey = e.mods.has(AreaKeyMod.Ctrl);
-	ev.metaKey = e.mods.has(AreaKeyMod.Super);
-	ev.shiftKey = e.mods.has(AreaKeyMod.Shift);
+	setEventMods(ev, e.mods);
 	ev.repeat = e.action === AreaKeyAction.Repeat;
 	ev.isComposing = composing;
 	ev.scancode = e.scancode;
-	ev.mods = (e.mods as uint16) as number;
 	ev.consumedMods = (e.consumedMods as uint16) as number;
 	ev.unshifted = e.unshifted;
 	ev.text = e.text;
@@ -181,17 +177,18 @@ export function deliverPointer(a: WindowArea, e: AreaPointerEvent): void {
 	a.hub.pointer(e);
 	const x = (e.pixelX as float32) / a.scale;
 	const y = (e.pixelY as float32) / a.scale;
+	const mods = (e.mods as uint16) as number;
 	if (e.kind === AreaPointerKind.Motion) {
-		a.vh.pointerMove(x, y, a.held, a.held > (0 as int32));
+		a.vh.pointerMove(x, y, a.held, a.held > (0 as int32), mods);
 	} else if (e.kind === AreaPointerKind.Wheel) {
-		a.vh.wheel(x, y, e.dx as float32, e.dy as float32);
+		a.vh.wheel(x, y, e.dx as float32, e.dy as float32, mods);
 	} else if (e.kind === AreaPointerKind.Button && e.pressed) {
 		a.held = e.button;
-		a.vh.pointerDown(x, y, e.button);
+		a.vh.pointerDown(x, y, e.button, mods);
 		a.vh.clickAt(x, y);
 	} else if (e.kind === AreaPointerKind.Button) {
 		if (a.held === e.button) { a.held = 0 as int32; }
-		a.vh.pointerUp(x, y, e.button);
+		a.vh.pointerUp(x, y, e.button, mods);
 	}
 }
 

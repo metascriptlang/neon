@@ -1,6 +1,7 @@
 import { Host, HostNode } from "../../render/host";
 import { TextSpan, TextMeasure } from "../../render/hostTypes";
 import { NeonEvent, neonEvent, eventType } from "../../render/event";
+import { AreaKeyMod, setEventMods } from "../../render/voidAreaHandle";
 import {
 	Scene2D, NodeRef, DrawKind, group, label, mask, addChild, addChildAt, getChildIndex, dispose, kind,
 	setPosition, setSize, setX, setZIndex, setAlpha, setColor, setBackground, clearBackground,
@@ -86,10 +87,10 @@ export interface VoidHost {
 	root: HostNode;
 	scene: Scene2D;
 	clickAt: (x: float32, y: float32) => void;
-	pointerDown: (x: float32, y: float32, button: int32) => void;
-	pointerMove: (x: float32, y: float32, button: int32, pressed: boolean) => void;
-	pointerUp: (x: float32, y: float32, button: int32) => void;
-	wheel: (x: float32, y: float32, dx: float32, dy: float32) => void;
+	pointerDown: (x: float32, y: float32, button: int32, mods?: number) => void;
+	pointerMove: (x: float32, y: float32, button: int32, pressed: boolean, mods?: number) => void;
+	pointerUp: (x: float32, y: float32, button: int32, mods?: number) => void;
+	wheel: (x: float32, y: float32, dx: float32, dy: float32, mods?: number) => void;
 	textInput: (text: string) => void;
 	keyDown: (e: NeonEvent) => void;
 	keyUp: (e: NeonEvent) => void;
@@ -960,43 +961,59 @@ export function createVoidHostWith(scene: Scene2D, font: FontId, defaultFamily: 
 		return false;
 	};
 
-	// Bubbles from the deepest node under the point; locationX/Y are relative to that target.
-	const pointerAt = (name: string, x: float32, y: float32, ev: NeonEvent): void => {
-		if (!anyHandler(name)) { return; }
-		const target = deepestAt(root, x, y, null);
-		if (target === null) { return; }
+	let captured: VoidNode | null = null;
+	let capturedButton: int32 = 0;
+
+	// From onPointerDown until that button's release, the pressed node keeps the pointer, as RN's touch target does.
+	const pointerTarget = (x: float32, y: float32): VoidNode | null => {
+		if (captured !== null && !(captured as VoidNode).disposed && attached(captured as VoidNode)) { return captured; }
+		return deepestAt(root, x, y, null);
+	};
+
+	// Bubbles from the target; locationX/Y are relative to it, even outside its box.
+	const pointerAt = (name: string, target: VoidNode | null, x: float32, y: float32, ev: NeonEvent): void => {
+		if (target === null || !anyHandler(name)) { return; }
 		const at = (target as VoidNode).ref.globalToLocal(vec2(x, y));
 		ev.locationX = at.x;
 		ev.locationY = at.y;
 		fireAlong(pathFrom(target), name, ev);
 	};
 
-	const pointerEvent = (type: string, x: float32, y: float32, button: int32, pressed: boolean): NeonEvent => {
+	const pointerEvent = (type: string, x: float32, y: float32, button: int32, pressed: boolean, mods?: number): NeonEvent => {
 		const ev = neonEvent(type);
+		ev.timeStamp = performance.now();
 		ev.x = x;
 		ev.y = y;
 		ev.button = button;
 		ev.pressed = pressed;
+		setEventMods(ev, ((mods ?? 0) as uint16) as BitSet<AreaKeyMod>);
 		return ev;
 	};
 
-	const pointerDown = (x: float32, y: float32, button: int32): void => {
-		pointerAt("onPointerDown", x, y, pointerEvent("pointerdown", x, y, button, true));
+	const pointerDown = (x: float32, y: float32, button: int32, mods?: number): void => {
+		const target = pointerTarget(x, y);
+		if (captured === null && target !== null) {
+			captured = target;
+			capturedButton = button;
+		}
+		pointerAt("onPointerDown", target, x, y, pointerEvent("pointerdown", x, y, button, true, mods));
 	};
 
-	const pointerMove = (x: float32, y: float32, button: int32, pressed: boolean): void => {
-		pointerAt("onPointerMove", x, y, pointerEvent("pointermove", x, y, button, pressed));
+	const pointerMove = (x: float32, y: float32, button: int32, pressed: boolean, mods?: number): void => {
+		pointerAt("onPointerMove", pointerTarget(x, y), x, y, pointerEvent("pointermove", x, y, button, pressed, mods));
 	};
 
-	const pointerUp = (x: float32, y: float32, button: int32): void => {
-		pointerAt("onPointerUp", x, y, pointerEvent("pointerup", x, y, button, false));
+	const pointerUp = (x: float32, y: float32, button: int32, mods?: number): void => {
+		const target = pointerTarget(x, y);
+		if (captured !== null && button === capturedButton) { captured = null; }
+		pointerAt("onPointerUp", target, x, y, pointerEvent("pointerup", x, y, button, false, mods));
 	};
 
-	const wheel = (x: float32, y: float32, dx: float32, dy: float32): void => {
-		const ev = pointerEvent("wheel", x, y, 0 as int32, false);
+	const wheel = (x: float32, y: float32, dx: float32, dy: float32, mods?: number): void => {
+		const ev = pointerEvent("wheel", x, y, 0 as int32, false, mods);
 		ev.deltaX = dx;
 		ev.deltaY = dy;
-		pointerAt("onWheel", x, y, ev);
+		pointerAt("onWheel", deepestAt(root, x, y, null), x, y, ev);
 	};
 
 	const keyDown = (e: NeonEvent): void => {
