@@ -1,6 +1,8 @@
 import { NeonEvent } from "../../src/render/event";
 import { NeonNode } from "../../src/render/hostTypes";
-import { renderToMarkup } from "../../src/render/ssr";
+import { renderToMarkup, renderToStream, SsrMarkup } from "../../src/render/ssr";
+import { sleepAsync } from "std/core/promise";
+import { asyncPage, Note } from "./asyncPage";
 import {
 	clampedApp,
 	docsAtStart,
@@ -21,7 +23,13 @@ function served(name: string, app: NeonNode): string {
 	return JSON.stringify(name) + ":" + JSON.stringify(renderToMarkup(app));
 }
 
-function main(): void {
+async function fromServer(n: int32): Promise<Note> {
+	await sleepAsync(3);
+	return { text: "server says", n: n };
+}
+
+async function main(): Promise<void> {
+	const streamed: SsrMarkup = await renderToStream(asyncPage(fromServer));
 	const pages: string[] = [
 		served("docs", docsAtStart()),
 		served("scroll", scrollApp((e: NeonEvent): void => {})),
@@ -36,6 +44,7 @@ function main(): void {
 		served("lines", linesApp()),
 		served("switches", switchesApp()),
 		served("textareas", textareasApp()),
+		JSON.stringify("async") + ":" + JSON.stringify(streamed),
 	];
 	console.log("{" + pages.join(",") + "}");
 }
