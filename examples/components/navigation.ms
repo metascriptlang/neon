@@ -1,4 +1,4 @@
-import { Accessor, createSignal } from "../../src/core/signal";
+import { Accessor, createSignal, untrack } from "../../src/core/signal";
 import { createStyles, styleOf } from "../../src/macros/ui/style";
 import { For } from "../../src/macros/ui/flow";
 import { NeonNode } from "../../src/render/node";
@@ -121,9 +121,9 @@ function ItemDetail(props: ScreenProps<ItemParams>): NeonNode {
 
 function ItemEdit(props: ScreenProps<ItemParams>): NeonNode {
 	const navigation = props.navigation;
-	const params = props.route.params();
+	const params = untrack((): ItemParams | null => props.route.params());
 	const item = itemOf(params === null ? 1 : (params as ItemParams).id);
-	const [draft, setDraft] = createSignal<string>(item.name());
+	const [draft, setDraft] = createSignal<string>(untrack((): string => item.name()));
 	const save = (): void => {
 		item.rename(draft());
 		navigation.goBack();

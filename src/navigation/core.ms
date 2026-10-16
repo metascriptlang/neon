@@ -453,7 +453,7 @@ export class Navigation<P> {
 		writeOverrides: Setter<ScreenOptions>,
 	) {
 		this.core = core;
-		this.registrationKey = readRegistrationKey(config.navigationKey);
+		this.registrationKey = untrack((): string => readRegistrationKey(config.navigationKey));
 		this.route = route;
 		this.config = config;
 		this.writeParams = writeParams;

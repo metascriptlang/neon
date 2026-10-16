@@ -188,7 +188,7 @@ export function TabView(props: {
 	const preloadProp = props.lazyPreloadDistance;
 	const placeholder = props.renderLazyPlaceholder;
 	const positionProp = props.tabBarPosition;
-	const controller = new PageController(indexProp === null ? 0 : (indexProp as Accessor<number>)());
+	const controller = new PageController(indexProp === null ? 0 : untrack((): number => (indexProp as Accessor<number>)()));
 	const selected = (): number => controller.selectedPage();
 
 	const changed = (at: number): void => {

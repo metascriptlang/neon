@@ -1,4 +1,4 @@
-import { Accessor, Signal, accessor } from "../core/signal";
+import { Accessor, Signal, accessor, untrack } from "../core/signal";
 import { onCleanup } from "../core/cleanup";
 import { createEffect } from "../core/effect";
 import { Cleanup, Dispose } from "../core/types";
@@ -180,7 +180,7 @@ function containerLink(initialState: NavigationState | null): ContainerSlot {
 		register: (routeKey: string, child: NavigatorLink): NavTarget | null => {
 			if (root !== null) { throw new Error("NavigationContainer holds one root navigator"); }
 			root = child;
-			initial = child.state();
+			initial = untrack((): NavigationState => child.state());
 			const target = waiting;
 			waiting = null;
 			return target;
@@ -268,7 +268,7 @@ export function NavigationContainer(props: {
 	state.changed = (): void => {
 		changes.set(changes.peek() + 1);
 		if (stateChange !== null && state.ready) {
-			(stateChange as (state: NavigationState) => void)(link.state());
+			(stateChange as (state: NavigationState) => void)(untrack((): NavigationState => link.state()));
 		}
 	};
 	let history: ((session: RoutingSession) => Dispose) | null = null;
