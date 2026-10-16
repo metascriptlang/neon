@@ -17,6 +17,7 @@ import { Host, HostNode } from "../../render/hostTypes";
 import { Row, makeRow, mountAt, removeRow } from "../../render/reconcile";
 import { List } from "../../core/list";
 import { listRegion } from "../../render/listRegion";
+import { unclaimed } from "../../render/claim";
 
 function fallbackRow(fb: NeonNode | null): (() => Row) | null {
 	if (fb === null) { return null; }
@@ -122,6 +123,12 @@ function mountedUnder(children: NeonNode, context: ContextEntry | null, state: M
 	};
 }
 
+function newHolder(host: Host): HostNode {
+	let holder: HostNode | null = null;
+	unclaimed(host, (): void => { holder = host.createElement("view"); });
+	return holder as HostNode;
+}
+
 type ErroredFallback = (err: Accessor<Error>, reset: () => void) => NeonNode;
 
 function errorRows(host: Host, children: NeonNode, fallbackOf: ErroredFallback, failure: Signal<Error | null>, state: MountedState, server: boolean): Accessor<Row[]> {
@@ -129,7 +136,7 @@ function errorRows(host: Host, children: NeonNode, fallbackOf: ErroredFallback, 
 	let fallback: NeonNode | null = null;
 	let contentRow: Row | null = null;
 	let boundaryOwner: Computation | null = null;
-	const holder = host.createElement("view");
+	const holder = newHolder(host);
 	onCleanup((): void => { host.release(holder); });
 	const showsContent = createErrorBoundary<boolean>(
 		(): boolean => {
@@ -203,7 +210,7 @@ export function Errored(props: {
 
 function loadingRows(host: Host, children: NeonNode, fallback: NeonNode | null): Accessor<Row[]> {
 	const state = new MountedState();
-	const holder = host.createElement("view");
+	const holder = newHolder(host);
 	onCleanup((): void => { host.release(holder); });
 	let contentRow: Row | null = null;
 	const showsContent = createLoadingBoundary<boolean>(
