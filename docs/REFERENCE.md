@@ -173,3 +173,21 @@ section, an entry whose verdict changes keeps its ID, a removed entry leaves its
 - **Why:** a `NeonNode` pushes its nodes into a parent (PR-1), so a region that sits at the top of a parked row has the holder, not the page, as its parent when it next updates. The anchor is the one node that always sits where the rows go.
 - **Pin:** `tests/render/keepRows.test.ms`
 - **Checked:** 2026-10-16, read and measured on the mock host.
+
+### RD-7 · A server async value travels as a typed JSON string, not as seroval
+
+- **Verdict:** DIVERGE-INTENTIONAL
+- **Solid:** the server serializes each async value with seroval into the `_$HY.r` global, keyed by owner id (`packages/web/serialization/src/serializer.ts:144, 182-209`), and the client evaluates the JS that seroval wrote.
+- **MS:** `renderToStream` (`src/render/ssr.ms`) writes `<script>(self._$HY||(self._$HY={r:{},e:{}})).r["<id>"]="<json>"</script>`, where `<json>` is `JSON.stringify<T>` derived from the memo's `T` at compile time and escaped by `scriptLiteral` (`src/render/hydrationRecords.ms`). A rejected memo writes its sanitized message into `.e["<id>"]`. The client decodes with `JSON.parse<T>` (`src/render/hydrateMemo.ms`), and a decode failure names the id and the decoder's error.
+- **Why:** seroval walks a value by reflection, which C does not have. A typed JSON codec gives the same bytes on C and JS. A `T` that JSON cannot encode is refused at compile time, not when the page is served. Rejections get their own `.e` map because the JSON codec refuses a generic value-or-error wrapper.
+- **Pin:** `tests/render/renderToStreamServer.test.ms` (record bytes and escaping), `tests/browser/hydrateAsync.test.ms` (hydrate reads the record, zero requests)
+- **Checked:** 2026-10-16, read and measured on C, JS and Chrome.
+
+### RD-8 · The tracking run of an adopted value is a real run on C
+
+- **Verdict:** DIVERGE-INTENTIONAL
+- **Solid:** a hydrating compute that adopts a serialized value runs once to record its dependencies, with the global `fetch` and `Promise` swapped for fakes that never settle, and its result is discarded (`packages/solid/src/client/hydration.ts:491-525` `subFetch`; RFC `documentation/solid-2.0/05-async-data.md` "The tracking run").
+- **MS:** `traceRun` (`src/render/traceRun.ms`) swaps `fetch` and `Promise` on JS, as Solid does. On C it runs the compute and discards the result.
+- **Why:** C has no global `fetch` to swap. Solid's run already leaks a request after a non-fake `await` (the RFC's documented limit), and on C every adopted compute behaves like that case. What the page shows is the same on both backends; only the discarded request differs.
+- **Pin:** `tests/render/hydrateAsync.test.ms` (zero requests on JS, one discarded run on C)
+- **Checked:** 2026-10-16, measured on C and JS.
