@@ -833,6 +833,7 @@ export function createVoidHostWith(scene: Scene2D, font: FontId): VoidHost {
 			const p = live(parent, "insertBefore");
 			const n = live(node, "insertBefore");
 			refuseCycle(p, n, "insertBefore");
+			if (focusedNode !== null && within(focusedNode as VoidNode, n) && !attached(p)) { focus(null); }
 			const was = wasDirty();
 			const old = n.spanOwner;
 			if (inParagraph(p)) {

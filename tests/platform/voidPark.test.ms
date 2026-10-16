@@ -97,3 +97,27 @@ test "disposing an Errored with its content parked frees the parked nodes after 
 	assert liveAtCleanup, "the content cleanup ran while its nodes were alive";
 	assert parked.disposed && !parked.ref.isLive(), "the parked nodes are freed with the Errored";
 }
+
+test "a focused TextInput in content that gets parked loses focus, and the node survives" {
+	const vh = createVoidHost();
+	const [a, setA] = createSignal(0);
+	let again: (() => void) | null = null;
+	const content: NeonNode = (host: Host, parent: HostNode, before: HostNode | null): void => {
+		failsWhenOne(a);
+		el("textinput", [], [], text(""))(host, parent, before);
+	};
+	render(Errored({
+		children: content,
+		fallback: (err: Accessor<Error>, reset: () => void): NeonNode => { again = reset; return caughtView(err, reset); },
+	}), vh.host, vh.root);
+	const input = (vh.root as VoidNode).children[0];
+	vh.focus(input);
+	assert vh.focused() === input, "the input is focused";
+	setA(1);
+	assert vh.focused() === null, "parking took the focus away";
+	assert input.ref.isLive(), "the parked input is alive";
+	setA(0);
+	(again as () => void)();
+	assert (vh.root as VoidNode).children.indexOf(input) >= 0, "the same input came back";
+	assert vh.focused() === null, "and is not focused again";
+}

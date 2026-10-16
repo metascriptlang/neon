@@ -544,6 +544,11 @@ function isMounted(n: NativeNode): boolean {
 	return false;
 }
 
+function blurInputs(n: NativeNode): void {
+	if (n.isInput && n.view !== null) { niSetFocused(n.view, 0); }
+	for (const child of n.children) { blurInputs(child); }
+}
+
 function releaseNativeTree(n: NativeNode): void {
 	for (const child of n.children) { releaseNativeTree(child); }
 	if (n.eventTag !== 0) {
@@ -1016,6 +1021,7 @@ export function createNativeHost(): NativeHost {
 			if (ref === node) { return; }
 			const sameParent = n.parent === p;
 			const wasMounted = isMounted(n);
+			if (wasMounted && !isMounted(p)) { blurInputs(n); }
 			const current = sameParent ? childIndex(p, n) : -1;
 			if (sameParent && current === idx - 1) { return; }
 			if (sameParent && current < idx) { idx -= 1; }
