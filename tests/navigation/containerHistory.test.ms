@@ -21,7 +21,7 @@ import {
 	createRoutingSession,
 	createStackNavigator,
 } from "../../src/navigation/index";
-import { findLabel, visibleText } from "./navHarness";
+import { findLabel, settle, visibleText } from "./navHarness";
 
 interface ItemParams {
 	id: string;
@@ -242,9 +242,12 @@ test "an in-app navigation reaches the history without a sync" {
 	const pushed = take();
 	assert pushed === "push /shop;push /shop/product/5;", pushed;
 	assert app.memory.read().url === "/shop/product/5", app.memory.read().url;
+	log.mounts = "";
 	app.ref.goBack();
 	const popped = take();
 	assert popped === "go -1;", popped;
+	settle();
+	assert log.mounts === "", "the popped product leaves without mounting again: " + log.mounts;
 	assert app.memory.read().url === "/shop", app.memory.read().url;
 	app.ref.goBack();
 	assert take() === "go -1;";
