@@ -170,7 +170,9 @@ routing. `navigatorMotion.ms` stays the transition engine.
   - A traversal applies each level inside its own `flush`, so the next level reads its
     committed children. The mirror skips while a commit applies (Decompose's `isEnabled`)
     and also reads an epoch the commit bumps, because the registry's own drain runs after
-    the flag is reset.
+    the flag is reset. A participant that adds work to a restore, as the router settles
+    a redirected leaf, runs it inside the same suppressed commit (`suppressed`), since
+    each level's flush has already drained before that work starts.
   - One render effect walks the active branch from the root, and a pop records its
     count when the level changes: a disposed child publishes `[]` and queued effects
     run last in first out, so a per-level effect would read disposed models.
@@ -187,7 +189,7 @@ routing. `navigatorMotion.ms` stays the transition engine.
     `restore`. A malformed tree resolves before anything applies; a nested key that
     does not decode is found only after its parent level applied, since its decoder
     belongs to the child those keys create, so the binding puts the previous keys back
-    and resolves, in one batch. An entry whose whole snapshot, or whose router state,
+    and resolves, inside the same suppressed commit. An entry whose whole snapshot, or whose router state,
     does not parse resolves from its address the same way. With no address for the
     region, a malformed tree reports `IncompleteSnapshot`. `onBeforeNavigate` is asked before the fallback.
 - Reload restores the entry's structure (a TanStack mask with `unmaskOnReload:
