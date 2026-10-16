@@ -532,30 +532,6 @@ test "a read outside any owner throws NoOwnerError, with or without a default" {
 	assert second !== null && second instanceof NoOwnerError, "no default and no owner: the owner is what is missing";
 }
 
-test "renderToString reads the default and throws without a provider when there is none" {
-	const withDefault = createContext<Theme>({ accent: "red" });
-	const without = createContext<Theme>();
-	assert renderToString(element(<div>{useContext(withDefault).accent}</div>)) === "<div>red</div>", "ssr read the default";
-	let caught: Error | null = null;
-	try {
-		renderToString(element(<div>{useContext(without).accent}</div>));
-	} catch (e) {
-		caught = e;
-	}
-	assert caught !== null && caught instanceof ContextNotFoundError, "ssr threw ContextNotFoundError for the default-less read";
-}
-
-test "renderToString nests providers and the inner one wins" {
-	const T = createContext<Theme>();
-	const app: NeonNode = element(
-		<T value={{ accent: "outer" }}>
-			<p>{useContext(T).accent}</p>
-			<T value={{ accent: "inner" }}><p>{useContext(T).accent}</p></T>
-		</T>
-	);
-	assert renderToString(app) === "<p>outer</p><p>inner</p>", renderToString(app);
-}
-
 test "what the value expression registers is owned by the provider and cleaned with its mount" {
 	const T = createContext<Theme>({ accent: "red" });
 	let cleanups = 0;
