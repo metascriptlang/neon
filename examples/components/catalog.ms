@@ -1,4 +1,4 @@
-import { Accessor, accessor, createSignal } from "../../src/core/signal";
+import { Accessor, accessor, createSignal, untrack } from "../../src/core/signal";
 import { createStyles, styleOf } from "../../src/macros/ui/style";
 import { NeonNode } from "../../src/render/node";
 import { NeonEvent } from "../../src/render/event";
@@ -153,7 +153,7 @@ async function submitEdit(id: string, title: string, description: string, price:
 }
 
 function ProductEdit(props: { product: Accessor<Product>; cancel: () => void; saved: (p: Product) => void }): NeonNode {
-	const start = props.product();
+	const start = untrack((): Product => props.product());
 	const [title, setTitle] = createSignal(start.title);
 	const [price, setPrice] = createSignal(Math.round(start.price).toString());
 	const [description, setDescription] = createSignal(start.description);

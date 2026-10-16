@@ -1,4 +1,4 @@
-import { Accessor, accessor, createSignal } from "../../src/core/signal";
+import { Accessor, accessor, createSignal, untrack } from "../../src/core/signal";
 import { createStyles, styleOf } from "../../src/macros/ui/style";
 import { Show } from "../../src/macros/ui/flow";
 import { NeonNode } from "../../src/render/node";
@@ -142,7 +142,7 @@ function order(list: Song[]): string {
 function PlaylistScreen(props: ScreenProps): NeonNode {
 	const say = props.say;
 	const [playlist, setPlaylist] = createSignal<Song[]>(songs());
-	say(order(playlist()));
+	say(order(untrack((): Song[] => playlist())));
 	return <ReorderableFlatList data={playlist()} style={styles.body}
 		activeItemStyle={{ opacity: 0.85, backgroundColor: "#6c7086" }}
 		onReorder={(from: number, to: number): void => {
