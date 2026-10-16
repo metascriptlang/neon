@@ -180,16 +180,31 @@ function errorRows(host: Host, children: NeonNode, fallbackOf: ErroredFallback, 
 	});
 }
 
-function settledOnServer(rows: Accessor<Row[]>, state: MountedState): Accessor<Row[]> {
-	const settled = makeRow((host: Host, parent: HostNode, before: HostNode | null): void => {
-		const first = rows()[0];
-		mountAt(host, parent, before, first);
-		if (!state.failed) { return; }
-		flush();
-		removeRow(host, parent, first);
-		mountAt(host, parent, before, rows()[0]);
+type RowMount = (host: Host, parent: HostNode, before: HostNode | null) => Row | null;
+
+function spanOfMounted(mount: RowMount): Accessor<Row[]> {
+	let self: Row | null = null;
+	const outer = makeRow((host: Host, parent: HostNode, before: HostNode | null): void => {
+		const inner = mount(host, parent, before);
+		if (inner === null) { return; }
+		(self as Row).start = (inner as Row).start;
+		(self as Row).end = (inner as Row).end;
 	});
-	return accessor((): Row[] => [settled]);
+	self = outer;
+	return accessor((): Row[] => [outer]);
+}
+
+function settledOnServer(rows: Accessor<Row[]>, state: MountedState): Accessor<Row[]> {
+	return spanOfMounted((host: Host, parent: HostNode, before: HostNode | null): Row | null => {
+		let shown = rows()[0];
+		mountAt(host, parent, before, shown);
+		if (!state.failed) { return shown; }
+		flush();
+		removeRow(host, parent, shown);
+		shown = rows()[0];
+		mountAt(host, parent, before, shown);
+		return shown;
+	});
 }
 
 export function Errored(props: {
