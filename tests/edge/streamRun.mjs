@@ -70,7 +70,9 @@ async function streaming() {
 	assert.equal(response.status, 200);
 	const reader = response.body.getReader();
 	const decoder = new TextDecoder();
-	const first = await reader.read();
+	let stalled;
+	const first = await Promise.race([reader.read(), new Promise((_, fail) => { stalled = setTimeout(() => fail(new Error("no shell within 30 s while the slow read is held: the stream does not send its shell before a pending read settles")), 30000); })]);
+	clearTimeout(stalled);
 	assert.equal(first.done, false);
 	const shell = decoder.decode(first.value);
 	assert.match(shell, /waiting/, "the first chunk is the shell, with the fallback");
