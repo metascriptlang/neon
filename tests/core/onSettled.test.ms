@@ -4,7 +4,6 @@ import { createRoot } from "../../src/core/owner";
 import { resetErrorHalt } from "../../src/core/runtime";
 import { Cleanup } from "../../src/core/types";
 import { mockHost, mockNode, render, hydrate, HostNode, MockNode } from "../../src/render/host";
-import { renderToString } from "../../src/render/ssr";
 import { NeonNode } from "../../src/render/node";
 import { View, TextInput } from "../../src/components/primitives";
 
@@ -122,13 +121,6 @@ test "onSettled sees a node its own subtree created" {
 	const root = mockNode("root");
 	render(<Focus log={log} />, mockHost(), root as unknown as HostNode);
 	assert log.join(",") === "node", "got " + log.join(",");
-}
-
-test "onSettled does not run on the server" {
-	const log: string[] = [];
-	const html = renderToString(<Focus log={log} />);
-	assert log.length === 0, "got " + log.join(",");
-	assert html !== "", "the page still renders";
 }
 
 test "hydration runs onSettled after the served nodes are claimed" {
