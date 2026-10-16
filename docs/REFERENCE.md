@@ -136,3 +136,21 @@ section, an entry whose verdict changes keeps its ID, a removed entry leaves its
 - **Why:** `docs/RENDER-MODEL.md` "Hydration". A Neon mount creates nodes in document order, so position finds every node a key would, without an attribute on every template root.
 - **Pin:** `tests/render/hydrate.test.ms`, `tests/browser/hydrate.test.ms`
 - **Checked:** 2026-10-16, read.
+
+### RD-5 · A boundary parks its content in a holder it owns, and `Host.release` frees it
+
+- **Verdict:** DIVERGE-INTENTIONAL
+- **Solid:** the boundary's tree is a computed that holds the content as a heap value (`packages/signals/src/boundaries.ts:544`, `:550`); the output pass swaps between that value and the fallback (`:625`, `:657`) and the garbage collector frees what nothing holds.
+- **MS:** `errorRows` and `loadingRows` in `src/macros/ui/flow.ms` mount the content once in a `Row` whose `keep` is a holder node the boundary creates and never attaches; `removeRow` moves a kept row's span into it and `Host.release(holder)` frees what is parked when the boundary is disposed, after the content's owner (`src/render/reconcile.ms`, `src/render/hostTypes.ms`).
+- **Why:** C has no GC, so host nodes that nothing shows still need an owner and a free. The holder is that owner, and the content keeps its nodes and state through a fallback as it does in Solid. A tree that never finished mounting is freed, as Solid recomputes a tree that failed.
+- **Pin:** `tests/render/erroredKeep.test.ms`, `tests/render/loading.test.ms`, `tests/render/keepRows.test.ms`, `tests/platform/voidPark.test.ms`
+- **Checked:** 2026-10-16, read and measured on mock and void hosts.
+
+### RD-6 · A region resolves its parent through its anchor
+
+- **Verdict:** DIVERGE-INTENTIONAL
+- **Solid:** the top level is a value with no parent: `render` inserts it into the container it was given (`packages/universal/src/universal.ts:591`) and `insert` closes over a fixed `parent` (`:134`).
+- **MS:** `regionParent` in `src/render/claim.ms` asks `Host.parentOf(anchor)` at every update after the first, and `regionNode` (`src/render/node.ms`) and `listRegion` (`src/render/listRegion.ms`) reconcile into the answer.
+- **Why:** a `NeonNode` pushes its nodes into a parent (PR-1), so a region that sits at the top of a parked row has the holder, not the page, as its parent when it next updates. The anchor is the one node that always sits where the rows go.
+- **Pin:** `tests/render/keepRows.test.ms`
+- **Checked:** 2026-10-16, read and measured on the mock host.
