@@ -55,6 +55,7 @@ when (server) {
 	import { Computation, Dispose, NotReadyError } from "../core/types";
 	import { ServerContext, Fragments, Hole, Rules, ServerMarks, MAX_PASSES, withServerContext, pendingWaits, unconverged } from "../core/serverContext";
 	import { scriptLiteral } from "./hydrationRecords";
+	import { HOLES_FAILED, runHoles } from "./bind";
 
 	function joinClass(className: string, id: string): string {
 		return className === "" ? id : className + " " + id;
@@ -810,6 +811,7 @@ when (server) {
 		book: CssBook = new CssBook();
 		write: SsrWrite;
 		root: SsrNode = new SsrNode("ssr-root", PLAIN);
+		holes: Hole[] = [];
 		dispose: Dispose = (): void => {};
 
 		constructor() {
@@ -821,14 +823,46 @@ when (server) {
 
 	function rootPending(ctx: ServerContext, pass: StreamPass, n: NeonNode): Computation | null {
 		return withServerContext(ctx, (): Computation | null => {
+			ctx.holes = pass.holes;
 			try {
 				pass.dispose = asServer((): Dispose => render(n, writerHost(pass.write), pass.root as unknown as HostNode, ""));
 				return null;
 			} catch (e) {
 				if (e instanceof NotReadyError) { return (e as NotReadyError).source; }
 				throw e;
+			} finally {
+				ctx.holes = null;
 			}
 		});
+	}
+
+	function unfilled(html: string): void {
+		if (html.indexOf("<!--pl-#") >= 0 || html.indexOf("<!--pl-^") >= 0) { throw new Error("[SSR_HOLE_UNFILLED] a text spot's marker reached the page without its text"); }
+	}
+
+	function openSources(holes: Hole[]): Computation[] {
+		const open: Computation[] = [];
+		for (const h of holes) { if (h.value === null) { open.push(h.source); } }
+		return open;
+	}
+
+	// The shell is written once every text spot the root pass left open has its text, as Solid's renderToStream
+	// holds its shell for the root holes. False when a spot failed for a reason other than a pending read: the
+	// root mounts again, so an Errored around that spot catches it.
+	async function rootHoles(ctx: ServerContext, pass: StreamPass): Promise<boolean> {
+		const marks = ctx.marks as ServerMarks;
+		const holes = marks.kept(pass.root.body, pass.holes);
+		let open = openSources(holes);
+		let rounds = 1;
+		while (open.length > 0) {
+			if (rounds >= MAX_PASSES) { throw unconverged("the root's text spots"); }
+			rounds += 1;
+			for (const w of pendingWaits(ctx, open)) { await w; }
+			if (runHoles(ctx, holes) === HOLES_FAILED) { return false; }
+			open = openSources(holes);
+		}
+		pass.root.body = marks.fill(pass.root.body, holes);
+		return true;
 	}
 
 	function recordIds(ctx: ServerContext): string[] {
@@ -1000,14 +1034,15 @@ when (server) {
 			ctx.marks = stitchMarks(r.pass.write);
 			let rounds = 1;
 			let pending = rootPending(ctx, r.pass, n);
-			while (pending !== null) {
+			while (pending !== null || !(await rootHoles(ctx, r.pass))) {
 				if (rounds >= MAX_PASSES) { throw unconverged("the render"); }
-				for (const w of pendingWaits(ctx, [pending as Computation])) { await w; }
+				if (pending !== null) { for (const w of pendingWaits(ctx, [pending as Computation])) { await w; } }
 				r.pass = new StreamPass();
 				ctx.marks = stitchMarks(r.pass.write);
 				rounds += 1;
 				pending = rootPending(ctx, r.pass, n);
 			}
+			unfilled(r.pass.root.body);
 			r.cut("", r.pass.root.body);
 			const pass = r.pass;
 			let html = "";
@@ -1016,6 +1051,7 @@ when (server) {
 				for (let at = 0; at < ctx.loops.length; at += 1) { await ctx.loops[at]; }
 				if (ctx.failure === null) {
 					html = stitched(pass.root.body, ctx.fragments);
+					unfilled(html);
 					head = writtenHead(pass.write.headKids);
 				}
 			} finally {

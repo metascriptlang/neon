@@ -340,7 +340,7 @@ test "a bare read after a pending Loading settles both, and each fetches once" {
 	};
 	const out = await renderToStream(app);
 	assert out.html === "<p>loadingE=1</p><!----><p>bareE=2</p>", out.html;
-	assert ran("loading-e") === 2, "the first root pass, then the second root pass its bare read forced: " + ran("loading-e").toString();
+	assert ran("loading-e") === 1, "one root pass: the bare read is a hole, not a reason to mount the page again: " + ran("loading-e").toString();
 	assert fetched("loadingE") === 1 && fetched("bareE") === 1, fetched("loadingE").toString() + "/" + fetched("bareE").toString();
 }
 

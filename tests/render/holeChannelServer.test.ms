@@ -178,3 +178,87 @@ test "a text spot that fails once its source has settled takes the body channel,
 	assert out.html.includes("<em>caught nope</em>") && !out.html.includes("<p>"), out.html;
 	assert ran("failBody") === 2, "the hole channel once, the body channel once: " + ran("failBody").toString();
 }
+
+function rootPage(key: string, parts: string[], slow: boolean): NeonNode {
+	return counted(key, (host: Host, parent: HostNode, before: HostNode | null): void => {
+		for (const part of parts) {
+			if (part.startsWith("t:")) {
+				text(part.slice(2))(host, parent, before);
+			} else {
+				spot(key + part, slow, part.slice(2))(host, parent, before);
+			}
+		}
+	});
+}
+
+async function rootParity(key: string, parts: string[]): Promise<string> {
+	const held = await renderToStream(rootPage(key + "-held", parts, true));
+	const once = await renderToStream(rootPage(key + "-once", parts, false));
+	if (held.html !== once.html) { return key + ": [" + held.html + "] against [" + once.html + "]"; }
+	if (ran(key + "-held") !== 1) { return key + ": the root body ran " + ran(key + "-held").toString() + " times"; }
+	return "";
+}
+
+test "a root whose text spots pend writes the bytes a ready one writes and runs its body once" {
+	let bad = "";
+	bad += await rootParity("rvalue", ["h:v"]);
+	bad += await rootParity("rempty", ["h:"]);
+	bad += await rootParity("rbefore", ["t:a", "h:v"]);
+	bad += await rootParity("rafter", ["h:v", "t:b"]);
+	bad += await rootParity("rafterEmpty", ["h:", "t:b"]);
+	bad += await rootParity("rchain", ["h:v", "h:w", "t:b"]);
+	bad += await rootParity("rchainEmpty", ["h:", "h:w", "h:"]);
+	assert bad === "", bad;
+}
+
+test "a pending memo made outside a component and read in its spot: the body runs once and the memo computes once" {
+	const app: NeonNode = counted("wrapperApp", (host: Host, parent: HostNode, before: HostNode | null): void => {
+		const data = createAsyncMemo((p: string | null): Promise<string> => {
+			fetches.push("wrapper");
+			return afterStr(5, "w");
+		});
+		const child = counted("wrapperChild", el("p", [], [], dynText((): string => "v=" + data())));
+		child(host, parent, before);
+		el("i", [], [], text("after"))(host, parent, before);
+	});
+	const out = await renderToStream(app);
+	assert out.html === "<p>v=w</p><i>after</i>", out.html;
+	assert ran("wrapperApp") === 1 && ran("wrapperChild") === 1, ran("wrapperApp").toString() + "/" + ran("wrapperChild").toString();
+	assert fetched("wrapper") === 1, "computed " + fetched("wrapper").toString() + " times";
+}
+
+test "a root spot that settles later than another spot behind it is waited for, and the root body runs once" {
+	const app: NeonNode = counted("rootTwo", (host: Host, parent: HostNode, before: HostNode | null): void => {
+		el("p", [], [], spot("rootFirst", true, "a", 4))(host, parent, before);
+		el("p", [], [], spot("rootSecond", true, "b", 25))(host, parent, before);
+	});
+	const out = await renderToStream(app);
+	assert out.html === "<p>a</p><p>b</p>", out.html;
+	assert ran("rootTwo") === 1 && fetched("rootFirst") === 1 && fetched("rootSecond") === 1, ran("rootTwo").toString();
+}
+
+test "a root text spot that fails once its source has settled takes the body channel, so the Errored around it catches the error" {
+	const failing: NeonNode = counted("rootFail", (host: Host, parent: HostNode, before: HostNode | null): void => {
+		const data = createAsyncMemo((p: int32 | null): Promise<int32> => failAfter(4));
+		el("p", [], [], dynText((): string => data().toString()))(host, parent, before);
+	});
+	const out = await renderToStream(Errored({
+		children: failing,
+		fallback: (err: Accessor<Error>, reset: () => void): NeonNode => el("em", [], [], text("caught " + err().message)),
+	}));
+	assert out.html.includes("<em>caught nope</em>") && !out.html.includes("<p>"), out.html;
+	assert ran("rootFail") === 2, "the hole channel once, the body channel once: " + ran("rootFail").toString();
+}
+
+test "a boundary that settles before a root text spot does is written after the shell" {
+	const app: NeonNode = (host: Host, parent: HostNode, before: HostNode | null): void => {
+		Loading({ children: el("i", [], [], spot("shellQuick", true, "q", 3)), fallback: waiting })(host, parent, before);
+		el("p", [], [], spot("shellSlow", true, "s", 40))(host, parent, before);
+	};
+	const chunks: string[] = [];
+	const r = streamRender(app);
+	r.pipe({ write: (chunk: string): void => { chunks.push(chunk); }, end: (): void => {} });
+	await r.markup();
+	assert chunks.length >= 2 && chunks[0].indexOf("<template id=\"pl-") >= 0 && chunks[0].indexOf("$df(") < 0, "the shell comes first: " + chunks.join(" || ");
+	assert chunks[0].indexOf("<p>s</p>") >= 0, "and holds the root spot's text: " + chunks[0];
+}
