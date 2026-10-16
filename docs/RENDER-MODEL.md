@@ -53,8 +53,8 @@ static vs dynamic; it is *does the SHAPE of this subtree change while it runs?*
 
 A dynamic VALUE (`{count()}`, `class={cls()}`, `style={s()}`) never changes the node
 count, so a fully reactive element is still template-emitted: six changing text spots
-are six effects over a skeleton whose shape never moves. A dynamic STRUCTURE (`<For>`,
-`<Show>`, `<Index>`, a component) is a NeonNode produced at run time and called where
+are six render effects over a skeleton whose shape never moves. A dynamic STRUCTURE (`<For>`,
+`<Show>`, `<Repeat>`, a component) is a NeonNode produced at run time and called where
 it stands; the macro never guesses a node count.
 
 A `{child}` expression is routed by its TYPE (`isNodeType`: a function type whose
@@ -84,20 +84,25 @@ sets one to `null` and the runtime takes the coarser path with the same result.
 
 ```
 COMPILE ──► MOUNT ──► UPDATE (×n) ──► DISPOSE
- macro      call       effects fire     owner tree
- expand     ONCE       individually     kills subtree
+ macro      call       flush runs the   owner tree
+ expand     ONCE       dirty effects    kills subtree
 ```
 
 - **COMPILE** (macro): JSX → a NeonNode. Static facts (tags, static attrs, which spots
   are dynamic, the walk path to each) are decided here, never re-derived at runtime.
 - **MOUNT** (`render`, or a parent node calling a child): the node runs once. Static
-  text/attrs are applied and never touched again; every dynamic spot plants ONE effect
-  whose first run subscribes it to the signals it reads; a component runs its body
+  text/attrs are applied and never touched again; every dynamic spot plants ONE render effect
+  (`createRenderEffect`: a compute that reads the signals and subscribes to them, an apply that
+  writes the host) whose first run happens at mount; a component runs its body
   exactly once (untracked, under the mounting owner) and its result is called at the
-  same position; a region plants an anchor + a reconcile effect; a fragment owns no
+  same position; a region plants an anchor + a reconcile render effect; a fragment owns no
   host node and places each of its roots in front of `before`.
-- **UPDATE**: no render. A signal notifies exactly its subscribed effects; each
-  performs one host op. Cost = number of spots that actually changed, independent of
+- **UPDATE**: no render. A write marks the computations that read it, and a flush runs the
+  marked render effects, then the user effects (`createEffect`, `onSettled`), which never run on
+  the server; each render effect performs one host op. A write outside `flush(fn)` flushes at once
+  today, where Solid defers to a microtask and C has none (compiler card
+  `2026-10-15-await-of-a-settled-promise-continues-synchronously-on-c.md`); `flush(fn)` groups
+  its writes into one drain. Cost = number of spots that actually changed, independent of
   tree size.
 - **DISPOSE**: owner-tree teardown — deterministic, recursive, fires `onCleanup`,
   kills every subscription underneath. Never waits for GC.
@@ -315,10 +320,22 @@ No background walker, no whole-tree diff scheduler. Two update paths only:
   and touches no node. No op reads the list, builds an array or diffs. A row of a `ForList` carries
   `Accessor<T>` rather than bare `T`, which is what lets `set` be a signal write instead of a
   rebuild. `replaceAll` is the escape hatch: it drops the queue, matches each new item to the row
-  that carried it — by the optional `key` function when one is given, by item identity otherwise,
+  that carried it — by the optional `keyed` function when one is given, by item identity otherwise,
   like `<For>` — and hands the result to `reconcileArrays`, so a reorder still moves nodes and a row
   keeps its DOM, its focus and its scope. A plain array in `<For each={xs}>` keeps the structural
   path untouched.
+
+## Boundaries — `Errored` and `Loading` keep their content behind the fallback
+
+`<Errored>` over `createErrorBoundary` and `<Loading>` over `createLoadingBoundary`
+(`errorRows` and `loadingRows` in `src/macros/ui/flow.ms`) mount their children once. While the
+fallback shows, the children's host nodes and state stay alive behind it and come back as the
+same nodes when the boundary clears; the content is not rebuilt, as in Solid, where the boundary
+holds it as a value. Where the nodes wait, and how a region inside them finds its parent,
+are `docs/REFERENCE.md` RD-5 and RD-6; this section does not restate them. A reset recomputes only
+the effect that failed, and content that never finished mounting is freed, not kept
+(`tests/render/erroredKeep.test.ms`). On the server `Errored` sends a generic error outside a dev
+build (`tests/render/errorBoundaryServer.test.ms`).
 
 ## Hydration — a served page's nodes become the live tree
 
@@ -565,9 +582,9 @@ lowers through the converter to a multi-root NeonNode. There is no fragment-spec
 rule left — where no NeonNode is expected (`a ?? <>…</>`) the compiler rejects a fragment
 with the same error it gives an element there.
 
-**Regions.** `For` / `Index` / `Show` (`src/macros/ui/flow.ms`) each return
+**Regions.** `For` / `Repeat` / `Show` (`src/macros/ui/flow.ms`) each return
 `regionNode(fn)` (`src/render/node.ms`): an anchor text node placed at the region's
-position, plus one effect that reconciles the region's rows in front of that anchor.
+position, plus one render effect that reconciles the region's rows in front of that anchor.
 A `Row` (`src/render/reconcile.ms`) is a NeonNode plus the span of host nodes it
 produced (`start`…`end`) and the owner it was created under. `reconcileArrays` mounts
 a row that is not in the host yet directly at its final position (`mountAt`), moves a
@@ -627,6 +644,10 @@ for N mounts of a 6-cell row (N = 1000 unless the table says otherwise), MIN acr
 rounds and runs (a mean bakes one CPU-stolen round into the answer). Until 2026-09-19 Neon had two
 emitters — a description tree mounted by a shared walker ("tree") and mount
 instructions emitted per site ("direct") — and the first two tables compare them.
+
+Sections dated before 2026-10-15 measure the engine as it was before the Solid 2.0 migration, and
+they are kept as history of those numbers: the names in them (`mapArrayKeyed`, the `key` prop of `For` and `ForList`, now `keyed`) are the old engine's, and
+the 2026-10-15 sections re-measure on the 2.0 engine.
 
 ### 2026-08-11/12 — real DOM, headless Chrome
 
@@ -967,7 +988,7 @@ index parameter, which the element macro now decides by reading the row arrow's 
 Verdict: five cells of six get 22–33% cheaper and one gets 61% dearer. Remove-half is the only cell
 that DISPOSES rows, and a root holding fewer closures costing more to dispose is backwards; three
 hypotheses were tested and refuted (a shared accessor captured by every row, the zero-length setter
-arrays, run order), so it is open in BUGS.md §7 rather than explained here. The same inversion was
+arrays, run order), so it was left open in BUGS.md §7 rather than explained here; the 2026-10-15 section below finds it gone on the 2.0 engine. The same inversion was
 seen on 2026-09-20 by a hand-copied index-free `mapArray` in another arc, so it belongs to dropping
 the machinery, not to this implementation.
 
@@ -1124,13 +1145,13 @@ not a change inside this one.
 
 ### 2026-10-04 — a provider's value on its owner, against typed slots on the context
 
-The shape (`src/render/context.ms`): a Provider's scope carries one `context` entry on its own owner,
+The shape (`src/render/context.ms`): a provider's scope (`<Ctx value>`) carries one `context` entry on its own owner,
 keyed by the context object and linked (`next`) to the entry that scope inherited. Every computation,
-root and `catchError` scope inherits its owner's entry when it is created, so `useContext` walks the
+root and boundary scope inherits its owner's entry when it is created, so `useContext` walks the
 providers above it, never the owners in between, to the first entry with its key. The value is held as
 `unknown` and read back with `entry.value as Held<T>`, a cast the compiler tests on C and JS.
 
-The inheritance is Solid's: a new computation takes its owner's `context` object
+The inheritance is Solid 1.x's (read then, not re-read on 2.0): a new computation takes its owner's `context` object
 (`packages/solid/src/reactive/signal.ts:1444` at `0af2c2b4`), a provider replaces it with a spread copy
 holding its value (`:1762`), and `useContext` reads `Owner.context[id]` once (`:1216`). Neon links the
 entries instead of copying them: providing costs one entry, not a copy of every context above, and a
@@ -1138,14 +1159,14 @@ read walks only the providers on its path. Before 2026-10-04 Neon walked `owner.
 Nim Neon (`~/projects/neon/src/core/component.nim:45`, `ComponentContext.data: Table[string, pointer]`
 walked through `parent`), whose `cast[pointer]` in and `cast[T]` out read memory unchecked.
 
-Rejected: typed slots on `Context<T>` (`510b5cf`). Each Provider pushed `{ owner, read }` into
+Rejected: typed slots on `Context<T>` (`510b5cf`). Each provider pushed `{ owner, read }` into
 `ctx.slots` and every `useContext` scanned the slots at each owner on its walk, so with N live
 providers of one context a read costs O(N) and mounting N provider rows O(N²). It kept the value
 typed without `unknown`; the cost below is why it went. Not taken either: a `Map` keyed by owner on
 the context, offered as a stopgap while the compiler still refused `as Provided<T>`; the cast was
 fixed in the compiler instead (recompiler `paper/NIM-REF.md` CK-127).
 
-How it was measured. `bench/providerRows.ms`: N Provider rows of one context, each mounting one
+How it was measured. `bench/providerRows.ms`: N provider rows of one context, each mounting one
 consumer, on the mock host; mount time in ms, lower is better. msc v0.3.0 (`0f1ecc060`), release C
 and `--target=js` on node v24.1.0; slots = tree `16bd9048` (`510b5cf`), owner = tree `585c0f60`;
 one full series each, then 3 alternating rounds at 8000 rows; load 16 on 14 cores.
@@ -1190,7 +1211,7 @@ min of 7, three rounds: walk 57.9–84.2 ms C / 16.2–31.4 ms JS, inherited 52.
 2. **A component body runs exactly once** — any second run is a serious bug
    (`bodyRuns`-counter test pattern).
 3. **Every dynamic spot = one effect, created at mount, under the mounting
-   owner** — never at build time.
+   owner**, a render effect — never at build time.
 3a. **Only a spot that can observe something gets a computation.** Solid's rule
    (`babel-plugin-jsx-dom-expressions`): an expression carrying a call or a
    property read is reactive; a bare identifier or literal is resolved once at
@@ -1265,8 +1286,8 @@ is `Accessor<T>` (or `Accessor<T> | null`) and the value is not already an
 `Accessor`; every other prop crosses as written, whatever its name or shape, so
 `renderItem={row}` and `onEndReachedThreshold={1}` both land on their declared types.
 An undeclared prop, a field mixing `Accessor` with a non-null type, or a tag that
-names nothing in scope is a macro error (`tests/macros/run.sh`). `For`/`Index`
-`each`, `Show` `when` and `FlatList` `data` are `Accessor<…>` too, so a hand-written
+names nothing in scope is a macro error (`tests/macros/run.sh`). `For` `each`,
+`Repeat` `count`, `Show` `when` and `FlatList` `data` are `Accessor<…>` too, so a hand-written
 call passes a signal (`each: items`) or `accessor(() => expr)`. `View`/`Text`/`Pressable`/`TextInput` declare `style?: Accessor<Style>
 | null`, `class?: Accessor<string> | null`, `delayLongPress?: Accessor<number> |
 null`, `value?: Accessor<string> | null`; `Context.provider` (the tag `<Ctx value=…>`) takes `value:

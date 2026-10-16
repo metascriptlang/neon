@@ -1,32 +1,29 @@
 # Solid parity — what Neon still owes the model it copies
 
-Neon's reactivity is Solid's, by decision. The goal is parity of **concepts**, not of source: every
-core idea Solid has, Neon has, localized to MetaScript — and where a compile step can replace a
-runtime mechanism Solid needs only because JavaScript cannot see shapes, Neon takes the compiled
-form instead. This file is the tracker. **The detail of each row lives in its card**, one per row,
-under `~/metascript/.wt/`; keep the row here to one line.
-
-Audited 2026-09-21 against `src/core/` (8 files, 553 lines) and `src/render/`.
+Neon's reactivity is Solid 2.0's (`~/projects/solid-next` at `84dada77`), by decision. The goal is
+parity of **concepts**, not of source: every core idea Solid has, Neon has, localized to
+MetaScript — and where a compile step can replace a runtime mechanism Solid needs only because
+JavaScript cannot see shapes, Neon takes the compiled form instead. This file is the tracker.
+**The detail of each open row lives in its card**, one per row, under `~/metascript/.wt/`; keep the
+row here to one line.
 
 ## Already there
 
-`createSignal` · `createEffect` · `createMemo` · `createRoot` · `onCleanup` · `untrack` · `batch` ·
-`runWithOwner` · `getOwner` · owner tree with scoped cleanup · a two-lane queue that drains pure
-computations before effects, so no downstream effect reads a stale memo · `createContext` /
-`useContext` on context entries every owner inherits, the value read once when the provider mounts · `createComponent` running the body untracked · `mapArray` / `indexArray` ·
-`<Show>` / `<For>` / `<Index>` · `renderToString` · `createSelector`.
+What `src/index.ms` exports from `src/core/` and from `src/macros/ui/flow.ms`, less the rows below.
+The core is Solid 2.0's graph, scheduler and effect split, read from `packages/signals`; the places
+Neon departs from it are in `docs/REFERENCE.md`.
 
 ## Missing
 
 | # | concept | what it costs to be without it | card |
 |---|---|---|---|
-| 1 | **store** — `createStore`, `produce`, `reconcile`, `unwrap`, `createMutable` | no nested reactivity: a write anywhere in an object invalidates every reader of it. The compiler replaces Solid's `Proxy` with one signal per field, and makes a wrong path a type error | `solid-store.md` |
-| 2 | **async** — `createResource`, `<Suspense>`, `startTransition` / `useTransition`, `lazy` | no async story at all. Needs a pending state on `Computation`, so the shape is decided early even if it ships late | `solid-async.md` |
-| 3 | ~~error channel — `catchError`, `<ErrorBoundary>`~~ | done `12a9456` (2026-09-22); since `00de615` (2026-09-25) the handler and the fallback receive the thrown `Error` itself, the same object on C and `--target=js` (`tests/render/errorBoundary.test.ms`). A thrown string arrives as an `Error` carrying it, and a thrown non-`Error` value is a compile error (recompiler `1debbcc8`) | ~~`solid-error-boundary.md`~~ |
-| 4 | ~~the third effect tier — a deferred `createEffect`, and `onMount`~~ | done `5f5376a` (2026-10-15), Solid 1.x `signal.ts` `25138e1c`: `createRenderEffect` is the immediate tier the framework binds with; `createEffect` created under a root, a batch or an update waits until the outermost one ends and runs after every render effect, in creation order; `onMount` is an untracked `createEffect`; neither runs on the server; `hydrate` runs them after the served nodes are claimed (`tests/core/effect.test.ms`). Neon's pure and render queues still drain last-in first, where Solid's run in order | ~~`solid-effect-tiers.md`~~ |
-| 6 | `equals` on `createSignal` | equality is hardcoded to identity, so a value mutated in place can never announce itself and there is no always-notify signal | `solid-signal-equals.md` |
-| 7 | `<Switch>` / `<Match>`, `<Dynamic>`, `<Portal>` | no n-way choice, no component-as-a-value, no mounting outside the subtree | `solid-control-flow.md` |
-| 8 | ~~`hydrate`, `createUniqueId`~~; resource serialization | `hydrate` and `createUniqueId` done `3309f37` (2026-10-13): a served page's nodes become the live tree by position, without Solid's `_hk` keys (`docs/RENDER-MODEL.md` "Hydration"; `tests/render/hydrate.test.ms`, `tests/browser/hydrate.test.ms`, `tests/edge/run.sh`). Still missing: a resource's value does not travel from the server to the client, which waits on row 2 | `solid-hydrate.md` |
+| 1 | **store** — `createStore`, `produce`, `reconcile`, `unwrap`, `createMutable`, and `createProjection`, the derived store that replaces the deleted `createSelector` | no nested reactivity: a write anywhere in an object invalidates every reader of it. The compiler replaces Solid's `Proxy` with one signal per field, and makes a wrong path a type error | `solid-store.md` |
+| 2 | **async** — transitions (`startTransition` / `useTransition`), optimistic updates, `action`, `lazy` | the rest of async is done in the Solid 2.0 arc: an async `createMemo` with `NotReadyError`, `isPending`, `latest`, `refresh`, and `createLoadingBoundary` / `<Loading>` (`tests/core/memoAsync.test.ms`, `memoError.test.ms`, `memoRefresh.test.ms`, `pendingLatest.test.ms`, `loadingBoundary.test.ms`, `tests/render/loading.test.ms`). The async entry ships as `createAsyncMemo` and is not exported from `src/index.ms`: Solid 2.0 has one `createMemo` for sync and async computes, and the overload waits on the compiler cards of 2026-10-16 named at `src/core/memo.ms`. `createResource` and `<Suspense>` are deleted, not ported. What is left has no consumer yet | `solid-async.md` |
+| 3 | ~~error channel — `createErrorBoundary`, `<Errored>`~~ | done in the Solid 2.0 arc, which deleted `catchError` and `<ErrorBoundary>`: the fallback receives the thrown `Error` itself, the same object on C and `--target=js` (`tests/render/errorBoundary.test.ms`; `docs/REFERENCE.md` SR-2). A render on the server sends a generic error outside a dev build (`tests/render/errorBoundaryServer.test.ms`). The content stays behind the fallback and comes back on reset (`tests/render/erroredKeep.test.ms`; `docs/REFERENCE.md` RD-5) | ~~`solid-error-boundary.md`~~ |
+| 4 | ~~the effect split — `createEffect(compute, effect)`, `createRenderEffect`, `onSettled`~~ | done in the Solid 2.0 arc, which deleted `onMount`, `createBindingEffect` and the one-function effects: `createRenderEffect` is the tier the framework binds with, `createEffect` and `onSettled` run after it, and neither runs on the server (`tests/core/effect.test.ms`, `onSettled.test.ms`, `effectServer.test.ms`) | ~~`solid-effect-tiers.md`~~ |
+| 6 | ~~`equals` on `createSignal`~~ | done in the Solid 2.0 arc: `createSignal(v, { equals, ownedWrite })`, where `equals: false` always notifies (`tests/core/signal.test.ms`) | ~~`solid-signal-equals.md`~~ |
+| 7 | `<Switch>` / `<Match>`, `<Dynamic>` | no n-way choice and no component-as-a-value. `<Portal>` exists (`src/render/portal.ms`, used by `Modal`). The name for Solid's `Switch` is open because React Native's `Switch` already holds it (`src/components/switch.ms`) | `solid-control-flow.md` |
+| 8 | ~~`hydrate`, `createUniqueId`~~; async values across the wire | `hydrate` and `createUniqueId` done `3309f37` (2026-10-13): a served page's nodes become the live tree by position, without Solid's `_hk` keys (`docs/RENDER-MODEL.md` "Hydration"; `tests/render/hydrate.test.ms`, `tests/browser/hydrate.test.ms`, `tests/edge/run.sh`). Still missing: an async memo's value does not travel from the server to the client | `solid-hydrate.md` |
 
 ## Taken from Solid 2.0: ref directive factories
 
