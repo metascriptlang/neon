@@ -41,13 +41,15 @@ async function settle(ctx: ServerContext): Promise<void> {
 	for (const id of ctx.started) { await ctx.slots.get(id).wait; }
 }
 
+function startedOf(c: ServerContext): int32 { return c.started.length; }
+
 function called(name: string): int32 {
 	let n = 0;
 	for (const c of calls) { if (c === name) { n += 1; } }
 	return n;
 }
 
-test "a pending async memo throws NotReadyError, then a memo at the same owner id adopts the settled value without calling compute" {
+test "a pending async memo throws NotReadyError, then a memo at the same owner id runs its compute again, then adopts the settled value" {
 	const ctx = new ServerContext();
 	const first = mounted(ctx, "adopt", 4, 42);
 	assert thrownBy(first) instanceof NotReadyError, "pending read";
@@ -55,7 +57,7 @@ test "a pending async memo throws NotReadyError, then a memo at the same owner i
 	await settle(ctx);
 	const again = mounted(ctx, "adopt", 4, 42);
 	assert again() === 42, "adopted";
-	assert called("adopt") === 1, "compute ran once: " + called("adopt").toString();
+	assert called("adopt") === 2, "compute ran again, its promise dropped: " + called("adopt").toString();
 	assert ctx.started.length === 1, "the adopted memo started nothing";
 	assert ctx.slots.get(ctx.started[0]).json === "42", "the record is the value's JSON";
 }
@@ -65,7 +67,7 @@ test "a pending slot read again before it settles joins the flight and starts no
 	mounted(ctx, "join", 4, 1);
 	const second = mounted(ctx, "join", 4, 1);
 	assert thrownBy(second) instanceof NotReadyError, "still pending";
-	assert called("join") === 1 && ctx.started.length === 1, "one flight";
+	assert called("join") === 2 && ctx.started.length === 1, "the compute ran again, one flight";
 	await settle(ctx);
 }
 
@@ -77,7 +79,7 @@ test "a memo made again at a slot still in flight reads the settled value once t
 	await settle(ctx);
 	await sleepAsync(2);
 	assert second() === 7, "the node made again holds the answer";
-	assert called("land") === 1 && ctx.started.length === 1, "one flight, one compute";
+	assert called("land") === 2 && ctx.started.length === 1, "one flight, the compute ran again";
 }
 
 test "a memo made again at a slot whose flight failed throws the failure once it lands" {
@@ -121,5 +123,5 @@ test "two contexts keep their own slots for the same owner id" {
 	await settle(b);
 	await settle(a);
 	assert mounted(a, "ctx-a", 8, 1)() === 1 && mounted(b, "ctx-b", 2, 2)() === 2, "each adopts its own";
-	assert called("ctx-a") === 1 && called("ctx-b") === 1, "no refetch";
+	assert called("ctx-a") === 2 && called("ctx-b") === 2 && startedOf(a) + startedOf(b) === 2, "compute again, no second flight";
 }

@@ -59,6 +59,8 @@ when (server) {
 		if (id === null) { throw new Error("[SERVER_ASYNC_WITHOUT_ID] an async memo on the server needs an owner id; render it under a root that carries one"); }
 		const known = ctx.slots.get(id);
 		if (known !== null) {
+			// A node made again runs its compute, then adopts the settled answer and drops the new flight: the answer, not the call, is what the render keeps (Solid server/signals.ts, `slot.s` branch before adoptSlot).
+			watch<T>(compute(prev), (value: Cell<T> | null, failure: Error | null): void => {});
 			if (known.failure !== null) { throw known.failure; }
 			if (known.settled) { return (known.cell as Cell<T>).value; }
 			joinFlight<T>(known, self, beginFlight(self), landValue);

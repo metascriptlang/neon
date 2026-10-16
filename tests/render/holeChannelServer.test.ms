@@ -131,7 +131,20 @@ test "a text spot in a script falls back to the body channel and still settles" 
 	const content: NeonNode = counted("rawBody", el("script", [], [], spot("rawSpot", true, "v")));
 	const out = await renderToStream(Loading({ children: content, fallback: waiting }));
 	assert out.html === "<script>v</script><!---->", out.html;
-	assert ran("rawBody") === 2 && fetched("rawSpot") === 1, "the body ran " + ran("rawBody").toString() + " times; fetched " + fetched("rawSpot").toString();
+	assert ran("rawBody") === 2 && fetched("rawSpot") === 2, "the body ran " + ran("rawBody").toString() + " times; fetched " + fetched("rawSpot").toString();
+}
+
+test "a memo whose compute returns a fresh promise per call and is read in a body under a Loading converges" {
+	const content: NeonNode = counted("freshBody", (host: Host, parent: HostNode, before: HostNode | null): void => {
+		const data = createAsyncMemo((p: string | null): Promise<string> => {
+			fetches.push("fresh");
+			return afterStr(3, "f");
+		});
+		el("p", [], [], text("v=" + data()))(host, parent, before);
+	});
+	const out = await renderToStream(Loading({ children: content, fallback: waiting }));
+	assert out.html === "<p>v=f</p><!---->", out.html;
+	assert fetched("fresh") >= 2 && fetched("fresh") < 5, "the compute ran " + fetched("fresh").toString() + " times, again before adopting and then stopped";
 }
 
 test "a nested Loading that settles before the Loading holding its placeholder is written after it" {
