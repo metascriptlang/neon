@@ -7,7 +7,7 @@ import { Accessor, Signal, accessor, untrack } from "../core/signal";
 import { List, ListOp, listInsert, listMove, listRemove, listSet } from "../core/list";
 import { Host, HostNode, NeonNode } from "./hostTypes";
 import { Row, makeRow, mountAt, moveRow, removeRow, reconcileArrays } from "./reconcile";
-import { regionAnchor, sealRegion, serverRegionStart, serverRegionEnd, skipRegionEffect } from "./claim";
+import { regionAnchor, regionParent, sealRegion, serverRegionStart, serverRegionEnd, skipRegionEffect } from "./claim";
 import { isServer } from "./environment";
 
 // The region's stores live in one object passed to every step, never captured by a nested
@@ -16,6 +16,7 @@ interface Region<Item> {
 	host: Host;
 	parent: HostNode;
 	anchor: HostNode;
+	placed: boolean;
 	list: List<Item>;
 	row: (item: Accessor<Item>) => NeonNode;
 	// Zero or one key function: a nullable function of Item in a field of this generic interface is
@@ -234,6 +235,7 @@ export function listRegion<Item>(
 			host: host,
 			parent: parent,
 			anchor: anchor,
+			placed: false,
 			list: list,
 			row: row,
 			keys: keyOf === null ? [] : [keyOf as (item: Item) => number],
@@ -261,6 +263,7 @@ export function listRegion<Item>(
 				const fromReset = q.reset;
 				q.ops = [];
 				q.reset = false;
+				if (g.placed) { g.parent = regionParent(host, anchor, "ForList"); }
 				runWithOwner(owner, (): number => {
 					if (fromReset) {
 						resetTo<Item>(g, items);
@@ -269,6 +272,7 @@ export function listRegion<Item>(
 					}
 					return 0;
 				});
+				g.placed = true;
 				return null;
 			},
 		);

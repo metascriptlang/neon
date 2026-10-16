@@ -9,7 +9,7 @@ import { Style } from "./style";
 import { NeonEvent } from "./event";
 import { Host, HostNode, NeonNode, RefFn } from "./hostTypes";
 import { Row, place, reconcileArrays, mountAt, removeRow } from "./reconcile";
-import { regionAnchor, sealRegion, serverRegionStart, serverRegionEnd } from "./claim";
+import { regionAnchor, regionParent, sealRegion, serverRegionStart, serverRegionEnd } from "./claim";
 import { isServer } from "./environment";
 import { bindText, bindAttr, bindStyleAll, applyRef } from "./bind";
 
@@ -143,11 +143,14 @@ export function regionNode(fn: RegionFn): NeonNode {
 		if (isServer()) { serverRegion(host, parent, before, fn); return; }
 		const anchor = regionAnchor(host, parent, before);
 		let current: Row[] = [];
+		let mounted = false;
 		const rows = fn(host);
 		createRenderEffect<Row[]>(
 			(prev: Row[] | null): Row[] => rows(),
 			(next: Row[], prev: Row[] | null): Cleanup | null => {
-				reconcileArrays(host, parent, current, next, anchor);
+				const at = mounted ? regionParent(host, anchor, "regionNode") : parent;
+				reconcileArrays(host, at, current, next, anchor);
+				mounted = true;
 				current = next.slice(0, next.length);
 				return null;
 			},

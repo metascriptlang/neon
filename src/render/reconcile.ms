@@ -27,16 +27,17 @@ export interface Row {
 	slot: number;
 	stamp: number;
 	kept: boolean;
+	keep: HostNode | null;
 }
 
 function noView(host: Host, parent: HostNode, before: HostNode | null): void {}
 
 export function makeRow(view: NeonNode): Row {
-	return { view, owner: getOwner(), parent: null, start: null, end: null, slot: -1, stamp: -1, kept: false };
+	return { view, owner: getOwner(), parent: null, start: null, end: null, slot: -1, stamp: -1, kept: false, keep: null };
 }
 
 export function rowOf(n: HostNode): Row {
-	return { view: noView, owner: null, parent: null, start: n, end: n, slot: -1, stamp: -1, kept: false };
+	return { view: noView, owner: null, parent: null, start: n, end: n, slot: -1, stamp: -1, kept: false, keep: null };
 }
 
 let activeRow: Row | null = null;
@@ -69,6 +70,7 @@ export function mountAt(host: Host, parent: HostNode, before: HostNode | null, r
 export function moveRow(host: Host, parent: HostNode, r: Row, before: HostNode | null): void {
 	const start = r.start;
 	if (start === null || before === start) { return; }
+	r.parent = parent;
 	const end = r.end;
 	let node: HostNode | null = start;
 	while (node !== null) {
@@ -83,15 +85,18 @@ export function moveRow(host: Host, parent: HostNode, r: Row, before: HostNode |
 export function removeRow(host: Host, parent: HostNode, r: Row): void {
 	const start = r.start;
 	if (start === null) { return; }
+	if (r.keep !== null) { moveRow(host, r.keep as HostNode, r, null); return; }
 	const end = r.end;
 	let node: HostNode | null = start;
 	while (node !== null) {
 		const cur = node as HostNode;
 		const next = host.nextSibling(cur);
 		host.removeChild(parent, cur);
-		if (cur === end) { return; }
+		if (cur === end) { break; }
 		node = next;
 	}
+	r.start = null;
+	r.end = null;
 }
 
 // Longest strictly increasing run of `xs`, marked per position (patience sorting with

@@ -46,6 +46,7 @@ test "reconcileArrays drives many transforms with node reuse" {
 	assert seq(parent) === "FA", "remove many";
 	go("");
 	assert seq(parent) === "", "remove all";
+	for (const L of labels) { pool.set(L, rowOf(h.createElement(L))); }
 	go("ABC");
 	assert seq(parent) === "ABC", "rebuild from empty";
 	go("BCA");
