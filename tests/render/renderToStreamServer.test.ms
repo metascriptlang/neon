@@ -447,6 +447,30 @@ test "a Head inside a Loading that waited takes the place in the head it takes i
 	assert waited.head === single.head, waited.head + " | " + single.head;
 }
 
+function chained(name: string, first: int32, second: int32, a: int32, b: int32): NeonNode {
+	const inner: NeonNode = (host: Host, parent: HostNode, before: HostNode | null): void => {
+		Loading({ children: reading(name + "2", second, b), fallback: waiting })(host, parent, before);
+	};
+	const outer: NeonNode = (host: Host, parent: HostNode, before: HostNode | null): void => {
+		reading(name + "1", first, a)(host, parent, before);
+		inner(host, parent, before);
+	};
+	return Loading({ children: outer, fallback: waiting });
+}
+
+test "records follow the order of the page, not the order the waits ended in" {
+	const app: NeonNode = (host: Host, parent: HostNode, before: HostNode | null): void => {
+		chained("ordA", 24, 3, 1, 2)(host, parent, before);
+		chained("ordB", 3, 3, 3, 4)(host, parent, before);
+	};
+	const out = await renderToStream(app);
+	const at1 = out.records.indexOf("]=\"1\"");
+	const at2 = out.records.indexOf("]=\"2\"");
+	const at3 = out.records.indexOf("]=\"3\"");
+	const at4 = out.records.indexOf("]=\"4\"");
+	assert at1 > 0 && at2 > at1 && at3 > at2 && at4 > at3, out.records;
+}
+
 async function lateFailure(): Promise<string> {
 	const content: NeonNode = (host: Host, parent: HostNode, before: HostNode | null): void => {
 		reading("late", 3, 1)(host, parent, before);

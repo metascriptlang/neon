@@ -629,7 +629,7 @@ when (server) {
 
 	function recordScripts(ctx: ServerContext): string {
 		let out = "";
-		for (const id of ctx.started) {
+		for (const id of recordIds(ctx)) {
 			const slot = ctx.slots.get(id);
 			if (slot === null) { continue; }
 			out += slot.failure === null ? recordScript("r", id, slot.json) : recordScript("e", id, (slot.failure as Error).message);
@@ -729,6 +729,12 @@ when (server) {
 				throw e;
 			}
 		});
+	}
+
+	function recordIds(ctx: ServerContext): string[] {
+		const ids = ctx.started.slice(0, ctx.started.length);
+		ids.sort();
+		return ids;
 	}
 
 	export async function renderToStream(n: NeonNode): Promise<SsrMarkup> {
