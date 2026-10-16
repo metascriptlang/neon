@@ -1,9 +1,9 @@
 import { element } from "../../src/macros/ui/element";
 import { render } from "../../src/render/host";
-import { View, Text } from "../../src/components/primitives";
+import { View, ViewHandle, Text } from "../../src/components/primitives";
 import { createVoidHostWith, VoidHost, VoidNode } from "../../src/platform/void/host";
 import { Scene2D, NodeRef, textStyle } from "../../../void/src/void2d/node";
-import { TextRun } from "../../../void/src/void2d/textLayout";
+import { TextRun, TextLayout, calcTextWidth } from "../../../void/src/void2d/textLayout";
 import { create } from "../../../void/src/void2d/scene";
 import { rgba } from "../../../void/src/void2d/types";
 import { labelTexts } from "../../../void/src/void2d/labelText";
@@ -99,4 +99,39 @@ test "a face the host cannot find, or a line it cannot draw, is refused by name"
 		render(element(<Text style={{ textDecorationLine: "underline", textDecorationStyle: "dotted" }}>x</Text>), c.host, c.root);
 	} catch (e) { message = e.message; }
 	assert message.indexOf(`textDecorationStyle "dotted" is not drawn on the Void host yet`) >= 0, "dotted: " + message;
+}
+
+test "a View's handle measures a line with the face and size its Text draws with" {
+	registerProbeFamilyWithoutItalicFaces();
+	const vh = host();
+	let frame: ViewHandle | null = null;
+	render(element(<View ref={(h: ViewHandle): void => { frame = h; }} style={{ width: 300 }}>
+		<Text style={{ fontFamily: PROBE_FAMILY, fontSize: 14 }}>MMMM</Text>
+		<Text style={{ fontFamily: PROBE_FAMILY, fontSize: 14, fontWeight: "bold" }}>MMMM</Text>
+	</View>), vh.host, vh.root);
+	const regular = (frame as ViewHandle).measureText("MMMM", { fontFamily: PROBE_FAMILY, fontSize: 14 });
+	const bold = (frame as ViewHandle).measureText("MMMM", { fontFamily: PROBE_FAMILY, fontSize: 14, fontWeight: "bold" });
+	const drawn = paragraph(top(vh).children[0]).textStyle();
+	const drawnBold = paragraph(top(vh).children[1]).textStyle();
+	const width = calcTextWidth("MMMM", drawn);
+	const boldWidth = calcTextWidth("MMMM", drawnBold);
+	assert width.ok && regular.width === width.value as number, `regular width ${regular.width} is the drawn label's`;
+	assert boldWidth.ok && bold.width === boldWidth.value as number, `bold width ${bold.width} is the drawn bold label's`;
+	const laid = TextLayout.layout("MMMM", drawn);
+	assert laid.ok && regular.height === laid.value.lineHeight as number && regular.ascender === laid.value.ascent as number
+		&& regular.descender === laid.value.descent as number, "height, ascender and descender are the drawn line's";
+	const one = (frame as ViewHandle).measureText("M", { fontFamily: PROBE_FAMILY, fontSize: 14 });
+	const twice = (frame as ViewHandle).measureText("M", { fontFamily: PROBE_FAMILY, fontSize: 28 });
+	assert one.width > 0 && twice.width > one.width && twice.height > one.height, "a larger size measures larger";
+}
+
+test "measuring a family the host cannot find is refused by name" {
+	const vh = host();
+	let frame: ViewHandle | null = null;
+	render(element(<View ref={(h: ViewHandle): void => { frame = h; }} />), vh.host, vh.root);
+	let message = "";
+	try {
+		(frame as ViewHandle).measureText("x", { fontFamily: "Nowhere Grotesk" });
+	} catch (e) { message = e.message; }
+	assert message.indexOf(`font family "Nowhere Grotesk" has no registered face`) >= 0, "unknown family: " + message;
 }

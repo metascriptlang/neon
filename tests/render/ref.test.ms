@@ -273,3 +273,22 @@ test "a View's ref focuses it on mount, as a terminal focuses its grid when the 
 	try { (grid as ViewHandle).focus(); } catch (e) { refused = e.toString(); }
 	assert refused.indexOf("after the View unmounted") >= 0, "focus after unmount: " + refused;
 }
+
+test "a View's ref measures text through its host, and refuses a host that cannot and a View that is gone" {
+	let frame: ViewHandle | null = null;
+	const root: MockNode = mockNode("root");
+	const dispose = render(element(<View ref={(h: ViewHandle): void => { frame = h; }} />), mockHost(), root as unknown as HostNode);
+	const m = (frame as ViewHandle).measureText("abcd", { fontSize: 10 });
+	assert m.width === 20 && m.height === 12.5 && m.ascender === 10 && m.descender === 2.5, `mock measure ${m.width}x${m.height}`;
+	dispose();
+	let refused = "";
+	try { (frame as ViewHandle).measureText("x", {}); } catch (e) { refused = e.toString(); }
+	assert refused.indexOf("after the View unmounted") >= 0, "measure after unmount: " + refused;
+
+	const blind = mockHost();
+	blind.measureText = null;
+	render(element(<View ref={(h: ViewHandle): void => { frame = h; }} />), blind, mockNode("root") as unknown as HostNode);
+	refused = "";
+	try { (frame as ViewHandle).measureText("x", {}); } catch (e) { refused = e.toString(); }
+	assert refused.indexOf("needs a host that measures text") >= 0, "host with no measure: " + refused;
+}
