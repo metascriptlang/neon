@@ -100,7 +100,7 @@ export function mountChild(host: Host, parent: HostNode, before: HostNode | null
 
 // On the server a region writes its rows and then its anchor, in document order. The
 // rows are read in the effect the client keeps them in, so they are owned and numbered
-// as the client's; a row list that changes while its rows render (an ErrorBoundary that
+// as the client's; a row list that changes while its rows render (an Errored boundary that
 // caught) takes back what it wrote and writes the new rows before the anchor follows.
 function serverRegion(host: Host, parent: HostNode, before: HostNode | null, fn: RegionFn): void {
 	serverRegionStart(host, parent, before);
