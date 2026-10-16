@@ -29,10 +29,12 @@ when (server) {
 		return noteOf(slug, "at render");
 	}
 } else {
-	extern function fetchNote(url: cstring): Promise<Note> from "fetch(#).then((answer) => answer.json())";
+	extern function fetchText(url: cstring): Promise<string> from "fetch(#).then((answer) => answer.text())";
 
-	function loadNote(slug: string): Promise<Note> {
-		return fetchNote("/api/note/" + slug);
+	async function loadNote(slug: string): Promise<Note> {
+		const decoded = JSON.parse<Note>(await fetchText("/api/note/" + slug));
+		if (!decoded.ok) { throw new Error("note " + slug + " does not decode: " + decoded.error); }
+		return decoded.value;
 	}
 }
 
