@@ -101,6 +101,34 @@ function asyncPage(): NeonNode {
 	</View>;
 }
 
+function Settling(props: { name: string; ms: int32; value: int32 }): NeonNode {
+	const data = createAsyncMemo((p: int32 | null): Promise<int32> => afterInt(props.ms, props.value));
+	return <Text>{props.name}={data}</Text>;
+}
+
+function Chained(props: { name: string; first: int32; second: int32 }): NeonNode {
+	return <View>
+		<Settling name={props.name + "1"} ms={props.first} value={1} />
+		<Loading fallback={<Text>inner</Text>}><Settling name={props.name + "2"} ms={props.second} value={2} /></Loading>
+	</View>;
+}
+
+function boundariesPage(): NeonNode {
+	return <View>
+		<Head><title>first</title></Head>
+		{"lead"}
+		<Loading fallback={<Text>a</Text>}>
+			<Head><title>inside a</title></Head>
+			{"</script><template id=\"pl-1\"></template>"}
+			<script>{"<!--pl-1--> <template id=\"pl-1\">"}</script>
+			<Chained name="a" first={9} second={2} />
+		</Loading>
+		<Loading fallback={<Text>ready</Text>}><Text>no wait</Text></Loading>
+		<Loading fallback={<Text>b</Text>}><Chained name="b" first={2} second={2} /></Loading>
+		<Head><title>last</title></Head>
+	</View>;
+}
+
 function dump(name: string, node: NeonNode): void {
 	const markup = renderToMarkup(node);
 	console.log("== " + name + " html\n" + markup.html);
@@ -129,5 +157,6 @@ async function main(): Promise<void> {
 		console.log("== site " + url + " " + r.status.toString() + " " + (r.location ?? "") + "\n" + r.body);
 	}
 	await dumpAwaited("async", asyncPage());
+	await dumpAwaited("boundaries", boundariesPage());
 }
 await main();
