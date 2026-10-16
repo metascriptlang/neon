@@ -1,5 +1,7 @@
 import { Accessor, Signal, accessor } from "../../src/core/signal";
 import { createEffect } from "../../src/core/effect";
+import { createRoot } from "../../src/core/owner";
+import { Cleanup, Dispose } from "../../src/core/types";
 import { NavigationChild } from "../../src/navigation/children";
 import { ChildStack, createChildStack } from "../../src/navigation/childStack";
 import { ChildPages, Pages, createChildPages } from "../../src/navigation/childPages";
@@ -178,9 +180,12 @@ test "a navigation erases to serialized keys and applies only a fully decoded tr
 	};
 	const node = webNavigationNode<string>(navigation);
 	let runs: int32 = 0;
-	const stop = createEffect((): void => {
-		node.history();
-		runs += 1;
+	const stop = createRoot((d: Dispose): Dispose => {
+		createEffect<int32>(
+			(prev: int32 | null): int32 => { node.history(); return 0; },
+			(value: int32, prev: int32 | null): Cleanup | null => { runs += 1; return null; },
+		);
+		return d;
 	});
 	assert keys(node) === "k:a@a;", keys(node);
 	assert node.navigate(["k:a", "k:b"]).ok;
@@ -214,9 +219,12 @@ test "a stack publishes every entry with the last active and follows the model" 
 	});
 	const node = webNavigationNode<Screen>(web);
 	let runs: int32 = 0;
-	const stop = createEffect((): void => {
-		node.history();
-		runs += 1;
+	const stop = createRoot((d: Dispose): Dispose => {
+		createEffect<int32>(
+			(prev: int32 | null): int32 => { node.history(); return 0; },
+			(value: int32, prev: int32 | null): Cleanup | null => { runs += 1; return null; },
+		);
+		return d;
 	});
 	assert keys(node) === "list/@list;detail/@detail;", keys(node);
 	stack.push({ name: "edit", detail: "7" });

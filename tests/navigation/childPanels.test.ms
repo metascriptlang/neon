@@ -2,7 +2,7 @@ import { Accessor } from "../../src/core/signal";
 import { onCleanup } from "../../src/core/cleanup";
 import { createEffect } from "../../src/core/effect";
 import { createRoot } from "../../src/core/owner";
-import { Dispose } from "../../src/core/types";
+import { Cleanup, Dispose } from "../../src/core/types";
 import { NavigationChild } from "../../src/navigation/children";
 import {
 	ChildPanels,
@@ -269,9 +269,12 @@ test "a panel keyed apart from its configuration keeps its instance and sees the
 	const details = panels.details() as NavigationChild<int32, Component>;
 	const mainConfiguration = panels.main().configuration;
 	let mainRuns: int32 = 0;
-	const stop = createEffect((): void => {
-		mainConfiguration();
-		mainRuns += 1;
+	const stop = createRoot((d: Dispose): Dispose => {
+		createEffect<int32>(
+			(prev: int32 | null): int32 => { mainConfiguration(); return 0; },
+			(value: int32, prev: int32 | null): Cleanup | null => { mainRuns += 1; return null; },
+		);
+		return d;
 	});
 	assert mainRuns === 1, mainRuns.toString();
 	panels.activateDetails(22);
@@ -308,13 +311,16 @@ test "an empty key fails loudly and changes nothing" {
 
 test "the owner of the panels disposes every panel" {
 	const instances: Component[] = [];
-	createRoot((dispose: Dispose): void => {
-		const panels = makePanels(panelsOf(1, 2, 3, ChildPanelsMode.Triple));
-		instances.push(panels.main().instance);
-		instances.push((panels.details() as NavigationChild<int32, Component>).instance);
-		instances.push((panels.extra() as NavigationChild<int32, Component>).instance);
-		dispose();
+	let made: ChildPanels<int32, Component, int32, Component, int32, Component> | null = null;
+	const stop = createRoot((dispose: Dispose): Dispose => {
+		made = makePanels(panelsOf(1, 2, 3, ChildPanelsMode.Triple));
+		return dispose;
 	});
+	const panels = made as ChildPanels<int32, Component, int32, Component, int32, Component>;
+	instances.push(panels.main().instance);
+	instances.push((panels.details() as NavigationChild<int32, Component>).instance);
+	instances.push((panels.extra() as NavigationChild<int32, Component>).instance);
+	stop();
 	assert instances.length === 3;
 	for (const instance of instances) { assert instance.destroyed; }
 }
