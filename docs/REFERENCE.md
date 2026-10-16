@@ -130,6 +130,15 @@ section, an entry whose verdict changes keeps its ID, a removed entry leaves its
 - **Pin:** `tests/core/owner.test.ms` (the two "outside a reactive context" cells), `tests/browser/dom.test.ms` "listeners added with no owner attach and are released by the host"
 - **Checked:** 2026-10-16, read.
 
+### SR-4 · A plain value read directly in a component body throws in a debug build
+
+- **Verdict:** DIVERGE-INTENTIONAL
+- **Solid:** a component body runs under `untrack(fn, "<Name>")` (`packages/solid/src/client/core.ts:241-290`). A read there of a pending async value throws `[PENDING_ASYNC_UNTRACKED_READ]` (`packages/signals/src/core/dev.ts:857-872`), and a read of any other reactive value only warns `[STRICT_READ_UNTRACKED]` (`core.ts:1809`, `dev.ts:874-896`). Both are dev-only.
+- **MS:** `assertTrackedRead` in `src/core/runtime.ms` throws both, inside `when (debug)`; `untrack(fn, label)` in `src/core/signal.ms` sets the label and `createComponent` (`src/render/component.ms`) runs the body under "a component body". A release build carries neither check.
+- **Why:** a read that never updates is a bug the page shows only later, so a debug build fails at the read (the person, 2026-10-16, on SR-3's rule: keep the throw unless the call is not really an error; and on these checks: "nếu nó hữu ích thì giữ trong debug, xóa ở prod"). A one-time read is written `untrack(() => …)`.
+- **Pin:** `tests/core/strictRead.test.ms` (debug and `--release`, C and JS)
+- **Checked:** 2026-10-17, read; measured on C and JS.
+
 ## Render
 
 ### RD-1 · A ref array is composed at compile time, and only a literal one
