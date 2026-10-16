@@ -37,7 +37,7 @@ test "a render effect reads back the settled value of its own write" {
 	assert reads.join(",") === "0", "got " + reads.join(",");
 }
 
-test "a render effect's first apply runs under its creator, so a write there is refused" {
+test "a render effect's first apply runs under its creator, so a write there is refused in debug" {
 	const [b, setB] = createSignal(0);
 	let message = "";
 	try {
@@ -50,8 +50,13 @@ test "a render effect's first apply runs under its creator, so a write there is 
 		});
 	} catch (e) { message = e.message; }
 	resetErrorHalt();
-	assert message.indexOf("REACTIVE_WRITE_IN_OWNED_SCOPE") >= 0, "got [" + message + "]";
-	assert b() === 0, "the refused write did not land";
+	when (debug) {
+		assert message.indexOf("REACTIVE_WRITE_IN_OWNED_SCOPE") >= 0, "got [" + message + "]";
+		assert b() === 0, "the refused write did not land";
+	} else {
+		assert message === "", "a release build does not check: [" + message + "]";
+		assert b() === 1, "the write landed";
+	}
 }
 
 test "an effect write reaches the dependents in the same flush" {

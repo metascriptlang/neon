@@ -8,8 +8,10 @@ import {
 } from "./types";
 
 const LOOP_LIMIT: int32 = 100000;
-const OWNED_WRITE_MESSAGE: string = "[REACTIVE_WRITE_IN_OWNED_SCOPE] Writing to reactive state inside an owned scope (component, computation) is not allowed. Move the write outside or set the `ownedWrite` option if this is intentional.";
-const REFRESH_OWNED_MESSAGE: string = "[REACTIVE_WRITE_IN_OWNED_SCOPE] Calling refresh() inside an owned scope (component, computation) is not allowed. Move the invalidation outside pure computation.";
+when (debug) {
+	const OWNED_WRITE_MESSAGE: string = "[REACTIVE_WRITE_IN_OWNED_SCOPE] Writing to reactive state inside an owned scope (component, computation) is not allowed. Move the write outside or set the `ownedWrite` option if this is intentional.";
+	const REFRESH_OWNED_MESSAGE: string = "[REACTIVE_WRITE_IN_OWNED_SCOPE] Calling refresh() inside an owned scope (component, computation) is not allowed. Move the invalidation outside pure computation.";
+}
 
 let currentOwner: Computation | null = null;
 let tracking: boolean = false;
@@ -584,7 +586,9 @@ export function failFlight(el: Computation, id: int32, error: Error): void {
 }
 
 export function markRefresh(node: Computation): void {
-	if (currentOwner !== null && (node.config & CONFIG_OWNED_WRITE) === 0) { throw new Error(REFRESH_OWNED_MESSAGE); }
+	when (debug) {
+		if (currentOwner !== null && (node.config & CONFIG_OWNED_WRITE) === 0) { throw new Error(REFRESH_OWNED_MESSAGE); }
+	}
 	if (!node.computed || (node.flags & REACTIVE_DISPOSED) !== 0) { return; }
 	const busy = (node.flags & (REACTIVE_DIRTY | REACTIVE_CHECK | REACTIVE_IN_HEAP)) !== 0;
 	node.flags = (node.flags & ~REACTIVE_CHECK) | REACTIVE_DIRTY | (busy ? 0 : REACTIVE_REASK);
@@ -935,7 +939,9 @@ function stageNode(el: Source): void {
 }
 
 export function assertWritable(el: Source): void {
-	if (currentOwner !== null && (el.config & CONFIG_OWNED_WRITE) === 0) { throw new Error(OWNED_WRITE_MESSAGE); }
+	when (debug) {
+		if (currentOwner !== null && (el.config & CONFIG_OWNED_WRITE) === 0) { throw new Error(OWNED_WRITE_MESSAGE); }
+	}
 }
 
 export function writeSource(el: Source, wasStaged: boolean): void {

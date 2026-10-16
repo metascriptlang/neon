@@ -153,14 +153,18 @@ test "refresh of a plain signal accessor is a no-op" {
 }
 
 // signals.ts:876 and core.ts markRefresh: an invalidation is not a thing a computation may do.
-test "refresh inside an owned scope is refused" {
+test "refresh inside an owned scope is refused in debug only" {
 	const target = createRoot((d) => createMemo((p: int32 | null): int32 => 1));
 	let message = "";
 	createRoot((d) => {
 		try { refresh(target); } catch (e) { message = e.message; }
 		return 0;
 	});
-	assert message.indexOf("REACTIVE_WRITE_IN_OWNED_SCOPE") >= 0, "got [" + message + "]";
+	when (debug) {
+		assert message.indexOf("REACTIVE_WRITE_IN_OWNED_SCOPE") >= 0, "got [" + message + "]";
+	} else {
+		assert message === "", "a release build does not check: [" + message + "]";
+	}
 }
 
 // recompute-preserves-disposed-3621.test.ts: refresh() does not re-run a disposed memo
