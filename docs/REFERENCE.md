@@ -100,6 +100,15 @@ section, an entry whose verdict changes keeps its ID, a removed entry leaves its
 - **Pin:** `tests/render/errorBoundary.test.ms`
 - **Checked:** 2026-10-16, read.
 
+### SR-3 · `onCleanup` without an owner throws
+
+- **Verdict:** DIVERGE-INTENTIONAL
+- **Solid:** `onCleanup` with no owner emits the dev-only `NO_OWNER_CLEANUP` warning and returns; production is a silent no-op (`packages/signals/src/signals.ts:90-100`; `core/owner.ts:305-311` `cleanup` returns when there is no context; `documentation/solid-2.0/08-dev-diagnostics.md:949`)
+- **MS:** `onCleanup` in `src/core/cleanup.ms` throws "onCleanup called outside a reactive context will never be run" in every build. Host code that may run without an owner checks `getOwner()` before it registers, because there the work has no lifetime to end (`keep` in `src/platform/browser/dom.jms`, as Solid's `addEventListener` registers nothing, `packages/web/src/client.ts:950-980`).
+- **Why:** a cleanup that never runs is a resource leak no build reports; Neon fails loud at the call (the person, 2026-10-16: keep the throw unless the call is not really an error).
+- **Pin:** `tests/core/owner.test.ms` (the two "outside a reactive context" cells), `tests/browser/dom.test.ms` "listeners added with no owner attach and are released by the host"
+- **Checked:** 2026-10-16, read.
+
 ## Render
 
 ### RD-1 · A ref array is composed at compile time, and only a literal one
