@@ -23,6 +23,8 @@ int niwPump(void);
 void niwFrame(void);
 void niwResize(float dpi, float logicalWidth, float logicalHeight);
 void niwPointer(int kind, float pixelX, float pixelY);
+// Wheel notches as WM_MOUSEWHEEL / WM_MOUSEHWHEEL report them over WHEEL_DELTA: positive is away from the user, or right.
+void niwWheel(float pixelX, float pixelY, float notchesX, float notchesY);
 void niwSetFrameRequester(msClosure requester);
 int niwStoredAccessibility(const char *name, const char *value);
 // DirectWrite text layouts built since the process began, so a check can see that a colour change built none.

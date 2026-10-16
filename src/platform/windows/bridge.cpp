@@ -12,6 +12,7 @@
 #include "dcompComposition.h"
 #include "dwriteText.h"
 #include "handoff.h"
+#include "scrollView.h"
 extern "C" {
 #include "../native/bridge.h"
 #include "../native/app.h"
@@ -33,6 +34,7 @@ struct View {
 	bool pressable = false;
 	std::map<std::string, std::string> accessibility;
 	std::unique_ptr<TextLabel> label;
+	std::unique_ptr<Scroller> scroller;
 	bool labelQueued = false;
 };
 
@@ -64,6 +66,10 @@ float g_touchX = 0;
 float g_touchY = 0;
 double g_touchTime = 0;
 View *g_responder = nullptr;
+std::vector<View *> g_scrolls;
+int32_t g_scrollTag = 0;
+int32_t g_scrollPhase = 0;
+float g_scrollX = 0, g_scrollY = 0, g_scrollW = 0, g_scrollH = 0, g_scrollContentW = 0, g_scrollContentH = 0;
 
 [[noreturn]] void fail(const char *message) {
 	fprintf(stderr, "neon windows bridge: %s\n", message);
@@ -89,15 +95,19 @@ void requireAttached(const char *what) {
 	fail(message);
 }
 
+IVisual *childHost(View *view) { return view->scroller ? view->scroller->content : view->visual; }
+
 void release(View *view) {
 	if (--view->refs > 0) return;
 	if (g_responder == view) g_responder = nullptr;
 	if (view->labelQueued) g_dirtyLabels.erase(std::remove(g_dirtyLabels.begin(), g_dirtyLabels.end(), view), g_dirtyLabels.end());
+	if (view->scroller) g_scrolls.erase(std::remove(g_scrolls.begin(), g_scrolls.end(), view), g_scrolls.end());
 	for (View *child : view->children) {
-		view->visual->Remove(child->visual);
+		childHost(view)->Remove(child->visual);
 		child->parent = nullptr;
 		release(child);
 	}
+	if (view->scroller) delete view->scroller->content;
 	delete view->visual;
 	delete view;
 }
@@ -106,7 +116,7 @@ void detach(View *child) {
 	View *parent = child->parent;
 	if (!parent) return;
 	parent->children.erase(std::remove(parent->children.begin(), parent->children.end(), child), parent->children.end());
-	parent->visual->Remove(child->visual);
+	childHost(parent)->Remove(child->visual);
 	child->parent = nullptr;
 	release(child);
 }
@@ -149,6 +159,12 @@ TextLabel *labelOf(void *view, const char *what) {
 	return v->label.get();
 }
 
+void applyScroll(View *view) {
+	Scroller *s = view->scroller.get();
+	s->content->Offset(-roundf(s->x * g_scale), -roundf(s->y * g_scale));
+	if (s->moved) changed();
+}
+
 void applyGeometry(View *view) {
 	float left = roundf(view->x * g_scale);
 	float top = roundf(view->y * g_scale);
@@ -157,6 +173,10 @@ void applyGeometry(View *view) {
 	view->visual->Offset(left, top);
 	view->visual->Size(right - left, bottom - top);
 	if (view->label) queueLabel(view);
+	if (view->scroller) {
+		view->scroller->Clamp(view->w, view->h);
+		applyScroll(view);
+	}
 
 	bool identity = view->scaleX == 1 && view->scaleY == 1 && view->translateX == 0 && view->translateY == 0 && view->rotation == 0;
 	if (identity && !view->transformed) return;
@@ -213,10 +233,11 @@ View *hit(View *view, float px, float py, float *foundX, float *foundY) {
 	float lx, ly;
 	if (!toLocal(view, px, py, &lx, &ly)) return nullptr;
 	bool inside = lx >= 0 && lx <= view->w && ly >= 0 && ly <= view->h;
-	bool clipsChildren = view->radius > 0;
+	bool clipsChildren = view->radius > 0 || view->scroller;
+	float cx = view->scroller ? lx + view->scroller->x : lx, cy = view->scroller ? ly + view->scroller->y : ly;
 	if (inside || !clipsChildren) {
 		for (auto child = view->children.rbegin(); child != view->children.rend(); ++child) {
-			if (View *found = hit(*child, lx, ly, foundX, foundY)) return found;
+			if (View *found = hit(*child, cx, cy, foundX, foundY)) return found;
 		}
 	}
 	if (!inside || (view->label && !view->pressable)) return nullptr;
@@ -273,6 +294,45 @@ void report(View *view, int32_t phase, float x, float y, double time) {
 	invoke(s_touch);
 }
 
+void reportScrolls() {
+	double now = nowMs();
+	std::vector<View *> due = g_scrolls;
+	for (View *view : due) {
+		Scroller *s = view->scroller.get();
+		s->Step(now);
+		if (!s->moved) continue;
+		s->moved = false;
+		applyScroll(view);
+		if (!s_scroll.fn || s->tag == 0) continue;
+		g_scrollTag = s->tag;
+		g_scrollPhase = 0;
+		g_scrollX = s->x;
+		g_scrollY = s->y;
+		g_scrollW = view->w;
+		g_scrollH = view->h;
+		g_scrollContentW = std::max(s->contentWidth, view->w);
+		g_scrollContentH = std::max(s->contentHeight, view->h);
+		invoke(s_scroll);
+	}
+}
+
+bool scrollsPending() {
+	for (View *view : g_scrolls) {
+		if (view->scroller->moved || view->scroller->Animating()) return true;
+	}
+	return false;
+}
+
+Scroller *scrollerOf(void *scroll, const char *what) {
+	View *v = static_cast<View *>(scroll);
+	if (!v->scroller) {
+		char message[192];
+		snprintf(message, sizeof message, "%s on a view that is not a ScrollView", what);
+		fail(message);
+	}
+	return v->scroller.get();
+}
+
 void endTouch() {
 	std::vector<View *> chain;
 	chain.swap(g_touch.chain);
@@ -313,6 +373,7 @@ void niwFrame(void) {
 	requireAttached("niwFrame");
 	g_frameRequested = false;
 	g_inFrame = true;
+	reportScrolls();
 	if (s_loop.fn) invoke(s_loop);
 	else niLoopRun();
 	if (g_frameWanted) {
@@ -322,6 +383,7 @@ void niwFrame(void) {
 	drawLabels();
 	g_context->Commit();
 	g_inFrame = false;
+	if (scrollsPending()) requestHostFrame();
 }
 
 void niwSetFrameRequester(msClosure requester) { s_requester = requester; }
@@ -396,8 +458,20 @@ void niwPointer(int kind, float pixelX, float pixelY) {
 	}
 }
 
+void niwWheel(float pixelX, float pixelY, float notchesX, float notchesY) {
+	requireAttached("niwWheel");
+	float x = pixelX / g_scale, y = pixelY / g_scale;
+	for (View *at = hitTest(x, y); at && at != g_container; at = at->parent) {
+		if (at->scroller && at->scroller->Wheel(notchesX, notchesY, at->w, at->h, g_scale, nowMs())) {
+			changed();
+			return;
+		}
+	}
+}
+
 int niwPump(void) {
 	requireAttached("niwPump");
+	reportScrolls();
 	if (s_loop.fn) invoke(s_loop);
 	else niLoopRun();
 	drawLabels();
@@ -415,6 +489,54 @@ void *niViewCreate(void) {
 	view->visual = g_context->CreateSpriteVisual();
 	return view;
 }
+
+void *niScrollCreate(void) {
+	requireAttached("niScrollCreate");
+	View *view = new View();
+	view->visual = g_context->CreateSpriteVisual();
+	view->visual->ClipsChildren(true);
+	view->scroller.reset(new Scroller());
+	view->scroller->content = g_context->CreateSpriteVisual();
+	view->visual->InsertAt(view->scroller->content, 0);
+	g_scrolls.push_back(view);
+	return view;
+}
+
+void niScrollSetTag(void *scroll, int32_t tag) { scrollerOf(scroll, "niScrollSetTag")->tag = tag; }
+
+void niScrollSetContentSize(void *scroll, float w, float h) {
+	scrollerOf(scroll, "niScrollSetContentSize")->SetContentSize(w, h, as(scroll)->w, as(scroll)->h);
+	applyScroll(as(scroll));
+}
+
+void niScrollTo(void *scroll, float x, float y, int animated) {
+	Scroller *s = scrollerOf(scroll, "niScrollTo");
+	if (animated) s->AnimateTo(x, y, as(scroll)->w, as(scroll)->h, g_scale, nowMs());
+	else s->JumpTo(x, y, as(scroll)->w, as(scroll)->h);
+	applyScroll(as(scroll));
+	changed();
+}
+
+void niScrollSetOption(void *scroll, const char *name, const char *value) {
+	scrollerOf(scroll, "niScrollSetOption")->SetOption(name, value);
+}
+
+void niScrollShift(void *scroll, float dx, float dy) {
+	scrollerOf(scroll, "niScrollShift")->Shift(dx, dy, as(scroll)->w, as(scroll)->h);
+	applyScroll(as(scroll));
+}
+
+float niScrollOffsetX(void *scroll) { return scrollerOf(scroll, "niScrollOffsetX")->x; }
+float niScrollOffsetY(void *scroll) { return scrollerOf(scroll, "niScrollOffsetY")->y; }
+
+int niLastScrollTag(void) { return g_scrollTag; }
+int niLastScrollPhase(void) { return g_scrollPhase; }
+float niLastScrollX(void) { return g_scrollX; }
+float niLastScrollY(void) { return g_scrollY; }
+float niLastScrollWidth(void) { return g_scrollW; }
+float niLastScrollHeight(void) { return g_scrollH; }
+float niLastScrollContentWidth(void) { return g_scrollContentW; }
+float niLastScrollContentHeight(void) { return g_scrollContentH; }
 
 void *niTextCreate(void) {
 	requireAttached("niTextCreate");
@@ -441,7 +563,7 @@ void niAddChild(void *parent, void *child) {
 	View *p = as(parent), *c = as(child);
 	c->refs += 1;
 	detach(c);
-	p->visual->InsertAt(c->visual, (int32_t)p->children.size());
+	childHost(p)->InsertAt(c->visual, (int32_t)p->children.size());
 	p->children.push_back(c);
 	c->parent = p;
 	changed();
@@ -451,9 +573,9 @@ void niBringChildToFront(void *child) {
 	View *c = as(child);
 	View *p = c->parent;
 	if (!p) return;
-	p->visual->Remove(c->visual);
+	childHost(p)->Remove(c->visual);
 	p->children.erase(std::remove(p->children.begin(), p->children.end(), c), p->children.end());
-	p->visual->InsertAt(c->visual, (int32_t)p->children.size());
+	childHost(p)->InsertAt(c->visual, (int32_t)p->children.size());
 	p->children.push_back(c);
 	changed();
 }
@@ -580,14 +702,6 @@ const char *niAppCall(const char *name, const char *arg) {
 
 #define UNIMPLEMENTED(ret, name, params) ret name params { unimplemented(#name); }
 
-UNIMPLEMENTED(void *, niScrollCreate, (void))
-UNIMPLEMENTED(void, niScrollSetTag, (void *scroll, int32_t tag))
-UNIMPLEMENTED(void, niScrollSetContentSize, (void *scroll, float w, float h))
-UNIMPLEMENTED(void, niScrollTo, (void *scroll, float x, float y, int animated))
-UNIMPLEMENTED(void, niScrollSetOption, (void *scroll, const char *name, const char *value))
-UNIMPLEMENTED(void, niScrollShift, (void *scroll, float dx, float dy))
-UNIMPLEMENTED(float, niScrollOffsetX, (void *scroll))
-UNIMPLEMENTED(float, niScrollOffsetY, (void *scroll))
 UNIMPLEMENTED(void *, niInputCreate, (void))
 UNIMPLEMENTED(void *, niTextAreaCreate, (void))
 UNIMPLEMENTED(void *, niSwitchCreate, (void))
@@ -602,14 +716,6 @@ UNIMPLEMENTED(int, niLastControlPhase, (void))
 UNIMPLEMENTED(const char *, niLastControlValue, (void))
 UNIMPLEMENTED(float, niLastControlWidth, (void))
 UNIMPLEMENTED(float, niLastControlHeight, (void))
-UNIMPLEMENTED(int, niLastScrollTag, (void))
-UNIMPLEMENTED(int, niLastScrollPhase, (void))
-UNIMPLEMENTED(float, niLastScrollX, (void))
-UNIMPLEMENTED(float, niLastScrollY, (void))
-UNIMPLEMENTED(float, niLastScrollWidth, (void))
-UNIMPLEMENTED(float, niLastScrollHeight, (void))
-UNIMPLEMENTED(float, niLastScrollContentWidth, (void))
-UNIMPLEMENTED(float, niLastScrollContentHeight, (void))
 UNIMPLEMENTED(void, niSetReloadPoll, (msClosure poll))
 UNIMPLEMENTED(int, niLastAppEvent, (void))
 UNIMPLEMENTED(const char *, niLastAppValue, (void))

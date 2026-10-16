@@ -8,7 +8,7 @@ import { useAppServices, useCaptureServices } from "../native/appServices";
 import { ionCaptureServices } from "../ion/audio";
 import { ionAppServices } from "../ion/appServices";
 import { NeonNode } from "../../render/node";
-import { niwAttach, niwFrame, niwResize, niwPointer, niwShutdown } from "./handoff.h";
+import { niwAttach, niwFrame, niwResize, niwPointer, niwWheel, niwShutdown } from "./handoff.h";
 
 extern function niwSetFrameRequester(requester: () => void): void;
 
@@ -72,6 +72,8 @@ export function runNativeWindow(opts: NativeWindowOptions, app: () => NeonNode, 
 			niwPointer(POINTER_MOVE, x, y);
 		} else if (e.kind === PointerKind.Leave) {
 			niwPointer(POINTER_CANCEL, x, y);
+		} else if (e.kind === PointerKind.Wheel) {
+			niwWheel(x, y, e.dx as float32, e.dy as float32);
 		}
 	});
 	onFocus((window: int32, focused: boolean): void => {
