@@ -5,7 +5,7 @@ import { NeonEvent } from "../../src/render/event";
 import { bindAttr } from "../../src/render/host";
 import { createSignal } from "../../src/core/signal";
 import { createRoot } from "../../src/core/owner";
-import { HOST_MOVE_CONTRACT, RECONCILE_CONTRACT, HOST_ATTR_CONTRACT, hostMoveContract, reconcileContract, hostAttrContract } from "../render/hostContract";
+import { HOST_MOVE_CONTRACT, RECONCILE_CONTRACT, HOST_ATTR_CONTRACT, hostMoveContract, reconcileContract, hostAttrContract, HOST_PARK_CONTRACT, hostParkContract } from "../render/hostContract";
 import { sleepAsync } from "std/core/promise";
 import { useWindowDimensions, useColorScheme } from "../../src/render/environment";
 
@@ -341,6 +341,11 @@ test "clipPath reaches the element" {
 test "the DOM defines the host move contract" {
 	const got = hostMoveContract(domHost());
 	assert got === HOST_MOVE_CONTRACT, got;
+}
+
+test "the DOM keeps the park contract" {
+	const got = hostParkContract(domHost());
+	assert got === HOST_PARK_CONTRACT, got;
 }
 
 test "reconcileArrays keeps its contract on the DOM" {

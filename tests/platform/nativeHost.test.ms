@@ -33,8 +33,26 @@ import {
 	nmTouchFull, nmResponderTag, nmResponderBlocks, nmOpacity,
 } from "./nativeBridgeMock.h";
 import { PanResponder, PanResponderGestureState } from "../../src/components/panResponder";
+import { HOST_PARK_CONTRACT, hostParkContract } from "../render/hostContract";
 
 const PRESS: int32 = 2;
+
+test "the native host keeps the park contract and release frees the parked views" {
+	const host = createNativeHost().host;
+	const got = hostParkContract(host);
+	assert got === HOST_PARK_CONTRACT, got;
+
+	const created = nmViewsCreated();
+	const released = nmReleaseCalls();
+	const holder = host.createElement("view");
+	const parked = host.createElement("view");
+	host.append(parked, host.createElement("view"));
+	host.insertBefore(holder, parked, null);
+	assert nmViewsCreated() - created === 3, "the holder, the parked node and its child are three views";
+	assert nmReleaseCalls() === released, "parking releases nothing";
+	host.release(holder);
+	assert nmReleaseCalls() - released === 3, "release frees the parked subtree with the holder: " + (nmReleaseCalls() - released).toString();
+}
 
 test "removed rows and a torn-down app release native views and routes exactly once" {
 	const [rows, setRows] = createSignal<number[]>([1, 2, 3]);

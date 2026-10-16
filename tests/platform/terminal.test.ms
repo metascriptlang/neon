@@ -3,7 +3,7 @@ import { terminalHost } from "../../src/platform/terminal/host";
 import { paintNode, paintTree } from "../../src/platform/terminal/paint";
 import { HostNode } from "../../src/render/hostTypes";
 import { Style } from "../../src/render/style";
-import { HOST_MOVE_CONTRACT, RECONCILE_CONTRACT, HOST_ATTR_CONTRACT, hostMoveContract, reconcileContract, hostAttrContract } from "../render/hostContract";
+import { HOST_MOVE_CONTRACT, RECONCILE_CONTRACT, HOST_ATTR_CONTRACT, hostMoveContract, reconcileContract, hostAttrContract, HOST_PARK_CONTRACT, hostParkContract } from "../render/hostContract";
 
 function tn(hostNode: HostNode): TerminalNode {
 	return hostNode as unknown as TerminalNode;
@@ -170,6 +170,11 @@ test "setStyle: fontStyle italic and textDecorationLine underline reach the ansi
 test "the terminal host keeps the DOM move contract" {
 	const got = hostMoveContract(terminalHost());
 	assert got === HOST_MOVE_CONTRACT, got;
+}
+
+test "the terminal host keeps the park contract" {
+	const got = hostParkContract(terminalHost());
+	assert got === HOST_PARK_CONTRACT, got;
 }
 
 test "reconcileArrays keeps its contract on the terminal host" {

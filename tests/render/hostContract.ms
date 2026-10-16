@@ -4,6 +4,7 @@ import { Style } from "../../src/render/style";
 
 export const HOST_MOVE_CONTRACT = "abc abc cab abc bac insert-throws remove-throws bac";
 export const RECONCILE_CONTRACT = "abc_ cba_ acd_ deac_ b_ _";
+export const HOST_PARK_CONTRACT = "z|at holder-owns text-set atz| orphan released-empty released-parked release-held-throws atz released-root";
 export const HOST_ATTR_CONTRACT = "_ title=a,id=x id=x id=x,title=b id=x,title=b";
 
 function nameOf(nodes: HostNode[], names: string[], n: HostNode): string {
@@ -116,4 +117,43 @@ export function hostAttrContract(h: Host, read: (n: HostNode) => string): string
 	h.removeAttr(n, "missing");
 	log = log + " " + read(n);
 	return log;
+}
+
+export function hostParkContract(h: Host): string {
+	const root = h.createElement("view");
+	const holder = h.createElement("view");
+	const a = h.createElement("view");
+	const t = h.createText("x");
+	const z = h.createElement("view");
+	const nodes: HostNode[] = [a, t, z];
+	const names: string[] = ["a", "t", "z"];
+	h.append(root, a);
+	h.append(root, t);
+	h.append(root, z);
+	h.insertBefore(holder, a, null);
+	h.insertBefore(holder, t, null);
+	let log = childOrder(h, root, nodes, names) + "|" + childOrder(h, holder, nodes, names);
+	log = log + (h.parentOf(a) === holder && h.parentOf(t) === holder ? " holder-owns" : " holder-lost");
+	h.setText(t, "y");
+	log = log + " text-set";
+	h.insertBefore(root, a, z);
+	h.insertBefore(root, t, z);
+	log = log + " " + childOrder(h, root, nodes, names) + "|" + childOrder(h, holder, nodes, names);
+	log = log + (h.parentOf(root) === null && h.parentOf(a) === root ? " orphan" : " parented");
+	h.release(holder);
+	log = log + " released-empty";
+	const parked = h.createElement("view");
+	h.insertBefore(parked, h.createElement("view"), null);
+	h.release(parked);
+	log = log + " released-parked";
+	let heldThrew = false;
+	try {
+		h.release(a);
+	} catch (e) {
+		heldThrew = true;
+	}
+	log = log + (heldThrew ? " release-held-throws" : " release-held-silent");
+	log = log + " " + childOrder(h, root, nodes, names);
+	h.release(root);
+	return log + " released-root";
 }
