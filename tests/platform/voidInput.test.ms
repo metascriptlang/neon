@@ -1,4 +1,5 @@
 import { createSignal, Accessor } from "../../src/core/signal";
+import { resetErrorHalt } from "../../src/core/runtime";
 import { element } from "../../src/macros/ui/element";
 import { render } from "../../src/render/host";
 import { NeonEvent, neonEvent } from "../../src/render/event";
@@ -384,6 +385,7 @@ test "what a Void paragraph cannot draw yet is refused by name" {
 		render(element(<Text>a <Text cellWidth={8}>b</Text></Text>), d.host, d.root);
 	} catch (e) { message = e.message; }
 	assert message.indexOf("outermost Text") >= 0, "cellWidth on a nested Text: " + message;
+	resetErrorHalt();
 	message = "";
 	const e = host();
 	try {
