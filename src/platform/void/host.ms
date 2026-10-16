@@ -7,9 +7,10 @@ import {
 	setPosition, setSize, setX, setZIndex, setAlpha, setColor, setBackground, clearBackground,
 	setText, text as labelText, setFont, textStyle, setTextStyle, setCursorIndex, setCursorBlinkTime,
 	local, content, scrollTo as scrollNodeTo, setScrollBounds, localToGlobal, globalToLocal,
-	setTextRuns, setMaxWidth, setForceWidth,
+	setTextRuns, setMaxWidth, setForceWidth, setBoxStyle,
 } from "../../../../void/src/void2d/node";
 import { TextRun, TextLayout, Align as TextAlign } from "../../../../void/src/void2d/textLayout";
+import { BoxStyle, BoxShadow, uniformRadii, uniformBorders } from "../../../../void/src/void2d/boxStyle";
 import { hitTest, xForIndex, lineBoxAt, indexAt } from "../../../../void/src/void2d/render";
 import { create, add, isDirty } from "../../../../void/src/void2d/scene";
 import { Color, rgba, vec2 } from "../../../../void/src/void2d/types";
@@ -59,6 +60,7 @@ export class VoidNode {
 	paraStale: boolean = false;
 	cell: float32 = 0.0;
 	spans: TextSpan[] | null = null;
+	boxed: boolean = false;
 
 	constructor(ref: NodeRef) {
 		this.ref = ref;
@@ -170,26 +172,45 @@ function hexNibble(c: string): int32 {
 	return -1;
 }
 
-// "#rgb" / "#rrggbb" → normalized rgba. Returns null for anything else so the
-// caller leaves the node's existing colour alone.
+// "#rgb", "#rrggbb", "#rrggbbaa", rgb() and rgba() → normalized rgba. Returns null for anything else so
+// the caller leaves the node's existing colour alone.
 export function parseColor(css: string): Color | null {
+	if (css.startsWith("rgb(") || css.startsWith("rgba(")) { return parseRgbFunction(css); }
 	if (css.length < 4 || css.charAt(0) !== "#") { return null; }
 	const body = css.substring(1, css.length);
 	let r = -1;
 	let g = -1;
 	let b = -1;
+	let a = 255;
 	if (body.length === 3) {
 		r = hexNibble(body.charAt(0)) * 17;
 		g = hexNibble(body.charAt(1)) * 17;
 		b = hexNibble(body.charAt(2)) * 17;
-	} else if (body.length === 6) {
+	} else if (body.length === 6 || body.length === 8) {
 		r = hexNibble(body.charAt(0)) * 16 + hexNibble(body.charAt(1));
 		g = hexNibble(body.charAt(2)) * 16 + hexNibble(body.charAt(3));
 		b = hexNibble(body.charAt(4)) * 16 + hexNibble(body.charAt(5));
+		if (body.length === 8) { a = hexNibble(body.charAt(6)) * 16 + hexNibble(body.charAt(7)); }
 	}
-	if (r < 0 || g < 0 || b < 0) { return null; }
+	if (r < 0 || g < 0 || b < 0 || a < 0) { return null; }
 	const scale = 255.0 as float32;
-	return { r: (r as float32) / scale, g: (g as float32) / scale, b: (b as float32) / scale, a: 1.0 };
+	return { r: (r as float32) / scale, g: (g as float32) / scale, b: (b as float32) / scale, a: (a as float32) / scale };
+}
+
+function parseRgbFunction(css: string): Color | null {
+	const open = css.indexOf("(");
+	if (!css.endsWith(")")) { return null; }
+	const parts = css.substring(open + 1, css.length - 1).split(",");
+	if (parts.length !== 3 && parts.length !== 4) { return null; }
+	const channel: float32[] = [];
+	for (const p of parts) {
+		const v = parseFloat(p.trim());
+		if (Number.isNaN(v)) { return null; }
+		channel.push(v as float32);
+	}
+	const scale = 255.0 as float32;
+	const alpha: float32 = parts.length === 4 ? channel[3] : 1.0;
+	return { r: channel[0] / scale, g: channel[1] / scale, b: channel[2] / scale, a: alpha };
 }
 
 function num(v: number | null): float32 | null {
@@ -214,6 +235,7 @@ const FOCUS_HANDLERS = [
 const CARET_WIDTH: float32 = 1.0;
 const WHITE: Color = rgba(1.0, 1.0, 1.0, 1.0);
 const CLEAR: Color = rgba(0.0, 0.0, 0.0, 0.0);
+const BLACK: Color = rgba(0.0, 0.0, 0.0, 1.0);
 
 export interface CaretRect {
 	x: float32;
@@ -323,6 +345,95 @@ export function applyPaint(n: VoidNode, s: Style): void {
 	} else if (k === DrawKind.Rect) {
 		ref.clearBackground();
 	}
+	const box = boxStyleOf(s);
+	if (box !== null) {
+		const now = ref.kind();
+		if (now !== DrawKind.Group && now !== DrawKind.Rect) {
+			throw new Error(`void host: a border, borderRadius or boxShadow on a ${now.toString()} node; Void paints them on a plain view only`);
+		}
+		ref.setBoxStyle(box as BoxStyle);
+		n.boxed = true;
+	} else if (n.boxed) {
+		if (ref.kind() === DrawKind.Rect) { ref.setBoxStyle(BoxStyle.create(uniformRadii(0.0), uniformBorders(0.0), CLEAR)); }
+		n.boxed = false;
+	}
+}
+
+function colorOf(css: string, field: string): Color {
+	const c = parseColor(css);
+	if (c === null) { throw new Error(`void host: ${field} "${css}" is not a colour the Void host reads (#rgb, #rrggbb, #rrggbbaa, rgb(), rgba())`); }
+	return c as Color;
+}
+
+function boxStyleOf(s: Style): BoxStyle | null {
+	if (s.borderWidth === null && s.borderRadius === null && s.borderColor === null && s.boxShadow === null) { return null; }
+	const radius: float32 = s.borderRadius !== null ? s.borderRadius as float32 : 0.0;
+	const width: float32 = s.borderWidth !== null ? s.borderWidth as float32 : 0.0;
+	const color = s.borderColor !== null ? colorOf(s.borderColor as string, "borderColor") : BLACK;
+	const box = BoxStyle.create(uniformRadii(radius), uniformBorders(width), color);
+	return s.boxShadow !== null ? box.castShadows(boxShadows(s.boxShadow as string)) : box;
+}
+
+function splitOutsideParens(text: string, sep: string): string[] {
+	const out: string[] = [];
+	let depth = 0;
+	let start = 0;
+	for (let i = 0; i < text.length; i++) {
+		const c = text.charAt(i);
+		if (c === "(") { depth += 1; }
+		else if (c === ")") { depth -= 1; }
+		else if (c === sep && depth === 0) {
+			out.push(text.substring(start, i));
+			start = i + 1;
+		}
+	}
+	out.push(text.substring(start, text.length));
+	return out;
+}
+
+function cssLength(word: string): float32 | null {
+	const bare = word.endsWith("px") ? word.substring(0, word.length - 2) : word;
+	let digits = 0;
+	for (let i = 0; i < bare.length; i++) {
+		const c = bare.charAt(i);
+		if (c >= "0" && c <= "9") { digits += 1; }
+		else if (c !== "." && !(c === "-" && i === 0)) { return null; }
+	}
+	return digits > 0 ? parseFloat(bare) as float32 : null;
+}
+
+// CSS box-shadow, one shadow per comma: "x y [blur [spread]] [colour] [inset]". CSS's blur radius is
+// twice the Gaussian sigma void2d's BoxShadow takes.
+function boxShadows(css: string): BoxShadow[] {
+	const out: BoxShadow[] = [];
+	for (const layer of splitOutsideParens(css, ",")) {
+		const lengths: float32[] = [];
+		let inset = false;
+		let color: Color = BLACK;
+		for (const word of splitOutsideParens(layer.trim(), " ")) {
+			if (word === "") { continue; }
+			if (word === "inset") {
+				inset = true;
+				continue;
+			}
+			const len = cssLength(word);
+			if (len !== null) {
+				lengths.push(len as float32);
+				continue;
+			}
+			color = colorOf(word, "boxShadow");
+		}
+		if (lengths.length < 2 || lengths.length > 4) {
+			throw new Error(`void host: boxShadow "${css}" needs two to four lengths per shadow (x y [blur [spread]])`);
+		}
+		out.push({
+			color, inset,
+			offsetX: lengths[0], offsetY: lengths[1],
+			blur: lengths.length > 2 ? lengths[2] / 2.0 : 0.0,
+			spread: lengths.length > 3 ? lengths[3] : 0.0,
+		});
+	}
+	return out;
 }
 
 function colorOr(css: string | null, fallback: Color): Color {
