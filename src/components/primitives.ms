@@ -23,7 +23,7 @@ import { onCleanup } from "../core/cleanup";
 import { Accessor, accessor, untrack } from "../core/signal";
 import { element } from "../macros/ui/element";
 import { NeonNode, VAttr, VEvent, RefFn, hostElement, evt, dynAttr } from "../render/node";
-import { Host, HostNode, VoidArea, TextSpan } from "../render/hostTypes";
+import { Host, HostNode, VoidArea, TextSpan, TextMeasure } from "../render/hostTypes";
 import { paragraphChildren } from "../render/spanHost";
 import { VoidAreaHandle } from "../render/voidAreaHandle";
 import { applyRef } from "../render/bind";
@@ -205,6 +205,13 @@ export class ViewHandle {
 
 	focus(): void { this.setFocused(true); }
 	blur(): void { this.setFocused(false); }
+
+	measureText(text: string, style: Style): TextMeasure {
+		if (!this.mounted()) { throw "View.measureText was called after the View unmounted"; }
+		const measure = this.host.measureText;
+		if (measure === null) { throw "View.measureText needs a host that measures text, and this host has none"; }
+		return (measure as (t: string, s: Style) => TextMeasure)(text, style);
+	}
 
 	private setFocused(focused: boolean): void {
 		if (!this.mounted()) { throw "View focus was changed after the View unmounted"; }

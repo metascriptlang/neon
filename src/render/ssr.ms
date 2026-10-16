@@ -630,6 +630,7 @@ function writerHost(w: SsrWrite): Host {
 		cloneNode: null,
 		voidArea: null,
 		scrollTo: null,
+		measureText: null,
 		overlayRoot: (node: HostNode): HostNode => w.overlay as unknown as HostNode,
 		headRoot: (node: HostNode): HostNode => w.head as unknown as HostNode,
 	};

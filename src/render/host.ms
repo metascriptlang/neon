@@ -4,7 +4,7 @@
 
 import { VAttr, VEvent, attr } from "./node";
 import { Style, StyleValue, emptyStyle, setStyleField } from "./style";
-import { Host, HostNode, NeonNode, VoidArea } from "./hostTypes";
+import { Host, HostNode, NeonNode, VoidArea, TextMeasure } from "./hostTypes";
 import { NeonEvent, neonEvent, eventType } from "./event";
 import { createRoot } from "../core/owner";
 import { enterRoot, leaveRoot } from "../core/runtime";
@@ -12,7 +12,7 @@ import { beginClaim, endClaim } from "./claim";
 import { Dispose } from "../core/types";
 import { AreaHub, createAreaHub } from "./voidAreaHandle";
 
-export { Host, HostNode, NeonNode, VoidArea } from "./hostTypes";
+export { Host, HostNode, NeonNode, VoidArea, TextMeasure } from "./hostTypes";
 export { bindText, writeAttr, bindAttr, bindStyleProp, applyStaticStyle, bindStyleAll, applyRef, setupRef, composeRefs } from "./bind";
 
 export function render(node: NeonNode, host: Host, parent: HostNode, id: string | null = null): Dispose {
@@ -134,6 +134,8 @@ export function mockAreaHub(outer: MockNode): AreaHub {
 	throw "mockAreaHub: this node opened no void area";
 }
 
+const MOCK_FONT_SIZE = 16;
+
 export function mockHost(): Host {
 	const overlay = mockNode("overlay");
 	const head = mockNode("head");
@@ -250,6 +252,10 @@ export function mockHost(): Host {
 			n.scrollX = x;
 			n.scrollY = y;
 			n.scrollAnimated = animated;
+		},
+		measureText: (text: string, style: Style): TextMeasure => {
+			const size = style.fontSize !== null ? style.fontSize as number : MOCK_FONT_SIZE;
+			return { width: text.length * size / 2, height: size * 5 / 4, ascender: size, descender: size / 4 };
 		},
 		focus: (node: HostNode, focused: boolean): void => {
 			const n = node as unknown as MockNode;

@@ -165,6 +165,7 @@ export function sceneHost(scene: SvgScene): Host {
 		cloneNode: null,
 		voidArea: null,
 		scrollTo: null,
+		measureText: null,
 	};
 }
 

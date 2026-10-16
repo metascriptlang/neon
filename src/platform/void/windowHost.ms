@@ -134,6 +134,7 @@ export function windowHost(w: AreaWindow): Host {
 		cloneNode: null,
 		voidArea: openArea,
 		scrollTo: null,
+		measureText: null,
 	};
 }
 

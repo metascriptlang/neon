@@ -1,5 +1,5 @@
 import { Host, HostNode } from "../../render/host";
-import { TextSpan } from "../../render/hostTypes";
+import { TextSpan, TextMeasure } from "../../render/hostTypes";
 import { NeonEvent, neonEvent, eventType } from "../../render/event";
 import {
 	Scene2D, NodeRef, DrawKind, group, label, mask, addChild, addChildAt, getChildIndex, dispose, kind,
@@ -8,7 +8,7 @@ import {
 	local, content, scrollTo as scrollNodeTo, setScrollBounds, localToGlobal, globalToLocal,
 	setTextRuns, setMaxWidth, setForceWidth,
 } from "../../../../void/src/void2d/node";
-import { TextRun } from "../../../../void/src/void2d/textLayout";
+import { TextRun, TextLayout, Align as TextAlign } from "../../../../void/src/void2d/textLayout";
 import { hitTest, xForIndex, lineBoxAt, indexAt } from "../../../../void/src/void2d/render";
 import { create, add, isDirty } from "../../../../void/src/void2d/scene";
 import { Color, rgba, vec2 } from "../../../../void/src/void2d/types";
@@ -863,6 +863,19 @@ export function createVoidHostWith(scene: Scene2D, font: FontId, defaultFamily: 
 			const was = wasDirty();
 			(m as NodeRef).scrollNodeTo(x as float32, y as float32);
 			woke(was);
+		},
+		measureText: (text: string, style: Style): TextMeasure => {
+			const size: float32 = style.fontSize !== null ? style.fontSize as float32 : TEXT_SIZE;
+			const laid = TextLayout.layout(text, {
+				font: fontOf(style, {}), size, letterSpacing: 0.0, lineSpacing: 0.0, maxWidth: 0.0, align: TextAlign.Left,
+			});
+			if (!laid.ok) { throw new Error(`void host: measureText could not lay out "${text}": ${laid.error.toString()}`); }
+			return {
+				width: laid.value.width as number,
+				height: laid.value.lineHeight as number,
+				ascender: laid.value.ascent as number,
+				descender: laid.value.descent as number,
+			};
 		},
 	};
 

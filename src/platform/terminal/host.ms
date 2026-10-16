@@ -13,7 +13,7 @@
 //   <hr>     — horizontal rule (fills width with ─)
 //   <gap>    — vertical spacer (height attribute = number of blank lines)
 
-import { Host, HostNode } from "../../render/hostTypes";
+import { Host, HostNode, TextMeasure } from "../../render/hostTypes";
 import { NeonEvent, neonEvent, eventType } from "../../render/event";
 import { Style, isBoldWeight } from "../../render/style";
 import { terminalStyleCoverage } from "../../macros/style/fields";
@@ -224,6 +224,7 @@ export function terminalHost(): Host {
 		cloneNode: null,
 		voidArea: null,
 		scrollTo: null,
+		measureText: (text: string, style: Style): TextMeasure => ({ width: text.length, height: 1, ascender: 1, descender: 0 }),
 	};
 }
 

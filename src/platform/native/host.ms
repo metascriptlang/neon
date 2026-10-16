@@ -1076,6 +1076,7 @@ export function createNativeHost(): NativeHost {
 			if (!n.isScroll || n.view === null) { throw "native host: scrollTo needs a mounted scroll view"; }
 			niScrollTo(n.view, x as float32, y as float32, animated ? 1 : 0);
 		},
+		measureText: null,
 		setResponder: (node: HostNode | null, blockNativeResponder: boolean): void => {
 			if (node === null) {
 				niClearResponder();

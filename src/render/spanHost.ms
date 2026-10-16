@@ -144,6 +144,7 @@ export const SPAN_HOST: Host = {
 	cloneNode: null,
 	voidArea: null,
 	scrollTo: null,
+	measureText: null,
 };
 
 // The spans in order, each with the styles of the Texts around it merged; a run with no own style keeps null.
