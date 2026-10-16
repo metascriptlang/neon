@@ -1,6 +1,6 @@
 # Windows Host
 
-Status: decided 2026-10-14; the View, Text, Pressable and ScrollView slices are built, hosted in an Ion window ("Built: View", "Built: Text", "Built: Ion window and Pressable", "Built: ScrollView" below), everything after them is not. The Windows Application UI world is a native host behind
+Status: decided 2026-10-14; the View, Text, Pressable, ScrollView and TextInput slices are built, hosted in an Ion window ("Built: View", "Built: Text", "Built: Ion window and Pressable", "Built: ScrollView", "Built: TextInput" below), everything after them is not. The Windows Application UI world is a native host behind
 `src/platform/native/bridge.h`, like iOS and Android (`IOS.md`, `ANDROID.md`), and its components
 are Neon's own views drawn on DirectComposition. This document keeps the decision, the reference it
 is ported from, the paths rejected and the one measurement taken. `VISION.md` "Worlds, nested one
@@ -288,10 +288,91 @@ Not built or measured:
 - Keyboard scrolling (RNW `OnKeyDown`, arrows and Page keys), scroll bars, inertia, paging and snap points, pull to refresh.
 - Nested ScrollViews in a real window, and a DPI other than 96.
 
+## Built: TextInput
+
+`src/platform/windows/textInput.cpp` ports RNW's `WindowsTextInputComponentView` onto Msftedit's windowless RichEdit,
+following the port map below. `CreateTextServices` gets an `ITextHost` that reports `TXTBIT_D2DDWRITE`, and the
+control runs in plain-text mode. `ITextServices2::TxDrawD2D` draws into the view's composition surface over its
+background colour. When the text is empty, a DirectWrite layout draws the placeholder in its place. The caret is a
+child visual, sized by `TxCreateCaret` and placed by `TxSetCaretPos`. msc's Zig `textserv.h` lacks
+`ITextServices2`, so the file declares it, as RNW does.
+
+- **Where it differs from RNW: input comes from Ion.** RNW turns on RichEdit's own IME (`SES_USECTF`), and its
+  island delivers key and character events. Here Ion owns the window and its IME
+  (`ion/src/platform/windows/input/input.c` handles `WM_IME_COMPOSITION` and hides the system composition window).
+  So RichEdit's IME stays off, and `ion.ms` forwards Ion's records:
+  - A key record becomes `WM_KEYDOWN`/`WM_KEYUP` built from Ion's scancode, plus `WM_CHAR` for the text the key
+    produced. Backspace also gets the `WM_CHAR` 0x08 that `TranslateMessage` would post, because Ion drops control
+    characters from its text.
+  - A text record (an IME commit) is one `EM_REPLACESEL`.
+  - A preedit record replaces the composition range in place, with an underline drawn under it, and reports no
+    change. `onChangeText` therefore fires once per composition, at the commit.
+  - The IME candidate window follows the caret: Ion's `setImeRect` is set after each frame.
+- **Phases.** Each RichEdit notification becomes one control phase:
+  - `EN_CHANGE` becomes 0, carrying the whole text, with RichEdit's `\r` read as `\n`.
+  - Gaining focus becomes 1, and losing it becomes 2.
+  - Enter on a single-line input becomes 3, then a blur when `blurOnSubmit` is set, which is the default. On a
+    multiline input, Enter inserts a newline instead.
+  - `EN_SELCHANGE` becomes 9, with "start,end" in UTF-16 units.
+
+  A write Neon makes itself (`value`, `selection`, focus) reports nothing, so a controlled value does not echo
+  back. Phases are queued and sent after RichEdit's call returns, so a handler that writes `value` never re-enters
+  RichEdit inside its own notification.
+- **Props.** The props below map onto RichEdit as listed. A changed `multiline` aborts with its name, and so does a
+  malformed flag, colour, selection or inset.
+  - `value`, `defaultValue`, `placeholder` and `placeholderTextColor`.
+  - `editable` sets `TXTBIT_READONLY`, and `secureTextEntry` sets `TXTBIT_USEPASSWORD` with U+2022 as the bullet.
+  - `maxLength` is `EM_LIMITTEXT`.
+  - `autoCapitalize: "characters"` is `SES_UPPERCASE`, as in RNW. Its other values change nothing, as in RNW.
+  - `autoFocus` takes effect on the first frame the input is in the tree.
+  - `blurOnSubmit` and `selection`.
+  - `padding` arrives as `textInsets`. `fontFamily` and `textAlign` apply too.
+  - Colour, font size and weight go into a `CHARFORMAT2`, where size × 15 is the height in twips.
+  - `keyboardType`, `returnKeyType` and `autoCorrect` are accepted and change nothing: there is no soft keyboard,
+    and RichEdit corrects nothing until a correction proc is installed.
+- **Pointer and focus.**
+  - A press on an input focuses it. The press and every move until the release go to RichEdit as button and
+    mouse-move messages. No touch chain starts, because a UITextField also keeps the touch.
+  - A press elsewhere leaves the focus where it is, as on iOS.
+  - While the pointer is over an input, Ion shows its I-beam cursor.
+  - When the window loses focus, the caret hides and no blur is reported.
+- **Measure.** `niMeasureText` takes one line of the input's font from DirectWrite (as "Ag"), or for a multiline
+  input the text laid out at the given width, and adds the insets.
+
+Measured 2026-10-16 at commit `fdd36f4` (on top of the ScrollView slice), 96 DPI, msc v0.3.4 (BUILD `5631dd3e5`), Ion `b9b5e8b`. Running
+`msc build examples/windowsNative/ionInput.ms` and then `out/windowsIonInput.exe --check` exits 0. The check
+clicks through `niwPointer` and types through `WM_KEYDOWN`/`WM_KEYUP` posted to Ion's window, one key per 60 ms, so
+`TranslateMessage`'s `WM_CHAR` arrives before the next key. What it saw:
+- The empty name field draws its blue placeholder (168 pixels). After a click and `hi`, the placeholder is gone,
+  the text is drawn, and there were two changes, "h" and "hi".
+- After typing, selection is "2,2", and the caret is at (42,26) in the window, 23 px high.
+- Backspace leaves "h". Enter reports submit and then blur, and after the blur no input has a caret.
+- A controlled field that uppercases its `onChangeText` shows "AB" after `ab`. A further `c` reports "ABc", so the
+  field held the written value.
+- `maxLength={3}` stops `abcd` at "abc", with three changes.
+- In a multiline input, `a`, Enter, `b` reports "a\nb", and its height grows from 39 to 66.
+- Preedit records "vie" and then "việ" report no change, and the composition is drawn (117 dark pixels against
+  30 before it).
+- Clearing the preedit and then a text record "việt" report "hviệt" once.
+- A `secureTextEntry` field reports "ab" and draws bullets in its colour.
+
+The `--check` runs of `ionScroll.ms`, `ion.ms`, `ionText.ms`, `app.ms` and `text.ms` still exit 0. A TextInput inside a scrolled ScrollView was not run.
+
+Not measured:
+- A real IME. The check feeds preedit and commit records straight to the bridge; producing those records from
+  Telex or the Japanese IME is Ion's job, measured with UniKey on the `<Void>` path only.
+- A DPI other than 96. `TxDrawD2D` takes a rectangle in pixels with `EM_SETDPI`, as in RNW, and that has never
+  run above 96.
+- Drag selection, Ctrl shortcuts and the clipboard. The clipboard is owned by Deskflow on this box and was not
+  touched.
+- Text longer than the box, which RichEdit scrolls.
+- Caret blink: the caret does not blink.
+- UI Automation.
+
 ## Port map: Text, TextInput, UI Automation
 
-Read 2026-10-14 in RNW at `1f59db1`, paths under `vnext/Microsoft.ReactNative/Fabric/`; only the Text part below
-is built, in "Built: Text"; TextInput and UI Automation are not. `WTI` is `Composition/TextInput/WindowsTextInputComponentView.cpp`.
+Read 2026-10-14 in RNW at `1f59db1`, paths under `vnext/Microsoft.ReactNative/Fabric/`. Text is built ("Built:
+Text") and so is TextInput ("Built: TextInput"); UI Automation is not. `WTI` is `Composition/TextInput/WindowsTextInputComponentView.cpp`.
 
 **Text.**
 - **Measure.** `platform/react/renderer/textlayoutmanager/WindowsTextLayoutManager.cpp`
@@ -367,5 +448,5 @@ on it, for a full-window `<Void>`; `src/platform/windows/ion.ms` hosts the nativ
 1. ~~This probe again inside an Ion window, on Ion's content root (`windowRoot`, `windowDevice`).~~ Done in
    "Built: Ion window and Pressable".
 2. The bridge, smallest runnable first: ~~View~~, ~~Text with `niMeasureText` on DirectWrite~~, ~~Pressable input~~,
-   ~~ScrollView~~, then TextInput, then UIA. Each step runs a Neon example in an Ion window and keeps the mock-bridge
+   ~~ScrollView~~, then ~~TextInput~~, then UIA. Each step runs a Neon example in an Ion window and keeps the mock-bridge
    tests (`tests/platform/native*.test.ms`) green.
