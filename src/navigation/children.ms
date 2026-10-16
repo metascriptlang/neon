@@ -1,7 +1,7 @@
 import { Accessor, Signal, accessor } from "../core/signal";
 import { Computation, Dispose } from "../core/types";
 import { createRoot, runWithOwner } from "../core/owner";
-import { getOwner } from "../core/runtime";
+import { flush, getOwner } from "../core/runtime";
 import { onCleanup } from "../core/cleanup";
 
 export interface ChildState<C> {
@@ -113,25 +113,27 @@ export function createChildren<C, T>(
 			throw error;
 		}
 		try {
-			for (const key of owned) {
-				if (!desired.has(key)) { (owned.get(key) as OwnedChild<C, T>).dispose(); }
-			}
-			const snapshot: ChildState<C>[] = [];
-			const visible: NavigationChild<C, T>[] = [];
-			for (const config of next) {
-				const child = desired.get(config.key) as OwnedChild<C, T>;
-				child.configuration.set(config.configuration);
-				child.active.set(config.active);
-				snapshot.push({
-					key: config.key,
-					configuration: config.configuration,
-					active: config.active,
-				});
-				visible.push(child.child);
-			}
-			owned = desired;
-			state.set(snapshot);
-			children.set(visible);
+			flush((): void => {
+				for (const key of owned) {
+					if (!desired.has(key)) { (owned.get(key) as OwnedChild<C, T>).dispose(); }
+				}
+				const snapshot: ChildState<C>[] = [];
+				const visible: NavigationChild<C, T>[] = [];
+				for (const config of next) {
+					const child = desired.get(config.key) as OwnedChild<C, T>;
+					child.configuration.set(config.configuration);
+					child.active.set(config.active);
+					snapshot.push({
+						key: config.key,
+						configuration: config.configuration,
+						active: config.active,
+					});
+					visible.push(child.child);
+				}
+				owned = desired;
+				state.set(snapshot);
+				children.set(visible);
+			});
 		} finally { changing = false; }
 	};
 	navigate(initial);
