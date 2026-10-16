@@ -1,4 +1,4 @@
-import { createSignal, Accessor } from "../../src/core/signal";
+import { createSignal, untrack, Accessor } from "../../src/core/signal";
 import { NeonNode } from "../../src/render/node";
 import { element } from "../../src/macros/ui/element";
 import { render, mockHost, mockNode, mockToString, fireEvent, Host, HostNode, MockNode } from "../../src/render/host";
@@ -130,7 +130,7 @@ test "node slot component mounts once untracked and cleans up with its owner" {
 	let cleanups = 0;
 	const Heading = (): NeonNode => {
 		mounts = mounts + 1;
-		value();
+		untrack((): string => value());
 		onCleanup((): void => { cleanups = cleanups + 1; });
 		return element(<h1>{value()}</h1>);
 	};
