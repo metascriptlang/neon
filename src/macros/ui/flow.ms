@@ -96,25 +96,22 @@ export function ForList<T>(props: {
 
 class MountedState {
 	failed: boolean = false;
-	contentFailed: boolean = false;
 	scope: Computation | null = null;
 }
 
-function mountGuarded(mount: () => void, state: MountedState): boolean {
+function mountGuarded(mount: () => void, state: MountedState): void {
 	try {
 		mount();
-		return true;
 	} catch (e) {
 		if (e instanceof NotReadyError) { throw e; }
 		routeThrown(e);
 		state.failed = true;
-		return false;
 	}
 }
 
 function mountIn(scope: Computation, children: NeonNode, state: MountedState, host: Host, parent: HostNode, before: HostNode | null): void {
 	runWithOwner(scope, (): number => {
-		if (!mountGuarded((): void => { children(host, parent, before); }, state)) { state.contentFailed = true; }
+		mountGuarded((): void => { children(host, parent, before); }, state);
 		return 0;
 	});
 }
@@ -125,6 +122,16 @@ function mountedUnder(children: NeonNode, context: ContextEntry | null, state: M
 		scope.context = context;
 		state.scope = scope;
 		mountIn(scope, children, state, host, parent, before);
+	};
+}
+
+function mountedPlain(children: NeonNode, tree: Computation, state: MountedState): NeonNode {
+	return (host: Host, parent: HostNode, before: HostNode | null): void => {
+		const scope = createOwner();
+		scope.context = tree.context;
+		scope.parentComputed = tree;
+		state.scope = scope;
+		runWithOwner(scope, (): number => { children(host, parent, before); return 0; });
 	};
 }
 
@@ -153,13 +160,55 @@ function newHolder(host: Host): HostNode {
 
 type ErroredFallback = (err: Accessor<Error>, reset: () => void) => NeonNode;
 
-function errorRows(host: Host, children: NeonNode, fallbackOf: ErroredFallback, failure: Signal<Error | null>, state: MountedState, server: boolean): Accessor<Row[]> {
+function errorRows(host: Host, parent: HostNode, before: HostNode | null, children: NeonNode, fallbackOf: ErroredFallback, state: MountedState): Accessor<Row[]> {
+	let content: NeonNode | null = null;
+	let fallback: NeonNode | null = null;
+	let contentRow: Row | null = null;
+	let firstMount = true;
+	let revision: int32 = 0;
+	const holder = newHolder(host);
+	onCleanup((): void => { host.release(holder); });
+	const shows = createErrorBoundary<int32>(
+		(): int32 => {
+			if (content === null) { content = mountedPlain(children, getOwner() as Computation, state); }
+			if (contentRow === null) {
+				const tree = getOwner() as Computation;
+				const row = runWithOwner(tree.parent, (): Row => makeRow(content as NeonNode));
+				row.keep = holder;
+				const first = firstMount;
+				firstMount = false;
+				try {
+					mountContent(host, holder, parent, before, row, first);
+				} catch (e) {
+					if (state.scope !== null) { disposeChildren(state.scope as Computation, true); }
+					state.scope = null;
+					throw e;
+				}
+				contentRow = row;
+			}
+			return 0;
+		},
+		(err: Accessor<Error>, reset: () => void): int32 => {
+			fallback = (host: Host, parent: HostNode, before: HostNode | null): void => {
+				mountGuarded((): void => {
+					fallbackOf(err, (): void => { flush((): number => { reset(); return 0; }); })(host, parent, before);
+				}, state);
+			};
+			revision += 1;
+			return revision;
+		},
+	);
+	return createMemo<Row[]>(() => {
+		if (shows() === 0) { return [contentRow as Row]; }
+		return [makeRow(fallback as NeonNode)];
+	});
+}
+
+function errorRowsOnServer(host: Host, children: NeonNode, fallbackOf: ErroredFallback, failure: Signal<Error | null>, state: MountedState): Accessor<Row[]> {
 	let content: NeonNode | null = null;
 	let fallback: NeonNode | null = null;
 	let contentRow: Row | null = null;
 	let boundaryOwner: Computation | null = null;
-	const holder = newHolder(host);
-	onCleanup((): void => { host.release(holder); });
 	const showsContent = createErrorBoundary<boolean>(
 		(): boolean => {
 			const failed = failure.get();
@@ -174,7 +223,7 @@ function errorRows(host: Host, children: NeonNode, fallbackOf: ErroredFallback, 
 		(err: Accessor<Error>, reset: () => void): boolean => {
 			const caught = err();
 			failure.set(caught);
-			const shown = server ? serverCaught(caught) : err;
+			const shown = serverCaught(caught);
 			fallback = (host: Host, parent: HostNode, before: HostNode | null): void => {
 				mountGuarded((): void => {
 					fallbackOf(shown, (): void => { flush((): number => { failure.set(null); reset(); return 0; }); })(host, parent, before);
@@ -185,19 +234,11 @@ function errorRows(host: Host, children: NeonNode, fallbackOf: ErroredFallback, 
 	);
 	return createMemo<Row[]>(() => {
 		if (showsContent()) {
-			if (contentRow === null) {
-				const row = runWithOwner(boundaryOwner, (): Row => makeRow(content as NeonNode));
-				row.keep = server ? null : holder;
-				contentRow = row;
-			}
+			if (contentRow === null) { contentRow = runWithOwner(boundaryOwner, (): Row => makeRow(content as NeonNode)); }
 			return [contentRow as Row];
 		}
-		if (server || state.contentFailed) {
-			if (contentRow !== null) { (contentRow as Row).keep = null; }
-			contentRow = null;
-			state.contentFailed = false;
-			if (state.scope !== null) { disposeChildren(state.scope as Computation, true); }
-		}
+		contentRow = null;
+		if (state.scope !== null) { disposeChildren(state.scope as Computation, true); }
 		return [makeRow(fallback as NeonNode)];
 	});
 }
@@ -234,12 +275,11 @@ export function Errored(props: {
 	fallback: (err: Accessor<Error>, reset: () => void) => NeonNode;
 }): NeonNode {
 	return (host: Host, parent: HostNode, before: HostNode | null): void => {
-		const failure = new Signal<Error | null>(null, null, true);
 		const state = new MountedState();
 		const server = isServer();
 		regionNode((h) => {
-			const rows = errorRows(h, props.children, props.fallback, failure, state, server);
-			return server ? settledOnServer(rows, state) : rows;
+			if (!server) { return errorRows(h, parent, before, props.children, props.fallback, state); }
+			return settledOnServer(errorRowsOnServer(h, props.children, props.fallback, new Signal<Error | null>(null, null, true), state), state);
 		})(host, parent, before);
 		if (!server && state.failed) { flush(); }
 	};
