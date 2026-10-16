@@ -118,6 +118,15 @@ Refused by name until the slice that adds each one:
 (`YGNodeSetMeasureFunc`, `YogaLayoutableShadowNode.cpp:80`). Until it lands, a Text is as tall as yoga makes it, and
 rows in a list need an explicit height.
 
+**Measuring a line apart from a Text.** `ViewHandle.measureText(text, style)` returns `width`, `height`, `ascender`
+and `descender` (RN's `TextLayoutLine` names) of one unwrapped line, synchronously, through the host the View is mounted
+on, because fonts are registered per host. It is the call an author makes inside a handler, as Haro does in `onLayout`
+to size its grid; RN core has only the `onTextLayout` event, and Flutter's `TextPainter` is the synchronous reference.
+The person approved it as a Host contract field on 2026-10-16. The Void host lays the line out with the face its Text
+would draw (`tests/platform/voidFont.test.ms`); the browser measures on a canvas, with the page's font when the style
+names none (`tests/browser/measureText.test.ms`); the terminal host counts cells. The native hosts, the SSR host and the
+Ion window element have no measure yet, and the call throws naming that.
+
 **A colour-only run change still reshapes.** void2d's `setLabelRuns` sets `reshape` unconditionally, although draw
 reads a glyph's colour from its run. That is the Void request `~/metascript/.inbox/void/2026-10-15-label-runs-paint-only.md`.
 
