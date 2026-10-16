@@ -22,39 +22,6 @@ names the card and the site, and nothing is worked around in `src/`. Rows closed
 2026-09-20 were dropped with §2 — they are in this file's history at `git show c00bd2b:BUGS.md`,
 and the invariants that outlived them were moved to the head of the test that pins each one.
 
-- **OPEN 2026-10-15 — `<For key>` keeps showing the old item when a new object arrives under the same key.**
-  `<For each={rows()} key={(r: Keyed): number => r.id}>{row}</For>` over `[{id:1,label:"a"},{id:2,label:"b"}]`,
-  then `setRows([{id:2,label:"b2"},{id:1,label:"a2"}])`, prints `<ul><li>b</li><li>a</li></ul>`:
-  the rows reorder and keep the labels they were built with. Measured with `msc test` and
-  `msc test --target=js` on msc v0.3.4 `15b93cbba` over a copy of main `c68683d` `src`. The row receives
-  the raw item and is reused by key (`src/macros/ui/flow.ms` `For`, `src/core/array.ms` `mapArrayKeyed`);
-  `tests/render/flow.test.ms` checks only the order. `ForList` passes an `Accessor<T>` row and stays
-  current (`tests/render/forList.test.ms`), as Solid 2.0's `For keyed={fn}` does. The fix changes the row
-  type in `src/macros/ui/element.ms`, a contract that needs a yes before it changes.
-
-- **OPEN 2026-10-15 — a server render writes a caught error's message into the page.**
-  `<ErrorBoundary fallback={(err: Error, reset: () => void): NeonNode => <p>{err.message}</p>}>` around a
-  component that throws `new Error("db password=hunter2 at 10.0.0.5")` renders
-  `<p>db password=hunter2 at 10.0.0.5</p><!----><!---->` through `renderToString` on C, `--target=js` and
-  `-d:server` (msc v0.3.4 `15b93cbba`, copy of main `c68683d` `src`). The boundary hands its fallback the
-  thrown `Error` on the server as on the client (`src/macros/ui/flow.ms` `ErrorBoundary`). Solid 1.x leaks
-  the same way (solid issue #3468); Solid 2.0 replaces the error with a generic "Internal Server Error"
-  before the fallback renders outside a dev build and serializes that same record for hydrate
-  (`~/projects/solid-next` `84dada77`, `documentation/solid-2.0/12-ssr-http.md:139-145`).
-
-- **OPEN 2026-10-15 — a read inside `runWithOwner` subscribes the effect that called it.**
-  `createRenderEffect(() => { runs += 1; runWithOwner(owner, (): number => a()); })`, then `setA(1)`,
-  prints `runs 2` on C and `--target=js` (msc v0.3.4 `15b93cbba`, copy of main `c68683d` `src`).
-  `runWithOwner` (`src/core/owner.ms`) swaps the owner and keeps the listener; Solid 1.x
-  (`~/projects/solid` `25138e1c`, `reactive/signal.ts:1055-1059`) and 2.0 clear the listener, so the
-  same program runs the effect once.
-
-- **OPEN 2026-10-15 — an effect that feeds itself stops without an error.**
-  `createRenderEffect(() => { const v = n(); if (v < 3000000) { setN(v + 1); } })` leaves `n` at
-  `1000001` and throws nothing, on C and `--target=js` (same build and copy). `runQueue`
-  (`src/core/runtime.ms`) leaves its loop at 1 000 000 passes with work still queued; Solid 2.0
-  throws at 100 000 (`~/projects/solid-next` `84dada77`, `packages/signals/src/core/scheduler.ts:1309-1315`).
-
 - **OPEN 2026-10-12 — a component tag that omits a required prop compiles and then crashes.**
   `interface BadgeProps { label: Accessor<string>; suffix: Accessor<string>; }` mounted as
   `<Badge label="a" />` builds on msc `e8c024c8` (C) and the test binary ends with status
@@ -72,9 +39,10 @@ and the invariants that outlived them were moved to the head of the test that pi
   `src/macros/ui/element.ms`, a contract that needs a yes before it changes.
 
 - **OPEN 2026-10-13 — a context whose value type is an accessor cannot be given one.** With
-  `createContext<Accessor<string>>(…)` and `const [place] = createSignal("a")`,
-  `<Here.Provider value={place}>` stops at the checker on C and JS: `Type 'string' is not
-  assignable to type 'Accessor<Accessor<string>>'`. The element macro reads an accessor in a
+  `createContext<Accessor<string>>()` and `const [place] = createSignal("a")`,
+  `<Here value={place}>` stops at the checker: `Type 'string' is not
+  assignable to type 'Accessor<Accessor<string>>'` (re-measured 2026-10-16 on msc v0.3.4
+  `cb45fe201` with `msc test` on C, at the tip of `wt/neon-solid2`). The element macro reads an accessor in a
   prop position as a reactive expression of its result, so `value` is offered a `string`; the
   message names neither the rule nor the way out. `useContext` returns the value as it was
   when the reader mounted, so a signal has to travel inside the value: as a field
@@ -133,8 +101,9 @@ and the invariants that outlived them were moved to the head of the test that pi
   text, then the styled size** (the person's report, Seeker, FlatList build of 16:25). Not
   reproduced by machine: two screen recordings of `adb shell input swipe 600 2300 600 700 40` and
   `… 600 2500 600 300 15` flings (355 and 252 frames) were scanned for the height of every bright
-  text run in the label column, and every run measured the 37 px median. `createEffect` runs
-  `setStyle` before the row's label exists (`src/render/node.ms` `hostElement`) and `niTextCreate`
+  text run in the label column, and every run measured the 37 px median. `hostElement`
+  (`src/render/node.ms`) binds the style, a render effect (`bindStyleAll`, `src/render/bind.ms`), before it
+  mounts the children, so `setStyle` runs before the row's label exists, and `niTextCreate`
   starts a label at 17 sp, so a late style is ruled out. Next: record the screen while a hand
   swipe reproduces it.
 
@@ -252,7 +221,7 @@ and the invariants that outlived them were moved to the head of the test that pi
   `@media`, native and inline styles bound to the window width, blocks kept through `mergeStyle`).
   Blocks it: `Style` becomes recursive (`media: StyleMedia[]`, `StyleMedia.style: Style`), and
   `getTypeImpl` throws "unnamed or alias type cycle (Ref)" on a non-generic interface whose field
-  reaches a recursive one, so `<Ctx.Provider>` stops compiling (`tests/render/ssr.test.ms`, msc
+  reaches a recursive one, so a provider tag stops compiling (`<Ctx.Provider>` when measured; the 2.0 tag `<Ctx value>` is not re-measured) (`tests/render/ssr.test.ms`, msc
   `682b18673`). Card `~/metascript/.inbox/compiler/2026-10-07-element-macro-type-cycle-on-generic-interface-field-without-its-parameter.md`.
   Parked at that branch; `src/macros/ui/style.ms` `createStyles` on main has no breakpoints.
 
@@ -305,32 +274,6 @@ and the invariants that outlived them were moved to the head of the test that pi
   `~/metascript/.inbox/compiler/2026-09-21-nullable-unknown-return-value-in-a-generic-caller.md`.
   Parked at `src/render/listRegion.ms`, where every step takes a `Region<Item>` object and the anchor is
   read through `anchorAt<Item>(g, i)` of the same instantiation.
-
-- **PARKED 2026-09-21 — `<ForList each={list}>` cannot be written as a tag.** Same root as `<Index>`
-  below: a `ForList` row carries `Accessor<T>`, and a generic callee cannot bind its type parameter
-  through a `distinct` alias at `createComponent`. Third sighting on
-  `~/metascript/.inbox/compiler/2026-09-20-generic-callee-type-param-through-distinct-alias.md`. Parked at
-  `tests/render/forList.test.ms`, whose cells take the call form `ForList<T>({ each: l, children: row })`;
-  nothing worked around in `src/`.
-
-- **PARKED 2026-09-21 — `<For each={xs} fallback={<li/>}>` cannot be written as a tag.** Not Neon's: a
-  JSX value in an attribute of a GENERIC component tag never lowers, while the identical attribute on a
-  non-generic tag does — `<Show fallback={<b/>}>` is green because `Show` is not generic. Two controls in
-  one file isolate it (`Plain` non-generic builds, `Gen<T>` with the same attribute and the same child
-  errors "JSX expression must be consumed by a macro"); the child's shape is irrelevant. Second sighting
-  on `~/metascript/.inbox/compiler/2026-09-19-jsx-converter-skipped-in-generic-call-inside-macro-arg.md`.
-  Parked at `tests/render/flow.test.ms`, the two fallback cells, which use the call form
-  `For<T>({ …, fallback: <li/> })` instead; nothing worked around in `src/`.
-
-- **PARKED 2026-09-20 — `<Index each={xs()}>{row}</Index>` is refused at `createComponent`, so the
-  index-keyed list has no JSX surface.** Not Neon's: reduced to 11 lines with no JSX and no Neon
-  import — a generic callee passed as a value argument cannot bind its own type parameter through a
-  `distinct` alias. Three green controls isolate it (explicit `T`; the same structure with a
-  NON-distinct alias; a `T[]` wrapper). `<For>` is green as a tag because its row carries `T` bare,
-  while `Index<T>`'s carries `Accessor<T>` and `Accessor<T> = distinct (() => T)`. Card, park site and
-  the controls: `~/metascript/.inbox/compiler/2026-09-20-generic-callee-type-param-through-distinct-alias.md`.
-  Parked at `tests/render/flow.test.ms` above the two `Index<number>({…})` cells; nothing worked
-  around in `src/`.
 
 - **PARKED 2026-09-17 (one-NeonNode arc) — flow lowering does not cover `||`, `??` or
   `.map(namedFn)`.** Only `&&`, the ternary and `.map(arrow)` are lowered (`lowerFlowTree` in
@@ -392,6 +335,9 @@ A compiler debt is not one of these: the twelve this section used to carry moved
   Neon, so it is not a compiler card yet. The arc `row-reconcile-moves` hit the same inversion on
   2026-09-20 with a hand-copied index-free `mapArray`, which makes this an independent second sighting,
   not an artefact of one implementation.
+  Every number above comes from the engine before the Solid 2.0 migration: `probe/m/indexFlagCost.ms`
+  calls `mapArrayKeyed`, which `src/core/array.ms` no longer has, and the index elision now lives in the
+  2.0 `mapArray` port. Re-measure on that engine before acting on this row.
 
 - **Neon `probe/` housekeeping** — `macro_disambig` / `macro_lenval` still assert the formerly-WRONG
   values (deliberate RED bracket-tests); `macro_narrow` N1 is red BY DESIGN (Nhịp-2 marker). Rewrite
