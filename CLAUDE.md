@@ -31,6 +31,7 @@ Platform and backend are `when` blocks: `when (macos) { @passL("-framework Metal
 
 ## Working method
 
+- A design question about reactivity, control flow, async, stores or rendering starts from how Solid 2.0 does it (`~/projects/solid-next`; `packages/universal` for hosts that are not the DOM; the RFCs in `documentation/solid-2.0/`), and Neon takes that mechanism as it is. Diverge only where Neon's way is better or fits MetaScript better (C has no GC and no Proxy; the checker can refuse at compile time what Solid warns about at run time) and write the reason in the card, because a reference followed gives every later change a frame to track, while a mechanism invented here or borrowed from React leaves nothing to follow. The component and event surface stays React Native's.
 - TDD in this order: make it visible, make it right, make it solid. No code without a test that will show it working; a problem that cannot be seen yet gets made visible first.
 - The smallest increment that produces something runnable beats a large unfinished one.
 - A user program that does not build is a finding about the framework: reduce it, probe around it, fix Neon; do not fix their code to get past it.
