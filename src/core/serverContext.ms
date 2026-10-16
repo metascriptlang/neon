@@ -1,3 +1,5 @@
+import { Computation } from "./types";
+
 export class SafeError extends Error {}
 
 export function sanitized(error: Error): Error {
@@ -60,6 +62,17 @@ export function awaitable(ctx: ServerContext, taken: Promise<void>[]): Promise<v
 	if (taken.length > 0) { return taken; }
 	if (ctx.every.length === 0) { throw new Error("SSR: a read was not ready and nothing is awaited; the render cannot settle"); }
 	return ctx.every.slice(0, ctx.every.length);
+}
+
+export function pendingWaits(ctx: ServerContext, sources: Computation[]): Promise<void>[] {
+	const waits: Promise<void>[] = [];
+	for (const source of sources) {
+		const id = source.id;
+		const slot = id === null ? null : ctx.slots.get(id);
+		if (slot === null) { throw new Error("[SERVER_WAIT_WITHOUT_SLOT] a pending read names a source that has no server slot"); }
+		waits.push(slot.wait);
+	}
+	return waits;
 }
 
 let current: ServerContext | null = null;
