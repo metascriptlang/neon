@@ -8,6 +8,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cmath>
+#include <cctype>
 #include <cstring>
 #include <map>
 #include <string>
@@ -35,7 +36,7 @@ struct Count {
 };
 
 struct SizeCheck {
-	std::string layout, text;
+	std::string layout, text, family;
 	float fontSize;
 	int bold;
 	float maxWidth;
@@ -143,7 +144,8 @@ int checkSize(const SizeCheck &c) {
 	ComPtr<IDWriteFactory> factory;
 	must(DWriteCreateFactory(DWRITE_FACTORY_TYPE_ISOLATED, __uuidof(IDWriteFactory), (IUnknown **)factory.GetAddressOf()), "DWriteCreateFactory");
 	ComPtr<IDWriteTextFormat> format;
-	must(factory->CreateTextFormat(L"Segoe UI", nullptr, c.bold ? DWRITE_FONT_WEIGHT_BOLD : DWRITE_FONT_WEIGHT_NORMAL, DWRITE_FONT_STYLE_NORMAL,
+	std::wstring family(c.family.begin(), c.family.end());
+	must(factory->CreateTextFormat(family.c_str(), nullptr, c.bold ? DWRITE_FONT_WEIGHT_BOLD : DWRITE_FONT_WEIGHT_NORMAL, DWRITE_FONT_STYLE_NORMAL,
 		DWRITE_FONT_STRETCH_NORMAL, c.fontSize, L"en-us", &format), "CreateTextFormat");
 	std::wstring wide(c.text.begin(), c.text.end());
 	ComPtr<IDWriteTextLayout> layout;
@@ -261,6 +263,32 @@ int harnessSample(const char *title) {
 	return failures == 0 ? 0 : 1;
 }
 
+void harnessWheel(const char *title, int x, int y, int delta) {
+	HWND window = findOwnWindow(title);
+	POINT screen = {x, y};
+	ClientToScreen(window, &screen);
+	PostMessageW(window, WM_MOUSEWHEEL, MAKEWPARAM(0, (WORD)(short)delta), MAKELPARAM((short)screen.x, (short)screen.y));
+}
+
+void harnessClick(const char *title, int x, int y) {
+	HWND window = findOwnWindow(title);
+	PostMessageW(window, WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(x, y));
+	PostMessageW(window, WM_LBUTTONUP, 0, MAKELPARAM(x, y));
+}
+
+int harnessPostKeys(const char *title, const char *keys) {
+	HWND window = findOwnWindow(title);
+	if (!window) return 1;
+	for (const char *c = keys; *c; c++) {
+		UINT vk = *c == '\b' ? VK_BACK : *c == '\r' ? VK_RETURN : *c == ' ' ? VK_SPACE : (UINT)toupper((unsigned char)*c);
+		UINT scan = MapVirtualKeyW(vk, MAPVK_VK_TO_VSC);
+		LPARAM down = 1 | ((LPARAM)scan << 16);
+		PostMessageW(window, WM_KEYDOWN, vk, down);
+		PostMessageW(window, WM_KEYUP, vk, down | (LPARAM)0xC0000000);
+	}
+	return 0;
+}
+
 void harnessExpect(const char *name, int x, int y, int r, int g, int b) {
 	g_expectations.push_back({name, x, y, r, g, b});
 }
@@ -275,8 +303,12 @@ void harnessExpectCount(const char *name, int x, int y, int width, int height, i
 	g_counts.push_back({name, x, y, width, height, r, g, b, tolerance, minCount, maxCount});
 }
 
+void harnessExpectSizeIn(const char *layout, const char *text, const char *family, float fontSize, int bold, float maxWidth) {
+	g_sizes.push_back({layout, text, family, fontSize, bold, maxWidth});
+}
+
 void harnessExpectSize(const char *layout, const char *text, float fontSize, int bold, float maxWidth) {
-	g_sizes.push_back({layout, text, fontSize, bold, maxWidth});
+	harnessExpectSizeIn(layout, text, "Segoe UI", fontSize, bold, maxWidth);
 }
 
 int harnessRun(void) {

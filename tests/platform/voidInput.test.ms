@@ -2,19 +2,21 @@ import { createSignal, Accessor } from "../../src/core/signal";
 import { element } from "../../src/macros/ui/element";
 import { render } from "../../src/render/host";
 import { NeonEvent, neonEvent } from "../../src/render/event";
-import { View, Text, TextInput, Pressable } from "../../src/components/primitives";
+import { View, ViewHandle, Text, TextInput, Pressable } from "../../src/components/primitives";
 import { ForList, Show } from "../../src/macros/ui/flow";
 import { createList } from "../../src/core/list";
 import { NeonNode } from "../../src/render/node";
 import {
 	createVoidHostWith, VoidHost, VoidNode, TextEditingValue, editingValue, CaretRect,
 } from "../../src/platform/void/host";
-import { Scene2D, NodeRef, DrawKind, Changed, text, paint, textStyle, local, getChildAt, clearChanges, isLive, numChildren } from "../../../void/src/void2d/node";
+import { Scene2D, NodeRef, DrawKind, Changed, text, paint, textStyle, local, getChildAt, clearChanges, numChildren, localToGlobal } from "../../../void/src/void2d/node";
 import { create, paint as paintScene, isDirty } from "../../../void/src/void2d/scene";
 import { frameEnd } from "../../../void/src/void2d/draw";
 import { xForIndex, textWidth, lineBoxAt } from "../../../void/src/void2d/render";
 import { TextRun } from "../../../void/src/void2d/textLayout";
-import { rgba } from "../../../void/src/void2d/types";
+import { TextSpan } from "../../src/render/hostTypes";
+import { Style } from "../../src/render/style";
+import { rgba, vec2, Vec2 } from "../../../void/src/void2d/types";
 import { labelTexts } from "../../../void/src/void2d/labelText";
 import { FontId, DEFAULT_FONT, addFont } from "../../../void/src/void2d/font";
 
@@ -133,7 +135,7 @@ test "keys go to the focused node and bubble to its parents" {
 	let inner: VoidNode | null = null;
 	render(element(
 		<View onKeyDown={(e: NeonEvent): void => { order = order + "outer:" + e.key + " "; }}>
-			<View ref={(n: HostNode): void => { inner = n as VoidNode; }} onKeyDown={(e: NeonEvent): void => { order = order + "inner:" + e.key + " "; }} />
+			<View ref={(h: ViewHandle): void => { inner = h.node as VoidNode; }} onKeyDown={(e: NeonEvent): void => { order = order + "inner:" + e.key + " "; }} />
 		</View>
 	), vh.host, vh.root);
 	vh.keyDown(key("a"));
@@ -252,7 +254,7 @@ test "a Text's strings draw in order as one paragraph label, and a string change
 	const text = top(vh).children[0];
 	assert paragraph(text).text() === "Count: 7", "one label holds both strings: \"" + paragraph(text).text() + "\"";
 	assert text.ref.numChildren() === 1, "the paragraph label is the Text's only scene child, got " + text.ref.numChildren().toString();
-	assert !text.children[0].ref.isLive() && !text.children[1].ref.isLive(), "the strings are spans with no label of their own";
+	assert text.children.length === 0, "the strings are spans, not host nodes";
 	setN(8);
 	assert paragraph(text).text() === "Count: 8", "the changed string reaches the paragraph: \"" + paragraph(text).text() + "\"";
 	assert runsOf(vh, paragraph(text)).length === 0, "an unstyled paragraph draws without runs";
@@ -325,6 +327,44 @@ test "cellWidth puts every grapheme of the paragraph on a fixed cell, and follow
 	assert label.xForIndex(2) === 14.0, "cells of 7: " + label.xForIndex(2).toString();
 }
 
+test "spans draw as one paragraph label on the Void host, with no node per span" {
+	const vh = host();
+	const red: Style = { color: "#ff0000", textDecorationLine: "underline" };
+	const [spans, setSpans] = createSignal<TextSpan[]>([{ text: "error", style: red }, { text: ": not found" }]);
+	render(element(<View style={{ width: 300 }}><Text spans={spans()} /></View>), vh.host, vh.root);
+	const text = top(vh).children[0];
+	const label = paragraph(text);
+	assert label.text() === "error: not found", "one paragraph: \"" + label.text() + "\"";
+	assert text.children.length === 0 && text.ref.numChildren() === 1, "no host node per span";
+	const runs = runsOf(vh, label);
+	assert runs.length === 2 && runs[0].len === 5 && runs[1].len === 11, "a run per span";
+	assert runs[0].color.r === 1.0 && runs[0].color.g === 0.0 && runs[0].underline.r === 1.0 && runs[1].color.g === 1.0, "only the first span is red and underlined";
+	setSpans([{ text: "warning", style: { color: "#0000ff" } }, { text: ": slow" }]);
+	assert label.text() === "warning: slow" && runsOf(vh, label)[0].len === 7 && runsOf(vh, label)[0].color.b === 1.0, "a new line of spans: \"" + label.text() + "\"";
+	setSpans([{ text: "plain" }]);
+	assert label.text() === "plain" && runsOf(vh, label).length === 0, "unstyled spans draw without runs";
+}
+
+test "a press over a nested Text's run fires that run's onPress, and the plain text around it does not" {
+	const vh = host();
+	let link = 0;
+	let outer = 0;
+	render(element(<View style={{ width: 400 }}><Text style={{ height: 30 }} onPress={(): void => { outer += 1; }}>plain <Text onPress={(): void => { link += 1; }}>link</Text> tail</Text></View>), vh.host, vh.root);
+	vh.layout(400.0, 100.0);
+	const label = paragraph(top(vh).children[0]);
+	label.textWidth();
+	const at = (index: int32): Vec2 => label.localToGlobal(vec2(label.xForIndex(index) + 1.0, label.lineBoxAt(index).top + 2.0));
+	const inLink = at(7);
+	vh.clickAt(inLink.x, inLink.y);
+	assert link === 1 && outer === 0, "a press inside \"link\" is the run's: link=" + link.toString() + " outer=" + outer.toString();
+	const inPlain = at(1);
+	vh.clickAt(inPlain.x, inPlain.y);
+	assert link === 1 && outer === 1, "a press on the plain text is the Text's: link=" + link.toString() + " outer=" + outer.toString();
+	const pastEnd = label.localToGlobal(vec2(label.textWidth() + 40.0, label.lineBoxAt(0).top + 2.0));
+	vh.clickAt(pastEnd.x, pastEnd.y);
+	assert link === 1, "past the line's end there is no run";
+}
+
 test "what a Void paragraph cannot draw yet is refused by name" {
 	let message = "";
 	const a = host();
@@ -332,12 +372,6 @@ test "what a Void paragraph cannot draw yet is refused by name" {
 		render(element(<Text>a <View style={{ width: 4, height: 4 }} /></Text>), a.host, a.root);
 	} catch (e) { message = e.message; }
 	assert message.indexOf("inline view") >= 0, "a View inside a Text: " + message;
-	message = "";
-	const b = host();
-	try {
-		render(element(<Text>a <Text onPress={(): void => {}}>b</Text></Text>), b.host, b.root);
-	} catch (e) { message = e.message; }
-	assert message.indexOf("per-span hit-testing") >= 0, "onPress on a nested Text: " + message;
 	message = "";
 	const c = host();
 	try {
@@ -350,6 +384,12 @@ test "what a Void paragraph cannot draw yet is refused by name" {
 		render(element(<Text>a <Text cellWidth={8}>b</Text></Text>), d.host, d.root);
 	} catch (e) { message = e.message; }
 	assert message.indexOf("outermost Text") >= 0, "cellWidth on a nested Text: " + message;
+	message = "";
+	const e = host();
+	try {
+		render(element(<Text>a <Text spans={[{ text: "b" }]} /></Text>), e.host, e.root);
+	} catch (err) { message = err.message; }
+	assert message.indexOf("spans belong on the outermost Text") >= 0, "spans on a nested Text: " + message;
 }
 
 test "a key event carries the physical detail the window supplied, to the focused node and its parents" {
@@ -358,7 +398,7 @@ test "a key event carries the physical detail the window supplied, to the focuse
 	let inner: VoidNode | null = null;
 	render(element(
 		<View onKeyDown={(e: NeonEvent): void => { seen = seen + "outer "; }}>
-			<View ref={(n: HostNode): void => { inner = n as VoidNode; }}
+			<View ref={(h: ViewHandle): void => { inner = h.node as VoidNode; }}
 				onKeyDown={(e: NeonEvent): void => { seen = seen + `${e.scancode} ${e.mods} ${e.consumedMods} ${e.unshifted} ${e.text} `; }} />
 		</View>
 	), vh.host, vh.root);
@@ -381,7 +421,7 @@ test "a focused View hears committed and composing text, and a TextInput keeps i
 		<View style={{ width: 300, height: 100 }}
 			onTextInput={(e: NeonEvent): void => { log = log + "outer:" + e.text + " "; }}>
 			<View style={{ width: 100, height: 20 }}
-				ref={(n: HostNode): void => { plain = n as VoidNode; }}
+				ref={(h: ViewHandle): void => { plain = h.node as VoidNode; }}
 				onTextInput={(e: NeonEvent): void => { log = log + "text:" + e.text + " "; }}
 				onPreedit={(e: NeonEvent): void => { log = log + "pre:" + e.text + "@" + e.cursor.toString() + " "; }} />
 			<TextInput style={{ width: 100, height: 20 }} />
@@ -498,7 +538,7 @@ test "a focused component places the IME rect with its imeRect prop, in its own 
 	let node: VoidNode | null = null;
 	render(element(
 		<View style={{ width: 300, height: 100, paddingLeft: 20, paddingTop: 30 }}>
-			<View style={{ width: 200, height: 24 }} ref={(n: HostNode): void => { node = n as VoidNode; }}
+			<View style={{ width: 200, height: 24 }} ref={(h: ViewHandle): void => { node = h.node as VoidNode; }}
 				imeRect={{ x: at(), y: 4, width: 8, height: 16 }} focusable />
 		</View>
 	), vh.host, vh.root);

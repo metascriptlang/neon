@@ -11,10 +11,28 @@ The code is the truth for everything else: `src/platform/void/host.ms` (`refresh
   - styled runs;
   - inline views as placeholders with an explicit alignment and baseline;
   - press, hover, cursor and accessibility per span.
-- **A data door beside it.** This is Flutter's `Text.rich(TextSpan)`, for content that is already data, such as
-  terminal and editor lines. The prop name and its element shape were still open when this was written. The
-  proposal is `spans`, each `{ text, style, …Text props }`, so that a span is the data form of a nested `<Text>`.
-  Both doors lower to the same paragraph host call.
+- **A data door beside it**, decided 2026-10-15: `<Text spans={…}>`, each `TextSpan { text, style? }`
+  (`src/render/hostTypes.ms`). It is Flutter's `Text.rich(TextSpan)`, for content that is already data, such as
+  terminal and editor lines. A span is the data form of a nested `<Text>`.
+  - On a host with the `setSpans` capability (Void), the spans go straight into the paragraph's runs, with no
+    node per span.
+  - On any other host, `src/render/spanHost.ms` `spanNodes` lays them out as nested Texts, keeping each
+    span's nodes by position.
+- **One mechanism for both doors**, decided 2026-10-15. This is RN Fabric's, where nested `<Text>` and `RawText` are
+  shadow nodes with no view, and `ParagraphShadowNode` flattens them into one `AttributedString`.
+  - On a host with `setSpans`, a Text's children render into `SPAN_HOST` (`src/render/spanHost.ms`), whose nodes are
+    plain records. The outermost Text flattens its records and hands the host the same `TextSpan[]` the `spans`
+    prop does.
+  - It does that once per update, from a deferred `createEffect` that runs after every render effect of the update.
+    A paragraph of one string skips the effect and goes straight to the host.
+  - The native host takes spans too (`setSpansOf` in `src/platform/native/host.ms`). A span with `onPress` keeps its
+    own tag by position, and a touch on it bubbles from its Text. The `textSpans` wire format the bridges read is
+    unchanged (`tests/platform/nativeParity.test.ms`).
+  - Hosts that draw nested text as real nodes keep them: DOM and SSR (`<span>`s, CSS classes, hydration), and the mock
+    host. A framework site that builds a label by hand writes its string through `setTextContent`.
+  - Rejected: `runs` as `{ len, color… }` beside one string. Its only gain is skipping a substring per span
+    (about 0.05 ms per frame, measured below). Against that, the lengths must sum to the string's UTF-16 length,
+    a terminal parser that counts code points breaks it, and the fields are void2d's rather than Text's.
 - **Damage per Solid binding, not per tree diff.** Each change is classed with Flutter's `RenderComparison`
   levels:
   - text, font, size or spacing: `layout`;
@@ -69,14 +87,28 @@ React Native `18f5ddb`, react-native-windows `1f59db1`, Flutter `6f0e0db`, Skia 
 
 ## Void today
 
-`createVoidHostWith` gives each outermost `<Text>` one void2d label. Strings and nested Texts inside it are spans with
-no scene node: a span's handle is a freed row, so any use of it fails loud. The label wraps at the Text's laid width.
-It gets runs only once a span styles a piece.
+`createVoidHostWith` gives each `<Text>` one void2d label, filled through `setSpans`; a Text has no host children,
+and `append` into one is refused. The label wraps at the Text's laid width. It gets runs once a span is styled or the
+Text itself carries a decoration line.
+
+A Text's or span's `fontFamily`, `fontWeight` and `fontStyle` pick its face through void2d's `registerFace` and
+`resolveFont`, a span's own over its Text's. A Text with no `fontFamily` takes the host's default family; an Ion window
+registers its `font` file as that family. A weight or slant the family has no file for is synthesised by void2d, as
+Ghostty, WezTerm, DirectWrite and CSS `font-synthesis` do (RN iOS takes the nearest weight instead,
+`RCTFont.mm:480`), and the person chose synthesis on 2026-10-16. A family with no registered face, or a weight asked
+for with no family at all, is refused by name. `textDecorationStyle: "wavy"` maps to the run's `wavy`. The native
+hosts refuse every line style but `solid`. They take one `fontFamily` per Text and refuse a span that changes it;
+Windows draws the family through DirectWrite (an installed family only), and iOS and Android refuse it by name until
+a device lane proves them.
+
+A press over a span with `onPress` fires that span's handler and not its Text's (`clickAt`, `spanAt`): the point's
+grapheme comes from void2d `indexAt` and `xForIndex`, and a point past a line's end hits no span. Like every Void Text,
+a Text that takes presses needs a height until yoga has its measure hook.
 
 Refused by name until the slice that adds each one:
 - a `View` inside a `Text` (inline views);
-- `onPress` on a nested `Text` (per-span hit-testing);
 - a nested `fontSize` (a void2d label has one size);
+- `textDecorationStyle` `double`, `dotted` or `dashed`;
 - `cellWidth` on a nested Text. `<Text cellWidth={n}>` maps to void2d `setForceWidth`, so grapheme k sits at k×n. The
   browser and native hosts refuse `cellWidth` by name.
 
@@ -118,12 +150,36 @@ busy with other sessions. This slice is tree `6a9d6858`.
 All 80 rows new text is slower by about the cost of wrapping, which the void2d rows above isolate. Before this slice a
 label never wrapped.
 
+Spans against plain text, 80 rows of 120 characters all new every frame, 400 frames, two alternating runs, tree
+`9ef44f1a`, before nested Texts moved onto `SPAN_HOST`. The probe is `tests/zzprobe/spansBench.ms`, uncommitted.
+
+| rows | ms per frame | building the lines | reactive set |
+|---|---|---|---|
+| plain text | 3.32–3.39 | 0.34 | 0.07 |
+| 8 spans of 15 characters, two shared styles | 3.59–3.74 | 0.38–0.40 | 0.22–0.24 |
+
+Off-screen rows cost nothing: the list is virtualized, holding only the visible lines.
+
+The same 80×120 rows with 8 spans per row written as nested JSX `<Text>`, three pairs of `main` (`8d5c0cf`) and
+`SPAN_HOST` run alternately on a busy box:
+
+| rows | `main` | `SPAN_HOST` |
+|---|---|---|
+| plain text | 3.44–3.71 ms | 3.40–3.51 ms |
+| spans | 3.76–4.11 ms | 3.72–3.75 ms |
+| nested JSX | 5.86–7.04 ms (reactive set 2.30–2.96) | 4.08–4.22 ms (reactive set 0.60–0.67) |
+
+On `main`, each of a row's eight string bindings rebuilt the paragraph on its own, so a row was rebuilt eight times
+per frame.
+
 ## Order
 
 1. Paragraph on the Void host: done, with the yoga measure hook outstanding.
-2. Carry runs and the damage level through `src/render/hostTypes.ms`; add the data door. `cellWidth` →
-   `setForceWidth` is done on Void.
-3. Paint-only updates: on Void after the Void request lands; DirectWrite keeps its layout.
-4. Per-span press, hover, cursor and accessibility.
+2. The data door: done. `spans`, and `setSpans` on Void. `cellWidth` → `setForceWidth`: done on Void.
+   Damage per binding needs no contract field: a host compares a node's last style with the new one.
+3. Paint-only updates: done on Windows (DirectWrite keeps one layout per label and recolours through drawing effects;
+   `docs/WINDOWS.md` "Built: styled runs"); on Void once the Void request lands.
+4. Per-span press: done on Void, native (tags) and Windows (DirectWrite hit-testing). Hover, cursor and accessibility
+   per span are not built: Void has no accessibility tree, and the Windows bridge has no UI Automation yet.
 5. Placeholders (inline views).
 6. iOS and Android on the same contract.

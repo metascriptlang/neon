@@ -1,6 +1,6 @@
 # Windows Host
 
-Status: decided 2026-10-14; the View, Text and Pressable slices are built, hosted in an Ion window ("Built: View", "Built: Text", "Built: Ion window and Pressable" below), everything after them is not. The Windows Application UI world is a native host behind
+Status: decided 2026-10-14; the View, Text, Pressable, ScrollView and TextInput slices are built, hosted in an Ion window ("Built: View", "Built: Text", "Built: Ion window and Pressable", "Built: ScrollView", "Built: TextInput" below), everything after them is not. The Windows Application UI world is a native host behind
 `src/platform/native/bridge.h`, like iOS and Android (`IOS.md`, `ANDROID.md`), and its components
 are Neon's own views drawn on DirectComposition. This document keeps the decision, the reference it
 is ported from, the paths rejected and the one measurement taken. `VISION.md` "Worlds, nested one
@@ -101,7 +101,10 @@ DPI other than 96, DirectManipulation, RichEdit windowless, UI Automation.
 and `text.ms` own a plain Win32 window (`niwPump`), and `src/platform/windows/ion.ms` owns an Ion window
 ("Built: Ion window and Pressable"); `--check` samples the owner's own window.
 Every `bridge.h` function not implemented aborts with its name, and `niAppCall` answers only the queries
-`installNativeAppServices` makes at startup.
+`installNativeAppServices` makes at startup. App services do not go through it on an Ion window. `ion.ms` hands
+`useAppServices` the services of `src/platform/ion/appServices.ms`, the same ones the full-window `<Void>` installs.
+In them, the clipboard and the microphone permission go through Ion, and every other service throws an error
+that names it.
 
 A build links the bridge only when the entry module imports `src/platform/windows/library`; `host.ms` has no
 Windows block, so the mock-bridge tests, which also see `windows` as true on this box, link their own mock.
@@ -185,7 +188,7 @@ DPI changed, and runs the host's resize handler (a relayout). `src/platform/ion/
   (cancel, which Neon turns into `pointercancel` and `pointerleave`). iOS and Android report 1 and 2 wherever the finger
   lifted; Windows cancels instead, so `<Pressable onPress>` does not fire for down inside and up outside. Leave and focus
   loss cancel. `niLastTouchTag/Phase/X/Y/Time` read the last report; the time is the performance counter in
-  milliseconds. `niSetResponder` and `niClearResponder` store the view only: no ScrollView exists to consume it.
+  milliseconds. `niSetResponder` and `niClearResponder` store the view only: a ScrollView scrolls by the wheel alone, so no touch is taken from it.
 - **Accessibility props.** `niSetProp` stores `accessible`, `accessibilityLabel`, `accessibilityHint`, `accessibilityRole`
   and `accessibilityState` on the view, for the UI Automation slice; nothing exposes them yet. Any other name, an
   `accessib*` one included, still aborts by name. `ionPress.ms` logs how many views store a given value.
@@ -214,10 +217,162 @@ text is not re-measured on it), a second window, device loss, a minimized or clo
 middle button, `hitSlop`, `pointerEvents`, mouse capture leaving the window with the button held (the PostMessage driver
 posted an up outside the client, not a real drag out of the window), and a physical foreground session.
 
+## Built: styled runs, recolour without a relayout, press on a run
+
+`src/platform/windows/dwriteText.cpp` `TextLabel` keeps one `IDWriteTextLayout` per label and reads Neon's `textSpans`
+(`src/platform/native/host.ms` `encodeSpan`). It changes the layout according to what changed:
+- Text, size, weight, italic, underline or line-through rebuild the layout.
+- A new width only breaks lines again (`SetMaxWidth`), so `niMeasureText` and the draw share one layout.
+- A change that leaves every run's text and shape as they were only redraws. Each run's colour reaches its glyphs
+  at draw time through `SetDrawingEffect`, which is applied at drawing time (learn.microsoft.com,
+  `IDWriteTextLayout::SetDrawingEffect`).
+
+On a press, `bridge.cpp` `niwPointer` hit-tests the label's layout (`TagAt`, `HitTestPoint`), and a pressable run
+reports first, as its own tag, as the iOS and Android bridges do.
+
+This goes further than RNW, which drops its layout on every state and builds a new one (`ParagraphComponentView.cpp:125`,
+`1f59db1`), so a colour change there costs a full layout.
+
+Measured 2026-10-15, tree `faf6e462`, 96 DPI, msc `a2b3e36a`, Ion `c995edb`. `out/windowsIonText.exe --check` passes,
+and on top of the 13 earlier expectations:
+- A nested `<Text style={{ color }} onPress>` run draws red inside white text.
+- Recoloured to blue, it shows blue pixels and no red left, and `niwLayoutsBuilt()` counts 0 layouts built by the
+  change.
+- Pressing along y=320 every 4 px fires the run's `onPress` 33 times, the first at x=116, past the run's leading
+  "white ", and never over the plain text.
+
+`text.ms` 13/13, `ion.ms` 16/16 and `app.ms` 11/11 still hold.
+
+## Built: ScrollView
+
+`src/platform/windows/scrollView.cpp` `Scroller` is RNW's `CompScrollerVisual` (`Fabric/Composition/CompositionContextHelper.cpp`
+at `1f59db1`) without its `InteractionTracker`, which DirectComposition does not have. `niScrollCreate` gives the scroll view a
+content visual, and the bridge parents the ScrollView's children under it. The content visual's offset is minus the scroll
+position (RNW drives the offset with the expression `-tracker.Position`, `:816`). The scroll visual clips its children to its
+bounds, as RNW's inset clip does (`:801`): the seam gained `IVisual::ClipsChildren`, a rectangle clip without a radius. Hit-testing
+adds the position to a point before it tries the children, so a press lands on the content now under the pointer.
+
+- **Wheel.** `ion.ms` forwards Ion's wheel records as `niwWheel(x, y, notchesX, notchesY)`. The bridge hit-tests the point and
+  walks from the view it finds up to the root. The first ScrollView that can move in that direction scrolls, and a ScrollView
+  already at its limit passes the wheel to the one above it. This is RNW's `OnPointerWheelChanged`
+  (`ScrollViewComponentView.cpp:964`): one notch is `WHEEL_DELTA`, 120 points, the move is animated, and a wheel during a move
+  adds to the target (`ScrollBy`, `:1136`). The animation lasts 5 ms per pixel, at least 50 ms and at most 1000 ms, from RNW's
+  `GetPositionAnimation` (`:1123`). The curve is a cubic ease-out, which was not compared with RNW's keyframe easing. A
+  horizontal wheel follows `WM_MOUSEHWHEEL`, where positive means right. `scrollEnabled={false}` stops the wheel only;
+  `scrollTo` still moves, as RNW's `scrollTo` comment says (`ScrollViewComponentView.cpp:1194`).
+- **Bounds.** The position stays within 0 and content minus frame. It is clamped again when the content size or the frame
+  changes, as the tracker's `MaxPosition` does (`UpdateMaxPosition`, `:1194`).
+- **Events.** A frame steps each moving ScrollView before Neon's loop runs. Each position change reports phase 0 (`onScroll`)
+  with the offset, the frame size and the content size, which is at least the frame size (`getScrollMetrics`,
+  `ScrollViewComponentView.cpp:1300`). A wheel or `scrollTo` reports no drag or momentum phases, as in RNW, where a move from a
+  `Try*` request carries a request id and fires neither. An animated move asks Ion for frames until it ends, then asks for none.
+- **Options.** `horizontal` and `scrollEnabled` are read. The scroll bar props and the keyboard props are accepted and do
+  nothing, because this host draws no scroll bar and has no software keyboard. `pagingEnabled`, `refreshEnabled` and
+  `refreshing` abort by name when true, and so does any other option.
+
+Measured 2026-10-16, msc BUILD `5631dd3e5`, Ion `b9b5e8b`, 96 DPI. `msc build examples/windowsNative/ionScroll.ms` then
+`out/windowsIonScroll.exe --check` exits 0. The check posts real `WM_MOUSEWHEEL` and `WM_LBUTTONDOWN`/`UP` messages to the window:
+- Before input, a 200x200 ScrollView of ten 100-point bands shows bands 0 and 1. The pixel below it is the window background, so
+  the clip holds, and no `onScroll` fired.
+- Two notches down move it to y=240 in 165 `onScroll` events over the animation, the last at exactly 240. Bands 2 and 3 are
+  then where 0 and 1 were.
+- A click at band 3's new place presses band 3.
+- `scrollTo({ y: 900, animated: false })` clamps to 800 and shows bands 8 and 9.
+- A wheel outside the ScrollView fires no event and moves nothing.
+
+`ion.ms` 16/16, `ionText.ms`, `app.ms` 11/11 and `text.ms` 13/13 still pass.
+
+Not built or measured:
+- Touch and pen panning: RNW redirects touch to its `VisualInteractionSource` (`CompositionContextHelper.cpp:828`); here that is
+  DirectManipulation, not built. Mouse drag does not scroll, in RNW either.
+- Keyboard scrolling (RNW `OnKeyDown`, arrows and Page keys), scroll bars, inertia, paging and snap points, pull to refresh.
+- Nested ScrollViews in a real window, and a DPI other than 96.
+
+## Built: TextInput
+
+`src/platform/windows/textInput.cpp` ports RNW's `WindowsTextInputComponentView` onto Msftedit's windowless RichEdit,
+following the port map below. `CreateTextServices` gets an `ITextHost` that reports `TXTBIT_D2DDWRITE`, and the
+control runs in plain-text mode. `ITextServices2::TxDrawD2D` draws into the view's composition surface over its
+background colour. When the text is empty, a DirectWrite layout draws the placeholder in its place. The caret is a
+child visual, sized by `TxCreateCaret` and placed by `TxSetCaretPos`. msc's Zig `textserv.h` lacks
+`ITextServices2`, so the file declares it, as RNW does.
+
+- **Where it differs from RNW: input comes from Ion.** RNW turns on RichEdit's own IME (`SES_USECTF`), and its
+  island delivers key and character events. Here Ion owns the window and its IME
+  (`ion/src/platform/windows/input/input.c` handles `WM_IME_COMPOSITION` and hides the system composition window).
+  So RichEdit's IME stays off, and `ion.ms` forwards Ion's records:
+  - A key record becomes `WM_KEYDOWN`/`WM_KEYUP` built from Ion's scancode, plus `WM_CHAR` for the text the key
+    produced. Backspace also gets the `WM_CHAR` 0x08 that `TranslateMessage` would post, because Ion drops control
+    characters from its text.
+  - A text record (an IME commit) is one `EM_REPLACESEL`.
+  - A preedit record replaces the composition range in place, with an underline drawn under it, and reports no
+    change. `onChangeText` therefore fires once per composition, at the commit.
+  - The IME candidate window follows the caret: Ion's `setImeRect` is set after each frame.
+- **Phases.** Each RichEdit notification becomes one control phase:
+  - `EN_CHANGE` becomes 0, carrying the whole text, with RichEdit's `\r` read as `\n`.
+  - Gaining focus becomes 1, and losing it becomes 2.
+  - Enter on a single-line input becomes 3, then a blur when `blurOnSubmit` is set, which is the default. On a
+    multiline input, Enter inserts a newline instead.
+  - `EN_SELCHANGE` becomes 9, with "start,end" in UTF-16 units.
+
+  A write Neon makes itself (`value`, `selection`, focus) reports nothing, so a controlled value does not echo
+  back. Phases are queued and sent after RichEdit's call returns, so a handler that writes `value` never re-enters
+  RichEdit inside its own notification.
+- **Props.** The props below map onto RichEdit as listed. A changed `multiline` aborts with its name, and so does a
+  malformed flag, colour, selection or inset.
+  - `value`, `defaultValue`, `placeholder` and `placeholderTextColor`.
+  - `editable` sets `TXTBIT_READONLY`, and `secureTextEntry` sets `TXTBIT_USEPASSWORD` with U+2022 as the bullet.
+  - `maxLength` is `EM_LIMITTEXT`.
+  - `autoCapitalize: "characters"` is `SES_UPPERCASE`, as in RNW. Its other values change nothing, as in RNW.
+  - `autoFocus` takes effect on the first frame the input is in the tree.
+  - `blurOnSubmit` and `selection`.
+  - `padding` arrives as `textInsets`. `fontFamily` and `textAlign` apply too.
+  - Colour, font size and weight go into a `CHARFORMAT2`, where size × 15 is the height in twips.
+  - `keyboardType`, `returnKeyType` and `autoCorrect` are accepted and change nothing: there is no soft keyboard,
+    and RichEdit corrects nothing until a correction proc is installed.
+- **Pointer and focus.**
+  - A press on an input focuses it. The press and every move until the release go to RichEdit as button and
+    mouse-move messages. No touch chain starts, because a UITextField also keeps the touch.
+  - A press elsewhere leaves the focus where it is, as on iOS.
+  - While the pointer is over an input, Ion shows its I-beam cursor.
+  - When the window loses focus, the caret hides and no blur is reported.
+- **Measure.** `niMeasureText` takes one line of the input's font from DirectWrite (as "Ag"), or for a multiline
+  input the text laid out at the given width, and adds the insets.
+
+Measured 2026-10-16 at commit `fdd36f4` (on top of the ScrollView slice), 96 DPI, msc v0.3.4 (BUILD `5631dd3e5`), Ion `b9b5e8b`. Running
+`msc build examples/windowsNative/ionInput.ms` and then `out/windowsIonInput.exe --check` exits 0. The check
+clicks through `niwPointer` and types through `WM_KEYDOWN`/`WM_KEYUP` posted to Ion's window, one key per 60 ms, so
+`TranslateMessage`'s `WM_CHAR` arrives before the next key. What it saw:
+- The empty name field draws its blue placeholder (168 pixels). After a click and `hi`, the placeholder is gone,
+  the text is drawn, and there were two changes, "h" and "hi".
+- After typing, selection is "2,2", and the caret is at (42,26) in the window, 23 px high.
+- Backspace leaves "h". Enter reports submit and then blur, and after the blur no input has a caret.
+- A controlled field that uppercases its `onChangeText` shows "AB" after `ab`. A further `c` reports "ABc", so the
+  field held the written value.
+- `maxLength={3}` stops `abcd` at "abc", with three changes.
+- In a multiline input, `a`, Enter, `b` reports "a\nb", and its height grows from 39 to 66.
+- Preedit records "vie" and then "việ" report no change, and the composition is drawn (117 dark pixels against
+  30 before it).
+- Clearing the preedit and then a text record "việt" report "hviệt" once.
+- A `secureTextEntry` field reports "ab" and draws bullets in its colour.
+
+The `--check` runs of `ionScroll.ms`, `ion.ms`, `ionText.ms`, `app.ms` and `text.ms` still exit 0. A TextInput inside a scrolled ScrollView was not run.
+
+Not measured:
+- A real IME. The check feeds preedit and commit records straight to the bridge; producing those records from
+  Telex or the Japanese IME is Ion's job, measured with UniKey on the `<Void>` path only.
+- A DPI other than 96. `TxDrawD2D` takes a rectangle in pixels with `EM_SETDPI`, as in RNW, and that has never
+  run above 96.
+- Drag selection, Ctrl shortcuts and the clipboard. The clipboard is owned by Deskflow on this box and was not
+  touched.
+- Text longer than the box, which RichEdit scrolls.
+- Caret blink: the caret does not blink.
+- UI Automation.
+
 ## Port map: Text, TextInput, UI Automation
 
-Read 2026-10-14 in RNW at `1f59db1`, paths under `vnext/Microsoft.ReactNative/Fabric/`; only the Text part below
-is built, in "Built: Text"; TextInput and UI Automation are not. `WTI` is `Composition/TextInput/WindowsTextInputComponentView.cpp`.
+Read 2026-10-14 in RNW at `1f59db1`, paths under `vnext/Microsoft.ReactNative/Fabric/`. Text is built ("Built:
+Text") and so is TextInput ("Built: TextInput"); UI Automation is not. `WTI` is `Composition/TextInput/WindowsTextInputComponentView.cpp`.
 
 **Text.**
 - **Measure.** `platform/react/renderer/textlayoutmanager/WindowsTextLayoutManager.cpp`
@@ -293,5 +448,5 @@ on it, for a full-window `<Void>`; `src/platform/windows/ion.ms` hosts the nativ
 1. ~~This probe again inside an Ion window, on Ion's content root (`windowRoot`, `windowDevice`).~~ Done in
    "Built: Ion window and Pressable".
 2. The bridge, smallest runnable first: ~~View~~, ~~Text with `niMeasureText` on DirectWrite~~, ~~Pressable input~~,
-   then ScrollView, then TextInput, then UIA. Each step runs a Neon example in an Ion window and keeps the mock-bridge
+   ~~ScrollView~~, then ~~TextInput~~, then UIA. Each step runs a Neon example in an Ion window and keeps the mock-bridge
    tests (`tests/platform/native*.test.ms`) green.

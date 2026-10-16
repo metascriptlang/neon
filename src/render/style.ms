@@ -21,6 +21,7 @@ export type FontWeight = "normal" | "bold"
 	| "100" | "200" | "300" | "400" | "500" | "600" | "700" | "800" | "900";
 export type FontStyle = "normal" | "italic";
 export type TextDecorationLine = "none" | "underline" | "line-through" | "underline line-through";
+export type TextDecorationStyle = "solid" | "double" | "dotted" | "dashed" | "wavy";
 
 styleInterfaceBody(0);
 

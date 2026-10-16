@@ -41,6 +41,20 @@ test "ForList is written as a tag" {
 	d();
 }
 
+struct GridRun {
+	units: int32;
+}
+
+struct GridLine {
+	text: string;
+	runs: Vec<GridRun>;
+	cursorCell: int32;
+}
+
+function gridRow(item: Accessor<GridLine>): NeonNode {
+	return <li>{item().text + item().runs.length.toString()}</li>;
+}
+
 test "ForList mounts one row per item" {
 	createRoot((d) => {
 		const l = createList<number>([1, 2, 3]);
@@ -148,6 +162,28 @@ test "set updates the row in place through its own signal" {
 	assert rowText(ulNode) === "193", "the row shows the new value: " + rowText(ulNode);
 	assert builds === 3, "set builds no row";
 	d();
+}
+
+test "a list of items with no hash mounts and takes push, set, move and remove" {
+	createRoot((d) => {
+		const l = createList<GridLine>([{ text: "a", runs: [{ units: 1 }], cursorCell: -1 }]);
+		const ul = el("ul", [], [], ForList<GridLine>({ each: l, children: gridRow }));
+		const host = mockHost();
+		const root = host.createElement("root");
+		render(ul, host, root);
+		const ulNode = (root as unknown as MockNode).children[0];
+		assert rowText(ulNode) === "a1", "initial: " + rowText(ulNode);
+		l.push({ text: "b", runs: [{ units: 1 }, { units: 2 }], cursorCell: 0 });
+		l.push({ text: "c", runs: [], cursorCell: 2 });
+		assert rowText(ulNode) === "a1b2c0", "push: " + rowText(ulNode);
+		l.set(0, { text: "A", runs: [{ units: 1 }, { units: 2 }, { units: 3 }], cursorCell: 1 });
+		assert rowText(ulNode) === "A3b2c0", "set: " + rowText(ulNode);
+		l.move(2, 0);
+		assert rowText(ulNode) === "c0A3b2", "move: " + rowText(ulNode);
+		l.remove(1);
+		assert rowText(ulNode) === "c0b2", "remove: " + rowText(ulNode);
+		d();
+	});
 }
 
 test "replaceAll keeps the row of an item that comes back, in its new place" {

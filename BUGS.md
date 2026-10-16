@@ -22,6 +22,43 @@ names the card and the site, and nothing is worked around in `src/`. Rows closed
 2026-09-20 were dropped with §2 — they are in this file's history at `git show c00bd2b:BUGS.md`,
 and the invariants that outlived them were moved to the head of the test that pins each one.
 
+- **OPEN 2026-10-16 — touches do not reach the sokol canvas.** `src/platform/sokol/input.ms`
+  `deliverAppEvent` takes the four `Touches*` events and does nothing with them, so a phone browser cannot
+  press, scroll or focus the canvas once events arrive.
+
+- **OPEN 2026-10-15 — `<For key>` keeps showing the old item when a new object arrives under the same key.**
+  `<For each={rows()} key={(r: Keyed): number => r.id}>{row}</For>` over `[{id:1,label:"a"},{id:2,label:"b"}]`,
+  then `setRows([{id:2,label:"b2"},{id:1,label:"a2"}])`, prints `<ul><li>b</li><li>a</li></ul>`:
+  the rows reorder and keep the labels they were built with. Measured with `msc test` and
+  `msc test --target=js` on msc v0.3.4 `15b93cbba` over a copy of main `c68683d` `src`. The row receives
+  the raw item and is reused by key (`src/macros/ui/flow.ms` `For`, `src/core/array.ms` `mapArrayKeyed`);
+  `tests/render/flow.test.ms` checks only the order. `ForList` passes an `Accessor<T>` row and stays
+  current (`tests/render/forList.test.ms`), as Solid 2.0's `For keyed={fn}` does. The fix changes the row
+  type in `src/macros/ui/element.ms`, a contract that needs a yes before it changes.
+
+- **OPEN 2026-10-15 — a server render writes a caught error's message into the page.**
+  `<ErrorBoundary fallback={(err: Error, reset: () => void): NeonNode => <p>{err.message}</p>}>` around a
+  component that throws `new Error("db password=hunter2 at 10.0.0.5")` renders
+  `<p>db password=hunter2 at 10.0.0.5</p><!----><!---->` through `renderToString` on C, `--target=js` and
+  `-d:server` (msc v0.3.4 `15b93cbba`, copy of main `c68683d` `src`). The boundary hands its fallback the
+  thrown `Error` on the server as on the client (`src/macros/ui/flow.ms` `ErrorBoundary`). Solid 1.x leaks
+  the same way (solid issue #3468); Solid 2.0 replaces the error with a generic "Internal Server Error"
+  before the fallback renders outside a dev build and serializes that same record for hydrate
+  (`~/projects/solid-next` `84dada77`, `documentation/solid-2.0/12-ssr-http.md:139-145`).
+
+- **OPEN 2026-10-15 — a read inside `runWithOwner` subscribes the effect that called it.**
+  `createRenderEffect(() => { runs += 1; runWithOwner(owner, (): number => a()); })`, then `setA(1)`,
+  prints `runs 2` on C and `--target=js` (msc v0.3.4 `15b93cbba`, copy of main `c68683d` `src`).
+  `runWithOwner` (`src/core/owner.ms`) swaps the owner and keeps the listener; Solid 1.x
+  (`~/projects/solid` `25138e1c`, `reactive/signal.ts:1055-1059`) and 2.0 clear the listener, so the
+  same program runs the effect once.
+
+- **OPEN 2026-10-15 — an effect that feeds itself stops without an error.**
+  `createRenderEffect(() => { const v = n(); if (v < 3000000) { setN(v + 1); } })` leaves `n` at
+  `1000001` and throws nothing, on C and `--target=js` (same build and copy). `runQueue`
+  (`src/core/runtime.ms`) leaves its loop at 1 000 000 passes with work still queued; Solid 2.0
+  throws at 100 000 (`~/projects/solid-next` `84dada77`, `packages/signals/src/core/scheduler.ts:1309-1315`).
+
 - **OPEN 2026-10-12 — a component tag that omits a required prop compiles and then crashes.**
   `interface BadgeProps { label: Accessor<string>; suffix: Accessor<string>; }` mounted as
   `<Badge label="a" />` builds on msc `e8c024c8` (C) and the test binary ends with status
@@ -198,10 +235,34 @@ and the invariants that outlived them were moved to the head of the test that pi
   children that follow, and it rebuilds the tree on read. Card
   `~/metascript/.inbox/compiler/2026-10-16-json-refuses-a-self-referential-type.md`.
 
+- **PARKED 2026-10-16 — the sokol canvas receives no input, and Escape ends it.** Not Neon's: Void's window
+  driver (`void/src/sokol/bridgeWin.c` and `bridgeWeb.c`, `_event`) keeps every `sapp_event` to itself, and
+  `voidRun` takes only `init` and `frame`, so no key, char, pointer, wheel or focus reaches MetaScript. The
+  same `_event` calls `sapp_request_quit()` on Escape: in headless Chrome, after a click and an Escape press,
+  the frame callback stopped at 178 calls and never ran again. sokol_app also reports no IME composition on
+  any platform, so `onPreedit` cannot fire there. Neon's half is `src/platform/sokol/input.ms`
+  (`deliverAppEvent`, `flushKey`), pinned by `tests/platform/sokolInput.test.ms`. Parked at
+  `src/platform/sokol/canvas.ms` `runCanvas`, which calls `voidRun` with no event closure. Note
+  `~/metascript/.inbox/void/2026-10-16-sokol-window-driver-for-neon-canvas.md`.
+
+- **PARKED 2026-10-16 — the native sokol canvas draws every frame.** Not Neon's: sokol_app presents after
+  every frame callback, and a skipped frame flips the window between the last two drawn frames (measured in
+  docs/RENDER-LAYERS.md). Parked at `src/platform/sokol/canvas.ms` `skippedFrameKeepsPicture`, false natively.
+  Same Void note as the row above.
+
+- **PARKED 2026-10-16 — `runCanvas` does not build for the browser from the repo.** Not Neon's. Yoga links under
+  `--os=emcc` since yoga `b2d4f7e`, and the derived-interface upcast at `src/components/primitives.ms` is a
+  typed C cast since recompiler `20d78d7d3`; neither has been run through `runCanvas` under emcc yet. Still open:
+  `setTimeout` does not link under `--os=emcc`, `wasm-ld: undefined symbol: msSetTimeout`, because only the
+  native runtime's `dispatchFull.c` defines it
+  (`~/metascript/.inbox/compiler/2026-10-16-settimeout-does-not-link-under-emcc.md`). With these and yoga worked
+  around outside the repo, the canvas draws in Chrome (docs/RENDER-LAYERS.md). Parked at `examples/voidCanvas.ms`,
+  built natively only.
+
 - **PARKED 2026-10-15 — `tests/platform/voidInput.test.ms` aborts on C.** Not Neon's: after `default font
   assets/font.ttf did not load`, the native run panics with signal 6 in Void `wrapText`
   (`void/src/void2d/textLayout.ms:1366`), the empty-slice-to-`Span` case of compiler card
-  `~/metascript/.inbox/compiler/2026-10-15-c-span-of-an-empty-array-panics-on-null-payload.md`. It arrived with
+  `~/metascript/.inbox/compiler/2026-10-16-empty-array-range-slice-null-payload.md`. It arrived with
   the origin commits pulled at `4718a2f`, and it is red on `fb2285e` alone. Measured by the navigation session's gate on
   `1ad74a7`, msc `15b93cbba` (`~/metascript/.wt/artifacts/rn-navigation-prod/gate-navmodels-fb2285e/gate.log`).
 
@@ -263,8 +324,9 @@ and the invariants that outlived them were moved to the head of the test that pi
   Neon's: Yoga `dba68fd` re-exports its enums from `Yoga.h`, and msc `013853dd` emits
   `export var YGAlign_YGAlignAuto` beside an export list that names `YGAlignAuto`, so node stops at
   `SyntaxError: Export 'YGAlignAuto' is not defined in module`. The same on an export of main
-  `4e33c9e`; the file was not in the known-red set of msc `227ebc34` with Yoga `f5a811d`. Card and
-  repro: `~/metascript/.inbox/compiler/2026-09-30-js-header-enum-reexport-exports-undefined-member.md`.
+  `4e33c9e`; the file was not in the known-red set of msc `227ebc34` with Yoga `f5a811d`. The first card
+  left the inbox while the bug stayed; still red on msc `0f8278bc`, where a direct import from the header
+  fails too. Card and repro: `~/metascript/.inbox/compiler/2026-10-16-js-header-enum-member-unbound.md`.
   Parked at that file's JS lane; nothing in Neon changes.
 
 - **PARKED 2026-09-25 — `tests/render/reconcile.test.ms` does not compile on the native lane since

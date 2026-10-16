@@ -10,6 +10,13 @@ export type RefFn = (node: HostNode) => void;
 // it owns into `parent`, in front of `before`.
 export type NeonNode = (host: Host, parent: HostNode, before: HostNode | null) => void;
 
+// A run of text and the style it lays over its Text's: the data form of a nested <Text>.
+export interface TextSpan {
+	text: string;
+	style?: Style | null;
+	onPress?: ((e: NeonEvent) => void) | null;
+}
+
 export interface VoidArea {
 	host: Host;
 	root: HostNode;
@@ -58,4 +65,8 @@ export interface Host {
 	setResponder?: ((node: HostNode | null, blockNativeResponder: boolean) => void) | null;
 	claim?: ((parent: HostNode, after: HostNode | null, tag: string) => HostNode | null) | null;
 	headRoot?: ((node: HostNode) => HostNode) | null;
+	// Optional capability: a host that draws a Text as one paragraph takes its spans whole, and a
+	// Text's children never reach it as nodes (src/render/spanHost.ms). `null` means the host lays
+	// nested Texts out itself, and `spans` become nested Texts — the same text, a node per span.
+	setSpans?: ((node: HostNode, spans: TextSpan[]) => void) | null;
 }

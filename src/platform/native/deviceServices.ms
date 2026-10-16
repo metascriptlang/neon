@@ -1,6 +1,5 @@
 import { niAppCall } from "./app.h";
 import { NetInfoDetails, NetInfoState, NetInfoStateType, publishNetInfo } from "../../api/netInfo";
-import { TextSlot } from "../../api/replySlot";
 import {
 	BatterySnapshot, DeviceSnapshot, LocaleSnapshot, LocationFix, LocationRequest, NotificationSpec, PermissionReply,
 	ScheduleReply,
@@ -84,9 +83,9 @@ export function requestReply(name: string, arg: string, done: (reply: string) =>
 }
 
 export async function ask(name: string, arg: string): Promise<string> {
-	const slot = new TextSlot();
-	requestReply(name, arg, (reply: string): void => { slot.settle(reply); });
-	return await slot.wait();
+	return await new Promise<string>((resolve) => {
+		requestReply(name, arg, (reply: string): void => { resolve(reply); });
+	});
 }
 
 export function onReplyEvent(value: string): void {

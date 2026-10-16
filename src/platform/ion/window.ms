@@ -6,25 +6,36 @@ import {
 	createWindow, defaultOptions, runLoop, windowRoot, windowDevice, commit, setImeRect,
 	setFramePolicy, requestFrame, FrameOnDemand, pixelWidth, pixelHeight,
 	onPointer, onKey, onText, onImePreedit, onFocus, onResize, onFrame,
-	PointerEvent, PointerKind, KeyEvent, KeyAction, KeyMod, Window, keyName,
+	PointerEvent, PointerKind, KeyEvent, KeyAction, Window, keyName,
 } from "../../../../ion/src/index";
 import { embedRegister, viewCreate, viewResize, viewFrame, viewDestroy, viewSwapChain, currentView, gfxSetup, ViewId, ViewInvalid } from "../../../../void/src/sokol/gpu";
 import { setup2d } from "../../../../void/src/void2d/draw";
-import { addFont, FontId, DEFAULT_FONT } from "../../../../void/src/void2d/font";
+import { addFont, registerFace, FontId, FontStyle as FaceStyle, DEFAULT_FONT } from "../../../../void/src/void2d/font";
 import { Scene2D } from "../../../../void/src/void2d/node";
-import { create, close, present } from "../../../../void/src/void2d/scene";
-import { Color, rgba } from "../../../../void/src/void2d/types";
+import { present } from "../../../../void/src/void2d/scene";
 import { exit } from "std/process";
-import { Host, HostNode, NeonNode, VoidArea, render } from "../../render/host";
-import { NeonEvent, neonEvent } from "../../render/event";
+import { Host, HostNode, NeonNode, render } from "../../render/host";
 import {
-	AreaHub, VoidAreaHandle, AreaKeyEvent, AreaKeyAction, AreaKeyMod, AreaPointerEvent, AreaPointerKind, createAreaHub,
+	VoidAreaHandle, AreaKeyEvent, AreaKeyAction, AreaKeyMod, AreaPointerEvent, AreaPointerKind,
 } from "../../render/voidAreaHandle";
-import { Style } from "../../render/style";
-import { publishScale } from "../../api/dimensions";
 import { installCaptureServices } from "../../api/captureServices";
+import { installAppServices } from "../../api/services";
 import { ionCaptureServices } from "./audio";
-import { VoidHost, VoidNode, createVoidHostWith, asFlexStyle, parseColor } from "../void/host";
+import { ionAppServices } from "./appServices";
+import { VoidHost } from "../void/host";
+import {
+	WindowArea,
+	windowHost,
+	windowNode,
+	deliverKey,
+	deliverPointer,
+	deliverText,
+	deliverPreedit,
+	deliverFocus,
+	deliverResize,
+	logicalWidth,
+	logicalHeight,
+} from "../void/windowHost";
 
 when (windows) {
 	@compile("./voidVisual.cpp");
@@ -45,26 +56,11 @@ export function desktopOptions(title: string, width: number, height: number): De
 	return { title, width, height, font: "assets/font.ttf" };
 }
 
-interface WindowNode {
-	tag: string;
-}
-
-function windowNode(tag: string): HostNode {
-	const n: WindowNode = { tag };
-	return n as unknown as HostNode;
-}
-
 interface Area {
 	win: Window;
 	view: ViewId;
 	visual: Ptr<void> | null;
-	vh: VoidHost;
-	width: int32;
-	height: int32;
-	scale: float32;
-	composing: boolean;
-	held: int32;
-	hub: AreaHub;
+	area: WindowArea;
 }
 
 // [frames the scene's dirty wake requested, frames drawn], since the process began.
@@ -75,6 +71,7 @@ export function frameCounts(): number[] { return [_requested, _drawn]; }
 
 const _areas: Area[] = [];
 let _font: FontId = DEFAULT_FONT;
+let _family: string | null = null;
 let _wired = false;
 
 function areaOfWindow(window: int32): Area | null {
@@ -93,20 +90,17 @@ function areaOfView(view: ViewId): Area | null {
 
 export function areaScene(handle: VoidAreaHandle): Scene2D {
 	for (const a of _areas) {
-		if (a.hub.handle === handle) { return a.vh.scene; }
+		if (a.area.hub.handle === handle) { return a.area.vh.scene; }
 	}
 	throw "areaScene: this handle belongs to no open Void area of an Ion window";
 }
 
 export function voidHostOf(host: Host): VoidHost {
 	for (const a of _areas) {
-		if (a.vh.host === host) { return a.vh; }
+		if (a.area.vh.host === host) { return a.area.vh; }
 	}
 	throw "voidHostOf: this host is not the host of a Void area in an Ion window";
 }
-
-function logicalWidth(a: Area): float32 { return (a.width as float32) / a.scale; }
-function logicalHeight(a: Area): float32 { return (a.height as float32) / a.scale; }
 
 function initGpu(): void {
 	gfxSetup();
@@ -119,14 +113,15 @@ function drawCurrent(): void {
 		console.log(`neon: Void asked to draw view ${currentView()}, which no area owns`);
 		exit(3);
 	}
-	const area = a as Area;
+	const owner = a as Area;
+	const area = owner.area;
 	_drawn = _drawn + 1;
-	area.vh.layout(logicalWidth(area), logicalHeight(area));
+	area.vh.layout(area.logicalWidth(), area.logicalHeight());
 	area.vh.scene.present();
 	const r = area.vh.imeRect();
 	if (r !== null) {
 		const s = area.scale;
-		setImeRect(area.win, (r.x * s) as int32, (r.y * s) as int32, (r.w * s) as int32, (r.h * s) as int32);
+		setImeRect(owner.win, (r.x * s) as int32, (r.y * s) as int32, (r.w * s) as int32, (r.h * s) as int32);
 	}
 }
 
@@ -166,51 +161,21 @@ function areaPointer(e: PointerEvent): AreaPointerEvent {
 function resized(window: int32, width: int32, height: int32, scale: float64): void {
 	const a = areaOfWindow(window);
 	if (a === null || width <= (0 as int32) || height <= (0 as int32)) { return; }
-	const area = a as Area;
-	area.width = width;
-	area.height = height;
-	area.scale = scale as float32;
-	publishScale(scale, 1);
-	area.hub.resize({ pixelWidth: width, pixelHeight: height, scale: area.scale });
-	if (area.view === ViewInvalid) {
-		area.view = viewCreate(0 as int64, width, height, area.scale);
-		const visual = voidVisualAttach(windowDevice(area.win), windowRoot(area.win), viewSwapChain(area.view));
+	const owner = a as Area;
+	deliverResize(owner.area, width, height, scale);
+	if (owner.view === ViewInvalid) {
+		owner.view = viewCreate(0 as int64, width, height, owner.area.scale);
+		const visual = voidVisualAttach(windowDevice(owner.win), windowRoot(owner.win), viewSwapChain(owner.view));
 		if (visual === null) {
-			console.log(`neon: window ${window} refused the swapchain of view ${area.view}`);
+			console.log(`neon: window ${window} refused the swapchain of view ${owner.view}`);
 			exit(4);
 		}
-		area.visual = visual;
-		commit(area.win);
+		owner.visual = visual;
+		commit(owner.win);
 	} else {
-		viewResize(area.view, width, height, area.scale);
+		viewResize(owner.view, width, height, owner.area.scale);
 	}
-	requestFrame(area.win);
-}
-
-function printable(text: string): boolean {
-	if (text.length === 0) { return false; }
-	const c = text.charCodeAt(0);
-	return c >= 32 && c !== 127;
-}
-
-function keyEvent(e: KeyEvent, composing: boolean): NeonEvent {
-	const ev = neonEvent(e.action === KeyAction.Release ? "keyup" : "keydown");
-	ev.code = keyName(e.key);
-	ev.altKey = e.mods.has(KeyMod.Alt);
-	ev.ctrlKey = e.mods.has(KeyMod.Ctrl);
-	ev.metaKey = e.mods.has(KeyMod.Super);
-	ev.shiftKey = e.mods.has(KeyMod.Shift);
-	ev.repeat = e.action === KeyAction.Repeat;
-	ev.isComposing = composing;
-	ev.scancode = e.scancode;
-	ev.mods = (e.mods as uint16) as number;
-	ev.consumedMods = (e.consumedMods as uint16) as number;
-	ev.unshifted = e.unshifted;
-	ev.text = e.text;
-	if (printable(e.text)) { ev.key = e.text; }
-	else if (e.unshifted >= (32 as int32) && e.unshifted !== (127 as int32) && ev.code.startsWith("Key")) { ev.key = String.fromCharCode(e.unshifted); }
-	else { ev.key = ev.code; }
-	return ev;
+	requestFrame(owner.win);
 }
 
 function wireInput(): void {
@@ -224,144 +189,60 @@ function wireInput(): void {
 	});
 	onPointer((e: PointerEvent): void => {
 		const a = areaOfWindow(e.window);
-		if (a === null) { return; }
-		const area = a as Area;
-		area.hub.pointer(areaPointer(e));
-		const x = (e.x as float32) / area.scale;
-		const y = (e.y as float32) / area.scale;
-		if (e.kind === PointerKind.Motion) {
-			area.vh.pointerMove(x, y, area.held, area.held > (0 as int32));
-		} else if (e.kind === PointerKind.Wheel) {
-			area.vh.wheel(x, y, e.dx as float32, e.dy as float32);
-		} else if (e.kind === PointerKind.Button && e.pressed) {
-			area.held = e.button;
-			area.vh.pointerDown(x, y, e.button);
-			area.vh.clickAt(x, y);
-		} else if (e.kind === PointerKind.Button) {
-			if (area.held === e.button) { area.held = 0 as int32; }
-			area.vh.pointerUp(x, y, e.button);
-		}
+		if (a !== null) { deliverPointer((a as Area).area, areaPointer(e)); }
 	});
 	onKey((e: KeyEvent): void => {
 		const a = areaOfWindow(e.window);
-		if (a === null) { return; }
-		const area = a as Area;
-		area.hub.key(areaKey(e));
-		const ev = keyEvent(e, area.composing);
-		if (e.action === KeyAction.Release) {
-			area.vh.keyUp(ev);
-			return;
-		}
-		area.vh.keyDown(ev);
-		if (printable(e.text) && !ev.ctrlKey && !ev.altKey && !ev.metaKey) { area.vh.commitText(e.text); }
+		if (a !== null) { deliverKey((a as Area).area, areaKey(e), keyName(e.key)); }
 	});
 	onText((window: int32, text: string): void => {
 		const a = areaOfWindow(window);
-		if (a === null) { return; }
-		(a as Area).hub.text(text);
-		(a as Area).vh.textInput(text);
+		if (a !== null) { deliverText((a as Area).area, text); }
 	});
 	onImePreedit((window: int32, text: string, cursor: int32): void => {
 		const a = areaOfWindow(window);
-		if (a === null) { return; }
-		(a as Area).hub.preedit({ text, cursor });
-		(a as Area).composing = text.length > 0;
-		(a as Area).vh.composeText(text, cursor);
+		if (a !== null) { deliverPreedit((a as Area).area, text, cursor); }
 	});
 	onFocus((window: int32, focused: boolean): void => {
 		const a = areaOfWindow(window);
-		if (a === null) { return; }
-		(a as Area).hub.focus(focused);
-		(a as Area).vh.setWindowFocus(focused);
+		if (a !== null) { deliverFocus((a as Area).area, focused); }
 	});
 }
 
-function applyAreaStyle(area: Area, style: Style): void {
-	(area.vh.root as VoidNode).flex = asFlexStyle(style);
-	if (style.backgroundColor !== null) {
-		const c = parseColor(style.backgroundColor as string);
-		if (c !== null) { area.vh.scene.clear = c as Color; }
-	}
-	requestFrame(area.win);
-}
-
-function windowHost(win: Window): Host {
-	let current: Area | null = null;
-	let pendingStyle: Style | null = null;
-
-	const refuse = (what: string): void => {
-		throw `Ion window host: ${what}; an Ion window holds exactly one <Void>`;
-	};
-
-	const openArea = (node: HostNode): VoidArea => {
-		if (current !== null) { refuse("a second <Void> was mounted"); }
-		setFramePolicy(win, FrameOnDemand);
-		const vh = createVoidHostWith(Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0)), _font);
-		const hub = createAreaHub({
-			initialPixelWidth: pixelWidth(win),
-			initialPixelHeight: pixelHeight(win),
-			requestFrame: (): void => { requestFrame(win); },
-			setImeRect: (pixelX: int32, pixelY: int32, pixelW: int32, pixelH: int32): void => { setImeRect(win, pixelX, pixelY, pixelW, pixelH); },
-		});
-		const area: Area = { win, view: ViewInvalid, visual: null, vh, width: 0 as int32, height: 0 as int32, scale: 1.0, composing: false, held: 0 as int32, hub };
-		_areas.push(area);
-		current = area;
-		if (pendingStyle !== null) { applyAreaStyle(area, pendingStyle as Style); }
-		vh.onDirty((): void => {
+function ionWindowHost(win: Window): Host {
+	return windowHost({
+		name: "Ion window",
+		font: _font,
+		family: _family,
+		pixelWidth: (): int32 => pixelWidth(win),
+		pixelHeight: (): int32 => pixelHeight(win),
+		requestFrame: (): void => { requestFrame(win); },
+		dirty: (): void => {
 			_requested = _requested + 1;
 			requestFrame(win);
-		});
-		return {
-			host: vh.host,
-			root: vh.root as unknown as HostNode,
-			hub,
-			release: (): void => {
-				const i = _areas.indexOf(area);
-				if (i >= 0) { _areas.splice(i, 1); }
-				current = null;
-				vh.scene.close();
-				if (area.visual !== null) {
-					voidVisualDetach(windowRoot(win), area.visual as Ptr<void>);
-					area.visual = null;
+		},
+		setImeRect: (pixelX: int32, pixelY: int32, pixelW: int32, pixelH: int32): void => {
+			setImeRect(win, pixelX, pixelY, pixelW, pixelH);
+		},
+		opened: (area: WindowArea): void => {
+			setFramePolicy(win, FrameOnDemand);
+			_areas.push({ win, view: ViewInvalid, visual: null, area });
+		},
+		released: (area: WindowArea): void => {
+			for (let i = 0; i < _areas.length; i += 1) {
+				const owner = _areas[i];
+				if (owner.area !== area) { continue; }
+				_areas.splice(i, 1);
+				if (owner.visual !== null) {
+					voidVisualDetach(windowRoot(win), owner.visual as Ptr<void>);
+					owner.visual = null;
 					commit(win);
 				}
-				if (area.view !== ViewInvalid) { viewDestroy(area.view); }
-			},
-		};
-	};
-
-	return {
-		createElement: (tag: string): HostNode => {
-			if (tag !== "void") { refuse(`<${tag}> cannot be a child of the window`); }
-			return windowNode(tag);
+				if (owner.view !== ViewInvalid) { viewDestroy(owner.view); }
+				return;
+			}
 		},
-		createText: (s: string): HostNode => {
-			refuse(`text "${s}" cannot be a child of the window`);
-			return windowNode("");
-		},
-		setText: (node: HostNode, s: string): void => { refuse("text cannot be set on the window"); },
-		setAttr: (node: HostNode, name: string, value: string): void => {},
-		removeAttr: (node: HostNode, name: string): void => {},
-		setStyle: (node: HostNode, style: Style): void => {
-			pendingStyle = style;
-			if (current !== null) { applyAreaStyle(current as Area, style); }
-		},
-		setStyleProp: null,
-		setStyleClass: null,
-		addEvent: (node: HostNode, name: string, handler: (e: NeonEvent) => void): void => {
-			refuse(`${name} on the window element`);
-		},
-		append: (parent: HostNode, child: HostNode): void => {},
-		insertBefore: (parent: HostNode, node: HostNode, ref: HostNode | null): void => {},
-		removeChild: (parent: HostNode, node: HostNode): void => {},
-		parentOf: (node: HostNode): HostNode | null => null,
-		release: (node: HostNode): void => {},
-		nextSibling: (node: HostNode): HostNode | null => null,
-		firstChild: (node: HostNode): HostNode | null => null,
-		cloneNode: null,
-		voidArea: openArea,
-		scrollTo: null,
-	};
+	});
 }
 
 export function runWindow(opts: DesktopOptions, app: () => NeonNode): int32 {
@@ -373,9 +254,12 @@ export function runWindow(opts: DesktopOptions, app: () => NeonNode): int32 {
 		return 3;
 	}
 	_font = font.value;
+	registerFace(opts.font, opts.font, 400, FaceStyle.Normal);
+	_family = opts.font;
 	wireInput();
 	installCaptureServices(ionCaptureServices);
-	const host = windowHost(win);
+	installAppServices(ionAppServices);
+	const host = ionWindowHost(win);
 	const dispose = render((h: Host, p: HostNode, b: HostNode | null): void => { app()(h, p, b); }, host, windowNode("window"));
 	runLoop();
 	dispose();

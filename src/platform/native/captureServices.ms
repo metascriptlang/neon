@@ -1,6 +1,5 @@
 import { niAppCall } from "./app.h";
 import { requestReply } from "./deviceServices";
-import { TextSlot } from "../../api/replySlot";
 import {
 	CaptureServices, PickReply, PickRequest, PickedAsset, RecordingSetup, RecordingState, SoundSetup, SoundState,
 	idleRecording, unloadedSound,
@@ -15,9 +14,9 @@ function call(name: string, arg: string): string {
 }
 
 async function ask(name: string, arg: string): Promise<string> {
-	const slot = new TextSlot();
-	requestReply(name, arg, (reply: string): void => { slot.settle(reply); });
-	return await slot.wait();
+	return await new Promise<string>((resolve) => {
+		requestReply(name, arg, (reply: string): void => { resolve(reply); });
+	});
 }
 
 function flag(value: boolean): string {

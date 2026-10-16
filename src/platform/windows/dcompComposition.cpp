@@ -52,6 +52,7 @@ public:
 	void Size(float width, float height) override;
 	void Offset(float x, float y) override;
 	void CornerRadius(float radius) override;
+	void ClipsChildren(bool clips) override;
 	void Brush(Color color) override;
 	void Content(IDrawingSurface *surface) override;
 	void Sync();
@@ -66,6 +67,7 @@ private:
 	std::vector<DCompVisual *> children;
 	float width = 0, height = 0, radius = 0;
 	Color color = {0, 0, 0, 0};
+	bool clipsChildren = false;
 	bool contentDirty = false;
 	bool pending = false;
 };
@@ -161,6 +163,12 @@ void DCompVisual::CornerRadius(float r) {
 	markDirty();
 }
 
+void DCompVisual::ClipsChildren(bool clips) {
+	if (clips == clipsChildren) return;
+	clipsChildren = clips;
+	markDirty();
+}
+
 void DCompVisual::Brush(Color c) {
 	if (c.r == color.r && c.g == color.g && c.b == color.b && c.a == color.a) return;
 	color = c;
@@ -188,7 +196,7 @@ void DCompVisual::Sync() {
 			must(visual->SetContent(nullptr), "SetContent");
 		}
 	}
-	if (radius > 0 && width > 0 && height > 0) {
+	if ((radius > 0 || clipsChildren) && width > 0 && height > 0) {
 		if (!clip) must(context->device->CreateRectangleClip(&clip), "CreateRectangleClip");
 		float r = std::min(radius, std::min(width, height) / 2);
 		clip->SetLeft(0.0f);

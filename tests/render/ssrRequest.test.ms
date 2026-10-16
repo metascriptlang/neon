@@ -1,7 +1,7 @@
 import { Host, HostNode, NeonNode } from "../../src/render/hostTypes";
 import { render, mockHost, mockNode, mockToString } from "../../src/render/host";
 import { isServer } from "../../src/render/environment";
-import { View } from "../../src/components/primitives";
+import { View, ViewHandle } from "../../src/components/primitives";
 import { form } from "./requestForm";
 
 test "a client render outside a request draws ids that never repeat" {
@@ -20,7 +20,8 @@ test "a client render outside a request draws ids that never repeat" {
 test "a client render runs each ref once" {
 	let refs = 0;
 	const count = (n: HostNode): void => { refs += 1; };
-	const tree = (): NeonNode => <View><canvas ref={count}></canvas><View ref={count}><p>x</p></View></View>;
+	const countView = (h: ViewHandle): void => { refs += 1; };
+	const tree = (): NeonNode => <View><canvas ref={count}></canvas><View ref={countView}><p>x</p></View></View>;
 	const root = mockNode("root");
 	const dispose = render(tree(), mockHost(), root as unknown as HostNode);
 	dispose();

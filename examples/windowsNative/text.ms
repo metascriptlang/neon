@@ -10,7 +10,7 @@ import { createSignal } from "../../src/core/signal";
 import { NeonNode } from "../../src/render/node";
 import { NeonEvent } from "../../src/render/event";
 import { View, Text } from "../../src/components/primitives";
-import { harnessStart, harnessExpect, harnessRun, harnessLayout, harnessExpectCentre, harnessExpectCount, harnessExpectSize } from "./harness.h";
+import { harnessStart, harnessExpect, harnessRun, harnessLayout, harnessExpectCentre, harnessExpectCount, harnessExpectSize, harnessExpectSizeIn } from "./harness.h";
 import { exit } from "std/process";
 
 when (windows) {
@@ -38,6 +38,8 @@ const styles = createStyles({
 	updatePanel: { position: "absolute", left: 340, top: 180, width: 280, height: 100, backgroundColor: "#34495e" },
 	before: { color: "#ff0000", fontSize: 28 },
 	after: { color: "#00ffaa", fontSize: 28 },
+	mono: { position: "absolute", left: 20, top: 300 },
+	monoText: { color: "#ffffff", fontSize: 20, fontFamily: "Consolas" },
 });
 
 function layout(name: string): (e: NeonEvent) => void {
@@ -67,6 +69,9 @@ function App(): NeonNode {
 		<View style={styles.updatePanel}>
 			<Text style={updated() ? styles.after : styles.before}>{updated() ? "Updated text" : "A"}</Text>
 		</View>
+		<View style={styles.mono} onLayout={layout("mono")}>
+			<Text style={styles.monoText}>iiiiiiii</Text>
+		</View>
 	</View>;
 }
 
@@ -84,6 +89,7 @@ harnessExpectCount("updated text pixels", 340, 180, 280, 100, 0, 255, 170, 60, 3
 harnessExpectSize("big", "I", 96, 1, 640);
 harnessExpectSize("hello", "Hello Windows", 32, 0, 640);
 harnessExpectSize("wrapped", "The quick brown fox jumps over the lazy dog", 20, 0, 200);
+harnessExpectSizeIn("mono", "iiiiiiii", "Consolas", 20, 0, 640);
 setTimeout((): void => { setUpdated(true); }, 100);
 runApp(App);
 exit(harnessRun());

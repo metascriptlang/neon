@@ -14,14 +14,14 @@
 // agree on: ref fires before the site root is placed.
 
 import { createSignal } from "../../src/core/signal";
-import { createEffect } from "../../src/core/effect";
+import { createEffect, onSettled } from "../../src/core/effect";
 import { Cleanup } from "../../src/core/types";
 import { createRoot } from "../../src/core/owner";
 import { onCleanup } from "../../src/core/cleanup";
 import { element } from "../../src/macros/ui/element";
 import { NeonNode } from "../../src/render/node";
 import { HostNode, MockNode, mockNode, mockHost, render, mockToString, fireEvent } from "../../src/render/host";
-import { View, TextInput, TextInputHandle, Pressable, Text } from "../../src/components/primitives";
+import { View, ViewHandle, TextInput, TextInputHandle, Pressable, Text } from "../../src/components/primitives";
 import { NeonEvent } from "../../src/render/event";
 
 test "ref hands the completed host node to the callback" {
@@ -46,7 +46,7 @@ test "ref on the root element of a site" {
 test "ref reaches the universal vocabulary, not just raw tags" {
 	let viewTag = "";
 	let inputTag = "";
-	const grabView: (n: HostNode) => void = (n) => { viewTag = (n as unknown as MockNode).tag; };
+	const grabView: (h: ViewHandle) => void = (h) => { viewTag = (h.node as unknown as MockNode).tag; };
 	const grabInput = (h: TextInputHandle): void => { inputTag = (h.node as unknown as MockNode).tag; };
 	const root: MockNode = mockNode("root");
 	render(element(<View ref={grabView}><TextInput ref={grabInput} /></View>), mockHost(), root as unknown as HostNode);
@@ -121,6 +121,10 @@ test "a nested ref sees its parent inside the template" {
 	assert parentTag === "div", "nested ref sees its parent, parent=" + parentTag;
 }
 
+function viewStamp(log: string[], name: string): (h: ViewHandle) => void {
+	return (h: ViewHandle): void => { log.push(name); };
+}
+
 function stamp(log: string[], name: string): (h: HostNode) => void {
 	return (h: HostNode): void => { log.push(name); };
 }
@@ -136,7 +140,7 @@ test "ref={[a, b]} applies in source order, flattening nested arrays and nulls" 
 test "ref arrays work in the flat path and on a component" {
 	const log: string[] = [];
 	const root: MockNode = mockNode("root");
-	render(element(<div ref={[stamp(log, "d1"), stamp(log, "d2")]}><View ref={[stamp(log, "v1"), stamp(log, "v2")]}><Text>x</Text></View></div>), mockHost(), root as unknown as HostNode);
+	render(element(<div ref={[stamp(log, "d1"), stamp(log, "d2")]}><View ref={[viewStamp(log, "v1"), viewStamp(log, "v2")]}><Text>x</Text></View></div>), mockHost(), root as unknown as HostNode);
 	assert log.join(",") === "v1,v2,d1,d2", "order=" + log.join(",");
 }
 
@@ -261,4 +265,23 @@ test "a nested ref sees its parent in the flat path too" {
 	};
 	render(element(<div><Text>x</Text><p ref={grab}>hi</p></div>), mockHost(), root as unknown as HostNode);
 	assert parentTag === "div", "parent=" + parentTag;
+}
+
+test "a View's ref focuses it on mount, as a terminal focuses its grid when the window opens" {
+	let log = "";
+	let grid: ViewHandle | null = null;
+	const Grid = (): NeonNode => {
+		onSettled((): Cleanup | null => { (grid as ViewHandle).focus(); return null; });
+		return <View ref={(h: ViewHandle): void => { grid = h; }} focusable={true}
+			onFocus={(e: NeonEvent): void => { log += "focus;"; }} onBlur={(e: NeonEvent): void => { log += "blur;"; }} />;
+	};
+	const root: MockNode = mockNode("root");
+	const dispose = render(element(<Grid />), mockHost(), root as unknown as HostNode);
+	assert log === "focus;", "focused on mount: " + log;
+	(grid as ViewHandle).blur();
+	assert log === "focus;blur;", "blur: " + log;
+	dispose();
+	let refused = "";
+	try { (grid as ViewHandle).focus(); } catch (e) { refused = e.toString(); }
+	assert refused.indexOf("after the View unmounted") >= 0, "focus after unmount: " + refused;
 }

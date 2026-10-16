@@ -133,3 +133,14 @@ test "detaching a queue twice raises" {
 	try { l.detach(q); } catch (e) { caught = e.toString(); }
 	assert caught !== "", "the second detach raises";
 }
+
+test "matching by identity raises until a replaceAll asks for it" {
+	const l = createList<number>([1, 2]);
+	const out: number[] = [0, 0];
+	let caught = "";
+	try { l.matchByIdentity([1, 2], [2, 1], out); } catch (e) { caught = e.toString(); }
+	assert caught.includes("replaceAll"), "no replaceAll yet: " + caught;
+	l.replaceAll([2, 1]);
+	l.matchByIdentity([1, 2], [2, 1], out);
+	assert out[0] === 1 && out[1] === 0, "each new item takes its old slot";
+}

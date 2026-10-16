@@ -226,16 +226,22 @@ const services: AppServices = {
 };
 
 let capture: CaptureServices = nativeCaptureServices;
+let app: AppServices = services;
 
 // A desktop owner that runs the audio device itself (Ion) answers capture in place of the bridge.
 export function useCaptureServices(services: CaptureServices): void {
 	capture = services;
 }
 
+// A desktop owner (Ion) answers the app services in place of the bridge, as it does capture.
+export function useAppServices(owned: AppServices): void {
+	app = owned;
+}
+
 export function installNativeAppServices(run: (fn: () => void) => void): void {
 	runEvent = run;
 	niSetAppHandler(onAppEventBatched);
-	installAppServices(services);
+	installAppServices(app);
 	installCaptureServices(capture);
 	publishPlatform(call("platform", ""), call("isPad", "") === "1");
 	publishScale(parseFloat(call("pixelRatio", "")), parseFloat(call("fontScale", "")));

@@ -1,13 +1,18 @@
 import {
 	createWindow, defaultOptions, runLoop, windowRoot, windowDevice, setFramePolicy, requestFrame, FrameOnDemand,
-	onPointer, onFocus, onResize, onFrame, PointerEvent, PointerKind, Window,
+	setImeRect, setCursor, onPointer, onKey, onText, onImePreedit, onFocus, onResize, onFrame,
+	PointerEvent, PointerKind, KeyEvent, KeyAction, KeyMod, Window,
 } from "../../../../ion/src/index";
 import "./library";
 import { runApp } from "../native/host";
-import { useCaptureServices } from "../native/appServices";
+import { useAppServices, useCaptureServices } from "../native/appServices";
 import { ionCaptureServices } from "../ion/audio";
+import { ionAppServices } from "../ion/appServices";
 import { NeonNode } from "../../render/node";
-import { niwAttach, niwFrame, niwResize, niwPointer, niwShutdown } from "./handoff.h";
+import {
+	niwAttach, niwFrame, niwResize, niwPointer, niwWheel, niwShutdown, niwKey, niwText, niwPreedit, niwFocus, niwIonCursor,
+	niwFocusedCaret, niwCaretPixelX, niwCaretPixelY, niwCaretPixelW, niwCaretPixelH,
+} from "./handoff.h";
 
 extern function niwSetFrameRequester(requester: () => void): void;
 
@@ -30,6 +35,19 @@ export function nativeWindowOptions(title: string, width: number, height: number
 }
 
 let attached = false;
+let cursor: int32 = 0;
+
+function placeIme(win: Window): void {
+	if (niwFocusedCaret() !== 0) { setImeRect(win, niwCaretPixelX(), niwCaretPixelY(), niwCaretPixelW(), niwCaretPixelH()); }
+}
+
+function keyAction(action: KeyAction): int32 {
+	return match (action) {
+		KeyAction.Release => 0,
+		KeyAction.Repeat => 2,
+		_ => 1,
+	};
+}
 
 export function runNativeWindow(opts: NativeWindowOptions, app: () => NeonNode, onMounted: ((win: Window) => void) | null): int32 {
 	const options = defaultOptions(opts.title, opts.width as int32, opts.height as int32);
@@ -40,6 +58,7 @@ export function runNativeWindow(opts: NativeWindowOptions, app: () => NeonNode, 
 	const win: Window = created;
 	setFramePolicy(win, FrameOnDemand);
 	useCaptureServices(ionCaptureServices);
+	useAppServices(ionAppServices);
 	niwSetFrameRequester((): void => { requestFrame(win); });
 
 	onResize((window: int32, width: int32, height: int32, scale: float64): void => {
@@ -57,7 +76,9 @@ export function runNativeWindow(opts: NativeWindowOptions, app: () => NeonNode, 
 		if (onMounted !== null) { (onMounted as (win: Window) => void)(win); }
 	});
 	onFrame((window: int32, timeMs: float64): void => {
-		if (window === win.id && attached) { niwFrame(); }
+		if (window !== win.id || !attached) { return; }
+		niwFrame();
+		placeIme(win);
 	});
 	onPointer((e: PointerEvent): void => {
 		if (e.window !== win.id || !attached) { return; }
@@ -68,12 +89,31 @@ export function runNativeWindow(opts: NativeWindowOptions, app: () => NeonNode, 
 			niwPointer(e.pressed ? POINTER_DOWN : POINTER_UP, x, y);
 		} else if (e.kind === PointerKind.Motion) {
 			niwPointer(POINTER_MOVE, x, y);
+			const over = niwIonCursor();
+			if (over !== cursor) {
+				cursor = over;
+				setCursor(win, over);
+			}
 		} else if (e.kind === PointerKind.Leave) {
 			niwPointer(POINTER_CANCEL, x, y);
+		} else if (e.kind === PointerKind.Wheel) {
+			niwWheel(x, y, e.dx as float32, e.dy as float32);
 		}
 	});
 	onFocus((window: int32, focused: boolean): void => {
-		if (window === win.id && attached && !focused) { niwPointer(POINTER_CANCEL, 0.0, 0.0); }
+		if (window !== win.id || !attached) { return; }
+		if (!focused) { niwPointer(POINTER_CANCEL, 0.0, 0.0); }
+		niwFocus(focused ? 1 : 0);
+	});
+	onKey((e: KeyEvent): void => {
+		if (e.window !== win.id || !attached) { return; }
+		niwKey(keyAction(e.action), e.scancode, e.mods.has(KeyMod.Ctrl) ? 1 : 0, e.text);
+	});
+	onText((window: int32, text: string): void => {
+		if (window === win.id && attached) { niwText(text); }
+	});
+	onImePreedit((window: int32, text: string, caret: int32): void => {
+		if (window === win.id && attached) { niwPreedit(text, caret); }
 	});
 
 	runLoop();

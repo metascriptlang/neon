@@ -17,17 +17,38 @@ export interface ListQueue<T> {
 	reset: boolean;
 }
 
+export function matchByIds<K>(oldIds: K[], newIds: K[], out: number[]): void {
+	const byId = new Map<K, number>();
+	for (let i = 0; i < oldIds.length; i += 1) {
+		const k = oldIds[i];
+		if (byId.has(k)) { continue; }
+		byId.set(k, i);
+	}
+	for (let j = 0; j < newIds.length; j += 1) {
+		const k = newIds[j];
+		if (!byId.has(k)) {
+			out[j] = -1;
+			continue;
+		}
+		const at = byId.get(k) as number;
+		out[j] = at;
+		byId.set(k, -1);
+	}
+}
+
 export class List<T> {
 	private items: T[];
 	private queues: ListQueue<T>[];
 	private tick: number;
 	private version: Signal<number>;
+	private identityFromReplaceAll: ((oldItems: T[], newItems: T[], out: number[]) => void) | null;
 
 	constructor(initial: T[]) {
 		this.items = initial.slice(0, initial.length);
 		this.queues = [];
 		this.tick = 0;
 		this.version = new Signal<number>(0);
+		this.identityFromReplaceAll = null;
 	}
 
 	read(): T[] {
@@ -111,6 +132,11 @@ export class List<T> {
 	}
 
 	replaceAll(next: T[]): void {
+		if (this.identityFromReplaceAll === null) {
+			this.identityFromReplaceAll = (oldItems: T[], newItems: T[], out: number[]): void => {
+				matchByIds<T>(oldItems, newItems, out);
+			};
+		}
 		this.items = next.slice(0, next.length);
 		for (const q of this.queues) {
 			q.ops = [];
@@ -118,6 +144,15 @@ export class List<T> {
 		}
 		this.tick = this.tick + 1;
 		this.version.set(this.tick);
+	}
+
+	matchByIdentity(oldItems: T[], newItems: T[], out: number[]): void {
+		const match = this.identityFromReplaceAll;
+		if (match === null) {
+			throw new Error("List.matchByIdentity: only a list that took a replaceAll"
+				+ " matches its items by identity");
+		}
+		(match as (oldItems: T[], newItems: T[], out: number[]) => void)(oldItems, newItems, out);
 	}
 
 	private bounds(i: number, n: number, who: string): void {

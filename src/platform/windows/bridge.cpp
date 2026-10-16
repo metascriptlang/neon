@@ -11,7 +11,9 @@
 #include "composition.h"
 #include "dcompComposition.h"
 #include "dwriteText.h"
+#include "textInput.h"
 #include "handoff.h"
+#include "scrollView.h"
 extern "C" {
 #include "../native/bridge.h"
 #include "../native/app.h"
@@ -33,7 +35,10 @@ struct View {
 	bool pressable = false;
 	std::map<std::string, std::string> accessibility;
 	std::unique_ptr<TextLabel> label;
+	std::unique_ptr<Scroller> scroller;
 	bool labelQueued = false;
+	std::unique_ptr<TextInput> input;
+	bool inputQueued = false;
 };
 
 ICompositionContext *g_context = nullptr;
@@ -44,6 +49,23 @@ float g_height = 0;
 float g_measuredW = 0;
 float g_measuredH = 0;
 std::vector<View *> g_dirtyLabels;
+std::vector<View *> g_dirtyInputs;
+View *g_focusedInput = nullptr;
+View *g_pressedInput = nullptr;
+bool g_windowFocused = true;
+int g_ionCursor = 0;
+float g_caret[4];
+
+struct ControlReport {
+	int32_t tag;
+	int32_t phase;
+	std::string value;
+};
+
+std::vector<ControlReport> g_reports;
+int32_t g_controlTag = 0;
+int32_t g_controlPhase = 0;
+std::string g_controlValue;
 msClosure s_mount, s_resize, s_teardown, s_loop, s_frame, s_touch, s_scroll, s_control, s_environment, s_app, s_requester;
 bool g_frameRequested = false;
 bool g_frameWanted = false;
@@ -52,6 +74,9 @@ bool g_inFrame = false;
 struct Touch {
 	bool active = false;
 	std::vector<View *> chain;
+	// A pressable run of a label under the finger reports first, as its own tag, the way iOS and Android do.
+	int32_t spanTag = 0;
+	View *spanLabel = nullptr;
 };
 
 Touch g_touch;
@@ -61,6 +86,10 @@ float g_touchX = 0;
 float g_touchY = 0;
 double g_touchTime = 0;
 View *g_responder = nullptr;
+std::vector<View *> g_scrolls;
+int32_t g_scrollTag = 0;
+int32_t g_scrollPhase = 0;
+float g_scrollX = 0, g_scrollY = 0, g_scrollW = 0, g_scrollH = 0, g_scrollContentW = 0, g_scrollContentH = 0;
 
 [[noreturn]] void fail(const char *message) {
 	fprintf(stderr, "neon windows bridge: %s\n", message);
@@ -86,15 +115,23 @@ void requireAttached(const char *what) {
 	fail(message);
 }
 
+IVisual *childHost(View *view) { return view->scroller ? view->scroller->content : view->visual; }
+
 void release(View *view) {
 	if (--view->refs > 0) return;
 	if (g_responder == view) g_responder = nullptr;
+	if (g_focusedInput == view) g_focusedInput = nullptr;
+	if (g_pressedInput == view) g_pressedInput = nullptr;
 	if (view->labelQueued) g_dirtyLabels.erase(std::remove(g_dirtyLabels.begin(), g_dirtyLabels.end(), view), g_dirtyLabels.end());
+	if (view->scroller) g_scrolls.erase(std::remove(g_scrolls.begin(), g_scrolls.end(), view), g_scrolls.end());
+	if (view->inputQueued) g_dirtyInputs.erase(std::remove(g_dirtyInputs.begin(), g_dirtyInputs.end(), view), g_dirtyInputs.end());
+	view->input.reset();
 	for (View *child : view->children) {
-		view->visual->Remove(child->visual);
+		childHost(view)->Remove(child->visual);
 		child->parent = nullptr;
 		release(child);
 	}
+	if (view->scroller) delete view->scroller->content;
 	delete view->visual;
 	delete view;
 }
@@ -103,7 +140,7 @@ void detach(View *child) {
 	View *parent = child->parent;
 	if (!parent) return;
 	parent->children.erase(std::remove(parent->children.begin(), parent->children.end(), child), parent->children.end());
-	parent->visual->Remove(child->visual);
+	childHost(parent)->Remove(child->visual);
 	child->parent = nullptr;
 	release(child);
 }
@@ -136,6 +173,82 @@ void drawLabels() {
 	}
 }
 
+void queueInput(View *view) {
+	changed();
+	if (view->inputQueued) return;
+	view->inputQueued = true;
+	g_dirtyInputs.push_back(view);
+}
+
+void reportControl(View *view, int32_t phase, const std::string &value) {
+	if (view->tag != 0) g_reports.push_back({view->tag, phase, value});
+}
+
+void flushReports() {
+	while (!g_reports.empty()) {
+		ControlReport next = g_reports.front();
+		g_reports.erase(g_reports.begin());
+		g_controlTag = next.tag;
+		g_controlPhase = next.phase;
+		g_controlValue = next.value;
+		if (s_control.fn) invoke(s_control);
+	}
+}
+
+void blurInput(View *view) {
+	if (g_focusedInput != view) return;
+	g_focusedInput = nullptr;
+	view->input->Focus(false);
+	reportControl(view, kInputBlur, view->input->Text());
+}
+
+void focusInput(View *view) {
+	if (g_focusedInput == view) return;
+	if (g_focusedInput) blurInput(g_focusedInput);
+	g_focusedInput = view;
+	view->input->WindowFocus(g_windowFocused);
+	view->input->Focus(true);
+	reportControl(view, kInputFocus, view->input->Text());
+}
+
+struct InputSink : TextInputSink {
+	void InputReport(TextInput *input, int phase, const std::string &value) override {
+		View *view = static_cast<View *>(input->Owner());
+		reportControl(view, phase, value);
+		if (phase == kInputSubmit && input->BlursOnSubmit()) blurInput(view);
+	}
+	void InputDirty(TextInput *input) override { queueInput(static_cast<View *>(input->Owner())); }
+};
+
+InputSink g_inputSink;
+
+bool isMounted(const View *view) {
+	for (; view; view = view->parent) {
+		if (view == g_container) return true;
+	}
+	return false;
+}
+
+void pixelBox(const View *view, int32_t *pixelWidth, int32_t *pixelHeight) {
+	*pixelWidth = (int32_t)(roundf((view->x + view->w) * g_scale) - roundf(view->x * g_scale));
+	*pixelHeight = (int32_t)(roundf((view->y + view->h) * g_scale) - roundf(view->y * g_scale));
+}
+
+void drawInputs() {
+	std::vector<View *> due;
+	due.swap(g_dirtyInputs);
+	for (View *view : due) {
+		view->inputQueued = false;
+		if (isMounted(view) && view->input->TakeAutoFocus()) focusInput(view);
+		int32_t pixelWidth, pixelHeight;
+		pixelBox(view, &pixelWidth, &pixelHeight);
+		if (view->input->NeedsDraw(pixelWidth, pixelHeight)) view->input->Draw(g_context, view->visual, pixelWidth, pixelHeight, g_scale);
+	}
+	flushReports();
+}
+
+TextInput *inputOf(void *view) { return static_cast<View *>(view)->input.get(); }
+
 TextLabel *labelOf(void *view, const char *what) {
 	View *v = static_cast<View *>(view);
 	if (!v->label) {
@@ -146,6 +259,12 @@ TextLabel *labelOf(void *view, const char *what) {
 	return v->label.get();
 }
 
+void applyScroll(View *view) {
+	Scroller *s = view->scroller.get();
+	s->content->Offset(-roundf(s->x * g_scale), -roundf(s->y * g_scale));
+	if (s->moved) changed();
+}
+
 void applyGeometry(View *view) {
 	float left = roundf(view->x * g_scale);
 	float top = roundf(view->y * g_scale);
@@ -154,6 +273,11 @@ void applyGeometry(View *view) {
 	view->visual->Offset(left, top);
 	view->visual->Size(right - left, bottom - top);
 	if (view->label) queueLabel(view);
+	if (view->scroller) {
+		view->scroller->Clamp(view->w, view->h);
+		applyScroll(view);
+	}
+	if (view->input) queueInput(view);
 
 	bool identity = view->scaleX == 1 && view->scaleY == 1 && view->translateX == 0 && view->translateY == 0 && view->rotation == 0;
 	if (identity && !view->transformed) return;
@@ -189,6 +313,7 @@ void rescale(View *parent) {
 		applyGeometry(child);
 		child->visual->CornerRadius(child->radius * g_scale);
 		if (child->label) child->label->Invalidate();
+		if (child->input) queueInput(child);
 		rescale(child);
 	}
 }
@@ -206,24 +331,37 @@ bool toLocal(const View *view, float px, float py, float *lx, float *ly) {
 	return true;
 }
 
-View *hit(View *view, float px, float py) {
+View *hit(View *view, float px, float py, float *foundX, float *foundY) {
 	float lx, ly;
 	if (!toLocal(view, px, py, &lx, &ly)) return nullptr;
 	bool inside = lx >= 0 && lx <= view->w && ly >= 0 && ly <= view->h;
-	bool clipsChildren = view->radius > 0;
+	bool clipsChildren = view->radius > 0 || view->scroller;
+	float cx = view->scroller ? lx + view->scroller->x : lx, cy = view->scroller ? ly + view->scroller->y : ly;
 	if (inside || !clipsChildren) {
 		for (auto child = view->children.rbegin(); child != view->children.rend(); ++child) {
-			if (View *found = hit(*child, lx, ly)) return found;
+			if (View *found = hit(*child, cx, cy, foundX, foundY)) return found;
 		}
 	}
-	return inside && (!view->label || view->pressable) ? view : nullptr;
+	if (!inside || (view->label && !view->pressable)) return nullptr;
+	*foundX = lx;
+	*foundY = ly;
+	return view;
 }
 
-View *hitTest(float x, float y) {
+View *hitTest(float x, float y, float *localX = nullptr, float *localY = nullptr) {
+	float lx = 0, ly = 0;
 	for (auto child = g_container->children.rbegin(); child != g_container->children.rend(); ++child) {
-		if (View *found = hit(*child, x, y)) return found;
+		if (View *found = hit(*child, x, y, &lx, &ly)) {
+			if (localX) *localX = lx;
+			if (localY) *localY = ly;
+			return found;
+		}
 	}
 	return nullptr;
+}
+
+int32_t spanTagAt(View *view, float lx, float ly) {
+	return view && view->label ? view->label->TagAt(lx, ly) : 0;
 }
 
 bool within(const View *at, const View *ancestor) {
@@ -240,6 +378,15 @@ double nowMs() {
 	return (double)counter.QuadPart * 1000.0 / (double)frequency.QuadPart;
 }
 
+void reportTag(int32_t tag, int32_t phase, float x, float y, double time) {
+	g_touchTag = tag;
+	g_touchPhase = phase;
+	g_touchX = x;
+	g_touchY = y;
+	g_touchTime = time;
+	invoke(s_touch);
+}
+
 void report(View *view, int32_t phase, float x, float y, double time) {
 	g_touchTag = view->tag;
 	g_touchPhase = phase;
@@ -249,10 +396,81 @@ void report(View *view, int32_t phase, float x, float y, double time) {
 	invoke(s_touch);
 }
 
+void reportScrolls() {
+	double now = nowMs();
+	std::vector<View *> due = g_scrolls;
+	for (View *view : due) {
+		Scroller *s = view->scroller.get();
+		s->Step(now);
+		if (!s->moved) continue;
+		s->moved = false;
+		applyScroll(view);
+		if (!s_scroll.fn || s->tag == 0) continue;
+		g_scrollTag = s->tag;
+		g_scrollPhase = 0;
+		g_scrollX = s->x;
+		g_scrollY = s->y;
+		g_scrollW = view->w;
+		g_scrollH = view->h;
+		g_scrollContentW = std::max(s->contentWidth, view->w);
+		g_scrollContentH = std::max(s->contentHeight, view->h);
+		invoke(s_scroll);
+	}
+}
+
+bool scrollsPending() {
+	for (View *view : g_scrolls) {
+		if (view->scroller->moved || view->scroller->Animating()) return true;
+	}
+	return false;
+}
+
+Scroller *scrollerOf(void *scroll, const char *what) {
+	View *v = static_cast<View *>(scroll);
+	if (!v->scroller) {
+		char message[192];
+		snprintf(message, sizeof message, "%s on a view that is not a ScrollView", what);
+		fail(message);
+	}
+	return v->scroller.get();
+}
+
+// A TextInput takes the pointer from down to up, as a UITextField does, so no touch chain starts on it.
+bool pointInput(int kind, float x, float y) {
+	float lx = 0, ly = 0;
+	View *top = g_touch.active ? nullptr : hitTest(x, y, &lx, &ly);
+	if (kind == NIW_POINTER_MOVE) g_ionCursor = top && top->input ? 2 : 0;
+	if (kind == NIW_POINTER_DOWN && top && top->input && !g_pressedInput) {
+		g_pressedInput = top;
+		focusInput(top);
+		top->input->Pointer(kind, lx * g_scale, ly * g_scale);
+		flushReports();
+		return true;
+	}
+	if (!g_pressedInput) return false;
+	View *pressed = g_pressedInput;
+	float px = x, py = y;
+	for (const View *at = pressed; at && at != g_container; at = at->parent) {
+		px -= at->x;
+		py -= at->y;
+		if (at != pressed && at->scroller) {
+			px += at->scroller->x;
+			py += at->scroller->y;
+		}
+	}
+	if (kind == NIW_POINTER_UP || kind == NIW_POINTER_CANCEL) g_pressedInput = nullptr;
+	pressed->input->Pointer(kind, px * g_scale, py * g_scale);
+	flushReports();
+	return true;
+}
+
 void endTouch() {
 	std::vector<View *> chain;
 	chain.swap(g_touch.chain);
 	g_touch.active = false;
+	g_touch.spanTag = 0;
+	if (g_touch.spanLabel) release(g_touch.spanLabel);
+	g_touch.spanLabel = nullptr;
 	for (View *view : chain) release(view);
 }
 
@@ -286,18 +504,23 @@ void niwFrame(void) {
 	requireAttached("niwFrame");
 	g_frameRequested = false;
 	g_inFrame = true;
+	reportScrolls();
 	if (s_loop.fn) invoke(s_loop);
 	else niLoopRun();
 	if (g_frameWanted) {
 		g_frameWanted = false;
 		if (s_frame.fn) invoke(s_frame);
 	}
+	drawInputs();
 	drawLabels();
 	g_context->Commit();
 	g_inFrame = false;
+	if (scrollsPending()) requestHostFrame();
 }
 
 void niwSetFrameRequester(msClosure requester) { s_requester = requester; }
+
+int niwLayoutsBuilt(void) { return TextLabel::LayoutsBuilt(); }
 
 int niwStoredAccessibility(const char *name, const char *value) {
 	requireAttached("niwStoredAccessibility");
@@ -309,24 +532,43 @@ void niwPointer(int kind, float pixelX, float pixelY) {
 	if (!s_touch.fn) return;
 	float x = pixelX / g_scale, y = pixelY / g_scale;
 	double time = nowMs();
+	if (pointInput(kind, x, y)) return;
 	if (kind == NIW_POINTER_DOWN) {
 		if (g_touch.active) return;
-		for (View *at = hitTest(x, y); at && at != g_container; at = at->parent) {
+		float lx = 0, ly = 0;
+		View *top = hitTest(x, y, &lx, &ly);
+		g_touch.spanTag = spanTagAt(top, lx, ly);
+		if (g_touch.spanTag != 0) {
+			top->refs += 1;
+			g_touch.spanLabel = top;
+		}
+		for (View *at = top; at && at != g_container; at = at->parent) {
 			if (at->tag == 0) continue;
 			at->refs += 1;
 			g_touch.chain.push_back(at);
 		}
-		g_touch.active = !g_touch.chain.empty();
+		g_touch.active = !g_touch.chain.empty() || g_touch.spanTag != 0;
 		if (!g_touch.active) return;
+		if (g_touch.spanTag != 0) reportTag(g_touch.spanTag, 0, x, y, time);
 		std::vector<View *> chain = g_touch.chain;
 		for (View *view : chain) report(view, 0, x, y, time);
 	} else if (!g_touch.active) {
 		return;
 	} else if (kind == NIW_POINTER_MOVE) {
+		if (g_touch.spanTag != 0) reportTag(g_touch.spanTag, 4, x, y, time);
 		std::vector<View *> chain = g_touch.chain;
 		for (View *view : chain) report(view, 4, x, y, time);
 	} else if (kind == NIW_POINTER_UP) {
-		View *at = hitTest(x, y);
+		float lx = 0, ly = 0;
+		View *at = hitTest(x, y, &lx, &ly);
+		if (g_touch.spanTag != 0) {
+			if (at == g_touch.spanLabel && spanTagAt(at, lx, ly) == g_touch.spanTag) {
+				reportTag(g_touch.spanTag, 1, x, y, time);
+				reportTag(g_touch.spanTag, 2, x, y, time);
+			} else {
+				reportTag(g_touch.spanTag, 3, x, y, time);
+			}
+		}
 		std::vector<View *> chain = g_touch.chain;
 		for (View *view : chain) {
 			if (within(at, view)) {
@@ -338,6 +580,7 @@ void niwPointer(int kind, float pixelX, float pixelY) {
 		}
 		endTouch();
 	} else if (kind == NIW_POINTER_CANCEL) {
+		if (g_touch.spanTag != 0) reportTag(g_touch.spanTag, 3, x, y, time);
 		std::vector<View *> chain = g_touch.chain;
 		for (View *view : chain) report(view, 3, x, y, time);
 		endTouch();
@@ -348,10 +591,23 @@ void niwPointer(int kind, float pixelX, float pixelY) {
 	}
 }
 
+void niwWheel(float pixelX, float pixelY, float notchesX, float notchesY) {
+	requireAttached("niwWheel");
+	float x = pixelX / g_scale, y = pixelY / g_scale;
+	for (View *at = hitTest(x, y); at && at != g_container; at = at->parent) {
+		if (at->scroller && at->scroller->Wheel(notchesX, notchesY, at->w, at->h, g_scale, nowMs())) {
+			changed();
+			return;
+		}
+	}
+}
+
 int niwPump(void) {
 	requireAttached("niwPump");
+	reportScrolls();
 	if (s_loop.fn) invoke(s_loop);
 	else niLoopRun();
+	drawInputs();
 	drawLabels();
 	g_context->Commit();
 	return niLoopNext();
@@ -368,6 +624,54 @@ void *niViewCreate(void) {
 	return view;
 }
 
+void *niScrollCreate(void) {
+	requireAttached("niScrollCreate");
+	View *view = new View();
+	view->visual = g_context->CreateSpriteVisual();
+	view->visual->ClipsChildren(true);
+	view->scroller.reset(new Scroller());
+	view->scroller->content = g_context->CreateSpriteVisual();
+	view->visual->InsertAt(view->scroller->content, 0);
+	g_scrolls.push_back(view);
+	return view;
+}
+
+void niScrollSetTag(void *scroll, int32_t tag) { scrollerOf(scroll, "niScrollSetTag")->tag = tag; }
+
+void niScrollSetContentSize(void *scroll, float w, float h) {
+	scrollerOf(scroll, "niScrollSetContentSize")->SetContentSize(w, h, as(scroll)->w, as(scroll)->h);
+	applyScroll(as(scroll));
+}
+
+void niScrollTo(void *scroll, float x, float y, int animated) {
+	Scroller *s = scrollerOf(scroll, "niScrollTo");
+	if (animated) s->AnimateTo(x, y, as(scroll)->w, as(scroll)->h, g_scale, nowMs());
+	else s->JumpTo(x, y, as(scroll)->w, as(scroll)->h);
+	applyScroll(as(scroll));
+	changed();
+}
+
+void niScrollSetOption(void *scroll, const char *name, const char *value) {
+	scrollerOf(scroll, "niScrollSetOption")->SetOption(name, value);
+}
+
+void niScrollShift(void *scroll, float dx, float dy) {
+	scrollerOf(scroll, "niScrollShift")->Shift(dx, dy, as(scroll)->w, as(scroll)->h);
+	applyScroll(as(scroll));
+}
+
+float niScrollOffsetX(void *scroll) { return scrollerOf(scroll, "niScrollOffsetX")->x; }
+float niScrollOffsetY(void *scroll) { return scrollerOf(scroll, "niScrollOffsetY")->y; }
+
+int niLastScrollTag(void) { return g_scrollTag; }
+int niLastScrollPhase(void) { return g_scrollPhase; }
+float niLastScrollX(void) { return g_scrollX; }
+float niLastScrollY(void) { return g_scrollY; }
+float niLastScrollWidth(void) { return g_scrollW; }
+float niLastScrollHeight(void) { return g_scrollH; }
+float niLastScrollContentWidth(void) { return g_scrollContentW; }
+float niLastScrollContentHeight(void) { return g_scrollContentH; }
+
 void *niTextCreate(void) {
 	requireAttached("niTextCreate");
 	View *view = new View();
@@ -375,6 +679,85 @@ void *niTextCreate(void) {
 	view->label.reset(new TextLabel());
 	return view;
 }
+
+void *createInput(bool multiline, const char *what) {
+	requireAttached(what);
+	View *view = new View();
+	view->visual = g_context->CreateSpriteVisual();
+	view->input.reset(new TextInput(&g_inputSink, view, multiline));
+	queueInput(view);
+	return view;
+}
+
+void *niInputCreate(void) { return createInput(false, "niInputCreate"); }
+void *niTextAreaCreate(void) { return createInput(true, "niTextAreaCreate"); }
+
+void niControlSetTag(void *control, int32_t tag) {
+	if (!as(control)->input) unimplemented("niControlSetTag on a control that is not a TextInput");
+	as(control)->tag = tag;
+}
+
+void niSetFocused(void *control, int focused) {
+	if (!as(control)->input) unimplemented("niSetFocused on a control that is not a TextInput");
+	if (focused) focusInput(as(control));
+	else blurInput(as(control));
+	flushReports();
+}
+
+int niLastControlTag(void) { return g_controlTag; }
+int niLastControlPhase(void) { return g_controlPhase; }
+const char *niLastControlValue(void) { return g_controlValue.c_str(); }
+float niLastControlWidth(void) { return 0; }
+float niLastControlHeight(void) { return 0; }
+
+void niwKey(int action, int ionScancode, int ctrl, const char *text) {
+	if (!g_focusedInput) return;
+	g_focusedInput->input->Key(action, ionScancode, ctrl != 0, text ? text : "");
+	flushReports();
+}
+
+void niwText(const char *text) {
+	if (!g_focusedInput) return;
+	g_focusedInput->input->Insert(text ? text : "");
+	flushReports();
+}
+
+void niwPreedit(const char *text, int cursor) {
+	if (!g_focusedInput) return;
+	g_focusedInput->input->Preedit(text ? text : "", cursor);
+	flushReports();
+}
+
+void niwFocus(int focused) {
+	g_windowFocused = focused != 0;
+	if (g_focusedInput) g_focusedInput->input->WindowFocus(g_windowFocused);
+}
+
+int niwIonCursor(void) { return g_ionCursor; }
+
+int niwFocusedCaret(void) {
+	if (!g_focusedInput) return 0;
+	float x, y, w, h;
+	if (!g_focusedInput->input->CaretRect(&x, &y, &w, &h)) return 0;
+	for (const View *at = g_focusedInput; at && at != g_container; at = at->parent) {
+		x += roundf(at->x * g_scale);
+		y += roundf(at->y * g_scale);
+		if (at != g_focusedInput && at->scroller) {
+			x -= roundf(at->scroller->x * g_scale);
+			y -= roundf(at->scroller->y * g_scale);
+		}
+	}
+	g_caret[0] = x;
+	g_caret[1] = y;
+	g_caret[2] = w;
+	g_caret[3] = h;
+	return 1;
+}
+
+int niwCaretPixelX(void) { return (int)g_caret[0]; }
+int niwCaretPixelY(void) { return (int)g_caret[1]; }
+int niwCaretPixelW(void) { return (int)g_caret[2]; }
+int niwCaretPixelH(void) { return (int)g_caret[3]; }
 
 void niViewSetTag(void *view, int32_t tag) { as(view)->tag = tag; }
 
@@ -393,7 +776,7 @@ void niAddChild(void *parent, void *child) {
 	View *p = as(parent), *c = as(child);
 	c->refs += 1;
 	detach(c);
-	p->visual->InsertAt(c->visual, (int32_t)p->children.size());
+	childHost(p)->InsertAt(c->visual, (int32_t)p->children.size());
 	p->children.push_back(c);
 	c->parent = p;
 	changed();
@@ -403,9 +786,9 @@ void niBringChildToFront(void *child) {
 	View *c = as(child);
 	View *p = c->parent;
 	if (!p) return;
-	p->visual->Remove(c->visual);
+	childHost(p)->Remove(c->visual);
 	p->children.erase(std::remove(p->children.begin(), p->children.end(), c), p->children.end());
-	p->visual->InsertAt(c->visual, (int32_t)p->children.size());
+	childHost(p)->InsertAt(c->visual, (int32_t)p->children.size());
 	p->children.push_back(c);
 	changed();
 }
@@ -446,6 +829,10 @@ void niSetRotation(void *view, float degrees) {
 
 void niSetBackgroundColor(void *view, float r, float g, float b, float a) {
 	if (as(view)->label) unimplemented("niSetBackgroundColor on a Text");
+	if (as(view)->input) {
+		as(view)->input->SetBackground(Color{r, g, b, a});
+		return;
+	}
 	as(view)->visual->Brush(Color{r, g, b, a});
 	changed();
 }
@@ -532,36 +919,11 @@ const char *niAppCall(const char *name, const char *arg) {
 
 #define UNIMPLEMENTED(ret, name, params) ret name params { unimplemented(#name); }
 
-UNIMPLEMENTED(void *, niScrollCreate, (void))
-UNIMPLEMENTED(void, niScrollSetTag, (void *scroll, int32_t tag))
-UNIMPLEMENTED(void, niScrollSetContentSize, (void *scroll, float w, float h))
-UNIMPLEMENTED(void, niScrollTo, (void *scroll, float x, float y, int animated))
-UNIMPLEMENTED(void, niScrollSetOption, (void *scroll, const char *name, const char *value))
-UNIMPLEMENTED(void, niScrollShift, (void *scroll, float dx, float dy))
-UNIMPLEMENTED(float, niScrollOffsetX, (void *scroll))
-UNIMPLEMENTED(float, niScrollOffsetY, (void *scroll))
-UNIMPLEMENTED(void *, niInputCreate, (void))
-UNIMPLEMENTED(void *, niTextAreaCreate, (void))
 UNIMPLEMENTED(void *, niSwitchCreate, (void))
 UNIMPLEMENTED(void *, niIndicatorCreate, (void))
 UNIMPLEMENTED(void *, niImageCreate, (void))
 UNIMPLEMENTED(void *, niModalCreate, (void))
 UNIMPLEMENTED(void *, niControlCreate, (const char *kind))
-UNIMPLEMENTED(void, niControlSetTag, (void *control, int32_t tag))
-UNIMPLEMENTED(void, niSetFocused, (void *control, int focused))
-UNIMPLEMENTED(int, niLastControlTag, (void))
-UNIMPLEMENTED(int, niLastControlPhase, (void))
-UNIMPLEMENTED(const char *, niLastControlValue, (void))
-UNIMPLEMENTED(float, niLastControlWidth, (void))
-UNIMPLEMENTED(float, niLastControlHeight, (void))
-UNIMPLEMENTED(int, niLastScrollTag, (void))
-UNIMPLEMENTED(int, niLastScrollPhase, (void))
-UNIMPLEMENTED(float, niLastScrollX, (void))
-UNIMPLEMENTED(float, niLastScrollY, (void))
-UNIMPLEMENTED(float, niLastScrollWidth, (void))
-UNIMPLEMENTED(float, niLastScrollHeight, (void))
-UNIMPLEMENTED(float, niLastScrollContentWidth, (void))
-UNIMPLEMENTED(float, niLastScrollContentHeight, (void))
 UNIMPLEMENTED(void, niSetReloadPoll, (msClosure poll))
 UNIMPLEMENTED(int, niLastAppEvent, (void))
 UNIMPLEMENTED(const char *, niLastAppValue, (void))
@@ -573,17 +935,29 @@ void niSetText(void *label, const char *s) {
 }
 
 void niSetTextColor(void *label, float r, float g, float b, float a) {
+	if (TextInput *input = inputOf(label)) {
+		input->SetColor(Color{r, g, b, a});
+		return;
+	}
 	labelOf(label, "niSetTextColor")->SetColor(Color{r, g, b, a});
 	queueLabel(as(label));
 }
 
 void niSetFont(void *label, float size, int bold) {
+	if (TextInput *input = inputOf(label)) {
+		input->SetFont(size, bold != 0);
+		return;
+	}
 	labelOf(label, "niSetFont")->SetFont(size, bold != 0);
 	queueLabel(as(label));
 }
 
 void niMeasureText(void *label, float maxWidth) {
 	requireAttached("niMeasureText");
+	if (TextInput *input = inputOf(label)) {
+		input->Measure(maxWidth, g_scale, &g_measuredW, &g_measuredH);
+		return;
+	}
 	labelOf(label, "niMeasureText")->Measure(maxWidth, g_scale, &g_measuredW, &g_measuredH);
 }
 
@@ -591,6 +965,17 @@ float niMeasuredW(void) { return g_measuredW; }
 float niMeasuredH(void) { return g_measuredH; }
 
 void niSetProp(void *view, const char *name, const char *value) {
+	if (as(view)->input && as(view)->input->SetProp(name, value)) return;
+	if (as(view)->label && !strcmp(name, "textSpans")) {
+		as(view)->label->SetRuns(value);
+		queueLabel(as(view));
+		return;
+	}
+	if (as(view)->label && !strcmp(name, "fontFamily")) {
+		as(view)->label->SetFamily(value);
+		queueLabel(as(view));
+		return;
+	}
 	if (as(view)->label && !strcmp(name, "textAlign")) {
 		as(view)->label->SetAlignment(value);
 		queueLabel(as(view));
