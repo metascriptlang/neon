@@ -442,7 +442,7 @@ function textNeedsRemeasure(n: NativeNode): boolean {
 let nextTag: int32 = 1;
 const eventRegistry = createNativeEventRegistry();
 const nodesByTag = new Map<int32, NativeNode>();
-let root: NativeNode;
+let root: NativeNode = nativeNode(null, false, false);
 const scrollNodes: NativeNode[] = [];
 const layoutNodes: NativeNode[] = [];
 const textNodes: NativeNode[] = [];
