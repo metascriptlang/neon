@@ -69,6 +69,28 @@ test "a pending slot read again before it settles joins the flight and starts no
 	await settle(ctx);
 }
 
+test "a memo made again at a slot still in flight reads the settled value once the flight lands" {
+	const ctx = new ServerContext();
+	thrownBy(mounted(ctx, "land", 4, 7));
+	const second = mounted(ctx, "land", 4, 7);
+	assert thrownBy(second) instanceof NotReadyError, "pending while the flight is out";
+	await settle(ctx);
+	await sleepAsync(2);
+	assert second() === 7, "the node made again holds the answer";
+	assert called("land") === 1 && ctx.started.length === 1, "one flight, one compute";
+}
+
+test "a memo made again at a slot whose flight failed throws the failure once it lands" {
+	const ctx = new ServerContext();
+	thrownBy(mountedFailing(ctx, new SafeError("late failure")));
+	const second = mountedFailing(ctx, new SafeError("late failure"));
+	assert thrownBy(second) instanceof NotReadyError, "pending while the flight is out";
+	await settle(ctx);
+	await sleepAsync(2);
+	const thrown = thrownBy(second);
+	assert thrown !== null && !(thrown instanceof NotReadyError) && thrown.message === "late failure", "the failure, not a pending read";
+}
+
 test "a rejection is recorded sanitized, and the memo created again at that id throws it" {
 	const ctx = new ServerContext();
 	mountedFailing(ctx, new Error("db password=hunter2"));

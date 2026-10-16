@@ -44,6 +44,16 @@ when (server) {
 		run();
 	}
 
+	// A node made again at a slot still in flight lands the settled answer on itself, as the node that started the flight does (Solid server/signals.ts joins the flight and adopts it on settle).
+	async function joinFlight<T>(slot: ServerSlot, self: Computation, flight: int32, landValue: (self: Computation, value: T) => void): Promise<void> {
+		await slot.wait;
+		if (slot.failure !== null) {
+			failFlight(self, flight, slot.failure as Error);
+		} else {
+			landFlight(self, flight, (): void => landValue(self, (slot.cell as Cell<T>).value));
+		}
+	}
+
 	function serverResult<T>(ctx: ServerContext, self: Computation, compute: (prev: T | null) => Promise<T>, prev: T | null, landValue: (self: Computation, value: T) => void): T {
 		const id = self.id;
 		if (id === null) { throw new Error("[SERVER_ASYNC_WITHOUT_ID] an async memo on the server needs an owner id; render it under a root that carries one"); }
@@ -51,6 +61,7 @@ when (server) {
 		if (known !== null) {
 			if (known.failure !== null) { throw known.failure; }
 			if (known.settled) { return (known.cell as Cell<T>).value; }
+			joinFlight<T>(known, self, beginFlight(self), landValue);
 			throw new NotReadyError(self);
 		}
 		const slot = new ServerSlot();
