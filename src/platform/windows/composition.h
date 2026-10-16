@@ -20,6 +20,7 @@ struct IVisual {
 	virtual void Size(float width, float height) = 0;
 	virtual void Offset(float x, float y) = 0;
 	virtual void CornerRadius(float radius) = 0;
+	virtual void ClipsChildren(bool clips) = 0;
 	virtual void Brush(Color color) = 0;
 	virtual void Content(IDrawingSurface *surface) = 0;
 };
