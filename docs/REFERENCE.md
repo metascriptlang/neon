@@ -61,6 +61,17 @@ section, an entry whose verdict changes keeps its ID, a removed entry leaves its
 - **Pin:** `tests/platform/voidFont.test.ms`
 - **Checked:** 2026-10-18, read.
 
+### SF-4 · Solid's `Switch`/`Match` is `<Match fallback>` with `<Case when>` branches
+
+- **Verdict:** DIVERGE-INTENTIONAL
+- **Solid:** `<Switch fallback>` holds `<Match when>` branches and reads them back from `props.children` as an array (`packages/solid/src/client/flow.ts:273-341`; server `packages/solid/src/server/flow.ts:172-266`)
+- **RN:** `Switch` is the toggle control (`packages/react-native/Libraries/Components/Switch/Switch.js`)
+- **MS:** `matchCall` in `src/macros/ui/element.ms` lowers `<Match>` to one `Match({ cases, fallback })` call; `Match`, `Case`, `CaseKeyed`, `CaseWith`, `CaseKeyedWith` in `src/macros/ui/flow.ms`
+- **Why:** React Native's `Switch` keeps its name (SF-1), so Solid's pair moves down one name (the person, 2026-10-16). `children` is one `NeonNode` (PR-1) and cannot be read back as a list, so the element macro collects the branches at compile time, refuses a `<Case>` outside `<Match>` and a `<Match when>`, and the selection keeps Solid's chain: a later `when` is not read once an earlier one wins, and a branch mounts again only when the selected index changes, or with `keyed` when the value does.
+- **Don't:** collect the branches at run time; a stray `<Case>` would then fail only when it renders.
+- **Pin:** `tests/render/match.test.ms`, `tests/render/matchServer.test.ms`, `tests/browser/match.test.ms`, the `Match`/`Case` programs in `tests/macros/`
+- **Checked:** 2026-10-16, read and measured on C, JS, the server build and Chrome.
+
 ## Props
 
 ### PR-1 · `children` is one `NeonNode`; no `children()` helper
