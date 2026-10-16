@@ -32,7 +32,7 @@ test "Animated.View opacity and translate change across real animation frames" {
 	setFrameDriver(null);
 	const v = new AnimatedValue(0);
 	const nodes: HostNode[] = [];
-	render(element(<Animated.View ref={(n: HostNode): void => { nodes.push(n); }} style={{
+	render(element(<Animated.View ref={(h: ViewHandle): void => { nodes.push(h.node); }} style={{
 		width: 40, height: 40, backgroundColor: "#333",
 		opacity: v.get(),
 		transform: `translateX(${v.get() * 100}px) rotate(${v.get() * 90}deg)`,
