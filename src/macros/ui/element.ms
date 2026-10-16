@@ -10,7 +10,7 @@
 // Component tags, Show and For do NOT flatten: their structure changes at
 // runtime, so they stay runtime calls through createComponent.
 
-import { Node, NodeKind, DeclKind, NodeFlag, childCount, childAt, bindSym, getType, getTypeImpl, getImpl, define } from "std/meta";
+import { Node, NodeKind, DeclKind, NodeFlag, childCount, childAt, bindSym, getType, getTypeImpl, getImpl, define, expansionFile } from "std/meta";
 import { isReactiveExpr, isEventName, peelHidden } from "./reactive";
 
 function trimEdgeSpaces(s: string, fromStart: boolean, fromEnd: boolean): string {
@@ -322,6 +322,7 @@ export macro element(node: Node): Node {
 
 	let errNodes: Node[] = [];
 	let errMsgs: string[] = [];
+	let componentHome = "";
 	let optIdx = 0;
 	function presentKind(n: Node): string {
 		const t = peelHidden(n).nodeType;
@@ -939,6 +940,122 @@ export macro element(node: Node): Node {
 		}
 		return { kind: NodeKind.JSXElement, line: given.line, column: given.column, jsxTag: given.jsxTag + ".provider", jsxAttrs: given.jsxAttrs, jsxChildren: given.jsxChildren, jsxSelfClosing: given.jsxSelfClosing };
 	}
+	function typedBase(n: Node): string {
+		const t = peelHidden(n).nodeType;
+		if (t === null) { return ""; }
+		const g = peelTypeRef(t as Node);
+		if (g.kind !== NodeKind.TypeGeneric) { return ""; }
+		const base = g.typExprBase;
+		return base.kind === NodeKind.Identifier ? base.name : "";
+	}
+	function pathName(n: Node): string {
+		const p = peelHidden(n);
+		if (p.kind === NodeKind.Identifier) { return p.name; }
+		if (p.kind === NodeKind.MemberExpr) {
+			const head = pathName(p.object);
+			return head === "" ? "" : head + "." + p.property;
+		}
+		return "";
+	}
+	function componentFn(c: Node): Node | null {
+		if (c.jsxTag.indexOf(".") >= 0) { return null; }
+		const sym = bindSym(c.jsxTag);
+		if (sym === null) { return null; }
+		// .inbox/compiler/2026-10-16-getimpl-of-a-later-function-whose-body-calls-a-macro-fails-undefined-variable.md
+		const impl = getImpl(sym);
+		if (impl === null) { return null; }
+		const decl = impl as Node;
+		componentHome = sym.resolvedSym.modulePath;
+		if (decl.kind === NodeKind.FunctionDecl) { return decl; }
+		if (decl.kind !== NodeKind.VariableDecl || childCount(decl) === 0) { return null; }
+		const init = childAt(decl, 0);
+		return init.kind === NodeKind.ArrowFunction || init.kind === NodeKind.FunctionExpr ? init : null;
+	}
+	function isFunctionNode(n: Node): boolean {
+		return n.kind === NodeKind.ArrowFunction || n.kind === NodeKind.FunctionExpr || n.kind === NodeKind.FunctionDecl;
+	}
+	function isJsxNode(n: Node): boolean {
+		const k = n.kind;
+		return k === NodeKind.JSXElement || k === NodeKind.JSXFragment || k === NodeKind.JSXText
+			|| k === NodeKind.JSXExpressionContainer || k === NodeKind.JSXAttribute || k === NodeKind.JSXSpreadAttribute;
+	}
+	function isComputeArg(call: Node, at: int32): boolean {
+		const f = peelHidden(call.callee);
+		if (f.kind !== NodeKind.Identifier) { return false; }
+		const name = f.name;
+		if (name === "createMemo" || name === "createAsyncMemo" || name === "createEffect" || name === "createRenderEffect") { return at === 0; }
+		return name === "bindText" || name === "bindAttr" || name === "bindStyleAll" || name === "bindStyleProp";
+	}
+	function givesOwnedWrite(call: Node): boolean {
+		if (call.arguments.length < 2) { return false; }
+		const options = peelHidden(call.arguments[1]);
+		if (options.kind === NodeKind.NullLiteral) { return false; }
+		if (options.kind !== NodeKind.ObjectLiteral) { return true; }
+		for (let i = 0; i < options.keys.length; i = i + 1) {
+			if (options.keys[i] !== "ownedWrite") { continue; }
+			const v = peelHidden(options.properties[i]);
+			return !(v.kind === NodeKind.BooleanLiteral && !v.boolValue);
+		}
+		return false;
+	}
+	// Only a setter bound in this body is judged: .inbox/compiler/2026-10-16-getimpl-of-a-destructured-binding-answers-null.md
+	function plainSetters(n: Node, into: string[]): void {
+		if (n.kind === NodeKind.DestructuringDecl && childCount(n) >= 2) {
+			const pattern = childAt(n, 0);
+			const init = peelHidden(childAt(n, 1));
+			if (pattern.kind === NodeKind.ArrayPattern && childCount(pattern) === 2 && init.kind === NodeKind.CallExpr
+				&& pathName(init.callee) === "createSignal" && !givesOwnedWrite(init)) {
+				const setter = childAt(pattern, 1);
+				if (setter.kind === NodeKind.Identifier) { into.push(setter.name); }
+			}
+		}
+		for (let i = 0; i < childCount(n); i = i + 1) { plainSetters(childAt(n, i), into); }
+	}
+	function refuseReactiveMisuse(c: Node): void {
+		const fn = componentFn(c);
+		if (fn === null) { return; }
+		const own: string[] = [];
+		plainSetters(fn as Node, own);
+		// .inbox/compiler/2026-10-15-macro-diagnostic-on-a-getimpl-node-names-the-expanding-file.md
+		const home = componentHome === expansionFile() ? "" : " (<" + c.jsxTag + "> is declared in " + componentHome + ")";
+		let awaited = false;
+		function scan(n: Node, mode: int32): void {
+			if (n.kind === NodeKind.ClassDecl || n.kind === NodeKind.MethodDecl || n.kind === NodeKind.MacroInvocation || isJsxNode(n)) { return; }
+			const inner = isFunctionNode(n) ? 2 : mode;
+			if (n.kind === NodeKind.CallExpr) {
+				const f = peelHidden(n.callee);
+				if (mode === 0) {
+					let read: Node | null = null;
+					if (typedBase(f) === "Accessor") { read = f; }
+					if (f.kind === NodeKind.MemberExpr && f.property === "valueOf" && typedBase(f.object) === "Accessor") { read = f.object; }
+					if (f.kind === NodeKind.Identifier && f.name === "valueOf" && n.arguments.length > 0 && typedBase(n.arguments[0]) === "Accessor") { read = n.arguments[0]; }
+					if (read !== null) {
+						const name = pathName(read as Node);
+						error("[STRICT_READ_UNTRACKED] Reactive value " + (name === "" ? "" : "\"" + name + "\" ") + "read directly in <" + c.jsxTag + "> will not update. Move it into a tracking scope (JSX, a memo, or an effect's compute function), or read it once inside untrack(() => ...)." + home, read as Node);
+					}
+				}
+				if (mode === 1 && !awaited && typedBase(f) === "Setter" && own.includes(pathName(f))) {
+					error("[REACTIVE_WRITE_IN_OWNED_SCOPE] Writing to reactive state with \"" + pathName(f) + "\" inside a computation of <" + c.jsxTag + "> is not allowed. Move the write into an event handler or an effect's second function, or set the `ownedWrite` option on the signal if this is intentional." + home, f);
+				}
+				scan(n.callee, mode);
+				for (let i = 0; i < n.arguments.length; i = i + 1) {
+					const arg = n.arguments[i];
+					if (isComputeArg(n, i) && isFunctionNode(arg)) {
+						const was = awaited;
+						awaited = false;
+						for (let j = 0; j < childCount(arg); j = j + 1) { scan(childAt(arg, j), 1); }
+						awaited = was;
+					} else {
+						scan(arg, mode);
+					}
+				}
+				return;
+			}
+			for (let i = 0; i < childCount(n); i = i + 1) { scan(childAt(n, i), inner); }
+			if (n.kind === NodeKind.AwaitExpr) { awaited = true; }
+		}
+		for (let i = 0; i < childCount(fn as Node); i = i + 1) { scan(childAt(fn as Node, i), 0); }
+	}
 	function componentCall(given: Node): Node {
 		if (given.jsxTag === "Match") { return matchCall(given); }
 		if (given.jsxTag === "Case") {
@@ -947,6 +1064,7 @@ export macro element(node: Node): Node {
 		}
 		const c = isContextTag(given) ? contextProvider(given) : given;
 		if (c.jsxTag === "Show") { return whenFlow(c, "Show"); }
+		refuseReactiveMisuse(c);
 		return componentOf(forByKeyed(c));
 	}
 	function componentOf(c: Node): Node {

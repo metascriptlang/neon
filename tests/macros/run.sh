@@ -4,19 +4,22 @@
 MSC=${MSC:-msc}
 cd "$(dirname "$0")/../.."
 fail=0
-expect_reject() {
-	out=$("$MSC" build --target=js "$1" 2>&1)
+reject_on() {
+	target=$1
+	out=$("$MSC" build $target "$2" 2>&1)
 	if [ $? -eq 0 ]; then
-		echo "FAIL $1: compiled clean — expected a '$2' error"
+		echo "FAIL $2 ${target:-native}: compiled clean — expected a '$3' error"
 		fail=1
-	elif ! echo "$out" | grep -q -- "$2"; then
-		echo "FAIL $1: rejected for another reason:"
+	elif ! echo "$out" | grep -q -- "$3"; then
+		echo "FAIL $2 ${target:-native}: rejected for another reason:"
 		echo "$out" | head -4
 		fail=1
 	else
-		echo "ok   $1: rejected with '$2'"
+		echo "ok   $2 ${target:-native}: rejected with '$3'"
 	fi
 }
+expect_reject() { reject_on --target=js "$1" "$2"; }
+expect_reject_both() { reject_on --target=js "$1" "$2"; reject_on "" "$1" "$2"; }
 expect_reject tests/macros/spreadMapRejected.ms "a spread needs an object type with named fields"
 expect_reject tests/macros/spreadCallRejected.ms "a spread needs a variable or a field, not an expression"
 expect_reject tests/macros/spreadChildrenRejected.ms "children cannot come from a spread"
@@ -48,4 +51,8 @@ expect_reject tests/macros/caseOutsideMatchRejected.ms "<Case> is only a direct 
 expect_reject tests/macros/caseUnderShowRejected.ms "<Case> is only a direct child of <Match>: write <Match>"
 expect_reject tests/macros/matchChildRejected.ms "<Match> holds only <Case> branches: write the branch as <Case"
 expect_reject tests/macros/caseKeyedComputedRejected.ms "<Case keyed> takes true or false, written in place"
+expect_reject_both tests/macros/componentReadCallRejected.ms "STRICT_READ_UNTRACKED. Reactive value .props.n. read directly in <Count>"
+expect_reject_both tests/macros/componentReadValueOfRejected.ms "STRICT_READ_UNTRACKED. Reactive value .props.n. read directly in <Count>"
+expect_reject_both tests/macros/componentWriteInMemoRejected.ms "REACTIVE_WRITE_IN_OWNED_SCOPE. Writing to reactive state with .setCount. inside a computation of <Count>"
+expect_reject_both tests/macros/componentWriteInHoleRejected.ms "REACTIVE_WRITE_IN_OWNED_SCOPE. Writing to reactive state with .setCount. inside a computation of <Count>"
 exit $fail
