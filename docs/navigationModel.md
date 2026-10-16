@@ -165,7 +165,7 @@ routing. `navigatorMotion.ms` stays the transition engine.
     TanStack's shape), because one session entry carries every region; a refusal goes
     back by the session's tracked position, not by `baseIndexOffset`.
   - Decompose's `isEnabled` flag cannot suppress mirroring: the registry commits a plan
-    inside `batch`, so the mirror runs after the flag is reset. Each restore or resolve
+    inside `flush`, so the mirror runs after the flag is reset. Each restore or resolve
     commit bumps a signal the mirror reads instead.
   - One render effect walks the active branch from the root, and a pop records its
     count when the level changes: a disposed child publishes `[]` and queued effects

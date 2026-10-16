@@ -1,6 +1,8 @@
-import { Signal, batch, untrack } from "../core/signal";
+import { Signal, untrack } from "../core/signal";
+import { flush } from "../core/runtime";
 import { createRenderEffect } from "../core/effect";
-import { Dispose } from "../core/types";
+import { createRoot } from "../core/owner";
+import { Cleanup, Dispose } from "../core/types";
 import {
 	RoutePlan,
 	RoutingError,
@@ -385,7 +387,7 @@ export function createWebHistory(
 		return pending === null ? nodeHistory(navigation) : pending as HistoryNode[];
 	};
 	const suppressed = (commit: () => void): RoutePlan => ({
-		commit: (): void => batch((): void => {
+		commit: (): void => flush((): void => {
 			commit();
 			applied.set(applied.peek() + 1);
 		}),
@@ -432,14 +434,23 @@ export function createWebHistory(
 			write(session, nodeHistory(navigation), true);
 			let record: MirrorRecord | null = null;
 			let seen: int32 = 0;
-			return createRenderEffect((): void => {
-				const epoch = applied.get();
-				if (record === null || epoch !== seen) {
-					seen = epoch;
-					record = recordLevel(navigation);
-					return;
-				}
-				record = mirrorLevel(navigation, record as MirrorRecord, mirror);
+			return createRoot((dispose: Dispose): Dispose => {
+				createRenderEffect<int32>(
+					(prev: int32 | null): int32 => {
+						recordLevel(navigation);
+						return applied.get();
+					},
+					(epoch: int32, prev: int32 | null): Cleanup | null => {
+						if (record === null || epoch !== seen) {
+							seen = epoch;
+							record = recordLevel(navigation);
+							return null;
+						}
+						record = mirrorLevel(navigation, record as MirrorRecord, mirror);
+						return null;
+					},
+				);
+				return dispose;
 			});
 		},
 	};
