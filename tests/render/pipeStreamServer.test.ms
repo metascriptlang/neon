@@ -250,7 +250,7 @@ test "a second consumer of the same render throws and the first keeps its stream
 	} catch (e) {
 		message = (e as Error).message;
 	}
-	assert message === "renderToStream result was already consumed via `pipe`; cannot also consume it via `pipe`. Use exactly one of `pipe`, `pipeTo`, or `readable`.", message;
+	assert message === "streamRender result was already consumed via `pipe`; cannot also consume it via `pipe`. Use exactly one of `pipe`, `pipeTo`, or `readable`.", message;
 	const out = await r.markup();
 	assert c.chunks.length === 3 && c.ended === 1, "the first sink still got the whole stream: " + c.chunks.length.toString();
 	assert out.html.includes("first=1") && out.html.includes("second=2"), out.html;

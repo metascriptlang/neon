@@ -90,7 +90,7 @@ when (js) {
 		} catch (e) {
 			message = (e as Error).message;
 		}
-		assert message === "renderToStream result was already consumed via `readable`; cannot also consume it via `pipe`. Use exactly one of `pipe`, `pipeTo`, or `readable`.", message;
+		assert message === "streamRender result was already consumed via `readable`; cannot also consume it via `pipe`. Use exactly one of `pipe`, `pipeTo`, or `readable`.", message;
 		await readAll(view);
 	}
 

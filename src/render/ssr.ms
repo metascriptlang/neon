@@ -812,13 +812,13 @@ when (server) {
 			}
 			if (!this.over) { return; }
 			this.ended = true;
-			if (this.failure !== null) { console.error("renderToStream: the stream ended early: " + (this.failure as Error).message); }
+			if (this.failure !== null) { console.error("streamRender: the stream ended early: " + (this.failure as Error).message); }
 			sink.end();
 		}
 
 		claim(name: string): void {
 			if (this.consumer !== "") {
-				throw new Error("renderToStream result was already consumed via `" + this.consumer + "`; cannot also consume it via `" + name + "`. Use exactly one of `pipe`, `pipeTo`, or `readable`.");
+				throw new Error("streamRender result was already consumed via `" + this.consumer + "`; cannot also consume it via `" + name + "`. Use exactly one of `pipe`, `pipeTo`, or `readable`.");
 			}
 			this.consumer = name;
 		}
