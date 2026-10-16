@@ -448,6 +448,23 @@ test "disposed DOM listeners cannot mutate state through retained detached nodes
 	}
 }
 
+test "listeners added with no owner attach and are released by the host" {
+	const h = domHost();
+	const parent = documentBody();
+	let presses = 0;
+	const el = h.createElement("pressable");
+	h.setAttr(el, "id", "neon-ownerless-listener");
+	h.append(parent, el);
+	h.addEvent(el, "onPress", (e: NeonEvent): void => { presses += 1; });
+	window.eval("document.getElementById('neon-ownerless-listener').click()");
+	assert presses === 1, "an ownerless press listener attaches";
+	window.eval("window.neonOwnerlessNode = document.getElementById('neon-ownerless-listener')");
+	h.removeChild(parent, el);
+	h.release(el);
+	window.eval("window.neonOwnerlessNode.click(); delete window.neonOwnerlessNode");
+	assert presses === 1, "release removes the ownerless listener";
+}
+
 test "onLayout keeps logical parent coordinates and dimensions under inversions and scale" {
 	const h = domHost();
 	const outer = mount("view");

@@ -6,6 +6,7 @@ import { Style, StyleValue } from "../../render/style";
 import { registerCss, collectCss, onCssChange } from "../../render/sheet";
 import { NeonEvent, neonEvent, eventType } from "../../render/event";
 import { onCleanup } from "../../core/cleanup";
+import { getOwner } from "../../core/runtime";
 import {
 	VIEW_CLASS,
 	TEXT_CLASS,
@@ -968,7 +969,7 @@ export function domHost(): Host {
 	function keep(el: Node, cleanup: () => void): void {
 		if (!cleanups.has(el)) {
 			cleanups.set(el, []);
-			onCleanup((): void => { releaseOne(el); });
+			if (getOwner() !== null) { onCleanup((): void => { releaseOne(el); }); }
 		}
 		(cleanups.get(el) as (() => void)[]).push(cleanup);
 	}
