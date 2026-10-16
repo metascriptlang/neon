@@ -15,6 +15,8 @@ void harnessExpectSizeIn(const char *layout, const char *text, const char *famil
 int harnessRun(void);
 int harnessIsCheck(void);
 int harnessSample(const char *title);
+void harnessWheel(const char *title, int x, int y, int delta);
+void harnessClick(const char *title, int x, int y);
 
 #ifdef __cplusplus
 }

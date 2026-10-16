@@ -262,6 +262,19 @@ int harnessSample(const char *title) {
 	return failures == 0 ? 0 : 1;
 }
 
+void harnessWheel(const char *title, int x, int y, int delta) {
+	HWND window = findOwnWindow(title);
+	POINT screen = {x, y};
+	ClientToScreen(window, &screen);
+	PostMessageW(window, WM_MOUSEWHEEL, MAKEWPARAM(0, (WORD)(short)delta), MAKELPARAM((short)screen.x, (short)screen.y));
+}
+
+void harnessClick(const char *title, int x, int y) {
+	HWND window = findOwnWindow(title);
+	PostMessageW(window, WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(x, y));
+	PostMessageW(window, WM_LBUTTONUP, 0, MAKELPARAM(x, y));
+}
+
 void harnessExpect(const char *name, int x, int y, int r, int g, int b) {
 	g_expectations.push_back({name, x, y, r, g, b});
 }
