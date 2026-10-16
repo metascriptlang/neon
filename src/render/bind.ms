@@ -2,17 +2,62 @@ import { createRenderEffect } from "../core/effect";
 import { Cleanup } from "../core/types";
 import { untrack } from "../core/signal";
 import { getOwner } from "../core/runtime";
+import { runWithOwner } from "../core/owner";
+import { NotReadyError } from "../core/types";
+import { Hole, ServerContext, ServerMarks, serverContext, withServerContext } from "../core/serverContext";
 import { Style, StyleValue, setStyleField, emptyStyle } from "./style";
 import { Host, HostNode } from "./hostTypes";
-import { isServer } from "./environment";
+import { isServer, asServer } from "./environment";
 
 // A dynamic spot re-runs whenever a source signal changes, but a derived expression
 // often maps several source values onto the SAME output ("big"/"small", a formatted
 // count). Writing it again is a host touch that changes nothing, so the last written
 // value is kept and an identical one is dropped.
 export function bindText(host: Host, node: HostNode, get: () => string): void {
-	if (isServer()) { host.setText(node, untrack(get)); return; }
+	if (isServer()) { serverText(host, node, get); return; }
 	followText(host, node, get);
+}
+
+// A pending read in a text spot leaves a hole when a window is open (a Loading's content or the root pass):
+// the writer keeps a marker and the thunk runs again once its source settles. With no window open the read
+// throws to the boundary above, which mounts its content again.
+function serverText(host: Host, node: HostNode, get: () => string): void {
+	let value = "";
+	try {
+		value = untrack(get);
+	} catch (e) {
+		const ctx = serverContext();
+		if (ctx === null || ctx.holes === null || ctx.marks === null || !(e instanceof NotReadyError)) { throw e; }
+		const hole = new Hole(ctx.holeCount.toString(), get, getOwner(), (e as NotReadyError).source);
+		ctx.holeCount += 1;
+		(ctx.marks as ServerMarks).pend(node, hole);
+		(ctx.holes as Hole[]).push(hole);
+		return;
+	}
+	host.setText(node, value);
+}
+
+export const HOLES_DONE = 0;
+export const HOLES_WAIT = 1;
+export const HOLES_FAILED = 2;
+
+// Runs the holes that have no text yet under the owner each spot was made in. A hole that throws anything
+// but a pending read gives up the hole channel, so the content is mounted again and the boundary above it catches the error.
+export function runHoles(ctx: ServerContext, holes: Hole[]): int32 {
+	return asServer((): int32 => withServerContext(ctx, (): int32 => {
+		let state = HOLES_DONE;
+		for (const h of holes) {
+			if (h.value !== null) { continue; }
+			try {
+				h.value = runWithOwner(h.owner, (): string => untrack(h.get));
+			} catch (e) {
+				if (!(e instanceof NotReadyError)) { return HOLES_FAILED; }
+				h.source = (e as NotReadyError).source;
+				state = HOLES_WAIT;
+			}
+		}
+		return state;
+	}));
 }
 
 function followText(host: Host, node: HostNode, get: () => string): void {
