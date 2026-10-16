@@ -13,6 +13,7 @@ export struct SsrMarkup {
 	html: string;
 	css: string;
 	head: string;
+	records: string;
 }
 
 when (server) {
@@ -46,7 +47,8 @@ when (server) {
 	} from "./web";
 	import { parseVisibleContent } from "./visibleContent";
 	import { asServer } from "./environment";
-	import { Dispose } from "../core/types";
+	import { Dispose, NotReadyError } from "../core/types";
+import { ServerContext, withServerContext } from "../core/serverContext";
 
 	function joinClass(className: string, id: string): string {
 		return className === "" ? id : className + " " + id;
@@ -571,7 +573,7 @@ when (server) {
 		return writeRender(n, new SsrWrite(registerCss)).html;
 	}
 
-	export function renderToMarkup(n: NeonNode): SsrMarkup {
+	function markupOf(n: NeonNode): SsrMarkup {
 		const seen = new Map<string, boolean>();
 		let css = collectCss();
 		const w = new SsrWrite((id: string, rule: string): void => {
@@ -580,7 +582,77 @@ when (server) {
 			css = css + rule;
 		});
 		const markup = writeRender(n, w);
-		return { html: markup.html, css: css, head: markup.head };
+		return { html: markup.html, css: css, head: markup.head, records: "" };
+	}
+
+	export function renderToMarkup(n: NeonNode): SsrMarkup {
+		return markupOf(n);
+	}
+
+	const MAX_PASSES = 10000;
+
+	function hex4(code: int32): string {
+		return ("0000" + code.toString(16)).slice(-4);
+	}
+
+	function scriptString(value: string): string {
+		let out = "";
+		let last = 0;
+		for (let i = 0; i < value.length; i += 1) {
+			const c = value.charCodeAt(i);
+			if (c >= 32 && c !== 34 && c !== 60 && c !== 92 && c !== 0x2028 && c !== 0x2029) { continue; }
+			const e = c === 34 ? "\\\"" : c === 92 ? "\\\\" : "\\u" + hex4(c);
+			out = out + value.slice(last, i) + e;
+			last = i + 1;
+		}
+		return last === 0 ? value : out + value.slice(last);
+	}
+
+	function recordScript(table: string, id: string, text: string): string {
+		return "<script>(self._$HY||(self._$HY={r:{},e:{}}))." + table + "[\"" + scriptString(id) + "\"]=\"" + scriptString(text) + "\"</script>";
+	}
+
+	function recordScripts(ctx: ServerContext): string {
+		let out = "";
+		for (const id of ctx.started) {
+			const slot = ctx.slots.get(id);
+			if (slot === null) { continue; }
+			out += slot.failure === null ? recordScript("r", id, slot.json) : recordScript("e", id, (slot.failure as Error).message);
+		}
+		return out;
+	}
+
+	function passOver(ctx: ServerContext, n: NeonNode): SsrMarkup | null {
+		ctx.waiting = [];
+		return withServerContext(ctx, (): SsrMarkup | null => {
+			try {
+				return markupOf(n);
+			} catch (e) {
+				if (e instanceof NotReadyError) { return null; }
+				throw e;
+			}
+		});
+	}
+
+	function unconverged(ctx: ServerContext): Error {
+		const where = ctx.waiting.length === 0 ? "the render" : "<Loading> at owner id \"" + ctx.waiting.join("\", \"") + "\"";
+		return new Error("SSR: " + where + " did not converge after " + MAX_PASSES.toString() + " passes; an async memo is created under a new owner id on every pass, so no settled answer is ever found again");
+	}
+
+	export async function renderToStream(n: NeonNode): Promise<SsrMarkup> {
+		const ctx = new ServerContext();
+		for (let pass = 1; pass <= MAX_PASSES; pass += 1) {
+			const settled = passOver(ctx, n);
+			if (ctx.waits.length === 0) {
+				if (settled === null) { throw new Error("SSR: a read was not ready and nothing is awaited; the render cannot settle"); }
+				const markup = settled as SsrMarkup;
+				return { html: markup.html, css: markup.css, head: markup.head, records: recordScripts(ctx) };
+			}
+			const waits = ctx.waits;
+			ctx.waits = [];
+			for (const w of waits) { await w; }
+		}
+		throw unconverged(ctx);
 	}
 } else {
 	import { Node } from "std/meta";
@@ -591,5 +663,9 @@ when (server) {
 
 	export macro renderToMarkup(node: Node): Node {
 		error("renderToMarkup needs a -d:server build", node);
+	}
+
+	export macro renderToStream(node: Node): Node {
+		error("renderToStream needs a -d:server build", node);
 	}
 }

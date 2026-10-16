@@ -10,6 +10,7 @@ import { createOwner, getOwner, flush, disposeChildren } from "../../core/runtim
 import { onCleanup } from "../../core/cleanup";
 import { runWithOwner } from "../../core/owner";
 import { Computation, NotReadyError, ContextEntry } from "../../core/types";
+import { serverContext } from "../../core/serverContext";
 import { isServer } from "../../render/environment";
 import { serverCaught } from "../../render/ssr";
 import { NeonNode, regionNode } from "../../render/node";
@@ -257,7 +258,8 @@ function loadingRows(host: Host, children: NeonNode, fallback: NeonNode | null):
 
 function loadingOnServer(children: NeonNode, fallback: NeonNode | null): Accessor<Row[]> {
 	const state = new MountedState();
-	const context = (getOwner() as Computation).context;
+	const boundary = getOwner() as Computation;
+	const context = boundary.context;
 	return spanOfMounted((host: Host, parent: HostNode, before: HostNode | null): Row | null => {
 		const content = makeRow(mountedUnder(children, context, state));
 		try {
@@ -266,6 +268,8 @@ function loadingOnServer(children: NeonNode, fallback: NeonNode | null): Accesso
 		} catch (e) {
 			if (!(e instanceof NotReadyError)) { throw e; }
 		}
+		const ctx = serverContext();
+		if (ctx !== null) { ctx.waiting.push(boundary.id === null ? "(no id)" : boundary.id as string); }
 		removeRow(host, parent, content);
 		disposeChildren(state.scope as Computation, true);
 		if (fallback === null) { return null; }
