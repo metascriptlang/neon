@@ -46,10 +46,7 @@ interface StoredCursor {
 }
 
 interface HistoryMirror {
-	push: (history: HistoryNode[][]) => void;
-	pop: (count: int32, nodes: HistoryNode[]) => void;
-	rewrite: (history: HistoryNode[][]) => void;
-	updateUrl: (nodes: HistoryNode[]) => void;
+	change: (removed: int32, added: HistoryNode[][], nodes: HistoryNode[]) => void;
 }
 
 interface MirrorRecord {
@@ -283,19 +280,14 @@ function mirrorChange(
 ): void {
 	const newKeys = keysOf(items);
 	const oldKeys = keysOf(previous.items);
-	if (newKeys.length === oldKeys.length && startsWith(newKeys, oldKeys)) {
-		mirror.updateUrl(treesOf(items));
-	} else if (startsWith(newKeys, oldKeys)) {
-		mirror.push(entriesOf(items.slice(previous.items.length), treesOf(previous.items)));
-	} else if (startsWith(oldKeys, newKeys)) {
-		let count: int32 = 0;
-		for (let i = items.length; i < previous.items.length; i += 1) {
-			count += entryCount(previous, i);
-		}
-		mirror.pop(count, treesOf(items));
-	} else {
-		mirror.rewrite(entriesOf(items, []));
+	let kept: int32 = 0;
+	while (kept < newKeys.length && kept < oldKeys.length && newKeys[kept] === oldKeys[kept]) {
+		kept += 1;
 	}
+	let removed: int32 = 0;
+	for (let i = kept; i < previous.items.length; i += 1) { removed += entryCount(previous, i); }
+	const added = entriesOf(items.slice(kept), treesOf(items.slice(0, kept)));
+	mirror.change(removed, added, treesOf(items));
 }
 
 function nestedMirror(
@@ -308,16 +300,12 @@ function nestedMirror(
 		nodes.push(nodeOf(active, children));
 		return nodes;
 	};
-	const wrapAll = (history: HistoryNode[][]): HistoryNode[][] => {
-		const wrapped: HistoryNode[][] = [];
-		for (const children of history) { wrapped.push(wrap(children)); }
-		return wrapped;
-	};
 	return {
-		push: (history: HistoryNode[][]): void => mirror.push(wrapAll(history)),
-		pop: (count: int32, children: HistoryNode[]): void => mirror.pop(count, wrap(children)),
-		rewrite: (history: HistoryNode[][]): void => mirror.rewrite(wrapAll(history)),
-		updateUrl: (children: HistoryNode[]): void => mirror.updateUrl(wrap(children)),
+		change: (removed: int32, added: HistoryNode[][], children: HistoryNode[]): void => {
+			const wrapped: HistoryNode[][] = [];
+			for (const entry of added) { wrapped.push(wrap(entry)); }
+			mirror.change(removed, wrapped, wrap(children));
+		},
 	};
 }
 
@@ -357,28 +345,30 @@ function sessionMirror(
 	session: RoutingSession,
 	write: (nodes: HistoryNode[], replace: boolean) => void,
 ): HistoryMirror {
-	const rewrite = (history: HistoryNode[][]): void => {
-		write(history[0], true);
-		for (let i = 1; i < history.length; i += 1) { write(history[i], false); }
+	const writeAll = (added: HistoryNode[][]): void => {
+		write(added[0], true);
+		for (let i = 1; i < added.length; i += 1) { write(added[i], false); }
 	};
 	return {
-		push: (history: HistoryNode[][]): void => {
-			for (const nodes of history) { write(nodes, false); }
-		},
-		pop: (count: int32, nodes: HistoryNode[]): void => {
+		change: (removed: int32, added: HistoryNode[][], nodes: HistoryNode[]): void => {
+			if (removed === 0) {
+				if (added.length === 0) { write(nodes, true); return; }
+				for (const entry of added) { write(entry, false); }
+				return;
+			}
 			const current = session.index();
-			const popCount = count < current ? count : current;
-			if (popCount <= 0) { write(nodes, true); return; }
-			goBack(session, popCount, (): void => {
-				if (popCount < count) { write(nodes, true); }
-			});
+			if (added.length === 0) {
+				const popCount = removed < current ? removed : current;
+				if (popCount <= 0) { write(nodes, true); return; }
+				goBack(session, popCount, (): void => {
+					if (popCount < removed) { write(nodes, true); }
+				});
+				return;
+			}
+			const rewind = removed - 1 < current ? removed - 1 : current;
+			if (rewind <= 0) { writeAll(added); return; }
+			goBack(session, rewind, (): void => writeAll(added));
 		},
-		rewrite: (history: HistoryNode[][]): void => {
-			const current = session.index();
-			if (current <= 0) { rewrite(history); return; }
-			goBack(session, current, (): void => rewrite(history));
-		},
-		updateUrl: (nodes: HistoryNode[]): void => write(nodes, true),
 	};
 }
 

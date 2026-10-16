@@ -189,17 +189,6 @@ and the invariants that outlived them were moved to the head of the test that pi
   `PrintWindow` at the start, after typing and after the resize. Not run: an IME, a DPI change.
   `tests/run.sh` builds the example on a Windows host and skips it by name elsewhere.
 
-- **OPEN 2026-10-16 — a rewrite below an outer entry drops the outer entries from browser history.**
-  `webHistory.ms` follows Decompose (`WebHistoryNavigation.kt` `subscribe`: a child's `onRewrite` goes
-  back to index 0 and writes only the child's entries, prefixed by the inactive outer nodes). Measured on
-  the route tree: Home → `/feed` → `/feed/1` → `/inbox` → `/feed/1`, then back reaches `/feed` and
-  `go(-1)` returns false while Home is still in the model. Webhistory probe: `go -2;replace /inner/c;push
-  /inner/d;` where the outer entry needs `go -1`. A key change at the same length rewrites too (a tab
-  switch, `setParams`, a stack `replace`): a tab switch at index 1 writes `go -1;replace /t/inbox;` and
-  lands at index 0; `setParams` at index 2 writes `go -2;replace /shop;push /shop/p/6;`. Expo replaces the
-  entry when the index does not change (`getBrowserHistoryForHistoryChange.ts`). Owner: `webHistory.ms`
-  `mirrorChange`. Fixing it diverges from Decompose and waits for the person's word.
-
 - **OPEN 2026-10-16 — a navigation issued while a rewrite's browser `go` is in flight misorders history.**
   The session has one landing slot and Chrome's `go` is asynchronous: in `tests/browser/routerLevels.test.ms`
   back from `/inbox/8` stayed on `/inbox/8` until the test waited 100 ms after a tab switch. Decompose

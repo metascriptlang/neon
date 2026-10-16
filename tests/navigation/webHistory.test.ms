@@ -304,6 +304,40 @@ test "a change that neither pushes nor pops rewrites from the first entry" {
 	assert finish(fixture) === 0, "routing errors";
 }
 
+test "a change after a kept prefix rewrites only the entries after it" {
+	const fixture = start("/home", null);
+	fixture.stack.push(screen("detail"));
+	fixture.stack.push(screen("more"));
+	assert take(fixture.log) === "push /detail;push /more;";
+	fixture.stack.navigate((current: Screen[]): Screen[] => [screen("home"), screen("detail"), screen("other")]);
+	const replaced = take(fixture.log);
+	assert replaced === "replace /other;", replaced;
+	fixture.stack.navigate((current: Screen[]): Screen[] => [screen("home"), screen("next"), screen("last")]);
+	const rewritten = take(fixture.log);
+	assert rewritten === "go -1;replace /next;push /last;", rewritten;
+	assert fixture.memory.index() === 2, fixture.memory.index().toString();
+	assert fixture.memory.go(-2);
+	assert fixture.memory.read().url === "/home", fixture.memory.read().url;
+	assert names(fixture.stack) === "home", names(fixture.stack);
+	assert finish(fixture) === 0, "routing errors";
+}
+
+test "a nested rewrite keeps the entries of the items before the active one" {
+	const fixture = start("/home", null);
+	fixture.stack.push(screen("inner"));
+	assert take(fixture.log) === "push /inner/a;push /inner/b;";
+	const items = fixture.stack.items();
+	const inner = items[items.length - 1].instance.inner as ChildStack<string, string>;
+	inner.navigate((current: string[]): string[] => ["x"]);
+	const rewritten = take(fixture.log);
+	assert rewritten === "go -1;replace /inner/x;", rewritten;
+	assert fixture.memory.index() === 1, fixture.memory.index().toString();
+	assert fixture.memory.go(-1);
+	assert fixture.memory.read().url === "/home", fixture.memory.read().url;
+	assert names(fixture.stack) === "home", names(fixture.stack);
+	assert finish(fixture) === 0, "routing errors";
+}
+
 test "the same keys under a new address replace the current entry" {
 	const fixture = start("/home", null);
 	fixture.stack.push(screen("detail"));
