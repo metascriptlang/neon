@@ -41,7 +41,7 @@ when (windows) {
 	@compile("./voidVisual.cpp");
 }
 when (macos) {
-	@compile("./voidVisual.m");
+	@compile("./voidVisual.m", "-fobjc-arc");
 }
 @include("./voidVisual.h");
 
