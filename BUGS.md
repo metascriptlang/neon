@@ -265,6 +265,9 @@ and the invariants that outlived them were moved to the head of the test that pi
   `~/metascript/.inbox/compiler/2026-10-16-empty-array-range-slice-null-payload.md`. It arrived with
   the origin commits pulled at `4718a2f`, and it is red on `fb2285e` alone. Measured by the navigation session's gate on
   `1ad74a7`, msc `15b93cbba` (`~/metascript/.wt/artifacts/rn-navigation-prod/gate-navmodels-fb2285e/gate.log`).
+  2026-10-18, Void `215c3e2`, msc `9029133ef`, an export of main `9c3c659`: no abort any more, 342 pass and 2 fail,
+  "the rect follows the signal: 23" (`voidInput.test.ms` imeRect cell) and "after the ops only the pushed row's label
+  is new: 0" (the 60-row ForList scroll cell). Not traced to Neon or Void yet.
 
 - **PARKED 2026-10-15 — `tests/platform/ionAudio.test.ms` cannot resolve Ion's audio module on this machine.**
   Not Neon's: native `Cannot resolve module '../../../../ion/src/audio'`, because local Ion main `1b3d40c`
