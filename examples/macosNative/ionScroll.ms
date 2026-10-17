@@ -14,7 +14,7 @@ import { Window } from "../../../ion/src/index";
 import { exit } from "std/process";
 
 when (macos) {
-	@compile("./harness.m");
+	@compile("./harness.m", "-fobjc-arc");
 }
 
 const styles = createStyles({

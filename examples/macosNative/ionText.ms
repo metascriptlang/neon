@@ -15,7 +15,7 @@ import { nimLayoutsBuilt } from "../../src/platform/macos/handoff.h";
 import { exit } from "std/process";
 
 when (macos) {
-	@compile("./harness.m");
+	@compile("./harness.m", "-fobjc-arc");
 }
 
 const styles = createStyles({
