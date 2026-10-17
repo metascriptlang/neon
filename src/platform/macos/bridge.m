@@ -313,11 +313,238 @@ static NSView *nativeTarget(NeonView *view, NSPoint pointInRoot);
 }
 @end
 
+// --- text: one NSLayoutManager per label, the shape RN macOS's RCTTextLayoutManager keeps ---
+
+@interface NeonRun : NSObject
+@property(nonatomic) NSUInteger start, length;
+@property(nonatomic, strong) NSColor *color;
+@property(nonatomic) CGFloat size;
+@property(nonatomic) BOOL bold, italic, underline, strike;
+@property(nonatomic) int32_t tag;
+@end
+
+@implementation NeonRun
+- (BOOL)sameShape:(NeonRun *)other {
+	return self.start == other.start && self.length == other.length && self.size == other.size && self.bold == other.bold &&
+		self.italic == other.italic && self.underline == other.underline && self.strike == other.strike;
+}
+@end
+
+@interface NeonLabel : NeonView
+@property(nonatomic, copy) NSString *text;
+@property(nonatomic, strong) NSArray<NeonRun *> *runs;
+@property(nonatomic, strong) NSColor *color;
+@property(nonatomic) CGFloat fontSize;
+@property(nonatomic) BOOL bold;
+@property(nonatomic, copy) NSString *family;
+@property(nonatomic) NSTextAlignment alignment;
+@property(nonatomic) BOOL layoutStale;
+@property(nonatomic, strong) NSTextStorage *storage;
+@property(nonatomic, strong) NSLayoutManager *layoutManager;
+@property(nonatomic, strong) NSTextContainer *container;
+@end
+
+static NSFont *labelFont(NSString *family, CGFloat size, BOOL bold, BOOL italic) {
+	NSFont *font;
+	if (family.length) {
+		font = [NSFont fontWithName:family size:size];
+		if (!font) {
+			char message[192];
+			snprintf(message, sizeof message, "fontFamily \"%s\" names no installed font", family.UTF8String);
+			fail(message);
+		}
+		if (bold) font = [NSFontManager.sharedFontManager convertFont:font toHaveTrait:NSBoldFontMask];
+	} else {
+		font = [NSFont systemFontOfSize:size weight:bold ? NSFontWeightBold : NSFontWeightRegular];
+	}
+	if (italic) font = [NSFontManager.sharedFontManager convertFont:font toHaveTrait:NSItalicFontMask];
+	return font;
+}
+
+@implementation NeonLabel
+
+- (instancetype)initWithFrame:(NSRect)frame {
+	self = [super initWithFrame:frame];
+	if (self) {
+		_text = @"";
+		_runs = @[];
+		_color = rgba(0, 0, 0, 1);
+		_fontSize = 17;
+		_alignment = NSTextAlignmentNatural;
+		_storage = [[NSTextStorage alloc] init];
+		_layoutManager = [[NSLayoutManager alloc] init];
+		_container = [[NSTextContainer alloc] initWithSize:NSMakeSize(CGFLOAT_MAX, CGFLOAT_MAX)];
+		_container.lineFragmentPadding = 0;
+		[_layoutManager addTextContainer:_container];
+		[_storage addLayoutManager:_layoutManager];
+		self.layerContentsRedrawPolicy = NSViewLayerContentsRedrawOnSetNeedsDisplay;
+	}
+	return self;
+}
+
+- (BOOL)wantsUpdateLayer { return NO; }
+
+- (void)updateLayer {}
+
+- (void)neonApply {
+	[CATransaction begin];
+	[CATransaction setDisableActions:YES];
+	CALayer *layer = self.layer;
+	layer.cornerRadius = self.radius;
+	layer.masksToBounds = self.radius > 0;
+	CATransform3D t = [self neonTransform];
+	if (!CATransform3DEqualToTransform(layer.transform, t)) layer.transform = t;
+	[CATransaction commit];
+	self.needsDisplay = YES;
+}
+
+- (NSArray<NeonRun *> *)effectiveRuns {
+	if (self.runs.count) return self.runs;
+	NeonRun *run = [NeonRun new];
+	run.length = self.text.length;
+	run.size = self.fontSize;
+	run.bold = self.bold;
+	return @[run];
+}
+
+- (void)rebuild {
+	NSMutableParagraphStyle *paragraph = [NSMutableParagraphStyle new];
+	paragraph.alignment = self.alignment;
+	NSMutableAttributedString *out = [[NSMutableAttributedString alloc] initWithString:self.text];
+	for (NeonRun *run in [self effectiveRuns]) {
+		NSMutableDictionary<NSAttributedStringKey, id> *attributes = [NSMutableDictionary dictionary];
+		attributes[NSFontAttributeName] = labelFont(self.family, run.size, run.bold, run.italic);
+		attributes[NSParagraphStyleAttributeName] = paragraph;
+		if (run.underline) attributes[NSUnderlineStyleAttributeName] = @(NSUnderlineStyleSingle);
+		if (run.strike) attributes[NSStrikethroughStyleAttributeName] = @(NSUnderlineStyleSingle);
+		[out setAttributes:attributes range:NSMakeRange(run.start, run.length)];
+	}
+	[self.storage setAttributedString:out];
+	self.layoutStale = NO;
+	g_layoutsBuilt += 1;
+}
+
+// Colour is a temporary attribute: NSLayoutManager draws it and lays nothing out again for it.
+- (void)recolour {
+	NSRange all = NSMakeRange(0, self.storage.length);
+	[self.layoutManager removeTemporaryAttribute:NSForegroundColorAttributeName forCharacterRange:all];
+	[self.layoutManager addTemporaryAttribute:NSForegroundColorAttributeName value:self.color forCharacterRange:all];
+	for (NeonRun *run in self.runs) {
+		if (run.color) [self.layoutManager addTemporaryAttribute:NSForegroundColorAttributeName value:run.color forCharacterRange:NSMakeRange(run.start, run.length)];
+	}
+}
+
+- (void)ensureAt:(CGFloat)width {
+	if (self.layoutStale) [self rebuild];
+	if (self.container.size.width != width) self.container.size = NSMakeSize(width, CGFLOAT_MAX);
+	[self.layoutManager ensureLayoutForTextContainer:self.container];
+}
+
+- (void)changed:(BOOL)shape {
+	if (shape) self.layoutStale = YES;
+	self.needsDisplay = YES;
+	requestHostFrame();
+}
+
+- (void)drawRect:(NSRect)dirty {
+	(void)dirty;
+	[self ensureAt:self.bounds.size.width];
+	[self recolour];
+	NSRange glyphs = [self.layoutManager glyphRangeForTextContainer:self.container];
+	[self.layoutManager drawBackgroundForGlyphRange:glyphs atPoint:NSZeroPoint];
+	[self.layoutManager drawGlyphsForGlyphRange:glyphs atPoint:NSZeroPoint];
+}
+
+- (int32_t)tagAt:(NSPoint)point {
+	if (self.runs.count == 0 || self.storage.length == 0) return 0;
+	[self ensureAt:self.bounds.size.width];
+	CGFloat fraction = 0;
+	NSUInteger glyph = [self.layoutManager glyphIndexForPoint:point inTextContainer:self.container fractionOfDistanceThroughGlyph:&fraction];
+	NSRect box = [self.layoutManager boundingRectForGlyphRange:NSMakeRange(glyph, 1) inTextContainer:self.container];
+	if (!NSPointInRect(point, box)) return 0;
+	NSUInteger index = [self.layoutManager characterIndexForGlyphAtIndex:glyph];
+	for (NeonRun *run in self.runs) {
+		if (run.tag != 0 && NSLocationInRange(index, NSMakeRange(run.start, run.length))) return run.tag;
+	}
+	return 0;
+}
+@end
+
+static BOOL isLabel(NeonView *view) { return [view isKindOfClass:NeonLabel.class]; }
+
+static int32_t spanTagAt(NeonView *view, float lx, float ly) {
+	return isLabel(view) ? [(NeonLabel *)view tagAt:NSMakePoint(lx, ly)] : 0;
+}
+
+static NeonLabel *labelOf(void *view, const char *what) {
+	if (isLabel(as(view))) return (NeonLabel *)as(view);
+	char message[192];
+	snprintf(message, sizeof message, "%s on a view that is not a Text", what);
+	fail(message);
+	return nil;
+}
+
+static NSColor *cssColor(NSString *css) {
+	if (![css hasPrefix:@"#"] || (css.length != 4 && css.length != 7)) {
+		char message[192];
+		snprintf(message, sizeof message, "textSpans colour \"%s\" is not #rgb or #rrggbb", css.UTF8String);
+		fail(message);
+	}
+	NSString *hex = [css substringFromIndex:1];
+	if (hex.length == 3) hex = [NSString stringWithFormat:@"%C%C%C%C%C%C", [hex characterAtIndex:0], [hex characterAtIndex:0], [hex characterAtIndex:1],
+		[hex characterAtIndex:1], [hex characterAtIndex:2], [hex characterAtIndex:2]];
+	unsigned rgb = 0;
+	[[NSScanner scannerWithString:hex] scanHexInt:&rgb];
+	return rgba(((rgb >> 16) & 0xff) / 255.0f, ((rgb >> 8) & 0xff) / 255.0f, (rgb & 0xff) / 255.0f, 1);
+}
+
+// textSpans: records split by 0x1e, fields by 0x1f: text, colour, size, bold, italic, underline, line-through, press tag.
+static void setRuns(NeonLabel *label, const char *encoded) {
+	NSMutableString *text = [NSMutableString string];
+	NSMutableArray<NeonRun *> *runs = [NSMutableArray array];
+	for (NSString *record in [@(encoded) componentsSeparatedByString:@"\x1e"]) {
+		if (record.length == 0) continue;
+		NSArray<NSString *> *f = [record componentsSeparatedByString:@"\x1f"];
+		if (f.count != 8) {
+			char message[256];
+			snprintf(message, sizeof message, "textSpans record does not have 8 fields: %s", record.UTF8String);
+			fail(message);
+		}
+		NeonRun *run = [NeonRun new];
+		run.start = text.length;
+		run.length = f[0].length;
+		[text appendString:f[0]];
+		if (f[1].length) run.color = cssColor(f[1]);
+		run.size = f[2].doubleValue;
+		run.bold = [f[3] isEqualToString:@"1"];
+		run.italic = [f[4] isEqualToString:@"1"];
+		run.underline = [f[5] isEqualToString:@"1"];
+		run.strike = [f[6] isEqualToString:@"1"];
+		run.tag = f[7].intValue;
+		[runs addObject:run];
+	}
+	BOOL shapeKept = [text isEqualToString:label.text] && runs.count == label.runs.count;
+	for (NSUInteger i = 0; shapeKept && i < runs.count; i++) shapeKept = [runs[i] sameShape:label.runs[i]];
+	label.text = text;
+	label.runs = runs;
+	[label changed:!shapeKept];
+}
+
+static NSTextAlignment alignmentOf(const char *value) {
+	if (!strcmp(value, "") || !strcmp(value, "auto")) return NSTextAlignmentNatural;
+	if (!strcmp(value, "left")) return NSTextAlignmentLeft;
+	if (!strcmp(value, "right")) return NSTextAlignmentRight;
+	if (!strcmp(value, "center")) return NSTextAlignmentCenter;
+	if (!strcmp(value, "justify")) return NSTextAlignmentJustified;
+	char message[128];
+	snprintf(message, sizeof message, "textAlign \"%s\"", value);
+	unimplemented(message);
+	return NSTextAlignmentNatural;
+}
+
 // --- placeholders the later slices replace ---
 
 static NSPoint childOffset(NeonView *view) { (void)view; return NSZeroPoint; }
-static BOOL isLabel(NeonView *view) { (void)view; return NO; }
-static int32_t spanTagAt(NeonView *view, float lx, float ly) { (void)view; (void)lx; (void)ly; return 0; }
 static NSView *nativeTarget(NeonView *view, NSPoint pointInRoot) { (void)view; (void)pointInRoot; return nil; }
 
 // --- handoff ---
@@ -440,6 +667,7 @@ void niSetRotation(void *view, float degrees) {
 }
 
 void niSetBackgroundColor(void *view, float r, float g, float b, float a) {
+	if (isLabel(as(view))) fail("niSetBackgroundColor on a Text: the native host gives a Text no background");
 	as(view).neonBackground = rgba(r, g, b, a);
 	[as(view) neonApply];
 	requestHostFrame();
@@ -552,8 +780,25 @@ static BOOL isAccessibilityProp(const char *name) {
 }
 
 void niSetProp(void *view, const char *name, const char *value) {
+	const char *text = value ? value : "";
+	if (isLabel(as(view)) && !strcmp(name, "textSpans")) {
+		setRuns((NeonLabel *)as(view), text);
+		return;
+	}
+	if (isLabel(as(view)) && !strcmp(name, "fontFamily")) {
+		NeonLabel *l = (NeonLabel *)as(view);
+		l.family = @(text);
+		[l changed:YES];
+		return;
+	}
+	if (isLabel(as(view)) && !strcmp(name, "textAlign")) {
+		NeonLabel *l = (NeonLabel *)as(view);
+		l.alignment = alignmentOf(text);
+		[l changed:YES];
+		return;
+	}
 	if (isAccessibilityProp(name)) {
-		as(view).accessibility[@(name)] = @(value ? value : "");
+		as(view).accessibility[@(name)] = @(text);
 		return;
 	}
 	char what[128];
@@ -566,13 +811,51 @@ void niSetProp(void *view, const char *name, const char *value) {
 #define UNIMPLEMENTED_VOID(name, params) \
 	void name params { unimplemented(#name); }
 
-UNIMPLEMENTED(void *, niTextCreate, (void))
-UNIMPLEMENTED_VOID(niSetText, (void *label, const char *s))
-UNIMPLEMENTED_VOID(niSetTextColor, (void *label, float r, float g, float b, float a))
-UNIMPLEMENTED_VOID(niSetFont, (void *label, float size, int bold))
-UNIMPLEMENTED_VOID(niMeasureText, (void *label, float maxWidth))
+// --- bridge.h: text ---
+
+void *niTextCreate(void) {
+	requireAttached("niTextCreate");
+	return (void *)CFBridgingRetain([[NeonLabel alloc] initWithFrame:NSZeroRect]);
+}
+
+void niSetText(void *label, const char *s) {
+	NeonLabel *l = labelOf(label, "niSetText");
+	NSString *text = s ? @(s) : @"";
+	if (!text) fail("niSetText: the text is not valid UTF-8");
+	BOOL shape = l.runs.count > 0 || ![text isEqualToString:l.text];
+	l.text = text;
+	l.runs = @[];
+	[l changed:shape];
+}
+
+void niSetTextColor(void *label, float r, float g, float b, float a) {
+	NeonLabel *l = labelOf(label, "niSetTextColor");
+	NSColor *color = rgba(r, g, b, a);
+	if ([color isEqual:l.color]) return;
+	l.color = color;
+	[l changed:NO];
+}
+
+void niSetFont(void *label, float size, int bold) {
+	NeonLabel *l = labelOf(label, "niSetFont");
+	if (l.fontSize == size && l.bold == (bold != 0)) return;
+	l.fontSize = size;
+	l.bold = bold != 0;
+	[l changed:YES];
+}
+
+void niMeasureText(void *label, float maxWidth) {
+	requireAttached("niMeasureText");
+	NeonLabel *l = labelOf(label, "niMeasureText");
+	[l ensureAt:maxWidth];
+	NSRect used = [l.layoutManager usedRectForTextContainer:l.container];
+	g_measuredW = ceilf((float)used.size.width);
+	g_measuredH = ceilf((float)used.size.height);
+}
+
 float niMeasuredW(void) { return g_measuredW; }
 float niMeasuredH(void) { return g_measuredH; }
+
 UNIMPLEMENTED(void *, niScrollCreate, (void))
 UNIMPLEMENTED_VOID(niScrollSetTag, (void *scroll, int32_t tag))
 UNIMPLEMENTED_VOID(niScrollSetContentSize, (void *scroll, float w, float h))
