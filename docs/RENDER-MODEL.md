@@ -24,8 +24,7 @@ only way to take a mount down is the dispose `render` handed back.
 
 The shape is Svelte 5's: a fragment function that receives its anchor and inserts
 itself in front of it. It is what lets a node own zero, one or many host nodes — a
-component, a fragment, a region — without the caller knowing which, and what lets a
-row be mounted at its final position instead of being built elsewhere and moved in.
+component, a fragment, a region — without the caller knowing which.
 
 The same thing can be written by hand. `src/render/node.ms` holds the builders for a
 tag, an attr list or an event list only known at runtime (`hostElement`, `el`, `text`,
@@ -582,18 +581,40 @@ lowers through the converter to a multi-root NeonNode. There is no fragment-spec
 rule left — where no NeonNode is expected (`a ?? <>…</>`) the compiler rejects a fragment
 with the same error it gives an element there.
 
-**Regions.** `For` / `Repeat` / `Show` (`src/macros/ui/flow.ms`) each return
+**Regions.** `For` / `Repeat` / `Show` / `Match` (`src/macros/ui/flow.ms`) each return
 `regionNode(fn)` (`src/render/node.ms`): an anchor text node placed at the region's
 position, plus one render effect that reconciles the region's rows in front of that anchor.
 A `Row` (`src/render/reconcile.ms`) is a NeonNode plus the span of host nodes it
-produced (`start`…`end`) and the owner it was created under. `reconcileArrays` mounts
-a row that is not in the host yet directly at its final position (`mountAt`), moves a
-live row by re-inserting its span, and removes only a row absent from the next list —
-insertion targets come from the NEW order (Svelte `each.js`), so a live row is never
-detached. While a row mounts, `place` records the first and last host node it put
-into the region's parent, which is how a row made of a fragment, a component or a
-nested region gets a span without anyone counting nodes; an empty row gets one empty
-text node so it still has a position.
+produced (`start`…`end`) and the owner it was created under.
+
+A row is built where Solid builds it, in the compute that makes the row: a `Show` child inside
+the `createMemo` compute (`packages/solid/src/client/flow.ts:226`), a `For` row by the mapper
+under its own row owner inside the map's computed (`packages/signals/src/map.ts:362`). `builtRow`
+mounts the row under the row's owner, untracked. The region effect's apply only places rows that
+are already built, as dom-expressions `insert` does with nodes the compute made
+(`packages/web/src/client.ts:1563`): `reconcileArrays` moves a built row by re-inserting its span,
+keeps a live row where it is, and removes only a row absent from the next list — insertion targets
+come from the NEW order (Svelte `each.js`), so a live row is never detached.
+
+Where a row is built depends on the pass. The pass that creates the region builds in place, in
+front of the region's anchor: the region's parent is still being built, so no one sees the rows
+before the effect's first apply, and a hydration takes the page's nodes there. A later pass builds
+into the region's holder (`RowHome`, a detached host node made on the first such build) and the
+apply moves the rows out of it. A pending read in a row's build is therefore the rows memo's
+pending status and reaches the nearest `Loading`, which holds its fallback; the nodes the failed
+build had placed are freed (`buildInto`) and the region rebuilds the row when the value settles. A
+pass that built some rows and then aborted leaves them where they were built, and the next apply
+(or the region's disposal, for a holder) frees them. A `Loading` or `Errored` keeps its content in
+that same holder while its fallback shows. A region with no owner never releases its holder, as
+nothing owns the region either.
+
+While a row mounts, `place` records the first and last host node it put into the row's parent, which
+is how a row made of a fragment, a component or a nested region gets a span without anyone counting
+nodes; an empty row gets one empty text node so it still has a position. A view that puts a node
+into its parent without `place` leaves it behind in the holder of a later pass. Rows that are only described
+(`makeRow` without `builtRow`: the navigator header, `VirtualizedList`, `ForList`, and every row on
+the server, where a region writes its rows in document order) are still mounted by
+`reconcileArrays` at its final position, in the apply.
 
 **Show.** `<Show when={x}>` takes any value and tests its truthiness (MetaScript's: a `number`, `string`
 or `boolean` by its zero value, a class by non-null; a nullable union `T | null` is a null check only,
