@@ -1,15 +1,18 @@
 import { setTextContent } from "./paragraph";
 import { Host, HostNode, NeonNode } from "./hostTypes";
-import { Row, makeRow, mountAt, removeRow, place } from "./reconcile";
-import { regionAnchor, sealRegion } from "./claim";
-import { Computation } from "../core/types";
-import { createOwner, disposeChildren, isDisposed } from "../core/runtime";
+import { Row, place } from "./reconcile";
+import { RowHome, regionNode, builtRow } from "./node";
+import { Computation, NotReadyError } from "../core/types";
+import { disposeChildren, flush, getOwner, isDisposed } from "../core/runtime";
 import { runWithOwner } from "../core/owner";
-import { Accessor, Setter, untrack } from "../core/signal";
+import { createMemo } from "../core/memo";
+import { Accessor, Setter, Signal, untrack } from "../core/signal";
 import { refreshTypeKey } from "../macros/refresh";
 import { onCleanup } from "../core/cleanup";
 
 export type SigFn = () => string;
+
+type RowList = () => Row[];
 
 export interface RefreshSummary {
 	kept: int32;
@@ -66,9 +69,10 @@ interface Instance {
 	host: Host;
 	parent: HostNode;
 	anchor: HostNode;
-	row: Row;
 	owner: Computation;
 	sig: string;
+	nextSig: string | null;
+	revision: Signal<number>;
 }
 
 const compSlots = new Map<string, unknown>();
@@ -101,21 +105,6 @@ function untrackInstance(instances: Map<string, Instance[]>, inst: Instance): vo
 	if (at < 0) { return; }
 	list.splice(at, 1);
 	if (list.length === 0) { instances.delete(inst.key); }
-}
-
-function mountInstance(inst: Instance): void {
-	runWithOwner(inst.owner, (): number => untrack((): number => {
-		const row = makeRow((host: Host, parent: HostNode, before: HostNode | null): void => {
-			const outer = mounting;
-			mounting = inst;
-			inst.render()(host, parent, before);
-			mounting = outer;
-			inst.saved = [];
-		});
-		inst.row = row;
-		mountAt(inst.host, inst.parent, inst.anchor, row);
-		return 0;
-	}));
 }
 
 function capture(inst: Instance): void {
@@ -199,33 +188,58 @@ function failure(message: string): NeonNode {
 	};
 }
 
-function rebuild(instances: Map<string, Instance[]>, inst: Instance, sig: string): void {
+function rebuild(inst: Instance, sig: string): void {
 	stash(inst);
-	removeRow(inst.host, inst.parent, inst.row);
-	disposeChildren(inst.owner, false);
+	inst.nextSig = sig;
+	flush((): number => { inst.revision.set(inst.revision.peek() + 1); return 0; });
+	pending.clear();
+}
+
+function instanceView(inst: Instance): NeonNode {
+	return (host: Host, parent: HostNode, before: HostNode | null): void => {
+		const outer = mounting;
+		mounting = inst;
+		inst.render()(host, parent, before);
+		mounting = outer;
+		inst.saved = [];
+	};
+}
+
+// The row is built here, in the compute, so a pending read in the new view is this memo's pending status
+// and the Loading keeps what it showed (Solid refresh createProxy, packages/solid/src/refresh/index.ts).
+function instanceRows(instances: Map<string, Instance[]>, h: Host, home: RowHome, inst: Instance): Row[] {
+	inst.revision.get();
+	inst.owner = getOwner() as Computation;
 	track(instances, inst);
+	const rebuilding = inst.nextSig !== null;
 	const kept = inst.saved;
 	const outer = mounting;
+	inst.live = [];
+	inst.captures = [];
 	try {
-		mountInstance(inst);
-		inst.broken = false;
-		inst.sig = sig;
+		const row = builtRow(h, home, instanceView(inst));
+		if (rebuilding) {
+			inst.broken = false;
+			inst.sig = inst.nextSig as string;
+			inst.nextSig = null;
+		}
+		return [row];
 	} catch (e) {
 		mounting = outer;
+		if (!rebuilding || e instanceof NotReadyError) { throw e; }
 		console.log("refresh: " + inst.key + " did not mount: " + e.message);
-		removeRow(inst.host, inst.parent, inst.row);
 		disposeChildren(inst.owner, false);
 		track(instances, inst);
 		const name = inst.key.substring(inst.key.lastIndexOf("/") + 1).split("|")[0];
-		inst.row = makeRow(failure(name + " did not mount: " + e.message));
-		mountAt(inst.host, inst.parent, inst.anchor, inst.row);
+		const failed = builtRow(h, home, failure(name + " did not mount: " + e.message));
 		inst.saved = kept;
 		inst.live = [];
 		inst.captures = [];
 		inst.broken = true;
 		inst.sig = "";
+		inst.nextSig = null;
+		return [failed];
 	}
-	pending.clear();
 }
 
 function instanceNode(
@@ -237,29 +251,27 @@ function instanceNode(
 	sigFn: SigFn,
 ): NeonNode {
 	return (host: Host, parent: HostNode, before: HostNode | null): void => {
-		const anchor = regionAnchor(host, parent, before);
-		const inst: Instance = {
-			render: render,
-			sigFn: sigFn,
-			type: type,
-			saved: stashed(key),
-			live: [],
-			captures: [],
-			broken: false,
-			key: key,
-			keyFile: moduleFile,
-			host: host,
-			parent: parent,
-			anchor: anchor,
-			row: makeRow((h: Host, p: HostNode, b: HostNode | null): void => {
-				h.insertBefore(p, anchor, b);
-			}),
-			owner: createOwner(),
-			sig: sigFn(),
-		};
-		track(instances, inst);
-		mountInstance(inst);
-		sealRegion(host, parent, anchor);
+		regionNode((h: Host, home: RowHome): RowList => {
+			const inst: Instance = {
+				render: render,
+				sigFn: sigFn,
+				type: type,
+				saved: stashed(key),
+				live: [],
+				captures: [],
+				broken: false,
+				key: key,
+				keyFile: moduleFile,
+				host: host,
+				parent: parent,
+				anchor: home.before as HostNode,
+				owner: getOwner() as Computation,
+				sig: sigFn(),
+				nextSig: null,
+				revision: new Signal<number>(0),
+			};
+			return createMemo<Row[]>((): Row[] => instanceRows(instances, h, home, inst));
+		})(host, parent, before);
 	};
 }
 
@@ -280,7 +292,7 @@ function patch(instances: Map<string, Instance[]>, found: Instance[], forced: st
 		if (isDisposed(inst.owner)) { continue; }
 		const sig = inst.sigFn();
 		if (sig === inst.sig && forced.indexOf(inst.key) < 0) { kept += 1; continue; }
-		rebuild(instances, inst, sig);
+		rebuild(inst, sig);
 		changed += 1;
 	}
 	return [kept, changed];
