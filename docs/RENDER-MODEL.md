@@ -138,7 +138,7 @@ HCR on the mock host) and `examples/refreshAndroid/` (HCR in an Android app, `do
 | JSX of a parent, or its setup | the child components under it remount with their signals carried over, matched per component in document order | before a rebuild the runtime walks the host tree under the instance and queues each child component's values under its key |
 | a helper module the component imports | Vite: the importer re-evaluates with an unchanged module signature and rebuilds the templates that read an import. Native: the helper's `@afterReload` calls `refreshDependency`, which rebuilds the templates its importers registered with `refreshImports` | state is kept. A handler in the setup that calls the helper keeps the old function on Vite until the component itself is edited; native forwards named functions, so it already calls the new one |
 | a compile error | the old UI keeps running and the error is shown (Vite overlay, HCR watch output); the next valid edit applies | the build fails before any module is replaced |
-| new code that throws while a component remounts | a red box with the message (`<file>#<Component> did not mount: …`) stands where that component was, and the message is logged with the full key; the rest of the app keeps running, and the component's next edit mounts it with the values it had | `rebuild` catches the throw, removes what was placed, mounts the box in the instance's row and keeps the values read before the teardown |
+| new code that throws while a component remounts | a red box with the message (`<file>#<Component> did not mount: …`) stands where that component was, and the message is logged with the full key; the rest of the app keeps running, and the component's next edit mounts it with the values it had | the instance's rows memo (`instanceRows`) catches the throw, frees what the failed build placed, builds the box as the instance's row and keeps the values read before the teardown. A remount whose build reads a pending value is not an error: the old view stays until the value settles, and the instances nested under it start from their initial values if that build is retried |
 
 Carried over: signals declared as `const [get, set] = createSignal(…)` at the top level of the
 body, and what a helper hands to `refreshKeep(key, read, write)` while it mounts (a navigator
@@ -306,21 +306,24 @@ No background walker, no whole-tree diff scheduler. Two update paths only:
 
 - **thin** — `setN(5)` → effect → `host.setText`. Done.
 - **structural** — a region's source flips → its effect re-runs → the memo yields a new
-  row list → `reconcileArrays` mounts, moves and removes rows in front of the region's
+  row list, its new rows built in that compute → `reconcileArrays` moves and removes rows in front of the region's
   anchor → a dropped row's owner is disposed (effects die, `onCleanup` fires). Diffing
   exists ONLY here: one region's own rows, never recursive, only when that region's
   source changed.
 - **op** — `<ForList each={list}>` over a `createList` handle (`src/core/list.ms`,
   `src/render/listRegion.ms`). A command on the handle (`push` / `insert` / `move` / `remove` /
   `set`) writes ONE op into each mounted region's queue and bumps the list's version; the region's
-  effect drains the queue and applies each op straight to its row array and to the host — insert
-  builds one root and inserts before the next row's first node, move only re-inserts nodes that
-  already exist, remove disposes one root and takes its nodes out, set writes the row's own signal
-  and touches no node. No op reads the list, builds an array or diffs. A row of a `ForList` carries
+  effect compute takes the queue, builds the rows the ops need into the region's holder and updates
+  the row array, and queues the host work as steps the effect's apply plays: an insert moves one
+  built row before the next row's first node, a move only re-inserts nodes that already exist, a
+  remove takes one row's nodes out (its root is disposed in the compute), and a set writes the
+  row's own signal and touches no node. A pending read in an inserted row's build leaves that op and
+  the ones after it in the queue for the retry. No op reads the list, builds an array or diffs. A row of a `ForList` carries
   `Accessor<T>` rather than bare `T`, which is what lets `set` be a signal write instead of a
   rebuild. `replaceAll` is the escape hatch: it drops the queue, matches each new item to the row
   that carried it — by the optional `keyed` function when one is given, by item identity otherwise,
-  like `<For>` — and hands the result to `reconcileArrays`, so a reorder still moves nodes and a row
+  like `<For>` — builds the rows no old row carries, and hands the result to `reconcileArrays` in the
+  apply, so a reorder still moves nodes and a row
   keeps its DOM, its focus and its scope. A plain array in `<For each={xs}>` keeps the structural
   path untouched.
 
@@ -611,10 +614,18 @@ nothing owns the region either.
 While a row mounts, `place` records the first and last host node it put into the row's parent, which
 is how a row made of a fragment, a component or a nested region gets a span without anyone counting
 nodes; an empty row gets one empty text node so it still has a position. A view that puts a node
-into its parent without `place` leaves it behind in the holder of a later pass. Rows that are only described
-(`makeRow` without `builtRow`: the navigator header, `VirtualizedList`, `ForList`, and every row on
-the server, where a region writes its rows in document order) are still mounted by
-`reconcileArrays` at its final position, in the apply.
+into its parent without `place` leaves it behind in the holder of a later pass.
+
+Every client reader builds its rows this way: the control-flow components, the navigator header's
+`Slot`, the cells and grid items of `VirtualizedList` (a grid item's scope is created under the list
+and its pending reads are re-pointed at the effect that builds it, as `mapArray` does,
+`src/core/array.ms` `mapRows`), `ForList`'s ops, and a hot-reloaded instance, which Solid builds in the
+memo that wraps it (`packages/solid/src/refresh/index.ts` `createProxy`) and Neon in the rows memo of
+its region. A `Head` is not a region: its content mounts inside the mount that places it, in whatever
+compute built the row around it. `reconcileArrays` does not mount. A row it is handed that no compute
+built throws `[ROW_NOT_BUILT]` naming the region, so a reader that would build in the apply, and halt
+reactivity on a pending read, fails where it was written. On the server a region writes its rows in
+document order with `mountAt` from its own pass and describes them with `makeRow`.
 
 **Show.** `<Show when={x}>` takes any value and tests its truthiness (MetaScript's: a `number`, `string`
 or `boolean` by its zero value, a class by non-null; a nullable union `T | null` is a null check only,
