@@ -16,7 +16,8 @@ void harnessExpectSize(const char *layout, const char *text, float fontSize, int
 int harnessSample(const char *title);
 void harnessClick(const char *title, int x, int y);
 void harnessPointer(const char *title, int kind, int x, int y);
-void harnessWheel(const char *title, int x, int y, int lines);
+// A pixel-unit wheel event of the given points; negative moves the content up, as a scroll down does.
+void harnessWheel(const char *title, int x, int y, int points);
 int harnessPostKeys(const char *title, const char *keys);
 
 #ifdef __cplusplus

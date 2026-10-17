@@ -198,12 +198,14 @@ void harnessClick(const char *title, int x, int y) {
 	harnessPointer(title, 1, x, y);
 }
 
-void harnessWheel(const char *title, int x, int y, int lines) {
+// An NSEvent made from a CGEvent has no window, so its locationInWindow is the CG location in screen
+// space; placing that location at the window point lets -[NSWindow sendEvent:] hit-test the right view.
+void harnessWheel(const char *title, int x, int y, int points) {
 	NSWindow *window = windowTitled(title);
-	NSPoint screen = [window convertPointToScreen:windowPoint(window, x, y)];
+	NSPoint at = windowPoint(window, x, y);
 	CGFloat top = NSMaxY(NSScreen.screens.firstObject.frame);
-	CGEventRef cg = CGEventCreateScrollWheelEvent(NULL, kCGScrollEventUnitLine, 1, lines);
-	CGEventSetLocation(cg, CGPointMake(screen.x, top - screen.y));
+	CGEventRef cg = CGEventCreateScrollWheelEvent(NULL, kCGScrollEventUnitPixel, 1, points);
+	CGEventSetLocation(cg, CGPointMake(at.x, top - at.y));
 	NSEvent *event = [NSEvent eventWithCGEvent:cg];
 	CFRelease(cg);
 	[window sendEvent:event];
