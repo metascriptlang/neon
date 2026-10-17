@@ -40,6 +40,9 @@ import {
 when (windows) {
 	@compile("./voidVisual.cpp");
 }
+when (macos) {
+	@compile("./voidVisual.m");
+}
 @include("./voidVisual.h");
 
 extern function voidVisualAttach(device: Ptr<void>, root: Ptr<void>, swapChain: int64): Ptr<void>;
