@@ -139,8 +139,7 @@ export function holderOf(host: Host, home: RowHome): HostNode {
 }
 
 // A later pass builds into the holder: its apply can be held while a Loading is pending, and rows built in place would show beside the rows they replace.
-export function builtRow(host: Host, home: RowHome, view: NeonNode): Row {
-	const row = makeRow(view);
+export function stageRow(host: Host, home: RowHome, row: Row): Row {
 	if (home.server) { return row; }
 	if (home.first) {
 		buildInto(host, home.parent, home.before, row, claimMark(host));
@@ -150,6 +149,23 @@ export function builtRow(host: Host, home: RowHome, view: NeonNode): Row {
 	}
 	home.staged.push(row);
 	return row;
+}
+
+export function builtRow(host: Host, home: RowHome, view: NeonNode): Row {
+	return stageRow(host, home, makeRow(view));
+}
+
+export function regionHome(host: Host, parent: HostNode, anchor: HostNode): RowHome {
+	const home = new RowHome(parent, anchor, false);
+	if (getOwner() !== null) { onCleanup((): void => { if (home.holder !== null) { host.release(home.holder as HostNode); } }); }
+	return home;
+}
+
+export function settleStaged(host: Host, home: RowHome): void {
+	for (const r of home.staged) {
+		if (r.slot < 0) { removeRow(host, r.parent as HostNode, r); }
+	}
+	home.staged = [];
 }
 
 export function mountChild(host: Host, parent: HostNode, before: HostNode | null, s: string): void {
@@ -208,8 +224,7 @@ export function regionNode(fn: RegionFn): NeonNode {
 	return (host: Host, parent: HostNode, before: HostNode | null): void => {
 		if (isServer()) { serverRegion(host, parent, before, fn); return; }
 		const anchor = regionAnchor(host, parent, before);
-		const home = new RowHome(parent, anchor, false);
-		if (getOwner() !== null) { onCleanup((): void => { if (home.holder !== null) { host.release(home.holder as HostNode); } }); }
+		const home = regionHome(host, parent, anchor);
 		let current: Row[] = [];
 		let mounted = false;
 		const rows = fn(host, home);
@@ -218,10 +233,7 @@ export function regionNode(fn: RegionFn): NeonNode {
 			(next: Row[], prev: Row[] | null): Cleanup | null => {
 				const at = mounted ? regionParent(host, anchor, "regionNode") : parent;
 				reconcileArrays(host, at, current, next, anchor);
-				for (const r of home.staged) {
-					if (r.slot < 0) { removeRow(host, r.parent as HostNode, r); }
-				}
-				home.staged = [];
+				settleStaged(host, home);
 				mounted = true;
 				current = next.slice(0, next.length);
 				return null;

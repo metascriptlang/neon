@@ -149,7 +149,7 @@ function longestIncreasingRun(xs: number[]): boolean[] {
 
 let reconcileStamp = 0;
 
-export function reconcileArrays(host: Host, parent: HostNode, a: Row[], b: Row[], after: HostNode | null): void {
+export function reconcileArrays(host: Host, parent: HostNode, a: Row[], b: Row[], after: HostNode | null, region: string = "reconcileArrays"): void {
 	reconcileStamp = reconcileStamp + 1;
 	const stamp = reconcileStamp;
 	for (let i = 0; i < b.length; i += 1) {

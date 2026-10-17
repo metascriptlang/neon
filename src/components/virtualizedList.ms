@@ -1,14 +1,14 @@
 import { Accessor, Signal, accessor, createSignal, untrack } from "../core/signal";
 import { flush } from "../core/runtime";
 import { createRenderEffect } from "../core/effect";
-import { Cleanup } from "../core/types";
+import { Cleanup, Computation } from "../core/types";
 import { onCleanup } from "../core/cleanup";
 import { createRoot, runWithOwner } from "../core/owner";
 import { getOwner } from "../core/runtime";
 import { mapArray } from "../core/array";
 import { element } from "../macros/ui/element";
 import { Show } from "../macros/ui/flow";
-import { NeonNode, regionNode } from "../render/node";
+import { NeonNode, RowHome, regionNode, regionHome, builtRow, stageRow, settleStaged } from "../render/node";
 import { Row, makeRow, moveRow, reconcileArrays } from "../render/reconcile";
 import { regionAnchor, sealRegion } from "../render/claim";
 import { NeonEvent } from "../render/event";
@@ -606,9 +606,19 @@ export function listEngine<T, D>(props: {
 		const anchor = regionAnchor(host, parent, before);
 		let shown: T[] = [];
 		let current: Row[] = [];
+		const home = regionHome(host, parent, anchor);
 		const alive = (item: T, row: Row): boolean => gridItems.has(item) && (gridItems.get(item) as GridItem).row === row;
 		createRenderEffect<T[]>(
-			(prev: T[] | null): T[] => members(),
+			(prev: T[] | null): T[] => {
+				const wanted = members();
+				for (const item of wanted) {
+					const row = (gridItems.get(item) as GridItem).row;
+					if (row.start !== null) { continue; }
+					(row.owner as Computation).parentComputed = getOwner();
+					stageRow(host, home, row);
+				}
+				return wanted;
+			},
 			(next: T[], prev: T[] | null): Cleanup | null => {
 				const rows: Row[] = [];
 				const here = new Map<T, boolean>();
@@ -622,7 +632,8 @@ export function listEngine<T, D>(props: {
 				for (let i = 0; i < shown.length; i += 1) {
 					if (here.has(shown[i]) || !alive(shown[i], current[i])) { staying.push(current[i]); }
 				}
-				reconcileArrays(host, parent, staying, rows, anchor);
+				reconcileArrays(host, parent, staying, rows, anchor, "VirtualizedList grid row");
+				settleStaged(host, home);
 				shown = next;
 				current = rows;
 				return null;
@@ -637,6 +648,7 @@ export function listEngine<T, D>(props: {
 				entry.container = parking;
 			}
 		});
+		home.first = false;
 		sealRegion(host, parent, anchor);
 	};
 
@@ -922,7 +934,7 @@ export function listEngine<T, D>(props: {
 	);
 
 	const scheduleUpdate = (): void => { scheduleCellsToRenderUpdate(false); };
-	const cellRows = regionNode((host: Host) => mapArray<ListCell, Row>(cells, (cell: ListCell, i: Accessor<number>): Row => makeRow(cell.make(scheduleUpdate))));
+	const cellRows = regionNode((host: Host, home: RowHome) => mapArray<ListCell, Row>(cells, (cell: ListCell, i: Accessor<number>): Row => builtRow(host, home, cell.make(scheduleUpdate))));
 	const rows: NeonNode = columns <= 1 ? cellRows : (host: Host, parent: HostNode, before: HostNode | null): void => {
 		parking = parent;
 		cellRows(host, parent, before);
