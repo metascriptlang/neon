@@ -1,5 +1,5 @@
 import { mockHost, MockNode, HostNode, Host } from "../../src/render/host";
-import { reconcileArrays, Row, rowOf, makeRow, place } from "../../src/render/reconcile";
+import { reconcileArrays, Row, rowOf, makeRow, mountAt, place } from "../../src/render/reconcile";
 import { createRoot } from "../../src/core/owner";
 
 const N = 200;
@@ -114,50 +114,43 @@ function tags(parent: HostNode): string {
 	return out;
 }
 
-test "a row body runs in list order, whichever rows move around it" {
+function builtRowFor(host: Host, tag: string): Row {
+	const row = makeRow((h: Host, p: HostNode, before: HostNode | null): void => {
+		place(h, p, h.createElement(tag), before);
+	});
+	mountAt(host, host.createElement("holder"), null, row);
+	return row;
+}
+
+test "rows built apart land between the rows that move around them" {
 	createRoot((dispose) => {
 		const host = mockHost();
 		const parent = host.createElement("ul");
-		const ran: string[] = [];
-		function rowFor(tag: string): Row {
-			return makeRow((h: Host, p: HostNode, before: HostNode | null): void => {
-				ran.push(tag);
-				place(h, p, h.createElement(tag), before);
-			});
-		}
-
-		const a = rowFor("A");
-		const b = rowFor("B");
-		const c = rowFor("C");
+		const a = builtRowFor(host, "A");
+		const b = builtRowFor(host, "B");
+		const c = builtRowFor(host, "C");
 		const first: Row[] = [a, b, c];
 		reconcileArrays(host, parent, [], first, null);
-		assert ran.join("") === "ABC", "first mount runs in list order, got " + ran.join("");
-		assert tags(parent) === "ABC", "first mount lands in list order, got " + tags(parent);
+		assert tags(parent) === "ABC", "built rows land in list order, got " + tags(parent);
 
-		const d = rowFor("D");
-		const e = rowFor("E");
+		const d = builtRowFor(host, "D");
+		const e = builtRowFor(host, "E");
 		const next: Row[] = [c, d, a, e, b];
 		reconcileArrays(host, parent, first, next, null);
-		assert ran.join("") === "ABCDE", "the new rows run in list order after the old ones, got " + ran.join("");
 		assert tags(parent) === "CDAEB", "new rows land between rows that moved, got " + tags(parent);
 		return 0;
 	});
 }
 
-test "a row mounted into a region lands before the trailing anchor" {
+test "a built row moved into a region lands before the trailing anchor" {
 	createRoot((dispose) => {
 		const host = mockHost();
 		const parent = host.createElement("ul");
 		const anchor = host.createElement("anchor");
 		host.append(parent, anchor);
-		const rows: Row[] = [];
-		for (const tag of ["A", "B"]) {
-			rows.push(makeRow((h: Host, p: HostNode, before: HostNode | null): void => {
-				place(h, p, h.createElement(tag), before);
-			}));
-		}
+		const rows: Row[] = [builtRowFor(host, "A"), builtRowFor(host, "B")];
 		reconcileArrays(host, parent, [], rows, anchor);
-		assert tags(parent) === "ABanchor", "rows mount in front of the anchor, got " + tags(parent);
+		assert tags(parent) === "ABanchor", "rows move in front of the anchor, got " + tags(parent);
 
 		const flipped: Row[] = [rows[1], rows[0]];
 		reconcileArrays(host, parent, rows, flipped, anchor);

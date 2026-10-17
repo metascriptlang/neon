@@ -10,8 +10,8 @@ import { Errored, Loading, For, Show } from "../../src/macros/ui/flow";
 import { Gate, gated, release } from "../core/asyncClock";
 import { render } from "../../src/render/host";
 import { Host, HostNode } from "../../src/render/hostTypes";
-import { el, text, regionNode, NeonNode } from "../../src/render/node";
-import { Row, makeRow } from "../../src/render/reconcile";
+import { el, text, regionNode, builtRow, NeonNode } from "../../src/render/node";
+import { Row } from "../../src/render/reconcile";
 import { createMemo } from "../../src/core/memo";
 import { createVoidHost, VoidNode } from "../../src/platform/void/host";
 import { HOST_PARK_CONTRACT, hostParkContract } from "../render/hostContract";
@@ -35,9 +35,8 @@ test "the void host keeps the park contract and release frees the parked nodes" 
 
 test "a dropped row without a keeper is freed on the void host, and a later row mounts fresh" {
 	const vh = createVoidHost();
-	const row = makeRow(el("view", [], [], text("hi")));
 	const [on, setOn] = createSignal(true);
-	render(regionNode((h) => createMemo<Row[]>(() => on() ? [row] : [] as Row[])), vh.host, vh.root);
+	render(regionNode((h, home) => createMemo<Row[]>(() => on() ? [builtRow(h, home, el("view", [], [], text("hi")))] : [] as Row[])), vh.host, vh.root);
 	const first = (vh.root as VoidNode).children[0];
 	assert first.ref.isLive(), "the row is alive while shown";
 

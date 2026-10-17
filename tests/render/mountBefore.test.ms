@@ -2,9 +2,9 @@ import { createSignal } from "../../src/core/signal";
 import { createRoot } from "../../src/core/owner";
 import { mapArray } from "../../src/core/array";
 import { element } from "../../src/macros/ui/element";
-import { NeonNode, regionNode } from "../../src/render/node";
+import { NeonNode, regionNode, builtRow } from "../../src/render/node";
 import { Host, HostNode, MockNode, mockNode, mockHost, mockToString } from "../../src/render/host";
-import { Row, makeRow } from "../../src/render/reconcile";
+import { Row } from "../../src/render/reconcile";
 import { createContext, useContext } from "../../src/render/context";
 import { Dispose } from "../../src/core/types";
 
@@ -67,8 +67,8 @@ test "a region anchors in front of the sibling and grows on its own side" {
 	const host = mockHost();
 	const root = twoSiblings(host);
 	const [list, setList] = createSignal<number[]>([1, 2]);
-	const region = regionNode((h) => {
-		return mapArray<number, Row>(() => list(), (v, i) => makeRow(<li>{"" + v}</li>));
+	const region = regionNode((h, home) => {
+		return mapArray<number, Row>(() => list(), (v, i) => builtRow(h, home, <li>{"" + v}</li>));
 	});
 	const dispose = createRoot((d): Dispose => {
 		mountBefore(region, host, root as unknown as HostNode, tailOf(root));

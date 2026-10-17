@@ -1,8 +1,14 @@
 import { mockHost, MockNode, HostNode, Host, NeonNode, render, mockToString } from "../../src/render/host";
-import { reconcileArrays, Row, rowOf, makeRow, place, moveRow, removeRow } from "../../src/render/reconcile";
-import { text, regionNode } from "../../src/render/node";
+import { reconcileArrays, Row, rowOf, makeRow, mountAt, place, moveRow, removeRow } from "../../src/render/reconcile";
+import { text, regionNode, builtRow } from "../../src/render/node";
 import { createMemo } from "../../src/core/memo";
 import { createSignal } from "../../src/core/signal";
+
+function builtInHolder(h: Host, view: NeonNode): Row {
+	const row = makeRow(view);
+	mountAt(h, h.createElement("holder"), null, row);
+	return row;
+}
 
 function seq(parent: HostNode): string {
 	const p = parent as unknown as MockNode;
@@ -202,7 +208,7 @@ test "fragment rows of one to three nodes survive random reorder, drop and remou
 				const idx = pool[pick];
 				pool.splice(pick, 1);
 				picked[idx] = true;
-				if (rows[idx] === null) { rows[idx] = makeRow(views[idx]); }
+				if (rows[idx] === null) { rows[idx] = builtInHolder(h, views[idx]); }
 				next.push(rows[idx] as Row);
 				want = want + texts[idx];
 			}
@@ -227,8 +233,8 @@ const mountsNothing: NeonNode = (host: Host, parent: HostNode, before: HostNode 
 test "an enclosing row keeps its end when a nested region's empty row goes away" {
 	const [outerOn, setOuterOn] = createSignal(true);
 	const [innerOn, setInnerOn] = createSignal(true);
-	const inner = regionNode((h) => createMemo<Row[]>(() => innerOn() ? [makeRow(mountsNothing)] : [] as Row[]));
-	const outer = regionNode((h) => createMemo<Row[]>(() => [makeRow(outerOn() ? inner : text("fallback"))]));
+	const inner = regionNode((h, home) => createMemo<Row[]>(() => innerOn() ? [builtRow(h, home, mountsNothing)] : [] as Row[]));
+	const outer = regionNode((h, home) => createMemo<Row[]>(() => [builtRow(h, home, outerOn() ? inner : text("fallback"))]));
 	const host = mockHost();
 	const root = host.createElement("root");
 	const dispose = render(outer, host, root);

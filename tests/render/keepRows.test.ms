@@ -1,10 +1,11 @@
-import { el, text, dynText, regionNode, NeonNode } from "../../src/render/node";
+import { el, text, dynText, regionNode, builtRow, NeonNode } from "../../src/render/node";
 import { Host, HostNode, MockNode, mockHost, render, mockToString } from "../../src/render/host";
-import { Row, makeRow } from "../../src/render/reconcile";
+import { Row } from "../../src/render/reconcile";
 import { mapArray } from "../../src/core/array";
 import { createMemo } from "../../src/core/memo";
 import { createSignal, Accessor } from "../../src/core/signal";
-import { createRoot } from "../../src/core/owner";
+import { runWithOwner } from "../../src/core/owner";
+import { getOwner } from "../../src/core/runtime";
 import { createList } from "../../src/core/list";
 import { ForList } from "../../src/macros/ui/flow";
 
@@ -27,12 +28,19 @@ test "a dropped row with a keeper is parked in its holder and comes back as the 
 	const host = mockHost();
 	const holder = host.createElement("holder");
 	const runs: number[] = [0];
-	const row = makeRow(countedView(runs));
-	row.keep = holder;
+	let kept: Row | null = null;
 	const [on, setOn] = createSignal(true);
-	const region = regionNode((h) => createMemo<Row[]>(() => on() ? [row] : [] as Row[]));
+	const region = regionNode((h, home) => createMemo<Row[]>(() => {
+		if (!on()) { return [] as Row[]; }
+		if (kept === null) {
+			kept = builtRow(h, home, countedView(runs));
+			(kept as Row).keep = holder;
+		}
+		return [kept as Row];
+	}));
 	const root = host.createElement("root");
 	const dispose = render(region, host, root);
+	const row = kept as Row;
 	const node = firstOf(root);
 	assert shown(root) === "<root><p>kept</p></root>", shown(root);
 
@@ -51,14 +59,19 @@ test "a dropped row with a keeper is parked in its holder and comes back as the 
 	dispose();
 }
 
-test "a dropped row without a keeper is dead, and a later row mounts fresh" {
+test "a dropped row without a keeper is dead, and a later row builds fresh" {
 	const host = mockHost();
 	const runs: number[] = [0];
-	const row = makeRow(countedView(runs));
+	let shownRow: Row | null = null;
 	const [on, setOn] = createSignal(true);
-	const region = regionNode((h) => createMemo<Row[]>(() => on() ? [row] : [] as Row[]));
+	const region = regionNode((h, home) => createMemo<Row[]>(() => {
+		if (!on()) { return [] as Row[]; }
+		shownRow = builtRow(h, home, countedView(runs));
+		return [shownRow as Row];
+	}));
 	const root = host.createElement("root");
 	const dispose = render(region, host, root);
+	const row = shownRow as Row;
 	const node = firstOf(root);
 
 	setOn(false);
@@ -76,11 +89,20 @@ test "a region at the top of a parked row updates into the holder and shows it w
 	const host = mockHost();
 	const holder = host.createElement("holder");
 	const [items, setItems] = createSignal<string[]>(["a"]);
-	const inner = regionNode((h) => mapArray<string, Row>(() => items(), (v, i) => makeRow(el("li", [], [], text(v)))));
-	const row = makeRow(inner);
-	row.keep = holder;
+	const inner = regionNode((h, home) => mapArray<string, Row>(() => items(), (v, i) => builtRow(h, home, el("li", [], [], text(v)))));
+	let kept: Row | null = null;
 	const [on, setOn] = createSignal(true);
-	const region = regionNode((h) => createMemo<Row[]>(() => on() ? [row] : [] as Row[]));
+	const region = regionNode((h, home) => {
+		const owner = getOwner();
+		return createMemo<Row[]>(() => {
+			if (!on()) { return [] as Row[]; }
+			if (kept === null) {
+				kept = runWithOwner(owner, (): Row => builtRow(h, home, inner));
+				(kept as Row).keep = holder;
+			}
+			return [kept as Row];
+		});
+	});
 	const root = host.createElement("root");
 	const dispose = render(region, host, root);
 	assert shown(root) === "<root><li>a</li></root>", shown(root);
@@ -107,10 +129,19 @@ test "a ForList at the top of a parked row updates into the holder and shows it 
 	const host = mockHost();
 	const holder = host.createElement("holder");
 	const items = createList<string>(["a"]);
-	const row = createRoot((d) => makeRow(ForList<string>({ each: items, children: listItem })));
-	row.keep = holder;
+	let kept: Row | null = null;
 	const [on, setOn] = createSignal(true);
-	const region = regionNode((h) => createMemo<Row[]>(() => on() ? [row] : [] as Row[]));
+	const region = regionNode((h, home) => {
+		const owner = getOwner();
+		return createMemo<Row[]>(() => {
+			if (!on()) { return [] as Row[]; }
+			if (kept === null) {
+				kept = runWithOwner(owner, (): Row => builtRow(h, home, ForList<string>({ each: items, children: listItem })));
+				(kept as Row).keep = holder;
+			}
+			return [kept as Row];
+		});
+	});
 	const root = host.createElement("root");
 	const dispose = render(region, host, root);
 	assert shown(root) === "<root><li>a</li></root>", shown(root);

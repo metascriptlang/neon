@@ -1,7 +1,7 @@
-import { regionNode } from "../../src/render/node";
+import { regionNode, builtRow } from "../../src/render/node";
 import { element } from "../../src/macros/ui/element";
 import { MockNode, mockHost, render } from "../../src/render/host";
-import { Row, makeRow } from "../../src/render/reconcile";
+import { Row } from "../../src/render/reconcile";
 import { mapArray } from "../../src/core/array";
 import { createSignal } from "../../src/core/signal";
 
@@ -17,8 +17,8 @@ function listText(node: MockNode): string {
 
 test "region mounts a reactive list and reconciles on change" {
 	const [list, setList] = createSignal<number[]>([1, 2, 3]);
-	const region = regionNode((h) => {
-		return mapArray<number, Row>(() => list(), (v, i) => makeRow(<li>{"" + v}</li>));
+	const region = regionNode((h, home) => {
+		return mapArray<number, Row>(() => list(), (v, i) => builtRow(h, home, <li>{"" + v}</li>));
 	});
 	const ul = element(<ul>{region}</ul>);
 	const host = mockHost();

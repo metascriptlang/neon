@@ -236,7 +236,7 @@ export function regionNode(fn: RegionFn): NeonNode {
 			(prev: Row[] | null): Row[] => rows(),
 			(next: Row[], prev: Row[] | null): Cleanup | null => {
 				const at = mounted ? regionParent(host, anchor, "regionNode") : parent;
-				reconcileArrays(host, at, current, next, anchor);
+				reconcileArrays(host, at, current, next, anchor, "regionNode");
 				settleStaged(host, home);
 				mounted = true;
 				current = next.slice(0, next.length);

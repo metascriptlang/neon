@@ -1,16 +1,14 @@
-// Row list reconciler. A row is a span of host nodes plus the view that mounts it,
-// so a row that is not in the host yet is mounted at its final position instead of
-// being built somewhere else and moved in. Insertion targets come from the NEW
-// order — the start of the next row already in the host, or the region anchor
-// (Svelte each.js `move(effect, current, anchor)`) — so a live row is never
-// detached; only a row absent from the next list is removed.
+// Row list reconciler. A row is a span of host nodes plus the view that mounts it. A client
+// region builds its rows in the compute that makes them (node.ms builtRow), so the reconciler
+// only moves: insertion targets come from the NEW order — the start of the next row already in
+// the host, or the region anchor (Svelte each.js `move(effect, current, anchor)`) — and a row
+// absent from the next list is removed. A row handed over unbuilt is refused (ROW_NOT_BUILT):
+// built in this apply, a pending read in its view would halt reactivity.
 //
 // The rows that keep their relative order are the longest increasing run of the
 // surviving rows (Vue 3 / ivi); they are left alone and everything else moves, which
 // is the minimum number of moves for a reorder — a swap of two rows is two moves.
-// Moves run right to left, so each one already sees its final neighbour; the rows
-// being mounted for the first time run afterwards, left to right, so a row body
-// still runs in list order.
+// Moves run right to left, so each one already sees its final neighbour.
 
 import { Host, HostNode, NeonNode } from "./hostTypes";
 import { Computation } from "../core/types";
@@ -154,6 +152,9 @@ export function reconcileArrays(host: Host, parent: HostNode, a: Row[], b: Row[]
 	const stamp = reconcileStamp;
 	for (let i = 0; i < b.length; i += 1) {
 		const row = b[i];
+		if (row.start === null) {
+			throw new Error("[ROW_NOT_BUILT] " + region + " was handed a row that no compute built; build it with builtRow in the compute that makes it, because a row built in the apply halts reactivity on a pending read");
+		}
 		if (row.stamp === stamp) { throw "reconcileArrays: the next list holds the same row twice"; }
 		row.stamp = stamp;
 		row.kept = row.slot === BUILT_IN_PLACE;
@@ -183,22 +184,10 @@ export function reconcileArrays(host: Host, parent: HostNode, a: Row[], b: Row[]
 		}
 	}
 
-	const freshRows: Row[] = [];
-	const freshAnchors: (HostNode | null)[] = [];
 	let next: HostNode | null = after;
 	for (let i = b.length - 1; i >= 0; i -= 1) {
 		const row = b[i];
-		const start = row.start;
-		if (start === null) {
-			freshRows.push(row);
-			freshAnchors.push(next);
-			continue;
-		}
 		if (!row.kept) { moveRow(host, parent, row, next); }
-		next = start;
-	}
-
-	for (let k = freshRows.length - 1; k >= 0; k -= 1) {
-		mountAt(host, parent, freshAnchors[k], freshRows[k]);
+		next = row.start;
 	}
 }
