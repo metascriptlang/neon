@@ -3,6 +3,7 @@ import { createEffect } from "../core/effect";
 import { Cleanup } from "../core/types";
 import { onCleanup } from "../core/cleanup";
 import { Host, HostNode, NeonNode } from "../render/hostTypes";
+import { place } from "../render/reconcile";
 import { MockNode, mockHost, mockNode } from "../render/host";
 import { Context, createContext, useContext } from "../render/context";
 import {
@@ -64,7 +65,7 @@ export class ScreenCollection<P> {
 			}
 		}
 		const marker = this.host.createText("") as unknown as MockNode;
-		this.host.insertBefore(parent, marker as unknown as HostNode, before);
+		place(this.host, parent, marker as unknown as HostNode, before);
 		this.entries.push({ marker, config });
 		this.changed();
 		onCleanup((): void => {
