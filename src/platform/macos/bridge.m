@@ -678,7 +678,419 @@ static void routeWheel(NSEvent *event, NSPoint pointInRoot) {
 	}
 }
 
-static NSView *nativeTarget(NeonView *view, NSPoint pointInRoot) { (void)view; (void)pointInRoot; return nil; }
+// --- TextInput: RN macOS's RCTUITextField (an NSTextField over the window's field editor, a secure cell
+// for secureTextEntry) and RCTUITextView (an NSTextView in an NSScrollView) inside a NeonView ---
+
+static __weak NSResponder *g_restingResponder = nil;
+
+static void emitControl(int32_t tag, int phase, NSString *value) {
+	if (tag == 0 || !s_control.fn) return;
+	free(g_controlValue);
+	g_controlValue = strdup(value.UTF8String);
+	g_controlTag = tag;
+	g_controlPhase = phase;
+	invoke(s_control);
+	requestHostFrame();
+}
+
+@class NeonInput;
+
+@interface NeonField : NSTextField
+@property(nonatomic, weak) NeonInput *owner;
+@end
+
+// AppKit requires a secure field editor's delegate to be an NSSecureTextField.
+@interface NeonSecureField : NSSecureTextField
+@property(nonatomic, weak) NeonInput *owner;
+@end
+
+@interface NeonTextView : NSTextView
+@property(nonatomic, weak) NeonInput *owner;
+@end
+
+@interface NeonInput : NeonView <NSTextViewDelegate>
+@property(nonatomic) BOOL multiline, blurOnSubmit, upper, autoFocus, editable;
+@property(nonatomic) int writing;
+@property(nonatomic) NSInteger maxLength;
+@property(nonatomic) NSEdgeInsets insets;
+@property(nonatomic, copy) NSString *family, *placeholder, *pendingSelection;
+@property(nonatomic) CGFloat fontSize;
+@property(nonatomic) BOOL bold;
+@property(nonatomic, strong) NSColor *color, *placeholderColor;
+@property(nonatomic) NSTextAlignment alignment;
+@property(nonatomic, strong) NSTextField *field;
+@property(nonatomic, strong) NSScrollView *scroll;
+@property(nonatomic, strong) NeonTextView *textView;
+@end
+
+static BOOL flagValue(const char *value, const char *name) {
+	if (!strcmp(value, "true")) return YES;
+	if (!strcmp(value, "false") || value[0] == '\0') return NO;
+	char message[160];
+	snprintf(message, sizeof message, "TextInput %s is not true or false: %s", name, value);
+	fail(message);
+	return NO;
+}
+
+@implementation NeonInput
+
+- (instancetype)initMultiline:(BOOL)multiline {
+	self = [super initWithFrame:NSZeroRect];
+	if (self) {
+		_multiline = multiline;
+		_blurOnSubmit = !multiline;
+		_editable = YES;
+		_maxLength = -1;
+		_fontSize = 17;
+		_color = rgba(0, 0, 0, 1);
+		_alignment = NSTextAlignmentNatural;
+		_placeholder = @"";
+		if (multiline) {
+			_scroll = [[NSScrollView alloc] initWithFrame:NSZeroRect];
+			_scroll.drawsBackground = NO;
+			_scroll.hasVerticalScroller = YES;
+			_scroll.autohidesScrollers = YES;
+			_scroll.scrollerStyle = NSScrollerStyleOverlay;
+			_scroll.automaticallyAdjustsContentInsets = NO;
+			_textView = [[NeonTextView alloc] initWithFrame:NSZeroRect];
+			_textView.owner = self;
+			_textView.delegate = self;
+			_textView.drawsBackground = NO;
+			_textView.richText = NO;
+			_textView.verticallyResizable = YES;
+			_textView.autoresizingMask = NSViewWidthSizable;
+			_textView.textContainerInset = NSZeroSize;
+			_textView.textContainer.lineFragmentPadding = 0;
+			_textView.textContainer.widthTracksTextView = YES;
+			_scroll.documentView = _textView;
+			[self addSubview:_scroll];
+		} else {
+			[self makeField:NO];
+		}
+		[self applyStyle];
+	}
+	return self;
+}
+
+- (void)makeField:(BOOL)secure {
+	NSString *text = self.field ? self.field.stringValue : @"";
+	[self.field removeFromSuperview];
+	if (secure) {
+		NeonSecureField *field = [[NeonSecureField alloc] initWithFrame:NSZeroRect];
+		field.owner = self;
+		self.field = (NSTextField *)field;
+	} else {
+		NeonField *field = [[NeonField alloc] initWithFrame:NSZeroRect];
+		field.owner = self;
+		self.field = field;
+	}
+	self.field.bordered = NO;
+	self.field.bezeled = NO;
+	self.field.drawsBackground = NO;
+	self.field.focusRingType = NSFocusRingTypeNone;
+	self.field.usesSingleLineMode = YES;
+	self.field.cell.scrollable = YES;
+	self.field.cell.wraps = NO;
+	self.field.stringValue = text;
+	[self addSubview:self.field];
+	[self applyStyle];
+	[self layoutContent];
+}
+
+- (NSFont *)font { return labelFont(self.family, self.fontSize, self.bold, NO); }
+
+- (NSString *)text { return self.multiline ? self.textView.string : self.field.stringValue; }
+
+- (NSTextView *)editor {
+	if (self.multiline) return self.window.firstResponder == self.textView ? self.textView : nil;
+	return (NSTextView *)self.field.currentEditor;
+}
+
+- (NSView *)editingView { return self.multiline ? self.textView : self.field; }
+
+- (void)applyStyle {
+	NSFont *font = [self font];
+	self.writing += 1;
+	if (self.multiline) {
+		self.textView.font = font;
+		self.textView.textColor = self.color;
+		self.textView.alignment = self.alignment;
+		self.textView.editable = self.editable;
+		self.textView.typingAttributes = @{NSFontAttributeName: font, NSForegroundColorAttributeName: self.color};
+		self.textView.needsDisplay = YES;
+	} else {
+		self.field.font = font;
+		self.field.textColor = self.color;
+		self.field.alignment = self.alignment;
+		self.field.editable = self.editable;
+		self.field.selectable = YES;
+		self.field.placeholderAttributedString = [[NSAttributedString alloc] initWithString:self.placeholder attributes:@{
+			NSFontAttributeName: font, NSForegroundColorAttributeName: self.placeholderColor ?: NSColor.placeholderTextColor}];
+	}
+	self.writing -= 1;
+	[self layoutContent];
+	requestHostFrame();
+}
+
+- (NSRect)contentRect {
+	NSEdgeInsets i = self.insets;
+	return NSMakeRect(i.left, i.top, fmax(0, self.w - i.left - i.right), fmax(0, self.h - i.top - i.bottom));
+}
+
+- (void)layoutContent {
+	if (self.multiline) {
+		self.scroll.frame = [self contentRect];
+		self.textView.minSize = NSMakeSize(0, self.scroll.contentSize.height);
+		self.textView.maxSize = NSMakeSize(CGFLOAT_MAX, CGFLOAT_MAX);
+		self.textView.frame = NSMakeRect(0, 0, self.scroll.contentSize.width, fmax(self.textView.frame.size.height, self.scroll.contentSize.height));
+	} else {
+		self.field.frame = [self contentRect];
+	}
+}
+
+- (void)setFrameSize:(NSSize)size {
+	[super setFrameSize:size];
+	[self layoutContent];
+}
+
+- (void)viewDidMoveToWindow {
+	[super viewDidMoveToWindow];
+	if (self.window && self.autoFocus) dispatch_async(dispatch_get_main_queue(), ^{ [self focus:YES]; });
+}
+
+- (void)write:(NSString *)text {
+	if ([text isEqualToString:[self text]]) return;
+	self.writing += 1;
+	if (self.multiline) self.textView.string = text;
+	else self.field.stringValue = text;
+	NSTextView *editor = [self editor];
+	if (editor) editor.selectedRange = NSMakeRange(text.length, 0);
+	self.writing -= 1;
+	requestHostFrame();
+}
+
+- (void)select:(NSString *)value {
+	long start = 0, end = 0;
+	if (sscanf(value.UTF8String, "%ld,%ld", &start, &end) != 2) {
+		char message[160];
+		snprintf(message, sizeof message, "TextInput selection is not start,end: %s", value.UTF8String);
+		fail(message);
+	}
+	NSTextView *editor = [self editor];
+	if (!editor) {
+		self.pendingSelection = value;
+		return;
+	}
+	NSUInteger length = [self text].length;
+	NSUInteger from = MIN((NSUInteger)MAX(0, start), length), to = MIN((NSUInteger)MAX((long)from, end), length);
+	self.writing += 1;
+	editor.selectedRange = NSMakeRange(from, to - from);
+	self.writing -= 1;
+	self.pendingSelection = nil;
+}
+
+- (void)focus:(BOOL)focused {
+	NSWindow *window = self.window;
+	if (!window) return;
+	if (focused) {
+		if (![self editor]) [window makeFirstResponder:[self editingView]];
+	} else if ([self editor]) {
+		[window makeFirstResponder:g_restingResponder];
+	}
+}
+
+- (void)didFocus {
+	emitControl(self.neonTag, 1, [self text]);
+	if (self.pendingSelection) [self select:self.pendingSelection];
+}
+
+- (void)didBlur {
+	if (self.writing == 0) emitControl(self.neonTag, 2, [self text]);
+}
+
+// An IME composition is no change until it commits, as on Windows.
+- (void)didChange {
+	if (self.writing > 0 || [self editor].hasMarkedText) return;
+	emitControl(self.neonTag, 0, [self text]);
+	if (self.multiline) requestHostFrame();
+}
+
+- (void)didChangeSelection {
+	NSTextView *editor = [self editor];
+	if (self.writing > 0 || !editor) return;
+	NSRange r = editor.selectedRange;
+	emitControl(self.neonTag, 9, [NSString stringWithFormat:@"%lu,%lu", (unsigned long)r.location, (unsigned long)NSMaxRange(r)]);
+}
+
+- (BOOL)allowChange:(NSTextView *)editor range:(NSRange)range replacement:(NSString *)replacement {
+	if (!replacement) return YES;
+	NSString *wanted = self.upper ? replacement.uppercaseString : replacement;
+	if (self.maxLength >= 0 && !editor.hasMarkedText) {
+		NSInteger room = self.maxLength - (NSInteger)([self text].length - range.length);
+		if (room <= 0 && wanted.length > 0) return NO;
+		if ((NSInteger)wanted.length > room) wanted = [wanted substringToIndex:(NSUInteger)room];
+	}
+	if ([wanted isEqualToString:replacement]) return YES;
+	[editor insertText:wanted replacementRange:range];
+	return NO;
+}
+
+- (BOOL)command:(SEL)selector {
+	if (selector != @selector(insertNewline:)) return NO;
+	if (self.multiline && !self.blurOnSubmit) return NO;
+	emitControl(self.neonTag, 3, [self text]);
+	if (self.blurOnSubmit) [self focus:NO];
+	return YES;
+}
+
+- (void)measure:(float)maxWidth {
+	NSFont *font = [self font];
+	NSEdgeInsets i = self.insets;
+	NSLayoutManager *manager = [NSLayoutManager new];
+	CGFloat height = [manager defaultLineHeightForFont:font];
+	if (self.multiline && [self text].length) {
+		NSTextStorage *storage = [[NSTextStorage alloc] initWithString:[self text] attributes:@{NSFontAttributeName: font}];
+		NSTextContainer *container = [[NSTextContainer alloc] initWithSize:NSMakeSize(fmax(0, maxWidth - i.left - i.right), CGFLOAT_MAX)];
+		container.lineFragmentPadding = 0;
+		[manager addTextContainer:container];
+		[storage addLayoutManager:manager];
+		[manager ensureLayoutForTextContainer:container];
+		NSRect used = NSUnionRect([manager usedRectForTextContainer:container], manager.extraLineFragmentUsedRect);
+		height = used.size.height;
+	}
+	g_measuredW = maxWidth;
+	g_measuredH = ceilf((float)height) + (float)(i.top + i.bottom);
+}
+
+- (void)setProp:(const char *)name value:(const char *)value {
+	NSString *text = @(value);
+	if (!strcmp(name, "value")) [self write:text];
+	else if (!strcmp(name, "defaultValue")) { if ([self text].length == 0) [self write:text]; }
+	else if (!strcmp(name, "placeholder")) {
+		self.placeholder = text;
+		[self applyStyle];
+	} else if (!strcmp(name, "placeholderTextColor")) {
+		self.placeholderColor = value[0] ? cssColor(text) : nil;
+		[self applyStyle];
+	} else if (!strcmp(name, "editable")) {
+		self.editable = value[0] == '\0' || flagValue(value, name);
+		[self applyStyle];
+	} else if (!strcmp(name, "secureTextEntry")) {
+		BOOL secure = flagValue(value, name);
+		if (self.multiline) { if (secure) fail("TextInput secureTextEntry on a multiline input"); }
+		else if (secure != [self.field isKindOfClass:NeonSecureField.class]) [self makeField:secure];
+	} else if (!strcmp(name, "multiline")) {
+		if (flagValue(value, name) != self.multiline) fail("TextInput multiline changed after the input was created");
+	} else if (!strcmp(name, "autoFocus")) {
+		self.autoFocus = flagValue(value, name);
+		if (self.autoFocus && self.window) [self focus:YES];
+	} else if (!strcmp(name, "blurOnSubmit")) self.blurOnSubmit = value[0] == '\0' ? !self.multiline : flagValue(value, name);
+	else if (!strcmp(name, "autoCapitalize")) {
+		if (strcmp(value, "characters") && strcmp(value, "none") && strcmp(value, "sentences") && strcmp(value, "words") && value[0]) {
+			char message[160];
+			snprintf(message, sizeof message, "TextInput autoCapitalize is not none, sentences, words or characters: %s", value);
+			fail(message);
+		}
+		self.upper = !strcmp(value, "characters");
+	} else if (!strcmp(name, "maxLength")) self.maxLength = value[0] ? atol(value) : -1;
+	else if (!strcmp(name, "autoCorrect") || !strcmp(name, "keyboardType") || !strcmp(name, "returnKeyType")) {}
+	else if (!strcmp(name, "selection")) [self select:text];
+	else if (!strcmp(name, "textInsets")) {
+		float left = 0, top = 0, right = 0, bottom = 0;
+		if (sscanf(value, "%f,%f,%f,%f", &left, &top, &right, &bottom) != 4) {
+			char message[160];
+			snprintf(message, sizeof message, "TextInput textInsets is not l,t,r,b: %s", value);
+			fail(message);
+		}
+		self.insets = NSEdgeInsetsMake(top, left, bottom, right);
+		[self layoutContent];
+	} else if (!strcmp(name, "fontFamily")) {
+		self.family = text;
+		[self applyStyle];
+	} else if (!strcmp(name, "textAlign")) {
+		self.alignment = alignmentOf(value);
+		[self applyStyle];
+	} else {
+		char what[128];
+		snprintf(what, sizeof what, "niSetProp(%s) on a TextInput", name);
+		unimplemented(what);
+	}
+}
+
+- (void)textDidChange:(NSNotification *)note { (void)note; [self didChange]; }
+- (void)textDidEndEditing:(NSNotification *)note { (void)note; [self didBlur]; }
+- (void)textViewDidChangeSelection:(NSNotification *)note { (void)note; [self didChangeSelection]; }
+- (BOOL)textView:(NSTextView *)view shouldChangeTextInRange:(NSRange)range replacementString:(NSString *)replacement {
+	return [self allowChange:view range:range replacement:replacement];
+}
+- (BOOL)textView:(NSTextView *)view doCommandBySelector:(SEL)selector { (void)view; return [self command:selector]; }
+@end
+
+// AppKit sends a field's editing callbacks to the field itself as the field editor's delegate; both field
+// classes hand them to their NeonInput.
+#define NEON_FIELD_METHODS \
+	- (BOOL)becomeFirstResponder { \
+		BOOL became = [super becomeFirstResponder]; \
+		if (became) [self.owner didFocus]; \
+		return became; \
+	} \
+	- (void)textDidChange:(NSNotification *)note { \
+		[super textDidChange:note]; \
+		[self.owner didChange]; \
+	} \
+	- (void)textDidEndEditing:(NSNotification *)note { \
+		[super textDidEndEditing:note]; \
+		[self.owner didBlur]; \
+	} \
+	- (void)textViewDidChangeSelection:(NSNotification *)note { (void)note; [self.owner didChangeSelection]; } \
+	- (BOOL)textView:(NSTextView *)view shouldChangeTextInRange:(NSRange)range replacementString:(NSString *)replacement { \
+		return [self.owner allowChange:view range:range replacement:replacement]; \
+	} \
+	- (BOOL)textView:(NSTextView *)view doCommandBySelector:(SEL)selector { (void)view; return [self.owner command:selector]; }
+
+@implementation NeonField
+NEON_FIELD_METHODS
+@end
+
+@implementation NeonSecureField
+NEON_FIELD_METHODS
+@end
+
+@implementation NeonTextView
+// A single-line NSTextField takes an inactive window's first click and NSTextView does not; taking it here
+// focuses every TextInput on that click, as the root presses a Pressable on it.
+- (BOOL)acceptsFirstMouse:(NSEvent *)event { (void)event; return YES; }
+- (BOOL)becomeFirstResponder {
+	BOOL became = [super becomeFirstResponder];
+	if (became) [self.owner didFocus];
+	return became;
+}
+- (void)drawRect:(NSRect)dirty {
+	[super drawRect:dirty];
+	NeonInput *owner = self.owner;
+	if (self.string.length || !owner.placeholder.length) return;
+	[owner.placeholder drawAtPoint:self.textContainerOrigin withAttributes:@{
+		NSFontAttributeName: [owner font], NSForegroundColorAttributeName: owner.placeholderColor ?: NSColor.placeholderTextColor}];
+}
+@end
+
+static BOOL isInput(NeonView *view) { return [view isKindOfClass:NeonInput.class]; }
+
+static NeonInput *inputOf(void *view, const char *what) {
+	if (isInput(as(view))) return (NeonInput *)as(view);
+	char message[192];
+	snprintf(message, sizeof message, "%s on a view that is not a TextInput", what);
+	fail(message);
+	return nil;
+}
+
+// A click on a TextInput goes to the view AppKit edits in: the field, or its field editor once editing.
+static NSView *nativeTarget(NeonView *view, NSPoint pointInRoot) {
+	if (!isInput(view)) return nil;
+	NSView *target = [(NeonInput *)view editingView];
+	NSView *hit = [target hitTest:[target.superview convertPoint:pointInRoot fromView:g_root]];
+	return hit ? hit : target;
+}
 
 // --- handoff ---
 
@@ -691,6 +1103,7 @@ void nimAttach(void *root, float scale, float logicalWidth, float logicalHeight)
 	g_root.w = (float)parent.bounds.size.width;
 	g_root.h = (float)parent.bounds.size.height;
 	[parent addSubview:g_root positioned:NSWindowAbove relativeTo:nil];
+	g_restingResponder = parent.window.firstResponder;
 	g_scale = scale;
 	g_width = logicalWidth;
 	g_height = logicalHeight;
@@ -914,6 +1327,10 @@ static BOOL isAccessibilityProp(const char *name) {
 
 void niSetProp(void *view, const char *name, const char *value) {
 	const char *text = value ? value : "";
+	if (isInput(as(view)) && !isAccessibilityProp(name)) {
+		[(NeonInput *)as(view) setProp:name value:text];
+		return;
+	}
 	if (isLabel(as(view)) && !strcmp(name, "textSpans")) {
 		setRuns((NeonLabel *)as(view), text);
 		return;
@@ -962,6 +1379,11 @@ void niSetText(void *label, const char *s) {
 }
 
 void niSetTextColor(void *label, float r, float g, float b, float a) {
+	if (isInput(as(label))) {
+		((NeonInput *)as(label)).color = rgba(r, g, b, a);
+		[(NeonInput *)as(label) applyStyle];
+		return;
+	}
 	NeonLabel *l = labelOf(label, "niSetTextColor");
 	NSColor *color = rgba(r, g, b, a);
 	if ([color isEqual:l.color]) return;
@@ -970,6 +1392,14 @@ void niSetTextColor(void *label, float r, float g, float b, float a) {
 }
 
 void niSetFont(void *label, float size, int bold) {
+	if (isInput(as(label))) {
+		NeonInput *input = (NeonInput *)as(label);
+		if (input.fontSize == size && input.bold == (bold != 0)) return;
+		input.fontSize = size;
+		input.bold = bold != 0;
+		[input applyStyle];
+		return;
+	}
 	NeonLabel *l = labelOf(label, "niSetFont");
 	if (l.fontSize == size && l.bold == (bold != 0)) return;
 	l.fontSize = size;
@@ -979,6 +1409,10 @@ void niSetFont(void *label, float size, int bold) {
 
 void niMeasureText(void *label, float maxWidth) {
 	requireAttached("niMeasureText");
+	if (isInput(as(label))) {
+		[(NeonInput *)as(label) measure:maxWidth];
+		return;
+	}
 	NeonLabel *l = labelOf(label, "niMeasureText");
 	[l ensureAt:maxWidth];
 	NSRect used = [l.layoutManager usedRectForTextContainer:l.container];
@@ -1035,10 +1469,22 @@ void niScrollSetOption(void *scroll, const char *name, const char *value) {
 		unimplemented(what);
 	}
 }
-UNIMPLEMENTED(void *, niInputCreate, (void))
-UNIMPLEMENTED(void *, niTextAreaCreate, (void))
-UNIMPLEMENTED_VOID(niControlSetTag, (void *control, int32_t tag))
-UNIMPLEMENTED_VOID(niSetFocused, (void *control, int focused))
+
+// --- bridge.h: TextInput ---
+
+void *niInputCreate(void) {
+	requireAttached("niInputCreate");
+	return (void *)CFBridgingRetain([[NeonInput alloc] initMultiline:NO]);
+}
+
+void *niTextAreaCreate(void) {
+	requireAttached("niTextAreaCreate");
+	return (void *)CFBridgingRetain([[NeonInput alloc] initMultiline:YES]);
+}
+
+void niControlSetTag(void *control, int32_t tag) { inputOf(control, "niControlSetTag").neonTag = tag; }
+void niSetFocused(void *control, int focused) { [inputOf(control, "niSetFocused") focus:focused != 0]; }
+
 UNIMPLEMENTED(void *, niSwitchCreate, (void))
 UNIMPLEMENTED(void *, niIndicatorCreate, (void))
 UNIMPLEMENTED(void *, niImageCreate, (void))
@@ -1048,3 +1494,4 @@ UNIMPLEMENTED_VOID(niSetReloadPoll, (msClosure poll))
 UNIMPLEMENTED(int, niLastAppEvent, (void))
 UNIMPLEMENTED(const char *, niLastAppValue, (void))
 UNIMPLEMENTED_VOID(niSetAppEventResult, (int result))
+
