@@ -1,22 +1,28 @@
 import { createRenderEffect } from "../core/effect";
-import { Cleanup } from "../core/types";
+import { Cleanup, Computation, NotReadyError } from "../core/types";
 import { onCleanup } from "../core/cleanup";
 import { createRoot, runWithOwner } from "../core/owner";
 import { getOwner } from "../core/runtime";
 import { Accessor, Signal, accessor, untrack } from "../core/signal";
-import { List, ListOp, listInsert, listMove, listRemove, listSet, matchByIds } from "../core/list";
+import { List, ListQueue, ListOp, listInsert, listMove, listRemove, listSet, matchByIds } from "../core/list";
 import { Host, HostNode, NeonNode } from "./hostTypes";
 import { Row, makeRow, mountAt, moveRow, removeRow, reconcileArrays } from "./reconcile";
+import { RowHome, regionHome, buildHeld } from "./node";
 import { regionAnchor, regionParent, sealRegion, serverRegionStart, serverRegionEnd, skipRegionEffect } from "./claim";
 import { isServer } from "./environment";
 
 // The region's stores live in one object passed to every step, never captured by a nested
 // closure: src/core/array.ms keeps mapArray's stores as parameters for the same reason.
+// The effect's compute takes the list's ops, builds the rows they need into the holder and updates
+// these stores (Solid mapArray, packages/signals/src/map.ts:362); the host work they imply is
+// queued as steps and the effect's apply only plays the steps.
 interface Region<Item> {
 	host: Host;
 	parent: HostNode;
 	anchor: HostNode;
 	placed: boolean;
+	home: RowHome;
+	owner: Computation | null;
 	list: List<Item>;
 	row: (item: Accessor<Item>) => NeonNode;
 	// Zero or one key function: a nullable function of Item in a field of this generic interface is
@@ -26,69 +32,96 @@ interface Region<Item> {
 	rows: Row[];
 	cells: Signal<Item>[];
 	disposers: (() => void)[];
+	steps: Step[];
 }
 
-function anchorAt<Item>(g: Region<Item>, i: number): HostNode | null {
-	if (i >= g.rows.length) { return g.anchor; }
-	return g.rows[i].start;
+const stepInsert = 0;
+const stepMove = 1;
+const stepRemove = 2;
+const stepReconcile = 3;
+
+interface Step {
+	kind: number;
+	row: Row | null;
+	before: Row | null;
+	prev: Row[];
+	next: Row[];
 }
 
-// Op stores grow by push; reading a slot past what the array holds segfaults on C, it is
-// not an undefined (src/core/array.ms mapRows). resetTo's next-lists are the exception:
-// exact-size prealloc, every slot written before any read (mapArray makeRowInto).
-function buildRow<Item>(
-	g: Region<Item>,
-	v: Item,
-	rowStore: Row[],
-	cellStore: Signal<Item>[],
-	dispStore: (() => void)[],
-): void {
-	const r = createRoot((d) => {
-		dispStore.push(d);
-		const cell = new Signal<Item>(v, null, true);
-		cellStore.push(cell);
-		return makeRow(g.row(accessor((): Item => cell.get())));
-	});
-	rowStore.push(r);
+class Built<Item> {
+	row: Row;
+	cell: Signal<Item>;
+	dispose: () => void;
+
+	constructor(row: Row, cell: Signal<Item>, dispose: () => void) {
+		this.row = row;
+		this.cell = cell;
+		this.dispose = dispose;
+	}
 }
 
-function buildRowAt<Item>(
-	g: Region<Item>,
-	v: Item,
-	i: number,
-	rowStore: Row[],
-	cellStore: Signal<Item>[],
-	dispStore: (() => void)[],
-): void {
-	const r = createRoot((d) => {
-		dispStore[i] = d;
-		const cell = new Signal<Item>(v, null, true);
-		cellStore[i] = cell;
-		return makeRow(g.row(accessor((): Item => cell.get())));
-	});
-	rowStore[i] = r;
+// The row's scope lives under the region's owner, not under the effect that builds it, and a pending
+// read in its view belongs to that effect (src/core/array.ms mapRows: owner.parentComputed = getOwner()).
+function makeBuilt<Item>(g: Region<Item>, v: Item, within: Computation | null): Built<Item> {
+	return runWithOwner(g.owner, (): Built<Item> => createRoot((d) => {
+		if (within !== null) { (getOwner() as Computation).parentComputed = within; }
+		try {
+			const cell = new Signal<Item>(v, null, true);
+			return new Built<Item>(makeRow(g.row(accessor((): Item => cell.get()))), cell, d);
+		} catch (e) {
+			d();
+			throw e;
+		}
+	}));
 }
 
-function insertRow<Item>(g: Region<Item>, i: number, v: Item): void {
-	buildRow<Item>(g, v, g.rows, g.cells, g.disposers);
+function buildHeldOrDispose<Item>(g: Region<Item>, b: Built<Item>): void {
+	try {
+		buildHeld(g.host, g.home, b.row);
+	} catch (e) {
+		b.dispose();
+		throw e;
+	}
+}
+
+function step(kind: number, row: Row | null, before: Row | null): Step {
+	return { kind, row, before, prev: [] as Row[], next: [] as Row[] };
+}
+
+function rowAfter<Item>(g: Region<Item>, i: number): Row | null {
+	if (i >= g.rows.length) { return null; }
+	return g.rows[i];
+}
+
+function insertFirst<Item>(g: Region<Item>, v: Item): void {
+	const b = makeBuilt<Item>(g, v, null);
+	g.rows.push(b.row);
+	g.cells.push(b.cell);
+	g.disposers.push(b.dispose);
+	mountAt(g.host, g.parent, g.anchor, b.row);
+}
+
+function insertRow<Item>(g: Region<Item>, i: number, v: Item, within: Computation | null): void {
+	const b = makeBuilt<Item>(g, v, within);
+	buildHeldOrDispose<Item>(g, b);
+	g.rows.push(b.row);
+	g.cells.push(b.cell);
+	g.disposers.push(b.dispose);
 	const last = g.rows.length - 1;
-	const r = g.rows[last];
-	const c = g.cells[last];
-	const d = g.disposers[last];
 	for (let j = last; j > i; j -= 1) {
 		g.rows[j] = g.rows[j - 1];
 		g.cells[j] = g.cells[j - 1];
 		g.disposers[j] = g.disposers[j - 1];
 	}
-	g.rows[i] = r;
-	g.cells[i] = c;
-	g.disposers[i] = d;
-	mountAt(g.host, g.parent, anchorAt<Item>(g, i + 1), r);
+	g.rows[i] = b.row;
+	g.cells[i] = b.cell;
+	g.disposers[i] = b.dispose;
+	g.steps.push(step(stepInsert, b.row, rowAfter<Item>(g, i + 1)));
 }
 
 function removeRowAt<Item>(g: Region<Item>, i: number): void {
 	g.disposers[i]();
-	removeRow(g.host, g.parent, g.rows[i]);
+	g.steps.push(step(stepRemove, g.rows[i], null));
 	const last = g.rows.length - 1;
 	for (let j = i; j < last; j += 1) {
 		g.rows[j] = g.rows[j + 1];
@@ -120,13 +153,14 @@ function moveRowTo<Item>(g: Region<Item>, from: number, to: number): void {
 	g.rows[to] = r;
 	g.cells[to] = c;
 	g.disposers[to] = d;
-	moveRow(g.host, g.parent, r, anchorAt<Item>(g, to + 1));
+	g.steps.push(step(stepMove, r, rowAfter<Item>(g, to + 1)));
 }
 
 // Each new row takes the old row that carries the same item — by number key when the list has one,
 // by item identity otherwise, which is what <For> does. A row's DOM and its reactive scope belong to
 // the item, not to the slot, so a replaceAll that reorders moves nodes instead of rewriting values.
-function resetTo<Item>(g: Region<Item>, items: Item[]): void {
+// Every new row is built before anything is taken from the stores, so a pending read leaves them as they were.
+function resetTo<Item>(g: Region<Item>, items: Item[], within: Computation | null): void {
 	const have = g.rows.length;
 	const n = items.length;
 
@@ -153,18 +187,36 @@ function resetTo<Item>(g: Region<Item>, items: Item[]): void {
 		g.list.matchByIdentity(oldIds, items, reuse);
 	}
 
+	const fresh: Built<Item>[] = [];
+	const freshAt: number[] = [];
+	try {
+		for (let j = 0; j < n; j += 1) {
+			if (reuse[j] >= 0) { continue; }
+			const b = makeBuilt<Item>(g, items[j], within);
+			fresh.push(b);
+			freshAt.push(j);
+			buildHeldOrDispose<Item>(g, b);
+		}
+	} catch (e) {
+		for (const b of fresh) { b.dispose(); }
+		throw e;
+	}
+
 	const nextRows: Row[] = new Array(n);
 	const nextCells: Signal<Item>[] = new Array(n);
 	const nextDisposers: (() => void)[] = new Array(n);
 	const kept: boolean[] = new Array(have);
 	for (let i = 0; i < have; i += 1) { kept[i] = false; }
 
+	for (let k = 0; k < fresh.length; k += 1) {
+		const j = freshAt[k];
+		nextRows[j] = fresh[k].row;
+		nextCells[j] = fresh[k].cell;
+		nextDisposers[j] = fresh[k].dispose;
+	}
 	for (let j = 0; j < n; j += 1) {
 		const from = reuse[j];
-		if (from < 0) {
-			buildRowAt<Item>(g, items[j], j, nextRows, nextCells, nextDisposers);
-			continue;
-		}
+		if (from < 0) { continue; }
 		nextRows[j] = g.rows[from];
 		nextCells[j] = g.cells[from];
 		nextDisposers[j] = g.disposers[from];
@@ -176,18 +228,70 @@ function resetTo<Item>(g: Region<Item>, items: Item[]): void {
 		if (!kept[i]) { g.disposers[i](); }
 	}
 
-	reconcileArrays(g.host, g.parent, g.rows, nextRows, g.anchor);
+	const reconcile = step(stepReconcile, null, null);
+	reconcile.prev = g.rows;
+	reconcile.next = nextRows;
+	g.steps.push(reconcile);
 	g.rows = nextRows;
 	g.cells = nextCells;
 	g.disposers = nextDisposers;
 }
 
-function applyOp<Item>(g: Region<Item>, op: ListOp<Item>): void {
-	if (op.kind === listInsert) { insertRow<Item>(g, op.a, op.v); return; }
+function applyOp<Item>(g: Region<Item>, op: ListOp<Item>, within: Computation | null): void {
+	if (op.kind === listInsert) { insertRow<Item>(g, op.a, op.v, within); return; }
 	if (op.kind === listMove) { moveRowTo<Item>(g, op.a, op.b); return; }
 	if (op.kind === listRemove) { removeRowAt<Item>(g, op.a); return; }
 	if (op.kind === listSet) { g.cells[op.a].set(op.v); return; }
 	throw new Error("ForList: list op kind " + op.kind.toString() + " has no region case");
+}
+
+// An op that raises inside a row body is taken off the queue, so the region is left loud and never
+// re-applied on the next bump; a pending read leaves its op, and the ones after it, for the retry.
+function takeOps<Item>(g: Region<Item>, q: ListQueue<Item>, items: Item[], within: Computation | null): void {
+	if (q.reset) {
+		try {
+			resetTo<Item>(g, items, within);
+		} catch (e) {
+			if (!(e instanceof NotReadyError)) { q.reset = false; q.ops = []; }
+			throw e;
+		}
+		q.reset = false;
+		q.ops = [];
+		return;
+	}
+	const pending = q.ops;
+	let done = 0;
+	try {
+		while (done < pending.length) {
+			applyOp<Item>(g, pending[done], within);
+			done += 1;
+		}
+	} catch (e) {
+		q.ops = pending.slice(done + (e instanceof NotReadyError ? 0 : 1), pending.length);
+		throw e;
+	}
+	q.ops = [];
+}
+
+function nodeBefore<Item>(g: Region<Item>, before: Row | null): HostNode | null {
+	if (before === null) { return g.anchor; }
+	return before.start;
+}
+
+function playSteps<Item>(g: Region<Item>): void {
+	const steps = g.steps;
+	g.steps = [];
+	for (const s of steps) {
+		if (s.kind === stepInsert || s.kind === stepMove) {
+			moveRow(g.host, g.parent, s.row as Row, nodeBefore<Item>(g, s.before));
+		} else if (s.kind === stepRemove) {
+			removeRow(g.host, g.parent, s.row as Row);
+		} else if (s.kind === stepReconcile) {
+			reconcileArrays(g.host, g.parent, s.prev, s.next, g.anchor, "ForList");
+		} else {
+			throw new Error("ForList: step kind " + s.kind.toString() + " has no region case");
+		}
+	}
 }
 
 export function listRegion<Item>(
@@ -217,12 +321,15 @@ export function listRegion<Item>(
 			parent: parent,
 			anchor: anchor,
 			placed: false,
+			home: regionHome(host, parent, anchor),
+			owner: getOwner(),
 			list: list,
 			row: row,
 			keys: keyOf === null ? [] : [keyOf as (item: Item) => number],
 			rows: [],
 			cells: [],
 			disposers: [],
+			steps: [],
 		};
 
 		const q = list.attach();
@@ -232,27 +339,17 @@ export function listRegion<Item>(
 		});
 
 		const initial = untrack((): Item[] => list.read());
-		for (let i = 0; i < initial.length; i += 1) { insertRow<Item>(g, i, initial[i]); }
+		for (let i = 0; i < initial.length; i += 1) { insertFirst<Item>(g, initial[i]); }
 
-		// The queue is taken before it is applied, not cleared after: an op that raises inside a row
-		// body then leaves the region inconsistent and loud, never re-applied on the next bump.
-		const owner = getOwner();
 		createRenderEffect<Item[]>(
-			(prev: Item[] | null): Item[] => list.read(),
+			(prev: Item[] | null): Item[] => {
+				const items = list.read();
+				takeOps<Item>(g, q, items, getOwner());
+				return items;
+			},
 			(items: Item[], prev: Item[] | null): Cleanup | null => {
-				const pending = q.ops;
-				const fromReset = q.reset;
-				q.ops = [];
-				q.reset = false;
 				if (g.placed) { g.parent = regionParent(host, anchor, "ForList"); }
-				runWithOwner(owner, (): number => {
-					if (fromReset) {
-						resetTo<Item>(g, items);
-					} else {
-						for (let k = 0; k < pending.length; k += 1) { applyOp<Item>(g, pending[k]); }
-					}
-					return 0;
-				});
+				playSteps<Item>(g);
 				g.placed = true;
 				return null;
 			},

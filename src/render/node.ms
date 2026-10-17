@@ -139,13 +139,17 @@ export function holderOf(host: Host, home: RowHome): HostNode {
 }
 
 // A later pass builds into the holder: its apply can be held while a Loading is pending, and rows built in place would show beside the rows they replace.
+export function buildHeld(host: Host, home: RowHome, row: Row): void {
+	buildInto(host, holderOf(host, home), null, row, null);
+}
+
 export function stageRow(host: Host, home: RowHome, row: Row): Row {
 	if (home.server) { return row; }
 	if (home.first) {
 		buildInto(host, home.parent, home.before, row, claimMark(host));
 		row.slot = BUILT_IN_PLACE;
 	} else {
-		buildInto(host, holderOf(host, home), null, row, null);
+		buildHeld(host, home, row);
 	}
 	home.staged.push(row);
 	return row;
