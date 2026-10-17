@@ -6,7 +6,7 @@ import { createAsyncMemo } from "../../src/core/memo";
 import { createRenderEffect } from "../../src/core/effect";
 import { Cleanup } from "../../src/core/types";
 import { onCleanup } from "../../src/core/cleanup";
-import { Errored, Loading } from "../../src/macros/ui/flow";
+import { Errored, Loading, For, Show } from "../../src/macros/ui/flow";
 import { Gate, gated, release } from "../core/asyncClock";
 import { render } from "../../src/render/host";
 import { Host, HostNode } from "../../src/render/hostTypes";
@@ -56,6 +56,11 @@ function failsWhenOne(a: () => int32): void {
 		(p: int32 | null): int32 => a(),
 		(v: int32, p: int32 | null): Cleanup | null => { if (v === 1) { throw new Error("late"); } return null; },
 	);
+}
+
+function placedBefore(parent: HostNode, before: HostNode | null): VoidNode {
+	const kids = (parent as VoidNode).children;
+	return before === null ? kids[kids.length - 1] : kids[kids.indexOf(before as VoidNode) - 1];
 }
 
 function lastPlaced(parent: HostNode): VoidNode {
@@ -149,5 +154,71 @@ test "a Loading whose content read a pending value frees the partial nodes and s
 	await release(gate);
 	assert partial.length === 2 && partial[1].ref.isLive(), "the settled attempt built its own nodes";
 	assert (vh.root as VoidNode).children.indexOf(partial[1]) >= 0, "and they are in the root";
+	dispose();
+}
+
+test "a For pass that a pending row aborts frees the rows it had built, and the settled pass builds fresh ones" {
+	const vh = createVoidHost();
+	const gate = new Gate();
+	const built: VoidNode[] = [];
+	const app: NeonNode = (host: Host, parent: HostNode, before: HostNode | null): void => {
+		const data = createAsyncMemo((p: int32 | null): Promise<int32> => gated(gate, 7));
+		const row = (item: int32, index: Accessor<number>): NeonNode => (ch: Host, cp: HostNode, cb: HostNode | null): void => {
+			el("view", [], [], text(item.toString()))(ch, cp, cb);
+			built.push(placedBefore(cp, cb));
+			if (item === 2) { data(); }
+		};
+		Loading({ children: For({ each: accessor((): int32[] => [1, 2]), children: row }), fallback: caughtView(accessor((): Error => new Error("x")), (): void => {}) })(host, parent, before);
+	};
+	const dispose = render(app, vh.host, vh.root);
+	assert built.length === 2 && built[1].disposed && !built[1].ref.isLive(), "the row that read the pending value freed its partial node";
+	await release(gate);
+	assert built.length === 4 && built[2].ref.isLive() && built[3].ref.isLive(), "the settled pass built its own rows";
+	assert built[0].disposed && !built[0].ref.isLive(), "the row of the aborted pass is freed, not left parked";
+	assert (vh.root as VoidNode).children.indexOf(built[2]) >= 0 && (vh.root as VoidNode).children.indexOf(built[3]) >= 0, "and they are in the root";
+	dispose();
+}
+
+test "disposing a For whose pass a pending row aborted frees the rows it had built" {
+	const vh = createVoidHost();
+	const gate = new Gate();
+	const built: VoidNode[] = [];
+	const app: NeonNode = (host: Host, parent: HostNode, before: HostNode | null): void => {
+		const data = createAsyncMemo((p: int32 | null): Promise<int32> => gated(gate, 7));
+		const row = (item: int32, index: Accessor<number>): NeonNode => (ch: Host, cp: HostNode, cb: HostNode | null): void => {
+			el("view", [], [], text(item.toString()))(ch, cp, cb);
+			built.push(placedBefore(cp, cb));
+			if (item === 2) { data(); }
+		};
+		Loading({ children: For({ each: accessor((): int32[] => [1, 2]), children: row }), fallback: caughtView(accessor((): Error => new Error("x")), (): void => {}) })(host, parent, before);
+	};
+	const dispose = render(app, vh.host, vh.root);
+	dispose();
+	assert built.length === 2 && built[0].disposed && !built[0].ref.isLive(), "the row built before the pending one is freed with its region";
+}
+
+test "a Show row switched off while its build is pending leaves no node behind" {
+	const vh = createVoidHost();
+	const gate = new Gate();
+	const [on, setOn] = createSignal(true);
+	const partial: VoidNode[] = [];
+	const content = (data: Accessor<int32>): NeonNode => (host: Host, parent: HostNode, before: HostNode | null): void => {
+		el("view", [], [], text("partial"))(host, parent, before);
+		partial.push(placedBefore(parent, before));
+		const v = data();
+		el("view", [], [], text(v.toString()))(host, parent, before);
+	};
+	const app: NeonNode = (host: Host, parent: HostNode, before: HostNode | null): void => {
+		const data = createAsyncMemo((p: int32 | null): Promise<int32> => gated(gate, 7));
+		Loading({ children: Show({ when: on, children: content(data) }), fallback: caughtView(accessor((): Error => new Error("x")), (): void => {}) })(host, parent, before);
+	};
+	const dispose = render(app, vh.host, vh.root);
+	assert partial.length === 1 && partial[0].disposed, "the first attempt's partial node is freed";
+	setOn(false);
+	await release(gate);
+	assert partial.length === 1, "the row was not built again while it is off";
+	assert (vh.root as VoidNode).children.indexOf(partial[0]) < 0, "nothing of it is in the root";
+	setOn(true);
+	assert partial.length === 2 && partial[1].ref.isLive() && (vh.root as VoidNode).children.indexOf(partial[1]) >= 0, "switching it on builds fresh nodes in the root";
 	dispose();
 }
