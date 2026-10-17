@@ -13,6 +13,45 @@ typedef struct {
 static const int kTolerance = 3;
 static Expectation g_expectations[64];
 static int g_expectationCount = 0;
+static NSMutableDictionary<NSString *, NSValue *> *g_layouts;
+static NSMutableArray<NSArray *> *g_centres, *g_sizes;
+
+void harnessLayout(const char *name, float width, float height) {
+	if (!g_layouts) g_layouts = [NSMutableDictionary dictionary];
+	g_layouts[@(name)] = [NSValue valueWithSize:NSMakeSize(width, height)];
+}
+
+void harnessExpectCentre(const char *name, const char *layout, int left, int top, int r, int g, int b) {
+	if (!g_centres) g_centres = [NSMutableArray array];
+	[g_centres addObject:@[@(name), @(layout), @(left), @(top), @(r), @(g), @(b)]];
+}
+
+void harnessExpectSize(const char *layout, const char *text, float fontSize, int bold, float maxWidth) {
+	if (!g_sizes) g_sizes = [NSMutableArray array];
+	[g_sizes addObject:@[@(layout), @(text), @(fontSize), @(bold), @(maxWidth)]];
+}
+
+static int checkSize(NSArray *c) {
+	NSValue *found = g_layouts[c[0]];
+	if (!found) {
+		printf("FAIL %-28s no layout was reported for it\n", [c[0] UTF8String]);
+		return 1;
+	}
+	NSFont *font = [NSFont systemFontOfSize:[c[2] doubleValue] weight:[c[3] intValue] ? NSFontWeightBold : NSFontWeightRegular];
+	NSTextStorage *storage = [[NSTextStorage alloc] initWithString:c[1] attributes:@{NSFontAttributeName: font}];
+	NSLayoutManager *manager = [NSLayoutManager new];
+	NSTextContainer *container = [[NSTextContainer alloc] initWithSize:NSMakeSize([c[4] doubleValue], CGFLOAT_MAX)];
+	container.lineFragmentPadding = 0;
+	[manager addTextContainer:container];
+	[storage addLayoutManager:manager];
+	[manager ensureLayoutForTextContainer:container];
+	NSSize want = [manager usedRectForTextContainer:container].size, got = found.sizeValue;
+	CGFloat point = 1, slack = 0.01;
+	BOOL ok = got.width >= want.width - slack && got.width <= want.width + point + slack && got.height >= want.height - slack && got.height <= want.height + point + slack;
+	printf("%s %-28s layout %.2fx%.2f, NSLayoutManager %.2fx%.2f, allowed up to one point above\n", ok ? "ok  " : "FAIL", [c[0] UTF8String],
+		got.width, got.height, want.width, want.height);
+	return ok ? 0 : 1;
+}
 
 int harnessIsCheck(void) { return [NSProcessInfo.processInfo.arguments containsObject:@"--check"] ? 1 : 0; }
 
@@ -115,9 +154,26 @@ int harnessSample(const char *title) {
 		if (!ok) failures++;
 		printf("%s %-28s (%3d,%3d) = %3d %3d %3d, want %3d %3d %3d\n", ok ? "ok  " : "FAIL", e->name, e->x, e->y, r, g, b, e->r, e->g, e->b);
 	}
+	for (NSArray *c in g_centres) {
+		NSValue *found = g_layouts[c[1]];
+		if (!found) {
+			printf("FAIL %-28s no layout was reported for %s\n", [c[0] UTF8String], [c[1] UTF8String]);
+			failures++;
+			continue;
+		}
+		int x = [c[2] intValue] + (int)(found.sizeValue.width / 2), y = [c[3] intValue] + (int)(found.sizeValue.height / 2);
+		int r, g, b;
+		pixel(ctx, scale, x, y, &r, &g, &b);
+		BOOL ok = abs(r - [c[4] intValue]) <= kTolerance && abs(g - [c[5] intValue]) <= kTolerance && abs(b - [c[6] intValue]) <= kTolerance;
+		if (!ok) failures++;
+		printf("%s %-28s (%3d,%3d) = %3d %3d %3d, want %3d %3d %3d\n", ok ? "ok  " : "FAIL", [c[0] UTF8String], x, y, r, g, b, [c[4] intValue], [c[5] intValue], [c[6] intValue]);
+	}
+	for (NSArray *c in g_sizes) failures += checkSize(c);
 	fflush(stdout);
 	CGContextRelease(ctx);
 	g_expectationCount = 0;
+	[g_centres removeAllObjects];
+	[g_sizes removeAllObjects];
 	return failures;
 }
 
