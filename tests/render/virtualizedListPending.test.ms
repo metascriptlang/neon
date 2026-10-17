@@ -8,6 +8,7 @@ import { el, text, NeonNode } from "../../src/render/node";
 import { Host, HostNode, MockNode, mockHost, render, mockToString } from "../../src/render/host";
 import { Text } from "../../src/components/primitives";
 import { VirtualizedList, ListRenderItemInfo } from "../../src/components/virtualizedList";
+import { FlatList } from "../../src/components/flatList";
 import { Gate, gatedStr, release } from "../core/asyncClock";
 
 interface Item {
@@ -93,5 +94,31 @@ test "a VirtualizedList nested in a Show leaves with it and comes back" {
 	setOn(true);
 	setTail("?");
 	assert has(shown(), "notea?") && has(shown(), "noteb?"), "and comes back alive: " + shown();
+	dispose();
+}
+
+test "a two-column grid item that reads a pending value waits for it, then shows, and stays reactive" {
+	const gate = new Gate();
+	const [tag, setTag] = createSignal("");
+	const [tail, setTail] = createSignal("!");
+	const [keys, setKeys] = createSignal<Item[]>([{ key: "a" }, { key: "b" }, { key: "c" }]);
+	const [host, root, shown] = mockRoot();
+	const app: NeonNode = (h: Host, parent: HostNode, before: HostNode | null): void => {
+		const note = pendingNote(gate, tag);
+		const row = (info: ListRenderItemInfo<Item>): NeonNode => readsInMount(note, (): string => info.item.key + tail());
+		Loading({ children: element(<FlatList data={keys()} numColumns={2} renderItem={row} />), fallback: loadingB })(h, parent, before);
+	};
+	const dispose = render(app, host, root);
+	assert shown() === "<root><b>loading</b></root>", "the fallback shows while pending: " + shown();
+	await release(gate);
+	assert has(shown(), "notea!") && has(shown(), "noteb!") && has(shown(), "notec!"), "every item shows once it landed: " + shown();
+	gate.open = false;
+	setTag("2");
+	setKeys([{ key: "a" }, { key: "b" }, { key: "c" }, { key: "d" }]);
+	assert !has(shown(), "noted"), "an item built while the value is pending waits: " + shown();
+	await release(gate);
+	assert has(shown(), "note2d!"), "the item shows once it landed: " + shown();
+	setTail("?");
+	assert has(shown(), "note2d?") && has(shown(), "note2a?"), "every item is alive: " + shown();
 	dispose();
 }
