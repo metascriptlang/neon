@@ -93,7 +93,7 @@ when (js) {
 			setOpen(true);
 			setRows(["a", "d", "c"]);
 			assert shape(mount) === freshShape("Bob", true, ["a", "d", "c"]), shape(mount);
-			assert made === 2, "one new row and the reopened branch are the only elements created: " + made.toString();
+			assert made === 4, "one new row, the reopened branch and the detached holder each of the two regions builds its later rows in are the only elements created: " + made.toString();
 		} finally { dispose(); mount.remove(); }
 	}
 
