@@ -166,12 +166,8 @@ function areaPointer(e: PointerEvent): AreaPointerEvent {
 		pressed: e.pressed,
 		dx: e.dx,
 		dy: e.dy,
-		mods: ionPointerCarriesNoMods(e),
+		mods: (e.mods as uint16) as BitSet<AreaKeyMod>,
 	};
-}
-
-function ionPointerCarriesNoMods(e: PointerEvent): BitSet<AreaKeyMod> {
-	return (0 as uint16) as BitSet<AreaKeyMod>;
 }
 
 function resized(window: int32, width: int32, height: int32, scale: float64): void {
