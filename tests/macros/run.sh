@@ -54,5 +54,7 @@ expect_reject tests/macros/caseKeyedComputedRejected.ms "<Case keyed> takes true
 expect_reject_both tests/macros/componentReadCallRejected.ms "STRICT_READ_UNTRACKED. Reactive value .props.n. read directly in <Count>"
 expect_reject_both tests/macros/componentReadValueOfRejected.ms "STRICT_READ_UNTRACKED. Reactive value .props.n. read directly in <Count>"
 expect_reject_both tests/macros/componentWriteInMemoRejected.ms "REACTIVE_WRITE_IN_OWNED_SCOPE. Writing to reactive state with .setCount. inside a computation of <Count>"
+expect_reject_both tests/macros/moduleSetterWriteInMemoRejected.ms "REACTIVE_WRITE_IN_OWNED_SCOPE. Writing to reactive state with .setCount. inside a computation of <Count>"
+expect_reject_both tests/macros/moduleSetterWriteInEffectRejected.ms "REACTIVE_WRITE_IN_OWNED_SCOPE. Writing to reactive state with .setCount. inside a computation of <Count>"
 expect_reject_both tests/macros/componentWriteInHoleRejected.ms "REACTIVE_WRITE_IN_OWNED_SCOPE. Writing to reactive state with .setCount. inside a computation of <Count>"
 exit $fail

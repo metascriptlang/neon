@@ -961,7 +961,6 @@ export macro element(node: Node): Node {
 		if (c.jsxTag.indexOf(".") >= 0) { return null; }
 		const sym = bindSym(c.jsxTag);
 		if (sym === null) { return null; }
-		// .inbox/compiler/2026-10-16-getimpl-of-a-later-function-whose-body-calls-a-macro-fails-undefined-variable.md
 		const impl = getImpl(sym);
 		if (impl === null) { return null; }
 		const decl = impl as Node;
@@ -998,24 +997,19 @@ export macro element(node: Node): Node {
 		}
 		return false;
 	}
-	// Only a setter bound in this body is judged: .inbox/compiler/2026-10-16-getimpl-of-a-destructured-binding-answers-null.md
-	function plainSetters(n: Node, into: string[]): void {
-		if (n.kind === NodeKind.DestructuringDecl && childCount(n) >= 2) {
-			const pattern = childAt(n, 0);
-			const init = peelHidden(childAt(n, 1));
-			if (pattern.kind === NodeKind.ArrayPattern && childCount(pattern) === 2 && init.kind === NodeKind.CallExpr
-				&& pathName(init.callee) === "createSignal" && !givesOwnedWrite(init)) {
-				const setter = childAt(pattern, 1);
-				if (setter.kind === NodeKind.Identifier) { into.push(setter.name); }
-			}
-		}
-		for (let i = 0; i < childCount(n); i = i + 1) { plainSetters(childAt(n, i), into); }
+	function plainSetter(f: Node): boolean {
+		if (f.kind !== NodeKind.Identifier) { return false; }
+		const impl = getImpl(f);
+		if (impl === null || impl.kind !== NodeKind.DestructuringDecl) { return false; }
+		const pattern = impl.destrPattern;
+		const init = peelHidden(impl.destrInit);
+		if (pattern.kind !== NodeKind.ArrayPattern || childCount(pattern) !== 2 || init.kind !== NodeKind.CallExpr) { return false; }
+		const setter = childAt(pattern, 1);
+		return setter.kind === NodeKind.Identifier && setter.name === f.name && pathName(init.callee) === "createSignal" && !givesOwnedWrite(init);
 	}
 	function refuseReactiveMisuse(c: Node): void {
 		const fn = componentFn(c);
 		if (fn === null) { return; }
-		const own: string[] = [];
-		plainSetters(fn as Node, own);
 		// .inbox/compiler/2026-10-15-macro-diagnostic-on-a-getimpl-node-names-the-expanding-file.md
 		const home = componentHome === expansionFile() ? "" : " (<" + c.jsxTag + "> is declared in " + componentHome + ")";
 		let awaited = false;
@@ -1034,7 +1028,7 @@ export macro element(node: Node): Node {
 						error("[STRICT_READ_UNTRACKED] Reactive value " + (name === "" ? "" : "\"" + name + "\" ") + "read directly in <" + c.jsxTag + "> will not update. Move it into a tracking scope (JSX, a memo, or an effect's compute function), or read it once inside untrack(() => ...)." + home, read as Node);
 					}
 				}
-				if (mode === 1 && !awaited && typedBase(f) === "Setter" && own.includes(pathName(f))) {
+				if (mode === 1 && !awaited && typedBase(f) === "Setter" && plainSetter(f)) {
 					error("[REACTIVE_WRITE_IN_OWNED_SCOPE] Writing to reactive state with \"" + pathName(f) + "\" inside a computation of <" + c.jsxTag + "> is not allowed. Move the write into an event handler or an effect's second function, or set the `ownedWrite` option on the signal if this is intentional." + home, f);
 				}
 				scan(n.callee, mode);

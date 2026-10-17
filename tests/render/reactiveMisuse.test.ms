@@ -1,4 +1,4 @@
-import { createSignal, untrack, Accessor } from "../../src/core/signal";
+import { createSignal, untrack, Accessor, Setter } from "../../src/core/signal";
 import { createMemo } from "../../src/core/memo";
 import { createEffect } from "../../src/core/effect";
 import { Cleanup } from "../../src/core/types";
@@ -48,6 +48,25 @@ function OwnedWrite(props: CountProps): NeonNode {
 	return element(<p>{echoed().toString()}/{runs().toString()}</p>);
 }
 
+const [moduleRuns, setModuleRuns] = createSignal(0, { ownedWrite: true });
+const [, setShadowed] = createSignal(0);
+
+function ModuleOwnedWrite(props: CountProps): NeonNode {
+	const echoed = createMemo<int32>((): int32 => { setModuleRuns(2); return props.n(); });
+	return element(<p>{echoed().toString()}/{moduleRuns().toString()}</p>);
+}
+
+interface ShadowProps {
+	n: Accessor<int32>;
+	setShadowed: Setter<int32>;
+}
+
+function Shadowing(props: ShadowProps): NeonNode {
+	const setShadowed: Setter<int32> = props.setShadowed;
+	const echoed = createMemo<int32>((): int32 => { setShadowed(props.n()); return props.n(); });
+	return element(<p>{echoed().toString()}</p>);
+}
+
 test "an event handler writes a signal and a one-time read stays at its first value" {
 	const [n, setN] = createSignal(1);
 	const root = mounted(element(<Handler n={n()} />));
@@ -80,4 +99,15 @@ test "an effect's second function writes a signal" {
 	assert mockToString(root.children[0]) === "<p>3</p>", "initial: " + mockToString(root);
 	setN(6);
 	assert mockToString(root.children[0]) === "<p>6</p>", "after set: " + mockToString(root);
+}
+
+test "a module-level signal with ownedWrite, and a local name shadowing a module-level setter, are written inside a compute" {
+	const [n, setN] = createSignal(3);
+	const owned = mounted(element(<ModuleOwnedWrite n={n()} />));
+	assert mockToString(owned.children[0]) === "<p>3/2</p>", "initial: " + mockToString(owned);
+
+	const [given, setGiven] = createSignal(0, { ownedWrite: true });
+	const shadow = mounted(element(<Shadowing n={n()} setShadowed={setGiven} />));
+	assert mockToString(shadow.children[0]) === "<p>3</p>", "initial: " + mockToString(shadow);
+	assert given() === 3, "the local setter wrote: " + given().toString();
 }
