@@ -279,6 +279,7 @@ static void pointerCancel(void) {
 @end
 
 static NSView *nativeTarget(NeonView *view, NSPoint pointInRoot);
+static void routeWheel(NSEvent *event, NSPoint pointInRoot);
 
 @implementation NeonRoot
 - (NSView *)hitTest:(NSPoint)point {
@@ -311,6 +312,8 @@ static NSView *nativeTarget(NeonView *view, NSPoint pointInRoot);
 	pointerUp((float)p.x, (float)p.y, event.timestamp * 1000.0);
 	requestHostFrame();
 }
+
+- (void)scrollWheel:(NSEvent *)event { routeWheel(event, [self neonPoint:event]); }
 @end
 
 // --- text: one NSLayoutManager per label, the shape RN macOS's RCTTextLayoutManager keeps ---
@@ -542,9 +545,139 @@ static NSTextAlignment alignmentOf(const char *value) {
 	return NSTextAlignmentNatural;
 }
 
-// --- placeholders the later slices replace ---
+// --- ScrollView: an NSScrollView over a flipped document view, as RN macOS's RCTScrollViewComponentView ---
 
-static NSPoint childOffset(NeonView *view) { (void)view; return NSZeroPoint; }
+@interface NeonDocument : NSView
+@end
+
+@implementation NeonDocument
+- (BOOL)isFlipped { return YES; }
+- (NSView *)hitTest:(NSPoint)point { (void)point; return nil; }
+@end
+
+@interface NeonScrollView : NSScrollView
+@property(nonatomic) BOOL enabled;
+@end
+
+@implementation NeonScrollView
+- (NSView *)hitTest:(NSPoint)point { (void)point; return nil; }
+- (void)scrollWheel:(NSEvent *)event {
+	if (self.enabled) [super scrollWheel:event];
+	else [self.nextResponder scrollWheel:event];
+}
+@end
+
+@interface NeonScroll : NeonView
+@property(nonatomic, strong) NeonScrollView *scrollView;
+@property(nonatomic, strong) NeonDocument *document;
+@property(nonatomic) float contentWidth, contentHeight;
+@property(nonatomic) BOOL horizontal;
+@end
+
+@implementation NeonScroll
+
+- (instancetype)initWithFrame:(NSRect)frame {
+	self = [super initWithFrame:frame];
+	if (self) {
+		_scrollView = [[NeonScrollView alloc] initWithFrame:self.bounds];
+		_scrollView.enabled = YES;
+		_scrollView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+		_scrollView.drawsBackground = NO;
+		_scrollView.automaticallyAdjustsContentInsets = NO;
+		_scrollView.scrollerStyle = NSScrollerStyleOverlay;
+		_scrollView.hasVerticalScroller = YES;
+		_scrollView.hasHorizontalScroller = YES;
+		_scrollView.autohidesScrollers = YES;
+		_document = [[NeonDocument alloc] initWithFrame:NSZeroRect];
+		_scrollView.documentView = _document;
+		_scrollView.contentView.postsBoundsChangedNotifications = YES;
+		[NSNotificationCenter.defaultCenter addObserver:self selector:@selector(scrolled:) name:NSViewBoundsDidChangeNotification object:_scrollView.contentView];
+		[self addSubview:_scrollView];
+	}
+	return self;
+}
+
+- (void)dealloc { [NSNotificationCenter.defaultCenter removeObserver:self]; }
+
+- (NSView *)neonChildHost { return self.document; }
+
+- (NSPoint)offset { return self.scrollView.contentView.bounds.origin; }
+
+- (NSPoint)clamp:(NSPoint)p {
+	float maxX = fmaxf(0, self.contentWidth - self.w), maxY = fmaxf(0, self.contentHeight - self.h);
+	return NSMakePoint(fminf(fmaxf(0, (float)p.x), maxX), fminf(fmaxf(0, (float)p.y), maxY));
+}
+
+- (void)moveTo:(NSPoint)p animated:(BOOL)animated {
+	NSClipView *clip = self.scrollView.contentView;
+	p = [self clamp:p];
+	if (animated) {
+		[NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
+			context.duration = 0.25;
+			[clip.animator setBoundsOrigin:p];
+		} completionHandler:nil];
+	} else {
+		[clip scrollToPoint:p];
+	}
+	[self.scrollView reflectScrolledClipView:clip];
+}
+
+- (void)fitDocument {
+	self.document.frame = NSMakeRect(0, 0, self.contentWidth, self.contentHeight);
+	NSPoint now = [self offset], clamped = [self clamp:now];
+	if (!NSEqualPoints(now, clamped)) [self moveTo:clamped animated:NO];
+}
+
+- (void)setFrameSize:(NSSize)size {
+	[super setFrameSize:size];
+	[self fitDocument];
+}
+
+- (void)scrolled:(NSNotification *)note {
+	(void)note;
+	if (!s_scroll.fn || self.neonTag == 0) return;
+	NSPoint p = [self offset];
+	g_scrollTag = self.neonTag;
+	g_scrollPhase = 0;
+	g_scrollX = (float)p.x;
+	g_scrollY = (float)p.y;
+	g_scrollW = self.w;
+	g_scrollH = self.h;
+	g_scrollContentW = fmaxf(self.contentWidth, self.w);
+	g_scrollContentH = fmaxf(self.contentHeight, self.h);
+	invoke(s_scroll);
+	requestHostFrame();
+}
+@end
+
+static NeonScroll *scrollOf(void *view, const char *what) {
+	if ([as(view) isKindOfClass:NeonScroll.class]) return (NeonScroll *)as(view);
+	char message[192];
+	snprintf(message, sizeof message, "%s on a view that is not a ScrollView", what);
+	fail(message);
+	return nil;
+}
+
+static NSPoint childOffset(NeonView *view) {
+	return [view isKindOfClass:NeonScroll.class] ? [(NeonScroll *)view offset] : NSZeroPoint;
+}
+
+// A wheel goes to the innermost ScrollView under the pointer; one that does not take it hands it back
+// through its responder chain to the root, which carries it on from the ScrollView above.
+static NeonView *g_wheelFrom = nil;
+
+static void routeWheel(NSEvent *event, NSPoint pointInRoot) {
+	NeonView *start = g_wheelFrom ? parentOf(g_wheelFrom) : hitTest((float)pointInRoot.x, (float)pointInRoot.y, NULL, NULL);
+	for (NeonView *at = start; at && at != g_root; at = parentOf(at)) {
+		if (![at isKindOfClass:NeonScroll.class]) continue;
+		NeonView *previous = g_wheelFrom;
+		g_wheelFrom = at;
+		[((NeonScroll *)at).scrollView scrollWheel:event];
+		g_wheelFrom = previous;
+		return;
+	}
+}
+
 static NSView *nativeTarget(NeonView *view, NSPoint pointInRoot) { (void)view; (void)pointInRoot; return nil; }
 
 // --- handoff ---
@@ -856,14 +989,52 @@ void niMeasureText(void *label, float maxWidth) {
 float niMeasuredW(void) { return g_measuredW; }
 float niMeasuredH(void) { return g_measuredH; }
 
-UNIMPLEMENTED(void *, niScrollCreate, (void))
-UNIMPLEMENTED_VOID(niScrollSetTag, (void *scroll, int32_t tag))
-UNIMPLEMENTED_VOID(niScrollSetContentSize, (void *scroll, float w, float h))
-UNIMPLEMENTED_VOID(niScrollTo, (void *scroll, float x, float y, int animated))
-UNIMPLEMENTED_VOID(niScrollSetOption, (void *scroll, const char *name, const char *value))
-UNIMPLEMENTED_VOID(niScrollShift, (void *scroll, float dx, float dy))
-UNIMPLEMENTED(float, niScrollOffsetX, (void *scroll))
-UNIMPLEMENTED(float, niScrollOffsetY, (void *scroll))
+// --- bridge.h: ScrollView ---
+
+void *niScrollCreate(void) {
+	requireAttached("niScrollCreate");
+	return (void *)CFBridgingRetain([[NeonScroll alloc] initWithFrame:NSZeroRect]);
+}
+
+void niScrollSetTag(void *scroll, int32_t tag) { scrollOf(scroll, "niScrollSetTag").neonTag = tag; }
+
+void niScrollSetContentSize(void *scroll, float w, float h) {
+	NeonScroll *s = scrollOf(scroll, "niScrollSetContentSize");
+	s.contentWidth = w;
+	s.contentHeight = h;
+	[s fitDocument];
+	requestHostFrame();
+}
+
+void niScrollTo(void *scroll, float x, float y, int animated) {
+	[scrollOf(scroll, "niScrollTo") moveTo:NSMakePoint(x, y) animated:animated != 0];
+	requestHostFrame();
+}
+
+void niScrollShift(void *scroll, float dx, float dy) {
+	NeonScroll *s = scrollOf(scroll, "niScrollShift");
+	NSPoint now = [s offset];
+	[s moveTo:NSMakePoint(now.x + dx, now.y + dy) animated:NO];
+}
+
+float niScrollOffsetX(void *scroll) { return (float)[scrollOf(scroll, "niScrollOffsetX") offset].x; }
+float niScrollOffsetY(void *scroll) { return (float)[scrollOf(scroll, "niScrollOffsetY") offset].y; }
+
+void niScrollSetOption(void *scroll, const char *name, const char *value) {
+	NeonScroll *s = scrollOf(scroll, "niScrollSetOption");
+	BOOL yes = !strcmp(value, "true");
+	if (!strcmp(name, "horizontal")) s.horizontal = yes;
+	else if (!strcmp(name, "scrollEnabled")) s.scrollView.enabled = strcmp(value, "false") != 0;
+	else if (!strcmp(name, "showsVerticalScrollIndicator")) s.scrollView.hasVerticalScroller = strcmp(value, "false") != 0;
+	else if (!strcmp(name, "showsHorizontalScrollIndicator")) s.scrollView.hasHorizontalScroller = strcmp(value, "false") != 0;
+	else if (!strcmp(name, "keyboardShouldPersistTaps") || !strcmp(name, "keyboardDismissMode")) {}
+	else if ((!strcmp(name, "pagingEnabled") || !strcmp(name, "refreshEnabled") || !strcmp(name, "refreshing")) && !yes) {}
+	else {
+		char what[160];
+		snprintf(what, sizeof what, "niScrollSetOption(%s=%s)", name, value);
+		unimplemented(what);
+	}
+}
 UNIMPLEMENTED(void *, niInputCreate, (void))
 UNIMPLEMENTED(void *, niTextAreaCreate, (void))
 UNIMPLEMENTED_VOID(niControlSetTag, (void *control, int32_t tag))
