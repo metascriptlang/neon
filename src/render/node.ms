@@ -4,12 +4,14 @@
 // list only known at runtime (src/components/primitives.ms).
 
 import { createRenderEffect } from "../core/effect";
+import { onCleanup } from "../core/cleanup";
 import { Cleanup } from "../core/types";
 import { Style } from "./style";
 import { NeonEvent } from "./event";
 import { Host, HostNode, NeonNode, RefFn } from "./hostTypes";
-import { Row, place, reconcileArrays, mountAt, removeRow } from "./reconcile";
-import { regionAnchor, regionParent, sealRegion, serverRegionStart, serverRegionEnd } from "./claim";
+import { Row, BUILT_IN_PLACE, makeRow, place, reconcileArrays, mountAt, removeRow } from "./reconcile";
+import { regionAnchor, regionParent, sealRegion, serverRegionStart, serverRegionEnd, unclaimed, claimMark, claimRewind, ClaimMark } from "./claim";
+import { getOwner } from "../core/runtime";
 import { isServer } from "./environment";
 import { bindText, bindAttr, bindStyleAll, applyRef } from "./bind";
 
@@ -27,7 +29,25 @@ export interface VEvent {
 	handler: (e: NeonEvent) => void;
 }
 
-export type RegionFn = (host: Host) => () => Row[];
+// Where a region's rows are built. A row is built when its rows memo makes it (Solid flow.ts:226, map.ts:362),
+// into the region's holder; the region effect only moves it in. The server writes a region's rows in
+// document order from its own pass, so there a row is described and not built.
+export class RowHome {
+	parent: HostNode;
+	before: HostNode | null;
+	server: boolean;
+	first: boolean = true;
+	holder: HostNode | null = null;
+	staged: Row[] = [];
+
+	constructor(parent: HostNode, before: HostNode | null, server: boolean) {
+		this.parent = parent;
+		this.before = before;
+		this.server = server;
+	}
+}
+
+export type RegionFn = (host: Host, home: RowHome) => () => Row[];
 
 export type ComponentFn<P = unknown> = (props: P) => NeonNode;
 
@@ -86,6 +106,52 @@ export function dynText(thunk: () => string): NeonNode {
 	};
 }
 
+export function newHolder(host: Host): HostNode {
+	let holder: HostNode | null = null;
+	unclaimed(host, (): void => { holder = host.createElement("view"); });
+	return holder as HostNode;
+}
+
+function buildInto(host: Host, parent: HostNode, before: HostNode | null, row: Row, mark: ClaimMark | null): void {
+	try {
+		mountAt(host, parent, before, row);
+	} catch (e) {
+		row.keep = null;
+		if (mark === null) {
+			removeRow(host, parent, row);
+		} else {
+			row.start = null;
+			row.end = null;
+		}
+		claimRewind(host, mark);
+		throw e;
+	}
+}
+
+export function mountContent(host: Host, holder: HostNode, parent: HostNode, before: HostNode | null, row: Row, firstMount: boolean): void {
+	const mark = firstMount ? claimMark(host) : null;
+	if (mark === null) { buildInto(host, holder, null, row, null); } else { buildInto(host, parent, before, row, mark); }
+}
+
+export function holderOf(host: Host, home: RowHome): HostNode {
+	if (home.holder === null) { home.holder = newHolder(host); }
+	return home.holder as HostNode;
+}
+
+// A later pass builds into the holder: its apply can be held while a Loading is pending, and rows built in place would show beside the rows they replace.
+export function builtRow(host: Host, home: RowHome, view: NeonNode): Row {
+	const row = makeRow(view);
+	if (home.server) { return row; }
+	if (home.first) {
+		buildInto(host, home.parent, home.before, row, claimMark(host));
+		row.slot = BUILT_IN_PLACE;
+	} else {
+		buildInto(host, holderOf(host, home), null, row, null);
+	}
+	home.staged.push(row);
+	return row;
+}
+
 export function mountChild(host: Host, parent: HostNode, before: HostNode | null, s: string): void {
 	place(host, parent, host.createText(s), before);
 }
@@ -104,7 +170,7 @@ export function mountChild(host: Host, parent: HostNode, before: HostNode | null
 // caught) takes back what it wrote and writes the new rows before the anchor follows.
 function serverRegion(host: Host, parent: HostNode, before: HostNode | null, fn: RegionFn): void {
 	serverRegionStart(host, parent, before);
-	const rows = fn(host);
+	const rows = fn(host, new RowHome(parent, before, true));
 	let next: Row[] = [];
 	let written = false;
 	createRenderEffect<Row[]>(
@@ -142,19 +208,26 @@ export function regionNode(fn: RegionFn): NeonNode {
 	return (host: Host, parent: HostNode, before: HostNode | null): void => {
 		if (isServer()) { serverRegion(host, parent, before, fn); return; }
 		const anchor = regionAnchor(host, parent, before);
+		const home = new RowHome(parent, anchor, false);
+		if (getOwner() !== null) { onCleanup((): void => { if (home.holder !== null) { host.release(home.holder as HostNode); } }); }
 		let current: Row[] = [];
 		let mounted = false;
-		const rows = fn(host);
+		const rows = fn(host, home);
 		createRenderEffect<Row[]>(
 			(prev: Row[] | null): Row[] => rows(),
 			(next: Row[], prev: Row[] | null): Cleanup | null => {
 				const at = mounted ? regionParent(host, anchor, "regionNode") : parent;
 				reconcileArrays(host, at, current, next, anchor);
+				for (const r of home.staged) {
+					if (r.slot < 0) { removeRow(host, r.parent as HostNode, r); }
+				}
+				home.staged = [];
 				mounted = true;
 				current = next.slice(0, next.length);
 				return null;
 			},
 		);
+		home.first = false;
 		sealRegion(host, parent, anchor);
 	};
 }

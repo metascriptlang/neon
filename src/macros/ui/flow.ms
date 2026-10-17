@@ -13,18 +13,17 @@ import { Computation, NotReadyError, ContextEntry } from "../../core/types";
 import { Hole, Rules, ServerContext, ServerMarks, MAX_PASSES, serverContext, withServerContext, pendingWaits, unconverged } from "../../core/serverContext";
 import { isServer, asServer } from "../../render/environment";
 import { serverCaught } from "../../render/ssr";
-import { NeonNode, regionNode } from "../../render/node";
+import { NeonNode, RowHome, regionNode, builtRow, mountContent, holderOf } from "../../render/node";
 import { Host, HostNode } from "../../render/hostTypes";
 import { Row, makeRow, mountAt, removeRow, place } from "../../render/reconcile";
 import { HOLES_DONE, HOLES_WAIT, runHoles } from "../../render/bind";
 import { List } from "../../core/list";
 import { listRegion } from "../../render/listRegion";
-import { unclaimed, claimMark, claimRewind } from "../../render/claim";
 
-function fallbackRow(fb: NeonNode | null): (() => Row) | null {
+function fallbackRow(host: Host, home: RowHome, fb: NeonNode | null): (() => Row) | null {
 	if (fb === null) { return null; }
 	const view = fb as NeonNode;
-	return (): Row => makeRow(view);
+	return (): Row => builtRow(host, home, view);
 }
 
 function indexRead(declared: boolean | null): boolean {
@@ -37,10 +36,10 @@ export function For<T>(props: {
 	fallback?: NeonNode | null;
 	usesIndex?: boolean | null;
 }): NeonNode {
-	return regionNode((h) => mapArray<T, Row>(
+	return regionNode((h, home) => mapArray<T, Row>(
 		props.each,
-		(item: T, index: Accessor<number>): Row => makeRow(props.children(item, index)),
-		fallbackRow(props.fallback),
+		(item: T, index: Accessor<number>): Row => builtRow(h, home, props.children(item, index)),
+		fallbackRow(h, home, props.fallback),
 		indexRead(props.usesIndex),
 	));
 }
@@ -52,11 +51,11 @@ export function ForKeyedBy<T, K>(props: {
 	fallback?: NeonNode | null;
 	usesIndex?: boolean | null;
 }): NeonNode {
-	return regionNode((h) => mapArrayKeyedBy<T, K, Row>(
+	return regionNode((h, home) => mapArrayKeyedBy<T, K, Row>(
 		props.each,
 		props.keyed,
-		(item: Accessor<T>, index: Accessor<number>): Row => makeRow(props.children(item, index)),
-		fallbackRow(props.fallback),
+		(item: Accessor<T>, index: Accessor<number>): Row => builtRow(h, home, props.children(item, index)),
+		fallbackRow(h, home, props.fallback),
 		indexRead(props.usesIndex),
 	));
 }
@@ -66,10 +65,10 @@ export function ForUnkeyed<T>(props: {
 	children: (item: Accessor<T>, index: number) => NeonNode;
 	fallback?: NeonNode | null;
 }): NeonNode {
-	return regionNode((h) => mapArrayByPosition<T, Row>(
+	return regionNode((h, home) => mapArrayByPosition<T, Row>(
 		props.each,
-		(item: Accessor<T>, index: number): Row => makeRow(props.children(item, index)),
-		fallbackRow(props.fallback),
+		(item: Accessor<T>, index: number): Row => builtRow(h, home, props.children(item, index)),
+		fallbackRow(h, home, props.fallback),
 	));
 }
 
@@ -79,11 +78,11 @@ export function Repeat(props: {
 	fallback?: NeonNode | null;
 	children: (index: number) => NeonNode;
 }): NeonNode {
-	return regionNode((h) => repeat<Row>(
+	return regionNode((h, home) => repeat<Row>(
 		props.count,
-		(index: number): Row => makeRow(props.children(index)),
+		(index: number): Row => builtRow(h, home, props.children(index)),
 		props.from === null ? null : (props.from as () => number),
-		fallbackRow(props.fallback),
+		fallbackRow(h, home, props.fallback),
 	));
 }
 
@@ -136,39 +135,15 @@ function mountedPlain(children: NeonNode, tree: Computation, state: MountedState
 	};
 }
 
-function mountContent(host: Host, holder: HostNode, parent: HostNode, before: HostNode | null, row: Row, firstMount: boolean): void {
-	const mark = firstMount ? claimMark(host) : null;
-	try {
-		if (mark === null) { mountAt(host, holder, null, row); } else { mountAt(host, parent, before, row); }
-	} catch (e) {
-		row.keep = null;
-		if (mark === null) {
-			removeRow(host, holder, row);
-		} else {
-			row.start = null;
-			row.end = null;
-		}
-		claimRewind(host, mark);
-		throw e;
-	}
-}
-
-function newHolder(host: Host): HostNode {
-	let holder: HostNode | null = null;
-	unclaimed(host, (): void => { holder = host.createElement("view"); });
-	return holder as HostNode;
-}
-
 type ErroredFallback = (err: Accessor<Error>, reset: () => void) => NeonNode;
 
-function errorRows(host: Host, parent: HostNode, before: HostNode | null, children: NeonNode, fallbackOf: ErroredFallback, state: MountedState): Accessor<Row[]> {
+function errorRows(host: Host, home: RowHome, children: NeonNode, fallbackOf: ErroredFallback, state: MountedState): Accessor<Row[]> {
 	let content: NeonNode | null = null;
 	let fallback: NeonNode | null = null;
 	let contentRow: Row | null = null;
 	let firstMount = true;
 	let revision: int32 = 0;
-	const holder = newHolder(host);
-	onCleanup((): void => { host.release(holder); });
+	const holder = holderOf(host, home);
 	const shows = createErrorBoundary<int32>(
 		(): int32 => {
 			if (content === null) { content = mountedPlain(children, getOwner() as Computation, state); }
@@ -179,7 +154,7 @@ function errorRows(host: Host, parent: HostNode, before: HostNode | null, childr
 				const first = firstMount;
 				firstMount = false;
 				try {
-					mountContent(host, holder, parent, before, row, first);
+					mountContent(host, holder, home.parent, home.before, row, first);
 				} catch (e) {
 					if (state.scope !== null) { disposeChildren(state.scope as Computation, true); }
 					state.scope = null;
@@ -191,9 +166,7 @@ function errorRows(host: Host, parent: HostNode, before: HostNode | null, childr
 		},
 		(err: Accessor<Error>, reset: () => void): int32 => {
 			fallback = (host: Host, parent: HostNode, before: HostNode | null): void => {
-				mountGuarded((): void => {
-					fallbackOf(err, (): void => { flush((): number => { reset(); return 0; }); })(host, parent, before);
-				}, state);
+				fallbackOf(err, (): void => { flush((): number => { reset(); return 0; }); })(host, parent, before);
 			};
 			revision += 1;
 			return revision;
@@ -201,7 +174,7 @@ function errorRows(host: Host, parent: HostNode, before: HostNode | null, childr
 	);
 	return createMemo<Row[]>(() => {
 		if (shows() === 0) { return [contentRow as Row]; }
-		return [makeRow(fallback as NeonNode)];
+		return [builtRow(host, home, fallback as NeonNode)];
 	});
 }
 
@@ -278,18 +251,16 @@ export function Errored(props: {
 	return (host: Host, parent: HostNode, before: HostNode | null): void => {
 		const state = new MountedState();
 		const server = isServer();
-		regionNode((h) => {
-			if (!server) { return errorRows(h, parent, before, props.children, props.fallback, state); }
+		regionNode((h, home) => {
+			if (!server) { return errorRows(h, home, props.children, props.fallback, state); }
 			return settledOnServer(errorRowsOnServer(h, props.children, props.fallback, new Signal<Error | null>(null, null, true), state), state);
 		})(host, parent, before);
-		if (!server && state.failed) { flush(); }
 	};
 }
 
-function loadingRows(host: Host, parent: HostNode, before: HostNode | null, children: NeonNode, fallback: NeonNode | null): Accessor<Row[]> {
+function loadingRows(host: Host, home: RowHome, children: NeonNode, fallback: NeonNode | null): Accessor<Row[]> {
 	const state = new MountedState();
-	const holder = newHolder(host);
-	onCleanup((): void => { host.release(holder); });
+	const holder = holderOf(host, home);
 	let contentRow: Row | null = null;
 	let firstMount = true;
 	const showsContent = createLoadingBoundary<boolean>(
@@ -299,7 +270,7 @@ function loadingRows(host: Host, parent: HostNode, before: HostNode | null, chil
 			row.keep = holder;
 			const first = firstMount;
 			firstMount = false;
-			mountContent(host, holder, parent, before, row, first);
+			mountContent(host, holder, home.parent, home.before, row, first);
 			contentRow = row;
 			return true;
 		},
@@ -308,7 +279,7 @@ function loadingRows(host: Host, parent: HostNode, before: HostNode | null, chil
 	return createMemo<Row[]>(() => {
 		if (showsContent()) { return [contentRow as Row]; }
 		if (fallback === null) { return [] as Row[]; }
-		return [makeRow(fallback as NeonNode)];
+		return [builtRow(host, home, fallback as NeonNode)];
 	});
 }
 
@@ -498,13 +469,13 @@ export function Loading(props: {
 	fallback?: NeonNode | null;
 }): NeonNode {
 	return (host: Host, parent: HostNode, before: HostNode | null): void => {
-		regionNode((h) => isServer() ? loadingOnServer(props.children, props.fallback) : loadingRows(h, parent, before, props.children, props.fallback))(host, parent, before);
+		regionNode((h, home) => isServer() ? loadingOnServer(props.children, props.fallback) : loadingRows(h, home, props.children, props.fallback))(host, parent, before);
 	};
 }
 
-function shownRows(on: boolean, children: NeonNode, fallback: NeonNode | null): Row[] {
-	if (on) { return [makeRow(children)]; }
-	if (fallback !== null) { return [makeRow(fallback as NeonNode)]; }
+function shownRows(host: Host, home: RowHome, on: boolean, children: NeonNode, fallback: NeonNode | null): Row[] {
+	if (on) { return [builtRow(host, home, children)]; }
+	if (fallback !== null) { return [builtRow(host, home, fallback as NeonNode)]; }
 	return [] as Row[];
 }
 
@@ -514,9 +485,9 @@ export function Show(props: {
 	children: NeonNode;
 	fallback?: NeonNode | null;
 }): NeonNode {
-	return regionNode((h) => {
+	return regionNode((h, home) => {
 		const cond = createMemo<boolean>(() => props.when());
-		return createMemo<Row[]>(() => shownRows(cond(), props.children, props.fallback));
+		return createMemo<Row[]>(() => shownRows(h, home, cond(), props.children, props.fallback));
 	});
 }
 
@@ -525,7 +496,7 @@ export function ShowKeyed(props: {
 	children: NeonNode;
 	fallback?: NeonNode | null;
 }): NeonNode {
-	return regionNode((h) => createMemo<Row[]>(() => shownRows(props.when(), props.children, props.fallback)));
+	return regionNode((h, home) => createMemo<Row[]>(() => shownRows(h, home, props.when(), props.children, props.fallback)));
 }
 
 export function ShowWith<T>(props: {
@@ -631,16 +602,16 @@ export function caseWhen<M>(source: () => M, use: (value: Accessor<M>) => CaseAr
 	});
 }
 
-function unmatchedRows(fallback: NeonNode | null): Row[] {
+function unmatchedRows(host: Host, home: RowHome, fallback: NeonNode | null): Row[] {
 	if (fallback === null) { return [] as Row[]; }
-	return [makeRow(fallback as NeonNode)];
+	return [builtRow(host, home, fallback as NeonNode)];
 }
 
 export function Match(props: {
 	cases: CaseArm[];
 	fallback?: NeonNode | null;
 }): NeonNode {
-	return regionNode((h) => {
+	return regionNode((h, home) => {
 		const owner = getOwner();
 		const bound: BoundCase[] = [];
 		const taken: Accessor<boolean>[] = [];
@@ -663,9 +634,9 @@ export function Match(props: {
 		});
 		return createMemo<Row[]>(() => {
 			const at = selected();
-			if (at < 0) { return unmatchedRows(props.fallback); }
+			if (at < 0) { return unmatchedRows(h, home, props.fallback); }
 			bound[at].follow();
-			return [makeRow(bound[at].content())];
+			return [builtRow(h, home, bound[at].content())];
 		});
 	});
 }

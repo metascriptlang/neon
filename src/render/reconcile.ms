@@ -30,6 +30,8 @@ export interface Row {
 	keep: HostNode | null;
 }
 
+export const BUILT_IN_PLACE = -2;
+
 function noView(host: Host, parent: HostNode, before: HostNode | null): void {}
 
 export function makeRow(view: NeonNode): Row {
@@ -154,8 +156,8 @@ export function reconcileArrays(host: Host, parent: HostNode, a: Row[], b: Row[]
 		const row = b[i];
 		if (row.stamp === stamp) { throw "reconcileArrays: the next list holds the same row twice"; }
 		row.stamp = stamp;
+		row.kept = row.slot === BUILT_IN_PLACE;
 		row.slot = i;
-		row.kept = false;
 	}
 
 	const survivors: Row[] = [];
