@@ -6,8 +6,8 @@ import {
 } from "../components/panResponder";
 import { createMemo } from "../core/memo";
 import { NeonNode, Host } from "../render/hostTypes";
-import { regionNode } from "../render/node";
-import { Row, makeRow } from "../render/reconcile";
+import { RowHome, regionNode, builtRow } from "../render/node";
+import { Row } from "../render/reconcile";
 import { Style, TextAlign } from "../render/style";
 import { Platform } from "../api/platform";
 import { AnimatedValue } from "../animation/index";
@@ -34,10 +34,10 @@ type RowList = () => Row[];
 
 export function Slot(props: { node: Accessor<NeonNode | null> }): NeonNode {
 	const read = props.node;
-	return regionNode((h: Host): RowList => createMemo<Row[]>((): Row[] => {
+	return regionNode((h: Host, home: RowHome): RowList => createMemo<Row[]>((): Row[] => {
 		const node = read();
 		if (node === null) { return [] as Row[]; }
-		return [makeRow(node as NeonNode)];
+		return [builtRow(h, home, node as NeonNode)];
 	}));
 }
 
