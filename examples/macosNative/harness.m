@@ -228,3 +228,28 @@ int harnessPostKeys(const char *title, const char *keys) {
 	}
 	return (int)all.length;
 }
+
+static NSTextView *focusedText(NSWindow *window) {
+	NSResponder *at = window.firstResponder;
+	return [at isKindOfClass:NSTextView.class] ? (NSTextView *)at : nil;
+}
+
+static NSTextView *requireFocusedText(const char *title) {
+	NSTextView *view = focusedText(windowTitled(title));
+	if (!view) {
+		fprintf(stderr, "harness: no text view has the focus in \"%s\"\n", title);
+		exit(2);
+	}
+	return view;
+}
+
+void harnessCompose(const char *title, const char *marked) {
+	NSString *text = @(marked);
+	[requireFocusedText(title) setMarkedText:text selectedRange:NSMakeRange(text.length, 0) replacementRange:NSMakeRange(NSNotFound, 0)];
+}
+
+void harnessCommit(const char *title, const char *text) {
+	[requireFocusedText(title) insertText:@(text) replacementRange:NSMakeRange(NSNotFound, 0)];
+}
+
+int harnessFocusedText(const char *title) { return focusedText(windowTitled(title)) ? 1 : 0; }

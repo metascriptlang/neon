@@ -19,6 +19,10 @@ void harnessPointer(const char *title, int kind, int x, int y);
 // A pixel-unit wheel event of the given points; negative moves the content up, as a scroll down does.
 void harnessWheel(const char *title, int x, int y, int points);
 int harnessPostKeys(const char *title, const char *keys);
+// The first responder's NSTextInputClient, as an input method drives it: marked text, then a commit replacing it.
+void harnessCompose(const char *title, const char *marked);
+void harnessCommit(const char *title, const char *text);
+int harnessFocusedText(const char *title);
 
 #ifdef __cplusplus
 }
