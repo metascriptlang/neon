@@ -1,5 +1,5 @@
 import { PermissionReply, PermissionServices, installPermissionServices } from "../../api/permissionServices";
-import { FIELD, ask, refusal } from "./appBridge";
+import { FIELD, appCall, ask, refusal } from "./appBridge";
 import { niPermissionCommand } from "./commands.h";
 import { androidLibrary } from "../../../../ion/src/android";
 
@@ -13,9 +13,15 @@ when (ios) {
 	androidLibrary("../android/permissions");
 }
 
-function command(name: string, arg: string): string {
-	const reply: string = niPermissionCommand(name, arg);
-	return reply;
+when (ios || android) {
+	function command(name: string, arg: string): string {
+		const reply: string = niPermissionCommand(name, arg);
+		return reply;
+	}
+} else {
+	function command(name: string, arg: string): string {
+		return appCall(name, arg);
+	}
 }
 
 function permissionReply(reply: string): PermissionReply {

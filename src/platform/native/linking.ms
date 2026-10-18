@@ -1,14 +1,20 @@
 import { LinkingServices, installLinkingServices, urlEvent } from "../../api/linkingServices";
-import { AppEvent, onNativeAppEvent } from "./appBridge";
+import { appCall, AppEvent, onNativeAppEvent } from "./appBridge";
 import { niLinkingCommand } from "./commands.h";
 
 when (ios) {
 	@compile("../ios/linking.m", "-fobjc-arc");
 }
 
-function command(name: string, arg: string): string {
-	const reply: string = niLinkingCommand(name, arg);
-	return reply;
+when (ios || android) {
+	function command(name: string, arg: string): string {
+		const reply: string = niLinkingCommand(name, arg);
+		return reply;
+	}
+} else {
+	function command(name: string, arg: string): string {
+		return appCall(name, arg);
+	}
 }
 
 export const nativeLinkingServices: LinkingServices = {

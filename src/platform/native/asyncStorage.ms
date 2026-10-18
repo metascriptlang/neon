@@ -1,5 +1,5 @@
 import { StorageServices, installStorageServices } from "../../api/storageServices";
-import { FIELD } from "./appBridge";
+import { FIELD, appCall } from "./appBridge";
 import { niStorageCommand } from "./commands.h";
 import { androidLibrary } from "../../../../ion/src/android";
 
@@ -9,9 +9,15 @@ when (ios) {
 	androidLibrary("../android/storage");
 }
 
-function command(name: string, arg: string): string {
-	const reply: string = niStorageCommand(name, arg);
-	return reply;
+when (ios || android) {
+	function command(name: string, arg: string): string {
+		const reply: string = niStorageCommand(name, arg);
+		return reply;
+	}
+} else {
+	function command(name: string, arg: string): string {
+		return appCall(name, arg);
+	}
 }
 
 const PRESENT = "=";

@@ -1,7 +1,7 @@
 import {
 	NetInfoDetails, NetInfoServices, NetInfoState, NetInfoStateType, installNetInfoServices, netInfoEvent,
 } from "../../api/netInfoServices";
-import { AppEvent, FIELD, onNativeAppEvent } from "./appBridge";
+import { AppEvent, FIELD, appCall, onNativeAppEvent } from "./appBridge";
 import { niNetInfoCommand } from "./commands.h";
 import { androidLibrary } from "../../../../ion/src/android";
 
@@ -12,9 +12,15 @@ when (ios) {
 	androidLibrary("../android/netInfo");
 }
 
-function command(name: string, arg: string): string {
-	const reply: string = niNetInfoCommand(name, arg);
-	return reply;
+when (ios || android) {
+	function command(name: string, arg: string): string {
+		const reply: string = niNetInfoCommand(name, arg);
+		return reply;
+	}
+} else {
+	function command(name: string, arg: string): string {
+		return appCall(name, arg);
+	}
 }
 
 function flag(text: string): boolean | null {

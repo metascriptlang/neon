@@ -1,5 +1,5 @@
 import { BatterySnapshot, DeviceInfoServices, DeviceSnapshot, installDeviceInfoServices } from "../../api/deviceInfoServices";
-import { FIELD, ask } from "./appBridge";
+import { FIELD, appCall, ask } from "./appBridge";
 import { niDeviceCommand } from "./commands.h";
 import { androidLibrary } from "../../../../ion/src/android";
 
@@ -9,9 +9,15 @@ when (ios) {
 	androidLibrary("../android/device");
 }
 
-function command(name: string, arg: string): string {
-	const reply: string = niDeviceCommand(name, arg);
-	return reply;
+when (ios || android) {
+	function command(name: string, arg: string): string {
+		const reply: string = niDeviceCommand(name, arg);
+		return reply;
+	}
+} else {
+	function command(name: string, arg: string): string {
+		return appCall(name, arg);
+	}
 }
 
 function decodeDevice(value: string): DeviceSnapshot {

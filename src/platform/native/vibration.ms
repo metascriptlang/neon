@@ -1,5 +1,5 @@
 import { VibrationServices, installVibrationServices } from "../../api/vibrationServices";
-import { FIELD } from "./appBridge";
+import { FIELD, appCall } from "./appBridge";
 import { niVibrationCommand } from "./commands.h";
 
 when (ios) {
@@ -7,9 +7,15 @@ when (ios) {
 	@passL("-framework AudioToolbox");
 }
 
-function command(name: string, arg: string): string {
-	const reply: string = niVibrationCommand(name, arg);
-	return reply;
+when (ios || android) {
+	function command(name: string, arg: string): string {
+		const reply: string = niVibrationCommand(name, arg);
+		return reply;
+	}
+} else {
+	function command(name: string, arg: string): string {
+		return appCall(name, arg);
+	}
 }
 
 function vibrate(pattern: int32[], repeat: boolean): void {
