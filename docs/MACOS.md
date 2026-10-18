@@ -3,7 +3,7 @@
 Status: built 2026-10-18 to the level `WINDOWS.md` reached on Windows: a full-window `<Void>` in an Ion window, and the
 native host behind `src/platform/native/bridge.h` with View, Text (styled runs, recolour without a relayout, press on a
 run), Pressable, ScrollView and TextInput, frames on demand and app services through Ion. Past the Windows level:
-Switch, ActivityIndicator and Image, with `Image.getSize`, `Image.prefetch` and `defaultSource` (2026-10-18). Modal, the
+Switch, ActivityIndicator, Image (with `Image.getSize`, `Image.prefetch` and `defaultSource`) and Modal (2026-10-18). The
 `niControlCreate` controls and accessibility exposed to VoiceOver abort by name (`UNIMPLEMENTED` in
 `src/platform/macos/bridge.m`). The `niControlCreate` kinds stay out of the host's core: a component composable from
 the primitives is written once in Neon.
@@ -20,6 +20,7 @@ the primitives is written once in Neon.
 | Switch | `NSSwitch` centred at its fitting size; `thumbColor` and the track colours are accepted and not drawn, since `NSSwitch` has no tint API | `ReactApple/Libraries/RCTUIKit/RCTUISwitch.m` |
 | ActivityIndicator | a spinning `NSProgressIndicator`, `color` as a `CIColorPolynomial` filter on its layer | `ReactApple/Libraries/RCTUIKit/RCTUIActivityIndicatorView.m` |
 | Image | the decoded image as a layer's contents at one point per pixel, `resizeMode` as `contentsGravity`, `repeat` as a pattern colour, `blurRadius` in image pixels as on iOS; one `NSCache` shared with `Image.getSize` | `ReactApple/Libraries/RCTUIKit/RCTUIImageView.m` |
+| Modal | a view filling the root above the app, where `src/components/modal.ms` portals it, as the iOS host does; `fade` and `slide` animate its arrival; Escape asks the app to close the topmost one (`onRequestClose`), the macOS stand-in for iOS's escape gesture | none: RN macOS compiles its Modal out (`React/Views/RCTModalHostView.m` is `#if !TARGET_OS_OSX`) |
 | scrolling | `NSScrollView` over a flipped document view, overlay scrollers, `NSViewBoundsDidChangeNotification` for onScroll | `React/Fabric/Mounting/ComponentViews/ScrollView/RCTScrollViewComponentView.mm` |
 | pointer | the root takes AppKit's mouse events over Neon's views and runs Neon's own hit test, ported from the Windows host (`src/platform/windows/bridge.cpp`) | `React/Base/RCTTouchHandler.m` |
 
@@ -83,6 +84,7 @@ layers (not the window server), so one `screencapture -l <window>` per example w
 | `ionScroll` | 10 checks: clip, a wheel to y=240, a press on band 3, `scrollTo` clamped to 800, a wheel outside moving nothing |
 | `ionVoid` | 3 clicks on +1, "hi" and Return through Ion's records; the drawn frame shows "Count: 3" and "Hello, hi" |
 | `ionControls` | 27 checks: `cover`, `contain`, `repeat` and `blurRadius` sampled, onLoad at the pixel size, onError for a missing file with and without a `defaultSource` (which stays drawn), `Image.getSize`, a controlled Switch flipped by a click, a fixed one returning to its value, a disabled one ignoring the click, a spinner drawn and hidden once stopped; 3 runs of 3 green (`msc` 212a678c2, Ion `0e31151`, neon tree `393f007` plus this change, which re-ran the five checks above unchanged) |
+| `ionModal` | 13 checks: a press opens an opaque Modal over the app, onShow, the Modal takes a click over the app's Pressable, Escape calls onRequestClose and onDismiss follows, the app takes clicks again, a `slide` Modal settles in place, a press inside closes it, Escape with no Modal does nothing; 3 runs of 3 green, same tree as `ionControls` |
 | `ionInput` | 26 checks, the Windows set: placeholder, typing, backspace, submit and blur, controlled uppercase, maxLength, newline and growth in multiline, an IME composition through the field editor's `NSTextInputClient` reporting no change until its commit, secure bullets; 3 runs of 3 green |
 
 Hot reload (`examples/macosNative/hcr`, `cd` there and `msc run --hcr app.ms`). The cold build took 28-40 s. A template
@@ -98,6 +100,7 @@ Not measured:
 - A resize while editing.
 - Text drawn at scale 1.
 
+- A Modal's `fade` and `slide` mid-way: the checks sample after the animation ends.
 - The ActivityIndicator `color`: `renderInContext` skips layer filters, so the checks see the spinner, not its tint. By eye
   it is a faint red in an inactive window.
 
