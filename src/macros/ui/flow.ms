@@ -6,7 +6,7 @@ import { mapArray, mapArrayKeyedBy, mapArrayByPosition, repeat } from "../../cor
 import { createMemo } from "../../core/memo";
 import { Accessor, Signal, accessor, untrack } from "../../core/signal";
 import { createErrorBoundary, createLoadingBoundary, routeThrown } from "../../core/boundary";
-import { createOwner, getOwner, getNextChildId, flush, disposeChildren, enterRoot, leaveRoot } from "../../core/runtime";
+import { createOwner, getOwner, getNextChildId, flush, disposeChildren } from "../../core/runtime";
 import { onCleanup } from "../../core/cleanup";
 import { runWithOwner } from "../../core/owner";
 import { Computation, NotReadyError, ContextEntry } from "../../core/types";
@@ -328,7 +328,6 @@ function rerunContent(ctx: ServerContext, marks: ServerMarks, host: Host, holder
 		const outer = ctx.holes;
 		const mine: Hole[] = [];
 		ctx.holes = mine;
-		enterRoot();
 		try {
 			mountAt(host, holder, null, again);
 			settled = true;
@@ -338,7 +337,7 @@ function rerunContent(ctx: ServerContext, marks: ServerMarks, host: Host, holder
 			pending.source = (e as NotReadyError).source;
 		} finally {
 			ctx.holes = outer;
-			leaveRoot(completed);
+			if (completed) { flush(); }
 		}
 		if (!settled) { disposeChildren(scope, false); return false; }
 		const html = marks.html(holder);

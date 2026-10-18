@@ -7,7 +7,7 @@ import { Style, StyleValue, emptyStyle, setStyleField } from "./style";
 import { Host, HostNode, NeonNode, VoidArea, TextMeasure } from "./hostTypes";
 import { NeonEvent, neonEvent, eventType } from "./event";
 import { createRoot } from "../core/owner";
-import { enterRoot, leaveRoot } from "../core/runtime";
+import { flush } from "../core/runtime";
 import { beginClaim, endClaim } from "./claim";
 import { Dispose } from "../core/types";
 import { AreaHub, createAreaHub } from "./voidAreaHandle";
@@ -16,7 +16,7 @@ export { Host, HostNode, NeonNode, VoidArea, TextMeasure } from "./hostTypes";
 export { bindText, writeAttr, bindAttr, bindStyleProp, applyStaticStyle, bindStyleAll, applyRef, setupRef, composeRefs } from "./bind";
 
 export function render(node: NeonNode, host: Host, parent: HostNode, id: string | null = null): Dispose {
-	return createRoot((dispose) => {
+	const dispose = createRoot((dispose) => {
 		try {
 			node(host, parent, null);
 			return dispose;
@@ -25,31 +25,31 @@ export function render(node: NeonNode, host: Host, parent: HostNode, id: string 
 			throw error;
 		}
 	}, id);
+	try {
+		flush();
+	} catch (error) {
+		dispose();
+		throw error;
+	}
+	return dispose;
 }
 
 export function hydrate(node: NeonNode, host: Host, container: HostNode): Dispose {
-	enterRoot();
-	let completed = false;
+	beginClaim(host, container);
+	let dispose: Dispose;
 	try {
-		beginClaim(host, container);
-		let dispose: Dispose;
-		try {
-			dispose = render(node, host, container, "");
-		} catch (error) {
-			endClaim(host, false);
-			throw error;
-		}
-		try {
-			endClaim(host, true);
-		} catch (error) {
-			dispose();
-			throw error;
-		}
-		completed = true;
-		return dispose;
-	} finally {
-		leaveRoot(completed);
+		dispose = render(node, host, container, "");
+	} catch (error) {
+		endClaim(host, false);
+		throw error;
 	}
+	try {
+		endClaim(host, true);
+	} catch (error) {
+		dispose();
+		throw error;
+	}
+	return dispose;
 }
 
 // ---- Mock host: in-memory tree for tests/SSR (no browser needed) ----

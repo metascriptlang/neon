@@ -38,7 +38,6 @@ let tracking: boolean = false;
 let scheduled: boolean = false;
 let running: boolean = false;
 let syncDepth: int32 = 0;
-let deferDepth: int32 = 0;
 let unflushedStaged: boolean = false;
 let dormantPending: boolean = false;
 let serverDepth: int32 = 0;
@@ -717,7 +716,6 @@ function recompute(el: Computation, create: boolean): void {
 	when (debug) { const prevLabel = swapStrictLabel(null); }
 	currentOwner = el;
 	tracking = true;
-	deferDepth += 1;
 	el.depsTail = null;
 	el.depGen = el.depGen + 1;
 	el.time = clock;
@@ -734,7 +732,6 @@ function recompute(el: Computation, create: boolean): void {
 		when (debug) { swapStrictLabel(prevLabel); }
 		tracking = prevTracking;
 		currentOwner = oldOwner;
-		deferDepth -= 1;
 		missedWake = (el.flags & REACTIVE_MISSED_WAKE) !== 0;
 		if ((el.flags & REACTIVE_PROBED) === 0) { el.config = el.config & ~CONFIG_VERDICT; }
 		el.flags = el.flags & REACTIVE_DISPOSED;
@@ -779,7 +776,6 @@ function recompute(el: Computation, create: boolean): void {
 		schedule();
 	}
 	if (el.type === EFFECT_RENDER) { reportRenderEffect(el); }
-	settle();
 }
 
 function reportRenderEffect(el: Computation): void {
@@ -1076,22 +1072,11 @@ function schedule(): void {
 		notifyHalted();
 		return;
 	}
+	if (scheduled) { return; }
 	scheduled = true;
-	if (syncDepth === 0 && deferDepth === 0 && !running) {
-		// parked: the reference defers this drain with queueMicrotask; ~/metascript/.inbox/compiler/2026-10-15-await-of-a-settled-promise-continues-synchronously-on-c.md
-		flush();
+	if (syncDepth === 0 && !running) {
+		Promise.resolve(0).then((unused: int32): void => { flush(); });
 	}
-}
-
-function settle(): void {
-	if (scheduled && syncDepth === 0 && deferDepth === 0 && !running) { flush(); }
-}
-
-export function enterRoot(): void { deferDepth += 1; }
-
-export function leaveRoot(completed: boolean): void {
-	deferDepth -= 1;
-	if (completed) { settle(); }
 }
 
 function markVerdictReader(): void {

@@ -1,5 +1,5 @@
 import { Computation, Dispose } from "./types";
-import { getOwner, setOwner, isTracking, setTracking, createOwner, disposeNode, carriesId, getNextChildId, enterRoot, leaveRoot } from "./runtime";
+import { getOwner, setOwner, isTracking, setTracking, createOwner, disposeNode, carriesId, getNextChildId } from "./runtime";
 
 export function runWithOwner<T>(owner: Computation | null, fn: () => T): T {
 	const prevOwner = getOwner();
@@ -17,15 +17,7 @@ export function runWithOwner<T>(owner: Computation | null, fn: () => T): T {
 export function createRoot<T>(fn: (dispose: Dispose) => T, id: string | null = null): T {
 	const root = createOwner(id);
 	const dispose: Dispose = () => { disposeNode(root); };
-	enterRoot();
-	let completed = false;
-	try {
-		const result = runWithOwner(root, (): T => fn(dispose));
-		completed = true;
-		return result;
-	} finally {
-		leaveRoot(completed);
-	}
+	return runWithOwner(root, (): T => fn(dispose));
 }
 
 let clientIds: number = 0;
