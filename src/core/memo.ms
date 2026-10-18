@@ -146,9 +146,7 @@ function buildMemo<T>(produce: (self: Computation, prev: T | null, land: (self: 
 	const run = (self: Computation, create: boolean): int32 => {
 		const held = cell;
 		if (held === null) {
-			// Parked on ~/metascript/.inbox/compiler/2026-10-15-c-runs-the-enclosing-call-of-a-throwing-argument.md: on C a throwing argument still runs publishFirst once, so the call is its own statement.
-			const first = produce(self, null, land);
-			publishFirst(self, first);
+			publishFirst(self, produce(self, null, land));
 			return RUN_PUBLISHED;
 		}
 		const prev = isStaged(self) ? held.pending : held.value;
@@ -182,7 +180,7 @@ export function createMemo<T>(compute: (prev: T | null) => T, options?: MemoOpti
 	return buildMemo<T>((self: Computation, prev: T | null, land: (self: Computation, value: T) => void): T => compute(prev), options);
 }
 
-// Parked on ~/metascript/.inbox/compiler/2026-10-16-function-returning-one-member-is-refused-where-a-function-returning-the-union-is-expected.md and its two siblings: Solid 2.0 has one `createMemo` whose compute returns `Promise<T> | T`; this engine entry is not exported and merges into it.
+// Parked on ~/metascript/.inbox/compiler/2026-10-16-t-is-not-inferred-from-a-value-through-a-generic-instance-or-t-union.md and 2026-10-16-instanceof-a-generic-class-refuses-a-union-operand-instead-of-narrowing-it.md: Solid 2.0 has one `createMemo` whose compute returns `Promise<T> | T`; this engine entry is not exported and merges into it.
 export function createAsyncMemo<T>(compute: (prev: T | null) => Promise<T>, options?: MemoOptions<T>, adopter?: Adopter<T>): Accessor<T> {
 	const ctx = serverContext();
 	const adopting = adopter === undefined ? null : adopter;
