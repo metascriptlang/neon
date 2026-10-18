@@ -5,8 +5,6 @@ import { VoidAreaHandle, AreaKeyEvent } from "../../src/render/voidAreaHandle";
 import { Void, View } from "../../src/components/primitives";
 import { WindowArea, windowHost, windowNode, deliverResize, logicalWidth, logicalHeight } from "../../src/platform/void/windowHost";
 import {
-	AppEvent,
-	AppEventType,
 	SokolInput,
 	sokolInput,
 	deliverAppEvent,
@@ -14,6 +12,7 @@ import {
 	sokolKeyName,
 } from "../../src/platform/sokol/input";
 import { FontId, addFont } from "../../../void/src/void2d/font";
+import { AppEvent, AppEventType } from "../../../void/src/sokol/window";
 
 const FONT_PATH = "../void/assets/font.ttf";
 
@@ -37,6 +36,10 @@ function event(type: AppEventType): AppEvent {
 		mouseDy: 0.0,
 		scrollX: 0.0,
 		scrollY: 0.0,
+		framebufferWidth: 0 as int32,
+		framebufferHeight: 0 as int32,
+		text: "",
+		cursor: 0 as int32,
 	};
 }
 
@@ -80,6 +83,7 @@ function canvas(log: string[]): SokolInput {
 				}}
 				onKeyUp={(e: NeonEvent): void => { log.push(`keyup ${e.code}`); }}
 				onTextInput={(e: NeonEvent): void => { log.push(`textinput ${e.text}`); }}
+				onPreedit={(e: NeonEvent): void => { log.push(`preedit ${e.text}@${e.cursor}`); }}
 				onPointerDown={(e: NeonEvent): void => { log.push(`down ${e.x},${e.y} b${e.button}${e.shiftKey ? " shift" : ""}${e.ctrlKey ? " ctrl" : ""}`); }}
 				onPointerUp={(e: NeonEvent): void => { log.push(`up ${e.x},${e.y} b${e.button}`); }}
 				onPointerMove={(e: NeonEvent): void => { log.push(`move ${e.x},${e.y}`); }}
@@ -185,4 +189,24 @@ test "a mouse event's modifiers reach the pointer handler" {
 	deliverAppEvent(s, { ...mouse(AppEventType.MouseDown, 20.0, 40.0), modifiers: 2 as uint32 });
 	const all = log.join("|");
 	assert all.indexOf("down 10,20 b1 shift ctrl|") >= 0 && all.indexOf("down 10,20 b1 ctrl") >= 0 && all.indexOf("down 10,20 b1|") < 0, all;
+}
+
+test "an IME composition reaches the area as preedit, and its result as committed text" {
+	const log: string[] = [];
+	const s = canvas(log);
+	deliverAppEvent(s, mouse(AppEventType.MouseDown, 20.0, 20.0));
+	const mark = log.length;
+	deliverAppEvent(s, { ...event(AppEventType.Preedit), text: "tie", cursor: 3 as int32 });
+	deliverAppEvent(s, { ...event(AppEventType.Preedit), text: "tiê", cursor: 3 as int32 });
+	assert s.area.composing, "the area is composing";
+	deliverAppEvent(s, { ...event(AppEventType.Preedit), text: "", cursor: 0 as int32 });
+	deliverAppEvent(s, { ...event(AppEventType.TextInput), text: "tiếng" });
+	assert !s.area.composing, "an empty preedit ends the composition";
+	assert log.slice(mark).join("|") === [
+		"preedit tie@3",
+		"preedit tiê@3",
+		"preedit @0",
+		"hub text tiếng",
+		"textinput tiếng",
+	].join("|"), log.slice(mark).join("|");
 }
