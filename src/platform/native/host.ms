@@ -801,10 +801,6 @@ function intrinsicFlex(n: NativeNode, flex: FlexStyle): FlexStyle {
 		niMeasureText(n.view, width);
 		n.measuredFor = width;
 		flex.height = niMeasuredH();
-	} else if (n.control === NativeElementKind.Control && flex.height === null) {
-		niMeasureText(n.view, niScreenWidth());
-		flex.height = niMeasuredH();
-		if (flex.width === null && niMeasuredW() > 0) { flex.width = niMeasuredW(); }
 	} else if (n.control === NativeElementKind.Switch && (flex.width === null || flex.height === null)) {
 		niMeasureText(n.view, niScreenWidth());
 		if (flex.width === null) { flex.width = niMeasuredW(); }
@@ -930,7 +926,7 @@ export function createNativeHost(): NativeHost {
 				n = nativeNode(niImageCreate(), false, false);
 			} else if (kind === NativeElementKind.Modal) {
 				n = nativeNode(niModalCreate(), false, false);
-			} else if (kind === NativeElementKind.Control || kind === NativeElementKind.Media || kind === NativeElementKind.Vector) {
+			} else if (kind === NativeElementKind.Media || kind === NativeElementKind.Vector) {
 				n = nativeNode(niControlCreate(tag), false, false);
 			} else {
 				n = nativeNode(niViewCreate(), false, false);

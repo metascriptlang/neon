@@ -131,9 +131,6 @@ void *niIndicatorCreate(void) { return createControl(3); }
 void *niImageCreate(void) { return createControl(4); }
 void *niModalCreate(void) { return createControl(5); }
 void *niControlCreate(const char *kind) {
-	if (strcmp(kind, "slider") == 0) return createControl(6);
-	if (strcmp(kind, "picker") == 0) return createControl(7);
-	if (strcmp(kind, "datetimepicker") == 0) return createControl(8);
 	if (strcmp(kind, "webview") == 0) return createControl(10);
 	if (strcmp(kind, "video") == 0) return createControl(11);
 	if (strcmp(kind, "camera") == 0) return createControl(12);
@@ -358,9 +355,6 @@ void niSetFont(void *label, float size, int bold) {
 void niMeasureText(void *label, float maxWidth) {
 	MockView *v = live(label, "niMeasureText");
 	if (v->control == 2) { g_measuredW = 51; g_measuredH = 31; return; }
-	if (v->control == 6) { g_measuredW = 0; g_measuredH = 31; return; }
-	if (v->control == 7) { g_measuredW = 0; g_measuredH = 44; return; }
-	if (v->control == 8) { g_measuredW = 120; g_measuredH = 36; return; }
 	float w = (float)strlen(v->text) * v->size * 0.5f;
 	int lines = 1;
 	while (maxWidth > 0 && w > maxWidth * lines) lines++;

@@ -12,7 +12,6 @@ export enum NativeElementKind {
 	Indicator,
 	Image,
 	Modal,
-	Control,
 	Media,
 	Vector,
 }
@@ -54,7 +53,6 @@ export function nativeElementKind(tag: string): NativeElementKind {
 	if (tag === "activityindicator") { return NativeElementKind.Indicator; }
 	if (tag === "image") { return NativeElementKind.Image; }
 	if (tag === "modal") { return NativeElementKind.Modal; }
-	if (tag === "slider" || tag === "picker" || tag === "datetimepicker") { return NativeElementKind.Control; }
 	if (tag === "webview" || tag === "video" || tag === "camera") { return NativeElementKind.Media; }
 	if (tag === "svg") { return NativeElementKind.Vector; }
 	return NativeElementKind.View;
@@ -344,7 +342,6 @@ export function createNativeEventRegistry(): NativeEventRegistry {
 			5 => "load",
 			6 => "error",
 			7 => "requestclose",
-			8 => "slidingcomplete",
 			9 => "selectionchange",
 			10 => "loadstart",
 			11 => "message",

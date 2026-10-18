@@ -1096,165 +1096,6 @@ void niViewSetTag(void *view, int32_t tag) {
 	v.tag = tag;
 }
 
-// --- controls created by name (niControlCreate) ---
-
-@interface NeonSlider : UISlider
-@property (nonatomic) float neonStep;
-@end
-
-@implementation NeonSlider
-- (instancetype)initWithFrame:(CGRect)frame {
-	self = [super initWithFrame:frame];
-	if (self) {
-		self.minimumValue = 0;
-		self.maximumValue = 1;
-		[self addTarget:self action:@selector(neonChanged) forControlEvents:UIControlEventValueChanged];
-		[self addTarget:self action:@selector(neonDone) forControlEvents:UIControlEventTouchUpInside | UIControlEventTouchUpOutside | UIControlEventTouchCancel];
-	}
-	return self;
-}
-- (CGSize)sizeThatFits:(CGSize)size { (void)size; return CGSizeMake(0, 31); }
-- (float)neonSnapped {
-	float v = self.value;
-	if (self.neonStep > 0) v = self.minimumValue + roundf((v - self.minimumValue) / self.neonStep) * self.neonStep;
-	return v;
-}
-- (void)neonChanged {
-	float v = [self neonSnapped];
-	if (v != self.value) self.value = v;
-	emitControl((int)self.tag, 4, [NSString stringWithFormat:@"%g", v], 0, 0);
-}
-- (void)neonDone { emitControl((int)self.tag, 8, [NSString stringWithFormat:@"%g", [self neonSnapped]], 0, 0); }
-@end
-
-@interface NeonPicker : UIButton
-@property (nonatomic, copy) NSArray<NSString *> *neonLabels;
-@property (nonatomic) NSInteger neonSelected;
-@property (nonatomic, copy) NSString *neonPrompt;
-@end
-
-@implementation NeonPicker
-+ (instancetype)neonPicker {
-	NeonPicker *p = [NeonPicker buttonWithType:UIButtonTypeSystem];
-	UIButtonConfiguration *c = [UIButtonConfiguration grayButtonConfiguration];
-	c.image = [UIImage systemImageNamed:@"chevron.up.chevron.down"];
-	c.imagePlacement = NSDirectionalRectEdgeTrailing;
-	c.imagePadding = 6;
-	p.configuration = c;
-	p.contentHorizontalAlignment = UIControlContentHorizontalAlignmentLeading;
-	p.showsMenuAsPrimaryAction = YES;
-	p.neonLabels = @[];
-	p.neonSelected = -1;
-	return p;
-}
-- (CGSize)sizeThatFits:(CGSize)size { (void)size; return CGSizeMake(0, 44); }
-- (NSString *)accessibilityValue {
-	return self.neonSelected >= 0 && self.neonSelected < (NSInteger)self.neonLabels.count ? self.neonLabels[self.neonSelected] : nil;
-}
-- (void)neonRebuild {
-	NSMutableArray<UIMenuElement *> *actions = [NSMutableArray array];
-	__weak NeonPicker *weakSelf = self;
-	for (NSUInteger i = 0; i < self.neonLabels.count; i++) {
-		UIAction *a = [UIAction actionWithTitle:self.neonLabels[i] image:nil identifier:nil handler:^(UIAction *action) {
-			(void)action;
-			NeonPicker *me = weakSelf;
-			if (!me) return;
-			emitControl((int)me.tag, 4, [NSString stringWithFormat:@"%lu", (unsigned long)i], 0, 0);
-			[me neonRebuild];
-		}];
-		a.state = (NSInteger)i == self.neonSelected ? UIMenuElementStateOn : UIMenuElementStateOff;
-		[actions addObject:a];
-	}
-	self.menu = [UIMenu menuWithTitle:self.neonPrompt ?: @"" children:actions];
-	UIButtonConfiguration *c = self.configuration;
-	c.title = [self accessibilityValue] ?: @"";
-	self.configuration = c;
-}
-@end
-
-@interface NeonDatePicker : UIDatePicker
-@property (nonatomic, copy) NSString *neonMode;
-@end
-
-@implementation NeonDatePicker
-- (instancetype)initWithFrame:(CGRect)frame {
-	self = [super initWithFrame:frame];
-	if (self) {
-		self.neonMode = @"date";
-		self.datePickerMode = UIDatePickerModeDate;
-		self.preferredDatePickerStyle = UIDatePickerStyleCompact;
-		self.locale = [NSLocale currentLocale];
-		[self addTarget:self action:@selector(neonChanged) forControlEvents:UIControlEventValueChanged];
-	}
-	return self;
-}
-- (NSDateFormatter *)neonFormatter {
-	NSDateFormatter *f = [[NSDateFormatter alloc] init];
-	f.locale = [NSLocale localeWithLocaleIdentifier:@"en_US_POSIX"];
-	f.dateFormat = [self.neonMode isEqualToString:@"time"] ? @"HH:mm" : [self.neonMode isEqualToString:@"datetime"] ? @"yyyy-MM-dd'T'HH:mm" : @"yyyy-MM-dd";
-	return f;
-}
-- (NSDate *)neonParse:(const char *)text {
-	if (!text || !text[0]) return nil;
-	return [[self neonFormatter] dateFromString:neonText(text)];
-}
-- (CGSize)sizeThatFits:(CGSize)size {
-	CGSize fit = [self systemLayoutSizeFittingSize:UILayoutFittingCompressedSize];
-	if (fit.width <= 0 || fit.width >= size.width || fit.height <= 0) {
-		CGFloat width = [self.neonMode isEqualToString:@"time"] ? 96 : [self.neonMode isEqualToString:@"datetime"] ? 230 : 136;
-		fit = CGSizeMake(width, 35);
-	}
-	return CGSizeMake(MIN(fit.width, size.width), fit.height);
-}
-- (void)neonChanged { emitControl((int)self.tag, 4, [[self neonFormatter] stringFromDate:self.date], 0, 0); }
-- (void)neonSetProp:(const char *)name value:(const char *)text {
-	if (strcmp(name, "mode") == 0) {
-		self.neonMode = neonText(text);
-		self.datePickerMode = strcmp(text, "time") == 0 ? UIDatePickerModeTime : strcmp(text, "datetime") == 0 ? UIDatePickerModeDateAndTime : UIDatePickerModeDate;
-	} else if (strcmp(name, "display") == 0) {
-		self.preferredDatePickerStyle = strcmp(text, "inline") == 0 ? UIDatePickerStyleInline : strcmp(text, "spinner") == 0 ? UIDatePickerStyleWheels : UIDatePickerStyleCompact;
-	} else if (strcmp(name, "value") == 0) {
-		NSDate *d = [self neonParse:text];
-		if (d && ![d isEqualToDate:self.date]) [self setDate:d animated:NO];
-	} else if (strcmp(name, "minimumDate") == 0) self.minimumDate = [self neonParse:text];
-	else if (strcmp(name, "maximumDate") == 0) self.maximumDate = [self neonParse:text];
-	else if (strcmp(name, "disabled") == 0) self.enabled = strcmp(text, "true") != 0;
-	else if (strcmp(name, "accentColor") == 0) self.tintColor = text[0] ? cssColor(text, nil) : nil;
-}
-@end
-
-static void setSliderProp(NeonSlider *s, const char *name, const char *text) {
-	if (strcmp(name, "minimumValue") == 0) s.minimumValue = (float)atof(text);
-	else if (strcmp(name, "maximumValue") == 0) s.maximumValue = (float)atof(text);
-	else if (strcmp(name, "step") == 0) s.neonStep = (float)atof(text);
-	else if (strcmp(name, "value") == 0) { if (!s.isTracking) [s setValue:(float)atof(text) animated:NO]; }
-	else if (strcmp(name, "disabled") == 0) s.enabled = strcmp(text, "true") != 0;
-	else if (strcmp(name, "inverted") == 0) s.transform = strcmp(text, "true") == 0 ? CGAffineTransformMakeScale(-1, 1) : CGAffineTransformIdentity;
-	else if (strcmp(name, "minimumTrackTintColor") == 0) s.minimumTrackTintColor = text[0] ? cssColor(text, nil) : nil;
-	else if (strcmp(name, "maximumTrackTintColor") == 0) s.maximumTrackTintColor = text[0] ? cssColor(text, nil) : nil;
-	else if (strcmp(name, "thumbTintColor") == 0) s.thumbTintColor = text[0] ? cssColor(text, nil) : nil;
-}
-
-static void setPickerProp(NeonPicker *p, const char *name, const char *text) {
-	if (strcmp(name, "items") == 0) {
-		NSMutableArray<NSString *> *labels = [NSMutableArray array];
-		if (text[0]) {
-			for (NSString *record in [neonText(text) componentsSeparatedByString:@"\x1e"]) {
-				[labels addObject:[record componentsSeparatedByString:@"\x1f"].firstObject ?: @""];
-			}
-		}
-		p.neonLabels = labels;
-		[p neonRebuild];
-	} else if (strcmp(name, "selectedIndex") == 0) {
-		p.neonSelected = atoi(text);
-		[p neonRebuild];
-	} else if (strcmp(name, "prompt") == 0) {
-		p.neonPrompt = text[0] ? neonText(text) : nil;
-		[p neonRebuild];
-	} else if (strcmp(name, "disabled") == 0) p.enabled = strcmp(text, "true") != 0;
-	else if (strcmp(name, "color") == 0) p.tintColor = text[0] ? cssColor(text, nil) : nil;
-}
-
 // --- <Svg>: draws the display list of src/components/svg/scene.ms (encodeScene) ---
 
 typedef struct {
@@ -1534,9 +1375,6 @@ static CGAffineTransform svgViewBox(CGSize size, CGFloat vx, CGFloat vy, CGFloat
 @end
 
 void *niControlCreate(const char *kind) {
-	if (strcmp(kind, "slider") == 0) return CFBridgingRetain([[NeonSlider alloc] initWithFrame:CGRectZero]);
-	if (strcmp(kind, "picker") == 0) return CFBridgingRetain([NeonPicker neonPicker]);
-	if (strcmp(kind, "datetimepicker") == 0) return CFBridgingRetain([[NeonDatePicker alloc] initWithFrame:CGRectZero]);
 	void *media = neonMediaCreate(kind);
 	if (media) return media;
 	if (strcmp(kind, "svg") == 0) return CFBridgingRetain([[NeonSvgView alloc] initWithFrame:CGRectZero]);
@@ -1647,10 +1485,7 @@ void niSetProp(void *view, const char *name, const char *value) {
 		if (strcmp(name, "animating") == 0) { i.neonAnimating = strcmp(text, "false") != 0; [i neonApply]; }
 		else if (strcmp(name, "hidesWhenStopped") == 0) i.hidesWhenStopped = strcmp(text, "false") != 0;
 		else if (strcmp(name, "color") == 0) i.color = text[0] ? cssColor(text, UIColor.grayColor) : UIColor.grayColor;
-	} else if ([v isKindOfClass:NeonSlider.class]) setSliderProp((NeonSlider *)v, name, text);
-	else if ([v isKindOfClass:NeonPicker.class]) setPickerProp((NeonPicker *)v, name, text);
-	else if ([v isKindOfClass:NeonDatePicker.class]) [(NeonDatePicker *)v neonSetProp:name value:text];
-	else if ([v isKindOfClass:NeonSvgView.class]) { if (strcmp(name, "displayList") == 0) [(NeonSvgView *)v neonSetList:text]; }
+	} else if ([v isKindOfClass:NeonSvgView.class]) { if (strcmp(name, "displayList") == 0) [(NeonSvgView *)v neonSetList:text]; }
 	else if ([v isKindOfClass:NeonImage.class]) {
 		NeonImage *image = (NeonImage *)v;
 		if (strcmp(name, "source") == 0) [image neonLoad:[NSString stringWithUTF8String:text]];

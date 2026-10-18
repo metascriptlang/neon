@@ -55,18 +55,17 @@ void *niImageCreate(void);
 // A layer above the app for a Modal: blocks touches below it, takes the
 // platform's back/escape as control phase 7 (request close).
 void *niModalCreate(void);
-// Controls added after the first four go through one create call keyed by the wire tag:
-// "slider", "picker", "datetimepicker"; the media views "webview", "video" and "camera" are created the
-// same way and take a `command` prop ("name\x1fargument") for their imperative methods.
-// "slider", "picker", "datetimepicker", and "svg" (an <Svg>: draws its `displayList` prop,
-// grammar in src/components/svg/scene.ms encodeScene, sized by layout only).
+// Views added after the first four go through one create call keyed by the wire tag: the media
+// views "webview", "video" and "camera", which take a `command` prop ("name\x1fargument") for
+// their imperative methods, and "svg" (an <Svg>: draws its `displayList` prop, grammar in
+// src/components/svg/scene.ms encodeScene, sized by layout only).
 void *niControlCreate(const char *kind);
 void  niControlSetTag(void *control, int32_t tag);
 void  niSetProp(void *view, const char *name, const char *value);
 void  niSetFocused(void *control, int focused);
 void  niSetControlHandler(msClosure handler);
 int   niLastControlTag(void);
-int   niLastControlPhase(void); // 0 change text, 1 focus, 2 blur, 3 submit, 4 value change, 5 load, 6 error, 7 request close, 8 sliding complete, 9 selection change ("start,end"), 10 load start, 11 message, 12 should start load (the handler answers by writing the `loadDecision` prop before it returns), 13 progress, 14 end
+int   niLastControlPhase(void); // 0 change text, 1 focus, 2 blur, 3 submit, 4 value change, 5 load, 6 error, 7 request close, 9 selection change ("start,end"), 10 load start, 11 message, 12 should start load (the handler answers by writing the `loadDecision` prop before it returns), 13 progress, 14 end
 const char *niLastControlValue(void);
 float niLastControlWidth(void);
 float niLastControlHeight(void);
