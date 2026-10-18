@@ -13,7 +13,6 @@ NSString *niModuleCall(NSString *name, NSString *arg) {
 	if ([domain isEqualToString:@"haptics"] || [domain isEqualToString:@"device"] || [domain isEqualToString:@"locale"]) {
 		return niDeviceCall(name, arg);
 	}
-	if ([domain isEqualToString:@"notification"]) return niNotificationCall(name, arg);
 	if ([domain isEqualToString:@"capture"]) return niCaptureCall(name, arg);
 	if ([domain isEqualToString:@"sound"] || [domain isEqualToString:@"audio"] || [domain isEqualToString:@"recording"]) return niAudioCall(name, arg);
 	NSLog(@"Neon niAppCall: unknown command %@", name);

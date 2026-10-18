@@ -4,7 +4,7 @@
 
 import {
 	AlertRequest, AppServices, BatterySnapshot, DeviceSnapshot, LocaleSnapshot, LocationFix, LocationRequest,
-	NotificationSpec, PermissionReply, ScheduleReply, ShareRequest,
+	PermissionReply, ShareRequest,
 } from "../../api/services";
 import { readClipboardText, writeClipboardText } from "../../../../ion/src/clipboard";
 import {
@@ -76,11 +76,4 @@ export const ionAppServices: AppServices = {
 	deviceInfo: (): DeviceSnapshot => { throw unavailable("DeviceInfo"); },
 	battery: async (): Promise<BatterySnapshot> => { throw unavailable("DeviceInfo battery"); },
 	localization: (): LocaleSnapshot => { throw unavailable("Localization"); },
-	scheduleNotification: async (spec: NotificationSpec): Promise<ScheduleReply> => { throw unavailable("Notifications"); },
-	cancelNotification: (identifier: string): void => { throw unavailable("Notifications"); },
-	cancelAllNotifications: (): void => { throw unavailable("Notifications"); },
-	dismissAllNotifications: (): void => { throw unavailable("Notifications"); },
-	presentNotifications: (decide: boolean): void => { throw unavailable("Notifications"); },
-	presentNotification: (identifier: string, banner: boolean, sound: boolean, badge: boolean): void => { throw unavailable("Notifications"); },
-	lastNotificationResponse: async (): Promise<string> => { throw unavailable("Notifications"); },
 };

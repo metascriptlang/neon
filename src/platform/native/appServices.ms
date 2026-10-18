@@ -6,13 +6,13 @@ import { dispatchHardwareBackPress } from "../../api/backHandler";
 import { publishUrl } from "../../api/linking";
 import { publishReduceMotion, publishScreenReader } from "../../api/accessibilityInfo";
 import {
-	androidPermissionGranted, androidRequestPermissions, androidShouldShowRationale, battery, cancelAllNotifications,
-	cancelNotification, deviceInfo, dismissAllNotifications, haptic, installNotifications, lastNotificationResponse,
-	localization, locationClear, locationCurrent, locationWatch, onLocationEvent, onNetInfoEvent, onReplyEvent,
-	permissionStatus, presentNotification, presentNotifications, refreshNetInfo, requestPermission, scheduleNotification,
-	storageClear, storageGet, storageKeys, storageRemove, storageSet, watchNetInfo,
+	androidPermissionGranted, androidRequestPermissions, androidShouldShowRationale, battery, deviceInfo, haptic,
+	localization, locationClear, locationCurrent, locationWatch, onLocationEvent, onNetInfoEvent, permissionStatus,
+	refreshNetInfo, requestPermission, storageClear, storageGet, storageKeys, storageRemove, storageSet, watchNetInfo,
 } from "./deviceServices";
-import { publishNotificationEvent } from "../../api/notifications";
+import {
+	AppEvent, FIELD, RECORD, appCall, dispatchNativeAppEvent, runNativeAppStarts,
+} from "./appBridge";
 import { CaptureServices, installCaptureServices } from "../../api/captureServices";
 import { nativeCaptureServices, onRecordingEvent, onSoundEvent } from "./captureServices";
 
@@ -24,7 +24,6 @@ when (ios) {
 	@compile("../ios/permissions.m", "-fobjc-arc");
 	@compile("../ios/location.m", "-fobjc-arc");
 	@compile("../ios/device.m", "-fobjc-arc");
-	@compile("../ios/notifications.m", "-fobjc-arc");
 	@compile("../ios/capture.m", "-fobjc-arc");
 	@compile("../ios/audio.m", "-fobjc-arc");
 	@passL("-framework PhotosUI");
@@ -39,30 +38,9 @@ when (ios) {
 	@compile("../android/app.c");
 }
 
-import { niAppCall, niLastAppEvent, niLastAppValue, niSetAppEventResult } from "./app.h";
+import { niLastAppEvent, niLastAppValue, niSetAppEventResult } from "./app.h";
 
 extern function niSetAppHandler(handler: () => void): void;
-
-const FIELD = "\u001f";
-const RECORD = "\u001e";
-
-enum AppEvent {
-	State,
-	BackPress,
-	Alert,
-	ScreenReader,
-	Url,
-	Share,
-	MemoryWarning,
-	ReduceMotion,
-	ImageSize,
-	Reply,
-	NetInfo,
-	Location,
-	Notification,
-	Sound,
-	Recording,
-}
 
 interface PendingImage {
 	id: int32;
@@ -81,8 +59,7 @@ const shares: ((action: string, activityType: string) => void)[] = [];
 let nextRequest: int32 = 1;
 
 function call(name: string, arg: string): string {
-	const reply: string = niAppCall(name, arg);
-	return reply;
+	return appCall(name, arg);
 }
 
 function settleAlert(value: string): void {
@@ -109,7 +86,8 @@ function settleShare(value: string): void {
 
 function onAppEvent(): void {
 	const value: string = niLastAppValue();
-	match (niLastAppEvent() as AppEvent) {
+	const kind = niLastAppEvent() as AppEvent;
+	match (kind) {
 		AppEvent.State => publishAppState(value as AppStateStatus),
 		AppEvent.BackPress => niSetAppEventResult(dispatchHardwareBackPress() ? 1 : 0),
 		AppEvent.Alert => settleAlert(value),
@@ -119,12 +97,11 @@ function onAppEvent(): void {
 		AppEvent.MemoryWarning => publishMemoryWarning(),
 		AppEvent.ReduceMotion => publishReduceMotion(value === "1"),
 		AppEvent.ImageSize => settleImage(value),
-		AppEvent.Reply => onReplyEvent(value),
 		AppEvent.NetInfo => onNetInfoEvent(value),
 		AppEvent.Location => onLocationEvent(value),
-		AppEvent.Notification => publishNotificationEvent(value),
 		AppEvent.Sound => onSoundEvent(value),
 		AppEvent.Recording => onRecordingEvent(value),
+		_ => dispatchNativeAppEvent(kind, value),
 	};
 }
 
@@ -216,13 +193,6 @@ const services: AppServices = {
 	deviceInfo,
 	battery,
 	localization,
-	scheduleNotification,
-	cancelNotification,
-	cancelAllNotifications,
-	dismissAllNotifications,
-	presentNotifications,
-	presentNotification,
-	lastNotificationResponse,
 };
 
 let capture: CaptureServices = nativeCaptureServices;
@@ -251,5 +221,5 @@ export function installNativeAppServices(run: (fn: () => void) => void): void {
 	if (state !== "") { publishAppState(state as AppStateStatus); }
 	publishScreenReader(call("a11y.screenReader", "") === "1");
 	publishReduceMotion(call("a11y.reduceMotion", "") === "1");
-	installNotifications();
+	runNativeAppStarts();
 }

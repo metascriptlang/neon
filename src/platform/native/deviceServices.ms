@@ -1,17 +1,22 @@
-import { niAppCall } from "./app.h";
+import { FIELD, appCall, ask as appAsk, refusal, requestReply as appRequestReply } from "./appBridge";
 import { NetInfoDetails, NetInfoState, NetInfoStateType, publishNetInfo } from "../../api/netInfo";
 import {
-	BatterySnapshot, DeviceSnapshot, LocaleSnapshot, LocationFix, LocationRequest, NotificationSpec, PermissionReply,
-	ScheduleReply,
+	BatterySnapshot, DeviceSnapshot, LocaleSnapshot, LocationFix, LocationRequest, PermissionReply,
 } from "../../api/services";
 import { decodeLocalization } from "../../api/hostCodec";
 
-const FIELD = "\u001f";
-const RECORD = "\u001e";
 const PRESENT = "=";
 
 function call(name: string, arg: string): string {
-	const reply: string = niAppCall(name, arg);
+	return appCall(name, arg);
+}
+
+function requestReply(name: string, arg: string, done: (reply: string) => void): void {
+	appRequestReply(appCall, name, arg, done);
+}
+
+async function ask(name: string, arg: string): Promise<string> {
+	const reply = await appAsk(appCall, name, arg);
 	return reply;
 }
 
@@ -61,49 +66,6 @@ export function refreshNetInfo(): void {
 
 export function onNetInfoEvent(value: string): void {
 	publishNetInfo(decodeNetInfo(value));
-}
-
-interface PendingReply {
-	id: int32;
-	done: (reply: string) => void;
-}
-
-const replies: PendingReply[] = [];
-let nextReply: int32 = 1;
-
-export function requestReply(name: string, arg: string, done: (reply: string) => void): void {
-	const id = nextReply;
-	nextReply += 1;
-	const reply = call(name, id.toString() + FIELD + arg);
-	if (reply !== "") {
-		done(reply);
-		return;
-	}
-	replies.push({ id, done });
-}
-
-export async function ask(name: string, arg: string): Promise<string> {
-	return await new Promise<string>((resolve) => {
-		requestReply(name, arg, (reply: string): void => { resolve(reply); });
-	});
-}
-
-export function onReplyEvent(value: string): void {
-	const split = value.indexOf(FIELD);
-	const id = parseInt(split < 0 ? value : value.substring(0, split)) as int32;
-	const reply = split < 0 ? "" : value.substring(split + 1, value.length);
-	for (let i = 0; i < replies.length; i += 1) {
-		if (replies[i].id === id) {
-			const pending = replies[i];
-			replies.splice(i, 1);
-			pending.done(reply);
-			return;
-		}
-	}
-}
-
-function refusal(reply: string): string {
-	return reply.startsWith("!") ? reply.substring(1, reply.length) : "";
 }
 
 function permissionReply(reply: string): PermissionReply {
@@ -251,45 +213,4 @@ export async function battery(): Promise<BatterySnapshot> {
 
 export function localization(): LocaleSnapshot {
 	return decodeLocalization(call("locale.info", ""));
-}
-
-function flagText(value: boolean): string {
-	return value ? "1" : "0";
-}
-
-export async function scheduleNotification(spec: NotificationSpec): Promise<ScheduleReply> {
-	const reply = await ask("notification.schedule", [
-		spec.identifier, spec.title, spec.subtitle, spec.body, spec.data, flagText(spec.sound), spec.badge.toString(),
-		spec.seconds.toString(), flagText(spec.repeats), spec.date.toString(),
-	].join(FIELD));
-	const error = refusal(reply);
-	return { identifier: error === "" ? reply : "", error };
-}
-
-export function cancelNotification(identifier: string): void {
-	call("notification.cancel", identifier);
-}
-
-export function cancelAllNotifications(): void {
-	call("notification.cancelAll", "");
-}
-
-export function dismissAllNotifications(): void {
-	call("notification.dismissAll", "");
-}
-
-export function presentNotifications(decide: boolean): void {
-	call("notification.handler", flagText(decide));
-}
-
-export function presentNotification(identifier: string, banner: boolean, sound: boolean, badge: boolean): void {
-	call("notification.present", [identifier, flagText(banner), flagText(sound), flagText(badge)].join(FIELD));
-}
-
-export async function lastNotificationResponse(): Promise<string> {
-	return call("notification.last", "");
-}
-
-export function installNotifications(): void {
-	call("notification.install", "");
 }

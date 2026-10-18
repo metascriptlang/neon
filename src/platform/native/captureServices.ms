@@ -1,5 +1,5 @@
 import { niAppCall } from "./app.h";
-import { requestReply } from "./deviceServices";
+import { appCall, requestReply } from "./appBridge";
 import {
 	CaptureServices, PickReply, PickRequest, PickedAsset, RecordingSetup, RecordingState, SoundSetup, SoundState,
 	idleRecording, unloadedSound,
@@ -15,7 +15,7 @@ function call(name: string, arg: string): string {
 
 async function ask(name: string, arg: string): Promise<string> {
 	return await new Promise<string>((resolve) => {
-		requestReply(name, arg, (reply: string): void => { resolve(reply); });
+		requestReply(appCall, name, arg, (reply: string): void => { resolve(reply); });
 	});
 }
 

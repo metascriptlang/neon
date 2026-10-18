@@ -116,9 +116,9 @@ expect_native_modules() {
 expect_output tests/apps/localSignalApp.ms
 expect_output tests/apps/moduleSignalApp.ms
 expect_warnings tests/apps/listWarnApp.ms
-expect_bundle bundlePlainApp "platform/browser/dom" "platform/browser/media platform/browser/camera platform/browser/captureServices platform/browser/svg components/svg/markup components/svg/scene"
+expect_bundle bundlePlainApp "platform/browser/dom" "platform/browser/media platform/browser/camera platform/browser/captureServices platform/browser/svg components/svg/markup components/svg/scene platform/browser/notifications api/notifications"
 expect_bundle bundleSvgApp "platform/browser/svg components/svg/markup" "platform/browser/media platform/browser/camera platform/browser/captureServices"
 expect_native_modules bundleTerminalApp "platform/terminal/host" "components/svg/scene platform/native/host platform/browser/dom"
-expect_size bundlePlainApp js 1008909
+expect_size bundlePlainApp js 972693
 expect_size bundleTerminalApp native 657232
 exit $fail

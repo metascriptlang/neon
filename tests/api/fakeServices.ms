@@ -1,7 +1,10 @@
 import {
 	AppServices, AlertRequest, BatterySnapshot, DeviceSnapshot, LocaleSnapshot, LocationFix, LocationRequest,
-	NotificationSpec, PermissionReply, ScheduleReply, ShareRequest, installAppServices,
+	PermissionReply, ShareRequest, installAppServices,
 } from "../../src/api/services";
+import {
+	NotificationServices, NotificationSpec, ScheduleReply, installNotificationServices,
+} from "../../src/api/notificationServices";
 import { NetInfoState, publishNetInfo } from "../../src/api/netInfo";
 
 export class FakeServices {
@@ -181,6 +184,22 @@ export class FakeServices {
 			deviceInfo: (): DeviceSnapshot => { return this.device; },
 			battery: async (): Promise<BatterySnapshot> => { return { level: 0.75, charging: true }; },
 			localization: (): LocaleSnapshot => { return this.locales; },
+			androidRequestPermissions: async (permissions: string[]): Promise<PermissionReply[]> => {
+				this.log.push("androidRequestPermissions " + permissions.join(","));
+				const results: PermissionReply[] = [];
+				for (const permission of permissions) {
+					if (this.permission(permission).status !== "granted") { this.setPermission(permission, this.answer); }
+					results.push(this.permission(permission));
+				}
+				return results;
+			},
+		};
+		installAppServices(services);
+		this.installNotifications();
+	}
+
+	installNotifications(): void {
+		const services: NotificationServices = {
 			scheduleNotification: async (spec: NotificationSpec): Promise<ScheduleReply> => {
 				this.notifications.push(spec);
 				return { identifier: spec.identifier, error: spec.title === "refuse" ? "refused by the fake" : "" };
@@ -193,17 +212,8 @@ export class FakeServices {
 				this.log.push("presentNotification " + identifier + " " + (banner ? "banner" : "-") + " " + (sound ? "sound" : "-"));
 			},
 			lastNotificationResponse: async (): Promise<string> => { return this.lastResponse; },
-			androidRequestPermissions: async (permissions: string[]): Promise<PermissionReply[]> => {
-				this.log.push("androidRequestPermissions " + permissions.join(","));
-				const results: PermissionReply[] = [];
-				for (const permission of permissions) {
-					if (this.permission(permission).status !== "granted") { this.setPermission(permission, this.answer); }
-					results.push(this.permission(permission));
-				}
-				return results;
-			},
 		};
-		installAppServices(services);
+		installNotificationServices(services);
 	}
 
 	permission(name: string): PermissionReply {

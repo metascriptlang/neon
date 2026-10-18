@@ -217,12 +217,15 @@ static NSString *call(NSString *name, NSString *arg) {
 	return niModuleCall(name, arg);
 }
 
-const char *niAppCall(const char *name, const char *arg) {
-	start();
-	NSString *reply = call(@(name), @(arg ? arg : ""));
+const char *niAppReply(NSString *reply) {
 	free(g_reply);
 	g_reply = strdup(reply.UTF8String ?: "");
 	return g_reply;
+}
+
+const char *niAppCall(const char *name, const char *arg) {
+	start();
+	return niAppReply(call(@(name), @(arg ? arg : "")));
 }
 
 void niSetAppHandler(msClosure handler) { s_app = handler; }

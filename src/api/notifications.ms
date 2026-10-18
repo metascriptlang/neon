@@ -1,6 +1,14 @@
 import { EventSubscription, Listeners } from "./subscription";
-import { NotificationSpec, ScheduleReply, appServices } from "./services";
+import {
+	NotificationSpec, ScheduleReply, listenNotificationEvents, notificationServices,
+} from "./notificationServices";
 import { Permissions, PermissionResponse } from "./permissions";
+
+when (js && !server) {
+	import "../platform/browser/notifications";
+} else when (ios || android) {
+	import "../platform/native/notifications";
+}
 
 export const DEFAULT_ACTION_IDENTIFIER = "expo.modules.notifications.actions.DEFAULT";
 
@@ -120,7 +128,7 @@ async function present(notification: Notification): Promise<void> {
 	const decide = handler;
 	if (decide === null) { return; }
 	const behavior = await decide.handleNotification(notification);
-	appServices("Notifications.setNotificationHandler").presentNotification(
+	notificationServices("Notifications.setNotificationHandler").presentNotification(
 		notification.request.identifier,
 		behavior.shouldShowBanner || behavior.shouldShowList,
 		behavior.shouldPlaySound,
@@ -139,6 +147,8 @@ export function publishNotificationEvent(value: string): void {
 	responses.emit({ notification, actionIdentifier: fields.length > 7 ? fields[7] : DEFAULT_ACTION_IDENTIFIER });
 }
 
+listenNotificationEvents(publishNotificationEvent);
+
 export class Notifications {
 	static async getPermissionsAsync(): Promise<PermissionResponse> {
 		return await Permissions.check("notifications");
@@ -149,27 +159,27 @@ export class Notifications {
 	}
 
 	static async scheduleNotificationAsync(request: NotificationRequestInput): Promise<string> {
-		const services = appServices("Notifications.scheduleNotificationAsync");
+		const services = notificationServices("Notifications.scheduleNotificationAsync");
 		const reply: ScheduleReply = await services.scheduleNotification(spec(request));
 		if (reply.error !== "") { throw new Error(reply.error); }
 		return reply.identifier;
 	}
 
 	static async cancelScheduledNotificationAsync(identifier: string): Promise<void> {
-		appServices("Notifications.cancelScheduledNotificationAsync").cancelNotification(identifier);
+		notificationServices("Notifications.cancelScheduledNotificationAsync").cancelNotification(identifier);
 	}
 
 	static async cancelAllScheduledNotificationsAsync(): Promise<void> {
-		appServices("Notifications.cancelAllScheduledNotificationsAsync").cancelAllNotifications();
+		notificationServices("Notifications.cancelAllScheduledNotificationsAsync").cancelAllNotifications();
 	}
 
 	static async dismissAllNotificationsAsync(): Promise<void> {
-		appServices("Notifications.dismissAllNotificationsAsync").dismissAllNotifications();
+		notificationServices("Notifications.dismissAllNotificationsAsync").dismissAllNotifications();
 	}
 
 	static setNotificationHandler(next: NotificationHandler | null): void {
 		handler = next;
-		appServices("Notifications.setNotificationHandler").presentNotifications(next !== null);
+		notificationServices("Notifications.setNotificationHandler").presentNotifications(next !== null);
 	}
 
 	static addNotificationReceivedListener(listener: (notification: Notification) => void): EventSubscription {
@@ -181,7 +191,7 @@ export class Notifications {
 	}
 
 	static async getLastNotificationResponseAsync(): Promise<NotificationResponse | null> {
-		const last = await appServices("Notifications.getLastNotificationResponseAsync").lastNotificationResponse();
+		const last = await notificationServices("Notifications.getLastNotificationResponseAsync").lastNotificationResponse();
 		// A typed const: a bare `return null` is refused here (compiler card 2026-10-08-async-return-null-literal-refused.md).
 		const none: NotificationResponse | null = null;
 		if (last === "") { return none; }

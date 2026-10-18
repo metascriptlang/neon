@@ -77,7 +77,7 @@ static void present(NSArray<NSString *> *answer) {
 	complete(options);
 }
 
-NSString *niNotificationCall(NSString *name, NSString *arg) {
+static NSString *call(NSString *name, NSString *arg) {
 	UNUserNotificationCenter *center = UNUserNotificationCenter.currentNotificationCenter;
 	if ([name isEqualToString:@"notification.install"]) {
 		notifications();
@@ -141,3 +141,7 @@ NSString *niNotificationCall(NSString *name, NSString *arg) {
 }
 
 @end
+
+const char *niNotificationCommand(const char *name, const char *arg) {
+	return niAppReply(call(@(name), @(arg ? arg : "")));
+}
