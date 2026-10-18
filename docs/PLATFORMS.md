@@ -22,12 +22,13 @@ Two rules, the person's (2026-10-18/19):
 | WebView | yes | yes | yes, an iframe | aborts | yes |
 | Video | yes | yes | yes | aborts | yes |
 | CameraView | yes | yes | yes | aborts | yes; `facing` and `flash` not yet measured |
-| Svg | yes | yes | yes | aborts | aborts; where it lives is the person's open decision |
+| Svg | yes | yes | yes | aborts | yes |
 | `niMeasureInWindow` geometry export | not yet | not yet | not yet | not yet | yes |
 
 "aborts" means the host stops with `<function> is not implemented on <host> yet`. That is a missing port, not a refusal:
-`src/platform/windows/bridge.cpp` and `src/platform/macos/bridge.m` mark each one with `UNIMPLEMENTED`. Svg reaches a
-native host as `niControlCreate("svg")`. The geometry export is macOS-only until pi-93968's common-host slice lands it
+`src/platform/windows/bridge.cpp` and `src/platform/macos/bridge.m` mark each one with `UNIMPLEMENTED`. A component
+other than the primitives aborts on Windows with `native host: <tag> has no renderer on this host`, because no Windows
+renderer registers with `src/platform/native/elements.ms`. The geometry export is macOS-only until pi-93968's common-host slice lands it
 in `src/platform/native/bridge.h` and the other hosts.
 
 Where each cell is proved:

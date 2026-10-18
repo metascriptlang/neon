@@ -3,11 +3,14 @@
 Status: built 2026-10-18 to the level `WINDOWS.md` reached on Windows: a full-window `<Void>` in an Ion window, and the
 native host behind `src/platform/native/bridge.h` with View, Text (styled runs, recolour without a relayout, press on a
 run), Pressable, ScrollView and TextInput, frames on demand and app services through Ion. Past the Windows level:
-Switch, ActivityIndicator, Image (with `Image.getSize`, `Image.prefetch` and `defaultSource`), Modal, and the
-`niControlCreate` kinds `webview`, `video` and `camera` (2026-10-18; `src/platform/macos/media.m`, ported from iOS's
-`media.m` and `camera.m`). The kinds `slider`, `picker`, `datetimepicker` and `svg` abort by name, as does accessibility
-exposed to VoiceOver (`UNIMPLEMENTED` in `src/platform/macos/bridge.m`). They stay out of the host's core: a component
-composable from the primitives is written once in Neon. WebView, Video and Camera are core (the person, 2026-10-18).
+Switch, ActivityIndicator, Image (with `Image.getSize`, `Image.prefetch` and `defaultSource`), Modal, WebView, Video,
+CameraView and Svg (2026-10-19). Each of those but Image has its own `src/platform/macos/<name>.m`, compiled with its
+frameworks only by the component's `src/platform/native/<name>.ms`, which registers its creator on import; an app
+that imports none of them carries none of their classes (`tests/apps/run.sh` `bundleMacosApp`). WebView, Video and
+Camera are ported from iOS's `webView.m`, `video.m` and `camera.m`, Svg from iOS's `svg.m`. Accessibility exposed to
+VoiceOver aborts by name (`UNIMPLEMENTED` in `src/platform/macos/bridge.m`). Slider, Picker and DateTimePicker stay out
+of the host's core: a component composable from the primitives is written once in Neon. WebView, Video and Camera are
+core (the person, 2026-10-18), and Svg (2026-10-19).
 `Camera.requestCameraPermissionsAsync` asks through Ion's `requestCameraAccess` (ion `b2e5c7e`) and shows the system prompt once.
 
 ## Decision
@@ -23,9 +26,10 @@ composable from the primitives is written once in Neon. WebView, Video and Camer
 | ActivityIndicator | a spinning `NSProgressIndicator`, `color` as a `CIColorPolynomial` filter on its layer | `ReactApple/Libraries/RCTUIKit/RCTUIActivityIndicatorView.m` |
 | Image | the decoded image as a layer's contents at one point per pixel, `resizeMode` as `contentsGravity`, `repeat` as a pattern colour, `blurRadius` in image pixels as on iOS; one `NSCache` shared with `Image.getSize` | `ReactApple/Libraries/RCTUIKit/RCTUIImageView.m` |
 | Modal | a view filling the root above the app, where `src/components/modal.ms` portals it, as the iOS host does; `fade` and `slide` animate its arrival; Escape asks the app to close the topmost one (`onRequestClose`), the macOS stand-in for iOS's escape gesture | none: RN macOS compiles its Modal out (`React/Views/RCTModalHostView.m` is `#if !TARGET_OS_OSX`) |
-| WebView | a `WKWebView` with react-native-webview's `ReactNativeWebView` script bridge, the iOS `media.m` port; `onShouldStartLoadWithRequest` answered synchronously in the navigation policy; the web view takes an inactive window's first click | `react-native-webview` `apple/RNCWebViewImpl.m`, one implementation for iOS and macOS (its README: "compatible with iOS, Android, Windows and macOS") |
-| Video | an `AVPlayer` drawn by an `AVPlayerLayer`, with an inline-controls `AVPlayerView` over it only while `controls` is set, the iOS shape; a `data:` source is written to a temporary file first | none read: RN macOS ships no video view; Neon's iOS `media.m` |
+| WebView | a `WKWebView` with react-native-webview's `ReactNativeWebView` script bridge, the iOS `webView.m` port; `onShouldStartLoadWithRequest` answered synchronously in the navigation policy; the web view takes an inactive window's first click | `react-native-webview` `apple/RNCWebViewImpl.m`, one implementation for iOS and macOS (its README: "compatible with iOS, Android, Windows and macOS") |
+| Video | an `AVPlayer` drawn by an `AVPlayerLayer`, with an inline-controls `AVPlayerView` over it only while `controls` is set, the iOS shape; a `data:` source is written to a temporary file first | none read: RN macOS ships no video view; Neon's iOS `video.m` |
 | CameraView | an `AVCaptureSession` with its preview layer and an `AVCapturePhotoOutput`; it reads the authorization and never prompts, reporting `onMountError` "Camera permission not granted" as expo-camera does; a facing with no camera falls back to the default one | none read: RN macOS ships no camera view; Neon's iOS `camera.m` |
+| Svg | the display list of `src/components/svg/scene.ms` drawn by Core Graphics in a flipped `NSView` inside the `NeonView`, the iOS `svg.m` port with `NSFont` text | none read: RN core has no Svg; react-native-svg's macOS target was not read |
 | `overflow` | `hidden` clips a view's children and masks its layer, on every view | `React/Views/RCTView.m` (`clipsToBounds`) |
 | scrolling | `NSScrollView` over a flipped document view, overlay scrollers, `NSViewBoundsDidChangeNotification` for onScroll | `React/Fabric/Mounting/ComponentViews/ScrollView/RCTScrollViewComponentView.mm` |
 | geometry (`niMeasureInWindow`) | the bounds in the window content, top-left origin, in points, through the model the hit test inverts (frame, centred transform, scroll offset), since `convertRect:toView:` misses the transforms set on layers; four corners to an axis-aligned box, unclipped | iOS host: `[v convertRect:v.bounds toView:v.window]` |
@@ -108,6 +112,8 @@ layers (not the window server), so one `screencapture -l <window>` per example w
 | `ionCamera`, authorized | 3 checks after the person allowed the camera once by hand (2026-10-19): onCameraReady once, Ion reads `granted`, `takePictureAsync` writes a sized `file://` picture; 3 runs of 3 green |
 | `ionMeasure` | 9 checks: the mounted root (0,0,480,320), plain, inside a `scale(0.5)` parent, `rotate(90deg)`, inside a ScrollView before and after `scrollTo`, hidden (0), never attached (-1); 3 runs of 3 green (`msc` e16a76c25, from main `f85af81`) |
 | `ionInput` | 26 checks, the Windows set: placeholder, typing, backspace, submit and blur, controlled uppercase, maxLength, newline and growth in multiline, an IME composition through the field editor's `NSTextInputClient` reporting no change until its commit, secure bullets; 3 runs of 3 green |
+| `ionSvg` | 13 checks: the Svg laid out at 200x100, a `viewBox` scaling a rect, a circle's centre and edge, a linear gradient red at its start and blue at its end, a stroke at its width, text drawn above its baseline and upright, the circle grown by a signal; 3 runs of 3 green (2026-10-19, `msc` c235d7de9, Ion `b2e5c7e`, branch `wt/pay-for-use`) |
+| renderer split | after each component moved into its own `.m` (2026-10-19, same toolchain), `ionControls` 27, `ionModal` 13, `ionWebView` 11, `ionVideo` 7, `ionCamera` 3, `ionNeonUi` 4, `ionMeasure` 9 and `ionSvg` 13 checks, 3 runs of 3 green each, the counts main gave |
 
 Hot reload (`examples/macosNative/hcr`, `cd` there and `msc run --hcr app.ms`). The cold build took 28-40 s. A template
 edit reloaded `[counter]` in 2.1-2.9 s and kept the count: 3, then 4 after one click. A handler edit applied (4 to
