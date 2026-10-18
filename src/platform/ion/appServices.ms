@@ -1,6 +1,5 @@
 // The app services of every Ion host, the full-window <Void> and the Windows native host alike.
-// Ion backs the clipboard and the microphone and camera permissions; a service Ion does not back yet is refused with the name the
-// author called.
+// Ion backs none of the host-bound services yet: each is refused with the name the author called.
 
 import {
 	AlertRequest, AppServices, ShareRequest,

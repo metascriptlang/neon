@@ -102,9 +102,10 @@ and `text.ms` own a plain Win32 window (`niwPump`), and `src/platform/windows/io
 ("Built: Ion window and Pressable"); `--check` samples the owner's own window.
 Every `bridge.h` function not implemented aborts with its name, and `niAppCall` answers only the queries
 `installNativeAppServices` makes at startup. App services do not go through it on an Ion window. `ion.ms` hands
-`useAppServices` the services of `src/platform/ion/appServices.ms`, the same ones the full-window `<Void>` installs.
-In them, the clipboard and the microphone permission go through Ion, and every other service throws an error
-that names it.
+`useAppServices` the host-bound services of `src/platform/ion/appServices.ms`, the same ones the full-window `<Void>`
+installs; each throws an error that names it. Clipboard and Permissions install their Ion services when the app
+imports them (`src/platform/ion/clipboard.ms`, `permissions.ms`); any other device API the app calls throws
+`<API> is not available on this host`.
 
 A build links the bridge only when the entry module imports `src/platform/windows/library`; `host.ms` has no
 Windows block, so the mock-bridge tests, which also see `windows` as true on this box, link their own mock.
