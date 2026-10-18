@@ -8,6 +8,7 @@ import { Cleanup } from "../../src/core/types";
 import { onCleanup } from "../../src/core/cleanup";
 import { Errored, Loading, For, Show } from "../../src/macros/ui/flow";
 import { Gate, gated, release } from "../core/asyncClock";
+import { flush } from "../../src/core/runtime";
 import { render } from "../../src/render/host";
 import { Host, HostNode } from "../../src/render/hostTypes";
 import { el, text, regionNode, builtRow, NeonNode } from "../../src/render/node";
@@ -41,11 +42,13 @@ test "a dropped row without a keeper is freed on the void host, and a later row 
 	assert first.ref.isLive(), "the row is alive while shown";
 
 	setOn(false);
+	flush();
 	assert (vh.root as VoidNode).children.indexOf(first) < 0, "the row left the root";
 	assert first.disposed && !first.ref.isLive(), "the dropped row's node is freed";
 	assert first.children[0].disposed, "its subtree is freed";
 
 	setOn(true);
+	flush();
 	const second = (vh.root as VoidNode).children[0];
 	assert second !== first && second.ref.isLive(), "the row is built again, never revived from freed nodes";
 }
@@ -103,6 +106,7 @@ test "disposing an Errored with its content parked frees the parked nodes after 
 	const dispose = render(Errored({ children: content, fallback: caughtView }), vh.host, vh.root);
 	const parked = node as VoidNode;
 	setA(1);
+	flush();
 	assert parked.ref.isLive() && (vh.root as VoidNode).children.indexOf(parked) < 0, "the content is parked and alive";
 	dispose();
 	assert liveAtCleanup, "the content cleanup ran while its nodes were alive";
@@ -125,9 +129,11 @@ test "a focused TextInput in content that gets parked loses focus, and the node 
 	vh.focus(input);
 	assert vh.focused() === input, "the input is focused";
 	setA(1);
+	flush();
 	assert vh.focused() === null, "parking took the focus away";
 	assert input.ref.isLive(), "the parked input is alive";
 	setA(0);
+	flush();
 	(again as () => void)();
 	assert (vh.root as VoidNode).children.indexOf(input) >= 0, "the same input came back";
 	assert vh.focused() === null, "and is not focused again";
@@ -214,10 +220,12 @@ test "a Show row switched off while its build is pending leaves no node behind" 
 	const dispose = render(app, vh.host, vh.root);
 	assert partial.length === 1 && partial[0].disposed, "the first attempt's partial node is freed";
 	setOn(false);
+	flush();
 	await release(gate);
 	assert partial.length === 1, "the row was not built again while it is off";
 	assert (vh.root as VoidNode).children.indexOf(partial[0]) < 0, "nothing of it is in the root";
 	setOn(true);
+	flush();
 	assert partial.length === 2 && partial[1].ref.isLive() && (vh.root as VoidNode).children.indexOf(partial[1]) >= 0, "switching it on builds fresh nodes in the root";
 	dispose();
 }

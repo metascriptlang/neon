@@ -1,4 +1,5 @@
 import { runApp } from "../../src/platform/native/host";
+import { flush } from "../../src/core/runtime";
 import { View, Pressable } from "../../src/components/primitives";
 import { NeonNode } from "../../src/render/node";
 import { createSignal } from "../../src/core/signal";
@@ -23,12 +24,14 @@ test "configureNext tweens the next layout's frame changes, and only the next" {
 	const tag = nmLastPressableTag();
 	assert nmLayoutHeight(tag) === 40;
 	nmTouch(tag, PRESS);
+	flush();
 	assert nmLayoutHeight(tag) === 40, "the frame starts where it was " + nmLayoutHeight(tag).toString();
 	clock.step(5);
 	assert Math.abs(nmLayoutHeight(tag) - 120) < 0.5, "half way " + nmLayoutHeight(tag).toString();
 	clock.runAll();
 	assert nmLayoutHeight(tag) === 200 && ended === 1, "lands and reports the end";
 	setOpen(false);
+	flush();
 	assert nmLayoutHeight(tag) === 40, "a layout without configureNext jumps";
 	nmTeardown();
 	setFrameDriver(null);
@@ -46,6 +49,7 @@ test "a created view fades in under the easeInEaseOut preset; siblings below sli
 	assert nmLayoutY(below) === 0;
 	LayoutAnimation.configureNext(LayoutAnimationPresets.easeInEaseOut);
 	setShown(true);
+	flush();
 	const created = nmLastPressableTag();
 	assert nmLayoutY(below) === 0, "the sibling starts in place";
 	clock.step(2);

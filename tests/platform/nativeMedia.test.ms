@@ -2,6 +2,7 @@ import { runApp } from "../../src/platform/native/host";
 import "../../src/platform/native/webView";
 import "../../src/platform/native/video";
 import { createSignal } from "../../src/core/signal";
+import { flush } from "../../src/core/runtime";
 import { View } from "../../src/components/primitives";
 import { NeonNode } from "../../src/render/node";
 import { WebView, WebViewHandle, WebViewNavigation, WebViewMessageEvent, ShouldStartLoadRequest } from "../../src/components/webView";
@@ -51,6 +52,7 @@ test "a native WebView is a media view created by name: source, page events, the
 	(handle as WebViewHandle).goBack();
 	assert prop(web, "command") === "goBack\x1f", prop(web, "command");
 	setPage("https://neon.dev/");
+	flush();
 	assert prop(web, "source") === "uri\x1fhttps://neon.dev/", "a new source reaches the view";
 	nmTeardown();
 	assert nmReleaseCalls() === nmViewsCreated(), "media views are released";
@@ -76,6 +78,7 @@ test "a native Video takes its size from its style, reports load and progress, a
 	assert `${nmLayoutWidth(video)}x${nmLayoutHeight(video)}` === "320x180", "sized by style: " + `${nmLayoutWidth(video)}x${nmLayoutHeight(video)}`;
 	assert prop(video, "paused") === "true" && prop(video, "source") === "https://neon.dev/clip.mp4", "props";
 	setPaused(false);
+	flush();
 	assert prop(video, "paused") === "false", "play";
 	nmControl(video, 5, "3\x1f0\x1f160\x1f90");
 	nmControl(video, 13, "1.25\x1f3\x1f3");

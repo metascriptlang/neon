@@ -1,5 +1,6 @@
 import { createSignal } from "../../src/core/signal";
 import { element } from "../../src/macros/ui/element";
+import { flush } from "../../src/core/runtime";
 import { render } from "../../src/render/host";
 import { NeonEvent } from "../../src/render/event";
 import { NeonNode } from "../../src/render/node";
@@ -109,6 +110,7 @@ test "a tree change inside the area wakes the window, and disposing the owner re
 	area.vh.scene.clearChanges();
 	const mark = p.log.length;
 	setN(2);
+	flush();
 	assert p.log.slice(mark).join(",") === "dirty", "one wake: " + p.log.join(",");
 	dispose();
 	assert p.log.slice(mark).join(",") === "dirty,released", "released: " + p.log.join(",");

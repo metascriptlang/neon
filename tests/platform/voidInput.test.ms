@@ -1,6 +1,7 @@
 import { createSignal, Accessor } from "../../src/core/signal";
 import { resetErrorHalt } from "../../src/core/runtime";
 import { element } from "../../src/macros/ui/element";
+import { flush, resetErrorHalt } from "../../src/core/runtime";
 import { render } from "../../src/render/host";
 import { NeonEvent, neonEvent } from "../../src/render/event";
 import { View, ViewHandle, Text, TextInput, Pressable } from "../../src/components/primitives";
@@ -126,6 +127,7 @@ test "a controlled value replaces the text without reporting a change" {
 	render(element(<TextInput value={value()} onChangeText={(t: string): void => { changes = changes + 1; }} />), vh.host, vh.root);
 	assert labelOf(top(vh)).text() === "one", "initial value drawn";
 	setValue("two");
+	flush();
 	assert labelOf(top(vh)).text() === "two", "new value drawn";
 	assert changes === 0, "a value set by the app is not a change: " + changes.toString();
 }
@@ -234,6 +236,7 @@ test "a tree change wakes the host once the scene is clean" {
 	assert woke === 1, "mounting woke the host once: " + woke.toString();
 	settle(vh);
 	setN(1);
+	flush();
 	assert woke === 2, "a signal write woke it again: " + woke.toString();
 }
 
@@ -257,6 +260,7 @@ test "a Text's strings draw in order as one paragraph label, and a string change
 	assert text.ref.numChildren() === 1, "the paragraph label is the Text's only scene child, got " + text.ref.numChildren().toString();
 	assert text.children.length === 0, "the strings are spans, not host nodes";
 	setN(8);
+	flush();
 	assert paragraph(text).text() === "Count: 8", "the changed string reaches the paragraph: \"" + paragraph(text).text() + "\"";
 	assert runsOf(vh, paragraph(text)).length === 0, "an unstyled paragraph draws without runs";
 }
@@ -278,6 +282,7 @@ test "a Text's color and fontSize reach its paragraph, and follow a style change
 	assert label.paint().color.r === 1.0 && label.paint().color.g === 0.0, "the paragraph is red";
 	assert label.textStyle().size === 20.0, "the paragraph is 20, got " + label.textStyle().size.toString();
 	setRed(false);
+	flush();
 	assert label.paint().color.g === 1.0 && label.paint().color.r === 0.0, "the paragraph turned green";
 }
 
@@ -307,10 +312,13 @@ test "a nested Text's colour and content changes reach its run, and the runs go 
 	assert label.text() === "a red b", "start: \"" + label.text() + "\"";
 	assert runsOf(vh, label)[1].underline.r === 1.0, "the underline takes the run colour";
 	setHot(false);
+	flush();
 	assert runsOf(vh, label)[1].color.b === 1.0 && runsOf(vh, label)[1].color.r === 0.0, "the run turned blue";
 	setWord("blue");
+	flush();
 	assert label.text() === "a blue b" && runsOf(vh, label)[1].len === 4, "the run follows its string: \"" + label.text() + "\"";
 	setShown(false);
+	flush();
 	assert label.text() === "a  b", "the span left: \"" + label.text() + "\"";
 	assert runsOf(vh, label).length === 0, "no styled span left, so no runs";
 }
@@ -324,6 +332,7 @@ test "cellWidth puts every grapheme of the paragraph on a fixed cell, and follow
 	label.textWidth();
 	assert label.xForIndex(1) === 10.0 && label.xForIndex(3) === 30.0, "cells of 10: " + label.xForIndex(1).toString() + ", " + label.xForIndex(3).toString();
 	setCell(7);
+	flush();
 	label.textWidth();
 	assert label.xForIndex(2) === 14.0, "cells of 7: " + label.xForIndex(2).toString();
 }
@@ -341,8 +350,10 @@ test "spans draw as one paragraph label on the Void host, with no node per span"
 	assert runs.length === 2 && runs[0].len === 5 && runs[1].len === 11, "a run per span";
 	assert runs[0].color.r === 1.0 && runs[0].color.g === 0.0 && runs[0].underline.r === 1.0 && runs[1].color.g === 1.0, "only the first span is red and underlined";
 	setSpans([{ text: "warning", style: { color: "#0000ff" } }, { text: ": slow" }]);
+	flush();
 	assert label.text() === "warning: slow" && runsOf(vh, label)[0].len === 7 && runsOf(vh, label)[0].color.b === 1.0, "a new line of spans: \"" + label.text() + "\"";
 	setSpans([{ text: "plain" }]);
+	flush();
 	assert label.text() === "plain" && runsOf(vh, label).length === 0, "unstyled spans draw without runs";
 }
 
@@ -553,6 +564,7 @@ test "a focused component places the IME rect with its imeRect prop, in its own 
 	assert r.x === 23.0 && r.y === 34.0 && r.w === 8.0 && r.h === 16.0, `rect ${r.x},${r.y} ${r.w}x${r.h}`;
 	assert woke === 1, "focusing it asks for a frame so Ion hears the rect: " + woke.toString();
 	setAt(10);
+	flush();
 	r = vh.imeRect() as CaretRect;
 	assert r.x === 30.0, "the rect follows the signal: " + r.x.toString();
 	assert woke === 2, "moving it asks for a frame: " + woke.toString();
@@ -604,7 +616,9 @@ test "a ForList scroll moves 59 of 60 rows without reshaping or rebuilding them"
 	const before = top(vh).children.slice(0);
 	assert before.length === 61 && textTouched(vh, root) === 0, "60 rows and the region anchor, all shaped and painted: " + textTouched(vh, root).toString();
 	rows.remove(0);
+	flush();
 	rows.push({ id: 60, text: "row 60" });
+	flush();
 	assert textTouched(vh, root) === 1, "after the ops only the pushed row's label is new: " + textTouched(vh, root).toString();
 	vh.layout(300.0, 1200.0);
 	const after = top(vh).children;

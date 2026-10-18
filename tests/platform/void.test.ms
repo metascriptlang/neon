@@ -3,6 +3,7 @@
 // pipeline the windowed example (examples/counterVoid.ms) runs per frame.
 
 import { createSignal } from "../../src/core/signal";
+import { flush } from "../../src/core/runtime";
 import { element } from "../../src/macros/ui/element";
 import { render, HostNode } from "../../src/render/host";
 import { createVoidHost, layoutPass, parseFlexStyle, VoidNode } from "../../src/platform/void/host";
@@ -68,13 +69,17 @@ test "clickAt hits the button and reactive text updates" {
 	const p = div.children[0];
 
 	vh.clickAt(40.0, 40.0);
+	flush();
 	assert p.children[1].ref.text() === "1", "click inside button increments";
 
 	vh.clickAt(150.0, 100.0);
+	flush();
 	assert p.children[1].ref.text() === "1", "click outside button is ignored";
 
 	vh.clickAt(1.0, 21.0);
+	flush();
 	vh.clickAt(79.0, 59.0);
+	flush();
 	assert p.children[1].ref.text() === "3", "edge clicks inside bounds count";
 }
 
@@ -278,6 +283,7 @@ test "a background added after mount keeps children, order and handlers" {
 	assert n.ref.getChildAt(0).id.index === (first as VoidNode).ref.id.index, "first child kept its place";
 	assert n.ref.getChildAt(1).id.index === (second as VoidNode).ref.id.index, "second child kept its place";
 	vh.clickAt(10.0, 10.0);
+	flush();
 	assert pressed === 1, "the handler survived";
 	vh.host.setStyle(node, { width: 100, height: 40 } as Style);
 	assert n.ref.kind() === DrawKind.Group, "dropping the background demoted it";
@@ -294,8 +300,10 @@ test "a click outside a scroll view's mask misses content it clips" {
 	), vh.host, vh.root);
 	vh.layout(100.0, 50.0);
 	vh.clickAt(10.0, 120.0);
+	flush();
 	assert pressed === 0, "content below the mask is clipped, so it is not hit";
 	vh.clickAt(10.0, 10.0);
+	flush();
 	assert pressed === 1, "content inside the mask is hit";
 }
 

@@ -1,4 +1,5 @@
 import { runApp } from "../../src/platform/native/host";
+import { flush } from "../../src/core/runtime";
 import { Pressable } from "../../src/components/primitives";
 import { NeonNode } from "../../src/render/node";
 import { Animated } from "../../src/animation/animated";
@@ -57,6 +58,7 @@ test "overflow hidden clips a native view and visible releases it" {
 	const tag = nmLastPressableTag();
 	assert prop(tag, "overflow") === "hidden", "hidden: " + prop(tag, "overflow");
 	setClip(false);
+	flush();
 	assert prop(tag, "overflow") === "visible";
 	nmTeardown();
 }

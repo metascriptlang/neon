@@ -1,4 +1,5 @@
 import { runApp } from "../../src/platform/native/host";
+import { flush } from "../../src/core/runtime";
 import { createSignal } from "../../src/core/signal";
 import { View, Text } from "../../src/components/primitives";
 import { NeonNode } from "../../src/render/node";
@@ -26,6 +27,7 @@ test "a closed Collapsible opens on the native host: its content reports a layou
 	runApp(app);
 	assert box === 0, "closed: " + box.toString();
 	setCollapsed(false);
+	flush();
 	loopFor(400);
 	assert content === 120, "the content was laid out: " + content.toString();
 	assert box === 120, "the box opened: " + box.toString();

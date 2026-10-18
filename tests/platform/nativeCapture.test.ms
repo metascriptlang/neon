@@ -1,6 +1,7 @@
 import { runApp } from "../../src/platform/native/host";
 import "../../src/platform/native/camera";
 import { createSignal } from "../../src/core/signal";
+import { flush } from "../../src/core/runtime";
 import { View } from "../../src/components/primitives";
 import { NeonNode } from "../../src/render/node";
 import { ImagePicker, ImagePickerResult } from "../../src/api/imagePicker";
@@ -229,6 +230,7 @@ test "a native CameraView is a media view: facing and flash props, ready and mou
 	assert `${nmLayoutWidth(camera)}x${nmLayoutHeight(camera)}` === "300x400", `${nmLayoutWidth(camera)}x${nmLayoutHeight(camera)}`;
 	assert prop(camera, "facing") === "back" && prop(camera, "flash") === "auto" && prop(camera, "active") === "true", "props";
 	setFacing("front");
+	flush();
 	assert prop(camera, "facing") === "front", "facing follows its signal";
 	nmControl(camera, 30, "");
 	nmControl(camera, 31, "Camera permission not granted");
