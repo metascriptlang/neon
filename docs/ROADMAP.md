@@ -63,17 +63,20 @@ tiers say what is core and what moves.
    Share, AppState, BackHandler, Keyboard, Dimensions, PixelRatio, Platform, Appearance,
    AccessibilityInfo, Vibration).
 2. **Native modules, opt-in** — need native code but are not RN core (RN community / Expo
-   packages): `Slider`, `Picker`, `DateTimePicker`, SVG, `ImagePicker`, `Audio`, `Clipboard`, AsyncStorage, NetInfo, Permissions, Geolocation,
+   packages): SVG, `ImagePicker`, `Audio`, `Clipboard`, AsyncStorage, NetInfo, Permissions, Geolocation,
    Haptics, DeviceInfo, Localization, Notifications. Target: one module each, built only by apps
    that import it. When to split is open.
-3. **Composed from primitives — relocate to a UI library (`neon-ui`)**: Chip, Card, Avatar, Badge,
+3. **Composed from primitives — relocate to a UI library (`neon-ui`)**: `Slider`, `Picker` and
+   `DateTimePicker` (the person, 2026-10-19: "tao không nghĩ tụi nó là core --> bỏ vào neon-ui";
+   drawn from primitives in `neon-ui/src/`, their native controls deleted from every host), Chip, Card, Avatar, Badge,
    Divider, Snackbar, Toast, Tooltip, Dialog, BottomSheet, Stepper, SegmentedControl, the
    Neon-drawn Checkbox/Radio; PageView, TabView, Carousel, Collapsible/Accordion, DataTable, Wrap;
    Dismissible, ReorderableFlatList, GridList, MasonryList, CollapsingHeader, CustomScrollView,
    ListWheelScrollView; navigation (`src/navigation/`). Kept with their tests as a consumer of the
    core: they found core bugs (responder, touches inside scroll views, text measurement,
-   `textAlign`). Open: a sibling repo `~/metascript/neon-ui` (clear boundary, own gate) or a
-   package inside this repo (shared gate, core regressions surface at once).
+   `textAlign`). `neon-ui/` in this repo is the package for now: it imports only `src/`, and
+   `tests/run.sh` runs `neon-ui/tests/` with the rest. Open: whether it becomes a sibling repo
+   `~/metascript/neon-ui` (clear boundary, own gate), which is then a directory move.
 
 ## Next — app deliverability before full parity
 
@@ -259,7 +262,8 @@ iPhone 17 Pro simulator (`ControlsUITests`: UIDatePicker popover pick, UISlider 
 room pick, tooltip long press, segmented/checkbox/radio/chip presses, bottom sheet, dialog,
 progress, snackbar undo and toast; re-run on `wt/rn-web-base`, `/private/tmp/neon-sim.AmL6AX`). Android: the APK builds and installs on the Seeker; the
 lane `tests/android/controls.py` is pending because the phone was asleep behind its keyguard.
-Not verified: any control on a real Android screen, a screen reader, `Stepper` in an app.
+Not verified: any control on a real Android screen, a screen reader, `Stepper` in an app. On 2026-10-19 `Slider`, `Picker` and
+`DateTimePicker` left the hosts for `neon-ui/` as Neon-drawn components (`WORKAROUND.md` M2, M3, M9).
 
 Navigation (`wt/rn-navigation`, msc `0d83c4867`, 2026-10-07): `src/navigation/` holds React
 Navigation's surface — `NavigationContainer` (`ref`, `linking`, `theme`, `onReady`,
