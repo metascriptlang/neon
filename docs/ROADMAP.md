@@ -254,7 +254,7 @@ community and Material controls in `src/components/`: native `Slider`, `Picker`
 (`niControlCreate`); Neon-drawn `Checkbox`, `RadioButton`/`RadioGroup`, `SegmentedControl`,
 `Chip`, `Card`, `Avatar`, `Badge`, `Divider`, `ProgressBar`, `Snackbar`, `Toast`/`ToastHost`,
 `Tooltip`, `Dialog`/`DialogAction`, `BottomSheet` and `Stepper`, with an `accessibilityState`
-wire attribute mapped by every host (`WORKAROUND.md` M1–M8, K1). Proven: mock host and JS
+wire attribute mapped by every host (`WORKAROUND.md` M2–M8, K1). Proven: mock host and JS
 (`tests/components/{controls,material,overlays}.test.ms`, `tests/apps/booking.test.ms`),
 the native mock bridge (`tests/platform/nativeHost.test.ms`), Chrome
 (`tests/browser/{controls,booking}.test.ms`), and the `examples/controls` booking form on an

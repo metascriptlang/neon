@@ -169,10 +169,33 @@ knows how to compile and whose consumer keep rules already reach R8: nothing is 
 module is `src/platform/android/java/` (`Touch`, one `View.OnTouchListener` per event tag, and
 `consumer-rules.pro`), declared once by `src/platform/android/library.ms` with Ion's
 `androidLibrary`; Ion's `docs/PROJECT-GENERATOR.md` §Android application says how the generated
-project includes it. The path given to `androidLibrary` must stay under the declaring module's
-directory: a `..` fails in the macro until
-`~/metascript/.inbox/compiler/2026-09-25-raiser-array-pop-fails.md` is fixed, which is why the
-declaration is not in `src/platform/native/host.ms`.
+project includes it.
+
+**An app pays only for the Java it imports (2026-10-19).** R8 cannot see JNI, so a class that
+`bridge.c` or `app.c` reaches by name lives only while a keep rule names it. The core module's
+`consumer-rules.pro` keeps only what every app uses. Each component module
+(`src/platform/native/{switch,activityIndicator,modal,webView,video,camera,svg}.ms`) and each
+service domain with its own Java class (`asyncStorage`, `netInfo`, `permissions`, `geolocation`,
+`haptics`/`deviceInfo`/`localization`, `notifications`) declares a library
+`src/platform/android/<name>/` under `when (android)`. That library holds only that class's keep
+rule, plus the notification receiver's manifest entry. An app that does not import the module
+never declares the library, so R8 drops the class. The Java stays in the core module because a
+library built on its own would need a Gradle project dependency on the core for `Props` and
+`Control`, and Ion names that project after its absolute path. The native side resolves those
+classes on first use through the app's `ClassLoader`, cached at start (`bridge.c`
+`niAndroidClass`). `FindClass` would resolve through the system loader when it runs under a
+looper callback, because no app frame is on the stack. Capture (`Capture`, `Sounds`,
+`Recordings`, and the `Permissions` they use) stays host-installed, as on iOS
+(`src/platform/native/appServices.ms`). Clipboard, linking, vibration and accessibility answer
+from `App.call`.
+
+Measured with `tests/android/dex.sh` (Release, AGP 9.1, `dexdump` 36.0.0) on tree
+`2eec31066b7599f2b2fc54458369d61c26d5301c`: the `<View><Text>` app's dex went from 191,064 to 135,036 bytes. Before, it named
+`Toggle`, `Spinner` and `Overlay`, and R8's mapping held code from `Web`, `Movie`, `SvgView`,
+`CameraPreview` and every domain class. After, none of them appear. The control app (Switch,
+Video, AsyncStorage) carries `Toggle`, `Movie` and `Storage` and nothing else of the set
+(145,532 bytes). With `Toggle` kept in the core rules and `video.ms` declaring the Svg library,
+the script fails on all four counts.
 
 ## 7. What the MetaScript port does differently
 
