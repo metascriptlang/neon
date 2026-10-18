@@ -155,8 +155,9 @@ function SearchTab(props: ScreenProps<string>): NeonNode {
 	const focused = useIsFocused();
 	const [unread, setUnread] = createSignal<int32>(0);
 	const notify = (e: NeonEvent): void => {
-		setUnread(unread() + 1);
-		navigation.setOptions({ tabBarBadge: unread().toString() });
+		const count = unread() + 1;
+		setUnread(count);
+		navigation.setOptions({ tabBarBadge: count.toString() });
 	};
 	return <View style={styles.screen}>
 		<Text style={styles.title}>Search</Text>

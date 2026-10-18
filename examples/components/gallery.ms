@@ -64,8 +64,9 @@ function ParityScreen(props: { back: () => void; say: (s: string) => void; edge:
 			<Button title="Back to gallery" onPress={(e: NeonEvent): void => { props.back(); }} />
 			<Section title="Safe area">
 				<Button title={props.edge() ? "Inside safe area" : "Edge to edge"} onPress={(e: NeonEvent): void => {
-					props.setEdge(!props.edge());
-					say(props.edge() ? "edge to edge" : "inside safe area");
+					const edge = !props.edge();
+					props.setEdge(edge);
+					say(edge ? "edge to edge" : "inside safe area");
 				}} />
 			</Section>
 			<Section title="Text">
@@ -128,15 +129,17 @@ export function GalleryApp(): NeonNode {
 	const insets = useSafeAreaInsets();
 	const say = (s: string): void => { setStatus(s); };
 	const press = (what: string): void => {
-		setPresses(presses() + 1);
-		say(`${what} ${presses()}`);
+		const next = presses() + 1;
+		setPresses(next);
+		say(`${what} ${next}`);
 	};
 	const refresh = (): void => {
 		setRefreshing(true);
 		setTimeout((): void => {
-			setRefreshes(refreshes() + 1);
+			const count = refreshes() + 1;
+			setRefreshes(count);
 			setRefreshing(false);
-			say(`refreshed ${refreshes()}`);
+			say(`refreshed ${count}`);
 		}, 600);
 	};
 
@@ -176,8 +179,9 @@ export function GalleryApp(): NeonNode {
 				</Section>
 				<Section title="Status bar">
 					<Button title={barHidden() ? "Show status bar" : "Hide status bar"} onPress={(e: NeonEvent): void => {
-						setBarHidden(!barHidden());
-						say(barHidden() ? "status bar hidden" : "status bar shown");
+						const hidden = !barHidden();
+						setBarHidden(hidden);
+						say(hidden ? "status bar hidden" : "status bar shown");
 					}} />
 				</Section>
 				<Section title="React Native parity">

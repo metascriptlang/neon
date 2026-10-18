@@ -168,7 +168,7 @@ function CarouselScreen(props: ScreenProps): NeonNode {
 				<Text style={styles.slideText}>{info.item}</Text>
 			</View>} />
 		<View style={{ flexDirection: "row", justifyContent: "center", marginTop: 16 }}>
-			<Pressable style={styles.button} onPress={(): void => { setPlaying(!playing()); say(playing() ? "autoplay on" : "autoplay off"); }}>{playing() ? "pause" : "play"}</Pressable>
+			<Pressable style={styles.button} onPress={(): void => { const on = !playing(); setPlaying(on); say(on ? "autoplay on" : "autoplay off"); }}>{playing() ? "pause" : "play"}</Pressable>
 		</View>
 	</View>;
 }
