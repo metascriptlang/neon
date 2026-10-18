@@ -1363,25 +1363,21 @@ final class ControlsUITests: XCTestCase {
         waitLabel("status ", containing: "status idle")
         report("start")
 
-        let date = app.datePickers.firstMatch
-        XCTAssertTrue(date.waitForExistence(timeout: 10), "the check-in UIDatePicker is on screen")
-        print("NEON_IOS controls-datepickers \(app.datePickers.allElementsBoundByIndex.map { "\($0.label)=\($0.value as? String ?? "")" })")
+        let date = app.buttons["Check-in date"]
+        XCTAssertTrue(date.waitForExistence(timeout: 10), "the check-in field is on screen")
         date.tap()
-        let day = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] 'October 24' OR label CONTAINS[c] '24 October'")).firstMatch
-        if day.waitForExistence(timeout: 5) {
-            day.tap()
-            report("date-popover")
-            app.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.13)).tap()
-            waitLabel("check-in ", containing: "2026-10-24")
-        } else {
-            report("date-popover-missing")
-            print("NEON_IOS controls-date-buttons \(app.buttons.allElementsBoundByIndex.prefix(40).map { $0.label })")
-            app.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.13)).tap()
-        }
+        let day = app.buttons["October 24, 2026"]
+        XCTAssertTrue(day.waitForExistence(timeout: 5), "the calendar shows October 2026")
+        day.tap()
+        report("date-dialog")
+        app.buttons["OK"].tap()
+        waitLabel("check-in ", containing: "2026-10-24")
 
         let slider = app.sliders["Guests"]
         reveal(slider)
-        slider.adjust(toNormalizedSliderPosition: 0.6)
+        let start = slider.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        let threeSteps = 3 * (slider.frame.width - 24) / 7
+        start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: threeSteps, dy: 0)), withVelocity: .slow, thenHoldForDuration: 0.2)
         waitLabel("guests ", containing: "guests 5")
         report("slider")
 

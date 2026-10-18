@@ -1,5 +1,5 @@
 import { element } from "../../src/macros/ui/element";
-import { HostNode, MockNode, mockNode, mockHost, render, mockToString, fireEvent, fireEventWith } from "../../src/render/host";
+import { Host, HostNode, MockNode, mockNode, mockHost, render, mockToString, fireEvent, fireEventWith, fireTouch } from "../../src/render/host";
 import { neonEvent } from "../../src/render/event";
 import { sleepAsync } from "std/core/promise";
 import { BookingForm } from "../../examples/components/controls";
@@ -22,10 +22,34 @@ function labelled(root: MockNode, label: string): MockNode {
 	return found as MockNode;
 }
 
-function change(root: MockNode, label: string, value: string): void {
-	const e = neonEvent("valuechange");
-	e.value = value;
-	fireEventWith(labelled(root, label), "onValueChange", e);
+function overlayOf(host: Host): MockNode {
+	return (host.overlayRoot as (n: HostNode) => HostNode)(mockNode("any") as unknown as HostNode) as unknown as MockNode;
+}
+
+function scrollWheel(wheel: MockNode, item: number): void {
+	const e = neonEvent("scroll");
+	e.y = item * 32;
+	e.height = 160;
+	fireEventWith(wheel, "onScroll", e);
+}
+
+function wheels(n: MockNode, out: MockNode[]): MockNode[] {
+	if (n.tag === "scrollview") { out.push(n); }
+	for (const c of n.children) { wheels(c, out); }
+	return out;
+}
+
+// The slider at 304 pt has a 280 pt track, 40 pt per guest over 1..8.
+function slide(root: MockNode, label: string, dx: number): void {
+	const slider = labelled(root, label);
+	const e = neonEvent("layout");
+	e.width = 304;
+	e.height = 40;
+	fireEventWith(slider, "onLayout", e);
+	const surface = slider.children[0];
+	fireTouch(surface, "onTouchStart", 100, 20, 1000);
+	fireTouch(surface, "onTouchMove", 100 + dx, 20, 1016);
+	fireTouch(surface, "onTouchEnd", 100 + dx, 20, 1032);
 }
 
 function shows(root: MockNode, text: string): boolean {
@@ -34,13 +58,22 @@ function shows(root: MockNode, text: string): boolean {
 
 test "booking: every control feeds the summary, the dialog books with progress, the snackbar undoes into a toast" {
 	const root = mockNode("root");
-	render(element(<BookingForm />), mockHost(), root as unknown as HostNode);
+	const host = mockHost();
+	render(element(<BookingForm />), host, root as unknown as HostNode);
+	const overlay = overlayOf(host);
 	assert shows(root, "status idle") && shows(root, "guests 2"), "initial: " + mockToString(root);
-	change(root, "Check-in date", "2026-10-24");
-	change(root, "Arrival time", "18:30");
-	change(root, "Guests", "4.6");
-	change(root, "Room type", "2");
-	assert shows(root, "check-in 2026-10-24 at 18:30") && shows(root, "guests 5") && shows(root, "room Suite"), "native controls: " + mockToString(root);
+	fireEvent(labelled(root, "Check-in date"), "onPress");
+	fireEvent(labelled(overlay, "October 24, 2026"), "onPress");
+	fireEvent(labelled(overlay, "OK"), "onPress");
+	fireEvent(labelled(root, "Arrival time"), "onPress");
+	const pair = wheels(overlay, []);
+	scrollWheel(pair[0], 18);
+	scrollWheel(pair[1], 30);
+	fireEvent(labelled(overlay, "OK"), "onPress");
+	slide(root, "Guests", 120);
+	fireEvent(labelled(root, "Room type"), "onPress");
+	fireEvent(labelled(overlay, "Suite"), "onPress");
+	assert shows(root, "check-in 2026-10-24 at 18:30") && shows(root, "guests 5") && shows(root, "room Suite"), "neon-ui controls: " + mockToString(root);
 	fireEvent(labelled(root, "Breakfast"), "onPress");
 	fireEvent(labelled(root, "Cash"), "onPress");
 	assert shows(root, "extras breakfast") && shows(root, "payment cash"), "checkbox and radio: " + mockToString(root);
