@@ -73,9 +73,52 @@ expect_bundle() {
 	[ $bad = 0 ] && echo "ok   bundle $1" || fail=1
 }
 
+# Native counts the loaded segments: LINKEDIT shifts by a few bytes between identical builds.
+expect_size() {
+	if [ "$2" = js ]; then
+		NO_COLOR=1 "$MSC" build --target=js --output="$bundles/$1.size.js" "tests/apps/$1.ms" >/dev/null 2>&1
+		got=$(wc -c < "$bundles/$1.size.js" 2>/dev/null | tr -d ' ')
+	else
+		NO_COLOR=1 "$MSC" build --release --output="$bundles/$1.size" "tests/apps/$1.ms" >/dev/null 2>&1
+		got=$(size -m "$bundles/$1.size" 2>/dev/null | awk '/^Segment __(TEXT|DATA_CONST|DATA):/ { n += $3 } END { print n + 0 }')
+	fi
+	if [ -z "$got" ] || [ "$got" = 0 ]; then
+		echo "FAIL size $1 $2: did not build"
+		fail=1
+	elif [ "$got" -gt "$3" ]; then
+		echo "FAIL size $1 $2: $got bytes, budget $3 (+$((got - $3))); raise the budget in the commit that grows it"
+		fail=1
+	elif [ "$got" -lt "$3" ]; then
+		echo "ok   size $1 $2: $got bytes, $(($3 - got)) under budget $3; lower the budget"
+	else
+		echo "ok   size $1 $2: $got bytes"
+	fi
+}
+
+mangled() {
+	printf '%s' "$1" | perl -pe 's/([A-Z])/ord($1)/ge; s#/#Z#g'
+}
+
+expect_native_modules() {
+	NO_COLOR=1 "$MSC" build --release --output="$bundles/$1.syms" "tests/apps/$1.ms" >/dev/null 2>&1
+	syms=$(nm --defined-only "$bundles/$1.syms" 2>/dev/null)
+	bad=0
+	[ -n "$syms" ] || { echo "FAIL modules $1: did not build"; fail=1; return; }
+	for m in $2; do
+		echo "$syms" | grep -q "ZsrcZ$(mangled "$m")O" || { echo "FAIL modules $1: missing $m"; bad=1; }
+	done
+	for m in $3; do
+		echo "$syms" | grep -q "ZsrcZ$(mangled "$m")O" && { echo "FAIL modules $1: carries $m"; bad=1; }
+	done
+	[ $bad = 0 ] && echo "ok   modules $1" || fail=1
+}
+
 expect_output tests/apps/localSignalApp.ms
 expect_output tests/apps/moduleSignalApp.ms
 expect_warnings tests/apps/listWarnApp.ms
 expect_bundle bundlePlainApp "platform/browser/dom" "platform/browser/media platform/browser/camera platform/browser/captureServices platform/browser/svg components/svg/markup components/svg/scene"
 expect_bundle bundleSvgApp "platform/browser/svg components/svg/markup" "platform/browser/media platform/browser/camera platform/browser/captureServices"
+expect_native_modules bundleTerminalApp "platform/terminal/host" "components/svg/scene platform/native/host platform/browser/dom"
+expect_size bundlePlainApp js 1008909
+expect_size bundleTerminalApp native 657232
 exit $fail
