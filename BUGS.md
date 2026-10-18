@@ -195,15 +195,6 @@ and the invariants that outlived them were moved to the head of the test that pi
   swaps one popstate listener the same way (`WebHistoryNavigation.kt` `onPop`/`onRewrite`); the fix is
   not traced yet.
 
-- **PARKED 2026-10-17 — no native build imports `Image`, Share, Geolocation or a device `ask`.** Not
-  Neon's: `src/components/image.ms` `ImageLoader.prefetch`, `src/api/share.ms`, `src/api/geolocation.ms` and
-  `src/platform/native/deviceServices.ms` `ask` settle a `new Promise` from a host callback, and msc
-  `3e645dc4c` stops on it with `internal: unresolved type (kind=48) reached codegen in
-  src/components/image.ms proc <toplevel>`. 41 native test files fail on main `393cd4f`, every importer of
-  `image.ms` included (gate logs `~/metascript/.wt/artifacts/rn-navigation-prod/gate-merge/`); JS and Chrome
-  pass. The polling slot P2 was dropped in `2e2067a` before the fix reached a sync; the fix rides recompiler
-  lane `fix-new-promise`. Card `~/metascript/.inbox/compiler/2026-10-07-new-promise-executor-does-not-lower.md`.
-
 - **PARKED 2026-10-16 — the sokol canvas receives no input, and Escape ends it.** Not Neon's: Void's window
   driver (`void/src/sokol/bridgeWin.c` and `bridgeWeb.c`, `_event`) keeps every `sapp_event` to itself, and
   `voidRun` takes only `init` and `frame`, so no key, char, pointer, wheel or focus reaches MetaScript. The
