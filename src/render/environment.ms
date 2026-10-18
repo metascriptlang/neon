@@ -52,12 +52,16 @@ export function publishWindow(width: number, height: number): void {
 }
 
 export function publishKeyboard(height: number): void {
-	if (keyboardHeight() !== height) { setKeyboardHeight(height); }
+	flush((): void => {
+		if (keyboardHeight() !== height) { setKeyboardHeight(height); }
+	});
 }
 
 export function publishColorScheme(scheme: ColorScheme): void {
 	const next = scheme === "dark";
-	if (dark() !== next) { setDark(next); }
+	flush((): void => {
+		if (dark() !== next) { setDark(next); }
+	});
 }
 
 // How far the unsafe areas (status bar, notch, home indicator) reach into the
