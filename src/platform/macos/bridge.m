@@ -1,5 +1,6 @@
 #import <Cocoa/Cocoa.h>
 #import <QuartzCore/QuartzCore.h>
+#import <CoreImage/CoreImage.h>
 #include "../native/bridge.h"
 #include "../native/loop.h"
 #include "handoff.h"
@@ -18,6 +19,7 @@ static double g_touchTime = 0;
 static int g_scrollTag = 0, g_scrollPhase = 0;
 static float g_scrollX = 0, g_scrollY = 0, g_scrollW = 0, g_scrollH = 0, g_scrollContentW = 0, g_scrollContentH = 0;
 static int g_controlTag = 0, g_controlPhase = 0;
+static float g_controlW = 0, g_controlH = 0;
 static char *g_controlValue = NULL;
 static BOOL g_frameRequested = NO, g_frameWanted = NO, g_inFrame = NO;
 static int g_layoutsBuilt = 0;
@@ -490,7 +492,7 @@ static NeonLabel *labelOf(void *view, const char *what) {
 static NSColor *cssColor(NSString *css) {
 	if (![css hasPrefix:@"#"] || (css.length != 4 && css.length != 7)) {
 		char message[192];
-		snprintf(message, sizeof message, "textSpans colour \"%s\" is not #rgb or #rrggbb", css.UTF8String);
+		snprintf(message, sizeof message, "colour \"%s\" is not #rgb or #rrggbb", css.UTF8String);
 		fail(message);
 	}
 	NSString *hex = [css substringFromIndex:1];
@@ -683,15 +685,19 @@ static void routeWheel(NSEvent *event, NSPoint pointInRoot) {
 
 static __weak NSResponder *g_restingResponder = nil;
 
-static void emitControl(int32_t tag, int phase, NSString *value) {
+static void emitControlSized(int32_t tag, int phase, NSString *value, float width, float height) {
 	if (tag == 0 || !s_control.fn) return;
 	free(g_controlValue);
 	g_controlValue = strdup(value.UTF8String);
 	g_controlTag = tag;
 	g_controlPhase = phase;
+	g_controlW = width;
+	g_controlH = height;
 	invoke(s_control);
 	requestHostFrame();
 }
+
+static void emitControl(int32_t tag, int phase, NSString *value) { emitControlSized(tag, phase, value, 0, 0); }
 
 @class NeonInput;
 
@@ -1074,6 +1080,268 @@ NEON_FIELD_METHODS
 }
 @end
 
+// --- Switch, ActivityIndicator, Image: RN macOS's RCTUIKit shims (RCTUISwitch : NSSwitch,
+// RCTUIActivityIndicatorView : NSProgressIndicator, RCTUIImageView drawing through its layer's contents) inside a NeonView ---
+
+static void centre(NSView *child, NSSize size, NSSize in) {
+	child.frame = NSMakeRect(floor((in.width - size.width) / 2), floor((in.height - size.height) / 2), size.width, size.height);
+}
+
+@interface NeonSwitchControl : NSSwitch
+@end
+
+@implementation NeonSwitchControl
+- (BOOL)acceptsFirstMouse:(NSEvent *)event { (void)event; return YES; }
+@end
+
+@interface NeonSwitch : NeonView
+@property(nonatomic) BOOL value;
+@property(nonatomic, strong) NeonSwitchControl *control;
+@end
+
+@implementation NeonSwitch
+- (instancetype)initWithFrame:(NSRect)frame {
+	self = [super initWithFrame:frame];
+	if (self) {
+		_control = [[NeonSwitchControl alloc] initWithFrame:NSZeroRect];
+		_control.target = self;
+		_control.action = @selector(changed);
+		[self addSubview:_control];
+	}
+	return self;
+}
+
+- (void)setFrameSize:(NSSize)size {
+	[super setFrameSize:size];
+	centre(self.control, self.control.fittingSize, size);
+}
+
+- (void)show { self.control.state = self.value ? NSControlStateValueOn : NSControlStateValueOff; }
+
+// RN Switch is controlled: the event reports the flip, then the switch returns to `value` unless the handler changed it.
+- (void)changed {
+	emitControl(self.neonTag, 4, self.control.state == NSControlStateValueOn ? @"true" : @"false");
+	[self show];
+}
+
+- (void)setProp:(const char *)name value:(const char *)value {
+	if (!strcmp(name, "value")) {
+		self.value = !strcmp(value, "true");
+		[self show];
+	} else if (!strcmp(name, "disabled")) {
+		self.control.enabled = strcmp(value, "true") != 0;
+	} else if (!strcmp(name, "thumbColor") || !strcmp(name, "trackColorOn") || !strcmp(name, "trackColorOff")) {
+		// NSSwitch draws in the system accent colour and has no tint API.
+	} else {
+		char what[128];
+		snprintf(what, sizeof what, "Switch niSetProp(%s)", name);
+		unimplemented(what);
+	}
+}
+@end
+
+@interface NeonIndicator : NeonView
+@property(nonatomic) BOOL animating, hidesWhenStopped;
+@property(nonatomic, strong) NSColor *color;
+@property(nonatomic, strong) NSProgressIndicator *spinner;
+@end
+
+@implementation NeonIndicator
+- (instancetype)initWithFrame:(NSRect)frame {
+	self = [super initWithFrame:frame];
+	if (self) {
+		_spinner = [[NSProgressIndicator alloc] initWithFrame:NSZeroRect];
+		_spinner.style = NSProgressIndicatorStyleSpinning;
+		_spinner.indeterminate = YES;
+		_spinner.wantsLayer = YES;
+		_spinner.layerUsesCoreImageFilters = YES;
+		_animating = YES;
+		_hidesWhenStopped = YES;
+		[self addSubview:_spinner];
+		[self show];
+	}
+	return self;
+}
+
+- (void)setFrameSize:(NSSize)size {
+	[super setFrameSize:size];
+	CGFloat side = MIN(size.width, size.height);
+	centre(self.spinner, NSMakeSize(side, side), size);
+}
+
+- (void)show {
+	self.spinner.displayedWhenStopped = !self.hidesWhenStopped;
+	if (self.animating) [self.spinner startAnimation:nil];
+	else [self.spinner stopAnimation:nil];
+	if (!self.color) {
+		self.spinner.layer.filters = nil;
+		return;
+	}
+	CGFloat r, g, b, a;
+	[[self.color colorUsingColorSpace:NSColorSpace.sRGBColorSpace] getRed:&r green:&g blue:&b alpha:&a];
+	CIFilter *tint = [CIFilter filterWithName:@"CIColorPolynomial"];
+	[tint setDefaults];
+	[tint setValue:[CIVector vectorWithX:r Y:0 Z:0 W:0] forKey:@"inputRedCoefficients"];
+	[tint setValue:[CIVector vectorWithX:g Y:0 Z:0 W:0] forKey:@"inputGreenCoefficients"];
+	[tint setValue:[CIVector vectorWithX:b Y:0 Z:0 W:0] forKey:@"inputBlueCoefficients"];
+	self.spinner.layer.filters = @[tint];
+}
+
+- (void)setProp:(const char *)name value:(const char *)value {
+	if (!strcmp(name, "animating")) self.animating = strcmp(value, "false") != 0;
+	else if (!strcmp(name, "hidesWhenStopped")) self.hidesWhenStopped = strcmp(value, "false") != 0;
+	else if (!strcmp(name, "color")) self.color = value[0] ? cssColor(@(value)) : nil;
+	else {
+		char what[128];
+		snprintf(what, sizeof what, "ActivityIndicator niSetProp(%s)", name);
+		unimplemented(what);
+	}
+	[self show];
+}
+@end
+
+// RN blurRadius: a Gaussian blur of the decoded image, cropped back to its own extent.
+static CGImageRef blurredImage(CGImageRef image, CGFloat radius) {
+	CIImage *input = [CIImage imageWithCGImage:image];
+	CIFilter *blur = [CIFilter filterWithName:@"CIGaussianBlur"];
+	[blur setValue:[input imageByClampingToExtent] forKey:kCIInputImageKey];
+	[blur setValue:@(radius) forKey:kCIInputRadiusKey];
+	CIImage *output = [blur.outputImage imageByCroppingToRect:input.extent];
+	return [[CIContext contextWithOptions:nil] createCGImage:output fromRect:input.extent];
+}
+
+static NSString *loadFailure(NSData *data, NSURLResponse *response, NSError *error, NSImage *image) {
+	NSInteger status = [response isKindOfClass:NSHTTPURLResponse.class] ? ((NSHTTPURLResponse *)response).statusCode : 200;
+	if (error) return error.localizedDescription;
+	if (status < 200 || status >= 300) return [NSString stringWithFormat:@"HTTP %ld", (long)status];
+	return data && image ? nil : @"cannot decode image";
+}
+
+static NSCache<NSString *, NSImage *> *imageCache(void) {
+	static NSCache *cache;
+	static dispatch_once_t once;
+	dispatch_once(&once, ^{ cache = [[NSCache alloc] init]; });
+	return cache;
+}
+
+static void fetchImage(NSString *uri, void (^done)(NSImage *image, NSString *error)) {
+	NSImage *cached = [imageCache() objectForKey:uri];
+	if (cached) {
+		dispatch_async(dispatch_get_main_queue(), ^{ done(cached, nil); });
+		return;
+	}
+	NSURL *url = [NSURL URLWithString:uri];
+	if (!url) {
+		dispatch_async(dispatch_get_main_queue(), ^{ done(nil, @"malformed URI"); });
+		return;
+	}
+	[[NSURLSession.sharedSession dataTaskWithURL:url completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+		NSImage *image = data ? [[NSImage alloc] initWithData:data] : nil;
+		NSString *failure = loadFailure(data, response, error, image);
+		dispatch_async(dispatch_get_main_queue(), ^{
+			if (!failure) [imageCache() setObject:image forKey:uri];
+			done(failure ? nil : image, failure);
+		});
+	}] resume];
+}
+
+static CGImageRef pixelsOf(NSImage *image) { return [image CGImageForProposedRect:NULL context:nil hints:nil]; }
+
+@interface NeonImage : NeonView
+@property(nonatomic, copy) NSString *uri;
+@property(nonatomic, strong) NSImage *raw;
+@property(nonatomic) CGFloat blur;
+@property(nonatomic) BOOL repeat;
+@property(nonatomic, strong) NSView *picture;
+@end
+
+@implementation NeonImage
+- (instancetype)initWithFrame:(NSRect)frame {
+	self = [super initWithFrame:frame];
+	if (self) {
+		_uri = @"";
+		_picture = [[NSView alloc] initWithFrame:NSZeroRect];
+		_picture.layer = [CALayer layer];
+		_picture.wantsLayer = YES;
+		_picture.layer.contentsGravity = kCAGravityResizeAspectFill;
+		_picture.layer.masksToBounds = YES;
+		_picture.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+		[self addSubview:_picture];
+	}
+	return self;
+}
+
+- (void)setFrameSize:(NSSize)size {
+	[super setFrameSize:size];
+	self.picture.frame = NSMakeRect(0, 0, size.width, size.height);
+}
+
+// A decoded image is drawn at one point per pixel, as iOS's UIImage imageWithData: is.
+- (void)show {
+	CALayer *layer = self.picture.layer;
+	[CATransaction begin];
+	[CATransaction setDisableActions:YES];
+	layer.contents = nil;
+	layer.backgroundColor = NULL;
+	if (self.raw && self.repeat) {
+		layer.backgroundColor = [NSColor colorWithPatternImage:self.raw].CGColor;
+	} else if (self.raw && self.blur > 0) {
+		CGImageRef blurred = blurredImage(pixelsOf(self.raw), self.blur);
+		layer.contents = (__bridge id)blurred;
+		CGImageRelease(blurred);
+	} else if (self.raw) {
+		layer.contents = (__bridge id)pixelsOf(self.raw);
+	}
+	layer.contentsScale = 1;
+	[CATransaction commit];
+}
+
+- (void)load:(NSString *)uri {
+	if ([uri isEqualToString:self.uri]) return;
+	self.uri = uri;
+	self.raw = nil;
+	[self show];
+	if (uri.length == 0) return;
+	__weak NeonImage *weakSelf = self;
+	fetchImage(uri, ^(NSImage *image, NSString *error) {
+		NeonImage *view = weakSelf;
+		if (!view || ![view.uri isEqualToString:uri]) return;
+		if (error) {
+			emitControl(view.neonTag, 6, error);
+			return;
+		}
+		view.raw = image;
+		[view show];
+		CGImageRef pixels = pixelsOf(image);
+		emitControlSized(view.neonTag, 5, @"", (float)CGImageGetWidth(pixels), (float)CGImageGetHeight(pixels));
+	});
+}
+
+- (void)setProp:(const char *)name value:(const char *)value {
+	if (!strcmp(name, "source")) {
+		[self load:@(value)];
+	} else if (!strcmp(name, "resizeMode")) {
+		NSString *mode = @(value);
+		self.picture.layer.contentsGravity = [mode isEqualToString:@"contain"] ? kCAGravityResizeAspect :
+			[mode isEqualToString:@"stretch"] ? kCAGravityResize :
+			[mode isEqualToString:@"center"] ? kCAGravityCenter : kCAGravityResizeAspectFill;
+		self.repeat = [mode isEqualToString:@"repeat"];
+		[self show];
+	} else if (!strcmp(name, "blurRadius")) {
+		self.blur = (CGFloat)atof(value);
+		[self show];
+	} else {
+		char what[128];
+		snprintf(what, sizeof what, "Image niSetProp(%s)", name);
+		unimplemented(what);
+	}
+}
+@end
+
+static BOOL isControl(NeonView *view) {
+	return [view isKindOfClass:NeonSwitch.class] || [view isKindOfClass:NeonIndicator.class] || [view isKindOfClass:NeonImage.class];
+}
+
 static BOOL isInput(NeonView *view) { return [view isKindOfClass:NeonInput.class]; }
 
 static NeonInput *inputOf(void *view, const char *what) {
@@ -1084,10 +1352,12 @@ static NeonInput *inputOf(void *view, const char *what) {
 	return nil;
 }
 
-// A click on a TextInput goes to the view AppKit edits in: the field, or its field editor once editing.
+// A click on a TextInput goes to the view AppKit edits in: the field, or its field editor once editing; a click on a
+// Switch goes to the NSSwitch.
 static NSView *nativeTarget(NeonView *view, NSPoint pointInRoot) {
-	if (!isInput(view)) return nil;
-	NSView *target = [(NeonInput *)view editingView];
+	NSView *target = isInput(view) ? [(NeonInput *)view editingView] :
+		[view isKindOfClass:NeonSwitch.class] ? ((NeonSwitch *)view).control : nil;
+	if (!target) return nil;
 	NSView *hit = [target hitTest:[target.superview convertPoint:pointInRoot fromView:g_root]];
 	return hit ? hit : target;
 }
@@ -1317,8 +1587,8 @@ float niLastScrollContentHeight(void) { return g_scrollContentH; }
 int niLastControlTag(void) { return g_controlTag; }
 int niLastControlPhase(void) { return g_controlPhase; }
 const char *niLastControlValue(void) { return g_controlValue ? g_controlValue : ""; }
-float niLastControlWidth(void) { return 0; }
-float niLastControlHeight(void) { return 0; }
+float niLastControlWidth(void) { return g_controlW; }
+float niLastControlHeight(void) { return g_controlH; }
 
 static BOOL isAccessibilityProp(const char *name) {
 	return !strcmp(name, "accessible") || !strcmp(name, "accessibilityLabel") || !strcmp(name, "accessibilityHint") ||
@@ -1329,6 +1599,10 @@ void niSetProp(void *view, const char *name, const char *value) {
 	const char *text = value ? value : "";
 	if (isInput(as(view)) && !isAccessibilityProp(name)) {
 		[(NeonInput *)as(view) setProp:name value:text];
+		return;
+	}
+	if (isControl(as(view)) && !isAccessibilityProp(name)) {
+		[(id)as(view) setProp:name value:text];
 		return;
 	}
 	if (isLabel(as(view)) && !strcmp(name, "textSpans")) {
@@ -1413,6 +1687,12 @@ void niMeasureText(void *label, float maxWidth) {
 		[(NeonInput *)as(label) measure:maxWidth];
 		return;
 	}
+	if ([as(label) isKindOfClass:NeonSwitch.class]) {
+		NSSize fit = ((NeonSwitch *)as(label)).control.fittingSize;
+		g_measuredW = ceilf((float)fit.width);
+		g_measuredH = ceilf((float)fit.height);
+		return;
+	}
 	NeonLabel *l = labelOf(label, "niMeasureText");
 	[l ensureAt:maxWidth];
 	NSRect used = [l.layoutManager usedRectForTextContainer:l.container];
@@ -1470,6 +1750,23 @@ void niScrollSetOption(void *scroll, const char *name, const char *value) {
 	}
 }
 
+// --- bridge.h: Switch, ActivityIndicator, Image ---
+
+void *niSwitchCreate(void) {
+	requireAttached("niSwitchCreate");
+	return (void *)CFBridgingRetain([[NeonSwitch alloc] initWithFrame:NSZeroRect]);
+}
+
+void *niIndicatorCreate(void) {
+	requireAttached("niIndicatorCreate");
+	return (void *)CFBridgingRetain([[NeonIndicator alloc] initWithFrame:NSZeroRect]);
+}
+
+void *niImageCreate(void) {
+	requireAttached("niImageCreate");
+	return (void *)CFBridgingRetain([[NeonImage alloc] initWithFrame:NSZeroRect]);
+}
+
 // --- bridge.h: TextInput ---
 
 void *niInputCreate(void) {
@@ -1482,12 +1779,12 @@ void *niTextAreaCreate(void) {
 	return (void *)CFBridgingRetain([[NeonInput alloc] initMultiline:YES]);
 }
 
-void niControlSetTag(void *control, int32_t tag) { inputOf(control, "niControlSetTag").neonTag = tag; }
+void niControlSetTag(void *control, int32_t tag) {
+	if (isControl(as(control))) as(control).neonTag = tag;
+	else inputOf(control, "niControlSetTag").neonTag = tag;
+}
 void niSetFocused(void *control, int focused) { [inputOf(control, "niSetFocused") focus:focused != 0]; }
 
-UNIMPLEMENTED(void *, niSwitchCreate, (void))
-UNIMPLEMENTED(void *, niIndicatorCreate, (void))
-UNIMPLEMENTED(void *, niImageCreate, (void))
 UNIMPLEMENTED(void *, niModalCreate, (void))
 UNIMPLEMENTED(void *, niControlCreate, (const char *kind))
 UNIMPLEMENTED_VOID(niSetReloadPoll, (msClosure poll))
