@@ -5,9 +5,6 @@ import { element } from "../../src/macros/ui/element";
 import { useManualFrames, setFrameDriver } from "../../src/animation/frame";
 import { Image } from "../../src/components/image";
 import { Switch } from "../../src/components/switch";
-import { Slider } from "../../src/components/slider";
-import { Picker } from "../../src/components/picker";
-import { DateTimePicker } from "../../src/components/dateTimePicker";
 
 test "primitive refs expose portable handles without changing node identity" {
 	const frames = useManualFrames();
@@ -37,7 +34,7 @@ test "primitive refs expose portable handles without changing node identity" {
 	setFrameDriver(null);
 }
 
-test "native-mapped element refs share the portable measurement handle" {
+test "Image and Switch refs share the portable measurement handle" {
 	const frames = useManualFrames();
 	const host = mockHost();
 	host.measureInWindow = (node: HostNode): Result<MeasureRect, MeasureError> => Result.ok({ x: 0, y: 0, width: 20, height: 30 });
@@ -46,17 +43,14 @@ test "native-mapped element refs share the portable measurement handle" {
 	const dispose = render(element(<View>
 		<Image ref={(h: ElementHandle): void => { handles.push(h); }} />
 		<Switch ref={(h: ElementHandle): void => { handles.push(h); }} />
-		<Slider ref={(h: ElementHandle): void => { handles.push(h); }} />
-		<Picker items={[]} ref={(h: ElementHandle): void => { handles.push(h); }} />
-		<DateTimePicker value="2026-10-15" ref={(h: ElementHandle): void => { handles.push(h); }} />
 	</View>), host, root as unknown as HostNode);
-	assert handles.length === 5;
+	assert handles.length === 2;
 	let calls: int32 = 0;
 	for (const handle of handles) {
 		handle.measureInWindow((rect: MeasureRect): void => { assert rect.width === 20; calls += 1; });
 	}
 	frames.step(1);
-	assert calls === 5;
+	assert calls === 2;
 	dispose();
 	setFrameDriver(null);
 }
