@@ -1341,8 +1341,66 @@ static CGImageRef pixelsOf(NSImage *image) { return [image CGImageForProposedRec
 }
 @end
 
+// --- Modal: src/components/modal.ms portals it into the root, filling it above the app, as on iOS. RN macOS compiles
+// its Modal out (React/Views/RCTModalHostView.m is `#if !TARGET_OS_OSX`), so iOS's escape gesture becomes the Escape
+// key: it asks the app to close the topmost Modal (control phase 7, RN's onRequestClose) ---
+
+@interface NeonModal : NeonView
+@property(nonatomic, copy) NSString *animation;
+@end
+
+static NeonModal *topModal(void) {
+	for (NSView *child in g_root.subviews.reverseObjectEnumerator) {
+		if ([child isKindOfClass:NeonModal.class]) return (NeonModal *)child;
+	}
+	return nil;
+}
+
+static void watchEscape(void) {
+	static id monitor = nil;
+	if (monitor) return;
+	monitor = [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskKeyDown handler:^NSEvent *(NSEvent *event) {
+		NeonModal *modal = event.keyCode == 53 && event.window == g_root.window ? topModal() : nil;
+		if (!modal || modal.neonTag == 0) return event;
+		emitControl(modal.neonTag, 7, @"");
+		return nil;
+	}];
+}
+
+@implementation NeonModal
+- (void)viewDidMoveToWindow {
+	[super viewDidMoveToWindow];
+	if (!self.window) return;
+	if ([self.animation isEqualToString:@"fade"]) {
+		self.alphaValue = 0;
+		[NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
+			context.duration = 0.3;
+			self.animator.alphaValue = 1;
+		}];
+	} else if ([self.animation isEqualToString:@"slide"]) {
+		CABasicAnimation *slide = [CABasicAnimation animationWithKeyPath:@"transform.translation.y"];
+		slide.fromValue = @(self.window.contentView.bounds.size.height);
+		slide.toValue = @0;
+		slide.additive = YES;
+		slide.duration = 0.3;
+		[self.layer addAnimation:slide forKey:@"neonSlide"];
+	}
+}
+
+- (void)setProp:(const char *)name value:(const char *)value {
+	if (!strcmp(name, "animationType")) {
+		self.animation = @(value);
+		return;
+	}
+	char what[128];
+	snprintf(what, sizeof what, "Modal niSetProp(%s)", name);
+	unimplemented(what);
+}
+@end
+
 static BOOL isControl(NeonView *view) {
-	return [view isKindOfClass:NeonSwitch.class] || [view isKindOfClass:NeonIndicator.class] || [view isKindOfClass:NeonImage.class];
+	return [view isKindOfClass:NeonSwitch.class] || [view isKindOfClass:NeonIndicator.class] || [view isKindOfClass:NeonImage.class] ||
+		[view isKindOfClass:NeonModal.class];
 }
 
 static BOOL isInput(NeonView *view) { return [view isKindOfClass:NeonInput.class]; }
@@ -1797,6 +1855,12 @@ void *niImageCreate(void) {
 	return (void *)CFBridgingRetain([[NeonImage alloc] initWithFrame:NSZeroRect]);
 }
 
+void *niModalCreate(void) {
+	requireAttached("niModalCreate");
+	watchEscape();
+	return (void *)CFBridgingRetain([[NeonModal alloc] initWithFrame:NSZeroRect]);
+}
+
 // --- bridge.h: TextInput ---
 
 void *niInputCreate(void) {
@@ -1815,7 +1879,6 @@ void niControlSetTag(void *control, int32_t tag) {
 }
 void niSetFocused(void *control, int focused) { [inputOf(control, "niSetFocused") focus:focused != 0]; }
 
-UNIMPLEMENTED(void *, niModalCreate, (void))
 UNIMPLEMENTED(void *, niControlCreate, (const char *kind))
 UNIMPLEMENTED_VOID(niSetReloadPoll, (msClosure poll))
 int niLastAppEvent(void) { return g_appEvent; }
