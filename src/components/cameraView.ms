@@ -9,7 +9,7 @@ import { Permissions, PermissionResponse } from "../api/permissions";
 
 when (js && !server) {
 	import "../platform/browser/camera";
-} else when (c && (ios || android || (macos && !testBuild))) {
+} else when (c && !server && (ios || android || (macos && !testBuild))) {
 	import "../platform/native/camera";
 }
 

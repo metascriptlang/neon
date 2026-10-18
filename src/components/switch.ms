@@ -4,7 +4,7 @@ import { Accessor } from "../core/signal";
 import { NeonNode, VAttr, VEvent, RefFn, hostElement, evt } from "../render/node";
 import { AccessibilityProps, accessibilityAttrs, flagAttr, stringAttr } from "./primitives";
 
-when (c && (ios || android || (macos && !testBuild))) {
+when (c && !server && (ios || android || (macos && !testBuild))) {
 	import "../platform/native/switch";
 }
 

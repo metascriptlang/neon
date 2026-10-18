@@ -13,7 +13,7 @@ import { SvgScene, encodeScene, sceneChanged, sceneHost } from "./scene";
 
 when (js && !server) {
 	import "../../platform/browser/svg";
-} else when (c && (ios || android || (macos && !testBuild))) {
+} else when (c && !server && (ios || android || (macos && !testBuild))) {
 	import "../../platform/native/svg";
 }
 
