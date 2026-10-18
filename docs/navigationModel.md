@@ -396,8 +396,8 @@ same JS-driven frames.
   `backBehavior: "firstRoute"`, so browser back from the inbox returns to the feed tab
   as it was; a route tree has no `backBehavior` option yet. Tabs are declared as a
   `navigator` beside the `layout`: the layout is the frame the author draws, the
-  navigator the model it drives, so any frame drives any model. It takes `path` strings only,
-  until a compiler card lands (parked in `BUGS.md`).
+  navigator the model it drives, so any frame drives any model. A typed `route` takes its
+  path, status, guard and paths from its definition, so a config naming them beside it throws.
   Its `<A>` renders a web `<a>`; on a native host that is a plain view until `<A>`
   and React Navigation's `Link` become one through the binding.
 - Request routing initializes before mounting, on a server as on a client. What a

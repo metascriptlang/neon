@@ -52,8 +52,13 @@ export enum RouteNavigator {
 export const Stack: RouteNavigator = RouteNavigator.Stack;
 export const Tabs: RouteNavigator = RouteNavigator.Tabs;
 
+export interface RouteRef {
+	node: RouteNode;
+}
+
 export interface RouteConfig {
 	path?: string | null;
+	route?: RouteRef | null;
 	component?: (() => NeonNode) | null;
 	layout?: ((props: LayoutProps) => NeonNode) | null;
 	navigator?: RouteNavigator | null;
@@ -80,8 +85,13 @@ export interface Routes {
 	roots: int32[];
 }
 
+function patternOf(config: RouteConfig): string | null {
+	const typed = config.route;
+	return typed === null ? config.path : (typed as RouteRef).node.pattern;
+}
+
 function labelOf(config: RouteConfig): string {
-	const pattern = config.path;
+	const pattern = patternOf(config);
 	return pattern === null ? "a route without a path" : "\"" + (pattern as string) + "\"";
 }
 
@@ -98,8 +108,8 @@ function initialOf(config: RouteConfig, children: RouteConfig[], ids: int32[]): 
 		throw new Error("routing: " + labelOf(config) + " names an initial route, which only a Stack takes");
 	}
 	for (let i = 0; i < children.length; i += 1) {
-		if ((children[i].path ?? "") !== wanted) { continue; }
-		if (takesParams(children[i].path)) {
+		if ((patternOf(children[i]) ?? "") !== wanted) { continue; }
+		if (takesParams(patternOf(children[i]))) {
 			throw new Error(
 				"routing: the initial route \"" + wanted + "\" of " + labelOf(config) + " takes params",
 			);
@@ -126,7 +136,13 @@ function compile(configs: RouteConfig[], views: RouteView[], ids: int32[]): Rout
 		if (!leaf && config.component !== null) {
 			throw new Error("routing: " + labelOf(config) + " has children, so it takes a layout, not a component");
 		}
-		const node = path(config.path, { status: config.status, guard: config.guard, paths: config.paths }).node;
+		const typed = config.route;
+		if (typed !== null && (config.path !== null || config.status !== null || config.guard !== null || config.paths !== null)) {
+			throw new Error("routing: " + labelOf(config) + " takes its path, status, guard and paths from its route");
+		}
+		const node = typed === null
+			? path(config.path, { status: config.status, guard: config.guard, paths: config.paths }).node
+			: (typed as RouteRef).node;
 		const id = views.length as int32;
 		const view: RouteView = {
 			node,

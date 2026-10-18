@@ -204,12 +204,6 @@ and the invariants that outlived them were moved to the head of the test that pi
   pass. The polling slot P2 was dropped in `2e2067a` before the fix reached a sync; the fix rides recompiler
   lane `fix-new-promise`. Card `~/metascript/.inbox/compiler/2026-10-07-new-promise-executor-does-not-lower.md`.
 
-- **PARKED 2026-10-16 — the route tree shorthand takes no typed route.** Not Neon's: `RouteConfig` would
-  take `{ route: thread, component: Thread }` through a field typed `{ node: RouteNode }`, and msc refuses a
-  `RouteDef<P>` there because a generic interface instance is not assignable to a narrower interface. Until
-  then `createRoutes` takes `path` strings only, and a typed route is matched through `createRouteTree`.
-  Card `~/metascript/.inbox/compiler/2026-10-16-a-generic-interface-instance-is-refused-where-a-narrower-interface-is-expected.md`.
-
 - **PARKED 2026-10-16 — the refresh lane cannot build navigation.** Not Neon's: any module pass, even one
   that returns the module unchanged, drops the pattern of a destructuring `for…of`, and `route.ms`
   `searchText` iterates its search map with `for (const [name, value] of search)`, as `webHistory.ms`

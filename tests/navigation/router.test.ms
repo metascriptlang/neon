@@ -7,7 +7,7 @@ import {
 	createMemoryRoutingHistory,
 	createRequestRoutingHistory,
 } from "../../src/navigation/routingHistory";
-import { GuardDecision, RouteMatch, proceed, redirect } from "../../src/navigation/route";
+import { GuardDecision, ParamsCodec, RouteMatch, proceed, redirect, route } from "../../src/navigation/route";
 import { PathMatch } from "../../src/navigation/routeMatcher";
 import {
 	A,
@@ -46,6 +46,32 @@ function Doc(): NeonNode {
 
 function Missing(): NeonNode {
 	return <h1>missing</h1>;
+}
+
+struct ThreadParams {
+	id: string;
+}
+
+const threadCodec: ParamsCodec<ThreadParams> = {
+	parse: (values: Map<string, string>): Result<ThreadParams, RoutingError> => {
+		const id = values.get("id") ?? "";
+		for (let i: int32 = 0; i < id.length; i += 1) {
+			const code = id.charCodeAt(i);
+			if (code < 48 || code > 57) { return Result.err(RoutingError.InvalidParams); }
+		}
+		return id.length === 0 ? Result.err(RoutingError.InvalidParams) : Result.ok({ id });
+	},
+	stringify: (params: ThreadParams): Map<string, string> => {
+		const values = new Map<string, string>();
+		values.set("id", params.id);
+		return values;
+	},
+};
+
+const thread = route<ThreadParams>("/threads/:id", { params: threadCodec });
+
+function Thread(): NeonNode {
+	return <h1>{"thread " + (useParams().get("id") ?? "")}</h1>;
 }
 
 function Probe(props: LayoutProps): NeonNode {
@@ -261,6 +287,24 @@ test "a route tree refuses a leaf without a component and a component beside chi
 	assert both === "routing: \"/docs\" has children, so it takes a layout, not a component", both;
 	const lone = failure((): Routes => createRoutes([{ path: "/", layout: Shell }]));
 	assert lone === "routing: \"/\" has a layout but no children to lay out", lone;
+}
+
+test "a route tree takes a typed route, whose codec decides the addresses it matches" {
+	const routes = createRoutes([
+		{ layout: Shell, children: [
+			{ route: thread, component: Thread },
+			{ path: "*", status: 404, component: Missing },
+		] },
+	]);
+	const router = opened(routes, memory("/threads/7"));
+	const root = mounted(router);
+	assert mockToString(root) === "<root><main><h1>thread 7</h1></main></root>", mockToString(root);
+	assert router.navigate("/threads/seven");
+	assert mockToString(root) === "<root><main><h1>missing</h1></main></root>", mockToString(root);
+	assert router.response().status === 404;
+	router.dispose();
+	const both = failure((): Routes => createRoutes([{ path: "/threads", route: thread, component: Thread }]));
+	assert both === "routing: \"/threads/:id\" takes its path, status, guard and paths from its route", both;
 }
 
 test "static paths come from the route tree, with enumerated params" {

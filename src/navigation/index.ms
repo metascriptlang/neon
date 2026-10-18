@@ -152,6 +152,7 @@ export {
 	Stack,
 	Tabs,
 	RouteConfig,
+	RouteRef,
 	RouteView,
 	Routes,
 	RouterLocation,
