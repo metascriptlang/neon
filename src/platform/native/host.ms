@@ -605,6 +605,7 @@ when (ios || android) {
 	}
 } else {
 	function sendFontFamily(n: NativeNode, family: string): void {
+		if (family.indexOf(",") >= 0) { throw `native host: fontFamily "${family}" is a family list; this host draws one installed family and takes no fallback list yet`; }
 		if (family === n.fontFamily || n.view === null) { return; }
 		n.fontFamily = family;
 		niSetProp(n.view, "fontFamily", family);
