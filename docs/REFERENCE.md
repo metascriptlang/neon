@@ -51,6 +51,16 @@ section, an entry whose verdict changes keeps its ID, a removed entry leaves its
 - **Why:** `ref` belongs to the component and event surface.
 - **Checked:** 2026-10-16: `commitAttachRef` located; the Solid order and React's traversal order are carried over from `docs/SOLID.md`, not re-read.
 
+### SF-3 · `fontFamily` is a CSS family list, not one family name
+
+- **Verdict:** DIVERGE-INTENTIONAL
+- **RN:** one family name, looked up whole (`packages/react-native/React/Views/RCTFont.mm:166` `fontNamesForFamilyName`); fallback is left to the platform text stack
+- **MS:** `familyFont` in `src/platform/void/host.ms` splits the list into void2d `Font.family` and `Font.fallbacks`; the DOM host passes the string to CSS unchanged; the native hosts refuse a list by name
+- **Why:** the Void host owns its text stack, so the author needs a way to name fallback families, as CSS `font-family`, Flutter `fontFamilyFallback` (`packages/flutter/lib/src/painting/text_style.dart:396`) and GPUI `font_fallbacks` do. The CSS spelling gives the same string the same meaning on the DOM host. The person approved it on 2026-10-18.
+- **Don't:** add a second prop for the fallbacks, or resolve system fonts in Neon. Discovery belongs to void2d's platform layer (`~/metascript/.inbox/void/2026-10-18-system-font-fallback.md`).
+- **Pin:** `tests/platform/voidFont.test.ms`
+- **Checked:** 2026-10-18, read.
+
 ## Props
 
 ### PR-1 · `children` is one `NeonNode`; no `children()` helper
