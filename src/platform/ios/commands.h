@@ -12,5 +12,6 @@ const char *niPermissionCommand(const char *name, const char *arg);
 const char *niClipboardCommand(const char *name, const char *arg);
 const char *niLinkingCommand(const char *name, const char *arg);
 const char *niVibrationCommand(const char *name, const char *arg);
+const char *niAccessibilityCommand(const char *name, const char *arg);
 
 #endif

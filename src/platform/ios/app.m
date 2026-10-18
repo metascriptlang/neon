@@ -157,8 +157,6 @@ static NSString *call(NSString *name, NSString *arg) {
 	}
 	if ([name isEqualToString:@"alert"]) return alert(arg);
 	if ([name isEqualToString:@"share"]) return share(arg);
-	if ([name isEqualToString:@"a11y.screenReader"]) return UIAccessibilityIsVoiceOverRunning() ? @"1" : @"0";
-	if ([name isEqualToString:@"a11y.reduceMotion"]) return UIAccessibilityIsReduceMotionEnabled() ? @"1" : @"0";
 	if ([name isEqualToString:@"a11y.announce"]) {
 		UIAccessibilityPostNotification(UIAccessibilityAnnouncementNotification, arg);
 		return @"";

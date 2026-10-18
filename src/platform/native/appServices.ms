@@ -3,7 +3,6 @@ import { publishPlatform } from "../../api/platform";
 import { publishScale, publishScreen } from "../../api/dimensions";
 import { AppStateStatus, publishAppState, publishMemoryWarning } from "../../api/appState";
 import { dispatchHardwareBackPress } from "../../api/backHandler";
-import { publishReduceMotion, publishScreenReader } from "../../api/accessibilityInfo";
 import {
 	AppEvent, FIELD, RECORD, appCall, dispatchNativeAppEvent, runNativeAppStarts,
 } from "./appBridge";
@@ -76,10 +75,8 @@ function onAppEvent(): void {
 		AppEvent.State => publishAppState(value as AppStateStatus),
 		AppEvent.BackPress => niSetAppEventResult(dispatchHardwareBackPress() ? 1 : 0),
 		AppEvent.Alert => settleAlert(value),
-		AppEvent.ScreenReader => publishScreenReader(value === "1"),
 		AppEvent.Share => settleShare(value),
 		AppEvent.MemoryWarning => publishMemoryWarning(),
-		AppEvent.ReduceMotion => publishReduceMotion(value === "1"),
 		AppEvent.ImageSize => settleImage(value),
 		AppEvent.Sound => onSoundEvent(value),
 		AppEvent.Recording => onRecordingEvent(value),
@@ -137,8 +134,6 @@ const services: AppServices = {
 	dismissKeyboard: (): void => { call("keyboard.dismiss", ""); },
 	alert,
 	share,
-	screenReaderEnabled: async (): Promise<boolean> => { return call("a11y.screenReader", "") === "1"; },
-	reduceMotionEnabled: async (): Promise<boolean> => { return call("a11y.reduceMotion", "") === "1"; },
 	announce: (text: string): void => { call("a11y.announce", text); },
 	exitApp: (): void => { call("exitApp", ""); },
 	imageSize,
@@ -168,7 +163,5 @@ export function installNativeAppServices(run: (fn: () => void) => void): void {
 	if (screen.length === 2) { publishScreen(parseFloat(screen[0]), parseFloat(screen[1])); }
 	const state = call("appState", "");
 	if (state !== "") { publishAppState(state as AppStateStatus); }
-	publishScreenReader(call("a11y.screenReader", "") === "1");
-	publishReduceMotion(call("a11y.reduceMotion", "") === "1");
 	runNativeAppStarts();
 }

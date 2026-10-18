@@ -1,6 +1,13 @@
 import { Accessor, createSignal } from "../core/signal";
 import { EventSubscription, onChange } from "./subscription";
 import { appServices } from "./services";
+import { accessibilityServices, listenAccessibility } from "./accessibilityServices";
+
+when (js && !server) {
+	import "../platform/browser/accessibilityInfo";
+} else when (ios || android) {
+	import "../platform/native/accessibilityInfo";
+}
 
 export type AccessibilityChangeEventName = "screenReaderChanged" | "reduceMotionChanged";
 
@@ -9,11 +16,11 @@ const [reduceMotion, setReduceMotion] = createSignal<boolean>(false);
 
 export class AccessibilityInfo {
 	static async isScreenReaderEnabled(): Promise<boolean> {
-		return await appServices("AccessibilityInfo.isScreenReaderEnabled").screenReaderEnabled();
+		return await accessibilityServices("AccessibilityInfo.isScreenReaderEnabled").screenReaderEnabled();
 	}
 
 	static async isReduceMotionEnabled(): Promise<boolean> {
-		return await appServices("AccessibilityInfo.isReduceMotionEnabled").reduceMotionEnabled();
+		return await accessibilityServices("AccessibilityInfo.isReduceMotionEnabled").reduceMotionEnabled();
 	}
 
 	static addEventListener(
@@ -43,3 +50,5 @@ export function publishScreenReader(enabled: boolean): void {
 export function publishReduceMotion(enabled: boolean): void {
 	if (reduceMotion() !== enabled) { setReduceMotion(enabled); }
 }
+
+listenAccessibility(publishScreenReader, publishReduceMotion);

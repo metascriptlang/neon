@@ -2,6 +2,7 @@ import {
 	AppServices, AlertRequest,
 	ShareRequest, installAppServices,
 } from "../../src/api/services";
+import { AccessibilityServices, installAccessibilityServices } from "../../src/api/accessibilityServices";
 import { VibrationServices, installVibrationServices } from "../../src/api/vibrationServices";
 import { LinkingServices, installLinkingServices } from "../../src/api/linkingServices";
 import { ClipboardServices, installClipboardServices } from "../../src/api/clipboardServices";
@@ -104,8 +105,6 @@ export class FakeServices {
 				this.log.push("share " + request.title + "|" + request.message + "|" + request.url);
 				this.shares.push(request);
 			},
-			screenReaderEnabled: async (): Promise<boolean> => { return this.screenReader; },
-			reduceMotionEnabled: async (): Promise<boolean> => { return false; },
 			announce: (text: string): void => { this.log.push("announce " + text); },
 			exitApp: (): void => { this.log.push("exitApp"); },
 			imageSize: (uri: string, done: (width: number, height: number, error: string) => void): void => {
@@ -126,6 +125,15 @@ export class FakeServices {
 		this.installClipboard();
 		this.installLinking();
 		this.installVibration();
+		this.installAccessibility();
+	}
+
+	installAccessibility(): void {
+		const services: AccessibilityServices = {
+			screenReaderEnabled: async (): Promise<boolean> => { return this.screenReader; },
+			reduceMotionEnabled: async (): Promise<boolean> => { return false; },
+		};
+		installAccessibilityServices(services);
 	}
 
 	installVibration(): void {

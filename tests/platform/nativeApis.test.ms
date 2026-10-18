@@ -19,6 +19,8 @@ import { installLinkingServices } from "../../src/api/linkingServices";
 import { nativeLinkingServices } from "../../src/platform/native/linking";
 import { installVibrationServices } from "../../src/api/vibrationServices";
 import { nativeVibrationServices } from "../../src/platform/native/vibration";
+import { installAccessibilityServices } from "../../src/api/accessibilityServices";
+import { nativeAccessibilityServices } from "../../src/platform/native/accessibilityInfo";
 import { nmAppReply, nmAppLog, nmAppLogClear, nmAppEvent, nmTeardown, nmTextWidth } from "./nativeBridgeMock.h";
 
 const STATE: int32 = 0;
@@ -41,6 +43,7 @@ function mount(app: () => NeonNode): void {
 	installClipboardServices(nativeClipboardServices);
 	installLinkingServices(nativeLinkingServices);
 	installVibrationServices(nativeVibrationServices);
+	installAccessibilityServices(nativeAccessibilityServices);
 }
 
 test "the native host publishes the platform constants, scale and screen when it starts" {

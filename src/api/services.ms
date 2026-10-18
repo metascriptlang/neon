@@ -24,8 +24,6 @@ export interface AppServices {
 	dismissKeyboard: () => void;
 	alert: (request: AlertRequest) => void;
 	share: (request: ShareRequest) => void;
-	screenReaderEnabled: () => Promise<boolean>;
-	reduceMotionEnabled: () => Promise<boolean>;
 	announce: (text: string) => void;
 	exitApp: () => void;
 	// Loads an image into the platform's image cache and reports its pixel size; a failure

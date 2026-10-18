@@ -1,0 +1,31 @@
+import {
+	AccessibilityServices, installAccessibilityServices, reduceMotionEvent,
+} from "../../api/accessibilityServices";
+
+extern class MotionEvent {}
+
+extern class BrowserMediaQuery {
+	matches: boolean;
+	extern addEventListener(name: cstring, handler: (e: MotionEvent) => void): void;
+}
+
+extern class window {
+	static extern matchMedia(query: cstring): BrowserMediaQuery;
+}
+
+extern function hasWindow(unused: int32): boolean from "(#, typeof window !== 'undefined' && typeof window.matchMedia === 'function')";
+
+const REDUCED_MOTION = "(prefers-reduced-motion: reduce)";
+
+const browserAccessibilityServices: AccessibilityServices = {
+	screenReaderEnabled: async (): Promise<boolean> => { return false; },
+	reduceMotionEnabled: async (): Promise<boolean> => { return window.matchMedia(REDUCED_MOTION).matches; },
+};
+
+installAccessibilityServices(browserAccessibilityServices);
+
+if (hasWindow(0)) {
+	const motion = window.matchMedia(REDUCED_MOTION);
+	reduceMotionEvent(motion.matches);
+	motion.addEventListener("change", (e: MotionEvent): void => { reduceMotionEvent(motion.matches); });
+}

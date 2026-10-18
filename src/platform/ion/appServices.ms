@@ -14,8 +14,6 @@ export const ionAppServices: AppServices = {
 	dismissKeyboard: (): void => { throw unavailable("Keyboard.dismiss"); },
 	alert: (request: AlertRequest): void => { throw unavailable("Alert.alert"); },
 	share: (request: ShareRequest): void => { throw unavailable("Share.share"); },
-	screenReaderEnabled: async (): Promise<boolean> => { throw unavailable("AccessibilityInfo.isScreenReaderEnabled"); },
-	reduceMotionEnabled: async (): Promise<boolean> => { throw unavailable("AccessibilityInfo.isReduceMotionEnabled"); },
 	announce: (text: string): void => { throw unavailable("AccessibilityInfo.announceForAccessibility"); },
 	exitApp: (): void => { throw unavailable("BackHandler.exitApp"); },
 	imageSize: (uri: string, done: (width: number, height: number, error: string) => void): void => { throw unavailable("Image.getSize"); },
