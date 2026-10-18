@@ -1,6 +1,7 @@
 import { createSignal } from "../../src/core/signal";
 import { createEffect } from "../../src/core/effect";
 import { createRoot } from "../../src/core/owner";
+import { flush } from "../../src/core/runtime";
 
 test "an unannotated compute and effect infer T from the compute" {
 	const [a, setA] = createSignal(1);
@@ -9,6 +10,8 @@ test "an unannotated compute and effect infer T from the compute" {
 		createEffect(() => a() * 2, (v) => { seen.push(v); return null; });
 		return 0;
 	});
+	flush();
 	setA(2);
+	flush();
 	assert seen.join(",") === "2,4", "got " + seen.join(",");
 }
