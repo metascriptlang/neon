@@ -30,7 +30,9 @@ final class Device {
 
 	private Device() {}
 
-	static String call(Activity a, String name, String arg) {
+	static String call(Context context, String name, String arg) {
+		Activity a = App.activity(context);
+		if (a == null) return "";
 		switch (name) {
 			case "haptics.impact": return haptic(a, impact(arg));
 			case "haptics.notification": return haptic(a, notification(arg));

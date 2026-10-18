@@ -36,7 +36,6 @@
 		</intent>
 	</queries>
 	<application>
-		<receiver android:name="dev.metascript.neon.NotificationReceiver" android:exported="false" />
 		<provider
 			android:name="dev.metascript.neon.CaptureFiles"
 			android:authorities="${applicationId}.neon.capture"

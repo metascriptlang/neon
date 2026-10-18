@@ -49,7 +49,9 @@ final class Geolocation {
 
 	private Geolocation() {}
 
-	static String call(Activity a, String name, String arg) {
+	static String call(Context context, String name, String arg) {
+		Activity a = App.activity(context);
+		if (a == null) return "";
 		int split = arg.indexOf(FIELD);
 		String id = split < 0 ? arg : arg.substring(0, split);
 		String rest = split < 0 ? "" : arg.substring(split + 1);

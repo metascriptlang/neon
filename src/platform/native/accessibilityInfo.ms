@@ -1,20 +1,16 @@
 import {
 	AccessibilityServices, installAccessibilityServices, reduceMotionEvent, screenReaderEvent,
 } from "../../api/accessibilityServices";
-import { AppEvent, appCall, onNativeAppEvent, onNativeAppStart } from "./appBridge";
-import { niAccessibilityCommand } from "../ios/commands.h";
+import { AppEvent, onNativeAppEvent, onNativeAppStart } from "./appBridge";
+import { niAccessibilityCommand } from "./commands.h";
 
 when (ios) {
 	@compile("../ios/accessibility.m", "-fobjc-arc");
+}
 
-	function command(name: string, arg: string): string {
-		const reply: string = niAccessibilityCommand(name, arg);
-		return reply;
-	}
-} else {
-	function command(name: string, arg: string): string {
-		return appCall(name, arg);
-	}
+function command(name: string, arg: string): string {
+	const reply: string = niAccessibilityCommand(name, arg);
+	return reply;
 }
 
 function screenReader(): boolean {

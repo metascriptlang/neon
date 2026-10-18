@@ -33,7 +33,9 @@ final class Notifications {
 
 	private Notifications() {}
 
-	static String call(Activity a, String name, String arg) {
+	static String call(Context context, String name, String arg) {
+		Activity a = App.activity(context);
+		if (a == null) return "";
 		switch (name) {
 			case "notification.install": install(a); return "";
 			case "notification.schedule": {

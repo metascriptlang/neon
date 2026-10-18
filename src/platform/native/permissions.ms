@@ -1,6 +1,7 @@
 import { PermissionReply, PermissionServices, installPermissionServices } from "../../api/permissionServices";
-import { FIELD, appCall, ask, refusal } from "./appBridge";
-import { niPermissionCommand } from "../ios/commands.h";
+import { FIELD, ask, refusal } from "./appBridge";
+import { niPermissionCommand } from "./commands.h";
+import { androidLibrary } from "../../../../ion/src/android";
 
 when (ios) {
 	@compile("../ios/permissions.m", "-fobjc-arc");
@@ -8,15 +9,13 @@ when (ios) {
 	@passL("-framework AVFoundation");
 	@passL("-framework CoreLocation");
 	@passL("-framework UserNotifications");
+} else when (android) {
+	androidLibrary("../android/permissions");
+}
 
-	function command(name: string, arg: string): string {
-		const reply: string = niPermissionCommand(name, arg);
-		return reply;
-	}
-} else {
-	function command(name: string, arg: string): string {
-		return appCall(name, arg);
-	}
+function command(name: string, arg: string): string {
+	const reply: string = niPermissionCommand(name, arg);
+	return reply;
 }
 
 function permissionReply(reply: string): PermissionReply {

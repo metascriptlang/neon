@@ -1,19 +1,18 @@
 import { LocationFix, LocationRequest, LocationServices, installLocationServices } from "../../api/locationServices";
-import { AppEvent, FIELD, appCall, onNativeAppEvent, requestReply } from "./appBridge";
-import { niLocationCommand } from "../ios/commands.h";
+import { AppEvent, FIELD, onNativeAppEvent, requestReply } from "./appBridge";
+import { niLocationCommand } from "./commands.h";
+import { androidLibrary } from "../../../../ion/src/android";
 
 when (ios) {
 	@compile("../ios/location.m", "-fobjc-arc");
 	@passL("-framework CoreLocation");
+} else when (android) {
+	androidLibrary("../android/geolocation");
+}
 
-	function command(name: string, arg: string): string {
-		const reply: string = niLocationCommand(name, arg);
-		return reply;
-	}
-} else {
-	function command(name: string, arg: string): string {
-		return appCall(name, arg);
-	}
+function command(name: string, arg: string): string {
+	const reply: string = niLocationCommand(name, arg);
+	return reply;
 }
 
 function measured(text: string): number {

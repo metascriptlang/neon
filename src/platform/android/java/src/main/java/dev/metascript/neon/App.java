@@ -51,9 +51,13 @@ public final class App {
 		return activity != null && "active".equals(state);
 	}
 
-	public static String call(Context context, String name, String arg) {
+	static Activity activity(Context context) {
 		if (activity == null && context instanceof Activity) attach((Activity) context);
-		Activity a = activity;
+		return activity;
+	}
+
+	public static String call(Context context, String name, String arg) {
+		Activity a = activity(context);
 		if (a == null) return "";
 		switch (name) {
 			case "platform": return Integer.toString(Build.VERSION.SDK_INT);

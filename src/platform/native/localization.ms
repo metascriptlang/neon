@@ -1,19 +1,17 @@
 import { LocaleSnapshot, LocalizationServices, installLocalizationServices } from "../../api/localizationServices";
 import { decodeLocalization } from "../../api/hostCodec";
-import { appCall } from "./appBridge";
-import { niLocaleCommand } from "../ios/commands.h";
+import { niLocaleCommand } from "./commands.h";
+import { androidLibrary } from "../../../../ion/src/android";
 
 when (ios) {
 	@compile("../ios/device.m", "-fobjc-arc");
+} else when (android) {
+	androidLibrary("../android/device");
+}
 
-	function command(name: string, arg: string): string {
-		const reply: string = niLocaleCommand(name, arg);
-		return reply;
-	}
-} else {
-	function command(name: string, arg: string): string {
-		return appCall(name, arg);
-	}
+function command(name: string, arg: string): string {
+	const reply: string = niLocaleCommand(name, arg);
+	return reply;
 }
 
 function localization(): LocaleSnapshot {

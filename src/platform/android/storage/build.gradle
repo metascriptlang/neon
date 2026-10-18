@@ -1,0 +1,10 @@
+plugins {
+	id 'com.android.library'
+}
+
+android {
+	namespace = 'dev.metascript.neon.storage'
+	defaultConfig {
+		consumerProguardFiles 'consumer-rules.pro'
+	}
+}

@@ -9,15 +9,6 @@ final class Modules {
 		int dot = name.indexOf('.');
 		String domain = dot < 0 ? name : name.substring(0, dot);
 		switch (domain) {
-			case "storage": return Storage.call(a, name, arg);
-			case "netinfo": return NetInfo.call(a, name, arg);
-			case "permission":
-			case "permissionsAndroid": return Permissions.call(a, name, arg);
-			case "location": return Geolocation.call(a, name, arg);
-			case "haptics":
-			case "device":
-			case "locale": return Device.call(a, name, arg);
-			case "notification": return Notifications.call(a, name, arg);
 			case "capture": return Capture.call(a, name, arg);
 			case "sound":
 			case "audio": return Sounds.call(a, name, arg);

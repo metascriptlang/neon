@@ -1,21 +1,20 @@
 import {
 	NetInfoDetails, NetInfoServices, NetInfoState, NetInfoStateType, installNetInfoServices, netInfoEvent,
 } from "../../api/netInfoServices";
-import { AppEvent, FIELD, appCall, onNativeAppEvent } from "./appBridge";
-import { niNetInfoCommand } from "../ios/commands.h";
+import { AppEvent, FIELD, onNativeAppEvent } from "./appBridge";
+import { niNetInfoCommand } from "./commands.h";
+import { androidLibrary } from "../../../../ion/src/android";
 
 when (ios) {
 	@compile("../ios/netinfo.m", "-fobjc-arc");
 	@passL("-framework Network");
+} else when (android) {
+	androidLibrary("../android/netInfo");
+}
 
-	function command(name: string, arg: string): string {
-		const reply: string = niNetInfoCommand(name, arg);
-		return reply;
-	}
-} else {
-	function command(name: string, arg: string): string {
-		return appCall(name, arg);
-	}
+function command(name: string, arg: string): string {
+	const reply: string = niNetInfoCommand(name, arg);
+	return reply;
 }
 
 function flag(text: string): boolean | null {

@@ -2,7 +2,7 @@
 #define NEON_IOS_MODULES_H
 
 #import <Foundation/Foundation.h>
-#include "commands.h"
+#include "../native/commands.h"
 
 extern NSString *const NIField;
 extern NSString *const NIRecord;

@@ -1,18 +1,17 @@
 import { StorageServices, installStorageServices } from "../../api/storageServices";
-import { FIELD, appCall } from "./appBridge";
-import { niStorageCommand } from "../ios/commands.h";
+import { FIELD } from "./appBridge";
+import { niStorageCommand } from "./commands.h";
+import { androidLibrary } from "../../../../ion/src/android";
 
 when (ios) {
 	@compile("../ios/storage.m", "-fobjc-arc");
+} else when (android) {
+	androidLibrary("../android/storage");
+}
 
-	function command(name: string, arg: string): string {
-		const reply: string = niStorageCommand(name, arg);
-		return reply;
-	}
-} else {
-	function command(name: string, arg: string): string {
-		return appCall(name, arg);
-	}
+function command(name: string, arg: string): string {
+	const reply: string = niStorageCommand(name, arg);
+	return reply;
 }
 
 const PRESENT = "=";
