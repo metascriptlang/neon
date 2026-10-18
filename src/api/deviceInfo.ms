@@ -1,9 +1,15 @@
-import { BatterySnapshot, DeviceSnapshot, appServices } from "./services";
+import { BatterySnapshot, DeviceSnapshot, deviceInfoServices } from "./deviceInfoServices";
+
+when (js && !server) {
+	import "../platform/browser/deviceInfo";
+} else when (ios || android) {
+	import "../platform/native/deviceInfo";
+}
 
 export type DeviceType = "Handset" | "Tablet" | "Tv" | "Desktop" | "GamingConsole" | "Headset" | "unknown";
 
 function snapshot(api: string): DeviceSnapshot {
-	return appServices(api).deviceInfo();
+	return deviceInfoServices(api).deviceInfo();
 }
 
 export class DeviceInfo {
@@ -77,12 +83,12 @@ export class DeviceInfo {
 	}
 
 	static async getBatteryLevel(): Promise<number> {
-		const battery: BatterySnapshot = await appServices("DeviceInfo.getBatteryLevel").battery();
+		const battery: BatterySnapshot = await deviceInfoServices("DeviceInfo.getBatteryLevel").battery();
 		return battery.level;
 	}
 
 	static async isBatteryCharging(): Promise<boolean> {
-		const battery: BatterySnapshot = await appServices("DeviceInfo.isBatteryCharging").battery();
+		const battery: BatterySnapshot = await deviceInfoServices("DeviceInfo.isBatteryCharging").battery();
 		return battery.charging;
 	}
 }

@@ -101,11 +101,27 @@ static NSString *locales(void) {
 	return [records componentsJoinedByString:NIRecord];
 }
 
-NSString *niDeviceCall(NSString *name, NSString *arg) {
-	if ([name hasPrefix:@"haptics."]) return haptic(name, arg);
-	if ([name isEqualToString:@"device.info"]) return info();
-	if ([name isEqualToString:@"device.battery"]) return battery();
-	if ([name isEqualToString:@"locale.info"]) return locales();
+static NSString *unknown(NSString *name) {
 	NSLog(@"Neon niAppCall: unknown command %@", name);
 	abort();
+}
+
+const char *niHapticsCommand(const char *name, const char *arg) {
+	NSString *command = @(name);
+	if (![command hasPrefix:@"haptics."]) unknown(command);
+	return niAppReply(haptic(command, @(arg ? arg : "")));
+}
+
+const char *niDeviceCommand(const char *name, const char *arg) {
+	NSString *command = @(name);
+	if ([command isEqualToString:@"device.info"]) return niAppReply(info());
+	if ([command isEqualToString:@"device.battery"]) return niAppReply(battery());
+	unknown(command);
+	return "";
+}
+
+const char *niLocaleCommand(const char *name, const char *arg) {
+	NSString *command = @(name);
+	if (![command isEqualToString:@"locale.info"]) unknown(command);
+	return niAppReply(locales());
 }

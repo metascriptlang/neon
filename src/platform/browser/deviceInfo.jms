@@ -1,0 +1,33 @@
+import {
+	BatterySnapshot, DeviceInfoServices, DeviceSnapshot, installDeviceInfoServices,
+} from "../../api/deviceInfoServices";
+
+extern function batteryReport(unused: int32): Promise<string> from "(#, navigator.getBattery ? navigator.getBattery().then((b) => b.level + ',' + (b.charging ? '1' : '0'), () => '-1,0') : Promise.resolve('-1,0'))";
+extern function documentTitle(unused: int32): string from "(#, document.title || '')";
+extern function pageHost(unused: int32): string from "(#, location.host || '')";
+
+function deviceInfo(): DeviceSnapshot {
+	return {
+		brand: "",
+		manufacturer: "",
+		model: "",
+		deviceId: "",
+		systemName: "",
+		systemVersion: "",
+		applicationName: documentTitle(0),
+		bundleId: pageHost(0),
+		version: "",
+		buildNumber: "",
+		isEmulator: false,
+		isTablet: false,
+	};
+}
+
+async function battery(): Promise<BatterySnapshot> {
+	const fields = (await batteryReport(0)).split(",");
+	return { level: parseFloat(fields[0]), charging: fields[1] === "1" };
+}
+
+const browserDeviceInfoServices: DeviceInfoServices = { deviceInfo, battery };
+
+installDeviceInfoServices(browserDeviceInfoServices);

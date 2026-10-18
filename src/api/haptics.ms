@@ -1,4 +1,10 @@
-import { appServices } from "./services";
+import { hapticsServices } from "./hapticsServices";
+
+when (js && !server) {
+	import "../platform/browser/haptics";
+} else when (ios || android) {
+	import "../platform/native/haptics";
+}
 
 // Integer enums: MetaScript enums take integer initializers only, where expo's hold strings.
 export enum ImpactFeedbackStyle {
@@ -35,14 +41,14 @@ function notificationName(type: NotificationFeedbackType): string {
 
 export class Haptics {
 	static async impactAsync(style: ImpactFeedbackStyle = ImpactFeedbackStyle.Medium): Promise<void> {
-		appServices("Haptics.impactAsync").haptic("impact", impactName(style));
+		hapticsServices("Haptics.impactAsync").haptic("impact", impactName(style));
 	}
 
 	static async notificationAsync(type: NotificationFeedbackType = NotificationFeedbackType.Success): Promise<void> {
-		appServices("Haptics.notificationAsync").haptic("notification", notificationName(type));
+		hapticsServices("Haptics.notificationAsync").haptic("notification", notificationName(type));
 	}
 
 	static async selectionAsync(): Promise<void> {
-		appServices("Haptics.selectionAsync").haptic("selection", "");
+		hapticsServices("Haptics.selectionAsync").haptic("selection", "");
 	}
 }

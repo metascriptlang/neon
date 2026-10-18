@@ -1,4 +1,10 @@
-import { LocaleFields, LocaleSnapshot, appServices } from "./services";
+import { LocaleFields, LocaleSnapshot, localizationServices } from "./localizationServices";
+
+when (js && !server) {
+	import "../platform/browser/localization";
+} else when (ios || android) {
+	import "../platform/native/localization";
+}
 
 export interface Locale {
 	languageTag: string;
@@ -40,7 +46,7 @@ function given(text: string): string | null {
 }
 
 function snapshot(api: string): LocaleSnapshot {
-	return appServices(api).localization();
+	return localizationServices(api).localization();
 }
 
 function locale(fields: LocaleFields): Locale {

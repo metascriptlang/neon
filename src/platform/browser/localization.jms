@@ -1,0 +1,12 @@
+import { LocaleSnapshot, LocalizationServices, installLocalizationServices } from "../../api/localizationServices";
+import { decodeLocalization } from "../../api/hostCodec";
+
+extern function localeReport(unused: int32): string from "(#, (() => { const F = String.fromCharCode(31); const R = String.fromCharCode(30); const fahrenheit = ['US', 'BS', 'BZ', 'KY', 'PW', 'LR']; const tags = (navigator.languages && navigator.languages.length ? navigator.languages : [navigator.language || 'en-US']); const options = new Intl.DateTimeFormat().resolvedOptions(); const cycle = new Intl.DateTimeFormat(undefined, { hour: 'numeric' }).resolvedOptions().hourCycle; const first = new Intl.Locale(tags[0]); const week = first.getWeekInfo ? first.getWeekInfo() : first.weekInfo; const firstWeekday = week && week.firstDay ? (week.firstDay % 7) + 1 : 1; const records = [[options.calendar || '', options.timeZone || '', cycle === 'h23' || cycle === 'h24' ? '1' : '0', String(firstWeekday)].join(F)]; for (const tag of tags) { const locale = new Intl.Locale(tag); const info = locale.getTextInfo ? locale.getTextInfo() : locale.textInfo; const parts = new Intl.NumberFormat(tag).formatToParts(12345.6); const part = (type) => (parts.find((p) => p.type === type) || { value: '' }).value; const region = locale.region || ''; const measurement = region === '' ? '' : region === 'US' || region === 'LR' || region === 'MM' ? 'us' : region === 'GB' ? 'uk' : 'metric'; records.push([tag, locale.language || '', locale.script || '', region, info && info.direction ? info.direction : '', part('decimal'), part('group'), measurement, '', '', region === '' ? '' : fahrenheit.includes(region) ? 'fahrenheit' : 'celsius'].join(F)); } return records.join(R); })())";
+
+function localization(): LocaleSnapshot {
+	return decodeLocalization(localeReport(0));
+}
+
+const browserLocalizationServices: LocalizationServices = { localization };
+
+installLocalizationServices(browserLocalizationServices);

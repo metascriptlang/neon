@@ -6,8 +6,7 @@ import { dispatchHardwareBackPress } from "../../api/backHandler";
 import { publishUrl } from "../../api/linking";
 import { publishReduceMotion, publishScreenReader } from "../../api/accessibilityInfo";
 import {
-	androidPermissionGranted, androidRequestPermissions, androidShouldShowRationale, battery, deviceInfo, haptic,
-	localization, permissionStatus, requestPermission,
+	androidPermissionGranted, androidRequestPermissions, androidShouldShowRationale, permissionStatus, requestPermission,
 } from "./deviceServices";
 import {
 	AppEvent, FIELD, RECORD, appCall, dispatchNativeAppEvent, runNativeAppStarts,
@@ -20,7 +19,6 @@ when (ios) {
 	@compile("../ios/modules.m", "-fobjc-arc");
 	@compile("../ios/permissions.m", "-fobjc-arc");
 	@compile("../ios/location.m", "-fobjc-arc");
-	@compile("../ios/device.m", "-fobjc-arc");
 	@compile("../ios/capture.m", "-fobjc-arc");
 	@compile("../ios/audio.m", "-fobjc-arc");
 	@passL("-framework PhotosUI");
@@ -173,10 +171,6 @@ const services: AppServices = {
 	androidPermissionGranted,
 	androidShouldShowRationale,
 	androidRequestPermissions,
-	haptic,
-	deviceInfo,
-	battery,
-	localization,
 };
 
 let capture: CaptureServices = nativeCaptureServices;

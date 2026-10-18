@@ -28,49 +28,6 @@ export interface PermissionReply {
 	error: string;
 }
 
-export interface DeviceSnapshot {
-	brand: string;
-	manufacturer: string;
-	model: string;
-	deviceId: string;
-	systemName: string;
-	systemVersion: string;
-	applicationName: string;
-	bundleId: string;
-	version: string;
-	buildNumber: string;
-	isEmulator: boolean;
-	isTablet: boolean;
-}
-
-export interface BatterySnapshot {
-	level: number;
-	charging: boolean;
-}
-
-// "" marks a field the platform does not report.
-export interface LocaleFields {
-	languageTag: string;
-	languageCode: string;
-	scriptCode: string;
-	regionCode: string;
-	textDirection: string;
-	decimalSeparator: string;
-	groupingSeparator: string;
-	measurementSystem: string;
-	currencyCode: string;
-	currencySymbol: string;
-	temperatureUnit: string;
-}
-
-export interface LocaleSnapshot {
-	locales: LocaleFields[];
-	calendar: string;
-	timeZone: string;
-	uses24hourClock: boolean;
-	firstWeekday: int32;
-}
-
 export interface AppServices {
 	dismissKeyboard: () => void;
 	alert: (request: AlertRequest) => void;
@@ -95,10 +52,6 @@ export interface AppServices {
 	androidPermissionGranted: (permission: string) => Promise<boolean>;
 	androidShouldShowRationale: (permission: string) => Promise<boolean>;
 	androidRequestPermissions: (permissions: string[]) => Promise<PermissionReply[]>;
-	haptic: (kind: string, style: string) => void;
-	deviceInfo: () => DeviceSnapshot;
-	battery: () => Promise<BatterySnapshot>;
-	localization: () => LocaleSnapshot;
 }
 
 let installed: AppServices | null = null;

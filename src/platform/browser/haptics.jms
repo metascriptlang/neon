@@ -1,0 +1,22 @@
+import { HapticsServices, installHapticsServices } from "../../api/hapticsServices";
+
+extern function vibrateFor(pattern: cstring): boolean from "(typeof navigator.vibrate === 'function' ? navigator.vibrate(JSON.parse(#)) : false)";
+
+function haptic(kind: string, style: string): void {
+	const pattern = match (kind + "." + style) {
+		"impact.light" => "[10]",
+		"impact.soft" => "[10]",
+		"impact.heavy" => "[30]",
+		"impact.rigid" => "[15]",
+		"notification.success" => "[10,40,20]",
+		"notification.warning" => "[20,60,20]",
+		"notification.error" => "[30,40,30,40,30]",
+		"selection." => "[5]",
+		_ => "[20]",
+	};
+	vibrateFor(pattern);
+}
+
+const browserHapticsServices: HapticsServices = { haptic };
+
+installHapticsServices(browserHapticsServices);

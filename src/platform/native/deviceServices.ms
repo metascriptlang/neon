@@ -1,8 +1,7 @@
 import { FIELD, appCall, ask as appAsk, refusal } from "./appBridge";
 import {
-	BatterySnapshot, DeviceSnapshot, LocaleSnapshot, PermissionReply,
+	PermissionReply,
 } from "../../api/services";
-import { decodeLocalization } from "../../api/hostCodec";
 
 function call(name: string, arg: string): string {
 	return appCall(name, arg);
@@ -46,40 +45,4 @@ export async function androidRequestPermissions(permissions: string[]): Promise<
 		results.push({ status, canAskAgain: false, error });
 	}
 	return results;
-}
-
-export function haptic(kind: string, style: string): void {
-	call("haptics." + kind, style);
-}
-
-export function decodeDevice(value: string): DeviceSnapshot {
-	const fields = value.split(FIELD);
-	if (fields.length !== 12) { throw new Error("DeviceInfo: the host sent malformed device info: " + value); }
-	return {
-		brand: fields[0],
-		manufacturer: fields[1],
-		model: fields[2],
-		deviceId: fields[3],
-		systemName: fields[4],
-		systemVersion: fields[5],
-		applicationName: fields[6],
-		bundleId: fields[7],
-		version: fields[8],
-		buildNumber: fields[9],
-		isEmulator: fields[10] === "1",
-		isTablet: fields[11] === "1",
-	};
-}
-
-export function deviceInfo(): DeviceSnapshot {
-	return decodeDevice(call("device.info", ""));
-}
-
-export async function battery(): Promise<BatterySnapshot> {
-	const fields = (await ask("device.battery", "")).split(FIELD);
-	return { level: fields[0] === "" ? -1 : parseFloat(fields[0]), charging: fields.length > 1 && fields[1] === "1" };
-}
-
-export function localization(): LocaleSnapshot {
-	return decodeLocalization(call("locale.info", ""));
 }

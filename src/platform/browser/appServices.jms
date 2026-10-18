@@ -4,8 +4,7 @@ import { publishScale, publishScreen } from "../../api/dimensions";
 import { publishAppState } from "../../api/appState";
 import { publishReduceMotion } from "../../api/accessibilityInfo";
 import {
-	androidPermissionGranted, androidRequestPermissions, androidShouldShowRationale, battery, deviceInfo, haptic,
-	localization, permissionStatus, requestPermission,
+	androidPermissionGranted, androidRequestPermissions, androidShouldShowRationale, permissionStatus, requestPermission,
 } from "./deviceServices";
 
 extern class BrowserClipboard {
@@ -186,10 +185,6 @@ const services: AppServices = {
 	androidPermissionGranted,
 	androidShouldShowRationale,
 	androidRequestPermissions,
-	haptic,
-	deviceInfo,
-	battery,
-	localization,
 };
 
 let installed = false;

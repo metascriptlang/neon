@@ -1,4 +1,4 @@
-import { LocaleFields, LocaleSnapshot } from "./services";
+import { LocaleFields, LocaleSnapshot } from "./localizationServices";
 
 const FIELD = "\u001f";
 const RECORD = "\u001e";

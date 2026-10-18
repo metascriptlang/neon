@@ -14,6 +14,9 @@ import "../../src/platform/native/notifications";
 import "../../src/platform/native/geolocation";
 import "../../src/platform/native/netInfo";
 import "../../src/platform/native/asyncStorage";
+import "../../src/platform/native/haptics";
+import "../../src/platform/native/deviceInfo";
+import "../../src/platform/native/localization";
 import { nmAppReply, nmAppLog, nmAppLogClear, nmAppEvent, nmTeardown } from "./nativeBridgeMock.h";
 
 const FIELD = "\u001f";

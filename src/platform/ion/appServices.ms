@@ -3,7 +3,7 @@
 // author called.
 
 import {
-	AlertRequest, AppServices, BatterySnapshot, DeviceSnapshot, LocaleSnapshot,
+	AlertRequest, AppServices,
 	PermissionReply, ShareRequest,
 } from "../../api/services";
 import { readClipboardText, writeClipboardText } from "../../../../ion/src/clipboard";
@@ -62,8 +62,4 @@ export const ionAppServices: AppServices = {
 	androidPermissionGranted: async (p: string): Promise<boolean> => { throw unavailable("PermissionsAndroid"); },
 	androidShouldShowRationale: async (p: string): Promise<boolean> => { throw unavailable("PermissionsAndroid"); },
 	androidRequestPermissions: async (p: string[]): Promise<PermissionReply[]> => { throw unavailable("PermissionsAndroid"); },
-	haptic: (kind: string, style: string): void => { throw unavailable("Haptics"); },
-	deviceInfo: (): DeviceSnapshot => { throw unavailable("DeviceInfo"); },
-	battery: async (): Promise<BatterySnapshot> => { throw unavailable("DeviceInfo battery"); },
-	localization: (): LocaleSnapshot => { throw unavailable("Localization"); },
 };

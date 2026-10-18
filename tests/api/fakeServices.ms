@@ -1,7 +1,12 @@
 import {
-	AppServices, AlertRequest, BatterySnapshot, DeviceSnapshot, LocaleSnapshot,
+	AppServices, AlertRequest,
 	PermissionReply, ShareRequest, installAppServices,
 } from "../../src/api/services";
+import { HapticsServices, installHapticsServices } from "../../src/api/hapticsServices";
+import {
+	BatterySnapshot, DeviceInfoServices, DeviceSnapshot, installDeviceInfoServices,
+} from "../../src/api/deviceInfoServices";
+import { LocaleSnapshot, LocalizationServices, installLocalizationServices } from "../../src/api/localizationServices";
 import { StorageServices, installStorageServices } from "../../src/api/storageServices";
 import { LocationFix, LocationRequest, LocationServices, installLocationServices } from "../../src/api/locationServices";
 import {
@@ -140,10 +145,6 @@ export class FakeServices {
 				return this.permission(permission).status === "granted";
 			},
 			androidShouldShowRationale: async (permission: string): Promise<boolean> => { return this.rationale; },
-			haptic: (kind: string, style: string): void => { this.log.push("haptic " + kind + " " + style); },
-			deviceInfo: (): DeviceSnapshot => { return this.device; },
-			battery: async (): Promise<BatterySnapshot> => { return { level: 0.75, charging: true }; },
-			localization: (): LocaleSnapshot => { return this.locales; },
 			androidRequestPermissions: async (permissions: string[]): Promise<PermissionReply[]> => {
 				this.log.push("androidRequestPermissions " + permissions.join(","));
 				const results: PermissionReply[] = [];
@@ -159,6 +160,31 @@ export class FakeServices {
 		this.installLocation();
 		this.installNetInfo();
 		this.installStorage();
+		this.installHaptics();
+		this.installDeviceInfo();
+		this.installLocalization();
+	}
+
+	installHaptics(): void {
+		const services: HapticsServices = {
+			haptic: (kind: string, style: string): void => { this.log.push("haptic " + kind + " " + style); },
+		};
+		installHapticsServices(services);
+	}
+
+	installDeviceInfo(): void {
+		const services: DeviceInfoServices = {
+			deviceInfo: (): DeviceSnapshot => { return this.device; },
+			battery: async (): Promise<BatterySnapshot> => { return { level: 0.75, charging: true }; },
+		};
+		installDeviceInfoServices(services);
+	}
+
+	installLocalization(): void {
+		const services: LocalizationServices = {
+			localization: (): LocaleSnapshot => { return this.locales; },
+		};
+		installLocalizationServices(services);
 	}
 
 	installStorage(): void {
