@@ -204,6 +204,31 @@ test "a ternary with a null arm lowers to Show without a fallback, either way ro
 	d1(); d2(); d3();
 }
 
+test "Show reads a nullable primitive by its truthiness, so false, 0 and an empty string hide the branch" {
+	const [flag, setFlag] = createSignal<boolean | null>(false);
+	const [count, setCount] = createSignal<number | null>(0);
+	const [label, setLabel] = createSignal<string | null>("");
+	const [byFlag, d1] = mountedText(element(<div><Show when={flag()}><span>yes</span></Show></div>));
+	const [byCount, d2] = mountedText(element(<div><Show when={count()}><span>yes</span></Show></div>));
+	const [byLabel, d3] = mountedText(element(<div><Show when={label()}><span>yes</span></Show></div>));
+	assert byFlag().indexOf("yes") < 0, "false hides: " + byFlag();
+	assert byCount().indexOf("yes") < 0, "0 hides: " + byCount();
+	assert byLabel().indexOf("yes") < 0, "an empty string hides: " + byLabel();
+	setFlag(true);
+	setCount(2);
+	setLabel("x");
+	assert byFlag().indexOf("yes") >= 0, "true shows: " + byFlag();
+	assert byCount().indexOf("yes") >= 0, "2 shows: " + byCount();
+	assert byLabel().indexOf("yes") >= 0, "a string shows: " + byLabel();
+	setFlag(null);
+	setCount(null);
+	setLabel(null);
+	assert byFlag().indexOf("yes") < 0, "null flag hides: " + byFlag();
+	assert byCount().indexOf("yes") < 0, "null count hides: " + byCount();
+	assert byLabel().indexOf("yes") < 0, "null label hides: " + byLabel();
+	d1(); d2(); d3();
+}
+
 test "xs.map(row) child lowers to For" {
 	const [items, setItems] = createSignal<number[]>([1, 2, 3]);
 	const [lowered, d1] = mountedText(element(<ul>{items.map((n: number): NeonNode => element(<li>{n.toString()}</li>))}</ul>));
