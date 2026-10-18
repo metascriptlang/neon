@@ -3,6 +3,8 @@
 // and every input event the focused row area receives.
 //   msc build examples/voidCanvas.ms --output=out/voidCanvas.exe
 //   out/voidCanvas.exe            (run from the neon checkout: the font path is relative)
+//   web: void/scripts/build-web.sh with VOID_WEB_ENTRY=../neon/examples/voidCanvas.ms, which preloads
+//   void's assets/font.ttf at the package path canvasOptions names
 
 import { element } from "../src/macros/ui/element";
 import { NeonNode } from "../src/render/node";
@@ -65,5 +67,11 @@ function App(): NeonNode {
 	);
 }
 
-const opts: CanvasOptions = { ...canvasOptions(640, 200), font: "../void/assets/font.ttf" };
+when (emcc) {
+	function fontFile(): string { return canvasOptions(0, 0).font; }
+} else {
+	function fontFile(): string { return "../void/assets/font.ttf"; }
+}
+
+const opts: CanvasOptions = { ...canvasOptions(640, 200), font: fontFile() };
 exit(runCanvas(opts, App));
