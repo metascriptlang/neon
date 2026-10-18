@@ -3,6 +3,7 @@ import { hydrate, HostNode, Host } from "../../src/render/host";
 import { createSignal } from "../../src/core/signal";
 import { createEffect } from "../../src/core/effect";
 import { createRoot } from "../../src/core/owner";
+import { flush } from "../../src/core/runtime";
 import { Cleanup } from "../../src/core/types";
 import { hasRecord, readRecord, readError, clearRecords, scriptLiteral } from "../../src/render/hydrationRecords";
 import { traceRun } from "../../src/render/traceRun";
@@ -101,11 +102,13 @@ when (js) {
 				(v: int32, p: int32 | null): Cleanup | null => null);
 			return dispose;
 		});
+		flush();
 		try {
 			assert fetchCalls() === 0, "the trace run sent " + fetchCalls().toString() + " requests";
 			assert !insideSpy && !insideNative, "fetch and Promise were swapped during the run";
 			assert fetchIsSpy() && promiseIsNative(), "fetch and Promise were restored after it";
 			setN(2);
+			flush();
 			assert fetchCalls() === 1, "a write to the traced signal re-ran the computation, which really fetched";
 		} finally {
 			unspyFetch();

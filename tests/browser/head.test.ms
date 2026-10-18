@@ -3,6 +3,7 @@ import { HostNode, NeonNode } from "../../src/render/hostTypes";
 import { Head } from "../../src/render/head";
 import { View } from "../../src/components/primitives";
 import { createSignal, Accessor } from "../../src/core/signal";
+import { flush } from "../../src/core/runtime";
 
 when (js) {
 	import { domHost } from "../../src/platform/browser/dom";
@@ -30,6 +31,7 @@ when (js) {
 			assert headCount("title") === shellTitles + 1, "one title from the tree";
 			assert pageTitle(0) === "Docs" && description(0) === "about this page", pageTitle(0);
 			setTitle("Accounts");
+			flush();
 			assert pageTitle(0) === "Accounts", pageTitle(0);
 		} finally { dispose(); mount.remove(); }
 		assert description(0) === "", "the Head's tags stayed after dispose";
@@ -59,8 +61,10 @@ when (js) {
 		try {
 			assert pageTitle(0) === "Page" && description(0) === "the page", pageTitle(0) + " / " + description(0);
 			setInner(false);
+			flush();
 			assert pageTitle(0) === "Site" && description(0) === "the site", pageTitle(0) + " / " + description(0);
 			setInner(true);
+			flush();
 			assert pageTitle(0) === "Page" && description(0) === "the page", pageTitle(0) + " / " + description(0);
 		} finally { dispose(); mount.remove(); }
 	}
@@ -76,9 +80,11 @@ when (js) {
 			assert headCount("meta[name=robots]") === 1, "robots with both mounted: " + headCount("meta[name=robots]").toString();
 			assert headCount("meta[name=description]") === 2, "descriptions that differ in content: " + headCount("meta[name=description]").toString();
 			setInner(false);
+			flush();
 			assert headCount("title") === shellTitles + 1 && pageTitle(0) === "Site", "after the inner left: " + pageTitle(0);
 			assert headCount("meta[name=robots]") === 1, "robots after the inner left: " + headCount("meta[name=robots]").toString();
 			setInner(true);
+			flush();
 			assert headCount("title") === shellTitles + 1 && pageTitle(0) === "Page", "after the inner returned: " + pageTitle(0);
 			assert headCount("meta[name=robots]") === 1, "robots after the inner returned: " + headCount("meta[name=robots]").toString();
 		} finally { dispose(); mount.remove(); }

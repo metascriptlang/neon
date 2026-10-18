@@ -20,6 +20,7 @@ import {
 	createStackNavigator,
 } from "../../src/navigation/index";
 import { createRoot } from "../../src/core/owner";
+import { flush } from "../../src/core/runtime";
 import { Dispose } from "../../src/core/types";
 import { createRoutingDemo, RoutingDemo } from "../../examples/components/routing";
 
@@ -353,6 +354,7 @@ test "opening a drawer adds a browser entry that browser back closes" {
 	try {
 		const start = app.session.index();
 		ref.openDrawer();
+		flush();
 		assert app.session.index() === start + 1, app.session.index().toString();
 		assert history.read().url === "/one", history.read().url;
 		await sleepAsync(400);
@@ -365,6 +367,7 @@ test "opening a drawer adds a browser entry that browser back closes" {
 		await sleepAsync(400);
 		assert drawerShown(), "browser forward opened it again";
 		ref.closeDrawer();
+		flush();
 		await sleepAsync(400);
 		assert app.session.index() === start, app.session.index().toString();
 		assert history.read().url === "/one", history.read().url;

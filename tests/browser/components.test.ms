@@ -3,6 +3,7 @@ import { HostNode } from "../../src/render/hostTypes";
 import { render } from "../../src/render/host";
 import { element } from "../../src/macros/ui/element";
 import { createSignal } from "../../src/core/signal";
+import { flush } from "../../src/core/runtime";
 import { sleepAsync } from "std/core/promise";
 import { NeonEvent } from "../../src/render/event";
 import { ScrollView, Text, TextInput, View } from "../../src/components/primitives";
@@ -73,6 +74,7 @@ test "a RefreshControl in Chrome shows its indicator while refreshing, in its ti
 	assert indicator !== null, "the control mounted an indicator";
 	assert js("return getComputedStyle(document.querySelector('.neon-refresh-indicator')).display;") === "none", "idle";
 	setBusy(true);
+	flush();
 	assert js("const s = getComputedStyle(document.querySelector('.neon-refresh-indicator')); return s.display + ' ' + s.color;") === "block rgb(255, 0, 0)", "refreshing";
 	setBusy(false);
 }
@@ -84,6 +86,7 @@ test "a TouchableOpacity in Chrome fades while the pointer is down and presses o
 	const button = mount.querySelector("button");
 	assert button !== null, "a button";
 	js("document.querySelector('button').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true })); return 1;");
+	flush();
 	assert js("return getComputedStyle(document.querySelector('button')).opacity;") === "0.2", "pressed opacity";
 	js("document.querySelector('button').dispatchEvent(new PointerEvent('pointerup', { bubbles: true })); return 1;");
 	await sleepAsync(250);
@@ -112,6 +115,7 @@ test "Text numberOfLines clamps in Chrome and selectable={false} turns selection
 	const clamped = js("const s = document.querySelector('.neon-lines'); const lh = parseFloat(getComputedStyle(s).lineHeight) || 16 * 1.2; return `${Math.round(s.getBoundingClientRect().height / lh)} ${getComputedStyle(s).userSelect}`;");
 	assert clamped === "2 none", "two lines, no selection: " + clamped;
 	setLines(0);
+	flush();
 	assert js("return document.querySelector('.neon-lines') === null;") === "true", "0 lifts the clamp";
 }
 

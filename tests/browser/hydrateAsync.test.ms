@@ -1,5 +1,6 @@
 import { hydrate, HostNode } from "../../src/render/host";
 import { clearRecords } from "../../src/render/hydrationRecords";
+import { flush } from "../../src/core/runtime";
 
 when (js) {
 	import { sleepAsync } from "std/core/promise";
@@ -45,6 +46,7 @@ when (js) {
 			assert notServed(mount) === 0, notServed(mount).toString() + " elements are not the page's own";
 
 			pageNode(mount, "#next").click();
+			flush();
 			await sleepAsync(30);
 			assert fetchCalls() === 1, "the interaction sent " + fetchCalls().toString() + " requests";
 			assert mount.textContent === "client says 2next", mount.textContent;
@@ -65,7 +67,9 @@ when (js) {
 		try {
 			assert fetchCalls() === 0, "hydrate sent " + fetchCalls().toString() + " requests";
 			pageNode(mount, "#next").click();
+			flush();
 			pageNode(mount, "#next").click();
+			flush();
 			await sleepAsync(30);
 			assert mount.textContent === "client says 3next", mount.textContent;
 			assert fetchCalls() === 2, fetchCalls().toString();

@@ -1,6 +1,7 @@
 import { render } from "../../src/render/host";
 import { HostNode, NeonNode } from "../../src/render/hostTypes";
 import { createSignal, Accessor } from "../../src/core/signal";
+import { flush } from "../../src/core/runtime";
 
 when (js) {
 	import { domHost } from "../../src/platform/browser/dom";
@@ -32,10 +33,13 @@ when (js) {
 			assert htmlOf(mount).indexOf("<span>2</span>") >= 0 && htmlOf(mount).indexOf("never") < 0, htmlOf(mount);
 			const span = firstOf(mount);
 			setN(3);
+			flush();
 			assert htmlOf(mount).indexOf("<span>3</span>") >= 0 && firstOf(mount) === span, "the same element: " + htmlOf(mount);
 			setN(1);
+			flush();
 			assert htmlOf(mount).indexOf("<b>one</b>") >= 0 && htmlOf(mount).indexOf("span") < 0, htmlOf(mount);
 			setN(0);
+			flush();
 			assert htmlOf(mount).indexOf("<i>none</i>") >= 0, htmlOf(mount);
 		} finally { dispose(); mount.remove(); }
 	}
@@ -49,10 +53,13 @@ when (js) {
 		</div>, domHost(), mount as unknown as HostNode);
 		try {
 			setUser(new User("ann"));
+			flush();
 			assert htmlOf(mount).indexOf("<s>ann</s>") >= 0 && htmlOf(mount).indexOf("<em>ann</em>") >= 0, htmlOf(mount);
 			setUser(new User("bob"));
+			flush();
 			assert htmlOf(mount).indexOf("<s>bob</s>") >= 0 && htmlOf(mount).indexOf("<em>bob</em>") >= 0, htmlOf(mount);
 			setUser(null);
+			flush();
 			assert htmlOf(mount).indexOf("<s>") < 0 && htmlOf(mount).indexOf("<em>") < 0, htmlOf(mount);
 		} finally { dispose(); mount.remove(); }
 	}

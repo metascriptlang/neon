@@ -5,6 +5,7 @@ import { Style } from "../../src/render/style";
 import { element } from "../../src/macros/ui/element";
 import { Text, TextInput, View } from "../../src/components/primitives";
 import { createSignal } from "../../src/core/signal";
+import { flush } from "../../src/core/runtime";
 import { NeonEvent } from "../../src/render/event";
 import { FlatList, FlatListHandle, ItemLayout, ListRenderItemInfo } from "../../src/components/flatList";
 import { sleepAsync } from "std/core/promise";
@@ -288,6 +289,7 @@ test "a prepend moves a focused grid field to the next row as the same element, 
 	const field = scroller.querySelectorAll(".grid-input-2").item(0);
 	const cell = scroller.querySelectorAll(".grid-field-2").item(0);
 	field.focus();
+	flush();
 	const before = cell.getBoundingClientRect();
 	assert document.activeElement === field && cell.textContent === "<2@1#1>", "item 2 sits in row 0 with focus: " + cell.textContent;
 	setData(all);

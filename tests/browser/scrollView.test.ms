@@ -6,7 +6,7 @@ import { element } from "../../src/macros/ui/element";
 import { ScrollView, ScrollViewHandle, View, Pressable, KeyboardShouldPersistTaps, KeyboardDismissMode } from "../../src/components/primitives";
 import { sleepAsync } from "std/core/promise";
 import { createSignal } from "../../src/core/signal";
-import { resetErrorHalt } from "../../src/core/runtime";
+import { flush, resetErrorHalt } from "../../src/core/runtime";
 import { For } from "../../src/macros/ui/flow";
 import { Accessor } from "../../src/core/signal";
 
@@ -119,9 +119,13 @@ test "browser pull-to-refresh respects its threshold and controlled refreshing c
 	probe(handles[0].node).setAttribute("id", "neon-refresh-probe");
 	window.eval("window.neonPull = y => { const el = document.getElementById('neon-refresh-probe'); const touch = n => new Touch({identifier: 1, target: el, clientX: 0, clientY: n}); el.dispatchEvent(new TouchEvent('touchstart', {touches: [touch(0)], cancelable: true})); el.dispatchEvent(new TouchEvent('touchmove', {touches: [touch(y)], cancelable: true})); el.dispatchEvent(new TouchEvent('touchend', {touches: [], cancelable: true})); }; window.neonPull(63);");
 	assert calls === 0, "a below-threshold pull does not request refresh";
-	window.eval("window.neonPull(64); window.neonPull(100);");
+	window.eval("window.neonPull(64);");
+	flush();
+	window.eval("window.neonPull(100);");
+	flush();
 	assert calls === 1 && refreshing(), "controlled refresh permits one request while active";
 	setRefreshing(false);
+	flush();
 	window.eval("window.neonPull(64); delete window.neonPull;");
 	assert calls === 2, "completion rearms the next pull";
 	dispose();
@@ -146,9 +150,11 @@ test "keyboard tap capture consumes never, preserves handled presses, and permit
 	window.eval("const el = document.getElementById('neon-keyboard-probe'); const input = document.createElement('input'); input.id = 'neon-focused-input'; el.firstChild.appendChild(input); input.focus(); el.firstChild.firstChild.click();");
 	assert presses === 0, "never consumes the first press to dismiss the keyboard";
 	setTaps(1);
+	flush();
 	window.eval("document.getElementById('neon-focused-input').focus(); document.getElementById('neon-keyboard-probe').firstChild.firstChild.click();");
 	assert presses === 1, "handled permits a descendant Pressable to keep focus";
 	setTaps(2);
+	flush();
 	window.eval("document.getElementById('neon-focused-input').focus(); document.getElementById('neon-keyboard-probe').firstChild.firstChild.click();");
 	assert presses === 2, "always permits all descendant presses";
 	dispose();
@@ -190,6 +196,7 @@ test "on-drag dismisses a focused input only after crossing the drag boundary" {
 	window.eval("const el = document.getElementById('neon-dismiss-probe'); const input = document.createElement('input'); input.id = 'neon-drag-input'; el.firstChild.appendChild(input); window.neonKeyboardDrag = y => { const touch = n => new Touch({identifier: 1, target: el, clientX: 0, clientY: n}); el.dispatchEvent(new TouchEvent('touchstart', {touches: [touch(0)]})); el.dispatchEvent(new TouchEvent('touchmove', {touches: [touch(y)]})); el.dispatchEvent(new TouchEvent('touchend', {touches: []})); el.setAttribute('data-focused', document.activeElement === input ? 'true' : 'false'); }; input.focus(); window.neonKeyboardDrag(20);");
 	assert el.getAttribute("data-focused") === "true", "none preserves focus during a drag";
 	setMode(true);
+	flush();
 	window.eval("document.getElementById('neon-drag-input').focus(); window.neonKeyboardDrag(3);");
 	assert el.getAttribute("data-focused") === "true", "a tap-sized movement does not dismiss";
 	window.eval("window.neonKeyboardDrag(20); delete window.neonKeyboardDrag;");
@@ -205,11 +212,13 @@ test "indicator visibility changes reactively without disabling imperative scrol
 	const el = probe(handles[0].node);
 	el.setAttribute("id", "neon-indicator-probe");
 	setVisible(false);
+	flush();
 	window.eval("const el = document.getElementById('neon-indicator-probe'); el.setAttribute('data-scrollbar', getComputedStyle(el).scrollbarWidth);");
 	assert el.getAttribute("data-scrollbar") === "none", "both disabled indicators remove the actual browser scrollbar";
 	handles[0].scrollTo({ y: 1000, animated: false });
 	assert el.scrollTop === 300, "scrollEnabled false does not block an imperative tail jump";
 	setVisible(true);
+	flush();
 	window.eval("const el = document.getElementById('neon-indicator-probe'); el.setAttribute('data-scrollbar', getComputedStyle(el).scrollbarWidth);");
 	assert el.getAttribute("data-scrollbar") === "auto", "re-enabling restores browser indicators";
 	dispose();

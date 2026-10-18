@@ -3,6 +3,7 @@ import { HostNode } from "../../src/render/hostTypes";
 import { render } from "../../src/render/host";
 import { element } from "../../src/macros/ui/element";
 import { sleepAsync } from "std/core/promise";
+import { flush } from "../../src/core/runtime";
 import { dispatchHardwareBackPress } from "../../src/api/backHandler";
 import { NavigationContainerRef } from "../../src/navigation/index";
 import { NavigationDemo, navigationRef } from "../../examples/components/navigation";
@@ -22,10 +23,12 @@ extern class document {
 function press(label: string): void {
 	const done = js(`(() => { for (const el of document.querySelectorAll('[aria-label="${label}"]')) { if (el.getClientRects().length > 0) { el.click(); return 'ok'; } } return 'none'; })()`);
 	if (done !== "ok") { throw new Error("no visible element labelled " + label + " in: " + shown()); }
+	flush();
 }
 
 function type(label: string, value: string): void {
 	js(`(() => { for (const el of document.querySelectorAll('[aria-label="${label}"]')) { if (el.getClientRects().length > 0) { el.value = '${value}'; el.dispatchEvent(new Event('input', { bubbles: true })); } } return ''; })()`);
+	flush();
 }
 
 function shown(): string {

@@ -1,4 +1,5 @@
 import { sleepAsync } from "std/core/promise";
+import { flush } from "../../src/core/runtime";
 import { NeonNode } from "../../src/render/hostTypes";
 import { element } from "../../src/macros/ui/element";
 import { HostNode, MockNode, mockNode, mockHost, render, mockToString } from "../../src/render/host";
@@ -68,6 +69,7 @@ test "back and forward walk each tab's stack in real browser history" {
 	render(element(<RouterProvider router={router} />), mockHost(), root as unknown as HostNode);
 	try {
 		assert router.navigate("/feed/1");
+		flush();
 		assert history.read().url === "/feed/1", history.read().url;
 		assert history.go(-1);
 		await sleepAsync(100);
@@ -78,9 +80,11 @@ test "back and forward walk each tab's stack in real browser history" {
 		assert visibleText(root) === "post 1", visibleText(root);
 
 		assert router.navigate("/inbox/7");
+		flush();
 		await sleepAsync(100);
 		assert history.read().url === "/inbox/7", history.read().url;
 		assert router.navigate("/inbox/8");
+		flush();
 		assert history.read().url === "/inbox/8", history.read().url;
 		assert history.go(-1);
 		await sleepAsync(100);
@@ -90,6 +94,7 @@ test "back and forward walk each tab's stack in real browser history" {
 		assert shown(root).includes("<h1>inbox</h1>"), shown(root);
 
 		assert router.navigate("/feed/1");
+		flush();
 		await sleepAsync(100);
 		assert history.read().url === "/feed/1", history.read().url;
 		assert visibleText(root) === "post 1", visibleText(root);

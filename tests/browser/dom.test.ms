@@ -5,6 +5,7 @@ import { NeonEvent } from "../../src/render/event";
 import { bindAttr } from "../../src/render/host";
 import { createSignal } from "../../src/core/signal";
 import { createRoot } from "../../src/core/owner";
+import { flush } from "../../src/core/runtime";
 import { HOST_MOVE_CONTRACT, RECONCILE_CONTRACT, HOST_ATTR_CONTRACT, hostMoveContract, reconcileContract, hostAttrContract, HOST_PARK_CONTRACT, hostParkContract } from "../render/hostContract";
 import { sleepAsync } from "std/core/promise";
 import { useWindowDimensions, useColorScheme } from "../../src/render/environment";
@@ -250,6 +251,7 @@ test "a bound value steers the input through the reactive path too" {
 	assert probe(el).value === "a", "the bind seeds the field";
 	probe(el).value = "typed by user";
 	setV("b");
+	flush();
 	assert probe(el).value === "b", "a changed signal overwrites what the user typed";
 	probe(el).remove();
 }
@@ -390,8 +392,10 @@ test "a bound value that turns null empties the input" {
 	createRoot(() => { bindAttr(h, el, "value", () => v()); });
 	probe(el).value = "typed by user";
 	setV(null);
+	flush();
 	assert probe(el).value === "", "null clears the field";
 	setV("b");
+	flush();
 	assert probe(el).value === "b", "a later value writes again";
 	probe(el).remove();
 }
