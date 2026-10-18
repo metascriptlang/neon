@@ -1,10 +1,11 @@
 import { Host, HostNode, NeonNode } from "../../render/host";
 import { Accessor } from "../../core/signal";
-import { flush } from "../../core/runtime";
+import { flush, getOwner } from "../../core/runtime";
 import { TextSpan, TextMeasure } from "../../render/hostTypes";
 import { spanParagraph, spanText } from "../../render/spanHost";
 import { NeonEvent, neonEvent } from "../../render/event";
 import { AreaKeyMod, AreaLayer, AreaPointerKind, LayerAnchor, setEventMods } from "../../render/voidAreaHandle";
+import { onCleanup } from "../../core/cleanup";
 import {
 	Scene2D, NodeRef, DrawKind, group, label, mask, addChild, addChildAt, getChildIndex, dispose, kind,
 	setPosition, setSize, setX, setZIndex, setAlpha, setColor, setBackground, clearBackground,
@@ -941,6 +942,16 @@ export function createVoidHostWith(
 				if (tag === "text") {
 					n.isText = true;
 					n.flex = {};
+					if (getOwner() !== null) {
+						const text = n;
+						onCleanup((): void => {
+							const spans = text.spans;
+							if (spans === null) { return; }
+							const retired: TextSpan[] = [];
+							for (const span of spans) { retired.push({ text: span.text, style: span.style }); }
+							text.spans = retired;
+						});
+					}
 				}
 			}
 			n.tag = tag;
@@ -1033,7 +1044,19 @@ export function createVoidHostWith(
 		setStyleProp: null,
 		setStyleClass: null,
 		addEvent: (node: HostNode, name: string, handler: (e: NeonEvent) => void): void => {
-			events.push({ node: live(node, "addEvent"), name, handler });
+			let active = true;
+			const entry: EventEntry = {
+				node: live(node, "addEvent"), name,
+				handler: (e: NeonEvent): void => { if (active) { handler(e); } },
+			};
+			events.push(entry);
+			if (getOwner() !== null) {
+				onCleanup((): void => {
+					active = false;
+					const at = events.indexOf(entry);
+					if (at >= 0) { events.splice(at, 1); }
+				});
+			}
 		},
 		append: (parent: HostNode, child: HostNode): void => {
 			const p = live(parent, "append");
