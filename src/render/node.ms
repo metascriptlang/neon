@@ -89,7 +89,7 @@ export function hostElement(
 		if (elementRef !== null && !isServer()) {
 			let mounted = true;
 			onCleanup((): void => { mounted = false; });
-			(elementRef as ElementRef)(new ElementHandle(host, node, (): boolean => mounted));
+			applyRef(new ElementHandle(host, node, (): boolean => mounted), elementRef as ElementRef);
 		}
 		place(host, parent, node, before);
 	};

@@ -25,6 +25,7 @@ import { View, ViewHandle, TextInput, TextInputHandle, Pressable, Text } from ".
 import { NeonEvent } from "../../src/render/event";
 import { flush } from "../../src/core/runtime";
 import { ElementHandle } from "../../src/render/measure";
+import { Image } from "../../src/components/image";
 
 test "ref hands the completed host node to the callback" {
 	let seen = "";
@@ -309,4 +310,44 @@ test "a View's ref measures text through its host, and refuses a host that canno
 	refused = "";
 	try { (frame as ViewHandle).measureText("x", {}); } catch (e) { refused = e.toString(); }
 	assert refused.indexOf("needs a host that measures text") >= 0, "host with no measure: " + refused;
+}
+
+test "direct Text and Image handle refs apply untracked under the mounting owner" {
+	for (const image of [false, true]) {
+		const [read, write] = createSignal(0);
+		const root = mockNode("root");
+		const host = mockHost();
+		const handles: ElementHandle[] = [];
+		let mounts = 0;
+		let seen = -1;
+		let cleanups = 0;
+		const grab = (handle: ElementHandle): void => {
+			seen = read();
+			handles.push(handle);
+			onCleanup((): void => { cleanups += 1; });
+		};
+		const app = image ? Image({ ref: grab }) : Text({ ref: grab });
+		const dispose = createRoot((end: () => void): () => void => {
+			createEffect<int32>(
+				(prev: int32 | null): int32 => {
+					mounts += 1;
+					app(host, root as unknown as HostNode, null);
+					return 0;
+				},
+				(value: int32, prev: int32 | null): Cleanup | null => null,
+			);
+			return end;
+		});
+		assert mounts === 1 && handles.length === 1 && root.children.length === 1;
+		assert seen === 0 && cleanups === 0;
+		write(1);
+		assert mounts === 1 && handles.length === 1 && root.children.length === 1,
+			"a signal read in the public ref must not remount its builder";
+		assert seen === 0 && cleanups === 0;
+		dispose();
+		assert cleanups === 1, "ref cleanup stays under the mounting owner";
+		let refused = false;
+		try { handles[0].measureInWindow((): void => {}); } catch { refused = true; }
+		assert refused, "the one public handle is disposed with that owner";
+	}
 }
