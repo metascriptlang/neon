@@ -7,7 +7,7 @@ import { createAsyncMemo } from "../../src/core/memo";
 import { createEffect, createRenderEffect, EffectBundle } from "../../src/core/effect";
 import { createRoot } from "../../src/core/owner";
 import { Cleanup, NotReadyError } from "../../src/core/types";
-import { Gate, gated, gatedStr, opened, rejectedWhenOpen, release } from "./asyncClock";
+import { Gate, gated, rejectedWhenOpen, release } from "./asyncClock";
 
 class Point {
 	x: int32;
@@ -17,11 +17,6 @@ class Point {
 		this.x = x;
 		this.y = y;
 	}
-}
-
-async function gatedPoint(gate: Gate, value: Point): Promise<Point> {
-	await opened(gate);
-	return value;
 }
 
 function isNotReady<T>(read: () => T): boolean {
@@ -60,7 +55,7 @@ test "a string async memo keeps its reader pending, then lands the string" {
 	const gate = new Gate();
 	const log: string[] = [];
 	createRoot((d) => {
-		const m = createAsyncMemo((p: string | null): Promise<string> => gatedStr(gate, "ready"));
+		const m = createAsyncMemo((p: string | null): Promise<string> => gated(gate, "ready"));
 		createRenderEffect<string>(
 			(p: string | null): string => m() + "!",
 			(v: string, p: string | null): Cleanup | null => { log.push(v); return null; },
@@ -95,7 +90,7 @@ test "a struct async memo is stale while pending and replaced when it lands" {
 	const gate = new Gate();
 	const [s, set] = createSignal<int32>(1);
 	const a = createRoot((d) => {
-		const m = createAsyncMemo((p: Point | null): Promise<Point> => gatedPoint(gate, new Point(s(), s() * 10)));
+		const m = createAsyncMemo((p: Point | null): Promise<Point> => gated(gate, new Point(s(), s() * 10)));
 		createRenderEffect<Point>((p: Point | null): Point => m(), (v: Point, p: Point | null): Cleanup | null => null);
 		return m;
 	});
@@ -264,7 +259,7 @@ test "an older run that settles after the newer one is dropped" {
 	const a = createRoot((d) => {
 		const m = createAsyncMemo((p: string | null): Promise<string> => {
 			const v = s();
-			return gatedStr(v === "a" ? gate1 : gate2, v + "!");
+			return gated(v === "a" ? gate1 : gate2, v + "!");
 		});
 		createRenderEffect<string>((p: string | null): string => m(), (v: string, p: string | null): Cleanup | null => { seen.push(v); return null; });
 		return m;

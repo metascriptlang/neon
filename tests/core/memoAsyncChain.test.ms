@@ -9,7 +9,7 @@ import { createRenderEffect } from "../../src/core/effect";
 import { createRoot } from "../../src/core/owner";
 import { isPending } from "../../src/core/runtime";
 import { Cleanup } from "../../src/core/types";
-import { Clock, delay, delayStr, advanceTo, settle } from "./asyncClock";
+import { Clock, delay, advanceTo, settle } from "./asyncClock";
 
 class Published {
 	log: string[] = [];
@@ -62,7 +62,7 @@ test "a first-hop answer stays valid when the re-asked input lands unchanged" {
 	let runsB = 0;
 	createRoot((d) => {
 		const a = createAsyncMemo((p: int32 | null): Promise<int32> => delay(clock, 1000, count() < 1 ? count() : 1));
-		const b = createAsyncMemo((p: string | null): Promise<string> => { runsB += 1; return delayStr(clock, 1000, "b" + a().toString()); });
+		const b = createAsyncMemo((p: string | null): Promise<string> => { runsB += 1; return delay(clock, 1000, "b" + a().toString()); });
 		text(out, clock, (): string => count().toString() + " / " + b());
 		return 0;
 	});

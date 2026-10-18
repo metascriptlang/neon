@@ -7,12 +7,12 @@ import { Accessor, createSignal } from "../../src/core/signal";
 import { createAsyncMemo } from "../../src/core/memo";
 import { Loading } from "../../src/macros/ui/flow";
 import { refreshTemplate0, refreshRegion, refreshModule, refreshReset } from "../../src/render/refresh";
-import { Gate, gatedStr, release } from "../core/asyncClock";
+import { Gate, gated, release } from "../core/asyncClock";
 
 const loadingB: NeonNode = el("b", [], [], text("loading"));
 
 function pendingNote(gate: Gate, tag: Accessor<string>): Accessor<string> {
-	return createAsyncMemo((p: string | null): Promise<string> => gatedStr(gate, "note" + tag()));
+	return createAsyncMemo((p: string | null): Promise<string> => gated(gate, "note" + tag()));
 }
 
 function unit(): boolean {

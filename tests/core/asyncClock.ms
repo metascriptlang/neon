@@ -17,7 +17,6 @@ export class Clock {
 	timers: Timer[] = [];
 }
 
-// Parked on ~/metascript/.inbox/compiler/2026-10-07-async-function-nested-in-generic-function.md (sighting 2026-10-16): a generic `async` function that returns a `T` is refused, so each value type below has its own helper.
 async function wait(clock: Clock, ms: int32): Promise<void> {
 	const timer = new Timer(clock.now + ms);
 	clock.timers.push(timer);
@@ -26,12 +25,7 @@ async function wait(clock: Clock, ms: int32): Promise<void> {
 	timer.done = true;
 }
 
-export async function delay(clock: Clock, ms: int32, value: int32): Promise<int32> {
-	await wait(clock, ms);
-	return value;
-}
-
-export async function delayStr(clock: Clock, ms: int32, value: string): Promise<string> {
+export async function delay<T>(clock: Clock, ms: int32, value: T): Promise<T> {
 	await wait(clock, ms);
 	return value;
 }
@@ -76,17 +70,7 @@ export async function opened(gate: Gate): Promise<void> {
 	while (!gate.open && polls < GIVE_UP_AFTER_POLLS) { await sleepAsync(1); polls += 1; }
 }
 
-export async function gated(gate: Gate, value: int32): Promise<int32> {
-	await opened(gate);
-	return value;
-}
-
-export async function gatedBool(gate: Gate, value: boolean): Promise<boolean> {
-	await opened(gate);
-	return value;
-}
-
-export async function gatedStr(gate: Gate, value: string): Promise<string> {
+export async function gated<T>(gate: Gate, value: T): Promise<T> {
 	await opened(gate);
 	return value;
 }

@@ -9,7 +9,7 @@ import { Host, HostNode, MockNode, mockHost, render, mockToString } from "../../
 import { Text } from "../../src/components/primitives";
 import { VirtualizedList, ListRenderItemInfo } from "../../src/components/virtualizedList";
 import { FlatList } from "../../src/components/flatList";
-import { Gate, gatedStr, release } from "../core/asyncClock";
+import { Gate, gated, release } from "../core/asyncClock";
 
 interface Item {
 	key: string;
@@ -18,7 +18,7 @@ interface Item {
 const loadingB: NeonNode = el("b", [], [], text("loading"));
 
 function pendingNote(gate: Gate, tag: Accessor<string>): Accessor<string> {
-	return createAsyncMemo((p: string | null): Promise<string> => gatedStr(gate, "note" + tag()));
+	return createAsyncMemo((p: string | null): Promise<string> => gated(gate, "note" + tag()));
 }
 
 function readsInMount(note: () => string, rest: () => string): NeonNode {

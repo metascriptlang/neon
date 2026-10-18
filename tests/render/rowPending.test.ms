@@ -6,7 +6,7 @@ import { Host, HostNode, MockNode, mockHost, render, mockToString } from "../../
 import { Accessor, accessor, createSignal } from "../../src/core/signal";
 import { createAsyncMemo } from "../../src/core/memo";
 import { Loading, Show, For, ForKeyedBy, Match, Case } from "../../src/macros/ui/flow";
-import { Gate, gatedStr, release } from "../core/asyncClock";
+import { Gate, gated, release } from "../core/asyncClock";
 
 const loadingB: NeonNode = el("b", [], [], text("loading"));
 
@@ -18,7 +18,7 @@ function readsInBody(note: () => string, tail: () => string): NeonNode {
 }
 
 function pendingNote(gate: Gate): Accessor<string> {
-	return createAsyncMemo((p: string | null): Promise<string> => gatedStr(gate, "note"));
+	return createAsyncMemo((p: string | null): Promise<string> => gated(gate, "note"));
 }
 
 function mockRoot(): [Host, HostNode, () => string] {

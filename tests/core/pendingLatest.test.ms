@@ -8,7 +8,7 @@ import { createRenderEffect } from "../../src/core/effect";
 import { createRoot } from "../../src/core/owner";
 import { flush, isPending, latest } from "../../src/core/runtime";
 import { Cleanup } from "../../src/core/types";
-import { Gate, gated, gatedStr, release } from "./asyncClock";
+import { Gate, gated, release } from "./asyncClock";
 
 function lastOf(log: string[]): string {
 	return log.length === 0 ? "-" : log[log.length - 1];
@@ -21,7 +21,7 @@ test "latest of an async memo keeps the stale value while it reloads and isPendi
 	const latestLog: string[] = [];
 	const pendingLog: string[] = [];
 	createRoot((d) => {
-		const m = createAsyncMemo((p: string | null): Promise<string> => gatedStr(gate, "AV" + count().toString()));
+		const m = createAsyncMemo((p: string | null): Promise<string> => gated(gate, "AV" + count().toString()));
 		createRenderEffect<string>(
 			(p: string | null): string => latest<string>((): string => m()),
 			(v: string, p: string | null): Cleanup | null => { latestLog.push(v); return null; },
@@ -112,7 +112,7 @@ test "isPending read outside any computation answers false on a first load, true
 	const gate = new Gate();
 	const [s, set] = createSignal<string>("a");
 	const a = createRoot((d) => {
-		const m = createAsyncMemo((p: string | null): Promise<string> => gatedStr(gate, s()));
+		const m = createAsyncMemo((p: string | null): Promise<string> => gated(gate, s()));
 		createRenderEffect<string>((p: string | null): string => m(), (v: string, p: string | null): Cleanup | null => null);
 		return m;
 	});

@@ -7,7 +7,7 @@ import { createEffect, createRenderEffect } from "../../src/core/effect";
 import { createRoot } from "../../src/core/owner";
 import { flush, isPending } from "../../src/core/runtime";
 import { Cleanup } from "../../src/core/types";
-import { Gate, gated, gatedBool, release } from "./asyncClock";
+import { Gate, gated, release } from "./asyncClock";
 
 function openGate(): Gate {
 	const gate = new Gate();
@@ -58,7 +58,7 @@ test "a dependent whose input stays equal is not rerun when the pending source d
 	let computes = 0;
 	const values: string[] = [];
 	createRoot((d) => {
-		const data = createAsyncMemo((p: boolean | null): Promise<boolean> => gatedBool(request() ? gate : open, false));
+		const data = createAsyncMemo((p: boolean | null): Promise<boolean> => gated(request() ? gate : open, false));
 		const enabled = createMemo((p: boolean | null): boolean => !virtual() && data());
 		const attributes = createMemo((p: string | null): string => {
 			const value = enabled();
@@ -87,7 +87,7 @@ test "a string dependent whose input stays equal is not rerun when the pending s
 	let computes = 0;
 	const values: string[] = [];
 	createRoot((d) => {
-		const data = createAsyncMemo((p: boolean | null): Promise<boolean> => gatedBool(request() ? gate : open, false));
+		const data = createAsyncMemo((p: boolean | null): Promise<boolean> => gated(request() ? gate : open, false));
 		const label = createMemo((p: string | null): string => !virtual() && data() ? "on" : "off");
 		const decorated = createMemo((p: string | null): string => { const shown = label(); computes += 1; return "[" + shown + "]"; });
 		createRenderEffect<string>((p: string | null): string => decorated(), (v: string, p: string | null): Cleanup | null => { values.push(v); return null; });
@@ -112,7 +112,7 @@ async function keepsPendingThroughAnotherPath(indirect: boolean): Promise<string
 	const values: string[] = [];
 	let pending: (() => boolean) | null = null;
 	createRoot((d) => {
-		const data = createAsyncMemo((p: boolean | null): Promise<boolean> => request() ? gatedBool(gate, true) : gatedBool(open, false));
+		const data = createAsyncMemo((p: boolean | null): Promise<boolean> => request() ? gated(gate, true) : gated(open, false));
 		const enabled = createMemo((p: boolean | null): boolean => !virtual() && data());
 		const viaMemo = createMemo((p: boolean | null): boolean => data());
 		const other = (): boolean => indirect ? viaMemo() : data();
@@ -163,7 +163,7 @@ async function dropsPendingSources(count: int32): Promise<string> {
 		const reads: (() => boolean)[] = [];
 		for (let i = 0; i < count; i += 1) {
 			const gate = gates[i];
-			const data = createAsyncMemo((p: boolean | null): Promise<boolean> => request() ? gatedBool(gate, true) : gatedBool(open, false));
+			const data = createAsyncMemo((p: boolean | null): Promise<boolean> => request() ? gated(gate, true) : gated(open, false));
 			reads.push((): boolean => data());
 		}
 		const enabled = createMemo((p: boolean | null): boolean => {
@@ -216,7 +216,7 @@ test "two converging unchanged branches settle before their shared source lands"
 	const values: string[] = [];
 	let pending: (() => boolean) | null = null;
 	createRoot((d) => {
-		const data = createAsyncMemo((p: boolean | null): Promise<boolean> => request() ? gatedBool(gate, true) : gatedBool(open, false));
+		const data = createAsyncMemo((p: boolean | null): Promise<boolean> => request() ? gated(gate, true) : gated(open, false));
 		const enabled = createMemo((p: boolean | null): boolean => !virtual() && data());
 		const left = createMemo((p: boolean | null): boolean => enabled());
 		const right = createMemo((p: boolean | null): boolean => enabled());
