@@ -1,18 +1,12 @@
 import { Computation, NotReadyError, EFFECT_PURE, RUN_UNCHANGED, RUN_PUBLISHED, RUN_STAGED } from "./types";
 import { Cell, Accessor, accessor, isEqual, untrack } from "./signal";
 import { ServerContext, serverContext } from "./serverContext";
-import { createComputed, readSource, isStaged, writeSource, beginFlight, endFlight, landFlight, failFlight, markRefresh } from "./runtime";
+import { createComputed, readSource, isStaged, writeSource, beginFlight, landFlight, failFlight, markRefresh } from "./runtime";
 
 export interface MemoOptions<T> {
 	equals?: ((a: T, b: T) => boolean) | false;
 	lazy?: boolean;
 	unobserved?: () => void;
-}
-
-class Outcome<T> {
-	isSync: boolean = true;
-	value: Cell<T> | null = null;
-	failure: Error | null = null;
 }
 
 class RefreshProbeStop extends Error {
@@ -36,13 +30,7 @@ async function watch<T>(promise: Promise<T>, done: (value: Cell<T> | null, failu
 }
 
 when (server) {
-	import { sleepAsync } from "std/core/promise";
 	import { ServerSlot, sanitized } from "./serverContext";
-
-	async function landAfterTurn(run: () => void): Promise<void> {
-		await sleepAsync(0);
-		run();
-	}
 
 	// A node made again at a slot still in flight lands the settled answer on itself, as the node that started the flight does (Solid server/signals.ts joins the flight and adopts it on settle).
 	async function joinFlight<T>(slot: ServerSlot, self: Computation, flight: int32, landValue: (self: Computation, value: T) => void): Promise<void> {
@@ -71,7 +59,6 @@ when (server) {
 		ctx.started.push(id);
 		const result = compute(prev);
 		const flight = beginFlight(self);
-		const outcome = new Outcome<T>();
 		const land = (value: Cell<T> | null, failure: Error | null): void => {
 			if (failure !== null) {
 				failFlight(self, flight, failure);
@@ -87,16 +74,8 @@ when (server) {
 				slot.cell = value as unknown;
 			}
 			slot.settled = true;
-			if (outcome.isSync) {
-				outcome.value = value;
-				outcome.failure = slot.failure;
-			} else {
-				land(value, slot.failure);
-			}
+			land(value, slot.failure);
 		});
-		outcome.isSync = false;
-		// C continues the watch synchronously for a promise settled before the read (compiler card 2026-10-15-await-of-a-settled-promise-continues-synchronously-on-c): land after this read has thrown, as JS does.
-		if (slot.settled) { slot.wait = landAfterTurn((): void => land(outcome.value, outcome.failure)); }
 		throw new NotReadyError(self);
 	}
 }
@@ -118,27 +97,14 @@ function awaitResult<T>(self: Computation, compute: (prev: T | null) => Promise<
 	}
 	const result = compute(prev);
 	const id = beginFlight(self);
-	const outcome = new Outcome<T>();
 	watch<T>(result, (value: Cell<T> | null, failure: Error | null): void => {
-		if (outcome.isSync) {
-			outcome.value = value;
-			outcome.failure = failure;
-		} else if (failure !== null) {
+		if (failure !== null) {
 			failFlight(self, id, failure);
 		} else if (value !== null) {
 			landFlight(self, id, (): void => land(self, value.value));
 		}
 	});
-	outcome.isSync = false;
-	const failure = outcome.failure;
-	if (failure !== null) {
-		endFlight(self);
-		throw failure;
-	}
-	const settled = outcome.value;
-	if (settled === null) { throw new NotReadyError(self); }
-	endFlight(self);
-	return settled.value;
+	throw new NotReadyError(self);
 }
 
 function buildMemo<T>(produce: (self: Computation, prev: T | null, land: (self: Computation, value: T) => void) => T, options?: MemoOptions<T>): Accessor<T> {

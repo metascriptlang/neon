@@ -581,8 +581,6 @@ export function beginFlight(el: Computation): int32 {
 	return flightCounter;
 }
 
-export function endFlight(el: Computation): void { el.flight = 0; }
-
 export function landFlight(el: Computation, id: int32, write: () => void): void {
 	if (el.flight !== id || (el.flags & REACTIVE_DIRTY) !== 0) { return; }
 	el.flight = 0;
