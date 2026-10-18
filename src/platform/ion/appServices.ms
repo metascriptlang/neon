@@ -48,6 +48,7 @@ export const ionAppServices: AppServices = {
 	storageKeys: (): string[] => { throw unavailable("AsyncStorage"); },
 	watchNetInfo: (): void => { throw unavailable("NetInfo"); },
 	refreshNetInfo: (): void => { throw unavailable("NetInfo"); },
+	// Parked on ~/metascript/.inbox/ion/2026-10-18-camera-permission-for-neon-cameraview.md: Ion backs no camera permission yet.
 	permissionStatus: async (name: string): Promise<PermissionReply> => {
 		return name === "microphone" ? microphoneReply(microphoneAccess()) : refusedPermission(name);
 	},
