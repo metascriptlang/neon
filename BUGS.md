@@ -34,6 +34,16 @@ and the invariants that outlived them were moved to the head of the test that pi
   `c7230e4a`, msc `807d96ef7`: 806041 bytes in `/Users/le/metascript/neon`, 891932 bytes in an export
   under `~/metascript/.scratch/neon-solid2/mainC72/neon`. A budget set in one checkout fails or
   passes in another for no change in the code.
+- **OPEN 2026-10-19 — `examples/voidCanvas.ms` names its font by a path the web package does not carry.**
+  The example passes `font: "../void/assets/font.ttf"`, relative to the neon checkout. `void/scripts/build-web.sh`
+  preloads `assets/font.ttf` at `/assets/font.ttf`, so the WebGL2 page logs `neon: cannot load the font
+  ../void/assets/font.ttf: NotLoaded` and exits 3. Built with
+  `VOID_WEB_PRELOAD="--preload-file assets/font.ttf@/void/assets/font.ttf"`, the same example builds from the repo
+  with no other change (msc v0.3.4 `4fe2a5eec`, void `82b84827`, gl only) and draws its rows in headless Chrome:
+  colour, inverse, underline and line-through spans, and the timer tick. Idle, it draws nothing: `drawn` stays 2
+  while the frame callback runs 293 times. WebGPU was not run, because headless Chrome has no adapter. Site:
+  `examples/voidCanvas.ms` `opts`.
+
 - **OPEN 2026-10-16 — touches do not reach the sokol canvas.** `src/platform/sokol/input.ms`
   `deliverAppEvent` takes the four `Touches*` events and does nothing with them, so a phone browser cannot
   press, scroll or focus the canvas once events arrive.
@@ -222,15 +232,6 @@ and the invariants that outlived them were moved to the head of the test that pi
   docs/RENDER-LAYERS.md). Parked at `src/platform/sokol/canvas.ms` `skippedFrameKeepsPicture`, false natively.
   Same Void note as the row above.
 
-- **PARKED 2026-10-16 — `runCanvas` does not build for the browser from the repo.** Not Neon's. Yoga links under
-  `--os=emcc` since yoga `b2d4f7e`, and the derived-interface upcast at `src/components/primitives.ms` is a
-  typed C cast since recompiler `20d78d7d3`; neither has been run through `runCanvas` under emcc yet. Still open:
-  `setTimeout` does not link under `--os=emcc`, `wasm-ld: undefined symbol: msSetTimeout`, because only the
-  native runtime's `dispatchFull.c` defines it
-  (`~/metascript/.inbox/compiler/2026-10-16-settimeout-does-not-link-under-emcc.md`). With these and yoga worked
-  around outside the repo, the canvas draws in Chrome (docs/RENDER-LAYERS.md). Parked at `examples/voidCanvas.ms`,
-  built natively only.
-
 - **PARKED 2026-10-15 — `tests/platform/voidInput.test.ms` aborts on C.** Not Neon's: after `default font
   assets/font.ttf did not load`, the native run panics with signal 6 in Void `wrapText`
   (`void/src/void2d/textLayout.ms:1366`), the empty-slice-to-`Span` case of compiler card
@@ -288,15 +289,6 @@ and the invariants that outlived them were moved to the head of the test that pi
   `~/metascript/.inbox/compiler/2026-10-03-nullish-coalesce-union-into-its-superset-rejected.md`.
   Parked at `tests/platform/void.test.ms`, the "parseFlexStyle maps numeric + enum keys" cell; the file
   fails to compile on that cell alone, so `msc test tests/platform/void.test.ms` stays red until the card lands.
-
-- **PARKED 2026-09-30 — `tests/platform/native.test.ms` dies at module load on the JS lane.** Not
-  Neon's: Yoga `dba68fd` re-exports its enums from `Yoga.h`, and msc `013853dd` emits
-  `export var YGAlign_YGAlignAuto` beside an export list that names `YGAlignAuto`, so node stops at
-  `SyntaxError: Export 'YGAlignAuto' is not defined in module`. The same on an export of main
-  `4e33c9e`; the file was not in the known-red set of msc `227ebc34` with Yoga `f5a811d`. The first card
-  left the inbox while the bug stayed; still red on msc `0f8278bc`, where a direct import from the header
-  fails too. Card and repro: `~/metascript/.inbox/compiler/2026-10-16-js-header-enum-member-unbound.md`.
-  Parked at that file's JS lane; nothing in Neon changes.
 
 - **PARKED 2026-09-25 — `tests/render/reconcile.test.ms` does not compile on the native lane since
   msc `2f306532`.** Not Neon's: `span` pushes a `HostNode` (`unknown`) into a `HostNode[]`, and the
