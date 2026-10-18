@@ -3,7 +3,6 @@ import { publishPlatform } from "../../api/platform";
 import { publishScale, publishScreen } from "../../api/dimensions";
 import { AppStateStatus, publishAppState, publishMemoryWarning } from "../../api/appState";
 import { dispatchHardwareBackPress } from "../../api/backHandler";
-import { publishUrl } from "../../api/linking";
 import { publishReduceMotion, publishScreenReader } from "../../api/accessibilityInfo";
 import {
 	AppEvent, FIELD, RECORD, appCall, dispatchNativeAppEvent, runNativeAppStarts,
@@ -79,7 +78,6 @@ function onAppEvent(): void {
 		AppEvent.BackPress => niSetAppEventResult(dispatchHardwareBackPress() ? 1 : 0),
 		AppEvent.Alert => settleAlert(value),
 		AppEvent.ScreenReader => publishScreenReader(value === "1"),
-		AppEvent.Url => publishUrl(value),
 		AppEvent.Share => settleShare(value),
 		AppEvent.MemoryWarning => publishMemoryWarning(),
 		AppEvent.ReduceMotion => publishReduceMotion(value === "1"),
@@ -145,10 +143,6 @@ function vibrate(pattern: int32[], repeat: boolean): void {
 const services: AppServices = {
 	dismissKeyboard: (): void => { call("keyboard.dismiss", ""); },
 	alert,
-	openURL: async (url: string): Promise<boolean> => { return call("linking.open", url) === "1"; },
-	canOpenURL: async (url: string): Promise<boolean> => { return call("linking.canOpen", url) === "1"; },
-	initialURL: async (): Promise<string> => { return call("linking.initial", ""); },
-	openSettings: async (): Promise<boolean> => { return call("linking.settings", "") === "1"; },
 	share,
 	vibrate,
 	cancelVibration: (): void => { call("vibrate.cancel", ""); },

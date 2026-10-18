@@ -43,12 +43,8 @@ export function onNativeAppEvent(kind: AppEvent, handle: (value: string) => void
 
 export function dispatchNativeAppEvent(kind: AppEvent, value: string): void {
 	for (const handler of handlers) {
-		if (handler.kind === kind) {
-			handler.handle(value);
-			return;
-		}
+		if (handler.kind === kind) { handler.handle(value); }
 	}
-	throw new Error(`Neon: the native host sent app event ${kind as int32} that no imported module handles`);
 }
 
 export function onNativeAppStart(start: () => void): void {

@@ -13,10 +13,6 @@ function unavailable(api: string): Error {
 export const ionAppServices: AppServices = {
 	dismissKeyboard: (): void => { throw unavailable("Keyboard.dismiss"); },
 	alert: (request: AlertRequest): void => { throw unavailable("Alert.alert"); },
-	openURL: async (url: string): Promise<boolean> => { throw unavailable("Linking.openURL"); },
-	canOpenURL: async (url: string): Promise<boolean> => { throw unavailable("Linking.canOpenURL"); },
-	initialURL: async (): Promise<string> => { throw unavailable("Linking.getInitialURL"); },
-	openSettings: async (): Promise<boolean> => { throw unavailable("Linking.openSettings"); },
 	share: (request: ShareRequest): void => { throw unavailable("Share.share"); },
 	vibrate: (pattern: int32[], repeat: boolean): void => { throw unavailable("Vibration.vibrate"); },
 	cancelVibration: (): void => { throw unavailable("Vibration.cancel"); },

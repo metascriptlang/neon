@@ -1,0 +1,21 @@
+import { LinkingServices, installLinkingServices } from "../../api/linkingServices";
+
+extern class window {
+	static extern open(url: cstring, target: cstring, features: cstring): void;
+}
+
+extern class location {
+	static href: string;
+}
+
+const browserLinkingServices: LinkingServices = {
+	openURL: async (url: string): Promise<boolean> => {
+		window.open(url, "_blank", "noopener");
+		return true;
+	},
+	canOpenURL: async (url: string): Promise<boolean> => { return true; },
+	initialURL: async (): Promise<string> => { return location.href; },
+	openSettings: async (): Promise<boolean> => { return false; },
+};
+
+installLinkingServices(browserLinkingServices);

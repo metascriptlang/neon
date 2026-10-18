@@ -44,12 +44,7 @@ extern class window {
 	static screen: BrowserScreen;
 	static extern alert(text: cstring): void;
 	static extern confirm(text: cstring): boolean;
-	static extern open(url: cstring, target: cstring, features: cstring): void;
 	static extern matchMedia(query: cstring): BrowserMediaQuery;
-}
-
-extern class location {
-	static href: string;
 }
 
 extern class document {
@@ -124,13 +119,6 @@ const services: AppServices = {
 		if (focused !== null) { focused.blur(); }
 	},
 	alert,
-	openURL: async (url: string): Promise<boolean> => {
-		window.open(url, "_blank", "noopener");
-		return true;
-	},
-	canOpenURL: async (url: string): Promise<boolean> => { return true; },
-	initialURL: async (): Promise<string> => { return location.href; },
-	openSettings: async (): Promise<boolean> => { return false; },
 	share: (request: ShareRequest): void => {
 		if (!canShare(0)) { throw new Error("Share is not supported in this browser"); }
 		shareThroughNavigator(request);

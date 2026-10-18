@@ -23,10 +23,6 @@ export interface ShareRequest {
 export interface AppServices {
 	dismissKeyboard: () => void;
 	alert: (request: AlertRequest) => void;
-	openURL: (url: string) => Promise<boolean>;
-	canOpenURL: (url: string) => Promise<boolean>;
-	initialURL: () => Promise<string>;
-	openSettings: () => Promise<boolean>;
 	share: (request: ShareRequest) => void;
 	vibrate: (pattern: int32[], repeat: boolean) => void;
 	cancelVibration: () => void;

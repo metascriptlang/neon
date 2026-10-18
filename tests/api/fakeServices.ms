@@ -2,6 +2,7 @@ import {
 	AppServices, AlertRequest,
 	ShareRequest, installAppServices,
 } from "../../src/api/services";
+import { LinkingServices, installLinkingServices } from "../../src/api/linkingServices";
 import { ClipboardServices, installClipboardServices } from "../../src/api/clipboardServices";
 import { PermissionReply, PermissionServices, installPermissionServices } from "../../src/api/permissionServices";
 import { HapticsServices, installHapticsServices } from "../../src/api/hapticsServices";
@@ -98,19 +99,6 @@ export class FakeServices {
 				this.log.push("alert " + request.title);
 				this.alerts.push(request);
 			},
-			openURL: async (url: string): Promise<boolean> => {
-				this.log.push("openURL " + url);
-				return this.openable;
-			},
-			canOpenURL: async (url: string): Promise<boolean> => {
-				this.log.push("canOpenURL " + url);
-				return this.openable;
-			},
-			initialURL: async (): Promise<string> => { return this.initial; },
-			openSettings: async (): Promise<boolean> => {
-				this.log.push("openSettings");
-				return true;
-			},
 			share: (request: ShareRequest): void => {
 				this.log.push("share " + request.title + "|" + request.message + "|" + request.url);
 				this.shares.push(request);
@@ -141,6 +129,26 @@ export class FakeServices {
 		this.installLocalization();
 		this.installPermissions();
 		this.installClipboard();
+		this.installLinking();
+	}
+
+	installLinking(): void {
+		const services: LinkingServices = {
+			openURL: async (url: string): Promise<boolean> => {
+				this.log.push("openURL " + url);
+				return this.openable;
+			},
+			canOpenURL: async (url: string): Promise<boolean> => {
+				this.log.push("canOpenURL " + url);
+				return this.openable;
+			},
+			initialURL: async (): Promise<string> => { return this.initial; },
+			openSettings: async (): Promise<boolean> => {
+				this.log.push("openSettings");
+				return true;
+			},
+		};
+		installLinkingServices(services);
 	}
 
 	installClipboard(): void {

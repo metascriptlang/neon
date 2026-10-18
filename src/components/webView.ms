@@ -4,7 +4,9 @@ import { Accessor } from "../core/signal";
 import { onCleanup } from "../core/cleanup";
 import { Host, HostNode } from "../render/hostTypes";
 import { NeonNode, VAttr, VEvent, hostElement, evt, dynAttr } from "../render/node";
-import { appServices, hasAppServices } from "../api/services";
+import { hasAppServices } from "../api/services";
+import { Linking } from "../api/linking";
+import { linkingServices } from "../api/linkingServices";
 
 when (js && !server) {
 	import "../platform/browser/media";
@@ -188,9 +190,8 @@ const DEFAULT_WHITELIST: string[] = ["http://*", "https://*"];
 
 // A url the whitelist refuses goes to the system, as RN does.
 async function openOutside(url: string): Promise<void> {
-	const services = appServices("WebView.originWhitelist");
-	if (await services.canOpenURL(url)) {
-		const opened = await services.openURL(url);
+	if (await Linking.canOpenURL(url)) {
+		const opened = await linkingServices("WebView.originWhitelist").openURL(url);
 		if (!opened) { console.log(`WebView: the system did not open ${url}`); }
 	}
 }

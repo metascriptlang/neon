@@ -46,5 +46,5 @@ test "a service Ion does not back is refused with the name the author called" {
 	} catch (e) {
 		message = (e as Error).message;
 	}
-	assert message === "Linking.openURL is not available on an Ion desktop host yet", message;
+	assert message === "Linking.openURL is not available on this host", message;
 }
