@@ -1,4 +1,5 @@
 import { createSignal, Accessor } from "../../src/core/signal";
+import { resetErrorHalt } from "../../src/core/runtime";
 import { element } from "../../src/macros/ui/element";
 import { render } from "../../src/render/host";
 import { NeonEvent, neonEvent } from "../../src/render/event";
@@ -384,6 +385,7 @@ test "what a Void paragraph cannot draw yet is refused by name" {
 		render(element(<Text>a <Text cellWidth={8}>b</Text></Text>), d.host, d.root);
 	} catch (e) { message = e.message; }
 	assert message.indexOf("outermost Text") >= 0, "cellWidth on a nested Text: " + message;
+	resetErrorHalt();
 	message = "";
 	const e = host();
 	try {
@@ -612,4 +614,150 @@ test "a ForList scroll moves 59 of 60 rows without reshaping or rebuilding them"
 	}
 	assert textTouched(vh, root) === 1, "a layout pass touched no kept row's text: " + textTouched(vh, root).toString();
 	assert after[0].ref.local().y === 0.0, "the kept row 1 now sits at the top, y=" + after[0].ref.local().y.toString();
+}
+
+test "a pointer, key or press handler that mounts or unmounts handler-bearing nodes does not break the dispatch" {
+	const vh = host();
+	const [open, setOpen] = createSignal<boolean>(false);
+	const log: string[] = [];
+	let inner: VoidNode | null = null;
+	render(element(
+		<View style={{ width: 400, height: 300 }}
+			onPointerUp={(e: NeonEvent): void => { log.push("outer up"); setOpen(!open()); }}
+			onKeyDown={(e: NeonEvent): void => { log.push("outer key"); }}>
+			{Show({ when: open, children: element(
+				<View ref={(h: ViewHandle): void => { inner = h.node as VoidNode; }} style={{ width: 400, height: 300 }} focusable
+					onPointerUp={(e: NeonEvent): void => { log.push("inner up"); }}
+					onKeyDown={(e: NeonEvent): void => { log.push("inner key"); setOpen(false); }} />
+			) })}
+		</View>
+	), vh.host, vh.root);
+	vh.layout(400.0, 300.0);
+	vh.pointerDown(100.0, 100.0, 0);
+	vh.pointerUp(100.0, 100.0, 0);
+	assert open() && log.join("|") === "outer up", "mounted from a pointer handler; the new node missed the event that made it: " + log.join("|");
+	log.length = 0;
+	vh.layout(400.0, 300.0);
+	vh.pointerUp(100.0, 100.0, 0);
+	assert !open() && log.join("|") === "inner up|outer up", "unmounted from the parent's handler after the target heard it: " + log.join("|");
+	setOpen(true);
+	vh.layout(400.0, 300.0);
+	log.length = 0;
+	vh.focus(inner);
+	vh.keyDown(key("a"));
+	assert !open() && log.join("|") === "inner key|outer key", "a key handler that unmounts its own node, and the parent still hears it: " + log.join("|");
+}
+
+test "a press handler that mounts a pressable does not break the press dispatch" {
+	const vh = host();
+	const [more, setMore] = createSignal<boolean>(false);
+	let presses = 0;
+	render(element(
+		<View style={{ width: 200, height: 100 }}>
+			<Pressable style={{ width: 200, height: 50 }} onPress={(): void => { presses = presses + 1; setMore(true); }} />
+			{Show({ when: more, children: element(
+				<Pressable style={{ width: 200, height: 50 }} onPress={(): void => { presses = presses + 100; }} />
+			) })}
+		</View>
+	), vh.host, vh.root);
+	vh.layout(200.0, 100.0);
+	vh.clickAt(10.0, 10.0);
+	assert more() && presses === 1, "the press mounted a pressable and fired once: " + presses.toString();
+}
+
+test "a pressed node keeps the pointer until that button's release, with coordinates relative to it outside its box" {
+	const vh = host();
+	const log: string[] = [];
+	render(element(
+		<View style={{ width: 300, height: 100 }} onPointerMove={seen("outer", log)} onPointerUp={seen("outer", log)}>
+			<View style={{ width: 100, height: 50 }} onPointerDown={seen("inner", log)} onPointerMove={seen("inner", log)} onPointerUp={seen("inner", log)} />
+		</View>
+	), vh.host, vh.root);
+	vh.layout(300.0, 100.0);
+	vh.pointerDown(10.0, 10.0, 0);
+	log.length = 0;
+	vh.pointerMove(250.0, 80.0, 0, true);
+	vh.pointerDown(250.0, 80.0, 2);
+	vh.pointerUp(250.0, 80.0, 2);
+	vh.pointerUp(260.0, 90.0, 0);
+	assert log.join("|") === "inner:pointermove@250,80/250,80 b0 down d0,0|outer:pointermove@250,80/250,80 b0 down d0,0"
+		+ "|inner:pointerdown@250,80/250,80 b2 down d0,0"
+		+ "|inner:pointerup@250,80/250,80 b2 up d0,0|outer:pointerup@250,80/250,80 b2 up d0,0"
+		+ "|inner:pointerup@260,90/260,90 b0 up d0,0|outer:pointerup@260,90/260,90 b0 up d0,0", "captured: " + log.join("|");
+	log.length = 0;
+	vh.pointerMove(250.0, 80.0, 0, false);
+	assert log.join("|") === "outer:pointermove@250,80/250,80 b0 up d0,0", "released, the node under the pointer hears again: " + log.join("|");
+}
+
+test "a captured node that unmounts gives the pointer back to the node under it" {
+	const vh = host();
+	const [shown, setShown] = createSignal<boolean>(true);
+	const log: string[] = [];
+	render(element(
+		<View style={{ width: 300, height: 100 }} onPointerMove={seen("outer", log)}>
+			{Show({ when: shown, children: element(
+				<View style={{ width: 100, height: 50 }} onPointerDown={(e: NeonEvent): void => { setShown(false); }} onPointerMove={seen("inner", log)} />
+			) })}
+		</View>
+	), vh.host, vh.root);
+	vh.layout(300.0, 100.0);
+	vh.pointerDown(10.0, 10.0, 0);
+	vh.layout(300.0, 100.0);
+	vh.pointerMove(250.0, 80.0, 0, true);
+	assert log.join("|") === "outer:pointermove@250,80/250,80 b0 down d0,0", "the gone node hears nothing: " + log.join("|");
+}
+
+test "pointer and wheel events carry the window's modifiers and a time" {
+	const vh = host();
+	const log: string[] = [];
+	const times: number[] = [];
+	const mods = (e: NeonEvent): void => {
+		log.push(`${e.type} shift=${e.shiftKey} ctrl=${e.ctrlKey} alt=${e.altKey} meta=${e.metaKey} mods=${e.mods}`);
+		times.push(e.timeStamp);
+	};
+	render(element(
+		<View style={{ width: 100, height: 100 }} onPointerDown={mods} onPointerMove={mods} onPointerUp={mods} onWheel={mods} />
+	), vh.host, vh.root);
+	vh.layout(100.0, 100.0);
+	vh.pointerDown(10.0, 10.0, 0, 1);
+	vh.pointerMove(20.0, 10.0, 0, true, 5);
+	vh.pointerUp(20.0, 10.0, 0, 2);
+	vh.wheel(20.0, 10.0, 0.0, 1.0, 8);
+	vh.pointerMove(30.0, 10.0, 0, false);
+	assert log.join("|") === [
+		"pointerdown shift=true ctrl=false alt=false meta=false mods=1",
+		"pointermove shift=true ctrl=false alt=true meta=false mods=5",
+		"pointerup shift=false ctrl=true alt=false meta=false mods=2",
+		"wheel shift=false ctrl=false alt=false meta=true mods=8",
+		"pointermove shift=false ctrl=false alt=false meta=false mods=0",
+	].join("|"), log.join("|");
+	assert times[0] > 0 && times[1] >= times[0] && times[4] >= times[3], "timeStamps rise: " + times.join(",");
+}
+
+test "a style change that only moves layout asks the window for a frame" {
+	const vh = host();
+	let woke = 0;
+	vh.onDirty((): void => { woke = woke + 1; });
+	const [rowHeight, setRowHeight] = createSignal<number>(0);
+	render(element(<View style={{ width: 400 }}><View style={{ height: rowHeight() }} /><View style={{ height: 10 }} /></View>), vh.host, vh.root);
+	vh.layout(400.0, 300.0);
+	settle(vh);
+	const before = woke;
+	setRowHeight(18);
+	assert woke === before + 1, "a height-only change woke the host: " + (woke - before).toString();
+	vh.layout(400.0, 300.0);
+	assert top(vh).children[1].ref.local().y === 18.0, "the next layout moves the row below: y=" + top(vh).children[1].ref.local().y.toString();
+}
+
+test "a View's handle focuses it on the Void host and blur clears it" {
+	const vh = host();
+	let log = "";
+	let grid: ViewHandle | null = null;
+	render(element(<View ref={(h: ViewHandle): void => { grid = h; h.focus(); }} focusable={true}
+		onFocus={(e: NeonEvent): void => { log += "focus;"; }} onBlur={(e: NeonEvent): void => { log += "blur;"; }} />), vh.host, vh.root);
+	assert log === "focus;", "focused on mount: " + log;
+	(grid as ViewHandle).blur();
+	assert log === "focus;blur;", "blur: " + log;
+	(grid as ViewHandle).blur();
+	assert log === "focus;blur;", "a second blur of an unfocused view fires nothing: " + log;
 }

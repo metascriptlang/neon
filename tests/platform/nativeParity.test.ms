@@ -1,5 +1,6 @@
 import { runApp } from "../../src/platform/native/host";
 import { createSignal } from "../../src/core/signal";
+import { resetErrorHalt } from "../../src/core/runtime";
 import { element } from "../../src/macros/ui/element";
 import { Text, View, TextInput, TextSelection, Pressable } from "../../src/components/primitives";
 import { NeonEvent } from "../../src/render/event";
@@ -113,9 +114,15 @@ test "a native Text refuses a decoration line style its platform text stack does
 	} catch (e) { refused = e.toString(); }
 	nmTeardown();
 	assert refused.indexOf("wavy") >= 0 && refused.indexOf("is not drawn by the platform text stacks yet") >= 0, "wavy: " + refused;
+	refused = "";
+	try {
+		runApp((): NeonNode => <View><Text>a <Text style={{ textDecorationLine: "underline", textDecorationColor: "#ff0000" }}>b</Text></Text></View>);
+	} catch (e) { refused = e.toString(); }
+	nmTeardown();
+	assert refused.indexOf("textDecorationColor") >= 0 && refused.indexOf("is not drawn by the platform text stacks yet") >= 0, "colour: " + refused;
 }
 
-test "a native Text sends its fontFamily to its label, and a span may not change the family" {
+test "a native Text sends its fontFamily to its label, a span may not change the family, and a family list is refused" {
 	const [family, setFamily] = createSignal("Consolas");
 	runApp((): NeonNode => <View><Text style={{ fontFamily: family() }}>mono</Text></View>);
 	const first = labelProp("mono", "fontFamily");
@@ -129,6 +136,13 @@ test "a native Text sends its fontFamily to its label, and a span may not change
 	} catch (e) { refused = e.toString(); }
 	nmTeardown();
 	assert refused.indexOf("a span changes fontFamily") >= 0, "a span's own family: " + refused;
+	refused = "";
+	try {
+		runApp((): NeonNode => <View><Text style={{ fontFamily: "Consolas, Segoe UI Symbol" }}>a</Text></View>);
+	} catch (e) { refused = e.toString(); }
+	nmTeardown();
+	resetErrorHalt();
+	assert refused.indexOf("is a family list") >= 0, "a family list: " + refused;
 }
 
 test "a native multiline TextInput without a height grows with its text up to maxHeight" {

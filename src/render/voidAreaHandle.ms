@@ -1,3 +1,5 @@
+import { NeonEvent } from "./event";
+
 export enum AreaKeyAction {
 	Release,
 	Press,
@@ -42,6 +44,15 @@ export struct AreaPointerEvent {
 	pressed: boolean;
 	dx: float64;
 	dy: float64;
+	mods: BitSet<AreaKeyMod>;
+}
+
+export function setEventMods(ev: NeonEvent, mods: BitSet<AreaKeyMod>): void {
+	ev.altKey = mods.has(AreaKeyMod.Alt);
+	ev.ctrlKey = mods.has(AreaKeyMod.Ctrl);
+	ev.metaKey = mods.has(AreaKeyMod.Super);
+	ev.shiftKey = mods.has(AreaKeyMod.Shift);
+	ev.mods = (mods as uint16) as number;
 }
 
 export struct AreaPreedit {

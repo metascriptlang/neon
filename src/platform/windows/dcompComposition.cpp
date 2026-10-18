@@ -118,7 +118,7 @@ void DCompVisual::InsertAt(IVisual *child, int32_t index) {
 	DCompVisual *added = static_cast<DCompVisual *>(child);
 	size_t at = index < 0 || (size_t)index > children.size() ? children.size() : (size_t)index;
 	if (at == children.size()) {
-		must(visual->AddVisual(added->visual.Get(), TRUE, nullptr), "AddVisual");
+		must(visual->AddVisual(added->visual.Get(), FALSE, nullptr), "AddVisual");
 	} else {
 		must(visual->AddVisual(added->visual.Get(), FALSE, children[at]->visual.Get()), "AddVisual");
 	}

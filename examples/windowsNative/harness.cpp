@@ -276,6 +276,20 @@ void harnessClick(const char *title, int x, int y) {
 	PostMessageW(window, WM_LBUTTONUP, 0, MAKELPARAM(x, y));
 }
 
+void harnessHover(const char *title, int x, int y) {
+	PostMessageW(findOwnWindow(title), WM_MOUSEMOVE, 0, MAKELPARAM(x, y));
+}
+
+void harnessDrag(const char *title, int fromX, int fromY, int toX, int toY, int steps) {
+	HWND window = findOwnWindow(title);
+	PostMessageW(window, WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(fromX, fromY));
+	for (int i = 1; i <= steps; i++) {
+		int x = fromX + (toX - fromX) * i / steps, y = fromY + (toY - fromY) * i / steps;
+		PostMessageW(window, WM_MOUSEMOVE, MK_LBUTTON, MAKELPARAM(x, y));
+	}
+	PostMessageW(window, WM_LBUTTONUP, 0, MAKELPARAM(toX, toY));
+}
+
 int harnessPostKeys(const char *title, const char *keys) {
 	HWND window = findOwnWindow(title);
 	if (!window) return 1;

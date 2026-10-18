@@ -40,8 +40,8 @@ export const STYLE_TABLE: string[][] = [
 	["backgroundColor",     "string",            "word", "paint",  "paint"],
 	["backgroundImage",     "string",            "word", "ignore", "ignore"],
 	["borderWidth",         "number",            "len",  "num",    "ignore"],
-	["borderColor",         "string",            "word", "ignore", "ignore"],
-	["borderRadius",        "number",            "len",  "ignore", "ignore"],
+	["borderColor",         "string",            "word", "paint",  "ignore"],
+	["borderRadius",        "number",            "len",  "paint",  "ignore"],
 	["opacity",             "number",            "num",  "paint",  "paint"],
 	["color",               "string",            "word", "paint",  "paint"],
 	["fontSize",            "number",            "len",  "paint",  "ignore"],
@@ -54,7 +54,7 @@ export const STYLE_TABLE: string[][] = [
 	["fontFamily",          "string",            "word", "paint",  "ignore"],
 	["transform",           "string",            "word", "ignore", "ignore"],
 	["cursor",              "string",            "word", "ignore", "ignore"],
-	["boxShadow",           "string",            "word", "ignore", "ignore"],
+	["boxShadow",           "string",            "word", "paint",  "ignore"],
 	["clipPath",            "string",            "word", "ignore", "ignore"],
 	["transition",          "string",            "word", "ignore", "ignore"],
 	["filter",              "string",            "word", "ignore", "ignore"],
@@ -62,6 +62,7 @@ export const STYLE_TABLE: string[][] = [
 	["fontStyle",           "FontStyle",         "word", "paint",  "paint"],
 	["textDecorationLine",  "TextDecorationLine", "word", "paint",  "paint"],
 	["textDecorationStyle", "TextDecorationStyle", "word", "paint", "ignore"],
+	["textDecorationColor", "string",            "word", "paint",  "ignore"],
 ];
 
 export const STYLE_CLASS_FIELDS: string[][] = [

@@ -20,9 +20,10 @@ import {
 } from "../../render/voidAreaHandle";
 import { installCaptureServices } from "../../api/captureServices";
 import { installAppServices } from "../../api/services";
+import { installFrameDriver } from "../../animation/frame";
 import { ionCaptureServices } from "./audio";
 import { ionAppServices } from "./appServices";
-import { VoidHost } from "../void/host";
+import { VoidHost, familyFont } from "../void/host";
 import {
 	WindowArea,
 	windowHost,
@@ -53,10 +54,11 @@ export interface DesktopOptions {
 	width: number;
 	height: number;
 	font: string;
+	fontFamily: string | null;
 }
 
 export function desktopOptions(title: string, width: number, height: number): DesktopOptions {
-	return { title, width, height, font: "assets/font.ttf" };
+	return { title, width, height, font: "assets/font.ttf", fontFamily: null };
 }
 
 interface Area {
@@ -76,6 +78,16 @@ const _areas: Area[] = [];
 let _font: FontId = DEFAULT_FONT;
 let _family: string | null = null;
 let _wired = false;
+let _frameFires: (() => void)[] = [];
+let _firing = false;
+
+function runFrameFires(): void {
+	const due = _frameFires;
+	_frameFires = [];
+	_firing = true;
+	for (const fire of due) { fire(); }
+	_firing = false;
+}
 
 function areaOfWindow(window: int32): Area | null {
 	for (const a of _areas) {
@@ -158,6 +170,7 @@ function areaPointer(e: PointerEvent): AreaPointerEvent {
 		pressed: e.pressed,
 		dx: e.dx,
 		dy: e.dy,
+		mods: (e.mods as uint16) as BitSet<AreaKeyMod>,
 	};
 }
 
@@ -187,6 +200,7 @@ function wireInput(): void {
 	embedRegister(initGpu, drawCurrent);
 	onResize(resized);
 	onFrame((window: int32, timeMs: float64): void => {
+		runFrameFires();
 		const a = areaOfWindow(window);
 		if (a !== null && (a as Area).view !== ViewInvalid) { viewFrame((a as Area).view); }
 	});
@@ -221,6 +235,7 @@ function ionWindowHost(win: Window): Host {
 		pixelHeight: (): int32 => pixelHeight(win),
 		requestFrame: (): void => { requestFrame(win); },
 		dirty: (): void => {
+			if (_firing) { return; }
 			_requested = _requested + 1;
 			requestFrame(win);
 		},
@@ -251,17 +266,26 @@ function ionWindowHost(win: Window): Host {
 export function runWindow(opts: DesktopOptions, app: () => NeonNode): int32 {
 	const win = createWindow("main", defaultOptions(opts.title, opts.width as int32, opts.height as int32));
 	if (win === null) { return 1; }
-	const font = addFont(opts.font);
+	const frameWin: Window = win;
+	registerFace(opts.font, opts.font, 400, FaceStyle.Normal);
+	const family = opts.fontFamily !== null ? opts.fontFamily as string : opts.font;
+	const font = opts.fontFamily !== null ? familyFont(family, 400, false) : addFont(opts.font);
 	if (!font.ok) {
-		console.log(`neon: cannot load the font ${opts.font}: ${font.error.toString()}`);
+		console.log(`neon: cannot load the font ${family}: ${font.error.toString()}`);
 		return 3;
 	}
 	_font = font.value;
-	registerFace(opts.font, opts.font, 400, FaceStyle.Normal);
-	_family = opts.font;
+	_family = family;
 	wireInput();
 	installCaptureServices(ionCaptureServices);
 	installAppServices(ionAppServices);
+	installFrameDriver({
+		now: (): number => performance.now(),
+		schedule: (fire: () => void): void => {
+			_frameFires.push(fire);
+			requestFrame(frameWin);
+		},
+	});
 	const host = ionWindowHost(win);
 	const dispose = render((h: Host, p: HostNode, b: HostNode | null): void => { app()(h, p, b); }, host, windowNode("window"));
 	runLoop();

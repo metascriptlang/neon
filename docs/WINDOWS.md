@@ -1,6 +1,6 @@
 # Windows Host
 
-Status: decided 2026-10-14; the View, Text, Pressable, ScrollView and TextInput slices are built, hosted in an Ion window ("Built: View", "Built: Text", "Built: Ion window and Pressable", "Built: ScrollView", "Built: TextInput" below), everything after them is not. The Windows Application UI world is a native host behind
+Status: decided 2026-10-14; the View, Text, Pressable, ScrollView (with its scroll bars) and TextInput slices are built, hosted in an Ion window ("Built: View", "Built: Text", "Built: Ion window and Pressable", "Built: ScrollView", "Built: TextInput" below), everything after them is not. The Windows Application UI world is a native host behind
 `src/platform/native/bridge.h`, like iOS and Android (`IOS.md`, `ANDROID.md`), and its components
 are Neon's own views drawn on DirectComposition. This document keeps the decision, the reference it
 is ported from, the paths rejected and the one measurement taken. `VISION.md` "Worlds, nested one
@@ -266,9 +266,28 @@ adds the position to a point before it tries the children, so a press lands on t
   with the offset, the frame size and the content size, which is at least the frame size (`getScrollMetrics`,
   `ScrollViewComponentView.cpp:1300`). A wheel or `scrollTo` reports no drag or momentum phases, as in RNW, where a move from a
   `Try*` request carries a request id and fires neither. An animated move asks Ion for frames until it ends, then asks for none.
-- **Options.** `horizontal` and `scrollEnabled` are read. The scroll bar props and the keyboard props are accepted and do
-  nothing, because this host draws no scroll bar and has no software keyboard. `pagingEnabled`, `refreshEnabled` and
+- **Options.** `horizontal`, `scrollEnabled`, `showsVerticalScrollIndicator` and `showsHorizontalScrollIndicator` are
+  read (the person's decision of 2026-10-16: each prop means what RNW makes it mean). `keyboardDismissMode` is accepted:
+  RNW hides the touch keyboard (`CoreInputView.TryHide`) on each position change when it is `on-drag`
+  (`ScrollViewComponentView.cpp:1334`), and this host has no touch panning to drag with yet, so it waits for that slice.
+  `keyboardShouldPersistTaps` is accepted and ignored; RNW reads it nowhere. `pagingEnabled`, `refreshEnabled` and
   `refreshing` abort by name when true, and so does any other option.
+- **Scroll bars.** `ScrollBar` in `scrollView.cpp` is RNW's `ScrollBarComponent` (`ScrollViewComponentView.cpp:42`), one per
+  axis, parented above the content visual as RNW's `createVisual` does (`:1323`). Its sizes are RNW's XAML resources
+  (`onScaleChanged`, `:158`): 12-point bar, 6-point thumb, 2-point shy thumb, 4-point arrow margin, 1-point edge margin,
+  3-point track margin, 30-point minimum thumb. The thumb's length and position are RNW's `MulDiv` arithmetic (`:239-298`).
+  At rest the bar is shy: a 2-point thumb with the track and arrows transparent; a pointer over the bar shows the 6-point
+  thumb, the track and the arrows, which are `Segoe Fluent Icons` glyphs at 8 points (`drawArrow`, `:456`). The colours are
+  RNW's light theme (`Theme.cpp:272-281`, `:298`, `:311-313`). A press on an arrow scrolls 16 points (`c_scrollerLineDelta`,
+  `:31`), a press on the vertical track scrolls a frame's height, and a thumb drag scrolls by the thumb's travel, even when
+  `scrollEnabled` is false, as RNW's `scrollTo` does. A press the bar takes never reaches a Pressable under it. Two
+  differences from RNW: the shown prop and the overflow are two flags here, because RNW's one `m_visible` left a bar hidden
+  for good once its content had fit the frame (`updateVisibility`, `:120`); and the horizontal bar's track takes a press
+  without paging, as RNW's does (`OnPointerPressed`, `:384-392`).
+- **Z-order.** The seam appended a child with `AddVisual(child, TRUE, nullptr)`, and DirectComposition put it behind its
+  siblings: the scroll bars, appended after the content visual, were drawn under the bands (measured: the thumb's pixels
+  showed the band's colour). It passes FALSE now, which puts an appended child in front, so a later sibling is drawn on top,
+  as in RN.
 
 Measured 2026-10-16, msc BUILD `5631dd3e5`, Ion `b9b5e8b`, 96 DPI. `msc build examples/windowsNative/ionScroll.ms` then
 `out/windowsIonScroll.exe --check` exits 0. The check posts real `WM_MOUSEWHEEL` and `WM_LBUTTONDOWN`/`UP` messages to the window:
@@ -282,11 +301,27 @@ Measured 2026-10-16, msc BUILD `5631dd3e5`, Ion `b9b5e8b`, 96 DPI. `msc build ex
 
 `ion.ms` 16/16, `ionText.ms`, `app.ms` 11/11 and `text.ms` 13/13 still pass.
 
+The scroll bars, measured 2026-10-17 on msc BUILD `5631dd3e5`, 96 DPI, with the same check, which goes on to post
+`WM_MOUSEMOVE` and a button drag (exits 0 three runs in a row):
+- At rest the vertical bar shows only the shy thumb, 2 pixels at x 214-215 from y 36, black at `0x72` over band 0
+  (127, 32, 32); the track's pixel beside it is still band 0. A second ScrollView with
+  `showsVerticalScrollIndicator={false}` shows nothing at its bar, at rest or under the pointer.
+- A pointer over the bar shows the track (245, 180, 180, white at `0x9E` over band 0), the 6-pixel thumb over it, and 32
+  pixels of the first arrow's glyph.
+- A drag of the thumb by 84 pixels scrolls to y=500 (84 of 168 pixels of thumb room over a 1000-point range) and shows
+  band 5. A press on the last arrow then scrolls to 516, and a press on the track above the thumb to 316.
+- After the z-order fix, `app.ms` 11, `ion.ms` 16, `ionInput.ms` 7, `ionText.ms` 17 and `text.ms` 14 checks still pass.
+  `ionPress.ms` has no check mode and was not run by hand.
+- One earlier run of the same check failed before the bars: `scrollTo({ y: 900 })` after the band-3 press moved nothing
+  and fired no `onScroll`. It did not come back in the three runs after it, and was not traced.
+
 Not built or measured:
 - Touch and pen panning: RNW redirects touch to its `VisualInteractionSource` (`CompositionContextHelper.cpp:828`); here that is
   DirectManipulation, not built. Mouse drag does not scroll, in RNW either.
-- Keyboard scrolling (RNW `OnKeyDown`, arrows and Page keys), scroll bars, inertia, paging and snap points, pull to refresh.
+- Keyboard scrolling (RNW `OnKeyDown`, arrows and Page keys), inertia, paging and snap points, pull to refresh.
 - Nested ScrollViews in a real window, and a DPI other than 96.
+- The scroll bar's dark and high-contrast colours (only the light theme is ported; `niColorScheme` answers light), its
+  implicit animations (RNW `AnimationClass::ScrollBar*`), and the horizontal bar in a real window.
 
 ## Built: TextInput
 

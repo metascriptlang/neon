@@ -605,6 +605,7 @@ when (ios || android) {
 	}
 } else {
 	function sendFontFamily(n: NativeNode, family: string): void {
+		if (family.indexOf(",") >= 0) { throw `native host: fontFamily "${family}" is a family list; this host draws one installed family and takes no fallback list yet`; }
 		if (family === n.fontFamily || n.view === null) { return; }
 		n.fontFamily = family;
 		niSetProp(n.view, "fontFamily", family);
@@ -641,7 +642,11 @@ function encodeSpan(text: string, own: Style | null, base: Style, tag: int32): s
 }
 
 function refuseLineStyle(s: Style | null): void {
-	if (s === null || s.textDecorationStyle === null || s.textDecorationStyle === "solid") { return; }
+	if (s === null) { return; }
+	if (s.textDecorationColor !== null) {
+		throw `native host: textDecorationColor "${s.textDecorationColor as string}" is not drawn by the platform text stacks yet; the line takes the text colour`;
+	}
+	if (s.textDecorationStyle === null || s.textDecorationStyle === "solid") { return; }
 	throw `native host: textDecorationStyle "${s.textDecorationStyle as string}" is not drawn by the platform text stacks yet; solid is`;
 }
 

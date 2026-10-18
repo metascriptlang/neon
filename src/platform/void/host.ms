@@ -1,18 +1,20 @@
 import { Host, HostNode } from "../../render/host";
 import { TextSpan, TextMeasure } from "../../render/hostTypes";
 import { NeonEvent, neonEvent, eventType } from "../../render/event";
+import { AreaKeyMod, setEventMods } from "../../render/voidAreaHandle";
 import {
 	Scene2D, NodeRef, DrawKind, group, label, mask, addChild, addChildAt, getChildIndex, dispose, kind,
 	setPosition, setSize, setX, setZIndex, setAlpha, setColor, setBackground, clearBackground,
 	setText, text as labelText, setFont, textStyle, setTextStyle, setCursorIndex, setCursorBlinkTime,
 	local, content, scrollTo as scrollNodeTo, setScrollBounds, localToGlobal, globalToLocal,
-	setTextRuns, setMaxWidth, setForceWidth,
+	setTextRuns, setMaxWidth, setForceWidth, setBoxStyle,
 } from "../../../../void/src/void2d/node";
 import { TextRun, TextLayout, Align as TextAlign } from "../../../../void/src/void2d/textLayout";
+import { BoxStyle, BoxShadow, uniformRadii, uniformBorders } from "../../../../void/src/void2d/boxStyle";
 import { hitTest, xForIndex, lineBoxAt, indexAt } from "../../../../void/src/void2d/render";
 import { create, add, isDirty } from "../../../../void/src/void2d/scene";
 import { Color, rgba, vec2 } from "../../../../void/src/void2d/types";
-import { FontId, DEFAULT_FONT, FontStyle as FaceStyle, SizeAdjust, resolveFont } from "../../../../void/src/void2d/font";
+import { FontId, FontError, DEFAULT_FONT, FontStyle as FaceStyle, SizeAdjust, resolveFont } from "../../../../void/src/void2d/font";
 import { FlexStyle, YGNode, FlexDirection, Justify, Align, PositionType, Wrap, Display, Overflow, layoutPass, freeLayoutTree } from "../../../../yoga/src/index";
 import { Style, FontWeight } from "../../render/style";
 import { asFlexStyleBody } from "../../macros/style/fields";
@@ -58,6 +60,7 @@ export class VoidNode {
 	paraStale: boolean = false;
 	cell: float32 = 0.0;
 	spans: TextSpan[] | null = null;
+	boxed: boolean = false;
 
 	constructor(ref: NodeRef) {
 		this.ref = ref;
@@ -86,10 +89,10 @@ export interface VoidHost {
 	root: HostNode;
 	scene: Scene2D;
 	clickAt: (x: float32, y: float32) => void;
-	pointerDown: (x: float32, y: float32, button: int32) => void;
-	pointerMove: (x: float32, y: float32, button: int32, pressed: boolean) => void;
-	pointerUp: (x: float32, y: float32, button: int32) => void;
-	wheel: (x: float32, y: float32, dx: float32, dy: float32) => void;
+	pointerDown: (x: float32, y: float32, button: int32, mods?: number) => void;
+	pointerMove: (x: float32, y: float32, button: int32, pressed: boolean, mods?: number) => void;
+	pointerUp: (x: float32, y: float32, button: int32, mods?: number) => void;
+	wheel: (x: float32, y: float32, dx: float32, dy: float32, mods?: number) => void;
 	textInput: (text: string) => void;
 	keyDown: (e: NeonEvent) => void;
 	keyUp: (e: NeonEvent) => void;
@@ -169,26 +172,45 @@ function hexNibble(c: string): int32 {
 	return -1;
 }
 
-// "#rgb" / "#rrggbb" → normalized rgba. Returns null for anything else so the
-// caller leaves the node's existing colour alone.
+// "#rgb", "#rrggbb", "#rrggbbaa", rgb() and rgba() → normalized rgba. Returns null for anything else so
+// the caller leaves the node's existing colour alone.
 export function parseColor(css: string): Color | null {
+	if (css.startsWith("rgb(") || css.startsWith("rgba(")) { return parseRgbFunction(css); }
 	if (css.length < 4 || css.charAt(0) !== "#") { return null; }
 	const body = css.substring(1, css.length);
 	let r = -1;
 	let g = -1;
 	let b = -1;
+	let a = 255;
 	if (body.length === 3) {
 		r = hexNibble(body.charAt(0)) * 17;
 		g = hexNibble(body.charAt(1)) * 17;
 		b = hexNibble(body.charAt(2)) * 17;
-	} else if (body.length === 6) {
+	} else if (body.length === 6 || body.length === 8) {
 		r = hexNibble(body.charAt(0)) * 16 + hexNibble(body.charAt(1));
 		g = hexNibble(body.charAt(2)) * 16 + hexNibble(body.charAt(3));
 		b = hexNibble(body.charAt(4)) * 16 + hexNibble(body.charAt(5));
+		if (body.length === 8) { a = hexNibble(body.charAt(6)) * 16 + hexNibble(body.charAt(7)); }
 	}
-	if (r < 0 || g < 0 || b < 0) { return null; }
+	if (r < 0 || g < 0 || b < 0 || a < 0) { return null; }
 	const scale = 255.0 as float32;
-	return { r: (r as float32) / scale, g: (g as float32) / scale, b: (b as float32) / scale, a: 1.0 };
+	return { r: (r as float32) / scale, g: (g as float32) / scale, b: (b as float32) / scale, a: (a as float32) / scale };
+}
+
+function parseRgbFunction(css: string): Color | null {
+	const open = css.indexOf("(");
+	if (!css.endsWith(")")) { return null; }
+	const parts = css.substring(open + 1, css.length - 1).split(",");
+	if (parts.length !== 3 && parts.length !== 4) { return null; }
+	const channel: float32[] = [];
+	for (const p of parts) {
+		const v = parseFloat(p.trim());
+		if (Number.isNaN(v)) { return null; }
+		channel.push(v as float32);
+	}
+	const scale = 255.0 as float32;
+	const alpha: float32 = parts.length === 4 ? channel[3] : 1.0;
+	return { r: channel[0] / scale, g: channel[1] / scale, b: channel[2] / scale, a: alpha };
 }
 
 function num(v: number | null): float32 | null {
@@ -213,6 +235,7 @@ const FOCUS_HANDLERS = [
 const CARET_WIDTH: float32 = 1.0;
 const WHITE: Color = rgba(1.0, 1.0, 1.0, 1.0);
 const CLEAR: Color = rgba(0.0, 0.0, 0.0, 0.0);
+const BLACK: Color = rgba(0.0, 0.0, 0.0, 1.0);
 
 export interface CaretRect {
 	x: float32;
@@ -322,6 +345,95 @@ export function applyPaint(n: VoidNode, s: Style): void {
 	} else if (k === DrawKind.Rect) {
 		ref.clearBackground();
 	}
+	const box = boxStyleOf(s);
+	if (box !== null) {
+		const now = ref.kind();
+		if (now !== DrawKind.Group && now !== DrawKind.Rect) {
+			throw new Error(`void host: a border, borderRadius or boxShadow on a ${now.toString()} node; Void paints them on a plain view only`);
+		}
+		ref.setBoxStyle(box as BoxStyle);
+		n.boxed = true;
+	} else if (n.boxed) {
+		if (ref.kind() === DrawKind.Rect) { ref.setBoxStyle(BoxStyle.create(uniformRadii(0.0), uniformBorders(0.0), CLEAR)); }
+		n.boxed = false;
+	}
+}
+
+function colorOf(css: string, field: string): Color {
+	const c = parseColor(css);
+	if (c === null) { throw new Error(`void host: ${field} "${css}" is not a colour the Void host reads (#rgb, #rrggbb, #rrggbbaa, rgb(), rgba())`); }
+	return c as Color;
+}
+
+function boxStyleOf(s: Style): BoxStyle | null {
+	if (s.borderWidth === null && s.borderRadius === null && s.borderColor === null && s.boxShadow === null) { return null; }
+	const radius: float32 = s.borderRadius !== null ? s.borderRadius as float32 : 0.0;
+	const width: float32 = s.borderWidth !== null ? s.borderWidth as float32 : 0.0;
+	const color = s.borderColor !== null ? colorOf(s.borderColor as string, "borderColor") : BLACK;
+	const box = BoxStyle.create(uniformRadii(radius), uniformBorders(width), color);
+	return s.boxShadow !== null ? box.castShadows(boxShadows(s.boxShadow as string)) : box;
+}
+
+function splitOutsideParens(text: string, sep: string): string[] {
+	const out: string[] = [];
+	let depth = 0;
+	let start = 0;
+	for (let i = 0; i < text.length; i++) {
+		const c = text.charAt(i);
+		if (c === "(") { depth += 1; }
+		else if (c === ")") { depth -= 1; }
+		else if (c === sep && depth === 0) {
+			out.push(text.substring(start, i));
+			start = i + 1;
+		}
+	}
+	out.push(text.substring(start, text.length));
+	return out;
+}
+
+function cssLength(word: string): float32 | null {
+	const bare = word.endsWith("px") ? word.substring(0, word.length - 2) : word;
+	let digits = 0;
+	for (let i = 0; i < bare.length; i++) {
+		const c = bare.charAt(i);
+		if (c >= "0" && c <= "9") { digits += 1; }
+		else if (c !== "." && !(c === "-" && i === 0)) { return null; }
+	}
+	return digits > 0 ? parseFloat(bare) as float32 : null;
+}
+
+// CSS box-shadow, one shadow per comma: "x y [blur [spread]] [colour] [inset]". CSS's blur radius is
+// twice the Gaussian sigma void2d's BoxShadow takes.
+function boxShadows(css: string): BoxShadow[] {
+	const out: BoxShadow[] = [];
+	for (const layer of splitOutsideParens(css, ",")) {
+		const lengths: float32[] = [];
+		let inset = false;
+		let color: Color = BLACK;
+		for (const word of splitOutsideParens(layer.trim(), " ")) {
+			if (word === "") { continue; }
+			if (word === "inset") {
+				inset = true;
+				continue;
+			}
+			const len = cssLength(word);
+			if (len !== null) {
+				lengths.push(len as float32);
+				continue;
+			}
+			color = colorOf(word, "boxShadow");
+		}
+		if (lengths.length < 2 || lengths.length > 4) {
+			throw new Error(`void host: boxShadow "${css}" needs two to four lengths per shadow (x y [blur [spread]])`);
+		}
+		out.push({
+			color, inset,
+			offsetX: lengths[0], offsetY: lengths[1],
+			blur: lengths.length > 2 ? lengths[2] / 2.0 : 0.0,
+			spread: lengths.length > 3 ? lengths[3] : 0.0,
+		});
+	}
+	return out;
 }
 
 function colorOr(css: string | null, fallback: Color): Color {
@@ -347,9 +459,11 @@ function spanRun(text: string, own: Style, base: Style, font: FontId, baseColor:
 	if (line !== null && line !== "solid" && line !== "wavy") {
 		throw new Error(`void host: textDecorationStyle "${line as string}" is not drawn on the Void host yet; solid and wavy are`);
 	}
+	const decoCss = own.textDecorationColor !== null ? own.textDecorationColor : base.textDecorationColor;
+	const decoColor = decoCss !== null ? colorOf(decoCss as string, "textDecorationColor") : color;
 	return {
 		len: text.length as int32, font, color, background: colorOr(bg, CLEAR),
-		underline: lineColor(deco, "underline", color), wavy: line === "wavy", strikethrough: lineColor(deco, "line-through", color),
+		underline: lineColor(deco, "underline", decoColor), wavy: line === "wavy", strikethrough: lineColor(deco, "line-through", decoColor),
 	};
 }
 
@@ -369,6 +483,27 @@ interface ResolvedFont {
 	weight: int32;
 	italic: boolean;
 	id: FontId;
+}
+
+function familyName(families: string, part: string): string {
+	const name = part.trim();
+	const quote = name.length > 0 ? name.charAt(0) : "";
+	if (quote === "\"" || quote === "'") {
+		if (name.length < 2 || name.charAt(name.length - 1) !== quote) {
+			throw new Error(`void host: fontFamily "${families}" has an unclosed quote in ${name}`);
+		}
+		return name.substring(1, name.length - 1);
+	}
+	if (name.length === 0) { throw new Error(`void host: fontFamily "${families}" names an empty family`); }
+	return name;
+}
+
+export function familyFont(families: string, weight: int32, italic: boolean): Result<FontId, FontError> {
+	const names: string[] = [];
+	for (const part of families.split(",")) { names.push(familyName(families, part)); }
+	return resolveFont({
+		family: names[0], weight, style: italic ? FaceStyle.Italic : FaceStyle.Normal, features: [], fallbacks: names.slice(1), sizeAdjust: SizeAdjust.None,
+	});
 }
 
 export function createVoidHost(): VoidHost {
@@ -405,15 +540,38 @@ export function createVoidHostWith(scene: Scene2D, font: FontId, defaultFamily: 
 
 	const attached = (n: VoidNode): boolean => within(n, root);
 
+	const askLayout = (): void => {
+		if (signaled || dirtyListener === null) { return; }
+		signaled = true;
+		(dirtyListener as () => void)();
+	};
+
 	const fire = (n: VoidNode, name: string, e: NeonEvent): boolean => {
-		let hit = false;
+		const due: ((e: NeonEvent) => void)[] = [];
 		for (const entry of events) {
-			if (entry.node === n && entry.name === name) {
-				entry.handler(e);
-				hit = true;
-			}
+			if (entry.node === n && entry.name === name) { due.push(entry.handler); }
 		}
-		return hit;
+		for (const handler of due) {
+			if (n.disposed) { break; }
+			handler(e);
+		}
+		return due.length > 0;
+	};
+
+	const pathFrom = (n: VoidNode | null): VoidNode[] => {
+		const path: VoidNode[] = [];
+		let cur = n;
+		while (cur !== null) {
+			path.push(cur as VoidNode);
+			cur = (cur as VoidNode).parent;
+		}
+		return path;
+	};
+
+	const fireAlong = (path: VoidNode[], name: string, e: NeonEvent): void => {
+		for (const n of path) {
+			if (!n.disposed) { fire(n, name, e); }
+		}
 	};
 
 	const hasHandler = (n: VoidNode, name: string): boolean => {
@@ -545,9 +703,10 @@ export function createVoidHostWith(scene: Scene2D, font: FontId, defaultFamily: 
 		for (const r of resolved) {
 			if (r.weight === weight && r.italic === italic && r.family === family) { return r.id; }
 		}
-		const got = resolveFont({
-			family, weight, style: italic ? FaceStyle.Italic : FaceStyle.Normal, features: [], fallbacks: [], sizeAdjust: SizeAdjust.None,
-		});
+		const got = familyFont(family, weight, italic);
+		if (!got.ok && got.error === FontError.NoFallbackFamily) {
+			throw new Error(`void host: a fallback family in fontFamily "${family}" has no registered face; register its files with registerFace`);
+		}
 		if (!got.ok) {
 			throw new Error(`void host: font family "${family}" has no registered face (${got.error.toString()}); register its files with registerFace`);
 		}
@@ -639,11 +798,7 @@ export function createVoidHostWith(scene: Scene2D, font: FontId, defaultFamily: 
 	};
 
 	const bubble = (name: string, e: NeonEvent): void => {
-		let cur: VoidNode | null = focusedNode;
-		while (cur !== null) {
-			fire(cur as VoidNode, name, e);
-			cur = (cur as VoidNode).parent;
-		}
+		fireAlong(pathFrom(focusedNode), name, e);
 	};
 
 	const unlink = (c: VoidNode, into: VoidNode): void => {
@@ -758,6 +913,7 @@ export function createVoidHostWith(scene: Scene2D, font: FontId, defaultFamily: 
 		setStyle: (node: HostNode, style: Style): void => {
 			const n = live(node, "setStyle");
 			const was = wasDirty();
+			const laidBefore = n.flex;
 			n.flex = asFlexStyle(style);
 			n.style = style;
 			applyPaint(n, style);
@@ -769,6 +925,7 @@ export function createVoidHostWith(scene: Scene2D, font: FontId, defaultFamily: 
 				showField(f as Field, (clientOf(n) as ClientEntry).value);
 			}
 			woke(was);
+			if ((laidBefore !== null || n.flex !== null) && attached(n)) { askLayout(); }
 		},
 		setStyleProp: null,
 		setStyleClass: null,
@@ -873,6 +1030,11 @@ export function createVoidHostWith(scene: Scene2D, font: FontId, defaultFamily: 
 			refreshParagraph(n);
 			woke(was);
 		},
+		focus: (node: HostNode, focused: boolean): void => {
+			const n = live(node, "focus");
+			if (focused) { focus(n); }
+			else if (focusedNode === n) { focus(null); }
+		},
 		scrollTo: (node: HostNode, x: number, y: number, animated: boolean): void => {
 			const n = live(node, "scrollTo");
 			const m = n.scroller;
@@ -947,48 +1109,59 @@ export function createVoidHostWith(scene: Scene2D, font: FontId, defaultFamily: 
 		return false;
 	};
 
-	// Bubbles from the deepest node under the point; locationX/Y are relative to that target.
-	const pointerAt = (name: string, x: float32, y: float32, ev: NeonEvent): void => {
-		if (!anyHandler(name)) { return; }
-		const target = deepestAt(root, x, y, null);
-		if (target === null) { return; }
+	let captured: VoidNode | null = null;
+	let capturedButton: int32 = 0;
+
+	// From onPointerDown until that button's release, the pressed node keeps the pointer, as RN's touch target does.
+	const pointerTarget = (x: float32, y: float32): VoidNode | null => {
+		if (captured !== null && !(captured as VoidNode).disposed && attached(captured as VoidNode)) { return captured; }
+		return deepestAt(root, x, y, null);
+	};
+
+	// Bubbles from the target; locationX/Y are relative to it, even outside its box.
+	const pointerAt = (name: string, target: VoidNode | null, x: float32, y: float32, ev: NeonEvent): void => {
+		if (target === null || !anyHandler(name)) { return; }
 		const at = (target as VoidNode).ref.globalToLocal(vec2(x, y));
 		ev.locationX = at.x;
 		ev.locationY = at.y;
-		let cur: VoidNode | null = target;
-		while (cur !== null) {
-			const n = cur as VoidNode;
-			if (!n.disposed) { fire(n, name, ev); }
-			cur = n.parent;
-		}
+		fireAlong(pathFrom(target), name, ev);
 	};
 
-	const pointerEvent = (type: string, x: float32, y: float32, button: int32, pressed: boolean): NeonEvent => {
+	const pointerEvent = (type: string, x: float32, y: float32, button: int32, pressed: boolean, mods?: number): NeonEvent => {
 		const ev = neonEvent(type);
+		ev.timeStamp = performance.now();
 		ev.x = x;
 		ev.y = y;
 		ev.button = button;
 		ev.pressed = pressed;
+		setEventMods(ev, ((mods ?? 0) as uint16) as BitSet<AreaKeyMod>);
 		return ev;
 	};
 
-	const pointerDown = (x: float32, y: float32, button: int32): void => {
-		pointerAt("onPointerDown", x, y, pointerEvent("pointerdown", x, y, button, true));
+	const pointerDown = (x: float32, y: float32, button: int32, mods?: number): void => {
+		const target = pointerTarget(x, y);
+		if (captured === null && target !== null) {
+			captured = target;
+			capturedButton = button;
+		}
+		pointerAt("onPointerDown", target, x, y, pointerEvent("pointerdown", x, y, button, true, mods));
 	};
 
-	const pointerMove = (x: float32, y: float32, button: int32, pressed: boolean): void => {
-		pointerAt("onPointerMove", x, y, pointerEvent("pointermove", x, y, button, pressed));
+	const pointerMove = (x: float32, y: float32, button: int32, pressed: boolean, mods?: number): void => {
+		pointerAt("onPointerMove", pointerTarget(x, y), x, y, pointerEvent("pointermove", x, y, button, pressed, mods));
 	};
 
-	const pointerUp = (x: float32, y: float32, button: int32): void => {
-		pointerAt("onPointerUp", x, y, pointerEvent("pointerup", x, y, button, false));
+	const pointerUp = (x: float32, y: float32, button: int32, mods?: number): void => {
+		const target = pointerTarget(x, y);
+		if (captured !== null && button === capturedButton) { captured = null; }
+		pointerAt("onPointerUp", target, x, y, pointerEvent("pointerup", x, y, button, false, mods));
 	};
 
-	const wheel = (x: float32, y: float32, dx: float32, dy: float32): void => {
-		const ev = pointerEvent("wheel", x, y, 0 as int32, false);
+	const wheel = (x: float32, y: float32, dx: float32, dy: float32, mods?: number): void => {
+		const ev = pointerEvent("wheel", x, y, 0 as int32, false, mods);
 		ev.deltaX = dx;
 		ev.deltaY = dy;
-		pointerAt("onWheel", x, y, ev);
+		pointerAt("onWheel", deepestAt(root, x, y, null), x, y, ev);
 	};
 
 	const keyDown = (e: NeonEvent): void => {

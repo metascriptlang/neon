@@ -22,7 +22,7 @@ for f in $files; do
 done
 for f in $files; do
 	case "$f" in
-	*style/style.test.ms | *platform/void.test.ms | *platform/voidInput.test.ms | *platform/voidPark.test.ms | *platform/voidFont.test.ms | *platform/windowHost.test.ms | *platform/sokolInput.test.ms | *platform/ionAudio.test.ms | *platform/ionAppServices.test.ms | *platform/native[A-Z]*.test.ms)
+	*style/style.test.ms | *platform/void.test.ms | *platform/voidInput.test.ms | *platform/voidPark.test.ms | *platform/voidFont.test.ms | *platform/voidPaint.test.ms | *platform/windowHost.test.ms | *platform/sokolInput.test.ms | *platform/ionAudio.test.ms | *platform/ionAppServices.test.ms | *platform/native[A-Z]*.test.ms)
 		echo "== js skip $f"
 		continue
 		;;

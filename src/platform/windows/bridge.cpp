@@ -86,6 +86,7 @@ float g_touchX = 0;
 float g_touchY = 0;
 double g_touchTime = 0;
 View *g_responder = nullptr;
+View *g_barCapture = nullptr;
 std::vector<View *> g_scrolls;
 int32_t g_scrollTag = 0;
 int32_t g_scrollPhase = 0;
@@ -262,6 +263,7 @@ TextLabel *labelOf(void *view, const char *what) {
 void applyScroll(View *view) {
 	Scroller *s = view->scroller.get();
 	s->content->Offset(-roundf(s->x * g_scale), -roundf(s->y * g_scale));
+	s->SyncBars(view->w, view->h, g_scale);
 	if (s->moved) changed();
 }
 
@@ -464,6 +466,54 @@ bool pointInput(int kind, float x, float y) {
 	return true;
 }
 
+bool localPoint(const View *view, float x, float y, float *lx, float *ly) {
+	float px = x, py = y;
+	if (view->parent && view->parent != g_container) {
+		if (!localPoint(view->parent, x, y, &px, &py)) return false;
+		if (view->parent->scroller) {
+			px += view->parent->scroller->x;
+			py += view->parent->scroller->y;
+		}
+	}
+	return toLocal(view, px, py, lx, ly);
+}
+
+// RNW ScrollViewComponentView OnPointerPressed/Moved/Released/CaptureLost (:993-1020): the ScrollViews under the
+// pointer hand it to their bars first; a press a bar takes never reaches the touch chain, and a thumb drag keeps it.
+bool scrollBarPointer(int kind, float x, float y) {
+	float lx = 0, ly = 0;
+	if (g_barCapture) {
+		View *captured = g_barCapture;
+		bool inside = localPoint(captured, x, y, &lx, &ly);
+		if (kind == NIW_POINTER_MOVE) {
+			if (inside) captured->scroller->PointerMoved(lx, ly);
+		} else if (kind == NIW_POINTER_UP || kind == NIW_POINTER_CANCEL) {
+			if (kind == NIW_POINTER_UP && inside) captured->scroller->PointerReleased(lx, ly);
+			else captured->scroller->PointerCaptureLost();
+			g_barCapture = nullptr;
+			release(captured);
+		}
+		changed();
+		return true;
+	}
+	if (kind != NIW_POINTER_DOWN && kind != NIW_POINTER_MOVE) return false;
+	for (View *at = hitTest(x, y); at && at != g_container; at = at->parent) {
+		if (!at->scroller || !localPoint(at, x, y, &lx, &ly)) continue;
+		if (kind == NIW_POINTER_MOVE) {
+			at->scroller->PointerMoved(lx, ly);
+			changed();
+		} else if (at->scroller->PointerPressed(lx, ly)) {
+			if (at->scroller->Tracking()) {
+				at->refs += 1;
+				g_barCapture = at;
+			}
+			changed();
+			return true;
+		}
+	}
+	return false;
+}
+
 void endTouch() {
 	std::vector<View *> chain;
 	chain.swap(g_touch.chain);
@@ -529,8 +579,9 @@ int niwStoredAccessibility(const char *name, const char *value) {
 
 void niwPointer(int kind, float pixelX, float pixelY) {
 	requireAttached("niwPointer");
-	if (!s_touch.fn) return;
 	float x = pixelX / g_scale, y = pixelY / g_scale;
+	if (scrollBarPointer(kind, x, y)) return;
+	if (!s_touch.fn) return;
 	double time = nowMs();
 	if (pointInput(kind, x, y)) return;
 	if (kind == NIW_POINTER_DOWN) {
@@ -632,6 +683,7 @@ void *niScrollCreate(void) {
 	view->scroller.reset(new Scroller());
 	view->scroller->content = g_context->CreateSpriteVisual();
 	view->visual->InsertAt(view->scroller->content, 0);
+	view->scroller->AttachBars(g_context, view->visual);
 	g_scrolls.push_back(view);
 	return view;
 }
