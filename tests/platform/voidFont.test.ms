@@ -1,13 +1,13 @@
 import { element } from "../../src/macros/ui/element";
 import { render } from "../../src/render/host";
 import { View, ViewHandle, Text } from "../../src/components/primitives";
-import { createVoidHostWith, VoidHost, VoidNode } from "../../src/platform/void/host";
+import { createVoidHostWith, familyFont, VoidHost, VoidNode } from "../../src/platform/void/host";
 import { Scene2D, NodeRef, textStyle } from "../../../void/src/void2d/node";
 import { TextRun, TextLayout, calcTextWidth } from "../../../void/src/void2d/textLayout";
 import { create } from "../../../void/src/void2d/scene";
 import { rgba } from "../../../void/src/void2d/types";
 import { labelTexts } from "../../../void/src/void2d/labelText";
-import { FontId, addFont, registerFace, resolveFont, FontStyle as FaceStyle, SizeAdjust } from "../../../void/src/void2d/font";
+import { FontId, addFont, registerFace, resolveFont, faceForCodepoint, fontFace, FontStyle as FaceStyle, SizeAdjust } from "../../../void/src/void2d/font";
 
 const FONT_PATH = "../void/assets/font.ttf";
 
@@ -147,4 +147,68 @@ test "a span's textDecorationColor colours its underline and line-through, not i
 	assert runs[0].wavy && runs[0].underline.r > 0.99 && runs[0].underline.g < 0.32 && runs[0].color.g > 0.99, "red wavy underline under white text";
 	assert runs[1].strikethrough.g > 0.99 && runs[1].strikethrough.r < 0.01 && runs[1].underline.a === 0.0, "green line-through";
 	assert runs[2].underline.r > 0.99 && runs[2].underline.g > 0.99, "no decoration colour keeps the text colour";
+}
+
+const CJK_FAMILY = "Probe CJK";
+const HAN = 0x4E2D;
+
+function registerCjk(): void {
+	registerFace("../void/tests/fonts/NotoSansSC-subset.ttf", CJK_FAMILY, 400, FaceStyle.Normal);
+}
+
+function drawsFromFallback(text: VoidNode, codepoint: int32): boolean {
+	const font = paragraph(text).textStyle().font;
+	return faceForCodepoint(font, codepoint) !== fontFace(font);
+}
+
+test "a fontFamily list draws a character its first family lacks in the next family that has it" {
+	registerProbeFamilyWithoutItalicFaces();
+	registerCjk();
+	const vh = host();
+	render(element(<View style={{ width: 300 }}>
+		<Text style={{ fontFamily: `${PROBE_FAMILY}, "${CJK_FAMILY}"` }}>a中</Text>
+		<Text style={{ fontFamily: PROBE_FAMILY }}>a中</Text>
+		<Text style={{ fontSize: 14 }} spans={[{ text: "b" }, { text: "中", style: { fontFamily: `${PROBE_FAMILY}, ${CJK_FAMILY}` } }]} />
+	</View>), vh.host, vh.root);
+	const view = top(vh);
+	assert drawsFromFallback(view.children[0], HAN) && !drawsFromFallback(view.children[0], 0x61), "the hanzi comes from the CJK family, the latin from the first";
+	assert !drawsFromFallback(view.children[1], HAN), "one family has no fallback to draw it from";
+	const runs = runsOf(vh, paragraph(view.children[2]));
+	assert faceForCodepoint(runs[1].font, HAN) !== fontFace(runs[1].font), "a span's family list falls back too";
+}
+
+test "the host's default family list reaches a Text that names none, in every weight" {
+	registerProbeFamilyWithoutItalicFaces();
+	registerCjk();
+	const list = `${PROBE_FAMILY}, ${CJK_FAMILY}`;
+	const plain = familyFont(list, 400, false);
+	assert plain.ok, "the default list resolves";
+	const vh = createVoidHostWith(Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0)), plain.value, list);
+	render(element(<View style={{ width: 300 }}><Text>中</Text><Text style={{ fontWeight: "bold" }}>中</Text></View>), vh.host, vh.root);
+	const view = top(vh);
+	assert paragraph(view.children[0]).textStyle().font === plain.value && drawsFromFallback(view.children[0], HAN), "a plain Text takes the default list";
+	assert paragraph(view.children[1]).textStyle().font !== probeFace(700, false), "bold resolves the list, not the first family alone";
+	assert drawsFromFallback(view.children[1], HAN), "a bold Text falls back through the default list";
+}
+
+test "a fallback family the host cannot find, or a family list it cannot read, is refused by name" {
+	registerProbeFamilyWithoutItalicFaces();
+	let message = "";
+	const a = host();
+	try {
+		render(element(<Text style={{ fontFamily: `${PROBE_FAMILY}, Nowhere Grotesk` }}>x</Text>), a.host, a.root);
+	} catch (e) { message = e.message; }
+	assert message.indexOf(`a fallback family in fontFamily "${PROBE_FAMILY}, Nowhere Grotesk" has no registered face`) >= 0, "missing fallback: " + message;
+	message = "";
+	const b = host();
+	try {
+		render(element(<Text style={{ fontFamily: `${PROBE_FAMILY}, "Probe CJK` }}>x</Text>), b.host, b.root);
+	} catch (e) { message = e.message; }
+	assert message.indexOf("has an unclosed quote") >= 0, "unclosed quote: " + message;
+	message = "";
+	const c = host();
+	try {
+		render(element(<Text style={{ fontFamily: `${PROBE_FAMILY},, ${CJK_FAMILY}` }}>x</Text>), c.host, c.root);
+	} catch (e) { message = e.message; }
+	assert message.indexOf("names an empty family") >= 0, "empty name: " + message;
 }

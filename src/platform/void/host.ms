@@ -14,7 +14,7 @@ import { BoxStyle, BoxShadow, uniformRadii, uniformBorders } from "../../../../v
 import { hitTest, xForIndex, lineBoxAt, indexAt } from "../../../../void/src/void2d/render";
 import { create, add, isDirty } from "../../../../void/src/void2d/scene";
 import { Color, rgba, vec2 } from "../../../../void/src/void2d/types";
-import { FontId, DEFAULT_FONT, FontStyle as FaceStyle, SizeAdjust, resolveFont } from "../../../../void/src/void2d/font";
+import { FontId, FontError, DEFAULT_FONT, FontStyle as FaceStyle, SizeAdjust, resolveFont } from "../../../../void/src/void2d/font";
 import { FlexStyle, YGNode, FlexDirection, Justify, Align, PositionType, Wrap, Display, Overflow, layoutPass, freeLayoutTree } from "../../../../yoga/src/index";
 import { Style, FontWeight } from "../../render/style";
 import { asFlexStyleBody } from "../../macros/style/fields";
@@ -485,6 +485,27 @@ interface ResolvedFont {
 	id: FontId;
 }
 
+function familyName(families: string, part: string): string {
+	const name = part.trim();
+	const quote = name.length > 0 ? name.charAt(0) : "";
+	if (quote === "\"" || quote === "'") {
+		if (name.length < 2 || name.charAt(name.length - 1) !== quote) {
+			throw new Error(`void host: fontFamily "${families}" has an unclosed quote in ${name}`);
+		}
+		return name.substring(1, name.length - 1);
+	}
+	if (name.length === 0) { throw new Error(`void host: fontFamily "${families}" names an empty family`); }
+	return name;
+}
+
+export function familyFont(families: string, weight: int32, italic: boolean): Result<FontId, FontError> {
+	const names: string[] = [];
+	for (const part of families.split(",")) { names.push(familyName(families, part)); }
+	return resolveFont({
+		family: names[0], weight, style: italic ? FaceStyle.Italic : FaceStyle.Normal, features: [], fallbacks: names.slice(1), sizeAdjust: SizeAdjust.None,
+	});
+}
+
 export function createVoidHost(): VoidHost {
 	return createVoidHostWith(Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0)), DEFAULT_FONT);
 }
@@ -682,9 +703,10 @@ export function createVoidHostWith(scene: Scene2D, font: FontId, defaultFamily: 
 		for (const r of resolved) {
 			if (r.weight === weight && r.italic === italic && r.family === family) { return r.id; }
 		}
-		const got = resolveFont({
-			family, weight, style: italic ? FaceStyle.Italic : FaceStyle.Normal, features: [], fallbacks: [], sizeAdjust: SizeAdjust.None,
-		});
+		const got = familyFont(family, weight, italic);
+		if (!got.ok && got.error === FontError.NoFallbackFamily) {
+			throw new Error(`void host: a fallback family in fontFamily "${family}" has no registered face; register its files with registerFace`);
+		}
 		if (!got.ok) {
 			throw new Error(`void host: font family "${family}" has no registered face (${got.error.toString()}); register its files with registerFace`);
 		}
