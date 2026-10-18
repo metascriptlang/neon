@@ -88,7 +88,7 @@ function screenInstance(
 	const name = configuration().name;
 	if (name !== "tabs") { return { name, pages: null, web: null }; }
 	const pages = makePages(["feed", "inbox"], 0);
-	const web = childPagesWebNavigation<string, string>(pages, prefixed("page:"), {});
+	const web = childPagesWebNavigation<string, string>(pages, prefixed("page:"));
 	return { name, pages, web: { webNavigation: webNavigationNode<Pages<string>>(web) } };
 }
 
@@ -259,7 +259,7 @@ test "a stack applies a traversal of keys and keeps the kept instances" {
 	const stack = makeStack(["a", "b", "c"]);
 	const a = stack.items()[0].instance;
 	const node = webNavigationNode<Screen>(
-		childStackWebNavigation<Screen, ScreenInstance>(stack, screenSerializer(), {}),
+		childStackWebNavigation<Screen, ScreenInstance>(stack, screenSerializer()),
 	);
 	assert node.navigate(["a/", "b/"]).ok;
 	assert names(stack) === "a;b*;", names(stack);
@@ -274,7 +274,7 @@ test "a stack applies a traversal of keys and keeps the kept instances" {
 test "an undecodable key is refused and the model stays as it was" {
 	const stack = makeStack(["a", "b", "c"]);
 	const node = webNavigationNode<Screen>(
-		childStackWebNavigation<Screen, ScreenInstance>(stack, screenSerializer(), {}),
+		childStackWebNavigation<Screen, ScreenInstance>(stack, screenSerializer()),
 	);
 	const refused = node.navigate(["a/", "broken"]);
 	assert !refused.ok;
@@ -343,7 +343,7 @@ test "pages refuse visited pages that do not end with the selected one" {
 
 test "pages round-trip their key and refuse one that does not decode" {
 	const pages = makePages(["home", "search", "profile"], 0);
-	const web = childPagesWebNavigation<string, string>(pages, prefixed("page:"), {});
+	const web = childPagesWebNavigation<string, string>(pages, prefixed("page:"));
 	const node = webNavigationNode<Pages<string>>(web);
 	pages.select(1);
 	const key = node.history()[0].key;
@@ -466,8 +466,14 @@ test "onBeforeNavigate is passed through and allows by default" {
 	allowed = true;
 	assert web.onBeforeNavigate() && node.onBeforeNavigate();
 	const pages = makePages(["home"], 0);
-	assert childPagesWebNavigation<string, string>(pages, prefixed("p:"), {}).onBeforeNavigate();
+	assert childPagesWebNavigation<string, string>(pages, prefixed("p:")).onBeforeNavigate();
 	const panels = makePanels("list", null, ChildPanelsMode.Single);
+	assert childPanelsWebNavigation<string, string, string, string, string, string>(
+		panels,
+		prefixed("m:"),
+		prefixed("d:"),
+		prefixed("e:"),
+	).onBeforeNavigate();
 	const refusing = childPanelsWebNavigation<string, string, string, string, string, string>(
 		panels,
 		prefixed("m:"),

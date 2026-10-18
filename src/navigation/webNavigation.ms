@@ -205,7 +205,7 @@ function panelsSerializer<MC, DC, EC>(
 export function childStackWebNavigation<C, T>(
 	stack: ChildStack<C, T>,
 	serializer: WebKeySerializer<C>,
-	options: StackWebNavigationOptions<C, T>,
+	options: StackWebNavigationOptions<C, T> = {},
 ): WebNavigation<C> {
 	const enableHistory = options.enableHistory ?? true;
 	const pathMapper = options.pathMapper;
@@ -238,7 +238,7 @@ export function childStackWebNavigation<C, T>(
 export function childPagesWebNavigation<C, T>(
 	pages: ChildPages<C, T>,
 	serializer: WebKeySerializer<C>,
-	options: PagesWebNavigationOptions<C, T>,
+	options: PagesWebNavigationOptions<C, T> = {},
 ): WebNavigation<Pages<C>> {
 	const pathMapper = options.pathMapper;
 	const parametersMapper = options.parametersMapper;
@@ -291,7 +291,7 @@ export function childPanelsWebNavigation<MC, MT, DC, DT, EC, ET>(
 	mainSerializer: WebKeySerializer<MC>,
 	detailsSerializer: WebKeySerializer<DC>,
 	extraSerializer: WebKeySerializer<EC>,
-	options: PanelsWebNavigationOptions<MC, MT, DC, DT, EC, ET>,
+	options: PanelsWebNavigationOptions<MC, MT, DC, DT, EC, ET> = {},
 ): WebNavigation<PanelsHistoryKey<MC, DC, EC>> {
 	const pathMapper = options.pathMapper;
 	const parametersMapper = options.parametersMapper;

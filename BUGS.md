@@ -218,13 +218,6 @@ and the invariants that outlived them were moved to the head of the test that pi
   and hot reload of any app that imports `src/navigation/index`. Gate `gate-slice2-c3e8464/`. Card
   `~/metascript/.inbox/compiler/2026-10-16-a-module-pass-drops-the-pattern-of-a-for-of-destructure.md`.
 
-- **PARKED 2026-10-16 — web navigation adapters take a required options object.** Not Neon's: Decompose's
-  adapters default every option, but msc builds a `= {}` default of a generic interface parameter as an
-  empty object (JS reads its fields as present, C reads past a zero-size allocation). Until then
-  `childStackWebNavigation`, `childPagesWebNavigation` and `childPanelsWebNavigation` take `options`
-  without a default, and callers pass `{}`. Card
-  `~/metascript/.inbox/compiler/2026-10-16-an-empty-object-literal-default-of-a-generic-interface-parameter-is-not-typed-against-it.md`.
-
 - **PARKED 2026-10-16 — the sokol canvas receives no input, and Escape ends it.** Not Neon's: Void's window
   driver (`void/src/sokol/bridgeWin.c` and `bridgeWeb.c`, `_event`) keeps every `sapp_event` to itself, and
   `voidRun` takes only `init` and `frame`, so no key, char, pointer, wheel or focus reaches MetaScript. The
