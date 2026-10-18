@@ -19,8 +19,9 @@ test "flush after a halt does nothing and does not throw" {
 		createEffect<int32>((p: int32 | null): int32 => a(), (v: int32, p: int32 | null): Cleanup | null => { if (v === 1) { throw new Error("boom"); } return null; });
 		return 0;
 	});
+	flush();
 	let message = "";
-	try { setA(1); } catch (e) { message = e.message; }
+	try { setA(1); flush(); } catch (e) { message = e.message; }
 	assert message === "boom", "the first throw reaches the caller: [" + message + "]";
 	let again = "";
 	try { flush(); } catch (e) { again = e.message; }
@@ -46,10 +47,13 @@ test "a handled effect-phase error does not halt the system" {
 		createEffect<int32>((p: int32 | null): int32 => c(), (v: int32, p: int32 | null): Cleanup | null => { seenC.push(v); return null; });
 		return 0;
 	});
+	flush();
 	seenC.length = 0;
 	setA(1);
+	flush();
 	assert handled.join(",") === "boom", "the boundary took it: " + handled.join(",");
 	setC(3);
+	flush();
 	assert seenC.join(",") === "3", "and the system kept running: " + seenC.join(",");
 }
 
@@ -71,12 +75,14 @@ test "a cleanup that throws is detached and does not run again after the system 
 		);
 		return 0;
 	});
+	flush();
 	assert bodyRuns.join(",") === "0", "mounted";
 	let message = "";
-	try { setN(1); } catch (e) { message = e.message; }
+	try { setN(1); flush(); } catch (e) { message = e.message; }
 	assert message === "cleanup boom", "got [" + message + "]";
 	resetErrorHalt();
 	setN(2);
+	flush();
 	let zeroRuns = 0;
 	for (const v of cleanupRuns) { if (v === 0) { zeroRuns += 1; } }
 	assert zeroRuns === 1, "the throwing cleanup ran once: " + cleanupRuns.join(",");
@@ -94,10 +100,12 @@ test "an unhandled rejection read by an effect skips its run and leaves the syst
 		createEffect<int32>((p: int32 | null): int32 => m(), (v: int32, p: int32 | null): Cleanup | null => { log.push("effect ran"); return null; });
 		return 0;
 	});
+	flush();
 	assert log.join(",") === "beat=0", "mounted: " + log.join(",");
 	await release(gate);
 	assert log.join(",") === "beat=0", "the rejected effect did not run: " + log.join(",");
 	setBeat(1);
+	flush();
 	assert log.join(",") === "beat=0,beat=1", "and the rest of the graph still does: " + log.join(",");
 }
 

@@ -12,7 +12,7 @@ test "a throw with no handler still escapes" {
 		(v: int32, p: int32 | null): Cleanup | null => null,
 	);
 	let escaped = "";
-	try { setA(1); } catch (e) { escaped = e.message; }
+	try { setA(1); flush(); } catch (e) { escaped = e.message; }
 	assert escaped === "loud", "an unhandled throw is never swallowed: [" + escaped + "]";
 	resetErrorHalt();
 }
@@ -24,7 +24,7 @@ test "an effect-phase throw with no handler still escapes" {
 		(v: int32, p: int32 | null): Cleanup | null => { if (v === 1) { throw new Error("loud apply"); } return null; },
 	);
 	let escaped = "";
-	try { setA(1); } catch (e) { escaped = e.message; }
+	try { setA(1); flush(); } catch (e) { escaped = e.message; }
 	assert escaped === "loud apply", "an unhandled throw is never swallowed: [" + escaped + "]";
 	resetErrorHalt();
 }

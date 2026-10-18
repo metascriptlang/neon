@@ -3,7 +3,7 @@ import { createSignal, untrack } from "../../src/core/signal";
 import { createMemo, createAsyncMemo } from "../../src/core/memo";
 import { createRenderEffect } from "../../src/core/effect";
 import { createRoot } from "../../src/core/owner";
-import { resetErrorHalt } from "../../src/core/runtime";
+import { flush, resetErrorHalt } from "../../src/core/runtime";
 import { Cleanup } from "../../src/core/types";
 import { createComponent } from "../../src/render/component";
 import { NeonNode } from "../../src/render/hostTypes";
@@ -140,6 +140,7 @@ test "a re-pending async read keeps the pending message, not the strict one" {
 	await release(gate);
 	gate.open = false;
 	set(2);
+	flush();
 	const message = messageOfMount(() => { readThrough((): int32 => a()); });
 	when (debug) {
 		assert message.indexOf(PENDING) === 0, "got [" + message + "]";

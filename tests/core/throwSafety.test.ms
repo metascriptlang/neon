@@ -8,9 +8,11 @@ test "a throw inside flush(fn) does not freeze later reactivity" {
 	const [a, setA] = createSignal(0);
 	let runs = 0;
 	createEffect<int32>((p: int32 | null): int32 => a(), (v: int32, p: int32 | null): Cleanup | null => { runs = runs + 1; return null; });
+	flush();
 	const before = runs;
 	try { flush(() => { throw new Error("boom"); }); } catch (e) { }
 	setA(1);
+	flush();
 	assert runs > before, "a leaked sync depth stops every future drain";
 }
 
@@ -23,12 +25,15 @@ test "a throw inside an effect halts the scheduler until it is reset" {
 	);
 	let seen = 0;
 	createEffect<int32>((p: int32 | null): int32 => b(), (v: int32, p: int32 | null): Cleanup | null => { seen = seen + 1; return null; });
-	try { setA(1); } catch (e) { }
+	flush();
+	try { setA(1); flush(); } catch (e) { }
 	const before = seen;
 	setB(1);
+	flush();
 	assert seen === before, "a halted scheduler runs nothing";
 	resetErrorHalt();
 	setB(2);
+	flush();
 	assert seen > before, "a reset scheduler drains again: a leaked running flag would make runQueue a permanent no-op";
 }
 
@@ -43,8 +48,10 @@ test "a throw inside untrack restores the listener" {
 		},
 		(v: int32, p: int32 | null): Cleanup | null => null,
 	);
+	flush();
 	const before = runs;
 	setA(1);
+	flush();
 	assert runs > before, "a leaked null listener stops the reads after it from tracking";
 }
 

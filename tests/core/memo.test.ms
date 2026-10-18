@@ -10,8 +10,10 @@ test "memo without equals propagates every distinct value" {
 	const m = createMemo<int32>((): int32 => n());
 	let runs = 0;
 	createEffect<int32>((p: int32 | null): int32 => m(), (v: int32, p: int32 | null): Cleanup | null => { runs = runs + 1; return null; });
+	flush();
 	assert runs === 1, "ran once on creation";
 	setN(2);
+	flush();
 	assert runs === 2, "downstream re-ran on change";
 }
 
@@ -20,10 +22,13 @@ test "memo with truthiness equals collapses truthy to truthy" {
 	const cond = createMemo<int32>((): int32 => n(), { equals: (a: int32, b: int32): boolean => (a !== 0) === (b !== 0) });
 	let runs = 0;
 	createEffect<int32>((p: int32 | null): int32 => cond(), (v: int32, p: int32 | null): Cleanup | null => { runs = runs + 1; return null; });
+	flush();
 	assert runs === 1, "ran once on creation";
 	setN(2);
+	flush();
 	assert runs === 1, "no downstream re-run when truthiness unchanged";
 	setN(0);
+	flush();
 	assert runs === 2, "re-ran when truthiness flipped to falsy";
 }
 
@@ -32,6 +37,7 @@ test "memo initializes boolean without a forged null value" {
 	const memo = createMemo<boolean>(() => read());
 	assert !memo();
 	write(true);
+	flush();
 	assert memo();
 }
 
@@ -40,8 +46,10 @@ test "memo permits a real nullable result" {
 	const memo = createMemo<string | null>(() => read());
 	assert memo() === null;
 	write("ready");
+	flush();
 	assert memo() === "ready";
 	write(null);
+	flush();
 	assert memo() === null;
 }
 
@@ -50,6 +58,7 @@ test "createMemo returns a nominal Accessor" {
 	const m: Accessor<number> = createMemo<number>(() => n() * 2);
 	assert m() === 2;
 	setN(3);
+	flush();
 	assert m() === 6;
 }
 

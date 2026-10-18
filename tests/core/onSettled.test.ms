@@ -1,7 +1,7 @@
 import { createSignal } from "../../src/core/signal";
 import { onSettled } from "../../src/core/effect";
 import { createRoot } from "../../src/core/owner";
-import { resetErrorHalt } from "../../src/core/runtime";
+import { flush, resetErrorHalt } from "../../src/core/runtime";
 import { Cleanup } from "../../src/core/types";
 import { mockHost, mockNode, render, hydrate, HostNode, MockNode } from "../../src/render/host";
 import { NeonNode } from "../../src/render/node";
@@ -16,12 +16,16 @@ test "onSettled runs after the owner's body" {
 		assert log.join(",") === "sync,after onSettled call", "nothing ran inside the body: " + log.join(",");
 		return 0;
 	});
+	assert log.join(",") === "sync,after onSettled call", "it waits for the flush: " + log.join(",");
+	flush();
 	assert log.join(",") === "sync,after onSettled call,settled", "got " + log.join(",");
 }
 
-test "onSettled without an owner runs at once" {
+test "onSettled without an owner is enqueued and runs at the next flush, not at once" {
 	const log: string[] = [];
 	onSettled(() => { log.push("settled"); return null; });
+	assert log.length === 0, "nothing ran before the flush: " + log.join(",");
+	flush();
 	assert log.join(",") === "settled", "got " + log.join(",");
 }
 
@@ -32,6 +36,7 @@ test "nested onSettled callbacks without an owner run outer then inner" {
 		onSettled(() => { log.push("inner"); return null; });
 		return null;
 	});
+	flush();
 	assert log.join(",") === "outer,inner", "got " + log.join(",");
 }
 
@@ -45,6 +50,7 @@ test "nested onSettled callbacks inside an owner run outer then inner" {
 		});
 		return 0;
 	});
+	flush();
 	assert log.join(",") === "outer,inner", "got " + log.join(",");
 }
 
@@ -56,6 +62,7 @@ test "the cleanup an onSettled returns runs when its owner is disposed" {
 		onSettled((): Cleanup | null => () => { cleaned += 1; });
 		return 0;
 	});
+	flush();
 	assert cleaned === 0, "alive until disposed";
 	(dispose as () => void)();
 	assert cleaned === 1, "disposal ran it once: " + cleaned.toString();
@@ -68,6 +75,7 @@ test "an onSettled with no owner rejects a returned cleanup" {
 	let message = "";
 	try {
 		onSettled((): Cleanup | null => () => { cleaned += 1; });
+		flush();
 	} catch (e) {
 		message = e.message;
 	}
@@ -87,6 +95,7 @@ test "a nested onSettled rejects a returned cleanup even under an owner" {
 			});
 			return 0;
 		});
+		flush();
 	} catch (e) {
 		message = e.message;
 	}
@@ -102,8 +111,10 @@ test "onSettled runs once and does not track" {
 		onSettled(() => { seen.push(x()); return null; });
 		return 0;
 	});
+	flush();
 	assert seen.join(",") === "0", "got " + seen.join(",");
 	setX(1);
+	flush();
 	assert seen.join(",") === "0", "a write does not rerun it: " + seen.join(",");
 }
 

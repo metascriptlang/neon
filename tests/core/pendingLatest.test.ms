@@ -80,6 +80,7 @@ test "latest and isPending of a chain of two async memos track the whole chain" 
 	gateA.open = false;
 	gateB.open = false;
 	setX(2);
+	flush();
 	assert lastOf(pendingLog) === "true" && lastOf(latestLog) === "11", "pending from the first hop: " + pendingLog.join(",");
 	await release(gateA);
 	assert lastOf(pendingLog) === "true" && lastOf(latestLog) === "11", "still pending while the second hop runs";

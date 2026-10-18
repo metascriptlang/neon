@@ -1,6 +1,7 @@
 import { createList, listInsert, listMove, listRemove, listSet } from "../../src/core/list";
 import { createRoot } from "../../src/core/owner";
 import { createRenderEffect } from "../../src/core/effect";
+import { flush } from "../../src/core/runtime";
 import { Cleanup } from "../../src/core/types";
 
 test "createList reads its items through read, length and at" {
@@ -86,16 +87,22 @@ test "every command bumps the version once" {
 	});
 	assert runs === 1, "the effect ran once";
 	l.push(2);
+	flush();
 	assert runs === 2, "push";
 	l.insert(0, 0);
+	flush();
 	assert runs === 3, "insert";
 	l.move(0, 1);
+	flush();
 	assert runs === 4, "move";
 	l.set(0, 4);
+	flush();
 	assert runs === 5, "set";
 	l.remove(0);
+	flush();
 	assert runs === 6, "remove";
 	l.replaceAll([1, 2]);
+	flush();
 	assert runs === 7, "replaceAll";
 	stop();
 }

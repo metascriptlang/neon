@@ -2,7 +2,7 @@ import { createSignal } from "../../src/core/signal";
 import { createMemo } from "../../src/core/memo";
 import { createEffect, createRenderEffect } from "../../src/core/effect";
 import { createRoot, runWithOwner } from "../../src/core/owner";
-import { getOwner, resetErrorHalt } from "../../src/core/runtime";
+import { flush, getOwner, resetErrorHalt } from "../../src/core/runtime";
 import { Cleanup } from "../../src/core/types";
 
 const RULE = "[REACTIVE_WRITE_IN_OWNED_SCOPE]";
@@ -17,7 +17,7 @@ function refusedInDebug(message: string): boolean {
 
 function messageOf(body: () => void): string {
 	let message = "";
-	try { body(); } catch (e) { message = e.message; }
+	try { body(); flush(); } catch (e) { message = e.message; }
 	resetErrorHalt();
 	return message;
 }
@@ -25,6 +25,7 @@ function messageOf(body: () => void): string {
 test "a write with no owner is allowed" {
 	const [x, setX] = createSignal(0);
 	setX(1);
+	flush();
 	assert x() === 1, "got " + x().toString();
 }
 
@@ -96,13 +97,16 @@ test "a write in an effect's effect phase is allowed" {
 		);
 		return 0;
 	});
+	flush();
 	setTick(1);
+	flush();
 	assert x() === 1, "the user effect wrote last: " + x().toString();
 }
 
 test "ownedWrite lets a signal be written in a root body" {
 	const [x, setX] = createSignal(0, { ownedWrite: true });
 	createRoot((d) => { setX(1); return 0; });
+	flush();
 	assert x() === 1, "got " + x().toString();
 }
 
@@ -110,6 +114,7 @@ test "ownedWrite lets a signal be written in a memo body" {
 	const [x, setX] = createSignal(0, { ownedWrite: true });
 	const m = createMemo<int32>((): int32 => { setX(2); return 1; });
 	m();
+	flush();
 	assert x() === 2, "got " + x().toString();
 }
 

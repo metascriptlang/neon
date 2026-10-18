@@ -25,6 +25,7 @@ test "a memo that throws on its first run rethrows the same error to every read 
 	assert failureOf<int32>(m) === boom, "the first read throws the compute's error";
 	assert failureOf<int32>(m) === boom, "the second read throws the same object, not a different error";
 	setFail(false);
+	flush();
 	assert m() === 5, "the memo recomputed: it was not disposed";
 	assert failureOf<int32>(m) === null, "and reads clean again";
 }
@@ -35,9 +36,11 @@ test "a memo that throws on a later run rethrows the same error to every read an
 	const m = createRoot((d) => createMemo((p: string | null): string => { if (fail()) { throw boom; } return "fine"; }));
 	assert m() === "fine", "first run";
 	setFail(true);
+	flush();
 	assert failureOf<string>(m) === boom, "the first read after the throw";
 	assert failureOf<string>(m) === boom, "the second read";
 	setFail(false);
+	flush();
 	assert m() === "fine", "recovered, not disposed";
 }
 
@@ -64,6 +67,7 @@ test "under a boundary a first-run memo throw reaches the fallback once and late
 	assert failureOf<int32>(read) === boom, "twice";
 	assert seen.length === 1, "and a bare read does not build the fallback again: " + seen.length.toString();
 	setFail(false);
+	flush();
 	assert read() === 5, "the memo was not disposed by the boundary";
 }
 
@@ -86,10 +90,12 @@ test "under a boundary a later-run memo throw reaches the fallback once and late
 	const read = m as () => string;
 	assert applied.join(",") === "fine" && seen.length === 0, "first run applied";
 	setFail(true);
+	flush();
 	assert seen.length === 1 && seen[0] === boom, "the fallback heard it once: " + seen.length.toString();
 	assert failureOf<string>(read) === boom && failureOf<string>(read) === boom, "both bare reads rethrow the same error";
 	assert seen.length === 1, "reads did not report it again";
 	setFail(false);
+	flush();
 	assert read() === "fine", "recovered, not disposed";
 }
 
@@ -106,6 +112,7 @@ test "a tracked read of an errored memo on a later cycle runs it again and a bar
 	assert failureOf<int32>(m) !== null && failureOf<int32>(m) !== null, "bare reads see the error";
 	assert attempts === 1, "and do not run it again: " + attempts.toString();
 	setTick(1);
+	flush();
 	assert attempts === 1, "a cycle passing alone does not run it either: " + attempts.toString();
 	const seen: int32[] = [];
 	createRoot((d) => {
@@ -140,6 +147,7 @@ test "a tracked read of a rejected async memo on a later cycle asks again" {
 	assert failureOf<int32>(m) === boom && attempts === 1, "a bare read sees it without asking again";
 	gate.open = false;
 	setTick(1);
+	flush();
 	createRoot((d) => {
 		createRenderEffect<int32>((p: int32 | null): int32 => m(), (v: int32, p: int32 | null): Cleanup | null => { log.push("second " + v.toString()); return null; });
 		return 0;
