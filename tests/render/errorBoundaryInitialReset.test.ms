@@ -1,7 +1,8 @@
-import { ErrorBoundary } from "../../src/macros/ui/flow";
+import { Errored } from "../../src/macros/ui/flow";
 import { el, text, NeonNode } from "../../src/render/node";
-import { createSignal } from "../../src/core/signal";
-import { createEffect } from "../../src/core/effect";
+import { createSignal, Accessor } from "../../src/core/signal";
+import { createRenderEffect } from "../../src/core/effect";
+import { Cleanup } from "../../src/core/types";
 import { onCleanup } from "../../src/core/cleanup";
 import { mockHost, mockNode, mockToString, render } from "../../src/render/host";
 import { Host, HostNode } from "../../src/render/hostTypes";
@@ -14,8 +15,8 @@ test "reset after an initial mount throw removes the fallback before remount" {
 		text("good")(host, parent, before);
 	};
 	const root = mockNode("root");
-	const dispose = render(ErrorBoundary({ children: risky,
-		fallback: (error: Error, reset: () => void): NeonNode => {
+	const dispose = render(Errored({ children: risky,
+		fallback: (error: Accessor<Error>, reset: () => void): NeonNode => {
 			resets.push(reset);
 			return text("fallback");
 		},
@@ -36,11 +37,17 @@ test "nested initial reset preserves siblings and cleans repeated failure lifeti
 	const risky: NeonNode = (host: Host, parent: HostNode, before: HostNode | null): void => {
 		onCleanup((): void => { childCleanups += 1; });
 		if (first) { first = false; throw new Error("first mount"); }
-		createEffect((): void => { if (broken()) { throw new Error("later failure"); } });
+		createRenderEffect<boolean>(
+			(prev: boolean | null): boolean => broken(),
+			(value: boolean, prev: boolean | null): Cleanup | null => {
+				if (value) { throw new Error("later failure"); }
+				return null;
+			},
+		);
 		text("good")(host, parent, before);
 	};
-	const boundary = ErrorBoundary({ children: risky,
-		fallback: (error: Error, reset: () => void): NeonNode => {
+	const boundary = Errored({ children: risky,
+		fallback: (error: Accessor<Error>, reset: () => void): NeonNode => {
 			resets.push(reset);
 			return (host: Host, parent: HostNode, before: HostNode | null): void => {
 				onCleanup((): void => { fallbackCleanups += 1; });
@@ -63,11 +70,11 @@ test "nested initial reset preserves siblings and cleans repeated failure lifeti
 		assert childCleanups === 1 && fallbackCleanups === 1;
 		setBroken(true);
 		assert mockToString(root) === "<root><panel>leftfallbackright</panel></root>";
-		assert childCleanups === 2 && fallbackCleanups === 1;
+		assert childCleanups === 1 && fallbackCleanups === 1;
 		setBroken(false);
 		resets[1]();
 		assert mockToString(root) === "<root><panel>leftgoodright</panel></root>";
-		assert childCleanups === 2 && fallbackCleanups === 2;
+		assert childCleanups === 1 && fallbackCleanups === 2;
 	} finally { dispose(); }
-	assert childCleanups === 3 && fallbackCleanups === 2;
+	assert childCleanups === 2 && fallbackCleanups === 2;
 }
