@@ -8,7 +8,7 @@ Switch, ActivityIndicator, Image (with `Image.getSize`, `Image.prefetch` and `de
 `media.m` and `camera.m`). The kinds `slider`, `picker`, `datetimepicker` and `svg` abort by name, as does accessibility
 exposed to VoiceOver (`UNIMPLEMENTED` in `src/platform/macos/bridge.m`). They stay out of the host's core: a component
 composable from the primitives is written once in Neon. WebView, Video and Camera are core (the person, 2026-10-18).
-Asking for the camera permission is parked on Ion (`~/metascript/.inbox/ion/2026-10-18-camera-permission-for-neon-cameraview.md`).
+`Camera.requestCameraPermissionsAsync` asks through Ion's `requestCameraAccess` (ion `b2e5c7e`) and shows the system prompt once.
 
 ## Decision
 
@@ -104,7 +104,7 @@ layers (not the window server), so one `screencapture -l <window>` per example w
 | `ionModal` | 13 checks: a press opens an opaque Modal over the app, onShow, the Modal takes a click over the app's Pressable, Escape calls onRequestClose and onDismiss follows, the app takes clicks again, a `slide` Modal settles in place, a press inside closes it, Escape with no Modal does nothing; 3 runs of 3 green, same tree as `ionControls` |
 | `ionWebView` | 11 checks: an HTML source with a base url loads once, the page's own message, `postMessage` echoed back, `injectJavaScript`, the page's background and element sampled through WebKit's snapshot, a refused navigation asked and never loaded, an AppKit click on the page's element reaching its listener; 3 runs of 3 green (`msc` e16a76c25, Ion `e572da0`, neon tree `f85af81` plus this change, which re-ran `ion`, `ionText`, `ionPress`, `ionScroll`, `ionInput`, `ionControls` and `ionModal` 3 times each at their counts) |
 | `ionVideo` | 7 checks: load start, onLoad with "3s 160x90", progress while playing, onError for a missing file, no progress while paused, a seek during playback landing at the end within 0.7 s, one onEnd; 3 runs of 3 green |
-| `ionCamera` | 3 checks on the branch this machine takes, the shell without camera authorization: one answer, onMountError "Camera permission not granted" with no prompt shown, and `Camera.getCameraPermissionsAsync` refused by name on Ion; 3 runs of 3 green |
+| `ionCamera` | 3 checks on the branch this machine takes, the shell without camera authorization: one answer, onMountError "Camera permission not granted" with no prompt shown, and the status `Camera.getCameraPermissionsAsync` reads from Ion (`undetermined`) agrees with that branch; 3 runs of 3 green (2026-10-19, ion `b2e5c7e`) |
 | `ionMeasure` | 9 checks: the mounted root (0,0,480,320), plain, inside a `scale(0.5)` parent, `rotate(90deg)`, inside a ScrollView before and after `scrollTo`, hidden (0), never attached (-1); 3 runs of 3 green (`msc` e16a76c25, from main `f85af81`) |
 | `ionInput` | 26 checks, the Windows set: placeholder, typing, backspace, submit and blur, controlled uppercase, maxLength, newline and growth in multiline, an IME composition through the field editor's `NSTextInputClient` reporting no change until its commit, secure bullets; 3 runs of 3 green |
 
