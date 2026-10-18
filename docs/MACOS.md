@@ -105,6 +105,7 @@ layers (not the window server), so one `screencapture -l <window>` per example w
 | `ionWebView` | 11 checks: an HTML source with a base url loads once, the page's own message, `postMessage` echoed back, `injectJavaScript`, the page's background and element sampled through WebKit's snapshot, a refused navigation asked and never loaded, an AppKit click on the page's element reaching its listener; 3 runs of 3 green (`msc` e16a76c25, Ion `e572da0`, neon tree `f85af81` plus this change, which re-ran `ion`, `ionText`, `ionPress`, `ionScroll`, `ionInput`, `ionControls` and `ionModal` 3 times each at their counts) |
 | `ionVideo` | 7 checks: load start, onLoad with "3s 160x90", progress while playing, onError for a missing file, no progress while paused, a seek during playback landing at the end within 0.7 s, one onEnd; 3 runs of 3 green |
 | `ionCamera` | 3 checks on the branch this machine takes, the shell without camera authorization: one answer, onMountError "Camera permission not granted" with no prompt shown, and the status `Camera.getCameraPermissionsAsync` reads from Ion (`undetermined`) agrees with that branch; 3 runs of 3 green (2026-10-19, ion `b2e5c7e`) |
+| `ionCamera`, authorized | 3 checks after the person allowed the camera once by hand (2026-10-19): onCameraReady once, Ion reads `granted`, `takePictureAsync` writes a sized `file://` picture; 3 runs of 3 green |
 | `ionMeasure` | 9 checks: the mounted root (0,0,480,320), plain, inside a `scale(0.5)` parent, `rotate(90deg)`, inside a ScrollView before and after `scrollTo`, hidden (0), never attached (-1); 3 runs of 3 green (`msc` e16a76c25, from main `f85af81`) |
 | `ionInput` | 26 checks, the Windows set: placeholder, typing, backspace, submit and blur, controlled uppercase, maxLength, newline and growth in multiline, an IME composition through the field editor's `NSTextInputClient` reporting no change until its commit, secure bullets; 3 runs of 3 green |
 
@@ -121,7 +122,7 @@ Not measured:
 - A resize while editing.
 - Text drawn at scale 1.
 
-- CameraView with the camera authorized: the running session, its preview, `takePictureAsync`, `facing` and `flash`.
+- CameraView with the camera authorized: what the preview shows on screen, `facing` and `flash`.
   No `--check` run reaches it without a permission prompt.
 - Video pixels, `controls`, `resizeMode`, `rate`, `volume` and `repeat`; WebView `goBack` / `goForward` / `reload` and
   a `uri` source.

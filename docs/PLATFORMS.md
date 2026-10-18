@@ -21,7 +21,7 @@ Two rules, the person's (2026-10-18/19):
 | Modal | yes | yes | yes | aborts | yes, Escape closes |
 | WebView | yes | yes | yes, an iframe | aborts | yes |
 | Video | yes | yes | yes | aborts | yes |
-| CameraView | yes | yes | yes | aborts | yes; preview and picture not yet measured |
+| CameraView | yes | yes | yes | aborts | yes; `facing` and `flash` not yet measured |
 | Svg | yes | yes | yes | aborts | aborts; where it lives is the person's open decision |
 | `niMeasureInWindow` geometry export | not yet | not yet | not yet | not yet | yes |
 
