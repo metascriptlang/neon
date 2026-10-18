@@ -152,8 +152,6 @@ const services: AppServices = {
 	share,
 	vibrate,
 	cancelVibration: (): void => { call("vibrate.cancel", ""); },
-	getClipboard: async (): Promise<string> => { return call("clipboard.get", ""); },
-	setClipboard: (text: string): void => { call("clipboard.set", text); },
 	screenReaderEnabled: async (): Promise<boolean> => { return call("a11y.screenReader", "") === "1"; },
 	reduceMotionEnabled: async (): Promise<boolean> => { return call("a11y.reduceMotion", "") === "1"; },
 	announce: (text: string): void => { call("a11y.announce", text); },

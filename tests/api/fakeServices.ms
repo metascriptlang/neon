@@ -2,6 +2,7 @@ import {
 	AppServices, AlertRequest,
 	ShareRequest, installAppServices,
 } from "../../src/api/services";
+import { ClipboardServices, installClipboardServices } from "../../src/api/clipboardServices";
 import { PermissionReply, PermissionServices, installPermissionServices } from "../../src/api/permissionServices";
 import { HapticsServices, installHapticsServices } from "../../src/api/hapticsServices";
 import {
@@ -120,11 +121,6 @@ export class FakeServices {
 				this.log.push(text + (repeat ? " repeat" : ""));
 			},
 			cancelVibration: (): void => { this.log.push("cancelVibration"); },
-			getClipboard: async (): Promise<string> => { return this.clipboard; },
-			setClipboard: (text: string): void => {
-				this.log.push("setClipboard " + text);
-				this.clipboard = text;
-			},
 			screenReaderEnabled: async (): Promise<boolean> => { return this.screenReader; },
 			reduceMotionEnabled: async (): Promise<boolean> => { return false; },
 			announce: (text: string): void => { this.log.push("announce " + text); },
@@ -144,6 +140,18 @@ export class FakeServices {
 		this.installDeviceInfo();
 		this.installLocalization();
 		this.installPermissions();
+		this.installClipboard();
+	}
+
+	installClipboard(): void {
+		const services: ClipboardServices = {
+			getClipboard: async (): Promise<string> => { return this.clipboard; },
+			setClipboard: (text: string): void => {
+				this.log.push("setClipboard " + text);
+				this.clipboard = text;
+			},
+		};
+		installClipboardServices(services);
 	}
 
 	installPermissions(): void {

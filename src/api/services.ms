@@ -30,8 +30,6 @@ export interface AppServices {
 	share: (request: ShareRequest) => void;
 	vibrate: (pattern: int32[], repeat: boolean) => void;
 	cancelVibration: () => void;
-	getClipboard: () => Promise<string>;
-	setClipboard: (text: string) => void;
 	screenReaderEnabled: () => Promise<boolean>;
 	reduceMotionEnabled: () => Promise<boolean>;
 	announce: (text: string) => void;

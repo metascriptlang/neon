@@ -4,11 +4,6 @@ import { publishScale, publishScreen } from "../../api/dimensions";
 import { publishAppState } from "../../api/appState";
 import { publishReduceMotion } from "../../api/accessibilityInfo";
 
-extern class BrowserClipboard {
-	extern readText(): Promise<string>;
-	extern writeText(text: cstring): Promise<void>;
-}
-
 interface BrowserShareData {
 	title: string;
 	text: string;
@@ -40,7 +35,6 @@ extern class BrowserMediaQuery {
 }
 
 extern class navigator {
-	static clipboard: BrowserClipboard;
 	static extern share(data: BrowserShareData): Promise<void>;
 	static extern vibrate(pattern: number[]): boolean;
 }
@@ -68,7 +62,6 @@ extern class document {
 
 extern function canShare(unused: int32): boolean from "(#, typeof navigator.share === 'function')";
 
-let lastCopied = "";
 let announcer: BrowserElement | null = null;
 
 function cancelIndex(request: AlertRequest): int32 {
@@ -101,22 +94,6 @@ async function shareThroughNavigator(request: ShareRequest): Promise<void> {
 		request.done("sharedAction", "");
 	} catch (e) {
 		request.done("dismissedAction", "");
-	}
-}
-
-async function readClipboard(): Promise<string> {
-	try {
-		return await navigator.clipboard.readText();
-	} catch (e) {
-		return lastCopied;
-	}
-}
-
-async function writeClipboard(text: string): Promise<void> {
-	try {
-		await navigator.clipboard.writeText(text);
-	} catch (e) {
-		lastCopied = text;
 	}
 }
 
@@ -160,11 +137,6 @@ const services: AppServices = {
 	},
 	vibrate,
 	cancelVibration: (): void => { vibrate([], false); },
-	getClipboard: readClipboard,
-	setClipboard: (text: string): void => {
-		lastCopied = text;
-		writeClipboard(text);
-	},
 	screenReaderEnabled: async (): Promise<boolean> => { return false; },
 	reduceMotionEnabled: async (): Promise<boolean> => {
 		return window.matchMedia("(prefers-reduced-motion: reduce)").matches;

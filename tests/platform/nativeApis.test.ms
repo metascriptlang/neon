@@ -13,6 +13,8 @@ import { Vibration } from "../../src/api/vibration";
 import { Clipboard } from "../../src/api/clipboard";
 import { AccessibilityInfo, useScreenReaderEnabled } from "../../src/api/accessibilityInfo";
 import { Keyboard } from "../../src/api/keyboard";
+import { installClipboardServices } from "../../src/api/clipboardServices";
+import { nativeClipboardServices } from "../../src/platform/native/clipboard";
 import { nmAppReply, nmAppLog, nmAppLogClear, nmAppEvent, nmTeardown, nmTextWidth } from "./nativeBridgeMock.h";
 
 const STATE: int32 = 0;
@@ -32,6 +34,7 @@ function mount(app: () => NeonNode): void {
 	nmAppReply("appState", "active");
 	nmAppReply("a11y.screenReader", "0");
 	runApp(app);
+	installClipboardServices(nativeClipboardServices);
 }
 
 test "the native host publishes the platform constants, scale and screen when it starts" {

@@ -1,0 +1,38 @@
+import { ClipboardServices, installClipboardServices } from "../../api/clipboardServices";
+
+extern class BrowserClipboard {
+	extern readText(): Promise<string>;
+	extern writeText(text: cstring): Promise<void>;
+}
+
+extern class navigator {
+	static clipboard: BrowserClipboard;
+}
+
+let lastCopied = "";
+
+async function readClipboard(): Promise<string> {
+	try {
+		return await navigator.clipboard.readText();
+	} catch (e) {
+		return lastCopied;
+	}
+}
+
+async function writeClipboard(text: string): Promise<void> {
+	try {
+		await navigator.clipboard.writeText(text);
+	} catch (e) {
+		lastCopied = text;
+	}
+}
+
+const browserClipboardServices: ClipboardServices = {
+	getClipboard: readClipboard,
+	setClipboard: (text: string): void => {
+		lastCopied = text;
+		writeClipboard(text);
+	},
+};
+
+installClipboardServices(browserClipboardServices);

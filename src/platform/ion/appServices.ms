@@ -5,7 +5,6 @@
 import {
 	AlertRequest, AppServices, ShareRequest,
 } from "../../api/services";
-import { readClipboardText, writeClipboardText } from "../../../../ion/src/clipboard";
 
 function unavailable(api: string): Error {
 	return new Error(`${api} is not available on an Ion desktop host yet`);
@@ -21,10 +20,6 @@ export const ionAppServices: AppServices = {
 	share: (request: ShareRequest): void => { throw unavailable("Share.share"); },
 	vibrate: (pattern: int32[], repeat: boolean): void => { throw unavailable("Vibration.vibrate"); },
 	cancelVibration: (): void => { throw unavailable("Vibration.cancel"); },
-	getClipboard: async (): Promise<string> => { return readClipboardText(); },
-	setClipboard: (text: string): void => {
-		if (!writeClipboardText(text)) { throw new Error("Clipboard.setString: the OS refused the clipboard write"); }
-	},
 	screenReaderEnabled: async (): Promise<boolean> => { throw unavailable("AccessibilityInfo.isScreenReaderEnabled"); },
 	reduceMotionEnabled: async (): Promise<boolean> => { throw unavailable("AccessibilityInfo.isReduceMotionEnabled"); },
 	announce: (text: string): void => { throw unavailable("AccessibilityInfo.announceForAccessibility"); },

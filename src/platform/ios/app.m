@@ -202,11 +202,6 @@ static NSString *call(NSString *name, NSString *arg) {
 		g_vibration += 1;
 		return @"";
 	}
-	if ([name isEqualToString:@"clipboard.get"]) return UIPasteboard.generalPasteboard.string ?: @"";
-	if ([name isEqualToString:@"clipboard.set"]) {
-		UIPasteboard.generalPasteboard.string = arg;
-		return @"";
-	}
 	if ([name isEqualToString:@"a11y.screenReader"]) return UIAccessibilityIsVoiceOverRunning() ? @"1" : @"0";
 	if ([name isEqualToString:@"a11y.reduceMotion"]) return UIAccessibilityIsReduceMotionEnabled() ? @"1" : @"0";
 	if ([name isEqualToString:@"a11y.announce"]) {
