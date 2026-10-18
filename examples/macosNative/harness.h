@@ -23,6 +23,8 @@ int harnessPostKeys(const char *title, const char *keys);
 void harnessCompose(const char *title, const char *marked);
 void harnessCommit(const char *title, const char *text);
 int harnessFocusedText(const char *title);
+// Each NSSwitch in the window in view-tree order, 1 for on and 0 for off.
+const char *harnessSwitchStates(const char *title);
 
 #ifdef __cplusplus
 }

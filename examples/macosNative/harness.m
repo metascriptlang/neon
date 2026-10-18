@@ -253,3 +253,16 @@ void harnessCommit(const char *title, const char *text) {
 }
 
 int harnessFocusedText(const char *title) { return focusedText(windowTitled(title)) ? 1 : 0; }
+
+static void collectSwitches(NSView *view, NSMutableString *out) {
+	if ([view isKindOfClass:NSSwitch.class]) [out appendString:((NSSwitch *)view).state == NSControlStateValueOn ? @"1" : @"0"];
+	for (NSView *child in view.subviews) collectSwitches(child, out);
+}
+
+const char *harnessSwitchStates(const char *title) {
+	static char states[64];
+	NSMutableString *out = [NSMutableString string];
+	collectSwitches(windowTitled(title).contentView, out);
+	snprintf(states, sizeof states, "%s", out.UTF8String);
+	return states;
+}
