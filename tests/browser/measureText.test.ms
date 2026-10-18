@@ -2,7 +2,7 @@ import { domHost, documentBody } from "../../src/platform/browser/dom";
 import { HostNode } from "../../src/render/hostTypes";
 import { render } from "../../src/render/host";
 import { element } from "../../src/macros/ui/element";
-import { View, ViewHandle, Text } from "../../src/components/primitives";
+import { View, ViewHandle, Text, ElementHandle } from "../../src/components/primitives";
 
 extern class Frame {
 	width: number;
@@ -22,7 +22,7 @@ test "a View's handle measures a line as wide as the Text the page draws" {
 	let frame: ViewHandle | null = null;
 	let shown: HostNode | null = null;
 	render(element(<View ref={(h: ViewHandle): void => { frame = h; }} style={{ alignItems: "flex-start" }}>
-		<Text ref={(n: HostNode): void => { shown = n; }} style={{ fontFamily: "monospace", fontSize: 20 }}>MMMMMMMM</Text>
+		<Text ref={(h: ElementHandle): void => { shown = h.node; }} style={{ fontFamily: "monospace", fontSize: 20 }}>MMMMMMMM</Text>
 	</View>), domHost(), documentBody());
 	const m = (frame as ViewHandle).measureText("MMMMMMMM", { fontFamily: "monospace", fontSize: 20 });
 	const drawn = probe(shown as HostNode).getBoundingClientRect();
