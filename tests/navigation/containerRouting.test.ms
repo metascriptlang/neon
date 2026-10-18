@@ -332,20 +332,16 @@ test "a snapshot restored before the container mounts seeds the nested tree" {
 	app.dispose();
 }
 
-test "a malformed or out of range snapshot is refused before anything changes" {
+test "a malformed or empty snapshot is refused before anything changes" {
 	const registry = new RoutingRegistry("main");
 	const app = startApp(registry, "main", nothing);
 	assert app.ref.linkTo("/shop/product/3");
 	const text = registry.restore({ regions: [{ scope: "main", state: "not json" }] });
 	assert !text.ok;
 	if (!text.ok) { assert text.error === RoutingError.IncompleteSnapshot; }
-	const home = JSON.stringify("{\"key\":\"Home-1\",\"name\":\"Home\",\"hasParams\":false,\"paramPairs\":[]}");
-	const outOfRange = registry.restore({ regions: [{
-		scope: "main",
-		state: "{\"nodes\":[{\"key\":" + home + ",\"children\":5}]}",
-	}] });
-	assert !outOfRange.ok;
-	if (!outOfRange.ok) { assert outOfRange.error === RoutingError.IncompleteSnapshot; }
+	const empty = registry.restore({ regions: [{ scope: "main", state: "{\"nodes\":[]}" }] });
+	assert !empty.ok;
+	if (!empty.ok) { assert empty.error === RoutingError.IncompleteSnapshot; }
 	assert app.ref.currentPath() === "Shop>Product", app.ref.currentPath();
 	app.dispose();
 }

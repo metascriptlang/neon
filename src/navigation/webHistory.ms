@@ -26,23 +26,13 @@ interface HistoryNode {
 	children: HistoryNode[];
 }
 
-interface KeyNode {
+struct KeyNode {
 	key: string;
 	children: KeyNode[];
 }
 
-struct StoredNode {
-	key: string;
-	children: int32;
-}
-
 struct StoredHistory {
-	nodes: StoredNode[];
-}
-
-interface StoredCursor {
-	nodes: StoredNode[];
-	at: int32;
+	nodes: KeyNode[];
 }
 
 interface HistoryMirror {
@@ -143,44 +133,15 @@ function addressOf(nodes: HistoryNode[]): string {
 	return pairs.length === 0 ? path : path + "?" + pairs.join("&");
 }
 
-function storeNodes(nodes: HistoryNode[], stored: StoredNode[]): void {
-	for (const node of nodes) {
-		stored.push({ key: node.key, children: node.children.length as int32 });
-		storeNodes(node.children, stored);
-	}
-}
-
 function encodeHistory(nodes: HistoryNode[]): string {
-	const stored: StoredNode[] = [];
-	storeNodes(nodes, stored);
-	const history: StoredHistory = { nodes: stored };
+	const history: StoredHistory = { nodes: keyTreeOf(nodes) };
 	return JSON.stringify(history);
-}
-
-function readLevel(cursor: StoredCursor, count: int32): Result<KeyNode[], RoutingError> {
-	const level: KeyNode[] = [];
-	for (let i = 0; i < count; i += 1) {
-		if (cursor.at >= cursor.nodes.length) { return Result.err(RoutingError.IncompleteSnapshot); }
-		const stored = cursor.nodes[cursor.at];
-		cursor.at += 1;
-		if (stored.children < 0) { return Result.err(RoutingError.IncompleteSnapshot); }
-		const children = try readLevel(cursor, stored.children);
-		level.push({ key: stored.key, children });
-	}
-	return Result.ok(level);
 }
 
 function decodeHistory(state: string): Result<KeyNode[], RoutingError> {
 	const parsed = JSON.parse<StoredHistory>(state);
-	if (!parsed.ok) { return Result.err(RoutingError.IncompleteSnapshot); }
-	const cursor: StoredCursor = { nodes: parsed.value.nodes, at: 0 };
-	const roots: KeyNode[] = [];
-	while (cursor.at < cursor.nodes.length) {
-		const root = try readLevel(cursor, 1);
-		roots.push(root[0]);
-	}
-	if (roots.length === 0) { return Result.err(RoutingError.IncompleteSnapshot); }
-	return Result.ok(roots);
+	if (!parsed.ok || parsed.value.nodes.length === 0) { return Result.err(RoutingError.IncompleteSnapshot); }
+	return Result.ok(parsed.value.nodes);
 }
 
 function applyKeys(navigation: WebNavigationNode, nodes: KeyNode[]): boolean {

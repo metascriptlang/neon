@@ -225,14 +225,6 @@ and the invariants that outlived them were moved to the head of the test that pi
   without a default, and callers pass `{}`. Card
   `~/metascript/.inbox/compiler/2026-10-16-an-empty-object-literal-default-of-a-generic-interface-parameter-is-not-typed-against-it.md`.
 
-- **PARKED 2026-10-16 — web history stores its key tree as a preorder list.** Not Neon's: Decompose keeps
-  each entry's keys as a `SerializableNode` holding a list of itself, and msc refuses `JSON.stringify` and
-  `JSON.parse<T>` of a type whose array field holds that same type, on C and JS. Until then
-  `src/navigation/webHistory.ms` writes the tree as `StoredNode { key, children }` in preorder
-  (`StoredNode`, `StoredHistory`, `storeNodes`, `readLevel`, `decodeHistory`), where `children` counts the direct
-  children that follow, and it rebuilds the tree on read. Card
-  `~/metascript/.inbox/compiler/2026-10-16-json-refuses-a-self-referential-type.md`.
-
 - **PARKED 2026-10-16 — the sokol canvas receives no input, and Escape ends it.** Not Neon's: Void's window
   driver (`void/src/sokol/bridgeWin.c` and `bridgeWeb.c`, `_event`) keeps every `sapp_event` to itself, and
   `voidRun` takes only `init` and `frame`, so no key, char, pointer, wheel or focus reaches MetaScript. The

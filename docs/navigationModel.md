@@ -194,8 +194,7 @@ routing. `navigatorMotion.ms` stays the transition engine.
   - An entry without state resolves from its address, as this design says, and asks no
     `onBeforeNavigate`; Decompose ignores such an entry. `onBeforeNavigate` is asked on
     every restore, also one that changes only another region.
-  - The key tree is a preorder list until the compiler card on JSON of a type holding
-    an array of itself lands (parked in `BUGS.md`). There is no `schemaVersion` or
+  - The key tree is stored as Decompose's `SerializableNode` list. There is no `schemaVersion` or
     `onRecreate`, where Decompose recreates on a version mismatch: state that cannot be
     used resolves from the entry's address, which the registry passes to each region's
     `restore`. A malformed tree resolves before anything applies; a nested key that

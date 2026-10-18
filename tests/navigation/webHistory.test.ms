@@ -444,7 +444,7 @@ test "an entry whose nested stored keys do not decode resolves from its address"
 test "an entry whose key tree is malformed resolves from its address, or is reported" {
 	const fixture = start("/home", null);
 	const malformed: RoutingSnapshot = {
-		regions: [{ scope: "main", state: "{\"nodes\":[{\"key\":\"home/\",\"children\":2}]}" }],
+		regions: [{ scope: "main", state: "{\"nodes\":[]}" }],
 	};
 	fixture.memory.push({ url: "/detail", state: JSON.stringify(malformed) });
 	assert fixture.memory.go(-1);
