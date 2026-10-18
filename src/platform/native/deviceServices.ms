@@ -1,5 +1,4 @@
 import { FIELD, appCall, ask as appAsk, refusal } from "./appBridge";
-import { NetInfoDetails, NetInfoState, NetInfoStateType, publishNetInfo } from "../../api/netInfo";
 import {
 	BatterySnapshot, DeviceSnapshot, LocaleSnapshot, PermissionReply,
 } from "../../api/services";
@@ -36,32 +35,6 @@ export function storageClear(): void {
 export function storageKeys(): string[] {
 	const reply = call("storage.keys", "");
 	return reply === "" ? [] : reply.split(FIELD);
-}
-
-function flag(text: string): boolean | null {
-	if (text === "") { return null; }
-	return text === "1";
-}
-
-export function decodeNetInfo(value: string): NetInfoState {
-	const fields = value.split(FIELD);
-	if (fields.length !== 4) { throw new Error("NetInfo: the host sent a malformed state: " + value); }
-	const type = fields[0] as NetInfoStateType;
-	const connected = flag(fields[1]);
-	const details: NetInfoDetails | null = connected === true ? { isConnectionExpensive: fields[3] === "1" } : null;
-	return { type, isConnected: connected, isInternetReachable: flag(fields[2]), details };
-}
-
-export function watchNetInfo(): void {
-	publishNetInfo(decodeNetInfo(call("netinfo.watch", "")));
-}
-
-export function refreshNetInfo(): void {
-	publishNetInfo(decodeNetInfo(call("netinfo.fetch", "")));
-}
-
-export function onNetInfoEvent(value: string): void {
-	publishNetInfo(decodeNetInfo(value));
 }
 
 function permissionReply(reply: string): PermissionReply {

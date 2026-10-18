@@ -12,7 +12,6 @@ const char *niAppReply(NSString *reply);
 NSString *niModuleCall(NSString *name, NSString *arg);
 
 NSString *niStorageCall(NSString *name, NSString *arg);
-NSString *niNetInfoCall(NSString *name, NSString *arg);
 NSString *niPermissionCall(NSString *name, NSString *arg);
 NSString *niDeviceCall(NSString *name, NSString *arg);
 NSString *niCaptureCall(NSString *name, NSString *arg);

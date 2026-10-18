@@ -95,8 +95,6 @@ export interface AppServices {
 	storageRemove: (key: string) => void;
 	storageClear: () => void;
 	storageKeys: () => string[];
-	watchNetInfo: () => void;
-	refreshNetInfo: () => void;
 	permissionStatus: (name: string) => Promise<PermissionReply>;
 	requestPermission: (name: string) => Promise<PermissionReply>;
 	androidPermissionGranted: (permission: string) => Promise<boolean>;
@@ -109,15 +107,9 @@ export interface AppServices {
 }
 
 let installed: AppServices | null = null;
-let generation: int32 = 0;
 
 export function installAppServices(services: AppServices | null): void {
 	installed = services;
-	generation += 1;
-}
-
-export function appServicesGeneration(): int32 {
-	return generation;
 }
 
 export function appServices(api: string): AppServices {

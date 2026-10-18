@@ -1,0 +1,46 @@
+import {
+	NetInfoServices, NetInfoState, NetInfoStateType, installNetInfoServices, netInfoEvent,
+} from "../../api/netInfoServices";
+
+extern class NetInfoEvent {}
+
+extern class window {
+	static extern addEventListener(name: cstring, handler: (e: NetInfoEvent) => void): void;
+}
+
+extern class navigator {
+	static onLine: boolean;
+}
+
+extern function connectionType(unused: int32): string from "(#, String((navigator.connection && navigator.connection.type) || ''))";
+extern function connectionSavesData(unused: int32): boolean from "(#, Boolean(navigator.connection && navigator.connection.saveData))";
+
+const NETINFO_TYPES = ["none", "cellular", "wifi", "bluetooth", "ethernet", "wimax", "vpn", "other"];
+
+function netInfoNow(): NetInfoState {
+	if (!navigator.onLine) {
+		return { type: "none", isConnected: false, isInternetReachable: false, details: null };
+	}
+	const reported = connectionType(0);
+	const type: string = NETINFO_TYPES.indexOf(reported) > 0 ? reported : "unknown";
+	return {
+		type: type as NetInfoStateType,
+		isConnected: true,
+		isInternetReachable: true,
+		details: { isConnectionExpensive: connectionSavesData(0) || type === "cellular" },
+	};
+}
+
+function watchNetInfo(): void {
+	netInfoEvent(netInfoNow());
+	window.addEventListener("online", (e: NetInfoEvent): void => { netInfoEvent(netInfoNow()); });
+	window.addEventListener("offline", (e: NetInfoEvent): void => { netInfoEvent(netInfoNow()); });
+}
+
+function refreshNetInfo(): void {
+	netInfoEvent(netInfoNow());
+}
+
+const browserNetInfoServices: NetInfoServices = { watchNetInfo, refreshNetInfo };
+
+installNetInfoServices(browserNetInfoServices);

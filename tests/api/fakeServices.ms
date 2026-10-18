@@ -6,7 +6,9 @@ import { LocationFix, LocationRequest, LocationServices, installLocationServices
 import {
 	NotificationServices, NotificationSpec, ScheduleReply, installNotificationServices,
 } from "../../src/api/notificationServices";
-import { NetInfoState, publishNetInfo } from "../../src/api/netInfo";
+import {
+	NetInfoServices, NetInfoState, installNetInfoServices, netInfoEvent,
+} from "../../src/api/netInfoServices";
 
 export class FakeServices {
 	log: string[] = [];
@@ -150,14 +152,6 @@ export class FakeServices {
 				this.storedValues = [];
 			},
 			storageKeys: (): string[] => { return this.storedKeys.slice(0, this.storedKeys.length); },
-			watchNetInfo: (): void => {
-				this.log.push("watchNetInfo");
-				publishNetInfo(this.network);
-			},
-			refreshNetInfo: (): void => {
-				this.log.push("refreshNetInfo");
-				publishNetInfo(this.network);
-			},
 			permissionStatus: async (name: string): Promise<PermissionReply> => {
 				return this.permission(name);
 			},
@@ -187,6 +181,21 @@ export class FakeServices {
 		installAppServices(services);
 		this.installNotifications();
 		this.installLocation();
+		this.installNetInfo();
+	}
+
+	installNetInfo(): void {
+		const services: NetInfoServices = {
+			watchNetInfo: (): void => {
+				this.log.push("watchNetInfo");
+				netInfoEvent(this.network);
+			},
+			refreshNetInfo: (): void => {
+				this.log.push("refreshNetInfo");
+				netInfoEvent(this.network);
+			},
+		};
+		installNetInfoServices(services);
 	}
 
 	installLocation(): void {

@@ -48,8 +48,6 @@ export const ionAppServices: AppServices = {
 	storageRemove: (key: string): void => { throw unavailable("AsyncStorage"); },
 	storageClear: (): void => { throw unavailable("AsyncStorage"); },
 	storageKeys: (): string[] => { throw unavailable("AsyncStorage"); },
-	watchNetInfo: (): void => { throw unavailable("NetInfo"); },
-	refreshNetInfo: (): void => { throw unavailable("NetInfo"); },
 	permissionStatus: async (name: string): Promise<PermissionReply> => {
 		if (name === "microphone") { return accessReply(microphoneAccess()); }
 		if (name === "camera") { return accessReply(cameraAccess()); }

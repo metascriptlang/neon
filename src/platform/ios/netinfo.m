@@ -34,7 +34,7 @@ static void watch(void) {
 	nw_path_monitor_start(g_monitor);
 }
 
-NSString *niNetInfoCall(NSString *name, NSString *arg) {
+static NSString *call(NSString *name, NSString *arg) {
 	if (!g_state) g_state = unknownState();
 	if ([name isEqualToString:@"netinfo.watch"]) {
 		if (!g_monitor) watch();
@@ -43,4 +43,8 @@ NSString *niNetInfoCall(NSString *name, NSString *arg) {
 	if ([name isEqualToString:@"netinfo.fetch"]) return g_state;
 	NSLog(@"Neon niAppCall: unknown command %@", name);
 	abort();
+}
+
+const char *niNetInfoCommand(const char *name, const char *arg) {
+	return niAppReply(call(@(name), @(arg ? arg : "")));
 }

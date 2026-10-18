@@ -7,8 +7,7 @@ import { publishUrl } from "../../api/linking";
 import { publishReduceMotion, publishScreenReader } from "../../api/accessibilityInfo";
 import {
 	androidPermissionGranted, androidRequestPermissions, androidShouldShowRationale, battery, deviceInfo, haptic,
-	localization, onNetInfoEvent, permissionStatus, refreshNetInfo, requestPermission, storageClear, storageGet,
-	storageKeys, storageRemove, storageSet, watchNetInfo,
+	localization, permissionStatus, requestPermission, storageClear, storageGet, storageKeys, storageRemove, storageSet,
 } from "./deviceServices";
 import {
 	AppEvent, FIELD, RECORD, appCall, dispatchNativeAppEvent, runNativeAppStarts,
@@ -20,7 +19,6 @@ when (ios) {
 	@compile("../ios/app.m", "-fobjc-arc");
 	@compile("../ios/modules.m", "-fobjc-arc");
 	@compile("../ios/storage.m", "-fobjc-arc");
-	@compile("../ios/netinfo.m", "-fobjc-arc");
 	@compile("../ios/permissions.m", "-fobjc-arc");
 	@compile("../ios/location.m", "-fobjc-arc");
 	@compile("../ios/device.m", "-fobjc-arc");
@@ -30,7 +28,6 @@ when (ios) {
 	@passL("-framework UniformTypeIdentifiers");
 	@passL("-framework CoreMedia");
 	@passL("-framework AudioToolbox");
-	@passL("-framework Network");
 	@passL("-framework AVFoundation");
 	@passL("-framework CoreLocation");
 	@passL("-framework UserNotifications");
@@ -97,7 +94,6 @@ function onAppEvent(): void {
 		AppEvent.MemoryWarning => publishMemoryWarning(),
 		AppEvent.ReduceMotion => publishReduceMotion(value === "1"),
 		AppEvent.ImageSize => settleImage(value),
-		AppEvent.NetInfo => onNetInfoEvent(value),
 		AppEvent.Sound => onSoundEvent(value),
 		AppEvent.Recording => onRecordingEvent(value),
 		_ => dispatchNativeAppEvent(kind, value),
@@ -178,8 +174,6 @@ const services: AppServices = {
 	storageRemove,
 	storageClear,
 	storageKeys,
-	watchNetInfo,
-	refreshNetInfo,
 	permissionStatus,
 	requestPermission,
 	androidPermissionGranted,

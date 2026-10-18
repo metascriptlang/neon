@@ -12,6 +12,7 @@ import { getCalendars, getLocales } from "../../src/api/localization";
 import { Notification, NotificationBehavior, NotificationResponse, Notifications } from "../../src/api/notifications";
 import "../../src/platform/native/notifications";
 import "../../src/platform/native/geolocation";
+import "../../src/platform/native/netInfo";
 import { nmAppReply, nmAppLog, nmAppLogClear, nmAppEvent, nmTeardown } from "./nativeBridgeMock.h";
 
 const FIELD = "\u001f";

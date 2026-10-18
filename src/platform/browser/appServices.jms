@@ -5,8 +5,8 @@ import { publishAppState } from "../../api/appState";
 import { publishReduceMotion } from "../../api/accessibilityInfo";
 import {
 	androidPermissionGranted, androidRequestPermissions, androidShouldShowRationale, battery, deviceInfo, haptic,
-	localization, permissionStatus, refreshNetInfo, requestPermission, storageClear, storageGet, storageKeys,
-	storageRemove, storageSet, watchNetInfo,
+	localization, permissionStatus, requestPermission, storageClear, storageGet, storageKeys, storageRemove,
+	storageSet,
 } from "./deviceServices";
 
 extern class BrowserClipboard {
@@ -187,8 +187,6 @@ const services: AppServices = {
 	storageRemove,
 	storageClear,
 	storageKeys,
-	watchNetInfo,
-	refreshNetInfo,
 	permissionStatus,
 	requestPermission,
 	androidPermissionGranted,

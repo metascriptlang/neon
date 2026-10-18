@@ -1,20 +1,16 @@
 import { Accessor, createSignal } from "../core/signal";
 import { onChange } from "./subscription";
-import { appServices, appServicesGeneration } from "./services";
+import {
+	NetInfoState, listenNetInfo, netInfoServices, netInfoServicesGeneration,
+} from "./netInfoServices";
 
-export type NetInfoStateType =
-	"unknown" | "none" | "cellular" | "wifi" | "bluetooth" | "ethernet" | "wimax" | "vpn" | "other";
-
-export interface NetInfoDetails {
-	isConnectionExpensive: boolean;
+when (js && !server) {
+	import "../platform/browser/netInfo";
+} else when (ios || android) {
+	import "../platform/native/netInfo";
 }
 
-export interface NetInfoState {
-	type: NetInfoStateType;
-	isConnected: boolean | null;
-	isInternetReachable: boolean | null;
-	details: NetInfoDetails | null;
-}
+export { NetInfoDetails, NetInfoState, NetInfoStateType } from "./netInfoServices";
 
 export type NetInfoChangeHandler = (state: NetInfoState) => void;
 export type NetInfoUnsubscribe = () => void;
@@ -25,9 +21,9 @@ const [current, setCurrent] = createSignal<NetInfoState>(UNKNOWN);
 let watchedBy: int32 = -1;
 
 function watch(api: string): void {
-	const services = appServices(api);
-	if (watchedBy === appServicesGeneration()) { return; }
-	watchedBy = appServicesGeneration();
+	const services = netInfoServices(api);
+	if (watchedBy === netInfoServicesGeneration()) { return; }
+	watchedBy = netInfoServicesGeneration();
 	services.watchNetInfo();
 }
 
@@ -52,7 +48,7 @@ function same(a: NetInfoState, b: NetInfoState): boolean {
 export class NetInfo {
 	static async fetch(): Promise<NetInfoState> {
 		watch("NetInfo.fetch");
-		appServices("NetInfo.fetch").refreshNetInfo();
+		netInfoServices("NetInfo.fetch").refreshNetInfo();
 		return current();
 	}
 
@@ -76,3 +72,5 @@ export function useNetInfo(): Accessor<NetInfoState> {
 export function publishNetInfo(next: NetInfoState): void {
 	if (!same(current(), next)) { setCurrent(next); }
 }
+
+listenNetInfo(publishNetInfo);
