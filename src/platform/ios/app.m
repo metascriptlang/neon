@@ -1,5 +1,4 @@
 #import <UIKit/UIKit.h>
-#import <AudioToolbox/AudioToolbox.h>
 #include "../native/app.h"
 #import "modules.h"
 #include <stdlib.h>
@@ -11,7 +10,6 @@ static char *g_value;
 static char *g_reply;
 static int g_started;
 static NSString *g_state = @"active";
-static NSUInteger g_vibration;
 
 static NSString *const FIELD = @"\x1f";
 static NSString *const RECORD = @"\x1e";
@@ -127,30 +125,6 @@ static NSString *share(NSString *arg) {
 	return @"";
 }
 
-static void vibrateStep(NSArray<NSString *> *steps, NSUInteger at, BOOL repeat, NSUInteger generation) {
-	if (generation != g_vibration) return;
-	if (at + 1 >= steps.count) {
-		if (repeat && steps.count >= 2) vibrateStep(steps, 0, repeat, generation);
-		return;
-	}
-	double pause = steps[at].doubleValue / 1000.0;
-	double length = steps[at + 1].doubleValue / 1000.0;
-	dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(pause * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-		if (generation != g_vibration) return;
-		AudioServicesPlaySystemSound(kSystemSoundID_Vibrate);
-		dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(length * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-			vibrateStep(steps, at + 2, repeat, generation);
-		});
-	});
-}
-
-static void vibrate(NSString *arg) {
-	NSArray<NSString *> *fields = [arg componentsSeparatedByString:FIELD];
-	NSArray<NSString *> *steps = fields[1].length ? [fields[1] componentsSeparatedByString:@","] : @[];
-	g_vibration += 1;
-	vibrateStep(steps, 0, [fields[0] isEqualToString:@"1"], g_vibration);
-}
-
 void niImageFetch(NSString *uri, void (^done)(UIImage *image, NSString *error));
 
 // Image.getSize / Image.prefetch: "id 0x1f uri" in, NI_APP_IMAGE_SIZE "id 0x1f w 0x1f h 0x1f error" out, in pixels.
@@ -183,14 +157,6 @@ static NSString *call(NSString *name, NSString *arg) {
 	}
 	if ([name isEqualToString:@"alert"]) return alert(arg);
 	if ([name isEqualToString:@"share"]) return share(arg);
-	if ([name isEqualToString:@"vibrate"]) {
-		vibrate(arg);
-		return @"";
-	}
-	if ([name isEqualToString:@"vibrate.cancel"]) {
-		g_vibration += 1;
-		return @"";
-	}
 	if ([name isEqualToString:@"a11y.screenReader"]) return UIAccessibilityIsVoiceOverRunning() ? @"1" : @"0";
 	if ([name isEqualToString:@"a11y.reduceMotion"]) return UIAccessibilityIsReduceMotionEnabled() ? @"1" : @"0";
 	if ([name isEqualToString:@"a11y.announce"]) {

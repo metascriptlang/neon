@@ -2,7 +2,8 @@ import { createRoot } from "../../src/core/owner";
 import { createEffect } from "../../src/core/effect";
 import { Cleanup } from "../../src/core/types";
 import { publishWindow, publishKeyboard, publishColorScheme } from "../../src/render/environment";
-import { ALERT_DISMISSED, installAppServices } from "../../src/api/services";
+import { ALERT_DISMISSED } from "../../src/api/services";
+import { installVibrationServices } from "../../src/api/vibrationServices";
 import { Dimensions, DimensionsChange, publishScale, publishScreen } from "../../src/api/dimensions";
 import { PixelRatio } from "../../src/api/pixelRatio";
 import { Appearance, AppearancePreferences } from "../../src/api/appearance";
@@ -203,14 +204,14 @@ test "Alert hands the host its buttons and runs the chosen one's onPress, or onD
 }
 
 test "an API without installed services throws, naming the API" {
-	installAppServices(null);
+	installVibrationServices(null);
 	let message = "";
 	try {
 		Vibration.vibrate();
 	} catch (e) {
 		message = (e as Error).message;
 	}
-	assert message.startsWith("Vibration.vibrate: no host has installed app services"), message;
+	assert message === "Vibration.vibrate is not available on this host", message;
 }
 
 test "Vibration turns a duration into one pause-vibrate step and passes a pattern through" {

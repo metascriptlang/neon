@@ -36,7 +36,6 @@ extern class BrowserMediaQuery {
 
 extern class navigator {
 	static extern share(data: BrowserShareData): Promise<void>;
-	static extern vibrate(pattern: number[]): boolean;
 }
 
 extern class window {
@@ -92,16 +91,6 @@ async function shareThroughNavigator(request: ShareRequest): Promise<void> {
 	}
 }
 
-function vibrate(pattern: int32[], repeat: boolean): void {
-	const steps: number[] = [0];
-	for (const step of pattern) { steps.push(step as number); }
-	try {
-		navigator.vibrate(steps);
-	} catch (e) {
-		return;
-	}
-}
-
 function announce(text: string): void {
 	if (announcer === null) {
 		const region = document.createElement("div");
@@ -123,8 +112,6 @@ const services: AppServices = {
 		if (!canShare(0)) { throw new Error("Share is not supported in this browser"); }
 		shareThroughNavigator(request);
 	},
-	vibrate,
-	cancelVibration: (): void => { vibrate([], false); },
 	screenReaderEnabled: async (): Promise<boolean> => { return false; },
 	reduceMotionEnabled: async (): Promise<boolean> => {
 		return window.matchMedia("(prefers-reduced-motion: reduce)").matches;

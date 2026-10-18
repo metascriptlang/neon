@@ -1,0 +1,22 @@
+import { VibrationServices, installVibrationServices } from "../../api/vibrationServices";
+
+extern class navigator {
+	static extern vibrate(pattern: number[]): boolean;
+}
+
+function vibrate(pattern: int32[], repeat: boolean): void {
+	const steps: number[] = [0];
+	for (const step of pattern) { steps.push(step as number); }
+	try {
+		navigator.vibrate(steps);
+	} catch (e) {
+		return;
+	}
+}
+
+const browserVibrationServices: VibrationServices = {
+	vibrate,
+	cancelVibration: (): void => { vibrate([], false); },
+};
+
+installVibrationServices(browserVibrationServices);

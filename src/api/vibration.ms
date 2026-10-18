@@ -1,4 +1,10 @@
-import { appServices } from "./services";
+import { vibrationServices } from "./vibrationServices";
+
+when (js && !server) {
+	import "../platform/browser/vibration";
+} else when (ios || android) {
+	import "../platform/native/vibration";
+}
 
 export class Vibration {
 	static vibrate(pattern: number | number[] = 400, repeat: boolean = false): void {
@@ -9,10 +15,10 @@ export class Vibration {
 		} else {
 			for (const step of pattern as number[]) { steps.push(Math.round(step) as int32); }
 		}
-		appServices("Vibration.vibrate").vibrate(steps, repeat);
+		vibrationServices("Vibration.vibrate").vibrate(steps, repeat);
 	}
 
 	static cancel(): void {
-		appServices("Vibration.cancel").cancelVibration();
+		vibrationServices("Vibration.cancel").cancelVibration();
 	}
 }

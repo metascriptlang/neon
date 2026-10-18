@@ -18,7 +18,6 @@ when (ios) {
 	@passL("-framework PhotosUI");
 	@passL("-framework UniformTypeIdentifiers");
 	@passL("-framework CoreMedia");
-	@passL("-framework AudioToolbox");
 	@passL("-framework AVFoundation");
 } else when (android) {
 	@compile("../android/app.c");
@@ -134,18 +133,10 @@ function share(request: ShareRequest): void {
 	shares.push(request.done);
 }
 
-function vibrate(pattern: int32[], repeat: boolean): void {
-	let steps = "";
-	for (const step of pattern) { steps += (steps === "" ? "" : ",") + step.toString(); }
-	call("vibrate", (repeat ? "1" : "0") + FIELD + steps);
-}
-
 const services: AppServices = {
 	dismissKeyboard: (): void => { call("keyboard.dismiss", ""); },
 	alert,
 	share,
-	vibrate,
-	cancelVibration: (): void => { call("vibrate.cancel", ""); },
 	screenReaderEnabled: async (): Promise<boolean> => { return call("a11y.screenReader", "") === "1"; },
 	reduceMotionEnabled: async (): Promise<boolean> => { return call("a11y.reduceMotion", "") === "1"; },
 	announce: (text: string): void => { call("a11y.announce", text); },

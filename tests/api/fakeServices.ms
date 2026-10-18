@@ -2,6 +2,7 @@ import {
 	AppServices, AlertRequest,
 	ShareRequest, installAppServices,
 } from "../../src/api/services";
+import { VibrationServices, installVibrationServices } from "../../src/api/vibrationServices";
 import { LinkingServices, installLinkingServices } from "../../src/api/linkingServices";
 import { ClipboardServices, installClipboardServices } from "../../src/api/clipboardServices";
 import { PermissionReply, PermissionServices, installPermissionServices } from "../../src/api/permissionServices";
@@ -103,12 +104,6 @@ export class FakeServices {
 				this.log.push("share " + request.title + "|" + request.message + "|" + request.url);
 				this.shares.push(request);
 			},
-			vibrate: (pattern: int32[], repeat: boolean): void => {
-				let text = "vibrate";
-				for (const step of pattern) { text += " " + step.toString(); }
-				this.log.push(text + (repeat ? " repeat" : ""));
-			},
-			cancelVibration: (): void => { this.log.push("cancelVibration"); },
 			screenReaderEnabled: async (): Promise<boolean> => { return this.screenReader; },
 			reduceMotionEnabled: async (): Promise<boolean> => { return false; },
 			announce: (text: string): void => { this.log.push("announce " + text); },
@@ -130,6 +125,19 @@ export class FakeServices {
 		this.installPermissions();
 		this.installClipboard();
 		this.installLinking();
+		this.installVibration();
+	}
+
+	installVibration(): void {
+		const services: VibrationServices = {
+			vibrate: (pattern: int32[], repeat: boolean): void => {
+				let text = "vibrate";
+				for (const step of pattern) { text += " " + step.toString(); }
+				this.log.push(text + (repeat ? " repeat" : ""));
+			},
+			cancelVibration: (): void => { this.log.push("cancelVibration"); },
+		};
+		installVibrationServices(services);
 	}
 
 	installLinking(): void {

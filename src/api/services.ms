@@ -24,8 +24,6 @@ export interface AppServices {
 	dismissKeyboard: () => void;
 	alert: (request: AlertRequest) => void;
 	share: (request: ShareRequest) => void;
-	vibrate: (pattern: int32[], repeat: boolean) => void;
-	cancelVibration: () => void;
 	screenReaderEnabled: () => Promise<boolean>;
 	reduceMotionEnabled: () => Promise<boolean>;
 	announce: (text: string) => void;
