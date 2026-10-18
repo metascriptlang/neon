@@ -7,6 +7,7 @@ import { createAsyncMemo } from "../../src/core/memo";
 import { createList } from "../../src/core/list";
 import { Loading, Show, ForList } from "../../src/macros/ui/flow";
 import { Gate, gated, release } from "../core/asyncClock";
+import { flush } from "../../src/core/runtime";
 
 const loadingB: NeonNode = el("b", [], [], text("loading"));
 
@@ -43,11 +44,13 @@ test "a ForList row built while its value is pending waits for it, then shows, a
 	assert shown() === "<root><p>notea!</p><p>noteb!</p></root>", "both rows show once it landed: " + shown();
 	gate.open = false;
 	setTag("2");
+	flush();
 	items.push("c");
 	assert shown() === "<root><p>notea!</p><p>noteb!</p></root>", "a row built while the value is pending waits: " + shown();
 	await release(gate);
 	assert shown() === "<root><p>notea!</p><p>noteb!</p><p>note2c!</p></root>", "the row shows once it landed: " + shown();
 	setTail("?");
+	flush();
 	assert shown() === "<root><p>notea?</p><p>noteb?</p><p>note2c?</p></root>", "every row is alive: " + shown();
 	dispose();
 }
@@ -67,11 +70,13 @@ test "a ForList replaceAll that drops and reorders rows while a value is pending
 	assert shown() === "<root><p>notea!</p><p>noteb!</p><p>notec!</p></root>", "settled: " + shown();
 	gate.open = false;
 	setTag("2");
+	flush();
 	items.replaceAll(["c", "d", "a"]);
 	assert shown() === "<root><p>notea!</p><p>noteb!</p><p>notec!</p></root>", "the replace waits: " + shown();
 	await release(gate);
 	assert shown() === "<root><p>notec!</p><p>note2d!</p><p>notea!</p></root>", "the same rows moved, one was built, one left: " + shown();
 	setTail("?");
+	flush();
 	assert shown() === "<root><p>notec?</p><p>note2d?</p><p>notea?</p></root>", "every row is alive: " + shown();
 	dispose();
 }
@@ -92,11 +97,13 @@ test "a ForList nested in a Show builds a row while pending and leaves with the 
 	assert shown() === "<root><div><p>notea!</p></div></root>", "settled: " + shown();
 	gate.open = false;
 	setTag("2");
+	flush();
 	items.insert(0, "z");
 	assert shown() === "<root><div><p>notea!</p></div></root>", "the insert waits: " + shown();
 	await release(gate);
 	assert shown() === "<root><div><p>note2z!</p><p>notea!</p></div></root>", "the row lands first: " + shown();
 	setOn(false);
+	flush();
 	assert shown() === "<root></root>", "the Show takes the list away: " + shown();
 	dispose();
 }

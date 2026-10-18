@@ -7,6 +7,7 @@ import { createRenderEffect } from "../../src/core/effect";
 import { Cleanup } from "../../src/core/types";
 import { onCleanup } from "../../src/core/cleanup";
 import { Errored } from "../../src/macros/ui/flow";
+import { flush } from "../../src/core/runtime";
 
 function throwsWhenOne(a: () => int32, err: Error): void {
 	createRenderEffect<int32>(
@@ -71,6 +72,7 @@ test "a throw in a later effect swaps in the fallback" {
 	}));
 	assert view().includes("ok"), "children mounted first: " + view();
 	setA(1);
+	flush();
 	assert seen === thrown, "the boundary caught the later throw and hands it over as is";
 	assert view().includes("caught") && !view().includes("ok"), "the fallback replaced the children: " + view();
 	dispose();
@@ -89,6 +91,7 @@ test "the failed subtree is kept behind the fallback and cleaned up with the Err
 		fallback: (err: Accessor<Error>, reset: () => void): NeonNode => el("b", [], [], text("caught")),
 	}));
 	setA(1);
+	flush();
 	assert view().includes("caught"), "the fallback shows: " + view();
 	assert cleaned === 0, "the content is parked, not torn down: " + cleaned.toString();
 	dispose();
@@ -109,8 +112,10 @@ test "reset recomputes the failed effect and keeps the children" {
 		fallback: (err: Accessor<Error>, reset: () => void): NeonNode => { again = reset; return el("b", [], [], text("caught")); },
 	}));
 	setA(1);
+	flush();
 	assert view().includes("caught"), "failed first: " + view();
 	setA(0);
+	flush();
 	(again as () => void)();
 	assert view().includes("ok") && !view().includes("caught"), "reset brought the children back: " + view();
 	assert mounts === 1, "the children were kept, not built again: " + mounts.toString();
@@ -146,6 +151,7 @@ test "Errored works written as a tag" {
 	const [view, dispose] = mounted(element(<div><Errored fallback={(err, reset) => <b>{"caught " + err().message}</b>}>{late}</Errored></div>));
 	assert view().includes("ok"), "children mounted through the tag: " + view();
 	setA(1);
+	flush();
 	assert view().includes("caught tag 7"), "the tag renders the message: " + view();
 	dispose();
 }
@@ -192,6 +198,7 @@ test "nested Errored: the nearest one catches" {
 		fallback: (err: Accessor<Error>, reset: () => void): NeonNode => el("b", [], [], text("outer")),
 	}));
 	setA(1);
+	flush();
 	assert view().includes("inner deep") && !view().includes("outer"), "only the inner fallback shows: " + view();
 	dispose();
 }
@@ -212,8 +219,10 @@ test "a sibling of the boundary keeps running after the boundary fails" {
 		(v: int32, p: int32 | null): Cleanup | null => { seen = seen + 1; return null; },
 	);
 	setA(1);
+	flush();
 	const before = seen;
 	setB(1);
+	flush();
 	assert seen > before, "the scheduler still drains after a caught error";
 	dispose();
 }

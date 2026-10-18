@@ -3,6 +3,7 @@ import { el, evt, text, dynText } from "../../src/render/node";
 import { element } from "../../src/macros/ui/element";
 import { HostNode, MockNode, mockNode, mockHost, render, fireEvent, mockToString } from "../../src/render/host";
 import { NeonEvent } from "../../src/render/event";
+import { flush } from "../../src/core/runtime";
 
 test "counter: onPress increments and reactive text updates" {
 	const [count, setCount] = createSignal(0);
@@ -16,7 +17,9 @@ test "counter: onPress increments and reactive text updates" {
 	assert mockToString(div.children[0]) === "<p>0</p>", "initial count 0";
 	const button = div.children[1];
 	fireEvent(button, "onPress");
+	flush();
 	assert mockToString(div.children[0]) === "<p>1</p>", "count 1 after click";
 	fireEvent(button, "onPress");
+	flush();
 	assert mockToString(div.children[0]) === "<p>2</p>", "count 2 after second click";
 }

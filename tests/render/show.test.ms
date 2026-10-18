@@ -2,6 +2,7 @@ import { NeonNode } from "../../src/render/node";
 import { MockNode, mockHost, render, mockToString } from "../../src/render/host";
 import { createSignal, accessor, Accessor } from "../../src/core/signal";
 import { element } from "../../src/macros/ui/element";
+import { flush } from "../../src/core/runtime";
 
 class User {
 	name: string;
@@ -21,10 +22,13 @@ test "a text-only child follows its condition" {
 	const [read, d] = mounted(element(<div><Show when={count() >= 5}>{count().toString()}</Show></div>));
 	assert read() === "<root><div></div></root>", "created: " + read();
 	setCount(7);
+	flush();
 	assert read() === "<root><div>7</div></root>", "seven: " + read();
 	setCount(5);
+	flush();
 	assert read() === "<root><div>5</div></root>", "five: " + read();
 	setCount(2);
+	flush();
 	assert read() === "<root><div></div></root>", "two: " + read();
 	d();
 }
@@ -40,17 +44,22 @@ test "a non-keyed element child builds on a truthiness flip, and when runs once 
 	assert read() === "<root><div></div></root>", "created: " + read();
 	assert whenExecuted === 1 && childrenExecuted === 0, "created counts " + whenExecuted.toString() + "/" + childrenExecuted.toString();
 	setCount(7);
+	flush();
 	assert whenExecuted === 2 && childrenExecuted === 1, "seven counts " + whenExecuted.toString() + "/" + childrenExecuted.toString();
 	assert read() === "<root><div><span>7</span><span>b</span></div></root>", "seven: " + read();
 	setCount(5);
+	flush();
 	assert whenExecuted === 3 && childrenExecuted === 1, "five counts " + whenExecuted.toString() + "/" + childrenExecuted.toString();
 	assert read() === "<root><div><span>5</span><span>b</span></div></root>", "five: " + read();
 	setCount(5);
+	flush();
 	assert whenExecuted === 3, "same value runs nothing";
 	setCount(0);
+	flush();
 	assert whenExecuted === 4 && childrenExecuted === 1, "zero counts " + whenExecuted.toString() + "/" + childrenExecuted.toString();
 	assert read() === "<root><div></div></root>", "zero: " + read();
 	setCount(5);
+	flush();
 	assert whenExecuted === 5 && childrenExecuted === 2, "back counts " + whenExecuted.toString() + "/" + childrenExecuted.toString();
 	d();
 }
@@ -65,16 +74,21 @@ test "a keyed element child rebuilds on each new value, and when runs once per c
 	const [read, d] = mounted(element(<div><Show when={when()} keyed><span>{count().toString()}</span><span>{built()}</span></Show></div>));
 	assert whenExecuted === 1 && childrenExecuted === 0, "created counts " + whenExecuted.toString() + "/" + childrenExecuted.toString();
 	setCount(7);
+	flush();
 	assert whenExecuted === 2 && childrenExecuted === 1, "seven counts " + whenExecuted.toString() + "/" + childrenExecuted.toString();
 	setCount(5);
+	flush();
 	assert whenExecuted === 3 && childrenExecuted === 2, "five rebuilt " + whenExecuted.toString() + "/" + childrenExecuted.toString();
 	assert read() === "<root><div><span>5</span><span>b</span></div></root>", "five: " + read();
 	setCount(5);
+	flush();
 	assert whenExecuted === 3, "same value runs nothing";
 	setCount(0);
+	flush();
 	assert whenExecuted === 4 && childrenExecuted === 2, "zero counts " + whenExecuted.toString() + "/" + childrenExecuted.toString();
 	assert read() === "<root><div></div></root>", "zero: " + read();
 	setCount(5);
+	flush();
 	assert whenExecuted === 5 && childrenExecuted === 3, "back counts " + whenExecuted.toString() + "/" + childrenExecuted.toString();
 	d();
 }
@@ -90,17 +104,22 @@ test "a non-keyed function child gets an accessor that follows the value, and wh
 	assert read() === "<root><div></div></root>", "created: " + read();
 	assert whenExecuted === 1 && childrenExecuted === 0, "created counts " + whenExecuted.toString() + "/" + childrenExecuted.toString();
 	setCount(7);
+	flush();
 	assert whenExecuted === 2 && childrenExecuted === 1, "seven counts " + whenExecuted.toString() + "/" + childrenExecuted.toString();
 	assert read() === "<root><div><span>7</span><span>b</span></div></root>", "seven: " + read();
 	setCount(5);
+	flush();
 	assert whenExecuted === 3 && childrenExecuted === 1, "five counts " + whenExecuted.toString() + "/" + childrenExecuted.toString();
 	assert read() === "<root><div><span>5</span><span>b</span></div></root>", "five: " + read();
 	setCount(5);
+	flush();
 	assert whenExecuted === 3, "same value runs nothing";
 	setCount(0);
+	flush();
 	assert whenExecuted === 4 && childrenExecuted === 1, "zero counts " + whenExecuted.toString() + "/" + childrenExecuted.toString();
 	assert read() === "<root><div></div></root>", "zero: " + read();
 	setCount(5);
+	flush();
 	assert whenExecuted === 5 && childrenExecuted === 2, "back counts " + whenExecuted.toString() + "/" + childrenExecuted.toString();
 	d();
 }
@@ -118,9 +137,12 @@ test "a keyed child does not rebuild when the value recomputes to the same one" 
 	</div>));
 	assert elementBuilt === 1 && functionBuilt === 1, "built at mount";
 	setCount(8);
+	flush();
 	assert elementBuilt === 1 && functionBuilt === 1, "8 is still true: " + elementBuilt.toString() + "/" + functionBuilt.toString();
 	setCount(2);
+	flush();
 	setCount(9);
+	flush();
 	assert elementBuilt === 2 && functionBuilt === 2, "a flip rebuilds: " + elementBuilt.toString() + "/" + functionBuilt.toString();
 	d();
 }
@@ -133,10 +155,13 @@ test "a keyed function child gets the value and runs for each new one" {
 	const [read, d] = mounted(element(<div><Show when={count()} keyed>{(c: number): NeonNode => <><span>{c.toString()}</span><span>{built()}</span></>}</Show></div>));
 	assert read() === "<root><div></div></root>" && executed === 0, "created: " + read();
 	setCount(7);
+	flush();
 	assert read() === "<root><div><span>7</span><span>b</span></div></root>" && executed === 1, "seven: " + read();
 	setCount(5);
+	flush();
 	assert read() === "<root><div><span>5</span><span>b</span></div></root>" && executed === 2, "five: " + read();
 	setCount(0);
+	flush();
 	assert read() === "<root><div></div></root>" && executed === 2, "zero: " + read();
 	d();
 }
@@ -148,10 +173,13 @@ test "a keyed function child over a nullable object receives the object" {
 	const [read, d] = mounted(element(<div><Show when={user()} keyed>{(u: User): NeonNode => { executed = executed + 1; return <span>{u.name}</span>; }}</Show></div>));
 	assert read() === "<root><div></div></root>", "created: " + read();
 	setUser(new User("ann"));
+	flush();
 	assert read() === "<root><div><span>ann</span></div></root>" && executed === 1, "ann: " + read();
 	setUser(new User("ann"));
+	flush();
 	assert read() === "<root><div><span>ann</span></div></root>" && executed === 2, "a new object with the same name rebuilds: " + executed.toString();
 	setUser(null);
+	flush();
 	assert read() === "<root><div></div></root>" && executed === 2, "null: " + read();
 	d();
 }
@@ -163,12 +191,16 @@ test "a non-keyed function child over a nullable object follows the value withou
 	const [read, d] = mounted(element(<div><Show when={user()}>{(u: Accessor<User>): NeonNode => { executed = executed + 1; return <span>{u().name}</span>; }}</Show></div>));
 	assert read() === "<root><div></div></root>", "created: " + read();
 	setUser(new User("ann"));
+	flush();
 	assert read() === "<root><div><span>ann</span></div></root>" && executed === 1, "ann: " + read();
 	setUser(new User("bob"));
+	flush();
 	assert read() === "<root><div><span>bob</span></div></root>" && executed === 1, "bob follows in place: " + read() + " built " + executed.toString();
 	setUser(null);
+	flush();
 	assert read() === "<root><div></div></root>", "null: " + read();
 	setUser(new User("cy"));
+	flush();
 	assert read() === "<root><div><span>cy</span></div></root>" && executed === 2, "cy rebuilds after a hide: " + read();
 	d();
 }
@@ -186,13 +218,17 @@ test "a fallback shows while the condition is off, in every child form" {
 	assert withFn() === "<root><div><i>none</i></div></root>", "function off: " + withFn();
 	assert keyedFn() === "<root><div><i>none</i></div></root>", "keyed function off: " + keyedFn();
 	setCount(7);
+	flush();
 	setUser(new User("ann"));
+	flush();
 	assert element1() === "<root><div><span>7</span></div></root>", "element on: " + element1();
 	assert keyedEl() === "<root><div><span>7</span></div></root>", "keyed element on: " + keyedEl();
 	assert withFn() === "<root><div><span>ann</span></div></root>", "function on: " + withFn();
 	assert keyedFn() === "<root><div><span>ann</span></div></root>", "keyed function on: " + keyedFn();
 	setCount(2);
+	flush();
 	setUser(null);
+	flush();
 	assert element1() === "<root><div><i>low</i></div></root>", "element off again: " + element1();
 	assert keyedEl() === "<root><div><i>low</i></div></root>", "keyed element off again: " + keyedEl();
 	assert withFn() === "<root><div><i>none</i></div></root>", "function off again: " + withFn();
@@ -208,6 +244,7 @@ test "the narrowed accessor throws when read after the condition went false" {
 	const live = held as Accessor<User>;
 	assert live().name === "ann", "reads while on";
 	setUser(null);
+	flush();
 	let caught = "";
 	try {
 		live();
@@ -227,6 +264,7 @@ test "disposing the view stops the when expression" {
 	assert whenExecuted === 1, "ran once at mount";
 	d();
 	setCount(2);
+	flush();
 	assert whenExecuted === 1, "never again after dispose: " + whenExecuted.toString();
 }
 
@@ -241,16 +279,23 @@ test "a shown branch and a shown fallback follow their signal while shown and st
 	const [read, d] = mounted(element(<div><Show when={on()} fallback={<i>{fallback()}</i>}><span>{branch()}</span></Show></div>));
 	assert read() === "<root><div><span>a</span></div></root>" && branchReads === 1 && fallbackReads === 0, "created: " + read();
 	setLabel("b");
+	flush();
 	setLabel("c");
+	flush();
 	assert read() === "<root><div><span>c</span></div></root>" && branchReads === 3, "the branch follows while it stays shown: " + branchReads.toString();
 	setOn(false);
+	flush();
 	assert read() === "<root><div><i>c</i></div></root>" && fallbackReads === 1, "flipped to the fallback: " + read();
 	setLabel("d");
+	flush();
 	setLabel("e");
+	flush();
 	assert read() === "<root><div><i>e</i></div></root>" && fallbackReads === 3, "the fallback follows while it is shown: " + fallbackReads.toString();
 	assert branchReads === 3, "the branch's binding was disposed with the branch: " + branchReads.toString();
 	setOn(true);
+	flush();
 	setLabel("f");
+	flush();
 	assert read() === "<root><div><span>f</span></div></root>" && branchReads === 5, "the branch is back and follows: " + branchReads.toString();
 	assert fallbackReads === 3, "the fallback's binding was disposed with the fallback: " + fallbackReads.toString();
 	d();
@@ -262,6 +307,7 @@ test "a bare accessor of a nullable object is the when value" {
 	const [read, d] = mounted(element(<div><Show when={user}>{(u: Accessor<User>): NeonNode => <span>{u().name}</span>}</Show></div>));
 	assert read() === "<root><div></div></root>", "created: " + read();
 	setUser(new User("ann"));
+	flush();
 	assert read() === "<root><div><span>ann</span></div></root>", "ann: " + read();
 	d();
 }
@@ -270,6 +316,7 @@ test "a function child without a parameter type gets the narrowed type" {
 	const [user, setUser] = createSignal<User | null>(null);
 	const [read, d] = mounted(element(<div><Show when={user()}>{(u): NeonNode => <b>{u().name}</b>}</Show></div>));
 	setUser(new User("ann"));
+	flush();
 	assert read() === "<root><div><b>ann</b></div></root>", "ann: " + read();
 	d();
 }
@@ -279,10 +326,13 @@ test "a Show nests inside a function child" {
 	const [age, setAge] = createSignal<number | null>(null);
 	const [read, d] = mounted(element(<div><Show when={user()}>{(u: Accessor<User>): NeonNode => <p>{u().name}<Show when={age()}>{(a: Accessor<number>): NeonNode => <b>{a().toString()}</b>}</Show></p>}</Show></div>));
 	setUser(new User("ann"));
+	flush();
 	assert read() === "<root><div><p>ann</p></div></root>", "outer only: " + read();
 	setAge(9);
+	flush();
 	assert read() === "<root><div><p>ann<b>9</b></p></div></root>", "inner on: " + read();
 	setUser(null);
+	flush();
 	assert read() === "<root><div></div></root>", "outer off: " + read();
 	d();
 }

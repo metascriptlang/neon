@@ -6,7 +6,7 @@ import { Accessor } from "../../src/core/signal";
 import { createRoot } from "../../src/core/owner";
 import { onCleanup } from "../../src/core/cleanup";
 import { createRenderEffect } from "../../src/core/effect";
-import { resetErrorHalt } from "../../src/core/runtime";
+import { resetErrorHalt, flush } from "../../src/core/runtime";
 import { Cleanup, Dispose } from "../../src/core/types";
 
 
@@ -37,6 +37,7 @@ test "ForList is written as a tag" {
 	const ulNode = (root as unknown as MockNode).children[0];
 	assert rowText(ulNode) === "12", "initial: " + rowText(ulNode);
 	l.push(3);
+	flush();
 	assert rowText(ulNode) === "123", "after push: " + rowText(ulNode);
 	d();
 }
@@ -76,12 +77,16 @@ test "push and insert put a row at the slot the op names" {
 	const d = render(ul, host, root);
 	const ulNode = (root as unknown as MockNode).children[0];
 	l.push(3);
+	flush();
 	assert rowText(ulNode) === "123", "push appends: " + rowText(ulNode);
 	l.insert(0, 0);
+	flush();
 	assert rowText(ulNode) === "0123", "insert at the head: " + rowText(ulNode);
 	l.insert(2, 9);
+	flush();
 	assert rowText(ulNode) === "01923", "insert in the middle: " + rowText(ulNode);
 	l.insert(5, 4);
+	flush();
 	assert rowText(ulNode) === "019234", "insert at the length: " + rowText(ulNode);
 	d();
 }
@@ -98,10 +103,13 @@ test "a row is built once and reused across insert, move and remove" {
 	const d = render(ul, host, root);
 	assert builds === 3, "three rows built";
 	l.move(0, 2);
+	flush();
 	assert builds === 3, "move builds nothing";
 	l.remove(0);
+	flush();
 	assert builds === 3, "remove builds nothing";
 	l.insert(0, 7);
+	flush();
 	assert builds === 4, "insert builds exactly one row";
 	d();
 }
@@ -114,10 +122,13 @@ test "move only reorders the host nodes" {
 	const d = render(ul, host, root);
 	const ulNode = (root as unknown as MockNode).children[0];
 	l.move(0, 2);
+	flush();
 	assert rowText(ulNode) === "2314", "forward move: " + rowText(ulNode);
 	l.move(3, 0);
+	flush();
 	assert rowText(ulNode) === "4231", "backward move: " + rowText(ulNode);
 	l.move(1, 2);
+	flush();
 	assert rowText(ulNode) === "4321", "neighbour swap: " + rowText(ulNode);
 	d();
 }
@@ -137,11 +148,14 @@ test "remove takes the row's host nodes out and disposes its scope" {
 	const d = render(ul, host, root);
 	const ulNode = (root as unknown as MockNode).children[0];
 	l.remove(1);
+	flush();
 	assert rowText(ulNode) === "13", "middle row gone: " + rowText(ulNode);
 	assert cleanups === 1, "its scope was disposed";
 	l.remove(1);
+	flush();
 	assert rowText(ulNode) === "1", "tail row gone: " + rowText(ulNode);
 	l.remove(0);
+	flush();
 	assert rowText(ulNode) === "", "empty: " + rowText(ulNode);
 	assert cleanups === 3, "one cleanup per removed row";
 	d();
@@ -159,6 +173,7 @@ test "set updates the row in place through its own signal" {
 	const d = render(ul, host, root);
 	const ulNode = (root as unknown as MockNode).children[0];
 	l.set(1, 9);
+	flush();
 	assert rowText(ulNode) === "193", "the row shows the new value: " + rowText(ulNode);
 	assert builds === 3, "set builds no row";
 	d();
@@ -173,13 +188,18 @@ test "a list of items with no hash mounts and takes push, set, move and remove" 
 	const ulNode = (root as unknown as MockNode).children[0];
 	assert rowText(ulNode) === "a1", "initial: " + rowText(ulNode);
 	l.push({ text: "b", runs: [{ units: 1 }, { units: 2 }], cursorCell: 0 });
+	flush();
 	l.push({ text: "c", runs: [], cursorCell: 2 });
+	flush();
 	assert rowText(ulNode) === "a1b2c0", "push: " + rowText(ulNode);
 	l.set(0, { text: "A", runs: [{ units: 1 }, { units: 2 }, { units: 3 }], cursorCell: 1 });
+	flush();
 	assert rowText(ulNode) === "A3b2c0", "set: " + rowText(ulNode);
 	l.move(2, 0);
+	flush();
 	assert rowText(ulNode) === "c0A3b2", "move: " + rowText(ulNode);
 	l.remove(1);
+	flush();
 	assert rowText(ulNode) === "c0b2", "remove: " + rowText(ulNode);
 	d();
 }
@@ -196,12 +216,15 @@ test "replaceAll keeps the row of an item that comes back, in its new place" {
 	const d = render(ul, host, root);
 	const ulNode = (root as unknown as MockNode).children[0];
 	l.replaceAll([3, 1, 2]);
+	flush();
 	assert rowText(ulNode) === "312", "reordered: " + rowText(ulNode);
 	assert builds === 3, "a pure reorder builds no row";
 	l.replaceAll([2, 3, 9]);
+	flush();
 	assert rowText(ulNode) === "239", "one new item: " + rowText(ulNode);
 	assert builds === 4, "only the item never seen built a row";
 	l.replaceAll([]);
+	flush();
 	assert rowText(ulNode) === "", "empty: " + rowText(ulNode);
 	d();
 }
@@ -220,8 +243,10 @@ test "replaceAll disposes the rows of the items that left" {
 	const root = host.createElement("root");
 	const d = render(ul, host, root);
 	l.replaceAll([2]);
+	flush();
 	assert cleanups === 2, "the two absent items were disposed";
 	l.replaceAll([]);
+	flush();
 	assert cleanups === 3, "and the last one with the empty list";
 	d();
 }
@@ -240,9 +265,11 @@ test "a keyed list reuses the row of the same key and shows the new item" {
 	const ulNode = (root as unknown as MockNode).children[0];
 	assert rowText(ulNode) === "ab", "initial: " + rowText(ulNode);
 	l.replaceAll([{ id: 2, label: "B" }, { id: 1, label: "A" }]);
+	flush();
 	assert rowText(ulNode) === "BA", "same keys, new objects, new order: " + rowText(ulNode);
 	assert builds === 2, "no row was rebuilt";
 	l.replaceAll([{ id: 3, label: "c" }, { id: 1, label: "A" }]);
+	flush();
 	assert rowText(ulNode) === "cA", "one key gone, one new: " + rowText(ulNode);
 	assert builds === 3, "one row built for the new key";
 	d();
@@ -259,7 +286,7 @@ test "a duplicate key in replaceAll raises and names the key" {
 	const root = host.createElement("root");
 	const d = render(ul, host, root);
 	let caught = "";
-	try { l.replaceAll([{ id: 1, label: "a" }, { id: 1, label: "b" }]); } catch (e) { caught = e.toString(); }
+	try { l.replaceAll([{ id: 1, label: "a" }, { id: 1, label: "b" }]); flush(); } catch (e) { caught = e.toString(); }
 	resetErrorHalt();
 	d();
 	assert caught !== "", "a duplicate key raises";
@@ -274,8 +301,11 @@ test "ops that follow a replaceAll land on the rebuilt rows" {
 	const d = render(ul, host, root);
 	const ulNode = (root as unknown as MockNode).children[0];
 	l.replaceAll([5, 6]);
+	flush();
 	l.push(7);
+	flush();
 	l.remove(0);
+	flush();
 	assert rowText(ulNode) === "67", "reset then push then remove: " + rowText(ulNode);
 	d();
 }
@@ -300,9 +330,11 @@ test "a nested ForList reacts to its own list and dies with its row" {
 	const text = mockToString(root as unknown as MockNode);
 	assert text.includes("1:7") && text.includes("2:7"), "both rows mounted their nested list: " + text;
 	inner.push(8);
+	flush();
 	const grown = mockToString(root as unknown as MockNode);
 	assert grown.includes("1:8") && grown.includes("2:8"), "both nested regions took the op: " + grown;
 	outer.remove(0);
+	flush();
 	assert innerCleanups === 2, "the nested rows of the removed outer row were disposed";
 	const left = mockToString(root as unknown as MockNode);
 	assert !left.includes("1:7"), "the removed row's nodes are gone: " + left;
@@ -325,6 +357,7 @@ test "disposing the region disposes every row and detaches from the list" {
 	dispose();
 	assert cleanups === 3, "every row was disposed";
 	l.push(4);
+	flush();
 	assert cleanups === 3, "a detached region takes no further op";
 }
 
@@ -339,7 +372,9 @@ test "two regions over one list both follow its ops" {
 	const aNode = (root as unknown as MockNode).children[0];
 	const bNode = (root as unknown as MockNode).children[1];
 	l.push(2);
+	flush();
 	l.move(0, 1);
+	flush();
 	assert rowText(aNode) === "21", "first region: " + rowText(aNode);
 	assert rowText(bNode) === "21", "second region: " + rowText(bNode);
 	disposeA();
@@ -363,6 +398,7 @@ test "a row that reads the list length stays reactive beside the ops" {
 	const ulNode = (root as unknown as MockNode).children[0];
 	assert runs === 1, "the length effect ran once";
 	l.push(3);
+	flush();
 	assert runs === 2, "the length effect saw the push";
 	assert rowText(ulNode) === "123", "and the region applied it: " + rowText(ulNode);
 	stop();

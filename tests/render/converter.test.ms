@@ -7,6 +7,7 @@
 import { createSignal, accessor, Accessor } from "../../src/core/signal";
 import { NeonNode } from "../../src/render/node";
 import { render, mockHost, mockNode, mockToString, HostNode } from "../../src/render/host";
+import { flush } from "../../src/core/runtime";
 
 interface CounterProps {
 	count: Accessor<number>;
@@ -34,6 +35,7 @@ test "render() mounts bare JSX at the app entry" {
 	render(<section><Counter count={n()} label="e" /></section>, host, root as unknown as HostNode);
 	assert mockToString(root) === "<root><section><p class=\"e\">n=1</p></section></root>", "initial: " + mockToString(root);
 	setN(3);
+	flush();
 	assert mockToString(root) === "<root><section><p class=\"e\">n=3</p></section></root>", "after set: " + mockToString(root);
 }
 
@@ -45,6 +47,7 @@ test "a component returns bare JSX and stays reactive" {
 	render(<div><Counter count={n()} label="c" /></div>, host, root as unknown as HostNode);
 	assert mockToString(root) === "<root><div><p class=\"c\">n=1</p></div></root>", "initial: " + mockToString(root);
 	setN(5);
+	flush();
 	assert mockToString(root) === "<root><div><p class=\"c\">n=5</p></div></root>", "after set: " + mockToString(root);
 	assert counterRuns === 1, "signal change must not re-run the body";
 }

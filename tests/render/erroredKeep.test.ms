@@ -7,6 +7,7 @@ import { createRenderEffect } from "../../src/core/effect";
 import { Cleanup } from "../../src/core/types";
 import { onCleanup } from "../../src/core/cleanup";
 import { Errored } from "../../src/macros/ui/flow";
+import { flush } from "../../src/core/runtime";
 
 function throwsWhenOne(a: () => int32, err: Error, runs: int32[]): void {
 	createRenderEffect<int32>(
@@ -47,12 +48,16 @@ test "the content keeps its state and its nodes through the fallback and a reset
 	const shown = (): string => mockToString(root as unknown as MockNode);
 	const before = nodeOf(root, "p");
 	(seven as () => void)();
+	flush();
 	assert shown().includes("<p>7</p>"), shown();
 
 	setA(1);
+	flush();
 	assert shown().includes("caught") && !shown().includes("<p>"), "the fallback replaced the content: " + shown();
 	setA(0);
+	flush();
 	(again as () => void)();
+	flush();
 	assert shown().includes("<p>7</p>") && !shown().includes("caught"), "the content came back with its state: " + shown();
 	assert nodeOf(root, "p") === before, "the content is the same host node";
 	assert bodyRuns[0] === 1, "the view ran once: " + bodyRuns[0].toString();
@@ -80,9 +85,12 @@ test "reset recomputes only the effect that failed" {
 	}), host, root);
 	assert steady[0] === 1 && failing[0] === 1, "each effect ran once at the mount";
 	setA(1);
+	flush();
 	assert failing[0] === 2, "the failing effect saw the write: " + failing[0].toString();
 	setA(0);
+	flush();
 	(again as () => void)();
+	flush();
 	assert failing[0] === 3, "reset ran the failed effect again: " + failing[0].toString();
 	assert steady[0] === 1, "the effect that did not fail was left alone: " + steady[0].toString();
 	dispose();
@@ -105,6 +113,7 @@ test "an error while the content mounts is a tree that never existed: reset moun
 	const shown = (): string => mockToString(root as unknown as MockNode);
 	assert shown().includes("caught") && !shown().includes("partial"), "the partial nodes left the tree: " + shown();
 	(again as () => void)();
+	flush();
 	assert shown().includes("partial 2") && !shown().includes("partial 1") && !shown().includes("caught"), "reset mounted fresh content: " + shown();
 	assert attempts === 2, "the view ran again: " + attempts.toString();
 	dispose();
@@ -124,6 +133,7 @@ test "disposing an Errored with its content parked runs the content cleanups bef
 	const root = host.createElement("root");
 	const dispose = render(Errored({ children: content, fallback: caughtB }), host, root);
 	setA(1);
+	flush();
 	assert mockToString(root as unknown as MockNode).includes("caught"), "parked behind the fallback";
 	assert log.length === 0, "nothing ran yet: " + log.join(",");
 	dispose();

@@ -5,7 +5,7 @@ import { Host, HostNode, MockNode, mockNode, mockHost, render, mockToString } fr
 import { Context, createContext, useContext, ContextNotFoundError, NoOwnerError } from "../../src/render/context";
 import { onCleanup } from "../../src/core/cleanup";
 import { createRoot } from "../../src/core/owner";
-import { resetErrorHalt } from "../../src/core/runtime";
+import { resetErrorHalt, flush } from "../../src/core/runtime";
 import { Dispose } from "../../src/core/types";
 import { Errored, For, ForUnkeyed, Show } from "../../src/macros/ui/flow";
 
@@ -104,6 +104,7 @@ test "the value is read once when the provider mounts, so a signal in it does no
 	render(app, mockHost(), root as unknown as HostNode);
 	assert mockToString(root) === "<root><div>blue</div></root>", "initial read: " + mockToString(root);
 	setAccent("green");
+	flush();
 	assert mockToString(root) === "<root><div>blue</div></root>", "the provided value stayed the mount-time one: " + mockToString(root);
 	assert reads === 1, "the value expression ran once: " + reads.toString();
 }
@@ -120,9 +121,12 @@ test "a provider mounted inside an effect does not subscribe the effect to the v
 	);
 	render(app, mockHost(), root as unknown as HostNode);
 	setAccent("green");
+	flush();
 	assert mockToString(root) === "<root><span>blue</span></root>", "the signal read in the value did not re-mount the provider: " + mockToString(root);
 	setOn(false);
+	flush();
 	setOn(true);
+	flush();
 	assert mockToString(root) === "<root><span>green</span></root>", "a new mount reads the signal again: " + mockToString(root);
 }
 
@@ -140,6 +144,7 @@ test "a For row reads the provider above the list" {
 	render(app, mockHost(), root as unknown as HostNode);
 	assert mockToString(root) === "<root><ul><li>blue1</li></ul></root>", "first row saw the provider: " + mockToString(root);
 	setItems([1, 2]);
+	flush();
 	assert mockToString(root) === "<root><ul><li>blue1</li><li>blue2</li></ul></root>", "a row added later saw the provider: " + mockToString(root);
 }
 
@@ -176,7 +181,9 @@ test "a For fallback reads the provider above the list" {
 	render(app, mockHost(), root as unknown as HostNode);
 	assert mockToString(root) === "<root><ul><li>blue</li></ul></root>", "fallback saw the provider: " + mockToString(root);
 	setItems([7]);
+	flush();
 	setItems([]);
+	flush();
 	assert mockToString(root) === "<root><ul><li>blue</li></ul></root>", "a rebuilt fallback saw the provider: " + mockToString(root);
 }
 
@@ -208,10 +215,13 @@ test "a provider that a Show drops and brings back feeds its child each time" {
 	render(app, mockHost(), root as unknown as HostNode);
 	assert mockToString(root) === "<root><span>blue</span></root>", "mounted: " + mockToString(root);
 	setOn(false);
+	flush();
 	assert mockToString(root) === "<root></root>", "dropped: " + mockToString(root);
 	setOn(true);
+	flush();
 	assert mockToString(root) === "<root><span>blue</span></root>", "back: " + mockToString(root);
 	setOn(false);
+	flush();
 	assert mockToString(root) === "<root></root>", "dropped again: " + mockToString(root);
 }
 
@@ -236,7 +246,9 @@ test "dropping the first of two sibling providers keeps the second one readable"
 	);
 	render(app, mockHost(), root as unknown as HostNode);
 	setShowA(false);
+	flush();
 	setItems([1]);
+	flush();
 	assert mockToString(root) === "<root><div><ul><li>B1</li></ul></div></root>", "a row mounted after the removal found the surviving provider: " + mockToString(root);
 }
 
@@ -261,7 +273,9 @@ test "a nested provider that goes leaves the outer provider readable" {
 	});
 	render(app, mockHost(), root as unknown as HostNode);
 	setInner(false);
+	flush();
 	setItems([1]);
+	flush();
 	assert mockToString(root) === "<root><div><ul><li>outer1</li></ul></div></root>", "the outer provider still answers: " + mockToString(root);
 }
 
@@ -340,6 +354,7 @@ test "a signal reaches a reader through a context as a field of the value" {
 	render(<WhereContext value={{ here: place }}><WhereReader /></WhereContext>, mockHost(), root as unknown as HostNode);
 	assert mockToString(root) === "<root><p>a</p></root>", mockToString(root);
 	setPlace("b");
+	flush();
 	assert mockToString(root) === "<root><p>b</p></root>", mockToString(root);
 }
 
@@ -390,6 +405,7 @@ test "a provider with a Show child feeds a row that appears after the mount" {
 	render(element(<ThemeContext value={{ accent: "dark" }}><Show when={on()}><ThemeText /></Show></ThemeContext>), mockHost(), root as unknown as HostNode);
 	assert mockToString(root) === "<root></root>", mockToString(root);
 	setOn(true);
+	flush();
 	assert mockToString(root) === "<root><div>dark</div></root>", "a row mounted later still sits under the provider: " + mockToString(root);
 }
 
@@ -565,8 +581,10 @@ test "a provider a Show drops disposes its value and builds a new one when it re
 	render(element(<Show when={on()}><T value={made()}><span>{useContext(T).accent}</span></T></Show>), mockHost(), root as unknown as HostNode);
 	assert mockToString(root) === "<root><span>v1</span></root>", mockToString(root);
 	setOn(false);
+	flush();
 	assert cleanups === 1, "dropping the provider disposed the value: " + cleanups.toString();
 	setOn(true);
+	flush();
 	assert mockToString(root) === "<root><span>v2</span></root>", "the return built a fresh value: " + mockToString(root);
 	assert built === 2 && cleanups === 1, "built " + built.toString() + " cleaned " + cleanups.toString();
 }

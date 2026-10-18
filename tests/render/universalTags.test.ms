@@ -13,6 +13,7 @@ import { htmlTagFor } from "../../src/render/node";
 import { HostNode, MockNode, mockHost, mockNode, render, fireEvent, fireEventWith, mockToString } from "../../src/render/host";
 import { terminalHost } from "../../src/platform/terminal/host";
 import { TerminalNode } from "../../src/platform/terminal/types";
+import { flush } from "../../src/core/runtime";
 
 test "htmlTagFor maps the wire vocabulary, unknown tags pass through" {
 	assert htmlTagFor("view") === "div", "view";
@@ -38,7 +39,9 @@ test "Pressable speaks onPress end to end on the mock" {
 	let presses = 0;
 	render(element(<Pressable onPress={(): void => { presses = presses + 1; }}>go</Pressable>), host, root as unknown as HostNode);
 	fireEvent(root.children[0], "onPress");
+	flush();
 	fireEvent(root.children[0], "onPress");
+	flush();
 	assert presses === 2, "presses=" + presses.toString();
 }
 
@@ -50,6 +53,7 @@ test "TextInput hands onChangeText the text in the universal vocabulary" {
 	const e = neonEvent("changetext");
 	e.value = "chao";
 	fireEventWith(root.children[0], "onChangeText", e);
+	flush();
 	assert typed === "chao", "typed=" + typed;
 }
 
@@ -59,6 +63,7 @@ test "a reactive class follows its signal on every component of the vocabulary" 
 	render(element(<View class={cls()}><Text class={cls()}>t</Text><Pressable class={cls()}><Text>p</Text></Pressable><TextInput class={cls()} /></View>), mockHost(), root as unknown as HostNode);
 	assert mockToString(root) === "<root><view class=\"a\"><text class=\"a\">t</text><pressable class=\"a\" accessible=\"true\"><text>p</text></pressable><textinput class=\"a\"></textinput></view></root>", "initial: " + mockToString(root);
 	setCls("b");
+	flush();
 	assert mockToString(root) === "<root><view class=\"b\"><text class=\"b\">t</text><pressable class=\"b\" accessible=\"true\"><text>p</text></pressable><textinput class=\"b\"></textinput></view></root>", "after set: " + mockToString(root);
 }
 

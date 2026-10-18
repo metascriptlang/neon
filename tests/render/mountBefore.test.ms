@@ -7,6 +7,7 @@ import { Host, HostNode, MockNode, mockNode, mockHost, mockToString } from "../.
 import { Row } from "../../src/render/reconcile";
 import { createContext, useContext } from "../../src/render/context";
 import { Dispose } from "../../src/core/types";
+import { flush } from "../../src/core/runtime";
 
 interface Theme { accent: string; }
 
@@ -76,8 +77,10 @@ test "a region anchors in front of the sibling and grows on its own side" {
 	});
 	assert mockToString(root) === "<root><a></a><li>1</li><li>2</li><z></z></root>", "initial: " + mockToString(root);
 	setList([1, 2, 3]);
+	flush();
 	assert mockToString(root) === "<root><a></a><li>1</li><li>2</li><li>3</li><z></z></root>", "append stays on the region side: " + mockToString(root);
 	setList([3]);
+	flush();
 	assert mockToString(root) === "<root><a></a><li>3</li><z></z></root>", "shrink leaves the siblings alone: " + mockToString(root);
 	dispose();
 }

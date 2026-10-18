@@ -3,6 +3,7 @@ import { createSignal } from "../../src/core/signal";
 import { createEffect } from "../../src/core/effect";
 import { createRoot } from "../../src/core/owner";
 import { Cleanup } from "../../src/core/types";
+import { flush } from "../../src/core/runtime";
 
 test "traceRun runs the function once and discards what it returns" {
 	let runs = 0;
@@ -24,8 +25,10 @@ test "a read inside traceRun is tracked by the computation that called it" {
 			(v: int32, p: int32 | null): Cleanup | null => { effects += 1; return null; });
 		return dispose;
 	});
+	flush();
 	assert computes === 1 && effects === 1, "the effect ran once on creation";
 	setN(2);
+	flush();
 	assert computes === 2 && effects === 2, "a write to the traced signal re-ran the computation";
 }
 

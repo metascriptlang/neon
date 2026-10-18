@@ -5,7 +5,7 @@ import { mapArray } from "../../src/core/array";
 import { createMemo } from "../../src/core/memo";
 import { createSignal, Accessor } from "../../src/core/signal";
 import { runWithOwner } from "../../src/core/owner";
-import { getOwner } from "../../src/core/runtime";
+import { getOwner, flush } from "../../src/core/runtime";
 import { createList } from "../../src/core/list";
 import { ForList } from "../../src/macros/ui/flow";
 
@@ -45,12 +45,14 @@ test "a dropped row with a keeper is parked in its holder and comes back as the 
 	assert shown(root) === "<root><p>kept</p></root>", shown(root);
 
 	setOn(false);
+	flush();
 	assert shown(root) === "<root></root>", "the root lost the row: " + shown(root);
 	assert shown(holder) === "<holder><p>kept</p></holder>", "the holder took it: " + shown(holder);
 	assert firstOf(holder) === node, "parked nodes are the same nodes";
 	assert row.parent === holder, "the row records where it is parked";
 
 	setOn(true);
+	flush();
 	assert shown(root) === "<root><p>kept</p></root>", shown(root);
 	assert shown(holder) === "<holder></holder>", "the holder gave it back: " + shown(holder);
 	assert firstOf(root) === node, "the row came back as the same node";
@@ -75,10 +77,12 @@ test "a dropped row without a keeper is dead, and a later row builds fresh" {
 	const node = firstOf(root);
 
 	setOn(false);
+	flush();
 	assert shown(root) === "<root></root>", shown(root);
 	assert row.start === null && row.end === null, "a removed row holds no nodes";
 
 	setOn(true);
+	flush();
 	assert shown(root) === "<root><p>kept</p></root>", shown(root);
 	assert firstOf(root) !== node, "the row built new nodes instead of reusing dead ones";
 	assert runs[0] === 2, "the view ran again: " + runs[0].toString();
@@ -108,15 +112,19 @@ test "a region at the top of a parked row updates into the holder and shows it w
 	assert shown(root) === "<root><li>a</li></root>", shown(root);
 
 	setOn(false);
+	flush();
 	setItems(["a", "b", "c"]);
+	flush();
 	assert shown(root) === "<root></root>", "nothing leaked into the old parent: " + shown(root);
 	assert shown(holder) === "<holder><li>a</li><li>b</li><li>c</li></holder>", "the update landed in the holder: " + shown(holder);
 
 	setOn(true);
+	flush();
 	assert shown(root) === "<root><li>a</li><li>b</li><li>c</li></root>", shown(root);
 	assert shown(holder) === "<holder></holder>", shown(holder);
 
 	setItems(["c"]);
+	flush();
 	assert shown(root) === "<root><li>c</li></root>", "the region updates in its parent again: " + shown(root);
 	dispose();
 }
@@ -147,14 +155,19 @@ test "a ForList at the top of a parked row updates into the holder and shows it 
 	assert shown(root) === "<root><li>a</li></root>", shown(root);
 
 	setOn(false);
+	flush();
 	items.push("b");
+	flush();
 	items.replaceAll(["c", "b", "a"]);
+	flush();
 	assert shown(root) === "<root></root>", "nothing leaked into the old parent: " + shown(root);
 	assert shown(holder) === "<holder><li>c</li><li>b</li><li>a</li></holder>", "the update landed in the holder: " + shown(holder);
 
 	setOn(true);
+	flush();
 	assert shown(root) === "<root><li>c</li><li>b</li><li>a</li></root>", shown(root);
 	items.remove(1);
+	flush();
 	assert shown(root) === "<root><li>c</li><li>a</li></root>", "the list updates in its parent again: " + shown(root);
 	dispose();
 }

@@ -10,6 +10,7 @@ import { Text } from "../../src/components/primitives";
 import { VirtualizedList, ListRenderItemInfo } from "../../src/components/virtualizedList";
 import { FlatList } from "../../src/components/flatList";
 import { Gate, gated, release } from "../core/asyncClock";
+import { flush } from "../../src/core/runtime";
 
 interface Item {
 	key: string;
@@ -61,14 +62,18 @@ test "a VirtualizedList cell that reads a pending value shows the fallback, then
 	await release(gate);
 	assert has(shown(), "notea!") && has(shown(), "noteb!"), "both cells show once it landed: " + shown();
 	setTail("?");
+	flush();
 	assert has(shown(), "notea?") && has(shown(), "noteb?"), "a later write still updates the page: " + shown();
 	gate.open = false;
 	setTag("2");
+	flush();
 	setKeys([{ key: "a" }, { key: "b" }, { key: "c" }]);
+	flush();
 	assert has(shown(), "notea?") && !has(shown(), "notec"), "a cell built while the value is pending waits: " + shown();
 	await release(gate);
 	assert has(shown(), "note2c?"), "a later cell builds once it landed: " + shown();
 	setTail("!");
+	flush();
 	assert has(shown(), "note2c!") && has(shown(), "note2a!"), "and every cell is alive: " + shown();
 	dispose();
 }
@@ -90,9 +95,12 @@ test "a VirtualizedList nested in a Show leaves with it and comes back" {
 	await release(gate);
 	assert has(shown(), "notea!"), "the cells show once it landed: " + shown();
 	setOn(false);
+	flush();
 	assert shown() === "<root></root>", "the list leaves: " + shown();
 	setOn(true);
+	flush();
 	setTail("?");
+	flush();
 	assert has(shown(), "notea?") && has(shown(), "noteb?"), "and comes back alive: " + shown();
 	dispose();
 }
@@ -114,11 +122,14 @@ test "a two-column grid item that reads a pending value waits for it, then shows
 	assert has(shown(), "notea!") && has(shown(), "noteb!") && has(shown(), "notec!"), "every item shows once it landed: " + shown();
 	gate.open = false;
 	setTag("2");
+	flush();
 	setKeys([{ key: "a" }, { key: "b" }, { key: "c" }, { key: "d" }]);
+	flush();
 	assert !has(shown(), "noted"), "an item built while the value is pending waits: " + shown();
 	await release(gate);
 	assert has(shown(), "note2d!"), "the item shows once it landed: " + shown();
 	setTail("?");
+	flush();
 	assert has(shown(), "note2d?") && has(shown(), "note2a?"), "every item is alive: " + shown();
 	dispose();
 }

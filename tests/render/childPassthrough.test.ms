@@ -10,6 +10,7 @@ import { element } from "../../src/macros/ui/element";
 // which is how bare-JSX user code gets it.
 import { el, NeonNode } from "../../src/render/node";
 import { mockHost, mockNode, mockToString, render, HostNode } from "../../src/render/host";
+import { flush } from "../../src/core/runtime";
 
 // --- dynamic string child (regression: call stays reactive) ---
 test "a call string child stays reactive" {
@@ -17,6 +18,7 @@ test "a call string child stays reactive" {
 	const root = mockNode("root");
 	render(element(<p>{n()}</p>), mockHost(), root as unknown as HostNode);
 	setN("b");
+	flush();
 	assert mockToString(root) === "<root><p>b</p></root>", "got " + mockToString(root);
 }
 

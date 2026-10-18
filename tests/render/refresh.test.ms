@@ -4,6 +4,7 @@ import { Cleanup } from "../../src/core/types";
 import { Host, HostNode, NeonNode } from "../../src/render/hostTypes";
 import { MockNode, mockNode, mockHost, render, fireEvent, mockToString } from "../../src/render/host";
 import { place } from "../../src/render/reconcile";
+import { flush } from "../../src/core/runtime";
 import {
 	refreshTemplate0,
 	refreshRegion,
@@ -74,7 +75,7 @@ test "refresh: template rebuild keeps the owning signal at its live value" {
 
 	assert mockToString(root.children[0]) === "old:", "v1 label";
 	assert mockToString(root.children[1]) === "0", "count 0";
-	for (let i = 0; i < 8; i += 1) { fireEvent(root.children[2], "onPress"); }
+	for (let i = 0; i < 8; i += 1) { fireEvent(root.children[2], "onPress"); flush(); }
 	assert mockToString(root.children[1]) === "8", "count 8 after clicks";
 
 	counterRegion("r0", "v2", "new:");
@@ -84,6 +85,7 @@ test "refresh: template rebuild keeps the owning signal at its live value" {
 	assert mockToString(root.children[1]) === "8", "count survives the rebuild";
 
 	fireEvent(root.children[2], "onPress");
+	flush();
 	assert mockToString(root.children[1]) === "9", "no duplicated subscription: one click is +1";
 	dispose();
 }
@@ -135,7 +137,7 @@ test "refresh: component remount resets only that boundary's local state" {
 	}, mockHost(), root as unknown as HostNode);
 
 	assert mockToString(root.children[0]) === "v1:", "v1 component label";
-	for (let i = 0; i < 4; i += 1) { fireEvent(root.children[2], "onPress"); }
+	for (let i = 0; i < 4; i += 1) { fireEvent(root.children[2], "onPress"); flush(); }
 	assert mockToString(root.children[1]) === "4", "local count 4";
 
 	version = 2;
@@ -203,12 +205,15 @@ test "refresh: remounting a fragment boundary removes its nested regions" {
 		assert mockToString(root) === "<root>value:1|sibling</root>", "nested fragment is replaced, not left beside its replacement";
 		const before = effectRuns;
 		setValue(generation);
+		flush();
 		assert effectRuns === before + 1, "only the surviving nested effect runs";
 		setValue(1);
+		flush();
 	}
 	dispose();
 	const before = effectRuns;
 	setValue(9);
+	flush();
 	assert effectRuns === before, "final disposal also cleans the refreshed nested effect";
 }
 

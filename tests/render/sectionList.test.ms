@@ -5,6 +5,7 @@ import { neonEvent } from "../../src/render/event";
 import { HostNode, MockNode, mockNode, mockHost, render, fireEventWith } from "../../src/render/host";
 import { Text } from "../../src/components/primitives";
 import { ItemLayout } from "../../src/components/virtualizedList";
+import { flush } from "../../src/core/runtime";
 import {
 	SectionBase,
 	SectionInfo,
@@ -107,6 +108,7 @@ test "an item keeps its cell when it moves to another section and reads its new 
 		ItemSeparatorComponent={Bar} SectionSeparatorComponent={Hash} />), mockHost(), root as unknown as HostNode);
 	assert textOf(content(root)) === "#a@0:s1|b@1:s1##c@0:s2#", textOf(content(root));
 	setSections([{ title: "s1", items: [s1.items[0]] }, { title: "s2", items: [s1.items[1], s2.items[0]] }]);
+	flush();
 	assert textOf(content(root)) === "#a@0:s1##b@0:s2|c@1:s2#", textOf(content(root));
 	assert mounts === "abc", "items move between sections without remounting: " + mounts;
 	dispose();
@@ -178,6 +180,7 @@ test "onViewableItemsChanged reports section-local tokens with their section" {
 	e.contentWidth = 10;
 	e.contentHeight = 70;
 	fireEventWith(root.children[0], "onScroll", e);
+	flush();
 	assert calls.length === 1 && calls[0] === "s1:a@0 s1:b@1 s1:cell s2:cell s2:c@0", calls.join("|");
 	dispose();
 }

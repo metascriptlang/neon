@@ -8,6 +8,7 @@ import { createAsyncMemo } from "../../src/core/memo";
 import { Loading } from "../../src/macros/ui/flow";
 import { refreshTemplate0, refreshRegion, refreshModule, refreshReset } from "../../src/render/refresh";
 import { Gate, gated, release } from "../core/asyncClock";
+import { flush } from "../../src/core/runtime";
 
 const loadingB: NeonNode = el("b", [], [], text("loading"));
 
@@ -43,12 +44,14 @@ test "a hot-reloaded view that reads a pending value keeps what shows, then swap
 	const note = pendingNote(gate, tag);
 	gate.open = false;
 	setTag("2");
+	flush();
 	refreshTemplate0("app.ms", "r0", view("two:", note, tail), (): string => "v2", unit);
 	refreshModule("app.ms");
 	assert shown() === "<root><p>one:!</p></root>", "v1 stays while v2 waits: " + shown();
 	await release(gate);
 	assert shown() === "<root><p>two:note2!</p></root>", "v2 shows once it landed: " + shown();
 	setTail("?");
+	flush();
 	assert shown() === "<root><p>two:note2?</p></root>", "and is reactive: " + shown();
 	dispose();
 }

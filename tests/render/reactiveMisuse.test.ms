@@ -6,6 +6,7 @@ import { element } from "../../src/macros/ui/element";
 import { NeonNode } from "../../src/render/node";
 import { NeonEvent } from "../../src/render/event";
 import { HostNode, MockNode, mockNode, mockHost, render, fireEvent, mockToString } from "../../src/render/host";
+import { flush } from "../../src/core/runtime";
 
 interface CountProps {
 	n: Accessor<int32>;
@@ -72,13 +73,16 @@ test "an event handler writes a signal and a one-time read stays at its first va
 	const root = mounted(element(<Handler n={n()} />));
 	assert mockToString(root.children[0]) === "<button>0/1</button>", "initial: " + mockToString(root);
 	fireEvent(root.children[0], "onPress");
+	flush();
 	assert mockToString(root.children[0]) === "<button>1/1</button>", "after press: " + mockToString(root);
 	setN(4);
+	flush();
 	assert mockToString(root.children[0]) === "<button>1/4</button>", "after set: " + mockToString(root);
 
 	const once = mounted(element(<OneTime n={n()} />));
 	assert mockToString(once.children[0]) === "<p>4:4</p>", "initial: " + mockToString(once);
 	setN(7);
+	flush();
 	assert mockToString(once.children[0]) === "<p>4:7</p>", "the untrack read keeps its first value: " + mockToString(once);
 }
 
@@ -87,6 +91,7 @@ test "a memo reads and a signal with ownedWrite is written inside a compute" {
 	const derived = mounted(element(<Derived n={n()} />));
 	assert mockToString(derived.children[0]) === "<p>4</p>", "initial: " + mockToString(derived);
 	setN(5);
+	flush();
 	assert mockToString(derived.children[0]) === "<p>10</p>", "after set: " + mockToString(derived);
 
 	const owned = mounted(element(<OwnedWrite n={n()} />));
@@ -98,6 +103,7 @@ test "an effect's second function writes a signal" {
 	const root = mounted(element(<EffectPhase n={n()} />));
 	assert mockToString(root.children[0]) === "<p>3</p>", "initial: " + mockToString(root);
 	setN(6);
+	flush();
 	assert mockToString(root.children[0]) === "<p>6</p>", "after set: " + mockToString(root);
 }
 

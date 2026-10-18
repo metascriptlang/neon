@@ -4,6 +4,7 @@ import { element } from "../../src/macros/ui/element";
 import { render, mockHost, mockNode, mockToString, fireEvent, Host, HostNode, MockNode } from "../../src/render/host";
 import { onCleanup } from "../../src/core/cleanup";
 import { Show } from "../../src/macros/ui/flow";
+import { flush } from "../../src/core/runtime";
 
 // D2 attr classification: string literal → static attr, on* → event, any other
 // expr → dynAttr thunk (same rule as dynText for expression children).
@@ -38,6 +39,7 @@ test "a template mount builds the skeleton once and clones it after" {
 	render(view, host, root as unknown as HostNode);
 	assert attrWrites[0] === 3, "a later mount clones the skeleton and writes the attr once, got " + attrWrites[0].toString();
 	setC2("blue");
+	flush();
 	assert attrWrites[0] === 5, "the set writes each mounted attr once, got " + attrWrites[0].toString();
 	assert mockToString(root) === "<root><p class=\"blue\">x</p><p class=\"blue\">x</p></root>", "value: " + mockToString(root);
 }
@@ -56,6 +58,7 @@ test "string literal attr stays static, on* routes to events" {
 	assert attrWrites[0] === 1, "the literal attr is the only attr write, got " + attrWrites[0].toString();
 
 	fireEvent(root.children[0], "onPress");
+	flush();
 	assert n() === 1, "onPress reached the handler";
 	assert attrWrites[0] === 1, "a static attr is never rewritten, got " + attrWrites[0].toString();
 }
@@ -82,6 +85,7 @@ test "an inert expression is classified static, a call stays dynamic" {
 	const inertTextAtMount = inertText[0];
 
 	setN("b");
+	flush();
 	assert inertAttr[0] === inertAttrAtMount, "an identifier attr subscribes to nothing, got " + inertAttr[0].toString();
 	assert inertText[0] === inertTextAtMount, "an identifier child subscribes to nothing, got " + inertText[0].toString();
 	assert liveAttr[0] === liveAttrAtMount + 1, "a call attr follows the signal, got " + liveAttr[0].toString();
@@ -105,6 +109,7 @@ test "an on-named Accessor prop takes a reactive expression" {
 	render(element(<Picked data={words} format={shout} onEndReachedThreshold={limit()} />), mockHost(), root as unknown as HostNode);
 	assert mockToString(root) === "<root><p>NEON 4</p></root>", "initial: " + mockToString(root);
 	setLimit(5);
+	flush();
 	assert mockToString(root) === "<root><p>NEON 5</p></root>", "after set: " + mockToString(root);
 }
 
@@ -114,6 +119,7 @@ test "a reactive expression given to a function prop is read once, when the prop
 	render(element(<Picked data={words} format={loud() ? shout : quiet} />), mockHost(), root as unknown as HostNode);
 	assert mockToString(root) === "<root><p>NEON none</p></root>", "initial: " + mockToString(root);
 	setLoud(false);
+	flush();
 	assert mockToString(root) === "<root><p>NEON none</p></root>", "the chosen function stays: " + mockToString(root);
 }
 
@@ -141,11 +147,14 @@ test "node slot component mounts once untracked and cleans up with its owner" {
 	assert mounts === 1, "component mounts once";
 	assert mockToString(root) === "<root><div><h1>first</h1></div></root>", "initial content";
 	setValue("second");
+	flush();
 	assert mockToString(root) === "<root><div><h1>second</h1></div></root>", "slot contents remain reactive";
 	assert mounts === 1 && cleanups === 0, "body read is untracked and update does not remount";
 	setVisible(false);
+	flush();
 	assert cleanups === 1, "owner disposes component once";
 	setValue("third");
+	flush();
 	assert mounts === 1 && cleanups === 1, "disposed slot does not run again";
 }
 
@@ -160,6 +169,7 @@ test "reactive element renders and updates on signal change" {
 	const root = mounted(element(<p>Hi {name()}</p>));
 	assert mockToString(root) === "<root><p>Hi world</p></root>", "initial render: " + mockToString(root);
 	setName("neon");
+	flush();
 	assert mockToString(root) === "<root><p>Hi neon</p></root>", "render updates after set: " + mockToString(root);
 }
 
@@ -169,6 +179,7 @@ test "JSX bound to a const is consumed by element()" {
 	const root = mounted(element(view));
 	assert mockToString(root) === "<root><p>Hi world</p></root>", "const-form initial render: " + mockToString(root);
 	setName("neon");
+	flush();
 	assert mockToString(root) === "<root><p>Hi neon</p></root>", "const-form updates after set: " + mockToString(root);
 }
 
@@ -235,6 +246,7 @@ test "dynamic attr tracks its signal" {
 	const root = mounted(element(<p class={cls()}>x</p>));
 	assert mockToString(root) === "<root><p class=\"red\">x</p></root>", "initial snapshot: " + mockToString(root);
 	setCls("blue");
+	flush();
 	assert mockToString(root) === "<root><p class=\"blue\">x</p></root>", "snapshot follows set: " + mockToString(root);
 }
 
@@ -243,6 +255,7 @@ test "mixed static and dynamic attrs keep source order" {
 	const root = mounted(element(<div a="1" b={x()} c="3"></div>));
 	assert mockToString(root) === "<root><div a=\"1\" b=\"2\" c=\"3\"></div></root>", "source order preserved: " + mockToString(root);
 	setX("9");
+	flush();
 	assert mockToString(root) === "<root><div a=\"1\" b=\"9\" c=\"3\"></div></root>", "middle attr updates in place: " + mockToString(root);
 }
 
@@ -253,6 +266,7 @@ test "the same JSX const consumed twice yields independent trees" {
 	const two = mounted(element(view));
 	assert mockToString(one) === "<root><p>x</p></root>" && mockToString(two) === "<root><p>x</p></root>", "both trees start alike: " + mockToString(one) + " " + mockToString(two);
 	setA("y");
+	flush();
 	assert mockToString(one) === "<root><p>y</p></root>", "first tree reactive: " + mockToString(one);
 	assert mockToString(two) === "<root><p>y</p></root>", "second tree reactive: " + mockToString(two);
 }

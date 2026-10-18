@@ -15,6 +15,7 @@ import { createStyles, styleOf } from "../../src/macros/ui/style";
 import { createTemplate, mountTemplate, childOf, siblingOf } from "../../src/render/template";
 import { NeonEvent, neonEvent } from "../../src/render/event";
 import { registerCss, resetCss, cssRuleCount } from "../../src/render/sheet";
+import { flush } from "../../src/core/runtime";
 
 test "static + dynamic text + event" {
 	const [name, setName] = createSignal("an");
@@ -28,10 +29,12 @@ test "static + dynamic text + event" {
 
 	assert mockToString(directRoot) === "<root><div class=\"box\"><p>hello an</p><button>+</button></div></root>", "initial: " + mockToString(directRoot);
 	setName("binh");
+	flush();
 	assert mockToString(directRoot) === "<root><div class=\"box\"><p>hello binh</p><button>+</button></div></root>", "golden: " + mockToString(directRoot);
 
 	const btn = (directRoot as MockNode).children[0].children[1];
 	fireEvent(btn, "onPress");
+	flush();
 	assert clicks === 1, "clicks=" + clicks.toString();
 }
 
@@ -45,6 +48,7 @@ test "deep nesting" {
 
 	assert mockToString(directRoot) === "<root><ul><li><span>a</span></li><li>x</li></ul></root>", "initial: " + mockToString(directRoot);
 	setV("y");
+	flush();
 	assert mockToString(directRoot) === "<root><ul><li><span>a</span></li><li>y</li></ul></root>", "golden: " + mockToString(directRoot);
 }
 
@@ -59,8 +63,10 @@ test "multiple attrs and multiple dynamic spots keep distinct temps" {
 
 	assert mockToString(directRoot) === "<root><div id=\"x\" class=\"y\"><p>1</p><p>2</p><span>1</span></div></root>", "initial: " + mockToString(directRoot);
 	setA("7");
+	flush();
 	assert mockToString(directRoot) === "<root><div id=\"x\" class=\"y\"><p>7</p><p>2</p><span>7</span></div></root>", "after setA: " + mockToString(directRoot);
 	setB("9");
+	flush();
 	assert mockToString(directRoot) === "<root><div id=\"x\" class=\"y\"><p>7</p><p>9</p><span>7</span></div></root>", "golden: " + mockToString(directRoot);
 }
 
@@ -109,8 +115,10 @@ test "component child: defer, bodyRuns once, reactive prop updates" {
 
 	assert mockToString(directRoot) === "<root><div><p class=\"g\">n=1</p></div></root>", "initial: " + mockToString(directRoot);
 	setN(5);
+	flush();
 	assert mockToString(directRoot) === "<root><div><p class=\"g\">n=5</p></div></root>", "after set: " + mockToString(directRoot);
 	setN(9);
+	flush();
 	assert mockToString(directRoot) === "<root><div><p class=\"g\">n=9</p></div></root>", "after 2nd set: " + mockToString(directRoot);
 	assert gaugeRuns === 1, "sets must not re-run bodies, got " + gaugeRuns.toString();
 }
@@ -128,6 +136,7 @@ test "root-position component: deferred until mount" {
 
 	assert mockToString(directRoot) === "<root><p class=\"r\">n=3</p></root>", "initial: " + mockToString(directRoot);
 	setN(4);
+	flush();
 	assert mockToString(directRoot) === "<root><p class=\"r\">n=4</p></root>", "golden: " + mockToString(directRoot);
 }
 
@@ -142,6 +151,7 @@ test "prop expression with a nested arrow capturing outer variables stays reacti
 
 	assert mockToString(directRoot) === "<root><div><p class=\"a\">n=101</p></div></root>", "initial: " + mockToString(directRoot);
 	setN(2);
+	flush();
 	assert mockToString(directRoot) === "<root><div><p class=\"a\">n=102</p></div></root>", "golden: " + mockToString(directRoot);
 }
 
@@ -160,11 +170,14 @@ test "Show flip: cleanup fires, span on both flips" {
 	const dDiv = (directRoot as MockNode).children[0];
 	assert dDiv.children.length === 2, "region span (child + anchor) under direct div, got " + dDiv.children.length.toString();
 	setOn(false);
+	flush();
 	assert leakRuns === 1, "one cleanup on flip, got " + leakRuns.toString();
 	assert mockToString(directRoot) === "<root><div></div></root>", "golden after flip: " + mockToString(directRoot);
 	setOn(true);
+	flush();
 	assert mockToString(directRoot) === "<root><div><i>1</i></div></root>", "after flip back: " + mockToString(directRoot);
 	setN(7);
+	flush();
 	assert mockToString(directRoot) === "<root><div><i>7</i></div></root>", "golden after rebuild: " + mockToString(directRoot);
 }
 
@@ -199,6 +212,7 @@ test "reactive attr" {
 
 	assert mockToString(directRoot) === "<root><p class=\"red\">x</p></root>", "initial: " + mockToString(directRoot);
 	setCls("blue");
+	flush();
 	assert mockToString(directRoot) === "<root><p class=\"blue\">x</p></root>", "golden: " + mockToString(directRoot);
 	assert (directRoot as MockNode).children[0].attrs.length === 1, "upsert — no duplicate attr entries";
 }
@@ -229,6 +243,7 @@ test "static attr + reactive attr + event + style mixed on one element" {
 	assert mockToString(directRoot) === "<root><button type=\"button\" title=\"0\">go</button></root>", "initial: " + mockToString(directRoot);
 	const dBtn = (directRoot as MockNode).children[0];
 	fireEvent(dBtn, "onPress");
+	flush();
 	assert mockToString(directRoot) === "<root><button type=\"button\" title=\"1\">go</button></root>", "golden: " + mockToString(directRoot);
 	assert dBtn.style !== null, "style set on mixed element";
 	assert dBtn.attrs.length === 2, "type + title only, no dup, got " + dBtn.attrs.length.toString();
@@ -247,11 +262,14 @@ test "deep interleave: dyn attr + dyn text + event across 4 levels" {
 
 	assert mockToString(directRoot) === "<root><div id=\"top\"><section class=\"a\"><ul><li>t</li><li><button title=\"a\">go t</button></li></ul><p>tail</p></section></div></root>", "initial: " + mockToString(directRoot);
 	setCls("b");
+	flush();
 	assert mockToString(directRoot) === "<root><div id=\"top\"><section class=\"b\"><ul><li>t</li><li><button title=\"b\">go t</button></li></ul><p>tail</p></section></div></root>", "after setCls: " + mockToString(directRoot);
 	setV("u");
+	flush();
 	assert mockToString(directRoot) === "<root><div id=\"top\"><section class=\"b\"><ul><li>u</li><li><button title=\"b\">go u</button></li></ul><p>tail</p></section></div></root>", "golden: " + mockToString(directRoot);
 	const btn = (directRoot as MockNode).children[0].children[0].children[0].children[1].children[0];
 	fireEvent(btn, "onPress");
+	flush();
 	assert hits === 1, "event at depth 4 fired, hits=" + hits.toString();
 }
 
@@ -291,6 +309,7 @@ test "template mode: a pure subtree is built once and cloned per mount" {
 
 	assert mockToString(root) === "<root><div class=\"box\"><span>s</span><em>a</em></div><div class=\"box\"><span>s</span><em>a</em></div></root>", "two independent instances: " + mockToString(root);
 	setV("b");
+	flush();
 	assert mockToString(root) === "<root><div class=\"box\"><span>s</span><em>b</em></div><div class=\"box\"><span>s</span><em>b</em></div></root>", "every clone stays reactive: " + mockToString(root);
 }
 
@@ -337,9 +356,11 @@ test "a spot recomputing to the same string writes the host once" {
 	assert counter[0] === 1, "one write at mount, got " + counter[0].toString();
 
 	setN(2);
+	flush();
 	assert counter[0] === 1, "source changed but the derived text did not — no host touch; got " + counter[0].toString();
 
 	setN(9);
+	flush();
 	assert counter[0] === 2, "a real change still writes, got " + counter[0].toString();
 	assert mockToString(root) === "<root><p>big</p></root>", "value: " + mockToString(root);
 }
@@ -375,6 +396,7 @@ test "template mode on a cloneNode:null host falls back and renders the same" {
 
 	assert mockToString(directRoot) === "<root><ul class=\"l\"><li>a</li><li>x</li></ul></root>", "fallback initial: " + mockToString(directRoot);
 	setV("z");
+	flush();
 	assert mockToString(directRoot) === "<root><ul class=\"l\"><li>z</li><li>x</li></ul></root>", "golden: " + mockToString(directRoot);
 }
 
@@ -388,10 +410,13 @@ test "For reorder" {
 
 	assert mockToString(directRoot) === "<root><ul><li>1</li><li>2</li><li>3</li></ul></root>", "initial: " + mockToString(directRoot);
 	setItems([3, 1, 2]);
+	flush();
 	assert mockToString(directRoot) === "<root><ul><li>3</li><li>1</li><li>2</li></ul></root>", "golden after reorder: " + mockToString(directRoot);
 	setItems([3, 1, 2, 4]);
+	flush();
 	assert mockToString(directRoot) === "<root><ul><li>3</li><li>1</li><li>2</li><li>4</li></ul></root>", "after append: " + mockToString(directRoot);
 	setItems([2]);
+	flush();
 	assert mockToString(directRoot) === "<root><ul><li>2</li></ul></root>", "golden after shrink: " + mockToString(directRoot);
 }
 
@@ -403,8 +428,10 @@ test "a && <X/>" {
 	mount(host, directRoot as unknown as HostNode, null);
 	assert mockToString(directRoot) === "<root><div><p>a</p><span>yes</span><p>z</p></div></root>", "golden while true: " + mockToString(directRoot);
 	setOn(false);
+	flush();
 	assert mockToString(directRoot) === "<root><div><p>a</p><p>z</p></div></root>", "golden while false: " + mockToString(directRoot);
 	setOn(true);
+	flush();
 	assert mockToString(directRoot) === "<root><div><p>a</p><span>yes</span><p>z</p></div></root>", "after on: " + mockToString(directRoot);
 }
 
@@ -416,6 +443,7 @@ test "c ? <A/> : <B/>" {
 	mount(host, directRoot as unknown as HostNode, null);
 	assert mockToString(directRoot) === "<root><div><b>no</b></div></root>", "golden false state: " + mockToString(directRoot);
 	setOn(true);
+	flush();
 	assert mockToString(directRoot) === "<root><div><span>yes</span></div></root>", "golden true state: " + mockToString(directRoot);
 }
 
@@ -427,6 +455,7 @@ test "xs.map(row)" {
 	mount(host, directRoot as unknown as HostNode, null);
 	assert mockToString(directRoot) === "<root><ul><li>1</li><li>2</li><li>3</li></ul></root>", "initial: " + mockToString(directRoot);
 	setItems([3, 1, 2, 4]);
+	flush();
 	assert mockToString(directRoot) === "<root><ul><li>3</li><li>1</li><li>2</li><li>4</li></ul></root>", "golden: " + mockToString(directRoot);
 }
 
@@ -445,6 +474,7 @@ test "a bare accessor attribute and child" {
 	const mount = element(<p class={l}>{l}</p>);
 	mount(host, directRoot as unknown as HostNode, null);
 	setL("b");
+	flush();
 	assert mockToString(directRoot) === "<root><p class=\"b\">b</p></root>", "value: " + mockToString(directRoot);
 }
 
@@ -456,7 +486,9 @@ test "an accessor operand, a bare child and an accessor prop beside a component"
 	const mount = element(<div title={(n * 2).toString()}>{l}<BareTag label={l} /></div>);
 	mount(host, directRoot as unknown as HostNode, null);
 	setL("b");
+	flush();
 	setN(4);
+	flush();
 	assert mockToString(directRoot) === "<root><div title=\"8\">b<b>b</b></div></root>", "golden: " + mockToString(directRoot);
 }
 
@@ -478,9 +510,11 @@ test "static attr, static text, event and ref beside a component" {
 	assert directSeen === "<button type=\"button\">go</button>", "ref saw the finished node: " + directSeen;
 
 	fireEvent((directRoot as MockNode).children[0].children[1], "onPress");
+	flush();
 	assert directHits === 1, "one hit: " + directHits.toString();
 
 	setN(5);
+	flush();
 	assert mockToString(directRoot) === "<root><div id=\"top\" class=\"c\"><p class=\"g\">n=5</p><button type=\"button\">go</button><p>tail</p></div></root>", "golden after set: " + mockToString(directRoot);
 }
 
@@ -498,6 +532,7 @@ test "onChangeText beside a component hands the handler the text" {
 	const e = neonEvent("changetext");
 	e.value = "xin chao";
 	fireEventWith((directRoot as MockNode).children[0].children[1], "onChangeText", e);
+	flush();
 	assert directText === "xin chao", "direct read text=" + directText;
 }
 
@@ -511,8 +546,10 @@ test "a ternary with a null arm, either way round" {
 
 	assert mockToString(directRoot) === "<root><div><span>yes</span><p>m</p></div></root>", "golden while true: " + mockToString(directRoot);
 	setOn(false);
+	flush();
 	assert mockToString(directRoot) === "<root><div><p>m</p><b>no</b></div></root>", "golden while false: " + mockToString(directRoot);
 	setOn(true);
+	flush();
 	assert mockToString(directRoot) === "<root><div><span>yes</span><p>m</p></div></root>", "golden back on: " + mockToString(directRoot);
 }
 
@@ -535,6 +572,7 @@ test "a whole-style call tracks the signal — template tier" {
 	assert mockToString(directRoot) === "<root><div><p>a</p></div></root>", "markup: " + mockToString(directRoot);
 	assert cssAt(directRoot, 0) === "padding:10px;", "golden: " + cssAt(directRoot, 0);
 	setPad(20);
+	flush();
 	assert cssAt(directRoot, 0) === "padding:20px;", "golden after set: " + cssAt(directRoot, 0);
 }
 
@@ -551,6 +589,7 @@ test "a whole-style call tracks the signal — flat tier" {
 	assert mockToString(directRoot) === "<root><div><p class=\"g\">n=1</p></div></root>", "markup: " + mockToString(directRoot);
 	assert cssAt(directRoot, 0) === "padding:10px;", "golden: " + cssAt(directRoot, 0);
 	setPad(20);
+	flush();
 	assert cssAt(directRoot, 0) === "padding:20px;", "golden after set: " + cssAt(directRoot, 0);
 }
 
@@ -570,6 +609,7 @@ test "an accessor-typed style and a ternary style track the signal" {
 	assert mockToString(directRoot) === "<root><div><p>a</p><p>b</p><p class=\"g\">n=1</p></div></root>", "markup: " + mockToString(directRoot);
 	assert cssAt(dDiv, 0) === "padding:10px;" && cssAt(dDiv, 1) === "margin:1px;", "golden: " + cssAt(dDiv, 0) + " " + cssAt(dDiv, 1);
 	setPad(20);
+	flush();
 	assert cssAt(dDiv, 0) === "padding:20px;", "accessor style after set: " + cssAt(dDiv, 0);
 	assert cssAt(dDiv, 1) === "margin:2px;", "ternary style after set: " + cssAt(dDiv, 1);
 	assert cssAt(dDiv, 0) === "padding:20px;" && cssAt(dDiv, 1) === "margin:2px;", "golden after set: " + cssAt(dDiv, 0) + " " + cssAt(dDiv, 1);
@@ -589,8 +629,10 @@ test "reactive style fields track their signals — template tier" {
 	assert mockToString(directRoot) === "<root><div><p>a</p></div></root>", "markup: " + mockToString(directRoot);
 	assert cssAt(directRoot, 0) === "height:10px;margin:4px;padding:10px;", "golden: " + cssAt(directRoot, 0);
 	setW(20);
+	flush();
 	assert cssAt(directRoot, 0) === "height:10px;margin:4px;padding:20px;", "after setW: " + cssAt(directRoot, 0);
 	setN(3);
+	flush();
 	assert cssAt(directRoot, 0) === "height:30px;margin:4px;padding:20px;", "golden after set: " + cssAt(directRoot, 0);
 }
 
@@ -607,6 +649,7 @@ test "a ternary style field and a bare accessor field track the signal — flat 
 	assert mockToString(directRoot) === "<root><div><p>a</p><p>b</p><p class=\"g\">n=1</p></div></root>", "markup: " + mockToString(directRoot);
 	assert cssAt(dDiv, 0) === "margin:1px;" && cssAt(dDiv, 1) === "padding:10px;", "golden: " + cssAt(dDiv, 0) + " " + cssAt(dDiv, 1);
 	setPad(20);
+	flush();
 	assert cssAt(dDiv, 0) === "margin:2px;", "ternary field after set: " + cssAt(dDiv, 0);
 	assert cssAt(dDiv, 1) === "padding:20px;", "bare accessor field after set: " + cssAt(dDiv, 1);
 	assert cssAt(dDiv, 0) === "margin:2px;" && cssAt(dDiv, 1) === "padding:20px;", "golden after set: " + cssAt(dDiv, 0) + " " + cssAt(dDiv, 1);
@@ -622,6 +665,7 @@ test "a bare accessor style field — template tier" {
 
 	assert cssAt(directRoot, 0) === "padding:10px;", "initial: " + cssAt(directRoot, 0);
 	setW(20);
+	flush();
 	assert cssAt(directRoot, 0) === "padding:20px;", "golden after set: " + cssAt(directRoot, 0);
 }
 
@@ -634,6 +678,7 @@ test "an identical signal value on a style field is not re-written to the host" 
 	const div = (directRoot as MockNode).children[0];
 	const before = div.style;
 	setW(20);
+	flush();
 	assert div.style === before, "same value writes nothing";
 	assert (div.style as Style).width === 20, "value intact";
 }
@@ -775,6 +820,7 @@ test "{props.children} carrying a node with live text tracks the signal" {
 	view(host, directRoot as unknown as HostNode, null);
 	assert mockToString(directRoot) === "<root><section title=\"t\"><p>hi an</p></section></root>", "golden: " + mockToString(directRoot);
 	setName("binh");
+	flush();
 	assert mockToString(directRoot) === "<root><section title=\"t\"><p>hi binh</p></section></root>", "golden after set: " + mockToString(directRoot);
 }
 
@@ -787,6 +833,7 @@ test "layerStyles over a reactive layer as a whole-style expression tracks the s
 	mount(host, directRoot as unknown as HostNode, null);
 	assert cssAt(directRoot, 0) === "width:200px;height:5px;", "golden: " + cssAt(directRoot, 0);
 	setH(9);
+	flush();
 	assert cssAt(directRoot, 0) === "width:200px;height:9px;", "golden after set: " + cssAt(directRoot, 0);
 }
 
@@ -798,6 +845,7 @@ test "a reactive field in a layer over a sheet entry tracks the signal — templ
 	mount(host, directRoot as unknown as HostNode, null);
 	assert cssAt(directRoot, 0) === "width:200px;height:5px;", "golden: " + cssAt(directRoot, 0);
 	setH(9);
+	flush();
 	assert cssAt(directRoot, 0) === "width:200px;height:9px;", "golden after set: " + cssAt(directRoot, 0);
 }
 
@@ -810,6 +858,7 @@ test "a reactive field in the first literal layer stays under a later static one
 	mount(host, directRoot as unknown as HostNode, null);
 	assert cssAt(directRoot, 0) === "width:1px;height:2px;", "golden: " + cssAt(directRoot, 0);
 	setW(4);
+	flush();
 	assert cssAt(directRoot, 0) === "width:4px;height:2px;", "golden after set: " + cssAt(directRoot, 0);
 }
 
@@ -822,6 +871,7 @@ test "a reactive layer call tracks the signal without a layerStyles wrapper" {
 	mount(host, directRoot as unknown as HostNode, null);
 	assert cssAt(directRoot, 0) === "width:200px;height:5px;", "golden: " + cssAt(directRoot, 0);
 	setH(9);
+	flush();
 	assert cssAt(directRoot, 0) === "width:200px;height:9px;", "golden after set: " + cssAt(directRoot, 0);
 }
 
@@ -835,6 +885,7 @@ test "an accessor layer and an accessor field are read inside the layering effec
 	mount(host, directRoot as unknown as HostNode, null);
 	assert cssAt(directRoot, 0) === "width:200px;height:5px;opacity:0.5;", "golden: " + cssAt(directRoot, 0);
 	setH(9);
+	flush();
 	assert cssAt(directRoot, 0) === "width:200px;height:9px;opacity:0.9;", "golden after set: " + cssAt(directRoot, 0);
 }
 
@@ -876,6 +927,7 @@ test "whitespace around a primitive's single expression child stays reactive tex
 	assert mockToString(wsRoot) === mockToString(flatRoot), "ws=" + mockToString(wsRoot) + " flat=" + mockToString(flatRoot);
 	assert mockToString(wsRoot) === "<root><div><view>v</view></div></root>", "golden: " + mockToString(wsRoot);
 	setN("w");
+	flush();
 	assert mockToString(wsRoot) === mockToString(flatRoot), "after set: ws=" + mockToString(wsRoot) + " flat=" + mockToString(flatRoot);
 	assert mockToString(wsRoot) === "<root><div><view>w</view></div></root>", "golden after set: " + mockToString(wsRoot);
 }
@@ -942,10 +994,12 @@ test "present on*/ref/style through a nullable type attach — template tier" {
 	assert mockToString(directRoot) === "<root><div><button type=\"button\">go</button><p>x</p></div></root>", "golden: " + mockToString(directRoot);
 	assert seen === "<button type=\"button\">go</button>", "ref saw the finished node: " + seen;
 	fireEvent(dDiv.children[0], "onPress");
+	flush();
 	assert hits === 1, "one hit: " + hits.toString();
 	assert cssAt(dDiv, 0) === "margin:2px;", "static style: " + cssAt(dDiv, 0);
 	assert cssAt(dDiv, 1) === "padding:3px;", "accessor style: " + cssAt(dDiv, 1);
 	setPad(8);
+	flush();
 	assert cssAt(dDiv, 1) === "padding:8px;", "accessor style after set: " + cssAt(dDiv, 1);
 }
 
@@ -977,10 +1031,12 @@ test "present on*/ref/style through a nullable type attach — flat tier" {
 	assert mockToString(directRoot) === "<root><div><p class=\"g\">n=1</p><button type=\"button\">go</button><p>x</p></div></root>", "golden: " + mockToString(directRoot);
 	assert seen === "<button type=\"button\">go</button>", "ref saw the finished node: " + seen;
 	fireEvent(dDiv.children[1], "onPress");
+	flush();
 	assert hits === 1, "one hit: " + hits.toString();
 	assert cssAt(dDiv, 1) === "margin:2px;", "static style: " + cssAt(dDiv, 1);
 	assert cssAt(dDiv, 2) === "padding:3px;", "accessor style: " + cssAt(dDiv, 2);
 	setPad(8);
+	flush();
 	assert cssAt(dDiv, 2) === "padding:8px;", "accessor style after set: " + cssAt(dDiv, 2);
 }
 
@@ -998,7 +1054,9 @@ test "a numeric child renders as text and follows its signal — template tier" 
 	mount(host, root as unknown as HostNode, null);
 	assert mockToString(root) === "<root><p>7|7|8|3|1.5</p></root>", "initial: " + mockToString(root);
 	setN(8);
+	flush();
 	setF(2.25);
+	flush();
 	assert mockToString(root) === "<root><p>8|8|9|3|2.25</p></root>", "after set: " + mockToString(root);
 }
 
@@ -1011,6 +1069,7 @@ test "a numeric child renders as text and follows its signal — flat tier" {
 	mount(host, root as unknown as HostNode, null);
 	assert mockToString(root) === "<root><p>7|8|3<b>7</b></p></root>", "initial: " + mockToString(root);
 	setN(8);
+	flush();
 	assert mockToString(root) === "<root><p>8|9|3<b>8</b></p></root>", "after set: " + mockToString(root);
 }
 
@@ -1033,6 +1092,7 @@ test "once and online are attributes, not events — template tier" {
 	assert mockToString(directRoot) === "<root><p once=\"x\" online=\"y\">hi</p></root>", "golden: " + mockToString(directRoot);
 	assert (directRoot as MockNode).children[0].events.length === 0, "no listener";
 	setV("z");
+	flush();
 	assert mockToString(directRoot) === "<root><p once=\"x\" online=\"z\">hi</p></root>", "golden after set: " + mockToString(directRoot);
 }
 
@@ -1045,6 +1105,7 @@ test "once and online are attributes, not events — flat tier" {
 	assert mockToString(directRoot) === "<root><div><i>y</i><p once=\"x\" online=\"y\">hi</p></div></root>", "golden: " + mockToString(directRoot);
 	assert (directRoot as MockNode).children[0].children[1].events.length === 0, "no listener";
 	setV("z");
+	flush();
 	assert mockToString(directRoot) === "<root><div><i>z</i><p once=\"x\" online=\"z\">hi</p></div></root>", "golden after set: " + mockToString(directRoot);
 }
 
@@ -1070,6 +1131,7 @@ test "a nullable Accessor attribute binds when present and leaves nothing when n
 	optAttrTemplate(null)(host, directRoot as unknown as HostNode, null);
 	assert mockToString(directRoot) === "<root><div><p class=\"a\">x</p></div><div><p>x</p></div></root>", "golden: " + mockToString(directRoot);
 	setCls("b");
+	flush();
 	assert mockToString(directRoot) === "<root><div><p class=\"b\">x</p></div><div><p>x</p></div></root>", "golden after set: " + mockToString(directRoot);
 }
 
@@ -1081,6 +1143,7 @@ test "a nullable Accessor attribute binds when present and leaves nothing when n
 	optAttrFlat(null)(host, directRoot as unknown as HostNode, null);
 	assert mockToString(directRoot) === "<root><div><p class=\"g\">n=1</p><p class=\"a\">x</p></div><div><p class=\"g\">n=1</p><p>x</p></div></root>", "golden: " + mockToString(directRoot);
 	setCls("b");
+	flush();
 	assert mockToString(directRoot) === "<root><div><p class=\"g\">n=1</p><p class=\"b\">x</p></div><div><p class=\"g\">n=1</p><p>x</p></div></root>", "golden after set: " + mockToString(directRoot);
 }
 
@@ -1134,10 +1197,12 @@ test "present on*/ref/style through a nullable type attach — bare JSX" {
 	const dDiv = (directRoot as MockNode).children[0];
 	assert seen === "<button type=\"button\">go</button>", "ref saw the finished node: " + seen;
 	fireEvent(dDiv.children[0], "onPress");
+	flush();
 	assert hits === 1, "one hit: " + hits.toString();
 	assert cssAt(dDiv, 0) === "margin:2px;", "static style: " + cssAt(dDiv, 0);
 	assert cssAt(dDiv, 1) === "padding:3px;", "accessor style: " + cssAt(dDiv, 1);
 	setPad(8);
+	flush();
 	assert cssAt(dDiv, 1) === "padding:8px;", "accessor style after set: " + cssAt(dDiv, 1);
 }
 
@@ -1149,6 +1214,7 @@ test "a nullable Accessor attribute binds when present and leaves nothing when n
 	optAttrBare(null)(host, directRoot as unknown as HostNode, null);
 	assert mockToString(directRoot) === "<root><div><p class=\"a\">x</p></div><div><p>x</p></div></root>", "golden: " + mockToString(directRoot);
 	setCls("b");
+	flush();
 	assert mockToString(directRoot) === "<root><div><p class=\"b\">x</p></div><div><p>x</p></div></root>", "golden after set: " + mockToString(directRoot);
 }
 

@@ -1,5 +1,5 @@
 import { createSignal } from "../../src/core/signal";
-import { resetErrorHalt } from "../../src/core/runtime";
+import { resetErrorHalt, flush } from "../../src/core/runtime";
 import { element } from "../../src/macros/ui/element";
 import { NeonNode } from "../../src/render/hostTypes";
 import { HostNode, MockNode, mockNode, mockHost, render, fireEventWith } from "../../src/render/host";
@@ -103,6 +103,7 @@ test "VirtualizedList keeps a cell for the same item when its data source change
 		}} />), mockHost(), root as unknown as HostNode);
 	const added: Item = { key: "new" };
 	setData({ rows: [added, first.rows[0], first.rows[1]], title: "next" });
+	flush();
 	assert texts(root) === "new@0;item_0@1;item_1@2;", texts(root);
 	assert mounts === 3, "only the new item mounts: " + mounts.toString();
 	dispose();
@@ -162,10 +163,14 @@ test "returns the viewableItems correctly in the onViewableItemsChanged callback
 		}}
 		renderItem={itemText} />), mockHost(), root as unknown as HostNode);
 	fireEventWith(root.children[0], "onScrollBeginDrag", scrollTo(0));
+	flush();
 	fireEventWith(root.children[0], "onScroll", scrollTo(0));
+	flush();
 	assert calls.length === 1 && calls[0] === "i1+", calls.join("|");
 	setData([{ key: "i4" }, first[0], first[1], first[2]]);
+	flush();
 	fireEventWith(root.children[0], "onScroll", scrollTo(100));
+	flush();
 	assert calls.length === 2 && calls[1] === "i4+", "a data change resets the viewable indices: " + calls.join("|");
 	dispose();
 }

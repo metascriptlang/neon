@@ -3,6 +3,7 @@ import { reconcileArrays, Row, rowOf, makeRow, mountAt, place, moveRow, removeRo
 import { text, regionNode, builtRow } from "../../src/render/node";
 import { createMemo } from "../../src/core/memo";
 import { createSignal } from "../../src/core/signal";
+import { flush } from "../../src/core/runtime";
 
 function builtInHolder(h: Host, view: NeonNode): Row {
 	const row = makeRow(view);
@@ -239,7 +240,9 @@ test "an enclosing row keeps its end when a nested region's empty row goes away"
 	const root = host.createElement("root");
 	const dispose = render(outer, host, root);
 	setInnerOn(false);
+	flush();
 	setOuterOn(false);
+	flush();
 	assert mockToString(root as unknown as MockNode) === "<root>fallback</root>", mockToString(root as unknown as MockNode);
 	dispose();
 }

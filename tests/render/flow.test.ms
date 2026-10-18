@@ -6,7 +6,7 @@ import { createSignal, accessor, Accessor } from "../../src/core/signal";
 import { element } from "../../src/macros/ui/element";
 import { createComponent } from "../../src/render/component";
 import { createRoot } from "../../src/core/owner";
-import { resetErrorHalt } from "../../src/core/runtime";
+import { resetErrorHalt, flush } from "../../src/core/runtime";
 
 function listText(node: MockNode): string {
 	let s = "";
@@ -32,12 +32,15 @@ test "For reactive list reuses rows on reorder, creates only new" {
 	assert listText(ulNode) === "123", "initial";
 	assert creates === 3, "3 rows created";
 	setItems([3, 1, 2]);
+	flush();
 	assert listText(ulNode) === "312", "reordered";
 	assert creates === 3, "no new creates on reorder";
 	setItems([3, 1, 2, 4]);
+	flush();
 	assert listText(ulNode) === "3124", "append";
 	assert creates === 4, "one create for new item";
 	setItems([2]);
+	flush();
 	assert listText(ulNode) === "2", "shrink";
 	assert creates === 4, "no creates on removal";
 	d();
@@ -56,8 +59,10 @@ test "For fallback shows when empty" {
 	const ulNode = (root as unknown as MockNode).children[0];
 	assert listText(ulNode) === "1", "has item";
 	setItems([]);
+	flush();
 	assert listText(ulNode) === "empty", "fallback shown";
 	setItems([5]);
+	flush();
 	assert listText(ulNode) === "5", "back to item";
 	d();
 }
@@ -67,6 +72,7 @@ test "For with a fallback is written as a tag" {
 	const [view, d] = mountedText(element(<ul><For each={items()} fallback={<li>empty</li>}>{(n: number, i: Accessor<number>): NeonNode => element(<li>{n.toString()}</li>)}</For></ul>));
 	assert view() === "<root><ul><li>1</li></ul></root>", "item: " + view();
 	setItems([]);
+	flush();
 	assert view() === "<root><ul><li>empty</li></ul></root>", "fallback: " + view();
 	d();
 }
@@ -86,11 +92,14 @@ test "Show swaps child/fallback and stays stable while true" {
 	assert divNode.children[0].children[0].text === "on", "initial on";
 	const firstSpan = divNode.children[0];
 	setN(2);
+	flush();
 	assert divNode.children[0].children[0].text === "on", "still on";
 	assert divNode.children[0] === firstSpan, "same node — not rebuilt while truthy";
 	setN(0);
+	flush();
 	assert divNode.children[0].children[0].text === "off", "fallback off";
 	setN(5);
+	flush();
 	assert divNode.children[0].children[0].text === "on", "on again";
 	d();
 }
@@ -110,9 +119,12 @@ test "For fallback reactive scope is disposed when rows return" {
 	const d = render(ul, host, root);
 	assert fbRuns === 1, "fallback effect ran once when empty";
 	setLabel("none");
+	flush();
 	assert fbRuns === 2, "fallback effect reactive while shown";
 	setItems([1]);
+	flush();
 	setLabel("ignored");
+	flush();
 	assert fbRuns === 2, "fallback effect disposed once rows returned";
 	d();
 }
@@ -136,6 +148,7 @@ test "For fallback reactive scope is disposed with the list" {
 		d();
 	});
 	setLabel("after");
+	flush();
 	assert fbRuns === 1, "fallback effect disposed with the list that showed it";
 }
 
@@ -154,6 +167,7 @@ test "an accessor feeds For.each directly and the row index is an Accessor" {
 	const ulNode = (root as unknown as MockNode).children[0];
 	assert listText(ulNode) === "7@08@1", "initial";
 	setItems([8, 7]);
+	flush();
 	assert listText(ulNode) === "8@07@1", "reordered rows keep live indexes";
 	d();
 }
@@ -172,9 +186,11 @@ test "a && <X/> child lowers to Show" {
 	assert lowered() === explicit(), "initial: lowered=" + lowered() + " explicit=" + explicit();
 	assert lowered().indexOf("yes") >= 0, "child shown while true";
 	setOn(false);
+	flush();
 	assert lowered() === explicit(), "after off: lowered=" + lowered() + " explicit=" + explicit();
 	assert lowered().indexOf("yes") < 0, "child gone while false";
 	setOn(true);
+	flush();
 	assert lowered() === explicit(), "after on: lowered=" + lowered() + " explicit=" + explicit();
 	d1(); d2();
 }
@@ -186,6 +202,7 @@ test "c ? <A/> : <B/> child lowers to Show with a fallback" {
 	assert lowered() === explicit(), "initial: lowered=" + lowered() + " explicit=" + explicit();
 	assert lowered().indexOf("yes") >= 0, "consequent shown while true";
 	setOn(false);
+	flush();
 	assert lowered() === explicit(), "after off: lowered=" + lowered() + " explicit=" + explicit();
 	assert lowered().indexOf("no") >= 0, "alternate shown while false";
 	d1(); d2();
@@ -199,6 +216,7 @@ test "a ternary with a null arm lowers to Show without a fallback, either way ro
 	assert nullElse() === explicit(), "null-else initial: " + nullElse() + " vs " + explicit();
 	assert nullThen().indexOf("yes") < 0, "null-then hides while true: " + nullThen();
 	setOn(false);
+	flush();
 	assert nullElse() === explicit(), "null-else after off: " + nullElse() + " vs " + explicit();
 	assert nullThen().indexOf("yes") >= 0, "null-then shows while false: " + nullThen();
 	d1(); d2(); d3();
@@ -215,14 +233,20 @@ test "Show reads a nullable primitive by its truthiness, so false, 0 and an empt
 	assert byCount().indexOf("yes") < 0, "0 hides: " + byCount();
 	assert byLabel().indexOf("yes") < 0, "an empty string hides: " + byLabel();
 	setFlag(true);
+	flush();
 	setCount(2);
+	flush();
 	setLabel("x");
+	flush();
 	assert byFlag().indexOf("yes") >= 0, "true shows: " + byFlag();
 	assert byCount().indexOf("yes") >= 0, "2 shows: " + byCount();
 	assert byLabel().indexOf("yes") >= 0, "a string shows: " + byLabel();
 	setFlag(null);
+	flush();
 	setCount(null);
+	flush();
 	setLabel(null);
+	flush();
 	assert byFlag().indexOf("yes") < 0, "null flag hides: " + byFlag();
 	assert byCount().indexOf("yes") < 0, "null count hides: " + byCount();
 	assert byLabel().indexOf("yes") < 0, "null label hides: " + byLabel();
@@ -236,8 +260,10 @@ test "xs.map(row) child lowers to For" {
 	assert lowered() === explicit(), "initial: lowered=" + lowered() + " explicit=" + explicit();
 	assert lowered().indexOf("3") >= 0, "rows rendered";
 	setItems([3, 1, 2, 4]);
+	flush();
 	assert lowered() === explicit(), "after reorder+append: lowered=" + lowered() + " explicit=" + explicit();
 	setItems([]);
+	flush();
 	assert lowered() === explicit(), "after clear: lowered=" + lowered() + " explicit=" + explicit();
 	d1(); d2();
 }
@@ -253,6 +279,7 @@ test "For takes a named row function as its child" {
 	assert named() === arrow(), "initial: named=" + named() + " arrow=" + arrow();
 	assert named().indexOf("a0") >= 0 && named().indexOf("b1") >= 0, "indexed rows: " + named();
 	setItems(["b", "a", "c"]);
+	flush();
 	assert named() === arrow(), "after reorder+append: named=" + named() + " arrow=" + arrow();
 	assert named().indexOf("b0") >= 0 && named().indexOf("c2") >= 0, "indexes follow: " + named();
 	d1(); d2();
@@ -292,9 +319,12 @@ test "Show mounts its branch untracked" {
 	const d = render(div, host, root);
 	assert builds === 1, "branch built once on mount";
 	setN(5);
+	flush();
 	assert builds === 1, "a signal read while mounting does not rebuild the branch";
 	setOn(false);
+	flush();
 	setOn(true);
+	flush();
 	assert builds === 2, "flipping the condition still rebuilds";
 	d();
 }
@@ -315,9 +345,12 @@ test "Show mounts its fallback untracked" {
 	const d = render(div, host, root);
 	assert builds === 1, "fallback built once on mount";
 	setN(5);
+	flush();
 	assert builds === 1, "a signal read while mounting does not rebuild the fallback";
 	setOn(true);
+	flush();
 	setOn(false);
+	flush();
 	assert builds === 2, "flipping the condition still rebuilds the fallback";
 	d();
 }
@@ -350,6 +383,7 @@ test "ForKeyedBy reuses rows across fresh objects that carry the same keys and s
 	assert listText(ulNode) === "ab", "both rows rendered: " + listText(ulNode);
 	assert builds === 2, "two rows built";
 	setRows([{ id: 2, label: "b2" }, { id: 1, label: "a2" }]);
+	flush();
 	assert builds === 2, "a reorder of fresh objects with the same keys builds nothing";
 	assert listText(ulNode) === "b2a2", "the rows moved and show their new items: " + listText(ulNode);
 	d();
@@ -369,9 +403,11 @@ test "ForKeyedBy inserts and removes by key and keeps the index accessor live" {
 	const ulNode = (root as unknown as MockNode).children[0];
 	assert builds === 2, "two rows built";
 	setRows([{ id: 3, label: "c" }, { id: 1, label: "a" }, { id: 2, label: "b" }]);
+	flush();
 	assert builds === 3, "one build for the inserted key";
 	assert listText(ulNode) === "c0a1b2", "indexes follow the move: " + listText(ulNode);
 	setRows([{ id: 2, label: "b" }]);
+	flush();
 	assert builds === 3, "removal builds nothing";
 	assert listText(ulNode) === "b0", "only the survivor is left: " + listText(ulNode);
 	d();
@@ -391,6 +427,7 @@ test "ForKeyedBy takes a string key and pairs rows sharing a key by occurrence" 
 	const ulNode = (root as unknown as MockNode).children[0];
 	assert listText(ulNode) === "ab" && builds === 2, "a shared key mounts both rows: " + listText(ulNode);
 	setRows([{ id: 1, label: "b2" }]);
+	flush();
 	assert listText(ulNode) === "b2" && builds === 2, "the first row of the key stays and shows the new item: " + listText(ulNode);
 	d();
 }
@@ -409,8 +446,10 @@ test "ForKeyedBy takes a fallback" {
 	const ulNode = (root as unknown as MockNode).children[0];
 	assert listText(ulNode) === "empty", "the fallback shows while the list is empty";
 	setRows([{ id: 4, label: "d" }]);
+	flush();
 	assert listText(ulNode) === "d", "the keyed row replaces the fallback";
 	setRows([]);
+	flush();
 	assert listText(ulNode) === "empty", "the fallback comes back";
 	d();
 }
@@ -420,6 +459,7 @@ test "For gives a row that names its index a live index through the tag" {
 	const [view, d] = mountedText(element(<ul><For each={items()}>{(s: string, i: Accessor<number>): NeonNode => element(<li>{s + i().toString()}</li>)}</For></ul>));
 	assert view().indexOf("a0") >= 0 && view().indexOf("b1") >= 0, "indexed rows: " + view();
 	setItems(["b", "a"]);
+	flush();
 	assert view().indexOf("b0") >= 0 && view().indexOf("a1") >= 0, "indexes follow the reorder: " + view();
 	d();
 }
@@ -429,6 +469,7 @@ test "For renders a row that never names its index" {
 	const [view, d] = mountedText(element(<ul><For each={items()}>{(s: string, i: Accessor<number>): NeonNode => element(<li>{s}</li>)}</For></ul>));
 	assert view().indexOf("a") >= 0 && view().indexOf("b") >= 0, "rows render: " + view();
 	setItems(["b", "a", "c"]);
+	flush();
 	assert view().indexOf("c") >= 0, "reorder and append still work: " + view();
 	d();
 }
@@ -442,6 +483,7 @@ test "map.ts:330 For keeps the index live wherever the row names it" {
 	));
 	assert view() === "<root><ul><li title=\"0\">a0</li><li title=\"1\">b1</li></ul></root>", "initial: " + view();
 	setItems(["b", "a"]);
+	flush();
 	assert view() === "<root><ul><li title=\"0\">b0</li><li title=\"1\">a1</li></ul></root>", "attribute and template literal follow the reorder: " + view();
 	d();
 }
@@ -454,9 +496,11 @@ test "map.ts:97 For keyed by a function keeps the index live when the row reads 
 	assert withIndex() === "<root><ul><li>a0</li><li>b1</li></ul></root>", "indexed: " + withIndex();
 	assert without() === "<root><ul><li>a</li><li>b</li></ul></root>", "plain: " + without();
 	setRows([{ id: 2, label: "b2" }, { id: 3, label: "c" }, { id: 1, label: "a2" }]);
+	flush();
 	assert withIndex() === "<root><ul><li>b20</li><li>c1</li><li>a22</li></ul></root>", "indexes follow insert and move: " + withIndex();
 	assert without() === "<root><ul><li>b2</li><li>c</li><li>a2</li></ul></root>", "rows follow insert and move: " + without();
 	setRows([]);
+	flush();
 	assert without() === "<root><ul></ul></root>", "emptied: " + without();
 	d1();
 	d2();
@@ -509,6 +553,7 @@ test "BUGS.md <For key>: a keyed row shows the new item when the key stays, thro
 	const [view, d] = mountedText(element(<ul><For each={rows()} keyed={(r: Keyed): number => r.id}>{keyedRow}</For></ul>));
 	assert view() === "<root><ul><li>a</li><li>b</li></ul></root>", "initial: " + view();
 	setRows([{ id: 2, label: "b2" }, { id: 1, label: "a2" }]);
+	flush();
 	assert view() === "<root><ul><li>b2</li><li>a2</li></ul></root>", "reordered with the new items: " + view();
 	d();
 }
@@ -521,6 +566,7 @@ test "For keyed with a string key and a row that reads the index accessor, throu
 	));
 	assert view() === "<root><ul><li>a0</li><li>b1</li></ul></root>", "initial: " + view();
 	setRows([{ id: 3, label: "c" }, { id: 2, label: "b2" }, { id: 1, label: "a2" }]);
+	flush();
 	assert view() === "<root><ul><li>c0</li><li>b21</li><li>a22</li></ul></root>", "insert, move and new items: " + view();
 	assert flowBuilds === 3, "only the inserted key built a row: " + flowBuilds.toString();
 	d();
@@ -532,6 +578,7 @@ test "For keyed={true} and a bare keyed are the default identity mode, through t
 	const [explicit, d1] = mountedText(element(<ul><For each={xs()} keyed={true}>{countedRow}</For></ul>));
 	const [bare, d2] = mountedText(element(<ul><For each={xs()} keyed>{plainRow}</For></ul>));
 	setXs(["b", "a"]);
+	flush();
 	assert explicit() === "<root><ul><li>b</li><li>a</li></ul></root>" && bare() === explicit(), "both reorder: " + explicit() + " " + bare();
 	assert flowBuilds === 2, "identity rows are reused on a reorder: " + flowBuilds.toString();
 	d1(); d2();
@@ -543,9 +590,11 @@ test "For keyed={false} keeps rows per position and shows the new value in place
 	const [view, d] = mountedText(element(<ul><For each={xs()} keyed={false}>{positionRow}</For></ul>));
 	assert view() === "<root><ul><li>a0</li><li>b1</li></ul></root>", "initial: " + view();
 	setXs(["b", "a", "c"]);
+	flush();
 	assert view() === "<root><ul><li>b0</li><li>a1</li><li>c2</li></ul></root>", "values changed in place, one row appended: " + view();
 	assert flowBuilds === 3, "no row rebuilt: " + flowBuilds.toString();
 	setXs(["z"]);
+	flush();
 	assert view() === "<root><ul><li>z0</li></ul></root>", "shrink: " + view();
 	d();
 }
@@ -579,8 +628,10 @@ test "for.nonkeyed.spec.tsx:99 For keyed={false} renders every removal, swap, ro
 	assert view() === rowsBefore(abcd, "<b>z</b>"), "initial: " + view();
 	for (const c of reorderings()) {
 		setXs(c);
+		flush();
 		assert view() === rowsBefore(c, "<b>z</b>"), "after " + c.join(",") + ": " + view();
 		setXs(abcd);
+		flush();
 		assert view() === rowsBefore(abcd, "<b>z</b>"), "back to abcd after " + c.join(",") + ": " + view();
 	}
 	d();
@@ -592,8 +643,10 @@ test "for.nonkeyed.spec.tsx:99 For (identity) renders every removal, swap, rotat
 	assert view() === rowsBefore(abcd, "<b>z</b>"), "initial: " + view();
 	for (const c of reorderings()) {
 		setXs(c);
+		flush();
 		assert view() === rowsBefore(c, "<b>z</b>"), "after " + c.join(",") + ": " + view();
 		setXs(abcd);
+		flush();
 		assert view() === rowsBefore(abcd, "<b>z</b>"), "back to abcd after " + c.join(",") + ": " + view();
 	}
 	d();
@@ -605,8 +658,10 @@ test "for.nonkeyed.spec.tsx:99 For keyed by a function renders every removal, sw
 	assert view() === rowsBefore(abcd, "<b>z</b>"), "initial: " + view();
 	for (const c of reorderings()) {
 		setXs(c);
+		flush();
 		assert view() === rowsBefore(c, "<b>z</b>"), "after " + c.join(",") + ": " + view();
 		setXs(abcd);
+		flush();
 		assert view() === rowsBefore(abcd, "<b>z</b>"), "back to abcd after " + c.join(",") + ": " + view();
 	}
 	d();
@@ -617,8 +672,10 @@ test "For keyed={false} fallback shows on empty and yields to rows, through the 
 	const [view, d] = mountedText(element(<ul><For each={xs()} keyed={false} fallback={<li>none</li>}>{(x: Accessor<string>, i: number): NeonNode => element(<li>{x()}</li>)}</For></ul>));
 	assert view() === "<root><ul><li>none</li></ul></root>", "empty: " + view();
 	setXs(["a"]);
+	flush();
 	assert view() === "<root><ul><li>a</li></ul></root>", "rows: " + view();
 	setXs([]);
+	flush();
 	assert view() === "<root><ul><li>none</li></ul></root>", "empty again: " + view();
 	d();
 }
@@ -633,9 +690,11 @@ test "Repeat renders one row per index and keeps its rows when only the count ch
 	const [view, d] = mountedText(element(<ul><Repeat count={n()}>{countedIndexRow}</Repeat></ul>));
 	assert view() === "<root><ul><li>0</li><li>1</li></ul></root>", "initial: " + view();
 	setN(4);
+	flush();
 	assert view() === "<root><ul><li>0</li><li>1</li><li>2</li><li>3</li></ul></root>", "grown: " + view();
 	assert flowBuilds === 4, "the first two rows were kept: " + flowBuilds.toString();
 	setN(1);
+	flush();
 	assert view() === "<root><ul><li>0</li></ul></root>", "shrunk: " + view();
 	assert flowBuilds === 4, "shrinking builds nothing: " + flowBuilds.toString();
 	d();
@@ -646,8 +705,10 @@ test "Repeat takes a named row, a from offset that slides the window, and keeps 
 	const [view, d] = mountedText(element(<ul><Repeat count={3} from={start()}>{repeatRow}</Repeat></ul>));
 	assert view() === "<root><ul><li>1</li><li>2</li><li>3</li></ul></root>", "window 1..3: " + view();
 	setStart(3);
+	flush();
 	assert view() === "<root><ul><li>3</li><li>4</li><li>5</li></ul></root>", "window 3..5: " + view();
 	setStart(0);
+	flush();
 	assert view() === "<root><ul><li>0</li><li>1</li><li>2</li></ul></root>", "backward disjoint jump: " + view();
 	d();
 }
@@ -657,8 +718,10 @@ test "Repeat fallback shows when the count is 0 and yields to rows" {
 	const [view, d] = mountedText(element(<ul><Repeat count={n()} fallback={<li>none</li>}>{repeatRow}</Repeat></ul>));
 	assert view() === "<root><ul><li>none</li></ul></root>", "empty: " + view();
 	setN(2);
+	flush();
 	assert view() === "<root><ul><li>0</li><li>1</li></ul></root>", "rows: " + view();
 	setN(0);
+	flush();
 	assert view() === "<root><ul><li>none</li></ul></root>", "empty again: " + view();
 	d();
 }
@@ -681,13 +744,19 @@ test "map.ts:88 For: a binding inside a row keeps following its own signal throu
 	const [view, d] = mountedText(element(<ul><For each={xs()}>{(s: string, i: Accessor<number>): NeonNode => element(<li>{s + tag()}</li>)}</For></ul>));
 	assert view() === "<root><ul><li>a!</li><li>b!</li></ul></root>", "initial: " + view();
 	setXs(["b", "a"]);
+	flush();
 	setTag("?");
+	flush();
 	assert view() === "<root><ul><li>b?</li><li>a?</li></ul></root>", "rows that moved follow the signal: " + view();
 	setXs(["c", "b", "a"]);
+	flush();
 	setTag("#");
+	flush();
 	assert view() === "<root><ul><li>c#</li><li>b#</li><li>a#</li></ul></root>", "rows that stayed and the row that came follow it: " + view();
 	setXs(["a"]);
+	flush();
 	setTag("%");
+	flush();
 	assert view() === "<root><ul><li>a%</li></ul></root>", "the row left after a removal follows it: " + view();
 	d();
 }
@@ -699,13 +768,19 @@ test "map.ts:88 ForKeyedBy: a binding inside a row keeps following its own signa
 	const [view, d] = mountedText(element(<ul><For each={rows()} keyed={key}>{(r: Accessor<Keyed>, i: Accessor<number>): NeonNode => element(<li>{r().label + tag()}</li>)}</For></ul>));
 	assert view() === "<root><ul><li>a!</li><li>b!</li></ul></root>", "initial: " + view();
 	setRows([{ id: 2, label: "B" }, { id: 1, label: "A" }]);
+	flush();
 	setTag("?");
+	flush();
 	assert view() === "<root><ul><li>B?</li><li>A?</li></ul></root>", "rows that moved follow the signal: " + view();
 	setRows([{ id: 3, label: "c" }, { id: 2, label: "B" }, { id: 1, label: "A" }]);
+	flush();
 	setTag("#");
+	flush();
 	assert view() === "<root><ul><li>c#</li><li>B#</li><li>A#</li></ul></root>", "rows that stayed and the row that came follow it: " + view();
 	setRows([{ id: 1, label: "A" }]);
+	flush();
 	setTag("%");
+	flush();
 	assert view() === "<root><ul><li>A%</li></ul></root>", "the row left after a removal follows it: " + view();
 	d();
 }
@@ -716,13 +791,19 @@ test "map.ts:88 For keyed={false}: a binding inside a row keeps following its ow
 	const [view, d] = mountedText(element(<ul><For each={xs()} keyed={false}>{(x: Accessor<string>, i: number): NeonNode => element(<li>{x() + tag()}</li>)}</For></ul>));
 	assert view() === "<root><ul><li>a!</li><li>b!</li></ul></root>", "initial: " + view();
 	setXs(["b", "a"]);
+	flush();
 	setTag("?");
+	flush();
 	assert view() === "<root><ul><li>b?</li><li>a?</li></ul></root>", "rows that changed value follow the signal: " + view();
 	setXs(["c", "b", "a"]);
+	flush();
 	setTag("#");
+	flush();
 	assert view() === "<root><ul><li>c#</li><li>b#</li><li>a#</li></ul></root>", "rows that stayed and the row that came follow it: " + view();
 	setXs(["a"]);
+	flush();
 	setTag("%");
+	flush();
 	assert view() === "<root><ul><li>a%</li></ul></root>", "the row left after a removal follows it: " + view();
 	d();
 }
@@ -733,10 +814,14 @@ test "map.ts:624 Repeat: a binding inside a row keeps following its own signal t
 	const [view, d] = mountedText(element(<ul><Repeat count={n()}>{(i: number): NeonNode => element(<li>{i.toString() + tag()}</li>)}</Repeat></ul>));
 	assert view() === "<root><ul><li>0!</li><li>1!</li></ul></root>", "initial: " + view();
 	setN(4);
+	flush();
 	setTag("?");
+	flush();
 	assert view() === "<root><ul><li>0?</li><li>1?</li><li>2?</li><li>3?</li></ul></root>", "kept and new rows follow the signal: " + view();
 	setN(1);
+	flush();
 	setTag("#");
+	flush();
 	assert view() === "<root><ul><li>0#</li></ul></root>", "the row left after a shrink follows it: " + view();
 	d();
 }

@@ -7,6 +7,7 @@ import { createAsyncMemo } from "../../src/core/memo";
 import { Head } from "../../src/render/head";
 import { Loading, Show } from "../../src/macros/ui/flow";
 import { Gate, gated, release } from "../core/asyncClock";
+import { flush } from "../../src/core/runtime";
 
 const loadingB: NeonNode = el("b", [], [], text("loading"));
 
@@ -45,12 +46,16 @@ test "a Head whose content reads a pending value shows the fallback, then the ti
 	assert shown() === "<root><p>body</p></root>", "the body shows once it landed: " + shown();
 	assert head() === "<head><title>note!</title></head>", "the title is in the head: " + head();
 	setTail("?");
+	flush();
 	assert head() === "<head><title>note?</title></head>", "a later write still updates the title: " + head();
 	setOn(false);
+	flush();
 	assert head() === "<head></head>", "the title leaves with its row: " + head();
 	gate.open = false;
 	setTag("2");
+	flush();
 	setOn(true);
+	flush();
 	assert shown() === "<root></root>" && head() === "<head></head>", "a Head built while pending waits: " + shown() + head();
 	await release(gate);
 	assert head() === "<head><title>note2?</title></head>" && shown() === "<root><p>body</p></root>", "and lands: " + head();

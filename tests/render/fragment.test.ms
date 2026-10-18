@@ -4,6 +4,7 @@ import { element } from "../../src/macros/ui/element";
 import { createSignal, Accessor } from "../../src/core/signal";
 import { For, Show } from "../../src/macros/ui/flow";
 import { View, Text } from "../../src/components/primitives";
+import { flush } from "../../src/core/runtime";
 
 function Pair(props: { label: Accessor<string> }): NeonNode {
 	return element(<><p>r1</p><p>r2</p></>);
@@ -35,6 +36,7 @@ test "a top-level fragment keeps its children reactive" {
 	assert r.children.length === 2, "two roots";
 	assert mockToString(r.children[0]) === "<p>1</p>", "initial";
 	setN(2);
+	flush();
 	assert mockToString(r.children[0]) === "<p>2</p>", "first root still reactive";
 	assert r.children.length === 2, "root count unchanged";
 	d();
@@ -62,6 +64,7 @@ test "a fragment carries text and reactive children" {
 	const box = (root as unknown as MockNode).children[0];
 	assert mockToString(box) === "<div>hi <p>1</p></div>", "initial";
 	setN(2);
+	flush();
 	assert mockToString(box) === "<div>hi <p>2</p></div>", "reactive child still updates";
 	d();
 }
@@ -78,9 +81,11 @@ test "a fragment row moves and leaves as one span" {
 	const first = mockToString(root as unknown as MockNode);
 	assert first === "<root><ul><dt>a</dt><dd>a!</dd><dt>b</dt><dd>b!</dd><dt>c</dt><dd>c!</dd></ul></root>", "initial: " + first;
 	setItems(["c", "a", "b"]);
+	flush();
 	const moved = mockToString(root as unknown as MockNode);
 	assert moved === "<root><ul><dt>c</dt><dd>c!</dd><dt>a</dt><dd>a!</dd><dt>b</dt><dd>b!</dd></ul></root>", "reorder: " + moved;
 	setItems(["c", "b"]);
+	flush();
 	const removed = mockToString(root as unknown as MockNode);
 	assert removed === "<root><ul><dt>c</dt><dd>c!</dd><dt>b</dt><dd>b!</dd></ul></root>", "remove: " + removed;
 	dispose();
@@ -93,7 +98,9 @@ test "a row that opens with a closed region still moves with its span" {
 	const root = host.createElement("root");
 	const dispose = render(<ul><For each={items()}>{(item: string, i: Accessor<number>): NeonNode => <><Gate open={open()} /><li>{item}</li></>}</For></ul>, host, root);
 	setItems(["b", "a"]);
+	flush();
 	setOpen(true);
+	flush();
 	const shown = mockToString(root as unknown as MockNode);
 	assert shown === "<root><ul><i>on</i><li>b</li><i>on</i><li>a</li></ul></root>", "each gate opens inside its own row: " + shown;
 	dispose();
@@ -110,8 +117,10 @@ test "a fragment picked by && mounts every root between its siblings and leaves 
 	const dispose = render(<div><i>head</i>{on() && <><p>a</p><p>b</p></>}<i>tail</i></div>, host, root);
 	assert boxOf(root) === "<div><i>head</i><p>a</p><p>b</p><i>tail</i></div>", "initial: " + boxOf(root);
 	setOn(false);
+	flush();
 	assert boxOf(root) === "<div><i>head</i><i>tail</i></div>", "both roots leave: " + boxOf(root);
 	setOn(true);
+	flush();
 	assert boxOf(root) === "<div><i>head</i><p>a</p><p>b</p><i>tail</i></div>", "both roots return in place: " + boxOf(root);
 	dispose();
 }
@@ -123,8 +132,10 @@ test "a ternary switches between two fragments" {
 	const dispose = render(<div>{on() ? <><p>a</p><p>b</p></> : <><b>x</b><b>y</b><b>z</b></>}<i>tail</i></div>, host, root);
 	assert boxOf(root) === "<div><p>a</p><p>b</p><i>tail</i></div>", "initial: " + boxOf(root);
 	setOn(false);
+	flush();
 	assert boxOf(root) === "<div><b>x</b><b>y</b><b>z</b><i>tail</i></div>", "other arm: " + boxOf(root);
 	setOn(true);
+	flush();
 	assert boxOf(root) === "<div><p>a</p><p>b</p><i>tail</i></div>", "back: " + boxOf(root);
 	dispose();
 }
@@ -136,6 +147,7 @@ test "a ternary pairs a fragment with null or with one element, either way round
 	const dispose = render(<div>{on() ? <><p>a</p><p>b</p></> : null}|{on() ? null : <><b>x</b><b>y</b></>}|{on() ? <em>one</em> : <><u>m</u><u>n</u></>}</div>, host, root);
 	assert boxOf(root) === "<div>|<b>x</b><b>y</b>|<u>m</u><u>n</u></div>", "initial: " + boxOf(root);
 	setOn(true);
+	flush();
 	assert boxOf(root) === "<div><p>a</p><p>b</p>||<em>one</em></div>", "flipped: " + boxOf(root);
 	dispose();
 }
@@ -149,9 +161,12 @@ test "a fragment inside an expression keeps its own spots and its own conditions
 	const dispose = render(<div>{on() && <>n=<p>{n() + ""}</p>{deep() && <><s>d1</s><s>d2</s></>}</>}</div>, host, root);
 	assert boxOf(root) === "<div>n=<p>1</p></div>", "initial: " + boxOf(root);
 	setN(2);
+	flush();
 	setDeep(true);
+	flush();
 	assert boxOf(root) === "<div>n=<p>2</p><s>d1</s><s>d2</s></div>", "inner spot and inner fragment: " + boxOf(root);
 	setOn(false);
+	flush();
 	assert boxOf(root) === "<div></div>", "the outer fragment takes the inner one with it: " + boxOf(root);
 	dispose();
 }
@@ -163,6 +178,7 @@ test "a fragment is a fallback" {
 	const dispose = render(<div><Show when={on()} fallback={<><b>x</b><b>y</b></>}><p>a</p></Show></div>, host, root);
 	assert boxOf(root) === "<div><b>x</b><b>y</b></div>", "fallback fragment: " + boxOf(root);
 	setOn(true);
+	flush();
 	assert boxOf(root) === "<div><p>a</p></div>", "children: " + boxOf(root);
 	dispose();
 }

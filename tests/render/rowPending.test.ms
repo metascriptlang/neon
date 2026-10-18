@@ -7,6 +7,7 @@ import { Accessor, accessor, createSignal } from "../../src/core/signal";
 import { createAsyncMemo } from "../../src/core/memo";
 import { Loading, Show, For, ForKeyedBy, Match, Case } from "../../src/macros/ui/flow";
 import { Gate, gated, release } from "../core/asyncClock";
+import { flush } from "../../src/core/runtime";
 
 const loadingB: NeonNode = el("b", [], [], text("loading"));
 
@@ -41,10 +42,13 @@ test "a Show row whose build reads a pending value shows the fallback, then the 
 	await release(gate);
 	assert shown() === "<root><p>note!</p></root>", "the content shows once it landed: " + shown();
 	setTail("?");
+	flush();
 	assert shown() === "<root><p>note?</p></root>", "a later write still updates the page: " + shown();
 	setOn(false);
+	flush();
 	assert shown() === "<root></root>", "the row leaves: " + shown();
 	setOn(true);
+	flush();
 	assert shown() === "<root><p>note?</p></root>", "and comes back: " + shown();
 	dispose();
 }
@@ -63,9 +67,12 @@ test "a Show row whose fallback reads a pending value holds the Loading fallback
 	await release(gate);
 	assert shown() === "<root><p>note!</p></root>", "the Show fallback shows once it landed: " + shown();
 	setOn(true);
+	flush();
 	assert shown() === "<root><i>on</i></root>", "the content replaces it: " + shown();
 	setTail("?");
+	flush();
 	setOn(false);
+	flush();
 	assert shown() === "<root><p>note?</p></root>", "and it builds again: " + shown();
 	dispose();
 }
@@ -85,8 +92,10 @@ test "a For row whose build reads a pending value shows the fallback, then every
 	await release(gate);
 	assert shown() === "<root><p>notea!</p><p>noteb!</p></root>", "both rows show once it landed: " + shown();
 	setTail("?");
+	flush();
 	assert shown() === "<root><p>notea?</p><p>noteb?</p></root>", "a later write still updates the page: " + shown();
 	setItems(["a", "b", "c"]);
+	flush();
 	assert shown() === "<root><p>notea?</p><p>noteb?</p><p>notec?</p></root>", "a later row builds: " + shown();
 	dispose();
 }
@@ -106,6 +115,7 @@ test "a For fallback row reads a pending value" {
 	await release(gate);
 	assert shown() === "<root><p>note!</p></root>", "the empty fallback shows once it landed: " + shown();
 	setItems(["a"]);
+	flush();
 	assert shown() === "<root><i>a</i></root>", "a row replaces it: " + shown();
 	dispose();
 }
@@ -128,10 +138,13 @@ test "a Match arm whose build reads a pending value shows the fallback, then the
 	await release(gate);
 	assert shown() === "<root><p>note!</p></root>", "the arm shows once it landed: " + shown();
 	setTail("?");
+	flush();
 	assert shown() === "<root><p>note?</p></root>", "a later write still updates the page: " + shown();
 	setPick(2);
+	flush();
 	assert shown() === "<root><i>two</i></root>", "the other arm: " + shown();
 	setPick(1);
+	flush();
 	assert shown() === "<root><p>note?</p></root>", "and back: " + shown();
 	dispose();
 }
@@ -152,13 +165,18 @@ test "a Show inside a Show reads a pending value in its build" {
 	await release(gate);
 	assert shown() === "<root><div><p>note!</p></div></root>", "both rows show once it landed: " + shown();
 	setTail("?");
+	flush();
 	assert shown() === "<root><div><p>note?</p></div></root>", "a later write still updates the page: " + shown();
 	setInner(false);
+	flush();
 	assert shown() === "<root><div></div></root>", "the inner row leaves: " + shown();
 	setInner(true);
+	flush();
 	setOuter(false);
+	flush();
 	assert shown() === "<root></root>", "the outer row leaves: " + shown();
 	setOuter(true);
+	flush();
 	assert shown() === "<root><div><p>note?</p></div></root>", "and both come back: " + shown();
 	dispose();
 }
@@ -188,6 +206,7 @@ test "a keyed For reorder after the rows settled moves the same nodes and builds
 	const before = rowNodes();
 	const built = builds[0];
 	setItems(["c", "a", "b"]);
+	flush();
 	assert shown() === "<root><p>notec</p><p>notea</p><p>noteb</p></root>", "reordered: " + shown();
 	const after = rowNodes();
 	assert after[0] === before[2] && after[1] === before[0] && after[2] === before[1], "the same nodes moved";
