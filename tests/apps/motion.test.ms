@@ -1,3 +1,4 @@
+import { flush } from "../../src/core/runtime";
 import { Motion } from "../../examples/components/motion";
 import { useManualFrames, setFrameDriver } from "../../src/animation/index";
 import { element } from "../../src/macros/ui/element";
@@ -43,6 +44,7 @@ function press(root: MockNode, label: string): void {
 	const button = find(root, "pressable", label);
 	if (button === null) { throw new Error("no button " + label); }
 	fireEvent(button as MockNode, "onPress");
+	flush();
 }
 
 test "the motion example: fade, spring, scroll-linked header, toast" {
@@ -92,6 +94,7 @@ test "the motion example: fade, spring, scroll-linked header, toast" {
 	const e = neonEvent("scroll");
 	e.y = 60;
 	fireEventWith(scrollNode as MockNode, "onScroll", e);
+	flush();
 	assert styleOf(headerBox).height === 83, "header follows scroll " + (styleOf(headerBox).height as number).toString();
 	assert textOf(root).indexOf("scroll 60") >= 0;
 

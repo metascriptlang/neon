@@ -1,3 +1,4 @@
+import { flush } from "../../src/core/runtime";
 import { element } from "../../src/macros/ui/element";
 import { Host, HostNode, MockNode, mockNode, mockHost, render, mockToString, fireEvent } from "../../src/render/host";
 import { sleepAsync } from "std/core/promise";
@@ -32,17 +33,23 @@ test "the gallery presses its button, opens and closes its modal, toggles the st
 	const overlay = (host.overlayRoot as (n: HostNode) => HostNode)(root as unknown as HostNode) as unknown as MockNode;
 	assert shows(root, "status: ready"), "mounted: " + mockToString(root).substring(0, 300);
 	fireEvent(labelled(root, "Press me"), "onPress");
+	flush();
 	assert shows(root, "status: button 1"), "button";
 	fireEvent(labelled(root, "Open modal"), "onPress");
+	flush();
 	assert shows(overlay, "Modal content"), "modal open: " + mockToString(overlay);
 	await sleepAsync(20);
 	assert shows(root, "status: modal shown"), "onShow";
 	fireEvent(labelled(overlay, "Close modal"), "onPress");
+	flush();
 	assert !shows(overlay, "Modal content") && shows(root, "status: modal closed"), "modal closed";
 	fireEvent(labelled(root, "Hide status bar"), "onPress");
+	flush();
 	assert shows(root, "statusBarHidden=\"true\"") && shows(root, "status: status bar hidden"), "bar hidden";
 	fireEvent(labelled(root, "Open keyboard screen"), "onPress");
+	flush();
 	assert shows(root, "Back to gallery") && !shows(root, "Open modal"), "keyboard screen";
 	fireEvent(labelled(root, "Back to gallery"), "onPress");
+	flush();
 	assert shows(root, "Open modal"), "back";
 }
