@@ -93,5 +93,9 @@ Not measured:
 - Text drawn at scale 1.
 
 Seen in passing: a single-line field's text sits about 2 points right of a multiline input's at the same padding,
-which is `NSTextFieldCell`'s own inset. Ctrl-C does not end an Ion app on macOS
-(`~/metascript/.inbox/ion/2026-10-18-macos-sigint-does-not-quit.md`), so it does not end `msc run --hcr` either.
+which is `NSTextFieldCell`'s own inset.
+
+Ctrl-C ends `msc run --hcr`: SIGINT to its process group, started with SIGINT at its default, ended msc in 19 ms and
+took the HCR host with it. A first try said the opposite, and it measured the shell. A job started with `&` from a
+non-interactive shell ignores SIGINT, and so does every process it starts, `script` and its pty included. A script
+that stands in for Ctrl-C starts its child with `signal.SIG_DFL`, as `/tmp/hcr_sigint.py` did here.
