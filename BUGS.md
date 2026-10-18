@@ -22,16 +22,6 @@ names the card and the site, and nothing is worked around in `src/`. Rows closed
 2026-09-20 were dropped with §2 — they are in this file's history at `git show c00bd2b:BUGS.md`,
 and the invariants that outlived them were moved to the head of the test that pins each one.
 
-- **OPEN 2026-10-19 — `examples/voidCanvas.ms` names its font by a path the web package does not carry.**
-  The example passes `font: "../void/assets/font.ttf"`, relative to the neon checkout. `void/scripts/build-web.sh`
-  preloads `assets/font.ttf` at `/assets/font.ttf`, so the WebGL2 page logs `neon: cannot load the font
-  ../void/assets/font.ttf: NotLoaded` and exits 3. Built with
-  `VOID_WEB_PRELOAD="--preload-file assets/font.ttf@/void/assets/font.ttf"`, the same example builds from the repo
-  with no other change (msc v0.3.4 `4fe2a5eec`, void `82b84827`, gl only) and draws its rows in headless Chrome:
-  colour, inverse, underline and line-through spans, and the timer tick. Idle, it draws nothing: `drawn` stays 2
-  while the frame callback runs 293 times. WebGPU was not run, because headless Chrome has no adapter. Site:
-  `examples/voidCanvas.ms` `opts`.
-
 - **OPEN 2026-10-16 — touches do not reach the sokol canvas.** `src/platform/sokol/input.ms`
   `deliverAppEvent` takes the four `Touches*` events and does nothing with them, so a phone browser cannot
   press, scroll or focus the canvas once events arrive.
@@ -245,20 +235,12 @@ and the invariants that outlived them were moved to the head of the test that pi
   children that follow, and it rebuilds the tree on read. Card
   `~/metascript/.inbox/compiler/2026-10-16-json-refuses-a-self-referential-type.md`.
 
-- **PARKED 2026-10-16 — the sokol canvas receives no input, and Escape ends it.** Not Neon's: Void's window
-  driver (`void/src/sokol/bridgeWin.c` and `bridgeWeb.c`, `_event`) keeps every `sapp_event` to itself, and
-  `voidRun` takes only `init` and `frame`, so no key, char, pointer, wheel or focus reaches MetaScript. The
-  same `_event` calls `sapp_request_quit()` on Escape: in headless Chrome, after a click and an Escape press,
-  the frame callback stopped at 178 calls and never ran again. sokol_app also reports no IME composition on
-  any platform, so `onPreedit` cannot fire there. Neon's half is `src/platform/sokol/input.ms`
-  (`deliverAppEvent`, `flushKey`), pinned by `tests/platform/sokolInput.test.ms`. Parked at
-  `src/platform/sokol/canvas.ms` `runCanvas`, which calls `voidRun` with no event closure. Note
-  `~/metascript/.inbox/void/2026-10-16-sokol-window-driver-for-neon-canvas.md`.
-
-- **PARKED 2026-10-16 — the native sokol canvas draws every frame.** Not Neon's: sokol_app presents after
-  every frame callback, and a skipped frame flips the window between the last two drawn frames (measured in
-  docs/RENDER-LAYERS.md). Parked at `src/platform/sokol/canvas.ms` `skippedFrameKeepsPicture`, false natively.
-  Same Void note as the row above.
+- **PARKED 2026-10-19 — the sokol canvas under `-d:voidGlCore` draws every frame.** Not Neon's: Void's
+  `bridgeWin.c` `_frame` asks `sapp_skip_present()` for a frame that drew nothing, and sokol_app honours it only
+  in `_sapp_d3d11_present` (`void/deps/sokol/sokol_app.h:9128`); the WGL swap presents regardless, so a skipped
+  frame would flip between the last two drawn frames. Read from source, not measured on GL. Parked at
+  `src/platform/sokol/canvas.ms` `skippedFrameKeepsPicture`, false off D3D11 and the web. Note
+  `~/metascript/.inbox/void/2026-10-19-gl-core-skip-present.md`.
 
 - **PARKED 2026-10-15 — `tests/platform/voidInput.test.ms` aborts on C.** Not Neon's: after `default font
   assets/font.ttf did not load`, the native run panics with signal 6 in Void `wrapText`
