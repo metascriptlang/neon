@@ -113,6 +113,23 @@ expect_native_modules() {
 	[ $bad = 0 ] && echo "ok   modules $1" || fail=1
 }
 
+expect_macos_app() {
+	NO_COLOR=1 "$MSC" build --release --output="$bundles/$1.app" "tests/apps/$1.ms" >/dev/null 2>&1
+	syms=$(nm --defined-only "$bundles/$1.app" 2>/dev/null)
+	bad=0
+	[ -n "$syms" ] || { echo "FAIL macos $1: did not build"; fail=1; return; }
+	for c in $2; do
+		echo "$syms" | grep -q "_OBJC_CLASS_\\\$_$c\$" && { echo "FAIL macos $1: carries class $c"; bad=1; }
+	done
+	for f in $3; do
+		echo "$syms" | grep -q " _$f\$" && { echo "FAIL macos $1: carries $f"; bad=1; }
+	done
+	for w in $4; do
+		otool -L "$bundles/$1.app" | grep -q "/$w.framework/" && { echo "FAIL macos $1: links $w"; bad=1; }
+	done
+	[ $bad = 0 ] && echo "ok   macos $1" || fail=1
+}
+
 expect_output tests/apps/localSignalApp.ms
 expect_output tests/apps/moduleSignalApp.ms
 expect_warnings tests/apps/listWarnApp.ms
@@ -121,4 +138,8 @@ expect_bundle bundleSvgApp "platform/browser/svg components/svg/markup" "platfor
 expect_native_modules bundleTerminalApp "platform/terminal/host" "components/svg/scene platform/native/host platform/browser/dom"
 expect_size bundlePlainApp js 915703
 expect_size bundleTerminalApp native 657232
+if [ "$(uname)" = Darwin ]; then
+	expect_macos_app bundleMacosApp "NeonSwitch NeonSwitchControl NeonIndicator NeonModal NeonWebView NeonWebKitView NeonScriptProxy NeonVideo NeonCamera NeonPhotoCapture NeonSvgView NeonSvgCanvas" "niSwitchCreate niIndicatorCreate niModalCreate niWebViewCreate niVideoCreate niCameraCreate niSvgCreate" "AVKit CoreMedia"
+	expect_size bundleMacosApp native 2052624
+fi
 exit $fail
