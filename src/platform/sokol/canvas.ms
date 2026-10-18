@@ -2,6 +2,7 @@ import { gfxSetup, fbWidth, fbHeight, dpiScale } from "../../../../void/src/soko
 import { setup2d } from "../../../../void/src/void2d/draw";
 import { addFont, registerFace, FontId, FontStyle as FaceStyle } from "../../../../void/src/void2d/font";
 import { present } from "../../../../void/src/void2d/scene";
+import { AppEvent, onAppEvent, setTextInput, setImeRect } from "../../../../void/src/sokol/window";
 import { familyFont } from "../void/host";
 import { Host, HostNode, NeonNode, render } from "../../render/host";
 import {
@@ -12,13 +13,14 @@ import {
 	logicalWidth,
 	logicalHeight,
 } from "../void/windowHost";
+import { SokolInput, sokolInput, deliverAppEvent, flushKey } from "./input";
 
 @include("../../../../void/src/sokol/bridge.h");
 
 extern function voidRun(w: int32, h: int32, init: () => void, frame: () => void): void;
 extern function msRunOnce(timeoutMs: int32): boolean;
 
-when (emcc) {
+when (emcc || (windows && !voidGlCore)) {
 	function skippedFrameKeepsPicture(): boolean { return true; }
 } else {
 	function skippedFrameKeepsPicture(): boolean { return false; }
@@ -40,6 +42,7 @@ interface Canvas {
 	font: FontId;
 	family: string;
 	area: WindowArea | null;
+	input: SokolInput | null;
 	owed: boolean;
 	dispose: (() => void) | null;
 }
@@ -68,12 +71,18 @@ function canvasHost(c: Canvas): Host {
 			_requested = _requested + 1;
 			c.owed = true;
 		},
-		setImeRect: (pixelX: int32, pixelY: int32, pixelW: int32, pixelH: int32): void => {},
+		setImeRect: (pixelX: int32, pixelY: int32, pixelW: int32, pixelH: int32): void => {
+			setImeRect(pixelX, pixelY, pixelW, pixelH);
+		},
 		opened: (area: WindowArea): void => {
 			c.area = area;
+			c.input = sokolInput(area);
 			c.owed = true;
 		},
-		released: (area: WindowArea): void => { c.area = null; },
+		released: (area: WindowArea): void => {
+			c.area = null;
+			c.input = null;
+		},
 	});
 }
 
@@ -83,12 +92,17 @@ function initCanvas(): void {
 	setup2d();
 	const app = c.app;
 	c.dispose = render((h: Host, p: HostNode, b: HostNode | null): void => { app()(h, p, b); }, canvasHost(c), windowNode("window"));
+	onAppEvent((e: AppEvent): void => {
+		if (c.input !== null) { deliverAppEvent(c.input as SokolInput, e); }
+	});
+	setTextInput(true);
 }
 
 function frameCanvas(): void {
 	_ticks = _ticks + 1;
 	msRunOnce(0 as int32);
 	const c = running();
+	if (c.input !== null) { flushKey(c.input as SokolInput); }
 	if (c.area === null) { return; }
 	const area = c.area as WindowArea;
 	const width = fbWidth();
@@ -103,6 +117,11 @@ function frameCanvas(): void {
 	_drawn = _drawn + 1;
 	area.vh.layout(area.logicalWidth(), area.logicalHeight());
 	area.vh.scene.present();
+	const r = area.vh.imeRect();
+	if (r !== null) {
+		const s = area.scale;
+		setImeRect((r.x * s) as int32, (r.y * s) as int32, (r.w * s) as int32, (r.h * s) as int32);
+	}
 }
 
 export function runCanvas(opts: CanvasOptions, app: () => NeonNode): int32 {
@@ -114,7 +133,7 @@ export function runCanvas(opts: CanvasOptions, app: () => NeonNode): int32 {
 		console.log(`neon: cannot load the font ${family}: ${font.error.toString()}`);
 		return 3;
 	}
-	_canvas = { app, font: font.value, family, area: null, owed: true, dispose: null };
+	_canvas = { app, font: font.value, family, area: null, input: null, owed: true, dispose: null };
 	voidRun(opts.width as int32, opts.height as int32, initCanvas, frameCanvas);
 	const c = running();
 	if (c.dispose !== null) { (c.dispose as () => void)(); }
