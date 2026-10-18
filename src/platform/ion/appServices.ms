@@ -1,5 +1,5 @@
 // The app services of every Ion host, the full-window <Void> and the Windows native host alike.
-// Ion backs the clipboard and the microphone permission; a service Ion does not back yet is refused with the name the
+// Ion backs the clipboard and the microphone and camera permissions; a service Ion does not back yet is refused with the name the
 // author called.
 
 import {
@@ -7,7 +7,9 @@ import {
 	NotificationSpec, PermissionReply, ScheduleReply, ShareRequest,
 } from "../../api/services";
 import { readClipboardText, writeClipboardText } from "../../../../ion/src/clipboard";
-import { MicAccess, microphoneAccess, requestMicrophoneAccess } from "../../../../ion/src/permission";
+import {
+	MediaAccess, cameraAccess, microphoneAccess, requestCameraAccess, requestMicrophoneAccess,
+} from "../../../../ion/src/permission";
 
 function unavailable(api: string): Error {
 	return new Error(`${api} is not available on an Ion desktop host yet`);
@@ -17,7 +19,7 @@ function refusedPermission(name: string): PermissionReply {
 	return { status: "", canAskAgain: false, error: `Permissions(${name}) is not available on an Ion desktop host yet` };
 }
 
-function microphoneReply(got: Result<MicAccess, string>): PermissionReply {
+function accessReply(got: Result<MediaAccess, string>): PermissionReply {
 	if (!got.ok) { return { status: "", canAskAgain: false, error: got.error }; }
 	return { status: got.value.status, canAskAgain: got.value.canAskAgain, error: "" };
 }
@@ -48,14 +50,21 @@ export const ionAppServices: AppServices = {
 	storageKeys: (): string[] => { throw unavailable("AsyncStorage"); },
 	watchNetInfo: (): void => { throw unavailable("NetInfo"); },
 	refreshNetInfo: (): void => { throw unavailable("NetInfo"); },
-	// Parked on ~/metascript/.inbox/ion/2026-10-18-camera-permission-for-neon-cameraview.md: Ion backs no camera permission yet.
 	permissionStatus: async (name: string): Promise<PermissionReply> => {
-		return name === "microphone" ? microphoneReply(microphoneAccess()) : refusedPermission(name);
+		if (name === "microphone") { return accessReply(microphoneAccess()); }
+		if (name === "camera") { return accessReply(cameraAccess()); }
+		return refusedPermission(name);
 	},
 	requestPermission: async (name: string): Promise<PermissionReply> => {
-		if (name !== "microphone") { return refusedPermission(name); }
-		const got = await requestMicrophoneAccess();
-		return microphoneReply(got);
+		if (name === "microphone") {
+			const got = await requestMicrophoneAccess();
+			return accessReply(got);
+		}
+		if (name === "camera") {
+			const got = await requestCameraAccess();
+			return accessReply(got);
+		}
+		return refusedPermission(name);
 	},
 	androidPermissionGranted: async (p: string): Promise<boolean> => { throw unavailable("PermissionsAndroid"); },
 	androidShouldShowRationale: async (p: string): Promise<boolean> => { throw unavailable("PermissionsAndroid"); },
