@@ -204,14 +204,6 @@ and the invariants that outlived them were moved to the head of the test that pi
   pass. The polling slot P2 was dropped in `2e2067a` before the fix reached a sync; the fix rides recompiler
   lane `fix-new-promise`. Card `~/metascript/.inbox/compiler/2026-10-07-new-promise-executor-does-not-lower.md`.
 
-- **PARKED 2026-10-16 — the refresh lane cannot build navigation.** Not Neon's: any module pass, even one
-  that returns the module unchanged, drops the pattern of a destructuring `for…of`, and `route.ms`
-  `searchText` iterates its search map with `for (const [name, value] of search)`, as `webHistory.ms`
-  `collectAddress`, `addressOf` and `sameParameters` do. `tests/refresh/run.sh`
-  fails `navigation.ms` on native, JS and `-d:hcr` with `Undefined variable 'name'`, and so would refresh
-  and hot reload of any app that imports `src/navigation/index`. Gate `gate-slice2-c3e8464/`. Card
-  `~/metascript/.inbox/compiler/2026-10-16-a-module-pass-drops-the-pattern-of-a-for-of-destructure.md`.
-
 - **PARKED 2026-10-16 — the sokol canvas receives no input, and Escape ends it.** Not Neon's: Void's window
   driver (`void/src/sokol/bridgeWin.c` and `bridgeWeb.c`, `_event`) keeps every `sapp_event` to itself, and
   `voidRun` takes only `init` and `frame`, so no key, char, pointer, wheel or focus reaches MetaScript. The
