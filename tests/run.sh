@@ -1,5 +1,5 @@
 #!/bin/sh
-# Neon test gate — every test file but the browser ones and the *Server.test.ms files runs
+# Neon test gate — every test file of tests/ and neon-ui/tests/ but the browser ones and the *Server.test.ms files runs
 # native, then --target=js. The *Server.test.ms files run in the SSR lane under -d:server, the
 # one build with a server renderer. Then the browser lane in real Chrome, then the edge lane in workerd.
 # js-lane skips: tests/style/style.test.ms, tests/platform/void.test.ms, tests/platform/voidPark.test.ms,
@@ -10,7 +10,7 @@
 # under node, so it runs only through tests/browser/run.sh.
 MSC=${MSC:-msc}
 cd "$(dirname "$0")/.."
-files=$(find tests -name "*.test.ms" -not -name "*Server.test.ms" -not -path "tests/browser/*" | sort)
+files=$(find tests neon-ui/tests -name "*.test.ms" -not -name "*Server.test.ms" -not -path "tests/browser/*" | sort)
 fail=0
 tests/macros/run.sh || fail=1
 tests/navigation/layers.sh || fail=1
