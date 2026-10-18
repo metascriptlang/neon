@@ -21,7 +21,9 @@ test "the effect gets the compute's value and the previous one, after the comput
 		log.push("body");
 		return 0;
 	});
+	flush();
 	setX(1);
+	flush();
 	assert log.join(",") === "compute,body,effect 0/none,compute,effect 1/0", "got " + log.join(",");
 }
 
@@ -36,7 +38,9 @@ test "a render effect applies at once and gets the same pair" {
 		log.push("body");
 		return 0;
 	});
+	flush();
 	setX(1);
+	flush();
 	assert log.join(",") === "compute,effect 0/none,body,compute,effect 1/0", "got " + log.join(",");
 }
 
@@ -56,9 +60,12 @@ test "only the compute is tracked" {
 		);
 		return 0;
 	});
+	flush();
 	setY(1);
+	flush();
 	assert user === 1 && render === 1, "a read in the effect phase subscribes nothing: " + user.toString() + "," + render.toString();
 	setX(1);
+	flush();
 	assert user === 2 && render === 2, "the compute's source still runs both: " + user.toString() + "," + render.toString();
 }
 
@@ -76,18 +83,23 @@ test "a render effect runs before a user effect created ahead of it" {
 		);
 		return 0;
 	});
+	assert mark === "a", "the render effect applied at creation: " + mark;
+	flush();
 	assert mark === "ab", "got " + mark;
 	setX(1);
+	flush();
 	assert mark === "abab", "got " + mark;
 }
 
-test "an effect created at the top level runs at once" {
+test "an effect created at the top level first applies on the next flush, as one in a root does" {
 	let runs = 0;
 	createEffect<boolean>(
 		(p: boolean | null): boolean => true,
 		(v: boolean, p: boolean | null): Cleanup | null => { runs += 1; return null; },
 	);
-	assert runs === 1, "no root defers it";
+	assert runs === 0, "nothing applies before the flush";
+	flush();
+	assert runs === 1;
 }
 
 test "an effect created in a root applies after the root body" {
@@ -98,6 +110,8 @@ test "an effect created in a root applies after the root body" {
 		log.push("body");
 		return 0;
 	});
+	assert log.join(",") === "render,body", "got " + log.join(",");
+	flush();
 	assert log.join(",") === "render,body,effect", "got " + log.join(",");
 }
 
@@ -112,6 +126,7 @@ test "effects apply in creation order after a nested root" {
 		log.push("body");
 		return 0;
 	});
+	flush();
 	assert log.join(",") === "body,outer,inner", "got " + log.join(",");
 }
 
@@ -139,7 +154,9 @@ test "a render effect writing the host runs before an effect reading it back" {
 		);
 		return 0;
 	});
+	flush();
 	setCount(5);
+	flush();
 	assert seen.join(",") === "0,5", "got " + seen.join(",");
 }
 
@@ -170,8 +187,10 @@ test "defer skips the first apply and the next change applies" {
 		);
 		return 0;
 	});
+	flush();
 	assert user === "" && render === "", "nothing applied at creation";
 	setX(1);
+	flush();
 	assert user === "u1/none " && render === "r1/none ", "the deferred first apply sees no previous: [" + user + "][" + render + "]";
 }
 
@@ -193,9 +212,11 @@ test "a cleanup registered in the compute and the returned cleanup run before ea
 		);
 		return 0;
 	});
+	flush();
 	assert applied === 1 && computeCleanups === 0 && returned === 0, "first run cleans nothing";
 	for (let i = 1; i <= 3; i += 1) {
 		setX(i);
+		flush();
 		assert applied === i + 1, "applied " + applied.toString() + " at " + i.toString();
 		assert computeCleanups === i, "compute cleanups " + computeCleanups.toString() + " at " + i.toString();
 		assert returned === i, "returned cleanups " + returned.toString() + " at " + i.toString();
@@ -213,12 +234,15 @@ test "the last returned cleanup runs once at disposal, on both effect kinds" {
 		createRenderEffect<int32>((p: int32 | null): int32 => x(), (v: int32, p: int32 | null): Cleanup | null => () => { render += 1; });
 		return 0;
 	});
+	flush();
 	assert user === 0 && render === 0, "nothing cleaned yet";
 	setX(1);
+	flush();
 	assert user === 1 && render === 1, "the previous run's cleanup: " + user.toString() + "," + render.toString();
 	(dispose as () => void)();
 	assert user === 2 && render === 2, "the final cleanup, once: " + user.toString() + "," + render.toString();
 	setX(2);
+	flush();
 	assert user === 2 && render === 2, "a disposed effect neither applies nor cleans again";
 }
 
@@ -288,8 +312,10 @@ test "a child effect created in the compute is rebuilt by the parent and runs on
 		);
 		return 0;
 	});
+	flush();
 	calls = 0;
 	setX(1);
+	flush();
 	assert calls === 1, "the parent rebuilt the child, which applied once: " + calls.toString();
 }
 
