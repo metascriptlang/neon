@@ -782,18 +782,15 @@ function reportRenderEffect(el: Computation): void {
 	if ((el.status & STATUS_ERROR) !== 0) {
 		routeStatus(el, 0, null);
 		const error = statusError(el);
-		if (!routeStatus(el, STATUS_ERROR, error)) { escape(error); }
+		if (!routeStatus(el, STATUS_ERROR, error)) {
+			haltReactivity(error);
+			throw error;
+		}
 	} else if ((el.status & STATUS_PENDING) !== 0) {
 		routeStatus(el, STATUS_PENDING, statusError(el));
 	} else {
 		routeStatus(el, 0, null);
 	}
-}
-
-// Parked on ~/metascript/.inbox/compiler/2026-10-15-throw-of-a-nullable-error-after-an-instanceof-test-dies-at-clang.md: this was an inline `throw thrown`.
-function escape(thrown: Error): void {
-	haltReactivity(thrown);
-	throw thrown;
 }
 
 function failPass(el: Computation, thrown: Error, wasPendingSource: boolean, outgoingPending: Computation[] | null): void {
