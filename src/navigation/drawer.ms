@@ -40,7 +40,8 @@ import { readName, readOptions } from "./stack";
 import {
 	createScreenCollector, collectScreens, groupOf, screenOf, watchScreens,
 } from "./screenCollection";
-import { BackBehavior, labelOf, mountedEntries, pagesModel, readBehavior } from "./tabs";
+import { BackBehavior } from "./childPages";
+import { labelOf, mountedEntries, pagesModel, readBehavior } from "./tabs";
 
 export const DRAWER_WIDTH = 280;
 

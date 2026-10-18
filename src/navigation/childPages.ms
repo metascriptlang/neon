@@ -1,6 +1,8 @@
 import { Accessor, untrack } from "../core/signal";
 import { ChildNavigation, ChildState, NavigationChild, createChildren } from "./children";
 
+export type BackBehavior = "firstRoute" | "initialRoute" | "history" | "none";
+
 export interface Pages<C> {
 	items: C[];
 	selectedIndex: int32;

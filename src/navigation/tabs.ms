@@ -7,7 +7,7 @@ import { View, Text, Pressable } from "../components/primitives";
 import { For, Show } from "../macros/ui/flow";
 import { Platform } from "../api/platform";
 import { NavigationChild } from "./children";
-import { ChildPages, Pages, createChildPages } from "./childPages";
+import { BackBehavior, ChildPages, Pages, createChildPages } from "./childPages";
 import {
 	WebNavigationNode,
 	WebNavigationOwner,
@@ -38,8 +38,6 @@ import { readName, readOptions } from "./stack";
 import {
 	createScreenCollector, collectScreens, groupOf, screenOf, watchScreens,
 } from "./screenCollection";
-
-export type BackBehavior = "firstRoute" | "initialRoute" | "history" | "none";
 
 export type TabBarPosition = "top" | "bottom";
 
