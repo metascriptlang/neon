@@ -77,8 +77,12 @@ and the invariants that outlived them were moved to the head of the test that pi
   `<Badge label="a" />` builds on msc `e8c024c8` (C) and the test binary ends with status
   `0xC0000005` when the body calls `props.suffix()`. Found by the refresh edit battery: adding a
   prop to a props interface before the parent passes it was accepted. Not reduced past this
-  program; not measured on JS or for a `string` prop. The props object is built by
-  `src/macros/ui/element.ms`, a contract that needs a yes before it changes.
+  program. The root is the checker: an object literal that omits a field typed through a generic
+  or `distinct` alias of a function type (`Accessor<T>` is `distinct (() => T)`) is accepted,
+  while a bare function type is refused; a `string` field left out is accepted too and reads
+  `""`. The macro builds the props literal at the tag, so the checker's error lands there and
+  Neon needs no change. Parked at compiler card
+  `~/metascript/.inbox/compiler/2026-10-03-interface-literal-omitted-reference-field.md`.
 
 - **OPEN 2026-10-08 — a component without props cannot be a JSX tag.** `function Tally():
   NeonNode { return <p>t</p>; }` used as `<Tally />` stops `msc run` (msc `99a851d7`, C) with
