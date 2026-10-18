@@ -45,6 +45,8 @@ static void unimplemented(const char *what) {
 	fail(message);
 }
 
+void neonUnimplemented(const char *what) { unimplemented(what); }
+
 static void requestHostFrame(void) {
 	if (g_frameRequested || g_inFrame || !s_requester.fn) return;
 	g_frameRequested = YES;
@@ -120,6 +122,11 @@ static void requireAttached(const char *what) {
 	char message[192];
 	snprintf(message, sizeof message, "%s before nimAttach", what);
 	fail(message);
+}
+
+NeonView *neonRequireRoot(const char *what) {
+	requireAttached(what);
+	return g_root;
 }
 
 // --- pointer: Neon's own hit test, the one bridge.cpp ports from RNW, over the view tree ---
@@ -497,6 +504,8 @@ static NSColor *cssColor(NSString *css) {
 	[[NSScanner scannerWithString:hex] scanHexInt:&rgb];
 	return rgba(((rgb >> 16) & 0xff) / 255.0f, ((rgb >> 8) & 0xff) / 255.0f, (rgb & 0xff) / 255.0f, 1);
 }
+
+NSColor *neonCssColor(NSString *css) { return cssColor(css); }
 
 // textSpans: records split by 0x1e, fields by 0x1f: text, colour, size, bold, italic, underline, line-through, press tag.
 static void setRuns(NeonLabel *label, const char *encoded) {
@@ -1079,125 +1088,7 @@ NEON_FIELD_METHODS
 }
 @end
 
-// --- Switch, ActivityIndicator, Image: RN macOS's RCTUIKit shims (RCTUISwitch : NSSwitch,
-// RCTUIActivityIndicatorView : NSProgressIndicator, RCTUIImageView drawing through its layer's contents) inside a NeonView ---
-
-static void centre(NSView *child, NSSize size, NSSize in) {
-	child.frame = NSMakeRect(floor((in.width - size.width) / 2), floor((in.height - size.height) / 2), size.width, size.height);
-}
-
-@interface NeonSwitchControl : NSSwitch
-@end
-
-@implementation NeonSwitchControl
-- (BOOL)acceptsFirstMouse:(NSEvent *)event { (void)event; return YES; }
-@end
-
-@interface NeonSwitch : NeonView
-@property(nonatomic) BOOL value;
-@property(nonatomic, strong) NeonSwitchControl *control;
-@end
-
-@implementation NeonSwitch
-- (instancetype)initWithFrame:(NSRect)frame {
-	self = [super initWithFrame:frame];
-	if (self) {
-		_control = [[NeonSwitchControl alloc] initWithFrame:NSZeroRect];
-		_control.target = self;
-		_control.action = @selector(changed);
-		[self addSubview:_control];
-	}
-	return self;
-}
-
-- (void)setFrameSize:(NSSize)size {
-	[super setFrameSize:size];
-	centre(self.control, self.control.fittingSize, size);
-}
-
-- (void)show { self.control.state = self.value ? NSControlStateValueOn : NSControlStateValueOff; }
-
-// RN Switch is controlled: the event reports the flip, then the switch returns to `value` unless the handler changed it.
-- (void)changed {
-	emitControl(self.neonTag, 4, self.control.state == NSControlStateValueOn ? @"true" : @"false");
-	[self show];
-}
-
-- (void)setProp:(const char *)name value:(const char *)value {
-	if (!strcmp(name, "value")) {
-		self.value = !strcmp(value, "true");
-		[self show];
-	} else if (!strcmp(name, "disabled")) {
-		self.control.enabled = strcmp(value, "true") != 0;
-	} else if (!strcmp(name, "thumbColor") || !strcmp(name, "trackColorOn") || !strcmp(name, "trackColorOff")) {
-		// NSSwitch draws in the system accent colour and has no tint API.
-	} else {
-		char what[128];
-		snprintf(what, sizeof what, "Switch niSetProp(%s)", name);
-		unimplemented(what);
-	}
-}
-@end
-
-@interface NeonIndicator : NeonView
-@property(nonatomic) BOOL animating, hidesWhenStopped;
-@property(nonatomic, strong) NSColor *color;
-@property(nonatomic, strong) NSProgressIndicator *spinner;
-@end
-
-@implementation NeonIndicator
-- (instancetype)initWithFrame:(NSRect)frame {
-	self = [super initWithFrame:frame];
-	if (self) {
-		_spinner = [[NSProgressIndicator alloc] initWithFrame:NSZeroRect];
-		_spinner.style = NSProgressIndicatorStyleSpinning;
-		_spinner.indeterminate = YES;
-		_spinner.wantsLayer = YES;
-		_spinner.layerUsesCoreImageFilters = YES;
-		_animating = YES;
-		_hidesWhenStopped = YES;
-		[self addSubview:_spinner];
-		[self show];
-	}
-	return self;
-}
-
-- (void)setFrameSize:(NSSize)size {
-	[super setFrameSize:size];
-	CGFloat side = MIN(size.width, size.height);
-	centre(self.spinner, NSMakeSize(side, side), size);
-}
-
-- (void)show {
-	self.spinner.displayedWhenStopped = !self.hidesWhenStopped;
-	if (self.animating) [self.spinner startAnimation:nil];
-	else [self.spinner stopAnimation:nil];
-	if (!self.color) {
-		self.spinner.layer.filters = nil;
-		return;
-	}
-	CGFloat r, g, b, a;
-	[[self.color colorUsingColorSpace:NSColorSpace.sRGBColorSpace] getRed:&r green:&g blue:&b alpha:&a];
-	CIFilter *tint = [CIFilter filterWithName:@"CIColorPolynomial"];
-	[tint setDefaults];
-	[tint setValue:[CIVector vectorWithX:r Y:0 Z:0 W:0] forKey:@"inputRedCoefficients"];
-	[tint setValue:[CIVector vectorWithX:g Y:0 Z:0 W:0] forKey:@"inputGreenCoefficients"];
-	[tint setValue:[CIVector vectorWithX:b Y:0 Z:0 W:0] forKey:@"inputBlueCoefficients"];
-	self.spinner.layer.filters = @[tint];
-}
-
-- (void)setProp:(const char *)name value:(const char *)value {
-	if (!strcmp(name, "animating")) self.animating = strcmp(value, "false") != 0;
-	else if (!strcmp(name, "hidesWhenStopped")) self.hidesWhenStopped = strcmp(value, "false") != 0;
-	else if (!strcmp(name, "color")) self.color = value[0] ? cssColor(@(value)) : nil;
-	else {
-		char what[128];
-		snprintf(what, sizeof what, "ActivityIndicator niSetProp(%s)", name);
-		unimplemented(what);
-	}
-	[self show];
-}
-@end
+// --- Image: RN macOS's RCTUIImageView drawing through its layer's contents, inside a NeonView ---
 
 // RN blurRadius: a Gaussian blur of the decoded image, cropped back to its own extent.
 static CGImageRef blurredImage(CGImageRef image, CGFloat radius) {
@@ -1338,66 +1229,8 @@ static CGImageRef pixelsOf(NSImage *image) { return [image CGImageForProposedRec
 }
 @end
 
-// --- Modal: src/components/modal.ms portals it into the root, filling it above the app, as on iOS. RN macOS compiles
-// its Modal out (React/Views/RCTModalHostView.m is `#if !TARGET_OS_OSX`), so iOS's escape gesture becomes the Escape
-// key: it asks the app to close the topmost Modal (control phase 7, RN's onRequestClose) ---
-
-@interface NeonModal : NeonView
-@property(nonatomic, copy) NSString *animation;
-@end
-
-static NeonModal *topModal(void) {
-	for (NSView *child in g_root.subviews.reverseObjectEnumerator) {
-		if ([child isKindOfClass:NeonModal.class]) return (NeonModal *)child;
-	}
-	return nil;
-}
-
-static void watchEscape(void) {
-	static id monitor = nil;
-	if (monitor) return;
-	monitor = [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskKeyDown handler:^NSEvent *(NSEvent *event) {
-		NeonModal *modal = event.keyCode == 53 && event.window == g_root.window ? topModal() : nil;
-		if (!modal || modal.neonTag == 0) return event;
-		emitControl(modal.neonTag, 7, @"");
-		return nil;
-	}];
-}
-
-@implementation NeonModal
-- (void)viewDidMoveToWindow {
-	[super viewDidMoveToWindow];
-	if (!self.window) return;
-	if ([self.animation isEqualToString:@"fade"]) {
-		self.alphaValue = 0;
-		[NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
-			context.duration = 0.3;
-			self.animator.alphaValue = 1;
-		}];
-	} else if ([self.animation isEqualToString:@"slide"]) {
-		CABasicAnimation *slide = [CABasicAnimation animationWithKeyPath:@"transform.translation.y"];
-		slide.fromValue = @(self.window.contentView.bounds.size.height);
-		slide.toValue = @0;
-		slide.additive = YES;
-		slide.duration = 0.3;
-		[self.layer addAnimation:slide forKey:@"neonSlide"];
-	}
-}
-
-- (void)setProp:(const char *)name value:(const char *)value {
-	if (!strcmp(name, "animationType")) {
-		self.animation = @(value);
-		return;
-	}
-	char what[128];
-	snprintf(what, sizeof what, "Modal niSetProp(%s)", name);
-	unimplemented(what);
-}
-@end
-
 static BOOL isControl(NeonView *view) {
-	return [view isKindOfClass:NeonSwitch.class] || [view isKindOfClass:NeonIndicator.class] || [view isKindOfClass:NeonImage.class] ||
-		[view isKindOfClass:NeonModal.class] || [view conformsToProtocol:@protocol(NeonComponentView)];
+	return [view isKindOfClass:NeonImage.class] || [view conformsToProtocol:@protocol(NeonComponentView)];
 }
 
 static BOOL isInput(NeonView *view) { return [view isKindOfClass:NeonInput.class]; }
@@ -1410,11 +1243,10 @@ static NeonInput *inputOf(void *view, const char *what) {
 	return nil;
 }
 
-// A click on a TextInput goes to the view AppKit edits in: the field, or its field editor once editing; a click on a
-// Switch goes to the NSSwitch.
+// A click on a TextInput goes to the view AppKit edits in: the field, or its field editor once editing.
 static NSView *nativeTarget(NeonView *view, NSPoint pointInRoot) {
 	NSView *target = isInput(view) ? [(NeonInput *)view editingView] :
-		[view isKindOfClass:NeonSwitch.class] ? ((NeonSwitch *)view).control : neonMediaNativeTarget(view);
+		[view respondsToSelector:@selector(neonNativeTarget)] ? [(id<NeonComponentView>)view neonNativeTarget] : nil;
 	if (!target) return nil;
 	NSView *hit = [target hitTest:[target.superview convertPoint:pointInRoot fromView:g_root]];
 	return hit ? hit : target;
@@ -1826,8 +1658,8 @@ void niMeasureText(void *label, float maxWidth) {
 		[(NeonInput *)as(label) measure:maxWidth];
 		return;
 	}
-	if ([as(label) isKindOfClass:NeonSwitch.class]) {
-		NSSize fit = ((NeonSwitch *)as(label)).control.fittingSize;
+	if ([as(label) respondsToSelector:@selector(neonFittingSize)]) {
+		NSSize fit = [(id<NeonComponentView>)as(label) neonFittingSize];
 		g_measuredW = ceilf((float)fit.width);
 		g_measuredH = ceilf((float)fit.height);
 		return;
@@ -1889,27 +1721,11 @@ void niScrollSetOption(void *scroll, const char *name, const char *value) {
 	}
 }
 
-// --- bridge.h: Switch, ActivityIndicator, Image ---
-
-void *niSwitchCreate(void) {
-	requireAttached("niSwitchCreate");
-	return (void *)CFBridgingRetain([[NeonSwitch alloc] initWithFrame:NSZeroRect]);
-}
-
-void *niIndicatorCreate(void) {
-	requireAttached("niIndicatorCreate");
-	return (void *)CFBridgingRetain([[NeonIndicator alloc] initWithFrame:NSZeroRect]);
-}
+// --- bridge.h: Image ---
 
 void *niImageCreate(void) {
 	requireAttached("niImageCreate");
 	return (void *)CFBridgingRetain([[NeonImage alloc] initWithFrame:NSZeroRect]);
-}
-
-void *niModalCreate(void) {
-	requireAttached("niModalCreate");
-	watchEscape();
-	return (void *)CFBridgingRetain([[NeonModal alloc] initWithFrame:NSZeroRect]);
 }
 
 // --- bridge.h: TextInput ---
@@ -1930,14 +1746,6 @@ void niControlSetTag(void *control, int32_t tag) {
 }
 void niSetFocused(void *control, int focused) { [inputOf(control, "niSetFocused") focus:focused != 0]; }
 
-static void *mediaCreate(const char *kind) {
-	requireAttached(kind);
-	return (void *)CFBridgingRetain(neonMediaCreate(kind));
-}
-
-void *niWebViewCreate(void) { return mediaCreate("webview"); }
-void *niVideoCreate(void) { return mediaCreate("video"); }
-void *niCameraCreate(void) { return mediaCreate("camera"); }
 UNIMPLEMENTED_VOID(niSetReloadPoll, (msClosure poll))
 int niLastAppEvent(void) { return g_appEvent; }
 const char *niLastAppValue(void) { return g_appValue ? g_appValue : ""; }
