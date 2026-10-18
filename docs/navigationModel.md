@@ -356,13 +356,17 @@ same JS-driven frames.
   - `setParams` changes the key and so replaces the entry it changes, as Expo's
     `SET_PARAMS` does (`BaseRouter.tsx` declares nothing).
   - Tabs and drawer publish the pages their `backBehavior` walks back (`pagesModel`
-    `backPath`), so browser back is the in-app back: `firstRoute` (the default, as
-    Expo's) adds the first page before another selected one, `initialRoute` the
-    initial one, `none` nothing, and `history` the visits without repeats. Expo keeps
+    `backPath`), so browser back, Android back and `goBack` walk one path: `firstRoute`
+    (the default, as Expo's) adds the first page before another selected one,
+    `initialRoute` the initial one, `none` nothing, and `history` the visits without
+    repeats, as React Navigation's `history` (`TabRouter.tsx` `changeIndex`). Expo keeps
     the browser log apart from the tab history, so its browser walks every visit
-    (`TabRouter.tsx` `getBrowserHistoryForAction`) while its back walks the tab
-    history; here both walk the tab history, and revisiting a tab rewrites the entries
-    after the first visit it moves.
+    (`getBrowserHistoryForAction`) while its back walks the tab history; here both walk
+    the tab history, and revisiting a tab rewrites the entries after the first visit it
+    moves. A log of every visit is React Navigation's `fullHistory`, which Neon does not
+    offer until an app asks for it; it would be one more visit list both backs walk. A
+    drawer defaults to `firstRoute`, as `DrawerRouter` does: a switch away from the first
+    page adds an entry and a switch between later pages replaces it.
   - Opening the drawer adds an entry at the same address and closing it goes back one,
     as Expo's `DrawerRouter` adds a drawer history item. The open item carries the
     selected page's address and no child, since the URL comes from the last item. A
@@ -392,9 +396,10 @@ same JS-driven frames.
   top, and keep a tab mounted from its first selection, hiding the inactive ones (React
   Navigation `CardStack` with `detachInactiveScreens`, the lazy tabs of
   `BottomTabView`). Neither animates, and no option unmounts or pops a tab on blur. A
-  tab level publishes its first tab before another selected one, Expo's default
-  `backBehavior: "firstRoute"`, so browser back from the inbox returns to the feed tab
-  as it was; a route tree has no `backBehavior` option yet. Tabs are declared as a
+  tab level publishes the tabs its `backBehavior` walks back, as the container's tabs
+  do: `firstRoute` by default, so browser back from the inbox returns to the feed tab as
+  it was, or `history` or `none`; `initialRoute` throws, since Tabs take no initial
+  route. A traversal restores the visits from the entry's keys. Tabs are declared as a
   `navigator` beside the `layout`: the layout is the frame the author draws, the
   navigator the model it drives, so any frame drives any model. A typed `route` takes its
   path, status, guard and paths from its definition, so a config naming them beside it throws.

@@ -2,6 +2,7 @@ import { NeonNode } from "../../src/render/hostTypes";
 import { element } from "../../src/macros/ui/element";
 import { HostNode, MockNode, mockNode, mockHost, render, mockToString } from "../../src/render/host";
 import { RoutingSnapshot } from "../../src/navigation/routing";
+import { BackBehavior } from "../../src/navigation/childPages";
 import { createMemoryRoutingHistory } from "../../src/navigation/routingHistory";
 import {
 	LayoutProps,
@@ -47,6 +48,20 @@ function Thread(): NeonNode {
 
 function Missing(): NeonNode {
 	return <h1>missing</h1>;
+}
+
+function Profile(): NeonNode {
+	return <h1>profile</h1>;
+}
+
+function visitRoutes(behavior: BackBehavior): Routes {
+	return createRoutes([
+		{ layout: Shell, navigator: Tabs, backBehavior: behavior, children: [
+			{ path: "/feed", component: Feed },
+			{ path: "/inbox", component: Inbox },
+			{ path: "/profile", component: Profile },
+		] },
+	]);
 }
 
 function appRoutes(): Routes {
@@ -177,6 +192,46 @@ test "browser back from another tab returns to the first tab where it was, then 
 	router.dispose();
 }
 
+test "tabs with a history back behavior walk the visits back, as the browser restores them" {
+	const history = createMemoryRoutingHistory({ url: "/feed", state: "" });
+	const created = createRouter(visitRoutes("history"), history);
+	assert created.ok;
+	if (!created.ok) { return; }
+	const router = created.value;
+	const root = mounted(router);
+	assert router.navigate("/inbox");
+	assert router.navigate("/profile");
+	assert router.navigate("/inbox");
+	assert history.index() === 2, history.index().toString();
+	assert history.go(-1);
+	assert visibleText(root) === "profile", visibleText(root);
+	assert history.go(-1);
+	assert visibleText(root) === "feed", visibleText(root);
+	assert history.go(2);
+	assert visibleText(root) === "inbox", visibleText(root);
+	assert history.go(-1);
+	assert router.navigate("/feed");
+	assert history.index() === 1, history.index().toString();
+	assert history.go(-1);
+	assert visibleText(root) === "profile", visibleText(root);
+	router.dispose();
+}
+
+test "tabs with no back behavior replace the entry on a switch" {
+	const history = createMemoryRoutingHistory({ url: "/feed", state: "" });
+	const created = createRouter(visitRoutes("none"), history);
+	assert created.ok;
+	if (!created.ok) { return; }
+	const router = created.value;
+	const root = mounted(router);
+	assert router.navigate("/inbox");
+	assert router.navigate("/profile");
+	assert visibleText(root) === "profile", visibleText(root);
+	assert history.index() === 0, history.index().toString();
+	assert history.read().url === "/profile", history.read().url;
+	router.dispose();
+}
+
 test "an entry whose router state does not parse opens from its address" {
 	const history = createMemoryRoutingHistory({ url: "/feed", state: "" });
 	const created = createRouter(appRoutes(), history);
@@ -194,7 +249,7 @@ test "an entry whose router state does not parse opens from its address" {
 	router.dispose();
 }
 
-test "a route tree refuses a navigator without children and a misplaced initial route" {
+test "a route tree refuses a navigator without children, a misplaced initial route or back behavior" {
 	const bare = failure((): Routes => createRoutes([{ path: "/feed", navigator: Stack }]));
 	assert bare === "routing: \"/feed\" has a navigator but no children to navigate", bare;
 	const tabs = failure((): Routes => createRoutes([
@@ -209,4 +264,12 @@ test "a route tree refuses a navigator without children and a misplaced initial 
 		{ path: "/inbox", navigator: Stack, initial: "all", children: [{ path: "", component: Inbox }] },
 	]));
 	assert absent === "routing: \"/inbox\" has no child \"all\" to start on", absent;
+	const stacked = failure((): Routes => createRoutes([
+		{ path: "/inbox", navigator: Stack, backBehavior: "history", children: [{ path: "", component: Inbox }] },
+	]));
+	assert stacked === "routing: \"/inbox\" names a backBehavior, which only Tabs take", stacked;
+	const initial = failure((): Routes => createRoutes([
+		{ path: "/app", navigator: Tabs, backBehavior: "initialRoute", children: [{ path: "", component: Home }] },
+	]));
+	assert initial === "routing: \"/app\" goes back to its initial route, which Tabs do not take", initial;
 }

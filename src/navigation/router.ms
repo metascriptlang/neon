@@ -25,7 +25,7 @@ import {
 import { PathMatch, createMatcher, expandOptionals, normalizePath } from "./routeMatcher";
 import { NavigationChild } from "./children";
 import { ChildStack, createChildStack } from "./childStack";
-import { ChildPages, Pages, createChildPages } from "./childPages";
+import { BackBehavior, ChildPages, Pages, createChildPages } from "./childPages";
 import {
 	WebKeySerializer,
 	WebNavigationError,
@@ -63,6 +63,7 @@ export interface RouteConfig {
 	layout?: ((props: LayoutProps) => NeonNode) | null;
 	navigator?: RouteNavigator | null;
 	initial?: string | null;
+	backBehavior?: BackBehavior | null;
 	status?: int32 | null;
 	guard?: ((params: Map<string, string>, found: RouteMatch) => GuardDecision) | null;
 	paths?: (() => Map<string, string>[]) | null;
@@ -75,6 +76,7 @@ export interface RouteView {
 	layout: ((props: LayoutProps) => NeonNode) | null;
 	navigator: RouteNavigator | null;
 	initial: int32;
+	backBehavior: BackBehavior;
 	children: int32[];
 	label: string;
 }
@@ -119,6 +121,18 @@ function initialOf(config: RouteConfig, children: RouteConfig[], ids: int32[]): 
 	throw new Error("routing: " + labelOf(config) + " has no child \"" + wanted + "\" to start on");
 }
 
+function backBehaviorOf(config: RouteConfig): BackBehavior {
+	const behavior = config.backBehavior;
+	if (behavior === null) { return "firstRoute"; }
+	if (config.navigator === null || config.navigator as RouteNavigator !== RouteNavigator.Tabs) {
+		throw new Error("routing: " + labelOf(config) + " names a backBehavior, which only Tabs take");
+	}
+	if (behavior as BackBehavior === "initialRoute") {
+		throw new Error("routing: " + labelOf(config) + " goes back to its initial route, which Tabs do not take");
+	}
+	return behavior as BackBehavior;
+}
+
 function compile(configs: RouteConfig[], views: RouteView[], ids: int32[]): RouteEntry[] {
 	const entries: RouteEntry[] = [];
 	for (const config of configs) {
@@ -150,6 +164,7 @@ function compile(configs: RouteConfig[], views: RouteView[], ids: int32[]): Rout
 			layout: config.layout,
 			navigator: config.navigator,
 			initial: -1,
+			backBehavior: backBehaviorOf(config),
 			children: [],
 			label: labelOf(config),
 		};
@@ -267,6 +282,7 @@ interface Level {
 	kind: LevelKind;
 	stack: ChildStack<Stop, Place> | null;
 	pages: ChildPages<Stop, Place> | null;
+	visit: (at: int32) => void;
 	owner: WebNavigationOwner;
 	dispose: Dispose;
 }
@@ -459,6 +475,16 @@ function createLevel(
 			}
 		}
 		const pages = createChildPages<Stop, Place>({ items, selectedIndex }, stopKey, factory);
+		const behavior = routes.views[owner].backBehavior;
+		let visits: int32[] = [selectedIndex];
+		const visit = (at: int32): void => {
+			const kept: int32[] = [];
+			for (const seen of visits) {
+				if (seen !== at) { kept.push(seen); }
+			}
+			kept.push(at);
+			visits = kept;
+		};
 		const web = childPagesWebNavigation<Stop, Place>(pages, serializer, {
 			pathMapper: (page: NavigationChild<Stop, Place>): string | null => page.configuration().part,
 			parametersMapper: (page: NavigationChild<Stop, Place>): Map<string, string> | null => {
@@ -470,14 +496,29 @@ function createLevel(
 			},
 			visited: (current: ChildPages<Stop, Place>): int32[] => {
 				const at = current.selectedIndex();
-				return at === 0 ? [at] : [0, at];
+				if (behavior === "history") { return visits; }
+				return behavior === "none" || at === 0 ? [at] : [0, at];
+			},
+		});
+		const node = webNavigationNode<Pages<Stop>>({
+			serializer: web.serializer,
+			history: web.history,
+			onBeforeNavigate: web.onBeforeNavigate,
+			navigate: (keys: Pages<Stop>[]): void => {
+				const restored: int32[] = [];
+				for (const key of keys) {
+					if (key.selectedIndex >= 0) { restored.push(key.selectedIndex); }
+				}
+				visits = restored;
+				web.navigate(keys);
 			},
 		});
 		return {
 			kind,
 			stack: null,
 			pages,
-			owner: { webNavigation: webNavigationNode<Pages<Stop>>(web) },
+			visit,
+			owner: { webNavigation: node },
 			dispose: (): void => pages.dispose(),
 		};
 	}
@@ -500,6 +541,7 @@ function createLevel(
 		kind,
 		stack,
 		pages: null,
+		visit: (at: int32): void => {},
 		owner: { webNavigation: webNavigationNode<Stop>(web) },
 		dispose: (): void => stack.dispose(),
 	};
@@ -581,11 +623,15 @@ function walk(routes: Routes, level: Level, target: Target, depth: int32): Walke
 		if (page.path !== routePath) {
 			const items = current.items.slice(0);
 			items[at] = stopOf(routes, chain, depth, target.search, target.hash, seed, 0);
+			level.visit(at);
 			pages.navigate((previous: Pages<Stop>): Pages<Stop> => ({ items, selectedIndex: at }));
 			return Walked.Changed;
 		}
 		const switched = at !== current.selectedIndex;
-		if (switched) { pages.select(at); }
+		if (switched) {
+			level.visit(at);
+			pages.select(at);
+		}
 		if (leaf) {
 			const left = walkLeaf(page, target, (next: Stop): void => {
 				const items = current.items.slice(0);
