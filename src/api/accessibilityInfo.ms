@@ -1,4 +1,5 @@
 import { Accessor, createSignal } from "../core/signal";
+import { flush } from "../core/runtime";
 import { EventSubscription, onChange } from "./subscription";
 import { appServices } from "./services";
 import { accessibilityServices, listenAccessibility } from "./accessibilityServices";
@@ -44,11 +45,15 @@ export function useScreenReaderEnabled(): Accessor<boolean> {
 }
 
 export function publishScreenReader(enabled: boolean): void {
-	if (screenReader() !== enabled) { setScreenReader(enabled); }
+	flush((): void => {
+		if (screenReader() !== enabled) { setScreenReader(enabled); }
+	});
 }
 
 export function publishReduceMotion(enabled: boolean): void {
-	if (reduceMotion() !== enabled) { setReduceMotion(enabled); }
+	flush((): void => {
+		if (reduceMotion() !== enabled) { setReduceMotion(enabled); }
+	});
 }
 
 listenAccessibility(publishScreenReader, publishReduceMotion);

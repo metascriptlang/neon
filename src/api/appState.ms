@@ -1,4 +1,5 @@
 import { Accessor, accessor, createSignal } from "../core/signal";
+import { flush } from "../core/runtime";
 import { EventSubscription, onChange, Listeners } from "./subscription";
 
 export type AppStateStatus = "active" | "background" | "inactive" | "unknown" | "extension";
@@ -38,7 +39,9 @@ export function useAppState(): Accessor<AppStateStatus> {
 export function publishAppState(next: AppStateStatus): void {
 	AppState.currentState = next;
 	const value: string = next;
-	if (state() !== value) { setState(value); }
+	flush((): void => {
+		if (state() !== value) { setState(value); }
+	});
 }
 
 export function publishMemoryWarning(): void {

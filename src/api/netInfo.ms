@@ -1,4 +1,5 @@
 import { Accessor, createSignal } from "../core/signal";
+import { flush } from "../core/runtime";
 import { onChange } from "./subscription";
 import {
 	NetInfoState, listenNetInfo, netInfoServices, netInfoServicesGeneration,
@@ -70,7 +71,9 @@ export function useNetInfo(): Accessor<NetInfoState> {
 }
 
 export function publishNetInfo(next: NetInfoState): void {
-	if (!same(current(), next)) { setCurrent(next); }
+	flush((): void => {
+		if (!same(current(), next)) { setCurrent(next); }
+	});
 }
 
 listenNetInfo(publishNetInfo);
