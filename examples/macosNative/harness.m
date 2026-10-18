@@ -340,3 +340,19 @@ int harnessMeasureDetached(void) {
 }
 
 void harnessHide(const char *title, const char *label) { labelled(windowTitled(title).contentView, @(label)).hidden = YES; }
+
+static NSView *neonRoot(NSView *view) {
+	if ([view isKindOfClass:NSClassFromString(@"NeonRoot")]) return view;
+	for (NSView *child in view.subviews) {
+		NSView *found = neonRoot(child);
+		if (found) return found;
+	}
+	return nil;
+}
+
+const char *harnessMeasureRoot(const char *title) {
+	static char out[128];
+	if (niMeasureInWindow((__bridge void *)neonRoot(windowTitled(title).contentView)) != 1) return "failed";
+	snprintf(out, sizeof out, "%g,%g,%g,%g", niMeasurementX(), niMeasurementY(), niMeasurementW(), niMeasurementH());
+	return out;
+}

@@ -7,7 +7,7 @@ import { runNativeWindow, nativeWindowOptions } from "../../src/platform/macos/i
 import { createStyles, styleOf } from "../../src/macros/ui/style";
 import { NeonNode } from "../../src/render/node";
 import { View, ScrollView, ScrollViewHandle } from "../../src/components/primitives";
-import { harnessIsCheck, harnessMeasure, harnessMeasureDetached, harnessHide } from "./harness.h";
+import { harnessIsCheck, harnessMeasure, harnessMeasureDetached, harnessHide, harnessMeasureRoot } from "./harness.h";
 import { exit } from "std/process";
 
 when (macos) {
@@ -58,6 +58,9 @@ function expect(label: string, want: string): void {
 }
 
 function check(): void {
+	const root: string = harnessMeasureRoot(TITLE);
+	console.log(`${root === "0,0,480,320" ? "ok  " : "FAIL"} the mounted root: ${root}, want 0,0,480,320`);
+	if (root !== "0,0,480,320") { failures += 1; }
 	expect("plain", "20,30,100,50");
 	expect("scaled", "225,45,50,50");
 	expect("scaledChild", "225,45,25,25");
