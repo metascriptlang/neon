@@ -233,14 +233,13 @@ function touchEvent(name: string, user: ((e: NeonEvent) => void) | null, entry: 
 	});
 }
 
-export class ViewHandle {
-	node: HostNode;
+export class ViewHandle extends ElementHandle {
 	private host: Host;
 	private mounted: () => boolean;
 
 	constructor(host: Host, node: HostNode, mounted: () => boolean) {
+		super(host, node, mounted);
 		this.host = host;
-		this.node = node;
 		this.mounted = mounted;
 	}
 
