@@ -11,7 +11,6 @@ export class Timer {
 	}
 }
 
-// Parked on ~/metascript/.inbox/compiler/2026-10-07-new-promise-executor-does-not-lower.md: a delay polls its clock because `new Promise((resolve) => …)` does not lower.
 export class Clock {
 	now: int32 = 0;
 	timers: Timer[] = [];
