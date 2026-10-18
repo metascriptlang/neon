@@ -2,6 +2,7 @@
 #import <QuartzCore/QuartzCore.h>
 #import <CoreImage/CoreImage.h>
 #include "../native/app.h"
+#include "../native/components.h"
 #include "../native/loop.h"
 #include "handoff.h"
 #import "view.h"
@@ -1929,16 +1930,14 @@ void niControlSetTag(void *control, int32_t tag) {
 }
 void niSetFocused(void *control, int focused) { [inputOf(control, "niSetFocused") focus:focused != 0]; }
 
-void *niControlCreate(const char *kind) {
-	requireAttached("niControlCreate");
-	NeonView *view = neonMediaCreate(kind);
-	if (!view) {
-		char what[128];
-		snprintf(what, sizeof what, "niControlCreate(%s)", kind);
-		unimplemented(what);
-	}
-	return (void *)CFBridgingRetain(view);
+static void *mediaCreate(const char *kind) {
+	requireAttached(kind);
+	return (void *)CFBridgingRetain(neonMediaCreate(kind));
 }
+
+void *niWebViewCreate(void) { return mediaCreate("webview"); }
+void *niVideoCreate(void) { return mediaCreate("video"); }
+void *niCameraCreate(void) { return mediaCreate("camera"); }
 UNIMPLEMENTED_VOID(niSetReloadPoll, (msClosure poll))
 int niLastAppEvent(void) { return g_appEvent; }
 const char *niLastAppValue(void) { return g_appValue ? g_appValue : ""; }

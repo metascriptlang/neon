@@ -1,5 +1,6 @@
 #include "runtime/promise/dispatch.h"
 #include "../native/bridge.h"
+#include "../native/components.h"
 #include "../native/loop.h"
 #include <android/log.h>
 #include <android/looper.h>
@@ -645,7 +646,7 @@ void *niIndicatorCreate(void) { return newView(J.spinner, J.spinnerInit); }
 void *niImageCreate(void) { return newView(J.picture, J.pictureInit); }
 void *niModalCreate(void) { return newView(J.overlay, J.overlayInit); }
 
-void *niControlCreate(const char *kind) {
+static void *controlCreate(const char *kind) {
 	JNIEnv *e = env();
 	jstring name = (*e)->NewStringUTF(e, kind);
 	jobject local = (*e)->CallStaticObjectMethod(e, J.controls, J.controlsCreate, g_context, name);
@@ -656,6 +657,11 @@ void *niControlCreate(const char *kind) {
 	(*e)->DeleteLocalRef(e, local);
 	return global;
 }
+
+void *niWebViewCreate(void) { return controlCreate("webview"); }
+void *niVideoCreate(void) { return controlCreate("video"); }
+void *niCameraCreate(void) { return controlCreate("camera"); }
+void *niSvgCreate(void) { return controlCreate("svg"); }
 
 void niControlSetTag(void *control, int32_t tag) {
 	JNIEnv *e = env();

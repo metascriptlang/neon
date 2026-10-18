@@ -1,4 +1,7 @@
 import { runApp, createNativeHost } from "../../src/platform/native/host";
+import "../../src/platform/native/switch";
+import "../../src/platform/native/activityIndicator";
+import "../../src/platform/native/modal";
 import { createSignal, Accessor, accessor } from "../../src/core/signal";
 import { For, Errored } from "../../src/macros/ui/flow";
 import { createRenderEffect } from "../../src/core/effect";

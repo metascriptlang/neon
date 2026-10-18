@@ -8,12 +8,8 @@ export enum NativeElementKind {
 	Text,
 	Scroll,
 	Input,
-	Switch,
-	Indicator,
 	Image,
-	Modal,
-	Media,
-	Vector,
+	Component,
 }
 
 interface NativeEventRoute {
@@ -45,16 +41,25 @@ function dim(v: number | string | null, field: string): float32 | null {
 
 asFlexStyleBody(0);
 
+export function nativeComponentOf(tag: string): string {
+	return match (tag) {
+		"switch" => "Switch from src/components/switch",
+		"activityindicator" => "ActivityIndicator from src/components/activityIndicator",
+		"modal" => "Modal from src/components/modal",
+		"webview" => "WebView from src/components/webView",
+		"video" => "Video from src/components/video",
+		"camera" => "CameraView from src/components/cameraView",
+		"svg" => "Svg from src/components/svg/elements",
+		_ => "",
+	};
+}
+
 export function nativeElementKind(tag: string): NativeElementKind {
 	if (tag === "text") { return NativeElementKind.Text; }
 	if (tag === "scrollview") { return NativeElementKind.Scroll; }
 	if (tag === "textinput" || tag === "multilinetextinput") { return NativeElementKind.Input; }
-	if (tag === "switch") { return NativeElementKind.Switch; }
-	if (tag === "activityindicator") { return NativeElementKind.Indicator; }
 	if (tag === "image") { return NativeElementKind.Image; }
-	if (tag === "modal") { return NativeElementKind.Modal; }
-	if (tag === "webview" || tag === "video" || tag === "camera") { return NativeElementKind.Media; }
-	if (tag === "svg") { return NativeElementKind.Vector; }
+	if (nativeComponentOf(tag) !== "") { return NativeElementKind.Component; }
 	return NativeElementKind.View;
 }
 

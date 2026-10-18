@@ -971,11 +971,7 @@ const char *niAppCall(const char *name, const char *arg) {
 
 #define UNIMPLEMENTED(ret, name, params) ret name params { unimplemented(#name); }
 
-UNIMPLEMENTED(void *, niSwitchCreate, (void))
-UNIMPLEMENTED(void *, niIndicatorCreate, (void))
 UNIMPLEMENTED(void *, niImageCreate, (void))
-UNIMPLEMENTED(void *, niModalCreate, (void))
-UNIMPLEMENTED(void *, niControlCreate, (const char *kind))
 UNIMPLEMENTED(void, niSetReloadPoll, (msClosure poll))
 UNIMPLEMENTED(int, niLastAppEvent, (void))
 UNIMPLEMENTED(const char *, niLastAppValue, (void))

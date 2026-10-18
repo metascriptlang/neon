@@ -4,6 +4,7 @@
 #import <Foundation/Foundation.h>
 #include "runtime/promise/dispatch.h"
 #include "../native/bridge.h"
+#include "../native/components.h"
 #include "../native/loop.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -1374,13 +1375,10 @@ static CGAffineTransform svgViewBox(CGSize size, CGFloat vx, CGFloat vy, CGFloat
 }
 @end
 
-void *niControlCreate(const char *kind) {
-	void *media = neonMediaCreate(kind);
-	if (media) return media;
-	if (strcmp(kind, "svg") == 0) return CFBridgingRetain([[NeonSvgView alloc] initWithFrame:CGRectZero]);
-	fprintf(stderr, "neon: niControlCreate has no control \"%s\"\n", kind);
-	abort();
-}
+void *niWebViewCreate(void) { return neonMediaCreate("webview"); }
+void *niVideoCreate(void) { return neonMediaCreate("video"); }
+void *niCameraCreate(void) { return neonMediaCreate("camera"); }
+void *niSvgCreate(void) { return CFBridgingRetain([[NeonSvgView alloc] initWithFrame:CGRectZero]); }
 
 void *niInputCreate(void) {
 	return CFBridgingRetain([[NeonInput alloc] initWithFrame:CGRectZero]);

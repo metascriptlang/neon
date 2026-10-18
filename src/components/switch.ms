@@ -4,6 +4,10 @@ import { Accessor } from "../core/signal";
 import { NeonNode, VAttr, VEvent, RefFn, hostElement, evt } from "../render/node";
 import { AccessibilityProps, accessibilityAttrs, flagAttr, stringAttr } from "./primitives";
 
+when (c && (ios || android || (macos && !testBuild))) {
+	import "../platform/native/switch";
+}
+
 interface SwitchProps extends AccessibilityProps {
 	value?: Accessor<boolean> | null;
 	onValueChange?: ((value: boolean) => void) | null;

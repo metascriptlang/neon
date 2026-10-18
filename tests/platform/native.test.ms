@@ -1,4 +1,5 @@
-import { NativeElementKind, createNativeEventRegistry, nativeElementKind, nativeFlexStyle, nativeTransform } from "../../src/platform/native/contract";
+import { NativeElementKind, createNativeEventRegistry, nativeComponentOf, nativeElementKind, nativeFlexStyle, nativeTransform } from "../../src/platform/native/contract";
+import { nativeElement, registerNativeElement } from "../../src/platform/native/elements";
 import { Style } from "../../src/render/style";
 import { NeonEvent } from "../../src/render/event";
 
@@ -8,6 +9,32 @@ test "native tags select view-backed element kinds" {
 	assert nativeElementKind("pressable") === NativeElementKind.View, "pressable uses a touch-routed view";
 	assert nativeElementKind("custom") === NativeElementKind.View, "unknown tags use the view escape hatch";
 	assert nativeElementKind("scrollview") === NativeElementKind.Scroll, "scrollview uses the platform scroll container";
+	assert nativeElementKind("image") === NativeElementKind.Image, "image is a primitive the host core creates";
+	for (const tag of ["switch", "activityindicator", "modal", "webview", "video", "camera", "svg"]) {
+		assert nativeElementKind(tag) === NativeElementKind.Component, `${tag} is rendered by its component's module`;
+	}
+}
+
+test "a component tag no module registered names the component to import" {
+	let message = "";
+	try {
+		nativeElement("video", nativeComponentOf("video"));
+	} catch (e) {
+		message = (e as Error).message;
+	}
+	assert message === "native host: <video> has no renderer on this host; import Video from src/components/video, on a platform that renders it", message;
+}
+
+test "a registered component tag creates through its module and refuses a second registration" {
+	registerNativeElement("probe", { create: (): Ptr<void> | null => null, sizesItself: true });
+	assert nativeElement("probe", "Probe").sizesItself, "the registered entry comes back";
+	let message = "";
+	try {
+		registerNativeElement("probe", { create: (): Ptr<void> | null => null, sizesItself: false });
+	} catch (e) {
+		message = (e as Error).message;
+	}
+	assert message === "registerNativeElement: <probe> is registered twice", message;
 }
 
 test "native styles project onto FlexStyle without filling absent fields" {

@@ -1,4 +1,7 @@
 import { runApp } from "../../src/platform/native/host";
+import "../../src/platform/native/switch";
+import "../../src/platform/native/activityIndicator";
+import "../../src/platform/native/modal";
 import { createSignal } from "../../src/core/signal";
 import { resetErrorHalt } from "../../src/core/runtime";
 import { element } from "../../src/macros/ui/element";

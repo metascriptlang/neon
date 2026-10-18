@@ -1,4 +1,5 @@
 import { runApp } from "../../src/platform/native/host";
+import "../../src/platform/native/camera";
 import { createSignal } from "../../src/core/signal";
 import { View } from "../../src/components/primitives";
 import { NeonNode } from "../../src/render/node";

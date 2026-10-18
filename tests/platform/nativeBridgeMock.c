@@ -1,4 +1,5 @@
 #include "../../src/platform/native/bridge.h"
+#include "../../src/platform/native/components.h"
 #include "../../src/platform/native/loop.h"
 #include "nativeBridgeMock.h"
 #include <stdio.h>
@@ -130,14 +131,10 @@ void *niSwitchCreate(void) { return createControl(2); }
 void *niIndicatorCreate(void) { return createControl(3); }
 void *niImageCreate(void) { return createControl(4); }
 void *niModalCreate(void) { return createControl(5); }
-void *niControlCreate(const char *kind) {
-	if (strcmp(kind, "webview") == 0) return createControl(10);
-	if (strcmp(kind, "video") == 0) return createControl(11);
-	if (strcmp(kind, "camera") == 0) return createControl(12);
-	if (strcmp(kind, "svg") == 0) return createControl(9);
-	fprintf(stderr, "mock bridge: niControlCreate has no control \"%s\"\n", kind);
-	abort();
-}
+void *niWebViewCreate(void) { return createControl(10); }
+void *niVideoCreate(void) { return createControl(11); }
+void *niCameraCreate(void) { return createControl(12); }
+void *niSvgCreate(void) { return createControl(9); }
 
 void niControlSetTag(void *view, int32_t tag) {
 	MockView *v = live(view, "niControlSetTag");

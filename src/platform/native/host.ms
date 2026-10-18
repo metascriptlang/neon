@@ -5,7 +5,8 @@ import { NeonEvent } from "../../render/event";
 import { FlexStyle, YGNode, freeLayoutTree, layoutPass as runLayoutPass } from "../../../../yoga/src/index";
 import { YGNodeGetParent, YGNodeRemoveChild, YGNodeLayoutGetPadding, YGNodeLayoutGetBorder, YGNodeLayoutGetMargin, YGEdge } from "../../../../yoga/src/yogaH";
 import { Style, mergeStyle, isBoldWeight } from "../../render/style";
-import { NativeElementKind, createNativeEventRegistry, nativeElementKind, nativeFlexStyle, nativeTransform } from "./contract";
+import { NativeElementKind, createNativeEventRegistry, nativeComponentOf, nativeElementKind, nativeFlexStyle, nativeTransform } from "./contract";
+import { nativeElement } from "./elements";
 import { publishWindow, publishKeyboard, publishColorScheme, publishSafeArea } from "../../render/environment";
 import { VisibleContentPosition, parseVisibleContent } from "../../render/visibleContent";
 import { installNativeAppServices } from "./appServices";
@@ -49,8 +50,7 @@ import {
 	niScrollShift, niScrollOffsetX, niScrollOffsetY,
 	niLastScrollTag, niLastScrollPhase, niLastScrollX, niLastScrollY, niLastScrollWidth, niLastScrollHeight,
 	niLastScrollContentWidth, niLastScrollContentHeight,
-	niInputCreate, niSwitchCreate, niIndicatorCreate, niImageCreate, niControlCreate, niControlSetTag, niSetProp, niSetFocused,
-	niModalCreate, niTextAreaCreate,
+	niInputCreate, niImageCreate, niControlSetTag, niSetProp, niSetFocused, niTextAreaCreate,
 	niLastControlTag, niLastControlPhase, niLastControlValue, niLastControlWidth, niLastControlHeight,
 	niKeyboardHeight, niColorScheme, niRequestFrame, niSafeAreaInset,
 } from "./bridge.h";
@@ -77,6 +77,7 @@ class NativeNode {
 	isInput: boolean = false;
 	multiline: boolean = false;
 	control: NativeElementKind = NativeElementKind.View;
+	sizesItself: boolean = false;
 	labelOwner: NativeNode | null = null;
 	spanData: TextSpan[] | null = null;
 	spanTags: int32[] = [];
@@ -801,7 +802,7 @@ function intrinsicFlex(n: NativeNode, flex: FlexStyle): FlexStyle {
 		niMeasureText(n.view, width);
 		n.measuredFor = width;
 		flex.height = niMeasuredH();
-	} else if (n.control === NativeElementKind.Switch && (flex.width === null || flex.height === null)) {
+	} else if (n.sizesItself && (flex.width === null || flex.height === null)) {
 		niMeasureText(n.view, niScreenWidth());
 		if (flex.width === null) { flex.width = niMeasuredW(); }
 		if (flex.height === null) { flex.height = niMeasuredH(); }
@@ -918,16 +919,12 @@ export function createNativeHost(): NativeHost {
 				n.isInput = true;
 				n.multiline = tag === "multilinetextinput";
 				if (n.multiline) { inputNodes.push(n); }
-			} else if (kind === NativeElementKind.Switch) {
-				n = nativeNode(niSwitchCreate(), false, false);
-			} else if (kind === NativeElementKind.Indicator) {
-				n = nativeNode(niIndicatorCreate(), false, false);
 			} else if (kind === NativeElementKind.Image) {
 				n = nativeNode(niImageCreate(), false, false);
-			} else if (kind === NativeElementKind.Modal) {
-				n = nativeNode(niModalCreate(), false, false);
-			} else if (kind === NativeElementKind.Media || kind === NativeElementKind.Vector) {
-				n = nativeNode(niControlCreate(tag), false, false);
+			} else if (kind === NativeElementKind.Component) {
+				const element = nativeElement(tag, nativeComponentOf(tag));
+				n = nativeNode(element.create(), false, false);
+				n.sizesItself = element.sizesItself;
 			} else {
 				n = nativeNode(niViewCreate(), false, false);
 			}

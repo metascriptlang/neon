@@ -8,6 +8,10 @@ import { NeonNode, VAttr, VEvent, dynAttr, evt } from "../render/node";
 import { Host, HostNode } from "../render/hostTypes";
 import { portalNode } from "../render/portal";
 
+when (c && (ios || android || (macos && !testBuild))) {
+	import "../platform/native/modal";
+}
+
 export type ModalAnimationType = "none" | "slide" | "fade";
 
 interface ModalProps {

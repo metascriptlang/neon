@@ -10,6 +10,8 @@ import { linkingServices } from "../api/linkingServices";
 
 when (js && !server) {
 	import "../platform/browser/media";
+} else when (c && (ios || android || (macos && !testBuild))) {
+	import "../platform/native/webView";
 }
 
 export interface WebViewSource {

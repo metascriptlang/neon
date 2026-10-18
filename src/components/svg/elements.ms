@@ -13,6 +13,8 @@ import { SvgScene, encodeScene, sceneChanged, sceneHost } from "./scene";
 
 when (js && !server) {
 	import "../../platform/browser/svg";
+} else when (c && (ios || android || (macos && !testBuild))) {
+	import "../../platform/native/svg";
 }
 
 export type NumberProp = float64 | string;

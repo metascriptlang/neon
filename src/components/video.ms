@@ -8,6 +8,8 @@ import { AccessibilityProps, accessibilityAttrs } from "./primitives";
 
 when (js && !server) {
 	import "../platform/browser/media";
+} else when (c && (ios || android || (macos && !testBuild))) {
+	import "../platform/native/video";
 }
 
 export interface VideoSource {
