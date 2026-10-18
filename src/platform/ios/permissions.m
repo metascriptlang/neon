@@ -82,7 +82,7 @@ static NSString *request(NSString *requestId, NSString *name) {
 	return [NSString stringWithFormat:@"!Permissions: unknown permission %@", name];
 }
 
-NSString *niPermissionCall(NSString *name, NSString *arg) {
+static NSString *call(NSString *name, NSString *arg) {
 	NSRange split = [arg rangeOfString:NIField];
 	NSString *requestId = split.location == NSNotFound ? arg : [arg substringToIndex:split.location];
 	NSString *rest = split.location == NSNotFound ? @"" : [arg substringFromIndex:split.location + 1];
@@ -98,4 +98,8 @@ NSString *niPermissionCall(NSString *name, NSString *arg) {
 	}
 	NSLog(@"Neon niAppCall: unknown command %@", name);
 	abort();
+}
+
+const char *niPermissionCommand(const char *name, const char *arg) {
+	return niAppReply(call(@(name), @(arg ? arg : "")));
 }

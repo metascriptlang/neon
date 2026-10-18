@@ -8,5 +8,6 @@ const char *niStorageCommand(const char *name, const char *arg);
 const char *niHapticsCommand(const char *name, const char *arg);
 const char *niDeviceCommand(const char *name, const char *arg);
 const char *niLocaleCommand(const char *name, const char *arg);
+const char *niPermissionCommand(const char *name, const char *arg);
 
 #endif

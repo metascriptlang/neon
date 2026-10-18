@@ -17,6 +17,8 @@ import "../../src/platform/native/asyncStorage";
 import "../../src/platform/native/haptics";
 import "../../src/platform/native/deviceInfo";
 import "../../src/platform/native/localization";
+import { installPermissionServices } from "../../src/api/permissionServices";
+import { nativePermissionServices } from "../../src/platform/native/permissions";
 import { nmAppReply, nmAppLog, nmAppLogClear, nmAppEvent, nmTeardown } from "./nativeBridgeMock.h";
 
 const FIELD = "\u001f";
@@ -33,6 +35,7 @@ function mount(): void {
 	nmAppReply("screen", "393" + FIELD + "852");
 	nmAppReply("appState", "active");
 	runApp((): NeonNode => <View />);
+	installPermissionServices(nativePermissionServices);
 	nmAppLogClear();
 }
 

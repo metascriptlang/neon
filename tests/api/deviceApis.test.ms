@@ -5,6 +5,7 @@ import { sleepAsync } from "std/core/promise";
 import { installAppServices } from "../../src/api/services";
 import { LocationFix } from "../../src/api/locationServices";
 import { installStorageServices } from "../../src/api/storageServices";
+import { installPermissionServices } from "../../src/api/permissionServices";
 import {
 	Geolocation, GeolocationError, GeolocationResponse, Location, LocationAccuracy, LocationObject,
 } from "../../src/api/geolocation";
@@ -178,6 +179,7 @@ async function storageRejection(): Promise<string> {
 test "the async device APIs reject when no host installed app services" {
 	installAppServices(null);
 	installStorageServices(null);
+	installPermissionServices(null);
 	const storage = await storageRejection();
 	assert storage === "AsyncStorage.getItem is not available on this host", storage;
 	let permission = "";
@@ -186,7 +188,7 @@ test "the async device APIs reject when no host installed app services" {
 	} catch (e) {
 		permission = (e as Error).message;
 	}
-	assert permission.startsWith("Permissions.check: no host"), permission;
+	assert permission === "Permissions.check is not available on this host", permission;
 }
 
 function fixAt(latitude: number, longitude: number): LocationFix {

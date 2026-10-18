@@ -4,9 +4,11 @@ import { Alert } from "../../src/api/alert";
 import { AsyncStorage } from "../../src/api/asyncStorage";
 import { Linking } from "../../src/api/linking";
 import { ionAppServices } from "../../src/platform/ion/appServices";
+import { installPermissionServices } from "../../src/api/permissionServices";
+import { ionPermissionServices } from "../../src/platform/ion/permissions";
 
 test "the microphone and camera permissions on an Ion host are the OS's answer, and another permission is refused by name" {
-	installAppServices(ionAppServices);
+	installPermissionServices(ionPermissionServices);
 	const mic = await Permissions.check("microphone");
 	assert mic.status === "granted" || mic.status === "denied" || mic.status === "undetermined", mic.status;
 	assert mic.granted === (mic.status === "granted"), "granted follows the status";

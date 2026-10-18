@@ -1,4 +1,4 @@
-import { PermissionReply } from "../../api/services";
+import { PermissionReply, PermissionServices, installPermissionServices } from "../../api/permissionServices";
 
 extern function permissionQuery(name: cstring): Promise<string> from "(navigator.permissions ? navigator.permissions.query({ name: # }).then((s) => s.state, () => 'prompt') : Promise.resolve('prompt'))";
 extern function askNotifications(unused: int32): Promise<string> from "(#, typeof Notification === 'undefined' ? Promise.resolve('denied') : Promise.resolve(Notification.requestPermission()))";
@@ -23,13 +23,13 @@ function permissionReply(state: string): PermissionReply {
 	};
 }
 
-export async function permissionStatus(name: string): Promise<PermissionReply> {
+async function permissionStatus(name: string): Promise<PermissionReply> {
 	const browserName = browserPermission(name);
 	if (browserName === "") { return { status: "", canAskAgain: false, error: "Permissions: unknown permission " + name }; }
 	return permissionReply(await permissionQuery(browserName));
 }
 
-export async function requestPermission(name: string): Promise<PermissionReply> {
+async function requestPermission(name: string): Promise<PermissionReply> {
 	const now = await permissionStatus(name);
 	if (now.status !== "undetermined" || now.error !== "") { return now; }
 	const answer: string = match (name) {
@@ -41,16 +41,26 @@ export async function requestPermission(name: string): Promise<PermissionReply> 
 	return permissionReply(answer === "default" ? "prompt" : answer);
 }
 
-export async function androidPermissionGranted(permission: string): Promise<boolean> {
+async function androidPermissionGranted(permission: string): Promise<boolean> {
 	return false;
 }
 
-export async function androidShouldShowRationale(permission: string): Promise<boolean> {
+async function androidShouldShowRationale(permission: string): Promise<boolean> {
 	return false;
 }
 
-export async function androidRequestPermissions(permissions: string[]): Promise<PermissionReply[]> {
+async function androidRequestPermissions(permissions: string[]): Promise<PermissionReply[]> {
 	const denied: PermissionReply[] = [];
 	for (const permission of permissions) { denied.push({ status: "denied", canAskAgain: false, error: "" }); }
 	return denied;
 }
+
+const browserPermissionServices: PermissionServices = {
+	permissionStatus,
+	requestPermission,
+	androidPermissionGranted,
+	androidShouldShowRationale,
+	androidRequestPermissions,
+};
+
+installPermissionServices(browserPermissionServices);

@@ -3,9 +3,6 @@ import { publishPlatform } from "../../api/platform";
 import { publishScale, publishScreen } from "../../api/dimensions";
 import { publishAppState } from "../../api/appState";
 import { publishReduceMotion } from "../../api/accessibilityInfo";
-import {
-	androidPermissionGranted, androidRequestPermissions, androidShouldShowRationale, permissionStatus, requestPermission,
-} from "./deviceServices";
 
 extern class BrowserClipboard {
 	extern readText(): Promise<string>;
@@ -180,11 +177,6 @@ const services: AppServices = {
 		image.addEventListener("error", (e: BrowserEvent): void => { done(0, 0, "cannot load the image " + uri); });
 		image.src = uri;
 	},
-	permissionStatus,
-	requestPermission,
-	androidPermissionGranted,
-	androidShouldShowRationale,
-	androidRequestPermissions,
 };
 
 let installed = false;

@@ -1,5 +1,13 @@
-import { PermissionReply, appServices } from "./services";
+import { PermissionReply, permissionServices } from "./permissionServices";
 import { Alert, AlertButton } from "./alert";
+
+when (js && !server) {
+	import "../platform/browser/permissions";
+} else when (ios || android) {
+	import "../platform/native/permissions";
+} else when (macos || windows || linux) {
+	import "../platform/ion/permissions";
+}
 
 export type PermissionStatus = "granted" | "denied" | "undetermined";
 export type PermissionName = "camera" | "microphone" | "location" | "notifications";
@@ -31,13 +39,13 @@ export class Permissions {
 	// in an async function is lost (compiler card 2026-10-08-async-return-of-a-throwing-call-loses-the-exception-on-c.md).
 	static async check(permission: PermissionName): Promise<PermissionResponse> {
 		const name: string = permission;
-		const checked = response(await appServices("Permissions.check").permissionStatus(name));
+		const checked = response(await permissionServices("Permissions.check").permissionStatus(name));
 		return checked;
 	}
 
 	static async request(permission: PermissionName): Promise<PermissionResponse> {
 		const name: string = permission;
-		const answered = response(await appServices("Permissions.request").requestPermission(name));
+		const answered = response(await permissionServices("Permissions.request").requestPermission(name));
 		return answered;
 	}
 }
@@ -168,7 +176,7 @@ export class PermissionsAndroid {
 	};
 
 	static async check(permission: string): Promise<boolean> {
-		return await appServices("PermissionsAndroid.check").androidPermissionGranted(permission);
+		return await permissionServices("PermissionsAndroid.check").androidPermissionGranted(permission);
 	}
 
 	// Promise<string>, not Promise<PermissionsAndroidResult>: awaiting a literal-union promise dies at clang
@@ -176,7 +184,7 @@ export class PermissionsAndroid {
 	// defaults to an empty one rather than null: on JS a literal passed as `Rationale | null` keeps its
 	// absent fields undefined (card 2026-10-06-js-optional-fields-through-nullable-constructor.md).
 	static async request(permission: string, rationale: Rationale = NO_RATIONALE): Promise<string> {
-		const services = appServices("PermissionsAndroid.request");
+		const services = permissionServices("PermissionsAndroid.request");
 		if (rationale.title !== "" && (await services.androidShouldShowRationale(permission))) {
 			await showRationale(rationale);
 		}
@@ -186,7 +194,7 @@ export class PermissionsAndroid {
 	}
 
 	static async requestMultiple(permissions: string[]): Promise<Map<string, string>> {
-		const results = await appServices("PermissionsAndroid.requestMultiple").androidRequestPermissions(permissions);
+		const results = await permissionServices("PermissionsAndroid.requestMultiple").androidRequestPermissions(permissions);
 		const byPermission = new Map<string, string>();
 		for (let i = 0; i < permissions.length; i += 1) {
 			byPermission.set(permissions[i], replyOrThrow(results[i]).status);

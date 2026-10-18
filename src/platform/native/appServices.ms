@@ -6,9 +6,6 @@ import { dispatchHardwareBackPress } from "../../api/backHandler";
 import { publishUrl } from "../../api/linking";
 import { publishReduceMotion, publishScreenReader } from "../../api/accessibilityInfo";
 import {
-	androidPermissionGranted, androidRequestPermissions, androidShouldShowRationale, permissionStatus, requestPermission,
-} from "./deviceServices";
-import {
 	AppEvent, FIELD, RECORD, appCall, dispatchNativeAppEvent, runNativeAppStarts,
 } from "./appBridge";
 import { CaptureServices, installCaptureServices } from "../../api/captureServices";
@@ -17,8 +14,6 @@ import { nativeCaptureServices, onRecordingEvent, onSoundEvent } from "./capture
 when (ios) {
 	@compile("../ios/app.m", "-fobjc-arc");
 	@compile("../ios/modules.m", "-fobjc-arc");
-	@compile("../ios/permissions.m", "-fobjc-arc");
-	@compile("../ios/location.m", "-fobjc-arc");
 	@compile("../ios/capture.m", "-fobjc-arc");
 	@compile("../ios/audio.m", "-fobjc-arc");
 	@passL("-framework PhotosUI");
@@ -26,8 +21,6 @@ when (ios) {
 	@passL("-framework CoreMedia");
 	@passL("-framework AudioToolbox");
 	@passL("-framework AVFoundation");
-	@passL("-framework CoreLocation");
-	@passL("-framework UserNotifications");
 } else when (android) {
 	@compile("../android/app.c");
 }
@@ -166,11 +159,6 @@ const services: AppServices = {
 	announce: (text: string): void => { call("a11y.announce", text); },
 	exitApp: (): void => { call("exitApp", ""); },
 	imageSize,
-	permissionStatus,
-	requestPermission,
-	androidPermissionGranted,
-	androidShouldShowRationale,
-	androidRequestPermissions,
 };
 
 let capture: CaptureServices = nativeCaptureServices;

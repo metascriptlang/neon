@@ -20,14 +20,6 @@ export interface ShareRequest {
 	done: (action: string, activityType: string) => void;
 }
 
-// A host refusal travels as `error`, not as a throw inside the service: on C a rejection awaited
-// through a function value is lost (compiler card 2026-10-08-await-through-a-function-field-drops-the-rejection-on-c.md).
-export interface PermissionReply {
-	status: string;
-	canAskAgain: boolean;
-	error: string;
-}
-
 export interface AppServices {
 	dismissKeyboard: () => void;
 	alert: (request: AlertRequest) => void;
@@ -47,11 +39,6 @@ export interface AppServices {
 	// Loads an image into the platform's image cache and reports its pixel size; a failure
 	// reports an error message and a 0 x 0 size.
 	imageSize: (uri: string, done: (width: number, height: number, error: string) => void) => void;
-	permissionStatus: (name: string) => Promise<PermissionReply>;
-	requestPermission: (name: string) => Promise<PermissionReply>;
-	androidPermissionGranted: (permission: string) => Promise<boolean>;
-	androidShouldShowRationale: (permission: string) => Promise<boolean>;
-	androidRequestPermissions: (permissions: string[]) => Promise<PermissionReply[]>;
 }
 
 let installed: AppServices | null = null;

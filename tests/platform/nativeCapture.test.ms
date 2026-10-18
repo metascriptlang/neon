@@ -6,6 +6,8 @@ import { ImagePicker, ImagePickerResult } from "../../src/api/imagePicker";
 import { Audio, AVPlaybackStatus, Recording, RecordingStatus, Sound } from "../../src/api/audio";
 import { CameraType, CameraView, CameraViewHandle, CameraCapturedPicture, CameraMountError } from "../../src/components/cameraView";
 import { sleepAsync } from "std/core/promise";
+import { installPermissionServices } from "../../src/api/permissionServices";
+import { nativePermissionServices } from "../../src/platform/native/permissions";
 import {
 	nmAppReply, nmAppLog, nmAppLogClear, nmAppEvent, nmTeardown, nmControl, nmProp, nmLastControlTag, nmLayoutWidth,
 	nmLayoutHeight, nmReleaseCalls, nmViewsCreated,
@@ -29,6 +31,7 @@ function mount(): void {
 	nmAppReply("screen", "393" + FIELD + "852");
 	nmAppReply("appState", "active");
 	runApp((): NeonNode => <View />);
+	installPermissionServices(nativePermissionServices);
 	nmAppLogClear();
 }
 
@@ -220,6 +223,7 @@ test "a native CameraView is a media view: facing and flash props, ready and mou
 		/>
 	</View>;
 	runApp(app);
+	installPermissionServices(nativePermissionServices);
 	const camera = nmLastControlTag(CAMERA);
 	assert `${nmLayoutWidth(camera)}x${nmLayoutHeight(camera)}` === "300x400", `${nmLayoutWidth(camera)}x${nmLayoutHeight(camera)}`;
 	assert prop(camera, "facing") === "back" && prop(camera, "flash") === "auto" && prop(camera, "active") === "true", "props";

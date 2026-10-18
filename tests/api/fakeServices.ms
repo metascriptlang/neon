@@ -1,7 +1,8 @@
 import {
 	AppServices, AlertRequest,
-	PermissionReply, ShareRequest, installAppServices,
+	ShareRequest, installAppServices,
 } from "../../src/api/services";
+import { PermissionReply, PermissionServices, installPermissionServices } from "../../src/api/permissionServices";
 import { HapticsServices, installHapticsServices } from "../../src/api/hapticsServices";
 import {
 	BatterySnapshot, DeviceInfoServices, DeviceSnapshot, installDeviceInfoServices,
@@ -133,6 +134,20 @@ export class FakeServices {
 				this.images.push(uri);
 				this.imageDone.push(done);
 			},
+		};
+		installAppServices(services);
+		this.installNotifications();
+		this.installLocation();
+		this.installNetInfo();
+		this.installStorage();
+		this.installHaptics();
+		this.installDeviceInfo();
+		this.installLocalization();
+		this.installPermissions();
+	}
+
+	installPermissions(): void {
+		const services: PermissionServices = {
 			permissionStatus: async (name: string): Promise<PermissionReply> => {
 				return this.permission(name);
 			},
@@ -155,14 +170,7 @@ export class FakeServices {
 				return results;
 			},
 		};
-		installAppServices(services);
-		this.installNotifications();
-		this.installLocation();
-		this.installNetInfo();
-		this.installStorage();
-		this.installHaptics();
-		this.installDeviceInfo();
-		this.installLocalization();
+		installPermissionServices(services);
 	}
 
 	installHaptics(): void {
