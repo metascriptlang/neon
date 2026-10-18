@@ -2,6 +2,7 @@ import { gfxSetup, fbWidth, fbHeight, dpiScale } from "../../../../void/src/soko
 import { setup2d } from "../../../../void/src/void2d/draw";
 import { addFont, registerFace, FontId, FontStyle as FaceStyle } from "../../../../void/src/void2d/font";
 import { present } from "../../../../void/src/void2d/scene";
+import { familyFont } from "../void/host";
 import { Host, HostNode, NeonNode, render } from "../../render/host";
 import {
 	WindowArea,
@@ -27,10 +28,11 @@ export interface CanvasOptions {
 	width: number;
 	height: number;
 	font: string;
+	fontFamily: string | null;
 }
 
 export function canvasOptions(width: number, height: number): CanvasOptions {
-	return { width, height, font: "assets/font.ttf" };
+	return { width, height, font: "assets/font.ttf", fontFamily: null };
 }
 
 interface Canvas {
@@ -105,13 +107,14 @@ function frameCanvas(): void {
 
 export function runCanvas(opts: CanvasOptions, app: () => NeonNode): int32 {
 	if (_canvas !== null) { throw new Error("runCanvas: this process already runs a canvas; sokol_app has one window"); }
-	const font = addFont(opts.font);
+	registerFace(opts.font, opts.font, 400, FaceStyle.Normal);
+	const family = opts.fontFamily !== null ? opts.fontFamily as string : opts.font;
+	const font = opts.fontFamily !== null ? familyFont(family, 400, false) : addFont(opts.font);
 	if (!font.ok) {
-		console.log(`neon: cannot load the font ${opts.font}: ${font.error.toString()}`);
+		console.log(`neon: cannot load the font ${family}: ${font.error.toString()}`);
 		return 3;
 	}
-	registerFace(opts.font, opts.font, 400, FaceStyle.Normal);
-	_canvas = { app, font: font.value, family: opts.font, area: null, owed: true, dispose: null };
+	_canvas = { app, font: font.value, family, area: null, owed: true, dispose: null };
 	voidRun(opts.width as int32, opts.height as int32, initCanvas, frameCanvas);
 	const c = running();
 	if (c.dispose !== null) { (c.dispose as () => void)(); }

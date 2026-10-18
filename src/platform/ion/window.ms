@@ -23,7 +23,7 @@ import { installAppServices } from "../../api/services";
 import { installFrameDriver } from "../../animation/frame";
 import { ionCaptureServices } from "./audio";
 import { ionAppServices } from "./appServices";
-import { VoidHost } from "../void/host";
+import { VoidHost, familyFont } from "../void/host";
 import {
 	WindowArea,
 	windowHost,
@@ -51,10 +51,11 @@ export interface DesktopOptions {
 	width: number;
 	height: number;
 	font: string;
+	fontFamily: string | null;
 }
 
 export function desktopOptions(title: string, width: number, height: number): DesktopOptions {
-	return { title, width, height, font: "assets/font.ttf" };
+	return { title, width, height, font: "assets/font.ttf", fontFamily: null };
 }
 
 interface Area {
@@ -263,14 +264,15 @@ export function runWindow(opts: DesktopOptions, app: () => NeonNode): int32 {
 	const win = createWindow("main", defaultOptions(opts.title, opts.width as int32, opts.height as int32));
 	if (win === null) { return 1; }
 	const frameWin: Window = win;
-	const font = addFont(opts.font);
+	registerFace(opts.font, opts.font, 400, FaceStyle.Normal);
+	const family = opts.fontFamily !== null ? opts.fontFamily as string : opts.font;
+	const font = opts.fontFamily !== null ? familyFont(family, 400, false) : addFont(opts.font);
 	if (!font.ok) {
-		console.log(`neon: cannot load the font ${opts.font}: ${font.error.toString()}`);
+		console.log(`neon: cannot load the font ${family}: ${font.error.toString()}`);
 		return 3;
 	}
 	_font = font.value;
-	registerFace(opts.font, opts.font, 400, FaceStyle.Normal);
-	_family = opts.font;
+	_family = family;
 	wireInput();
 	installCaptureServices(ionCaptureServices);
 	installAppServices(ionAppServices);
