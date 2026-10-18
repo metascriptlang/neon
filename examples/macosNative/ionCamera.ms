@@ -1,15 +1,17 @@
 // CameraView in a macOS Ion window: an AVCaptureSession with its preview layer and a photo output.
 //   msc build examples/macosNative/ionCamera.ms --output=out/macosIonCamera
-//   out/macosIonCamera            opens the window and logs whether the camera became ready or why it could not mount
+//   out/macosIonCamera            asks for the camera permission, then mounts the CameraView and logs whether it became
+//                                 ready or why it could not mount
 //   out/macosIonCamera --check    mounts a CameraView without asking for permission: with the camera already authorized it
-//                                 expects onCameraReady and a picture, without it onMountError naming the permission;
-//                                 exits 0 when every expectation of the branch it took holds
-// The camera permission itself is parked on ~/metascript/.inbox/ion/2026-10-18-camera-permission-for-neon-cameraview.md.
+//                                 expects onCameraReady and a picture, without it onMountError naming the permission; the
+//                                 permission Ion reads must agree with the branch taken; exits 0 when every expectation holds
 
 import { runNativeWindow, nativeWindowOptions } from "../../src/platform/macos/ion";
 import { createStyles, styleOf } from "../../src/macros/ui/style";
 import { NeonNode } from "../../src/render/node";
 import { View } from "../../src/components/primitives";
+import { createSignal } from "../../src/core/signal";
+import { Show } from "../../src/macros/ui/flow";
 import { CameraView, CameraViewHandle, CameraMountError, Camera } from "../../src/components/cameraView";
 import { harnessIsCheck } from "./harness.h";
 import { exit } from "std/process";
@@ -26,24 +28,27 @@ const styles = createStyles({
 let readies = 0;
 const mountErrors: string[] = [];
 let handle: CameraViewHandle | null = null;
+const check = harnessIsCheck() !== 0;
+const [asked, setAsked] = createSignal(check);
 
 function App(): NeonNode {
 	return <View style={styles.base}>
-		<CameraView style={styles.camera} facing="front"
-			ref={(h: CameraViewHandle): void => { handle = h; }}
-			onCameraReady={(): void => {
-				readies += 1;
-				console.log("camera ready");
-			}}
-			onMountError={(e: CameraMountError): void => {
-				mountErrors.push(e.message);
-				console.log(`mount error "${e.message}"`);
-			}} />
+		<Show when={asked()}>
+			<CameraView style={styles.camera} facing="front"
+				ref={(h: CameraViewHandle): void => { handle = h; }}
+				onCameraReady={(): void => {
+					readies += 1;
+					console.log("camera ready");
+				}}
+				onMountError={(e: CameraMountError): void => {
+					mountErrors.push(e.message);
+					console.log(`mount error "${e.message}"`);
+				}} />
+		</Show>
 	</View>;
 }
 
 const TITLE = "Neon camera on Ion";
-const check = harnessIsCheck() !== 0;
 let failures = 0;
 let picture = "<none>";
 let permissionCheck = "<none>";
@@ -60,8 +65,8 @@ function camera(): CameraViewHandle {
 
 async function checkPermission(): Promise<void> {
 	try {
-		await Camera.getCameraPermissionsAsync();
-		permissionCheck = "answered";
+		const got = await Camera.getCameraPermissionsAsync();
+		permissionCheck = got.status;
 	} catch (e) {
 		permissionCheck = (e as Error).message;
 	}
@@ -106,7 +111,7 @@ steps.push((): boolean => {
 });
 steps.push((): boolean => permissionCheck !== "<none>" && (readies === 0 || picture !== "<none>"));
 steps.push((): boolean => {
-	expect("the Ion host refuses the camera permission by name", permissionCheck.indexOf("Permissions(camera)") >= 0, permissionCheck);
+	expect("the camera permission Ion reads agrees with the branch", (permissionCheck === "granted") === (readies > 0) && (permissionCheck === "granted" || permissionCheck === "denied" || permissionCheck === "undetermined"), permissionCheck);
 	if (readies > 0) {
 		expect("a picture is taken to a file", picture === "file sized", picture);
 	}
@@ -115,6 +120,12 @@ steps.push((): boolean => {
 
 const options = nativeWindowOptions(TITLE, 480, 320);
 options.topmost = check;
+async function askThenMount(): Promise<void> {
+	const got = await Camera.requestCameraPermissionsAsync();
+	console.log(`camera permission ${got.status}`);
+	setAsked(true);
+}
+
 exit(runNativeWindow(options, App, check ? (): void => {
 	setTimeout((): void => { run(0, 0); }, 1200);
-} : null));
+} : (): void => { askThenMount(); }));
