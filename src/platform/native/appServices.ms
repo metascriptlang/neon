@@ -142,7 +142,7 @@ function settleImage(value: string): void {
 	}
 }
 
-function imageSize(uri: string, done: (width: number, height: number, error: string) => void): void {
+export function imageSize(uri: string, done: (width: number, height: number, error: string) => void): void {
 	const id = nextRequest;
 	nextRequest += 1;
 	images.push({ id, done });

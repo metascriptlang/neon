@@ -4,7 +4,7 @@ import {
 } from "../../../../ion/src/index";
 import "./library";
 import { runApp } from "../native/host";
-import { useAppServices, useCaptureServices } from "../native/appServices";
+import { useAppServices, useCaptureServices, imageSize } from "../native/appServices";
 import { ionCaptureServices } from "../ion/audio";
 import { ionAppServices } from "../ion/appServices";
 import { NeonNode } from "../../render/node";
@@ -35,7 +35,7 @@ export function runNativeWindow(opts: NativeWindowOptions, app: () => NeonNode, 
 	const win: Window = created;
 	setFramePolicy(win, FrameOnDemand);
 	useCaptureServices(ionCaptureServices);
-	useAppServices(ionAppServices);
+	useAppServices({ ...ionAppServices, imageSize });
 	nimSetFrameRequester((): void => { requestFrame(win); });
 
 	onResize((window: int32, width: int32, height: int32, scale: float64): void => {

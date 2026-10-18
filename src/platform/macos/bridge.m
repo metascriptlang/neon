@@ -1,7 +1,7 @@
 #import <Cocoa/Cocoa.h>
 #import <QuartzCore/QuartzCore.h>
 #import <CoreImage/CoreImage.h>
-#include "../native/bridge.h"
+#include "../native/app.h"
 #include "../native/loop.h"
 #include "handoff.h"
 #include <math.h>
@@ -21,6 +21,8 @@ static float g_scrollX = 0, g_scrollY = 0, g_scrollW = 0, g_scrollH = 0, g_scrol
 static int g_controlTag = 0, g_controlPhase = 0;
 static float g_controlW = 0, g_controlH = 0;
 static char *g_controlValue = NULL;
+static int g_appEvent = 0;
+static char *g_appValue = NULL;
 static BOOL g_frameRequested = NO, g_frameWanted = NO, g_inFrame = NO;
 static int g_layoutsBuilt = 0;
 
@@ -1217,6 +1219,7 @@ static NSString *loadFailure(NSData *data, NSURLResponse *response, NSError *err
 	return data && image ? nil : @"cannot decode image";
 }
 
+// The views' cache, shared with Image.getSize and Image.prefetch (niAppCall "image.size").
 static NSCache<NSString *, NSImage *> *imageCache(void) {
 	static NSCache *cache;
 	static dispatch_once_t once;
@@ -1541,10 +1544,37 @@ int niColorScheme(void) { return 0; }
 
 void niInvokeClosure(msClosure c) { invoke(c); }
 
+static void emitApp(int kind, NSString *value) {
+	if (!s_app.fn) return;
+	free(g_appValue);
+	g_appValue = strdup(value.UTF8String);
+	g_appEvent = kind;
+	invoke(s_app);
+	requestHostFrame();
+}
+
+// Image.getSize / Image.prefetch: "id 0x1f uri" in, NI_APP_IMAGE_SIZE "id 0x1f w 0x1f h 0x1f error" out, in pixels.
+static void imageSize(const char *arg) {
+	NSArray<NSString *> *fields = [@(arg) componentsSeparatedByString:@"\x1f"];
+	if (fields.count != 2) {
+		char message[256];
+		snprintf(message, sizeof message, "niAppCall(image.size) wants \"id 0x1f uri\": %s", arg);
+		fail(message);
+	}
+	NSString *request = fields[0];
+	fetchImage(fields[1], ^(NSImage *image, NSString *error) {
+		CGImageRef pixels = image ? pixelsOf(image) : NULL;
+		NSString *w = @(pixels ? CGImageGetWidth(pixels) : 0).stringValue, *h = @(pixels ? CGImageGetHeight(pixels) : 0).stringValue;
+		emitApp(NI_APP_IMAGE_SIZE, [@[request, w, h, error ?: @""] componentsJoinedByString:@"\x1f"]);
+	});
+}
+
 const char *niAppCall(const char *name, const char *arg) {
 	static char reply[64];
-	(void)arg;
-	if (!strcmp(name, "platform")) {
+	if (!strcmp(name, "image.size")) {
+		imageSize(arg ? arg : "");
+		reply[0] = '\0';
+	} else if (!strcmp(name, "platform")) {
 		NSOperatingSystemVersion v = NSProcessInfo.processInfo.operatingSystemVersion;
 		snprintf(reply, sizeof reply, "%ld.%ld.%ld", (long)v.majorVersion, (long)v.minorVersion, (long)v.patchVersion);
 	} else if (!strcmp(name, "isPad") || !strcmp(name, "a11y.screenReader") || !strcmp(name, "a11y.reduceMotion")) {
@@ -1788,7 +1818,7 @@ void niSetFocused(void *control, int focused) { [inputOf(control, "niSetFocused"
 UNIMPLEMENTED(void *, niModalCreate, (void))
 UNIMPLEMENTED(void *, niControlCreate, (const char *kind))
 UNIMPLEMENTED_VOID(niSetReloadPoll, (msClosure poll))
-UNIMPLEMENTED(int, niLastAppEvent, (void))
-UNIMPLEMENTED(const char *, niLastAppValue, (void))
-UNIMPLEMENTED_VOID(niSetAppEventResult, (int result))
+int niLastAppEvent(void) { return g_appEvent; }
+const char *niLastAppValue(void) { return g_appValue ? g_appValue : ""; }
+void niSetAppEventResult(int result) { (void)result; }
 
