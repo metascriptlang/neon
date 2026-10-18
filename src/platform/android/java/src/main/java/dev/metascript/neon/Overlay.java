@@ -12,7 +12,7 @@ import android.window.OnBackInvokedDispatcher;
 // A Modal's layer over the app: it takes every touch that misses its children,
 // and the system back (key on older releases, OnBackInvokedCallback where back
 // is predictive) becomes control phase 7, RN's onRequestClose.
-public final class Overlay extends FrameLayout {
+public final class Overlay extends FrameLayout implements Control {
 	private int tag;
 	private String animation = "none";
 	private Object backCallback;

@@ -4,7 +4,7 @@ import android.content.Context;
 import android.content.res.ColorStateList;
 import android.widget.Switch;
 
-public final class Toggle extends Switch {
+public final class Toggle extends Switch implements Control {
 	private int tag;
 	private boolean value;
 	private boolean writing;

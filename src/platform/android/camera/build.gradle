@@ -1,0 +1,10 @@
+plugins {
+	id 'com.android.library'
+}
+
+android {
+	namespace = 'dev.metascript.neon.camera'
+	defaultConfig {
+		consumerProguardFiles 'consumer-rules.pro'
+	}
+}

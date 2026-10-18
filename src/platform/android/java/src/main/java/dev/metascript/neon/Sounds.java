@@ -200,7 +200,7 @@ final class Sounds {
 			sound.finished = false;
 		});
 		try {
-			String source = Movie.playable(context, uri);
+			String source = Controls.playable(context, uri);
 			if (source.startsWith("/")) player.setDataSource(source);
 			else player.setDataSource(context, Uri.parse(source));
 		} catch (IOException | RuntimeException e) {

@@ -58,9 +58,11 @@ static int g_loopFd = -1;
 
 static struct {
 	jclass view, viewGroup, frameLayout, layoutParams, textView, gradientDrawable, integer, touch;
-	jclass scroll, input, props, environment, toggle, spinner, picture, overlay, controls;
+	jclass scroll, input, props, environment, picture;
+	jobject loader;
+	jmethodID loadClass;
 	jmethodID inputInit, inputSetTag, inputSetFocused, inputRemoving, propsSet, propsSetTag, environmentInstall, environmentScheme;
-	jmethodID toggleInit, spinnerInit, pictureInit, overlayInit, controlsCreate;
+	jmethodID pictureInit;
 	jmethodID scrollInit, scrollSetTag, scrollSetOption, scrollSetContentSize, scrollTo, scrollAddContent, scrollDispose, viewSetClickable;
 	jmethodID scrollShift, scrollOffsetX, scrollOffsetY;
 	jmethodID viewGetParent, viewSetLayoutParams, viewSetAlpha, viewGetBackground, viewSetBackground;
@@ -186,17 +188,18 @@ static void cacheJni(JNIEnv *e) {
 	check(e, "Props.set");
 	J.propsSetTag = (*e)->GetStaticMethodID(e, J.props, "setTag", "(Landroid/view/View;I)V");
 	check(e, "Props.setTag");
-	J.toggle = globalClass(e, "dev/metascript/neon/Toggle");
-	J.toggleInit = method(e, J.toggle, "<init>", "(Landroid/content/Context;)V");
-	J.spinner = globalClass(e, "dev/metascript/neon/Spinner");
-	J.spinnerInit = method(e, J.spinner, "<init>", "(Landroid/content/Context;)V");
 	J.picture = globalClass(e, "dev/metascript/neon/Picture");
 	J.pictureInit = method(e, J.picture, "<init>", "(Landroid/content/Context;)V");
-	J.overlay = globalClass(e, "dev/metascript/neon/Overlay");
-	J.overlayInit = method(e, J.overlay, "<init>", "(Landroid/content/Context;)V");
-	J.controls = globalClass(e, "dev/metascript/neon/Controls");
-	J.controlsCreate = (*e)->GetStaticMethodID(e, J.controls, "create", "(Landroid/content/Context;Ljava/lang/String;)Landroid/view/View;");
-	check(e, "Controls.create");
+	jclass classClass = (*e)->FindClass(e, "java/lang/Class");
+	jclass loaderClass = (*e)->FindClass(e, "java/lang/ClassLoader");
+	check(e, "ClassLoader");
+	jobject loader = (*e)->CallObjectMethod(e, J.props, method(e, classClass, "getClassLoader", "()Ljava/lang/ClassLoader;"));
+	check(e, "getClassLoader");
+	J.loader = (*e)->NewGlobalRef(e, loader);
+	J.loadClass = method(e, loaderClass, "loadClass", "(Ljava/lang/String;)Ljava/lang/Class;");
+	(*e)->DeleteLocalRef(e, loader);
+	(*e)->DeleteLocalRef(e, loaderClass);
+	(*e)->DeleteLocalRef(e, classClass);
 	J.environment = globalClass(e, "dev/metascript/neon/Environment");
 	J.environmentInstall = (*e)->GetStaticMethodID(e, J.environment, "install", "(Landroid/view/ViewGroup;)V");
 	J.environmentScheme = (*e)->GetStaticMethodID(e, J.environment, "colorScheme", "(Landroid/content/Context;)I");
@@ -641,27 +644,48 @@ void *niTextAreaCreate(void) {
 	return area;
 }
 
-void *niSwitchCreate(void) { return newView(J.toggle, J.toggleInit); }
-void *niIndicatorCreate(void) { return newView(J.spinner, J.spinnerInit); }
 void *niImageCreate(void) { return newView(J.picture, J.pictureInit); }
-void *niModalCreate(void) { return newView(J.overlay, J.overlayInit); }
 
-static void *controlCreate(const char *kind) {
+jclass niAndroidClass(const char *name) {
 	JNIEnv *e = env();
-	jstring name = (*e)->NewStringUTF(e, kind);
-	jobject local = (*e)->CallStaticObjectMethod(e, J.controls, J.controlsCreate, g_context, name);
-	check(e, "Controls.create");
-	(*e)->DeleteLocalRef(e, name);
-	place(e, local, 0, 0, 0, 0);
-	jobject global = (*e)->NewGlobalRef(e, local);
+	jstring jname = (*e)->NewStringUTF(e, name);
+	jclass local = (jclass)(*e)->CallObjectMethod(e, J.loader, J.loadClass, jname);
+	check(e, name);
+	jclass global = (*e)->NewGlobalRef(e, local);
 	(*e)->DeleteLocalRef(e, local);
+	(*e)->DeleteLocalRef(e, jname);
 	return global;
 }
 
-void *niWebViewCreate(void) { return controlCreate("webview"); }
-void *niVideoCreate(void) { return controlCreate("video"); }
-void *niCameraCreate(void) { return controlCreate("camera"); }
-void *niSvgCreate(void) { return controlCreate("svg"); }
+typedef struct {
+	const char *name;
+	jclass cls;
+	jmethodID init;
+} ViewClass;
+
+static void *newClassView(ViewClass *view) {
+	if (!view->cls) {
+		view->cls = niAndroidClass(view->name);
+		view->init = method(env(), view->cls, "<init>", "(Landroid/content/Context;)V");
+	}
+	return newView(view->cls, view->init);
+}
+
+static ViewClass s_toggle = { "dev.metascript.neon.Toggle" };
+static ViewClass s_spinner = { "dev.metascript.neon.Spinner" };
+static ViewClass s_overlay = { "dev.metascript.neon.Overlay" };
+static ViewClass s_web = { "dev.metascript.neon.Web" };
+static ViewClass s_movie = { "dev.metascript.neon.Movie" };
+static ViewClass s_camera = { "dev.metascript.neon.CameraPreview" };
+static ViewClass s_svg = { "dev.metascript.neon.SvgView" };
+
+void *niSwitchCreate(void) { return newClassView(&s_toggle); }
+void *niIndicatorCreate(void) { return newClassView(&s_spinner); }
+void *niModalCreate(void) { return newClassView(&s_overlay); }
+void *niWebViewCreate(void) { return newClassView(&s_web); }
+void *niVideoCreate(void) { return newClassView(&s_movie); }
+void *niCameraCreate(void) { return newClassView(&s_camera); }
+void *niSvgCreate(void) { return newClassView(&s_svg); }
 
 void niControlSetTag(void *control, int32_t tag) {
 	JNIEnv *e = env();

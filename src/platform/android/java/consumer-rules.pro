@@ -20,27 +20,11 @@
 	*;
 }
 
--keep class dev.metascript.neon.Toggle {
-	*;
-}
-
--keep class dev.metascript.neon.Spinner {
-	*;
-}
-
 -keep class dev.metascript.neon.Picture {
 	*;
 }
 
 -keep class dev.metascript.neon.App {
-	*;
-}
-
--keep class dev.metascript.neon.Controls {
-	*;
-}
-
--keep class dev.metascript.neon.Overlay {
 	*;
 }
 
@@ -54,8 +38,4 @@
 
 -keep class dev.metascript.neon.CaptureRequester {
 	*;
-}
-
--keepclassmembers class dev.metascript.neon.Web$Bridge {
-	@android.webkit.JavascriptInterface <methods>;
 }
