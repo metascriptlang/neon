@@ -4,6 +4,7 @@ import { Permissions, PermissionsAndroid } from "../../src/api/permissions";
 import { sleepAsync } from "std/core/promise";
 import { installAppServices } from "../../src/api/services";
 import { LocationFix } from "../../src/api/locationServices";
+import { installStorageServices } from "../../src/api/storageServices";
 import {
 	Geolocation, GeolocationError, GeolocationResponse, Location, LocationAccuracy, LocationObject,
 } from "../../src/api/geolocation";
@@ -176,8 +177,9 @@ async function storageRejection(): Promise<string> {
 
 test "the async device APIs reject when no host installed app services" {
 	installAppServices(null);
+	installStorageServices(null);
 	const storage = await storageRejection();
-	assert storage.startsWith("AsyncStorage.getItem: no host has installed app services"), storage;
+	assert storage === "AsyncStorage.getItem is not available on this host", storage;
 	let permission = "";
 	try {
 		await Permissions.check("camera");

@@ -37,7 +37,7 @@ test "a service Ion does not back is refused with the name the author called" {
 	} catch (e) {
 		message = (e as Error).message;
 	}
-	assert message === "AsyncStorage is not available on an Ion desktop host yet", message;
+	assert message === "AsyncStorage.setItem is not available on this host", message;
 	message = "";
 	try {
 		await Linking.openURL("https://example.com");

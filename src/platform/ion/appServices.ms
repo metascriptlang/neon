@@ -43,11 +43,6 @@ export const ionAppServices: AppServices = {
 	announce: (text: string): void => { throw unavailable("AccessibilityInfo.announceForAccessibility"); },
 	exitApp: (): void => { throw unavailable("BackHandler.exitApp"); },
 	imageSize: (uri: string, done: (width: number, height: number, error: string) => void): void => { throw unavailable("Image.getSize"); },
-	storageGet: (key: string): string | null => { throw unavailable("AsyncStorage"); },
-	storageSet: (key: string, value: string): void => { throw unavailable("AsyncStorage"); },
-	storageRemove: (key: string): void => { throw unavailable("AsyncStorage"); },
-	storageClear: (): void => { throw unavailable("AsyncStorage"); },
-	storageKeys: (): string[] => { throw unavailable("AsyncStorage"); },
 	permissionStatus: async (name: string): Promise<PermissionReply> => {
 		if (name === "microphone") { return accessReply(microphoneAccess()); }
 		if (name === "camera") { return accessReply(cameraAccess()); }

@@ -7,7 +7,7 @@ import { publishUrl } from "../../api/linking";
 import { publishReduceMotion, publishScreenReader } from "../../api/accessibilityInfo";
 import {
 	androidPermissionGranted, androidRequestPermissions, androidShouldShowRationale, battery, deviceInfo, haptic,
-	localization, permissionStatus, requestPermission, storageClear, storageGet, storageKeys, storageRemove, storageSet,
+	localization, permissionStatus, requestPermission,
 } from "./deviceServices";
 import {
 	AppEvent, FIELD, RECORD, appCall, dispatchNativeAppEvent, runNativeAppStarts,
@@ -18,7 +18,6 @@ import { nativeCaptureServices, onRecordingEvent, onSoundEvent } from "./capture
 when (ios) {
 	@compile("../ios/app.m", "-fobjc-arc");
 	@compile("../ios/modules.m", "-fobjc-arc");
-	@compile("../ios/storage.m", "-fobjc-arc");
 	@compile("../ios/permissions.m", "-fobjc-arc");
 	@compile("../ios/location.m", "-fobjc-arc");
 	@compile("../ios/device.m", "-fobjc-arc");
@@ -169,11 +168,6 @@ const services: AppServices = {
 	announce: (text: string): void => { call("a11y.announce", text); },
 	exitApp: (): void => { call("exitApp", ""); },
 	imageSize,
-	storageGet,
-	storageSet,
-	storageRemove,
-	storageClear,
-	storageKeys,
 	permissionStatus,
 	requestPermission,
 	androidPermissionGranted,

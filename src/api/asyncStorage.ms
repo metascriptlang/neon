@@ -1,10 +1,16 @@
-import { appServices } from "./services";
+import { storageServices } from "./storageServices";
+
+when (js && !server) {
+	import "../platform/browser/asyncStorage";
+} else when (ios || android) {
+	import "../platform/native/asyncStorage";
+}
 
 export type KeyValuePair = [string, string | null];
 export type StringPair = [string, string];
 
 function readItem(api: string, key: string): string | null {
-	return appServices(api).storageGet(key);
+	return storageServices(api).storageGet(key);
 }
 
 function parsed(api: string, key: string, text: string): JsonValue {
@@ -33,7 +39,7 @@ function mergeOne(api: string, key: string, value: string): void {
 	const patch = parsed(api, key, value);
 	const existing = readItem(api, key);
 	const merged = existing === null ? patch : deepMerge(parsed(api, key, existing), patch);
-	appServices(api).storageSet(key, stringify(merged));
+	storageServices(api).storageSet(key, stringify(merged));
 }
 
 export class AsyncStorage {
@@ -45,7 +51,7 @@ export class AsyncStorage {
 	}
 
 	static async setItem(key: string, value: string): Promise<void> {
-		appServices("AsyncStorage.setItem").storageSet(key, value);
+		storageServices("AsyncStorage.setItem").storageSet(key, value);
 	}
 
 	static async mergeItem(key: string, value: string): Promise<void> {
@@ -53,15 +59,15 @@ export class AsyncStorage {
 	}
 
 	static async removeItem(key: string): Promise<void> {
-		appServices("AsyncStorage.removeItem").storageRemove(key);
+		storageServices("AsyncStorage.removeItem").storageRemove(key);
 	}
 
 	static async clear(): Promise<void> {
-		appServices("AsyncStorage.clear").storageClear();
+		storageServices("AsyncStorage.clear").storageClear();
 	}
 
 	static async getAllKeys(): Promise<string[]> {
-		const keys = appServices("AsyncStorage.getAllKeys").storageKeys();
+		const keys = storageServices("AsyncStorage.getAllKeys").storageKeys();
 		return keys;
 	}
 
@@ -72,7 +78,7 @@ export class AsyncStorage {
 	}
 
 	static async multiSet(keyValuePairs: StringPair[]): Promise<void> {
-		const services = appServices("AsyncStorage.multiSet");
+		const services = storageServices("AsyncStorage.multiSet");
 		for (const pair of keyValuePairs) { services.storageSet(pair[0], pair[1]); }
 	}
 
@@ -81,7 +87,7 @@ export class AsyncStorage {
 	}
 
 	static async multiRemove(keys: string[]): Promise<void> {
-		const services = appServices("AsyncStorage.multiRemove");
+		const services = storageServices("AsyncStorage.multiRemove");
 		for (const key of keys) { services.storageRemove(key); }
 	}
 

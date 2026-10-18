@@ -25,7 +25,7 @@ static void save(void) {
 	}
 }
 
-NSString *niStorageCall(NSString *name, NSString *arg) {
+static NSString *call(NSString *name, NSString *arg) {
 	if ([name isEqualToString:@"storage.get"]) {
 		NSString *value = items()[arg];
 		return value ? [@"=" stringByAppendingString:value] : @"";
@@ -53,4 +53,8 @@ NSString *niStorageCall(NSString *name, NSString *arg) {
 	if ([name isEqualToString:@"storage.keys"]) return [items().allKeys componentsJoinedByString:NIField];
 	NSLog(@"Neon niAppCall: unknown command %@", name);
 	abort();
+}
+
+const char *niStorageCommand(const char *name, const char *arg) {
+	return niAppReply(call(@(name), @(arg ? arg : "")));
 }

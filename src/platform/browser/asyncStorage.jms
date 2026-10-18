@@ -1,0 +1,39 @@
+import { StorageServices, installStorageServices } from "../../api/storageServices";
+
+extern class localStorage {
+	static length: number;
+	static extern setItem(key: cstring, value: cstring): void;
+	static extern removeItem(key: cstring): void;
+	static extern clear(): void;
+}
+
+extern function storageHas(key: cstring): boolean from "(localStorage.getItem(#) !== null)";
+extern function storageRead(key: cstring): string from "(localStorage.getItem(#) ?? '')";
+extern function storageKeyAt(index: number): string from "(localStorage.key(#) ?? '')";
+
+function storageGet(key: string): string | null {
+	return storageHas(key) ? storageRead(key) : null;
+}
+
+function storageSet(key: string, value: string): void {
+	localStorage.setItem(key, value);
+}
+
+function storageRemove(key: string): void {
+	localStorage.removeItem(key);
+}
+
+function storageClear(): void {
+	localStorage.clear();
+}
+
+function storageKeys(): string[] {
+	const keys: string[] = [];
+	const count = localStorage.length;
+	for (let i = 0; i < count; i += 1) { keys.push(storageKeyAt(i)); }
+	return keys;
+}
+
+const browserStorageServices: StorageServices = { storageGet, storageSet, storageRemove, storageClear, storageKeys };
+
+installStorageServices(browserStorageServices);
