@@ -1,7 +1,10 @@
 import { registerNativeElement } from "./elements";
 import { niWebViewCreate } from "./components.h";
 
-when (macos && !testBuild) {
+when (ios) {
+	@compile("../ios/webView.m", "-fobjc-arc");
+	@passL("-framework WebKit");
+} else when (macos && !testBuild) {
 	@compile("../macos/webView.m", "-fobjc-arc");
 	@passL("-framework WebKit");
 }

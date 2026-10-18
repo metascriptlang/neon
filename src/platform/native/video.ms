@@ -1,7 +1,12 @@
 import { registerNativeElement } from "./elements";
 import { niVideoCreate } from "./components.h";
 
-when (macos && !testBuild) {
+when (ios) {
+	@compile("../ios/video.m", "-fobjc-arc");
+	@passL("-framework AVFoundation");
+	@passL("-framework AVKit");
+	@passL("-framework CoreMedia");
+} else when (macos && !testBuild) {
 	@compile("../macos/video.m", "-fobjc-arc");
 	@passL("-framework AVFoundation");
 	@passL("-framework AVKit");

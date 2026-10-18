@@ -1,8 +1,7 @@
-#import <UIKit/UIKit.h>
 #import <AVFoundation/AVFoundation.h>
+#import "component.h"
+#include "../native/components.h"
 #include <string.h>
-
-void neonMediaEmit(int tag, int phase, NSString *value, float width, float height);
 
 enum { CAMERA_READY = 30, CAMERA_MOUNT_ERROR = 31, CAMERA_PICTURE = 32 };
 
@@ -18,7 +17,7 @@ static NSString *const FIELD = @"\x1f";
 @property(nonatomic, weak) NeonCameraView *view;
 @end
 
-@interface NeonCameraView : UIView
+@interface NeonCameraView : UIView <NeonComponentView>
 @property(nonatomic, strong) AVCaptureSession *session;
 @property(nonatomic, strong) AVCapturePhotoOutput *photoOutput;
 @property(nonatomic, strong) AVCaptureVideoPreviewLayer *previewLayer;
@@ -37,7 +36,7 @@ static NSString *const FIELD = @"\x1f";
 
 static void emitLater(NeonCameraView *view, int phase, NSString *value) {
 	dispatch_async(dispatch_get_main_queue(), ^{
-		if (view.tag != 0) neonMediaEmit((int)view.tag, phase, value, 0, 0);
+		if (view.tag != 0) neonEmitControl((int)view.tag, phase, value, 0, 0);
 	});
 }
 
@@ -67,7 +66,7 @@ static AVCaptureDevice *cameraFor(NSString *facing) {
 		self.answered = YES;
 		NeonCameraView *view = self.view;
 		[view.captures removeObject:self];
-		if (view.tag != 0) neonMediaEmit((int)view.tag, CAMERA_PICTURE, value, 0, 0);
+		if (view.tag != 0) neonEmitControl((int)view.tag, CAMERA_PICTURE, value, 0, 0);
 	});
 }
 
@@ -194,11 +193,11 @@ static AVCaptureDevice *cameraFor(NSString *facing) {
 		dispatch_async(dispatch_get_main_queue(), ^{
 			if (generation != self.generation || self.tag == 0) return;
 			if (problem) {
-				neonMediaEmit((int)self.tag, CAMERA_MOUNT_ERROR, problem, 0, 0);
+				neonEmitControl((int)self.tag, CAMERA_MOUNT_ERROR, problem, 0, 0);
 				return;
 			}
 			self.running = YES;
-			neonMediaEmit((int)self.tag, CAMERA_READY, @"", 0, 0);
+			neonEmitControl((int)self.tag, CAMERA_READY, @"", 0, 0);
 		});
 	});
 }
@@ -285,16 +284,6 @@ static AVCaptureDevice *cameraFor(NSString *facing) {
 
 @end
 
-void *neonCameraCreate(void) {
+void *niCameraCreate(void) {
 	return (void *)CFBridgingRetain([[NeonCameraView alloc] initWithFrame:CGRectZero]);
-}
-
-int neonCameraSetProp(UIView *view, const char *name, const char *text) {
-	if (![view isKindOfClass:NeonCameraView.class]) return 0;
-	[(NeonCameraView *)view neonSetProp:name value:text];
-	return 1;
-}
-
-void neonCameraRelease(UIView *view) {
-	if ([view isKindOfClass:NeonCameraView.class]) [(NeonCameraView *)view neonRelease];
 }

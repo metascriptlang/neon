@@ -1,7 +1,9 @@
 import { registerNativeElement } from "./elements";
 import { niSwitchCreate } from "./components.h";
 
-when (macos && !testBuild) {
+when (ios) {
+	@compile("../ios/switch.m", "-fobjc-arc");
+} else when (macos && !testBuild) {
 	@compile("../macos/switch.m", "-fobjc-arc");
 }
 

@@ -1,7 +1,9 @@
 import { registerNativeElement } from "./elements";
 import { niIndicatorCreate } from "./components.h";
 
-when (macos && !testBuild) {
+when (ios) {
+	@compile("../ios/activityIndicator.m", "-fobjc-arc");
+} else when (macos && !testBuild) {
 	@compile("../macos/activityIndicator.m", "-fobjc-arc");
 }
 
