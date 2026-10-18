@@ -1,5 +1,6 @@
 import { createSignal } from "../../src/core/signal";
-import { createEffect } from "../../src/core/effect";
+import { createRenderEffect } from "../../src/core/effect";
+import { Cleanup } from "../../src/core/types";
 import { createRoot } from "../../src/core/owner";
 import { createVoidHostWith, VoidHost, VoidNode } from "../../src/platform/void/host";
 import { Style } from "../../src/render/style";
@@ -16,7 +17,7 @@ import { rgba, ScaleMode } from "../../../void/src/void2d/types";
 function host(scoped: boolean = false): VoidHost {
 	const font = addFont("../void/assets/font.ttf");
 	if (!font.ok) { throw new Error("test font unreadable"); }
-	return createVoidHostWith(Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0)), font.value, scoped);
+	return createVoidHostWith(Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0)), font.value, null, scoped);
 }
 
 function settle(vh: VoidHost): void {
@@ -113,9 +114,13 @@ test "raw mutation effects wake existing listener once per clean scene, includin
 	vh.onDirty((): void => { wakes += 1; });
 	const [x, setX] = createSignal<float32>(1.0);
 	const dispose = createRoot((dispose) => {
-		createEffect((): void => {
-			vh.mutate((): void => { raw.ref.setPosition(x(), 0.0); });
-		});
+		createRenderEffect<float32>(
+			(prev: float32 | null): float32 => x(),
+			(value: float32, prev: float32 | null): Cleanup | null => {
+				vh.mutate((): void => { raw.ref.setPosition(value, 0.0); });
+				return null;
+			},
+		);
 		return dispose;
 	});
 	try {
