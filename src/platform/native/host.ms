@@ -1262,7 +1262,7 @@ function nativeMeasurementError(node: NativeNode, ownedRoot: NativeNode): Measur
 	if (root !== ownedRoot) { return MeasureError.NotMounted; }
 	if (layoutDirty) { relayoutRoot(); }
 	if (!isMounted(node)) { return MeasureError.NotMounted; }
-	if (node.view === null || node.isString || node.spanOwner !== null) { return MeasureError.Unsupported; }
+	if (node.view === null || node.isString) { return MeasureError.Unsupported; }
 	if (node !== root && !node.framed) { return MeasureError.NotLaidOut; }
 	let at: NativeNode | null = node;
 	while (at !== null) {
