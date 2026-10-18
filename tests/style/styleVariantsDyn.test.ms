@@ -4,6 +4,7 @@
 // single effect that never re-fires — a false positive by design, never a
 // frozen snapshot.
 
+import { flush } from "../../src/core/runtime";
 import { element } from "../../src/macros/ui/element";
 import { Style, mergeStyle, emptyStyle } from "../../src/render/style";
 import { createStyles, styleOf } from "../../src/macros/ui/style";
@@ -31,9 +32,11 @@ test "a signal-driven selection tracks the signal" {
 	assert st0.backgroundColor === "#334", "unpressed renders the base";
 	assert st0.padding === 8, "base field present";
 	setPressed(true);
+	flush();
 	const st1 = div.style as Style;
 	assert st1.backgroundColor === "#445", "press swaps in the variant";
 	setPressed(false);
+	flush();
 	const st2 = div.style as Style;
 	assert st2.backgroundColor === "#334", "release falls back to the base";
 }

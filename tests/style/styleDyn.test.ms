@@ -3,6 +3,7 @@
 // host.setStyleProp; the remaining fields are written once at mount. No
 // whole-style re-apply, no re-render — the Solid model, per-property.
 
+import { flush } from "../../src/core/runtime";
 import { element } from "../../src/macros/ui/element";
 import { Style, StyleValue } from "../../src/render/style";
 import { render, mockHost, mockNode, HostNode } from "../../src/render/host";
@@ -19,6 +20,7 @@ test "a dynamic style field tracks its signal" {
 	assert st0.width === 20, "initial signal value applied";
 	assert st0.backgroundColor === "red", "static field applied alongside";
 	setW(35);
+	flush();
 	const st1 = div.style as Style;
 	assert st1.width === 35, "signal change lands on the property";
 	assert st1.backgroundColor === "red", "static field untouched by the update";
@@ -33,6 +35,7 @@ test "a derived style expression is reactive too" {
 	const div = root.children[0];
 	assert (div.style as Style).height === 10, "derived initial value";
 	setN(4);
+	flush();
 	assert (div.style as Style).height === 40, "derived update";
 }
 
@@ -62,6 +65,7 @@ test "an identical signal value is not re-written to the host" {
 	const div = root.children[0];
 	const before = div.style;
 	setW(20);
+	flush();
 	assert div.style === before, "same value writes nothing";
 	assert (div.style as Style).width === 20, "value intact";
 }
