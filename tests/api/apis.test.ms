@@ -1,3 +1,4 @@
+import { flush } from "../../src/core/runtime";
 import { createRoot } from "../../src/core/owner";
 import { createEffect } from "../../src/core/effect";
 import { Cleanup } from "../../src/core/types";
@@ -48,14 +49,18 @@ test "Platform.select with no matching entry and no default throws, naming the O
 
 test "Dimensions and PixelRatio read the host's published window, screen and scale" {
 	publishWindow(390, 844);
+	flush();
 	publishScale(3, 1.5);
+	flush();
 	publishScreen(0, 0);
+	flush();
 	const window = Dimensions.get("window");
 	assert window.width === 390 && window.height === 844, "window";
 	assert window.scale === 3 && window.fontScale === 1.5, "scale";
 	const screen = Dimensions.get("screen");
 	assert screen.width === 390 && screen.height === 844, "an unknown screen reports the window";
 	publishScreen(400, 900);
+	flush();
 	assert Dimensions.get("screen").height === 900, "the published screen";
 	assert PixelRatio.get() === 3;
 	assert PixelRatio.getFontScale() === 1.5;
@@ -65,27 +70,34 @@ test "Dimensions and PixelRatio read the host's published window, screen and sca
 
 test "Dimensions change listeners fire on a change only, until removed" {
 	publishWindow(390, 844);
+	flush();
 	const seen: string[] = [];
 	const subscription = Dimensions.addEventListener("change", (change: DimensionsChange): void => {
 		seen.push(change.window.width.toString() + "x" + change.window.height.toString());
 	});
 	assert seen.length === 0, "no call with the current value";
 	publishWindow(844, 390);
+	flush();
 	assert seen.join(",") === "844x390", seen.join(",");
 	subscription.remove();
 	publishWindow(390, 844);
+	flush();
 	assert seen.length === 1, "removed";
 }
 
 test "Appearance reads and follows the published color scheme" {
 	publishColorScheme("light");
+	flush();
 	assert Appearance.getColorScheme() === "light";
 	const seen: string[] = [];
 	const subscription = Appearance.addChangeListener((p: AppearancePreferences): void => { seen.push(p.colorScheme as string); });
 	publishColorScheme("dark");
+	flush();
 	assert Appearance.getColorScheme() === "dark";
 	publishColorScheme("dark");
+	flush();
 	publishColorScheme("light");
+	flush();
 	subscription.remove();
 	assert seen.join(",") === "dark,light", seen.join(",");
 }
@@ -94,7 +106,9 @@ test "Keyboard show and hide listeners follow the published height; dismiss goes
 	const fake = new FakeServices();
 	fake.install();
 	publishWindow(400, 800);
+	flush();
 	publishKeyboard(0);
+	flush();
 	const shows: string[] = [];
 	const hides: string[] = [];
 	const frameHeights: string[] = [];
@@ -106,11 +120,14 @@ test "Keyboard show and hide listeners follow the published height; dismiss goes
 		frameHeights.push(e.endCoordinates.height.toString());
 	});
 	publishKeyboard(300);
+	flush();
 	assert Keyboard.isVisible();
 	const metrics = Keyboard.metrics();
 	assert metrics !== null && metrics.height === 300, "metrics";
 	publishKeyboard(320);
+	flush();
 	publishKeyboard(0);
+	flush();
 	assert !Keyboard.isVisible();
 	assert Keyboard.metrics() === null;
 	assert shows.join(",") === "300@500", shows.join(",");
@@ -125,6 +142,7 @@ test "Keyboard show and hide listeners follow the published height; dismiss goes
 
 test "AppState follows the published state for currentState, the accessor and change listeners" {
 	publishAppState("active");
+	flush();
 	const state = useAppState();
 	const changes: string[] = [];
 	const blurs: string[] = [];
@@ -138,20 +156,27 @@ test "AppState follows the published state for currentState, the accessor and ch
 		);
 		return d;
 	});
+	flush();
 	publishAppState("inactive");
+	flush();
 	assert AppState.currentState === "inactive";
 	publishAppState("background");
+	flush();
 	publishAppState("background");
+	flush();
 	publishAppState("active");
+	flush();
 	change.remove();
 	blur.remove();
 	dispose();
 	publishAppState("background");
+	flush();
 	assert changes.join(",") === "inactive,background,active", changes.join(",");
 	assert blurs.join(",") === "inactive,background", blurs.join(",");
 	assert tracked === "active;inactive;background;active;", tracked;
 	assert AppState.currentState === "background";
 	publishAppState("active");
+	flush();
 }
 
 test "BackHandler runs the newest handler first and stops at the first that consumes the press" {
@@ -244,8 +269,10 @@ test "Linking opens, checks and reports urls through the host, and rejects what 
 	const urls: string[] = [];
 	const subscription = Linking.addEventListener("url", (e: LinkingUrlEvent): void => { urls.push(e.url); });
 	publishUrl("neon://a");
+	flush();
 	subscription.remove();
 	publishUrl("neon://b");
+	flush();
 	assert urls.join(",") === "neon://a", urls.join(",");
 	assert fake.joined() === "openURL https://example.com;canOpenURL tel:123;openURL nope://x;canOpenURL nope://x", fake.joined();
 }
@@ -297,16 +324,21 @@ test "AccessibilityInfo asks the host, follows the published screen reader and a
 	assert await AccessibilityInfo.isScreenReaderEnabled();
 	assert !(await AccessibilityInfo.isReduceMotionEnabled());
 	publishScreenReader(false);
+	flush();
 	const seen: string[] = [];
 	const subscription = AccessibilityInfo.addEventListener("screenReaderChanged", (on: boolean): void => {
 		seen.push(on ? "on" : "off");
 	});
 	publishScreenReader(true);
+	flush();
 	publishScreenReader(false);
+	flush();
 	subscription.remove();
 	publishScreenReader(true);
+	flush();
 	assert seen.join(",") === "on,off", seen.join(",");
 	AccessibilityInfo.announceForAccessibility("Saved");
 	assert fake.joined() === "announce Saved", fake.joined();
 	publishScreenReader(false);
+	flush();
 }

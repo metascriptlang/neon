@@ -1,3 +1,4 @@
+import { flush } from "../../src/core/runtime";
 import { AsyncStorage, KeyValuePair, StringPair, useAsyncStorage } from "../../src/api/asyncStorage";
 import { NetInfo, NetInfoState, publishNetInfo, useNetInfo } from "../../src/api/netInfo";
 import { Permissions, PermissionsAndroid } from "../../src/api/permissions";
@@ -104,12 +105,17 @@ test "NetInfo starts the host's watch once, calls a new listener at once and the
 	const seen: string[] = [];
 	const unsubscribe = NetInfo.addEventListener((state: NetInfoState): void => { seen.push(describe(state)); });
 	const network = useNetInfo();
+	flush();
 	assert describe(network()) === "wifi up reachable cheap";
 	publishNetInfo({ type: "cellular", isConnected: true, isInternetReachable: null, details: { isConnectionExpensive: true } });
+	flush();
 	publishNetInfo({ type: "cellular", isConnected: true, isInternetReachable: null, details: { isConnectionExpensive: true } });
+	flush();
 	publishNetInfo({ type: "none", isConnected: false, isInternetReachable: false, details: null });
+	flush();
 	unsubscribe();
 	publishNetInfo({ type: "wifi", isConnected: true, isInternetReachable: true, details: { isConnectionExpensive: false } });
+	flush();
 	assert seen.join(",") === "wifi up reachable cheap,cellular up ? expensive,none down unreachable", seen.join(",");
 	assert describe(network()) === "wifi up reachable cheap", "the accessor keeps following";
 	fake.network = { type: "ethernet", isConnected: true, isInternetReachable: true, details: { isConnectionExpensive: false } };
