@@ -9,6 +9,7 @@ import { NeonEvent, neonEvent } from "../../src/render/event";
 import { createEffect } from "../../src/core/effect";
 import { Cleanup } from "../../src/core/types";
 import { createRoot } from "../../src/core/owner";
+import { flush } from "../../src/core/runtime";
 
 class Probe extends CompositeAnimation {
 	starts: int32 = 0;
@@ -389,22 +390,27 @@ test "tracking: a value follows another through a timing of zero duration" {
 	const v2 = new AnimatedValue(0);
 	Animated.timing(v2, { toValue: 0, toNode: v1, duration: 0 }).start();
 	v1.setValue(42);
+	flush();
 	assert v2.peek() === 42;
 	v1.setValue(7);
+	flush();
 	assert v2.peek() === 7;
 
 	const v3 = new AnimatedValue(0);
 	const v4 = new AnimatedValue(0);
 	Animated.timing(v4, { toValue: 0, toNode: v3.interpolate({ inputRange: [0, 2], outputRange: [0, 1] }), duration: 0 }).start();
 	v3.setValue(42);
+	flush();
 	assert v4.peek() === 21;
 
 	const v5 = new AnimatedValue(0);
 	const v6 = new AnimatedValue(0);
 	Animated.timing(v6, { toValue: 0, toNode: v5, duration: 0 }).start();
 	v5.setValue(42);
+	flush();
 	Animated.timing(v6, { toValue: 7, duration: 0 }).start();
 	v5.setValue(1492);
+	flush();
 	assert v6.peek() === 7, "a new animation stops the tracking";
 
 	const v7 = new AnimatedValue(42);
@@ -419,9 +425,11 @@ test "tracking with a spring follows each change of the target" {
 	const follower = new AnimatedValue(0);
 	Animated.spring(follower, { toValue: 0, toNode: target, tension: 3000, friction: 60 }).start();
 	target.setValue(1);
+	flush();
 	clock.runAll();
 	assert Math.round(follower.peek()) === 1;
 	target.setValue(2);
+	flush();
 	clock.runAll();
 	assert Math.round(follower.peek()) === 2;
 	setFrameDriver(null);
@@ -433,6 +441,7 @@ test "ValueXY animates both axes and reads its layout and transform" {
 	const opacity = vec.x.interpolate({ inputRange: [0, 42], outputRange: [0.2, 0.8] });
 	assert close(opacity.peek(), 0.2, 0.000001);
 	vec.setValue({ x: 42, y: 1492 });
+	flush();
 	assert close(opacity.peek(), 0.8, 0.000001);
 	const layout = vec.getLayout();
 	assert layout.left === 42 && layout.top === 1492;
@@ -448,9 +457,12 @@ test "listeners: value, derived node, removeAll" {
 	const got: number[] = [];
 	const id = v.addListener((s: ValueState): void => { got.push(s.value); });
 	v.setValue(42);
+	flush();
 	v.setValue(7);
+	flush();
 	v.removeListener(id);
 	v.setValue(1492);
+	flush();
 	assert got.length === 2 && got[0] === 42 && got[1] === 7 && v.peek() === 1492;
 
 	const value1 = new AnimatedValue(40);
@@ -460,20 +472,25 @@ test "listeners: value, derived node, removeAll" {
 	const derived: number[] = [];
 	const did = value4.addListener((s: ValueState): void => { derived.push(s.value); });
 	value3.setValue(137);
+	flush();
 	assert derived.length === 1 && derived[0] === 2137, "derived " + derived.length.toString();
 	value1.setValue(0);
+	flush();
 	assert derived.length === 2 && derived[1] === 137;
 	value4.removeListener(did);
 	value1.setValue(40);
+	flush();
 	assert derived.length === 2 && value4.peek() === 2137;
 
 	const many = new AnimatedValue(0);
 	let count = 0;
 	for (let i = 0; i < 4; i += 1) { many.addListener((s: ValueState): void => { count += 1; }); }
 	many.setValue(42);
+	flush();
 	assert count === 4;
 	many.removeAllListeners();
 	many.setValue(7);
+	flush();
 	assert count === 4;
 }
 
@@ -484,6 +501,7 @@ test "diffClamp, modulo, subtract, divide" {
 	const clamped = Animated.diffClamp(v, 0, 20);
 	for (let i = 0; i < inputs.length; i += 1) {
 		v.setValue(inputs[i]);
+		flush();
 		assert clamped.peek() === expected[i], `diffClamp ${i}: ${clamped.peek()}`;
 	}
 	const m = new AnimatedValue(-1);
@@ -502,6 +520,7 @@ test "offsets: setOffset, flattenOffset, extractOffset" {
 	v.extractOffset();
 	assert v.peek() === 15 && v.value === 0 && v.offset === 15;
 	v.setValue(1);
+	flush();
 	assert v.peek() === 16;
 	let stoppedAt = 0.0;
 	v.stopAnimation((x: number): void => { stoppedAt = x; });
@@ -525,6 +544,7 @@ test "a style effect reading a value re-runs once per frame" {
 			},
 		);
 	});
+	flush();
 	Animated.timing(v, { toValue: 1, duration: 64, easing: Easing.linear }).start();
 	clock.advance(16);
 	assert runs === 2 && seen === 0.25, `runs ${runs} seen ${seen}`;

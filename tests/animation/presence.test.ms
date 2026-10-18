@@ -4,6 +4,7 @@ import { element } from "../../src/macros/ui/element";
 import { HostNode, MockNode, mockNode, mockHost, render, mockToString } from "../../src/render/host";
 import { Style } from "../../src/render/style";
 import { createSignal } from "../../src/core/signal";
+import { flush } from "../../src/core/runtime";
 import { Text } from "../../src/components/primitives";
 
 test "Presence fades its child in, keeps it mounted through the exit, then removes it" {
@@ -16,6 +17,7 @@ test "Presence fades its child in, keeps it mounted through the exit, then remov
 	</Presence>), mockHost(), root as unknown as HostNode);
 	assert mockToString(root) === "<root></root>", mockToString(root);
 	setOpen(true);
+	flush();
 	assert mockToString(root) === "<root><view><text>panel</text></view></root>", mockToString(root);
 	const box = root.children[0];
 	assert (box.style as Style).opacity === 0, "enters from transparent";
@@ -26,6 +28,7 @@ test "Presence fades its child in, keeps it mounted through the exit, then remov
 	clock.runAll();
 	assert (box.style as Style).opacity === 1 && (box.style as Style).transform === "translateY(0px)";
 	setOpen(false);
+	flush();
 	clock.step(3);
 	assert mockToString(root) === "<root><view><text>panel</text></view></root>", "still mounted while exiting";
 	clock.runAll();
@@ -40,8 +43,10 @@ test "Presence reversed mid-exit returns without unmounting" {
 	render(element(<Presence when={open()}><Text>x</Text></Presence>), mockHost(), root as unknown as HostNode);
 	assert (root.children[0].style as Style).opacity === 1, "starts shown without animating";
 	setOpen(false);
+	flush();
 	clock.step(2);
 	setOpen(true);
+	flush();
 	clock.runAll();
 	assert mockToString(root) === "<root><view><text>x</text></view></root>" && (root.children[0].style as Style).opacity === 1;
 	setFrameDriver(null);

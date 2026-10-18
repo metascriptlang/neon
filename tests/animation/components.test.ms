@@ -5,6 +5,7 @@ import { useManualFrames, setFrameDriver } from "../../src/animation/frame";
 import { element } from "../../src/macros/ui/element";
 import { HostNode, MockNode, mockNode, mockHost, render, mockToString } from "../../src/render/host";
 import { Style } from "../../src/render/style";
+import { flush } from "../../src/core/runtime";
 
 function styleOf(n: MockNode): Style {
 	return n.style as Style;
@@ -60,6 +61,7 @@ test "a component style layer array merges RN-style, the reactive layer stays li
 	const box = root.children[0];
 	assert styleOf(box).width === 10 && styleOf(box).opacity === 0 && styleOf(box).backgroundColor === "#111";
 	v.setValue(0.5);
+	flush();
 	assert styleOf(box).opacity === 0.5 && styleOf(box).width === 10;
 	setFrameDriver(null);
 }
