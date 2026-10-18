@@ -1,3 +1,4 @@
+import { flush } from "../../src/core/runtime";
 import { HostNode, MockNode, mockNode, mockHost, render, fireEventWith } from "../../src/render/host";
 import { neonEvent } from "../../src/render/event";
 import { dispatchHardwareBackPress } from "../../src/api/backHandler";
@@ -13,6 +14,7 @@ function type(root: MockNode, label: string, text: string): void {
 	e.value = text;
 	fireEventWith(node as MockNode, "onChangeText", e);
 	fireEventWith(node as MockNode, "onInput", e);
+	flush();
 }
 
 test "the navigation example walks list, detail, edit, tabs, drawer and a deep link" {
@@ -50,9 +52,11 @@ test "the navigation example walks list, detail, edit, tabs, drawer and a deep l
 	assert visibleText(root).indexOf("Theme: dark") >= 0, visibleText(root);
 	press(root, "Toggle dark theme");
 	assert dispatchHardwareBackPress();
+	flush();
 	assert navigationRef.currentPath() === "Main>Home>List", navigationRef.currentPath();
 
 	publishUrl("neonnav://items/4");
+	flush();
 	assert visibleText(root).indexOf("Ion window|Item number 4") >= 0, visibleText(root);
 	dispose();
 }

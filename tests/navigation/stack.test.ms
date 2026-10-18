@@ -1,3 +1,4 @@
+import { flush } from "../../src/core/runtime";
 import { createSignal } from "../../src/core/signal";
 import { Dispose } from "../../src/core/types";
 import { onCleanup } from "../../src/core/cleanup";
@@ -164,6 +165,7 @@ test "navigate to a route already in the stack goes back to it" {
 	press(root, "open 7");
 	press(root, "edit");
 	ref.navigate("Home");
+	flush();
 	assert ref.currentPath() === "Home", ref.currentPath();
 	assert !ref.canGoBack();
 }
@@ -188,9 +190,12 @@ test "hardware back pops the stack, then is left to the system at the root" {
 	press(root, "open 7");
 	press(root, "edit");
 	assert dispatchHardwareBackPress(), "consumed";
+	flush();
 	assert ref.currentPath() === "Detail", ref.currentPath();
 	assert dispatchHardwareBackPress();
+	flush();
 	assert !dispatchHardwareBackPress(), "the root leaves back to the system";
+	flush();
 	assert visibleText(root) === "Items|home 0|+|open", visibleText(root);
 }
 
@@ -210,6 +215,7 @@ test "a transparent modal keeps the screen below it visible and has no header" {
 	const ref = createNavigationContainerRef();
 	const root = mountStack(ref);
 	ref.navigate("Sheet");
+	flush();
 	assert visibleText(root) === "Items|home 0|+|open|sheet|x", visibleText(root);
 	press(root, "close sheet");
 	assert visibleText(root) === "Items|home 0|+|open", visibleText(root);
@@ -220,14 +226,17 @@ test "beforeRemove holds a screen with unsaved changes until its action is dispa
 	const ref = createNavigationContainerRef();
 	const root = mountStack(ref);
 	ref.navigate("Draft");
+	flush();
 	press(root, "Items, back");
 	assert ref.currentPath() === "Draft", "the header back was prevented";
 	assert dispatchHardwareBackPress(), "hardware back is consumed while prevented";
+	flush();
 	assert ref.currentPath() === "Draft", ref.currentPath();
 	assert pending !== null && (pending as NavigationAction).type === "GO_BACK";
 	press(root, "discard");
 	assert ref.currentPath() === "Home", "the dispatched action leaves: " + ref.currentPath();
 	ref.navigate("Draft");
+	flush();
 	press(root, "save draft");
 	press(root, "Items, back");
 	assert ref.currentPath() === "Home", "a saved draft leaves at once";

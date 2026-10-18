@@ -1,3 +1,4 @@
+import { flush } from "../../src/core/runtime";
 import { onCleanup } from "../../src/core/cleanup";
 import { NeonNode } from "../../src/render/hostTypes";
 import { HostNode, mockHost, mockNode, render } from "../../src/render/host";
@@ -38,9 +39,11 @@ test "a screen popped with an exit animation is built once and released when the
 		</Stack.Navigator>
 	</NavigationContainer>, mockHost(), root as unknown as HostNode);
 	ref.navigate("Detail");
+	flush();
 	settle();
 	assert bodies === 1 && cleanups === 0, bodies.toString() + "/" + cleanups.toString();
 	ref.goBack();
+	flush();
 	assert ref.currentPath() === "Home", ref.currentPath();
 	assert bodies === 1, "the leaving screen is kept, not rebuilt: " + bodies.toString();
 	assert cleanups === 0, "the leaving screen is kept until the animation ends: " + cleanups.toString();
@@ -61,7 +64,9 @@ test "a screen popped without an animation is released at once" {
 		</Stack.Navigator>
 	</NavigationContainer>, mockHost(), root as unknown as HostNode);
 	ref.navigate("Detail");
+	flush();
 	ref.goBack();
+	flush();
 	assert bodies === 1 && cleanups === 1, bodies.toString() + "/" + cleanups.toString();
 	dispose();
 }
@@ -79,9 +84,12 @@ test "a screen popped to the top with an exit animation is built once" {
 		</Stack.Navigator>
 	</NavigationContainer>, mockHost(), root as unknown as HostNode);
 	ref.navigate("Middle");
+	flush();
 	ref.navigate("Detail");
+	flush();
 	settle();
 	ref.navigate("Home");
+	flush();
 	assert bodies === 1, "the leaving screen is not rebuilt: " + bodies.toString();
 	settle();
 	assert ref.currentPath() === "Home", ref.currentPath();

@@ -1,3 +1,4 @@
+import { flush } from "../../src/core/runtime";
 import { Signal } from "../../src/core/signal";
 import { createRoot } from "../../src/core/owner";
 import { Dispose } from "../../src/core/types";
@@ -78,6 +79,7 @@ function ShopScreen(props: ScreenProps<string>): NeonNode {
 			stringifyParams={(params: ItemParams): Map<string, string> => {
 				const values = new Map<string, string>();
 				values.set("id", params.id);
+				flush();
 				return values;
 			}} />
 	</Shop.Navigator>;
@@ -110,6 +112,7 @@ function startApp(registry: RoutingRegistry, scope: string, beforeMount: () => v
 		container(mockHost(), root as unknown as HostNode, null);
 		return stop;
 	});
+	flush();
 	return { root, ref, dispose };
 }
 
@@ -207,18 +210,24 @@ test "memory history push and back move the built-in navigators" {
 	const session = open(registry, history, errors);
 	assert addressOf(registry) === "/", addressOf(registry);
 	assert session.navigate("/shop/product/42", false).ok;
+	flush();
 	assert session.navigate("/shop/product/7", false).ok;
+	flush();
 	assert app.ref.currentPath() === "Shop>Product", app.ref.currentPath();
 	assert visibleText(app.root).indexOf("product 7") >= 0, visibleText(app.root);
 	assert addressOf(registry) === "/shop/product/7", addressOf(registry);
 	assert history.go(-1);
+	flush();
 	assert visibleText(app.root).indexOf("product 42") >= 0, visibleText(app.root);
 	assert addressOf(registry) === "/shop/product/42", addressOf(registry);
 	assert history.go(-1);
+	flush();
 	assert app.ref.currentPath() === "Home", app.ref.currentPath();
 	assert visibleText(app.root).indexOf("home") >= 0, visibleText(app.root);
 	assert history.go(1);
+	flush();
 	assert history.go(1);
+	flush();
 	assert visibleText(app.root).indexOf("product 7") >= 0, visibleText(app.root);
 	assert errors.length === 0;
 	session.dispose();
@@ -232,12 +241,15 @@ test "navigating in the app updates the registry address and a sync records it" 
 	const history = createMemoryRoutingHistory({ url: "/", state: "" });
 	const session = open(registry, history, errors);
 	assert app.ref.linkTo("/shop/product/5");
+	flush();
 	assert addressOf(registry) === "/shop/product/5", addressOf(registry);
 	assert session.sync(false).ok;
 	assert history.read().url === "/shop/product/5";
 	assert history.go(-1);
+	flush();
 	assert app.ref.currentPath() === "Home", app.ref.currentPath();
 	assert history.go(1);
+	flush();
 	assert visibleText(app.root).indexOf("product 5") >= 0, visibleText(app.root);
 	assert errors.length === 0;
 	session.dispose();
@@ -256,16 +268,20 @@ test "a custom participant in a second scope works independently beside the cont
 	assert app.ref.currentPath() === "Shop>Product", app.ref.currentPath();
 	assert inspector.get() === "metal";
 	inspector.set("wood");
+	flush();
 	assert addressOf(registry) === "/shop/product/7?__nav.inspector=%2Fmaterials%2Fwood",
 		addressOf(registry);
 	assert session.navigate("/shop/product/8", false).ok;
+	flush();
 	assert inspector.get() === "";
 	assert visibleText(app.root).indexOf("product 8") >= 0, visibleText(app.root);
 	assert session.navigate("/shop/product/8?__nav.inspector=%2Fmaterials%2Fglass", false).ok;
 	assert history.go(-1);
+	flush();
 	assert inspector.get() === "";
 	assert visibleText(app.root).indexOf("product 8") >= 0, visibleText(app.root);
 	assert history.go(-2);
+	flush();
 	assert app.ref.currentPath() === "Home", app.ref.currentPath();
 	assert errors.length === 0;
 	session.dispose();
@@ -286,6 +302,7 @@ test "a container in a secondary scope returns to its initial route when its add
 	const nested = "/pages/a?__nav.nav=%2Fshop%2Fproduct%2F42";
 	assert addressOf(registry) === nested, addressOf(registry);
 	assert session.navigate("/pages/b", false).ok;
+	flush();
 	assert app.ref.currentPath() === "Home", app.ref.currentPath();
 	assert page.get() === "b";
 	assert addressOf(registry) === "/pages/b?__nav.nav=%2F", addressOf(registry);
@@ -298,9 +315,11 @@ test "a captured snapshot restores the nested tree, params included" {
 	const registry = new RoutingRegistry("main");
 	const app = startApp(registry, "main", nothing);
 	assert app.ref.linkTo("/shop/product/42");
+	flush();
 	const snapshot = registry.capture();
 	assert snapshot.regions.length === 1 && snapshot.regions[0].scope === "main";
 	assert app.ref.linkTo("/");
+	flush();
 	assert app.ref.currentPath() === "Home", app.ref.currentPath();
 	assert registry.restore(snapshot).ok;
 	assert app.ref.currentPath() === "Shop>Product", app.ref.currentPath();
@@ -336,6 +355,7 @@ test "a malformed or empty snapshot is refused before anything changes" {
 	const registry = new RoutingRegistry("main");
 	const app = startApp(registry, "main", nothing);
 	assert app.ref.linkTo("/shop/product/3");
+	flush();
 	const text = registry.restore({ regions: [{ scope: "main", state: "not json" }] });
 	assert !text.ok;
 	if (!text.ok) { assert text.error === RoutingError.IncompleteSnapshot; }
@@ -370,8 +390,10 @@ test "an address no screen matches is reported as NoMatch and changes nothing" {
 	assert history.read().url === "/";
 	history.push({ url: "/nowhere", state: "" });
 	assert history.go(-1);
+	flush();
 	assert errors.length === 0;
 	assert history.go(1);
+	flush();
 	assert errors.length === 1 && errors[0] === RoutingError.NoMatch;
 	assert history.read().url === "/";
 	session.dispose();

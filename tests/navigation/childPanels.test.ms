@@ -1,3 +1,4 @@
+import { flush } from "../../src/core/runtime";
 import { Accessor } from "../../src/core/signal";
 import { onCleanup } from "../../src/core/cleanup";
 import { createEffect } from "../../src/core/effect";
@@ -276,8 +277,10 @@ test "a panel keyed apart from its configuration keeps its instance and sees the
 		);
 		return d;
 	});
+	flush();
 	assert mainRuns === 1, mainRuns.toString();
 	panels.activateDetails(22);
+	flush();
 	stop();
 	const kept = panels.details() as NavigationChild<int32, Component>;
 	assert kept.instance === details.instance, "the same details key keeps the instance";

@@ -1,6 +1,7 @@
 import { MockNode } from "../../src/render/host";
 import { Style } from "../../src/render/style";
 import { fireEvent } from "../../src/render/host";
+import { flush } from "../../src/core/runtime";
 import { ManualFrames, useManualFrames } from "../../src/animation/index";
 
 export const clock: ManualFrames = useManualFrames();
@@ -61,4 +62,5 @@ export function press(root: MockNode, label: string): void {
 	const node = findLabel(root, label);
 	if (node === null) { throw new Error("no visible element labelled '" + label + "' in " + visibleText(root)); }
 	fireEvent(node as MockNode, "onPress");
+	flush();
 }

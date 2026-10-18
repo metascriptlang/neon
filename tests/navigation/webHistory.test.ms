@@ -1,3 +1,4 @@
+import { flush } from "../../src/core/runtime";
 import { Accessor, Signal } from "../../src/core/signal";
 import { Dispose } from "../../src/core/types";
 import { NavigationChild } from "../../src/navigation/children";
@@ -343,6 +344,7 @@ test "the same keys under a new address replace the current entry" {
 	fixture.stack.push(screen("detail"));
 	assert take(fixture.log) === "push /detail;";
 	fixture.controls.query.set("x y");
+	flush();
 	const replaced = take(fixture.log);
 	assert replaced === "replace /detail?q=x%20y;", replaced;
 	assert fixture.memory.index() === 1, fixture.memory.index().toString();

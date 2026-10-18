@@ -1,5 +1,6 @@
 // A header Slot row that reads a pending value under a Loading is built in the compute that makes it, like every other region row
 // (packages/solid/src/client/flow.ts:226 Show, packages/signals/src/map.ts:362 mapArray), so the pending read is that compute's pending status.
+import { flush } from "../../src/core/runtime";
 import { el, text, dynText, NeonNode } from "../../src/render/node";
 import { Host, HostNode, MockNode, mockHost, render, mockToString } from "../../src/render/host";
 import { Accessor, accessor, createSignal } from "../../src/core/signal";
@@ -41,6 +42,7 @@ test "a header Slot whose node reads a pending value shows the fallback, then th
 	await release(gate);
 	assert shown() === "<root><p>note!</p></root>", "the node shows once it landed: " + shown();
 	setTail("?");
+	flush();
 	assert shown() === "<root><p>note?</p></root>", "a later write still updates the page: " + shown();
 	dispose();
 }
@@ -61,11 +63,15 @@ test "a header Slot nested in a Show swaps its node and leaves with it" {
 	await release(gate);
 	assert shown() === "<root><div><p>note!</p></div></root>", "the node shows once it landed: " + shown();
 	setWhich(false);
+	flush();
 	assert shown() === "<root><div><i>other</i></div></root>", "the other node replaces it: " + shown();
 	setWhich(true);
+	flush();
 	setTail("?");
+	flush();
 	assert shown() === "<root><div><p>note?</p></div></root>", "and back, alive: " + shown();
 	setOn(false);
+	flush();
 	assert shown() === "<root></root>", "the Show takes it away: " + shown();
 	dispose();
 }

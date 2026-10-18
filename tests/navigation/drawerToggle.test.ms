@@ -41,6 +41,7 @@ test "two drawer toggles in one flush leave the drawer closed" {
 	});
 	assert findLabel(root, "Close navigation menu") === null, "the drawer ended open";
 	home.toggleDrawer();
+	flush();
 	assert findLabel(root, "Close navigation menu") !== null, "a single toggle opens the drawer";
 	dispose();
 }

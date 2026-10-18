@@ -1,3 +1,4 @@
+import { flush } from "../../src/core/runtime";
 import { NeonNode } from "../../src/render/node";
 import { neonEvent } from "../../src/render/event";
 import { ManualFrames } from "../../src/animation/index";
@@ -79,6 +80,7 @@ test "a push slides the new screen in from the right over the one below, which t
 	const root = mount(ref);
 	settle();
 	ref.navigate("Detail");
+	flush();
 	let list = frames(root);
 	assert list.length === 2;
 	assert transformOf(list[1]) === "translateX(400px)", transformOf(list[1]);
@@ -94,8 +96,10 @@ test "a pop slides the screen out to the right and unmounts it when it is gone" 
 	const ref = createNavigationContainerRef();
 	const root = mount(ref);
 	ref.navigate("Detail");
+	flush();
 	settle();
 	ref.goBack();
+	flush();
 	let list = frames(root);
 	assert list.length === 2, "the leaving screen stays mounted while it moves";
 	assert shown(list[0]) && shown(list[1]);
@@ -124,10 +128,12 @@ test "a pop keeps the leaving screen as the instance it was, through its exit" {
 		</Stack.Navigator>
 	</NavigationContainer>, mockHost(), root as unknown as HostNode);
 	ref.navigate("Detail");
+	flush();
 	settle();
 	const leaving = frames(root)[1];
 	mounts = "";
 	ref.goBack();
+	flush();
 	assert frames(root)[1] === leaving, "the exit animates the mounted screen";
 	settle();
 	assert mounts === "", "nothing mounts again on a pop: " + mounts;
@@ -138,19 +144,24 @@ test "a modal slides up, a transparent modal fades, animation none switches at o
 	const ref = createNavigationContainerRef();
 	const root = mount(ref);
 	ref.navigate("Sheet");
+	flush();
 	assert transformOf(frames(root)[1]) === "translateY(800px)", transformOf(frames(root)[1]);
 	settle();
 	ref.goBack();
+	flush();
 	settle();
 	ref.navigate("Overlay");
+	flush();
 	assert styleOf(frames(root)[1]).opacity === 0, "fades from 0";
 	clock.step(steps(STACK_DURATION / 2));
 	const opacity = styleOf(frames(root)[1]).opacity as number;
 	assert opacity > 0 && opacity < 1, "mid-fade " + opacity.toString();
 	settle();
 	ref.goBack();
+	flush();
 	settle();
 	ref.navigate("Still");
+	flush();
 	const list = frames(root);
 	assert transformOf(list[1]) === "none" && !shown(list[0]), "no animation";
 }
@@ -166,18 +177,22 @@ function edgeOf(frame: MockNode): MockNode {
 function drag(target: MockNode, xs: number[]): void {
 	let t = 5000.0;
 	fireTouch(target, "onTouchStart", xs[0], 300, t);
+	flush();
 	for (let i = 1; i < xs.length; i += 1) {
 		t += 100;
 		fireTouch(target, "onTouchMove", xs[i], 300, t);
+		flush();
 	}
 	t += 100;
 	fireTouch(target, "onTouchEnd", xs[xs.length - 1], 300, t);
+	flush();
 }
 
 test "a swipe from the left edge drags the screen and pops it past a third of the width" {
 	const ref = createNavigationContainerRef();
 	const root = mount(ref);
 	ref.navigate("Detail");
+	flush();
 	settle();
 	const detail = frames(root)[1];
 	drag(edgeOf(detail), [5, 30, 60, 90]);
@@ -186,13 +201,18 @@ test "a swipe from the left edge drags the screen and pops it past a third of th
 	assert transformOf(detail) === "none" && !shown(frames(root)[0]);
 	const edge = edgeOf(detail);
 	fireTouch(edge, "onTouchStart", 5, 300, 9000);
+	flush();
 	fireTouch(edge, "onTouchMove", 60, 300, 9100);
+	flush();
 	fireTouch(edge, "onTouchMove", 120, 300, 9200);
+	flush();
 	const dragged = translation(detail);
 	assert dragged > 50 && dragged < 70, "follows the finger from where the drag was granted: " + dragged.toString();
 	assert shown(frames(root)[0]), "the screen below shows during the drag";
 	fireTouch(edge, "onTouchMove", 250, 300, 9300);
+	flush();
 	fireTouch(edge, "onTouchEnd", 250, 300, 9400);
+	flush();
 	assert ref.currentPath() === "Home", ref.currentPath();
 	settle();
 	assert frames(root).length === 1;
@@ -223,6 +243,7 @@ test "the drawer slides in and out, and a swipe from the edge opens it" {
 		</Drawer.Navigator>
 	</NavigationContainer>, mockHost(), root as unknown as HostNode);
 	ref.openDrawer();
+	flush();
 	clock.step(steps(DRAWER_DURATION / 2));
 	const sliding = labelledNow(root, "Two");
 	const moving = translation((sliding as MockNode).parent as MockNode);
@@ -230,18 +251,24 @@ test "the drawer slides in and out, and a swipe from the edge opens it" {
 	settle();
 	assert transformOf(panelOf(root) as MockNode) === "none", "open";
 	ref.closeDrawer();
+	flush();
 	clock.step(steps(DRAWER_DURATION / 2));
 	assert labelledNow(root, "Two") !== null, "still mounted while it slides out";
 	settle();
 	assert panelOf(root) === null, "closed";
 	const edge = drawerEdge(root);
 	fireTouch(edge, "onTouchStart", 2, 300, 20000);
+	flush();
 	fireTouch(edge, "onTouchMove", 40, 300, 20100);
+	flush();
 	fireTouch(edge, "onTouchMove", 120, 300, 20200);
+	flush();
 	const dragged = translation((labelledNow(root, "Two") as MockNode).parent as MockNode);
 	assert dragged > -280 && dragged < -150, "follows the finger: " + dragged.toString();
 	fireTouch(edge, "onTouchMove", 240, 300, 20300);
+	flush();
 	fireTouch(edge, "onTouchEnd", 240, 300, 20400);
+	flush();
 	settle();
 	assert panelOf(root) !== null && transformOf(panelOf(root) as MockNode) === "none", "opened by the swipe";
 }
@@ -259,6 +286,7 @@ test "a tab with animation fade fades in when it gains focus; other tabs switch 
 	</NavigationContainer>, mockHost(), root as unknown as HostNode);
 	settle();
 	ref.navigate("Faded");
+	flush();
 	const faded = (labelledNow(root, "Faded") as MockNode);
 	const screens = root.children[0].children[0];
 	const frame = screens.children[screens.children.length - 2];
@@ -268,6 +296,7 @@ test "a tab with animation fade fades in when it gains focus; other tabs switch 
 	settle();
 	assert styleOf(frame).opacity === null, "settled";
 	ref.navigate("Plain");
+	flush();
 	assert styleOf(screens.children[0]).opacity === null, "a plain tab does not fade";
 }
 
@@ -291,6 +320,7 @@ test "the drawer edge yields to a nested stack that can go back" {
 	settle();
 	drawerEdge(root);
 	ref.navigate("Deep");
+	flush();
 	settle();
 	let found = true;
 	try {
@@ -300,6 +330,7 @@ test "the drawer edge yields to a nested stack that can go back" {
 	}
 	assert !found, "no drawer edge while the stack can go back";
 	ref.goBack();
+	flush();
 	settle();
 	drawerEdge(root);
 }

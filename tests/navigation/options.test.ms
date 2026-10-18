@@ -1,3 +1,4 @@
+import { flush } from "../../src/core/runtime";
 import { createSignal } from "../../src/core/signal";
 import { Dispose } from "../../src/core/types";
 import { onCleanup } from "../../src/core/cleanup";
@@ -80,6 +81,7 @@ test "useNavigationState follows the navigator's routes" {
 	press(root, "deeper");
 	assert visibleText(root) === "‹ Depth|Depth|depth 2|+", visibleText(root);
 	ref.goBack();
+	flush();
 	assert visibleText(root) === "Depth|depth 1|+", visibleText(root);
 	dispose();
 }
@@ -94,6 +96,7 @@ test "a right-hand drawer anchors its panel to the right edge" {
 		</Drawer.Navigator>
 	</NavigationContainer>, mockHost(), root as unknown as HostNode);
 	ref.openDrawer();
+	flush();
 	const item = findLabel(root, "Two");
 	assert item !== null, visibleText(root);
 	const panel = (item as MockNode).parent as MockNode;
@@ -130,6 +133,7 @@ test "the container theme colors headers and reaches screens through useTheme" {
 	assert visibleText(root) === "Themed|light screen", visibleText(root);
 	assert (headerOf(root).style as Style).backgroundColor === "#ffffff";
 	setDark(true);
+	flush();
 	assert visibleText(root) === "Themed|dark screen", visibleText(root);
 	assert (headerOf(root).style as Style).backgroundColor === DarkTheme.colors.card;
 	dispose();
@@ -148,9 +152,12 @@ test "a Group hands its screenOptions to its screens, under their own options" {
 		</Stack.Navigator>
 	</NavigationContainer>, mockHost(), root as unknown as HostNode);
 	ref.navigate("Overlay");
+	flush();
 	assert visibleText(root) === "Base|Base 0|+|Overlay 0|+", "overlay keeps Base visible: " + visibleText(root);
 	ref.goBack();
+	flush();
 	ref.navigate("Titled");
+	flush();
 	assert visibleText(root) === "‹ Base|Own|Titled 0|+", visibleText(root);
 	dispose();
 }
@@ -221,6 +228,7 @@ test "Link opens a path, tabPress can be prevented and onStateChange reports eac
 	press(root, "Landing");
 	assert ref.currentPath() === "Landing";
 	ref.navigate("Second");
+	flush();
 	press(root, "Landing");
 	assert ref.currentPath() === "Second", "a prevented tabPress keeps the tab: " + ref.currentPath();
 	assert seen.join(",") === "Second,Landing,Second", seen.join(",");

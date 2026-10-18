@@ -1,3 +1,4 @@
+import { flush } from "../../src/core/runtime";
 import { Accessor, createSignal } from "../../src/core/signal";
 import { onCleanup } from "../../src/core/cleanup";
 import { Dispose } from "../../src/core/types";
@@ -188,21 +189,26 @@ test "hardware back pops the nested stack, then goes to the first tab, then leav
 	press(root, "to search");
 	assert ref.currentPath() === "Main>Search", ref.currentPath();
 	assert dispatchHardwareBackPress();
+	flush();
 	assert ref.currentPath() === "Main>Home>Detail", "back to the first tab: " + ref.currentPath();
 	assert dispatchHardwareBackPress();
+	flush();
 	assert ref.currentPath() === "Main>Home>List", ref.currentPath();
 	assert !dispatchHardwareBackPress(), "nothing left to go back to";
+	flush();
 }
 
 test "the drawer opens from the header button, navigates, and back closes it first" {
 	const ref = createNavigationContainerRef();
 	const root = mountApp(ref);
 	ref.navigate("Settings");
+	flush();
 	assert ref.currentPath() === "Settings", ref.currentPath();
 	press(root, "bump settings");
 	press(root, "Show navigation menu");
 	assert findLabel(root, "Close navigation menu") !== null, "drawer open";
 	assert dispatchHardwareBackPress(), "back closes the drawer";
+	flush();
 	assert findLabel(root, "Close navigation menu") === null, "drawer closed";
 	assert ref.currentPath() === "Settings", ref.currentPath();
 	press(root, "Show navigation menu");
@@ -212,6 +218,7 @@ test "the drawer opens from the header button, navigates, and back closes it fir
 	press(root, "Settings");
 	assert visibleText(root).indexOf("settings 1") >= 0, "settings state kept: " + visibleText(root);
 	assert dispatchHardwareBackPress();
+	flush();
 	assert ref.currentPath() === "Main>Home>List", "back goes to the first drawer route: " + ref.currentPath();
 }
 
@@ -222,6 +229,7 @@ test "navigate bubbles from a nested stack screen to the drawer" {
 	press(root, "to settings");
 	assert ref.currentPath() === "Settings", ref.currentPath();
 	ref.navigate("Main");
+	flush();
 	assert ref.currentPath() === "Main>Home>Detail", ref.currentPath();
 }
 
@@ -234,7 +242,9 @@ test "focus and blur reach a screen when its route, tab or drawer item changes" 
 	press(root, "Items, back");
 	press(root, "Search");
 	ref.navigate("Home");
+	flush();
 	ref.navigate("Settings");
+	flush();
 	assert focusLog === "list-;list+;list-;list+;list-;", focusLog;
 }
 
@@ -242,15 +252,20 @@ test "a deep link reaches a nested screen with parsed params" {
 	const ref = createNavigationContainerRef();
 	mountApp(ref);
 	publishUrl("neonnav://items/42");
+	flush();
 	assert ref.currentPath() === "Main>Home>Detail", ref.currentPath();
 	const route = ref.getCurrentRoute();
 	assert route !== null && route.name === "Detail";
 	publishUrl("https://neon.invalid/nav/settings");
+	flush();
 	assert ref.currentPath() === "Settings", ref.currentPath();
 	publishUrl("neonnav://me");
+	flush();
 	assert ref.currentPath() === "Main>Profile", ref.currentPath();
 	publishUrl("other://items/1");
+	flush();
 	assert ref.currentPath() === "Main>Profile", "a foreign prefix is ignored";
 	assert ref.linkTo("/items/7");
+	flush();
 	assert ref.currentPath() === "Main>Home>Detail", ref.currentPath();
 }

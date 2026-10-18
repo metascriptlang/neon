@@ -1,3 +1,4 @@
+import { flush } from "../../src/core/runtime";
 import { NeonNode } from "../../src/render/hostTypes";
 import { element } from "../../src/macros/ui/element";
 import { HostNode, MockNode, mockNode, mockHost, render, mockToString } from "../../src/render/host";
@@ -115,6 +116,7 @@ test "a cold address opens its tab on the stack's initial route below the destin
 	assert history.read().url === "/inbox/42", history.read().url;
 	assert router.location().pathname === "/inbox/42";
 	assert router.navigate("/feed");
+	flush();
 	assert visibleText(root) === "feed", visibleText(root);
 	router.dispose();
 }
@@ -124,6 +126,7 @@ test "the initial route goes below a cold address only, not below an in-app one"
 	const root = mounted(router);
 	assert visibleText(root) === "home", visibleText(root);
 	assert router.navigate("/inbox/42");
+	flush();
 	assert visibleText(root) === "thread 42", visibleText(root);
 	assert !shown(root).includes("<h1>inbox</h1>"), shown(root);
 	router.dispose();
@@ -139,24 +142,32 @@ test "each tab keeps its stack and its mounted screens while the other tab is sh
 	const root = mounted(router);
 	assert visibleText(root) === "feed", visibleText(root);
 	assert router.navigate("/feed/1");
+	flush();
 	assert visibleText(root) === "post 1", visibleText(root);
 	assert history.go(-1);
+	flush();
 	assert visibleText(root) === "feed", visibleText(root);
 	assert history.read().url === "/feed", history.read().url;
 	assert history.go(1);
+	flush();
 	assert visibleText(root) === "post 1", visibleText(root);
 	assert router.navigate("/inbox/7");
+	flush();
 	assert visibleText(root) === "thread 7", visibleText(root);
 	assert history.read().url === "/inbox/7", history.read().url;
 	assert router.navigate("/feed/1");
+	flush();
 	assert visibleText(root) === "post 1", visibleText(root);
 	assert history.read().url === "/feed/1", history.read().url;
 	assert router.navigate("/inbox/7");
+	flush();
 	assert visibleText(root) === "thread 7", visibleText(root);
 	assert router.navigate("/inbox/8");
+	flush();
 	assert visibleText(root) === "thread 8", visibleText(root);
 	assert shown(root).includes("<h1>thread 7</h1>"), shown(root);
 	assert history.go(-1);
+	flush();
 	assert visibleText(root) === "thread 7", visibleText(root);
 	assert history.read().url === "/inbox/7", history.read().url;
 	assert mounts === "feed;post;post;thread;thread;", mounts;
@@ -242,8 +253,10 @@ test "an entry whose router state does not parse opens from its address" {
 	const broken: RoutingSnapshot = { regions: [{ scope: "main", state: "not json" }] };
 	history.push({ url: "/inbox/9", state: JSON.stringify(broken) });
 	assert history.go(-1);
+	flush();
 	assert visibleText(root) === "feed", visibleText(root);
 	assert history.go(1);
+	flush();
 	assert visibleText(root) === "thread 9", visibleText(root);
 	assert router.location().pathname === "/inbox/9", router.location().pathname;
 	router.dispose();

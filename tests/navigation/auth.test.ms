@@ -1,3 +1,4 @@
+import { flush } from "../../src/core/runtime";
 import { createSignal } from "../../src/core/signal";
 import { onCleanup } from "../../src/core/cleanup";
 import { NeonNode } from "../../src/render/hostTypes";
@@ -54,10 +55,12 @@ test "conditional screens replace auth stack without retaining protected frames"
 	</NavigationContainer>, mockHost(), root);
 	assert ref.currentPath() === "Guest";
 	setLoggedIn(true);
+	flush();
 	assert ref.currentPath() === "Home", ref.currentPath();
 	assert guestDisposed === 1;
 	assert mockToString(root).indexOf("Private area") >= 0, mockToString(root);
 	setLoggedIn(false);
+	flush();
 	assert ref.currentPath() === "Guest";
 	assert homeDisposed === 1;
 	assert mockToString(root).indexOf("Private body") < 0, mockToString(root);
@@ -82,8 +85,10 @@ test "group and screen navigationKey reset matching screen identities" {
 	</NavigationContainer>, mockHost(), root);
 	assert helpCreated === 1;
 	setGroupKey("member");
+	flush();
 	assert helpCreated === 2 && ref.currentPath() === "Help";
 	setScreenKey("second");
+	flush();
 	assert helpCreated === 3;
 	dispose();
 }
@@ -108,9 +113,11 @@ test "an always-present screen retains instance while auth declarations change" 
 	ref.navigate("Help");
 	assert helpCreated === 1;
 	setLoggedIn(true);
+	flush();
 	assert ref.currentPath() === "Help";
 	assert helpCreated === 1;
 	setLoggedIn(false);
+	flush();
 	assert ref.currentPath() === "Help";
 	assert helpCreated === 1;
 	dispose();

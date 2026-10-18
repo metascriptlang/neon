@@ -1,3 +1,4 @@
+import { flush } from "../../src/core/runtime";
 import { NeonNode } from "../../src/render/hostTypes";
 import { element } from "../../src/macros/ui/element";
 import { HostNode, MockNode, mockNode, mockHost, render, mockToString } from "../../src/render/host";
@@ -136,18 +137,23 @@ test "a layout keeps its instance while the page under it is replaced per path p
 	const root = mounted(router);
 	assert mockToString(root) === "<root><main><h1>doc start</h1></main></root>", mockToString(root);
 	assert router.navigate("/docs/start?utm=2");
+	flush();
 	assert docs === 1, "a search change replaced the page";
 	assert router.navigate("/docs/routing");
+	flush();
 	assert mockToString(root) === "<root><main><h1>doc routing</h1></main></root>", mockToString(root);
 	assert docs === 2, "a path param change kept the page";
 	assert router.navigate("/");
+	flush();
 	assert mockToString(root) === "<root><main><h1>home</h1></main></root>", mockToString(root);
 	assert layouts === 1, "the layout was rebuilt";
 	assert history.read().url === "/";
 	assert history.go(-1);
+	flush();
 	assert mockToString(root) === "<root><main><h1>doc routing</h1></main></root>", mockToString(root);
 	assert history.read().url === "/docs/routing";
 	assert router.navigate("/nowhere/deep");
+	flush();
 	assert mockToString(root) === "<root><main><h1>missing</h1></main></root>", mockToString(root);
 	assert history.read().url === "/nowhere/deep", history.read().url;
 	assert router.location().pathname === "/nowhere/deep", router.location().pathname;
@@ -183,10 +189,13 @@ test "a request answers with the route's status, a guard's redirect and its loca
 	const visited = memory("/");
 	const router = opened(routes, visited);
 	assert router.navigate("/settings");
+	flush();
 	assert visited.read().url === "/signin";
 	assert visited.go(-1);
+	flush();
 	assert visited.read().url === "/";
 	assert !visited.go(-2);
+	flush();
 }
 
 test "an address ending in a slash is redirected for good to the one without it" {
@@ -216,12 +225,16 @@ test "going back to an address whose guard now redirects rewrites that entry to 
 	const history = memory("/");
 	const router = opened(routes, history);
 	assert router.navigate("/settings");
+	flush();
 	assert router.navigate("/");
+	flush();
 	signedIn = false;
 	assert history.go(-1);
+	flush();
 	assert history.read().url === "/signin", history.read().url;
 	assert router.location().pathname === "/signin";
 	assert history.go(1);
+	flush();
 	assert history.read().url === "/";
 	router.dispose();
 }
@@ -256,10 +269,13 @@ test "useNavigate, useLocation and useMatch read and drive the router" {
 	assert mockToString(root) === "<root><div><p>/|-|1</p><h1>home</h1></div></root>", mockToString(root);
 	const navigate = go as (href: string, options?: NavigateOptions | null) => boolean;
 	assert navigate("/docs/start");
+	flush();
 	assert mockToString(root) === "<root><div><p>/docs/start|start|</p><h1>doc start</h1></div></root>", mockToString(root);
 	assert navigate("/docs/routing", { replace: true });
+	flush();
 	assert history.read().url === "/docs/routing";
 	assert history.go(-1);
+	flush();
 	assert history.read().url === "/?q=1";
 	assert mockToString(root) === "<root><div><p>/|-|1</p><h1>home</h1></div></root>", mockToString(root);
 }
@@ -275,6 +291,7 @@ test "A marks the link to the current page with aria-current" {
 	const root = mounted(router);
 	assert mockToString(root) === "<root><nav><a href=\"/\">Home</a><a href=\"/docs/start\" aria-current=\"page\">Start</a><a href=\"/docs/routing#notes\">Notes</a><h1>doc start</h1></nav></root>", mockToString(root);
 	assert router.navigate("/docs/routing");
+	flush();
 	assert mockToString(root) === "<root><nav><a href=\"/\">Home</a><a href=\"/docs/start\">Start</a><a href=\"/docs/routing#notes\" aria-current=\"page\">Notes</a><h1>doc routing</h1></nav></root>", mockToString(root);
 }
 

@@ -1,5 +1,5 @@
 import { createSignal } from "../../src/core/signal";
-import { resetErrorHalt } from "../../src/core/runtime";
+import { flush, resetErrorHalt } from "../../src/core/runtime";
 import { NeonNode } from "../../src/render/hostTypes";
 import { HostNode, mockHost, mockNode, render } from "../../src/render/host";
 import { Text } from "../../src/components/primitives";
@@ -48,7 +48,7 @@ test "a stack whose only screen goes away throws, naming the case" {
 			</Show>
 		</Stack.Navigator>
 	</NavigationContainer>, mockHost(), root as unknown as HostNode);
-	assert failureOf((): void => { setPresent(false); }) === EMPTY_AFTER_UPDATE;
+	assert failureOf((): void => { setPresent(false); flush(); }) === EMPTY_AFTER_UPDATE;
 	resetErrorHalt();
 	dispose();
 }
@@ -64,7 +64,7 @@ test "a tab navigator whose only screen goes away throws, naming the case" {
 			</Show>
 		</Tab.Navigator>
 	</NavigationContainer>, mockHost(), root as unknown as HostNode);
-	assert failureOf((): void => { setPresent(false); }) === EMPTY_AFTER_UPDATE;
+	assert failureOf((): void => { setPresent(false); flush(); }) === EMPTY_AFTER_UPDATE;
 	resetErrorHalt();
 	dispose();
 }
@@ -80,7 +80,7 @@ test "a drawer navigator whose only screen goes away throws, naming the case" {
 			</Show>
 		</Drawer.Navigator>
 	</NavigationContainer>, mockHost(), root as unknown as HostNode);
-	assert failureOf((): void => { setPresent(false); }) === EMPTY_AFTER_UPDATE;
+	assert failureOf((): void => { setPresent(false); flush(); }) === EMPTY_AFTER_UPDATE;
 	resetErrorHalt();
 	dispose();
 }
@@ -119,6 +119,7 @@ test "a stack that swaps its only screen for another focuses the replacement" {
 	</NavigationContainer>, mockHost(), root as unknown as HostNode);
 	assert ref.currentPath() === "First", ref.currentPath();
 	setFirst(false);
+	flush();
 	assert ref.currentPath() === "Second", ref.currentPath();
 	dispose();
 }
@@ -141,6 +142,7 @@ test "a tab navigator that swaps its focused screen for another keeps a screen f
 	</NavigationContainer>, mockHost(), root as unknown as HostNode);
 	assert ref.currentPath() === "First", ref.currentPath();
 	setFirst(false);
+	flush();
 	assert ref.currentPath() === "Second", ref.currentPath();
 	dispose();
 }
@@ -163,6 +165,7 @@ test "a drawer navigator that swaps its focused screen for another keeps a scree
 	</NavigationContainer>, mockHost(), root as unknown as HostNode);
 	assert ref.currentPath() === "First", ref.currentPath();
 	setFirst(false);
+	flush();
 	assert ref.currentPath() === "Second", ref.currentPath();
 	dispose();
 }

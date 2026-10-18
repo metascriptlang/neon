@@ -1,3 +1,4 @@
+import { flush } from "../../src/core/runtime";
 import { Accessor, Signal } from "../../src/core/signal";
 import { NeonNode } from "../../src/render/hostTypes";
 import {
@@ -36,6 +37,7 @@ function screen(child: NavigationChild<string, string>): NeonNode {
 function bump(name: string): void {
 	const count = counts.get(name) as Signal<int32>;
 	count.set(count.peek() + 1);
+	flush();
 }
 
 function mounted(view: NeonNode): MockNode {
@@ -51,12 +53,15 @@ test "a covered stack screen is hidden and keeps its state until it is uncovered
 	bump("list");
 	assert visibleText(root) === "list 1", visibleText(root);
 	stack.push("detail");
+	flush();
 	assert visibleText(root) === "detail 0", visibleText(root);
 	assert mockToString(root).includes("list 1"), mockToString(root);
 	stack.pop();
+	flush();
 	assert visibleText(root) === "list 1", visibleText(root);
 	assert mounts === "list;detail;", mounts;
 	stack.dispose();
+	flush();
 }
 
 test "a tab keeps its component state across a switch away and back" {
@@ -69,11 +74,14 @@ test "a tab keeps its component state across a switch away and back" {
 	bump("feed");
 	assert visibleText(root) === "feed 1", visibleText(root);
 	pages.select(1);
+	flush();
 	assert visibleText(root) === "inbox 0", visibleText(root);
 	pages.select(0);
+	flush();
 	assert visibleText(root) === "feed 1", visibleText(root);
 	assert mounts === "feed;inbox;", mounts;
 	pages.dispose();
+	flush();
 }
 
 test "a tab that was never selected is not mounted" {
@@ -85,8 +93,10 @@ test "a tab that was never selected is not mounted" {
 	const root = mounted(renderPages<string, string>(pages, screen));
 	assert mounts === "feed;", mounts;
 	pages.select(2);
+	flush();
 	assert visibleText(root) === "profile 0", visibleText(root);
 	assert mounts === "feed;profile;", mounts;
 	assert !mockToString(root).includes("inbox"), mockToString(root);
 	pages.dispose();
+	flush();
 }

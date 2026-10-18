@@ -1,3 +1,4 @@
+import { flush } from "../../src/core/runtime";
 import { onCleanup } from "../../src/core/cleanup";
 import { NeonNode } from "../../src/render/hostTypes";
 import { HostNode, mockHost, mockNode, render } from "../../src/render/host";
@@ -40,10 +41,13 @@ test "a lazy tab is built the first time it is focused, once, and stays mounted"
 	</NavigationContainer>, mockHost(), root as unknown as HostNode);
 	assert bodies === 0, "an unvisited tab is not built";
 	ref.navigate("Second");
+	flush();
 	assert ref.currentPath() === "Second", ref.currentPath();
 	assert bodies === 1, "the focused tab is built: " + bodies.toString();
 	ref.navigate("Third");
+	flush();
 	ref.navigate("Second");
+	flush();
 	assert bodies === 1, "a tab is built once: " + bodies.toString();
 	dispose();
 }
@@ -60,9 +64,12 @@ test "a lazy drawer screen is built the first time it is focused, once, and stay
 	</NavigationContainer>, mockHost(), root as unknown as HostNode);
 	assert bodies === 0, "an unvisited screen is not built";
 	ref.navigate("Second");
+	flush();
 	assert bodies === 1, "the focused screen is built: " + bodies.toString();
 	ref.navigate("First");
+	flush();
 	ref.navigate("Second");
+	flush();
 	assert bodies === 1, "a screen is built once: " + bodies.toString();
 	dispose();
 }

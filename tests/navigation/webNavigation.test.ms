@@ -1,3 +1,4 @@
+import { flush } from "../../src/core/runtime";
 import { Accessor, Signal, accessor } from "../../src/core/signal";
 import { createEffect } from "../../src/core/effect";
 import { createRoot } from "../../src/core/owner";
@@ -187,8 +188,10 @@ test "a navigation erases to serialized keys and applies only a fully decoded tr
 		);
 		return d;
 	});
+	flush();
 	assert keys(node) === "k:a@a;", keys(node);
 	assert node.navigate(["k:a", "k:b"]).ok;
+	flush();
 	assert runs === 2, runs.toString();
 	assert keys(node) === "k:a@a;k:b@b;", keys(node);
 	const refused = node.navigate(["k:c", "c"]);
@@ -226,8 +229,10 @@ test "a stack publishes every entry with the last active and follows the model" 
 		);
 		return d;
 	});
+	flush();
 	assert keys(node) === "list/@list;detail/@detail;", keys(node);
 	stack.push({ name: "edit", detail: "7" });
+	flush();
 	assert runs === 2, runs.toString();
 	assert keys(node) === "list/@list;detail/@detail;edit/7@edit;", keys(node);
 	const typed = web.history();
@@ -235,6 +240,7 @@ test "a stack publishes every entry with the last active and follows the model" 
 	assert typed[2].parameters.get("id") === "7";
 	assert typed[0].parameters.size === 0 && typed[0].child === null;
 	assert stack.pop();
+	flush();
 	assert runs === 3, runs.toString();
 	assert keys(node) === "list/@list;detail/@detail;", keys(node);
 	stop();
