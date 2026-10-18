@@ -4,8 +4,8 @@ import { Cleanup } from "../core/types";
 import { Accessor, accessor, createSignal } from "../core/signal";
 import { element } from "../macros/ui/element";
 import { Show } from "../macros/ui/flow";
-import { NeonNode } from "../render/node";
-import { Portal } from "../render/portal";
+import { NeonNode, dynAttr } from "../render/node";
+import { portalNode } from "../render/portal";
 import { Host, HostNode } from "../render/hostTypes";
 import { Text, View } from "./primitives";
 
@@ -133,8 +133,7 @@ export function ToastHost(props: ToastHostProps): NeonNode {
 		const t = read();
 		return t.text2 === "" ? t.text1 : t.text1 + ", " + t.text2;
 	});
-	const view = element(<Show when={shown() !== null}>
-		<Portal style={layer}>
+	const content = element(
 			<View style={TOAST_PILL} accessibilityRole="alert" accessibilityLabel={label()}>
 				<View style={dot} />
 				<View style={TOAST_BODY}>
@@ -144,8 +143,12 @@ export function ToastHost(props: ToastHostProps): NeonNode {
 					</Show>
 				</View>
 			</View>
-		</Portal>
-	</Show>);
+	);
+	const floating = portalNode(null, "view", [
+		dynAttr("class", (): string | null => userStyle === null ||
+			(userStyle as Accessor<Style>)().position === null ? "neon-screen-overlay" : null),
+	], [], (): Style => layer(), content);
+	const view = element(<Show when={shown() !== null}>{floating}</Show>);
 	return (host: Host, parent: HostNode, before: HostNode | null): void => {
 		createRenderEffect<ToastShown | null>(
 			(prev: ToastShown | null): ToastShown | null => shown(),

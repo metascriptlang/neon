@@ -117,7 +117,12 @@ export function Snackbar(props: SnackbarProps): NeonNode {
 	</>);
 	const floating = portalNode(
 		null, "view",
-		[dynAttr("accessibilityLabel", (): string | null => a11y()), attr("accessibilityRole", "alert")],
+		[
+			dynAttr("class", (): string | null => userStyle === null ||
+				(userStyle as Accessor<Style>)().position === null ? "neon-screen-overlay" : null),
+			dynAttr("accessibilityLabel", (): string | null => a11y()),
+			attr("accessibilityRole", "alert"),
+		],
 		[], (): Style => layer(), content,
 	);
 	const bar = element(<Show when={visible()}>{floating}</Show>);

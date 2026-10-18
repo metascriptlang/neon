@@ -4,8 +4,8 @@ import { Style, layerStyles } from "../render/style";
 import { Accessor, accessor } from "../core/signal";
 import { element } from "../macros/ui/element";
 import { Show } from "../macros/ui/flow";
-import { NeonNode } from "../render/node";
-import { Portal } from "../render/portal";
+import { NeonNode, attr } from "../render/node";
+import { portalNode } from "../render/portal";
 import { Host, HostNode } from "../render/hostTypes";
 import { AccessibilityProps, View } from "./primitives";
 import { flagOn } from "./material";
@@ -67,11 +67,13 @@ export function BottomSheet(props: BottomSheetProps): NeonNode {
 		accessibilityState: props.accessibilityState,
 		children: body,
 	});
-	return element(<Show when={visible()}>
-		<Portal style={SHEET_LAYER}>
+	const floatingContent = element(<>
 			<BackDismiss dismissable={canDismiss()} onDismiss={onDismiss} />
 			<Scrim dismissable={canDismiss()} onDismiss={onDismiss} />
 			{panel}
-		</Portal>
-	</Show>);
+	</>);
+	const floating = portalNode(
+		null, "view", [attr("class", "neon-screen-overlay")], [], (): Style => SHEET_LAYER, floatingContent,
+	);
+	return element(<Show when={visible()}>{floating}</Show>);
 }

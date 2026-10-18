@@ -1182,6 +1182,9 @@ export function domHost(): Host {
 			if (writeMediaAttr(node, name, value)) { return; }
 			const el = node as unknown as Node;
 			const base = name === "class" ? baseClassOf(el) : "";
+			if (name === "class" && value === "neon-screen-overlay") {
+				registerOnce("neon-screen-overlay", ".neon-screen-overlay{position:fixed!important}");
+			}
 			writeDomAttr(el, name, value);
 			if (base !== "") { el.classList.add(base); }
 			if (name === "value" || name === "defaultValue") { return; }

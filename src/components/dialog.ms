@@ -5,8 +5,8 @@ import { Style, layerStyles } from "../render/style";
 import { Accessor, accessor } from "../core/signal";
 import { element } from "../macros/ui/element";
 import { Show } from "../macros/ui/flow";
-import { NeonNode } from "../render/node";
-import { Portal } from "../render/portal";
+import { NeonNode, attr } from "../render/node";
+import { portalNode } from "../render/portal";
 import { Host, HostNode } from "../render/hostTypes";
 import { onCleanup } from "../core/cleanup";
 import { BackHandler } from "../api/backHandler";
@@ -121,8 +121,7 @@ export function Dialog(props: DialogProps): NeonNode {
 	const actionRow = actions === null
 		? element(<View />)
 		: element(<View style={DIALOG_ACTIONS}>{actions}</View>);
-	return element(<Show when={visible()}>
-		<Portal style={DIALOG_LAYER}>
+	const content = element(<>
 			<BackDismiss dismissable={canDismiss()} onDismiss={onDismiss} />
 			<Scrim dismissable={canDismiss()} onDismiss={onDismiss} />
 			<View style={card} accessibilityRole="alert" accessibilityLabel={a11y()}>
@@ -132,8 +131,11 @@ export function Dialog(props: DialogProps): NeonNode {
 				<View style={DIALOG_CONTENT}>{props.children}</View>
 				<Show when={actions !== null}>{actionRow}</Show>
 			</View>
-		</Portal>
-	</Show>);
+	</>);
+	const floating = portalNode(
+		null, "view", [attr("class", "neon-screen-overlay")], [], (): Style => DIALOG_LAYER, content,
+	);
+	return element(<Show when={visible()}>{floating}</Show>);
 }
 
 interface DialogActionProps extends AccessibilityProps {

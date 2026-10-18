@@ -47,7 +47,7 @@ test "Snackbar shows a bottom alert with its action, and the action dismisses it
 	assert mockToString(root) === "<root></root>", "hidden: " + mockToString(root);
 	setOpen(true);
 	flush();
-	assert mockToString(root) === "<root><view accessibilityLabel=\"Saved\" accessibilityRole=\"alert\"><view><text>Saved</text></view><pressable accessible=\"true\" accessibilityLabel=\"Undo\" accessibilityRole=\"button\"><text>UNDO</text></pressable></view></root>", "shown: " + mockToString(root);
+	assert mockToString(root) === "<root><view class=\"neon-screen-overlay\" accessibilityLabel=\"Saved\" accessibilityRole=\"alert\"><view><text>Saved</text></view><pressable accessible=\"true\" accessibilityLabel=\"Undo\" accessibilityRole=\"button\"><text>UNDO</text></pressable></view></root>", "shown: " + mockToString(root);
 	const bar = firstTag(root, "view");
 	const layer = bar.style as Style;
 	assert layer.position === "absolute" && layer.bottom === 8 && layer.backgroundColor === "#323232", "pinned to the bottom";
@@ -67,7 +67,7 @@ test "Snackbar dismisses itself after its duration and not while hidden" {
 	assert dismissed() === 0, "no timer while hidden";
 	setOpen(true);
 	flush();
-	assert mockToString(root) === "<root><view accessibilityLabel=\"\" accessibilityRole=\"alert\"><view><text>Archived</text></view></view></root>", "children: " + mockToString(root);
+	assert mockToString(root) === "<root><view class=\"neon-screen-overlay\" accessibilityLabel=\"\" accessibilityRole=\"alert\"><view><text>Archived</text></view></view></root>", "children: " + mockToString(root);
 	await sleepAsync(40);
 	assert dismissed() === 0, "too early";
 	await sleepAsync(160);
@@ -100,7 +100,7 @@ test "Toast.show reaches the ToastHost, Toast.hide and the timer take it away" {
 	assert mockToString(root) === "<root></root>", "idle: " + mockToString(root);
 	Toast.show({ text1: "Saved", text2: "Draft stored", type: "success" });
 	flush();
-	assert mockToString(root) === "<root><view><view accessibilityLabel=\"Saved, Draft stored\" accessibilityRole=\"alert\"><view></view><view><text>Saved</text><text>Draft stored</text></view></view></view></root>", "shown: " + mockToString(root);
+	assert mockToString(root) === "<root><view class=\"neon-screen-overlay\"><view accessibilityLabel=\"Saved, Draft stored\" accessibilityRole=\"alert\"><view></view><view><text>Saved</text><text>Draft stored</text></view></view></view></root>", "shown: " + mockToString(root);
 	const layer = firstTag(root, "view");
 	assert (layer.style as Style).bottom === 40 && (layer.style as Style).position === "absolute", "near the bottom";
 	assert (layer.children[0].children[0].style as Style).backgroundColor === "#4caf50", "success dot";
@@ -109,7 +109,7 @@ test "Toast.show reaches the ToastHost, Toast.hide and the timer take it away" {
 	assert mockToString(root) === "<root></root>", "hidden: " + mockToString(root);
 	Toast.show({ text1: "Offline", type: "error", position: "top", visibilityTime: 120 });
 	flush();
-	assert mockToString(root) === "<root><view><view accessibilityLabel=\"Offline\" accessibilityRole=\"alert\"><view></view><view><text>Offline</text></view></view></view></root>", "one line: " + mockToString(root);
+	assert mockToString(root) === "<root><view class=\"neon-screen-overlay\"><view accessibilityLabel=\"Offline\" accessibilityRole=\"alert\"><view></view><view><text>Offline</text></view></view></view></root>", "one line: " + mockToString(root);
 	assert (firstTag(root, "view").style as Style).top === 40, "top position";
 	await sleepAsync(40);
 	assert currentToast() !== null, "still up";
@@ -174,8 +174,9 @@ test "Dialog lays a scrim under a titled card, and the scrim and the actions dis
 	assert mockToString(root) === "<root></root>", "hidden: " + mockToString(root);
 	setOpen(true);
 	flush();
-	assert mockToString(root) === "<root><view><pressable accessible=\"true\" accessibilityLabel=\"Dismiss\"></pressable><view accessibilityLabel=\"Discard draft?\" accessibilityRole=\"alert\"><text accessibilityRole=\"header\">Discard draft?</text><view><text>The draft will be lost.</text></view><view><view><pressable accessible=\"true\" accessibilityLabel=\"Cancel\" accessibilityRole=\"button\"><text>Cancel</text></pressable><pressable accessible=\"true\" accessibilityLabel=\"Discard\" accessibilityRole=\"button\"><text>Discard</text></pressable></view></view></view></view></root>", "shown: " + mockToString(root);
+	assert mockToString(root) === "<root><view class=\"neon-screen-overlay\"><pressable accessible=\"true\" accessibilityLabel=\"Dismiss\"></pressable><view accessibilityLabel=\"Discard draft?\" accessibilityRole=\"alert\"><text accessibilityRole=\"header\">Discard draft?</text><view><text>The draft will be lost.</text></view><view><view><pressable accessible=\"true\" accessibilityLabel=\"Cancel\" accessibilityRole=\"button\"><text>Cancel</text></pressable><pressable accessible=\"true\" accessibilityLabel=\"Discard\" accessibilityRole=\"button\"><text>Discard</text></pressable></view></view></view></view></root>", "shown: " + mockToString(root);
 	const layer = firstTag(root, "view");
+	assert (layer.style as Style).position === "absolute", "native and mock dialog layer";
 	const scrim = firstTag(layer, "pressable");
 	const scrimStyle = scrim.style as Style;
 	assert scrimStyle.backgroundColor === "#000000" && scrimStyle.opacity === 0.5 && scrimStyle.position === "absolute", "scrim";
@@ -201,7 +202,7 @@ test "a Dialog that is not dismissable ignores the scrim" {
 	render(element(<Dialog visible={true} dismissable={false} onDismiss={(): void => { setLog("dismiss"); }}>
 		<Text>Working</Text>
 	</Dialog>), screenHost(root), root as unknown as HostNode);
-	assert mockToString(root) === "<root><view><pressable accessible=\"true\" accessibilityLabel=\"Dismiss\"></pressable><view accessibilityLabel=\"\" accessibilityRole=\"alert\"><view><text>Working</text></view></view></view></root>", "untitled: " + mockToString(root);
+	assert mockToString(root) === "<root><view class=\"neon-screen-overlay\"><pressable accessible=\"true\" accessibilityLabel=\"Dismiss\"></pressable><view accessibilityLabel=\"\" accessibilityRole=\"alert\"><view><text>Working</text></view></view></view></root>", "untitled: " + mockToString(root);
 	fireEvent(firstTag(firstTag(root, "view"), "pressable"), "onPress");
 	flush();
 	assert log() === "", "scrim ignored: " + log();
@@ -215,7 +216,7 @@ test "BottomSheet docks a handled sheet at the bottom and the scrim dismisses it
 		onDismiss={(): void => { setDismissed(dismissed() + 1); setOpen(false); }}>
 		<Text>Copy link</Text>
 	</BottomSheet>), screenHost(root), root as unknown as HostNode);
-	assert mockToString(root) === "<root><view><pressable accessible=\"true\" accessibilityLabel=\"Dismiss\"></pressable><view accessibilityLabel=\"Share\"><view></view><view><text>Copy link</text></view></view></view></root>", "shown: " + mockToString(root);
+	assert mockToString(root) === "<root><view class=\"neon-screen-overlay\"><pressable accessible=\"true\" accessibilityLabel=\"Dismiss\"></pressable><view accessibilityLabel=\"Share\"><view></view><view><text>Copy link</text></view></view></view></root>", "shown: " + mockToString(root);
 	const layer = firstTag(root, "view");
 	assert (layer.style as Style).justifyContent === "flex-end" && (layer.style as Style).position === "absolute", "docked";
 	const sheet = firstTag(layer, "view");

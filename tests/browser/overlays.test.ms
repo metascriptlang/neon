@@ -10,9 +10,12 @@ import { Dialog } from "../../src/components/dialog";
 import { BottomSheet } from "../../src/components/bottomSheet";
 import { Snackbar } from "../../src/components/snackbar";
 import { Toast, ToastHost } from "../../src/components/toast";
+import { Portal } from "../../src/render/portal";
+import { sleepAsync } from "std/core/promise";
 
 extern class HTMLElement {}
 extern class Rectangle {
+	top: float64;
 	width: float64;
 	height: float64;
 	left: float64;
@@ -27,6 +30,14 @@ extern function rect(node: HTMLElement): Rectangle from "#.getBoundingClientRect
 extern function isBody(node: HTMLElement): boolean from "# === document.body";
 extern function contains(root: HTMLElement, node: HTMLElement): boolean from "#.contains(#)";
 extern function remove(node: HTMLElement): void from "#.remove()";
+
+extern function bodyCss(): string from "(() => document.body.style.cssText)()";
+extern function setBodyCss(css: string): void from "(document.body.style.cssText = #)";
+extern function prepareScroll(positioned: boolean): void from
+	"(document.body.style.cssText = 'min-height:5000px;margin:0;position:' + (# ? 'relative' : 'static'))";
+extern function scrollPage(y: float64): void from "window.scrollTo(0, #)";
+extern function scrollY(): float64 from "(() => window.scrollY)()";
+extern function positionOf(node: HTMLElement): string from "getComputedStyle(#).position";
 
 function near(a: float64, b: float64): boolean { return Math.abs(a - b) < 0.01; }
 
@@ -78,4 +89,84 @@ test "a screen-level Dialog on the body survives hide show and owner cleanup wit
 	assert hasAlert("Same-root dialog");
 	dispose();
 	assert !hasAlert("Same-root dialog");
+}
+
+test "screen overlays stay viewport anchored across document scroll and positioned body" {
+	const css = bodyCss();
+	try {
+		for (const positioned of [false, true]) {
+			prepareScroll(positioned);
+			const [open, setOpen] = createSignal(false);
+			const dispose = render(element(<View style={{ width: 24, height: 24, overflow: "hidden" }}>
+				<Dialog visible={open()} title="Scrolled dialog" />
+				<BottomSheet visible={open()} height={240} accessibilityLabel="Scrolled sheet" />
+				<Snackbar visible={open()} message="Scrolled snackbar" />
+				<ToastHost />
+				<Portal style={{ position: "absolute", left: 20, top: 40 }}>
+					<Text accessibilityLabel="Generic portal">Generic</Text>
+				</Portal>
+			</View>), domHost(), documentBody());
+			try {
+				scrollPage(200);
+				await sleepAsync(30);
+				assert scrollY() > 100, "document scroll fixture is active before show";
+				setOpen(true);
+				Toast.show({ text1: "Scrolled toast", autoHide: false });
+				for (const offset of [200, 500]) {
+					scrollPage(offset);
+					await sleepAsync(30);
+					assert near(scrollY(), offset);
+					const viewport = Dimensions.get("window");
+					const dialog = rect(parent(alertNode("Scrolled dialog")));
+					assert near(dialog.top, 0) && near(dialog.left, 0), "scrim starts at viewport";
+					assert near(dialog.width, viewport.width) && near(dialog.height, viewport.height);
+					const sheet = rect(alertNode("Scrolled sheet"));
+					assert near(sheet.bottom, viewport.height) && near(sheet.height, 240);
+					const bar = rect(alertNode("Scrolled snackbar"));
+					assert near(bar.left, 8) && near(bar.right, viewport.width - 8);
+					assert near(bar.bottom, viewport.height - 8);
+					assert near(rect(parent(alertNode("Scrolled toast"))).bottom, viewport.height - 40);
+					assert positionOf(parent(alertNode("Generic portal"))) === "absolute",
+						"generic Portal must not become a fixed screen layer";
+				}
+				setOpen(false);
+				Toast.hide();
+				assert !hasAlert("Scrolled dialog") && !hasAlert("Scrolled sheet");
+				assert !hasAlert("Scrolled snackbar") && !hasAlert("Scrolled toast");
+				setOpen(true);
+				Toast.show({ text1: "Scrolled toast", autoHide: false });
+			} finally {
+				dispose();
+				Toast.hide();
+			}
+			assert !hasAlert("Scrolled dialog") && !hasAlert("Scrolled sheet");
+			assert !hasAlert("Scrolled snackbar") && !hasAlert("Scrolled toast");
+		}
+	} finally {
+		setBodyCss(css);
+		scrollPage(0);
+	}
+}
+
+test "explicit Snackbar and Toast user position wins over default screen presentation" {
+	const [override, setOverride] = createSignal(true);
+	const dispose = render(element(<View>
+		<Snackbar visible={true} message="Custom snackbar"
+			style={{ position: override() ? "absolute" : null }} />
+		<ToastHost style={{ position: override() ? "absolute" : null }} />
+	</View>), domHost(), documentBody());
+	try {
+		Toast.show({ text1: "Custom toast", autoHide: false });
+		assert positionOf(alertNode("Custom snackbar")) === "absolute";
+		assert positionOf(parent(alertNode("Custom toast"))) === "absolute";
+		setOverride(false);
+		assert positionOf(alertNode("Custom snackbar")) === "fixed";
+		assert positionOf(parent(alertNode("Custom toast"))) === "fixed";
+		setOverride(true);
+		assert positionOf(alertNode("Custom snackbar")) === "absolute";
+		assert positionOf(parent(alertNode("Custom toast"))) === "absolute";
+	} finally {
+		dispose();
+		Toast.hide();
+	}
 }
