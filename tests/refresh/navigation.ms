@@ -9,6 +9,7 @@ import {
 	createStackNavigator,
 	useRoute,
 } from "../../src/navigation/index";
+import { flush } from "../../src/core/runtime";
 import { refreshReset } from "../../src/render/refresh";
 import { press, visibleText } from "../navigation/navHarness";
 import { thisFile } from "./here";
@@ -84,14 +85,18 @@ test "refresh navigation: an edit above the navigator keeps the route stack and 
 	refreshReset();
 	const [root, dispose] = mountApp();
 	press(root, "more");
+	flush();
 	press(root, "more");
+	flush();
 	press(root, "open");
+	flush();
 	assert visibleText(root).indexOf("detail 7") >= 0, "on the detail screen: " + visibleText(root);
 	refreshTemplate0(thisFile(), "App#template", appWithAbout, edited, __refreshSetup_App);
 	const summary = refreshModule(thisFile());
 	assert summary.rebuilt === 1, "the app template is rebuilt: " + summary.rebuilt.toString();
 	assert visibleText(root).indexOf("detail 7") >= 0, "still on the detail screen: " + visibleText(root);
 	const handled = dispatchHardwareBackPress();
+	flush();
 	assert handled, "back pops to the screen below";
 	assert visibleText(root).indexOf("home 2") >= 0, "home kept its count: " + visibleText(root);
 	assert visibleText(root).indexOf("All items") >= 0, "and shows the edited title: " + visibleText(root);
@@ -102,6 +107,7 @@ test "refresh navigation: a kept stack that names a removed screen starts again"
 	refreshReset();
 	const [root, dispose] = mountApp();
 	press(root, "open");
+	flush();
 	refreshTemplate0(thisFile(), "App#template", appWithoutDetail, edited, __refreshSetup_App);
 	refreshModule(thisFile());
 	assert visibleText(root).indexOf("home 0") >= 0, "back on the initial route: " + visibleText(root);

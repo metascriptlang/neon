@@ -9,6 +9,7 @@ import {
 	fireEvent,
 	mockToString,
 } from "../../src/render/host";
+import { flush } from "../../src/core/runtime";
 import { refreshReset } from "../../src/render/refresh";
 import { thisFile } from "./here";
 
@@ -110,7 +111,7 @@ test "refresh pass: a component mounts through its boundary and keeps its view" 
 	refreshReset();
 	const [root, dispose] = mountApp();
 	const buttons = all(root, "button");
-	for (let i = 0; i < 3; i += 1) { fireEvent(buttons[0], "onPress"); }
+	for (let i = 0; i < 3; i += 1) { fireEvent(buttons[0], "onPress"); flush(); }
 	assert texts(root) === "<p>a:3</p> <p>tally:0</p> ", "clicks reach it: " + texts(root);
 	const summary = refreshModule(thisFile());
 	assert summary.kept === 6 && summary.remounted === 0, "three boundaries, three templates kept";
@@ -122,8 +123,9 @@ test "refresh pass: a changed component remounts alone, its sibling keeps state"
 	refreshReset();
 	const [root, dispose] = mountApp();
 	const before = all(root, "button");
-	for (let i = 0; i < 3; i += 1) { fireEvent(before[0], "onPress"); }
+	for (let i = 0; i < 3; i += 1) { fireEvent(before[0], "onPress"); flush(); }
 	fireEvent(before[1], "onPress");
+	flush();
 	const v2 = (): string => "v2";
 	refreshComponent<CounterProps>(thisFile(), "Counter|CounterProps", counterV2, v2);
 	const summary = refreshModule(thisFile());
@@ -132,8 +134,10 @@ test "refresh pass: a changed component remounts alone, its sibling keeps state"
 	assert remounted === "<p>v2 a:0</p> <p>tally:1</p> ", "new code, local reset: " + remounted;
 	const after = all(root, "button");
 	fireEvent(after[0], "onPress");
+	flush();
 	assert texts(root) === "<p>v2 a:10</p> <p>tally:1</p> ", "the new handler runs once";
 	fireEvent(before[0], "onPress");
+	flush();
 	assert texts(root) === "<p>v2 a:10</p> <p>tally:1</p> ", "the old handler is gone";
 	dispose();
 }
@@ -155,7 +159,7 @@ test "refresh pass: a template edit keeps the component's state" {
 	refreshReset();
 	const [root, dispose] = mountApp();
 	const before = all(root, "button");
-	for (let i = 0; i < 3; i += 1) { fireEvent(before[0], "onPress"); }
+	for (let i = 0; i < 3; i += 1) { fireEvent(before[0], "onPress"); flush(); }
 	const t2 = (): string => "t2";
 	refreshTemplate(thisFile(), "Counter#template", counterTemplateV2, t2, __refreshSetup_Counter);
 	const summary = refreshModule(thisFile());
@@ -163,6 +167,7 @@ test "refresh pass: a template edit keeps the component's state" {
 	const rebuilt = texts(root);
 	assert rebuilt === "<p>t2 a:3</p> <p>tally:0</p> ", "new template, count kept: " + rebuilt;
 	fireEvent(all(root, "button")[0], "onPress");
+	flush();
 	assert texts(root) === "<p>t2 a:4</p> <p>tally:0</p> ", "the kept handler adds one";
 	dispose();
 }
@@ -171,6 +176,7 @@ test "refresh pass: a re-evaluation with an unchanged module rebuilds what reads
 	refreshReset();
 	const [root, dispose] = mountApp();
 	fireEvent(all(root, "button")[0], "onPress");
+	flush();
 	const first = refreshModuleEval(thisFile(), "same", ["Counter#template"]);
 	assert first.rebuilt === 0 && first.remounted === 0, "a first evaluation patches by signature";
 	const again = refreshModuleEval(thisFile(), "same", ["Counter#template"]);

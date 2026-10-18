@@ -9,6 +9,7 @@ import {
 	fireEvent,
 	mockToString,
 } from "../../src/render/host";
+import { flush } from "../../src/core/runtime";
 import { refreshReset } from "../../src/render/refresh";
 import { thisFile } from "./here";
 
@@ -186,7 +187,7 @@ function texts(root: MockNode): string {
 }
 
 function press(root: MockNode, at: int32, times: int32): void {
-	for (let i = 0 as int32; i < times; i += 1) { fireEvent(all(root, "button")[at], "onPress"); }
+	for (let i = 0 as int32; i < times; i += 1) { fireEvent(all(root, "button")[at], "onPress"); flush(); }
 }
 
 const edited = (): string => "edited";
