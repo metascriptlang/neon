@@ -4,7 +4,7 @@ import { Host, HostNode } from "../../src/render/hostTypes";
 import { createAsyncMemo, createMemo } from "../../src/core/memo";
 import { Accessor } from "../../src/core/signal";
 import { Loading } from "../../src/macros/ui/flow";
-import { streamRender } from "../../src/render/ssr";
+import { renderToStream } from "../../src/render/ssr";
 
 const waiting: NeonNode = el("b", [], [], text("loading"));
 const fetches: string[] = [];
@@ -30,7 +30,7 @@ function slow(name: string, ms: int32, value: int32): Accessor<int32> {
 let lastRecords = "";
 
 async function rendered(view: NeonNode): Promise<string> {
-	const r = streamRender(view);
+	const r = renderToStream(view);
 	await r.finished;
 	const failure = r.failure;
 	lastRecords = r.result.records;

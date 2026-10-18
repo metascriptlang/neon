@@ -960,13 +960,13 @@ when (server) {
 			}
 			if (!this.over) { return; }
 			this.ended = true;
-			if (this.failure !== null) { console.error("streamRender: the stream ended early: " + (this.failure as Error).message); }
+			if (this.failure !== null) { console.error("renderToStream: the stream ended early: " + (this.failure as Error).message); }
 			sink.end();
 		}
 
 		claim(name: string): void {
 			if (this.consumer !== "") {
-				throw new Error("streamRender result was already consumed via `" + this.consumer + "`; cannot also consume it via `" + name + "`. Use exactly one of `pipe`, `pipeTo`, or `readable`.");
+				throw new Error("renderToStream result was already consumed via `" + this.consumer + "`; cannot also consume it via `" + name + "`. Use exactly one of `pipe`, `pipeTo`, or `readable`.");
 			}
 			this.consumer = name;
 		}
@@ -981,11 +981,19 @@ when (server) {
 			this.attach(sink);
 		}
 
-		async markup(): Promise<SsrMarkup> {
-			await this.finished;
-			if (this.failure !== null) { throw this.failure; }
-			return this.result;
+		then<R>(onFulfilled: (markup: SsrMarkup) => R, onRejected?: (error: Error) => R): Promise<R> {
+			return deliver<R>(this, onFulfilled, onRejected);
 		}
+	}
+
+	async function deliver<R>(r: StreamRender, onFulfilled: (markup: SsrMarkup) => R, onRejected?: (error: Error) => R): Promise<R> {
+		await r.finished;
+		const failure = r.failure;
+		if (failure !== null) {
+			if (onRejected === undefined) { throw failure; }
+			return onRejected(failure);
+		}
+		return onFulfilled(r.result);
 	}
 
 	when (js) {
@@ -1067,15 +1075,8 @@ when (server) {
 		r.flush();
 	}
 
-	// Parked on ~/metascript/.inbox/compiler/2026-10-16-await-of-a-user-thenable-is-not-unwrapped.md: Solid's one thenable object needs `await` to take a class with `then`
-	export function streamRender(n: NeonNode): StreamRender {
+	export function renderToStream(n: NeonNode): StreamRender {
 		return new StreamRender(n);
-	}
-
-	// Parked on ~/metascript/.inbox/compiler/2026-10-08-test-block-awaiting-a-rejected-nullable-promise-segfaults.md (2026-10-16 sighting): `return await r.markup()` here kills the C binary when the render fails
-	export function renderToStream(n: NeonNode): Promise<SsrMarkup> {
-		const r = streamRender(n);
-		return r.markup();
 	}
 } else {
 	import { Node } from "std/meta";
@@ -1092,7 +1093,4 @@ when (server) {
 		error("renderToStream needs a -d:server build", node);
 	}
 
-	export macro streamRender(node: Node): Node {
-		error("streamRender needs a -d:server build", node);
-	}
 }

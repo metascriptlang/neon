@@ -4,7 +4,7 @@ import { Loading } from "../../src/macros/ui/flow";
 import { View, Text } from "../../src/components/primitives";
 import { createStyles, styleOf } from "../../src/macros/ui/style";
 import { dynText, el } from "../../src/render/node";
-import { renderToStream, streamRender, readable } from "../../src/render/ssr";
+import { renderToStream, readable } from "../../src/render/ssr";
 
 extern class ReadableStream {}
 
@@ -33,7 +33,7 @@ function slowPage(gate: Promise<int32>): NeonNode {
 }
 
 export function slowStream(gate: Promise<int32>): ReadableStream {
-	return readable(streamRender(slowPage(gate)));
+	return readable(renderToStream(slowPage(gate)));
 }
 
 export async function slowAwaited(gate: Promise<int32>): Promise<string> {

@@ -1,7 +1,7 @@
 import { sleepAsync } from "std/core/promise";
 import { NeonNode, el, text, dynText } from "../../src/render/node";
 import { Host, HostNode } from "../../src/render/hostTypes";
-import { streamRender } from "../../src/render/ssr";
+import { renderToStream } from "../../src/render/ssr";
 import { createAsyncMemo } from "../../src/core/memo";
 import { Loading } from "../../src/macros/ui/flow";
 import { View, Text } from "../../src/components/primitives";
@@ -55,9 +55,9 @@ async function main(): Promise<void> {
 	const chunks: string[] = [];
 	let ended = 0;
 	const quickWritten = new Flag();
-	const r = streamRender(page(quickWritten));
+	const r = renderToStream(page(quickWritten));
 	r.pipe({ write: (chunk: string): void => { chunks.push(chunk); if (chunks.length >= 2) { quickWritten.up = true; } }, end: (): void => { ended += 1; } });
-	await r.markup();
+	await r;
 	for (let i = 0; i < chunks.length; i += 1) { console.log("chunk " + i.toString() + ": " + chunks[i]); }
 	console.log("ended " + ended.toString());
 }

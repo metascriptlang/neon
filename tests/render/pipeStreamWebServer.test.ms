@@ -4,7 +4,7 @@ when (js) {
 	import { Host, HostNode } from "../../src/render/hostTypes";
 	import { createAsyncMemo } from "../../src/core/memo";
 	import { Loading } from "../../src/macros/ui/flow";
-	import { streamRender, pipeTo, readable } from "../../src/render/ssr";
+	import { renderToStream, pipeTo, readable } from "../../src/render/ssr";
 
 	extern class WritableStream {}
 	extern class ReadableStream {}
@@ -44,15 +44,15 @@ when (js) {
 
 	async function piped(ms: int32): Promise<string[]> {
 		const c = new Collected();
-		const r = streamRender(page(ms));
+		const r = renderToStream(page(ms));
 		r.pipe({ write: (chunk: string): void => { c.chunks.push(chunk); }, end: (): void => { c.ended += 1; } });
-		await r.markup();
+		await r;
 		return c.chunks;
 	}
 
 	test "readable carries the chunks pipe delivers, as bytes of a web stream" {
 		const expected = await piped(5);
-		const r = streamRender(page(5));
+		const r = renderToStream(page(5));
 		const got = await readAll(readable(r));
 		assert got.length === 2 && expected.length === 2, got.length.toString() + "/" + expected.length.toString();
 		assert got[0] === expected[0] && got[1] === expected[1], got[0] + " | " + got[1];
@@ -61,19 +61,19 @@ when (js) {
 	test "the first chunk of the readable arrives before the slow read settles" {
 		slowSettled = false;
 		shellRead = false;
-		const r = streamRender(page(5));
+		const r = renderToStream(page(5));
 		const first = await readFirst(readable(r));
 		assert !slowSettled, "the slow read had settled before the shell arrived";
 		shellRead = true;
 		assert first.includes("<b>loading</b>") && !first.includes("slow="), first;
-		await r.markup();
+		await r;
 		assert slowSettled, "the render finished";
 	}
 
 	test "pipeTo writes the same chunks to a writable and settles once it is closed" {
 		const expected = await piped(5);
 		const pair = newTransform();
-		const r = streamRender(page(5));
+		const r = renderToStream(page(5));
 		const done = r.pipeTo(pair.writable);
 		const got = await readAll(pair.readable);
 		await done;
@@ -81,7 +81,7 @@ when (js) {
 	}
 
 	test "readable called twice is one stream, and a different consumer after it throws" {
-		const r = streamRender(page(5));
+		const r = renderToStream(page(5));
 		const view = readable(r);
 		assert readable(r) === view, "the second access made a second stream";
 		let message = "";
@@ -90,12 +90,12 @@ when (js) {
 		} catch (e) {
 			message = (e as Error).message;
 		}
-		assert message === "streamRender result was already consumed via `readable`; cannot also consume it via `pipe`. Use exactly one of `pipe`, `pipeTo`, or `readable`.", message;
+		assert message === "renderToStream result was already consumed via `readable`; cannot also consume it via `pipe`. Use exactly one of `pipe`, `pipeTo`, or `readable`.", message;
 		await readAll(view);
 	}
 
 	test "pipeTo after pipe throws and names pipe" {
-		const r = streamRender(page(5));
+		const r = renderToStream(page(5));
 		r.pipe({ write: (chunk: string): void => {}, end: (): void => {} });
 		let message = "";
 		try {
@@ -104,6 +104,6 @@ when (js) {
 			message = (e as Error).message;
 		}
 		assert message.includes("already consumed via `pipe`; cannot also consume it via `pipeTo`"), message;
-		await r.markup();
+		await r;
 	}
 }

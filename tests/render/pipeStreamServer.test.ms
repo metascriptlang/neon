@@ -6,7 +6,7 @@ import { createAsyncMemo } from "../../src/core/memo";
 import { Loading, Errored } from "../../src/macros/ui/flow";
 import { createStyles, styleOf } from "../../src/macros/ui/style";
 import { View, Text } from "../../src/components/primitives";
-import { renderToStream, streamRender, StreamSink, SsrMarkup } from "../../src/render/ssr";
+import { renderToStream, StreamSink, SsrMarkup } from "../../src/render/ssr";
 
 const waiting: NeonNode = el("b", [], [], text("loading"));
 
@@ -136,9 +136,9 @@ function joined(c: Collected): string {
 }
 
 async function streamed(view: NeonNode, c: Collected): Promise<SsrMarkup> {
-	const r = streamRender(view);
+	const r = renderToStream(view);
 	r.pipe(sinkOf(c));
-	return await r.markup();
+	return await r;
 }
 
 test "siblings stream in the order their waits end, after one shell holding both fallbacks" {
@@ -242,7 +242,7 @@ test "the swap function is sent once, before the first call, however many bounda
 
 test "a second consumer of the same render throws and the first keeps its stream" {
 	const c = new Collected();
-	const r = streamRender(siblings(true, c.quickWritten));
+	const r = renderToStream(siblings(true, c.quickWritten));
 	r.pipe(sinkOf(c));
 	let message = "";
 	try {
@@ -250,8 +250,8 @@ test "a second consumer of the same render throws and the first keeps its stream
 	} catch (e) {
 		message = (e as Error).message;
 	}
-	assert message === "streamRender result was already consumed via `pipe`; cannot also consume it via `pipe`. Use exactly one of `pipe`, `pipeTo`, or `readable`.", message;
-	const out = await r.markup();
+	assert message === "renderToStream result was already consumed via `pipe`; cannot also consume it via `pipe`. Use exactly one of `pipe`, `pipeTo`, or `readable`.", message;
+	const out = await r;
 	assert c.chunks.length === 3 && c.ended === 1, "the first sink still got the whole stream: " + c.chunks.length.toString();
 	assert out.html.includes("first=1") && out.html.includes("second=2"), out.html;
 }
@@ -268,8 +268,8 @@ test "a sink attached after the boundaries settled receives the chunks an early 
 	const early = new Collected();
 	await streamed(nested(3, 8), early);
 	const late = new Collected();
-	const r = streamRender(nested(3, 8));
-	await r.markup();
+	const r = renderToStream(nested(3, 8));
+	await r;
 	r.pipe(sinkOf(late));
 	assert late.chunks.length === early.chunks.length && late.ended === 1, late.chunks.length.toString() + "/" + early.chunks.length.toString();
 	for (let i = 0; i < early.chunks.length; i += 1) {
@@ -362,11 +362,11 @@ async function lateFailure(c: Collected, inSpot: boolean): Promise<string> {
 		Loading({ children: content, fallback: waiting })(host, parent, before);
 		Loading({ children: readingAfter("other", thrown, 2), fallback: waiting })(host, parent, before);
 	};
-	const r = streamRender(app);
+	const r = renderToStream(app);
 	r.pipe(sinkOf(c));
 	let message = "";
 	try {
-		await r.markup();
+		await r;
 	} catch (e) {
 		message = e.message;
 	}
@@ -393,11 +393,11 @@ async function firstPassFailure(c: Collected): Promise<string> {
 	const broken: NeonNode = (host: Host, parent: HostNode, before: HostNode | null): void => {
 		throw new Error("broken before the shell");
 	};
-	const r = streamRender(broken);
+	const r = renderToStream(broken);
 	r.pipe(sinkOf(c));
 	let message = "";
 	try {
-		await r.markup();
+		await r;
 	} catch (e) {
 		message = e.message;
 	}

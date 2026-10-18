@@ -4,7 +4,7 @@ import { Host, HostNode } from "../../src/render/hostTypes";
 import { createAsyncMemo, createMemo } from "../../src/core/memo";
 import { Loading, Errored } from "../../src/macros/ui/flow";
 import { Accessor } from "../../src/core/signal";
-import { renderToStream, streamRender, SafeError } from "../../src/render/ssr";
+import { renderToStream, SafeError } from "../../src/render/ssr";
 
 const waiting: NeonNode = el("b", [], [], text("loading"));
 const fetches: string[] = [];
@@ -153,9 +153,9 @@ test "a nested Loading that settles before the Loading holding its placeholder i
 		Loading({ children: el("i", [], [], spot("nestInner", true, "n", 3)), fallback: waiting })(host, parent, before);
 	};
 	const chunks: string[] = [];
-	const r = streamRender(Loading({ children: content, fallback: waiting }));
+	const r = renderToStream(Loading({ children: content, fallback: waiting }));
 	r.pipe({ write: (chunk: string): void => { chunks.push(chunk); }, end: (): void => {} });
-	await r.markup();
+	await r;
 	let swaps = 0;
 	let first = "";
 	for (const c of chunks) {
@@ -269,9 +269,9 @@ test "a boundary that settles before a root text spot does is written after the 
 		el("p", [], [], spot("shellSlow", true, "s", 40))(host, parent, before);
 	};
 	const chunks: string[] = [];
-	const r = streamRender(app);
+	const r = renderToStream(app);
 	r.pipe({ write: (chunk: string): void => { chunks.push(chunk); }, end: (): void => {} });
-	await r.markup();
+	await r;
 	assert chunks.length >= 2 && chunks[0].indexOf("<template id=\"pl-") >= 0 && chunks[0].indexOf("$df(") < 0, "the shell comes first: " + chunks.join(" || ");
 	assert chunks[0].indexOf("<p>s</p>") >= 0, "and holds the root spot's text: " + chunks[0];
 }

@@ -4,7 +4,7 @@ import { Loading } from "../../src/macros/ui/flow";
 import { View, Text } from "../../src/components/primitives";
 import { createStyles, styleOf } from "../../src/macros/ui/style";
 import { dynText, el } from "../../src/render/node";
-import { renderToStream, streamRender, StreamSink } from "../../src/render/ssr";
+import { renderToStream, StreamSink } from "../../src/render/ssr";
 
 const looks = createStyles({ page: { padding: 6 }, late: { margin: 2 } });
 
@@ -31,7 +31,7 @@ function slowPage(gate: Promise<int32>): NeonNode {
 }
 
 export function slowStream(gate: Promise<int32>, sink: StreamSink): void {
-	streamRender(slowPage(gate)).pipe(sink);
+	renderToStream(slowPage(gate)).pipe(sink);
 }
 
 export async function slowAwaited(gate: Promise<int32>): Promise<string> {
@@ -52,7 +52,7 @@ function nestedPage(outer: Promise<int32>, inner: Promise<int32>): NeonNode {
 }
 
 export function nestedStream(outer: Promise<int32>, inner: Promise<int32>, sink: StreamSink): void {
-	streamRender(nestedPage(outer, inner)).pipe(sink);
+	renderToStream(nestedPage(outer, inner)).pipe(sink);
 }
 
 export async function nestedAwaited(outer: Promise<int32>, inner: Promise<int32>): Promise<string> {
