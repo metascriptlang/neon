@@ -57,13 +57,13 @@ tiers say what is core and what moves.
    author: `View`, `Text`, `Image`, `ImageBackground`, `TextInput`, `Pressable`, the Touchables,
    `ScrollView`, `FlatList` / `SectionList` / `VirtualizedList`, `RefreshControl`, `Switch`,
    `ActivityIndicator`, `Button` (kept: RN core ships it), `Modal`, `StatusBar`, `SafeAreaView`,
-   `KeyboardAvoidingView`; `Animated`, `Easing`, `LayoutAnimation`, `PanResponder` and the
+   `KeyboardAvoidingView`; `WebView`, `Video` and `CameraView` (the person, 2026-10-18: "mấy cái
+   đấy là core của mình", so every host ports them); `Animated`, `Easing`, `LayoutAnimation`, `PanResponder` and the
    responder system, `StyleSheet`; the RN APIs in `src/api/` that RN core ships (Alert, Linking,
    Share, AppState, BackHandler, Keyboard, Dimensions, PixelRatio, Platform, Appearance,
    AccessibilityInfo, Vibration).
 2. **Native modules, opt-in** — need native code but are not RN core (RN community / Expo
-   packages): `Slider`, `Picker`, `DateTimePicker`, `WebView`, `Video`, SVG, `CameraView`,
-   `ImagePicker`, `Audio`, `Clipboard`, AsyncStorage, NetInfo, Permissions, Geolocation,
+   packages): `Slider`, `Picker`, `DateTimePicker`, SVG, `ImagePicker`, `Audio`, `Clipboard`, AsyncStorage, NetInfo, Permissions, Geolocation,
    Haptics, DeviceInfo, Localization, Notifications. Target: one module each, built only by apps
    that import it. When to split is open.
 3. **Composed from primitives — relocate to a UI library (`neon-ui`)**: Chip, Card, Avatar, Badge,
