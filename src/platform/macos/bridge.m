@@ -1578,7 +1578,7 @@ static NSPoint toParent(NeonView *view, NSPoint p) {
 
 int32_t niMeasureInWindow(void *view) {
 	NeonView *v = as(view);
-	if (!g_root || !v.window || !within(v, g_root) || v == g_root) return -1;
+	if (!g_root || !v.window || !within(v, g_root)) return -1;
 	if (v.isHiddenOrHasHiddenAncestor) return 0;
 	NSPoint corners[4] = {NSMakePoint(0, 0), NSMakePoint(v.w, 0), NSMakePoint(0, v.h), NSMakePoint(v.w, v.h)};
 	NSView *content = v.window.contentView;
