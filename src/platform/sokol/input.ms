@@ -10,50 +10,9 @@ import {
 	deliverPointer,
 	deliverText,
 	deliverFocus,
+	deliverPreedit,
 } from "../void/windowHost";
-
-// The ordinals of sokol_app.h's sapp_event_type: keep the order.
-export enum AppEventType {
-	Invalid,
-	KeyDown,
-	KeyUp,
-	Char,
-	MouseDown,
-	MouseUp,
-	MouseScroll,
-	MouseMove,
-	MouseEnter,
-	MouseLeave,
-	TouchesBegan,
-	TouchesMoved,
-	TouchesEnded,
-	TouchesCancelled,
-	Resized,
-	Iconified,
-	Restored,
-	Focused,
-	Unfocused,
-	Suspended,
-	Resumed,
-	QuitRequested,
-	ClipboardPasted,
-	FilesDropped,
-}
-
-export struct AppEvent {
-	type: AppEventType;
-	keyCode: int32;
-	charCode: uint32;
-	keyRepeat: boolean;
-	modifiers: uint32;
-	mouseButton: int32;
-	mouseX: float32;
-	mouseY: float32;
-	mouseDx: float32;
-	mouseDy: float32;
-	scrollX: float32;
-	scrollY: float32;
-}
+import { AppEvent, AppEventType } from "../../../../void/src/sokol/window";
 
 export struct KeyName {
 	key: int32;
@@ -281,6 +240,8 @@ export function deliverAppEvent(s: SokolInput, e: AppEvent): void {
 		AppEventType.MouseMove => { pointer(s, e, AreaPointerKind.Motion, 0 as int32, false); },
 		AppEventType.MouseScroll => { pointer(s, e, AreaPointerKind.Wheel, 0 as int32, false); },
 		AppEventType.MouseLeave => { pointer(s, e, AreaPointerKind.Leave, 0 as int32, false); },
+		AppEventType.Preedit => { deliverPreedit(s.area, e.text, e.cursor); },
+		AppEventType.TextInput => { deliverText(s.area, e.text); },
 		AppEventType.Focused => { deliverFocus(s.area, true); },
 		AppEventType.Unfocused => { deliverFocus(s.area, false); },
 		AppEventType.MouseEnter | AppEventType.Resized | AppEventType.Iconified | AppEventType.Restored |
