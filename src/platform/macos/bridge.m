@@ -1559,6 +1559,52 @@ void niSetOpacity(void *view, float opacity) {
 	requestHostFrame();
 }
 
+// --- bridge.h: geometry, the bounds of a view in the window's content, through the same model the hit test
+// inverts (frame, centred transform, scroll offset), since AppKit's own conversion misses the layer transforms ---
+
+static double g_measurement[4];
+
+static NSPoint toParent(NeonView *view, NSPoint p) {
+	CATransform3D t = [view neonTransform];
+	NSPoint out = NSMakePoint(view.x + t.m11 * p.x + t.m21 * p.y + t.m41, view.y + t.m12 * p.x + t.m22 * p.y + t.m42);
+	NeonView *parent = parentOf(view);
+	if (parent) {
+		NSPoint offset = childOffset(parent);
+		out.x -= offset.x;
+		out.y -= offset.y;
+	}
+	return out;
+}
+
+int32_t niMeasureInWindow(void *view) {
+	NeonView *v = as(view);
+	if (!g_root || !v.window || !within(v, g_root) || v == g_root) return -1;
+	if (v.isHiddenOrHasHiddenAncestor) return 0;
+	NSPoint corners[4] = {NSMakePoint(0, 0), NSMakePoint(v.w, 0), NSMakePoint(0, v.h), NSMakePoint(v.w, v.h)};
+	NSView *content = v.window.contentView;
+	double minX = INFINITY, minY = INFINITY, maxX = -INFINITY, maxY = -INFINITY;
+	for (int i = 0; i < 4; i++) {
+		NSPoint p = corners[i];
+		for (NeonView *at = v; at && at != g_root; at = parentOf(at)) p = toParent(at, p);
+		p = [g_root convertPoint:p toView:content];
+		if (!content.isFlipped) p.y = content.bounds.size.height - p.y;
+		minX = MIN(minX, p.x);
+		minY = MIN(minY, p.y);
+		maxX = MAX(maxX, p.x);
+		maxY = MAX(maxY, p.y);
+	}
+	g_measurement[0] = minX;
+	g_measurement[1] = minY;
+	g_measurement[2] = maxX - minX;
+	g_measurement[3] = maxY - minY;
+	return 1;
+}
+
+double niMeasurementX(void) { return g_measurement[0]; }
+double niMeasurementY(void) { return g_measurement[1]; }
+double niMeasurementW(void) { return g_measurement[2]; }
+double niMeasurementH(void) { return g_measurement[3]; }
+
 // --- bridge.h: lifecycle ---
 
 void niRegisterApp(msClosure mount) { s_mount = mount; }
