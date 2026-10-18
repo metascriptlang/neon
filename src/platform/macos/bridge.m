@@ -4,6 +4,7 @@
 #include "../native/app.h"
 #include "../native/loop.h"
 #include "handoff.h"
+#import "view.h"
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -54,16 +55,6 @@ static NSColor *rgba(float r, float g, float b, float a) {
 }
 
 // --- views ---
-
-@interface NeonView : NSView
-@property(nonatomic) int32_t neonTag;
-@property(nonatomic) BOOL pressable;
-@property(nonatomic) float x, y, w, h;
-@property(nonatomic) float scaleX, scaleY, translateX, translateY, rotation, radius;
-@property(nonatomic) BOOL clips;
-@property(nonatomic, strong) NSColor *neonBackground;
-@property(nonatomic, strong) NSMutableDictionary<NSString *, NSString *> *accessibility;
-@end
 
 @implementation NeonView
 
@@ -701,6 +692,10 @@ static void emitControlSized(int32_t tag, int phase, NSString *value, float widt
 }
 
 static void emitControl(int32_t tag, int phase, NSString *value) { emitControlSized(tag, phase, value, 0, 0); }
+
+void neonEmitControl(int32_t tag, int phase, NSString *value, float width, float height) {
+	emitControlSized(tag, phase, value, width, height);
+}
 
 @class NeonInput;
 
@@ -1401,7 +1396,7 @@ static void watchEscape(void) {
 
 static BOOL isControl(NeonView *view) {
 	return [view isKindOfClass:NeonSwitch.class] || [view isKindOfClass:NeonIndicator.class] || [view isKindOfClass:NeonImage.class] ||
-		[view isKindOfClass:NeonModal.class];
+		[view isKindOfClass:NeonModal.class] || [view conformsToProtocol:@protocol(NeonComponentView)];
 }
 
 static BOOL isInput(NeonView *view) { return [view isKindOfClass:NeonInput.class]; }
@@ -1418,7 +1413,7 @@ static NeonInput *inputOf(void *view, const char *what) {
 // Switch goes to the NSSwitch.
 static NSView *nativeTarget(NeonView *view, NSPoint pointInRoot) {
 	NSView *target = isInput(view) ? [(NeonInput *)view editingView] :
-		[view isKindOfClass:NeonSwitch.class] ? ((NeonSwitch *)view).control : nil;
+		[view isKindOfClass:NeonSwitch.class] ? ((NeonSwitch *)view).control : neonMediaNativeTarget(view);
 	if (!target) return nil;
 	NSView *hit = [target hitTest:[target.superview convertPoint:pointInRoot fromView:g_root]];
 	return hit ? hit : target;
@@ -1514,7 +1509,9 @@ void niRemoveFromParent(void *child) {
 }
 
 void niViewRelease(void *view) {
-	if (view) CFRelease(view);
+	if (!view) return;
+	if ([as(view) respondsToSelector:@selector(neonRelease)]) [(id<NeonComponentView>)as(view) neonRelease];
+	CFRelease(view);
 }
 
 void niSetFrame(void *view, float x, float y, float w, float h) {
@@ -1886,7 +1883,16 @@ void niControlSetTag(void *control, int32_t tag) {
 }
 void niSetFocused(void *control, int focused) { [inputOf(control, "niSetFocused") focus:focused != 0]; }
 
-UNIMPLEMENTED(void *, niControlCreate, (const char *kind))
+void *niControlCreate(const char *kind) {
+	requireAttached("niControlCreate");
+	NeonView *view = neonMediaCreate(kind);
+	if (!view) {
+		char what[128];
+		snprintf(what, sizeof what, "niControlCreate(%s)", kind);
+		unimplemented(what);
+	}
+	return (void *)CFBridgingRetain(view);
+}
 UNIMPLEMENTED_VOID(niSetReloadPoll, (msClosure poll))
 int niLastAppEvent(void) { return g_appEvent; }
 const char *niLastAppValue(void) { return g_appValue ? g_appValue : ""; }
