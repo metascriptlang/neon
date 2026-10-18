@@ -1072,7 +1072,11 @@ function schedule(): void {
 	if (scheduled) { return; }
 	scheduled = true;
 	if (syncDepth === 0 && !running) {
-		Promise.resolve(0).then((unused: int32): void => { flush(); });
+		when (server) {
+			flush();
+		} else {
+			Promise.resolve(0).then((unused: int32): void => { flush(); });
+		}
 	}
 }
 
