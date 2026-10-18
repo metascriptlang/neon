@@ -1,5 +1,6 @@
 // Coloured cell-grid rows inside one full-window <Void> on sokol_app's window (the browser
-// canvas under --os=emcc), with the frame counts a timer's write asks for and the window draws.
+// canvas under --os=emcc), with the frame counts a timer's write asks for and the window draws,
+// and every input event the focused row area receives.
 //   msc build examples/voidCanvas.ms --output=out/voidCanvas.exe
 //   out/voidCanvas.exe            (run from the neon checkout: the font path is relative)
 
@@ -50,7 +51,14 @@ function App(): NeonNode {
 	return element(
 		<Void style={{ backgroundColor: "#0c0c0c", padding: 6 }}>
 			<View style={{ flexGrow: 1 }} focusable
-				onLayout={(e: NeonEvent): void => { console.log(`layout ${e.width}x${e.height} pixelRatio=${PixelRatio.get()}`); }}>
+				onLayout={(e: NeonEvent): void => { console.log(`layout ${e.width}x${e.height} pixelRatio=${PixelRatio.get()}`); }}
+				onFocus={(): void => { console.log("focus"); }}
+				onBlur={(): void => { console.log("blur"); }}
+				onPointerDown={(e: NeonEvent): void => { console.log(`pointer down ${e.x},${e.y} b${e.button}`); }}
+				onWheel={(e: NeonEvent): void => { console.log(`wheel ${e.deltaX},${e.deltaY}`); }}
+				onKeyDown={(e: NeonEvent): void => { console.log(`key ${e.key} ${e.code} "${e.text}"`); }}
+				onTextInput={(e: NeonEvent): void => { console.log(`text ${e.text}`); }}
+				onPreedit={(e: NeonEvent): void => { console.log(`preedit ${e.text}@${e.cursor}`); }}>
 				{ForList<GridRow>({ each: rows, children: lineRow })}
 			</View>
 		</Void>
