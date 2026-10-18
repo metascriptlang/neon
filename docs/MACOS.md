@@ -2,9 +2,11 @@
 
 Status: built 2026-10-18 to the level `WINDOWS.md` reached on Windows: a full-window `<Void>` in an Ion window, and the
 native host behind `src/platform/native/bridge.h` with View, Text (styled runs, recolour without a relayout, press on a
-run), Pressable, ScrollView and TextInput, frames on demand and app services through Ion. Everything after that
-(Switch, ActivityIndicator, Image, Modal, the `niControlCreate` controls, accessibility exposed to VoiceOver) aborts by
-name (`UNIMPLEMENTED` in `src/platform/macos/bridge.m`).
+run), Pressable, ScrollView and TextInput, frames on demand and app services through Ion. Past the Windows level:
+Switch, ActivityIndicator and Image, with `Image.getSize`, `Image.prefetch` and `defaultSource` (2026-10-18). Modal, the
+`niControlCreate` controls and accessibility exposed to VoiceOver abort by name (`UNIMPLEMENTED` in
+`src/platform/macos/bridge.m`). The `niControlCreate` kinds stay out of the host's core: a component composable from
+the primitives is written once in Neon.
 
 ## Decision
 
@@ -15,6 +17,9 @@ name (`UNIMPLEMENTED` in `src/platform/macos/bridge.m`).
 | single-line input | `NSTextField` over the window's field editor, its editing callbacks overridden on the field | `Libraries/Text/TextInput/Singleline/RCTUITextField.mm` |
 | secure input | an `NSSecureTextField` subclass with the same overrides | `Libraries/Text/TextInput/Singleline/macOS/RCTUISecureTextField.mm` |
 | multiline input | `NSTextView` in an `NSScrollView`, placeholder drawn in `drawRect:` | `Libraries/Text/TextInput/Multiline/RCTUITextView.mm` |
+| Switch | `NSSwitch` centred at its fitting size; `thumbColor` and the track colours are accepted and not drawn, since `NSSwitch` has no tint API | `ReactApple/Libraries/RCTUIKit/RCTUISwitch.m` |
+| ActivityIndicator | a spinning `NSProgressIndicator`, `color` as a `CIColorPolynomial` filter on its layer | `ReactApple/Libraries/RCTUIKit/RCTUIActivityIndicatorView.m` |
+| Image | the decoded image as a layer's contents at one point per pixel, `resizeMode` as `contentsGravity`, `repeat` as a pattern colour, `blurRadius` in image pixels as on iOS; one `NSCache` shared with `Image.getSize` | `ReactApple/Libraries/RCTUIKit/RCTUIImageView.m` |
 | scrolling | `NSScrollView` over a flipped document view, overlay scrollers, `NSViewBoundsDidChangeNotification` for onScroll | `React/Fabric/Mounting/ComponentViews/ScrollView/RCTScrollViewComponentView.mm` |
 | pointer | the root takes AppKit's mouse events over Neon's views and runs Neon's own hit test, ported from the Windows host (`src/platform/windows/bridge.cpp`) | `React/Base/RCTTouchHandler.m` |
 
@@ -77,6 +82,7 @@ layers (not the window server), so one `screencapture -l <window>` per example w
 | `ionPress` | 13/13 steps: hit-testing in child order, transforms, press, cancel and gesture phases |
 | `ionScroll` | 10 checks: clip, a wheel to y=240, a press on band 3, `scrollTo` clamped to 800, a wheel outside moving nothing |
 | `ionVoid` | 3 clicks on +1, "hi" and Return through Ion's records; the drawn frame shows "Count: 3" and "Hello, hi" |
+| `ionControls` | 27 checks: `cover`, `contain`, `repeat` and `blurRadius` sampled, onLoad at the pixel size, onError for a missing file with and without a `defaultSource` (which stays drawn), `Image.getSize`, a controlled Switch flipped by a click, a fixed one returning to its value, a disabled one ignoring the click, a spinner drawn and hidden once stopped; 3 runs of 3 green (`msc` 212a678c2, Ion `0e31151`, neon tree `393f007` plus this change, which re-ran the five checks above unchanged) |
 | `ionInput` | 26 checks, the Windows set: placeholder, typing, backspace, submit and blur, controlled uppercase, maxLength, newline and growth in multiline, an IME composition through the field editor's `NSTextInputClient` reporting no change until its commit, secure bullets; 3 runs of 3 green |
 
 Hot reload (`examples/macosNative/hcr`, `cd` there and `msc run --hcr app.ms`). The cold build took 28-40 s. A template
@@ -91,6 +97,9 @@ Not measured:
 - A multiline input capped by `maxHeight` and scrolling.
 - A resize while editing.
 - Text drawn at scale 1.
+
+- The ActivityIndicator `color`: `renderInContext` skips layer filters, so the checks see the spinner, not its tint. By eye
+  it is a faint red in an inactive window.
 
 Seen in passing: a single-line field's text sits about 2 points right of a multiline input's at the same padding,
 which is `NSTextFieldCell`'s own inset.
