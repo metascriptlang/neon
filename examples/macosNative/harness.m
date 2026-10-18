@@ -1,5 +1,6 @@
 #import <Cocoa/Cocoa.h>
 #import <QuartzCore/QuartzCore.h>
+#import <WebKit/WebKit.h>
 #include "harness.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -265,4 +266,41 @@ const char *harnessSwitchStates(const char *title) {
 	collectSwitches(windowTitled(title).contentView, out);
 	snprintf(states, sizeof states, "%s", out.UTF8String);
 	return states;
+}
+
+static WKWebView *findWeb(NSView *view) {
+	if ([view isKindOfClass:WKWebView.class]) return (WKWebView *)view;
+	for (NSView *child in view.subviews) {
+		WKWebView *found = findWeb(child);
+		if (found) return found;
+	}
+	return nil;
+}
+
+static NSBitmapImageRep *g_webShot = nil;
+static NSSize g_webShotSize;
+
+// A web view draws in WebKit's own process, so renderInContext does not see the page: WebKit snapshots it.
+void harnessSnapshotWeb(const char *title) {
+	g_webShot = nil;
+	WKWebView *web = findWeb(windowTitled(title).contentView);
+	if (!web) {
+		fprintf(stderr, "harness: no WKWebView in \"%s\"\n", title);
+		exit(2);
+	}
+	[web takeSnapshotWithConfiguration:nil completionHandler:^(NSImage *image, NSError *error) {
+		(void)error;
+		if (!image) return;
+		g_webShotSize = image.size;
+		g_webShot = [[NSBitmapImageRep alloc] initWithData:image.TIFFRepresentation];
+	}];
+}
+
+int harnessWebPixel(int x, int y) {
+	if (!g_webShot || g_webShotSize.width <= 0) return -1;
+	NSInteger px = (NSInteger)(x * g_webShot.pixelsWide / g_webShotSize.width);
+	NSInteger py = (NSInteger)(y * g_webShot.pixelsHigh / g_webShotSize.height);
+	NSColor *color = [[g_webShot colorAtX:px y:py] colorUsingColorSpace:NSColorSpace.sRGBColorSpace];
+	if (!color) return -1;
+	return ((int)lround(color.redComponent * 255) << 16) | ((int)lround(color.greenComponent * 255) << 8) | (int)lround(color.blueComponent * 255);
 }

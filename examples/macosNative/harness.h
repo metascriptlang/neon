@@ -26,6 +26,10 @@ void harnessCommit(const char *title, const char *text);
 int harnessFocusedText(const char *title);
 // Each NSSwitch in the window in view-tree order, 1 for on and 0 for off.
 const char *harnessSwitchStates(const char *title);
+// The first WKWebView's page, snapshotted by WebKit (asynchronous); then a pixel in web view points as 0xRRGGBB,
+// or -1 before the snapshot arrives.
+void harnessSnapshotWeb(const char *title);
+int harnessWebPixel(int x, int y);
 
 #ifdef __cplusplus
 }
