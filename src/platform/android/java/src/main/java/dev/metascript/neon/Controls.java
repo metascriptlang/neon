@@ -12,7 +12,7 @@ public final class Controls {
 			case "video": return new Movie(context);
 			case "svg": return new SvgView(context);
 			case "camera": return new CameraPreview(context);
-			default: throw new IllegalArgumentException("niControlCreate has no control \"" + kind + "\"");
+			default: throw new IllegalArgumentException("Controls.create has no control \"" + kind + "\"");
 		}
 	}
 

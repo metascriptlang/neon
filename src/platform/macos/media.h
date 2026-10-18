@@ -1,4 +1,4 @@
-// WebView, Video and CameraView on AppKit: src/platform/ios/media.m and camera.m ported, each view hosted in a
+// WebView, Video and CameraView on AppKit: src/platform/ios/webView.m, video.m and camera.m ported, each view hosted in a
 // NeonView. WKWebView, AVPlayerView and AVCaptureVideoPreviewLayer are the macOS forms of the iOS views.
 #ifndef NEON_MACOS_MEDIA_H
 #define NEON_MACOS_MEDIA_H
