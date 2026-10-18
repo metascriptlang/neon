@@ -60,6 +60,7 @@ static NSColor *rgba(float r, float g, float b, float a) {
 @property(nonatomic) BOOL pressable;
 @property(nonatomic) float x, y, w, h;
 @property(nonatomic) float scaleX, scaleY, translateX, translateY, rotation, radius;
+@property(nonatomic) BOOL clips;
 @property(nonatomic, strong) NSColor *neonBackground;
 @property(nonatomic, strong) NSMutableDictionary<NSString *, NSString *> *accessibility;
 @end
@@ -97,7 +98,7 @@ static NSColor *rgba(float r, float g, float b, float a) {
 	CALayer *layer = self.layer;
 	layer.backgroundColor = self.neonBackground ? self.neonBackground.CGColor : NULL;
 	layer.cornerRadius = self.radius;
-	layer.masksToBounds = self.radius > 0;
+	layer.masksToBounds = self.radius > 0 || self.clips;
 	CATransform3D t = [self neonTransform];
 	if (!CATransform3DEqualToTransform(layer.transform, t)) layer.transform = t;
 }
@@ -160,7 +161,7 @@ static NeonView *hitIn(NeonView *view, float px, float py, float *foundX, float 
 	if (!toLocal(view, px, py, &lx, &ly)) return nil;
 	BOOL inside = lx >= 0 && lx <= view.w && ly >= 0 && ly <= view.h;
 	NSPoint offset = childOffset(view);
-	BOOL clipsChildren = view.radius > 0 || offset.x != 0 || offset.y != 0 || [view neonChildHost] != view;
+	BOOL clipsChildren = view.radius > 0 || view.clips || offset.x != 0 || offset.y != 0 || [view neonChildHost] != view;
 	if (inside || !clipsChildren) {
 		for (NeonView *child in neonChildren(view).reverseObjectEnumerator) {
 			NeonView *found = hitIn(child, lx + (float)offset.x, ly + (float)offset.y, foundX, foundY);
@@ -398,7 +399,7 @@ static NSFont *labelFont(NSString *family, CGFloat size, BOOL bold, BOOL italic)
 	[CATransaction setDisableActions:YES];
 	CALayer *layer = self.layer;
 	layer.cornerRadius = self.radius;
-	layer.masksToBounds = self.radius > 0;
+	layer.masksToBounds = self.radius > 0 || self.clips;
 	CATransform3D t = [self neonTransform];
 	if (!CATransform3DEqualToTransform(layer.transform, t)) layer.transform = t;
 	[CATransaction commit];
@@ -1685,6 +1686,12 @@ static BOOL isAccessibilityProp(const char *name) {
 
 void niSetProp(void *view, const char *name, const char *value) {
 	const char *text = value ? value : "";
+	if (!strcmp(name, "overflow")) {
+		as(view).clips = !strcmp(text, "hidden");
+		[as(view) neonApply];
+		requestHostFrame();
+		return;
+	}
 	if (isInput(as(view)) && !isAccessibilityProp(name)) {
 		[(NeonInput *)as(view) setProp:name value:text];
 		return;
