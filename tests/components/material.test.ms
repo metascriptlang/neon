@@ -1,3 +1,4 @@
+import { flush } from "../../src/core/runtime";
 import { createSignal } from "../../src/core/signal";
 import { element } from "../../src/macros/ui/element";
 import { HostNode, MockNode, mockNode, mockHost, render, mockToString, fireEvent } from "../../src/render/host";
@@ -41,10 +42,12 @@ test "Checkbox is a checkbox whose press reports the toggled value" {
 	const box = root.children[0];
 	assert mockToString(root) === "<root><pressable accessibilityRole=\"checkbox\" accessibilityLabel=\"Agree\" accessibilityState=\"unchecked\"><view><view><text></text></view></view></pressable></root>", "shape: " + mockToString(root);
 	fireEvent(box, "onPress");
+	flush();
 	assert on(), "checked after press";
 	assert attrOf(box, "accessibilityState") === "checked", "state: " + attrOf(box, "accessibilityState");
 	assert mockToString(box).indexOf("✓") > 0, "mark: " + mockToString(box);
 	fireEvent(box, "onPress");
+	flush();
 	assert !on() && attrOf(box, "accessibilityState") === "unchecked", "unchecked again";
 }
 
@@ -59,10 +62,13 @@ test "Checkbox stays put while disabled and reports mixed for indeterminate" {
 	const box = root.children[0];
 	assert attrOf(box, "accessibilityState") === "mixed,disabled", "state: " + attrOf(box, "accessibilityState");
 	fireEvent(box, "onPress");
+	flush();
 	assert calls === 0, "disabled swallows the press";
 	setOff(false);
+	flush();
 	assert styleOf(box.children[0]).backgroundColor === "#336699", "tinted when mixed";
 	fireEvent(box, "onPress");
+	flush();
 	assert calls === 1 && on() && attrOf(box, "accessibilityState") === "checked", "mixed press checks";
 }
 
@@ -78,11 +84,14 @@ test "RadioButton shows its status and forwards a press unless disabled" {
 	const radio = root.children[0];
 	assert mockToString(root) === "<root><pressable accessibilityRole=\"radio\" accessibilityLabel=\"Apple\" accessibilityState=\"unchecked\"><view><view><view></view></view></view></pressable></root>", "shape: " + mockToString(root);
 	fireEvent(radio, "onPress");
+	flush();
 	assert presses === 1 && attrOf(radio, "accessibilityState") === "checked", "checked: " + attrOf(radio, "accessibilityState");
 	const dot = radio.children[0].children[0].children[0];
 	assert styleOf(dot).backgroundColor === "#2196f3", "dot filled";
 	setOff(true);
+	flush();
 	fireEvent(radio, "onPress");
+	flush();
 	assert presses === 1 && attrOf(radio, "accessibilityState") === "checked,disabled", "disabled: " + attrOf(radio, "accessibilityState");
 }
 
@@ -98,9 +107,11 @@ test "RadioGroup renders one radio row per option and selects the pressed one" {
 	assert mockToString(rows[0]) === "<pressable accessibilityRole=\"radio\" accessibilityLabel=\"Alpha\" accessibilityState=\"unchecked\"><view><view><view></view></view></view><text>Alpha</text></pressable>", "row: " + mockToString(rows[0]);
 	assert attrOf(rows[1], "accessibilityState") === "checked", "initial pick";
 	fireEvent(rows[0], "onPress");
+	flush();
 	assert picked() === "a", "picked: " + picked();
 	assert attrOf(rows[0], "accessibilityState") === "checked" && attrOf(rows[1], "accessibilityState") === "unchecked", "moved";
 	setOpts([{ label: "Alpha", value: "a" }, { label: "Beta", value: "b" }, { label: "Gamma", value: "c" }]);
+	flush();
 	assert tagged(group, "pressable").length === 3, "options are reactive";
 }
 
@@ -119,12 +130,16 @@ test "SegmentedControl is a tablist of tabs that reports index and value" {
 	assert mockToString(tabs[0]) === "<pressable accessibilityRole=\"tab\" accessibilityLabel=\"Day\" accessibilityState=\"selected\"><text>Day</text></pressable>", "tab: " + mockToString(tabs[0]);
 	assert attrOf(tabs[1], "accessibilityState") === "", "unselected: " + attrOf(tabs[1], "accessibilityState");
 	fireEvent(tabs[0], "onPress");
+	flush();
 	fireEvent(tabs[1], "onPress");
+	flush();
 	assert log === "i1;Week;", "log: " + log;
 	assert attrOf(tabs[1], "accessibilityState") === "selected" && attrOf(tabs[0], "accessibilityState") === "", "moved";
 	assert styleOf(tabs[1]).backgroundColor === "#2196f3", "selected tint";
 	setOn(false);
+	flush();
 	fireEvent(tabs[0], "onPress");
+	flush();
 	assert log === "i1;Week;" && attrOf(tabs[0], "accessibilityState") === "disabled", "disabled: " + attrOf(tabs[0], "accessibilityState");
 }
 
@@ -141,9 +156,11 @@ test "Chip is a toggle button once selectable and closes through its own button"
 	assert mockToString(closer) === "<pressable accessibilityRole=\"button\" accessibilityLabel=\"Close\"><text>×</text></pressable>", "close: " + mockToString(closer);
 	assert styleOf(shell).padding === 1, "outlined shell";
 	fireEvent(body, "onPress");
+	flush();
 	assert chosen() && attrOf(body, "accessibilityState") === "selected", "selected: " + attrOf(body, "accessibilityState");
 	assert mockToString(body).indexOf("✓") > 0, "check shown: " + mockToString(body);
 	fireEvent(closer, "onPress");
+	flush();
 	assert closed === 1, "closed";
 }
 
@@ -155,8 +172,11 @@ test "Chip without selection is a plain button and ignores presses while disable
 	const body = root.children[0].children[0].children[0];
 	assert mockToString(body) === "<pressable accessibilityRole=\"button\" accessibilityState=\"disabled\"><text>★</text><text>Starred</text></pressable>", "body: " + mockToString(body);
 	fireEvent(body, "onPress");
+	flush();
 	setOff(false);
+	flush();
 	fireEvent(body, "onPress");
+	flush();
 	assert presses === 1, "presses: " + presses.toString();
 }
 
@@ -177,8 +197,10 @@ test "Card is a surface over a darker elevation edge and a button once pressable
 	assert styleOf(card).paddingBottom === 2 && styleOf(card).margin === 8 && styleOf(card).backgroundColor === "#d0d0d0", "edge";
 	assert styleOf(card.children[0]).backgroundColor === "#fafafa", "surface takes the caller's background";
 	fireEvent(card, "onPress");
+	flush();
 	assert presses === 1, "pressed";
 	setLevel(9);
+	flush();
 	assert styleOf(card).paddingBottom === 5, "elevation clamps at 5";
 	const plain = root.children[0].children[1];
 	assert mockToString(plain) === "<view><view><text>Plain</text></view></view>", "plain: " + mockToString(plain);
@@ -197,6 +219,7 @@ test "Avatar shows initials or an image as one labelled round image" {
 	assert mockToString(initials) === "<view accessibilityRole=\"image\" accessibilityLabel=\"JD\"><text>JD</text></view>", "initials: " + mockToString(initials);
 	assert styleOf(initials).borderRadius === 20 && styleOf(initials).backgroundColor === "#336699", "round";
 	setSize(64);
+	flush();
 	assert styleOf(initials).width === 64 && styleOf(initials).borderRadius === 32, "size is reactive";
 	assert mockToString(picture) === "<view accessibilityRole=\"image\" accessibilityLabel=\"Me\"><image source=\"https://example.com/me.png\" resizeMode=\"cover\" accessibilityRole=\"image\" accessible=\"false\"></image></view>", "picture: " + mockToString(picture);
 }
@@ -213,10 +236,12 @@ test "Badge holds a value or shrinks to a dot, and hides when not visible" {
 	const dot = root.children[0].children[1];
 	assert mockToString(badge) === "<view accessibilityRole=\"text\" accessibilityLabel=\"3\"><text>3</text></view>", "badge: " + mockToString(badge);
 	setCount(12);
+	flush();
 	assert mockToString(badge).indexOf("<text>12</text>") > 0, "value follows: " + mockToString(badge);
 	assert styleOf(badge).height === 20 && styleOf(dot).height === 6, "sizes";
 	assert mockToString(dot) === "<view></view>", "dot: " + mockToString(dot);
 	setShown(false);
+	flush();
 	assert styleOf(badge).display === "none", "hidden";
 }
 
@@ -241,6 +266,7 @@ test "ProgressBar fills by flex and labels the percentage" {
 	assert styleOf(bar.children[0]).flex === 0 && styleOf(bar.children[1]).flex === 0.4 && styleOf(bar.children[2]).flex === 0.6, "flex split";
 	assert styleOf(bar.children[1]).backgroundColor === "#00aa00", "fill colour";
 	setDone(1.5);
+	flush();
 	assert styleOf(bar.children[1]).flex === 1 && attrOf(bar, "accessibilityLabel") === "100%", "clamped";
 }
 
@@ -266,10 +292,12 @@ test "an indeterminate ProgressBar steps on a timer that stops when it unmounts"
 	const moved = head();
 	assert moved > 0, "the segment moved: " + moved.toString();
 	setBusy(false);
+	flush();
 	const stoppedAt = styleOf(bar.children[1]).flex as float64;
 	await sleepAsync(200);
 	assert styleOf(bar.children[1]).flex as float64 === stoppedAt, "determinate again, no more steps";
 	setBusy(true);
+	flush();
 	await sleepAsync(200);
 	dispose();
 	const frozen = head();

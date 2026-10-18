@@ -1,3 +1,4 @@
+import { flush } from "../../src/core/runtime";
 import { createSignal } from "../../src/core/signal";
 import { element } from "../../src/macros/ui/element";
 import { NeonEvent, neonEvent } from "../../src/render/event";
@@ -33,10 +34,12 @@ test "SafeAreaView adds the published insets to its own padding" {
 	const box = (): Style => styleOf(root.children[0]);
 	assert box().paddingTop === 10 && box().paddingBottom === 4 && box().flex === 1, "no insets yet";
 	publishSafeArea(47, 0, 34, 0);
+	flush();
 	assert box().paddingTop === 57 && box().paddingBottom === 38 && box().paddingLeft === 4, "insets added";
 	const insets = useSafeAreaInsets();
 	assert insets().top === 47 && insets().bottom === 34, "the hook reads the same insets";
 	publishSafeArea(0, 0, 0, 0);
+	flush();
 }
 
 test "KeyboardAvoidingView padding pads by the keyboard height less the vertical offset" {
@@ -47,8 +50,10 @@ test "KeyboardAvoidingView padding pads by the keyboard height less the vertical
 	const box = (): Style => styleOf(root.children[0]);
 	assert box().paddingBottom === 0, "no keyboard";
 	publishKeyboard(300);
+	flush();
 	assert box().paddingBottom === 280 && box().flex === 1, "keyboard up";
 	publishKeyboard(0);
+	flush();
 	assert box().paddingBottom === 0, "keyboard down";
 }
 
@@ -58,11 +63,15 @@ test "KeyboardAvoidingView height shrinks from its first frame while the keyboar
 	render(element(<KeyboardAvoidingView behavior="height" enabled={on()} style={{ flex: 1 }}><Text>body</Text></KeyboardAvoidingView>), mockHost(), root as unknown as HostNode);
 	const view = root.children[0];
 	fireEventWith(view, "onLayout", laidOut(700));
+	flush();
 	publishKeyboard(300);
+	flush();
 	assert styleOf(view).height === 400 && styleOf(view).flex === 0, "shrunk";
 	setOn(false);
+	flush();
 	assert styleOf(view).height === null && styleOf(view).flex === 1, "disabled restores the style";
 	publishKeyboard(0);
+	flush();
 }
 
 test "KeyboardAvoidingView position lifts a content view by the keyboard height" {
@@ -71,8 +80,10 @@ test "KeyboardAvoidingView position lifts a content view by the keyboard height"
 	assert mockToString(root) === "<root><view><view><text>lifted</text></view></view></root>", "shape: " + mockToString(root);
 	const content = root.children[0].children[0];
 	publishKeyboard(250);
+	flush();
 	assert styleOf(content).bottom === 250 && styleOf(content).position === "relative" && styleOf(content).padding === 8, "lifted";
 	publishKeyboard(0);
+	flush();
 	assert styleOf(content).bottom === 0, "back down";
 }
 
@@ -88,12 +99,16 @@ test "StatusBar applies per prop the most recently mounted value, and restores t
 	assert styleOf(first).display === "none", "takes no space";
 	assert attrOf(first, "statusBarStyle") === "light-content" && attrOf(first, "statusBarBackgroundColor") === "#123456" && attrOf(first, "statusBarHidden") === "false", "first applied";
 	setHidden(true);
+	flush();
 	assert attrOf(first, "statusBarHidden") === "true", "a prop change re-applies";
 	setDialog(true);
+	flush();
 	const second = root.children[0].children[1];
 	assert attrOf(second, "statusBarStyle") === "dark-content", "the newer one wins its prop";
 	assert attrOf(second, "statusBarBackgroundColor") === "#123456" && attrOf(second, "statusBarHidden") === "true", "the older one fills the rest";
 	setDialog(false);
+	flush();
 	setHidden(false);
+	flush();
 	assert attrOf(first, "statusBarStyle") === "light-content" && attrOf(first, "statusBarHidden") === "false", "the first applies again";
 }

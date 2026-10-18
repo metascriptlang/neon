@@ -1,3 +1,4 @@
+import { flush } from "../../src/core/runtime";
 import { createRoot } from "../../src/core/owner";
 import { createSignal } from "../../src/core/signal";
 import { element } from "../../src/macros/ui/element";
@@ -18,6 +19,7 @@ function laidOut(outer: MockNode, width: number, height: number): void {
 	e.width = width;
 	e.height = height;
 	fireEventWith(outer, "onLayout", e);
+	flush();
 }
 
 function content(outer: MockNode): MockNode {
@@ -33,12 +35,15 @@ function transformOf(n: MockNode): string {
 function drag(target: MockNode, points: number[], step: number): void {
 	let t = 1000.0;
 	fireTouch(target, "onTouchStart", points[0], 10, t);
+	flush();
 	for (let i = 1; i < points.length; i += 1) {
 		t += step;
 		fireTouch(target, "onTouchMove", points[i], 10, t);
+		flush();
 	}
 	t += step;
 	fireTouch(target, "onTouchEnd", points[points.length - 1], 10, t);
+	flush();
 }
 
 function row(log: string[], direction: DismissDirection, confirm: boolean): NeonNode {
@@ -88,18 +93,25 @@ test "endToStart refuses a rightward drag and shows the secondary background on 
 	laidOut(outer, 300, 60);
 	const target = content(outer);
 	fireTouch(target, "onTouchStart", 100, 10, 1);
+	flush();
 	fireTouch(target, "onTouchMove", 150, 10, 100);
+	flush();
 	assert transformOf(target) === "translateX(0px)" || transformOf(target) === "none", "a rightward drag does not move: " + transformOf(target);
 	fireTouch(target, "onTouchEnd", 150, 10, 200);
+	flush();
 	fireTouch(target, "onTouchStart", 200, 10, 300);
+	flush();
 	fireTouch(target, "onTouchMove", 170, 10, 400);
+	flush();
 	fireTouch(target, "onTouchMove", 100, 10, 500);
+	flush();
 	const primary = outer.children[0].style;
 	const secondary = outer.children[1].style;
 	assert transformOf(target) === "translateX(-70px)", "dragged left: " + transformOf(target);
 	assert primary !== null && primary.display === "none", "the primary background hides";
 	assert secondary !== null && secondary.display === "flex", "the secondary background shows";
 	fireTouch(target, "onTouchEnd", 0, 10, 600);
+	flush();
 }
 
 test "confirmDismiss false moves the row back and does not dismiss" {

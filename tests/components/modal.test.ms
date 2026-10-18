@@ -1,3 +1,4 @@
+import { flush } from "../../src/core/runtime";
 import { createSignal } from "../../src/core/signal";
 import { createContext, useContext } from "../../src/render/context";
 import { sleepAsync } from "std/core/promise";
@@ -21,11 +22,13 @@ test "a visible Modal mounts its children into the overlay root above the app, a
 	const overlay = overlayOf(host);
 	assert mockToString(overlay) === "<overlay></overlay>", "hidden: " + mockToString(overlay);
 	setOpen(true);
+	flush();
 	assert mockToString(overlay) === "<overlay><modal animationType=\"fade\"><text>sheet</text></modal></overlay>", "shown: " + mockToString(overlay);
 	assert mockToString(root).indexOf("sheet") < 0, "nothing lands in the app tree: " + mockToString(root);
 	const box = overlay.children[0].style as Style;
 	assert box.position === "absolute" && box.top === 0 && box.bottom === 0 && box.zIndex === 1000 && box.backgroundColor !== "transparent", "fills, stacks above, opaque";
 	setOpen(false);
+	flush();
 	assert mockToString(overlay) === "<overlay></overlay>", "hidden again: " + mockToString(overlay);
 }
 
@@ -42,6 +45,7 @@ test "a transparent Modal routes onRequestClose, and onShow and onDismiss follow
 	assert (overlay.children[0].style as Style).backgroundColor === "transparent", "transparent";
 	await sleepAsync(20);
 	fireEvent(overlay.children[0], "onRequestClose");
+	flush();
 	await sleepAsync(20);
 	assert log() === "show;close;dismiss;", "events: " + log();
 	assert overlay.children.length === 0, "closed";

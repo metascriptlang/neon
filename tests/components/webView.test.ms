@@ -1,3 +1,4 @@
+import { flush } from "../../src/core/runtime";
 import { createSignal } from "../../src/core/signal";
 import { HostNode, MockNode, mockNode, mockHost, render, mockToString, fireEventWith } from "../../src/render/host";
 import { neonEvent } from "../../src/render/event";
@@ -25,6 +26,7 @@ function fire(n: MockNode, name: string, value: string): void {
 	const e = neonEvent(name);
 	e.value = value;
 	fireEventWith(n, name, e);
+	flush();
 }
 
 test "originOf keeps scheme and authority the way RN's extractOrigin regex does" {
@@ -55,6 +57,7 @@ test "a WebView writes its source to the wire and fills its parent by default" {
 	assert attrOf(view, "javaScriptEnabled") === "false" && attrOf(view, "interceptLoads") === "true", mockToString(root);
 	assert (view.style as Style).flexGrow === 1, "fills its parent";
 	setPage("https://neon.dev");
+	flush();
 	assert attrOf(view, "source") === "uri\x1fhttps://neon.dev", attrOf(view, "source");
 }
 
@@ -131,6 +134,7 @@ test "the ref's methods are commands on the node, and refuse once the WebView un
 	h.injectJavaScript("1 + 1");
 	assert attrOf(view, "command") === "injectJavaScript\x1f1 + 1", attrOf(view, "command");
 	setShown(false);
+	flush();
 	let refused = "";
 	try {
 		h.reload();

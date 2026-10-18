@@ -1,3 +1,4 @@
+import { flush } from "../../src/core/runtime";
 import { createSignal } from "../../src/core/signal";
 import { HostNode, MockNode, mockNode, mockHost, render, mockToString, fireEventWith } from "../../src/render/host";
 import { neonEvent } from "../../src/render/event";
@@ -23,6 +24,7 @@ function fire(n: MockNode, name: string, value: string, width: number, height: n
 	e.width = width;
 	e.height = height;
 	fireEventWith(n, name, e);
+	flush();
 }
 
 test "a Video writes react-native-video's playback props with their defaults" {
@@ -36,7 +38,9 @@ test "a Video writes react-native-video's playback props with their defaults" {
 		.map((name: string): string => `${name}=${attrOf(video, name)}`).join(" ");
 	assert shape === "source=https://neon.dev/clip.mp4 paused=true muted=false volume=1 rate=1 repeat=true controls=false progressUpdateInterval=250 resizeMode=cover", shape;
 	setPaused(false);
+	flush();
 	setRate(1.5);
+	flush();
 	assert attrOf(video, "paused") === "false" && attrOf(video, "rate") === "1.5", mockToString(root);
 }
 

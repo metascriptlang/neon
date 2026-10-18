@@ -1,3 +1,4 @@
+import { flush } from "../../src/core/runtime";
 import { createSignal } from "../../src/core/signal";
 import { Dispose } from "../../src/core/types";
 import { element } from "../../src/macros/ui/element";
@@ -21,6 +22,7 @@ function unmount(): void {
 	if (disposeLast !== null) { (disposeLast as Dispose)(); }
 	disposeLast = null;
 	setFrameDriver(null);
+	flush();
 }
 
 function attrOf(n: MockNode, name: string): string {
@@ -52,6 +54,7 @@ function laidOut(n: MockNode, x: number, width: number, height: number): void {
 	e.width = width;
 	e.height = height;
 	fireEventWith(n, "onLayout", e);
+	flush();
 }
 
 function pager(root: MockNode): MockNode {
@@ -99,6 +102,7 @@ test "a tab press moves the pages, the indicator and the selected state" {
 	laidOut(pager(root), 0, 300, 500);
 	assert attrOf(bar[0], "accessibilityState") === "selected", attrOf(bar[0], "accessibilityState");
 	fireEvent(bar[2], "onPress");
+	flush();
 	clock.step(9);
 	const moving = indicator(root).style as Style;
 	assert (moving.left as number) > 0 && (moving.left as number) < 200, "the indicator is on its way";
@@ -107,6 +111,7 @@ test "a tab press moves the pages, the indicator and the selected state" {
 	assert (indicator(root).style as Style).left === 200, "under the third tab";
 	assert attrOf(bar[2], "accessibilityState") === "selected" && attrOf(bar[0], "accessibilityState") === "", "selected moved";
 	setIndex(1);
+	flush();
 	clock.runAll();
 	assert (indicator(root).style as Style).left === 100 && changes.join(",") === "2", "a controlled index moves without echo";
 	unmount();
@@ -124,11 +129,16 @@ test "a swipe changes the index and drags the indicator along" {
 	const pages = pager(root);
 	laidOut(pages, 0, 300, 500);
 	fireTouch(pages.children[0], "onTouchStart", 250, 100, 1000);
+	flush();
 	fireTouch(pages.children[0], "onTouchMove", 230, 100, 1100);
+	flush();
 	fireTouch(pages.children[0], "onTouchMove", 155, 100, 1200);
+	flush();
 	assert (indicator(root).style as Style).left === 25, "a quarter page drag moves the indicator a quarter tab: " + ((indicator(root).style as Style).left as number).toString();
 	fireTouch(pages.children[0], "onTouchMove", 50, 100, 1300);
+	flush();
 	fireTouch(pages.children[0], "onTouchEnd", 50, 100, 1400);
+	flush();
 	clock.runAll();
 	assert changes.join(",") === "1" && (indicator(root).style as Style).left === 100, "on the second tab: " + changes.join(",");
 	unmount();
@@ -142,9 +152,11 @@ test "lazy scenes mount when first focused and stay mounted" {
 	const shown = texts(root).join(",");
 	assert shown.indexOf("scene chats") >= 0 && shown.indexOf("loading status") >= 0 && shown.indexOf("scene status") < 0, shown;
 	fireEvent(tabs(root)[1], "onPress");
+	flush();
 	clock.runAll();
 	assert texts(root).join(",").indexOf("scene status") >= 0, "the second scene rendered: " + texts(root).join(",");
 	fireEvent(tabs(root)[0], "onPress");
+	flush();
 	clock.runAll();
 	assert texts(root).join(",").indexOf("scene status") >= 0 && texts(root).join(",").indexOf("loading calls") >= 0, "kept, and the third still waits";
 	unmount();
@@ -160,6 +172,7 @@ test "a scrollable tab bar centres the selected tab" {
 	const scroller = collect(root, (m: MockNode): boolean => m.tag === "scrollview", [])[0];
 	laidOut(scroller, 0, 300, 48);
 	fireEvent(bar[5], "onPress");
+	flush();
 	clock.runAll();
 	assert scroller.scrollX === 345, "tab 5 centred: " + scroller.scrollX.toString();
 	unmount();

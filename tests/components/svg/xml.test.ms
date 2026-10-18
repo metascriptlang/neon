@@ -1,3 +1,4 @@
+import { flush } from "../../../src/core/runtime";
 import { createSignal } from "../../../src/core/signal";
 import { element } from "../../../src/macros/ui/element";
 import { HostNode, MockNode, mockNode, mockHost, render } from "../../../src/render/host";
@@ -41,8 +42,10 @@ test "SvgXml draws the document through the same display list" {
 	assert list.indexOf("X 1 0 0 1 1 0 M 1 0 C") > 0, list;
 	assert list.endsWith("T 0 1 1 1 1 9 0 0 3 0 0 0 0 1 A%20&%20B"), list;
 	setXml("<svg viewBox='0 0 4 4'><rect width='4' height='4'/></svg>");
+	flush();
 	assert listOf(root) === "V 0 0 4 4 5 0 M 0 0 L 4 0 L 4 4 L 0 4 Z F c 0 0 0 1 S n E 0 O", listOf(root);
 	setXml("<svg><defs><symbol id='s'><rect width='2' height='2'/></symbol></defs><use xlink:href='#s' x='3'/></svg>");
+	flush();
 	assert listOf(root) === "X 1 0 0 1 3 0 M 0 0 L 2 0 L 2 2 L 0 2 Z F c 0 0 0 1 S n E 0 O", listOf(root);
 }
 

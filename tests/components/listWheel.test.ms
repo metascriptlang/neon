@@ -1,3 +1,4 @@
+import { flush } from "../../src/core/runtime";
 import { createRoot } from "../../src/core/owner";
 import { element } from "../../src/macros/ui/element";
 import { neonEvent } from "../../src/render/event";
@@ -48,11 +49,13 @@ test "a ListWheelScrollView reports the selected hour while scrolling and snaps 
 		e.y = y;
 		e.height = 200;
 		fireEventWith(scroll, "onScroll", e);
+		flush();
 	};
 	at(30);
 	at(70);
 	at(95);
 	assert selections.join(",") === "1,2", "1 then 2: " + selections.join(",");
 	fireEventWith(scroll, "onMomentumScrollEnd", neonEvent("momentumscrollend"));
+	flush();
 	assert scroll.scrollY === 80 && scroll.scrollAnimated, "snapped to item 2 at 80: " + scroll.scrollY.toString();
 }

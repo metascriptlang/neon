@@ -1,3 +1,4 @@
+import { flush } from "../../src/core/runtime";
 import { createSignal } from "../../src/core/signal";
 import { Dispose } from "../../src/core/types";
 import { element } from "../../src/macros/ui/element";
@@ -22,6 +23,7 @@ function unmount(): void {
 	if (disposeLast !== null) { (disposeLast as Dispose)(); }
 	disposeLast = null;
 	setFrameDriver(null);
+	flush();
 }
 
 function attrOf(n: MockNode, name: string): string {
@@ -46,6 +48,7 @@ function laidOut(n: MockNode, height: number): void {
 	e.width = 300;
 	e.height = height;
 	fireEventWith(n, "onLayout", e);
+	flush();
 }
 
 function buttons(root: MockNode): MockNode[] {
@@ -64,6 +67,7 @@ test "a Collapsible animates from zero to its measured height and then lets it s
 	const inner = outer.children[0];
 	assert styleOf(outer).height === 0 && styleOf(inner).display === "none", "starts closed and hidden";
 	setCollapsed(false);
+	flush();
 	assert styleOf(inner).display === "flex", "shown to be measured";
 	laidOut(inner, 120);
 	clock.step(5);
@@ -72,6 +76,7 @@ test "a Collapsible animates from zero to its measured height and then lets it s
 	clock.runAll();
 	assert styleOf(outer).height === null && ended === 1, "open at rest has no fixed height";
 	setCollapsed(true);
+	flush();
 	clock.step(2);
 	assert (styleOf(outer).height as number) < 120, "closing";
 	clock.runAll();
@@ -101,12 +106,14 @@ test "an ExpansionTile toggles, turns its icon and reports its state" {
 	const icon = collect(root, (m: MockNode): boolean => m.style !== null && ((m.style as Style).transform ?? "").indexOf("rotate") === 0, [])[0];
 	assert styleOf(icon).transform === "rotate(0deg)", styleOf(icon).transform as string;
 	fireEvent(header, "onPress");
+	flush();
 	const body = collect(root, (m: MockNode): boolean => m.style !== null && (m.style as Style).flexShrink === 0, [])[0];
 	laidOut(body, 48);
 	clock.runAll();
 	assert changes.join(",") === "true" && attrOf(header, "accessibilityState") === "expanded", changes.join(",");
 	assert styleOf(icon).transform === "rotate(180deg)", styleOf(icon).transform as string;
 	fireEvent(header, "onPress");
+	flush();
 	clock.runAll();
 	assert changes.join(",") === "true,false" && styleOf(icon).transform === "rotate(0deg)";
 	unmount();
@@ -135,8 +142,11 @@ test "an Accordion opens one section at a time unless it expands several" {
 	const headers = buttons(root);
 	assert headers.length === 3, "three headers";
 	fireEvent(headers[0], "onPress");
+	flush();
 	fireEvent(headers[2], "onPress");
+	flush();
 	fireEvent(headers[2], "onPress");
+	flush();
 	assert seen.join(",") === "0,2,", "single: " + seen.join(",");
 	assert attrOf(headers[0], "accessibilityState") === "collapsed";
 	(disposeLast as Dispose)();
@@ -145,8 +155,11 @@ test "an Accordion opens one section at a time unless it expands several" {
 	const again = mount((): NeonNode => accordion(many, (next: number[]): void => { seenMany.push(next.join("|")); setMany(next); }, true));
 	const more = buttons(again);
 	fireEvent(more[0], "onPress");
+	flush();
 	fireEvent(more[2], "onPress");
+	flush();
 	fireEvent(more[0], "onPress");
+	flush();
 	assert seenMany.join(",") === "0,0|2,2", "multiple: " + seenMany.join(",");
 	assert attrOf(more[2], "accessibilityState") === "expanded";
 	unmount();

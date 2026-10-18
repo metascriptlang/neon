@@ -1,3 +1,4 @@
+import { flush } from "../../src/core/runtime";
 import { createSignal, Accessor } from "../../src/core/signal";
 import { Dispose } from "../../src/core/types";
 import { element } from "../../src/macros/ui/element";
@@ -95,12 +96,15 @@ test "a sortable header sorts, flips direction and announces the order" {
 	};
 	assert names() === "Frozen yogurt|Eclair|Cupcake", names();
 	fireEvent(pressableWith(root, "Dessert↑"), "onPress");
+	flush();
 	assert sorts.join(",") === "0 up" && names() === "Cupcake|Eclair|Frozen yogurt", names();
 	const header = pressableWith(root, "Dessert↑");
 	assert attrOf(header, "accessibilityLabel") === "Dessert, sorted ascending", attrOf(header, "accessibilityLabel");
 	fireEvent(header, "onPress");
+	flush();
 	assert sorts.join(",") === "0 up,0 down" && names() === "Frozen yogurt|Eclair|Cupcake", names();
 	fireEvent(pressableWith(root, "↓Calories"), "onPress");
+	flush();
 	assert sorts.join(",") === "0 up,0 down,1 up", sorts.join(",");
 	const numeric = collect(root, (m: MockNode): boolean => m.tag === "view" && textOf(m) === "305" && m.style !== null && (m.style as Style).alignItems === "flex-end", []);
 	assert numeric.length === 1, "a numeric cell is end-aligned";
@@ -110,12 +114,14 @@ test "a sortable header sorts, flips direction and announces the order" {
 test "a selectable row toggles from a cell, the header checkbox selects every row" {
 	const [chosen, setChosen] = createSignal<string[]>([]);
 	const choose = (name: string, on: boolean): void => {
-		const next: string[] = [];
-		for (const n of chosen()) {
-			if (n !== name) { next.push(n); }
-		}
-		if (on) { next.push(name); }
-		setChosen(next);
+		setChosen((prev: string[]): string[] => {
+			const next: string[] = [];
+			for (const n of prev) {
+				if (n !== name) { next.push(n); }
+			}
+			if (on) { next.push(name); }
+			return next;
+		});
 	};
 	const columns: DataColumn[] = [{ label: "Dessert" }, { label: "Calories", numeric: true }];
 	const rows = (): DataRow[] => desserts().map((d: Dessert): DataRow => ({
@@ -127,13 +133,16 @@ test "a selectable row toggles from a cell, the header checkbox selects every ro
 	const checkboxes = (): MockNode[] => collect(root, (m: MockNode): boolean => attrOf(m, "accessibilityRole") === "checkbox", []);
 	assert checkboxes().length === 4, "a header checkbox and one per row";
 	fireEvent(pressableWith(root, "Eclair"), "onPress");
+	flush();
 	assert chosen().join(",") === "Eclair", chosen().join(",");
 	assert attrOf(checkboxes()[0], "accessibilityState") === "mixed", "the header is mixed: " + attrOf(checkboxes()[0], "accessibilityState");
 	const tinted = collect(root, (m: MockNode): boolean => textOf(m) === "262" && m.style !== null && (m.style as Style).backgroundColor === "#e3f2fd", []);
 	assert tinted.length === 1, "the selected row is tinted in every column";
 	fireEvent(checkboxes()[0], "onPress");
+	flush();
 	assert chosen().length === 3, "select all: " + chosen().join(",");
 	fireEvent(checkboxes()[0], "onPress");
+	flush();
 	assert chosen().length === 0, "and clear all";
 	(disposeLast as Dispose)();
 }

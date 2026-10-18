@@ -1,5 +1,6 @@
 // The Android back button closes a shown Dialog or BottomSheet (react-native-paper Modal).
 
+import { flush } from "../../src/core/runtime";
 import { createSignal } from "../../src/core/signal";
 import { element } from "../../src/macros/ui/element";
 import { HostNode, MockNode, mockNode, mockHost, render } from "../../src/render/host";
@@ -20,14 +21,19 @@ test "Dialog and BottomSheet close on the Android back button while shown, and o
 	</View>), mockHost(), root as unknown as HostNode);
 	const idle = dispatchHardwareBackPress();
 	setDialog(true);
+	flush();
 	const closed = dispatchHardwareBackPress();
 	setSheet(true);
+	flush();
 	const sheetClosed = dispatchHardwareBackPress();
 	setLocked(true);
+	flush();
 	setDialog(true);
+	flush();
 	const held = dispatchHardwareBackPress();
 	const stillOpen = dialog();
 	setDialog(false);
+	flush();
 	const after = dispatchHardwareBackPress();
 	assert !idle && !after, `the platform default runs while nothing is shown: ${idle} ${after}`;
 	assert closed && sheetClosed && held, "a shown overlay consumes the back press";

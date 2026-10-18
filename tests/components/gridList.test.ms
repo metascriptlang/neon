@@ -1,3 +1,4 @@
+import { flush } from "../../src/core/runtime";
 import { createRoot } from "../../src/core/owner";
 import { createSignal, Accessor } from "../../src/core/signal";
 import { element } from "../../src/macros/ui/element";
@@ -44,6 +45,7 @@ function layout(n: MockNode, width: number): void {
 	e.width = width;
 	e.height = 600;
 	fireEventWith(n, "onLayout", e);
+	flush();
 }
 
 test "maxItemWidth derives the column count and the item width like Flutter's max-extent delegate" {

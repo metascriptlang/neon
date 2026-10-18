@@ -1,3 +1,4 @@
+import { flush } from "../../src/core/runtime";
 import { Dispose } from "../../src/core/types";
 import { createSignal } from "../../src/core/signal";
 import { element } from "../../src/macros/ui/element";
@@ -22,6 +23,7 @@ function unmount(): void {
 	if (disposeLast !== null) { (disposeLast as Dispose)(); }
 	disposeLast = null;
 	setFrameDriver(null);
+	flush();
 }
 
 function laidOut(n: MockNode, width: number, height: number): void {
@@ -29,6 +31,7 @@ function laidOut(n: MockNode, width: number, height: number): void {
 	e.width = width;
 	e.height = height;
 	fireEventWith(n, "onLayout", e);
+	flush();
 }
 
 function transformOf(n: MockNode): string {
@@ -73,13 +76,18 @@ test "a finger on the carousel holds auto-play until the drag ends" {
 	const outer = root.children[0];
 	laidOut(outer, 300, 200);
 	fireTouch(outer.children[0], "onTouchStart", 200, 10, 1000);
+	flush();
 	fireTouch(outer.children[0], "onTouchMove", 180, 10, 1100);
+	flush();
 	fireTouch(outer.children[0], "onTouchMove", 170, 10, 1200);
+	flush();
 	await sleepAsync(80);
 	clock.runAll();
 	assert snaps.length === 0, "held: " + snaps.join(",");
 	fireTouch(outer.children[0], "onTouchMove", 170, 10, 1300);
+	flush();
 	fireTouch(outer.children[0], "onTouchEnd", 170, 10, 1400);
+	flush();
 	clock.runAll();
 	await sleepAsync(60);
 	clock.runAll();
@@ -101,6 +109,7 @@ test "turning auto-play off stops the timer; without a loop auto-play stops at t
 	}
 	assert snaps.join(",") === "1,2", "stopped at the last slide: " + snaps.join(",");
 	setPlaying(false);
+	flush();
 	await sleepAsync(60);
 	clock.runAll();
 	assert snaps.join(",") === "1,2";

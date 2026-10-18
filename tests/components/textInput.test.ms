@@ -1,3 +1,4 @@
+import { flush } from "../../src/core/runtime";
 import { createSignal } from "../../src/core/signal";
 import { element } from "../../src/macros/ui/element";
 import { HostNode, MockNode, mockNode, mockHost, render, mockToString, fireEventWith } from "../../src/render/host";
@@ -21,8 +22,10 @@ test "TextInput writes its RN props as attributes and routes typing and submit" 
 	assert mockToString(root) === "<root><textinput value=\"Ada\" placeholder=\"Name\" secureTextEntry=\"false\" autoCapitalize=\"none\" maxLength=\"12\" keyboardType=\"email-address\" returnKeyType=\"next\" accessibilityLabel=\"Email\"></textinput></root>", "attributes: " + mockToString(root);
 	const field = root.children[0];
 	fireEventWith(field, "onChangeText", typed("Grace"));
+	flush();
 	assert mockToString(root).indexOf("value=\"Grace\"") > 0, "controlled value follows the setter: " + mockToString(root);
 	fireEventWith(field, "onSubmitEditing", typed("Grace"));
+	flush();
 	assert submitted === "Grace", "submit carries the text: " + submitted;
 }
 
@@ -41,6 +44,7 @@ test "a TextInput ref is a handle whose focus and blur go through the host and t
 	handles[0].focus();
 	assert handles[0].isFocused() && !handles[1].isFocused(), "first focused";
 	fireEventWith(root.children[0].children[0], "onSubmitEditing", typed(""));
+	flush();
 	handles[0].blur();
 	assert !handles[0].isFocused() && handles[1].isFocused(), "focus moved to the second field";
 	assert log === "focus second;blur first;", "events: " + log;

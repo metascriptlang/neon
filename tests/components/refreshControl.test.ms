@@ -1,3 +1,4 @@
+import { flush } from "../../src/core/runtime";
 import { createSignal } from "../../src/core/signal";
 import { element } from "../../src/macros/ui/element";
 import { NeonNode } from "../../src/render/hostTypes";
@@ -30,8 +31,10 @@ test "a RefreshControl configures its ScrollView's refresh options and routes it
 	assert attrOf(scroll, "refreshEnabled") === "true" && attrOf(scroll, "refreshing") === "false", "enabled, idle";
 	assert attrOf(scroll, "refreshTintColor") === "#ff0000" && attrOf(scroll, "refreshColors") === "#00ff00,#0000ff", "colours";
 	fireEvent(scroll, "onRefresh");
+	flush();
 	assert pulls === 1 && attrOf(scroll, "refreshing") === "true", "the pull runs onRefresh and the controlled value follows";
 	setBusy(false);
+	flush();
 	assert attrOf(scroll, "refreshing") === "false", "the app closes the refresh";
 }
 
@@ -41,6 +44,7 @@ test "RefreshControl enabled={false} turns the pull off" {
 	render(element(<ScrollView refreshControl={<RefreshControl refreshing={false} enabled={on()} />}><View /></ScrollView>), mockHost(), root as unknown as HostNode);
 	assert attrOf(root.children[0], "refreshEnabled") === "false", "disabled";
 	setOn(true);
+	flush();
 	assert attrOf(root.children[0], "refreshEnabled") === "true", "enabled follows its signal";
 }
 
@@ -54,5 +58,6 @@ test "a FlatList forwards refreshControl to its ScrollView" {
 	const scroll = root.children[0];
 	assert attrOf(scroll, "refreshEnabled") === "true", "the list's scroll view has the control";
 	fireEvent(scroll, "onRefresh");
+	flush();
 	assert pulls === 1, "the pull reaches the author";
 }

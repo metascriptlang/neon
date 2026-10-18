@@ -1,3 +1,4 @@
+import { flush } from "../../../src/core/runtime";
 import { createSignal, Accessor } from "../../../src/core/signal";
 import { element } from "../../../src/macros/ui/element";
 import { HostNode, MockNode, mockNode, mockHost, render, mockToString } from "../../../src/render/host";
@@ -58,9 +59,12 @@ test "a reactive radius re-sends the list; an unchanged list is not re-sent" {
 		<Circle cx={50} cy={50} r={r()} fill="red" />
 	</Svg>));
 	setR(10);
+	flush();
 	assert listOf(root).startsWith("M 60 50 C 60 55.5228 55.5228 60 50 60"), listOf(root);
 	setLabel("b");
+	flush();
 	setR(40);
+	flush();
 	assert listOf(root).startsWith(CIRCLE_40), listOf(root);
 }
 
@@ -178,8 +182,10 @@ test "Show and For inside an Svg add and remove shapes" {
 	</Svg>));
 	assert listOf(root) === "M 0 0 L 2 0 L 2 10 L 0 10 Z F c 0 0 255 1 S n E 0 O M 0 0 L 2 0 L 2 20 L 0 20 Z F c 0 0 255 1 S n E 0 O", listOf(root);
 	setOn(true);
+	flush();
 	assert listOf(root).startsWith("M 0 0 L 5 0 L 5 5 L 0 5 Z F c 255 0 0 1"), listOf(root);
 	setBars([30]);
+	flush();
 	assert listOf(root).endsWith("M 0 0 L 2 0 L 2 30 L 0 30 Z F c 0 0 255 1 S n E 0 O"), listOf(root);
 	assert listOf(root).indexOf("L 2 20") < 0, listOf(root);
 }

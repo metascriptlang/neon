@@ -1,3 +1,4 @@
+import { flush } from "../../src/core/runtime";
 import { createRoot } from "../../src/core/owner";
 import { element } from "../../src/macros/ui/element";
 import { neonEvent } from "../../src/render/event";
@@ -27,6 +28,7 @@ function laidOut(n: MockNode, width: number, height: number): void {
 	e.width = width;
 	e.height = height;
 	fireEventWith(n, "onLayout", e);
+	flush();
 }
 
 function transformOf(n: MockNode): string {
@@ -96,6 +98,7 @@ test "a drag past half a page settles on the next page and reports it once" {
 	assert controller.peek() === 1 && controller.selectedPage() === 1, "settled on page 1";
 	assert transformOf(outer.children[1]) === "translateX(0px)" && transformOf(outer.children[0]) === "translateX(-300px)", transformOf(outer.children[0]);
 	setFrameDriver(null);
+	flush();
 }
 
 test "a short fast fling turns the page, a short slow drag springs back" {
@@ -113,12 +116,17 @@ test "a short fast fling turns the page, a short slow drag springs back" {
 	assert controller.selectedPage() === 1 && controller.peek() === 1, "a slow 36 pt drag stays on page 1";
 	let t = 5000.0;
 	fireTouch(outer.children[1], "onTouchStart", 100, 10, t);
+	flush();
 	fireTouch(outer.children[1], "onTouchMove", 115, 10, t + 10);
+	flush();
 	fireTouch(outer.children[1], "onTouchMove", 160, 10, t + 20);
+	flush();
 	fireTouch(outer.children[1], "onTouchEnd", 160, 10, t + 320);
+	flush();
 	clock.runAll();
 	assert controller.selectedPage() === 1, "a fast drag that rests before lifting does not fling";
 	setFrameDriver(null);
+	flush();
 }
 
 test "dragging past the first page resists and springs back" {
@@ -130,13 +138,18 @@ test "dragging past the first page resists and springs back" {
 	laidOut(outer, 300, 400);
 	let t = 1000.0;
 	fireTouch(outer.children[0], "onTouchStart", 50, 10, t);
+	flush();
 	fireTouch(outer.children[0], "onTouchMove", 80, 10, t + 100);
+	flush();
 	fireTouch(outer.children[0], "onTouchMove", 150, 10, t + 200);
+	flush();
 	assert Math.abs(controller.peek() + 70.0 / 300.0 * 0.35) < 0.001, "the edge moves a share of the finger: " + controller.peek().toString();
 	fireTouch(outer.children[0], "onTouchEnd", 150, 10, t + 300);
+	flush();
 	clock.runAll();
 	assert controller.peek() === 0 && log.indexOf("page 3") < 0, "back on the first page: " + log.join(",");
 	setFrameDriver(null);
+	flush();
 }
 
 test "setPage animates to its target and reports only the target" {
@@ -156,6 +169,7 @@ test "setPage animates to its target and reports only the target" {
 	clock.runAll();
 	assert controller.peek() === 3, "a page past the end clamps";
 	setFrameDriver(null);
+	flush();
 }
 
 test "a looping pager goes from the first page back to the last one" {
@@ -174,6 +188,7 @@ test "a looping pager goes from the first page back to the last one" {
 	clock.runAll();
 	assert controller.peek() === 0, "setPage takes the short way round: " + controller.peek().toString();
 	setFrameDriver(null);
+	flush();
 }
 
 test "a viewport fraction centres the page and lets the neighbours peek" {
@@ -205,6 +220,7 @@ test "a vertical pager pages on the vertical axis" {
 	clock.runAll();
 	assert controller.selectedPage() === 1, "a horizontal drag does not page a vertical pager";
 	setFrameDriver(null);
+	flush();
 }
 
 test "the page indicator widens the selected dot and reports a press" {
@@ -218,5 +234,6 @@ test "the page indicator widens the selected dot and reports a press" {
 	const idle = dots[0].style;
 	assert active !== null && idle !== null && active.width === 20 && idle.width === 8, "the selected dot is wider";
 	fireEvent(dots[1], "onPress");
+	flush();
 	assert presses.join(",") === "1", presses.join(",");
 }

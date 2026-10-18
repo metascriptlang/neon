@@ -1,3 +1,4 @@
+import { flush } from "../../src/core/runtime";
 import { createSignal } from "../../src/core/signal";
 import { element } from "../../src/macros/ui/element";
 import { NeonEvent } from "../../src/render/event";
@@ -22,6 +23,7 @@ test "Pressable sends a number hitSlop as four insets and android_ripple as one 
 	const button = root.children[0].children[0];
 	const all = attrOf(button, "hitSlop");
 	setSlop(6);
+	flush();
 	assert all === "10,10,10,10", "a number reaches every edge: " + all;
 	assert attrOf(button, "hitSlop") === "6,6,6,6", "follows its signal: " + attrOf(button, "hitSlop");
 	assert attrOf(button, "androidRipple") === "#33ff0000,true,24", "ripple: " + attrOf(button, "androidRipple");
