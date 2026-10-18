@@ -217,7 +217,7 @@ int harnessPostKeys(const char *title, const char *keys) {
 	for (NSUInteger i = 0; i < all.length; i++) {
 		NSString *ch = [all substringWithRange:NSMakeRange(i, 1)];
 		unichar c = [ch characterAtIndex:0];
-		unsigned short code = c == '\n' ? 36 : c == '\b' ? 51 : 0;
+		unsigned short code = c == '\n' ? 36 : c == '\b' ? 51 : c == 0x1b ? 53 : 0;
 		NSString *chars = c == '\n' ? @"\r" : c == '\b' ? [NSString stringWithFormat:@"%C", (unichar)NSDeleteCharacter] : ch;
 		for (int down = 1; down >= 0; down--) {
 			NSEvent *event = [NSEvent keyEventWithType:down ? NSEventTypeKeyDown : NSEventTypeKeyUp location:NSZeroPoint modifierFlags:0
