@@ -277,6 +277,22 @@ static WKWebView *findWeb(NSView *view) {
 	return nil;
 }
 
+int32_t niMeasureInWindow(void *view);
+double niMeasurementX(void);
+double niMeasurementY(void);
+double niMeasurementW(void);
+double niMeasurementH(void);
+
+static NSView *labelled(NSView *view, NSString *label) {
+	if ([view respondsToSelector:NSSelectorFromString(@"accessibility")] &&
+		[[[view valueForKey:@"accessibility"] objectForKey:@"accessibilityLabel"] isEqualToString:label]) return view;
+	for (NSView *child in view.subviews) {
+		NSView *found = labelled(child, label);
+		if (found) return found;
+	}
+	return nil;
+}
+
 static NSBitmapImageRep *g_webShot = nil;
 static NSSize g_webShotSize;
 
@@ -304,3 +320,23 @@ int harnessWebPixel(int x, int y) {
 	if (!color) return -1;
 	return ((int)lround(color.redComponent * 255) << 16) | ((int)lround(color.greenComponent * 255) << 8) | (int)lround(color.blueComponent * 255);
 }
+
+const char *harnessMeasure(const char *title, const char *label) {
+	static char out[128];
+	NSView *view = labelled(windowTitled(title).contentView, @(label));
+	if (!view) {
+		snprintf(out, sizeof out, "no view labelled %s", label);
+		return out;
+	}
+	int32_t got = niMeasureInWindow((__bridge void *)view);
+	if (got != 1) snprintf(out, sizeof out, "%d", got);
+	else snprintf(out, sizeof out, "%g,%g,%g,%g", niMeasurementX(), niMeasurementY(), niMeasurementW(), niMeasurementH());
+	return out;
+}
+
+int harnessMeasureDetached(void) {
+	NSView *view = [[NSClassFromString(@"NeonView") alloc] initWithFrame:NSMakeRect(0, 0, 10, 10)];
+	return niMeasureInWindow((__bridge void *)view);
+}
+
+void harnessHide(const char *title, const char *label) { labelled(windowTitled(title).contentView, @(label)).hidden = YES; }

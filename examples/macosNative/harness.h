@@ -24,6 +24,11 @@ int harnessPostKeys(const char *title, const char *keys);
 void harnessCompose(const char *title, const char *marked);
 void harnessCommit(const char *title, const char *text);
 int harnessFocusedText(const char *title);
+// niMeasureInWindow on the view whose accessibilityLabel is label: "x,y,w,h" on success, else its return code.
+const char *harnessMeasure(const char *title, const char *label);
+// niMeasureInWindow on a NeonView that was never attached.
+int harnessMeasureDetached(void);
+void harnessHide(const char *title, const char *label);
 // Each NSSwitch in the window in view-tree order, 1 for on and 0 for off.
 const char *harnessSwitchStates(const char *title);
 // The first WKWebView's page, snapshotted by WebKit (asynchronous); then a pixel in web view points as 0xRRGGBB,
