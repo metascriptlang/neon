@@ -7,8 +7,8 @@ import { publishUrl } from "../../api/linking";
 import { publishReduceMotion, publishScreenReader } from "../../api/accessibilityInfo";
 import {
 	androidPermissionGranted, androidRequestPermissions, androidShouldShowRationale, battery, deviceInfo, haptic,
-	localization, locationClear, locationCurrent, locationWatch, onLocationEvent, onNetInfoEvent, permissionStatus,
-	refreshNetInfo, requestPermission, storageClear, storageGet, storageKeys, storageRemove, storageSet, watchNetInfo,
+	localization, onNetInfoEvent, permissionStatus, refreshNetInfo, requestPermission, storageClear, storageGet,
+	storageKeys, storageRemove, storageSet, watchNetInfo,
 } from "./deviceServices";
 import {
 	AppEvent, FIELD, RECORD, appCall, dispatchNativeAppEvent, runNativeAppStarts,
@@ -98,7 +98,6 @@ function onAppEvent(): void {
 		AppEvent.ReduceMotion => publishReduceMotion(value === "1"),
 		AppEvent.ImageSize => settleImage(value),
 		AppEvent.NetInfo => onNetInfoEvent(value),
-		AppEvent.Location => onLocationEvent(value),
 		AppEvent.Sound => onSoundEvent(value),
 		AppEvent.Recording => onRecordingEvent(value),
 		_ => dispatchNativeAppEvent(kind, value),
@@ -186,9 +185,6 @@ const services: AppServices = {
 	androidPermissionGranted,
 	androidShouldShowRationale,
 	androidRequestPermissions,
-	locationCurrent,
-	locationWatch,
-	locationClear,
 	haptic,
 	deviceInfo,
 	battery,

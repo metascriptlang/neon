@@ -1,5 +1,11 @@
-import { LocationFix, LocationRequest, appServices } from "./services";
+import { LocationFix, LocationRequest, locationServices } from "./locationServices";
 import { Permissions, PermissionResponse } from "./permissions";
+
+when (js && !server) {
+	import "../platform/browser/geolocation";
+} else when (ios || android) {
+	import "../platform/native/geolocation";
+}
 
 export interface GeolocationCoordinates {
 	latitude: number;
@@ -133,7 +139,7 @@ async function readCurrent(request: LocationRequest, success: GeolocationSuccess
 		report(deniedFix(), success, error);
 		return;
 	}
-	appServices("Geolocation.getCurrentPosition").locationCurrent(request, (fix: LocationFix): void => {
+	locationServices("Geolocation.getCurrentPosition").locationCurrent(request, (fix: LocationFix): void => {
 		report(fix, success, error);
 	});
 }
@@ -146,7 +152,7 @@ async function startWatch(id: int32, request: LocationRequest, success: Geolocat
 		return;
 	}
 	started.push(id);
-	appServices("Geolocation.watchPosition").locationWatch(id, request, (fix: LocationFix): void => {
+	locationServices("Geolocation.watchPosition").locationWatch(id, request, (fix: LocationFix): void => {
 		if (cleared.indexOf(id) < 0) { report(fix, success, error); }
 	});
 }
@@ -195,7 +201,7 @@ export class Geolocation {
 		const at = started.indexOf(id);
 		if (at < 0) { return; }
 		started.splice(at, 1);
-		appServices("Geolocation.clearWatch").locationClear(id);
+		locationServices("Geolocation.clearWatch").locationClear(id);
 	}
 
 	static stopObserving(): void {
@@ -282,7 +288,7 @@ export class Location {
 	static async getCurrentPositionAsync(options: LocationOptions = {}): Promise<LocationObject> {
 		if (!(await authorized())) { return objectOrThrow(deniedFix()); }
 		const fix = await new Promise<LocationFix>((resolve) => {
-			appServices("Location.getCurrentPositionAsync").locationCurrent(expoRequest(options, false), (current: LocationFix): void => {
+			locationServices("Location.getCurrentPositionAsync").locationCurrent(expoRequest(options, false), (current: LocationFix): void => {
 				resolve(current);
 			});
 		});
@@ -297,7 +303,7 @@ export class Location {
 		nextWatch += 1;
 		if (!(await authorized())) { throw new Error("Location permission was not granted."); }
 		started.push(id);
-		appServices("Location.watchPositionAsync").locationWatch(id, expoRequest(options, true), (fix: LocationFix): void => {
+		locationServices("Location.watchPositionAsync").locationWatch(id, expoRequest(options, true), (fix: LocationFix): void => {
 			if (fix.code === 0 && cleared.indexOf(id) < 0) { callback(locationObject(fix)); }
 		});
 		return { remove: (): void => { Geolocation.clearWatch(id as number); } };

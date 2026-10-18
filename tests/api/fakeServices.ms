@@ -1,7 +1,8 @@
 import {
-	AppServices, AlertRequest, BatterySnapshot, DeviceSnapshot, LocaleSnapshot, LocationFix, LocationRequest,
+	AppServices, AlertRequest, BatterySnapshot, DeviceSnapshot, LocaleSnapshot,
 	PermissionReply, ShareRequest, installAppServices,
 } from "../../src/api/services";
+import { LocationFix, LocationRequest, LocationServices, installLocationServices } from "../../src/api/locationServices";
 import {
 	NotificationServices, NotificationSpec, ScheduleReply, installNotificationServices,
 } from "../../src/api/notificationServices";
@@ -169,17 +170,6 @@ export class FakeServices {
 				return this.permission(permission).status === "granted";
 			},
 			androidShouldShowRationale: async (permission: string): Promise<boolean> => { return this.rationale; },
-			locationCurrent: (request: LocationRequest, done: (fix: LocationFix) => void): void => {
-				this.currentRequests.push(request);
-				this.currentDone.push(done);
-			},
-			locationWatch: (id: int32, request: LocationRequest, update: (fix: LocationFix) => void): void => {
-				this.log.push("locationWatch " + id.toString());
-				this.watchIds.push(id);
-				this.watchRequests.push(request);
-				this.watchUpdates.push(update);
-			},
-			locationClear: (id: int32): void => { this.log.push("locationClear " + id.toString()); },
 			haptic: (kind: string, style: string): void => { this.log.push("haptic " + kind + " " + style); },
 			deviceInfo: (): DeviceSnapshot => { return this.device; },
 			battery: async (): Promise<BatterySnapshot> => { return { level: 0.75, charging: true }; },
@@ -196,6 +186,24 @@ export class FakeServices {
 		};
 		installAppServices(services);
 		this.installNotifications();
+		this.installLocation();
+	}
+
+	installLocation(): void {
+		const services: LocationServices = {
+			locationCurrent: (request: LocationRequest, done: (fix: LocationFix) => void): void => {
+				this.currentRequests.push(request);
+				this.currentDone.push(done);
+			},
+			locationWatch: (id: int32, request: LocationRequest, update: (fix: LocationFix) => void): void => {
+				this.log.push("locationWatch " + id.toString());
+				this.watchIds.push(id);
+				this.watchRequests.push(request);
+				this.watchUpdates.push(update);
+			},
+			locationClear: (id: int32): void => { this.log.push("locationClear " + id.toString()); },
+		};
+		installLocationServices(services);
 	}
 
 	installNotifications(): void {

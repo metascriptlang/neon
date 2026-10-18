@@ -5,7 +5,7 @@ import { publishAppState } from "../../api/appState";
 import { publishReduceMotion } from "../../api/accessibilityInfo";
 import {
 	androidPermissionGranted, androidRequestPermissions, androidShouldShowRationale, battery, deviceInfo, haptic,
-	localization, locationClear, locationCurrent, locationWatch, permissionStatus, refreshNetInfo, requestPermission, storageClear, storageGet, storageKeys,
+	localization, permissionStatus, refreshNetInfo, requestPermission, storageClear, storageGet, storageKeys,
 	storageRemove, storageSet, watchNetInfo,
 } from "./deviceServices";
 
@@ -194,9 +194,6 @@ const services: AppServices = {
 	androidPermissionGranted,
 	androidShouldShowRationale,
 	androidRequestPermissions,
-	locationCurrent,
-	locationWatch,
-	locationClear,
 	haptic,
 	deviceInfo,
 	battery,

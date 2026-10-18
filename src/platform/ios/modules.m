@@ -9,7 +9,6 @@ NSString *niModuleCall(NSString *name, NSString *arg) {
 	if ([domain isEqualToString:@"storage"]) return niStorageCall(name, arg);
 	if ([domain isEqualToString:@"netinfo"]) return niNetInfoCall(name, arg);
 	if ([domain isEqualToString:@"permission"] || [domain isEqualToString:@"permissionsAndroid"]) return niPermissionCall(name, arg);
-	if ([domain isEqualToString:@"location"]) return niLocationCall(name, arg);
 	if ([domain isEqualToString:@"haptics"] || [domain isEqualToString:@"device"] || [domain isEqualToString:@"locale"]) {
 		return niDeviceCall(name, arg);
 	}

@@ -2,7 +2,8 @@ import { AsyncStorage, KeyValuePair, StringPair, useAsyncStorage } from "../../s
 import { NetInfo, NetInfoState, publishNetInfo, useNetInfo } from "../../src/api/netInfo";
 import { Permissions, PermissionsAndroid } from "../../src/api/permissions";
 import { sleepAsync } from "std/core/promise";
-import { LocationFix, installAppServices } from "../../src/api/services";
+import { installAppServices } from "../../src/api/services";
+import { LocationFix } from "../../src/api/locationServices";
 import {
 	Geolocation, GeolocationError, GeolocationResponse, Location, LocationAccuracy, LocationObject,
 } from "../../src/api/geolocation";

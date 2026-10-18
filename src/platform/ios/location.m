@@ -162,7 +162,7 @@ static void watch(NSString *watchId, NeonLocationRequest *request) {
 	niLocationAuthorize(^{ refresh(); });
 }
 
-NSString *niLocationCall(NSString *name, NSString *arg) {
+static NSString *call(NSString *name, NSString *arg) {
 	NSRange split = [arg rangeOfString:NIField];
 	NSString *requestId = split.location == NSNotFound ? arg : [arg substringToIndex:split.location];
 	NSString *rest = split.location == NSNotFound ? @"" : [arg substringFromIndex:split.location + 1];
@@ -213,3 +213,7 @@ NSString *niLocationCall(NSString *name, NSString *arg) {
 }
 
 @end
+
+const char *niLocationCommand(const char *name, const char *arg) {
+	return niAppReply(call(@(name), @(arg ? arg : "")));
+}
