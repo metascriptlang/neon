@@ -44,6 +44,11 @@ when (windows) {
 when (macos) {
 	@compile("./voidVisual.m", "-fobjc-arc");
 }
+when (voidProfiler) {
+	import { frameStats, profilerCollect } from "../../../../void/src/void2d/frameMarks";
+	import { DurationRing, ringCount, ringPercentile } from "../../../../void/src/void2d/profiler";
+	import { voidProfileInput } from "../../../../void/src/void2d/frameClock.h";
+}
 @include("./voidVisual.h");
 
 extern function voidVisualAttach(device: Ptr<void>, root: Ptr<void>, swapChain: int64): Ptr<void>;
@@ -219,10 +224,12 @@ function wireInput(): void {
 		if (a !== null) { deliverPointer((a as Area).area, areaPointer(e)); }
 	});
 	onKey((e: KeyEvent): void => {
+		when (voidProfiler) { voidProfileInput(); }
 		const a = areaOfWindow(e.window);
 		if (a !== null) { deliverKey((a as Area).area, areaKey(e), keyName(e.key)); }
 	});
 	onText((window: int32, text: string): void => {
+		when (voidProfiler) { voidProfileInput(); }
 		const a = areaOfWindow(window);
 		if (a !== null) { deliverText((a as Area).area, text); }
 	});
@@ -308,6 +315,27 @@ export function runWindow(opts: DesktopOptions, app: () => NeonNode): int32 {
 	const host = ionWindowHost(win);
 	const dispose = render((h: Host, p: HostNode, b: HostNode | null): void => { app()(h, p, b); }, host, windowNode("window"));
 	runLoop();
+	reportProfile();
 	dispose();
 	return 0;
+}
+
+function reportProfile(): void {
+	when (voidProfiler) {
+		profilerCollect();
+		console.log(`neon.window.profileFrames ${frameStats.frames}`);
+		reportRing("Draw", frameStats.draws);
+		reportRing("DirtyToPresent", frameStats.dirtyToPresent);
+		reportRing("InputLatency", frameStats.inputLatency);
+	}
+}
+
+when (voidProfiler) {
+	function milliseconds(ns: int64): float64 { return (ns as float64) / 1000000.0; }
+
+	function reportRing(name: string, ring: DurationRing): void {
+		if (ring.ringCount() == 0) { return; }
+		console.log(`neon.window.profile${name}P50.ms ${milliseconds(ring.ringPercentile(50))}`);
+		console.log(`neon.window.profile${name}P99.ms ${milliseconds(ring.ringPercentile(99))}`);
+	}
 }
