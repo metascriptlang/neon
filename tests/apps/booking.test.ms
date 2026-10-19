@@ -1,3 +1,4 @@
+import { flush } from "../../src/core/runtime";
 import { element } from "../../src/macros/ui/element";
 import { Host, HostNode, MockNode, mockNode, mockHost, render, mockToString, fireEvent, fireEventWith, fireTouch } from "../../src/render/host";
 import { neonEvent } from "../../src/render/event";
@@ -31,6 +32,7 @@ function scrollWheel(wheel: MockNode, item: number): void {
 	e.y = item * 32;
 	e.height = 160;
 	fireEventWith(wheel, "onScroll", e);
+	flush();
 }
 
 function wheels(n: MockNode, out: MockNode[]): MockNode[] {
@@ -46,10 +48,14 @@ function slide(root: MockNode, label: string, dx: number): void {
 	e.width = 304;
 	e.height = 40;
 	fireEventWith(slider, "onLayout", e);
+	flush();
 	const surface = slider.children[0];
 	fireTouch(surface, "onTouchStart", 100, 20, 1000);
+	flush();
 	fireTouch(surface, "onTouchMove", 100 + dx, 20, 1016);
+	flush();
 	fireTouch(surface, "onTouchEnd", 100 + dx, 20, 1032);
+	flush();
 }
 
 function shows(root: MockNode, text: string): boolean {
@@ -63,31 +69,45 @@ test "booking: every control feeds the summary, the dialog books with progress, 
 	const overlay = overlayOf(host);
 	assert shows(root, "status idle") && shows(root, "guests 2"), "initial: " + mockToString(root);
 	fireEvent(labelled(root, "Check-in date"), "onPress");
+	flush();
 	fireEvent(labelled(overlay, "October 24, 2026"), "onPress");
+	flush();
 	fireEvent(labelled(overlay, "OK"), "onPress");
+	flush();
 	fireEvent(labelled(root, "Arrival time"), "onPress");
+	flush();
 	const pair = wheels(overlay, []);
 	scrollWheel(pair[0], 18);
 	scrollWheel(pair[1], 30);
 	fireEvent(labelled(overlay, "OK"), "onPress");
+	flush();
 	slide(root, "Guests", 120);
 	fireEvent(labelled(root, "Room type"), "onPress");
+	flush();
 	fireEvent(labelled(overlay, "Suite"), "onPress");
+	flush();
 	assert shows(root, "check-in 2026-10-24 at 18:30") && shows(root, "guests 5") && shows(root, "room Suite"), "neon-ui controls: " + mockToString(root);
 	fireEvent(labelled(root, "Breakfast"), "onPress");
+	flush();
 	fireEvent(labelled(root, "Cash"), "onPress");
+	flush();
 	assert shows(root, "extras breakfast") && shows(root, "payment cash"), "checkbox and radio: " + mockToString(root);
 	fireEvent(labelled(root, "Details"), "onPress");
+	flush();
 	assert shows(root, "details Suite for 5 guests from 2026-10-24 18:30"), "bottom sheet";
 	fireEvent(labelled(root, "Close"), "onPress");
+	flush();
 	assert !shows(root, "details Suite"), "bottom sheet closed";
 	fireEvent(labelled(root, "Book"), "onPress");
+	flush();
 	assert shows(root, "Confirm booking"), "dialog open";
 	fireEvent(labelled(root, "Confirm"), "onPress");
+	flush();
 	assert shows(root, "status booking") && byAttr(root, "accessibilityLabel", "Booking in progress") !== null, "progress shown: " + mockToString(root);
 	await sleepAsync(1800);
 	assert shows(root, "status booked") && shows(root, "Booked Suite for 5 guests"), "snackbar: " + mockToString(root);
 	assert byAttr(root, "accessibilityLabel", "Booking in progress") === null, "progress gone";
 	fireEvent(labelled(root, "Undo"), "onPress");
+	flush();
 	assert shows(root, "status cancelled") && shows(root, "Booking cancelled"), "toast: " + mockToString(root);
 }
