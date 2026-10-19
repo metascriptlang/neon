@@ -28,6 +28,12 @@ and the invariants that outlived them were moved to the head of the test that pi
   prints `timed out waiting for 12 products; texts ['Catalog', 'Search products', 'Offline', 'Loading products']`. Same
   on main 76d8efa1 and on 1e1b8dc4; the emulator reaches 8.8.8.8, so catalog's `Offline` is not the host network. media
   and svg pass in the same run. Not diagnosed.
+- **OPEN 2026-10-20 — the size check of `tests/apps/run.sh` measures the checkout's path.** The JS
+  bundle's mangled names carry the source path, so the same tree measures a different size in a
+  worktree than in the main checkout. `msc build --target=js tests/apps/bundlePlainApp.ms` at Neon
+  `c7230e4a`, msc `807d96ef7`: 806041 bytes in `/Users/le/metascript/neon`, 891932 bytes in an export
+  under `~/metascript/.scratch/neon-solid2/mainC72/neon`. A budget set in one checkout fails or
+  passes in another for no change in the code.
 - **OPEN 2026-10-16 — touches do not reach the sokol canvas.** `src/platform/sokol/input.ms`
   `deliverAppEvent` takes the four `Touches*` events and does nothing with them, so a phone browser cannot
   press, scroll or focus the canvas once events arrive.
@@ -252,6 +258,10 @@ and the invariants that outlived them were moved to the head of the test that pi
   `String.fromCharCode(72)` runs under `--target=raiser` from Neon's root, and an Ion-generated project of
   `examples/voidWindow.ms` builds (`32c2643`). The device lanes were not re-run there.
 
+- **PARKED 2026-10-20 — `tests/platform/voidRetain.test.ms` does not compile on the JS lane.** Not Neon's:
+  Void's `GlyphAtlas.acquire` (`src/void2d/glyphAtlas.ms:481`) indexes a `Ptr<int32>` past its element,
+  which msc `807d96ef7` refuses on JS (`cannot index a pointer past the element it addresses on JS`).
+  Same on Neon main `c7230e4a`; C passes. Note `~/metascript/.inbox/void/2026-10-20-glyph-atlas-indexes-a-pointer-on-js.md`.
 - **PARKED 2026-10-11 — `tests/render/flatList.test.ms` and `tests/components/flutterListsApp.test.ms` do not compile.**
   Not Neon's: an array-destructured local of an arrow passed as a JSX attribute
   (`const [focused, setFocused] = createSignal<boolean>(false)` in a `renderItem`) is refused as
