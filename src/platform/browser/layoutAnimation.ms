@@ -1,4 +1,4 @@
-import { LayoutAnimationPlan, LayoutPhase, onConfigureNext } from "../../animation/layoutAnimation";
+import { LayoutAnimationPlan, LayoutPhase } from "../../animation/layoutAnimation";
 
 extern class CSSStyleDeclaration {
 	width: string;
@@ -89,7 +89,9 @@ function fadeIn(el: HTMLElement, phase: LayoutPhase): void {
 	}, phase.duration + phase.delay + 34);
 }
 
-function animate(plan: LayoutAnimationPlan): void {
+// RN-web leaves LayoutAnimation a no-op; this measures every element before
+// and after the change and transitions the sizes that moved (WORKAROUND.md N7).
+export function animateDomLayout(plan: LayoutAnimationPlan): void {
 	const before = snapshot();
 	requestAnimationFrame((time: number): void => {
 		const created: HTMLElement[] = [];
@@ -103,14 +105,4 @@ function animate(plan: LayoutAnimationPlan): void {
 		}
 		for (const el of created) { fadeIn(el, plan.create as LayoutPhase); }
 	});
-}
-
-let installed = false;
-
-// RN-web leaves LayoutAnimation a no-op; this measures every element before
-// and after the change and transitions the sizes that moved (WORKAROUND.md N7).
-export function installDomLayoutAnimation(): void {
-	if (installed) { return; }
-	installed = true;
-	onConfigureNext(animate);
 }

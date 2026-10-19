@@ -1,6 +1,10 @@
 import { requestFrame, frameNow } from "./frame";
 import { Easing, EasingFunction, bezier } from "./easing";
 
+when (js && !server) {
+	import { animateDomLayout } from "../platform/browser/layoutAnimation";
+}
+
 export type LayoutAnimationType = "spring" | "linear" | "easeInEaseOut" | "easeIn" | "easeOut" | "keyboard";
 export type LayoutAnimationProperty = "opacity" | "scaleX" | "scaleY" | "scaleXY";
 
@@ -34,7 +38,6 @@ export interface LayoutAnimationPlan {
 }
 
 let pending: LayoutAnimationConfig | null = null;
-let listeners: ((plan: LayoutAnimationPlan) => void)[] = [];
 
 // RN Android's SpringInterpolator for `type: "spring"`; keep the formula as is.
 function springCurve(damping: number): EasingFunction {
@@ -92,10 +95,6 @@ export function takeLayoutAnimation(): LayoutAnimationPlan | null {
 	return layoutPlan(config as LayoutAnimationConfig);
 }
 
-export function onConfigureNext(listener: (plan: LayoutAnimationPlan) => void): void {
-	listeners.push(listener);
-}
-
 // Every field spelled out: a nested literal's absent fields read `undefined` on JS
 // (compiler card 2026-10-06-js-optional-fields-through-nullable-constructor.md).
 function anim(type: LayoutAnimationType, property: LayoutAnimationProperty | null, springDamping: number | null): LayoutAnimationAnim {
@@ -119,8 +118,7 @@ export class LayoutAnimation {
 		onAnimationDidFail: (() => void) | null = null,
 	): void {
 		pending = config;
-		const plan = layoutPlan(config);
-		for (const listener of listeners) { listener(plan); }
+		when (js && !server) { animateDomLayout(layoutPlan(config)); }
 		if (onAnimationDidEnd === null) { return; }
 		const done = onAnimationDidEnd as () => void;
 		const due = frameNow() + config.duration + 17;

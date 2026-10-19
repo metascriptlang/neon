@@ -37,7 +37,6 @@ import { publishPageScroll } from "../../api/pageScroll";
 import { CssStyle, applyCss, applyCssProp } from "./domCss";
 import { VisibleContentPosition, parseVisibleContent } from "../../render/visibleContent";
 import { installBrowserAppServices } from "./appServices";
-import { installDomLayoutAnimation } from "./layoutAnimation";
 import { isMediaTag, createMediaNode, writeMediaAttr, addMediaEvent, releaseMedia, writeSvgList } from "./domCapabilities";
 
 extern class ClassList {
@@ -858,7 +857,6 @@ export function domHost(): Host {
 	installBrowserAppServices();
 	watchSafeArea();
 	watchPageScroll();
-	installDomLayoutAnimation();
 	const registeredRules = new Map<string, boolean>();
 	let modalRule = false;
 	const scrolls = new Map<Node, DomScrollState>();
