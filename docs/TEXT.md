@@ -16,12 +16,13 @@ The code is the truth for everything else: `src/platform/void/host.ms` (`refresh
   terminal and editor lines. A span is the data form of a nested `<Text>`.
   - On a host with the `setSpans` capability (Void), the spans go straight into the paragraph's runs, with no
     node per span.
-  - On any other host, `src/render/spanHost.ms` `spanNodes` lays them out as nested Texts, keeping each
+  - On any other host, `src/render/paragraph.ms` `spanNodes` lays them out as nested Texts, keeping each
     span's nodes by position.
 - **One mechanism for both doors**, decided 2026-10-15. This is RN Fabric's, where nested `<Text>` and `RawText` are
   shadow nodes with no view, and `ParagraphShadowNode` flattens them into one `AttributedString`.
   - On a host with `setSpans`, a Text's children render into `SPAN_HOST` (`src/render/spanHost.ms`), whose nodes are
-    plain records. The outermost Text flattens its records and hands the host the same `TextSpan[]` the `spans`
+    plain records. Such a host names `spanParagraph` as its `paragraph` capability, so a host without one never
+    links the span machinery. The outermost Text flattens its records and hands the host the same `TextSpan[]` the `spans`
     prop does.
   - It does that once per update, from a deferred `createEffect` that runs after every render effect of the update.
     A paragraph of one string skips the effect and goes straight to the host.
