@@ -5,6 +5,7 @@ import { Cleanup } from "../../src/core/types";
 import { NeonNode, el, text, dynText } from "../../src/render/node";
 import { element } from "../../src/macros/ui/element";
 import { HostNode, MockNode, mockNode, mockHost, render, mockToString } from "../../src/render/host";
+import { flush } from "../../src/core/runtime";
 
 test "render builds tree and binds reactive text (push)" {
 	const [name, setName] = createSignal("world");
@@ -91,4 +92,16 @@ test "null attr at mount: a reactive spot that starts null never shows" {
 	setT("a");
 	assert mockToString(root) === "<root><div title=\"a\">x</div></root>", "write: " + mockToString(root);
 	dispose();
+}
+
+// web/src/client.ts:426: render drains once, so the mount is on the host when it returns; a later write waits for the drain
+test "render has mounted when it returns and a later write lands on flush()" {
+	const [name, setName] = createSignal("world");
+	const root: MockNode = mockNode("root");
+	render(element(<p>Hi {name()}</p>), mockHost(), root as unknown as HostNode);
+	assert mockToString(root.children[0]) === "<p>Hi world</p>", "mounted";
+	setName("neon");
+	assert mockToString(root.children[0]) === "<p>Hi world</p>", "the host waits for the drain";
+	flush();
+	assert mockToString(root.children[0]) === "<p>Hi neon</p>", "drained";
 }
