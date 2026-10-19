@@ -3,7 +3,7 @@ import { element } from "../../src/macros/ui/element";
 import { MockNode, mockNode, mockHost, render, mockToString, HostNode } from "../../src/render/host";
 import { Style } from "../../src/render/style";
 import { Text } from "../../src/components/primitives";
-import { TextSpan } from "../../src/render/hostTypes";
+import { Host, TextSpan } from "../../src/render/hostTypes";
 import { NeonEvent, neonEvent } from "../../src/render/event";
 
 const RED: Style = { color: "#ff0000" };
@@ -53,4 +53,13 @@ test "on a host without setSpans, a span's onPress is its nested Text's press, a
 	setSpans([{ text: "a" }, { text: "b" }]);
 	second.events[0].handler(neonEvent("press"));
 	assert log === "first;second;", log;
+}
+
+test "a host with setSpans but no paragraph capability refuses a Text instead of laying it out as nodes" {
+	const host: Host = { ...mockHost(), setSpans: (node: HostNode, spans: TextSpan[]): void => {} };
+	let message = "";
+	try {
+		render(element(<Text>a</Text>), host, mockNode("root") as unknown as HostNode);
+	} catch (e) { message = e.message; }
+	assert message.indexOf("paragraph capability") >= 0, message;
 }
