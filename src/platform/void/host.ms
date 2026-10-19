@@ -178,7 +178,19 @@ function hexNibble(c: string): int32 {
 
 // "#rgb", "#rrggbb", "#rrggbbaa", rgb() and rgba() → normalized rgba. Returns null for anything else so
 // the caller leaves the node's existing colour alone.
+const parsedColors = new Map<string, Color>();
+
 export function parseColor(css: string): Color | null {
+	const known = parsedColors.get(css);
+	if (known !== undefined) { return known; }
+	const c = parseColorString(css);
+	if (c === null) { return null; }
+	if (parsedColors.size >= 1024) { parsedColors.clear(); }
+	parsedColors.set(css, c as Color);
+	return c;
+}
+
+function parseColorString(css: string): Color | null {
 	if (css.startsWith("rgb(") || css.startsWith("rgba(")) { return parseRgbFunction(css); }
 	if (css.length < 4 || css.charAt(0) !== "#") { return null; }
 	const body = css.substring(1, css.length);
