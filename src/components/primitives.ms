@@ -24,7 +24,7 @@ import { Accessor, accessor, untrack } from "../core/signal";
 import { element } from "../macros/ui/element";
 import { NeonNode, VAttr, VEvent, RefFn, hostElement, evt, dynAttr } from "../render/node";
 import { Host, HostNode, VoidArea, TextSpan, TextMeasure } from "../render/hostTypes";
-import { paragraphChildren } from "../render/spanHost";
+import { paragraphChildren } from "../render/paragraph";
 import { VoidAreaHandle } from "../render/voidAreaHandle";
 import { applyRef } from "../render/bind";
 import { visibleContentAttr } from "../render/visibleContent";

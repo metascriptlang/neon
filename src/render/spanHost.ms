@@ -4,7 +4,7 @@
 // outermost Text once per update.
 
 import { Host, HostNode, NeonNode, TextSpan } from "./hostTypes";
-import { Style, mergeStyle, emptyStyle } from "./style";
+import { Style, mergeStyle } from "./style";
 import { NeonEvent } from "./event";
 import { Accessor, createSignal, untrack } from "../core/signal";
 import { createRenderEffect } from "../core/effect";
@@ -70,6 +70,12 @@ function detach(n: SpanNode): void {
 	if (at >= 0) { sibs.splice(at, 1); }
 	n.parent = null;
 	touched(p as SpanNode);
+}
+
+// A Text inside a Text renders into the same records.
+function nestedParagraph(host: Host, node: HostNode, before: HostNode | null, kids: NeonNode | null, spans: Accessor<TextSpan[]> | null): void {
+	if (spans !== null) { throw new Error("spans belong on the outermost Text"); }
+	if (kids !== null) { (kids as NeonNode)(host, node, before); }
 }
 
 const SPAN_ATTRS = ["class", "accessible", "accessibilityLabel", "accessibilityHint", "accessibilityRole"];
@@ -150,6 +156,7 @@ export const SPAN_HOST: Host = {
 	voidArea: null,
 	scrollTo: null,
 	measureText: null,
+	paragraph: nestedParagraph,
 };
 
 // The spans in order, each with the styles of the Texts around it merged; a run with no own style keeps null.
@@ -165,108 +172,42 @@ function flatten(n: SpanNode, style: Style | null, press: ((e: NeonEvent) => voi
 	}
 }
 
-// A host with setSpans gets the spans whole; any other lays them out as nested Texts, kept by position.
-function spanNodes(read: Accessor<TextSpan[]>): NeonNode {
-	return (host: Host, parent: HostNode, before: HostNode | null): void => {
-		const shown: HostNode[] = [];
-		const words: HostNode[] = [];
-		const styles: (Style | null)[] = [];
-		let latest: TextSpan[] = [];
-		createRenderEffect<TextSpan[]>((prev: TextSpan[] | null): TextSpan[] => read(), (spans: TextSpan[], prev: TextSpan[] | null): Cleanup | null => {
-			latest = spans;
-			for (let i = 0; i < spans.length; i += 1) {
-				const s = spans[i];
-				if (i >= shown.length) {
-					const el = host.createElement("text");
-					const word = host.createText(s.text);
-					host.append(el, word);
-					const at = i;
-					host.addEvent(el, "onPress", (e: NeonEvent): void => {
-						if (at >= latest.length) { return; }
-						const press = latest[at].onPress;
-						if (press !== null) { (press as (e: NeonEvent) => void)(e); }
-					});
-					host.insertBefore(parent, el, before);
-					shown.push(el);
-					words.push(word);
-					styles.push(null);
-				} else {
-					host.setText(words[i], s.text);
-				}
-				const own: Style | null = s.style !== null ? s.style as Style : null;
-				if (own !== styles[i]) {
-					host.setStyle(shown[i], own !== null ? own as Style : emptyStyle());
-					styles[i] = own;
-				}
-			}
-			while (shown.length > spans.length) {
-				host.removeChild(parent, shown.pop() as HostNode);
-				words.pop();
-				styles.pop();
-			}
-			return null;
-		}, { transparent: true });
-	};
-}
-
-// What a Text puts inside itself. Inside another Text it renders into the same records; an outermost
-// Text on a host with setSpans flattens its records after every render effect of an update has run.
-export function paragraphChildren(kids: NeonNode | null, spans: Accessor<TextSpan[]> | null): NeonNode {
-	return (host: Host, node: HostNode, before: HostNode | null): void => {
-		if (host === SPAN_HOST) {
-			if (spans !== null) { throw new Error("spans belong on the outermost Text"); }
-			if (kids !== null) { (kids as NeonNode)(host, node, before); }
-			return;
-		}
-		const set = host.setSpans;
-		if (set === null) {
-			if (spans !== null) { spanNodes(spans as Accessor<TextSpan[]>)(host, node, before); }
-			else if (kids !== null) { (kids as NeonNode)(host, node, before); }
-			return;
-		}
-		const deliver = set as (node: HostNode, spans: TextSpan[]) => void;
-		if (spans !== null) {
-			const read = spans as Accessor<TextSpan[]>;
-			createRenderEffect<TextSpan[]>(
-				(prev: TextSpan[] | null): TextSpan[] => read(),
-				(value: TextSpan[], prev: TextSpan[] | null): Cleanup | null => { deliver(node, value); return null; },
-				{ transparent: true },
-			);
-			return;
-		}
-		const root = new SpanNode(false);
-		const [changed, setChanged] = createSignal<number>(0, { ownedWrite: true });
-		const para = new Paragraph((v: number): void => { setChanged(v); }, (text: string): void => {
-			const one: TextSpan[] = [{ text }];
-			deliver(node, one);
-		});
-		root.paragraph = para;
-		if (kids !== null) { (kids as NeonNode)(SPAN_HOST, root, null); }
-		const flush = (): void => {
-			const out: TextSpan[] = [];
-			flatten(root, null, null, out);
-			para.delivered = para.version;
-			para.single = root.children.length === 1 && root.children[0].isString ? root.children[0] : null;
-			deliver(node, out);
-		};
-		flush();
-		createRenderEffect<number>(
-			(prev: number | null): number => changed(),
-			(value: number, prev: number | null): Cleanup | null => {
-				if (para.version !== para.delivered) { untrack(flush); }
-				return null;
-			},
-		);
-	};
-}
-
-// A label a framework site builds by hand: its one string goes through setSpans where the host takes them.
-export function setTextContent(host: Host, label: HostNode, s: string): void {
+// The paragraph capability of a host with setSpans: an outermost Text flattens its records after every
+// render effect of an update has run.
+export function spanParagraph(host: Host, node: HostNode, before: HostNode | null, kids: NeonNode | null, spans: Accessor<TextSpan[]> | null): void {
 	const set = host.setSpans;
-	if (set !== null) {
-		const one: TextSpan[] = [{ text: s }];
-		(set as (node: HostNode, spans: TextSpan[]) => void)(label, one);
+	if (set === null) { throw new Error("spanParagraph is the paragraph of a host with setSpans, and this host has none"); }
+	const deliver = set as (node: HostNode, spans: TextSpan[]) => void;
+	if (spans !== null) {
+		const read = spans as Accessor<TextSpan[]>;
+		createRenderEffect<TextSpan[]>(
+			(prev: TextSpan[] | null): TextSpan[] => read(),
+			(value: TextSpan[], prev: TextSpan[] | null): Cleanup | null => { deliver(node, value); return null; },
+			{ transparent: true },
+		);
 		return;
 	}
-	host.append(label, host.createText(s));
+	const root = new SpanNode(false);
+	const [changed, setChanged] = createSignal<number>(0, { ownedWrite: true });
+	const para = new Paragraph((v: number): void => { setChanged(v); }, (text: string): void => {
+		const one: TextSpan[] = [{ text }];
+		deliver(node, one);
+	});
+	root.paragraph = para;
+	if (kids !== null) { (kids as NeonNode)(SPAN_HOST, root, null); }
+	const flush = (): void => {
+		const out: TextSpan[] = [];
+		flatten(root, null, null, out);
+		para.delivered = para.version;
+		para.single = root.children.length === 1 && root.children[0].isString ? root.children[0] : null;
+		deliver(node, out);
+	};
+	flush();
+	createRenderEffect<number>(
+		(prev: number | null): number => changed(),
+		(value: number, prev: number | null): Cleanup | null => {
+			if (para.version !== para.delivered) { untrack(flush); }
+			return null;
+		},
+	);
 }

@@ -1,6 +1,7 @@
 import { Style, StyleValue } from "./style";
 import { NeonEvent } from "./event";
 import { AreaHub } from "./voidAreaHandle";
+import { Accessor } from "../core/signal";
 
 export type HostNode = unknown;
 
@@ -74,7 +75,10 @@ export interface Host {
 	claim?: ((parent: HostNode, after: HostNode | null, tag: string) => HostNode | null) | null;
 	headRoot?: ((node: HostNode) => HostNode) | null;
 	// Optional capability: a host that draws a Text as one paragraph takes its spans whole, and a
-	// Text's children never reach it as nodes (src/render/spanHost.ms). `null` means the host lays
-	// nested Texts out itself, and `spans` become nested Texts — the same text, a node per span.
+	// Text's children never reach it as nodes. Such a host names `spanParagraph` from
+	// src/render/spanHost.ms as its `paragraph`, which mounts a Text's children or spans. `null` for
+	// both means the host lays nested Texts out itself, and `spans` become nested Texts — the same
+	// text, a node per span.
 	setSpans?: ((node: HostNode, spans: TextSpan[]) => void) | null;
+	paragraph?: ((host: Host, node: HostNode, before: HostNode | null, kids: NeonNode | null, spans: Accessor<TextSpan[]> | null) => void) | null;
 }

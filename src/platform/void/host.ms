@@ -1,5 +1,6 @@
 import { Host, HostNode } from "../../render/host";
 import { TextSpan, TextMeasure } from "../../render/hostTypes";
+import { spanParagraph } from "../../render/spanHost";
 import { NeonEvent, neonEvent, eventType } from "../../render/event";
 import { AreaKeyMod, setEventMods } from "../../render/voidAreaHandle";
 import {
@@ -1022,6 +1023,7 @@ export function createVoidHostWith(scene: Scene2D, font: FontId, defaultFamily: 
 		},
 		cloneNode: null,
 		voidArea: null,
+		paragraph: spanParagraph,
 		setSpans: (node: HostNode, spans: TextSpan[]): void => {
 			const n = live(node, "setSpans");
 			if (!n.isText) { throw new Error("void host: spans belong on a Text"); }

@@ -1,5 +1,6 @@
 import { Host, HostNode, NeonNode, render } from "../../render/host";
 import { TextSpan } from "../../render/hostTypes";
+import { spanParagraph } from "../../render/spanHost";
 import { Dispose } from "../../core/types";
 import { NeonEvent } from "../../render/event";
 import { FlexStyle, YGNode, freeLayoutTree, layoutPass as runLayoutPass } from "../../../../yoga/src/index";
@@ -1069,6 +1070,7 @@ export function createNativeHost(): NativeHost {
 		},
 		cloneNode: null,
 		voidArea: null,
+		paragraph: spanParagraph,
 		setSpans: (node: HostNode, spans: TextSpan[]): void => {
 			const n = node as unknown as NativeNode;
 			if (!n.isText || n.isString) { throw "native host: spans belong on a Text"; }

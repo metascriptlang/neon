@@ -1,4 +1,4 @@
-import { setTextContent } from "./spanHost";
+import { setTextContent } from "./paragraph";
 import { Host, HostNode, NeonNode } from "./hostTypes";
 import { Row, makeRow, mountAt, removeRow, place } from "./reconcile";
 import { regionAnchor, sealRegion } from "./claim";
