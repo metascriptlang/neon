@@ -1,10 +1,23 @@
 # Borderless application data runtime
 
-Reference-backed proposal, 2026-10-18. Product direction is approved; the contracts below are a recommendation, not implementation approval. No data runtime, database binding, sync service or compiler feature was implemented in this investigation.
+Reference-backed proposal, investigated 2026-10-18; product contract updated 2026-10-19. The golden path, composable open-source/self-hosted stack and managed freemium/SaaS offering are approved product direction. Runtime/API/protocol details below remain recommendations, not implementation approval. No data runtime, database binding, sync service or compiler feature was implemented in this investigation.
 
-The [original brief](metascript-borderless-runtime-brief.md) remains background. The subsequent product decision puts an autonomous client database first, not server-owned views or UI patches: a Firebase/Vercel-like application environment for MetaScript and Neon, with an optional backend.
+The [original brief](metascript-borderless-runtime-brief.md) remains background. The product is a Firebase/Vercel-like application environment for MetaScript and Neon: ship an app with its backend without assembling a backend stack. An autonomous client database remains a requirement, not server-owned views or a disposable subscription cache.
 
-## 1. Decision
+## 1. Approved product contract
+
+The golden path is **create a project → sign in for shared data → define/query data → execute an authorized action → see reactive UI updates → preview → publish**. Ordinary application CRUD needs no handwritten endpoints. Custom privileged functions remain explicit escape hatches. Local-only projects need no account; offline writes distinguish local durability from server confirmation.
+
+The delivery model is **open-source composition plus managed convenience**, not an opaque hosted service:
+
+- The self-hostable application stack is open source, including the client SDK, data/runtime core, public protocols and reference adapters needed to run it. Self-hosters own their infrastructure and operations.
+- The commercial cloud packages, provisions and operates that stack as a freemium/SaaS product. It sells a managed deployment, not exclusive access to the application's core runtime. License choice, pricing, quotas and cloud packaging details are not settled here.
+- The golden path is a supported default composition. Authors can use packages independently and replace supported boundaries through explicit adapters rather than forking the core. Composable does not mean every storage or service backend is semantically interchangeable.
+- Managed and self-hosted deployments preserve the same declared schema, actions, policies and client consistency contract. Credentials, placement and operational setup may differ. An adapter declares capabilities and passes the relevant conformance corpus; unsupported behavior fails explicitly instead of silently weakening durability, authorization or atomicity.
+
+The proposed first complete example is a task/project app with sign-in, authorized shared data, an action, reactive UI and a deployed preview. It also exercises offline persistence/reconnect and one explicitly online privileged function. Success is that end-to-end author workflow, not a standalone engine benchmark.
+
+### Proposed runtime direction
 
 Build a **replicated application database runtime**:
 
@@ -14,7 +27,7 @@ Build a **replicated application database runtime**:
 - Commands travel upstream; authorized data changes and mutation outcomes travel downstream. Local prediction is reconciled against authoritative commits.
 - Managed cloud and an own-backend deployment implement the same sync contract. They do not create different client consistency models.
 
-The first implementation should use SQLite for the local database and the standalone authority database. Use the same declared schema, supported SQL semantics and scalar codec, not a new storage engine. Native bindings and the production SQLite version are still implementation gates; the browser probe is not a MetaScript binding.
+A SQL engine underneath is excluded, not merely SQL syntax in the public API. The earlier SQLite recommendation is superseded. The logical query/index engine and its native/browser persistence adapters remain unselected; existing SQLite probes are comparative evidence only. A KV connector alone does not supply queries, indexes, transactions, recovery or scalable authority. No arbitrary distributed-KV backend or horizontal write-scaling guarantee is established.
 
 Keep the data package independent of Neon. Neon supplies a thin subscription/owner bridge. Ion keeps packaging and native host ownership; the compiler stays general-purpose. A project can use the data runtime without a UI.
 
@@ -31,6 +44,7 @@ Repositories were read at these commits. Source links are pinned; line numbers b
 | Firebase JS SDK | `d7bb0e16f2b13ba15f74b690596eb70ef145d4f6` | durable local mutations, overlays, rejection and user transitions |
 | Triplit | `d3029ee13e747abeeab8cf5bf64427f77a142e1f` | client database/outbox, server permissions and schema handshake |
 | SQLSync | `7dc1af6b082023982fd2697f913f5b27453747f1` | SQLite plus local reducers/coordinator/rebase; not a production dependency recommendation |
+| celld | `90b43017241f81189453d326d05948f388b34652` | ownership/fencing and durability-gated outputs; its SQLite data path is not a storage candidate |
 
 ### Source ledger
 
@@ -47,7 +61,9 @@ Repositories were read at these commits. Source links are pinned; line numbers b
 - **R11 — Datomic concepts, not engine source.** Official [transaction model](https://docs.datomic.com/transactions/model.html), [ACID](https://docs.datomic.com/transactions/acid.html), [transaction functions](https://docs.datomic.com/transactions/transaction-functions.html) and [clients/peers](https://docs.datomic.com/reference/clients-and-peers.html), read 2026-10-18: immutable database values, a time basis, speculative `with`, conditional transactions, and local peer query execution. Datomic's engine source was unavailable; `~/projects/datomic-client-examples/examples/tutorial.clj`, the as-of/history examples, is consumer evidence only. No claim of a Datomic engine source trace or runnable Datomic probe.
 - **R12 — storage isolation.** [SQLite isolation](https://www.sqlite.org/isolation.html): WAL permits read snapshots alongside a writer; same-connection reads inside a write see that write. This does not give arbitrary historical `as-of` values, and does not establish browser VFS parity.
 
-Reference mechanisms are architectural evidence, not permission to copy their code. SpacetimeDB's root license is BSL with directory-specific terms; check applicable licenses before any port. The proposal does not adopt its engine.
+- **R13 — hosting authority and durability, not a query engine.** celld [`ownership_store.rs`, `BucketOwnership`](https://github.com/denoland/celld/blob/90b43017241f81189453d326d05948f388b34652/crates/celld/ownership_store.rs#L386) adapts conditional bucket writes for ownership. [`output_gate.rs:283`, `durable_reached` / `ownership_verified`](https://github.com/denoland/celld/blob/90b43017241f81189453d326d05948f388b34652/crates/logic/output_gate.rs#L283) requires a covering durability proof and checks ownership for bucket proofs before releasing output. [`db.rs`, SQLite database lifecycle](https://github.com/denoland/celld/blob/90b43017241f81189453d326d05948f388b34652/crates/ltx/src/db.rs#L1) captures SQLite WAL into LTX; replacing SQLite is not a generic storage-adapter swap. These paths were read, not exercised here.
+
+Reference mechanisms are architectural evidence, not permission to copy their code. SpacetimeDB's root BSL restricts production instance count and commercial Database Services, with directory-specific terms; it is not an open-source license for the proposed platform. celld's root license is Apache-2.0. Check applicable licenses before any adoption or port; this proposal neither adopts SpacetimeDB's engine nor selects our own license.
 
 ## 3. What the author writes
 
@@ -93,7 +109,7 @@ Minimum public surface, with names still provisional:
 
 `mutate` returns a recoverable local write result only after its durable transaction. It does not await connectivity. Mutation status is observable again by ID after reopening: `pending`, `confirmed`, `rejected`, or `blocked` with a named cause. A query snapshot carries immutable result data, a local publication token and coverage/freshness information. A `local-only` scope returns a durable local-only receipt, needs no account, and does not create an indefinitely pending cloud command.
 
-Shared tables are writable only through registered mutations. Direct shared-table SQL writes fail before changing data because otherwise no command would enter the outbox. Local-only tables allow ordinary local transactions and survive resync. Multiple shared-table writes in one mutation are atomic within one sync scope.
+Shared tables are writable only through registered mutations. Writes bypassing that API must fail before changing shared data because otherwise no command would enter the outbox. Local-only tables allow ordinary local transactions and survive resync. Multiple shared-table writes in one mutation are atomic within one sync scope.
 
 Authority policies run with server-derived identity and current authoritative state; they are not trusted client arguments and do not have to be shipped in the client bundle. Privileged functions have an explicitly online API and server-only dependencies. Payment/email/HTTP side effects do not run in replayable mutations; reliable post-commit work uses an idempotent job/outbox path, not a claim of exactly-once external effects.
 
@@ -114,7 +130,7 @@ The client keeps four logical categories in one persistent store:
 | receipts/checkpoints/version metadata | durable processing and recovery state |
 | local-only application data | device-owned; never overwritten by remote snapshots |
 
-These do not mandate four physical databases. For the SQLite prototype, confirmed and working tables are separate logical sets inside one database, with outbox/status/metadata tables in the same transaction domain. Start with rebuilding the working scope from confirmed data plus pending commands. Do not add an incremental query engine or persistent-history engine before measuring a real consumer.
+These do not mandate four physical databases or a SQL layout. Confirmed data, working data and outbox/status/metadata need a proven atomic commit boundary in the selected non-SQL engine. Start by measuring a full rebuild of the working scope from confirmed data plus pending commands. More selective reconciliation or query maintenance requires a measured consumer; no implementation of this non-SQL boundary was proved here.
 
 Minimum persistent metadata, proposed rather than an existing schema:
 
@@ -134,7 +150,7 @@ Runtime metadata is not application-writable. Business tables are separate from 
 
 **Receive transaction:** validate frame identity and cursor; update confirmed data; settle receipt statuses; remove only commands with terminal authoritative outcomes; rebuild working state; replay remaining commands; persist the cursor/publication token; commit; then notify queries. Each replay has a savepoint. A failed prediction rolls back only that prediction, retains its intent and named diagnostic, and does not prevent later independent predictions (R4). The server outcome remains pending until received.
 
-A partial local projection is not evidence that a row does not exist globally. Coverage is explicit. The pilot sync unit is a declared project/workspace working set, complete for that authorized view; local read queries run over that set. A mutation that requires unavailable local input returns `needs_sync` before accepting a prediction; an invariant requiring hidden/global state belongs to authority validation. Arbitrary live-query-shaped replication and automatic SQL policy rewriting are not V1 mechanisms.
+A partial local projection is not evidence that a row does not exist globally. Coverage is explicit. The pilot sync unit is a declared project/workspace working set, complete for that authorized view; local read queries run over that set. A mutation that requires unavailable local input returns `needs_sync` before accepting a prediction; an invariant requiring hidden/global state belongs to authority validation. Arbitrary live-query-shaped replication and automatic query-policy rewriting are not V1 mechanisms.
 
 Atomicity is per scope, not global across files/workspaces. A single scope has one authoritative commit order; concurrent clients may all predict locally, but only the authority assigns accepted order. Global inventory, uniqueness and authorization are never confirmed offline. Independent field patches may compose; stale same-field preconditions can reject. Append-only metadata does not settle conflicting user intent.
 
@@ -142,7 +158,7 @@ Atomicity is per scope, not global across files/workspaces. A single scope has o
 
 Expose a stable local query snapshot/publication token, not a mutable row graph observed halfway through reconciliation. Confirmed cursor and pending-local generation are different notions; a query result influenced by pending commands is not an authoritative snapshot.
 
-Native WAL can provide read isolation, but the portable contract is a single DB owner and complete transactions. The tested browser `OpfsDb` configuration stayed in `delete` journal mode even after requesting WAL. Do not depend on simultaneous browser readers/writers or long-lived historical snapshots. Group snapshot reads while the owner is not mutating; UI receives detached results. Datomic-style permanent history, EAV and Datalog are excluded.
+The portable baseline is a single DB owner and complete transactions; the selected non-SQL engine must prove stable reads and atomic publication. The historical browser SQLite `OpfsDb` probe stayed in `delete` journal mode even after requesting WAL; that result does not establish any non-SQL engine's behavior. Do not assume simultaneous browser readers/writers or long-lived historical snapshots. Group snapshot reads while the owner is not mutating; UI receives detached results. Datomic-style permanent history, EAV and Datalog are not implied by snapshot publication and have not been selected.
 
 ## 5. Four end-to-end flows
 
@@ -213,37 +229,37 @@ A minimal frame shape, not an implemented codec:
 
 Client-to-authority writes carry registered commands, not this row-change shape. Server-generated outcomes may contain safe structured rejection details, never private validation inputs. The canonical codec preserves null versus absence, scalar widths and byte values. Use bounded int32 and finite float64 JSON numbers; encode int64/counters as canonical decimal strings at the JSON boundary. Reject malformed, non-finite or out-of-range values. Integer/BigInt mapping into actual MetaScript C/JS bindings remains a conformance gate.
 
-Do not compute query ordering with JavaScript's default string sort when SQLite uses BINARY collation: the Unicode probe below finds different orders. Queries run through the declared engine/collation on every target. Pin the production SQLite version/extensions/compile options and validate schema and query semantics across native and browser, rather than assuming that two engines named SQLite are identical.
+Queries run through the declared engine/ordering semantics on every target. Pin the selected engine version and settings, then validate schema, scalar and query semantics across native and browser. The historical SQLite BINARY versus JavaScript default-sort probe demonstrates why cross-runtime ordering cannot be assumed; it does not select SQLite or prove a replacement engine's behavior.
 
 Limits cover message/row sizes, snapshot staging bytes, pending commands, active scopes, query cost and outbound queues. These are product/runtime settings whose values need measurements; no throughput, cost or unlimited-offline guarantee was established. Backpressure blocks producers or requests a resync; it never drops committed changes silently. Presence is separate best-effort state and cannot hold up durable data.
 
 ## 7. Concrete ownership and deployment
 
-The data runtime owns the SQLite adapter, mutation registry, persistent intent/status, reconciliation, version gates and sync contract. It does not own JSX, native window lifecycle or a new compiler language surface.
+The data runtime owns the logical database/query integration, persistence adapters, mutation registry, persistent intent/status, reconciliation, version gates and sync contract. It does not own JSX, native window lifecycle or a new compiler language surface. The editor composes the author workflow; managed provisioning operates the runtime rather than changing its application semantics.
 
 The Neon adapter uses the existing `src/core/signal.ms` `createSignal`, `src/core/cleanup.ms` `onCleanup` and owner lifecycle. A DB publication invalidates active local queries; the pilot can rerun them all and publish one result snapshot instead of building IVM. Dispose cancels subscriptions and fences late results. Do not depend on a new `Host` method or modify signal/JSX contracts. Native/browser owner disposal, scheduling and refresh need real consumer tests; this pass did not prove that bridge.
 
-The standalone authority baseline is a process/container containing the app module and SQLite, with a single writer per scope. The pilot can use one DB file per scope and one host; no cross-scope atomicity or HA claim follows. Managed hosting must add tested backups/restore, isolation, quotas, deployment rollback, logs, authentication and metering before being sold as production service. Do not load untrusted native tenant modules into one shared address space.
+The standalone authority baseline is a process/container containing the app module and selected non-SQL database engine, with a single writer per scope. Physical storage layout and deployment topology remain unselected; no cross-scope atomicity or HA claim follows. More independent scopes can distribute authority, but neither that nor a distributed KV automatically scales writes to one hot scope. Managed hosting must add tested backups/restore, isolation, quotas, deployment rollback, logs, authentication and metering before being sold as production service. Do not load untrusted native tenant modules into one shared address space.
 
-Own-backend means either self-hosting the same runtime or implementing its command/receipt/snapshot contract. An adapter must prove transactions, deduplication, authorization and checkpoint consistency; changing an HTTP URL is insufficient. Arbitrary SQL/KV engine interchangeability is not promised. Cloudflare/Vercel-style provisioning and preview UX belong above this contract, not in Neon core.
+Own-backend means either self-hosting the same runtime or implementing its command/receipt/snapshot contract. An adapter must prove transactions, deduplication, authorization and checkpoint consistency; changing an HTTP URL is insufficient. Arbitrary engine interchangeability is not promised. Publish the supported contracts and reference composition so self-hosting does not require a proprietary cloud endpoint. Cloudflare/Vercel-style provisioning and preview UX belong above this contract, not in Neon core.
 
 Standalone local scopes are authoritative on-device and do not need an account. Recommend an explicit attach/import for the pilot: authenticate, create an empty remote scope, import only the declared shared tables through an authorized import mutation, then bind the local projection at the resulting checkpoint. Existing remote identity/data collisions fail without changing the local project. Local-only data stays on-device. This transition requires tests; switching arbitrary existing backends or silently merging histories is not an automatic adapter feature.
 
-## 8. Feasibility on this tree
+## 8. Historical feasibility inventory (2026-10-18)
 
 Inspected Neon `bc9941811ed5f76e3ee4725123748969a859f231`, tree `d264190c04653573f770b6f5f1a8d00545ea4bd9`; installed `msc v0.3.4`, binary/support BUILD `4fe2a5eec`. No MetaScript build/test ran in this pass.
 
 - Existing Neon signal/owner/cleanup seams were read. `AsyncStorage` delegates key-value operations to app services; it is not evidence of an atomic relational database or data/outbox transaction.
-- No SQLite binding was found by the `src/` and installed `~/.metascript/std` inventory. Std HTTP/WebSocket modules exist by source inventory; no claim of production sync, authentication or TLS validation was measured.
-- The SQLite WASM probe establishes a browser storage candidate, not the native `.ms` FFI, shared mutation compilation, packaging, worker ABI or browser/native parity.
-- The tested browser configuration needs cross-origin isolation for its OPFS path. Unsupported persistence is a named open failure, not memory mode. Safari/Firefox/mobile browsers, storage eviction, private browsing and encrypted-at-rest behavior were not run.
+- The historical inventory found no SQLite binding in `src/` or installed `~/.metascript/std`; SQLite is now excluded, so this is not a current binding requirement. Std HTTP/WebSocket modules exist by source inventory; no claim of production sync, authentication or TLS validation was measured.
+- The SQLite WASM probe establishes only that reference storage path's behavior, not the selected product engine, native `.ms` FFI, shared mutation compilation, packaging, worker ABI or browser/native parity. Non-SQL engine embedding remains unproven.
+- The tested SQLite browser configuration needs cross-origin isolation for its OPFS path. Unsupported persistence is a named open failure, not memory mode. Safari/Firefox/mobile browsers, storage eviction, private browsing and encrypted-at-rest behavior were not run.
 - First browser implementation should have one database-owner worker. Multiple tabs, lock contention and a SharedWorker owner are not proven by the dedicated-worker probe. Require an explicit `storage_busy` failure for unsupported competing owners rather than racing writers.
 
-These are implementation dependencies, not findings that authorize a compiler change. Any compiler gap is reduced and handed to its owning repository under workspace rules.
+This inventory does not establish current non-SQL embedding or end-to-end runtime feasibility and authorizes no compiler change. Any compiler gap is reduced and handed to its owning repository under workspace rules.
 
 ## 9. Measurements and reproducibility
 
-These are reference/storage checks, **not 25 Neon feature tests**. Existing source suites named above were not run. All artifacts below are machine-local investigation files, not shipped tests or platform implementation:
+These are reference/storage checks from 2026-10-18, **not 25 Neon feature tests** or acceptance evidence for the unselected non-SQL engine. Existing source suites named above were not run. All artifacts below are machine-local investigation files, not shipped tests or platform implementation:
 
 ```text
 C:/tmp/neon-borderless-design-20261018/
@@ -302,6 +318,7 @@ The persistence A/B uses the same payload `7`, key, mutator, held-idle scheduler
 - Treating `await mutate` or local visibility as automatically durable: reference A/B disproves the equivalence (R4).
 - Memory fallback or missing-mutator no-op as recovery: incompatible with explicit durability and preserved-intent contracts (R4/R9).
 - Blind SQLSync port: different storage/replication and unresolved crash boundary; its own guide disclaims production readiness (R10).
+- SQLite as the product substrate: superseded by the explicit no-SQL-engine requirement. Its probes remain historical comparative evidence, not an implementation recommendation.
 - SQLite native WAL as a universal browser assumption: the OPFS probe did not enter WAL (R12).
 - Datomic clone, universal CRDT, arbitrary backend adapters, query IVM and server-driven JSX: none is necessary to prove this product's first data workflow.
 
@@ -309,11 +326,11 @@ The persistence A/B uses the same payload `7`, key, mutator, held-idle scheduler
 
 Every phase below is proposed work requiring implementation approval. Preserve all existing UI/runtime boundaries.
 
-1. **Storage and module spike:** native SQLite binding plus the browser worker; identical declared schema/codec; registered ordinary mutations; explicit persistent-open failure. Run the same relational query and local transaction corpus on both. Validate real MetaScript scalar conversions, lifetime/thread ownership and worker packaging before promising parity.
+1. **Engine selection and storage/module spike:** first trace and evaluate reusable non-SQL query/index engines, their native/browser embedding and durable storage boundaries; review the choice before implementation. Then prove the same declared schema/codec, registered ordinary mutations, local transaction boundaries and explicit persistent-open failure on native and browser. Run one query corpus including indexed lookup, range/filter and joins before promising efficient queries. Validate actual MetaScript scalar conversions, lifetime/thread ownership and worker packaging; a generic KV adapter is not this engine proof.
 2. **One local project:** a real Neon task/project app uses local queries and multi-table transactions, survives restart, and shows local durability failures. Attach/detach UI owners without leaked callbacks. No cloud dependency for this phase.
 3. **Authority and two clients:** attach/import the small local project without losing local-only data, then run the same declared mutation module under a deployed authority registry; authenticate identities, persist deduplication/outcomes, and sync an authorized scope. Exercise concurrent same-field and independent edits, a rejected mutation followed by a valid one, lost push response, reordered/duplicate frames and snapshot/stream cutover.
 4. **Recovery and compatibility:** interrupt each transaction boundary, force snapshot resync with pending work, rotate identity/permissions, and upgrade schema/mutation code while an old client is offline. Keep receipts/outbox/local-only data safe. Unsupported old versions must be recoverable named states, not destructive repair.
-5. **Platform workflow:** local emulator and data inspector; isolated managed deployment/preview; one explicit server-only function; logs showing pending/rejected/confirmed transitions; export, backup/restore and rollback. Then implement the own-backend adapter and run the exact same conformance corpus.
+5. **Packaged golden path:** create a project, sign in, query data, execute an authorized action, see reactive UI updates, preview and publish. Supply the local emulator/data inspector and open-source reference self-hosted composition alongside isolated managed deployment. Include one explicit server-only function, pending/rejected/confirmed logs, export, backup/restore and rollback. Run the same applicable conformance corpus on self-hosted and managed deployments before claiming parity; self-hosting is not a later proprietary-cloud escape patch.
 
 Release acceptance is the real browser/native Neon consumer across these boundaries, not a storage unit test. Test account isolation, private-field projection, tombstones, quota, disk-full, missing OPFS headers, second-tab contention and disposal during sync. Local authoring, native packaging and sync must work on their actual consumers; compiler fixes remain with the compiler owner.
 
