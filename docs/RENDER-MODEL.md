@@ -151,7 +151,9 @@ node of the same tag at the same position is kept with its props and handlers re
 (`Host.reuse`, `src/render/claim.ms` `beginReuse`), the host-view reuse React Fast Refresh and
 Flutter do on a re-render; a node whose tag changed starts fresh. The terminal host, and a
 component that sits at the level of an Ion window rather than inside its `<void>` area, remount
-fresh. A changed field list of a class or interface
+fresh: the window host keeps the region's empty anchor and swaps the area, but has no `reuse`.
+A desktop window (`runWindow`, `runCanvas`, the native `runApp`) polls `reload()` every
+`RELOAD_POLL_MS` (`src/platform/reloadPoll.ms`); Android polls through its bridge. A changed field list of a class or interface
 (a prop added to a props interface) is refused by the HCR engine with `restart required`.
 
 Not extracted, so any edit remounts the whole component: a body with an early `return`, a final
@@ -251,6 +253,13 @@ throws and then its fix on each adapter:
   text at the top of the window. Edit to reloaded in the quieter run: 1.9 to 4.3 s over eight
   edits, of which the PC build is 1.5 to 3.1 s and delivery 0.15 to 2.3 s; the second run, beside
   another session's compiler corpus, took 9.9 to 16.5 s.
+
+**Measured 2026-10-20**, installed msc `8a9fc02dd`, a real Ion window on Windows driven by OS
+clicks and keystrokes (`examples/refreshWindow/drive.sh`): `RESULT PASS`, 7 checks. Three presses
+give count 3; a template edit shows `Counter v2` with count 3 and the next press logs count 4; text
+typed into the field survives a setup edit with its focus (`X` typed after the reload makes
+`typedX`), and the new handler adds 2 (count 6). Screenshots after each step agree. Edit to
+reloaded 3.2 to 3.4 s, poll included.
 
 **A new generic instance reloads the page on Vite** (design card
 `~/metascript/.inbox/compiler/2026-10-10-js-generic-instance-emitted-into-defining-module.md`):
