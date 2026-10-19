@@ -83,6 +83,33 @@ function counterTemplateV2<E>(__refreshEnv: E): NeonNode {
 	</div>;
 }
 
+function Feed(): NeonNode {
+	const [count, setCount] = createSignal(0);
+	const inc: (e: NeonEvent) => void = () => { setCount(count() + 1); };
+	return <div>
+		<section><p>{"feed:" + count().toString()}</p></section>
+		<button onPress={inc} id="old">+</button>
+	</div>;
+}
+
+function feedTemplateV2<E>(__refreshEnv: E): NeonNode {
+	const count = __refreshEnv.count;
+	const inc = __refreshEnv.inc;
+	return <div>
+		<section><p>{"feed v2:" + count().toString()}</p></section>
+		<button onPress={inc}>+</button>
+	</div>;
+}
+
+function feedTemplateV3<E>(__refreshEnv: E): NeonNode {
+	const count = __refreshEnv.count;
+	const inc = __refreshEnv.inc;
+	return <div>
+		<p>{"feed v3:" + count().toString()}</p>
+		<button onPress={inc}>+</button>
+	</div>;
+}
+
 function mountApp(): [MockNode, () => void] {
 	const root: MockNode = mockNode("root");
 	const dispose = render(App(), mockHost(), root as unknown as HostNode);
@@ -133,8 +160,7 @@ test "refresh pass: a changed component remounts alone, its sibling keeps state"
 	const after = all(root, "button");
 	fireEvent(after[0], "onPress");
 	assert texts(root) === "<p>v2 a:10</p> <p>tally:1</p> ", "the new handler runs once";
-	fireEvent(before[0], "onPress");
-	assert texts(root) === "<p>v2 a:10</p> <p>tally:1</p> ", "the old handler is gone";
+	assert after[0] === before[0] && after[0].events.length === 1, "the button is the same host node, holding only the new handler";
 	dispose();
 }
 
@@ -185,5 +211,30 @@ test "refresh pass: a component whose template captures an assigned let keeps on
 	const dispose = render(Clicks(), mockHost(), root as unknown as HostNode);
 	const summary = refreshModule(thisFile());
 	assert summary.kept === 1, "no template region: " + summary.kept.toString();
+	dispose();
+}
+
+test "refresh pass: a template edit keeps the host nodes it still renders" {
+	refreshReset();
+	const root: MockNode = mockNode("root");
+	const dispose = render(Feed(), mockHost(), root as unknown as HostNode);
+	const section = all(root, "section")[0];
+	section.scrollY = 120;
+	const button = all(root, "button")[0];
+	fireEvent(button, "onPress");
+	refreshTemplate0(thisFile(), "Feed#template", feedTemplateV2, (): string => "f2", __refreshSetup_Feed);
+	const summary = refreshModule(thisFile());
+	assert summary.rebuilt === 1, "the template is rebuilt";
+	assert all(root, "section")[0] === section && section.scrollY === 120, "the scrolled section is the same node, still scrolled";
+	assert all(root, "button")[0] === button && button.events.length === 1, "the button is reused with the new handler alone";
+	assert button.attrs.length === 0, "an attribute the new template no longer writes is gone";
+	assert texts(root) === "<p>feed v2:1</p> ", "new text, count kept: " + texts(root);
+	fireEvent(button, "onPress");
+	assert texts(root) === "<p>feed v2:2</p> ", "one press adds one: " + texts(root);
+	refreshTemplate0(thisFile(), "Feed#template", feedTemplateV3, (): string => "f3", __refreshSetup_Feed);
+	refreshModule(thisFile());
+	assert all(root, "section").length === 0, "a node the template no longer renders is removed";
+	assert all(root, "button")[0] === button, "the button keeps its node";
+	assert mockToString(root) === "<root><div><p>feed v3:2</p><button>+</button></div></root>", "the tree is the new template's: " + mockToString(root);
 	dispose();
 }

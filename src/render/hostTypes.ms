@@ -72,6 +72,7 @@ export interface Host {
 	overlayRoot?: ((node: HostNode) => HostNode) | null;
 	setResponder?: ((node: HostNode | null, blockNativeResponder: boolean) => void) | null;
 	claim?: ((parent: HostNode, after: HostNode | null, tag: string) => HostNode | null) | null;
+	reuse?: ((node: HostNode, tag: string) => boolean) | null;
 	headRoot?: ((node: HostNode) => HostNode) | null;
 	// Optional capability: a host that draws a Text as one paragraph takes its spans whole, and a
 	// Text's children never reach it as nodes (src/render/spanHost.ms). `null` means the host lays

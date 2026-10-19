@@ -277,6 +277,15 @@ export function mockHost(): Host {
 			if (i >= p.children.length || p.children[i].tag !== tag) { return null; }
 			return p.children[i] as unknown as HostNode;
 		},
+		reuse: (node: HostNode, tag: string): boolean => {
+			const n = node as unknown as MockNode;
+			if (n.tag !== tag) { return false; }
+			n.attrs = [];
+			n.events = [];
+			n.style = null;
+			n.className = "";
+			return true;
+		},
 		setResponder: (node: HostNode | null, blockNativeResponder: boolean): void => {
 			const holder = mockResponder;
 			if (holder !== null) {

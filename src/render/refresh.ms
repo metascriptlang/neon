@@ -1,7 +1,7 @@
 import { setTextContent } from "./spanHost";
 import { Host, HostNode, NeonNode } from "./hostTypes";
 import { Row, makeRow, mountAt, removeRow, place } from "./reconcile";
-import { regionAnchor, sealRegion } from "./claim";
+import { regionAnchor, sealRegion, beginReuse, endReuse } from "./claim";
 import { Computation } from "../core/types";
 import { createOwner, disposeChildren, isDisposed } from "../core/runtime";
 import { runWithOwner } from "../core/owner";
@@ -201,18 +201,26 @@ function failure(message: string): NeonNode {
 
 function rebuild(instances: Map<string, Instance[]>, inst: Instance, sig: string): void {
 	stash(inst);
-	removeRow(inst.host, inst.parent, inst.row);
+	const first = inst.row.start;
 	disposeChildren(inst.owner, false);
 	track(instances, inst);
+	const reusing = first !== null && beginReuse(inst.host, inst.parent, first as HostNode, inst.anchor);
+	if (!reusing) { removeRow(inst.host, inst.parent, inst.row); }
 	const kept = inst.saved;
 	const outer = mounting;
 	try {
 		mountInstance(inst);
+		endReuse(inst.host, true);
 		inst.broken = false;
 		inst.sig = sig;
 	} catch (e) {
 		mounting = outer;
+		endReuse(inst.host, false);
 		console.log("refresh: " + inst.key + " did not mount: " + e.message);
+		if (reusing) {
+			inst.row.start = null;
+			inst.row.end = null;
+		}
 		removeRow(inst.host, inst.parent, inst.row);
 		disposeChildren(inst.owner, false);
 		track(instances, inst);
