@@ -210,7 +210,7 @@ a compiler built from recompiler origin `f421de59` merged into `c5eeb007` the An
 passed 3 of 4 warm runs (one run lost the `HCR reloaded` line after the restart while the app
 showed the new view), and the first session after that compiler first ran answered
 `restart required` to every edit
-(`~/metascript/.inbox/compiler/2026-10-07-hcr-first-warm-reload-reports-core-changed.md`).
+(fixed in recompiler `ac34f190a` to `261502336`, pinned by `hcrCoreNative`).
 
 **Measured 2026-10-12**, installed msc `e8c024c8`, tree `45c70f7`:
 - `bash tests/refresh/run.sh`: `boundary.ms`, `state.ms` and `navigation.ms` on `--target=js`
