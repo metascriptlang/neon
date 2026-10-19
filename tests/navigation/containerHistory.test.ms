@@ -1,4 +1,5 @@
 import { createRoot } from "../../src/core/owner";
+import { flush } from "../../src/core/runtime";
 import { Dispose } from "../../src/core/types";
 import { NeonNode } from "../../src/render/node";
 import { HostNode, MockNode, mockHost, mockNode } from "../../src/render/host";
@@ -393,16 +394,20 @@ test "opening the drawer adds an entry at the same address, and browser back clo
 	const switched = take();
 	assert switched === "replace /;replace /;push /inbox;", switched;
 	app.ref.openDrawer();
+	flush();
 	const opened = take();
 	assert opened === "push /inbox;", opened;
 	assert drawerOpen(app), "drawer open";
 	assert app.memory.go(-1);
+	flush();
 	assert !drawerOpen(app), "browser back closed the drawer";
 	assert app.ref.currentPath() === "Main>Inbox", app.ref.currentPath();
 	assert app.memory.go(1);
+	flush();
 	assert drawerOpen(app), "browser forward opened it again";
 	assert take() === "", "a traversal writes nothing";
 	app.ref.closeDrawer();
+	flush();
 	const closed = take();
 	assert closed === "go -1;", closed;
 	assert app.memory.read().url === "/inbox", app.memory.read().url;
@@ -452,6 +457,7 @@ test "setParams replaces the entry it changes and keeps the ones below" {
 	assert app.ref.linkTo("/shop/product/5");
 	take();
 	(log.product as Navigation<ItemParams>).setParams({ id: "6" });
+	flush();
 	const replaced = take();
 	assert replaced === "replace /shop/product/6;", replaced;
 	assert app.memory.index() === 2, app.memory.index().toString();
