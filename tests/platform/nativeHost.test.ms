@@ -37,6 +37,7 @@ import {
 } from "./nativeBridgeMock.h";
 import { PanResponder, PanResponderGestureState } from "../../src/components/panResponder";
 import { HOST_PARK_CONTRACT, hostParkContract } from "../render/hostContract";
+import { refreshBoundary0, refreshComponent0, refreshModule, refreshReset } from "../../src/render/refresh";
 
 const PRESS: int32 = 2;
 
@@ -1124,4 +1125,40 @@ test "a focused native TextInput in content that an Errored parks loses its focu
 	assert nmFocused(tag) === 0 && log === "blur;", "parking the content took the focus away: " + log;
 	assert !handles[0].isFocused(), "and the handle follows";
 	nmTeardown();
+}
+
+const feedHandles: TextInputHandle[] = [];
+
+function nativeFeedV1(): NeonNode {
+	return <View>
+		<TextInput placeholder="v1" returnKeyType="next" ref={(h: TextInputHandle): void => { feedHandles.push(h); }} />
+		<ScrollView><View style={{ height: 900 }} /></ScrollView>
+	</View>;
+}
+
+function nativeFeedV2(): NeonNode {
+	return <View>
+		<TextInput placeholder="v2" ref={(h: TextInputHandle): void => { feedHandles.push(h); }} />
+		<ScrollView><View style={{ height: 900 }} /></ScrollView>
+		<Text>v2</Text>
+	</View>;
+}
+
+test "a refresh remount keeps the native views it still renders, so the field keeps its focus and text" {
+	refreshReset();
+	runApp((): NeonNode => refreshBoundary0("nativeHost", "Feed", nativeFeedV1, (): string => "v1"));
+	const tag = nmLastInputTag();
+	feedHandles[0].focus();
+	const created = nmViewsCreated();
+	const released = nmReleaseCalls();
+	refreshComponent0("nativeHost", "Feed", nativeFeedV2, (): string => "v2");
+	const summary = refreshModule("nativeHost");
+	assert summary.remounted === 1, "the component remounts: " + summary.remounted.toString();
+	assert nmReleaseCalls() === released, "no native view is released: " + (nmReleaseCalls() - released).toString();
+	assert nmViewsCreated() - created === 1, "only the new Text makes a view: " + (nmViewsCreated() - created).toString();
+	assert nmLastInputTag() === tag && nmFocused(tag) === 1, "the field is the same native view and keeps the focus";
+	assert prop(tag, "placeholder") === "v2", "it takes the new placeholder: " + prop(tag, "placeholder");
+	assert prop(tag, "returnKeyType") === "", "and drops the prop the new template no longer writes: " + prop(tag, "returnKeyType");
+	nmTeardown();
+	assert nmReleaseCalls() === nmViewsCreated(), "teardown releases every view once";
 }

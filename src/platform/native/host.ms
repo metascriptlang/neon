@@ -71,6 +71,8 @@ extern function niSetEnvironmentHandler(handler: () => void): void;
 
 class NativeNode {
 	view: Ptr<void> | null = null;
+	tag: string = "";
+	props: string[] = [];
 	isText: boolean = false;
 	isString: boolean = false;
 	isScroll: boolean = false;
@@ -937,7 +939,22 @@ export function createNativeHost(): NativeHost {
 			}
 			n.control = kind === NativeElementKind.Text || kind === NativeElementKind.Scroll ? NativeElementKind.View : kind;
 			n.flex = intrinsicFlex(n, nativeFlexStyle({} as Style, kind));
+			n.tag = tag;
 			return n as unknown as HostNode;
+		},
+		reuse: (node: HostNode, tag: string): boolean => {
+			const n = node as unknown as NativeNode;
+			if (n.tag !== tag) { return false; }
+			if (tag === "") { return true; }
+			if (n.eventTag !== 0) { eventRegistry.remove(n.eventTag); }
+			const laid = layoutNodes.indexOf(n);
+			if (laid >= 0) { layoutNodes.splice(laid, 1); }
+			for (const name of n.props) {
+				if (name !== "value" && name !== "defaultValue") { writeProp(n, name, ""); }
+			}
+			n.props = [];
+			restyle(n, {} as Style);
+			return true;
 		},
 		createText: (s: string): HostNode => {
 			const n = nativeNode(null, false, true);
@@ -954,31 +971,15 @@ export function createNativeHost(): NativeHost {
 			}
 		},
 		setAttr: (node: HostNode, name: string, value: string): void => {
-			writeProp(node as unknown as NativeNode, name, value);
+			const n = node as unknown as NativeNode;
+			if (n.props.indexOf(name) < 0) { n.props.push(name); }
+			writeProp(n, name, value);
 		},
 		removeAttr: (node: HostNode, name: string): void => {
 			writeProp(node as unknown as NativeNode, name, "");
 		},
 		setStyle: (node: HostNode, style: Style): void => {
-			const n = node as unknown as NativeNode;
-			const zIndex = style.zIndex ?? 0;
-			if (zIndex !== n.zIndex) {
-				const p = n.parent;
-				if (p !== null) {
-					if (n.zIndex !== 0) { p.zChildren -= 1; }
-					if (zIndex !== 0) { p.zChildren += 1; }
-				}
-				n.zIndex = zIndex;
-				if (p !== null) { restack(p); }
-			}
-			n.styleCache = style;
-			writeTextInsets(n, style);
-			n.flex = intrinsicFlex(n, nativeFlexStyle(style, kindOf(n)));
-			n.minFromMeasure = false;
-			applyPaint(n, style);
-			if (n.isText && !n.isString && n.spanData !== null) { refreshLabel(n); }
-			else if (n.isText) { remeasureText(n); }
-			if (isMounted(n)) { requestLayout(); }
+			restyle(node as unknown as NativeNode, style);
 		},
 		setStyleProp: null,
 		setStyleClass: null,
@@ -1114,6 +1115,27 @@ export function createNativeHost(): NativeHost {
 		rootNode: root as unknown as HostNode,
 		relayout: (): void => { relayoutRoot(); },
 	};
+}
+
+function restyle(n: NativeNode, style: Style): void {
+	const zIndex = style.zIndex ?? 0;
+	if (zIndex !== n.zIndex) {
+		const p = n.parent;
+		if (p !== null) {
+			if (n.zIndex !== 0) { p.zChildren -= 1; }
+			if (zIndex !== 0) { p.zChildren += 1; }
+		}
+		n.zIndex = zIndex;
+		if (p !== null) { restack(p); }
+	}
+	n.styleCache = style;
+	writeTextInsets(n, style);
+	n.flex = intrinsicFlex(n, nativeFlexStyle(style, kindOf(n)));
+	n.minFromMeasure = false;
+	applyPaint(n, style);
+	if (n.isText && !n.isString && n.spanData !== null) { refreshLabel(n); }
+	else if (n.isText) { remeasureText(n); }
+	if (isMounted(n)) { requestLayout(); }
 }
 
 function writeProp(n: NativeNode, name: string, value: string): void {
