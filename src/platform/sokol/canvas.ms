@@ -5,6 +5,7 @@ import { present } from "../../../../void/src/void2d/scene";
 import { AppEvent, onAppEvent, setTextInput, setImeRect } from "../../../../void/src/sokol/window";
 import { familyFont } from "../void/host";
 import { Host, HostNode, NeonNode, render } from "../../render/host";
+import { flush } from "../../core/runtime";
 import {
 	WindowArea,
 	windowHost,
@@ -107,6 +108,7 @@ function frameCanvas(): void {
 	msRunOnce(0 as int32);
 	const c = running();
 	if (c.input !== null) { flushKey(c.input as SokolInput); }
+	flush();
 	if (c.area === null) { return; }
 	const area = c.area as WindowArea;
 	const width = fbWidth();

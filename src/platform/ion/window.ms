@@ -15,6 +15,7 @@ import { Scene2D } from "../../../../void/src/void2d/node";
 import { present, isDirty } from "../../../../void/src/void2d/scene";
 import { exit } from "std/process";
 import { Host, HostNode, NeonNode, render } from "../../render/host";
+import { flush } from "../../core/runtime";
 import {
 	VoidAreaHandle, AreaKeyEvent, AreaKeyAction, AreaKeyMod, AreaPointerEvent, AreaPointerKind,
 } from "../../render/voidAreaHandle";
@@ -215,6 +216,7 @@ function wireInput(): void {
 	onResize(resized);
 	onFrame((window: int32, timeMs: float64): void => {
 		runFrameFires();
+		flush();
 		const a = areaOfWindow(window);
 		if (a === null) { return; }
 		const owner = a as Area;
