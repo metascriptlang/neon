@@ -1,15 +1,17 @@
-import { createSignal } from "../../src/core/signal";
+import { Accessor, createSignal } from "../../src/core/signal";
 import { element } from "../../src/macros/ui/element";
 import { MockNode, mockNode, mockHost, render, mockToString, HostNode } from "../../src/render/host";
 import { Style } from "../../src/render/style";
 import { Text } from "../../src/components/primitives";
-import { Host, TextSpan } from "../../src/render/hostTypes";
+import { Host, NeonNode, TextSpan } from "../../src/render/hostTypes";
+import { spanParagraph } from "../../src/render/spanHost";
+import { setTextContent } from "../../src/render/paragraph";
 import { NeonEvent, neonEvent } from "../../src/render/event";
 
 const RED: Style = { color: "#ff0000" };
 const BLUE: Style = { color: "#0000ff" };
 
-test "on a host without setSpans, spans lay out as nested Texts in order" {
+test "on a host without a paragraph capability, spans lay out as nested Texts in order" {
 	const root: MockNode = mockNode("root");
 	render(element(<Text spans={[{ text: "error", style: RED }, { text: ": not found" }]} />), mockHost(), root as unknown as HostNode);
 	assert mockToString(root) === "<root><text><text>error</text><text>: not found</text></text></root>", mockToString(root);
@@ -41,7 +43,7 @@ test "a Text takes spans or children, not both" {
 	assert message.indexOf("spans or children") >= 0, message;
 }
 
-test "on a host without setSpans, a span's onPress is its nested Text's press, and follows a new handler" {
+test "on a host without a paragraph capability, a span's onPress is its nested Text's press, and follows a new handler" {
 	const root: MockNode = mockNode("root");
 	let log = "";
 	const [spans, setSpans] = createSignal<TextSpan[]>([{ text: "a" }, { text: "b", onPress: (e: NeonEvent): void => { log += "first;"; } }]);
@@ -55,11 +57,16 @@ test "on a host without setSpans, a span's onPress is its nested Text's press, a
 	assert log === "first;second;", log;
 }
 
-test "a host with setSpans but no paragraph capability refuses a Text instead of laying it out as nodes" {
-	const host: Host = { ...mockHost(), setSpans: (node: HostNode, spans: TextSpan[]): void => {} };
-	let message = "";
-	try {
-		render(element(<Text>a</Text>), host, mockNode("root") as unknown as HostNode);
-	} catch (e) { message = e.message; }
-	assert message.indexOf("paragraph capability") >= 0, message;
+test "a label built by hand reaches a paragraph host as one span, and no node goes into it" {
+	let got = "";
+	const deliver = (node: HostNode, spans: TextSpan[]): void => {
+		for (const s of spans) { got += "[" + s.text + "]"; }
+	};
+	const host: Host = { ...mockHost(), paragraph: (h: Host, node: HostNode, before: HostNode | null, kids: NeonNode | null, spans: Accessor<TextSpan[]> | null): void => {
+		spanParagraph(deliver, node, kids, spans);
+	} };
+	const label: MockNode = mockNode("text");
+	setTextContent(host, label as unknown as HostNode, "did not mount");
+	assert got === "[did not mount]", got;
+	assert label.children.length === 0, mockToString(label);
 }
