@@ -22,6 +22,12 @@ names the card and the site, and nothing is worked around in `src/`. Rows closed
 2026-09-20 were dropped with §2 — they are in this file's history at `git show c00bd2b:BUGS.md`,
 and the invariants that outlived them were moved to the head of the test that pins each one.
 
+- **OPEN 2026-10-19 — the Android apis and catalog lanes are red on main.** Emulator `emulator-5554`
+  (Pixel 9 Pro AVD, headless, launcher force-stopped first), `ANDROID_SERIAL=emulator-5554 sh tests/android/lane.sh
+  examples/<app> dev.neon.<App> tests/android/<app>.py`: apis prints `'Neon APIs' never appeared; texts []`, catalog
+  prints `timed out waiting for 12 products; texts ['Catalog', 'Search products', 'Offline', 'Loading products']`. Same
+  on main 76d8efa1 and on 1e1b8dc4; the emulator reaches 8.8.8.8, so catalog's `Offline` is not the host network. media
+  and svg pass in the same run. Not diagnosed.
 - **OPEN 2026-10-16 — touches do not reach the sokol canvas.** `src/platform/sokol/input.ms`
   `deliverAppEvent` takes the four `Touches*` events and does nothing with them, so a phone browser cannot
   press, scroll or focus the canvas once events arrive.
