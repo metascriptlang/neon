@@ -1,4 +1,5 @@
 import { createSignal } from "../../src/core/signal";
+import { flush } from "../../src/core/runtime";
 import { element } from "../../src/macros/ui/element";
 import { Host, HostNode, MockNode, mockNode, mockHost, render, mockToString, fireEvent, fireEventWith, fireTouch } from "../../src/render/host";
 import { neonEvent } from "../../src/render/event";
@@ -32,6 +33,7 @@ function press(n: MockNode, label: string): void {
 	const hit = labelled(n, label);
 	if (hit === null) { throw "nothing labelled " + label + " in " + mockToString(n); }
 	fireEvent(hit as MockNode, "onPress");
+	flush();
 }
 
 function laidOut(n: MockNode, width: number): void {
@@ -39,6 +41,7 @@ function laidOut(n: MockNode, width: number): void {
 	e.width = width;
 	e.height = 40;
 	fireEventWith(n, "onLayout", e);
+	flush();
 }
 
 function drag(target: MockNode, points: number[]): void {
@@ -49,6 +52,7 @@ function drag(target: MockNode, points: number[]): void {
 		fireTouch(target, "onTouchMove", points[i], 20, t);
 	}
 	fireTouch(target, "onTouchEnd", points[points.length - 1], 20, t + 16);
+	flush();
 }
 
 function thumbLeft(slider: MockNode): number {
@@ -87,6 +91,7 @@ test "Slider ignores a drag while disabled and flips direction when inverted" {
 	drag(slider.children[0], [100, 150]);
 	assert value === 0.5, "no change while disabled";
 	setOff(false);
+	flush();
 	drag(slider.children[0], [100, 150]);
 	assert value === 0.25, "a rightward drag lowers an inverted slider: " + value.toString();
 }
@@ -110,13 +115,16 @@ test "Picker shows the selected label, lists the items in a dialog and reports t
 	const overlay = overlayOf(host);
 	assert overlay.children.length === 0, "closed";
 	fireEvent(field, "onPress");
+	flush();
 	assert mockToString(overlay).indexOf("Room") > 0 && attr(labelled(overlay, "Deluxe") as MockNode, "accessibilityState") === "selected", "open: " + mockToString(overlay);
 	press(overlay, "Deluxe");
 	assert picked === "" && overlay.children.length === 0, "the selected item closes without a report";
 	fireEvent(field, "onPress");
+	flush();
 	press(overlay, "Suite");
 	assert picked === "ste@2;" && overlay.children.length === 0 && mockToString(field).indexOf("Suite") > 0, "picked: " + picked;
 	fireEvent(field, "onPress");
+	flush();
 	press(overlay, "Dismiss");
 	assert picked === "ste@2;" && overlay.children.length === 0, "the scrim closes without a report";
 }
@@ -126,6 +134,7 @@ test "Picker does not open while disabled" {
 	const root: MockNode = mockNode("root");
 	render(element(<Picker items={[{ label: "A", value: "a" }]} enabled={false} accessibilityLabel="Letter" />), host, root as unknown as HostNode);
 	fireEvent(labelled(root, "Letter") as MockNode, "onPress");
+	flush();
 	assert overlayOf(host).children.length === 0, "closed";
 }
 
@@ -147,6 +156,7 @@ test "DateTimePicker opens a calendar at the value's month, honours the bounds a
 	assert mockToString(field).indexOf("2026-10-07") > 0, "field: " + mockToString(field);
 	const overlay = overlayOf(host);
 	fireEvent(field, "onPress");
+	flush();
 	assert mockToString(overlay).indexOf("October 2026") > 0, "month: " + mockToString(overlay);
 	assert attr(labelled(overlay, "October 7, 2026") as MockNode, "accessibilityState") === "selected", "the value is selected";
 	assert attr(labelled(overlay, "October 4, 2026") as MockNode, "accessibilityState") === "disabled", "before the minimum";
@@ -155,6 +165,7 @@ test "DateTimePicker opens a calendar at the value's month, honours the bounds a
 	press(overlay, "Cancel");
 	assert reports === 0 && day() === "2026-10-07" && overlay.children.length === 0, "Cancel reports nothing";
 	fireEvent(field, "onPress");
+	flush();
 	press(overlay, "Next month");
 	assert mockToString(overlay).indexOf("November 2026") > 0, "next month";
 	press(overlay, "November 2, 2026");
@@ -173,6 +184,7 @@ test "DateTimePicker in time mode picks hour and minute on wheels, and inline re
 	</View>), host, root as unknown as HostNode);
 	const overlay = overlayOf(host);
 	fireEvent(labelled(root, "Arrival") as MockNode, "onPress");
+	flush();
 	const scrolls: MockNode[] = [];
 	const collect = (n: MockNode): void => {
 		if (n.tag === "scrollview") { scrolls.push(n); }
@@ -185,6 +197,7 @@ test "DateTimePicker in time mode picks hour and minute on wheels, and inline re
 		e.y = y;
 		e.height = 160;
 		fireEventWith(wheel, "onScroll", e);
+		flush();
 	};
 	scrollTo(scrolls[0], 14 * 32);
 	scrollTo(scrolls[1], 45 * 32);
