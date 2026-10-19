@@ -7,7 +7,7 @@ import { Style, StyleValue, emptyStyle, setStyleField } from "./style";
 import { Host, HostNode, NeonNode, VoidArea, TextMeasure } from "./hostTypes";
 import { NeonEvent, neonEvent, eventType } from "./event";
 import { createRoot } from "../core/owner";
-import { enterRoot, leaveRoot } from "../core/runtime";
+import { flush } from "../core/runtime";
 import { beginClaim, endClaim } from "./claim";
 import { Dispose } from "../core/types";
 import { AreaHub, createAreaHub } from "./voidAreaHandle";
@@ -15,7 +15,7 @@ import { AreaHub, createAreaHub } from "./voidAreaHandle";
 export { Host, HostNode, NeonNode, VoidArea, TextMeasure } from "./hostTypes";
 export { bindText, writeAttr, bindAttr, bindStyleProp, applyStaticStyle, bindStyleAll, applyRef, setupRef, composeRefs } from "./bind";
 
-export function render(node: NeonNode, host: Host, parent: HostNode, id: string | null = null): Dispose {
+function mount(node: NeonNode, host: Host, parent: HostNode, id: string | null): Dispose {
 	return createRoot((dispose) => {
 		try {
 			node(host, parent, null);
@@ -27,29 +27,34 @@ export function render(node: NeonNode, host: Host, parent: HostNode, id: string 
 	}, id);
 }
 
-export function hydrate(node: NeonNode, host: Host, container: HostNode): Dispose {
-	enterRoot();
-	let completed = false;
+export function render(node: NeonNode, host: Host, parent: HostNode, id: string | null = null): Dispose {
+	const dispose = mount(node, host, parent, id);
 	try {
-		beginClaim(host, container);
-		let dispose: Dispose;
-		try {
-			dispose = render(node, host, container, "");
-		} catch (error) {
-			endClaim(host, false);
-			throw error;
-		}
-		try {
-			endClaim(host, true);
-		} catch (error) {
-			dispose();
-			throw error;
-		}
-		completed = true;
-		return dispose;
-	} finally {
-		leaveRoot(completed);
+		flush();
+	} catch (error) {
+		dispose();
+		throw error;
 	}
+	return dispose;
+}
+
+export function hydrate(node: NeonNode, host: Host, container: HostNode): Dispose {
+	beginClaim(host, container);
+	let dispose: Dispose;
+	try {
+		dispose = mount(node, host, container, "");
+	} catch (error) {
+		endClaim(host, false);
+		throw error;
+	}
+	try {
+		endClaim(host, true);
+		flush();
+	} catch (error) {
+		dispose();
+		throw error;
+	}
+	return dispose;
 }
 
 // ---- Mock host: in-memory tree for tests/SSR (no browser needed) ----
