@@ -1,5 +1,4 @@
 import { createSignal, Accessor } from "../../src/core/signal";
-import { resetErrorHalt } from "../../src/core/runtime";
 import { element } from "../../src/macros/ui/element";
 import { flush, resetErrorHalt } from "../../src/core/runtime";
 import { render } from "../../src/render/host";
@@ -649,16 +648,20 @@ test "a pointer, key or press handler that mounts or unmounts handler-bearing no
 	vh.layout(400.0, 300.0);
 	vh.pointerDown(100.0, 100.0, 0);
 	vh.pointerUp(100.0, 100.0, 0);
+	flush();
 	assert open() && log.join("|") === "outer up", "mounted from a pointer handler; the new node missed the event that made it: " + log.join("|");
 	log.length = 0;
 	vh.layout(400.0, 300.0);
 	vh.pointerUp(100.0, 100.0, 0);
+	flush();
 	assert !open() && log.join("|") === "inner up|outer up", "unmounted from the parent's handler after the target heard it: " + log.join("|");
 	setOpen(true);
+	flush();
 	vh.layout(400.0, 300.0);
 	log.length = 0;
 	vh.focus(inner);
 	vh.keyDown(key("a"));
+	flush();
 	assert !open() && log.join("|") === "inner key|outer key", "a key handler that unmounts its own node, and the parent still hears it: " + log.join("|");
 }
 
@@ -676,6 +679,7 @@ test "a press handler that mounts a pressable does not break the press dispatch"
 	), vh.host, vh.root);
 	vh.layout(200.0, 100.0);
 	vh.clickAt(10.0, 10.0);
+	flush();
 	assert more() && presses === 1, "the press mounted a pressable and fired once: " + presses.toString();
 }
 
@@ -716,6 +720,7 @@ test "a captured node that unmounts gives the pointer back to the node under it"
 	), vh.host, vh.root);
 	vh.layout(300.0, 100.0);
 	vh.pointerDown(10.0, 10.0, 0);
+	flush();
 	vh.layout(300.0, 100.0);
 	vh.pointerMove(250.0, 80.0, 0, true);
 	assert log.join("|") === "outer:pointermove@250,80/250,80 b0 down d0,0", "the gone node hears nothing: " + log.join("|");
@@ -758,6 +763,7 @@ test "a style change that only moves layout asks the window for a frame" {
 	settle(vh);
 	const before = woke;
 	setRowHeight(18);
+	flush();
 	assert woke === before + 1, "a height-only change woke the host: " + (woke - before).toString();
 	vh.layout(400.0, 300.0);
 	assert top(vh).children[1].ref.local().y === 18.0, "the next layout moves the row below: y=" + top(vh).children[1].ref.local().y.toString();
