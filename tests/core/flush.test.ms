@@ -29,9 +29,10 @@ test "an effect runs once per flush, not once per write" {
 	});
 	flush();
 	setX(20);
-	assert runs === 2;
 	setX(30);
-	assert runs === 3;
+	assert runs === 1, "the writes wait for the drain";
+	flush();
+	assert runs === 2, "one run for two writes: " + runs.toString();
 }
 
 test "flush() inside an effect is a no-op" {
@@ -43,6 +44,7 @@ test "flush() inside an effect is a no-op" {
 	flush();
 	assert runs === 1;
 	setA(20);
+	flush();
 	assert runs === 2, "ran " + runs.toString();
 }
 
@@ -108,6 +110,7 @@ test "a render effect runs before the user effects of the same flush" {
 	flush();
 	log.push("--");
 	setX(1);
+	flush();
 	assert log.join(",") === "render 0,user 0,--,render 1,user 1", "got " + log.join(",");
 }
 
@@ -131,9 +134,11 @@ test "flush(fn) leaves the scheduler usable after an effect throws" {
 	}
 	assert message === "boom", "got " + message;
 	setC(3);
+	flush();
 	assert seenC !== 3, "the halted scheduler drains nothing";
 	resetErrorHalt();
 	setC(4);
+	flush();
 	assert seenC === 4, "a later write drains once the halt is reset: " + seenC.toString();
 }
 
@@ -152,6 +157,7 @@ test "flush(fn) leaves the scheduler usable after fn itself throws" {
 	}
 	assert message === "body";
 	setC(5);
+	flush();
 	assert seenC === 5, "a later write still drains: " + seenC.toString();
 }
 
@@ -166,6 +172,7 @@ test "a loop that keeps rescheduling itself is stopped with an error" {
 			createEffect<int32>((p: int32 | null): int32 => x(), (v: int32, p: int32 | null): Cleanup | null => { setYy(v + 1); return null; });
 			createEffect<int32>((p: int32 | null): int32 => y(), (v: int32, p: int32 | null): Cleanup | null => { setX(v + 1); return null; });
 		});
+		flush();
 	} catch (e) {
 		message = e.message;
 	}
@@ -180,6 +187,7 @@ test "a loop that keeps rescheduling itself is stopped with an error" {
 		createEffect<int32>((p: int32 | null): int32 => z(), (v: int32, p: int32 | null): Cleanup | null => { seen = v; return null; });
 	});
 	setZ(4);
+	flush();
 	assert seen === 4, "the scheduler recovered: " + seen.toString();
 }
 
@@ -202,6 +210,7 @@ test "an updater write is committed by flush()" {
 }
 
 // RFC 01 "flush and microtask batching": without flush() the write drains on the next microtask
+// parked natively: ~/metascript/.inbox/compiler/2026-10-20-await-in-test-body-skips-queued-jobs.md
 test "a write drains on the next microtask without flush()" {
 	const [x, setX] = createSignal(1);
 	let seen = 0;
