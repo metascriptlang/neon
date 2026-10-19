@@ -16,7 +16,7 @@ import { create, add, isDirty } from "../../../../void/src/void2d/scene";
 import { Color, rgba, vec2 } from "../../../../void/src/void2d/types";
 import { FontId, FontError, DEFAULT_FONT, FontStyle as FaceStyle, SizeAdjust, resolveFont } from "../../../../void/src/void2d/font";
 import { FlexStyle, YGNode, FlexDirection, Justify, Align, PositionType, Wrap, Display, Overflow, layoutPass, freeLayoutTree } from "../../../../yoga/src/index";
-import { Style, FontWeight } from "../../render/style";
+import { Style, FontWeight, emptyStyle } from "../../render/style";
 import { asFlexStyleBody } from "../../macros/style/fields";
 import {
 	TextEditingValue, editingValue, isEmptyRange,
@@ -42,6 +42,7 @@ struct Frame {
 
 export class VoidNode {
 	ref: NodeRef;
+	tag: string = "";
 	parent: VoidNode | null = null;
 	children: VoidNode[] = [];
 	scroller: NodeRef | null = null;
@@ -874,6 +875,7 @@ export function createVoidHostWith(scene: Scene2D, font: FontId, defaultFamily: 
 					n.flex = {};
 				}
 			}
+			n.tag = tag;
 			woke(was);
 			return n;
 		},
@@ -882,6 +884,25 @@ export function createVoidHostWith(scene: Scene2D, font: FontId, defaultFamily: 
 			const n = new VoidNode(textLabel(s));
 			woke(was);
 			return n;
+		},
+		reuse: (node: HostNode, tag: string): boolean => {
+			const n = live(node, "reuse");
+			if (n.tag !== tag) { return false; }
+			if (tag === "") { return true; }
+			const was = wasDirty();
+			for (let i = events.length - 1; i >= 0; i -= 1) {
+				if (events[i].node === n) { events.splice(i, 1); }
+			}
+			n.flex = n.isText ? {} : null;
+			n.style = null;
+			applyPaint(n, emptyStyle());
+			n.focusAttr = false;
+			n.imeBox = null;
+			n.cell = 0.0;
+			if (n.para !== null) { (n.para as NodeRef).setForceWidth(0.0); }
+			woke(was);
+			if (attached(n)) { askLayout(); }
+			return true;
 		},
 		setText: (node: HostNode, s: string): void => {
 			const n = live(node, "setText");

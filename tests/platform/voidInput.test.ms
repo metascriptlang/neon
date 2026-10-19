@@ -3,10 +3,12 @@ import { resetErrorHalt } from "../../src/core/runtime";
 import { element } from "../../src/macros/ui/element";
 import { render } from "../../src/render/host";
 import { NeonEvent, neonEvent } from "../../src/render/event";
-import { View, ViewHandle, Text, TextInput, Pressable } from "../../src/components/primitives";
+import { View, ViewHandle, Text, TextInput, Pressable, ScrollView } from "../../src/components/primitives";
+import { refreshBoundary0, refreshComponent0, refreshModule, refreshReset } from "../../src/render/refresh";
 import { ForList, Show } from "../../src/macros/ui/flow";
 import { createList } from "../../src/core/list";
 import { NeonNode } from "../../src/render/node";
+import { HostNode } from "../../src/render/hostTypes";
 import {
 	createVoidHostWith, VoidHost, VoidNode, TextEditingValue, editingValue, CaretRect,
 } from "../../src/platform/void/host";
@@ -820,4 +822,54 @@ test "a View's handle focuses it on the Void host and blur clears it" {
 	assert log === "focus;blur;", "blur: " + log;
 	(grid as ViewHandle).blur();
 	assert log === "focus;blur;", "a second blur of an unfocused view fires nothing: " + log;
+}
+
+function feedV1(): NeonNode {
+	return element(<View style={{ width: 300, height: 200 }}>
+		<TextInput style={{ width: 200, height: 24 }} />
+		<ScrollView style={{ width: 100, height: 50 }}><View style={{ width: 100, height: 200 }} /></ScrollView>
+	</View>);
+}
+
+function feedV2(): NeonNode {
+	return element(<View style={{ width: 300, height: 200 }}>
+		<TextInput style={{ width: 220, height: 24 }} />
+		<ScrollView style={{ width: 100, height: 60 }}><View style={{ width: 100, height: 200 }} /></ScrollView>
+		<Text>v2</Text>
+	</View>);
+}
+
+function firstView(vh: VoidHost): VoidNode {
+	for (const c of (vh.root as VoidNode).children) {
+		if (c.tag === "view") { return c; }
+	}
+	throw new Error("the root holds no view");
+}
+
+test "a refresh remount keeps the field's text, the focus and the scroll offset of the nodes it still renders" {
+	refreshReset();
+	const vh = host();
+	render(refreshBoundary0("voidInput", "Feed", feedV1, (): string => "v1"), vh.host, vh.root);
+	vh.layout(300.0, 200.0);
+	vh.clickAt(10.0, 10.0);
+	vh.commitText("h");
+	vh.commitText("i");
+	const typed = firstView(vh).children[0];
+	const area = firstView(vh).children[1];
+	const scrollTo = vh.host.scrollTo as (node: HostNode, x: number, y: number, animated: boolean) => void;
+	scrollTo(area, 0, 40, false);
+	const offset = (area.scroller as NodeRef).scroll().y;
+	assert offset > 0.0, "the scroll view scrolled before the edit";
+	refreshComponent0("voidInput", "Feed", feedV2, (): string => "v2");
+	const summary = refreshModule("voidInput");
+	assert summary.remounted === 1, "the component remounts: " + summary.remounted.toString();
+	vh.layout(300.0, 200.0);
+	assert firstView(vh).children[0] === typed && vh.focused() === typed, "the field is the same node and keeps the focus";
+	assert labelOf(typed).text() === "hi", "with its text: " + labelOf(typed).text();
+	assert typed.ref.content().w === 220.0, "and the new style: " + typed.ref.content().w.toString();
+	assert firstView(vh).children[1] === area, "the scroll view is the same node";
+	assert (area.scroller as NodeRef).scroll().y === offset, "and keeps its offset: " + (area.scroller as NodeRef).scroll().y.toString();
+	assert firstView(vh).children.length === 3, "the new Text is mounted";
+	vh.commitText("!");
+	assert labelOf(typed).text() === "hi!", "typing goes on into the kept field: " + labelOf(typed).text();
 }
