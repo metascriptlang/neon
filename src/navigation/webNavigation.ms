@@ -247,7 +247,7 @@ export function childPagesWebNavigation<C, T>(
 	const visited = options.visited;
 	return {
 		serializer: pagesSerializer<C>(serializer),
-		history: accessor((): WebHistoryItem<Pages<C> >[] => {
+		history: accessor((): WebHistoryItem<Pages<C>>[] => {
 			const children = pages.items();
 			const items: C[] = [];
 			for (const child of children) { items.push(child.configuration()); }
@@ -256,7 +256,7 @@ export function childPagesWebNavigation<C, T>(
 			if (order.length === 0 || order[order.length - 1] !== selectedIndex) {
 				throw new Error("child pages web navigation: the visited pages do not end with the selected one");
 			}
-			const history: WebHistoryItem<Pages<C> >[] = [];
+			const history: WebHistoryItem<Pages<C>>[] = [];
 			for (const at of order) {
 				if (at >= children.length) {
 					throw new Error("child pages web navigation: visited page " + at.toString() + " does not exist");
@@ -303,7 +303,7 @@ export function childPanelsWebNavigation<MC, MT, DC, DT, EC, ET>(
 			detailsSerializer,
 			extraSerializer,
 		),
-		history: accessor((): WebHistoryItem<PanelsHistoryKey<MC, DC, EC> >[] => {
+		history: accessor((): WebHistoryItem<PanelsHistoryKey<MC, DC, EC>>[] => {
 			const details = panels.details();
 			const extra = panels.extra();
 			const key: PanelsHistoryKey<MC, DC, EC> = {
