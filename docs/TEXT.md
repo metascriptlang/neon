@@ -14,16 +14,16 @@ The code is the truth for everything else: `src/platform/void/host.ms` (`refresh
 - **A data door beside it**, decided 2026-10-15: `<Text spans={…}>`, each `TextSpan { text, style? }`
   (`src/render/hostTypes.ms`). It is Flutter's `Text.rich(TextSpan)`, for content that is already data, such as
   terminal and editor lines. A span is the data form of a nested `<Text>`.
-  - On a host with the `setSpans` capability (Void), the spans go straight into the paragraph's runs, with no
+  - On a host with the `paragraph` capability (Void, native), the spans go straight into the paragraph's runs, with no
     node per span.
   - On any other host, `src/render/paragraph.ms` `spanNodes` lays them out as nested Texts, keeping each
     span's nodes by position.
 - **One mechanism for both doors**, decided 2026-10-15. This is RN Fabric's, where nested `<Text>` and `RawText` are
   shadow nodes with no view, and `ParagraphShadowNode` flattens them into one `AttributedString`.
-  - On a host with `setSpans`, a Text's children render into `SPAN_HOST` (`src/render/spanHost.ms`), whose nodes are
-    plain records. Such a host names `spanParagraph` as its `paragraph` capability, so a host without one never
-    links the span machinery. The outermost Text flattens its records and hands the host the same `TextSpan[]` the `spans`
-    prop does.
+  - On a host with `paragraph`, a Text's children render into `SPAN_HOST` (`src/render/spanHost.ms`), whose nodes are
+    plain records. The host's `paragraph` calls `spanParagraph` with its own span delivery, so a host without the
+    capability never links the span machinery. The outermost Text flattens its records and hands the host the same
+    `TextSpan[]` the `spans` prop does.
   - It does that once per update, from a deferred `createEffect` that runs after every render effect of the update.
     A paragraph of one string skips the effect and goes straight to the host.
   - The native host takes spans too (`setSpansOf` in `src/platform/native/host.ms`). A span with `onPress` keeps its
@@ -88,7 +88,7 @@ React Native `18f5ddb`, react-native-windows `1f59db1`, Flutter `6f0e0db`, Skia 
 
 ## Void today
 
-`createVoidHostWith` gives each `<Text>` one void2d label, filled through `setSpans`; a Text has no host children,
+`createVoidHostWith` gives each `<Text>` one void2d label, filled through its span delivery; a Text has no host children,
 and `append` into one is refused. The label wraps at the Text's laid width. It gets runs once a span is styled or the
 Text itself carries a decoration line.
 
@@ -190,7 +190,7 @@ per frame.
 ## Order
 
 1. Paragraph on the Void host: done, with the yoga measure hook outstanding.
-2. The data door: done. `spans`, and `setSpans` on Void. `cellWidth` → `setForceWidth`: done on Void.
+2. The data door: done. `spans`, and the span delivery on Void. `cellWidth` → `setForceWidth`: done on Void.
    Damage per binding needs no contract field: a host compares a node's last style with the new one.
 3. Paint-only updates: done on Windows (DirectWrite keeps one layout per label and recolours through drawing effects;
    `docs/WINDOWS.md` "Built: styled runs"); on Void once the Void request lands.
