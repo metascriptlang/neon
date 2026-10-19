@@ -23,6 +23,7 @@ import { installAppServices } from "../../api/services";
 import { installFrameDriver } from "../../animation/frame";
 import { ionCaptureServices } from "./audio";
 import { ionAppServices } from "./appServices";
+import { pollReload, RELOAD_POLL_MS } from "../reloadPoll";
 import { VoidHost, familyFont } from "../void/host";
 import {
 	WindowArea,
@@ -314,6 +315,9 @@ export function runWindow(opts: DesktopOptions, app: () => NeonNode): int32 {
 	});
 	const host = ionWindowHost(win);
 	const dispose = render((h: Host, p: HostNode, b: HostNode | null): void => { app()(h, p, b); }, host, windowNode("window"));
+	when (hcr) {
+		setInterval(pollReload, RELOAD_POLL_MS);
+	}
 	runLoop();
 	reportProfile();
 	dispose();

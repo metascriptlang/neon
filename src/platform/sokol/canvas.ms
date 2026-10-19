@@ -14,6 +14,7 @@ import {
 	logicalHeight,
 } from "../void/windowHost";
 import { SokolInput, sokolInput, deliverAppEvent, flushKey } from "./input";
+import { pollReload, RELOAD_POLL_MS } from "../reloadPoll";
 
 @include("../../../../void/src/sokol/bridge.h");
 
@@ -96,6 +97,9 @@ function initCanvas(): void {
 		if (c.input !== null) { deliverAppEvent(c.input as SokolInput, e); }
 	});
 	setTextInput(true);
+	when (hcr) {
+		setInterval(pollReload, RELOAD_POLL_MS);
+	}
 }
 
 function frameCanvas(): void {

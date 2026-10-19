@@ -15,7 +15,7 @@ import { installNativeAppServices } from "./appServices";
 import { installFrameDriver } from "../../animation/frame";
 import { LayoutAnimationPlan, LayoutPhase, takeLayoutAnimation, runLayoutTween } from "../../animation/layoutAnimation";
 import "../android/library";
-import { reload, lastReload, reloadKindName, ReloadKind } from "std/hcr";
+import { pollReload, RELOAD_POLL_MS } from "../reloadPoll";
 
 @passC("-I./");
 
@@ -1260,21 +1260,12 @@ function teardownApp(): void {
 	root.zChildren = 0;
 }
 
-when (android && hcr) {
-	function pollReload(): void {
-		batched((): void => {
-			const kind = reload();
-			if (kind == ReloadKind.NoChange) return;
-			const r = lastReload();
-			console.log(`HCR ${reloadKindName(kind)} [${r.modules.join(",")}] ${r.reason}`);
-		});
-	}
-}
-
 export function runApp(app: () => NeonNode): int32 {
 	mountedApp = app;
 	when (android && hcr) {
-		niSetReloadPoll(pollReload);
+		niSetReloadPoll((): void => { batched(pollReload); });
+	} else when (hcr) {
+		setInterval((): void => { batched(pollReload); }, RELOAD_POLL_MS);
 	}
 	niRegisterApp(mountApp);
 	niSetTeardownHandler(teardownApp);
