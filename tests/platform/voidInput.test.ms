@@ -387,6 +387,15 @@ test "cellWidth puts every grapheme of the paragraph on a fixed cell, and follow
 	assert label.xForIndex(2) === 14.0, "cells of 7: " + label.xForIndex(2).toString();
 }
 
+test "a cellWidth Text narrower than its text stays one line" {
+	const vh = host();
+	render(element(<View style={{ width: 100 }}><Text cellWidth={10}>abcdefghijklmnopqrst</Text></View>), vh.host, vh.root);
+	vh.layout(100.0, 100.0);
+	const label = paragraph(top(vh).children[0]);
+	label.textWidth();
+	assert label.xForIndex(15) === 150.0, "grapheme 15 stays on the first line: x=" + label.xForIndex(15).toString();
+}
+
 test "spans draw as one paragraph label on the Void host, with no node per span" {
 	const vh = host();
 	const red: Style = { color: "#ff0000", textDecorationLine: "underline" };

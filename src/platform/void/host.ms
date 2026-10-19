@@ -1233,7 +1233,7 @@ export function createVoidHostWith(scene: Scene2D, font: FontId, defaultFamily: 
 	const flowText = (n: VoidNode): void => {
 		if (n.isText) {
 			const w = n.ref.content().w;
-			if (n.para !== null && w > 0.0) { (n.para as NodeRef).setMaxWidth(w); }
+			if (n.para !== null && w > 0.0 && n.cell <= 0.0) { (n.para as NodeRef).setMaxWidth(w); }
 			return;
 		}
 		let x: float32 = 0.0;
