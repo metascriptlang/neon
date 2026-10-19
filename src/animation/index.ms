@@ -1,6 +1,3 @@
-// Import from here, not ./animated alone: methods of AnimatedValue resolve only when
-// the caller's imports reach ./nodes (compiler card
-// 2026-10-07-methods-of-a-class-from-an-unimported-module-are-not-found.md).
 export {
 	Animated, CompositeAnimation, useAnimatedValue, TimingConfig, TimingXYConfig, SpringConfig, SpringXYConfig,
 	DecayConfig, DecayXYConfig, ParallelConfig, LoopAnimationConfig, EventMapping, EventConfig,
