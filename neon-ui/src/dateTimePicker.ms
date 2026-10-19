@@ -139,16 +139,16 @@ export function DateTimePicker(props: DateTimePickerProps): NeonNode {
 		setHour(parts.hour);
 		setMinute(parts.minute);
 	};
-	const result = (): string => {
-		const time = isoTime(untrack<int32>(hour), untrack<int32>(minute));
+	const result = (day: string, h: int32, m: int32): string => {
+		const time = isoTime(h, m);
 		if (!hasDate()) { return time; }
-		return hasTime() ? untrack<string>(picked) + "T" + time : untrack<string>(picked);
+		return hasTime() ? day + "T" + time : day;
 	};
-	const report = (): void => {
-		const next = result();
+	const report = (day: string, h: int32, m: int32): void => {
+		const next = result(day, h, m);
 		if (next !== untrack<string>(value) && onChange !== null) { (onChange as (v: string) => void)(next); }
 	};
-	const changed = (): void => { if (inline()) { report(); } };
+	const changed = (day: string, h: int32, m: int32): void => { if (inline()) { report(day, h, m); } };
 	const allowed = (iso: string): boolean =>
 		(minimumDate === null || iso >= (minimumDate as Accessor<string>)().slice(0, 10)) &&
 		(maximumDate === null || iso <= (maximumDate as Accessor<string>)().slice(0, 10));
@@ -181,8 +181,9 @@ export function DateTimePicker(props: DateTimePickerProps): NeonNode {
 		stateAttr(attrs, (): string => stateTokens("", isPicked(), !enabled()));
 		const press = (e: NeonEvent): void => {
 			if (!enabled()) { return; }
-			setPicked(iso());
-			changed();
+			const next = iso();
+			setPicked(next);
+			changed(next, untrack<int32>(hour), untrack<int32>(minute));
 		};
 		return hostElement("pressable", attrs, [evt("onPress", press)], element(<Text style={label}>{day() > 0 ? day().toString() : ""}</Text>), box as () => Style, null);
 	};
@@ -200,15 +201,15 @@ export function DateTimePicker(props: DateTimePickerProps): NeonNode {
 	</View>);
 	const wheel = (labels: string[], name: string, initial: int32, choose: (i: int32) => void): NeonNode => element(<ListWheelScrollView
 		data={labels} itemExtent={ITEM} initialItem={initial as number} style={WHEEL}
-		onSelectedItemChanged={(i: number): void => { choose(i as int32); changed(); }}
+		onSelectedItemChanged={(i: number): void => { choose(i as int32); }}
 		renderItem={(info: WheelRenderItemInfo<string>): NeonNode =>
 			<Text style={{ fontSize: 20, textAlign: "center", color: MATERIAL_ON_SURFACE }} accessibilityLabel={`${info.item} ${name}`}>{info.item}</Text>} />);
 	const panel = (): NeonNode => element(<View style={{ gap: 12 }}>
 		<Show when={hasDate()}>{calendar}</Show>
 		<Show when={hasTime()}>
 			<View style={WHEELS}>
-				{wheel(twoDigits(24), "hours", untrack<int32>(hour), (i: int32): void => { setHour(i); })}
-				{wheel(twoDigits(60), "minutes", untrack<int32>(minute), (i: int32): void => { setMinute(i); })}
+				{wheel(twoDigits(24), "hours", untrack<int32>(hour), (i: int32): void => { setHour(i); changed(untrack<string>(picked), i, untrack<int32>(minute)); })}
+				{wheel(twoDigits(60), "minutes", untrack<int32>(minute), (i: int32): void => { setMinute(i); changed(untrack<string>(picked), untrack<int32>(hour), i); })}
 			</View>
 		</Show>
 	</View>);
@@ -216,7 +217,7 @@ export function DateTimePicker(props: DateTimePickerProps): NeonNode {
 	const close = (): void => { setOpen(false); };
 	const confirm = (): void => {
 		setOpen(false);
-		report();
+		report(untrack<string>(picked), untrack<int32>(hour), untrack<int32>(minute));
 	};
 	const actions = element(<>
 		<DialogAction label="Cancel" onPress={close} color={accent()} />

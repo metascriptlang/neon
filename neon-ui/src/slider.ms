@@ -85,20 +85,24 @@ export function Slider(props: SliderProps): NeonNode {
 		backgroundColor: tint(thumbTint, MATERIAL_PRIMARY),
 	}));
 	let start: float64 = 0;
+	let active = false;
+	let last: float64 = 0;
 	const report = (callback: ((v: float64) => void) | null, v: float64): void => {
 		if (callback !== null) { (callback as (x: float64) => void)(v); }
 	};
 	const finish = (): void => {
-		if (!untrack<boolean>(dragging)) { return; }
-		const v = untrack<float64>(dragged);
+		if (!active) { return; }
+		active = false;
 		setDragging(false);
-		report(onSlidingComplete, v);
+		report(onSlidingComplete, last);
 	};
 	const pan = PanResponder.create({
 		onStartShouldSetPanResponder: (e: NeonEvent, g: PanResponderGestureState): boolean => !flagOn(disabled),
 		onPanResponderTerminationRequest: (e: NeonEvent, g: PanResponderGestureState): boolean => false,
 		onPanResponderGrant: (e: NeonEvent, g: PanResponderGestureState): void => {
 			start = untrack<float64>(shown);
+			active = true;
+			last = start;
 			setDragged(start);
 			setDragging(true);
 			report(onSlidingStart, start);
@@ -109,7 +113,8 @@ export function Slider(props: SliderProps): NeonNode {
 			const direction = flagOn(inverted) ? -1 : 1;
 			const raw = start + direction * g.dx / span * (maximum() - minimum());
 			const v = snapSliderValue(raw, minimum(), maximum(), read(step, 0));
-			if (v === untrack<float64>(dragged)) { return; }
+			if (v === last) { return; }
+			last = v;
 			setDragged(v);
 			report(onValueChange, v);
 		},
