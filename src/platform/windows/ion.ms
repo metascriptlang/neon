@@ -9,6 +9,7 @@ import { useAppServices, useCaptureServices } from "../native/appServices";
 import { ionCaptureServices } from "../ion/audio";
 import { ionAppServices } from "../ion/appServices";
 import { NeonNode } from "../../render/node";
+import { flush } from "../../core/runtime";
 import {
 	niwAttach, niwFrame, niwResize, niwPointer, niwWheel, niwShutdown, niwKey, niwText, niwPreedit, niwFocus, niwIonCursor,
 	niwFocusedCaret, niwCaretPixelX, niwCaretPixelY, niwCaretPixelW, niwCaretPixelH,
@@ -77,6 +78,7 @@ export function runNativeWindow(opts: NativeWindowOptions, app: () => NeonNode, 
 	});
 	onFrame((window: int32, timeMs: float64): void => {
 		if (window !== win.id || !attached) { return; }
+		flush();
 		niwFrame();
 		placeIme(win);
 	});
