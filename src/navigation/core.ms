@@ -461,6 +461,26 @@ export class Navigation<P> {
 		this.writeOverrides = writeOverrides;
 	}
 
+	navigate(name: string, params: P | null = null): void {
+		this.core.navigate(name, params);
+	}
+
+	push(name: string, params: P | null = null): void {
+		this.core.push(name, params);
+	}
+
+	replace(name: string, params: P | null = null): void {
+		this.core.replaceRoute(this.route.key, name, params);
+	}
+
+	jumpTo(name: string, params: P | null = null): void {
+		this.core.navigate(name, params);
+	}
+
+	pop(count: int32 = 1): void {
+		this.core.popCount(count);
+	}
+
 	goBack(): void {
 		const core = this.core;
 		if (core.goBackFrom(this.route.key)) { return; }
@@ -597,42 +617,6 @@ export class Navigation<P> {
 			return dispose;
 		});
 	}
-}
-
-export function navigate<P>(
-	this navigation: Navigation<P>,
-	name: string,
-	params: P | null = null,
-): void {
-	navigation.core.navigate(name, params);
-}
-
-export function push<P>(
-	this navigation: Navigation<P>,
-	name: string,
-	params: P | null = null,
-): void {
-	navigation.core.push(name, params);
-}
-
-export function replace<P>(
-	this navigation: Navigation<P>,
-	name: string,
-	params: P | null = null,
-): void {
-	navigation.core.replaceRoute(navigation.route.key, name, params);
-}
-
-export function jumpTo<P>(
-	this navigation: Navigation<P>,
-	name: string,
-	params: P | null = null,
-): void {
-	navigation.core.navigate(name, params);
-}
-
-export function pop<P>(this navigation: Navigation<P>, count: int32 = 1): void {
-	navigation.core.popCount(count);
 }
 
 export function getParent<P, Q>(this navigation: Navigation<P>): Navigation<Q> {
