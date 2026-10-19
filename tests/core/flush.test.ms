@@ -1,4 +1,3 @@
-import { sleepAsync } from "std/core/promise";
 import { createSignal } from "../../src/core/signal";
 import { createEffect, createRenderEffect } from "../../src/core/effect";
 import { createRoot } from "../../src/core/owner";
@@ -40,17 +39,17 @@ test "writes outside flush(fn) wait for the next flush and run an effect once" {
 	assert x() === 30;
 }
 
-test "a write outside flush(fn) applies by itself on the next turn" {
+test "a write outside flush(fn) applies before the next timer, as Solid's microtask flush does" {
 	const [x, setX] = createSignal(10);
 	let seen = 0;
 	createRoot((d) => {
 		createEffect<int32>((p: int32 | null): int32 => x(), (v: int32, p: int32 | null): Cleanup | null => { seen = v; return null; });
 	});
-	await sleepAsync(0);
+	await Promise.resolve(0);
 	assert seen === 10, "the first run came on its own: " + seen.toString();
 	setX(20);
 	assert seen === 10;
-	await sleepAsync(0);
+	await Promise.resolve(0);
 	assert seen === 20, "the write applied on its own: " + seen.toString();
 }
 
