@@ -12,7 +12,7 @@ import { embedRegister, viewCreate, viewResize, viewFrame, viewDestroy, viewSwap
 import { setup2d } from "../../../../void/src/void2d/draw";
 import { addFont, registerFace, FontId, FontStyle as FaceStyle, DEFAULT_FONT } from "../../../../void/src/void2d/font";
 import { Scene2D } from "../../../../void/src/void2d/node";
-import { present } from "../../../../void/src/void2d/scene";
+import { present, isDirty } from "../../../../void/src/void2d/scene";
 import { exit } from "std/process";
 import { Host, HostNode, NeonNode, render } from "../../render/host";
 import {
@@ -66,6 +66,7 @@ interface Area {
 	view: ViewId;
 	visual: Ptr<void> | null;
 	area: WindowArea;
+	owed: boolean;
 }
 
 // [frames the scene's dirty wake requested, frames drawn], since the process began.
@@ -130,6 +131,7 @@ function drawCurrent(): void {
 	}
 	const owner = a as Area;
 	const area = owner.area;
+	owner.owed = false;
 	_drawn = _drawn + 1;
 	area.vh.layout(area.logicalWidth(), area.logicalHeight());
 	area.vh.scene.present();
@@ -191,6 +193,7 @@ function resized(window: int32, width: int32, height: int32, scale: float64): vo
 	} else {
 		viewResize(owner.view, width, height, owner.area.scale);
 	}
+	owner.owed = true;
 	requestFrame(owner.win);
 }
 
@@ -202,7 +205,9 @@ function wireInput(): void {
 	onFrame((window: int32, timeMs: float64): void => {
 		runFrameFires();
 		const a = areaOfWindow(window);
-		if (a !== null && (a as Area).view !== ViewInvalid) { viewFrame((a as Area).view); }
+		if (a === null) { return; }
+		const owner = a as Area;
+		if (owner.view !== ViewInvalid && (owner.owed || owner.area.vh.scene.isDirty())) { viewFrame(owner.view); }
 	});
 	onPointer((e: PointerEvent): void => {
 		const a = areaOfWindow(e.window);
@@ -226,6 +231,11 @@ function wireInput(): void {
 	});
 }
 
+function owe(win: Window): void {
+	const a = areaOfWindow(win.id);
+	if (a !== null) { (a as Area).owed = true; }
+}
+
 function ionWindowHost(win: Window): Host {
 	return windowHost({
 		name: "Ion window",
@@ -233,8 +243,12 @@ function ionWindowHost(win: Window): Host {
 		family: _family,
 		pixelWidth: (): int32 => pixelWidth(win),
 		pixelHeight: (): int32 => pixelHeight(win),
-		requestFrame: (): void => { requestFrame(win); },
+		requestFrame: (): void => {
+			owe(win);
+			requestFrame(win);
+		},
 		dirty: (): void => {
+			owe(win);
 			if (_firing) { return; }
 			_requested = _requested + 1;
 			requestFrame(win);
@@ -244,7 +258,7 @@ function ionWindowHost(win: Window): Host {
 		},
 		opened: (area: WindowArea): void => {
 			setFramePolicy(win, FrameOnDemand);
-			_areas.push({ win, view: ViewInvalid, visual: null, area });
+			_areas.push({ win, view: ViewInvalid, visual: null, area, owed: true });
 		},
 		released: (area: WindowArea): void => {
 			for (let i = 0; i < _areas.length; i += 1) {
