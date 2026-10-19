@@ -1,6 +1,7 @@
 import { runApp } from "../../src/platform/native/host";
 import "../../src/platform/native/svg";
 import { createSignal } from "../../src/core/signal";
+import { flush } from "../../src/core/runtime";
 import { View } from "../../src/components/primitives";
 import { NeonNode } from "../../src/render/node";
 import { NeonEvent } from "../../src/render/event";
@@ -27,6 +28,7 @@ test "an Svg is one native view laid out by its size, holding the display list" 
 	const first: string = nmDisplayList(tag);
 	assert first.startsWith("M 0 0 L 120 0 L 120 60 L 0 60 Z F c 238 238 238 1 S n E 0 O M 40 30 C 40 35.5228"), first;
 	setR(20);
+	flush();
 	const second: string = nmDisplayList(tag);
 	assert second.indexOf("M 50 30 C 50 41.0457") > 0, second;
 	nmTeardown();

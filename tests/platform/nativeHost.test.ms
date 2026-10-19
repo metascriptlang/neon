@@ -3,6 +3,7 @@ import "../../src/platform/native/switch";
 import "../../src/platform/native/activityIndicator";
 import "../../src/platform/native/modal";
 import { createSignal, Accessor, accessor } from "../../src/core/signal";
+import { flush } from "../../src/core/runtime";
 import { For, Errored } from "../../src/macros/ui/flow";
 import { createRenderEffect } from "../../src/core/effect";
 import { Cleanup } from "../../src/core/types";
@@ -72,6 +73,7 @@ test "removed rows and a torn-down app release native views and routes exactly o
 	assert pressed === "2;", "the second row's tag routes before removal: " + pressed;
 
 	setRows([1, 3]);
+	flush();
 	assert nmViewsCreated() === created, "keyed rows 1 and 3 are not recreated";
 	assert nmReleaseCalls() - released === 2, "the removed row releases its pressable and its label: " + (nmReleaseCalls() - released).toString();
 	nmTouch(2, PRESS);
@@ -266,6 +268,7 @@ test "a layout pass that leaves a ScrollView's frame and content size alone writ
 	const sizes = nmContentSizeWrites();
 	const passes = nmScreenHeightReads();
 	nmScroll(nmLastScrollTag(), 0, 120, 400, 760, 400, 900);
+	nmLoop();
 	const ran = nmScreenHeightReads() - passes;
 	const framed = nmScrollFrameWrites() - frames;
 	const sized = nmContentSizeWrites() - sizes;
@@ -315,14 +318,18 @@ test "native Style transforms paint and hit-test around the centre without chang
 	assert pressed === 1, "a transformed hit still routes to the pressable";
 	const writes = nmTransformWrites();
 	setTransform("translateX(15px) scale(2, 3)");
+	flush();
 	assert nmVisualX(tag, 0) === -35 && nmVisualX(tag, 100) === 165, "translation before scale is not multiplied";
 	assert nmVisualY(tag, 0) === -40 && nmVisualY(tag, 40) === 80, "nonuniform scale uses the unchanged layout height";
 	assert nmTransformWrites() === writes + 1, "one update projects one transform";
 	setTransform("none");
+	flush();
 	assert nmVisualX(tag, 0) === 0 && nmVisualY(tag, 0) === 0, "none clears scale and translation";
 	setTransform("translate(12px, 7px)");
+	flush();
 	assert nmVisualX(tag, 0) === 12 && nmVisualY(tag, 0) === 7, "sticky-style translation paints without moving the layout frame";
 	setTransform(null);
+	flush();
 	assert nmVisualX(tag, 0) === 0 && nmVisualY(tag, 0) === 0, "null also clears a prior transform";
 	assert nmLayoutWidth(tag) === 100 && nmLayoutHeight(tag) === 40 && layouts === 1, "paint updates neither resize nor repeat onLayout";
 	nmTeardown();
@@ -368,6 +375,7 @@ test "unrelated native Style changes keep the cached transform projection" {
 	const tag = nmLastPressableTag();
 	const writes = nmTransformWrites();
 	setHeight(60);
+	flush();
 	assert nmLayoutHeight(tag) === 60 && nmVisualX(tag, 0) === 100, "new layout with the old inversion";
 	assert nmTransformWrites() === writes, "the same CSS transform is not parsed or projected again";
 	nmTeardown();
@@ -396,10 +404,13 @@ test "native zIndex controls overlapping pressables without changing layout or d
 	const detached = nmDetachWrites();
 	nmTouchAt(50, 20, PRESS);
 	setZ(-1);
+	flush();
 	nmTouchAt(50, 20, PRESS);
 	setZ(null);
+	flush();
 	nmTouchAt(50, 20, PRESS);
 	setZ(10);
+	flush();
 	nmTouchAt(50, 20, PRESS);
 	assert pressed === "upper;lower;lower;upper;", "touch order follows changed z, including a reset to equal zero: " + pressed;
 	assert nmLayoutX(upperTag) === 0 && nmLayoutY(upperTag) === 0 &&
@@ -409,6 +420,7 @@ test "native zIndex controls overlapping pressables without changing layout or d
 	assert nmAddChildWrites() === added && nmDetachWrites() === detached, "restacking never removes or re-adds a view";
 	const restacked = nmRestackWrites();
 	setColor("#445566");
+	flush();
 	nmResize(400, 800);
 	nmResize(800, 400);
 	nmResize(400, 800);
@@ -571,10 +583,12 @@ test "a native sticky list paints and routes its retained header above rows, the
 	nmTouchAt(50, 25, PRESS);
 	assert pressed === "10;", "the preceding sticky header receives the overlapping row's press: " + pressed;
 	setIndices([]);
+	flush();
 	loopUntilIdle();
 	nmTouchAt(50, 25, PRESS);
 	assert pressed === "10;13;", "removing sticky indices exposes the ordinary visible row: " + pressed;
 	setIndices([0, 13]);
+	flush();
 	handles[0].scrollToOffset({ offset: 700, animated: false });
 	nmScroll(scrollTag, 0, 700, 400, 200, 400, 2000);
 	loopUntilIdle();
@@ -610,6 +624,7 @@ test "a native TextInput writes its props, routes typing, focus and submit, and 
 	handles[0].focus();
 	assert nmFocused(tag) === 1 && handles[0].isFocused(), "focus() reaches the native field and isFocused follows it";
 	nmControl(tag, 0, "grace");
+	nmLoop();
 	assert prop(tag, "value") === "GRACE", "the controlled value is written back: " + prop(tag, "value");
 	nmControl(tag, 3, "GRACE");
 	handles[0].blur();
@@ -663,8 +678,10 @@ test "native Switch, ActivityIndicator and Image write their props, size themsel
 	assert prop(picture, "source") === "https://example.com/a.png" && prop(picture, "resizeMode") === "cover", "image props";
 	assert `${nmLayoutWidth(picture)}x${nmLayoutHeight(picture)}` === "64x48", "image frame";
 	nmControl(toggle, 4, "true");
+	nmLoop();
 	assert prop(toggle, "value") === "true", "the controlled switch follows its signal";
 	setBusy(false);
+	flush();
 	assert prop(spinner, "animating") === "false", "animating follows its signal";
 	nmControlSized(picture, 5, "", 640, 480);
 	nmControl(picture, 6, "HTTP 404");
@@ -703,9 +720,11 @@ test "a native FlatList that filters down to no rows shows its ListEmptyComponen
 	runApp(app);
 	loopUntilIdle();
 	setRows([]);
+	flush();
 	loopUntilIdle();
 	assert nmTextHeight("nothing here") > 0, "the empty component has a frame: " + nmTextHeight("nothing here").toString();
 	setRows(entries(2));
+	flush();
 	loopUntilIdle();
 	nmTeardown();
 }
@@ -720,6 +739,7 @@ test "a label that grows inside a shrink-wrapped box is remeasured unwrapped, no
 	runApp(app);
 	assert `${nmTextWidth("SAVE")}x${nmTextHeight("SAVE")}` === "34x21", "initial: " + `${nmTextWidth("SAVE")}x${nmTextHeight("SAVE")}`;
 	setBig(true);
+	flush();
 	assert `${nmTextWidth("SAVE")}x${nmTextHeight("SAVE")}` === "40x24", "a bigger font keeps one line: " + `${nmTextWidth("SAVE")}x${nmTextHeight("SAVE")}`;
 	nmTeardown();
 }
@@ -755,6 +775,7 @@ function withLoader(load: () => void, body: NeonNode): NeonNode {
 
 function pressLoad(): void {
 	nmTouch(nmLastPressableTag(), PRESS);
+	nmLoop();
 }
 
 function keptRows(rows: () => number[], keep: MaintainVisibleContentPosition | null, seen: (e: NeonEvent) => void): NeonNode {
@@ -900,6 +921,7 @@ test "a native TouchableHighlight paints its underlay while pressed and clears i
 	const tag = nmLastViewTag();
 	assert nmBackgroundAlpha(tag) === 0, "transparent at rest";
 	nmTouch(tag, 0);
+	nmLoop();
 	assert nmBackgroundAlpha(tag) === 1, "the underlay paints on press in";
 	nmTouch(tag, 3);
 	nmTeardown();
@@ -918,6 +940,7 @@ test "a native StatusBar sends its bar style and visibility through the prop cha
 	runApp(app);
 	assert anyProp("statusBarStyle") === "light-content" && anyProp("statusBarHidden") === "false", "applied";
 	setHidden(true);
+	flush();
 	assert anyProp("statusBarHidden") === "true", "hidden follows its signal";
 	assert nmLayoutY(nmLastViewTag()) === 0, "the status bar node takes no layout space";
 	nmTeardown();
@@ -951,14 +974,17 @@ test "a native Modal fills the root above the app, takes the touches below it an
 	nmTouchAt(10, 50, PRESS);
 	assert log === "under;", "no modal yet: " + log;
 	setOpen(true);
+	flush();
 	const modal = nmLastControlTag(5);
 	assert `${nmLayoutWidth(modal)}x${nmLayoutHeight(modal)}` === "400x800", "fills the root: " + `${nmLayoutWidth(modal)}x${nmLayoutHeight(modal)}`;
 	assert nmPaintTag(0, 1) === modal, "paints above the app";
 	nmTouchAt(10, 50, PRESS);
 	assert log === "under;", "the modal takes the touch over the app: " + log;
 	nmTouchAt(10, 320, PRESS);
+	nmLoop();
 	assert log === "under;inside;", "its own content presses: " + log;
 	nmControl(modal, 7, "");
+	nmLoop();
 	assert log === "under;inside;close;", "back asks to close: " + log;
 	nmTouchAt(10, 50, PRESS);
 	assert log === "under;inside;close;under;", "closed: the app presses again: " + log;
@@ -975,6 +1001,7 @@ test "native numberOfLines caps a wrapping label's measured height, and 0 lifts 
 	runApp(app);
 	assert nmTextHeight(long) === 21, "one line: " + nmTextHeight(long).toString();
 	setLines(0);
+	flush();
 	assert nmTextHeight(long) > 21, "unlimited wraps: " + nmTextHeight(long).toString();
 	nmTeardown();
 }
@@ -997,15 +1024,20 @@ test "the gallery app runs on the native host: button, modal over the app, statu
 	runApp(GalleryApp);
 	assert nmHasLabel("status: ready") === 1, "mounted";
 	nmTouch(nmTagWithProp("accessibilityLabel", "Press me"), PRESS);
+	nmLoop();
 	assert nmHasLabel("status: button 1") === 1, "button";
 	nmTouch(nmTagWithProp("accessibilityLabel", "Open modal"), PRESS);
+	nmLoop();
 	assert nmHasLabel("Modal content") === 1, "modal open";
 	const modal = nmLastControlTag(5);
 	nmControl(modal, 7, "");
+	nmLoop();
 	assert nmHasLabel("Modal content") === 0 && nmHasLabel("status: modal closed by request") === 1, "back closes the modal";
 	nmTouch(nmTagWithProp("accessibilityLabel", "Hide status bar"), PRESS);
+	nmLoop();
 	assert anyProp("statusBarHidden") === "true", "bar hidden";
 	nmTouch(nmTagWithProp("accessibilityLabel", "Open keyboard screen"), PRESS);
+	nmLoop();
 	assert nmHasLabel("keyboard hidden") === 1, "keyboard screen";
 	nmEnvironment(300, 0);
 	assert nmHasLabel("keyboard 300") === 1, "keyboard published";
@@ -1062,6 +1094,7 @@ test "a native view whose style drops its background and opacity goes back to cl
 	const liftedOpacity = nmOpacity(tag);
 	const liftedAlpha = nmBackgroundAlpha(tag);
 	setLifted(false);
+	flush();
 	const restingOpacity = nmOpacity(tag);
 	const restingAlpha = nmBackgroundAlpha(tag);
 	nmTeardown();
@@ -1090,6 +1123,7 @@ test "a focused native TextInput in content that an Errored parks loses its focu
 	handles[0].focus();
 	assert nmFocused(tag) === 1, "the input is focused while its content shows";
 	setBroken(1);
+	flush();
 	assert nmFocused(tag) === 0 && log === "blur;", "parking the content took the focus away: " + log;
 	assert !handles[0].isFocused(), "and the handle follows";
 	nmTeardown();
