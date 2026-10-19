@@ -34,6 +34,17 @@ tap() {
 	adb shell input tap $((($1 + $3) / 2)) $((($2 + $4) / 2))
 	sleep 0.5
 }
+field() { adb shell "uiautomator dump /sdcard/neonRefresh.xml > /dev/null && cat /sdcard/neonRefresh.xml" | tr '>' '\n' | grep 'class="android.widget.EditText"'; }
+typeInto() {
+	local b; b=$(field | sed -n 's/.* bounds="\([^"]*\)".*/\1/p' | tr -c '0-9\n' ' ')
+	set -- $b
+	[ $# = 4 ] || { echo "typeInto: no field bounds: '$b'"; return; }
+	adb shell input tap $((($1 + $3) / 2)) $((($2 + $4) / 2))
+	sleep 0.5
+	adb shell input text "$TYPED"
+	sleep 0.5
+}
+focused() { field | grep -o 'focused="[a-z]*"'; }
 showsWithin() {
 	for i in $(seq 1 $2); do [ "$(shown)" = "$1" ] && return; sleep 0.3; done
 }
@@ -114,12 +125,16 @@ reloaded "fix after the error"
 showsWithin "Counter v5;count 7;press again;tap;" 5
 check "the fix applies, count kept" "$(shown)" "Counter v5;count 7;press again;tap;"
 
-# (d) a setup edit: the handler adds 2. The component remounts and its signals keep their values.
+# (d) a setup edit: the handler adds 2. The component remounts, its signals keep their values and
+# the native views it still renders stay, so the text typed into the field and its focus survive.
+TYPED=typed
+typeInto
+check "typing reaches the field" "$(shown) $(focused)" "Counter v5;count 7;press again;tap;typed; focused=\"true\""
 edit counter.ms 's/count() + 1/count() + 2/'
 reloaded "setup edit"
-check "setup edit keeps the count" "$(shown)" "Counter v5;count 7;press again;tap;"
+check "setup edit keeps the count, the typed text and the focus" "$(shown) $(focused)" "Counter v5;count 7;press again;tap;typed; focused=\"true\""
 tap tap
-check "setup edit runs the new handler" "$(shown)" "Counter v5;count 9;press again;tap;"
+check "setup edit runs the new handler" "$(shown)" "Counter v5;count 9;press again;tap;typed;"
 THROW=' if (count() >= 0) { throw new Error("setup failed"); }'
 edit counter.ms "s/createSignal(0);/createSignal(0);$THROW/"
 reloaded "setup that throws"

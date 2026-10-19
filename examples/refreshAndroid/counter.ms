@@ -1,7 +1,7 @@
 import { createSignal } from "../../src/core/signal";
 import { NeonEvent } from "../../src/render/event";
 import { createStyles, styleOf } from "../../src/macros/ui/style";
-import { View, Text, Pressable } from "../../src/components/primitives";
+import { View, Text, Pressable, TextInput } from "../../src/components/primitives";
 import { hint } from "./words";
 
 const styles = createStyles({
@@ -10,6 +10,7 @@ const styles = createStyles({
 	value: { color: "#89b4fa", fontSize: 48, fontWeight: "bold" },
 	hint: { color: "#a6adc8", fontSize: 14 },
 	button: { backgroundColor: "#313244", color: "#cdd6f4", padding: 12, borderRadius: 8, fontSize: 16 },
+	field: { width: 200, height: 44, color: "#cdd6f4", backgroundColor: "#313244", padding: 8, fontSize: 16 },
 });
 
 export function Counter(): NeonNode {
@@ -20,5 +21,6 @@ export function Counter(): NeonNode {
 		<Text style={styles.value}>{"count " + count().toString()}</Text>
 		<Text style={styles.hint}>{hint()}</Text>
 		<Pressable style={styles.button} onPress={inc}>tap</Pressable>
+		<TextInput style={styles.field} />
 	</View>;
 }
