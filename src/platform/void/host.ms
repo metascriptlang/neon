@@ -813,7 +813,7 @@ export function createVoidHostWith(scene: Scene2D, font: FontId, defaultFamily: 
 	};
 
 	const refuseIntoText = (p: VoidNode, op: string): void => {
-		if (p.isText) { throw new Error(`void host: ${op} into a Text; a Text's content arrives through setSpans, so render it with the Text component`); }
+		if (p.isText) { throw new Error(`void host: ${op} into a Text; a Text's content arrives through its paragraph, so render it with the Text component`); }
 	};
 
 	const refuseCycle = (p: VoidNode, c: VoidNode, op: string): void => {

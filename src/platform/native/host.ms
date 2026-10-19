@@ -691,7 +691,7 @@ function markPressable(n: NativeNode): void {
 }
 
 function refuseIntoText(p: NativeNode, op: string): void {
-	if (p.isText && !p.isString) { throw `native host: ${op} into a Text; a Text's content arrives through setSpans, so render it with the Text component`; }
+	if (p.isText && !p.isString) { throw `native host: ${op} into a Text; a Text's content arrives through its paragraph, so render it with the Text component`; }
 }
 
 function dropSpanTag(tag: int32): void {

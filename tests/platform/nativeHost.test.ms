@@ -542,7 +542,7 @@ test "native materialized string labels participate in paint order and reuse the
 	host.append(native.rootNode, text);
 	let refused = "";
 	try { host.append(text, label); } catch (e) { refused = e.toString(); }
-	assert refused.indexOf("arrives through setSpans") >= 0, "a string is not appended into a Text: " + refused;
+	assert refused.indexOf("arrives through its paragraph") >= 0, "a string is not appended into a Text: " + refused;
 	assert nmPaintTextIndex(nextParentTag, "label") === 0, "the refused move leaves the label where it was";
 	host.removeChild(q, label);
 	assert nmPaintTextIndex(nextParentTag, "label") === -1, "removed labels cannot remain in paint order";
