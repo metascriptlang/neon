@@ -4,7 +4,7 @@
 
 import {
 	createWindow, defaultOptions, runLoop, windowRoot, windowDevice, commit, setImeRect,
-	setFramePolicy, requestFrame, FrameOnDemand, pixelWidth, pixelHeight,
+	setFramePolicy, requestFrame, FrameOnDemand, pixelWidth, pixelHeight, show,
 	onPointer, onKey, onText, onImePreedit, onFocus, onResize, onFrame,
 	PointerEvent, PointerKind, KeyEvent, KeyAction, Window, keyName,
 } from "../../../../ion/src/index";
@@ -67,6 +67,7 @@ interface Area {
 	visual: Ptr<void> | null;
 	area: WindowArea;
 	owed: boolean;
+	shown: boolean;
 }
 
 // [frames the scene's dirty wake requested, frames drawn], since the process began.
@@ -135,6 +136,10 @@ function drawCurrent(): void {
 	_drawn = _drawn + 1;
 	area.vh.layout(area.logicalWidth(), area.logicalHeight());
 	area.vh.scene.present();
+	if (!owner.shown) {
+		owner.shown = true;
+		show(owner.win);
+	}
 	const r = area.vh.imeRect();
 	if (r !== null) {
 		const s = area.scale;
@@ -258,7 +263,7 @@ function ionWindowHost(win: Window): Host {
 		},
 		opened: (area: WindowArea): void => {
 			setFramePolicy(win, FrameOnDemand);
-			_areas.push({ win, view: ViewInvalid, visual: null, area, owed: true });
+			_areas.push({ win, view: ViewInvalid, visual: null, area, owed: true, shown: false });
 		},
 		released: (area: WindowArea): void => {
 			for (let i = 0; i < _areas.length; i += 1) {
@@ -278,7 +283,7 @@ function ionWindowHost(win: Window): Host {
 }
 
 export function runWindow(opts: DesktopOptions, app: () => NeonNode): int32 {
-	const win = createWindow("main", defaultOptions(opts.title, opts.width as int32, opts.height as int32));
+	const win = createWindow("main", { ...defaultOptions(opts.title, opts.width as int32, opts.height as int32), visible: false });
 	if (win === null) { return 1; }
 	const frameWin: Window = win;
 	registerFace(opts.font, opts.font, 400, FaceStyle.Normal);
