@@ -187,6 +187,57 @@ test "onLayout reports the frame once per change" {
 	assert frames.join(" ") === "0,0,400x300 0,0,500x200", "frames: " + frames.join(" ");
 }
 
+test "a layout change an onLayout handler makes is laid out in the frame that ran it" {
+	const vh = host();
+	const [h, setH] = createSignal<number>(20);
+	const [w, setW] = createSignal<number>(10);
+	render(element(
+		<View style={{ width: 400 }}>
+			<View style={{ height: h() }} onLayout={(e: NeonEvent): void => { setW(e.height * 10); }} />
+			<View style={{ width: w(), height: 10 }} />
+		</View>
+	), vh.host, vh.root);
+	const second = (): number => top(vh).children[1].ref.content().w as number;
+	vh.layout(400.0, 300.0);
+	assert second() === 200.0, "the first frame lays out the handler's width: w=" + second().toString();
+	settle(vh);
+	setH(30);
+	vh.layout(400.0, 300.0);
+	assert second() === 300.0, "a later frame lays out its handler's change too: w=" + second().toString();
+}
+
+test "a node an onLayout handler mounts is laid out before the frame is drawn" {
+	const vh = host();
+	const [shown, setShown] = createSignal<boolean>(false);
+	render(element(
+		<View style={{ flexGrow: 1 }} onLayout={(e: NeonEvent): void => { setShown(e.width > 450); }}>
+			<Show when={shown()}><View style={{ marginLeft: 50, width: 100, height: 40 }} /></Show>
+		</View>
+	), vh.host, vh.root);
+	vh.layout(400.0, 300.0);
+	settle(vh);
+	vh.layout(500.0, 300.0);
+	const kids = top(vh).children.length;
+	assert kids === 2, "the handler mounted the box before Show's marker: " + kids.toString();
+	const box = top(vh).children[0].ref;
+	assert box.local().x === 50.0 && box.content().w === 100.0, `the box is laid out: x=${box.local().x} w=${box.content().w}`;
+}
+
+test "an onLayout handler that never settles is refused" {
+	const vh = host();
+	const [w, setW] = createSignal<number>(100);
+	render(element(
+		<View style={{ width: w(), height: 10 }} onLayout={(e: NeonEvent): void => { setW(e.width === 100 ? 200 : 100); }} />
+	), vh.host, vh.root);
+	let refused = "";
+	try {
+		vh.layout(400.0, 300.0);
+	} catch (e) {
+		refused = e.message;
+	}
+	assert refused.indexOf("still change the layout after 8 passes") >= 0, "refused: " + refused;
+}
+
 test "the IME rect follows the caret of the focused field in window coordinates" {
 	const vh = host();
 	render(element(

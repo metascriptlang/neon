@@ -148,6 +148,8 @@ function styleEnum(st: FlexStyle, key: string, v: string): void {
 	}
 }
 
+const LAYOUT_PASSES = 8;
+
 const NUMERIC_KEYS = ["width", "height", "flexGrow", "flexShrink", "padding", "margin", "gap", "left", "top", "right", "bottom"];
 
 export function parseFlexStyle(s: string): FlexStyle {
@@ -1264,10 +1266,8 @@ export function createVoidHostWith(scene: Scene2D, font: FontId, defaultFamily: 
 		}
 	};
 
-	const layout = (w: float32, h: float32): void => {
-		layoutPass(root, w, h);
-		flowText(root);
-		fitScrollers();
+	const fireLayoutsFiredAny = (): boolean => {
+		let fired = false;
 		for (const e of events.slice(0)) {
 			if (e.name !== "onLayout" || e.node.disposed || !attached(e.node)) { continue; }
 			const n = e.node;
@@ -1281,7 +1281,19 @@ export function createVoidHostWith(scene: Scene2D, font: FontId, defaultFamily: 
 			ev.width = now.w;
 			ev.height = now.h;
 			e.handler(ev);
+			fired = true;
 		}
+		return fired;
+	};
+
+	const layout = (w: float32, h: float32): void => {
+		for (let pass = 0; pass < LAYOUT_PASSES; pass += 1) {
+			layoutPass(root, w, h);
+			flowText(root);
+			fitScrollers();
+			if (!fireLayoutsFiredAny()) { return; }
+		}
+		throw new Error(`void host: onLayout handlers still change the layout after ${LAYOUT_PASSES} passes in one frame; a handler that sets what it measures must settle`);
 	};
 
 	const imeRect = (): CaretRect | null => {
