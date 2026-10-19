@@ -563,6 +563,7 @@ function blurInputs(n: NativeNode): void {
 function releaseNativeTree(n: NativeNode): void {
 	for (const child of n.children) { releaseNativeTree(child); }
 	if (n.eventTag !== 0) {
+		retirePressTag(n.eventTag);
 		eventRegistry.remove(n.eventTag);
 		nodesByTag.delete(n.eventTag);
 		n.eventTag = 0;
@@ -705,6 +706,7 @@ function refuseIntoText(p: NativeNode, op: string): void {
 }
 
 function dropSpanTag(tag: int32): void {
+	retirePressTag(tag);
 	eventRegistry.remove(tag);
 	spanTagOwner.delete(tag);
 }
@@ -864,6 +866,98 @@ function runLoop(): void {
 	batched((): void => { niLoopRun(); });
 }
 
+let pressSourceTag: int32 = 0;
+let pressOwnerTag: int32 = 0;
+let pressPhase: int32 = -1;
+let pressTime: float64 = -1;
+let pressX: float64 = 0;
+let pressY: float64 = 0;
+let releasedPressTag: int32 = 0;
+let releasedPressSourceTag: int32 = 0;
+let releasedPressTime: float64 = -1;
+let releasedPressX: float64 = 0;
+let releasedPressY: float64 = 0;
+let releasedPressDispatched = false;
+
+function resetPress(): void {
+	pressSourceTag = 0;
+	pressOwnerTag = 0;
+	pressPhase = -1;
+	pressTime = -1;
+	releasedPressTag = 0;
+	releasedPressSourceTag = 0;
+	releasedPressTime = -1;
+	releasedPressDispatched = false;
+	bubbledPhase = -1;
+	bubbledTime = -1;
+}
+
+function retirePressTag(tag: int32): void {
+	if (pressOwnerTag === tag) { pressOwnerTag = 0; }
+	if (releasedPressTag === tag) {
+		releasedPressTag = 0;
+		releasedPressDispatched = true;
+	}
+}
+
+function livePressTag(tag: int32): boolean {
+	return nodesByTag.has(tag) || spanTagOwner.has(tag);
+}
+
+function ownsPress(tag: int32): boolean {
+	if (spanTagOwner.has(tag)) { return true; }
+	return nodesByTag.has(tag) && (nodesByTag.get(tag) as NativeNode).pressable;
+}
+
+function nearestPress(tag: int32): int32 {
+	if (spanTagOwner.has(tag)) { return tag; }
+	let at: NativeNode | null = nodesByTag.has(tag) ? nodesByTag.get(tag) as NativeNode : null;
+	while (at !== null) {
+		const n = at as NativeNode;
+		if (n.pressable) { return n.eventTag; }
+		at = n.parent;
+	}
+	return 0;
+}
+
+function normalizePress(tag: int32, phase: int32, x: float64, y: float64, time: float64): int32 {
+	const released = time === releasedPressTime && x === releasedPressX && y === releasedPressY;
+	if (!livePressTag(tag) && tag !== pressSourceTag &&
+		!(phase === 2 && released && tag === releasedPressSourceTag)) { return 0; }
+	const repeated = phase === pressPhase && time === pressTime && x === pressX && y === pressY;
+	pressPhase = phase;
+	pressTime = time;
+	pressX = x;
+	pressY = y;
+	if (phase === 0) {
+		if (repeated || pressSourceTag !== 0) { return 0; }
+		pressSourceTag = tag;
+		pressOwnerTag = nearestPress(tag);
+		return pressOwnerTag;
+	}
+	if (phase === 4) { return repeated ? 0 : pressOwnerTag; }
+	if (phase === 2) {
+		if (!released) { return tag; }
+		if (releasedPressDispatched) { return 0; }
+		releasedPressDispatched = true;
+		return releasedPressTag;
+	}
+	if (phase === 1 || phase === 3) {
+		if (released) { return 0; }
+		const owner = pressOwnerTag;
+		pressSourceTag = 0;
+		pressOwnerTag = 0;
+		releasedPressTag = phase === 1 ? owner : 0;
+		releasedPressSourceTag = tag;
+		releasedPressTime = time;
+		releasedPressX = x;
+		releasedPressY = y;
+		releasedPressDispatched = phase === 3;
+		return owner;
+	}
+	return 0;
+}
+
 let bubbledPhase: int32 = -1;
 let bubbledTime: number = -1;
 let bubbledX: number = 0;
@@ -878,14 +972,16 @@ function bubbleTouch(tag: int32, phase: int32, x: number, y: number, timeStamp: 
 	bubbledTime = timeStamp;
 	bubbledX = x;
 	bubbledY = y;
+	const tags: int32[] = [];
 	let at: NativeNode | null = owner;
-	if (owner !== null) { eventRegistry.touch(tag, phase, x, y, timeStamp); }
+	if (owner !== null) { tags.push(tag); }
 	else { at = nodesByTag.get(tag) as NativeNode; }
 	while (at !== null) {
 		const n = at as NativeNode;
-		if (n.eventTag !== 0) { eventRegistry.touch(n.eventTag, phase, x, y, timeStamp); }
+		if (n.eventTag !== 0) { tags.push(n.eventTag); }
 		at = n.parent;
 	}
+	for (const target of tags) { eventRegistry.touch(target, phase, x, y, timeStamp); }
 }
 
 function onTouch(): void {
@@ -894,9 +990,15 @@ function onTouch(): void {
 	const x = niLastTouchX() as number;
 	const y = niLastTouchY() as number;
 	const timeStamp = niLastTouchTime();
+	const owner = normalizePress(tag, phase, x, y, timeStamp);
+	const raw = !ownsPress(tag);
 	batched((): void => {
 		bubbleTouch(tag, phase, x, y, timeStamp);
-		eventRegistry.dispatch(tag, phase, x, y, timeStamp);
+		if (raw && phase !== 2) { eventRegistry.dispatch(tag, phase, x, y, timeStamp); }
+		if (owner === 0 || !livePressTag(owner)) { return; }
+		if ((phase === 0 || phase === 4) && pressOwnerTag !== owner) { return; }
+		if (phase === 1 && releasedPressTag !== owner) { return; }
+		eventRegistry.dispatch(owner, phase, x, y, timeStamp);
 	});
 }
 
@@ -907,6 +1009,7 @@ export interface NativeHost {
 }
 
 export function createNativeHost(): NativeHost {
+	resetPress();
 	const container = niContainerView();
 	root = nativeNode(container, false, false);
 	const ownedRoot = root;
@@ -948,6 +1051,12 @@ export function createNativeHost(): NativeHost {
 				n = nativeNode(niViewCreate(), false, false);
 			}
 			n.control = kind === NativeElementKind.Text || kind === NativeElementKind.Scroll ? NativeElementKind.View : kind;
+			if (tag === "pressable" || kind === NativeElementKind.Input || tag === "switch" ||
+				tag === "webview" || tag === "video" || tag === "camera") {
+				n.pressable = true;
+				ensureTag(n);
+				if (tag === "pressable" && n.view !== null) { niViewSetPressable(n.view); }
+			}
 			n.flex = intrinsicFlex(n, nativeFlexStyle({} as Style, kind));
 			n.tag = tag;
 			return n as unknown as HostNode;
@@ -1369,9 +1478,11 @@ function teardownApp(): void {
 		setDevDriver(null);
 	}
 	focusedInput = null;
+	resetPress();
 	if (mounted !== null) {
-		(mounted as Dispose)();
+		const dispose = mounted as Dispose;
 		mounted = null;
+		dispose();
 	}
 	freeLayoutTree(root);
 	for (const child of root.children) { releaseNativeTree(child); }
