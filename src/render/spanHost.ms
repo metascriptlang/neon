@@ -1,6 +1,6 @@
 // RN Fabric's paragraph: a Text inside a Text, and every string in one, has no host node of its own;
 // ParagraphShadowNode flattens them into one AttributedString. Here a Text's children render into
-// SPAN_HOST, whose nodes are plain records, and a host with setSpans gets the flattened spans of each
+// SPAN_HOST, whose nodes are plain records, and a host whose paragraph is spanParagraph gets the flattened spans of each
 // outermost Text once per update.
 
 import { Host, HostNode, NeonNode, TextSpan } from "./hostTypes";
@@ -172,12 +172,9 @@ function flatten(n: SpanNode, style: Style | null, press: ((e: NeonEvent) => voi
 	}
 }
 
-// The paragraph capability of a host with setSpans: an outermost Text flattens its records after every
-// render effect of an update has run.
-export function spanParagraph(host: Host, node: HostNode, before: HostNode | null, kids: NeonNode | null, spans: Accessor<TextSpan[]> | null): void {
-	const set = host.setSpans;
-	if (set === null) { throw new Error("spanParagraph is the paragraph of a host with setSpans, and this host has none"); }
-	const deliver = set as (node: HostNode, spans: TextSpan[]) => void;
+// What the paragraph capability of a host that draws a Text as one paragraph runs: an outermost Text flattens
+// its records after every render effect of an update has run, and `deliver` hands the host the spans whole.
+export function spanParagraph(deliver: (node: HostNode, spans: TextSpan[]) => void, node: HostNode, kids: NeonNode | null, spans: Accessor<TextSpan[]> | null): void {
 	if (spans !== null) {
 		const read = spans as Accessor<TextSpan[]>;
 		createRenderEffect<TextSpan[]>(

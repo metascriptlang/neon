@@ -5,7 +5,7 @@ import { Accessor } from "../core/signal";
 import { createRenderEffect } from "../core/effect";
 import { Cleanup } from "../core/types";
 
-// A host without setSpans lays spans out as nested Texts, kept by position.
+// A host without a paragraph capability lays spans out as nested Texts, kept by position.
 function spanNodes(read: Accessor<TextSpan[]>): NeonNode {
 	return (host: Host, parent: HostNode, before: HostNode | null): void => {
 		const shown: HostNode[] = [];
@@ -56,19 +56,18 @@ export function paragraphChildren(kids: NeonNode | null, spans: Accessor<TextSpa
 			(own as (host: Host, node: HostNode, before: HostNode | null, kids: NeonNode | null, spans: Accessor<TextSpan[]> | null) => void)(host, node, before, kids, spans);
 			return;
 		}
-		if (host.setSpans !== null) { throw new Error("a host with setSpans takes a Text's children through its paragraph capability too: name spanParagraph from src/render/spanHost.ms"); }
 		if (spans !== null) { spanNodes(spans as Accessor<TextSpan[]>)(host, node, before); }
 		else if (kids !== null) { (kids as NeonNode)(host, node, before); }
 	};
 }
 
-// A label a framework site builds by hand: its one string goes through setSpans where the host takes them.
+// A label a framework site builds by hand: its one string goes through the host's paragraph where it has one.
 export function setTextContent(host: Host, label: HostNode, s: string): void {
-	const set = host.setSpans;
-	if (set !== null) {
-		const one: TextSpan[] = [{ text: s }];
-		(set as (node: HostNode, spans: TextSpan[]) => void)(label, one);
+	const own = host.paragraph;
+	if (own === null) {
+		host.append(label, host.createText(s));
 		return;
 	}
-	host.append(label, host.createText(s));
+	const word: NeonNode = (h: Host, parent: HostNode, before: HostNode | null): void => { h.append(parent, h.createText(s)); };
+	(own as (host: Host, node: HostNode, before: HostNode | null, kids: NeonNode | null, spans: Accessor<TextSpan[]> | null) => void)(host, label, null, word, null);
 }

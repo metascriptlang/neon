@@ -1,4 +1,5 @@
-import { Host, HostNode } from "../../render/host";
+import { Host, HostNode, NeonNode } from "../../render/host";
+import { Accessor } from "../../core/signal";
 import { TextSpan, TextMeasure } from "../../render/hostTypes";
 import { spanParagraph } from "../../render/spanHost";
 import { NeonEvent, neonEvent, eventType } from "../../render/event";
@@ -842,6 +843,14 @@ export function createVoidHostWith(scene: Scene2D, font: FontId, defaultFamily: 
 		release(n);
 	};
 
+	const deliverSpans = (node: HostNode, spans: TextSpan[]): void => {
+		const n = live(node, "setSpans");
+		if (!n.isText) { throw new Error("void host: spans belong on a Text"); }
+		const was = wasDirty();
+		n.spans = spans;
+		refreshParagraph(n);
+		woke(was);
+	};
 	const host: Host = {
 		createElement: (tag: string): HostNode => {
 			const was = wasDirty();
@@ -1023,14 +1032,8 @@ export function createVoidHostWith(scene: Scene2D, font: FontId, defaultFamily: 
 		},
 		cloneNode: null,
 		voidArea: null,
-		paragraph: spanParagraph,
-		setSpans: (node: HostNode, spans: TextSpan[]): void => {
-			const n = live(node, "setSpans");
-			if (!n.isText) { throw new Error("void host: spans belong on a Text"); }
-			const was = wasDirty();
-			n.spans = spans;
-			refreshParagraph(n);
-			woke(was);
+		paragraph: (host: Host, node: HostNode, before: HostNode | null, kids: NeonNode | null, spans: Accessor<TextSpan[]> | null): void => {
+			spanParagraph(deliverSpans, node, kids, spans);
 		},
 		focus: (node: HostNode, focused: boolean): void => {
 			const n = live(node, "focus");

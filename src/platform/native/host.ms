@@ -1,6 +1,7 @@
 import { Host, HostNode, NeonNode, render } from "../../render/host";
 import { TextSpan } from "../../render/hostTypes";
 import { spanParagraph } from "../../render/spanHost";
+import { Accessor } from "../../core/signal";
 import { Dispose } from "../../core/types";
 import { NeonEvent } from "../../render/event";
 import { FlexStyle, YGNode, freeLayoutTree, layoutPass as runLayoutPass } from "../../../../yoga/src/index";
@@ -699,6 +700,12 @@ function dropSpanTag(tag: int32): void {
 }
 
 // A span with onPress keeps its own tag by position, so the label finds the span under the finger.
+function deliverSpans(node: HostNode, spans: TextSpan[]): void {
+	const n = node as unknown as NativeNode;
+	if (!n.isText || n.isString) { throw "native host: spans belong on a Text"; }
+	setSpansOf(n, spans);
+}
+
 function setSpansOf(n: NativeNode, spans: TextSpan[]): void {
 	n.spanData = spans;
 	let pressable = false;
@@ -1070,11 +1077,8 @@ export function createNativeHost(): NativeHost {
 		},
 		cloneNode: null,
 		voidArea: null,
-		paragraph: spanParagraph,
-		setSpans: (node: HostNode, spans: TextSpan[]): void => {
-			const n = node as unknown as NativeNode;
-			if (!n.isText || n.isString) { throw "native host: spans belong on a Text"; }
-			setSpansOf(n, spans);
+		paragraph: (host: Host, node: HostNode, before: HostNode | null, kids: NeonNode | null, spans: Accessor<TextSpan[]> | null): void => {
+			spanParagraph(deliverSpans, node, kids, spans);
 		},
 		overlayRoot: (node: HostNode): HostNode => root as unknown as HostNode,
 		focus: (node: HostNode, focused: boolean): void => {

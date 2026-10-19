@@ -74,11 +74,9 @@ export interface Host {
 	setResponder?: ((node: HostNode | null, blockNativeResponder: boolean) => void) | null;
 	claim?: ((parent: HostNode, after: HostNode | null, tag: string) => HostNode | null) | null;
 	headRoot?: ((node: HostNode) => HostNode) | null;
-	// Optional capability: a host that draws a Text as one paragraph takes its spans whole, and a
-	// Text's children never reach it as nodes. Such a host names `spanParagraph` from
-	// src/render/spanHost.ms as its `paragraph`, which mounts a Text's children or spans. `null` for
-	// both means the host lays nested Texts out itself, and `spans` become nested Texts — the same
-	// text, a node per span.
-	setSpans?: ((node: HostNode, spans: TextSpan[]) => void) | null;
+	// Optional capability: a host that draws a Text as one paragraph mounts a Text's children or spans
+	// itself, and they never reach it as nodes; it calls `spanParagraph` from src/render/spanHost.ms,
+	// which hands its `deliver` the flattened spans. `null` means the host lays nested Texts out
+	// itself, and `spans` become nested Texts — the same text, a node per span.
 	paragraph?: ((host: Host, node: HostNode, before: HostNode | null, kids: NeonNode | null, spans: Accessor<TextSpan[]> | null) => void) | null;
 }
