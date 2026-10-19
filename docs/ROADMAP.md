@@ -106,8 +106,8 @@ every target, at React Native's and Flutter's level. Remaining, in order (arc
 
 1. An edit visible in under 1 s: the compiler's importer re-check and phase A cards, then the
    size of a JSX module's C.
-2. Host state across a remount: scroll offset, typed text, focus (a `src/render/hostTypes.ms`
-   change).
+2. ~~Host state across a remount: scroll offset, typed text, focus~~ (2026-10-19: `Host.reuse`
+   on the DOM, Void and native hosts; `docs/RENDER-MODEL.md` §Refresh: what an edit keeps).
 3. `R` restart, `r` reload and `q` in `msc run --hcr`; a restart-required edit waits for `R`.
 4. A prop added to a props interface reloads without a restart (compiler card, new mechanism).
 5. The browser updates a module whose template reads a new binding without a page reload

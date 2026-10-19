@@ -144,8 +144,14 @@ HCR on the mock host) and `examples/refreshAndroid/` (HCR in an Android app, `do
 Carried over: signals declared as `const [get, set] = createSignal(…)` at the top level of the
 body, and what a helper hands to `refreshKeep(key, read, write)` while it mounts (a navigator
 keeps its routes and their params this way, `src/navigation/core.ms` `createCore`; a kept stack
-that names a removed screen starts again). A `let`, a memo, an effect and host state (scroll
-offset, focus, text typed into an uncontrolled input) start again on a remount. A changed field list of a class or interface
+that names a removed screen starts again). A `let`, a memo and an effect start again on a remount.
+Host state (scroll offset, focus, text typed into an uncontrolled input) survives a rebuild and a
+remount on the DOM, Void and native hosts: the new template mounts over the old row, and a host
+node of the same tag at the same position is kept with its props and handlers replaced
+(`Host.reuse`, `src/render/claim.ms` `beginReuse`), the host-view reuse React Fast Refresh and
+Flutter do on a re-render; a node whose tag changed starts fresh. The terminal host, and a
+component that sits at the level of an Ion window rather than inside its `<void>` area, remount
+fresh. A changed field list of a class or interface
 (a prop added to a props interface) is refused by the HCR engine with `restart required`.
 
 Not extracted, so any edit remounts the whole component: a body with an early `return`, a final
