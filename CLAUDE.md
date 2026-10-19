@@ -26,6 +26,7 @@ Workspace rules (toolchain, compiler boundary, arcs and cards, code style) are i
 - `src/macros/ui/` — `element.ms` (JSX → NeonNode), `flow.ms` (`Show` / `For`), `reactive.ms`, `style.ms` (`createStyles`), `theme.ms`. `src/converters.ms` is the JSX converter every consumer names in `globalImports`.
 - `src/components/primitives.ms` — `View`, `Text`, `TextInput`, `Pressable`.
 - `src/platform/` — `browser/dom.jms` (JS), `terminal/`, `void/host.ms` (Void scene graph + yoga). `deps/yoga` is a symlink into `~/metascript/yoga`. iOS and Android hosts are not written; nothing in the compiler blocks them.
+- `neon-ui/` — controls composed from the primitives (Slider, Picker, DateTimePicker), written once and run on every host; its tests are in `neon-ui/tests/`.
 - `tests/` mirrors `src/`: `core/`, `render/`, `style/`, `platform/`, plus `macros/` (programs the checker must reject), `apps/`, and `browser/` (real Chrome).
 
 Platform and backend are `when` blocks: `when (macos) { @passL("-framework Metal"); }`, `when (js) { … }`. A branch not taken is never type-checked, so it may call APIs the other target lacks. One backend-agnostic extern surface with the directives gated around it is the shape to copy (`~/metascript/void/src/sokol/gpu.ms`). Flags: `msc --help-defines`.
