@@ -1,5 +1,6 @@
 // An Ion window whose app paces itself with requestFrame: the callback runs once per Ion frame, before
-// that frame draws, and an idle window asks for none. `--check` prints the measured gaps and exits.
+// that frame draws, an idle window asks for none, and a frame that changes nothing draws nothing. It prints the
+// measured gaps and exits.
 
 import { element } from "../src/macros/ui/element";
 import { NeonNode } from "../src/render/node";
@@ -34,7 +35,17 @@ function App(): NeonNode {
 		setTimeout((): void => {
 			const after = frameCounts();
 			console.log(`idle 500 ms: requested ${after[0] - before[0]} drawn ${after[1] - before[1]}`);
-			exit(0);
+			let quiet = 0;
+			const still = (time: number): void => {
+				quiet += 1;
+				if (quiet < FRAMES) {
+					requestFrame(still);
+					return;
+				}
+				console.log(`frames ${quiet} that change nothing: drawn ${frameCounts()[1] - after[1]}`);
+				exit(0);
+			};
+			requestFrame(still);
 		}, 500);
 	};
 	setTimeout((): void => { requestFrame(tick); }, 300);
