@@ -246,18 +246,6 @@ and the invariants that outlived them were moved to the head of the test that pi
   lacks the audio API, which is on Ion origin `a853b2e`. Ion note
   `~/metascript/.inbox/ion/2026-10-15-local-main-diverged-from-window-content.md`. Same gate log as the row above.
 
-- **PARKED 2026-10-14 — an Ion project manifest inside Neon cannot be evaluated.** Not Neon's: Ion's
-  generator runs the manifest with `msc run --target=raiser` beside it, Neon's `build.ms`
-  `globalImports` brings in `src/core/runtime.ms`, and Raiser has no `String.fromCharCode`, so even a
-  one-line `console.log` under Neon's root stops at type check (msc `26150233`). Blocks building
-  `examples/voidWindow.ms` from an Ion-generated Visual Studio project, and since `createUniqueId`
-  (`runtime.ms:121`) every device lane: `bash tests/ios/run.sh` stops at step `generate` on msc
-  `a7b08f008` (2026-10-15). Card
-  `~/metascript/.inbox/compiler/2026-10-15-raiser-has-no-string-fromcharcode.md`.
-  Answered on the Windows machine: the card is fixed and gone from the inbox. On msc `a2b3e36a`,
-  `String.fromCharCode(72)` runs under `--target=raiser` from Neon's root, and an Ion-generated project of
-  `examples/voidWindow.ms` builds (`32c2643`). The device lanes were not re-run there.
-
 - **PARKED 2026-10-20 — `tests/platform/voidRetain.test.ms` does not compile on the JS lane.** Not Neon's:
   Void's `GlyphAtlas.acquire` (`src/void2d/glyphAtlas.ms:481`) indexes a `Ptr<int32>` past its element,
   which msc `807d96ef7` refuses on JS (`cannot index a pointer past the element it addresses on JS`).
@@ -270,6 +258,8 @@ and the invariants that outlived them were moved to the head of the test that pi
   (`moved<Song>(…)` in `examples/components/flutterLists.ms`). Native and JS, on the compiler built
   from recompiler origin `f421de59` alone and on `89005562`, with Neon at origin `1b7ce77`. Card
   `~/metascript/.inbox/compiler/2026-10-11-destructured-local-in-attribute-arrow-read-by-nested-macro.md`.
+  `bash tests/ios/run.sh` stops at `build-flatlist` on it (`examples/components/bigList.ms:117`, msc
+  `807d96ef7`, 2026-10-20), after the counter and list apps generate and build.
   Parked at those two files.
 
 - **PARKED 2026-10-14 — `createStyles` takes no breakpoint table.** Decided 2026-10-15 (StyleX's
