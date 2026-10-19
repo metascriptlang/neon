@@ -115,6 +115,7 @@ extern class Node {
 	selectionEnd: number;
 	extern setSelectionRange(start: number, end: number): void;
 	extern getAttribute(name: cstring): string | null;
+	extern getAttributeNames(): string[];
 	extern setAttribute(name: cstring, value: cstring): void;
 	extern removeAttribute(name: cstring): void;
 	extern addEventListener(name: cstring, handler: (e: DomEvent) => void, capture: boolean): void;
@@ -1411,6 +1412,31 @@ export function domHost(): Host {
 				found.classList.add(webControlClass(tag));
 			}
 			return found as unknown as HostNode;
+		},
+		reuse: (node: HostNode, tag: string): boolean => {
+			const el = node as unknown as Node;
+			if (tag === "") { return el.nodeType === 3; }
+			if (el.nodeType !== 1 || createsMoreThanAnElement(tag) || el.localName !== webHtmlTag(tag)) { return false; }
+			const left = el.scrollLeft;
+			const top = el.scrollTop;
+			releaseOne(el);
+			for (const name of el.getAttributeNames()) { el.removeAttribute(name); }
+			registerRules(tag);
+			if (tag === "scrollview") {
+				adoptScroll(el);
+			} else if (tag === "switch" || tag === "activityindicator") {
+				adoptControl(tag, el);
+			} else {
+				const base = tag === "multilinetextinput" ? webControlClass(tag) : webBaseClass(tag);
+				if (base !== "") { el.classList.add(base); }
+			}
+			if (left !== 0 || top !== 0) {
+				queueMicrotask((): void => {
+					el.scrollLeft = left;
+					el.scrollTop = top;
+				});
+			}
+			return true;
 		},
 		focus: (node: HostNode, focused: boolean): void => {
 			const el = node as unknown as Node;
