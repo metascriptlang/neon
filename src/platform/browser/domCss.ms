@@ -12,12 +12,16 @@ function len(v: number | string | null): string {
 	return `${v as number}px`;
 }
 
-function num(v: number | null): string {
-	return v === null ? "" : `${v as number}`;
+function num(v: StyleValue): string {
+	if (v === null) { return ""; }
+	if (typeof v === "number") { return `${v as number}`; }
+	throw new Error(`style value "${v as string}" is not a number`);
 }
 
-function word(v: string | null): string {
-	return v === null ? "" : v as string;
+function word(v: StyleValue): string {
+	if (v === null) { return ""; }
+	if (typeof v === "string") { return v as string; }
+	throw new Error(`style value ${v as number} is not a string`);
 }
 
 applyCssPropBody(0);

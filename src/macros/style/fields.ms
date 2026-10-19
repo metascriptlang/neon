@@ -85,10 +85,7 @@ export macro applyCssPropBody(node: Node): Node {
 		const fieldName = row[0];
 		const proj = row[COL_BROWSER];
 		if (proj !== "word" && proj !== "num" && proj !== "len") { error("browser projection for " + fieldName + " must be word, num or len", node); }
-		const castType = proj === "word" ? "string | null" : (proj === "num" ? "number | null" : "");
-		const vRef: Node = { kind: NodeKind.Identifier, line: L, column: C, name: "v" };
-		const arg: Node = castType === "" ? vRef
-			: { kind: NodeKind.TypeAssertion, line: L, column: C, asExpr: vRef, asType: castType };
+		const arg: Node = { kind: NodeKind.Identifier, line: L, column: C, name: "v" };
 		cases.push({
 			kind: NodeKind.MatchCase, line: L, column: C,
 			casePatterns: [{ kind: NodeKind.StringLiteral, line: L, column: C, value: fieldName }],
