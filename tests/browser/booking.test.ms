@@ -3,6 +3,7 @@ import { HostNode } from "../../src/render/hostTypes";
 import { render } from "../../src/render/host";
 import { element } from "../../src/macros/ui/element";
 import { sleepAsync } from "std/core/promise";
+import { flush } from "../../src/core/runtime";
 import { BookingForm } from "../../examples/components/controls";
 
 extern class HTMLElement {
@@ -53,20 +54,26 @@ test "the booking form runs in Chrome on real form controls, ARIA state and the 
 	setValue("Check-in date", "2026-10-24", "change");
 	setValue("Guests", "5", "input");
 	pick("Room type", 2);
+	flush();
 	assert shows(mount, "check-in 2026-10-24 at 15:00") && shows(mount, "guests 5") && shows(mount, "room Suite"), "native form controls: " + mount.textContent.substring(0, 300);
 	const breakfast = labelled(mount, "Breakfast");
 	assert breakfast.getAttribute("role") === "checkbox" && breakfast.getAttribute("aria-checked") === "false", "checkbox ARIA";
 	breakfast.click();
+	flush();
 	assert breakfast.getAttribute("aria-checked") === "true" && shows(mount, "extras breakfast"), "checked";
 	labelled(mount, "Cash").click();
+	flush();
 	assert labelled(mount, "Cash").getAttribute("aria-checked") === "true" && shows(mount, "payment cash"), "radio";
 	labelled(mount, "Book").click();
+	flush();
 	assert shows(mount, "Confirm booking"), "dialog";
 	labelled(mount, "Confirm").click();
+	flush();
 	assert shows(mount, "status booking"), "booking";
 	await sleepAsync(1800);
 	assert shows(mount, "status booked") && shows(mount, "Booked Suite for 5 guests"), "snackbar: " + mount.textContent.substring(0, 300);
 	labelled(mount, "Undo").click();
+	flush();
 	assert shows(mount, "status cancelled") && shows(mount, "Booking cancelled"), "toast";
 	mount.remove();
 }

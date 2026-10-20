@@ -1,5 +1,6 @@
 import { domHost, documentBody } from "../../src/platform/browser/dom";
 import { render } from "../../src/render/host";
+import { flush } from "../../src/core/runtime";
 import { element } from "../../src/macros/ui/element";
 import { View } from "../../src/components/primitives";
 import { AsyncStorage, KeyValuePair } from "../../src/api/asyncStorage";
@@ -43,6 +44,7 @@ test "NetInfo follows navigator.onLine and the window's online and offline event
 	mount();
 	js("Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => window.__online !== false })");
 	const network = useNetInfo();
+	flush();
 	assert network().isConnected === true;
 	const seen: string[] = [];
 	const unsubscribe = NetInfo.addEventListener((state: NetInfoState): void => {
@@ -50,10 +52,12 @@ test "NetInfo follows navigator.onLine and the window's online and offline event
 		seen.push(type + ":" + (state.isConnected === true ? "up" : "down"));
 	});
 	js("window.__online = false; window.dispatchEvent(new Event('offline'))");
+	flush();
 	assert network().isConnected === false;
 	const offline: string = network().type;
 	assert offline === "none", offline;
 	js("window.__online = true; window.dispatchEvent(new Event('online'))");
+	flush();
 	unsubscribe();
 	const fetched = await NetInfo.fetch();
 	assert fetched.isInternetReachable === true;

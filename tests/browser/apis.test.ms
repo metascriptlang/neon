@@ -1,6 +1,7 @@
 import { domHost, documentBody } from "../../src/platform/browser/dom";
 import { NeonNode } from "../../src/render/hostTypes";
 import { render } from "../../src/render/host";
+import { flush } from "../../src/core/runtime";
 import { element } from "../../src/macros/ui/element";
 import { TextInput, TextInputHandle, View } from "../../src/components/primitives";
 import { Platform } from "../../src/api/platform";
@@ -34,8 +35,10 @@ test "AppState follows the page's visibility" {
 	const seen: string[] = [];
 	const subscription = AppState.addEventListener("change", (s: AppStateStatus): void => { seen.push(s as string); });
 	js("Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' }); document.dispatchEvent(new Event('visibilitychange'))");
+	flush();
 	assert AppState.currentState === "background";
 	js("Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'visible' }); document.dispatchEvent(new Event('visibilitychange'))");
+	flush();
 	subscription.remove();
 	assert AppState.currentState === "active";
 	assert seen.join(",") === "background,active", seen.join(",");

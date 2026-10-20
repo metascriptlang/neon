@@ -2,6 +2,7 @@ import { domHost } from "../../src/platform/browser/dom";
 import { createBrowserRoutingHistory } from "../../src/platform/browser/routingHistory";
 import { HostNode } from "../../src/render/hostTypes";
 import { render } from "../../src/render/host";
+import { flush } from "../../src/core/runtime";
 import { sleepAsync } from "std/core/promise";
 import { NeonNode } from "../../src/render/node";
 import { Text } from "../../src/components/primitives";
@@ -353,6 +354,7 @@ test "opening a drawer adds a browser entry that browser back closes" {
 	try {
 		const start = app.session.index();
 		ref.openDrawer();
+		flush();
 		assert app.session.index() === start + 1, app.session.index().toString();
 		assert history.read().url === "/one", history.read().url;
 		await sleepAsync(400);

@@ -11,6 +11,7 @@ import { sleepAsync } from "std/core/promise";
 import { NeonEvent } from "../../src/render/event";
 import { For } from "../../src/macros/ui/flow";
 import { Accessor, createSignal } from "../../src/core/signal";
+import { flush } from "../../src/core/runtime";
 import { ScrollView, Text, View, Pressable } from "../../src/components/primitives";
 
 extern class HTMLElement {
@@ -138,10 +139,13 @@ test "a View whose style moves between sheet entries and an inline style keeps o
 	const wide = sheet.wide.cssId as string;
 	assert shape() === "neon-view " + row + "|null", shape();
 	setPick(1);
+	flush();
 	assert shape() === "neon-view " + wide + "|null", shape();
 	assert computed("#base-swap > div", "'position', 'paddingLeft'") === "relative 24px", computed("#base-swap > div", "'position', 'paddingLeft'");
 	setPick(2);
+	flush();
 	assert shape() === "neon-view|padding-top: 7px;", shape();
 	setPick(0);
+	flush();
 	assert shape() === "neon-view " + row + "|", shape();
 }

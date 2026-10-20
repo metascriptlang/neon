@@ -3,6 +3,7 @@ import { HostNode } from "../../src/render/hostTypes";
 import { render } from "../../src/render/host";
 import { element } from "../../src/macros/ui/element";
 import { createSignal } from "../../src/core/signal";
+import { flush } from "../../src/core/runtime";
 import {
 	Svg,
 	G,
@@ -55,6 +56,7 @@ test "an Svg is a real <svg> element whose shapes have the encoded geometry" {
 	const hits = js("const p = document.querySelector('#svg-a path'); return [document.elementFromPoint(50, 50) === p, document.elementFromPoint(12, 12) === p].join(',');");
 	assert hits === "true,false", "hit test: " + hits;
 	setR(20);
+	flush();
 	const smaller = js("const b = document.querySelector('#svg-a path').getBBox(); return Math.round(b.width);");
 	assert smaller === "40", "reactive radius: " + smaller;
 }

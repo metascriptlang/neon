@@ -3,6 +3,7 @@ import { Host, HostNode, NeonNode } from "../../src/render/hostTypes";
 import { NeonEvent } from "../../src/render/event";
 import { View } from "../../src/components/primitives";
 import { createSignal, Accessor } from "../../src/core/signal";
+import { flush } from "../../src/core/runtime";
 
 when (js) {
 	import { domHost } from "../../src/platform/browser/dom";
@@ -84,14 +85,17 @@ when (js) {
 			setBlank("now");
 			setOpen(false);
 			setRows(["c", "a"]);
+			flush();
 			assert notServed(mount) === 0, "an update replaced a served element";
 			const [n2, _n2] = createSignal("Bob");
 			assert pageNode(mount, "span").textContent === "Hi Bob", pageNode(mount, "span").textContent;
 			setBlank("");
+			flush();
 			assert shape(mount) === freshShape("Bob", false, ["c", "a"]), shape(mount);
 
 			setOpen(true);
 			setRows(["a", "d", "c"]);
+			flush();
 			assert shape(mount) === freshShape("Bob", true, ["a", "d", "c"]), shape(mount);
 			assert made === 2, "one new row and the reopened branch are the only elements created: " + made.toString();
 		} finally { dispose(); mount.remove(); }
@@ -162,6 +166,7 @@ when (js) {
 			toggle(pageNode(mount, "input"));
 			assert changes === "false", "onValueChange saw '" + changes + "'";
 			setOn(false);
+			flush();
 			assert isChecked(pageNode(mount, "input")) === false, "the switch did not follow its signal";
 		} finally { dispose(); mount.remove(); }
 	}

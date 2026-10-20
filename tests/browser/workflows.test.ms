@@ -1,6 +1,7 @@
 import { domHost, documentBody } from "../../src/platform/browser/dom";
 import { HostNode } from "../../src/render/hostTypes";
 import { render } from "../../src/render/host";
+import { flush } from "../../src/core/runtime";
 import { element } from "../../src/macros/ui/element";
 import { sleepAsync } from "std/core/promise";
 import { SettingsApp } from "../../examples/components/settings";
@@ -63,7 +64,9 @@ test "settings runs in Chrome: return key moves DOM focus, Enter saves, a switch
 	assert shows(mount, "Saved Grace Hopper <ada@example.com>"), "saved";
 	assert labelled(mount, "Use system theme").getAttribute("role") === "switch", "switch role";
 	labelled(mount, "Use system theme").click();
+	flush();
 	labelled(mount, "Dark mode").click();
+	flush();
 	assert shows(mount, "dark theme"), "manual dark theme";
 	mount.remove();
 }

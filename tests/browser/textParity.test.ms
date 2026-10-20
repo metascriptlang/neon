@@ -8,6 +8,7 @@ import { element } from "../../src/macros/ui/element";
 import { Text, View, TextInput, TextSelection, Pressable } from "../../src/components/primitives";
 import { NeonEvent } from "../../src/render/event";
 import { createSignal } from "../../src/core/signal";
+import { flush } from "../../src/core/runtime";
 import { Image, ImageLoader } from "../../src/components/image";
 import { sleepAsync } from "std/core/promise";
 
@@ -92,8 +93,10 @@ test "a multiline TextInput in Chrome grows with its text up to maxHeight" {
 	const height = (): number => parseFloat(js("return document.querySelector('#grow-one textarea').getBoundingClientRect().height;"));
 	const empty = height();
 	setNotes("one\ntwo\nthree");
+	flush();
 	const three = height();
 	setNotes("1\n2\n3\n4\n5\n6\n7\n8\n9");
+	flush();
 	const capped = height();
 	assert empty > 0 && three > empty * 2, `grows: ${empty} ${three}`;
 	assert capped === 80, "capped by maxHeight: " + capped.toString();
