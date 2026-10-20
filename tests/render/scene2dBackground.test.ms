@@ -1,4 +1,5 @@
 import { accessor, createSignal } from "../../src/core/signal";
+import { flush } from "../../src/core/runtime";
 import { element } from "../../src/macros/ui/element";
 import { Show } from "../../src/macros/ui/flow";
 import { HostNode, mockNode, mockHost, render } from "../../src/render/host";
@@ -32,6 +33,7 @@ test "Group background promotes and demotes in place without replacing its child
 	const group = nodes[0]; const child = nodes[1]; const id = group.id;
 	assert group.kind() === DrawKind.Group;
 	setBackground(rgba(0.2, 0.4, 0.8, 1.0));
+	flush();
 	assert group.kind() === DrawKind.Rect && group.id === id && child.parent() === group;
 	assert group.local().x === 3.0 && group.local().y === 4.0;
 	assert group.content().w === 20.0 && group.content().h === 10.0;
@@ -40,14 +42,17 @@ test "Group background promotes and demotes in place without replacing its child
 	const style = group.scene.payloads[group.id.index];
 	const rows = boxStyles.length;
 	setWidth(30.0); setBackground(null);
+	flush();
 	assert group.kind() === DrawKind.Group && group.id === id && child.isLive();
 	assert group.paint().color.a === 0.0 && group.content().w === 30.0;
 	assert group.scene.payloads[group.id.index] === -1;
 	setBackground(rgba(0.9, 0.1, 0.2, 1.0));
+	flush();
 	assert group.kind() === DrawKind.Rect && child.parent() === group;
 	group.setBoxStyle(BoxStyle.create(uniformRadii(4.0), uniformBorders(1.0), rgba(1.0, 1.0, 1.0, 1.0)));
 	assert group.scene.payloads[group.id.index] === style && boxStyles.length === rows;
 	dispose(); setBackground(null); setWidth(1.0);
+	flush();
 	assert !group.isLive() && !child.isLive() && group.scene.closed;
 }
 
@@ -70,16 +75,22 @@ test "Group omitted background stays structural and remount restores current fil
 	assert matrixRow >= 0;
 	nodes[1].scene.clearChanges();
 	setBackground(rgba(0.0, 1.0, 0.0, 1.0));
+	flush();
 	assert nodes[1].paint().color === full().color;
 	assert !nodes[1].scene.changed[nodes[1].id.index].has(Changed.Paint);
 	setFull(colored(rgba(0.3, 0.4, 0.5, 1.0)));
+	flush();
 	assert nodes[1].paint().color === full().color;
 	assert nodes[1].paint().colorMatrixRow === matrixRow;
-	setShown(false); setBackground(rgba(0.5, 0.6, 0.7, 1.0)); setShown(true);
+	setShown(false);
+	flush();
+	setBackground(rgba(0.5, 0.6, 0.7, 1.0)); setShown(true);
+	flush();
 	assert !nodes[1].isLive() && nodes[2].kind() === DrawKind.Rect;
 	assert nodes[2].content().w === 12.0 && nodes[2].content().h === 0.0;
 	assert nodes[2].paint().color === full().color && nodes[0].kind() === DrawKind.Group;
 	assert nodes[2].paint().colorMatrixRow === matrixRow;
 	dispose(); setShown(false); setFull(colored(rgba(0.0, 0.0, 0.0, 1.0)));
+	flush();
 	assert !nodes[0].isLive() && !nodes[2].isLive();
 }
