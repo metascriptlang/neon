@@ -8,7 +8,7 @@ import {
 	createMemoryRoutingHistory,
 	createRequestRoutingHistory,
 } from "../../src/navigation/routingHistory";
-import { GuardDecision, ParamsCodec, RouteMatch, proceed, redirect, route } from "../../src/navigation/route";
+import { GuardDecision, ParamsCodec, RouteMatch, notFound, proceed, redirect, route } from "../../src/navigation/route";
 import { PathMatch } from "../../src/navigation/routeMatcher";
 import {
 	A,
@@ -236,6 +236,41 @@ test "going back to an address whose guard now redirects rewrites that entry to 
 	assert history.go(1);
 	flush();
 	assert history.read().url === "/";
+	router.dispose();
+}
+
+test "going back to a page a guard turned into not found shows that page again" {
+	const routes = createRoutes([
+		{ layout: Shell, children: [
+			{ path: "/", component: Home },
+			{
+				path: "/docs/:slug",
+				component: Doc,
+				guard: (params: Map<string, string>, found: RouteMatch): GuardDecision => {
+					return params.get("slug") === "start" ? proceed() : notFound();
+				},
+			},
+			{ path: "*", status: 404, component: Missing },
+		] },
+	]);
+	const history = memory("/docs/missing");
+	const router = opened(routes, history);
+	const root = mounted(router);
+	assert mockToString(root) === "<root><main><h1>missing</h1></main></root>", mockToString(root);
+	assert router.navigate("/");
+	flush();
+	assert router.navigate("/docs/gone");
+	flush();
+	assert router.navigate("/");
+	flush();
+	assert history.go(-1);
+	flush();
+	assert history.read().url === "/docs/gone", history.read().url;
+	assert mockToString(root) === "<root><main><h1>missing</h1></main></root>", mockToString(root);
+	assert history.go(-2);
+	flush();
+	assert history.read().url === "/docs/missing", history.read().url;
+	assert mockToString(root) === "<root><main><h1>missing</h1></main></root>", mockToString(root);
 	router.dispose();
 }
 

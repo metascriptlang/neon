@@ -90,7 +90,7 @@ export interface RouteResolution {
 }
 
 export interface RouteTree {
-	match: (address: string) => Result<RouteMatch, RoutingError>;
+	match: (address: string, through?: RouteNode | null) => Result<RouteMatch, RoutingError>;
 	resolve: (address: string) => Result<RouteResolution, RoutingError>;
 	href: (
 		node: RouteNode,
@@ -451,11 +451,22 @@ function splitAddress(address: string): Result<Address, RoutingError> {
 	return Result.ok({ pathname, search, hash });
 }
 
-function matchAddress(ranked: Branch[], address: string): Result<RouteMatch, RoutingError> {
+function passes(chain: MatchedRoute[], node: RouteNode): boolean {
+	for (const level of chain) {
+		if (level.node === node) { return true; }
+	}
+	return false;
+}
+
+function matchAddress(
+	ranked: Branch[],
+	address: string,
+	through: RouteNode | null,
+): Result<RouteMatch, RoutingError> {
 	const parts = try splitAddress(address);
 	for (const branch of ranked) {
 		const chain = matchBranch(branch, parts.pathname);
-		if (chain !== null) {
+		if (chain !== null && (through === null || passes(chain as MatchedRoute[], through as RouteNode))) {
 			return Result.ok({ chain: chain as MatchedRoute[], search: parts.search, hash: parts.hash });
 		}
 	}
@@ -553,7 +564,9 @@ export function createRouteTree(entries: RouteEntry[]): RouteTree {
 	checkShapes(branches, places);
 	const ranked = rank(branches);
 	return {
-		match: (address: string): Result<RouteMatch, RoutingError> => matchAddress(ranked, address),
+		match: (address: string, through: RouteNode | null = null): Result<RouteMatch, RoutingError> => {
+			return matchAddress(ranked, address, through);
+		},
 		resolve: (address: string): Result<RouteResolution, RoutingError> => {
 			return resolveAddress(ranked, address);
 		},
