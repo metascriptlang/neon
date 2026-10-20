@@ -1,8 +1,9 @@
-import { createSignal } from "../../src/core/signal";
+import { Accessor, createSignal } from "../../src/core/signal";
 import { createRoot } from "../../src/core/owner";
 import { flush, resetErrorHalt } from "../../src/core/runtime";
 import { element } from "../../src/macros/ui/element";
-import { Show } from "../../src/macros/ui/flow";
+import { Errored, Show } from "../../src/macros/ui/flow";
+import { Host, NeonNode } from "../../src/render/hostTypes";
 import { HostNode, mockHost, mockNode, render } from "../../src/render/host";
 import { Void, View } from "../../src/components/primitives";
 import { Scene2D, Icon, Rect } from "../../src/components/scene2d";
@@ -133,5 +134,77 @@ when (voidSvg) {
 			assert nodes.length === 2 && nodes[1].isLive() && iconHolds(second) === 1;
 		} finally { dispose(); }
 		assert iconHolds(first) === 0 && iconHolds(second) === 0;
+	}
+
+	test "Icon rejects invalid initial size before acquiring a placement" {
+		const id = registered(16);
+		const nodes: NodeRef[] = [];
+		let message = "";
+		createRoot((dispose: () => void): void => {
+			try {
+				const root = mockNode("root");
+				element(<Void><Scene2D><Icon id={id} width={-1.0} height={12.0} color={rgba(1.0, 1.0, 1.0, 1.0)}
+					ref={(node: NodeRef): void => { nodes.push(node); }} /></Scene2D></Void>)(mockHost(), root as unknown as HostNode, null);
+			} catch (error) {
+				message = error.toString();
+				assert iconHolds(id) === 0 && nodes.length === 0;
+			} finally { dispose(); resetErrorHalt(); }
+		});
+		assert message.includes("Icon: width and height must be finite and nonnegative"), message;
+		assert iconHolds(id) === 0;
+	}
+
+	test "Icon rejected size preserves the pair and Errored reset retains its node" {
+		const id = registered(16);
+		const [width, setWidth] = createSignal<float32>(10.0);
+		const [height, setHeight] = createSignal<float32>(12.0);
+		const nodes: NodeRef[] = [];
+		const errors: Error[] = [];
+		const resets: (() => void)[] = [];
+		const root = mockNode("root");
+		const dispose = render(element(<Void>{Errored({
+			children: element(<Scene2D><Icon id={id} width={width()} height={height()} color={rgba(1.0, 1.0, 1.0, 1.0)}
+				ref={(node: NodeRef): void => { nodes.push(node); }} /></Scene2D>),
+			fallback: (error: Accessor<Error>, reset: () => void): NeonNode => {
+				errors.push(error()); resets.push(reset); return element(<View />);
+			},
+		})}</Void>), mockHost(), root as unknown as HostNode);
+		try {
+			const node = nodes[0];
+			setWidth(-1.0); setHeight(6.0); flush();
+			assert errors.length === 1 && errors[0].toString().includes("Icon: width and height must be finite and nonnegative");
+			assert nodes.length === 1 && node.isLive() && iconHolds(id) === 1;
+			assert node.content().w === 10.0 && node.content().h === 12.0;
+			setWidth(0.0); setHeight(0.0); resets[0](); flush();
+			assert errors.length === 1 && nodes.length === 1 && nodes[0] === node && node.isLive();
+			assert node.content().w === 0.0 && node.content().h === 0.0 && iconHolds(id) === 1;
+		} finally { dispose(); resetErrorHalt(); }
+		assert !nodes[0].isLive() && iconHolds(id) === 0;
+	}
+
+	test "Icon throwing ref or child releases placement before the caller disposes" {
+		for (const childFails of [false, true]) {
+			const id = registered(16);
+			const nodes: NodeRef[] = [];
+			let message = "";
+			const throwing: NeonNode = (host: Host, parent: HostNode, before: HostNode | null): void => {
+				throw new Error("Icon child failure");
+			};
+			createRoot((dispose: () => void): void => {
+				try {
+					const root = mockNode("root");
+					element(<Void><Scene2D><Icon id={id} width={16.0} height={16.0} color={rgba(1.0, 1.0, 1.0, 1.0)}
+						ref={(node: NodeRef): void => {
+							nodes.push(node);
+							if (!childFails) { throw new Error("Icon ref failure"); }
+						}}>{childFails ? throwing : null}</Icon></Scene2D></Void>)(mockHost(), root as unknown as HostNode, null);
+				} catch (error) {
+					message = error.toString();
+					assert nodes.length === 1 && !nodes[0].isLive() && iconHolds(id) === 0;
+				} finally { dispose(); resetErrorHalt(); }
+			});
+			assert message.includes(childFails ? "Icon child failure" : "Icon ref failure"), message;
+			assert iconHolds(id) === 0;
+		}
 	}
 }
