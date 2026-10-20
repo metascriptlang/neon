@@ -408,7 +408,7 @@ export function createDrawerNavigator<P>(): DrawerNavigator<P> {
 			const edgeHandlers = motion.edgeHandlers();
 			const transitions = createNavigatorMotion<P>(core, false);
 			const screen = (entry: Navigation<P>, at: Accessor<number>): NeonNode => {
-				return screenView<P>(core, transitions, entry, true);
+				return screenView<P>(core, transitions, entry, true, at);
 			};
 			const item = (entry: Navigation<P>, at: Accessor<number>): NeonNode => {
 				return drawerItem<P>(core, entry);

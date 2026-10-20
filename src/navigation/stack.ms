@@ -278,7 +278,7 @@ export function createStackNavigator<P>(): StackNavigator<P> {
 			watchScreens<P>(collection, core);
 			const transitions = createNavigatorMotion<P>(core, true);
 			const screen = (entry: Navigation<P>, at: Accessor<number>): NeonNode => {
-				return screenView<P>(core, transitions, entry, false);
+				return screenView<P>(core, transitions, entry, false, at);
 			};
 			const rendered = accessor((): Navigation<P>[] => transitions.rendered());
 			const measure = (e: NeonEvent): void => { core.layout.measure(e); };

@@ -13,6 +13,17 @@ export class ScreenMotion {
 	exited: Signal<boolean> = new Signal<boolean>(false);
 }
 
+export function transparentOf<P>(entry: Navigation<P>): boolean {
+	const presentation = entry.options().presentation;
+	return presentation !== null && presentation === "transparentModal";
+}
+
+function visibleFrom<P>(list: Navigation<P>[]): int32 {
+	let at = (list.length - 1) as int32;
+	while (at > 0 && transparentOf<P>(list[at])) { at -= 1; }
+	return at;
+}
+
 function contains<P>(list: Navigation<P>[], entry: Navigation<P>): boolean {
 	for (const item of list) {
 		if (item === entry) { return true; }
@@ -35,6 +46,7 @@ export class NavigatorMotion<P> {
 	stacked: boolean;
 	motions: Map<string, ScreenMotion> = new Map<string, ScreenMotion>();
 	plan: Accessor<MotionPlan<P>>;
+	lowestVisible: Accessor<int32>;
 
 	constructor(core: NavigatorCore<P>, stacked: boolean) {
 		this.core = core;
@@ -42,6 +54,13 @@ export class NavigatorMotion<P> {
 		this.plan = createMemo<MotionPlan<P>>(
 			(prev: MotionPlan<P> | null): MotionPlan<P> => this.derive(prev, core.entries(), core.index()),
 		);
+		this.lowestVisible = createMemo<int32>((prev: int32 | null): int32 => {
+			const list = this.plan().list;
+			const top = (list.length - 1) as int32;
+			const from = visibleFrom<P>(list);
+			if (top > 0 && top - 1 < from && this.of(list[top]).moving.get()) { return top - 1; }
+			return from;
+		});
 	}
 
 	of(entry: Navigation<P>): ScreenMotion {

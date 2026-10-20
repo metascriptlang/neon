@@ -468,7 +468,7 @@ function createTabs<P>(material: boolean): TabNavigator<P> {
 			const mounted = mountedEntries<P>(core);
 			const transitions = createNavigatorMotion<P>(core, false);
 			const screen = (entry: Navigation<P>, at: Accessor<number>): NeonNode => {
-				return screenView<P>(core, transitions, entry, false);
+				return screenView<P>(core, transitions, entry, false, at);
 			};
 			const item = (entry: Navigation<P>, at: Accessor<number>): NeonNode => {
 				return tabItem<P>(core, entry, top);

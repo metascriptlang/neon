@@ -27,7 +27,7 @@ import {
 	currentScope,
 	screenScope,
 } from "./core";
-import { NavigatorMotion } from "./navigatorMotion";
+import { NavigatorMotion, transparentOf } from "./navigatorMotion";
 
 type RowList = () => Row[];
 
@@ -230,44 +230,23 @@ function contained<P>(list: Navigation<P>[], entry: Navigation<P>): boolean {
 	return false;
 }
 
-function transparentOf<P>(entry: Navigation<P>): boolean {
-	const presentation = entry.options().presentation;
-	return presentation !== null && presentation === "transparentModal";
-}
-
-function visibleFrom<P>(list: Navigation<P>[]): int32 {
-	let at = (list.length - 1) as int32;
-	while (at > 0 && transparentOf<P>(list[at])) { at -= 1; }
-	return at;
-}
-
 export function screenView<P>(
 	core: NavigatorCore<P>,
 	motion: NavigatorMotion<P>,
 	entry: Navigation<P>,
 	menu: boolean,
+	at: Accessor<number>,
 ): NeonNode {
 	const scope = screenScope<P>(core, entry);
 	const key = entry.route.key;
 	const stacked = motion.stacked;
 	const options = accessor((): ScreenOptions => entry.options());
-	const position = accessor((): int32 => {
-		const list = motion.rendered();
-		for (let i = 0; i < list.length; i += 1) {
-			if (list[i].route.key === key) { return i as int32; }
-		}
-		return -1;
-	});
+	const position = accessor((): int32 => at() as int32);
+	const closing = createMemo<boolean>((prev: boolean | null): boolean => motion.isClosing(entry));
 	const transparent = accessor((): boolean => stacked && transparentOf<P>(entry));
-	const visible = accessor((): boolean => {
+	const visible = createMemo<boolean>((prev: boolean | null): boolean => {
 		if (!stacked) { return core.currentKey() === key; }
-		if (motion.isClosing(entry)) { return true; }
-		const list = core.entries();
-		const at = position();
-		if (at < 0 || at >= list.length) { return false; }
-		if (at >= visibleFrom<P>(list)) { return true; }
-		const top = list.length - 1;
-		return at === top - 1 && motion.of(list[top]).moving.get();
+		return closing() || position() >= motion.lowestVisible();
 	});
 	const frame = accessor((): Style => {
 		const base: Style = {
@@ -298,17 +277,17 @@ export function screenView<P>(
 		return shown(options().headerShown, !overlay);
 	});
 	const back = accessor((): boolean => stacked && position() > 0);
-	const backTitle = accessor((): string => {
-		const at = position();
-		if (at <= 0) { return "Back"; }
+	const backTitle = createMemo<string>((prev: string | null): string => {
+		const below = position() - 1;
+		if (!stacked || below < 0) { return "Back"; }
 		const own = options().headerBackTitle;
 		if (own !== null) { return own as string; }
-		return titleOf<P>(motion.rendered()[at - 1]);
+		return titleOf<P>(motion.rendered()[below]);
 	});
 	const showMenu = accessor((): boolean => menu);
 	const title = accessor((): string => titleOf<P>(entry));
 	const swipeBack = accessor((): boolean => {
-		if (!stacked || position() <= 0 || motion.isClosing(entry)) { return false; }
+		if (!stacked || position() <= 0 || closing()) { return false; }
 		if (motion.animationOf(entry) !== "slide_from_right") { return false; }
 		return shown(options().gestureEnabled, Platform.OS === "ios");
 	});
