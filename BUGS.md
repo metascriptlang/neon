@@ -248,6 +248,13 @@ and the invariants that outlived them were moved to the head of the test that pi
   and calling the resulting `Proxy` passes the checker. `tests/core/storeFunctionField.parked.ms` does
   not compile. Cards `~/metascript/.inbox/compiler/2026-10-20-typetraits-cannot-tell-a-plain-record-from-a-function-or-a-class.md`
   and `2026-10-20-calling-a-proxy-of-a-function-passes-the-checker.md`.
+- **PARKED 2026-10-20 — one array under two store keys is two stores.** Not Neon's: an array has no
+  hash as a `Map` key on C, so `StoreTraps.child` finds a nested array by its position, not by the
+  array itself as it does a record. `tests/core/storeArrayIdentity.parked.ms` fails (`seen: 1`). Card
+  `~/metascript/.inbox/compiler/2026-10-20-an-array-as-a-map-key-has-no-hash-on-c.md`.
+- **PARKED 2026-10-20 — a store keeps every record it has served until the store is dropped.** Not
+  Neon's: std has no `WeakMap`, so `StoreRoot.targets` is a strong `Map`. Design card
+  `~/metascript/.inbox/compiler/2026-10-20-design-a-weak-map-keyed-by-object-identity.md`.
 - **PARKED 2026-10-11 — `tests/render/flatList.test.ms` and `tests/components/flutterListsApp.test.ms` do not compile.**
   Not Neon's: an array-destructured local of an arrow passed as a JSX attribute
   (`const [focused, setFocused] = createSignal<boolean>(false)` in a `renderItem`) is refused as
