@@ -541,6 +541,7 @@ export class Navigation<P> {
 		this.core.resetTo(state);
 	}
 
+	// Parked on ~/metascript/.inbox/compiler/2026-10-21-mapped-types-and-partial-are-not-types.md: React Navigation 7 merges `Partial<P>` here and adds `replaceParams(P)`; this replaces until `Partial` is a type.
 	setParams(params: P): void {
 		this.writeParams(params);
 		this.core.container.changed();
