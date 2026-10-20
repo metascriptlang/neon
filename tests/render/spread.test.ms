@@ -12,6 +12,7 @@ import { NeonEvent } from "../../src/render/event";
 import { render, mockHost, mockNode, mockToString, fireEvent, HostNode, MockNode } from "../../src/render/host";
 import { Style } from "../../src/render/style";
 import { styleToCss } from "../../src/render/css";
+import { flush } from "../../src/core/runtime";
 
 interface Attrs {
 	id: string;
@@ -59,6 +60,7 @@ test "an on* field becomes an event" {
 	const root = mockNode("root");
 	render(view({ onPress: (e: NeonEvent) => { hits = hits + 1; } }), host, root as unknown as HostNode);
 	fireEvent(root.children[0], "onPress");
+	flush();
 	assert hits === 1, "spread handler fired";
 }
 
@@ -80,6 +82,7 @@ test "an Accessor field updates the attribute of a mounted node" {
 	render(view({ title: t }), host, root as unknown as HostNode);
 	assert mockToString(root.children[0]) === "<div title=\"a\">hi</div>", "initial: " + mockToString(root.children[0]);
 	setT("b");
+	flush();
 	assert mockToString(root.children[0]) === "<div title=\"b\">hi</div>", "after set: " + mockToString(root.children[0]);
 }
 
@@ -163,6 +166,7 @@ test "a spread onto a component forwards its props and keeps them reactive" {
 	const root = mounted(view({ title: t, body: accessor(() => "b") }));
 	assert mockToString(root) === "<root><div id=\"a\">b</div></root>", "component spread initial: " + mockToString(root);
 	setT("z");
+	flush();
 	assert mockToString(root) === "<root><div id=\"z\">b</div></root>", "component spread stays reactive: " + mockToString(root);
 }
 

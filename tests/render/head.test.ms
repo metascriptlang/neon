@@ -2,6 +2,7 @@ import { createSignal } from "../../src/core/signal";
 import { render, hydrate, mockHost, mockNode, mockToString, MockNode, HostNode } from "../../src/render/host";
 import { View } from "../../src/components/primitives";
 import { Layout, Page } from "./headPages";
+import { flush } from "../../src/core/runtime";
 
 test "on a client the title follows its signal and leaves with its Head" {
 	const [title, setTitle] = createSignal("One");
@@ -12,8 +13,10 @@ test "on a client the title follows its signal and leaves with its Head" {
 	const head = (host.headRoot as (n: HostNode) => HostNode)(root as unknown as HostNode) as unknown as MockNode;
 	assert mockToString(head).indexOf("<title>One</title>") >= 0, mockToString(head);
 	setTitle("Two");
+	flush();
 	assert mockToString(head).indexOf("<title>Two</title>") >= 0, mockToString(head);
 	setShown(false);
+	flush();
 	assert mockToString(head) === "<head></head>", mockToString(head);
 }
 

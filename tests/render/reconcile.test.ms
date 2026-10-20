@@ -3,6 +3,7 @@ import { reconcileArrays, Row, rowOf, makeRow, place, moveRow, removeRow } from 
 import { text, regionNode } from "../../src/render/node";
 import { createMemo } from "../../src/core/memo";
 import { createSignal } from "../../src/core/signal";
+import { flush } from "../../src/core/runtime";
 
 function seq(parent: HostNode): string {
 	const p = parent as unknown as MockNode;
@@ -234,6 +235,7 @@ test "an enclosing row keeps its end when a nested region's empty row goes away"
 	const dispose = render(outer, host, root);
 	setInnerOn(false);
 	setOuterOn(false);
+	flush();
 	assert mockToString(root as unknown as MockNode) === "<root>fallback</root>", mockToString(root as unknown as MockNode);
 	dispose();
 }

@@ -4,6 +4,7 @@ import { Cleanup } from "../../src/core/types";
 import { Host, HostNode, NeonNode } from "../../src/render/hostTypes";
 import { MockNode, mockNode, mockHost, render, fireEvent, mockToString } from "../../src/render/host";
 import { place } from "../../src/render/reconcile";
+import { flush } from "../../src/core/runtime";
 import {
 	refreshTemplate0,
 	refreshRegion,
@@ -74,16 +75,18 @@ test "refresh: template rebuild keeps the owning signal at its live value" {
 
 	assert mockToString(root.children[0]) === "old:", "v1 label";
 	assert mockToString(root.children[1]) === "0", "count 0";
-	for (let i = 0; i < 8; i += 1) { fireEvent(root.children[2], "onPress"); }
+	for (let i = 0; i < 8; i += 1) { fireEvent(root.children[2], "onPress"); flush(); }
 	assert mockToString(root.children[1]) === "8", "count 8 after clicks";
 
 	counterRegion("r0", "v2", "new:");
 	const summary = refreshModule("app.ms");
+	flush();
 	assert summary.rebuilt === 1 && summary.remounted === 0, "one region rebuilt";
 	assert mockToString(root.children[0]) === "new:", "v2 label after rebuild";
 	assert mockToString(root.children[1]) === "8", "count survives the rebuild";
 
 	fireEvent(root.children[2], "onPress");
+	flush();
 	assert mockToString(root.children[1]) === "9", "no duplicated subscription: one click is +1";
 	dispose();
 }
@@ -96,6 +99,7 @@ test "refresh: same signature re-registration keeps the mounted view" {
 	const dispose = render(mountCounter("r0", { count: (): number => count(), onInc: (): void => {} } as CounterRegionProps), mockHost(), root as unknown as HostNode);
 	counterRegion("r0", "v1", "new:");
 	const summary = refreshModule("app.ms");
+	flush();
 	assert summary.rebuilt === 0, "same sig means no rebuild";
 	assert mockToString(root.children[0]) === "old:", "mounted view keeps its generation";
 	dispose();
@@ -135,12 +139,13 @@ test "refresh: component remount resets only that boundary's local state" {
 	}, mockHost(), root as unknown as HostNode);
 
 	assert mockToString(root.children[0]) === "v1:", "v1 component label";
-	for (let i = 0; i < 4; i += 1) { fireEvent(root.children[2], "onPress"); }
+	for (let i = 0; i < 4; i += 1) { fireEvent(root.children[2], "onPress"); flush(); }
 	assert mockToString(root.children[1]) === "4", "local count 4";
 
 	version = 2;
 	refreshComponent0("app.ms", "Counter", makeComp(), (): string => "s" + version.toString());
 	const summary = refreshModule("app.ms");
+	flush();
 	assert summary.remounted === 1 && summary.rebuilt === 0, "one boundary remounted";
 	assert mockToString(root.children[0]) === "v2:", "new component code runs";
 	assert mockToString(root.children[1]) === "0", "local state reset at the boundary";
@@ -166,6 +171,7 @@ test "refresh: disposal drops instance records" {
 	dispose();
 	counterRegion("r0", "v2", "new:");
 	const summary = refreshModule("app.ms");
+	flush();
 	assert summary.rebuilt === 0 && summary.remounted === 0, "disposed regions are not patched";
 }
 
@@ -200,15 +206,18 @@ test "refresh: remounting a fragment boundary removes its nested regions" {
 		const signature = generation.toString();
 		refreshComponent0("nested.ms", "parent", component, (): string => signature);
 		refreshModule("nested.ms");
+		flush();
 		assert mockToString(root) === "<root>value:1|sibling</root>", "nested fragment is replaced, not left beside its replacement";
 		const before = effectRuns;
 		setValue(generation);
+		flush();
 		assert effectRuns === before + 1, "only the surviving nested effect runs";
 		setValue(1);
 	}
 	dispose();
 	const before = effectRuns;
 	setValue(9);
+	flush();
 	assert effectRuns === before, "final disposal also cleans the refreshed nested effect";
 }
 

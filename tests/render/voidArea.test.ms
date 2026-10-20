@@ -5,6 +5,7 @@ import { VoidAreaHandle, AreaKeyAction, AreaPointerKind, AreaKeyEvent, AreaKeyMo
 import { onCleanup } from "../../src/core/cleanup";
 import { createContext, useContext } from "../../src/render/context";
 import { Void, View, ViewHandle, Text } from "../../src/components/primitives";
+import { flush } from "../../src/core/runtime";
 
 test "Void mounts its children into the area the host opens" {
 	const root: MockNode = mockNode("root");
@@ -44,6 +45,7 @@ test "context and signals cross into the area" {
 	), mockHost(), root as unknown as HostNode);
 	assert mockToString(root).indexOf("<text>blue1</text>") >= 0, "context read inside: " + mockToString(root);
 	setN(2);
+	flush();
 	assert mockToString(root).indexOf("<text>blue2</text>") >= 0, "signal tracked inside: " + mockToString(root);
 }
 
@@ -92,6 +94,7 @@ test "the handle reports size and scale and forwards raw input to its subscriber
 	assert log.join(",") === "resize:800x600,key:a:30:97,text:b,preedit:c:1,pointer:3:wheel,focus:true", log.join(",");
 	h.requestFrame();
 	h.setImeRect(1, 2, 3, 4);
+	flush();
 	assert mockToString(root).indexOf("frameRequested=\"true\"") >= 0, "requestFrame reached the host";
 	assert mockToString(root).indexOf("imeRect=\"1,2,3,4\"") >= 0, "setImeRect reached the host";
 }

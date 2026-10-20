@@ -5,6 +5,7 @@ import { HostNode, MockNode, mockNode, mockHost, render, mockToString, fireEvent
 import { ScrollView, ScrollViewHandle, Text, Pressable } from "../../src/components/primitives";
 import { createSignal } from "../../src/core/signal";
 import { VisibleContentPosition, parseVisibleContent } from "../../src/render/visibleContent";
+import { flush } from "../../src/core/runtime";
 
 function scrollEvent(x: number, y: number, width: number, height: number, contentWidth: number, contentHeight: number): NeonEvent {
 	const e = neonEvent("scroll");
@@ -54,6 +55,7 @@ test "onContentSizeChange receives the content container's size, React Native's 
 	sized.width = 320;
 	sized.height = 2000;
 	fireEventWith(root.children[0].children[0], "onLayout", sized);
+	flush();
 	assert got === "320 2000", "content size: " + got;
 }
 
@@ -64,6 +66,7 @@ test "onScroll receives the content offset, the viewport and the content size" {
 		got = `${e.type} ${e.x} ${e.y} ${e.width} ${e.height} ${e.contentWidth} ${e.contentHeight}`;
 	}}><Text>a</Text></ScrollView>), mockHost(), root as unknown as HostNode);
 	fireEventWith(root.children[0], "onScroll", scrollEvent(0, 120, 320, 480, 320, 2000));
+	flush();
 	assert got === "scroll 0 120 320 480 320 2000", "payload: " + got;
 }
 
@@ -75,6 +78,7 @@ test "without scrollEventThrottle every scroll event reaches onScroll" {
 	fireEventWith(sv, "onScroll", scrollEvent(0, 1, 320, 480, 320, 2000));
 	fireEventWith(sv, "onScroll", scrollEvent(0, 2, 320, 480, 320, 2000));
 	fireEventWith(sv, "onScroll", scrollEvent(0, 3, 320, 480, 320, 2000));
+	flush();
 	assert calls === 3, "calls " + calls.toString();
 }
 
@@ -85,6 +89,7 @@ test "scrollEventThrottle drops events closer together than the interval" {
 	const sv = root.children[0];
 	fireEventWith(sv, "onScroll", scrollEvent(0, 1, 320, 480, 320, 2000));
 	fireEventWith(sv, "onScroll", scrollEvent(0, 2, 320, 480, 320, 2000));
+	flush();
 	assert seen === "1;", "only the first event inside the interval: " + seen;
 }
 
@@ -140,6 +145,7 @@ test "a press the host cancels for a scroll does not fire onPress" {
 	fireEvent(row, "onPointerCancel");
 	fireEventWith(sv, "onScroll", scrollEvent(0, 30, 320, 480, 320, 2000));
 	fireEvent(row, "onPointerUp");
+	flush();
 	assert log === "in;scroll;", "no press after the cancel: " + log;
 }
 
@@ -151,9 +157,11 @@ test "reactive horizontal switches both container and content direction without 
 	const content = scroll.children[0];
 	const row = content.children[0];
 	setHorizontal(true);
+	flush();
 	assert scroll.style!.flexDirection === "row" && content.style!.flexDirection === "row", "horizontal outer and content use RN row direction";
 	assert root.children[0] === scroll && content.children[0] === row, "axis change preserves the mounted row";
 	setHorizontal(false);
+	flush();
 	assert scroll.style!.flexDirection === "column" && content.style!.flexDirection !== "row", "vertical restores the original content convention";
 	dispose();
 }
@@ -174,6 +182,7 @@ test "drag and momentum handlers bypass scroll throttling and carry the final of
 	fireEventWith(scroll, "onScrollEndDrag", scrollEvent(0, 20, 300, 400, 300, 1200));
 	fireEventWith(scroll, "onMomentumScrollBegin", scrollEvent(0, 20, 300, 400, 300, 1200));
 	fireEventWith(scroll, "onMomentumScrollEnd", scrollEvent(0, 200, 300, 400, 300, 1200));
+	flush();
 	assert seen === "begin0;scroll;end20;momentum20;settled200;", "throttling never suppresses a boundary event: " + seen;
 }
 
@@ -197,6 +206,7 @@ test "maintainVisibleContentPosition reaches the host as one attribute, with the
 	render(element(<ScrollView maintainVisibleContentPosition={{ minIndexForVisible: 1, autoscrollToTopThreshold: threshold() }}><Text>a</Text></ScrollView>), mockHost(), root as unknown as HostNode);
 	assert attrOf(root.children[0], "maintainVisibleContentPosition") === "1,10", attrOf(root.children[0], "maintainVisibleContentPosition");
 	setThreshold(null);
+	flush();
 	assert attrOf(root.children[0], "maintainVisibleContentPosition") === "1", attrOf(root.children[0], "maintainVisibleContentPosition");
 	const bare: MockNode = mockNode("root");
 	render(element(<ScrollView><Text>a</Text></ScrollView>), mockHost(), bare as unknown as HostNode);

@@ -11,6 +11,7 @@ import { el, evt, text } from "../../src/render/node";
 import { NeonEvent, neonEvent, eventType } from "../../src/render/event";
 import { render, mockHost, mockNode, fireEvent, fireEventWith, HostNode } from "../../src/render/host";
 import { createTemplate, mountTemplate } from "../../src/render/template";
+import { flush } from "../../src/core/runtime";
 
 test "eventType strips the on prefix and lowercases" {
 	assert eventType("onPress") === "press", "onPress → " + eventType("onPress");
@@ -41,6 +42,7 @@ test "a handler on a jsx element receives the event" {
 
 	const btn = root.children[0];
 	fireEvent(btn, "onPress");
+	flush();
 	assert seen === "press", "handler saw type=" + seen;
 }
 
@@ -51,6 +53,7 @@ test "a handler that ignores the event still runs" {
 	render(element(<button onPress={(): void => { runs = runs + 1; }}>go</button>), host, root as unknown as HostNode);
 
 	fireEvent(root.children[0], "onPress");
+	flush();
 	assert runs === 1, "zero-arg handler runs=" + runs.toString();
 }
 
@@ -63,6 +66,7 @@ test "an input handler reads the value the host put on the event" {
 	const e = neonEvent("input");
 	e.value = "hello";
 	fireEventWith(root.children[0], "onInput", e);
+	flush();
 	assert typed === "hello", "handler read value=" + typed;
 }
 
@@ -76,6 +80,7 @@ test "a click handler reads the coordinates the host put on the event" {
 	e.x = 12;
 	e.y = 34;
 	fireEventWith(root.children[0], "onPress", e);
+	flush();
 	assert at === "12,34", "handler read at=" + at;
 }
 
@@ -88,6 +93,7 @@ test "a handler drives a signal through the event value" {
 	const e = neonEvent("input");
 	e.value = "son";
 	fireEventWith(root.children[0], "onInput", e);
+	flush();
 	assert name() === "son", "signal now " + name();
 }
 
@@ -100,5 +106,6 @@ test "onChangeText hands the handler the text" {
 	const e = neonEvent("changetext");
 	e.value = "xin chao";
 	fireEventWith(root.children[0], "onChangeText", e);
+	flush();
 	assert seenText === "xin chao", "handler read text=" + seenText;
 }

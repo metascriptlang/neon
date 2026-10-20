@@ -6,6 +6,7 @@ import { View, Text, Pressable } from "../../src/components/primitives";
 import { Portal } from "../../src/render/portal";
 import { NeonEvent } from "../../src/render/event";
 import { Errored } from "../../src/macros/ui/flow";
+import { flush } from "../../src/core/runtime";
 
 function silence(n: MockNode): void {
 	n.events = [];
@@ -73,6 +74,7 @@ test "a signal written after hydrate updates the node the page sent" {
 	const [live, setLive] = createSignal("Ann");
 	hydrate(page(live, (e: NeonEvent): void => {}), mockHost(), root as unknown as HostNode);
 	setLive("Bob");
+	flush();
 	assert mockToString(bold) === "<b>Bob</b>", mockToString(bold);
 	const [bob, _b] = createSignal("Bob");
 	assert mockToString(root) === mockToString(served(page(bob, (e: NeonEvent): void => {}))), mockToString(root);
@@ -84,6 +86,7 @@ test "an event on a node the page sent reaches the handler" {
 	let pressed = 0;
 	hydrate(page(name, (e: NeonEvent): void => { pressed += 1; }), mockHost(), root as unknown as HostNode);
 	fireEvent(root.children[0].children[1], "onPress");
+	flush();
 	assert pressed === 1, "pressed " + pressed.toString();
 }
 
@@ -117,9 +120,11 @@ test "Show and For toggle and reorder on the page's nodes after hydrate" {
 
 	setOn(false);
 	setXs([3, 1]);
+	flush();
 	assert mockToString(root) === flowsAt(false, [3, 1]), mockToString(root);
 	setOn(true);
 	setXs([2, 3, 1, 4]);
+	flush();
 	assert mockToString(root) === flowsAt(true, [2, 3, 1, 4]), mockToString(root);
 }
 
@@ -142,6 +147,7 @@ test "hydrate takes an Errored's content from the page and creates only the hold
 	assert mockToString(root) === before, mockToString(root);
 	setOn(true);
 	const [shown, _s] = createSignal(true);
+	flush();
 	assert mockToString(root) === mockToString(served(guarded(shown))), mockToString(root);
 }
 
@@ -155,6 +161,7 @@ test "regions the page sent empty fill in after hydrate" {
 	hydrate(flows(liveOn, liveXs), mockHost(), root as unknown as HostNode);
 	setOn(true);
 	setXs([1, 2]);
+	flush();
 	assert mockToString(root) === flowsAt(true, [1, 2]), mockToString(root);
 }
 

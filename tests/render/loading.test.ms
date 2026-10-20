@@ -6,6 +6,7 @@ import { Accessor, createSignal } from "../../src/core/signal";
 import { createAsyncMemo } from "../../src/core/memo";
 import { Loading } from "../../src/macros/ui/flow";
 import { Gate, gated, release } from "../core/asyncClock";
+import { flush } from "../../src/core/runtime";
 
 function nodeOf(n: HostNode, tag: string): MockNode {
 	const m = n as unknown as MockNode;
@@ -58,6 +59,7 @@ test "a refetch after the content settled keeps it shown" {
 	const node = nodeOf(root, "p");
 	gate = new Gate();
 	setId(2);
+	flush();
 	assert shown().includes("<p>") && !shown().includes("loading"), "the refetch keeps the content visible: " + shown();
 	await release(gate);
 	assert shown().includes("<p>2</p>") && nodeOf(root, "p") === node, "the same node shows the new value: " + shown();

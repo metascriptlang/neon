@@ -23,6 +23,7 @@ import { NeonNode } from "../../src/render/node";
 import { HostNode, MockNode, mockNode, mockHost, render, mockToString, fireEvent } from "../../src/render/host";
 import { View, ViewHandle, TextInput, TextInputHandle, Pressable, Text } from "../../src/components/primitives";
 import { NeonEvent } from "../../src/render/event";
+import { flush } from "../../src/core/runtime";
 
 test "ref hands the completed host node to the callback" {
 	let seen = "";
@@ -71,6 +72,7 @@ test "a callback prop crosses raw when it is named, not only when it is a litera
 	const root: MockNode = mockNode("root");
 	render(element(<Pressable onPress={inc} ref={grab}><Text>+</Text></Pressable>), mockHost(), root as unknown as HostNode);
 	fireEvent(root.children[0], "onPress");
+	flush();
 	assert hits === 1, "named handler ran, hits=" + hits.toString();
 	assert seenTag === "pressable", "named ref ran, tag=" + seenTag;
 }
@@ -172,6 +174,7 @@ test "ref apply is untracked: a signal read in it does not re-run the mount" {
 		return 0;
 	});
 	setN(1);
+	flush();
 	assert mounts === 1, "mounts=" + mounts.toString();
 }
 
@@ -193,6 +196,7 @@ test "a directive factory sets up in the current owner and applies as the return
 	const dispose = render(element(<p ref={tooltip(log, read)}>hi</p>), mockHost(), root as unknown as HostNode);
 	assert log.join(",") === "setup,apply1,effect1", "setup before apply, its effect after the mount: " + log.join(",");
 	setN(2);
+	flush();
 	assert log.join(",") === "setup,apply1,effect1,effect2", "the setup effect lives on, the apply does not rerun: " + log.join(",");
 	dispose();
 	assert log.join(",") === "setup,apply1,effect1,effect2,cleanup", "the owner's disposal runs the setup cleanup: " + log.join(",");
@@ -220,6 +224,7 @@ test "a directive factory sets up untracked: a signal read in setup does not re-
 		return 0;
 	});
 	setN(1);
+	flush();
 	assert mounts === 1, "mounts=" + mounts.toString();
 }
 

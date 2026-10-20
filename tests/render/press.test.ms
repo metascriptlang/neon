@@ -12,6 +12,7 @@ import { element } from "../../src/macros/ui/element";
 import { NeonEvent } from "../../src/render/event";
 import { HostNode, mockNode, mockHost, render, fireEvent } from "../../src/render/host";
 import { Pressable, Text } from "../../src/components/primitives";
+import { flush } from "../../src/core/runtime";
 
 test "onPress alone stays on the cheap click path" {
 	const host = mockHost();
@@ -25,6 +26,7 @@ test "onPress alone stays on the cheap click path" {
 	assert btn.events.length === 1, "listener count " + btn.events.length.toString();
 	assert btn.events[0].name === "onPress", "wired " + btn.events[0].name;
 	fireEvent(btn, "onPress");
+	flush();
 	assert hits === 1, "hits " + hits.toString();
 }
 
@@ -54,10 +56,12 @@ test "press in and out bracket the gesture" {
 
 	const btn = root.children[0];
 	fireEvent(btn, "onPointerDown");
+	flush();
 	assert log() === "in;", "after down: " + log();
 
 	// Released before the minimum hold: pressOut waits, press does not.
 	fireEvent(btn, "onPointerUp");
+	flush();
 	assert log() === "in;press;", "after up: " + log();
 
 	await sleepAsync(250);
@@ -78,12 +82,14 @@ test "a hold past 500ms fires onLongPress and swallows the press" {
 	const btn = root.children[0];
 	fireEvent(btn, "onPointerDown");
 	await sleepAsync(280);
+	flush();
 	assert log() === "", "too early: " + log();
 
 	await sleepAsync(400);
 	assert log() === "long;", "at 500ms: " + log();
 
 	fireEvent(btn, "onPointerUp");
+	flush();
 	assert log() === "long;", "press must be swallowed, got: " + log();
 }
 
@@ -102,6 +108,7 @@ test "a short tap with a long press handler still presses" {
 	fireEvent(btn, "onPointerDown");
 	fireEvent(btn, "onPointerUp");
 	await sleepAsync(300);
+	flush();
 	assert log() === "press;", "short tap: " + log();
 }
 
@@ -121,6 +128,7 @@ test "leaving the element cancels the press without firing it" {
 	fireEvent(btn, "onPointerDown");
 	await sleepAsync(60);
 	fireEvent(btn, "onPointerLeave");
+	flush();
 	assert log() === "in;", "leave must not press: " + log();
 
 	await sleepAsync(250);
@@ -144,6 +152,7 @@ test "a custom delayLongPress is honored" {
 	const btn = root.children[0];
 	fireEvent(btn, "onPointerDown");
 	await sleepAsync(60);
+	flush();
 	assert log() === "", "too early: " + log();
 	await sleepAsync(90);
 	assert log() === "long;", "at 120ms: " + log();
@@ -162,7 +171,9 @@ test "a press drives a signal end to end" {
 	const btn = root.children[0];
 	fireEvent(btn, "onPointerDown");
 	fireEvent(btn, "onPointerUp");
+	flush();
 	fireEvent(btn, "onPointerDown");
 	fireEvent(btn, "onPointerUp");
+	flush();
 	assert count() === 2, "count " + count().toString();
 }

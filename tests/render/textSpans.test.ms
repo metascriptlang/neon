@@ -5,6 +5,7 @@ import { Style } from "../../src/render/style";
 import { Text } from "../../src/components/primitives";
 import { TextSpan } from "../../src/render/hostTypes";
 import { NeonEvent, neonEvent } from "../../src/render/event";
+import { flush } from "../../src/core/runtime";
 
 const RED: Style = { color: "#ff0000" };
 const BLUE: Style = { color: "#0000ff" };
@@ -25,10 +26,12 @@ test "a spans change keeps each span's nodes by position, and grows and shrinks 
 	const text = root.children[0];
 	const first = text.children[0];
 	setSpans([{ text: "A", style: BLUE }, { text: "B" }, { text: "C", style: RED }]);
+	flush();
 	assert mockToString(root) === "<root><text><text>A</text><text>B</text><text>C</text></text></root>", mockToString(root);
 	assert text.children[0] === first, "the first span kept its node";
 	assert first.style === BLUE, "and took the new style";
 	setSpans([{ text: "x" }]);
+	flush();
 	assert mockToString(root) === "<root><text><text>x</text></text></root>", mockToString(root);
 	assert text.children[0] === first, "the first span still kept its node";
 }
@@ -49,8 +52,11 @@ test "on a host without setSpans, a span's onPress is its nested Text's press, a
 	const second = root.children[0].children[1];
 	second.events[0].handler(neonEvent("press"));
 	setSpans([{ text: "a" }, { text: "b", onPress: (e: NeonEvent): void => { log += "second;"; } }]);
+	flush();
 	second.events[0].handler(neonEvent("press"));
 	setSpans([{ text: "a" }, { text: "b" }]);
+	flush();
 	second.events[0].handler(neonEvent("press"));
+	flush();
 	assert log === "first;second;", log;
 }
