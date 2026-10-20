@@ -4,7 +4,8 @@ import { element } from "../../src/macros/ui/element";
 import { Show } from "../../src/macros/ui/flow";
 import { HostNode, MockNode, mockNode, mockHost, render, mockAreaHub } from "../../src/render/host";
 import { Void, View } from "../../src/components/primitives";
-import { Scene3D, Scene3DHandle, Group, Camera3D } from "../../src/components/scene3d";
+import { Scene3D, Scene3DHandle, Group, Camera3D, viewCamera } from "../../src/components/scene3d";
+import { ProjectionKind } from "../../../void/src/void3d/camera";
 import { Vec3, vec3 } from "../../../void/src/math/math3d";
 
 function frameRequests(outer: MockNode): int32 {
@@ -81,4 +82,31 @@ test "two Void areas keep their own Scene3D layers" {
 	setPosition(vec3(2.0, 0.0, 0.0));
 	flush();
 	assert frameRequests(second) === before, "a change in one area does not wake the other";
+}
+
+test "a Scene3D with no active Camera3D views through the default camera until one mounts" {
+	const root: MockNode = mockNode("root");
+	const [shown, setShown] = createSignal(false);
+	const refs: Scene3DHandle[] = [];
+	render(element(<Void>
+		<Scene3D ref={(value: Scene3DHandle): void => { refs.push(value); }}>
+			{Show({ when: accessor(() => shown()), children: element(
+				<Camera3D active={true} position={vec3(0.0, 1.0, 9.0)} />
+			) })}
+		</Scene3D>
+	</Void>), mockHost(), root as unknown as HostNode);
+	const first = viewCamera(refs[0]);
+	assert first.ok && first.value.position === vec3(0.0, 0.0, 5.0), "the default camera sits at z 5";
+	if (!first.ok) { return; }
+	const projection = first.value.projection;
+	assert projection.kind === ProjectionKind.Perspective && Math.abs(projection.fovY - 1.3089969) < 1e-6, "a 75 degree perspective";
+	assert first.value.nearPlane === 0.1 && first.value.farPlane === 1000.0;
+	setShown(true);
+	flush();
+	const active = viewCamera(refs[0]);
+	assert active.ok && active.value.position === vec3(0.0, 1.0, 9.0), "an active Camera3D replaces the default";
+	setShown(false);
+	flush();
+	const restored = viewCamera(refs[0]);
+	assert restored.ok && restored.value.position === vec3(0.0, 0.0, 5.0), "unmounting it restores the default";
 }
