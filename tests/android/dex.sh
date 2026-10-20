@@ -32,7 +32,12 @@ expect_dex() {
 	map="$r/$name/app/build/outputs/mapping/release/mapping.txt"
 	mkdir -p "$r/$name.dex"
 	unzip -q -o "$apk" 'classes*.dex' -d "$r/$name.dex"
-	classes=$(for f in "$r/$name.dex"/classes*.dex; do "$dexdump" "$f"; done | sed -n "s/^  Class descriptor  : 'L\(.*\);'/\1/p")
+	dump="$r/$name.dex/dexdump.txt"
+	: > "$dump"
+	for f in "$r/$name.dex"/classes*.dex; do
+		"$dexdump" "$f" >> "$dump" || { echo "FAIL dex $name: dexdump $f"; fail=1; return; }
+	done
+	classes=$(sed -n "s/^  Class descriptor  : 'L\(.*\);'/\1/p" "$dump")
 	bytes=$(cat "$r/$name.dex"/classes*.dex | wc -c | tr -d ' ')
 	bad=0
 	for c in $2; do
@@ -41,12 +46,24 @@ expect_dex() {
 	for c in $3; do
 		grep -Eq "dev\.metascript\.neon\.$c([^A-Za-z0-9_]|$)" "$map" && { echo "FAIL dex $name: carries $c"; bad=1; }
 	done
+	awk '
+		/Class descriptor/ { measurement = /Ldev\/metascript\/neon\/Measurement;/; method = 0; signature = 0 }
+		/name[[:space:]]*:/ { method = measurement && /\047inWindow\047/; signature = 0 }
+		/type[[:space:]]*:/ { signature = method && /\047\(Landroid\/view\/View;\)\[F\047/ }
+		/access[[:space:]]*:/ && measurement && method && signature && /PUBLIC/ && /STATIC/ { found = 1 }
+		END { exit !found }
+	' "$dump" || { echo "FAIL dex $name: misses public static Measurement.inWindow(View):float[]"; bad=1; }
+	awk '
+		/^[^[:space:]#].* -> .*:$/ { measurement = /^dev\.metascript\.neon\.Measurement -> dev\.metascript\.neon\.Measurement:$/ }
+		measurement && /float\[\] inWindow\(android\.view\.View\)(:[0-9]+)* -> inWindow$/ { found = 1 }
+		END { exit !found }
+	' "$map" || { echo "FAIL dex $name: renames Measurement JNI entry point"; bad=1; }
 	if [ "$4" != - ] && [ "$bytes" -gt "$4" ]; then echo "FAIL dex $name: $bytes bytes, budget $4"; bad=1; fi
 	[ $bad = 0 ] && echo "ok   dex $name $bytes bytes" || fail=1
 }
 
 components="Toggle Spinner Overlay Web Movie CameraPreview SvgView"
 domains="NetInfo Geolocation Device Notifications NotificationReceiver"
-expect_dex tests/android/minimal "App Props Picture" "$components Storage $domains" 135036
-expect_dex tests/android/imports "Toggle Movie Storage" "Spinner Overlay Web CameraPreview SvgView $domains" -
+expect_dex tests/android/minimal "App Props Picture Measurement" "$components Storage $domains" 135744
+expect_dex tests/android/imports "Toggle Movie Storage Measurement" "Spinner Overlay Web CameraPreview SvgView $domains" -
 exit $fail

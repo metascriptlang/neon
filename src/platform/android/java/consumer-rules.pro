@@ -4,6 +4,10 @@
 	native <methods>;
 }
 
+-keep class dev.metascript.neon.Measurement {
+	public static float[] inWindow(android.view.View);
+}
+
 -keep class dev.metascript.neon.Scroll {
 	*;
 }
