@@ -4,29 +4,36 @@ import { Cleanup } from "../core/types";
 import { createRoot } from "../core/owner";
 import { onCleanup } from "../core/cleanup";
 import { createContext, useContext } from "../render/context";
-import { VoidSpace, voidScope } from "../render/voidScope";
+import { VoidSpace, voidScope, voidAreaHub } from "../render/voidScope";
+import { AreaHub, AreaLayer } from "../render/voidAreaHandle";
+import { Color } from "../../../void/src/void2d/types";
 import { Host, HostNode, NeonNode } from "../render/hostTypes";
 import { Vec3, Quat, vec3, eulerQuat } from "../../../void/src/math/math3d";
 import { RenderState } from "../../../void/src/gpu/state";
-import { Program, MATERIAL_UNIFORM_SLOT, MATERIAL_UNIFORM_LENGTH } from "../../../void/src/void3d/gpu3d";
+import { Program, MATERIAL_UNIFORM_SLOT, MATERIAL_UNIFORM_LENGTH, VERTEX_UNIFORM_LENGTH, LIGHT_UNIFORM_LENGTH } from "../../../void/src/void3d/gpu3d";
 import { Material, Phase } from "../../../void/src/void3d/material";
 import { MeshData } from "../../../void/src/void3d/meshData";
 import {
-	DrawContext, MeshId, MaterialId, addMeshData, releaseMesh, addMaterial,
-	releaseMaterial, reserveUniforms, writeUniforms, releaseUniforms, closeContext,
+	DrawContext, DrawItem, MeshId, MaterialId, addMeshData, releaseMesh, addMaterial,
+	releaseMaterial, reserveUniforms, writeUniforms, releaseUniforms, closeContext, buryDoomed,
 } from "../../../void/src/void3d/draw";
+import {
+	ForwardRenderer, create, prepareFrame, drawToScreen, closeForward,
+} from "../../../void/src/void3d/forwardRenderer";
+import { contextGeneration } from "../../../void/src/gpu/door";
 import {
 	Scene3D as VoidScene3D, NodeId3D, Transform3D, LightKind, LightInstance,
 	addGroup, addLightNode, addMeshNode, setLocal, setLightPower, setMeshOf,
 	remove, insertBefore, closeScene, addCameraNode, setCameraOf, setActiveCamera,
-	setVisible, setPickable, setName, setAmbient,
+	setVisible, setPickable, setName, setAmbient, refresh, collectLights,
+	cameraOf as worldCameraOf,
 } from "../../../void/src/void3d/scene";
 import { GltfData } from "../../../void/src/void3d/gltf";
 import {
 	GltfMaterialSetup, addGltfAssets, addGltfNodes, closeGltfAssets,
 } from "../../../void/src/void3d/gltfScene";
 import {
-	Camera3D as VoidCamera3D, CameraProjection, ProjectionKind,
+	Camera3D as VoidCamera3D, CameraProjection, ProjectionKind, resolve, writeCameraBlock,
 } from "../../../void/src/void3d/camera";
 
 export interface Scene3DHandle {
@@ -45,6 +52,7 @@ interface SceneState {
 	handle: Scene3DHandle;
 	defaultMaterial: MaterialId | null;
 	cameras: CameraEntry[];
+	invalidate: () => void;
 }
 
 interface NodeScope {
@@ -134,7 +142,7 @@ function localOf(props: TransformProps): Transform3D {
 	return local;
 }
 
-function bindLocal(scene: VoidScene3D, node: NodeId3D, props: TransformProps, initial: Transform3D): void {
+function bindLocal(scene: VoidScene3D, node: NodeId3D, props: TransformProps, initial: Transform3D, invalidate: () => void): void {
 	if (props.transform === null && props.position === null && props.rotation === null && props.scale === null) { return; }
 	let local = initial;
 	createRenderEffect<Transform3D>(
@@ -143,41 +151,48 @@ function bindLocal(scene: VoidScene3D, node: NodeId3D, props: TransformProps, in
 			if (next !== local) {
 				setLocal(scene, node, next);
 				local = next;
+				invalidate();
 			}
 			return null;
 		},
 	);
 }
 
-function bindNode(scene: VoidScene3D, node: NodeId3D, props: NodeProps, initial: Transform3D): void {
-	bindLocal(scene, node, props, initial);
+function bindNode(state: SceneState, node: NodeId3D, props: NodeProps, initial: Transform3D): void {
+	const scene = state.handle.scene;
+	bindLocal(scene, node, props, initial, state.invalidate);
 	if (props.visible !== null) {
 		const visible = props.visible as () => boolean;
 		createRenderEffect<boolean>(
 			(prev: boolean | null): boolean => visible(),
-			(value: boolean, prev: boolean | null): Cleanup | null => { setVisible(scene, node, value); return null; },
+			(value: boolean, prev: boolean | null): Cleanup | null => { setVisible(scene, node, value); state.invalidate(); return null; },
 		);
 	}
 	if (props.pickable !== null) {
 		const pickable = props.pickable as () => boolean;
 		createRenderEffect<boolean>(
 			(prev: boolean | null): boolean => pickable(),
-			(value: boolean, prev: boolean | null): Cleanup | null => { setPickable(scene, node, value); return null; },
+			(value: boolean, prev: boolean | null): Cleanup | null => { setPickable(scene, node, value); state.invalidate(); return null; },
 		);
 	}
 	if (props.name !== null) {
 		const name = props.name as () => string;
 		createRenderEffect<string>(
 			(prev: string | null): string => name(),
-			(value: string, prev: string | null): Cleanup | null => { setName(scene, node, value); return null; },
+			(value: string, prev: string | null): Cleanup | null => { setName(scene, node, value); state.invalidate(); return null; },
 		);
 	}
 }
 
-function ownNode(scene: VoidScene3D, node: NodeId3D): void {
+function ownNode(state: SceneState, node: NodeId3D): void {
+	const scene = state.handle.scene;
 	onCleanup((): void => {
-		if (scene.isLive(node)) { const removed = remove(scene, node); }
+		if (scene.isLive(node)) {
+			const removed = remove(scene, node);
+			state.invalidate();
+		}
 	});
+	state.invalidate();
 }
 
 function mountNodeChildren(scope: NodeScope, node: NodeId3D, props: NodeProps, host: Host, parent: HostNode, before: HostNode | null): void {
@@ -218,11 +233,57 @@ export function Scene3D(props: Scene3DProps): NeonNode {
 	return (host: Host, parent: HostNode, before: HostNode | null): void => {
 		if (useContext(voidScope) !== VoidSpace.Area) { throw new Error("Scene3D: mount directly within Void, outside another Scene3D"); }
 		mountOwned((): void => {
+			const hub = useContext(voidAreaHub);
+			if (hub === null) { throw new Error("Scene3D: the Void area did not provide its frame"); }
+			const area = hub as AreaHub;
 			const context = DrawContext.withUniformCapacity(SCENE_UNIFORM_CAPACITY);
 			const scene = VoidScene3D.create(context);
 			const handle: Scene3DHandle = { context: context, scene: scene, camera: null };
-			const state: SceneState = { handle: handle, defaultMaterial: null, cameras: [] };
+			const state: SceneState = {
+				handle: handle, defaultMaterial: null, cameras: [],
+				invalidate: (): void => { area.handle.requestFrame(); },
+			};
+			const made = ForwardRenderer.create(context, { x: 0.0, y: 0.0, z: 0.0, w: 0.0 });
+			if (!made.ok) {
+				closeScene(scene);
+				closeContext(context);
+				throw new Error("Scene3D: ForwardRenderer.create failed: " + made.error.toString());
+			}
+			const renderer = made.value;
+			let items: Vec<DrawItem> = [];
+			let cameraBlock: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
+			let lightBlock: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
+			let prepared = false;
+			const layer: AreaLayer = {
+				prepare: (pixelWidth: int32, pixelHeight: int32, background: Color): void => {
+					prepared = false;
+					const camera = handle.camera;
+					if (camera === null) { return; }
+					refresh(scene, items);
+					const lights = collectLights(scene, lightBlock);
+					if (!lights.ok) { throw new Error("Scene3D: collectLights failed: " + lights.error.toString()); }
+					const world = worldCameraOf(scene, camera as VoidCamera3D);
+					if (!world.ok) { throw new Error("Scene3D: the active camera has no world pose: " + world.error.toString()); }
+					const view = world.value.resolve(pixelWidth, pixelHeight);
+					if (!view.ok) { throw new Error("Scene3D: the active camera does not resolve: " + view.error.toString()); }
+					view.value.writeCameraBlock(cameraBlock);
+					renderer.background = { x: background.r, y: background.g, z: background.b, w: background.a };
+					const buried = buryDoomed(context, contextGeneration());
+					const frame = prepareFrame(renderer, items, cameraBlock, lightBlock, pixelWidth, pixelHeight);
+					if (!frame.ok) { throw new Error("Scene3D: prepareFrame failed: " + frame.error.toString()); }
+					prepared = true;
+				},
+				draw: (): void => {
+					if (!prepared) { return; }
+					prepared = false;
+					drawToScreen(renderer);
+				},
+			};
+			const unregister = area.addLayer(layer);
 			onCleanup((): void => {
+				unregister();
+				closeForward(renderer);
+				state.invalidate();
 				handle.camera = null;
 				closeScene(scene);
 				const material = state.defaultMaterial;
@@ -237,10 +298,11 @@ export function Scene3D(props: Scene3DProps): NeonNode {
 				const ambient = props.ambient as () => Vec3;
 				createRenderEffect<Vec3>(
 					(prev: Vec3 | null): Vec3 => ambient(),
-					(value: Vec3, prev: Vec3 | null): Cleanup | null => { setAmbient(scene, value); return null; },
+					(value: Vec3, prev: Vec3 | null): Cleanup | null => { setAmbient(scene, value); state.invalidate(); return null; },
 				);
 			}
 			if (props.ref !== null) { (props.ref as (value: Scene3DHandle) => void)(handle); }
+			state.invalidate();
 			const children = props.children;
 			if (children !== null) {
 				const scope: NodeScope = { state: state, parent: scene.rootId() };
@@ -260,8 +322,8 @@ export function Group(props: NodeProps): NeonNode {
 			const scene = scope.state.handle.scene;
 			const local = localOf(props);
 			const node = addGroup(scene, scope.parent, local);
-			ownNode(scene, node);
-			bindNode(scene, node, props, local);
+			ownNode(scope.state, node);
+			bindNode(scope.state, node, props, local);
 			mountNodeChildren(scope, node, props, host, parent, before);
 		});
 	};
@@ -295,8 +357,8 @@ export function Gltf(props: GltfProps): NeonNode {
 			const scene = scope.state.handle.scene;
 			const local = localOf(props);
 			const wrapper = addGroup(scene, scope.parent, local);
-			ownNode(scene, wrapper);
-			bindNode(scene, wrapper, props, local);
+			ownNode(scope.state, wrapper);
+			bindNode(scope.state, wrapper, props, local);
 			let imported: NodeId3D | null = null;
 			createRenderEffect<[GltfData, GltfMaterialSetup]>(
 				(prev: [GltfData, GltfMaterialSetup] | null): [GltfData, GltfMaterialSetup] => [props.data(), props.setup()],
@@ -308,6 +370,7 @@ export function Gltf(props: GltfProps): NeonNode {
 						const removed = remove(scene, previous);
 					}
 					imported = next;
+					scope.state.invalidate();
 					return null;
 				},
 			);
@@ -330,8 +393,8 @@ export function Light(props: LightProps): NeonNode {
 				priority: props.priority === null ? 0 : (props.priority as () => int32)(),
 			};
 			const node = addLightNode(scene, scope.parent, local, light);
-			ownNode(scene, node);
-			bindNode(scene, node, props, local);
+			ownNode(scope.state, node);
+			bindNode(scope.state, node, props, local);
 			createRenderEffect<LightInstance>(
 				(prev: LightInstance | null): LightInstance => ({
 					...light, kind: props.kind(),
@@ -355,6 +418,7 @@ export function Light(props: LightProps): NeonNode {
 						if (next !== power) {
 							setLightPower(scene, node, next);
 							power = next;
+							scope.state.invalidate();
 						}
 						return null;
 					},
@@ -378,7 +442,10 @@ export function Mesh(props: MeshProps): NeonNode {
 			let shown: MeshId | null = null;
 			onCleanup((): void => {
 				const mounted = node;
-				if (mounted !== null && scene.isLive(mounted)) { const removed = remove(scene, mounted); }
+				if (mounted !== null && scene.isLive(mounted)) {
+					const removed = remove(scene, mounted);
+					scope.state.invalidate();
+				}
 				node = null;
 			});
 			const bindMesh = (mesh: MeshId, snapshotMaterial: MaterialId | null): void => {
@@ -394,6 +461,7 @@ export function Mesh(props: MeshProps): NeonNode {
 					if (!changed.ok) { throw new Error("Mesh: setMeshOf failed: " + changed.error.toString()); }
 				}
 				shown = mesh;
+				scope.state.invalidate();
 			};
 			if (props.geometry !== null) {
 				createRenderEffect<[MeshData, MaterialId | null]>(
@@ -439,7 +507,7 @@ export function Mesh(props: MeshProps): NeonNode {
 					},
 				);
 			}
-			bindNode(scene, mounted, props, local);
+			bindNode(scope.state, mounted, props, local);
 			mountNodeChildren(scope, mounted, props, host, parent, before);
 		});
 	};
@@ -490,7 +558,7 @@ export function Camera3D(props: Camera3DProps): NeonNode {
 			const initial = untrack(() => cameraOf(props));
 			let local = cameraLocal(initial);
 			const node = addCameraNode(scene, scope.parent, local, initial);
-			ownNode(scene, node);
+			ownNode(scope.state, node);
 			let entry: CameraEntry | null = null;
 			onCleanup((): void => {
 				const mounted = entry;
@@ -503,6 +571,7 @@ export function Camera3D(props: Camera3DProps): NeonNode {
 				}
 				entry = null;
 				selectCamera(state);
+				state.invalidate();
 			});
 			createRenderEffect<[VoidCamera3D, boolean]>(
 				(prev: [VoidCamera3D, boolean] | null): [VoidCamera3D, boolean] => [
@@ -524,6 +593,7 @@ export function Camera3D(props: Camera3DProps): NeonNode {
 						mounted.active = active;
 					}
 					selectCamera(state);
+					state.invalidate();
 					return null;
 				},
 			);
