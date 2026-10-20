@@ -15,7 +15,7 @@ import { DEFAULT_FONT } from "../../../void/src/void2d/font";
 import {
 	Scene2D as VoidScene2D,
 	anim, animFrames, frameDelayMs, setFrames, setFps, setFrame, setFrameDelays, setSpeed, setLooping, setPaused,
-	NodeRef,
+	NodeRef, DrawKind, kind,
 	Local2D,
 	Paint2D,
 	Order2D,
@@ -60,6 +60,7 @@ import {
 	Color, Camera, Tile, Filter, ScaleMode, Bounds2D, rgba,
 } from "../../../void/src/void2d/types";
 import { TextStyle, TextRun, Truncate } from "../../../void/src/void2d/textLayout";
+import { labelTexts, NO_LABEL_TEXT, NO_CURSOR } from "../../../void/src/void2d/labelText";
 import { Mat4 } from "../../../void/src/math/math3d";
 import { BoxStyle } from "../../../void/src/void2d/boxStyle";
 import { ImageStyle } from "../../../void/src/void2d/imageStyle";
@@ -203,7 +204,7 @@ interface SceneState {
 	clock: SceneClock;
 }
 
-interface AnimEntry { node: NodeRef; }
+interface ClockEntry { node: NodeRef; }
 
 interface SceneBackdrop {
 	scene: VoidScene2D;
@@ -212,23 +213,34 @@ interface SceneBackdrop {
 
 const sceneScope = createContext<SceneState | null>(null);
 
-function animationActive(node: NodeRef): boolean {
+function clockActive(node: NodeRef): boolean {
 	if (!node.isLive()) { return false; }
-	const value = node.animFrames();
-	const count = value.frames.length as int32;
-	return count > 1 && !value.paused && value.speed > 0.0 &&
-		(value.looping || value.current < count - 1) && value.frameDelayMs(value.current) > 0.0;
+	return match (node.kind()) {
+		DrawKind.Label => {
+			const row = node.scene.payloads[node.id.index];
+			if (row === NO_LABEL_TEXT) { return false; }
+			const value = labelTexts[row];
+			return value.cursorIndex !== NO_CURSOR && value.cursorBlinkTime > 0.0;
+		},
+		DrawKind.Anim => {
+			const value = node.animFrames();
+			const count = value.frames.length as int32;
+			return count > 1 && !value.paused && value.speed > 0.0 &&
+				(value.looping || value.current < count - 1) && value.frameDelayMs(value.current) > 0.0;
+		},
+		_ => false,
+	};
 }
 
 function createSceneClock(vh: VoidHost, invalidate: () => void): SceneClock {
-	const entries: AnimEntry[] = [];
+	const entries: ClockEntry[] = [];
 	let disposed = false;
 	let pending: int32 = 0;
 	let generation: int32 = 0;
 	let last: float64 = 0.0;
 	const active = (): boolean => {
 		for (const entry of entries) {
-			if (animationActive(entry.node)) { return true; }
+			if (clockActive(entry.node)) { return true; }
 		}
 		return false;
 	};
@@ -259,7 +271,7 @@ function createSceneClock(vh: VoidHost, invalidate: () => void): SceneClock {
 	};
 	return {
 		watch: (node: NodeRef): void => {
-			const entry: AnimEntry = { node };
+			const entry: ClockEntry = { node };
 			entries.push(entry);
 			onCleanup((): void => { entries.splice(entries.indexOf(entry), 1); wake(); });
 		},
@@ -744,6 +756,10 @@ export function Label(props: LabelProps): NeonNode {
 			if ((props.cursorIndex === null) !== (props.cursorColor === null)) {
 				throw new Error("Label: provide cursorIndex and cursorColor together");
 			}
+			const state = useContext(sceneScope);
+			if (state === null) { throw new Error("Label: mount inside Scene2D within Void"); }
+			const clock = state.clock;
+			clock.watch(node);
 			bindScene((): string => props.text(), (value: string): void => { node.setText(value); });
 			if (props.paint === null) {
 				bindScene((): Color => props.color(), (value: Color): void => { node.setColor(value); });
@@ -785,11 +801,11 @@ export function Label(props: LabelProps): NeonNode {
 				const index = props.cursorIndex as () => int32;
 				const color = props.cursorColor as () => Color;
 				bindScene<[int32, Color]>((): [int32, Color] => [index(), color()],
-					(value: [int32, Color]): void => { node.setCursorIndex(value[0], value[1]); });
+					(value: [int32, Color]): void => { node.setCursorIndex(value[0], value[1]); clock.wake(); });
 			}
 			if (props.cursorBlinkTime !== null) {
 				const seconds = props.cursorBlinkTime as () => float32;
-				bindScene(seconds, (value: float32): void => { node.setCursorBlinkTime(value); });
+				bindScene(seconds, (value: float32): void => { node.setCursorBlinkTime(value); clock.wake(); });
 			}
 		});
 }
