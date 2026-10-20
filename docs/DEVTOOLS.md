@@ -66,4 +66,8 @@ Two halves belong to the compiler, because only `msc` knows them: JSON Lines fro
 
 ## Measured
 
-Fill in from the drive once it runs; see §Evidence below.
+2026-10-21, msc `b1f63337f`, Windows:
+
+- `examples/refreshWindow/drive.sh`, a real Ion window with OS input: 16 of 16. Over the socket, `ping` names the host, `tree` shows the field unfocused after a real click on the button, `press` by id focuses it, `type` reaches it (`RW text "Y"`), `press` by text runs the reloaded handler (`count=8`), and `components` reports `Counter` with `"state":{"count":"6"}`. The event file holds one `ready`, one `reload` per edit and a `refresh` for the template edit.
+- `tests/devtools/control.test.ms`: 365 native, 66 JS. `tests/platform/windowHost.test.ms` 383 and `tests/platform/nativeHost.test.ms` 406 drive the window and native drivers through `handleRequest`.
+- Not run on this build: `examples/refreshAndroid/drive.sh` step (g), which needs the emulator.
