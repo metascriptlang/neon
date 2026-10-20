@@ -98,10 +98,14 @@ COMPILE ──► MOUNT ──► UPDATE (×n) ──► DISPOSE
   host node and places each of its roots in front of `before`.
 - **UPDATE**: no render. A write marks the computations that read it, and a flush runs the
   marked render effects, then the user effects (`createEffect`, `onSettled`), which never run on
-  the server; each render effect performs one host op. A write outside `flush(fn)` flushes at once
-  today, where Solid defers to a microtask and C has none (compiler card
-  `2026-10-15-await-of-a-settled-promise-continues-synchronously-on-c.md`); `flush(fn)` groups
-  its writes into one drain. Cost = number of spots that actually changed, independent of
+  the server; each render effect performs one host op. A write outside `flush(fn)` drains on the
+  next microtask, as in Solid 2.0, so a read right after it still sees the committed value;
+  `flush()` drains now, `flush(fn)` drains its writes before it returns, `render` and `hydrate`
+  drain once before they return. A host drains before it lays out or draws, and a native
+  host drains an event's writes before that event's layout pass, as a browser runs its
+  microtask checkpoint after each event callback. A host publish (window size, color scheme,
+  app state) applies at once through `flush(fn)`, and a server build flushes every write at
+  once, since Solid's server applies a write at once. Cost = number of spots that actually changed, independent of
   tree size.
 - **DISPOSE**: owner-tree teardown — deterministic, recursive, fires `onCleanup`,
   kills every subscription underneath. Never waits for GC.
