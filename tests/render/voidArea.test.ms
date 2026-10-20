@@ -151,6 +151,44 @@ test "a layer removed by an earlier layer during the frame is neither prepared n
 	assert hub.layers().length === 1, "only a stays registered";
 }
 
+test "a layer hidden at prepare is skipped, and one hidden after its prepare still draws that frame" {
+	const hub = createAreaHub({ initialPixelWidth: 10, initialPixelHeight: 10, requestFrame: (): void => {}, setImeRect: (x: int32, y: int32, w: int32, h: int32): void => {} });
+	const log: string[] = [];
+	const visible = [true, false, true];
+	let hideFirstInThird = false;
+	const names = ["a", "b", "c"];
+	for (let i = 0; i < 3; i += 1) {
+		const at = i;
+		hub.addLayer({
+			shown: (): boolean => visible[at],
+			prepare: (pixelWidth: int32, pixelHeight: int32, background: AreaRgba): void => {
+				log.push("prepare " + names[at]);
+				if (at === 2 && hideFirstInThird) { visible[0] = false; }
+			},
+			draw: (): void => { log.push("draw " + names[at]); },
+		});
+	}
+	const frame = (): string => {
+		log.length = 0;
+		hub.prepareLayers(10, 10, { r: 0.0, g: 0.0, b: 0.0, a: 1.0 });
+		hub.drawLayers();
+		return log.join(",");
+	};
+	const hiddenB = frame();
+	assert hiddenB === "prepare a,prepare c,draw a,draw c", "a hidden layer is neither prepared nor drawn: " + hiddenB;
+	visible[1] = true;
+	hideFirstInThird = true;
+	const heldA = frame();
+	assert heldA === "prepare a,prepare b,prepare c,draw a,draw b,draw c", "a layer hidden after its prepare draws what it prepared: " + heldA;
+	hideFirstInThird = false;
+	const goneA = frame();
+	assert goneA === "prepare b,prepare c,draw b,draw c", "the next frame skips it: " + goneA;
+	visible[0] = true;
+	const back = frame();
+	assert back === "prepare a,prepare b,prepare c,draw a,draw b,draw c", "shown again, it keeps its place: " + back;
+	assert hub.layers().length === 3, "hiding never unregisters";
+}
+
 test "a subscriber removed by an earlier one during an emit is not called" {
 	const hub = createAreaHub({ initialPixelWidth: 10, initialPixelHeight: 10, requestFrame: (): void => {}, setImeRect: (x: int32, y: int32, w: int32, h: int32): void => {} });
 	const log: string[] = [];
