@@ -46,18 +46,18 @@ export function asServer<T>(run: () => T): T {
 
 export function publishWindow(width: number, height: number): void {
 	flush((): void => {
-		if (windowWidth() !== width) { setWindowWidth(width); }
-		if (windowHeight() !== height) { setWindowHeight(height); }
+		setWindowWidth(width);
+		setWindowHeight(height);
 	});
 }
 
 export function publishKeyboard(height: number): void {
-	if (keyboardHeight() !== height) { setKeyboardHeight(height); }
+	setKeyboardHeight(height);
 }
 
 export function publishColorScheme(scheme: ColorScheme): void {
 	const next = scheme === "dark";
-	if (dark() !== next) { setDark(next); }
+	setDark(next);
 }
 
 // How far the unsafe areas (status bar, notch, home indicator) reach into the
@@ -80,9 +80,9 @@ export function useSafeAreaInsets(): Accessor<EdgeInsets> {
 
 export function publishSafeArea(top: number, right: number, bottom: number, left: number): void {
 	flush((): void => {
-		if (insetTop() !== top) { setInsetTop(top); }
-		if (insetRight() !== right) { setInsetRight(right); }
-		if (insetBottom() !== bottom) { setInsetBottom(bottom); }
-		if (insetLeft() !== left) { setInsetLeft(left); }
+		setInsetTop(top);
+		setInsetRight(right);
+		setInsetBottom(bottom);
+		setInsetLeft(left);
 	});
 }

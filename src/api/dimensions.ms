@@ -24,15 +24,15 @@ const [screenHeight, setScreenHeight] = createSignal<number>(0);
 
 export function publishScale(ratio: number, font: number): void {
 	flush((): void => {
-		if (pixelRatio() !== ratio) { setPixelRatio(ratio); }
-		if (fontScale() !== font) { setFontScale(font); }
+		setPixelRatio(ratio);
+		setFontScale(font);
 	});
 }
 
 export function publishScreen(width: number, height: number): void {
 	flush((): void => {
-		if (screenWidth() !== width) { setScreenWidth(width); }
-		if (screenHeight() !== height) { setScreenHeight(height); }
+		setScreenWidth(width);
+		setScreenHeight(height);
 	});
 }
 

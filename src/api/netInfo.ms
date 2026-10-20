@@ -22,7 +22,7 @@ export type NetInfoUnsubscribe = () => void;
 
 const UNKNOWN: NetInfoState = { type: "unknown", isConnected: null, isInternetReachable: null, details: null };
 
-const [current, setCurrent] = createSignal<NetInfoState>(UNKNOWN);
+const [current, setCurrent] = createSignal<NetInfoState>(UNKNOWN, { equals: same });
 let lastReported: NetInfoState = UNKNOWN;
 let watchedBy: int32 = -1;
 
@@ -77,5 +77,5 @@ export function useNetInfo(): Accessor<NetInfoState> {
 
 export function publishNetInfo(next: NetInfoState): void {
 	lastReported = next;
-	if (!same(current(), next)) { setCurrent(next); }
+	setCurrent(next);
 }

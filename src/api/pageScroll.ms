@@ -22,10 +22,10 @@ when (js) {
 
 	export function publishPageScroll(x: number, y: number, maxX: number, maxY: number): void {
 		flush((): void => {
-			if (offsetX() !== x) { setOffsetX(x); }
-			if (offsetY() !== y) { setOffsetY(y); }
-			if (rangeX() !== maxX) { setRangeX(maxX); }
-			if (rangeY() !== maxY) { setRangeY(maxY); }
+			setOffsetX(x);
+			setOffsetY(y);
+			setRangeX(maxX);
+			setRangeY(maxY);
 		});
 	}
 }

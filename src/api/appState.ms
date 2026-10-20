@@ -38,7 +38,7 @@ export function useAppState(): Accessor<AppStateStatus> {
 export function publishAppState(next: AppStateStatus): void {
 	AppState.currentState = next;
 	const value: string = next;
-	if (state() !== value) { setState(value); }
+	setState(value);
 }
 
 export function publishMemoryWarning(): void {

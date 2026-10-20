@@ -37,9 +37,9 @@ export function useScreenReaderEnabled(): Accessor<boolean> {
 }
 
 export function publishScreenReader(enabled: boolean): void {
-	if (screenReader() !== enabled) { setScreenReader(enabled); }
+	setScreenReader(enabled);
 }
 
 export function publishReduceMotion(enabled: boolean): void {
-	if (reduceMotion() !== enabled) { setReduceMotion(enabled); }
+	setReduceMotion(enabled);
 }
