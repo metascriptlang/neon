@@ -290,7 +290,7 @@ export function drawerItem<P>(core: NavigatorCore<P>, entry: Navigation<P>): Neo
 		fontWeight: focused() ? "bold" : "normal",
 	}));
 	return <Pressable style={row} accessibilityRole="button" accessibilityLabel={label()}
-		onPress={press}>
+		accessibilityState={{ selected: focused() }} onPress={press}>
 		<Text style={text}>{label()}</Text>
 	</Pressable>;
 }

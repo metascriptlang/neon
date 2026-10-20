@@ -169,8 +169,8 @@ export function tabItem<P>(
 		}
 		core.navigateLocal(entry.route.name, null);
 	};
-	return <Pressable style={TAB_ITEM}
-		accessibilityRole="button" accessibilityLabel={a11y()} onPress={press}>
+	return <Pressable style={TAB_ITEM} accessibilityRole={Platform.OS === "ios" ? "button" : "tab"}
+		accessibilityLabel={a11y()} accessibilityState={{ selected: focused() }} onPress={press}>
 		<Slot node={icon} />
 		<View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
 			<Text style={{ color: color(), fontSize: 12 }}>{label()}</Text>
@@ -486,7 +486,7 @@ function createTabs<P>(material: boolean): TabNavigator<P> {
 					<For each={mounted}>{screen}</For>
 				</View>
 				<View style={hairline} />
-				<View style={bar}>
+				<View style={bar} accessibilityRole="tablist">
 					<For each={core.entries}>{item}</For>
 				</View>
 			</View>;
