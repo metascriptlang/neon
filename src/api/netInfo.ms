@@ -1,5 +1,6 @@
 import { Accessor, createSignal } from "../core/signal";
 import { onChange } from "./subscription";
+import { flush } from "../core/runtime";
 import { appServices, appServicesGeneration } from "./services";
 
 export type NetInfoStateType =
@@ -62,7 +63,7 @@ export class NetInfo {
 	}
 
 	static addEventListener(listener: NetInfoChangeHandler): NetInfoUnsubscribe {
-		watch("NetInfo.addEventListener");
+		flush((): void => { watch("NetInfo.addEventListener"); });
 		const subscription = onChange(current, listener);
 		listener(current());
 		return subscription.remove;
