@@ -3,7 +3,7 @@ import "../../src/platform/native/switch";
 import "../../src/platform/native/webView";
 import "../../src/platform/native/video";
 import "../../src/platform/native/camera";
-import { Pressable, View, ViewHandle, Text } from "../../src/components/primitives";
+import { Pressable, View, ViewHandle, Text, ScrollView } from "../../src/components/primitives";
 import { HostNode, render } from "../../src/render/host";
 import { NeonNode } from "../../src/render/node";
 import { NeonEvent } from "../../src/render/event";
@@ -12,7 +12,7 @@ import { Show } from "../../src/macros/ui/flow";
 import { element } from "../../src/macros/ui/element";
 import { sleepAsync } from "std/core/promise";
 import {
-	nmTouchFull, nmLastPressableTag, nmLastViewTag, nmLastInputTag, nmLastControlTag,
+	nmTouchFull, nmLastPressableTag, nmLastViewTag, nmLastInputTag, nmLastControlTag, nmLastScrollTag, nmScroll,
 	nmTagWithProp, nmProp, nmTeardown, nmLoop,
 } from "./nativeBridgeMock.h";
 
@@ -269,4 +269,93 @@ test "native exact span owner is distinct from plain run container and ancestor 
 		assert parentHits === (containerPress ? 0 : 1), "hit-test readiness is not whole-Text ownership";
 		nmTeardown();
 	}
+}
+
+test "native gesture onPressOut restart cannot borrow fresh scroll claim for old activation" {
+	let actual = "";
+	let expected = "";
+	for (const restart of [false, true]) {
+		for (const sameStart of [false, true]) {
+			let source: int32 = 0;
+			let scroller: int32 = 0;
+			let restarted = false;
+			let ins = 0;
+			let outs = 0;
+			let stamps = "";
+			const bStart = sameStart ? 96020.0 : 97000.0;
+			runApp((): NeonNode => <ScrollView><Pressable
+				onPressIn={(): void => { ins += 1; }}
+				onPressOut={(): void => {
+					outs += 1;
+					if (!restart || restarted) { return; }
+					restarted = true;
+					physical(source, 0, bStart);
+					nmScroll(scroller, 0.0, 20.0, 200.0, 100.0, 200.0, 500.0);
+				}}
+				onPress={(e: NeonEvent): void => { stamps += `${e.timeStamp};`; }}>
+				<View accessibilityLabel="out-restart-claim" onLayout={feedback} />
+			</Pressable></ScrollView>);
+			source = nmTagWithProp("accessibilityLabel", "out-restart-claim");
+			scroller = nmLastScrollTag();
+			physical(source, 0, 96000.0);
+			await sleepAsync(150);
+			physical(source, 1, 96020.0);
+			physical(source, 2, 96020.0);
+			if (restart) {
+				physical(source, 1, bStart + 20.0);
+				physical(source, 2, bStart + 20.0);
+			}
+			await sleepAsync(160);
+			actual += `${restart},${sameStart}:${stamps}/${ins},${outs}|`;
+			expected += `${restart},${sameStart}:96020;/` + (restart ? "2,2|" : "1,1|");
+			nmTeardown();
+		}
+	}
+	assert actual === expected, actual;
+}
+
+test "native onPress restart gives fresh minimum feedback its own timer" {
+	let actual = "";
+	let expected = "";
+	let timerOwner = true;
+	let validWindow = true;
+	let timing = "";
+	for (const restart of [false, true]) {
+		let source: int32 = 0;
+		let restarted = false;
+		let ins = 0;
+		let outs = 0;
+		let bStartedAt = -1.0;
+		let outAt = -1.0;
+		let stamps = "";
+		runApp((): NeonNode => <Pressable onPressIn={(): void => { ins += 1; }}
+			onPressOut={(): void => { outs += 1; outAt = performance.now(); }}
+			onPress={(e: NeonEvent): void => {
+				stamps += `${e.timeStamp};`;
+				if (!restart || restarted) { return; }
+				restarted = true;
+				bStartedAt = performance.now();
+				physical(source, 0, 99000.0);
+			}}><View accessibilityLabel="press-restart-timer" onLayout={feedback} /></Pressable>);
+		source = nmTagWithProp("accessibilityLabel", "press-restart-timer");
+		const began = performance.now();
+		physical(source, 0, 98000.0);
+		await sleepAsync(80);
+		const age = performance.now() - began;
+		validWindow = validWindow && age < 120;
+		physical(source, 1, 98020.0);
+		physical(source, 2, 98020.0);
+		if (restart) {
+			physical(source, 1, 99020.0);
+			physical(source, 2, 99020.0);
+		}
+		await sleepAsync(180);
+		if (restart) { timerOwner = timerOwner && outAt - bStartedAt >= 125; }
+		timing += `${restart}:Aage${age},BoutAge${outAt - bStartedAt};`;
+		actual += `${restart}:${stamps}/${ins},${outs}|`;
+		expected += restart ? "true:98020;99020;/2,1|" : "false:98020;/1,1|";
+		nmTeardown();
+	}
+	assert validWindow, "timing setup window lost: " + timing;
+	assert actual === expected && timerOwner, actual + " " + timing;
 }
