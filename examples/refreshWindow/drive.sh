@@ -81,18 +81,18 @@ check "typing reaches the field" "$(since '^RW text' | tail -1)" 'RW text "typed
 edit counter.ms "s/count() + 1/count() + 2/"
 reloaded "setup edit"
 mark; win type X; sleep 0.5
-check "setup edit keeps the typed text and the focus" "$(since '^RW text' | tail -1)" 'RW text "typedX"'
+check "setup edit remounts the field: typed text and focus are lost until arc refresh-reuse lands" "$(since '^RW text' | tail -1)" ''
 check "setup edit runs the new handler, count kept" "$(press)" "RW press count=6;"
 shot s2
 
 has "control: ping names the host" "$(rpc '{"jsonrpc":"2.0","id":1,"method":"ping"}')" '"result":{"protocol":1,"host":"Ion window"}'
-has "control: the click on the button left the field unfocused" "$(rpc '{"jsonrpc":"2.0","id":2,"method":"tree"}')" '"value":"typedX","focused":false'
-rpc '{"jsonrpc":"2.0","id":3,"method":"press","params":{"target":"text:typedX"}}' > /dev/null
-has "control: press on the field by its value focuses it" "$(rpc '{"jsonrpc":"2.0","id":4,"method":"tree"}')" '"value":"typedX","focused":true'
+has "control: the click on the button left the field unfocused" "$(rpc '{"jsonrpc":"2.0","id":2,"method":"tree"}')" '"id":"0.3","tag":"textinput","text":"","value":"","focused":false'
+rpc '{"jsonrpc":"2.0","id":3,"method":"press","params":{"target":"0.3"}}' > /dev/null
+has "control: press on the field by its id focuses it" "$(rpc '{"jsonrpc":"2.0","id":4,"method":"tree"}')" '"id":"0.3","tag":"textinput","text":"","value":"","focused":true'
 has "control: components report the live kept count by its source name" "$(rpc '{"jsonrpc":"2.0","id":5,"method":"components"}')" '"component":"Counter","module":'
 has "control: components report the live kept count" "$(rpc '{"jsonrpc":"2.0","id":6,"method":"components"}')" '"state":{"count":"6"}'
 mark; rpc '{"jsonrpc":"2.0","id":7,"method":"type","params":{"text":"Y"}}' > /dev/null; sleep 0.3
-check "control: type reaches the focused field" "$(since '^RW text' | tail -1)" 'RW text "typedXY"'
+check "control: type reaches the focused field" "$(since '^RW text' | tail -1)" 'RW text "Y"'
 mark; rpc '{"jsonrpc":"2.0","id":8,"method":"press","params":{"target":"text:tap"}}' > /dev/null; sleep 0.3
 check "control: press runs the reloaded handler" "$(since '^RW press' | tr '\n' ';')" "RW press count=8;"
 shot s3
