@@ -4,7 +4,7 @@ import { NeonNode } from "../../src/render/node";
 import { Show } from "../../src/macros/ui/flow";
 import { NeonEvent } from "../../src/render/event";
 import { View, Text, Pressable, ScrollView } from "../../src/components/primitives";
-import { Slider } from "../../src/components/slider";
+import { Switch } from "../../src/components/switch";
 import { PanResponder, PanResponderGestureState } from "../../src/components/panResponder";
 
 when (ios) {
@@ -32,6 +32,14 @@ export function RootTouchFixture(): NeonNode {
 	const reportRoutes = (): void => {
 		setRoutes(`press ${presses} in ${pressIns} out ${pressOuts} inner ${innerPresses} outer ${outerPresses} scrollStart ${scrollStarts} scrollMove ${scrollMoves} scrollEnd ${scrollEnds}`);
 	};
+	let scrollPresses: int32 = 0;
+	let scrollIns: int32 = 0;
+	let scrollLongs: int32 = 0;
+	let scrollOuts: int32 = 0;
+	const [scrollPressStatus, setScrollPressStatus] = createSignal("scrollPress 0 in 0 long 0 out 0");
+	const reportScrollPress = (): void => {
+		setScrollPressStatus(`scrollPress ${scrollPresses} in ${scrollIns} long ${scrollLongs} out ${scrollOuts}`);
+	};
 	let cancelStarts: int32 = 0;
 	let cancels: int32 = 0;
 	let cancelEnds: int32 = 0;
@@ -52,25 +60,39 @@ export function RootTouchFixture(): NeonNode {
 	return element(<View style={{ flex: 1, padding: 24, backgroundColor: "#ffffff", gap: 12 }}>
 		<Text>{status()}</Text>
 		<View {...pan.panHandlers} style={{ height: 80, justifyContent: "center" }}>
-			<Slider accessibilityLabel="captured-slider" value={0.5} onValueChange={(value: float64): void => { capturedChanges += 1; report(); }} />
+			<Switch accessibilityLabel="captured-switch" value={false}
+				onValueChange={(value: boolean): void => { capturedChanges += 1; report(); }} />
 		</View>
-		<Slider accessibilityLabel="plain-slider" value={0.5} onValueChange={(value: float64): void => { plainChanges += 1; report(); }} />
+		<Switch accessibilityLabel="plain-switch" value={false}
+			onValueChange={(value: boolean): void => { plainChanges += 1; report(); }} />
 		<Text style={{ fontSize: 11 }}>{routes()}</Text>
 		<Pressable accessibilityLabel="root-press" accessibilityRole="button" hitSlop={20}
 			style={{ width: 120, height: 48, alignSelf: "center", transform: "translateX(20px)", backgroundColor: "#dddddd" }}
 			onPress={(e: NeonEvent): void => { presses += 1; reportRoutes(); }}
 			onPressIn={(e: NeonEvent): void => { pressIns += 1; reportRoutes(); }}
 			onPressOut={(e: NeonEvent): void => { pressOuts += 1; reportRoutes(); }}>
-			<View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}><Text>press child</Text></View>
+			<View accessibilityLabel="root-press-child" onLayout={(e: NeonEvent): void => {}}
+				style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+				<Text>press child</Text>
+			</View>
 		</Pressable>
 		<Text style={{ fontSize: 18 }} onPress={(e: NeonEvent): void => { outerPresses += 1; reportRoutes(); }}>
 			<Text onPress={(e: NeonEvent): void => { innerPresses += 1; reportRoutes(); }}>inner</Text> outer
 		</Text>
+		<Text>{scrollPressStatus()}</Text>
 		<View style={{ height: 110 }}
 			onTouchStart={(e: NeonEvent): void => { scrollStarts += 1; reportRoutes(); }}
 			onTouchMove={(e: NeonEvent): void => { scrollMoves += 1; reportRoutes(); }}
 			onTouchEnd={(e: NeonEvent): void => { scrollEnds += 1; reportRoutes(); }}>
 			<ScrollView style={{ flex: 1 }}>
+				<Pressable accessibilityLabel="scroll-press" accessibilityRole="button"
+					style={{ height: 44, backgroundColor: "#dddddd" }}
+					onPress={(): void => { scrollPresses += 1; reportScrollPress(); }}
+					onPressIn={(): void => { scrollIns += 1; reportScrollPress(); }}
+					onPressOut={(): void => { scrollOuts += 1; reportScrollPress(); }}
+					onLongPress={(): void => { scrollLongs += 1; reportScrollPress(); }}>
+					<Text>scroll press target</Text>
+				</Pressable>
 				<Text style={{ height: 60 }}>scroll first</Text>
 				<View style={{ height: 380 }} />
 				<Text style={{ height: 60 }}>scroll last</Text>

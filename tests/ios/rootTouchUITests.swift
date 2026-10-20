@@ -10,20 +10,19 @@ final class RootTouchUITests: XCTestCase {
         app.launch()
     }
 
-    func testCaptureBeforeNativeSlider() {
+    func testCaptureBeforeNativeSwitch() {
         let status = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "grants ")).firstMatch
         XCTAssertTrue(status.waitForExistence(timeout: 10))
-        let captured = app.sliders["captured-slider"]
+        let captured = app.switches["captured-switch"]
         XCTAssertTrue(captured.waitForExistence(timeout: 10))
-        let start = captured.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
-        start.press(forDuration: 0.1, thenDragTo: captured.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.5)))
-        XCTAssertTrue(status.label.hasPrefix("grants 1 releases 1 captured "), "the ancestor observes the native control exactly once: \(status.label)")
-        XCTAssertFalse(status.label.hasSuffix("captured 0 plain 0"), "iOS leaves the native control active: \(status.label)")
-        let plain = app.sliders["plain-slider"]
-        let plainStart = plain.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
-        plainStart.press(forDuration: 0.1, thenDragTo: plain.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.5)))
-        XCTAssertTrue(status.label.hasPrefix("grants 1 releases 1 captured "), status.label)
-        XCTAssertFalse(status.label.hasSuffix("plain 0"), "release restores native control interaction: \(status.label)")
+        captured.tap()
+        let capturedChanged = NSPredicate(format: "label == %@", "grants 1 releases 1 captured 1 plain 0")
+        XCTAssertEqual(XCTWaiter.wait(for: [expectation(for: capturedChanged, evaluatedWith: status)], timeout: 5), .completed, status.label)
+        let plain = app.switches["plain-switch"]
+        XCTAssertTrue(plain.waitForExistence(timeout: 10))
+        plain.tap()
+        let plainChanged = NSPredicate(format: "label == %@", "grants 1 releases 1 captured 1 plain 1")
+        XCTAssertEqual(XCTWaiter.wait(for: [expectation(for: plainChanged, evaluatedWith: status)], timeout: 5), .completed, status.label)
         app.terminate()
     }
 
@@ -79,6 +78,30 @@ final class RootTouchUITests: XCTestCase {
         XCTAssertEqual(status.label, "cancelStart 1 cancel 1 end 0")
         app.buttons["root-press"].tap()
         waitRoutes("press 1 in 1 out 1 inner 0 outer 0")
+    }
+
+    private func scrollPressThenHold(_ hold: TimeInterval) {
+        let target = app.buttons["scroll-press"]
+        XCTAssertTrue(target.waitForExistence(timeout: 10))
+        let start = target.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        start.press(forDuration: 0.01, thenDragTo: start.withOffset(CGVector(dx: 0, dy: -90)),
+                    withVelocity: .fast, thenHoldForDuration: hold)
+        let status = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "scrollPress ")).firstMatch
+        let cancelled = NSPredicate(format: "label == %@", "scrollPress 0 in 1 long 0 out 1")
+        XCTAssertEqual(XCTWaiter.wait(for: [expectation(for: cancelled, evaluatedWith: status)], timeout: 5), .completed, status.label)
+        XCTAssertTrue(routes.label.contains("scrollStart 1"), routes.label)
+        XCTAssertTrue(routes.label.hasSuffix("scrollEnd 1"), routes.label)
+        XCTAssertFalse(routes.label.contains("scrollMove 0 "), routes.label)
+        app.buttons["root-press"].tap()
+        waitRoutes("press 1 in 1 out 1 inner 0 outer 0")
+    }
+
+    func testScrollTakeoverCancelsPressAndKeepsRawLifecycle() {
+        scrollPressThenHold(0)
+    }
+
+    func testScrollTakeoverCancelsLongTimerWhileTouchRemainsDown() {
+        scrollPressThenHold(0.8)
     }
 
     func testScrollReportsOneLifecycle() {
