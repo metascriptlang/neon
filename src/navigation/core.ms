@@ -469,8 +469,8 @@ export class Navigation<P> {
 	route: Route<P>;
 	config: ScreenConfig<P>;
 	writeParams: Setter<P | null>;
-	overrides: Accessor<ScreenOptions>;
-	writeOverrides: Setter<ScreenOptions>;
+	private overrides: Accessor<ScreenOptions>;
+	private writeOverrides: Setter<ScreenOptions>;
 
 	constructor(
 		core: NavigatorCore<P>,
@@ -596,8 +596,8 @@ export class Navigation<P> {
 		reportUnhandled(drawerActionType(action), null);
 	}
 
-	eventListeners: EventListener[] = [];
-	nextEvent: int32 = 1;
+	private eventListeners: EventListener[] = [];
+	private nextEvent: int32 = 1;
 
 	dispatch(action: NavigationAction): void {
 		action.run();
