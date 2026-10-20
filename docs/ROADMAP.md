@@ -97,6 +97,27 @@ supersedes the earlier style-first and full-list-parity-first order.
 | 4 | real-data path: store/reconcile, resource loading/error/cancellation/lifetime; variable-height FlatList, timed batching, Header/Footer/Empty/Separator and scroll-to-index failure handling | refetched data keeps row identity; a feed does not require fixed-height rows | Solid concepts localized to MetaScript; shared list engine, not a second list convention |
 | 5 | developer loop and common feedback: build/run/deploy diagnostics with source locations, Neon refresh integration, opacity/transform/press feedback and common transitions | short iteration and understandable failures; responsive-feeling UI | compiler HCR and Ion foundations, Neon integration; no whole-engine animation port by default |
 
+### Developer loop — hot reload is the primary experience
+
+The person, 2026-10-12 (written here on their yes of 2026-10-19): "mình sẽ dùng HCR không chỉ như
+một convenient layer, mà nó là dev-exp chính, và là killer mình cung cấp cho developer ... ngay cả
+AI development flow cũng vậy HCR cho nó không chỉ tốc độ build mà còn có thể e.g đóng vai trò là
+api/callable để cung cấp live diagnostic, thống kê, REPL cho LLM". So the refresh part of bundle 5
+is not a late convenience: a feature an author edits daily is expected to survive a reload on
+every target, at React Native's and Flutter's level. Remaining, in order (arc
+`~/metascript/.wt/android-hcr.md`):
+
+1. An edit visible in under 1 s: the compiler's importer re-check and phase A cards, then the
+   size of a JSX module's C.
+2. Host state across a remount: scroll offset, typed text, focus (a `src/render/hostTypes.ms`
+   change).
+3. `R` restart, `r` reload and `q` in `msc run --hcr`; a restart-required edit waits for `R`.
+4. A prop added to a props interface reloads without a restart (compiler card, new mechanism).
+5. The browser updates a module whose template reads a new binding without a page reload
+   (compiler `wt/js-instance-modules`).
+6. Structured events from the watch build and the refresh runtime for tools and LLMs; then a
+   control channel into the running app (UI tree, signal values, input, REPL).
+
 A compiler-blocked item is reduced, recorded and parked; it is never “completed” by making
 the app author rewrite valid code. Continue reachable work in the next bundle while the
 owning compiler session fixes it. Shared-contract changes and genuinely new mechanisms

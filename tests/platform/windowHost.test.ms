@@ -30,6 +30,8 @@ import {
 	drawArea,
 } from "../../src/platform/void/windowHost";
 import { PixelRatio } from "../../src/api/pixelRatio";
+import { useWindowDimensions } from "../../src/render/environment";
+import { refreshBoundary0, refreshComponent0, refreshModule, refreshReset } from "../../src/render/refresh";
 import { DrawKind, clearChanges } from "../../../void/src/void2d/node";
 import { paint as paintScene } from "../../../void/src/void2d/scene";
 import { frameEnd } from "../../../void/src/void2d/draw";
@@ -129,6 +131,23 @@ test "anything but one Void at the window is refused by name" {
 		thrown(windowOnly(element(<><Void /><Void /></>)));
 }
 
+test "a refresh boundary at the window: its empty anchor is accepted, and a remount replaces the Void" {
+	refreshReset();
+	const p = probe();
+	const file = "windowHost.test";
+	const v1 = (): NeonNode => element(<Void><Text>v1</Text></Void>);
+	const v2 = (): NeonNode => element(<Void><Text>v2</Text></Void>);
+	const window = windowNode("window");
+	render(refreshBoundary0(file, "App", v1, (): string => "v1"), windowHost(p.window), window);
+	assert p.areas.length === 1, "one area opened";
+	refreshComponent0(file, "App", v2, (): string => "v2");
+	const summary = refreshModule(file);
+	assert summary.remounted === 1, "the window-level component remounted";
+	assert p.areas.length === 2 && p.log.filter((l: string): boolean => l === "released").length === 1, "the old area released, a new one opened: " + p.log.join(",");
+	assert (p.areas[1].vh.root as VoidNode).children.length === 1, "the new area holds the new Text";
+	assert thrown(windowOnly(element(<>{"hi"}<Void /></>))).indexOf("text \"hi\" cannot be a child of the window") >= 0, "text with characters is still refused";
+}
+
 function key(action: AreaKeyAction, text: string, mods: BitSet<AreaKeyMod>): AreaKeyEvent {
 	return { action, key: 20, scancode: 30, mods, consumedMods: 0 as BitSet<AreaKeyMod>, unshifted: 97, text };
 }
@@ -158,6 +177,7 @@ test "window input reaches the handle's subscribers and the focused node alike" 
 	deliverResize(area, 800 as int32, 400 as int32, 2.0);
 	assert area.logicalWidth() === 400.0 && area.logicalHeight() === 200.0, "logical size is pixels over scale";
 	assert PixelRatio.get() === 2, "the scale is published";
+	assert useWindowDimensions()().width === 400 && useWindowDimensions()().height === 200, "the logical window size is published";
 	area.vh.layout(area.logicalWidth(), area.logicalHeight());
 	deliverPointer(area, { kind: AreaPointerKind.Button, pixelX: 20.0, pixelY: 40.0, button: 1 as int32, pressed: true, dx: 0.0, dy: 0.0 });
 	assert area.held === (1 as int32), "the pressed button is held";

@@ -1,5 +1,6 @@
 import { Host, HostNode, NeonNode } from "../../render/host";
 import { Accessor } from "../../core/signal";
+import { flush } from "../../core/runtime";
 import { TextSpan, TextMeasure } from "../../render/hostTypes";
 import { spanParagraph } from "../../render/spanHost";
 import { NeonEvent, neonEvent, eventType } from "../../render/event";
@@ -166,6 +167,8 @@ function styleEnum(st: FlexStyle, key: string, v: string): void {
 	}
 }
 
+const LAYOUT_PASSES = 8;
+
 const NUMERIC_KEYS = ["width", "height", "flexGrow", "flexShrink", "padding", "margin", "gap", "left", "top", "right", "bottom"];
 
 export function parseFlexStyle(s: string): FlexStyle {
@@ -194,7 +197,19 @@ function hexNibble(c: string): int32 {
 
 // "#rgb", "#rrggbb", "#rrggbbaa", rgb() and rgba() → normalized rgba. Returns null for anything else so
 // the caller leaves the node's existing colour alone.
+const parsedColors = new Map<string, Color>();
+
 export function parseColor(css: string): Color | null {
+	const known = parsedColors.get(css);
+	if (known !== undefined) { return known; }
+	const c = parseColorString(css);
+	if (c === null) { return null; }
+	if (parsedColors.size >= 1024) { parsedColors.clear(); }
+	parsedColors.set(css, c as Color);
+	return c;
+}
+
+function parseColorString(css: string): Color | null {
 	if (css.startsWith("rgb(") || css.startsWith("rgba(")) { return parseRgbFunction(css); }
 	if (css.length < 4 || css.charAt(0) !== "#") { return null; }
 	const body = css.substring(1, css.length);
@@ -1274,7 +1289,7 @@ export function createVoidHostWith(
 	const flowText = (n: VoidNode): void => {
 		if (n.isText) {
 			const w = n.ref.content().w;
-			if (n.para !== null && w > 0.0) { (n.para as NodeRef).setMaxWidth(w); }
+			if (n.para !== null && w > 0.0 && n.cell <= 0.0) { (n.para as NodeRef).setMaxWidth(w); }
 			return;
 		}
 		let x: float32 = 0.0;
@@ -1317,13 +1332,10 @@ export function createVoidHostWith(
 		}
 	};
 
-	const layout = (w: float32, h: float32): void => {
-		layoutPass(root, w, h);
-		layoutIslands(root);
-		flowText(root);
-		fitScrollers();
+	const fireLayoutsFiredAny = (): boolean => {
+		let fired = false;
 		for (const e of events.slice(0)) {
-			if (scene.isClosed()) { return; }
+			if (scene.isClosed()) { return fired; }
 			if (e.name !== "onLayout" || e.node.disposed || !attached(e.node)) { continue; }
 			const n = e.node;
 			const now = frameOf(n);
@@ -1336,8 +1348,24 @@ export function createVoidHostWith(
 			ev.width = now.w;
 			ev.height = now.h;
 			e.handler(ev);
+			fired = true;
 		}
-		sceneChangePending = false;
+		return fired;
+	};
+
+	const layout = (w: float32, h: float32): void => {
+		flush();
+		for (let pass = 0; pass < LAYOUT_PASSES; pass += 1) {
+			if (scene.isClosed()) { return; }
+			layoutPass(root, w, h);
+			layoutIslands(root);
+			flowText(root);
+			fitScrollers();
+			const settled = !flush((): boolean => fireLayoutsFiredAny());
+			sceneChangePending = false;
+			if (settled) { return; }
+		}
+		throw new Error(`void host: onLayout handlers still change the layout after ${LAYOUT_PASSES} passes in one frame; a handler that sets what it measures must settle`);
 	};
 
 	const imeRect = (): CaretRect | null => {

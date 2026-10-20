@@ -395,10 +395,10 @@ function stopSerializer(routes: Routes): WebKeySerializer<Stop> {
 			if (key.route < 0 || key.route >= routes.views.length || key.visit < 0) {
 				return Result.err(WebNavigationError.UndecodableKey);
 			}
-			const found = routes.tree.match(key.seed);
+			const node = routes.views[key.route].node;
+			const found = routes.tree.match(key.seed, node);
 			if (!found.ok) { return Result.err(WebNavigationError.UndecodableKey); }
 			const chain = found.value.chain;
-			const node = routes.views[key.route].node;
 			for (let depth: int32 = 0; depth < chain.length; depth += 1) {
 				if (chain[depth].node !== node) { continue; }
 				const none = new Map<string, string>();
@@ -412,7 +412,7 @@ function stopSerializer(routes: Routes): WebKeySerializer<Stop> {
 function placeOf(routes: Routes, stop: Stop, seeding: Seeding): Place {
 	const view = routes.views[stop.route];
 	if (view.children.length === 0) { return { level: null }; }
-	const found = routes.tree.match(stop.seed);
+	const found = routes.tree.match(stop.seed, view.node);
 	if (found.ok) {
 		const chain = found.value.chain;
 		for (let depth: int32 = 0; depth + 1 < chain.length; depth += 1) {

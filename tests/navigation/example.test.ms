@@ -3,7 +3,6 @@ import { HostNode, MockNode, mockNode, mockHost, render, fireEventWith } from ".
 import { neonEvent } from "../../src/render/event";
 import { dispatchHardwareBackPress } from "../../src/api/backHandler";
 import { publishUrl } from "../../src/api/linking";
-import { NavigationContainerRef } from "../../src/navigation/index";
 import { NavigationDemo, navigationRef } from "../../examples/components/navigation";
 import { findLabel, press, visibleText } from "./navHarness";
 

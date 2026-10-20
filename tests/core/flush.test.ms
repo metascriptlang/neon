@@ -208,3 +208,42 @@ test "a loop that keeps rescheduling itself is stopped with an error" {
 	flush();
 	assert seen === 4, "the scheduler recovered: " + seen.toString();
 }
+
+// createSignal.test.ts "should update signal via setter": a read after a write sees the committed value until a flush
+test "a read after a write sees the committed value until flush()" {
+	const [x, setX] = createSignal(1);
+	setX(2);
+	assert x() === 1, "before the flush: " + x().toString();
+	flush();
+	assert x() === 2, "after the flush: " + x().toString();
+}
+
+// createSignal.test.ts "should update signal via update function"
+test "an updater write is committed by flush()" {
+	const [x, setX] = createSignal(1);
+	setX((n: int32): int32 => n + 1);
+	assert x() === 1, "before the flush: " + x().toString();
+	flush();
+	assert x() === 2, "after the flush: " + x().toString();
+}
+
+// RFC 01 "flush and microtask batching": without flush() the write drains on the next microtask
+test "a write drains on the next microtask without flush()" {
+	const [x, setX] = createSignal(1);
+	let seen = 0;
+	createRoot((d) => {
+		createEffect<int32>((p: int32 | null): int32 => x(), (v: int32, p: int32 | null): Cleanup | null => { seen = v; return null; });
+	});
+	flush();
+	setX(2);
+	assert seen === 1, "the effect waits for the drain: " + seen.toString();
+	await Promise.resolve(0 as int32);
+	assert x() === 2 && seen === 2, "drained: " + x().toString() + " " + seen.toString();
+}
+
+// RFC 01: writes inside flush(fn) are readable when it returns and leave no drain queued
+test "flush(fn) commits its writes before it returns" {
+	const [x, setX] = createSignal(1);
+	flush(() => { setX(5); });
+	assert x() === 5, "committed: " + x().toString();
+}

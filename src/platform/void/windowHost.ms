@@ -11,6 +11,7 @@ import {
 } from "../../render/voidAreaHandle";
 import { Style } from "../../render/style";
 import { publishScale } from "../../api/dimensions";
+import { publishWindow } from "../../render/environment";
 import { FontId } from "../../../../void/src/void2d/font";
 import { Scene2D } from "../../../../void/src/void2d/node";
 import { create, close, present, prepare, drawScreen, isClosed } from "../../../../void/src/void2d/scene";
@@ -42,13 +43,39 @@ export interface AreaWindow {
 	released: (area: WindowArea) => void;
 }
 
-interface WindowNode {
+class WindowNode {
 	tag: string;
+	parent: WindowNode | null = null;
+	children: WindowNode[] = [];
+
+	constructor(tag: string) {
+		this.tag = tag;
+	}
 }
 
 export function windowNode(tag: string): HostNode {
-	const n: WindowNode = { tag };
-	return n as unknown as HostNode;
+	return new WindowNode(tag) as unknown as HostNode;
+}
+
+function asWindowNode(node: HostNode): WindowNode {
+	return node as unknown as WindowNode;
+}
+
+function detach(n: WindowNode): void {
+	if (n.parent === null) { return; }
+	const siblings = (n.parent as WindowNode).children;
+	const at = siblings.indexOf(n);
+	if (at >= 0) { siblings.splice(at, 1); }
+	n.parent = null;
+}
+
+function insertChild(parent: HostNode, node: HostNode, ref: HostNode | null): void {
+	const p = asWindowNode(parent);
+	const n = asWindowNode(node);
+	detach(n);
+	const at = ref === null ? -1 : p.children.indexOf(asWindowNode(ref as HostNode));
+	if (at < 0) { p.children.push(n); } else { p.children.splice(at, 0, n); }
+	n.parent = p;
 }
 
 function applyAreaStyle(vh: VoidHost, style: Style): void {
@@ -110,10 +137,12 @@ export function windowHost(w: AreaWindow): Host {
 			return windowNode(tag);
 		},
 		createText: (s: string): HostNode => {
-			refuse(`text "${s}" cannot be a child of the window`);
+			if (s !== "") { refuse(`text "${s}" cannot be a child of the window`); }
 			return windowNode("");
 		},
-		setText: (node: HostNode, s: string): void => { refuse("text cannot be set on the window"); },
+		setText: (node: HostNode, s: string): void => {
+			if (s !== "") { refuse(`text "${s}" cannot be set on the window`); }
+		},
 		setAttr: (node: HostNode, name: string, value: string): void => {},
 		removeAttr: (node: HostNode, name: string): void => {},
 		setStyle: (node: HostNode, style: Style): void => {
@@ -128,13 +157,25 @@ export function windowHost(w: AreaWindow): Host {
 		addEvent: (node: HostNode, name: string, handler: (e: NeonEvent) => void): void => {
 			refuse(`${name} on the window element`);
 		},
-		append: (parent: HostNode, child: HostNode): void => {},
-		insertBefore: (parent: HostNode, node: HostNode, ref: HostNode | null): void => {},
-		removeChild: (parent: HostNode, node: HostNode): void => {},
-		parentOf: (node: HostNode): HostNode | null => null,
+		append: (parent: HostNode, child: HostNode): void => { insertChild(parent, child, null); },
+		insertBefore: insertChild,
+		removeChild: (parent: HostNode, node: HostNode): void => { detach(asWindowNode(node)); },
+		parentOf: (node: HostNode): HostNode | null => {
+			const p = asWindowNode(node).parent;
+			return p === null ? null : p as unknown as HostNode;
+		},
 		release: (node: HostNode): void => {},
-		nextSibling: (node: HostNode): HostNode | null => null,
-		firstChild: (node: HostNode): HostNode | null => null,
+		nextSibling: (node: HostNode): HostNode | null => {
+			const n = asWindowNode(node);
+			if (n.parent === null) { return null; }
+			const siblings = (n.parent as WindowNode).children;
+			const at = siblings.indexOf(n);
+			return at + 1 < siblings.length ? siblings[at + 1] as unknown as HostNode : null;
+		},
+		firstChild: (node: HostNode): HostNode | null => {
+			const n = asWindowNode(node);
+			return n.children.length > 0 ? n.children[0] as unknown as HostNode : null;
+		},
 		cloneNode: null,
 		voidArea: openArea,
 		scrollTo: null,
@@ -210,6 +251,7 @@ export function deliverResize(a: WindowArea, width: int32, height: int32, scale:
 	a.height = height;
 	a.scale = scale as float32;
 	publishScale(scale, 1);
+	publishWindow(a.logicalWidth(), a.logicalHeight());
 	a.hub.resize({ pixelWidth: width, pixelHeight: height, scale: a.scale });
 }
 
