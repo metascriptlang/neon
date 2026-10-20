@@ -12,10 +12,11 @@ import { Host, HostNode, NeonNode, VoidArea } from "../render/hostTypes";
 import { place } from "../render/reconcile";
 import { createVoidHostWith, VoidHost, VoidNode, freeVoidLayoutTree } from "../platform/void/host";
 import { DEFAULT_FONT } from "../../../void/src/void2d/font";
+import { IconId } from "../../../void/src/void2d/icon";
 import {
 	Scene2D as VoidScene2D,
 	anim, animFrames, frameDelayMs, setFrames, setFps, setFrame, setFrameDelays, setSpeed, setLooping, setPaused,
-	NodeRef, DrawKind, kind,
+	NodeRef, DrawKind, kind, icon, setIcon,
 	Local2D,
 	Paint2D,
 	Order2D,
@@ -111,6 +112,13 @@ interface SpriteProps extends NodeProps {
 	width?: Accessor<float32> | null;
 	height?: Accessor<float32> | null;
 	imageStyle?: Accessor<ImageStyle> | null;
+}
+
+interface IconProps extends NodeProps {
+	id: Accessor<IconId>;
+	width: Accessor<float32>;
+	height: Accessor<float32>;
+	color: Accessor<Color>;
 }
 
 interface AnimProps extends NodeProps {
@@ -583,6 +591,42 @@ export function Sprite(props: SpriteProps): NeonNode {
 				bindScene(style, (value: ImageStyle): void => { node.setImageStyle(value); });
 			}
 		});
+}
+
+function validateIconSize(width: float32, height: float32): void {
+	if (!(width >= 0.0) || !(height >= 0.0) || !Number.isFinite(width) || !Number.isFinite(height)) {
+		throw new Error("Icon: width and height must be finite and nonnegative");
+	}
+}
+
+export function Icon(props: IconProps): NeonNode {
+	when (voidSvg) {
+		return renderNode("Icon", props,
+			(scene: VoidScene2D): NodeRef => {
+				const width = props.width();
+				const height = props.height();
+				validateIconSize(width, height);
+				return scene.icon(props.id(), width, height, props.color());
+			},
+			(node: NodeRef): void => {
+				bindScene((): IconId => props.id(), (value: IconId): void => { node.setIcon(value); });
+				bindScene<[float32, float32]>(
+					(): [float32, float32] => [props.width(), props.height()],
+					(value: [float32, float32]): void => {
+						validateIconSize(value[0], value[1]);
+						node.setSize(value[0], value[1]);
+					},
+				);
+				if (props.paint === null) {
+					bindScene((): Color => props.color(), (value: Color): void => { node.setColor(value); });
+				}
+			});
+	} else {
+		return (host: Host, parent: HostNode, before: HostNode | null): void => {
+			requireScene("Icon");
+			throw new Error("Icon: requires -d:voidSvg");
+		};
+	}
 }
 
 function readAnim(props: AnimProps): AnimSnapshot {
