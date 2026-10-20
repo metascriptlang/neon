@@ -10,6 +10,8 @@
 #   API       Android API level of the images (default: 26)
 #   PACKAGE   application id of the APK (default: dev.neon.NeonRefresh)
 #   ACTIVITY  activity to start (default: dev.metascript.app.MainActivity)
+#   NEON_CONTROL  a TCP port: the app serves the devtools control channel there and adb forwards
+#                 the same port on this machine to it (docs/DEVTOOLS.md)
 export MSYS_NO_PATHCONV=1
 DIR=$(cd "${1:?usage: tools/androidHcr.sh <project dir> [entry.ms]}" && pwd)
 command -v cygpath > /dev/null && DIR=$(cygpath -m "$DIR")
@@ -77,8 +79,16 @@ built() {
 	adb shell "rm -rf $STAGE; mkdir -p $STAGE; run-as $PACKAGE rm -rf files/hcr"
 	rm -f "$IMG/sent"
 	deliver || exit 1
+	devtools
 	startApp
 	STARTED=1
+}
+
+devtools() {
+	[ -n "$NEON_CONTROL" ] || return 0
+	adb shell "run-as $PACKAGE sh -c 'echo NEON_CONTROL=$NEON_CONTROL > files/hcr/devtools.env'" || { say "cannot write devtools.env"; exit 1; }
+	adb forward tcp:$NEON_CONTROL tcp:$NEON_CONTROL > /dev/null || { say "adb forward tcp:$NEON_CONTROL failed"; exit 1; }
+	say "devtools control channel on 127.0.0.1:$NEON_CONTROL"
 }
 
 [ -f "$APK" ] || { echo "APK=<debug apk> is required"; exit 1; }
