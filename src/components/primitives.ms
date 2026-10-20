@@ -525,27 +525,7 @@ const SCROLL_BASE: Style = { display: "flex", flexGrow: 1, flexShrink: 1, flexDi
 const SCROLL_HORIZONTAL: Style = { display: "flex", flexGrow: 1, flexShrink: 1, flexDirection: "row", overflow: "scroll" };
 
 export function ScrollView(props: ScrollViewProps): NeonNode {
-	let observedScroll = false;
-	const handlers: ResponderHandlers = {
-		onStartShouldSetResponder: null,
-		onStartShouldSetResponderCapture: null,
-		onMoveShouldSetResponder: null,
-		onMoveShouldSetResponderCapture: null,
-		onResponderGrant: (e: NeonEvent): boolean => { observedScroll = false; return false; },
-		onResponderReject: null,
-		onResponderStart: null,
-		onResponderMove: null,
-		onResponderEnd: null,
-		onResponderRelease: null,
-		onResponderTerminate: null,
-		onResponderTerminationRequest: (e: NeonEvent): boolean => !observedScroll,
-	};
-	const entry = new ResponderEntry(handlers, parentResponder());
 	const evts: VEvent[] = [];
-	evts.push(touchEvent("onTouchStart", null, entry, TouchPhase.Start) as VEvent);
-	evts.push(touchEvent("onTouchMove", null, entry, TouchPhase.Move) as VEvent);
-	evts.push(touchEvent("onTouchEnd", null, entry, TouchPhase.End) as VEvent);
-	evts.push(touchEvent("onTouchCancel", null, entry, TouchPhase.Cancel) as VEvent);
 	const attrs: VAttr[] = [];
 	const horizontal = props.horizontal;
 	if (horizontal !== null) { attrs.push(dynAttr("horizontal", (): string | null => `${(horizontal as () => boolean)()}`)); }
@@ -583,19 +563,6 @@ export function ScrollView(props: ScrollViewProps): NeonNode {
 	}
 	const userScroll = props.onScroll;
 	const throttle = props.scrollEventThrottle;
-	let last = -1.0;
-	evts.push(evt("onScroll", (e: NeonEvent): void => {
-		if (!entry.mounted) { return; }
-		if (responderScroll(entry, e)) { observedScroll = true; }
-		if (!entry.mounted || userScroll === null) { return; }
-		const every = throttle === null ? 0 : (throttle as () => number)();
-		if (every > EVERY_FRAME_MS) {
-			const now = performance.now();
-			if (last >= 0 && now - last < every) { return; }
-			last = now;
-		}
-		(userScroll as (e: NeonEvent) => void)(e);
-	}));
 	if (props.onLayout !== null) { evts.push(evt("onLayout", props.onLayout as (e: NeonEvent) => void)); }
 	const sizeChange = props.onContentSizeChange;
 	const userContentStyle = props.contentContainerStyle;
@@ -608,30 +575,62 @@ export function ScrollView(props: ScrollViewProps): NeonNode {
 		: element(<view style={contentStyle} onLayout={(e: NeonEvent): void => { (sizeChange as (width: number, height: number) => void)(e.width, e.height); }}>{props.children}</view>);
 	const userRef = props.ref;
 	const refreshControl = props.refreshControl;
-	const inner: NeonNode = (host: Host, node: HostNode, before: HostNode | null): void => {
-		entry.node = node;
-		content(host, node, before);
-		if (refreshControl !== null) { (refreshControl as NeonNode)(host, node, null); }
-		if (userRef !== null) {
-			let mounted = true;
-			onCleanup((): void => { mounted = false; });
-			(userRef as (h: ScrollViewHandle) => void)(new ScrollViewHandle(host, node, (): boolean => mounted));
-		}
-	};
 	const userStyle = props.style;
+	const className = props.class;
 	const style: Accessor<Style> = accessor((): Style => {
 		const base = horizontal !== null && (horizontal as () => boolean)() ? SCROLL_HORIZONTAL : SCROLL_BASE;
 		return userStyle === null ? base : layerStyles([base, (userStyle as () => Style)()]);
 	});
-	const provided = ResponderParent.provider({
-		value: accessor((): ResponderEntry | null => entry),
-		children: inner,
-	});
-	const view = primitive("scrollview", { style, class: props.class }, attrs, evts, provided, null);
 	return (host: Host, parent: HostNode, before: HostNode | null): void => {
+		let observedScroll = false;
+		const handlers: ResponderHandlers = {
+			onStartShouldSetResponder: null,
+			onStartShouldSetResponderCapture: null,
+			onMoveShouldSetResponder: null,
+			onMoveShouldSetResponderCapture: null,
+			onResponderGrant: (e: NeonEvent): boolean => { observedScroll = false; return false; },
+			onResponderReject: null,
+			onResponderStart: null,
+			onResponderMove: null,
+			onResponderEnd: null,
+			onResponderRelease: null,
+			onResponderTerminate: null,
+			onResponderTerminationRequest: (e: NeonEvent): boolean => !observedScroll,
+		};
+		const entry = new ResponderEntry(handlers, parentResponder());
 		entry.host = host;
 		onCleanup((): void => { responderUnmounted(entry); });
-		view(host, parent, before);
+		const mountEvents = evts.slice(0, evts.length);
+		mountEvents.push(touchEvent("onTouchStart", null, entry, TouchPhase.Start) as VEvent);
+		mountEvents.push(touchEvent("onTouchMove", null, entry, TouchPhase.Move) as VEvent);
+		mountEvents.push(touchEvent("onTouchEnd", null, entry, TouchPhase.End) as VEvent);
+		mountEvents.push(touchEvent("onTouchCancel", null, entry, TouchPhase.Cancel) as VEvent);
+		let last = -1.0;
+		mountEvents.push(evt("onScroll", (e: NeonEvent): void => {
+			if (!entry.mounted) { return; }
+			if (responderScroll(entry, e)) { observedScroll = true; }
+			if (!entry.mounted || userScroll === null) { return; }
+			const every = throttle === null ? 0 : (throttle as () => number)();
+			if (every > EVERY_FRAME_MS) {
+				const now = performance.now();
+				if (last >= 0 && now - last < every) { return; }
+				last = now;
+			}
+			(userScroll as (e: NeonEvent) => void)(e);
+		}));
+		const inner: NeonNode = (h: Host, node: HostNode, at: HostNode | null): void => {
+			entry.node = node;
+			content(h, node, at);
+			if (refreshControl !== null) { (refreshControl as NeonNode)(h, node, null); }
+			if (userRef !== null) {
+				let mounted = true;
+				onCleanup((): void => { mounted = false; });
+				(userRef as (h: ScrollViewHandle) => void)(new ScrollViewHandle(h, node, (): boolean => mounted));
+			}
+		};
+		const provided = ResponderParent.provider({ value: accessor((): ResponderEntry | null => entry), children: inner });
+		const mountAttrs = attrs.slice(0, attrs.length);
+		primitive("scrollview", { style, class: className }, mountAttrs, mountEvents, provided, null)(host, parent, before);
 	};
 }
 

@@ -1,9 +1,9 @@
 import { createRoot } from "../../src/core/owner";
 import { element } from "../../src/macros/ui/element";
 import { NeonEvent, neonEvent } from "../../src/render/event";
-import { HostNode, MockNode, mockNode, mockHost, render, mockToString, fireEvent, fireEventWith } from "../../src/render/host";
-import { ScrollView, ScrollViewHandle, Text, Pressable } from "../../src/components/primitives";
-import { createSignal } from "../../src/core/signal";
+import { HostNode, MockNode, mockNode, mockHost, render, mockToString, fireEvent, fireEventWith, fireTouch } from "../../src/render/host";
+import { ScrollView, ScrollViewHandle, Text, Pressable, View } from "../../src/components/primitives";
+import { createSignal, accessor } from "../../src/core/signal";
 import { VisibleContentPosition, parseVisibleContent } from "../../src/render/visibleContent";
 import { flush } from "../../src/core/runtime";
 
@@ -230,6 +230,83 @@ test "the host reads the attribute back as the index and the optional threshold"
 	const bare = parseVisibleContent("0") as VisibleContentPosition;
 	assert bare.minIndexForVisible === 0 && bare.autoscrollToTopThreshold === null, "no threshold";
 	assert parseVisibleContent("") === null, "a removed attribute turns the position keeping off";
+}
+
+test "a direct ScrollView builder constructs outside root and mounts under render ownership" {
+	const handles: ScrollViewHandle[] = [];
+	const app = ScrollView({ children: element(<Text>direct</Text>),
+		ref: (h: ScrollViewHandle): void => { handles.push(h); } });
+	assert handles.length === 0;
+	const root = mockNode("root");
+	const dispose = render(app, mockHost(), root as unknown as HostNode);
+	assert handles.length === 1 && handles[0].node === (root.children[0] as unknown as HostNode);
+	assert mockToString(root).includes("direct");
+	dispose();
+	let caught = "";
+	try { handles[0].scrollTo({ y: 1 }); } catch (e) { caught = e.toString(); }
+	assert caught.includes("unmounted"), caught;
+}
+
+test "a shared ScrollView builder gets independent mount context throttle and disposal" {
+	let first = 0;
+	let second = 0;
+	let scrolls = 0;
+	const app = ScrollView({ children: element(<Pressable />), scrollEventThrottle: accessor((): number => 60000),
+		onScroll: (): void => { scrolls += 1; } });
+	const a = mockNode("root");
+	const b = mockNode("root");
+	const disposeA = render(element(<View onStartShouldSetResponder={(): boolean => { first += 1; return true; }}>{app}</View>), mockHost(), a as unknown as HostNode);
+	const disposeB = render(element(<View onStartShouldSetResponder={(): boolean => { second += 1; return true; }}>{app}</View>), mockHost(), b as unknown as HostNode);
+	const scrollA = a.children[0].children[0];
+	const scrollB = b.children[0].children[0];
+	fireTouch(scrollA, "onTouchStart", 1, 2, 60000);
+	fireTouch(scrollA, "onTouchEnd", 1, 2, 60020);
+	fireEventWith(scrollA, "onScroll", scrollEvent(0, 10, 100, 100, 100, 500));
+	disposeA();
+	fireTouch(scrollB, "onTouchStart", 1, 2, 61000);
+	fireTouch(scrollB, "onTouchEnd", 1, 2, 61020);
+	fireEventWith(scrollB, "onScroll", scrollEvent(0, 10, 100, 100, 100, 500));
+	assert first === 1 && second === 1 && scrolls === 2, `${first},${second},${scrolls}`;
+	disposeB();
+}
+
+test "a class-enabled reusable ScrollView keeps one binding per live mount and remount" {
+	const [name, setName] = createSignal("a");
+	let reads = 0;
+	let writes = 0;
+	let counts = "";
+	const host = mockHost();
+	const write = host.setAttr;
+	host.setAttr = (node: HostNode, attr: string, value: string): void => {
+		if (attr === "class") { writes += 1; }
+		write(node, attr, value);
+	};
+	const app = ScrollView({ class: accessor((): string => { reads += 1; return name(); }) });
+	const report = (): void => { counts += `${reads},${writes};`; };
+	report();
+	const disposeA = render(app, host, mockNode("root") as unknown as HostNode);
+	report();
+	const disposeB = render(app, host, mockNode("root") as unknown as HostNode);
+	report();
+	setName("b");
+	report();
+	disposeA();
+	setName("c");
+	report();
+	disposeB();
+	setName("d");
+	report();
+	const disposeC = render(app, host, mockNode("root") as unknown as HostNode);
+	report();
+	setName("e");
+	report();
+	disposeC();
+	const disposeD = render(app, host, mockNode("root") as unknown as HostNode);
+	report();
+	setName("f");
+	report();
+	disposeD();
+	assert counts === "0,0;1,1;2,2;4,4;5,5;5,5;6,6;7,7;8,8;9,9;", counts;
 }
 
 test "a minIndexForVisible that is not a non-negative integer fails loud" {
