@@ -267,19 +267,18 @@ export function drawArea(a: WindowArea): boolean {
 	a.vh.layout(a.logicalWidth(), a.logicalHeight());
 	const scene = a.vh.scene;
 	if (scene.isClosed()) { return false; }
-	const layers = a.hub.layers().slice(0);
-	if (layers.length === 0) {
+	if (a.hub.layers().length === 0) {
 		scene.present();
 		return true;
 	}
 	const width = fbWidth();
 	const height = fbHeight();
 	const dpi = dpiScale();
-	for (const layer of layers) { layer.prepare(width, height, scene.clear); }
+	a.hub.prepareLayers(width, height, scene.clear);
 	if (scene.isClosed()) { return false; }
 	scene.prepare((width as float32) / dpi, (height as float32) / dpi, dpi);
 	beginScreenPassWith(scene.clear.r, scene.clear.g, scene.clear.b, scene.clear.a);
-	for (const layer of layers) { layer.draw(); }
+	a.hub.drawLayers();
 	scene.drawScreen();
 	endPass();
 	commit();

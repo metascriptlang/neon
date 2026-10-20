@@ -106,7 +106,9 @@ export function listeners<T>(): Listeners<T> {
 		},
 		emit: (e: T): void => {
 			const snapshot = entries.slice(0);
-			for (const entry of snapshot) { entry.fn(e); }
+			for (const entry of snapshot) {
+				if (entries.indexOf(entry) >= 0) { entry.fn(e); }
+			}
 		},
 		clear: (): void => { entries = []; },
 	};
@@ -121,6 +123,8 @@ export interface AreaHub {
 	handle: VoidAreaHandle;
 	addLayer: (layer: AreaLayer) => Unsubscribe;
 	layers: () => AreaLayer[];
+	prepareLayers: (pixelWidth: int32, pixelHeight: int32, background: Color) => void;
+	drawLayers: () => void;
 	key: (e: AreaKeyEvent) => void;
 	text: (text: string) => void;
 	preedit: (e: AreaPreedit) => void;
@@ -148,6 +152,7 @@ export function createAreaHub(ops: AreaOps): AreaHub {
 	let height = ops.initialPixelHeight;
 	let scale: float32 = 1.0;
 	let layers: AreaLayer[] = [];
+	let prepared: AreaLayer[] = [];
 	return {
 		handle: {
 			pixelWidth: (): int32 => width,
@@ -170,6 +175,21 @@ export function createAreaHub(ops: AreaOps): AreaHub {
 			};
 		},
 		layers: (): AreaLayer[] => layers,
+		prepareLayers: (pixelWidth: int32, pixelHeight: int32, background: Color): void => {
+			prepared = [];
+			for (const layer of layers.slice(0)) {
+				if (layers.indexOf(layer) < 0) { continue; }
+				layer.prepare(pixelWidth, pixelHeight, background);
+				prepared.push(layer);
+			}
+		},
+		drawLayers: (): void => {
+			const due = prepared;
+			prepared = [];
+			for (const layer of due) {
+				if (layers.indexOf(layer) >= 0) { layer.draw(); }
+			}
+		},
 		key: keys.emit,
 		text: texts.emit,
 		preedit: preedits.emit,
@@ -189,6 +209,7 @@ export function createAreaHub(ops: AreaOps): AreaHub {
 			focuses.clear();
 			resizes.clear();
 			layers = [];
+			prepared = [];
 		},
 	};
 }
