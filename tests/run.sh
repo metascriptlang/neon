@@ -53,6 +53,10 @@ MINGW* | MSYS* | CYGWIN*)
 	echo "== desktop examples/windowsNative/ionPress.ms"
 	"$MSC" build examples/windowsNative/ionPress.ms --output=out/windowsIonPress.exe || fail=1
 	;;
+Darwin)
+	echo "== desktop examples/macosNative/ionVoid.ms --check"
+	{ "$MSC" build examples/macosNative/ionVoid.ms --output=out/macosIonVoid && out/macosIonVoid --check; } || fail=1
+	;;
 *) echo "== desktop skip examples/voidWindow.ms, examples/voidDraw.ms, examples/voidInputs.ms, examples/voidCanvas.ms, examples/desktopAudio.ms and examples/windowsNative: Windows-only" ;;
 esac
 sh tests/ssrParity/run.sh || fail=1
