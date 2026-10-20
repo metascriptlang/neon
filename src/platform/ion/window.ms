@@ -4,7 +4,7 @@
 
 import {
 	createWindow, defaultOptions, runLoop, windowRoot, windowDevice, commit, setImeRect,
-	setFramePolicy, requestFrame, FrameOnDemand, pixelWidth, pixelHeight,
+	setFramePolicy, requestFrame, FrameOnDemand, pixelWidth, pixelHeight, show,
 	onPointer, onKey, onText, onImePreedit, onFocus, onResize, onFrame,
 	PointerEvent, PointerKind, KeyEvent, KeyAction, Window, keyName,
 } from "../../../../ion/src/index";
@@ -12,9 +12,10 @@ import { embedRegister, viewCreate, viewResize, viewFrame, viewDestroy, viewSwap
 import { setup2d } from "../../../../void/src/void2d/draw";
 import { addFont, registerFace, FontId, FontStyle as FaceStyle, DEFAULT_FONT } from "../../../../void/src/void2d/font";
 import { Scene2D } from "../../../../void/src/void2d/node";
-import { present } from "../../../../void/src/void2d/scene";
+import { present, isDirty } from "../../../../void/src/void2d/scene";
 import { exit } from "std/process";
 import { Host, HostNode, NeonNode, render } from "../../render/host";
+import { flush } from "../../core/runtime";
 import {
 	VoidAreaHandle, AreaKeyEvent, AreaKeyAction, AreaKeyMod, AreaPointerEvent, AreaPointerKind,
 } from "../../render/voidAreaHandle";
@@ -23,6 +24,7 @@ import { installAppServices } from "../../api/services";
 import { installFrameDriver } from "../../animation/frame";
 import { ionCaptureServices } from "./audio";
 import { ionAppServices } from "./appServices";
+import { pollReload, RELOAD_POLL_MS } from "../reloadPoll";
 import { VoidHost, familyFont } from "../void/host";
 import {
 	WindowArea,
@@ -43,6 +45,11 @@ when (windows) {
 }
 when (macos) {
 	@compile("./voidVisual.m", "-fobjc-arc");
+}
+when (voidProfiler) {
+	import { frameStats, profilerCollect } from "../../../../void/src/void2d/frameMarks";
+	import { DurationRing, ringCount, ringPercentile } from "../../../../void/src/void2d/profiler";
+	import { voidProfileInput } from "../../../../void/src/void2d/frameClock.h";
 }
 @include("./voidVisual.h");
 
@@ -66,6 +73,8 @@ interface Area {
 	view: ViewId;
 	visual: Ptr<void> | null;
 	area: WindowArea;
+	owed: boolean;
+	shown: boolean;
 }
 
 // [frames the scene's dirty wake requested, frames drawn], since the process began.
@@ -130,9 +139,14 @@ function drawCurrent(): void {
 	}
 	const owner = a as Area;
 	const area = owner.area;
+	owner.owed = false;
 	_drawn = _drawn + 1;
 	area.vh.layout(area.logicalWidth(), area.logicalHeight());
 	area.vh.scene.present();
+	if (!owner.shown) {
+		owner.shown = true;
+		show(owner.win);
+	}
 	const r = area.vh.imeRect();
 	if (r !== null) {
 		const s = area.scale;
@@ -191,6 +205,7 @@ function resized(window: int32, width: int32, height: int32, scale: float64): vo
 	} else {
 		viewResize(owner.view, width, height, owner.area.scale);
 	}
+	owner.owed = true;
 	requestFrame(owner.win);
 }
 
@@ -201,18 +216,23 @@ function wireInput(): void {
 	onResize(resized);
 	onFrame((window: int32, timeMs: float64): void => {
 		runFrameFires();
+		flush();
 		const a = areaOfWindow(window);
-		if (a !== null && (a as Area).view !== ViewInvalid) { viewFrame((a as Area).view); }
+		if (a === null) { return; }
+		const owner = a as Area;
+		if (owner.view !== ViewInvalid && (owner.owed || owner.area.vh.scene.isDirty())) { viewFrame(owner.view); }
 	});
 	onPointer((e: PointerEvent): void => {
 		const a = areaOfWindow(e.window);
 		if (a !== null) { deliverPointer((a as Area).area, areaPointer(e)); }
 	});
 	onKey((e: KeyEvent): void => {
+		when (voidProfiler) { voidProfileInput(); }
 		const a = areaOfWindow(e.window);
 		if (a !== null) { deliverKey((a as Area).area, areaKey(e), keyName(e.key)); }
 	});
 	onText((window: int32, text: string): void => {
+		when (voidProfiler) { voidProfileInput(); }
 		const a = areaOfWindow(window);
 		if (a !== null) { deliverText((a as Area).area, text); }
 	});
@@ -226,6 +246,11 @@ function wireInput(): void {
 	});
 }
 
+function owe(win: Window): void {
+	const a = areaOfWindow(win.id);
+	if (a !== null) { (a as Area).owed = true; }
+}
+
 function ionWindowHost(win: Window): Host {
 	return windowHost({
 		name: "Ion window",
@@ -233,8 +258,12 @@ function ionWindowHost(win: Window): Host {
 		family: _family,
 		pixelWidth: (): int32 => pixelWidth(win),
 		pixelHeight: (): int32 => pixelHeight(win),
-		requestFrame: (): void => { requestFrame(win); },
+		requestFrame: (): void => {
+			owe(win);
+			requestFrame(win);
+		},
 		dirty: (): void => {
+			owe(win);
 			if (_firing) { return; }
 			_requested = _requested + 1;
 			requestFrame(win);
@@ -244,7 +273,7 @@ function ionWindowHost(win: Window): Host {
 		},
 		opened: (area: WindowArea): void => {
 			setFramePolicy(win, FrameOnDemand);
-			_areas.push({ win, view: ViewInvalid, visual: null, area });
+			_areas.push({ win, view: ViewInvalid, visual: null, area, owed: true, shown: false });
 		},
 		released: (area: WindowArea): void => {
 			for (let i = 0; i < _areas.length; i += 1) {
@@ -264,7 +293,7 @@ function ionWindowHost(win: Window): Host {
 }
 
 export function runWindow(opts: DesktopOptions, app: () => NeonNode): int32 {
-	const win = createWindow("main", defaultOptions(opts.title, opts.width as int32, opts.height as int32));
+	const win = createWindow("main", { ...defaultOptions(opts.title, opts.width as int32, opts.height as int32), visible: false });
 	if (win === null) { return 1; }
 	const frameWin: Window = win;
 	registerFace(opts.font, opts.font, 400, FaceStyle.Normal);
@@ -288,7 +317,31 @@ export function runWindow(opts: DesktopOptions, app: () => NeonNode): int32 {
 	});
 	const host = ionWindowHost(win);
 	const dispose = render((h: Host, p: HostNode, b: HostNode | null): void => { app()(h, p, b); }, host, windowNode("window"));
+	when (hcr) {
+		setInterval(pollReload, RELOAD_POLL_MS);
+	}
 	runLoop();
+	reportProfile();
 	dispose();
 	return 0;
+}
+
+function reportProfile(): void {
+	when (voidProfiler) {
+		profilerCollect();
+		console.log(`neon.window.profileFrames ${frameStats.frames}`);
+		reportRing("Draw", frameStats.draws);
+		reportRing("DirtyToPresent", frameStats.dirtyToPresent);
+		reportRing("InputLatency", frameStats.inputLatency);
+	}
+}
+
+when (voidProfiler) {
+	function milliseconds(ns: int64): float64 { return (ns as float64) / 1000000.0; }
+
+	function reportRing(name: string, ring: DurationRing): void {
+		if (ring.ringCount() == 0) { return; }
+		console.log(`neon.window.profile${name}P50.ms ${milliseconds(ring.ringPercentile(50))}`);
+		console.log(`neon.window.profile${name}P99.ms ${milliseconds(ring.ringPercentile(99))}`);
+	}
 }

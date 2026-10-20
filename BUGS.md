@@ -34,6 +34,7 @@ and the invariants that outlived them were moved to the head of the test that pi
   `c7230e4a`, msc `807d96ef7`: 806041 bytes in `/Users/le/metascript/neon`, 891932 bytes in an export
   under `~/metascript/.scratch/neon-solid2/mainC72/neon`. A budget set in one checkout fails or
   passes in another for no change in the code.
+
 - **OPEN 2026-10-16 — touches do not reach the sokol canvas.** `src/platform/sokol/input.ms`
   `deliverAppEvent` takes the four `Touches*` events and does nothing with them, so a phone browser cannot
   press, scroll or focus the canvas once events arrive.
@@ -76,8 +77,12 @@ and the invariants that outlived them were moved to the head of the test that pi
   `<Badge label="a" />` builds on msc `e8c024c8` (C) and the test binary ends with status
   `0xC0000005` when the body calls `props.suffix()`. Found by the refresh edit battery: adding a
   prop to a props interface before the parent passes it was accepted. Not reduced past this
-  program; not measured on JS or for a `string` prop. The props object is built by
-  `src/macros/ui/element.ms`, a contract that needs a yes before it changes.
+  program. The root is the checker: an object literal that omits a field typed through a generic
+  or `distinct` alias of a function type (`Accessor<T>` is `distinct (() => T)`) is accepted,
+  while a bare function type is refused; a `string` field left out is accepted too and reads
+  `""`. The macro builds the props literal at the tag, so the checker's error lands there and
+  Neon needs no change. Parked at compiler card
+  `~/metascript/.inbox/compiler/2026-10-03-interface-literal-omitted-reference-field.md`.
 
 - **OPEN 2026-10-08 — a component without props cannot be a JSX tag.** `function Tally():
   NeonNode { return <p>t</p>; }` used as `<Tally />` stops `msc run` (msc `99a851d7`, C) with
@@ -207,29 +212,12 @@ and the invariants that outlived them were moved to the head of the test that pi
   swaps one popstate listener the same way (`WebHistoryNavigation.kt` `onPop`/`onRewrite`); the fix is
   not traced yet.
 
-- **PARKED 2026-10-16 — the sokol canvas receives no input, and Escape ends it.** Not Neon's: Void's window
-  driver (`void/src/sokol/bridgeWin.c` and `bridgeWeb.c`, `_event`) keeps every `sapp_event` to itself, and
-  `voidRun` takes only `init` and `frame`, so no key, char, pointer, wheel or focus reaches MetaScript. The
-  same `_event` calls `sapp_request_quit()` on Escape: in headless Chrome, after a click and an Escape press,
-  the frame callback stopped at 178 calls and never ran again. sokol_app also reports no IME composition on
-  any platform, so `onPreedit` cannot fire there. Neon's half is `src/platform/sokol/input.ms`
-  (`deliverAppEvent`, `flushKey`), pinned by `tests/platform/sokolInput.test.ms`. Parked at
-  `src/platform/sokol/canvas.ms` `runCanvas`, which calls `voidRun` with no event closure. Note
-  `~/metascript/.inbox/void/2026-10-16-sokol-window-driver-for-neon-canvas.md`.
-
-- **PARKED 2026-10-16 — the native sokol canvas draws every frame.** Not Neon's: sokol_app presents after
-  every frame callback, and a skipped frame flips the window between the last two drawn frames (measured in
-  docs/RENDER-LAYERS.md). Parked at `src/platform/sokol/canvas.ms` `skippedFrameKeepsPicture`, false natively.
-  Same Void note as the row above.
-
-- **PARKED 2026-10-16 — `runCanvas` does not build for the browser from the repo.** Not Neon's. Yoga links under
-  `--os=emcc` since yoga `b2d4f7e`, and the derived-interface upcast at `src/components/primitives.ms` is a
-  typed C cast since recompiler `20d78d7d3`; neither has been run through `runCanvas` under emcc yet. Still open:
-  `setTimeout` does not link under `--os=emcc`, `wasm-ld: undefined symbol: msSetTimeout`, because only the
-  native runtime's `dispatchFull.c` defines it
-  (`~/metascript/.inbox/compiler/2026-10-16-settimeout-does-not-link-under-emcc.md`). With these and yoga worked
-  around outside the repo, the canvas draws in Chrome (docs/RENDER-LAYERS.md). Parked at `examples/voidCanvas.ms`,
-  built natively only.
+- **PARKED 2026-10-19 — the sokol canvas under `-d:voidGlCore` draws every frame.** Not Neon's: Void's
+  `bridgeWin.c` `_frame` asks `sapp_skip_present()` for a frame that drew nothing, and sokol_app honours it only
+  in `_sapp_d3d11_present` (`void/deps/sokol/sokol_app.h:9128`); the WGL swap presents regardless, so a skipped
+  frame would flip between the last two drawn frames. Read from source, not measured on GL. Parked at
+  `src/platform/sokol/canvas.ms` `skippedFrameKeepsPicture`, false off D3D11 and the web. Note
+  `~/metascript/.inbox/void/2026-10-19-gl-core-skip-present.md`.
 
 - **PARKED 2026-10-15 — `tests/platform/voidInput.test.ms` aborts on C.** Not Neon's: after `default font
   assets/font.ttf did not load`, the native run panics with signal 6 in Void `wrapText`
@@ -288,15 +276,6 @@ and the invariants that outlived them were moved to the head of the test that pi
   `~/metascript/.inbox/compiler/2026-10-03-nullish-coalesce-union-into-its-superset-rejected.md`.
   Parked at `tests/platform/void.test.ms`, the "parseFlexStyle maps numeric + enum keys" cell; the file
   fails to compile on that cell alone, so `msc test tests/platform/void.test.ms` stays red until the card lands.
-
-- **PARKED 2026-09-30 — `tests/platform/native.test.ms` dies at module load on the JS lane.** Not
-  Neon's: Yoga `dba68fd` re-exports its enums from `Yoga.h`, and msc `013853dd` emits
-  `export var YGAlign_YGAlignAuto` beside an export list that names `YGAlignAuto`, so node stops at
-  `SyntaxError: Export 'YGAlignAuto' is not defined in module`. The same on an export of main
-  `4e33c9e`; the file was not in the known-red set of msc `227ebc34` with Yoga `f5a811d`. The first card
-  left the inbox while the bug stayed; still red on msc `0f8278bc`, where a direct import from the header
-  fails too. Card and repro: `~/metascript/.inbox/compiler/2026-10-16-js-header-enum-member-unbound.md`.
-  Parked at that file's JS lane; nothing in Neon changes.
 
 - **PARKED 2026-09-25 — `tests/render/reconcile.test.ms` does not compile on the native lane since
   msc `2f306532`.** Not Neon's: `span` pushes a `HostNode` (`unknown`) into a `HostNode[]`, and the

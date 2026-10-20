@@ -102,6 +102,19 @@ test "Appearance reads and follows the published color scheme" {
 	assert seen.join(",") === "dark,light", seen.join(",");
 }
 
+test "a host that publishes a change and its reverse before a drain ends on what it published last" {
+	publishColorScheme("light");
+	publishAppState("active");
+	flush();
+	publishColorScheme("dark");
+	publishColorScheme("light");
+	publishAppState("background");
+	publishAppState("active");
+	flush();
+	assert Appearance.getColorScheme() === "light", "color scheme: " + (Appearance.getColorScheme() as string);
+	assert (useAppState()() as string) === "active", "app state: " + (useAppState()() as string);
+}
+
 test "Keyboard show and hide listeners follow the published height; dismiss goes to the host" {
 	const fake = new FakeServices();
 	fake.install();

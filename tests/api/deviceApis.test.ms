@@ -123,6 +123,19 @@ test "NetInfo starts the host's watch once, calls a new listener at once and the
 	assert fake.joined() === "watchNetInfo;refreshNetInfo", fake.joined();
 }
 
+test "NetInfo going offline and back online before a drain ends online" {
+	const fake = new FakeServices();
+	fake.install();
+	const network = useNetInfo();
+	flush();
+	publishNetInfo({ type: "wifi", isConnected: true, isInternetReachable: true, details: { isConnectionExpensive: false } });
+	flush();
+	publishNetInfo({ type: "none", isConnected: false, isInternetReachable: false, details: null });
+	publishNetInfo({ type: "wifi", isConnected: true, isInternetReachable: true, details: { isConnectionExpensive: false } });
+	flush();
+	assert describe(network()) === "wifi up reachable cheap", describe(network());
+}
+
 test "Permissions.check and request answer in expo's PermissionResponse shape" {
 	const fake = new FakeServices();
 	fake.install();

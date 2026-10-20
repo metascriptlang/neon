@@ -15,7 +15,7 @@ import { installNativeAppServices } from "./appServices";
 import { installFrameDriver } from "../../animation/frame";
 import { LayoutAnimationPlan, LayoutPhase, takeLayoutAnimation, runLayoutTween } from "../../animation/layoutAnimation";
 import "../android/library";
-import { reload, lastReload, reloadKindName, ReloadKind } from "std/hcr";
+import { pollReload, RELOAD_POLL_MS } from "../reloadPoll";
 
 @passC("-I./");
 
@@ -50,6 +50,7 @@ import {
 	niLastControlTag, niLastControlPhase, niLastControlValue, niLastControlWidth, niLastControlHeight,
 	niKeyboardHeight, niColorScheme, niRequestFrame, niSafeAreaInset,
 } from "./bridge.h";
+import { flush, getOwner } from "../../core/runtime";
 import { niLoopRun } from "./loop.h";
 
 extern function niRegisterApp(mount: () => void): void;
@@ -1182,7 +1183,7 @@ let batchDepth = 0;
 let layoutDirty = false;
 
 function requestLayout(): void {
-	if (batchDepth > 0) {
+	if (batchDepth > 0 || getOwner() !== null) {
 		layoutDirty = true;
 		return;
 	}
@@ -1192,7 +1193,7 @@ function requestLayout(): void {
 function batched(fn: () => void): void {
 	batchDepth += 1;
 	try {
-		fn();
+		if (batchDepth === 1) { flush(fn); } else { fn(); }
 	} finally {
 		batchDepth -= 1;
 	}
@@ -1260,21 +1261,12 @@ function teardownApp(): void {
 	root.zChildren = 0;
 }
 
-when (android && hcr) {
-	function pollReload(): void {
-		batched((): void => {
-			const kind = reload();
-			if (kind == ReloadKind.NoChange) return;
-			const r = lastReload();
-			console.log(`HCR ${reloadKindName(kind)} [${r.modules.join(",")}] ${r.reason}`);
-		});
-	}
-}
-
 export function runApp(app: () => NeonNode): int32 {
 	mountedApp = app;
 	when (android && hcr) {
-		niSetReloadPoll(pollReload);
+		niSetReloadPoll((): void => { batched(pollReload); });
+	} else when (hcr) {
+		setInterval((): void => { batched(pollReload); }, RELOAD_POLL_MS);
 	}
 	niRegisterApp(mountApp);
 	niSetTeardownHandler(teardownApp);

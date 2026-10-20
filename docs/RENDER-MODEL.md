@@ -98,10 +98,14 @@ COMPILE ──► MOUNT ──► UPDATE (×n) ──► DISPOSE
   host node and places each of its roots in front of `before`.
 - **UPDATE**: no render. A write marks the computations that read it, and a flush runs the
   marked render effects, then the user effects (`createEffect`, `onSettled`), which never run on
-  the server; each render effect performs one host op. A write outside `flush(fn)` flushes at once
-  today, where Solid defers to a microtask and C has none (compiler card
-  `2026-10-15-await-of-a-settled-promise-continues-synchronously-on-c.md`); `flush(fn)` groups
-  its writes into one drain. Cost = number of spots that actually changed, independent of
+  the server; each render effect performs one host op. A write outside `flush(fn)` drains on the
+  next microtask, as in Solid 2.0, so a read right after it still sees the committed value;
+  `flush()` drains now, `flush(fn)` drains its writes before it returns, `render` and `hydrate`
+  drain once before they return. A host drains before it lays out or draws, and a native
+  host drains an event's writes before that event's layout pass, as a browser runs its
+  microtask checkpoint after each event callback. A host publish (window size, color scheme,
+  app state) applies at once through `flush(fn)`, and a server build flushes every write at
+  once, since Solid's server applies a write at once. Cost = number of spots that actually changed, independent of
   tree size.
 - **DISPOSE**: owner-tree teardown — deterministic, recursive, fires `onCleanup`,
   kills every subscription underneath. Never waits for GC.
@@ -210,7 +214,7 @@ a compiler built from recompiler origin `f421de59` merged into `c5eeb007` the An
 passed 3 of 4 warm runs (one run lost the `HCR reloaded` line after the restart while the app
 showed the new view), and the first session after that compiler first ran answered
 `restart required` to every edit
-(`~/metascript/.inbox/compiler/2026-10-07-hcr-first-warm-reload-reports-core-changed.md`).
+(fixed in recompiler `ac34f190a` to `261502336`, pinned by `hcrCoreNative`).
 
 **Measured 2026-10-12**, installed msc `e8c024c8`, tree `45c70f7`:
 - `bash tests/refresh/run.sh`: `boundary.ms`, `state.ms` and `navigation.ms` on `--target=js`
