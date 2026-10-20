@@ -391,7 +391,11 @@ same JS-driven frames.
   without promising persistence of every local edit or GPU resource.
 - Stack and Tabs are levels of the route tree shorthand (`src/navigation/router.ms`),
   each backed by `createChildStack` or `createChildPages` and mirrored through
-  `createWebHistory`; a hash-only navigation still records itself with `session.sync`.
+  `createWebHistory`. A `navigate` that changes only the search or the hash pushes an
+  entry unless `replace`, as Solid's `navigate` does (`routing.ts:615`), and the first
+  call of a batch decides, as its `navigateEnd`; a navigator action that keeps its keys,
+  such as `setParams`, updates the current entry, as Expo's `getBrowserHistoryForAction`
+  returning nothing does.
   Their renderers (`childView.ms`) keep every stack entry mounted and show only the
   top, and keep a tab mounted from its first selection, hiding the inactive ones (React
   Navigation `CardStack` with `detachInactiveScreens`, the lazy tabs of
