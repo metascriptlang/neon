@@ -661,9 +661,53 @@ test "Sprite retile and structural removal keep the scene and sibling alive" {
 	setSize(15.0);
 	setShown(true);
 	flush();
-	assert scene.nodeCount() === 6 && nodes[4].content().w === 15.0;
+	const regionHolder = 1;
+	assert scene.nodeCount() === 6 + regionHolder && nodes[4].content().w === 15.0;
 	dispose();
 	assert scene.closed;
+}
+
+function nestedShows(outer: () => boolean, inner: () => boolean, refs: VoidScene2D[]): NeonNode {
+	return element(<Void>
+		<Scene2D ref={(value: VoidScene2D): void => { refs.push(value); }}>
+			{Show({ when: accessor(() => outer()), children: element(
+				<Group>
+					{Show({ when: accessor(() => inner()), children: element(
+						<Group><Rect width={1.0} height={1.0} color={rgba(1.0, 1.0, 1.0, 1.0)} /></Group>
+					) })}
+				</Group>
+			) })}
+			<Rect width={1.0} height={1.0} color={rgba(1.0, 1.0, 1.0, 1.0)} />
+		</Scene2D>
+	</Void>);
+}
+
+test "a remounted Show keeps one holder node in the scene until its region is disposed" {
+	const controlRefs: VoidScene2D[] = [];
+	const disposeControl = render(nestedShows((): boolean => false, (): boolean => true, controlRefs), mockHost(), mockNode("root") as unknown as HostNode);
+	const withoutOuter = controlRefs[0].nodeCount();
+	disposeControl();
+	const refs: VoidScene2D[] = [];
+	const [outer, setOuter] = createSignal(true);
+	const [inner, setInner] = createSignal(true);
+	const dispose = render(nestedShows(outer, inner, refs), mockHost(), mockNode("root") as unknown as HostNode);
+	const scene = refs[0];
+	const mounted = scene.nodeCount();
+	setInner(false);
+	flush();
+	assert scene.nodeCount() === mounted - 2, "hiding frees the inner Group and Rect";
+	setInner(true);
+	flush();
+	assert scene.nodeCount() === mounted + 1, "the later pass built into one holder: " + scene.nodeCount().toString();
+	setInner(false);
+	flush();
+	setInner(true);
+	flush();
+	assert scene.nodeCount() === mounted + 1, "a second remount reuses that holder: " + scene.nodeCount().toString();
+	setOuter(false);
+	flush();
+	assert scene.nodeCount() === withoutOuter, "disposing the region frees its holder: " + scene.nodeCount().toString();
+	dispose();
 }
 
 test "raw 2D paint order filter and label size update through Void binders" {
