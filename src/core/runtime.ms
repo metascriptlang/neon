@@ -1075,6 +1075,7 @@ function schedule(): void {
 		when (server) {
 			flush();
 		} else {
+			// parked: queueMicrotask(flush) as the reference does; ~/metascript/.inbox/compiler/2026-10-20-queuemicrotask-undeclared.md
 			Promise.resolve(0).then((unused: int32): void => { flush(); });
 		}
 	}
