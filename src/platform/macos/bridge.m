@@ -709,6 +709,29 @@ void neonEmitControl(int32_t tag, int phase, NSString *value, float width, float
 
 @class NeonInput;
 
+@interface NeonFieldCell : NSTextFieldCell
+@property(nonatomic) BOOL autoCorrect;
+@end
+
+@implementation NeonFieldCell
+- (NSText *)setUpFieldEditorAttributes:(NSText *)text {
+	NSTextView *editor = (NSTextView *)[super setUpFieldEditorAttributes:text];
+	editor.automaticSpellingCorrectionEnabled = self.autoCorrect;
+	return editor;
+}
+@end
+
+@interface NeonSecureFieldCell : NSSecureTextFieldCell
+@end
+
+@implementation NeonSecureFieldCell
+- (NSText *)setUpFieldEditorAttributes:(NSText *)text {
+	NSTextView *editor = (NSTextView *)[super setUpFieldEditorAttributes:text];
+	editor.automaticSpellingCorrectionEnabled = NO;
+	return editor;
+}
+@end
+
 @interface NeonField : NSTextField
 @property(nonatomic, weak) NeonInput *owner;
 @end
@@ -724,6 +747,7 @@ void neonEmitControl(int32_t tag, int phase, NSString *value, float width, float
 
 @interface NeonInput : NeonView <NSTextViewDelegate>
 @property(nonatomic) BOOL multiline, blurOnSubmit, upper, autoFocus, editable;
+@property(nonatomic) BOOL autoCorrect, defaultAutoCorrect;
 @property(nonatomic) int writing;
 @property(nonatomic) NSInteger maxLength;
 @property(nonatomic) NSEdgeInsets insets;
@@ -769,6 +793,8 @@ static BOOL flagValue(const char *value, const char *name) {
 			_textView = [[NeonTextView alloc] initWithFrame:NSZeroRect];
 			_textView.owner = self;
 			_textView.delegate = self;
+			_defaultAutoCorrect = _textView.automaticSpellingCorrectionEnabled;
+			_autoCorrect = _defaultAutoCorrect;
 			_textView.drawsBackground = NO;
 			_textView.richText = NO;
 			_textView.verticallyResizable = YES;
@@ -779,6 +805,8 @@ static BOOL flagValue(const char *value, const char *name) {
 			_scroll.documentView = _textView;
 			[self addSubview:_scroll];
 		} else {
+			_defaultAutoCorrect = [[NSTextView alloc] initWithFrame:NSZeroRect].automaticSpellingCorrectionEnabled;
+			_autoCorrect = _defaultAutoCorrect;
 			[self makeField:NO];
 		}
 		[self applyStyle];
@@ -807,6 +835,7 @@ static BOOL flagValue(const char *value, const char *name) {
 	self.field.cell.wraps = NO;
 	self.field.stringValue = text;
 	[self addSubview:self.field];
+	[self applyAutoCorrect];
 	[self applyStyle];
 	[self layoutContent];
 }
@@ -821,6 +850,17 @@ static BOOL flagValue(const char *value, const char *name) {
 }
 
 - (NSView *)editingView { return self.multiline ? self.textView : self.field; }
+
+- (void)applyAutoCorrect {
+	if (self.multiline) {
+		self.textView.automaticSpellingCorrectionEnabled = self.autoCorrect;
+	} else {
+		BOOL secure = [self.field isKindOfClass:NeonSecureField.class];
+		if (!secure) ((NeonFieldCell *)self.field.cell).autoCorrect = self.autoCorrect;
+		NSTextView *editor = [self editor];
+		if (editor) editor.automaticSpellingCorrectionEnabled = secure ? NO : self.autoCorrect;
+	}
+}
 
 - (void)applyStyle {
 	NSFont *font = [self font];
@@ -1007,7 +1047,10 @@ static BOOL flagValue(const char *value, const char *name) {
 		}
 		self.upper = !strcmp(value, "characters");
 	} else if (!strcmp(name, "maxLength")) self.maxLength = value[0] ? atol(value) : -1;
-	else if (!strcmp(name, "autoCorrect") || !strcmp(name, "keyboardType") || !strcmp(name, "returnKeyType")) {}
+	else if (!strcmp(name, "autoCorrect")) {
+		self.autoCorrect = value[0] == '\0' ? self.defaultAutoCorrect : flagValue(value, name);
+		[self applyAutoCorrect];
+	} else if (!strcmp(name, "keyboardType") || !strcmp(name, "returnKeyType")) {}
 	else if (!strcmp(name, "selection")) [self select:text];
 	else if (!strcmp(name, "textInsets")) {
 		float left = 0, top = 0, right = 0, bottom = 0;
@@ -1063,10 +1106,12 @@ static BOOL flagValue(const char *value, const char *name) {
 	- (BOOL)textView:(NSTextView *)view doCommandBySelector:(SEL)selector { (void)view; return [self.owner command:selector]; }
 
 @implementation NeonField
++ (Class)cellClass { return NeonFieldCell.class; }
 NEON_FIELD_METHODS
 @end
 
 @implementation NeonSecureField
++ (Class)cellClass { return NeonSecureFieldCell.class; }
 NEON_FIELD_METHODS
 @end
 

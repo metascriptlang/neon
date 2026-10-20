@@ -255,6 +255,19 @@ void harnessCommit(const char *title, const char *text) {
 
 int harnessFocusedText(const char *title) { return focusedText(windowTitled(title)) ? 1 : 0; }
 
+int harnessFocusedAutoCorrect(const char *title) {
+	return requireFocusedText(title).automaticSpellingCorrectionEnabled ? 1 : 0;
+}
+
+int harnessDefaultAutoCorrect(void) {
+	return [[NSTextView alloc] initWithFrame:NSZeroRect].automaticSpellingCorrectionEnabled ? 1 : 0;
+}
+
+int harnessFocusedFieldEditor(const char *title) {
+	NSWindow *window = windowTitled(title);
+	return requireFocusedText(title) == [window fieldEditor:NO forObject:nil] ? 1 : 0;
+}
+
 static void collectSwitches(NSView *view, NSMutableString *out) {
 	if ([view isKindOfClass:NSSwitch.class]) [out appendString:((NSSwitch *)view).state == NSControlStateValueOn ? @"1" : @"0"];
 	for (NSView *child in view.subviews) collectSwitches(child, out);

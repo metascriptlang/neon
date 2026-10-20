@@ -24,6 +24,9 @@ int harnessPostKeys(const char *title, const char *keys);
 void harnessCompose(const char *title, const char *marked);
 void harnessCommit(const char *title, const char *text);
 int harnessFocusedText(const char *title);
+int harnessFocusedAutoCorrect(const char *title);
+int harnessDefaultAutoCorrect(void);
+int harnessFocusedFieldEditor(const char *title);
 // niMeasureInWindow on the view whose accessibilityLabel is label: "x,y,w,h" on success, else its return code.
 const char *harnessMeasure(const char *title, const char *label);
 // niMeasureInWindow on a NeonView that was never attached.

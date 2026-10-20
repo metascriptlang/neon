@@ -13,7 +13,8 @@ import { NeonEvent } from "../../src/render/event";
 import { View, TextInput, TextSelection } from "../../src/components/primitives";
 import {
 	harnessIsCheck, harnessExpect, harnessExpectCount, harnessSample, harnessPostKeys, harnessClick, harnessCompose, harnessCommit,
-	harnessFocusedText,
+	harnessFocusedText, harnessFocusedAutoCorrect, harnessDefaultAutoCorrect,
+	harnessFocusedFieldEditor,
 } from "./harness.h";
 import { exit } from "std/process";
 
@@ -38,6 +39,8 @@ let lastSelection = "";
 let notesHeight: number = 0;
 let notesFirstHeight: number = 0;
 const [upper, setUpper] = createSignal("");
+const [nameCorrection, setNameCorrection] = createSignal(false);
+const [notesCorrection, setNotesCorrection] = createSignal(false);
 
 function changed(name: string): (t: string) => void {
 	return (t: string): void => {
@@ -56,19 +59,19 @@ function seen(list: string[], name: string, what: string): (e: NeonEvent) => voi
 
 function App(): NeonNode {
 	return <View style={styles.base}>
-		<TextInput style={styles.name} placeholder="Name" placeholderTextColor="#2e86de" onChangeText={changed("name")}
+		<TextInput style={styles.name} autoCorrect={nameCorrection()} placeholder="Name" placeholderTextColor="#2e86de" onChangeText={changed("name")}
 			onFocus={seen(focuses, "name", "focus")} onBlur={seen(blurs, "name", "blur")} onSubmitEditing={seen(submits, "name", "submit")}
 			onSelectionChange={(s: TextSelection): void => { lastSelection = `${s.start},${s.end}`; }} />
-		<TextInput style={styles.upper} value={upper()} onChangeText={(t: string): void => {
+		<TextInput style={styles.upper} autoCorrect={true} value={upper()} onChangeText={(t: string): void => {
 			changed("upper")(t);
 			setUpper(t.toUpperCase());
 		}} />
 		<TextInput style={styles.limited} maxLength={3} onChangeText={changed("limited")} />
-		<TextInput style={styles.notes} multiline={true} onChangeText={changed("notes")} onLayout={(e: NeonEvent): void => {
+		<TextInput style={styles.notes} multiline={true} autoCorrect={notesCorrection()} onChangeText={changed("notes")} onLayout={(e: NeonEvent): void => {
 			notesHeight = e.height;
 			if (notesFirstHeight === 0) { notesFirstHeight = e.height; }
 		}} />
-		<TextInput style={styles.secret} secureTextEntry={true} onChangeText={changed("secret")} />
+		<TextInput style={styles.secret} secureTextEntry={true} autoCorrect={true} onChangeText={changed("secret")} />
 	</View>;
 }
 
@@ -187,6 +190,83 @@ steps.push((): void => {
 	expect("secure entry still reports its text", last("secret") === "ab", last("secret"));
 	harnessExpectCount("bullets drawn", 346, 24, 110, 30, 192, 57, 43, 60, 10, 100000);
 	failures += harnessSample(TITLE);
+});
+
+function expectCorrection(what: string, enabled: boolean): void {
+	const flag = harnessFocusedAutoCorrect(TITLE);
+	expect(what, flag === (enabled ? 1 : 0), `${flag}`);
+}
+
+function expectFieldEditor(what: string, shared: boolean): void {
+	const flag = harnessFocusedFieldEditor(TITLE);
+	expect(what, flag === (shared ? 1 : 0), `${flag}`);
+}
+
+steps.push((): void => {
+	expectCorrection("secure ignores autoCorrect=true", false);
+	click(300.0, 35.0);
+});
+steps.push((): void => {
+	expectCorrection("single-line autoCorrect=false", false);
+	expectFieldEditor("name uses window field editor", true);
+	setNameCorrection(true);
+});
+steps.push((): void => {
+	expectCorrection("focused single-line false to true", true);
+	expect("correction update preserves IME commit", last("name") === "hviệt", last("name"));
+	setNameCorrection(false);
+});
+steps.push((): void => {
+	expectCorrection("focused single-line true to false", false);
+	click(300.0, 95.0);
+});
+steps.push((): void => {
+	expectCorrection("opposite field autoCorrect=true", true);
+	expectFieldEditor("upper reuses window field editor", true);
+	click(300.0, 35.0);
+});
+steps.push((): void => {
+	expectCorrection("refocus restores false after true", false);
+	expectFieldEditor("name reuses window field editor", true);
+	click(300.0, 155.0);
+});
+steps.push((): void => {
+	expectCorrection("omitted autoCorrect keeps native default", harnessDefaultAutoCorrect() === 1);
+	click(300.0, 215.0);
+});
+steps.push((): void => {
+	expectCorrection("multiline autoCorrect=false", false);
+	expectFieldEditor("multiline owns text view", false);
+	setNotesCorrection(true);
+});
+steps.push((): void => {
+	expectCorrection("focused multiline false to true", true);
+	expect("correction update preserves multiline", last("notes") === "a\nb", JSON.stringify(last("notes")));
+	setNotesCorrection(false);
+});
+steps.push((): void => {
+	expectCorrection("focused multiline true to false", false);
+	click(300.0, 95.0);
+});
+steps.push((): void => {
+	expectCorrection("single-line true after multiline false", true);
+	click(300.0, 215.0);
+});
+steps.push((): void => {
+	expectCorrection("multiline refocus preserves false", false);
+	setNotesCorrection(true);
+	click(300.0, 35.0);
+});
+steps.push((): void => {
+	expectCorrection("single-line false while multiline true", false);
+	click(300.0, 215.0);
+});
+steps.push((): void => {
+	expectCorrection("multiline refocus preserves true", true);
+	click(440.0, 35.0);
+});
+steps.push((): void => {
+	expectCorrection("secure stays disabled after editor reuse", false);
 });
 
 const options = nativeWindowOptions(TITLE, 480, 320);
