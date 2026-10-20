@@ -1,3 +1,4 @@
+import { flush } from "../../src/core/runtime";
 import { createSignal } from "../../src/core/signal";
 import { Dispose } from "../../src/core/types";
 import { onCleanup } from "../../src/core/cleanup";
@@ -94,6 +95,7 @@ test "a right-hand drawer anchors its panel to the right edge" {
 		</Drawer.Navigator>
 	</NavigationContainer>, mockHost(), root as unknown as HostNode);
 	ref.openDrawer();
+	flush();
 	const item = findLabel(root, "Two");
 	assert item !== null, visibleText(root);
 	const panel = (item as MockNode).parent as MockNode;
@@ -130,6 +132,7 @@ test "the container theme colors headers and reaches screens through useTheme" {
 	assert visibleText(root) === "Themed|light screen", visibleText(root);
 	assert (headerOf(root).style as Style).backgroundColor === "#ffffff";
 	setDark(true);
+	flush();
 	assert visibleText(root) === "Themed|dark screen", visibleText(root);
 	assert (headerOf(root).style as Style).backgroundColor === DarkTheme.colors.card;
 	dispose();

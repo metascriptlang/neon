@@ -1,3 +1,4 @@
+import { flush } from "../../src/core/runtime";
 import { Signal } from "../../src/core/signal";
 import { createRoot } from "../../src/core/owner";
 import { Dispose } from "../../src/core/types";
@@ -256,6 +257,7 @@ test "a custom participant in a second scope works independently beside the cont
 	assert app.ref.currentPath() === "Shop>Product", app.ref.currentPath();
 	assert inspector.get() === "metal";
 	inspector.set("wood");
+	flush();
 	assert addressOf(registry) === "/shop/product/7?__nav.inspector=%2Fmaterials%2Fwood",
 		addressOf(registry);
 	assert session.navigate("/shop/product/8", false).ok;

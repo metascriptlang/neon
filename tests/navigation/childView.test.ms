@@ -1,3 +1,4 @@
+import { flush } from "../../src/core/runtime";
 import { Accessor, Signal } from "../../src/core/signal";
 import { NeonNode } from "../../src/render/hostTypes";
 import {
@@ -49,11 +50,14 @@ test "a covered stack screen is hidden and keeps its state until it is uncovered
 	const stack = createChildStack<string, string>(["list"], named, instance);
 	const root = mounted(renderStack<string, string>(stack, screen));
 	bump("list");
+	flush();
 	assert visibleText(root) === "list 1", visibleText(root);
 	stack.push("detail");
+	flush();
 	assert visibleText(root) === "detail 0", visibleText(root);
 	assert mockToString(root).includes("list 1"), mockToString(root);
 	stack.pop();
+	flush();
 	assert visibleText(root) === "list 1", visibleText(root);
 	assert mounts === "list;detail;", mounts;
 	stack.dispose();
@@ -67,10 +71,13 @@ test "a tab keeps its component state across a switch away and back" {
 	);
 	const root = mounted(renderPages<string, string>(pages, screen));
 	bump("feed");
+	flush();
 	assert visibleText(root) === "feed 1", visibleText(root);
 	pages.select(1);
+	flush();
 	assert visibleText(root) === "inbox 0", visibleText(root);
 	pages.select(0);
+	flush();
 	assert visibleText(root) === "feed 1", visibleText(root);
 	assert mounts === "feed;inbox;", mounts;
 	pages.dispose();
@@ -85,6 +92,7 @@ test "a tab that was never selected is not mounted" {
 	const root = mounted(renderPages<string, string>(pages, screen));
 	assert mounts === "feed;", mounts;
 	pages.select(2);
+	flush();
 	assert visibleText(root) === "profile 0", visibleText(root);
 	assert mounts === "feed;profile;", mounts;
 	assert !mockToString(root).includes("inbox"), mockToString(root);

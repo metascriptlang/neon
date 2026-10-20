@@ -1,3 +1,4 @@
+import { flush } from "../../src/core/runtime";
 import { NeonNode } from "../../src/render/node";
 import { neonEvent } from "../../src/render/event";
 import { ManualFrames } from "../../src/animation/index";
@@ -172,6 +173,7 @@ function drag(target: MockNode, xs: number[]): void {
 	}
 	t += 100;
 	fireTouch(target, "onTouchEnd", xs[xs.length - 1], 300, t);
+	flush();
 }
 
 test "a swipe from the left edge drags the screen and pops it past a third of the width" {
@@ -188,11 +190,13 @@ test "a swipe from the left edge drags the screen and pops it past a third of th
 	fireTouch(edge, "onTouchStart", 5, 300, 9000);
 	fireTouch(edge, "onTouchMove", 60, 300, 9100);
 	fireTouch(edge, "onTouchMove", 120, 300, 9200);
+	flush();
 	const dragged = translation(detail);
 	assert dragged > 50 && dragged < 70, "follows the finger from where the drag was granted: " + dragged.toString();
 	assert shown(frames(root)[0]), "the screen below shows during the drag";
 	fireTouch(edge, "onTouchMove", 250, 300, 9300);
 	fireTouch(edge, "onTouchEnd", 250, 300, 9400);
+	flush();
 	assert ref.currentPath() === "Home", ref.currentPath();
 	settle();
 	assert frames(root).length === 1;
@@ -223,6 +227,7 @@ test "the drawer slides in and out, and a swipe from the edge opens it" {
 		</Drawer.Navigator>
 	</NavigationContainer>, mockHost(), root as unknown as HostNode);
 	ref.openDrawer();
+	flush();
 	clock.step(steps(DRAWER_DURATION / 2));
 	const sliding = labelledNow(root, "Two");
 	const moving = translation((sliding as MockNode).parent as MockNode);
@@ -230,6 +235,7 @@ test "the drawer slides in and out, and a swipe from the edge opens it" {
 	settle();
 	assert transformOf(panelOf(root) as MockNode) === "none", "open";
 	ref.closeDrawer();
+	flush();
 	clock.step(steps(DRAWER_DURATION / 2));
 	assert labelledNow(root, "Two") !== null, "still mounted while it slides out";
 	settle();
@@ -238,10 +244,12 @@ test "the drawer slides in and out, and a swipe from the edge opens it" {
 	fireTouch(edge, "onTouchStart", 2, 300, 20000);
 	fireTouch(edge, "onTouchMove", 40, 300, 20100);
 	fireTouch(edge, "onTouchMove", 120, 300, 20200);
+	flush();
 	const dragged = translation((labelledNow(root, "Two") as MockNode).parent as MockNode);
 	assert dragged > -280 && dragged < -150, "follows the finger: " + dragged.toString();
 	fireTouch(edge, "onTouchMove", 240, 300, 20300);
 	fireTouch(edge, "onTouchEnd", 240, 300, 20400);
+	flush();
 	settle();
 	assert panelOf(root) !== null && transformOf(panelOf(root) as MockNode) === "none", "opened by the swipe";
 }

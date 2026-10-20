@@ -1,3 +1,4 @@
+import { flush } from "../../src/core/runtime";
 import { createSignal } from "../../src/core/signal";
 import { createEffect } from "../../src/core/effect";
 import { Cleanup } from "../../src/core/types";
@@ -53,6 +54,7 @@ test "onStateChange after a screen swap reports the new focus on a stack" {
 		</Stack.Navigator>
 	</NavigationContainer>, mockHost(), root as unknown as HostNode);
 	setFirst(false);
+	flush();
 	assert ref.currentPath() === "Second", ref.currentPath();
 	assert seen.length > 0 && seen[seen.length - 1] === "Second", seen.join(",");
 	dispose();
@@ -76,6 +78,7 @@ test "onStateChange after a screen swap reports the new focus on tabs" {
 		</Tab.Navigator>
 	</NavigationContainer>, mockHost(), root as unknown as HostNode);
 	setFirst(false);
+	flush();
 	assert ref.currentPath() === "Second", ref.currentPath();
 	assert seen.length > 0 && seen[seen.length - 1] === "Second", seen.join(",");
 	dispose();
@@ -95,6 +98,7 @@ test "a navigation made in an effect is reported with its final route" {
 	</NavigationContainer>, mockHost(), root as unknown as HostNode);
 	assert ref.currentPath() === "Start", ref.currentPath();
 	setRedirect(true);
+	flush();
 	assert ref.currentPath() === "Target", ref.currentPath();
 	assert seen.length > 0 && seen[seen.length - 1] === "Target", seen.join(",");
 	dispose();

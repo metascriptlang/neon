@@ -1,3 +1,4 @@
+import { flush } from "../../src/core/runtime";
 import { createRoot } from "../../src/core/owner";
 import { Dispose } from "../../src/core/types";
 import { NeonNode } from "../../src/render/node";
@@ -336,16 +337,20 @@ test "opening the drawer adds an entry at the same address, and browser back clo
 	app.ref.navigate("Inbox");
 	assert take() === "replace /;replace /;replace /inbox;";
 	app.ref.openDrawer();
+	flush();
 	const opened = take();
 	assert opened === "push /inbox;", opened;
 	assert drawerOpen(app), "drawer open";
 	assert app.memory.go(-1);
+	flush();
 	assert !drawerOpen(app), "browser back closed the drawer";
 	assert app.ref.currentPath() === "Main>Inbox", app.ref.currentPath();
 	assert app.memory.go(1);
+	flush();
 	assert drawerOpen(app), "browser forward opened it again";
 	assert take() === "", "a traversal writes nothing";
 	app.ref.closeDrawer();
+	flush();
 	const closed = take();
 	assert closed === "go -1;", closed;
 	assert app.memory.read().url === "/inbox", app.memory.read().url;
@@ -395,11 +400,14 @@ test "setParams rewrites the entry it changes" {
 	assert app.ref.linkTo("/shop/product/5");
 	take();
 	(log.product as Navigation<ItemParams>).setParams({ id: "6" });
+	flush();
 	assert app.memory.read().url === "/shop/product/6", app.memory.read().url;
 	assert visibleText(app.root).indexOf("product 6") >= 0, visibleText(app.root);
 	assert app.memory.go(-1);
+	flush();
 	assert app.ref.currentPath() === "Shop>Catalog", app.ref.currentPath();
 	assert app.memory.go(1);
+	flush();
 	assert visibleText(app.root).indexOf("product 6") >= 0, visibleText(app.root);
 	assert finish(app) === 0, "routing errors";
 }

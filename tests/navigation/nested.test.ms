@@ -1,3 +1,4 @@
+import { flush } from "../../src/core/runtime";
 import { Accessor, createSignal } from "../../src/core/signal";
 import { onCleanup } from "../../src/core/cleanup";
 import { Dispose } from "../../src/core/types";
@@ -203,6 +204,7 @@ test "the drawer opens from the header button, navigates, and back closes it fir
 	press(root, "Show navigation menu");
 	assert findLabel(root, "Close navigation menu") !== null, "drawer open";
 	assert dispatchHardwareBackPress(), "back closes the drawer";
+	flush();
 	assert findLabel(root, "Close navigation menu") === null, "drawer closed";
 	assert ref.currentPath() === "Settings", ref.currentPath();
 	press(root, "Show navigation menu");
