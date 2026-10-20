@@ -33,7 +33,7 @@ import {
 	GltfMaterialSetup, addGltfAssets, addGltfNodes, closeGltfAssets,
 } from "../../../void/src/void3d/gltfScene";
 import {
-	Camera3D as VoidCamera3D, CameraProjection, ProjectionKind, resolve, writeCameraBlock,
+	Camera3D as VoidCamera3D, CameraProjection, ProjectionKind, CameraError, resolve, writeCameraBlock,
 } from "../../../void/src/void3d/camera";
 
 export interface Scene3DHandle {
@@ -229,6 +229,15 @@ function defaultMaterialOf(state: SceneState): MaterialId {
 	}
 }
 
+const DEFAULT_CAMERA: VoidCamera3D = {
+	position: vec3(0.0, 0.0, 5.0), yaw: 0.0, pitch: 0.0, nearPlane: 0.1, farPlane: 1000.0,
+	projection: { kind: ProjectionKind.Perspective, fovY: 1.3089969389957472 },
+};
+
+export function viewCamera(handle: Scene3DHandle): Result<VoidCamera3D, CameraError> {
+	return worldCameraOf(handle.scene, DEFAULT_CAMERA);
+}
+
 export function Scene3D(props: Scene3DProps): NeonNode {
 	return (host: Host, parent: HostNode, before: HostNode | null): void => {
 		if (useContext(voidScope) !== VoidSpace.Area) { throw new Error("Scene3D: mount directly within Void, outside another Scene3D"); }
@@ -257,12 +266,10 @@ export function Scene3D(props: Scene3DProps): NeonNode {
 			const layer: AreaLayer = {
 				prepare: (pixelWidth: int32, pixelHeight: int32, background: Color): void => {
 					prepared = false;
-					const camera = handle.camera;
-					if (camera === null) { return; }
 					refresh(scene, items);
 					const lights = collectLights(scene, lightBlock);
 					if (!lights.ok) { throw new Error("Scene3D: collectLights failed: " + lights.error.toString()); }
-					const world = worldCameraOf(scene, camera as VoidCamera3D);
+					const world = viewCamera(handle);
 					if (!world.ok) { throw new Error("Scene3D: the active camera has no world pose: " + world.error.toString()); }
 					const view = world.value.resolve(pixelWidth, pixelHeight);
 					if (!view.ok) { throw new Error("Scene3D: the active camera does not resolve: " + view.error.toString()); }
