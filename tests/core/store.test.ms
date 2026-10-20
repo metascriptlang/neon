@@ -7,6 +7,7 @@ import { Cleanup } from "../../src/core/types";
 import { createStore } from "../../src/core/store";
 
 interface Todo { id: number; title: string; done: boolean; }
+interface Item { id: number; title: string; }
 interface User { firstName: string; lastName: string; }
 
 test "a setStore write batches: reads return the previous value until flush" {
@@ -178,4 +179,32 @@ test "an untracked read of a field that has no reader sees the committed value" 
 	assert untrack<number>((): number => state.a) === 1;
 	flush();
 	assert state.a === 2;
+}
+
+test "a row held across a shift re-runs its reader when edited at its new index" {
+	const [todos, setItems] = createStore<Item[]>([{ id: 1, title: "a" }, { id: 2, title: "b" }]);
+	const row = todos[1];
+	const seen: string[] = [];
+	createRoot((d) => {
+		createEffect<string>((p: string | null): string => row.title, (v: string, p: string | null): Cleanup | null => { seen.push(v); return null; });
+	});
+	flush();
+	setItems((t) => { t.shift(); });
+	flush();
+	setItems((t) => { t[0].title = "B"; });
+	flush();
+	assert seen.join(",") === "b,B", "seen: " + seen.join(",");
+}
+
+test "one object under two keys is one store: a write through one re-runs the reader of the other" {
+	const shared: Item = { id: 1, title: "a" };
+	const [state, setState] = createStore<{ x: Item, y: Item }>({ x: shared, y: shared });
+	const seen: string[] = [];
+	createRoot((d) => {
+		createEffect<string>((p: string | null): string => state.y.title, (v: string, p: string | null): Cleanup | null => { seen.push(v); return null; });
+	});
+	flush();
+	setState((s) => { s.x.title = "b"; });
+	flush();
+	assert seen.join(",") === "a,b", "seen: " + seen.join(",");
 }
