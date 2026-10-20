@@ -24,6 +24,7 @@ import { contextGeneration } from "../../../void/src/gpu/door";
 import {
 	Scene3D as VoidScene3D, NodeId3D, Transform3D, LightKind, LightInstance,
 	addGroup, addLightNode, addMeshNode, setLocal, setLightPower, setMeshOf,
+	setLightColor, setLightRadius, setLightPriority,
 	remove, insertBefore, closeScene, addCameraNode, setCameraOf, setActiveCamera,
 	setVisible, setPickable, setName, setAmbient, refresh, collectLights,
 	cameraOf as worldCameraOf,
@@ -404,6 +405,9 @@ export function Light(props: LightProps): NeonNode {
 			const node = addLightNode(scene, scope.parent, local, light);
 			ownNode(scope.state, node);
 			bindNode(scope.state, node, props, local);
+			let color = light.color;
+			let radius = light.radius;
+			let priority = light.priority;
 			createRenderEffect<LightInstance>(
 				(prev: LightInstance | null): LightInstance => ({
 					...light, kind: props.kind(),
@@ -413,9 +417,23 @@ export function Light(props: LightProps): NeonNode {
 				}),
 				(value: LightInstance, prev: LightInstance | null): Cleanup | null => {
 					if (value.kind !== light.kind) { throw new Error("Light: kind cannot change; Void has no light-kind binder"); }
-					if (value.color !== light.color) { throw new Error("Light: color cannot change; Void has no light-color binder"); }
-					if (value.radius !== light.radius) { throw new Error("Light: radius cannot change; Void has no light-radius binder"); }
-					if (value.priority !== light.priority) { throw new Error("Light: priority cannot change; Void has no light-priority binder"); }
+					let changed = false;
+					if (value.color !== color) {
+						setLightColor(scene, node, value.color);
+						color = value.color;
+						changed = true;
+					}
+					if (value.radius !== radius) {
+						setLightRadius(scene, node, value.radius);
+						radius = value.radius;
+						changed = true;
+					}
+					if (value.priority !== priority) {
+						setLightPriority(scene, node, value.priority);
+						priority = value.priority;
+						changed = true;
+					}
+					if (changed) { scope.state.invalidate(); }
 					return null;
 				},
 			);

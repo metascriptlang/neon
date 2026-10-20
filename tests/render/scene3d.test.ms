@@ -438,17 +438,18 @@ test "actual geometry upload failures report component API and enum then close o
 	assert handle.scene.nodeCount() === 0, "failed mount leaves no nodes";
 }
 
-test "Light refuses reactive changes without a Void binder rather than silently freezing them" {
+test "Light refuses kind changes without a Void binder rather than silently freezing them" {
 	const refs: Scene3DHandle[] = [];
 	let light = NO_NODE_ID;
-	const [radius, setRadius] = createSignal<float32>(2.0);
-	const dispose = mounted(element(<Void><Scene3D ref={(value: Scene3DHandle): void => { refs.push(value); }}><Light kind={LightKind.Point} radius={radius()} ref={(value: NodeId3D): void => { light = value; }} /></Scene3D></Void>));
+	const [kind, setKind] = createSignal<LightKind>(LightKind.Point);
+	const dispose = mounted(element(<Void><Scene3D ref={(value: Scene3DHandle): void => { refs.push(value); }}><Light kind={kind()} radius={2.0} ref={(value: NodeId3D): void => { light = value; }} /></Scene3D></Void>));
 	let failure = "";
-	try { setRadius(4.0); flush(); } catch (error) { failure = error.toString(); }
+	try { setKind(LightKind.Directional); flush(); } catch (error) { failure = error.toString(); }
 	finally { resetErrorHalt(); }
-	assert failure.includes("Light") && failure.includes("radius"), "unsupported update rejects with component and prop: " + failure;
+	assert failure.includes("Light") && failure.includes("kind"), "unsupported update rejects with component and prop: " + failure;
 	const handle: Scene3DHandle | null = refs.length === 0 ? null : refs[0];
 	if (handle === null) { throw new Error("fixture: handle ref did not mount"); }
+	assert handle.scene.lights[handle.scene.nodes[light.index].payload].kind === LightKind.Point, "rejected change preserves kind";
 	assert approx(handle.scene.lights[handle.scene.nodes[light.index].payload].radius, 2.0), "rejected change does not mutate light";
 	dispose();
 	assert handle.context.closed, "rejected update leaves owner disposable";
