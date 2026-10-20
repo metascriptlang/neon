@@ -243,6 +243,11 @@ and the invariants that outlived them were moved to the head of the test that pi
   lacks the audio API, which is on Ion origin `a853b2e`. Ion note
   `~/metascript/.inbox/ion/2026-10-15-local-main-diverged-from-window-content.md`. Same gate log as the row above.
 
+- **PARKED 2026-10-20 — a function-valued store field reads back as a proxy.** Not Neon's: the store
+  wraps a field when `isObject<V>()`, which std/typetraits answers `true` for a function and a class,
+  and calling the resulting `Proxy` passes the checker. `tests/core/storeFunctionField.parked.ms` does
+  not compile. Cards `~/metascript/.inbox/compiler/2026-10-20-typetraits-cannot-tell-a-plain-record-from-a-function-or-a-class.md`
+  and `2026-10-20-calling-a-proxy-of-a-function-passes-the-checker.md`.
 - **PARKED 2026-10-11 — `tests/render/flatList.test.ms` and `tests/components/flutterListsApp.test.ms` do not compile.**
   Not Neon's: an array-destructured local of an arrow passed as a JSX attribute
   (`const [focused, setFocused] = createSignal<boolean>(false)` in a `renderItem`) is refused as
