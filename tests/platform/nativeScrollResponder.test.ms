@@ -8,7 +8,7 @@ import { element } from "../../src/macros/ui/element";
 import { sleepAsync } from "std/core/promise";
 import {
 	nmTouchFull, nmLastPressableTag, nmLastScrollTag, nmScroll, nmTeardown,
-	nmTagWithProp, nmResponderBlocks,
+	nmTagWithProp, nmResponderBlocks, nmResponderTag,
 } from "./nativeBridgeMock.h";
 
 function observe(e: NeonEvent): void {}
@@ -267,4 +267,65 @@ test "native scroll pressOut reentrancy cannot apply an old grant after disposal
 		assert hits === 0 && outs === (removing ? 1 : 2);
 		assert applied === (removing ? 0 : 1), `old/native grants ${applied}`;
 	}
+}
+
+test "native pure View clears old responder before terminal or disposal callbacks" {
+	let actual = "";
+	let expected = "";
+	for (const mode of [0, 1, 2, 3]) {
+		for (const restart of [false, true]) {
+			for (const same of [false, true]) {
+				const native = createNativeHost();
+				let aTag: int32 = 0;
+				let bTag: int32 = 0;
+				let begun = false;
+				let calls = "";
+				const terminalStamp = mode === 3 ? 130000.0 : 130020.0;
+				const bStart = same ? terminalStamp : 131000.0;
+				const terminal = (which: int32, e: NeonEvent): void => {
+					if (e.timeStamp !== terminalStamp) { return; }
+					calls += which.toString();
+					actual += `${which}:${nmResponderTag()},${nmResponderBlocks()},` +
+						`${currentResponder() !== null};`;
+					const owner = begun ? mode === 3 ? bTag : aTag : 0;
+					expected += `${which}:${owner},${begun ? 1 : 0},${begun};`;
+					if (!restart || which !== (mode === 3 ? 2 : mode)) { return; }
+					begun = true;
+					nmTouchFull(mode === 3 ? bTag : aTag, 0, 30.0, 40.0, bStart);
+				};
+				const disposeA = render(element(<View accessibilityLabel="release-order-A"
+					onStartShouldSetResponder={(): boolean => true}
+					onResponderGrant={(): boolean => true}
+					onResponderEnd={(e: NeonEvent): void => { terminal(0, e); }}
+					onResponderRelease={(e: NeonEvent): void => { terminal(1, e); }}
+					onResponderTerminate={(e: NeonEvent): void => { terminal(2, e); }}
+				/>), native.host, native.rootNode);
+				const disposeB = render(element(<View accessibilityLabel="release-order-B"
+					onStartShouldSetResponder={(): boolean => true}
+					onResponderGrant={(): boolean => true}
+				/>), native.host, native.rootNode);
+				aTag = nmTagWithProp("accessibilityLabel", "release-order-A");
+				bTag = nmTagWithProp("accessibilityLabel", "release-order-B");
+				physical(aTag, 0, 130000.0);
+				if (mode === 3) { disposeA(); }
+				else { physical(aTag, mode === 2 ? 3 : 1, terminalStamp); }
+				actual += `${mode},${restart},${same}:` +
+					`${nmResponderTag()},${nmResponderBlocks()}/${calls}|`;
+				const owner = restart ? mode === 3 ? bTag : aTag : 0;
+				expected += `${mode},${restart},${same}:${owner},${restart ? 1 : 0}/` +
+					(mode < 2 ? "01|" : "2|");
+				if (restart) {
+					nmTouchFull(mode === 3 ? bTag : aTag, 1, 30.0, 40.0, bStart + 20.0);
+				}
+				if (mode === 3 && !restart) {
+					nmTouchFull(bTag, 0, 30.0, 40.0, terminalStamp + 50.0);
+					nmTouchFull(bTag, 3, 30.0, 40.0, terminalStamp + 60.0);
+				}
+				if (mode !== 3) { disposeA(); }
+				disposeB();
+				nmTeardown();
+			}
+		}
+	}
+	assert actual === expected, actual;
 }

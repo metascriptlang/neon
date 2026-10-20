@@ -6,6 +6,7 @@ import { neonEvent } from "../../src/render/event";
 import { NeonNode } from "../../src/render/node";
 import { View, Pressable, Text } from "../../src/components/primitives";
 import { PanResponder, PanResponderGestureState } from "../../src/components/panResponder";
+import { currentResponder } from "../../src/render/responder";
 
 function mount(app: () => NeonNode): MockNode {
 	const root = mockNode("root");
@@ -174,4 +175,107 @@ test "cheap Pressable filters only pointer-origin activation after a claimed dra
 	assert hits === 1, "claimed release suppresses physical duplicate";
 	fireEventWith(button, "onPress", semantic);
 	assert hits === 2, "identical timestamp does not make semantic activation physical";
+}
+
+test "pure View terminal callbacks retire old native ownership before reentry or throw" {
+	let actual = "";
+	let expected = "";
+	for (const mode of [0, 1, 2]) {
+		for (const restart of [false, true]) {
+			for (const same of [false, true]) {
+				for (const throwing of [false, true]) {
+					const root = mockNode("root");
+					let row: MockNode | null = null;
+					let begun = false;
+					let calls = "";
+					const bStart = same ? 110020 : 111000;
+					const terminal = (which: int32, e: NeonEvent): void => {
+						if (e.timeStamp !== 110020) { return; }
+						calls += which.toString();
+						const n = row as MockNode;
+						actual += `${which}:${n.holdsResponder},${n.blocksNative},` +
+							`${currentResponder() !== null};`;
+						expected += `${which}:${begun},${begun},${begun};`;
+						if (which !== mode) { return; }
+						if (restart) {
+							begun = true;
+							fireTouch(n, "onTouchStart", 30, 40, bStart);
+						}
+						if (throwing) { throw "pure terminal throw"; }
+					};
+					const dispose = render(element(<View
+						onStartShouldSetResponder={(): boolean => true}
+						onResponderGrant={(): boolean => true}
+						onResponderEnd={(e: NeonEvent): void => { terminal(0, e); }}
+						onResponderRelease={(e: NeonEvent): void => { terminal(1, e); }}
+						onResponderTerminate={(e: NeonEvent): void => { terminal(2, e); }}
+					/>), mockHost(), root as unknown as HostNode);
+					row = root.children[0];
+					fireTouch(row as MockNode, "onTouchStart", 10, 20, 110000);
+					let error = "";
+					try {
+						fireTouch(row as MockNode, mode === 2 ? "onTouchCancel" : "onTouchEnd",
+							10, 20, 110020);
+					} catch (e) { error = e.toString(); }
+					const n = row as MockNode;
+					actual += `${mode},${restart},${same},${throwing}:` +
+						`${n.holdsResponder},${n.blocksNative}/${calls}|`;
+					const order = mode === 2 ? "2" : throwing && mode === 0 ? "0" : "01";
+					expected += `${mode},${restart},${same},${throwing}:` +
+						`${restart},${restart}/${order}|`;
+					if (restart) { fireTouch(n, "onTouchEnd", 30, 40, bStart + 20); }
+					dispose();
+					assert throwing ? error.includes("pure terminal throw") : error === "", error;
+				}
+			}
+		}
+	}
+	assert actual === expected, actual;
+}
+
+test "pure View disposal releases native ownership before terminate callback starts another root" {
+	let actual = "";
+	let expected = "";
+	for (const restart of [false, true]) {
+		for (const same of [false, true]) {
+			for (const throwing of [false, true]) {
+				const root = mockNode("root");
+				const host = mockHost();
+				let a: MockNode | null = null;
+				let b: MockNode | null = null;
+				let calls = 0;
+				const bStart = same ? 120000 : 121000;
+				const disposeA = render(element(<View
+					onStartShouldSetResponder={(): boolean => true}
+					onResponderGrant={(): boolean => true}
+					onResponderTerminate={(): void => {
+						calls += 1;
+						actual += `${(a as MockNode).holdsResponder},` +
+							`${(a as MockNode).blocksNative}/${currentResponder() !== null};`;
+						expected += "false,false/false;";
+						if (restart) {
+							fireTouch(b as MockNode, "onTouchStart", 30, 40, bStart);
+						}
+						if (throwing) { throw "unmount terminal throw"; }
+					}}
+				/>), host, root as unknown as HostNode);
+				const disposeB = render(element(<View
+					onStartShouldSetResponder={(): boolean => true}
+					onResponderGrant={(): boolean => true}
+				/>), host, root as unknown as HostNode);
+				a = root.children[0]; b = root.children[1];
+				fireTouch(a as MockNode, "onTouchStart", 10, 20, 120000);
+				let error = "";
+				try { disposeA(); } catch (e) { error = e.toString(); }
+				actual += `${restart},${same},${throwing}:` +
+					`${(b as MockNode).holdsResponder},${(b as MockNode).blocksNative}/${calls}|`;
+				expected += `${restart},${same},${throwing}:${restart},${restart}/1|`;
+				if (restart) { fireTouch(b as MockNode, "onTouchEnd", 30, 40, bStart + 20); }
+				else { fireTouch(a as MockNode, "onTouchCancel", 10, 20, 120020); }
+				disposeB();
+				assert throwing ? error.includes("unmount terminal throw") : error === "", error;
+			}
+		}
+	}
+	assert actual === expected, actual;
 }

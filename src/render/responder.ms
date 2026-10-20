@@ -248,13 +248,13 @@ function finish(e: NeonEvent, released: boolean): void {
 	claimedThisTouch = false;
 	if (holder === null) { return; }
 	const entry = holder as ResponderEntry;
+	release(entry);
 	if (released) {
 		tell(entry.handlers.onResponderEnd, e);
 		tell(entry.handlers.onResponderRelease, e);
 	} else {
 		tell(entry.handlers.onResponderTerminate, e);
 	}
-	release(entry);
 }
 
 function repeated(phase: TouchPhase, e: NeonEvent): boolean {
@@ -310,6 +310,6 @@ export function responderUnmounted(entry: ResponderEntry): void {
 	e.timeStamp = history.mostRecentTimeStamp;
 	e.x = history.currentX;
 	e.y = history.currentY;
-	tell(entry.handlers.onResponderTerminate, e);
 	release(entry);
+	tell(entry.handlers.onResponderTerminate, e);
 }
