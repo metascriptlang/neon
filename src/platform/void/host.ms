@@ -14,7 +14,7 @@ import {
 import { TextRun, TextLayout, Align as TextAlign } from "../../../../void/src/void2d/textLayout";
 import { BoxStyle, BoxShadow, uniformRadii, uniformBorders } from "../../../../void/src/void2d/boxStyle";
 import { hitTest, xForIndex, lineBoxAt, indexAt } from "../../../../void/src/void2d/render";
-import { create, add, isDirty } from "../../../../void/src/void2d/scene";
+import { create, add, isDirty, isClosed } from "../../../../void/src/void2d/scene";
 import { Color, rgba, vec2 } from "../../../../void/src/void2d/types";
 import { FontId, FontError, DEFAULT_FONT, FontStyle as FaceStyle, SizeAdjust, resolveFont } from "../../../../void/src/void2d/font";
 import { FlexStyle, YGNode, FlexDirection, Justify, Align, PositionType, Wrap, Display, Overflow, layoutPass, freeLayoutTree } from "../../../../yoga/src/index";
@@ -1323,6 +1323,7 @@ export function createVoidHostWith(
 		flowText(root);
 		fitScrollers();
 		for (const e of events.slice(0)) {
+			if (scene.isClosed()) { return; }
 			if (e.name !== "onLayout" || e.node.disposed || !attached(e.node)) { continue; }
 			const n = e.node;
 			const now = frameOf(n);

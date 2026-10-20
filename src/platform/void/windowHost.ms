@@ -13,7 +13,7 @@ import { Style } from "../../render/style";
 import { publishScale } from "../../api/dimensions";
 import { FontId } from "../../../../void/src/void2d/font";
 import { Scene2D } from "../../../../void/src/void2d/node";
-import { create, close, present, prepare, drawScreen } from "../../../../void/src/void2d/scene";
+import { create, close, present, prepare, drawScreen, isClosed } from "../../../../void/src/void2d/scene";
 import { fbWidth, fbHeight, dpiScale } from "../../../../void/src/sokol/gpu";
 import { beginScreenPassWith, endPass, commit } from "../../../../void/src/gpu/door";
 import { Color, rgba } from "../../../../void/src/void2d/types";
@@ -221,22 +221,25 @@ export function deliverFocus(a: WindowArea, focused: boolean): void {
 	a.vh.setWindowFocus(focused);
 }
 
-export function drawArea(a: WindowArea): void {
+export function drawArea(a: WindowArea): boolean {
 	a.vh.layout(a.logicalWidth(), a.logicalHeight());
 	const scene = a.vh.scene;
+	if (scene.isClosed()) { return false; }
 	const layers = a.hub.layers().slice(0);
 	if (layers.length === 0) {
 		scene.present();
-		return;
+		return true;
 	}
 	const width = fbWidth();
 	const height = fbHeight();
 	const dpi = dpiScale();
 	for (const layer of layers) { layer.prepare(width, height, scene.clear); }
+	if (scene.isClosed()) { return false; }
 	scene.prepare((width as float32) / dpi, (height as float32) / dpi, dpi);
 	beginScreenPassWith(scene.clear.r, scene.clear.g, scene.clear.b, scene.clear.a);
 	for (const layer of layers) { layer.draw(); }
 	scene.drawScreen();
 	endPass();
 	commit();
+	return true;
 }

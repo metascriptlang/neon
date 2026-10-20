@@ -10,6 +10,7 @@ import {
 } from "../../../../ion/src/index";
 import { embedRegister, viewCreate, viewResize, viewFrame, viewDestroy, viewSwapChain, currentView, gfxSetup, ViewId, ViewInvalid } from "../../../../void/src/sokol/gpu";
 import { setup2d } from "../../../../void/src/void2d/draw";
+import { commit as commitFrame } from "../../../../void/src/gpu/door";
 import { addFont, registerFace, FontId, FontStyle as FaceStyle, DEFAULT_FONT } from "../../../../void/src/void2d/font";
 import { Scene2D } from "../../../../void/src/void2d/node";
 import { exit } from "std/process";
@@ -75,6 +76,7 @@ let _drawn = 0;
 export function frameCounts(): number[] { return [_requested, _drawn]; }
 
 const _areas: Area[] = [];
+let _retiredViews: ViewId[] = [];
 let _font: FontId = DEFAULT_FONT;
 let _family: string | null = null;
 let _wired = false;
@@ -131,7 +133,10 @@ function drawCurrent(): void {
 	const owner = a as Area;
 	const area = owner.area;
 	_drawn = _drawn + 1;
-	drawArea(area);
+	if (!drawArea(area)) {
+		commitFrame();
+		return;
+	}
 	const r = area.vh.imeRect();
 	if (r !== null) {
 		const s = area.scale;
@@ -206,6 +211,9 @@ function wireInput(): void {
 		runFrameFires();
 		const a = areaOfWindow(window);
 		if (a !== null && (a as Area).view !== ViewInvalid) { viewFrame((a as Area).view); }
+		const retired = _retiredViews;
+		_retiredViews = [];
+		for (const view of retired) { viewDestroy(view); }
 	});
 	onPointer((e: PointerEvent): void => {
 		const a = areaOfWindow(e.window);
@@ -263,7 +271,12 @@ function ionWindowHost(win: Window): Host {
 					owner.visual = null;
 					commit(win);
 				}
-				if (owner.view !== ViewInvalid) { viewDestroy(owner.view); }
+				if (owner.view === ViewInvalid) { return; }
+				if (currentView() === owner.view) {
+					_retiredViews.push(owner.view);
+				} else {
+					viewDestroy(owner.view);
+				}
 				return;
 			}
 		},
