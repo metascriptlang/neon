@@ -17,8 +17,10 @@ class Paragraph {
 	// A paragraph of one string has nothing to coalesce, so its change goes straight to the host.
 	single: SpanNode | null = null;
 	deliver: (text: string) => void;
+	node: HostNode;
 
-	constructor(changed: (v: number) => void, deliver: (text: string) => void) {
+	constructor(node: HostNode, changed: (v: number) => void, deliver: (text: string) => void) {
+		this.node = node;
 		this.changed = changed;
 		this.deliver = deliver;
 	}
@@ -76,6 +78,17 @@ function detach(n: SpanNode): void {
 function nestedParagraph(host: Host, node: HostNode, before: HostNode | null, kids: NeonNode | null, spans: Accessor<TextSpan[]> | null): void {
 	if (spans !== null) { throw new Error("spans belong on the outermost Text"); }
 	if (kids !== null) { (kids as NeonNode)(host, node, before); }
+}
+
+// The host node of the outermost Text whose paragraph holds the span, or null while the span is in none.
+export function spanText(node: HostNode): HostNode | null {
+	let cur: SpanNode | null = spanOf(node);
+	while (cur !== null) {
+		const p = (cur as SpanNode).paragraph;
+		if (p !== null) { return (p as Paragraph).node; }
+		cur = (cur as SpanNode).parent;
+	}
+	return null;
 }
 
 const SPAN_ATTRS = ["class", "accessible", "accessibilityLabel", "accessibilityHint", "accessibilityRole"];
@@ -186,7 +199,7 @@ export function spanParagraph(deliver: (node: HostNode, spans: TextSpan[]) => vo
 	}
 	const root = new SpanNode(false);
 	const [changed, setChanged] = createSignal<number>(0, { ownedWrite: true });
-	const para = new Paragraph((v: number): void => { setChanged(v); }, (text: string): void => {
+	const para = new Paragraph(node, (v: number): void => { setChanged(v); }, (text: string): void => {
 		const one: TextSpan[] = [{ text }];
 		deliver(node, one);
 	});
