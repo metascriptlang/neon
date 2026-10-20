@@ -1,5 +1,6 @@
 import { accessor, createSignal } from "../../src/core/signal";
 import { createRoot } from "../../src/core/owner";
+import { flush, resetErrorHalt } from "../../src/core/runtime";
 import { element } from "../../src/macros/ui/element";
 import { Show } from "../../src/macros/ui/flow";
 import { NeonNode } from "../../src/render/node";
@@ -33,7 +34,7 @@ function mountError(node: NeonNode): string {
 		try {
 			const root = mockNode("root");
 			node(mockHost(), root as unknown as HostNode, null);
-		} catch (error) { message = error.toString(); } finally { dispose(); }
+		} catch (error) { message = error.toString(); } finally { dispose(); resetErrorHalt(); }
 	});
 	return message;
 }
@@ -90,7 +91,12 @@ test "all five components mount real Void nodes without creating host elements" 
 	assert handle.scene.nodes[meshId.index].kind === NodeKind.Mesh, "mesh is a real Void mesh node";
 	assert handle.scene.nodes[lightId.index].kind === NodeKind.Light, "light is a real Void light node";
 	assert handle.camera !== null, "active camera is selected";
-	assert mockToString(root) === "<root><void><voidroot><view><text>HUD</text></view></voidroot></void></root>", "3D stays out of host element creation, HUD remains 2D";
+	const outer = root.children[0];
+	assert root.children.length === 1 && outer.tag === "void" && outer.children.length === 1, "the Void is the only host element";
+	let otherAttrs = 0;
+	for (const a of outer.attrs) { if (a.name !== "frameRequested") { otherAttrs = otherAttrs + 1; } }
+	assert outer.attrs.length > 0 && otherAttrs === 0, "the scene only asks its area for frames";
+	assert mockToString(outer.children[0]) === "<voidroot><view><text>HUD</text></view></voidroot>", "3D stays out of host element creation, HUD remains 2D";
 	const released = releaseMesh(handle.context, mesh);
 	assert released.ok, "caller can release its uploaded mesh hold while a node pins it";
 	dispose();
@@ -116,14 +122,18 @@ test "nested world transforms follow signals and stop after disposal" {
 	assert initial.ok, "nested child's world matrix exists";
 	if (initial.ok) { assert approx(initial.value.m41, 2.0) && approx(initial.value.m42, 3.0) && approx(initial.value.m43, 4.0), "initial local translations compose"; }
 	setX(7.0);
+	flush();
 	setY(9.0);
+	flush();
 	syncWorld(handle.scene);
 	const changed = handle.scene.worldOf(child);
 	assert changed.ok, "nested world remains available";
 	if (changed.ok) { assert approx(changed.value.m41, 7.0) && approx(changed.value.m42, 9.0) && approx(changed.value.m43, 4.0), "signals update nested world"; }
 	dispose();
 	setX(12.0);
+	flush();
 	setY(15.0);
+	flush();
 	assert handle.scene.closed && handle.context.closed, "disposed effects never call binders on closed owners";
 	assert !handle.scene.isLive(parent) && !handle.scene.isLive(child), "disposed transform handles are stale";
 }
@@ -147,6 +157,7 @@ test "rotation and scale carry nested offsets and individual props override tran
 	assert first.ok, "rotated child has world transform";
 	if (first.ok) { assert approx(first.value.m41, 5.0) && approx(first.value.m42, 0.0) && approx(first.value.m43, -2.0), "parent rotation and scale transform child's offset"; }
 	setTurn(0.0);
+	flush();
 	const nextSync = syncWorld(handle.scene);
 	const next = handle.scene.worldOf(child);
 	assert next.ok, "unrotated child has world transform";
@@ -173,8 +184,11 @@ test "Light power and local pose react under a moving group" {
 	assert nearVec(handle.scene.lights[payload].color, 0.8, 0.4, 0.2), "authored color";
 	assert approx(handle.scene.lights[payload].radius, 8.0) && handle.scene.lights[payload].priority === 3, "authored radius and priority";
 	setPower(6.0);
+	flush();
 	setHeight(7.0);
+	flush();
 	setOffset(9.0);
+	flush();
 	const synced = syncWorld(handle.scene);
 	assert approx(handle.scene.lights[payload].power, 6.0), "power binder follows signal";
 	const world = handle.scene.worldOf(light);
@@ -182,7 +196,9 @@ test "Light power and local pose react under a moving group" {
 	if (world.ok) { assert approx(world.value.m41, 9.0) && approx(world.value.m42, 7.0), "light pose and ancestor pose are reactive"; }
 	dispose();
 	setPower(12.0);
+	flush();
 	setHeight(14.0);
+	flush();
 	assert handle.scene.nodeCount() === 0 && handle.context.closed, "light effects stop with owner";
 }
 
@@ -207,9 +223,11 @@ test "Camera3D selection restores active world-bound cameras and reacts" {
 	assert handle.camera !== null, "most recently mounted active camera wins";
 	if (handle.camera !== null) { assert approx(handle.camera.position.x, 20.0), "second camera selected"; }
 	setSecondActive(false);
+	flush();
 	assert handle.camera !== null, "disabling active winner restores prior camera";
 	if (handle.camera !== null) { assert approx(handle.camera.position.x, 2.0), "first camera restored"; }
 	setX(7.0); setYaw(0.7); setPitch(0.4); setNear(0.5); setFar(250.0);
+	flush();
 	if (handle.camera !== null) {
 		assert nearVec(handle.camera.position, 7.0, 3.0, 8.0), "camera pose follows signal";
 		assert approx(handle.camera.yaw, 0.7) && approx(handle.camera.pitch, 0.4), "camera angles follow signals";
@@ -217,18 +235,24 @@ test "Camera3D selection restores active world-bound cameras and reacts" {
 		assert handle.camera.projection.kind === ProjectionKind.Perspective, "authored projection retained";
 	}
 	setProjection({ kind: ProjectionKind.Orthographic, worldPerTexel: 0.1, snap: false });
+	flush();
 	if (handle.camera !== null) { assert handle.camera.projection.kind === ProjectionKind.Orthographic, "camera projection follows signal"; }
 	setSecondActive(true);
+	flush();
 	if (handle.camera !== null) { assert approx(handle.camera.position.x, 20.0), "reenabling winner selects it"; }
 	setShowSecond(false);
+	flush();
 	assert !handle.scene.closed && handle.camera !== null, "removing camera leaves scene open and restores another active camera";
 	if (handle.camera !== null) { assert approx(handle.camera.position.x, 7.0), "removal restores updated first camera"; }
 	setFirstActive(false);
+	flush();
 	assert handle.camera === null, "no active cameras means null";
 	setFirstActive(true);
+	flush();
 	assert handle.camera !== null, "reactivation selects remaining camera";
 	dispose();
 	setX(90.0); setFirstActive(false);
+	flush();
 	assert handle.camera === null, "disposal clears selected camera and stops selection effects";
 }
 
@@ -261,12 +285,14 @@ test "Mesh uses seeded resources, shares default material and removes a subtree 
 	assert block.length > 0 && handle.context.uniforms.holds(block), "default material owns a live lit uniform range";
 	assert handle.context.meshPins[resource.index] === 2 && handle.context.meshHolders[resource.index] === 3, "borrowed resource retains caller hold and gains two node pins";
 	setShown(false);
+	flush();
 	assert !handle.scene.closed && !handle.context.closed, "structural removal does not close the scene";
 	assert handle.scene.nodeCount() === 2, "root and surviving mesh remain";
 	assert !handle.scene.isLive(removable) && !handle.scene.isLive(first) && handle.scene.isLive(second), "subtree removed, sibling remains live";
 	assert handle.context.meshPins[resource.index] === 1 && handle.context.meshHolders[resource.index] === 2, "removal releases only removed node's pin";
 	assert handle.context.hasMaterial(firstMaterial) && handle.context.uniforms.holds(block), "default material survives one consumer removal";
 	setShown(true);
+	flush();
 	assert handle.scene.nodeCount() === 4, "subtree can mount again while same scene is open";
 	const restoredMaterial = handle.scene.meshes[handle.scene.nodes[first.index].payload].material;
 	assert restoredMaterial === firstMaterial, "remount reuses scene default material";
@@ -297,6 +323,7 @@ test "Mesh borrows explicitly supplied material without taking the caller's hold
 	assert handle.scene.meshes[handle.scene.nodes[meshNode.index].payload].material === material, "supplied material reaches node";
 	assert handle.context.materialHolders[material.index] === 2 && handle.context.materialPins[material.index] === 1, "node pins supplied material without consuming caller hold";
 	setShown(false);
+	flush();
 	assert handle.context.hasMaterial(material) && handle.context.materialHolders[material.index] === 1, "caller material survives node removal";
 	assert handle.context.hasMesh(mesh) && handle.context.meshHolders[mesh.index] === 1, "caller mesh survives node removal";
 	const freedMesh = releaseMesh(handle.context, mesh);
@@ -379,7 +406,9 @@ test "Mesh transform and uploaded handle follow signals with balanced borrowed p
 	if (handle === null) { throw new Error("fixture: handle ref did not mount"); }
 	assert handle.context.meshPins[first.index] === 1 && handle.context.meshPins[second.index] === 0, "initial handle alone is pinned";
 	setX(6.0);
+	flush();
 	setUseSecond(true);
+	flush();
 	const synced = syncWorld(handle.scene);
 	const world = handle.scene.worldOf(meshNode);
 	assert world.ok, "mesh remains a live node after reactive resource replacement";
@@ -393,7 +422,9 @@ test "Mesh transform and uploaded handle follow signals with balanced borrowed p
 	dispose();
 	assert handle.context.meshHolders[first.index] === 0 && handle.context.meshHolders[second.index] === 0, "replacement leaves no mesh hold";
 	setX(10.0);
+	flush();
 	setUseSecond(false);
+	flush();
 	assert handle.context.closed, "mesh effects stop after disposal";
 }
 
@@ -413,7 +444,8 @@ test "Light refuses reactive changes without a Void binder rather than silently 
 	const [radius, setRadius] = createSignal<float32>(2.0);
 	const dispose = mounted(element(<Void><Scene3D ref={(value: Scene3DHandle): void => { refs.push(value); }}><Light kind={LightKind.Point} radius={radius()} ref={(value: NodeId3D): void => { light = value; }} /></Scene3D></Void>));
 	let failure = "";
-	try { setRadius(4.0); } catch (error) { failure = error.toString(); }
+	try { setRadius(4.0); flush(); } catch (error) { failure = error.toString(); }
+	finally { resetErrorHalt(); }
 	assert failure.includes("Light") && failure.includes("radius"), "unsupported update rejects with component and prop: " + failure;
 	const handle: Scene3DHandle | null = refs.length === 0 ? null : refs[0];
 	if (handle === null) { throw new Error("fixture: handle ref did not mount"); }
