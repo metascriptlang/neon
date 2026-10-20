@@ -54,6 +54,7 @@ import {
 	niLastControlTag, niLastControlPhase, niLastControlValue, niLastControlWidth, niLastControlHeight,
 	niKeyboardHeight, niColorScheme, niRequestFrame, niSafeAreaInset,
 } from "./bridge.h";
+import { flush } from "../../core/runtime";
 import { niLoopRun } from "./loop.h";
 
 extern function niRegisterApp(mount: () => void): void;
@@ -1221,7 +1222,7 @@ function requestLayout(): void {
 function batched(fn: () => void): void {
 	batchDepth += 1;
 	try {
-		fn();
+		if (batchDepth === 1) { flush(fn); } else { fn(); }
 	} finally {
 		batchDepth -= 1;
 	}
