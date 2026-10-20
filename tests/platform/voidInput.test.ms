@@ -22,6 +22,7 @@ import { Style } from "../../src/render/style";
 import { rgba, vec2, Vec2 } from "../../../void/src/void2d/types";
 import { labelTexts } from "../../../void/src/void2d/labelText";
 import { FontId, DEFAULT_FONT, addFont } from "../../../void/src/void2d/font";
+import { flush } from "../../src/core/runtime";
 
 const FONT_PATH = "../void/assets/font.ttf";
 
@@ -77,11 +78,16 @@ test "a click focuses the text field and typed text reaches onChangeText" {
 			<TextInput style={{ width: 200, height: 24 }} onChangeText={(t: string): void => { seen.push(t); }} />
 		</View>
 	), vh.host, vh.root);
+	flush();
 	vh.layout(300.0, 100.0);
+	flush();
 	vh.clickAt(10.0, 10.0);
+	flush();
 	assert vh.focused() === field(vh), "the click focused the field";
 	vh.commitText("h");
+	flush();
 	vh.commitText("i");
+	flush();
 	assert seen.join(",") === "h,hi", "each commit reported: " + seen.join(",");
 	assert labelOf(field(vh)).text() === "hi", "the label shows the value";
 }
@@ -90,15 +96,20 @@ test "a Telex word shows its preedit and reports once, on commit" {
 	const vh = host();
 	const seen: string[] = [];
 	render(element(<TextInput style={{ width: 200, height: 24 }} onChangeText={(t: string): void => { seen.push(t); }} />), vh.host, vh.root);
+	flush();
 	vh.layout(300.0, 100.0);
+	flush();
 	vh.focus(top(vh));
+	flush();
 	for (const step of ["v", "vi", "vie", "viê", "viêt", "việt"]) {
 		vh.composeText(step, step.length);
 	}
 	assert seen.length === 0, "no change while composing: " + seen.join(",");
 	assert labelOf(top(vh)).text() === "việt", "the preedit is drawn inline";
 	vh.composeText("", 0);
+	flush();
 	vh.commitText("việt");
+	flush();
 	assert seen.join(",") === "việt", "one change on commit: " + seen.join(",");
 }
 
@@ -112,11 +123,16 @@ test "Backspace, arrows and Enter edit the focused field" {
 		onKeyPress={(e: NeonEvent): void => { pressed = pressed + e.key + " "; }}
 		onSubmitEditing={(e: NeonEvent): void => { submitted = e.value; }} />), vh.host, vh.root);
 	vh.focus(top(vh));
+	flush();
 	vh.commitText("abc");
+	flush();
 	vh.keyDown(key("ArrowLeft"));
+	flush();
 	vh.keyDown(key("Backspace"));
+	flush();
 	assert seen[seen.length - 1] === "ac", "backspace before the caret: " + seen.join(",");
 	vh.keyDown(key("Enter"));
+	flush();
 	assert submitted === "ac", "submit carries the text: " + submitted;
 	assert pressed === "ArrowLeft Backspace Enter ", "onKeyPress saw each key: " + pressed;
 }
@@ -126,8 +142,10 @@ test "a controlled value replaces the text without reporting a change" {
 	const [value, setValue] = createSignal("one");
 	let changes = 0;
 	render(element(<TextInput value={value()} onChangeText={(t: string): void => { changes = changes + 1; }} />), vh.host, vh.root);
+	flush();
 	assert labelOf(top(vh)).text() === "one", "initial value drawn";
 	setValue("two");
+	flush();
 	assert labelOf(top(vh)).text() === "two", "new value drawn";
 	assert changes === 0, "a value set by the app is not a change: " + changes.toString();
 }
@@ -141,10 +159,14 @@ test "keys go to the focused node and bubble to its parents" {
 			<View ref={(h: ViewHandle): void => { inner = h.node as VoidNode; }} onKeyDown={(e: NeonEvent): void => { order = order + "inner:" + e.key + " "; }} />
 		</View>
 	), vh.host, vh.root);
+	flush();
 	vh.keyDown(key("a"));
+	flush();
 	assert order === "", "nothing is focused, nothing receives keys: " + order;
 	vh.focus(inner);
+	flush();
 	vh.keyDown(key("a"));
+	flush();
 	assert order === "inner:a outer:a ", "focused first, then its parent: " + order;
 }
 
@@ -157,10 +179,15 @@ test "focus moves on click, fires onFocus and onBlur, and a click on empty space
 			<TextInput style={{ width: 100, height: 24 }} onFocus={(): void => { log = log + "+b "; }} onBlur={(): void => { log = log + "-b "; }} />
 		</View>
 	), vh.host, vh.root);
+	flush();
 	vh.layout(300.0, 100.0);
+	flush();
 	vh.clickAt(10.0, 10.0);
+	flush();
 	vh.clickAt(110.0, 10.0);
+	flush();
 	vh.clickAt(250.0, 90.0);
+	flush();
 	assert log === "+a -a +b -b ", "focus sequence: " + log;
 	assert vh.focused() === null, "empty space leaves nothing focused";
 }
@@ -169,9 +196,13 @@ test "window focus blurs and refocuses the focused node" {
 	const vh = host();
 	let log = "";
 	render(element(<TextInput onFocus={(): void => { log = log + "+ "; }} onBlur={(): void => { log = log + "- "; }} />), vh.host, vh.root);
+	flush();
 	vh.focus(top(vh));
+	flush();
 	vh.setWindowFocus(false);
+	flush();
 	vh.setWindowFocus(true);
+	flush();
 	assert log === "+ - + ", "window focus reached the node: " + log;
 	assert vh.focused() === top(vh), "the node keeps focus across the window";
 }
@@ -182,9 +213,13 @@ test "onLayout reports the frame once per change" {
 	render(element(
 		<View style={{ flexGrow: 1, padding: 10 }} onLayout={(e: NeonEvent): void => { frames.push(e.x.toString() + "," + e.y.toString() + "," + e.width.toString() + "x" + e.height.toString()); }} />
 	), vh.host, vh.root);
+	flush();
 	vh.layout(400.0, 300.0);
+	flush();
 	vh.layout(400.0, 300.0);
+	flush();
 	vh.layout(500.0, 200.0);
+	flush();
 	assert frames.join(" ") === "0,0,400x300 0,0,500x200", "frames: " + frames.join(" ");
 }
 
@@ -198,12 +233,17 @@ test "a layout change an onLayout handler makes is laid out in the frame that ra
 			<View style={{ width: w(), height: 10 }} />
 		</View>
 	), vh.host, vh.root);
+	flush();
 	const second = (): number => top(vh).children[1].ref.content().w as number;
 	vh.layout(400.0, 300.0);
+	flush();
 	assert second() === 200.0, "the first frame lays out the handler's width: w=" + second().toString();
 	settle(vh);
+	flush();
 	setH(30);
+	flush();
 	vh.layout(400.0, 300.0);
+	flush();
 	assert second() === 300.0, "a later frame lays out its handler's change too: w=" + second().toString();
 }
 
@@ -215,9 +255,13 @@ test "a node an onLayout handler mounts is laid out before the frame is drawn" {
 			<Show when={shown()}><View style={{ marginLeft: 50, width: 100, height: 40 }} /></Show>
 		</View>
 	), vh.host, vh.root);
+	flush();
 	vh.layout(400.0, 300.0);
+	flush();
 	settle(vh);
+	flush();
 	vh.layout(500.0, 300.0);
+	flush();
 	const kids = top(vh).children.length;
 	assert kids === 2, "the handler mounted the box before Show's marker: " + kids.toString();
 	const box = top(vh).children[0].ref;
@@ -230,6 +274,7 @@ test "an onLayout handler that never settles is refused" {
 	render(element(
 		<View style={{ width: w(), height: 10 }} onLayout={(e: NeonEvent): void => { setW(e.width === 100 ? 200 : 100); }} />
 	), vh.host, vh.root);
+	flush();
 	let refused = "";
 	try {
 		vh.layout(400.0, 300.0);
@@ -246,10 +291,14 @@ test "the IME rect follows the caret of the focused field in window coordinates"
 			<TextInput style={{ width: 200, height: 24 }} />
 		</View>
 	), vh.host, vh.root);
+	flush();
 	vh.layout(300.0, 100.0);
+	flush();
 	assert vh.imeRect() === null, "no focus, no rect";
 	vh.clickAt(25.0, 35.0);
+	flush();
 	vh.commitText("abc");
+	flush();
 	const r = vh.imeRect() as CaretRect;
 	assert r.x === 20.0 + labelOf(field(vh)).xForIndex(3) && r.x > 20.0 && r.y === 30.0, `rect at ${r.x},${r.y}`;
 	assert r.h > 0.0, "rect has the line height";
@@ -266,11 +315,17 @@ test "a hand-drawn node receives text as a Flutter-style text input client" {
 		},
 		caretRect: (): CaretRect => { return { x: 5.0, y: 6.0, w: 1.0, h: 16.0 }; },
 	}, editingValue(""));
+	flush();
 	vh.focus(node);
+	flush();
 	vh.composeText("a", 1);
+	flush();
 	vh.commitText("á");
+	flush();
 	vh.setEditingState(node, editingValue(""));
+	flush();
 	vh.commitText("x");
+	flush();
 	assert values.join(" ") === "a[0,1] á[-1,-1] [-1,-1] x[-1,-1]", "values: " + values.join(" ");
 	const r = vh.imeRect() as CaretRect;
 	assert r.x === 5.0 && r.y === 6.0, "the client's caret rect, offset by the node";
@@ -280,13 +335,18 @@ test "a tree change wakes the host once the scene is clean" {
 	const vh = host();
 	let woke = 0;
 	vh.onDirty((): void => { woke = woke + 1; });
+	flush();
 	const [n, setN] = createSignal(0);
 	settle(vh);
+	flush();
 	assert !vh.scene.isDirty(), "a painted scene with no writes is clean";
 	render(element(<View><TextInput value={n().toString()} /></View>), vh.host, vh.root);
+	flush();
 	assert woke === 1, "mounting woke the host once: " + woke.toString();
 	settle(vh);
+	flush();
 	setN(1);
+	flush();
 	assert woke === 2, "a signal write woke it again: " + woke.toString();
 }
 
@@ -295,6 +355,7 @@ test "every label the host makes draws in the host's font" {
 	assert second !== DEFAULT_FONT, "the test font is a second face";
 	const vh = createVoidHostWith(Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0)), second);
 	render(element(<View><Text>hi</Text><TextInput /></View>), vh.host, vh.root);
+	flush();
 	const view = top(vh);
 	assert paragraph(view.children[0]).textStyle().font === second, "text label font";
 	assert labelOf(view.children[1]).textStyle().font === second, "text field label font";
@@ -304,12 +365,15 @@ test "a Text's strings draw in order as one paragraph label, and a string change
 	const vh = host();
 	const [n, setN] = createSignal(7);
 	render(element(<View style={{ width: 200, height: 20 }}><Text>Count: {n().toString()}</Text></View>), vh.host, vh.root);
+	flush();
 	vh.layout(200.0, 20.0);
+	flush();
 	const text = top(vh).children[0];
 	assert paragraph(text).text() === "Count: 7", "one label holds both strings: \"" + paragraph(text).text() + "\"";
 	assert text.ref.numChildren() === 1, "the paragraph label is the Text's only scene child, got " + text.ref.numChildren().toString();
 	assert text.children.length === 0, "the strings are spans, not host nodes";
 	setN(8);
+	flush();
 	assert paragraph(text).text() === "Count: 8", "the changed string reaches the paragraph: \"" + paragraph(text).text() + "\"";
 	assert runsOf(vh, paragraph(text)).length === 0, "an unstyled paragraph draws without runs";
 }
@@ -317,6 +381,7 @@ test "a Text's strings draw in order as one paragraph label, and a string change
 test "a text field keeps its text color when it has a background" {
 	const vh = host();
 	render(element(<TextInput style={{ backgroundColor: "#313244", color: "#ffffff" }} />), vh.host, vh.root);
+	flush();
 	const f = top(vh);
 	assert Math.abs(f.ref.paint().color.r - 0x31 / 255.0) < 0.001 && Math.abs(f.ref.paint().color.b - 0x44 / 255.0) < 0.001, "the field paints the background";
 	assert labelOf(f).paint().color.r === 1.0, "the label keeps the text color, got r=" + labelOf(f).paint().color.r.toString();
@@ -327,17 +392,21 @@ test "a Text's color and fontSize reach its paragraph, and follow a style change
 	const [red, setRed] = createSignal(true);
 	const [n, setN] = createSignal(7);
 	render(element(<View><Text style={{ color: red() ? "#ff0000" : "#00ff00", fontSize: 20 }}>Count: {n().toString()}</Text></View>), vh.host, vh.root);
+	flush();
 	const label = paragraph(top(vh).children[0]);
 	assert label.paint().color.r === 1.0 && label.paint().color.g === 0.0, "the paragraph is red";
 	assert label.textStyle().size === 20.0, "the paragraph is 20, got " + label.textStyle().size.toString();
 	setRed(false);
+	flush();
 	assert label.paint().color.g === 1.0 && label.paint().color.r === 0.0, "the paragraph turned green";
 }
 
 test "a nested Text is a run of the outer Text's paragraph, which wraps at the Text's laid width" {
 	const vh = host();
 	render(element(<View style={{ width: 120 }}><Text>Hello there <Text style={{ color: "#ff0000" }}>big red words</Text> and a long tail that wraps</Text></View>), vh.host, vh.root);
+	flush();
 	vh.layout(120.0, 300.0);
+	flush();
 	const text = top(vh).children[0];
 	const label = paragraph(text);
 	assert label.text() === "Hello there big red words and a long tail that wraps", "one paragraph: \"" + label.text() + "\"";
@@ -356,14 +425,18 @@ test "a nested Text's colour and content changes reach its run, and the runs go 
 	const [word, setWord] = createSignal("red");
 	const [shown, setShown] = createSignal(true);
 	render(element(<View style={{ width: 300 }}><Text>a <Show when={shown()}><Text style={{ color: hot() ? "#ff0000" : "#0000ff", textDecorationLine: "underline" }}>{word()}</Text></Show> b</Text></View>), vh.host, vh.root);
+	flush();
 	const label = paragraph(top(vh).children[0]);
 	assert label.text() === "a red b", "start: \"" + label.text() + "\"";
 	assert runsOf(vh, label)[1].underline.r === 1.0, "the underline takes the run colour";
 	setHot(false);
+	flush();
 	assert runsOf(vh, label)[1].color.b === 1.0 && runsOf(vh, label)[1].color.r === 0.0, "the run turned blue";
 	setWord("blue");
+	flush();
 	assert label.text() === "a blue b" && runsOf(vh, label)[1].len === 4, "the run follows its string: \"" + label.text() + "\"";
 	setShown(false);
+	flush();
 	assert label.text() === "a  b", "the span left: \"" + label.text() + "\"";
 	assert runsOf(vh, label).length === 0, "no styled span left, so no runs";
 }
@@ -372,11 +445,14 @@ test "cellWidth puts every grapheme of the paragraph on a fixed cell, and follow
 	const vh = host();
 	const [cell, setCell] = createSignal(10);
 	render(element(<View style={{ width: 300 }}><Text cellWidth={cell()}>ab<Text style={{ color: "#ff0000" }}>cd</Text></Text></View>), vh.host, vh.root);
+	flush();
 	vh.layout(300.0, 100.0);
+	flush();
 	const label = paragraph(top(vh).children[0]);
 	label.textWidth();
 	assert label.xForIndex(1) === 10.0 && label.xForIndex(3) === 30.0, "cells of 10: " + label.xForIndex(1).toString() + ", " + label.xForIndex(3).toString();
 	setCell(7);
+	flush();
 	label.textWidth();
 	assert label.xForIndex(2) === 14.0, "cells of 7: " + label.xForIndex(2).toString();
 }
@@ -384,7 +460,9 @@ test "cellWidth puts every grapheme of the paragraph on a fixed cell, and follow
 test "a cellWidth Text narrower than its text stays one line" {
 	const vh = host();
 	render(element(<View style={{ width: 100 }}><Text cellWidth={10}>abcdefghijklmnopqrst</Text></View>), vh.host, vh.root);
+	flush();
 	vh.layout(100.0, 100.0);
+	flush();
 	const label = paragraph(top(vh).children[0]);
 	label.textWidth();
 	assert label.xForIndex(15) === 150.0, "grapheme 15 stays on the first line: x=" + label.xForIndex(15).toString();
@@ -395,6 +473,7 @@ test "spans draw as one paragraph label on the Void host, with no node per span"
 	const red: Style = { color: "#ff0000", textDecorationLine: "underline" };
 	const [spans, setSpans] = createSignal<TextSpan[]>([{ text: "error", style: red }, { text: ": not found" }]);
 	render(element(<View style={{ width: 300 }}><Text spans={spans()} /></View>), vh.host, vh.root);
+	flush();
 	const text = top(vh).children[0];
 	const label = paragraph(text);
 	assert label.text() === "error: not found", "one paragraph: \"" + label.text() + "\"";
@@ -403,8 +482,10 @@ test "spans draw as one paragraph label on the Void host, with no node per span"
 	assert runs.length === 2 && runs[0].len === 5 && runs[1].len === 11, "a run per span";
 	assert runs[0].color.r === 1.0 && runs[0].color.g === 0.0 && runs[0].underline.r === 1.0 && runs[1].color.g === 1.0, "only the first span is red and underlined";
 	setSpans([{ text: "warning", style: { color: "#0000ff" } }, { text: ": slow" }]);
+	flush();
 	assert label.text() === "warning: slow" && runsOf(vh, label)[0].len === 7 && runsOf(vh, label)[0].color.b === 1.0, "a new line of spans: \"" + label.text() + "\"";
 	setSpans([{ text: "plain" }]);
+	flush();
 	assert label.text() === "plain" && runsOf(vh, label).length === 0, "unstyled spans draw without runs";
 }
 
@@ -413,18 +494,23 @@ test "a press over a nested Text's run fires that run's onPress, and the plain t
 	let link = 0;
 	let outer = 0;
 	render(element(<View style={{ width: 400 }}><Text style={{ height: 30 }} onPress={(): void => { outer += 1; }}>plain <Text onPress={(): void => { link += 1; }}>link</Text> tail</Text></View>), vh.host, vh.root);
+	flush();
 	vh.layout(400.0, 100.0);
+	flush();
 	const label = paragraph(top(vh).children[0]);
 	label.textWidth();
 	const at = (index: int32): Vec2 => label.localToGlobal(vec2(label.xForIndex(index) + 1.0, label.lineBoxAt(index).top + 2.0));
 	const inLink = at(7);
 	vh.clickAt(inLink.x, inLink.y);
+	flush();
 	assert link === 1 && outer === 0, "a press inside \"link\" is the run's: link=" + link.toString() + " outer=" + outer.toString();
 	const inPlain = at(1);
 	vh.clickAt(inPlain.x, inPlain.y);
+	flush();
 	assert link === 1 && outer === 1, "a press on the plain text is the Text's: link=" + link.toString() + " outer=" + outer.toString();
 	const pastEnd = label.localToGlobal(vec2(label.textWidth() + 40.0, label.lineBoxAt(0).top + 2.0));
 	vh.clickAt(pastEnd.x, pastEnd.y);
+	flush();
 	assert link === 1, "past the line's end there is no run";
 }
 
@@ -466,7 +552,9 @@ test "a key event carries the physical detail the window supplied, to the focuse
 				onKeyDown={(e: NeonEvent): void => { seen = seen + `${e.scancode} ${e.mods} ${e.consumedMods} ${e.unshifted} ${e.text} `; }} />
 		</View>
 	), vh.host, vh.root);
+	flush();
 	vh.focus(inner);
+	flush();
 	const e = key("A");
 	e.scancode = 30;
 	e.mods = 1;
@@ -474,6 +562,7 @@ test "a key event carries the physical detail the window supplied, to the focuse
 	e.unshifted = 97;
 	e.text = "A";
 	vh.keyDown(e);
+	flush();
 	assert seen === "30 1 1 97 A outer ", "seen: " + seen;
 }
 
@@ -491,14 +580,22 @@ test "a focused View hears committed and composing text, and a TextInput keeps i
 			<TextInput style={{ width: 100, height: 20 }} />
 		</View>
 	), vh.host, vh.root);
+	flush();
 	vh.layout(300.0, 100.0);
+	flush();
 	vh.focus(plain);
+	flush();
 	vh.composeText("ni", 2);
+	flush();
 	vh.textInput("你");
+	flush();
 	vh.commitText("typed");
+	flush();
 	assert log === "pre:ni@2 text:你 outer:你 ", "a typed key's text is not a second text event: " + log;
 	vh.focus(top(vh).children[1]);
+	flush();
 	vh.textInput("é");
+	flush();
 	assert log === "pre:ni@2 text:你 outer:你 ", "the TextInput took the text, nothing bubbled: " + log;
 	assert labelOf(top(vh).children[1]).text() === "é", "the field shows the commit";
 }
@@ -519,21 +616,29 @@ test "pointer events go to the deepest node under the pointer, bubble, and carry
 				onPointerDown={seen("inner", log)} onPointerMove={seen("inner", log)} onPointerUp={seen("inner", log)} onWheel={seen("inner", log)} />
 		</View>
 	), vh.host, vh.root);
+	flush();
 	vh.layout(300.0, 100.0);
+	flush();
 	vh.pointerDown(30.0, 35.0, 0);
+	flush();
 	assert log.join("|") === "inner:pointerdown@10,15/30,35 b0 down d0,0|outer:pointerdown@10,15/30,35 b0 down d0,0", "down: " + log.join("|");
 	log.length = 0;
 	vh.pointerMove(31.0, 36.0, 0, true);
+	flush();
 	vh.pointerUp(31.0, 36.0, 0);
+	flush();
 	vh.wheel(31.0, 36.0, 0.0, -3.0);
+	flush();
 	assert log.join("|") === "inner:pointermove@11,16/31,36 b0 down d0,0|outer:pointermove@11,16/31,36 b0 down d0,0"
 		+ "|inner:pointerup@11,16/31,36 b0 up d0,0|outer:pointerup@11,16/31,36 b0 up d0,0"
 		+ "|inner:wheel@11,16/31,36 b0 up d0,-3|outer:wheel@11,16/31,36 b0 up d0,-3", "move, up, wheel: " + log.join("|");
 	log.length = 0;
 	vh.pointerMove(200.0, 90.0, 0, false);
+	flush();
 	assert log.join("|") === "outer:pointermove@200,90/200,90 b0 up d0,0", "outside the inner node only the outer hears: " + log.join("|");
 	log.length = 0;
 	vh.pointerMove(290.0, 190.0, 0, false);
+	flush();
 	assert log.length === 0, "outside everything nothing is heard: " + log.join("|");
 }
 
@@ -545,8 +650,11 @@ function pressedWith(mode: string, x: float32, y: float32): string {
 			<View style={{ width: 100, height: 50 }} onPointerDown={seen("inner", log)} />
 		</View>
 	), vh.host, vh.root);
+	flush();
 	vh.layout(200.0, 100.0);
+	flush();
 	vh.pointerDown(x, y, 1);
+	flush();
 	return log.join("|");
 }
 
@@ -566,8 +674,11 @@ test "a box-only parent takes the focus from its focusable child" {
 			<View style={{ width: 100, height: 50 }} focusable />
 		</View>
 	), vh.host, vh.root);
+	flush();
 	vh.layout(200.0, 100.0);
+	flush();
 	vh.clickAt(10.0, 10.0);
+	flush();
 	assert vh.focused() === top(vh), "the box, not its child, took the press";
 }
 
@@ -582,15 +693,21 @@ test "pressing a component with a pointer, wheel or text handler, or focusable, 
 			<Pressable style={{ width: 100, height: 50 }} onPress={(): void => { pressed = pressed + 1; }} />
 		</View>
 	), vh.host, vh.root);
+	flush();
 	vh.layout(400.0, 50.0);
+	flush();
 	const row = top(vh);
 	vh.clickAt(10.0, 10.0);
+	flush();
 	assert vh.focused() === row.children[0], "onPointerDown makes it focusable";
 	vh.clickAt(110.0, 10.0);
+	flush();
 	assert vh.focused() === row.children[1], "onWheel makes it focusable";
 	vh.clickAt(210.0, 10.0);
+	flush();
 	assert vh.focused() === row.children[2], "the focusable prop makes it focusable";
 	vh.clickAt(310.0, 10.0);
+	flush();
 	assert pressed === 1, "onPress fired once";
 	assert vh.focused() === null, "a pressable with no key handler takes no focus";
 }
@@ -606,15 +723,21 @@ test "a focused component places the IME rect with its imeRect prop, in its own 
 				imeRect={{ x: at(), y: 4, width: 8, height: 16 }} focusable />
 		</View>
 	), vh.host, vh.root);
+	flush();
 	vh.layout(300.0, 100.0);
+	flush();
 	assert vh.imeRect() === null, "no focus, no rect";
 	settle(vh);
+	flush();
 	vh.onDirty((): void => { woke = woke + 1; });
+	flush();
 	vh.focus(node);
+	flush();
 	let r = vh.imeRect() as CaretRect;
 	assert r.x === 23.0 && r.y === 34.0 && r.w === 8.0 && r.h === 16.0, `rect ${r.x},${r.y} ${r.w}x${r.h}`;
 	assert woke === 1, "focusing it asks for a frame so Ion hears the rect: " + woke.toString();
 	setAt(10);
+	flush();
 	r = vh.imeRect() as CaretRect;
 	assert r.x === 30.0, "the rect follows the signal: " + r.x.toString();
 	assert woke === 2, "moving it asks for a frame: " + woke.toString();
@@ -659,16 +782,21 @@ test "a ForList scroll moves 59 of 60 rows without reshaping or rebuilding them"
 	for (let i = 0; i < 60; i += 1) { items.push({ id: i, text: "row " + i.toString() }); }
 	const rows = createList<Line>(items);
 	render(element(<View style={{ width: 300, height: 1200 }}>{ForList<Line>({ each: rows, children: lineRow })}</View>), vh.host, vh.root);
+	flush();
 	vh.layout(300.0, 1200.0);
+	flush();
 	shapeAll(vh.root as VoidNode);
 	settle(vh);
+	flush();
 	const root = vh.root as VoidNode;
 	const before = top(vh).children.slice(0);
 	assert before.length === 61 && textTouched(vh, root) === 0, "60 rows and the region anchor, all shaped and painted: " + textTouched(vh, root).toString();
 	rows.remove(0);
 	rows.push({ id: 60, text: "row 60" });
+	flush();
 	assert textTouched(vh, root) === 1, "after the ops only the pushed row's label is new: " + textTouched(vh, root).toString();
 	vh.layout(300.0, 1200.0);
+	flush();
 	const after = top(vh).children;
 	assert after.length === 61 && after[60] === before[60], "still 60 rows before the same anchor";
 	for (let i = 0; i < 59; i += 1) {
@@ -694,19 +822,29 @@ test "a pointer, key or press handler that mounts or unmounts handler-bearing no
 			) })}
 		</View>
 	), vh.host, vh.root);
+	flush();
 	vh.layout(400.0, 300.0);
+	flush();
 	vh.pointerDown(100.0, 100.0, 0);
+	flush();
 	vh.pointerUp(100.0, 100.0, 0);
+	flush();
 	assert open() && log.join("|") === "outer up", "mounted from a pointer handler; the new node missed the event that made it: " + log.join("|");
 	log.length = 0;
 	vh.layout(400.0, 300.0);
+	flush();
 	vh.pointerUp(100.0, 100.0, 0);
+	flush();
 	assert !open() && log.join("|") === "inner up|outer up", "unmounted from the parent's handler after the target heard it: " + log.join("|");
 	setOpen(true);
+	flush();
 	vh.layout(400.0, 300.0);
+	flush();
 	log.length = 0;
 	vh.focus(inner);
+	flush();
 	vh.keyDown(key("a"));
+	flush();
 	assert !open() && log.join("|") === "inner key|outer key", "a key handler that unmounts its own node, and the parent still hears it: " + log.join("|");
 }
 
@@ -722,8 +860,11 @@ test "a press handler that mounts a pressable does not break the press dispatch"
 			) })}
 		</View>
 	), vh.host, vh.root);
+	flush();
 	vh.layout(200.0, 100.0);
+	flush();
 	vh.clickAt(10.0, 10.0);
+	flush();
 	assert more() && presses === 1, "the press mounted a pressable and fired once: " + presses.toString();
 }
 
@@ -735,19 +876,27 @@ test "a pressed node keeps the pointer until that button's release, with coordin
 			<View style={{ width: 100, height: 50 }} onPointerDown={seen("inner", log)} onPointerMove={seen("inner", log)} onPointerUp={seen("inner", log)} />
 		</View>
 	), vh.host, vh.root);
+	flush();
 	vh.layout(300.0, 100.0);
+	flush();
 	vh.pointerDown(10.0, 10.0, 0);
+	flush();
 	log.length = 0;
 	vh.pointerMove(250.0, 80.0, 0, true);
+	flush();
 	vh.pointerDown(250.0, 80.0, 2);
+	flush();
 	vh.pointerUp(250.0, 80.0, 2);
+	flush();
 	vh.pointerUp(260.0, 90.0, 0);
+	flush();
 	assert log.join("|") === "inner:pointermove@250,80/250,80 b0 down d0,0|outer:pointermove@250,80/250,80 b0 down d0,0"
 		+ "|inner:pointerdown@250,80/250,80 b2 down d0,0"
 		+ "|inner:pointerup@250,80/250,80 b2 up d0,0|outer:pointerup@250,80/250,80 b2 up d0,0"
 		+ "|inner:pointerup@260,90/260,90 b0 up d0,0|outer:pointerup@260,90/260,90 b0 up d0,0", "captured: " + log.join("|");
 	log.length = 0;
 	vh.pointerMove(250.0, 80.0, 0, false);
+	flush();
 	assert log.join("|") === "outer:pointermove@250,80/250,80 b0 up d0,0", "released, the node under the pointer hears again: " + log.join("|");
 }
 
@@ -762,10 +911,15 @@ test "a captured node that unmounts gives the pointer back to the node under it"
 			) })}
 		</View>
 	), vh.host, vh.root);
+	flush();
 	vh.layout(300.0, 100.0);
+	flush();
 	vh.pointerDown(10.0, 10.0, 0);
+	flush();
 	vh.layout(300.0, 100.0);
+	flush();
 	vh.pointerMove(250.0, 80.0, 0, true);
+	flush();
 	assert log.join("|") === "outer:pointermove@250,80/250,80 b0 down d0,0", "the gone node hears nothing: " + log.join("|");
 }
 
@@ -780,12 +934,19 @@ test "pointer and wheel events carry the window's modifiers and a time" {
 	render(element(
 		<View style={{ width: 100, height: 100 }} onPointerDown={mods} onPointerMove={mods} onPointerUp={mods} onWheel={mods} />
 	), vh.host, vh.root);
+	flush();
 	vh.layout(100.0, 100.0);
+	flush();
 	vh.pointerDown(10.0, 10.0, 0, 1);
+	flush();
 	vh.pointerMove(20.0, 10.0, 0, true, 5);
+	flush();
 	vh.pointerUp(20.0, 10.0, 0, 2);
+	flush();
 	vh.wheel(20.0, 10.0, 0.0, 1.0, 8);
+	flush();
 	vh.pointerMove(30.0, 10.0, 0, false);
+	flush();
 	assert log.join("|") === [
 		"pointerdown shift=true ctrl=false alt=false meta=false mods=1",
 		"pointermove shift=true ctrl=false alt=true meta=false mods=5",
@@ -800,14 +961,20 @@ test "a style change that only moves layout asks the window for a frame" {
 	const vh = host();
 	let woke = 0;
 	vh.onDirty((): void => { woke = woke + 1; });
+	flush();
 	const [rowHeight, setRowHeight] = createSignal<number>(0);
 	render(element(<View style={{ width: 400 }}><View style={{ height: rowHeight() }} /><View style={{ height: 10 }} /></View>), vh.host, vh.root);
+	flush();
 	vh.layout(400.0, 300.0);
+	flush();
 	settle(vh);
+	flush();
 	const before = woke;
 	setRowHeight(18);
+	flush();
 	assert woke === before + 1, "a height-only change woke the host: " + (woke - before).toString();
 	vh.layout(400.0, 300.0);
+	flush();
 	assert top(vh).children[1].ref.local().y === 18.0, "the next layout moves the row below: y=" + top(vh).children[1].ref.local().y.toString();
 }
 
@@ -817,6 +984,7 @@ test "a View's handle focuses it on the Void host and blur clears it" {
 	let grid: ViewHandle | null = null;
 	render(element(<View ref={(h: ViewHandle): void => { grid = h; h.focus(); }} focusable={true}
 		onFocus={(e: NeonEvent): void => { log += "focus;"; }} onBlur={(e: NeonEvent): void => { log += "blur;"; }} />), vh.host, vh.root);
+	flush();
 	assert log === "focus;", "focused on mount: " + log;
 	(grid as ViewHandle).blur();
 	assert log === "focus;blur;", "blur: " + log;
@@ -850,10 +1018,15 @@ test "a refresh remount keeps the field's text, the focus and the scroll offset 
 	refreshReset();
 	const vh = host();
 	render(refreshBoundary0("voidInput", "Feed", feedV1, (): string => "v1"), vh.host, vh.root);
+	flush();
 	vh.layout(300.0, 200.0);
+	flush();
 	vh.clickAt(10.0, 10.0);
+	flush();
 	vh.commitText("h");
+	flush();
 	vh.commitText("i");
+	flush();
 	const typed = firstView(vh).children[0];
 	const area = firstView(vh).children[1];
 	const scrollTo = vh.host.scrollTo as (node: HostNode, x: number, y: number, animated: boolean) => void;
@@ -864,6 +1037,7 @@ test "a refresh remount keeps the field's text, the focus and the scroll offset 
 	const summary = refreshModule("voidInput");
 	assert summary.remounted === 1, "the component remounts: " + summary.remounted.toString();
 	vh.layout(300.0, 200.0);
+	flush();
 	assert firstView(vh).children[0] === typed && vh.focused() === typed, "the field is the same node and keeps the focus";
 	assert labelOf(typed).text() === "hi", "with its text: " + labelOf(typed).text();
 	assert typed.ref.content().w === 220.0, "and the new style: " + typed.ref.content().w.toString();
@@ -871,5 +1045,6 @@ test "a refresh remount keeps the field's text, the focus and the scroll offset 
 	assert (area.scroller as NodeRef).scroll().y === offset, "and keeps its offset: " + (area.scroller as NodeRef).scroll().y.toString();
 	assert firstView(vh).children.length === 3, "the new Text is mounted";
 	vh.commitText("!");
+	flush();
 	assert labelOf(typed).text() === "hi!", "typing goes on into the kept field: " + labelOf(typed).text();
 }

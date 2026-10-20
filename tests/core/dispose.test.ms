@@ -4,6 +4,7 @@ import { onCleanup } from "../../src/core/cleanup";
 import { createRoot } from "../../src/core/owner";
 import { getOwner } from "../../src/core/runtime";
 import { Computation, Cleanup } from "../../src/core/types";
+import { flush } from "../../src/core/runtime";
 
 test "effect re-tracks and re-runs on signal change" {
 	const [count, setCount] = createSignal(0);
@@ -17,9 +18,11 @@ test "effect re-tracks and re-runs on signal change" {
 			return null;
 		},
 	);
+	flush();
 	assert runs === 1, "ran once on creation";
 	assert lastSeen === 0, "saw initial 0";
 	setCount(1);
+	flush();
 	assert runs === 2, "re-ran on set(1)";
 	assert lastSeen === 1, "saw 1";
 }
@@ -38,10 +41,14 @@ test "onCleanup runs before each re-track and on dispose" {
 			(v: int32, p: int32 | null): Cleanup | null => null,
 		);
 	});
+	flush();
 	setCount(1);
+	flush();
 	setCount(2);
+	flush();
 	assert cleanups === 2, "cleanup ran before each re-track";
 	(dispose as () => void)();
+	flush();
 	assert cleanups === 3, "cleanup ran on dispose";
 }
 
@@ -61,8 +68,11 @@ test "dispose severs the signal-to-computation edge" {
 			},
 		);
 	});
+	flush();
 	(dispose as () => void)();
+	flush();
 	setCount(3);
+	flush();
 	assert runs === 1, "no re-run after dispose";
 	assert lastSeen === 0, "never saw 3";
 }
@@ -78,11 +88,14 @@ test "createRoot disposal cascades to owned effects" {
 		);
 		disposers.push(d);
 	});
+	flush();
 	assert innerRuns === 1, "owned effect ran once";
 	setTick(1);
+	flush();
 	assert innerRuns === 2, "owned effect re-ran";
 	disposers[0]();
 	setTick(2);
+	flush();
 	assert innerRuns === 2, "owned effect disposed via root cascade";
 }
 
@@ -98,6 +111,7 @@ test "a nested createRoot keeps the owner it was created under" {
 		assert seen === outer, "the inner root points at the outer owner";
 		outerDispose();
 	});
+	flush();
 }
 
 test "a nested createRoot is disposed with the owner it was created under" {
@@ -108,6 +122,7 @@ test "a nested createRoot is disposed with the owner it was created under" {
 		});
 		outerDispose();
 	});
+	flush();
 	assert cleaned === 1, "disposing the outer owner tore down the inner root";
 }
 
@@ -121,4 +136,5 @@ test "disposing a root drops its owner link" {
 		assert (inner as Computation).parent === null, "a disposed root no longer points at its owner";
 		outerDispose();
 	});
+	flush();
 }

@@ -8,6 +8,7 @@ import { createEffect, createRenderEffect, EffectBundle } from "../../src/core/e
 import { createRoot } from "../../src/core/owner";
 import { Cleanup, NotReadyError } from "../../src/core/types";
 import { Gate, gated, gatedStr, opened, rejectedWhenOpen, release } from "./asyncClock";
+import { flush } from "../../src/core/runtime";
 
 class Point {
 	x: int32;
@@ -21,6 +22,7 @@ class Point {
 
 async function gatedPoint(gate: Gate, value: Point): Promise<Point> {
 	await opened(gate);
+	flush();
 	return value;
 }
 
@@ -52,6 +54,7 @@ test "an async memo read outside any scope throws NotReadyError until its promis
 	});
 	assert isNotReady<int32>(a), "an unresolved first run is NotReadyError to a bare reader";
 	await release(gate);
+	flush();
 	assert a() === 42, "after it lands the same accessor reads the value";
 }
 
@@ -67,8 +70,10 @@ test "a string async memo keeps its reader pending, then lands the string" {
 		);
 		return 0;
 	});
+	flush();
 	assert log.length === 0, "the effect has not applied while its source is pending";
 	await release(gate);
+	flush();
 	assert log.join(",") === "ready!", "got " + log.join(",");
 }
 
@@ -82,11 +87,14 @@ test "a re-pending async memo read outside any scope returns the value it last h
 		return m;
 	});
 	await release(gate);
+	flush();
 	assert a() === 1, "the first run landed";
 	gate.open = false;
 	set(2);
+	flush();
 	assert a() === 1, "while the second run is in flight a bare read sees the previous value";
 	await release(gate);
+	flush();
 	assert a() === 2, "and the new value once it lands";
 }
 
@@ -100,11 +108,14 @@ test "a struct async memo is stale while pending and replaced when it lands" {
 		return m;
 	});
 	await release(gate);
+	flush();
 	assert a().x === 1 && a().y === 10, "first landing";
 	gate.open = false;
 	set(2);
+	flush();
 	assert a().x === 1 && a().y === 10, "stale while pending";
 	await release(gate);
+	flush();
 	assert a().x === 2 && a().y === 20, "second landing";
 }
 
@@ -124,14 +135,18 @@ test "a diamond of two async memos starts both runs together and applies once pe
 		);
 		return 0;
 	});
+	flush();
 	assert runsB === 1 && runsC === 1 && seen.length === 0, "both started, nothing applied: " + runsB.toString() + runsC.toString();
 	await release(gate);
+	flush();
 	assert runsB === 1 && runsC === 1, "no waterfall rerun: " + runsB.toString() + runsC.toString();
 	assert seen.join("|") === "1,1", "got " + seen.join("|");
 	gate.open = false;
 	set(2);
+	flush();
 	assert runsB === 2 && runsC === 2 && seen.length === 1, "the write restarted both together: " + runsB.toString() + runsC.toString();
 	await release(gate);
+	flush();
 	assert runsB === 2 && runsC === 2, "still one run each";
 	assert seen.join("|") === "1,1|2,2", "got " + seen.join("|");
 }
@@ -153,18 +168,24 @@ test "an async memo that reads another async memo waits for it, then runs again"
 		);
 		return 0;
 	});
+	flush();
 	assert runsA === 1 && runsB === 1 && seen.length === 0, "b started and stopped at the pending read of a";
 	await release(gateA);
+	flush();
 	assert runsA === 1 && runsB === 2, "a landing re-ran b";
 	await release(gateB);
+	flush();
 	assert seen.join(",") === "2", "got " + seen.join(",");
 	gateA.open = false;
 	gateB.open = false;
 	set(2);
+	flush();
 	assert runsA === 2 && runsB === 3 && seen.length === 1, "the write ran a, and b up to a's pending read";
 	await release(gateA);
+	flush();
 	assert runsA === 2 && runsB === 4, "a landing re-ran b again";
 	await release(gateB);
+	flush();
 	assert seen.join(",") === "2,4", "got " + seen.join(",");
 }
 
@@ -184,6 +205,7 @@ test "a rejection is the error every reader sees, and the memo is not disposed" 
 	});
 	assert isNotReady<int32>(a), "pending first";
 	await release(gate);
+	flush();
 	assert handled.length === 1 && handled[0] === boom, "the error arm got the rejection itself, once";
 	assert failureOf<int32>(a) === boom, "a bare read throws the rejection";
 	assert failureOf<int32>(a) === boom, "a second read throws the same object";
@@ -205,7 +227,9 @@ test "a rejection reaches an async memo downstream as the same error" {
 		createEffect<int32>((p: int32 | null): int32 => b(), bundle);
 		return 0;
 	});
+	flush();
 	await release(gate);
+	flush();
 	assert handled.length === 1 && handled[0] === boom, "the error arm got the rejection once, unwrapped: " + handled.length.toString();
 }
 
@@ -225,10 +249,13 @@ test "a later successful run clears a rejection" {
 		return m;
 	});
 	await release(gate);
+	flush();
 	assert failureOf<int32>(a) === boom, "errored";
 	gate.open = false;
 	setFail(false);
+	flush();
 	await release(gate);
+	flush();
 	assert failureOf<int32>(a) === null && a() === 7, "recovered";
 	assert log.join(",") === "err boom-once,ok 7", "got " + log.join(",");
 }
@@ -248,10 +275,13 @@ test "a newer run supersedes an in-flight one and the older result never lands" 
 		return m;
 	});
 	set(2);
+	flush();
 	await release(gate1);
+	flush();
 	assert seen.length === 0, "the superseded run landed nowhere: " + seen.join(",");
 	assert isNotReady<int32>(a), "the memo still waits for the newer run";
 	await release(gate2);
+	flush();
 	assert seen.join(",") === "200", "got " + seen.join(",");
 }
 
@@ -270,9 +300,12 @@ test "an older run that settles after the newer one is dropped" {
 		return m;
 	});
 	set("b");
+	flush();
 	await release(gate2);
+	flush();
 	assert seen.join(",") === "b!", "the newer run landed: " + seen.join(",");
 	await release(gate1);
+	flush();
 	assert seen.join(",") === "b!" && a() === "b!", "the older one did not overwrite it: " + seen.join(",");
 }
 
@@ -287,7 +320,9 @@ test "disposing the owner of an in-flight async memo drops its result" {
 		createRenderEffect<int32>((p: int32 | null): int32 => m(), (v: int32, p: int32 | null): Cleanup | null => { seen.push(v); return null; });
 		return 0;
 	});
+	flush();
 	if (stop !== null) { stop(); }
 	await release(gate);
+	flush();
 	assert seen.length === 0, "a disposed memo applies nothing: " + seen.join(",");
 }

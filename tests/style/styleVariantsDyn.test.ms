@@ -9,6 +9,7 @@ import { Style, mergeStyle, emptyStyle } from "../../src/render/style";
 import { createStyles, styleOf } from "../../src/macros/ui/style";
 import { render, mockHost, mockNode, HostNode } from "../../src/render/host";
 import { createSignal } from "../../src/core/signal";
+import { flush } from "../../src/core/runtime";
 
 const s = createStyles({
 	btn: {
@@ -26,14 +27,17 @@ test "a signal-driven selection tracks the signal" {
 	const host = mockHost();
 	const root = mockNode("root");
 	render(vnode, host, root as unknown as HostNode);
+	flush();
 	const div = root.children[0];
 	const st0 = div.style as Style;
 	assert st0.backgroundColor === "#334", "unpressed renders the base";
 	assert st0.padding === 8, "base field present";
 	setPressed(true);
+	flush();
 	const st1 = div.style as Style;
 	assert st1.backgroundColor === "#445", "press swaps in the variant";
 	setPressed(false);
+	flush();
 	const st2 = div.style as Style;
 	assert st2.backgroundColor === "#334", "release falls back to the base";
 }
@@ -43,6 +47,7 @@ test "a static selection still lands on the node" {
 	const host = mockHost();
 	const root = mockNode("root");
 	render(vnode, host, root as unknown as HostNode);
+	flush();
 	const st = root.children[0].style as Style;
 	assert st.backgroundColor === "#445", "selected variant applied";
 }

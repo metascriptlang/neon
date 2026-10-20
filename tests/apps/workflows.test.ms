@@ -2,6 +2,7 @@ import { element } from "../../src/macros/ui/element";
 import { HostNode, MockNode, mockNode, mockHost, render, mockToString, fireEvent, fireEventWith } from "../../src/render/host";
 import { neonEvent } from "../../src/render/event";
 import { SettingsApp } from "../../examples/components/settings";
+import { flush } from "../../src/core/runtime";
 
 function byAttr(n: MockNode, name: string, value: string): MockNode | null {
 	for (const a of n.attrs) {
@@ -25,12 +26,14 @@ function type(root: MockNode, label: string, value: string): void {
 	const e = neonEvent("changetext");
 	e.value = value;
 	fireEventWith(labelled(root, label), "onChangeText", e);
+	flush();
 }
 
 function toggle(root: MockNode, label: string, on: boolean): void {
 	const e = neonEvent("valuechange");
 	e.value = on ? "true" : "false";
 	fireEventWith(labelled(root, label), "onValueChange", e);
+	flush();
 }
 
 function shows(root: MockNode, text: string): boolean {
@@ -42,12 +45,16 @@ function shows(root: MockNode, text: string): boolean {
 test "settings: return key moves focus, submit saves, toggles switch theme and keep their labels" {
 	const root = mockNode("root");
 	render(element(<SettingsApp />), mockHost(), root as unknown as HostNode);
+	flush();
 	fireEvent(labelled(root, "Name"), "onFocus");
+	flush();
 	assert shows(root, "Focus: name"), "focus shown";
 	type(root, "Name", "Grace Hopper");
 	fireEvent(labelled(root, "Name"), "onSubmitEditing");
+	flush();
 	assert shows(root, "Focus: email"), "return key moved focus to email: " + mockToString(root);
 	fireEvent(labelled(root, "Email"), "onSubmitEditing");
+	flush();
 	assert shows(root, "Saved Grace Hopper &lt;ada@example.com&gt;") || shows(root, "Saved Grace Hopper <ada@example.com>"), "saved: " + mockToString(root);
 	assert shows(root, "Focus: none"), "submit blurred the field";
 	assert shows(root, "light theme"), "light by default";

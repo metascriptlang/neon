@@ -35,6 +35,7 @@ test "latest of an async memo keeps the stale value while it reloads and isPendi
 	flush();
 	assert latestLog.length === 0, "an initial load has no stale value, so latest suspends its reader: " + latestLog.join(",");
 	await release(gate);
+	flush();
 	assert lastOf(latestLog) === "AV0" && lastOf(pendingLog) === "false", "settled: " + latestLog.join(",") + " / " + pendingLog.join(",");
 
 	gate.open = false;
@@ -43,6 +44,7 @@ test "latest of an async memo keeps the stale value while it reloads and isPendi
 	assert lastOf(pendingLog) === "true", "the first reload reports pending: " + pendingLog.join(",");
 	assert lastOf(latestLog) === "AV0", "and latest still shows the stale value: " + latestLog.join(",");
 	await release(gate);
+	flush();
 	assert lastOf(latestLog) === "AV1" && lastOf(pendingLog) === "false", "landed: " + latestLog.join(",") + " / " + pendingLog.join(",");
 
 	gate.open = false;
@@ -50,6 +52,7 @@ test "latest of an async memo keeps the stale value while it reloads and isPendi
 	flush();
 	assert lastOf(pendingLog) === "true" && lastOf(latestLog) === "AV1", "the second reload behaves the same";
 	await release(gate);
+	flush();
 	assert lastOf(latestLog) === "AV2" && lastOf(pendingLog) === "false", "got " + latestLog.join(",") + " / " + pendingLog.join(",");
 	assert latestLog.indexOf("") < 0, "latest never regressed to an empty value: " + latestLog.join(",");
 }
@@ -74,16 +77,22 @@ test "latest and isPending of a chain of two async memos track the whole chain" 
 		);
 		return 0;
 	});
+	flush();
 	await release(gateA);
+	flush();
 	await release(gateB);
+	flush();
 	assert lastOf(latestLog) === "11" && lastOf(pendingLog) === "false", "got " + latestLog.join(",") + " / " + pendingLog.join(",");
 	gateA.open = false;
 	gateB.open = false;
 	setX(2);
+	flush();
 	assert lastOf(pendingLog) === "true" && lastOf(latestLog) === "11", "pending from the first hop: " + pendingLog.join(",");
 	await release(gateA);
+	flush();
 	assert lastOf(pendingLog) === "true" && lastOf(latestLog) === "11", "still pending while the second hop runs";
 	await release(gateB);
+	flush();
 	assert lastOf(latestLog) === "21" && lastOf(pendingLog) === "false", "got " + latestLog.join(",") + " / " + pendingLog.join(",");
 }
 
@@ -97,6 +106,7 @@ test "a memo that reads isPending of an async memo flips with its reloads" {
 		return m;
 	});
 	await release(gate);
+	flush();
 	const b = createMemo((p: string | null): string => isPending((): int32 => a()) ? "stale" : "not stale");
 	assert b() === "not stale", "settled";
 	gate.open = false;
@@ -104,6 +114,7 @@ test "a memo that reads isPending of an async memo flips with its reloads" {
 	flush();
 	assert b() === "stale", "reloading";
 	await release(gate);
+	flush();
 	assert b() === "not stale", "landed";
 }
 
@@ -118,12 +129,14 @@ test "isPending read outside any computation answers false on a first load, true
 	});
 	assert !isPending((): string => a()), "a first load has no stale value to report";
 	await release(gate);
+	flush();
 	assert !isPending((): string => a()), "landed";
 	gate.open = false;
 	set("b");
 	flush();
 	assert isPending((): string => a()), "reloading";
 	await release(gate);
+	flush();
 	assert !isPending((): string => a()), "landed again";
 }
 
@@ -142,8 +155,11 @@ test "isPending is true on both memos of a chain while the chain reloads" {
 		createRenderEffect<int32>((p: int32 | null): int32 => b(), (v: int32, p: int32 | null): Cleanup | null => null);
 		return 0;
 	});
+	flush();
 	await release(gateA);
+	flush();
 	await release(gateB);
+	flush();
 	const readA = ra as () => int32;
 	const readB = rb as () => int32;
 	assert readA() === 10 && readB() === 11, "initial";
@@ -153,7 +169,9 @@ test "isPending is true on both memos of a chain while the chain reloads" {
 	flush();
 	assert isPending(readA) && isPending(readB), "both reload";
 	await release(gateA);
+	flush();
 	await release(gateB);
+	flush();
 	assert readA() === 20 && readB() === 21, "landed";
 	assert !isPending(readA) && !isPending(readB), "neither is pending after";
 }
@@ -172,7 +190,9 @@ test "a sync memo over an async memo serves its stale value and is pending while
 		createRenderEffect<int32>((p: int32 | null): int32 => sync(), (v: int32, p: int32 | null): Cleanup | null => null);
 		return 0;
 	});
+	flush();
 	await release(gate);
+	flush();
 	const readAsync = ra as () => int32;
 	const readSync = rs as () => int32;
 	assert readAsync() === 10 && readSync() === 11, "initial";
@@ -182,6 +202,7 @@ test "a sync memo over an async memo serves its stale value and is pending while
 	assert isPending(readAsync) && isPending(readSync), "both pending";
 	assert readSync() === 11, "the sync memo keeps the value it computed from the old async value";
 	await release(gate);
+	flush();
 	assert readAsync() === 20 && readSync() === 21, "landed";
 	assert !isPending(readAsync) && !isPending(readSync), "neither pending after";
 }
@@ -200,7 +221,9 @@ test "latest of the async node is its stale value, latest of a sync memo upstrea
 		createRenderEffect<int32>((p: int32 | null): int32 => m(), (v: int32, p: int32 | null): Cleanup | null => null);
 		return 0;
 	});
+	flush();
 	await release(gate);
+	flush();
 	const readSync = rs as () => int32;
 	const readAsync = ra as () => int32;
 	assert readSync() === 2 && readAsync() === 20, "initial";
@@ -211,5 +234,6 @@ test "latest of the async node is its stale value, latest of a sync memo upstrea
 	assert latest(readAsync) === 20, "the async node itself: no new value yet";
 	assert readAsync() === 20, "and a plain read agrees";
 	await release(gate);
+	flush();
 	assert readAsync() === 40 && readSync() === 4, "landed";
 }

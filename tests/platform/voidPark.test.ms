@@ -15,6 +15,7 @@ import { Row, makeRow } from "../../src/render/reconcile";
 import { createMemo } from "../../src/core/memo";
 import { createVoidHost, VoidNode } from "../../src/platform/void/host";
 import { HOST_PARK_CONTRACT, hostParkContract } from "../render/hostContract";
+import { flush } from "../../src/core/runtime";
 
 test "the void host keeps the park contract and release frees the parked nodes" {
 	const vh = createVoidHost();
@@ -38,15 +39,18 @@ test "a dropped row without a keeper is freed on the void host, and a later row 
 	const row = makeRow(el("view", [], [], text("hi")));
 	const [on, setOn] = createSignal(true);
 	render(regionNode((h) => createMemo<Row[]>(() => on() ? [row] : [] as Row[])), vh.host, vh.root);
+	flush();
 	const first = (vh.root as VoidNode).children[0];
 	assert first.ref.isLive(), "the row is alive while shown";
 
 	setOn(false);
+	flush();
 	assert (vh.root as VoidNode).children.indexOf(first) < 0, "the row left the root";
 	assert first.disposed && !first.ref.isLive(), "the dropped row's node is freed";
 	assert first.children[0].disposed, "its subtree is freed";
 
 	setOn(true);
+	flush();
 	const second = (vh.root as VoidNode).children[0];
 	assert second !== first && second.ref.isLive(), "the row is built again, never revived from freed nodes";
 }
@@ -56,6 +60,7 @@ function failsWhenOne(a: () => int32): void {
 		(p: int32 | null): int32 => a(),
 		(v: int32, p: int32 | null): Cleanup | null => { if (v === 1) { throw new Error("late"); } return null; },
 	);
+	flush();
 }
 
 const caughtView = (err: Accessor<Error>, reset: () => void): NeonNode => el("view", [], [], text("caught"));
@@ -75,6 +80,7 @@ test "an Errored that fails while its content mounts frees the partial nodes, an
 		children: content,
 		fallback: (err: Accessor<Error>, reset: () => void): NeonNode => { again = reset; return caughtView(err, reset); },
 	}), vh.host, vh.root);
+	flush();
 	assert seen.length === 1 && seen[0].disposed && !seen[0].ref.isLive(), "the partial content is freed, not parked";
 	(again as () => void)();
 	assert seen.length === 2 && seen[1] !== seen[0] && seen[1].ref.isLive(), "reset built fresh content";
@@ -94,8 +100,10 @@ test "disposing an Errored with its content parked frees the parked nodes after 
 	const dispose = render(Errored({ children: content, fallback: caughtView }), vh.host, vh.root);
 	const parked = node as VoidNode;
 	setA(1);
+	flush();
 	assert parked.ref.isLive() && (vh.root as VoidNode).children.indexOf(parked) < 0, "the content is parked and alive";
 	dispose();
+	flush();
 	assert liveAtCleanup, "the content cleanup ran while its nodes were alive";
 	assert parked.disposed && !parked.ref.isLive(), "the parked nodes are freed with the Errored";
 }
@@ -112,13 +120,17 @@ test "a focused TextInput in content that gets parked loses focus, and the node 
 		children: content,
 		fallback: (err: Accessor<Error>, reset: () => void): NeonNode => { again = reset; return caughtView(err, reset); },
 	}), vh.host, vh.root);
+	flush();
 	const input = (vh.root as VoidNode).children[0];
 	vh.focus(input);
+	flush();
 	assert vh.focused() === input, "the input is focused";
 	setA(1);
+	flush();
 	assert vh.focused() === null, "parking took the focus away";
 	assert input.ref.isLive(), "the parked input is alive";
 	setA(0);
+	flush();
 	(again as () => void)();
 	assert (vh.root as VoidNode).children.indexOf(input) >= 0, "the same input came back";
 	assert vh.focused() === null, "and is not focused again";
@@ -142,7 +154,9 @@ test "a Loading whose content read a pending value frees the partial nodes and s
 	assert partial.length === 1 && partial[0].disposed && !partial[0].ref.isLive(), "the first attempt's partial node is freed, not left parked";
 	assert (vh.root as VoidNode).children[0].children[0].ref.text() === "caught", "the fallback shows";
 	await release(gate);
+	flush();
 	assert partial.length === 2 && partial[1].ref.isLive(), "the settled attempt built its own nodes";
 	assert (vh.root as VoidNode).children.indexOf(partial[1]) >= 0, "and they are in the root";
 	dispose();
+	flush();
 }

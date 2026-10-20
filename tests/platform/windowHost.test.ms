@@ -34,6 +34,7 @@ import { paint as paintScene } from "../../../void/src/void2d/scene";
 import { frameEnd } from "../../../void/src/void2d/draw";
 import { Color } from "../../../void/src/void2d/types";
 import { FontId, addFont } from "../../../void/src/void2d/font";
+import { flush } from "../../src/core/runtime";
 
 const FONT_PATH = "../void/assets/font.ttf";
 
@@ -88,6 +89,7 @@ test "the window opens its one Void on the Void host, with the Void's style on t
 			<View><Text>hi</Text></View>
 		</Void>
 	), windowHost(p.window), windowNode("window"));
+	flush();
 	assert p.areas.length === 1, "one area opened";
 	const area = p.areas[0];
 	const root = area.vh.root as VoidNode;
@@ -110,8 +112,10 @@ test "a tree change inside the area wakes the window, and disposing the owner re
 	area.vh.scene.clearChanges();
 	const mark = p.log.length;
 	setN(2);
+	flush();
 	assert p.log.slice(mark).join(",") === "dirty", "one wake: " + p.log.join(",");
 	dispose();
+	flush();
 	assert p.log.slice(mark).join(",") === "dirty,released", "released: " + p.log.join(",");
 }
 
@@ -169,6 +173,7 @@ test "window input reaches the handle's subscribers and the focused node alike" 
 				onBlur={(): void => { log.push("blur"); }} />
 		</Void>
 	), windowHost(p.window), windowNode("window"));
+	flush();
 	const area = p.areas[0];
 	deliverResize(area, 800 as int32, 400 as int32, 2.0);
 	assert area.logicalWidth() === 400.0 && area.logicalHeight() === 200.0, "logical size is pixels over scale";

@@ -4,6 +4,7 @@ import { createEffect, createRenderEffect } from "../../src/core/effect";
 import { createRoot } from "../../src/core/owner";
 import { resetErrorHalt } from "../../src/core/runtime";
 import { Cleanup } from "../../src/core/types";
+import { flush } from "../../src/core/runtime";
 
 test "an effect reads back the settled value of its own write" {
 	const reads: number[] = [];
@@ -16,6 +17,7 @@ test "an effect reads back the settled value of its own write" {
 		);
 		return 0;
 	});
+	flush();
 	assert reads.join(",") === "0", "got " + reads.join(",");
 }
 
@@ -33,7 +35,9 @@ test "a render effect reads back the settled value of its own write" {
 		);
 		return 0;
 	});
+	flush();
 	setA(1);
+	flush();
 	assert reads.join(",") === "0", "got " + reads.join(",");
 }
 
@@ -75,6 +79,7 @@ test "an effect write reaches the dependents in the same flush" {
 		);
 		return 0;
 	});
+	flush();
 	assert reads.join(",") === "0,0", "reads " + reads.join(",");
 	assert values.join(",") === "0,1", "values " + values.join(",");
 }
@@ -100,6 +105,7 @@ test "functional setters in an effect compose against the staged value" {
 		);
 		return 0;
 	});
+	flush();
 	assert readBack === 0, "reads stay settled: " + readBack.toString();
 	assert values.join(",") === "0,2", "the second update composed on the first: " + values.join(",");
 }
@@ -121,6 +127,7 @@ test "a memo derived from an effect write reads at its settled value" {
 		);
 		return 0;
 	});
+	flush();
 	assert reads.join(",") === "0", "reads " + reads.join(",");
 	assert doubles.join(",") === "0,2", "doubles " + doubles.join(",");
 }
@@ -140,5 +147,6 @@ test "a later effect does not observe an earlier effect's unsettled write in the
 		);
 		return 0;
 	});
+	flush();
 	assert reads.join(",") === "0", "got " + reads.join(",");
 }

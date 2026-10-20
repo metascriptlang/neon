@@ -14,6 +14,7 @@ import {
 	nmReleaseCalls,
 	nmViewsCreated,
 } from "./nativeBridgeMock.h";
+import { flush } from "../../src/core/runtime";
 
 function prop(tag: int32, name: string): string {
 	return nmProp(tag, name);
@@ -33,24 +34,32 @@ test "a native WebView is a media view created by name: source, page events, the
 		/>
 	</View>;
 	runApp(app);
+	flush();
 	const web = nmLastControlTag(10);
 	assert prop(web, "source") === "uri\x1fhttps://example.com/" && prop(web, "interceptLoads") === "true", "props";
 	assert `${nmLayoutWidth(web)}x${nmLayoutHeight(web)}` === "300x500", "a WebView fills its parent: " + `${nmLayoutWidth(web)}x${nmLayoutHeight(web)}`;
 	nmControl(web, 12, "https://example.com/next\x1fclick\x1ftrue");
+	flush();
 	assert prop(web, "loadDecision") === "allow", "allowed before the handler returns";
 	nmControl(web, 12, "https://example.com/no\x1fclick\x1ftrue");
+	flush();
 	assert prop(web, "loadDecision") === "block", "refused before the handler returns";
 	nmControl(web, 10, "https://example.com/next\x1f\x1ftrue\x1ftrue\x1ffalse");
+	flush();
 	nmControl(web, 5, "https://example.com/next\x1fNext\x1ffalse\x1ftrue\x1ffalse");
+	flush();
 	nmControl(web, 11, "from the page");
+	flush();
 	assert log === "nav https://example.com/next true true;nav https://example.com/next false true;message from the page;", "events: " + log;
 	(handle as WebViewHandle).postMessage("from the app");
 	assert prop(web, "command") === "postMessage\x1ffrom the app", prop(web, "command");
 	(handle as WebViewHandle).goBack();
 	assert prop(web, "command") === "goBack\x1f", prop(web, "command");
 	setPage("https://neon.dev/");
+	flush();
 	assert prop(web, "source") === "uri\x1fhttps://neon.dev/", "a new source reaches the view";
 	nmTeardown();
+	flush();
 	assert nmReleaseCalls() === nmViewsCreated(), "media views are released";
 }
 
@@ -70,17 +79,23 @@ test "a native Video takes its size from its style, reports load and progress, a
 		/>
 	</View>;
 	runApp(app);
+	flush();
 	const video = nmLastControlTag(11);
 	assert `${nmLayoutWidth(video)}x${nmLayoutHeight(video)}` === "320x180", "sized by style: " + `${nmLayoutWidth(video)}x${nmLayoutHeight(video)}`;
 	assert prop(video, "paused") === "true" && prop(video, "source") === "https://neon.dev/clip.mp4", "props";
 	setPaused(false);
+	flush();
 	assert prop(video, "paused") === "false", "play";
 	nmControl(video, 5, "3\x1f0\x1f160\x1f90");
+	flush();
 	nmControl(video, 13, "1.25\x1f3\x1f3");
+	flush();
 	nmControl(video, 14, "");
+	flush();
 	assert log === "load 3 160x90;at 1.25;end;", "events: " + log;
 	(handle as VideoHandle).seek(2);
 	assert prop(video, "command") === "seek\x1f2", prop(video, "command");
 	nmTeardown();
+	flush();
 	assert nmReleaseCalls() === nmViewsCreated(), "media views are released";
 }

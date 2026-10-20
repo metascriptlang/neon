@@ -4,6 +4,7 @@ import { element } from "../../src/macros/ui/element";
 import { HostNode, MockNode, mockNode, mockHost, render, fireEvent, fireEventWith } from "../../src/render/host";
 import { Style } from "../../src/render/style";
 import { neonEvent } from "../../src/render/event";
+import { flush } from "../../src/core/runtime";
 
 function textOf(n: MockNode): string {
 	let out = n.text;
@@ -43,21 +44,25 @@ function press(root: MockNode, label: string): void {
 	const button = find(root, "pressable", label);
 	if (button === null) { throw new Error("no button " + label); }
 	fireEvent(button as MockNode, "onPress");
+	flush();
 }
 
 test "the motion example: fade, spring, scroll-linked header, toast" {
 	const clock = useManualFrames();
 	const root: MockNode = mockNode("root");
 	render(element(<Motion />), mockHost(), root as unknown as HostNode);
+	flush();
 	assert textOf(root).indexOf("fade 1 · spring 0 · scroll 0 · spin off") >= 0, textOf(root).substring(0, 200);
 
 	const box = holder(root, "fade box");
 	assert styleOf(box).opacity === 1;
 	press(root, "fade");
 	clock.step(25);
+	flush();
 	const mid = styleOf(box).opacity as number;
 	assert mid > 0 && mid < 1, "fading " + mid.toString();
 	clock.step(40);
+	flush();
 	assert styleOf(box).opacity === 0 && textOf(root).indexOf("fade 0") >= 0, textOf(root).substring(0, 80);
 
 	const card = holder(root, "spring card");
@@ -75,13 +80,16 @@ test "the motion example: fade, spring, scroll-linked header, toast" {
 	const spinner = holder(root, "spin");
 	press(root, "start spin");
 	clock.step(10);
+	flush();
 	const angle = styleOf(spinner).transform as string;
 	assert angle.startsWith("rotate(") && angle !== "rotate(0deg)", angle;
 	clock.step(80);
+	flush();
 	assert textOf(root).indexOf("spin on") >= 0, "the loop keeps running past one turn";
 	press(root, "stop spin");
 	const stopped = styleOf(spinner).transform as string;
 	clock.step(10);
+	flush();
 	assert styleOf(spinner).transform === stopped && textOf(root).indexOf("spin off") >= 0, "stop holds the angle";
 
 	const header = find(root, "text", "Neon motion");
@@ -92,6 +100,7 @@ test "the motion example: fade, spring, scroll-linked header, toast" {
 	const e = neonEvent("scroll");
 	e.y = 60;
 	fireEventWith(scrollNode as MockNode, "onScroll", e);
+	flush();
 	assert styleOf(headerBox).height === 83, "header follows scroll " + (styleOf(headerBox).height as number).toString();
 	assert textOf(root).indexOf("scroll 60") >= 0;
 
@@ -99,6 +108,8 @@ test "the motion example: fade, spring, scroll-linked header, toast" {
 	assert textOf(root).indexOf("toast shown") >= 0;
 	press(root, "toast");
 	clock.step(60);
+	flush();
 	assert textOf(root).indexOf("toast shown") < 0, "toast leaves after its exit";
 	setFrameDriver(null);
+	flush();
 }
