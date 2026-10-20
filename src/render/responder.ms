@@ -144,8 +144,10 @@ function release(entry: ResponderEntry): void {
 }
 
 function grant(entry: ResponderEntry, e: NeonEvent, moving: boolean): void {
+	const before = path;
 	responder = entry;
 	const block = ask(entry.handlers.onResponderGrant, e);
+	if (path !== before || responder !== entry || !entry.mounted) { return; }
 	if (moving) {
 		claimedThisTouch = true;
 		const watchers = claimWatchers.slice(0, claimWatchers.length);
@@ -153,8 +155,10 @@ function grant(entry: ResponderEntry, e: NeonEvent, moving: boolean): void {
 			if (!watch.pressing) { continue; }
 			watch.pressing = false;
 			watch.onClaim();
+			if (path !== before || responder !== entry || !entry.mounted) { return; }
 		}
 	}
+	if (path !== before || responder !== entry || !entry.mounted) { return; }
 	const host = entry.host;
 	if (host === null || entry.node === null) { return; }
 	const write = (host as Host).setResponder;
@@ -183,21 +187,37 @@ function negotiate(phase: TouchPhase, e: NeonEvent, candidates: ResponderEntry[]
 		if (entry !== responder && ask(bubble(entry, phase), e)) { wants = entry; }
 	}
 	if (wants === null) { return; }
-	const next = wants as ResponderEntry;
-	const moving = phase === TouchPhase.Move;
+	transfer(wants as ResponderEntry, e, phase === TouchPhase.Move);
+}
+
+function transfer(next: ResponderEntry, e: NeonEvent, moving: boolean): void {
+	if (!next.mounted || next === responder) { return; }
 	if (responder === null) {
 		grant(next, e, moving);
 		return;
 	}
+	const before = path;
 	const holder = responder as ResponderEntry;
 	const request = holder.handlers.onResponderTerminationRequest;
 	const allowed = request === null ? true : (request as (e: NeonEvent) => boolean)(e);
+	if (path !== before || responder !== holder || !next.mounted) { return; }
 	if (!allowed) {
 		tell(next.handlers.onResponderReject, e);
 		return;
 	}
+	responder = next;
 	tell(holder.handlers.onResponderTerminate, e);
+	if (path !== before || responder !== next || !next.mounted) { return; }
 	grant(next, e, moving);
+}
+
+export function responderScroll(entry: ResponderEntry, e: NeonEvent): boolean {
+	if (!active || !entry.mounted || path.indexOf(entry) < 0) { return false; }
+	if (responder === entry) { return true; }
+	const candidates = responder === null ? path : above(responder as ResponderEntry);
+	if (candidates.indexOf(entry) < 0) { return false; }
+	transfer(entry, e, true);
+	return responder === entry && entry.mounted;
 }
 
 function sample(e: NeonEvent, start: boolean): void {

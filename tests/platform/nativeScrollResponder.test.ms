@@ -1,0 +1,270 @@
+import { runApp, createNativeHost } from "../../src/platform/native/host";
+import { render, HostNode } from "../../src/render/host";
+import { Pressable, ScrollView, ScrollViewHandle, View } from "../../src/components/primitives";
+import { NeonNode } from "../../src/render/node";
+import { NeonEvent } from "../../src/render/event";
+import { currentResponder } from "../../src/render/responder";
+import { element } from "../../src/macros/ui/element";
+import { sleepAsync } from "std/core/promise";
+import {
+	nmTouchFull, nmLastPressableTag, nmLastScrollTag, nmScroll, nmTeardown,
+	nmTagWithProp, nmResponderBlocks,
+} from "./nativeBridgeMock.h";
+
+function observe(e: NeonEvent): void {}
+
+function physical(tag: int32, phase: int32, stamp: float64): void {
+	nmTouchFull(tag, phase, 10.0, 20.0, stamp);
+}
+
+function scroll(tag: int32): void {
+	nmScroll(tag, 0.0, 20.0, 200.0, 100.0, 200.0, 500.0);
+}
+
+test "native scroll takes logical activation without cancelling raw touch or long feedback balance" {
+	let result = "";
+	for (const mode of [0, 1, 2]) {
+		let hits = 0;
+		let long = 0;
+		let outs = 0;
+		let starts = 0;
+		let moves = 0;
+		let ends = 0;
+		let cancels = 0;
+		runApp((): NeonNode => <View
+			onTouchStart={(): void => { starts += 1; }}
+			onTouchMove={(): void => { moves += 1; }}
+			onTouchEnd={(): void => { ends += 1; }}
+			onTouchCancel={(): void => { cancels += 1; }}>
+			<ScrollView onScroll={observe}>
+				<Pressable onPressIn={mode > 0 ? observe : null}
+					onPressOut={mode > 0 ? (): void => { outs += 1; } : null}
+					onLongPress={mode > 0 ? (): void => { long += 1; } : null}
+					delayLongPress={25} onPress={(): void => { hits += 1; }} />
+			</ScrollView>
+		</View>);
+		const source = nmLastPressableTag();
+		const scroller = nmLastScrollTag();
+		physical(source, 0, 40000.0);
+		physical(source, 4, 40010.0);
+		scroll(scroller);
+		if (mode === 2) { await sleepAsync(90); }
+		physical(source, 1, 40120.0);
+		physical(source, 2, 40120.0);
+		await sleepAsync(160);
+		assert starts === 1 && moves === 1 && ends === 1 && cancels === 0;
+		result += hits.toString() + "," + long.toString() + "," + outs.toString() + ";";
+		nmTeardown();
+	}
+	assert result === "0,0,0;0,0,1;0,0,1;", result;
+}
+
+test "native scroll negotiates existing custom responder termination acceptance and refusal" {
+	let result = "";
+	for (const allowed of [false, true]) {
+		let requested = 0;
+		let terminated = 0;
+		let released = 0;
+		let hits = 0;
+		runApp((): NeonNode => <ScrollView onScroll={observe}>
+			<View onStartShouldSetResponder={(): boolean => true}
+				onResponderGrant={(): boolean => false}
+				onResponderTerminationRequest={(): boolean => { requested += 1; return allowed; }}
+				onResponderTerminate={(): void => { terminated += 1; }}
+				onResponderRelease={(): void => { released += 1; }}>
+				<Pressable onPress={(): void => { hits += 1; }} />
+			</View>
+		</ScrollView>);
+		const source = nmLastPressableTag();
+		physical(source, 0, 41000.0);
+		scroll(nmLastScrollTag());
+		physical(source, 1, 41020.0);
+		physical(source, 2, 41020.0);
+		result += requested.toString() + "," + terminated.toString() + "," +
+			released.toString() + "," + hits.toString() + ";";
+		nmTeardown();
+	}
+	assert result === "1,0,1,1;1,1,0,0;", result;
+}
+
+test "native scroll preserves a refusing native-blocking responder" {
+	let terminated = 0;
+	runApp((): NeonNode => <ScrollView onScroll={observe}>
+		<View accessibilityLabel="scroll-blocker" onStartShouldSetResponder={(): boolean => true}
+			onResponderGrant={(): boolean => true}
+			onResponderTerminationRequest={(): boolean => false}
+			onResponderTerminate={(): void => { terminated += 1; }} />
+	</ScrollView>);
+	const source = nmTagWithProp("accessibilityLabel", "scroll-blocker");
+	physical(source, 0, 42000.0);
+	assert nmResponderBlocks() === 1;
+	scroll(nmLastScrollTag());
+	assert nmResponderBlocks() === 1 && terminated === 0;
+	physical(source, 1, 42020.0);
+	assert nmResponderBlocks() === 0;
+	nmTeardown();
+}
+
+test "native idle and unrelated scroll do not consume another physical acquisition" {
+	let hits = 0;
+	let scrolls = 0;
+	runApp((): NeonNode => <View>
+		<View onStartShouldSetResponder={(): boolean => true} onResponderGrant={(): boolean => false}>
+			<Pressable accessibilityLabel="unrelated-scroll-press" onPressIn={observe}
+				onPress={(): void => { hits += 1; }} />
+		</View>
+		<ScrollView onScroll={(): void => { scrolls += 1; }} />
+	</View>);
+	const source = nmLastPressableTag();
+	const scroller = nmLastScrollTag();
+	scroll(scroller);
+	physical(source, 0, 43000.0);
+	scroll(scroller);
+	physical(source, 1, 43020.0);
+	physical(source, 2, 43020.0);
+	assert hits === 1 && scrolls === 2;
+	nmTeardown();
+}
+
+test "native scroll transfer does not grant a disposed candidate after custom termination reentrancy" {
+	let terminated = 0;
+	runApp((): NeonNode => <ScrollView onScroll={observe}>
+		<View accessibilityLabel="scroll-unmount-holder" onStartShouldSetResponder={(): boolean => true}
+			onResponderGrant={(): boolean => false}
+			onResponderTerminationRequest={(): boolean => true}
+			onResponderTerminate={(): void => { terminated += 1; nmTeardown(); }} />
+	</ScrollView>);
+	const source = nmTagWithProp("accessibilityLabel", "scroll-unmount-holder");
+	physical(source, 0, 44000.0);
+	scroll(nmLastScrollTag());
+	assert terminated === 1 && currentResponder() === null;
+	physical(source, 1, 44020.0);
+	physical(source, 2, 44020.0);
+}
+
+test "native scroll negotiation is present without user callbacks and bypasses user throttling" {
+	for (const listening of [false, true]) {
+		let hits = 0;
+		let calls = 0;
+		runApp((): NeonNode => <ScrollView
+			onScroll={listening ? (): void => { calls += 1; } : null}
+			scrollEventThrottle={100000000}>
+			<Pressable onPressIn={observe} onPress={(): void => { hits += 1; }} />
+		</ScrollView>);
+		const source = nmLastPressableTag();
+		const scroller = nmLastScrollTag();
+		scroll(scroller);
+		physical(source, 0, 45000.0);
+		scroll(scroller);
+		physical(source, 1, 45020.0);
+		physical(source, 2, 45020.0);
+		assert hits === 0 && calls === (listening ? 1 : 0);
+		nmTeardown();
+	}
+}
+
+test "native nested scroll keeps its accepted responder lock until raw end" {
+	const native = createNativeHost();
+	const handles: ScrollViewHandle[] = [];
+	let hits = 0;
+	const dispose = render(element(<ScrollView onScroll={observe}
+		ref={(h: ScrollViewHandle): void => {
+			handles.push(h);
+			native.host.setAttr(h.node, "accessibilityLabel", "outer-scroll-responder");
+		}}>
+		<ScrollView onScroll={observe} ref={(h: ScrollViewHandle): void => {
+			handles.push(h);
+			native.host.setAttr(h.node, "accessibilityLabel", "inner-scroll-responder");
+		}}>
+			<Pressable onPress={(): void => { hits += 1; }} />
+		</ScrollView>
+	</ScrollView>), native.host, native.rootNode);
+	const source = nmLastPressableTag();
+	physical(source, 0, 46000.0);
+	scroll(nmTagWithProp("accessibilityLabel", "inner-scroll-responder"));
+	const inner = currentResponder();
+	assert inner !== null && inner.node === handles[0].node;
+	scroll(nmTagWithProp("accessibilityLabel", "outer-scroll-responder"));
+	assert currentResponder() === inner, "observed inner scroll refuses ancestor transfer";
+	physical(source, 1, 46020.0);
+	physical(source, 2, 46020.0);
+	assert hits === 0 && currentResponder() === null;
+	dispose();
+	native.host.removeChild(native.rootNode, handles[1].node);
+}
+
+test "native scroll termination request cannot grant across disposal or a new physical start" {
+	for (const removing of [false, true]) {
+		let source: int32 = 0;
+		let requested = 0;
+		let terminated = 0;
+		runApp((): NeonNode => <ScrollView>
+			<View accessibilityLabel="scroll-request-reentry" onStartShouldSetResponder={(): boolean => true}
+				onResponderGrant={(): boolean => true}
+				onResponderTerminationRequest={(): boolean => {
+					requested += 1;
+					if (removing) { nmTeardown(); } else {
+						physical(source, 1, 50020.0);
+						physical(source, 0, 51000.0);
+					}
+					return true;
+				}}
+				onResponderTerminate={(): void => { terminated += 1; }} />
+		</ScrollView>);
+		source = nmTagWithProp("accessibilityLabel", "scroll-request-reentry");
+		physical(source, 0, 50000.0);
+		const holder = currentResponder();
+		scroll(nmLastScrollTag());
+		assert requested === 1 && terminated === (removing ? 1 : 0);
+		assert removing ? currentResponder() === null : currentResponder() === holder;
+		assert nmResponderBlocks() === (removing ? 0 : 1);
+		physical(source, 1, 51020.0);
+		nmTeardown();
+	}
+}
+
+test "native scroll pressOut reentrancy cannot apply an old grant after disposal or same-entry reacquisition" {
+	for (const removing of [false, true]) {
+		const native = createNativeHost();
+		const original = native.host.setResponder;
+		let grants = 0;
+		native.host.setResponder = (node: HostNode | null, block: boolean): void => {
+			if (node !== null) { grants += 1; }
+			if (original !== null) { (original as (node: HostNode | null, block: boolean) => void)(node, block); }
+		};
+		const handles: ScrollViewHandle[] = [];
+		let source: int32 = 0;
+		let scroller: int32 = 0;
+		let cleanup: (() => void) | null = null;
+		let reentered = false;
+		let outs = 0;
+		let hits = 0;
+		const base = removing ? 49000.0 : 47000.0;
+		cleanup = render(element(<ScrollView ref={(h: ScrollViewHandle): void => { handles.push(h); }}>
+			<Pressable onPress={(): void => { hits += 1; }} onPressOut={(): void => {
+				outs += 1;
+				if (reentered) { return; }
+				reentered = true;
+				if (removing) { (cleanup as () => void)(); } else {
+					physical(source, 1, base + 20.0);
+					physical(source, 2, base + 20.0);
+					physical(source, 0, base + 1000.0);
+					scroll(scroller);
+				}
+			}} />
+		</ScrollView>), native.host, native.rootNode);
+		source = nmLastPressableTag();
+		scroller = nmLastScrollTag();
+		physical(source, 0, base);
+		await sleepAsync(150);
+		scroll(scroller);
+		const applied = grants;
+		await sleepAsync(160);
+		physical(source, 1, base + 1020.0);
+		physical(source, 2, base + 1020.0);
+		(cleanup as () => void)();
+		native.host.removeChild(native.rootNode, handles[0].node);
+		assert hits === 0 && outs === (removing ? 1 : 2);
+		assert applied === (removing ? 0 : 1), `old/native grants ${applied}`;
+	}
+}

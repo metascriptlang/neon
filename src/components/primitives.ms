@@ -40,6 +40,7 @@ import {
 	parentResponder,
 	pressSwallowed,
 	responderTouch,
+	responderScroll,
 	responderUnmounted,
 } from "../render/responder";
 
@@ -524,7 +525,27 @@ const SCROLL_BASE: Style = { display: "flex", flexGrow: 1, flexShrink: 1, flexDi
 const SCROLL_HORIZONTAL: Style = { display: "flex", flexGrow: 1, flexShrink: 1, flexDirection: "row", overflow: "scroll" };
 
 export function ScrollView(props: ScrollViewProps): NeonNode {
+	let observedScroll = false;
+	const handlers: ResponderHandlers = {
+		onStartShouldSetResponder: null,
+		onStartShouldSetResponderCapture: null,
+		onMoveShouldSetResponder: null,
+		onMoveShouldSetResponderCapture: null,
+		onResponderGrant: (e: NeonEvent): boolean => { observedScroll = false; return false; },
+		onResponderReject: null,
+		onResponderStart: null,
+		onResponderMove: null,
+		onResponderEnd: null,
+		onResponderRelease: null,
+		onResponderTerminate: null,
+		onResponderTerminationRequest: (e: NeonEvent): boolean => !observedScroll,
+	};
+	const entry = new ResponderEntry(handlers, parentResponder());
 	const evts: VEvent[] = [];
+	evts.push(touchEvent("onTouchStart", null, entry, TouchPhase.Start) as VEvent);
+	evts.push(touchEvent("onTouchMove", null, entry, TouchPhase.Move) as VEvent);
+	evts.push(touchEvent("onTouchEnd", null, entry, TouchPhase.End) as VEvent);
+	evts.push(touchEvent("onTouchCancel", null, entry, TouchPhase.Cancel) as VEvent);
 	const attrs: VAttr[] = [];
 	const horizontal = props.horizontal;
 	if (horizontal !== null) { attrs.push(dynAttr("horizontal", (): string | null => `${(horizontal as () => boolean)()}`)); }
@@ -560,20 +581,21 @@ export function ScrollView(props: ScrollViewProps): NeonNode {
 		attrs.push(dynAttr("refreshEnabled", (): string | null => "true"));
 		evts.push(evt("onRefresh", (e: NeonEvent): void => { (refresh as () => void)(); }));
 	}
-	if (props.onScroll !== null) {
-		const user = props.onScroll as (e: NeonEvent) => void;
-		const throttle = props.scrollEventThrottle;
-		let last = -1.0;
-		evts.push(evt("onScroll", (e: NeonEvent): void => {
-			const every = throttle === null ? 0 : (throttle as () => number)();
-			if (every > EVERY_FRAME_MS) {
-				const now = performance.now();
-				if (last >= 0 && now - last < every) { return; }
-				last = now;
-			}
-			user(e);
-		}));
-	}
+	const userScroll = props.onScroll;
+	const throttle = props.scrollEventThrottle;
+	let last = -1.0;
+	evts.push(evt("onScroll", (e: NeonEvent): void => {
+		if (!entry.mounted) { return; }
+		if (responderScroll(entry, e)) { observedScroll = true; }
+		if (!entry.mounted || userScroll === null) { return; }
+		const every = throttle === null ? 0 : (throttle as () => number)();
+		if (every > EVERY_FRAME_MS) {
+			const now = performance.now();
+			if (last >= 0 && now - last < every) { return; }
+			last = now;
+		}
+		(userScroll as (e: NeonEvent) => void)(e);
+	}));
 	if (props.onLayout !== null) { evts.push(evt("onLayout", props.onLayout as (e: NeonEvent) => void)); }
 	const sizeChange = props.onContentSizeChange;
 	const userContentStyle = props.contentContainerStyle;
@@ -587,6 +609,7 @@ export function ScrollView(props: ScrollViewProps): NeonNode {
 	const userRef = props.ref;
 	const refreshControl = props.refreshControl;
 	const inner: NeonNode = (host: Host, node: HostNode, before: HostNode | null): void => {
+		entry.node = node;
 		content(host, node, before);
 		if (refreshControl !== null) { (refreshControl as NeonNode)(host, node, null); }
 		if (userRef !== null) {
@@ -600,7 +623,16 @@ export function ScrollView(props: ScrollViewProps): NeonNode {
 		const base = horizontal !== null && (horizontal as () => boolean)() ? SCROLL_HORIZONTAL : SCROLL_BASE;
 		return userStyle === null ? base : layerStyles([base, (userStyle as () => Style)()]);
 	});
-	return primitive("scrollview", { style, class: props.class }, attrs, evts, inner, null);
+	const provided = ResponderParent.provider({
+		value: accessor((): ResponderEntry | null => entry),
+		children: inner,
+	});
+	const view = primitive("scrollview", { style, class: props.class }, attrs, evts, provided, null);
+	return (host: Host, parent: HostNode, before: HostNode | null): void => {
+		entry.host = host;
+		onCleanup((): void => { responderUnmounted(entry); });
+		view(host, parent, before);
+	};
 }
 
 export type KeyboardType = "default" | "numeric" | "number-pad" | "decimal-pad" | "email-address" | "phone-pad" | "url";
