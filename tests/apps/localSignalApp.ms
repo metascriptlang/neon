@@ -1,4 +1,5 @@
 import { createSignal } from "../../src/core/signal";
+import { flush } from "../../src/core/runtime";
 import { element } from "../../src/macros/ui/element";
 import { render, mockHost, mockNode, mockToString, HostNode } from "../../src/render/host";
 
@@ -9,6 +10,7 @@ function main(): void {
 	render(element(<div>count={count().toString()}</div>), host, root as unknown as HostNode);
 	console.log(mockToString(root));
 	setCount(1);
+	flush();
 	console.log(mockToString(root));
 }
 
