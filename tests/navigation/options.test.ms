@@ -26,7 +26,8 @@ import {
 } from "../../src/navigation/index";
 import { backAccessibilityLabel } from "../../src/navigation/header";
 import { tabAccessibilityLabel } from "../../src/navigation/tabs";
-import { findLabel, press, visibleText } from "./navHarness";
+import { Platform } from "../../src/api/platform";
+import { attrOf, findLabel, press, visibleText } from "./navHarness";
 
 const Tab = createBottomTabNavigator<string>();
 const Stack = createStackNavigator<string>();
@@ -241,4 +242,36 @@ test "the back button and an iOS tab carry React Navigation's accessibility labe
 	assert backAccessibilityLabel("") === "Go back";
 	assert tabAccessibilityLabel("Search", 1, 3, "ios") === "Search, tab, 2 of 3";
 	assert tabAccessibilityLabel("Search", 1, 3, "android") === "Search";
+}
+
+test "a tab is a selected tab inside a tablist, and a drawer item is selected while focused" {
+	const root = mockNode("root");
+	const dispose = render(<NavigationContainer>
+		<Tab.Navigator>
+			<Tab.Screen name="One" component={Counted} />
+			<Tab.Screen name="Two" component={Counted} />
+		</Tab.Navigator>
+	</NavigationContainer>, mockHost(), root as unknown as HostNode);
+	const one = findLabel(root, tabAccessibilityLabel("One", 0, 2, Platform.OS)) as MockNode;
+	const two = findLabel(root, tabAccessibilityLabel("Two", 1, 2, Platform.OS)) as MockNode;
+	assert attrOf(one, "accessibilityRole") === (Platform.OS === "ios" ? "button" : "tab"), attrOf(one, "accessibilityRole");
+	assert attrOf(one.parent as MockNode, "accessibilityRole") === "tablist";
+	assert attrOf(one, "accessibilityState") === "selected" && attrOf(two, "accessibilityState") === "";
+	press(root, tabAccessibilityLabel("Two", 1, 2, Platform.OS));
+	assert attrOf(one, "accessibilityState") === "" && attrOf(two, "accessibilityState") === "selected";
+	dispose();
+	const drawerRoot = mockNode("root");
+	const ref = createNavigationContainerRef();
+	const disposeDrawer = render(<NavigationContainer ref={ref}>
+		<Drawer.Navigator>
+			<Drawer.Screen name="First" component={Counted} />
+			<Drawer.Screen name="Second" component={Counted} />
+		</Drawer.Navigator>
+	</NavigationContainer>, mockHost(), drawerRoot as unknown as HostNode);
+	ref.openDrawer();
+	flush();
+	const first = findLabel(drawerRoot, "First") as MockNode;
+	assert attrOf(first, "accessibilityRole") === "button";
+	assert attrOf(first, "accessibilityState") === "selected", attrOf(first, "accessibilityState");
+	disposeDrawer();
 }

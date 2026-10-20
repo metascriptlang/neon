@@ -38,6 +38,7 @@ export function SafeAreaView(props: SafeAreaViewProps): NeonNode {
 		accessibilityLabel: props.accessibilityLabel,
 		accessibilityHint: props.accessibilityHint,
 		accessibilityRole: props.accessibilityRole,
+		accessibilityState: props.accessibilityState,
 		onLayout: props.onLayout,
 		children: props.children,
 	});

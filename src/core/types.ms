@@ -52,46 +52,62 @@ export interface Link {
 
 // `commit` and `run` close over the typed Cell only, never their own node: --gc=drc has
 // no cycle collector, so a node that reaches itself through its closure leaks.
-export interface Source {
-	subs: Link | null;
-	subsTail: Link | null;
+export class Source {
+	subs: Link | null = null;
+	subsTail: Link | null = null;
 	config: int32;
 	computed: boolean;
-	commit: (() => void) | null;
+	commit: (() => void) | null = null;
+
+	constructor(config: int32, computed: boolean) {
+		this.config = config;
+		this.computed = computed;
+	}
 }
 
-export interface Computation extends Source {
-	deps: Link | null;
-	depsTail: Link | null;
-	depGen: int32;
+export class Computation extends Source {
+	deps: Link | null = null;
+	depsTail: Link | null = null;
+	depGen: int32 = 0;
 	flags: int32;
-	height: int32;
-	nextHeap: Computation | null;
-	prevHeap: Computation | null;
+	height: int32 = 0;
+	nextHeap: Computation | null = null;
+	prevHeap: Computation | null = null;
 	run: ((self: Computation, create: boolean) => int32) | null;
-	apply: ((self: Computation) => void) | null;
-	cleanup: Cleanup | null;
+	apply: ((self: Computation) => void) | null = null;
+	cleanup: Cleanup | null = null;
 	type: int32;
-	unobserved: (() => void) | null;
+	unobserved: (() => void) | null = null;
 
 	parent: Computation | null;
-	parentComputed: Computation | null;
-	firstChild: Computation | null;
-	nextSibling: Computation | null;
-	prevSibling: Computation | null;
-	disposal: Cleanup[] | null;
+	parentComputed: Computation | null = null;
+	firstChild: Computation | null = null;
+	nextSibling: Computation | null = null;
+	prevSibling: Computation | null = null;
+	disposal: Cleanup[] | null = null;
 	context: ContextEntry | null;
-	id: string | null;
-	childCount: int32;
+	id: string | null = null;
+	childCount: int32 = 0;
 
 	status: int32;
-	error: Error | null;
-	flight: int32;
-	pendingSources: Computation[] | null;
-	blocked: boolean;
-	reask: boolean;
-	visitedAt: int32;
+	error: Error | null = null;
+	flight: int32 = 0;
+	pendingSources: Computation[] | null = null;
+	blocked: boolean = false;
+	reask: boolean = false;
+	visitedAt: int32 = 0;
 	time: int32;
+
+	constructor(config: int32, flags: int32, computed: boolean, run: ((self: Computation, create: boolean) => int32) | null, type: int32, parent: Computation | null, time: int32) {
+		super(config, computed);
+		this.flags = flags;
+		this.run = run;
+		this.type = type;
+		this.parent = parent;
+		this.context = parent !== null ? parent.context : null;
+		this.status = computed ? STATUS_UNINITIALIZED : 0;
+		this.time = time;
+	}
 }
 
 export class NotReadyError extends Error {

@@ -1,3 +1,4 @@
+import { Signal } from "../core/signal";
 import { Dispose } from "../core/types";
 import { getOwner } from "../core/runtime";
 import { onCleanup } from "../core/cleanup";
@@ -98,7 +99,7 @@ export class RoutingSession {
 	private unsubscribe: Dispose;
 	private disposed: boolean = false;
 	private previous: RoutingHistoryEntry;
-	private position: int32;
+	private position: Signal<int32>;
 	private landing: (() => void) | null = null;
 
 	constructor(
@@ -109,20 +110,20 @@ export class RoutingSession {
 		this.registry = registry;
 		this.history = history;
 		this.previous = history.read();
-		this.position = history.index();
+		this.position = new Signal<int32>(history.index(), null, true);
 		this.unsubscribe = history.listen((entry: RoutingHistoryEntry): void => {
 			const landing = this.landing;
 			if (landing !== null) {
 				this.landing = null;
 				this.previous = entry;
-				this.position = this.history.index();
+				this.position.set(this.history.index());
 				landing();
 				return;
 			}
 			const restored = restoreEntry(this.registry, entry);
 			if (!restored.ok) {
 				if (restored.error === RoutingError.Refused &&
-					this.go(this.position - this.history.index(), (): void => {})) {
+					this.go(this.position.peek() - this.history.index(), (): void => {})) {
 					return;
 				}
 				if (this.history.writable) { this.history.replace(this.previous); }
@@ -130,7 +131,7 @@ export class RoutingSession {
 				return;
 			}
 			this.previous = entry;
-			this.position = this.history.index();
+			this.position.set(this.history.index());
 			const landed = this.registry.address();
 			if (this.history.writable && landed.ok && landed.value !== entry.url) { this.sync(true); }
 		});
@@ -160,12 +161,16 @@ export class RoutingSession {
 		if (replace) { this.history.replace(entry); }
 		else { this.history.push(entry); }
 		this.previous = entry;
-		this.position = this.history.index();
+		this.position.set(this.history.index());
 		return Result.ok(null);
 	}
 
 	index(): int32 {
 		return this.history.index();
+	}
+
+	canGoBack(): boolean {
+		return this.position.get() > 0;
 	}
 
 	go(delta: int32, landed: () => void): boolean {

@@ -54,7 +54,8 @@ export function Button(props: ButtonProps): NeonNode {
 	const a11y = props.accessibilityLabel === null ? title : props.accessibilityLabel as Accessor<string>;
 	const hintProp = props.accessibilityHint;
 	const hint = accessor((): string => hintProp === null ? "" : (hintProp as Accessor<string>)());
-	return element(<Pressable style={box} onPress={press} accessibilityRole="button" accessibilityLabel={a11y()} accessibilityHint={hint()}>
+	return element(<Pressable style={box} onPress={press} accessibilityRole="button" accessibilityLabel={a11y()} accessibilityHint={hint()}
+		accessibilityState={{ disabled: isDisabled() }}>
 		<Text style={label}>{buttonTitle(title())}</Text>
 	</Pressable>);
 }

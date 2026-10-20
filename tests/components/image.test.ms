@@ -5,6 +5,7 @@ import { HostNode, MockNode, mockNode, mockHost, render, fireEventWith } from ".
 import { Image, ImageLoader } from "../../src/components/image";
 import { FakeServices } from "../api/fakeServices";
 import { sleepAsync } from "std/core/promise";
+import { flush } from "../../src/core/runtime";
 
 function attrOf(n: MockNode, name: string): string {
 	for (const a of n.attrs) {
@@ -21,6 +22,7 @@ test "Image sends resizeMode repeat and blurRadius to the host" {
 	assert attrOf(image, "resizeMode") === "repeat", "repeat";
 	assert attrOf(image, "blurRadius") === "4", "blur " + attrOf(image, "blurRadius");
 	setBlur(0);
+	flush();
 	assert attrOf(image, "blurRadius") === "0", "blur cleared";
 }
 
@@ -66,9 +68,11 @@ test "Image defaultSource shows until the source is cached, and onLoad waits for
 	fireEventWith(image, "onLoad", neonEvent("load"));
 	const early = log;
 	services.imageDone[0](800, 600, "");
+	flush();
 	const loaded = attrOf(image, "source");
 	fireEventWith(image, "onLoad", neonEvent("load"));
 	setUri("https://x/broken.png");
+	flush();
 	const back = attrOf(image, "source");
 	services.imageDone[1](0, 0, "HTTP 404");
 	assert placeholder === "data:placeholder" && early === "", `placeholder first, its load is not the source's: ${placeholder} ${early}`;

@@ -50,6 +50,7 @@ export function ImageBackground(props: ImageBackgroundProps): NeonNode {
 		accessibilityLabel: props.accessibilityLabel,
 		accessibilityHint: props.accessibilityHint,
 		accessibilityRole: props.accessibilityRole,
+		accessibilityState: props.accessibilityState,
 		onLayout: props.onLayout,
 		children: layers,
 	});

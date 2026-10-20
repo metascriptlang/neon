@@ -169,8 +169,8 @@ export function tabItem<P>(
 		}
 		core.navigateLocal(entry.route.name, null);
 	};
-	return <Pressable style={TAB_ITEM}
-		accessibilityRole="button" accessibilityLabel={a11y()} onPress={press}>
+	return <Pressable style={TAB_ITEM} accessibilityRole={Platform.OS === "ios" ? "button" : "tab"}
+		accessibilityLabel={a11y()} accessibilityState={{ selected: focused() }} onPress={press}>
 		<Slot node={icon} />
 		<View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
 			<Text style={{ color: color(), fontSize: 12 }}>{label()}</Text>
@@ -326,7 +326,7 @@ export function pagesModel<P>(
 				});
 			});
 		},
-		navigate: (name: string, params: P | null): void => {
+		navigate: (name: string, params: P | null, pop: boolean): void => {
 			const list = core.snapshot();
 			const at = core.indexOfName(list, name);
 			if (params !== null) { list[at].writeParams(params); }
@@ -337,6 +337,7 @@ export function pagesModel<P>(
 			core.navigate(name, params);
 		},
 		popTo: (at: int32): void => {},
+		popToRoute: (name: string, params: P | null, source: string | null): boolean => false,
 		reset: (list: RouteSeed<P>[], at: int32): void => {
 			const next = resetPages<P>(core, list, at);
 			history = [next.items[next.selectedIndex].key];
@@ -467,7 +468,7 @@ function createTabs<P>(material: boolean): TabNavigator<P> {
 			const mounted = mountedEntries<P>(core);
 			const transitions = createNavigatorMotion<P>(core, false);
 			const screen = (entry: Navigation<P>, at: Accessor<number>): NeonNode => {
-				return screenView<P>(core, transitions, entry, false);
+				return screenView<P>(core, transitions, entry, false, at);
 			};
 			const item = (entry: Navigation<P>, at: Accessor<number>): NeonNode => {
 				return tabItem<P>(core, entry, top);
@@ -485,7 +486,7 @@ function createTabs<P>(material: boolean): TabNavigator<P> {
 					<For each={mounted}>{screen}</For>
 				</View>
 				<View style={hairline} />
-				<View style={bar}>
+				<View style={bar} accessibilityRole="tablist">
 					<For each={core.entries}>{item}</For>
 				</View>
 			</View>;

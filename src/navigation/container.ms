@@ -21,6 +21,8 @@ import {
 	WebRoutes,
 	deepestFocused,
 	navigateUp,
+	reportUnhandled,
+	drawerActionType,
 } from "./core";
 import { LinkingOptions, targetFromPath, targetFromURL } from "./linking";
 import { RoutingRegistry } from "./routing";
@@ -66,8 +68,8 @@ export class NavigationContainerRef {
 
 	navigate(name: string): void {
 		const leaf = this.focusedLeaf("navigate");
-		if (!navigateUp(leaf, { name, values: null, child: null })) {
-			throw new Error("navigate: no focused navigator has a screen named '" + name + "'");
+		if (!navigateUp(leaf, { name, values: null, child: null, pop: false })) {
+			reportUnhandled("NAVIGATE", name);
 		}
 	}
 
@@ -78,7 +80,7 @@ export class NavigationContainerRef {
 			if (here.backLocal()) { return; }
 			link = here.parent();
 		}
-		throw new Error("goBack: no navigator can go back");
+		reportUnhandled("GO_BACK", null);
 	}
 
 	canGoBack(): boolean {
@@ -132,7 +134,7 @@ export class NavigationContainerRef {
 			if (here.drawerAction(action)) { return; }
 			link = here.parent();
 		}
-		throw new Error("drawer action: no drawer navigator is focused");
+		reportUnhandled(drawerActionType(action), null);
 	}
 
 	linkTo(path: string): boolean {
@@ -170,6 +172,7 @@ function containerLink(initialState: NavigationState | null): ContainerSlot {
 			return (root as NavigatorLink).navigateTo(target);
 		},
 		pushTo: (name: string): boolean => false,
+		popToRoute: (name: string): boolean => false,
 		backLocal: (): boolean => false,
 		canBackLocal: (): boolean => false,
 		canPop: (): boolean => false,

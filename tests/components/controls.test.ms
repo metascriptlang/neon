@@ -28,11 +28,12 @@ test "Button is a pressable with the button role whose press stops while disable
 	let presses = 0;
 	const root: MockNode = mockNode("root");
 	render(element(<Button title="Save" disabled={disabled()} onPress={(e: NeonEvent): void => { presses += 1; }} />), mockHost(), root as unknown as HostNode);
-	assert mockToString(root) === "<root><pressable accessible=\"true\" accessibilityLabel=\"Save\" accessibilityHint=\"\" accessibilityRole=\"button\"><text>" + SAVE_TITLE + "</text></pressable></root>", "shape: " + mockToString(root);
+	assert mockToString(root) === "<root><pressable accessible=\"true\" accessibilityLabel=\"Save\" accessibilityHint=\"\" accessibilityRole=\"button\" accessibilityState=\"\"><text>" + SAVE_TITLE + "</text></pressable></root>", "shape: " + mockToString(root);
 	const button = root.children[0];
 	fireEvent(button, "onPress");
 	setDisabled(true);
 	flush();
+	assert mockToString(root).indexOf("accessibilityState=\"disabled\"") >= 0, "disabled is announced: " + mockToString(root);
 	fireEvent(button, "onPress");
 	assert presses === 1, "presses: " + presses.toString();
 }

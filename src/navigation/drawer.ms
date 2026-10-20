@@ -168,15 +168,16 @@ function drawerModel<P>(
 		entries: pages.entries,
 		index: pages.index,
 		arrange: pages.arrange,
-		navigate: (name: string, params: P | null): void => {
+		navigate: (name: string, params: P | null, pop: boolean): void => {
 			flush((): void => {
-				pages.navigate(name, params);
+				pages.navigate(name, params, pop);
 				writeOpen(false);
 			});
 		},
 		push: pages.push,
 		replace: pages.replace,
 		popTo: pages.popTo,
+		popToRoute: pages.popToRoute,
 		reset: pages.reset,
 		goBackFrom: (key: string): boolean => back(),
 		canBack: (): boolean => untrack((): boolean => open()) || pages.canBack(),
@@ -289,7 +290,7 @@ export function drawerItem<P>(core: NavigatorCore<P>, entry: Navigation<P>): Neo
 		fontWeight: focused() ? "bold" : "normal",
 	}));
 	return <Pressable style={row} accessibilityRole="button" accessibilityLabel={label()}
-		onPress={press}>
+		accessibilityState={{ selected: focused() }} onPress={press}>
 		<Text style={text}>{label()}</Text>
 	</Pressable>;
 }
@@ -407,7 +408,7 @@ export function createDrawerNavigator<P>(): DrawerNavigator<P> {
 			const edgeHandlers = motion.edgeHandlers();
 			const transitions = createNavigatorMotion<P>(core, false);
 			const screen = (entry: Navigation<P>, at: Accessor<number>): NeonNode => {
-				return screenView<P>(core, transitions, entry, true);
+				return screenView<P>(core, transitions, entry, true, at);
 			};
 			const item = (entry: Navigation<P>, at: Accessor<number>): NeonNode => {
 				return drawerItem<P>(core, entry);

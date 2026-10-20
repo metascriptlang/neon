@@ -113,6 +113,7 @@ test "mapArray.test.ts:3 default mode passes the raw item and an index accessor,
 	assert computed === 3, "three rows built";
 
 	setSrc([ib, ia, ic]);
+	flush();
 	const second = m();
 	assert second[0].id === "b" && second[0].index() === 0, "b moved to 0 and its index followed";
 	assert second[1].id === "a" && second[1].index() === 1, "a moved to 1 and its index followed";
@@ -122,16 +123,19 @@ test "mapArray.test.ts:3 default mode passes the raw item and an index accessor,
 
 	const id: Id = { id: "d" };
 	setSrc([ib, ia, ic, id]);
+	flush();
 	const third = m();
 	assert third.length === 4 && third[3].id === "d" && third[3].index() === 3, "d appended at 3";
 	assert computed === 4, "one build for d";
 
 	setSrc([ia, ic, id]);
+	flush();
 	const fourth = m();
 	assert fourth.length === 3 && fourth[0] === a, "b removed, a keeps its row";
 	assert computed === 4, "a removal builds nothing";
 
 	setSrc([]);
+	flush();
 	assert m().length === 0, "emptied";
 	assert computed === 4, "emptying builds nothing";
 	scope.dispose();
@@ -163,6 +167,7 @@ test "mapArray.test.ts:76 a consumer that reads the mapped list re-runs when the
 	});
 	assert runs === 1 && seen === 3, "first run";
 	setSrc([2, 3]);
+	flush();
 	assert runs === 2 && seen === 2, "re-ran once with the shorter list";
 	scope.dispose();
 }
@@ -181,11 +186,13 @@ test "map.ts:493 default mode pairs equal items by occurrence order" {
 	const first = m();
 	assert first.length === 4 && built === 4, "four rows";
 	setSrc([7, 7, 1]);
+	flush();
 	const second = m();
 	assert second[0] === first[0] && second[1] === first[1] && second[2] === first[3], "the first two 7 rows and the 1 row stay";
 	assert built === 4, "nothing rebuilt";
 	assert disposed === 1, "the third 7 row is the one that goes: " + disposed.toString();
 	setSrc([1, 7, 7, 7, 7]);
+	flush();
 	const third = m();
 	assert third[0] === first[3] && third[1] === first[0] && third[2] === first[1], "survivors keep their rows";
 	assert built === 6, "two new 7 rows";
@@ -204,9 +211,11 @@ test "mapArray creates new, disposes removed" {
 	}));
 	m();
 	setSrc([1, 2, 3, 4]);
+	flush();
 	m();
 	assert calls === 4 && disposed === 0, "one new for 4, none disposed";
 	setSrc([1, 2]);
+	flush();
 	m();
 	assert calls === 4 && disposed === 2, "two rows disposed";
 	scope.dispose();
@@ -219,6 +228,7 @@ test "mapArray index reflects a move when read before AND after the move" {
 	const out = m();
 	assert out[0]() === 0, "early read creates the signal";
 	setSrc([2, 1, 3]);
+	flush();
 	m();
 	assert out[0]() === 1, "the same accessor reads the new index";
 	scope.dispose();
@@ -237,10 +247,13 @@ test "map.ts:358 default mode fallback shows on empty, is dropped when rows retu
 	assert m().join(",") === "empty" && fbBuilt === 1, "fallback from the start";
 	assert m().join(",") === "empty" && fbBuilt === 1, "a second pass over an empty list builds it once";
 	setSrc([1, 2]);
+	flush();
 	assert m().join(",") === "1,2" && fbDisposed === 1, "rows replace the fallback and dispose it";
 	setSrc([]);
+	flush();
 	assert m().join(",") === "empty" && fbBuilt === 2, "rebuilt on the next empty";
 	setSrc([3]);
+	flush();
 	assert m().join(",") === "3" && fbDisposed === 2, "dropped again";
 	scope.dispose();
 }
@@ -263,12 +276,14 @@ test "map.ts:111 a row that throws mid-pass commits nothing and disposes only th
 	assert built === 3, "three rows";
 	armed = true;
 	setSrc([3, 5, 4, 1]);
+	flush();
 	const caught = failure(() => { m(); });
 	assert caught.includes("row 4"), "the row's error reaches the reader: " + caught;
 	assert disposed === 1 && live[5] === false, "only the row built in the aborted pass (5) was disposed: " + disposed.toString();
 	assert live[1] && live[2] && live[3], "surviving rows are untouched, including the one the new list drops (2)";
 	armed = false;
 	setSrc([3, 5, 4, 1]);
+	flush();
 	const after = m();
 	assert after.length === 4 && after[0] === 3 && after[1] === 5 && after[2] === 4 && after[3] === 1, "the retry maps the new list";
 	assert live[1] && !live[2] && live[3] && live[4] && live[5], "balance after the retry: " + disposed.toString();
@@ -312,21 +327,25 @@ test "mapArray.test.ts:96 keyed false passes an item accessor and a plain index,
 	assert computed === 3, "three rows";
 
 	setSrc([3, 2, 1]);
+	flush();
 	const second = m();
 	assert second[0] === a && second[1] === b && second[2] === c, "rows stay at their positions";
 	assert a.value() === 3 && b.value() === 2 && c.value() === 1, "values changed in place";
 	assert computed === 3, "no rebuild";
 
 	setSrc([3, 2, 1, 4]);
+	flush();
 	const third = m();
 	assert third.length === 4 && third[3].index === 3 && third[3].value() === 4, "append builds one row";
 	assert computed === 4, "one build";
 
 	setSrc([2, 1, 4]);
+	flush();
 	const fourth = m();
 	assert fourth.length === 3 && fourth[0] === a && a.value() === 2, "shrink keeps the head rows and rewrites their values";
 
 	setSrc([]);
+	flush();
 	assert m().length === 0, "emptied";
 	assert computed === 4, "no builds on shrink";
 	scope.dispose();
@@ -343,6 +362,7 @@ test "mapArray.test.ts:290 keyed false keeps a row's value accessor live across 
 	m();
 	assert (first as Accessor<string>)() === "a", "first value";
 	setSrc(["b", "a"]);
+	flush();
 	m();
 	assert (first as Accessor<string>)() === "b", "the first row's accessor follows its slot";
 	scope.dispose();
@@ -354,8 +374,10 @@ test "map.ts:358 keyed false fallback shows on empty and yields to rows" {
 	const m = runWithOwner(scope.owner, () => mapArrayByPosition<number, string>(src, (v, i) => v().toString(), () => "empty"));
 	assert m().join(",") === "empty", "fallback";
 	setSrc([4, 5]);
+	flush();
 	assert m().join(",") === "4,5", "rows";
 	setSrc([]);
+	flush();
 	assert m().join(",") === "empty", "fallback again";
 	scope.dispose();
 }
@@ -374,22 +396,26 @@ test "mapArray.test.ts:198 keyed by a function passes accessors for both argumen
 	assert computed === 3, "three rows";
 
 	setSrc([{ id: "b" }, { id: "a" }, { id: "c" }]);
+	flush();
 	const second = m();
 	assert second[0] === b && second[1] === a && second[2] === c, "the rows of the same keys moved, fresh objects notwithstanding";
 	assert a.index() === 1 && b.index() === 0, "index accessors followed";
 	assert computed === 3, "a reorder builds nothing";
 
 	setSrc([{ id: "b" }, { id: "a" }, { id: "c" }, { id: "d" }]);
+	flush();
 	const third = m();
 	assert third.length === 4 && third[3].item().id === "d" && third[3].index() === 3, "d appended";
 	assert computed === 4, "one build";
 
 	setSrc([{ id: "a" }, { id: "c" }, { id: "d" }]);
+	flush();
 	const fourth = m();
 	assert fourth.length === 3 && fourth[0] === a, "b removed";
 	assert computed === 4, "nothing rebuilt";
 
 	setSrc([]);
+	flush();
 	assert m().length === 0, "emptied";
 	scope.dispose();
 }
@@ -405,6 +431,7 @@ test "BUGS.md <For key> keyed by a function updates the kept row's item in place
 	const out = m();
 	assert out[0].label() === "a" && out[1].label() === "b", "initial labels";
 	setSrc([{ id: 2, label: "b2" }, { id: 1, label: "a2" }]);
+	flush();
 	const out2 = m();
 	assert out2[0].label() === "b2" && out2[1].label() === "a2", "the rows moved and show the new items: " + out2[0].label() + "," + out2[1].label();
 	assert out2[0] === out[1] && out2[1] === out[0], "they are the same rows";
@@ -422,6 +449,7 @@ test "keyed by a function writes an item replaced under a kept key at every posi
 	setSrc([
 		{ id: 1, label: "p2" }, { id: 3, label: "w2b" }, { id: 2, label: "w1b" }, { id: 4, label: "s2" },
 	]);
+	flush();
 	const out2 = m();
 	assert out2[0].label() === "p2", "prefix row rewritten: " + out2[0].label();
 	assert out2[1].label() === "w2b" && out2[2].label() === "w1b", "window rows rewritten: " + out2[1].label() + "," + out2[2].label();
@@ -443,6 +471,7 @@ test "map.ts:493 keyed by a function pairs rows that share a key by occurrence o
 	const first = m();
 	assert first.length === 3 && built === 3, "a shared key does not raise";
 	setSrc([{ id: 2, label: "z2" }, { id: 1, label: "x2" }]);
+	flush();
 	const second = m();
 	assert second[0] === first[2] && second[1] === first[0], "the earlier row of key 1 is the one that stays";
 	assert second[0].label() === "z2" && second[1].label() === "x2", "both rewritten";
@@ -457,6 +486,7 @@ test "keyed by a function takes a string key as well as a number key" {
 	const m = runWithOwner(scope.owner, () => mapArrayKeyedBy<Id, string, Slot>(src, (r) => r.id, (item, i) => { built = built + 1; return new Slot(item, i); }));
 	const first = m();
 	setSrc([{ id: "y" }, { id: "z" }, { id: "x" }]);
+	flush();
 	const second = m();
 	assert second[0] === first[1] && second[2] === first[0], "string keys match across fresh objects";
 	assert built === 3, "only z is new";
@@ -471,9 +501,11 @@ test "keyed by a function keeps the index accessor right across insert and remov
 	const out = m();
 	assert out[0]() === 0, "first row reads index 0";
 	setSrc([{ id: 3, label: "c" }, { id: 1, label: "a" }, { id: 2, label: "b" }]);
+	flush();
 	const out2 = m();
 	assert out2[0]() === 0 && out2[1]() === 1 && out2[2]() === 2, "the inserted key sits at 0 and the others followed";
 	setSrc([{ id: 2, label: "b" }]);
+	flush();
 	const out3 = m();
 	assert out3.length === 1 && out3[0]() === 0, "the survivor reads index 0";
 	scope.dispose();
@@ -486,6 +518,7 @@ test "keyed by a function disposes every row when the list empties" {
 	const m = runWithOwner(scope.owner, () => mapArrayKeyedBy<Item, number, number>(src, (r) => r.id, (item, i) => { onCleanup(() => { disposed = disposed + 1; }); return 0; }));
 	m();
 	setSrc([]);
+	flush();
 	assert m().length === 0 && disposed === 2, "both rows disposed: " + disposed.toString();
 	scope.dispose();
 }
@@ -496,6 +529,7 @@ test "map.ts:358 keyed by a function fallback shows on empty and yields to rows"
 	const m = runWithOwner(scope.owner, () => mapArrayKeyedBy<Item, number, string>(src, (r) => r.id, (item, i) => item().label, () => "empty"));
 	assert m().join(",") === "empty", "fallback";
 	setSrc([{ id: 1, label: "a" }]);
+	flush();
 	assert m().join(",") === "a", "rows";
 	scope.dispose();
 }
@@ -514,22 +548,26 @@ test "repeat.test.ts:11 repeat builds one row per index and keeps rows when only
 	assert computed === 3, "three rows";
 
 	setSrc([{ id: "b" }, { id: "a" }, { id: "c" }]);
+	flush();
 	const second = m();
 	assert second[0] === a && second[1] === b && second[2] === c, "same count keeps every row";
 	assert a.id() === "b" && b.id() === "a", "rows read the data at their index";
 	assert computed === 3, "no rebuild";
 
 	setSrc([{ id: "b" }, { id: "a" }, { id: "c" }, { id: "d" }]);
+	flush();
 	const third = m();
 	assert third.length === 4 && third[3].index === 3 && third[3].id() === "d", "a fourth row";
 	assert computed === 4, "one build";
 
 	setSrc([{ id: "b" }, { id: "a" }, { id: "c" }]);
+	flush();
 	const fourth = m();
 	assert fourth.length === 3 && fourth[0] === a, "pop keeps the head rows";
 	assert computed === 4, "no build";
 
 	setSrc([]);
+	flush();
 	assert m().length === 0 && computed === 4, "emptied";
 	scope.dispose();
 }
@@ -549,6 +587,7 @@ test "repeat.test.ts:94 a consumer that reads the repeated list re-runs when the
 	});
 	assert runs === 1 && seen === 3, "first run";
 	setN(2);
+	flush();
 	assert runs === 2 && seen === 2, "re-ran with the smaller count";
 	scope.dispose();
 }
@@ -560,6 +599,7 @@ test "repeat.test.ts:187 repeat disposes the rows that leave the window when fro
 	const m = runWithOwner(scope.owner, () => repeat<number>(() => 3, (i) => { onCleanup(() => { cleanups.push(i); }); return i; }, from));
 	assert m().join(",") === "1,2,3", "window 1..3";
 	setFrom(3);
+	flush();
 	assert m().join(",") === "3,4,5", "window 3..5";
 	assert cleanups.length === 2 && cleanups.includes(1) && cleanups.includes(2), "rows 1 and 2 left, row 3 stayed: " + cleanups.join(",");
 	scope.dispose();
@@ -573,10 +613,13 @@ test "repeat.test.ts:212 repeat retains instances when only from changes" {
 	const m = runWithOwner(scope.owner, () => repeat<number>(count, (i) => { computed = computed + 1; return i; }, from));
 	assert m().join(",") === "0,1,2" && computed === 3, "initial";
 	setFrom(2);
+	flush();
 	assert m().join(",") === "2,3,4" && computed === 5, "slide to 2: rows 3 and 4 are new";
 	setFrom(1);
+	flush();
 	assert m().join(",") === "1,2,3" && computed === 6, "slide back to 1: only row 1 is new";
 	setCount(4);
+	flush();
 	assert m().join(",") === "1,2,3,4" && computed === 7, "grow: only row 4 is new";
 	scope.dispose();
 }
@@ -588,9 +631,12 @@ test "repeat.test.ts:288 repeat recovers when count goes to 0, from changes, and
 	const m = runWithOwner(scope.owner, () => repeat<number>(count, (i) => i, from));
 	assert m().join(",") === "2,3", "initial";
 	setCount(0);
+	flush();
 	assert m().length === 0, "cleared";
 	setFrom(0);
+	flush();
 	setCount(1);
+	flush();
 	assert m().join(",") === "0", "row 0 after the offset reset";
 	scope.dispose();
 }
@@ -604,6 +650,7 @@ test "repeat.test.ts:317 repeat slides the window backwards: departing rows are 
 	assert first[0].index === 3 && first[2].index === 5, "window 3..5";
 	const retained = first[0];
 	setFrom(1);
+	flush();
 	const second = m();
 	assert second[0].index === 1 && second[1].index === 2 && second[2].index === 3, "window 1..3";
 	assert second[2] === retained, "the overlap row is the same instance, now at the tail";
@@ -619,10 +666,13 @@ test "repeat.test.ts:378 disjoint window jumps build only the window and do not 
 	const m = runWithOwner(scope.owner, () => repeat<number>(() => 3, (i) => { created = created + 1; onCleanup(() => { cleaned = cleaned + 1; }); return i; }, from));
 	assert m().join(",") === "0,1,2" && created - cleaned === 3, "initial window";
 	setFrom(10);
+	flush();
 	assert m().join(",") === "10,11,12" && created - cleaned === 3, "forward jump";
 	setFrom(20);
+	flush();
 	assert m().join(",") === "20,21,22" && created - cleaned === 3, "second jump";
 	setFrom(0);
+	flush();
 	assert m().join(",") === "0,1,2" && created - cleaned === 3, "backward jump";
 	scope.dispose();
 }
@@ -649,8 +699,10 @@ test "map.ts:661 repeat fallback shows when count is 0 and yields to rows" {
 	}));
 	assert m().join(",") === "empty" && m().join(",") === "empty" && fbBuilt === 1, "fallback built once";
 	setN(2);
+	flush();
 	assert m().join(",") === "0,1" && fbDisposed === 1, "rows replace the fallback";
 	setN(0);
+	flush();
 	assert m().join(",") === "empty" && fbBuilt === 2, "fallback again";
 	scope.dispose();
 }
@@ -668,11 +720,13 @@ test "map.ts:692 repeat that throws mid-pass commits nothing and disposes only w
 	m();
 	armed = true;
 	setN(5);
+	flush();
 	const caught = failure(() => { m(); });
 	assert caught.includes("row 3"), "the error reaches the reader: " + caught;
 	assert disposed === 1, "only row 2, built by the aborted pass, was disposed: " + disposed.toString();
 	armed = false;
 	setN(4);
+	flush();
 	assert m().join(",") === "0,1,2,3", "the retry keeps rows 0 and 1";
 	scope.dispose();
 }
@@ -688,12 +742,15 @@ test "repeat refuses a count that is not a non-negative integer" {
 	const m = runWithOwner(scope.owner, () => repeat<number>(n, (i) => { built = built + 1; return i; }));
 	assert m().join(",") === "0,1", "a whole count maps";
 	setN(2.5);
+	flush();
 	caught = failure(() => { m(); });
 	assert caught.includes("Repeat: count"), "a fractional count written later named: " + caught;
 	setN(-1);
+	flush();
 	caught = failure(() => { m(); });
 	assert caught.includes("Repeat: count"), "a negative count written later named: " + caught;
 	setN(2);
+	flush();
 	assert m().join(",") === "0,1" && built === 2, "the refused counts left the rows as they were: " + built.toString();
 	scope.dispose();
 }
@@ -790,6 +847,7 @@ test "map.ts:391 default mode survives random edits: every row maps its item, no
 	for (let step = 0; step < 400; step += 1) {
 		cur = nextList(cur, false);
 		setSrc(cur);
+		flush();
 		const out = m();
 		assert out.length === cur.length, "step " + step.toString() + ": length";
 		assert live === cur.length, "step " + step.toString() + ": live rows " + live.toString() + " for " + cur.length.toString() + " items";
@@ -830,6 +888,7 @@ test "map.ts:391 keyed by a function survives random edits: rows follow keys, it
 		const before = new Map<number, number>();
 		for (const k of keys) { if (serialOfKey.has(k) && !gone[serialOfKey.get(k) as number]) { before.set(k, serialOfKey.get(k) as number); } }
 		setSrc(items);
+		flush();
 		const out = m();
 		assert out.length === keys.length, "step " + step.toString() + ": length";
 		assert live === keys.length, "step " + step.toString() + ": live rows " + live.toString() + " for " + keys.length.toString() + " keys";
@@ -864,6 +923,7 @@ test "map.ts:391 keyed false survives random edits: rows stay per position and s
 	for (let step = 0; step < 400; step += 1) {
 		cur = nextList(cur, false);
 		setSrc(cur);
+		flush();
 		const out = m();
 		assert out.length === cur.length, "step " + step.toString() + ": length";
 		assert live === cur.length, "step " + step.toString() + ": live rows " + live.toString() + " for " + cur.length.toString() + " items";
@@ -916,7 +976,9 @@ test "map.ts:330 told the row reads its index, both modes keep the live index" {
 	const a = byIdentity();
 	const b = byKey();
 	setIds([7, 5]);
+	flush();
 	setItems([{ id: 2, label: "b" }, { id: 1, label: "a" }]);
+	flush();
 	const a2 = byIdentity();
 	const b2 = byKey();
 	assert a2[0].index() === 0 && a2[1].index() === 1, "identity rows follow the reorder";
@@ -934,14 +996,18 @@ test "map.ts:330 default mode without the index reorders, rebuilds the empty fal
 	const out = m();
 	assert out[0] === 10 && out[2] === 30, "mapped without an index";
 	setSrc([3, 1, 2]);
+	flush();
 	const out2 = m();
 	assert built === 3, "a reorder builds nothing: " + built.toString();
 	assert out2[0] === 30 && out2[1] === 10 && out2[2] === 20, "rows followed the reorder";
 	setSrc([2]);
+	flush();
 	assert m()[0] === 20 && disposed === 2, "removed rows disposed: " + disposed.toString();
 	setSrc([]);
+	flush();
 	assert m()[0] === -1 && disposed === 3, "the fallback shows and the last row is gone: " + disposed.toString();
 	setSrc([4, 5]);
+	flush();
 	const out3 = m();
 	assert out3.length === 2 && out3[1] === 50 && built === 5, "rows return after the fallback: " + built.toString();
 	scope.dispose();
@@ -955,12 +1021,14 @@ test "map.ts:330 keyed by a function without the index keeps rows per key and th
 	const m = runWithOwner(scope.owner, () => mapArrayKeyedBy<Item, number, Labelled>(src, (r) => r.id, (item, i) => { built = built + 1; onCleanup(() => { disposed = disposed + 1; }); return new Labelled(accessor((): string => item().label)); }, () => new Labelled(accessor((): string => "empty")), false));
 	const out = m();
 	setSrc([{ id: 3, label: "c2" }, { id: 1, label: "a" }, { id: 4, label: "d" }]);
+	flush();
 	const out2 = m();
 	assert built === 4, "only key 4 is new: " + built.toString();
 	assert disposed === 1, "only key 2 is gone: " + disposed.toString();
 	assert out2[0] === out[2] && out2[1] === out[0], "rows follow their keys";
 	assert out2[0].label() === "c2" && out2[2].label() === "d", "kept rows show the current item";
 	setSrc([]);
+	flush();
 	assert m()[0].label() === "empty" && disposed === 4, "the fallback shows after the last row: " + disposed.toString();
 	scope.dispose();
 }
@@ -986,6 +1054,7 @@ test "map.ts:391 default mode without the index survives random edits: every row
 	for (let step = 0; step < 400; step += 1) {
 		cur = nextList(cur, false);
 		setSrc(cur);
+		flush();
 		const out = m();
 		assert out.length === cur.length, "step " + step.toString() + ": length";
 		assert live === cur.length, "step " + step.toString() + ": live rows " + live.toString() + " for " + cur.length.toString() + " items";
@@ -1025,6 +1094,7 @@ test "map.ts:391 keyed by a function without the index survives random edits: ro
 		const before = new Map<number, number>();
 		for (const k of keys) { if (serialOfKey.has(k) && !gone[serialOfKey.get(k) as number]) { before.set(k, serialOfKey.get(k) as number); } }
 		setSrc(items);
+		flush();
 		const out = m();
 		assert out.length === keys.length, "step " + step.toString() + ": length";
 		assert live === keys.length, "step " + step.toString() + ": live rows " + live.toString() + " for " + keys.length.toString() + " keys";
@@ -1110,14 +1180,17 @@ function survivorsKeepTheirOwners(mode: number): void {
 	ensure(before.join(",") === "1,2,3", "first pass");
 	fault.bad = [9];
 	setSrc([3, 9, 1, 2]);
+	flush();
 	const caught = failure(() => { m(); });
 	ensure(caught.includes("row 9"), "the row's error reaches the reader: " + caught);
 	ensure(led.live(1) === 1 && led.live(2) === 1 && led.live(3) === 1, "surviving rows keep their owners");
 	ensure(led.made(9) === 1 && led.live(9) === 0, "the owner the aborted pass created is disposed with it");
 	setSrc([1, 2, 3]);
+	flush();
 	ensure(m() === before, "the engine still holds the list from before the aborted pass");
 	fault.bad = [];
 	setSrc([3, 9, 1, 2]);
+	flush();
 	ensure(m().join(",") === "3,9,1,2", "the retry maps the new list");
 	ensure(led.made(1) === 1 && led.made(2) === 1 && led.made(3) === 1, "no surviving row is rebuilt");
 	ensure(led.made(9) === 2 && led.live(9) === 1, "the failed row is built again by the retry");
@@ -1134,12 +1207,15 @@ function removalWhileStillFailing(mode: number): void {
 	m();
 	fault.bad = [9];
 	setSrc([1, 2, 9, 3]);
+	flush();
 	ensure(failure(() => { m(); }).includes("row 9"), "a failing insert before 3 aborts");
 	setSrc([1, 2, 9]);
+	flush();
 	ensure(failure(() => { m(); }).includes("row 9"), "dropping 3 while 9 still fails aborts again");
 	ensure(led.live(3) === 1, "an aborted pass disposes no row it removes");
 	fault.bad = [];
 	setSrc([1, 2, 9]);
+	flush();
 	ensure(m().join(",") === "1,2,9", "the retry lands");
 	ensure(led.made(3) === 1 && led.count("-", 3) === 1, "the real row 3 is disposed exactly once");
 	scope.dispose();
@@ -1174,13 +1250,16 @@ function abortedFallbackLeaksNothing(mode: number): void {
 	ensure(m().join(",") === "1", "one row");
 	fbFault.bad = [0];
 	setSrc([]);
+	flush();
 	ensure(failure(() => { m(); }).includes("row 0"), "the fallback's error reaches the reader");
 	ensure(led.made(0) === 1 && led.live(0) === 0, "the aborted fallback's owner is disposed");
 	fbFault.bad = [];
 	setSrc([]);
+	flush();
 	ensure(m().join(",") === "0", "the retry shows the fallback");
 	ensure(led.live(0) === 1, "one live fallback owner: " + led.live(0).toString());
 	setSrc([4]);
+	flush();
 	ensure(m().join(",") === "4" && led.live(0) === 0, "rows replace the fallback and dispose it");
 	scope.dispose();
 	allGone(led, [0, 1, 4]);
@@ -1195,10 +1274,12 @@ function failingRowsAbortTogether(mode: number): void {
 	m();
 	fault.bad = [7, 8];
 	setSrc([7, 1, 8, 2]);
+	flush();
 	ensure(failure(() => { m(); }).includes("row 7"), "the first failing row raises");
 	ensure(led.live(1) === 1 && led.live(2) === 1 && led.live(7) === 0 && led.live(8) === 0, "nothing the pass built survives it");
 	fault.bad = [];
 	setSrc([7, 1, 8, 2]);
+	flush();
 	ensure(m().join(",") === "7,1,8,2", "both rows land together on the retry");
 	ensure(led.made(1) === 1 && led.made(2) === 1, "rows 1 and 2 were never rebuilt");
 	scope.dispose();
@@ -1214,10 +1295,12 @@ function removedRowsOutliveTheNewOnes(mode: number): void {
 	m();
 	const at = led.log.length;
 	setSrc([1, 9, 3]);
+	flush();
 	m();
 	ensure(led.log.slice(at, led.log.length).join(" ") === "+9 -2", "the new row is built before the removed row is disposed: " + led.log.slice(at, led.log.length).join(" "));
 	fault.bad = [8];
 	setSrc([1, 8]);
+	flush();
 	failure(() => { m(); });
 	ensure(led.live(9) === 1 && led.live(3) === 1, "a pass that fails disposes none of the rows it would have removed");
 	scope.dispose();
@@ -1252,14 +1335,17 @@ test "notready-safety.test.ts:250 position mode: an aborted grow keeps every row
 	assert before.join(",") === "0,1", "two rows";
 	fault.bad = [99];
 	setSrc([11, 21, 99]);
+	flush();
 	assert failure(() => { m(); }).includes("row 99"), "the new position's error reaches the reader";
 	assert slots[0]() === 11 && slots[1]() === 21, "map.ts:437 the scan wrote the kept cells before row 2 failed, the abort does not take it back: " + slots[0]().toString() + "," + slots[1]().toString();
 	assert led.live(0) === 1 && led.live(1) === 1 && led.made(2) === 1 && led.live(2) === 0, "row owners as before, the aborted row disposed";
 	setSrc([10, 20]);
+	flush();
 	assert m() === before, "the engine still holds the list from before the aborted pass";
 	assert slots[0]() === 10 && slots[1]() === 20, "the pass that restores the list writes the kept cells back";
 	fault.bad = [];
 	setSrc([11, 21, 99]);
+	flush();
 	assert m().join(",") === "0,1,2", "the retry grows the list";
 	assert slots[0]() === 11 && slots[1]() === 21 && slots[2]() === 99, "cells follow the retry";
 	assert led.made(0) === 1 && led.made(1) === 1 && led.made(2) === 2, "positions 0 and 1 were never rebuilt";
@@ -1283,10 +1369,12 @@ test "notready-safety.test.ts:250 keyed by a function: the scan wrote the kept k
 	m();
 	fault.bad = [99];
 	setSrc([12, 23, 99]);
+	flush();
 	assert failure(() => { m(); }).includes("row 99"), "the new key's error reaches the reader";
 	assert slots[0]() === 12 && slots[1]() === 23, "map.ts:437 kept keys show their new item although the pass aborted: " + slots[0]().toString() + "," + slots[1]().toString();
 	fault.bad = [];
 	setSrc([12, 23, 99]);
+	flush();
 	assert m().join(",") === "11,22,99", "the retry keeps both built rows and builds only key 9";
 	assert slots[0]() === 12 && slots[1]() === 23, "the cells keep the new items";
 	scope.dispose();
@@ -1309,10 +1397,12 @@ test "notready-safety.test.ts:96 an aborted pass leaves the index cells: the kep
 	assert one() === 0, "row 1 sits at 0";
 	fault.bad = [9];
 	setSrc([3, 9, 1, 2]);
+	flush();
 	assert failure(() => { m(); }).includes("row 9"), "the pass aborts";
 	assert one() === 0, "the aborted pass wrote no index: " + one().toString();
 	fault.bad = [];
 	setSrc([3, 9, 1, 2]);
+	flush();
 	assert one() === 2, "the retry moves row 1 to 2: " + one().toString();
 	scope.dispose();
 }
@@ -1326,11 +1416,13 @@ test "notready-safety.test.ts:352 repeat: a disjoint window shift with a failing
 	assert m().join(",") === "0,1,2", "window 0..2";
 	fault.bad = [11];
 	setFrom(10);
+	flush();
 	assert failure(() => { m(); }).includes("row 11"), "row 11 fails";
 	assert led.live(0) === 1 && led.live(1) === 1 && led.live(2) === 1, "the old rows are alive until the new window lands";
 	assert led.live(10) === 0 && led.live(11) === 0, "what the pass built is gone";
 	fault.bad = [];
 	setFrom(11);
+	flush();
 	assert m().join(",") === "11,12,13", "the retry lands the window";
 	assert led.live(0) === 0 && led.live(11) === 1 && led.made(0) === 1, "old rows go with the commit";
 	scope.dispose();
@@ -1346,11 +1438,14 @@ test "notready-safety.test.ts:402 repeat: an aborted fallback leaks no owner acr
 	assert m().join(",") === "0", "one row";
 	fbFault.bad = [0];
 	setN(0);
+	flush();
 	assert failure(() => { m(); }).includes("row 0"), "the fallback's error reaches the reader";
 	assert led.live(0) === 0, "the aborted fallback's owner is disposed";
 	fbFault.bad = [];
 	setN(1);
+	flush();
 	setN(0);
+	flush();
 	assert m().join(",") === "-1" && led.live(0) === 1, "one live fallback owner: " + led.live(0).toString();
 	scope.dispose();
 	allGone(led, [0]);
@@ -1374,10 +1469,13 @@ function unchangedListKeepsTheMappedArray(mode: number): void {
 	});
 	ensure(memoRuns === 1 && consumerRuns === 1, "first run");
 	setSrc([1, 2, 3]);
+	flush();
 	ensure(memoRuns === 1 && consumerRuns === 1, "the unchanged list kept the mapped array, so the memo reading it did not re-run: " + memoRuns.toString());
 	setSrc([1, 2, 3]);
+	flush();
 	ensure(memoRuns === 1 && consumerRuns === 1, "again");
 	setSrc([2, 1, 3]);
+	flush();
 	ensure(memoRuns === 2 && consumerRuns === 2, "a reorder is a new mapped array: " + memoRuns.toString() + "," + consumerRuns.toString());
 	scope.dispose();
 }
@@ -1401,8 +1499,10 @@ test "map.ts:454 position mode: an unchanged list keeps the mapped array identit
 		return 0;
 	});
 	setSrc([5, 6]);
+	flush();
 	assert memoRuns === 1 && consumerRuns === 1, "same values: the memo and the consumer did not re-run: " + memoRuns.toString();
 	setSrc([7, 6]);
+	flush();
 	assert memoRuns === 1 && consumerRuns === 1, "a changed value is a cell write, not a new array: " + memoRuns.toString();
 	assert slots[0]() === 7 && slots[1]() === 6, "the cell took the new value";
 	scope.dispose();
@@ -1423,6 +1523,7 @@ test "map.ts:454 keyed by a function: an item replaced under a kept key writes i
 		return 0;
 	});
 	setSrc([12, 23]);
+	flush();
 	assert consumerRuns === 1, "no new mapped array: " + consumerRuns.toString();
 	assert slots[0]() === 12 && slots[1]() === 23, "the cells took the new items";
 	scope.dispose();
@@ -1495,6 +1596,7 @@ class Twin<T> {
 	step(next: T[]): void {
 		this.setFast(next);
 		this.setOracle(next);
+		flush();
 		this.agree();
 	}
 
@@ -1610,6 +1712,7 @@ function rotationHits(mode: number): number {
 	m();
 	const before = smallMoveHits();
 	setSrc(rotateFront(base));
+	flush();
 	m();
 	hits = smallMoveHits() - before;
 	scope.dispose();
@@ -2013,20 +2116,24 @@ test "map.ts:88 a row effect keeps reading its index through a reorder, an inser
 	assert t.view(["a", "b", "c"]) === "a=0 b=1 c=2", "mounted: " + t.view(["a", "b", "c"]);
 
 	setSrc([b, a, c]);
+	flush();
 	assert consumer.runs === 2, "the reorder re-ran the consumer: " + consumer.runs.toString();
 	assert t.view(["a", "b", "c"]) === "a=1 b=0 c=2", "the reorder reached the row effects: " + t.view(["a", "b", "c"]);
 	assert t.gone("a") === 0 && t.gone("b") === 0 && t.gone("c") === 0, "a reorder disposes no row";
 
 	setSrc([d, b, a, c]);
+	flush();
 	assert t.view(["d", "b", "a", "c"]) === "d=0 b=1 a=2 c=3", "the insert reached the row effects: " + t.view(["d", "b", "a", "c"]);
 	assert t.gone("a") === 0 && t.gone("b") === 0 && t.gone("c") === 0, "an insert disposes no row";
 
 	const bRuns = t.ran("b");
 	const cRuns = t.ran("c");
 	setSrc([d, a]);
+	flush();
 	assert t.view(["d", "a"]) === "d=0 a=1", "the removal reached the row effects: " + t.view(["d", "a"]);
 	assert t.gone("b") === 1 && t.gone("c") === 1 && t.gone("a") === 0 && t.gone("d") === 0, "the removed rows' cleanups ran once, the others' not at all";
 	setSrc([a, d]);
+	flush();
 	assert t.ran("b") === bRuns && t.ran("c") === cRuns, "a removed row's effect stays quiet";
 
 	scope.dispose();
@@ -2045,19 +2152,23 @@ test "map.ts:88 keyed false: a row effect keeps reading its item cell through a 
 	assert t.view(["p0", "p1", "p2"]) === "p0=10 p1=20 p2=30", "mounted: " + t.view(["p0", "p1", "p2"]);
 
 	setSrc([20, 10, 30]);
+	flush();
 	assert t.view(["p0", "p1", "p2"]) === "p0=20 p1=10 p2=30", "the reorder reached the row effects: " + t.view(["p0", "p1", "p2"]);
 	assert t.gone("p0") === 0 && t.gone("p1") === 0 && t.gone("p2") === 0, "a reorder disposes no row";
 	assert consumer.runs === 1, "positions keep their rows, so the consumer did not re-run: " + consumer.runs.toString();
 
 	setSrc([20, 10, 30, 40]);
+	flush();
 	assert t.view(["p0", "p1", "p2", "p3"]) === "p0=20 p1=10 p2=30 p3=40", "the append reached the row effects: " + t.view(["p0", "p1", "p2", "p3"]);
 	assert consumer.runs === 2, "the append re-ran the consumer: " + consumer.runs.toString();
 
 	const p2Runs = t.ran("p2");
 	setSrc([20, 11]);
+	flush();
 	assert t.view(["p0", "p1"]) === "p0=20 p1=11", "the removal reached the row effects: " + t.view(["p0", "p1"]);
 	assert t.gone("p2") === 1 && t.gone("p3") === 1 && t.gone("p0") === 0 && t.gone("p1") === 0, "the removed rows' cleanups ran once, the others' not at all";
 	setSrc([21, 12]);
+	flush();
 	assert t.ran("p2") === p2Runs, "a removed row's effect stays quiet";
 
 	scope.dispose();
@@ -2077,18 +2188,22 @@ test "map.ts:88 keyed by a function: a row effect keeps reading its item and ind
 	assert t.view(["k1", "k2", "k3"]) === "k1=a0 k2=b1 k3=c2", "mounted: " + t.view(["k1", "k2", "k3"]);
 
 	setSrc([{ id: 2, label: "B" }, { id: 1, label: "A" }, { id: 3, label: "c" }]);
+	flush();
 	assert consumer.runs === 2, "the reorder re-ran the consumer: " + consumer.runs.toString();
 	assert t.view(["k1", "k2", "k3"]) === "k1=A1 k2=B0 k3=c2", "the reorder and the new items reached the row effects: " + t.view(["k1", "k2", "k3"]);
 	assert t.gone("k1") === 0 && t.gone("k2") === 0 && t.gone("k3") === 0, "a reorder disposes no row";
 
 	setSrc([{ id: 4, label: "d" }, { id: 2, label: "B" }, { id: 1, label: "A" }, { id: 3, label: "c" }]);
+	flush();
 	assert t.view(["k4", "k2", "k1", "k3"]) === "k4=d0 k2=B1 k1=A2 k3=c3", "the insert reached the row effects: " + t.view(["k4", "k2", "k1", "k3"]);
 
 	const k2Runs = t.ran("k2");
 	setSrc([{ id: 4, label: "d" }, { id: 1, label: "A" }]);
+	flush();
 	assert t.view(["k4", "k1"]) === "k4=d0 k1=A1", "the removal reached the row effects: " + t.view(["k4", "k1"]);
 	assert t.gone("k2") === 1 && t.gone("k3") === 1 && t.gone("k1") === 0 && t.gone("k4") === 0, "the removed rows' cleanups ran once, the others' not at all";
 	setSrc([{ id: 1, label: "Z" }, { id: 4, label: "d" }]);
+	flush();
 	assert t.ran("k2") === k2Runs, "a removed row's effect stays quiet";
 	assert t.view(["k1", "k4"]) === "k1=Z0 k4=d1", "the survivors still follow: " + t.view(["k1", "k4"]);
 
@@ -2109,15 +2224,19 @@ test "map.ts:624 repeat: a row effect keeps reading its own signal through a gro
 	assert t.view(["r0", "r1"]) === "r0=0 r1=1", "mounted: " + t.view(["r0", "r1"]);
 
 	setN(4);
+	flush();
 	assert consumer.runs === 2, "the grow re-ran the consumer: " + consumer.runs.toString();
 	setTick(10);
+	flush();
 	assert t.view(["r0", "r1", "r2", "r3"]) === "r0=10 r1=11 r2=12 r3=13", "every row, kept or new, follows its signal: " + t.view(["r0", "r1", "r2", "r3"]);
 	assert t.gone("r0") === 0 && t.gone("r1") === 0, "a grow disposes no row";
 
 	const r3Runs = t.ran("r3");
 	setN(2);
+	flush();
 	assert t.gone("r2") === 1 && t.gone("r3") === 1 && t.gone("r0") === 0 && t.gone("r1") === 0, "the shrink ran the leaving rows' cleanups once";
 	setTick(20);
+	flush();
 	assert t.view(["r0", "r1"]) === "r0=20 r1=21", "the rows that stayed follow after the shrink: " + t.view(["r0", "r1"]);
 	assert t.ran("r3") === r3Runs, "a removed row's effect stays quiet";
 
@@ -2133,11 +2252,14 @@ function consumerKeepsEveryRow(mode: number): void {
 	const m = runWithOwner(scope.owner, () => engine(mode, src, led, fault, null));
 	const consumer = consume<number>(scope, m);
 	setSrc([3, 1, 2]);
+	flush();
 	ensure(consumer.runs === 2, "the reorder re-ran the consumer: " + consumer.runs.toString());
 	ensure(led.live(1) === 1 && led.live(2) === 1 && led.live(3) === 1, "a reorder leaves every row alive");
 	setSrc([3, 1, 2, 4]);
+	flush();
 	ensure(led.live(4) === 1 && led.live(1) === 1 && led.live(2) === 1 && led.live(3) === 1, "an insert leaves every row alive");
 	setSrc([4, 2]);
+	flush();
 	ensure(led.live(1) === 0 && led.live(3) === 0 && led.live(2) === 1 && led.live(4) === 1, "a removal disposes exactly the removed rows");
 	ensure(led.count("-", 1) === 1 && led.count("-", 3) === 1 && led.made(1) === 1 && led.made(3) === 1, "each removed row is disposed once and never rebuilt");
 	scope.dispose();
@@ -2177,6 +2299,7 @@ test "mapArray.test.ts:165 full replacements keep the map's owner tree the size 
 	const initial = ownerSize(scope.owner as Computation);
 	for (let round = 0; round < 10; round += 1) {
 		setSrc(make());
+		flush();
 		const rowAfter = sample as Computation;
 		const mapOwner = rowAfter.parent as Computation;
 		let rows: number = 0;

@@ -777,6 +777,16 @@ export class Router {
 		return true;
 	}
 
+	go(delta: int32): boolean {
+		if (!this.history.writable) { throw new Error("routing: request history is read-only"); }
+		return this.history.go(delta);
+	}
+
+	canGoBack(): boolean {
+		const session = this.session;
+		return session !== null && (session as RoutingSession).canGoBack();
+	}
+
 	response(): RouterResponse {
 		const resolved = untrack((): Resolved => this.current.get());
 		if (resolved.redirect !== 0) { return { status: resolved.redirect, location: resolved.address }; }
@@ -926,9 +936,12 @@ export function useParams(): Map<string, string> {
 	return (scope as RouteScope).params;
 }
 
-export function useNavigate(): (href: string, options?: NavigateOptions | null) => boolean {
+export function useNavigate(): (to: string | int32, options?: NavigateOptions | null) => boolean {
 	const router = useRouter("useNavigate");
-	return (href: string, options: NavigateOptions | null = null): boolean => router.navigate(href, options);
+	return (to: string | int32, options: NavigateOptions | null = null): boolean => {
+		if (typeof to === "string") { return router.navigate(to, options); }
+		return router.go(to as int32);
+	};
 }
 
 export function useLocation(): Accessor<RouterLocation> {

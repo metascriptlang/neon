@@ -41,14 +41,21 @@ expect_known_red() {
 	fi
 }
 
-warnings='initialScrollIndex "15" is not valid (list has 10 items)
+listWarnings='initialScrollIndex "15" is not valid (list has 10 items)
 initialScrollIndex "-1" is not valid (list has 3 items)
 FlatList: Both ListItemComponent and renderItem props are present. ListItemComponent will take precedence over renderItem.'
 
+navWarnings='The action '"'"'NAVIGATE'"'"' with payload {"name":"Nowhere"} was not handled by any navigator.
+Do you have a route named '"'"'Nowhere'"'"'?
+The action '"'"'GO_BACK'"'"' was not handled by any navigator.
+Is there any screen to go back to?
+The action '"'"'OPEN_DRAWER'"'"' was not handled by any navigator.
+Is your screen inside a Drawer navigator?'
+
 expect_warnings() {
 	for target in "" "--target=js"; do
-		out=$(NO_COLOR=1 "$MSC" run $target "$1" 2>&1 >/dev/null | grep -E '^(initialScrollIndex|FlatList: Both)')
-		if [ "$out" = "$warnings" ]; then
+		out=$(NO_COLOR=1 "$MSC" run $target "$1" 2>&1 >/dev/null | grep -E "$2")
+		if [ "$out" = "$3" ]; then
 			echo "ok   ${target:-native} $1"
 		else
 			echo "FAIL ${target:-native} $1: stderr warnings were"
@@ -132,7 +139,8 @@ expect_macos_app() {
 
 expect_output tests/apps/localSignalApp.ms
 expect_output tests/apps/moduleSignalApp.ms
-expect_warnings tests/apps/listWarnApp.ms
+expect_warnings tests/apps/listWarnApp.ms '^(initialScrollIndex|FlatList: Both)' "$listWarnings"
+expect_warnings tests/apps/navWarnApp.ms '^(The action|Do you have|Is there|Is your screen)' "$navWarnings"
 expect_bundle bundlePlainApp "platform/browser/dom" "void2d/types gpu/door render/spanHost platform/browser/media animation/layoutAnimation platform/browser/layoutAnimation platform/browser/camera platform/browser/captureServices platform/browser/svg components/svg/markup components/svg/scene platform/browser/notifications api/notifications platform/browser/geolocation api/geolocation platform/browser/netInfo api/netInfo platform/browser/asyncStorage api/asyncStorage platform/browser/haptics api/haptics platform/browser/deviceInfo api/deviceInfo platform/browser/localization api/localization platform/browser/permissions api/permissions platform/browser/clipboard api/clipboard platform/browser/linking api/linking platform/browser/vibration api/vibration platform/browser/accessibilityInfo api/accessibilityInfo"
 expect_bundle bundleSvgApp "platform/browser/svg components/svg/markup" "platform/browser/media platform/browser/camera platform/browser/captureServices"
 expect_native_modules bundleTerminalApp "platform/terminal/host" "render/spanHost components/svg/scene platform/native/host platform/browser/dom"
