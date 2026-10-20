@@ -73,6 +73,7 @@ function touchable(props: TouchableProps, feedback: PressFeedback, style: Access
 		accessibilityLabel: props.accessibilityLabel,
 		accessibilityHint: props.accessibilityHint,
 		accessibilityRole: props.accessibilityRole,
+		accessibilityState: props.accessibilityState,
 		onPress: feedback.onPress,
 		onPressIn: feedback.onPressIn,
 		onPressOut: feedback.onPressOut,

@@ -44,11 +44,20 @@ import {
 
 export type AccessibilityRole = "none" | "button" | "link" | "search" | "image" | "text" | "header" | "switch" | "checkbox" | "adjustable" | "progressbar" | "summary" | "alert" | "radio" | "radiogroup" | "tab" | "tablist" | "togglebutton" | "combobox" | "menu" | "menuitem";
 
+// Parked on ~/metascript/.inbox/compiler/2026-10-21-boolean-or-string-literal-union-compares-wrong-on-c.md: React Native's `checked?: boolean | "mixed"` joins these fields once that card is fixed.
+export interface AccessibilityState {
+	disabled?: boolean | null;
+	selected?: boolean | null;
+	busy?: boolean | null;
+	expanded?: boolean | null;
+}
+
 export interface AccessibilityProps {
 	accessible?: Accessor<boolean> | null;
 	accessibilityLabel?: Accessor<string> | null;
 	accessibilityHint?: Accessor<string> | null;
 	accessibilityRole?: Accessor<AccessibilityRole> | null;
+	accessibilityState?: Accessor<AccessibilityState> | null;
 }
 
 export interface HostProps extends AccessibilityProps {
@@ -68,6 +77,26 @@ export function flagAttr(attrs: VAttr[], name: string, value: Accessor<boolean> 
 	attrs.push(dynAttr(name, (): string | null => read() ? "true" : "false"));
 }
 
+function stateToken(out: string, on: boolean | null, token: string): string {
+	if (on !== true) { return out; }
+	return out === "" ? token : out + "," + token;
+}
+
+export function accessibilityStateTokens(state: AccessibilityState): string {
+	let out = stateToken("", state.selected, "selected");
+	out = stateToken(out, state.disabled, "disabled");
+	out = stateToken(out, state.busy, "busy");
+	out = stateToken(out, state.expanded, "expanded");
+	out = stateToken(out, state.expanded === false, "collapsed");
+	return out;
+}
+
+function accessibilityStateAttr(state: Accessor<AccessibilityState> | null): Accessor<string> | null {
+	if (state === null) { return null; }
+	const read = state as Accessor<AccessibilityState>;
+	return accessor((): string => accessibilityStateTokens(read()));
+}
+
 export function accessibilityAttrs(props: AccessibilityProps, attrs: VAttr[]): VAttr[] {
 	flagAttr(attrs, "accessible", props.accessible);
 	stringAttr(attrs, "accessibilityLabel", props.accessibilityLabel);
@@ -77,6 +106,7 @@ export function accessibilityAttrs(props: AccessibilityProps, attrs: VAttr[]): V
 		const read = role as Accessor<AccessibilityRole>;
 		attrs.push(dynAttr("accessibilityRole", (): string | null => { const v: AccessibilityRole = read(); return v; }));
 	}
+	stringAttr(attrs, "accessibilityState", accessibilityStateAttr(props.accessibilityState));
 	return attrs;
 }
 
@@ -293,7 +323,7 @@ export function Text(props: TextProps): NeonNode {
 	if (spans !== null && props.children !== null) { throw new Error("<Text> takes spans or children, not both"); }
 	if (lines === null && ellipsize === null && props.selectable === null && press === null && cell === null && spans === null) {
 		const accessible = accessibleText(props);
-		return element(<text class={props.class} style={props.style} ref={props.ref} accessible={accessible} accessibilityLabel={props.accessibilityLabel} accessibilityHint={props.accessibilityHint} accessibilityRole={props.accessibilityRole}>{paragraphChildren(props.children, null)}</text>);
+		return element(<text class={props.class} style={props.style} ref={props.ref} accessible={accessible} accessibilityLabel={props.accessibilityLabel} accessibilityHint={props.accessibilityHint} accessibilityRole={props.accessibilityRole} accessibilityState={accessibilityStateAttr(props.accessibilityState)}>{paragraphChildren(props.children, null)}</text>);
 	}
 	const attrs: VAttr[] = [];
 	if (lines !== null) {
@@ -474,7 +504,7 @@ export function Pressable(props: PressableProps): NeonNode {
 	const hitSlop: Accessor<string> | null = slop === null ? null : accessor((): string => insetsAttr((slop as Accessor<number | Insets>)()));
 	const ripple = props.android_ripple;
 	const androidRipple: Accessor<string> | null = ripple === null ? null : accessor((): string => rippleAttr((ripple as Accessor<AndroidRipple>)()));
-	return element(<pressable class={props.class} style={props.style} ref={props.ref} accessible={accessible} hitSlop={hitSlop} androidRipple={androidRipple} accessibilityLabel={props.accessibilityLabel} accessibilityHint={props.accessibilityHint} accessibilityRole={props.accessibilityRole} onLayout={props.onLayout} onPress={press} onPointerDown={pointerDown} onPointerUp={pointerUp} onPointerLeave={pointerLeave} onPointerCancel={pointerLeave}>{props.children}</pressable>);
+	return element(<pressable class={props.class} style={props.style} ref={props.ref} accessible={accessible} hitSlop={hitSlop} androidRipple={androidRipple} accessibilityLabel={props.accessibilityLabel} accessibilityHint={props.accessibilityHint} accessibilityRole={props.accessibilityRole} accessibilityState={accessibilityStateAttr(props.accessibilityState)} onLayout={props.onLayout} onPress={press} onPointerDown={pointerDown} onPointerUp={pointerUp} onPointerLeave={pointerLeave} onPointerCancel={pointerLeave}>{props.children}</pressable>);
 }
 
 export interface ScrollToOptions {
@@ -812,5 +842,5 @@ export function Void(props: VoidProps): NeonNode {
 		if (kids !== null) { (kids as NeonNode)(a.host, a.root, null); }
 		if (userRef !== null) { applyRef(a.hub.handle, userRef as (handle: VoidAreaHandle) => void); }
 	};
-	return primitive("void", { style: props.style, class: props.class, accessible: props.accessible, accessibilityLabel: props.accessibilityLabel, accessibilityHint: props.accessibilityHint, accessibilityRole: props.accessibilityRole }, [], [], area, null);
+	return primitive("void", { style: props.style, class: props.class, accessible: props.accessible, accessibilityLabel: props.accessibilityLabel, accessibilityHint: props.accessibilityHint, accessibilityRole: props.accessibilityRole, accessibilityState: props.accessibilityState }, [], [], area, null);
 }

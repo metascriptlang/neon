@@ -65,6 +65,7 @@ export function BottomSheet(props: BottomSheetProps): NeonNode {
 		accessibilityLabel: props.accessibilityLabel,
 		accessibilityHint: props.accessibilityHint,
 		accessibilityRole: props.accessibilityRole,
+		accessibilityState: props.accessibilityState,
 		children: body,
 	});
 	return element(<Show when={visible()}>

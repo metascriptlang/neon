@@ -34,3 +34,23 @@ test "a Pressable without hitSlop or ripple writes neither" {
 	render(element(<Pressable onPress={(e: NeonEvent): void => {}}><Text>tap</Text></Pressable>), mockHost(), root as unknown as HostNode);
 	assert attrOf(root.children[0], "hitSlop") === "<unset>" && attrOf(root.children[0], "androidRipple") === "<unset>", "none";
 }
+
+test "accessibilityState reaches the host as React Native's state tokens and follows its accessor" {
+	const root: MockNode = mockNode("root");
+	const [selected, setSelected] = createSignal(true);
+	render(element(<View accessibilityState={{ expanded: false }}>
+		<Pressable accessibilityState={{ selected: selected(), disabled: true }} onPress={(e: NeonEvent): void => {}}>
+			<Text accessibilityState={{ busy: true, expanded: true }}>tap</Text>
+		</Pressable>
+		<Text>plain</Text>
+	</View>), mockHost(), root as unknown as HostNode);
+	const view = root.children[0];
+	const pressable = view.children[0];
+	assert attrOf(view, "accessibilityState") === "collapsed", attrOf(view, "accessibilityState");
+	assert attrOf(pressable, "accessibilityState") === "selected,disabled", attrOf(pressable, "accessibilityState");
+	assert attrOf(pressable.children[0], "accessibilityState") === "busy,expanded", attrOf(pressable.children[0], "accessibilityState");
+	assert attrOf(view.children[1], "accessibilityState") === "<unset>";
+	setSelected(false);
+	flush();
+	assert attrOf(pressable, "accessibilityState") === "disabled", attrOf(pressable, "accessibilityState");
+}

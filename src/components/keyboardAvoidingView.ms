@@ -64,6 +64,7 @@ export function KeyboardAvoidingView(props: KeyboardAvoidingViewProps): NeonNode
 		accessibilityLabel: props.accessibilityLabel,
 		accessibilityHint: props.accessibilityHint,
 		accessibilityRole: props.accessibilityRole,
+		accessibilityState: props.accessibilityState,
 		onLayout: layout,
 		children: kids,
 	});
