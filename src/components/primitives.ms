@@ -25,10 +25,10 @@ import { element } from "../macros/ui/element";
 import { NeonNode, VAttr, VEvent, RefFn, hostElement, evt, dynAttr } from "../render/node";
 import { Host, HostNode, VoidArea, TextSpan, TextMeasure } from "../render/hostTypes";
 import { paragraphChildren } from "../render/paragraph";
-import { VoidAreaHandle } from "../render/voidAreaHandle";
+import { VoidAreaHandle, AreaHub } from "../render/voidAreaHandle";
 import { applyRef } from "../render/bind";
 import { useContext } from "../render/context";
-import { VoidSpace, voidScope } from "../render/voidScope";
+import { VoidSpace, voidScope, voidAreaHub } from "../render/voidScope";
 import { visibleContentAttr } from "../render/visibleContent";
 import {
 	ClaimWatch,
@@ -824,7 +824,7 @@ export function Void(props: VoidProps): NeonNode {
 		if (kids !== null) {
 			const scoped = voidScope.provider({
 				value: accessor((): VoidSpace => VoidSpace.Area),
-				children: kids as NeonNode,
+				children: voidAreaHub.provider({ value: accessor((): AreaHub | null => a.hub), children: kids as NeonNode }),
 			});
 			scoped(a.host, a.root, null);
 		}

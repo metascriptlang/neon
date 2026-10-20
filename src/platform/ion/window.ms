@@ -12,7 +12,6 @@ import { embedRegister, viewCreate, viewResize, viewFrame, viewDestroy, viewSwap
 import { setup2d } from "../../../../void/src/void2d/draw";
 import { addFont, registerFace, FontId, FontStyle as FaceStyle, DEFAULT_FONT } from "../../../../void/src/void2d/font";
 import { Scene2D } from "../../../../void/src/void2d/node";
-import { present } from "../../../../void/src/void2d/scene";
 import { exit } from "std/process";
 import { Host, HostNode, NeonNode, render } from "../../render/host";
 import {
@@ -27,6 +26,7 @@ import { VoidHost, familyFont } from "../void/host";
 import {
 	WindowArea,
 	windowHost,
+	drawArea,
 	windowNode,
 	deliverKey,
 	deliverPointer,
@@ -131,8 +131,7 @@ function drawCurrent(): void {
 	const owner = a as Area;
 	const area = owner.area;
 	_drawn = _drawn + 1;
-	area.vh.layout(area.logicalWidth(), area.logicalHeight());
-	area.vh.scene.present();
+	drawArea(area);
 	const r = area.vh.imeRect();
 	if (r !== null) {
 		const s = area.scale;

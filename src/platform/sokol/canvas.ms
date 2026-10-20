@@ -1,12 +1,12 @@
 import { gfxSetup, fbWidth, fbHeight, dpiScale } from "../../../../void/src/sokol/gpu";
 import { setup2d } from "../../../../void/src/void2d/draw";
 import { addFont, registerFace, FontId, FontStyle as FaceStyle } from "../../../../void/src/void2d/font";
-import { present } from "../../../../void/src/void2d/scene";
 import { familyFont } from "../void/host";
 import { Host, HostNode, NeonNode, render } from "../../render/host";
 import {
 	WindowArea,
 	windowHost,
+	drawArea,
 	windowNode,
 	deliverResize,
 	logicalWidth,
@@ -101,8 +101,7 @@ function frameCanvas(): void {
 	if ((!c.owed && skippedFrameKeepsPicture()) || width <= (0 as int32) || height <= (0 as int32)) { return; }
 	c.owed = false;
 	_drawn = _drawn + 1;
-	area.vh.layout(area.logicalWidth(), area.logicalHeight());
-	area.vh.scene.present();
+	drawArea(area);
 }
 
 export function runCanvas(opts: CanvasOptions, app: () => NeonNode): int32 {

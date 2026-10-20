@@ -1,4 +1,5 @@
 import { NeonEvent } from "./event";
+import { Color } from "../../../void/src/void2d/types";
 
 export enum AreaKeyAction {
 	Release,
@@ -111,8 +112,15 @@ export function listeners<T>(): Listeners<T> {
 	};
 }
 
+export interface AreaLayer {
+	prepare: (pixelWidth: int32, pixelHeight: int32, background: Color) => void;
+	draw: () => void;
+}
+
 export interface AreaHub {
 	handle: VoidAreaHandle;
+	addLayer: (layer: AreaLayer) => Unsubscribe;
+	layers: () => AreaLayer[];
 	key: (e: AreaKeyEvent) => void;
 	text: (text: string) => void;
 	preedit: (e: AreaPreedit) => void;
@@ -139,6 +147,7 @@ export function createAreaHub(ops: AreaOps): AreaHub {
 	let width = ops.initialPixelWidth;
 	let height = ops.initialPixelHeight;
 	let scale: float32 = 1.0;
+	let layers: AreaLayer[] = [];
 	return {
 		handle: {
 			pixelWidth: (): int32 => width,
@@ -153,6 +162,14 @@ export function createAreaHub(ops: AreaOps): AreaHub {
 			onFocus: focuses.add,
 			setImeRect: ops.setImeRect,
 		},
+		addLayer: (layer: AreaLayer): Unsubscribe => {
+			layers.push(layer);
+			return (): void => {
+				const i = layers.indexOf(layer);
+				if (i >= 0) { layers.splice(i, 1); }
+			};
+		},
+		layers: (): AreaLayer[] => layers,
 		key: keys.emit,
 		text: texts.emit,
 		preedit: preedits.emit,
@@ -171,6 +188,7 @@ export function createAreaHub(ops: AreaOps): AreaHub {
 			pointers.clear();
 			focuses.clear();
 			resizes.clear();
+			layers = [];
 		},
 	};
 }
