@@ -138,6 +138,7 @@ test "a layer removed by an earlier layer during the frame is neither prepared n
 	let removeSecond: Unsubscribe | null = null;
 	let removeThird: Unsubscribe | null = null;
 	const layer = (name: string, onPrepare: () => void, onDraw: () => void): AreaLayer => ({
+		shown: (): boolean => true,
 		prepare: (pixelWidth: int32, pixelHeight: int32, background: AreaRgba): void => { log.push("prepare " + name); onPrepare(); },
 		draw: (): void => { log.push("draw " + name); onDraw(); },
 	});

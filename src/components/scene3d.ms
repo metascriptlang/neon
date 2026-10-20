@@ -4,9 +4,9 @@ import { Cleanup } from "../core/types";
 import { createRoot } from "../core/owner";
 import { onCleanup } from "../core/cleanup";
 import { createContext, useContext } from "../render/context";
-import { VoidSpace, voidScope, voidAreaHub } from "../render/voidScope";
-import { AreaHub, AreaLayer, AreaRgba } from "../render/voidAreaHandle";
-import { Host, HostNode, NeonNode } from "../render/hostTypes";
+import { VoidSpace, voidScope, voidArea, layerAnchor } from "../render/voidScope";
+import { AreaLayer, AreaRgba } from "../render/voidAreaHandle";
+import { Host, HostNode, NeonNode, VoidArea } from "../render/hostTypes";
 import { Vec3, Quat, vec3, eulerQuat } from "../../../void/src/math/math3d";
 import { RenderState } from "../../../void/src/gpu/state";
 import { Program, MATERIAL_UNIFORM_SLOT, MATERIAL_UNIFORM_LENGTH, VERTEX_UNIFORM_LENGTH, LIGHT_UNIFORM_LENGTH } from "../../../void/src/void3d/gpu3d";
@@ -241,9 +241,10 @@ export function Scene3D(props: Scene3DProps): NeonNode {
 	return (host: Host, parent: HostNode, before: HostNode | null): void => {
 		if (useContext(voidScope) !== VoidSpace.Area) { throw new Error("Scene3D: mount directly within Void, outside another Scene3D"); }
 		mountOwned((): void => {
-			const hub = useContext(voidAreaHub);
-			if (hub === null) { throw new Error("Scene3D: the Void area did not provide its frame"); }
-			const area = hub as AreaHub;
+			const opened = useContext(voidArea);
+			if (opened === null) { throw new Error("Scene3D: the Void area did not provide its frame"); }
+			const shown = layerAnchor(opened as VoidArea, host, parent, before);
+			const area = (opened as VoidArea).hub;
 			const context = DrawContext.withUniformCapacity(SCENE_UNIFORM_CAPACITY);
 			const scene = VoidScene3D.create(context);
 			const handle: Scene3DHandle = { context: context, scene: scene, camera: null };
@@ -263,6 +264,7 @@ export function Scene3D(props: Scene3DProps): NeonNode {
 			let lightBlock: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
 			let prepared = false;
 			const layer: AreaLayer = {
+				shown,
 				prepare: (pixelWidth: int32, pixelHeight: int32, background: AreaRgba): void => {
 					prepared = false;
 					refresh(scene, items);

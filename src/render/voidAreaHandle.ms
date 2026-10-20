@@ -121,6 +121,7 @@ export struct AreaRgba {
 }
 
 export interface AreaLayer {
+	shown: () => boolean;
 	prepare: (pixelWidth: int32, pixelHeight: int32, background: AreaRgba) => void;
 	draw: () => void;
 }
@@ -184,7 +185,7 @@ export function createAreaHub(ops: AreaOps): AreaHub {
 		prepareLayers: (pixelWidth: int32, pixelHeight: int32, background: AreaRgba): void => {
 			prepared = [];
 			for (const layer of layers.slice(0)) {
-				if (layers.indexOf(layer) < 0) { continue; }
+				if (layers.indexOf(layer) < 0 || !layer.shown()) { continue; }
 				layer.prepare(pixelWidth, pixelHeight, background);
 				prepared.push(layer);
 			}
