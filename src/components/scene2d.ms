@@ -53,13 +53,14 @@ import {
 	setText,
 	textStyle,
 	setTextStyle, setTextRuns, setShapingBreaks, setTruncate, setHangingIndent, setForceWidth,
-	SelectionRange, setSelectionRange, setCursorIndex, setCursorBlinkTime,
+	SelectionRange, setSelectionRange, setCursorIndex, setCursorBlinkTime, setTextDirection, setOutline,
 } from "../../../void/src/void2d/node";
 import { create, close, setScaleMode, tick, prepare, drawScreen, add } from "../../../void/src/void2d/scene";
 import {
 	Color, Camera, Tile, Filter, ScaleMode, Bounds2D, rgba,
 } from "../../../void/src/void2d/types";
 import { TextStyle, TextRun, Truncate } from "../../../void/src/void2d/textLayout";
+import { TextDirection } from "../../../void/src/void2d/textDirection";
 import { labelTexts, NO_LABEL_TEXT, NO_CURSOR } from "../../../void/src/void2d/labelText";
 import { Mat4 } from "../../../void/src/math/math3d";
 import { BoxStyle } from "../../../void/src/void2d/boxStyle";
@@ -181,11 +182,14 @@ interface LabelProps extends NodeProps {
 	size: Accessor<float32>;
 	color: Accessor<Color>;
 	textStyle?: Accessor<TextStyle> | null;
+	textDirection?: Accessor<TextDirection> | null;
 	textRuns?: Accessor<TextRun[]> | null;
 	shapingBreaks?: Accessor<int32[]> | null;
 	truncate?: Accessor<Truncate> | null;
 	hangingIndent?: Accessor<float32> | null;
 	forceWidth?: Accessor<float32> | null;
+	outlineWidth?: Accessor<float32> | null;
+	outlineColor?: Accessor<Color> | null;
 	selectionRange?: Accessor<SelectionRange> | null;
 	selectionColor?: Accessor<Color> | null;
 	cursorIndex?: Accessor<int32> | null;
@@ -756,6 +760,9 @@ export function Label(props: LabelProps): NeonNode {
 			if ((props.cursorIndex === null) !== (props.cursorColor === null)) {
 				throw new Error("Label: provide cursorIndex and cursorColor together");
 			}
+			if ((props.outlineWidth === null) !== (props.outlineColor === null)) {
+				throw new Error("Label: provide outlineWidth and outlineColor together");
+			}
 			const state = useContext(sceneScope);
 			if (state === null) { throw new Error("Label: mount inside Scene2D within Void"); }
 			const clock = state.clock;
@@ -771,6 +778,10 @@ export function Label(props: LabelProps): NeonNode {
 					node.setTextStyle({ ...style, size: value[1] });
 				},
 			);
+			if (props.textDirection !== null) {
+				const direction = props.textDirection as () => TextDirection;
+				bindScene(direction, (value: TextDirection): void => { node.setTextDirection(value); });
+			}
 			if (props.textRuns !== null) {
 				const runs = props.textRuns as () => TextRun[];
 				bindScene(runs, (value: TextRun[]): void => { node.setTextRuns(value); });
@@ -790,6 +801,20 @@ export function Label(props: LabelProps): NeonNode {
 			if (props.forceWidth !== null) {
 				const width = props.forceWidth as () => float32;
 				bindScene(width, (value: float32): void => { node.setForceWidth(value); });
+			}
+			if (props.outlineWidth !== null) {
+				const width = props.outlineWidth as () => float32;
+				const color = props.outlineColor as () => Color;
+				bindScene<[float32, Color]>((): [float32, Color] => [width(), color()],
+					(value: [float32, Color]): void => {
+						if (!(value[0] >= 0.0)) { throw new Error("Label: outlineWidth must be nonnegative"); }
+						when (voidTextOutline) {
+							node.setOutline(value[0], value[1]);
+						} else {
+							if (value[0] > 0.0) { throw new Error("Label: positive outlineWidth requires -d:voidTextOutline"); }
+							node.setOutline(value[0], value[1]);
+						}
+					});
 			}
 			if (props.selectionRange !== null) {
 				const range = props.selectionRange as () => SelectionRange;
