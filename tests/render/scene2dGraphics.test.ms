@@ -9,7 +9,7 @@ import { GraphicsOp } from "../../src/render/graphics";
 import { NodeRef, GraphicsMesh, Scene2D as VoidScene2D, isLive, graphics, dispose } from "../../../void/src/void2d/node";
 import { Vec2, vec2, rgba } from "../../../void/src/void2d/types";
 import {
-	fillTriangle, fillConvex, fillCircle, fillEllipse, fillPie, fillRing,
+	fillRect, fillPolygon, fillTriangle, fillConvex, fillCircle, fillEllipse, fillPie, fillRing,
 	fillRoundedRect, strokeLine, strokePoly, strokeRect, quadBezier, cubicBezier,
 } from "../../../void/src/void2d/graphics";
 
@@ -17,10 +17,24 @@ function geometry(node: NodeRef): GraphicsMesh {
 	return node.scene.meshes[node.scene.payloads[node.id.index]];
 }
 
+function matchesVoid(node: NodeRef, draw: (control: NodeRef) => NodeRef): boolean {
+	const control = draw(node.scene.graphics());
+	const actual = geometry(node).mesh;
+	const expected = geometry(control).mesh;
+	let same = actual.length === expected.length && actual.length > 0;
+	for (let j: int32 = 0; same && j < actual.length; j++) { same = actual[j] === expected[j]; }
+	control.dispose();
+	return same;
+}
+
 test "Graphics replay replaces geometry in order and snapshots caller polygon points" {
 	const nodes: NodeRef[] = [];
 	const scenes: VoidScene2D[] = [];
 	const points: Vec2[] = [vec2(1.0, 2.0), vec2(5.0, 2.0), vec2(1.0, 8.0)];
+	const kept: Vec2[] = [vec2(1.0, 2.0), vec2(5.0, 2.0), vec2(1.0, 8.0)];
+	const replayed = (control: NodeRef): NodeRef => control
+		.fillRect(10.0, 20.0, 4.0, 6.0, rgba(1.0, 0.0, 0.0, 1.0))
+		.fillPolygon(kept, rgba(0.0, 1.0, 0.0, 1.0));
 	const initial: GraphicsOp[] = [
 		{ kind: "fillRect", x: 10.0, y: 20.0, w: 4.0, h: 6.0,
 			color: rgba(1.0, 0.0, 0.0, 1.0) },
@@ -36,16 +50,17 @@ test "Graphics replay replaces geometry in order and snapshots caller polygon po
 	</Scene2D></Void>), mockHost(), root as unknown as HostNode);
 	try {
 		const id = nodes[0].id;
-		assert geometry(nodes[0]).mesh.length === 72;
+		assert matchesVoid(nodes[0], replayed);
 		assert geometry(nodes[0]).mesh[0] === 10.0;
-		assert geometry(nodes[0]).mesh[48] === 1.0;
 		points[0] = vec2(99.0, 99.0);
-		assert geometry(nodes[0]).mesh[48] === 1.0;
+		assert matchesVoid(nodes[0], replayed);
 		setOperations([{
 			kind: "fillRect", x: 30.0, y: 40.0, w: 2.0, h: 3.0,
 			color: rgba(0.0, 0.0, 1.0, 1.0),
 		}]);
-		assert geometry(nodes[0]).mesh.length === 48;
+		flush();
+		assert matchesVoid(nodes[0], (control: NodeRef): NodeRef =>
+			control.fillRect(30.0, 40.0, 2.0, 3.0, rgba(0.0, 0.0, 1.0, 1.0)));
 		assert geometry(nodes[0]).mesh[0] === 30.0;
 		assert nodes.length === 1 && nodes[0].id === id;
 		setOperations([]);
@@ -65,6 +80,8 @@ test "Graphics remount owns fresh geometry and rejects missing Scene2D scope" {
 		kind: "fillRect", x: 1.0, y: 2.0, w: 3.0, h: 4.0,
 		color: rgba(1.0, 1.0, 1.0, 1.0),
 	}];
+	const fresh = (control: NodeRef): NodeRef =>
+		control.fillRect(1.0, 2.0, 3.0, 4.0, rgba(1.0, 1.0, 1.0, 1.0));
 	const root = mockNode("root");
 	const dispose = render(element(<Void><Scene2D>
 		{Show({ when: accessor(() => shown()), children: element(
@@ -73,13 +90,13 @@ test "Graphics remount owns fresh geometry and rejects missing Scene2D scope" {
 		) })}
 	</Scene2D></Void>), mockHost(), root as unknown as HostNode);
 	try {
-		assert nodes.length === 1 && geometry(nodes[0]).mesh.length === 48;
+		assert nodes.length === 1 && matchesVoid(nodes[0], fresh);
 		setShown(false);
 		flush();
 		assert !nodes[0].isLive();
 		setShown(true);
 		flush();
-		assert nodes.length === 2 && geometry(nodes[1]).mesh.length === 48;
+		assert nodes.length === 2 && matchesVoid(nodes[1], fresh);
 		assert !nodes[0].isLive() && nodes[1].isLive();
 	} finally { dispose(); }
 	assert !nodes[1].isLive();
