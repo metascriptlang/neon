@@ -1,3 +1,4 @@
+import { flush } from "../../src/core/runtime";
 import { renderToString } from "../../src/render/ssr";
 import { createRequestRoutingHistory, encodeRouteComponent } from "../../src/navigation/index";
 import { createRoutingDemo, RoutingDemo } from "../../examples/components/routing";
@@ -6,6 +7,7 @@ test "SSR initializes typed document and parallel inspector routes before mounti
 	const demo = createRoutingDemo(createRequestRoutingHistory(
 		"/documents/42?__nav.inspector=%2Fmaterials%2Fmetal",
 	));
+	flush();
 	assert demo.ok;
 	if (demo.ok) {
 		const model = demo.value;
@@ -22,6 +24,7 @@ test "request route text cannot inject SSR markup or attributes" {
 	const ready = createRoutingDemo(
 		createRequestRoutingHistory("/documents/" + encodeRouteComponent(id)),
 	);
+	flush();
 	assert ready.ok;
 	if (ready.ok) {
 		const model = ready.value;

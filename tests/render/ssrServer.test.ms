@@ -1,4 +1,5 @@
 import { createSignal, accessor, Accessor } from "../../src/core/signal";
+import { flush } from "../../src/core/runtime";
 import { el, text, NeonNode } from "../../src/render/node";
 import { renderToString } from "../../src/render/ssr";
 import { createComponent } from "../../src/render/component";
@@ -141,6 +142,7 @@ test "a render carries nothing over to the next" {
 	const second = renderToString(rows);
 	assert first === second, "same tree twice: first=" + first + " second=" + second;
 	setItems([1, 2]);
+	flush();
 	const third = renderToString(rows);
 	assert third === "<ul><li>1</li><li>2</li><!----></ul>", "a later render sees the current signal: " + third;
 	const plain = renderToString(<div>x</div>);

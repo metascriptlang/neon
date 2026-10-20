@@ -1,4 +1,5 @@
 import { createSignal, Accessor } from "../../src/core/signal";
+import { flush } from "../../src/core/runtime";
 import { NeonNode } from "../../src/render/node";
 import { renderToString } from "../../src/render/ssr";
 import { element } from "../../src/macros/ui/element";
@@ -8,6 +9,7 @@ test "reactive element renders and updates on signal change" {
 	const node = element(<p>Hi {name()}</p>);
 	assert renderToString(node) === "<p>Hi <!--!-->world</p>", "initial render";
 	setName("neon");
+	flush();
 	assert renderToString(node) === "<p>Hi <!--!-->neon</p>", "render updates after set";
 }
 
@@ -17,6 +19,7 @@ test "JSX bound to a const is consumed by element()" {
 	const node = element(view);
 	assert renderToString(node) === "<p>Hi <!--!-->world</p>", "const-form initial render";
 	setName("neon");
+	flush();
 	assert renderToString(node) === "<p>Hi <!--!-->neon</p>", "const-form updates after set";
 }
 
@@ -87,6 +90,7 @@ test "dynamic attr tracks its signal" {
 	const node = element(<p class={cls()}>x</p>);
 	assert renderToString(node) === "<p class=\"red\">x</p>", "initial snapshot";
 	setCls("blue");
+	flush();
 	assert renderToString(node) === "<p class=\"blue\">x</p>", "snapshot follows set";
 }
 
@@ -95,6 +99,7 @@ test "mixed static and dynamic attrs keep source order" {
 	const node = element(<div a="1" b={x()} c="3"></div>);
 	assert renderToString(node) === "<div a=\"1\" b=\"2\" c=\"3\"></div>", "source order preserved";
 	setX("9");
+	flush();
 	assert renderToString(node) === "<div a=\"1\" b=\"9\" c=\"3\"></div>", "middle attr updates in place";
 }
 
@@ -104,6 +109,7 @@ test "the same JSX const consumed twice yields independent trees" {
 	const one = element(view);
 	const two = element(view);
 	setA("y");
+	flush();
 	assert renderToString(one) === "<p>y</p>", "first tree reactive";
 	assert renderToString(two) === "<p>y</p>", "second tree reactive";
 }

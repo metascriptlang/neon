@@ -1,4 +1,5 @@
 import { createSignal, Accessor } from "../../src/core/signal";
+import { flush } from "../../src/core/runtime";
 import { NeonEvent } from "../../src/render/event";
 import {
 	HostNode,
@@ -186,7 +187,7 @@ function texts(root: MockNode): string {
 }
 
 function press(root: MockNode, at: int32, times: int32): void {
-	for (let i = 0 as int32; i < times; i += 1) { fireEvent(all(root, "button")[at], "onPress"); }
+	for (let i = 0 as int32; i < times; i += 1) { fireEvent(all(root, "button")[at], "onPress"); flush(); }
 }
 
 const edited = (): string => "edited";
@@ -198,6 +199,7 @@ test "refresh state: a setup edit keeps the component's signals" {
 	press(root, 1, 1);
 	refreshComponent<RowProps>(thisFile(), "Row|RowProps", __refreshBody_RowByTen, edited);
 	const summary = refreshModule(thisFile());
+	flush();
 	assert summary.remounted === 2, "both rows remount: " + summary.remounted.toString();
 	assert texts(root) === "<p>ten a:3</p> <p>ten b:1</p> ", "new code, counts kept: " + texts(root);
 	press(root, 0, 1);
@@ -211,6 +213,7 @@ test "refresh state: an edited state declaration starts again" {
 	press(root, 0, 3);
 	refreshComponent<RowProps>(thisFile(), "Row|RowProps", __refreshBody_RowFromFive, edited);
 	refreshModule(thisFile());
+	flush();
 	assert texts(root) === "<p>five a:5</p> <p>five b:5</p> ", "the new initial value shows: " + texts(root);
 	dispose();
 }
@@ -221,6 +224,7 @@ test "refresh state: a new signal joins the kept ones" {
 	press(root, 0, 3);
 	refreshComponent<RowProps>(thisFile(), "Row|RowProps", __refreshBody_RowWithStep, edited);
 	refreshModule(thisFile());
+	flush();
 	assert texts(root) === "<p>a:3/2</p> <p>b:0/2</p> ", "count kept beside the new step: " + texts(root);
 	press(root, 0, 1);
 	assert texts(root) === "<p>a:5/2</p> <p>b:0/2</p> ", "the new handler reads both: " + texts(root);
@@ -234,6 +238,7 @@ test "refresh state: a signal whose type changed starts again" {
 	assert texts(root) === "<p>level 5</p> ", texts(root);
 	refreshComponent0(thisFile(), "Gauge|", __refreshBody_GaugeNamed, edited);
 	refreshModule(thisFile());
+	flush();
 	assert texts(root) === "<p>level three</p> ", "the number is not read as a string: " + texts(root);
 	dispose();
 }
@@ -245,6 +250,7 @@ test "refresh state: a parent's template edit keeps its children's signals" {
 	press(root, 1, 1);
 	refreshTemplate0(thisFile(), "List#template", listTemplateV2, edited, __refreshSetup_List);
 	const summary = refreshModule(thisFile());
+	flush();
 	assert summary.rebuilt === 1 && summary.remounted === 0, "one template rebuilt";
 	assert all(root, "h1").length === 1, "the new template is mounted";
 	assert texts(root) === "<p>a:3</p> <p>b:1</p> ", "each row keeps its own count: " + texts(root);
@@ -259,6 +265,7 @@ test "refresh state: a parent's setup edit keeps its own and its children's sign
 	assert texts(root) === "<p>frame!</p> <p>a:4</p> ", texts(root);
 	refreshComponent0(thisFile(), "Frame|", __refreshBody_FrameLoud, edited);
 	const summary = refreshModule(thisFile());
+	flush();
 	assert summary.remounted === 1, "only the frame remounts: " + summary.remounted.toString();
 	assert texts(root) === "<p>loud frame!</p> <p>a:4</p> ", "title and row count kept: " + texts(root);
 	dispose();
@@ -273,6 +280,7 @@ test "refresh state: children are matched in document order, not in mount order"
 	assert texts(root) === "<p>x:1</p> <p>y:2</p> ", "x mounted after y: " + texts(root);
 	refreshTemplate0(thisFile(), "Late#template", lateTemplateV2, edited, __refreshSetup_Late);
 	refreshModule(thisFile());
+	flush();
 	assert texts(root) === "<p>x:1</p> <p>y:2</p> ", "each row keeps its own count: " + texts(root);
 	dispose();
 }
@@ -283,6 +291,7 @@ test "refresh state: a template registered at another capture type remounts its 
 	press(root, 0, 3);
 	refreshTemplate(thisFile(), "Row#template", __refreshTmpl_RowWithStep, edited, __refreshSetup_RowWithStep);
 	const summary = refreshModule(thisFile());
+	flush();
 	assert summary.remounted === 2, "the rows remount: " + summary.remounted.toString();
 	assert texts(root) === "<p>a:3</p> <p>b:0</p> ", "and keep their counts: " + texts(root);
 	dispose();
@@ -296,6 +305,7 @@ test "refresh state: state a helper keeps by hand survives a template rebuild, o
 	assert texts(root) === "<p>p=2</p> <p>q=5</p> ", texts(root);
 	refreshTemplate0(thisFile(), "Board#template", boardTemplateV2, edited, __refreshSetup_Board);
 	refreshModule(thisFile());
+	flush();
 	assert all(root, "h1").length === 1, "the new template is mounted";
 	assert texts(root) === "<p>p=2</p> <p>q=5</p> ", "both cells kept: " + texts(root);
 	dispose();
@@ -308,6 +318,7 @@ test "refresh state: state kept under a template survives its component's setup 
 	press(root, 1, 5);
 	refreshComponent0(thisFile(), "Board|", boardBodyV2, edited);
 	const summary = refreshModule(thisFile());
+	flush();
 	assert summary.remounted === 1, "the board remounts: " + summary.remounted.toString();
 	assert texts(root) === "<p>p=2</p> <p>q=5</p> ", "both cells kept: " + texts(root);
 	dispose();
@@ -318,6 +329,7 @@ test "refresh state: a remount that throws leaves the rest mounted, and the next
 	press(root, 1, 4);
 	refreshComponent<RowProps>(thisFile(), "Row|RowProps", __refreshBody_RowBroken, edited);
 	const broken = refreshModule(thisFile());
+	flush();
 	assert broken.remounted === 1, "the row was tried: " + broken.remounted.toString();
 	assert texts(root) === "<p>frame</p> ", "the frame stays, the row is gone: " + texts(root);
 	const shown = all(root, "text");
@@ -327,6 +339,7 @@ test "refresh state: a remount that throws leaves the rest mounted, and the next
 	assert texts(root) === "<p>frame!</p> ", "the frame still answers: " + texts(root);
 	refreshComponent<RowProps>(thisFile(), "Row|RowProps", __refreshBody_RowByTen, (): string => "fixed");
 	refreshModule(thisFile());
+	flush();
 	assert texts(root) === "<p>frame!</p> <p>ten a:4</p> ", "the fix mounts with the count kept: " + texts(root);
 	assert all(root, "text").length === 0, "the error view is gone: " + all(root, "text").length.toString();
 	dispose();

@@ -10,6 +10,7 @@ import { styleToCss } from "../../src/render/css";
 import { createStyles, styleOf } from "../../src/macros/ui/style";
 import { resetCss, cssRuleCount, mountSheet } from "../../src/render/sheet";
 import { createSignal } from "../../src/core/signal";
+import { flush } from "../../src/core/runtime";
 import { View, Text } from "../../src/components/primitives";
 
 const sheet = createStyles({
@@ -71,6 +72,7 @@ test "a reactive whole-style thunk serializes its value at render time" {
 	const n: NeonNode = <div style={styleOf({ width: w() })}></div>;
 	assert renderToString(n) === "<div style=\"width:10px;\"></div>", "the thunk runs";
 	setW(20);
+	flush();
 	assert renderToString(n) === "<div style=\"width:20px;\"></div>", "a second render re-reads it";
 }
 
