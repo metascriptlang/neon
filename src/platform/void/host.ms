@@ -889,6 +889,7 @@ export function createVoidHostWith(
 		n.spans = spans;
 		refreshParagraph(n);
 		woke(was);
+		askLayout();
 	};
 
 	const validatePlacement = (parent: VoidNode, child: VoidNode): void => {
