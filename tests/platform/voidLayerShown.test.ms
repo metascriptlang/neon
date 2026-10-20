@@ -104,6 +104,11 @@ test "a held Scene3D alone hides and wakes its area, though it puts nothing else
 	assert alone === "mount shown | held same hidden woke | reset same shown woke", alone;
 }
 
+test "an Errored that holds a Text hides the scenes inside it, and a reset shows them" {
+	const inText = heldThroughErrored([element(<Text>{element(<Scene2D />)}{element(<Scene3D />)}</Text>)]);
+	assert inText === "mount shown,shown | held same hidden,hidden woke | reset same shown,shown woke", inText;
+}
+
 test "a scene's place in the area takes no layout room" {
 	const below = (scene: NeonNode): string => {
 		const areas: WindowArea[] = [];
