@@ -1,7 +1,8 @@
 import { createSignal } from "../../src/core/signal";
 import { element } from "../../src/macros/ui/element";
 import { Host, HostNode, MockNode, mockNode, mockHost, render, mockToString, mockAreaHub } from "../../src/render/host";
-import { VoidAreaHandle, AreaKeyAction, AreaPointerKind, AreaKeyEvent, AreaKeyMod, AreaPointerEvent, AreaPreedit, AreaResize } from "../../src/render/voidAreaHandle";
+import { VoidAreaHandle, AreaKeyAction, AreaPointerKind, AreaKeyEvent, AreaKeyMod, AreaPointerEvent, AreaPreedit, AreaResize, AreaLayer, Unsubscribe, createAreaHub } from "../../src/render/voidAreaHandle";
+import { Color, rgba } from "../../../void/src/void2d/types";
 import { onCleanup } from "../../src/core/cleanup";
 import { createContext, useContext } from "../../src/render/context";
 import { Void, View, ViewHandle, Text } from "../../src/components/primitives";
@@ -130,4 +131,33 @@ test "a directive factory and a plain callback both receive the handle" {
 	assert log.join(",") === "apply,plain", log.join(",");
 	dispose();
 	assert log.join(",") === "apply,plain,setup cleanup", log.join(",");
+}
+
+test "a layer removed by an earlier layer during the frame is neither prepared nor drawn" {
+	const hub = createAreaHub({ initialPixelWidth: 10, initialPixelHeight: 10, requestFrame: (): void => {}, setImeRect: (x: int32, y: int32, w: int32, h: int32): void => {} });
+	const log: string[] = [];
+	let removeSecond: Unsubscribe | null = null;
+	let removeThird: Unsubscribe | null = null;
+	const layer = (name: string, onPrepare: () => void, onDraw: () => void): AreaLayer => ({
+		prepare: (pixelWidth: int32, pixelHeight: int32, background: Color): void => { log.push("prepare " + name); onPrepare(); },
+		draw: (): void => { log.push("draw " + name); onDraw(); },
+	});
+	hub.addLayer(layer("a", (): void => { (removeSecond as Unsubscribe)(); }, (): void => { (removeThird as Unsubscribe)(); }));
+	removeSecond = hub.addLayer(layer("b", (): void => {}, (): void => {}));
+	removeThird = hub.addLayer(layer("c", (): void => {}, (): void => {}));
+	hub.prepareLayers(10, 10, rgba(0.0, 0.0, 0.0, 1.0));
+	hub.drawLayers();
+	assert log.join(",") === "prepare a,prepare c,draw a", log.join(",");
+	assert hub.layers().length === 1, "only a stays registered";
+}
+
+test "a subscriber removed by an earlier one during an emit is not called" {
+	const hub = createAreaHub({ initialPixelWidth: 10, initialPixelHeight: 10, requestFrame: (): void => {}, setImeRect: (x: int32, y: int32, w: int32, h: int32): void => {} });
+	const log: string[] = [];
+	let off: Unsubscribe | null = null;
+	hub.handle.onText((t: string): void => { log.push("first " + t); (off as Unsubscribe)(); });
+	off = hub.handle.onText((t: string): void => { log.push("second " + t); });
+	hub.text("x");
+	hub.text("y");
+	assert log.join(",") === "first x,first y", log.join(",");
 }
