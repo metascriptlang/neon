@@ -1,7 +1,8 @@
 #!/bin/bash
 # Drives Neon Refresh over MetaScript HCR on an Android device or emulator through the dev loop
 # (tools/androidHcr.sh): template edits, a helper module edit, a compile error, an activity recreation,
-# a setup edit and a core change, each checked on the running app. Pristine sources are copied into
+# a setup edit and a core change, each checked on the running app; then the devtools control channel
+# through adb forward (docs/DEVTOOLS.md). Pristine sources are copied into
 # <repo>/out/refreshAndroid and the edits land there.
 # usage: APK=<debug apk whose NativeApp loads files/hcr/libapp.core.so> examples/refreshAndroid/drive.sh
 #   MSC, SERIAL, ABI, API, PACKAGE: see tools/androidHcr.sh
@@ -18,6 +19,7 @@ ADB="$SDK/platform-tools/adb"
 FAILED=0
 SEEN=0
 TIMES=""
+PORT=47342
 
 adb() { "$ADB" -s "$SERIAL" "$@"; }
 now() { date +%s%3N; }
@@ -34,6 +36,16 @@ tap() {
 	adb shell input tap $((($1 + $3) / 2)) $((($2 + $4) / 2))
 	sleep 0.5
 }
+rpc() {
+	python -c 'import socket, sys
+s = socket.create_connection(("127.0.0.1", int(sys.argv[1])), timeout=5)
+s.sendall((sys.argv[2] + "\n").encode())
+buf = b""
+while not buf.endswith(b"\n"):
+	buf += s.recv(65536)
+print(buf.decode().strip())' "$PORT" "$1"
+}
+has() { case "$2" in *"$3"*) pass "$1" ;; *) fail "$1: '$3' not in $2" ;; esac; }
 showsWithin() {
 	for i in $(seq 1 $2); do [ "$(shown)" = "$1" ] && return; sleep 0.3; done
 }
@@ -67,7 +79,7 @@ reloaded() {
 
 mkdir -p "$WORK"
 for f in build.ms app.ms counter.ms words.ms; do cp "$SRC/$f" "$WORK/$f"; done
-bash "$ROOT/tools/androidHcr.sh" "$WORK" > "$LOG" 2>&1 &
+NEON_CONTROL=$PORT bash "$ROOT/tools/androidHcr.sh" "$WORK" > "$LOG" 2>&1 &
 DEV=$!
 trap 'kill $DEV 2> /dev/null; adb shell settings put system font_scale 1.0' EXIT
 next "^dev: started" 180 || { tail -20 "$LOG"; fail "the dev loop did not start the app"; exit 1; }
@@ -155,6 +167,14 @@ adb shell settings put system font_scale 1.0
 sleep 3
 showsWithin "Counter v7;count 0;press again;tap;" 10
 check "activity recreation after a reload remounts in the same process" "$(shown) $(adb shell pidof $PACKAGE)" "Counter v7;count 0;press again;tap; $NEWPID"
+
+# (g) the control channel, through every restart and recreation above
+has "control: ping names the native host" "$(rpc '{"jsonrpc":"2.0","id":1,"method":"ping"}')" '"result":{"protocol":1,"host":"native"}'
+has "control: the tree holds what the screen shows" "$(rpc '{"jsonrpc":"2.0","id":2,"method":"tree"}')" '"text":"Counter v7"'
+rpc '{"jsonrpc":"2.0","id":3,"method":"press","params":{"target":"text:tap"}}' > /dev/null
+showsWithin "Counter v7;count 1;press again;tap;" 5
+check "control: press goes through the touch path" "$(shown)" "Counter v7;count 1;press again;tap;"
+has "control: components report the live count" "$(rpc '{"jsonrpc":"2.0","id":4,"method":"components"}')" '"state":{"count":"1"'
 
 echo "edit to reloaded, sorted ms:$(echo $TIMES | tr ' ' '\n' | sort -n | tr '\n' ' ')"
 [ $FAILED = 0 ] && echo "RESULT PASS" || echo "RESULT FAIL"
