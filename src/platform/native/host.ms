@@ -69,6 +69,7 @@ extern function niSetEnvironmentHandler(handler: () => void): void;
 
 class NativeNode {
 	view: Ptr<void> | null = null;
+	tag: string = "";
 	isText: boolean = false;
 	isString: boolean = false;
 	isScroll: boolean = false;
@@ -941,6 +942,7 @@ export function createNativeHost(): NativeHost {
 			}
 			n.control = kind === NativeElementKind.Text || kind === NativeElementKind.Scroll ? NativeElementKind.View : kind;
 			n.flex = intrinsicFlex(n, nativeFlexStyle({} as Style, kind));
+			n.tag = tag;
 			return n as unknown as HostNode;
 		},
 		createText: (s: string): HostNode => {

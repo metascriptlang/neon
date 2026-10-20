@@ -46,6 +46,7 @@ struct Frame {
 
 export class VoidNode {
 	ref: NodeRef;
+	tag: string = "";
 	parent: VoidNode | null = null;
 	children: VoidNode[] = [];
 	scroller: NodeRef | null = null;
@@ -887,6 +888,7 @@ export function createVoidHostWith(scene: Scene2D, font: FontId, defaultFamily: 
 					n.flex = {};
 				}
 			}
+			n.tag = tag;
 			woke(was);
 			return n;
 		},
