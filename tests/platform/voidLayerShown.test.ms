@@ -1,5 +1,3 @@
-// A Scene2D or Scene3D layer is drawn only while its place in the Void's tree is attached: content an Errored holds
-// behind its fallback keeps its layers registered but hidden, and a reset shows the same layers again.
 import { Accessor, createSignal } from "../../src/core/signal";
 import { createRenderEffect } from "../../src/core/effect";
 import { Cleanup } from "../../src/core/types";
@@ -109,11 +107,15 @@ test "a held Scene3D alone hides and wakes its area, though it puts nothing else
 test "a scene's place in the area takes no layout room" {
 	const below = (scene: NeonNode): string => {
 		const areas: WindowArea[] = [];
-		render(element(<Void style={{ flexDirection: "column", gap: 10 }}>{scene}<View style={{ height: 20 }} /></Void>), windowHost(testWindow([], areas)), windowNode("window"));
-		const root = areas[0].vh.root as VoidNode;
-		areas[0].vh.layout(640.0, 360.0);
-		const place = root.children[0].ref.content();
-		return "y=" + root.children[1].ref.local().y.toString() + " place=" + place.w.toString() + "x" + place.h.toString();
+		const dispose = render(element(<Void style={{ flexDirection: "column", gap: 10 }}>{scene}<View style={{ height: 20 }} /></Void>), windowHost(testWindow([], areas)), windowNode("window"));
+		try {
+			const root = areas[0].vh.root as VoidNode;
+			areas[0].vh.layout(640.0, 360.0);
+			const place = root.children[0].ref.content();
+			return "y=" + root.children[1].ref.local().y.toString() + " place=" + place.w.toString() + "x" + place.h.toString();
+		} finally {
+			dispose();
+		}
 	};
 	const flat = below(element(<Scene2D />));
 	assert flat === "y=0 place=0x0", "after a Scene2D: " + flat;
@@ -121,13 +123,15 @@ test "a scene's place in the area takes no layout room" {
 	assert deep === "y=0 place=0x0", "after a Scene3D: " + deep;
 }
 
-test "a Scene2D or Scene3D inside a Text mounts as before and its layer stays shown" {
+test "a Scene2D or Scene3D inside a Text mounts as before, with no anchor, so its layer is always shown" {
 	const mounted = (scene: NeonNode): string => {
 		const areas: WindowArea[] = [];
 		const dispose = render(element(<Void><Text>{scene}</Text></Void>), windowHost(testWindow([], areas)), windowNode("window"));
-		const out = areas[0].hub.layers().length.toString() + " " + shownOf(areas[0].hub.layers());
-		dispose();
-		return out;
+		try {
+			return areas[0].hub.layers().length.toString() + " " + shownOf(areas[0].hub.layers());
+		} finally {
+			dispose();
+		}
 	};
 	const flat = mounted(element(<Scene2D />));
 	assert flat === "1 shown", "a Scene2D in a Text: " + flat;
