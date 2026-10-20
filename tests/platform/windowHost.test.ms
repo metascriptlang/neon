@@ -29,6 +29,7 @@ import {
 	logicalHeight,
 } from "../../src/platform/void/windowHost";
 import { PixelRatio } from "../../src/api/pixelRatio";
+import { useWindowDimensions } from "../../src/render/environment";
 import { DrawKind, clearChanges } from "../../../void/src/void2d/node";
 import { paint as paintScene } from "../../../void/src/void2d/scene";
 import { frameEnd } from "../../../void/src/void2d/draw";
@@ -157,6 +158,7 @@ test "window input reaches the handle's subscribers and the focused node alike" 
 	deliverResize(area, 800 as int32, 400 as int32, 2.0);
 	assert area.logicalWidth() === 400.0 && area.logicalHeight() === 200.0, "logical size is pixels over scale";
 	assert PixelRatio.get() === 2, "the scale is published";
+	assert useWindowDimensions()().width === 400 && useWindowDimensions()().height === 200, "the logical window size is published";
 	area.vh.layout(area.logicalWidth(), area.logicalHeight());
 	deliverPointer(area, { kind: AreaPointerKind.Button, pixelX: 20.0, pixelY: 40.0, button: 1 as int32, pressed: true, dx: 0.0, dy: 0.0 });
 	assert area.held === (1 as int32), "the pressed button is held";

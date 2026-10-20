@@ -11,6 +11,7 @@ import {
 } from "../../render/voidAreaHandle";
 import { Style } from "../../render/style";
 import { publishScale } from "../../api/dimensions";
+import { publishWindow } from "../../render/environment";
 import { FontId } from "../../../../void/src/void2d/font";
 import { Scene2D } from "../../../../void/src/void2d/node";
 import { create, close } from "../../../../void/src/void2d/scene";
@@ -208,6 +209,7 @@ export function deliverResize(a: WindowArea, width: int32, height: int32, scale:
 	a.height = height;
 	a.scale = scale as float32;
 	publishScale(scale, 1);
+	publishWindow(a.logicalWidth(), a.logicalHeight());
 	a.hub.resize({ pixelWidth: width, pixelHeight: height, scale: a.scale });
 }
 
