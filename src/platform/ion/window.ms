@@ -218,6 +218,20 @@ function attachView(owner: Area, width: int32, height: int32): void {
 	commit(owner.win);
 }
 
+function showWithFirstFrame(win: Window): void {
+	const a = areaOfWindow(win.id);
+	if (a === null) {
+		show(win);
+		return;
+	}
+	const owner = a as Area;
+	if (owner.view !== ViewInvalid) { viewFrame(owner.view); }
+	if (!owner.shown) {
+		owner.shown = true;
+		show(win);
+	}
+}
+
 function wireInput(): void {
 	if (_wired) { return; }
 	_wired = true;
@@ -339,6 +353,7 @@ export function runWindow(opts: DesktopOptions, app: () => NeonNode): int32 {
 	});
 	const host = ionWindowHost(win);
 	const dispose = render((h: Host, p: HostNode, b: HostNode | null): void => { app()(h, p, b); }, host, windowNode("window"));
+	showWithFirstFrame(win);
 	when (hcr) {
 		setInterval(pollReload, RELOAD_POLL_MS);
 	}

@@ -65,10 +65,10 @@ expect_bundle() {
 	bad=0
 	NO_COLOR=1 "$MSC" build --target=js --output="$bundles/$1.js" "tests/apps/$1.ms" >/dev/null 2>&1
 	for m in $2; do
-		grep -q "^// --- Module: .*/src/$m ---\$" "$bundles/$1.js" 2>/dev/null || { echo "FAIL bundle $1: missing $m"; bad=1; }
+		grep -q "^// --- Module: \(.*/\)\{0,1\}src/$m ---\$" "$bundles/$1.js" 2>/dev/null || { echo "FAIL bundle $1: missing $m"; bad=1; }
 	done
 	for m in $3; do
-		grep -q "^// --- Module: .*/src/$m ---\$" "$bundles/$1.js" 2>/dev/null && { echo "FAIL bundle $1: carries $m"; bad=1; }
+		grep -q "^// --- Module: \(.*/\)\{0,1\}src/$m ---\$" "$bundles/$1.js" 2>/dev/null && { echo "FAIL bundle $1: carries $m"; bad=1; }
 	done
 	[ $bad = 0 ] && echo "ok   bundle $1" || fail=1
 }
@@ -105,10 +105,10 @@ expect_native_modules() {
 	bad=0
 	[ -n "$syms" ] || { echo "FAIL modules $1: did not build"; fail=1; return; }
 	for m in $2; do
-		echo "$syms" | grep -q "ZsrcZ$(mangled "$m")O" || { echo "FAIL modules $1: missing $m"; bad=1; }
+		echo "$syms" | grep -q "[Z_]srcZ$(mangled "$m")O" || { echo "FAIL modules $1: missing $m"; bad=1; }
 	done
 	for m in $3; do
-		echo "$syms" | grep -q "ZsrcZ$(mangled "$m")O" && { echo "FAIL modules $1: carries $m"; bad=1; }
+		echo "$syms" | grep -q "[Z_]srcZ$(mangled "$m")O" && { echo "FAIL modules $1: carries $m"; bad=1; }
 	done
 	[ $bad = 0 ] && echo "ok   modules $1" || fail=1
 }
@@ -136,7 +136,7 @@ expect_warnings tests/apps/listWarnApp.ms
 expect_bundle bundlePlainApp "platform/browser/dom" "void2d/types gpu/door render/spanHost platform/browser/media animation/layoutAnimation platform/browser/layoutAnimation platform/browser/camera platform/browser/captureServices platform/browser/svg components/svg/markup components/svg/scene platform/browser/notifications api/notifications platform/browser/geolocation api/geolocation platform/browser/netInfo api/netInfo platform/browser/asyncStorage api/asyncStorage platform/browser/haptics api/haptics platform/browser/deviceInfo api/deviceInfo platform/browser/localization api/localization platform/browser/permissions api/permissions platform/browser/clipboard api/clipboard platform/browser/linking api/linking platform/browser/vibration api/vibration platform/browser/accessibilityInfo api/accessibilityInfo"
 expect_bundle bundleSvgApp "platform/browser/svg components/svg/markup" "platform/browser/media platform/browser/camera platform/browser/captureServices"
 expect_native_modules bundleTerminalApp "platform/terminal/host" "render/spanHost components/svg/scene platform/native/host platform/browser/dom"
-expect_size bundlePlainApp js 879869
+expect_size bundlePlainApp js 739224
 expect_size bundleTerminalApp native 586896
 if [ "$(uname)" = Darwin ]; then
 	expect_macos_app bundleMacosApp "NeonSwitch NeonSwitchControl NeonIndicator NeonModal NeonWebView NeonWebKitView NeonScriptProxy NeonVideo NeonCamera NeonPhotoCapture NeonSvgView NeonSvgCanvas" "niSwitchCreate niIndicatorCreate niModalCreate niWebViewCreate niVideoCreate niCameraCreate niSvgCreate" "AVKit CoreMedia"

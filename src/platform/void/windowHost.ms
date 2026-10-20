@@ -94,6 +94,12 @@ export function windowHost(w: AreaWindow): Host {
 		throw new Error(`${w.name} host: ${what}; the window holds exactly one <Void>`);
 	};
 
+	const placeChild = (parent: HostNode, child: HostNode, ref: HostNode | null): void => {
+		const tag = asWindowNode(child).tag;
+		if (asWindowNode(parent).tag === "window" && tag !== "void" && tag !== "") { refuse(`<${tag}> cannot be a child of the window`); }
+		insertChild(parent, child, ref);
+	};
+
 	const openArea = (node: HostNode): VoidArea => {
 		if (current !== null) { refuse("a second <Void> was mounted"); }
 		const vh = createVoidHostWith(Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0)), w.font, w.family);
@@ -132,10 +138,7 @@ export function windowHost(w: AreaWindow): Host {
 	};
 
 	return {
-		createElement: (tag: string): HostNode => {
-			if (tag !== "void") { refuse(`<${tag}> cannot be a child of the window`); }
-			return windowNode(tag);
-		},
+		createElement: (tag: string): HostNode => windowNode(tag),
 		createText: (s: string): HostNode => {
 			if (s !== "") { refuse(`text "${s}" cannot be a child of the window`); }
 			return windowNode("");
@@ -157,8 +160,8 @@ export function windowHost(w: AreaWindow): Host {
 		addEvent: (node: HostNode, name: string, handler: (e: NeonEvent) => void): void => {
 			refuse(`${name} on the window element`);
 		},
-		append: (parent: HostNode, child: HostNode): void => { insertChild(parent, child, null); },
-		insertBefore: insertChild,
+		append: (parent: HostNode, child: HostNode): void => { placeChild(parent, child, null); },
+		insertBefore: placeChild,
 		removeChild: (parent: HostNode, node: HostNode): void => { detach(asWindowNode(node)); },
 		parentOf: (node: HostNode): HostNode | null => {
 			const p = asWindowNode(node).parent;
