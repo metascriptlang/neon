@@ -53,6 +53,10 @@ export function readOptions(
 	return options as Accessor<ScreenOptions>;
 }
 
+function reuseWith<P>(entry: Navigation<P>, params: P | null): void {
+	if (untrack((): P | null => entry.route.params()) !== params) { entry.writeParams(params); }
+}
+
 function stackModel<P>(core: NavigatorCore<P>, restored: RouteSeed<P>[] | null): NavigatorModel<P> {
 	const initial = restored === null ? [core.seed(core.initialName, null)] : restored as RouteSeed<P>[];
 	const stack = createChildStack<RouteSeed<P>, Navigation<P>>(
@@ -96,16 +100,17 @@ function stackModel<P>(core: NavigatorCore<P>, restored: RouteSeed<P>[] | null):
 				stack.navigate((current: RouteSeed<P>[]): RouteSeed<P>[] => list);
 			});
 		},
-		navigate: (name: string, params: P | null): void => {
+		navigate: (name: string, params: P | null, pop: boolean): void => {
 			const list = core.snapshot();
-			const at = core.indexOfName(list, name);
+			const top = list.length - 1;
+			const at = list[top].route.name === name ? top : pop ? core.indexOfName(list, name) : -1;
 			if (at < 0) {
 				const seed = core.seed(name, params);
 				core.apply((): void => { stack.push(seed); });
 				return;
 			}
 			core.guarded("NAVIGATE", list.slice(at + 1, list.length), (): void => {
-				if (params !== null) { list[at].writeParams(params); }
+				reuseWith<P>(list[at], params);
 				core.apply((): void => { stack.popTo(at); });
 			});
 		},
@@ -131,6 +136,35 @@ function stackModel<P>(core: NavigatorCore<P>, restored: RouteSeed<P>[] | null):
 					return;
 				}
 			}
+		},
+		popToRoute: (name: string, params: P | null, source: string | null): boolean => {
+			const list = core.snapshot();
+			let from = list.length - 1;
+			if (source !== null) {
+				while (from >= 0 && list[from].route.key !== source) { from -= 1; }
+				if (from < 0) { return false; }
+			}
+			let at = from;
+			while (at >= 0 && list[at].route.name !== name) { at -= 1; }
+			if (at < 0) {
+				const seed = core.seed(name, params);
+				const keep = from;
+				core.guarded("POP_TO", list.slice(keep, list.length), (): void => {
+					core.apply((): void => {
+						stack.navigate((current: RouteSeed<P>[]): RouteSeed<P>[] => {
+							const kept = current.slice(0, keep);
+							kept.push(seed);
+							return kept;
+						});
+					});
+				});
+				return true;
+			}
+			core.guarded("POP_TO", list.slice(at + 1, list.length), (): void => {
+				reuseWith<P>(list[at], params);
+				core.apply((): void => { stack.popTo(at); });
+			});
+			return true;
 		},
 		popTo: (at: int32): void => {
 			const list = core.snapshot();

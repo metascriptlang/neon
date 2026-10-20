@@ -168,15 +168,16 @@ function drawerModel<P>(
 		entries: pages.entries,
 		index: pages.index,
 		arrange: pages.arrange,
-		navigate: (name: string, params: P | null): void => {
+		navigate: (name: string, params: P | null, pop: boolean): void => {
 			flush((): void => {
-				pages.navigate(name, params);
+				pages.navigate(name, params, pop);
 				writeOpen(false);
 			});
 		},
 		push: pages.push,
 		replace: pages.replace,
 		popTo: pages.popTo,
+		popToRoute: pages.popToRoute,
 		reset: pages.reset,
 		goBackFrom: (key: string): boolean => back(),
 		canBack: (): boolean => untrack((): boolean => open()) || pages.canBack(),

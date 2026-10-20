@@ -5,6 +5,7 @@ export {
 	ScreenOptions,
 	mergeOptions,
 	NavTarget,
+	NavigateActionOptions,
 	RouteKey,
 	NavigationState,
 	NavigationRoute,

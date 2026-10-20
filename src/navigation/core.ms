@@ -119,6 +119,33 @@ export interface NavTarget {
 	name: string;
 	values: Map<string, string> | null;
 	child: NavTarget | null;
+	pop: boolean;
+}
+
+export interface NavigateActionOptions {
+	pop?: boolean | null;
+}
+
+export function reportUnhandled(type: string, name: string | null): void {
+	when (debug) {
+		let message = "The action '" + type + "'";
+		if (name !== null) { message += " with payload {\"name\":\"" + (name as string) + "\"}"; }
+		message += " was not handled by any navigator.";
+		if (type === "NAVIGATE" || type === "PUSH" || type === "REPLACE" || type === "JUMP_TO") {
+			message += "\n\nDo you have a route named '" + (name ?? "") + "'?";
+		} else if (type === "GO_BACK" || type === "POP" || type === "POP_TO_TOP") {
+			message += "\n\nIs there any screen to go back to?";
+		} else if (type === "OPEN_DRAWER" || type === "CLOSE_DRAWER" || type === "TOGGLE_DRAWER") {
+			message += "\n\nIs your screen inside a Drawer navigator?";
+		}
+		console.error(message + "\n\nThis is a development-only warning and won't be shown in production.");
+	}
+}
+
+export function drawerActionType(action: DrawerAction): string {
+	if (action === DrawerAction.Open) { return "OPEN_DRAWER"; }
+	if (action === DrawerAction.Close) { return "CLOSE_DRAWER"; }
+	return "TOGGLE_DRAWER";
 }
 
 export interface RouteKey {
@@ -154,6 +181,7 @@ export interface NavigatorLink {
 	hasRoute: (name: string) => boolean;
 	navigateTo: (target: NavTarget) => boolean;
 	pushTo: (name: string) => boolean;
+	popToRoute: (name: string) => boolean;
 	backLocal: () => boolean;
 	canBackLocal: () => boolean;
 	canPop: () => boolean;
@@ -461,8 +489,9 @@ export class Navigation<P> {
 		this.writeOverrides = writeOverrides;
 	}
 
-	navigate(name: string, params: P | null = null): void {
-		this.core.navigate(name, params);
+	navigate(name: string, params: P | null = null, options: NavigateActionOptions | null = null): void {
+		const pop = options === null ? false : (options as NavigateActionOptions).pop ?? false;
+		this.core.navigate(name, params, pop);
 	}
 
 	push(name: string, params: P | null = null): void {
@@ -486,7 +515,7 @@ export class Navigation<P> {
 		if (core.goBackFrom(this.route.key)) { return; }
 		const parent = core.parent;
 		if (parent !== null && goBackUp(parent as NavigatorLink)) { return; }
-		throw new Error("goBack: no navigator could go back from '" + this.route.name + "'");
+		reportUnhandled("GO_BACK", null);
 	}
 
 	canGoBack(): boolean {
@@ -502,6 +531,10 @@ export class Navigation<P> {
 
 	popToTop(): void {
 		this.core.popTo(0);
+	}
+
+	popTo(name: string, params: P | null = null): void {
+		this.core.popToRoute(name, params, this.route.key);
 	}
 
 	reset(state: ResetState<P>): void {
@@ -560,7 +593,7 @@ export class Navigation<P> {
 			if (current.drawerAction(action)) { return; }
 			link = current.parent();
 		}
-		throw new Error("drawer action: no drawer navigator around '" + this.route.name + "'");
+		reportUnhandled(drawerActionType(action), null);
 	}
 
 	eventListeners: EventListener[] = [];
@@ -663,8 +696,9 @@ export interface NavigatorModel<P> {
 	entries: Accessor<Navigation<P>[]>;
 	index: Accessor<int32>;
 	arrange: (kept: Navigation<P>[], focused: Navigation<P> | null) => void;
-	navigate: (name: string, params: P | null) => void;
+	navigate: (name: string, params: P | null, pop: boolean) => void;
 	push: (name: string, params: P | null) => boolean;
+	popToRoute: (name: string, params: P | null, source: string | null) => boolean;
 	replace: (key: string, name: string, params: P | null) => void;
 	popTo: (at: int32) => void;
 	reset: (list: RouteSeed<P>[], at: int32) => void;
@@ -958,9 +992,9 @@ export class NavigatorCore<P> {
 		return -1;
 	}
 
-	navigate(name: string, params: P | null): void {
+	navigate(name: string, params: P | null, pop: boolean = false): void {
 		if (this.hasRoute(name)) {
-			this.navigateLocal(name, params);
+			this.navigateLocal(name, params, pop);
 			return;
 		}
 		if (params !== null) {
@@ -971,9 +1005,9 @@ export class NavigatorCore<P> {
 			);
 		}
 		const parent = this.parent;
-		const target: NavTarget = { name, values: null, child: null };
+		const target: NavTarget = { name, values: null, child: null, pop };
 		if (parent !== null && navigateUp(parent as NavigatorLink, target)) { return; }
-		throw new Error("navigate: no navigator has a screen named '" + name + "'");
+		reportUnhandled("NAVIGATE", name);
 	}
 
 	bypass: boolean = false;
@@ -997,8 +1031,8 @@ export class NavigatorCore<P> {
 		return true;
 	}
 
-	navigateLocal(name: string, params: P | null): void {
-		this.model.navigate(name, params);
+	navigateLocal(name: string, params: P | null, pop: boolean = false): void {
+		this.model.navigate(name, params, pop);
 	}
 
 	push(name: string, params: P | null): void {
@@ -1011,7 +1045,20 @@ export class NavigatorCore<P> {
 				link = current.parent();
 			}
 		}
-		throw new Error("push: no stack navigator has a screen named '" + name + "'");
+		reportUnhandled("PUSH", name);
+	}
+
+	popToRoute(name: string, params: P | null, source: string): void {
+		if (this.hasRoute(name) && this.model.popToRoute(name, params, source)) { return; }
+		if (params === null) {
+			let link = this.parent;
+			while (link !== null) {
+				const current = link as NavigatorLink;
+				if (current.popToRoute(name)) { return; }
+				link = current.parent();
+			}
+		}
+		reportUnhandled("POP_TO", name);
 	}
 
 	replaceRoute(key: string, name: string, params: P | null): void {
@@ -1074,7 +1121,7 @@ export class NavigatorCore<P> {
 		const values = target.values;
 		const parse = config.parseParams;
 		if (values !== null && parse !== null) { params = parse(values as Map<string, string>); }
-		this.navigateLocal(target.name, params);
+		this.navigateLocal(target.name, params, target.pop);
 		const child = target.child;
 		if (child === null) { return true; }
 		const current = this.current();
@@ -1246,6 +1293,7 @@ export function linkOf<P>(core: NavigatorCore<P>): NavigatorLink {
 		hasRoute: (name: string): boolean => core.hasRoute(name),
 		navigateTo: (target: NavTarget): boolean => core.navigateTo(target),
 		pushTo: (name: string): boolean => core.hasRoute(name) && core.model.push(name, null),
+		popToRoute: (name: string): boolean => core.hasRoute(name) && core.model.popToRoute(name, null, null),
 		backLocal: (): boolean => core.backLocal(),
 		canBackLocal: (): boolean => core.canBackLocal(),
 		canPop: (): boolean => core.model.canPop(),

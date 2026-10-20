@@ -65,8 +65,11 @@ function Detail(props: ScreenProps<ItemParams>): NeonNode {
 	</View>;
 }
 
+let editNavigation: Navigation<ItemParams> | null = null;
+
 function Edit(props: ScreenProps<ItemParams>): NeonNode {
 	const navigation = props.navigation;
+	editNavigation = navigation;
 	return <View>
 		<Text>{"edit can back " + (navigation.canGoBack() ? "yes" : "no")}</Text>
 		<Pressable accessibilityLabel="done" onPress={(e: NeonEvent): void => { navigation.popToTop(); }}><Text>done</Text></Pressable>
@@ -159,7 +162,7 @@ test "push, setParams, setOptions, replace and popToTop" {
 	assert visibleText(root) === "Items|home 0|+|open", visibleText(root);
 }
 
-test "navigate to a route already in the stack goes back to it" {
+test "navigate to a screen below the top pushes it again, and goes back to it only with pop" {
 	const ref = createNavigationContainerRef();
 	const root = mountStack(ref);
 	press(root, "open 7");
@@ -167,7 +170,27 @@ test "navigate to a route already in the stack goes back to it" {
 	ref.navigate("Home");
 	flush();
 	assert ref.currentPath() === "Home", ref.currentPath();
-	assert !ref.canGoBack();
+	assert ref.getRootState().routes.length === 4, ref.getRootState().routes.length.toString();
+	(homeNavigation as Navigation<ItemParams>).navigate("Detail", { id: 8, title: "Eight" }, { pop: true });
+	flush();
+	assert ref.getRootState().routes.length === 2, ref.getRootState().routes.length.toString();
+	assert visibleText(root) === "‹ Items|Detail|detail 8 Eight|edit|rename", visibleText(root);
+}
+
+test "popTo goes back to the named screen below the caller, or replaces the caller when none has the name" {
+	const ref = createNavigationContainerRef();
+	const root = mountStack(ref);
+	press(root, "open 7");
+	press(root, "edit");
+	(editNavigation as Navigation<ItemParams>).popTo("Detail", { id: 5, title: "Five" });
+	flush();
+	assert ref.getRootState().routes.length === 2, ref.getRootState().routes.length.toString();
+	assert visibleText(root) === "‹ Items|Detail|detail 5 Five|edit|rename", visibleText(root);
+	press(root, "edit");
+	(editNavigation as Navigation<ItemParams>).popTo("Sheet");
+	flush();
+	assert ref.currentPath() === "Sheet", ref.currentPath();
+	assert ref.getRootState().routes.length === 3, ref.getRootState().routes.length.toString();
 }
 
 test "a reset whose index is below its last route keeps every route and focuses the last" {
@@ -199,16 +222,21 @@ test "hardware back pops the stack, then is left to the system at the root" {
 	assert visibleText(root) === "Items|home 0|+|open", visibleText(root);
 }
 
-test "navigate to an unknown screen throws, naming it" {
+test "an action no navigator handles leaves the state as it was" {
 	const ref = createNavigationContainerRef();
 	mountStack(ref);
-	let message = "";
-	try {
-		ref.navigate("Nowhere");
-	} catch (e) {
-		message = (e as Error).message;
-	}
-	assert message.indexOf("Nowhere") >= 0, message;
+	const home = homeNavigation as Navigation<ItemParams>;
+	ref.navigate("Nowhere");
+	ref.goBack();
+	ref.openDrawer();
+	home.navigate("Nowhere");
+	home.push("Nowhere");
+	home.popTo("Nowhere");
+	home.goBack();
+	home.toggleDrawer();
+	flush();
+	assert ref.currentPath() === "Home", ref.currentPath();
+	assert ref.getRootState().routes.length === 1, ref.getRootState().routes.length.toString();
 }
 
 test "a transparent modal keeps the screen below it visible and has no header" {

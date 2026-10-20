@@ -326,7 +326,7 @@ export function pagesModel<P>(
 				});
 			});
 		},
-		navigate: (name: string, params: P | null): void => {
+		navigate: (name: string, params: P | null, pop: boolean): void => {
 			const list = core.snapshot();
 			const at = core.indexOfName(list, name);
 			if (params !== null) { list[at].writeParams(params); }
@@ -337,6 +337,7 @@ export function pagesModel<P>(
 			core.navigate(name, params);
 		},
 		popTo: (at: int32): void => {},
+		popToRoute: (name: string, params: P | null, source: string | null): boolean => false,
 		reset: (list: RouteSeed<P>[], at: int32): void => {
 			const next = resetPages<P>(core, list, at);
 			history = [next.items[next.selectedIndex].key];

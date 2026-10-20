@@ -4,6 +4,7 @@ import { NeonNode } from "../../src/render/hostTypes";
 import { HostNode, mockHost, mockNode, render } from "../../src/render/host";
 import { Text } from "../../src/components/primitives";
 import {
+	Navigation,
 	NavigationContainer,
 	ScreenProps,
 	createNavigationContainerRef,
@@ -17,12 +18,15 @@ let bodies: int32 = 0;
 
 let cleanups: int32 = 0;
 
+let counted: Navigation<string> | null = null;
+
 function Plain(props: ScreenProps<string>): NeonNode {
 	return <Text>plain</Text>;
 }
 
 function Counted(props: ScreenProps<string>): NeonNode {
 	bodies += 1;
+	counted = props.navigation;
 	onCleanup((): void => { cleanups += 1; });
 	return <Text>counted</Text>;
 }
@@ -88,7 +92,7 @@ test "a screen popped to the top with an exit animation is built once" {
 	ref.navigate("Detail");
 	flush();
 	settle();
-	ref.navigate("Home");
+	(counted as Navigation<string>).popTo("Home");
 	flush();
 	assert bodies === 1, "the leaving screen is not rebuilt: " + bodies.toString();
 	settle();

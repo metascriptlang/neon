@@ -209,7 +209,7 @@ export function targetFromPath(path: string, config: LinkingConfig): NavTarget |
 	let target: NavTarget | null = null;
 	for (let i = chosen.chain.length - 1; i >= 0; i -= 1) {
 		const values = bestValues[i];
-		target = { name: chosen.chain[i], values: values.size > 0 ? values : null, child: target };
+		target = { name: chosen.chain[i], values: values.size > 0 ? values : null, child: target, pop: target !== null };
 	}
 	return target;
 }
