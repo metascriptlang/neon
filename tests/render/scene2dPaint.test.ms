@@ -1,4 +1,5 @@
 import { createSignal } from "../../src/core/signal";
+import { flush } from "../../src/core/runtime";
 import { element } from "../../src/macros/ui/element";
 import { HostNode, mockNode, mockHost, render } from "../../src/render/host";
 import { Void } from "../../src/components/primitives";
@@ -25,10 +26,10 @@ test "Both text decorations honor full Paint2D over reactive constructor color" 
 			prevOffsetX={0.0} prevWidth={0.0} nextOffsetX={0.0} nextWidth={0.0} paint={paint()}
 			ref={(value: NodeRef): void => { nodes.push(value); }} />
 	</Scene2D></Void>), mockHost(), root as unknown as HostNode);
-	setRed(0.25); setPaint({ ...initial, alpha: 0.75 });
+	setRed(0.25); setPaint({ ...initial, alpha: 0.75 }); flush();
 	assert nodes[0].paint().color.g === 1.0 && nodes[1].paint().color.g === 1.0;
 	assert nodes[0].paint().color.r === 0.0 && nodes[1].paint().color.r === 0.0;
 	assert nodes[0].paint().alpha === 0.75 && nodes[1].paint().alpha === 0.75;
-	dispose(); setRed(0.5); setPaint(initial);
+	dispose(); setRed(0.5); setPaint(initial); flush();
 	assert !nodes[0].isLive() && !nodes[1].isLive();
 }
