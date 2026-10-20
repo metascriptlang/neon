@@ -105,10 +105,10 @@ expect_native_modules() {
 	bad=0
 	[ -n "$syms" ] || { echo "FAIL modules $1: did not build"; fail=1; return; }
 	for m in $2; do
-		echo "$syms" | grep -q "ZsrcZ$(mangled "$m")O" || { echo "FAIL modules $1: missing $m"; bad=1; }
+		echo "$syms" | grep -q "[Z_]srcZ$(mangled "$m")O" || { echo "FAIL modules $1: missing $m"; bad=1; }
 	done
 	for m in $3; do
-		echo "$syms" | grep -q "ZsrcZ$(mangled "$m")O" && { echo "FAIL modules $1: carries $m"; bad=1; }
+		echo "$syms" | grep -q "[Z_]srcZ$(mangled "$m")O" && { echo "FAIL modules $1: carries $m"; bad=1; }
 	done
 	[ $bad = 0 ] && echo "ok   modules $1" || fail=1
 }
