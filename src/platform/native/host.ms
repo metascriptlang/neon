@@ -50,7 +50,7 @@ import {
 	niLastControlTag, niLastControlPhase, niLastControlValue, niLastControlWidth, niLastControlHeight,
 	niKeyboardHeight, niColorScheme, niRequestFrame, niSafeAreaInset,
 } from "./bridge.h";
-import { flush } from "../../core/runtime";
+import { flush, getOwner } from "../../core/runtime";
 import { niLoopRun } from "./loop.h";
 
 extern function niRegisterApp(mount: () => void): void;
@@ -1183,7 +1183,7 @@ let batchDepth = 0;
 let layoutDirty = false;
 
 function requestLayout(): void {
-	if (batchDepth > 0) {
+	if (batchDepth > 0 || getOwner() !== null) {
 		layoutDirty = true;
 		return;
 	}
