@@ -16,7 +16,7 @@ export interface WebHistory {
 	participant: RoutingParticipant;
 	enable: (session: RoutingSession) => Dispose;
 	suppressed: (commit: () => void) => RoutePlan;
-	grouped: (change: () => void) => void;
+	grouped: (change: () => void, visit: boolean) => void;
 }
 
 interface HistoryNode {
@@ -305,6 +305,7 @@ function goBack(session: RoutingSession, count: int32, landed: () => void): void
 function sessionMirror(
 	session: RoutingSession,
 	write: (nodes: HistoryNode[], replace: boolean) => void,
+	visiting: () => boolean,
 ): HistoryMirror {
 	const writeAll = (added: HistoryNode[][]): void => {
 		write(added[0], true);
@@ -313,7 +314,7 @@ function sessionMirror(
 	return {
 		change: (removed: int32, added: HistoryNode[][], nodes: HistoryNode[]): void => {
 			if (removed === 0) {
-				if (added.length === 0) { write(nodes, true); return; }
+				if (added.length === 0) { write(nodes, !visiting()); return; }
 				for (const entry of added) { write(entry, false); }
 				return;
 			}
@@ -346,8 +347,10 @@ export function createWebHistory(
 	};
 	let applying = false;
 	let holding = false;
+	let visit: boolean | null = null;
 	const released = new Signal<int32>(0, null, true);
-	const grouped = (change: () => void): void => {
+	const grouped = (change: () => void, visiting: boolean): void => {
+		if (visit === null) { visit = visiting; }
 		const outer = holding;
 		holding = true;
 		try {
@@ -430,7 +433,7 @@ export function createWebHistory(
 		enable: (session: RoutingSession): Dispose => {
 			const mirror = sessionMirror(session, (nodes: HistoryNode[], replace: boolean): void => {
 				write(session, nodes, replace);
-			});
+			}, (): boolean => visit === true);
 			write(session, nodeHistory(navigation), true);
 			let record: MirrorRecord | null = null;
 			let seen: int32 = 0;
@@ -446,9 +449,10 @@ export function createWebHistory(
 						if (record === null || applying || epoch !== seen) {
 							seen = epoch;
 							record = recordLevel(navigation);
-							return null;
+						} else {
+							record = mirrorLevel(navigation, record as MirrorRecord, mirror);
 						}
-						record = mirrorLevel(navigation, record as MirrorRecord, mirror);
+						visit = null;
 						return null;
 					},
 				);

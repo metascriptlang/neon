@@ -383,6 +383,36 @@ test "static paths come from the route tree, with enumerated params" {
 	if (paths.ok) { assert paths.value.join(",") === "/,/docs/start", paths.value.join(","); }
 }
 
+test "a search or hash change pushes an entry as Solid's navigate does, and keeps the page" {
+	docs = 0;
+	const routes = createRoutes([
+		{ layout: Probe, children: [
+			{ path: "/", component: Home },
+			{ path: "/docs/:slug", component: Doc },
+		] },
+	]);
+	const history = memory("/docs/start?q=1");
+	const router = opened(routes, history);
+	const root = mounted(router);
+	const navigate = go as (to: string | int32, options?: NavigateOptions | null) => boolean;
+	assert navigate("/docs/start?q=2");
+	flush();
+	assert navigate("/docs/start?q=2#top");
+	flush();
+	assert navigate("/docs/start?q=3", { replace: true });
+	flush();
+	assert history.read().url === "/docs/start?q=3", history.read().url;
+	assert history.go(-1);
+	flush();
+	assert history.read().url === "/docs/start?q=2", history.read().url;
+	assert history.go(-1);
+	flush();
+	assert history.read().url === "/docs/start?q=1", history.read().url;
+	assert mockToString(root) === "<root><div><p>/docs/start|start|1</p><h1>doc start</h1></div></root>", mockToString(root);
+	assert !router.canGoBack();
+	assert docs === 1, "a search change remounted the page";
+}
+
 test "navigate takes a history delta as Solid's does, and canGoBack follows the entries this app wrote" {
 	const routes = createRoutes([
 		{ layout: Probe, children: [

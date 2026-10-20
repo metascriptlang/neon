@@ -718,7 +718,7 @@ export class Router {
 	private history: RoutingHistory;
 	private session: RoutingSession | null = null;
 	private stop: Dispose | null = null;
-	private group: (change: () => void) => void = (change: () => void): void => { flush(change); };
+	private group: (change: () => void, visit: boolean) => void = (change: () => void, visit: boolean): void => { flush(change); };
 
 	constructor(routes: Routes, root: Level, current: Signal<Resolved>, history: RoutingHistory) {
 		this.routes = routes;
@@ -736,18 +736,18 @@ export class Router {
 		return levelView(this.routes, this.root);
 	}
 
-	connect(session: RoutingSession, stop: Dispose | null, group: (change: () => void) => void): void {
+	connect(session: RoutingSession, stop: Dispose | null, group: (change: () => void, visit: boolean) => void): void {
 		this.session = session;
 		this.stop = stop;
 		this.group = group;
 	}
 
-	apply(resolved: Resolved, replace: boolean): Walked {
+	apply(resolved: Resolved, replace: boolean, visit: boolean = false): Walked {
 		let walked = Walked.Unchanged;
 		this.group((): void => {
 			walked = walk(this.routes, this.root, targetOf(resolved, replace), 0);
 			this.current.set(resolved);
-		});
+		}, visit);
 		return walked;
 	}
 
@@ -769,10 +769,10 @@ export class Router {
 		const replace = options === null ? false : (options as NavigateOptions).replace ?? false;
 		const resolved = follow(this.routes.tree, href);
 		if (!resolved.ok) { return false; }
-		const walked = this.apply(resolved.value, replace);
+		const walked = this.apply(resolved.value, replace, !replace);
 		const session = this.session;
 		if (walked === Walked.HashOnly && session !== null) {
-			return (session as RoutingSession).sync(true).ok;
+			return (session as RoutingSession).sync(replace).ok;
 		}
 		return true;
 	}
