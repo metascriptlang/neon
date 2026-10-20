@@ -1300,6 +1300,7 @@ export function createVoidHostWith(scene: Scene2D, font: FontId, defaultFamily: 
 	};
 
 	const layout = (w: float32, h: float32): void => {
+		flush();
 		for (let pass = 0; pass < LAYOUT_PASSES; pass += 1) {
 			layoutPass(root, w, h);
 			flowText(root);
