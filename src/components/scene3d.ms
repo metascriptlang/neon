@@ -18,15 +18,17 @@ import {
 	releaseMaterial, reserveUniforms, writeUniforms, releaseUniforms, closeContext, buryDoomed,
 } from "../../../void/src/void3d/draw";
 import {
-	ForwardRenderer, create, prepareFrame, drawToScreen, closeForward,
+	ForwardRenderer, create, prepareFrame, drawToScreen, closeForward, setOutlineBlend, setOutlineSettings,
 } from "../../../void/src/void3d/forwardRenderer";
+import { ForwardOutlineSettings, defaults, valid, FORWARD_OUTLINE_BLOCKS } from "../../../void/src/void3d/forwardOutline";
+import { fits } from "../../../void/src/void3d/uniformPool";
 import { contextGeneration } from "../../../void/src/gpu/door";
 import {
 	Scene3D as VoidScene3D, NodeId3D, Transform3D, LightKind, LightInstance,
 	addGroup, addLightNode, addMeshNode, setLocal, setLightPower, setMeshOf,
 	setLightColor, setLightRadius, setLightPriority,
 	remove, insertBefore, closeScene, addCameraNode, setCameraOf, setActiveCamera,
-	setVisible, setPickable, setName, setAmbient, refresh, collectLights,
+	setVisible, setPickable, setName, setAmbient, refresh, collectLights, setLayers, setRenderOrder, setCameraLayers,
 	cameraOf as worldCameraOf,
 } from "../../../void/src/void3d/scene";
 import { GltfData } from "../../../void/src/void3d/gltf";
@@ -63,6 +65,8 @@ interface NodeScope {
 
 interface Scene3DProps {
 	ambient?: Accessor<Vec3> | null;
+	outlineBlend?: Accessor<float32> | null;
+	outlineSettings?: Accessor<ForwardOutlineSettings> | null;
 	ref?: ((handle: Scene3DHandle) => void) | null;
 	children?: NeonNode | null;
 }
@@ -77,6 +81,8 @@ interface TransformProps {
 interface NodeProps extends TransformProps {
 	visible?: Accessor<boolean> | null;
 	pickable?: Accessor<boolean> | null;
+	layers?: Accessor<uint32> | null;
+	renderOrder?: Accessor<int32> | null;
 	name?: Accessor<string> | null;
 	ref?: ((node: NodeId3D) => void) | null;
 	children?: NeonNode | null;
@@ -109,6 +115,7 @@ interface Camera3DProps {
 	farPlane?: Accessor<float32> | null;
 	projection?: Accessor<CameraProjection> | null;
 	active?: Accessor<boolean> | null;
+	layers?: Accessor<uint32> | null;
 }
 
 const sceneScope = createContext<NodeScope | null>(null);
@@ -174,6 +181,20 @@ function bindNode(state: SceneState, node: NodeId3D, props: NodeProps, initial: 
 		createRenderEffect<boolean>(
 			(prev: boolean | null): boolean => pickable(),
 			(value: boolean, prev: boolean | null): Cleanup | null => { setPickable(scene, node, value); state.invalidate(); return null; },
+		);
+	}
+	if (props.layers !== null) {
+		const layers = props.layers as () => uint32;
+		createRenderEffect<uint32>(
+			(prev: uint32 | null): uint32 => layers(),
+			(value: uint32, prev: uint32 | null): Cleanup | null => { setLayers(scene, node, value); state.invalidate(); return null; },
+		);
+	}
+	if (props.renderOrder !== null) {
+		const order = props.renderOrder as () => int32;
+		createRenderEffect<int32>(
+			(prev: int32 | null): int32 => order(),
+			(value: int32, prev: int32 | null): Cleanup | null => { setRenderOrder(scene, node, value); state.invalidate(); return null; },
 		);
 	}
 	if (props.name !== null) {
@@ -304,6 +325,29 @@ export function Scene3D(props: Scene3DProps): NeonNode {
 				}
 				closeContext(context);
 			});
+			if (props.outlineBlend !== null || props.outlineSettings !== null) {
+				createRenderEffect<[float32, ForwardOutlineSettings]>(
+					(prev: [float32, ForwardOutlineSettings] | null): [float32, ForwardOutlineSettings] => [
+						props.outlineBlend === null ? 0.0 : (props.outlineBlend as () => float32)(),
+						props.outlineSettings === null ? ForwardOutlineSettings.defaults() : (props.outlineSettings as () => ForwardOutlineSettings)(),
+					],
+					(value: [float32, ForwardOutlineSettings], prev: [float32, ForwardOutlineSettings] | null): Cleanup | null => {
+						const blend = value[0];
+						const settings = value[1];
+						if (!Number.isFinite(blend) || blend < 0.0 || blend > 1.0) {
+							throw new Error("Scene3D: outlineBlend must be finite and in [0,1]");
+						}
+						if (!settings.valid()) { throw new Error("Scene3D: invalid outlineSettings"); }
+						if (blend > 0.0 && renderer.outline === null && !context.uniforms.fits(FORWARD_OUTLINE_BLOCKS).ok) {
+							throw new Error("Scene3D: outlineBlend needs additional uniform capacity");
+						}
+						setOutlineSettings(renderer, settings);
+						setOutlineBlend(renderer, blend);
+						state.invalidate();
+						return null;
+					},
+				);
+			}
 			if (props.ambient !== null) {
 				const ambient = props.ambient as () => Vec3;
 				createRenderEffect<Vec3>(
@@ -586,6 +630,13 @@ export function Camera3D(props: Camera3DProps): NeonNode {
 			let local = cameraLocal(initial);
 			const node = addCameraNode(scene, scope.parent, local, initial);
 			ownNode(scope.state, node);
+			if (props.layers !== null) {
+				const layers = props.layers as () => uint32;
+				createRenderEffect<uint32>(
+					(prev: uint32 | null): uint32 => layers(),
+					(value: uint32, prev: uint32 | null): Cleanup | null => { setCameraLayers(scene, node, value); state.invalidate(); return null; },
+				);
+			}
 			let entry: CameraEntry | null = null;
 			onCleanup((): void => {
 				const mounted = entry;
