@@ -75,7 +75,7 @@ export function isStaged(el: Source): boolean { return (el.config & CONFIG_STAGE
 export function isDisposed(node: Computation): boolean { return (node.flags & REACTIVE_DISPOSED) !== 0; }
 
 export function newSource(config: int32): Source {
-	return { subs: null, subsTail: null, config, computed: false, commit: null };
+	return new Source(config, false);
 }
 
 function growHeap(height: int32): void {
@@ -636,15 +636,7 @@ function nearestComputed(parent: Computation | null): Computation | null {
 }
 
 function newNode(config: int32, flags: int32, computed: boolean, run: ((self: Computation, create: boolean) => int32) | null, type: int32, parent: Computation | null): Computation {
-	return {
-		subs: null, subsTail: null, config, computed, commit: null,
-		deps: null, depsTail: null, depGen: 0, flags, height: 0, nextHeap: null, prevHeap: null,
-		run, apply: null, cleanup: null, type, unobserved: null,
-		parent, parentComputed: null, firstChild: null, nextSibling: null, prevSibling: null,
-		disposal: null, context: parent !== null ? parent.context : null,
-		id: null, childCount: 0,
-		status: computed ? STATUS_UNINITIALIZED : 0, error: null, flight: 0, pendingSources: null, blocked: false, reask: false, visitedAt: 0, time: clock,
-	};
+	return new Computation(config, flags, computed, run, type, parent, clock);
 }
 
 export function createOwner(id: string | null = null): Computation {
