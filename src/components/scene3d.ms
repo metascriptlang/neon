@@ -4,7 +4,7 @@ import { Cleanup } from "../core/types";
 import { createRoot } from "../core/owner";
 import { onCleanup } from "../core/cleanup";
 import { createContext, useContext } from "../render/context";
-import { VoidSpace, voidScope, voidArea } from "../render/voidScope";
+import { VoidSpace, getVoidScopeContext, getVoidAreaContext, useVoidSpace } from "../render/voidScope";
 import { layerAnchor } from "../render/voidLayer";
 import { AreaLayer, AreaRgba } from "../render/voidAreaHandle";
 import { Host, HostNode, NeonNode, VoidArea } from "../render/hostTypes";
@@ -136,7 +136,7 @@ function mountOwned(body: () => void): void {
 
 function requireScene(tag: string): NodeScope {
 	const scope = useContext(sceneScope);
-	if (scope === null || useContext(voidScope) !== VoidSpace.Scene3D) {
+	if (scope === null || useVoidSpace() !== VoidSpace.Scene3D) {
 		throw new Error(tag + ": mount inside Scene3D within Void");
 	}
 	return scope;
@@ -262,9 +262,9 @@ export function viewCamera(handle: Scene3DHandle): Result<VoidCamera3D, CameraEr
 
 export function Scene3D(props: Scene3DProps): NeonNode {
 	return (host: Host, parent: HostNode, before: HostNode | null): void => {
-		if (useContext(voidScope) !== VoidSpace.Area) { throw new Error("Scene3D: mount directly within Void, outside another Scene3D"); }
+		if (useVoidSpace() !== VoidSpace.Area) { throw new Error("Scene3D: mount directly within Void, outside another Scene3D"); }
 		mountOwned((): void => {
-			const opened = useContext(voidArea);
+			const opened = useContext(getVoidAreaContext());
 			if (opened === null) { throw new Error("Scene3D: the Void area did not provide its frame"); }
 			const shown = layerAnchor(opened as VoidArea, host, parent, before);
 			const area = (opened as VoidArea).hub;
@@ -360,7 +360,7 @@ export function Scene3D(props: Scene3DProps): NeonNode {
 			const children = props.children;
 			if (children !== null) {
 				const scope: NodeScope = { state: state, parent: scene.rootId() };
-				voidScope.provider({
+				getVoidScopeContext().provider({
 					value: accessor(() => VoidSpace.Scene3D),
 					children: sceneScope.provider({ value: accessor(() => scope), children: children }),
 				})(host, parent, before);

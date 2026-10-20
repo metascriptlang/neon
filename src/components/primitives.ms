@@ -27,8 +27,7 @@ import { Host, HostNode, VoidArea, TextSpan, TextMeasure } from "../render/hostT
 import { paragraphChildren } from "../render/paragraph";
 import { VoidAreaHandle } from "../render/voidAreaHandle";
 import { applyRef } from "../render/bind";
-import { useContext } from "../render/context";
-import { VoidSpace, voidScope, voidArea } from "../render/voidScope";
+import { VoidSpace, getVoidScopeContext, getVoidAreaContext, useVoidSpace } from "../render/voidScope";
 import { visibleContentAttr } from "../render/visibleContent";
 import {
 	ClaimWatch,
@@ -133,7 +132,7 @@ export interface ImeRect {
 
 function uiParent(tag: string, node: NeonNode): NeonNode {
 	return (host: Host, parent: HostNode, before: HostNode | null): void => {
-		const scope = useContext(voidScope);
+		const scope = useVoidSpace();
 		if (scope === VoidSpace.Scene3D) {
 			throw new Error("<" + tag + "> belongs in <Void>, <Texture> or a 2D parent, not directly in <Scene3D>");
 		}
@@ -852,9 +851,9 @@ export function Void(props: VoidProps): NeonNode {
 			a.release();
 		});
 		if (kids !== null) {
-			const scoped = voidScope.provider({
+			const scoped = getVoidScopeContext().provider({
 				value: accessor((): VoidSpace => VoidSpace.Area),
-				children: voidArea.provider({ value: accessor((): VoidArea | null => a), children: kids as NeonNode }),
+				children: getVoidAreaContext().provider({ value: accessor((): VoidArea | null => a), children: kids as NeonNode }),
 			});
 			scoped(a.host, a.root, null);
 		}

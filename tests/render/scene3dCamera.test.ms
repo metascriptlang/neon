@@ -5,10 +5,12 @@ import { Show } from "../../src/macros/ui/flow";
 import { HostNode, mockNode, mockHost, render } from "../../src/render/host";
 import { Void } from "../../src/components/primitives";
 import { Scene3D, Scene3DHandle, Group, Camera3D } from "../../src/components/scene3d";
-import { voidScope as Scope, VoidSpace } from "../../src/render/voidScope";
+import { getVoidScopeContext, VoidSpace } from "../../src/render/voidScope";
 import { cameraOf, nodeCount } from "../../../void/src/void3d/scene";
 import { Camera3D as VoidCamera3D, basisOf } from "../../../void/src/void3d/camera";
 import { vec3, eulerQuat } from "../../../void/src/math/math3d";
+
+const Scope = getVoidScopeContext();
 
 function resolved(handle: Scene3DHandle): VoidCamera3D {
 	const request = handle.camera;

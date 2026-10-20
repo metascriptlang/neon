@@ -13,7 +13,7 @@ import {
 	Scene2D, Group, Rect, Sprite, Mask, Label, TileGroup, ScaleGrid, Underline, Selection,
 } from "../../src/components/scene2d";
 import { Scene3D } from "../../src/components/scene3d";
-import { voidScope as Scope, VoidSpace } from "../../src/render/voidScope";
+import { getVoidScopeContext, VoidSpace } from "../../src/render/voidScope";
 import {
 	Scene2D as VoidScene2D, NodeRef, NodeId2D, DrawKind, Local2D, nodeCount, kind, local,
 	content, text, textStyle, paint, order, filter, colorMatrix, numChildren, parent, isLive,
@@ -31,6 +31,8 @@ import {
 import {
 	imageStyle, imageStyles, ObjectFit, fitImage,
 } from "../../../void/src/void2d/imageStyle";
+
+const Scope = getVoidScopeContext();
 
 function translated(x: float32, y: float32): Local2D {
 	return { x: x, y: y, scaleX: 1.0, scaleY: 1.0, rotation: 0.0, pivotX: 0.0, pivotY: 0.0 };
