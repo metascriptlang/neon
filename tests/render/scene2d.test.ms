@@ -588,7 +588,11 @@ test "Scene2D mounts real render nodes without leaking host elements into HUD" {
 	assert nodes[1].content().w === 20.0 && nodes[1].content().h === 30.0;
 	assert nodes[2].content().w === 7.0 && nodes[2].content().h === 9.0;
 	assert nodes[4].text() === "hello";
-	assert mockToString(root) === "<root><void><voidroot></voidroot></void></root>";
+	const outer = root.children[0];
+	assert root.children.length === 1 && outer.tag === "void" && outer.children.length === 1, "Void is the only host element";
+	assert outer.attrs.length > 0, "the scene asks its area for a frame";
+	for (const attr of outer.attrs) { assert attr.name === "frameRequested" && attr.value === "true"; }
+	assert mockToString(outer.children[0]) === "<voidroot></voidroot>", "Scene2D creates no host elements in the HUD";
 	dispose();
 	assert scene.closed && scene.nodeCount() === 0;
 	assert !nodes[0].isLive() && !nodes[4].isLive();
@@ -890,7 +894,11 @@ test "View and Text under Scene2D share its native scene without leaking into HU
 	</Scene2D></Void>), mockHost(), root);
 	assert ui.length === 2 && ui[0].parent === ui[1];
 	assert ui[0].ref.scene === scenes[0] && ui[1].ref.scene === scenes[0];
-	assert mockToString(root) === "<root><void><voidroot></voidroot></void></root>";
+	const outer = root.children[0];
+	assert root.children.length === 1 && outer.tag === "void" && outer.children.length === 1, "Void is the only host element";
+	assert outer.attrs.length > 0, "the scene asks its area for a frame";
+	for (const attr of outer.attrs) { assert attr.name === "frameRequested" && attr.value === "true"; }
+	assert mockToString(outer.children[0]) === "<voidroot></voidroot>", "Scene2D creates no host elements in the HUD";
 	dispose();
 	assert ui[0].disposed && ui[1].disposed && scenes[0].closed;
 }

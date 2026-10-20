@@ -4,13 +4,16 @@ import { Cleanup } from "../core/types";
 import { createRoot } from "../core/owner";
 import { onCleanup } from "../core/cleanup";
 import { createContext, useContext } from "../render/context";
-import { VoidSpace, voidScope } from "../render/voidScope";
+import { requestFrame, cancelFrame, frameNow } from "../animation/frame";
+import { VoidSpace, voidScope, voidAreaHub } from "../render/voidScope";
+import { AreaLayer } from "../render/voidAreaHandle";
 import { Host, HostNode, NeonNode } from "../render/hostTypes";
 import { place } from "../render/reconcile";
 import { createVoidHostWith, VoidHost, VoidNode, freeVoidLayoutTree } from "../platform/void/host";
 import { DEFAULT_FONT } from "../../../void/src/void2d/font";
 import {
 	Scene2D as VoidScene2D,
+	anim, animFrames, frameDelayMs, setFrames, setFps, setFrame, setFrameDelays, setSpeed, setLooping, setPaused,
 	NodeRef,
 	Local2D,
 	Paint2D,
@@ -51,7 +54,7 @@ import {
 	setTextStyle, setTextRuns, setShapingBreaks, setTruncate, setHangingIndent, setForceWidth,
 	SelectionRange, setSelectionRange, setCursorIndex, setCursorBlinkTime,
 } from "../../../void/src/void2d/node";
-import { create, close, setScaleMode } from "../../../void/src/void2d/scene";
+import { create, close, setScaleMode, tick, prepare, drawScreen, add } from "../../../void/src/void2d/scene";
 import {
 	Color, Camera, Tile, Filter, ScaleMode, Bounds2D, rgba,
 } from "../../../void/src/void2d/types";
@@ -105,6 +108,29 @@ interface SpriteProps extends NodeProps {
 	width?: Accessor<float32> | null;
 	height?: Accessor<float32> | null;
 	imageStyle?: Accessor<ImageStyle> | null;
+}
+
+interface AnimProps extends NodeProps {
+	frames: Accessor<Tile[]>;
+	fps: Accessor<float32>;
+	frameDelays?: Accessor<Vec<int32>> | null;
+	speed?: Accessor<float32> | null;
+	looping?: Accessor<boolean> | null;
+	paused?: Accessor<boolean> | null;
+	frame?: Accessor<int32> | null;
+	width?: Accessor<float32> | null;
+	height?: Accessor<float32> | null;
+	imageStyle?: Accessor<ImageStyle> | null;
+}
+
+struct AnimSnapshot {
+	frames: Vec<Tile>;
+	frameDelays: Vec<int32>;
+	fps: float32;
+	speed: float32;
+	looping: boolean;
+	paused: boolean;
+	frame: int32 | null;
 }
 
 interface ScaleGridProps extends NodeProps {
@@ -165,7 +191,81 @@ interface LabelProps extends NodeProps {
 	cursorBlinkTime?: Accessor<float32> | null;
 }
 
-const sceneScope = createContext<VoidHost | null>(null);
+interface SceneClock {
+	watch: (node: NodeRef) => void;
+	wake: () => void;
+	stop: () => void;
+}
+
+interface SceneState {
+	host: VoidHost;
+	clock: SceneClock;
+}
+
+interface AnimEntry { node: NodeRef; }
+
+interface SceneBackdrop {
+	scene: VoidScene2D;
+	rect: NodeRef;
+}
+
+const sceneScope = createContext<SceneState | null>(null);
+
+function animationActive(node: NodeRef): boolean {
+	if (!node.isLive()) { return false; }
+	const value = node.animFrames();
+	const count = value.frames.length as int32;
+	return count > 1 && !value.paused && value.speed > 0.0 &&
+		(value.looping || value.current < count - 1) && value.frameDelayMs(value.current) > 0.0;
+}
+
+function createSceneClock(vh: VoidHost, invalidate: () => void): SceneClock {
+	const entries: AnimEntry[] = [];
+	let disposed = false;
+	let pending: int32 = 0;
+	let generation: int32 = 0;
+	let last: float64 = 0.0;
+	const active = (): boolean => {
+		for (const entry of entries) {
+			if (animationActive(entry.node)) { return true; }
+		}
+		return false;
+	};
+	const cancel = (): void => {
+		generation += 1;
+		if (pending !== 0) { cancelFrame(pending); pending = 0; }
+	};
+	const schedule = (): void => {
+		const token = generation;
+		pending = requestFrame((now: number): void => {
+			// cancelFrame cannot remove callbacks already copied into the due batch.
+			if (disposed || token !== generation) { return; }
+			pending = 0;
+			if (!active()) { return; }
+			const elapsed = Math.max(0.0, now - last);
+			last = now;
+			vh.scene.tick((elapsed / 1000.0) as float32);
+			invalidate();
+			if (active()) { schedule(); }
+		});
+	};
+	const wake = (): void => {
+		if (disposed) { return; }
+		if (!active()) { cancel(); return; }
+		if (pending !== 0) { return; }
+		last = frameNow();
+		schedule();
+	};
+	return {
+		watch: (node: NodeRef): void => {
+			const entry: AnimEntry = { node };
+			entries.push(entry);
+			onCleanup((): void => { entries.splice(entries.indexOf(entry), 1); wake(); });
+		},
+		wake,
+		stop: (): void => { disposed = true; cancel(); },
+	};
+}
 
 function mountOwned(body: () => void): void {
 	const dispose = createRoot((dispose) => {
@@ -184,7 +284,7 @@ function requireScene(tag: string): VoidHost {
 	}
 	const under = useContext(sceneScope);
 	if (under === null) { throw new Error(tag + ": mount inside Scene2D within Void"); }
-	return under;
+	return under.host;
 }
 
 function bindScene<T>(read: () => T, apply: (value: T) => void): void {
@@ -268,9 +368,53 @@ export function Scene2D(props: Scene2DProps): NeonNode {
 			throw new Error("Scene2D: mount directly within Void, outside another scene");
 		}
 		mountOwned((): void => {
+			const area = useContext(voidAreaHub);
+			if (area === null) { throw new Error("Scene2D: the Void area did not provide its frame"); }
 			const scene = VoidScene2D.create(rgba(0.0, 0.0, 0.0, 0.0));
 			const vh = createVoidHostWith(scene, DEFAULT_FONT, null, true);
+			const invalidate = (): void => { area.handle.requestFrame(); };
+			vh.onDirty(invalidate);
+			const clock = createSceneClock(vh, invalidate);
+			let backdrop: SceneBackdrop | null = null;
+			let prepared = false;
+			let backdropPrepared = false;
+			const layer: AreaLayer = {
+				prepare: (pixelWidth: int32, pixelHeight: int32, background: Color): void => {
+					if (scene.closed) { return; }
+					prepared = false;
+					backdropPrepared = false;
+					const dpi = area.handle.scale();
+					const width = (pixelWidth as float32) / dpi;
+					const height = (pixelHeight as float32) / dpi;
+					vh.layout(width, height);
+					if (scene.closed) { return; }
+					// drawScreen does not consume scene.clear. A separate scene keeps this
+					// viewport fill outside the content camera/scale, in the same screen pass.
+					if (scene.clear.a > 0.0) {
+						if (backdrop === null) {
+							const fill = VoidScene2D.create(rgba(0.0, 0.0, 0.0, 0.0));
+							backdrop = { scene: fill, rect: fill.add(fill.rect(width, height, scene.clear)) };
+						}
+						backdrop.rect.setSize(width, height).setColor(scene.clear);
+						backdrop.scene.prepare(width, height, dpi);
+						backdropPrepared = true;
+					}
+					scene.prepare(width, height, dpi);
+					prepared = true;
+				},
+				draw: (): void => {
+					if (scene.closed || !prepared) { return; }
+					prepared = false;
+					if (backdropPrepared && backdrop !== null) { backdrop.scene.drawScreen(); }
+					scene.drawScreen();
+				},
+			};
+			const unregister = area.addLayer(layer);
 			onCleanup((): void => {
+				clock.stop();
+				unregister();
+				if (backdrop !== null) { backdrop.scene.close(); }
+				invalidate();
 				const root = vh.root as VoidNode;
 				for (let i = root.children.length - 1; i >= 0; i -= 1) {
 					vh.host.removeChild(root, root.children[i]);
@@ -323,12 +467,13 @@ export function Scene2D(props: Scene2DProps): NeonNode {
 				);
 			}
 			if (props.ref !== null) { (props.ref as (scene: VoidScene2D) => void)(scene); }
+			invalidate();
 			const children = props.children;
 			if (children !== null) {
 				voidScope.provider({
 					value: accessor(() => VoidSpace.Scene2D),
 					children: sceneScope.provider({
-						value: accessor(() => vh), children: children,
+						value: accessor((): SceneState => ({ host: vh, clock })), children: children,
 					}),
 				})(vh.host, vh.root, null);
 			}
@@ -418,6 +563,90 @@ export function Sprite(props: SpriteProps): NeonNode {
 				bindScene(style, (value: ImageStyle): void => { node.setImageStyle(value); });
 			}
 		});
+}
+
+function readAnim(props: AnimProps): AnimSnapshot {
+	let frames: Vec<Tile> = [];
+	for (const tile of props.frames()) { frames.push(tile); }
+	const frameDelays: Vec<int32> = props.frameDelays === null ? [] : (props.frameDelays as () => Vec<int32>)();
+	const fps = props.fps();
+	const speed = props.speed === null ? 1.0 : (props.speed as () => float32)();
+	const frame = props.frame === null ? null : (props.frame as () => int32)();
+	if (!(fps >= 0.0) || !Number.isFinite(fps)) { throw new Error("Anim: fps must be finite and nonnegative"); }
+	if (!(speed >= 0.0) || !Number.isFinite(speed)) { throw new Error("Anim: speed must be finite and nonnegative"); }
+	if (frameDelays.length !== 0 && frameDelays.length !== frames.length) {
+		throw new Error("Anim: frameDelays must be empty or match frames");
+	}
+	for (const delay of frameDelays) {
+		if (delay <= 0) { throw new Error("Anim: frameDelays must be positive milliseconds"); }
+	}
+	if (frame !== null && (frame < 0 || frame >= (frames.length as int32))) {
+		throw new Error("Anim: frame must index frames");
+	}
+	return { frames, frameDelays, fps, speed, frame,
+		looping: props.looping === null ? true : (props.looping as () => boolean)(),
+		paused: props.paused === null ? false : (props.paused as () => boolean)() };
+}
+
+function frameArray(frames: Readonly<Span<Tile>>): Tile[] {
+	const result: Tile[] = [];
+	for (const tile of frames) { result.push(tile); }
+	return result;
+}
+
+export function Anim(props: AnimProps): NeonNode {
+	return renderNode("Anim", props, (scene: VoidScene2D): NodeRef => {
+		const initial = readAnim(props);
+		return scene.anim(frameArray(initial.frames), initial.fps);
+	}, (node: NodeRef): void => {
+		const state = useContext(sceneScope);
+		if (state === null) { throw new Error("Anim: mount inside Scene2D within Void"); }
+		const clock = state.clock;
+		clock.watch(node);
+		let committedSnapshot: AnimSnapshot | null = null;
+		createRenderEffect<AnimSnapshot>(
+			(prev: AnimSnapshot | null): AnimSnapshot => readAnim(props),
+			(value: AnimSnapshot, previous: AnimSnapshot | null): Cleanup | null => {
+				const prev = committedSnapshot;
+				const framesChanged = prev === null || value.frames !== prev.frames;
+				const delaysChanged = prev === null || value.frameDelays !== prev.frameDelays;
+				const retained = node.animFrames().delaysMs.length;
+				if (props.frameDelays === null && retained !== 0 && retained !== value.frames.length) {
+					throw new Error("Anim: retained frameDelays must match replacement frames");
+				}
+				state.host.mutate((): void => {
+					// Only an explicitly supplied replacement delay list permits clearing old delays.
+					if (framesChanged && props.frameDelays !== null) { node.setFrameDelays([]); }
+					if (framesChanged) { node.setFrames(frameArray(value.frames)); }
+					if (props.frameDelays !== null && (framesChanged || delaysChanged)) { node.setFrameDelays(value.frameDelays); }
+					if (prev === null || value.fps !== prev.fps) { node.setFps(value.fps); }
+					if (prev === null || value.speed !== prev.speed) { node.setSpeed(value.speed); }
+					if (prev === null || value.looping !== prev.looping) { node.setLooping(value.looping); }
+					if (prev === null || value.paused !== prev.paused) { node.setPaused(value.paused); }
+					if (value.frame !== null && (framesChanged || prev === null || value.frame !== prev.frame)) {
+						node.setFrame(value.frame);
+					}
+				});
+				committedSnapshot = value;
+				clock.wake();
+				return null;
+			},
+		);
+		if (props.width !== null || props.height !== null) {
+			const initial = node.content();
+			bindScene<[float32, float32]>(
+				(): [float32, float32] => [
+					props.width === null ? initial.w : (props.width as () => float32)(),
+					props.height === null ? initial.h : (props.height as () => float32)(),
+				],
+				(value: [float32, float32]): void => { node.setSize(value[0], value[1]); },
+			);
+		}
+		if (props.imageStyle !== null) {
+			const style = props.imageStyle as () => ImageStyle;
+			bindScene(style, (value: ImageStyle): void => { node.setImageStyle(value); });
+		}
+	});
 }
 
 export function ScaleGrid(props: ScaleGridProps): NeonNode {
