@@ -5,7 +5,6 @@ import { element } from "../../src/macros/ui/element";
 import { sleepAsync } from "std/core/promise";
 import { flush } from "../../src/core/runtime";
 import { dispatchHardwareBackPress } from "../../src/api/backHandler";
-import { NavigationContainerRef } from "../../src/navigation/index";
 import { NavigationDemo, navigationRef } from "../../examples/components/navigation";
 
 extern function js(code: cstring): string from "String((0, eval)(#))";
