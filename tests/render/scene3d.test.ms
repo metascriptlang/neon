@@ -43,8 +43,9 @@ function nearVec(value: Vec3, x: float32, y: float32, z: float32): boolean {
 }
 
 test "Scene3D creates and closes its actual scene and context" {
-	let handle: Scene3DHandle | null = null;
-	const dispose = mounted(element(<Void><Scene3D ref={(value: Scene3DHandle): void => { handle = value; }} /></Void>));
+	const refs: Scene3DHandle[] = [];
+	const dispose = mounted(element(<Void><Scene3D ref={(value: Scene3DHandle): void => { refs.push(value); }} /></Void>));
+	const handle: Scene3DHandle | null = refs.length === 0 ? null : refs[0];
 	if (handle === null) { throw new Error("fixture: handle ref did not mount"); }
 	assert !handle.scene.closed, "scene is open after mount";
 	assert !handle.context.closed, "context is open after mount";
@@ -60,7 +61,7 @@ test "Scene3D creates and closes its actual scene and context" {
 }
 
 test "all five components mount real Void nodes without creating host elements" {
-	let handle: Scene3DHandle | null = null;
+	const refs: Scene3DHandle[] = [];
 	let mesh = NO_MESH;
 	let groupId = NO_NODE_ID;
 	let meshId = NO_NODE_ID;
@@ -68,7 +69,7 @@ test "all five components mount real Void nodes without creating host elements" 
 	let meshChild = NO_NODE_ID;
 	const root = mockNode("root");
 	const dispose = render(element(<Void><Scene3D ref={(value: Scene3DHandle): void => {
-		handle = value;
+		refs.push(value);
 		mesh = seedMesh(value.context);
 	}}>
 		<Camera3D active={true} position={vec3(0.0, 3.0, 8.0)} />
@@ -79,6 +80,7 @@ test "all five components mount real Void nodes without creating host elements" 
 			<Light kind={LightKind.Directional} ref={(value: NodeId3D): void => { lightId = value; }} />
 		</Group>
 	</Scene3D><View><Text>HUD</Text></View></Void>), mockHost(), root as unknown as HostNode);
+	const handle: Scene3DHandle | null = refs.length === 0 ? null : refs[0];
 	if (handle === null) { throw new Error("fixture: handle ref did not mount"); }
 	assert handle.scene.nodeCount() === 6, "root, camera binding, group, mesh, mesh child and light";
 	assert handle.scene.nodes[groupId.index].parent === handle.scene.root, "group parent is scene root";
@@ -97,16 +99,17 @@ test "all five components mount real Void nodes without creating host elements" 
 }
 
 test "nested world transforms follow signals and stop after disposal" {
-	let handle: Scene3DHandle | null = null;
+	const refs: Scene3DHandle[] = [];
 	let parent = NO_NODE_ID;
 	let child = NO_NODE_ID;
 	const [x, setX] = createSignal<float32>(2.0);
 	const [y, setY] = createSignal<float32>(3.0);
-	const dispose = mounted(element(<Void><Scene3D ref={(value: Scene3DHandle): void => { handle = value; }}>
+	const dispose = mounted(element(<Void><Scene3D ref={(value: Scene3DHandle): void => { refs.push(value); }}>
 		<Group position={vec3(x(), 0.0, 0.0)} ref={(value: NodeId3D): void => { parent = value; }}>
 			<Group position={vec3(0.0, y(), 4.0)} ref={(value: NodeId3D): void => { child = value; }} />
 		</Group>
 	</Scene3D></Void>));
+	const handle: Scene3DHandle | null = refs.length === 0 ? null : refs[0];
 	if (handle === null) { throw new Error("fixture: handle ref did not mount"); }
 	syncWorld(handle.scene);
 	const initial = handle.scene.worldOf(child);
@@ -126,16 +129,17 @@ test "nested world transforms follow signals and stop after disposal" {
 }
 
 test "rotation and scale carry nested offsets and individual props override transform" {
-	let handle: Scene3DHandle | null = null;
+	const refs: Scene3DHandle[] = [];
 	let parent = NO_NODE_ID;
 	let child = NO_NODE_ID;
 	const [turn, setTurn] = createSignal<float32>(1.5707963);
 	const base = Transform3D.fromTranslation(vec3(90.0, 90.0, 90.0));
-	const dispose = mounted(element(<Void><Scene3D ref={(value: Scene3DHandle): void => { handle = value; }}>
+	const dispose = mounted(element(<Void><Scene3D ref={(value: Scene3DHandle): void => { refs.push(value); }}>
 		<Group transform={base} position={vec3(5.0, 0.0, 0.0)} rotation={eulerQuat(0.0, turn(), 0.0)} scale={vec3(2.0, 2.0, 2.0)} ref={(value: NodeId3D): void => { parent = value; }}>
 			<Group position={vec3(1.0, 0.0, 0.0)} ref={(value: NodeId3D): void => { child = value; }} />
 		</Group>
 	</Scene3D></Void>));
+	const handle: Scene3DHandle | null = refs.length === 0 ? null : refs[0];
 	if (handle === null) { throw new Error("fixture: handle ref did not mount"); }
 	assert nearVec(handle.scene.nodes[parent.index].local.position, 5.0, 0.0, 0.0), "position overrides full transform";
 	const firstSync = syncWorld(handle.scene);
@@ -151,16 +155,17 @@ test "rotation and scale carry nested offsets and individual props override tran
 }
 
 test "Light power and local pose react under a moving group" {
-	let handle: Scene3DHandle | null = null;
+	const refs: Scene3DHandle[] = [];
 	let light = NO_NODE_ID;
 	const [power, setPower] = createSignal<float32>(1.5);
 	const [height, setHeight] = createSignal<float32>(2.0);
 	const [offset, setOffset] = createSignal<float32>(4.0);
-	const dispose = mounted(element(<Void><Scene3D ref={(value: Scene3DHandle): void => { handle = value; }}>
+	const dispose = mounted(element(<Void><Scene3D ref={(value: Scene3DHandle): void => { refs.push(value); }}>
 		<Group position={vec3(offset(), 0.0, 0.0)}>
 			<Light kind={LightKind.Point} color={vec3(0.8, 0.4, 0.2)} radius={8.0} priority={3} power={power()} position={vec3(0.0, height(), 0.0)} ref={(value: NodeId3D): void => { light = value; }} />
 		</Group>
 	</Scene3D></Void>));
+	const handle: Scene3DHandle | null = refs.length === 0 ? null : refs[0];
 	if (handle === null) { throw new Error("fixture: handle ref did not mount"); }
 	const payload = handle.scene.nodes[light.index].payload;
 	assert handle.scene.lights[payload].kind === LightKind.Point, "authored kind reaches light";
@@ -182,7 +187,7 @@ test "Light power and local pose react under a moving group" {
 }
 
 test "Camera3D selection restores active world-bound cameras and reacts" {
-	let handle: Scene3DHandle | null = null;
+	const refs: Scene3DHandle[] = [];
 	const [firstActive, setFirstActive] = createSignal(true);
 	const [secondActive, setSecondActive] = createSignal(true);
 	const [showSecond, setShowSecond] = createSignal(true);
@@ -192,10 +197,11 @@ test "Camera3D selection restores active world-bound cameras and reacts" {
 	const [near, setNear] = createSignal<float32>(0.3);
 	const [far, setFar] = createSignal<float32>(100.0);
 	const [projection, setProjection] = createSignal<CameraProjection>({ kind: ProjectionKind.Perspective, fovY: 1.0 });
-	const dispose = mounted(element(<Void><Scene3D ref={(value: Scene3DHandle): void => { handle = value; }}>
+	const dispose = mounted(element(<Void><Scene3D ref={(value: Scene3DHandle): void => { refs.push(value); }}>
 		<Camera3D active={firstActive()} position={vec3(x(), 3.0, 8.0)} yaw={yaw()} pitch={pitch()} nearPlane={near()} farPlane={far()} projection={projection()} />
 		{Show({ when: accessor(() => showSecond()), children: element(<Camera3D active={secondActive()} position={vec3(20.0, 0.0, 0.0)} />) })}
 	</Scene3D></Void>));
+	const handle: Scene3DHandle | null = refs.length === 0 ? null : refs[0];
 	if (handle === null) { throw new Error("fixture: handle ref did not mount"); }
 	assert handle.scene.nodeCount() === 3, "root and two camera bindings are live";
 	assert handle.camera !== null, "most recently mounted active camera wins";
@@ -227,14 +233,14 @@ test "Camera3D selection restores active world-bound cameras and reacts" {
 }
 
 test "Mesh uses seeded resources, shares default material and removes a subtree while scene stays open" {
-	let handle: Scene3DHandle | null = null;
+	const refs: Scene3DHandle[] = [];
 	let resource = NO_MESH;
 	let removable = NO_NODE_ID;
 	let first = NO_NODE_ID;
 	let second = NO_NODE_ID;
 	const [shown, setShown] = createSignal(true);
 	const dispose = mounted(element(<Void><Scene3D ref={(value: Scene3DHandle): void => {
-		handle = value;
+		refs.push(value);
 		resource = seedMesh(value.context);
 		const data: Vec<MeshData> = [MeshData.empty()];
 		const materials: Vec<Material> = [];
@@ -243,6 +249,7 @@ test "Mesh uses seeded resources, shares default material and removes a subtree 
 		{Show({ when: accessor(() => shown()), children: element(<Group ref={(value: NodeId3D): void => { removable = value; }}><Mesh mesh={resource} ref={(value: NodeId3D): void => { first = value; }} /></Group>) })}
 		<Mesh mesh={resource} ref={(value: NodeId3D): void => { second = value; }} />
 	</Scene3D></Void>));
+	const handle: Scene3DHandle | null = refs.length === 0 ? null : refs[0];
 	if (handle === null) { throw new Error("fixture: handle ref did not mount"); }
 	assert handle.context.meshAt(resource.index) === resource, "resource is issued by the scene's context";
 	const firstMaterial: MaterialId = handle.scene.meshes[handle.scene.nodes[first.index].payload].material;
@@ -273,18 +280,19 @@ test "Mesh uses seeded resources, shares default material and removes a subtree 
 }
 
 test "Mesh borrows explicitly supplied material without taking the caller's hold" {
-	let handle: Scene3DHandle | null = null;
+	const refs: Scene3DHandle[] = [];
 	let mesh = NO_MESH;
 	let material = NO_MATERIAL;
 	let meshNode = NO_NODE_ID;
 	const [shown, setShown] = createSignal(true);
 	const dispose = mounted(element(<Void><Scene3D ref={(value: Scene3DHandle): void => {
-		handle = value;
+		refs.push(value);
 		mesh = seedMesh(value.context);
 		const result = addMaterial(value.context, Material.plain(Program.Lit, RenderState.defaults(), Phase.Opaque));
 		if (!result.ok) { throw new Error("test fixture addMaterial: " + result.error.toString()); }
 		material = result.value;
 	}}>{Show({ when: accessor(() => shown()), children: element(<Mesh mesh={mesh} material={material} ref={(value: NodeId3D): void => { meshNode = value; }} />) })}</Scene3D></Void>));
+	const handle: Scene3DHandle | null = refs.length === 0 ? null : refs[0];
 	if (handle === null) { throw new Error("fixture: handle ref did not mount"); }
 	assert handle.scene.meshes[handle.scene.nodes[meshNode.index].payload].material === material, "supplied material reaches node";
 	assert handle.context.materialHolders[material.index] === 2 && handle.context.materialPins[material.index] === 1, "node pins supplied material without consuming caller hold";
@@ -335,14 +343,16 @@ test "Mesh requires exactly one resource source before calling GPU upload" {
 }
 
 test "sibling scenes keep their context and parent trees separate" {
-	let first: Scene3DHandle | null = null;
-	let second: Scene3DHandle | null = null;
+	const firstRefs: Scene3DHandle[] = [];
+	const secondRefs: Scene3DHandle[] = [];
 	let firstNode = NO_NODE_ID;
 	let secondNode = NO_NODE_ID;
 	const dispose = mounted(element(<Void>
-		<Scene3D ref={(value: Scene3DHandle): void => { first = value; }}><Group ref={(value: NodeId3D): void => { firstNode = value; }} /></Scene3D>
-		<Scene3D ref={(value: Scene3DHandle): void => { second = value; }}><Group ref={(value: NodeId3D): void => { secondNode = value; }} /></Scene3D>
+		<Scene3D ref={(value: Scene3DHandle): void => { firstRefs.push(value); }}><Group ref={(value: NodeId3D): void => { firstNode = value; }} /></Scene3D>
+		<Scene3D ref={(value: Scene3DHandle): void => { secondRefs.push(value); }}><Group ref={(value: NodeId3D): void => { secondNode = value; }} /></Scene3D>
 	</Void>));
+	const first: Scene3DHandle | null = firstRefs.length === 0 ? null : firstRefs[0];
+	const second: Scene3DHandle | null = secondRefs.length === 0 ? null : secondRefs[0];
 	if (first === null) { throw new Error("fixture: first ref did not mount"); }
 	if (second === null) { throw new Error("fixture: second ref did not mount"); }
 	assert first.context.serial !== second.context.serial && first.scene.serial !== second.scene.serial, "each scene owns a distinct context and scene";
@@ -354,17 +364,18 @@ test "sibling scenes keep their context and parent trees separate" {
 }
 
 test "Mesh transform and uploaded handle follow signals with balanced borrowed pins" {
-	let handle: Scene3DHandle | null = null;
+	const refs: Scene3DHandle[] = [];
 	let first = NO_MESH;
 	let second = NO_MESH;
 	let meshNode = NO_NODE_ID;
 	const [useSecond, setUseSecond] = createSignal(false);
 	const [x, setX] = createSignal<float32>(1.0);
 	const dispose = mounted(element(<Void><Scene3D ref={(value: Scene3DHandle): void => {
-		handle = value;
+		refs.push(value);
 		first = seedMesh(value.context);
 		second = seedMesh(value.context);
 	}}><Mesh mesh={useSecond() ? second : first} position={vec3(x(), 0.0, 0.0)} ref={(value: NodeId3D): void => { meshNode = value; }} /></Scene3D></Void>));
+	const handle: Scene3DHandle | null = refs.length === 0 ? null : refs[0];
 	if (handle === null) { throw new Error("fixture: handle ref did not mount"); }
 	assert handle.context.meshPins[first.index] === 1 && handle.context.meshPins[second.index] === 0, "initial handle alone is pinned";
 	setX(6.0);
@@ -387,22 +398,24 @@ test "Mesh transform and uploaded handle follow signals with balanced borrowed p
 }
 
 test "actual geometry upload failures report component API and enum then close owners" {
-	let handle: Scene3DHandle | null = null;
-	const failure = mountError(element(<Void><Scene3D ref={(value: Scene3DHandle): void => { handle = value; }}><Mesh geometry={MeshData.empty()} /></Scene3D></Void>));
+	const refs: Scene3DHandle[] = [];
+	const failure = mountError(element(<Void><Scene3D ref={(value: Scene3DHandle): void => { refs.push(value); }}><Mesh geometry={MeshData.empty()} /></Scene3D></Void>));
 	assert failure.includes("Mesh") && failure.includes("addMeshData") && failure.includes("EmptyMesh"), "real uploader failure is surfaced: " + failure;
+	const handle: Scene3DHandle | null = refs.length === 0 ? null : refs[0];
 	if (handle === null) { throw new Error("fixture: handle ref did not mount"); }
 	assert handle.scene.closed && handle.context.closed, "failed mount still closes actual owners";
 	assert handle.scene.nodeCount() === 0, "failed mount leaves no nodes";
 }
 
 test "Light refuses reactive changes without a Void binder rather than silently freezing them" {
-	let handle: Scene3DHandle | null = null;
+	const refs: Scene3DHandle[] = [];
 	let light = NO_NODE_ID;
 	const [radius, setRadius] = createSignal<float32>(2.0);
-	const dispose = mounted(element(<Void><Scene3D ref={(value: Scene3DHandle): void => { handle = value; }}><Light kind={LightKind.Point} radius={radius()} ref={(value: NodeId3D): void => { light = value; }} /></Scene3D></Void>));
+	const dispose = mounted(element(<Void><Scene3D ref={(value: Scene3DHandle): void => { refs.push(value); }}><Light kind={LightKind.Point} radius={radius()} ref={(value: NodeId3D): void => { light = value; }} /></Scene3D></Void>));
 	let failure = "";
 	try { setRadius(4.0); } catch (error) { failure = error.toString(); }
 	assert failure.includes("Light") && failure.includes("radius"), "unsupported update rejects with component and prop: " + failure;
+	const handle: Scene3DHandle | null = refs.length === 0 ? null : refs[0];
 	if (handle === null) { throw new Error("fixture: handle ref did not mount"); }
 	assert approx(handle.scene.lights[handle.scene.nodes[light.index].payload].radius, 2.0), "rejected change does not mutate light";
 	dispose();
@@ -410,12 +423,13 @@ test "Light refuses reactive changes without a Void binder rather than silently 
 }
 
 test "Camera3D honors transformed Group parents and disposes world-bound nodes" {
-	let handle: Scene3DHandle | null = null;
-	const dispose = mounted(element(<Void><Scene3D ref={(value: Scene3DHandle): void => { handle = value; }}>
+	const refs: Scene3DHandle[] = [];
+	const dispose = mounted(element(<Void><Scene3D ref={(value: Scene3DHandle): void => { refs.push(value); }}>
 		<Group position={vec3(5.0, 3.0, 1.0)} rotation={eulerQuat(0.0, 0.0, 0.5)}>
 			<Camera3D active={true} position={vec3(0.0, 0.0, 8.0)} />
 		</Group>
 	</Scene3D></Void>));
+	const handle: Scene3DHandle | null = refs.length === 0 ? null : refs[0];
 	if (handle === null) { throw new Error("fixture: handle ref did not mount"); }
 	const request = handle.camera;
 	assert request !== null, "nested active camera is selected";

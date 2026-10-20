@@ -3,7 +3,7 @@ import { element } from "../../src/macros/ui/element";
 import { For, Show } from "../../src/macros/ui/flow";
 import { Host, HostNode, mockNode, mockHost, render } from "../../src/render/host";
 import { NeonNode } from "../../src/render/node";
-import { Void, View, Text, TextInput, TextInputHandle } from "../../src/components/primitives";
+import { Void, View, Text, TextInput, TextInputHandle, ViewHandle } from "../../src/components/primitives";
 import { Scene2D, Group, Rect } from "../../src/components/scene2d";
 import { NodeRef, Scene2D as VoidScene2D, refOf, getChildAt, getChildIndex } from "../../../void/src/void2d/node";
 import { VoidNode, layoutPass } from "../../src/platform/void/host";
@@ -98,7 +98,7 @@ test "Scene2D UI and raw children share actual VoidNode parent and layout contra
 	const dispose = render(element(<Void><Scene2D><Group width={120.0} height={80.0}>
 		{capture}
 		<View style={{ width: 40, height: 20 }}
-			ref={(node: HostNode): void => { views.push(node as VoidNode); }}>
+			ref={(handle: ViewHandle): void => { views.push(handle.node as VoidNode); }}>
 			<Text>UI</Text>
 			<TextInput value={"field"}
 				ref={(handle: TextInputHandle): void => { fields.push(handle.node as VoidNode); }} />
@@ -125,7 +125,7 @@ test "Scene2D releases root UI wrappers and original failure after partial child
 	const scenes: VoidScene2D[] = [];
 	const nodes: NodeRef[] = [];
 	const failed: NeonNode = (host: Host, parent: HostNode, before: HostNode | null): void => {
-		element(<View ref={(node: HostNode): void => { views.push(node as VoidNode); }} />)(
+		element(<View ref={(handle: ViewHandle): void => { views.push(handle.node as VoidNode); }} />)(
 			host, parent, before,
 		);
 		element(<Rect width={2.0} height={3.0} color={rgba(1.0, 1.0, 1.0, 1.0)}

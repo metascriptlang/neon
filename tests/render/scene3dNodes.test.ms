@@ -10,7 +10,7 @@ import { added, litShape } from "../../../void/src/test/drawHelpers";
 import { Vec3, vec3 } from "../../../void/src/math/math3d";
 
 test "Group Mesh Light visibility pickability and names react through Void binders" {
-	let handle: Scene3DHandle | null = null;
+	const refs: Scene3DHandle[] = [];
 	let mesh = NO_MESH;
 	const nodes: NodeId3D[] = [];
 	const [visible, setVisible] = createSignal(false);
@@ -19,7 +19,7 @@ test "Group Mesh Light visibility pickability and names react through Void binde
 	const root = mockNode("root");
 	const dispose = render(element(<Void>
 		<Scene3D ref={(value: Scene3DHandle): void => {
-			handle = value; mesh = added(value.context, litShape());
+			refs.push(value); mesh = added(value.context, litShape());
 		}}>
 			<Group visible={visible()} pickable={pickable()} name={name()}
 				ref={(value: NodeId3D): void => { nodes.push(value); }} />
@@ -29,6 +29,7 @@ test "Group Mesh Light visibility pickability and names react through Void binde
 				ref={(value: NodeId3D): void => { nodes.push(value); }} />
 		</Scene3D>
 	</Void>), mockHost(), root as unknown as HostNode);
+	const handle: Scene3DHandle | null = refs.length === 0 ? null : refs[0];
 	if (handle === null) { throw new Error("fixture: handle ref did not mount"); }
 	for (const id of nodes) {
 		assert !handle.scene.nodes[id.index].flags.has(NodeFlag.Visible);
@@ -49,14 +50,14 @@ test "Group Mesh Light visibility pickability and names react through Void binde
 }
 
 test "Omitted node flags preserve Void defaults and remount reads current values" {
-	let handle: Scene3DHandle | null = null;
+	const refs: Scene3DHandle[] = [];
 	const nodes: NodeId3D[] = [];
 	const [shown, setShown] = createSignal(true);
 	const [visible, setVisible] = createSignal(false);
 	const [name, setName] = createSignal("before");
 	const root = mockNode("root");
 	const dispose = render(element(<Void>
-		<Scene3D ref={(value: Scene3DHandle): void => { handle = value; }}>
+		<Scene3D ref={(value: Scene3DHandle): void => { refs.push(value); }}>
 			<Group ref={(value: NodeId3D): void => { nodes.push(value); }} />
 			{Show({ when: accessor(() => shown()), children: element(
 				<Group visible={visible()} name={name()}
@@ -64,6 +65,7 @@ test "Omitted node flags preserve Void defaults and remount reads current values
 			) })}
 		</Scene3D>
 	</Void>), mockHost(), root as unknown as HostNode);
+	const handle: Scene3DHandle | null = refs.length === 0 ? null : refs[0];
 	if (handle === null) { throw new Error("fixture: handle ref did not mount"); }
 	assert handle.scene.nodes[nodes[0].index].flags.has(NodeFlag.Visible);
 	assert !handle.scene.nodes[nodes[0].index].flags.has(NodeFlag.Pickable);
@@ -77,18 +79,21 @@ test "Omitted node flags preserve Void defaults and remount reads current values
 }
 
 test "Scene3D ambient follows its signal without changing sibling scenes or Void defaults" {
-	let first: Scene3DHandle | null = null;
-	let second: Scene3DHandle | null = null;
-	let defaults: Scene3DHandle | null = null;
+	const firstRefs: Scene3DHandle[] = [];
+	const secondRefs: Scene3DHandle[] = [];
+	const defaultRefs: Scene3DHandle[] = [];
 	const [ambient, setAmbient] = createSignal<Vec3>(vec3(0.1, 0.2, 0.3));
 	const root = mockNode("root");
 	const dispose = render(element(<Void>
 		<Scene3D ambient={ambient()}
-			ref={(value: Scene3DHandle): void => { first = value; }} />
+			ref={(value: Scene3DHandle): void => { firstRefs.push(value); }} />
 		<Scene3D ambient={vec3(0.7, 0.8, 0.9)}
-			ref={(value: Scene3DHandle): void => { second = value; }} />
-		<Scene3D ref={(value: Scene3DHandle): void => { defaults = value; }} />
+			ref={(value: Scene3DHandle): void => { secondRefs.push(value); }} />
+		<Scene3D ref={(value: Scene3DHandle): void => { defaultRefs.push(value); }} />
 	</Void>), mockHost(), root as unknown as HostNode);
+	const first: Scene3DHandle | null = firstRefs.length === 0 ? null : firstRefs[0];
+	const second: Scene3DHandle | null = secondRefs.length === 0 ? null : secondRefs[0];
+	const defaults: Scene3DHandle | null = defaultRefs.length === 0 ? null : defaultRefs[0];
 	if (first === null) { throw new Error("fixture: first ref did not mount"); }
 	assert first.scene.ambientLight === vec3(0.1, 0.2, 0.3);
 	if (second === null) { throw new Error("fixture: second ref did not mount"); }

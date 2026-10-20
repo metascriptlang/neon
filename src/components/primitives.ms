@@ -822,7 +822,7 @@ export function Void(props: VoidProps): NeonNode {
 			a.release();
 		});
 		if (kids !== null) {
-			const scoped = voidScope.Provider({
+			const scoped = voidScope.provider({
 				value: accessor((): VoidSpace => VoidSpace.Area),
 				children: kids as NeonNode,
 			});

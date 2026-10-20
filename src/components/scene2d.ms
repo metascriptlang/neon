@@ -1,5 +1,6 @@
 import { Accessor, accessor } from "../core/signal";
-import { createEffect } from "../core/effect";
+import { createRenderEffect } from "../core/effect";
+import { Cleanup } from "../core/types";
 import { createRoot } from "../core/owner";
 import { onCleanup } from "../core/cleanup";
 import { createContext, useContext } from "../render/context";
@@ -186,20 +187,25 @@ function requireScene(tag: string): VoidHost {
 	return under;
 }
 
-function bindScene(body: () => void): void {
+function bindScene<T>(read: () => T, apply: (value: T) => void): void {
 	const vh = requireScene("Scene2D");
-	createEffect((): void => { vh.mutate(body); });
+	createRenderEffect<T>(
+		(prev: T | null): T => read(),
+		(value: T, prev: T | null): Cleanup | null => {
+			vh.mutate((): void => { apply(value); });
+			return null;
+		},
+	);
 }
 
 function bindNode(tag: string, node: NodeRef, props: NodeProps): void {
 	if (props.local !== null) {
 		const local = props.local as () => Local2D;
-		bindScene((): void => { node.setLocal(local()); });
+		bindScene(local, (value: Local2D): void => { node.setLocal(value); });
 	}
 	if (props.paint !== null) {
 		const readPaint = props.paint as () => Paint2D;
-		bindScene((): void => {
-			const value = readPaint();
+		bindScene(readPaint, (value: Paint2D): void => {
 			const row = node.paint().colorMatrixRow;
 			if (value.colorMatrixRow !== NO_COLOR_MATRIX_ROW && value.colorMatrixRow !== row) {
 				throw new Error(tag + ": paint cannot move a colorMatrixRow; use colorMatrix");
@@ -209,15 +215,15 @@ function bindNode(tag: string, node: NodeRef, props: NodeProps): void {
 	}
 	if (props.colorMatrix !== null) {
 		const matrix = props.colorMatrix as () => Mat4;
-		bindScene((): void => { node.setColorMatrix(matrix()); });
+		bindScene(matrix, (value: Mat4): void => { node.setColorMatrix(value); });
 	}
 	if (props.order !== null) {
 		const order = props.order as () => Order2D;
-		bindScene((): void => { node.setOrder(order()); });
+		bindScene(order, (value: Order2D): void => { node.setOrder(value); });
 	}
 	if (props.filter !== null) {
 		const filter = props.filter as () => Filter;
-		bindScene((): void => { node.setFilter(filter()); });
+		bindScene(filter, (value: Filter): void => { node.setFilter(value); });
 	}
 }
 
@@ -263,7 +269,7 @@ export function Scene2D(props: Scene2DProps): NeonNode {
 		}
 		mountOwned((): void => {
 			const scene = VoidScene2D.create(rgba(0.0, 0.0, 0.0, 0.0));
-			const vh = createVoidHostWith(scene, DEFAULT_FONT, true);
+			const vh = createVoidHostWith(scene, DEFAULT_FONT, null, true);
 			onCleanup((): void => {
 				const root = vh.root as VoidNode;
 				for (let i = root.children.length - 1; i >= 0; i -= 1) {
@@ -275,33 +281,53 @@ export function Scene2D(props: Scene2DProps): NeonNode {
 			});
 			if (props.clear !== null) {
 				const clear = props.clear as () => Color;
-				createEffect((): void => { vh.mutate((): void => { scene.clear = clear(); }); });
+				createRenderEffect<Color>(
+					(prev: Color | null): Color => clear(),
+					(value: Color, prev: Color | null): Cleanup | null => {
+						vh.mutate((): void => { scene.clear = value; });
+						return null;
+					},
+				);
 			}
 			if (props.camera !== null) {
 				const camera = props.camera as () => Camera;
-				createEffect((): void => { vh.mutate((): void => { scene.cam = camera(); }); });
+				createRenderEffect<Camera>(
+					(prev: Camera | null): Camera => camera(),
+					(value: Camera, prev: Camera | null): Cleanup | null => {
+						vh.mutate((): void => { scene.cam = value; });
+						return null;
+					},
+				);
 			}
 			if (props.smooth !== null) {
 				const smooth = props.smooth as () => boolean;
-				createEffect((): void => { vh.mutate((): void => { scene.defaultSmooth = smooth(); }); });
+				createRenderEffect<boolean>(
+					(prev: boolean | null): boolean => smooth(),
+					(value: boolean, prev: boolean | null): Cleanup | null => {
+						vh.mutate((): void => { scene.defaultSmooth = value; });
+						return null;
+					},
+				);
 			}
 			if (props.scaleMode !== null || props.designW !== null || props.designH !== null) {
-				createEffect((): void => {
-					const mode: ScaleMode = props.scaleMode === null ? ScaleMode.Resize :
-						(props.scaleMode as () => ScaleMode)();
-					const width: float32 = props.designW === null ? 0.0 :
-						(props.designW as () => float32)();
-					const height: float32 = props.designH === null ? 0.0 :
-						(props.designH as () => float32)();
-					vh.mutate((): void => { scene.setScaleMode(mode, width, height); });
-				});
+				createRenderEffect<[ScaleMode, float32, float32]>(
+					(prev: [ScaleMode, float32, float32] | null): [ScaleMode, float32, float32] => [
+						props.scaleMode === null ? ScaleMode.Resize : (props.scaleMode as () => ScaleMode)(),
+						props.designW === null ? 0.0 : (props.designW as () => float32)(),
+						props.designH === null ? 0.0 : (props.designH as () => float32)(),
+					],
+					(value: [ScaleMode, float32, float32], prev: [ScaleMode, float32, float32] | null): Cleanup | null => {
+						vh.mutate((): void => { scene.setScaleMode(value[0], value[1], value[2]); });
+						return null;
+					},
+				);
 			}
 			if (props.ref !== null) { (props.ref as (scene: VoidScene2D) => void)(scene); }
 			const children = props.children;
 			if (children !== null) {
-				voidScope.Provider({
+				voidScope.provider({
 					value: accessor(() => VoidSpace.Scene2D),
-					children: sceneScope.Provider({
+					children: sceneScope.provider({
 						value: accessor(() => vh), children: children,
 					}),
 				})(vh.host, vh.root, null);
@@ -315,22 +341,26 @@ export function Group(props: GroupProps): NeonNode {
 		(node: NodeRef): void => {
 			if (props.width !== null || props.height !== null) {
 				const initial = node.content();
-				bindScene((): void => {
-					const width = props.width === null ? initial.w : (props.width as () => float32)();
-					const height = props.height === null ? initial.h : (props.height as () => float32)();
-					node.setSize(width, height);
-				});
+				bindScene<[float32, float32]>(
+					(): [float32, float32] => [
+						props.width === null ? initial.w : (props.width as () => float32)(),
+						props.height === null ? initial.h : (props.height as () => float32)(),
+					],
+					(value: [float32, float32]): void => { node.setSize(value[0], value[1]); },
+				);
 			}
 			if (props.background !== null) {
 				const background = props.background as () => Color | null;
-				bindScene((): void => {
-					const color = background();
-					if (color === null) { node.clearBackground(); }
-					else {
-						const fill = props.paint === null ? color : (props.paint as () => Paint2D)().color;
-						node.setBackground(fill);
-					}
-				});
+				bindScene<Color | null>(
+					(): Color | null => {
+						const color = background();
+						return color === null ? null : props.paint === null ? color : (props.paint as () => Paint2D)().color;
+					},
+					(color: Color | null): void => {
+						if (color === null) { node.clearBackground(); }
+						else { node.setBackground(color); }
+					},
+				);
 			}
 		});
 }
@@ -338,17 +368,18 @@ export function Group(props: GroupProps): NeonNode {
 export function TileGroup(props: TileGroupProps): NeonNode {
 	return renderNode("TileGroup", props, (scene: VoidScene2D): NodeRef => scene.tileGroup(),
 		(node: NodeRef): void => {
-			bindScene((): void => { node.setTiles(props.cells()); });
+			bindScene((): TileCell[] => props.cells(), (value: TileCell[]): void => { node.setTiles(value); });
 			if (props.first !== null || props.count !== null) {
-				bindScene((): void => {
-					const first: int32 = props.first === null ? 0 : (props.first as () => int32)();
-					const count: int32 = props.count === null ? ALL_TILES :
-						(props.count as () => int32)();
-					if (first < 0 || count < 0) {
-						throw new Error("TileGroup: first/count must be nonnegative");
-					}
-					node.setRange(first, count);
-				});
+				bindScene<[int32, int32]>(
+					(): [int32, int32] => [
+						props.first === null ? 0 : (props.first as () => int32)(),
+						props.count === null ? ALL_TILES : (props.count as () => int32)(),
+					],
+					(value: [int32, int32]): void => {
+						if (value[0] < 0 || value[1] < 0) { throw new Error("TileGroup: first/count must be nonnegative"); }
+						node.setRange(value[0], value[1]);
+					},
+				);
 			}
 		});
 }
@@ -357,13 +388,16 @@ export function Rect(props: RectProps): NeonNode {
 	return renderNode("Rect", props,
 		(scene: VoidScene2D): NodeRef => scene.rect(props.width(), props.height(), props.color()),
 		(node: NodeRef): void => {
-			bindScene((): void => { node.setSize(props.width(), props.height()); });
+			bindScene<[float32, float32]>(
+				(): [float32, float32] => [props.width(), props.height()],
+				(value: [float32, float32]): void => { node.setSize(value[0], value[1]); },
+			);
 			if (props.boxStyle !== null) {
 				const style = props.boxStyle as () => BoxStyle;
-				bindScene((): void => { node.setBoxStyle(style()); });
+				bindScene(style, (value: BoxStyle): void => { node.setBoxStyle(value); });
 			}
 			if (props.paint === null) {
-				bindScene((): void => { node.setColor(props.color()); });
+				bindScene((): Color => props.color(), (value: Color): void => { node.setColor(value); });
 			}
 		});
 }
@@ -371,17 +405,17 @@ export function Rect(props: RectProps): NeonNode {
 export function Sprite(props: SpriteProps): NeonNode {
 	return renderNode("Sprite", props, (scene: VoidScene2D): NodeRef => scene.sprite(props.tile()),
 		(node: NodeRef): void => {
-			bindScene((): void => {
-				const tile = props.tile();
-				const width: float32 = props.width === null ? tile.w :
-					(props.width as () => float32)();
-				const height: float32 = props.height === null ? tile.h :
-					(props.height as () => float32)();
-				node.setTile(tile).setSize(width, height);
-			});
+			bindScene<[Tile, float32, float32]>(
+				(): [Tile, float32, float32] => {
+					const tile = props.tile();
+					return [tile, props.width === null ? tile.w : (props.width as () => float32)(),
+						props.height === null ? tile.h : (props.height as () => float32)()];
+				},
+				(value: [Tile, float32, float32]): void => { node.setTile(value[0]).setSize(value[1], value[2]); },
+			);
 			if (props.imageStyle !== null) {
 				const style = props.imageStyle as () => ImageStyle;
-				bindScene((): void => { node.setImageStyle(style()); });
+				bindScene(style, (value: ImageStyle): void => { node.setImageStyle(value); });
 			}
 		});
 }
@@ -390,18 +424,18 @@ export function ScaleGrid(props: ScaleGridProps): NeonNode {
 	return renderNode("ScaleGrid", props, (scene: VoidScene2D): NodeRef => scene.scaleGrid(
 		props.tile(), props.borderL(), props.borderT(), props.borderR(), props.borderB(),
 	), (node: NodeRef): void => {
-		bindScene((): void => {
-			const tile = props.tile();
-			const width: float32 = props.width === null ? tile.w :
-				(props.width as () => float32)();
-			const height: float32 = props.height === null ? tile.h :
-				(props.height as () => float32)();
-			node.setContent({
-				w: width, h: height, tile: tile,
-				borderL: props.borderL(), borderT: props.borderT(),
-				borderR: props.borderR(), borderB: props.borderB(),
-			});
-		});
+		bindScene<[Tile, float32, float32, float32, float32, float32, float32]>(
+			(): [Tile, float32, float32, float32, float32, float32, float32] => {
+				const tile = props.tile();
+				return [tile, props.width === null ? tile.w : (props.width as () => float32)(),
+					props.height === null ? tile.h : (props.height as () => float32)(),
+					props.borderL(), props.borderT(), props.borderR(), props.borderB()];
+			},
+			(value: [Tile, float32, float32, float32, float32, float32, float32]): void => {
+				node.setContent({ w: value[1], h: value[2], tile: value[0],
+					borderL: value[3], borderT: value[4], borderR: value[5], borderB: value[6] });
+			},
+		);
 	});
 }
 
@@ -409,16 +443,15 @@ export function Underline(props: UnderlineProps): NeonNode {
 	return renderNode("Underline", props, (scene: VoidScene2D): NodeRef => scene.underline(
 		props.width(), props.thickness(), props.color(), props.wavy(),
 	), (node: NodeRef): void => {
-		bindScene((): void => {
-			const thickness = props.thickness();
-			const wavy = props.wavy();
-			node.setContent({
-				...node.content(), w: props.width(), h: wavy ? thickness * 3.0 : thickness,
-				borderL: thickness, borderT: wavy ? 1.0 : 0.0,
-			});
-		});
+		bindScene<[float32, float32, boolean]>(
+			(): [float32, float32, boolean] => [props.width(), props.thickness(), props.wavy()],
+			(value: [float32, float32, boolean]): void => {
+				node.setContent({ ...node.content(), w: value[0], h: value[2] ? value[1] * 3.0 : value[1],
+					borderL: value[1], borderT: value[2] ? 1.0 : 0.0 });
+			},
+		);
 		if (props.paint === null) {
-			bindScene((): void => { node.setColor(props.color()); });
+			bindScene((): Color => props.color(), (value: Color): void => { node.setColor(value); });
 		}
 	});
 }
@@ -428,15 +461,16 @@ export function Selection(props: SelectionProps): NeonNode {
 		props.width(), props.height(), props.color(), props.prevOffsetX(), props.prevWidth(),
 		props.nextOffsetX(), props.nextWidth(),
 	), (node: NodeRef): void => {
-		bindScene((): void => {
-			node.setContent({
-				...node.content(), w: props.width(), h: props.height(),
-				borderL: props.prevOffsetX(), borderT: props.prevWidth(),
-				borderR: props.nextOffsetX(), borderB: props.nextWidth(),
-			});
-		});
+		bindScene<[float32, float32, float32, float32, float32, float32]>(
+			(): [float32, float32, float32, float32, float32, float32] => [props.width(), props.height(),
+				props.prevOffsetX(), props.prevWidth(), props.nextOffsetX(), props.nextWidth()],
+			(value: [float32, float32, float32, float32, float32, float32]): void => {
+				node.setContent({ ...node.content(), w: value[0], h: value[1], borderL: value[2],
+					borderT: value[3], borderR: value[4], borderB: value[5] });
+			},
+		);
 		if (props.paint === null) {
-			bindScene((): void => { node.setColor(props.color()); });
+			bindScene((): Color => props.color(), (value: Color): void => { node.setColor(value); });
 		}
 	});
 }
@@ -445,7 +479,7 @@ export function Graphics(props: GraphicsProps): NeonNode {
 	return renderNode("Graphics", props,
 		(scene: VoidScene2D): NodeRef => scene.graphics(),
 		(node: NodeRef): void => {
-			bindScene((): void => { replayGraphics(node, props.operations()); });
+			bindScene((): GraphicsOp[] => props.operations(), (value: GraphicsOp[]): void => { replayGraphics(node, value); });
 		});
 }
 
@@ -453,20 +487,17 @@ export function Mask(props: MaskProps): NeonNode {
 	return renderNode("Mask", props,
 		(scene: VoidScene2D): NodeRef => scene.mask(props.width(), props.height()),
 		(node: NodeRef): void => {
-			const scrolling = props.scrollX !== null || props.scrollY !== null ||
-				props.scrollBounds !== null;
-			bindScene((): void => {
-				node.setSize(props.width(), props.height());
-				if (scrolling) {
-					const bounds: Bounds2D | null = props.scrollBounds === null ? null :
-						(props.scrollBounds as () => Bounds2D | null)();
-					const x: float32 = props.scrollX === null ? 0.0 :
-						(props.scrollX as () => float32)();
-					const y: float32 = props.scrollY === null ? 0.0 :
-						(props.scrollY as () => float32)();
-					node.setScrollBounds(bounds).scrollTo(x, y);
-				}
-			});
+			const scrolling = props.scrollX !== null || props.scrollY !== null || props.scrollBounds !== null;
+			bindScene<[float32, float32, Bounds2D | null, float32, float32]>(
+				(): [float32, float32, Bounds2D | null, float32, float32] => [props.width(), props.height(),
+					!scrolling || props.scrollBounds === null ? null : (props.scrollBounds as () => Bounds2D | null)(),
+					!scrolling || props.scrollX === null ? 0.0 : (props.scrollX as () => float32)(),
+					!scrolling || props.scrollY === null ? 0.0 : (props.scrollY as () => float32)()],
+				(value: [float32, float32, Bounds2D | null, float32, float32]): void => {
+					node.setSize(value[0], value[1]);
+					if (scrolling) { node.setScrollBounds(value[2]).scrollTo(value[3], value[4]); }
+				},
+			);
 		});
 }
 
@@ -480,48 +511,52 @@ export function Label(props: LabelProps): NeonNode {
 			if ((props.cursorIndex === null) !== (props.cursorColor === null)) {
 				throw new Error("Label: provide cursorIndex and cursorColor together");
 			}
-			bindScene((): void => { node.setText(props.text()); });
+			bindScene((): string => props.text(), (value: string): void => { node.setText(value); });
 			if (props.paint === null) {
-				bindScene((): void => { node.setColor(props.color()); });
+				bindScene((): Color => props.color(), (value: Color): void => { node.setColor(value); });
 			}
-			bindScene((): void => {
-				const style = props.textStyle === null ? node.textStyle() :
-					(props.textStyle as () => TextStyle)();
-				node.setTextStyle({ ...style, size: props.size() });
-			});
+			bindScene<[TextStyle | null, float32]>(
+				(): [TextStyle | null, float32] => [props.textStyle === null ? null : (props.textStyle as () => TextStyle)(), props.size()],
+				(value: [TextStyle | null, float32]): void => {
+					const style = value[0] === null ? node.textStyle() : value[0] as TextStyle;
+					node.setTextStyle({ ...style, size: value[1] });
+				},
+			);
 			if (props.textRuns !== null) {
 				const runs = props.textRuns as () => TextRun[];
-				bindScene((): void => { node.setTextRuns(runs()); });
+				bindScene(runs, (value: TextRun[]): void => { node.setTextRuns(value); });
 			}
 			if (props.shapingBreaks !== null) {
 				const breaks = props.shapingBreaks as () => int32[];
-				bindScene((): void => { node.setShapingBreaks(breaks()); });
+				bindScene(breaks, (value: int32[]): void => { node.setShapingBreaks(value); });
 			}
 			if (props.truncate !== null) {
 				const truncate = props.truncate as () => Truncate;
-				bindScene((): void => { node.setTruncate(truncate()); });
+				bindScene(truncate, (value: Truncate): void => { node.setTruncate(value); });
 			}
 			if (props.hangingIndent !== null) {
 				const indent = props.hangingIndent as () => float32;
-				bindScene((): void => { node.setHangingIndent(indent()); });
+				bindScene(indent, (value: float32): void => { node.setHangingIndent(value); });
 			}
 			if (props.forceWidth !== null) {
 				const width = props.forceWidth as () => float32;
-				bindScene((): void => { node.setForceWidth(width()); });
+				bindScene(width, (value: float32): void => { node.setForceWidth(value); });
 			}
 			if (props.selectionRange !== null) {
 				const range = props.selectionRange as () => SelectionRange;
 				const color = props.selectionColor as () => Color;
-				bindScene((): void => { node.setSelectionRange(range(), color()); });
+				bindScene<[SelectionRange, Color]>((): [SelectionRange, Color] => [range(), color()],
+					(value: [SelectionRange, Color]): void => { node.setSelectionRange(value[0], value[1]); });
 			}
 			if (props.cursorIndex !== null) {
 				const index = props.cursorIndex as () => int32;
 				const color = props.cursorColor as () => Color;
-				bindScene((): void => { node.setCursorIndex(index(), color()); });
+				bindScene<[int32, Color]>((): [int32, Color] => [index(), color()],
+					(value: [int32, Color]): void => { node.setCursorIndex(value[0], value[1]); });
 			}
 			if (props.cursorBlinkTime !== null) {
 				const seconds = props.cursorBlinkTime as () => float32;
-				bindScene((): void => { node.setCursorBlinkTime(seconds()); });
+				bindScene(seconds, (value: float32): void => { node.setCursorBlinkTime(value); });
 			}
 		});
 }

@@ -1,5 +1,6 @@
 import { createSignal, accessor } from "../../src/core/signal";
 import { onCleanup } from "../../src/core/cleanup";
+import { resetErrorHalt } from "../../src/core/runtime";
 import { element } from "../../src/macros/ui/element";
 import { Show } from "../../src/macros/ui/flow";
 import { HostNode, mockNode, mockHost, render } from "../../src/render/host";
@@ -59,6 +60,7 @@ test "Gltf keeps its wrapper and authored children while imported graphs replace
 		assert handle.scene.nodes[oldId.index].local.scale === vec3(2.0, 3.0, 4.0);
 		let message = "";
 		try { setBadGraph(true); } catch (error) { message = error.message; }
+		finally { resetErrorHalt(); }
 		assert message === "Gltf: addGltfNodes failed: InvalidData";
 		assert handle.scene.isLive(oldId) && handle.scene.isLive(authoredId);
 		assert handle.scene.nodes[wrapper.index].children.length === 2;
@@ -69,6 +71,7 @@ test "Gltf keeps its wrapper and authored children while imported graphs replace
 		if (!beforeSetupFailure.ok) { return; }
 		message = "";
 		try { setBadSetup(true); } catch (error) { message = error.message; }
+		finally { resetErrorHalt(); }
 		assert message === "Gltf: addGltfAssets failed: BadSetup";
 		assert handle.scene.isLive(beforeSetupFailure.value);
 		setBadSetup(false);
@@ -162,6 +165,7 @@ test "Gltf initial graph/setup failures and terminal disposal close renderer onc
 			</Scene3D></Void>), mockHost(), mockNode("root") as unknown as HostNode);
 			cleanup();
 		} catch (error) { message = error.message; }
+		finally { resetErrorHalt(); }
 		const expected = badSetup ? "Gltf: addGltfAssets failed: BadSetup"
 			: badGraph ? "Gltf: addGltfNodes failed: InvalidData" : "";
 		assert message === expected;
