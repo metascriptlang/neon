@@ -27,6 +27,7 @@ import {
 	deliverResize,
 	logicalWidth,
 	logicalHeight,
+	drawArea,
 } from "../../src/platform/void/windowHost";
 import { PixelRatio } from "../../src/api/pixelRatio";
 import { DrawKind, clearChanges } from "../../../void/src/void2d/node";
@@ -182,4 +183,35 @@ test "window input reaches the handle's subscribers and the focused node alike" 
 		"preedit ni@2",
 		"blur",
 	].join("|"), log.join("|");
+}
+
+test "an onLayout that releases the area ends the frame without drawing the closed scene" {
+	const p = probe();
+	let dispose: (() => void) | null = null;
+	dispose = render(element(
+		<Void><View style={{ width: 10, height: 10 }} onLayout={(e: NeonEvent): void => {
+			p.log.push("layout");
+			if (dispose !== null) { (dispose as () => void)(); }
+		}} /></Void>
+	), windowHost(p.window), windowNode("window"));
+	const mark = p.log.length;
+	assert !drawArea(p.areas[0]), "a released area reports the frame undrawn";
+	assert p.log.slice(mark).join(",") === "layout,released", p.log.join(",");
+}
+
+test "a sibling onLayout after the release does not run, and the frame stays undrawn" {
+	const p = probe();
+	let dispose: (() => void) | null = null;
+	dispose = render(element(
+		<Void>
+			<View style={{ width: 10, height: 10 }} onLayout={(e: NeonEvent): void => {
+				p.log.push("first");
+				if (dispose !== null) { (dispose as () => void)(); }
+			}} />
+			<View style={{ width: 20, height: 20 }} onLayout={(e: NeonEvent): void => { p.log.push("second"); }} />
+		</Void>
+	), windowHost(p.window), windowNode("window"));
+	const mark = p.log.length;
+	assert !drawArea(p.areas[0]), "a released area reports the frame undrawn";
+	assert p.log.slice(mark).join(",") === "first,released", p.log.join(",");
 }
