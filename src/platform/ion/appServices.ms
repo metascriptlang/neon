@@ -7,7 +7,7 @@ import {
 	NotificationSpec, PermissionReply, ScheduleReply, ShareRequest,
 } from "../../api/services";
 import { readClipboardText, writeClipboardText } from "../../../../ion/src/clipboard";
-import { MicAccess, microphoneAccess, requestMicrophoneAccess } from "../../../../ion/src/permission";
+import { MediaAccess, microphoneAccess, requestMicrophoneAccess } from "../../../../ion/src/permission";
 
 function unavailable(api: string): Error {
 	return new Error(`${api} is not available on an Ion desktop host yet`);
@@ -17,7 +17,7 @@ function refusedPermission(name: string): PermissionReply {
 	return { status: "", canAskAgain: false, error: `Permissions(${name}) is not available on an Ion desktop host yet` };
 }
 
-function microphoneReply(got: Result<MicAccess, string>): PermissionReply {
+function microphoneReply(got: Result<MediaAccess, string>): PermissionReply {
 	if (!got.ok) { return { status: "", canAskAgain: false, error: got.error }; }
 	return { status: got.value.status, canAskAgain: got.value.canAskAgain, error: "" };
 }
