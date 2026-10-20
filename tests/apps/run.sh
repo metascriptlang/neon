@@ -65,10 +65,10 @@ expect_bundle() {
 	bad=0
 	NO_COLOR=1 "$MSC" build --target=js --output="$bundles/$1.js" "tests/apps/$1.ms" >/dev/null 2>&1
 	for m in $2; do
-		grep -q "^// --- Module: .*/src/$m ---\$" "$bundles/$1.js" 2>/dev/null || { echo "FAIL bundle $1: missing $m"; bad=1; }
+		grep -q "^// --- Module: \(.*/\)\{0,1\}src/$m ---\$" "$bundles/$1.js" 2>/dev/null || { echo "FAIL bundle $1: missing $m"; bad=1; }
 	done
 	for m in $3; do
-		grep -q "^// --- Module: .*/src/$m ---\$" "$bundles/$1.js" 2>/dev/null && { echo "FAIL bundle $1: carries $m"; bad=1; }
+		grep -q "^// --- Module: \(.*/\)\{0,1\}src/$m ---\$" "$bundles/$1.js" 2>/dev/null && { echo "FAIL bundle $1: carries $m"; bad=1; }
 	done
 	[ $bad = 0 ] && echo "ok   bundle $1" || fail=1
 }
