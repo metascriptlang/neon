@@ -1,6 +1,7 @@
 import { createSignal } from "../../src/core/signal";
 import { element } from "../../src/macros/ui/element";
-import { flush } from "../../src/core/runtime";
+import { flush, resetErrorHalt } from "../../src/core/runtime";
+import { Show } from "../../src/macros/ui/flow";
 import { render } from "../../src/render/host";
 import { NeonEvent } from "../../src/render/event";
 import { NeonNode } from "../../src/render/node";
@@ -145,6 +146,34 @@ test "a refresh boundary at the window: its empty anchor is accepted, and a remo
 	assert p.areas.length === 2 && p.log.filter((l: string): boolean => l === "released").length === 1, "the old area released, a new one opened: " + p.log.join(",");
 	assert (p.areas[1].vh.root as VoidNode).children.length === 1, "the new area holds the new Text";
 	assert thrown(windowOnly(element(<>{"hi"}<Void /></>))).indexOf("text \"hi\" cannot be a child of the window") >= 0, "text with characters is still refused";
+}
+
+test "a Show at the window swaps its Void for the fallback's through the region holder" {
+	const p = probe();
+	const [first, setFirst] = createSignal(true);
+	render(element(
+		<Show when={first()} fallback={<Void><Text>b</Text></Void>}><Void><Text>a</Text></Void></Show>
+	), windowHost(p.window), windowNode("window"));
+	assert p.areas.length === 1, "one area opened";
+	setFirst(false);
+	flush();
+	assert p.areas.length === 2 && p.log.filter((l: string): boolean => l === "released").length === 1, "the fallback's Void replaced the first: " + p.log.join(",");
+}
+
+test "a later pass that brings a View to the window is refused when the View reaches the window" {
+	const p = probe();
+	const [shown, setShown] = createSignal(false);
+	render(element(<Show when={shown()}><View /></Show>), windowHost(p.window), windowNode("window"));
+	let failure = "";
+	try {
+		setShown(true);
+		flush();
+	} catch (e) {
+		failure = (e as Error).message;
+	} finally {
+		resetErrorHalt();
+	}
+	assert failure === "test window host: <view> cannot be a child of the window; the window holds exactly one <Void>", failure;
 }
 
 function key(action: AreaKeyAction, text: string, mods: BitSet<AreaKeyMod>): AreaKeyEvent {
