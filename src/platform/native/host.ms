@@ -16,6 +16,7 @@ import { installFrameDriver } from "../../animation/frame";
 import { LayoutAnimationPlan, LayoutPhase, takeLayoutAnimation, runLayoutTween } from "../../animation/layoutAnimation";
 import "../android/library";
 import { pollReload, RELOAD_POLL_MS } from "../reloadPoll";
+import { DevNode, setDevDriver } from "../../devtools/driver";
 
 @passC("-I./");
 
@@ -72,6 +73,7 @@ class NativeNode {
 	isString: boolean = false;
 	isScroll: boolean = false;
 	isInput: boolean = false;
+	inputValue: string = "";
 	multiline: boolean = false;
 	control: NativeElementKind = NativeElementKind.View;
 	sizesItself: boolean = false;
@@ -777,12 +779,18 @@ function onScroll(): void {
 	});
 }
 
+let focusedInput: NativeNode | null = null;
+
 function onControl(): void {
 	const tag = niLastControlTag();
 	const phase = niLastControlPhase();
 	const value: string = niLastControlValue();
 	const width = niLastControlWidth();
 	const height = niLastControlHeight();
+	const input = nodesByTag.has(tag) ? nodesByTag.get(tag) as NativeNode : null;
+	if (input !== null && phase === 0) { input.inputValue = value; }
+	if (input !== null && phase === 1) { focusedInput = input; }
+	if (phase === 2 && focusedInput === input) { focusedInput = null; }
 	batched((): void => {
 		if (phase === 0 && nodesByTag.has(tag) && growInput(nodesByTag.get(tag) as NativeNode)) { requestLayout(); }
 		eventRegistry.control(tag, phase, value, width, height);
@@ -1123,6 +1131,7 @@ function writeProp(n: NativeNode, name: string, value: string): void {
 		return;
 	}
 	niSetProp(n.view, name, value);
+	if (n.isInput && name === "value") { n.inputValue = value; }
 	if (name === "statusBarTranslucent") { requestLayout(); }
 	if (n.isInput && (name === "value" || name === "defaultValue") && growInput(n) && isMounted(n)) { requestLayout(); }
 	if (n.isText && name === "numberOfLines") {
@@ -1241,15 +1250,64 @@ function relayoutRoot(): void {
 let mountedApp: (() => NeonNode) | null = null;
 let mounted: Dispose | null = null;
 
+function devNode(n: NativeNode, x: float32, y: float32): DevNode {
+	const children: DevNode[] = [];
+	for (const c of n.children) { children.push(devNode(c, x + c.x, y + c.y)); }
+	let text = n.isString ? n.text : "";
+	if (n.spanData !== null) { for (const span of n.spanData as TextSpan[]) { text += span.text; } }
+	return {
+		tag: n.tag,
+		text,
+		value: n.isInput ? n.inputValue : null,
+		focused: n === focusedInput,
+		pressable: n.pressable,
+		x, y, w: n.w, h: n.h,
+		children,
+	};
+}
+
+function touchTarget(n: NativeNode, x: float32, y: float32, ox: float32, oy: float32): NativeNode | null {
+	if (x < ox || y < oy || x >= ox + n.w || y >= oy + n.h) { return null; }
+	for (let i = n.children.length - 1; i >= 0; i -= 1) {
+		const c = n.children[i];
+		const hit = touchTarget(c, x, y, ox + c.x, oy + c.y);
+		if (hit !== null) { return hit; }
+	}
+	return n.eventTag !== 0 ? n : null;
+}
+
+function nativeDriverPress(x: float32, y: float32): void {
+	const target = touchTarget(root, x, y, 0.0, 0.0);
+	if (target === null) { throw new Error(`native host: nothing at ${x},${y} takes a touch`); }
+	const tag = (target as NativeNode).eventTag;
+	const at = performance.now();
+	for (const phase of [0, 1, 2]) {
+		batched((): void => {
+			bubbleTouch(tag, phase as int32, x as number, y as number, at);
+			eventRegistry.dispatch(tag, phase as int32, x as number, y as number, at);
+		});
+	}
+}
+
 function mountApp(): void {
 	const native = createNativeHost();
 	batched((): void => {
 		mounted = render((mountedApp as () => NeonNode)(), native.host, native.rootNode);
 	});
 	native.relayout();
+	setDevDriver({
+		host: "native",
+		tree: (): DevNode => devNode(root, 0.0, 0.0),
+		pressAt: nativeDriverPress,
+		type: (text: string): void => {
+			throw new Error("native host: type needs a bridge call that inserts text into the focused platform input; the bridges have none yet (docs/DEVTOOLS.md)");
+		},
+	});
 }
 
 function teardownApp(): void {
+	setDevDriver(null);
+	focusedInput = null;
 	if (mounted !== null) {
 		(mounted as Dispose)();
 		mounted = null;
