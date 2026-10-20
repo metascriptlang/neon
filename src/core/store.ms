@@ -43,6 +43,10 @@ function slotFor<V>(value: V): Slot<V> {
 
 class ChildBase {}
 
+class StoreRoot {
+	targets: Map<unknown, ChildBase> = new Map<unknown, ChildBase>();
+}
+
 class Child<V> extends ChildBase {
 	traps: StoreTraps<V>;
 
@@ -54,11 +58,13 @@ class Child<V> extends ChildBase {
 
 export class StoreTraps<T> {
 	raw: T;
+	private root: StoreRoot;
 	private slots: Map<string, SlotBase> = new Map<string, SlotBase>();
 	private children: Map<string, ChildBase> = new Map<string, ChildBase>();
 
-	constructor(raw: T) {
+	constructor(raw: T, root: StoreRoot) {
 		this.raw = raw;
+		this.root = root;
 	}
 
 	get<K extends keyof T>(target: T, key: K): StoreValue<T[K]> {
@@ -82,14 +88,22 @@ export class StoreTraps<T> {
 	}
 
 	child<V>(name: string, value: V): StoreTraps<V> {
-		const found = this.children.get(name);
-		if (found !== undefined) {
-			const traps = (found as Child<V>).traps;
-			if (traps.raw === value) { return traps; }
+		when (isArray<V>()) {
+			const found = this.children.get(name);
+			if (found !== undefined) {
+				const traps = (found as Child<V>).traps;
+				if (traps.raw === value) { return traps; }
+			}
+			const traps = new StoreTraps<V>(value, this.root);
+			this.children.set(name, new Child<V>(traps));
+			return traps;
+		} else {
+			const found = this.root.targets.get(value as unknown);
+			if (found !== undefined) { return (found as Child<V>).traps; }
+			const traps = new StoreTraps<V>(value, this.root);
+			this.root.targets.set(value as unknown, new Child<V>(traps));
+			return traps;
 		}
-		const traps = new StoreTraps<V>(value);
-		this.children.set(name, new Child<V>(traps));
-		return traps;
 	}
 
 	private committed<K extends keyof T>(target: T, key: K): T[K] {
@@ -229,7 +243,7 @@ export class DraftTraps<T> {
 }
 
 export function createStore<T extends object>(value: T): [Store<T>, SetStoreFunction<T>] {
-	const traps = new StoreTraps<T>(value);
+	const traps = new StoreTraps<T>(value, new StoreRoot());
 	const setStore = (fn: (draft: Draft<T>) => void): void => {
 		untrack<int32>((): int32 => {
 			writing += 1;
