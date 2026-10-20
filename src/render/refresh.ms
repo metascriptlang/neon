@@ -28,7 +28,8 @@ export interface KeptValue {
 }
 
 export interface MountedComponent {
-	key: string;
+	name: string;
+	module: string;
 	broken: boolean;
 	state: KeptValue[];
 }
@@ -551,14 +552,24 @@ export function refreshDependency(moduleKey: string): RefreshSummary {
 	return reported("dependency", moduleKey, started, { kept: boundaries[0] + regions[0], rebuilt: regions[1], remounted: boundaries[1] });
 }
 
+function sourceName(id: string): string {
+	const bar = id.indexOf("|");
+	return bar < 0 ? id : id.substring(0, bar);
+}
+
 export function refreshMounted(): MountedComponent[] {
 	const out: MountedComponent[] = [];
 	for (const list of compInstances.values()) {
 		for (const inst of list) {
 			if (isDisposed(inst.owner)) { continue; }
 			const state: KeptValue[] = [];
-			for (const kept of inst.live) { state.push({ key: kept.key, value: kept.show() }); }
-			out.push({ key: inst.key, broken: inst.broken, state });
+			for (const kept of inst.live) {
+				const name = sourceName(kept.key);
+				let key = name;
+				for (let n = 2; state.some((k: KeptValue): boolean => k.key === key); n += 1) { key = `${name}#${n}`; }
+				state.push({ key, value: kept.show() });
+			}
+			out.push({ name: sourceName(inst.key.substring(inst.keyFile.length + 1)), module: inst.keyFile, broken: inst.broken, state });
 		}
 	}
 	return out;

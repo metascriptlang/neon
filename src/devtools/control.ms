@@ -52,9 +52,18 @@ function failure(id: JsonValue, code: int32, message: string): string {
 	return stringify(jsonObject(["jsonrpc", "id", "error"], [jsonString("2.0"), id, error]), false);
 }
 
+function anchor(n: DevNode): boolean {
+	return n.tag === "" && n.text === "" && n.value === null && n.children.length === 0 && n.w === 0.0 && n.h === 0.0;
+}
+
+function shown(n: DevNode): DevNode[] {
+	return n.children.filter((c: DevNode): boolean => !anchor(c));
+}
+
 function nodeJson(n: DevNode, id: string): JsonValue {
 	const children: JsonValue[] = [];
-	for (let i = 0; i < n.children.length; i += 1) { children.push(nodeJson(n.children[i], id === "" ? `${i}` : `${id}.${i}`)); }
+	const kids = shown(n);
+	for (let i = 0; i < kids.length; i += 1) { children.push(nodeJson(kids[i], id === "" ? `${i}` : `${id}.${i}`)); }
 	const frame = jsonArray([jsonNumber(n.x as number), jsonNumber(n.y as number), jsonNumber(n.w as number), jsonNumber(n.h as number)]);
 	return jsonObject(
 		["id", "tag", "text", "value", "focused", "pressable", "frame", "children"],
@@ -67,8 +76,9 @@ function findById(n: DevNode, path: string): DevNode | null {
 	let cur = n;
 	for (const part of path.split(".")) {
 		const at = parseInt(part);
-		if (`${at}` !== part || at < 0 || at >= cur.children.length) { return null; }
-		cur = cur.children[at];
+		const kids = shown(cur);
+		if (`${at}` !== part || at < 0 || at >= kids.length) { return null; }
+		cur = kids[at];
 	}
 	return cur;
 }
@@ -103,7 +113,7 @@ function components(): JsonValue {
 			keys.push(kept.key);
 			values.push(jsonString(kept.value));
 		}
-		out.push(jsonObject(["component", "broken", "state"], [jsonString(c.key), jsonBool(c.broken), jsonObject(keys, values)]));
+		out.push(jsonObject(["component", "module", "broken", "state"], [jsonString(c.name), jsonString(c.module), jsonBool(c.broken), jsonObject(keys, values)]));
 	}
 	return jsonArray(out);
 }

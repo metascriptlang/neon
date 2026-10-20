@@ -25,9 +25,10 @@ function leaf(tag: string, text: string, x: float32, y: float32, pressable: bool
 function fakeTree(): DevNode {
 	const field = leaf("textinput", "", 0.0, 100.0, false);
 	field.value = "typed so far";
+	const anchorNode: DevNode = { tag: "", text: "", value: null, focused: false, pressable: false, x: 0.0, y: 0.0, w: 0.0, h: 0.0, children: [] };
 	return {
 		tag: "view", text: "", value: null, focused: false, pressable: false, x: 0.0, y: 0.0, w: 300.0, h: 300.0,
-		children: [leaf("text", "Counter", 0.0, 0.0, false), leaf("pressable", "+1", 0.0, 50.0, true), field],
+		children: [leaf("text", "Counter", 0.0, 0.0, false), anchorNode, leaf("pressable", "+1", 0.0, 50.0, true), field],
 	};
 }
 
@@ -59,7 +60,7 @@ test "control: tree, press and type go through the registered driver" {
 	const lines = session();
 	const s = new ControlSession((line: string): void => { lines.push(line); });
 	const tree = ask(lines, s, `{"jsonrpc":"2.0","id":1,"method":"tree"}`);
-	assert tree.includes(`{"id":"1","tag":"pressable","text":"+1","value":null,"focused":false,"pressable":true,"frame":[0,50,100,40],"children":[]}`), "tree gives each node a path id and its frame";
+	assert tree.includes(`{"id":"1","tag":"pressable","text":"+1","value":null,"focused":false,"pressable":true,"frame":[0,50,100,40],"children":[]}`), "tree gives each node a path id and its frame, and leaves out the empty anchors a refresh region places";
 	assert tree.includes(`"value":"typed so far"`), "a field reports its value";
 	assert ask(lines, s, `{"jsonrpc":"2.0","id":2,"method":"press","params":{"target":"1"}}`) === `{"jsonrpc":"2.0","id":2,"result":{"x":50,"y":70}}`, "press by id";
 	ask(lines, s, `{"jsonrpc":"2.0","id":3,"method":"press","params":{"target":"text:Counter"}}`);
@@ -102,6 +103,9 @@ test "control: components lists mounted boundaries with their live kept state, a
 		return (): NeonNode => {
 			const [count, setCount] = createSignal(3);
 			refreshState("count", count, setCount);
+			const [label, setLabel] = createSignal("x");
+			refreshState("label|string|1:createSignal|0:0", label, setLabel);
+			refreshState("label|string|2:createSignal|0:0", label, setLabel);
 			bump = (): void => { setCount(count() + 1); };
 			return (host: Host, parent: HostNode, before: HostNode | null): void => {
 				place(host, parent, host.createText("v" + version.toString()), before);
@@ -119,7 +123,7 @@ test "control: components lists mounted boundaries with their live kept state, a
 
 	const lines = session();
 	const s = new ControlSession((line: string): void => { lines.push(line); });
-	assert ask(lines, s, `{"jsonrpc":"2.0","id":1,"method":"components"}`) === `{"jsonrpc":"2.0","id":1,"result":[{"component":"app.ms#Counter","broken":false,"state":{"count":"4"}}]}`, "live value, not the initial one";
+	assert ask(lines, s, `{"jsonrpc":"2.0","id":1,"method":"components"}`) === `{"jsonrpc":"2.0","id":1,"result":[{"component":"Counter","module":"app.ms","broken":false,"state":{"count":"4","label":"x","label#2":"x"}}]}`, "live value, not the initial one; names as the source spells them";
 
 	ask(lines, s, `{"jsonrpc":"2.0","id":2,"method":"subscribe"}`);
 	version = 2;
