@@ -22,6 +22,7 @@ export type NetInfoUnsubscribe = () => void;
 const UNKNOWN: NetInfoState = { type: "unknown", isConnected: null, isInternetReachable: null, details: null };
 
 const [current, setCurrent] = createSignal<NetInfoState>(UNKNOWN);
+let lastReported: NetInfoState = UNKNOWN;
 let watchedBy: int32 = -1;
 
 function watch(api: string): void {
@@ -53,7 +54,7 @@ export class NetInfo {
 	static async fetch(): Promise<NetInfoState> {
 		watch("NetInfo.fetch");
 		appServices("NetInfo.fetch").refreshNetInfo();
-		return current();
+		return lastReported;
 	}
 
 	static async refresh(): Promise<NetInfoState> {
@@ -74,5 +75,6 @@ export function useNetInfo(): Accessor<NetInfoState> {
 }
 
 export function publishNetInfo(next: NetInfoState): void {
+	lastReported = next;
 	if (!same(current(), next)) { setCurrent(next); }
 }
