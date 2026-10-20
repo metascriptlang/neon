@@ -16,6 +16,7 @@ import { Scene2D } from "../../../../void/src/void2d/node";
 import { create, close } from "../../../../void/src/void2d/scene";
 import { Color, rgba } from "../../../../void/src/void2d/types";
 import { VoidHost, VoidNode, createVoidHostWith, asFlexStyle, parseColor } from "./host";
+import { DevNode, setDevDriver } from "../../devtools/driver";
 
 export interface WindowArea {
 	vh: VoidHost;
@@ -111,6 +112,21 @@ export function windowHost(w: AreaWindow): Host {
 		};
 		current = area;
 		w.opened(area);
+		setDevDriver({
+			host: w.name,
+			tree: (): DevNode => vh.snapshot(),
+			pressAt: (x: float32, y: float32): void => {
+				const px = (x * area.scale) as float64;
+				const py = (y * area.scale) as float64;
+				deliverPointer(area, { kind: AreaPointerKind.Button, pixelX: px, pixelY: py, button: 1 as int32, pressed: true, dx: 0.0, dy: 0.0 });
+				deliverPointer(area, { kind: AreaPointerKind.Button, pixelX: px, pixelY: py, button: 1 as int32, pressed: false, dx: 0.0, dy: 0.0 });
+				w.requestFrame();
+			},
+			type: (text: string): void => {
+				deliverText(area, text);
+				w.requestFrame();
+			},
+		});
 		if (pendingStyle !== null) {
 			applyAreaStyle(vh, pendingStyle as Style);
 			w.requestFrame();
@@ -122,6 +138,7 @@ export function windowHost(w: AreaWindow): Host {
 			hub,
 			release: (): void => {
 				current = null;
+				setDevDriver(null);
 				vh.scene.close();
 				w.released(area);
 			},

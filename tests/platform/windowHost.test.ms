@@ -12,7 +12,7 @@ import {
 	AreaPointerKind,
 	AreaResize,
 } from "../../src/render/voidAreaHandle";
-import { Void, View, Text } from "../../src/components/primitives";
+import { Void, View, Text, Pressable, TextInput } from "../../src/components/primitives";
 import { VoidNode, parseColor } from "../../src/platform/void/host";
 import {
 	AreaWindow,
@@ -35,6 +35,8 @@ import { paint as paintScene } from "../../../void/src/void2d/scene";
 import { frameEnd } from "../../../void/src/void2d/draw";
 import { Color } from "../../../void/src/void2d/types";
 import { FontId, addFont } from "../../../void/src/void2d/font";
+import { devDriver } from "../../src/devtools/driver";
+import { ControlSession, handleRequest } from "../../src/devtools/control";
 
 const FONT_PATH = "../void/assets/font.ttf";
 
@@ -200,4 +202,38 @@ test "window input reaches the handle's subscribers and the focused node alike" 
 		"preedit ni@2",
 		"blur",
 	].join("|"), log.join("|");
+}
+
+test "the control channel drives a window: tree shows what is laid out, press and type take the real input path" {
+	const p = probe();
+	const log: string[] = [];
+	const dispose = render(element(
+		<Void>
+			<View style={{ width: 300, height: 200 }}>
+				<Pressable style={{ width: 120, height: 40 }} onPress={(): void => { log.push("pressed"); }}><Text>Add</Text></Pressable>
+				<TextInput style={{ width: 200, height: 24 }} onChangeText={(t: string): void => { log.push("text " + t); }} />
+			</View>
+		</Void>
+	), windowHost(p.window), windowNode("window"));
+	flush();
+	const area = p.areas[0];
+	deliverResize(area, 600 as int32, 400 as int32, 2.0);
+	area.vh.layout(area.logicalWidth(), area.logicalHeight());
+	assert devDriver() !== null, "opening the area registers the driver";
+	const lines: string[] = [];
+	const s = new ControlSession((line: string): void => { lines.push(line); });
+	handleRequest(s, `{"jsonrpc":"2.0","id":1,"method":"tree"}`);
+	assert lines[0].includes(`"text":"Add"`) && lines[0].includes(`"pressable":true,"frame":[0,0,120,40]`), lines[0];
+	handleRequest(s, `{"jsonrpc":"2.0","id":2,"method":"press","params":{"target":"text:Add"}}`);
+	flush();
+	assert lines[1].includes(`"result"`), lines[1];
+	assert area.held === (0 as int32), "press releases the button it pressed";
+	handleRequest(s, `{"jsonrpc":"2.0","id":3,"method":"press","params":{"target":"0.1"}}`);
+	handleRequest(s, `{"jsonrpc":"2.0","id":4,"method":"type","params":{"text":"hi"}}`);
+	flush();
+	handleRequest(s, `{"jsonrpc":"2.0","id":5,"method":"tree"}`);
+	assert lines[4].includes(`"value":"hi","focused":true`), lines[4];
+	assert log.join("|") === "pressed|text hi", log.join("|");
+	dispose();
+	assert devDriver() === null, "releasing the area drops the driver";
 }

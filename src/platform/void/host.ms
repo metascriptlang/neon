@@ -21,6 +21,7 @@ import { FontId, FontError, DEFAULT_FONT, FontStyle as FaceStyle, SizeAdjust, re
 import { FlexStyle, YGNode, FlexDirection, Justify, Align, PositionType, Wrap, Display, Overflow, layoutPass, freeLayoutTree } from "../../../../yoga/src/index";
 import { Style, FontWeight } from "../../render/style";
 import { asFlexStyleBody } from "../../macros/style/fields";
+import { DevNode } from "../../devtools/driver";
 import {
 	TextEditingValue, editingValue, isEmptyRange,
 	commitText, composeText, deleteBackward, deleteForward, moveCaret,
@@ -109,6 +110,7 @@ export interface VoidHost {
 	attachTextInput: (node: VoidNode, client: TextInputClient, value: TextEditingValue) => void;
 	setEditingState: (node: VoidNode, value: TextEditingValue) => void;
 	onDirty: (fn: () => void) => void;
+	snapshot: () => DevNode;
 }
 
 function styleNum(st: FlexStyle, key: string, v: float32): void {
@@ -1325,6 +1327,50 @@ export function createVoidHostWith(scene: Scene2D, font: FontId, defaultFamily: 
 		return { x: at.x, y: at.y, w: r.w, h: r.h };
 	};
 
+	const ownText = (n: VoidNode): string => {
+		if (n.isText) {
+			let out = "";
+			if (n.spans !== null) { for (const span of n.spans as TextSpan[]) { out += span.text; } }
+			return out;
+		}
+		return n.ref.kind() === DrawKind.Label ? n.ref.labelText() : "";
+	};
+
+	const valueOf = (n: VoidNode): string | null => {
+		const c = clientOf(n);
+		if (c !== null) { return (c as ClientEntry).value.text; }
+		const f = fieldOf(n);
+		return f !== null ? (f as Field).committed : null;
+	};
+
+	const pressable = (n: VoidNode): boolean => {
+		for (const e of events) {
+			if (e.node === n && e.name === "onPress") { return true; }
+		}
+		return false;
+	};
+
+	const snapshot = (n: VoidNode): DevNode => {
+		const at = n.ref.localToGlobal(vec2(0.0, 0.0));
+		const f = frameOf(n);
+		const children: DevNode[] = [];
+		for (const c of n.children) {
+			if (!c.disposed) { children.push(snapshot(c)); }
+		}
+		return {
+			tag: n.tag,
+			text: ownText(n),
+			value: valueOf(n),
+			focused: focusedNode === n,
+			pressable: pressable(n),
+			x: at.x,
+			y: at.y,
+			w: f.w,
+			h: f.h,
+			children,
+		};
+	};
+
 	return {
 		host, root, scene, clickAt, pointerDown, pointerMove, pointerUp, wheel, textInput, keyDown, keyUp,
 		commitText: commit, composeText: compose, setWindowFocus, layout,
@@ -1332,5 +1378,6 @@ export function createVoidHostWith(scene: Scene2D, font: FontId, defaultFamily: 
 		focused: (): VoidNode | null => focusedNode,
 		imeRect, attachTextInput, setEditingState,
 		onDirty: (fn: () => void): void => { dirtyListener = fn; },
+		snapshot: (): DevNode => snapshot(root),
 	};
 }
