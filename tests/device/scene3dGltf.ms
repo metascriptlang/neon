@@ -1,6 +1,7 @@
 import { readFile } from "std/fs";
 import { createSignal, accessor } from "../../src/core/signal";
 import { onCleanup } from "../../src/core/cleanup";
+import { resetErrorHalt, flush } from "../../src/core/runtime";
 import { element } from "../../src/macros/ui/element";
 import { Show } from "../../src/macros/ui/flow";
 import { HostNode, mockNode, mockHost, render } from "../../src/render/host";
@@ -96,22 +97,25 @@ function frame(): void {
 		oldMesh = items[0].mesh; oldMaterial = items[0].material;
 		oldTexture = context.materials[oldMaterial.index].texture;
 		let message = "";
-		try { setBad(true); } catch (error) { message = error.message; }
+		try { setBad(true); flush(); } catch (error) { message = error.message; }
+		finally { resetErrorHalt(); }
 		if (message !== "Gltf: addGltfNodes failed: InvalidData" || !context.hasMesh(oldMesh)) {
 			fail("failed import lost prior model"); return;
 		}
 		setBad(false);
+		flush();
 	}
 	if (frames === 5) {
 		oldMesh = items[0].mesh; oldMaterial = items[0].material;
 		oldTexture = context.materials[oldMaterial.index].texture;
 		setReplacement(true);
+		flush();
 		if (context.hasMesh(oldMesh) || context.hasMaterial(oldMaterial) || context.hasTexture(oldTexture)) {
 			fail("replacement kept retired factory resources live"); return;
 		}
 	}
-	if (frames === 7) { setShown(false); }
-	if (frames === 9) { setShown(true); }
+	if (frames === 7) { setShown(false); flush(); }
+	if (frames === 9) { setShown(true); flush(); }
 	const expected: int32 = frames >= 7 && frames < 9 ? 0 : 5;
 	if (context.liveMeshes() !== baseMeshes + expected ||
 		context.liveMaterials() !== baseMaterials + expected ||
