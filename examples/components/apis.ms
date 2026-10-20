@@ -116,8 +116,9 @@ export function ApiDemo(): NeonNode {
 				setVibrations(vibrations() + 1);
 			}}>vibrate</Pressable>
 			<Pressable style={styles.button} onPress={() => {
-				setCopies(copies() + 1);
-				Clipboard.setString("neon-" + copies().toString());
+				const n = copies() + 1;
+				setCopies(n);
+				Clipboard.setString("neon-" + n.toString());
 			}}>copy</Pressable>
 			<Pressable style={styles.button} onPress={() => { paste(); }}>paste</Pressable>
 			<Pressable style={styles.button} onPress={() => { AccessibilityInfo.announceForAccessibility("Neon announcement"); }}>announce</Pressable>

@@ -116,7 +116,7 @@ function VideoScreen(props: ScreenProps): NeonNode {
 		/>
 		<Text style={styles.status}>{"time " + time()}</Text>
 		<View style={styles.row}>
-			<Pressable style={styles.button} onPress={() => { setPaused(!paused()); say(paused() ? "paused" : "playing"); }}>{paused() ? "play" : "pause"}</Pressable>
+			<Pressable style={styles.button} onPress={() => { const on = !paused(); setPaused(on); say(on ? "paused" : "playing"); }}>{paused() ? "play" : "pause"}</Pressable>
 			<Pressable style={styles.button} onPress={() => { (video as VideoHandle).seek(2); }}>seek 2</Pressable>
 			<Pressable style={styles.button} onPress={() => { (video as VideoHandle).seek(0); }}>restart</Pressable>
 		</View>

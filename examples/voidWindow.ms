@@ -19,8 +19,9 @@ function App(): NeonNode {
 				<Text style={{ fontSize: 20, color: "#cdd6f4" }}>Count: {count().toString()}</Text>
 			</View>
 			<Pressable style={{ width: 120, height: 36, backgroundColor: "#89b4fa" }} onPress={(): void => {
-				setCount(count() + 1);
-				console.log("press count=" + count().toString());
+				const n = count() + 1;
+				setCount(n);
+				console.log("press count=" + n.toString());
 			}}>
 				<Text style={{ color: "#11111b" }}>+1</Text>
 			</Pressable>

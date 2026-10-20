@@ -240,7 +240,7 @@ export function FlutterLists(): NeonNode {
 				<Pressable style={styles.tab} onPress={() => { setScreen(0); say("mail"); }}>mail</Pressable>
 				<Pressable style={styles.tab} onPress={() => { setScreen(1); }}>playlist</Pressable>
 				<Pressable style={styles.tab} onPress={() => { setScreen(2); say("photos"); }}>photos</Pressable>
-				<Pressable style={styles.tab} onPress={() => { setMasonry(!masonry()); say(masonry() ? "masonry" : "grid"); }}>{masonry() ? "show grid" : "show masonry"}</Pressable>
+				<Pressable style={styles.tab} onPress={() => { const on = !masonry(); setMasonry(on); say(on ? "masonry" : "grid"); }}>{masonry() ? "show grid" : "show masonry"}</Pressable>
 				<Pressable style={styles.tab} onPress={() => { say("header"); setScreen(3); }}>header</Pressable>
 				<Pressable style={styles.tab} onPress={() => { setScreen(4); say("slivers"); }}>slivers</Pressable>
 				<Pressable style={styles.tab} onPress={() => { setScreen(5); say("wheel"); }}>wheel</Pressable>
