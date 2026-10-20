@@ -1,8 +1,7 @@
 import { createSignal } from "../../src/core/signal";
 import { element } from "../../src/macros/ui/element";
 import { Host, HostNode, MockNode, mockNode, mockHost, render, mockToString, mockAreaHub } from "../../src/render/host";
-import { VoidAreaHandle, AreaKeyAction, AreaPointerKind, AreaKeyEvent, AreaKeyMod, AreaPointerEvent, AreaPreedit, AreaResize, AreaLayer, Unsubscribe, createAreaHub } from "../../src/render/voidAreaHandle";
-import { Color, rgba } from "../../../void/src/void2d/types";
+import { VoidAreaHandle, AreaKeyAction, AreaPointerKind, AreaKeyEvent, AreaKeyMod, AreaPointerEvent, AreaPreedit, AreaResize, AreaLayer, AreaRgba, Unsubscribe, createAreaHub } from "../../src/render/voidAreaHandle";
 import { onCleanup } from "../../src/core/cleanup";
 import { createContext, useContext } from "../../src/render/context";
 import { Void, View, ViewHandle, Text } from "../../src/components/primitives";
@@ -139,13 +138,13 @@ test "a layer removed by an earlier layer during the frame is neither prepared n
 	let removeSecond: Unsubscribe | null = null;
 	let removeThird: Unsubscribe | null = null;
 	const layer = (name: string, onPrepare: () => void, onDraw: () => void): AreaLayer => ({
-		prepare: (pixelWidth: int32, pixelHeight: int32, background: Color): void => { log.push("prepare " + name); onPrepare(); },
+		prepare: (pixelWidth: int32, pixelHeight: int32, background: AreaRgba): void => { log.push("prepare " + name); onPrepare(); },
 		draw: (): void => { log.push("draw " + name); onDraw(); },
 	});
 	hub.addLayer(layer("a", (): void => { (removeSecond as Unsubscribe)(); }, (): void => { (removeThird as Unsubscribe)(); }));
 	removeSecond = hub.addLayer(layer("b", (): void => {}, (): void => {}));
 	removeThird = hub.addLayer(layer("c", (): void => {}, (): void => {}));
-	hub.prepareLayers(10, 10, rgba(0.0, 0.0, 0.0, 1.0));
+	hub.prepareLayers(10, 10, { r: 0.0, g: 0.0, b: 0.0, a: 1.0 });
 	hub.drawLayers();
 	assert log.join(",") === "prepare a,prepare c,draw a", log.join(",");
 	assert hub.layers().length === 1, "only a stays registered";

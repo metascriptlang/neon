@@ -274,7 +274,7 @@ export function drawArea(a: WindowArea): boolean {
 	const width = fbWidth();
 	const height = fbHeight();
 	const dpi = dpiScale();
-	a.hub.prepareLayers(width, height, scene.clear);
+	a.hub.prepareLayers(width, height, { r: scene.clear.r, g: scene.clear.g, b: scene.clear.b, a: scene.clear.a });
 	if (scene.isClosed()) { return false; }
 	scene.prepare((width as float32) / dpi, (height as float32) / dpi, dpi);
 	beginScreenPassWith(scene.clear.r, scene.clear.g, scene.clear.b, scene.clear.a);

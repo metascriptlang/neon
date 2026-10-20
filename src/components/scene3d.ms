@@ -5,8 +5,7 @@ import { createRoot } from "../core/owner";
 import { onCleanup } from "../core/cleanup";
 import { createContext, useContext } from "../render/context";
 import { VoidSpace, voidScope, voidAreaHub } from "../render/voidScope";
-import { AreaHub, AreaLayer } from "../render/voidAreaHandle";
-import { Color } from "../../../void/src/void2d/types";
+import { AreaHub, AreaLayer, AreaRgba } from "../render/voidAreaHandle";
 import { Host, HostNode, NeonNode } from "../render/hostTypes";
 import { Vec3, Quat, vec3, eulerQuat } from "../../../void/src/math/math3d";
 import { RenderState } from "../../../void/src/gpu/state";
@@ -264,7 +263,7 @@ export function Scene3D(props: Scene3DProps): NeonNode {
 			let lightBlock: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
 			let prepared = false;
 			const layer: AreaLayer = {
-				prepare: (pixelWidth: int32, pixelHeight: int32, background: Color): void => {
+				prepare: (pixelWidth: int32, pixelHeight: int32, background: AreaRgba): void => {
 					prepared = false;
 					refresh(scene, items);
 					const lights = collectLights(scene, lightBlock);

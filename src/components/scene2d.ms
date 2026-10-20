@@ -6,7 +6,7 @@ import { onCleanup } from "../core/cleanup";
 import { createContext, useContext } from "../render/context";
 import { requestFrame, cancelFrame, frameNow } from "../animation/frame";
 import { VoidSpace, voidScope, voidAreaHub } from "../render/voidScope";
-import { AreaLayer } from "../render/voidAreaHandle";
+import { AreaLayer, AreaRgba } from "../render/voidAreaHandle";
 import { Host, HostNode, NeonNode } from "../render/hostTypes";
 import { place } from "../render/reconcile";
 import { createVoidHostWith, VoidHost, VoidNode, freeVoidLayoutTree } from "../platform/void/host";
@@ -379,7 +379,7 @@ export function Scene2D(props: Scene2DProps): NeonNode {
 			let prepared = false;
 			let backdropPrepared = false;
 			const layer: AreaLayer = {
-				prepare: (pixelWidth: int32, pixelHeight: int32, background: Color): void => {
+				prepare: (pixelWidth: int32, pixelHeight: int32, background: AreaRgba): void => {
 					if (scene.closed) { return; }
 					prepared = false;
 					backdropPrepared = false;

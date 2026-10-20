@@ -1,5 +1,4 @@
 import { NeonEvent } from "./event";
-import { Color } from "../../../void/src/void2d/types";
 
 export enum AreaKeyAction {
 	Release,
@@ -114,8 +113,15 @@ export function listeners<T>(): Listeners<T> {
 	};
 }
 
+export struct AreaRgba {
+	r: float32;
+	g: float32;
+	b: float32;
+	a: float32;
+}
+
 export interface AreaLayer {
-	prepare: (pixelWidth: int32, pixelHeight: int32, background: Color) => void;
+	prepare: (pixelWidth: int32, pixelHeight: int32, background: AreaRgba) => void;
 	draw: () => void;
 }
 
@@ -123,7 +129,7 @@ export interface AreaHub {
 	handle: VoidAreaHandle;
 	addLayer: (layer: AreaLayer) => Unsubscribe;
 	layers: () => AreaLayer[];
-	prepareLayers: (pixelWidth: int32, pixelHeight: int32, background: Color) => void;
+	prepareLayers: (pixelWidth: int32, pixelHeight: int32, background: AreaRgba) => void;
 	drawLayers: () => void;
 	key: (e: AreaKeyEvent) => void;
 	text: (text: string) => void;
@@ -175,7 +181,7 @@ export function createAreaHub(ops: AreaOps): AreaHub {
 			};
 		},
 		layers: (): AreaLayer[] => layers,
-		prepareLayers: (pixelWidth: int32, pixelHeight: int32, background: Color): void => {
+		prepareLayers: (pixelWidth: int32, pixelHeight: int32, background: AreaRgba): void => {
 			prepared = [];
 			for (const layer of layers.slice(0)) {
 				if (layers.indexOf(layer) < 0) { continue; }
