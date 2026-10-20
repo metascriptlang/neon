@@ -1,4 +1,5 @@
 import { Host, HostNode } from "../../render/host";
+import { flush } from "../../core/runtime";
 import { TextSpan, TextMeasure } from "../../render/hostTypes";
 import { NeonEvent, neonEvent, eventType } from "../../render/event";
 import { AreaKeyMod, setEventMods } from "../../render/voidAreaHandle";
@@ -1319,7 +1320,7 @@ export function createVoidHostWith(scene: Scene2D, font: FontId, defaultFamily: 
 			layoutPass(root, w, h);
 			flowText(root);
 			fitScrollers();
-			if (!fireLayoutsFiredAny()) { return; }
+			if (!flush((): boolean => fireLayoutsFiredAny())) { return; }
 		}
 		throw new Error(`void host: onLayout handlers still change the layout after ${LAYOUT_PASSES} passes in one frame; a handler that sets what it measures must settle`);
 	};
