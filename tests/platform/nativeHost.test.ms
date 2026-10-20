@@ -38,7 +38,6 @@ import {
 import { PanResponder, PanResponderGestureState } from "../../src/components/panResponder";
 import { HOST_PARK_CONTRACT, hostParkContract } from "../render/hostContract";
 import { refreshBoundary0, refreshComponent0, refreshModule, refreshReset } from "../../src/render/refresh";
-import { flush } from "../../src/core/runtime";
 
 const PRESS: int32 = 2;
 
@@ -68,37 +67,37 @@ test "removed rows and a torn-down app release native views and routes exactly o
 	</View>;
 
 	runApp(app);
-	flush();
+	nmLoop();
 	const created = nmViewsCreated();
 	const released = nmReleaseCalls();
 	nmTouch(2, PRESS);
-	flush();
+	nmLoop();
 	assert pressed === "2;", "the second row's tag routes before removal: " + pressed;
 
 	setRows([1, 3]);
-	flush();
+	nmLoop();
 	assert nmViewsCreated() === created, "keyed rows 1 and 3 are not recreated";
 	assert nmReleaseCalls() - released === 2, "the removed row releases its pressable and its label: " + (nmReleaseCalls() - released).toString();
 	nmTouch(2, PRESS);
-	flush();
+	nmLoop();
 	nmTouch(1, PRESS);
-	flush();
+	nmLoop();
 	nmTouch(3, PRESS);
-	flush();
+	nmLoop();
 	assert pressed === "2;1;3;", "the removed tag is inert, the others still route: " + pressed;
 
 	nmTeardown();
-	flush();
+	nmLoop();
 	assert nmReleaseCalls() === nmViewsCreated(), "every created view is released after teardown";
 	nmTouch(1, PRESS);
-	flush();
+	nmLoop();
 	assert pressed === "2;1;3;", "no route survives teardown: " + pressed;
 
 	nmMount();
-	flush();
+	nmLoop();
 	assert nmViewsCreated() > nmReleaseCalls(), "the remount creates fresh views";
 	nmTeardown();
-	flush();
+	nmLoop();
 	assert nmReleaseCalls() === nmViewsCreated(), "a second teardown releases the remount";
 }
 
@@ -109,15 +108,15 @@ test "a ScrollView's native content size follows its laid-out content, also afte
 		<View style={{ height: 300 }} />
 	</ScrollView>;
 	runApp(app);
-	flush();
+	nmLoop();
 	assert `${nmContentWidth()} ${nmContentHeight()}` === "400 600", "portrait: " + `${nmContentWidth()} ${nmContentHeight()}`;
 	nmResize(800, 400);
-	flush();
+	nmLoop();
 	assert `${nmContentWidth()} ${nmContentHeight()}` === "800 600", "landscape: " + `${nmContentWidth()} ${nmContentHeight()}`;
 	nmResize(400, 800);
-	flush();
+	nmLoop();
 	nmTeardown();
-	flush();
+	nmLoop();
 	assert nmReleaseCalls() === nmViewsCreated(), "the scroll view is released with the rest";
 }
 
@@ -129,12 +128,12 @@ test "onScroll on a native ScrollView carries the native offset, viewport and co
 		<View style={{ height: 900 }} />
 	</ScrollView>;
 	runApp(app);
-	flush();
+	nmLoop();
 	nmScroll(nmLastScrollTag(), 0, 120, 400, 800, 400, 900);
-	flush();
+	nmLoop();
 	assert got === "scroll 0 120 400 800 400 900", "payload: " + got;
 	nmTeardown();
-	flush();
+	nmLoop();
 }
 
 test "scrollTo on a native ScrollView reaches the native scroll view" {
@@ -143,11 +142,11 @@ test "scrollTo on a native ScrollView reaches the native scroll view" {
 		<View style={{ height: 900 }} />
 	</ScrollView>;
 	runApp(app);
-	flush();
+	nmLoop();
 	handles[0].scrollTo({ y: 120, animated: false });
 	assert `${nmScrolledX()} ${nmScrolledY()} ${nmScrolledAnimated()}` === "0 120 0", "scrolled " + `${nmScrolledX()} ${nmScrolledY()} ${nmScrolledAnimated()}`;
 	nmTeardown();
-	flush();
+	nmLoop();
 }
 
 test "onLayout reports a native view's frame after mount and again when a rotation changes it" {
@@ -156,18 +155,18 @@ test "onLayout reports a native view's frame after mount and again when a rotati
 		got += `${e.type} ${e.x} ${e.y} ${e.width} ${e.height};`;
 	}} />;
 	runApp(app);
-	flush();
+	nmLoop();
 	assert got === "layout 0 0 400 100;", "after mount: " + got;
 	nmResize(800, 400);
-	flush();
+	nmLoop();
 	assert got === "layout 0 0 400 100;layout 0 0 800 100;", "after a rotation: " + got;
 	nmResize(800, 400);
-	flush();
+	nmLoop();
 	assert got === "layout 0 0 400 100;layout 0 0 800 100;", "an unchanged frame does not fire again: " + got;
 	nmResize(400, 800);
-	flush();
+	nmLoop();
 	nmTeardown();
-	flush();
+	nmLoop();
 }
 
 interface Entry {
@@ -197,13 +196,13 @@ test "a 10000-row FlatList creates native views for its window only and sizes th
 	const app = (): NeonNode => <FlatList data={data} style={{ flex: 1 }} getItemLayout={rowLayout} updateCellsBatchingPeriod={0}
 		renderItem={(info: ListRenderItemInfo<Entry>): NeonNode => <View style={rowBox}><Text>{"row " + info.item.n.toString()}</Text></View>} />;
 	runApp(app);
-	flush();
+	nmLoop();
 	loopUntilIdle();
 	const created = nmViewsCreated() - before;
 	assert created > 100 && created < 1000, "views for the window, not 10000 rows: " + created.toString();
 	assert nmContentHeight() === 500000, "content spans every row: " + nmContentHeight().toString();
 	nmTeardown();
-	flush();
+	nmLoop();
 	assert nmReleaseCalls() === nmViewsCreated(), "every window view is released";
 }
 
@@ -216,10 +215,10 @@ test "an empty string node, such as a region's anchor, takes no layout space and
 		<View style={{ height: 20 }} />
 	</View>;
 	runApp(app);
-	flush();
+	nmLoop();
 	assert got === "50", "two 20-high boxes and one gap: " + got;
 	nmTeardown();
-	flush();
+	nmLoop();
 }
 
 test "one native scroll event that moves a FlatList window runs one layout pass" {
@@ -227,16 +226,15 @@ test "one native scroll event that moves a FlatList window runs one layout pass"
 	const app = (): NeonNode => <FlatList data={data} style={{ flex: 1 }} getItemLayout={rowLayout} updateCellsBatchingPeriod={0}
 		renderItem={(info: ListRenderItemInfo<Entry>): NeonNode => <View style={rowBox}><Text>{"row " + info.item.n.toString()}</Text></View>} />;
 	runApp(app);
-	flush();
+	nmLoop();
 	loopUntilIdle();
 	const views = nmViewsCreated();
 	const before = nmScreenHeightReads();
 	nmScroll(nmLastScrollTag(), 0, 100000, 400, 800, 400, 500000);
-	flush();
 	const passes = nmScreenHeightReads() - before;
 	const moved = nmViewsCreated() > views;
 	nmTeardown();
-	flush();
+	nmLoop();
 	assert moved && passes === 1, "layout passes for one scroll event that moves the window: " + passes.toString();
 }
 
@@ -250,7 +248,7 @@ test "a FlatList without getItemLayout measures its native rows and scrolls to i
 	const app = (): NeonNode => <FlatList data={data} style={{ flex: 1 }} windowSize={3} updateCellsBatchingPeriod={0}
 		renderItem={(info: ListRenderItemInfo<Entry>): NeonNode => <View style={tallness(info.item.n)}><Text>{"row " + info.item.n.toString()}</Text></View>} />;
 	runApp(app);
-	flush();
+	nmLoop();
 	loopUntilIdle();
 	const full = 250 * (30 + 40 + 50 + 60);
 	const window = nmViewsCreated() - before;
@@ -264,7 +262,7 @@ test "a FlatList without getItemLayout measures its native rows and scrolls to i
 	}
 	const live = nmViewsCreated() - nmReleaseCalls();
 	nmTeardown();
-	flush();
+	nmLoop();
 	assert nmContentHeight() === full, "every row measured at its own height after " + steps.toString() + " scrolls: " + nmContentHeight().toString();
 	assert live < 600, "still a window at the end: " + live.toString();
 }
@@ -274,7 +272,7 @@ test "a FlatList batch that a std timer runs is laid out once per pass of the UI
 	const app = (): NeonNode => <FlatList data={data} style={{ flex: 1 }} getItemLayout={rowLayout} updateCellsBatchingPeriod={0}
 		renderItem={(info: ListRenderItemInfo<Entry>): NeonNode => <View style={rowBox}><Text>{"row " + info.item.n.toString()}</Text></View>} />;
 	runApp(app);
-	flush();
+	nmLoop();
 	let worst = 0;
 	let batches = 0;
 	for (let i = 0; i < 1000; i += 1) {
@@ -286,7 +284,7 @@ test "a FlatList batch that a std timer runs is laid out once per pass of the UI
 		if (next !== 0) { break; }
 	}
 	nmTeardown();
-	flush();
+	nmLoop();
 	assert batches > 0 && worst === 1, `${batches} batches, at most ${worst} layout passes in one pass of the loop`;
 }
 
@@ -299,17 +297,17 @@ test "a layout pass that leaves a ScrollView's frame and content size alone writ
 		</ScrollView>
 	</View>;
 	runApp(app);
-	flush();
+	nmLoop();
 	const frames = nmScrollFrameWrites();
 	const sizes = nmContentSizeWrites();
 	const passes = nmScreenHeightReads();
 	nmScroll(nmLastScrollTag(), 0, 120, 400, 760, 400, 900);
-	flush();
+	nmLoop();
 	const ran = nmScreenHeightReads() - passes;
 	const framed = nmScrollFrameWrites() - frames;
 	const sized = nmContentSizeWrites() - sizes;
 	nmTeardown();
-	flush();
+	nmLoop();
 	assert ran === 1, "the changed offset text runs a layout pass: " + ran.toString();
 	assert framed === 0, "frame writes to the unchanged scroll view: " + framed.toString();
 	assert sized === 0, "content size writes for unchanged content: " + sized.toString();
@@ -321,9 +319,9 @@ test "a ScrollView with no style fits its parent instead of growing to its conte
 		<View style={{ height: 2000 }} />
 	</ScrollView>;
 	runApp(app);
-	flush();
+	nmLoop();
 	nmTeardown();
-	flush();
+	nmLoop();
 	assert got === "800", "the scroll view's height in an 800-high screen: " + got;
 }
 
@@ -334,10 +332,10 @@ test "horizontal content measures on the x axis" {
 		<View style={{ width: 300, height: 100 }} />
 	</ScrollView>;
 	runApp(app);
-	flush();
+	nmLoop();
 	assert nmContentWidth() === 900, "three 300-wide children share one horizontal row";
 	nmTeardown();
-	flush();
+	nmLoop();
 }
 
 
@@ -352,31 +350,31 @@ test "native Style transforms paint and hit-test around the centre without chang
 		}}
 		onPress={() => { pressed += 1; }} />;
 	runApp(app);
-	flush();
+	nmLoop();
 	const tag = nmLastPressableTag();
 	assert nmVisualX(tag, 0) === 90 && nmVisualX(tag, 100) === -10, "inversion scales the subsequent x translation";
 	assert nmVisualY(tag, 0) === 40 && nmVisualY(tag, 40) === 0, "vertical inversion is centred on the view";
 	nmTouchAt(40, 20, PRESS);
-	flush();
+	nmLoop();
 	assert pressed === 1, "a transformed hit still routes to the pressable";
 	const writes = nmTransformWrites();
 	setTransform("translateX(15px) scale(2, 3)");
-	flush();
+	nmLoop();
 	assert nmVisualX(tag, 0) === -35 && nmVisualX(tag, 100) === 165, "translation before scale is not multiplied";
 	assert nmVisualY(tag, 0) === -40 && nmVisualY(tag, 40) === 80, "nonuniform scale uses the unchanged layout height";
 	assert nmTransformWrites() === writes + 1, "one update projects one transform";
 	setTransform("none");
-	flush();
+	nmLoop();
 	assert nmVisualX(tag, 0) === 0 && nmVisualY(tag, 0) === 0, "none clears scale and translation";
 	setTransform("translate(12px, 7px)");
-	flush();
+	nmLoop();
 	assert nmVisualX(tag, 0) === 12 && nmVisualY(tag, 0) === 7, "sticky-style translation paints without moving the layout frame";
 	setTransform(null);
-	flush();
+	nmLoop();
 	assert nmVisualX(tag, 0) === 0 && nmVisualY(tag, 0) === 0, "null also clears a prior transform";
 	assert nmLayoutWidth(tag) === 100 && nmLayoutHeight(tag) === 40 && layouts === 1, "paint updates neither resize nor repeat onLayout";
 	nmTeardown();
-	flush();
+	nmLoop();
 }
 
 test "inverted native scroll content keeps logical offsets and frames after resizing, with double-inverted rows still pressable" {
@@ -391,7 +389,7 @@ test "inverted native scroll content keeps logical offsets and frames after resi
 			onPress={() => { pressed = true; }} />
 	</ScrollView>;
 	runApp(app);
-	flush();
+	nmLoop();
 	const tag = nmLastPressableTag();
 	const scrollTag = nmLastScrollTag();
 	assert nmLayoutHeight(scrollTag) === 100, "the fixture declares a fixed viewport instead of flex-growing";
@@ -399,22 +397,22 @@ test "inverted native scroll content keeps logical offsets and frames after resi
 	handles[0].scrollTo({ y: 150, animated: false });
 	assert nmScrolledY() === 150, "imperative offsets remain untransformed";
 	nmScroll(scrollTag, 0, 150, 400, 100, 400, 250);
-	flush();
+	nmLoop();
 	assert payload === "150 100 250", "scroll event metrics remain untransformed";
 	assert nmVisualY(tag, 0) === 0 && nmVisualY(tag, 50) === 50, "two inversions restore the visible row direction at the logical offset";
 	nmTouchAt(50, 25, PRESS);
-	flush();
+	nmLoop();
 	assert pressed, "transformed content routes the visible row's touch";
 	const transforms = nmTransformWrites();
 	nmResize(800, 400);
-	flush();
+	nmLoop();
 	assert nmLayoutWidth(scrollTag) === 800 && nmLayoutHeight(scrollTag) === 100, "an inverted viewport still receives the new logical frame";
 	assert nmVisualY(tag, 0) === 0 && nmVisualY(tag, 50) === 50, "resizing preserves the scroll offset and existing transform";
 	assert nmContentHeight() === 250 && nmTransformWrites() === transforms, "layout does not re-project or reparse transforms";
 	nmResize(400, 800);
-	flush();
+	nmLoop();
 	nmTeardown();
-	flush();
+	nmLoop();
 }
 
 test "unrelated native Style changes keep the cached transform projection" {
@@ -422,15 +420,15 @@ test "unrelated native Style changes keep the cached transform projection" {
 	const app = (): NeonNode => <Pressable style={{ width: 100, height: height(), transform: "scaleX(-1)" }}
 		onPress={() => {}} />;
 	runApp(app);
-	flush();
+	nmLoop();
 	const tag = nmLastPressableTag();
 	const writes = nmTransformWrites();
 	setHeight(60);
-	flush();
+	nmLoop();
 	assert nmLayoutHeight(tag) === 60 && nmVisualX(tag, 0) === 100, "new layout with the old inversion";
 	assert nmTransformWrites() === writes, "the same CSS transform is not parsed or projected again";
 	nmTeardown();
-	flush();
+	nmLoop();
 }
 
 test "native zIndex controls overlapping pressables without changing layout or detaching their views" {
@@ -447,7 +445,7 @@ test "native zIndex controls overlapping pressables without changing layout or d
 			onPress={() => { pressed += "lower;"; }} />
 	</View>;
 	runApp(app);
-	flush();
+	nmLoop();
 	const parentTag = nmPaintTag(0, 0);
 	const upperTag = nmPaintTag(parentTag, 1);
 	const lowerTag = nmLastPressableTag();
@@ -456,19 +454,19 @@ test "native zIndex controls overlapping pressables without changing layout or d
 	const added = nmAddChildWrites();
 	const detached = nmDetachWrites();
 	nmTouchAt(50, 20, PRESS);
-	flush();
+	nmLoop();
 	setZ(-1);
-	flush();
+	nmLoop();
 	nmTouchAt(50, 20, PRESS);
-	flush();
+	nmLoop();
 	setZ(null);
-	flush();
+	nmLoop();
 	nmTouchAt(50, 20, PRESS);
-	flush();
+	nmLoop();
 	setZ(10);
-	flush();
+	nmLoop();
 	nmTouchAt(50, 20, PRESS);
-	flush();
+	nmLoop();
 	assert pressed === "upper;lower;lower;upper;", "touch order follows changed z, including a reset to equal zero: " + pressed;
 	assert nmLayoutX(upperTag) === 0 && nmLayoutY(upperTag) === 0 &&
 		nmLayoutY(lowerTag) === 40 && nmLayoutWidth(upperTag) === 100 && nmLayoutHeight(upperTag) === 40,
@@ -477,19 +475,19 @@ test "native zIndex controls overlapping pressables without changing layout or d
 	assert nmAddChildWrites() === added && nmDetachWrites() === detached, "restacking never removes or re-adds a view";
 	const restacked = nmRestackWrites();
 	setColor("#445566");
-	flush();
+	nmLoop();
 	nmResize(400, 800);
-	flush();
+	nmLoop();
 	nmResize(800, 400);
-	flush();
+	nmLoop();
 	nmResize(400, 800);
-	flush();
+	nmLoop();
 	assert nmRestackWrites() === restacked, "unrelated Style updates and stable or resized layouts do not restack";
 	nmTouchAt(50, 20, PRESS);
-	flush();
+	nmLoop();
 	assert pressed === "upper;lower;lower;upper;upper;", "the same press route survives paint and layout changes";
 	nmTeardown();
-	flush();
+	nmLoop();
 }
 
 test "native equal-z reorders preserve logical siblings and press state, with a cheap zero-z append path" {
@@ -584,14 +582,14 @@ test "native materialized string labels participate in paint order and reuse the
 	const host = native.host;
 	const p = host.createElement("View");
 	host.setStyle(p, { width: 100, height: 100 });
-	flush();
+	nmLoop();
 	host.addEvent(p, "onLayout", (e: NeonEvent): void => {});
 	host.append(native.rootNode, p);
 	const parentTag = nmPaintTag(0, 0);
 	const label = host.createText("label");
 	const upper = host.createElement("View");
 	host.setStyle(upper, { height: 40, zIndex: 10 });
-	flush();
+	nmLoop();
 	host.addEvent(upper, "onPress", (e: NeonEvent): void => {});
 	const upperTag = nmLastPressableTag();
 	host.append(p, upper);
@@ -599,7 +597,7 @@ test "native materialized string labels participate in paint order and reuse the
 	assert nmPaintTextIndex(parentTag, "label") === 0 && nmPaintTag(parentTag, 1) === upperTag,
 		"materialized labels are zero-z children, not excluded from restacking";
 	host.setStyle(upper, { height: 40 });
-	flush();
+	nmLoop();
 	assert nmPaintTextIndex(parentTag, "label") === 1, "resetting the only nonzero z restores logical order";
 	const created = nmViewsCreated();
 	const detached = nmDetachWrites();
@@ -628,7 +626,7 @@ test "native materialized string labels participate in paint order and reuse the
 	host.removeChild(native.rootNode, p);
 	assert nmReleaseCalls() === nmViewsCreated(), "string materialization and cleanup leave no native views behind";
 	nmTeardown();
-	flush();
+	nmLoop();
 }
 
 test "a native sticky list paints and routes its retained header above rows, then removes and changes its sticky indices" {
@@ -641,33 +639,33 @@ test "a native sticky list paints and routes its retained header above rows, the
 		updateCellsBatchingPeriod={0} stickyHeaderIndices={indices()} ref={(h: FlatListHandle): void => { handles.push(h); }}
 		renderItem={(info: ListRenderItemInfo<Entry>): NeonNode => <Pressable style={rowBox} onPress={() => { pressed += info.item.n.toString() + ";"; }}><Text>{info.item.id}</Text></Pressable>} />;
 	runApp(app);
-	flush();
+	nmLoop();
 	loopUntilIdle();
 	const scrollTag = nmLastScrollTag();
 	handles[0].scrollToOffset({ offset: 650, animated: false });
 	nmScroll(scrollTag, 0, 650, 400, 200, 400, 2000);
-	flush();
+	nmLoop();
 	loopUntilIdle();
 	nmTouchAt(50, 25, PRESS);
-	flush();
+	nmLoop();
 	assert pressed === "10;", "the preceding sticky header receives the overlapping row's press: " + pressed;
 	setIndices([]);
-	flush();
+	nmLoop();
 	loopUntilIdle();
 	nmTouchAt(50, 25, PRESS);
-	flush();
+	nmLoop();
 	assert pressed === "10;13;", "removing sticky indices exposes the ordinary visible row: " + pressed;
 	setIndices([0, 13]);
-	flush();
+	nmLoop();
 	handles[0].scrollToOffset({ offset: 700, animated: false });
 	nmScroll(scrollTag, 0, 700, 400, 200, 400, 2000);
-	flush();
+	nmLoop();
 	loopUntilIdle();
 	nmTouchAt(50, 25, PRESS);
-	flush();
+	nmLoop();
 	assert pressed === "10;13;13;", "changing indices makes the retained row stick instead: " + pressed;
 	nmTeardown();
-	flush();
+	nmLoop();
 	assert nmReleaseCalls() === nmViewsCreated(), "sticky wrappers leave no native view behind";
 }
 
@@ -688,7 +686,7 @@ test "a native TextInput writes its props, routes typing, focus and submit, and 
 			onSubmitEditing={(e: NeonEvent): void => { log += "submit " + e.value + ";"; }} />
 	</View>;
 	runApp(app);
-	flush();
+	nmLoop();
 	const tag = nmLastInputTag();
 	assert prop(tag, "value") === "Ada", "initial value: " + prop(tag, "value");
 	assert prop(tag, "placeholder") === "Name", "placeholder: " + prop(tag, "placeholder");
@@ -698,15 +696,15 @@ test "a native TextInput writes its props, routes typing, focus and submit, and 
 	handles[0].focus();
 	assert nmFocused(tag) === 1 && handles[0].isFocused(), "focus() reaches the native field and isFocused follows it";
 	nmControl(tag, 0, "grace");
-	flush();
+	nmLoop();
 	assert prop(tag, "value") === "GRACE", "the controlled value is written back: " + prop(tag, "value");
 	nmControl(tag, 3, "GRACE");
-	flush();
+	nmLoop();
 	handles[0].blur();
 	assert !handles[0].isFocused(), "blur() clears isFocused";
 	assert log === "focus;change grace;submit GRACE;blur;", "event order: " + log;
 	nmTeardown();
-	flush();
+	nmLoop();
 	assert nmReleaseCalls() === nmViewsCreated(), "the input is released with the rest";
 }
 
@@ -719,23 +717,23 @@ test "the native host publishes window size, keyboard height and color scheme as
 		<Text>{`${dims().width}x${dims().height} ${keyboard().visible ? "kb " + keyboard().height.toString() : "no kb"} ${scheme()}`}</Text>
 	</View>;
 	runApp(app);
-	flush();
+	nmLoop();
 	seen = `${dims().width}x${dims().height} ${keyboard().height} ${scheme()}`;
 	assert seen === "400x800 0 light", "initial environment: " + seen;
 	nmEnvironment(300, 1);
-	flush();
+	nmLoop();
 	seen = `${dims().width}x${dims().height} ${keyboard().height} ${scheme()}`;
 	assert seen === "400x800 300 dark", "keyboard and dark mode: " + seen;
 	nmResize(800, 400);
-	flush();
+	nmLoop();
 	seen = `${dims().width}x${dims().height} ${keyboard().height} ${scheme()}`;
 	assert seen === "800x400 300 dark", "rotation: " + seen;
 	nmEnvironment(0, 0);
-	flush();
+	nmLoop();
 	nmResize(400, 800);
-	flush();
+	nmLoop();
 	nmTeardown();
-	flush();
+	nmLoop();
 }
 
 test "native Switch, ActivityIndicator and Image write their props, size themselves and route their events" {
@@ -750,7 +748,7 @@ test "native Switch, ActivityIndicator and Image write their props, size themsel
 			onError={(e: NeonEvent): void => { log += `error ${e.value};`; }} />
 	</View>;
 	runApp(app);
-	flush();
+	nmLoop();
 	const toggle = nmLastControlTag(2);
 	const spinner = nmLastControlTag(3);
 	const picture = nmLastControlTag(4);
@@ -761,18 +759,18 @@ test "native Switch, ActivityIndicator and Image write their props, size themsel
 	assert prop(picture, "source") === "https://example.com/a.png" && prop(picture, "resizeMode") === "cover", "image props";
 	assert `${nmLayoutWidth(picture)}x${nmLayoutHeight(picture)}` === "64x48", "image frame";
 	nmControl(toggle, 4, "true");
-	flush();
+	nmLoop();
 	assert prop(toggle, "value") === "true", "the controlled switch follows its signal";
 	setBusy(false);
-	flush();
+	nmLoop();
 	assert prop(spinner, "animating") === "false", "animating follows its signal";
 	nmControlSized(picture, 5, "", 640, 480);
-	flush();
+	nmLoop();
 	nmControl(picture, 6, "HTTP 404");
-	flush();
+	nmLoop();
 	assert log === "switch true;load 640x480;error HTTP 404;", "events: " + log;
 	nmTeardown();
-	flush();
+	nmLoop();
 	assert nmReleaseCalls() === nmViewsCreated(), "controls are released";
 }
 
@@ -790,7 +788,7 @@ test "native Slider, Picker and DateTimePicker are created by name, size themsel
 		<DateTimePicker value={day()} onChange={(v: string): void => { log += `day ${v};`; setDay(v); }} />
 	</View>;
 	runApp(app);
-	flush();
+	nmLoop();
 	const slider = nmLastControlTag(6);
 	const picker = nmLastControlTag(7);
 	const date = nmLastControlTag(8);
@@ -799,17 +797,17 @@ test "native Slider, Picker and DateTimePicker are created by name, size themsel
 	assert prop(picker, "selectedIndex") === "0" && `${nmLayoutHeight(picker)}` === "44", "picker";
 	assert prop(date, "mode") === "date" && `${nmLayoutWidth(date)}x${nmLayoutHeight(date)}` === "120x36", "date picker takes its native size";
 	nmControl(slider, 4, "5.2");
-	flush();
+	nmLoop();
 	nmControl(slider, 8, "5.2");
-	flush();
+	nmLoop();
 	nmControl(picker, 4, "1");
-	flush();
+	nmLoop();
 	nmControl(date, 4, "2026-11-02");
-	flush();
+	nmLoop();
 	assert log === "slide 5;done 5;room ste;day 2026-11-02;", "events: " + log;
 	assert prop(slider, "value") === "5" && prop(picker, "selectedIndex") === "1" && prop(date, "value") === "2026-11-02", "controlled values written back";
 	nmTeardown();
-	flush();
+	nmLoop();
 	assert nmReleaseCalls() === nmViewsCreated(), "controls are released";
 }
 
@@ -824,17 +822,17 @@ test "native text wraps to the width its container gives it, so a row grows with
 		</View>
 	</View>;
 	runApp(app);
-	flush();
+	nmLoop();
 	const size = `${nmTextWidth(long)}x${nmTextHeight(long)}`;
 	assert size === "312x42", "the label takes the column's 312pt and wraps to two 21pt lines: " + size;
 	nmResize(800, 400);
-	flush();
+	nmLoop();
 	const wide = `${nmTextWidth(long)}x${nmTextHeight(long)}`;
 	assert wide === "570x21", "a wider window rewraps the same label: " + wide;
 	nmResize(400, 800);
-	flush();
+	nmLoop();
 	nmTeardown();
-	flush();
+	nmLoop();
 }
 
 test "a native FlatList that filters down to no rows shows its ListEmptyComponent" {
@@ -845,17 +843,17 @@ test "a native FlatList that filters down to no rows shows its ListEmptyComponen
 			renderItem={(info: ListRenderItemInfo<Entry>): NeonNode => <View style={rowBox}><Text>{info.item.id}</Text></View>} />
 	</View>;
 	runApp(app);
-	flush();
+	nmLoop();
 	loopUntilIdle();
 	setRows([]);
-	flush();
+	nmLoop();
 	loopUntilIdle();
 	assert nmTextHeight("nothing here") > 0, "the empty component has a frame: " + nmTextHeight("nothing here").toString();
 	setRows(entries(2));
-	flush();
+	nmLoop();
 	loopUntilIdle();
 	nmTeardown();
-	flush();
+	nmLoop();
 }
 
 test "a label that grows inside a shrink-wrapped box is remeasured unwrapped, not at the box's old width" {
@@ -866,13 +864,13 @@ test "a label that grows inside a shrink-wrapped box is remeasured unwrapped, no
 		</View>
 	</View>;
 	runApp(app);
-	flush();
+	nmLoop();
 	assert `${nmTextWidth("SAVE")}x${nmTextHeight("SAVE")}` === "34x21", "initial: " + `${nmTextWidth("SAVE")}x${nmTextHeight("SAVE")}`;
 	setBig(true);
-	flush();
+	nmLoop();
 	assert `${nmTextWidth("SAVE")}x${nmTextHeight("SAVE")}` === "40x24", "a bigger font keeps one line: " + `${nmTextWidth("SAVE")}x${nmTextHeight("SAVE")}`;
 	nmTeardown();
-	flush();
+	nmLoop();
 }
 
 test "a native TextInput's padding reaches the native field as text insets" {
@@ -880,10 +878,10 @@ test "a native TextInput's padding reaches the native field as text insets" {
 		<TextInput style={{ padding: 8, paddingLeft: 12, height: 44 }} onChangeText={(t: string): void => {}} />
 	</View>;
 	runApp(app);
-	flush();
+	nmLoop();
 	assert prop(nmLastInputTag(), "textInsets") === "12,8,8,8", "insets: " + prop(nmLastInputTag(), "textInsets");
 	nmTeardown();
-	flush();
+	nmLoop();
 }
 
 function numbers(first: number, count: number): number[] {
@@ -908,7 +906,7 @@ function withLoader(load: () => void, body: NeonNode): NeonNode {
 
 function pressLoad(): void {
 	nmTouch(nmLastPressableTag(), PRESS);
-	flush();
+	nmLoop();
 }
 
 function keptRows(rows: () => number[], keep: MaintainVisibleContentPosition | null, seen: (e: NeonEvent) => void): NeonNode {
@@ -926,13 +924,13 @@ test "a native ScrollView with maintainVisibleContentPosition keeps its first vi
 		keptRows(rows, { minIndexForVisible: 0 }, (e: NeonEvent): void => { reported = e.y; })));
 	const tag = nmLastScrollTag();
 	nmScroll(tag, 0, 120, 400, 200, 400, 500);
-	flush();
+	nmLoop();
 	const before = nmTextVisualY("row 2");
 	pressLoad();
 	const after = nmTextVisualY("row 2");
 	const offset = nmScrollOffsetY(tag);
 	nmTeardown();
-	flush();
+	nmLoop();
 	assert after === before, `row 2, the first visible row, stays at ${before}: ${after}`;
 	assert offset === 270, "the offset moves by the three 50-high rows: " + offset.toString();
 	assert reported === 270, "the shift reaches onScroll like a platform scroll: " + reported.toString();
@@ -941,10 +939,10 @@ test "a native ScrollView with maintainVisibleContentPosition keeps its first vi
 test "without maintainVisibleContentPosition a native ScrollView keeps its offset and the rows move" {
 	const [rows, setRows] = createSignal<number[]>(numbers(0, 10));
 	runApp((): NeonNode => withLoader((): void => { setRows(prepended(rows(), 3)); }, keptRows(rows, null, (e: NeonEvent): void => {})));
-	flush();
+	nmLoop();
 	const tag = nmLastScrollTag();
 	nmScroll(tag, 0, 120, 400, 200, 400, 500);
-	flush();
+	nmLoop();
 	const before = nmTextVisualY("row 2");
 	const shifts = nmScrollShifts();
 	pressLoad();
@@ -952,7 +950,7 @@ test "without maintainVisibleContentPosition a native ScrollView keeps its offse
 	const offset = nmScrollOffsetY(tag);
 	const shifted = nmScrollShifts() - shifts;
 	nmTeardown();
-	flush();
+	nmLoop();
 	assert after === before + 150, `row 2 moves down by the prepended rows: ${before} -> ${after}`;
 	assert offset === 120 && shifted === 0, `the offset stays: ${offset}, ${shifted} shifts`;
 }
@@ -966,13 +964,13 @@ test "minIndexForVisible skips the children before it when the native host picks
 		</ScrollView>));
 	const tag = nmLastScrollTag();
 	nmScroll(tag, 0, 50, 400, 200, 400, 600);
-	flush();
+	nmLoop();
 	const before = nmTextVisualY("row 0");
 	pressLoad();
 	const after = nmTextVisualY("row 0");
 	const offset = nmScrollOffsetY(tag);
 	nmTeardown();
-	flush();
+	nmLoop();
 	assert after === before && offset === 150, `the first row past the partly visible header stays: ${before} -> ${after}, offset ${offset}`;
 }
 
@@ -982,17 +980,17 @@ test "autoscrollToTopThreshold animates to the start after the shift when the of
 		keptRows(rows, { minIndexForVisible: 0, autoscrollToTopThreshold: 10 }, (e: NeonEvent): void => {})));
 	const tag = nmLastScrollTag();
 	nmScroll(tag, 0, 5, 400, 200, 400, 500);
-	flush();
+	nmLoop();
 	pressLoad();
 	const near = `${nmScrollShifts() > 0} ${nmScrolledY()} ${nmScrolledAnimated()}`;
 	nmScroll(tag, 0, 120, 400, 200, 400, 600);
-	flush();
+	nmLoop();
 	const shifts = nmScrollShifts();
 	pressLoad();
 	const far = nmScrollOffsetY(tag);
 	const shifted = nmScrollShifts() - shifts;
 	nmTeardown();
-	flush();
+	nmLoop();
 	assert near === "true 0 1", "shifted, then animated to the start: " + near;
 	assert far === 220 && shifted === 1, `past the threshold the offset only shifts: ${far}, ${shifted} shifts`;
 }
@@ -1005,13 +1003,13 @@ test "a horizontal native ScrollView keeps its first visible column on the x axi
 		</ScrollView>));
 	const tag = nmLastScrollTag();
 	nmScroll(tag, 120, 0, 200, 800, 500, 800);
-	flush();
+	nmLoop();
 	const before = nmTextVisualX("col 2");
 	pressLoad();
 	const after = nmTextVisualX("col 2");
 	const offset = `${nmScrollOffsetX(tag)} ${nmScrollOffsetY(tag)}`;
 	nmTeardown();
-	flush();
+	nmLoop();
 	assert after === before && offset === "270 0", `column 2 stays at ${before}: ${after}, offset ${offset}`;
 }
 
@@ -1031,21 +1029,21 @@ test "a native FlatList with maintainVisibleContentPosition keeps the visible me
 			renderItem={(info: ListRenderItemInfo<Entry>): NeonNode => <View style={rowBox}><Text>{"row " + info.item.n.toString()}</Text></View>} />
 	</View>;
 	runApp(app);
-	flush();
+	nmLoop();
 	loopUntilIdle();
 	const tag = nmLastScrollTag();
 	nmScroll(tag, 0, 1000, 400, 779, 400, 5000);
-	flush();
+	nmLoop();
 	loopUntilIdle();
 	const before = nmTextVisualY("row 20");
 	nmTouch(nmLastPressableTag(), PRESS);
-	flush();
+	nmLoop();
 	loopUntilIdle();
 	const after = nmTextVisualY("row 20");
 	const offset = nmScrollOffsetY(tag);
 	const height = nmContentHeight();
 	nmTeardown();
-	flush();
+	nmLoop();
 	assert after === before, `row 20 stays at ${before}: ${after}`;
 	assert offset === 2000 && height === 6000, `the offset follows the 20 older rows: ${offset}, content ${height}`;
 }
@@ -1056,12 +1054,12 @@ test "a native Pressable is one accessibility element by default, and accessible
 		<Pressable accessible={false} onPress={(e: NeonEvent): void => {}}><Text>Quiet</Text></Pressable>
 	</View>;
 	runApp(app);
-	flush();
+	nmLoop();
 	const quiet = nmLastPressableTag();
 	assert prop(quiet, "accessible") === "false", "opted out: " + prop(quiet, "accessible");
 	assert prop(quiet - 1, "accessible") === "true", "default: " + prop(quiet - 1, "accessible");
 	nmTeardown();
-	flush();
+	nmLoop();
 }
 
 test "a native TouchableHighlight paints its underlay while pressed and clears it to transparent" {
@@ -1069,16 +1067,16 @@ test "a native TouchableHighlight paints its underlay while pressed and clears i
 		<TouchableHighlight underlayColor="#336699" onPress={(e: NeonEvent): void => {}}><Text>Row</Text></TouchableHighlight>
 	</View>;
 	runApp(app);
-	flush();
+	nmLoop();
 	const tag = nmLastViewTag();
 	assert nmBackgroundAlpha(tag) === 0, "transparent at rest";
 	nmTouch(tag, 0);
-	flush();
+	nmLoop();
 	assert nmBackgroundAlpha(tag) === 1, "the underlay paints on press in";
 	nmTouch(tag, 3);
-	flush();
+	nmLoop();
 	nmTeardown();
-	flush();
+	nmLoop();
 }
 
 function anyProp(name: string): string {
@@ -1092,14 +1090,14 @@ test "a native StatusBar sends its bar style and visibility through the prop cha
 		<View style={{ height: 50 }} onLayout={(e: NeonEvent): void => {}} />
 	</View>;
 	runApp(app);
-	flush();
+	nmLoop();
 	assert anyProp("statusBarStyle") === "light-content" && anyProp("statusBarHidden") === "false", "applied";
 	setHidden(true);
-	flush();
+	nmLoop();
 	assert anyProp("statusBarHidden") === "true", "hidden follows its signal";
 	assert nmLayoutY(nmLastViewTag()) === 0, "the status bar node takes no layout space";
 	nmTeardown();
-	flush();
+	nmLoop();
 }
 
 test "a native KeyboardAvoidingView pads by the keyboard the host publishes" {
@@ -1108,17 +1106,17 @@ test "a native KeyboardAvoidingView pads by the keyboard the host publishes" {
 		<TextInput placeholder="Message" style={{ height: 40 }} onLayout={(e: NeonEvent): void => {}} />
 	</KeyboardAvoidingView>;
 	runApp(app);
-	flush();
+	nmLoop();
 	const field = nmLastInputTag();
 	assert nmLayoutY(field) === 760, "at the bottom: " + nmLayoutY(field).toString();
 	nmEnvironment(300, 0);
-	flush();
+	nmLoop();
 	assert nmLayoutY(field) === 460, "above the keyboard: " + nmLayoutY(field).toString();
 	nmEnvironment(0, 0);
-	flush();
+	nmLoop();
 	assert nmLayoutY(field) === 760, "back down";
 	nmTeardown();
-	flush();
+	nmLoop();
 }
 
 test "a native Modal fills the root above the app, takes the touches below it and routes the back request" {
@@ -1131,29 +1129,29 @@ test "a native Modal fills the root above the app, takes the touches below it an
 		</Modal>
 	</View>;
 	runApp(app);
-	flush();
+	nmLoop();
 	nmTouchAt(10, 50, PRESS);
-	flush();
+	nmLoop();
 	assert log === "under;", "no modal yet: " + log;
 	setOpen(true);
-	flush();
+	nmLoop();
 	const modal = nmLastControlTag(5);
 	assert `${nmLayoutWidth(modal)}x${nmLayoutHeight(modal)}` === "400x800", "fills the root: " + `${nmLayoutWidth(modal)}x${nmLayoutHeight(modal)}`;
 	assert nmPaintTag(0, 1) === modal, "paints above the app";
 	nmTouchAt(10, 50, PRESS);
-	flush();
+	nmLoop();
 	assert log === "under;", "the modal takes the touch over the app: " + log;
 	nmTouchAt(10, 320, PRESS);
-	flush();
+	nmLoop();
 	assert log === "under;inside;", "its own content presses: " + log;
 	nmControl(modal, 7, "");
-	flush();
+	nmLoop();
 	assert log === "under;inside;close;", "back asks to close: " + log;
 	nmTouchAt(10, 50, PRESS);
-	flush();
+	nmLoop();
 	assert log === "under;inside;close;under;", "closed: the app presses again: " + log;
 	nmTeardown();
-	flush();
+	nmLoop();
 	assert nmReleaseCalls() === nmViewsCreated(), "the modal layer is released";
 }
 
@@ -1164,13 +1162,13 @@ test "native numberOfLines caps a wrapping label's measured height, and 0 lifts 
 		<Text numberOfLines={lines()}>{long}</Text>
 	</View>;
 	runApp(app);
-	flush();
+	nmLoop();
 	assert nmTextHeight(long) === 21, "one line: " + nmTextHeight(long).toString();
 	setLines(0);
-	flush();
+	nmLoop();
 	assert nmTextHeight(long) > 21, "unlimited wraps: " + nmTextHeight(long).toString();
 	nmTeardown();
-	flush();
+	nmLoop();
 }
 
 test "a native multiline TextInput is created as the platform's text area and routes typing like the field" {
@@ -1179,44 +1177,44 @@ test "a native multiline TextInput is created as the platform's text area and ro
 		<TextInput multiline={true} placeholder="Notes" style={{ height: 120 }} onChangeText={(t: string): void => { typed = t; }} />
 	</View>;
 	runApp(app);
-	flush();
+	nmLoop();
 	const tag = nmLastInputTag();
 	assert prop(tag, "multiline") === "true" && prop(tag, "placeholder") === "Notes", "a text area";
 	assert nmLayoutHeight(tag) === 120, "its own height";
 	nmControl(tag, 0, "line one\nline two");
-	flush();
+	nmLoop();
 	assert typed === "line one\nline two", "typing routes: " + typed;
 	nmTeardown();
-	flush();
+	nmLoop();
 }
 
 test "the gallery app runs on the native host: button, modal over the app, status bar and keyboard screen" {
 	runApp(GalleryApp);
-	flush();
+	nmLoop();
 	assert nmHasLabel("status: ready") === 1, "mounted";
 	nmTouch(nmTagWithProp("accessibilityLabel", "Press me"), PRESS);
-	flush();
+	nmLoop();
 	assert nmHasLabel("status: button 1") === 1, "button";
 	nmTouch(nmTagWithProp("accessibilityLabel", "Open modal"), PRESS);
-	flush();
+	nmLoop();
 	assert nmHasLabel("Modal content") === 1, "modal open";
 	const modal = nmLastControlTag(5);
 	nmControl(modal, 7, "");
-	flush();
+	nmLoop();
 	assert nmHasLabel("Modal content") === 0 && nmHasLabel("status: modal closed by request") === 1, "back closes the modal";
 	nmTouch(nmTagWithProp("accessibilityLabel", "Hide status bar"), PRESS);
-	flush();
+	nmLoop();
 	assert anyProp("statusBarHidden") === "true", "bar hidden";
 	nmTouch(nmTagWithProp("accessibilityLabel", "Open keyboard screen"), PRESS);
-	flush();
+	nmLoop();
 	assert nmHasLabel("keyboard hidden") === 1, "keyboard screen";
 	nmEnvironment(300, 0);
-	flush();
+	nmLoop();
 	assert nmHasLabel("keyboard 300") === 1, "keyboard published";
 	nmEnvironment(0, 0);
-	flush();
+	nmLoop();
 	nmTeardown();
-	flush();
+	nmLoop();
 	assert nmReleaseCalls() === nmViewsCreated(), "every view released";
 }
 
@@ -1238,32 +1236,32 @@ test "a native pan row takes a horizontal drag from the Pressable inside it and 
 		</View>
 	</ScrollView>;
 	runApp(app);
-	flush();
+	nmLoop();
 	const button = nmLastPressableTag();
 	nmTouchFull(button, DOWN, 100, 30, 1000);
-	flush();
+	nmLoop();
 	nmTouchFull(button, MOVE, 104, 31, 1016);
-	flush();
+	nmLoop();
 	assert nmResponderTag() === 0, "no claim under the slop";
 	nmTouchFull(button, MOVE, 130, 31, 1032);
-	flush();
+	nmLoop();
 	const holder = nmResponderTag();
 	const blocks = nmResponderBlocks();
 	nmTouchFull(button, MOVE, 150, 31, 1048);
-	flush();
+	nmLoop();
 	nmTouchFull(button, UP, 150, 31, 1064);
-	flush();
+	nmLoop();
 	nmTouchFull(button, PRESS, 150, 31, 1064);
-	flush();
+	nmLoop();
 	const released = nmResponderTag();
 	nmTouchFull(button, DOWN, 10, 30, 2000);
-	flush();
+	nmLoop();
 	nmTouchFull(button, UP, 10, 30, 2010);
-	flush();
+	nmLoop();
 	nmTouchFull(button, PRESS, 10, 30, 2010);
-	flush();
+	nmLoop();
 	nmTeardown();
-	flush();
+	nmLoop();
 	assert holder !== 0 && holder !== button && blocks === 1, `the row holds the touch and blocks: ${holder} ${blocks}`;
 	assert released === 0, "the release clears the native responder";
 	assert log === "grant 130;move 20;release 20;press;", "the swipe does not press, a later tap does: " + log;
@@ -1275,16 +1273,16 @@ test "a native view whose style drops its background and opacity goes back to cl
 		<Pressable onPress={(): void => {}} style={lifted() ? { backgroundColor: "#6c7086", opacity: 0.5 } : { height: 10 }}><Text>row</Text></Pressable>
 	</View>;
 	runApp(app);
-	flush();
+	nmLoop();
 	const tag = nmLastPressableTag();
 	const liftedOpacity = nmOpacity(tag);
 	const liftedAlpha = nmBackgroundAlpha(tag);
 	setLifted(false);
-	flush();
+	nmLoop();
 	const restingOpacity = nmOpacity(tag);
 	const restingAlpha = nmBackgroundAlpha(tag);
 	nmTeardown();
-	flush();
+	nmLoop();
 	assert liftedOpacity === 0.5 && liftedAlpha === 1, `lifted ${liftedOpacity} ${liftedAlpha}`;
 	assert restingOpacity === 1 && restingAlpha === 0, `resting ${restingOpacity} ${restingAlpha}`;
 }
@@ -1306,16 +1304,16 @@ test "a focused native TextInput in content that an Errored parks loses its focu
 		</Errored>
 	</View>;
 	runApp(app);
-	flush();
+	nmLoop();
 	const tag = nmLastInputTag();
 	handles[0].focus();
 	assert nmFocused(tag) === 1, "the input is focused while its content shows";
 	setBroken(1);
-	flush();
+	nmLoop();
 	assert nmFocused(tag) === 0 && log === "blur;", "parking the content took the focus away: " + log;
 	assert !handles[0].isFocused(), "and the handle follows";
 	nmTeardown();
-	flush();
+	nmLoop();
 }
 
 const feedHandles: TextInputHandle[] = [];
@@ -1338,14 +1336,14 @@ function nativeFeedV2(): NeonNode {
 test "a refresh remount keeps the native views it still renders, so the field keeps its focus and text" {
 	refreshReset();
 	runApp((): NeonNode => refreshBoundary0("nativeHost", "Feed", nativeFeedV1, (): string => "v1"));
-	flush();
+	nmLoop();
 	const tag = nmLastInputTag();
 	feedHandles[0].focus();
 	const created = nmViewsCreated();
 	const released = nmReleaseCalls();
 	refreshComponent0("nativeHost", "Feed", nativeFeedV2, (): string => "v2");
 	const summary = refreshModule("nativeHost");
-	flush();
+	nmLoop();
 	assert summary.remounted === 1, "the component remounts: " + summary.remounted.toString();
 	assert nmReleaseCalls() === released, "no native view is released: " + (nmReleaseCalls() - released).toString();
 	assert nmViewsCreated() - created === 1, "only the new Text makes a view: " + (nmViewsCreated() - created).toString();
@@ -1353,6 +1351,6 @@ test "a refresh remount keeps the native views it still renders, so the field ke
 	assert prop(tag, "placeholder") === "v2", "it takes the new placeholder: " + prop(tag, "placeholder");
 	assert prop(tag, "returnKeyType") === "", "and drops the prop the new template no longer writes: " + prop(tag, "returnKeyType");
 	nmTeardown();
-	flush();
+	nmLoop();
 	assert nmReleaseCalls() === nmViewsCreated(), "teardown releases every view once";
 }
