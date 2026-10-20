@@ -194,19 +194,37 @@ function resized(window: int32, width: int32, height: int32, scale: float64): vo
 	const owner = a as Area;
 	deliverResize(owner.area, width, height, scale);
 	if (owner.view === ViewInvalid) {
-		owner.view = viewCreate(0 as int64, width, height, owner.area.scale);
-		const visual = voidVisualAttach(windowDevice(owner.win), windowRoot(owner.win), viewSwapChain(owner.view));
-		if (visual === null) {
-			console.log(`neon: window ${window} refused the swapchain of view ${owner.view}`);
-			exit(4);
-		}
-		owner.visual = visual;
-		commit(owner.win);
+		attachView(owner, width, height);
 	} else {
 		viewResize(owner.view, width, height, owner.area.scale);
 	}
 	owner.owed = true;
 	requestFrame(owner.win);
+}
+
+function attachView(owner: Area, width: int32, height: int32): void {
+	owner.view = viewCreate(0 as int64, width, height, owner.area.scale);
+	const visual = voidVisualAttach(windowDevice(owner.win), windowRoot(owner.win), viewSwapChain(owner.view));
+	if (visual === null) {
+		console.log(`neon: window ${owner.win.id} refused the swapchain of view ${owner.view}`);
+		exit(4);
+	}
+	owner.visual = visual;
+	commit(owner.win);
+}
+
+function showWithFirstFrame(win: Window): void {
+	const a = areaOfWindow(win.id);
+	if (a === null) {
+		show(win);
+		return;
+	}
+	const owner = a as Area;
+	if (owner.view !== ViewInvalid) { viewFrame(owner.view); }
+	if (!owner.shown) {
+		owner.shown = true;
+		show(win);
+	}
 }
 
 function wireInput(): void {
@@ -273,7 +291,11 @@ function ionWindowHost(win: Window): Host {
 		},
 		opened: (area: WindowArea): void => {
 			setFramePolicy(win, FrameOnDemand);
-			_areas.push({ win, view: ViewInvalid, visual: null, area, owed: true, shown: false });
+			const owner: Area = { win, view: ViewInvalid, visual: null, area, owed: true, shown: false };
+			_areas.push(owner);
+			if (pixelWidth(win) > (0 as int32) && pixelHeight(win) > (0 as int32)) {
+				attachView(owner, pixelWidth(win), pixelHeight(win));
+			}
 		},
 		released: (area: WindowArea): void => {
 			for (let i = 0; i < _areas.length; i += 1) {
@@ -317,6 +339,7 @@ export function runWindow(opts: DesktopOptions, app: () => NeonNode): int32 {
 	});
 	const host = ionWindowHost(win);
 	const dispose = render((h: Host, p: HostNode, b: HostNode | null): void => { app()(h, p, b); }, host, windowNode("window"));
+	showWithFirstFrame(win);
 	when (hcr) {
 		setInterval(pollReload, RELOAD_POLL_MS);
 	}
