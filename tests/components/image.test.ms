@@ -1,4 +1,5 @@
 import { createSignal } from "../../src/core/signal";
+import { flush } from "../../src/core/runtime";
 import { element } from "../../src/macros/ui/element";
 import { NeonEvent, neonEvent } from "../../src/render/event";
 import { HostNode, MockNode, mockNode, mockHost, render, fireEventWith } from "../../src/render/host";
@@ -21,6 +22,7 @@ test "Image sends resizeMode repeat and blurRadius to the host" {
 	assert attrOf(image, "resizeMode") === "repeat", "repeat";
 	assert attrOf(image, "blurRadius") === "4", "blur " + attrOf(image, "blurRadius");
 	setBlur(0);
+	flush();
 	assert attrOf(image, "blurRadius") === "0", "blur cleared";
 }
 
@@ -32,7 +34,9 @@ test "ImageLoader.getSize reports the size or the failure the services load" {
 	ImageLoader.getSize("https://x/missing.png", (w: number, h: number): void => { got += "wrong;"; }, (e: Error): void => { got += "failed " + e.message + ";"; });
 	assert services.joined() === "imageSize https://x/a.png;imageSize https://x/missing.png", services.joined();
 	services.imageDone[0](600, 240, "");
+	flush();
 	services.imageDone[1](0, 0, "HTTP 404");
+	flush();
 	assert got === "600x240;failed HTTP 404;", got;
 }
 
@@ -47,8 +51,10 @@ test "ImageLoader.prefetch resolves true once the image is cached, false on fail
 	};
 	run();
 	services.imageDone[0](10, 10, "");
+	flush();
 	await sleepAsync(40);
 	services.imageDone[1](0, 0, "HTTP 500");
+	flush();
 	await sleepAsync(40);
 	assert ok === "true false", "prefetch: " + ok;
 }
@@ -64,13 +70,18 @@ test "Image defaultSource shows until the source is cached, and onLoad waits for
 	const image = root.children[0];
 	const placeholder = attrOf(image, "source");
 	fireEventWith(image, "onLoad", neonEvent("load"));
+	flush();
 	const early = log;
 	services.imageDone[0](800, 600, "");
+	flush();
 	const loaded = attrOf(image, "source");
 	fireEventWith(image, "onLoad", neonEvent("load"));
+	flush();
 	setUri("https://x/broken.png");
+	flush();
 	const back = attrOf(image, "source");
 	services.imageDone[1](0, 0, "HTTP 404");
+	flush();
 	assert placeholder === "data:placeholder" && early === "", `placeholder first, its load is not the source's: ${placeholder} ${early}`;
 	assert loaded === "https://x/photo.png", "the source once cached: " + loaded;
 	assert back === "data:placeholder", "a new source shows the placeholder again: " + back;

@@ -9,6 +9,7 @@ import { useManualFrames, setFrameDriver } from "../../src/animation/frame";
 import { sleepAsync } from "std/core/promise";
 import { PageController, PageRenderItemInfo } from "../../src/components/pageView";
 import { Carousel, CarouselMode, parallaxScale } from "../../src/components/carousel";
+import { flush } from "../../src/core/runtime";
 
 let disposeLast: Dispose | null = null;
 
@@ -29,6 +30,7 @@ function laidOut(n: MockNode, width: number, height: number): void {
 	e.width = width;
 	e.height = height;
 	fireEventWith(n, "onLayout", e);
+	flush();
 }
 
 function transformOf(n: MockNode): string {
@@ -75,11 +77,13 @@ test "a finger on the carousel holds auto-play until the drag ends" {
 	fireTouch(outer.children[0], "onTouchStart", 200, 10, 1000);
 	fireTouch(outer.children[0], "onTouchMove", 180, 10, 1100);
 	fireTouch(outer.children[0], "onTouchMove", 170, 10, 1200);
+	flush();
 	await sleepAsync(80);
 	clock.runAll();
 	assert snaps.length === 0, "held: " + snaps.join(",");
 	fireTouch(outer.children[0], "onTouchMove", 170, 10, 1300);
 	fireTouch(outer.children[0], "onTouchEnd", 170, 10, 1400);
+	flush();
 	clock.runAll();
 	await sleepAsync(60);
 	clock.runAll();
@@ -101,6 +105,7 @@ test "turning auto-play off stops the timer; without a loop auto-play stops at t
 	}
 	assert snaps.join(",") === "1,2", "stopped at the last slide: " + snaps.join(",");
 	setPlaying(false);
+	flush();
 	await sleepAsync(60);
 	clock.runAll();
 	assert snaps.join(",") === "1,2";

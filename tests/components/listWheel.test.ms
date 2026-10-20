@@ -5,6 +5,7 @@ import { NeonNode } from "../../src/render/node";
 import { HostNode, MockNode, mockNode, mockHost, render, fireEventWith } from "../../src/render/host";
 import { Text } from "../../src/components/primitives";
 import { ListWheelScrollView, WheelRenderItemInfo, selectedIndex, wheelPaint } from "../../src/components/listWheel";
+import { flush } from "../../src/core/runtime";
 
 interface Hour {
 	label: string;
@@ -48,11 +49,13 @@ test "a ListWheelScrollView reports the selected hour while scrolling and snaps 
 		e.y = y;
 		e.height = 200;
 		fireEventWith(scroll, "onScroll", e);
+		flush();
 	};
 	at(30);
 	at(70);
 	at(95);
 	assert selections.join(",") === "1,2", "1 then 2: " + selections.join(",");
 	fireEventWith(scroll, "onMomentumScrollEnd", neonEvent("momentumscrollend"));
+	flush();
 	assert scroll.scrollY === 80 && scroll.scrollAnimated, "snapped to item 2 at 80: " + scroll.scrollY.toString();
 }

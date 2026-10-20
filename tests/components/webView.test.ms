@@ -2,6 +2,7 @@ import { createSignal } from "../../src/core/signal";
 import { HostNode, MockNode, mockNode, mockHost, render, mockToString, fireEventWith } from "../../src/render/host";
 import { neonEvent } from "../../src/render/event";
 import { Style } from "../../src/render/style";
+import { flush } from "../../src/core/runtime";
 import {
 	WebView,
 	WebViewHandle,
@@ -25,6 +26,7 @@ function fire(n: MockNode, name: string, value: string): void {
 	const e = neonEvent(name);
 	e.value = value;
 	fireEventWith(n, name, e);
+	flush();
 }
 
 test "originOf keeps scheme and authority the way RN's extractOrigin regex does" {
@@ -55,6 +57,7 @@ test "a WebView writes its source to the wire and fills its parent by default" {
 	assert attrOf(view, "javaScriptEnabled") === "false" && attrOf(view, "interceptLoads") === "true", mockToString(root);
 	assert (view.style as Style).flexGrow === 1, "fills its parent";
 	setPage("https://neon.dev");
+	flush();
 	assert attrOf(view, "source") === "uri\x1fhttps://neon.dev", attrOf(view, "source");
 }
 
@@ -79,10 +82,14 @@ test "page events reach RN's callbacks with nativeEvent and the navigation state
 	/>, mockHost(), root as unknown as HostNode);
 	const view = root.children[0];
 	fire(view, "onLoadStart", "https://example.com/\x1f\x1ftrue\x1ffalse\x1ffalse");
+	flush();
 	fire(view, "onLoad", "https://example.com/\x1fExample\x1ffalse\x1ftrue\x1ffalse");
+	flush();
 	assert attrOf(view, "command") === "injectJavaScript\x1fdocument.title", "injectedJavaScript runs after the load: " + attrOf(view, "command");
 	fire(view, "onMessage", "hello");
+	flush();
 	fire(view, "onError", "-1003\x1fhost not found\x1fhttps://nowhere.invalid/");
+	flush();
 	const expected = "start https://example.com/ true;nav https://example.com/ false;" +
 		"load Example;end true;nav https://example.com/ true;" +
 		"message hello at https://example.com/;" +
@@ -103,10 +110,13 @@ test "onShouldStartLoadWithRequest answers synchronously through loadDecision, a
 	/>, mockHost(), root as unknown as HostNode);
 	const view = root.children[0];
 	fire(view, "onShouldStartLoad", "https://example.com/ok\x1fclick\x1ftrue");
+	flush();
 	assert attrOf(view, "loadDecision") === "allow", attrOf(view, "loadDecision");
 	fire(view, "onShouldStartLoad", "https://example.com/blocked\x1fclick\x1ftrue");
+	flush();
 	assert attrOf(view, "loadDecision") === "block", attrOf(view, "loadDecision");
 	fire(view, "onShouldStartLoad", "http://example.com/plain\x1fother\x1ftrue");
+	flush();
 	assert attrOf(view, "loadDecision") === "block", "outside the whitelist: " + attrOf(view, "loadDecision");
 	assert asked === "https://example.com/ok click true;https://example.com/blocked click true;", "the handler sees only whitelisted urls: " + asked;
 }
@@ -131,6 +141,7 @@ test "the ref's methods are commands on the node, and refuse once the WebView un
 	h.injectJavaScript("1 + 1");
 	assert attrOf(view, "command") === "injectJavaScript\x1f1 + 1", attrOf(view, "command");
 	setShown(false);
+	flush();
 	let refused = "";
 	try {
 		h.reload();

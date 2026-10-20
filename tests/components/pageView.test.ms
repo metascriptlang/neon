@@ -5,6 +5,7 @@ import { NeonNode } from "../../src/render/node";
 import { HostNode, MockNode, mockNode, mockHost, render, mockToString, fireEvent, fireEventWith, fireTouch } from "../../src/render/host";
 import { View, Text } from "../../src/components/primitives";
 import { useManualFrames, setFrameDriver } from "../../src/animation/frame";
+import { flush } from "../../src/core/runtime";
 import {
 	PageController,
 	PageIndicator,
@@ -27,6 +28,7 @@ function laidOut(n: MockNode, width: number, height: number): void {
 	e.width = width;
 	e.height = height;
 	fireEventWith(n, "onLayout", e);
+	flush();
 }
 
 function transformOf(n: MockNode): string {
@@ -113,9 +115,13 @@ test "a short fast fling turns the page, a short slow drag springs back" {
 	assert controller.selectedPage() === 1 && controller.peek() === 1, "a slow 36 pt drag stays on page 1";
 	let t = 5000.0;
 	fireTouch(outer.children[1], "onTouchStart", 100, 10, t);
+	flush();
 	fireTouch(outer.children[1], "onTouchMove", 115, 10, t + 10);
+	flush();
 	fireTouch(outer.children[1], "onTouchMove", 160, 10, t + 20);
+	flush();
 	fireTouch(outer.children[1], "onTouchEnd", 160, 10, t + 320);
+	flush();
 	clock.runAll();
 	assert controller.selectedPage() === 1, "a fast drag that rests before lifting does not fling";
 	setFrameDriver(null);
@@ -130,10 +136,14 @@ test "dragging past the first page resists and springs back" {
 	laidOut(outer, 300, 400);
 	let t = 1000.0;
 	fireTouch(outer.children[0], "onTouchStart", 50, 10, t);
+	flush();
 	fireTouch(outer.children[0], "onTouchMove", 80, 10, t + 100);
+	flush();
 	fireTouch(outer.children[0], "onTouchMove", 150, 10, t + 200);
+	flush();
 	assert Math.abs(controller.peek() + 70.0 / 300.0 * 0.35) < 0.001, "the edge moves a share of the finger: " + controller.peek().toString();
 	fireTouch(outer.children[0], "onTouchEnd", 150, 10, t + 300);
+	flush();
 	clock.runAll();
 	assert controller.peek() === 0 && log.indexOf("page 3") < 0, "back on the first page: " + log.join(",");
 	setFrameDriver(null);
@@ -218,5 +228,6 @@ test "the page indicator widens the selected dot and reports a press" {
 	const idle = dots[0].style;
 	assert active !== null && idle !== null && active.width === 20 && idle.width === 8, "the selected dot is wider";
 	fireEvent(dots[1], "onPress");
+	flush();
 	assert presses.join(",") === "1", presses.join(",");
 }

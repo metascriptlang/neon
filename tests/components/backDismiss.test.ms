@@ -7,6 +7,7 @@ import { Text, View } from "../../src/components/primitives";
 import { Dialog } from "../../src/components/dialog";
 import { BottomSheet } from "../../src/components/bottomSheet";
 import { dispatchHardwareBackPress } from "../../src/api/backHandler";
+import { flush } from "../../src/core/runtime";
 
 test "Dialog and BottomSheet close on the Android back button while shown, and only then" {
 	const [dialog, setDialog] = createSignal(false);
@@ -19,16 +20,26 @@ test "Dialog and BottomSheet close on the Android back button while shown, and o
 		<BottomSheet visible={sheet()} onDismiss={(): void => { setLog(log() + "sheet;"); setSheet(false); }}><Text>Share</Text></BottomSheet>
 	</View>), mockHost(), root as unknown as HostNode);
 	const idle = dispatchHardwareBackPress();
+	flush();
 	setDialog(true);
+	flush();
 	const closed = dispatchHardwareBackPress();
+	flush();
 	setSheet(true);
+	flush();
 	const sheetClosed = dispatchHardwareBackPress();
+	flush();
 	setLocked(true);
+	flush();
 	setDialog(true);
+	flush();
 	const held = dispatchHardwareBackPress();
+	flush();
 	const stillOpen = dialog();
 	setDialog(false);
+	flush();
 	const after = dispatchHardwareBackPress();
+	flush();
 	assert !idle && !after, `the platform default runs while nothing is shown: ${idle} ${after}`;
 	assert closed && sheetClosed && held, "a shown overlay consumes the back press";
 	assert log() === "dialog;sheet;", "each closes through its onDismiss: " + log();

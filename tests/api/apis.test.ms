@@ -16,6 +16,7 @@ import { Vibration } from "../../src/api/vibration";
 import { Platform, Clipboard } from "../../src/index";
 import { AccessibilityInfo, publishScreenReader } from "../../src/api/accessibilityInfo";
 import { FakeServices } from "./fakeServices";
+import { flush } from "../../src/core/runtime";
 
 test "Platform names the compile-time OS and selects its entry, then native, then default" {
 	when (js) {
@@ -78,13 +79,17 @@ test "Dimensions change listeners fire on a change only, until removed" {
 
 test "Appearance reads and follows the published color scheme" {
 	publishColorScheme("light");
+	flush();
 	assert Appearance.getColorScheme() === "light";
 	const seen: string[] = [];
 	const subscription = Appearance.addChangeListener((p: AppearancePreferences): void => { seen.push(p.colorScheme as string); });
 	publishColorScheme("dark");
+	flush();
 	assert Appearance.getColorScheme() === "dark";
 	publishColorScheme("dark");
+	flush();
 	publishColorScheme("light");
+	flush();
 	subscription.remove();
 	assert seen.join(",") === "dark,light", seen.join(",");
 }
@@ -94,6 +99,7 @@ test "Keyboard show and hide listeners follow the published height; dismiss goes
 	fake.install();
 	publishWindow(400, 800);
 	publishKeyboard(0);
+	flush();
 	const shows: string[] = [];
 	const hides: string[] = [];
 	const frameHeights: string[] = [];
@@ -105,11 +111,14 @@ test "Keyboard show and hide listeners follow the published height; dismiss goes
 		frameHeights.push(e.endCoordinates.height.toString());
 	});
 	publishKeyboard(300);
+	flush();
 	assert Keyboard.isVisible();
 	const metrics = Keyboard.metrics();
 	assert metrics !== null && metrics.height === 300, "metrics";
 	publishKeyboard(320);
+	flush();
 	publishKeyboard(0);
+	flush();
 	assert !Keyboard.isVisible();
 	assert Keyboard.metrics() === null;
 	assert shows.join(",") === "300@500", shows.join(",");
@@ -124,6 +133,7 @@ test "Keyboard show and hide listeners follow the published height; dismiss goes
 
 test "AppState follows the published state for currentState, the accessor and change listeners" {
 	publishAppState("active");
+	flush();
 	const state = useAppState();
 	const changes: string[] = [];
 	const blurs: string[] = [];
@@ -137,20 +147,27 @@ test "AppState follows the published state for currentState, the accessor and ch
 		);
 		return d;
 	});
+	flush();
 	publishAppState("inactive");
+	flush();
 	assert AppState.currentState === "inactive";
 	publishAppState("background");
+	flush();
 	publishAppState("background");
+	flush();
 	publishAppState("active");
+	flush();
 	change.remove();
 	blur.remove();
 	dispose();
 	publishAppState("background");
+	flush();
 	assert changes.join(",") === "inactive,background,active", changes.join(",");
 	assert blurs.join(",") === "inactive,background", blurs.join(",");
 	assert tracked === "active;inactive;background;active;", tracked;
 	assert AppState.currentState === "background";
 	publishAppState("active");
+	flush();
 }
 
 test "BackHandler runs the newest handler first and stops at the first that consumes the press" {
@@ -296,16 +313,21 @@ test "AccessibilityInfo asks the host, follows the published screen reader and a
 	assert await AccessibilityInfo.isScreenReaderEnabled();
 	assert !(await AccessibilityInfo.isReduceMotionEnabled());
 	publishScreenReader(false);
+	flush();
 	const seen: string[] = [];
 	const subscription = AccessibilityInfo.addEventListener("screenReaderChanged", (on: boolean): void => {
 		seen.push(on ? "on" : "off");
 	});
 	publishScreenReader(true);
+	flush();
 	publishScreenReader(false);
+	flush();
 	subscription.remove();
 	publishScreenReader(true);
+	flush();
 	assert seen.join(",") === "on,off", seen.join(",");
 	AccessibilityInfo.announceForAccessibility("Saved");
 	assert fake.joined() === "announce Saved", fake.joined();
 	publishScreenReader(false);
+	flush();
 }

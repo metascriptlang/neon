@@ -12,6 +12,7 @@ import { ActivityIndicator } from "../../src/components/activityIndicator";
 import { Slider, snapSliderValue } from "../../src/components/slider";
 import { Picker, PickerItem } from "../../src/components/picker";
 import { DateTimePicker, isoDate, isoTime } from "../../src/components/dateTimePicker";
+import { flush } from "../../src/core/runtime";
 
 function changed(value: string): NeonEvent {
 	const e = neonEvent("valuechange");
@@ -33,8 +34,11 @@ test "Button is a pressable with the button role whose press stops while disable
 	assert mockToString(root) === "<root><pressable accessible=\"true\" accessibilityLabel=\"Save\" accessibilityHint=\"\" accessibilityRole=\"button\"><text>" + SAVE_TITLE + "</text></pressable></root>", "shape: " + mockToString(root);
 	const button = root.children[0];
 	fireEvent(button, "onPress");
+	flush();
 	setDisabled(true);
+	flush();
 	fireEvent(button, "onPress");
+	flush();
 	assert presses === 1, "presses: " + presses.toString();
 }
 
@@ -48,6 +52,7 @@ when (ios) {
 		const label = (): Style => button.children[0].style as Style;
 		assert label().color === "#007AFF" && label().fontSize === 18 && label().margin === 8, "label";
 		setDisabled(true);
+		flush();
 		assert label().color === "#cdcdcd", "disabled label: " + (label().color ?? "none");
 	}
 } else {
@@ -60,6 +65,7 @@ when (ios) {
 		assert box().backgroundColor === "#ff0000" && box().borderRadius === 2, "box: " + (box().backgroundColor ?? "none");
 		assert label().color === "#ffffff" && label().margin === 8 && label().fontWeight === "bold", "label";
 		setDisabled(true);
+		flush();
 		assert box().backgroundColor === "#dfdfdf" && label().color === "#a1a1a1", "disabled colours";
 	}
 }
@@ -70,6 +76,7 @@ test "Switch reports a boolean and follows its controlled value" {
 	render(element(<Switch value={on()} onValueChange={(v: boolean): void => { setOn(v); }} accessibilityLabel="Wi-Fi" />), mockHost(), root as unknown as HostNode);
 	assert mockToString(root) === "<root><switch value=\"false\" accessibilityLabel=\"Wi-Fi\"></switch></root>", "shape: " + mockToString(root);
 	fireEventWith(root.children[0], "onValueChange", changed("true"));
+	flush();
 	assert on() && mockToString(root).indexOf("value=\"true\"") > 0, "toggled: " + mockToString(root);
 }
 
@@ -84,8 +91,11 @@ test "Image sends its source and resize mode, and onLoadEnd follows both load an
 		onLoadEnd={(): void => { log += "end;"; }} />), mockHost(), root as unknown as HostNode);
 	assert mockToString(root) === "<root><image source=\"https://example.com/a.png\" resizeMode=\"contain\" accessibilityRole=\"image\" accessibilityLabel=\"Avatar\"></image></root>", "shape: " + mockToString(root);
 	fireEvent(root.children[0], "onLoad");
+	flush();
 	setUri("https://example.com/b.png");
+	flush();
 	fireEvent(root.children[0], "onError");
+	flush();
 	assert log === "start;load;end;start;error;end;", "events: " + log;
 }
 
@@ -98,6 +108,7 @@ test "ActivityIndicator sizes small and large like RN and keeps animating reacti
 	assert mockToString(large) === "<activityindicator animating=\"true\" color=\"#336699\" accessibilityRole=\"progressbar\"></activityindicator>", "shape: " + mockToString(large);
 	assert (large.style as Style).width === 36 && (small.style as Style).width === 20, "sizes";
 	setBusy(false);
+	flush();
 	assert mockToString(large).indexOf("animating=\"false\"") > 0, "animating follows the signal";
 }
 
@@ -114,6 +125,7 @@ test "ImageBackground stretches its image under the children and keeps the box s
 	assert box.height === 120 && box.padding === 8, "box style";
 	assert fill.position === "absolute" && fill.top === 0 && fill.bottom === 0 && fill.left === 0 && fill.right === 0 && fill.borderRadius === 6, "image fills the box";
 	fireEvent(root.children[0].children[0], "onLoad");
+	flush();
 	assert loads === 1, "onLoad reaches the author";
 }
 
@@ -123,6 +135,7 @@ test "Text forwards numberOfLines, ellipsizeMode and selectable, and stays a pla
 	render(element(<View><Text numberOfLines={lines()} ellipsizeMode="middle" selectable={true}>long</Text><Text>plain</Text></View>), mockHost(), root as unknown as HostNode);
 	assert mockToString(root) === "<root><view><text numberOfLines=\"2\" ellipsizeMode=\"middle\" selectable=\"true\">long</text><text>plain</text></view></root>", "shape: " + mockToString(root);
 	setLines(0);
+	flush();
 	assert mockToString(root).indexOf("numberOfLines=\"0\"") > 0, "reactive";
 }
 
@@ -137,9 +150,13 @@ test "Slider sends its range and reports snapped values, a start once per drag a
 	assert mockToString(root) === "<root><slider minimumValue=\"1\" maximumValue=\"8\" step=\"1\" value=\"2\" accessibilityRole=\"adjustable\" accessibilityLabel=\"Guests\"></slider></root>", "shape: " + mockToString(root);
 	const slider = root.children[0];
 	fireEventWith(slider, "onValueChange", changed("3.4"));
+	flush();
 	fireEventWith(slider, "onValueChange", changed("4.6"));
+	flush();
 	fireEventWith(slider, "onSlidingComplete", changed("4.6"));
+	flush();
 	fireEventWith(slider, "onValueChange", changed("12"));
+	flush();
 	assert log === "start 3;change 3;change 5;done 5;start 8;change 8;", "events: " + log;
 	assert mockToString(root).indexOf("value=\"8\"") > 0, "value follows the signal: " + mockToString(root);
 }
@@ -161,6 +178,7 @@ test "Picker sends labels and the selected index and reports the chosen item val
 	assert mockToString(root).indexOf("selectedIndex=\"1\"") > 0 && mockToString(root).indexOf("accessibilityRole=\"combobox\"") > 0, "shape: " + mockToString(root);
 	assert mockToString(root).indexOf("items=\"Standard\x1fstd\x1eDeluxe\x1fdlx\x1eSuite\x1fste\"") > 0, "items: " + mockToString(root);
 	fireEventWith(picker, "onValueChange", changed("2"));
+	flush();
 	assert picked === "ste@2" && mockToString(root).indexOf("selectedIndex=\"2\"") > 0, "picked: " + picked;
 }
 
@@ -175,5 +193,6 @@ test "DateTimePicker sends its mode, bounds and ISO value and reports the chosen
 	assert mockToString(date) === "<datetimepicker mode=\"date\" minimumDate=\"2026-10-01\" value=\"2026-10-07\" accessibilityLabel=\"Check-in\"></datetimepicker>", "shape: " + mockToString(date);
 	assert mockToString(root.children[0].children[1]).indexOf("value=\"09:05\"") > 0, "time: " + mockToString(root.children[0].children[1]);
 	fireEventWith(date, "onValueChange", changed("2026-12-24"));
+	flush();
 	assert day() === "2026-12-24" && mockToString(date).indexOf("value=\"2026-12-24\"") > 0, "chosen: " + mockToString(date);
 }

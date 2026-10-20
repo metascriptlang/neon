@@ -5,6 +5,7 @@ import { neonEvent } from "../../src/render/event";
 import { NeonNode } from "../../src/render/node";
 import { HostNode, MockNode, mockNode, mockHost, render, fireEventWith } from "../../src/render/host";
 import { Text, View, ScrollView } from "../../src/components/primitives";
+import { flush } from "../../src/core/runtime";
 import {
 	CollapsingHeader,
 	CustomScrollView,
@@ -73,6 +74,7 @@ test "a CollapsingHeader follows a ScrollView's offset through createScrollOffse
 	const e = neonEvent("scroll");
 	e.y = 120;
 	fireEventWith(root.children[0].children[0], "onScroll", e);
+	flush();
 	assert height() === 80, "follows the offset: " + height().toString();
 }
 
@@ -92,5 +94,6 @@ test "a CustomScrollView lays a box, a pinned header, a list and a grid end to e
 	});
 	assert texts(root, []).join(",") === "banner,Songs,song a,song b,photo p1,photo p2,photo p3", "in order: " + texts(root, []).join(",");
 	setSongs(["a", "b", "c"]);
+	flush();
 	assert texts(root, []).join(",") === "banner,Songs,song a,song b,song c,photo p1,photo p2,photo p3", "a list grows in place: " + texts(root, []).join(",");
 }

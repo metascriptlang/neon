@@ -2,12 +2,14 @@
 
 import { Easing } from "../../src/animation/easing";
 import { AnimatedValue, InterpolationConfig, StringInterpolationConfig } from "../../src/animation/nodes";
+import { flush } from "../../src/core/runtime";
 
 function numeric(config: InterpolationConfig): (input: number) => number {
 	const v = new AnimatedValue(0);
 	const node = v.interpolate(config);
 	return (input: number): number => {
 		v.setValue(input);
+		flush();
 		return node.peek();
 	};
 }
@@ -17,6 +19,7 @@ function text(config: StringInterpolationConfig): (input: number) => string {
 	const node = v.interpolateString(config);
 	return (input: number): string => {
 		v.setValue(input);
+		flush();
 		return node.peek();
 	};
 }
@@ -118,5 +121,6 @@ test "an interpolation of an interpolation chains" {
 	const half = v.interpolate({ inputRange: [0, 2], outputRange: [0, 1] });
 	const pct = half.interpolate({ inputRange: [0, 1], outputRange: [0, 100] });
 	v.setValue(1);
+	flush();
 	assert pct.peek() === 50;
 }

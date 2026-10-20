@@ -1,6 +1,7 @@
 import { createSignal } from "../../src/core/signal";
 import { HostNode, MockNode, mockNode, mockHost, render, mockToString, fireEventWith } from "../../src/render/host";
 import { neonEvent } from "../../src/render/event";
+import { flush } from "../../src/core/runtime";
 import {
 	Video,
 	VideoHandle,
@@ -23,6 +24,7 @@ function fire(n: MockNode, name: string, value: string, width: number, height: n
 	e.width = width;
 	e.height = height;
 	fireEventWith(n, name, e);
+	flush();
 }
 
 test "a Video writes react-native-video's playback props with their defaults" {
@@ -36,7 +38,9 @@ test "a Video writes react-native-video's playback props with their defaults" {
 		.map((name: string): string => `${name}=${attrOf(video, name)}`).join(" ");
 	assert shape === "source=https://neon.dev/clip.mp4 paused=true muted=false volume=1 rate=1 repeat=true controls=false progressUpdateInterval=250 resizeMode=cover", shape;
 	setPaused(false);
+	flush();
 	setRate(1.5);
+	flush();
 	assert attrOf(video, "paused") === "false" && attrOf(video, "rate") === "1.5", mockToString(root);
 }
 
@@ -53,10 +57,15 @@ test "playback events arrive as react-native-video's data objects" {
 	/>, mockHost(), root as unknown as HostNode);
 	const video = root.children[0];
 	fire(video, "onLoadStart", "", 0, 0);
+	flush();
 	fire(video, "onLoad", "3\x1f0\x1f160\x1f90", 0, 0);
+	flush();
 	fire(video, "onProgress", "1.5\x1f3\x1f3", 0, 0);
+	flush();
 	fire(video, "onEnd", "", 0, 0);
+	flush();
 	fire(video, "onError", "-11800\x1fThe operation could not be completed", 0, 0);
+	flush();
 	assert seen === "start file:///clip.mp4 false;load 3 160x90 landscape;progress 1.5/3;end;error -11800 The operation could not be completed;", seen;
 }
 
