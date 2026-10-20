@@ -26,7 +26,7 @@ import {
 	addGroup, addLightNode, addMeshNode, setLocal, setLightPower, setMeshOf,
 	setLightColor, setLightRadius, setLightPriority,
 	remove, insertBefore, closeScene, addCameraNode, setCameraOf, setActiveCamera,
-	setVisible, setPickable, setName, setAmbient, refresh, collectLights,
+	setVisible, setPickable, setName, setAmbient, refresh, collectLights, setLayers, setRenderOrder, setCameraLayers,
 	cameraOf as worldCameraOf,
 } from "../../../void/src/void3d/scene";
 import { GltfData } from "../../../void/src/void3d/gltf";
@@ -77,6 +77,8 @@ interface TransformProps {
 interface NodeProps extends TransformProps {
 	visible?: Accessor<boolean> | null;
 	pickable?: Accessor<boolean> | null;
+	layers?: Accessor<uint32> | null;
+	renderOrder?: Accessor<int32> | null;
 	name?: Accessor<string> | null;
 	ref?: ((node: NodeId3D) => void) | null;
 	children?: NeonNode | null;
@@ -109,6 +111,7 @@ interface Camera3DProps {
 	farPlane?: Accessor<float32> | null;
 	projection?: Accessor<CameraProjection> | null;
 	active?: Accessor<boolean> | null;
+	layers?: Accessor<uint32> | null;
 }
 
 const sceneScope = createContext<NodeScope | null>(null);
@@ -174,6 +177,20 @@ function bindNode(state: SceneState, node: NodeId3D, props: NodeProps, initial: 
 		createRenderEffect<boolean>(
 			(prev: boolean | null): boolean => pickable(),
 			(value: boolean, prev: boolean | null): Cleanup | null => { setPickable(scene, node, value); state.invalidate(); return null; },
+		);
+	}
+	if (props.layers !== null) {
+		const layers = props.layers as () => uint32;
+		createRenderEffect<uint32>(
+			(prev: uint32 | null): uint32 => layers(),
+			(value: uint32, prev: uint32 | null): Cleanup | null => { setLayers(scene, node, value); state.invalidate(); return null; },
+		);
+	}
+	if (props.renderOrder !== null) {
+		const order = props.renderOrder as () => int32;
+		createRenderEffect<int32>(
+			(prev: int32 | null): int32 => order(),
+			(value: int32, prev: int32 | null): Cleanup | null => { setRenderOrder(scene, node, value); state.invalidate(); return null; },
 		);
 	}
 	if (props.name !== null) {
@@ -586,6 +603,13 @@ export function Camera3D(props: Camera3DProps): NeonNode {
 			let local = cameraLocal(initial);
 			const node = addCameraNode(scene, scope.parent, local, initial);
 			ownNode(scope.state, node);
+			if (props.layers !== null) {
+				const layers = props.layers as () => uint32;
+				createRenderEffect<uint32>(
+					(prev: uint32 | null): uint32 => layers(),
+					(value: uint32, prev: uint32 | null): Cleanup | null => { setCameraLayers(scene, node, value); state.invalidate(); return null; },
+				);
+			}
 			let entry: CameraEntry | null = null;
 			onCleanup((): void => {
 				const mounted = entry;
