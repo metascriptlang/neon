@@ -63,7 +63,10 @@ page.on("pageerror", (e) => consoleLines.push(`[pageerror] ${e.message}`));
 let navigations = 0;
 page.on("framenavigated", (f) => { if (f === page.mainFrame()) navigations++; });
 await page.goto(`http://localhost:${port}/`);
-await page.waitForSelector("#out", { timeout: 60000 });
+await page.waitForSelector("#out", { timeout: 60000 }).catch((e) => {
+	console.log(`the page never showed #out:\nvite:\n${dev.lines.join("\n")}\npage:\n${consoleLines.join("\n")}`);
+	throw e;
+});
 const session = await page.evaluate(() => globalThis.__session);
 const loadNavs = navigations;
 
@@ -225,6 +228,16 @@ s = await snap();
 const cleared = await failureText();
 check("S7", "the fix mounts Counter again with its count, error gone", shown && countOf(s.out) === n && s.counters === 1 && cleared === null && kept(s),
 	`out="${s.out}" (was ${n}) counters=${s.counters} shown=${cleared} ${keptText(s)} vite: ${viteSince(mark)}`);
+
+// ---- 8. an edit that adds a generic instance (a boolean signal read by the template)
+n = countOf(s.out);
+mark = dev.lines.length;
+edit("counter.ms", "const [count, setCount] = createSignal(0);", "const [count, setCount] = createSignal(0);\n\tconst [flag, setFlag] = createSignal(false);");
+edit("counter.ms", ">Counter v8<", `>{"Counter v9" + (flag() ? "!" : "")}<`);
+shown = await waitText("#title", "Counter v9");
+s = await snap();
+check("S8", "a new generic instance applies without reload, count kept", shown && countOf(s.out) === n && s.counters === 1 && kept(s),
+	`title="${s.title}" out="${s.out}" (was ${n}) ${keptText(s)} vite: ${viteSince(mark)}`);
 
 const errors = consoleLines.filter((l) => /^\[(error|pageerror)\]/.test(l) && !/404/.test(l));
 check("dev", "no page errors in the console", errors.length === 0, errors.join(" ; ") || "(none)");
