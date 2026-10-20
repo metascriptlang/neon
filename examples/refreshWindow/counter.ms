@@ -15,8 +15,9 @@ const styles = createStyles({
 export function Counter(): NeonNode {
 	const [count, setCount] = createSignal(0);
 	const inc: (e: NeonEvent) => void = () => {
-		setCount(count() + 1);
-		console.log("RW press count=" + count().toString());
+		const n = count() + 1;
+		setCount(n);
+		console.log("RW press count=" + n.toString());
 	};
 	return <View style={styles.root} onLayout={(e: NeonEvent): void => { console.log("RW layout"); }}>
 		<Text style={styles.title}>Counter v1</Text>
