@@ -1,4 +1,5 @@
 import { createSignal } from "../../src/core/signal";
+import { flush } from "../../src/core/runtime";
 import { element } from "../../src/macros/ui/element";
 import { HostNode, mockNode, mockHost, render } from "../../src/render/host";
 import { Void } from "../../src/components/primitives";
@@ -65,6 +66,7 @@ test "Graphics gradients and patterns preserve direct Void vertices and ordered 
 			const snapshot: GraphicsOp[] = [];
 			for (const op of prefix) { snapshot.push(op); }
 			setValue(snapshot);
+			flush();
 			controls[i](control);
 			const actual = nodes[0].scene.meshes[nodes[0].scene.payloads[id.index]];
 			const expected = control.scene.meshes[control.scene.payloads[control.id.index]];
@@ -79,6 +81,7 @@ test "Graphics gradients and patterns preserve direct Void vertices and ordered 
 			}
 		}
 		setValue([]);
+		flush();
 		const empty = nodes[0].scene.meshes[nodes[0].scene.payloads[id.index]];
 		assert empty.mesh.length === 0 && empty.records.length === 0;
 	} finally { control.dispose(); cleanup(); }

@@ -1,4 +1,5 @@
 import { accessor, createSignal } from "../../src/core/signal";
+import { flush } from "../../src/core/runtime";
 import { createRoot } from "../../src/core/owner";
 import { element } from "../../src/macros/ui/element";
 import { Show } from "../../src/macros/ui/flow";
@@ -47,14 +48,17 @@ test "Label owns run and shaping-break snapshots and binds line options reactive
 	initialRuns[0].len = 1; initialBreaks[0] = 999;
 	assert labelTexts[row].runs[0].len === 2 && labelTexts[row].shapingBreaks[0] === 2;
 	setRuns([run(4)]); setBreaks([1, 3]); setTruncate(Truncate.End); setIndent(6.0); setWidth(10.0);
+	flush();
 	assert node.scene.payloads[node.id.index] === row;
 	assert labelTexts[row].runs.length === 1 && labelTexts[row].runs[0].len === 4;
 	assert labelTexts[row].shapingBreaks.length === 2 && labelTexts[row].shapingBreaks[1] === 3;
 	assert labelLines(row).truncate === Truncate.End;
 	assert labelLines(row).hangingIndent === 6.0 && labelLines(row).forceWidth === 10.0;
 	setRuns([]); setBreaks([]); setTruncate(Truncate.None);
+	flush();
 	assert labelTexts[row].runs.length === 0 && labelTexts[row].shapingBreaks.length === 0;
 	dispose(); setRuns([run(1)]); setWidth(4.0);
+	flush();
 	assert !node.isLive() && node.scene.closed;
 }
 
@@ -76,12 +80,16 @@ test "Label remount applies current runs and line options without changing omitt
 	const siblingRow = nodes[0].scene.payloads[nodes[0].id.index];
 	assert labelTexts[siblingRow].runs.length === 0 && labelTexts[siblingRow].shapingBreaks.length === 0;
 	assert labelLines(siblingRow).truncate === Truncate.None && labelLines(siblingRow).forceWidth === 0.0;
-	setShown(false); setRuns([run(1), run(1)]); setWidth(12.0); setShown(true);
+	setShown(false);
+	flush();
+	setRuns([run(1), run(1)]); setWidth(12.0); setShown(true);
+	flush();
 	assert !nodes[1].isLive();
 	const row = nodes[2].scene.payloads[nodes[2].id.index];
 	assert labelTexts[row].runs.length === 2 && labelLines(row).forceWidth === 12.0;
 	assert labelTexts[siblingRow].runs.length === 0 && labelLines(siblingRow).forceWidth === 0.0;
 	dispose(); setShown(false); setWidth(2.0);
+	flush();
 	assert !nodes[0].isLive() && !nodes[2].isLive() && nodes[0].scene.closed;
 }
 
@@ -109,14 +117,17 @@ test "Label selection cursor and blink parameters react and preserve omitted def
 	assert labelTexts[sibling].cursorBlinkTime === 0.5;
 	advanceBlink(row, 0.3); assert !cursorShown(labelTexts[row]);
 	setRange({ start: 1, length: 1 }); setColor(rgba(0.6, 0.7, 0.8, 0.9)); setCursor(3);
+	flush();
 	assert labelTexts[row].selectionStart === 1 && labelTexts[row].selectionLength === 1;
 	assert labelTexts[row].selectionColor === color() && labelTexts[row].cursorColor === color();
 	assert labelTexts[row].cursorIndex === 3 && labelTexts[row].blinkClock === 0.0;
 	setBlink(0.0); advanceBlink(row, 10.0); assert cursorShown(labelTexts[row]);
 	setRange({ start: 0, length: 0 }); setCursor(-1);
+	flush();
 	assert labelTexts[row].selectionLength === 0 && !cursorShown(labelTexts[row]);
 	assert labelTexts[sibling].selectionLength === 0 && labelTexts[sibling].cursorIndex === -1;
 	dispose(); setCursor(0); setBlink(0.5);
+	flush();
 	assert !nodes[0].isLive() && !nodes[1].isLive() && nodes[0].scene.closed;
 }
 

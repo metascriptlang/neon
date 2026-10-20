@@ -1,4 +1,5 @@
 import { accessor, createSignal } from "../../src/core/signal";
+import { flush } from "../../src/core/runtime";
 import { element } from "../../src/macros/ui/element";
 import { Show } from "../../src/macros/ui/flow";
 import { HostNode, mockNode, mockHost, render } from "../../src/render/host";
@@ -35,11 +36,13 @@ test "Camera3D follows parent translation roll and scale through Void world bind
 	const initial = resolved(handle);
 	assert initial.position === vec3(1.0, 2.0, 12.0);
 	setX(3.0); setRoll(0.5);
+	flush();
 	const moved = resolved(handle);
 	assert moved.position === vec3(3.0, 2.0, 12.0);
 	assert moved.basisOf().right.y > 0.4;
 	assert Math.abs(moved.basisOf().right.lengthSquared() - 1.0) < 0.00001;
 	dispose(); setX(10.0); setRoll(1.0);
+	flush();
 	assert handle.camera === null && handle.scene.closed && handle.scene.nodeCount() === 0;
 }
 
@@ -61,6 +64,7 @@ test "Camera3D retains local yaw pitch and restores a surviving world camera aft
 	if (handle === null) { throw new Error("fixture: handle ref did not mount"); }
 	assert resolved(handle).position.x === 20.0;
 	setShown(false);
+	flush();
 	const selected = handle.camera;
 	assert selected !== null;
 	if (selected !== null) {
@@ -72,10 +76,13 @@ test "Camera3D retains local yaw pitch and restores a surviving world camera aft
 	}
 	assert handle.scene.nodeCount() === 2;
 	setYaw(0.2); setPitch(0.4);
+	flush();
 	assert resolved(handle).basisOf().forward.y < -0.3;
 	setShown(true);
+	flush();
 	assert resolved(handle).position.x === 20.0;
 	dispose(); setYaw(1.0); setShown(false);
+	flush();
 	assert handle.camera === null && handle.scene.closed;
 }
 

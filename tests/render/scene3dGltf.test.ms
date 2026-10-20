@@ -1,6 +1,6 @@
 import { createSignal, accessor } from "../../src/core/signal";
 import { onCleanup } from "../../src/core/cleanup";
-import { resetErrorHalt } from "../../src/core/runtime";
+import { resetErrorHalt, flush } from "../../src/core/runtime";
 import { element } from "../../src/macros/ui/element";
 import { Show } from "../../src/macros/ui/flow";
 import { HostNode, mockNode, mockHost, render } from "../../src/render/host";
@@ -59,26 +59,29 @@ test "Gltf keeps its wrapper and authored children while imported graphs replace
 		assert handle.scene.nodes[oldId.index].local.position === vec3(2.0, 3.0, 4.0);
 		assert handle.scene.nodes[oldId.index].local.scale === vec3(2.0, 3.0, 4.0);
 		let message = "";
-		try { setBadGraph(true); } catch (error) { message = error.message; }
+		try { setBadGraph(true); flush(); } catch (error) { message = error.message; }
 		finally { resetErrorHalt(); }
 		assert message === "Gltf: addGltfNodes failed: InvalidData";
 		assert handle.scene.isLive(oldId) && handle.scene.isLive(authoredId);
 		assert handle.scene.nodes[wrapper.index].children.length === 2;
 		assert handle.scene.nodes[wrapper.index].children[1] === authoredId.index;
 		setBadGraph(false);
+		flush();
 		const beforeSetupFailure = handle.scene.findByName(wrapper, "old");
 		assert beforeSetupFailure.ok;
 		if (!beforeSetupFailure.ok) { return; }
 		message = "";
-		try { setBadSetup(true); } catch (error) { message = error.message; }
+		try { setBadSetup(true); flush(); } catch (error) { message = error.message; }
 		finally { resetErrorHalt(); }
 		assert message === "Gltf: addGltfAssets failed: BadSetup";
 		assert handle.scene.isLive(beforeSetupFailure.value);
 		setBadSetup(false);
+		flush();
 		const beforeReplacement = handle.scene.findByName(wrapper, "old");
 		assert beforeReplacement.ok;
 		if (!beforeReplacement.ok) { return; }
 		setName("new"); setX(20.0);
+		flush();
 		const changed = handle.scene.findByName(wrapper, "new");
 		assert changed.ok && !handle.scene.isLive(beforeReplacement.value);
 		assert handle.scene.isLive(authoredId) && wrappers.length === 1;
@@ -88,6 +91,7 @@ test "Gltf keeps its wrapper and authored children while imported graphs replace
 	} finally { cleanup(); }
 	assert handle.scene.closed && !handle.scene.isLive(wrappers[0]);
 	setName("after-close"); setX(30.0);
+	flush();
 	assert wrappers.length === 1;
 }
 
@@ -108,8 +112,10 @@ test "Gltf remount owns a fresh wrapper and does not revive removed imported nod
 		assert imported.ok;
 		if (!imported.ok) { return; }
 		setShown(false);
+		flush();
 		assert !handle.scene.isLive(wrappers[0]) && !handle.scene.isLive(imported.value);
 		setName("second"); setShown(true);
+		flush();
 		assert wrappers.length === 2 && handle.scene.isLive(wrappers[1]);
 		assert !handle.scene.isLive(wrappers[0]);
 		assert handle.scene.findByName(wrappers[1], "second").ok;

@@ -1,4 +1,5 @@
 import { createSignal, Accessor, accessor } from "../../src/core/signal";
+import { flush } from "../../src/core/runtime";
 import { element } from "../../src/macros/ui/element";
 import { For, Show } from "../../src/macros/ui/flow";
 import { Host, HostNode, mockNode, mockHost, render } from "../../src/render/host";
@@ -27,6 +28,7 @@ test "For reorders raw Scene2D nodes without remounting their owners" {
 	try {
 		assert nodes.length === 3;
 		setItems([3, 1, 2]);
+		flush();
 		assert nodes.length === 3;
 		const third = parent.getChildIndex(nodes[2]);
 		const first = parent.getChildIndex(nodes[0]);
@@ -34,6 +36,7 @@ test "For reorders raw Scene2D nodes without remounting their owners" {
 		assert third >= 0 && third < first && first < second;
 	} finally { dispose(); }
 	setItems([2, 3]);
+	flush();
 	assert !nodes[0].isLive() && !nodes[1].isLive() && !nodes[2].isLive() && parent.scene.closed;
 }
 
@@ -53,6 +56,7 @@ test "For inserts a raw node before its existing sibling inside a Group" {
 	const parent = groups[0];
 	try {
 		setItems([1, 3, 2]);
+		flush();
 		assert nodes.length === 3;
 		const first = parent.getChildIndex(nodes[0]);
 		const inserted = parent.getChildIndex(nodes[2]);
@@ -76,11 +80,14 @@ test "Show owns effects while the host removes raw subtrees exactly once" {
 	</Scene2D></Void>), mockHost(), mockNode("root"));
 	assert nodes.length === 2;
 	setShown(false);
+	flush();
 	assert !nodes[0].isLive() && !nodes[1].isLive();
 	setShown(true);
+	flush();
 	assert nodes.length === 4 && nodes[2].isLive() && nodes[3].isLive();
 	assert nodes[0].id !== nodes[2].id;
 	setShown(false);
+	flush();
 	assert !nodes[2].isLive() && !nodes[3].isLive();
 	dispose();
 	assert nodes[0].scene.closed;

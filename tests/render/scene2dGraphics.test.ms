@@ -1,4 +1,5 @@
 import { accessor, createSignal } from "../../src/core/signal";
+import { flush } from "../../src/core/runtime";
 import { element } from "../../src/macros/ui/element";
 import { Show } from "../../src/macros/ui/flow";
 import { HostNode, mockNode, mockHost, render } from "../../src/render/host";
@@ -48,10 +49,12 @@ test "Graphics replay replaces geometry in order and snapshots caller polygon po
 		assert geometry(nodes[0]).mesh[0] === 30.0;
 		assert nodes.length === 1 && nodes[0].id === id;
 		setOperations([]);
+		flush();
 		assert geometry(nodes[0]).mesh.length === 0;
 	} finally { dispose(); }
 	const stopped = reads;
 	setOperations(initial);
+	flush();
 	assert reads === stopped && scenes[0].closed && !nodes[0].isLive();
 }
 
@@ -72,8 +75,10 @@ test "Graphics remount owns fresh geometry and rejects missing Scene2D scope" {
 	try {
 		assert nodes.length === 1 && geometry(nodes[0]).mesh.length === 48;
 		setShown(false);
+		flush();
 		assert !nodes[0].isLive();
 		setShown(true);
+		flush();
 		assert nodes.length === 2 && geometry(nodes[1]).mesh.length === 48;
 		assert !nodes[0].isLive() && nodes[1].isLive();
 	} finally { dispose(); }
@@ -135,6 +140,7 @@ test "Graphics solid shapes and curve helpers match direct Void geometry after e
 		const id = nodes[0].id;
 		for (let i: int32 = 0; i < operations.length; i++) {
 			setValue([operations[i]]);
+			flush();
 			const control = nodes[0].scene.graphics();
 			try {
 				controls[i](control);

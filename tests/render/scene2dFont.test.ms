@@ -1,4 +1,5 @@
 import { createSignal } from "../../src/core/signal";
+import { flush } from "../../src/core/runtime";
 import { element } from "../../src/macros/ui/element";
 import { HostNode, mockNode, mockHost, render } from "../../src/render/host";
 import { Void } from "../../src/components/primitives";
@@ -73,19 +74,23 @@ test "Label updates borrowed font style size and wrapping without stale measurem
 	const initialWidth = node.textWidth();
 	assert initialWidth > 0.0 && node.textLayout().lines.length === 1;
 	setSize(26.0);
+	flush();
 	assert node.textWidth() > initialWidth * 1.9;
 	setStyle(styled(secondFont, 99.0, 1.0, 35.0));
+	flush();
 	assert node.id === id && node.textStyle().font === secondFont && node.textStyle().size === 26.0;
 	const direct = requiredLayout(text(), styled(secondFont, 26.0, 1.0, 35.0));
 	assert node.textLayout().lines.length > 1;
 	assert node.textWidth() === direct.width && node.textHeight() === direct.height;
 	setText("a🙂b");
+	flush();
 	const changed = requiredLayout(text(), styled(secondFont, 26.0, 1.0, 35.0));
 	assert node.textWidth() === changed.width && node.textLayout().glyphs.length === changed.glyphs.length;
 	assert node.textLayout().glyphs[2].charIndex === 2;
 	assert node.textLayout().glyphs[2].index === 3;
 	assert node.xForIndex(3) === layoutXForIndex(changed, 3);
 	dispose(); setSize(12.0); setStyle(styled(firstFont, 10.0, 0.0, 0.0));
+	flush();
 	assert !node.isLive() && node.scene.closed;
 }
 
@@ -124,6 +129,7 @@ test "Label keeps resolved fallback and synthetic faces through borrowed font re
 	try {
 		for (const next of fonts) {
 			setFont(next);
+			flush();
 			const actual = node.textLayout();
 			const expected = requiredLayout("AV你", styled(next, 14.0, 0.0, 0.0));
 			assert node.id === id && nodes.length === 1;
@@ -140,5 +146,6 @@ test "Label keeps resolved fallback and synthetic faces through borrowed font re
 		}
 	} finally { dispose(); }
 	setFont(italic);
+	flush();
 	assert !node.isLive() && node.scene.closed;
 }

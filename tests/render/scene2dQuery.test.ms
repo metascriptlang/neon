@@ -1,4 +1,5 @@
 import { createSignal } from "../../src/core/signal";
+import { flush } from "../../src/core/runtime";
 import { element } from "../../src/macros/ui/element";
 import { HostNode, mockNode, mockHost, render } from "../../src/render/host";
 import { Void } from "../../src/components/primitives";
@@ -39,20 +40,27 @@ test "raw JSX geometry queries follow reactive ancestors and visibility before a
 		assert node.globalToLocal(vec2(18.0, 39.0)) === vec2(3.0, 4.0);
 		assert node.hitTest(vec2(16.0, 36.0)) && !node.hitTest(vec2(5.0, 5.0));
 		setX(20.0);
+		flush();
 		assert node.localToGlobal(vec2(0.0, 0.0)) === vec2(25.0, 35.0);
 		assert !node.hitTest(vec2(16.0, 36.0)) && node.hitTest(vec2(26.0, 36.0));
 		setScale(0.0);
+		flush();
 		assert !node.hitTest(vec2(25.0, 35.0));
 		setScale(1.0); setWidth(0.0);
+		flush();
 		assert !node.hitTest(vec2(25.0, 35.0));
 		setWidth(8.0); setParentShown(false);
+		flush();
 		assert !node.hitTest(vec2(26.0, 36.0));
 		setParentShown(true); setShown(false);
+		flush();
 		assert !node.hitTest(vec2(26.0, 36.0));
 		setShown(true);
+		flush();
 		assert node.hitTest(vec2(26.0, 36.0)) && node.id === id && nodes.length === 1;
 	} finally { dispose(); }
 	setX(40.0); setWidth(3.0);
+	flush();
 	assert !node.isLive() && node.scene.closed;
 }
 
@@ -81,6 +89,7 @@ test "raw mask queries honor scroll and every nested rotated clip after resizing
 	try {
 		assert nodes[0].hitTest(vec2(20.0, 30.0));
 		setScroll(10.0);
+		flush();
 		assert nodes[0].localToGlobal(vec2(0.0, 0.0)) === vec2(15.0, 15.0);
 		assert nodes[0].globalToLocal(vec2(20.0, 23.0)) === vec2(5.0, 8.0);
 		assert nodes[0].hitTest(vec2(20.0, 23.0));
@@ -89,12 +98,15 @@ test "raw mask queries honor scroll and every nested rotated clip after resizing
 		assert nodes[1].hitTest(vec2(30.0, 40.0));
 		assert !nodes[1].hitTest(vec2(30.0, 48.0));
 		setOuterHeight(50.0);
+		flush();
 		assert nodes[1].hitTest(vec2(30.0, 48.0));
 		assert !nodes[1].hitTest(vec2(30.0, 55.0));
 		setInnerWidth(30.0);
+		flush();
 		assert nodes[1].hitTest(vec2(30.0, 55.0));
 		assert nodes.length === 2;
 	} finally { dispose(); }
 	setScroll(0.0); setOuterHeight(10.0); setInnerWidth(10.0);
+	flush();
 	for (const node of nodes) { assert !node.isLive() && node.scene.closed; }
 }

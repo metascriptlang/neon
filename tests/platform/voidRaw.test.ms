@@ -1,6 +1,7 @@
 import { createSignal } from "../../src/core/signal";
 import { createRenderEffect } from "../../src/core/effect";
 import { Cleanup } from "../../src/core/types";
+import { flush } from "../../src/core/runtime";
 import { createRoot } from "../../src/core/owner";
 import { createVoidHostWith, VoidHost, VoidNode } from "../../src/platform/void/host";
 import { Style } from "../../src/render/style";
@@ -127,8 +128,10 @@ test "raw mutation effects wake existing listener once per clean scene, includin
 		settle(vh);
 		assert !vh.scene.isDirty();
 		setX(2.0);
+		flush();
 		assert wakes === 1;
 		setX(3.0);
+		flush();
 		assert wakes === 1;
 		settle(vh);
 		let caught = "";

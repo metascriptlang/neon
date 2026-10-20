@@ -1,4 +1,5 @@
 import { createSignal } from "../../src/core/signal";
+import { flush } from "../../src/core/runtime";
 import { element } from "../../src/macros/ui/element";
 import { HostNode, mockNode, mockHost, render } from "../../src/render/host";
 import { Void } from "../../src/components/primitives";
@@ -51,6 +52,7 @@ test "Sprite keeps atlas UVs, flipped offsets and alpha through borrowed Tile re
 		assert node.content().w === 32.0 && node.content().h === 8.0;
 		assert node.content().tile.dx === -8.0 && node.content().tile.dy === -4.0;
 		setReplacement(true);
+		flush();
 		assert node.content().tile === changed;
 		assert node.content().tile.source.texture === second;
 		assert node.content().tile.u0 === 0.3125 && node.content().tile.u1 === 0.25;
@@ -59,11 +61,13 @@ test "Sprite keeps atlas UVs, flipped offsets and alpha through borrowed Tile re
 		assert node.content().w === 32.0 && node.content().h === 16.0;
 		assert node.content().tile.dx === -8.0 && node.content().tile.dy === -16.0;
 		setWidth(16.0);
+		flush();
 		assert node.content().w === 16.0 && node.content().h === 16.0;
 		let snapshot: Tile = node.content().tile;
 		snapshot.u0 = 0.0; snapshot.dx = 0.0;
 		assert node.content().tile === changed;
 		setReplacement(false);
+		flush();
 		assert node.content().tile === initial && !node.content().tile.alphaPremultiplied;
 		assert node.content().w === 16.0 && node.content().h === 8.0;
 		assert node.id === id && nodes.length === 1;
@@ -73,6 +77,7 @@ test "Sprite keeps atlas UVs, flipped offsets and alpha through borrowed Tile re
 		first.close(); second.close();
 	}
 	setReplacement(true); setWidth(48.0);
+	flush();
 	assert !node.isLive() && node.scene.closed && first.closed && second.closed;
 }
 
@@ -96,6 +101,7 @@ test "Sprite borrows deferred Texture owners across siblings, disposal and remou
 			try {
 				assert moving.content().tile.source.texture === first;
 				setReplacement(true);
+				flush();
 				assert moving.content().tile.source.texture === second;
 				assert moving.content().w === 16.0 && moving.content().h === 8.0;
 				assert sibling.content().tile.source.texture === first;
@@ -103,6 +109,7 @@ test "Sprite borrows deferred Texture owners across siblings, disposal and remou
 				assert !first.closed && !second.closed;
 			} finally { dispose(); }
 			setReplacement(false);
+			flush();
 			assert !moving.isLive() && !sibling.isLive() && moving.scene.closed;
 			assert !first.closed && !second.closed;
 			assert first.realloc !== null && second.realloc !== null;
@@ -128,10 +135,13 @@ test "Sprite bounds answer its reactive atlas placement before a frame" {
 	try {
 		assert nodes[0].hasBounds({ xMin: 24.0, yMin: 26.0, xMax: 56.0, yMax: 34.0 });
 		setReplacement(true);
+		flush();
 		assert nodes[0].hasBounds({ xMin: 8.0, yMin: 14.0, xMax: 40.0, yMax: 30.0 });
 		setWidth(16.0);
+		flush();
 		assert nodes[0].hasBounds({ xMin: 24.0, yMin: 14.0, xMax: 40.0, yMax: 30.0 });
 		setReplacement(false);
+		flush();
 		assert nodes[0].hasBounds({ xMin: 32.0, yMin: 26.0, xMax: 48.0, yMax: 34.0 });
 	} finally { dispose(); }
 }
@@ -152,6 +162,7 @@ test "nested Rect bounds use reactive ancestors before a frame" {
 	try {
 		assert nodes[0].hasBounds({ xMin: 15.0, yMin: 27.0, xMax: 19.0, yMax: 33.0 });
 		setX(30.0);
+		flush();
 		assert nodes[0].hasBounds({ xMin: 35.0, yMin: 27.0, xMax: 39.0, yMax: 33.0 });
 	} finally { dispose(); }
 }

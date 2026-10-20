@@ -1,4 +1,5 @@
 import { accessor, createSignal } from "../../src/core/signal";
+import { flush } from "../../src/core/runtime";
 import { element } from "../../src/macros/ui/element";
 import { Show } from "../../src/macros/ui/flow";
 import { HostNode, mockNode, mockHost, render } from "../../src/render/host";
@@ -37,6 +38,7 @@ test "Group Mesh Light visibility pickability and names react through Void binde
 		assert handle.scene.nodes[id.index].name === "first";
 	}
 	setVisible(true); setPickable(false); setName("second");
+	flush();
 	for (const id of nodes) {
 		assert handle.scene.nodes[id.index].flags.has(NodeFlag.Visible);
 		assert !handle.scene.nodes[id.index].flags.has(NodeFlag.Pickable);
@@ -45,6 +47,7 @@ test "Group Mesh Light visibility pickability and names react through Void binde
 	const released = releaseMesh(handle.context, mesh);
 	assert released.ok;
 	dispose(); setVisible(false); setPickable(true); setName("late");
+	flush();
 	assert handle.scene.closed && handle.context.closed && handle.scene.nodeCount() === 0;
 	assert handle.context.meshHolders[mesh.index] === 0;
 }
@@ -70,11 +73,15 @@ test "Omitted node flags preserve Void defaults and remount reads current values
 	assert handle.scene.nodes[nodes[0].index].flags.has(NodeFlag.Visible);
 	assert !handle.scene.nodes[nodes[0].index].flags.has(NodeFlag.Pickable);
 	assert handle.scene.nodes[nodes[0].index].name === "";
-	setShown(false); setVisible(true); setName("after"); setShown(true);
+	setShown(false);
+	flush();
+	setVisible(true); setName("after"); setShown(true);
+	flush();
 	assert !handle.scene.isLive(nodes[1]);
 	assert handle.scene.nodes[nodes[2].index].flags.has(NodeFlag.Visible);
 	assert handle.scene.nodes[nodes[2].index].name === "after";
 	dispose(); setShown(false); setVisible(false); setName("late");
+	flush();
 	assert handle.scene.closed && handle.scene.nodeCount() === 0;
 }
 
@@ -101,10 +108,12 @@ test "Scene3D ambient follows its signal without changing sibling scenes or Void
 	if (defaults === null) { throw new Error("fixture: defaults ref did not mount"); }
 	assert defaults.scene.ambientLight === vec3(0.5, 0.5, 0.5);
 	setAmbient(vec3(0.4, 0.5, 0.6));
+	flush();
 	assert first.scene.ambientLight === vec3(0.4, 0.5, 0.6);
 	assert second.scene.ambientLight === vec3(0.7, 0.8, 0.9);
 	assert defaults.scene.ambientLight === vec3(0.5, 0.5, 0.5);
 	dispose(); setAmbient(vec3(1.0, 1.0, 1.0));
+	flush();
 	assert first.scene.closed && second.scene.closed && defaults.scene.closed;
 	assert first.context.closed && second.context.closed && defaults.context.closed;
 }
