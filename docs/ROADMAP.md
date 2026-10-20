@@ -116,7 +116,11 @@ every target, at React Native's and Flutter's level. Remaining, in order (arc
 5. The browser updates a module whose template reads a new binding without a page reload
    (compiler `wt/js-instance-modules`).
 6. Structured events from the watch build and the refresh runtime for tools and LLMs; then a
-   control channel into the running app (UI tree, signal values, input, REPL).
+   control channel into the running app (UI tree, signal values, input, REPL). The app half is
+   built (2026-10-20, `docs/DEVTOOLS.md`): JSON Lines events and a JSON-RPC control channel with
+   `tree`, `components`, `press`, `type`, `subscribe` on Void windows and the native host. The
+   watch build's events and `eval` wait on the compiler card named in `docs/DEVTOOLS.md`
+   §Build events and eval.
 
 A compiler-blocked item is reduced, recorded and parked; it is never “completed” by making
 the app author rewrite valid code. Continue reachable work in the next bundle while the
