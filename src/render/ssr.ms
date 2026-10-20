@@ -47,6 +47,7 @@ when (server) {
 	import { parseVisibleContent } from "./visibleContent";
 	import { asServer } from "./environment";
 	import { Dispose } from "../core/types";
+	import { flush } from "../core/runtime";
 
 	function joinClass(className: string, id: string): string {
 		return className === "" ? id : className + " " + id;
@@ -556,6 +557,7 @@ when (server) {
 	}
 
 	function writeRender(n: NeonNode, w: SsrWrite): SsrMarkup {
+		flush();
 		const root = new SsrNode("ssr-root", PLAIN);
 		const dispose = asServer((): Dispose => render(n, writerHost(w), root as unknown as HostNode, ""));
 		try {

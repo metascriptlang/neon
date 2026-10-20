@@ -1,5 +1,4 @@
 import { createSignal, Accessor, accessor } from "../../src/core/signal";
-import { flush } from "../../src/core/runtime";
 import { NeonNode } from "../../src/render/node";
 import { renderToString } from "../../src/render/ssr";
 import { Style } from "../../src/render/style";
@@ -59,7 +58,6 @@ test "an Accessor field stays reactive" {
 	const n = view({ title: t });
 	assert renderToString(n) === "<div title=\"a\">hi</div>", "initial accessor read";
 	setT("b");
-	flush();
 	assert renderToString(n) === "<div title=\"b\">hi</div>", "accessor tracks the signal";
 }
 
@@ -97,7 +95,6 @@ test "a spread onto a component forwards its props and keeps them reactive" {
 	const n = view({ title: t, body: accessor(() => "b") });
 	assert renderToString(n) === "<div id=\"a\">b</div>", "component spread initial";
 	setT("z");
-	flush();
 	assert renderToString(n) === "<div id=\"z\">b</div>", "component spread stays reactive";
 }
 
