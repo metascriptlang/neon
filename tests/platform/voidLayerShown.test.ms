@@ -51,7 +51,7 @@ function shownOf(layers: AreaLayer[]): string {
 	return out.join(",");
 }
 
-function heldThroughErrored(scenes: NeonNode[], inText: boolean = false): string {
+function heldThroughErrored(scenes: NeonNode[], inText: boolean = false, emptyFallback: boolean = false): string {
 	const log: string[] = [];
 	const areas: WindowArea[] = [];
 	const [fault, setFault] = createSignal(0);
@@ -65,7 +65,7 @@ function heldThroughErrored(scenes: NeonNode[], inText: boolean = false): string
 	};
 	const held = Errored({
 		children: content,
-		fallback: (err: Accessor<Error>, reset: () => void): NeonNode => { again = reset; return element(<Text>caught</Text>); },
+		fallback: (err: Accessor<Error>, reset: () => void): NeonNode => { again = reset; return emptyFallback ? (h: Host, p: HostNode, b: HostNode | null): void => {} : element(<Text>caught</Text>); },
 	});
 	const dispose = render(element(<Void>{inText ? element(<Text>{held}</Text>) : held}</Void>), windowHost(testWindow(log, areas)), windowNode("window"));
 	const hub = areas[0].hub;
@@ -111,6 +111,11 @@ test "an Errored that holds a Text hides the scenes inside it, and a reset shows
 test "an Errored inside a Text hides the scenes it holds, and a reset shows them" {
 	const inner = heldThroughErrored([element(<Scene2D />), element(<Scene3D />)], true);
 	assert inner === "mount shown,shown | held same hidden,hidden woke | reset same shown,shown woke", inner;
+}
+
+test "an Errored inside a Text with an empty fallback wakes the area when it holds a scene and when a reset shows it" {
+	const inner = heldThroughErrored([element(<Scene3D />)], true, true);
+	assert inner === "mount shown | held same hidden woke | reset same shown woke", inner;
 }
 
 test "a scene's place in the area takes no layout room" {
