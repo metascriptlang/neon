@@ -2,6 +2,7 @@ import { JsonValue } from "std/serialize/json";
 import { jsonObject, jsonString, jsonNumber, jsonInt } from "std/serialize/json/builder";
 import { stringify } from "std/serialize/json/stringify";
 import { listeners } from "../render/voidAreaHandle";
+import { RefreshDone, RefreshFailure, onRefreshDone, onRefreshFailed } from "../render/refresh";
 
 when (!js) {
 	import { env } from "std/process";
@@ -27,7 +28,27 @@ export function devEventsWanted(): boolean {
 	return subscribed > 0 || eventFile() !== "";
 }
 
+let reporting = false;
+
+export function reportRefreshes(): void {
+	if (reporting) { return; }
+	reporting = true;
+	onRefreshDone((r: RefreshDone): void => {
+		devEvent("refresh", [r.scope, "kept", "rebuilt", "remounted", "ms"], [
+			jsonString(r.name),
+			jsonInt(r.summary.kept as int64),
+			jsonInt(r.summary.rebuilt as int64),
+			jsonInt(r.summary.remounted as int64),
+			jsonNumber(r.ms),
+		]);
+	});
+	onRefreshFailed((f: RefreshFailure): void => {
+		devEvent("refresh.failed", ["component", "message"], [jsonString(f.component), jsonString(f.message)]);
+	});
+}
+
 export function onDevEvent(fn: (line: string) => void): () => void {
+	reportRefreshes();
 	const off = subscribers.add(fn);
 	subscribed += 1;
 	let on = true;

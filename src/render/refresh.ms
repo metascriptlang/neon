@@ -9,8 +9,7 @@ import { createMemo } from "../core/memo";
 import { Accessor, Setter, Signal, untrack } from "../core/signal";
 import { refreshTypeKey } from "../macros/refresh";
 import { onCleanup } from "../core/cleanup";
-import { devEvent, devEventsWanted } from "../devtools/events";
-import { jsonString, jsonInt, jsonNumber } from "std/serialize/json/builder";
+import { Unsubscribe, listeners } from "./voidAreaHandle";
 
 export type SigFn = () => string;
 
@@ -20,6 +19,18 @@ export interface RefreshSummary {
 	kept: int32;
 	rebuilt: int32;
 	remounted: int32;
+}
+
+export interface RefreshDone {
+	scope: string;
+	name: string;
+	summary: RefreshSummary;
+	ms: number;
+}
+
+export interface RefreshFailure {
+	component: string;
+	message: string;
 }
 
 export interface KeptValue {
@@ -243,7 +254,7 @@ function instanceRows(instances: Map<string, Instance[]>, h: Host, home: RowHome
 		mounting = outer;
 		if (!rebuilding || e instanceof NotReadyError) { throw e; }
 		console.log("refresh: " + inst.key + " did not mount: " + e.message);
-		devEvent("refresh.failed", ["component", "message"], [jsonString(inst.key), jsonString(e.message)]);
+		failures.emit({ component: inst.key, message: e.message });
 		disposeChildren(inst.owner, false);
 		track(instances, inst);
 		const name = inst.key.substring(inst.key.lastIndexOf("/") + 1).split("|")[0];
@@ -492,16 +503,19 @@ export function refreshState<T>(key: string, get: Accessor<T>, set: Setter<T>): 
 	refreshKeep<T>(key, (): T => get(), (value: T): void => { set(value); });
 }
 
+const done = listeners<RefreshDone>();
+const failures = listeners<RefreshFailure>();
+
+export function onRefreshDone(fn: (r: RefreshDone) => void): Unsubscribe {
+	return done.add(fn);
+}
+
+export function onRefreshFailed(fn: (f: RefreshFailure) => void): Unsubscribe {
+	return failures.add(fn);
+}
+
 function reported(scope: string, name: string, started: number, summary: RefreshSummary): RefreshSummary {
-	if (devEventsWanted() && summary.rebuilt + summary.remounted > 0) {
-		devEvent("refresh", [scope, "kept", "rebuilt", "remounted", "ms"], [
-			jsonString(name),
-			jsonInt(summary.kept as int64),
-			jsonInt(summary.rebuilt as int64),
-			jsonInt(summary.remounted as int64),
-			jsonNumber(performance.now() - started),
-		]);
-	}
+	if (summary.rebuilt + summary.remounted > 0) { done.emit({ scope, name, summary, ms: performance.now() - started }); }
 	return summary;
 }
 

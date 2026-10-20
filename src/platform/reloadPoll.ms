@@ -1,6 +1,6 @@
 import { reload, lastReload, reloadKindName, ReloadKind } from "std/hcr";
 import { jsonString, jsonArrayOfStrings } from "std/serialize/json/builder";
-import { devEvent } from "../devtools/events";
+import { devEvent, reportRefreshes } from "../devtools/events";
 import { devDriver } from "../devtools/driver";
 import { pollControl } from "../devtools/control";
 
@@ -11,6 +11,7 @@ let announced = false;
 export function pollReload(): void {
 	if (!announced) {
 		announced = true;
+		reportRefreshes();
 		const d = devDriver();
 		devEvent("ready", ["host"], [jsonString(d === null ? "" : d.host)]);
 	}
