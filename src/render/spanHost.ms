@@ -34,6 +34,9 @@ class SpanNode {
 	parent: SpanNode | null = null;
 	paragraph: Paragraph | null = null;
 	press: ((e: NeonEvent) => void) | null = null;
+	// The tag of an element that is not a Text: a region's detached holder, or an inline view, which is refused
+	// when it is placed in a paragraph.
+	inline: string | null = null;
 
 	constructor(isString: boolean) {
 		this.isString = isString;
@@ -91,14 +94,20 @@ export function spanText(node: HostNode): HostNode | null {
 	return null;
 }
 
+function refuseInline(n: SpanNode): void {
+	const tag = n.inline;
+	if (tag !== null) {
+		throw new Error(`a <${tag}> inside a Text is an inline view, which a paragraph does not place yet; put it beside the Text`);
+	}
+}
+
 const SPAN_ATTRS = ["class", "accessible", "accessibilityLabel", "accessibilityHint", "accessibilityRole"];
 
 export const SPAN_HOST: Host = {
 	createElement: (tag: string): HostNode => {
-		if (tag !== "text") {
-			throw new Error(`a <${tag}> inside a Text is an inline view, which a paragraph does not place yet; put it beside the Text`);
-		}
-		return new SpanNode(false);
+		const n = new SpanNode(false);
+		if (tag !== "text") { n.inline = tag; }
+		return n;
 	},
 	createText: (s: string): HostNode => {
 		const n = new SpanNode(true);
@@ -112,6 +121,7 @@ export const SPAN_HOST: Host = {
 		touched(n);
 	},
 	setAttr: (node: HostNode, name: string, value: string): void => {
+		if (spanOf(node).inline !== null) { return; }
 		if (SPAN_ATTRS.indexOf(name) < 0) { throw new Error(`${name} belongs on the outermost Text, not on a Text inside one`); }
 	},
 	removeAttr: (node: HostNode, name: string): void => {},
@@ -123,12 +133,14 @@ export const SPAN_HOST: Host = {
 	setStyleProp: null,
 	setStyleClass: null,
 	addEvent: (node: HostNode, name: string, handler: (e: NeonEvent) => void): void => {
+		if (spanOf(node).inline !== null) { return; }
 		if (name !== "onPress") { throw new Error(`${name} on a Text inside a Text: a span takes onPress only`); }
 		spanOf(node).press = handler;
 	},
 	append: (parent: HostNode, child: HostNode): void => {
 		const p = spanOf(parent);
 		const c = spanOf(child);
+		refuseInline(c);
 		detach(c);
 		c.parent = p;
 		p.children.push(c);
@@ -137,6 +149,7 @@ export const SPAN_HOST: Host = {
 	insertBefore: (parent: HostNode, node: HostNode, before: HostNode | null): void => {
 		const p = spanOf(parent);
 		const n = spanOf(node);
+		refuseInline(n);
 		detach(n);
 		const at = before === null ? p.children.length : p.children.indexOf(spanOf(before as HostNode));
 		if (at < 0) { throw new Error("insertBefore: the reference span is not a child of the parent"); }
