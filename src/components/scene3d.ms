@@ -18,8 +18,10 @@ import {
 	releaseMaterial, reserveUniforms, writeUniforms, releaseUniforms, closeContext, buryDoomed,
 } from "../../../void/src/void3d/draw";
 import {
-	ForwardRenderer, create, prepareFrame, drawToScreen, closeForward,
+	ForwardRenderer, create, prepareFrame, drawToScreen, closeForward, setOutlineBlend, setOutlineSettings,
 } from "../../../void/src/void3d/forwardRenderer";
+import { ForwardOutlineSettings, defaults, valid, FORWARD_OUTLINE_BLOCKS } from "../../../void/src/void3d/forwardOutline";
+import { fits } from "../../../void/src/void3d/uniformPool";
 import { contextGeneration } from "../../../void/src/gpu/door";
 import {
 	Scene3D as VoidScene3D, NodeId3D, Transform3D, LightKind, LightInstance,
@@ -63,6 +65,8 @@ interface NodeScope {
 
 interface Scene3DProps {
 	ambient?: Accessor<Vec3> | null;
+	outlineBlend?: Accessor<float32> | null;
+	outlineSettings?: Accessor<ForwardOutlineSettings> | null;
 	ref?: ((handle: Scene3DHandle) => void) | null;
 	children?: NeonNode | null;
 }
@@ -321,6 +325,29 @@ export function Scene3D(props: Scene3DProps): NeonNode {
 				}
 				closeContext(context);
 			});
+			if (props.outlineBlend !== null || props.outlineSettings !== null) {
+				createRenderEffect<[float32, ForwardOutlineSettings]>(
+					(prev: [float32, ForwardOutlineSettings] | null): [float32, ForwardOutlineSettings] => [
+						props.outlineBlend === null ? 0.0 : (props.outlineBlend as () => float32)(),
+						props.outlineSettings === null ? ForwardOutlineSettings.defaults() : (props.outlineSettings as () => ForwardOutlineSettings)(),
+					],
+					(value: [float32, ForwardOutlineSettings], prev: [float32, ForwardOutlineSettings] | null): Cleanup | null => {
+						const blend = value[0];
+						const settings = value[1];
+						if (!Number.isFinite(blend) || blend < 0.0 || blend > 1.0) {
+							throw new Error("Scene3D: outlineBlend must be finite and in [0,1]");
+						}
+						if (!settings.valid()) { throw new Error("Scene3D: invalid outlineSettings"); }
+						if (blend > 0.0 && renderer.outline === null && !context.uniforms.fits(FORWARD_OUTLINE_BLOCKS).ok) {
+							throw new Error("Scene3D: outlineBlend needs additional uniform capacity");
+						}
+						setOutlineSettings(renderer, settings);
+						setOutlineBlend(renderer, blend);
+						state.invalidate();
+						return null;
+					},
+				);
+			}
 			if (props.ambient !== null) {
 				const ambient = props.ambient as () => Vec3;
 				createRenderEffect<Vec3>(
