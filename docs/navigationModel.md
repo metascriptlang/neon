@@ -138,9 +138,9 @@ never knows a URL, a pattern or a component.
 
 **Rendering (presentation)** draws a model: outlet, stack with motion, header and
 gestures, pages with a tab bar, drawer, panels laid out by width, modal presentation.
-A renderer takes a model and a `render(child)` function; input events (edge swipe,
-hardware back, mouse back button, shortcuts) call model operations. It never imports
-routing. `navigatorMotion.ms` stays the transition engine.
+A renderer takes a model and a `render(child)` function; input events call model
+operations: edge swipe and hardware back today, while no renderer wires the mouse back
+button or keyboard shortcuts yet. It never imports routing. `navigatorMotion.ms` stays the transition engine.
 
 **Binding** is the only module that imports two layers.
 
