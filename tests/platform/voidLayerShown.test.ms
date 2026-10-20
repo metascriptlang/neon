@@ -128,7 +128,7 @@ test "a scene's place in the area takes no layout room" {
 	assert deep === "y=0 place=0x0", "after a Scene3D: " + deep;
 }
 
-test "a Scene2D or Scene3D inside a Text mounts as before, with no anchor, so its layer is always shown" {
+test "a Scene2D or Scene3D inside a Text mounts one layer, shown" {
 	const mounted = (scene: NeonNode): string => {
 		const areas: WindowArea[] = [];
 		const dispose = render(element(<Void><Text>{scene}</Text></Void>), windowHost(testWindow([], areas)), windowNode("window"));
