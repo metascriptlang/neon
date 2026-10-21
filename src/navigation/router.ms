@@ -65,6 +65,7 @@ export interface RouteConfig {
 	initial?: string | null;
 	backBehavior?: BackBehavior | null;
 	presentation?: StackPresentation | null;
+	resolveOnReload?: boolean | null;
 	status?: int32 | null;
 	guard?: ((params: Map<string, string>, found: RouteMatch) => GuardDecision) | null;
 	paths?: (() => Map<string, string>[]) | null;
@@ -79,6 +80,7 @@ export interface RouteView {
 	initial: int32;
 	backBehavior: BackBehavior;
 	presentation: StackPresentation;
+	resolveOnReload: boolean;
 	children: int32[];
 	label: string;
 }
@@ -177,6 +179,7 @@ function compile(configs: RouteConfig[], views: RouteView[], ids: int32[], stack
 			initial: -1,
 			backBehavior: backBehaviorOf(config),
 			presentation: presentationOf(config, stacked),
+			resolveOnReload: config.resolveOnReload ?? false,
 			children: [],
 			label: labelOf(config),
 		};
@@ -720,6 +723,7 @@ function matchOf(routes: Routes, root: Level): RouteMatch {
 struct RouterEntry {
 	web: string;
 	address: string;
+	document: string;
 }
 
 export class Router {
@@ -814,7 +818,13 @@ export class Router {
 	}
 }
 
+function resolvesOnReload(routes: Routes, resolved: Resolved): boolean {
+	const chain = resolved.match.chain;
+	return routes.views[idOf(routes, chain[chain.length - 1].node)].resolveOnReload;
+}
+
 function participantOf(router: Router, web: WebHistory, tree: RouteTree, root: Level): RoutingParticipant {
+	const document = Math.round(Math.random() * 10000000).toString();
 	const withHash = (base: string): string => {
 		const leaf = untrack((): Stop => leafStop(root));
 		if (leaf.hash === "" || pathnameOf(base) !== leaf.path) { return base; }
@@ -836,15 +846,16 @@ function participantOf(router: Router, web: WebHistory, tree: RouteTree, root: L
 				const value = base.value;
 				if (value !== null) { address = withHash(value as string); }
 			}
-			const entry: RouterEntry = { web: web.participant.capture(), address };
+			const entry: RouterEntry = { web: web.participant.capture(), address, document };
 			return JSON.stringify(entry);
 		},
 		restore: (state: string, address: string | null): Result<RoutePlan, RoutingError> => {
 			const parsed = JSON.parse<RouterEntry>(state);
 			if (!parsed.ok && address === null) { return Result.err(RoutingError.IncompleteSnapshot); }
-			const entry: RouterEntry = parsed.ok ? parsed.value : { web: "", address: address as string };
-			const plan = try web.participant.restore(entry.web, address);
+			const entry: RouterEntry = parsed.ok ? parsed.value : { web: "", address: address as string, document: "" };
 			const resolved = try follow(tree, entry.address);
+			const reloaded = entry.document !== document && resolvesOnReload(router.routes, resolved);
+			const plan = try web.participant.restore(reloaded ? "" : entry.web, address);
 			return Result.ok(web.suppressed((): void => {
 				plan.commit();
 				router.settle(resolved, entry.address);

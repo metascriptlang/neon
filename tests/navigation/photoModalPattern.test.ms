@@ -68,6 +68,31 @@ test "a reload keeps the photo over the grid, and a cold address opens it over t
 	assert visibleText(cold) === "grid|photo 9", visibleText(cold);
 }
 
+test "opted in, a reload shows the photo page, while back and forward in the same page keep the modal" {
+	const routes = (): Routes => createRoutes([
+		{ path: "/photos", navigator: Stack, children: [
+			{ path: "", component: Grid },
+			{ path: ":id", component: Photo, presentation: "transparentModal", resolveOnReload: true },
+		] },
+	]);
+	const history = createMemoryRoutingHistory({ url: "/photos", state: "" });
+	const first = createRouter(routes(), history);
+	assert first.ok;
+	const router = first.value;
+	const root = mounted(router);
+	assert router.navigate("/photos/7");
+	flush();
+	assert history.go(-1);
+	flush();
+	assert history.go(1);
+	flush();
+	assert visibleText(root) === "grid|photo 7", visibleText(root);
+	const again = createRouter(routes(), createMemoryRoutingHistory(history.read()));
+	assert again.ok;
+	const reloaded = mounted(again.value);
+	assert visibleText(reloaded) === "photo 7", visibleText(reloaded);
+}
+
 test "a presentation outside a Stack is refused where it is declared" {
 	let message = "";
 	try {
