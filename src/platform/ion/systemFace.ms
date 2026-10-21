@@ -1,12 +1,11 @@
-import { findSystemFont, Presentation as SystemPresentation } from "../../../../ion/src/font";
+import { findSystemFonts, Presentation as SystemPresentation } from "../../../../ion/src/font";
 import { FaceCandidate, FaceQuery, FontStyle, Presentation } from "../../../../void/src/void2d/font";
 
 export function systemFace(query: FaceQuery): FaceCandidate[] {
-	const found = findSystemFont(query.codepoint, {
+	return findSystemFonts(query.codepoint, {
 		presentation: query.presentation == Presentation.Emoji ? SystemPresentation.Emoji : SystemPresentation.Text,
 		weight: query.weight,
 		italic: query.style == FontStyle.Italic,
 		family: "",
-	});
-	return found === null ? [] : [{ path: found.path, index: found.index }];
+	}).map((f): FaceCandidate => ({ path: f.path, index: f.index }));
 }
