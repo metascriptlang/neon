@@ -453,6 +453,12 @@ JNIEXPORT void JNICALL Java_dev_metascript_app_NativeApp_resume(JNIEnv *e, jclas
 	(void)cls;
 }
 
+JNIEXPORT void JNICALL Java_dev_metascript_app_NativeApp_newIntent(JNIEnv *e, jclass cls, jobject intent) {
+	(void)e;
+	(void)cls;
+	(void)intent;
+}
+
 JNIEXPORT void JNICALL Java_dev_metascript_app_NativeApp_destroy(JNIEnv *e, jclass cls) {
 	(void)cls;
 	if (!g_container) return;
