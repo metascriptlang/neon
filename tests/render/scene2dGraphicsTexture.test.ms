@@ -1,4 +1,5 @@
 import { createSignal } from "../../src/core/signal";
+import { flush, resetErrorHalt } from "../../src/core/runtime";
 import { element } from "../../src/macros/ui/element";
 import { HostNode, mockNode, mockHost, render } from "../../src/render/host";
 import { Void } from "../../src/components/primitives";
@@ -51,6 +52,7 @@ test "Graphics snapshots borrowed Tile UVs and replaces source without closing s
 				assert geometry(node).source.texture === first;
 				assert !geometry(node).alphaPremultiplied;
 				setReplacement(true);
+				flush();
 				control.fillTexRect(b, 2.0, 3.0, 8.0, 4.0, color);
 				control.fillCheckerRect(0.0, 0.0, 4.0, 4.0, color, rgba(0.0, 0.0, 0.0, 1.0), 2.0);
 				control.fillTexPolygon(b, points, 1.0, 2.0, 8.0, 4.0, color);
@@ -68,10 +70,12 @@ test "Graphics snapshots borrowed Tile UVs and replaces source without closing s
 				assert geometry(nodes[mount * 2 + 1]).source.texture === first;
 				assert node.id === id && nodes.length === (mount + 1) * 2;
 				setEmpty(true);
+				flush();
 				assert geometry(node).mesh.length === 0 && geometry(node).records.length === 0;
 				assert geometry(node).source.texture === null && !geometry(node).alphaPremultiplied;
 			} finally { control.dispose(); cleanup(); }
 			setReplacement(false); setEmpty(false);
+			flush();
 			assert !node.isLive() && !nodes[mount * 2 + 1].isLive();
 			assert !first.closed && !second.closed && first.view === 0 && second.view === 0;
 		}
@@ -93,6 +97,8 @@ test "Graphics refuses incompatible shared mesh sources and alpha before replaci
 	const cleanup = render(element(<Void><Scene2D>
 		<Graphics operations={value()} ref={(node: NodeRef): void => { nodes.push(node); }} />
 	</Scene2D></Void>), mockHost(), mockNode("root") as unknown as HostNode);
+	const control = nodes[0].scene.graphics().fillTexRect(a, 4.0, 5.0, 8.0, 8.0, color);
+	const expected = geometry(control);
 	try {
 		const incompatible: GraphicsOp[] = [
 			{ kind: "fillTexRect", tile: b, x: 9.0, y: 5.0, w: 8.0, h: 8.0, color: color },
@@ -102,10 +108,24 @@ test "Graphics refuses incompatible shared mesh sources and alpha before replaci
 		];
 		for (const op of incompatible) {
 			let message = "";
-			try { setValue([initial[0], op]); } catch (error) { message = error.message; }
+			try { setValue([initial[0], op]); flush(); }
+			catch (error) { message = error.message; }
+			finally { resetErrorHalt(); }
 			assert message === "Graphics: mesh operations must share one TextureSource and alphaPremultiplied value";
-			assert geometry(nodes[0]).mesh.length === 48 && geometry(nodes[0]).mesh[0] === 4.0;
+			const actual = geometry(nodes[0]);
+			assert actual.mesh.length === expected.mesh.length && actual.mesh.length > 0;
+			assert actual.edges.length === expected.edges.length;
+			assert actual.records.length === expected.records.length;
+			for (let j: int32 = 0; j < actual.mesh.length; j++) {
+				assert actual.mesh[j] === expected.mesh[j];
+			}
+			for (let j: int32 = 0; j < actual.edges.length; j++) {
+				assert actual.edges[j] === expected.edges[j];
+			}
+			for (let j: int32 = 0; j < actual.records.length; j++) {
+				assert actual.records[j] === expected.records[j];
+			}
 			assert geometry(nodes[0]).source.texture === first && !first.closed && !second.closed;
 		}
-	} finally { cleanup(); first.close(); second.close(); }
+	} finally { control.dispose(); cleanup(); first.close(); second.close(); }
 }

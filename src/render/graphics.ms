@@ -1,5 +1,5 @@
 import { NodeRef, clear } from "../../../void/src/void2d/node";
-import { Vec2, Color } from "../../../void/src/void2d/types";
+import { Vec2, Color, Tile, TextureSource, WHITE_SOURCE, sameAs } from "../../../void/src/void2d/types";
 import { GradientSpace } from "../../../void/src/void2d/gradient";
 import {
 	fillRect, fillPolygon, fillTriangle, fillConvex, fillCircle, fillEllipse,
@@ -7,7 +7,7 @@ import {
 	fillGradientPolygon, fillGradientPolygonOklab, fillGradientPolygonStops,
 	fillGradientRect, fillGradientRectOklab, fillGradientRectStops,
 	fillRadialGradient, fillRadialGradientOklab, fillRadialGradientStops,
-	fillSlashRect, fillCheckerRect,
+	fillSlashRect, fillCheckerRect, fillTexRect, fillTexPolygon,
 } from "../../../void/src/void2d/graphics";
 
 export struct FillRectOp {
@@ -229,14 +229,66 @@ export struct FillCheckerRectOp {
 	cell: float32;
 }
 
+export struct FillTexRectOp {
+	kind: "fillTexRect";
+	tile: Tile;
+	x: float32;
+	y: float32;
+	w: float32;
+	h: float32;
+	color: Color;
+}
+
+export struct FillTexPolygonOp {
+	kind: "fillTexPolygon";
+	tile: Tile;
+	points: Vec2[];
+	originX: float32;
+	originY: float32;
+	tileW: float32;
+	tileH: float32;
+	color: Color;
+}
+
 export type GraphicsOp = FillRectOp | FillPolygonOp | FillConvexOp | FillTriangleOp |
 	StrokeLineOp | StrokePolyOp | StrokeRectOp | FillCircleOp | FillEllipseOp |
 	FillRoundedRectOp | FillPieOp | FillRingOp | FillGradientPolygonOp |
 	FillGradientPolygonOklabOp | FillGradientPolygonStopsOp | FillGradientRectOp |
 	FillGradientRectOklabOp | FillGradientRectStopsOp | FillRadialGradientOp |
-	FillRadialGradientOklabOp | FillRadialGradientStopsOp | FillSlashRectOp | FillCheckerRectOp;
+	FillRadialGradientOklabOp | FillRadialGradientStopsOp | FillSlashRectOp | FillCheckerRectOp |
+	FillTexRectOp | FillTexPolygonOp;
+
+function validateGraphicsSources(operations: Span<GraphicsOp>): void {
+	let source: TextureSource = WHITE_SOURCE;
+	let premultiplied = false;
+	let found = false;
+	for (const op of operations) {
+		let current: TextureSource = WHITE_SOURCE;
+		let currentPremultiplied = false;
+		match (op.kind) {
+			"fillTexRect" | "fillTexPolygon" => {
+				current = op.tile.source;
+				currentPremultiplied = op.tile.alphaPremultiplied;
+			}
+			"fillRect" | "fillPolygon" | "fillConvex" | "fillTriangle" |
+			"strokeLine" | "strokePoly" | "strokeRect" | "fillCircle" |
+			"fillEllipse" | "fillRoundedRect" | "fillPie" | "fillRing" => {}
+			"fillGradientPolygon" | "fillGradientPolygonOklab" | "fillGradientPolygonStops" |
+			"fillGradientRect" | "fillGradientRectOklab" | "fillGradientRectStops" |
+			"fillRadialGradient" | "fillRadialGradientOklab" | "fillRadialGradientStops" |
+			"fillSlashRect" | "fillCheckerRect" => { continue; }
+		}
+		if (found && (!source.sameAs(current) || premultiplied !== currentPremultiplied)) {
+			throw new Error("Graphics: mesh operations must share one TextureSource and alphaPremultiplied value");
+		}
+		source = current;
+		premultiplied = currentPremultiplied;
+		found = true;
+	}
+}
 
 export function replayGraphics(node: NodeRef, operations: Span<GraphicsOp>): void {
+	validateGraphicsSources(operations);
 	node.clear();
 	for (const op of operations) {
 		match (op.kind) {
@@ -295,6 +347,13 @@ export function replayGraphics(node: NodeRef, operations: Span<GraphicsOp>): voi
 			"fillRing" => {
 				node.fillRing(op.cx, op.cy, op.outerR, op.innerR,
 					op.angleStart, op.angleLength, op.color);
+			}
+			"fillTexRect" => {
+				node.fillTexRect(op.tile, op.x, op.y, op.w, op.h, op.color);
+			}
+			"fillTexPolygon" => {
+				node.fillTexPolygon(op.tile, op.points, op.originX, op.originY,
+					op.tileW, op.tileH, op.color);
 			}
 		}
 	}
