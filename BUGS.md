@@ -194,7 +194,8 @@ and the invariants that outlived them were moved to the head of the test that pi
 - **OPEN 2026-10-21 — the gate's Chrome lane: 10 cases red on main, cause not pinned.**
   `tests/browser/run.sh` fails animated (Animated.View across frames, LayoutAnimation.configureNext),
   booking (1), dom (the three onLayout cases), pageScroll (offset/range, range after a resize) and
-  scrollView (2); sectionList (1) is red in some runs. Measured red on an export of main `b84bc3d5` and in the gate of
+  scrollView (onScroll payload, paging); scrollView minIndexForVisible and sectionList (1) are red in some runs
+  (minIndexForVisible: 2 of 3 runs of `wt/inbox-unpark` `824c5273`, msc `6ddf45298`, 2026-10-21). Measured red on an export of main `b84bc3d5` and in the gate of
   `wt/void-area` `f8a1b315`, Chrome 155.0.8059.85 (installed 2026-10-20), msc `dcfd89f2b`, at loads 13 to 67
   (logs `~/metascript/.scratch/neon-solid2/coreClasses/browserAB/`). In a bare page Chrome 155 holds
   `requestAnimationFrame` while an inline module script's top-level await is pending (0 frames in 500 ms against 30),
