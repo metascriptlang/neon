@@ -6,7 +6,7 @@ export const STYLE_TABLE: string[][] = [
 	["alignItems",          "Align",             "word", "enum",   "ignore"],
 	["alignSelf",           "Align",             "word", "enum",   "ignore"],
 	["alignContent",        "Align",             "word", "enum",   "ignore"],
-	["position",            "PositionType",      "word", "enum",   "ignore"],
+	["position",            "PositionType",      "word", "position", "ignore"],
 	["flexWrap",            "Wrap",              "word", "enum",   "ignore"],
 	["display",             "Display",           "word", "enum",   "ignore"],
 	["flex",                "number",            "num",  "num",    "ignore"],
@@ -237,26 +237,13 @@ export macro asFlexStyleBody(node: Node): Node {
 		const fieldName = row[0];
 		const how = row[COL_VOID];
 		if (how === "paint" || how === "ignore") { continue; }
-		if (how !== "enum" && how !== "num" && how !== "dim") { error("void projection for " + fieldName + " must be enum, num, dim, paint or ignore", node); }
+		if (how !== "enum" && how !== "num" && how !== "dim" && how !== "position") { error("void projection for " + fieldName + " must be enum, num, dim, position, paint or ignore", node); }
 		const read: Node = {
 			kind: NodeKind.MemberExpr, line: L, column: C,
 			object: { kind: NodeKind.Identifier, line: L, column: C, name: "s" },
 			property: fieldName, isOptional: false,
 		};
-		// Enum rows cross from the Style union (render/style.ms) into the
-		// target FlexStyle union (yoga's enums) — same members, distinct
-		// nominal types. The checker takes the raw copy, but the C backend
-		// lowers the two unions to different Maybe_T structs and clang
-		// rejects the assignment. An explicit cast to the target union name
-		// makes codegen build the TARGET field field-wise (probed with a
-		// two-module cast probe during the ios-host arc). The caller of
-		// asFlexStyleBody must therefore have the table's type names in
-		// scope (yoga re-exports them from src/index).
-		const value: Node = how === "enum" ? {
-			kind: NodeKind.TypeAssertion, line: L, column: C,
-			asExpr: read,
-			asType: row[COL_TYPE],
-		} : {
+		const value: Node = how === "enum" ? read : {
 			kind: NodeKind.CallExpr, line: L, column: C,
 			callee: { kind: NodeKind.Identifier, line: L, column: C, name: how },
 			arguments: how === "dim" ? [read, { kind: NodeKind.StringLiteral, line: L, column: C, value: fieldName }] : [read],
@@ -268,7 +255,7 @@ export macro asFlexStyleBody(node: Node): Node {
 		// setter as garbage — on the C backend a style whose maxWidth arrived
 		// boxed-null clamped every node to 0x0 (found by the ios-host arc's
 		// walk probe; applyCssBody below has guarded the same way from the
-		// start). The guard is why enum rows never cast null either.
+		// start).
 		stmts.push({
 			kind: NodeKind.IfStmt, line: L, column: C,
 			condition: {

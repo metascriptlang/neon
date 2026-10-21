@@ -1,6 +1,6 @@
 import { NeonEvent, eventType, neonEvent } from "../../render/event";
-import { Style } from "../../render/style";
-import { FlexStyle, FlexDirection, Justify, Align, PositionType, Wrap, Display, Overflow } from "../../../../yoga/src/index";
+import { Style, PositionType as StylePositionType } from "../../render/style";
+import { FlexStyle, PositionType } from "../../../../yoga/src/index";
 import { asFlexStyleBody } from "../../macros/style/fields";
 
 export enum NativeElementKind {
@@ -37,6 +37,11 @@ function dim(v: number | string | null, field: string): float32 | null {
 	if (v === null) { return null; }
 	if (typeof v === "string") { throw `native host: ${field} "${v as string}" is not supported, yoga takes points only`; }
 	return (v as number) as float32;
+}
+
+function position(v: StylePositionType | null): PositionType | null {
+	if (v === null || v === "fixed") { return null; }
+	return v;
 }
 
 asFlexStyleBody(0);

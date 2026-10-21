@@ -18,8 +18,8 @@ import { hitTest, xForIndex, lineBoxAt, indexAt } from "../../../../void/src/voi
 import { create, add, isDirty, isClosed } from "../../../../void/src/void2d/scene";
 import { Color, rgba, vec2 } from "../../../../void/src/void2d/types";
 import { FontId, FontError, DEFAULT_FONT, FontStyle as FaceStyle, SizeAdjust, resolveFont } from "../../../../void/src/void2d/font";
-import { FlexStyle, YGNode, FlexDirection, Justify, Align, PositionType, Wrap, Display, Overflow, layoutPass, freeLayoutTree } from "../../../../yoga/src/index";
-import { Style, FontWeight } from "../../render/style";
+import { FlexStyle, YGNode, PositionType, layoutPass, freeLayoutTree } from "../../../../yoga/src/index";
+import { Style, FontWeight, PositionType as StylePositionType } from "../../render/style";
 import { asFlexStyleBody } from "../../macros/style/fields";
 import { DevNode } from "../../devtools/driver";
 import {
@@ -262,6 +262,11 @@ function dim(v: number | string | null, field: string): float32 | null {
 	if (typeof v === "string") { throw `void host: ${field} "${v as string}" is not supported, yoga takes points only`; }
 	const n = v as number;
 	return n as float32;
+}
+
+function position(v: StylePositionType | null): PositionType | null {
+	if (v === null || v === "fixed") { return null; }
+	return v;
 }
 
 asFlexStyleBody(0);
