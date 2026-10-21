@@ -2,6 +2,8 @@ import { Accessor, untrack } from "../core/signal";
 import { createMemo } from "../core/memo";
 import { ChildNavigation, ChildState, NavigationChild, createChildren } from "./children";
 
+const DISPOSED = "navigation: the panels are disposed";
+
 export enum ChildPanelsMode {
 	Single,
 	Dual,
@@ -96,7 +98,9 @@ export class ChildPanels<MC, MT, DC, DT, EC, ET> {
 	}
 
 	main(): NavigationChild<MC, MT> {
-		return this.children.children()[0].instance.main as NavigationChild<MC, MT>;
+		const children = this.children.children();
+		if (children.length === 0) { throw new Error(DISPOSED); }
+		return children[0].instance.main as NavigationChild<MC, MT>;
 	}
 
 	details(): NavigationChild<DC, DT> | null {
@@ -114,19 +118,23 @@ export class ChildPanels<MC, MT, DC, DT, EC, ET> {
 	}
 
 	mode(): ChildPanelsMode {
-		return this.children.state()[0].configuration.panels.mode;
+		return this.current().mode;
 	}
 
 	panels(): Panels<MC, DC, EC> {
-		const panels = untrack((): Panels<MC, DC, EC> => {
-			return this.children.state()[0].configuration.panels;
-		});
+		const panels = untrack((): Panels<MC, DC, EC> => this.current());
 		return {
 			main: panels.main,
 			details: panels.details,
 			extra: panels.extra,
 			mode: panels.mode,
 		};
+	}
+
+	private current(): Panels<MC, DC, EC> {
+		const state = this.children.state();
+		if (state.length === 0) { throw new Error(DISPOSED); }
+		return state[0].configuration.panels;
 	}
 
 	navigate(transformer: (panels: Panels<MC, DC, EC>) => Panels<MC, DC, EC>): void {

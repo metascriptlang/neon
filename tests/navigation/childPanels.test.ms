@@ -326,4 +326,8 @@ test "the owner of the panels disposes every panel" {
 	stop();
 	assert instances.length === 3;
 	for (const instance of instances) { assert instance.destroyed; }
+	flush();
+	let message = "";
+	try { panels.main(); } catch (error) { message = error.message; }
+	assert message === "navigation: the panels are disposed", message;
 }
