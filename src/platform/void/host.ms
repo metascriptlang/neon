@@ -7,7 +7,7 @@ import { NeonEvent, neonEvent, eventType } from "../../render/event";
 import { AreaKeyMod, LayerAnchor, setEventMods } from "../../render/voidAreaHandle";
 import {
 	Scene2D, NodeRef, DrawKind, group, label, mask, addChild, addChildAt, getChildIndex, dispose, kind,
-	setPosition, setSize, setX, setZIndex, setAlpha, setColor, setBackground, clearBackground,
+	setPosition, setSize, setX, setZIndex, setAlpha, setVisible, setColor, setBackground, clearBackground,
 	setText, text as labelText, setFont, textStyle, setTextStyle, setCursorIndex, setCursorBlinkTime,
 	local, content, scrollTo as scrollNodeTo, setScrollBounds, localToGlobal, globalToLocal,
 	setTextRuns, setMaxWidth, setForceWidth, setBoxStyle, setLayerSlot, order,
@@ -376,6 +376,7 @@ function inheritTextPaint(child: VoidNode, parent: VoidNode): void {
 
 export function applyPaint(n: VoidNode, s: Style): void {
 	const ref = n.ref;
+	ref.setVisible(s.display !== "none");
 	if (s.opacity !== null) { ref.setAlpha(s.opacity as float32); }
 	if (s.zIndex !== null) { const z = s.zIndex as number; ref.setZIndex(z as int32); }
 	const k = ref.kind();

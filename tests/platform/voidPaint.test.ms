@@ -1,6 +1,6 @@
 import { Style } from "../../src/render/style";
 import { createVoidHost, VoidHost, VoidNode, parseColor } from "../../src/platform/void/host";
-import { DrawKind, kind, paint } from "../../../void/src/void2d/node";
+import { DrawKind, kind, paint, order } from "../../../void/src/void2d/node";
 import { Color } from "../../../void/src/void2d/types";
 import { BoxStyle, boxStyles } from "../../../void/src/void2d/boxStyle";
 
@@ -43,6 +43,18 @@ test "a border on a view with no background draws over a clear fill, and droppin
 	vh.host.setStyle(n, { backgroundColor: "#000000" } as Style);
 	const after = boxOf(vh, n);
 	assert near(after.borders.top, 0) && near(after.radii.topLeft, 0) && after.shadows.length === 0, "no border left";
+}
+
+test "display none hides a view and everything under it from drawing, and flex shows it again" {
+	const vh = createVoidHost();
+	const n = vh.host.createElement("div") as VoidNode;
+	vh.host.setStyle(n, { display: "none", backgroundColor: "#ff00ff" } as Style);
+	assert !n.ref.order().visible, "a display none view is not drawn, so its Text children are not either";
+	vh.host.setStyle(n, { display: "flex" } as Style);
+	assert n.ref.order().visible, "display flex draws it again";
+	vh.host.setStyle(n, { display: "none" } as Style);
+	vh.host.setStyle(n, {} as Style);
+	assert n.ref.order().visible, "dropping display draws it again";
 }
 
 test "a colour or shadow the Void host cannot read is refused by name" {
