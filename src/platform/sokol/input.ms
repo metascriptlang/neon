@@ -13,6 +13,7 @@ import {
 	deliverPreedit,
 } from "../void/windowHost";
 import { AppEvent, AppEventType } from "../../../../void/src/sokol/window";
+import { TouchGesture, TouchPoint } from "./touch";
 
 export struct KeyName {
 	key: int32;
@@ -167,10 +168,11 @@ function buttonOf(button: int32): int32 {
 export interface SokolInput {
 	area: WindowArea;
 	pending: AppEvent | null;
+	touch: TouchGesture;
 }
 
 export function sokolInput(area: WindowArea): SokolInput {
-	return { area, pending: null };
+	return { area, pending: null, touch: new TouchGesture(area) };
 }
 
 function sendKey(s: SokolInput, e: AppEvent, action: AreaKeyAction, text: string): void {
@@ -217,6 +219,10 @@ function pointer(s: SokolInput, e: AppEvent, kind: AreaPointerKind, button: int3
 	});
 }
 
+export function deliverTouches(s: SokolInput, e: AppEvent, touches: TouchPoint[]): void {
+	s.touch.deliver(e.type, touches, modsOf(e));
+}
+
 export function deliverAppEvent(s: SokolInput, e: AppEvent): void {
 	if (e.type !== AppEventType.Char) { flushKey(s); }
 	match (e.type) {
@@ -248,7 +254,10 @@ export function deliverAppEvent(s: SokolInput, e: AppEvent): void {
 			AppEventType.Suspended | AppEventType.Resumed | AppEventType.QuitRequested |
 			AppEventType.ClipboardPasted | AppEventType.FilesDropped => {},
 		AppEventType.TouchesBegan | AppEventType.TouchesMoved | AppEventType.TouchesEnded |
-			AppEventType.TouchesCancelled => {},
+			AppEventType.TouchesCancelled => {
+			// parked: AppEvent carries no touch points; call deliverTouches(s, e, e.touches) once
+			// ~/metascript/.inbox/void/2026-10-21-ios-app-driver-for-void-run.md lands them.
+		},
 		AppEventType.Invalid => { throw new Error("sokol input: an event of type INVALID reached the canvas"); },
 	}
 }

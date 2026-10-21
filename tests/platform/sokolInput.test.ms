@@ -3,14 +3,18 @@ import { render } from "../../src/render/host";
 import { NeonEvent } from "../../src/render/event";
 import { VoidAreaHandle, AreaKeyEvent } from "../../src/render/voidAreaHandle";
 import { Void, View } from "../../src/components/primitives";
+import { NeonNode } from "../../src/render/node";
 import { WindowArea, windowHost, windowNode, deliverResize, logicalWidth, logicalHeight } from "../../src/platform/void/windowHost";
 import {
 	SokolInput,
 	sokolInput,
 	deliverAppEvent,
+	deliverTouches,
 	flushKey,
 	sokolKeyName,
 } from "../../src/platform/sokol/input";
+import { TouchPoint } from "../../src/platform/sokol/touch";
+import { useManualFrames, setFrameDriver, framePending } from "../../src/animation/frame";
 import { FontId, addFont } from "../../../void/src/void2d/font";
 import { AppEvent, AppEventType } from "../../../void/src/sokol/window";
 
@@ -59,7 +63,7 @@ function mouse(type: AppEventType, x: float32, y: float32): AppEvent {
 	return { ...event(type), mouseX: x, mouseY: y };
 }
 
-function canvas(log: string[]): SokolInput {
+function openCanvas(app: NeonNode): SokolInput {
 	let opened: WindowArea | null = null;
 	const host = windowHost({
 		name: "test canvas",
@@ -72,7 +76,16 @@ function canvas(log: string[]): SokolInput {
 		opened: (area: WindowArea): void => { opened = area; },
 		released: (area: WindowArea): void => {},
 	});
-	render(element(
+	render(app, host, windowNode("window"));
+	if (opened === null) { throw new Error("the canvas opened no area"); }
+	const area = opened as WindowArea;
+	deliverResize(area, 400 as int32, 200 as int32, 2.0);
+	area.vh.layout(area.logicalWidth(), area.logicalHeight());
+	return sokolInput(area);
+}
+
+function canvas(log: string[]): SokolInput {
+	return openCanvas(element(
 		<Void ref={(h: VoidAreaHandle): void => {
 			h.onKey((e: AreaKeyEvent): void => { log.push(`hub key ${e.key} "${e.text}"`); });
 			h.onText((t: string): void => { log.push(`hub text ${t}`); });
@@ -91,12 +104,7 @@ function canvas(log: string[]): SokolInput {
 				onFocus={(): void => { log.push("focus"); }}
 				onBlur={(): void => { log.push("blur"); }} />
 		</Void>
-	), host, windowNode("window"));
-	if (opened === null) { throw new Error("the canvas opened no area"); }
-	const area = opened as WindowArea;
-	deliverResize(area, 400 as int32, 200 as int32, 2.0);
-	area.vh.layout(area.logicalWidth(), area.logicalHeight());
-	return sokolInput(area);
+	));
 }
 
 test "a key down and the char that follows it reach the area as one typed key" {
@@ -209,4 +217,171 @@ test "an IME composition reaches the area as preedit, and its result as committe
 		"hub text tiếng",
 		"textinput tiếng",
 	].join("|"), log.slice(mark).join("|");
+}
+
+function point(id: int32, x: float32, y: float32): TouchPoint {
+	return { identifier: id as uint64, posX: x, posY: y, changed: true };
+}
+
+function touch(s: SokolInput, type: AppEventType, id: int32, x: float32, y: float32): void {
+	deliverTouches(s, event(type), [point(id, x, y)]);
+}
+
+function wheelsOf(log: string[]): number[] {
+	const dys: number[] = [];
+	for (const line of log) {
+		if (!line.startsWith("wheel ")) { throw new Error(`a touch pan delivered "${line}"`); }
+		dys.push(parseFloat(line.split(",")[1]));
+	}
+	return dys;
+}
+
+test "a tap is a press and a release where the finger touched and lifted" {
+	const clock = useManualFrames();
+	const log: string[] = [];
+	const s = canvas(log);
+	touch(s, AppEventType.TouchesBegan, 1 as int32, 40.0, 60.0);
+	clock.advance(100);
+	touch(s, AppEventType.TouchesEnded, 1 as int32, 42.0, 60.0);
+	clock.step(40 as int32);
+	assert log.join("|") === "down 20,30 b1|focus|up 21,30 b1", log.join("|");
+	assert s.area.held === (0 as int32), "the tap released its button";
+	setFrameDriver(null);
+}
+
+test "a hold past the long-press timeout presses, and the drag that follows moves with the button held" {
+	const clock = useManualFrames();
+	const log: string[] = [];
+	const s = canvas(log);
+	touch(s, AppEventType.TouchesBegan, 1 as int32, 40.0, 60.0);
+	clock.step(30 as int32);
+	assert log.length === 0, "480 ms is not a long press yet: " + log.join("|");
+	clock.step(2 as int32);
+	touch(s, AppEventType.TouchesMoved, 1 as int32, 80.0, 60.0);
+	assert s.area.held === (1 as int32), "the button is held while the finger drags";
+	touch(s, AppEventType.TouchesEnded, 1 as int32, 80.0, 60.0);
+	assert log.join("|") === "down 20,30 b1|focus|move 40,30|up 40,30 b1", log.join("|");
+	assert s.area.held === (0 as int32), "the lift released the button";
+	setFrameDriver(null);
+}
+
+test "a drag past the pan slop without a hold scrolls the area under its start and presses nothing" {
+	const clock = useManualFrames();
+	const log: string[] = [];
+	const s = canvas(log);
+	touch(s, AppEventType.TouchesBegan, 1 as int32, 40.0, 100.0);
+	touch(s, AppEventType.TouchesMoved, 1 as int32, 40.0, 140.0);
+	assert log.length === 0, "20 points is inside the pan slop: " + log.join("|");
+	touch(s, AppEventType.TouchesMoved, 1 as int32, 40.0, 180.0);
+	assert log.length === 0, "the move that crosses the slop starts the pan and scrolls nothing: " + log.join("|");
+	touch(s, AppEventType.TouchesMoved, 1 as int32, 40.0, 190.0);
+	touch(s, AppEventType.TouchesMoved, 1 as int32, 20.0, 170.0);
+	clock.advance(50);
+	touch(s, AppEventType.TouchesEnded, 1 as int32, 20.0, 170.0);
+	clock.step(40 as int32);
+	assert log.join("|") === "wheel 0,0.5|wheel 1,-1", log.join("|");
+	assert !framePending(), "a finger that stopped before it lifted leaves no momentum";
+	setFrameDriver(null);
+}
+
+test "a pan released with speed keeps scrolling with deltas that decay to a stop" {
+	const clock = useManualFrames();
+	const log: string[] = [];
+	const s = canvas(log);
+	touch(s, AppEventType.TouchesBegan, 1 as int32, 40.0, 20.0);
+	for (let i = 1; i <= 6; i += 1) {
+		clock.advance(16);
+		touch(s, AppEventType.TouchesMoved, 1 as int32, 40.0, (20 + 20 * i) as float32);
+	}
+	assert log.join("|") === "wheel 0,1|wheel 0,1", log.join("|");
+	touch(s, AppEventType.TouchesEnded, 1 as int32, 40.0, 140.0);
+	const mark = log.length;
+	clock.step(1 as int32);
+	assert log.length === mark, "the first momentum frame only starts the clock";
+	const frames = clock.runAll();
+	const dys = wheelsOf(log.slice(mark));
+	let total = 0.0;
+	for (let i = 0; i < dys.length; i += 1) {
+		assert dys[i] > 0.0, `momentum keeps the drag's direction: ${dys[i]}`;
+		if (i > 0) { assert dys[i] < dys[i - 1], `momentum decays: ${dys[i - 1]} then ${dys[i]}`; }
+		total += dys[i];
+	}
+	assert dys.length > 100 && dys.length < 160, `momentum runs about two seconds of frames: ${dys.length}`;
+	assert total > 29.5 && total < 31.5, `625 points/s under iOS friction travels about 307 points: ${total} notches`;
+	assert frames === dys.length && !framePending(), "momentum stops once it is slower than the tolerance";
+	setFrameDriver(null);
+}
+
+test "a touch during momentum stops it and is not a tap" {
+	const clock = useManualFrames();
+	const log: string[] = [];
+	const s = canvas(log);
+	touch(s, AppEventType.TouchesBegan, 1 as int32, 40.0, 20.0);
+	for (let i = 1; i <= 6; i += 1) {
+		clock.advance(16);
+		touch(s, AppEventType.TouchesMoved, 1 as int32, 40.0, (20 + 20 * i) as float32);
+	}
+	touch(s, AppEventType.TouchesEnded, 1 as int32, 40.0, 140.0);
+	clock.step(5 as int32);
+	touch(s, AppEventType.TouchesBegan, 2 as int32, 40.0, 60.0);
+	const mark = log.length;
+	clock.step(5 as int32);
+	touch(s, AppEventType.TouchesEnded, 2 as int32, 40.0, 60.0);
+	clock.step(40 as int32);
+	assert log.length === mark, "the touch stopped the momentum and pressed nothing: " + log.slice(mark).join("|");
+	assert !framePending(), "nothing keeps running";
+	setFrameDriver(null);
+}
+
+test "two fingers scroll by their average and never press, even when only one of them moves" {
+	const clock = useManualFrames();
+	const log: string[] = [];
+	const s = canvas(log);
+	deliverTouches(s, event(AppEventType.TouchesBegan), [point(1 as int32, 40.0, 100.0), point(2 as int32, 100.0, 100.0)]);
+	for (let i = 1; i <= 3; i += 1) {
+		const y = (100 + 20 * i) as float32;
+		deliverTouches(s, event(AppEventType.TouchesMoved), [point(1 as int32, 40.0, y), point(2 as int32, 100.0, y)]);
+	}
+	clock.advance(50);
+	deliverTouches(s, event(AppEventType.TouchesEnded), [point(1 as int32, 40.0, 160.0), point(2 as int32, 100.0, 160.0)]);
+	assert log.join("|") === "wheel 0,1", log.join("|");
+	deliverTouches(s, event(AppEventType.TouchesBegan), [point(3 as int32, 40.0, 100.0), point(4 as int32, 100.0, 180.0)]);
+	for (let i = 1; i <= 5; i += 1) {
+		touch(s, AppEventType.TouchesMoved, 4 as int32, 100.0, (180 - 20 * i) as float32);
+	}
+	clock.advance(50);
+	touch(s, AppEventType.TouchesEnded, 3 as int32, 40.0, 100.0);
+	touch(s, AppEventType.TouchesEnded, 4 as int32, 100.0, 80.0);
+	clock.step(40 as int32);
+	assert log.join("|") === "wheel 0,1|wheel 0,-0.5", log.join("|");
+	setFrameDriver(null);
+}
+
+test "a cancelled touch presses nothing, and a cancelled press-drag releases its button" {
+	const clock = useManualFrames();
+	const log: string[] = [];
+	const s = canvas(log);
+	touch(s, AppEventType.TouchesBegan, 1 as int32, 40.0, 60.0);
+	touch(s, AppEventType.TouchesCancelled, 1 as int32, 40.0, 60.0);
+	clock.step(40 as int32);
+	assert log.length === 0, "a cancel before the timeout is no tap and no long press: " + log.join("|");
+	touch(s, AppEventType.TouchesBegan, 2 as int32, 40.0, 60.0);
+	clock.step(32 as int32);
+	touch(s, AppEventType.TouchesCancelled, 2 as int32, 40.0, 60.0);
+	assert log.join("|") === "down 20,30 b1|focus|up 20,30 b1", log.join("|");
+	assert s.area.held === (0 as int32), "no press leaks past the cancel";
+	setFrameDriver(null);
+}
+
+test "a touch that moves without having begun is refused by name" {
+	const clock = useManualFrames();
+	const s = canvas([]);
+	let message = "";
+	try {
+		touch(s, AppEventType.TouchesMoved, 7 as int32, 40.0, 60.0);
+	} catch (e) {
+		message = (e as Error).message;
+	}
+	assert message === "sokol touch: touch 7 moved but never began", message;
+	setFrameDriver(null);
 }
