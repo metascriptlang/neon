@@ -68,11 +68,19 @@ final class Notifications {
 
 	private static void install(Activity a) {
 		Intent intent = a.getIntent();
-		String opened = intent == null ? null : intent.getStringExtra(EXTRA);
-		if (opened != null) {
-			lastResponse = record("response", opened.split(FIELD, -1)) + FIELD + DEFAULT_ACTION;
-			intent.removeExtra(EXTRA);
-		}
+		if (intent != null) opened(intent);
+	}
+
+	static boolean opened(Intent intent) {
+		String opened = intent.getStringExtra(EXTRA);
+		if (opened == null) return false;
+		lastResponse = record("response", opened.split(FIELD, -1)) + FIELD + DEFAULT_ACTION;
+		intent.removeExtra(EXTRA);
+		return true;
+	}
+
+	static void newIntent(Intent intent) {
+		if (opened(intent)) App.event(EVENT, lastResponse);
 	}
 
 	private static String schedule(Context context, String[] spec) {

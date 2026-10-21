@@ -453,12 +453,6 @@ JNIEXPORT void JNICALL Java_dev_metascript_app_NativeApp_resume(JNIEnv *e, jclas
 	(void)cls;
 }
 
-JNIEXPORT void JNICALL Java_dev_metascript_app_NativeApp_newIntent(JNIEnv *e, jclass cls, jobject intent) {
-	(void)e;
-	(void)cls;
-	(void)intent;
-}
-
 JNIEXPORT void JNICALL Java_dev_metascript_app_NativeApp_destroy(JNIEnv *e, jclass cls) {
 	(void)cls;
 	if (!g_container) return;
@@ -679,6 +673,23 @@ jclass niAndroidClass(const char *name) {
 	(*e)->DeleteLocalRef(e, local);
 	(*e)->DeleteLocalRef(e, jname);
 	return global;
+}
+
+JNIEXPORT void JNICALL Java_dev_metascript_app_NativeApp_newIntent(JNIEnv *e, jclass cls, jobject intent) {
+	(void)cls;
+	if (!J.loader) {
+		__android_log_print(ANDROID_LOG_FATAL, "Neon", "NativeApp.newIntent arrived before NativeApp.start");
+		abort();
+	}
+	static jclass app;
+	static jmethodID newIntent;
+	if (!app) {
+		app = niAndroidClass("dev.metascript.neon.App");
+		newIntent = (*e)->GetStaticMethodID(e, app, "newIntent", "(Landroid/content/Intent;)V");
+		check(e, "App.newIntent");
+	}
+	(*e)->CallStaticVoidMethod(e, app, newIntent, intent);
+	check(e, "App.newIntent");
 }
 
 typedef struct {

@@ -47,6 +47,12 @@ public final class App {
 
 	static native int event(int kind, String value);
 
+	public static void newIntent(Intent intent) {
+		Notifications.newIntent(intent);
+		Uri data = intent.getData();
+		if (data != null) event(URL, data.toString());
+	}
+
 	static boolean foreground() {
 		return activity != null && "active".equals(state);
 	}
