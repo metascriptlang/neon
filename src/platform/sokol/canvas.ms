@@ -13,6 +13,7 @@ import {
 	deliverResize,
 	logicalWidth,
 	logicalHeight,
+	syncTextInput,
 } from "../void/windowHost";
 import { SokolInput, sokolInput, deliverAppEvent, flushKey } from "./input";
 import { pollReload, RELOAD_POLL_MS } from "../reloadPoll";
@@ -26,6 +27,14 @@ when (emcc || (windows && !voidGlCore)) {
 	function skippedFrameKeepsPicture(): boolean { return true; }
 } else {
 	function skippedFrameKeepsPicture(): boolean { return false; }
+}
+
+when (ios || android) {
+	function startTextInput(): void {}
+	function followTextFocus(area: WindowArea): void { syncTextInput(area, setTextInput); }
+} else {
+	function startTextInput(): void { setTextInput(true); }
+	function followTextFocus(area: WindowArea): void {}
 }
 
 export interface CanvasOptions {
@@ -97,7 +106,7 @@ function initCanvas(): void {
 	onAppEvent((e: AppEvent): void => {
 		if (c.input !== null) { deliverAppEvent(c.input as SokolInput, e); }
 	});
-	setTextInput(true);
+	startTextInput();
 	when (hcr) {
 		setInterval(pollReload, RELOAD_POLL_MS);
 	}
@@ -111,6 +120,7 @@ function frameCanvas(): void {
 	flush();
 	if (c.area === null) { return; }
 	const area = c.area as WindowArea;
+	followTextFocus(area);
 	const width = fbWidth();
 	const height = fbHeight();
 	const scale = dpiScale();

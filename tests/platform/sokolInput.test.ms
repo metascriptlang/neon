@@ -4,7 +4,7 @@ import { NeonEvent } from "../../src/render/event";
 import { VoidAreaHandle, AreaKeyEvent } from "../../src/render/voidAreaHandle";
 import { Void, View } from "../../src/components/primitives";
 import { NeonNode } from "../../src/render/node";
-import { WindowArea, windowHost, windowNode, deliverResize, logicalWidth, logicalHeight } from "../../src/platform/void/windowHost";
+import { WindowArea, windowHost, windowNode, deliverResize, logicalWidth, logicalHeight, syncTextInput } from "../../src/platform/void/windowHost";
 import {
 	SokolInput,
 	sokolInput,
@@ -383,5 +383,27 @@ test "a touch that moves without having begun is refused by name" {
 		message = (e as Error).message;
 	}
 	assert message === "sokol touch: touch 7 moved but never began", message;
+	setFrameDriver(null);
+}
+
+test "the window's text input is on while a node that places the IME holds focus, and off after" {
+	const clock = useManualFrames();
+	const s = openCanvas(element(
+		<Void>
+			<View style={{ width: 200, height: 50 }} focusable imeRect={{ x: 0, y: 0, width: 2, height: 16 }} />
+			<View style={{ width: 200, height: 50 }} focusable />
+		</Void>
+	));
+	const calls: string[] = [];
+	const set = (on: boolean): void => { calls.push(on ? "on" : "off"); };
+	syncTextInput(s.area, set);
+	touch(s, AppEventType.TouchesBegan, 1 as int32, 40.0, 40.0);
+	touch(s, AppEventType.TouchesEnded, 1 as int32, 40.0, 40.0);
+	syncTextInput(s.area, set);
+	syncTextInput(s.area, set);
+	touch(s, AppEventType.TouchesBegan, 2 as int32, 40.0, 160.0);
+	touch(s, AppEventType.TouchesEnded, 2 as int32, 40.0, 160.0);
+	syncTextInput(s.area, set);
+	assert calls.join("|") === "on|off", calls.join("|");
 	setFrameDriver(null);
 }

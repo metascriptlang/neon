@@ -31,6 +31,7 @@ export interface WindowArea {
 	scale: float32;
 	held: int32;
 	composing: boolean;
+	textInput: boolean;
 }
 
 export interface AreaWindow {
@@ -120,6 +121,7 @@ export function windowHost(w: AreaWindow): Host {
 			scale: 1.0,
 			held: 0 as int32,
 			composing: false,
+			textInput: false,
 		};
 		current = area;
 		w.opened(area);
@@ -279,6 +281,13 @@ export function deliverResize(a: WindowArea, width: int32, height: int32, scale:
 
 export function logicalWidth(this a: WindowArea): float32 { return (a.width as float32) / a.scale; }
 export function logicalHeight(this a: WindowArea): float32 { return (a.height as float32) / a.scale; }
+
+export function syncTextInput(a: WindowArea, set: (on: boolean) => void): void {
+	const wants = a.vh.imeRect() !== null;
+	if (wants === a.textInput) { return; }
+	a.textInput = wants;
+	set(wants);
+}
 
 export function deliverFocus(a: WindowArea, focused: boolean): void {
 	a.hub.focus(focused);
