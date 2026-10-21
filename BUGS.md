@@ -250,10 +250,6 @@ and the invariants that outlived them were moved to the head of the test that pi
   lacks the audio API, which is on Ion origin `a853b2e`. Ion note
   `~/metascript/.inbox/ion/2026-10-15-local-main-diverged-from-window-content.md`. Same gate log as the row above.
 
-- **PARKED 2026-10-21 — `tests/render/scene3d.test.ms` does not compile.** Not Neon's: line 215
-  `createSignal<CameraProjection>` needs `==` on Void's `CameraProjection` (`src/void3d/camera.ms:14`), a match
-  struct, which msc `dcfd89f2b` rightly refuses to compare without one ("a match struct has no built-in equality").
-  Note `~/metascript/.inbox/void/2026-10-21-camera-projection-needs-declared-equality.md`.
 - **PARKED 2026-10-20 — `tests/platform/voidRetain.test.ms` does not compile on the JS lane.** Not Neon's:
   Void's `GlyphAtlas.acquire` (`src/void2d/glyphAtlas.ms:481`) indexes a `Ptr<int32>` past its element,
   which msc `807d96ef7` refuses on JS (`cannot index a pointer past the element it addresses on JS`).
