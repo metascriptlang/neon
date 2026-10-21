@@ -2,6 +2,7 @@ import { Host, HostNode, VoidArea } from "../../render/host";
 import { NeonEvent, neonEvent } from "../../render/event";
 import {
 	AreaHub,
+	AreaLayer,
 	AreaKeyAction,
 	AreaKeyEvent,
 	AreaPointerEvent,
@@ -13,8 +14,9 @@ import { Style } from "../../render/style";
 import { publishScale } from "../../api/dimensions";
 import { publishWindow } from "../../render/environment";
 import { FontId } from "../../../../void/src/void2d/font";
-import { Scene2D } from "../../../../void/src/void2d/node";
-import { create, close, present, prepare, drawScreen, isClosed } from "../../../../void/src/void2d/scene";
+import { Scene2D, NodeRef } from "../../../../void/src/void2d/node";
+import { SPAN_HOST } from "../../render/spanHost";
+import { create, close, present, prepare, drawScreen, drawScreenUntil, paintedSlots, isClosed } from "../../../../void/src/void2d/scene";
 import { fbWidth, fbHeight, dpiScale } from "../../../../void/src/sokol/gpu";
 import { beginScreenPassWith, endPass, commit } from "../../../../void/src/gpu/door";
 import { Color, rgba } from "../../../../void/src/void2d/types";
@@ -283,22 +285,84 @@ export function deliverFocus(a: WindowArea, focused: boolean): void {
 	a.vh.setWindowFocus(focused);
 }
 
+export struct DueLayer {
+	layer: AreaLayer;
+	slot: NodeRef;
+	rank: int32;
+}
+
+function rankOf(painted: NodeRef[], slot: NodeRef): int32 {
+	for (let i = 0; i < painted.length; i += 1) {
+		const p = painted[i];
+		if (p.id.index === slot.id.index && p.id.generation === slot.id.generation) { return i as int32; }
+	}
+	return -1 as int32;
+}
+
+function spanPath(node: HostNode): int32[] {
+	const path: int32[] = [];
+	let at: HostNode = node;
+	let up = SPAN_HOST.parentOf(at);
+	while (up !== null) {
+		let i: int32 = 0;
+		let c = SPAN_HOST.firstChild(up as HostNode);
+		while (c !== null && c !== at) {
+			i += 1;
+			c = SPAN_HOST.nextSibling(c as HostNode);
+		}
+		path.push(i);
+		at = up as HostNode;
+		up = SPAN_HOST.parentOf(at);
+	}
+	path.reverse();
+	return path;
+}
+
+function spanOrder(a: HostNode, b: HostNode): number {
+	const x = spanPath(a);
+	const y = spanPath(b);
+	for (let i = 0; i < x.length && i < y.length; i += 1) {
+		if (x[i] !== y[i]) { return x[i] - y[i]; }
+	}
+	return x.length - y.length;
+}
+
+export function layersInPaintOrder(vh: VoidHost, layers: AreaLayer[], painted: NodeRef[]): DueLayer[] {
+	const due: DueLayer[] = [];
+	for (const layer of layers) {
+		const slot = vh.layerSlot(layer.anchor);
+		if (slot === null) { continue; }
+		const rank = rankOf(painted, slot as NodeRef);
+		if (rank < 0) { continue; }
+		due.push({ layer, slot: slot as NodeRef, rank });
+	}
+	due.sort((x: DueLayer, y: DueLayer): number => x.rank !== y.rank ? x.rank - y.rank : spanOrder(x.layer.anchor.node, y.layer.anchor.node));
+	return due;
+}
+
 export function drawArea(a: WindowArea): boolean {
 	a.vh.layout(a.logicalWidth(), a.logicalHeight());
 	const scene = a.vh.scene;
 	if (scene.isClosed()) { return false; }
-	if (a.hub.layers().length === 0) {
+	const layers = a.hub.layers();
+	if (layers.length === 0) {
 		scene.present();
 		return true;
 	}
 	const width = fbWidth();
 	const height = fbHeight();
 	const dpi = dpiScale();
-	a.hub.prepareLayers(width, height, { r: scene.clear.r, g: scene.clear.g, b: scene.clear.b, a: scene.clear.a });
+	a.hub.layoutLayers(width, height);
 	if (scene.isClosed()) { return false; }
+	for (const layer of a.hub.layers()) { a.vh.layerSlot(layer.anchor); }
 	scene.prepare((width as float32) / dpi, (height as float32) / dpi, dpi);
+	const due = layersInPaintOrder(a.vh, a.hub.layers(), scene.paintedSlots());
+	const order: AreaLayer[] = [];
+	for (const d of due) { order.push(d.layer); }
+	a.hub.prepareLayers(order, width, height);
+	if (scene.isClosed()) { return false; }
 	beginScreenPassWith(scene.clear.r, scene.clear.g, scene.clear.b, scene.clear.a);
-	a.hub.drawLayers();
+	a.hub.drawLayers((layer: AreaLayer): void => { scene.drawScreenUntil(due[order.indexOf(layer)].slot); });
 	scene.drawScreen();
 	endPass();
 	commit();

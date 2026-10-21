@@ -6,7 +6,7 @@ import { onCleanup } from "../core/cleanup";
 import { createContext, useContext } from "../render/context";
 import { VoidSpace, getVoidScopeContext, getVoidAreaContext, useVoidSpace } from "../render/voidScope";
 import { layerAnchor } from "../render/voidLayer";
-import { AreaLayer, AreaRgba } from "../render/voidAreaHandle";
+import { AreaLayer } from "../render/voidAreaHandle";
 import { Host, HostNode, NeonNode, VoidArea } from "../render/hostTypes";
 import { Vec3, Quat, vec3, eulerQuat } from "../../../void/src/math/math3d";
 import { RenderState } from "../../../void/src/gpu/state";
@@ -18,7 +18,7 @@ import {
 	releaseMaterial, reserveUniforms, writeUniforms, releaseUniforms, closeContext, buryDoomed,
 } from "../../../void/src/void3d/draw";
 import {
-	ForwardRenderer, create, prepareFrame, drawToScreen, closeForward, setOutlineBlend, setOutlineSettings,
+	ForwardRenderer, create, prepareFrame, drawOverScreen, closeForward, setOutlineBlend, setOutlineSettings,
 } from "../../../void/src/void3d/forwardRenderer";
 import { ForwardOutlineSettings, defaults, valid, FORWARD_OUTLINE_BLOCKS } from "../../../void/src/void3d/forwardOutline";
 import { fits } from "../../../void/src/void3d/uniformPool";
@@ -266,7 +266,7 @@ export function Scene3D(props: Scene3DProps): NeonNode {
 		mountOwned((): void => {
 			const opened = useContext(getVoidAreaContext());
 			if (opened === null) { throw new Error("Scene3D: the Void area did not provide its frame"); }
-			const shown = layerAnchor(opened as VoidArea, host, parent, before);
+			const anchor = layerAnchor(opened as VoidArea, host, parent, before);
 			const area = (opened as VoidArea).hub;
 			const context = DrawContext.withUniformCapacity(SCENE_UNIFORM_CAPACITY);
 			const scene = VoidScene3D.create(context);
@@ -287,8 +287,9 @@ export function Scene3D(props: Scene3DProps): NeonNode {
 			let lightBlock: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
 			let prepared = false;
 			const layer: AreaLayer = {
-				shown,
-				prepare: (pixelWidth: int32, pixelHeight: int32, background: AreaRgba): void => {
+				anchor,
+				layout: (pixelWidth: int32, pixelHeight: int32): void => {},
+				prepare: (pixelWidth: int32, pixelHeight: int32): void => {
 					prepared = false;
 					refresh(scene, items);
 					const lights = collectLights(scene, lightBlock);
@@ -298,7 +299,6 @@ export function Scene3D(props: Scene3DProps): NeonNode {
 					const view = world.value.resolve(pixelWidth, pixelHeight);
 					if (!view.ok) { throw new Error("Scene3D: the active camera does not resolve: " + view.error.toString()); }
 					view.value.writeCameraBlock(cameraBlock);
-					renderer.background = { x: background.r, y: background.g, z: background.b, w: background.a };
 					const buried = buryDoomed(context, contextGeneration());
 					const frame = prepareFrame(renderer, items, cameraBlock, lightBlock, pixelWidth, pixelHeight);
 					if (!frame.ok) { throw new Error("Scene3D: prepareFrame failed: " + frame.error.toString()); }
@@ -307,7 +307,7 @@ export function Scene3D(props: Scene3DProps): NeonNode {
 				draw: (): void => {
 					if (!prepared) { return; }
 					prepared = false;
-					drawToScreen(renderer);
+					drawOverScreen(renderer);
 				},
 			};
 			const unregister = area.addLayer(layer);

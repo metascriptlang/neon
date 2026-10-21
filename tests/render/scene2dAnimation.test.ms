@@ -535,10 +535,12 @@ test "Scene2D transparent prepare returns when onLayout disposes its owner" {
 	const layer = area.layers()[0];
 	try {
 		assert scenes[0].clear.a === 0.0 && layouts === 0 && !scenes[0].closed;
-		layer.prepare(320, 240, { r: 0.0, g: 0.0, b: 0.0, a: 0.0 });
+		layer.layout(320, 240);
+		layer.prepare(320, 240);
 		assert layouts === 1 && scenes[0].closed && area.layers().length === 0;
 		assert !framePending();
-		layer.prepare(640, 480, { r: 1.0, g: 1.0, b: 1.0, a: 1.0 });
+		layer.layout(640, 480);
+		layer.prepare(640, 480);
 		layer.draw();
 		clock.advance(125);
 		assert layouts === 1 && !framePending();
@@ -564,10 +566,12 @@ test "Scene2D nontransparent prepare skips backdrop when onLayout disposes its o
 	const layer = area.layers()[0];
 	try {
 		assert scenes[0].clear.a === 1.0 && layouts === 0 && !scenes[0].closed;
-		layer.prepare(320, 240, { r: 0.0, g: 0.0, b: 0.0, a: 0.0 });
+		layer.layout(320, 240);
+		layer.prepare(320, 240);
 		assert layouts === 1 && scenes[0].closed && area.layers().length === 0;
 		assert !framePending();
-		layer.prepare(640, 480, { r: 1.0, g: 1.0, b: 1.0, a: 1.0 });
+		layer.layout(640, 480);
+		layer.prepare(640, 480);
 		layer.draw();
 		clock.advance(125);
 		assert layouts === 1 && !framePending();

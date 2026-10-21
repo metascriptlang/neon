@@ -1,4 +1,5 @@
 import { NeonEvent } from "./event";
+import { HostNode } from "./hostTypes";
 
 export enum AreaKeyAction {
 	Release,
@@ -113,16 +114,15 @@ export function listeners<T>(): Listeners<T> {
 	};
 }
 
-export struct AreaRgba {
-	r: float32;
-	g: float32;
-	b: float32;
-	a: float32;
+export struct LayerAnchor {
+	node: HostNode;
+	inText: boolean;
 }
 
 export interface AreaLayer {
-	shown: () => boolean;
-	prepare: (pixelWidth: int32, pixelHeight: int32, background: AreaRgba) => void;
+	anchor: LayerAnchor;
+	layout: (pixelWidth: int32, pixelHeight: int32) => void;
+	prepare: (pixelWidth: int32, pixelHeight: int32) => void;
 	draw: () => void;
 }
 
@@ -130,8 +130,9 @@ export interface AreaHub {
 	handle: VoidAreaHandle;
 	addLayer: (layer: AreaLayer) => Unsubscribe;
 	layers: () => AreaLayer[];
-	prepareLayers: (pixelWidth: int32, pixelHeight: int32, background: AreaRgba) => void;
-	drawLayers: () => void;
+	layoutLayers: (pixelWidth: int32, pixelHeight: int32) => void;
+	prepareLayers: (due: AreaLayer[], pixelWidth: int32, pixelHeight: int32) => void;
+	drawLayers: (before: (layer: AreaLayer) => void) => void;
 	key: (e: AreaKeyEvent) => void;
 	text: (text: string) => void;
 	preedit: (e: AreaPreedit) => void;
@@ -182,19 +183,26 @@ export function createAreaHub(ops: AreaOps): AreaHub {
 			};
 		},
 		layers: (): AreaLayer[] => layers,
-		prepareLayers: (pixelWidth: int32, pixelHeight: int32, background: AreaRgba): void => {
-			prepared = [];
+		layoutLayers: (pixelWidth: int32, pixelHeight: int32): void => {
 			for (const layer of layers.slice(0)) {
-				if (layers.indexOf(layer) < 0 || !layer.shown()) { continue; }
-				layer.prepare(pixelWidth, pixelHeight, background);
+				if (layers.indexOf(layer) >= 0) { layer.layout(pixelWidth, pixelHeight); }
+			}
+		},
+		prepareLayers: (due: AreaLayer[], pixelWidth: int32, pixelHeight: int32): void => {
+			prepared = [];
+			for (const layer of due) {
+				if (layers.indexOf(layer) < 0) { continue; }
+				layer.prepare(pixelWidth, pixelHeight);
 				prepared.push(layer);
 			}
 		},
-		drawLayers: (): void => {
+		drawLayers: (before: (layer: AreaLayer) => void): void => {
 			const due = prepared;
 			prepared = [];
 			for (const layer of due) {
-				if (layers.indexOf(layer) >= 0) { layer.draw(); }
+				if (layers.indexOf(layer) < 0) { continue; }
+				before(layer);
+				layer.draw();
 			}
 		},
 		key: keys.emit,

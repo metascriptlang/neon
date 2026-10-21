@@ -7,7 +7,7 @@ import { createContext, useContext } from "../render/context";
 import { requestFrame, cancelFrame, frameNow } from "../animation/frame";
 import { VoidSpace, getVoidScopeContext, getVoidAreaContext, useVoidSpace } from "../render/voidScope";
 import { layerAnchor } from "../render/voidLayer";
-import { AreaLayer, AreaRgba } from "../render/voidAreaHandle";
+import { AreaLayer } from "../render/voidAreaHandle";
 import { Host, HostNode, NeonNode, VoidArea } from "../render/hostTypes";
 import { place } from "../render/reconcile";
 import { createVoidHostWith, VoidHost, VoidNode, freeVoidLayoutTree } from "../platform/void/host";
@@ -395,7 +395,7 @@ export function Scene2D(props: Scene2DProps): NeonNode {
 		mountOwned((): void => {
 			const opened = useContext(getVoidAreaContext());
 			if (opened === null) { throw new Error("Scene2D: the Void area did not provide its frame"); }
-			const shown = layerAnchor(opened as VoidArea, host, parent, before);
+			const anchor = layerAnchor(opened as VoidArea, host, parent, before);
 			const area = (opened as VoidArea).hub;
 			const scene = VoidScene2D.create(rgba(0.0, 0.0, 0.0, 0.0));
 			const vh = createVoidHostWith(scene, DEFAULT_FONT, null, true);
@@ -406,16 +406,19 @@ export function Scene2D(props: Scene2DProps): NeonNode {
 			let prepared = false;
 			let backdropPrepared = false;
 			const layer: AreaLayer = {
-				shown,
-				prepare: (pixelWidth: int32, pixelHeight: int32, background: AreaRgba): void => {
+				anchor,
+				layout: (pixelWidth: int32, pixelHeight: int32): void => {
+					if (scene.closed) { return; }
+					const dpi = area.handle.scale();
+					vh.layout((pixelWidth as float32) / dpi, (pixelHeight as float32) / dpi);
+				},
+				prepare: (pixelWidth: int32, pixelHeight: int32): void => {
 					if (scene.closed) { return; }
 					prepared = false;
 					backdropPrepared = false;
 					const dpi = area.handle.scale();
 					const width = (pixelWidth as float32) / dpi;
 					const height = (pixelHeight as float32) / dpi;
-					vh.layout(width, height);
-					if (scene.closed) { return; }
 					// drawScreen does not consume scene.clear. A separate scene keeps this
 					// viewport fill outside the content camera/scale, in the same screen pass.
 					if (scene.clear.a > 0.0) {

@@ -2,15 +2,15 @@ import { Host, HostNode, NeonNode } from "../../render/host";
 import { Accessor } from "../../core/signal";
 import { flush } from "../../core/runtime";
 import { TextSpan, TextMeasure } from "../../render/hostTypes";
-import { spanParagraph } from "../../render/spanHost";
+import { spanParagraph, spanText } from "../../render/spanHost";
 import { NeonEvent, neonEvent, eventType } from "../../render/event";
-import { AreaKeyMod, setEventMods } from "../../render/voidAreaHandle";
+import { AreaKeyMod, LayerAnchor, setEventMods } from "../../render/voidAreaHandle";
 import {
 	Scene2D, NodeRef, DrawKind, group, label, mask, addChild, addChildAt, getChildIndex, dispose, kind,
 	setPosition, setSize, setX, setZIndex, setAlpha, setColor, setBackground, clearBackground,
 	setText, text as labelText, setFont, textStyle, setTextStyle, setCursorIndex, setCursorBlinkTime,
 	local, content, scrollTo as scrollNodeTo, setScrollBounds, localToGlobal, globalToLocal,
-	setTextRuns, setMaxWidth, setForceWidth, setBoxStyle,
+	setTextRuns, setMaxWidth, setForceWidth, setBoxStyle, setLayerSlot, order,
 } from "../../../../void/src/void2d/node";
 import { TextRun, TextLayout, Align as TextAlign } from "../../../../void/src/void2d/textLayout";
 import { BoxStyle, BoxShadow, uniformRadii, uniformBorders } from "../../../../void/src/void2d/boxStyle";
@@ -62,6 +62,7 @@ export class VoidNode {
 	// A Text draws its spans (src/render/spanHost.ms) as one paragraph label.
 	isText: boolean = false;
 	para: NodeRef | null = null;
+	slot: NodeRef | null = null;
 	styledRuns: boolean = false;
 	paraStale: boolean = false;
 	cell: float32 = 0.0;
@@ -130,6 +131,7 @@ export interface VoidHost {
 	onDirty: (fn: () => void) => void;
 	mutate: (body: () => void) => void;
 	snapshot: () => DevNode;
+	layerSlot: (anchor: LayerAnchor) => NodeRef | null;
 }
 
 function styleNum(st: FlexStyle, key: string, v: float32): void {
@@ -1437,12 +1439,37 @@ export function createVoidHostWith(
 		};
 	};
 
+	// A layer inside a Text paints after the Text's paragraph, at a slot kept as the Text's last child.
+	const layerSlot = (anchor: LayerAnchor): NodeRef | null => {
+		if (!anchor.inText) {
+			const n = live(anchor.node, "layerSlot");
+			if (!n.ref.order().layerSlot) {
+				const was = wasDirty();
+				n.ref.setLayerSlot(true);
+				woke(was);
+			}
+			return n.ref;
+		}
+		const text = spanText(anchor.node);
+		if (text === null) { return null; }
+		const t = live(text as HostNode, "layerSlot");
+		if (t.slot === null) {
+			const was = wasDirty();
+			const made = scene.group();
+			made.setLayerSlot(true);
+			t.ref.addChild(made);
+			t.slot = made;
+			woke(was);
+		}
+		return t.slot as NodeRef;
+	};
+
 	return {
 		host, root, scene, clickAt, pointerDown, pointerMove, pointerUp, wheel, textInput, keyDown, keyUp,
 		commitText: commit, composeText: compose, setWindowFocus, layout,
 		focus: (n: VoidNode | null): void => { focus(n); },
 		focused: (): VoidNode | null => focusedNode,
-		imeRect, attachTextInput, setEditingState,
+		imeRect, attachTextInput, setEditingState, layerSlot,
 		onDirty: (fn: () => void): void => { dirtyListener = fn; },
 		mutate: (body: () => void): void => {
 			const was = wasDirty();

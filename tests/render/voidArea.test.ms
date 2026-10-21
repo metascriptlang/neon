@@ -1,7 +1,7 @@
 import { createSignal } from "../../src/core/signal";
 import { element } from "../../src/macros/ui/element";
 import { Host, HostNode, MockNode, mockNode, mockHost, render, mockToString, mockAreaHub } from "../../src/render/host";
-import { VoidAreaHandle, AreaKeyAction, AreaPointerKind, AreaKeyEvent, AreaKeyMod, AreaPointerEvent, AreaPreedit, AreaResize, AreaLayer, AreaRgba, Unsubscribe, createAreaHub } from "../../src/render/voidAreaHandle";
+import { VoidAreaHandle, AreaKeyAction, AreaPointerKind, AreaKeyEvent, AreaKeyMod, AreaPointerEvent, AreaPreedit, AreaResize, AreaLayer, Unsubscribe, createAreaHub } from "../../src/render/voidAreaHandle";
 import { onCleanup } from "../../src/core/cleanup";
 import { createContext, useContext } from "../../src/render/context";
 import { Void, View, ViewHandle, Text } from "../../src/components/primitives";
@@ -132,61 +132,66 @@ test "a directive factory and a plain callback both receive the handle" {
 	assert log.join(",") === "apply,plain,setup cleanup", log.join(",");
 }
 
+class Mark {}
+
 test "a layer removed by an earlier layer during the frame is neither prepared nor drawn" {
 	const hub = createAreaHub({ initialPixelWidth: 10, initialPixelHeight: 10, requestFrame: (): void => {}, setImeRect: (x: int32, y: int32, w: int32, h: int32): void => {} });
 	const log: string[] = [];
 	let removeSecond: Unsubscribe | null = null;
 	let removeThird: Unsubscribe | null = null;
-	const layer = (name: string, onPrepare: () => void, onDraw: () => void): AreaLayer => ({
-		shown: (): boolean => true,
-		prepare: (pixelWidth: int32, pixelHeight: int32, background: AreaRgba): void => { log.push("prepare " + name); onPrepare(); },
-		draw: (): void => { log.push("draw " + name); onDraw(); },
-	});
+	const named: string[] = [];
+	const made: AreaLayer[] = [];
+	const layer = (name: string, onPrepare: () => void, onDraw: () => void): AreaLayer => {
+		const l: AreaLayer = {
+			anchor: { node: new Mark(), inText: false },
+			layout: (pixelWidth: int32, pixelHeight: int32): void => {},
+			prepare: (pixelWidth: int32, pixelHeight: int32): void => { log.push("prepare " + name); onPrepare(); },
+			draw: (): void => { log.push("draw " + name); onDraw(); },
+		};
+		named.push(name);
+		made.push(l);
+		return l;
+	};
 	hub.addLayer(layer("a", (): void => { (removeSecond as Unsubscribe)(); }, (): void => { (removeThird as Unsubscribe)(); }));
 	removeSecond = hub.addLayer(layer("b", (): void => {}, (): void => {}));
 	removeThird = hub.addLayer(layer("c", (): void => {}, (): void => {}));
-	hub.prepareLayers(10, 10, { r: 0.0, g: 0.0, b: 0.0, a: 1.0 });
-	hub.drawLayers();
-	assert log.join(",") === "prepare a,prepare c,draw a", log.join(",");
+	hub.prepareLayers(hub.layers().slice(0), 10, 10);
+	hub.drawLayers((l: AreaLayer): void => { log.push("until " + named[made.indexOf(l)]); });
+	assert log.join(",") === "prepare a,prepare c,until a,draw a", log.join(",");
 	assert hub.layers().length === 1, "only a stays registered";
 }
 
-test "a layer hidden at prepare is skipped, and one hidden after its prepare still draws that frame" {
+test "the hub prepares and draws the layers in the order it is given, each after the content before it" {
 	const hub = createAreaHub({ initialPixelWidth: 10, initialPixelHeight: 10, requestFrame: (): void => {}, setImeRect: (x: int32, y: int32, w: int32, h: int32): void => {} });
 	const log: string[] = [];
-	const visible = [true, false, true];
-	let hideFirstInThird = false;
+	const made: AreaLayer[] = [];
 	const names = ["a", "b", "c"];
-	for (let i = 0; i < 3; i += 1) {
-		const at = i;
-		hub.addLayer({
-			shown: (): boolean => visible[at],
-			prepare: (pixelWidth: int32, pixelHeight: int32, background: AreaRgba): void => {
-				log.push("prepare " + names[at]);
-				if (at === 2 && hideFirstInThird) { visible[0] = false; }
-			},
-			draw: (): void => { log.push("draw " + names[at]); },
-		});
+	for (const name of names) {
+		const layer: AreaLayer = {
+			anchor: { node: new Mark(), inText: false },
+			layout: (pixelWidth: int32, pixelHeight: int32): void => { log.push("layout " + name); },
+			prepare: (pixelWidth: int32, pixelHeight: int32): void => { log.push("prepare " + name); },
+			draw: (): void => { log.push("draw " + name); },
+		};
+		made.push(layer);
+		hub.addLayer(layer);
 	}
-	const frame = (): string => {
+	const frame = (due: AreaLayer[]): string => {
 		log.length = 0;
-		hub.prepareLayers(10, 10, { r: 0.0, g: 0.0, b: 0.0, a: 1.0 });
-		hub.drawLayers();
+		hub.prepareLayers(due, 10, 10);
+		hub.drawLayers((l: AreaLayer): void => { log.push("until " + names[made.indexOf(l)]); });
 		return log.join(",");
 	};
-	const hiddenB = frame();
-	assert hiddenB === "prepare a,prepare c,draw a,draw c", "a hidden layer is neither prepared nor drawn: " + hiddenB;
-	visible[1] = true;
-	hideFirstInThird = true;
-	const heldA = frame();
-	assert heldA === "prepare a,prepare b,prepare c,draw a,draw b,draw c", "a layer hidden after its prepare draws what it prepared: " + heldA;
-	hideFirstInThird = false;
-	const goneA = frame();
-	assert goneA === "prepare b,prepare c,draw b,draw c", "the next frame skips it: " + goneA;
-	visible[0] = true;
-	const back = frame();
-	assert back === "prepare a,prepare b,prepare c,draw a,draw b,draw c", "shown again, it keeps its place: " + back;
-	assert hub.layers().length === 3, "hiding never unregisters";
+	hub.layoutLayers(10, 10);
+	assert log.join(",") === "layout a,layout b,layout c", "every registered layer lays out, painted or not: " + log.join(",");
+	const painted = frame([made[2], made[0]]);
+	assert painted === "prepare c,prepare a,until c,draw c,until a,draw a", painted;
+	const all = frame(made);
+	assert all === "prepare a,prepare b,prepare c,until a,draw a,until b,draw b,until c,draw c", all;
+	log.length = 0;
+	hub.drawLayers((l: AreaLayer): void => { log.push("until"); });
+	assert log.length === 0, "a frame draws what it prepared once: " + log.join(",");
+	assert hub.layers().length === 3, "the order never unregisters";
 }
 
 test "a subscriber removed by an earlier one during an emit is not called" {
