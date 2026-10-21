@@ -4,6 +4,7 @@ import { niLinkingCommand } from "./commands.h";
 
 when (ios) {
 	@compile("../ios/linking.m", "-fobjc-arc");
+	@compile("../ios/wire.m", "-fobjc-arc");
 }
 
 when (ios || android) {

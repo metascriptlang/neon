@@ -5,6 +5,7 @@ import { androidLibrary } from "../../../../ion/src/android";
 
 when (ios) {
 	@compile("../ios/storage.m", "-fobjc-arc");
+	@compile("../ios/wire.m", "-fobjc-arc");
 } else when (android) {
 	androidLibrary("../android/storage");
 }

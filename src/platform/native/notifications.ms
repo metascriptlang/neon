@@ -9,6 +9,7 @@ import { androidLibrary } from "../../../../ion/src/android";
 
 when (ios) {
 	@compile("../ios/notifications.m", "-fobjc-arc");
+	@compile("../ios/wire.m", "-fobjc-arc");
 	@passL("-framework UserNotifications");
 } else when (android) {
 	androidLibrary("../android/notifications");

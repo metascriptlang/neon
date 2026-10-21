@@ -7,6 +7,7 @@ import { androidLibrary } from "../../../../ion/src/android";
 
 when (ios) {
 	@compile("../ios/netinfo.m", "-fobjc-arc");
+	@compile("../ios/wire.m", "-fobjc-arc");
 	@passL("-framework Network");
 } else when (android) {
 	androidLibrary("../android/netInfo");

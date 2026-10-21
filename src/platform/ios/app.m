@@ -7,7 +7,6 @@
 static msClosure s_app;
 static int g_event;
 static char *g_value;
-static char *g_reply;
 static int g_started;
 static NSString *g_state = @"active";
 
@@ -163,12 +162,6 @@ static NSString *call(NSString *name, NSString *arg) {
 	}
 	if ([name isEqualToString:@"exitApp"]) return @"";
 	return niModuleCall(name, arg);
-}
-
-const char *niAppReply(NSString *reply) {
-	free(g_reply);
-	g_reply = strdup(reply.UTF8String ?: "");
-	return g_reply;
 }
 
 const char *niAppCall(const char *name, const char *arg) {

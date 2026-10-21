@@ -11,6 +11,7 @@ import { nativeCaptureServices, onRecordingEvent, onSoundEvent } from "./capture
 
 when (ios) {
 	@compile("../ios/app.m", "-fobjc-arc");
+	@compile("../ios/wire.m", "-fobjc-arc");
 	@compile("../ios/modules.m", "-fobjc-arc");
 	@compile("../ios/capture.m", "-fobjc-arc");
 	@compile("../ios/audio.m", "-fobjc-arc");
