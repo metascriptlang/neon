@@ -266,7 +266,8 @@ a texture.
   `View`, is its own yoga root, sized by the area or by the texture. Nothing in a `Scene3D` takes
   part in flexbox.
 - **`Scene2D` is the 2D counterpart of `Scene3D`:** void2d under its own camera (pan, zoom,
-  rotation) instead of fixed to the screen, drawn under the HUD. Its children are placed by
+  rotation) instead of fixed to the screen, drawn at its place among its siblings: one placed
+  after a `View` draws over it, as in React Native. Its children are placed by
   coordinates, not by flow.
 - **Each tag has a fixed set of parents.** `View`, `Text`, `Pressable` and `TextInput` live in
   `<Void>`, a `Texture`, a `Scene2D` or another void2d node. `Group`, `Mesh`, `Light` and

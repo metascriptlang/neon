@@ -527,8 +527,11 @@ No repeated unchanged submission demos or inferred protected-contract permission
 - [ ] Finish detached-subtree rollback; retain enabled regression. Existing checker-flow
   owner card blocks validation, not permission to rewrite consumers.
 - [ ] Connect distinct scene hosts to area layout/font/input ownership. The area frame is
-  connected (`9ddcf716`: one prepare of every Scene2D/Scene3D layer, then one screen pass,
-  scene then HUD; pin `tests/render/scene3dArea.test.ms`). Host/embed/window prerequisites
+  connected (`9ddcf716`: one prepare of every Scene2D/Scene3D layer, then one screen pass;
+  pin `tests/render/scene3dArea.test.ms`). Layers draw at their place in the content's paint
+  order, a later sibling over an earlier one, as Flutter's `addLayer` splits a picture
+  (pins `tests/platform/voidLayerOrder.test.ms`, `tests/device/voidLayerOrder.ms`); a layer
+  inside a clipping View is not clipped yet. Host/embed/window prerequisites
   consumed; raw kinds belong this arc, closed host arc owns no new work.
 - [ ] Finish raw2D gaps: Anim binders, textured Graphics, texture upload/replacement,
   fresh bounds and observed output. Keep existing core/style/text/filter coverage.
@@ -540,7 +543,7 @@ No repeated unchanged submission demos or inferred protected-contract permission
   implementing its proposed owned15-float/coalesced-upload route.
 - [ ] Map renderer settings, pixel-art/palette, directional shadows and moving materials
   through existing Void renderers, with internal clocks and resource recovery.
-- [ ] Integrate picking and composition: HUD-first dispatch, camera-scoped2D, and
+- [ ] Integrate picking and composition: topmost-first dispatch in paint order, camera-scoped2D, and
   View/Text/Pressable in a mesh texture with UV-to-UI input.
 - [ ] Observe the real Ion/Windows consumer: reactive pixels and idle sleep, not merely
   CPU checks or Metal submissions.

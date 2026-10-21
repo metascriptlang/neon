@@ -274,7 +274,7 @@ A resource is owned or borrowed explicitly; copying a handle is not retaining it
 
 | ID | Ownership/mapping | Required evidence; reference consumer |
 |---|---|---|
-| X-01 | `<Void>` owns the area; scene renderer(s), Scene2D and HUD participate in one Ion-driven frame | Owner/context/theme cross the boundary; 3D then scene-2D then HUD draw order is explicit; no nested commit; one change gives one displayed frame; Windows scene/HUD observation; `tests/render/voidArea.test.ms`, Void `tests/integration/mixedFrame.ms`, `tests/integration/bothLayers.ms` |
+| X-01 | `<Void>` owns the area; scene renderer(s), Scene2D and HUD participate in one Ion-driven frame | Owner/context/theme cross the boundary; Scene2D/Scene3D layers draw in the content's paint order (`tests/platform/voidLayerOrder.test.ms`); no nested commit; one change gives one displayed frame; Windows scene/HUD observation; `tests/render/voidArea.test.ms`, Void `tests/integration/mixedFrame.ms`, `tests/integration/bothLayers.ms` |
 | X-02 | Image/Tile/Texture source uses Void's texture owner, not a cached raw view; scene resources close in dependency order | Recreated target/image, GPU context loss, surface resize/DPI/clear invalidation and warmup use the current owners; clean scenes do not hide lost pixels; Void `tests/integration/deviceLoss.ms`, `tests/integration/deviceLoss3d.ms`, `tests/integration/viewTeardown.ms` |
 | X-03 | One frame subscription for active clocks/emitters; idle scene sleeps; Neon owns input and dispatch | Anim/animation/cursor/emitter advance only while required, unmount removes callbacks, HUD-first picking and UI-in-texture dispatch work; no new Void window/event loop |
 
