@@ -35,7 +35,7 @@ import {
 	webNavigationNode,
 } from "./webNavigation";
 import { WebHistory, createWebHistory } from "./webHistory";
-import { renderPages, renderStack, renderStackTop } from "./childView";
+import { StackPresentation, renderPages, renderStack, renderStackTop } from "./childView";
 
 const MAX_REDIRECTS: int32 = 20;
 const PERMANENT_REDIRECT: int32 = 308;
@@ -64,6 +64,7 @@ export interface RouteConfig {
 	navigator?: RouteNavigator | null;
 	initial?: string | null;
 	backBehavior?: BackBehavior | null;
+	presentation?: StackPresentation | null;
 	status?: int32 | null;
 	guard?: ((params: Map<string, string>, found: RouteMatch) => GuardDecision) | null;
 	paths?: (() => Map<string, string>[]) | null;
@@ -77,6 +78,7 @@ export interface RouteView {
 	navigator: RouteNavigator | null;
 	initial: int32;
 	backBehavior: BackBehavior;
+	presentation: StackPresentation;
 	children: int32[];
 	label: string;
 }
@@ -133,7 +135,16 @@ function backBehaviorOf(config: RouteConfig): BackBehavior {
 	return behavior as BackBehavior;
 }
 
-function compile(configs: RouteConfig[], views: RouteView[], ids: int32[]): RouteEntry[] {
+function presentationOf(config: RouteConfig, stacked: boolean): StackPresentation {
+	const presentation = config.presentation;
+	if (presentation === null) { return "card"; }
+	if (!stacked) {
+		throw new Error("routing: " + labelOf(config) + " names a presentation, which only a route in a Stack takes");
+	}
+	return presentation as StackPresentation;
+}
+
+function compile(configs: RouteConfig[], views: RouteView[], ids: int32[], stacked: boolean): RouteEntry[] {
 	const entries: RouteEntry[] = [];
 	for (const config of configs) {
 		const children = config.children ?? [];
@@ -165,13 +176,15 @@ function compile(configs: RouteConfig[], views: RouteView[], ids: int32[]): Rout
 			navigator: config.navigator,
 			initial: -1,
 			backBehavior: backBehaviorOf(config),
+			presentation: presentationOf(config, stacked),
 			children: [],
 			label: labelOf(config),
 		};
 		views.push(view);
 		ids.push(id);
 		const childIds: int32[] = [];
-		entries.push({ node, children: leaf ? null : compile(children, views, childIds) });
+		const stacks = config.navigator !== null && config.navigator as RouteNavigator === RouteNavigator.Stack;
+		entries.push({ node, children: leaf ? null : compile(children, views, childIds, stacks) });
 		view.children = childIds;
 		view.initial = initialOf(config, children, childIds);
 	}
@@ -181,7 +194,7 @@ function compile(configs: RouteConfig[], views: RouteView[], ids: int32[]): Rout
 export function createRoutes(configs: RouteConfig[]): Routes {
 	const views: RouteView[] = [];
 	const roots: int32[] = [];
-	const entries = compile(configs, views, roots);
+	const entries = compile(configs, views, roots, false);
 	return { tree: createRouteTree(entries), views, roots };
 }
 
@@ -896,7 +909,9 @@ function levelView(routes: Routes, level: Level): NeonNode {
 	const render = (child: NavigationChild<Stop, Place>): NeonNode => placeView(routes, child);
 	return match (level.kind) {
 		LevelKind.Slot => renderStackTop<Stop, Place>(level.stack as ChildStack<Stop, Place>, render),
-		LevelKind.Stack => renderStack<Stop, Place>(level.stack as ChildStack<Stop, Place>, render),
+		LevelKind.Stack => renderStack<Stop, Place>(level.stack as ChildStack<Stop, Place>, render, (child: NavigationChild<Stop, Place>): boolean => {
+			return routes.views[untrack((): Stop => child.configuration()).route].presentation === "transparentModal";
+		}),
 		LevelKind.Tabs => renderPages<Stop, Place>(level.pages as ChildPages<Stop, Place>, render),
 	};
 }
