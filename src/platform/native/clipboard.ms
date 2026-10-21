@@ -2,9 +2,13 @@ import { ClipboardServices, installClipboardServices } from "../../api/clipboard
 import { appCall } from "./appBridge";
 import { niClipboardCommand } from "./commands.h";
 
+import "../android/library";
+
 when (ios) {
 	@compile("../ios/clipboard.m", "-fobjc-arc");
 	@compile("../ios/wire.m", "-fobjc-arc");
+} else when (android) {
+	@compile("../android/app.c");
 }
 
 when (ios || android) {

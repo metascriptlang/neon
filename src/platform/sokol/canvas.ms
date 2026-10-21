@@ -18,8 +18,15 @@ import {
 } from "../void/windowHost";
 import { SokolInput, sokolInput, deliverAppEvent, flushKey } from "./input";
 import { pollReload, RELOAD_POLL_MS } from "../reloadPoll";
+import { androidLibrary } from "../../../../ion/src/android";
 
 @include("../../../../void/src/sokol/bridge.h");
+
+when (android) {
+	@compile("../../../../void/src/sokol/androidAppEntry.c");
+	@compile("../android/canvasApp.c");
+	androidLibrary("../../../../void/src/sokol/android/app");
+}
 
 extern function voidRun(w: int32, h: int32, init: () => void, frame: () => void): void;
 extern function msRunOnce(timeoutMs: int32): boolean;
