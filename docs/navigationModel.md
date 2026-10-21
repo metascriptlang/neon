@@ -147,6 +147,9 @@ with weights and placeholders for an empty panel. The app picks the mode from it
 width and calls `setMode`, as Decompose's `ChildPanelsModeChangedEffect` example does;
 a mode change keeps every instance and writes no history, and choosing a detail
 replaces the panels' one entry (`PanelsWebNavigation`).
+`renderStack` takes an optional test for transparent children, as Expo's web
+`NativeStackView` treats `transparentModal`: a transparent child fills the stack over
+the ones below, which stay shown down to the first opaque child.
 
 **Binding** is the only module that imports two layers.
 
@@ -210,8 +213,11 @@ replaces the panels' one entry (`PanelsWebNavigation`).
     does not parse resolves from its address the same way. With no address for the
     region, a malformed tree reports `IncompleteSnapshot`. `onBeforeNavigate` is asked before the fallback.
 - Reload restores the entry's structure (a TanStack mask with `unmaskOnReload:
-  false`); a presentation can resolve from the address on reload instead, which is
-  Next's hard navigation.
+  false`); a leaf route with `resolveOnReload: true` resolves from the address on a
+  reload instead, which is Next's hard navigation and TanStack's `unmaskOnReload`.
+  A reload is told apart as TanStack does (`tempLocationKey`): each router draws a
+  random document key and writes it into its entries, so an entry with another key
+  was written before the page loaded, while back and forward in the same page restore.
 - Each rendered destination provides its own params to `useParams` (Expo local
   params); the whole address is `useLocation`. Multi-region apps keep
   `RoutingRegistry` scopes; a route tree is one participant.
@@ -250,7 +256,9 @@ before mount, at most 20, and the history entry ends on the last address, on a b
 forward as on a link (TanStack `followRedirect`, `load-client.ts`, replaces on any load). A path ending in `/` is redirected for good
 (308) to the one without it, as Next's default `trailingSlash: false` does
 (`load-custom-routes.ts`, the `/:path+/` redirect), so a page has one address on a
-server, in static output and in the browser. `Router.response()` gives a server the
+server, in static output and in the browser. A route in a Stack may name
+`presentation: "transparentModal"` to show over the screen below it (Expo's
+`presentation`); anywhere else the declaration throws. `Router.response()` gives a server the
 first redirect's status and final location, or the route's status. The React Navigation
 surface (`createStackNavigator`, `NavigationContainer` with `linking`) is a second
 shorthand over the same models. An author whose URL shape differs from the navigation
