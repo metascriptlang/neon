@@ -277,14 +277,6 @@ and the invariants that outlived them were moved to the head of the test that pi
   `682b18673`). Card `~/metascript/.inbox/compiler/2026-10-07-element-macro-type-cycle-on-generic-interface-field-without-its-parameter.md`.
   Parked at that branch; `src/macros/ui/style.ms` `createStyles` on main has no breakpoints.
 
-- **PARKED 2026-10-10 — Vite refresh: an edit that adds a new generic instance reloads the page.**
-  Adding `createSignal(false)` to an accepted component module emits the `…__boolean` instance into
-  the runtime's `signal` module, which is not an HMR boundary. Measured again 2026-10-12: adding a
-  signal and reading it in the template reloads the page too, because the template's capture type
-  changes and `refreshRegion<E>` / `TemplateSlot<E>` are instantiated in `render/refresh`. On native
-  HCR the same edit reloads with state kept. Design card
-  `~/metascript/.inbox/compiler/2026-10-10-js-generic-instance-emitted-into-defining-module.md`.
-
 - **PARKED 2026-10-03 — `(st.width ?? 0.0) === 320.0` does not compile.** Not Neon's: with
   `st.width: float32 | string | null` the fallback joins as a new `float64` member and the present
   value is refused against it on C and JS; with a written target type the `===` against a number then

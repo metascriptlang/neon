@@ -9,6 +9,7 @@ import { createMemo } from "../core/memo";
 import { Accessor, Setter, Signal, untrack } from "../core/signal";
 import { refreshTypeKey } from "../macros/refresh";
 import { onCleanup } from "../core/cleanup";
+import { Unsubscribe, listeners } from "./voidAreaHandle";
 
 export type SigFn = () => string;
 
@@ -18,6 +19,30 @@ export interface RefreshSummary {
 	kept: int32;
 	rebuilt: int32;
 	remounted: int32;
+}
+
+export interface RefreshDone {
+	scope: string;
+	name: string;
+	summary: RefreshSummary;
+	ms: number;
+}
+
+export interface RefreshFailure {
+	component: string;
+	message: string;
+}
+
+export interface KeptValue {
+	key: string;
+	value: string;
+}
+
+export interface MountedComponent {
+	name: string;
+	module: string;
+	broken: boolean;
+	state: KeptValue[];
 }
 
 class ComponentSlot<P> {
@@ -54,6 +79,7 @@ interface SavedState {
 	key: string;
 	type: string;
 	cell: unknown;
+	show: () => string;
 }
 
 interface Instance {
@@ -228,6 +254,7 @@ function instanceRows(instances: Map<string, Instance[]>, h: Host, home: RowHome
 		mounting = outer;
 		if (!rebuilding || e instanceof NotReadyError) { throw e; }
 		console.log("refresh: " + inst.key + " did not mount: " + e.message);
+		failures.emit({ component: inst.key, message: e.message });
 		disposeChildren(inst.owner, false);
 		track(instances, inst);
 		const name = inst.key.substring(inst.key.lastIndexOf("/") + 1).split("|")[0];
@@ -468,7 +495,7 @@ export function refreshKeep<T>(key: string, read: () => T, write: (value: T) => 
 		seen += 1;
 	}
 	const cell = new StateCell<T>(read, untrack(read));
-	inst.live.push({ key: key, type: type, cell: cell });
+	inst.live.push({ key: key, type: type, cell: cell, show: (): string => `${untrack(cell.read)}` });
 	inst.captures.push((): void => { cell.value = untrack(cell.read); });
 }
 
@@ -476,8 +503,24 @@ export function refreshState<T>(key: string, get: Accessor<T>, set: Setter<T>): 
 	refreshKeep<T>(key, (): T => get(), (value: T): void => { set(value); });
 }
 
+const done = listeners<RefreshDone>();
+const failures = listeners<RefreshFailure>();
+
+export function onRefreshDone(fn: (r: RefreshDone) => void): Unsubscribe {
+	return done.add(fn);
+}
+
+export function onRefreshFailed(fn: (f: RefreshFailure) => void): Unsubscribe {
+	return failures.add(fn);
+}
+
+function reported(scope: string, name: string, started: number, summary: RefreshSummary): RefreshSummary {
+	if (summary.rebuilt + summary.remounted > 0) { done.emit({ scope, name, summary, ms: performance.now() - started }); }
+	return summary;
+}
+
 export function refreshModule(moduleFile: string): RefreshSummary {
-	return patchModule(moduleFile, []);
+	return reported("module", moduleFile, performance.now(), patchModule(moduleFile, []));
 }
 
 export function refreshModuleEval(
@@ -485,12 +528,13 @@ export function refreshModuleEval(
 	moduleSig: string,
 	dependents: string[],
 ): RefreshSummary {
+	const started = performance.now();
 	const previous = moduleSigs.get(moduleFile);
 	moduleSigs.set(moduleFile, moduleSig);
-	if (previous === undefined || previous !== moduleSig) { return patchModule(moduleFile, []); }
+	if (previous === undefined || previous !== moduleSig) { return reported("module", moduleFile, started, patchModule(moduleFile, [])); }
 	const forced: string[] = [];
 	for (const id of dependents) { forced.push(keyOf(moduleFile, id)); }
-	return patchModule(moduleFile, forced);
+	return reported("module", moduleFile, started, patchModule(moduleFile, forced));
 }
 
 export function refreshImports(moduleFile: string, imported: string, ids: string[]): void {
@@ -506,6 +550,7 @@ export function refreshImports(moduleFile: string, imported: string, ids: string
 }
 
 export function refreshDependency(moduleKey: string): RefreshSummary {
+	const started = performance.now();
 	const keys = importers.get(moduleKey);
 	if (keys === undefined) { return { kept: 0, rebuilt: 0, remounted: 0 }; }
 	const comps: Instance[] = [];
@@ -518,7 +563,30 @@ export function refreshDependency(moduleKey: string): RefreshSummary {
 	}
 	const boundaries = patch(compInstances, comps, keys);
 	const regions = patch(tmplInstances, tmpls, keys);
-	return { kept: boundaries[0] + regions[0], rebuilt: regions[1], remounted: boundaries[1] };
+	return reported("dependency", moduleKey, started, { kept: boundaries[0] + regions[0], rebuilt: regions[1], remounted: boundaries[1] });
+}
+
+function sourceName(id: string): string {
+	const bar = id.indexOf("|");
+	return bar < 0 ? id : id.substring(0, bar);
+}
+
+export function refreshMounted(): MountedComponent[] {
+	const out: MountedComponent[] = [];
+	for (const list of compInstances.values()) {
+		for (const inst of list) {
+			if (isDisposed(inst.owner)) { continue; }
+			const state: KeptValue[] = [];
+			for (const kept of inst.live) {
+				const name = sourceName(kept.key);
+				let key = name;
+				for (let n = 2; state.some((k: KeptValue): boolean => k.key === key); n += 1) { key = `${name}#${n}`; }
+				state.push({ key, value: kept.show() });
+			}
+			out.push({ name: sourceName(inst.key.substring(inst.keyFile.length + 1)), module: inst.keyFile, broken: inst.broken, state });
+		}
+	}
+	return out;
 }
 
 export function refreshReset(): void {

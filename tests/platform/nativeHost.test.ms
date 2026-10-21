@@ -38,6 +38,8 @@ import {
 } from "./nativeBridgeMock.h";
 import { PanResponder, PanResponderGestureState } from "../../src/components/panResponder";
 import { HOST_PARK_CONTRACT, hostParkContract } from "../render/hostContract";
+import { devDriver } from "../../src/devtools/driver";
+import { ControlSession, handleRequest } from "../../src/devtools/control";
 
 const PRESS: int32 = 2;
 
@@ -1127,4 +1129,32 @@ test "a focused native TextInput in content that an Errored parks loses its focu
 	assert nmFocused(tag) === 0 && log === "blur;", "parking the content took the focus away: " + log;
 	assert !handles[0].isFocused(), "and the handle follows";
 	nmTeardown();
+}
+
+test "the control channel drives the native host: the tree, a press by text through the touch path, a typed value" {
+	let log = "";
+	const app = (): NeonNode => <View style={{ width: 300, height: 200 }}>
+		<Pressable style={{ width: 100, height: 40 }} onPress={(): void => { log += "press;"; }}>go</Pressable>
+		<TextInput style={{ width: 200, height: 30 }} value="Ada" onChangeText={(t: string): void => { log += "change " + t + ";"; }} />
+	</View>;
+	runApp(app);
+	nmLoop();
+	assert devDriver() !== null, "mounting registers the driver";
+	const lines: string[] = [];
+	const s = new ControlSession((line: string): void => { lines.push(line); });
+	handleRequest(s, `{"jsonrpc":"2.0","id":1,"method":"press","params":{"target":"text:go"}}`);
+	nmLoop();
+	assert lines[0].includes(`"result":{"x":8.5,"y":10.5}`), "the centre of the text node, inside the pressable: " + lines[0];
+	assert log === "press;", "the press reaches onPress once: " + log;
+	const input = nmLastInputTag();
+	nmControl(input, 1, "");
+	nmControl(input, 0, "Ada L");
+	nmLoop();
+	handleRequest(s, `{"jsonrpc":"2.0","id":2,"method":"tree"}`);
+	assert lines[1].includes(`"value":"Ada L","focused":true`), "the tree shows what the native field holds: " + lines[1];
+	handleRequest(s, `{"jsonrpc":"2.0","id":3,"method":"type","params":{"text":"x"}}`);
+	assert lines[2].includes(`"code":-32000,"message":"type threw: native host: type needs a bridge call`), lines[2];
+	nmTeardown();
+	nmLoop();
+	assert devDriver() === null, "teardown drops the driver";
 }

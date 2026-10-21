@@ -7,6 +7,7 @@
 #include <dlfcn.h>
 #include <jni.h>
 #include <math.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/timerfd.h>
@@ -396,10 +397,27 @@ JNIEXPORT void JNICALL Java_dev_metascript_app_NativeApp_start(JNIEnv *e, jclass
 }
 
 #ifdef NEON_HCR
+static void loadDevtoolsEnv(const char *dir) {
+	char path[1024], line[1024];
+	snprintf(path, sizeof path, "%s/devtools.env", dir);
+	FILE *f = fopen(path, "r");
+	if (!f) return;
+	while (fgets(line, sizeof line, f)) {
+		line[strcspn(line, "\r\n")] = 0;
+		char *eq = strchr(line, '=');
+		if (!eq) continue;
+		*eq = 0;
+		setenv(line, eq + 1, 1);
+		__android_log_print(ANDROID_LOG_INFO, "MetaScript", "devtools: %s=%s", line, eq + 1);
+	}
+	fclose(f);
+}
+
 JNIEXPORT void JNICALL Java_dev_metascript_app_NativeApp_launch(JNIEnv *e, jclass cls, jstring dir, jstring stem) {
 	(void)cls;
 	const char *d = (*e)->GetStringUTFChars(e, dir, NULL);
 	const char *s = (*e)->GetStringUTFChars(e, stem, NULL);
+	loadDevtoolsEnv(d);
 	msHcrLaunch(d, s);
 	(*e)->ReleaseStringUTFChars(e, dir, d);
 	(*e)->ReleaseStringUTFChars(e, stem, s);

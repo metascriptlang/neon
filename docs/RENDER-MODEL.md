@@ -249,9 +249,10 @@ throws and then its fix on each adapter:
   edits, of which the PC build is 1.5 to 3.1 s and delivery 0.15 to 2.3 s; the second run, beside
   another session's compiler corpus, took 9.9 to 16.5 s.
 
-**A new generic instance reloads the page on Vite** (design card
-`~/metascript/.inbox/compiler/2026-10-10-js-generic-instance-emitted-into-defining-module.md`):
-the instance is emitted into the defining runtime module, which is not an HMR boundary.
+**A new generic instance applies on Vite without a reload**: split JS writes an instance only other
+modules ask for to its own `_inst/` module, so the library's file stays byte-identical
+(`examples/refreshVite/drive.mjs` S8, 2026-10-21). An instance whose body assigns its module's
+variable, or holds `@emit` text, still lands in the library's file and reloads the page.
 
 Rejected on the way: comparing imported bindings by identity to decide which setup to remount
 (Solid Refresh's granular `dependencies`) cannot be emitted, because an imported generic function
