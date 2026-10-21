@@ -522,8 +522,10 @@ No repeated unchanged submission demos or inferred protected-contract permission
   transaction; original and nested pins pass C/JS, affected host/Chrome checks green.
 - [ ] Finish detached-subtree rollback; retain enabled regression. Existing checker-flow
   owner card blocks validation, not permission to rewrite consumers.
-- [ ] Connect distinct scene hosts to area frame/layout/font/input ownership. Host/embed/
-  window prerequisites consumed; raw kinds belong this arc, closed host arc owns no new work.
+- [ ] Connect distinct scene hosts to area layout/font/input ownership. The area frame is
+  connected (`9ddcf716`: one prepare of every Scene2D/Scene3D layer, then one screen pass,
+  scene then HUD; pin `tests/render/scene3dArea.test.ms`). Host/embed/window prerequisites
+  consumed; raw kinds belong this arc, closed host arc owns no new work.
 - [ ] Finish raw2D gaps: Anim binders, textured Graphics, texture upload/replacement,
   fresh bounds and observed output. Keep existing core/style/text/filter coverage.
 - [x] ~~Prove resource-bearing Gltf rollback/remount/terminal cleanup~~ — real textured
