@@ -250,10 +250,6 @@ and the invariants that outlived them were moved to the head of the test that pi
   lacks the audio API, which is on Ion origin `a853b2e`. Ion note
   `~/metascript/.inbox/ion/2026-10-15-local-main-diverged-from-window-content.md`. Same gate log as the row above.
 
-- **PARKED 2026-10-20 — `tests/platform/voidRetain.test.ms` does not compile on the JS lane.** Not Neon's:
-  Void's `GlyphAtlas.acquire` (`src/void2d/glyphAtlas.ms:481`) indexes a `Ptr<int32>` past its element,
-  which msc `807d96ef7` refuses on JS (`cannot index a pointer past the element it addresses on JS`).
-  Same on Neon main `c7230e4a`; C passes. Note `~/metascript/.inbox/void/2026-10-20-glyph-atlas-indexes-a-pointer-on-js.md`.
 - **PARKED 2026-10-11 — `tests/render/flatList.test.ms` and `tests/components/flutterListsApp.test.ms` do not compile.**
   Not Neon's: an array-destructured local of an arrow passed as a JSX attribute
   (`const [focused, setFocused] = createSignal<boolean>(false)` in a `renderItem`) is refused as
