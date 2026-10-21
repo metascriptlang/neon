@@ -91,6 +91,7 @@ function canvasHost(c: Canvas): Host {
 			c.owed = true;
 		},
 		released: (area: WindowArea): void => {
+			if (c.input !== null) { (c.input as SokolInput).touch.stop(); }
 			c.area = null;
 			c.input = null;
 		},

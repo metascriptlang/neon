@@ -407,3 +407,29 @@ test "the window's text input is on while a node that places the IME holds focus
 	assert calls.join("|") === "on|off", calls.join("|");
 	setFrameDriver(null);
 }
+
+test "a released area stops its momentum and a pending long press" {
+	const clock = useManualFrames();
+	const log: string[] = [];
+	const flinging = canvas(log);
+	touch(flinging, AppEventType.TouchesBegan, 1 as int32, 40.0, 20.0);
+	for (let i = 1; i <= 6; i += 1) {
+		clock.advance(16);
+		touch(flinging, AppEventType.TouchesMoved, 1 as int32, 40.0, (20 + 20 * i) as float32);
+	}
+	touch(flinging, AppEventType.TouchesEnded, 1 as int32, 40.0, 140.0);
+	clock.step(5 as int32);
+	flinging.touch.stop();
+	let mark = log.length;
+	clock.step(60 as int32);
+	assert log.length === mark, "no momentum reaches the released area: " + log.slice(mark).join("|");
+	assert !framePending(), "no momentum frame stays requested";
+	const holding = canvas(log);
+	touch(holding, AppEventType.TouchesBegan, 2 as int32, 80.0, 60.0);
+	holding.touch.stop();
+	mark = log.length;
+	clock.step(60 as int32);
+	assert log.length === mark, "no long press reaches the released area: " + log.slice(mark).join("|");
+	assert !framePending(), "no long-press frame stays requested";
+	setFrameDriver(null);
+}

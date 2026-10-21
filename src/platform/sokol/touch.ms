@@ -333,6 +333,13 @@ export class TouchGesture {
 		this.momentum = requestFrame(tick);
 	}
 
+	stop(): void {
+		this.dropTap();
+		this.stopMomentum();
+		this.fingers = [];
+		this.phase = TouchPhase.Idle;
+	}
+
 	stopMomentum(): boolean {
 		if (this.momentum < 0) { return false; }
 		cancelFrame(this.momentum);
