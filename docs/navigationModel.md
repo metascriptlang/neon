@@ -141,6 +141,12 @@ gestures, pages with a tab bar, drawer, panels laid out by width, modal presenta
 A renderer takes a model and a `render(child)` function; input events call model
 operations: edge swipe and hardware back today, while no renderer wires the mouse back
 button or keyboard shortcuts yet. It never imports routing. `navigatorMotion.ms` stays the transition engine.
+`renderPanels` lays panels out as Decompose's `HorizontalChildPanelsLayout`: one at a
+time in single mode, main beside details or extra in dual, three columns in triple,
+with weights and placeholders for an empty panel. The app picks the mode from its
+width and calls `setMode`, as Decompose's `ChildPanelsModeChangedEffect` example does;
+a mode change keeps every instance and writes no history, and choosing a detail
+replaces the panels' one entry (`PanelsWebNavigation`).
 
 **Binding** is the only module that imports two layers.
 
