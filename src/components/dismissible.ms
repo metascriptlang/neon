@@ -8,7 +8,6 @@ import { Host, HostNode } from "../render/hostTypes";
 import { NeonEvent } from "../render/event";
 import { Style, mergeStyle } from "../render/style";
 import { View } from "./primitives";
-import { element } from "../macros/ui/element";
 import { PanResponder, PanResponderGestureState } from "./panResponder";
 import { Tween, ease, easeOut, linear, tween } from "./tween";
 
@@ -223,10 +222,9 @@ export function Dismissible(props: DismissibleProps): NeonNode {
 	const background = props.background;
 	const secondaryBackground = props.secondaryBackground;
 	const children = props.children;
-	const handlers = pan.panHandlers;
 	const primaryLayer: NeonNode | null = background === null ? null : View({ style: showsBackground(false), children: background });
 	const secondaryLayer: NeonNode | null = secondaryBackground === null ? null : View({ style: showsBackground(true), children: secondaryBackground });
-	const moving: NeonNode = element(<View {...handlers} style={contentStyle}>{children}</View>);
+	const moving: NeonNode = View({ ...pan.panHandlers, style: contentStyle, children });
 	return View({
 		style: outerStyle,
 		accessibilityLabel: props.accessibilityLabel,
