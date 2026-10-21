@@ -25,7 +25,7 @@ import { fits } from "../../../void/src/void3d/uniformPool";
 import { contextGeneration } from "../../../void/src/gpu/door";
 import {
 	Scene3D as VoidScene3D, NodeId3D, Transform3D, LightKind, LightInstance,
-	addGroup, addLightNode, addMeshNode, setLocal, setLightPower, setMeshOf,
+	addGroup, addLightNode, addMeshNode, setLocal, setLightPower, setMeshOf, setMaterialOf,
 	setLightColor, setLightRadius, setLightPriority,
 	remove, insertBefore, closeScene, addCameraNode, setCameraOf, setActiveCamera,
 	setVisible, setPickable, setName, setAmbient, refresh, collectLights, setLayers, setRenderOrder, setCameraLayers,
@@ -568,12 +568,20 @@ export function Mesh(props: MeshProps): NeonNode {
 			const mounted = node;
 			if (mounted === null) { throw new Error("Mesh: addMeshNode did not mount a node"); }
 			if (props.material !== null) {
-				const selected = material;
-				if (selected === null) { throw new Error("Mesh: addMeshNode did not select a material"); }
+				const initialMaterial = material;
+				if (initialMaterial === null) { throw new Error("Mesh: addMeshNode did not select a material"); }
+				let selected = initialMaterial;
 				createRenderEffect<MaterialId>(
 					(prev: MaterialId | null): MaterialId => (props.material as () => MaterialId)(),
 					(value: MaterialId, prev: MaterialId | null): Cleanup | null => {
-						if (value !== selected) { throw new Error("Mesh: material cannot change; Void has no material-node binder"); }
+						if (value !== selected) {
+							const changed = setMaterialOf(scene, mounted, value);
+							if (!changed.ok) {
+								throw new Error("Mesh: setMaterialOf failed: " + changed.error.toString());
+							}
+							selected = value;
+							scope.state.invalidate();
+						}
 						return null;
 					},
 				);
