@@ -1,5 +1,4 @@
 import { NeonEvent } from "./event";
-import { HostNode } from "./hostTypes";
 
 export enum AreaKeyAction {
 	Release,
@@ -115,7 +114,7 @@ export function listeners<T>(): Listeners<T> {
 }
 
 export struct LayerAnchor {
-	node: HostNode;
+	node: unknown;
 	inText: boolean;
 }
 
