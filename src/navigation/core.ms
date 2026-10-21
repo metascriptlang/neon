@@ -7,6 +7,7 @@ import { onCleanup } from "../core/cleanup";
 import { NeonNode } from "../render/hostTypes";
 import { Style } from "../render/style";
 import { StackLayout } from "./layout";
+import { StackPresentation } from "./childView";
 import { createContext, useContext } from "../render/context";
 import { refreshKeep } from "../render/refresh";
 import {
@@ -37,7 +38,6 @@ export interface TabBarIconProps {
 	size: number;
 }
 
-export type StackPresentation = "card" | "modal" | "transparentModal";
 
 export type StackAnimation = "default" | "slide_from_right" | "slide_from_bottom" | "fade" | "none";
 

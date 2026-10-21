@@ -31,7 +31,6 @@ export {
 	useFocusEffect,
 	useNavigationState,
 	StackAnimation,
-	StackPresentation,
 	HeaderTitleAlign,
 	useLinkTo,
 	useTheme,
@@ -140,7 +139,7 @@ export { ChildStack, createChildStack } from "./childStack";
 export { BackBehavior, Pages, ChildPages, createChildPages } from "./childPages";
 export { ChildSlot, createChildSlot } from "./childSlot";
 export { ChildPanelsMode, Panels, ChildPanels, createChildPanels } from "./childPanels";
-export { PanelsLayout, renderStack, renderStackTop, renderPages, renderPanels } from "./childView";
+export { PanelsLayout, StackPresentation, renderStack, renderStackTop, renderPages, renderPanels } from "./childView";
 export {
 	LayoutProps,
 	RouteNavigator,

@@ -51,11 +51,37 @@ function activeFrame<C, T>(
 export function renderStack<C, T>(
 	stack: ChildStack<C, T>,
 	render: (child: NavigationChild<C, T>) => NeonNode,
+	transparent: ((child: NavigationChild<C, T>) => boolean) | null = null,
 ): NeonNode {
-	return renderChildren<C, T>(
-		(): NavigationChild<C, T>[] => stack.items(),
-		activeFrame<C, T>(render),
-	);
+	if (transparent === null) {
+		return renderChildren<C, T>((): NavigationChild<C, T>[] => stack.items(), activeFrame<C, T>(render));
+	}
+	const overlays = transparent as (child: NavigationChild<C, T>) => boolean;
+	const shown = createMemo<Set<string>>((): Set<string> => {
+		const items = stack.items();
+		const keys = new Set<string>();
+		let at = items.length - 1;
+		while (at >= 0) {
+			keys.add(items[at].key);
+			if (!overlays(items[at])) { break; }
+			at -= 1;
+		}
+		return keys;
+	});
+	return renderChildren<C, T>((): NavigationChild<C, T>[] => stack.items(), (child: NavigationChild<C, T>): NeonNode => {
+		const overlay = overlays(child);
+		const frame = accessor((): Style => ({
+			flex: 1,
+			flexDirection: "column",
+			display: shown().has(child.key) ? "flex" : "none",
+			position: overlay ? "absolute" : null,
+			top: overlay ? 0 : null,
+			left: overlay ? 0 : null,
+			right: overlay ? 0 : null,
+			bottom: overlay ? 0 : null,
+		}));
+		return <View style={frame}>{render(child)}</View>;
+	});
 }
 
 export function renderStackTop<C, T>(
@@ -83,6 +109,8 @@ export function renderPages<C, T>(
 		return kept;
 	}, activeFrame<C, T>(render));
 }
+
+export type StackPresentation = "card" | "modal" | "transparentModal";
 
 const emptyPanel: NeonNode = (host: Host, parent: HostNode, before: HostNode | null): void => {};
 
