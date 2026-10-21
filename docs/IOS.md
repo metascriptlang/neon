@@ -167,7 +167,7 @@ examples/ios/project.ms
 
 There is no PBX inventory of compiler runtime, Neon bridge or Yoga sources. The ownership
 seams are `Target.iosApp` and `iosScript` in Ion, `runApp` in
-`src/platform/native/host.ms`, and the process bootstrap in `examples/ios/entry.m`. Neon
+`src/platform/native/host.ms`, and the process bootstrap in the `IonMain.m` that `ion generate` writes. Neon
 remains the sole owner of `UIApplicationMain`; Ion imports neither Neon nor Yoga.
 
 ### 6.1 Measured generated-project proof

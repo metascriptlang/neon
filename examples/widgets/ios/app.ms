@@ -1,5 +1,3 @@
-@compile("../../ios/entry.m", "-fobjc-arc");
-
 import { Widgets } from "../../components/widgets";
 import { runApp } from "../../../src/platform/native/host";
 
