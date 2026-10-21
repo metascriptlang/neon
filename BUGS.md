@@ -359,3 +359,10 @@ A compiler debt is not one of these: the twelve this section used to carry moved
 - **Neon `probe/` housekeeping** — `macro_disambig` / `macro_lenval` still assert the formerly-WRONG
   values (deliberate RED bracket-tests); `macro_narrow` N1 is red BY DESIGN (Nhịp-2 marker). Rewrite
   truth-only or delete at leisure, but do not read them as failures.
+- **A Scene2D/Scene3D inside a clipping View draws unclipped.** The layer draws between the
+  content's segments (`src/platform/void/windowHost.ms` `drawArea`), and Void does not clip a layer
+  drawn there by the content's clips (Void `docs/VOID2D.md`, layer slots). Flutter wraps such a
+  layer in a composited clip (`rendering/object.dart` `pushClipRect`). So a Scene2D in an
+  `overflow: "hidden"` View or a ScrollView spills past it. Before this change every layer drew
+  under the whole content, also unclipped. Fix in Neon: give the layer the clip of its slot's
+  clipping ancestors.
