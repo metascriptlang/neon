@@ -228,10 +228,16 @@ function responderHandlers(props: ViewProps): ResponderHandlers | null {
 
 function touchEvent(name: string, user: ((e: NeonEvent) => void) | null, entry: ResponderEntry | null, phase: TouchPhase): VEvent | null {
 	if (user === null && entry === null) { return null; }
-	return evt(name, (e: NeonEvent): void => {
-		if (entry !== null) { responderTouch(entry as ResponderEntry, phase, e); }
-		if (user !== null) { (user as (x: NeonEvent) => void)(e); }
-	});
+	if (entry === null) { return evt(name, user as (e: NeonEvent) => void); }
+	return {
+		name,
+		lifecycle: (e: NeonEvent): void => { responderTouch(entry as ResponderEntry, phase, e); },
+		handler: user === null ? (e: NeonEvent): void => {} : user as (e: NeonEvent) => void,
+	};
+}
+
+function gestureEvent(name: string, lifecycle: (e: NeonEvent) => void): VEvent {
+	return { name, lifecycle, handler: (e: NeonEvent): void => {} };
 }
 
 export class ViewHandle extends ElementHandle {

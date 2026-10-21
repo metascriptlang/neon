@@ -65,6 +65,8 @@ export interface Host {
 	// holds one sheet class: a new id replaces the last, and "" removes it.
 	setStyleClass: ((node: HostNode, id: string, css: string) => void) | null;
 	addEvent: (node: HostNode, name: string, handler: (e: NeonEvent) => void) => void;
+	addEventPhases?: ((node: HostNode, name: string, lifecycle: (e: NeonEvent) => void,
+		listener: (e: NeonEvent) => void) => void) | null;
 	append: (parent: HostNode, child: HostNode) => void;
 	insertBefore: (parent: HostNode, node: HostNode, ref: HostNode | null) => void;
 	removeChild: (parent: HostNode, node: HostNode) => void;

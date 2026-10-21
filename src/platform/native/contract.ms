@@ -15,11 +15,26 @@ export enum NativeElementKind {
 interface NativeEventRoute {
 	name: string;
 	handler: (e: NeonEvent) => void;
+	lifecycle?: ((e: NeonEvent) => void) | null;
+}
+
+export interface NativeEventDelivery {
+	handler: (e: NeonEvent) => void;
+	event: NeonEvent;
+}
+
+export interface NativeEventPacket {
+	lifecycle: NativeEventDelivery[];
+	listeners: NativeEventDelivery[];
 }
 
 export interface NativeEventRegistry {
 	add: (tag: int32, name: string, handler: (e: NeonEvent) => void) => void;
 	remove: (tag: int32) => void;
+	addPhases: (tag: int32, name: string, lifecycle: (e: NeonEvent) => void,
+		listener: (e: NeonEvent) => void) => void;
+	capture: (tag: int32, phase: int32, x: number, y: number, timeStamp: number,
+		touchOnly: boolean) => NativeEventPacket;
 	dispatch: (tag: int32, phase: int32, x: number, y: number, timeStamp: number) => boolean;
 	touch: (tag: int32, phase: int32, x: number, y: number, timeStamp: number) => boolean;
 	scroll: (tag: int32, x: number, y: number, width: number, height: number, contentWidth: number, contentHeight: number) => boolean;
@@ -234,6 +249,12 @@ function transformAngle(ref p: TransformCursor): float64 {
 	return 0;
 }
 
+function fireRoute(route: NativeEventRoute, event: NeonEvent): void {
+	const lifecycle = route.lifecycle;
+	if (lifecycle !== null) { lifecycle(event); }
+	route.handler(event);
+}
+
 function fireRoutes(routes: NativeEventRoute[], type: string, x: number, y: number, timeStamp: number): boolean {
 	let fired = false;
 	for (const route of routes) {
@@ -243,7 +264,7 @@ function fireRoutes(routes: NativeEventRoute[], type: string, x: number, y: numb
 		event.x = x;
 		event.y = y;
 		event.timeStamp = timeStamp;
-		route.handler(event);
+		fireRoute(route, event);
 		fired = true;
 	}
 	return fired;
@@ -264,6 +285,38 @@ export function createNativeEventRegistry(): NativeEventRegistry {
 	}
 	function remove(tag: int32): void {
 		byTag.delete(tag);
+	}
+
+	function addPhases(tag: int32, name: string, lifecycle: (e: NeonEvent) => void,
+		listener: (e: NeonEvent) => void): void {
+		add(tag, name, listener);
+		const routes = byTag.get(tag) as NativeEventRoute[];
+		routes[routes.length - 1].lifecycle = lifecycle;
+	}
+
+	function capture(tag: int32, phase: int32, x: number, y: number, timeStamp: number,
+		touchOnly: boolean): NativeEventPacket {
+		const packet: NativeEventPacket = { lifecycle: [], listeners: [] };
+		if (!byTag.has(tag)) { return packet; }
+		const types: string[] = touchOnly
+			? match (phase) { 0 => ["touchstart"], 1 => ["touchend"], 3 => ["touchcancel"],
+				4 => ["touchmove"], _ => [] }
+			: match (phase) { 0 => ["pointerdown"], 1 => ["pointerup"], 2 => ["press"],
+				3 => ["pointercancel", "pointerleave"], 4 => ["pointermove"], _ => [] };
+		for (const type of types) {
+			for (const route of byTag.get(tag) as NativeEventRoute[]) {
+				if (eventType(route.name) !== type) { continue; }
+				const event = neonEvent(type);
+				event.pointerOrigin = true;
+				event.x = x; event.y = y; event.timeStamp = timeStamp;
+				const lifecycle = route.lifecycle;
+				if (lifecycle !== null) {
+					packet.lifecycle.push({ handler: lifecycle, event: { ...event } });
+				}
+				packet.listeners.push({ handler: route.handler, event });
+			}
+		}
+		return packet;
 	}
 
 	function dispatch(tag: int32, phase: int32, x: number, y: number, timeStamp: number): boolean {
@@ -317,7 +370,7 @@ export function createNativeEventRegistry(): NativeEventRegistry {
 			event.height = height;
 			event.contentWidth = contentWidth;
 			event.contentHeight = contentHeight;
-			route.handler(event);
+			fireRoute(route, event);
 			fired = true;
 		}
 		return fired;
@@ -336,7 +389,7 @@ export function createNativeEventRegistry(): NativeEventRegistry {
 			event.y = y;
 			event.width = width;
 			event.height = height;
-			route.handler(event);
+			fireRoute(route, event);
 			fired = true;
 		}
 		return fired;
@@ -374,11 +427,11 @@ export function createNativeEventRegistry(): NativeEventRegistry {
 			event.value = value;
 			event.width = width;
 			event.height = height;
-			route.handler(event);
+			fireRoute(route, event);
 			fired = true;
 		}
 		return fired;
 	}
 
-	return { add, remove, dispatch, touch, scroll, scrollPhase, layout, control };
+	return { add, addPhases, capture, remove, dispatch, touch, scroll, scrollPhase, layout, control };
 }

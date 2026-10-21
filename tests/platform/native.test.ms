@@ -64,6 +64,53 @@ test "native styles project onto FlexStyle without filling absent fields" {
 	assert scroll.flexDirection === "column" && scroll.overflow === "scroll", "a scroll container lays out its content unshrunk";
 }
 
+test "native event capture retains actual legs and scalar samples across removal and replacement" {
+	for (const throwing of [false, true]) {
+		const registry = createNativeEventRegistry();
+		let log = "";
+		registry.addPhases(7, "onTouchEnd", (e: NeonEvent): void => {
+			log += `life:${e.x},${e.timeStamp};`;
+			e.x = 99;
+			if (throwing) { throw "capture stop"; }
+		}, (e: NeonEvent): void => { log += `old:${e.x},${e.timeStamp};`; });
+		const packet = registry.capture(7, 1, 5, 6, 160020, true);
+		registry.remove(7);
+		registry.add(7, "onTouchEnd", (): void => { log += "new;"; });
+		let error = "";
+		try {
+			for (const delivery of packet.lifecycle) { delivery.handler(delivery.event); }
+			for (const delivery of packet.listeners) { delivery.handler(delivery.event); }
+		} catch (e) { error = e.toString(); }
+		assert log === (throwing ? "life:5,160020;" : "life:5,160020;old:5,160020;"), log;
+		assert throwing ? error.includes("capture stop") : error === "", error;
+		registry.touch(7, 1, 5, 6, 160040);
+		assert log.endsWith("new;"), log;
+	}
+}
+
+test "native phased layout and control registrations keep lifecycle before listener" {
+	const registry = createNativeEventRegistry();
+	let log = "";
+	registry.addPhases(9, "onLayout", (): void => { log += "layout-life;"; },
+		(): void => { log += "layout-user;"; });
+	registry.addPhases(9, "onValueChange", (): void => { log += "control-life;"; },
+		(): void => { log += "control-user;"; });
+	registry.layout(9, 0, 0, 10, 20);
+	registry.control(9, 4, "true", 0, 0);
+	assert log === "layout-life;layout-user;control-life;control-user;", log;
+}
+
+test "native cancellation capture retains both public cancel and leave channels" {
+	const registry = createNativeEventRegistry();
+	let log = "";
+	registry.add(8, "onPointerCancel", (): void => { log += "cancel;"; });
+	registry.add(8, "onPointerLeave", (): void => { log += "leave;"; });
+	const packet = registry.capture(8, 3, 1, 2, 3, false);
+	registry.remove(8);
+	for (const delivery of packet.listeners) { delivery.handler(delivery.event); }
+	assert log === "cancel;leave;", log;
+}
+
 test "native event registry routes native tags and touch phases" {
 	const registry = createNativeEventRegistry();
 	let got = "";

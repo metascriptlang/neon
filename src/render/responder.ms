@@ -239,21 +239,35 @@ function sample(e: NeonEvent, start: boolean): void {
 	history.mostRecentTimeStamp = e.timeStamp;
 }
 
-function finish(e: NeonEvent, released: boolean): void {
+export interface ResponderDelivery {
+	handler: (e: NeonEvent) => void;
+	event: NeonEvent;
+}
+
+export function extractResponderTerminal(e: NeonEvent, released: boolean): ResponderDelivery[] {
+	const deliveries: ResponderDelivery[] = [];
+	if (!active) { return deliveries; }
+	if (released) { sample(e, false); }
 	const holder = responder;
+	if (holder !== null) {
+		const handlers = (holder as ResponderEntry).handlers;
+		const end = handlers.onResponderEnd;
+		const terminal = released ? handlers.onResponderRelease : handlers.onResponderTerminate;
+		if (released && end !== null) { deliveries.push({ handler: end, event: { ...e } }); }
+		if (terminal !== null) { deliveries.push({ handler: terminal, event: { ...e } }); }
+	}
 	responder = null;
 	active = false;
 	history.numberActiveTouches = 0;
 	if (claimedThisTouch) { claimedReleaseTime = e.timeStamp; }
 	claimedThisTouch = false;
-	if (holder === null) { return; }
-	const entry = holder as ResponderEntry;
-	release(entry);
-	if (released) {
-		tell(entry.handlers.onResponderEnd, e);
-		tell(entry.handlers.onResponderRelease, e);
-	} else {
-		tell(entry.handlers.onResponderTerminate, e);
+	if (holder !== null) { release(holder as ResponderEntry); }
+	return deliveries;
+}
+
+function finish(e: NeonEvent, released: boolean): void {
+	for (const delivery of extractResponderTerminal(e, released)) {
+		delivery.handler(delivery.event);
 	}
 }
 
@@ -273,10 +287,7 @@ export function responderTouch(entry: ResponderEntry, phase: TouchPhase, e: Neon
 	match (phase) {
 		TouchPhase.Start => { startTouch(entry, e); },
 		TouchPhase.Move => { moveTouch(e); },
-		TouchPhase.End => {
-			sample(e, false);
-			finish(e, true);
-		},
+		TouchPhase.End => { finish(e, true); },
 		TouchPhase.Cancel => { finish(e, false); },
 	}
 }

@@ -28,6 +28,7 @@ export interface VAttr {
 export interface VEvent {
 	name: string;          // raw JSX name, e.g. "onPress" (host maps to "click")
 	handler: (e: NeonEvent) => void;
+	lifecycle?: ((e: NeonEvent) => void) | null;
 }
 
 // Where a region's rows are built. A row is built when its rows memo makes it (Solid flow.ts:226, map.ts:362),
@@ -83,7 +84,21 @@ export function hostElement(
 			}
 		}
 		if (style !== null) { bindStyleAll(host, node, style as () => Style); }
-		for (const e of events) { host.addEvent(node, e.name, e.handler); }
+		for (const e of events) {
+			const lifecycle = e.lifecycle;
+			const listener = e.handler;
+			if (lifecycle === null) { host.addEvent(node, e.name, listener); }
+			else {
+				const addPhases = host.addEventPhases;
+				if (addPhases !== null) { addPhases(node, e.name, lifecycle, listener); }
+				else {
+					host.addEvent(node, e.name, (event: NeonEvent): void => {
+						lifecycle(event);
+						listener(event);
+					});
+				}
+			}
+		}
 		if (children !== null) { (children as NeonNode)(host, node, null); }
 		if (ref !== null) { applyRef(node, ref as RefFn); }
 		if (elementRef !== null && !isServer()) {

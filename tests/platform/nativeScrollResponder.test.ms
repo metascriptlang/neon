@@ -1,9 +1,9 @@
 import { runApp, createNativeHost } from "../../src/platform/native/host";
-import { render, HostNode } from "../../src/render/host";
-import { Pressable, ScrollView, ScrollViewHandle, View } from "../../src/components/primitives";
+import { render, Host, HostNode } from "../../src/render/host";
+import { Pressable, ScrollView, ScrollViewHandle, View, ViewHandle } from "../../src/components/primitives";
 import { NeonNode } from "../../src/render/node";
 import { NeonEvent } from "../../src/render/event";
-import { currentResponder } from "../../src/render/responder";
+import { currentResponder, ResponderEntry } from "../../src/render/responder";
 import { element } from "../../src/macros/ui/element";
 import { sleepAsync } from "std/core/promise";
 import {
@@ -12,6 +12,135 @@ import {
 } from "./nativeBridgeMock.h";
 
 function observe(e: NeonEvent): void {}
+
+test "native fresh acquisitions can start and end at the previous release timestamp" {
+	let actual = "";
+	for (const phase of [1, 3]) {
+		let calls = "";
+		runApp((): NeonNode => <View accessibilityLabel="equal-terminal-owner"
+			onStartShouldSetResponder={(): boolean => true}
+			onResponderEnd={(): void => { calls += "E"; }}
+			onResponderRelease={(): void => { calls += "R"; }}
+			onResponderTerminate={(): void => { calls += "C"; }}
+			onTouchEnd={(): void => { calls += "raw"; }}
+			onTouchCancel={(): void => { calls += "raw"; }} />);
+		const source = nmTagWithProp("accessibilityLabel", "equal-terminal-owner");
+		const stamp = 180000.0 + (phase as float64) * 1000.0;
+		physical(source, 0, stamp - 20.0);
+		physical(source, phase, stamp);
+		physical(source, 0, stamp);
+		physical(source, phase, stamp);
+		actual += `${phase}:${calls}/${currentResponder() === null}|`;
+		nmTeardown();
+	}
+	assert actual === "1:ERrawERraw/true|3:CrawCraw/true|", actual;
+}
+
+test "native unknown stale and duplicate terminal packets cannot retire a fresh responder" {
+	let actual = "";
+	let expected = "";
+	for (const phase of [1, 3]) {
+		for (const mode of [0, 1, 2]) {
+			let calls = "";
+			const hosts: Host[] = [];
+			const stale: HostNode[] = [];
+			runApp((): NeonNode => {
+				const app = element(<View>
+					<View accessibilityLabel="valid-terminal-owner"
+						onStartShouldSetResponder={(): boolean => true}
+						onResponderEnd={(): void => { calls += "E"; }}
+						onResponderRelease={(): void => { calls += "R"; }}
+						onResponderTerminate={(): void => { calls += "C"; }} />
+					<View accessibilityLabel="stale-terminal-source" onLayout={observe}
+						ref={(h: ViewHandle): void => { stale.push(h.node); }} />
+				</View>);
+				return (h: Host, p: HostNode, b: HostNode | null): void => {
+					hosts.push(h); app(h, p, b);
+				};
+			});
+			const source = nmTagWithProp("accessibilityLabel", "valid-terminal-owner");
+			const staleTag = nmTagWithProp("accessibilityLabel", "stale-terminal-source");
+			const parent = hosts[0].parentOf(stale[0]);
+			if (parent === null) { throw "missing stale fixture parent"; }
+			hosts[0].removeChild(parent as HostNode, stale[0]);
+			const stamp = 170000.0 + (phase as float64) * 1000.0 + (mode as float64) * 100.0;
+			physical(source, 0, stamp);
+			if (mode === 2) {
+				physical(source, phase, stamp + 20.0);
+				calls = "";
+				physical(source, phase, stamp + 20.0);
+				assert calls === "", "a duplicate without a new acquisition emits no terminal callbacks";
+				physical(source, 0, stamp + 30.0);
+			}
+			const holder = currentResponder();
+			physical(mode === 0 ? 2000000000 : mode === 1 ? staleTag : source, phase, stamp + 20.0);
+			actual += `${phase},${mode}:${calls}/${currentResponder() === holder && holder !== null}/${nmResponderBlocks()};`;
+			expected += `${phase},${mode}:/true/0;`;
+			physical(source, 1, stamp + 60.0);
+			actual += calls + "|"; expected += "ER|";
+			nmTeardown();
+		}
+	}
+	assert actual === expected, actual;
+}
+
+
+test "native terminal captures release listener before End mutates responder handlers" {
+	let actual = "";
+	for (const restart of [false, true]) {
+		let source: int32 = 0;
+		const entries: ResponderEntry[] = [];
+		runApp((): NeonNode => <View accessibilityLabel="captured-responder"
+			onStartShouldSetResponder={(): boolean => true}
+			onResponderEnd={(e: NeonEvent): void => {
+				if (e.timeStamp !== 151020.0) { return; }
+				actual += "end;";
+				entries[0].handlers.onResponderRelease = (): void => { actual += "replacement;"; };
+				if (restart) { physical(source, 0, 152000.0); }
+			}}
+			onResponderRelease={(e: NeonEvent): void => {
+				if (e.timeStamp === 151020.0) { actual += "captured;"; }
+			}} />);
+		source = nmTagWithProp("accessibilityLabel", "captured-responder");
+		physical(source, 0, 151000.0);
+		entries.push(currentResponder() as ResponderEntry);
+		physical(source, 1, 151020.0);
+		if (restart) { entries[0].handlers.onResponderRelease = null; physical(source, 1, 152020.0); }
+		nmTeardown();
+	}
+	assert actual === "end;captured;end;captured;", actual;
+}
+
+test "native custom End restart keeps existing child gesture limitation separate from raw order" {
+	let actual = "";
+	for (const restart of [false, true]) {
+		let source: int32 = 0;
+		let callbacks = "";
+		runApp((): NeonNode => <View onStartShouldSetResponder={(): boolean => true}
+			onResponderEnd={(e: NeonEvent): void => {
+				if (e.timeStamp !== 153020.0) { return; }
+				callbacks += "end;";
+				if (restart) { physical(source, 0, 154000.0); }
+			}}
+			onResponderRelease={(e: NeonEvent): void => {
+				if (e.timeStamp === 153020.0) { callbacks += "release;"; }
+			}}>
+			<Pressable onPressIn={observe} onPressOut={(): void => { callbacks += "out;"; }}
+				onPress={(e: NeonEvent): void => { callbacks += `${e.timeStamp};`; }}>
+				<View accessibilityLabel="end-restart-child" onLayout={observe} />
+			</Pressable>
+		</View>);
+		source = nmTagWithProp("accessibilityLabel", "end-restart-child");
+		physical(source, 0, 153000.0);
+		await sleepAsync(150);
+		physical(source, 1, 153020.0);
+		if (restart) { physical(source, 1, 154020.0); }
+		actual += `${restart}:${callbacks}|`;
+		nmTeardown();
+	}
+	assert actual === "false:end;release;out;153020;|true:end;release;out;153020;|", actual;
+}
+
 
 function physical(tag: int32, phase: int32, stamp: float64): void {
 	nmTouchFull(tag, phase, 10.0, 20.0, stamp);
@@ -268,6 +397,7 @@ test "native scroll pressOut reentrancy cannot apply an old grant after disposal
 		assert applied === (removing ? 0 : 1), `old/native grants ${applied}`;
 	}
 }
+
 
 test "native pure View clears old responder before terminal or disposal callbacks" {
 	let actual = "";

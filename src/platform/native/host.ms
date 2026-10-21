@@ -4,11 +4,12 @@ import { spanParagraph } from "../../render/spanHost";
 import { Accessor } from "../../core/signal";
 import { Dispose } from "../../core/types";
 import { MeasureRect, MeasureError } from "../../render/hostTypes";
-import { NeonEvent } from "../../render/event";
+import { NeonEvent, neonEvent } from "../../render/event";
+import { extractResponderTerminal } from "../../render/responder";
 import { FlexStyle, YGNode, freeLayoutTree, layoutPass as runLayoutPass } from "../../../../yoga/src/index";
 import { YGNodeGetParent, YGNodeRemoveChild, YGNodeLayoutGetPadding, YGNodeLayoutGetBorder, YGNodeLayoutGetMargin, YGEdge } from "../../../../yoga/src/yogaH";
 import { Style, mergeStyle, isBoldWeight } from "../../render/style";
-import { NativeElementKind, createNativeEventRegistry, nativeComponentOf, nativeElementKind, nativeFlexStyle, nativeTransform } from "./contract";
+import { NativeElementKind, NativeEventPacket, NativeEventDelivery, createNativeEventRegistry, nativeComponentOf, nativeElementKind, nativeFlexStyle, nativeTransform } from "./contract";
 import { nativeElement } from "./elements";
 import { publishWindow, publishKeyboard, publishColorScheme, publishSafeArea } from "../../render/environment";
 import { VisibleContentPosition, parseVisibleContent } from "../../render/visibleContent";
@@ -943,7 +944,7 @@ function normalizePress(tag: int32, phase: int32, x: float64, y: float64, time: 
 		return releasedPressTag;
 	}
 	if (phase === 1 || phase === 3) {
-		if (released) { return 0; }
+		if (released && pressSourceTag === 0) { return 0; }
 		const owner = pressOwnerTag;
 		pressSourceTag = 0;
 		pressOwnerTag = 0;
@@ -964,10 +965,10 @@ let bubbledX: number = 0;
 let bubbledY: number = 0;
 
 // iOS forwards a touch up the superview chain, so one native event can arrive once per tagged view.
-function bubbleTouch(tag: int32, phase: int32, x: number, y: number, timeStamp: number): void {
+function touchTags(tag: int32, phase: int32, x: number, y: number, timeStamp: number): int32[] {
 	const owner: NativeNode | null = spanTagOwner.has(tag) ? spanTagOwner.get(tag) as NativeNode : null;
-	if (phase === 2 || (!nodesByTag.has(tag) && owner === null)) { return; }
-	if (phase === bubbledPhase && timeStamp === bubbledTime && x === bubbledX && y === bubbledY) { return; }
+	if (phase === 2 || (!nodesByTag.has(tag) && owner === null)) { return []; }
+	if (phase === bubbledPhase && timeStamp === bubbledTime && x === bubbledX && y === bubbledY) { return []; }
 	bubbledPhase = phase;
 	bubbledTime = timeStamp;
 	bubbledX = x;
@@ -981,7 +982,16 @@ function bubbleTouch(tag: int32, phase: int32, x: number, y: number, timeStamp: 
 		if (n.eventTag !== 0) { tags.push(n.eventTag); }
 		at = n.parent;
 	}
-	for (const target of tags) { eventRegistry.touch(target, phase, x, y, timeStamp); }
+	return tags;
+}
+
+function appendPacket(target: NativeEventPacket, source: NativeEventPacket): void {
+	for (const delivery of source.lifecycle) { target.lifecycle.push(delivery); }
+	for (const delivery of source.listeners) { target.listeners.push(delivery); }
+}
+
+function deliverEvents(deliveries: NativeEventDelivery[]): void {
+	for (const delivery of deliveries) { delivery.handler(delivery.event); }
 }
 
 function onTouch(): void {
@@ -990,15 +1000,43 @@ function onTouch(): void {
 	const x = niLastTouchX() as number;
 	const y = niLastTouchY() as number;
 	const timeStamp = niLastTouchTime();
+	if (phase === 1 || phase === 3) {
+		if (!livePressTag(tag) && tag !== pressSourceTag) { return; }
+		if (timeStamp === releasedPressTime && x === releasedPressX && y === releasedPressY &&
+			(pressSourceTag === 0 || timeStamp < pressTime)) { return; }
+	}
 	const owner = normalizePress(tag, phase, x, y, timeStamp);
 	const raw = !ownsPress(tag);
 	batched((): void => {
-		bubbleTouch(tag, phase, x, y, timeStamp);
-		if (raw && phase !== 2) { eventRegistry.dispatch(tag, phase, x, y, timeStamp); }
-		if (owner === 0 || !livePressTag(owner)) { return; }
-		if ((phase === 0 || phase === 4) && pressOwnerTag !== owner) { return; }
-		if (phase === 1 && releasedPressTag !== owner) { return; }
-		eventRegistry.dispatch(owner, phase, x, y, timeStamp);
+		const tags = touchTags(tag, phase, x, y, timeStamp);
+		const touches: NativeEventPacket = { lifecycle: [], listeners: [] };
+		for (const target of tags) {
+			appendPacket(touches, eventRegistry.capture(target, phase, x, y, timeStamp, true));
+		}
+		const pointers: NativeEventPacket = { lifecycle: [], listeners: [] };
+		if (raw && phase !== 2) {
+			appendPacket(pointers, eventRegistry.capture(tag, phase, x, y, timeStamp, false));
+		}
+		if (owner !== 0 && livePressTag(owner) &&
+			((phase !== 0 && phase !== 4) || pressOwnerTag === owner) &&
+			(phase !== 1 || releasedPressTag === owner)) {
+			appendPacket(pointers, eventRegistry.capture(owner, phase, x, y, timeStamp, false));
+		}
+		if (phase === 1 || phase === 3) {
+			const event = neonEvent(phase === 1 ? "touchend" : "touchcancel");
+			event.x = x; event.y = y; event.timeStamp = timeStamp; event.pointerOrigin = true;
+			const responderEvents = extractResponderTerminal(event, phase === 1);
+			deliverEvents(touches.lifecycle);
+			for (const delivery of responderEvents) { delivery.handler(delivery.event); }
+			deliverEvents(pointers.lifecycle);
+			deliverEvents(touches.listeners);
+			deliverEvents(pointers.listeners);
+		} else {
+			deliverEvents(touches.lifecycle);
+			deliverEvents(touches.listeners);
+			deliverEvents(pointers.lifecycle);
+			deliverEvents(pointers.listeners);
+		}
 	});
 }
 
@@ -1108,6 +1146,17 @@ export function createNativeHost(): NativeHost {
 			const n = node as unknown as NativeNode;
 			ensureTag(n);
 			eventRegistry.add(n.eventTag, name, handler);
+			if (name === "onPress" && n.view !== null) {
+				niViewSetPressable(n.view);
+				n.pressable = true;
+			}
+			if (name === "onLayout" && layoutNodes.indexOf(n) < 0) { layoutNodes.push(n); }
+		},
+		addEventPhases: (node: HostNode, name: string, lifecycle: (e: NeonEvent) => void,
+			listener: (e: NeonEvent) => void): void => {
+			const n = node as unknown as NativeNode;
+			ensureTag(n);
+			eventRegistry.addPhases(n.eventTag, name, lifecycle, listener);
 			if (name === "onPress" && n.view !== null) {
 				niViewSetPressable(n.view);
 				n.pressable = true;
