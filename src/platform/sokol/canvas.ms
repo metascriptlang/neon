@@ -1,7 +1,8 @@
 import { gfxSetup, fbWidth, fbHeight, dpiScale } from "../../../../void/src/sokol/gpu";
 import { setup2d } from "../../../../void/src/void2d/draw";
 import { addFont, registerFace, FontId, FontStyle as FaceStyle } from "../../../../void/src/void2d/font";
-import { AppEvent, onAppEvent, setTextInput, setImeRect } from "../../../../void/src/sokol/window";
+import { AppEvent, onAppEvent, setTextInput, setImeRect, safeArea } from "../../../../void/src/sokol/window";
+import { publishSafeArea } from "../../render/environment";
 import { familyFont } from "../void/host";
 import { Host, HostNode, NeonNode, render } from "../../render/host";
 import { flush } from "../../core/runtime";
@@ -129,6 +130,8 @@ function frameCanvas(): void {
 		deliverResize(area, width, height, scale as float64);
 		c.owed = true;
 	}
+	const inset = safeArea();
+	publishSafeArea(inset.top / scale, inset.right / scale, inset.bottom / scale, inset.left / scale);
 	if ((!c.owed && skippedFrameKeepsPicture()) || width <= (0 as int32) || height <= (0 as int32)) { return; }
 	c.owed = false;
 	_drawn = _drawn + 1;
