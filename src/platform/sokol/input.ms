@@ -4,6 +4,7 @@ import {
 	AreaKeyMod,
 	AreaPointerKind,
 } from "../../render/voidAreaHandle";
+import { DOM_DELTA_PIXEL, DOM_DELTA_LINE } from "../../render/event";
 import {
 	WindowArea,
 	deliverKey,
@@ -13,7 +14,7 @@ import {
 	deliverPreedit,
 } from "../void/windowHost";
 import { AppEvent, AppEventType } from "../../../../void/src/sokol/window";
-import { TouchGesture, TouchPoint } from "./touch";
+import { TouchGesture } from "./touch";
 
 export struct KeyName {
 	key: int32;
@@ -215,12 +216,9 @@ function pointer(s: SokolInput, e: AppEvent, kind: AreaPointerKind, button: int3
 		pressed,
 		dx: motion ? e.mouseDx as float64 : wheel ? -(e.scrollX as float64) : 0.0,
 		dy: motion ? e.mouseDy as float64 : wheel ? e.scrollY as float64 : 0.0,
+		deltaMode: wheel ? DOM_DELTA_LINE : DOM_DELTA_PIXEL,
 		mods: modsOf(e),
 	});
-}
-
-export function deliverTouches(s: SokolInput, e: AppEvent, touches: TouchPoint[]): void {
-	s.touch.deliver(e.type, touches, modsOf(e));
 }
 
 export function deliverAppEvent(s: SokolInput, e: AppEvent): void {
@@ -254,10 +252,7 @@ export function deliverAppEvent(s: SokolInput, e: AppEvent): void {
 			AppEventType.Suspended | AppEventType.Resumed | AppEventType.QuitRequested |
 			AppEventType.ClipboardPasted | AppEventType.FilesDropped => {},
 		AppEventType.TouchesBegan | AppEventType.TouchesMoved | AppEventType.TouchesEnded |
-			AppEventType.TouchesCancelled => {
-			// parked: AppEvent carries no touch points; call deliverTouches(s, e, e.touches) once
-			// ~/metascript/.inbox/void/2026-10-21-ios-app-driver-for-void-run.md lands them.
-		},
+			AppEventType.TouchesCancelled => { s.touch.deliver(e.type, e.touches, modsOf(e)); },
 		AppEventType.Invalid => { throw new Error("sokol input: an event of type INVALID reached the canvas"); },
 	}
 }

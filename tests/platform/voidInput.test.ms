@@ -2,7 +2,7 @@ import { createSignal, Accessor } from "../../src/core/signal";
 import { element } from "../../src/macros/ui/element";
 import { flush, resetErrorHalt } from "../../src/core/runtime";
 import { render } from "../../src/render/host";
-import { NeonEvent, neonEvent } from "../../src/render/event";
+import { NeonEvent, neonEvent, DOM_DELTA_LINE } from "../../src/render/event";
 import { View, ViewHandle, Text, TextInput, Pressable } from "../../src/components/primitives";
 import { ForList, Show } from "../../src/macros/ui/flow";
 import { createList } from "../../src/core/list";
@@ -533,7 +533,7 @@ test "pointer events go to the deepest node under the pointer, bubble, and carry
 	log.length = 0;
 	vh.pointerMove(31.0, 36.0, 0, true);
 	vh.pointerUp(31.0, 36.0, 0);
-	vh.wheel(31.0, 36.0, 0.0, -3.0);
+	vh.wheel(31.0, 36.0, 0.0, -3.0, DOM_DELTA_LINE);
 	assert log.join("|") === "inner:pointermove@11,16/31,36 b0 down d0,0|outer:pointermove@11,16/31,36 b0 down d0,0"
 		+ "|inner:pointerup@11,16/31,36 b0 up d0,0|outer:pointerup@11,16/31,36 b0 up d0,0"
 		+ "|inner:wheel@11,16/31,36 b0 up d0,-3|outer:wheel@11,16/31,36 b0 up d0,-3", "move, up, wheel: " + log.join("|");
@@ -801,7 +801,7 @@ test "pointer and wheel events carry the window's modifiers and a time" {
 	vh.pointerDown(10.0, 10.0, 0, 1);
 	vh.pointerMove(20.0, 10.0, 0, true, 5);
 	vh.pointerUp(20.0, 10.0, 0, 2);
-	vh.wheel(20.0, 10.0, 0.0, 1.0, 8);
+	vh.wheel(20.0, 10.0, 0.0, 1.0, DOM_DELTA_LINE, 8);
 	vh.pointerMove(30.0, 10.0, 0, false);
 	assert log.join("|") === [
 		"pointerdown shift=true ctrl=false alt=false meta=false mods=1",

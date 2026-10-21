@@ -115,7 +115,7 @@ export interface VoidHost {
 	pointerDown: (x: float32, y: float32, button: int32, mods?: number) => void;
 	pointerMove: (x: float32, y: float32, button: int32, pressed: boolean, mods?: number) => void;
 	pointerUp: (x: float32, y: float32, button: int32, mods?: number) => void;
-	wheel: (x: float32, y: float32, dx: float32, dy: float32, mods?: number) => void;
+	wheel: (x: float32, y: float32, dx: float32, dy: float32, deltaMode: number, mods?: number) => void;
 	textInput: (text: string) => void;
 	keyDown: (e: NeonEvent) => void;
 	keyUp: (e: NeonEvent) => void;
@@ -1232,10 +1232,11 @@ export function createVoidHostWith(
 		pointerAt("onPointerUp", target, x, y, pointerEvent("pointerup", x, y, button, false, mods));
 	};
 
-	const wheel = (x: float32, y: float32, dx: float32, dy: float32, mods?: number): void => {
+	const wheel = (x: float32, y: float32, dx: float32, dy: float32, deltaMode: number, mods?: number): void => {
 		const ev = pointerEvent("wheel", x, y, 0 as int32, false, mods);
 		ev.deltaX = dx;
 		ev.deltaY = dy;
+		ev.deltaMode = deltaMode;
 		pointerAt("onWheel", deepestAt(root, x, y, null), x, y, ev);
 	};
 

@@ -20,6 +20,7 @@ import { flush } from "../../core/runtime";
 import {
 	VoidAreaHandle, AreaKeyEvent, AreaKeyAction, AreaKeyMod, AreaPointerEvent, AreaPointerKind,
 } from "../../render/voidAreaHandle";
+import { DOM_DELTA_PIXEL, DOM_DELTA_LINE } from "../../render/event";
 import { installCaptureServices } from "../../api/captureServices";
 import { installAppServices } from "../../api/services";
 import { installFrameDriver } from "../../animation/frame";
@@ -189,6 +190,7 @@ function areaPointer(e: PointerEvent): AreaPointerEvent {
 		pressed: e.pressed,
 		dx: e.dx,
 		dy: e.dy,
+		deltaMode: e.kind === PointerKind.Wheel ? DOM_DELTA_LINE : DOM_DELTA_PIXEL,
 		mods: (e.mods as uint16) as BitSet<AreaKeyMod>,
 	};
 }

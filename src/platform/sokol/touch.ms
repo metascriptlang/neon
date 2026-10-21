@@ -1,14 +1,8 @@
 import { AreaKeyMod, AreaPointerKind } from "../../render/voidAreaHandle";
+import { DOM_DELTA_PIXEL } from "../../render/event";
 import { WindowArea, deliverPointer } from "../void/windowHost";
-import { AppEventType } from "../../../../void/src/sokol/window";
+import { AppEventType, AppTouch } from "../../../../void/src/sokol/window";
 import { requestFrame, cancelFrame, frameNow } from "../../animation/frame";
-
-export struct TouchPoint {
-	identifier: uint64;
-	posX: float32;
-	posY: float32;
-	changed: boolean;
-}
 
 // Flutter's touch gestures on iOS: gestures/constants.dart, BouncingScrollPhysics and
 // IOSScrollViewFlingVelocityTracker. Change a value there first, then here.
@@ -21,9 +15,6 @@ const MAX_FLING_VELOCITY = 8000.0;
 const FRICTION_DRAG = 0.135;
 const FLING_SAMPLES: int32 = 20;
 const POINTER_STOPPED_MS = 40.0;
-// sokol_app.h scales a macOS precise (trackpad) scroll delta in points by 0.1 into the
-// wheel units a Wheel event carries; a touch pan scrolls as far as a trackpad pan.
-const NOTCHES_PER_POINT = 0.1;
 
 struct Offset {
 	x: float64;
@@ -97,12 +88,12 @@ class FlingTracker {
 }
 
 class Finger {
-	id: uint64;
+	id: int64;
 	pixelX: float64;
 	pixelY: float64;
 	tracker: FlingTracker = new FlingTracker();
 
-	constructor(id: uint64, pixelX: float64, pixelY: float64) {
+	constructor(id: int64, pixelX: float64, pixelY: float64) {
 		this.id = id;
 		this.pixelX = pixelX;
 		this.pixelY = pixelY;
@@ -133,7 +124,7 @@ export class TouchGesture {
 	area: WindowArea;
 	phase: TouchPhase = TouchPhase.Idle;
 	fingers: Finger[] = [];
-	primary: uint64 = 0 as uint64;
+	primary: int64 = 0 as int64;
 	tapAlive: boolean = false;
 	originX: float64 = 0.0;
 	originY: float64 = 0.0;
@@ -152,7 +143,7 @@ export class TouchGesture {
 		this.area = area;
 	}
 
-	deliver(type: AppEventType, touches: TouchPoint[], mods: BitSet<AreaKeyMod>): void {
+	deliver(type: AppEventType, touches: AppTouch[], mods: BitSet<AreaKeyMod>): void {
 		this.mods = mods;
 		match (type) {
 			AppEventType.TouchesBegan => {
@@ -175,19 +166,19 @@ export class TouchGesture {
 		return { x: pixelX / scale, y: pixelY / scale };
 	}
 
-	finger(id: uint64, what: string): Finger {
+	finger(id: int64, what: string): Finger {
 		for (const f of this.fingers) {
 			if (f.id === id) { return f; }
 		}
 		throw new Error(`sokol touch: touch ${id} ${what} but never began`);
 	}
 
-	began(t: TouchPoint): void {
+	began(t: AppTouch): void {
 		for (const f of this.fingers) {
-			if (f.id === t.identifier) { throw new Error(`sokol touch: touch ${t.identifier} began twice`); }
+			if (f.id === t.id) { throw new Error(`sokol touch: touch ${t.id} began twice`); }
 		}
 		const now = frameNow() as float64;
-		const f = new Finger(t.identifier, t.posX as float64, t.posY as float64);
+		const f = new Finger(t.id, t.x as float64, t.y as float64);
 		f.tracker.add(now, this.logical(f.pixelX, f.pixelY));
 		this.fingers.push(f);
 		if (this.phase !== TouchPhase.Idle) { return; }
@@ -202,18 +193,18 @@ export class TouchGesture {
 		if (this.tapAlive) { this.watchDeadline(); }
 	}
 
-	moved(touches: TouchPoint[]): void {
+	moved(touches: AppTouch[]): void {
 		const now = frameNow() as float64;
 		const count = this.fingers.length as float64;
 		let panX = 0.0;
 		let panY = 0.0;
 		for (const t of touches) {
 			if (!t.changed) { continue; }
-			const f = this.finger(t.identifier, "moved");
-			const dx = (t.posX as float64) - f.pixelX;
-			const dy = (t.posY as float64) - f.pixelY;
-			f.pixelX = t.posX as float64;
-			f.pixelY = t.posY as float64;
+			const f = this.finger(t.id, "moved");
+			const dx = (t.x as float64) - f.pixelX;
+			const dy = (t.y as float64) - f.pixelY;
+			f.pixelX = t.x as float64;
+			f.pixelY = t.y as float64;
 			f.tracker.add(now, this.logical(f.pixelX, f.pixelY));
 			const step = this.logical(dx, dy);
 			match (this.phase) {
@@ -236,17 +227,17 @@ export class TouchGesture {
 					panY += step.y;
 				},
 				TouchPhase.Spent => {},
-				TouchPhase.Idle => { throw new Error(`sokol touch: touch ${t.identifier} moved while no touch was down`); },
+				TouchPhase.Idle => { throw new Error(`sokol touch: touch ${t.id} moved while no touch was down`); },
 			}
 		}
 		if (this.phase === TouchPhase.Panning && (panX !== 0.0 || panY !== 0.0)) { this.wheel(panX / count, panY / count); }
 	}
 
-	ended(t: TouchPoint, cancelled: boolean): void {
-		const f = this.finger(t.identifier, cancelled ? "was cancelled" : "ended");
+	ended(t: AppTouch, cancelled: boolean): void {
+		const f = this.finger(t.id, cancelled ? "was cancelled" : "ended");
 		this.fingers.splice(this.fingers.indexOf(f), 1);
-		const x = t.posX as float64;
-		const y = t.posY as float64;
+		const x = t.x as float64;
+		const y = t.y as float64;
 		const last = this.fingers.length === 0;
 		match (this.phase) {
 			TouchPhase.Pending => {
@@ -275,7 +266,7 @@ export class TouchGesture {
 			TouchPhase.Spent => {
 				if (last) { this.phase = TouchPhase.Idle; }
 			},
-			TouchPhase.Idle => { throw new Error(`sokol touch: touch ${t.identifier} ended while no touch was down`); },
+			TouchPhase.Idle => { throw new Error(`sokol touch: touch ${t.id} ended while no touch was down`); },
 		}
 	}
 
@@ -368,10 +359,9 @@ export class TouchGesture {
 			pixelY: this.originY,
 			button: 0 as int32,
 			pressed: false,
-			dx: 0.0 - x * NOTCHES_PER_POINT,
-			dy: y * NOTCHES_PER_POINT,
-			pixelDx: 0.0 - x * scale,
-			pixelDy: y * scale,
+			dx: 0.0 - x * scale,
+			dy: y * scale,
+			deltaMode: DOM_DELTA_PIXEL,
 			mods: this.mods,
 		});
 	}

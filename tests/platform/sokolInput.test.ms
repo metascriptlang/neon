@@ -1,7 +1,7 @@
 import { element } from "../../src/macros/ui/element";
 import { render } from "../../src/render/host";
-import { NeonEvent } from "../../src/render/event";
-import { VoidAreaHandle, AreaKeyEvent, AreaPointerEvent, AreaPointerKind } from "../../src/render/voidAreaHandle";
+import { NeonEvent, DOM_DELTA_PIXEL, DOM_DELTA_LINE } from "../../src/render/event";
+import { VoidAreaHandle, AreaKeyEvent } from "../../src/render/voidAreaHandle";
 import { Void, View } from "../../src/components/primitives";
 import { NeonNode } from "../../src/render/node";
 import { WindowArea, windowHost, windowNode, deliverResize, logicalWidth, logicalHeight, syncTextInput } from "../../src/platform/void/windowHost";
@@ -9,14 +9,12 @@ import {
 	SokolInput,
 	sokolInput,
 	deliverAppEvent,
-	deliverTouches,
 	flushKey,
 	sokolKeyName,
 } from "../../src/platform/sokol/input";
-import { TouchPoint } from "../../src/platform/sokol/touch";
 import { useManualFrames, setFrameDriver, framePending } from "../../src/animation/frame";
 import { FontId, addFont } from "../../../void/src/void2d/font";
-import { AppEvent, AppEventType } from "../../../void/src/sokol/window";
+import { AppEvent, AppEventType, AppTouch } from "../../../void/src/sokol/window";
 
 const FONT_PATH = "../void/assets/font.ttf";
 
@@ -44,6 +42,7 @@ function event(type: AppEventType): AppEvent {
 		framebufferHeight: 0 as int32,
 		text: "",
 		cursor: 0 as int32,
+		touches: [],
 	};
 }
 
@@ -219,12 +218,12 @@ test "an IME composition reaches the area as preedit, and its result as committe
 	].join("|"), log.slice(mark).join("|");
 }
 
-function point(id: int32, x: float32, y: float32): TouchPoint {
-	return { identifier: id as uint64, posX: x, posY: y, changed: true };
+function point(id: int32, x: float32, y: float32): AppTouch {
+	return { id: id as int64, x, y, changed: true };
 }
 
 function touch(s: SokolInput, type: AppEventType, id: int32, x: float32, y: float32): void {
-	deliverTouches(s, event(type), [point(id, x, y)]);
+	deliverAppEvent(s, { ...event(type), touches: [point(id, x, y)] });
 }
 
 function wheelsOf(log: string[]): number[] {
@@ -279,7 +278,7 @@ test "a drag past the pan slop without a hold scrolls the area under its start a
 	clock.advance(50);
 	touch(s, AppEventType.TouchesEnded, 1 as int32, 20.0, 170.0);
 	clock.step(40 as int32);
-	assert log.join("|") === "wheel 0,0.5|wheel 1,-1", log.join("|");
+	assert log.join("|") === "wheel 0,5|wheel 10,-10", log.join("|");
 	assert !framePending(), "a finger that stopped before it lifted leaves no momentum";
 	setFrameDriver(null);
 }
@@ -293,7 +292,7 @@ test "a pan released with speed keeps scrolling with deltas that decay to a stop
 		clock.advance(16);
 		touch(s, AppEventType.TouchesMoved, 1 as int32, 40.0, (20 + 20 * i) as float32);
 	}
-	assert log.join("|") === "wheel 0,1|wheel 0,1", log.join("|");
+	assert log.join("|") === "wheel 0,10|wheel 0,10", log.join("|");
 	touch(s, AppEventType.TouchesEnded, 1 as int32, 40.0, 140.0);
 	const mark = log.length;
 	clock.step(1 as int32);
@@ -307,49 +306,28 @@ test "a pan released with speed keeps scrolling with deltas that decay to a stop
 		total += dys[i];
 	}
 	assert dys.length > 100 && dys.length < 160, `momentum runs about two seconds of frames: ${dys.length}`;
-	assert total > 29.5 && total < 31.5, `625 points/s under iOS friction travels about 307 points: ${total} notches`;
+	assert total > 295.0 && total < 315.0, `625 points/s under iOS friction travels about 307 points: ${total}`;
 	assert frames === dys.length && !framePending(), "momentum stops once it is slower than the tolerance";
 	setFrameDriver(null);
 }
 
-function pixelCanvas(pixels: string[]): SokolInput {
-	return openCanvas(element(
-		<Void ref={(h: VoidAreaHandle): void => {
-			h.onPointer((e: AreaPointerEvent): void => {
-				if (e.kind === AreaPointerKind.Wheel) { pixels.push(`${e.pixelDx},${e.pixelDy}`); }
-			});
-		}}>
-			<View style={{ width: 200, height: 100 }} />
+test "a touch pan scrolls in layout points and a mouse wheel in notches" {
+	const clock = useManualFrames();
+	const log: string[] = [];
+	const s = openCanvas(element(
+		<Void>
+			<View style={{ width: 200, height: 100 }}
+				onWheel={(e: NeonEvent): void => { log.push(`${e.deltaMode === DOM_DELTA_PIXEL ? "pixel" : e.deltaMode === DOM_DELTA_LINE ? "line" : "?"} ${e.deltaX},${e.deltaY}`); }} />
 		</Void>
 	));
-}
-
-test "a touch pan and its momentum scroll by the finger's pixels, a mouse wheel by notches alone" {
-	const clock = useManualFrames();
-	const pixels: string[] = [];
-	const s = pixelCanvas(pixels);
 	deliverAppEvent(s, { ...mouse(AppEventType.MouseScroll, 30.0, 40.0), scrollX: 1.0, scrollY: 2.0 });
-	assert pixels.join("|") === "0,0", pixels.join("|");
 	touch(s, AppEventType.TouchesBegan, 1 as int32, 40.0, 100.0);
 	touch(s, AppEventType.TouchesMoved, 1 as int32, 40.0, 140.0);
 	touch(s, AppEventType.TouchesMoved, 1 as int32, 40.0, 180.0);
 	touch(s, AppEventType.TouchesMoved, 1 as int32, 40.0, 190.0);
 	touch(s, AppEventType.TouchesMoved, 1 as int32, 20.0, 170.0);
-	assert pixels.join("|") === "0,0|0,10|20,-20", pixels.join("|");
-	const mark = pixels.length;
-	for (let i = 1; i <= 6; i += 1) {
-		clock.advance(16);
-		touch(s, AppEventType.TouchesMoved, 1 as int32, 20.0, (170 + 20 * i) as float32);
-	}
-	touch(s, AppEventType.TouchesEnded, 1 as int32, 20.0, 290.0);
-	clock.runAll();
-	let total = 0.0;
-	for (const p of pixels.slice(mark + 6)) {
-		const dx = parseFloat(p.split(",")[0]);
-		assert dx === 0.0, `a vertical fling scrolls no x: ${p}`;
-		total += parseFloat(p.split(",")[1]);
-	}
-	assert total > 590.0 && total < 630.0, `625 points/s under iOS friction travels about 307 points, 614 pixels at scale 2: ${total}`;
+	touch(s, AppEventType.TouchesEnded, 1 as int32, 20.0, 170.0);
+	assert log.join("|") === "line -1,2|pixel 0,5|pixel 10,-10", log.join("|");
 	setFrameDriver(null);
 }
 
@@ -378,15 +356,15 @@ test "two fingers scroll by their average and never press, even when only one of
 	const clock = useManualFrames();
 	const log: string[] = [];
 	const s = canvas(log);
-	deliverTouches(s, event(AppEventType.TouchesBegan), [point(1 as int32, 40.0, 100.0), point(2 as int32, 100.0, 100.0)]);
+	deliverAppEvent(s, { ...event(AppEventType.TouchesBegan), touches: [point(1 as int32, 40.0, 100.0), point(2 as int32, 100.0, 100.0)] });
 	for (let i = 1; i <= 3; i += 1) {
 		const y = (100 + 20 * i) as float32;
-		deliverTouches(s, event(AppEventType.TouchesMoved), [point(1 as int32, 40.0, y), point(2 as int32, 100.0, y)]);
+		deliverAppEvent(s, { ...event(AppEventType.TouchesMoved), touches: [point(1 as int32, 40.0, y), point(2 as int32, 100.0, y)] });
 	}
 	clock.advance(50);
-	deliverTouches(s, event(AppEventType.TouchesEnded), [point(1 as int32, 40.0, 160.0), point(2 as int32, 100.0, 160.0)]);
-	assert log.join("|") === "wheel 0,1", log.join("|");
-	deliverTouches(s, event(AppEventType.TouchesBegan), [point(3 as int32, 40.0, 100.0), point(4 as int32, 100.0, 180.0)]);
+	deliverAppEvent(s, { ...event(AppEventType.TouchesEnded), touches: [point(1 as int32, 40.0, 160.0), point(2 as int32, 100.0, 160.0)] });
+	assert log.join("|") === "wheel 0,10", log.join("|");
+	deliverAppEvent(s, { ...event(AppEventType.TouchesBegan), touches: [point(3 as int32, 40.0, 100.0), point(4 as int32, 100.0, 180.0)] });
 	for (let i = 1; i <= 5; i += 1) {
 		touch(s, AppEventType.TouchesMoved, 4 as int32, 100.0, (180 - 20 * i) as float32);
 	}
@@ -394,7 +372,7 @@ test "two fingers scroll by their average and never press, even when only one of
 	touch(s, AppEventType.TouchesEnded, 3 as int32, 40.0, 100.0);
 	touch(s, AppEventType.TouchesEnded, 4 as int32, 100.0, 80.0);
 	clock.step(40 as int32);
-	assert log.join("|") === "wheel 0,1|wheel 0,-0.5", log.join("|");
+	assert log.join("|") === "wheel 0,10|wheel 0,-5", log.join("|");
 	setFrameDriver(null);
 }
 

@@ -1,5 +1,5 @@
 import { Host, HostNode, VoidArea } from "../../render/host";
-import { NeonEvent, neonEvent } from "../../render/event";
+import { NeonEvent, neonEvent, DOM_DELTA_PIXEL, DOM_DELTA_LINE } from "../../render/event";
 import {
 	AreaHub,
 	AreaLayer,
@@ -248,7 +248,13 @@ export function deliverPointer(a: WindowArea, e: AreaPointerEvent): void {
 	if (e.kind === AreaPointerKind.Motion) {
 		a.vh.pointerMove(x, y, a.held, a.held > (0 as int32), mods);
 	} else if (e.kind === AreaPointerKind.Wheel) {
-		a.vh.wheel(x, y, e.dx as float32, e.dy as float32, mods);
+		if (e.deltaMode === DOM_DELTA_PIXEL) {
+			a.vh.wheel(x, y, (e.dx as float32) / a.scale, (e.dy as float32) / a.scale, DOM_DELTA_PIXEL, mods);
+		} else if (e.deltaMode === DOM_DELTA_LINE) {
+			a.vh.wheel(x, y, e.dx as float32, e.dy as float32, DOM_DELTA_LINE, mods);
+		} else {
+			throw new Error(`a wheel event reached the area with deltaMode ${e.deltaMode}, which is neither pixels nor lines`);
+		}
 	} else if (e.kind === AreaPointerKind.Button && e.pressed) {
 		a.held = e.button;
 		a.vh.pointerDown(x, y, e.button, mods);
