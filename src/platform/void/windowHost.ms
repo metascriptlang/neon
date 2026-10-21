@@ -224,7 +224,7 @@ export function areaKeyEvent(e: AreaKeyEvent, code: string, composing: boolean):
 	ev.unshifted = e.unshifted;
 	ev.text = e.text;
 	if (printable(e.text)) { ev.key = e.text; }
-	else if (e.unshifted >= (32 as int32) && e.unshifted !== (127 as int32) && code.startsWith("Key")) { ev.key = String.fromCharCode(e.unshifted); }
+	else if (e.unshifted >= (32 as int32) && e.unshifted !== (127 as int32)) { ev.key = String.fromCharCode(e.unshifted); }
 	else { ev.key = code; }
 	return ev;
 }

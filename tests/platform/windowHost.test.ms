@@ -20,6 +20,7 @@ import {
 	WindowArea,
 	windowHost,
 	windowNode,
+	areaKeyEvent,
 	deliverKey,
 	deliverPointer,
 	deliverText,
@@ -181,6 +182,17 @@ test "a later pass that brings a View to the window is refused when the View rea
 
 function key(action: AreaKeyAction, text: string, mods: BitSet<AreaKeyMod>): AreaKeyEvent {
 	return { action, key: 20, scancode: 30, mods, consumedMods: 0 as BitSet<AreaKeyMod>, unshifted: 97, text };
+}
+
+test "a held modifier keeps key as the unshifted character for punctuation and digits, as the DOM does" {
+	const ctrl = (0 as BitSet<AreaKeyMod>).incl(AreaKeyMod.Ctrl);
+	const at = (code: string, unshifted: int32): string =>
+		areaKeyEvent({ action: AreaKeyAction.Press, key: 0, scancode: 0, mods: ctrl, consumedMods: 0 as BitSet<AreaKeyMod>, unshifted, text: "" }, code, false).key;
+	assert at("Slash", 47 as int32) === "/", "ctrl+/ gives /";
+	assert at("Period", 46 as int32) === ".", "ctrl+. gives .";
+	assert at("Digit1", 49 as int32) === "1", "ctrl+1 gives 1";
+	assert at("KeyC", 99 as int32) === "c", "ctrl+c still gives c";
+	assert at("ArrowLeft", 0 as int32) === "ArrowLeft", "a key with no character keeps its name";
 }
 
 test "window input reaches the handle's subscribers and the focused node alike" {

@@ -143,7 +143,7 @@ test "a key that types nothing goes at once, a held key goes at the frame, and a
 		"hub key 22 \"\"",
 		"keyup KeyC",
 		"hub key 63 \"\"",
-		"keydown Space Space \"\" mods=0 consumed=0 unshifted=32 repeat=true",
+		"keydown   Space \"\" mods=0 consumed=0 unshifted=32 repeat=true",
 		"hub text é",
 		"textinput é",
 	].join("|"), log.slice(mark).join("|");
