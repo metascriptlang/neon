@@ -135,6 +135,32 @@ def lane():
     controls.find("Neon Device", 30)
     controls.wait_label("notified ", "notified launched by Neon later", 15)
     shot("notification-launched")
+
+    press("notify later")
+    controls.wait_label("notified ", "notified scheduled")
+    adb("shell", "input", "keyevent", "KEYCODE_HOME")
+    alive = counter.pid()
+    adb("shell", "cmd", "statusbar", "expand-notifications")
+    deadline = time.time() + 60
+    shade = None
+    while time.time() < deadline and shade is None:
+        shade = next((n for n in controls.nodes() if n.get("text") == "Neon later"), None)
+        time.sleep(1)
+    if shade is None:
+        raise LaneError("the alarm never posted 'Neon later' for the backgrounded app")
+    x, y = controls.center(shade)
+    adb("shell", "input", "tap", str(x), str(y))
+    controls.find("Neon Device", 30)
+    controls.wait_label("notified ", "notified response Neon later", 15)
+    if counter.pid() != alive:
+        raise LaneError("a tap on the notification of a live app started a new process")
+    shot("notification-live-response")
+
+    adb("shell", "am", "start", "-n", PACKAGE + "/dev.metascript.app.MainActivity", "-d", "neondevice://live")
+    controls.wait_label("url ", "url neondevice://live", 15)
+    if counter.pid() != alive:
+        raise LaneError("a url intent to the live app started a new process")
+    shot("url-live")
     press("clear notes")
     controls.wait_label("stored ", "stored none")
 
