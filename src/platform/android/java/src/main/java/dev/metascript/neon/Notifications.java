@@ -19,6 +19,7 @@ final class Notifications {
 	static final int REPLY = 9;
 	static final int EVENT = 12;
 	static final String EXTRA = "dev.metascript.neon.notification";
+	private static final String RESPONSE_ACTION = "dev.metascript.neon.NOTIFICATION_RESPONSE";
 	private static final String FIELD = "\u001f";
 	private static final String CHANNEL = "neon-default";
 	private static final String SCHEDULED = "dev.metascript.neon.Notifications";
@@ -181,6 +182,7 @@ final class Notifications {
 		if (!"1".equals(spec[5])) builder.setDefaults(0);
 		Intent open = context.getPackageManager().getLaunchIntentForPackage(context.getPackageName());
 		if (open != null) {
+			open.setAction(RESPONSE_ACTION);
 			open.putExtra(EXTRA, String.join(FIELD, spec));
 			builder.setContentIntent(PendingIntent.getActivity(context, spec[0].hashCode(), open,
 				PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE));
