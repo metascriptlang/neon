@@ -17,12 +17,14 @@ function drawsFromFallback(text: VoidNode, codepoint: int32): boolean {
 	return faceForCodepoint(font, codepoint) !== fontFace(font);
 }
 
-test "Ion's system lookup answers Void with the file that draws the codepoint, in text or emoji presentation" {
+test "Ion's system lookup answers Void with the face that draws the codepoint, in text or emoji presentation" {
 	const text = systemFace({ codepoint: RECORD, presentation: Presentation.Text, weight: 400, style: FontStyle.Normal });
-	assert text !== null && (text as string).endsWith("/STIXTwoMath.otf"), `text presentation: ${text}`;
+	assert text.length === 1 && text[0].path.endsWith("/STIXTwoMath.otf") && text[0].index === 0, `text presentation: ${text.length}`;
 	const emoji = systemFace({ codepoint: RECORD, presentation: Presentation.Emoji, weight: 400, style: FontStyle.Normal });
-	assert emoji !== null && (emoji as string).endsWith("/Apple Color Emoji.ttc"), `emoji presentation: ${emoji}`;
-	assert systemFace({ codepoint: 0x0378, presentation: Presentation.Text, weight: 400, style: FontStyle.Normal }) === null, "an unassigned codepoint has no file";
+	assert emoji.length === 1 && emoji[0].path.endsWith("/Apple Color Emoji.ttc"), `emoji presentation: ${emoji.length}`;
+	const cjk = systemFace({ codepoint: 0x4F60, presentation: Presentation.Text, weight: 400, style: FontStyle.Normal });
+	assert cjk.length === 1 && cjk[0].path.endsWith(".ttc") && !cjk[0].path.endsWith("/PingFangUI.ttc"), `cjk: ${cjk.length}`;
+	assert systemFace({ codepoint: 0x0378, presentation: Presentation.Text, weight: 400, style: FontStyle.Normal }).length === 0, "an unassigned codepoint has no face";
 }
 
 test "a Text draws a codepoint its font lacks from the system face the resolver finds" {
