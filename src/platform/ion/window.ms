@@ -11,7 +11,8 @@ import {
 import { embedRegister, viewCreate, viewResize, viewFrame, viewDestroy, viewSwapChain, currentView, gfxSetup, ViewId, ViewInvalid } from "../../../../void/src/sokol/gpu";
 import { setup2d } from "../../../../void/src/void2d/draw";
 import { commit as commitFrame } from "../../../../void/src/gpu/door";
-import { addFont, registerFace, FontId, FontStyle as FaceStyle, DEFAULT_FONT } from "../../../../void/src/void2d/font";
+import { addFont, registerFace, setFaceResolver, FontId, FontStyle as FaceStyle, DEFAULT_FONT } from "../../../../void/src/void2d/font";
+import { systemFace } from "./systemFace";
 import { Scene2D } from "../../../../void/src/void2d/node";
 import { isDirty } from "../../../../void/src/void2d/scene";
 import { exit } from "std/process";
@@ -334,6 +335,7 @@ export function runWindow(opts: DesktopOptions, app: () => NeonNode): int32 {
 	const win = createWindow("main", { ...defaultOptions(opts.title, opts.width as int32, opts.height as int32), visible: false });
 	if (win === null) { return 1; }
 	const frameWin: Window = win;
+	setFaceResolver(systemFace);
 	registerFace(opts.font, opts.font, 400, FaceStyle.Normal);
 	const family = opts.fontFamily !== null ? opts.fontFamily as string : opts.font;
 	const font = opts.fontFamily !== null ? familyFont(family, 400, false) : addFont(opts.font);
