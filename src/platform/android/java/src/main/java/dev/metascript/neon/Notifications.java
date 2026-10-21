@@ -183,6 +183,7 @@ final class Notifications {
 		Intent open = context.getPackageManager().getLaunchIntentForPackage(context.getPackageName());
 		if (open != null) {
 			open.setAction(RESPONSE_ACTION);
+			if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) open.setIdentifier(spec[0]);
 			open.putExtra(EXTRA, String.join(FIELD, spec));
 			builder.setContentIntent(PendingIntent.getActivity(context, spec[0].hashCode(), open,
 				PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE));
