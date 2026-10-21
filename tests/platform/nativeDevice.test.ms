@@ -12,7 +12,8 @@ import { getCalendars, getLocales } from "../../src/api/localization";
 import { Notification, NotificationBehavior, NotificationResponse, Notifications } from "../../src/api/notifications";
 import "../../src/platform/native/notifications";
 import "../../src/platform/native/geolocation";
-import "../../src/platform/native/netInfo";
+import { nativeNetInfoServices } from "../../src/platform/native/netInfo";
+import { installNetInfoServices } from "../../src/api/netInfoServices";
 import "../../src/platform/native/asyncStorage";
 import "../../src/platform/native/haptics";
 import "../../src/platform/native/deviceInfo";
@@ -28,15 +29,19 @@ const NETINFO: int32 = 10;
 const LOCATION: int32 = 11;
 const NOTIFICATION: int32 = 12;
 
-function mount(): void {
+function mountWith(app: () => NeonNode): void {
 	nmAppReply("platform", "17.5");
 	nmAppReply("pixelRatio", "3");
 	nmAppReply("fontScale", "1");
 	nmAppReply("screen", "393" + FIELD + "852");
 	nmAppReply("appState", "active");
-	runApp((): NeonNode => <View />);
+	runApp(app);
 	installPermissionServices(nativePermissionServices);
 	nmAppLogClear();
+}
+
+function mount(): void {
+	mountWith((): NeonNode => <View />);
 }
 
 test "AsyncStorage goes through the storage commands; a stored value is marked so an empty one is not missing" {
@@ -89,6 +94,40 @@ test "NetInfo decodes the host's state on watch, fetch and the netinfo event" {
 	assert network(await NetInfo.fetch()) === "none/0/0/-";
 	const log: string = nmAppLog();
 	assert log === "netinfo.watch();netinfo.fetch()", log;
+	nmTeardown();
+}
+
+test "useNetInfo in a component body starts the watch and reads the host's state" {
+	installNetInfoServices(nativeNetInfoServices);
+	nmAppReply("netinfo.watch", "wifi" + FIELD + "1" + FIELD + "1" + FIELD + "0");
+	let read: () => NetInfoState = (): NetInfoState => { throw new Error("the component body never ran"); };
+	function Network(): NeonNode {
+		read = useNetInfo();
+		return <View />;
+	}
+	mountWith((): NeonNode => <Network />);
+	assert network(read()) === "wifi/1/1/free", network(read());
+	nmAppEvent(NETINFO, "wifi" + FIELD + "1" + FIELD + "1" + FIELD + "0");
+	assert network(read()) === "wifi/1/1/free", network(read());
+	nmAppEvent(NETINFO, "none" + FIELD + "0" + FIELD + "0" + FIELD + "0");
+	assert network(read()) === "none/0/0/-", network(read());
+	nmTeardown();
+}
+
+test "NetInfo.addEventListener and NetInfo.fetch in a component body answer with the host's state" {
+	installNetInfoServices(nativeNetInfoServices);
+	nmAppReply("netinfo.watch", "cellular" + FIELD + "1" + FIELD + "0" + FIELD + "1");
+	nmAppReply("netinfo.fetch", "cellular" + FIELD + "1" + FIELD + "0" + FIELD + "1");
+	const heard: string[] = [];
+	const fetched: Promise<NetInfoState>[] = [];
+	function Listener(): NeonNode {
+		NetInfo.addEventListener((state: NetInfoState): void => { heard.push(network(state)); });
+		fetched.push(NetInfo.fetch());
+		return <View />;
+	}
+	mountWith((): NeonNode => <Listener />);
+	assert heard.join(";") === "cellular/1/0/metered", heard.join(";");
+	assert network(await fetched[0]) === "cellular/1/0/metered";
 	nmTeardown();
 }
 

@@ -1,4 +1,4 @@
-import { Accessor, createSignal } from "../core/signal";
+import { Accessor, createSignal, untrack } from "../core/signal";
 import { flush } from "../core/runtime";
 import { onChange } from "./subscription";
 import {
@@ -18,7 +18,6 @@ export type NetInfoUnsubscribe = () => void;
 
 const UNKNOWN: NetInfoState = { type: "unknown", isConnected: null, isInternetReachable: null, details: null };
 
-const [current, setCurrent] = createSignal<NetInfoState>(UNKNOWN);
 let watchedBy: int32 = -1;
 
 function watch(api: string): void {
@@ -46,11 +45,13 @@ function same(a: NetInfoState, b: NetInfoState): boolean {
 		(a.details === null) === (b.details === null);
 }
 
+const [current, setCurrent] = createSignal<NetInfoState>(UNKNOWN, { equals: same, ownedWrite: true });
+
 export class NetInfo {
 	static async fetch(): Promise<NetInfoState> {
 		watch("NetInfo.fetch");
 		netInfoServices("NetInfo.fetch").refreshNetInfo();
-		return current();
+		return untrack(current);
 	}
 
 	static async refresh(): Promise<NetInfoState> {
@@ -60,7 +61,7 @@ export class NetInfo {
 	static addEventListener(listener: NetInfoChangeHandler): NetInfoUnsubscribe {
 		watch("NetInfo.addEventListener");
 		const subscription = onChange(current, listener);
-		listener(current());
+		listener(untrack(current));
 		return subscription.remove;
 	}
 }
@@ -72,7 +73,7 @@ export function useNetInfo(): Accessor<NetInfoState> {
 
 export function publishNetInfo(next: NetInfoState): void {
 	flush((): void => {
-		if (!same(current(), next)) { setCurrent(next); }
+		setCurrent(next);
 	});
 }
 
