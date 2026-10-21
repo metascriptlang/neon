@@ -1294,7 +1294,8 @@ function nativeDriverPress(x: float32, y: float32): void {
 function mountApp(): void {
 	const native = createNativeHost();
 	batched((): void => {
-		mounted = render((mountedApp as () => NeonNode)(), native.host, native.rootNode);
+		const app = mountedApp as () => NeonNode;
+		mounted = render((h: Host, p: HostNode, b: HostNode | null): void => { app()(h, p, b); }, native.host, native.rootNode);
 	});
 	native.relayout();
 	setDevDriver({

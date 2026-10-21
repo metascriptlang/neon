@@ -7,6 +7,7 @@ import { flush } from "../../src/core/runtime";
 import { For, Errored } from "../../src/macros/ui/flow";
 import { createRenderEffect } from "../../src/core/effect";
 import { Cleanup } from "../../src/core/types";
+import { onCleanup } from "../../src/core/cleanup";
 import { Host, HostNode } from "../../src/render/hostTypes";
 import { View, Pressable, ScrollView, ScrollViewHandle, TextInput, TextInputHandle, MaintainVisibleContentPosition } from "../../src/components/primitives";
 import { element } from "../../src/macros/ui/element";
@@ -58,6 +59,27 @@ test "the native host keeps the park contract and release frees the parked views
 	assert nmReleaseCalls() === released, "parking releases nothing";
 	host.release(holder);
 	assert nmReleaseCalls() - released === 3, "release frees the parked subtree with the holder: " + (nmReleaseCalls() - released).toString();
+}
+
+test "the app's body runs under the mounted root: its cleanups and effects belong to the app" {
+	const [count, setCount] = createSignal<number>(0);
+	let log = "";
+	const app = (): NeonNode => {
+		log += "body;";
+		onCleanup((): void => { log += "cleanup;"; });
+		createRenderEffect((prev: number | null): number => count(), (value: number, prev: number | null): Cleanup | null => { log += "seen " + value.toString() + ";"; return null; });
+		return <View />;
+	};
+	runApp(app);
+	setCount(1);
+	flush();
+	nmTeardown();
+	setCount(2);
+	flush();
+	assert log === "body;seen 0;seen 1;cleanup;", log;
+	nmMount();
+	nmTeardown();
+	assert log === "body;seen 0;seen 1;cleanup;body;seen 2;cleanup;", log;
 }
 
 test "removed rows and a torn-down app release native views and routes exactly once" {
