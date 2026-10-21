@@ -6,7 +6,7 @@ import { neonEvent } from "../../src/render/event";
 import { NeonNode } from "../../src/render/node";
 import { View, Pressable, Text } from "../../src/components/primitives";
 import { PanResponder, PanResponderGestureState } from "../../src/components/panResponder";
-import { currentResponder } from "../../src/render/responder";
+import { currentResponder, touchHistory } from "../../src/render/responder";
 
 function mount(app: () => NeonNode): MockNode {
 	const root = mockNode("root");
@@ -175,6 +175,86 @@ test "cheap Pressable filters only pointer-origin activation after a claimed dra
 	assert hits === 1, "claimed release suppresses physical duplicate";
 	fireEventWith(button, "onPress", semantic);
 	assert hits === 2, "identical timestamp does not make semantic activation physical";
+}
+
+test "public mock Pan terminal reentry keeps state identity and ownership while the trailing reset clears geometry as RN" {
+	let actual = "";
+	let expected = "";
+	let oldData = "";
+	for (const mode of [0, 1, 2]) {
+		for (const restart of [false, true]) {
+			for (const same of [false, true]) {
+				const root = mockNode("root");
+				let row: MockNode | null = null;
+				let restarted = false;
+				const states: PanResponderGestureState[] = [];
+				const bStart = same ? 90020 : 91000;
+				const terminal = (which: int32, e: NeonEvent, g: PanResponderGestureState): void => {
+					if (e.timeStamp === 90020) {
+						oldData += `${mode},${which}:${e.x},${e.y}/${g.x0},${g.y0}/${g === states[0]};`;
+						assert e.x === 10 && e.y === 20 && g === states[0], oldData;
+					}
+					if (!restart || restarted || which !== mode) { return; }
+					restarted = true;
+					fireTouch(row as MockNode, "onTouchStart", 30, 40, bStart);
+				};
+				const pan = PanResponder.create({
+					onStartShouldSetPanResponder: (): boolean => true,
+					onPanResponderGrant: (e: NeonEvent, g: PanResponderGestureState): void => { states.push(g); },
+					onPanResponderEnd: (e: NeonEvent, g: PanResponderGestureState): void => { terminal(0, e, g); },
+					onPanResponderRelease: (e: NeonEvent, g: PanResponderGestureState): void => { terminal(1, e, g); },
+					onPanResponderTerminate: (e: NeonEvent, g: PanResponderGestureState): void => { terminal(2, e, g); },
+				});
+				const dispose = render(element(<View {...pan.panHandlers} />), mockHost(), root as unknown as HostNode);
+				row = root.children[0];
+				fireTouch(row as MockNode, "onTouchStart", 10, 20, 90000);
+				const entry = currentResponder();
+				fireTouch(row as MockNode, mode === 2 ? "onTouchCancel" : "onTouchEnd", 10, 20, 90020);
+				const g = states[0];
+				const node = row as MockNode;
+				actual += `${mode},${restart},${same}:${g.x0},${g.y0},${g.numberActiveTouches}/${touchHistory().numberActiveTouches}/${node.holdsResponder && node.blocksNative}/`;
+				expected += `${mode},${restart},${same}:` + (restart ? "0,0,0/1/true/" : "0,0,0/0/false/");
+				if (restart) {
+					assert states.length === 2 && states[1] === g && currentResponder() === entry;
+					fireTouch(node, "onTouchMove", 35, 45, bStart + 10);
+					actual += `${g.x0},${g.y0},${g.dx},${g.dy},${g.numberActiveTouches};`;
+					expected += "0,0,5,5,1;";
+					fireTouch(node, "onTouchEnd", 35, 45, bStart + 20);
+				} else { actual += "idle;"; expected += "idle;"; }
+				dispose();
+			}
+		}
+	}
+	assert actual === expected, actual + " old callbacks: " + oldData;
+}
+
+test "public mock Pan release throw after fresh start does not run old trailing reset" {
+	const root = mockNode("root");
+	let row: MockNode | null = null;
+	let restarted = false;
+	const states: PanResponderGestureState[] = [];
+	const pan = PanResponder.create({
+		onStartShouldSetPanResponder: (): boolean => true,
+		onPanResponderGrant: (e: NeonEvent, g: PanResponderGestureState): void => { states.push(g); },
+		onPanResponderRelease: (): void => {
+			if (restarted) { return; }
+			restarted = true;
+			fireTouch(row as MockNode, "onTouchStart", 30, 40, 92020);
+			throw "terminal throw";
+		},
+	});
+	const dispose = render(element(<View {...pan.panHandlers} />), mockHost(), root as unknown as HostNode);
+	row = root.children[0];
+	fireTouch(row as MockNode, "onTouchStart", 10, 20, 92000);
+	let error = "";
+	try { fireTouch(row as MockNode, "onTouchEnd", 10, 20, 92020); } catch (e) { error = e.toString(); }
+	const node = row as MockNode;
+	const g = states[0];
+	const survived = states.length === 2 && states[1] === g && node.holdsResponder && node.blocksNative &&
+		g.x0 === 30 && g.y0 === 40 && touchHistory().numberActiveTouches === 1;
+	fireTouch(node, "onTouchEnd", 30, 40, 92040);
+	dispose();
+	assert error.includes("terminal throw") && survived, error;
 }
 
 test "pure View terminal callbacks retire old native ownership before reentry or throw" {
