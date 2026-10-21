@@ -1,7 +1,7 @@
 import { element } from "../../src/macros/ui/element";
 import { render } from "../../src/render/host";
 import { NeonEvent } from "../../src/render/event";
-import { VoidAreaHandle, AreaKeyEvent } from "../../src/render/voidAreaHandle";
+import { VoidAreaHandle, AreaKeyEvent, AreaPointerEvent, AreaPointerKind } from "../../src/render/voidAreaHandle";
 import { Void, View } from "../../src/components/primitives";
 import { NeonNode } from "../../src/render/node";
 import { WindowArea, windowHost, windowNode, deliverResize, logicalWidth, logicalHeight, syncTextInput } from "../../src/platform/void/windowHost";
@@ -309,6 +309,47 @@ test "a pan released with speed keeps scrolling with deltas that decay to a stop
 	assert dys.length > 100 && dys.length < 160, `momentum runs about two seconds of frames: ${dys.length}`;
 	assert total > 29.5 && total < 31.5, `625 points/s under iOS friction travels about 307 points: ${total} notches`;
 	assert frames === dys.length && !framePending(), "momentum stops once it is slower than the tolerance";
+	setFrameDriver(null);
+}
+
+function pixelCanvas(pixels: string[]): SokolInput {
+	return openCanvas(element(
+		<Void ref={(h: VoidAreaHandle): void => {
+			h.onPointer((e: AreaPointerEvent): void => {
+				if (e.kind === AreaPointerKind.Wheel) { pixels.push(`${e.pixelDx},${e.pixelDy}`); }
+			});
+		}}>
+			<View style={{ width: 200, height: 100 }} />
+		</Void>
+	));
+}
+
+test "a touch pan and its momentum scroll by the finger's pixels, a mouse wheel by notches alone" {
+	const clock = useManualFrames();
+	const pixels: string[] = [];
+	const s = pixelCanvas(pixels);
+	deliverAppEvent(s, { ...mouse(AppEventType.MouseScroll, 30.0, 40.0), scrollX: 1.0, scrollY: 2.0 });
+	assert pixels.join("|") === "0,0", pixels.join("|");
+	touch(s, AppEventType.TouchesBegan, 1 as int32, 40.0, 100.0);
+	touch(s, AppEventType.TouchesMoved, 1 as int32, 40.0, 140.0);
+	touch(s, AppEventType.TouchesMoved, 1 as int32, 40.0, 180.0);
+	touch(s, AppEventType.TouchesMoved, 1 as int32, 40.0, 190.0);
+	touch(s, AppEventType.TouchesMoved, 1 as int32, 20.0, 170.0);
+	assert pixels.join("|") === "0,0|0,10|20,-20", pixels.join("|");
+	const mark = pixels.length;
+	for (let i = 1; i <= 6; i += 1) {
+		clock.advance(16);
+		touch(s, AppEventType.TouchesMoved, 1 as int32, 20.0, (170 + 20 * i) as float32);
+	}
+	touch(s, AppEventType.TouchesEnded, 1 as int32, 20.0, 290.0);
+	clock.runAll();
+	let total = 0.0;
+	for (const p of pixels.slice(mark + 6)) {
+		const dx = parseFloat(p.split(",")[0]);
+		assert dx === 0.0, `a vertical fling scrolls no x: ${p}`;
+		total += parseFloat(p.split(",")[1]);
+	}
+	assert total > 590.0 && total < 630.0, `625 points/s under iOS friction travels about 307 points, 614 pixels at scale 2: ${total}`;
 	setFrameDriver(null);
 }
 

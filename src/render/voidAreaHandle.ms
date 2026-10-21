@@ -44,6 +44,8 @@ export struct AreaPointerEvent {
 	pressed: boolean;
 	dx: float64;
 	dy: float64;
+	pixelDx: float64;
+	pixelDy: float64;
 	mods: BitSet<AreaKeyMod>;
 }
 

@@ -361,6 +361,18 @@ export class TouchGesture {
 	}
 
 	wheel(x: float64, y: float64): void {
-		this.pointer(AreaPointerKind.Wheel, this.originX, this.originY, false, 0.0 - x * NOTCHES_PER_POINT, y * NOTCHES_PER_POINT);
+		const scale = this.area.scale as float64;
+		deliverPointer(this.area, {
+			kind: AreaPointerKind.Wheel,
+			pixelX: this.originX,
+			pixelY: this.originY,
+			button: 0 as int32,
+			pressed: false,
+			dx: 0.0 - x * NOTCHES_PER_POINT,
+			dy: y * NOTCHES_PER_POINT,
+			pixelDx: 0.0 - x * scale,
+			pixelDy: y * scale,
+			mods: this.mods,
+		});
 	}
 }
