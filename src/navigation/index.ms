@@ -140,7 +140,7 @@ export { ChildStack, createChildStack } from "./childStack";
 export { BackBehavior, Pages, ChildPages, createChildPages } from "./childPages";
 export { ChildSlot, createChildSlot } from "./childSlot";
 export { ChildPanelsMode, Panels, ChildPanels, createChildPanels } from "./childPanels";
-export { renderStack, renderStackTop, renderPages } from "./childView";
+export { PanelsLayout, renderStack, renderStackTop, renderPages, renderPanels } from "./childView";
 export {
 	LayoutProps,
 	RouteNavigator,
