@@ -2,8 +2,6 @@ import { Signal, untrack } from "./signal";
 import { isTracking } from "./runtime";
 import { isArray, isObject } from "std/typetraits";
 
-type At<T, K extends keyof T> = T[K];
-type SlotAt<T, K extends keyof T> = Slot<T[K]>;
 type Element<T> = T extends Array<infer E> ? E : never;
 
 export type Store<T> = Proxy<T, StoreTraps<T>>;
@@ -76,7 +74,7 @@ export class StoreTraps<T> {
 			}
 		}
 		const value = this.committed(target, key);
-		when (isObject<At<T, K>>()) {
+		when (isObject<T[K]>()) {
 			return new Proxy(value, this.child(`${key}`, value));
 		} else {
 			return value;
@@ -109,7 +107,7 @@ export class StoreTraps<T> {
 	private committed<K extends keyof T>(target: T, key: K): T[K] {
 		const name = `${key}`;
 		const found = this.slots.get(name);
-		if (found !== undefined) { return (found as SlotAt<T, K>).signal.get(); }
+		if (found !== undefined) { return (found as Slot<T[K]>).signal.get(); }
 		if (!isTracking()) { return Reflect.get(target, key); }
 		const slot = slotFor(Reflect.get(target, key));
 		this.slots.set(name, slot);
@@ -119,7 +117,7 @@ export class StoreTraps<T> {
 	private slotOf<K extends keyof T>(target: T, key: K, old: T[K]): Slot<T[K]> {
 		const name = `${key}`;
 		const found = this.slots.get(name);
-		if (found !== undefined) { return found as SlotAt<T, K>; }
+		if (found !== undefined) { return found as Slot<T[K]>; }
 		const slot = slotFor(old);
 		this.slots.set(name, slot);
 		return slot;
@@ -198,7 +196,7 @@ export class DraftTraps<T> {
 
 	get<K extends keyof T>(target: T, key: K): DraftValue<T[K]> {
 		const value = Reflect.get(target, key);
-		when (isObject<At<T, K>>()) {
+		when (isObject<T[K]>()) {
 			return new Proxy(value, new DraftTraps(this.traps.child(`${key}`, value)));
 		} else {
 			return value;
