@@ -12,8 +12,6 @@ interface Entry<T> {
 	handler: (value: T) => void;
 }
 
-// Keyed by id, not handler identity: comparing function values dies at clang on C
-// (compiler card 2026-10-07-function-value-identity-dies-at-clang.md).
 export class Listeners<T> {
 	private entries: Entry<T>[] = [];
 	private nextId: int32 = 1;
