@@ -4,15 +4,8 @@ when (js) {
 	import { Host, HostNode } from "../../src/render/hostTypes";
 	import { createAsyncMemo } from "../../src/core/memo";
 	import { Loading } from "../../src/macros/ui/flow";
-	import { renderToStream, pipeTo, readable } from "../../src/render/ssr";
+	import { renderToStream, pipeTo, readable, ReadableStream, newTransform } from "../../src/render/ssr";
 
-	extern class WritableStream {}
-	extern class ReadableStream {}
-	extern class TransformStream {
-		readable: ReadableStream;
-		writable: WritableStream;
-	}
-	extern function newTransform(): TransformStream from "new TransformStream()";
 	extern function readAll(stream: ReadableStream): Promise<string[]> from
 		"(async (rs) => { const reader = rs.getReader(); const decoder = new TextDecoder(); const out = []; for (;;) { const { done, value } = await reader.read(); if (done) { break; } out.push(decoder.decode(value)); } return out; })(#)";
 	extern function readFirst(stream: ReadableStream): Promise<string> from

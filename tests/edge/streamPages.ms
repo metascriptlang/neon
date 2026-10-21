@@ -4,9 +4,7 @@ import { Loading } from "../../src/macros/ui/flow";
 import { View, Text } from "../../src/components/primitives";
 import { createStyles, styleOf } from "../../src/macros/ui/style";
 import { dynText, el } from "../../src/render/node";
-import { renderToStream, readable } from "../../src/render/ssr";
-
-extern class ReadableStream {}
+import { renderToStream, readable, ReadableStream } from "../../src/render/ssr";
 
 const looks = createStyles({ page: { padding: 6 }, late: { margin: 2 } });
 

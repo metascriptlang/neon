@@ -997,13 +997,13 @@ when (server) {
 	}
 
 	when (js) {
-		extern class WritableStream {}
-		extern class ReadableStream {}
-		extern class TransformStream {
+		export extern class WritableStream {}
+		export extern class ReadableStream {}
+		export extern class TransformStream {
 			readable: ReadableStream;
 			writable: WritableStream;
 		}
-		extern function newTransform(): TransformStream from "new TransformStream()";
+		export extern function newTransform(): TransformStream from "new TransformStream()";
 
 		interface WebSink {
 			write: (chunk: string) => void;
