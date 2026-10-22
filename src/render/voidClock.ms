@@ -1,0 +1,92 @@
+import { onCleanup } from "../core/cleanup";
+import { useContext } from "./context";
+import { requestFrame, cancelFrame, frameNow } from "../animation/frame";
+import { getVoidAreaContext } from "./voidScope";
+import { AreaHub } from "./voidAreaHandle";
+
+interface ClockSubscriber {
+	active: () => boolean;
+	advance: (seconds: float64) => void;
+}
+
+interface AreaClock {
+	hub: AreaHub;
+	subscribers: ClockSubscriber[];
+	pending: int32;
+	generation: int32;
+	last: float64;
+}
+
+const clocks: AreaClock[] = [];
+
+function anyActive(clock: AreaClock): boolean {
+	for (const subscriber of clock.subscribers) {
+		if (subscriber.active()) { return true; }
+	}
+	return false;
+}
+
+function cancel(clock: AreaClock): void {
+	clock.generation += 1;
+	if (clock.pending !== 0) { cancelFrame(clock.pending); clock.pending = 0; }
+}
+
+function schedule(clock: AreaClock): void {
+	const token = clock.generation;
+	clock.pending = requestFrame((now: number): void => {
+		// cancelFrame cannot remove callbacks already copied into the due batch.
+		if (token !== clock.generation) { return; }
+		clock.pending = 0;
+		const seconds = Math.max(0.0, now - clock.last) / 1000.0;
+		clock.last = now;
+		let advanced = false;
+		for (const subscriber of clock.subscribers.slice(0)) {
+			if (clock.subscribers.indexOf(subscriber) >= 0 && subscriber.active()) {
+				subscriber.advance(seconds);
+				advanced = true;
+			}
+		}
+		if (advanced) { clock.hub.handle.requestFrame(); }
+		if (anyActive(clock)) { schedule(clock); }
+	});
+}
+
+function wake(clock: AreaClock): void {
+	if (!anyActive(clock)) { cancel(clock); return; }
+	if (clock.pending !== 0) { return; }
+	clock.last = frameNow();
+	schedule(clock);
+}
+
+function clockOf(hub: AreaHub): AreaClock {
+	for (const clock of clocks) {
+		if (clock.hub === hub) { return clock; }
+	}
+	const clock: AreaClock = { hub, subscribers: [], pending: 0, generation: 0, last: 0.0 };
+	clocks.push(clock);
+	return clock;
+}
+
+// One clock per Void area: `advance` runs once per frame while `active` holds, with the seconds
+// since the previous tick. `advance` only moves state; scene writes belong in an effect, so a
+// failure reaches the owner's error boundary instead of the shared frame. Call the returned wake
+// after anything that may change `active`.
+export function useVoidClock(
+	active: () => boolean,
+	advance: (seconds: float64) => void,
+): () => void {
+	const area = useContext(getVoidAreaContext());
+	if (area === null) { throw new Error("useVoidClock: mount within Void"); }
+	const clock = clockOf(area.hub);
+	const subscriber: ClockSubscriber = { active, advance };
+	clock.subscribers.push(subscriber);
+	let live = true;
+	onCleanup((): void => {
+		live = false;
+		clock.subscribers.splice(clock.subscribers.indexOf(subscriber), 1);
+		if (clock.subscribers.length > 0) { wake(clock); return; }
+		cancel(clock);
+		clocks.splice(clocks.indexOf(clock), 1);
+	});
+	return (): void => { if (live) { wake(clock); } };
+}
