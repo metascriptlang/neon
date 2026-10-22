@@ -1,11 +1,15 @@
-import { createSignal } from "../../src/core/signal";
+import { Accessor, createSignal } from "../../src/core/signal";
 import { element } from "../../src/macros/ui/element";
 import { Host, HostNode, MockNode, mockNode, mockHost, render, mockToString, mockAreaHub } from "../../src/render/host";
-import { VoidAreaHandle, AreaKeyAction, AreaPointerKind, AreaKeyEvent, AreaKeyMod, AreaPointerEvent, AreaPreedit, AreaResize, AreaLayer, Unsubscribe, createAreaHub } from "../../src/render/voidAreaHandle";
+import { AreaHub, VoidAreaHandle, AreaKeyAction, AreaPointerKind, AreaKeyEvent, AreaKeyMod, AreaPointerEvent, AreaPreedit, AreaResize, AreaLayer, Unsubscribe, createAreaHub } from "../../src/render/voidAreaHandle";
 import { onCleanup } from "../../src/core/cleanup";
 import { createContext, useContext } from "../../src/render/context";
 import { Void, View, ViewHandle, Text } from "../../src/components/primitives";
 import { flush } from "../../src/core/runtime";
+import { Errored } from "../../src/macros/ui/flow";
+import { NeonNode, VoidArea } from "../../src/render/hostTypes";
+import { layerAnchor } from "../../src/render/voidLayer";
+import { getVoidAreaContext } from "../../src/render/voidScope";
 
 test "Void mounts its children into the area the host opens" {
 	const root: MockNode = mockNode("root");
@@ -203,4 +207,88 @@ test "a subscriber removed by an earlier one during an emit is not called" {
 	hub.text("x");
 	hub.text("y");
 	assert log.join(",") === "first x,first y", log.join(",");
+}
+
+class Trouble {
+	prepare: Error | null = null;
+	draw: Error | null = null;
+}
+
+function TroubleLayer(trouble: Trouble, log: string[]): NeonNode {
+	return (host: Host, parent: HostNode, before: HostNode | null): void => {
+		const area = useContext(getVoidAreaContext()) as VoidArea;
+		onCleanup(area.hub.addLayer({
+			anchor: layerAnchor(area, host, parent, before),
+			layout: (pixelWidth: int32, pixelHeight: int32): void => {},
+			prepare: (pixelWidth: int32, pixelHeight: int32): void => {
+				log.push("prepare");
+				if (trouble.prepare !== null) { throw trouble.prepare as Error; }
+			},
+			draw: (): void => {
+				log.push("draw");
+				if (trouble.draw !== null) { throw trouble.draw as Error; }
+			},
+		}));
+	};
+}
+
+function frameOf(hub: AreaHub, log: string[]): string {
+	log.length = 0;
+	hub.prepareLayers(hub.layers().slice(0), 10, 10);
+	hub.drawLayers((l: AreaLayer): void => {});
+	return log.join(",");
+}
+
+test "a layer error reaches the Errored around the layer's owner, the area keeps drawing its other layers, and the layer waits for reset" {
+	const root: MockNode = mockNode("root");
+	const trouble = new Trouble();
+	const log: string[] = [];
+	const others: string[] = [];
+	const caught: Error[] = [];
+	let again: (() => void) | null = null;
+	render(element(<Void>
+		<Errored fallback={(err: Accessor<Error>, reset: () => void): NeonNode => {
+			caught.push(err());
+			again = reset;
+			return element(<View />);
+		}}>
+			{TroubleLayer(trouble, log)}
+		</Errored>
+		{TroubleLayer(new Trouble(), others)}
+	</Void>), mockHost(), root as unknown as HostNode);
+	const hub = mockAreaHub(root.children[0]);
+	const failed = new Error("prepare 7");
+	trouble.prepare = failed;
+	assert frameOf(hub, log) === "prepare", "the failing layer was tried once: " + log.join(",");
+	assert others.join(",") === "prepare,draw", "the other layer drew in the same frame: " + others.join(",");
+	flush();
+	assert caught.length === 1 && caught[0] === failed, "the Errored caught the prepare error itself";
+	assert frameOf(hub, log) === "", "a failed layer is neither prepared nor drawn: " + log.join(",");
+	trouble.prepare = null;
+	(again as () => void)();
+	flush();
+	assert frameOf(hub, log) === "prepare,draw", "reset brought the layer back: " + log.join(",");
+	const drawFailed = new Error("draw 7");
+	trouble.draw = drawFailed;
+	assert frameOf(hub, log) === "prepare,draw", log.join(",");
+	flush();
+	assert caught.length === 2 && caught[1] === drawFailed, "a draw error reaches the boundary too";
+	assert frameOf(hub, log) === "", "and stops the layer: " + log.join(",");
+}
+
+test "a layer added outside any owner throws its frame error out of the frame" {
+	const hub = createAreaHub({ initialPixelWidth: 10, initialPixelHeight: 10, requestFrame: (): void => {}, setImeRect: (x: int32, y: int32, w: int32, h: int32): void => {} });
+	hub.addLayer({
+		anchor: { node: new Mark(), inText: false },
+		layout: (pixelWidth: int32, pixelHeight: int32): void => {},
+		prepare: (pixelWidth: int32, pixelHeight: int32): void => { throw new Error("unowned"); },
+		draw: (): void => {},
+	});
+	let message = "";
+	try {
+		hub.prepareLayers(hub.layers().slice(0), 10, 10);
+	} catch (e) {
+		message = e.message;
+	}
+	assert message === "unowned", "the error escaped: [" + message + "]";
 }

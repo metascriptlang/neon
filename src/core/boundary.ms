@@ -3,6 +3,8 @@ import { getOwner, createOwner, isDisposed, linkDependency, recomputeNode, wakeN
 import { runWithOwner } from "./owner";
 import { Accessor, Signal, accessor } from "./signal";
 import { createMemo } from "./memo";
+import { createRenderEffect } from "./effect";
+import { Cleanup } from "./types";
 
 class BoundaryKey {}
 
@@ -155,6 +157,38 @@ export function routeThrown(error: Error): void {
 		if (catchStatus(owner, STATUS_ERROR, error)) { return; }
 	}
 	throw error;
+}
+
+export type RaiseError = (error: Error) => void;
+
+export function createErrorRoute(resume: () => void): RaiseError | null {
+	if (getOwner() === null) { return null; }
+	const raised = new Signal<int32>(0, null, true);
+	let pending: Error | null = null;
+	let failed = false;
+	createRenderEffect<int32>(
+		(prev: int32 | null): int32 => {
+			const count = raised.get();
+			const error = pending;
+			pending = null;
+			if (error !== null) {
+				failed = true;
+				throw error;
+			}
+			return count;
+		},
+		(count: int32, prev: int32 | null): Cleanup | null => {
+			if (failed) {
+				failed = false;
+				resume();
+			}
+			return null;
+		},
+	);
+	return (error: Error): void => {
+		pending = error;
+		raised.set(raised.peek() + 1);
+	};
 }
 
 // boundaries.ts:295 prune

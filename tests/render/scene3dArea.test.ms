@@ -1,8 +1,10 @@
-import { accessor, createSignal } from "../../src/core/signal";
+import { Accessor, accessor, createSignal } from "../../src/core/signal";
 import { flush } from "../../src/core/runtime";
 import { element } from "../../src/macros/ui/element";
-import { Show } from "../../src/macros/ui/flow";
+import { Errored, Show } from "../../src/macros/ui/flow";
+import { NeonNode } from "../../src/render/hostTypes";
 import { HostNode, MockNode, mockNode, mockHost, render, mockAreaHub } from "../../src/render/host";
+import { AreaLayer } from "../../src/render/voidAreaHandle";
 import { Void, View } from "../../src/components/primitives";
 import { Scene3D, Scene3DHandle, Group, Camera3D, viewCamera } from "../../src/components/scene3d";
 import { ProjectionKind } from "../../../void/src/void3d/camera";
@@ -109,4 +111,33 @@ test "a Scene3D with no active Camera3D views through the default camera until o
 	flush();
 	const restored = viewCamera(refs[0]);
 	assert restored.ok && restored.value.position === vec3(0.0, 0.0, 5.0), "unmounting it restores the default";
+}
+
+test "a Scene3D whose frame fails shows the Errored around it, and a reset lets it try the next frame" {
+	const root: MockNode = mockNode("root");
+	const caught: Error[] = [];
+	let again: (() => void) | null = null;
+	render(element(<Void>
+		<Errored fallback={(err: Accessor<Error>, reset: () => void): NeonNode => {
+			caught.push(err());
+			again = reset;
+			return element(<View />);
+		}}>
+			<Scene3D />
+		</Errored>
+	</Void>), mockHost(), root as unknown as HostNode);
+	const hub = mockAreaHub(root.children[0]);
+	hub.prepareLayers(hub.layers().slice(0), 0, 0);
+	hub.drawLayers((l: AreaLayer): void => {});
+	flush();
+	assert caught.length === 1, "the Errored caught the frame error: " + caught.length.toString();
+	assert caught[0].message.includes("does not resolve"), caught[0].message;
+	hub.prepareLayers(hub.layers().slice(0), 0, 0);
+	flush();
+	assert caught.length === 1, "the failed scene is not prepared again before a reset";
+	(again as () => void)();
+	flush();
+	hub.prepareLayers(hub.layers().slice(0), 0, 0);
+	flush();
+	assert caught.length === 2, "after the reset the scene is prepared again: " + caught.length.toString();
 }

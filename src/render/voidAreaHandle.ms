@@ -1,4 +1,5 @@
 import { NeonEvent } from "./event";
+import { RaiseError, createErrorRoute } from "../core/boundary";
 
 export enum AreaKeyAction {
 	Release,
@@ -149,6 +150,24 @@ export interface AreaOps {
 	setImeRect: (pixelX: int32, pixelY: int32, pixelW: int32, pixelH: int32) => void;
 }
 
+class LayerGuard {
+	raise: RaiseError | null = null;
+	stopped: boolean = false;
+}
+
+function attempt(guard: LayerGuard, step: () => void): boolean {
+	try {
+		step();
+		return true;
+	} catch (e) {
+		const raise = guard.raise;
+		if (raise === null) { throw e; }
+		guard.stopped = true;
+		raise(e);
+		return false;
+	}
+}
+
 export function createAreaHub(ops: AreaOps): AreaHub {
 	const keys = listeners<AreaKeyEvent>();
 	const texts = listeners<string>();
@@ -160,6 +179,11 @@ export function createAreaHub(ops: AreaOps): AreaHub {
 	let height = ops.initialPixelHeight;
 	let scale: float32 = 1.0;
 	let layers: AreaLayer[] = [];
+	let guards: LayerGuard[] = [];
+	const live = (layer: AreaLayer): LayerGuard | null => {
+		const i = layers.indexOf(layer);
+		return i < 0 || guards[i].stopped ? null : guards[i];
+	};
 	let prepared: AreaLayer[] = [];
 	return {
 		handle: {
@@ -176,10 +200,19 @@ export function createAreaHub(ops: AreaOps): AreaHub {
 			setImeRect: ops.setImeRect,
 		},
 		addLayer: (layer: AreaLayer): Unsubscribe => {
+			const guard = new LayerGuard();
+			guard.raise = createErrorRoute((): void => {
+				guard.stopped = false;
+				ops.requestFrame();
+			});
 			layers.push(layer);
+			guards.push(guard);
 			return (): void => {
 				const i = layers.indexOf(layer);
-				if (i >= 0) { layers.splice(i, 1); }
+				if (i >= 0) {
+					layers.splice(i, 1);
+					guards.splice(i, 1);
+				}
 			};
 		},
 		layers: (): AreaLayer[] => layers,
@@ -191,18 +224,19 @@ export function createAreaHub(ops: AreaOps): AreaHub {
 		prepareLayers: (due: AreaLayer[], pixelWidth: int32, pixelHeight: int32): void => {
 			prepared = [];
 			for (const layer of due) {
-				if (layers.indexOf(layer) < 0) { continue; }
-				layer.prepare(pixelWidth, pixelHeight);
-				prepared.push(layer);
+				const guard = live(layer);
+				if (guard === null) { continue; }
+				if (attempt(guard, (): void => { layer.prepare(pixelWidth, pixelHeight); })) { prepared.push(layer); }
 			}
 		},
 		drawLayers: (before: (layer: AreaLayer) => void): void => {
 			const due = prepared;
 			prepared = [];
 			for (const layer of due) {
-				if (layers.indexOf(layer) < 0) { continue; }
+				const guard = live(layer);
+				if (guard === null) { continue; }
 				before(layer);
-				layer.draw();
+				attempt(guard, (): void => { layer.draw(); });
 			}
 		},
 		key: keys.emit,
@@ -224,6 +258,7 @@ export function createAreaHub(ops: AreaOps): AreaHub {
 			focuses.clear();
 			resizes.clear();
 			layers = [];
+			guards = [];
 			prepared = [];
 		},
 	};
