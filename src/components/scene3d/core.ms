@@ -42,7 +42,7 @@ export interface LightShadow {
 export interface CameraEntry {
 	node: NodeId3D;
 	camera: VoidCamera3D;
-	active: boolean;
+	active: boolean | null;
 }
 
 export interface SharedGeometry {
@@ -204,7 +204,14 @@ export function selectCamera(state: SceneState): void {
 	if (scene.closed) { state.handle.camera = null; return; }
 	for (let i = state.cameras.length - 1; i >= 0; i--) {
 		const entry = state.cameras[i];
-		if (entry.active && connected(scene, entry.node)) {
+		if (entry.active === true && connected(scene, entry.node)) {
+			setActiveCamera(scene, entry.node);
+			state.handle.camera = entry.camera;
+			return;
+		}
+	}
+	for (const entry of state.cameras) {
+		if (entry.active === null && connected(scene, entry.node)) {
 			setActiveCamera(scene, entry.node);
 			state.handle.camera = entry.camera;
 			return;

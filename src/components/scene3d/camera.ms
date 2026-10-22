@@ -78,11 +78,11 @@ export function Camera3D(props: Camera3DProps): NeonNode {
 				selectCamera(state);
 				state.invalidate();
 			});
-			createRenderEffect<[VoidCamera3D, boolean]>(
-				(prev: [VoidCamera3D, boolean] | null): [VoidCamera3D, boolean] => [
-					cameraOf(props), props.active === null ? false : (props.active as () => boolean)(),
+			createRenderEffect<[VoidCamera3D, boolean | null]>(
+				(prev: [VoidCamera3D, boolean | null] | null): [VoidCamera3D, boolean | null] => [
+					cameraOf(props), props.active === null ? null : (props.active as () => boolean)(),
 				],
-				(value: [VoidCamera3D, boolean], prev: [VoidCamera3D, boolean] | null): Cleanup | null => {
+				(value: [VoidCamera3D, boolean | null], prev: [VoidCamera3D, boolean | null] | null): Cleanup | null => {
 					if (!scene.isLive(node)) { return null; }
 					const camera = value[0];
 					const active = value[1];
