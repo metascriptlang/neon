@@ -120,6 +120,39 @@ test "an error inside the callback goes to the Errored around its owner, and res
 	setFrameDriver(null);
 }
 
+
+test "a second error after reset reaches the Errored again" {
+	const clock = useManualFrames();
+	const first = new Error("first");
+	const second = new Error("second");
+	let failWith = first;
+	let fail = false;
+	let again: (() => void) | null = null;
+	const root: MockNode = mockNode("root");
+	render(element(<View>
+		<Errored fallback={(err: Accessor<Error>, reset: () => void): NeonNode => {
+			again = reset;
+			return element(<Text>{err().message}</Text>);
+		}}>
+			{framed((dt: number, time: number): void => {
+				if (fail) { throw failWith; }
+			})}
+		</Errored>
+	</View>), mockHost(), root as unknown as HostNode);
+	clock.advance(16);
+	fail = true;
+	clock.advance(16);
+	flush();
+	assert mockToString(root).includes("first"), "the boundary shows the first error: " + mockToString(root);
+	failWith = second;
+	(again as () => void)();
+	flush();
+	clock.advance(16);
+	flush();
+	assert mockToString(root).includes("second"), "the boundary shows the second error: " + mockToString(root);
+	setFrameDriver(null);
+}
+
 test "useFrame outside any owner throws an Error naming the reason" {
 	let message = "";
 	try {

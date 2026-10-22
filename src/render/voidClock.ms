@@ -1,7 +1,7 @@
 import { onCleanup } from "../core/cleanup";
 import { RaiseError, createErrorRoute } from "../core/boundary";
 import { useContext } from "./context";
-import { requestFrame, cancelFrame, frameNow } from "../animation/frame";
+import { requestFrame, cancelFrame, frameRequested, frameNow } from "../animation/frame";
 import { getVoidAreaContext } from "./voidScope";
 import { AreaHub } from "./voidAreaHandle";
 
@@ -55,7 +55,7 @@ function schedule(clock: AreaClock): void {
 
 function wake(clock: AreaClock): void {
 	if (!anyActive(clock)) { cancel(clock); return; }
-	if (clock.pending !== 0) { return; }
+	if (clock.pending !== 0 && frameRequested(clock.pending)) { return; }
 	clock.last = frameNow();
 	schedule(clock);
 }
