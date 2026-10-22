@@ -163,21 +163,21 @@ export type RaiseError = (error: Error) => void;
 
 export function createErrorRoute(resume: () => void): RaiseError | null {
 	if (getOwner() === null) { return null; }
-	const raised = new Signal<int32>(0, null, true);
+	const raised = new Signal<boolean>(true, (a: boolean, b: boolean): boolean => false, true);
 	let pending: Error | null = null;
 	let failed = false;
-	createRenderEffect<int32>(
-		(prev: int32 | null): int32 => {
-			const count = raised.get();
+	createRenderEffect<boolean>(
+		(prev: boolean | null): boolean => {
+			const raisedNow = raised.get();
 			const error = pending;
 			pending = null;
 			if (error !== null) {
 				failed = true;
 				throw error;
 			}
-			return count;
+			return raisedNow;
 		},
-		(count: int32, prev: int32 | null): Cleanup | null => {
+		(raisedNow: boolean, prev: boolean | null): Cleanup | null => {
 			if (failed) {
 				failed = false;
 				resume();
@@ -187,7 +187,7 @@ export function createErrorRoute(resume: () => void): RaiseError | null {
 	);
 	return (error: Error): void => {
 		pending = error;
-		raised.set(raised.peek() + 1);
+		raised.set(true);
 	};
 }
 
