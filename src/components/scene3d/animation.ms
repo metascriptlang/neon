@@ -124,10 +124,11 @@ function frameClock(tag: string, props: FrameClockProps, scope: NodeScope, run: 
 				throw failed;
 			}
 			if (run.read() === null) { return null; }
+			const recovering = stalled;
 			stalled = true;
 			sync();
 			stalled = false;
-			wake();
+			if (recovering) { wake(); }
 			return null;
 		},
 	);
@@ -563,7 +564,8 @@ export function Clip(props: ClipProps): NeonNode {
 			createRenderEffect<int32>(
 				(prev: int32 | null): int32 => mixer.tick(),
 				(value: int32, prev: int32 | null): Cleanup | null => {
-					if (mixer.failedBy === run) { mixer.failedBy = null; mixer.committed = -1; }
+					const recovering = mixer.failedBy === run;
+					if (recovering) { mixer.failedBy = null; mixer.committed = -1; }
 					if (mixer.failedBy !== null || mixer.committed === value) { return null; }
 					mixer.committed = value;
 					try {
@@ -572,7 +574,9 @@ export function Clip(props: ClipProps): NeonNode {
 						mixer.failedBy = run;
 						throw error;
 					}
-					for (const other of mixer.runs) { other.wake(); }
+					if (recovering) {
+						for (const other of mixer.runs) { other.wake(); }
+					}
 					return null;
 				},
 			);

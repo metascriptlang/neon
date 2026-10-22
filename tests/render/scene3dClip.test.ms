@@ -7,6 +7,7 @@ import { NeonNode } from "../../src/render/node";
 import { Void } from "../../src/components/primitives";
 import { Scene3D, Scene3DHandle, Gltf, Clip, ClipHandle } from "../../src/components/scene3d";
 import { useManualFrames, setFrameDriver, framePending } from "../../src/animation/frame";
+import { vec3 } from "../../../void/src/math/math3d";
 import { Transform3D } from "../../../void/src/void3d/scene";
 import { GltfData, GltfTransform, GltfAnimation } from "../../../void/src/void3d/gltf";
 import { GltfMaterialSetup } from "../../../void/src/void3d/gltfScene";
@@ -23,6 +24,10 @@ function slideCurve(path: GltfCurvePath, to: float32): GltfCurve {
 }
 
 function rigged(): GltfData {
+	return riggedAt(0.0);
+}
+
+function riggedAt(hipX: float32): GltfData {
 	const identity = Transform3D.identity();
 	const rest: GltfTransform = { position: identity.position, rotation: identity.rotation, scale: identity.scale };
 	const walk: GltfAnimation = { name: "Walk", tracks: [
@@ -35,7 +40,7 @@ function rigged(): GltfData {
 	return {
 		meshes: [], meshMaterials: [], materials: [], textures: [], sceneRoots: [0],
 		nodes: [
-			{ name: "hip", mesh: -1, local: rest, children: [1, 2] },
+			{ name: "hip", mesh: -1, local: { ...rest, position: vec3(hipX, 0.0, 0.0) }, children: [1, 2] },
 			{ name: "arm", mesh: -1, local: rest, children: [] },
 			{ name: "leg", mesh: -1, local: rest, children: [] },
 		],
@@ -201,5 +206,26 @@ test "a Clip naming no animation fails through Errored and unmounting restores t
 		setShown(false); flush();
 		assert near(legScale(handle), 1.0) && near(armX(handle), 0.0), "rest after the last clip leaves";
 		assert !framePending();
+	} finally { dispose(); setFrameDriver(null); }
+}
+
+test "Clips follow a Gltf whose data is replaced and keep blending on the new nodes" {
+	const frames = useManualFrames();
+	let handle: Scene3DHandle = null as unknown as Scene3DHandle;
+	const [hip, setHip] = createSignal<float32>(0.0);
+	const root = mockNode("root");
+	const dispose = render(element(<Void><Scene3D ref={(value: Scene3DHandle): void => { handle = value; }}>
+		<Gltf data={riggedAt(hip())} setup={setup()}>
+			<Clip name={"Walk"} />
+			<Clip name={"Run"} weight={0.5} />
+		</Gltf>
+	</Scene3D></Void>), mockHost(), root as unknown as HostNode);
+	try {
+		frames.advance(500);
+		setHip(7.0); flush();
+		assert near(localOf(handle, "hip").position.x, 7.0), "the new graph is mounted";
+		frames.advance(250);
+		assert near(armX(handle), (2.5 * 1.0 - 2.5 * 0.5) / 1.5), "both clips restart on the new nodes: " + armX(handle).toString();
+		assert near(legScale(handle), (1.0 + 1.5 * 0.5) / 1.5), "leg: " + legScale(handle).toString();
 	} finally { dispose(); setFrameDriver(null); }
 }
