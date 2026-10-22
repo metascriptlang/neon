@@ -93,6 +93,7 @@ test "booking: every control feeds the summary, the dialog books with progress, 
 	flush();
 	assert shows(root, "extras breakfast") && shows(root, "payment cash"), "checkbox and radio: " + mockToString(root);
 	fireEvent(labelled(root, "Details"), "onPress");
+	flush();
 	assert shows(overlay, "details Suite for 5 guests from 2026-10-24 18:30"), "bottom sheet";
 	assert !shows(root, "details Suite"), "the sheet escapes the form";
 	fireEvent(labelled(overlay, "Close"), "onPress");

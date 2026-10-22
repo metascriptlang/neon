@@ -77,10 +77,12 @@ test "Portal styles its physical container reactively and releases it with its o
 	assert box.style !== null;
 	assert (box.style as Style).position === "absolute" && (box.style as Style).width === 100;
 	setWidth(200);
+	flush();
 	assert (box.style as Style).width === 200;
 	dispose();
 	assert overlay.children.length === 0;
 	setWidth(300);
+	flush();
 	assert overlay.children.length === 0;
 }
 
@@ -92,8 +94,10 @@ test "Modal hides exactly once when its physical overlay root is also the logica
 	const dispose = render(element(<Modal visible={open()}><Text>same root</Text></Modal>), host, root as unknown as HostNode);
 	assert mockToString(root).indexOf("same root") >= 0;
 	setOpen(false);
+	flush();
 	assert mockToString(root) === "<root></root>";
 	setOpen(true);
+	flush();
 	assert mockToString(root).indexOf("same root") >= 0;
 	dispose();
 	assert mockToString(root) === "<root></root>";

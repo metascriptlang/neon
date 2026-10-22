@@ -1,3 +1,4 @@
+import { flush } from "../../src/core/runtime";
 import {
 	ActivityIndicator,
 	Host,
@@ -74,9 +75,11 @@ test "public primitive exports mount a typed Image and expose its service loader
 	assert attrOf(mounted, "source") === "data:first";
 	assert attrOf(mounted, "resizeMode") === "contain";
 	setUri("data:second");
+	flush();
 	assert attrOf(mounted, "source") === "data:second";
 	dispose();
 	setUri("data:after-dispose");
+	flush();
 	assert attrOf(mounted, "source") === "data:second";
 
 	const services = new FakeServices();
@@ -140,18 +143,23 @@ test "public Modal toggles its overlay and releases it with render owner" {
 	const overlay = overlayOf(host, root);
 	assert overlay.children.length === 0;
 	setOpen(true);
+	flush();
 	assert overlay.children.length === 1;
 	assert overlay.children[0].tag === "modal";
 	assert attrOf(overlay.children[0], "animationType") === "none";
 	assert mockToString(overlay).indexOf("dialog") >= 0;
 	assert mockToString(root).indexOf("dialog") < 0;
 	setOpen(false);
+	flush();
 	assert overlay.children.length === 0;
 	setOpen(true);
+	flush();
 	assert overlay.children.length === 1;
 	dispose();
 	setOpen(false);
+	flush();
 	setOpen(true);
+	flush();
 	assert overlay.children.length === 0;
 }
 
@@ -172,9 +180,11 @@ test "public Portal keeps context at a named mount and stops after disposal" {
 	assert mockToString(target) === "<target><view><text>scoped</text></view></target>";
 	const container = target.children[0];
 	setWidth(40);
+	flush();
 	assert (container.style as Style).width === 40;
 	dispose();
 	setWidth(60);
+	flush();
 	assert target.children.length === 0;
 	assert (container.style as Style).width === 40;
 }
@@ -193,6 +203,7 @@ test "public refresh switch indicator and neutral touchables reach mock host" {
 			</ScrollView>
 			<Switch value={enabled()} onValueChange={(value: boolean): void => {
 				setEnabled(value);
+				flush();
 			}} />
 			<ActivityIndicator size={size} animating={refreshing()} />
 			<TouchableOpacity onPress={(): void => { presses += 1; }}>
@@ -212,22 +223,28 @@ test "public refresh switch indicator and neutral touchables reach mock host" {
 	assert children[0].children.length === 1;
 	assert attrOf(children[0], "refreshing") === "false";
 	fireEvent(children[0], "onRefresh");
+	flush();
 	assert attrOf(children[0], "refreshing") === "true";
 	assert attrOf(children[2], "animating") === "true";
 	assert (children[2].style as Style).width === 36;
 	const change = neonEvent("valuechange");
 	change.value = "true";
 	fireEventWith(children[1], "onValueChange", change);
+	flush();
 	assert enabled();
 	assert attrOf(children[1], "value") === "true";
 	for (let i = 3; i < 6; i++) {
 		fireEvent(children[i], "onPointerDown");
+		flush();
 		fireEvent(children[i], "onPointerUp");
+		flush();
 	}
 	assert presses === 3;
 	dispose();
 	setRefreshing(false);
+	flush();
 	setEnabled(false);
+	flush();
 	assert attrOf(children[0], "refreshing") === "true";
 	assert attrOf(children[1], "value") === "true";
 }

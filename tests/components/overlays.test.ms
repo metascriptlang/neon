@@ -62,7 +62,7 @@ test "Snackbar dismisses itself after its duration and not while hidden" {
 	const [dismissed, setDismissed] = createSignal(0);
 	const root: MockNode = mockNode("root");
 	render(element(<Snackbar visible={open()} duration={120}
-		onDismiss={(): void => { setDismissed(dismissed() + 1); setOpen(false); }}><Text>Archived</Text></Snackbar>), screenHost(root), root as unknown as HostNode);
+		onDismiss={(): void => { setDismissed((p: int32): int32 => p + 1); setOpen(false); }}><Text>Archived</Text></Snackbar>), screenHost(root), root as unknown as HostNode);
 	await sleepAsync(200);
 	assert dismissed() === 0, "no timer while hidden";
 	setOpen(true);
@@ -241,7 +241,7 @@ test "Stepper numbers its steps, checks the done ones and drives the active step
 		renderContent={(i: int32): NeonNode => <Text>{"body " + i.toString()}</Text>}
 		onStepTapped={(i: int32): void => { setLog(log() + "tap" + i.toString() + ";"); setCurrent(i); }}
 		onStepContinue={(): void => { setLog(log() + "continue;"); setCurrent(current() + 1); }}
-		onStepCancel={(): void => { setLog(log() + "cancel;"); }} />), screenHost(root), root as unknown as HostNode);
+		onStepCancel={(): void => { setLog((p: string): string => p + "cancel;"); }} />), screenHost(root), root as unknown as HostNode);
 	const text = mockToString(root);
 	assert text.indexOf("<pressable accessible=\"true\" accessibilityLabel=\"Cart, step 1 of 3, completed\" accessibilityRole=\"button\"><view><text>✓</text></view>") > 0, "done: " + text;
 	assert text.indexOf("<pressable accessible=\"true\" accessibilityLabel=\"Shipping, step 2 of 3\" accessibilityRole=\"button\"><view><text>2</text></view><view><text>Shipping</text><text>Address and speed</text></view></pressable>") > 0, "active: " + text;
@@ -280,19 +280,25 @@ test "screen overlays escape a clipped ancestor and disappear with visibility an
 	</View>), host, root as unknown as HostNode);
 	const overlay = (host.overlayRoot as (node: HostNode) => HostNode)(root as unknown as HostNode) as unknown as MockNode;
 	Toast.show({ text1: "Floating toast", autoHide: false });
+	flush();
 	assert mockToString(root) === "<root><view></view></root>", "app: " + mockToString(root);
 	const floating = mockToString(overlay);
 	assert floating.indexOf("Dialog content") >= 0 && floating.indexOf("Sheet content") >= 0;
 	assert floating.indexOf("Floating snackbar") >= 0 && floating.indexOf("Floating toast") >= 0;
 	assert overlay.children.length === 4;
 	setOpen(false);
+	flush();
 	Toast.hide();
+	flush();
 	assert overlay.children.length === 0;
 	setOpen(true);
+	flush();
 	Toast.show({ text1: "Unmounted toast", autoHide: false });
+	flush();
 	dispose();
 	assert overlay.children.length === 0;
 	Toast.hide();
 	setOpen(false);
+	flush();
 	assert overlay.children.length === 0;
 }

@@ -196,6 +196,7 @@ test "in-out gesture tier accepts independent semantic activation without feedba
 		return end;
 	});
 	fireEvent(root.children[0], "onPress");
+	flush();
 	assert log === "press;", "semantic activation: " + log;
 	assert root.children[0].events.length === 5, "four pointer routes plus semantic press";
 	dispose();
@@ -211,6 +212,7 @@ test "long-only gesture tier accepts semantic activation without a long press" {
 		return end;
 	});
 	fireEvent(root.children[0], "onPress");
+	flush();
 	assert log === "press;", "semantic activation: " + log;
 	dispose();
 }
@@ -219,6 +221,7 @@ function physical(node: MockNode, name: string): void {
 	const e = neonEvent(eventType(name));
 	e.pointerOrigin = true;
 	fireEventWith(node, name, e);
+	flush();
 }
 
 test "gesture physical release and tagged click activate once while semantic click stays independent" {
@@ -237,6 +240,7 @@ test "gesture physical release and tagged click activate once while semantic cli
 	physical(button, "onPress");
 	assert hits === 1, "release and native/browser duplicate: " + hits.toString();
 	fireEvent(button, "onPress");
+	flush();
 	assert hits === 2, "independent semantic activation";
 	dispose();
 }
@@ -257,6 +261,7 @@ test "leave and cancel never resurrect a gesture through a tagged click" {
 		physical(button, "onPress");
 		assert hits === 0, cancel + " must not press";
 		fireEvent(button, "onPress");
+		flush();
 		assert hits === 1, "semantic activation after " + cancel;
 		dispose();
 	}
@@ -267,8 +272,8 @@ test "long gesture tagged click stays suppressed but later semantic activation w
 	const [log, setLog] = createSignal("");
 	const dispose = createRoot((end: () => void): () => void => {
 		render(element(<Pressable delayLongPress={60}
-			onLongPress={(): void => { setLog(log() + "long;"); }}
-			onPress={(): void => { setLog(log() + "press;"); }} />),
+			onLongPress={(): void => { setLog((p: string): string => p + "long;"); }}
+			onPress={(): void => { setLog((p: string): string => p + "press;"); }} />),
 			mockHost(), root as unknown as HostNode);
 		return end;
 	});
@@ -279,6 +284,7 @@ test "long gesture tagged click stays suppressed but later semantic activation w
 	physical(button, "onPress");
 	assert log() === "long;", "long then duplicate: " + log();
 	fireEvent(button, "onPress");
+	flush();
 	assert log() === "long;press;", "semantic activation: " + log();
 	dispose();
 }

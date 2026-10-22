@@ -56,9 +56,11 @@ test "secure single line and nonsecure multiline preserve value events selection
 	const event = neonEvent("changetext");
 	event.value = "next";
 	fireEventWith(single, "onChangeText", event);
+	flush();
 	assert value() === "next" && mockToString(root).indexOf('value="next"') >= 0, mockToString(root);
 	event.value = "2,4";
 	fireEventWith(single, "onSelectionChange", event);
+	flush();
 	assert selected === "2,4", selected;
 	handles[0].focus();
 	assert handles[0].isFocused(), "focus works";
@@ -87,9 +89,10 @@ test "a multiline host stays unsupported for secure entry after its multiline pr
 	const root = mockNode("root");
 	const dispose = render(element(<TextInput multiline={multiline()} secureTextEntry={secure()} />), mockHost(), root as unknown as HostNode);
 	setMultiline(false);
+	flush();
 	assert root.children[0].tag === "multilinetextinput", "host tag is fixed";
 	let message = "";
-	try { setSecure(true); } catch (e) { message = e.toString(); }
+	try { setSecure(true); flush(); } catch (e) { message = e.toString(); }
 	resetErrorHalt();
 	assert secureMultilineDiagnostic(message), "case-naming rejection without secret: " + message;
 	dispose();
@@ -132,7 +135,9 @@ test "a nonsecure single-line host allows requested multiline and value changes"
 	const root = mockNode("root");
 	const dispose = render(element(<TextInput multiline={multiline()} secureTextEntry={false} value={value()} />), mockHost(), root as unknown as HostNode);
 	setMultiline(true);
+	flush();
 	setValue("next");
+	flush();
 	assert root.children[0].tag === "textinput" && mockToString(root).indexOf('value="next"') >= 0, "fixed host remains usable";
 	dispose();
 }

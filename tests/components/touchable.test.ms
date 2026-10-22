@@ -137,12 +137,17 @@ test "Touchable semantic activation respects enabled disabled enabled without fe
 	});
 	const button = root.children[0];
 	fireEvent(button, "onPress");
+	flush();
 	assert hits === 1 && styleOf(button).opacity === 0.9, "enabled with no feedback";
 	setOff(true);
+	flush();
 	fireEvent(button, "onPress");
+	flush();
 	assert hits === 1 && styleOf(button).opacity === 0.9, "disabled stays quiet";
 	setOff(false);
+	flush();
 	fireEvent(button, "onPress");
+	flush();
 	assert hits === 2 && styleOf(button).opacity === 0.9, "re-enabled with no feedback";
 	dispose();
 }

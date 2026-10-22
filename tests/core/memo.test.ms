@@ -66,6 +66,7 @@ test "memo initializes boolean and array values before exposing an accessor" {
 	assert !cond() && list()[0] === 0 && list()[1] === 1;
 	assert comparisons === 0;
 	setN(1);
+	flush();
 	assert cond() && list()[0] === 1 && list()[1] === 2;
 	assert comparisons === 1;
 }
