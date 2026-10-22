@@ -244,7 +244,13 @@ const routes = createRoutes([
 ```
 
 `path` gives untyped routes whose params are strings; `route` gives typed ones.
-Solid Router's names are kept where the meaning is the same.
+Solid Router's names are kept where the meaning is the same. A component reads a typed
+route's params with `useParams({ from: thread })`, TanStack's `from`, with the route value
+standing where TanStack checks a registered id: the params come through that route's
+codec, from the component's own route or an ancestor, and a route off the component's
+path throws, as TanStack's strict `from` does. Writing typed params, TanStack's
+`navigate({ to, params })`, waits on two compiler cards named at `Router.navigate`;
+until then `hrefOf` builds the address.
 
 `src/navigation/router.ms` compiles the tree into one `RouteTree`, and `createRouter`
 makes it one participant of scope `main`. A layout keeps its instance while the routes
