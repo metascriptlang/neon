@@ -13,7 +13,6 @@ import { LONG_PRESS_DELAY_MS, pressEvents } from "./pressability";
 import { Host, HostNode, NeonNode, VoidArea } from "../render/hostTypes";
 import { place } from "../render/reconcile";
 import { createVoidHostWith, VoidHost, VoidNode, freeVoidLayoutTree } from "../platform/void/host";
-import { DEFAULT_FONT } from "../../../void/src/void2d/font";
 import { IconId } from "../../../void/src/void2d/icon";
 import {
 	Scene2D as VoidScene2D,
@@ -65,6 +64,7 @@ import {
 	Color, Camera, Tile, Filter, ScaleMode, Bounds2D, rgba,
 } from "../../../void/src/void2d/types";
 import { TextStyle, TextRun, Truncate } from "../../../void/src/void2d/textLayout";
+import { FontId } from "../../../void/src/void2d/font";
 import { TextDirection } from "../../../void/src/void2d/textDirection";
 import { labelTexts, NO_LABEL_TEXT, NO_CURSOR } from "../../../void/src/void2d/labelText";
 import { Mat4 } from "../../../void/src/math/math3d";
@@ -224,6 +224,7 @@ interface SceneClock {
 interface SceneState {
 	host: VoidHost;
 	clock: SceneClock;
+	font: FontId;
 }
 
 interface ClockEntry { node: NodeRef; }
@@ -435,7 +436,7 @@ export function Scene2D(props: Scene2DProps): NeonNode {
 			const anchor = layerAnchor(opened as VoidArea, host, parent, before);
 			const area = (opened as VoidArea).hub;
 			const scene = VoidScene2D.create(rgba(0.0, 0.0, 0.0, 0.0));
-			const vh = createVoidHostWith(scene, DEFAULT_FONT, null, true);
+			const vh = createVoidHostWith(scene, area.font, area.family, true);
 			const invalidate = (): void => { area.handle.requestFrame(); };
 			vh.onDirty(invalidate);
 			const clock = createSceneClock(vh, invalidate);
@@ -560,7 +561,7 @@ export function Scene2D(props: Scene2DProps): NeonNode {
 				getVoidScopeContext().provider({
 					value: accessor(() => VoidSpace.Scene2D),
 					children: sceneScope.provider({
-						value: accessor((): SceneState => ({ host: vh, clock })), children: children,
+						value: accessor((): SceneState => ({ host: vh, clock, font: area.font })), children: children,
 					}),
 				})(vh.host, vh.root, null);
 			}
@@ -877,7 +878,7 @@ export function Label(props: LabelProps): NeonNode {
 			bindScene<[TextStyle | null, float32]>(
 				(): [TextStyle | null, float32] => [props.textStyle === null ? null : (props.textStyle as () => TextStyle)(), props.size()],
 				(value: [TextStyle | null, float32]): void => {
-					const style = value[0] === null ? node.textStyle() : value[0] as TextStyle;
+					const style: TextStyle = value[0] === null ? { ...node.textStyle(), font: state.font } : value[0] as TextStyle;
 					node.setTextStyle({ ...style, size: value[1] });
 				},
 			);

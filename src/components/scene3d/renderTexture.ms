@@ -92,6 +92,8 @@ export function RenderTexture(props: RenderTextureProps): NeonNode {
 				initialPixelHeight: height,
 				requestFrame: (): void => { dirty = true; state.invalidate(); },
 				setImeRect: (pixelX: int32, pixelY: int32, pixelW: int32, pixelH: int32): void => {},
+				font: (outer as VoidArea).hub.font,
+				family: (outer as VoidArea).hub.family,
 			});
 			let blank: VoidScene2D | null = null;
 			onCleanup((): void => {

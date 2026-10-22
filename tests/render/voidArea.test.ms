@@ -10,6 +10,7 @@ import { Errored } from "../../src/macros/ui/flow";
 import { NeonNode, VoidArea } from "../../src/render/hostTypes";
 import { layerAnchor } from "../../src/render/voidLayer";
 import { getVoidAreaContext } from "../../src/render/voidScope";
+import { DEFAULT_FONT } from "../../../void/src/void2d/font";
 
 test "Void mounts its children into the area the host opens" {
 	const root: MockNode = mockNode("root");
@@ -139,7 +140,7 @@ test "a directive factory and a plain callback both receive the handle" {
 class Mark {}
 
 test "a layer removed by an earlier layer during the frame is neither prepared nor drawn" {
-	const hub = createAreaHub({ initialPixelWidth: 10, initialPixelHeight: 10, requestFrame: (): void => {}, setImeRect: (x: int32, y: int32, w: int32, h: int32): void => {} });
+	const hub = createAreaHub({ initialPixelWidth: 10, initialPixelHeight: 10, requestFrame: (): void => {}, setImeRect: (x: int32, y: int32, w: int32, h: int32): void => {}, font: DEFAULT_FONT, family: null });
 	const log: string[] = [];
 	let removeSecond: Unsubscribe | null = null;
 	let removeThird: Unsubscribe | null = null;
@@ -166,7 +167,7 @@ test "a layer removed by an earlier layer during the frame is neither prepared n
 }
 
 test "the hub prepares and draws the layers in the order it is given, each after the content before it" {
-	const hub = createAreaHub({ initialPixelWidth: 10, initialPixelHeight: 10, requestFrame: (): void => {}, setImeRect: (x: int32, y: int32, w: int32, h: int32): void => {} });
+	const hub = createAreaHub({ initialPixelWidth: 10, initialPixelHeight: 10, requestFrame: (): void => {}, setImeRect: (x: int32, y: int32, w: int32, h: int32): void => {}, font: DEFAULT_FONT, family: null });
 	const log: string[] = [];
 	const made: AreaLayer[] = [];
 	const names = ["a", "b", "c"];
@@ -199,7 +200,7 @@ test "the hub prepares and draws the layers in the order it is given, each after
 }
 
 test "a subscriber removed by an earlier one during an emit is not called" {
-	const hub = createAreaHub({ initialPixelWidth: 10, initialPixelHeight: 10, requestFrame: (): void => {}, setImeRect: (x: int32, y: int32, w: int32, h: int32): void => {} });
+	const hub = createAreaHub({ initialPixelWidth: 10, initialPixelHeight: 10, requestFrame: (): void => {}, setImeRect: (x: int32, y: int32, w: int32, h: int32): void => {}, font: DEFAULT_FONT, family: null });
 	const log: string[] = [];
 	let off: Unsubscribe | null = null;
 	hub.handle.onText((t: string): void => { log.push("first " + t); (off as Unsubscribe)(); });
@@ -298,7 +299,7 @@ test "a layer error reaches the Errored around the layer's owner, the area keeps
 }
 
 test "a layer added outside any owner throws its frame error out of the frame" {
-	const hub = createAreaHub({ initialPixelWidth: 10, initialPixelHeight: 10, requestFrame: (): void => {}, setImeRect: (x: int32, y: int32, w: int32, h: int32): void => {} });
+	const hub = createAreaHub({ initialPixelWidth: 10, initialPixelHeight: 10, requestFrame: (): void => {}, setImeRect: (x: int32, y: int32, w: int32, h: int32): void => {}, font: DEFAULT_FONT, family: null });
 	hub.addLayer({
 		anchor: { node: new Mark(), inText: false },
 		layout: (pixelWidth: int32, pixelHeight: int32): void => {},

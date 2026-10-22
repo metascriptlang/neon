@@ -112,6 +112,8 @@ export function windowHost(w: AreaWindow): Host {
 			initialPixelHeight: w.pixelHeight(),
 			requestFrame: w.requestFrame,
 			setImeRect: w.setImeRect,
+			font: w.font,
+			family: w.family,
 		});
 		const area: WindowArea = {
 			vh,

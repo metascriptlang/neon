@@ -1,6 +1,7 @@
 import { NeonEvent } from "./event";
 import { RaiseError, createErrorRoute } from "../core/boundary";
 import { RenderTarget } from "../../../void/src/gpu/target";
+import { FontId } from "../../../void/src/void2d/font";
 
 export enum AreaKeyAction {
 	Release,
@@ -132,6 +133,8 @@ export interface AreaLayer {
 
 export interface AreaHub {
 	handle: VoidAreaHandle;
+	font: FontId;
+	family: string | null;
 	addLayer: (layer: AreaLayer) => Unsubscribe;
 	layers: () => AreaLayer[];
 	layoutLayers: (pixelWidth: int32, pixelHeight: int32) => void;
@@ -151,6 +154,8 @@ export interface AreaOps {
 	initialPixelHeight: int32;
 	requestFrame: () => void;
 	setImeRect: (pixelX: int32, pixelY: int32, pixelW: int32, pixelH: int32) => void;
+	font: FontId;
+	family: string | null;
 }
 
 class LayerGuard {
@@ -202,6 +207,8 @@ export function createAreaHub(ops: AreaOps): AreaHub {
 			onFocus: focuses.add,
 			setImeRect: ops.setImeRect,
 		},
+		font: ops.font,
+		family: ops.family,
 		addLayer: (layer: AreaLayer): Unsubscribe => {
 			const guard = new LayerGuard();
 			guard.raise = createErrorRoute((): void => {

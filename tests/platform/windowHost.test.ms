@@ -14,6 +14,9 @@ import {
 	AreaResize,
 } from "../../src/render/voidAreaHandle";
 import { Void, View, Text, Pressable, TextInput } from "../../src/components/primitives";
+import { Scene2D, Label } from "../../src/components/scene2d";
+import { NodeRef, textStyle } from "../../../void/src/void2d/node";
+import { rgba } from "../../../void/src/void2d/types";
 import { VoidNode, parseColor } from "../../src/platform/void/host";
 import {
 	AreaWindow,
@@ -34,6 +37,7 @@ import { PixelRatio } from "../../src/api/pixelRatio";
 import { useWindowDimensions } from "../../src/render/environment";
 import { refreshBoundary0, refreshComponent0, refreshModule, refreshReset } from "../../src/render/refresh";
 import { DrawKind, clearChanges } from "../../../void/src/void2d/node";
+import { labelTexts } from "../../../void/src/void2d/labelText";
 import { paint as paintScene } from "../../../void/src/void2d/scene";
 import { frameEnd } from "../../../void/src/void2d/draw";
 import { Color } from "../../../void/src/void2d/types";
@@ -102,6 +106,26 @@ test "the window opens its one Void on the Void host, with the Void's style on t
 	assert area.vh.scene.clear == (parseColor("#102030") as Color), "the background clears the scene";
 	assert area.hub.handle.pixelWidth() === (640 as int32), "the handle starts at the window's pixel width";
 	assert p.log.indexOf("frame") > p.log.indexOf("opened"), "the style asked for a frame after the area opened: " + p.log.join(",");
+}
+
+test "a Scene2D in the window's Void draws its Label and Text in the window font" {
+	const p = probe();
+	const labels: NodeRef[] = [];
+	const dispose = render(element(
+		<Void><Scene2D>
+			<Label text="world" size={12.0} color={rgba(1.0, 1.0, 1.0, 1.0)} ref={(node: NodeRef): void => { labels.push(node); }} />
+			<View><Text>hud</Text></View>
+		</Scene2D></Void>
+	), windowHost(p.window), windowNode("window"));
+	const area = p.areas[0];
+	assert area.hub.font === p.window.font && area.hub.family === p.window.family, "the area carries the window font";
+	assert labels.length === 1 && labels[0].textStyle().font === p.window.font, "a Label without textStyle takes the window font";
+	let fonts: string[] = [];
+	for (const entry of labelTexts) {
+		if (entry.text === "hud") { fonts.push((entry.style.font as int32).toString()); }
+	}
+	assert fonts.length === 1 && fonts[0] === (p.window.font as int32).toString(), "a Text in the Scene2D takes the window font: " + fonts.join(",");
+	dispose();
 }
 
 test "a tree change inside the area wakes the window, and disposing the owner releases the area once" {
