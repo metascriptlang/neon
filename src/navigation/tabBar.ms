@@ -2,10 +2,11 @@ import { Accessor, accessor } from "../core/signal";
 import { NeonNode } from "../render/hostTypes";
 import { NeonEvent } from "../render/event";
 import { Style } from "../render/style";
+import { createContext, useContext } from "../render/context";
 import { View, Text, Pressable } from "../components/primitives";
 import { For, Show } from "../macros/ui/flow";
 import { Platform } from "../api/platform";
-import { ScreenOptions, TabBarIconProps, Theme } from "./core";
+import { DefaultTheme, ScreenOptions, TabBarIconProps, Theme } from "./core";
 import { Slot } from "./header";
 
 export const TAB_INACTIVE = "#8e8e93";
@@ -121,4 +122,31 @@ export function tabRow(
 export function tabHairline(theme: Accessor<Theme>): NeonNode {
 	const line = accessor((): Style => ({ height: 1, backgroundColor: theme().colors.border }));
 	return <View style={line} />;
+}
+
+export interface TabList {
+	tabs: Accessor<TabTrigger[]>;
+}
+
+export const TabsContext = createContext<TabList | null>(null);
+
+export function useTabs(): Accessor<TabTrigger[]> {
+	const list = useContext(TabsContext);
+	if (list === null) { throw new Error("navigation: useTabs is called outside the layout of a Tabs route"); }
+	return (list as TabList).tabs;
+}
+
+export function TabBar(props: { theme?: Accessor<Theme> | null }): NeonNode {
+	const tabs = useTabs();
+	const own = props.theme;
+	const theme = accessor((): Theme => own === null ? DefaultTheme : (own as Accessor<Theme>)());
+	const bar = accessor((): Style => ({
+		flexDirection: "row",
+		height: 56,
+		backgroundColor: theme().colors.card,
+	}));
+	return <View style={{ flexDirection: "column" }}>
+		{tabHairline(theme)}
+		{tabRow(tabs, theme, accessor((): boolean => false), bar)}
+	</View>;
 }

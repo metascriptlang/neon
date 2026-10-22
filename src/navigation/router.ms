@@ -1,15 +1,18 @@
 import { Accessor, Signal, accessor, untrack } from "../core/signal";
 import { flush } from "../core/runtime";
 import { Dispose } from "../core/types";
+import { mapArray } from "../core/array";
 import { Host, HostNode, NeonNode } from "../render/hostTypes";
 import { createComponent } from "../render/component";
 import { createContext, useContext } from "../render/context";
+import { View } from "../components/primitives";
 import {
 	RoutePlan,
 	RoutingError,
 	RoutingParticipant,
 	RoutingRegistry,
 	decodeRouteComponent,
+	encodeRouteComponent,
 } from "./routing";
 import { RoutingHistory, RoutingSession, createRoutingSession } from "./routingHistory";
 import {
@@ -36,6 +39,8 @@ import {
 } from "./webNavigation";
 import { WebHistory, createWebHistory } from "./webHistory";
 import { StackPresentation, renderPages, renderStack, renderStackTop } from "./childView";
+import { ScreenOptions } from "./core";
+import { TabBar, TabList, TabTrigger, TabsContext } from "./tabBar";
 
 const MAX_REDIRECTS: int32 = 20;
 const PERMANENT_REDIRECT: int32 = 308;
@@ -66,6 +71,7 @@ export interface RouteConfig {
 	backBehavior?: BackBehavior | null;
 	presentation?: StackPresentation | null;
 	resolveOnReload?: boolean | null;
+	options?: ScreenOptions | (() => ScreenOptions) | null;
 	status?: int32 | null;
 	guard?: ((params: Map<string, string>, found: RouteMatch) => GuardDecision) | null;
 	paths?: (() => Map<string, string>[]) | null;
@@ -81,6 +87,7 @@ export interface RouteView {
 	backBehavior: BackBehavior;
 	presentation: StackPresentation;
 	resolveOnReload: boolean;
+	options: ScreenOptions | (() => ScreenOptions) | null;
 	children: int32[];
 	label: string;
 }
@@ -146,7 +153,25 @@ function presentationOf(config: RouteConfig, stacked: boolean): StackPresentatio
 	return presentation as StackPresentation;
 }
 
-function compile(configs: RouteConfig[], views: RouteView[], ids: int32[], stacked: boolean): RouteEntry[] {
+function optionsOf(config: RouteConfig, tabbed: boolean): ScreenOptions | (() => ScreenOptions) | null {
+	const options = config.options;
+	if (options !== null && !tabbed) {
+		throw new Error("routing: " + labelOf(config) + " names options, which only a route in Tabs reads");
+	}
+	return options;
+}
+
+function readOptions(options: ScreenOptions | (() => ScreenOptions) | null): ScreenOptions {
+	if (options === null) { return {}; }
+	if (typeof options === "function") { return (options as () => ScreenOptions)(); }
+	return options as ScreenOptions;
+}
+
+function within(parent: RouteNavigator | null, navigator: RouteNavigator): boolean {
+	return parent !== null && parent as RouteNavigator === navigator;
+}
+
+function compile(configs: RouteConfig[], views: RouteView[], ids: int32[], parent: RouteNavigator | null): RouteEntry[] {
 	const entries: RouteEntry[] = [];
 	for (const config of configs) {
 		const children = config.children ?? [];
@@ -178,16 +203,16 @@ function compile(configs: RouteConfig[], views: RouteView[], ids: int32[], stack
 			navigator: config.navigator,
 			initial: -1,
 			backBehavior: backBehaviorOf(config),
-			presentation: presentationOf(config, stacked),
+			presentation: presentationOf(config, within(parent, RouteNavigator.Stack)),
 			resolveOnReload: config.resolveOnReload ?? false,
+			options: optionsOf(config, within(parent, RouteNavigator.Tabs)),
 			children: [],
 			label: labelOf(config),
 		};
 		views.push(view);
 		ids.push(id);
 		const childIds: int32[] = [];
-		const stacks = config.navigator !== null && config.navigator as RouteNavigator === RouteNavigator.Stack;
-		entries.push({ node, children: leaf ? null : compile(children, views, childIds, stacks) });
+		entries.push({ node, children: leaf ? null : compile(children, views, childIds, config.navigator) });
 		view.children = childIds;
 		view.initial = initialOf(config, children, childIds);
 	}
@@ -197,7 +222,7 @@ function compile(configs: RouteConfig[], views: RouteView[], ids: int32[], stack
 export function createRoutes(configs: RouteConfig[]): Routes {
 	const views: RouteView[] = [];
 	const roots: int32[] = [];
-	const entries = compile(configs, views, roots, false);
+	const entries = compile(configs, views, roots, null);
 	return { tree: createRouteTree(entries), views, roots };
 }
 
@@ -750,7 +775,15 @@ export class Router {
 	}
 
 	view(): NeonNode {
-		return levelView(this.routes, this.root);
+		const steer: Steer = {
+			navigate: (href: string): boolean => this.navigate(href),
+			popToRoot: (stack: ChildStack<Stop, Place>): void => {
+				this.group((): void => { stack.popTo(0); }, false);
+				const settled = follow(this.routes.tree, addressOf(untrack((): Stop => leafStop(this.root))));
+				if (settled.ok) { this.current.set(settled.value); }
+			},
+		};
+		return levelView(this.routes, this.root, steer);
 	}
 
 	connect(session: RoutingSession, stop: Dispose | null, group: (change: () => void, visit: boolean) => void): void {
@@ -916,8 +949,72 @@ function mountLater(make: () => NeonNode): NeonNode {
 	};
 }
 
-function levelView(routes: Routes, level: Level): NeonNode {
-	const render = (child: NavigationChild<Stop, Place>): NeonNode => placeView(routes, child);
+interface Steer {
+	navigate: (href: string) => boolean;
+	popToRoot: (stack: ChildStack<Stop, Place>) => void;
+}
+
+function addressOf(stop: Stop): string {
+	let address = stop.path;
+	let first = true;
+	for (const name of stop.search) {
+		address += (first ? "?" : "&") + encodeRouteComponent(name) + "=" + encodeRouteComponent(stop.search.get(name) ?? "");
+		first = false;
+	}
+	return stop.hash === "" ? address : address + "#" + stop.hash;
+}
+
+function leafOf(child: NavigationChild<Stop, Place>): Stop {
+	const level = child.instance.level;
+	return level === null ? child.configuration() : leafStop(level as Level);
+}
+
+function tabTrigger(
+	routes: Routes,
+	pages: ChildPages<Stop, Place>,
+	child: NavigationChild<Stop, Place>,
+	at: Accessor<number>,
+	steer: Steer,
+): TabTrigger {
+	const view = routes.views[untrack((): Stop => child.configuration()).route];
+	const options = accessor((): ScreenOptions => readOptions(view.options));
+	const focused = accessor((): boolean => pages.selectedIndex() === at());
+	const href = accessor((): string | null => addressOf(leafOf(child)));
+	return {
+		key: child.key,
+		label: accessor((): string => {
+			const part = child.configuration().part;
+			return options().tabBarLabel ?? options().title ?? (part === "" ? "index" : part);
+		}),
+		options,
+		focused,
+		href,
+		press: (): void => {
+			if (!untrack((): boolean => focused())) {
+				const target = untrack((): string => addressOf(leafOf(child)));
+				if (!steer.navigate(target)) {
+					throw new Error("routing: the tab " + view.label + " opens " + target + ", which no route matches");
+				}
+				return;
+			}
+			const nested = child.instance.level;
+			if (nested === null || (nested as Level).kind !== LevelKind.Stack) { return; }
+			const stack = (nested as Level).stack as ChildStack<Stop, Place>;
+			if (untrack((): Stop[] => stack.configurations()).length > 1) { steer.popToRoot(stack); }
+		},
+	};
+}
+
+function tabTriggers(routes: Routes, level: Level, steer: Steer): Accessor<TabTrigger[]> {
+	const pages = level.pages as ChildPages<Stop, Place>;
+	return mapArray<NavigationChild<Stop, Place>, TabTrigger>(
+		(): NavigationChild<Stop, Place>[] => pages.items(),
+		(child: NavigationChild<Stop, Place>, at: Accessor<number>): TabTrigger => tabTrigger(routes, pages, child, at, steer),
+	);
+}
+
+function levelView(routes: Routes, level: Level, steer: Steer): NeonNode {
+	const render = (child: NavigationChild<Stop, Place>): NeonNode => placeView(routes, child, steer);
 	return match (level.kind) {
 		LevelKind.Slot => renderStackTop<Stop, Place>(level.stack as ChildStack<Stop, Place>, render),
 		LevelKind.Stack => renderStack<Stop, Place>(level.stack as ChildStack<Stop, Place>, render, (child: NavigationChild<Stop, Place>): boolean => {
@@ -927,7 +1024,14 @@ function levelView(routes: Routes, level: Level): NeonNode {
 	};
 }
 
-function placeView(routes: Routes, child: NavigationChild<Stop, Place>): NeonNode {
+function tabsFrame(inner: NeonNode): NeonNode {
+	return <View style={{ flex: 1, flexDirection: "column" }}>
+		<View style={{ flex: 1, flexDirection: "column", position: "relative" }}>{inner}</View>
+		<TabBar />
+	</View>;
+}
+
+function placeView(routes: Routes, child: NavigationChild<Stop, Place>, steer: Steer): NeonNode {
 	const stop = untrack((): Stop => child.configuration());
 	const found = routes.views[stop.route];
 	const scope: RouteScope = { params: stop.params };
@@ -937,10 +1041,20 @@ function placeView(routes: Routes, child: NavigationChild<Stop, Place>): NeonNod
 	if (component !== null) {
 		body = mountLater(component as () => NeonNode);
 	} else {
-		const inner = levelView(routes, child.instance.level as Level);
-		body = layout === null
-			? inner
-			: createComponent<LayoutProps>(layout as (props: LayoutProps) => NeonNode, { children: inner });
+		const level = child.instance.level as Level;
+		const inner = levelView(routes, level, steer);
+		if (layout !== null) {
+			body = createComponent<LayoutProps>(layout as (props: LayoutProps) => NeonNode, { children: inner });
+		} else if (level.kind === LevelKind.Tabs) {
+			body = tabsFrame(inner);
+		} else {
+			body = inner;
+		}
+		if (level.kind === LevelKind.Tabs) {
+			const list: TabList = { tabs: tabTriggers(routes, level, steer) };
+			const framed = body;
+			body = <TabsContext value={list}>{framed}</TabsContext>;
+		}
 	}
 	return <RouteContext value={scope}>{body}</RouteContext>;
 }
