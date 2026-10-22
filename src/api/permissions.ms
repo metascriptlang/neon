@@ -105,9 +105,9 @@ export interface AndroidPermissionNames {
 }
 
 export interface AndroidPermissionResults {
-	GRANTED: string;
-	DENIED: string;
-	NEVER_ASK_AGAIN: string;
+	GRANTED: PermissionsAndroidResult;
+	DENIED: PermissionsAndroidResult;
+	NEVER_ASK_AGAIN: PermissionsAndroidResult;
 }
 
 const NO_RATIONALE: Rationale = { title: "", message: "" };
@@ -179,25 +179,23 @@ export class PermissionsAndroid {
 		return await permissionServices("PermissionsAndroid.check").androidPermissionGranted(permission);
 	}
 
-	// Promise<string>, not Promise<PermissionsAndroidResult>: awaiting a literal-union promise dies at clang
-	// (compiler card 2026-10-08-await-of-a-string-literal-union-promise-dies-at-clang.md). The rationale
-	// defaults to an empty one rather than null: on JS a literal passed as `Rationale | null` keeps its
+	// The rationale defaults to an empty one rather than null: on JS a literal passed as `Rationale | null` keeps its
 	// absent fields undefined (card 2026-10-06-js-optional-fields-through-nullable-constructor.md).
-	static async request(permission: string, rationale: Rationale = NO_RATIONALE): Promise<string> {
+	static async request(permission: string, rationale: Rationale = NO_RATIONALE): Promise<PermissionsAndroidResult> {
 		const services = permissionServices("PermissionsAndroid.request");
 		if (rationale.title !== "" && (await services.androidShouldShowRationale(permission))) {
 			await showRationale(rationale);
 		}
 		const results = await services.androidRequestPermissions([permission]);
 		const result = replyOrThrow(results[0]);
-		return result.status;
+		return result.status as PermissionsAndroidResult;
 	}
 
-	static async requestMultiple(permissions: string[]): Promise<Map<string, string>> {
+	static async requestMultiple(permissions: string[]): Promise<Map<string, PermissionsAndroidResult>> {
 		const results = await permissionServices("PermissionsAndroid.requestMultiple").androidRequestPermissions(permissions);
-		const byPermission = new Map<string, string>();
+		const byPermission = new Map<string, PermissionsAndroidResult>();
 		for (let i = 0; i < permissions.length; i += 1) {
-			byPermission.set(permissions[i], replyOrThrow(results[i]).status);
+			byPermission.set(permissions[i], replyOrThrow(results[i]).status as PermissionsAndroidResult);
 		}
 		return byPermission;
 	}

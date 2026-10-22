@@ -1,7 +1,7 @@
 import { flush } from "../../src/core/runtime";
 import { AsyncStorage, KeyValuePair, StringPair, useAsyncStorage } from "../../src/api/asyncStorage";
 import { NetInfo, NetInfoState, publishNetInfo, useNetInfo } from "../../src/api/netInfo";
-import { Permissions, PermissionsAndroid } from "../../src/api/permissions";
+import { Permissions, PermissionsAndroid, PermissionsAndroidResult } from "../../src/api/permissions";
 import { sleepAsync } from "std/core/promise";
 import { installAppServices } from "../../src/api/services";
 import { LocationFix } from "../../src/api/locationServices";
@@ -156,12 +156,13 @@ test "PermissionsAndroid names RN's permissions and results and maps requestMult
 	assert PermissionsAndroid.PERMISSIONS.ADD_VOICEMAIL === "com.android.voicemail.permission.ADD_VOICEMAIL";
 	assert PermissionsAndroid.RESULTS.NEVER_ASK_AGAIN === "never_ask_again";
 	assert !(await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.CAMERA));
-	assert (await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.CAMERA)) === "granted";
+	const camera: PermissionsAndroidResult = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.CAMERA);
+	assert camera === PermissionsAndroid.RESULTS.GRANTED;
 	assert await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.CAMERA);
 	fake.answer = "never_ask_again";
 	const fine = PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION;
 	const coarse = PermissionsAndroid.PERMISSIONS.ACCESS_COARSE_LOCATION;
-	const results = await PermissionsAndroid.requestMultiple([fine, coarse]);
+	const results: Map<string, PermissionsAndroidResult> = await PermissionsAndroid.requestMultiple([fine, coarse]);
 	assert results.get(fine) === "never_ask_again" && results.size === 2;
 }
 
