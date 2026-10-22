@@ -209,6 +209,27 @@ test "a subscriber removed by an earlier one during an emit is not called" {
 	assert log.join(",") === "first x,first y", log.join(",");
 }
 
+test "a Void on a host without a Void area mounts its fallback instead" {
+	const root: MockNode = mockNode("root");
+	const host = mockHost();
+	host.voidArea = null;
+	render(element(<Void fallback={element(<Text>no gpu</Text>)}><View /></Void>), host, root as unknown as HostNode);
+	assert mockToString(root) === "<root><void><text>no gpu</text></void></root>", mockToString(root);
+}
+
+test "a Void without a fallback on a host without a Void area throws an Error naming the reason" {
+	const root: MockNode = mockNode("root");
+	const host = mockHost();
+	host.voidArea = null;
+	let message = "";
+	try {
+		render(element(<Void><View /></Void>), host, root as unknown as HostNode);
+	} catch (e) {
+		message = e.message;
+	}
+	assert message === "Void: this host has no Void area; give <Void> a fallback to mount where none exists", message;
+}
+
 class Trouble {
 	prepare: Error | null = null;
 	draw: Error | null = null;

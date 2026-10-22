@@ -836,6 +836,7 @@ interface VoidProps extends AccessibilityProps {
 	style?: Accessor<Style> | null;
 	class?: Accessor<string> | null;
 	ref?: ((handle: VoidAreaHandle) => void) | null;
+	fallback?: NeonNode | null;
 	children?: NeonNode | null;
 }
 
@@ -844,7 +845,12 @@ export function Void(props: VoidProps): NeonNode {
 	const userRef = props.ref;
 	const area: NeonNode = (host: Host, node: HostNode, before: HostNode | null): void => {
 		const open = host.voidArea;
-		if (open === null) { throw "<Void> needs a host with the voidArea capability, and this host has none"; }
+		if (open === null) {
+			const fallback = props.fallback;
+			if (fallback === null) { throw new Error("Void: this host has no Void area; give <Void> a fallback to mount where none exists"); }
+			(fallback as NeonNode)(host, node, before);
+			return;
+		}
 		const a = (open as (n: HostNode) => VoidArea)(node);
 		onCleanup((): void => {
 			a.hub.close();
