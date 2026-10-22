@@ -7,3 +7,4 @@ export { Mesh } from "./scene3d/mesh";
 export { Camera3D } from "./scene3d/camera";
 export { GltfProps, GltfGraph, gltfData } from "./scene3d/gltf";
 export { ObjectAnimation, MeshFrameAnimation } from "./scene3d/animation";
+export { GltfMount, GltfScope, gltfScope } from "./scene3d/gltf";

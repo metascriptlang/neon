@@ -1,4 +1,5 @@
-import { Accessor, createSignal } from "../../core/signal";
+import { Accessor, accessor, createSignal } from "../../core/signal";
+import { createContext } from "../../render/context";
 import { createRenderEffect } from "../../core/effect";
 import { Cleanup } from "../../core/types";
 import { Host, HostNode, NeonNode } from "../../render/hostTypes";
@@ -24,6 +25,18 @@ export interface GltfProps extends NodeProps {
 	graph?: ((graph: GltfGraph) => void) | null;
 }
 
+export interface GltfMount {
+	data: GltfData;
+	root: NodeId3D;
+	nodes: Vec<NodeId3D>;
+}
+
+export interface GltfScope {
+	mount: Accessor<GltfMount | null>;
+}
+
+export const gltfScope = createContext<GltfScope | null>(null);
+
 export function gltfData(loaded: Result<GltfData, GltfDiagnostic>): GltfData {
 	if (!loaded.ok) { throw new Error("Gltf: " + loaded.error.describe()); }
 	return loaded.value;
@@ -38,17 +51,17 @@ function sceneFailure(call: string, error: GltfSceneError, data: GltfData): Erro
 	return new Error("Gltf: " + call + " failed: " + detail);
 }
 
-function mountGraph(scene: VoidScene3D, parent: NodeId3D, data: GltfData, assets: GltfAssets): NodeId3D {
+function mountGraph(scene: VoidScene3D, parent: NodeId3D, data: GltfData, assets: GltfAssets): GltfMount {
 	const staging = addGroup(scene, parent, Transform3D.identity());
 	const mounted = addGltfBoundNodes(scene, staging, data, assets.bindings);
 	if (!mounted.ok) {
 		const removed = remove(scene, staging);
 		throw sceneFailure("addGltfBoundNodes", mounted.error, data);
 	}
-	return staging;
+	return { data: data, root: staging, nodes: mounted.value.nodes };
 }
 
-function ownedGraph(scene: VoidScene3D, parent: NodeId3D, data: GltfData, setup: GltfMaterialSetup): NodeId3D {
+function ownedGraph(scene: VoidScene3D, parent: NodeId3D, data: GltfData, setup: GltfMaterialSetup): GltfMount {
 	const added = addGltfAssets(scene.context, data, setup);
 	if (!added.ok) { throw sceneFailure("addGltfAssets", added.error, data); }
 	try {
@@ -56,7 +69,7 @@ function ownedGraph(scene: VoidScene3D, parent: NodeId3D, data: GltfData, setup:
 	} finally { closeGltfAssets(added.value); }
 }
 
-function borrowedGraph(scene: VoidScene3D, parent: NodeId3D, data: GltfData, assets: GltfAssets): NodeId3D {
+function borrowedGraph(scene: VoidScene3D, parent: NodeId3D, data: GltfData, assets: GltfAssets): GltfMount {
 	if (assets.closed) { throw new Error("Gltf: borrowed assets were closed by their owner"); }
 	if (assets.context !== scene.context) { throw new Error("Gltf: borrowed assets belong to another Scene3D context"); }
 	return mountGraph(scene, parent, data, assets);
@@ -76,7 +89,9 @@ export function Gltf(props: GltfProps): NeonNode {
 			bindNode(scope.state, wrapper, props, local);
 			const [root, setRoot] = createSignal<NodeId3D>(NO_NODE_ID, { ownedWrite: true });
 			let imported: NodeId3D | null = null;
-			const replace = (next: NodeId3D): void => {
+			const [mount, setMount] = createSignal<GltfMount | null>(null, { ownedWrite: true });
+			const replace = (instance: GltfMount): void => {
+				const next = instance.root;
 				const previous = imported;
 				if (previous !== null) {
 					insertBefore(scene, wrapper, next, previous);
@@ -84,6 +99,7 @@ export function Gltf(props: GltfProps): NeonNode {
 				}
 				imported = next;
 				setRoot(next);
+				setMount(instance);
 				scope.state.invalidate();
 			};
 			if (props.assets !== null) {
@@ -116,7 +132,13 @@ export function Gltf(props: GltfProps): NeonNode {
 					},
 				});
 			}
-			mountNodeChildren(scope, wrapper, props, host, parent, before);
+			const provided: GltfScope = { mount };
+			gltfScope.provider({
+				value: accessor(() => provided),
+				children: (h: Host, p: HostNode, b: HostNode | null): void => {
+					mountNodeChildren(scope, wrapper, props, h, p, b);
+				},
+			})(host, parent, before);
 		});
 	};
 }
