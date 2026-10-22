@@ -337,6 +337,7 @@ interface ClipMixer {
 
 const mixers: ClipMixer[] = [];
 
+// parked: a local closure before `const run` in Clip, as TS allows; ~/metascript/.inbox/compiler/2026-10-15-closure-in-own-initializer-refused-where-ts-defers-the-body.md shape (c)
 function touched(mixer: ClipMixer, run: ClipRun): void {
 	bump(mixer);
 	run.wake();
