@@ -232,6 +232,12 @@ and the invariants that outlived them were moved to the head of the test that pi
   "the rect follows the signal: 23" (`voidInput.test.ms` imeRect cell) and "after the ops only the pushed row's label
   is new: 0" (the 60-row ForList scroll cell). Not traced to Neon or Void yet.
 
+- **PARKED 2026-10-22 — the refresh lane's navigation.ms crashes msc on wt/rn-components.**
+  Not Neon's: under `-d:refresh` the checker overflows the stack in `findFirstGenericParam` once
+  `primitives.ms` props reach `ElementHandle` through `ref?: ElementRef` (9dc97e2a). `msc check` without
+  the pass is OK. Card `~/metascript/.inbox/compiler/2026-10-22-checker-recurses-forever-in-findfirstgenericparam-under-refresh.md`;
+  `tests/refresh/run.sh` stays red on this arc until it is fixed.
+
 - **PARKED 2026-10-15 — `tests/platform/ionAudio.test.ms` cannot resolve Ion's audio module on this machine.**
   Not Neon's: native `Cannot resolve module '../../../../ion/src/audio'`, because local Ion main `1b3d40c`
   lacks the audio API, which is on Ion origin `a853b2e`. Ion note
