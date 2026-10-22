@@ -17,12 +17,14 @@ a compiler card.
 one by ID (`REFERENCE RD-2`). IDs are permanent: a new entry takes the next free number of its
 section, an entry whose verdict changes keeps its ID, a removed entry leaves its number unused.
 
-**Entry fields.** Verdict · Solid / React / RN (file:line and symbol, at the commits above) · MS
+**Entry fields.** Verdict · Solid / React / RN / R3F (file:line and symbol, at the commits above) · MS
 (symbol and path) · Why · Don't (a wrong turn already taken) · Pin (tests that go red) · Checked
 (date; read or measured).
 
 **Verdicts.** `DIVERGE-INTENTIONAL`: Neon has its own mechanism or surface where Solid has one.
-`FOLLOWS-RN`: Solid's surface is replaced by React Native's.
+`FOLLOWS-RN`: Solid's surface is replaced by React Native's. `FOLLOWS-R3F`: inside a Void area, where Solid
+and React Native have no 3D surface, Neon takes React Three Fiber's (`~/projects/react-three-fiber`
+at `d604b18`); an entry there names it in an **R3F** field.
 
 | Section | IDs | Scope |
 |---|---|---|
@@ -211,3 +213,24 @@ section, an entry whose verdict changes keeps its ID, a removed entry leaves its
 - **Why:** C has no global `fetch` to swap. Solid's run already leaks a request after a non-fake `await` (the RFC's documented limit), and on C every adopted compute behaves like that case. What the page shows is the same on both backends; only the discarded request differs.
 - **Pin:** `tests/render/hydrateAsync.test.ms` (zero requests on JS, one discarded run on C)
 - **Checked:** 2026-10-16, measured on C and JS.
+
+### RD-9 · A 3D pointer event reaches the nearest hit, not every intersection
+
+- **Verdict:** FOLLOWS-RN
+- **R3F:** `intersect` lists every object the ray hits, nearest first, with each hit's handler-bearing ancestors as entries of their own (`packages/fiber/src/core/events.ts:205-277`), and `handleIntersects` calls the handler of every entry until `stopPropagation` (`:281-393`); `stopPropagation` also stops delivery to farther objects (`:355-375`). The docs state it: "The `intersections` array in the event includes all objects intersecting the ray, not just the nearest" (`docs/API/events.mdx:61-64`).
+- **RN:** one topmost target, found by walking children from the top of the z-order: Android `findTouchTargetView` (`packages/react-native/ReactAndroid/src/main/java/com/facebook/react/uimanager/TouchTargetHelper.kt:219`), iOS `hitTest:withEvent:` over `reverseObjectEnumerator` (`packages/react-native/React/Views/RCTView.m:200`). Babylon's `scene.pick` agrees: it keeps the closest hit (`~/projects/_babylon/Babylon.js` `449e8a7`, `packages/dev/core/src/Culling/ray.core.ts:851`).
+- **MS:** not built on main. The void-endgame arc's input lane routes a press to Void's `pickNearest` (`void/src/void3d/pick.ms`) and bubbles it through the hit's 3D ancestors; `stopPropagation` stops the bubbling.
+- **Why:** one target per press is what a View inside the same area already gets, so 2D and 3D handlers see one rule; what lies behind the nearest hit is occluded on screen, and an author who wants it asks Void for the ray's hits.
+- **Don't:** deliver to farther objects and expect `stopPropagation` to undo it, as R3F does; a handler behind the hit would then run before the nearer one can stop it.
+- **Pin:** none yet; the input lane's tests in `tests/platform/` pin it when it lands.
+- **Checked:** 2026-10-22, read; decided under the person's delegation for the void-endgame arc (decision D2).
+
+### RD-10 · `<Node id>` attaches a node it does not own
+
+- **Verdict:** FOLLOWS-R3F
+- **R3F:** `<primitive object>` places an existing object and never disposes it: "Primitives will not dispose of the object they carry on unmount" (`docs/API/objects.mdx:166`); `removeChild` skips dispose for `type === 'primitive'` (`packages/fiber/src/core/reconciler.tsx:347`, `:417`).
+- **MS:** not built on main. The void-endgame arc exports `<Node id>` beside `useScene3D()` and `useSceneNode()`: it attaches an existing `NodeId3D` under the current scene parent and detaches it on unmount, without `remove`.
+- **Why:** a node made outside Neon belongs to whoever made it; disposing it on unmount would free what the caller still holds. This is R3F's rule, not a departure from it; the entry exists because every other Scene3D component owns and removes its node (`src/components/scene3d.ms` `ownNode`).
+- **Don't:** expect an unmounted `<Node>` to free its node; the caller closes it.
+- **Pin:** none yet.
+- **Checked:** 2026-10-22, read; decided under the person's delegation for the void-endgame arc (decision D5).
