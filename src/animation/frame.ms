@@ -1,4 +1,6 @@
 import { flush } from "../core/runtime";
+import { RaiseError, createErrorRoute } from "../core/boundary";
+import { onCleanup } from "../core/cleanup";
 
 export interface FrameDriver {
 	now: () => number;
@@ -99,6 +101,65 @@ export function framePending(): boolean {
 		if (request.live) { return true; }
 	}
 	return false;
+}
+
+interface FrameUser {
+	callback: (dt: number, time: number) => void;
+	last: number;
+	stopped: boolean;
+	raise: RaiseError | null;
+}
+
+let frameUsers: FrameUser[] = [];
+let loopId: int32 = 0;
+
+function loopPending(): boolean {
+	for (const request of pending) {
+		if (request.id === loopId && request.live) { return true; }
+	}
+	return false;
+}
+
+function wakeLoop(): void {
+	for (const user of frameUsers) {
+		if (!user.stopped) {
+			if (!loopPending()) { loopId = requestFrame(runFrameUsers); }
+			return;
+		}
+	}
+	cancelFrame(loopId);
+}
+
+function runFrameUsers(time: number): void {
+	for (const user of frameUsers.slice(0)) {
+		if (user.stopped || frameUsers.indexOf(user) < 0) { continue; }
+		const dt = (time - user.last) / 1000;
+		user.last = time;
+		try {
+			user.callback(dt, time / 1000);
+		} catch (e) {
+			user.stopped = true;
+			(user.raise as RaiseError)(e);
+		}
+	}
+	wakeLoop();
+}
+
+export function useFrame(callback: (dt: number, time: number) => void): void {
+	const user: FrameUser = { callback, last: frameNow(), stopped: false, raise: null };
+	user.raise = createErrorRoute((): void => {
+		user.stopped = false;
+		user.last = frameNow();
+		wakeLoop();
+	});
+	if (user.raise === null) { throw new Error("useFrame: call it under an owner (a component or a root); the callback lives as long as that owner"); }
+	frameUsers.push(user);
+	onCleanup((): void => {
+		const i = frameUsers.indexOf(user);
+		if (i >= 0) { frameUsers.splice(i, 1); }
+		wakeLoop();
+	});
+	wakeLoop();
 }
 
 export class ManualFrames {
