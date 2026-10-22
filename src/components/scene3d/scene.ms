@@ -24,6 +24,7 @@ import { Scene3D as VoidScene3D, NodeId3D, NO_NODE_ID, closeScene, setAmbient, r
 import { resolve, writeCameraBlock } from "../../../../void/src/void3d/camera";
 import { Scene3DHandle, SceneState, LightShadow, SCENE_UNIFORM_CAPACITY, mountOwned, mountSceneChildren, viewCamera } from "./core";
 import { runBeforeRefresh } from "./core";
+import { useVoidClock } from "../../render/voidClock";
 
 export interface Scene3DProps {
 	ambient?: Accessor<Vec3> | null;
@@ -112,7 +113,11 @@ export function Scene3D(props: Scene3DProps): NeonNode {
 			let cameraBlock: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
 			let lightBlock: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
 			let prepared = false;
-			let lastFrame: float64 = -1.0;
+			let unspentSeconds: float64 = 0.0;
+			const wakeTime = useVoidClock(
+				(): boolean => !renderer.closed && renderer.core.readsTime,
+				(seconds: float64): void => { unspentSeconds += seconds; },
+			);
 			const layer: AreaLayer = {
 				anchor,
 				layout: (pixelWidth: int32, pixelHeight: int32): void => {},
@@ -132,17 +137,12 @@ export function Scene3D(props: Scene3DProps): NeonNode {
 					if (!view.ok) { throw new Error("Scene3D: the active camera does not resolve: " + view.error.toString()); }
 					view.value.writeCameraBlock(cameraBlock);
 					const buried = buryDoomed(context, contextGeneration());
-					const now = performance.now() as float64;
-					setElapsedTime(renderer.core, lastFrame < 0.0 ? 0.0 : (now - lastFrame) / 1000.0);
+					setElapsedTime(renderer.core, unspentSeconds);
+					unspentSeconds = 0.0;
 					const frame = prepareFrame(renderer, items, cameraBlock, lightBlock, pixelWidth, pixelHeight);
 					if (!frame.ok) { throw new Error("Scene3D: prepareFrame failed: " + frame.error.toString()); }
 					prepared = true;
-					if (renderer.core.readsTime) {
-						lastFrame = now;
-						invalidate();
-					} else {
-						lastFrame = -1.0;
-					}
+					wakeTime();
 				},
 				draw: (): void => {
 					if (!prepared) { return; }

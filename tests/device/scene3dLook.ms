@@ -5,6 +5,7 @@
 
 import { createSignal } from "../../src/core/signal";
 import { flush } from "../../src/core/runtime";
+import { useManualFrames } from "../../src/animation/frame";
 import { element } from "../../src/macros/ui/element";
 import { HostNode, MockNode, mockNode, mockHost, render, mockAreaHub } from "../../src/render/host";
 import { Void } from "../../src/components/primitives";
@@ -25,6 +26,7 @@ import { endPass, commit, liveImages, liveViews } from "../../../void/src/gpu/do
 @include("../../../void/src/sokol/bridge.h");
 extern function voidRun(w: int32, h: int32, init: () => void, frame: () => void): void;
 
+const clock = useManualFrames();
 let handle: Scene3DHandle = null as unknown as Scene3DHandle;
 let root: MockNode = mockNode("root");
 let cleanup: (() => void) | null = null;
@@ -104,6 +106,7 @@ function init(): void {
 }
 
 function frame(): void {
+	clock.advance(16.0);
 	const layers = mockAreaHub(root.children[0]).layers();
 	if (layers.length !== 1) { fail("one Scene3D layer"); return; }
 	layers[0].prepare(fbWidth(), fbHeight());
