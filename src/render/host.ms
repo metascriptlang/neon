@@ -11,7 +11,6 @@ import { flush } from "../core/runtime";
 import { beginClaim, endClaim } from "./claim";
 import { Dispose } from "../core/types";
 import { AreaHub, createAreaHub } from "./voidAreaHandle";
-import { DEFAULT_FONT } from "../../../void/src/void2d/font";
 
 export { Host, HostNode, NeonNode, VoidArea, TextMeasure } from "./hostTypes";
 export { bindText, writeAttr, bindAttr, bindStyleProp, applyStaticStyle, bindStyleAll, applyRef, setupRef, composeRefs } from "./bind";
@@ -247,8 +246,6 @@ export function mockHost(): Host {
 				setImeRect: (pixelX: int32, pixelY: int32, pixelW: int32, pixelH: int32): void => {
 					outer.attrs.push(attr("imeRect", pixelX.toString() + "," + pixelY.toString() + "," + pixelW.toString() + "," + pixelH.toString()));
 				},
-				font: DEFAULT_FONT,
-				family: null,
 			});
 			mockHubs.push({ outer, hub });
 			return {

@@ -769,7 +769,7 @@ export function Void(props: VoidProps): NeonNode {
 				value: accessor((): VoidSpace => VoidSpace.Area),
 				children: getVoidAreaContext().provider({ value: accessor((): VoidArea | null => a), children: kids as NeonNode }),
 			});
-			scoped(a.host, a.root, null);
+			a.hub.enter((): void => { scoped(a.host, a.root, null); });
 		}
 		if (userRef !== null) { applyRef(a.hub.handle, userRef as (handle: VoidAreaHandle) => void); }
 	};

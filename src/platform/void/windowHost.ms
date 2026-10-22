@@ -22,6 +22,8 @@ import { beginScreenPassWith, endPass, commit } from "../../../../void/src/gpu/d
 import { Color, rgba } from "../../../../void/src/void2d/types";
 import { VoidHost, VoidNode, createVoidHostWith, asFlexStyle, parseColor } from "./host";
 import { DevNode, setDevDriver } from "../../devtools/driver";
+import { accessor } from "../../core/signal";
+import { AreaFace, getAreaFaceContext } from "./areaScope";
 
 export interface WindowArea {
 	vh: VoidHost;
@@ -113,8 +115,13 @@ export function windowHost(w: AreaWindow): Host {
 			initialPixelHeight: w.pixelHeight(),
 			requestFrame: w.requestFrame,
 			setImeRect: w.setImeRect,
-			font: w.font,
-			family: w.family,
+			enter: (mount: () => void): void => {
+				const face: AreaFace = { font: w.font, family: w.family };
+				getAreaFaceContext().provider({
+					value: accessor((): AreaFace => face),
+					children: (host: Host, parent: HostNode, before: HostNode | null): void => { mount(); },
+				})(vh.host, vh.root, null);
+			},
 		});
 		const area: WindowArea = {
 			vh,

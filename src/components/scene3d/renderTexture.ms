@@ -1,5 +1,4 @@
 import { Accessor, accessor } from "../../core/signal";
-import { useContext } from "../../render/context";
 import { createRenderEffect } from "../../core/effect";
 import { Cleanup } from "../../core/types";
 import { onCleanup } from "../../core/cleanup";
@@ -19,6 +18,7 @@ import {
 	MaterialId, addTargetTexture, addMaterial, releaseMaterial, releaseTexture, reserveUniforms, writeUniforms, releaseUniforms,
 } from "../../../../void/src/void3d/draw";
 import { mountOwned, requireScene, onBeforeRefresh } from "./core";
+import { AreaTarget, getAreaTargetContext } from "../../platform/void/areaScope";
 
 export interface RenderTextureHandle {
 	texture: TextureId;
@@ -44,8 +44,6 @@ function premultipliedPass(): RenderState {
 export function RenderTexture(props: RenderTextureProps): NeonNode {
 	return (host: Host, parent: HostNode, before: HostNode | null): void => {
 		const scope = requireScene("RenderTexture");
-		const outer = useContext(getVoidAreaContext());
-		if (outer === null) { throw new Error("RenderTexture: the Void area did not provide its frame"); }
 		mountOwned((): void => {
 			const state = scope.state;
 			const context = state.handle.context;
@@ -90,13 +88,12 @@ export function RenderTexture(props: RenderTextureProps): NeonNode {
 				if (!released.ok) { throw new Error("RenderTexture: releaseMaterial failed: " + released.error.toString()); }
 			});
 			let dirty = true;
+			const into: AreaTarget = { target, drawers: [] };
 			const hub = createAreaHub({
 				initialPixelWidth: width,
 				initialPixelHeight: height,
 				requestFrame: (): void => { dirty = true; state.invalidate(); },
 				setImeRect: (pixelX: int32, pixelY: int32, pixelW: int32, pixelH: int32): void => {},
-				font: (outer as VoidArea).hub.font,
-				family: (outer as VoidArea).hub.family,
 			});
 			let blank: VoidScene2D | null = null;
 			onCleanup((): void => {
@@ -138,9 +135,9 @@ export function RenderTexture(props: RenderTextureProps): NeonNode {
 					empty.drawTarget(target);
 				} else {
 					const layer: AreaLayer = layers[0];
-					if (layer.drawTarget === null) { throw new Error("RenderTexture: only a Scene2D draws into a texture"); }
+					if (into.drawers.indexOf(layer) < 0) { throw new Error("RenderTexture: only a Scene2D draws into a texture"); }
 					hub.prepareLayers(layers, width, height);
-					(layer.drawTarget as (target: RenderTarget) => void)(target);
+					layer.draw();
 				}
 				dirty = false;
 			});
@@ -152,7 +149,10 @@ export function RenderTexture(props: RenderTextureProps): NeonNode {
 				const area: VoidArea = { host: host, root: parent, hub: hub, release: (): void => {} };
 				getVoidAreaContext().provider({
 					value: accessor(() => area),
-					children: getVoidScopeContext().provider({ value: accessor(() => VoidSpace.Area), children: children }),
+					children: getVoidScopeContext().provider({
+						value: accessor(() => VoidSpace.Area),
+						children: getAreaTargetContext().provider({ value: accessor((): AreaTarget | null => into), children: children }),
+					}),
 				})(host, parent, before);
 			}
 		});

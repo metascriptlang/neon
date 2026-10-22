@@ -117,8 +117,6 @@ test "a Scene2D in the window's Void draws its Label and Text in the window font
 			<View><Text>hud</Text></View>
 		</Scene2D></Void>
 	), windowHost(p.window), windowNode("window"));
-	const area = p.areas[0];
-	assert area.hub.font === p.window.font && area.hub.family === p.window.family, "the area carries the window font";
 	assert labels.length === 1 && labels[0].textStyle().font === p.window.font, "a Label without textStyle takes the window font";
 	let fonts: string[] = [];
 	for (const entry of labelTexts) {

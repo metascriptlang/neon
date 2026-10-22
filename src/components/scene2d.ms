@@ -13,6 +13,7 @@ import { LONG_PRESS_DELAY_MS, pointerCancel, pressEvents } from "./pressability"
 import { Host, HostNode, NeonNode, VoidArea } from "../render/hostTypes";
 import { place } from "../render/reconcile";
 import { createVoidHostWith, VoidHost, VoidNode, freeVoidLayoutTree } from "../platform/void/host";
+import { AreaTarget, getAreaFaceContext, getAreaTargetContext } from "../platform/void/areaScope";
 import { IconId } from "../../../void/src/void2d/icon";
 import {
 	Scene2D as VoidScene2D,
@@ -59,7 +60,6 @@ import {
 } from "../../../void/src/void2d/node";
 import { create, close, setScaleMode, tick, prepare, drawScreen, add } from "../../../void/src/void2d/scene";
 import { drawTarget } from "../../../void/src/void2d/scene";
-import { RenderTarget } from "../../../void/src/gpu/target";
 import {
 	Color, Camera, Tile, Filter, ScaleMode, Bounds2D, rgba,
 } from "../../../void/src/void2d/types";
@@ -408,7 +408,9 @@ export function Scene2D(props: Scene2DProps): NeonNode {
 			const anchor = layerAnchor(opened as VoidArea, host, parent, before);
 			const area = (opened as VoidArea).hub;
 			const scene = VoidScene2D.create(rgba(0.0, 0.0, 0.0, 0.0));
-			const vh = createVoidHostWith(scene, area.font, area.family, true);
+			const face = useContext(getAreaFaceContext());
+			const into = useContext(getAreaTargetContext());
+			const vh = createVoidHostWith(scene, face.font, face.family, true);
 			const invalidate = (): void => { area.handle.requestFrame(); };
 			vh.onDirty(invalidate);
 			let backdrop: SceneBackdrop | null = null;
@@ -445,8 +447,14 @@ export function Scene2D(props: Scene2DProps): NeonNode {
 				draw: (): void => {
 					if (scene.closed || !prepared) { return; }
 					prepared = false;
-					if (backdropPrepared && backdrop !== null) { backdrop.scene.drawScreen(); }
-					scene.drawScreen();
+					if (into === null) {
+						if (backdropPrepared && backdrop !== null) { backdrop.scene.drawScreen(); }
+						scene.drawScreen();
+					} else {
+						const target = (into as AreaTarget).target;
+						if (backdropPrepared && backdrop !== null) { backdrop.scene.drawTarget(target); }
+						scene.drawTarget(target);
+					}
 				},
 				hit: (x: float32, y: float32, kind: AreaPointerKind, e: NeonEvent): boolean => {
 					if (scene.closed) { return false; }
@@ -461,16 +469,15 @@ export function Scene2D(props: Scene2DProps): NeonNode {
 						},
 					};
 				},
-				drawTarget: (target: RenderTarget): void => {
-					if (scene.closed || !prepared) { return; }
-					prepared = false;
-					if (backdropPrepared && backdrop !== null) { backdrop.scene.drawTarget(target); }
-					scene.drawTarget(target);
-				},
 			};
 			const unregister = area.addLayer(layer);
+			if (into !== null) { (into as AreaTarget).drawers.push(layer); }
 			onCleanup((): void => {
 				unregister();
+				if (into !== null) {
+					const drawers = (into as AreaTarget).drawers;
+					drawers.splice(drawers.indexOf(layer), 1);
+				}
 				if (backdrop !== null) { backdrop.scene.close(); }
 				invalidate();
 				const root = vh.root as VoidNode;
@@ -532,7 +539,7 @@ export function Scene2D(props: Scene2DProps): NeonNode {
 				getVoidScopeContext().provider({
 					value: accessor(() => VoidSpace.Scene2D),
 					children: sceneScope.provider({
-						value: accessor((): SceneState => ({ host: vh, clock, font: area.font })), children: children,
+						value: accessor((): SceneState => ({ host: vh, clock, font: face.font })), children: children,
 					}),
 				})(vh.host, vh.root, null);
 			}

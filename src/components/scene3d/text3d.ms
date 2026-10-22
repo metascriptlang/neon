@@ -2,9 +2,9 @@ import { Accessor, untrack } from "../../core/signal";
 import { createRenderEffect } from "../../core/effect";
 import { Cleanup } from "../../core/types";
 import { onCleanup } from "../../core/cleanup";
-import { Host, HostNode, NeonNode, VoidArea } from "../../render/hostTypes";
+import { Host, HostNode, NeonNode } from "../../render/hostTypes";
 import { useContext } from "../../render/context";
-import { getVoidAreaContext } from "../../render/voidScope";
+import { getAreaFaceContext } from "../../platform/void/areaScope";
 import { FontId } from "../../../../void/src/void2d/font";
 import { Mat4, vec3, determinant3x3 } from "../../../../void/src/math/math3d";
 import { Color, rgba } from "../../../../void/src/void2d/types";
@@ -82,9 +82,7 @@ export function Text3D(props: Text3DProps): NeonNode {
 		if ((props.outlineWidth === null) !== (props.outlineColor === null)) {
 			throw new Error("Text3D: provide outlineWidth and outlineColor together");
 		}
-		const area = useContext(getVoidAreaContext());
-		if (area === null) { throw new Error("Text3D: the Void area did not provide its frame"); }
-		const font = (area as VoidArea).hub.font;
+		const font = useContext(getAreaFaceContext()).font;
 		mountOwned((): void => {
 			const state = scope.state;
 			const scene = state.handle.scene;
