@@ -259,7 +259,7 @@ Copy resolving `sharedAction`, keyboard dismiss, AppState `inactive>background>a
 Home and through `Linking.openSettings`). The Android build and install of the demo succeeded on
 the Seeker; the device lane `tests/android/apis.py` is pending because the phone stayed locked.
 Not verified: vibration on any device (the simulator has none), a screen reader, `tel:` on a
-real phone (the simulator cannot open it), url events (P7).
+real phone (the simulator cannot open it), url events on iOS (P7; Android passes on the emulator lane of 2026-10-22).
 
 Bundle 3 components, 2026-10-07 night (`wt/rn-ui-comps`, msc `0d83c4867`): `Modal` (over Solid's
 `Portal`), `SafeAreaView`, `KeyboardAvoidingView`, `StatusBar`, `ImageBackground`,
@@ -328,12 +328,13 @@ and a merged JSON item survive terminate and relaunch, NetInfo reads wifi/connec
 location alert is answered and `getCurrentPosition` reads the simulated 10.7769,106.7009, a watch
 reports fixes, the notification alert is answered, a 2 s notification reaches the received listener
 and the handler, and a banner tapped from the home screen reaches the response listener. Android:
-the demo's APK builds (`tests/android/devicemodules.sh --build-only`); the lane
-`tests/android/devicemodules.py` is written but not run (the Seeker is locked). Provisional choices
-are rows D1–D8 of `WORKAROUND.md`. Not verified: any module on an Android device or emulator,
+`tests/android/devicemodules.sh` passes on a Pixel 9 Pro emulator, Android 16 (2026-10-22,
+`wt/android-new-intent`): storage survives a relaunch, a watch reports fixes, a notification
+launch is `getLastNotificationResponseAsync()`, a tap while the app is alive reaches the response
+listener in the same process, and a url intent reaches `Linking`'s listener. Provisional choices
+are rows D1–D8 of `WORKAROUND.md`. Not verified: any module on a physical Android device,
 haptics felt (the simulator has none), battery on a device, a network change event on a device,
-camera and microphone requests (only their refusal path is tested), notification taps while an
-Android app is alive (needs Ion's `onNewIntent`, P7).
+camera and microphone requests (only their refusal path is tested).
 
 Prove each workflow through its real consumer on the declared targets. A public symbol,
 mock pass or separate-module test artifact is not proof of the normal packaged app.
