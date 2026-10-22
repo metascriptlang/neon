@@ -1,4 +1,5 @@
 import { createSignal } from "../../src/core/signal";
+import { flush } from "../../src/core/runtime";
 import { element } from "../../src/macros/ui/element";
 import { HostNode, mockNode, mockHost, render } from "../../src/render/host";
 import { Void } from "../../src/components/primitives";
@@ -91,6 +92,7 @@ function frame(): void {
 		setX(80.0); setPan(4.0); setRadius(3.0); setText("Neon"); setSize(18.0);
 		setClipWidth(128.0); setScrollX(24.0);
 	}
+	flush();
 	if (nodes.length !== 1 || nodes[0].local().x !== (frames < 5 ? 20.0 : 80.0)) {
 		fail("consumer lost its reactive Rect"); return;
 	}
