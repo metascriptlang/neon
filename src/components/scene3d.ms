@@ -19,3 +19,4 @@ export { Particles, ParticleVisualSettings } from "./scene3d/particles";
 export { Text3D } from "./scene3d/text3d";
 export { RenderTexture, RenderTextureHandle } from "./scene3d/renderTexture";
 export { useFrame } from "../animation/frame";
+export { Pointer3DEvent, PointerProps } from "./scene3d/pointer";

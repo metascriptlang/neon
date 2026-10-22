@@ -10,9 +10,10 @@ import { Material, Phase, ShadowCasting, withShadows } from "../../../../void/sr
 import { Program, MATERIAL_UNIFORM_SLOT, MATERIAL_UNIFORM_LENGTH } from "../../../../void/src/void3d/gpu3d";
 import { RenderState } from "../../../../void/src/gpu/state";
 import { NodeId3D, addMeshNode, setMeshOf, setMaterialOf, remove } from "../../../../void/src/void3d/scene";
+import { PointerProps, bindPointer } from "./pointer";
 import { NodeProps, SceneState, SharedGeometry, mountOwned, requireScene, localOf, bindNode, mountNodeChildren, defaultMaterialOf } from "./core";
 
-export interface MeshProps extends NodeProps {
+export interface MeshProps extends PointerProps {
 	geometry?: Accessor<MeshData> | null;
 	mesh?: Accessor<MeshId> | null;
 	material?: Accessor<MaterialId> | null;
@@ -195,6 +196,7 @@ export function Mesh(props: MeshProps): NeonNode {
 				);
 			}
 			bindNode(scope.state, mounted, props, local);
+			bindPointer(scope.state, mounted, props);
 			mountNodeChildren(scope, mounted, props, host, parent, before);
 		});
 	};

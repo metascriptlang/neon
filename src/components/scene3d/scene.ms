@@ -25,6 +25,8 @@ import { resolve, writeCameraBlock } from "../../../../void/src/void3d/camera";
 import { Scene3DHandle, SceneState, LightShadow, SCENE_UNIFORM_CAPACITY, mountOwned, mountSceneChildren, viewCamera } from "./core";
 import { runBeforeRefresh } from "./core";
 import { useVoidClock } from "../../render/voidClock";
+import { NeonEvent } from "../../render/event";
+import { createPointer3D, providePointer } from "./pointer";
 
 export interface Scene3DProps {
 	ambient?: Accessor<Vec3> | null;
@@ -34,6 +36,7 @@ export interface Scene3DProps {
 	bloom?: Accessor<BloomSettings | null> | null;
 	toneMapping?: Accessor<ToneMode> | null;
 	exposure?: Accessor<float32> | null;
+	onPressMissed?: ((e: NeonEvent) => void) | null;
 	ref?: ((handle: Scene3DHandle) => void) | null;
 	children?: NeonNode | null;
 }
@@ -118,6 +121,7 @@ export function Scene3D(props: Scene3DProps): NeonNode {
 				(): boolean => !renderer.closed && renderer.core.readsTime,
 				(seconds: float64): void => { unspentSeconds += seconds; },
 			);
+			const pointer = createPointer3D(state, area.handle, props.onPressMissed);
 			const layer: AreaLayer = {
 				anchor,
 				layout: (pixelWidth: int32, pixelHeight: int32): void => {},
@@ -149,6 +153,7 @@ export function Scene3D(props: Scene3DProps): NeonNode {
 					prepared = false;
 					drawOverScreen(renderer);
 				},
+				hit: pointer.hit,
 			};
 			const unregister = area.addLayer(layer);
 			onCleanup((): void => {
@@ -243,7 +248,7 @@ export function Scene3D(props: Scene3DProps): NeonNode {
 			if (props.ref !== null) { (props.ref as (value: Scene3DHandle) => void)(handle); }
 			state.invalidate();
 			const children = props.children;
-			if (children !== null) { mountSceneChildren(state, children); }
+			if (children !== null) { mountSceneChildren(state, providePointer(pointer, children)); }
 		});
 	};
 }

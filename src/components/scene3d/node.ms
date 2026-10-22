@@ -6,9 +6,10 @@ import { Host, HostNode, NeonNode } from "../../render/hostTypes";
 import {
 	Scene3D as VoidScene3D, NodeId3D, Transform3D, NO_NODE_3D, addGroup, attach, insertBefore, setVisible,
 } from "../../../../void/src/void3d/scene";
-import { NodeProps, SceneState, SceneNode3D, mountOwned, requireScene, bindNode, placeNodeChildren, freeChildren } from "./core";
+import { PointerProps, bindPointer } from "./pointer";
+import { SceneState, SceneNode3D, mountOwned, requireScene, bindNode, placeNodeChildren, freeChildren } from "./core";
 
-export interface NodeElementProps extends NodeProps {
+export interface NodeElementProps extends PointerProps {
 	id: Accessor<NodeId3D>;
 }
 
@@ -80,6 +81,7 @@ export function Node(props: NodeElementProps): NeonNode {
 				},
 			);
 			bindNode(state, node, props, scene.nodes[node.index].local);
+			bindPointer(state, node, props);
 			placeNodeChildren(scope, wrapper, props, host, parent, before);
 		});
 	};
