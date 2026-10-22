@@ -3,8 +3,8 @@ import { Accessor } from "../../core/signal";
 import { flush } from "../../core/runtime";
 import { TextSpan, TextMeasure } from "../../render/hostTypes";
 import { spanParagraph, spanText } from "../../render/spanHost";
-import { NeonEvent, neonEvent, eventType } from "../../render/event";
-import { AreaKeyMod, LayerAnchor, setEventMods } from "../../render/voidAreaHandle";
+import { NeonEvent, neonEvent } from "../../render/event";
+import { AreaKeyMod, AreaLayer, AreaPointerKind, LayerAnchor, setEventMods } from "../../render/voidAreaHandle";
 import {
 	Scene2D, NodeRef, DrawKind, group, label, mask, addChild, addChildAt, getChildIndex, dispose, kind,
 	setPosition, setSize, setX, setZIndex, setAlpha, setColor, setBackground, clearBackground,
@@ -112,10 +112,12 @@ export interface VoidHost {
 	root: HostNode;
 	scene: Scene2D;
 	clickAt: (x: float32, y: float32) => void;
-	pointerDown: (x: float32, y: float32, button: int32, mods?: number) => void;
-	pointerMove: (x: float32, y: float32, button: int32, pressed: boolean, mods?: number) => void;
-	pointerUp: (x: float32, y: float32, button: int32, mods?: number) => void;
-	wheel: (x: float32, y: float32, dx: float32, dy: float32, deltaMode: number, mods?: number) => void;
+	pointerDown: (x: float32, y: float32, button: int32, mods?: number) => boolean;
+	pointerMove: (x: float32, y: float32, button: int32, pressed: boolean, mods?: number) => boolean;
+	pointerUp: (x: float32, y: float32, button: int32, mods?: number) => boolean;
+	wheel: (x: float32, y: float32, dx: float32, dy: float32, deltaMode: number, mods?: number) => boolean;
+	pointerLeave: () => void;
+	setLayers: (paintOrder: () => AreaLayer[]) => void;
 	textInput: (text: string) => void;
 	keyDown: (e: NeonEvent) => void;
 	keyUp: (e: NeonEvent) => void;
@@ -277,6 +279,12 @@ const FOCUS_HANDLERS = [
 	"onKeyDown", "onKeyUp", "onFocus", "onBlur", "onTextInput", "onPreedit",
 	"onPointerDown", "onPointerMove", "onPointerUp", "onWheel",
 ];
+const PRESS_HANDLERS = [
+	"onPress", "onPointerDown", "onPointerMove", "onPointerUp", "onPointerEnter", "onPointerLeave", "onPointerCancel",
+	"onTouchStart", "onTouchMove", "onTouchEnd", "onTouchCancel",
+];
+const HOVER_HANDLERS = ["onPointerMove", "onPointerEnter", "onPointerLeave"];
+const WHEEL_HANDLERS = ["onWheel"];
 const CARET_WIDTH: float32 = 1.0;
 const WHITE: Color = rgba(1.0, 1.0, 1.0, 1.0);
 const CLEAR: Color = rgba(0.0, 0.0, 0.0, 0.0);
@@ -621,6 +629,7 @@ export function createVoidHostWith(
 
 	const fireAlong = (path: VoidNode[], name: string, e: NeonEvent): void => {
 		for (const n of path) {
+			if (e.propagationStopped) { return; }
 			if (!n.disposed) { fire(n, name, e); }
 		}
 	};
@@ -1151,32 +1160,6 @@ export function createVoidHostWith(
 		return null;
 	};
 
-	const clickAt = (x: float32, y: float32): void => {
-		const target = deepestAt(root, x, y, focusable);
-		focus(target);
-		const under = deepestAt(root, x, y, null);
-		let spanText: VoidNode | null = null;
-		if (under !== null) {
-			const span = spanAt(under as VoidNode, x, y);
-			if (span !== null && span.onPress !== null) {
-				spanText = under;
-				const ev = neonEvent("press");
-				ev.x = x;
-				ev.y = y;
-				(span.onPress as (e: NeonEvent) => void)(ev);
-			}
-		}
-		for (const e of events.slice(0)) {
-			if (e.name !== "onPress" || e.node.disposed || !attached(e.node) || e.node === spanText) { continue; }
-			if (contains(e.node, x, y)) {
-				const ev = neonEvent(eventType(e.name));
-				ev.x = x;
-				ev.y = y;
-				e.handler(ev);
-			}
-		}
-	};
-
 	const anyHandler = (name: string): boolean => {
 		for (const entry of events) {
 			if (entry.name === name && !entry.node.disposed && attached(entry.node)) { return true; }
@@ -1186,6 +1169,15 @@ export function createVoidHostWith(
 
 	let captured: VoidNode | null = null;
 	let capturedButton: int32 = 0;
+	let capturedLayer: AreaLayer | null = null;
+	let hoverLayer: AreaLayer | null = null;
+	let layerOrder: (() => AreaLayer[]) | null = null;
+	let hovered: VoidNode[] = [];
+	let touching = false;
+	let pressNode: VoidNode | null = null;
+	let pressSpan: TextSpan | null = null;
+	let lastX: float32 = 0.0;
+	let lastY: float32 = 0.0;
 
 	// From onPointerDown until that button's release, the pressed node keeps the pointer, as RN's touch target does.
 	const pointerTarget = (x: float32, y: float32): VoidNode | null => {
@@ -1203,6 +1195,8 @@ export function createVoidHostWith(
 	};
 
 	const pointerEvent = (type: string, x: float32, y: float32, button: int32, pressed: boolean, mods?: number): NeonEvent => {
+		lastX = x;
+		lastY = y;
 		const ev = neonEvent(type);
 		ev.timeStamp = performance.now();
 		ev.x = x;
@@ -1213,31 +1207,223 @@ export function createVoidHostWith(
 		return ev;
 	};
 
-	const pointerDown = (x: float32, y: float32, button: int32, mods?: number): void => {
+	// pressSwallowed (responder.ms) matches a press to its touch by the touchend's timeStamp.
+	const touchEvent = (type: string, from: NeonEvent): NeonEvent => {
+		const ev = pointerEvent(type, from.x as float32, from.y as float32, from.button as int32, from.pressed, from.mods);
+		ev.timeStamp = from.timeStamp;
+		return ev;
+	};
+
+	// Ion numbers the left button 1; 0 is a pointer with no button, a touch.
+	const primary = (button: int32): boolean => button === 0 || button === 1;
+
+	const handles = (n: VoidNode | null, names: string[]): boolean => {
+		for (const at of pathFrom(n)) {
+			for (const name of names) {
+				if (hasHandler(at, name)) { return true; }
+			}
+		}
+		return false;
+	};
+
+	const pressableOn = (n: VoidNode | null): VoidNode | null => {
+		for (const at of pathFrom(n)) {
+			if (hasHandler(at, "onPress")) { return at; }
+		}
+		return null;
+	};
+
+	const topLayerTaking = (x: float32, y: float32, kind: AreaPointerKind, ev: NeonEvent): AreaLayer | null => {
+		if (layerOrder === null) { return null; }
+		const order = (layerOrder as () => AreaLayer[])();
+		for (let i = order.length - 1; i >= 0; i -= 1) {
+			const hit = order[i].hit;
+			if (hit !== null && (hit as (x: float32, y: float32, kind: AreaPointerKind, e: NeonEvent) => boolean)(x, y, kind, ev)) {
+				return order[i];
+			}
+		}
+		return null;
+	};
+
+	const tellLayer = (layer: AreaLayer, x: float32, y: float32, kind: AreaPointerKind, ev: NeonEvent): void => {
+		const hit = layer.hit;
+		if (hit !== null) { (hit as (x: float32, y: float32, kind: AreaPointerKind, e: NeonEvent) => boolean)(x, y, kind, ev); }
+	};
+
+	const leaveLayer = (x: float32, y: float32): void => {
+		const was = hoverLayer;
+		hoverLayer = null;
+		if (was !== null) { tellLayer(was as AreaLayer, x, y, AreaPointerKind.Leave, pointerEvent("pointerleave", x, y, 0 as int32, false)); }
+	};
+
+	const fireAt = (n: VoidNode, name: string, x: float32, y: float32): void => {
+		if (n.disposed || !attached(n) || !hasHandler(n, name)) { return; }
+		const ev = pointerEvent(name === "onPointerEnter" ? "pointerenter" : "pointerleave", x, y, 0 as int32, false);
+		const at = n.ref.globalToLocal(vec2(x, y));
+		ev.locationX = at.x;
+		ev.locationY = at.y;
+		fire(n, name, ev);
+	};
+
+	// W3C pointerleave/pointerenter do not bubble: left nodes hear it deepest first, then entered nodes outermost first.
+	const hoverTo = (under: VoidNode | null, x: float32, y: float32): void => {
+		const next = pathFrom(under);
+		const left: VoidNode[] = [];
+		for (const n of hovered) {
+			if (next.indexOf(n) < 0) { left.push(n); }
+		}
+		const was = hovered;
+		hovered = next;
+		for (const n of left) { fireAt(n, "onPointerLeave", x, y); }
+		for (let i = next.length - 1; i >= 0; i -= 1) {
+			if (was.indexOf(next[i]) < 0) { fireAt(next[i], "onPointerEnter", x, y); }
+		}
+	};
+
+	// RN Pressable and R3F initialHits: a press fires when the release lands on the node it began on, or inside it.
+	const pressAt = (under: VoidNode | null, x: float32, y: float32, timeStamp: number): void => {
+		const node = pressNode;
+		const span = pressSpan;
+		pressNode = null;
+		pressSpan = null;
+		if (node === null || under === null) { return; }
+		const n = node as VoidNode;
+		if (n.disposed || !attached(n) || !within(under as VoidNode, n)) { return; }
+		const ev = neonEvent("press");
+		ev.x = x;
+		ev.y = y;
+		ev.timeStamp = timeStamp;
+		if (span === null) {
+			fire(n, "onPress", ev);
+			return;
+		}
+		const press = (span as TextSpan).onPress;
+		if (press !== null && spanAt(under as VoidNode, x, y) === span) { (press as (e: NeonEvent) => void)(ev); }
+	};
+
+	const pointerDown = (x: float32, y: float32, button: int32, mods?: number): boolean => {
+		const ev = pointerEvent("pointerdown", x, y, button, true, mods);
+		if (capturedLayer !== null) {
+			tellLayer(capturedLayer as AreaLayer, x, y, AreaPointerKind.Button, ev);
+			return true;
+		}
+		const under = deepestAt(root, x, y, null);
+		const focusTarget = deepestAt(root, x, y, focusable);
+		const span = under === null ? null : spanAt(under as VoidNode, x, y);
+		const spanPress = span !== null && (span as TextSpan).onPress !== null;
+		const takes = captured !== null || focusTarget !== null || spanPress || handles(under, PRESS_HANDLERS);
+		hoverTo(under, x, y);
+		if (!takes) {
+			const layer = topLayerTaking(x, y, AreaPointerKind.Button, ev);
+			if (layer !== null) {
+				focus(null);
+				capturedLayer = layer;
+				capturedButton = button;
+				return true;
+			}
+		}
 		const target = pointerTarget(x, y);
-		if (captured === null && target !== null) {
+		const begins = captured === null && target !== null;
+		if (begins) {
 			captured = target;
 			capturedButton = button;
 		}
-		pointerAt("onPointerDown", target, x, y, pointerEvent("pointerdown", x, y, button, true, mods));
+		pointerAt("onPointerDown", target, x, y, ev);
+		focus(focusTarget !== null && (focusTarget as VoidNode).disposed ? null : focusTarget);
+		if (begins && primary(button)) {
+			touching = true;
+			pressNode = spanPress ? under : pressableOn(under);
+			pressSpan = spanPress ? span : null;
+			pointerAt("onTouchStart", target, x, y, touchEvent("touchstart", ev));
+		}
+		return takes;
 	};
 
-	const pointerMove = (x: float32, y: float32, button: int32, pressed: boolean, mods?: number): void => {
-		pointerAt("onPointerMove", pointerTarget(x, y), x, y, pointerEvent("pointermove", x, y, button, pressed, mods));
+	const pointerMove = (x: float32, y: float32, button: int32, pressed: boolean, mods?: number): boolean => {
+		const ev = pointerEvent("pointermove", x, y, button, pressed, mods);
+		if (capturedLayer !== null) {
+			tellLayer(capturedLayer as AreaLayer, x, y, AreaPointerKind.Motion, ev);
+			return true;
+		}
+		const under = deepestAt(root, x, y, null);
+		const takes = captured !== null || handles(under, HOVER_HANDLERS);
+		if (takes) { leaveLayer(x, y); }
+		else {
+			const over = topLayerTaking(x, y, AreaPointerKind.Motion, ev);
+			if (over !== hoverLayer) {
+				leaveLayer(x, y);
+				hoverLayer = over;
+			}
+		}
+		hoverTo(under, x, y);
+		pointerAt("onPointerMove", pointerTarget(x, y), x, y, ev);
+		const held = pointerTarget(x, y);
+		if (touching && held !== null && held === captured) { pointerAt("onTouchMove", held, x, y, touchEvent("touchmove", ev)); }
+		return takes;
 	};
 
-	const pointerUp = (x: float32, y: float32, button: int32, mods?: number): void => {
+	const pointerUp = (x: float32, y: float32, button: int32, mods?: number): boolean => {
+		const ev = pointerEvent("pointerup", x, y, button, false, mods);
+		const layer = capturedLayer;
+		if (layer !== null) {
+			if (button === capturedButton) { capturedLayer = null; }
+			tellLayer(layer as AreaLayer, x, y, AreaPointerKind.Button, ev);
+			return true;
+		}
+		const under = deepestAt(root, x, y, null);
+		hoverTo(under, x, y);
 		const target = pointerTarget(x, y);
-		if (captured !== null && button === capturedButton) { captured = null; }
-		pointerAt("onPointerUp", target, x, y, pointerEvent("pointerup", x, y, button, false, mods));
+		const holder = captured;
+		const ends = holder !== null && button === capturedButton;
+		if (ends) { captured = null; }
+		pointerAt("onPointerUp", target, x, y, ev);
+		if (ends && touching) {
+			touching = false;
+			const h = holder as VoidNode;
+			if (!h.disposed && attached(h)) { pointerAt("onTouchEnd", h, x, y, touchEvent("touchend", ev)); }
+			pressAt(under, x, y, ev.timeStamp);
+		}
+		return holder !== null || handles(under, PRESS_HANDLERS);
 	};
 
-	const wheel = (x: float32, y: float32, dx: float32, dy: float32, deltaMode: number, mods?: number): void => {
+	const pointerLeave = (): void => {
+		const x = lastX;
+		const y = lastY;
+		const layer = capturedLayer;
+		capturedLayer = null;
+		if (layer !== null) { tellLayer(layer as AreaLayer, x, y, AreaPointerKind.Leave, pointerEvent("pointercancel", x, y, 0 as int32, false)); }
+		leaveLayer(x, y);
+		const holder = captured;
+		captured = null;
+		pressNode = null;
+		pressSpan = null;
+		if (holder !== null && !(holder as VoidNode).disposed && attached(holder as VoidNode)) {
+			const ev = pointerEvent("pointercancel", x, y, capturedButton, false);
+			pointerAt("onPointerCancel", holder, x, y, ev);
+			if (touching) { pointerAt("onTouchCancel", holder, x, y, touchEvent("touchcancel", ev)); }
+		}
+		touching = false;
+		hoverTo(null, x, y);
+	};
+
+	const clickAt = (x: float32, y: float32): void => {
+		pointerDown(x, y, 1 as int32);
+		pointerUp(x, y, 1 as int32);
+	};
+
+	const wheel = (x: float32, y: float32, dx: float32, dy: float32, deltaMode: number, mods?: number): boolean => {
 		const ev = pointerEvent("wheel", x, y, 0 as int32, false, mods);
 		ev.deltaX = dx;
 		ev.deltaY = dy;
 		ev.deltaMode = deltaMode;
-		pointerAt("onWheel", deepestAt(root, x, y, null), x, y, ev);
+		if (capturedLayer !== null) {
+			tellLayer(capturedLayer as AreaLayer, x, y, AreaPointerKind.Wheel, ev);
+			return true;
+		}
+		const under = deepestAt(root, x, y, null);
+		if (!handles(under, WHEEL_HANDLERS) && topLayerTaking(x, y, AreaPointerKind.Wheel, ev) !== null) { return true; }
+		pointerAt("onWheel", under, x, y, ev);
+		return handles(under, WHEEL_HANDLERS);
 	};
 
 	const keyDown = (e: NeonEvent): void => {
@@ -1290,6 +1476,7 @@ export function createVoidHostWith(
 
 	const setWindowFocus = (focused: boolean): void => {
 		if (focused === windowFocused) { return; }
+		if (!focused) { pointerLeave(); }
 		const was = wasDirty();
 		windowFocused = focused;
 		if (focusedNode === null) { return; }
@@ -1466,7 +1653,8 @@ export function createVoidHostWith(
 	};
 
 	return {
-		host, root, scene, clickAt, pointerDown, pointerMove, pointerUp, wheel, textInput, keyDown, keyUp,
+		host, root, scene, clickAt, pointerDown, pointerMove, pointerUp, wheel, pointerLeave, textInput, keyDown, keyUp,
+		setLayers: (paintOrder: () => AreaLayer[]): void => { layerOrder = paintOrder; },
 		commitText: commit, composeText: compose, setWindowFocus, layout,
 		focus: (n: VoidNode | null): void => { focus(n); },
 		focused: (): VoidNode | null => focusedNode,

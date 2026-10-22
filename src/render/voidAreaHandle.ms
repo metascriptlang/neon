@@ -125,6 +125,7 @@ export interface AreaLayer {
 	layout: (pixelWidth: int32, pixelHeight: int32) => void;
 	prepare: (pixelWidth: int32, pixelHeight: int32) => void;
 	draw: () => void;
+	hit?: ((x: float32, y: float32, kind: AreaPointerKind, e: NeonEvent) => boolean) | null;
 }
 
 export interface AreaHub {

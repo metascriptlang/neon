@@ -145,6 +145,11 @@ export function windowHost(w: AreaWindow): Host {
 			w.requestFrame();
 		}
 		vh.onDirty(w.dirty);
+		vh.setLayers((): AreaLayer[] => {
+			const order: AreaLayer[] = [];
+			for (const d of layersInPaintOrder(vh, hub.layers(), vh.scene.paintedSlots())) { order.push(d.layer); }
+			return order;
+		});
 		return {
 			host: vh.host,
 			root: vh.root as unknown as HostNode,
@@ -258,10 +263,11 @@ export function deliverPointer(a: WindowArea, e: AreaPointerEvent): void {
 	} else if (e.kind === AreaPointerKind.Button && e.pressed) {
 		a.held = e.button;
 		a.vh.pointerDown(x, y, e.button, mods);
-		a.vh.clickAt(x, y);
 	} else if (e.kind === AreaPointerKind.Button) {
 		if (a.held === e.button) { a.held = 0 as int32; }
 		a.vh.pointerUp(x, y, e.button, mods);
+	} else if (e.kind === AreaPointerKind.Leave) {
+		a.vh.pointerLeave();
 	}
 }
 
