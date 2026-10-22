@@ -5,12 +5,12 @@ import { create } from "../../../void/src/void2d/scene";
 import { rgba, vec2 } from "../../../void/src/void2d/types";
 import { DEFAULT_FONT, addFont } from "../../../void/src/void2d/font";
 import { createRoot } from "../../src/core/owner";
-import { accessor, createSignal } from "../../src/core/signal";
+import { Accessor, accessor, createSignal } from "../../src/core/signal";
 import { element } from "../../src/macros/ui/element";
 import { HostNode, render } from "../../src/render/host";
-import { TextSpan } from "../../src/render/hostTypes";
-import { getOwner } from "../../src/core/runtime";
-import { Computation } from "../../src/core/types";
+import { Host, NeonNode, TextSpan } from "../../src/render/hostTypes";
+import { getOwner, flush } from "../../src/core/runtime";
+import { Cleanup, Computation } from "../../src/core/types";
 import { Pressable, Text, View } from "../../src/components/primitives";
 import { NeonEvent, neonEvent } from "../../src/render/event";
 import { sleepAsync } from "std/core/promise";
@@ -176,7 +176,8 @@ test "Void Text interaction follows creation owner across updates without mutati
 	const press = (e: NeonEvent): void => { assert e.pointerOrigin; hits += 1; };
 	const shared: TextSpan[] = [{ text: "link", onPress: press }];
 	const next: TextSpan[] = [{ text: "next", onPress: press }];
-	const set = vh.host.setSpans as (node: HostNode, spans: TextSpan[]) => void;
+	const mountSpans = vh.host.paragraph as (host: Host, node: HostNode, before: HostNode | null, kids: NeonNode | null, spans: Accessor<TextSpan[]> | null) => void;
+	const [firstSpans, setFirstSpans] = createSignal<TextSpan[]>(shared, { equals: false });
 	let firstNode: HostNode | null = null;
 	let secondNode: HostNode | null = null;
 	let firstOwner: Computation | null = null;
@@ -186,30 +187,26 @@ test "Void Text interaction follows creation owner across updates without mutati
 		firstNode = node;
 		vh.host.setStyle(node, { width: 100, height: 30 });
 		vh.host.append(vh.root, node);
-		set(node, shared);
+		mountSpans(vh.host, node, null, null, firstSpans);
 		return end;
 	});
+	const mountCleanups = ((firstOwner as Computation).disposal as Cleanup[]).length;
 	const second = createRoot((end: () => void): () => void => {
 		const node = vh.host.createElement("text");
 		secondNode = node;
 		vh.host.setStyle(node, { width: 100, height: 30 });
 		vh.host.append(vh.root, node);
-		set(node, shared);
+		mountSpans(vh.host, node, null, null, accessor((): TextSpan[] => shared));
 		return end;
 	});
-	for (let i = 0; i < 100; i += 1) { set(firstNode as HostNode, next); }
-	const setter = createRoot((end: () => void): () => void => {
-		set(firstNode as HostNode, next);
-		return end;
-	});
-	setter();
+	for (let i = 0; i < 100; i += 1) { setFirstSpans(next); flush(); }
 	const cleanups = (firstOwner as Computation).disposal;
-	assert cleanups !== null && cleanups.length === 1, "one mount cleanup, not one per assignment";
+	assert cleanups !== null && cleanups.length === mountCleanups, "mount cleanups, not one per assignment";
 	vh.layout(200.0, 150.0);
 	const label = (firstNode as VoidNode).para as NodeRef;
 	const at = label.localToGlobal(vec2(label.xForIndex(1) + 1.0, label.lineBoxAt(1).top + 2.0));
 	vh.clickAt(at.x, at.y);
-	assert hits === 1, "a setter scope does not adopt the created node";
+	assert hits === 1, "the latest spans keep their press";
 	first();
 	vh.clickAt(at.x, at.y);
 	assert hits === 1 && label.text() === "next", "mount cleanup retires latest interaction, not paint";
@@ -223,7 +220,7 @@ test "Void Text interaction follows creation owner across updates without mutati
 	const raw = vh.host.createElement("text");
 	vh.host.setStyle(raw, { width: 100, height: 30 });
 	vh.host.append(vh.root, raw);
-	const rawSetter = createRoot((end: () => void): () => void => { set(raw, shared); return end; });
+	const rawSetter = createRoot((end: () => void): () => void => { mountSpans(vh.host, raw, null, null, accessor((): TextSpan[] => shared)); return end; });
 	rawSetter();
 	vh.layout(200.0, 150.0);
 	const rawLabel = (raw as VoidNode).para as NodeRef;
