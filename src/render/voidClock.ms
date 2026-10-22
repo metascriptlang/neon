@@ -1,4 +1,5 @@
 import { onCleanup } from "../core/cleanup";
+import { RaiseError, createErrorRoute } from "../core/boundary";
 import { useContext } from "./context";
 import { requestFrame, cancelFrame, frameNow } from "../animation/frame";
 import { getVoidAreaContext } from "./voidScope";
@@ -10,7 +11,7 @@ interface ClockSubscriber {
 }
 
 interface AreaClock {
-	hub: AreaHub;
+	hub: AreaHub | null;
 	subscribers: ClockSubscriber[];
 	pending: int32;
 	generation: int32;
@@ -46,7 +47,8 @@ function schedule(clock: AreaClock): void {
 				advanced = true;
 			}
 		}
-		if (advanced) { clock.hub.handle.requestFrame(); }
+		const hub = clock.hub;
+		if (advanced && hub !== null) { hub.handle.requestFrame(); }
 		if (anyActive(clock)) { schedule(clock); }
 	});
 }
@@ -58,13 +60,27 @@ function wake(clock: AreaClock): void {
 	schedule(clock);
 }
 
-function clockOf(hub: AreaHub): AreaClock {
+function clockOf(hub: AreaHub | null): AreaClock {
 	for (const clock of clocks) {
 		if (clock.hub === hub) { return clock; }
 	}
 	const clock: AreaClock = { hub, subscribers: [], pending: 0, generation: 0, last: 0.0 };
 	clocks.push(clock);
 	return clock;
+}
+
+function join(clock: AreaClock, active: () => boolean, advance: (seconds: float64) => void): () => void {
+	const subscriber: ClockSubscriber = { active, advance };
+	clock.subscribers.push(subscriber);
+	let live = true;
+	onCleanup((): void => {
+		live = false;
+		clock.subscribers.splice(clock.subscribers.indexOf(subscriber), 1);
+		if (clock.subscribers.length > 0) { wake(clock); return; }
+		cancel(clock);
+		clocks.splice(clocks.indexOf(clock), 1);
+	});
+	return (): void => { if (live) { wake(clock); } };
 }
 
 // One clock per Void area: `advance` runs once per frame while `active` holds, with the seconds
@@ -77,16 +93,32 @@ export function useVoidClock(
 ): () => void {
 	const area = useContext(getVoidAreaContext());
 	if (area === null) { throw new Error("useVoidClock: mount within Void"); }
-	const clock = clockOf(area.hub);
-	const subscriber: ClockSubscriber = { active, advance };
-	clock.subscribers.push(subscriber);
-	let live = true;
-	onCleanup((): void => {
-		live = false;
-		clock.subscribers.splice(clock.subscribers.indexOf(subscriber), 1);
-		if (clock.subscribers.length > 0) { wake(clock); return; }
-		cancel(clock);
-		clocks.splice(clocks.indexOf(clock), 1);
+	return join(clockOf(area.hub), active, advance);
+}
+
+interface FrameUser {
+	stopped: boolean;
+	wake: (() => void) | null;
+}
+
+// Within Void it ticks on that area's clock and keeps the area painting; elsewhere on one clock
+// with no area to paint.
+export function useFrame(callback: (dt: number, time: number) => void): void {
+	const user: FrameUser = { stopped: false, wake: null };
+	const raise = createErrorRoute((): void => {
+		user.stopped = false;
+		(user.wake as () => void)();
 	});
-	return (): void => { if (live) { wake(clock); } };
+	if (raise === null) { throw new Error("useFrame: call it under an owner (a component or a root); the callback lives as long as that owner"); }
+	const area = useContext(getVoidAreaContext());
+	const clock = clockOf(area === null ? null : area.hub);
+	user.wake = join(clock, (): boolean => !user.stopped, (seconds: float64): void => {
+		try {
+			callback(seconds, clock.last / 1000.0);
+		} catch (e) {
+			user.stopped = true;
+			(raise as RaiseError)(e);
+		}
+	});
+	(user.wake as () => void)();
 }

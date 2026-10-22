@@ -6,7 +6,7 @@ import { element } from "../../src/macros/ui/element";
 import { Show } from "../../src/macros/ui/flow";
 import { HostNode, MockNode, mockNode, mockHost, render } from "../../src/render/host";
 import { Host, NeonNode } from "../../src/render/hostTypes";
-import { useVoidClock } from "../../src/render/voidClock";
+import { useVoidClock, useFrame } from "../../src/render/voidClock";
 import { Void, View } from "../../src/components/primitives";
 import { useManualFrames, setFrameDriver, framePending } from "../../src/animation/frame";
 
@@ -138,5 +138,57 @@ test "two areas keep separate clocks" {
 		frames.advance(16);
 		assert a.length === 2 && b.length === 0;
 		assert frameRequests(second) === before, "the idle area paints nothing";
+	} finally { dispose(); setFrameDriver(null); }
+}
+
+function framed(log: float64[]): NeonNode {
+	return (host: Host, parent: HostNode, before: HostNode | null): void => {
+		useFrame((dt: number, time: number): void => { log.push(dt); });
+	};
+}
+
+test "useFrame within Void ticks on the area clock and keeps the area painting while it lives" {
+	const frames = useManualFrames();
+	const [shown, setShown] = createSignal(true);
+	const a: float64[] = [];
+	const b: float64[] = [];
+	const root = mockNode("root");
+	const dispose = render(element(<Void>
+		{ticker(accessor(() => true), a)}
+		{Show({ when: accessor(() => shown()), children: framed(b) })}
+	</Void>), mockHost(), root as unknown as HostNode);
+	try {
+		const outer = root.children[0];
+		const before = frameRequests(outer);
+		frames.advance(20);
+		assert a.length === 1 && b.length === 1 && a[0] === b[0], "one shared dt per tick";
+		assert frameRequests(outer) === before + 1, "one area frame per tick for both";
+		setShown(false);
+		flush();
+		frames.advance(10);
+		assert b.length === 1, "no call after unmount";
+	} finally { dispose(); setFrameDriver(null); }
+}
+
+test "a lone useFrame within Void asks its area for a frame every tick and none once it leaves" {
+	const frames = useManualFrames();
+	const [shown, setShown] = createSignal(true);
+	const log: float64[] = [];
+	const root = mockNode("root");
+	const dispose = render(element(<Void>
+		{Show({ when: accessor(() => shown()), children: framed(log) })}
+	</Void>), mockHost(), root as unknown as HostNode);
+	try {
+		const outer = root.children[0];
+		const before = frameRequests(outer);
+		frames.advance(16);
+		frames.advance(16);
+		assert log.length === 2 && frameRequests(outer) === before + 2, "requests: " + (frameRequests(outer) - before).toString();
+		setShown(false);
+		flush();
+		assert !framePending(), "the area sleeps once the callback leaves";
+		const asleep = frameRequests(outer);
+		frames.advance(16);
+		assert frameRequests(outer) === asleep;
 	} finally { dispose(); setFrameDriver(null); }
 }

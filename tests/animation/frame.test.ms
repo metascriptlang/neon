@@ -8,7 +8,8 @@ import { Errored, Show } from "../../src/macros/ui/flow";
 import { MockNode, HostNode, mockNode, mockHost, render, mockToString } from "../../src/render/host";
 import { Host, NeonNode } from "../../src/render/hostTypes";
 import { View, Text } from "../../src/components/primitives";
-import { useManualFrames, useFrame, framePending, setFrameDriver } from "../../src/animation/frame";
+import { useManualFrames, framePending, setFrameDriver } from "../../src/animation/frame";
+import { useFrame } from "../../src/render/voidClock";
 
 function framed(fn: (dt: number, time: number) => void): NeonNode {
 	return (host: Host, parent: HostNode, before: HostNode | null): void => { useFrame(fn); };
