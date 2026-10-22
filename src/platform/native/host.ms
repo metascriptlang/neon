@@ -995,11 +995,10 @@ function deliverEvents(deliveries: NativeEventDelivery[]): void {
 }
 
 function onTouch(): void {
-	const tag = niLastTouchTag();
-	const phase = niLastTouchPhase();
-	const x = niLastTouchX() as number;
-	const y = niLastTouchY() as number;
-	const timeStamp = niLastTouchTime();
+	deliverTouch(niLastTouchTag(), niLastTouchPhase(), niLastTouchX() as number, niLastTouchY() as number, niLastTouchTime());
+}
+
+function deliverTouch(tag: int32, phase: int32, x: number, y: number, timeStamp: number): void {
 	if (phase === 1 || phase === 3) {
 		if (!livePressTag(tag) && tag !== pressSourceTag) { return; }
 		if (timeStamp === releasedPressTime && x === releasedPressX && y === releasedPressY &&
@@ -1495,10 +1494,7 @@ when (hcr || testBuild) {
 		const tag = (target as NativeNode).eventTag;
 		const at = performance.now();
 		for (const phase of [0, 1, 2]) {
-			batched((): void => {
-				bubbleTouch(tag, phase as int32, x as number, y as number, at);
-				eventRegistry.dispatch(tag, phase as int32, x as number, y as number, at);
-			});
+			deliverTouch(tag, phase as int32, x as number, y as number, at);
 		}
 	}
 }
