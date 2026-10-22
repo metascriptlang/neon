@@ -10,10 +10,9 @@ import { element } from "../src/macros/ui/element";
 import { Show } from "../src/macros/ui/flow";
 import { NeonNode } from "../src/render/node";
 import { Void, View, Text, Pressable } from "../src/components/primitives";
-import { Scene3D, Camera3D, Light, Mesh, Text3D, Gltf, gltfData, useFrame } from "../src/components/scene3d";
+import { Scene3D, Camera3D, DirectionalLight, Mesh, Text3D, Gltf, gltfData, useFrame } from "../src/components/scene3d";
 import { runWindow, desktopOptions } from "../src/platform/ion/window";
 import { vec3, eulerQuat } from "../../void/src/math/math3d";
-import { LightKind } from "../../void/src/void3d/scene";
 import { MeshData, addBox, addPlane } from "../../void/src/void3d/meshData";
 import { GltfData, loadGlbDetailed } from "../../void/src/void3d/gltf";
 
@@ -65,8 +64,8 @@ function App(): NeonNode {
 	return element(
 		<Void style={{ backgroundColor: "#11111b" }}>
 			<Scene3D ambient={vec3(0.25, 0.25, 0.3)}>
-				<Camera3D active={true} position={vec3(0.0, 3.0, 7.0)} pitch={0.35} />
-				<Light kind={LightKind.Directional} rotation={eulerQuat(1.0, 2.6, 0.0)} castShadow={true} />
+				<Camera3D position={vec3(0.0, 3.0, 7.0)} pitch={0.35} />
+				<DirectionalLight rotation={eulerQuat(1.0, 2.6, 0.0)} castShadow={true} />
 				<Mesh geometry={floor} receiveShadow={true} />
 				<Mesh geometry={cube} position={vec3(-1.2, 1.0, 0.0)} rotation={eulerQuat(0.0, angle(), 0.0)}
 					castShadow={true} receiveShadow={true} />
