@@ -24,6 +24,7 @@ import {
 	RouteNode,
 	RouteTree,
 	createRouteTree,
+	hrefOf,
 	path,
 } from "./route";
 import { PathMatch, createMatcher, expandOptionals, normalizePath } from "./routeMatcher";
@@ -239,6 +240,13 @@ export interface RouterResponse {
 }
 
 export interface NavigateOptions {
+	replace?: boolean | null;
+}
+
+export interface ToOptions<P> {
+	to: RouteDef<P>;
+	params: P;
+	search?: Map<string, string> | null;
 	replace?: boolean | null;
 }
 
@@ -815,7 +823,12 @@ export class Router {
 		this.apply(resolved, true);
 	}
 
-	// Parked on ~/metascript/.inbox/compiler/2026-10-21-method-overload-with-an-omitted-optional-argument-finds-no-match.md: TanStack's typed `navigate({ to, params })` beside this one.
+	navigate<P>(options: ToOptions<P>): boolean {
+		const built = hrefOf<P>(this.routes.tree, options.to, options.params, options.search ?? new Map<string, string>());
+		if (!built.ok) { throw new Error("routing: navigate({ to }) cannot build an address for " + (options.to.node.pattern ?? "a pathless route") + ": " + built.error.toString()); }
+		return this.navigate(built.value, { replace: options.replace ?? false });
+	}
+
 	navigate(href: string, options: NavigateOptions | null = null): boolean {
 		if (!this.history.writable) { throw new Error("routing: request history is read-only"); }
 		const replace = options === null ? false : (options as NavigateOptions).replace ?? false;

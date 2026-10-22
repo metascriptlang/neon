@@ -416,6 +416,37 @@ test "useParams({ from }) reads a route's own params or an ancestor's through it
 	assert refused === "routing: useParams({ from }) names /projects/:project, which is not on this component's route", refused;
 }
 
+function QueriedThread(): NeonNode {
+	const location = useLocation();
+	return <h1>{"thread " + useParams({ from: thread }).id + "|" + (location().search.get("q") ?? "-")}</h1>;
+}
+
+test "navigate({ to, params }) writes a typed route's address through its codec, and refuses a route outside the tree" {
+	const history = memory("/threads/7");
+	const router = opened(createRoutes([{ route: thread, component: QueriedThread }]), history);
+	const root = mounted(router);
+	// Parked on ~/metascript/.inbox/compiler/2026-10-22-an-object-literal-for-a-struct-p-inferred-from-a-sibling-field-is-emitted-as-an-anon-class.md: the typed bindings below become literals in the calls once a struct P takes them on C.
+	const eight: ThreadParams = { id: "8" };
+	const nine: ThreadParams = { id: "9" };
+	const neon: ProjectParams = { project: "neon" };
+	assert router.navigate({ to: thread, params: eight });
+	flush();
+	assert mockToString(root) === "<root><h1>thread 8|-</h1></root>", mockToString(root);
+	const search = new Map<string, string>();
+	search.set("q", "a b");
+	assert router.navigate({ to: thread, params: nine, search, replace: true });
+	flush();
+	assert history.read().url === "/threads/9?q=a%20b", history.read().url;
+	assert mockToString(root) === "<root><h1>thread 9|a b</h1></root>", mockToString(root);
+	assert history.go(-1);
+	flush();
+	assert mockToString(root) === "<root><h1>thread 7|-</h1></root>", mockToString(root);
+	let refused = "";
+	try { router.navigate({ to: project, params: neon }); } catch (error) { refused = error.message; }
+	assert refused === "routing: navigate({ to }) cannot build an address for /projects/:project: NoMatch", refused;
+	router.dispose();
+}
+
 test "static paths come from the route tree, with enumerated params" {
 	const routes = createRoutes([
 		{ layout: Shell, children: [

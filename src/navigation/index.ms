@@ -152,6 +152,7 @@ export {
 	RouterLocation,
 	RouterResponse,
 	NavigateOptions,
+	ToOptions,
 	Router,
 	createRoutes,
 	createRouter,
