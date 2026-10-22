@@ -1,4 +1,4 @@
-import { Accessor, accessor } from "../../core/signal";
+import { Accessor, accessor, untrack } from "../../core/signal";
 import { createRenderEffect } from "../../core/effect";
 import { Cleanup } from "../../core/types";
 import { onCleanup } from "../../core/cleanup";
@@ -7,25 +7,38 @@ import { VoidSpace, getVoidScopeContext, getVoidAreaContext, useVoidSpace } from
 import { layerAnchor } from "../../render/voidLayer";
 import { AreaLayer } from "../../render/voidAreaHandle";
 import { Host, HostNode, NeonNode, VoidArea } from "../../render/hostTypes";
-import { Vec3 } from "../../../../void/src/math/math3d";
+import { Vec3, Vec4 } from "../../../../void/src/math/math3d";
 import { VERTEX_UNIFORM_LENGTH, LIGHT_UNIFORM_LENGTH } from "../../../../void/src/void3d/gpu3d";
 import { DrawContext, DrawItem, releaseMaterial, closeContext, buryDoomed } from "../../../../void/src/void3d/draw";
 import {
-	ForwardRenderer, create, prepareFrame, drawOverScreen, closeForward, setOutlineBlend, setOutlineSettings,
+	ForwardRenderer, ForwardError, create, createHdrWhere, prepareFrame, drawOverScreen, closeForward,
+	setOutlineBlend, setOutlineSettings, setBloom,
 } from "../../../../void/src/void3d/forwardRenderer";
+import { ToneMode, setToneMode, setExposure, attachShadow, markChanged } from "../../../../void/src/void3d/renderer";
+import { BloomSettings } from "../../../../void/src/void3d/bloom";
+import { DirShadowMap, closeDirShadow } from "../../../../void/src/void3d/dirShadowMap";
 import { ForwardOutlineSettings, defaults, valid, FORWARD_OUTLINE_BLOCKS } from "../../../../void/src/void3d/forwardOutline";
 import { fits } from "../../../../void/src/void3d/uniformPool";
-import { contextGeneration } from "../../../../void/src/gpu/door";
-import { Scene3D as VoidScene3D, closeScene, setAmbient, refresh, collectLights } from "../../../../void/src/void3d/scene";
+import { PixelFormat, contextGeneration, formatRenderable } from "../../../../void/src/gpu/door";
+import { Scene3D as VoidScene3D, NodeId3D, NO_NODE_ID, closeScene, setAmbient, refresh, collectLights } from "../../../../void/src/void3d/scene";
 import { resolve, writeCameraBlock } from "../../../../void/src/void3d/camera";
-import { Scene3DHandle, SceneState, SCENE_UNIFORM_CAPACITY, mountOwned, mountSceneChildren, viewCamera } from "./core";
+import { Scene3DHandle, SceneState, LightShadow, SCENE_UNIFORM_CAPACITY, mountOwned, mountSceneChildren, viewCamera } from "./core";
 
 export interface Scene3DProps {
 	ambient?: Accessor<Vec3> | null;
 	outlineBlend?: Accessor<float32> | null;
 	outlineSettings?: Accessor<ForwardOutlineSettings> | null;
+	hdr?: Accessor<boolean> | null;
+	bloom?: Accessor<BloomSettings | null> | null;
+	toneMapping?: Accessor<ToneMode> | null;
+	exposure?: Accessor<float32> | null;
 	ref?: ((handle: Scene3DHandle) => void) | null;
 	children?: NeonNode | null;
+}
+
+function validBloom(settings: BloomSettings): boolean {
+	return Number.isFinite(settings.intensity) && settings.intensity >= 0.0 && settings.maxMipDimension >= 4 &&
+		settings.highPassFrequency > 0.0 && settings.lowFrequencyBoostCurvature < 1.0;
 }
 
 export function Scene3D(props: Scene3DProps): NeonNode {
@@ -38,17 +51,62 @@ export function Scene3D(props: Scene3DProps): NeonNode {
 			const area = (opened as VoidArea).hub;
 			const context = DrawContext.withUniformCapacity(SCENE_UNIFORM_CAPACITY);
 			const scene = VoidScene3D.create(context);
-			const handle: Scene3DHandle = {
-				context: context, scene: scene, camera: null, invalidate: (): void => { area.handle.requestFrame(); },
-			};
-			const state: SceneState = { handle: handle, defaultMaterial: null, cameras: [], geometries: [], invalidate: handle.invalidate };
-			const made = ForwardRenderer.create(context, { x: 0.0, y: 0.0, z: 0.0, w: 0.0 });
+			const hdr = props.hdr === null ? false : untrack(props.hdr as () => boolean);
+			if (props.bloom !== null && !hdr) {
+				closeScene(scene);
+				closeContext(context);
+				throw new Error("Scene3D: bloom needs hdr");
+			}
+			const clear: Vec4 = { x: 0.0, y: 0.0, z: 0.0, w: 0.0 };
+			const made: Result<ForwardRenderer, ForwardError> = hdr ?
+				ForwardRenderer.createHdrWhere(context, clear, true) : ForwardRenderer.create(context, clear);
 			if (!made.ok) {
 				closeScene(scene);
 				closeContext(context);
 				throw new Error("Scene3D: ForwardRenderer.create failed: " + made.error.toString());
 			}
 			const renderer = made.value;
+			let deviceChecked = !hdr;
+			const invalidate = (): void => { area.handle.requestFrame(); };
+			const handle: Scene3DHandle = { context: context, scene: scene, camera: null, renderer: renderer, invalidate: invalidate };
+			let shadow: DirShadowMap | null = null;
+			let caster: NodeId3D = NO_NODE_ID;
+			const dropShadow = (): void => {
+				const held = shadow;
+				if (held === null) { return; }
+				attachShadow(renderer.core, null);
+				closeDirShadow(held);
+				shadow = null;
+				caster = NO_NODE_ID;
+			};
+			const shadowOf = (light: NodeId3D, settings: LightShadow | null): void => {
+				if (renderer.closed) { return; }
+				const owns = shadow !== null && caster.index === light.index && caster.generation === light.generation;
+				if (settings === null) {
+					if (owns) { dropShadow(); invalidate(); }
+					return;
+				}
+				if (shadow !== null && !owns) { throw new Error("Light: only one Light casts shadows in a Scene3D"); }
+				let held = shadow;
+				if (held === null) {
+					const created = DirShadowMap.create(context, settings.mapSize);
+					if (!created.ok) { throw new Error("Light: castShadow failed: " + created.error.toString()); }
+					attachShadow(renderer.core, created.value);
+					held = created.value;
+					shadow = held;
+					caster = light;
+				}
+				held.size = settings.mapSize;
+				held.bias = settings.bias;
+				held.opacity = settings.opacity;
+				markChanged(renderer.core);
+				invalidate();
+			};
+			const state: SceneState = {
+				handle: handle, defaultMaterial: null, cameras: [], geometries: [], invalidate: invalidate,
+				shadowMaterials: [null, null, null, null], shadowOf: shadowOf,
+			};
+			if (hdr) { setToneMode(renderer.core, ToneMode.Filmic); }
 			let items: Vec<DrawItem> = [];
 			let cameraBlock: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
 			let lightBlock: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
@@ -58,6 +116,10 @@ export function Scene3D(props: Scene3DProps): NeonNode {
 				layout: (pixelWidth: int32, pixelHeight: int32): void => {},
 				prepare: (pixelWidth: int32, pixelHeight: int32): void => {
 					prepared = false;
+					if (!deviceChecked) {
+						if (!formatRenderable(PixelFormat.Rgba16f)) { throw new Error("Scene3D: hdr needs a device that renders Rgba16f"); }
+						deviceChecked = true;
+					}
 					refresh(scene, items);
 					const lights = collectLights(scene, lightBlock);
 					if (!lights.ok) { throw new Error("Scene3D: collectLights failed: " + lights.error.toString()); }
@@ -80,6 +142,7 @@ export function Scene3D(props: Scene3DProps): NeonNode {
 			const unregister = area.addLayer(layer);
 			onCleanup((): void => {
 				unregister();
+				dropShadow();
 				closeForward(renderer);
 				state.invalidate();
 				handle.camera = null;
@@ -89,6 +152,13 @@ export function Scene3D(props: Scene3DProps): NeonNode {
 					const released = releaseMaterial(context, material);
 					if (!released.ok) { throw new Error("Scene3D: releaseMaterial failed: " + released.error.toString()); }
 					state.defaultMaterial = null;
+				}
+				for (let i = 0; i < state.shadowMaterials.length; i++) {
+					const variant = state.shadowMaterials[i];
+					if (variant === null) { continue; }
+					const released = releaseMaterial(context, variant);
+					if (!released.ok) { throw new Error("Scene3D: releaseMaterial failed: " + released.error.toString()); }
+					state.shadowMaterials[i] = null;
 				}
 				closeContext(context);
 			});
@@ -110,6 +180,43 @@ export function Scene3D(props: Scene3DProps): NeonNode {
 						}
 						setOutlineSettings(renderer, settings);
 						setOutlineBlend(renderer, blend);
+						state.invalidate();
+						return null;
+					},
+				);
+			}
+			if (props.hdr !== null) {
+				createRenderEffect<boolean>(
+					(prev: boolean | null): boolean => (props.hdr as () => boolean)(),
+					(value: boolean, prev: boolean | null): Cleanup | null => {
+						if (value !== hdr) { throw new Error("Scene3D: hdr is fixed at mount; remount the Scene3D to change it"); }
+						return null;
+					},
+				);
+			}
+			if (props.bloom !== null) {
+				createRenderEffect<BloomSettings | null>(
+					(prev: BloomSettings | null | null): BloomSettings | null => (props.bloom as () => BloomSettings | null)(),
+					(value: BloomSettings | null, prev: BloomSettings | null | null): Cleanup | null => {
+						if (value !== null && !validBloom(value as BloomSettings)) { throw new Error("Scene3D: invalid bloom settings"); }
+						setBloom(renderer, value);
+						state.invalidate();
+						return null;
+					},
+				);
+			}
+			if (props.toneMapping !== null) {
+				createRenderEffect<ToneMode>(
+					(prev: ToneMode | null): ToneMode => (props.toneMapping as () => ToneMode)(),
+					(value: ToneMode, prev: ToneMode | null): Cleanup | null => { setToneMode(renderer.core, value); state.invalidate(); return null; },
+				);
+			}
+			if (props.exposure !== null) {
+				createRenderEffect<float32>(
+					(prev: float32 | null): float32 => (props.exposure as () => float32)(),
+					(value: float32, prev: float32 | null): Cleanup | null => {
+						if (!Number.isFinite(value) || !(value > 0.0)) { throw new Error("Scene3D: exposure must be a finite multiplier above 0"); }
+						setExposure(renderer.core, Math.log(value) as float32);
 						state.invalidate();
 						return null;
 					},

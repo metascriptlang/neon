@@ -1,12 +1,14 @@
 import { Accessor } from "../../core/signal";
 import { createRenderEffect } from "../../core/effect";
 import { Cleanup } from "../../core/types";
+import { onCleanup } from "../../core/cleanup";
 import { Host, HostNode, NeonNode } from "../../render/hostTypes";
 import { Vec3, vec3 } from "../../../../void/src/math/math3d";
 import {
 	LightKind, LightInstance, addLightNode, setLightPower, setLightColor, setLightRadius, setLightPriority,
 } from "../../../../void/src/void3d/scene";
-import { NodeProps, mountOwned, requireScene, localOf, bindNode, ownNode, mountNodeChildren } from "./core";
+import { NodeProps, LightShadow, mountOwned, requireScene, localOf, bindNode, ownNode, mountNodeChildren } from "./core";
+import { DEFAULT_SHADOW_BIAS } from "../../../../void/src/void3d/dirShadowMap";
 
 export interface LightProps extends NodeProps {
 	kind: Accessor<LightKind>;
@@ -14,11 +16,24 @@ export interface LightProps extends NodeProps {
 	radius?: Accessor<float32> | null;
 	power?: Accessor<float32> | null;
 	priority?: Accessor<int32> | null;
+	castShadow?: Accessor<boolean> | null;
+	shadowMapSize?: Accessor<int32> | null;
+	shadowBias?: Accessor<float32> | null;
+	shadowOpacity?: Accessor<float32> | null;
+}
+
+const DEFAULT_SHADOW_MAP_SIZE: int32 = 512;
+
+function validShadow(shadow: LightShadow): boolean {
+	return shadow.mapSize > 0 && Number.isFinite(shadow.bias) && shadow.opacity >= 0.0 && shadow.opacity <= 1.0;
 }
 
 export function Light(props: LightProps): NeonNode {
 	return (host: Host, parent: HostNode, before: HostNode | null): void => {
 		const scope = requireScene("Light");
+		if (props.castShadow === null && (props.shadowMapSize !== null || props.shadowBias !== null || props.shadowOpacity !== null)) {
+			throw new Error("Light: shadowMapSize, shadowBias and shadowOpacity need castShadow");
+		}
 		mountOwned((): void => {
 			const scene = scope.state.handle.scene;
 			const local = localOf(props);
@@ -74,6 +89,25 @@ export function Light(props: LightProps): NeonNode {
 							power = next;
 							scope.state.invalidate();
 						}
+						return null;
+					},
+				);
+			}
+			if (props.castShadow !== null) {
+				const state = scope.state;
+				onCleanup((): void => { state.shadowOf(node, null); });
+				createRenderEffect<LightShadow | null>(
+					(prev: LightShadow | null | null): LightShadow | null => (props.castShadow as () => boolean)() ? {
+						mapSize: props.shadowMapSize === null ? DEFAULT_SHADOW_MAP_SIZE : (props.shadowMapSize as () => int32)(),
+						bias: props.shadowBias === null ? DEFAULT_SHADOW_BIAS : (props.shadowBias as () => float32)(),
+						opacity: props.shadowOpacity === null ? 1.0 : (props.shadowOpacity as () => float32)(),
+					} : null,
+					(value: LightShadow | null, prev: LightShadow | null | null): Cleanup | null => {
+						if (value !== null && light.kind !== LightKind.Directional) {
+							throw new Error("Light: castShadow needs a Directional light; Void's shadow map follows the directional light");
+						}
+						if (value !== null && !validShadow(value as LightShadow)) { throw new Error("Light: invalid shadow settings"); }
+						state.shadowOf(node, value);
 						return null;
 					},
 				);

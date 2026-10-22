@@ -21,12 +21,20 @@ import {
 	setLocal, remove, setVisible, setPickable, setName, setLayers, setRenderOrder, cameraOf as worldCameraOf,
 } from "../../../../void/src/void3d/scene";
 import { Camera3D as VoidCamera3D, ProjectionKind, CameraError } from "../../../../void/src/void3d/camera";
+import { ForwardRenderer } from "../../../../void/src/void3d/forwardRenderer";
 
 export interface Scene3DHandle {
 	context: DrawContext;
 	scene: VoidScene3D;
 	camera: VoidCamera3D | null;
 	invalidate: () => void;
+	renderer: ForwardRenderer;
+}
+
+export interface LightShadow {
+	mapSize: int32;
+	bias: float32;
+	opacity: float32;
 }
 
 export interface CameraEntry {
@@ -47,6 +55,8 @@ export interface SceneState {
 	geometries: SharedGeometry[];
 	invalidate: () => void;
 	limbo?: NodeId3D | null;
+	shadowMaterials: Vec<MaterialId | null>;
+	shadowOf: (light: NodeId3D, shadow: LightShadow | null) => void;
 }
 
 export interface NodeScope {

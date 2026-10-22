@@ -5,6 +5,10 @@ import { onCleanup } from "../../core/cleanup";
 import { Host, HostNode, NeonNode } from "../../render/hostTypes";
 import { MeshData } from "../../../../void/src/void3d/meshData";
 import { MeshId, MaterialId, addMeshData, releaseMesh } from "../../../../void/src/void3d/draw";
+import { addMaterial, reserveUniforms, writeUniforms, releaseUniforms } from "../../../../void/src/void3d/draw";
+import { Material, Phase, ShadowCasting, withShadows } from "../../../../void/src/void3d/material";
+import { Program, MATERIAL_UNIFORM_SLOT, MATERIAL_UNIFORM_LENGTH } from "../../../../void/src/void3d/gpu3d";
+import { RenderState } from "../../../../void/src/gpu/state";
 import { NodeId3D, addMeshNode, setMeshOf, setMaterialOf, remove } from "../../../../void/src/void3d/scene";
 import { NodeProps, SceneState, SharedGeometry, mountOwned, requireScene, localOf, bindNode, mountNodeChildren, defaultMaterialOf } from "./core";
 
@@ -12,6 +16,35 @@ export interface MeshProps extends NodeProps {
 	geometry?: Accessor<MeshData> | null;
 	mesh?: Accessor<MeshId> | null;
 	material?: Accessor<MaterialId> | null;
+	castShadow?: Accessor<boolean> | null;
+	receiveShadow?: Accessor<boolean> | null;
+}
+
+function shadowMaterialOf(state: SceneState, cast: boolean, receive: boolean): MaterialId {
+	if (!cast && !receive) { return defaultMaterialOf(state); }
+	const slot = (cast ? 2 : 0) + (receive ? 1 : 0);
+	const existing = state.shadowMaterials[slot];
+	if (existing !== null) { return existing; }
+	const context = state.handle.context;
+	const reserved = reserveUniforms(context, MATERIAL_UNIFORM_SLOT, MATERIAL_UNIFORM_LENGTH);
+	if (!reserved.ok) { throw new Error("Mesh: reserveUniforms failed: " + reserved.error.toString()); }
+	const block = reserved.value;
+	try {
+		const written = writeUniforms(context, block, [0.0, 0.0, 0.0, 0.0]);
+		if (!written.ok) { throw new Error("Mesh: writeUniforms failed: " + written.error.toString()); }
+		const plain = Material.plain(Program.Lit, RenderState.defaults(), Phase.Opaque);
+		const added = addMaterial(context, {
+			...plain.withShadows(cast ? ShadowCasting.On : ShadowCasting.Off, receive),
+			uniforms: block,
+		});
+		if (!added.ok) { throw new Error("Mesh: addMaterial failed: " + added.error.toString()); }
+		state.shadowMaterials[slot] = added.value;
+		return added.value;
+	} catch (error) {
+		const released = releaseUniforms(context, block);
+		if (!released.ok) { throw new Error("Mesh: releaseUniforms failed: " + released.error.toString()); }
+		throw error;
+	}
 }
 
 function acquireGeometry(state: SceneState, data: MeshData): SharedGeometry {
@@ -50,6 +83,10 @@ export function Mesh(props: MeshProps): NeonNode {
 	return (host: Host, parent: HostNode, before: HostNode | null): void => {
 		const scope = requireScene("Mesh");
 		if ((props.geometry === null) === (props.mesh === null)) { throw new Error("Mesh: provide exactly one geometry (MeshData) or mesh (MeshId)"); }
+		const shadowFlags = props.castShadow !== null || props.receiveShadow !== null;
+		if (shadowFlags && props.material !== null) {
+			throw new Error("Mesh: castShadow and receiveShadow need the default material; an app material sets its own with Material.withShadows until Void has per-node shadow flags");
+		}
 		mountOwned((): void => {
 			const scene = scope.state.handle.scene;
 			const local = localOf(props);
@@ -132,6 +169,25 @@ export function Mesh(props: MeshProps): NeonNode {
 								throw new Error("Mesh: setMaterialOf failed: " + changed.error.toString());
 							}
 							selected = value;
+							scope.state.invalidate();
+						}
+						return null;
+					},
+				);
+			}
+			if (shadowFlags) {
+				let shadowed: MaterialId | null = null;
+				createRenderEffect<[boolean, boolean]>(
+					(prev: [boolean, boolean] | null): [boolean, boolean] => [
+						props.castShadow === null ? false : (props.castShadow as () => boolean)(),
+						props.receiveShadow === null ? false : (props.receiveShadow as () => boolean)(),
+					],
+					(value: [boolean, boolean], prev: [boolean, boolean] | null): Cleanup | null => {
+						const next = shadowMaterialOf(scope.state, value[0], value[1]);
+						if (shadowed === null || next !== shadowed) {
+							const changed = setMaterialOf(scene, mounted, next);
+							if (!changed.ok) { throw new Error("Mesh: setMaterialOf failed: " + changed.error.toString()); }
+							shadowed = next;
 							scope.state.invalidate();
 						}
 						return null;
