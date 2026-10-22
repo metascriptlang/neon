@@ -59,6 +59,8 @@ import {
 	SelectionRange, setSelectionRange, setCursorIndex, setCursorBlinkTime, setTextDirection, setOutline,
 } from "../../../void/src/void2d/node";
 import { create, close, setScaleMode, tick, prepare, drawScreen, add } from "../../../void/src/void2d/scene";
+import { drawTarget } from "../../../void/src/void2d/scene";
+import { RenderTarget } from "../../../void/src/gpu/target";
 import {
 	Color, Camera, Tile, Filter, ScaleMode, Bounds2D, rgba,
 } from "../../../void/src/void2d/types";
@@ -486,6 +488,12 @@ export function Scene2D(props: Scene2DProps): NeonNode {
 							return false;
 						},
 					};
+				},
+				drawTarget: (target: RenderTarget): void => {
+					if (scene.closed || !prepared) { return; }
+					prepared = false;
+					if (backdropPrepared && backdrop !== null) { backdrop.scene.drawTarget(target); }
+					scene.drawTarget(target);
 				},
 			};
 			const unregister = area.addLayer(layer);

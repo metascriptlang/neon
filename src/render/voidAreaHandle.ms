@@ -1,5 +1,6 @@
 import { NeonEvent } from "./event";
 import { RaiseError, createErrorRoute } from "../core/boundary";
+import { RenderTarget } from "../../../void/src/gpu/target";
 
 export enum AreaKeyAction {
 	Release,
@@ -126,6 +127,7 @@ export interface AreaLayer {
 	prepare: (pixelWidth: int32, pixelHeight: int32) => void;
 	draw: () => void;
 	hit?: ((x: float32, y: float32, kind: AreaPointerKind, e: NeonEvent) => boolean) | null;
+	drawTarget?: ((target: RenderTarget) => void) | null;
 }
 
 export interface AreaHub {
