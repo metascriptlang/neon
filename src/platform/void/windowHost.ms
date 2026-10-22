@@ -32,6 +32,7 @@ export interface WindowArea {
 	held: int32;
 	composing: boolean;
 	textInput: boolean;
+	painted: NodeRef[];
 }
 
 export interface AreaWindow {
@@ -124,6 +125,7 @@ export function windowHost(w: AreaWindow): Host {
 			held: 0 as int32,
 			composing: false,
 			textInput: false,
+			painted: [],
 		};
 		current = area;
 		w.opened(area);
@@ -149,7 +151,7 @@ export function windowHost(w: AreaWindow): Host {
 		vh.onDirty(w.dirty);
 		vh.setLayers((): AreaLayer[] => {
 			const order: AreaLayer[] = [];
-			for (const d of layersInPaintOrder(vh, hub.layers(), vh.scene.paintedSlots())) { order.push(d.layer); }
+			for (const d of layersInPaintOrder(vh, hub.layers(), area.painted)) { order.push(d.layer); }
 			return order;
 		});
 		return {
@@ -379,7 +381,8 @@ export function drawArea(a: WindowArea): boolean {
 	if (scene.isClosed()) { return false; }
 	for (const layer of a.hub.layers()) { a.vh.layerSlot(layer.anchor); }
 	scene.prepare((width as float32) / dpi, (height as float32) / dpi, dpi);
-	const due = layersInPaintOrder(a.vh, a.hub.layers(), scene.paintedSlots());
+	a.painted = scene.paintedSlots();
+	const due = layersInPaintOrder(a.vh, a.hub.layers(), a.painted);
 	const order: AreaLayer[] = [];
 	for (const d of due) { order.push(d.layer); }
 	a.hub.prepareLayers(order, width, height);
