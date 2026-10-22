@@ -79,3 +79,17 @@ test "a Scene2D node runs Pressable's state machine: press in, then a drag off c
 	hits(layer, 200.0, 200.0, AreaPointerKind.Button, pointer("pointerup", false));
 	assert log.join("|") === "in", "dragged off: " + log.join("|");
 }
+
+test "a gesture Group around a plain-press Rect presses both, the same as the 3D nesting" {
+	const log: string[] = [];
+	const root = mockNode("root");
+	render(element(<Void>
+		<Scene2D>
+			<Group onPressIn={note(log, "group in")} onPress={note(log, "group")}>
+				<Rect width={50.0} height={50.0} color={rgba(1.0, 0.0, 0.0, 1.0)} onPress={note(log, "mesh")} />
+			</Group>
+		</Scene2D>
+	</Void>), mockHost(), root as unknown as HostNode);
+	tap(layerOf(root), 10.0, 10.0);
+	assert log.join("|") === "group in|group|mesh", "scene3dPointer pins the same order in 3D: " + log.join("|");
+}
