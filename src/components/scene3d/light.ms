@@ -1,4 +1,4 @@
-import { Accessor } from "../../core/signal";
+import { Accessor, accessor } from "../../core/signal";
 import { createRenderEffect } from "../../core/effect";
 import { Cleanup } from "../../core/types";
 import { onCleanup } from "../../core/cleanup";
@@ -115,4 +115,41 @@ export function Light(props: LightProps): NeonNode {
 			mountNodeChildren(scope, node, props, host, parent, before);
 		});
 	};
+}
+
+export interface DirectionalLightProps extends NodeProps {
+	color?: Accessor<Vec3> | null;
+	power?: Accessor<float32> | null;
+	castShadow?: Accessor<boolean> | null;
+	shadowMapSize?: Accessor<int32> | null;
+	shadowBias?: Accessor<float32> | null;
+	shadowOpacity?: Accessor<float32> | null;
+}
+
+export interface PointLightProps extends NodeProps {
+	color?: Accessor<Vec3> | null;
+	radius?: Accessor<float32> | null;
+	power?: Accessor<float32> | null;
+	priority?: Accessor<int32> | null;
+}
+
+export function DirectionalLight(props: DirectionalLightProps): NeonNode {
+	return Light({
+		kind: accessor((): LightKind => LightKind.Directional), color: props.color, radius: null, power: props.power, priority: null,
+		castShadow: props.castShadow, shadowMapSize: props.shadowMapSize, shadowBias: props.shadowBias,
+		shadowOpacity: props.shadowOpacity,
+		position: props.position, rotation: props.rotation, scale: props.scale, transform: props.transform,
+		visible: props.visible, pickable: props.pickable, layers: props.layers, renderOrder: props.renderOrder,
+		name: props.name, ref: props.ref, children: props.children,
+	});
+}
+
+export function PointLight(props: PointLightProps): NeonNode {
+	return Light({
+		kind: accessor((): LightKind => LightKind.Point), color: props.color, radius: props.radius, power: props.power,
+		priority: props.priority, castShadow: null, shadowMapSize: null, shadowBias: null, shadowOpacity: null,
+		position: props.position, rotation: props.rotation, scale: props.scale, transform: props.transform,
+		visible: props.visible, pickable: props.pickable, layers: props.layers, renderOrder: props.renderOrder,
+		name: props.name, ref: props.ref, children: props.children,
+	});
 }

@@ -3,13 +3,14 @@ import { flush, resetErrorHalt } from "../../src/core/runtime";
 import { element } from "../../src/macros/ui/element";
 import { HostNode, MockNode, mockNode, mockHost, render } from "../../src/render/host";
 import { Void, View } from "../../src/components/primitives";
-import { Scene3D, Scene3DHandle, Light } from "../../src/components/scene3d";
+import { Scene3D, Scene3DHandle, Light, DirectionalLight, PointLight } from "../../src/components/scene3d";
 import {
 	NodeId3D, NO_NODE_ID, LightKind, collectLights, nodeCount,
 } from "../../../void/src/void3d/scene";
 import { LIGHT_UNIFORM_LENGTH, MAX_POINT_LIGHTS } from "../../../void/src/void3d/gpu3d";
 import { vec3 } from "../../../void/src/math/math3d";
 import { approx } from "../../../void/src/test/helpers";
+import { DirShadowMap } from "../../../void/src/void3d/dirShadowMap";
 
 function frameRequests(outer: MockNode): int32 {
 	let count: int32 = 0;
@@ -147,4 +148,29 @@ test "Light keeps named kind refusal and applies other parameters after reset an
 		assert scene.lights[row].color === vec3(5.0, 0.0, 0.0);
 		assert scene.lights[row].priority === 4 && approx(scene.lights[row].power, 1.0);
 	} finally { dispose(); resetErrorHalt(); }
+}
+
+test "DirectionalLight and PointLight mount the Light of their kind with reactive props" {
+	const refs: Scene3DHandle[] = [];
+	const [value, setValue] = createSignal<float32>(0.2);
+	const root = mockNode("root");
+	const dispose = render(element(<Void><Scene3D
+		ref={(handle: Scene3DHandle): void => { refs.push(handle); }}>
+		<DirectionalLight color={vec3(value(), 0.3, 0.4)} power={0.5} castShadow={true} shadowOpacity={0.5} />
+		<PointLight color={vec3(0.4, 0.5, 0.6)} radius={value() + 2.0} power={3.0} priority={2} position={vec3(4.0, 0.0, 0.0)} />
+	</Scene3D></Void>), mockHost(), root as unknown as HostNode);
+	try {
+		const scene = refs[0].scene;
+		assert scene.lights[0].kind === LightKind.Directional && scene.lights[1].kind === LightKind.Point;
+		const shadow = refs[0].renderer.core.shadow;
+		assert shadow !== null && (shadow as DirShadowMap).opacity === 0.5;
+		setValue(0.8); flush();
+		let block: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
+		const colorAt = 12 + MAX_POINT_LIGHTS * 4;
+		assert collectLights(scene, block).ok;
+		assert approx(block[7], 0.5) && approx(block[8], 0.8);
+		assert approx(block[12], 4.0) && approx(block[15], 3.0) && approx(block[colorAt + 3], 2.8);
+		assert scene.lights[1].priority === 2;
+	} finally { dispose(); resetErrorHalt(); }
+	assert refs[0].renderer.closed && refs[0].scene.nodeCount() === 0;
 }

@@ -36,6 +36,7 @@ expect_reject tests/macros/refArrayEntryRejected.ms "Type .string. is not assign
 expect_reject tests/macros/optChangeTextTemplateRejected.ms "a nullable onChangeText handler is not supported yet"
 expect_reject tests/macros/optChangeTextFlatRejected.ms "a nullable onChangeText handler is not supported yet"
 expect_reject tests/macros/componentUnknownPropRejected.ms "<Badge> has no prop 'lable'"
+expect_reject tests/macros/pointLightShadowRejected.ms "<PointLight> has no prop 'castShadow'"
 expect_reject tests/macros/componentMixedAccessorRejected.ms "prop 'value' of <Count> mixes Accessor with another type"
 expect_reject tests/macros/componentNotInScopeRejected.ms "<Missing> is not a component in scope"
 expect_reject tests/macros/componentSlotRequiredPropsRejected.ms "a node slot component requires prop 'title': pass an element with props instead"
