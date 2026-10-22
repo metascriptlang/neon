@@ -1,8 +1,9 @@
 // Text3D through the Scene3D layer of a Void area, on the GPU.
-//   msc build tests/device/text3d.ms --output=out/text3d && out/text3d
+//   msc build tests/device/text3d.ms --output=out/text3d && out/text3d   (from the Neon checkout, beside ../void)
 // Exits 0 once a label redrew, rescaled, faced the camera, was replaced and released its GPU resources;
 // glyph atlas pages are process-wide and stay.
 
+import { readFile } from "std/fs";
 import { accessor, createSignal } from "../../src/core/signal";
 import { flush, resetErrorHalt } from "../../src/core/runtime";
 import { element } from "../../src/macros/ui/element";
@@ -20,6 +21,7 @@ import { gfxSetup, fbWidth, fbHeight } from "../../../void/src/sokol/gpu";
 import { beginScreenPass } from "../../../void/src/gpu/target";
 import { endPass, commit, liveImages, liveViews } from "../../../void/src/gpu/door";
 import { glyphAtlas } from "../../../void/src/void2d/labelText";
+import { defaultFontBytes } from "../../../void/src/void2d/font";
 import { pageCount } from "../../../void/src/void2d/glyphAtlas";
 
 @include("../../../void/src/sokol/bridge.h");
@@ -43,6 +45,7 @@ const [size, setSize] = createSignal<float32>(16.0);
 const [perUnit, setPerUnit] = createSignal<float32>(100.0);
 const [shown, setShown] = createSignal(true);
 const [yaw, setYaw] = createSignal<float32>(0.0);
+const FONT_PATH = "../void/assets/font.ttf";
 
 function fail(message: string): void {
 	console.log("FAIL Text3D device:", message);
@@ -60,6 +63,8 @@ function near(a: float32, b: float32): boolean {
 }
 
 function init(): void {
+	const file = readFile(FONT_PATH);
+	if (!file.ok || !defaultFontBytes([...file.value.asBytes()]).ok) { fail("the default font did not load from " + FONT_PATH); return; }
 	gfxSetup();
 	setup2d();
 	baseImages = liveImages(); baseViews = liveViews(); basePages = glyphAtlas.pageCount();
