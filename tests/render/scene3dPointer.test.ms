@@ -170,7 +170,7 @@ test "nested press gestures: the innermost claims the press, and stopPropagation
 			<Group onPressIn={note(log, "group in")}>
 				<Mesh mesh={mesh} onPressIn={(e: Pointer3DEvent): void => {
 					log.push("mesh in");
-					stopPropagation(e);
+					e.stopPropagation();
 				}} />
 			</Group>
 		</Scene3D>
