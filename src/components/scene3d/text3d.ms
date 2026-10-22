@@ -2,7 +2,10 @@ import { Accessor, untrack } from "../../core/signal";
 import { createRenderEffect } from "../../core/effect";
 import { Cleanup } from "../../core/types";
 import { onCleanup } from "../../core/cleanup";
-import { Host, HostNode, NeonNode } from "../../render/hostTypes";
+import { Host, HostNode, NeonNode, VoidArea } from "../../render/hostTypes";
+import { useContext } from "../../render/context";
+import { getVoidAreaContext } from "../../render/voidScope";
+import { FontId } from "../../../../void/src/void2d/font";
 import { Mat4, vec3, determinant3x3 } from "../../../../void/src/math/math3d";
 import { Color, rgba } from "../../../../void/src/void2d/types";
 import { TextStyle } from "../../../../void/src/void2d/textLayout";
@@ -41,9 +44,9 @@ function colorOf(props: Text3DProps): Color {
 	return props.color === null ? rgba(1.0, 1.0, 1.0, 1.0) : (props.color as () => Color)();
 }
 
-function styleLabel(label: WorldLabel, style: TextStyle | null, size: float32): void {
+function styleLabel(label: WorldLabel, style: TextStyle | null, size: float32, font: FontId): void {
 	if (!(size > 0.0)) { throw new Error("Text3D: size must be positive"); }
-	const base = style === null ? label.text.textStyle() : style as TextStyle;
+	const base: TextStyle = style === null ? { ...label.text.textStyle(), font: font } : style as TextStyle;
 	label.text.setTextStyle({ ...base, size: size });
 	label.stale = true;
 }
@@ -79,6 +82,9 @@ export function Text3D(props: Text3DProps): NeonNode {
 		if ((props.outlineWidth === null) !== (props.outlineColor === null)) {
 			throw new Error("Text3D: provide outlineWidth and outlineColor together");
 		}
+		const area = useContext(getVoidAreaContext());
+		if (area === null) { throw new Error("Text3D: the Void area did not provide its frame"); }
+		const font = (area as VoidArea).hub.font;
 		mountOwned((): void => {
 			const state = scope.state;
 			const scene = state.handle.scene;
@@ -112,7 +118,7 @@ export function Text3D(props: Text3DProps): NeonNode {
 						if (!made.ok) { throw new Error("Text3D: WorldLabel.create failed: " + made.error.toString()); }
 						const next = made.value;
 						try {
-							styleLabel(next, props.textStyle === null ? null : (props.textStyle as () => TextStyle)(), size);
+							styleLabel(next, props.textStyle === null ? null : (props.textStyle as () => TextStyle)(), size, font);
 							if (props.outlineWidth !== null) {
 								outlineLabel(next, (props.outlineWidth as () => float32)(), (props.outlineColor as () => Color)());
 							}
@@ -143,7 +149,7 @@ export function Text3D(props: Text3DProps): NeonNode {
 					],
 					(value: [TextStyle | null, float32], prev: [TextStyle | null, float32] | null): Cleanup | null => {
 						const open = label;
-						if (prev !== null && open !== null) { styleLabel(open, value[0], value[1]); state.invalidate(); }
+						if (prev !== null && open !== null) { styleLabel(open, value[0], value[1], font); state.invalidate(); }
 						return null;
 					},
 				);
