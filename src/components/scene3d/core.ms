@@ -10,6 +10,7 @@ import { Vec3, Quat, vec3 } from "../../../../void/src/math/math3d";
 import { RenderState } from "../../../../void/src/gpu/state";
 import { Program, MATERIAL_UNIFORM_SLOT, MATERIAL_UNIFORM_LENGTH } from "../../../../void/src/void3d/gpu3d";
 import { Material, Phase } from "../../../../void/src/void3d/material";
+import { MeshId } from "../../../../void/src/void3d/draw";
 import { DrawContext, MaterialId, addMaterial, reserveUniforms, writeUniforms, releaseUniforms } from "../../../../void/src/void3d/draw";
 import {
 	Scene3D as VoidScene3D, NodeId3D, Transform3D,
@@ -29,10 +30,16 @@ export interface CameraEntry {
 	active: boolean;
 }
 
+export interface SharedGeometry {
+	mesh: MeshId;
+	users: int32;
+}
+
 export interface SceneState {
 	handle: Scene3DHandle;
 	defaultMaterial: MaterialId | null;
 	cameras: CameraEntry[];
+	geometries: SharedGeometry[];
 	invalidate: () => void;
 }
 

@@ -41,6 +41,7 @@ export function Scene3D(props: Scene3DProps): NeonNode {
 			const handle: Scene3DHandle = { context: context, scene: scene, camera: null };
 			const state: SceneState = {
 				handle: handle, defaultMaterial: null, cameras: [],
+				geometries: [],
 				invalidate: (): void => { area.handle.requestFrame(); },
 			};
 			const made = ForwardRenderer.create(context, { x: 0.0, y: 0.0, z: 0.0, w: 0.0 });

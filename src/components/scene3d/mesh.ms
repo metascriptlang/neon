@@ -6,12 +6,44 @@ import { Host, HostNode, NeonNode } from "../../render/hostTypes";
 import { MeshData } from "../../../../void/src/void3d/meshData";
 import { MeshId, MaterialId, addMeshData, releaseMesh } from "../../../../void/src/void3d/draw";
 import { NodeId3D, addMeshNode, setMeshOf, setMaterialOf, remove } from "../../../../void/src/void3d/scene";
-import { NodeProps, mountOwned, requireScene, localOf, bindNode, mountNodeChildren, defaultMaterialOf } from "./core";
+import { NodeProps, SceneState, SharedGeometry, mountOwned, requireScene, localOf, bindNode, mountNodeChildren, defaultMaterialOf } from "./core";
 
 export interface MeshProps extends NodeProps {
 	geometry?: Accessor<MeshData> | null;
 	mesh?: Accessor<MeshId> | null;
 	material?: Accessor<MaterialId> | null;
+}
+
+function acquireGeometry(state: SceneState, data: MeshData): SharedGeometry {
+	const context = state.handle.context;
+	for (const entry of state.geometries) {
+		const at = entry.mesh.index;
+		if (context.meshData[at].vertices.length === data.vertices.length
+			&& context.meshData[at].bounds == data.bounds && context.meshData[at] == data) {
+			entry.users += 1;
+			return entry;
+		}
+	}
+	const uploaded = addMeshData(context, data);
+	if (!uploaded.ok) { throw new Error("Mesh: addMeshData failed: " + uploaded.error.toString()); }
+	const entry: SharedGeometry = { mesh: uploaded.value, users: 1 };
+	state.geometries.push(entry);
+	return entry;
+}
+
+function releaseGeometry(state: SceneState, entry: SharedGeometry): void {
+	entry.users -= 1;
+	if (entry.users > 0) { return; }
+	const last = state.geometries.length - 1;
+	for (let i = 0; i <= last; i++) {
+		if (state.geometries[i] === entry) {
+			state.geometries[i] = state.geometries[last];
+			state.geometries.pop();
+			break;
+		}
+	}
+	const released = releaseMesh(state.handle.context, entry.mesh);
+	if (!released.ok) { throw new Error("Mesh: releaseMesh failed: " + released.error.toString()); }
 }
 
 export function Mesh(props: MeshProps): NeonNode {
@@ -20,7 +52,6 @@ export function Mesh(props: MeshProps): NeonNode {
 		if ((props.geometry === null) === (props.mesh === null)) { throw new Error("Mesh: provide exactly one geometry (MeshData) or mesh (MeshId)"); }
 		mountOwned((): void => {
 			const scene = scope.state.handle.scene;
-			const context = scope.state.handle.context;
 			const local = localOf(props);
 			let node: NodeId3D | null = null;
 			let material: MaterialId | null = null;
@@ -49,21 +80,28 @@ export function Mesh(props: MeshProps): NeonNode {
 				scope.state.invalidate();
 			};
 			if (props.geometry !== null) {
+				let held: SharedGeometry | null = null;
+				onCleanup((): void => {
+					const last = held;
+					held = null;
+					if (last !== null) { releaseGeometry(scope.state, last); }
+				});
 				createRenderEffect<[MeshData, MaterialId | null]>(
 					(prev: [MeshData, MaterialId | null] | null): [MeshData, MaterialId | null] => [
 						(props.geometry as () => MeshData)(),
 						props.material === null ? null : untrack(() => (props.material as () => MaterialId)()),
 					],
 					(value: [MeshData, MaterialId | null], prev: [MeshData, MaterialId | null] | null): Cleanup | null => {
-						const uploaded = addMeshData(context, value[0]);
-						if (!uploaded.ok) { throw new Error("Mesh: addMeshData failed: " + uploaded.error.toString()); }
-						const mesh = uploaded.value;
+						const next = acquireGeometry(scope.state, value[0]);
 						try {
-							bindMesh(mesh, value[1]);
-						} finally {
-							const released = releaseMesh(context, mesh);
-							if (!released.ok) { throw new Error("Mesh: releaseMesh failed: " + released.error.toString()); }
+							bindMesh(next.mesh, value[1]);
+						} catch (error) {
+							releaseGeometry(scope.state, next);
+							throw error;
 						}
+						const previous = held;
+						held = next;
+						if (previous !== null) { releaseGeometry(scope.state, previous); }
 						return null;
 					},
 				);
