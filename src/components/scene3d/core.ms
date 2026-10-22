@@ -22,6 +22,8 @@ import {
 } from "../../../../void/src/void3d/scene";
 import { Camera3D as VoidCamera3D, ProjectionKind, CameraError } from "../../../../void/src/void3d/camera";
 import { ForwardRenderer } from "../../../../void/src/void3d/forwardRenderer";
+import { CameraView, resolve } from "../../../../void/src/void3d/camera";
+import { syncWorld } from "../../../../void/src/void3d/scene";
 
 export interface Scene3DHandle {
 	context: DrawContext;
@@ -57,6 +59,11 @@ export interface SceneState {
 	limbo?: NodeId3D | null;
 	shadowMaterials: Vec<MaterialId | null>;
 	shadowOf: (light: NodeId3D, shadow: LightShadow | null) => void;
+	beforeRefresh: FrameHook[];
+}
+
+export interface FrameHook {
+	run: (view: CameraView) => void;
 }
 
 export interface NodeScope {
@@ -425,3 +432,19 @@ export function viewCamera(handle: Scene3DHandle): Result<VoidCamera3D, CameraEr
 	return worldCameraOf(handle.scene, DEFAULT_CAMERA);
 }
 
+
+export function onBeforeRefresh(state: SceneState, run: (view: CameraView) => void): void {
+	const hook: FrameHook = { run };
+	state.beforeRefresh.push(hook);
+	onCleanup((): void => { state.beforeRefresh.splice(state.beforeRefresh.indexOf(hook), 1); });
+}
+
+export function runBeforeRefresh(state: SceneState, pixelWidth: int32, pixelHeight: int32): void {
+	if (state.beforeRefresh.length === 0) { return; }
+	const synced = syncWorld(state.handle.scene);
+	const world = viewCamera(state.handle);
+	if (!world.ok) { throw new Error("Scene3D: the active camera has no world pose: " + world.error.toString()); }
+	const view = world.value.resolve(pixelWidth, pixelHeight);
+	if (!view.ok) { throw new Error("Scene3D: the active camera does not resolve: " + view.error.toString()); }
+	for (const hook of state.beforeRefresh) { hook.run(view.value); }
+}

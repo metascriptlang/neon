@@ -23,6 +23,7 @@ import { PixelFormat, contextGeneration, formatRenderable } from "../../../../vo
 import { Scene3D as VoidScene3D, NodeId3D, NO_NODE_ID, closeScene, setAmbient, refresh, collectLights } from "../../../../void/src/void3d/scene";
 import { resolve, writeCameraBlock } from "../../../../void/src/void3d/camera";
 import { Scene3DHandle, SceneState, LightShadow, SCENE_UNIFORM_CAPACITY, mountOwned, mountSceneChildren, viewCamera } from "./core";
+import { runBeforeRefresh } from "./core";
 
 export interface Scene3DProps {
 	ambient?: Accessor<Vec3> | null;
@@ -103,7 +104,7 @@ export function Scene3D(props: Scene3DProps): NeonNode {
 				invalidate();
 			};
 			const state: SceneState = {
-				handle: handle, defaultMaterial: null, cameras: [], geometries: [], invalidate: invalidate,
+				handle: handle, defaultMaterial: null, cameras: [], geometries: [], invalidate: invalidate, beforeRefresh: [],
 				shadowMaterials: [null, null, null, null], shadowOf: shadowOf,
 			};
 			if (hdr) { setToneMode(renderer.core, ToneMode.Filmic); }
@@ -121,6 +122,7 @@ export function Scene3D(props: Scene3DProps): NeonNode {
 						if (!formatRenderable(PixelFormat.Rgba16f)) { throw new Error("Scene3D: hdr needs a device that renders Rgba16f"); }
 						deviceChecked = true;
 					}
+					runBeforeRefresh(state, pixelWidth, pixelHeight);
 					refresh(scene, items);
 					const lights = collectLights(scene, lightBlock);
 					if (!lights.ok) { throw new Error("Scene3D: collectLights failed: " + lights.error.toString()); }
