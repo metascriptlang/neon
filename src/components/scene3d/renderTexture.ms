@@ -18,7 +18,7 @@ import { TextureId, TextureAlpha } from "../../../../void/src/void3d/texture";
 import {
 	MaterialId, addTargetTexture, addMaterial, releaseMaterial, releaseTexture, reserveUniforms, writeUniforms, releaseUniforms,
 } from "../../../../void/src/void3d/draw";
-import { mountOwned, requireScene, onBeforeFrame } from "./core";
+import { mountOwned, requireScene, onBeforeRefresh } from "./core";
 
 export interface RenderTextureHandle {
 	texture: TextureId;
@@ -117,7 +117,7 @@ export function RenderTexture(props: RenderTextureProps): NeonNode {
 					return null;
 				},
 			);
-			onBeforeFrame(state, (): void => {
+			onBeforeRefresh(state, (): void => {
 				if (target.generation !== contextGeneration()) {
 					target.resize(width, height);
 					dirty = true;

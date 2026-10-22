@@ -15,7 +15,7 @@ import {
 } from "../../../../void/src/void3d/worldLabel";
 import {
 	NodeProps, SceneState, mountOwned, requireScene, localOf, bindNode, ownNode, mountNodeChildren, viewCamera,
-	onBeforeFrame,
+	onBeforeRefresh,
 } from "./core";
 
 export interface Text3DProps extends NodeProps {
@@ -170,7 +170,7 @@ export function Text3D(props: Text3DProps): NeonNode {
 					},
 				);
 			}
-			onBeforeFrame(state, (): void => {
+			onBeforeRefresh(state, (): void => {
 				const open = label;
 				if (open === null) { return; }
 				if (billboard) { faceActiveCamera(state, open, node); }
