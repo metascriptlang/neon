@@ -219,18 +219,28 @@ at `d604b18`); an entry there names it in an **R3F** field.
 - **Verdict:** FOLLOWS-RN
 - **R3F:** `intersect` lists every object the ray hits, nearest first, with each hit's handler-bearing ancestors as entries of their own (`packages/fiber/src/core/events.ts:205-277`), and `handleIntersects` calls the handler of every entry until `stopPropagation` (`:281-393`); `stopPropagation` also stops delivery to farther objects (`:355-375`). The docs state it: "The `intersections` array in the event includes all objects intersecting the ray, not just the nearest" (`docs/API/events.mdx:61-64`).
 - **RN:** one topmost target, found by walking children from the top of the z-order: Android `findTouchTargetView` (`packages/react-native/ReactAndroid/src/main/java/com/facebook/react/uimanager/TouchTargetHelper.kt:219`), iOS `hitTest:withEvent:` over `reverseObjectEnumerator` (`packages/react-native/React/Views/RCTView.m:200`). Babylon's `scene.pick` agrees: it keeps the closest hit (`~/projects/_babylon/Babylon.js` `449e8a7`, `packages/dev/core/src/Culling/ray.core.ts:851`).
-- **MS:** not built on main. The void-endgame arc's input lane routes a press to Void's `pickNearest` (`void/src/void3d/pick.ms`) and bubbles it through the hit's 3D ancestors; `stopPropagation` stops the bubbling.
+- **MS:** the 2D half is built: the Void host presses only the topmost pressable under the pointer and bubbles through its ancestors until `stopPropagation` (`src/render/event.ms` `stopPropagation`, `src/platform/void/host.ms`), and gives what no 2D handler takes to the area's layers, top paint order first, through `AreaLayer.hit` (`src/render/voidAreaHandle.ms`). The 3D half, a press routed to Void's `pickNearest` (`void/src/void3d/pick.ms`) and bubbled through the hit's 3D ancestors on that hook, is not built.
 - **Why:** one target per press is what a View inside the same area already gets, so 2D and 3D handlers see one rule; what lies behind the nearest hit is occluded on screen, and an author who wants it asks Void for the ray's hits.
 - **Don't:** deliver to farther objects and expect `stopPropagation` to undo it, as R3F does; a handler behind the hit would then run before the nearer one can stop it.
-- **Pin:** none yet; the input lane's tests in `tests/platform/` pin it when it lands.
+- **Pin:** 2D: `tests/platform/voidPointer.test.ms` ("a pressable drawn over another takes the press alone", "stopPropagation stops a pointer event at the node that calls it", "a layer hears what no 2D handler takes, top layer first"), `tests/render/scene2dEvents.test.ms`. 3D: none until 3D pointer events are built.
 - **Checked:** 2026-10-22, read; decided under the person's delegation for the void-endgame arc (decision D2).
 
 ### RD-10 · `<Node id>` attaches a node it does not own
 
 - **Verdict:** FOLLOWS-R3F
 - **R3F:** `<primitive object>` places an existing object and never disposes it: "Primitives will not dispose of the object they carry on unmount" (`docs/API/objects.mdx:166`); `removeChild` skips dispose for `type === 'primitive'` (`packages/fiber/src/core/reconciler.tsx:347`, `:417`).
-- **MS:** not built on main. The void-endgame arc exports `<Node id>` beside `useScene3D()` and `useSceneNode()`: it attaches an existing `NodeId3D` under the current scene parent and detaches it on unmount, without `remove`.
-- **Why:** a node made outside Neon belongs to whoever made it; disposing it on unmount would free what the caller still holds. This is R3F's rule, not a departure from it; the entry exists because every other Scene3D component owns and removes its node (`src/components/scene3d.ms` `ownNode`).
+- **MS:** `Node` in `src/components/scene3d/node.ms`, exported beside `useScene3D()` and `useSceneNode()`: it places an existing `NodeId3D` under the current scene parent, binds `NodeProps` onto it and refuses a changed `id`. On unmount it frees only what Neon mounted under it and gives the node back under its former parent before its former next sibling; when that parent is gone it parks the node in a hidden, detached group of the scene, because Void exports no detach (`.inbox/void/2026-10-22-export-detach-for-3d-nodes.md`). It never calls `remove`.
+- **Why:** a node made outside Neon belongs to whoever made it; disposing it on unmount would free what the caller still holds. This is R3F's rule, not a departure from it; the entry exists because every other Scene3D component owns and removes its node (`src/components/scene3d/core.ms` `ownNode`).
 - **Don't:** expect an unmounted `<Node>` to free its node; the caller closes it.
-- **Pin:** none yet.
+- **Pin:** `tests/render/scene3dHost.test.ms` ("Node places an app-made node, mounts its children under it, and gives it back without freeing it")
 - **Checked:** 2026-10-22, read; decided under the person's delegation for the void-endgame arc (decision D5).
+
+### RD-11 · Scene3D's default tone curve is Linear without `hdr`, Filmic with it
+
+- **Verdict:** DIVERGE-INTENTIONAL
+- **R3F:** `gl.toneMapping` is `ACESFilmicToneMapping` unless the Canvas is `flat` (`packages/fiber/src/core/configuration.ts:308`), with or without an HDR target.
+- **MS:** `Scene3D` in `src/components/scene3d/scene.ms` leaves Void's default `ToneMode.Linear` (`void/src/void3d/renderer.ms` `Renderer`, after Heaps `h3d.scene.pbr.Renderer`) on an LDR scene and sets `ToneMode.Filmic`, Void's ACES fit (`void/src/void3d/toneMap.ms` `filmic`), when `hdr` is on. `toneMapping` overrides either default; LDR scene programs apply the chosen curve too (`void/src/void3d/shader3d.ms` `toneMapped`).
+- **Why:** an LDR scene holds colours in [0,1], and Linear shows them as authored at exposure 1; the ACES fit maps 1.0 to about 0.80, so every authored white would dim. With `hdr` the scene holds values above 1 that need a curve, and there Neon takes R3F's ACES default.
+- **Don't:** expect R3F's look from an LDR Scene3D without setting `toneMapping={ToneMode.Filmic}`.
+- **Pin:** `tests/render/scene3dLook.test.ms` ("an LDR Scene3D keeps Void's linear curve at exposure 1 and reserves no tone map", "hdr reserves the tone map at mount, defaults to the ACES curve and refuses a change")
+- **Checked:** 2026-10-22, read; decided under the person's delegation for the void-endgame arc (decision D8).
