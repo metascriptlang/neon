@@ -158,11 +158,11 @@ test "a native Text sends its fontFamily to its label, a span may not change the
 test "a native multiline TextInput without a height grows with its text up to maxHeight" {
 	const [notes, setNotes] = createSignal("");
 	const app = (): NeonNode => <View style={{ width: 200 }}>
-		<TextInput multiline={true} value={notes()} onChangeText={(t: string): void => { setNotes(t); }} style={{ maxHeight: 80 }} onLayout={(e: NeonEvent): void => {}} />
+		<TextInput multiline={true} value={notes()} accessibilityLabel="growing notes" onChangeText={(t: string): void => { setNotes(t); }} style={{ maxHeight: 80 }} onLayout={(e: NeonEvent): void => {}} />
 		<TextInput multiline={true} value={notes()} style={{ height: 40 }} />
 	</View>;
 	runApp(app);
-	const field = nmLastInputTag();
+	const field = nmTagWithProp("accessibilityLabel", "growing notes");
 	const empty = nmLayoutHeight(field);
 	nmControl(field, 0, "a line of text that wraps");
 	nmLoop();
