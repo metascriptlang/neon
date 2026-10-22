@@ -1,4 +1,5 @@
 import { accessor, createSignal } from "../../src/core/signal";
+import { flush } from "../../src/core/runtime";
 import { element } from "../../src/macros/ui/element";
 import { Show } from "../../src/macros/ui/flow";
 import { HostNode, mockNode, mockHost, render } from "../../src/render/host";
@@ -88,6 +89,7 @@ function frame(): void {
 		setPhase(frames / 3); setChanged(false);
 	}
 	if (frames % 3 === 2) { setChanged(true); }
+	flush();
 	if (nodes.length !== phase() + 1) { fail("mount identity"); return; }
 	const node = nodes[nodes.length - 1];
 	const value = node.content();
