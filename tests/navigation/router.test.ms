@@ -1,4 +1,4 @@
-import { flush } from "../../src/core/runtime";
+import { flush, resetErrorHalt } from "../../src/core/runtime";
 import { createRoot } from "../../src/core/owner";
 import { createRenderEffect } from "../../src/core/effect";
 import { Cleanup, Dispose } from "../../src/core/types";
@@ -360,6 +360,60 @@ test "a route tree takes a typed route, whose codec decides the addresses it mat
 	router.dispose();
 	const both = failure((): Routes => createRoutes([{ path: "/threads", route: thread, component: Thread }]));
 	assert both === "routing: \"/threads/:id\" takes its path, status, guard and paths from its route", both;
+}
+
+struct ProjectParams {
+	project: string;
+}
+
+const projectCodec: ParamsCodec<ProjectParams> = {
+	parse: (values: Map<string, string>): Result<ProjectParams, RoutingError> => {
+		const project = values.get("project") ?? "";
+		return project.length === 0 ? Result.err(RoutingError.InvalidParams) : Result.ok({ project });
+	},
+	stringify: (params: ProjectParams): Map<string, string> => {
+		const values = new Map<string, string>();
+		values.set("project", params.project);
+		return values;
+	},
+};
+
+const project = route<ProjectParams>("/projects/:project", { params: projectCodec });
+
+function ProjectFrame(props: LayoutProps): NeonNode {
+	return <main><h2>{"project " + useParams({ from: project }).project}</h2>{props.children}</main>;
+}
+
+function ProjectItem(): NeonNode {
+	return <p>{useParams({ from: project }).project + " item " + (useParams().get("item") ?? "")}</p>;
+}
+
+function TypedThread(): NeonNode {
+	const params: ThreadParams = useParams({ from: thread });
+	return <h1>{"thread " + params.id}</h1>;
+}
+
+function StrayThread(): NeonNode {
+	return <h1>{useParams({ from: project }).project}</h1>;
+}
+
+test "useParams({ from }) reads a route's own params or an ancestor's through its codec, and refuses a route off the path" {
+	const routes = createRoutes([
+		{ route: thread, component: TypedThread },
+		{ route: project, layout: ProjectFrame, children: [{ path: ":item", component: ProjectItem }] },
+	]);
+	const router = opened(routes, memory("/threads/7"));
+	const root = mounted(router);
+	assert mockToString(root) === "<root><h1>thread 7</h1></root>", mockToString(root);
+	assert router.navigate("/projects/neon/42");
+	assert mockToString(root) === "<root><main><h2>project neon</h2><p>neon item 42</p></main></root>", mockToString(root);
+	router.dispose();
+	const stray = opened(createRoutes([{ route: thread, component: StrayThread }]), memory("/threads/7"));
+	let refused = "";
+	try { mounted(stray); } catch (error) { refused = error.message; }
+	resetErrorHalt();
+	stray.dispose();
+	assert refused === "routing: useParams({ from }) names /projects/:project, which is not on this component's route", refused;
 }
 
 test "static paths come from the route tree, with enumerated params" {

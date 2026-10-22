@@ -18,6 +18,7 @@ import { RoutingHistory, RoutingSession, createRoutingSession } from "./routingH
 import {
 	GuardDecision,
 	MatchedRoute,
+	RouteDef,
 	RouteEntry,
 	RouteMatch,
 	RouteNode,
@@ -783,7 +784,7 @@ export class Router {
 				if (settled.ok) { this.current.set(settled.value); }
 			},
 		};
-		return levelView(this.routes, this.root, steer);
+		return levelView(this.routes, this.root, steer, null);
 	}
 
 	connect(session: RoutingSession, stop: Dispose | null, group: (change: () => void, visit: boolean) => void): void {
@@ -814,6 +815,7 @@ export class Router {
 		this.apply(resolved, true);
 	}
 
+	// Parked on ~/metascript/.inbox/compiler/2026-10-22-a-type-parameter-is-not-inferred-from-an-object-literal-field-against-a-generic-interface-or-a-second-candidate.md and 2026-10-21-method-overload-with-an-omitted-optional-argument-finds-no-match.md: TanStack's typed `navigate({ to, params })` beside this one.
 	navigate(href: string, options: NavigateOptions | null = null): boolean {
 		if (!this.history.writable) { throw new Error("routing: request history is read-only"); }
 		const replace = options === null ? false : (options as NavigateOptions).replace ?? false;
@@ -938,6 +940,8 @@ export function createRouter(routes: Routes, history: RoutingHistory): Result<Ro
 
 interface RouteScope {
 	params: Map<string, string>;
+	node: RouteNode;
+	parent: RouteScope | null;
 }
 
 const RouterContext = createContext<Router | null>(null);
@@ -1013,8 +1017,8 @@ function tabTriggers(routes: Routes, level: Level, steer: Steer): Accessor<TabTr
 	);
 }
 
-function levelView(routes: Routes, level: Level, steer: Steer): NeonNode {
-	const render = (child: NavigationChild<Stop, Place>): NeonNode => placeView(routes, child, steer);
+function levelView(routes: Routes, level: Level, steer: Steer, parent: RouteScope | null): NeonNode {
+	const render = (child: NavigationChild<Stop, Place>): NeonNode => placeView(routes, child, steer, parent);
 	return match (level.kind) {
 		LevelKind.Slot => renderStackTop<Stop, Place>(level.stack as ChildStack<Stop, Place>, render),
 		LevelKind.Stack => renderStack<Stop, Place>(level.stack as ChildStack<Stop, Place>, render, (child: NavigationChild<Stop, Place>): boolean => {
@@ -1031,10 +1035,10 @@ function tabsFrame(inner: NeonNode): NeonNode {
 	</View>;
 }
 
-function placeView(routes: Routes, child: NavigationChild<Stop, Place>, steer: Steer): NeonNode {
+function placeView(routes: Routes, child: NavigationChild<Stop, Place>, steer: Steer, parent: RouteScope | null): NeonNode {
 	const stop = untrack((): Stop => child.configuration());
 	const found = routes.views[stop.route];
-	const scope: RouteScope = { params: stop.params };
+	const scope: RouteScope = { params: stop.params, node: found.node, parent };
 	const component = found.component;
 	const layout = found.layout;
 	let body: NeonNode;
@@ -1042,7 +1046,7 @@ function placeView(routes: Routes, child: NavigationChild<Stop, Place>, steer: S
 		body = mountLater(component as () => NeonNode);
 	} else {
 		const level = child.instance.level as Level;
-		const inner = levelView(routes, level, steer);
+		const inner = levelView(routes, level, steer, scope);
 		if (layout !== null) {
 			body = createComponent<LayoutProps>(layout as (props: LayoutProps) => NeonNode, { children: inner });
 		} else if (level.kind === LevelKind.Tabs) {
@@ -1074,6 +1078,22 @@ export function useParams(): Map<string, string> {
 	const scope = useContext(RouteContext);
 	if (scope === null) { throw new Error("routing: useParams is called outside a routed component"); }
 	return (scope as RouteScope).params;
+}
+
+export function useParams<P>(options: { from: RouteDef<P> }): P {
+	const from = options.from;
+	let scope = useContext(RouteContext);
+	if (scope === null) { throw new Error("routing: useParams is called outside a routed component"); }
+	while (scope !== null) {
+		const level = scope as RouteScope;
+		if (level.node === from.node) {
+			const parsed = from.params.parse(level.params);
+			if (!parsed.ok) { throw new Error("routing: the params of " + (from.node.pattern ?? "a pathless route") + " do not parse: " + parsed.error.toString()); }
+			return parsed.value;
+		}
+		scope = level.parent;
+	}
+	throw new Error("routing: useParams({ from }) names " + (from.node.pattern ?? "a pathless route") + ", which is not on this component's route");
 }
 
 export function useNavigate(): (to: string | int32, options?: NavigateOptions | null) => boolean {
