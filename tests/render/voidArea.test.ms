@@ -227,7 +227,7 @@ test "a Void without a fallback on a host without a Void area throws an Error na
 	} catch (e) {
 		message = e.message;
 	}
-	assert message === "Void: this host has no Void area; give <Void> a fallback to mount where none exists", message;
+	assert message === "Void: this host has no Void area (its voidArea is null); give <Void> a fallback to mount where none exists", message;
 }
 
 class Trouble {

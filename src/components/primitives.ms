@@ -847,7 +847,7 @@ export function Void(props: VoidProps): NeonNode {
 		const open = host.voidArea;
 		if (open === null) {
 			const fallback = props.fallback;
-			if (fallback === null) { throw new Error("Void: this host has no Void area; give <Void> a fallback to mount where none exists"); }
+			if (fallback === null) { throw new Error("Void: this host has no Void area (its voidArea is null); give <Void> a fallback to mount where none exists"); }
 			(fallback as NeonNode)(host, node, before);
 			return;
 		}
