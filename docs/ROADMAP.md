@@ -533,18 +533,31 @@ No repeated unchanged submission demos or inferred protected-contract permission
   (pins `tests/platform/voidLayerOrder.test.ms`, `tests/device/voidLayerOrder.ms`); a layer
   inside a clipping View is not clipped yet. Host/embed/window prerequisites
   consumed; raw kinds belong this arc, closed host arc owns no new work.
-- [ ] Finish raw2D gaps: Anim binders, textured Graphics, texture upload/replacement,
-  fresh bounds and observed output. Keep existing core/style/text/filter coverage.
+- [ ] Finish raw2D gaps: texture upload/replacement, fresh bounds and observed output.
+  Anim binders (2D-05) and borrowed textured Graphics fills (2D-06) are built. Keep
+  existing core/style/text/filter coverage.
 - [x] ~~Prove resource-bearing Gltf rollback/remount/terminal cleanup~~ — real textured
   five-mesh Metal consumer12 frames, CPU material/uniform rollback; no pixels/Ion claim.
-- [ ] Finish remaining 3D resource lifecycle: Material/Light binders and mesh/material/
-  texture replacement. Preserve owner APIs and borrowing/atomic replacement contracts.
-- [ ] Map transform/baked animation and particles. Decide Billboard ownership before
-  implementing its proposed owned15-float/coalesced-upload route.
-- [ ] Map renderer settings, pixel-art/palette, directional shadows and moving materials
-  through existing Void renderers, with internal clocks and resource recovery.
-- [ ] Integrate picking and composition: topmost-first dispatch in paint order, camera-scoped2D, and
+- [x] ~~Scene3D host and extension API~~ — Show/For order and moves, Errored parking,
+  `<Node id>`, `useScene3D`/`useSceneNode`; borrowed Gltf assets, `gltfScope`, shared Mesh
+  geometry; reactive Mesh material and Light color/radius/priority (`docs/voidComponents.md`
+  3D-02/03/04/09/15).
+- [ ] Finish remaining 3D resource lifecycle: declarative Material/Texture, light-kind
+  change (Void has no binder). Preserve owner APIs and borrowing/atomic replacement contracts.
+- [x] ~~Map transform/baked animation, glTF clips and particles~~ — ObjectAnimation,
+  MeshFrameAnimation, Clip (with skinned playback), Particles, Billboards, Lod, Text3D
+  (3D-11/12/13/14/22/23/24/25). Billboards own their buffer in Neon, not through the
+  proposed Void-owned route.
+- [ ] Map renderer settings: hdr/bloom/toneMapping/exposure, directional shadows and
+  moving-material time are built (3D-16/18/19); pixel-art/palette (3D-17) remains.
+- [ ] Integrate picking and composition: 2D topmost-first press/hover dispatch and layer
+  hits are built (2D-15); a Scene2D draws into a mesh texture through RenderTexture (3D-07).
+  Remaining: 3D pointer events and camera controls, camera-scoped 2D, and
   View/Text/Pressable in a mesh texture with UV-to-UI input.
+- [x] ~~Frame and failure plumbing~~ — `useFrame`, per-area `voidClock`, `<Void fallback>`,
+  layer errors routed to the owner's Errored (X-01, X-03).
+- [ ] Run Scene2D Anim, Particles and useFrame on the one per-area clock that already
+  drives ObjectAnimation, MeshFrameAnimation and Clip (X-03).
 - [ ] Observe the real Ion/Windows consumer: reactive pixels and idle sleep, not merely
   CPU checks or Metal submissions.
 - [ ] Gate and land verified slices: affected checks, full gate before source land and
