@@ -337,15 +337,10 @@ interface ClipMixer {
 
 const mixers: ClipMixer[] = [];
 
-function refuseUnmounted(): void { throw new Error("Clip: the handle is not mounted yet"); }
-
-const NO_CLIP_HANDLE: ClipHandle = {
-	play: refuseUnmounted,
-	pause: refuseUnmounted,
-	stop: refuseUnmounted,
-	setWeight: (weight: float64): void => { refuseUnmounted(); },
-	crossfade: (to: ClipHandle, ms: float64): void => { refuseUnmounted(); },
-};
+function touched(mixer: ClipMixer, run: ClipRun): void {
+	bump(mixer);
+	run.wake();
+}
 
 function mixerOf(scope: GltfScope): ClipMixer {
 	for (const mixer of mixers) {
@@ -517,30 +512,29 @@ export function Clip(props: ClipProps): NeonNode {
 			const scene = scope.state.handle.scene;
 			const mixer = mixerOf(owner as GltfScope);
 			const run: ClipRun = {
-				handle: NO_CLIP_HANDLE, pose: null, duration: 0.0, seconds: 0.0, playing: true, enabled: true,
+				pose: null, duration: 0.0, seconds: 0.0, playing: true, enabled: true,
 				speed: 1.0, loop: true, weight: 1.0, current: 1.0, fadeSeconds: 0.0, wake: (): void => {},
-			};
-			const touched = (): void => { bump(mixer); run.wake(); };
-			run.handle = {
-				play: (): void => { run.playing = true; run.enabled = true; settleWeight(run); touched(); },
-				pause: (): void => { run.playing = false; touched(); },
-				stop: (): void => {
-					run.playing = false; run.enabled = false; run.seconds = 0.0; run.current = 0.0; touched();
-				},
-				setWeight: (weight: float64): void => { run.weight = checkedWeight(weight); settleWeight(run); touched(); },
-				crossfade: (to: ClipHandle, ms: float64): void => {
-					const next = runOf(mixer, to);
-					const seconds = checkedFade(ms);
-					run.fadeSeconds = seconds;
-					next.fadeSeconds = seconds;
-					run.weight = 0.0;
-					next.weight = 1.0;
-					next.playing = true;
-					next.enabled = true;
-					settleWeight(run);
-					settleWeight(next);
-					touched();
-					next.wake();
+				handle: {
+					play: (): void => { run.playing = true; run.enabled = true; settleWeight(run); touched(mixer, run); },
+					pause: (): void => { run.playing = false; touched(mixer, run); },
+					stop: (): void => {
+						run.playing = false; run.enabled = false; run.seconds = 0.0; run.current = 0.0; touched(mixer, run);
+					},
+					setWeight: (weight: float64): void => { run.weight = checkedWeight(weight); settleWeight(run); touched(mixer, run); },
+					crossfade: (to: ClipHandle, ms: float64): void => {
+						const next = runOf(mixer, to);
+						const seconds = checkedFade(ms);
+						run.fadeSeconds = seconds;
+						next.fadeSeconds = seconds;
+						run.weight = 0.0;
+						next.weight = 1.0;
+						next.playing = true;
+						next.enabled = true;
+						settleWeight(run);
+						settleWeight(next);
+						touched(mixer, run);
+						next.wake();
+					},
 				},
 			};
 			mixer.runs.push(run);
@@ -593,7 +587,7 @@ export function Clip(props: ClipProps): NeonNode {
 					run.speed = value[1];
 					run.loop = value[2];
 					run.seconds = placed(run, run.seconds);
-					touched();
+					touched(mixer, run);
 					return null;
 				},
 			);
@@ -607,7 +601,7 @@ export function Clip(props: ClipProps): NeonNode {
 					run.fadeSeconds = checkedFade(value[1]);
 					if (prev === null) { run.current = targetWeight(run); }
 					settleWeight(run);
-					touched();
+					touched(mixer, run);
 					return null;
 				},
 			);
@@ -618,7 +612,7 @@ export function Clip(props: ClipProps): NeonNode {
 					(value: float64, prev: float64 | null): Cleanup | null => {
 						if (!Number.isFinite(value)) { throw new Error("Clip: time must be finite"); }
 						run.seconds = placed(run, value);
-						touched();
+						touched(mixer, run);
 						return null;
 					},
 				);
@@ -641,7 +635,7 @@ export function Clip(props: ClipProps): NeonNode {
 					run.duration = durationOf(clip);
 					run.seconds = props.time === null ? 0.0 : placed(run, (props.time as () => float64)());
 					retarget(mixer, scene, data, (mount as GltfMount).nodes);
-					touched();
+					touched(mixer, run);
 					return null;
 				},
 			);
