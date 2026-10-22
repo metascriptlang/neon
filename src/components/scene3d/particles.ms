@@ -2,7 +2,7 @@ import { Accessor, untrack } from "../../core/signal";
 import { createRenderEffect } from "../../core/effect";
 import { Cleanup } from "../../core/types";
 import { Host, HostNode, NeonNode } from "../../render/hostTypes";
-import { frameNow } from "../../animation/frame";
+import { useVoidClock } from "../../render/voidClock";
 import { VertexLayout } from "../../../../void/src/void3d/gpu3d";
 import { GpuMesh, MeshId, MaterialId, addMesh, streamMesh, writeStream, releaseMesh } from "../../../../void/src/void3d/draw";
 import {
@@ -30,11 +30,6 @@ export interface ParticlesProps extends NodeProps {
 }
 
 const DEFAULT_SEED: uint32 = 2463534242;
-
-// The emitter's clock in seconds; the shared area clock replaces this one function.
-function sceneSeconds(): float64 {
-	return frameNow() / 1000.0;
-}
 
 function streamOf(state: SceneState, capacity: int32, layout: VertexLayout): MeshId {
 	const added = addMesh(state.handle.context, GpuMesh.streamMesh(capacity, 0, 0, layout));
@@ -78,12 +73,15 @@ export function Particles(props: ParticlesProps): NeonNode {
 			ownNode(state, node);
 			let visualSettings: ParticleVisualSettings | null = null;
 			let awake = true;
-			let last: float64 = -1.0;
+			let unspentSeconds: float64 = 0.0;
+			const wakeClock = useVoidClock((): boolean => awake, (seconds: float64): void => { unspentSeconds += seconds; });
+			wakeClock();
 			const wake = (): void => {
 				if (awake || !(emitter.count > 0 || (active && emitter.isActive()))) { return; }
 				awake = true;
-				last = -1.0;
+				unspentSeconds = 0.0;
 				state.invalidate();
+				wakeClock();
 			};
 			createRenderEffect<[EmitterState, Turbulence | null, boolean, uint32]>(
 				(prev: [EmitterState, Turbulence | null, boolean, uint32] | null): [EmitterState, Turbulence | null, boolean, uint32] =>
@@ -142,10 +140,8 @@ export function Particles(props: ParticlesProps): NeonNode {
 				if (!awake) { return; }
 				const world = worldOf(scene, node);
 				if (!world.ok) { return; }
-				const now = sceneSeconds();
-				const step = last < 0.0 ? 0.0 : Math.max(0.0, now - last);
-				last = now;
-				const updated = updateEmitter(emitter, step, world.value);
+				const updated = updateEmitter(emitter, unspentSeconds, world.value);
+				unspentSeconds = 0.0;
 				if (!updated.ok) { throw new Error("Particles: updateEmitter failed: " + updated.error.toString()); }
 				const look = visualSettings;
 				const written = look === null
@@ -154,10 +150,9 @@ export function Particles(props: ParticlesProps): NeonNode {
 				if (!written.ok) { throw new Error("Particles: writing instances failed: " + written.error.toString()); }
 				const streamed = writeStream(context, stream, instances, written.value);
 				if (!streamed.ok) { throw new Error("Particles: writeStream failed: " + streamed.error.toString()); }
-				if (emitter.count > 0 || (active && emitter.isActive())) {
-					state.invalidate();
-				} else {
+				if (!(emitter.count > 0 || (active && emitter.isActive()))) {
 					awake = false;
+					wakeClock();
 				}
 			});
 			bindNode(state, node, props, local);

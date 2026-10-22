@@ -93,8 +93,8 @@ function drawFrame(): void {
 // Stages: 0 a one-shot emits then sleeps; 1 reactivation restarts it; 2 deactivation mid-emission
 // stops spawning and sleeps once the last particle dies; 3 unmount returns the stream buffer.
 function frame(): void {
-	clock.time += 16.0;
 	const before = requests();
+	clock.advance(16.0);
 	drawFrame();
 	const asked = requests() > before;
 	frames += 1;

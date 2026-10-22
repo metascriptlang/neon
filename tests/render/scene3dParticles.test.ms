@@ -11,6 +11,7 @@ import { Material, MaterialKind } from "../../../void/src/void3d/material";
 import { Program, VertexLayout } from "../../../void/src/void3d/gpu3d";
 import { EmitterState, defaults } from "../../../void/src/void3d/particles";
 import { NodeId3D } from "../../../void/src/void3d/scene";
+import { useManualFrames, setFrameDriver, framePending } from "../../src/animation/frame";
 
 function particleMaterial(context: DrawContext): MaterialId {
 	const made = addMaterial(context, Material.ofKind(Program.Particle, MaterialKind.Add));
@@ -61,4 +62,30 @@ test "Particles refuse settings the emitter refuses, naming the error" {
 		} catch (error) { message = error.toString(); } finally { dispose(); resetErrorHalt(); }
 	});
 	assert message.includes("Particles") && message.includes("NoCapacity"), "names the emitter error: " + message;
+}
+
+test "an emitting Particles keeps the area clock ticking and its unmount lets the clock sleep" {
+	const frames = useManualFrames();
+	let handle: Scene3DHandle | null = null;
+	let material = NO_MATERIAL;
+	const [shown, setShown] = createSignal(true);
+	const dispose = render(element(<Void>
+		<Scene3D ref={(value: Scene3DHandle): void => { handle = value; material = particleMaterial(value.context); }}>
+			{Show({ when: accessor(() => shown()), children: element(<Particles settings={settings(16)} material={material} />) })}
+		</Scene3D>
+	</Void>), mockHost(), mockNode("root") as unknown as HostNode);
+	try {
+		assert framePending(), "an emitter ticks on the area clock";
+		frames.advance(16);
+		assert framePending(), "and keeps ticking while it emits";
+		setShown(false);
+		flush();
+		assert !framePending(), "nothing left to emit, nothing scheduled";
+	} finally {
+		setShown(false);
+		flush();
+		releaseMaterial((handle as Scene3DHandle).context, material);
+		dispose();
+		setFrameDriver(null);
+	}
 }
