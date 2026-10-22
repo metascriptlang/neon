@@ -67,8 +67,8 @@ export {
 	TabBarPosition,
 	createBottomTabNavigator,
 	createMaterialTopTabNavigator,
-	TAB_INACTIVE,
 } from "./tabs";
+export { TAB_INACTIVE, TabTrigger } from "./tabBar";
 export {
 	DrawerNavigator,
 	DrawerPosition,

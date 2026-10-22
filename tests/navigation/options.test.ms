@@ -25,7 +25,7 @@ import {
 	DefaultTheme,
 } from "../../src/navigation/index";
 import { backAccessibilityLabel } from "../../src/navigation/header";
-import { tabAccessibilityLabel } from "../../src/navigation/tabs";
+import { tabAccessibilityLabel } from "../../src/navigation/tabBar";
 import { Platform } from "../../src/api/platform";
 import { attrOf, findLabel, press, visibleText } from "./navHarness";
 

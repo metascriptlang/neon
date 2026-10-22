@@ -1,11 +1,10 @@
 import { Accessor, accessor, untrack } from "../core/signal";
 import { createMemo } from "../core/memo";
 import { NeonNode } from "../render/hostTypes";
-import { NeonEvent } from "../render/event";
 import { Style } from "../render/style";
-import { View, Text, Pressable } from "../components/primitives";
-import { For, Show } from "../macros/ui/flow";
-import { Platform } from "../api/platform";
+import { View } from "../components/primitives";
+import { For } from "../macros/ui/flow";
+import { mapArray } from "../core/array";
 import { NavigationChild } from "./children";
 import { BackBehavior, ChildPages, Pages, createChildPages } from "./childPages";
 import {
@@ -24,7 +23,7 @@ import {
 	RouteWebMap,
 	ScreenOptions,
 	ScreenProps,
-	TabBarIconProps,
+	Theme,
 	createCore,
 	currentScope,
 	mergeOptions,
@@ -32,7 +31,8 @@ import {
 	noAction,
 	seedKey,
 } from "./core";
-import { Slot, screenView, shown } from "./header";
+import { screenView, shown } from "./header";
+import { TabTrigger, tabHairline, tabRow } from "./tabBar";
 import { createNavigatorMotion } from "./navigatorMotion";
 import { readName, readOptions } from "./stack";
 import {
@@ -40,27 +40,6 @@ import {
 } from "./screenCollection";
 
 export type TabBarPosition = "top" | "bottom";
-
-export const TAB_INACTIVE = "#8e8e93";
-
-const TAB_ITEM: Style = {
-	flex: 1,
-	position: "relative",
-	flexDirection: "column",
-	alignItems: "center",
-	justifyContent: "center",
-	paddingTop: 6,
-	paddingBottom: 6,
-};
-
-const BADGE: Style = {
-	borderRadius: 9,
-	paddingLeft: 5,
-	paddingRight: 5,
-	height: 18,
-	alignItems: "center",
-	justifyContent: "center",
-};
 
 function withoutHeader(options: Accessor<ScreenOptions>): Accessor<ScreenOptions> {
 	return accessor((): ScreenOptions => mergeOptions({ headerShown: false }, options()));
@@ -110,80 +89,25 @@ export function labelOf<P>(entry: Navigation<P>, own: string | null): string {
 	return title === null ? entry.route.name : title as string;
 }
 
-export function tabAccessibilityLabel(label: string, at: int32, count: int32, os: string): string {
-	if (os !== "ios") { return label; }
-	return label + ", tab, " + (at + 1).toString() + " of " + count.toString();
-}
-
-export function tabItem<P>(
-	core: NavigatorCore<P>,
-	entry: Navigation<P>,
-	top: Accessor<boolean>,
-): NeonNode {
+function triggerOf<P>(core: NavigatorCore<P>, entry: Navigation<P>): TabTrigger {
 	const key = entry.route.key;
-	const focused = accessor((): boolean => core.currentKey() === key);
 	const options = accessor((): ScreenOptions => entry.options());
-	const label = accessor((): string => labelOf<P>(entry, options().tabBarLabel));
-	const color = accessor((): string => {
-		const own = focused() ? options().tabBarActiveTintColor : options().tabBarInactiveTintColor;
-		if (own !== null) { return own as string; }
-		return focused() ? core.container.theme().colors.primary : TAB_INACTIVE;
-	});
-	const a11y = accessor((): string => {
-		const own = options().tabBarAccessibilityLabel;
-		if (own !== null) { return own as string; }
-		const all = core.entries();
-		let at: int32 = 0;
-		for (let i = 0; i < all.length; i += 1) {
-			if (all[i].route.key === key) { at = i as int32; }
-		}
-		return tabAccessibilityLabel(label(), at, all.length as int32, Platform.OS);
-	});
-	const badge = accessor((): string => {
-		const value = options().tabBarBadge;
-		return value === null ? "" : value as string;
-	});
-	const icon = accessor((): NeonNode | null => {
-		const render = options().tabBarIcon;
-		if (render === null) { return null; }
-		const props: TabBarIconProps = { focused: focused(), color: color(), size: 24 };
-		return (render as (props: TabBarIconProps) => NeonNode)(props);
-	});
-	const indicator = accessor((): Style => ({
-		position: "absolute",
-		left: 0,
-		right: 0,
-		bottom: 0,
-		height: 2,
-		backgroundColor: focused() ? color() : core.container.theme().colors.card,
-	}));
-	const badgeBox = accessor((): Style => ({
-		...BADGE,
-		backgroundColor: core.container.theme().colors.notification,
-	}));
-	const press = (e: NeonEvent): void => {
-		if (entry.emit("tabPress", new NavigationAction("TAB_PRESS", noAction))) { return; }
-		if (untrack((): boolean => focused())) {
-			core.repressFocused();
-			return;
-		}
-		core.navigateLocal(entry.route.name, null);
+	const focused = accessor((): boolean => core.currentKey() === key);
+	return {
+		key,
+		label: accessor((): string => labelOf<P>(entry, options().tabBarLabel)),
+		options,
+		focused,
+		href: accessor((): string | null => null),
+		press: (): void => {
+			if (entry.emit("tabPress", new NavigationAction("TAB_PRESS", noAction))) { return; }
+			if (untrack((): boolean => focused())) {
+				core.repressFocused();
+				return;
+			}
+			core.navigateLocal(entry.route.name, null);
+		},
 	};
-	return <Pressable style={TAB_ITEM} accessibilityRole={Platform.OS === "ios" ? "button" : "tab"}
-		accessibilityLabel={a11y()} accessibilityState={{ selected: focused() }} onPress={press}>
-		<Slot node={icon} />
-		<View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-			<Text style={{ color: color(), fontSize: 12 }}>{label()}</Text>
-			<Show when={badge() !== ""}>
-				<View style={badgeBox}>
-					<Text style={{ color: "#ffffff", fontSize: 11 }}>{badge()}</Text>
-				</View>
-			</Show>
-		</View>
-		<Show when={top()}>
-			<View style={indicator} />
-		</Show>
-	</Pressable>;
 }
 
 function startPages<P>(core: NavigatorCore<P>): Pages<RouteSeed<P>> {
@@ -470,25 +394,21 @@ function createTabs<P>(material: boolean): TabNavigator<P> {
 			const screen = (entry: Navigation<P>, at: Accessor<number>): NeonNode => {
 				return screenView<P>(core, transitions, entry, false, at);
 			};
-			const item = (entry: Navigation<P>, at: Accessor<number>): NeonNode => {
-				return tabItem<P>(core, entry, top);
-			};
+			const triggers = mapArray<Navigation<P>, TabTrigger>(
+				(): Navigation<P>[] => core.entries(),
+				(entry: Navigation<P>, at: Accessor<number>): TabTrigger => triggerOf<P>(core, entry),
+			);
+			const theme = accessor((): Theme => core.container.theme());
 			const frame = accessor((): Style => ({
 				flex: 1,
 				flexDirection: top() ? "column-reverse" : "column",
-			}));
-			const hairline = accessor((): Style => ({
-				height: 1,
-				backgroundColor: core.container.theme().colors.border,
 			}));
 			return <View style={frame}>
 				<View style={{ flex: 1, flexDirection: "column", position: "relative" }}>
 					<For each={mounted}>{screen}</For>
 				</View>
-				<View style={hairline} />
-				<View style={bar} accessibilityRole="tablist">
-					<For each={core.entries}>{item}</For>
-				</View>
+				{tabHairline(theme)}
+				{tabRow(triggers, theme, top, bar)}
 			</View>;
 		},
 		Group: (props: {
