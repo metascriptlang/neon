@@ -117,7 +117,7 @@ test "a press on a mesh reaches its onPress with the world hit, the ray and the 
 	assert got.length === 1, "one press: " + got.length.toString();
 	const e = got[0];
 	assert e.type === "press", "type " + e.type;
-	assert sameNode(e.node, nodes[0]) && sameNode(e.currentNode, nodes[0]), "the hit node and the receiving node";
+	assert sameNode(e.node, nodes[0]), "the hit node";
 	assert near(e.point.x, 0.0) && near(e.point.y, 0.0) && near(e.point.z, 0.0), "the world point";
 	assert e.distance > 4.0 && e.distance < 5.01, "distance " + e.distance.toString();
 	assert near(e.ray.direction.z, -1.0), "the ray looks down -z";
@@ -126,31 +126,75 @@ test "a press on a mesh reaches its onPress with the world hit, the ray and the 
 	assert got.length === 1, "a miss presses nothing";
 }
 
-test "the nearest hit receives, then the press bubbles through 3D ancestors until stopped" {
+test "only the innermost node with a press handler presses, as nested Pressables do" {
 	const log: string[] = [];
 	const refs: Scene3DHandle[] = [];
-	const [stop, setStop] = createSignal(false);
 	let mesh = NO_MESH;
 	const root = mockNode("root");
 	render(element(<Void>
 		<Scene3D ref={(value: Scene3DHandle): void => { refs.push(value); mesh = squareMesh(value); }}>
 			<Group onPress={note(log, "group")}>
-				<Mesh mesh={mesh} onPress={(e: Pointer3DEvent): void => {
-					log.push("near");
-					if (stop()) { stopPropagation(e); }
-				}} />
+				<Mesh mesh={mesh} onPress={note(log, "mesh")} />
 			</Group>
 			<Mesh mesh={mesh} position={vec3(0.0, 0.0, -1.0)} onPress={note(log, "far")} />
 		</Scene3D>
 	</Void>), mockHost(), root as unknown as HostNode);
+	tap(layerOf(root), CENTER, CENTER);
+	assert log.join("|") === "mesh", "the mesh presses, its Group does not, the farther mesh does not: " + log.join("|");
+}
+
+test "a Group with onPress presses for a mesh under it that has none" {
+	const log: string[] = [];
+	const refs: Scene3DHandle[] = [];
+	const nodes: NodeId3D[] = [];
+	let mesh = NO_MESH;
+	const root = mockNode("root");
+	render(element(<Void>
+		<Scene3D ref={(value: Scene3DHandle): void => { refs.push(value); mesh = squareMesh(value); }}>
+			<Group onPress={(e: Pointer3DEvent): void => { log.push(sameNode(e.node, nodes[0]) ? "group" : "group, wrong hit"); }}>
+				<Mesh mesh={mesh} ref={(value: NodeId3D): void => { nodes.push(value); }} />
+			</Group>
+		</Scene3D>
+	</Void>), mockHost(), root as unknown as HostNode);
+	assert tap(layerOf(root), CENTER, CENTER), "the Group's handler takes the press";
+	assert log.join("|") === "group", "the nearest press handler on the hit's path receives, with the mesh as the hit: " + log.join("|");
+}
+
+test "nested press gestures: the innermost claims the press, and stopPropagation ends the pointerdown walk" {
+	const log: string[] = [];
+	const refs: Scene3DHandle[] = [];
+	let mesh = NO_MESH;
+	const root = mockNode("root");
+	render(element(<Void>
+		<Scene3D ref={(value: Scene3DHandle): void => { refs.push(value); mesh = squareMesh(value); }}>
+			<Group onPressIn={note(log, "group in")}>
+				<Mesh mesh={mesh} onPressIn={(e: Pointer3DEvent): void => {
+					log.push("mesh in");
+					stopPropagation(e);
+				}} />
+			</Group>
+		</Scene3D>
+	</Void>), mockHost(), root as unknown as HostNode);
 	const layer = layerOf(root);
-	tap(layer, CENTER, CENTER);
-	assert log.join("|") === "near|group", "nearest first, then its ancestor: " + log.join("|");
-	log.length = 0;
-	setStop(true);
-	flush();
-	tap(layer, CENTER, CENTER);
-	assert log.join("|") === "near", "stopPropagation ends the bubbling: " + log.join("|");
+	down(layer, CENTER, CENTER);
+	assert log.join("|") === "mesh in", "only the mesh starts a press: " + log.join("|");
+	up(layer, CENTER, CENTER);
+}
+
+test "a gesture Group around a plain-press Mesh presses both, the same as the 2D nesting" {
+	const log: string[] = [];
+	const refs: Scene3DHandle[] = [];
+	let mesh = NO_MESH;
+	const root = mockNode("root");
+	render(element(<Void>
+		<Scene3D ref={(value: Scene3DHandle): void => { refs.push(value); mesh = squareMesh(value); }}>
+			<Group onPressIn={note(log, "group in")} onPress={note(log, "group")}>
+				<Mesh mesh={mesh} onPress={note(log, "mesh")} />
+			</Group>
+		</Scene3D>
+	</Void>), mockHost(), root as unknown as HostNode);
+	tap(layerOf(root), CENTER, CENTER);
+	assert log.join("|") === "group in|group|mesh", "scene2dEvents pins the same order in 2D: " + log.join("|");
 }
 
 test "a release away from the pressed mesh does not press, and the pointer stays captured" {

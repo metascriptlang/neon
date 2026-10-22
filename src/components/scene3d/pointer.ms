@@ -15,10 +15,9 @@ import { DEFAULT_LAYERS } from "../../../../void/src/void3d/layers";
 import { NodeId3D, NodeFlag, NO_NODE_3D, NO_NODE_ID, setPickable, syncWorld, cameraLayersOf } from "../../../../void/src/void3d/scene";
 import { NodeProps, SceneState, viewCamera } from "./core";
 
-// R3F ThreeEvent: the window's event plus the intersection. One object per receiving node, as R3F builds one per hit.
+// R3F ThreeEvent: the window's event plus the intersection.
 export interface Pointer3DEvent extends NeonEvent {
 	node: NodeId3D;
-	currentNode: NodeId3D;
 	point: Vec3;
 	distance: float32;
 	ray: Ray;
@@ -62,17 +61,15 @@ const NO_RAY: Ray = { origin: { x: 0.0, y: 0.0, z: 0.0 }, direction: { x: 0.0, y
 const NO_HIT: PickHit = { owner: NO_NODE_ID, mesh: NO_NODE_ID, distance: -1.0, point: { x: 0.0, y: 0.0, z: 0.0 }, uv: null };
 const MISS_SLOP: float32 = 2.0;
 
-function pointerEventOf(type: string, base: NeonEvent, current: NodeId3D, ray: Ray, hit: PickHit): Pointer3DEvent {
+function pointerEventOf(type: string, base: NeonEvent, ray: Ray, hit: PickHit): Pointer3DEvent {
 	return {
 		...base, type, propagationStopped: false,
-		node: hit.mesh, currentNode: current, point: hit.point, distance: hit.distance, ray, uv: hit.uv,
+		node: hit.mesh, point: hit.point, distance: hit.distance, ray, uv: hit.uv,
 	};
 }
 
-function deliver(handler: ((e: Pointer3DEvent) => void) | null, e: Pointer3DEvent): boolean {
-	if (handler === null) { return false; }
-	(handler as (x: Pointer3DEvent) => void)(e);
-	return e.propagationStopped;
+function deliver(handler: ((e: Pointer3DEvent) => void) | null, e: Pointer3DEvent): void {
+	if (handler !== null) { (handler as (x: Pointer3DEvent) => void)(e); }
 }
 
 function samePath(a: PointerEntry[], b: PointerEntry[]): boolean {
@@ -99,7 +96,8 @@ export function createPointer3D(state: SceneState, area: VoidAreaHandle, onMisse
 	let count: int32 = 0;
 	let hovers: int32 = 0;
 	let hovered: PointerEntry[] = [];
-	let pressed: PointerEntry[] = [];
+	let captured: NodeId3D | null = null;
+	let pressEntry: PointerEntry | null = null;
 	let pressTracks = false;
 	let pressButton: number = 0;
 	let missing = false;
@@ -108,11 +106,22 @@ export function createPointer3D(state: SceneState, area: VoidAreaHandle, onMisse
 	let ray: Ray = NO_RAY;
 	let aimed: PickHit = NO_HIT;
 	const scratch: PointerEntry[] = [];
+	const held: PointerEntry[] = [];
 	let drags: PointerDrag[] = [];
 	let dragging: PointerDrag | null = null;
 	let dragButton: number = 0;
 
-	// The entries on the path from the nearest hit to the root, nearest first, into `scratch`.
+	// The entries on the path from a node to the root, nearest first.
+	const pathOf = (row: int32, into: PointerEntry[]): void => {
+		into.length = 0;
+		for (let at = row; at != NO_NODE_3D; at = scene.nodes[at].parent) {
+			if (at >= byRow.length) { continue; }
+			const entry = byRow[at];
+			if (entry !== null && scene.isLive((entry as PointerEntry).node)) { into.push(entry as PointerEntry); }
+		}
+	};
+
+	// The hit's path into `scratch`.
 	const aim = (x: float32, y: float32): void => {
 		scratch.length = 0;
 		aimed = NO_HIT;
@@ -135,11 +144,7 @@ export function createPointer3D(state: SceneState, area: VoidAreaHandle, onMisse
 			throw new Error("Scene3D: picking failed: " + picked.error.toString());
 		}
 		aimed = picked.value;
-		for (let at = aimed.mesh.index; at != NO_NODE_3D; at = scene.nodes[at].parent) {
-			if (at >= byRow.length) { continue; }
-			const entry = byRow[at];
-			if (entry !== null && scene.isLive((entry as PointerEntry).node)) { scratch.push(entry as PointerEntry); }
-		}
+		pathOf(aimed.mesh.index, scratch);
 	};
 
 	// W3C pointerenter/pointerleave: no bubbling; left nodes hear it deepest first, entered nodes outermost first.
@@ -149,13 +154,13 @@ export function createPointer3D(state: SceneState, area: VoidAreaHandle, onMisse
 		hovered = next.slice(0);
 		for (const entry of was) {
 			if (hovered.indexOf(entry) < 0) {
-				deliver(entry.events.onPointerLeave, pointerEventOf("pointerleave", e, entry.node, ray, aimed));
+				deliver(entry.events.onPointerLeave, pointerEventOf("pointerleave", e, ray, aimed));
 			}
 		}
 		for (let i = hovered.length - 1; i >= 0; i -= 1) {
 			const entry = hovered[i];
 			if (was.indexOf(entry) < 0) {
-				deliver(entry.events.onPointerEnter, pointerEventOf("pointerenter", e, entry.node, ray, aimed));
+				deliver(entry.events.onPointerEnter, pointerEventOf("pointerenter", e, ray, aimed));
 			}
 		}
 	};
@@ -187,24 +192,48 @@ export function createPointer3D(state: SceneState, area: VoidAreaHandle, onMisse
 		return started || misses;
 	};
 
+	// The Void host's walk: one event bubbles from the nearest entry until a handler stops it.
+	const along = (path: PointerEntry[], handlerOf: (entry: PointerEntry) => ((e: Pointer3DEvent) => void) | null, ev: Pointer3DEvent): void => {
+		for (const entry of path) {
+			if (ev.propagationStopped) { return; }
+			deliver(handlerOf(entry), ev);
+		}
+	};
+
+	// The pressed node keeps the pointer until its button's release, as RN's touch target does.
+	const heldPath = (): PointerEntry[] => {
+		const holder = captured;
+		if (holder !== null && scene.isLive(holder as NodeId3D)) {
+			pathOf((holder as NodeId3D).index, held);
+			return held;
+		}
+		return scratch;
+	};
+
+	const under = (top: NodeId3D): boolean => {
+		if (aimed.mesh.scene !== top.scene) { return false; }
+		for (let at = aimed.mesh.index; at != NO_NODE_3D; at = scene.nodes[at].parent) {
+			if (at == top.index) { return true; }
+		}
+		return false;
+	};
+
 	const pointerDown = (x: float32, y: float32, e: NeonEvent): boolean => {
-		if (pressed.length > 0 || dragging !== null || missing) { return true; }
-		if (!primary(e.button) || count === 0) { return unclaimed(x, y, e); }
+		if (captured !== null || dragging !== null || missing) { return true; }
+		if (count === 0) { return unclaimed(x, y, e); }
 		aim(x, y);
 		hoverTo(scratch, e);
-		let presses = false;
-		for (const entry of scratch) {
-			if (entry.events.onPress !== null || entry.events.onPointerDown !== null) { presses = true; }
-		}
-		if (!presses) { return scratch.length === 0 ? unclaimed(x, y, e) : beginDrag(x, y, e); }
-		const path = scratch.slice(0);
+		if (scratch.length === 0) { return unclaimed(x, y, e); }
+		captured = aimed.mesh;
 		pressButton = e.button;
+		pressEntry = null;
 		pressTracks = false;
-		for (const entry of path) {
-			pressed.push(entry);
+		for (const entry of scratch) {
 			if (entry.events.onPointerDown !== null) { pressTracks = true; }
-			if (deliver(entry.events.onPointerDown, pointerEventOf("pointerdown", e, entry.node, ray, aimed))) { break; }
+			if (pressEntry === null && entry.events.onPress !== null && primary(e.button)) { pressEntry = entry; }
 		}
+		along(scratch, (entry: PointerEntry): ((e: Pointer3DEvent) => void) | null => entry.events.onPointerDown,
+			pointerEventOf("pointerdown", e, ray, aimed));
 		return true;
 	};
 
@@ -223,18 +252,21 @@ export function createPointer3D(state: SceneState, area: VoidAreaHandle, onMisse
 			}
 			return true;
 		}
-		if (pressed.length === 0 || e.button !== pressButton) { return pressed.length > 0; }
+		if (captured === null) { return drag !== null; }
 		aim(x, y);
 		hoverTo(scratch, e);
-		const was = pressed;
-		pressed = [];
-		pressTracks = false;
-		for (const entry of was) {
-			if (entry.events.onPointerUp !== null) {
-				if (deliver(entry.events.onPointerUp, pointerEventOf("pointerup", e, entry.node, ray, aimed))) { break; }
-			} else if (entry.events.onPress !== null && scratch.indexOf(entry) >= 0) {
-				if (deliver(entry.events.onPress, pointerEventOf("press", e, entry.node, ray, aimed))) { break; }
-			}
+		const path = heldPath();
+		const ends = e.button === pressButton;
+		const presser = pressEntry;
+		if (ends) {
+			captured = null;
+			pressEntry = null;
+			pressTracks = false;
+		}
+		along(path, (entry: PointerEntry): ((e: Pointer3DEvent) => void) | null => entry.events.onPointerUp,
+			pointerEventOf("pointerup", e, ray, aimed));
+		if (ends && presser !== null && scene.isLive((presser as PointerEntry).node) && under((presser as PointerEntry).node)) {
+			deliver((presser as PointerEntry).events.onPress, pointerEventOf("press", e, ray, aimed));
 		}
 		return true;
 	};
@@ -242,10 +274,10 @@ export function createPointer3D(state: SceneState, area: VoidAreaHandle, onMisse
 	const pointerMove = (x: float32, y: float32, e: NeonEvent): boolean => {
 		const drag = dragging;
 		if (drag !== null) { drag.drag(x, y, e); }
-		if (hovers === 0 && !pressTracks) { return pressed.length > 0 || dragging !== null; }
+		if (hovers === 0 && !pressTracks) { return captured !== null || dragging !== null; }
 		aim(x, y);
 		hoverTo(scratch, e);
-		return hovered.length > 0 || pressed.length > 0 || dragging !== null;
+		return hovered.length > 0 || captured !== null || dragging !== null;
 	};
 
 	const pointerWheel = (x: float32, y: float32, e: NeonEvent): boolean => {
@@ -263,12 +295,13 @@ export function createPointer3D(state: SceneState, area: VoidAreaHandle, onMisse
 		aimed = NO_HIT;
 		scratch.length = 0;
 		hoverTo(scratch, e);
-		const was = pressed;
-		pressed = [];
+		if (captured === null) { return; }
+		const path = heldPath();
+		captured = null;
+		pressEntry = null;
 		pressTracks = false;
-		for (const entry of was) {
-			deliver(entry.events.onPointerCancel, pointerEventOf("pointercancel", e, entry.node, ray, aimed));
-		}
+		along(path, (entry: PointerEntry): ((e: Pointer3DEvent) => void) | null => entry.events.onPointerCancel,
+			pointerEventOf("pointercancel", e, ray, aimed));
 	};
 
 	return {
@@ -309,13 +342,13 @@ export function createPointer3D(state: SceneState, area: VoidAreaHandle, onMisse
 				if (entry.hovers) { hovers -= 1; }
 			}
 			without(hovered, entry);
-			without(pressed, entry);
+			if (pressEntry === entry) { pressEntry = null; }
 		},
 	};
 }
 
-function cancelled(node: NodeId3D): () => Pointer3DEvent {
-	return (): Pointer3DEvent => pointerEventOf("pointercancel", neonEvent("pointercancel"), node, NO_RAY, NO_HIT);
+function cancelled(): Pointer3DEvent {
+	return pointerEventOf("pointercancel", neonEvent("pointercancel"), NO_RAY, NO_HIT);
 }
 
 export function hasPointerHandlers(props: PointerProps): boolean {
@@ -338,7 +371,7 @@ export function bindPointer(state: SceneState, node: NodeId3D, props: PointerPro
 		onHoverIn: props.onHoverIn,
 		onHoverOut: props.onHoverOut,
 		delayLongPress: accessor((): number => LONG_PRESS_DELAY_MS),
-	}, cancelled(node));
+	}, cancelled);
 	const entry: PointerEntry = { node, events, hovers: props.onHoverIn !== null || props.onHoverOut !== null };
 	const wasPickable = scene.nodes[node.index].flags.has(NodeFlag.Pickable);
 	if (props.pickable === null) { setPickable(scene, node, true); }
