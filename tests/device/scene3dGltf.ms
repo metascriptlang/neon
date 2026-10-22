@@ -99,7 +99,7 @@ function frame(): void {
 		let message = "";
 		try { setBad(true); flush(); } catch (error) { message = error.message; }
 		finally { resetErrorHalt(); }
-		if (message !== "Gltf: addGltfNodes failed: InvalidData" || !context.hasMesh(oldMesh)) {
+		if (message !== "Gltf: addGltfBoundNodes failed: InvalidData (BadNode)" || !context.hasMesh(oldMesh)) {
 			fail("failed import lost prior model"); return;
 		}
 		setBad(false);
