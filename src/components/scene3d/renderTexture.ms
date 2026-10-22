@@ -1,4 +1,5 @@
 import { Accessor, accessor } from "../../core/signal";
+import { useContext } from "../../render/context";
 import { createRenderEffect } from "../../core/effect";
 import { Cleanup } from "../../core/types";
 import { onCleanup } from "../../core/cleanup";
@@ -43,6 +44,8 @@ function premultipliedPass(): RenderState {
 export function RenderTexture(props: RenderTextureProps): NeonNode {
 	return (host: Host, parent: HostNode, before: HostNode | null): void => {
 		const scope = requireScene("RenderTexture");
+		const outer = useContext(getVoidAreaContext());
+		if (outer === null) { throw new Error("RenderTexture: the Void area did not provide its frame"); }
 		mountOwned((): void => {
 			const state = scope.state;
 			const context = state.handle.context;

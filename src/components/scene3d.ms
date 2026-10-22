@@ -18,5 +18,5 @@ export { Lod } from "./scene3d/lod";
 export { Particles, ParticleVisualSettings } from "./scene3d/particles";
 export { Text3D } from "./scene3d/text3d";
 export { RenderTexture, RenderTextureHandle } from "./scene3d/renderTexture";
-export { useFrame } from "../animation/frame";
+export { useFrame } from "../render/voidClock";
 export { Pointer3DEvent, PointerProps } from "./scene3d/pointer";
