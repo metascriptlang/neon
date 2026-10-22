@@ -7,7 +7,9 @@ import { createContext, useContext } from "../render/context";
 import { requestFrame, cancelFrame, frameNow } from "../animation/frame";
 import { VoidSpace, getVoidScopeContext, getVoidAreaContext, useVoidSpace } from "../render/voidScope";
 import { layerAnchor } from "../render/voidLayer";
-import { AreaLayer } from "../render/voidAreaHandle";
+import { AreaLayer, AreaPointerKind } from "../render/voidAreaHandle";
+import { NeonEvent } from "../render/event";
+import { LONG_PRESS_DELAY_MS, pressEvents } from "./pressability";
 import { Host, HostNode, NeonNode, VoidArea } from "../render/hostTypes";
 import { place } from "../render/reconcile";
 import { createVoidHostWith, VoidHost, VoidNode, freeVoidLayoutTree } from "../platform/void/host";
@@ -88,6 +90,12 @@ interface NodeProps {
 	filter?: Accessor<Filter> | null;
 	ref?: ((node: NodeRef) => void) | null;
 	children?: NeonNode | null;
+	onPress?: ((e: NeonEvent) => void) | null;
+	onPressIn?: ((e: NeonEvent) => void) | null;
+	onPressOut?: ((e: NeonEvent) => void) | null;
+	onLongPress?: ((e: NeonEvent) => void) | null;
+	onHoverIn?: ((e: NeonEvent) => void) | null;
+	onHoverOut?: ((e: NeonEvent) => void) | null;
 }
 
 interface GraphicsProps extends NodeProps {
@@ -352,6 +360,32 @@ function bindNode(tag: string, node: NodeRef, props: NodeProps): void {
 	}
 }
 
+function listen(vh: VoidHost, node: VoidNode, name: string, handler: ((e: NeonEvent) => void) | null): void {
+	if (handler !== null) { vh.host.addEvent(node, name, handler as (e: NeonEvent) => void); }
+}
+
+function bindPress(vh: VoidHost, node: VoidNode, props: NodeProps): void {
+	if (props.onPress === null && props.onPressIn === null && props.onPressOut === null &&
+		props.onLongPress === null && props.onHoverIn === null && props.onHoverOut === null) {
+		return;
+	}
+	const events = pressEvents({
+		onPress: props.onPress,
+		onPressIn: props.onPressIn,
+		onPressOut: props.onPressOut,
+		onLongPress: props.onLongPress,
+		onHoverIn: props.onHoverIn,
+		onHoverOut: props.onHoverOut,
+		delayLongPress: accessor((): number => LONG_PRESS_DELAY_MS),
+	});
+	listen(vh, node, "onPress", events.onPress);
+	listen(vh, node, "onPointerDown", events.onPointerDown);
+	listen(vh, node, "onPointerUp", events.onPointerUp);
+	listen(vh, node, "onPointerEnter", events.onPointerEnter);
+	listen(vh, node, "onPointerLeave", events.onPointerLeave);
+	listen(vh, node, "onPointerCancel", events.onPointerCancel);
+}
+
 function renderNode(
 	tag: string,
 	props: NodeProps,
@@ -368,6 +402,7 @@ function renderNode(
 					place(host, parent, wrapped, before);
 					bind(node);
 					bindNode(tag, node, props);
+					bindPress(vh, wrapped, props);
 					if (props.ref !== null) { (props.ref as (node: NodeRef) => void)(node); }
 					const children = props.children;
 					if (children !== null) { children(host, wrapped, null); }
@@ -438,6 +473,19 @@ export function Scene2D(props: Scene2DProps): NeonNode {
 					prepared = false;
 					if (backdropPrepared && backdrop !== null) { backdrop.scene.drawScreen(); }
 					scene.drawScreen();
+				},
+				hit: (x: float32, y: float32, kind: AreaPointerKind, e: NeonEvent): boolean => {
+					if (scene.closed) { return false; }
+					const button = e.button as int32;
+					return match (kind) {
+						AreaPointerKind.Button => e.pressed ? vh.pointerDown(x, y, button, e.mods) : vh.pointerUp(x, y, button, e.mods),
+						AreaPointerKind.Motion => vh.pointerMove(x, y, button, e.pressed, e.mods),
+						AreaPointerKind.Wheel => vh.wheel(x, y, e.deltaX as float32, e.deltaY as float32, e.deltaMode, e.mods),
+						AreaPointerKind.Leave => {
+							vh.pointerLeave();
+							return false;
+						},
+					};
 				},
 			};
 			const unregister = area.addLayer(layer);
