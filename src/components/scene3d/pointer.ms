@@ -40,7 +40,17 @@ interface PointerEntry {
 	hovers: boolean;
 }
 
+// A control that drives the scene from drags no node takes, as drei's controls listen on the canvas.
+export interface PointerDrag {
+	begin: (x: float32, y: float32, e: NeonEvent) => boolean;
+	drag: (x: float32, y: float32, e: NeonEvent) => void;
+	end: (x: float32, y: float32, e: NeonEvent) => void;
+	wheel: (x: float32, y: float32, e: NeonEvent) => boolean;
+}
+
 export interface Pointer3D {
+	area: VoidAreaHandle;
+	addDrag: (drag: PointerDrag) => () => void;
 	hit: (x: float32, y: float32, kind: AreaPointerKind, e: NeonEvent) => boolean;
 	add: (entry: PointerEntry) => void;
 	drop: (entry: PointerEntry) => void;
@@ -98,6 +108,9 @@ export function createPointer3D(state: SceneState, area: VoidAreaHandle, onMisse
 	let ray: Ray = NO_RAY;
 	let aimed: PickHit = NO_HIT;
 	const scratch: PointerEntry[] = [];
+	let drags: PointerDrag[] = [];
+	let dragging: PointerDrag | null = null;
+	let dragButton: number = 0;
 
 	// The entries on the path from the nearest hit to the root, nearest first, into `scratch`.
 	const aim = (x: float32, y: float32): void => {
@@ -155,17 +168,35 @@ export function createPointer3D(state: SceneState, area: VoidAreaHandle, onMisse
 		return true;
 	};
 
+	const beginDrag = (x: float32, y: float32, e: NeonEvent): boolean => {
+		for (let i = drags.length - 1; i >= 0; i -= 1) {
+			const drag = drags[i];
+			if (drag.begin(x, y, e)) {
+				dragging = drag;
+				dragButton = e.button;
+				return true;
+			}
+		}
+		return false;
+	};
+
+	// No node takes it: a control may start a drag, and a primary click may still turn out a miss.
+	const unclaimed = (x: float32, y: float32, e: NeonEvent): boolean => {
+		const started = beginDrag(x, y, e);
+		const misses = primary(e.button) && takeMiss(x, y);
+		return started || misses;
+	};
+
 	const pointerDown = (x: float32, y: float32, e: NeonEvent): boolean => {
-		if (!primary(e.button) || pressed.length > 0) { return false; }
-		if (count === 0) { return takeMiss(x, y); }
+		if (pressed.length > 0 || dragging !== null || missing) { return true; }
+		if (!primary(e.button) || count === 0) { return unclaimed(x, y, e); }
 		aim(x, y);
 		hoverTo(scratch, e);
-		if (scratch.length === 0) { return takeMiss(x, y); }
 		let presses = false;
 		for (const entry of scratch) {
 			if (entry.events.onPress !== null || entry.events.onPointerDown !== null) { presses = true; }
 		}
-		if (!presses) { return false; }
+		if (!presses) { return scratch.length === 0 ? unclaimed(x, y, e) : beginDrag(x, y, e); }
 		const path = scratch.slice(0);
 		pressButton = e.button;
 		pressTracks = false;
@@ -178,6 +209,11 @@ export function createPointer3D(state: SceneState, area: VoidAreaHandle, onMisse
 	};
 
 	const pointerUp = (x: float32, y: float32, e: NeonEvent): boolean => {
+		const drag = dragging;
+		if (drag !== null && e.button === dragButton) {
+			dragging = null;
+			drag.end(x, y, e);
+		}
 		if (missing) {
 			missing = false;
 			if (count > 0) { aim(x, y); } else { scratch.length = 0; }
@@ -204,13 +240,25 @@ export function createPointer3D(state: SceneState, area: VoidAreaHandle, onMisse
 	};
 
 	const pointerMove = (x: float32, y: float32, e: NeonEvent): boolean => {
-		if (hovers === 0 && !pressTracks) { return pressed.length > 0; }
+		const drag = dragging;
+		if (drag !== null) { drag.drag(x, y, e); }
+		if (hovers === 0 && !pressTracks) { return pressed.length > 0 || dragging !== null; }
 		aim(x, y);
 		hoverTo(scratch, e);
-		return hovered.length > 0 || pressed.length > 0;
+		return hovered.length > 0 || pressed.length > 0 || dragging !== null;
 	};
 
-	const pointerLeave = (e: NeonEvent): void => {
+	const pointerWheel = (x: float32, y: float32, e: NeonEvent): boolean => {
+		for (let i = drags.length - 1; i >= 0; i -= 1) {
+			if (drags[i].wheel(x, y, e)) { return true; }
+		}
+		return false;
+	};
+
+	const pointerLeave = (x: float32, y: float32, e: NeonEvent): void => {
+		const drag = dragging;
+		dragging = null;
+		if (drag !== null) { drag.end(x, y, e); }
 		missing = false;
 		aimed = NO_HIT;
 		scratch.length = 0;
@@ -224,14 +272,23 @@ export function createPointer3D(state: SceneState, area: VoidAreaHandle, onMisse
 	};
 
 	return {
+		area,
+		addDrag: (drag: PointerDrag): () => void => {
+			drags.push(drag);
+			return (): void => {
+				const at = drags.indexOf(drag);
+				if (at >= 0) { drags.splice(at, 1); }
+				if (dragging === drag) { dragging = null; }
+			};
+		},
 		hit: (x: float32, y: float32, kind: AreaPointerKind, e: NeonEvent): boolean => {
 			if (scene.closed) { return false; }
 			return match (kind) {
 				AreaPointerKind.Button => e.pressed ? pointerDown(x, y, e) : pointerUp(x, y, e),
 				AreaPointerKind.Motion => pointerMove(x, y, e),
-				AreaPointerKind.Wheel => false,
+				AreaPointerKind.Wheel => pointerWheel(x, y, e),
 				AreaPointerKind.Leave => {
-					pointerLeave(e);
+					pointerLeave(x, y, e);
 					return false;
 				},
 			};

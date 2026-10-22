@@ -20,3 +20,4 @@ export { Text3D } from "./scene3d/text3d";
 export { RenderTexture, RenderTextureHandle } from "./scene3d/renderTexture";
 export { useFrame } from "../render/voidClock";
 export { Pointer3DEvent, PointerProps } from "./scene3d/pointer";
+export { OrbitControls, OrbitControlsProps } from "./scene3d/orbitControls";
