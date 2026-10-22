@@ -2,7 +2,6 @@ import { Accessor, accessor } from "../../core/signal";
 import { createRenderEffect } from "../../core/effect";
 import { Cleanup } from "../../core/types";
 import { onCleanup } from "../../core/cleanup";
-import { useContext } from "../../render/context";
 import { VoidSpace, getVoidScopeContext, getVoidAreaContext } from "../../render/voidScope";
 import { AreaLayer, createAreaHub } from "../../render/voidAreaHandle";
 import { Host, HostNode, NeonNode, VoidArea } from "../../render/hostTypes";
@@ -44,8 +43,6 @@ function premultipliedPass(): RenderState {
 export function RenderTexture(props: RenderTextureProps): NeonNode {
 	return (host: Host, parent: HostNode, before: HostNode | null): void => {
 		const scope = requireScene("RenderTexture");
-		const outer = useContext(getVoidAreaContext());
-		if (outer === null) { throw new Error("RenderTexture: the Void area did not provide its frame"); }
 		mountOwned((): void => {
 			const state = scope.state;
 			const context = state.handle.context;
@@ -147,7 +144,7 @@ export function RenderTexture(props: RenderTextureProps): NeonNode {
 			}
 			const children = props.children;
 			if (children !== null) {
-				const area: VoidArea = { host: (outer as VoidArea).host, root: (outer as VoidArea).root, hub: hub, release: (): void => {} };
+				const area: VoidArea = { host: host, root: parent, hub: hub, release: (): void => {} };
 				getVoidAreaContext().provider({
 					value: accessor(() => area),
 					children: getVoidScopeContext().provider({ value: accessor(() => VoidSpace.Area), children: children }),
