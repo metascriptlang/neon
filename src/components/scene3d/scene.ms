@@ -14,7 +14,7 @@ import {
 	ForwardRenderer, ForwardError, create, createHdrWhere, prepareFrame, drawOverScreen, closeForward,
 	setOutlineBlend, setOutlineSettings, setBloom,
 } from "../../../../void/src/void3d/forwardRenderer";
-import { ToneMode, setToneMode, setExposure, attachShadow, markChanged } from "../../../../void/src/void3d/renderer";
+import { ToneMode, setToneMode, setExposure, setElapsedTime, attachShadow, markChanged } from "../../../../void/src/void3d/renderer";
 import { BloomSettings } from "../../../../void/src/void3d/bloom";
 import { DirShadowMap, closeDirShadow } from "../../../../void/src/void3d/dirShadowMap";
 import { ForwardOutlineSettings, defaults, valid, FORWARD_OUTLINE_BLOCKS } from "../../../../void/src/void3d/forwardOutline";
@@ -111,6 +111,7 @@ export function Scene3D(props: Scene3DProps): NeonNode {
 			let cameraBlock: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
 			let lightBlock: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
 			let prepared = false;
+			let lastFrame: float64 = -1.0;
 			const layer: AreaLayer = {
 				anchor,
 				layout: (pixelWidth: int32, pixelHeight: int32): void => {},
@@ -129,9 +130,17 @@ export function Scene3D(props: Scene3DProps): NeonNode {
 					if (!view.ok) { throw new Error("Scene3D: the active camera does not resolve: " + view.error.toString()); }
 					view.value.writeCameraBlock(cameraBlock);
 					const buried = buryDoomed(context, contextGeneration());
+					const now = performance.now() as float64;
+					setElapsedTime(renderer.core, lastFrame < 0.0 ? 0.0 : (now - lastFrame) / 1000.0);
 					const frame = prepareFrame(renderer, items, cameraBlock, lightBlock, pixelWidth, pixelHeight);
 					if (!frame.ok) { throw new Error("Scene3D: prepareFrame failed: " + frame.error.toString()); }
 					prepared = true;
+					if (renderer.core.readsTime) {
+						lastFrame = now;
+						invalidate();
+					} else {
+						lastFrame = -1.0;
+					}
 				},
 				draw: (): void => {
 					if (!prepared) { return; }
