@@ -546,9 +546,10 @@ No repeated unchanged submission demos or inferred protected-contract permission
 - [ ] Finish remaining 3D resource lifecycle: declarative Material/Texture, light-kind
   change (Void has no binder). Preserve owner APIs and borrowing/atomic replacement contracts.
 - [x] ~~Map transform/baked animation, glTF clips and particles~~ — ObjectAnimation,
-  MeshFrameAnimation, Clip (with skinned playback), Particles, Billboards, Lod, Text3D
-  (3D-11/12/13/14/22/23/24/25). Billboards own their buffer in Neon, not through the
-  proposed Void-owned route.
+  MeshFrameAnimation, Clip (with skinned playback), Particles, Lod, Text3D
+  (3D-11/12/13/22/23/24/25).
+- [ ] Billboards (3D-14): waits on a Void-owned instance stream
+  (`~/metascript/.inbox/void/2026-10-22-owned-billboard-instance-stream.md`).
 - [ ] Map renderer settings: hdr/bloom/toneMapping/exposure, directional shadows and
   moving-material time are built (3D-16/18/19); pixel-art/palette (3D-17) remains.
 - [ ] Integrate picking and composition: 2D topmost-first press/hover dispatch and layer
