@@ -1,4 +1,4 @@
-import { createSignal, Accessor } from "../../src/core/signal";
+import { createSignal, Accessor, accessor } from "../../src/core/signal";
 import { NeonEvent } from "../../src/render/event";
 import {
 	HostNode,
@@ -161,6 +161,15 @@ function RowBroken(props: RowProps): NeonNode {
 		<p>{props.label() + ":" + count().toString()}</p>
 		<button onPress={inc}>+</button>
 	</div>;
+}
+
+interface StepProps {
+	step: Accessor<number> | null;
+}
+
+function Stepper(props: StepProps): NeonNode {
+	const { step = accessor((): number => 1) } = props;
+	return <p>{accessor((): string => "step " + step().toString())()}</p>;
 }
 
 function mount(node: NeonNode): [MockNode, () => void] {
@@ -330,5 +339,12 @@ test "refresh state: a remount that throws leaves the rest mounted, and the next
 	refreshModule(thisFile());
 	assert texts(root) === "<p>frame!</p> <p>ten a:4</p> ", "the fix mounts with the count kept: " + texts(root);
 	assert all(root, "text").length === 0, "the error view is gone: " + all(root, "text").length.toString();
+	dispose();
+}
+
+test "refresh state: a generic function called in a destructuring default and in the template is no local of the component" {
+	refreshReset();
+	const [root, dispose] = mount(Stepper({ step: null }));
+	assert texts(root) === "<p>step 1</p> ", texts(root);
 	dispose();
 }

@@ -176,8 +176,13 @@ export macro refreshPass(mod: Node): Node {
 						names.push(p.name);
 						if (!b.destrIsConst) lets.push(p.name);
 					}
-					const k = childCount(p);
-					for (let c = 0; c < k; c += 1) pattern.push(childAt(p, c));
+					if (p.kind == NodeKind.ObjectPattern) {
+						for (const prop of p.patternProps) pattern.push(prop);
+					} else if (p.kind == NodeKind.ObjectPatternProp) {
+						pattern.push(p.propAlias);
+					} else if (p.kind == NodeKind.ArrayPattern) {
+						for (const element of p.patternElements) pattern.push(element);
+					}
 				}
 			}
 		}
