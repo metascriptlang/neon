@@ -1,4 +1,4 @@
-import { createVoidHostWith, VoidNode } from "../../src/platform/void/host";
+import { createVoidHostWith, VoidHost, VoidNode } from "../../src/platform/void/host";
 import { Scene2D, NodeRef, localToGlobal, text } from "../../../void/src/void2d/node";
 import { xForIndex, lineBoxAt, textWidth } from "../../../void/src/void2d/render";
 import { create } from "../../../void/src/void2d/scene";
@@ -15,7 +15,12 @@ import { Pressable, Text, View } from "../../src/components/primitives";
 import { NeonEvent, neonEvent } from "../../src/render/event";
 import { sleepAsync } from "std/core/promise";
 
-test "Void down clickAt up activates gesture only on release and keeps cheap clickAt" {
+function tapAt(vh: VoidHost, x: float32, y: float32): void {
+	vh.clickAt(x, y);
+	flush();
+}
+
+test "Void down clickAt up activates gesture only on release, and a pointer click alone is no press" {
 	const vh = createVoidHostWith(Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0)), DEFAULT_FONT);
 	let hits = 0;
 	const dispose = createRoot((end: () => void): () => void => {
@@ -49,7 +54,9 @@ test "Void down clickAt up activates gesture only on release and keeps cheap cli
 		}} />), control.host, control.root);
 	control.layout(200.0, 100.0);
 	control.clickAt(10.0, 10.0);
-	assert hits === 2, "cheap physical producer control";
+	assert hits === 1, "a pointer click without a touch is no press, as Pressability's onClick ignores pointer clicks";
+	tapAt(control, 10.0, 10.0);
+	assert hits === 2, "a whole tap presses";
 	cheap();
 }
 
@@ -94,19 +101,19 @@ test "Void nested Text and data span physical presses carry producer provenance"
 		const label = text.para as NodeRef;
 		label.textWidth();
 		const link = label.localToGlobal(vec2(label.xForIndex(7) + 1.0, label.lineBoxAt(7).top + 2.0));
-		vh.clickAt(link.x, link.y);
+		tapAt(vh, link.x, link.y);
 		assert inner === 1 && outer === 0, "nearest run owns its physical press";
 		assert physical, "clickAt must mark a TextSpan press as physical";
 		const plain = label.localToGlobal(vec2(label.xForIndex(1) + 1.0, label.lineBoxAt(1).top + 2.0));
-		vh.clickAt(plain.x, plain.y);
+		tapAt(vh, plain.x, plain.y);
 		assert inner === 1 && outer === 1, "ordinary Text press control";
 		press(neonEvent("press"));
 		assert inner === 2 && !physical, "direct semantic callback stays semantic";
 		setWord("next");
-		vh.clickAt(link.x, link.y);
+		tapAt(vh, link.x, link.y);
 		assert inner === 3 && physical, "reactive paragraph updates keep physical interaction";
 		dispose();
-		vh.clickAt(link.x, link.y);
+		tapAt(vh, link.x, link.y);
 		assert inner === 3 && outer === 1, "disposed physical routes stay inert";
 	}
 }
@@ -130,17 +137,17 @@ test "Void cheap and raw ordinary presses retire with owner but unowned listener
 			return end;
 		});
 		vh.layout(200.0, 100.0);
-		vh.clickAt(10.0, 10.0);
+		tapAt(vh, 10.0, 10.0);
 		assert hits === 1;
 		dispose();
-		vh.clickAt(10.0, 10.0);
+		tapAt(vh, 10.0, 10.0);
 		assert hits === 1, "ordinary owner cleanup must retire retained-node callbacks";
 		if (raw !== null) {
 			vh.host.addEvent(raw as HostNode, "onPress", (): void => { hits += 1; });
-			vh.clickAt(10.0, 10.0);
+			tapAt(vh, 10.0, 10.0);
 			assert hits === 2, "raw unowned registration has no ownerless cleanup throw";
 			vh.host.removeChild(vh.root, raw as HostNode);
-			vh.clickAt(10.0, 10.0);
+			tapAt(vh, 10.0, 10.0);
 			assert hits === 2, "physical removal retires an unowned registration";
 		}
 	}

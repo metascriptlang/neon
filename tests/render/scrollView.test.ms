@@ -134,7 +134,7 @@ test "scrollTo on a host without the capability fails loud" {
 	assert caught.includes("scrollTo capability"), "names the capability: " + caught;
 }
 
-test "a press the host cancels for a scroll does not fire onPress" {
+test "a scroll that claims the touch terminates the press without onPress" {
 	const root: MockNode = mockNode("root");
 	let log = "";
 	createRoot((): void => {
@@ -144,15 +144,13 @@ test "a press the host cancels for a scroll does not fire onPress" {
 	});
 	const sv = root.children[0];
 	const row = sv.children[0].children[0];
-	fireEvent(row, "onPointerDown");
-	flush();
-	fireEvent(row, "onPointerCancel");
+	fireTouch(row, "onTouchStart", 10, 10, 2000);
 	flush();
 	fireEventWith(sv, "onScroll", scrollEvent(0, 30, 320, 480, 320, 2000));
 	flush();
-	fireEvent(row, "onPointerUp");
+	fireTouch(row, "onTouchEnd", 10, 40, 2020);
 	flush();
-	assert log === "in;scroll;", "no press after the cancel: " + log;
+	assert log === "in;scroll;", "no press after the scroll claimed the touch: " + log;
 }
 
 test "reactive horizontal switches both container and content direction without remounting rows" {

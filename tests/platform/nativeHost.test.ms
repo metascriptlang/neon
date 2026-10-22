@@ -27,10 +27,10 @@ import { Text } from "../../src/components/primitives";
 import { FlatList, FlatListHandle, ItemLayout, ListRenderItemInfo } from "../../src/components/flatList";
 
 import {
-	nmViewsCreated, nmReleaseCalls, nmTouch, nmTeardown, nmMount, nmResize, nmScroll, nmLastScrollTag,
+	nmViewsCreated, nmReleaseCalls, nmTouch, nmTap, nmTeardown, nmMount, nmResize, nmScroll, nmLastScrollTag,
 	nmContentWidth, nmContentHeight, nmScrolledX, nmScrolledY, nmScrolledAnimated, nmContentSizeWrites,
 	nmScrollFrameWrites, nmScreenHeightReads, nmLoop,
-	nmTransformWrites, nmVisualX, nmVisualY, nmLayoutWidth, nmLayoutHeight, nmTouchAt, nmLastPressableTag,
+	nmTransformWrites, nmVisualX, nmVisualY, nmLayoutWidth, nmLayoutHeight, nmTapAt, nmLastPressableTag,
 	nmLayoutX, nmLayoutY, nmRestackWrites, nmAddChildWrites, nmDetachWrites, nmPaintTag, nmPaintTextIndex,
 	nmControl, nmControlSized, nmTextWidth, nmTextHeight, nmLastControlTag, nmEnvironment, nmLastInputTag, nmFocused, nmProp,
 	nmTextVisualX, nmTextVisualY, nmScrollOffsetX, nmScrollOffsetY, nmScrollShifts,
@@ -95,21 +95,21 @@ test "removed rows and a torn-down app release native views and routes exactly o
 	runApp(app);
 	const created = nmViewsCreated();
 	const released = nmReleaseCalls();
-	nmTouch(2, PRESS);
+	nmTap(2);
 	assert pressed === "2;", "the second row's tag routes before removal: " + pressed;
 
 	setRows([1, 3]);
 	flush();
 	assert nmViewsCreated() === created, "keyed rows 1 and 3 are not recreated";
 	assert nmReleaseCalls() - released === 2, "the removed row releases its pressable and its label: " + (nmReleaseCalls() - released).toString();
-	nmTouch(2, PRESS);
-	nmTouch(1, PRESS);
-	nmTouch(3, PRESS);
+	nmTap(2);
+	nmTap(1);
+	nmTap(3);
 	assert pressed === "2;1;3;", "the removed tag is inert, the others still route: " + pressed;
 
 	nmTeardown();
 	assert nmReleaseCalls() === nmViewsCreated(), "every created view is released after teardown";
-	nmTouch(1, PRESS);
+	nmTap(1);
 	assert pressed === "2;1;3;", "no route survives teardown: " + pressed;
 
 	nmMount();
@@ -340,7 +340,7 @@ test "native Style transforms paint and hit-test around the centre without chang
 	const tag = nmLastPressableTag();
 	assert nmVisualX(tag, 0) === 90 && nmVisualX(tag, 100) === -10, "inversion scales the subsequent x translation";
 	assert nmVisualY(tag, 0) === 40 && nmVisualY(tag, 40) === 0, "vertical inversion is centred on the view";
-	nmTouchAt(40, 20, PRESS);
+	nmTapAt(40, 20);
 	assert pressed === 1, "a transformed hit still routes to the pressable";
 	const writes = nmTransformWrites();
 	setTransform("translateX(15px) scale(2, 3)");
@@ -382,7 +382,7 @@ test "inverted native scroll content keeps logical offsets and frames after resi
 	nmScroll(scrollTag, 0, 150, 400, 100, 400, 250);
 	assert payload === "150 100 250", "scroll event metrics remain untransformed";
 	assert nmVisualY(tag, 0) === 0 && nmVisualY(tag, 50) === 50, "two inversions restore the visible row direction at the logical offset";
-	nmTouchAt(50, 25, PRESS);
+	nmTapAt(50, 25);
 	assert pressed, "transformed content routes the visible row's touch";
 	const transforms = nmTransformWrites();
 	nmResize(800, 400);
@@ -428,16 +428,16 @@ test "native zIndex controls overlapping pressables without changing layout or d
 	assert nmLayoutY(upperTag) === 0 && nmLayoutY(lowerTag) === 40, "Yoga still uses logical child order";
 	const added = nmAddChildWrites();
 	const detached = nmDetachWrites();
-	nmTouchAt(50, 20, PRESS);
+	nmTapAt(50, 20);
 	setZ(-1);
 	flush();
-	nmTouchAt(50, 20, PRESS);
+	nmTapAt(50, 20);
 	setZ(null);
 	flush();
-	nmTouchAt(50, 20, PRESS);
+	nmTapAt(50, 20);
 	setZ(10);
 	flush();
-	nmTouchAt(50, 20, PRESS);
+	nmTapAt(50, 20);
 	assert pressed === "upper;lower;lower;upper;", "touch order follows changed z, including a reset to equal zero: " + pressed;
 	assert nmLayoutX(upperTag) === 0 && nmLayoutY(upperTag) === 0 &&
 		nmLayoutY(lowerTag) === 40 && nmLayoutWidth(upperTag) === 100 && nmLayoutHeight(upperTag) === 40,
@@ -451,7 +451,7 @@ test "native zIndex controls overlapping pressables without changing layout or d
 	nmResize(800, 400);
 	nmResize(400, 800);
 	assert nmRestackWrites() === restacked, "unrelated Style updates and stable or resized layouts do not restack";
-	nmTouchAt(50, 20, PRESS);
+	nmTapAt(50, 20);
 	assert pressed === "upper;lower;lower;upper;upper;", "the same press route survives paint and layout changes";
 	nmTeardown();
 }
@@ -485,7 +485,7 @@ test "native equal-z reorders preserve logical siblings and press state, with a 
 		host.append(p, b);
 		host.append(p, c);
 		if (level === 0) { assert nmRestackWrites() === initialRestacks, "ordinary zero-z appends require no restack"; }
-		nmTouchAt(50, 20, PRESS);
+		nmTapAt(50, 20);
 		const added = nmAddChildWrites();
 		const detached = nmDetachWrites();
 		host.insertBefore(p, a, c);
@@ -494,12 +494,12 @@ test "native equal-z reorders preserve logical siblings and press state, with a 
 		assert nmPaintTag(parentTag, 0) === bTag && nmPaintTag(parentTag, 1) === aTag && nmPaintTag(parentTag, 2) === cTag,
 			"equal z preserves the new logical order";
 		host.insertBefore(p, c, b);
-		nmTouchAt(50, 20, PRESS);
+		nmTapAt(50, 20);
 		assert host.firstChild(p) === c && host.nextSibling(c) === b && host.nextSibling(b) === a, "paint sorting never mutates Yoga children";
 		host.insertBefore(p, c, null);
-		nmTouchAt(50, 20, PRESS);
+		nmTapAt(50, 20);
 		host.append(p, b);
-		nmTouchAt(50, 20, PRESS);
+		nmTapAt(50, 20);
 		assert pressed === "c;a;c;b;", "same views keep their press routes through insert and append moves: " + pressed;
 		assert nmAddChildWrites() === added && nmDetachWrites() === detached, "same-parent moves only bring views forward";
 		const restacked = nmRestackWrites();
@@ -511,8 +511,8 @@ test "native equal-z reorders preserve logical siblings and press state, with a 
 		native.relayout();
 		assert nmRestackWrites() === restacked, "no-op child moves and unchanged layout do not restack";
 		host.removeChild(p, b);
-		nmTouchAt(50, 20, PRESS);
-		nmTouch(bTag, PRESS);
+		nmTapAt(50, 20);
+		nmTap(bTag);
 		assert pressed === "c;a;c;b;c;", "a removed upper sibling and its event route cannot take a hit";
 		assert nmPaintTag(parentTag, 0) === aTag && nmPaintTag(parentTag, 1) === cTag, "removal preserves the remaining paint order";
 		const q = host.createElement("View");
@@ -531,10 +531,10 @@ test "native equal-z reorders preserve logical siblings and press state, with a 
 		assert host.firstChild(p) === a && host.nextSibling(a) === null && host.firstChild(q) === d && host.nextSibling(d) === c,
 			"reparenting updates logical child lists";
 		assert nmPaintTag(parentTag, 0) === aTag && nmPaintTag(nextParentTag, 1) === cTag, "no stale paint entry remains in the old parent";
-		nmTouchAt(50, 20, PRESS);
+		nmTapAt(50, 20);
 		host.setStyle(c, { position: "absolute", top: 0, left: 0, width: 100, height: 40, zIndex: -1 });
 		assert nmPaintTag(nextParentTag, 0) === cTag && nmPaintTag(nextParentTag, 1) === dTag, "the new parent responds to the moved child's z change";
-		nmTouchAt(50, 20, PRESS);
+		nmTapAt(50, 20);
 		assert pressed === "c;a;c;b;c;c;d;", "reparented routes remain live and respect their new siblings: " + pressed;
 		host.removeChild(native.rootNode, q);
 		host.removeChild(native.rootNode, p);
@@ -606,19 +606,19 @@ test "a native sticky list paints and routes its retained header above rows, the
 	handles[0].scrollToOffset({ offset: 650, animated: false });
 	nmScroll(scrollTag, 0, 650, 400, 200, 400, 2000);
 	loopUntilIdle();
-	nmTouchAt(50, 25, PRESS);
+	nmTapAt(50, 25);
 	assert pressed === "10;", "the preceding sticky header receives the overlapping row's press: " + pressed;
 	setIndices([]);
 	flush();
 	loopUntilIdle();
-	nmTouchAt(50, 25, PRESS);
+	nmTapAt(50, 25);
 	assert pressed === "10;13;", "removing sticky indices exposes the ordinary visible row: " + pressed;
 	setIndices([0, 13]);
 	flush();
 	handles[0].scrollToOffset({ offset: 700, animated: false });
 	nmScroll(scrollTag, 0, 700, 400, 200, 400, 2000);
 	loopUntilIdle();
-	nmTouchAt(50, 25, PRESS);
+	nmTapAt(50, 25);
 	assert pressed === "10;13;13;", "changing indices makes the retained row stick instead: " + pressed;
 	nmTeardown();
 	assert nmReleaseCalls() === nmViewsCreated(), "sticky wrappers leave no native view behind";
@@ -800,7 +800,7 @@ function withLoader(load: () => void, body: NeonNode): NeonNode {
 }
 
 function pressLoad(): void {
-	nmTouch(nmLastPressableTag(), PRESS);
+	nmTap(nmLastPressableTag());
 	nmLoop();
 }
 
@@ -917,7 +917,7 @@ test "a native FlatList with maintainVisibleContentPosition keeps the visible me
 	nmScroll(tag, 0, 1000, 400, 779, 400, 5000);
 	loopUntilIdle();
 	const before = nmTextVisualY("row 20");
-	nmTouch(nmLastPressableTag(), PRESS);
+	nmTap(nmLastPressableTag());
 	loopUntilIdle();
 	const after = nmTextVisualY("row 20");
 	const offset = nmScrollOffsetY(tag);
@@ -997,22 +997,22 @@ test "a native Modal fills the root above the app, takes the touches below it an
 		</Modal>
 	</View>;
 	runApp(app);
-	nmTouchAt(10, 50, PRESS);
+	nmTapAt(10, 50);
 	assert log === "under;", "no modal yet: " + log;
 	setOpen(true);
 	flush();
 	const modal = nmLastControlTag(5);
 	assert `${nmLayoutWidth(modal)}x${nmLayoutHeight(modal)}` === "400x800", "fills the root: " + `${nmLayoutWidth(modal)}x${nmLayoutHeight(modal)}`;
 	assert nmPaintTag(0, 1) === modal, "paints above the app";
-	nmTouchAt(10, 50, PRESS);
+	nmTapAt(10, 50);
 	assert log === "under;", "the modal takes the touch over the app: " + log;
-	nmTouchAt(10, 320, PRESS);
+	nmTapAt(10, 320);
 	nmLoop();
 	assert log === "under;inside;", "its own content presses: " + log;
 	nmControl(modal, 7, "");
 	nmLoop();
 	assert log === "under;inside;close;", "back asks to close: " + log;
-	nmTouchAt(10, 50, PRESS);
+	nmTapAt(10, 50);
 	assert log === "under;inside;close;under;", "closed: the app presses again: " + log;
 	nmTeardown();
 	assert nmReleaseCalls() === nmViewsCreated(), "the modal layer is released";
@@ -1049,20 +1049,20 @@ test "a native multiline TextInput is created as the platform's text area and ro
 test "the gallery app runs on the native host: button, modal over the app, status bar and keyboard screen" {
 	runApp(GalleryApp);
 	assert nmHasLabel("status: ready") === 1, "mounted";
-	nmTouch(nmTagWithProp("accessibilityLabel", "Press me"), PRESS);
+	nmTap(nmTagWithProp("accessibilityLabel", "Press me"));
 	nmLoop();
 	assert nmHasLabel("status: button 1") === 1, "button";
-	nmTouch(nmTagWithProp("accessibilityLabel", "Open modal"), PRESS);
+	nmTap(nmTagWithProp("accessibilityLabel", "Open modal"));
 	nmLoop();
 	assert nmHasLabel("Modal content") === 1, "modal open";
 	const modal = nmLastControlTag(5);
 	nmControl(modal, 7, "");
 	nmLoop();
 	assert nmHasLabel("Modal content") === 0 && nmHasLabel("status: modal closed by request") === 1, "back closes the modal";
-	nmTouch(nmTagWithProp("accessibilityLabel", "Hide status bar"), PRESS);
+	nmTap(nmTagWithProp("accessibilityLabel", "Hide status bar"));
 	nmLoop();
 	assert anyProp("statusBarHidden") === "true", "bar hidden";
-	nmTouch(nmTagWithProp("accessibilityLabel", "Open keyboard screen"), PRESS);
+	nmTap(nmTagWithProp("accessibilityLabel", "Open keyboard screen"));
 	nmLoop();
 	assert nmHasLabel("keyboard hidden") === 1, "keyboard screen";
 	nmEnvironment(300, 0);
@@ -1093,7 +1093,7 @@ test "a native pan row takes a horizontal drag from the Pressable inside it and 
 	const button = nmLastPressableTag();
 	nmTouchFull(button, DOWN, 100, 30, 1000);
 	nmTouchFull(button, MOVE, 104, 31, 1016);
-	assert nmResponderTag() === 0, "no claim under the slop";
+	assert nmResponderTag() === button && nmResponderBlocks() === 0, "under the slop the Pressable is responder and leaves native scrolling alone";
 	nmTouchFull(button, MOVE, 130, 31, 1032);
 	const holder = nmResponderTag();
 	const blocks = nmResponderBlocks();

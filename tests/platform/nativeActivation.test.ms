@@ -81,7 +81,7 @@ test "native terminal groups precede raw observers and capture later listeners b
 			await sleepAsync(150);
 			physical(source, phase, stamp + 20.0);
 			actual += `${phase},${remove}:${log}|`;
-			expected += `${phase},${remove}:` + (phase === 1 ? "end;release;out;press;" : "terminate;out;") + "raw;ancestor;|";
+			expected += `${phase},${remove}:` + (phase === 1 ? "out;press;" : "out;") + "raw;ancestor;|";
 			nmTeardown();
 		}
 	}
@@ -220,18 +220,19 @@ test "native activation retains cheap and gesture owners when only their generic
 			</Show>
 		</Pressable>);
 		const source = nmTagWithProp("accessibilityLabel", "activation-removed-leaf");
-		physical(source, 0, 34000.0);
+		const stamp = gesture ? 34100.0 : 34000.0;
+		physical(source, 0, stamp);
 		setVisible(false);
 		nmLoop();
-		physical(source, 1, 34020.0);
-		physical(source, 2, 34020.0);
+		physical(source, 1, stamp + 20.0);
+		physical(source, 2, stamp + 20.0);
 		result += hits.toString() + ";";
 		nmTeardown();
 	}
 	assert result === "1;1;", result;
 }
 
-test "native raw end removal vetoes late cheap activation but not earlier gesture activation" {
+test "native release presses before raw end listeners run, as RN dispatches responder events first" {
 	let result = "";
 	for (const removeOwner of [false, true]) {
 		for (const gesture of [false, true]) {
@@ -267,7 +268,7 @@ test "native raw end removal vetoes late cheap activation but not earlier gestur
 			native.host.removeChild(native.rootNode, wrappers[0].node);
 		}
 	}
-	assert result === "1,1;1,1;0,1;1,1;", result;
+	assert result === "1,1;1,1;1,1;1,1;", result;
 }
 
 test "native stale release after teardown cannot consume a remounted acquisition" {

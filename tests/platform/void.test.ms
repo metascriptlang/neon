@@ -6,7 +6,7 @@ import { createSignal } from "../../src/core/signal";
 import { flush } from "../../src/core/runtime";
 import { element } from "../../src/macros/ui/element";
 import { render, HostNode } from "../../src/render/host";
-import { createVoidHost, layoutPass, parseFlexStyle, VoidNode } from "../../src/platform/void/host";
+import { createVoidHost, layoutPass, parseFlexStyle, VoidHost, VoidNode } from "../../src/platform/void/host";
 import { Style } from "../../src/render/style";
 import { NeonEvent } from "../../src/render/event";
 import { Void, View, Text, ScrollView, Pressable } from "../../src/components/primitives";
@@ -17,6 +17,11 @@ import {
 } from "../../../void/src/void2d/node";
 
 function flexOf(n: VoidNode): FlexStyle { return n.flex as FlexStyle; }
+
+function tapAt(vh: VoidHost, x: float32, y: float32): void {
+	vh.clickAt(x, y);
+	flush();
+}
 
 test "counter renders into the Void scene with parsed flex styles" {
 	const [count, setCount] = createSignal(0);
@@ -309,11 +314,9 @@ test "a click outside a scroll view's mask misses content it clips" {
 		</ScrollView>
 	), vh.host, vh.root);
 	vh.layout(100.0, 50.0);
-	vh.clickAt(10.0, 120.0);
-	flush();
+	tapAt(vh, 10.0, 120.0);
 	assert pressed === 0, "content below the mask is clipped, so it is not hit";
-	vh.clickAt(10.0, 10.0);
-	flush();
+	tapAt(vh, 10.0, 10.0);
 	assert pressed === 1, "content inside the mask is hit";
 }
 

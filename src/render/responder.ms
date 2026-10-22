@@ -155,10 +155,8 @@ function grant(entry: ResponderEntry, e: NeonEvent, moving: boolean): void {
 			if (!watch.pressing) { continue; }
 			watch.pressing = false;
 			watch.onClaim();
-			if (path !== before || responder !== entry || !entry.mounted) { return; }
 		}
 	}
-	if (path !== before || responder !== entry || !entry.mounted) { return; }
 	const host = entry.host;
 	if (host === null || entry.node === null) { return; }
 	const write = (host as Host).setResponder;

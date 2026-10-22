@@ -31,18 +31,17 @@ import { VoidSpace, getVoidScopeContext, getVoidAreaContext, useVoidSpace } from
 import { ElementHandle, ElementRef } from "../render/measure";
 export { ElementHandle, MeasureRect, MeasureError } from "../render/measure";
 import { visibleContentAttr } from "../render/visibleContent";
-import { LONG_PRESS_DELAY_MS, pointerCancel, pressEvents } from "./pressability";
 import {
 	ResponderEntry,
 	ResponderHandlers,
 	ResponderParent,
 	TouchPhase,
 	parentResponder,
-	pressSwallowed,
 	responderTouch,
 	responderScroll,
 	responderUnmounted,
 } from "../render/responder";
+import { Pressability, PressRect } from "../render/pressability";
 
 export type AccessibilityRole = "none" | "button" | "link" | "search" | "image" | "text" | "header" | "switch" | "checkbox" | "adjustable" | "progressbar" | "summary" | "alert" | "radio" | "radiogroup" | "tab" | "tablist" | "togglebutton" | "combobox" | "menu" | "menuitem";
 
@@ -236,10 +235,6 @@ function touchEvent(name: string, user: ((e: NeonEvent) => void) | null, entry: 
 	};
 }
 
-function gestureEvent(name: string, lifecycle: (e: NeonEvent) => void): VEvent {
-	return { name, lifecycle, handler: (e: NeonEvent): void => {} };
-}
-
 export class ViewHandle extends ElementHandle {
 	private host: Host;
 	private mounted: () => boolean;
@@ -369,14 +364,41 @@ export function Text(props: TextProps): NeonNode {
 		const read = widths as Accessor<uint8[]>;
 		attrs.push(dynAttr("cellWidths", (): string | null => cellDigits(read())));
 	}
-	const evts: VEvent[] = [];
-	if (press !== null) {
-		const user = press as (e: NeonEvent) => void;
-		evts.push(evt("onPress", (e: NeonEvent): void => {
-			if (!pressSwallowed(e)) { user(e); }
-		}));
-	}
-	return uiParent("Text", primitive("text", props, attrs, evts, paragraphChildren(props.children, spans), null, props.ref));
+	const kids = paragraphChildren(props.children, spans);
+	if (press === null) { return uiParent("Text", primitive("text", props, attrs, [], kids, null, props.ref)); }
+	const pressability = new Pressability({
+		cancelable: null, hitSlop: null, delayLongPress: null,
+		onPress: press, onPressIn: null, onPressOut: null, onLongPress: null, onHoverIn: null, onHoverOut: null,
+	});
+	return uiParent("Text", withPressability(pressability, [], kids, (evts: VEvent[], children: NeonNode | null, grab: RefFn): NeonNode =>
+		primitive("text", props, attrs, evts, children, grab, props.ref)));
+}
+
+// RN usePressability: the press machine joins the responder system through the element's own touches.
+function withPressability(pressability: Pressability, evts: VEvent[], kids: NeonNode | null,
+	build: (evts: VEvent[], kids: NeonNode | null, grab: RefFn) => NeonNode): NeonNode {
+	const entry = new ResponderEntry(pressability.responderHandlers(), parentResponder());
+	evts.push(touchEvent("onTouchStart", null, entry, TouchPhase.Start) as VEvent);
+	evts.push(touchEvent("onTouchMove", null, entry, TouchPhase.Move) as VEvent);
+	evts.push(touchEvent("onTouchEnd", null, entry, TouchPhase.End) as VEvent);
+	evts.push(touchEvent("onTouchCancel", null, entry, TouchPhase.Cancel) as VEvent);
+	evts.push(evt("onPress", (e: NeonEvent): void => { pressability.click(e); }));
+	const provided: NeonNode | null = kids === null ? null : ResponderParent.provider({
+		value: accessor((): ResponderEntry | null => entry),
+		children: kids as NeonNode,
+	});
+	const node = build(evts, provided, (n: HostNode): void => {
+		entry.node = n;
+		pressability.attach(entry.host as Host, n);
+	});
+	return (host: Host, parent: HostNode, before: HostNode | null): void => {
+		entry.host = host;
+		onCleanup((): void => {
+			responderUnmounted(entry);
+			pressability.reset();
+		});
+		node(host, parent, before);
+	};
 }
 
 // RN Insets: how far each edge of a touch target reaches past the view.
@@ -394,14 +416,18 @@ export interface AndroidRipple {
 	radius?: number | null;
 }
 
-function insetsAttr(slop: number | Insets): string {
+function insetsRect(slop: number | Insets): PressRect {
 	if (typeof slop === "number") {
 		const all = Math.max(0, slop as number);
-		return `${all},${all},${all},${all}`;
+		return { top: all, left: all, bottom: all, right: all };
 	}
-	const s = slop as Insets;
-	const { top = 0, left = 0, bottom = 0, right = 0 } = s;
-	return `${Math.max(0, top)},${Math.max(0, left)},${Math.max(0, bottom)},${Math.max(0, right)}`;
+	const { top = 0, left = 0, bottom = 0, right = 0 } = slop as Insets;
+	return { top: Math.max(0, top), left: Math.max(0, left), bottom: Math.max(0, bottom), right: Math.max(0, right) };
+}
+
+function insetsAttr(slop: number | Insets): string {
+	const r = insetsRect(slop);
+	return `${r.top},${r.left},${r.bottom},${r.right}`;
 }
 
 function rippleAttr(ripple: AndroidRipple): string {
@@ -421,26 +447,23 @@ interface PressableProps extends HostProps {
 	onHoverOut?: ((e: NeonEvent) => void) | null;
 	onLayout?: ((e: NeonEvent) => void) | null;
 	delayLongPress?: Accessor<number> | null;
+	cancelable?: Accessor<boolean> | null;
 	children?: NeonNode | null;
 }
 
 export function Pressable(props: PressableProps): NeonNode {
-	const { delayLongPress = accessor((): number => LONG_PRESS_DELAY_MS) } = props;
-	const events = pressEvents({
-		onPress: props.onPress,
-		onPressIn: props.onPressIn,
-		onPressOut: props.onPressOut,
-		onLongPress: props.onLongPress,
-		onHoverIn: props.onHoverIn,
-		onHoverOut: props.onHoverOut,
-		delayLongPress,
-	}, pointerCancel);
-
+	const slop = props.hitSlop;
+	const pressability = new Pressability({
+		cancelable: props.cancelable,
+		hitSlop: slop === null ? null : (): PressRect => insetsRect((slop as Accessor<number | Insets>)()),
+		delayLongPress: props.delayLongPress,
+		onPress: props.onPress, onPressIn: props.onPressIn, onPressOut: props.onPressOut, onLongPress: props.onLongPress,
+		onHoverIn: props.onHoverIn, onHoverOut: props.onHoverOut,
+	});
 	// RN Pressable.js: `accessible: accessible !== false`, so a Pressable is one
 	// accessibility element whose label the host composes from its texts.
 	const declared = accessibleText(props);
 	const accessible = declared === null ? accessor((): string => "true") : declared as Accessor<string>;
-	const slop = props.hitSlop;
 	const hitSlop: Accessor<string> | null = slop === null ? null : accessor((): string => insetsAttr((slop as Accessor<number | Insets>)()));
 	const ripple = props.android_ripple;
 	const androidRipple: Accessor<string> | null = ripple === null ? null : accessor((): string => rippleAttr((ripple as Accessor<AndroidRipple>)()));
@@ -449,17 +472,14 @@ export function Pressable(props: PressableProps): NeonNode {
 	stringAttr(attrs, "androidRipple", androidRipple);
 	const evts: VEvent[] = [];
 	if (props.onLayout !== null) { evts.push(evt("onLayout", props.onLayout as (e: NeonEvent) => void)); }
-	if (events.onPress !== null) { evts.push(evt("onPress", events.onPress as (e: NeonEvent) => void)); }
-	if (events.onPointerDown !== null) { evts.push(evt("onPointerDown", events.onPointerDown as (e: NeonEvent) => void)); }
-	if (events.onPointerUp !== null) { evts.push(evt("onPointerUp", events.onPointerUp as (e: NeonEvent) => void)); }
-	if (events.onPointerEnter !== null) { evts.push(evt("onPointerEnter", events.onPointerEnter as (e: NeonEvent) => void)); }
-	if (events.onPointerLeave !== null) { evts.push(evt("onPointerLeave", events.onPointerLeave as (e: NeonEvent) => void)); }
-	if (events.onPointerCancel !== null) { evts.push(evt("onPointerCancel", events.onPointerCancel as (e: NeonEvent) => void)); }
-	return uiParent("Pressable", primitive("pressable", {
-		style: props.style, class: props.class,
-		accessible: accessor((): boolean => accessible() === "true"),
-		accessibilityLabel: props.accessibilityLabel, accessibilityHint: props.accessibilityHint, accessibilityRole: props.accessibilityRole, accessibilityState: props.accessibilityState,
-	}, attrs, evts, props.children, null, props.ref));
+	if (props.onHoverIn !== null) { evts.push(evt("onPointerEnter", (e: NeonEvent): void => { pressability.pointerEnter(e); })); }
+	if (props.onHoverOut !== null) { evts.push(evt("onPointerLeave", (e: NeonEvent): void => { pressability.pointerLeave(e); })); }
+	return uiParent("Pressable", withPressability(pressability, evts, props.children, (all: VEvent[], kids: NeonNode | null, grab: RefFn): NeonNode =>
+		primitive("pressable", {
+			style: props.style, class: props.class,
+			accessible: accessor((): boolean => accessible() === "true"),
+			accessibilityLabel: props.accessibilityLabel, accessibilityHint: props.accessibilityHint, accessibilityRole: props.accessibilityRole, accessibilityState: props.accessibilityState,
+		}, attrs, all, kids, grab, props.ref)));
 }
 
 export interface ScrollToOptions {

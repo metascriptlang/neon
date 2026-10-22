@@ -103,6 +103,8 @@ function refuseInline(n: SpanNode): void {
 
 const SPAN_ATTRS = ["class", "accessible", "accessibilityLabel", "accessibilityHint", "accessibilityRole"];
 
+const SPAN_TOUCHES = ["onTouchStart", "onTouchMove", "onTouchEnd", "onTouchCancel"];
+
 export const SPAN_HOST: Host = {
 	createElement: (tag: string): HostNode => {
 		const n = new SpanNode(false);
@@ -134,8 +136,10 @@ export const SPAN_HOST: Host = {
 	setStyleClass: null,
 	addEvent: (node: HostNode, name: string, handler: (e: NeonEvent) => void): void => {
 		if (spanOf(node).inline !== null) { return; }
+		// Parked on the TextSpan touch decision (BUGS.md): a span is no responder, so its host press is its activation.
+		if (SPAN_TOUCHES.indexOf(name) >= 0) { return; }
 		if (name !== "onPress") { throw new Error(`${name} on a Text inside a Text: a span takes onPress only`); }
-		spanOf(node).press = handler;
+		spanOf(node).press = (e: NeonEvent): void => { handler({ ...e, pointerOrigin: false }); };
 	},
 	append: (parent: HostNode, child: HostNode): void => {
 		const p = spanOf(parent);

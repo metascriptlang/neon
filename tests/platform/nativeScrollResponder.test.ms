@@ -111,7 +111,7 @@ test "native terminal captures release listener before End mutates responder han
 	assert actual === "end;captured;end;captured;", actual;
 }
 
-test "native custom End restart keeps existing child gesture limitation separate from raw order" {
+test "native custom End restart leaves the touch to the child Pressable, which RN asks first" {
 	let actual = "";
 	for (const restart of [false, true]) {
 		let source: int32 = 0;
@@ -138,7 +138,7 @@ test "native custom End restart keeps existing child gesture limitation separate
 		actual += `${restart}:${callbacks}|`;
 		nmTeardown();
 	}
-	assert actual === "false:end;release;out;153020;|true:end;release;out;153020;|", actual;
+	assert actual === "false:out;153020;|true:out;153020;|", actual;
 }
 
 
@@ -194,26 +194,23 @@ test "native scroll negotiates existing custom responder termination acceptance 
 		let requested = 0;
 		let terminated = 0;
 		let released = 0;
-		let hits = 0;
 		runApp((): NeonNode => <ScrollView onScroll={observe}>
 			<View onStartShouldSetResponder={(): boolean => true}
 				onResponderGrant={(): boolean => false}
 				onResponderTerminationRequest={(): boolean => { requested += 1; return allowed; }}
 				onResponderTerminate={(): void => { terminated += 1; }}
 				onResponderRelease={(): void => { released += 1; }}>
-				<Pressable onPress={(): void => { hits += 1; }} />
+				<View accessibilityLabel="termination-source" onLayout={observe} />
 			</View>
 		</ScrollView>);
-		const source = nmLastPressableTag();
+		const source = nmTagWithProp("accessibilityLabel", "termination-source");
 		physical(source, 0, 41000.0);
 		scroll(nmLastScrollTag());
 		physical(source, 1, 41020.0);
-		physical(source, 2, 41020.0);
-		result += requested.toString() + "," + terminated.toString() + "," +
-			released.toString() + "," + hits.toString() + ";";
+		result += requested.toString() + "," + terminated.toString() + "," + released.toString() + ";";
 		nmTeardown();
 	}
-	assert result === "1,0,1,1;1,1,0,0;", result;
+	assert result === "1,0,1;1,1,0;", result;
 }
 
 test "native scroll preserves a refusing native-blocking responder" {
@@ -356,12 +353,12 @@ test "native scroll pressOut reentrancy cannot apply an old grant after disposal
 	for (const removing of [false, true]) {
 		const native = createNativeHost();
 		const original = native.host.setResponder;
+		const handles: ScrollViewHandle[] = [];
 		let grants = 0;
 		native.host.setResponder = (node: HostNode | null, block: boolean): void => {
-			if (node !== null) { grants += 1; }
+			if (node !== null && handles.length > 0 && node === handles[0].node) { grants += 1; }
 			if (original !== null) { (original as (node: HostNode | null, block: boolean) => void)(node, block); }
 		};
-		const handles: ScrollViewHandle[] = [];
 		let source: int32 = 0;
 		let scroller: int32 = 0;
 		let cleanup: (() => void) | null = null;
@@ -394,10 +391,54 @@ test "native scroll pressOut reentrancy cannot apply an old grant after disposal
 		(cleanup as () => void)();
 		native.host.removeChild(native.rootNode, handles[0].node);
 		assert hits === 0 && outs === (removing ? 1 : 2);
-		assert applied === (removing ? 0 : 1), `old/native grants ${applied}`;
+		assert applied === (removing ? 0 : 1), `old/native scroll grants ${applied}`;
 	}
 }
 
+test "native claim crossover contrasts sequential delivery with injected rawEnd restart" {
+	let actual = "";
+	let expected = "";
+	for (const injected of [false, true]) {
+		for (const sameStart of [false, true]) {
+			for (const claimA of [false, true]) {
+				let source: int32 = 0;
+				let scroller: int32 = 0;
+				let started = false;
+				let delivering = "A";
+				let stamps = "";
+				const bStart = sameStart ? 94020.0 : 95000.0;
+				const bEnd = bStart + 20.0;
+				const beginB = (): void => {
+					if (started) { return; }
+					started = true;
+					physical(source, 0, bStart);
+					if (!claimA) { scroll(scroller); }
+				};
+				runApp((): NeonNode => <ScrollView>
+					<Pressable onPress={(e: NeonEvent): void => { stamps += `${delivering}:${e.timeStamp};`; }}>
+						<View accessibilityLabel="claim-crossover-source" onTouchEnd={(): void => {
+							if (injected) { beginB(); }
+						}} />
+					</Pressable>
+				</ScrollView>);
+				source = nmTagWithProp("accessibilityLabel", "claim-crossover-source");
+				scroller = nmLastScrollTag();
+				physical(source, 0, 94000.0);
+				if (claimA) { scroll(scroller); }
+				physical(source, 1, 94020.0);
+				physical(source, 2, 94020.0);
+				if (!injected) { beginB(); }
+				delivering = "B";
+				physical(source, 1, bEnd);
+				physical(source, 2, bEnd);
+				actual += `${injected},${sameStart},${claimA}:${stamps}|`;
+				expected += `${injected},${sameStart},${claimA}:` + (claimA ? `B:${bEnd};|` : "A:94020;|");
+				nmTeardown();
+			}
+		}
+	}
+	assert actual === expected, actual;
+}
 
 test "native pure View clears old responder before terminal or disposal callbacks" {
 	let actual = "";

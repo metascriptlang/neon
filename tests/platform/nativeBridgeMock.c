@@ -438,6 +438,17 @@ void nmTouchFull(int32_t tag, int32_t phase, float x, float y, double time) {
 	nmTouch(tag, phase);
 }
 
+// Every native bridge reports a tap as down, then up and its click at one point and time.
+static double g_tapClock = 1000000;
+
+void nmTap(int32_t tag) {
+	g_tapClock += 10;
+	nmTouchFull(tag, 0, g_touchX, g_touchY, g_tapClock);
+	g_tapClock += 10;
+	nmTouchFull(tag, 1, g_touchX, g_touchY, g_tapClock);
+	nmTouchFull(tag, 2, g_touchX, g_touchY, g_tapClock);
+}
+
 void nmTouch(int32_t tag, int32_t phase) {
 	g_lastTag = tag;
 	g_lastPhase = phase;
@@ -614,9 +625,14 @@ static MockView *hitView(MockView *p, float x, float y) {
 	return NULL;
 }
 
-void nmTouchAt(float x, float y, int32_t phase) {
+void nmTapAt(float x, float y) {
 	MockView *hit = hitView(&s_container, x, y);
-	if (hit && hit->tag) nmTouch(hit->tag, phase);
+	if (!hit || !hit->tag) return;
+	g_tapClock += 10;
+	nmTouchFull(hit->tag, 0, x, y, g_tapClock);
+	g_tapClock += 10;
+	nmTouchFull(hit->tag, 1, x, y, g_tapClock);
+	nmTouchFull(hit->tag, 2, x, y, g_tapClock);
 }
 
 static MockView *labelled(const char *text) {

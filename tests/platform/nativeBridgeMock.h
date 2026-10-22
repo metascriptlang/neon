@@ -3,6 +3,7 @@ void nmMeasurementRect(double x, double y, double width, double height, int32_t 
 int32_t nmViewsCreated(void);
 int32_t nmReleaseCalls(void);
 void nmTouch(int32_t tag, int32_t phase);
+void nmTap(int32_t tag);
 void nmTouchFull(int32_t tag, int32_t phase, float x, float y, double time);
 int32_t nmResponderTag(void);
 int32_t nmResponderBlocks(void);
@@ -28,7 +29,7 @@ float nmRotation(int32_t tag);
 float nmOpacity(int32_t tag);
 float nmTranslateX(int32_t tag);
 float nmLayoutHeight(int32_t tag);
-void nmTouchAt(float x, float y, int32_t phase);
+void nmTapAt(float x, float y);
 int32_t nmLastPressableTag(void);
 float nmLayoutX(int32_t tag);
 float nmLayoutY(int32_t tag);

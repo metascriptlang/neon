@@ -6,9 +6,7 @@ import { createSignal } from "../../src/core/signal";
 import { LayoutAnimation, LayoutAnimationPresets } from "../../src/animation/layoutAnimation";
 import { useManualFrames, setFrameDriver } from "../../src/animation/frame";
 import { Show } from "../../src/macros/ui/flow";
-import { nmTeardown, nmLastPressableTag, nmLayoutHeight, nmLayoutY, nmOpacity, nmTouch } from "./nativeBridgeMock.h";
-
-const PRESS: int32 = 2;
+import { nmTeardown, nmLastPressableTag, nmLayoutHeight, nmLayoutY, nmOpacity, nmTap } from "./nativeBridgeMock.h";
 
 test "configureNext tweens the next layout's frame changes, and only the next" {
 	const clock = useManualFrames();
@@ -23,7 +21,7 @@ test "configureNext tweens the next layout's frame changes, and only the next" {
 	runApp(app);
 	const tag = nmLastPressableTag();
 	assert nmLayoutHeight(tag) === 40;
-	nmTouch(tag, PRESS);
+	nmTap(tag);
 	flush();
 	assert nmLayoutHeight(tag) === 40, "the frame starts where it was " + nmLayoutHeight(tag).toString();
 	clock.step(5);

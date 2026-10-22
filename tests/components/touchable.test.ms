@@ -8,9 +8,16 @@ import { sleepAsync } from "std/core/promise";
 import { element } from "../../src/macros/ui/element";
 import { NeonEvent } from "../../src/render/event";
 import { Style } from "../../src/render/style";
-import { HostNode, MockNode, mockNode, mockHost, render, fireEvent, mockToString } from "../../src/render/host";
+import { HostNode, MockNode, mockNode, mockHost, render, fireEvent, fireTouch, mockToString } from "../../src/render/host";
 import { Text } from "../../src/components/primitives";
 import { TouchableOpacity, TouchableHighlight, TouchableWithoutFeedback } from "../../src/components/touchable";
+
+let clock = 3000.0;
+
+function touch(node: MockNode, name: string): void {
+	clock += 10;
+	fireTouch(node, name, 10, 10, clock);
+}
 
 function styleOf(n: MockNode): Style {
 	return n.style as Style;
@@ -27,10 +34,10 @@ test "TouchableOpacity fades to activeOpacity while pressed and presses on relea
 	const box = root.children[0];
 	assert mockToString(root) === "<root><pressable accessible=\"true\"><text>Tap</text></pressable></root>", "shape: " + mockToString(root);
 	assert styleOf(box).opacity === 1 && styleOf(box).padding === 4, "rest opacity";
-	fireEvent(box, "onPointerDown");
+	touch(box, "onTouchStart");
 	flush();
 	assert styleOf(box).opacity === 0.2, "pressed opacity: " + (styleOf(box).opacity ?? -1).toString();
-	fireEvent(box, "onPointerUp");
+	touch(box, "onTouchEnd");
 	flush();
 	assert log() === "press;", "press fires on release: " + log();
 	await sleepAsync(250);
@@ -47,18 +54,18 @@ test "TouchableOpacity honours activeOpacity and the style's own opacity, and do
 	});
 	const box = root.children[0];
 	assert styleOf(box).opacity === 0.9, "rest is the style's opacity";
-	fireEvent(box, "onPointerDown");
+	touch(box, "onTouchStart");
 	flush();
 	assert styleOf(box).opacity === 0.5, "activeOpacity";
-	fireEvent(box, "onPointerUp");
+	touch(box, "onTouchEnd");
 	flush();
 	await sleepAsync(250);
 	setOff(true);
 	flush();
-	fireEvent(box, "onPointerDown");
+	touch(box, "onTouchStart");
 	flush();
 	assert styleOf(box).opacity === 0.9, "disabled shows no feedback";
-	fireEvent(box, "onPointerUp");
+	touch(box, "onTouchEnd");
 	flush();
 	await sleepAsync(250);
 	assert log() === "press;", "disabled does not press: " + log();
@@ -75,10 +82,10 @@ test "TouchableHighlight shows its underlay and dims its child while pressed" {
 	const child = box.children[0];
 	assert mockToString(root) === "<root><pressable accessible=\"true\"><view><text>Row</text></view></pressable></root>", "shape: " + mockToString(root);
 	assert styleOf(box).backgroundColor === "#ffffff" && styleOf(child).opacity === 1, "rest";
-	fireEvent(box, "onPointerDown");
+	touch(box, "onTouchStart");
 	flush();
 	assert styleOf(box).backgroundColor === "#dddddd" && styleOf(child).opacity === 0.85, "pressed";
-	fireEvent(box, "onPointerUp");
+	touch(box, "onTouchEnd");
 	flush();
 	await sleepAsync(250);
 	assert styleOf(box).backgroundColor === "#ffffff" && styleOf(child).opacity === 1, "released";
@@ -91,10 +98,10 @@ test "TouchableHighlight without a background returns to transparent, its underl
 	});
 	const box = root.children[0];
 	assert styleOf(box).backgroundColor === "transparent", "rest";
-	fireEvent(box, "onPointerDown");
+	touch(box, "onTouchStart");
 	flush();
 	assert styleOf(box).backgroundColor === "#000000", "black underlay";
-	fireEvent(box, "onPointerUp");
+	touch(box, "onTouchEnd");
 	flush();
 	await sleepAsync(250);
 }
@@ -111,15 +118,15 @@ test "TouchableWithoutFeedback presses, long-presses and keeps its accessibility
 	});
 	const box = root.children[0];
 	assert mockToString(root) === "<root><pressable accessible=\"true\" accessibilityLabel=\"Card\"><text>Card</text></pressable></root>", "shape: " + mockToString(root);
-	fireEvent(box, "onPointerDown");
+	touch(box, "onTouchStart");
 	flush();
-	fireEvent(box, "onPointerUp");
-	flush();
-	await sleepAsync(200);
-	fireEvent(box, "onPointerDown");
+	touch(box, "onTouchEnd");
 	flush();
 	await sleepAsync(200);
-	fireEvent(box, "onPointerUp");
+	touch(box, "onTouchStart");
+	flush();
+	await sleepAsync(200);
+	touch(box, "onTouchEnd");
 	flush();
 	await sleepAsync(200);
 	assert log() === "press;long;", "press then long press: " + log();

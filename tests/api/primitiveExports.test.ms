@@ -40,6 +40,7 @@ import {
 	MockNode,
 	fireEvent,
 	fireEventWith,
+	fireTouch,
 	mockHost,
 	mockNode,
 	mockToString,
@@ -234,9 +235,9 @@ test "public refresh switch indicator and neutral touchables reach mock host" {
 	assert enabled();
 	assert attrOf(children[1], "value") === "true";
 	for (let i = 3; i < 6; i++) {
-		fireEvent(children[i], "onPointerDown");
+		fireTouch(children[i], "onTouchStart", 10, 10, 7000 + i * 100);
 		flush();
-		fireEvent(children[i], "onPointerUp");
+		fireTouch(children[i], "onTouchEnd", 10, 10, 7020 + i * 100);
 		flush();
 	}
 	assert presses === 3;

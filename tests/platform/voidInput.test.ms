@@ -46,6 +46,14 @@ function key(k: string): NeonEvent {
 	return e;
 }
 
+// A primary-button click as windowHost.deliverPointer delivers it.
+function tapAt(vh: VoidHost, x: float32, y: float32): void {
+	vh.pointerDown(x, y, 1 as int32);
+	vh.clickAt(x, y);
+	vh.pointerUp(x, y, 1 as int32);
+	flush();
+}
+
 function top(vh: VoidHost): VoidNode {
 	return (vh.root as VoidNode).children[0];
 }
@@ -452,13 +460,13 @@ test "a press over a nested Text's run fires that run's onPress, and the plain t
 	label.textWidth();
 	const at = (index: int32): Vec2 => label.localToGlobal(vec2(label.xForIndex(index) + 1.0, label.lineBoxAt(index).top + 2.0));
 	const inLink = at(7);
-	vh.clickAt(inLink.x, inLink.y);
+	tapAt(vh, inLink.x, inLink.y);
 	assert link === 1 && outer === 0, "a press inside \"link\" is the run's: link=" + link.toString() + " outer=" + outer.toString();
 	const inPlain = at(1);
-	vh.clickAt(inPlain.x, inPlain.y);
+	tapAt(vh, inPlain.x, inPlain.y);
 	assert link === 1 && outer === 1, "a press on the plain text is the Text's: link=" + link.toString() + " outer=" + outer.toString();
 	const pastEnd = label.localToGlobal(vec2(label.textWidth() + 40.0, label.lineBoxAt(0).top + 2.0));
-	vh.clickAt(pastEnd.x, pastEnd.y);
+	tapAt(vh, pastEnd.x, pastEnd.y);
 	assert link === 1, "past the line's end there is no run";
 }
 
@@ -618,13 +626,13 @@ test "pressing a component with a pointer, wheel or text handler, or focusable, 
 	), vh.host, vh.root);
 	vh.layout(400.0, 50.0);
 	const row = top(vh);
-	vh.clickAt(10.0, 10.0);
+	tapAt(vh, 10.0, 10.0);
 	assert vh.focused() === row.children[0], "onPointerDown makes it focusable";
-	vh.clickAt(110.0, 10.0);
+	tapAt(vh, 110.0, 10.0);
 	assert vh.focused() === row.children[1], "onWheel makes it focusable";
-	vh.clickAt(210.0, 10.0);
+	tapAt(vh, 210.0, 10.0);
 	assert vh.focused() === row.children[2], "the focusable prop makes it focusable";
-	vh.clickAt(310.0, 10.0);
+	tapAt(vh, 310.0, 10.0);
 	assert pressed === 1, "onPress fired once";
 	assert vh.focused() === null, "a pressable with no key handler takes no focus";
 }
@@ -764,7 +772,7 @@ test "a press handler that mounts a pressable does not break the press dispatch"
 		</View>
 	), vh.host, vh.root);
 	vh.layout(200.0, 100.0);
-	vh.clickAt(10.0, 10.0);
+	tapAt(vh, 10.0, 10.0);
 	flush();
 	assert more() && presses === 1, "the press mounted a pressable and fired once: " + presses.toString();
 }

@@ -6,7 +6,7 @@ import { flush } from "../../src/core/runtime";
 import { createSignal } from "../../src/core/signal";
 import { sleepAsync } from "std/core/promise";
 import { element } from "../../src/macros/ui/element";
-import { Host, HostNode, MockNode, mockNode, mockHost, render, mockToString, fireEvent } from "../../src/render/host";
+import { Host, HostNode, MockNode, mockNode, mockHost, render, mockToString, fireEvent, fireTouch } from "../../src/render/host";
 import { Style } from "../../src/render/style";
 import { Text, View } from "../../src/components/primitives";
 import { Snackbar } from "../../src/components/snackbar";
@@ -143,7 +143,7 @@ test "Tooltip shows its title above the child on a long press and leaves after t
 	</Tooltip>), screenHost(root), root as unknown as HostNode);
 	const wrapper = root.children[0];
 	assert mockToString(root) === "<root><pressable accessible=\"true\" accessibilityHint=\"Delete\"><text>trash</text></pressable></root>", "idle: " + mockToString(root);
-	fireEvent(wrapper, "onPointerDown");
+	fireTouch(wrapper, "onTouchStart", 10, 10, 6000);
 	flush();
 	await sleepAsync(20);
 	assert mockToString(wrapper).indexOf("<view>") < 0, "not before the enter delay";
@@ -151,7 +151,7 @@ test "Tooltip shows its title above the child on a long press and leaves after t
 	assert mockToString(wrapper) === "<pressable accessible=\"true\" accessibilityHint=\"Delete\"><text>trash</text><view><text>Delete</text></view></pressable>", "bubble: " + mockToString(wrapper);
 	const bubble = firstTag(wrapper, "view").style as Style;
 	assert bubble.position === "absolute" && bubble.top === -40 && bubble.backgroundColor === "#616161", "above the child";
-	fireEvent(wrapper, "onPointerUp");
+	fireTouch(wrapper, "onTouchEnd", 10, 10, 6200);
 	flush();
 	await sleepAsync(40);
 	assert mockToString(wrapper).indexOf("<view>") > 0, "stays for the leave delay";
