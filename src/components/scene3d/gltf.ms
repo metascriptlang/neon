@@ -10,6 +10,7 @@ import { GltfData, GltfDiagnostic, describe, validateGltfGraph } from "../../../
 import {
 	GltfAssets, GltfMaterialSetup, GltfSceneError, addGltfAssets, addGltfBoundNodes, closeGltfAssets,
 } from "../../../../void/src/void3d/gltfScene";
+import { RenderState } from "../../../../void/src/gpu/state";
 import { NodeProps, mountOwned, requireScene, localOf, bindNode, ownNode, mountNodeChildren } from "./core";
 
 // The imported subtree of one Gltf; `root` changes on every reload, so a reader inside an effect follows it.
@@ -75,11 +76,15 @@ function borrowedGraph(scene: VoidScene3D, parent: NodeId3D, data: GltfData, ass
 	return mountGraph(scene, parent, data, assets);
 }
 
+function plainSetup(): GltfMaterialSetup {
+	return { pass: RenderState.defaults(), block: [0.0, 0.0, 0.0, 0.0] };
+}
+
 export function Gltf(props: GltfProps): NeonNode {
 	return (host: Host, parent: HostNode, before: HostNode | null): void => {
 		const scope = requireScene("Gltf");
-		if ((props.setup === null) === (props.assets === null)) {
-			throw new Error("Gltf: provide exactly one setup (Gltf uploads its own assets) or assets (borrowed GltfAssets)");
+		if (props.setup !== null && props.assets !== null) {
+			throw new Error("Gltf: provide setup (Gltf uploads its own assets) or assets (borrowed GltfAssets), not both");
 		}
 		mountOwned((): void => {
 			const scene = scope.state.handle.scene;
@@ -112,7 +117,7 @@ export function Gltf(props: GltfProps): NeonNode {
 					},
 				);
 			} else {
-				const setup = props.setup as () => GltfMaterialSetup;
+				const setup = props.setup === null ? plainSetup : props.setup as () => GltfMaterialSetup;
 				createRenderEffect<[GltfData, GltfMaterialSetup]>(
 					(prev: [GltfData, GltfMaterialSetup] | null): [GltfData, GltfMaterialSetup] => [props.data(), setup()],
 					(value: [GltfData, GltfMaterialSetup], prev: [GltfData, GltfMaterialSetup] | null): Cleanup | null => {

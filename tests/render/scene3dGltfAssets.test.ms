@@ -110,9 +110,18 @@ test "three Gltf mounts borrowing one GltfAssets upload once and leave the asset
 	assert handle.context.closed;
 }
 
-test "Gltf refuses both and neither of setup and assets before any upload" {
-	const neither = mountError(element(<Void><Scene3D><Gltf data={model("a")} /></Scene3D></Void>));
-	assert neither === "Gltf: provide exactly one setup (Gltf uploads its own assets) or assets (borrowed GltfAssets)";
+test "Gltf without setup or assets uploads its own with the plain lit setup Mesh uses" {
+	let handle: Scene3DHandle = null as unknown as Scene3DHandle;
+	const cleanup = render(element(<Void><Scene3D ref={(value: Scene3DHandle): void => { handle = value; }}>
+		<Gltf data={groupModel("plain")} />
+	</Scene3D></Void>), mockHost(), mockNode("root") as unknown as HostNode);
+	try {
+		assert handle.scene.findByName(handle.scene.rootId(), "plain").ok;
+	} finally { cleanup(); }
+	assert handle.context.closed;
+}
+
+test "Gltf refuses setup and assets together before any upload" {
 	let assets: GltfAssets = null as unknown as GltfAssets;
 	let handle: Scene3DHandle = null as unknown as Scene3DHandle;
 	const both = mountError(element(<Void><Scene3D ref={(value: Scene3DHandle): void => {
@@ -120,7 +129,7 @@ test "Gltf refuses both and neither of setup and assets before any upload" {
 		assets = callerAssets(value.context);
 		onCleanup((): void => { closeGltfAssets(assets); });
 	}}><Gltf data={model("a")} setup={setup()} assets={assets} /></Scene3D></Void>));
-	assert both === neither;
+	assert both === "Gltf: provide setup (Gltf uploads its own assets) or assets (borrowed GltfAssets), not both";
 	assert handle.context.closed;
 }
 
