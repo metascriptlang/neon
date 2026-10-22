@@ -96,6 +96,10 @@ def lane():
     if "error" in position:
         raise LaneError("getCurrentPosition failed: " + position)
     press("watch location")
+    if emulated == "yes":
+        for latitude in ("37.425", "37.428"):
+            time.sleep(2)
+            adb("emu", "geo", "fix", "-122.084", latitude)
     wait_match("watched ", r"^watched [1-9]", 90)
     shot("located")
 
@@ -112,6 +116,7 @@ def lane():
     controls.wait_label("notified ", "notified received Neon reminder", 15)
     shot("notification-foreground")
 
+    press("dismiss notifications")
     press("notify later")
     controls.wait_label("notified ", "notified scheduled")
     adb("shell", "input", "keyevent", "KEYCODE_HOME")
@@ -136,6 +141,7 @@ def lane():
     controls.wait_label("notified ", "notified launched by Neon later", 15)
     shot("notification-launched")
 
+    press("dismiss notifications")
     press("notify later")
     controls.wait_label("notified ", "notified scheduled")
     adb("shell", "input", "keyevent", "KEYCODE_HOME")

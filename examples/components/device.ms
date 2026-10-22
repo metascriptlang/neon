@@ -178,6 +178,7 @@ export function DeviceDemo(): NeonNode {
 				<Pressable style={styles.button} onPress={() => { allowNotifications(); }}>allow notifications</Pressable>
 				<Pressable style={styles.button} onPress={() => { notify("Neon reminder", 2); }}>notify</Pressable>
 				<Pressable style={styles.button} onPress={() => { notify("Neon later", 15); }}>notify later</Pressable>
+				<Pressable style={styles.button} onPress={() => { Notifications.dismissAllNotificationsAsync(); }}>dismiss notifications</Pressable>
 			</View>
 		</View>
 	</ScrollView>;
