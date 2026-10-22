@@ -8,7 +8,7 @@ import { makeStreamBuffer, updateBuffer, destroyBuffer } from "../../../../void/
 import { contextGeneration } from "../../../../void/src/gpu/door";
 import { DrawContext, GpuMesh, MeshId, MaterialId, addMesh, billboards, releaseMesh } from "../../../../void/src/void3d/draw";
 import { BillboardInstance, BILLBOARD_INSTANCE_STRIDE, pushTo } from "../../../../void/src/void3d/billboard";
-import { NodeId3D, addMeshNode, setMeshOf, setMaterialOf, worldOf } from "../../../../void/src/void3d/scene";
+import { addMeshNode, setMeshOf, setMaterialOf, worldOf } from "../../../../void/src/void3d/scene";
 import { CameraView } from "../../../../void/src/void3d/camera";
 import { NodeProps, mountOwned, requireScene, localOf, bindNode, ownNode, mountNodeChildren, onBeforeRefresh } from "./core";
 
