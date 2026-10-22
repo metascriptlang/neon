@@ -815,7 +815,7 @@ export class Router {
 		this.apply(resolved, true);
 	}
 
-	// Parked on ~/metascript/.inbox/compiler/2026-10-22-a-type-parameter-is-not-inferred-from-an-object-literal-field-against-a-generic-interface-or-a-second-candidate.md and 2026-10-21-method-overload-with-an-omitted-optional-argument-finds-no-match.md: TanStack's typed `navigate({ to, params })` beside this one.
+	// Parked on ~/metascript/.inbox/compiler/2026-10-21-method-overload-with-an-omitted-optional-argument-finds-no-match.md: TanStack's typed `navigate({ to, params })` beside this one.
 	navigate(href: string, options: NavigateOptions | null = null): boolean {
 		if (!this.history.writable) { throw new Error("routing: request history is read-only"); }
 		const replace = options === null ? false : (options as NavigateOptions).replace ?? false;
