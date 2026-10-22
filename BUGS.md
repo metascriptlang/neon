@@ -232,11 +232,22 @@ and the invariants that outlived them were moved to the head of the test that pi
   "the rect follows the signal: 23" (`voidInput.test.ms` imeRect cell) and "after the ops only the pushed row's label
   is new: 0" (the 60-row ForList scroll cell). Not traced to Neon or Void yet.
 
-- **PARKED 2026-10-22 — the refresh lane's navigation.ms crashes msc on wt/rn-components.**
-  Not Neon's: under `-d:refresh` the checker overflows the stack in `findFirstGenericParam` once
-  `primitives.ms` props reach `ElementHandle` through `ref?: ElementRef` (9dc97e2a). `msc check` without
-  the pass is OK. Card `~/metascript/.inbox/compiler/2026-10-22-checker-recurses-forever-in-findfirstgenericparam-under-refresh.md`;
-  `tests/refresh/run.sh` stays red on this arc until it is fixed.
+- **OPEN 2026-10-22 — ten Chrome-lane cases are red on wt/rn-components 4336805c, before the Pressability port.**
+  Measured on a `git archive` export of 4336805c, msc 39bd7c7ee: `tests/browser/overlays.test.ms` (all four
+  screen-overlay cases), `tests/browser/secureTextInput.test.ms` (the four Chrome multiline/secure cases) and
+  `tests/browser/pressableActivation.test.ms` "DOM gesture semantic MouseEvent…" and "DOM disabled Touchable
+  child never leaks…". The Pressability port leaves exactly these red. Not yet traced.
+
+- **PARKED 2026-10-22 — a pressable span inside a Pressable also presses the Pressable on native and Void.**
+  Pressable and Text are RN Pressability responders, but a nested `<Text onPress>` reaches the native and
+  Void hosts as `TextSpan.onPress` alone (`src/render/hostTypes.ms`), so the span cannot hold the touch
+  the way RN's virtual text does, and the ancestor Pressable presses on the release as well. DOM and the
+  mock render nested Texts as elements and are right. Waits the person's word on a `TextSpan` touch field;
+  `tests/platform/nativeActivation.test.ms` "native exact span owner…", `tests/platform/voidInput.test.ms`
+  "a press over a nested Text's run…" and `tests/platform/voidActivation.test.ms` "Void nested Text and
+  data span physical presses…" stay red until then. Site:
+  `SPAN_HOST.addEvent` in `src/render/spanHost.ms`, which drops a span's touch routes and makes its host
+  press its activation.
 
 - **PARKED 2026-10-15 — `tests/platform/ionAudio.test.ms` cannot resolve Ion's audio module on this machine.**
   Not Neon's: native `Cannot resolve module '../../../../ion/src/audio'`, because local Ion main `1b3d40c`
