@@ -9,7 +9,7 @@ import { VoidSpace, getVoidScopeContext, getVoidAreaContext, useVoidSpace } from
 import { layerAnchor } from "../render/voidLayer";
 import { AreaLayer, AreaPointerKind } from "../render/voidAreaHandle";
 import { NeonEvent } from "../render/event";
-import { LONG_PRESS_DELAY_MS, pressEvents } from "./pressability";
+import { LONG_PRESS_DELAY_MS, pointerCancel, pressEvents } from "./pressability";
 import { Host, HostNode, NeonNode, VoidArea } from "../render/hostTypes";
 import { place } from "../render/reconcile";
 import { createVoidHostWith, VoidHost, VoidNode, freeVoidLayoutTree } from "../platform/void/host";
@@ -352,7 +352,7 @@ function bindPress(vh: VoidHost, node: VoidNode, props: NodeProps): void {
 		onHoverIn: props.onHoverIn,
 		onHoverOut: props.onHoverOut,
 		delayLongPress: accessor((): number => LONG_PRESS_DELAY_MS),
-	});
+	}, pointerCancel);
 	listen(vh, node, "onPress", events.onPress);
 	listen(vh, node, "onPointerDown", events.onPointerDown);
 	listen(vh, node, "onPointerUp", events.onPointerUp);

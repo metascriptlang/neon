@@ -29,7 +29,7 @@ import { VoidAreaHandle } from "../render/voidAreaHandle";
 import { applyRef } from "../render/bind";
 import { VoidSpace, getVoidScopeContext, getVoidAreaContext, useVoidSpace } from "../render/voidScope";
 import { visibleContentAttr } from "../render/visibleContent";
-import { LONG_PRESS_DELAY_MS, pressEvents } from "./pressability";
+import { LONG_PRESS_DELAY_MS, pointerCancel, pressEvents } from "./pressability";
 import {
 	ResponderEntry,
 	ResponderHandlers,
@@ -413,7 +413,7 @@ export function Pressable(props: PressableProps): NeonNode {
 		onHoverIn: props.onHoverIn,
 		onHoverOut: props.onHoverOut,
 		delayLongPress,
-	});
+	}, pointerCancel);
 
 	// RN Pressable.js: `accessible: accessible !== false`, so a Pressable is one
 	// accessibility element whose label the host composes from its texts.
