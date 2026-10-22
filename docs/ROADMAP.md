@@ -517,8 +517,9 @@ executes ready items in the approved scope; external blockers stay with their ow
 No repeated unchanged submission demos or inferred protected-contract permissions.
 
 - [x] ~~Inventory the Void baseline~~ — `docs/voidComponents.md`, 37 rows at Void d255ffb.
-- [ ] Consume compiler fixes and make the original sixteen Scene3D cases and authored
-  enum/spread/Result consumers run on the installed toolchain; preserve their expressions.
+- [ ] Consume compiler fixes and make the authored enum/spread/Result consumers run on the
+  installed toolchain; preserve their expressions. The original sixteen Scene3D cases run
+  (`docs/VISION.md` "Inside a Void area", 2026-10-22).
 - [x] ~~Route raw/UI through actual VoidNode parent/order/cleanup and existing wake~~ —
   scoped CPU pins; raw excluded Yoga/flowText, UI islands reuse Yoga. Runtime proof
   is not scene presentation; partial-mount follow-up remains in BUGS.md.
