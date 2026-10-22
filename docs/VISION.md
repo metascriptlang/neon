@@ -148,9 +148,16 @@ initial five 3D components. The baseline inventory, candidate mappings and requi
 acceptance are in [voidComponents.md](voidComponents.md). GPU commands/passes and
 new backends remain outside that goal; the original owner/binder model remains.
 
-Decided with the person on 2026-10-03; the window/frame integration is not built yet. Headless
-components are in `src/components/scene3d.ms`, with the full native contract in
-`tests/render/scene3d.test.ms`; that suite is parked on the two compiler cards named in `BUGS.md`.
+Decided with the person on 2026-10-03. The frame integration is built: each `Scene3D` and
+`Scene2D` registers an `AreaLayer` with its area, and the window host prepares and draws the
+layers in the content's paint order (`RENDER-LAYERS.md`; pins `tests/render/scene3dArea.test.ms`,
+`tests/platform/voidLayerOrder.test.ms`). `useFrame`, the per-area clock, `<Void fallback>` and
+layer error routing are in `voidComponents.md` X-01/X-03. The components are in
+`src/components/scene3d/`, re-exported by `src/components/scene3d.ms`. The original 16-case
+contract runs again: `msc test --no-color tests/render/scene3d.test.ms` on tree
+`5cc571a3639f94f6505e64989c97fb86964b21c5`, installed binary `108218c7b`, Void `3edff8a`,
+exit 0, 16 own / 334 total cases (2026-10-22). The dated paragraphs below record how it was
+blocked before; none of them describes the current state.
 `msc run out/scene3dReachable.ms` on `e80c2002`, using `mockHost` and Void's pre-uploaded-resource
 fixture, observed `nodes=3 group.x=7`, HUD `HP: 42`, a camera resolved at 640×480, terminal
 scene/context closure and all four UI parent errors. The throwaway smoke was removed afterwards;
