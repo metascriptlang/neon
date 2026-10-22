@@ -14,3 +14,4 @@ export {
 	NodeProps, TransformProps, NodeScope, SceneState,
 	useScene3D, useSceneNode, mountOwned, requireScene, localOf, bindNode, ownNode, mountNodeChildren,
 } from "./scene3d/core";
+export { Lod } from "./scene3d/lod";
