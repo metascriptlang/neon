@@ -4,9 +4,9 @@ import { Cleanup } from "../../core/types";
 import { onCleanup } from "../../core/cleanup";
 import { Host, HostNode, NeonNode } from "../../render/hostTypes";
 import { Vec3, vec3, eulerQuat } from "../../../../void/src/math/math3d";
-import { Transform3D, addCameraNode, setCameraOf, setActiveCamera, setLocal, setCameraLayers } from "../../../../void/src/void3d/scene";
+import { NodeId3D, Transform3D, addCameraNode, setCameraOf, setLocal, setCameraLayers } from "../../../../void/src/void3d/scene";
 import { Camera3D as VoidCamera3D, CameraProjection, ProjectionKind } from "../../../../void/src/void3d/camera";
-import { SceneState, CameraEntry, mountOwned, requireScene, ownNode } from "./core";
+import { NodeProps, CameraEntry, mountOwned, requireScene, ownNode, bindNode, mountNodeChildren, selectCamera } from "./core";
 
 export interface Camera3DProps {
 	position?: Accessor<Vec3> | null;
@@ -17,6 +17,10 @@ export interface Camera3DProps {
 	projection?: Accessor<CameraProjection> | null;
 	active?: Accessor<boolean> | null;
 	layers?: Accessor<uint32> | null;
+	visible?: Accessor<boolean> | null;
+	name?: Accessor<string> | null;
+	ref?: ((node: NodeId3D) => void) | null;
+	children?: NeonNode | null;
 }
 
 function cameraOf(props: Camera3DProps): VoidCamera3D {
@@ -40,21 +44,6 @@ function cameraLocal(camera: VoidCamera3D): Transform3D {
 	};
 }
 
-function selectCamera(state: SceneState): void {
-	const scene = state.handle.scene;
-	if (scene.closed) { state.handle.camera = null; return; }
-	for (let i = state.cameras.length - 1; i >= 0; i--) {
-		const entry = state.cameras[i];
-		if (entry.active && scene.isLive(entry.node)) {
-			setActiveCamera(scene, entry.node);
-			state.handle.camera = entry.camera;
-			return;
-		}
-	}
-	setActiveCamera(scene, null);
-	state.handle.camera = null;
-}
-
 export function Camera3D(props: Camera3DProps): NeonNode {
 	return (host: Host, parent: HostNode, before: HostNode | null): void => {
 		const scope = requireScene("Camera3D");
@@ -69,7 +58,10 @@ export function Camera3D(props: Camera3DProps): NeonNode {
 				const layers = props.layers as () => uint32;
 				createRenderEffect<uint32>(
 					(prev: uint32 | null): uint32 => layers(),
-					(value: uint32, prev: uint32 | null): Cleanup | null => { setCameraLayers(scene, node, value); state.invalidate(); return null; },
+					(value: uint32, prev: uint32 | null): Cleanup | null => {
+						if (scene.isLive(node)) { setCameraLayers(scene, node, value); state.invalidate(); }
+						return null;
+					},
 				);
 			}
 			let entry: CameraEntry | null = null;
@@ -91,6 +83,7 @@ export function Camera3D(props: Camera3DProps): NeonNode {
 					cameraOf(props), props.active === null ? false : (props.active as () => boolean)(),
 				],
 				(value: [VoidCamera3D, boolean], prev: [VoidCamera3D, boolean] | null): Cleanup | null => {
+					if (!scene.isLive(node)) { return null; }
 					const camera = value[0];
 					const active = value[1];
 					const nextLocal = cameraLocal(camera);
@@ -110,7 +103,9 @@ export function Camera3D(props: Camera3DProps): NeonNode {
 					return null;
 				},
 			);
-
+			const nodeProps: NodeProps = { visible: props.visible, name: props.name, ref: props.ref, children: props.children };
+			bindNode(state, node, nodeProps, local);
+			mountNodeChildren(scope, node, nodeProps, host, parent, before);
 		});
 	};
 }

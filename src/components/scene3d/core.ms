@@ -4,8 +4,11 @@ import { Cleanup } from "../../core/types";
 import { createRoot } from "../../core/owner";
 import { onCleanup } from "../../core/cleanup";
 import { createContext, useContext } from "../../render/context";
-import { VoidSpace, useVoidSpace } from "../../render/voidScope";
+import { VoidSpace, getVoidScopeContext, useVoidSpace } from "../../render/voidScope";
 import { Host, HostNode, NeonNode } from "../../render/hostTypes";
+import { NeonEvent } from "../../render/event";
+import { Style } from "../../render/style";
+import { place } from "../../render/reconcile";
 import { Vec3, Quat, vec3 } from "../../../../void/src/math/math3d";
 import { RenderState } from "../../../../void/src/gpu/state";
 import { Program, MATERIAL_UNIFORM_SLOT, MATERIAL_UNIFORM_LENGTH } from "../../../../void/src/void3d/gpu3d";
@@ -13,7 +16,8 @@ import { Material, Phase } from "../../../../void/src/void3d/material";
 import { MeshId } from "../../../../void/src/void3d/draw";
 import { DrawContext, MaterialId, addMaterial, reserveUniforms, writeUniforms, releaseUniforms } from "../../../../void/src/void3d/draw";
 import {
-	Scene3D as VoidScene3D, NodeId3D, Transform3D,
+	Scene3D as VoidScene3D, NodeId3D, Transform3D, NO_NODE_3D, NO_NODE_ID,
+	addGroup, attach, insertBefore, setActiveCamera,
 	setLocal, remove, setVisible, setPickable, setName, setLayers, setRenderOrder, cameraOf as worldCameraOf,
 } from "../../../../void/src/void3d/scene";
 import { Camera3D as VoidCamera3D, ProjectionKind, CameraError } from "../../../../void/src/void3d/camera";
@@ -22,6 +26,7 @@ export interface Scene3DHandle {
 	context: DrawContext;
 	scene: VoidScene3D;
 	camera: VoidCamera3D | null;
+	invalidate: () => void;
 }
 
 export interface CameraEntry {
@@ -41,6 +46,7 @@ export interface SceneState {
 	cameras: CameraEntry[];
 	geometries: SharedGeometry[];
 	invalidate: () => void;
+	limbo?: NodeId3D | null;
 }
 
 export interface NodeScope {
@@ -103,7 +109,7 @@ export function bindLocal(scene: VoidScene3D, node: NodeId3D, props: TransformPr
 	createRenderEffect<Transform3D>(
 		(prev: Transform3D | null): Transform3D => localOf(props),
 		(next: Transform3D, prev: Transform3D | null): Cleanup | null => {
-			if (next !== local) {
+			if (next !== local && scene.isLive(node)) {
 				setLocal(scene, node, next);
 				local = next;
 				invalidate();
@@ -113,44 +119,27 @@ export function bindLocal(scene: VoidScene3D, node: NodeId3D, props: TransformPr
 	);
 }
 
-export function bindNode(state: SceneState, node: NodeId3D, props: NodeProps, initial: Transform3D): void {
+function bindWrite<T>(state: SceneState, node: NodeId3D, read: () => T, write: (scene: VoidScene3D, node: NodeId3D, value: T) => void): void {
 	const scene = state.handle.scene;
-	bindLocal(scene, node, props, initial, state.invalidate);
-	if (props.visible !== null) {
-		const visible = props.visible as () => boolean;
-		createRenderEffect<boolean>(
-			(prev: boolean | null): boolean => visible(),
-			(value: boolean, prev: boolean | null): Cleanup | null => { setVisible(scene, node, value); state.invalidate(); return null; },
-		);
-	}
-	if (props.pickable !== null) {
-		const pickable = props.pickable as () => boolean;
-		createRenderEffect<boolean>(
-			(prev: boolean | null): boolean => pickable(),
-			(value: boolean, prev: boolean | null): Cleanup | null => { setPickable(scene, node, value); state.invalidate(); return null; },
-		);
-	}
-	if (props.layers !== null) {
-		const layers = props.layers as () => uint32;
-		createRenderEffect<uint32>(
-			(prev: uint32 | null): uint32 => layers(),
-			(value: uint32, prev: uint32 | null): Cleanup | null => { setLayers(scene, node, value); state.invalidate(); return null; },
-		);
-	}
-	if (props.renderOrder !== null) {
-		const order = props.renderOrder as () => int32;
-		createRenderEffect<int32>(
-			(prev: int32 | null): int32 => order(),
-			(value: int32, prev: int32 | null): Cleanup | null => { setRenderOrder(scene, node, value); state.invalidate(); return null; },
-		);
-	}
-	if (props.name !== null) {
-		const name = props.name as () => string;
-		createRenderEffect<string>(
-			(prev: string | null): string => name(),
-			(value: string, prev: string | null): Cleanup | null => { setName(scene, node, value); state.invalidate(); return null; },
-		);
-	}
+	createRenderEffect<T>(
+		(prev: T | null): T => read(),
+		(value: T, prev: T | null): Cleanup | null => {
+			if (scene.isLive(node)) {
+				write(scene, node, value);
+				state.invalidate();
+			}
+			return null;
+		},
+	);
+}
+
+export function bindNode(state: SceneState, node: NodeId3D, props: NodeProps, initial: Transform3D): void {
+	bindLocal(state.handle.scene, node, props, initial, state.invalidate);
+	if (props.visible !== null) { bindWrite<boolean>(state, node, props.visible as () => boolean, setVisible); }
+	if (props.pickable !== null) { bindWrite<boolean>(state, node, props.pickable as () => boolean, setPickable); }
+	if (props.layers !== null) { bindWrite<uint32>(state, node, props.layers as () => uint32, setLayers); }
+	if (props.renderOrder !== null) { bindWrite<int32>(state, node, props.renderOrder as () => int32, setRenderOrder); }
+	if (props.name !== null) { bindWrite<string>(state, node, props.name as () => string, setName); }
 }
 
 export function ownNode(state: SceneState, node: NodeId3D): void {
@@ -164,13 +153,232 @@ export function ownNode(state: SceneState, node: NodeId3D): void {
 	state.invalidate();
 }
 
-export function mountNodeChildren(scope: NodeScope, node: NodeId3D, props: NodeProps, host: Host, parent: HostNode, before: HostNode | null): void {
-	if (props.ref !== null) { (props.ref as (value: NodeId3D) => void)(node); }
+// A host node of a Scene3D: the Void node it stands for, and its place among the nodes Neon put there.
+export class SceneNode3D {
+	id: NodeId3D;
+	parent: SceneNode3D | null = null;
+	children: SceneNode3D[] = [];
+	freed: boolean = false;
+	returnNode: (() => void) | null = null;
+	returned: boolean = false;
+
+	constructor(id: NodeId3D) {
+		this.id = id;
+	}
+}
+
+function placed(scene: VoidScene3D, n: SceneNode3D): boolean {
+	return !n.returned && scene.isLive(n.id);
+}
+
+function holds(scene: VoidScene3D, row: int32, ancestor: int32): boolean {
+	for (let at = row; at != NO_NODE_3D; at = scene.nodes[at].parent) {
+		if (at == ancestor) { return true; }
+	}
+	return false;
+}
+
+export function connected(scene: VoidScene3D, id: NodeId3D): boolean {
+	return scene.isLive(id) && holds(scene, id.index, scene.root);
+}
+
+export function selectCamera(state: SceneState): void {
+	const scene = state.handle.scene;
+	if (scene.closed) { state.handle.camera = null; return; }
+	for (let i = state.cameras.length - 1; i >= 0; i--) {
+		const entry = state.cameras[i];
+		if (entry.active && connected(scene, entry.node)) {
+			setActiveCamera(scene, entry.node);
+			state.handle.camera = entry.camera;
+			return;
+		}
+	}
+	setActiveCamera(scene, null);
+	state.handle.camera = null;
+}
+
+function placeInVoid(scene: VoidScene3D, p: SceneNode3D, n: SceneNode3D, at: int32): void {
+	if (!placed(scene, p) || !placed(scene, n)) { return; }
+	if (holds(scene, p.id.index, n.id.index)) { throw new Error("Scene3D: a node cannot be placed inside itself or its own descendant"); }
+	for (let i = at + 1; i < p.children.length; i++) {
+		const next = p.children[i];
+		if (placed(scene, next) && scene.nodes[next.id.index].parent == p.id.index) {
+			insertBefore(scene, p.id, n.id, next.id);
+			return;
+		}
+	}
+	attach(scene, p.id, n.id);
+}
+
+function freeTree(scene: VoidScene3D, n: SceneNode3D): void {
+	const giveBack = n.returnNode;
+	if (giveBack !== null) {
+		giveBack();
+	} else {
+		freeBorrowedUnder(scene, n);
+		if (scene.isLive(n.id)) { const removed = remove(scene, n.id); }
+	}
+	n.freed = true;
+}
+
+function freeBorrowedUnder(scene: VoidScene3D, n: SceneNode3D): void {
+	for (const c of n.children) {
+		if (c.returnNode !== null) { freeTree(scene, c); } else {
+			freeBorrowedUnder(scene, c);
+			c.freed = true;
+		}
+	}
+}
+
+// Frees what Neon put under a borrowed node, so the node goes back holding only its own children.
+export function freeChildren(scene: VoidScene3D, n: SceneNode3D): void {
+	for (const c of n.children) {
+		c.parent = null;
+		freeTree(scene, c);
+	}
+	n.children = [];
+}
+
+function hostNode(node: HostNode, op: string): SceneNode3D {
+	const n = node as SceneNode3D;
+	if (n.freed) { throw new Error("Scene3D: " + op + " on a node that was removed and freed"); }
+	return n;
+}
+
+function no3D(op: string): Error {
+	return new Error("Scene3D: " + op + " has no 3D node to act on; put 2D content in <Void>, <Texture> or a 2D parent");
+}
+
+export function sceneHost(state: SceneState): Host {
+	const scene = state.handle.scene;
+	const moved = (): void => {
+		if (state.cameras.length > 0) { selectCamera(state); }
+		state.invalidate();
+	};
+	const put = (parent: HostNode, node: HostNode, before: HostNode | null): void => {
+		const p = hostNode(parent, "insertBefore");
+		const n = hostNode(node, "insertBefore");
+		for (let up: SceneNode3D | null = p; up !== null; up = (up as SceneNode3D).parent) {
+			if (up === n) { throw new Error("insertBefore: a node cannot be placed inside itself or its own descendant"); }
+		}
+		let at = p.children.length as int32;
+		if (before !== null) {
+			const r = hostNode(before, "insertBefore");
+			if (r === n) { return; }
+			at = p.children.indexOf(r) as int32;
+			if (at < 0) { throw new Error("insertBefore: the reference node is not a child of the parent"); }
+		}
+		const from = n.parent;
+		if (from !== null) {
+			const was = (from as SceneNode3D).children.indexOf(n) as int32;
+			(from as SceneNode3D).children.splice(was, 1);
+			if (from === p && was < at) { at -= 1; }
+		}
+		p.children.splice(at, 0, n);
+		n.parent = p;
+		placeInVoid(scene, p, n, at);
+		moved();
+	};
+	const host: Host = {
+		createElement: (tag: string): HostNode => {
+			if (tag !== "view") { throw no3D("<" + tag + ">"); }
+			const holder = addGroup(scene, null, Transform3D.identity());
+			setVisible(scene, holder, false);
+			return new SceneNode3D(holder);
+		},
+		createText: (s: string): HostNode => {
+			if (s !== "") { throw no3D("text \"" + s + "\""); }
+			return new SceneNode3D(NO_NODE_ID);
+		},
+		setText: (node: HostNode, s: string): void => {
+			const n = hostNode(node, "setText");
+			if (s !== "") { throw no3D("text \"" + s + "\""); }
+		},
+		setAttr: (node: HostNode, name: string, value: string): void => { throw no3D("attribute " + name); },
+		removeAttr: (node: HostNode, name: string): void => { throw no3D("attribute " + name); },
+		setStyle: (node: HostNode, style: Style): void => { throw no3D("style"); },
+		setStyleProp: null,
+		setStyleClass: null,
+		addEvent: (node: HostNode, name: string, handler: (e: NeonEvent) => void): void => { throw no3D("event " + name); },
+		append: (parent: HostNode, child: HostNode): void => { put(parent, child, null); },
+		insertBefore: put,
+		removeChild: (parent: HostNode, node: HostNode): void => {
+			const p = hostNode(parent, "removeChild");
+			const n = hostNode(node, "removeChild");
+			const at = p.children.indexOf(n);
+			if (at < 0) { throw new Error("removeChild: the node is not a child of the parent"); }
+			p.children.splice(at, 1);
+			n.parent = null;
+			freeTree(scene, n);
+			moved();
+		},
+		parentOf: (node: HostNode): HostNode | null => {
+			const up = hostNode(node, "parentOf").parent;
+			return up === null ? null : up as HostNode;
+		},
+		release: (node: HostNode): void => {
+			const n = hostNode(node, "release");
+			if (n.parent !== null) { throw new Error("release: the node still has a parent; remove it first"); }
+			freeTree(scene, n);
+			moved();
+		},
+		nextSibling: (node: HostNode): HostNode | null => {
+			const n = hostNode(node, "nextSibling");
+			const up = n.parent;
+			if (up === null) { return null; }
+			const kids = (up as SceneNode3D).children;
+			const at = kids.indexOf(n);
+			return at < 0 || at + 1 >= kids.length ? null : kids[at + 1];
+		},
+		firstChild: (node: HostNode): HostNode | null => {
+			const n = hostNode(node, "firstChild");
+			return n.children.length === 0 ? null : n.children[0];
+		},
+		cloneNode: null,
+		voidArea: null,
+		scrollTo: null,
+		measureText: null,
+	};
+	return host;
+}
+
+function unlinkTree(n: SceneNode3D): void {
+	for (const c of n.children) { unlinkTree(c); }
+	n.children = [];
+	n.parent = null;
+}
+
+export function mountSceneChildren(state: SceneState, children: NeonNode): void {
+	const scene = state.handle.scene;
+	const root = new SceneNode3D(scene.rootId());
+	onCleanup((): void => { unlinkTree(root); });
+	const scope: NodeScope = { state: state, parent: root.id };
+	getVoidScopeContext().provider({
+		value: accessor(() => VoidSpace.Scene3D),
+		children: sceneScope.provider({ value: accessor(() => scope), children: children }),
+	})(sceneHost(state), root, null);
+}
+
+export function placeNodeChildren(scope: NodeScope, node: SceneNode3D, props: NodeProps, host: Host, parent: HostNode, before: HostNode | null): void {
+	place(host, parent, node, before);
+	if (props.ref !== null) { (props.ref as (value: NodeId3D) => void)(node.id); }
 	const children = props.children;
 	if (children !== null) {
-		const next: NodeScope = { state: scope.state, parent: node };
-		sceneScope.provider({ value: accessor(() => next), children: children })(host, parent, before);
+		const next: NodeScope = { state: scope.state, parent: node.id };
+		sceneScope.provider({ value: accessor(() => next), children: children })(host, node, null);
 	}
+}
+
+export function mountNodeChildren(scope: NodeScope, node: NodeId3D, props: NodeProps, host: Host, parent: HostNode, before: HostNode | null): void {
+	placeNodeChildren(scope, new SceneNode3D(node), props, host, parent, before);
+}
+
+export function useScene3D(): Scene3DHandle {
+	return requireScene("useScene3D").state.handle;
+}
+
+export function useSceneNode(): NodeId3D {
+	return requireScene("useSceneNode").parent;
 }
 
 export function defaultMaterialOf(state: SceneState): MaterialId {

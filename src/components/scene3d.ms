@@ -9,3 +9,8 @@ export { GltfProps, GltfGraph, gltfData } from "./scene3d/gltf";
 export { ObjectAnimation, MeshFrameAnimation } from "./scene3d/animation";
 export { GltfMount, GltfScope, gltfScope } from "./scene3d/gltf";
 export { Clip, ClipHandle } from "./scene3d/animation";
+export { Node, NodeElementProps } from "./scene3d/node";
+export {
+	NodeProps, TransformProps, NodeScope, SceneState,
+	useScene3D, useSceneNode, mountOwned, requireScene, localOf, bindNode, ownNode, mountNodeChildren,
+} from "./scene3d/core";

@@ -18,7 +18,7 @@ import { fits } from "../../../../void/src/void3d/uniformPool";
 import { contextGeneration } from "../../../../void/src/gpu/door";
 import { Scene3D as VoidScene3D, closeScene, setAmbient, refresh, collectLights } from "../../../../void/src/void3d/scene";
 import { resolve, writeCameraBlock } from "../../../../void/src/void3d/camera";
-import { Scene3DHandle, SceneState, NodeScope, sceneScope, SCENE_UNIFORM_CAPACITY, mountOwned, viewCamera } from "./core";
+import { Scene3DHandle, SceneState, SCENE_UNIFORM_CAPACITY, mountOwned, mountSceneChildren, viewCamera } from "./core";
 
 export interface Scene3DProps {
 	ambient?: Accessor<Vec3> | null;
@@ -38,12 +38,10 @@ export function Scene3D(props: Scene3DProps): NeonNode {
 			const area = (opened as VoidArea).hub;
 			const context = DrawContext.withUniformCapacity(SCENE_UNIFORM_CAPACITY);
 			const scene = VoidScene3D.create(context);
-			const handle: Scene3DHandle = { context: context, scene: scene, camera: null };
-			const state: SceneState = {
-				handle: handle, defaultMaterial: null, cameras: [],
-				geometries: [],
-				invalidate: (): void => { area.handle.requestFrame(); },
+			const handle: Scene3DHandle = {
+				context: context, scene: scene, camera: null, invalidate: (): void => { area.handle.requestFrame(); },
 			};
+			const state: SceneState = { handle: handle, defaultMaterial: null, cameras: [], geometries: [], invalidate: handle.invalidate };
 			const made = ForwardRenderer.create(context, { x: 0.0, y: 0.0, z: 0.0, w: 0.0 });
 			if (!made.ok) {
 				closeScene(scene);
@@ -127,13 +125,7 @@ export function Scene3D(props: Scene3DProps): NeonNode {
 			if (props.ref !== null) { (props.ref as (value: Scene3DHandle) => void)(handle); }
 			state.invalidate();
 			const children = props.children;
-			if (children !== null) {
-				const scope: NodeScope = { state: state, parent: scene.rootId() };
-				getVoidScopeContext().provider({
-					value: accessor(() => VoidSpace.Scene3D),
-					children: sceneScope.provider({ value: accessor(() => scope), children: children }),
-				})(host, parent, before);
-			}
+			if (children !== null) { mountSceneChildren(state, children); }
 		});
 	};
 }

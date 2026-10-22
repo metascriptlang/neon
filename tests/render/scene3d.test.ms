@@ -293,7 +293,7 @@ test "Mesh uses seeded resources, shares default material and removes a subtree 
 	assert handle.context.hasMaterial(firstMaterial) && handle.context.uniforms.holds(block), "default material survives one consumer removal";
 	setShown(true);
 	flush();
-	assert handle.scene.nodeCount() === 4, "subtree can mount again while same scene is open";
+	assert handle.scene.nodeCount() === 5, "subtree can mount again while same scene is open, beside the Show's hidden holder";
 	const restoredMaterial = handle.scene.meshes[handle.scene.nodes[first.index].payload].material;
 	assert restoredMaterial === firstMaterial, "remount reuses scene default material";
 	const released = releaseMesh(handle.context, resource);
