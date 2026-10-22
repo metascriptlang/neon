@@ -17,7 +17,7 @@
 // macro machinery involved (the macro-side wrap in element covers the
 // same name on raw lowercase tags).
 
-import { NeonEvent, neonEvent } from "../render/event";
+import { NeonEvent } from "../render/event";
 import { Style, layerStyles } from "../render/style";
 import { onCleanup } from "../core/cleanup";
 import { Accessor, accessor, untrack } from "../core/signal";
@@ -29,8 +29,8 @@ import { VoidAreaHandle } from "../render/voidAreaHandle";
 import { applyRef } from "../render/bind";
 import { VoidSpace, getVoidScopeContext, getVoidAreaContext, useVoidSpace } from "../render/voidScope";
 import { visibleContentAttr } from "../render/visibleContent";
+import { LONG_PRESS_DELAY_MS, pressEvents } from "./pressability";
 import {
-	ClaimWatch,
 	ResponderEntry,
 	ResponderHandlers,
 	ResponderParent,
@@ -39,8 +39,6 @@ import {
 	pressSwallowed,
 	responderTouch,
 	responderUnmounted,
-	unwatchTouchClaim,
-	watchTouchClaim,
 } from "../render/responder";
 
 export type AccessibilityRole = "none" | "button" | "link" | "search" | "image" | "text" | "header" | "switch" | "checkbox" | "adjustable" | "progressbar" | "summary" | "alert" | "radio" | "radiogroup" | "tab" | "tablist" | "togglebutton" | "combobox" | "menu" | "menuitem";
@@ -360,12 +358,6 @@ export function Text(props: TextProps): NeonNode {
 	return uiParent("Text", primitive("text", props, attrs, evts, paragraphChildren(props.children, spans), props.ref));
 }
 
-// RN Pressability's two constants (Libraries/Pressability/Pressability.js):
-// a press becomes a LONG press at 500ms, and a press stays visibly held for at
-// least 130ms so a fast tap still shows feedback instead of flickering.
-const LONG_PRESS_DELAY_MS = 500;
-const MIN_PRESS_DURATION_MS = 130;
-
 // RN Insets: how far each edge of a touch target reaches past the view.
 export interface Insets {
 	top?: number | null;
@@ -404,108 +396,24 @@ interface PressableProps extends HostProps {
 	onPressIn?: ((e: NeonEvent) => void) | null;
 	onPressOut?: ((e: NeonEvent) => void) | null;
 	onLongPress?: ((e: NeonEvent) => void) | null;
+	onHoverIn?: ((e: NeonEvent) => void) | null;
+	onHoverOut?: ((e: NeonEvent) => void) | null;
 	onLayout?: ((e: NeonEvent) => void) | null;
 	delayLongPress?: Accessor<number> | null;
 	children?: NeonNode | null;
 }
 
-// Two tiers, chosen once at build time from the props the caller actually
-// declared. `onPress` alone stays ONE click listener — the common button pays
-// nothing for gestures it never asked for. Declaring any of pressIn/pressOut/
-// longPress opts into the state machine, which then OWNS the press: it tracks
-// pointer down/up/leave itself, because "did this press become a long press"
-// is not a question the host's click event can answer.
 export function Pressable(props: PressableProps): NeonNode {
-	const { onPress, onPressIn, onPressOut, onLongPress, delayLongPress = accessor(() => LONG_PRESS_DELAY_MS) } = props;
-	const wantsGestures = onPressIn !== null || onPressOut !== null || onLongPress !== null;
-
-	let state = 0;           // 0 idle · 1 pressing · 2 long-pressing
-	let longId = -1;
-	let minId = -1;
-	let minHeld = false;
-	let outPending: NeonEvent | null = null;
-
-	let press: ((e: NeonEvent) => void) | null = null;
-	let watch: ClaimWatch | null = null;
-	let pointerDown: ((e: NeonEvent) => void) | null = null;
-	let pointerUp: ((e: NeonEvent) => void) | null = null;
-	let pointerLeave: ((e: NeonEvent) => void) | null = null;
-
-	if (wantsGestures) {
-		const cancelTimer = (id: number): void => {
-			if (id >= 0) { clearTimeout(id); }
-		};
-		const fireOut = (e: NeonEvent): void => {
-			if (onPressOut !== null) { (onPressOut as (x: NeonEvent) => void)(e); }
-		};
-		// RN _deactivate: pressOut waits out the remainder of the minimum hold,
-		// so a 10ms tap still shows ~130ms of pressed state.
-		const releaseOut = (e: NeonEvent): void => {
-			if (minHeld) { fireOut(e); } else { outPending = e; }
-		};
-		const down = (e: NeonEvent): void => {
-			if (state !== 0) { return; }
-			state = 1;
-			watchTouchClaim(watch as ClaimWatch);
-			minHeld = false;
-			outPending = null;
-			if (onPressIn !== null) { (onPressIn as (x: NeonEvent) => void)(e); }
-			minId = setTimeout((): void => {
-				minHeld = true;
-				const held = outPending;
-				if (held !== null) {
-					outPending = null;
-					fireOut(held as NeonEvent);
-				}
-			}, MIN_PRESS_DURATION_MS) as int32;
-			if (onLongPress !== null) {
-				longId = setTimeout((): void => {
-					if (state !== 1) { return; }
-					state = 2;
-					(onLongPress as (x: NeonEvent) => void)(e);
-				}, delayLongPress) as int32;
-			}
-		};
-		// RN: `isPressCanceledByLongPress` — a press that already fired
-		// onLongPress does NOT also fire onPress, so a context menu and the
-		// primary action never both run off one gesture.
-		const up = (e: NeonEvent): void => {
-			if (state === 0) { return; }
-			const wasLong = state === 2;
-			cancelTimer(longId);
-			longId = -1;
-			state = 0;
-			unwatchTouchClaim(watch as ClaimWatch);
-			releaseOut(e);
-			if (wasLong && onLongPress !== null) { return; }
-			if (pressSwallowed(e)) { return; }
-			if (onPress !== null) { (onPress as (x: NeonEvent) => void)(e); }
-		};
-		// Leaving the element (or the host cancelling) ends the press WITHOUT
-		// firing onPress — RN's press-rect exit, minus the rect measurement.
-		const leave = (e: NeonEvent): void => {
-			if (state === 0) { return; }
-			cancelTimer(longId);
-			longId = -1;
-			state = 0;
-			unwatchTouchClaim(watch as ClaimWatch);
-			releaseOut(e);
-		};
-		watch = new ClaimWatch((): void => { leave(neonEvent("pointercancel")); });
-		pointerDown = down;
-		pointerUp = up;
-		pointerLeave = leave;
-		onCleanup((): void => {
-			cancelTimer(longId);
-			cancelTimer(minId);
-			unwatchTouchClaim(watch as ClaimWatch);
-		});
-	} else if (onPress !== null) {
-		const user = onPress as (e: NeonEvent) => void;
-		press = (e: NeonEvent): void => {
-			if (!pressSwallowed(e)) { user(e); }
-		};
-	}
+	const { delayLongPress = accessor((): number => LONG_PRESS_DELAY_MS) } = props;
+	const events = pressEvents({
+		onPress: props.onPress,
+		onPressIn: props.onPressIn,
+		onPressOut: props.onPressOut,
+		onLongPress: props.onLongPress,
+		onHoverIn: props.onHoverIn,
+		onHoverOut: props.onHoverOut,
+		delayLongPress,
+	});
 
 	// RN Pressable.js: `accessible: accessible !== false`, so a Pressable is one
 	// accessibility element whose label the host composes from its texts.
@@ -515,7 +423,7 @@ export function Pressable(props: PressableProps): NeonNode {
 	const hitSlop: Accessor<string> | null = slop === null ? null : accessor((): string => insetsAttr((slop as Accessor<number | Insets>)()));
 	const ripple = props.android_ripple;
 	const androidRipple: Accessor<string> | null = ripple === null ? null : accessor((): string => rippleAttr((ripple as Accessor<AndroidRipple>)()));
-	return uiParent("Pressable", element(<pressable class={props.class} style={props.style} ref={props.ref} accessible={accessible} hitSlop={hitSlop} androidRipple={androidRipple} accessibilityLabel={props.accessibilityLabel} accessibilityHint={props.accessibilityHint} accessibilityRole={props.accessibilityRole} accessibilityState={accessibilityStateAttr(props.accessibilityState)} onLayout={props.onLayout} onPress={press} onPointerDown={pointerDown} onPointerUp={pointerUp} onPointerLeave={pointerLeave} onPointerCancel={pointerLeave}>{props.children}</pressable>));
+	return uiParent("Pressable", element(<pressable class={props.class} style={props.style} ref={props.ref} accessible={accessible} hitSlop={hitSlop} androidRipple={androidRipple} accessibilityLabel={props.accessibilityLabel} accessibilityHint={props.accessibilityHint} accessibilityRole={props.accessibilityRole} accessibilityState={accessibilityStateAttr(props.accessibilityState)} onLayout={props.onLayout} onPress={events.onPress} onPointerDown={events.onPointerDown} onPointerUp={events.onPointerUp} onPointerEnter={events.onPointerEnter} onPointerLeave={events.onPointerLeave} onPointerCancel={events.onPointerCancel}>{props.children}</pressable>));
 }
 
 export interface ScrollToOptions {
