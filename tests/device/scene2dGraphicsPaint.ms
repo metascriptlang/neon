@@ -1,15 +1,19 @@
 import { accessor, createSignal } from "../../src/core/signal";
+import { flush } from "../../src/core/runtime";
 import { element } from "../../src/macros/ui/element";
 import { Show } from "../../src/macros/ui/flow";
 import { HostNode, mockNode, mockHost, render } from "../../src/render/host";
 import { Void } from "../../src/components/primitives";
 import { Scene2D, Graphics } from "../../src/components/scene2d";
 import { GraphicsOp } from "../../src/render/graphics";
-import { Scene2D as VoidScene2D, NodeRef, isLive } from "../../../void/src/void2d/node";
-import { prepare, drawScreen } from "../../../void/src/void2d/scene";
+import { Scene2D as VoidScene2D, NodeRef, GraphicsMesh, isLive } from "../../../void/src/void2d/node";
+import { create, prepare, drawScreen } from "../../../void/src/void2d/scene";
 import { rgba, vec2 } from "../../../void/src/void2d/types";
 import { GradientSpace } from "../../../void/src/void2d/gradient";
-import { GRAPHICS_OP_FLOATS, GFX_OP_MIDDLE, GFX_OP_SPACE, GFX_OP_PARAMS } from "../../../void/src/void2d/graphics";
+import {
+	GRAPHICS_OP_FLOATS, GFX_OP_MIDDLE, GFX_OP_SPACE, GFX_OP_PARAMS,
+	fillGradientRectStops, fillGradientPolygonOklab, fillRadialGradientOklab, fillSlashRect, fillCheckerRect,
+} from "../../../void/src/void2d/graphics";
 import { setup2d, drawCallCount, vertexBufferBytes } from "../../../void/src/void2d/draw";
 import { gfxSetup, fbWidth, fbHeight, dpiScale } from "../../../void/src/sokol/gpu";
 import { beginScreenPass } from "../../../void/src/gpu/target";
@@ -24,6 +28,34 @@ let frames: int32 = 0;
 const nodes: NodeRef[] = [];
 const [changed, setChanged] = createSignal(false);
 const [shown, setShown] = createSignal(true);
+const reference: VoidScene2D = VoidScene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
+const before: GraphicsMesh = meshOf(paintedBy(reference.graphics(), false));
+const after: GraphicsMesh = meshOf(paintedBy(reference.graphics(), true));
+
+function paintedBy(node: NodeRef, update: boolean): NodeRef {
+	const red = rgba(1.0, 0.0, 0.0, 1.0);
+	const green = rgba(0.0, 1.0, 0.0, 1.0);
+	const blue = rgba(0.0, 0.0, 1.0, 1.0);
+	return node
+		.fillGradientRectStops(20.0, 20.0, 20.0, 20.0, red, green, blue, update ? 0.75 : 0.25, 0.5,
+			update ? GradientSpace.Oklab : GradientSpace.Srgb)
+		.fillGradientPolygonOklab([vec2(60.0, 20.0), vec2(80.0, 20.0), vec2(60.0, 40.0)], green, blue, 0.7)
+		.fillRadialGradientOklab(120.0, 32.0, update ? 20.0 : 12.0, red, blue)
+		.fillSlashRect(20.0, 70.0, 40.0, 20.0, blue, green, update ? 11.0 : 7.0, 2.0)
+		.fillCheckerRect(80.0, 70.0, 40.0, 20.0, red, blue, update ? 8.0 : 4.0);
+}
+
+function meshOf(node: NodeRef): GraphicsMesh {
+	return node.scene.meshes[node.scene.payloads[node.id.index]];
+}
+
+function sameMesh(actual: GraphicsMesh, expected: GraphicsMesh): boolean {
+	if (actual.mesh.length !== expected.mesh.length) { return false; }
+	for (let i: int32 = 0; i < (expected.mesh.length as int32); i++) {
+		if (actual.mesh[i] !== expected.mesh[i]) { return false; }
+	}
+	return true;
+}
 
 function operations(): GraphicsOp[] {
 	const update = changed();
@@ -64,10 +96,11 @@ function frame(): void {
 	if (frames === 5) { setChanged(true); }
 	if (frames === 7) { setShown(false); }
 	if (frames === 9) { setShown(true); }
+	flush();
 	const visible = frames < 7 || frames >= 9;
 	if (visible) {
 		const node = nodes[nodes.length - 1];
-		const mesh = scene.meshes[scene.payloads[node.id.index]];
+		const mesh = meshOf(node);
 		if (mesh.records.length !== 5 * GRAPHICS_OP_FLOATS ||
 			mesh.records[GFX_OP_MIDDLE] !== (frames < 5 ? 0.25 : 0.75) ||
 			mesh.records[GFX_OP_SPACE] !== ((frames < 5 ? GradientSpace.Srgb : GradientSpace.Oklab) as int32) as float32 ||
@@ -75,7 +108,7 @@ function frame(): void {
 			mesh.records[4 * GRAPHICS_OP_FLOATS + GFX_OP_PARAMS] !== (frames < 5 ? 4.0 : 8.0)) {
 			fail("reactive shader records"); return;
 		}
-		if (mesh.mesh.length !== (frames < 5 ? 504 : 600)) {
+		if (!sameMesh(mesh, frames < 5 ? before : after)) {
 			fail("reactive radial geometry"); return;
 		}
 	}
