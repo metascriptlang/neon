@@ -417,7 +417,17 @@ same JS-driven frames.
   tab level publishes the tabs its `backBehavior` walks back, as the container's tabs
   do: `firstRoute` by default, so browser back from the inbox returns to the feed tab as
   it was, or `history` or `none`; `initialRoute` throws, since Tabs take no initial
-  route. A traversal restores the visits from the entry's keys. Tabs are declared as a
+  route. A traversal restores the visits from the entry's keys. A Tabs level without a
+  layout draws React Navigation's bottom tab bar under its pages; a layout places
+  `<TabBar />` itself or draws its own from `useTabs()`, the triggers of Expo Router's
+  `TabTrigger` (label, options, focused, the tab's live address, press). Each route of
+  the level labels its tab through `options`, React Navigation's `ScreenOptions`, as an
+  object or a function read reactively; `options` under any other level throws. Pressing
+  another tab navigates to the address that tab was left on, so its stack, its guard and
+  a history entry come with it; pressing the shown tab pops its stack to the root when
+  the stack holds more than one screen (native stack's `tabPress` → `popToTop`). Not yet:
+  a web `<a href>` around a trigger, a preventable `tabPress`, and a hidden tab (Expo's
+  `href: null`). Tabs are declared as a
   `navigator` beside the `layout`: the layout is the frame the author draws, the
   navigator the model it drives, so any frame drives any model. A typed `route` takes its
   path, status, guard and paths from its definition, so a config naming them beside it throws.
