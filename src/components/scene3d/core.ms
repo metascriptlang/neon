@@ -89,7 +89,7 @@ export interface NodeProps extends TransformProps {
 }
 
 export const sceneScope = createContext<NodeScope | null>(null);
-export const SCENE_UNIFORM_CAPACITY: int32 = 256;
+export const SCENE_UNIFORM_CAPACITY: int32 = 4096;
 
 export function mountOwned(body: () => void): void {
 	const dispose = createRoot((dispose) => {

@@ -8,7 +8,9 @@ import { HostNode, MockNode, mockNode, mockHost, render } from "../../src/render
 import { Void, Text } from "../../src/components/primitives";
 import { Scene3D, Scene3DHandle, Light, Mesh } from "../../src/components/scene3d";
 import { NodeId3D, LightKind } from "../../../void/src/void3d/scene";
-import { MeshId, NO_MESH, NO_MATERIAL, releaseMesh } from "../../../void/src/void3d/draw";
+import { MeshId, NO_MESH, NO_MATERIAL, releaseMesh, reserveUniforms, releaseUniforms } from "../../../void/src/void3d/draw";
+import { UniformBlock } from "../../../void/src/void3d/material";
+import { MATERIAL_UNIFORM_SLOT, MATERIAL_UNIFORM_LENGTH, MOVING_UNLIT_MATERIAL_UNIFORM_LENGTH } from "../../../void/src/void3d/gpu3d";
 import { freeRanges } from "../../../void/src/void3d/uniformPool";
 import { Material, ShadowCasting } from "../../../void/src/void3d/material";
 import { ToneMode } from "../../../void/src/void3d/renderer";
@@ -197,4 +199,33 @@ test "Mesh shadow flags beside an app material are refused by name" {
 	assert refused((): NeonNode => element(<Scene3D ref={(handle: Scene3DHandle): void => {}}>
 		<Mesh mesh={NO_MESH} material={NO_MATERIAL} castShadow={true} />
 	</Scene3D>)).includes("Mesh: castShadow and receiveShadow need the default material");
+}
+
+test "every look feature on still leaves room for hundreds of materials and dozens of world labels" {
+	const refs: Scene3DHandle[] = [];
+	let mesh: MeshId = NO_MESH;
+	const dispose = render(element(<Void><Scene3D hdr={true} bloom={BloomSettings.natural()} outlineBlend={0.5}
+		ref={(handle: Scene3DHandle): void => { refs.push(handle); mesh = added(handle.context, litShape()); }}>
+		<Light kind={LightKind.Directional} castShadow={true} />
+		<Mesh mesh={mesh} castShadow={true} receiveShadow={true} />
+		<Mesh mesh={mesh} />
+	</Scene3D></Void>), mockHost(), mockNode("root") as unknown as HostNode);
+	const context = refs[0].context;
+	const blocks: UniformBlock[] = [];
+	try {
+		for (let i = 0; i < 256; i += 1) {
+			const lit = reserveUniforms(context, MATERIAL_UNIFORM_SLOT, MATERIAL_UNIFORM_LENGTH);
+			assert lit.ok, "lit material " + i.toString() + " of 256 at " + context.uniforms.used.toString();
+			blocks.push(lit.value);
+		}
+		for (let i = 0; i < 32; i += 1) {
+			const label = reserveUniforms(context, MATERIAL_UNIFORM_SLOT, MOVING_UNLIT_MATERIAL_UNIFORM_LENGTH);
+			assert label.ok, "world label " + i.toString() + " of 32 at " + context.uniforms.used.toString();
+			blocks.push(label.value);
+		}
+	} finally {
+		for (const block of blocks) { releaseUniforms(context, block); }
+		releaseMesh(context, mesh);
+		dispose();
+	}
 }
