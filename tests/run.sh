@@ -58,6 +58,7 @@ Darwin)
 	{ "$MSC" build examples/macosNative/ionVoid.ms --output=out/macosIonVoid && out/macosIonVoid --check; } || fail=1
 	echo "== desktop examples/scene3d.ms --frames=60"
 	{ "$MSC" build examples/scene3d.ms --output=out/scene3dExample && out/scene3dExample --frames=60; } || fail=1
+	tests/device/run.sh || fail=1
 	;;
 *) echo "== desktop skip examples/voidWindow.ms, examples/voidDraw.ms, examples/voidInputs.ms, examples/voidCanvas.ms, examples/desktopAudio.ms and examples/windowsNative: Windows-only" ;;
 esac
