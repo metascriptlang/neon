@@ -4,7 +4,7 @@ import { Cleanup } from "../core/types";
 import { createRoot } from "../core/owner";
 import { onCleanup } from "../core/cleanup";
 import { createContext, useContext } from "../render/context";
-import { requestFrame, cancelFrame, frameNow } from "../animation/frame";
+import { useVoidClock } from "../render/voidClock";
 import { VoidSpace, getVoidScopeContext, getVoidAreaContext, useVoidSpace } from "../render/voidScope";
 import { layerAnchor } from "../render/voidLayer";
 import { AreaLayer, AreaPointerKind } from "../render/voidAreaHandle";
@@ -218,7 +218,6 @@ interface LabelProps extends NodeProps {
 interface SceneClock {
 	watch: (node: NodeRef) => void;
 	wake: () => void;
-	stop: () => void;
 }
 
 interface SceneState {
@@ -255,43 +254,17 @@ function clockActive(node: NodeRef): boolean {
 	};
 }
 
-function createSceneClock(vh: VoidHost, invalidate: () => void): SceneClock {
+function createSceneClock(vh: VoidHost): SceneClock {
 	const entries: ClockEntry[] = [];
-	let disposed = false;
-	let pending: int32 = 0;
-	let generation: int32 = 0;
-	let last: float64 = 0.0;
-	const active = (): boolean => {
-		for (const entry of entries) {
-			if (clockActive(entry.node)) { return true; }
-		}
-		return false;
-	};
-	const cancel = (): void => {
-		generation += 1;
-		if (pending !== 0) { cancelFrame(pending); pending = 0; }
-	};
-	const schedule = (): void => {
-		const token = generation;
-		pending = requestFrame((now: number): void => {
-			// cancelFrame cannot remove callbacks already copied into the due batch.
-			if (disposed || token !== generation) { return; }
-			pending = 0;
-			if (!active()) { return; }
-			const elapsed = Math.max(0.0, now - last);
-			last = now;
-			vh.scene.tick((elapsed / 1000.0) as float32);
-			invalidate();
-			if (active()) { schedule(); }
-		});
-	};
-	const wake = (): void => {
-		if (disposed) { return; }
-		if (!active()) { cancel(); return; }
-		if (pending !== 0) { return; }
-		last = frameNow();
-		schedule();
-	};
+	const wake = useVoidClock(
+		(): boolean => {
+			for (const entry of entries) {
+				if (clockActive(entry.node)) { return true; }
+			}
+			return false;
+		},
+		(seconds: float64): void => { vh.scene.tick(seconds as float32); },
+	);
 	return {
 		watch: (node: NodeRef): void => {
 			const entry: ClockEntry = { node };
@@ -299,7 +272,6 @@ function createSceneClock(vh: VoidHost, invalidate: () => void): SceneClock {
 			onCleanup((): void => { entries.splice(entries.indexOf(entry), 1); wake(); });
 		},
 		wake,
-		stop: (): void => { disposed = true; cancel(); },
 	};
 }
 
@@ -439,7 +411,6 @@ export function Scene2D(props: Scene2DProps): NeonNode {
 			const vh = createVoidHostWith(scene, area.font, area.family, true);
 			const invalidate = (): void => { area.handle.requestFrame(); };
 			vh.onDirty(invalidate);
-			const clock = createSceneClock(vh, invalidate);
 			let backdrop: SceneBackdrop | null = null;
 			let prepared = false;
 			let backdropPrepared = false;
@@ -499,7 +470,6 @@ export function Scene2D(props: Scene2DProps): NeonNode {
 			};
 			const unregister = area.addLayer(layer);
 			onCleanup((): void => {
-				clock.stop();
 				unregister();
 				if (backdrop !== null) { backdrop.scene.close(); }
 				invalidate();
@@ -511,6 +481,7 @@ export function Scene2D(props: Scene2DProps): NeonNode {
 				root.disposed = true;
 				scene.close();
 			});
+			const clock = createSceneClock(vh);
 			if (props.clear !== null) {
 				const clear = props.clear as () => Color;
 				createRenderEffect<Color>(
