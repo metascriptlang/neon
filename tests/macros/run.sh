@@ -46,6 +46,7 @@ expect_reject tests/macros/forKeyedComputedRejected.ms "<For keyed> takes true, 
 expect_reject tests/macros/showKeyedComputedRejected.ms "<Show keyed> takes true or false, written in place"
 expect_reject tests/macros/showFunctionArityRejected.ms "a <Show> function child takes one parameter, the narrowed value"
 expect_reject tests/macros/showWhenMissingRejected.ms "<Show> requires the 'when' prop"
+expect_reject_both tests/macros/omittedAccessorPropRejected.ms "field 'suffix' must be initialized"
 expect_reject tests/macros/matchWhenRejected.ms "<Match> takes no 'when': Solid's <Match when> is <Case when> here"
 expect_reject tests/macros/caseOutsideMatchRejected.ms "<Case> is only a direct child of <Match>: write <Match>"
 expect_reject tests/macros/caseUnderShowRejected.ms "<Case> is only a direct child of <Match>: write <Match>"
