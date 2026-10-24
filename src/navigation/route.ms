@@ -35,22 +35,52 @@ export enum GuardAction {
 	NotFound,
 }
 
-export struct GuardDecision {
+export interface ReplyInit {
+	status?: int32 | null;
+	revalidate?: string[] | null;
+}
+
+export class Reply extends Error {
 	action: GuardAction;
 	address: string;
 	status: int32;
+	revalidate: string[] | null;
+
+	constructor(action: GuardAction, address: string, status: int32, revalidate: string[] | null) {
+		super(address);
+		this.action = action;
+		this.address = address;
+		this.status = status;
+		this.revalidate = revalidate;
+	}
 }
 
-export function proceed(): GuardDecision {
-	return { action: GuardAction.Continue, address: "", status: 0 };
+export type GuardDecision = Reply;
+
+// Parked on ~/metascript/.inbox/compiler/2026-10-24-instanceof-of-a-generic-answer-union-fails-on-c.md: an action or query that returns a Reply, `json<T>(data)` with its typed body and `NarrowResponse<T>`; a thrown Reply is the form that runs on both backends.
+export function replyOf(failure: Error): Reply | null {
+	if (failure instanceof Reply) { return failure; }
+	return null;
 }
 
-export function redirect(address: string, status: int32 = 307): GuardDecision {
-	return { action: GuardAction.Redirect, address, status };
+export function proceed(): Reply {
+	return new Reply(GuardAction.Continue, "", 0, null);
 }
 
-export function notFound(): GuardDecision {
-	return { action: GuardAction.NotFound, address: "", status: 404 };
+export function redirect(address: string, status: int32 = 307): Reply {
+	return new Reply(GuardAction.Redirect, address, status, null);
+}
+
+export function redirect(address: string, init: ReplyInit): Reply {
+	return new Reply(GuardAction.Redirect, address, init.status ?? 307, init.revalidate ?? null);
+}
+
+export function reload(init: ReplyInit = {}): Reply {
+	return new Reply(GuardAction.Continue, "", init.status ?? 200, init.revalidate ?? null);
+}
+
+export function notFound(): Reply {
+	return new Reply(GuardAction.NotFound, "", 404, null);
 }
 
 export interface RouteNode {
