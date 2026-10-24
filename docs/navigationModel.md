@@ -362,7 +362,7 @@ intent reuses it while a reader holds it or within `PRELOAD_TIMEOUT`, an entry a
 made is refreshed when read and dropped after the timeout otherwise, and a `"navigate"`
 read of a refreshed entry bumps its readers. The intent is `Router.intent`, set around a
 route's `preload` and its component's mount (`mountLater`) from the stop's intent and
-around `Router.preload` as `"preload"`; a read outside a router has none. A query that
+around `Router.preload` as `"preload"`; `Router.preload` runs under the owner its `RouterProvider` mounts under (`routing.ts:663`, `runWithOwner`), so a DOM event sees the intent, and a query called in a preload function does not surface its rejection (`query.ts` `inPreloadFn`); a read outside a router has none. A query that
 throws a redirect while read navigates the router in place (`query.ts:177-195`, `replace`)
 and its promise never settles, where Solid resolves `undefined` into a typed slot; a
 preload read does not follow it; on a request history the router's `response()` carries it
@@ -405,17 +405,17 @@ has no object member emits invalid C, and a generic `Json<never>` emits a `void`
 An absolute `Location` is an error naming the case, because a router opens only the
 addresses of its own routes.
 
-A route's `component` may be `lazy(load)` (`src/render/component.ms`; Solid Router calls
-`component.preload` at `routing.ts:650-681` and `:690-704`, which Neon lacks until the
-`.preload()` card lands). The router's `component` slot is `() => NeonNode`, which a
-`(props: P) => NeonNode` does not fit, so a no-props lazy route is written as a function
-that returns `createComponent(Lazy, {})`, under a layout that holds the `<Loading>` (the
-router adds none). `tests/render/lazyRoute.test.ms` pins that on the mock host and
-`tests/browser/lazy.test.ms` in Chrome: the module is not fetched until the first navigation
-to the route. Hydration claims the served node only when the module is already loaded
+A route's `component` is `(props: {}) => NeonNode`, so `lazy<{}>(load)` fills it directly
+(Solid's `Component<RouteSectionProps>`; a route passes no props here), under a layout that
+holds the `<Loading>` (the router adds none). Solid Router calls `component.preload` at
+`routing.ts:650-681` and `:690-704`, which Neon lacks until the `.preload()` card lands.
+`tests/render/lazyRoute.test.ms` pins it on the mock host and `tests/browser/lazy.test.ms`
+in Chrome: the module is not fetched until the first navigation to the route. Hydration
+claims the served node only when the module is already loaded
 (`tests/render/lazyHydrate.test.ms`); Solid hands the client a preloaded module per
 hydration id (`client/hydration.ts:1326-1346`) and Neon has no such registry, so a lazy
-component still pending at `hydrate` fails to claim.
+component still pending at `hydrate` fails to claim. `<A preload={false}>` renders
+`preload="false"` on the anchor, where `followPreloads` reads it (`data/events.ts`).
 
 ## Provisional choices and remaining limits
 
