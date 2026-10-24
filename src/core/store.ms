@@ -335,14 +335,13 @@ export class DraftTraps<T> {
 		}
 	}
 
-	splice(target: T, start: number, count: number): Element<T>[] {
+	splice(target: T, start: number, count: number): void {
 		when (isArray<T>()) {
 			this.traps.capture(start);
 			const raw = this.traps.raw;
 			const length = raw.length;
-			const removed = raw.splice(start, count);
+			raw.splice(start, count);
 			this.traps.restamp(length, start);
-			return removed;
 		} else {
 			throw new Error("splice() of a store draft that is not an array");
 		}
@@ -541,3 +540,4 @@ export function createStore<T extends object>(first: T | ((draft: Draft<T>) => v
 	const traps = new StoreTraps<T>(value, new StoreRoot());
 	return [new Proxy(value, traps), setterOf<T>(traps)];
 }
+

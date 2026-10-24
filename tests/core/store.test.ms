@@ -618,3 +618,16 @@ test "the seed of a derived store is never written" {
 	flush();
 	assert state.count === 4 && seed.count === 0, "seed: " + seed.count.toString();
 }
+
+test "a splice through the draft removes the rows and re-runs the readers of the moved indexes" {
+	const [items, setItems] = createStore<number[]>([1, 2, 3, 4]);
+	const seen: string[] = [];
+	createRoot((d) => {
+		createEffect<number>((p: number | null): number => items[1], (v: number, p: number | null): Cleanup | null => { seen.push(v.toString()); return null; });
+	});
+	flush();
+	setItems((t) => { t.splice(1, 2); });
+	flush();
+	assert items.length === 2 && items[0] === 1 && items[1] === 4, "items: " + items.length.toString();
+	assert seen.join(",") === "2,4", "seen: " + seen.join(",");
+}
