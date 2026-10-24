@@ -15,6 +15,7 @@ import {
 	ControlAttr,
 	LINES_CLASS,
 	SCROLL_CLASS,
+	WebRule,
 	TEXT_CSS,
 	TEXT_RULES_ID,
 	controlAttr,
@@ -31,6 +32,7 @@ import {
 	domAttrName,
 	domAttrValue,
 } from "../../render/web";
+import { BLUR_PREFIX, IMAGE_CLASS, IMAGE_TAG, TILE_PREFIX, blurRule, svgPrefix, tileRule } from "../../render/webEmbed";
 import { publishWindow, publishColorScheme } from "../../render/environment";
 import { publishSafeArea } from "../../render/environment";
 import { publishPageScroll } from "../../api/pageScroll";
@@ -574,15 +576,15 @@ function writeControlAttr(el: Node, kind: string, name: string, value: string): 
 			return true;
 		}
 		if (name === "blurRadius") {
-			const radius = parseFloat(value);
-			swapClass(el, "neon-blur-", "");
-			if (radius > 0) {
-				const id = `neon-blur-${Math.round(radius * 10)}`;
-				if (!imageRules.has(id)) {
-					registerCss(id, `.${id}{filter:blur(${radius}px)}`);
-					imageRules.set(id, true);
+			swapClass(el, BLUR_PREFIX, "");
+			const rule = blurRule(value);
+			if (rule !== null) {
+				const blur = rule as WebRule;
+				if (!imageRules.has(blur.id)) {
+					registerCss(blur.id, blur.css);
+					imageRules.set(blur.id, true);
 				}
-				el.classList.add(id);
+				el.classList.add(blur.id);
 			}
 			return true;
 		}
@@ -596,20 +598,22 @@ function writeControlAttr(el: Node, kind: string, name: string, value: string): 
 // background (one class per source, since setStyle rewrites inline style whole) and pushes its
 // own picture out of its box.
 const imageRules = new Map<string, boolean>();
-const tileClasses = new Map<string, string>();
+const tileSources = new Map<string, string>();
 
 function tileImage(el: Node): void {
-	swapClass(el, "neon-tile-", "");
+	swapClass(el, TILE_PREFIX, "");
 	if (el.getAttribute("data-resize") !== "repeat") { return; }
 	const attr = el.getAttribute("src");
 	if (attr === null || attr === "") { return; }
 	const src = attr as string;
-	if (!tileClasses.has(src)) {
-		const id = `neon-tile-${tileClasses.size}`;
-		tileClasses.set(src, id);
-		registerCss(id, `.${id}{background-image:url("${src}");background-repeat:repeat;object-position:-100000px 0}`);
+	const rule = tileRule(src);
+	if (tileSources.has(rule.id)) {
+		if (tileSources.get(rule.id) !== src) { throw new Error(`Image resizeMode repeat: "${src}" and "${tileSources.get(rule.id)}" hash to the class ${rule.id}`); }
+	} else {
+		tileSources.set(rule.id, src);
+		registerCss(rule.id, rule.css);
 	}
-	el.classList.add(tileClasses.get(src) as string);
+	el.classList.add(rule.id);
 }
 
 // RN Text's numberOfLines clamps with an ellipsis. Inline style belongs to
@@ -843,10 +847,6 @@ function dropServedHead(): void {
 	}
 }
 
-function createsMoreThanAnElement(tag: string): boolean {
-	return tag === "modal" || isMediaTag(tag) || tag === "svg" || tag === "image";
-}
-
 export function domHost(): Host {
 	// The registry may already hold rules from module init — a theme's :root
 	// among them — and from here on every change mounts itself, including a
@@ -1044,6 +1044,26 @@ export function domHost(): Host {
 		controlKinds.set(el, tag);
 		return el as unknown as HostNode;
 	}
+	function adoptImage(el: Node): HostNode {
+		registerOnce(CONTROL_RULES_ID, CONTROL_CSS);
+		el.classList.add(IMAGE_CLASS);
+		controlKinds.set(el, "image");
+		return el as unknown as HostNode;
+	}
+	function adoptSvg(el: Node): HostNode {
+		el.classList.add(VIEW_CLASS);
+		const served = el.getAttribute("data-neon-svg");
+		const rest = served !== null && (served as string).startsWith("neon-svg") ? (served as string).slice(8) : "";
+		const at = rest === "" ? 0 : parseInt(rest) as int32;
+		if (at <= 0 || at.toString() !== rest) {
+			svgCount += 1;
+			el.setAttribute("data-neon-svg", svgPrefix(svgCount));
+		} else if (at > svgCount) {
+			svgCount = at;
+		}
+		controlKinds.set(el, "svg");
+		return el as unknown as HostNode;
+	}
 	function adoptScroll(el: Node): HostNode {
 		el.classList.add(VIEW_CLASS);
 		el.classList.add(SCROLL_CLASS);
@@ -1075,7 +1095,7 @@ export function domHost(): Host {
 				const vector = document.createElementNS("http://www.w3.org/2000/svg", "svg");
 				vector.classList.add(VIEW_CLASS);
 				svgCount += 1;
-				vector.setAttribute("data-neon-svg", `neon-svg${svgCount}`);
+				vector.setAttribute("data-neon-svg", svgPrefix(svgCount));
 				controlKinds.set(vector, tag);
 				return vector as unknown as HostNode;
 			}
@@ -1084,8 +1104,8 @@ export function domHost(): Host {
 			}
 			if (tag === "image") {
 				registerOnce(CONTROL_RULES_ID, CONTROL_CSS);
-				const control = document.createElement("img");
-				control.classList.add("neon-image");
+				const control = document.createElement(IMAGE_TAG);
+				control.classList.add(IMAGE_CLASS);
 				controlKinds.set(control, tag);
 				return control as unknown as HostNode;
 			}
@@ -1315,11 +1335,13 @@ export function domHost(): Host {
 				el.replaceChild(blank, found);
 				return blank as unknown as HostNode;
 			}
-			if (createsMoreThanAnElement(tag)) {
+			if (isMediaTag(tag)) {
 				throw "hydrate: the DOM host cannot take over a <" + tag + "> yet";
 			}
-			if (found.nodeType !== 1 || found.localName !== webHtmlTag(tag)) { return null; }
+			if (found.nodeType !== 1 || found.localName !== (tag === "image" ? IMAGE_TAG : webHtmlTag(tag))) { return null; }
 			registerRules(tag);
+			if (tag === "image") { return adoptImage(found); }
+			if (tag === "svg") { return adoptSvg(found); }
 			if (tag === "scrollview") { return adoptScroll(found); }
 			if (tag === "switch" || tag === "activityindicator") { return adoptControl(tag, found); }
 			if (tag === "multilinetextinput") {

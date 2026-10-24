@@ -3,6 +3,9 @@ import { NeonEvent } from "../../src/render/event";
 import { View, Text, Pressable, ScrollView, TextInput } from "../../src/components/primitives";
 import { Switch } from "../../src/components/switch";
 import { ActivityIndicator } from "../../src/components/activityIndicator";
+import { Image } from "../../src/components/image";
+import { Modal } from "../../src/components/modal";
+import { Svg, Circle, G, Defs, LinearGradient, Stop, Rect } from "../../src/components/svg/elements";
 import { Head } from "../../src/render/head";
 import { createStyles, styleOf } from "../../src/macros/ui/style";
 import { createSignal, Accessor } from "../../src/core/signal";
@@ -144,4 +147,52 @@ export function textareasApp(): NeonNode {
 		<TextInput multiline={true} value={"\nfirst <b> & \"second\""} editable={false} maxLength={40} />
 		<TextInput multiline={true} />
 	</View>;
+}
+
+export const TILE_PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAADCAIAAAA2iEnWAAAAEElEQVR4nGP4z8AARAwoFABE0AX7pM/egAAAAABJRU5ErkJggg==";
+export const DOT_GIF = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
+
+export const NOT_AN_IMAGE = "/tests/browser/serve.mjs";
+
+export function imagesApp(src: Accessor<string>, blur: Accessor<number>, onLoad: (e: NeonEvent) => void, onError: (e: NeonEvent) => void): NeonNode {
+	return <View>
+		<Image source={{ uri: src() }} resizeMode="repeat" blurRadius={blur()} onLoad={onLoad} style={{ width: 40, height: 40 }} />
+		<Image source={{ uri: DOT_GIF }} resizeMode="contain" accessibilityLabel="Logo" style={{ width: 40, height: 40 }} />
+		<Image source={{ uri: NOT_AN_IMAGE }} onError={onError} style={{ width: 10, height: 10 }} />
+		<Image style={{ width: 10, height: 10 }} />
+	</View>;
+}
+
+export function imagesAtStart(): NeonNode {
+	const [src, _src] = createSignal(TILE_PNG);
+	const [blur, _blur] = createSignal<number>(3);
+	return imagesApp(src, blur, (e: NeonEvent): void => {}, (e: NeonEvent): void => {});
+}
+
+export function svgApp(radius: Accessor<number>): NeonNode {
+	return <View>
+		<Svg width={100} height={50} viewBox="0 0 20 10" accessibilityLabel="ring">
+			<Defs><LinearGradient id="fade" x1="0" y1="0" x2="1" y2="0"><Stop offset={0} stopColor="#00ff00" /><Stop offset={1} stopColor="#0000ff" /></LinearGradient></Defs>
+			<G><Circle cx={5} cy={5} r={radius()} fill="url(#fade)" /></G>
+		</Svg>
+		<Svg width={10} height={10}><Rect width={5} height={5} fill="#f00" /></Svg>
+	</View>;
+}
+
+export function svgAtStart(): NeonNode {
+	const [radius, _radius] = createSignal<number>(4);
+	return svgApp(radius);
+}
+
+export function modalApp(open: Accessor<boolean>): NeonNode {
+	return <View>
+		<Text>before</Text>
+		<Modal visible={open()} animationType="fade"><Text>inside</Text></Modal>
+		<Text>after</Text>
+	</View>;
+}
+
+export function modalAtStart(): NeonNode {
+	const [open, _open] = createSignal(true);
+	return modalApp(open);
 }

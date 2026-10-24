@@ -4,12 +4,14 @@ import { HostNode, NeonNode } from "../../src/render/hostTypes";
 when (js) {
 	import { domHost } from "../../src/platform/browser/dom";
 	import {
+		imagesAtStart,
 		linesApp,
 		marksApp,
 		primitivesApp,
 		scrollViewApp,
 		servedPart,
 		styles,
+		svgAtStart,
 		switchesApp,
 		textareasApp,
 	} from "./servedApps";
@@ -98,5 +100,21 @@ when (js) {
 		assert server.indexOf("<textarea") >= 0, server;
 		assert servedPart("textareas", "css").indexOf(".neon-textarea{field-sizing:content;resize:none}") >= 0,
 			servedPart("textareas", "css");
+	}
+
+	test "server Image is the img, classes and rules the DOM host builds" {
+		const [server, dom, servedShape, builtShape] = serverAndDom("images", imagesAtStart());
+		assert servedShape === builtShape, server + " vs " + dom;
+		assert server.indexOf("<image") < 0 && server.indexOf("source=") < 0 && server.indexOf("<img") >= 0, server;
+		const css = servedPart("images", "css");
+		assert css.indexOf(".neon-image{object-fit:cover}") >= 0 && css.indexOf(".neon-blur-30{filter:blur(3px)}") >= 0 &&
+			css.indexOf("background-repeat:repeat") >= 0, css;
+	}
+
+	test "server Svg is the svg, its prefix and the markup the DOM host draws from the display list" {
+		const [server, dom, servedShape, builtShape] = serverAndDom("svg", svgAtStart());
+		assert servedShape === builtShape, server + " vs " + dom;
+		assert server.indexOf("displayList") < 0 && server.indexOf("<path") >= 0 && server.indexOf("viewBox=\"0 0 20 10\"") >= 0, server;
+		assert server.indexOf("data-neon-svg=\"neon-svg1\"") >= 0 && server.indexOf("data-neon-svg=\"neon-svg2\"") >= 0, server;
 	}
 }

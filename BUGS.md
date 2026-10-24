@@ -126,19 +126,19 @@ and the invariants that outlived them were moved to the head of the test that pi
   so the cell is red by timing, on main and on a branch alike. Not yet traced to whether the
   animation driver drops its final frame or the test should wait for the end event.
 
-- **OPEN 2026-10-13 — `renderToString` writes `image`, `modal`, `slider`, `picker`,
-  `datetimepicker`, `svg` and the media tags as unknown or attribute-heavy elements, and
-  `hydrate` refuses them.** `ScrollView`, `Text numberOfLines`, `Switch`, `ActivityIndicator` and
-  multiline `TextInput` were closed on this branch (`tests/browser/ssrMarkup.test.ms`,
-  `tests/browser/hydrate.test.ms`). Measured in Chrome with `renderToString` against `domHost()`:
-  `image` server `<image source resizeMode aria-label>` against `<img class="neon-image" src
-  data-resize alt aria-label>`; `modal` `<modal visible animationType>` against `<div
-  class="neon-modal" role="dialog" aria-modal="true">`; `slider` `<slider value minimumValue …>`
-  against `<input type="range" min max step>`; `picker` `<picker items selectedIndex>` against
-  `<select><option>…`; `datetimepicker` against `<input type="time">`; `svg` `<svg displayList>`
-  against `<svg class="neon-view" data-neon-svg>` with its markup; `video`, `webview`, `camera`
-  against `<video class="neon-video" playsinline src>`, `<iframe class="neon-webview">`,
-  `<video class="neon-camera" playsinline muted autoplay>`.
+- **OPEN 2026-10-13 — `renderToString` writes `video`, `webview` and `camera` as unknown
+  elements, and `hydrate` refuses them.** `ScrollView`, `Text numberOfLines`, `Switch`,
+  `ActivityIndicator`, multiline `TextInput`, `Image` and `Svg` are closed
+  (`tests/browser/ssrMarkup.test.ms`, `tests/browser/hydrate.test.ms`); a `Modal` writes nothing
+  into the page (its layer goes through a Portal into the overlay root, which `hydrate` mounts
+  unclaimed), and `Slider`, `Picker` and `DateTimePicker` are drawn from `view` and `pressable`,
+  so none of the four has a tag of its own. Measured in Chrome with `renderToString` against
+  `domHost()`: `video` server `<video source paused muted …>` against `<video class="neon-video"
+  playsinline src>`, `webview` `<webview interceptLoads source>` against `<iframe
+  class="neon-webview">`, `camera` `<camera facing flash active>` against `<video
+  class="neon-camera" playsinline muted autoplay>`. These three keep their state in
+  `src/platform/browser/media.jms` and `camera.jms`, reached through `MediaElement` in
+  `domCapabilities.ms`, which has no way to take a served element over.
 
 - **OPEN 2026-10-13 — `ActivityIndicator color` never reaches the element.** `writeControlAttr`
   sets `el.style.color`, and the colour is gone after the mount (not traced to the write that

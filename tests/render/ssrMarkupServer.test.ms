@@ -134,3 +134,31 @@ test "SSR writes no marks where the parser reads comments as text" {
 		assert html === "<" + tag + ">ab</" + tag + ">", html;
 	}
 }
+
+test "SSR writes Image as the img, classes and rules the DOM host builds" {
+	const page = renderToMarkup(el("image", [attr("source", "/a.png"), attr("resizeMode", "repeat"),
+		attr("blurRadius", "2.5"), attr("accessibilityRole", "image"), attr("accessibilityLabel", "a\"b")], [], null));
+	assert page.html.startsWith("<img src=\"/a.png\" data-resize=\"repeat\" role=\"img\" alt=\"a&quot;b\" aria-label=\"a&quot;b\" class=\"neon-image neon-tile-"), page.html;
+	assert page.html.indexOf(" neon-blur-25\">") > 0 && page.html.indexOf("<image") < 0, page.html;
+	assert page.css.indexOf(".neon-image{object-fit:cover}") >= 0 && page.css.indexOf(".neon-blur-25{filter:blur(2.5px)}") >= 0, page.css;
+	assert page.css.indexOf("{background-image:url(\"/a.png\");background-repeat:repeat;") >= 0, page.css;
+	const plain = renderToString(el("image", [], [], null));
+	assert plain === "<img class=\"neon-image\">", plain;
+	const still = renderToString(el("image", [attr("source", "/a.png"), attr("resizeMode", "contain"), attr("blurRadius", "0")], [], null));
+	assert still === "<img src=\"/a.png\" data-resize=\"contain\" class=\"neon-image\">", still;
+}
+
+test "SSR keeps a tiled source from leaving the style element or its string" {
+	const page = renderToMarkup(el("image", [attr("source", "/a\"</style><b>\n.png"), attr("resizeMode", "repeat")], [], null));
+	assert page.css.indexOf("url(\"/a\\\"\\3c /style>\\3c b>\\a .png\")") >= 0, page.css;
+	assert page.css.indexOf("</style><b>") < 0, page.css;
+}
+
+test "SSR writes Svg with the prefix, viewBox and markup the DOM host draws from its display list" {
+	const list = "V 0 0 20 10 5 0 M 0 0 L 5 0 L 5 5 L 0 5 Z F c 255 0 0 1 S n E 0 O";
+	const page = renderToString(el("view", [], [], el("svg", [attr("displayList", list), attr("accessibilityLabel", "box")], [], null)));
+	assert page.indexOf("<svg data-neon-svg=\"neon-svg1\" viewBox=\"0 0 20 10\" preserveAspectRatio=\"xMidYMid meet\" aria-label=\"box\" class=\"neon-view\">") >= 0, page;
+	assert page.indexOf("<path d=\"M 0 0 L 5 0 L 5 5 L 0 5 Z\"") >= 0 && page.indexOf("displayList") < 0, page;
+	const twice = renderToString(el("view", [], [], el("svg", [], [], null)));
+	assert twice.indexOf("data-neon-svg=\"neon-svg1\"") >= 0, "the numbering starts again with each render: " + twice;
+}

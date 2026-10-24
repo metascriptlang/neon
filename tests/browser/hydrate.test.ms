@@ -4,17 +4,23 @@ import { NeonEvent } from "../../src/render/event";
 import { View } from "../../src/components/primitives";
 import { createSignal, Accessor } from "../../src/core/signal";
 import { flush } from "../../src/core/runtime";
+import { sleepAsync } from "std/core/promise";
 
 when (js) {
 	import { domHost } from "../../src/platform/browser/dom";
 	import {
 		clampedApp,
+		DOT_GIF,
 		docs,
+		imagesApp,
+		modalApp,
 		plainTextareaApp,
 		scrollApp,
 		servedPart,
+		svgApp,
 		switchApp,
 		textareaApp,
+		TILE_PNG,
 	} from "./servedApps";
 
 	extern class Page {
@@ -36,7 +42,14 @@ when (js) {
 	extern function typeInto(node: Page, text: cstring): void from
 		"((n, t) => { n.value = t; n.dispatchEvent(new Event('input')); })(#, #)";
 	extern function shape(root: Page): string from
-		"(r => { const f=n=>n.nodeType===1?[n.localName,Array.from(n.attributes,a=>[a.name,a.name==='class'?a.value.split(/\\s+/).sort().join(' '):a.value]).sort((a,b)=>a[0].localeCompare(b[0])),n.id==='mech'?[]:Array.from(n.childNodes,f)]:n.nodeType===3?n.data:'comment '+n.data;return JSON.stringify(Array.from(r.childNodes,f)); })(#)";
+		"(r => { const f=n=>n.nodeType===1?[n.localName,Array.from(n.attributes,a=>[a.name,a.name==='class'?a.value.split(/\\s+/).sort().join(' '):a.value]).sort((a,b)=>a[0].localeCompare(b[0])),n.id==='mech'?[]:Array.from(n.childNodes,f)]:n.nodeType===3?n.data:'comment '+n.data;return JSON.stringify(Array.from(r.childNodes,f)).replace(/neon-svg\\d+/g,'neon-svg'); })(#)";
+	extern function pageImage(root: Page): Page from "(r => r.querySelector('img'))(#)";
+	extern function imagesReady(root: Page): boolean from "(r => Array.from(r.querySelectorAll('img[src]')).every(i => i.complete))(#)";
+	extern function bodyCount(selector: cstring): number from "document.body.querySelectorAll(#).length";
+	extern function pathWidth(root: Page): number from "(r => Math.round(r.querySelector('path').getBBox().width))(#)";
+	extern function setAttrOf(node: Page, name: cstring, value: cstring): void from "(#).setAttribute(#, #)";
+	extern function attrOf(node: Page, name: cstring): string from "((n, a) => n.getAttribute(a) ?? '')(#, #)";
+	extern function hasClassWith(node: Page, prefix: cstring): boolean from "((n, p) => Array.from(n.classList).some(c => c.startsWith(p)))(#, #)";
 
 	function freshShape(name: string, open: boolean, rows: string[]): string {
 		const [n, _n] = createSignal(name);
@@ -203,6 +216,83 @@ when (js) {
 		try {
 			assert shape(mount) === rendered(app), shape(mount) + " vs " + rendered(app);
 			assert fieldValue(pageNode(mount, "textarea")) === "note", "the default is lost";
+		} finally { dispose(); mount.remove(); }
+	}
+
+	test "hydrate takes over a served Image, keeps its loaded picture and follows its signals" {
+		const [src, setSrc] = createSignal(TILE_PNG);
+		const [blur, setBlur] = createSignal<number>(3);
+		let loads = 0;
+		let errors = 0;
+		const app: NeonNode = imagesApp(src, blur, (e: NeonEvent): void => { loads += 1; }, (e: NeonEvent): void => { errors += 1; });
+		const mount = parsedPage(servedPart("images", "html"));
+		const img = pageImage(mount);
+		let waited = 0;
+		while (!imagesReady(mount) && waited < 100) { await sleepAsync(20); waited += 1; }
+		assert imagesReady(mount), "the served pictures did not settle";
+		const fresh = rendered(imagesApp(src, blur, (e: NeonEvent): void => {}, (e: NeonEvent): void => {}));
+		let made = 0;
+		const host: Host = domHost();
+		const create = host.createElement;
+		host.createElement = (tag: string): HostNode => { made += 1; return create(tag); };
+		const dispose = hydrate(app, host, mount as unknown as HostNode);
+		try {
+			assert made === 0, "the host created " + made.toString() + " elements";
+			assert notServed(mount) === 0, notServed(mount).toString() + " elements are not the page's own";
+			assert pageImage(mount) === img, "hydrate replaced the served img";
+			assert shape(mount) === fresh, shape(mount) + " vs " + fresh;
+			await sleepAsync(150);
+			assert loads === 1, "onLoad ran " + loads.toString() + " times for a picture loaded before hydrate";
+			assert errors === 1, "onError ran " + errors.toString() + " times for a picture that failed before hydrate";
+			setBlur(0);
+			flush();
+			assert hasClassWith(img, "neon-blur-") === false, "the blur class stayed";
+			assert hasClassWith(img, "neon-tile-"), "the tile class went with the blur";
+			setSrc(DOT_GIF);
+			flush();
+			await sleepAsync(50);
+			assert attrOf(img, "src") === DOT_GIF, "src did not follow its signal";
+			assert loads === 2, "onLoad ran " + loads.toString() + " times after the source changed";
+			assert pageImage(mount) === img, "an update replaced the served img";
+		} finally { dispose(); mount.remove(); }
+	}
+
+	test "hydrate takes over a served Svg, keeps its element and redraws it from its signal" {
+		const [radius, setRadius] = createSignal<number>(4);
+		const app: NeonNode = svgApp(radius);
+		const mount = parsedPage(servedPart("svg", "html"));
+		const before = pageNode(mount, "svg");
+		const fresh = rendered(app);
+		let made = 0;
+		const host: Host = domHost();
+		const create = host.createElement;
+		host.createElement = (tag: string): HostNode => { made += 1; return create(tag); };
+		const dispose = hydrate(app, host, mount as unknown as HostNode);
+		try {
+			assert made === 0, "the host created " + made.toString() + " elements";
+			assert pageNode(mount, "svg") === before, "hydrate replaced the served svg";
+			assert attrOf(before, "data-neon-svg") === "neon-svg1", attrOf(before, "data-neon-svg");
+			assert shape(mount) === fresh, shape(mount) + " vs " + fresh;
+			assert pathWidth(mount) === 8, "the served circle: " + pathWidth(mount).toString();
+			setRadius(2);
+			flush();
+			assert pageNode(mount, "svg") === before, "an update replaced the served svg";
+			assert pathWidth(mount) === 4, "the circle did not follow its signal: " + pathWidth(mount).toString();
+		} finally { dispose(); mount.remove(); }
+	}
+
+	test "hydrate beside a Modal leaves the page alone and mounts the modal over it" {
+		const [open, setOpen] = createSignal(true);
+		const app: NeonNode = modalApp(open);
+		const mount = parsedPage(servedPart("modal", "html"));
+		assert bodyCount(".neon-modal") === 0, "the modal was served inside the page";
+		const dispose = hydrate(app, domHost(), mount as unknown as HostNode);
+		try {
+			assert notServed(mount) === 0, notServed(mount).toString() + " elements are not the page's own";
+			assert bodyCount(".neon-modal") === 1, "the modal layer: " + bodyCount(".neon-modal").toString();
+			setOpen(false);
+			flush();
+			assert bodyCount(".neon-modal") === 0, "the modal stayed after it closed";
 		} finally { dispose(); mount.remove(); }
 	}
 }

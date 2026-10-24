@@ -29,6 +29,8 @@ when (server) {
 	import { styleToCss } from "./css";
 	import { Style, StyleValue, emptyStyle, setStyleField } from "./style";
 	import {
+		CONTROL_CSS,
+		CONTROL_RULES_ID,
 		ControlAttr,
 		LINES_CLASS,
 		SERVED_HEAD,
@@ -50,6 +52,8 @@ when (server) {
 		domAttrName,
 		domAttrValue,
 	} from "./web";
+	import { BLUR_PREFIX, IMAGE_CLASS, IMAGE_TAG, TILE_PREFIX, blurRule, svgPrefix, tileRule } from "./webEmbed";
+	import { svgMarkup } from "../components/svg/markup";
 	import { parseVisibleContent } from "./visibleContent";
 	import { asServer } from "./environment";
 	import { Computation, Dispose, NotReadyError } from "../core/types";
@@ -62,6 +66,7 @@ when (server) {
 	}
 
 	function baseClassOf(tag: string): string {
+		if (tag === "image") { return IMAGE_CLASS; }
 		const base = webBaseClass(tag);
 		const control = webControlClass(tag);
 		return base === "" || control === "" ? base + control : base + " " + control;
@@ -294,9 +299,10 @@ when (server) {
 		raw: string;
 
 		constructor(tag: string) {
-			this.html = webHtmlTag(tag);
+			this.html = tag === "image" ? IMAGE_TAG : webHtmlTag(tag);
 			this.baseClass = escapeAttribute(baseClassOf(tag));
 			this.rules = webRules(tag);
+			if (tag === "image") { this.rules.push({ id: CONTROL_RULES_ID, css: CONTROL_CSS }); }
 			for (const fixed of webFixedAttrs(tag)) {
 				this.fixedNames.push(fixed.name);
 				this.fixedValues.push(fixed.value as string);
@@ -398,6 +404,7 @@ when (server) {
 		stitched: boolean = false;
 		headFront: SsrNode | null = null;
 		held: Rules | null = null;
+		svgs: int32 = 0;
 
 		constructor(register: (id: string, css: string) => void) {
 			this.register = register;
@@ -515,6 +522,57 @@ when (server) {
 		if (n.prev !== null) { (n.prev as SsrNode).next = null; }
 	}
 
+	function withoutClassPrefix(className: string, prefix: string): string {
+		const kept: string[] = [];
+		for (const c of className.split(" ")) {
+			if (!c.startsWith(prefix)) { kept.push(c); }
+		}
+		return kept.join(" ");
+	}
+
+	function retile(w: SsrWrite, n: SsrNode): void {
+		n.className = withoutClassPrefix(n.className, TILE_PREFIX);
+		const resize = attrValue(n.names, n.values, "data-resize");
+		const src = attrValue(n.names, n.values, "src");
+		if (resize !== "repeat" || src === null || src === "") { return; }
+		const rule = tileRule(src as string);
+		w.note(rule.id, rule.css);
+		n.className = joinClass(n.className, rule.id);
+	}
+
+	function writeImageAttr(w: SsrWrite, n: SsrNode, name: string, value: string): boolean {
+		if (name === "source") {
+			upsertAttr(n.names, n.values, "src", value);
+			retile(w, n);
+			return true;
+		}
+		if (name === "resizeMode") {
+			upsertAttr(n.names, n.values, "data-resize", value);
+			retile(w, n);
+			return true;
+		}
+		if (name === "blurRadius") {
+			n.className = withoutClassPrefix(n.className, BLUR_PREFIX);
+			const rule = blurRule(value);
+			if (rule !== null) {
+				const blur = rule as WebRule;
+				w.note(blur.id, blur.css);
+				n.className = joinClass(n.className, blur.id);
+			}
+			return true;
+		}
+		if (name === "accessibilityLabel") { upsertAttr(n.names, n.values, "alt", value); }
+		return false;
+	}
+
+	function writeSvgList(n: SsrNode, list: string): void {
+		const prefix = attrValue(n.names, n.values, "data-neon-svg");
+		const m = svgMarkup(list, prefix === null ? "neon-svg" : prefix as string);
+		putAttribute(n.names, n.values, "viewBox", m.viewBox === "" ? null : m.viewBox);
+		putAttribute(n.names, n.values, "preserveAspectRatio", m.preserveAspectRatio === "" ? null : m.preserveAspectRatio);
+		n.body = m.body;
+	}
+
 	function writerHost(w: SsrWrite): Host {
 		return {
 			createElement: (tag: string): HostNode => {
@@ -525,6 +583,11 @@ when (server) {
 				for (let i = 0; i < info.fixedNames.length; i += 1) {
 					n.names.push(info.fixedNames[i]);
 					n.values.push(info.fixedValues[i]);
+				}
+				if (tag === "svg") {
+					w.svgs += 1;
+					n.names.push("data-neon-svg");
+					n.values.push(svgPrefix(w.svgs));
 				}
 				return n as unknown as HostNode;
 			},
@@ -538,6 +601,8 @@ when (server) {
 			},
 			setAttr: (node: HostNode, name: string, value: string): void => {
 				const n = writable(node as unknown as SsrNode);
+				if (n.tag === "image" && writeImageAttr(w, n, name, value)) { return; }
+				if (n.tag === "svg" && name === "displayList") { writeSvgList(n, value); return; }
 				if (name !== "numberOfLines") { upsertAttr(n.names, n.values, name, value); return; }
 				w.note(TEXT_RULES_ID, TEXT_CSS);
 				if (!clampedLines(value)) { return; }
