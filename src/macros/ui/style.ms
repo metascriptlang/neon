@@ -36,7 +36,7 @@
 
 import { Node, NodeKind, DeclKind, SourceLocation, isFloatLiteral, intValue, floatValue, stringValue, getImpl } from "std/meta";
 import { Style } from "../../render/style";
-import { STYLE_TABLE } from "../style/fields";
+import { styleTable } from "../style/fields";
 
 export function styleOf(s: Style): Style {
 	return s;
@@ -317,7 +317,7 @@ export macro createStyles(node: Node): Node {
 		if (emitCss && fields.length > 0 && vGroups.length === 0) {
 			let decls = "";
 			let spelled = true;
-			for (const row of STYLE_TABLE) {
+			for (const row of styleTable()) {
 				for (let b = 0; b < names.length; b += 1) {
 					if (names[b] !== row[0]) { continue; }
 					unfoldable = false;

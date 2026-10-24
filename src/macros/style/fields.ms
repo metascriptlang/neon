@@ -1,74 +1,78 @@
 import { Node, NodeKind, DeclKind, NodeFlag } from "std/meta";
 
-export const STYLE_TABLE: string[][] = [
-	["flexDirection",       "FlexDirection",     "word", "enum",   "ignore"],
-	["justifyContent",      "Justify",           "word", "enum",   "ignore"],
-	["alignItems",          "Align",             "word", "enum",   "ignore"],
-	["alignSelf",           "Align",             "word", "enum",   "ignore"],
-	["alignContent",        "Align",             "word", "enum",   "ignore"],
-	["position",            "PositionType",      "word", "position", "ignore"],
-	["flexWrap",            "Wrap",              "word", "enum",   "ignore"],
-	["display",             "Display",           "word", "enum",   "ignore"],
-	["flex",                "number",            "num",  "num",    "ignore"],
-	["flexGrow",            "number",            "num",  "num",    "ignore"],
-	["flexShrink",          "number",            "num",  "num",    "ignore"],
-	["flexBasis",           "number | string",   "len",  "dim",    "ignore"],
-	["width",               "number | string",   "len",  "dim",    "ignore"],
-	["height",              "number | string",   "len",  "dim",    "ignore"],
-	["minWidth",            "number | string",   "len",  "dim",    "ignore"],
-	["minHeight",           "number | string",   "len",  "dim",    "ignore"],
-	["maxWidth",            "number | string",   "len",  "dim",    "ignore"],
-	["maxHeight",           "number | string",   "len",  "dim",    "ignore"],
-	["aspectRatio",         "number",            "num",  "num",    "ignore"],
-	["margin",              "number | string",   "len",  "dim",    "ignore"],
-	["marginTop",           "number | string",   "len",  "dim",    "ignore"],
-	["marginBottom",        "number | string",   "len",  "dim",    "ignore"],
-	["marginLeft",          "number | string",   "len",  "dim",    "ignore"],
-	["marginRight",         "number | string",   "len",  "dim",    "ignore"],
-	["padding",             "number | string",   "len",  "dim",    "ignore"],
-	["paddingTop",          "number | string",   "len",  "dim",    "ignore"],
-	["paddingBottom",       "number | string",   "len",  "dim",    "ignore"],
-	["paddingLeft",         "number | string",   "len",  "dim",    "ignore"],
-	["paddingRight",        "number | string",   "len",  "dim",    "ignore"],
-	["top",                 "number | string",   "len",  "dim",    "ignore"],
-	["left",                "number | string",   "len",  "dim",    "ignore"],
-	["right",               "number | string",   "len",  "dim",    "ignore"],
-	["bottom",              "number | string",   "len",  "dim",    "ignore"],
-	["gap",                 "number | string",   "len",  "dim",    "ignore"],
-	["rowGap",              "number | string",   "len",  "dim",    "ignore"],
-	["columnGap",           "number | string",   "len",  "dim",    "ignore"],
-	["backgroundColor",     "string",            "word", "paint",  "paint"],
-	["backgroundImage",     "string",            "word", "ignore", "ignore"],
-	["borderWidth",         "number",            "len",  "num",    "ignore"],
-	["borderColor",         "string",            "word", "paint",  "ignore"],
-	["borderRadius",        "number",            "len",  "paint",  "ignore"],
-	["opacity",             "number",            "num",  "paint",  "paint"],
-	["color",               "string",            "word", "paint",  "paint"],
-	["fontSize",            "number",            "len",  "paint",  "ignore"],
-	["fontWeight",          "FontWeight",        "word", "paint",  "paint"],
-	["letterSpacing",       "number",            "len",  "ignore", "ignore"],
-	["lineHeight",          "number",            "len",  "ignore", "ignore"],
-	["textAlign",           "TextAlign",         "word", "ignore", "ignore"],
-	["overflow",            "Overflow",          "word", "enum",   "ignore"],
-	["zIndex",              "number",            "num",  "paint",  "ignore"],
-	["fontFamily",          "string",            "word", "paint",  "ignore"],
-	["transform",           "string",            "word", "ignore", "ignore"],
-	["cursor",              "string",            "word", "ignore", "ignore"],
-	["boxShadow",           "string",            "word", "paint",  "ignore"],
-	["clipPath",            "string",            "word", "ignore", "ignore"],
-	["transition",          "string",            "word", "ignore", "ignore"],
-	["filter",              "string",            "word", "ignore", "ignore"],
-	["pointerEvents",       "string",            "word", "ignore", "ignore"],
-	["fontStyle",           "FontStyle",         "word", "paint",  "paint"],
-	["textDecorationLine",  "TextDecorationLine", "word", "paint",  "paint"],
-	["textDecorationStyle", "TextDecorationStyle", "word", "paint", "ignore"],
-	["textDecorationColor", "string",            "word", "paint",  "ignore"],
-];
+@comptime export function styleTable(): string[][] {
+	return [
+		["flexDirection",       "FlexDirection",     "word", "enum",   "ignore"],
+		["justifyContent",      "Justify",           "word", "enum",   "ignore"],
+		["alignItems",          "Align",             "word", "enum",   "ignore"],
+		["alignSelf",           "Align",             "word", "enum",   "ignore"],
+		["alignContent",        "Align",             "word", "enum",   "ignore"],
+		["position",            "PositionType",      "word", "position", "ignore"],
+		["flexWrap",            "Wrap",              "word", "enum",   "ignore"],
+		["display",             "Display",           "word", "enum",   "ignore"],
+		["flex",                "number",            "num",  "num",    "ignore"],
+		["flexGrow",            "number",            "num",  "num",    "ignore"],
+		["flexShrink",          "number",            "num",  "num",    "ignore"],
+		["flexBasis",           "number | string",   "len",  "dim",    "ignore"],
+		["width",               "number | string",   "len",  "dim",    "ignore"],
+		["height",              "number | string",   "len",  "dim",    "ignore"],
+		["minWidth",            "number | string",   "len",  "dim",    "ignore"],
+		["minHeight",           "number | string",   "len",  "dim",    "ignore"],
+		["maxWidth",            "number | string",   "len",  "dim",    "ignore"],
+		["maxHeight",           "number | string",   "len",  "dim",    "ignore"],
+		["aspectRatio",         "number",            "num",  "num",    "ignore"],
+		["margin",              "number | string",   "len",  "dim",    "ignore"],
+		["marginTop",           "number | string",   "len",  "dim",    "ignore"],
+		["marginBottom",        "number | string",   "len",  "dim",    "ignore"],
+		["marginLeft",          "number | string",   "len",  "dim",    "ignore"],
+		["marginRight",         "number | string",   "len",  "dim",    "ignore"],
+		["padding",             "number | string",   "len",  "dim",    "ignore"],
+		["paddingTop",          "number | string",   "len",  "dim",    "ignore"],
+		["paddingBottom",       "number | string",   "len",  "dim",    "ignore"],
+		["paddingLeft",         "number | string",   "len",  "dim",    "ignore"],
+		["paddingRight",        "number | string",   "len",  "dim",    "ignore"],
+		["top",                 "number | string",   "len",  "dim",    "ignore"],
+		["left",                "number | string",   "len",  "dim",    "ignore"],
+		["right",               "number | string",   "len",  "dim",    "ignore"],
+		["bottom",              "number | string",   "len",  "dim",    "ignore"],
+		["gap",                 "number | string",   "len",  "dim",    "ignore"],
+		["rowGap",              "number | string",   "len",  "dim",    "ignore"],
+		["columnGap",           "number | string",   "len",  "dim",    "ignore"],
+		["backgroundColor",     "string",            "word", "paint",  "paint"],
+		["backgroundImage",     "string",            "word", "ignore", "ignore"],
+		["borderWidth",         "number",            "len",  "num",    "ignore"],
+		["borderColor",         "string",            "word", "paint",  "ignore"],
+		["borderRadius",        "number",            "len",  "paint",  "ignore"],
+		["opacity",             "number",            "num",  "paint",  "paint"],
+		["color",               "string",            "word", "paint",  "paint"],
+		["fontSize",            "number",            "len",  "paint",  "ignore"],
+		["fontWeight",          "FontWeight",        "word", "paint",  "paint"],
+		["letterSpacing",       "number",            "len",  "ignore", "ignore"],
+		["lineHeight",          "number",            "len",  "ignore", "ignore"],
+		["textAlign",           "TextAlign",         "word", "ignore", "ignore"],
+		["overflow",            "Overflow",          "word", "enum",   "ignore"],
+		["zIndex",              "number",            "num",  "paint",  "ignore"],
+		["fontFamily",          "string",            "word", "paint",  "ignore"],
+		["transform",           "string",            "word", "ignore", "ignore"],
+		["cursor",              "string",            "word", "ignore", "ignore"],
+		["boxShadow",           "string",            "word", "paint",  "ignore"],
+		["clipPath",            "string",            "word", "ignore", "ignore"],
+		["transition",          "string",            "word", "ignore", "ignore"],
+		["filter",              "string",            "word", "ignore", "ignore"],
+		["pointerEvents",       "string",            "word", "ignore", "ignore"],
+		["fontStyle",           "FontStyle",         "word", "paint",  "paint"],
+		["textDecorationLine",  "TextDecorationLine", "word", "paint",  "paint"],
+		["textDecorationStyle", "TextDecorationStyle", "word", "paint", "ignore"],
+		["textDecorationColor", "string",            "word", "paint",  "ignore"],
+	];
+}
 
-export const STYLE_CLASS_FIELDS: string[][] = [
-	["cssId", "string"],
-	["css",   "string"],
-];
+@comptime export function styleClassFields(): string[][] {
+	return [
+		["cssId", "string"],
+		["css",   "string"],
+	];
+}
 
 const COL_TYPE = 1;
 const COL_BROWSER = 2;
@@ -76,11 +80,12 @@ const COL_VOID = 3;
 const COL_TERMINAL = 4;
 
 export macro applyCssPropBody(node: Node): Node {
+	const table = styleTable();
 	const L = node.line;
 	const C = node.column;
 	const cases: Node[] = [];
-	for (let i = 0; i < STYLE_TABLE.length; i = i + 1) {
-		const row = STYLE_TABLE[i];
+	for (let i = 0; i < table.length; i = i + 1) {
+		const row = table[i];
 		if (row.length !== 5) { error("style table row " + row[0] + " must carry a type and every host", node); }
 		const fieldName = row[0];
 		const proj = row[COL_BROWSER];
@@ -156,6 +161,7 @@ export macro applyCssPropBody(node: Node): Node {
 }
 
 export macro applyCssBody(node: Node): Node {
+	const table = styleTable();
 	const L = node.line;
 	const C = node.column;
 	const stmts: Node[] = [{
@@ -170,8 +176,8 @@ export macro applyCssBody(node: Node): Node {
 			right: { kind: NodeKind.StringLiteral, line: L, column: C, value: "" },
 		},
 	}];
-	for (let i = 0; i < STYLE_TABLE.length; i = i + 1) {
-		const fieldName = STYLE_TABLE[i][0];
+	for (let i = 0; i < table.length; i = i + 1) {
+		const fieldName = table[i][0];
 		const read: Node = {
 			kind: NodeKind.MemberExpr, line: L, column: C,
 			object: { kind: NodeKind.Identifier, line: L, column: C, name: "s" },
@@ -224,6 +230,7 @@ export macro applyCssBody(node: Node): Node {
 }
 
 export macro asFlexStyleBody(node: Node): Node {
+	const table = styleTable();
 	const L = node.line;
 	const C = node.column;
 	const stmts: Node[] = [{
@@ -231,8 +238,8 @@ export macro asFlexStyleBody(node: Node): Node {
 		declName: "st", declType: "FlexStyle", declKind: DeclKind.Const,
 		initializer: { kind: NodeKind.ObjectLiteral, line: L, column: C, properties: [], keys: [], keyLocations: [] },
 	}];
-	for (let i = 0; i < STYLE_TABLE.length; i = i + 1) {
-		const row = STYLE_TABLE[i];
+	for (let i = 0; i < table.length; i = i + 1) {
+		const row = table[i];
 		if (row.length !== 5) { error("style table row " + row[0] + " must carry a type and every host", node); }
 		const fieldName = row[0];
 		const how = row[COL_VOID];
@@ -303,8 +310,9 @@ export macro asFlexStyleBody(node: Node): Node {
 }
 
 export macro terminalStyleCoverage(node: Node): Node {
-	for (let i = 0; i < STYLE_TABLE.length; i = i + 1) {
-		const row = STYLE_TABLE[i];
+	const table = styleTable();
+	for (let i = 0; i < table.length; i = i + 1) {
+		const row = table[i];
 		if (row.length !== 5) { error("style table row " + row[0] + " must carry a type and every host", node); }
 		const how = row[COL_TERMINAL];
 		if (how !== "paint" && how !== "ignore") { error("terminal projection for " + row[0] + " must be paint or ignore", node); }
@@ -313,19 +321,21 @@ export macro terminalStyleCoverage(node: Node): Node {
 }
 
 export macro styleInterfaceBody(node: Node): Node {
+	const table = styleTable();
+	const classFields = styleClassFields();
 	const L = node.line;
 	const C = node.column;
 	const names: string[] = [];
 	const types: string[] = [];
-	for (let i = 0; i < STYLE_TABLE.length; i = i + 1) {
-		const row = STYLE_TABLE[i];
+	for (let i = 0; i < table.length; i = i + 1) {
+		const row = table[i];
 		if (row.length !== 5) { error("style table row " + row[0] + " must carry a type and every host", node); }
 		names.push(row[0]);
 		types.push(row[COL_TYPE] + " | null");
 	}
-	for (let i = 0; i < STYLE_CLASS_FIELDS.length; i = i + 1) {
-		names.push(STYLE_CLASS_FIELDS[i][0]);
-		types.push(STYLE_CLASS_FIELDS[i][1] + " | null");
+	for (let i = 0; i < classFields.length; i = i + 1) {
+		names.push(classFields[i][0]);
+		types.push(classFields[i][1] + " | null");
 	}
 	return {
 		kind: NodeKind.SpliceMany, line: L, column: C,
@@ -341,11 +351,12 @@ export macro styleInterfaceBody(node: Node): Node {
 }
 
 export macro setStyleFieldBody(node: Node): Node {
+	const table = styleTable();
 	const L = node.line;
 	const C = node.column;
 	const cases: Node[] = [];
-	for (let i = 0; i < STYLE_TABLE.length; i = i + 1) {
-		const row = STYLE_TABLE[i];
+	for (let i = 0; i < table.length; i = i + 1) {
+		const row = table[i];
 		if (row.length !== 5) { error("style table row " + row[0] + " must carry a type and every host", node); }
 		const fieldName = row[0];
 		cases.push({
@@ -409,12 +420,13 @@ export macro setStyleFieldBody(node: Node): Node {
 }
 
 export macro mergeStyleBody(node: Node): Node {
+	const table = styleTable();
 	const L = node.line;
 	const C = node.column;
 	const props: Node[] = [];
 	const keys: string[] = [];
-	for (let i = 0; i < STYLE_TABLE.length; i = i + 1) {
-		const row = STYLE_TABLE[i];
+	for (let i = 0; i < table.length; i = i + 1) {
+		const row = table[i];
 		if (row.length !== 5) { error("style table row " + row[0] + " must carry a type and every host", node); }
 		const fieldName = row[0];
 		keys.push(fieldName);
@@ -448,6 +460,7 @@ export macro mergeStyleBody(node: Node): Node {
 }
 
 export macro styleToCssBody(node: Node): Node {
+	const table = styleTable();
 	const L = node.line;
 	const C = node.column;
 	const stmts: Node[] = [{
@@ -455,8 +468,8 @@ export macro styleToCssBody(node: Node): Node {
 		declName: "out", declType: "string", declKind: DeclKind.Let,
 		initializer: { kind: NodeKind.StringLiteral, line: L, column: C, value: "" },
 	}];
-	for (let i = 0; i < STYLE_TABLE.length; i = i + 1) {
-		const row = STYLE_TABLE[i];
+	for (let i = 0; i < table.length; i = i + 1) {
+		const row = table[i];
 		if (row.length !== 5) { error("style table row " + row[0] + " must carry a type and every host", node); }
 		const fieldName = row[0];
 		const ty = row[COL_TYPE];
@@ -504,11 +517,12 @@ export macro styleToCssBody(node: Node): Node {
 }
 
 export macro cssStyleExternBody(node: Node): Node {
+	const table = styleTable();
 	const L = node.line;
 	const C = node.column;
 	const body: Node[] = [];
-	for (let i = 0; i < STYLE_TABLE.length; i = i + 1) {
-		const row = STYLE_TABLE[i];
+	for (let i = 0; i < table.length; i = i + 1) {
+		const row = table[i];
 		if (row.length !== 5) { error("style table row " + row[0] + " must carry a type and every host", node); }
 		body.push({ kind: NodeKind.PropertyDecl, line: L, column: C, propName: row[0], propType: "cstring", propIsStatic: false, propIsReadonly: false, propVisibility: "", propInitializer: null as unknown as Node });
 	}
