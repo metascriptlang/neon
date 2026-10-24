@@ -29,18 +29,20 @@ export converter jsxToNode(n: Node): NeonNode {
 
 export { For, ForKeyedBy, ForUnkeyed, Repeat, ForList, Show, ShowKeyed, ShowWith, ShowKeyedWith, showWhen, Match, Case, CaseKeyed, CaseWith, CaseKeyedWith, caseWhen, Errored, Loading } from "./macros/ui/flow";
 export { refreshPass } from "./macros/refresh";
-export {
-	refreshBoundary,
-	refreshBoundary0,
-	refreshComponent,
-	refreshComponent0,
-	refreshDependency,
-	refreshImports,
-	refreshKeep,
-	refreshModule,
-	refreshModuleEval,
-	refreshRegion,
-	refreshState,
-	refreshTemplate,
-	refreshTemplate0,
-} from "./render/refresh";
+when (refresh || hcr) {
+	export {
+		refreshBoundary,
+		refreshBoundary0,
+		refreshComponent,
+		refreshComponent0,
+		refreshDependency,
+		refreshImports,
+		refreshKeep,
+		refreshModule,
+		refreshModuleEval,
+		refreshRegion,
+		refreshState,
+		refreshTemplate,
+		refreshTemplate0,
+	} from "./render/refresh";
+}
