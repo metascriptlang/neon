@@ -2,7 +2,7 @@ import { Signal, untrack } from "./signal";
 import { isTracking } from "./runtime";
 import { isArray, isObject } from "std/typetraits";
 import { proxyHandler } from "std/core/proxy";
-import { fieldsLiteral } from "./storeFields";
+import { fieldsLiteral, fieldsDo, keyedBy } from "./storeFields";
 
 type Element<T> = T extends Array<infer E> ? E : never;
 
@@ -103,6 +103,15 @@ export class StoreTraps<T> {
 
 	has<K extends keyof T>(target: T, key: K): boolean {
 		return Reflect.has(this.raw, key);
+	}
+
+	mergeIn(next: T, key: string | null): void {
+		this.privatize();
+		when (isArray<T>()) {
+			mergeRows(this, next, key);
+		} else {
+			fieldsDo(this.raw, "mergeField", new MergePlan<T>(this, next, key));
+		}
 	}
 
 	snapshot(): T {
@@ -288,6 +297,10 @@ export class DraftTraps<T> {
 		return Reflect.has(this.traps.raw, key);
 	}
 
+	storeTraps(): StoreTraps<T> {
+		return this.traps;
+	}
+
 	deleteProperty<K extends keyof T>(target: T, key: K): boolean {
 		return this.traps.remove(key);
 	}
@@ -332,6 +345,125 @@ function snapshotArray<E>(traps: StoreTraps<E[]>): E[] {
 	const out: E[] = [];
 	for (let i = 0; i < traps.raw.length; i += 1) { out.push(snapshotField(traps, i)); }
 	return out;
+}
+
+class MergePlan<T> {
+	traps: StoreTraps<T>;
+	next: T;
+	key: string | null;
+
+	constructor(traps: StoreTraps<T>, next: T, key: string | null) {
+		this.traps = traps;
+		this.next = next;
+		this.key = key;
+	}
+}
+
+function keyText<V>(value: V): string {
+	return `${value}`;
+}
+
+function keyNotAtomic(name: string): string {
+	throw new Error(`reconcile key '${name}' is not a number, string or boolean field`);
+}
+
+function sameEntity<V>(old: V, next: V, key: string | null): boolean {
+	if (key === null) { return true; }
+	const was: string | null = keyedBy(old, key);
+	const now: string | null = keyedBy(next, key);
+	return was === null || now === null || was === now;
+}
+
+function mergeField<T, K extends keyof T>(plan: MergePlan<T>, name: K): boolean {
+	const traps = plan.traps;
+	const next = Reflect.get(plan.next, name);
+	when (isObject<T[K]>()) {
+		const old = Reflect.get(traps.raw, name);
+		if (old === next) { return true; }
+		if (sameEntity(old, next, plan.key)) {
+			traps.child(name, old).mergeIn(next, plan.key);
+		} else {
+			traps.write(name, next);
+		}
+	} else {
+		traps.write(name, next);
+	}
+	return true;
+}
+
+function mergedRow<E>(traps: StoreTraps<E[]>, index: number, old: E, next: E, key: string | null): E {
+	if (old === next || !sameEntity(old, next, key)) { return next; }
+	const row = traps.child(index, old);
+	row.mergeIn(next, key);
+	return row.raw;
+}
+
+function mergeRows<E>(traps: StoreTraps<E[]>, next: E[], key: string | null): void {
+	const before = traps.raw.length;
+	const arranged: E[] = [];
+	when (isObject<E>()) {
+		const old = traps.raw;
+		let i: number = 0;
+		if (key !== null) {
+			const end = before < next.length ? before : next.length;
+			while (i < end) {
+				if (old[i] !== next[i] && !sameKeyed(old[i], next[i], key)) { break; }
+				arranged.push(mergedRow(traps, i, old[i], next[i], key));
+				i += 1;
+			}
+			const byKey = new Map<string, number[]>();
+			for (let j = i; j < before; j += 1) {
+				const name: string | null = keyedBy(old[j], key);
+				if (name === null) { continue; }
+				const found = byKey.get(name);
+				if (found === undefined) { byKey.set(name, [j]); } else { found.push(j); }
+			}
+			while (i < next.length) {
+				const name: string | null = keyedBy(next[i], key);
+				let at: number = -1;
+				if (name === null) {
+					if (i < before) { at = i; }
+				} else {
+					const found = byKey.get(name);
+					if (found !== undefined && found.length > 0) { at = found.shift() as number; }
+				}
+				arranged.push(at < 0 ? next[i] : mergedRow(traps, at, old[at], next[i], key));
+				i += 1;
+			}
+		} else {
+			while (i < next.length) {
+				arranged.push(i < before ? mergedRow(traps, i, old[i], next[i], key) : next[i]);
+				i += 1;
+			}
+		}
+	} else {
+		for (let i = 0; i < next.length; i += 1) { arranged.push(next[i]); }
+	}
+	for (let i = 0; i < arranged.length; i += 1) {
+		if (i >= before || traps.raw[i] !== arranged[i]) { traps.write(i, arranged[i]); }
+	}
+	if (arranged.length < before) { traps.write("length", arranged.length); }
+}
+
+function sameKeyed<V>(a: V, b: V, key: string): boolean {
+	const x: string | null = keyedBy(a, key);
+	return x !== null && x === keyedBy(b, key);
+}
+
+export function reconcile<T>(value: T, key: string | null = "id"): (draft: Draft<T>) => void {
+	return (draft: Draft<T>): void => {
+		when (debug) {
+			if (writing === 0) { throw new Error("reconcile was applied outside a setStore call"); }
+		}
+		const traps = proxyHandler(draft).storeTraps();
+		if (key !== null) {
+			const was: string | null = keyedBy(traps.raw, key);
+			if (was !== null && was !== keyedBy(value, key)) {
+				throw new Error("Cannot reconcile states with different identity");
+			}
+		}
+		traps.mergeIn(value, key);
+	};
 }
 
 export function snapshot<T>(store: Store<T>): T {

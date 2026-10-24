@@ -4,7 +4,7 @@ import { createMemo } from "../../src/core/memo";
 import { createRoot } from "../../src/core/owner";
 import { flush } from "../../src/core/runtime";
 import { Cleanup } from "../../src/core/types";
-import { createStore, snapshot } from "../../src/core/store";
+import { createStore, snapshot, reconcile } from "../../src/core/store";
 
 interface Todo { id: number; title: string; done: boolean; }
 interface Item { id: number; title: string; }
@@ -330,4 +330,191 @@ test "a row held across a shift is copied at its new index, and the array keeps 
 	const snap = snapshot(todos);
 	assert snap.length === 1 && snap[0].title === "B", "backing length: " + snap.length.toString();
 	assert seed.length === 2 && seed[0].title === "a" && seed[1].title === "b", "seed";
+}
+
+interface Row { id: number; name: string; count: number; }
+interface Pair { data: number; label: string; }
+interface Board { title: string; owner: User; rows: Row[]; }
+
+const JOHN: Row = { id: 1, name: "John", count: 1 };
+const NED: Row = { id: 2, name: "Ned", count: 2 };
+const BRANDON: Row = { id: 3, name: "Brandon", count: 3 };
+const ARYA: Row = { id: 4, name: "Arya", count: 4 };
+
+function ids(rows: Row[]): string {
+	let all = "";
+	for (let i = 0; i < rows.length; i += 1) { all += rows[i].id.toString() + ","; }
+	return all;
+}
+
+test "reconcile merges an object: only a changed field re-runs its readers" {
+	const [state, setState] = createStore<Pair>({ data: 2, label: "a" });
+	const data: number[] = [];
+	const label: string[] = [];
+	createRoot((d) => {
+		createEffect<number>((p: number | null): number => state.data, (v: number, p: number | null): Cleanup | null => { data.push(v); return null; });
+		createEffect<string>((p: string | null): string => state.label, (v: string, p: string | null): Cleanup | null => { label.push(v); return null; });
+	});
+	flush();
+	setState(reconcile<Pair>({ data: 5, label: "a" }, null));
+	flush();
+	assert data.join(",") === "2,5" && label.join(",") === "a", "data " + data.join(",") + " label " + label.join(",");
+	assert state.data === 5 && state.label === "a";
+}
+
+test "reconcile at a nested path merges into that record" {
+	const [state, setState] = createStore<Board>({ title: "t", owner: { firstName: "John", lastName: "Snow" }, rows: [] });
+	let runs = 0;
+	createRoot((d) => {
+		createEffect<string>((p: string | null): string => { runs += 1; return state.owner.lastName; }, (v: string, p: string | null): Cleanup | null => null);
+	});
+	flush();
+	setState((s) => { reconcile<User>({ firstName: "Jake", lastName: "Snow" }, null)(s.owner); });
+	flush();
+	assert state.owner.firstName === "Jake" && state.owner.lastName === "Snow", "owner";
+	assert runs === 1, "the unchanged field's reader ran " + runs.toString() + " times";
+}
+
+test "reconcile reorders a keyed array and keeps the rows themselves" {
+	const [state, setState] = createStore<{ users: Row[] }>({ users: [JOHN, NED, BRANDON] });
+	setState((s) => { reconcile<Row[]>([NED, JOHN, BRANDON], "id")(s.users); });
+	flush();
+	let users = snapshot(state).users;
+	assert users[0] === NED && users[1] === JOHN && users[2] === BRANDON, "swap: " + ids(users);
+	setState((s) => { reconcile<Row[]>([NED, BRANDON, JOHN, ARYA], "id")(s.users); });
+	flush();
+	users = snapshot(state).users;
+	assert users.length === 4 && users[1] === BRANDON && users[2] === JOHN && users[3] === ARYA, "add: " + ids(users);
+	setState((s) => { reconcile<Row[]>([BRANDON, JOHN, ARYA], "id")(s.users); });
+	flush();
+	users = snapshot(state).users;
+	assert users.length === 3 && users[0] === BRANDON && users[1] === JOHN && users[2] === ARYA, "remove: " + ids(users);
+	assert JOHN.name === "John" && JOHN.count === 1, "the incoming rows are never written";
+}
+
+test "a keyed row matched by id keeps its readers: only a changed field re-runs" {
+	const [state, setState] = createStore<Row[]>([{ id: 1, name: "a", count: 1 }, { id: 2, name: "b", count: 2 }]);
+	const name0: string[] = [];
+	const count0: number[] = [];
+	const count1: number[] = [];
+	createRoot((d) => {
+		createEffect<string>((p: string | null): string => state[0].name, (v: string, p: string | null): Cleanup | null => { name0.push(v); return null; });
+		createEffect<number>((p: number | null): number => state[0].count, (v: number, p: number | null): Cleanup | null => { count0.push(v); return null; });
+		createEffect<number>((p: number | null): number => state[1].count, (v: number, p: number | null): Cleanup | null => { count1.push(v); return null; });
+	});
+	flush();
+	setState(reconcile<Row[]>([{ id: 1, name: "a", count: 10 }, { id: 2, name: "b", count: 2 }], "id"));
+	flush();
+	assert name0.join(",") === "a", "name0: " + name0.join(",");
+	assert count0.join(",") === "1,10", "count0: " + count0.join(",");
+	assert count1.join(",") === "2", "count1: " + count1.join(",");
+}
+
+test "a held row follows its id through a keyed reorder" {
+	const [state, setState] = createStore<Row[]>([{ id: 1, name: "a", count: 1 }, { id: 2, name: "b", count: 2 }]);
+	const row = state[1];
+	const seen: string[] = [];
+	createRoot((d) => {
+		createEffect<string>((p: string | null): string => row.name, (v: string, p: string | null): Cleanup | null => { seen.push(v); return null; });
+	});
+	flush();
+	setState(reconcile<Row[]>([{ id: 2, name: "B", count: 2 }, { id: 1, name: "a", count: 1 }], "id"));
+	flush();
+	assert row.name === "B" && state[0].name === "B" && state[1].name === "a", "names";
+	assert seen.join(",") === "b,B", "seen: " + seen.join(",");
+}
+
+test "a keyed reconcile that drops and adds rows notifies the length and the cut index" {
+	const [state, setState] = createStore<Row[]>([{ id: 1, name: "a", count: 1 }, { id: 2, name: "b", count: 2 }, { id: 3, name: "c", count: 3 }]);
+	const lengths: number[] = [];
+	let tail = "";
+	createRoot((d) => {
+		createEffect<number>((p: number | null): number => state.length, (v: number, p: number | null): Cleanup | null => { lengths.push(v); return null; });
+		createEffect<string>((p: string | null): string => state.length > 2 ? state[2].name : "none", (v: string, p: string | null): Cleanup | null => { tail = v; return null; });
+	});
+	flush();
+	setState(reconcile<Row[]>([{ id: 1, name: "a", count: 1 }], "id"));
+	flush();
+	assert state.length === 1 && lengths.join(",") === "3,1" && tail === "none", "shrink: " + lengths.join(",") + " " + tail;
+	setState(reconcile<Row[]>([{ id: 1, name: "a", count: 1 }, { id: 5, name: "e", count: 5 }, { id: 6, name: "f", count: 6 }], "id"));
+	flush();
+	assert state.length === 3 && lengths.join(",") === "3,1,3" && tail === "f" && state[1].name === "e", "grow: " + lengths.join(",") + " " + tail;
+}
+
+test "a positional reconcile merges index by index into the rows already there" {
+	const [state, setState] = createStore<{ rows: Row[] }>({ rows: [{ id: 7, name: "x", count: 1 }, { id: 8, name: "y", count: 2 }] });
+	const row0 = state.rows[0];
+	const seen: number[] = [];
+	createRoot((d) => {
+		createEffect<number>((p: number | null): number => row0.count, (v: number, p: number | null): Cleanup | null => { seen.push(v); return null; });
+	});
+	flush();
+	setState((s) => { reconcile<Row[]>([{ id: 7, name: "x", count: 11 }, { id: 9, name: "z", count: 21 }], null)(s.rows); });
+	flush();
+	assert row0.count === 11 && state.rows[0].count === 11, "row0";
+	assert state.rows[1].id === 9 && state.rows[1].name === "z" && state.rows[1].count === 21, "row1";
+	assert seen.join(",") === "1,11", "seen: " + seen.join(",");
+}
+
+test "a reconcile of a primitive array rewrites it in place" {
+	const [state, setState] = createStore<string[]>(["a", "b", "c"]);
+	let last = "";
+	createRoot((d) => {
+		createEffect<string>((p: string | null): string => state.length > 1 ? state[1] : "none", (v: string, p: string | null): Cleanup | null => { last = v; return null; });
+	});
+	flush();
+	setState(reconcile<string[]>(["a"], null));
+	flush();
+	assert state.length === 1 && last === "none", "shrink: " + last;
+	setState(reconcile<string[]>(["z", "y"], null));
+	flush();
+	assert state.length === 2 && state[0] === "z" && last === "y", "grow: " + last;
+}
+
+test "reconcile refuses another entity at the root, by key" {
+	const [user, setUser] = createStore<Row>({ id: 1, name: "John", count: 1 });
+	let message = "";
+	try { setUser(reconcile<Row>({ id: 2, name: "Ned", count: 2 }, "id")); } catch (e) { message = (e as Error).message; }
+	assert message === "Cannot reconcile states with different identity", "message: " + message;
+	flush();
+	assert user.id === 1 && user.name === "John", "the store is untouched";
+	setUser(reconcile<Row>({ id: 1, name: "Jon", count: 1 }, "id"));
+	flush();
+	assert user.name === "Jon", "the same entity merges";
+}
+
+test "reconcile refuses another entity at a nested path" {
+	const [state, setState] = createStore<{ owner: Row }>({ owner: { id: 1, name: "John", count: 1 } });
+	let message = "";
+	try { setState((s) => { reconcile<Row>({ id: 2, name: "Ned", count: 2 }, "id")(s.owner); }); } catch (e) { message = (e as Error).message; }
+	assert message === "Cannot reconcile states with different identity", "message: " + message;
+}
+
+test "reconcile writes neither the seed nor the incoming data" {
+	const seedRows: Row[] = [{ id: 1, name: "a", count: 1 }, { id: 2, name: "b", count: 2 }];
+	const incoming: Row[] = [{ id: 2, name: "B", count: 20 }, { id: 3, name: "c", count: 3 }];
+	const [state, setState] = createStore<Row[]>(seedRows);
+	setState(reconcile<Row[]>(incoming, "id"));
+	flush();
+	setState((s) => { s[0].count = 99; s[1].count = 98; });
+	flush();
+	assert state[0].count === 99 && state[1].count === 98 && state[0].name === "B", "store";
+	assert seedRows[0].name === "a" && seedRows[1].name === "b" && seedRows[1].count === 2 && seedRows.length === 2, "seed";
+	assert incoming[0].count === 20 && incoming[1].count === 3 && incoming.length === 2, "incoming";
+}
+
+test "reconcile descends into a nested record: an unchanged leaf's reader does not re-run" {
+	const [state, setState] = createStore<Board>({ title: "t", owner: { firstName: "John", lastName: "Snow" }, rows: [{ id: 1, name: "a", count: 1 }] });
+	let runs = 0;
+	let rowRuns = 0;
+	createRoot((d) => {
+		createEffect<string>((p: string | null): string => { runs += 1; return state.owner.lastName; }, (v: string, p: string | null): Cleanup | null => null);
+		createEffect<string>((p: string | null): string => { rowRuns += 1; return state.rows[0].name; }, (v: string, p: string | null): Cleanup | null => null);
+	});
+	flush();
+	setState(reconcile<Board>({ title: "t2", owner: { firstName: "Jake", lastName: "Snow" }, rows: [{ id: 1, name: "a", count: 2 }] }, "id"));
+	flush();
+	assert state.title === "t2" && state.owner.firstName === "Jake" && state.rows[0].count === 2, "merged";
+	assert runs === 1, "owner.lastName ran " + runs.toString() + " times";
+	assert rowRuns === 1, "rows[0].name ran " + rowRuns.toString() + " times";
 }
