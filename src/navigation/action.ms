@@ -5,7 +5,7 @@ import { replyOf } from "./route";
 import { Router, SubmissionBase, useRouter } from "./router";
 import { revalidate } from "./data";
 
-const ACTION_URL = "https://action/";
+export const ACTION_URL = "https://action/";
 
 class Outcome<R> {
 	value: R | null;

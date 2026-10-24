@@ -1,8 +1,6 @@
 import { Dispose } from "../../core/types";
 import { RoutingHistory, RoutingHistoryEntry } from "../../navigation/routingHistory";
-import { FormData } from "../../navigation/action";
-
-const ACTION_PREFIX = "https://action/";
+import { ACTION_URL, FormData } from "../../navigation/action";
 
 when (js) {
 	interface BrowserRoutingState {
@@ -172,7 +170,7 @@ export function followSubmits(submit: (url: string, data: FormData) => boolean):
 			const sent = event as Event;
 			const url = submitUrl(sent);
 			if (url === "") { return; }
-			if (url.startsWith(ACTION_PREFIX) && submitMethod(sent) !== "POST") {
+			if (url.startsWith(ACTION_URL) && submitMethod(sent) !== "POST") {
 				throw new Error("Only POST forms are supported for Actions");
 			}
 			const data = new FormData();
