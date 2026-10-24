@@ -50,6 +50,7 @@ test "a lazy component whose module has loaded mounts at once with no fallback" 
 	dispose();
 }
 
+// Parked on ~/metascript/.inbox/compiler/2026-10-24-msc-test-of-a-dynamic-import-aborts-on-c-with-no-module-record.md: the real import runs on C too once msc test keeps its module record.
 when (js) {
 	import { sleepAsync } from "std/core/promise";
 
