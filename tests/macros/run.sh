@@ -65,4 +65,10 @@ expect_reject_both tests/macros/navigateMissingParamsRejected.ms "Too few argume
 expect_reject_both tests/macros/navigateWrongParamTypeRejected.ms "Type 'int32' is not assignable to type 'string'"
 expect_reject_both tests/macros/navigateParamsToParamlessRejected.ms "Argument type mismatch in 'navigate' arg 1: got { id: string; }, expected null"
 expect_reject_both tests/macros/screenNameTypoRejected.ms "Type 'string' is not assignable to type '\"Home\"'"
+expect_reject_both tests/macros/htmlUnknownTagRejected.ms "<dvi> is not an HTML element: did you mean <div>?"
+expect_reject_both tests/macros/htmlUnknownAttributeRejected.ms "<div> has no attribute 'clas': did you mean 'class'?"
+expect_reject_both tests/macros/htmlAttributeLiteralRejected.ms "<button> attribute 'type' takes .*, not \"link\""
+expect_reject_both tests/macros/htmlAttributeTypeRejected.ms "<td> attribute 'colspan' takes number | string, not boolean"
+expect_reject_both tests/macros/htmlAttributeNeverRejected.ms "<dialog> does not take the attribute 'tabindex'"
+expect_reject tests/macros/htmlRefTypeRejected.ms "parameter 'c' takes HTMLDivElement, but the expected function passes it HTMLCanvasElement"
 exit $fail
