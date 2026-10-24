@@ -15,6 +15,7 @@ export { Dispose, Cleanup, NotReadyError } from "./core/types";
 export { Host, HostNode, NeonNode } from "./render/hostTypes";
 export { render, hydrate } from "./render/host";
 export { renderToString, renderToMarkup, renderToStream, StreamSink, SsrMarkup } from "./render/ssr";
+export { App, Served, htmlDocument, serve } from "./render/serve";
 export { isServer } from "./render/environment";
 export { Head } from "./render/head";
 export { createComponent } from "./render/component";
