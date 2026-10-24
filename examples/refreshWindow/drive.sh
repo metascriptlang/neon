@@ -9,6 +9,7 @@ ROOT=$(cd "$SRC/../.." && pwd)
 WORK=$ROOT/out/refreshWindow
 LOG=$WORK/dev.log
 EVENTS=$WORK/events.jsonl
+BUILD_EVENTS=$WORK/build.jsonl
 PORT=$(python -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')
 WIN="powershell -NoProfile -ExecutionPolicy Bypass -File $(cygpath -w "$SRC/win.ps1")"
 FAILED=0
@@ -55,9 +56,9 @@ reloaded() {
 }
 
 mkdir -p "$WORK"
-rm -f "$WORK"/*.png "$EVENTS"
+rm -f "$WORK"/*.png "$EVENTS" "$BUILD_EVENTS"
 for f in build.ms app.ms counter.ms; do cp "$SRC/$f" "$WORK/$f"; done
-(cd "$WORK" && NEON_CONTROL=$PORT NEON_EVENTS=$(cygpath -w "$EVENTS") exec msc run --hcr app.ms) > "$LOG" 2>&1 &
+(cd "$WORK" && NEON_CONTROL=$PORT NEON_EVENTS=$(cygpath -w "$EVENTS") exec msc run --hcr --events=$(cygpath -w "$BUILD_EVENTS") app.ms) > "$LOG" 2>&1 &
 DEV=$!
 trap 'win close > /dev/null 2>&1; sleep 1; kill $DEV 2> /dev/null' EXIT
 next "^RW layout" 300 || { tail -20 "$LOG"; fail "the window did not lay out"; exit 1; }
@@ -99,6 +100,8 @@ shot s3
 check "events: ready" "$(grep -c '"event":"ready"' "$EVENTS")" "1"
 check "events: one reloaded per edit" "$(grep -c '"event":"reload","kind":"reloaded"' "$EVENTS")" "2"
 has "events: the template edit rebuilt a region" "$(grep '"event":"refresh"' "$EVENTS" | head -1)" '"module":'
+check "msc events: one build.done per edit after the first build" "$(grep -c '"event":"build.done"' "$BUILD_EVENTS")" "3"
+check "msc events: one reloaded per edit" "$(grep '"event":"reload"' "$BUILD_EVENTS" | grep -c '"kind":"reloaded"')" "2"
 
 [ $FAILED = 0 ] && echo "RESULT PASS" || { echo "RESULT FAIL"; tail -30 "$LOG"; }
 exit $FAILED
