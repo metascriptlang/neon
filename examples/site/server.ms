@@ -1,4 +1,4 @@
-import { App, Request, Response, fetchPage, htmlDocument } from "../../src/render/serve";
+import { App, Served, htmlDocument, serve } from "../../src/render/serve";
 import { Note, NotFound, noteOf, routes } from "./site";
 
 export { staticPaths } from "./site";
@@ -9,6 +9,14 @@ export function noteJson(slug: string): string {
 	return JSON.stringify<Note>(noteOf(slug, "from the api"));
 }
 
-export function respond(request: Request): Promise<Response> {
-	return fetchPage(app, request);
+export function answer(url: string): Promise<Served> {
+	return serve(app, url);
+}
+
+when (js) {
+	import { Request, Response, fetchPage } from "../../src/render/serve";
+
+	export function respond(request: Request): Promise<Response> {
+		return fetchPage(app, request);
+	}
 }
