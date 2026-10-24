@@ -1,6 +1,7 @@
 import { Accessor, Signal, accessor, untrack } from "../core/signal";
-import { flush } from "../core/runtime";
-import { Dispose } from "../core/types";
+import { flush, getOwner } from "../core/runtime";
+import { Computation, Dispose } from "../core/types";
+import { runWithOwner } from "../core/owner";
 import { mapArray } from "../core/array";
 import { Host, HostNode, NeonNode } from "../render/hostTypes";
 import { createComponent } from "../render/component";
@@ -16,14 +17,23 @@ import {
 } from "./routing";
 import { RoutingHistory, RoutingSession, createRoutingSession } from "./routingHistory";
 import {
+	GuardAction,
 	GuardDecision,
 	MatchedRoute,
+	RouteDef,
+	RouteSectionProps,
 	RouteEntry,
 	RouteMatch,
 	RouteNode,
 	RouteTree,
+	PreloadArgs,
+	PreloadIntent,
+	Reply,
+	RouterLocation,
 	createRouteTree,
+	hrefOf,
 	path,
+	sectionProps,
 } from "./route";
 import { PathMatch, createMatcher, expandOptionals, normalizePath } from "./routeMatcher";
 import { NavigationChild } from "./children";
@@ -49,6 +59,12 @@ export interface LayoutProps {
 	children: NeonNode;
 }
 
+export type RouteComponent = (props: RouteSectionProps<Map<string, string>, unknown>) => NeonNode;
+
+export function componentOf<P, D>(target: RouteDef<P, D>, make: (props: RouteSectionProps<P, D>) => NeonNode): RouteComponent {
+	return (props: RouteSectionProps<Map<string, string>, unknown>): NeonNode => make(sectionProps<P, D>(target, props));
+}
+
 export enum RouteNavigator {
 	Stack,
 	Tabs,
@@ -64,7 +80,7 @@ export interface RouteRef {
 export interface RouteConfig {
 	path?: string | null;
 	route?: RouteRef | null;
-	component?: (() => NeonNode) | null;
+	component?: RouteComponent | null;
 	layout?: ((props: LayoutProps) => NeonNode) | null;
 	navigator?: RouteNavigator | null;
 	initial?: string | null;
@@ -75,12 +91,13 @@ export interface RouteConfig {
 	status?: int32 | null;
 	guard?: ((params: Map<string, string>, found: RouteMatch) => GuardDecision) | null;
 	paths?: (() => Map<string, string>[]) | null;
+	preload?: ((args: PreloadArgs<Map<string, string>>) => void) | null;
 	children?: RouteConfig[] | null;
 }
 
 export interface RouteView {
 	node: RouteNode;
-	component: (() => NeonNode) | null;
+	component: RouteComponent | null;
 	layout: ((props: LayoutProps) => NeonNode) | null;
 	navigator: RouteNavigator | null;
 	initial: int32;
@@ -189,11 +206,11 @@ function compile(configs: RouteConfig[], views: RouteView[], ids: int32[], paren
 			throw new Error("routing: " + labelOf(config) + " has children, so it takes a layout, not a component");
 		}
 		const typed = config.route;
-		if (typed !== null && (config.path !== null || config.status !== null || config.guard !== null || config.paths !== null)) {
-			throw new Error("routing: " + labelOf(config) + " takes its path, status, guard and paths from its route");
+		if (typed !== null && (config.path !== null || config.status !== null || config.guard !== null || config.paths !== null || config.preload !== null)) {
+			throw new Error("routing: " + labelOf(config) + " takes its path, status, guard, paths and preload from its route");
 		}
 		const node = typed === null
-			? path(config.path, { status: config.status, guard: config.guard, paths: config.paths }).node
+			? path(config.path, { status: config.status, guard: config.guard, paths: config.paths, preload: config.preload }).node
 			: (typed as RouteRef).node;
 		const id = views.length as int32;
 		const view: RouteView = {
@@ -226,11 +243,7 @@ export function createRoutes(configs: RouteConfig[]): Routes {
 	return { tree: createRouteTree(entries), views, roots };
 }
 
-export interface RouterLocation {
-	pathname: string;
-	search: Map<string, string>;
-	hash: string;
-}
+export { RouterLocation, PreloadArgs, PreloadIntent } from "./route";
 
 export interface RouterResponse {
 	status: int32;
@@ -238,6 +251,13 @@ export interface RouterResponse {
 }
 
 export interface NavigateOptions {
+	replace?: boolean | null;
+}
+
+export interface ToOptions<P, D> {
+	to: RouteDef<P, D>;
+	params: P;
+	search?: Map<string, string> | null;
 	replace?: boolean | null;
 }
 
@@ -303,6 +323,7 @@ interface Stop {
 	params: Map<string, string>;
 	search: Map<string, string>;
 	hash: string;
+	intent: PreloadIntent;
 }
 
 struct StopKey {
@@ -363,6 +384,7 @@ function stopOf(
 	hash: string,
 	seed: string,
 	visit: int32,
+	intent: PreloadIntent,
 ): Stop {
 	const matched = chain[depth];
 	const parent = depth === 0 ? "" : chain[depth - 1].path;
@@ -376,10 +398,11 @@ function stopOf(
 		params: matched.params,
 		search,
 		hash,
+		intent,
 	};
 }
 
-function defaultStop(routes: Routes, id: int32, parent: string): Stop {
+function defaultStop(routes: Routes, id: int32, parent: string, intent: PreloadIntent): Stop {
 	const view = routes.views[id];
 	const none = new Map<string, string>();
 	const built = routes.tree.href(view.node, none, none);
@@ -396,6 +419,7 @@ function defaultStop(routes: Routes, id: int32, parent: string): Stop {
 		params: none,
 		search: none,
 		hash: "",
+		intent,
 	};
 }
 
@@ -443,7 +467,7 @@ function stopSerializer(routes: Routes): WebKeySerializer<Stop> {
 			for (let depth: int32 = 0; depth < chain.length; depth += 1) {
 				if (chain[depth].node !== node) { continue; }
 				const none = new Map<string, string>();
-				return Result.ok(stopOf(routes, chain, depth, none, "", key.seed, key.visit));
+				return Result.ok(stopOf(routes, chain, depth, none, "", key.seed, key.visit, "native"));
 			}
 			return Result.err(WebNavigationError.UndecodableKey);
 		},
@@ -474,14 +498,14 @@ function seedStops(
 	from: Stop,
 	seeding: Seeding,
 ): Stop[] {
-	if (chain === null) { return [defaultStop(routes, defaultChild(routes, owner), parent)]; }
+	if (chain === null) { return [defaultStop(routes, defaultChild(routes, owner), parent, from.intent)]; }
 	const matched = chain as MatchedRoute[];
 	const leaf = depth === matched.length - 1;
 	const seed = leaf ? pathnameOf(from.seed) : from.seed;
-	const target = stopOf(routes, matched, depth, from.search, from.hash, seed, 0);
+	const target = stopOf(routes, matched, depth, from.search, from.hash, seed, 0, from.intent);
 	const initial = owner < 0 || !seeding.cold ? -1 : routes.views[owner].initial;
 	if (initial < 0 || initial === target.route) { return [target]; }
-	return [defaultStop(routes, initial, parent), target];
+	return [defaultStop(routes, initial, parent, from.intent), target];
 }
 
 function createLevel(
@@ -512,7 +536,7 @@ function createLevel(
 				items.push(seedStops(routes, owner, parent, chain, depth, from, seeding)[0]);
 				selectedIndex = i as int32;
 			} else {
-				items.push(defaultStop(routes, id, parent));
+				items.push(defaultStop(routes, id, parent, from.intent));
 			}
 		}
 		const pages = createChildPages<Stop, Place>({ items, selectedIndex }, stopKey, factory);
@@ -633,6 +657,7 @@ interface Target {
 	hash: string;
 	seed: string;
 	replace: boolean;
+	intent: PreloadIntent;
 }
 
 function updated(stop: Stop, target: Target): Stop {
@@ -663,7 +688,7 @@ function walk(routes: Routes, level: Level, target: Target, depth: int32): Walke
 		const page = current.items[at];
 		if (page.path !== routePath) {
 			const items = current.items.slice(0);
-			items[at] = stopOf(routes, chain, depth, target.search, target.hash, seed, 0);
+			items[at] = stopOf(routes, chain, depth, target.search, target.hash, seed, 0, target.intent);
 			level.visit(at);
 			pages.navigate((previous: Pages<Stop>): Pages<Stop> => ({ items, selectedIndex: at }));
 			return Walked.Changed;
@@ -704,12 +729,13 @@ function walk(routes: Routes, level: Level, target: Target, depth: int32): Walke
 		target.hash,
 		seed,
 		freeVisit(stops, route, routePath, skip),
+		target.intent,
 	);
 	if (target.replace) { stack.replaceCurrent(next); } else { stack.push(next); }
 	return Walked.Changed;
 }
 
-function targetOf(resolved: Resolved, replace: boolean): Target {
+function targetOf(resolved: Resolved, replace: boolean, intent: PreloadIntent): Target {
 	const match = resolved.match;
 	return {
 		chain: match.chain,
@@ -717,6 +743,7 @@ function targetOf(resolved: Resolved, replace: boolean): Target {
 		hash: match.hash,
 		seed: pathnameOf(resolved.address),
 		replace,
+		intent,
 	};
 }
 
@@ -751,10 +778,23 @@ struct RouterEntry {
 	document: string;
 }
 
+export class SubmissionBase {
+	url: string;
+
+	constructor(url: string) {
+		this.url = url;
+	}
+}
+
 export class Router {
 	routes: Routes;
 	match: Accessor<RouteMatch>;
 	location: Accessor<RouterLocation>;
+	submissions: Signal<SubmissionBase[]> = new Signal<SubmissionBase[]>([]);
+	intent: PreloadIntent | null = null;
+	inPreload: boolean = false;
+	private owner: Computation | null = null;
+	private redirected: Reply | null = null;
 	private root: Level;
 	private current: Signal<Resolved>;
 	private history: RoutingHistory;
@@ -776,6 +816,8 @@ export class Router {
 
 	view(): NeonNode {
 		const steer: Steer = {
+			within: (intent: PreloadIntent, run: () => void): void => { this.within(intent, run); },
+			preloading: (intent: PreloadIntent, run: () => void): void => { this.preloading(intent, run); },
 			navigate: (href: string): boolean => this.navigate(href),
 			popToRoot: (stack: ChildStack<Stop, Place>): void => {
 				this.group((): void => { stack.popTo(0); }, false);
@@ -783,7 +825,11 @@ export class Router {
 				if (settled.ok) { this.current.set(settled.value); }
 			},
 		};
-		return levelView(this.routes, this.root, steer);
+		const body = levelView(this.routes, this.root, steer, null);
+		return (host: Host, parent: HostNode, before: HostNode | null): void => {
+			this.owner = getOwner();
+			body(host, parent, before);
+		};
 	}
 
 	connect(session: RoutingSession, stop: Dispose | null, group: (change: () => void, visit: boolean) => void): void {
@@ -792,10 +838,10 @@ export class Router {
 		this.group = group;
 	}
 
-	apply(resolved: Resolved, replace: boolean, visit: boolean = false): Walked {
+	apply(resolved: Resolved, replace: boolean, visit: boolean = false, intent: PreloadIntent = "native"): Walked {
 		let walked = Walked.Unchanged;
 		this.group((): void => {
-			walked = walk(this.routes, this.root, targetOf(resolved, replace), 0);
+			walked = walk(this.routes, this.root, targetOf(resolved, replace, intent), 0);
 			this.current.set(resolved);
 		}, visit);
 		return walked;
@@ -814,17 +860,78 @@ export class Router {
 		this.apply(resolved, true);
 	}
 
+	navigate<P, D>(options: ToOptions<P, D>): boolean {
+		const built = hrefOf<P, D>(this.routes.tree, options.to, options.params, options.search ?? new Map<string, string>());
+		if (!built.ok) { throw new Error("routing: navigate({ to }) cannot build an address for " + (options.to.node.pattern ?? "a pathless route") + ": " + built.error.toString()); }
+		return this.navigate(built.value, { replace: options.replace ?? false });
+	}
+
 	navigate(href: string, options: NavigateOptions | null = null): boolean {
 		if (!this.history.writable) { throw new Error("routing: request history is read-only"); }
 		const replace = options === null ? false : (options as NavigateOptions).replace ?? false;
 		const resolved = follow(this.routes.tree, href);
 		if (!resolved.ok) { return false; }
-		const walked = this.apply(resolved.value, replace, !replace);
+		const walked = this.apply(resolved.value, replace, !replace, "navigate");
 		const session = this.session;
 		if (walked === Walked.HashOnly && session !== null) {
 			return (session as RoutingSession).sync(replace).ok;
 		}
 		return true;
+	}
+
+	within(intent: PreloadIntent, run: () => void): void {
+		const previous = this.intent;
+		this.intent = intent;
+		try {
+			run();
+		} finally {
+			this.intent = previous;
+		}
+	}
+
+	preloading(intent: PreloadIntent, run: () => void): void {
+		const previous = this.inPreload;
+		this.inPreload = true;
+		try {
+			this.within(intent, run);
+		} finally {
+			this.inPreload = previous;
+		}
+	}
+
+	deliver(reply: Reply, replace: boolean): boolean {
+		if (reply.action !== GuardAction.Redirect) { return false; }
+		if (!this.history.writable) {
+			this.redirected = reply;
+			return false;
+		}
+		if (!reply.address.startsWith("/")) {
+			throw new Error("routing: a response redirects to \"" + reply.address + "\", and a router opens only the addresses of its own routes");
+		}
+		if (!this.navigate(reply.address, { replace })) {
+			throw new Error("routing: a response redirects to " + reply.address + ", which no route matches");
+		}
+		return true;
+	}
+
+	preload(href: string): void {
+		const found = this.routes.tree.match(href);
+		if (!found.ok) { return; }
+		const match = found.value;
+		const location: RouterLocation = { pathname: pathnameOf(href), search: match.search, hash: match.hash };
+		const owner = this.owner;
+		const body = (): void => {
+			for (const level of match.chain) {
+				const preload = level.node.preload;
+				if (preload !== null) {
+					untrack((): number => {
+						(preload as (args: PreloadArgs<Map<string, string>>) => unknown)({ params: level.params, location, intent: "preload" });
+						return 0;
+					});
+				}
+			}
+		};
+		this.preloading("preload", (): void => { runWithOwner<number>(owner, (): number => { body(); return 0; }); });
 	}
 
 	go(delta: int32): boolean {
@@ -838,6 +945,8 @@ export class Router {
 	}
 
 	response(): RouterResponse {
+		const redirected = this.redirected;
+		if (redirected !== null) { return { status: redirected.status, location: redirected.address }; }
 		const resolved = untrack((): Resolved => this.current.get());
 		if (resolved.redirect !== 0) { return { status: resolved.redirect, location: resolved.address }; }
 		return { status: resolved.status, location: null };
@@ -909,6 +1018,7 @@ export function createRouter(routes: Routes, history: RoutingHistory): Result<Ro
 		params: none,
 		search: first.match.search,
 		hash: first.match.hash,
+		intent: "initial",
 	};
 	const seeding: Seeding = { cold: true };
 	const root = createLevel(routes, -1, "", first.match.chain, 0, from, seeding);
@@ -938,18 +1048,29 @@ export function createRouter(routes: Routes, history: RoutingHistory): Result<Ro
 
 interface RouteScope {
 	params: Map<string, string>;
+	node: RouteNode;
+	parent: RouteScope | null;
 }
 
 const RouterContext = createContext<Router | null>(null);
 const RouteContext = createContext<RouteScope | null>(null);
 
-function mountLater(make: () => NeonNode): NeonNode {
+function mountLater(
+	make: RouteComponent,
+	props: RouteSectionProps<Map<string, string>, unknown>,
+	steer: Steer,
+	intent: PreloadIntent,
+): NeonNode {
 	return (host: Host, parent: HostNode, before: HostNode | null): void => {
-		untrack((): number => { make()(host, parent, before); return 0; });
+		steer.within(intent, (): void => {
+			untrack((): number => { make(props)(host, parent, before); return 0; });
+		});
 	};
 }
 
 interface Steer {
+	within: (intent: PreloadIntent, run: () => void) => void;
+	preloading: (intent: PreloadIntent, run: () => void) => void;
 	navigate: (href: string) => boolean;
 	popToRoot: (stack: ChildStack<Stop, Place>) => void;
 }
@@ -1013,8 +1134,8 @@ function tabTriggers(routes: Routes, level: Level, steer: Steer): Accessor<TabTr
 	);
 }
 
-function levelView(routes: Routes, level: Level, steer: Steer): NeonNode {
-	const render = (child: NavigationChild<Stop, Place>): NeonNode => placeView(routes, child, steer);
+function levelView(routes: Routes, level: Level, steer: Steer, parent: RouteScope | null): NeonNode {
+	const render = (child: NavigationChild<Stop, Place>): NeonNode => placeView(routes, child, steer, parent);
 	return match (level.kind) {
 		LevelKind.Slot => renderStackTop<Stop, Place>(level.stack as ChildStack<Stop, Place>, render),
 		LevelKind.Stack => renderStack<Stop, Place>(level.stack as ChildStack<Stop, Place>, render, (child: NavigationChild<Stop, Place>): boolean => {
@@ -1031,18 +1152,30 @@ function tabsFrame(inner: NeonNode): NeonNode {
 	</View>;
 }
 
-function placeView(routes: Routes, child: NavigationChild<Stop, Place>, steer: Steer): NeonNode {
+function placeView(routes: Routes, child: NavigationChild<Stop, Place>, steer: Steer, parent: RouteScope | null): NeonNode {
 	const stop = untrack((): Stop => child.configuration());
 	const found = routes.views[stop.route];
-	const scope: RouteScope = { params: stop.params };
+	const scope: RouteScope = { params: stop.params, node: found.node, parent };
+	const leaf = leafOf(child);
+	const location: RouterLocation = { pathname: leaf.path, search: leaf.search, hash: leaf.hash };
+	const preload = found.node.preload;
+	let data: unknown = null;
+	if (preload !== null) {
+		steer.preloading(stop.intent, (): void => {
+			untrack((): number => {
+				data = (preload as (args: PreloadArgs<Map<string, string>>) => unknown)({ params: stop.params, location, intent: stop.intent });
+				return 0;
+			});
+		});
+	}
 	const component = found.component;
 	const layout = found.layout;
 	let body: NeonNode;
 	if (component !== null) {
-		body = mountLater(component as () => NeonNode);
+		body = mountLater(component as RouteComponent, { params: stop.params, location, data }, steer, stop.intent);
 	} else {
 		const level = child.instance.level as Level;
-		const inner = levelView(routes, level, steer);
+		const inner = levelView(routes, level, steer, scope);
 		if (layout !== null) {
 			body = createComponent<LayoutProps>(layout as (props: LayoutProps) => NeonNode, { children: inner });
 		} else if (level.kind === LevelKind.Tabs) {
@@ -1064,7 +1197,11 @@ export function RouterProvider(props: { router: Router }): NeonNode {
 	return <RouterContext value={router}>{router.view()}</RouterContext>;
 }
 
-function useRouter(caller: string): Router {
+export function routerInScope(): Router | null {
+	return getOwner() === null ? null : useContext(RouterContext);
+}
+
+export function useRouter(caller: string): Router {
 	const router = useContext(RouterContext);
 	if (router === null) { throw new Error("routing: " + caller + " is called outside a RouterProvider"); }
 	return router as Router;
@@ -1074,6 +1211,22 @@ export function useParams(): Map<string, string> {
 	const scope = useContext(RouteContext);
 	if (scope === null) { throw new Error("routing: useParams is called outside a routed component"); }
 	return (scope as RouteScope).params;
+}
+
+export function useParams<P, D>(options: { from: RouteDef<P, D> }): P {
+	const from = options.from;
+	let scope = useContext(RouteContext);
+	if (scope === null) { throw new Error("routing: useParams is called outside a routed component"); }
+	while (scope !== null) {
+		const level = scope as RouteScope;
+		if (level.node === from.node) {
+			const parsed = from.params.parse(level.params);
+			if (!parsed.ok) { throw new Error("routing: the params of " + (from.node.pattern ?? "a pathless route") + " do not parse: " + parsed.error.toString()); }
+			return parsed.value;
+		}
+		scope = level.parent;
+	}
+	throw new Error("routing: useParams({ from }) names " + (from.node.pattern ?? "a pathless route") + ", which is not on this component's route");
 }
 
 export function useNavigate(): (to: string | int32, options?: NavigateOptions | null) => boolean {
@@ -1109,11 +1262,12 @@ function comparable(address: string): string {
 	return decoded.ok ? decoded.value : trimmed;
 }
 
-export function A(props: { href: Accessor<string>; children: NeonNode }): NeonNode {
+export function A(props: { href: Accessor<string>; preload?: boolean | null; children: NeonNode }): NeonNode {
 	const location = useRouter("A").location;
 	const href = props.href;
 	const current = accessor((): string | null => {
 		return comparable(href()) === comparable(location().pathname) ? "page" : null;
 	});
-	return <a href={href()} aria-current={current()}>{props.children}</a>;
+	const preload = props.preload;
+	return <a href={href()} aria-current={current()} preload={preload === null || preload === undefined ? null : preload.toString()}>{props.children}</a>;
 }

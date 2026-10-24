@@ -1,4 +1,4 @@
-import { flush } from "../../src/core/runtime";
+import { flush, resetErrorHalt } from "../../src/core/runtime";
 import { createRoot } from "../../src/core/owner";
 import { createRenderEffect } from "../../src/core/effect";
 import { Cleanup, Dispose } from "../../src/core/types";
@@ -11,7 +11,7 @@ import {
 	createMemoryRoutingHistory,
 	createRequestRoutingHistory,
 } from "../../src/navigation/routingHistory";
-import { GuardDecision, ParamsCodec, RouteMatch, notFound, proceed, redirect, route } from "../../src/navigation/route";
+import { GuardDecision, ParamsCodec, PreloadArgs, RouteMatch, notFound, proceed, redirect, route } from "../../src/navigation/route";
 import { PathMatch } from "../../src/navigation/routeMatcher";
 import {
 	A,
@@ -359,7 +359,88 @@ test "a route tree takes a typed route, whose codec decides the addresses it mat
 	assert router.response().status === 404;
 	router.dispose();
 	const both = failure((): Routes => createRoutes([{ path: "/threads", route: thread, component: Thread }]));
-	assert both === "routing: \"/threads/:id\" takes its path, status, guard and paths from its route", both;
+	assert both === "routing: \"/threads/:id\" takes its path, status, guard, paths and preload from its route", both;
+}
+
+struct ProjectParams {
+	project: string;
+}
+
+const projectCodec: ParamsCodec<ProjectParams> = {
+	parse: (values: Map<string, string>): Result<ProjectParams, RoutingError> => {
+		const project = values.get("project") ?? "";
+		return project.length === 0 ? Result.err(RoutingError.InvalidParams) : Result.ok({ project });
+	},
+	stringify: (params: ProjectParams): Map<string, string> => {
+		const values = new Map<string, string>();
+		values.set("project", params.project);
+		return values;
+	},
+};
+
+const project = route<ProjectParams>("/projects/:project", { params: projectCodec });
+
+function ProjectFrame(props: LayoutProps): NeonNode {
+	return <main><h2>{"project " + useParams({ from: project }).project}</h2>{props.children}</main>;
+}
+
+function ProjectItem(): NeonNode {
+	return <p>{useParams({ from: project }).project + " item " + (useParams().get("item") ?? "")}</p>;
+}
+
+function TypedThread(): NeonNode {
+	const params: ThreadParams = useParams({ from: thread });
+	return <h1>{"thread " + params.id}</h1>;
+}
+
+function StrayThread(): NeonNode {
+	return <h1>{useParams({ from: project }).project}</h1>;
+}
+
+test "useParams({ from }) reads a route's own params or an ancestor's through its codec, and refuses a route off the path" {
+	const routes = createRoutes([
+		{ route: thread, component: TypedThread },
+		{ route: project, layout: ProjectFrame, children: [{ path: ":item", component: ProjectItem }] },
+	]);
+	const router = opened(routes, memory("/threads/7"));
+	const root = mounted(router);
+	assert mockToString(root) === "<root><h1>thread 7</h1></root>", mockToString(root);
+	assert router.navigate("/projects/neon/42");
+	assert mockToString(root) === "<root><main><h2>project neon</h2><p>neon item 42</p></main></root>", mockToString(root);
+	router.dispose();
+	const stray = opened(createRoutes([{ route: thread, component: StrayThread }]), memory("/threads/7"));
+	let refused = "";
+	try { mounted(stray); } catch (error) { refused = error.message; }
+	resetErrorHalt();
+	stray.dispose();
+	assert refused === "routing: useParams({ from }) names /projects/:project, which is not on this component's route", refused;
+}
+
+function QueriedThread(): NeonNode {
+	const location = useLocation();
+	return <h1>{"thread " + useParams({ from: thread }).id + "|" + (location().search.get("q") ?? "-")}</h1>;
+}
+
+test "navigate({ to, params }) writes a typed route's address through its codec, and refuses a route outside the tree" {
+	const history = memory("/threads/7");
+	const router = opened(createRoutes([{ route: thread, component: QueriedThread }]), history);
+	const root = mounted(router);
+	assert router.navigate({ to: thread, params: { id: "8" } });
+	flush();
+	assert mockToString(root) === "<root><h1>thread 8|-</h1></root>", mockToString(root);
+	const search = new Map<string, string>();
+	search.set("q", "a b");
+	assert router.navigate({ to: thread, params: { id: "9" }, search, replace: true });
+	flush();
+	assert history.read().url === "/threads/9?q=a%20b", history.read().url;
+	assert mockToString(root) === "<root><h1>thread 9|a b</h1></root>", mockToString(root);
+	assert history.go(-1);
+	flush();
+	assert mockToString(root) === "<root><h1>thread 7|-</h1></root>", mockToString(root);
+	let refused = "";
+	try { router.navigate({ to: project, params: { project: "neon" } }); } catch (error) { refused = error.message; }
+	assert refused === "routing: navigate({ to }) cannot build an address for /projects/:project: NoMatch", refused;
+	router.dispose();
 }
 
 test "static paths come from the route tree, with enumerated params" {
@@ -438,4 +519,146 @@ test "navigate takes a history delta as Solid's does, and canGoBack follows the 
 	assert mockToString(root) === "<root><div><p>/docs/start|start|</p><h1>doc start</h1></div></root>", mockToString(root);
 	assert seen.join(",") === "false,true,false,true", seen.join(",");
 	stop();
+}
+
+const trace: string[] = [];
+
+function note(entry: string): void {
+	trace.push(entry);
+}
+
+function seen(): string {
+	const text = trace.join(" | ");
+	trace.length = 0;
+	return text;
+}
+
+function PreloadedHome(): NeonNode {
+	note("render home");
+	return <h1>home</h1>;
+}
+
+function PreloadedDoc(): NeonNode {
+	note("render doc");
+	return <h1>{"doc " + (useParams().get("slug") ?? "")}</h1>;
+}
+
+function PreloadedThread(): NeonNode {
+	note("render thread");
+	return <h1>{"thread " + useParams({ from: watched }).id}</h1>;
+}
+
+const watched = route<ThreadParams>("/threads/:id", {
+	params: threadCodec,
+	preload: (args: PreloadArgs<ThreadParams>): void => {
+		note("thread " + args.params.id + " " + args.intent + " " + args.location.pathname);
+	},
+});
+
+function preloadRoutes(): Routes {
+	return createRoutes([
+		{ layout: Shell, children: [
+			{
+				path: "/",
+				component: PreloadedHome,
+				preload: (args: PreloadArgs<Map<string, string>>): void => { note("home " + args.intent); },
+			},
+			{
+				path: "/docs/:slug",
+				component: PreloadedDoc,
+				preload: (args: PreloadArgs<Map<string, string>>): void => {
+					note("doc " + (args.params.get("slug") ?? "") + " " + args.intent + " " + args.location.pathname + " q=" + (args.location.search.get("q") ?? "-"));
+				},
+			},
+			{ route: watched, component: PreloadedThread },
+		] },
+	]);
+}
+
+test "a route's preload runs once before its component, as initial at open and navigate on a link, as Solid's createRouteContext does" {
+	seen();
+	const router = opened(preloadRoutes(), memory("/"));
+	const root = mounted(router);
+	assert seen() === "home initial | render home", "open";
+	assert router.navigate("/docs/start?q=1");
+	flush();
+	assert mockToString(root) === "<root><main><h1>doc start</h1></main></root>", mockToString(root);
+	assert seen() === "doc start navigate /docs/start q=1 | render doc", "navigate";
+	assert router.navigate("/docs/start?q=2");
+	flush();
+	assert seen() === "", "a search change re-ran the preload";
+	assert router.navigate("/docs/other");
+	flush();
+	assert seen() === "doc other navigate /docs/other q=- | render doc", "param change";
+	router.dispose();
+}
+
+test "a typed route's preload takes its params through the codec, as useParams({ from }) does" {
+	seen();
+	const router = opened(preloadRoutes(), memory("/threads/7"));
+	const root = mounted(router);
+	assert seen() === "thread 7 initial /threads/7 | render thread", "open";
+	assert router.navigate({ to: watched, params: { id: "8" } });
+	flush();
+	assert mockToString(root) === "<root><main><h1>thread 8</h1></main></root>", mockToString(root);
+	assert seen() === "thread 8 navigate /threads/8 | render thread", "navigate";
+	router.dispose();
+}
+
+test "a history move preloads the page it shows with the native intent" {
+	seen();
+	const history = memory("/");
+	const router = opened(preloadRoutes(), history);
+	mounted(router);
+	seen();
+	assert router.navigate("/docs/a");
+	flush();
+	seen();
+	assert history.go(-1);
+	flush();
+	const back = seen();
+	assert back === "home native | render home", back;
+	assert history.go(1);
+	flush();
+	assert seen() === "doc a native /docs/a q=- | render doc", "forward";
+	router.dispose();
+}
+
+test "a parent's preload runs before its child's, which runs as the parent renders its children" {
+	seen();
+	const routes = createRoutes([
+		{ path: "/area", layout: Shell, preload: (args: PreloadArgs<Map<string, string>>): void => { note("area " + args.intent + " " + args.location.pathname); }, children: [
+			{ path: "", component: PreloadedHome },
+			{
+				path: ":leaf",
+				component: PreloadedDoc,
+				preload: (args: PreloadArgs<Map<string, string>>): void => { note("leaf " + (args.params.get("leaf") ?? "") + " " + args.intent); },
+			},
+		] },
+	]);
+	const router = opened(routes, memory("/area/x"));
+	mounted(router);
+	assert seen() === "area initial /area/x | leaf x initial | render doc", "open";
+	assert router.navigate("/area/y");
+	flush();
+	assert seen() === "leaf y navigate | render doc", "sibling";
+	router.dispose();
+}
+
+test "preload(href) runs the preloads along an address with the preload intent and mounts nothing" {
+	seen();
+	const router = opened(preloadRoutes(), memory("/"));
+	const root = mounted(router);
+	seen();
+	router.preload("/docs/next?q=9");
+	router.preload("/threads/12");
+	router.preload("/nowhere/at/all");
+	assert seen() === "doc next preload /docs/next q=9 | thread 12 preload /threads/12", "preload";
+	assert mockToString(root) === "<root><main><h1>home</h1></main></root>", mockToString(root);
+	router.dispose();
+}
+
+test "a config naming a preload beside a typed route is refused" {
+	const both = failure((): Routes => createRoutes([{ route: watched, preload: (args: PreloadArgs<Map<string, string>>): void => {}, component: Thread }]));
+	assert both === "routing: \"/threads/:id\" takes its path, status, guard, paths and preload from its route", both;
 }

@@ -98,3 +98,4 @@ export {
 } from "./animation/index";
 
 export * from "./navigation/index";
+export { lazy } from "./render/component";

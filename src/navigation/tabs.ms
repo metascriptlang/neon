@@ -22,6 +22,9 @@ import {
 	RouteSeed,
 	RouteWebMap,
 	ScreenOptions,
+	ParamSlot,
+	ScreenParams,
+	ScreenParamsBuilder,
 	ScreenProps,
 	Theme,
 	createCore,
@@ -66,12 +69,12 @@ function withKey(seen: string[] | null, key: string): string[] {
 	return holds(seen, key) ? seen : [...seen, key];
 }
 
-export function mountedEntries<P>(core: NavigatorCore<P>): Accessor<Navigation<P>[]> {
+export function mountedEntries<PL>(core: NavigatorCore<PL>): Accessor<Navigation<PL>[]> {
 	const visited = createMemo<string[]>(
 		(seen: string[] | null): string[] => withKey(seen, core.currentKey()),
 	);
-	return accessor((): Navigation<P>[] => {
-		const kept: Navigation<P>[] = [];
+	return accessor((): Navigation<PL>[] => {
+		const kept: Navigation<PL>[] = [];
 		const focused = core.currentKey();
 		const seen = visited();
 		for (const entry of core.entries()) {
@@ -83,19 +86,19 @@ export function mountedEntries<P>(core: NavigatorCore<P>): Accessor<Navigation<P
 	});
 }
 
-export function labelOf<P>(entry: Navigation<P>, own: string | null): string {
+export function labelOf<PL>(entry: Navigation<PL>, own: string | null): string {
 	if (own !== null) { return own as string; }
 	const title = entry.options().title;
 	return title === null ? entry.route.name : title as string;
 }
 
-function triggerOf<P>(core: NavigatorCore<P>, entry: Navigation<P>): TabTrigger {
+function triggerOf<PL>(core: NavigatorCore<PL>, entry: Navigation<PL>): TabTrigger {
 	const key = entry.route.key;
 	const options = accessor((): ScreenOptions => entry.options());
 	const focused = accessor((): boolean => core.currentKey() === key);
 	return {
 		key,
-		label: accessor((): string => labelOf<P>(entry, options().tabBarLabel)),
+		label: accessor((): string => labelOf<PL>(entry, options().tabBarLabel)),
 		options,
 		focused,
 		href: accessor((): string | null => null),
@@ -110,8 +113,8 @@ function triggerOf<P>(core: NavigatorCore<P>, entry: Navigation<P>): TabTrigger 
 	};
 }
 
-function startPages<P>(core: NavigatorCore<P>): Pages<RouteSeed<P>> {
-	const items: RouteSeed<P>[] = [];
+function startPages<PL>(core: NavigatorCore<PL>): Pages<RouteSeed<PL>> {
+	const items: RouteSeed<PL>[] = [];
 	let selectedIndex: int32 = 0;
 	for (let i = 0; i < core.screens.length; i += 1) {
 		const name = core.screens[i].name;
@@ -121,39 +124,39 @@ function startPages<P>(core: NavigatorCore<P>): Pages<RouteSeed<P>> {
 	return { items, selectedIndex };
 }
 
-function resetPages<P>(
-	core: NavigatorCore<P>,
-	list: RouteSeed<P>[],
+function resetPages<PL>(
+	core: NavigatorCore<PL>,
+	list: RouteSeed<PL>[],
 	at: int32,
-): Pages<RouteSeed<P>> {
-	const items: RouteSeed<P>[] = [];
+): Pages<RouteSeed<PL>> {
+	const items: RouteSeed<PL>[] = [];
 	let selectedIndex: int32 = 0;
 	for (let i = 0; i < core.screens.length; i += 1) {
 		const name = core.screens[i].name;
-		let entry: RouteSeed<P> | null = null;
+		let entry: RouteSeed<PL> | null = null;
 		for (const given of list) {
 			if (given.name === name) { entry = given; }
 		}
 		if (entry === null) { entry = core.seed(name, null); }
 		if (name === list[at].name) { selectedIndex = i as int32; }
-		items.push(entry as RouteSeed<P>);
+		items.push(entry as RouteSeed<PL>);
 	}
 	return { items, selectedIndex };
 }
 
-export function pagesModel<P>(
-	core: NavigatorCore<P>,
+export function pagesModel<PL>(
+	core: NavigatorCore<PL>,
 	behavior: string,
-	restored: RouteSeed<P>[] | null,
+	restored: RouteSeed<PL>[] | null,
 	at: int32,
-): NavigatorModel<P> {
+): NavigatorModel<PL> {
 	const initial = restored === null
-		? startPages<P>(core)
-		: resetPages<P>(core, restored as RouteSeed<P>[], at);
-	const pages = createChildPages<RouteSeed<P>, Navigation<P>>(
+		? startPages<PL>(core)
+		: resetPages<PL>(core, restored as RouteSeed<PL>[], at);
+	const pages = createChildPages<RouteSeed<PL>, Navigation<PL>>(
 		initial,
 		seedKey,
-		(seed: Accessor<RouteSeed<P>>, active: Accessor<boolean>): Navigation<P> => {
+		(seed: Accessor<RouteSeed<PL>>, active: Accessor<boolean>): Navigation<PL> => {
 			return core.child(seed, active);
 		},
 	);
@@ -217,21 +220,21 @@ export function pagesModel<P>(
 	return {
 		entries,
 		index: accessor((): int32 => pages.selectedIndex()),
-		arrange: (kept: Navigation<P>[], focused: Navigation<P> | null): void => {
-			const items: RouteSeed<P>[] = [];
+		arrange: (kept: Navigation<PL>[], focused: Navigation<PL> | null): void => {
+			const items: RouteSeed<PL>[] = [];
 			for (const config of core.screens) {
-				let found: Navigation<P> | null = null;
+				let found: Navigation<PL> | null = null;
 				for (const entry of kept) {
 					if (entry.route.name === config.name) { found = entry; }
 				}
 				items.push(found === null
 					? core.seed(config.name, null)
-					: core.seedOf(found as Navigation<P>));
+					: core.seedOf(found as Navigation<PL>));
 			}
 			let selectedIndex: int32 = 0;
 			if (focused !== null) {
 				for (let i = 0; i < items.length; i += 1) {
-					if (items[i].name === (focused as Navigation<P>).route.name) {
+					if (items[i].name === (focused as Navigation<PL>).route.name) {
 						selectedIndex = i as int32;
 					}
 				}
@@ -245,28 +248,28 @@ export function pagesModel<P>(
 			if (visited.length === 0) { visited.push(items[selectedIndex].key); }
 			history = visited;
 			core.apply((): void => {
-				pages.navigate((current: Pages<RouteSeed<P>>): Pages<RouteSeed<P>> => {
+				pages.navigate((current: Pages<RouteSeed<PL>>): Pages<RouteSeed<PL>> => {
 					return { items, selectedIndex };
 				});
 			});
 		},
-		navigate: (name: string, params: P | null, pop: boolean): void => {
+		navigate: (name: string, params: ParamSlot | null, pop: boolean): void => {
 			const list = core.snapshot();
 			const at = core.indexOfName(list, name);
 			if (params !== null) { list[at].writeParams(params); }
 			focus(at);
 		},
-		push: (name: string, params: P | null): boolean => false,
-		replace: (key: string, name: string, params: P | null): void => {
+		push: (name: string, params: ParamSlot | null): boolean => false,
+		replace: (key: string, name: string, params: ParamSlot | null): void => {
 			core.navigate(name, params);
 		},
 		popTo: (at: int32): void => {},
-		popToRoute: (name: string, params: P | null, source: string | null): boolean => false,
-		reset: (list: RouteSeed<P>[], at: int32): void => {
-			const next = resetPages<P>(core, list, at);
+		popToRoute: (name: string, params: ParamSlot | null, source: string | null): boolean => false,
+		reset: (list: RouteSeed<PL>[], at: int32): void => {
+			const next = resetPages<PL>(core, list, at);
 			history = [next.items[next.selectedIndex].key];
 			core.apply((): void => {
-				pages.navigate((current: Pages<RouteSeed<P>>): Pages<RouteSeed<P>> => next);
+				pages.navigate((current: Pages<RouteSeed<PL>>): Pages<RouteSeed<PL>> => next);
 			});
 		},
 		goBackFrom: (key: string): boolean => back(),
@@ -274,24 +277,24 @@ export function pagesModel<P>(
 		back,
 		canPop: (): boolean => false,
 		drawer: (action: DrawerAction): boolean => false,
-		webNavigation: (map: RouteWebMap<P>): WebNavigationNode => {
-			const web = childPagesWebNavigation<RouteSeed<P>, Navigation<P>>(pages, map.serializer, {
+		webNavigation: (map: RouteWebMap<PL>): WebNavigationNode => {
+			const web = childPagesWebNavigation<RouteSeed<PL>, Navigation<PL>>(pages, map.serializer, {
 				pathMapper: (
-					page: NavigationChild<RouteSeed<P>, Navigation<P>>,
+					page: NavigationChild<RouteSeed<PL>, Navigation<PL>>,
 				): string | null => map.path(page.instance),
 				parametersMapper: (
-					page: NavigationChild<RouteSeed<P>, Navigation<P>>,
+					page: NavigationChild<RouteSeed<PL>, Navigation<PL>>,
 				): Map<string, string> | null => map.parameters(page.instance),
 				childSelector: (
-					child: NavigationChild<RouteSeed<P>, Navigation<P>>,
+					child: NavigationChild<RouteSeed<PL>, Navigation<PL>>,
 				): WebNavigationOwner | null => map.child(child.instance),
-				visited: (current: ChildPages<RouteSeed<P>, Navigation<P>>): int32[] => backPath(),
+				visited: (current: ChildPages<RouteSeed<PL>, Navigation<PL>>): int32[] => backPath(),
 			});
-			return webNavigationNode<Pages<RouteSeed<P>>>({
+			return webNavigationNode<Pages<RouteSeed<PL>>>({
 				serializer: web.serializer,
 				history: web.history,
 				onBeforeNavigate: web.onBeforeNavigate,
-				navigate: (keys: Pages<RouteSeed<P>>[]): void => {
+				navigate: (keys: Pages<RouteSeed<PL>>[]): void => {
 					const restored: string[] = [];
 					for (const key of keys) {
 						if (key.selectedIndex >= 0) { restored.push(key.items[key.selectedIndex].key); }
@@ -302,14 +305,15 @@ export function pagesModel<P>(
 						core.restoreParams(keys[keys.length - 1].items);
 					});
 					const current = core.current();
-					if (current !== null) { visit((current as Navigation<P>).route.key); }
+					if (current !== null) { visit((current as Navigation<PL>).route.key); }
 				},
 			});
 		},
 	};
 }
 
-export interface TabNavigator<P> {
+export interface TabNavigator<PL> {
+	params: ScreenParamsBuilder<PL>;
 	Navigator: (props: {
 		children: NeonNode;
 		initialRouteName?: Accessor<string> | null;
@@ -324,27 +328,26 @@ export interface TabNavigator<P> {
 		navigationKey?: Accessor<string> | null;
 	}) => NeonNode;
 	Screen: (props: {
-		name: string;
-		component: (props: ScreenProps<P>) => NeonNode;
+		name: keyof PL;
+		component: (props: ScreenProps<PL>) => NeonNode;
 		options?: Accessor<ScreenOptions> | null;
-		initialParams?: P | null;
-		parseParams?: ((values: Map<string, string>) => P) | null;
-		stringifyParams?: ((params: P) => Map<string, string>) | null;
+		params?: ScreenParams<PL> | null;
 		navigationKey?: Accessor<string> | null;
 	}) => NeonNode;
 }
 
-export function createBottomTabNavigator<P>(): TabNavigator<P> {
-	return createTabs<P>(false);
+export function createBottomTabNavigator<PL>(): TabNavigator<PL> {
+	return createTabs<PL>(false);
 }
 
-export function createMaterialTopTabNavigator<P>(): TabNavigator<P> {
-	return createTabs<P>(true);
+export function createMaterialTopTabNavigator<PL>(): TabNavigator<PL> {
+	return createTabs<PL>(true);
 }
 
-function createTabs<P>(material: boolean): TabNavigator<P> {
+function createTabs<PL>(material: boolean): TabNavigator<PL> {
 	const collector = createScreenCollector();
 	return {
+		params: new ScreenParamsBuilder<PL>(),
 		Navigator: (props: {
 			children: NeonNode;
 			initialRouteName?: Accessor<string> | null;
@@ -353,23 +356,23 @@ function createTabs<P>(material: boolean): TabNavigator<P> {
 			tabBarStyle?: Accessor<Style> | null;
 			tabBarPosition?: Accessor<TabBarPosition> | null;
 		}): NeonNode => {
-			const collection = collectScreens<P>(collector, props.children);
+			const collection = collectScreens<PL>(collector, props.children);
 			const screens = untrack(() => collection.read());
 			const declared = readOptions(props.screenOptions);
 			const behavior = readBehavior(props.backBehavior, "firstRoute");
-			const core = createCore<P>({
+			const core = createCore<PL>({
 				kind: NavigatorKind.Tabs,
 				screens,
 				initialRouteName: readName(props.initialRouteName),
 				screenOptions: material ? withoutHeader(declared) : declared,
 				scope: currentScope("Tab.Navigator"),
 				model: (
-					core: NavigatorCore<P>,
-					restored: RouteSeed<P>[] | null,
+					core: NavigatorCore<PL>,
+					restored: RouteSeed<PL>[] | null,
 					at: int32,
-				): NavigatorModel<P> => pagesModel<P>(core, behavior, restored, at),
+				): NavigatorModel<PL> => pagesModel<PL>(core, behavior, restored, at),
 			});
-			watchScreens<P>(collection, core);
+			watchScreens<PL>(collection, core);
 			const position = props.tabBarPosition;
 			const top = accessor((): boolean => {
 				if (position === null) { return material; }
@@ -389,14 +392,14 @@ function createTabs<P>(material: boolean): TabNavigator<P> {
 				if (background === null) { return base; }
 				return { ...base, backgroundColor: background };
 			});
-			const mounted = mountedEntries<P>(core);
-			const transitions = createNavigatorMotion<P>(core, false);
-			const screen = (entry: Navigation<P>, at: Accessor<number>): NeonNode => {
-				return screenView<P>(core, transitions, entry, false, at);
+			const mounted = mountedEntries<PL>(core);
+			const transitions = createNavigatorMotion<PL>(core, false);
+			const screen = (entry: Navigation<PL>, at: Accessor<number>): NeonNode => {
+				return screenView<PL>(core, transitions, entry, false, at);
 			};
-			const triggers = mapArray<Navigation<P>, TabTrigger>(
-				(): Navigation<P>[] => core.entries(),
-				(entry: Navigation<P>, at: Accessor<number>): TabTrigger => triggerOf<P>(core, entry),
+			const triggers = mapArray<Navigation<PL>, TabTrigger>(
+				(): Navigation<PL>[] => core.entries(),
+				(entry: Navigation<PL>, at: Accessor<number>): TabTrigger => triggerOf<PL>(core, entry),
 			);
 			const theme = accessor((): Theme => core.container.theme());
 			const frame = accessor((): Style => ({
@@ -421,21 +424,17 @@ function createTabs<P>(material: boolean): TabNavigator<P> {
 			);
 		},
 		Screen: (props: {
-			name: string;
-			component: (props: ScreenProps<P>) => NeonNode;
+			name: keyof PL;
+			component: (props: ScreenProps<PL>) => NeonNode;
 			options?: Accessor<ScreenOptions> | null;
-			initialParams?: P | null;
-			parseParams?: ((values: Map<string, string>) => P) | null;
-			stringifyParams?: ((params: P) => Map<string, string>) | null;
+			params?: ScreenParams<PL> | null;
 			navigationKey?: Accessor<string> | null;
-		}): NeonNode => screenOf<P>(
+		}): NeonNode => screenOf<PL>(
 			collector,
-			props.name,
+			props.name as string,
 			props.component,
 			props.options,
-			props.initialParams,
-			props.parseParams,
-			props.stringifyParams,
+			props.params,
 			props.navigationKey,
 		),
 	};

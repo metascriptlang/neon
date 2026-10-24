@@ -18,6 +18,7 @@ import {
 	RoutingRegistry,
 	RoutingSession,
 	ScreenProps,
+	useRoute,
 	bindRoute,
 	createMemoryRoutingHistory,
 	createNavigationContainerRef,
@@ -34,8 +35,18 @@ interface ItemParams {
 	id: string;
 }
 
-const Root = createStackNavigator<string>();
-const Shop = createStackNavigator<ItemParams>();
+interface RootParams {
+	Home: null;
+	Shop: null;
+}
+
+interface ShopParams {
+	Catalog: null;
+	Product: ItemParams;
+}
+
+const Root = createStackNavigator<RootParams>();
+const Shop = createStackNavigator<ShopParams>();
 
 const linking: LinkingOptions = {
 	prefixes: [],
@@ -56,32 +67,34 @@ const linking: LinkingOptions = {
 	},
 };
 
-function Home(props: ScreenProps<string>): NeonNode {
+function Home(props: ScreenProps<RootParams>): NeonNode {
 	return <Text>home</Text>;
 }
 
-function Catalog(props: ScreenProps<ItemParams>): NeonNode {
+function Catalog(props: ScreenProps<ShopParams>): NeonNode {
 	return <Text>catalog</Text>;
 }
 
-function Product(props: ScreenProps<ItemParams>): NeonNode {
-	const params = props.route.params;
+function Product(props: ScreenProps<ShopParams>): NeonNode {
+	const params = useRoute<ShopParams, "Product">().params;
 	return <Text>{"product " + (params() === null ? "-" : (params() as ItemParams).id)}</Text>;
 }
 
-function ShopScreen(props: ScreenProps<string>): NeonNode {
+function ShopScreen(props: ScreenProps<RootParams>): NeonNode {
 	return <Shop.Navigator>
 		<Shop.Screen name="Catalog" component={Catalog} />
 		<Shop.Screen name="Product" component={Product}
-			parseParams={(values: Map<string, string>): ItemParams => {
-				return { id: values.get("id") ?? "" };
-			}}
-			stringifyParams={(params: ItemParams): Map<string, string> => {
-				const values = new Map<string, string>();
-				values.set("id", params.id);
-				flush();
-				return values;
-			}} />
+			params={Shop.params.of("Product", {
+				parse: (values: Map<string, string>): ItemParams => {
+					return { id: values.get("id") ?? "" };
+				},
+				stringify: (params: ItemParams): Map<string, string> => {
+					const values = new Map<string, string>();
+					values.set("id", params.id);
+					flush();
+					return values;
+				},
+			})} />
 	</Shop.Navigator>;
 }
 

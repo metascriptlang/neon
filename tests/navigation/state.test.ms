@@ -10,6 +10,7 @@ import {
 	createBottomTabNavigator,
 	createNavigationContainerRef,
 	createStackNavigator,
+	useRoute,
 } from "../../src/navigation/index";
 import { press, visibleText } from "./navHarness";
 
@@ -17,10 +18,20 @@ interface ItemParams {
 	id: int32;
 }
 
-const Tab = createBottomTabNavigator<string>();
-const HomeStack = createStackNavigator<ItemParams>();
+interface TabParams {
+	Home: null;
+	Profile: null;
+}
 
-function List(props: ScreenProps<ItemParams>): NeonNode {
+interface HomeParams {
+	List: null;
+	Detail: ItemParams;
+}
+
+const Tab = createBottomTabNavigator<TabParams>();
+const HomeStack = createStackNavigator<HomeParams>();
+
+function List(props: ScreenProps<HomeParams>): NeonNode {
 	const navigation = props.navigation;
 	return <View>
 		<Text>list</Text>
@@ -28,8 +39,8 @@ function List(props: ScreenProps<ItemParams>): NeonNode {
 	</View>;
 }
 
-function Detail(props: ScreenProps<ItemParams>): NeonNode {
-	const params = props.route.params;
+function Detail(props: ScreenProps<HomeParams>): NeonNode {
+	const params = useRoute<HomeParams, "Detail">().params;
 	return <Text>{"detail " + (params() === null ? "-" : (params() as ItemParams).id.toString())}</Text>;
 }
 
@@ -39,16 +50,18 @@ function encodeItem(params: ItemParams): Map<string, string> {
 	return values;
 }
 
-function Home(props: ScreenProps<string>): NeonNode {
+function Home(props: ScreenProps<TabParams>): NeonNode {
 	return <HomeStack.Navigator>
 		<HomeStack.Screen name="List" component={List} options={{ title: "Items" }} />
 		<HomeStack.Screen name="Detail" component={Detail}
-			parseParams={(values: Map<string, string>): ItemParams => ({ id: parseInt(values.get("id") ?? "0") as int32 })}
-			stringifyParams={encodeItem} />
+			params={HomeStack.params.of("Detail", {
+				parse: (values: Map<string, string>): ItemParams => ({ id: parseInt(values.get("id") ?? "0") as int32 }),
+				stringify: encodeItem,
+			})} />
 	</HomeStack.Navigator>;
 }
 
-function Profile(props: ScreenProps<string>): NeonNode {
+function Profile(props: ScreenProps<TabParams>): NeonNode {
 	return <Text>profile</Text>;
 }
 

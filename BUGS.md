@@ -39,7 +39,9 @@ and the invariants that outlived them were moved to the head of the test that pi
   `5b2c634a` measured `bundleTerminalApp` at +16748 bytes over 586896 and `bundleMacosApp` at +29160 over
   2052708. The void-endgame land `316624bf` (gate on `bdc62258`, msc `6589ce248`, Void `a29845a`) measured
   +17132 and +26856, so terminal grew another 384 bytes from that arc. Nobody has raised either budget, so the
-  growth from main stays visible until someone traces it.
+  growth from main stays visible until someone traces it. On 2026-10-25, msc `6b8655024`, an export of main
+  `e5d9cc17` measured terminal +30396, macOS +60452 and `bundlePlainApp` js +25301 over 739224, so the JS
+  budget is red on main too; the rn-navigation-prod gate on `5e9e136b` measured 30, 32 and 16 bytes more.
 
 - **OPEN 2026-10-16 — touches do not reach the sokol canvas.** `src/platform/sokol/input.ms`
   `deliverAppEvent` takes the four `Touches*` events and does nothing with them, so a phone browser cannot
@@ -214,12 +216,6 @@ and the invariants that outlived them were moved to the head of the test that pi
   from 624×321 to 884×461, exit 0, and the background, button and field colours read back from
   `PrintWindow` at the start, after typing and after the resize. Not run: an IME, a DPI change.
   `tests/run.sh` builds the example on a Windows host and skips it by name elsewhere.
-
-- **OPEN 2026-10-16 — a navigation issued while a rewrite's browser `go` is in flight misorders history.**
-  The session has one landing slot and Chrome's `go` is asynchronous: in `tests/browser/routerLevels.test.ms`
-  back from `/inbox/8` stayed on `/inbox/8` until the test waited 100 ms after a tab switch. Decompose
-  swaps one popstate listener the same way (`WebHistoryNavigation.kt` `onPop`/`onRewrite`); the fix is
-  not traced yet.
 
 - **PARKED 2026-10-19 — the sokol canvas under `-d:voidGlCore` draws every frame.** Not Neon's: Void's
   `bridgeWin.c` `_frame` asks `sapp_skip_present()` for a frame that drew nothing, and sokol_app honours it only

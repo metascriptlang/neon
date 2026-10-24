@@ -186,14 +186,19 @@ interface OrderParams {
 	order: string;
 }
 
-const Orders = createStackNavigator<OrderParams>();
+interface OrdersParams {
+	OrderList: null;
+	Order: OrderParams;
+}
 
-function OrderList(props: ScreenProps<OrderParams>): NeonNode {
+const Orders = createStackNavigator<OrdersParams>();
+
+function OrderList(props: ScreenProps<OrdersParams>): NeonNode {
 	return <Text>orders</Text>;
 }
 
-function Order(props: ScreenProps<OrderParams>): NeonNode {
-	const route = useRoute<OrderParams>();
+function Order(props: ScreenProps<OrdersParams>): NeonNode {
+	const route = useRoute<OrdersParams, "Order">();
 	return <Text>{"order " + (route.params() === null ? "-" : (route.params() as OrderParams).order)}</Text>;
 }
 
@@ -211,7 +216,9 @@ test "the initial URL from the host opens its screen once the container mounts" 
 		<Orders.Navigator>
 			<Orders.Screen name="OrderList" component={OrderList} />
 			<Orders.Screen name="Order" component={Order}
-				parseParams={(values: Map<string, string>): OrderParams => ({ order: values.get("order") ?? "" })} />
+				params={Orders.params.of("Order", {
+					parse: (values: Map<string, string>): OrderParams => ({ order: values.get("order") ?? "" }),
+				})} />
 		</Orders.Navigator>
 	</NavigationContainer>, mockHost(), root as unknown as HostNode);
 	const seen = await Linking.getInitialURL();

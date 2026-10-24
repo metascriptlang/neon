@@ -10,6 +10,8 @@ when (js) {
 		"(globalThis._$$HY[#][#])";
 	extern function jsWrite(table: cstring, id: cstring, value: cstring): void from
 		"((t, i, v) => { const h = (globalThis._$HY ??= { r: {}, e: {} }); h[t] ??= {}; h[t][i] = v; })(#, #, #)";
+	extern function jsDrop(table: cstring, id: cstring): void from
+		"((t, i) => { const h = globalThis._$HY; if (h !== undefined && h[t] !== undefined) delete h[t][i]; })(#, #)";
 	extern function jsClear(): void from "(delete globalThis._$$HY)";
 }
 
@@ -64,6 +66,16 @@ export function putError(id: string, message: string): void {
 		jsWrite("e", id, message);
 	} else {
 		errors.set(id, message);
+	}
+}
+
+export function dropRecord(id: string): void {
+	when (js) {
+		jsDrop("r", id);
+		jsDrop("e", id);
+	} else {
+		values.delete(id);
+		errors.delete(id);
 	}
 }
 

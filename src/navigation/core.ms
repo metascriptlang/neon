@@ -9,7 +9,7 @@ import { Style } from "../render/style";
 import { StackLayout } from "./layout";
 import { StackPresentation } from "./childView";
 import { createContext, useContext } from "../render/context";
-import { refreshKeep } from "../render/refresh";
+when (refresh || hcr) { import { refreshKeep } from "../render/refresh"; }
 import {
 	WebKeySerializer,
 	WebNavigationError,
@@ -330,42 +330,88 @@ export function currentScope(api: string): ScreenScope {
 	return value as ScreenScope;
 }
 
-export class Route<P> {
-	key: string;
-	name: string;
-	params: Accessor<P | null>;
+export class ParamBox<T> {
+	value: T;
 
-	constructor(key: string, name: string, params: Accessor<P | null>) {
-		this.key = key;
-		this.name = name;
-		this.params = params;
+	constructor(value: T) {
+		this.value = value;
 	}
 }
 
-export interface ScreenProps<P> {
-	navigation: Navigation<P>;
-	route: Route<P>;
+export class ParamSlot {
+	box: unknown;
+
+	constructor(box: unknown) {
+		this.box = box;
+	}
+}
+
+export function boxParams<T>(value: T): ParamSlot {
+	return new ParamSlot(new ParamBox<T>(value) as unknown);
+}
+
+export function slotOf<T>(value: T | null): ParamSlot | null {
+	return value === null ? null : boxParams<T>(value as T);
+}
+
+export class Route {
+	key: string;
+	name: string;
+	slot: Accessor<ParamSlot | null>;
+	writeSlot: (slot: ParamSlot | null) => void;
+
+	constructor(key: string, name: string, slot: Accessor<ParamSlot | null>, writeSlot: (slot: ParamSlot | null) => void) {
+		this.key = key;
+		this.name = name;
+		this.slot = slot;
+		this.writeSlot = writeSlot;
+	}
+}
+
+export interface RouteProp<PL, K extends keyof PL> {
+	key: string;
+	name: string;
+	params: Accessor<PL[K] | null>;
+	// Parked on ~/metascript/.inbox/compiler/2026-10-21-mapped-types-and-partial-are-not-types.md: React Navigation 7 merges `Partial<PL[K]>` here and adds `replaceParams`; this replaces until `Partial` is a type. It sits on the route, not on `navigation`, until a screen's type parameter is inferred from its `name` (~/metascript/.inbox/compiler/2026-10-24-a-keyof-constrained-type-parameter-inferred-from-an-object-literal-property-widens-to-string.md).
+	setParams: (params: PL[K]) => void;
+}
+
+export function routeProp<PL, K extends keyof PL>(route: Route): RouteProp<PL, K> {
+	return {
+		key: route.key,
+		name: route.name,
+		params: accessor((): PL[K] | null => {
+			const slot = route.slot();
+			return slot === null ? null : ((slot as ParamSlot).box as ParamBox<PL[K]>).value;
+		}),
+		setParams: (params: PL[K]): void => { route.writeSlot(boxParams<PL[K]>(params)); },
+	};
+}
+
+export interface ScreenProps<PL> {
+	navigation: Navigation<PL>;
+	route: Route;
 }
 
 export function readRegistrationKey(read: Accessor<string> | null): string {
 	return read === null ? "[]" : (read as Accessor<string>)();
 }
 
-export class ScreenConfig<P> {
+export class ScreenConfig<PL> {
 	navigationKey: Accessor<string> | null = null;
 	name: string;
-	component: (props: ScreenProps<P>) => NeonNode;
+	component: (props: ScreenProps<PL>) => NeonNode;
 	options: Accessor<ScreenOptions> | null;
-	initialParams: P | null;
-	parseParams: ((values: Map<string, string>) => P) | null;
-	stringifyParams: ((params: P) => Map<string, string>) | null = null;
+	initialParams: ParamSlot | null;
+	parseParams: ((values: Map<string, string>) => ParamSlot | null) | null;
+	stringifyParams: ((params: ParamSlot | null) => Map<string, string>) | null = null;
 
 	constructor(
 		name: string,
-		component: (props: ScreenProps<P>) => NeonNode,
+		component: (props: ScreenProps<PL>) => NeonNode,
 		options: Accessor<ScreenOptions> | null,
-		initialParams: P | null,
-		parseParams: ((values: Map<string, string>) => P) | null,
+		initialParams: ParamSlot | null,
+		parseParams: ((values: Map<string, string>) => ParamSlot | null) | null,
 	) {
 		this.name = name;
 		this.component = component;
@@ -375,14 +421,57 @@ export class ScreenConfig<P> {
 	}
 }
 
-export interface ResetRoute<P> {
-	name: string;
-	params?: P | null;
+export interface ScreenCodec<PL, K extends keyof PL> {
+	initial?: PL[K] | null;
+	parse?: ((values: Map<string, string>) => PL[K]) | null;
+	stringify?: ((params: PL[K]) => Map<string, string>) | null;
 }
 
-export interface ResetState<P> {
+export class ScreenParams<PL> {
+	name: string;
+	initial: ParamSlot | null;
+	parse: ((values: Map<string, string>) => ParamSlot | null) | null;
+	stringify: ((params: ParamSlot | null) => Map<string, string>) | null;
+
+	constructor(
+		name: string,
+		initial: ParamSlot | null,
+		parse: ((values: Map<string, string>) => ParamSlot | null) | null,
+		stringify: ((params: ParamSlot | null) => Map<string, string>) | null,
+	) {
+		this.name = name;
+		this.initial = initial;
+		this.parse = parse;
+		this.stringify = stringify;
+	}
+}
+
+export class ScreenParamsBuilder<PL> {
+	of<K extends keyof PL>(name: K, codec: ScreenCodec<PL, K>): ScreenParams<PL> {
+		const initial = codec.initial;
+		const parse = codec.parse;
+		const stringify = codec.stringify;
+		return new ScreenParams<PL>(
+			name as string,
+			initial === undefined || initial === null ? null : boxParams<PL[K]>(initial as PL[K]),
+			parse === undefined || parse === null
+				? null
+				: (values: Map<string, string>): ParamSlot | null => boxParams<PL[K]>((parse as (values: Map<string, string>) => PL[K])(values)),
+			stringify === undefined || stringify === null
+				? null
+				: (slot: ParamSlot | null): Map<string, string> => (stringify as (params: PL[K]) => Map<string, string>)(((slot as ParamSlot).box as ParamBox<PL[K]>).value),
+		);
+	}
+}
+
+export interface ResetRoute<PL> {
+	name: string;
+	slot: ParamSlot | null;
+}
+
+export interface ResetState<PL> {
 	index?: int32 | null;
-	routes: ResetRoute<P>[];
+	routes: ResetRoute<PL>[];
 }
 
 export type NavigationEvent = "focus" | "blur" | "state" | "beforeRemove" | "tabPress";
@@ -442,13 +531,13 @@ interface PendingEntry {
 	target: NavTarget;
 }
 
-export interface RouteSeed<P> {
+export interface RouteSeed<PL> {
 	key: string;
 	name: string;
-	params: P | null;
+	params: ParamSlot | null;
 }
 
-export function seedKey<P>(seed: RouteSeed<P>): string {
+export function seedKey<PL>(seed: RouteSeed<PL>): string {
 	return seed.key;
 }
 
@@ -462,21 +551,29 @@ interface StateListener {
 	handler: () => void;
 }
 
-export class Navigation<P> {
+export type ParamsArgs<PL, K extends keyof PL> = null extends PL[K]
+	? [name: K, params?: PL[K]]
+	: [name: K, params: PL[K]];
+
+export type NavigateArgs<PL, K extends keyof PL> = null extends PL[K]
+	? [name: K, params?: PL[K], options?: NavigateActionOptions]
+	: [name: K, params: PL[K], options?: NavigateActionOptions];
+
+export class Navigation<PL> {
 	registrationKey: string;
 	revision: Signal<int32> = new Signal<int32>(0);
-	core: NavigatorCore<P>;
-	route: Route<P>;
-	config: ScreenConfig<P>;
-	writeParams: Setter<P | null>;
+	core: NavigatorCore<PL>;
+	route: Route;
+	config: ScreenConfig<PL>;
+	writeParams: Setter<ParamSlot | null>;
 	private overrides: Accessor<ScreenOptions>;
 	private writeOverrides: Setter<ScreenOptions>;
 
 	constructor(
-		core: NavigatorCore<P>,
-		route: Route<P>,
-		config: ScreenConfig<P>,
-		writeParams: Setter<P | null>,
+		core: NavigatorCore<PL>,
+		route: Route,
+		config: ScreenConfig<PL>,
+		writeParams: Setter<ParamSlot | null>,
 		overrides: Accessor<ScreenOptions>,
 		writeOverrides: Setter<ScreenOptions>,
 	) {
@@ -489,21 +586,22 @@ export class Navigation<P> {
 		this.writeOverrides = writeOverrides;
 	}
 
-	navigate(name: string, params: P | null = null, options: NavigateActionOptions | null = null): void {
+	navigate<K extends keyof PL>(...args: NavigateArgs<PL, K>): void {
+		const options = args[2];
 		const pop = options === null ? false : (options as NavigateActionOptions).pop ?? false;
-		this.core.navigate(name, params, pop);
+		this.core.navigate(args[0] as string, slotOf<PL[K]>(args[1]), pop);
 	}
 
-	push(name: string, params: P | null = null): void {
-		this.core.push(name, params);
+	push<K extends keyof PL>(...args: ParamsArgs<PL, K>): void {
+		this.core.push(args[0] as string, slotOf<PL[K]>(args[1]));
 	}
 
-	replace(name: string, params: P | null = null): void {
-		this.core.replaceRoute(this.route.key, name, params);
+	replace<K extends keyof PL>(...args: ParamsArgs<PL, K>): void {
+		this.core.replaceRoute(this.route.key, args[0] as string, slotOf<PL[K]>(args[1]));
 	}
 
-	jumpTo(name: string, params: P | null = null): void {
-		this.core.navigate(name, params);
+	jumpTo<K extends keyof PL>(...args: ParamsArgs<PL, K>): void {
+		this.core.navigate(args[0] as string, slotOf<PL[K]>(args[1]));
 	}
 
 	pop(count: int32 = 1): void {
@@ -533,18 +631,16 @@ export class Navigation<P> {
 		this.core.popTo(0);
 	}
 
-	popTo(name: string, params: P | null = null): void {
-		this.core.popToRoute(name, params, this.route.key);
+	popTo<K extends keyof PL>(...args: ParamsArgs<PL, K>): void {
+		this.core.popToRoute(args[0] as string, slotOf<PL[K]>(args[1]), this.route.key);
 	}
 
-	reset(state: ResetState<P>): void {
+	routeOf<K extends keyof PL>(...args: ParamsArgs<PL, K>): ResetRoute<PL> {
+		return { name: args[0] as string, slot: slotOf<PL[K]>(args[1]) };
+	}
+
+	reset(state: ResetState<PL>): void {
 		this.core.resetTo(state);
-	}
-
-	// Parked on ~/metascript/.inbox/compiler/2026-10-21-mapped-types-and-partial-are-not-types.md: React Navigation 7 merges `Partial<P>` here and adds `replaceParams(P)`; this replaces until `Partial` is a type.
-	setParams(params: P): void {
-		this.writeParams(params);
-		this.core.container.changed();
 	}
 
 	setOptions(options: ScreenOptions): void {
@@ -653,7 +749,7 @@ export class Navigation<P> {
 	}
 }
 
-export function getParent<P, Q>(this navigation: Navigation<P>): Navigation<Q> {
+export function getParent<PL, Q>(this navigation: Navigation<PL>): Navigation<Q> {
 	const outer = navigation.core.parentNavigation;
 	if (outer === null) {
 		throw new Error(
@@ -693,49 +789,49 @@ export function deepestFocused(link: NavigatorLink): NavigatorLink {
 	return current;
 }
 
-export interface NavigatorModel<P> {
-	entries: Accessor<Navigation<P>[]>;
+export interface NavigatorModel<PL> {
+	entries: Accessor<Navigation<PL>[]>;
 	index: Accessor<int32>;
-	arrange: (kept: Navigation<P>[], focused: Navigation<P> | null) => void;
-	navigate: (name: string, params: P | null, pop: boolean) => void;
-	push: (name: string, params: P | null) => boolean;
-	popToRoute: (name: string, params: P | null, source: string | null) => boolean;
-	replace: (key: string, name: string, params: P | null) => void;
+	arrange: (kept: Navigation<PL>[], focused: Navigation<PL> | null) => void;
+	navigate: (name: string, params: ParamSlot | null, pop: boolean) => void;
+	push: (name: string, params: ParamSlot | null) => boolean;
+	popToRoute: (name: string, params: ParamSlot | null, source: string | null) => boolean;
+	replace: (key: string, name: string, params: ParamSlot | null) => void;
 	popTo: (at: int32) => void;
-	reset: (list: RouteSeed<P>[], at: int32) => void;
+	reset: (list: RouteSeed<PL>[], at: int32) => void;
 	goBackFrom: (key: string) => boolean;
 	canBack: () => boolean;
 	back: () => boolean;
 	canPop: () => boolean;
 	drawer: (action: DrawerAction) => boolean;
-	webNavigation: (map: RouteWebMap<P>) => WebNavigationNode;
+	webNavigation: (map: RouteWebMap<PL>) => WebNavigationNode;
 }
 
-export interface RouteWebMap<P> {
-	serializer: WebKeySerializer<RouteSeed<P>>;
-	path: (entry: Navigation<P>) => string | null;
-	parameters: (entry: Navigation<P>) => Map<string, string> | null;
-	child: (entry: Navigation<P>) => WebNavigationOwner | null;
+export interface RouteWebMap<PL> {
+	serializer: WebKeySerializer<RouteSeed<PL>>;
+	path: (entry: Navigation<PL>) => string | null;
+	parameters: (entry: Navigation<PL>) => Map<string, string> | null;
+	child: (entry: Navigation<PL>) => WebNavigationOwner | null;
 }
 
-export interface NavigatorSetup<P> {
+export interface NavigatorSetup<PL> {
 	kind: NavigatorKind;
-	screens: ScreenConfig<P>[];
+	screens: ScreenConfig<PL>[];
 	initialRouteName: string | null;
 	screenOptions: Accessor<ScreenOptions>;
 	scope: ScreenScope;
 	model: (
-		core: NavigatorCore<P>,
-		restored: RouteSeed<P>[] | null,
+		core: NavigatorCore<PL>,
+		restored: RouteSeed<PL>[] | null,
 		at: int32,
-	) => NavigatorModel<P>;
+	) => NavigatorModel<PL>;
 }
 
-export class NavigatorCore<P> {
+export class NavigatorCore<PL> {
 	kind: NavigatorKind;
-	screens: ScreenConfig<P>[];
-	model: NavigatorModel<P>;
-	entries: Accessor<Navigation<P>[]>;
+	screens: ScreenConfig<PL>[];
+	model: NavigatorModel<PL>;
+	entries: Accessor<Navigation<PL>[]>;
 	index: Accessor<int32>;
 	screenOptions: Accessor<ScreenOptions>;
 	initialName: string;
@@ -754,7 +850,7 @@ export class NavigatorCore<P> {
 	screenEpoch: int32 = 0;
 	layout: StackLayout = new StackLayout();
 
-	constructor(setup: NavigatorSetup<P>, initialName: string, restored: NavigationState | null) {
+	constructor(setup: NavigatorSetup<PL>, initialName: string, restored: NavigationState | null) {
 		this.kind = setup.kind;
 		this.screens = setup.screens;
 		this.screenOptions = setup.screenOptions;
@@ -776,7 +872,7 @@ export class NavigatorCore<P> {
 		this.index = this.model.index;
 	}
 
-	config(name: string): ScreenConfig<P> | null {
+	config(name: string): ScreenConfig<PL> | null {
 		for (const screen of this.screens) {
 			if (screen.name === name) { return screen; }
 		}
@@ -787,7 +883,7 @@ export class NavigatorCore<P> {
 		return this.config(name) !== null;
 	}
 
-	reconfigure(screens: ScreenConfig<P>[]): void {
+	reconfigure(screens: ScreenConfig<PL>[]): void {
 		if (screens.length === 0) {
 			throw new Error("a navigator needs at least one Screen after a conditional update");
 		}
@@ -804,11 +900,11 @@ export class NavigatorCore<P> {
 		if (unchanged) { return; }
 		const focused = this.current();
 		this.screens = screens;
-		const kept: Navigation<P>[] = [];
+		const kept: Navigation<PL>[] = [];
 		for (const entry of previous) {
 			const config = this.config(entry.route.name);
 			if (config !== null && entry.registrationKey === readRegistrationKey(config.navigationKey)) {
-				entry.config = config as ScreenConfig<P>;
+				entry.config = config as ScreenConfig<PL>;
 				entry.revision.set(entry.revision.peek() + 1);
 				kept.push(entry);
 			}
@@ -829,24 +925,24 @@ export class NavigatorCore<P> {
 		return at >= 0 && at < list.length ? list[at].route.key : "";
 	}
 
-	current(): Navigation<P> | null {
-		const list = untrack((): Navigation<P>[] => this.entries());
+	current(): Navigation<PL> | null {
+		const list = untrack((): Navigation<PL>[] => this.entries());
 		const at = untrack((): int32 => this.index());
 		return at >= 0 && at < list.length ? list[at] : null;
 	}
 
-	seed(name: string, params: P | null): RouteSeed<P> {
+	seed(name: string, params: ParamSlot | null): RouteSeed<PL> {
 		const screen = this.config(name);
 		if (screen === null) {
 			throw new Error("navigator has no screen named '" + name + "'");
 		}
-		const config = screen as ScreenConfig<P>;
+		const config = screen as ScreenConfig<PL>;
 		const key = name + "-" + this.nextKey.toString();
 		this.nextKey += 1;
 		return { key, name, params: params !== null ? params : config.initialParams };
 	}
 
-	adopt(key: string, name: string, params: P | null): RouteSeed<P> {
+	adopt(key: string, name: string, params: ParamSlot | null): RouteSeed<PL> {
 		if (key === "") { return this.seed(name, params); }
 		const screen = this.config(name);
 		if (screen === null) {
@@ -860,13 +956,13 @@ export class NavigatorCore<P> {
 		return {
 			key,
 			name,
-			params: params !== null ? params : (screen as ScreenConfig<P>).initialParams,
+			params: params !== null ? params : (screen as ScreenConfig<PL>).initialParams,
 		};
 	}
 
-	seedSerializer(): WebKeySerializer<RouteSeed<P>> {
+	seedSerializer(): WebKeySerializer<RouteSeed<PL>> {
 		return {
-			encode: (seed: RouteSeed<P>): string => {
+			encode: (seed: RouteSeed<PL>): string => {
 				for (const entry of this.snapshot()) {
 					if (entry.route.key === seed.key) {
 						return encodeSeedRoute({
@@ -878,18 +974,18 @@ export class NavigatorCore<P> {
 				}
 				throw new Error("web history: no live route has the key " + seed.key);
 			},
-			decode: (text: string): Result<RouteSeed<P>, WebNavigationError> => {
+			decode: (text: string): Result<RouteSeed<PL>, WebNavigationError> => {
 				const route = decodeSeedRoute(text);
 				if (route === null) { return Result.err(WebNavigationError.UndecodableKey); }
 				const stored = route as SeedRoute;
 				const screen = this.config(stored.name);
 				if (screen === null) { return Result.err(WebNavigationError.UndecodableKey); }
 				const values = stored.params;
-				let params: P | null = null;
+				let params: ParamSlot | null = null;
 				if (values !== null) {
-					const parse = (screen as ScreenConfig<P>).parseParams;
+					const parse = (screen as ScreenConfig<PL>).parseParams;
 					if (parse === null) { return Result.err(WebNavigationError.UndecodableKey); }
-					params = (parse as (values: Map<string, string>) => P)(values as Map<string, string>);
+					params = (parse as (values: Map<string, string>) => ParamSlot | null)(values as Map<string, string>);
 				}
 				return Result.ok(this.adopt(stored.key, stored.name, params));
 			},
@@ -897,37 +993,40 @@ export class NavigatorCore<P> {
 	}
 
 	webNavigation(routes: WebRoutes): WebNavigationNode {
-		const values = (entry: Navigation<P>): Map<string, string> | null => this.encodeParams(entry);
+		const values = (entry: Navigation<PL>): Map<string, string> | null => this.encodeParams(entry);
 		return this.model.webNavigation({
 			serializer: this.seedSerializer(),
-			path: (entry: Navigation<P>): string | null => {
+			path: (entry: Navigation<PL>): string | null => {
 				return routes.path(entry.route.name, values(entry));
 			},
-			parameters: (entry: Navigation<P>): Map<string, string> | null => {
+			parameters: (entry: Navigation<PL>): Map<string, string> | null => {
 				return routes.parameters(entry.route.key, entry.route.name, values(entry));
 			},
-			child: (entry: Navigation<P>): WebNavigationOwner | null => {
+			child: (entry: Navigation<PL>): WebNavigationOwner | null => {
 				return routes.child(entry.route.key, entry.route.name);
 			},
 		});
 	}
 
-	seedOf(entry: Navigation<P>): RouteSeed<P> {
+	seedOf(entry: Navigation<PL>): RouteSeed<PL> {
 		return {
 			key: entry.route.key,
 			name: entry.route.name,
-			params: untrack((): P | null => entry.route.params()),
+			params: untrack((): ParamSlot | null => entry.route.slot()),
 		};
 	}
 
-	instantiate(seed: RouteSeed<P>): Navigation<P> {
-		const config = this.config(seed.name) as ScreenConfig<P>;
+	instantiate(seed: RouteSeed<PL>): Navigation<PL> {
+		const config = this.config(seed.name) as ScreenConfig<PL>;
 		const name = seed.name;
-		const [read, write] = createSignal<P | null>(seed.params);
+		const [read, write] = createSignal<ParamSlot | null>(seed.params);
 		const empty: ScreenOptions = {};
 		const [overrides, writeOverrides] = createSignal<ScreenOptions>(empty, { ownedWrite: true });
-		const route = new Route<P>(seed.key, name, read);
-		const entry = new Navigation<P>(
+		const route = new Route(seed.key, name, read, (slot: ParamSlot | null): void => {
+			write(slot);
+			this.container.changed();
+		});
+		const entry = new Navigation<PL>(
 			this,
 			route,
 			config,
@@ -938,8 +1037,8 @@ export class NavigatorCore<P> {
 		return entry;
 	}
 
-	child(seed: Accessor<RouteSeed<P>>, active: Accessor<boolean>): Navigation<P> {
-		return this.instantiate(untrack((): RouteSeed<P> => seed()));
+	child(seed: Accessor<RouteSeed<PL>>, active: Accessor<boolean>): Navigation<PL> {
+		return this.instantiate(untrack((): RouteSeed<PL> => seed()));
 	}
 
 	apply(change: () => void): void {
@@ -966,34 +1065,34 @@ export class NavigatorCore<P> {
 		};
 	}
 
-	snapshot(): Navigation<P>[] {
-		const list = untrack((): Navigation<P>[] => this.entries());
+	snapshot(): Navigation<PL>[] {
+		const list = untrack((): Navigation<PL>[] => this.entries());
 		return list.slice(0, list.length);
 	}
 
-	routesNow(): ResetState<P> {
-		const routes: ResetRoute<P>[] = [];
+	routesNow(): ResetState<PL> {
+		const routes: ResetRoute<PL>[] = [];
 		for (const entry of this.snapshot()) {
-			routes.push({ name: entry.route.name, params: untrack((): P | null => entry.route.params()) });
+			routes.push({ name: entry.route.name, slot: untrack((): ParamSlot | null => entry.route.slot()) });
 		}
 		return { index: untrack((): int32 => this.index()), routes: routes };
 	}
 
-	resumeRoutes(kept: ResetState<P>): void {
+	resumeRoutes(kept: ResetState<PL>): void {
 		for (const route of kept.routes) {
 			if (this.config(route.name) === null) { return; }
 		}
 		this.resetTo(kept);
 	}
 
-	indexOfName(list: Navigation<P>[], name: string): int32 {
+	indexOfName(list: Navigation<PL>[], name: string): int32 {
 		for (let i = list.length - 1; i >= 0; i -= 1) {
 			if (list[i].route.name === name) { return i as int32; }
 		}
 		return -1;
 	}
 
-	navigate(name: string, params: P | null, pop: boolean = false): void {
+	navigate(name: string, params: ParamSlot | null, pop: boolean = false): void {
 		if (this.hasRoute(name)) {
 			this.navigateLocal(name, params, pop);
 			return;
@@ -1013,7 +1112,7 @@ export class NavigatorCore<P> {
 
 	bypass: boolean = false;
 
-	allows(type: string, removed: Navigation<P>[], apply: () => void): boolean {
+	allows(type: string, removed: Navigation<PL>[], apply: () => void): boolean {
 		if (this.bypass || removed.length === 0) { return true; }
 		const action = new NavigationAction(type, (): void => {
 			this.bypass = true;
@@ -1026,17 +1125,17 @@ export class NavigatorCore<P> {
 		return true;
 	}
 
-	guarded(type: string, removed: Navigation<P>[], apply: () => void): boolean {
+	guarded(type: string, removed: Navigation<PL>[], apply: () => void): boolean {
 		if (!this.allows(type, removed, apply)) { return false; }
 		apply();
 		return true;
 	}
 
-	navigateLocal(name: string, params: P | null, pop: boolean = false): void {
+	navigateLocal(name: string, params: ParamSlot | null, pop: boolean = false): void {
 		this.model.navigate(name, params, pop);
 	}
 
-	push(name: string, params: P | null): void {
+	push(name: string, params: ParamSlot | null): void {
 		if (this.hasRoute(name) && this.model.push(name, params)) { return; }
 		if (params === null) {
 			let link = this.parent;
@@ -1049,7 +1148,7 @@ export class NavigatorCore<P> {
 		reportUnhandled("PUSH", name);
 	}
 
-	popToRoute(name: string, params: P | null, source: string): void {
+	popToRoute(name: string, params: ParamSlot | null, source: string): void {
 		if (this.hasRoute(name) && this.model.popToRoute(name, params, source)) { return; }
 		if (params === null) {
 			let link = this.parent;
@@ -1062,7 +1161,7 @@ export class NavigatorCore<P> {
 		reportUnhandled("POP_TO", name);
 	}
 
-	replaceRoute(key: string, name: string, params: P | null): void {
+	replaceRoute(key: string, name: string, params: ParamSlot | null): void {
 		this.model.replace(key, name, params);
 	}
 
@@ -1075,7 +1174,7 @@ export class NavigatorCore<P> {
 		this.model.popTo(at);
 	}
 
-	resetIndex(list: RouteSeed<P>[], wanted: int32 | null): int32 {
+	resetIndex(list: RouteSeed<PL>[], wanted: int32 | null): int32 {
 		if (list.length === 0) {
 			throw new Error("reset: a navigation state needs at least one route");
 		}
@@ -1089,11 +1188,10 @@ export class NavigatorCore<P> {
 		return at;
 	}
 
-	resetTo(state: ResetState<P>): void {
-		const list: RouteSeed<P>[] = [];
+	resetTo(state: ResetState<PL>): void {
+		const list: RouteSeed<PL>[] = [];
 		for (const route of state.routes) {
-			const params = route.params;
-			list.push(this.seed(route.name, params === null ? null : params));
+			list.push(this.seed(route.name, route.slot));
 		}
 		this.model.reset(list, this.resetIndex(list, state.index));
 	}
@@ -1117,8 +1215,8 @@ export class NavigatorCore<P> {
 	navigateTo(target: NavTarget): boolean {
 		const screen = this.config(target.name);
 		if (screen === null) { return false; }
-		const config = screen as ScreenConfig<P>;
-		let params: P | null = null;
+		const config = screen as ScreenConfig<PL>;
+		let params: ParamSlot | null = null;
 		const values = target.values;
 		const parse = config.parseParams;
 		if (values !== null && parse !== null) { params = parse(values as Map<string, string>); }
@@ -1127,7 +1225,7 @@ export class NavigatorCore<P> {
 		if (child === null) { return true; }
 		const current = this.current();
 		if (current === null) { return true; }
-		const key = (current as Navigation<P>).route.key;
+		const key = (current as Navigation<PL>).route.key;
 		for (const entry of this.children) {
 			if (entry.routeKey === key) { return entry.link.navigateTo(child as NavTarget); }
 		}
@@ -1158,21 +1256,21 @@ export class NavigatorCore<P> {
 		return null;
 	}
 
-	restoredSeeds(state: NavigationState): RouteSeed<P>[] {
-		const list: RouteSeed<P>[] = [];
+	restoredSeeds(state: NavigationState): RouteSeed<PL>[] {
+		const list: RouteSeed<PL>[] = [];
 		for (const route of state.routes) {
 			const screen = this.config(route.name);
 			if (screen === null) {
 				throw new Error("initialState: no screen named '" + route.name + "'");
 			}
-			const parse = (screen as ScreenConfig<P>).parseParams;
+			const parse = (screen as ScreenConfig<PL>).parseParams;
 			const values = route.params;
-			let params: P | null = null;
+			let params: ParamSlot | null = null;
 			if (values !== null) {
 				if (parse === null) {
 					throw new Error("initialState: screen '" + route.name + "' has params but no parseParams");
 				}
-				params = (parse as (values: Map<string, string>) => P)(values as Map<string, string>);
+				params = (parse as (values: Map<string, string>) => ParamSlot | null)(values as Map<string, string>);
 			}
 			list.push({ key: "", name: route.name, params });
 		}
@@ -1214,7 +1312,7 @@ export class NavigatorCore<P> {
 		return false;
 	}
 
-	restoreParams(seeds: RouteSeed<P>[]): void {
+	restoreParams(seeds: RouteSeed<PL>[]): void {
 		for (const entry of this.snapshot()) {
 			for (const seed of seeds) {
 				if (seed.key === entry.route.key && seed.params !== null) { entry.writeParams(seed.params); }
@@ -1272,23 +1370,23 @@ export class NavigatorCore<P> {
 		return { index: this.index(), routeNames: this.routeNames(), routes };
 	}
 
-	encodeParams(entry: Navigation<P>): Map<string, string> | null {
+	encodeParams(entry: Navigation<PL>): Map<string, string> | null {
 		const write = entry.config.stringifyParams;
-		const params = entry.route.params();
+		const params = entry.route.slot();
 		if (write === null || params === null) { return null; }
-		return (write as (params: P) => Map<string, string>)(params as P);
+		return (write as (params: ParamSlot | null) => Map<string, string>)(params);
 	}
 
 	describe(): string {
 		const current = this.current();
 		if (current === null) { return ""; }
-		const name = (current as Navigation<P>).route.name;
+		const name = (current as Navigation<PL>).route.name;
 		const child = this.focusedChild();
 		return child === null ? name : name + ">" + (child as NavigatorLink).describe();
 	}
 }
 
-export function linkOf<P>(core: NavigatorCore<P>): NavigatorLink {
+export function linkOf<PL>(core: NavigatorCore<PL>): NavigatorLink {
 	const link: NavigatorLink = {
 		kind: core.kind,
 		hasRoute: (name: string): boolean => core.hasRoute(name),
@@ -1318,7 +1416,7 @@ export function linkOf<P>(core: NavigatorCore<P>): NavigatorLink {
 		focusedRoute: (): RouteKey | null => {
 			const current = core.current();
 			if (current === null) { return null; }
-			const route = (current as Navigation<P>).route;
+			const route = (current as Navigation<PL>).route;
 			return { key: route.key, name: route.name };
 		},
 		state: (): NavigationState => core.trackedState(),
@@ -1335,7 +1433,7 @@ export function linkOf<P>(core: NavigatorCore<P>): NavigatorLink {
 	return link;
 }
 
-export function createCore<P>(setup: NavigatorSetup<P>): NavigatorCore<P> {
+export function createCore<PL>(setup: NavigatorSetup<PL>): NavigatorCore<PL> {
 	if (setup.screens.length === 0) {
 		throw new Error("a navigator needs at least one Screen child");
 	}
@@ -1352,9 +1450,9 @@ export function createCore<P>(setup: NavigatorSetup<P>): NavigatorCore<P> {
 		initial = named as string;
 	}
 	const scope = setup.scope;
-	const core = new NavigatorCore<P>(setup, initial, scope.link.seedFor(scope.routeKey));
+	const core = new NavigatorCore<PL>(setup, initial, scope.link.seedFor(scope.routeKey));
 	flush();
-	const link = linkOf<P>(core);
+	const link = linkOf<PL>(core);
 	core.notify();
 	core.container.changed();
 	createEffect<boolean>(
@@ -1371,10 +1469,10 @@ export function createCore<P>(setup: NavigatorSetup<P>): NavigatorCore<P> {
 		{ defer: true },
 	);
 	when (refresh || hcr) {
-		refreshKeep<ResetState<P>>(
+		refreshKeep<ResetState<PL>>(
 			"navigator",
-			(): ResetState<P> => core.routesNow(),
-			(kept: ResetState<P>): void => { core.resumeRoutes(kept); },
+			(): ResetState<PL> => core.routesNow(),
+			(kept: ResetState<PL>): void => { core.resumeRoutes(kept); },
 		);
 	}
 	const waiting = scope.link.register(scope.routeKey, link);
@@ -1383,22 +1481,22 @@ export function createCore<P>(setup: NavigatorSetup<P>): NavigatorCore<P> {
 	return core;
 }
 
-export function screenScope<P>(core: NavigatorCore<P>, entry: Navigation<P>): ScreenScope {
+export function screenScope<PL>(core: NavigatorCore<PL>, entry: Navigation<PL>): ScreenScope {
 	const focused = accessor((): boolean => entry.focusedNow());
 	const link = core.link as NavigatorLink;
 	return new ScreenScope(link, entry.route.key, focused, entry as unknown, core.container);
 }
 
-export function useNavigation<P>(): Navigation<P> {
+export function useNavigation<PL>(): Navigation<PL> {
 	const scope = currentScope("useNavigation");
 	if (scope.navigation === null) {
 		throw new Error("useNavigation: this component is not inside a screen");
 	}
-	return scope.navigation as Navigation<P>;
+	return scope.navigation as Navigation<PL>;
 }
 
-export function useRoute<P>(): Route<P> {
-	return useNavigation<P>().route;
+export function useRoute<PL, K extends keyof PL>(): RouteProp<PL, K> {
+	return routeProp<PL, K>(useNavigation<PL>().route);
 }
 
 export function useIsFocused(): Accessor<boolean> {

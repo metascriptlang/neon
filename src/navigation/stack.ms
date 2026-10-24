@@ -21,6 +21,9 @@ import {
 	RouteSeed,
 	RouteWebMap,
 	ScreenOptions,
+	ScreenParams,
+	ScreenParamsBuilder,
+	ParamSlot,
 	ScreenProps,
 	createCore,
 	currentScope,
@@ -53,23 +56,23 @@ export function readOptions(
 	return options as Accessor<ScreenOptions>;
 }
 
-function reuseWith<P>(entry: Navigation<P>, params: P | null): void {
-	if (untrack((): P | null => entry.route.params()) !== params) { entry.writeParams(params); }
+function reuseWith<PL>(entry: Navigation<PL>, params: ParamSlot | null): void {
+	if (untrack((): ParamSlot | null => entry.route.slot()) !== params) { entry.writeParams(params); }
 }
 
-function stackModel<P>(core: NavigatorCore<P>, restored: RouteSeed<P>[] | null): NavigatorModel<P> {
-	const initial = restored === null ? [core.seed(core.initialName, null)] : restored as RouteSeed<P>[];
-	const stack = createChildStack<RouteSeed<P>, Navigation<P>>(
+function stackModel<PL>(core: NavigatorCore<PL>, restored: RouteSeed<PL>[] | null): NavigatorModel<PL> {
+	const initial = restored === null ? [core.seed(core.initialName, null)] : restored as RouteSeed<PL>[];
+	const stack = createChildStack<RouteSeed<PL>, Navigation<PL>>(
 		initial,
 		seedKey,
-		(seed: Accessor<RouteSeed<P>>, active: Accessor<boolean>): Navigation<P> => {
+		(seed: Accessor<RouteSeed<PL>>, active: Accessor<boolean>): Navigation<PL> => {
 			return core.child(seed, active);
 		},
 	);
 	const entries = stack.instances;
 	const without = (key: string): void => {
-		stack.navigate((current: RouteSeed<P>[]): RouteSeed<P>[] => {
-			const kept: RouteSeed<P>[] = [];
+		stack.navigate((current: RouteSeed<PL>[]): RouteSeed<PL>[] => {
+			const kept: RouteSeed<PL>[] = [];
 			for (const seed of current) {
 				if (seed.key !== key) { kept.push(seed); }
 			}
@@ -87,8 +90,8 @@ function stackModel<P>(core: NavigatorCore<P>, restored: RouteSeed<P>[] | null):
 	return {
 		entries,
 		index: accessor((): int32 => (entries().length - 1) as int32),
-		arrange: (kept: Navigation<P>[], focused: Navigation<P> | null): void => {
-			const list: RouteSeed<P>[] = [];
+		arrange: (kept: Navigation<PL>[], focused: Navigation<PL> | null): void => {
+			const list: RouteSeed<PL>[] = [];
 			for (const entry of kept) { list.push(core.seedOf(entry)); }
 			if (list.length === 0) {
 				const name = core.hasRoute(core.initialName)
@@ -97,10 +100,10 @@ function stackModel<P>(core: NavigatorCore<P>, restored: RouteSeed<P>[] | null):
 				list.push(core.seed(name, null));
 			}
 			core.apply((): void => {
-				stack.navigate((current: RouteSeed<P>[]): RouteSeed<P>[] => list);
+				stack.navigate((current: RouteSeed<PL>[]): RouteSeed<PL>[] => list);
 			});
 		},
-		navigate: (name: string, params: P | null, pop: boolean): void => {
+		navigate: (name: string, params: ParamSlot | null, pop: boolean): void => {
 			const list = core.snapshot();
 			const top = list.length - 1;
 			const at = list[top].route.name === name ? top : pop ? core.indexOfName(list, name) : -1;
@@ -110,22 +113,22 @@ function stackModel<P>(core: NavigatorCore<P>, restored: RouteSeed<P>[] | null):
 				return;
 			}
 			core.guarded("NAVIGATE", list.slice(at + 1, list.length), (): void => {
-				reuseWith<P>(list[at], params);
+				reuseWith<PL>(list[at], params);
 				core.apply((): void => { stack.popTo(at); });
 			});
 		},
-		push: (name: string, params: P | null): boolean => {
+		push: (name: string, params: ParamSlot | null): boolean => {
 			const seed = core.seed(name, params);
 			core.apply((): void => { stack.push(seed); });
 			return true;
 		},
-		replace: (key: string, name: string, params: P | null): void => {
+		replace: (key: string, name: string, params: ParamSlot | null): void => {
 			for (const entry of core.snapshot()) {
 				if (entry.route.key === key) {
 					core.guarded("REPLACE", [entry], (): void => {
 						const seed = core.seed(name, params);
 						core.apply((): void => {
-							stack.navigate((current: RouteSeed<P>[]): RouteSeed<P>[] => {
+							stack.navigate((current: RouteSeed<PL>[]): RouteSeed<PL>[] => {
 								for (let i = 0; i < current.length; i += 1) {
 									if (current[i].key === key) { current[i] = seed; }
 								}
@@ -137,7 +140,7 @@ function stackModel<P>(core: NavigatorCore<P>, restored: RouteSeed<P>[] | null):
 				}
 			}
 		},
-		popToRoute: (name: string, params: P | null, source: string | null): boolean => {
+		popToRoute: (name: string, params: ParamSlot | null, source: string | null): boolean => {
 			const list = core.snapshot();
 			let from = list.length - 1;
 			if (source !== null) {
@@ -151,7 +154,7 @@ function stackModel<P>(core: NavigatorCore<P>, restored: RouteSeed<P>[] | null):
 				const keep = from;
 				core.guarded("POP_TO", list.slice(keep, list.length), (): void => {
 					core.apply((): void => {
-						stack.navigate((current: RouteSeed<P>[]): RouteSeed<P>[] => {
+						stack.navigate((current: RouteSeed<PL>[]): RouteSeed<PL>[] => {
 							const kept = current.slice(0, keep);
 							kept.push(seed);
 							return kept;
@@ -161,7 +164,7 @@ function stackModel<P>(core: NavigatorCore<P>, restored: RouteSeed<P>[] | null):
 				return true;
 			}
 			core.guarded("POP_TO", list.slice(at + 1, list.length), (): void => {
-				reuseWith<P>(list[at], params);
+				reuseWith<PL>(list[at], params);
 				core.apply((): void => { stack.popTo(at); });
 			});
 			return true;
@@ -173,17 +176,17 @@ function stackModel<P>(core: NavigatorCore<P>, restored: RouteSeed<P>[] | null):
 				core.apply((): void => { stack.popTo(at); });
 			});
 		},
-		reset: (list: RouteSeed<P>[], at: int32): void => {
+		reset: (list: RouteSeed<PL>[], at: int32): void => {
 			core.guarded("RESET", core.snapshot(), (): void => {
 				core.apply((): void => {
-					stack.navigate((current: RouteSeed<P>[]): RouteSeed<P>[] => list);
+					stack.navigate((current: RouteSeed<PL>[]): RouteSeed<PL>[] => list);
 				});
 			});
 		},
 		goBackFrom: (key: string): boolean => {
 			const list = core.snapshot();
 			if (list.length <= 1) { return false; }
-			const removed: Navigation<P>[] = [];
+			const removed: Navigation<PL>[] = [];
 			for (const entry of list) {
 				if (entry.route.key === key) { removed.push(entry); }
 			}
@@ -193,17 +196,17 @@ function stackModel<P>(core: NavigatorCore<P>, restored: RouteSeed<P>[] | null):
 			});
 			return true;
 		},
-		canBack: (): boolean => untrack((): Navigation<P>[] => entries()).length > 1,
+		canBack: (): boolean => untrack((): Navigation<PL>[] => entries()).length > 1,
 		back,
 		canPop: (): boolean => entries().length > 1,
 		drawer: (action: DrawerAction): boolean => false,
-		webNavigation: (map: RouteWebMap<P>): WebNavigationNode => {
-			const web = childStackWebNavigation<RouteSeed<P>, Navigation<P>>(stack, map.serializer, {
-				pathMapper: (child: NavigationChild<RouteSeed<P>, Navigation<P>>): string | null => {
+		webNavigation: (map: RouteWebMap<PL>): WebNavigationNode => {
+			const web = childStackWebNavigation<RouteSeed<PL>, Navigation<PL>>(stack, map.serializer, {
+				pathMapper: (child: NavigationChild<RouteSeed<PL>, Navigation<PL>>): string | null => {
 					return map.path(child.instance);
 				},
 				parametersMapper: (
-					child: NavigationChild<RouteSeed<P>, Navigation<P>>,
+					child: NavigationChild<RouteSeed<PL>, Navigation<PL>>,
 				): Map<string, string> | null => map.parameters(child.instance),
 				onBeforeNavigate: (): boolean => {
 					const list = core.snapshot();
@@ -213,14 +216,14 @@ function stackModel<P>(core: NavigatorCore<P>, restored: RouteSeed<P>[] | null):
 					});
 				},
 				childSelector: (
-					child: NavigationChild<RouteSeed<P>, Navigation<P>>,
+					child: NavigationChild<RouteSeed<PL>, Navigation<PL>>,
 				): WebNavigationOwner | null => map.child(child.instance),
 			});
-			return webNavigationNode<RouteSeed<P>>({
+			return webNavigationNode<RouteSeed<PL>>({
 				serializer: web.serializer,
 				history: web.history,
 				onBeforeNavigate: web.onBeforeNavigate,
-				navigate: (history: RouteSeed<P>[]): void => {
+				navigate: (history: RouteSeed<PL>[]): void => {
 					core.apply((): void => {
 						web.navigate(history);
 						core.restoreParams(history);
@@ -231,7 +234,8 @@ function stackModel<P>(core: NavigatorCore<P>, restored: RouteSeed<P>[] | null):
 	};
 }
 
-export interface StackNavigator<P> {
+export interface StackNavigator<PL> {
+	params: ScreenParamsBuilder<PL>;
 	Navigator: (props: {
 		children: NeonNode;
 		initialRouteName?: Accessor<string> | null;
@@ -243,44 +247,43 @@ export interface StackNavigator<P> {
 		navigationKey?: Accessor<string> | null;
 	}) => NeonNode;
 	Screen: (props: {
-		name: string;
-		component: (props: ScreenProps<P>) => NeonNode;
+		name: keyof PL;
+		component: (props: ScreenProps<PL>) => NeonNode;
 		options?: Accessor<ScreenOptions> | null;
-		initialParams?: P | null;
-		parseParams?: ((values: Map<string, string>) => P) | null;
-		stringifyParams?: ((params: P) => Map<string, string>) | null;
+		params?: ScreenParams<PL> | null;
 		navigationKey?: Accessor<string> | null;
 	}) => NeonNode;
 }
 
-export function createStackNavigator<P>(): StackNavigator<P> {
+export function createStackNavigator<PL>(): StackNavigator<PL> {
 	const collector = createScreenCollector();
 	return {
+		params: new ScreenParamsBuilder<PL>(),
 		Navigator: (props: {
 			children: NeonNode;
 			initialRouteName?: Accessor<string> | null;
 			screenOptions?: Accessor<ScreenOptions> | null;
 		}): NeonNode => {
-			const collection = collectScreens<P>(collector, props.children);
+			const collection = collectScreens<PL>(collector, props.children);
 			const screens = untrack(() => collection.read());
-			const core = createCore<P>({
+			const core = createCore<PL>({
 				kind: NavigatorKind.Stack,
 				screens,
 				initialRouteName: readName(props.initialRouteName),
 				screenOptions: readOptions(props.screenOptions),
 				scope: currentScope("Stack.Navigator"),
 				model: (
-					core: NavigatorCore<P>,
-					restored: RouteSeed<P>[] | null,
+					core: NavigatorCore<PL>,
+					restored: RouteSeed<PL>[] | null,
 					at: int32,
-				): NavigatorModel<P> => stackModel<P>(core, restored),
+				): NavigatorModel<PL> => stackModel<PL>(core, restored),
 			});
-			watchScreens<P>(collection, core);
-			const transitions = createNavigatorMotion<P>(core, true);
-			const screen = (entry: Navigation<P>, at: Accessor<number>): NeonNode => {
-				return screenView<P>(core, transitions, entry, false, at);
+			watchScreens<PL>(collection, core);
+			const transitions = createNavigatorMotion<PL>(core, true);
+			const screen = (entry: Navigation<PL>, at: Accessor<number>): NeonNode => {
+				return screenView<PL>(core, transitions, entry, false, at);
 			};
-			const rendered = accessor((): Navigation<P>[] => transitions.rendered());
+			const rendered = accessor((): Navigation<PL>[] => transitions.rendered());
 			const measure = (e: NeonEvent): void => { core.layout.measure(e); };
 			return <View style={STACK_FRAME} onLayout={measure}>
 				<For each={rendered}>{screen}</For>
@@ -296,26 +299,22 @@ export function createStackNavigator<P>(): StackNavigator<P> {
 			);
 		},
 		Screen: (props: {
-			name: string;
-			component: (props: ScreenProps<P>) => NeonNode;
+			name: keyof PL;
+			component: (props: ScreenProps<PL>) => NeonNode;
 			options?: Accessor<ScreenOptions> | null;
-			initialParams?: P | null;
-			parseParams?: ((values: Map<string, string>) => P) | null;
-			stringifyParams?: ((params: P) => Map<string, string>) | null;
+			params?: ScreenParams<PL> | null;
 			navigationKey?: Accessor<string> | null;
-		}): NeonNode => screenOf<P>(
+		}): NeonNode => screenOf<PL>(
 			collector,
-			props.name,
+			props.name as string,
 			props.component,
 			props.options,
-			props.initialParams,
-			props.parseParams,
-			props.stringifyParams,
+			props.params,
 			props.navigationKey,
 		),
 	};
 }
 
-export function createNativeStackNavigator<P>(): StackNavigator<P> {
-	return createStackNavigator<P>();
+export function createNativeStackNavigator<PL>(): StackNavigator<PL> {
+	return createStackNavigator<PL>();
 }

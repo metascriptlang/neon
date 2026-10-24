@@ -24,6 +24,9 @@ import {
 	RouteSeed,
 	RouteWebMap,
 	ScreenOptions,
+	ParamSlot,
+	ScreenParams,
+	ScreenParamsBuilder,
 	ScreenProps,
 	createCore,
 	currentScope,
@@ -152,11 +155,11 @@ function branchAddress(
 	if (items.length > 0) { branchAddress(items[items.length - 1], parts, parameters); }
 }
 
-function drawerModel<P>(
-	pages: NavigatorModel<P>,
+function drawerModel<PL>(
+	pages: NavigatorModel<PL>,
 	open: Accessor<boolean>,
 	writeOpen: Setter<boolean>,
-): NavigatorModel<P> {
+): NavigatorModel<PL> {
 	const back = (): boolean => {
 		if (untrack((): boolean => open())) {
 			writeOpen(false);
@@ -168,7 +171,7 @@ function drawerModel<P>(
 		entries: pages.entries,
 		index: pages.index,
 		arrange: pages.arrange,
-		navigate: (name: string, params: P | null, pop: boolean): void => {
+		navigate: (name: string, params: ParamSlot | null, pop: boolean): void => {
 			flush((): void => {
 				pages.navigate(name, params, pop);
 				writeOpen(false);
@@ -194,7 +197,7 @@ function drawerModel<P>(
 			});
 			return true;
 		},
-		webNavigation: (map: RouteWebMap<P>): WebNavigationNode => {
+		webNavigation: (map: RouteWebMap<PL>): WebNavigationNode => {
 			const web = pages.webNavigation(map);
 			return {
 				history: accessor((): WebHistoryItem<string>[] => {
@@ -223,8 +226,8 @@ function drawerModel<P>(
 	};
 }
 
-function drawerMotion<P>(
-	core: NavigatorCore<P>,
+function drawerMotion<PL>(
+	core: NavigatorCore<PL>,
 	open: Accessor<boolean>,
 	right: Accessor<boolean>,
 	own: Accessor<Style> | null,
@@ -240,7 +243,7 @@ function drawerMotion<P>(
 		core.currentKey();
 		const current = core.current();
 		if (current === null) { return true; }
-		if (!shown((current as Navigation<P>).options().swipeEnabled, true)) { return false; }
+		if (!shown((current as Navigation<PL>).options().swipeEnabled, true)) { return false; }
 		let child = (core.link as NavigatorLink).focusedChild();
 		while (child !== null) {
 			const here = child as NavigatorLink;
@@ -261,11 +264,11 @@ function drawerMotion<P>(
 	return motion;
 }
 
-export function drawerItem<P>(core: NavigatorCore<P>, entry: Navigation<P>): NeonNode {
+export function drawerItem<PL>(core: NavigatorCore<PL>, entry: Navigation<PL>): NeonNode {
 	const key = entry.route.key;
 	const focused = accessor((): boolean => core.currentKey() === key);
 	const options = accessor((): ScreenOptions => entry.options());
-	const label = accessor((): string => labelOf<P>(entry, options().drawerLabel));
+	const label = accessor((): string => labelOf<PL>(entry, options().drawerLabel));
 	const tint = accessor((): string => {
 		const own = options().drawerActiveTintColor;
 		return own === null ? core.container.theme().colors.primary : own as string;
@@ -295,7 +298,8 @@ export function drawerItem<P>(core: NavigatorCore<P>, entry: Navigation<P>): Neo
 	</Pressable>;
 }
 
-export interface DrawerNavigator<P> {
+export interface DrawerNavigator<PL> {
+	params: ScreenParamsBuilder<PL>;
 	Navigator: (props: {
 		children: NeonNode;
 		initialRouteName?: Accessor<string> | null;
@@ -310,19 +314,18 @@ export interface DrawerNavigator<P> {
 		navigationKey?: Accessor<string> | null;
 	}) => NeonNode;
 	Screen: (props: {
-		name: string;
-		component: (props: ScreenProps<P>) => NeonNode;
+		name: keyof PL;
+		component: (props: ScreenProps<PL>) => NeonNode;
 		options?: Accessor<ScreenOptions> | null;
-		initialParams?: P | null;
-		parseParams?: ((values: Map<string, string>) => P) | null;
-		stringifyParams?: ((params: P) => Map<string, string>) | null;
+		params?: ScreenParams<PL> | null;
 		navigationKey?: Accessor<string> | null;
 	}) => NeonNode;
 }
 
-export function createDrawerNavigator<P>(): DrawerNavigator<P> {
+export function createDrawerNavigator<PL>(): DrawerNavigator<PL> {
 	const collector = createScreenCollector();
 	return {
+		params: new ScreenParamsBuilder<PL>(),
 		Navigator: (props: {
 			children: NeonNode;
 			initialRouteName?: Accessor<string> | null;
@@ -331,26 +334,26 @@ export function createDrawerNavigator<P>(): DrawerNavigator<P> {
 			drawerStyle?: Accessor<Style> | null;
 			drawerPosition?: Accessor<DrawerPosition> | null;
 		}): NeonNode => {
-			const collection = collectScreens<P>(collector, props.children);
+			const collection = collectScreens<PL>(collector, props.children);
 			const screens = untrack(() => collection.read());
 			const behavior = readBehavior(props.backBehavior, "firstRoute");
 			const [open, writeOpen] = createSignal<boolean>(false, { ownedWrite: true });
-			const core = createCore<P>({
+			const core = createCore<PL>({
 				kind: NavigatorKind.Drawer,
 				screens,
 				initialRouteName: readName(props.initialRouteName),
 				screenOptions: readOptions(props.screenOptions),
 				scope: currentScope("Drawer.Navigator"),
 				model: (
-					core: NavigatorCore<P>,
-					restored: RouteSeed<P>[] | null,
+					core: NavigatorCore<PL>,
+					restored: RouteSeed<PL>[] | null,
 					at: int32,
-				): NavigatorModel<P> => {
-					const pages = pagesModel<P>(core, behavior, restored, at);
-					return drawerModel<P>(pages, open, writeOpen);
+				): NavigatorModel<PL> => {
+					const pages = pagesModel<PL>(core, behavior, restored, at);
+					return drawerModel<PL>(pages, open, writeOpen);
 				},
 			});
-			watchScreens<P>(collection, core);
+			watchScreens<PL>(collection, core);
 			createEffect<boolean>(
 				(prev: boolean | null): boolean => open(),
 				(shown: boolean, prev: boolean | null): Cleanup | null => {
@@ -366,7 +369,7 @@ export function createDrawerNavigator<P>(): DrawerNavigator<P> {
 				const value: DrawerPosition = (side as Accessor<DrawerPosition>)();
 				return value === "right";
 			});
-			const motion = drawerMotion<P>(core, open, right, own);
+			const motion = drawerMotion<PL>(core, open, right, own);
 			const panel = accessor((): Style => {
 				const base: Style = {
 					position: "absolute",
@@ -392,7 +395,7 @@ export function createDrawerNavigator<P>(): DrawerNavigator<P> {
 				};
 			});
 			const close = (e: NeonEvent): void => { core.drawerLocal(DrawerAction.Close); };
-			const mounted = mountedEntries<P>(core);
+			const mounted = mountedEntries<PL>(core);
 			const backdrop = accessor((): Style => ({
 				...BACKDROP,
 				opacity: 0.4 * motion.progress.get(),
@@ -406,12 +409,12 @@ export function createDrawerNavigator<P>(): DrawerNavigator<P> {
 				width: EDGE_WIDTH,
 			}));
 			const edgeHandlers = motion.edgeHandlers();
-			const transitions = createNavigatorMotion<P>(core, false);
-			const screen = (entry: Navigation<P>, at: Accessor<number>): NeonNode => {
-				return screenView<P>(core, transitions, entry, true, at);
+			const transitions = createNavigatorMotion<PL>(core, false);
+			const screen = (entry: Navigation<PL>, at: Accessor<number>): NeonNode => {
+				return screenView<PL>(core, transitions, entry, true, at);
 			};
-			const item = (entry: Navigation<P>, at: Accessor<number>): NeonNode => {
-				return drawerItem<P>(core, entry);
+			const item = (entry: Navigation<PL>, at: Accessor<number>): NeonNode => {
+				return drawerItem<PL>(core, entry);
 			};
 			return <View style={{ flex: 1, flexDirection: "column", position: "relative" }}>
 				<View style={{ flex: 1, flexDirection: "column", position: "relative" }}>
@@ -439,21 +442,17 @@ export function createDrawerNavigator<P>(): DrawerNavigator<P> {
 			);
 		},
 		Screen: (props: {
-			name: string;
-			component: (props: ScreenProps<P>) => NeonNode;
+			name: keyof PL;
+			component: (props: ScreenProps<PL>) => NeonNode;
 			options?: Accessor<ScreenOptions> | null;
-			initialParams?: P | null;
-			parseParams?: ((values: Map<string, string>) => P) | null;
-			stringifyParams?: ((params: P) => Map<string, string>) | null;
+			params?: ScreenParams<PL> | null;
 			navigationKey?: Accessor<string> | null;
-		}): NeonNode => screenOf<P>(
+		}): NeonNode => screenOf<PL>(
 			collector,
-			props.name,
+			props.name as string,
 			props.component,
 			props.options,
-			props.initialParams,
-			props.parseParams,
-			props.stringifyParams,
+			props.params,
 			props.navigationKey,
 		),
 	};

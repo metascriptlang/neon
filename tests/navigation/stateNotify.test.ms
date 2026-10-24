@@ -15,16 +15,24 @@ import {
 	createStackNavigator,
 } from "../../src/navigation/index";
 
-const Tab = createBottomTabNavigator<string>();
-const Stack = createStackNavigator<string>();
+interface NavParams {
+	First: null;
+	Second: null;
+	Help: null;
+	Start: null;
+	Target: null;
+}
 
-function Plain(props: ScreenProps<string>): NeonNode {
+const Tab = createBottomTabNavigator<NavParams>();
+const Stack = createStackNavigator<NavParams>();
+
+function Plain(props: ScreenProps<NavParams>): NeonNode {
 	return <Text>plain</Text>;
 }
 
 const [redirect, setRedirect] = createSignal<boolean>(false);
 
-function Redirecting(props: ScreenProps<string>): NeonNode {
+function Redirecting(props: ScreenProps<NavParams>): NeonNode {
 	const navigation = props.navigation;
 	createEffect<boolean>(
 		(prev: boolean | null): boolean => redirect(),

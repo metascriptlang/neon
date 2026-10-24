@@ -230,11 +230,12 @@ export function regionNode(fn: RegionFn): NeonNode {
 		const home = regionHome(host, parent, anchor);
 		let current: Row[] = [];
 		let mounted = false;
+		let mounting = true;
 		const rows = fn(host, home);
 		createRenderEffect<Row[]>(
 			(prev: Row[] | null): Row[] => rows(),
 			(next: Row[], prev: Row[] | null): Cleanup | null => {
-				const at = mounted ? regionParent(host, anchor, "regionNode") : parent;
+				const at = mounted || !mounting ? regionParent(host, anchor, "regionNode") : parent;
 				reconcileArrays(host, at, current, next, anchor, "regionNode");
 				settleStaged(host, home);
 				mounted = true;
@@ -244,6 +245,7 @@ export function regionNode(fn: RegionFn): NeonNode {
 		);
 		home.first = false;
 		sealRegion(host, parent, anchor);
+		mounting = false;
 	};
 }
 
