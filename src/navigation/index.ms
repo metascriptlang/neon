@@ -112,6 +112,9 @@ export {
 	RouteNode,
 	RouteDef,
 	RouteOptions,
+	RouteDataOptions,
+	RouteComponent,
+	RouteSectionProps,
 	PathOptions,
 	RouteEntry,
 	MatchedRoute,
@@ -122,6 +125,7 @@ export {
 	path,
 	hrefOf,
 	paramsOf,
+	componentOf,
 	createRouteTree,
 } from "./route";
 export {

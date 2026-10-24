@@ -21,6 +21,8 @@ import {
 	GuardDecision,
 	MatchedRoute,
 	RouteDef,
+	RouteComponent,
+	RouteSectionProps,
 	RouteEntry,
 	RouteMatch,
 	RouteNode,
@@ -72,7 +74,7 @@ export interface RouteRef {
 export interface RouteConfig {
 	path?: string | null;
 	route?: RouteRef | null;
-	component?: ((props: {}) => NeonNode) | null;
+	component?: RouteComponent | null;
 	layout?: ((props: LayoutProps) => NeonNode) | null;
 	navigator?: RouteNavigator | null;
 	initial?: string | null;
@@ -89,7 +91,7 @@ export interface RouteConfig {
 
 export interface RouteView {
 	node: RouteNode;
-	component: ((props: {}) => NeonNode) | null;
+	component: RouteComponent | null;
 	layout: ((props: LayoutProps) => NeonNode) | null;
 	navigator: RouteNavigator | null;
 	initial: int32;
@@ -246,8 +248,8 @@ export interface NavigateOptions {
 	replace?: boolean | null;
 }
 
-export interface ToOptions<P> {
-	to: RouteDef<P>;
+export interface ToOptions<P, D> {
+	to: RouteDef<P, D>;
 	params: P;
 	search?: Map<string, string> | null;
 	replace?: boolean | null;
@@ -852,8 +854,8 @@ export class Router {
 		this.apply(resolved, true);
 	}
 
-	navigate<P>(options: ToOptions<P>): boolean {
-		const built = hrefOf<P>(this.routes.tree, options.to, options.params, options.search ?? new Map<string, string>());
+	navigate<P, D>(options: ToOptions<P, D>): boolean {
+		const built = hrefOf<P, D>(this.routes.tree, options.to, options.params, options.search ?? new Map<string, string>());
 		if (!built.ok) { throw new Error("routing: navigate({ to }) cannot build an address for " + (options.to.node.pattern ?? "a pathless route") + ": " + built.error.toString()); }
 		return this.navigate(built.value, { replace: options.replace ?? false });
 	}
@@ -917,7 +919,7 @@ export class Router {
 				const preload = level.node.preload;
 				if (preload !== null) {
 					untrack((): number => {
-						(preload as (args: PreloadArgs<Map<string, string>>) => void)({ params: level.params, location, intent: "preload" });
+						(preload as (args: PreloadArgs<Map<string, string>>) => unknown)({ params: level.params, location, intent: "preload" });
 						return 0;
 					});
 				}
@@ -1047,10 +1049,15 @@ interface RouteScope {
 const RouterContext = createContext<Router | null>(null);
 const RouteContext = createContext<RouteScope | null>(null);
 
-function mountLater(make: (props: {}) => NeonNode, steer: Steer, intent: PreloadIntent): NeonNode {
+function mountLater(
+	make: RouteComponent,
+	props: RouteSectionProps<Map<string, string>, unknown>,
+	steer: Steer,
+	intent: PreloadIntent,
+): NeonNode {
 	return (host: Host, parent: HostNode, before: HostNode | null): void => {
 		steer.within(intent, (): void => {
-			untrack((): number => { make({})(host, parent, before); return 0; });
+			untrack((): number => { make(props)(host, parent, before); return 0; });
 		});
 	};
 }
@@ -1143,13 +1150,14 @@ function placeView(routes: Routes, child: NavigationChild<Stop, Place>, steer: S
 	const stop = untrack((): Stop => child.configuration());
 	const found = routes.views[stop.route];
 	const scope: RouteScope = { params: stop.params, node: found.node, parent };
+	const leaf = leafOf(child);
+	const location: RouterLocation = { pathname: leaf.path, search: leaf.search, hash: leaf.hash };
 	const preload = found.node.preload;
+	let data: unknown = null;
 	if (preload !== null) {
-		const leaf = leafOf(child);
-		const location: RouterLocation = { pathname: leaf.path, search: leaf.search, hash: leaf.hash };
 		steer.preloading(stop.intent, (): void => {
 			untrack((): number => {
-				(preload as (args: PreloadArgs<Map<string, string>>) => void)({ params: stop.params, location, intent: stop.intent });
+				data = (preload as (args: PreloadArgs<Map<string, string>>) => unknown)({ params: stop.params, location, intent: stop.intent });
 				return 0;
 			});
 		});
@@ -1158,7 +1166,7 @@ function placeView(routes: Routes, child: NavigationChild<Stop, Place>, steer: S
 	const layout = found.layout;
 	let body: NeonNode;
 	if (component !== null) {
-		body = mountLater(component as (props: {}) => NeonNode, steer, stop.intent);
+		body = mountLater(component as RouteComponent, { params: stop.params, location, data }, steer, stop.intent);
 	} else {
 		const level = child.instance.level as Level;
 		const inner = levelView(routes, level, steer, scope);
@@ -1199,7 +1207,7 @@ export function useParams(): Map<string, string> {
 	return (scope as RouteScope).params;
 }
 
-export function useParams<P>(options: { from: RouteDef<P> }): P {
+export function useParams<P, D>(options: { from: RouteDef<P, D> }): P {
 	const from = options.from;
 	let scope = useContext(RouteContext);
 	if (scope === null) { throw new Error("routing: useParams is called outside a routed component"); }

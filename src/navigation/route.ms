@@ -1,3 +1,4 @@
+import { NeonNode } from "../render/hostTypes";
 import { RoutingError, encodeRouteComponent, decodeRouteComponent } from "./routing";
 import {
 	PathMatch,
@@ -28,6 +29,22 @@ export interface PreloadArgs<P> {
 	location: RouterLocation;
 	intent: PreloadIntent;
 }
+
+export interface RouteSectionProps<P, D> {
+	params: P;
+	location: RouterLocation;
+	data: D;
+}
+
+class Preloaded<D> {
+	data: D;
+
+	constructor(data: D) {
+		this.data = data;
+	}
+}
+
+export type RouteComponent = (props: RouteSectionProps<Map<string, string>, unknown>) => NeonNode;
 
 export enum GuardAction {
 	Continue,
@@ -90,10 +107,10 @@ export interface RouteNode {
 	accepts: (values: Map<string, string>) => boolean;
 	guard: ((values: Map<string, string>, found: RouteMatch) => GuardDecision) | null;
 	paths: (() => Map<string, string>[]) | null;
-	preload: ((args: PreloadArgs<Map<string, string>>) => void) | null;
+	preload: ((args: PreloadArgs<Map<string, string>>) => unknown) | null;
 }
 
-export interface RouteDef<P> {
+export interface RouteDef<P, D = void> {
 	node: RouteNode;
 	params: ParamsCodec<P>;
 }
@@ -104,6 +121,14 @@ export interface RouteOptions<P> {
 	status?: int32 | null;
 	paths?: (() => P[]) | null;
 	preload?: ((args: PreloadArgs<P>) => void) | null;
+}
+
+export interface RouteDataOptions<P, D> {
+	params: ParamsCodec<P>;
+	guard?: ((params: P, found: RouteMatch) => GuardDecision) | null;
+	status?: int32 | null;
+	paths?: (() => P[]) | null;
+	preload: (args: PreloadArgs<P>) => D;
 }
 
 export interface PathOptions {
@@ -168,42 +193,75 @@ function typedPaths<P>(codec: ParamsCodec<P>, paths: () => P[]): () => Map<strin
 	};
 }
 
-function typedPreload<P>(
+function parsedArgs<P>(
 	codec: ParamsCodec<P>,
-	preload: (args: PreloadArgs<P>) => void,
-): (args: PreloadArgs<Map<string, string>>) => void {
-	return (args: PreloadArgs<Map<string, string>>): void => {
-		const parsed = codec.parse(args.params);
-		if (!parsed.ok) {
-			throw new Error("routing: the params of a matched route no longer parse");
-		}
-		preload({ params: parsed.value, location: args.location, intent: args.intent });
-	};
+	args: PreloadArgs<Map<string, string>>,
+): PreloadArgs<P> {
+	const parsed = codec.parse(args.params);
+	if (!parsed.ok) {
+		throw new Error("routing: the params of a matched route no longer parse");
+	}
+	return { params: parsed.value, location: args.location, intent: args.intent };
 }
 
 function routeDef<P>(
 	pattern: string | null,
-	options: RouteOptions<P>,
+	codec: ParamsCodec<P>,
+	guard: ((params: P, found: RouteMatch) => GuardDecision) | null,
+	status: int32 | null,
+	paths: (() => P[]) | null,
+	preload: ((args: PreloadArgs<Map<string, string>>) => unknown) | null,
 	acceptsAll: boolean,
-): RouteDef<P> {
-	const codec = options.params;
-	const guard = options.guard;
-	const paths = options.paths;
-	const preload = options.preload;
-	const node: RouteNode = {
+): RouteNode {
+	return {
 		pattern,
-		status: options.status ?? 200,
+		status: status ?? 200,
 		acceptsAll,
 		accepts: (values: Map<string, string>): boolean => codec.parse(values).ok,
 		guard: guard === null ? null : typedGuard<P>(codec, guard),
 		paths: paths === null ? null : typedPaths<P>(codec, paths),
-		preload: preload === null ? null : typedPreload<P>(codec, preload),
+		preload,
 	};
+}
+
+function voided<P>(
+	codec: ParamsCodec<P>,
+	preload: ((args: PreloadArgs<P>) => void) | null,
+): ((args: PreloadArgs<Map<string, string>>) => unknown) | null {
+	if (preload === null) { return null; }
+	return (args: PreloadArgs<Map<string, string>>): unknown => {
+		preload(parsedArgs<P>(codec, args));
+		return null;
+	};
+}
+
+// Parked on card pending: generic-class-field-instantiated-as-void-has-no-member (second sighting beside 2026-10-24-a-closure-capturing-a-generic-parameter-instantiated-as-void-emits-a-void-field.md): one `route<P, D = void>` over a void preload.
+export function route<P>(pattern: string | null, options: RouteOptions<P>): RouteDef<P, void> {
+	const codec = options.params;
+	const node = routeDef<P>(pattern, codec, options.guard, options.status, options.paths, voided<P>(codec, options.preload), false);
 	return { node, params: codec };
 }
 
-export function route<P>(pattern: string | null, options: RouteOptions<P>): RouteDef<P> {
-	return routeDef<P>(pattern, options, false);
+export function route<P, D>(pattern: string | null, options: RouteDataOptions<P, D>): RouteDef<P, D> {
+	const codec = options.params;
+	const preload = options.preload;
+	const node = routeDef<P>(pattern, codec, options.guard, options.status, options.paths,
+		(args: PreloadArgs<Map<string, string>>): unknown => new Preloaded<D>(preload(parsedArgs<P>(codec, args))) as unknown,
+		false);
+	return { node, params: codec };
+}
+
+export function componentOf<P, D>(
+	target: RouteDef<P, D>,
+	make: (props: RouteSectionProps<P, D>) => NeonNode,
+): RouteComponent {
+	return (props: RouteSectionProps<Map<string, string>, unknown>): NeonNode => {
+		const parsed = target.params.parse(props.params);
+		if (!parsed.ok) {
+			throw new Error("routing: the params of a matched route no longer parse");
+		}
+		return make({ params: parsed.value, location: props.location, data: (props.data as Preloaded<D>).data });
+	};
 }
 
 const identity: ParamsCodec<Map<string, string>> = {
@@ -216,26 +274,29 @@ const identity: ParamsCodec<Map<string, string>> = {
 export function path(
 	pattern: string | null,
 	options: PathOptions = {},
-): RouteDef<Map<string, string>> {
-	return routeDef<Map<string, string>>(pattern, {
-		params: identity,
-		guard: options.guard,
-		status: options.status,
-		paths: options.paths,
-		preload: options.preload,
-	}, true);
+): RouteDef<Map<string, string>, void> {
+	const node = routeDef<Map<string, string>>(
+		pattern,
+		identity,
+		options.guard,
+		options.status,
+		options.paths,
+		voided<Map<string, string>>(identity, options.preload),
+		true,
+	);
+	return { node, params: identity };
 }
 
-export function hrefOf<P>(
+export function hrefOf<P, D>(
 	tree: RouteTree,
-	target: RouteDef<P>,
+	target: RouteDef<P, D>,
 	params: P,
 	search: Map<string, string>,
 ): Result<string, RoutingError> {
 	return tree.href(target.node, target.params.stringify(params), search);
 }
 
-export function paramsOf<P>(target: RouteDef<P>, found: RouteMatch): Result<P, RoutingError> {
+export function paramsOf<P, D>(target: RouteDef<P, D>, found: RouteMatch): Result<P, RoutingError> {
 	for (const level of found.chain) {
 		if (level.node === target.node) { return target.params.parse(level.params); }
 	}
