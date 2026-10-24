@@ -52,8 +52,6 @@ when (js) {
 		"(a => a.getAttribute('preload') === 'false')(#)";
 	extern function listenPassive(name: string, listener: (event: unknown) => void): void from
 		"window.addEventListener(#, #, { passive: true })";
-	extern function startTimeout(run: () => void, ms: int32): int32 from "setTimeout(#, #)";
-	extern function stopTimeout(handle: int32): void from "clearTimeout(#)";
 	extern function scrollToFragmentOrTop(url: string): void from
 		"(u => { const at = u.indexOf('\\x23'); const el = at < 0 ? null : document.getElementById(decodeURIComponent(u.slice(at + 1))); if (el) el.scrollIntoView(); else window.scrollTo(0, 0); })(#)";
 
@@ -122,7 +120,7 @@ export function followLinks(navigate: (url: string) => boolean): Dispose {
 
 export function followPreloads(preload: (url: string) => void): Dispose {
 	when (js) {
-		let pending = 0;
+		let pending: number = 0;
 		let last: Anchor | null = null;
 		const preloadEvent = (event: unknown): void => {
 			const url = sameOriginLink(event as Event);
@@ -130,12 +128,12 @@ export function followPreloads(preload: (url: string) => void): Dispose {
 			preload(url);
 		};
 		const move = (event: unknown): void => {
-			stopTimeout(pending);
+			clearTimeout(pending);
 			const url = sameOriginLink(event as Event);
 			if (url === "") { last = null; return; }
 			const anchor = eventAnchor(event as Event);
 			if (anchor === last) { return; }
-			pending = startTimeout((): void => {
+			pending = setTimeout((): void => {
 				last = anchor;
 				if (!preloadDisabled(anchor)) { preload(url); }
 			}, 20);
@@ -144,7 +142,7 @@ export function followPreloads(preload: (url: string) => void): Dispose {
 		listenPassive("focusin", preloadEvent);
 		listenPassive("touchstart", preloadEvent);
 		return (): void => {
-			stopTimeout(pending);
+			clearTimeout(pending);
 			window.removeEventListener("mousemove", move, false);
 			window.removeEventListener("focusin", preloadEvent, false);
 			window.removeEventListener("touchstart", preloadEvent, false);
