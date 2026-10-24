@@ -8,7 +8,7 @@ import {
 	onPointer, onKey, onText, onImePreedit, onFocus, onResize, onFrame,
 	PointerEvent, PointerKind, KeyEvent, KeyAction, Window, keyName,
 } from "../../../../ion/src/index";
-import { embedRegister, viewCreate, viewResize, viewFrame, viewDestroy, viewSwapChain, currentView, gfxSetup, ViewId, ViewInvalid } from "../../../../void/src/sokol/gpu";
+import { embedRegister, viewCreate, viewResize, viewReady, viewFrame, viewDestroy, viewSwapChain, currentView, gfxSetup, ViewId, ViewInvalid } from "../../../../void/src/sokol/gpu";
 import { setup2d } from "../../../../void/src/void2d/draw";
 import { commit as commitFrame } from "../../../../void/src/gpu/door";
 import { addFont, registerFace, setFaceResolver, FontId, FontStyle as FaceStyle, DEFAULT_FONT } from "../../../../void/src/void2d/font";
@@ -228,7 +228,7 @@ function showWithFirstFrame(win: Window): void {
 		return;
 	}
 	const owner = a as Area;
-	if (owner.view !== ViewInvalid) { viewFrame(owner.view); }
+	if (owner.view !== ViewInvalid && !viewFrame(owner.view)) { requestFrame(owner.win); }
 	if (!owner.shown) {
 		owner.shown = true;
 		show(win);
@@ -241,12 +241,19 @@ function wireInput(): void {
 	embedRegister(initGpu, drawCurrent);
 	onResize(resized);
 	onFrame((window: int32, timeMs: float64): void => {
-		runFrameFires();
-		flush();
 		const a = areaOfWindow(window);
 		if (a !== null) {
 			const owner = a as Area;
-			if (owner.view !== ViewInvalid && (owner.owed || owner.area.vh.scene.isDirty())) { viewFrame(owner.view); }
+			if (owner.view !== ViewInvalid && !viewReady(owner.view)) {
+				requestFrame(owner.win);
+				return;
+			}
+		}
+		runFrameFires();
+		flush();
+		if (a !== null) {
+			const owner = a as Area;
+			if (owner.view !== ViewInvalid && (owner.owed || owner.area.vh.scene.isDirty()) && !viewFrame(owner.view)) { requestFrame(owner.win); }
 		}
 		const retired = _retiredViews;
 		_retiredViews = [];
