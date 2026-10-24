@@ -400,6 +400,20 @@ of a rest tuple; the call is `useAction(a)(input)` because a function value cann
 `url` or be an `unknown` key; `result`, `error` and `pending` are methods; `useSubmission` is
 an accessor of the latest submission or null in place of a stub proxy.
 
+A `<form action={a.url}>` submits through its action on the client: `followSubmits(submit)`
+(`src/platform/browser/routingHistory.ms`) is the submit half of `setupNativeEvents`
+(`data/events.ts:104-130`, listener `:140`): a handled submit is prevented, one already
+prevented or with no action is left alone, a submitter's `formaction` wins over the form's
+`action`, and a form of an `https://action/` url that is not `POST` throws. `formAction(fn, name)`
+makes the action whose input is `FormData` and registers it by url (`actions`, `action.ts:25`,
+`:27-33`, released with the owner it was made under); `submitForm(router, url, data)` runs the
+registered one, as `useAction` would, and answers whether there was one. A failure stays in the
+submission and rejects no one, since a form has no caller (`if (result.error && !form)`, `:107`).
+Diverges: `FormData` is Neon's own class of text fields (a file field throws), always the input
+where Solid hands `URLSearchParams` unless `multipart/form-data`; no `actionBase` branch, since a
+Neon action has only the `https://action/` url (no `.with`, no server url yet); `formAction` stands
+in for an `action` overload on `(input: FormData)`, parked on a compiler card.
+
 `redirect(address, status | init)`, `reload(init)` and `notFound()` build one `Reply`
 (`route.ms`, `response.ts:3-36`) that is also the guard decision, so a guard and an action
 return the same `redirect`. `Reply` extends `Error` because only an `Error` or a string
