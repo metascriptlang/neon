@@ -125,6 +125,8 @@ and the invariants that outlived them were moved to the head of the test that pi
   cell was red. The last frame of the animation is not guaranteed inside a wall-clock window,
   so the cell is red by timing, on main and on a branch alike. Not yet traced to whether the
   animation driver drops its final frame or the test should wait for the end event.
+  On 2026-10-25, msc v0.3.4 `00bcf1a39`, load 24–35: an export of main `b7ed4537` failed 2 of 5 runs
+  (`118`, `0`), `wt/rn-components` 0 of 5, and the full gate on `637c8879` red with `118`.
 
 - **OPEN 2026-10-13 — `ActivityIndicator color` never reaches the element.** `writeControlAttr`
   sets `el.style.color`, and the colour is gone after the mount (not traced to the write that
