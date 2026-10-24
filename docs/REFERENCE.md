@@ -254,3 +254,13 @@ at `d604b18`); an entry there names it in an **R3F** field.
 - **Why:** a claim finds a node by position, not by key, so after the first difference nothing says which served node belongs to which later tree node; only the whole root can be rebuilt, as React rebuilds. The claim never throws in a release build, because a throw from inside a region happens during a flush and halts reactivity, which a release build never revives.
 - **Pin:** `tests/render/hydrateRefusal.test.ms` (debug and `--release`, C and JS: a missing node at the top level and in a region, extra children in an element, in a region's element and in the container, a record kept through the rebuild)
 - **Checked:** 2026-10-24, read; measured on C and JS.
+
+### RD-13 · `getRequestEvent` reads only the render's owner, and the event is `{ request: { url, headers } }`
+
+- **Verdict:** DIVERGE-INTENTIONAL
+- **Solid:** `getRequestEvent` reads the AsyncLocalStorage store that `provideRequestEvent` fills, and only when that store is empty falls back to the caller's render context found through its owner (`~/projects/solid-next` at `84dada77`, `packages/web/src/server.ts:6448-6470`, `renderContextOf` :6662). The event is `{ request: Request; locals }` (`client.ts:120`), `undefined` outside a request.
+- **MS:** `serve` (`src/render/serve.ms`) sets the event on the served render's root owner with `setContext`; `getRequestEvent()` reads it through the owner and is `null` outside a request and on the client. `RequestEvent { request: { url, headers } }`, `headers.get(name)` by any case of the name.
+- **Why:** C has no AsyncLocalStorage, so the owner path is the only one both targets have; one record type works on both targets, and C has no Fetch `Request`.
+- **Don't:** keep a module-global current request: two requests in one workerd isolate would read each other's.
+- **Pin:** `tests/render/serveServer.test.ms`
+- **Checked:** 2026-10-24, measured on C and JS; decided under the person's delegation ("tự trả lời").

@@ -2,7 +2,7 @@ import { createSignal, accessor, Accessor } from "../../src/core/signal";
 import { element } from "../../src/macros/ui/element";
 import { NeonNode, text } from "../../src/render/node";
 import { Host, HostNode, MockNode, mockNode, mockHost, render, mockToString } from "../../src/render/host";
-import { Context, createContext, useContext, ContextNotFoundError, NoOwnerError } from "../../src/render/context";
+import { Context, createContext, setContext, useContext, ContextNotFoundError, NoOwnerError } from "../../src/render/context";
 import { onCleanup } from "../../src/core/cleanup";
 import { createRoot } from "../../src/core/owner";
 import { resetErrorHalt, flush } from "../../src/core/runtime";
@@ -460,6 +460,34 @@ test "a null default is a value, not an absent one" {
 		return 0;
 	});
 	assert seen === null, "the null default came back instead of throwing";
+}
+
+test "a value set on an owner reaches the owner and the children made after it, and not the owner above" {
+	const T = createContext<Theme>({ accent: "red" });
+	let above = "";
+	let own = "";
+	let child = "";
+	createRoot((outer: Dispose): number => {
+		createRoot((inner: Dispose): number => {
+			setContext(T, { accent: "blue" });
+			own = useContext(T).accent;
+			createRoot((nested: Dispose): number => {
+				child = useContext(T).accent;
+				return 0;
+			});
+			return 0;
+		});
+		above = useContext(T).accent;
+		return 0;
+	});
+	assert own === "blue" && child === "blue" && above === "red", own + " " + child + " " + above;
+}
+
+test "setContext without an owner throws NoOwnerError" {
+	const T = createContext<Theme>({ accent: "red" });
+	let caught: Error | null = null;
+	try { setContext(T, { accent: "blue" }); } catch (e) { caught = e as Error; }
+	assert caught instanceof NoOwnerError;
 }
 
 test "a default-less context read without a provider throws ContextNotFoundError" {

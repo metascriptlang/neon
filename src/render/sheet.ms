@@ -34,6 +34,10 @@ export function registerCss(id: string, css: string): void {
 	if (changed !== null) { (changed as () => void)(); }
 }
 
+export function cssIds(): string[] {
+	return ids.slice(0);
+}
+
 export function collectCss(): string {
 	let s = "";
 	for (const r of rules) { s = s + r; }
