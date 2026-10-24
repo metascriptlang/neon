@@ -66,7 +66,7 @@ when (server) {
 	} from "./web";
 	import { svgMarkup } from "../components/svg/markup";
 	import { parseVisibleContent } from "./visibleContent";
-	import { asServer } from "./environment";
+	import { asServer } from "../core/runtime";
 	import { Computation, Dispose, NotReadyError } from "../core/types";
 	import { ServerContext, Fragments, Hole, Rules, ServerMarks, MAX_PASSES, withServerContext, pendingWaits, unconverged } from "../core/serverContext";
 	import { scriptLiteral } from "./hydrationRecords";

@@ -1,13 +1,12 @@
 import { createRenderEffect } from "../core/effect";
 import { Cleanup } from "../core/types";
 import { untrack } from "../core/signal";
-import { getOwner } from "../core/runtime";
+import { getOwner, isServer, asServer } from "../core/runtime";
 import { runWithOwner } from "../core/owner";
 import { NotReadyError } from "../core/types";
 import { Hole, ServerContext, ServerMarks, serverContext, withServerContext } from "../core/serverContext";
 import { Style, StyleValue, setStyleField, emptyStyle } from "./style";
 import { Host, HostNode } from "./hostTypes";
-import { isServer, asServer } from "./environment";
 
 // A dynamic spot re-runs whenever a source signal changes, but a derived expression
 // often maps several source values onto the SAME output ("big"/"small", a formatted

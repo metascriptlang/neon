@@ -11,8 +11,7 @@ import { NeonEvent } from "./event";
 import { Host, HostNode, NeonNode, RefFn } from "./hostTypes";
 import { Row, BUILT_IN_PLACE, makeRow, place, reconcileArrays, mountAt, removeRow } from "./reconcile";
 import { regionAnchor, regionParent, sealRegion, serverRegionStart, serverRegionEnd, unclaimed, claimMark, claimRewind, ClaimMark } from "./claim";
-import { getOwner } from "../core/runtime";
-import { isServer } from "./environment";
+import { getOwner, isServer } from "../core/runtime";
 import { bindText, bindAttr, bindStyleAll, applyRef } from "./bind";
 
 export { NeonNode, RefFn } from "./hostTypes";

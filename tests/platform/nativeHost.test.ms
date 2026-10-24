@@ -29,7 +29,7 @@ import { FlatList, FlatListHandle, ItemLayout, ListRenderItemInfo } from "../../
 import {
 	nmViewsCreated, nmReleaseCalls, nmTouch, nmTeardown, nmMount, nmResize, nmScroll, nmLastScrollTag,
 	nmContentWidth, nmContentHeight, nmScrolledX, nmScrolledY, nmScrolledAnimated, nmContentSizeWrites,
-	nmScrollFrameWrites, nmScreenHeightReads, nmDrag, nmPull, nmLoop,
+	nmScrollFrameWrites, nmScreenHeightReads, nmLoop,
 	nmTransformWrites, nmVisualX, nmVisualY, nmLayoutWidth, nmLayoutHeight, nmTouchAt, nmLastPressableTag,
 	nmLayoutX, nmLayoutY, nmRestackWrites, nmAddChildWrites, nmDetachWrites, nmPaintTag, nmPaintTextIndex,
 	nmControl, nmControlSized, nmTextWidth, nmTextHeight, nmLastControlTag, nmEnvironment, nmLastInputTag, nmFocused, nmProp,

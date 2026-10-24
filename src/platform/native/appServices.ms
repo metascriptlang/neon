@@ -7,7 +7,6 @@ import {
 	AppEvent, FIELD, RECORD, appCall, dispatchNativeAppEvent, runNativeAppStarts,
 } from "./appBridge";
 import { CaptureServices, installCaptureServices } from "../../api/captureServices";
-import { nativeCaptureServices, onRecordingEvent, onSoundEvent } from "./captureServices";
 
 when (ios) {
 	@compile("../ios/app.m", "-fobjc-arc");
@@ -79,8 +78,6 @@ function onAppEvent(): void {
 		AppEvent.Share => settleShare(value),
 		AppEvent.MemoryWarning => publishMemoryWarning(),
 		AppEvent.ImageSize => settleImage(value),
-		AppEvent.Sound => onSoundEvent(value),
-		AppEvent.Recording => onRecordingEvent(value),
 		_ => dispatchNativeAppEvent(kind, value),
 	};
 }
@@ -140,7 +137,12 @@ const services: AppServices = {
 	imageSize,
 };
 
-let capture: CaptureServices = nativeCaptureServices;
+when (macos && !testBuild) {
+	let capture: CaptureServices | null = null;
+} else {
+	import { nativeCaptureServices } from "./captureServices";
+	let capture: CaptureServices | null = nativeCaptureServices;
+}
 let app: AppServices = services;
 
 // A desktop owner that runs the audio device itself (Ion) answers capture in place of the bridge.

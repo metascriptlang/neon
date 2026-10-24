@@ -1,5 +1,5 @@
 import { niAppCall } from "./app.h";
-import { appCall, requestReply } from "./appBridge";
+import { AppEvent, appCall, onNativeAppEvent, requestReply } from "./appBridge";
 import {
 	CaptureServices, PickReply, PickRequest, PickedAsset, RecordingSetup, RecordingState, SoundSetup, SoundState,
 	idleRecording, unloadedSound,
@@ -121,7 +121,7 @@ function soundCommand(id: int32, command: string, value: number): SoundState {
 	return state;
 }
 
-export function onSoundEvent(value: string): void {
+function onSoundEvent(value: string): void {
 	const split = value.indexOf(FIELD);
 	const id = parseInt(value.substring(0, split)) as int32;
 	const state = decodeSound(value.substring(split + 1, value.length));
@@ -182,7 +182,7 @@ async function recordingCommand(id: int32, command: string, value: number): Prom
 	return state;
 }
 
-export function onRecordingEvent(value: string): void {
+function onRecordingEvent(value: string): void {
 	const split = value.indexOf(FIELD);
 	const id = parseInt(value.substring(0, split)) as int32;
 	const state = decodeRecording(value.substring(split + 1, value.length));
@@ -199,3 +199,6 @@ export const nativeCaptureServices: CaptureServices = {
 	recordingPrepare,
 	recordingCommand,
 };
+
+onNativeAppEvent(AppEvent.Sound, onSoundEvent);
+onNativeAppEvent(AppEvent.Recording, onRecordingEvent);
