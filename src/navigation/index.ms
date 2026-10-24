@@ -182,3 +182,4 @@ export {
 	childPanelsWebNavigation,
 } from "./webNavigation";
 export { WebHistory, createWebHistory } from "./webHistory";
+export { hashKey, queryKey, query, revalidate, createAsync } from "./data";

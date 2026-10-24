@@ -67,16 +67,37 @@ when (server) {
 			}
 		};
 		slot.wait = watch<T>(result, (value: Cell<T> | null, failure: Error | null): void => {
-			if (failure !== null) {
-				slot.failure = sanitized(failure);
-			} else if (value !== null) {
-				slot.json = JSON.stringify<T>(value.value);
-				slot.cell = value as unknown;
-			}
-			slot.settled = true;
+			settleSlot<T>(slot, value, failure);
 			land(value, slot.failure);
 		});
 		throw new NotReadyError(self);
+	}
+
+	function settleSlot<T>(slot: ServerSlot, value: Cell<T> | null, failure: Error | null): void {
+		if (failure !== null) {
+			slot.failure = sanitized(failure);
+		} else if (value !== null) {
+			slot.json = JSON.stringify<T>(value.value);
+			slot.cell = value as unknown;
+		}
+		slot.settled = true;
+	}
+
+	async function answerOf<T>(slot: ServerSlot): Promise<T> {
+		await slot.wait;
+		if (slot.failure !== null) { throw slot.failure; }
+		return (slot.cell as Cell<T>).value;
+	}
+
+	export function serverQuery<T>(ctx: ServerContext, key: string, run: () => Promise<T>): Promise<T> {
+		const known = ctx.slots.get(key);
+		if (known !== null) { return answerOf<T>(known); }
+		const slot = new ServerSlot();
+		ctx.slots.set(key, slot);
+		ctx.started.push(key);
+		slot.wait = watch<T>(run(), (value: Cell<T> | null, failure: Error | null): void => settleSlot<T>(slot, value, failure));
+		ctx.loops.push(slot.wait);
+		return answerOf<T>(slot);
 	}
 }
 
