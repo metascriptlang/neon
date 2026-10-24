@@ -117,7 +117,9 @@ Refused by name until the slice that adds each one:
 - `textDecorationStyle` `double`, `dotted` or `dashed`;
 - `cellWidth` on a nested Text. `<Text cellWidth={n}>` maps to void2d `setForceWidth`, so grapheme k sits at k×n, and
   the line never wraps: a cell row narrower than its text stays one line, as a terminal row does, instead of breaking
-  onto a second line over the row below. The browser and native hosts refuse `cellWidth` by name.
+  onto a second line over the row below. `cellWidths` gives the grid's own widths beside it, one entry per UTF-8 byte
+  of the text (1 or 2 where a cell starts, 0 for its other bytes), and maps to void2d `setCellWidths`, so a wide
+  grapheme takes two cells as the terminal's grid decided. The browser and native hosts refuse both by name.
 
 **A Text's height does not yet come from its content.** Yoga's binding has no measure hook; the request, approved
 2026-09-30 and still waiting on a session started in `~/metascript/yoga`, is
