@@ -1,5 +1,6 @@
 import { Signal, untrack } from "./signal";
-import { isTracking } from "./runtime";
+import { isTracking, createComputed, readSource } from "./runtime";
+import { Computation, EFFECT_PURE, RUN_UNCHANGED, CONFIG_AUTO_DISPOSE } from "./types";
 import { isArray, isObject } from "std/typetraits";
 import { proxyHandler } from "std/core/proxy";
 import { fieldsLiteral, fieldsDo, keyedBy } from "./storeFields";
@@ -17,6 +18,7 @@ export class WriteTheDraftInsideSetStore {
 }
 
 let writing: int32 = 0;
+let direct: int32 = 0;
 
 function keyOf<K>(key: K): number | string {
 	return key;
@@ -29,16 +31,16 @@ class SlotBase {
 class Slot<V> extends SlotBase {
 	signal: Signal<V>;
 
-	constructor(value: V) {
+	constructor(value: V, ownedWrite: boolean) {
 		super();
-		const signal = new Signal<V>(value, (a: V, b: V): boolean => false);
+		const signal = new Signal<V>(value, (a: V, b: V): boolean => false, ownedWrite);
 		this.signal = signal;
 		this.touch = (): void => { signal.set(signal.peek()); };
 	}
 }
 
-function slotFor<V>(value: V): Slot<V> {
-	return new Slot<V>(value);
+function slotFor<V>(value: V, ownedWrite: boolean): Slot<V> {
+	return new Slot<V>(value, ownedWrite);
 }
 
 class ChildBase {}
@@ -54,6 +56,9 @@ function copyOf<T>(value: T): T {
 
 class StoreRoot {
 	targets: Map<unknown, ChildBase> = new Map<unknown, ChildBase>();
+	derived: boolean = false;
+	deriving: boolean = false;
+	pull: () => void = (): void => {};
 }
 
 class Child<V> extends ChildBase {
@@ -102,6 +107,7 @@ export class StoreTraps<T> {
 	}
 
 	has<K extends keyof T>(target: T, key: K): boolean {
+		this.fresh();
 		return Reflect.has(this.raw, key);
 	}
 
@@ -179,12 +185,13 @@ export class StoreTraps<T> {
 	}
 
 	private committed<K extends keyof T>(key: K): T[K] {
+		this.fresh();
 		const target = this.raw;
 		const name = `${key}`;
 		const found = this.slots.get(name);
 		if (found !== undefined) { return (found as Slot<T[K]>).signal.get(); }
 		if (!isTracking()) { return Reflect.get(target, key); }
-		const slot = slotFor(Reflect.get(target, key));
+		const slot = slotFor(Reflect.get(target, key), this.root.derived);
 		this.slots.set(name, slot);
 		return slot.signal.get();
 	}
@@ -193,9 +200,13 @@ export class StoreTraps<T> {
 		const name = `${key}`;
 		const found = this.slots.get(name);
 		if (found !== undefined) { return found as Slot<T[K]>; }
-		const slot = slotFor(old);
+		const slot = slotFor(old, this.root.derived);
 		this.slots.set(name, slot);
 		return slot;
+	}
+
+	fresh(): void {
+		if (this.root.derived && !this.root.deriving && isTracking()) { this.root.pull(); }
 	}
 
 	private notify(name: string): void {
@@ -206,6 +217,10 @@ export class StoreTraps<T> {
 	write<K extends keyof T>(key: K, value: T[K]): void {
 		this.privatize();
 		const target = this.raw;
+		if (direct > 0) {
+			Reflect.set(target, key, value);
+			return;
+		}
 		when (isArray<T>()) {
 			const index = keyOf(key);
 			const length = Reflect.get(target, "length");
@@ -240,17 +255,19 @@ export class StoreTraps<T> {
 	capture(from: number): void {
 		when (isArray<T>()) {
 			this.privatize();
+			if (direct > 0) { return; }
 			const target = this.raw;
 			this.slotOf(target, "length", target.length);
 			for (let i = from; i < target.length; i += 1) {
 				const name = `${i}`;
-				if (this.slots.get(name) === undefined) { this.slots.set(name, slotFor(target[i])); }
+				if (this.slots.get(name) === undefined) { this.slots.set(name, slotFor(target[i], this.root.derived)); }
 			}
 		}
 	}
 
 	restamp(before: number, from: number): void {
 		when (isArray<T>()) {
+			if (direct > 0) { return; }
 			const target = this.raw;
 			const after = target.length;
 			const end = before > after ? before : after;
@@ -467,12 +484,13 @@ export function reconcile<T>(value: T, key: string | null = "id"): (draft: Draft
 }
 
 export function snapshot<T>(store: Store<T>): T {
-	return proxyHandler(store).snapshot();
+	const traps = proxyHandler(store);
+	traps.fresh();
+	return traps.snapshot();
 }
 
-export function createStore<T extends object>(value: T): [Store<T>, SetStoreFunction<T>] {
-	const traps = new StoreTraps<T>(value, new StoreRoot());
-	const setStore = (fn: (draft: Draft<T>) => void): void => {
+function setterOf<T>(traps: StoreTraps<T>): SetStoreFunction<T> {
+	return (fn: (draft: Draft<T>) => void): void => {
 		untrack<int32>((): int32 => {
 			writing += 1;
 			try {
@@ -483,5 +501,43 @@ export function createStore<T extends object>(value: T): [Store<T>, SetStoreFunc
 			return 0;
 		});
 	};
-	return [new Proxy(value, traps), setStore];
+}
+
+function deriveStore<T extends object>(seed: T, derive: (draft: Draft<T>) => void): StoreTraps<T> {
+	const root = new StoreRoot();
+	root.derived = true;
+	const traps = new StoreTraps<T>(seed, root);
+	const draft = new Proxy(seed, new DraftTraps<T>(traps));
+	let first = true;
+	const node = createComputed((self: Computation, create: boolean): int32 => {
+		root.deriving = true;
+		writing += 1;
+		if (first) { direct += 1; }
+		try {
+			derive(draft);
+		} finally {
+			if (first) {
+				direct -= 1;
+				first = false;
+			}
+			writing -= 1;
+			root.deriving = false;
+		}
+		return RUN_UNCHANGED;
+	}, EFFECT_PURE, false, false, null);
+	node.config = node.config & ~CONFIG_AUTO_DISPOSE;
+	root.pull = (): void => { readSource(node); };
+	return traps;
+}
+
+export function createStore<T extends object>(first: T | ((draft: Draft<T>) => void), seed: T | null = null): [Store<T>, SetStoreFunction<T>] {
+	if (typeof first === "function") {
+		if (seed === null) { throw new Error("createStore(fn) needs the seed the derive starts from: createStore(fn, seed)"); }
+		const fn = first;
+		const traps = deriveStore<T>(seed, (draft: Draft<T>): void => { fn(draft); });
+		return [new Proxy(seed, traps), setterOf<T>(traps)];
+	}
+	const value = first as T;
+	const traps = new StoreTraps<T>(value, new StoreRoot());
+	return [new Proxy(value, traps), setterOf<T>(traps)];
 }

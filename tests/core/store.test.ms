@@ -518,3 +518,103 @@ test "reconcile descends into a nested record: an unchanged leaf's reader does n
 	assert runs === 1, "owner.lastName ran " + runs.toString() + " times";
 	assert rowRuns === 1, "rows[0].name ran " + rowRuns.toString() + " times";
 }
+
+interface Pair2 { first: string; second: string; }
+interface Count { count: number; label: string; }
+
+test "a derived store holds its derive's first value at once and re-derives when a source changes" {
+	const [source, setSource] = createSignal(1);
+	let calls = 0;
+	const [state, setState] = createRoot((d) => {
+		return createStore<Count>((draft) => { calls += 1; draft.count = source(); draft.label = "n"; }, { count: 0, label: "" });
+	});
+	assert state.count === 1 && state.label === "n" && calls === 1, "first value: " + state.count.toString();
+	const counts: number[] = [];
+	let labelRuns = 0;
+	createRoot((d) => {
+		createEffect<number>((p: number | null): number => state.count, (v: number, p: number | null): Cleanup | null => { counts.push(v); return null; });
+		createEffect<string>((p: string | null): string => { labelRuns += 1; return state.label; }, (v: string, p: string | null): Cleanup | null => null);
+	});
+	flush();
+	setSource(2);
+	flush();
+	assert state.count === 2 && calls === 2, "second value: " + state.count.toString();
+	assert counts.join(",") === "1,2", "counts: " + counts.join(",");
+	assert labelRuns === 1, "the unchanged key's reader ran " + labelRuns.toString() + " times";
+}
+
+test "a derive does not track the reads it makes through its own draft" {
+	const [bar, setBar] = createSignal("foo");
+	let calls = 0;
+	const [state, setState] = createRoot((d) => {
+		return createStore<Pair2>((draft) => { calls += 1; draft.first = draft.second; draft.second = bar(); }, { first: "foo", second: "bar" });
+	});
+	assert state.first === "bar" && state.second === "foo" && calls === 1, "first";
+	setBar("baz");
+	flush();
+	assert state.first === "foo" && state.second === "baz" && calls === 2, "second: " + state.first + " " + state.second;
+}
+
+test "a memo that runs in the flush of a source change reads the re-derived value, never the old one" {
+	const [source, setSource] = createSignal(1);
+	const [other, setOther] = createSignal(0);
+	const [state, setState] = createRoot((d) => {
+		return createStore<Count>((draft) => { draft.count = source() * 10; }, { count: 0, label: "" });
+	});
+	const seen: number[] = [];
+	let total: () => number = () => 0;
+	createRoot((d) => {
+		total = createMemo<number>((): number => { const v = other() * 100 + state.count; seen.push(v); return v; });
+	});
+	assert total() === 10;
+	setOther(1);
+	setSource(2);
+	flush();
+	assert total() === 120, "total: " + total().toString();
+	assert seen.join(",") === "10,120", "runs: " + seen.join(",");
+}
+
+test "a write through a derived store's setter lasts until the next derive, which wins" {
+	const [source, setSource] = createSignal(0);
+	const [state, setState] = createRoot((d) => {
+		return createStore<Count>((draft) => { draft.count = source(); }, { count: -1, label: "" });
+	});
+	flush();
+	assert state.count === 0;
+	setSource(1);
+	setState((s) => { s.count = 99; });
+	flush();
+	assert state.count === 1, "the derive wins in its own flush: " + state.count.toString();
+	setState((s) => { s.count = 99; });
+	flush();
+	assert state.count === 99, "the manual write stands: " + state.count.toString();
+	setSource(2);
+	flush();
+	assert state.count === 2, "the next derive: " + state.count.toString();
+}
+
+test "a derived store stops deriving when its owner is disposed" {
+	const [source, setSource] = createSignal(1);
+	let calls = 0;
+	let release: () => void = () => {};
+	const [state, setState] = createRoot((d) => {
+		release = d;
+		return createStore<Count>((draft) => { calls += 1; draft.count = source(); }, { count: 0, label: "" });
+	});
+	assert calls === 1;
+	release();
+	setSource(2);
+	flush();
+	assert calls === 1, "calls: " + calls.toString();
+}
+
+test "the seed of a derived store is never written" {
+	const seed: Count = { count: 0, label: "s" };
+	const [source, setSource] = createSignal(3);
+	const [state, setState] = createRoot((d) => {
+		return createStore<Count>((draft) => { draft.count = source(); }, seed);
+	});
+	setSource(4);
+	flush();
+	assert state.count === 4 && seed.count === 0, "seed: " + seed.count.toString();
+}
