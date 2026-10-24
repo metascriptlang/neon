@@ -71,6 +71,18 @@ export function setTracking(t: boolean): void { tracking = t; }
 export function onServer(): boolean { return serverDepth > 0; }
 export function getServerDepth(): number { return serverDepth; }
 export function setServerDepth(d: number): void { serverDepth = d as int32; }
+export function isServer(): boolean { return onServer(); }
+
+export function asServer<T>(run: () => T): T {
+	const depth = getServerDepth();
+	setServerDepth(depth + 1);
+	try {
+		return run();
+	} finally {
+		setServerDepth(depth);
+	}
+}
+
 export function isStaged(el: Source): boolean { return (el.config & CONFIG_STAGED) !== 0; }
 export function isDisposed(node: Computation): boolean { return (node.flags & REACTIVE_DISPOSED) !== 0; }
 

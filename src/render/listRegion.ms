@@ -2,14 +2,13 @@ import { createRenderEffect } from "../core/effect";
 import { Cleanup, Computation, NotReadyError } from "../core/types";
 import { onCleanup } from "../core/cleanup";
 import { createRoot, runWithOwner } from "../core/owner";
-import { getOwner } from "../core/runtime";
+import { getOwner, isServer } from "../core/runtime";
 import { Accessor, Signal, accessor, untrack } from "../core/signal";
 import { List, ListQueue, ListOp, listInsert, listMove, listRemove, listSet, matchByIds } from "../core/list";
 import { Host, HostNode, NeonNode } from "./hostTypes";
 import { Row, makeRow, mountAt, moveRow, removeRow, reconcileArrays } from "./reconcile";
 import { RowHome, regionHome, buildHeld } from "./node";
 import { regionAnchor, regionParent, sealRegion, serverRegionStart, serverRegionEnd, skipRegionEffect } from "./claim";
-import { isServer } from "./environment";
 
 // The region's stores live in one object passed to every step, never captured by a nested
 // closure: src/core/array.ms keeps mapArray's stores as parameters for the same reason.
