@@ -66,6 +66,7 @@ export class NavigationContainerRef {
 		return deepestFocused(root as NavigatorLink);
 	}
 
+	// Parked on ~/metascript/.inbox/compiler/2026-10-25-a-default-type-parameter-of-a-class-or-function-is-not-applied.md: React Navigation's createNavigationContainerRef<ParamList>() types this by the root list, and the untyped callers need `PL = ...` to default
 	navigate(name: string): void {
 		const leaf = this.focusedLeaf("navigate");
 		if (!navigateUp(leaf, { name, values: null, child: null, pop: false })) {
