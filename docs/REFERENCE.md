@@ -244,3 +244,13 @@ at `d604b18`); an entry there names it in an **R3F** field.
 - **Don't:** expect R3F's look from an LDR Scene3D without setting `toneMapping={ToneMode.Filmic}`.
 - **Pin:** `tests/render/scene3dLook.test.ms` ("an LDR Scene3D keeps Void's linear curve at exposure 1 and reserves no tone map", "hdr reserves the tone map at mount, defaults to the ACES curve and refuses a change")
 - **Checked:** 2026-10-22, read; decided under the person's delegation for the void-endgame arc (decision D8).
+
+### RD-13 · `getRequestEvent` reads only the render's owner, and the event is `{ request: { url, headers } }`
+
+- **Verdict:** DIVERGE-INTENTIONAL
+- **Solid:** `getRequestEvent` reads the AsyncLocalStorage store that `provideRequestEvent` fills, and only when that store is empty falls back to the caller's render context found through its owner (`~/projects/solid-next` at `84dada77`, `packages/web/src/server.ts:6448-6470`, `renderContextOf` :6662). The event is `{ request: Request; locals }` (`client.ts:120`), `undefined` outside a request.
+- **MS:** `serve` (`src/render/serve.ms`) sets the event on the served render's root owner with `setContext`; `getRequestEvent()` reads it through the owner and is `null` outside a request and on the client. `RequestEvent { request: { url, headers } }`, `headers.get(name)` by any case of the name.
+- **Why:** C has no AsyncLocalStorage, so the owner path is the only one both targets have; one record type works on both targets, and C has no Fetch `Request`.
+- **Don't:** keep a module-global current request: two requests in one workerd isolate would read each other's.
+- **Pin:** `tests/render/serveServer.test.ms`
+- **Checked:** 2026-10-24, measured on C and JS; decided under the person's delegation ("tự trả lời").
