@@ -65,5 +65,11 @@ expect_reject_both tests/macros/navigateNameTypoRejected.ms "does not satisfy co
 expect_reject_both tests/macros/navigateMissingParamsRejected.ms "Too few arguments: expected at least 2, got 1"
 expect_reject_both tests/macros/navigateWrongParamTypeRejected.ms "Type 'int32' is not assignable to type 'string'"
 expect_reject_both tests/macros/navigateParamsToParamlessRejected.ms "Argument type mismatch in 'navigate' arg 1: got { id: string; }, expected null"
+expect_reject_both tests/macros/tabsNavigateNameTypoRejected.ms "does not satisfy constraint .* for type parameter 'K' in 'navigate'"
+expect_reject_both tests/macros/tabsNavigateWrongParamTypeRejected.ms "Type 'int32' is not assignable to type 'string'"
+expect_reject_both tests/macros/tabsUseRouteNameTypoRejected.ms "does not satisfy constraint .* for type parameter 'K' in 'useRoute'"
+expect_reject_both tests/macros/drawerNavigateNameTypoRejected.ms "does not satisfy constraint .* for type parameter 'K' in 'navigate'"
+expect_reject_both tests/macros/drawerNavigateWrongParamTypeRejected.ms "Type 'int32' is not assignable to type 'string'"
+expect_reject_both tests/macros/drawerUseRouteNameTypoRejected.ms "does not satisfy constraint .* for type parameter 'K' in 'useRoute'"
 expect_reject_both tests/macros/screenNameTypoRejected.ms "Type 'string' is not assignable to type '\"Home\"'"
 exit $fail
