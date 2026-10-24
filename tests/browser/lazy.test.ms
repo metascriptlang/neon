@@ -2,7 +2,7 @@ import { domHost } from "../../src/platform/browser/dom";
 import { HostNode, NeonNode } from "../../src/render/hostTypes";
 import { render } from "../../src/render/host";
 import { el, text } from "../../src/render/node";
-import { lazy, createComponent } from "../../src/render/component";
+import { lazy } from "../../src/render/component";
 import { Loading } from "../../src/macros/ui/flow";
 import { flush } from "../../src/core/runtime";
 import { sleepAsync } from "std/core/promise";
@@ -28,10 +28,6 @@ async function loadPage(): Promise<(props: {}) => NeonNode> {
 
 const LazyPage = lazy<{}>(loadPage);
 
-function Docs(): NeonNode {
-	return createComponent(LazyPage, {});
-}
-
 function Home(): NeonNode {
 	return el("h1", [], [], text("home"));
 }
@@ -47,7 +43,7 @@ function fetched(): boolean {
 test "a lazy route component fetches its module on the first navigation to it and renders it" {
 	js("performance.setResourceTimingBufferSize(5000)");
 	const routes = createRoutes([
-		{ layout: Shell, children: [{ path: "/", component: Home }, { path: "/docs", component: Docs }] },
+		{ layout: Shell, children: [{ path: "/", component: Home }, { path: "/docs", component: LazyPage }] },
 	]);
 	const created = createRouter(routes, createMemoryRoutingHistory({ url: "/", state: "" }));
 	assert created.ok;

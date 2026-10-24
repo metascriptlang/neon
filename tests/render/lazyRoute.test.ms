@@ -4,17 +4,13 @@ import { NeonNode } from "../../src/render/hostTypes";
 import { el, text } from "../../src/render/node";
 import { element } from "../../src/macros/ui/element";
 import { HostNode, MockNode, mockNode, mockHost, render, mockToString } from "../../src/render/host";
-import { lazy, createComponent } from "../../src/render/component";
+import { lazy } from "../../src/render/component";
 import { Loading } from "../../src/macros/ui/flow";
 import { createMemoryRoutingHistory } from "../../src/navigation/routingHistory";
 import { LayoutProps, RouterProvider, createRouter, createRoutes } from "../../src/navigation/router";
 
 const loads = [0];
 const LazyDocs = lazy<{}>(loadDocs);
-
-function DocsPage(): NeonNode {
-	return createComponent(LazyDocs, {});
-}
 
 function Docs(props: {}): NeonNode {
 	return el("h1", [], [], text("docs page"));
@@ -32,7 +28,7 @@ function Shell(props: LayoutProps): NeonNode {
 
 test "a route whose component is lazy shows the Loading fallback of its layout and then the page" {
 	const routes = createRoutes([
-		{ layout: Shell, children: [{ path: "/docs", component: DocsPage }] },
+		{ layout: Shell, children: [{ path: "/docs", component: LazyDocs }] },
 	]);
 	const router = createRouter(routes, createMemoryRoutingHistory({ url: "/docs", state: "" }));
 	assert router.ok;
