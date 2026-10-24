@@ -9,7 +9,7 @@ ROOT=$(cd "$SRC/../.." && pwd)
 WORK=$ROOT/out/refreshWindow
 LOG=$WORK/dev.log
 EVENTS=$WORK/events.jsonl
-PORT=47341
+PORT=$(python -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')
 WIN="powershell -NoProfile -ExecutionPolicy Bypass -File $(cygpath -w "$SRC/win.ps1")"
 FAILED=0
 SEEN=0

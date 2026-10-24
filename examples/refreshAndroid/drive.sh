@@ -19,7 +19,7 @@ ADB="$SDK/platform-tools/adb"
 FAILED=0
 SEEN=0
 TIMES=""
-PORT=47342
+PORT=$(python -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')
 
 adb() { "$ADB" -s "$SERIAL" "$@"; }
 now() { date +%s%3N; }
