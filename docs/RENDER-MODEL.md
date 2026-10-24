@@ -383,8 +383,11 @@ node and removes the second. Solid's counterparts are
 (`packages/web/src/server.ts`, `ssrTextTail`); Neon needs no pair because it does not scan for
 a region's end.
 
-A tree that differs from the page throws, naming the missing node by tag, child index and
-path. Limits, each one loud or measured:
+A tree that differs from the page gets a message naming the missing node by tag, child index
+and path. A debug build throws it. A release build logs it with `console.error` and rebuilds the
+page: the mount goes on creating fresh nodes after the first difference, then `hydrate` disposes
+it, empties the container and mounts the tree again, still reading the page's records
+(`REFERENCE RD-12`). Limits, each one loud or measured:
 
 - An element the tree leaves without children is not checked for extra ones, so a node that
   holds children Neon does not own (a canvas, a foreign editor's mount point) hydrates.
