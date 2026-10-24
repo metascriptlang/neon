@@ -4,7 +4,7 @@ import { createMemo } from "../../src/core/memo";
 import { createRoot } from "../../src/core/owner";
 import { flush } from "../../src/core/runtime";
 import { Cleanup } from "../../src/core/types";
-import { createStore } from "../../src/core/store";
+import { createStore, snapshot } from "../../src/core/store";
 
 interface Todo { id: number; title: string; done: boolean; }
 interface Item { id: number; title: string; }
@@ -257,4 +257,62 @@ test "an edit under a privatized parent still reaches the reader of a sibling ed
 	flush();
 	assert seen.join(",") === "John1,John2,Jake2", "seen: " + seen.join(",");
 	assert user.firstName === "John";
+}
+
+interface Doc { id: number; user: User; tags: string[]; rows: Item[]; }
+
+function newDoc(): Doc {
+	return { id: 1, user: { firstName: "John", lastName: "Smith" }, tags: ["a"], rows: [{ id: 1, title: "x" }] };
+}
+
+test "snapshot of an unwritten store is its seed, subtree by subtree" {
+	const seed = newDoc();
+	const [state, setState] = createStore<Doc>(seed);
+	assert snapshot(state) === seed, "root";
+	const user = state.user;
+	assert snapshot(user) === seed.user, "user";
+	setState((s) => { s.user.firstName = "Jake"; });
+	flush();
+	const snap = snapshot(state);
+	assert snap !== seed, "a written root is a copy";
+	assert snap.user.firstName === "Jake" && snap.id === 1 && snap.tags.length === 1, "copied values";
+	assert snap.tags === seed.tags && snap.rows === seed.rows, "an untouched subtree is the seed's own";
+}
+
+test "snapshot is plain data detached from the store" {
+	const [state, setState] = createStore<Doc>(newDoc());
+	setState((s) => { s.rows[0].title = "y"; });
+	setState((s) => { s.rows.push({ id: 2, title: "z" }); });
+	flush();
+	const snap = snapshot(state);
+	setState((s) => { s.rows[0].title = "later"; });
+	setState((s) => { s.rows.shift(); });
+	setState((s) => { s.user.lastName = "Doe"; });
+	flush();
+	assert snap.rows.length === 2 && snap.rows[0].title === "y" && snap.rows[1].title === "z", "rows: " + snap.rows.length.toString();
+	assert snap.user.lastName === "Smith", "user: " + snap.user.lastName;
+	assert state.rows.length === 1 && state.rows[0].title === "z" && state.user.lastName === "Doe", "store moved on";
+}
+
+test "snapshot sees the batch's pending writes before the flush" {
+	const [state, setState] = createStore<Doc>(newDoc());
+	setState((s) => { s.user.firstName = "Jake"; s.tags.push("b"); });
+	assert state.user.firstName === "John" && state.tags.length === 1, "store reads stay committed";
+	const snap = snapshot(state);
+	assert snap.user.firstName === "Jake" && snap.tags.length === 2 && snap.tags[1] === "b", "snapshot: " + snap.user.firstName;
+	flush();
+}
+
+test "snapshot of a nested store reads the subtree and tracks only the read of that field" {
+	const [state, setState] = createStore<Doc>(newDoc());
+	const seen: string[] = [];
+	createRoot((d) => {
+		createEffect<User>((p: User | null): User => { const user = state.user; return snapshot(user); }, (v: User, p: User | null): Cleanup | null => { seen.push(v.firstName); return null; });
+	});
+	flush();
+	setState((s) => { s.user.firstName = "Jake"; });
+	flush();
+	setState((s) => { s.user = { firstName: "Ann", lastName: "Lee" }; });
+	flush();
+	assert seen.join(",") === "John,Ann", "seen: " + seen.join(",");
 }

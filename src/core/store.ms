@@ -1,6 +1,8 @@
 import { Signal, untrack } from "./signal";
 import { isTracking } from "./runtime";
 import { isArray, isObject } from "std/typetraits";
+import { proxyHandler } from "std/core/proxy";
+import { fieldsLiteral } from "./storeFields";
 
 type Element<T> = T extends Array<infer E> ? E : never;
 
@@ -101,6 +103,15 @@ export class StoreTraps<T> {
 
 	has<K extends keyof T>(target: T, key: K): boolean {
 		return Reflect.has(this.raw, key);
+	}
+
+	snapshot(): T {
+		if (!this.owned) { return this.raw; }
+		when (isArray<T>()) {
+			return snapshotArray(this);
+		} else {
+			return fieldsLiteral(this.raw, "snapshotField", this);
+		}
 	}
 
 	child<K extends keyof T>(key: K, value: T[K]): StoreTraps<T[K]> {
@@ -291,6 +302,25 @@ export class DraftTraps<T> {
 			throw new Error("splice() of a store draft that is not an array");
 		}
 	}
+}
+
+function snapshotField<T, K extends keyof T>(traps: StoreTraps<T>, key: K): T[K] {
+	const value = Reflect.get(traps.raw, key);
+	when (isObject<T[K]>()) {
+		return traps.child(key, value).snapshot();
+	} else {
+		return value;
+	}
+}
+
+function snapshotArray<E>(traps: StoreTraps<E[]>): E[] {
+	const out: E[] = [];
+	for (let i = 0; i < traps.raw.length; i += 1) { out.push(snapshotField(traps, i)); }
+	return out;
+}
+
+export function snapshot<T>(store: Store<T>): T {
+	return proxyHandler(store).snapshot();
 }
 
 export function createStore<T extends object>(value: T): [Store<T>, SetStoreFunction<T>] {
