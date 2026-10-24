@@ -265,10 +265,10 @@ server render, `"navigate"` for one a link, `useNavigate` or `router.navigate` o
 `"preload"` for `router.preload(href)`, which runs the preloads along an address and mounts
 nothing (`routing.ts:650-680`). A page a history move mounts again is preloaded again, as
 Solid's remounted route is. Not ported: the return value reaching the component as `props.data`
-(`routing.ts:704-715`), because a component here takes no props, and `<A>` hover, focus and
-touch calling `router.preload` with its 20 ms timer and `preload={false}`
-(`data/events.ts:83-146`), because those listeners belong with `followLinks` in
-`src/platform/browser/routingHistory.ms`.
+(`routing.ts:704-715`), because a component here takes no props. `followPreloads(router.preload)`
+in `src/platform/browser/routingHistory.ms` is `data/events.ts:83-146`: hover waits 20 ms and
+does not repeat on the same link, focus and touch preload at once, and `preload="false"` on the
+anchor skips it; `<A>` takes no `preload` prop, so that attribute is written on a plain `<a>`.
 
 `src/navigation/router.ms` compiles the tree into one `RouteTree`, and `createRouter`
 makes it one participant of scope `main`. A layout keeps its instance while the routes

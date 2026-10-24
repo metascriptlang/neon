@@ -1,7 +1,7 @@
 import { HostNode } from "../../src/render/hostTypes";
 import { hydrate } from "../../src/render/host";
 import { domHost } from "../../src/platform/browser/dom";
-import { createBrowserRoutingHistory, followLinks } from "../../src/platform/browser/routingHistory";
+import { createBrowserRoutingHistory, followLinks, followPreloads } from "../../src/platform/browser/routingHistory";
 import { RouterProvider, createRouter } from "../../src/navigation/router";
 import { routes } from "./site";
 
@@ -14,5 +14,6 @@ if (opened.ok) {
 	const router = opened.value;
 	hydrate(<RouterProvider router={router} />, domHost(), siteContainer("site") as unknown as HostNode);
 	followLinks((url: string): boolean => router.navigate(url));
+	followPreloads((url: string): void => router.preload(url));
 	hydrated(1);
 }
