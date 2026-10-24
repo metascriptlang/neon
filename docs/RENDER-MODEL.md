@@ -388,14 +388,20 @@ path. Limits, each one loud or measured:
 
 - An element the tree leaves without children is not checked for extra ones, so a node that
   holds children Neon does not own (a canvas, a foreign editor's mount point) hydrates.
-- A wire tag whose DOM `createElement` does more than create an element and that `claim` does
-  not take over yet (`image`, `modal`, `slider`, `picker`, `datetimepicker`, `svg`, the media
-  tags; `createsMoreThanAnElement` in `src/platform/browser/dom.jms`) refuses to hydrate.
-  `scrollview`, `switch`, `activityindicator` and `multilinetextinput` hydrate: the server
-  writes the element, classes and fixed attributes of `webHtmlTag`, `webControlClass` and
-  `webFixedAttrs` in `src/render/web.ms`, the rules of `webRules` reach `renderToMarkup(...).css`,
-  and `claim` leaves the host in the state `createElement` would have. A served switch carries
-  `checked` and a served textarea its text, which `claim` turns back into the property.
+- `claim` refuses no tag the server writes. A wire tag whose DOM `createElement` does more than
+  create an element (`scrollview`, `switch`, `activityindicator`, `multilinetextinput`, `image`,
+  `svg`, `video`, `webview`, `camera`) is served as the element, classes and fixed attributes of
+  `webHtmlTag`, `webControlClass` and `webFixedAttrs` in `src/render/web.ms`, the rules of
+  `webRules` reach `renderToMarkup(...).css`, and `claim` leaves the host in the state
+  `createElement` would have. A served switch carries `checked` and a served textarea its text,
+  which `claim` turns back into the property. A served `video` or `webview` is not reloaded: the
+  host skips a `src` or `srcdoc` the element already holds, as dom-expressions skips attribute
+  writes while hydrating (`setAttribute`, `packages/dom-expressions/src/client.js:122`). A frame
+  whose page loaded before `hydrate` counts that page as its first history entry and is not
+  reported loaded; a served `camera` is kept and its stream starts in it, because a stream exists
+  only in the browser. A `Modal` writes nothing into the page (its layer goes through a Portal
+  into the overlay root, which `hydrate` mounts unclaimed); `Slider`, `Picker` and
+  `DateTimePicker` are drawn from `view` and `pressable` and have no tag of their own.
   A `ScrollView` with `onRefresh` was not measured: the DOM host appends its refresh indicator
   itself, and the server writes none.
 - Text content and attribute values are not compared; static attributes are written again.
