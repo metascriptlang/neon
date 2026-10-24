@@ -1,4 +1,3 @@
-import { NeonNode } from "../render/hostTypes";
 import { RoutingError, encodeRouteComponent, decodeRouteComponent } from "./routing";
 import {
 	PathMatch,
@@ -43,8 +42,6 @@ class Preloaded<D> {
 		this.data = data;
 	}
 }
-
-export type RouteComponent = (props: RouteSectionProps<Map<string, string>, unknown>) => NeonNode;
 
 export enum GuardAction {
 	Continue,
@@ -251,17 +248,12 @@ export function route<P, D>(pattern: string | null, options: RouteDataOptions<P,
 	return { node, params: codec };
 }
 
-export function componentOf<P, D>(
-	target: RouteDef<P, D>,
-	make: (props: RouteSectionProps<P, D>) => NeonNode,
-): RouteComponent {
-	return (props: RouteSectionProps<Map<string, string>, unknown>): NeonNode => {
-		const parsed = target.params.parse(props.params);
-		if (!parsed.ok) {
-			throw new Error("routing: the params of a matched route no longer parse");
-		}
-		return make({ params: parsed.value, location: props.location, data: (props.data as Preloaded<D>).data });
-	};
+export function sectionProps<P, D>(target: RouteDef<P, D>, props: RouteSectionProps<Map<string, string>, unknown>): RouteSectionProps<P, D> {
+	const parsed = target.params.parse(props.params);
+	if (!parsed.ok) {
+		throw new Error("routing: the params of a matched route no longer parse");
+	}
+	return { params: parsed.value, location: props.location, data: (props.data as Preloaded<D>).data };
 }
 
 const identity: ParamsCodec<Map<string, string>> = {

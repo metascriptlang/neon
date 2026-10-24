@@ -10,10 +10,9 @@ import {
 	ParamsCodec,
 	PreloadArgs,
 	RouteSectionProps,
-	componentOf,
 	route,
 } from "../../src/navigation/route";
-import { Router, RouterProvider, createRoutes, createRouter } from "../../src/navigation/router";
+import { Router, RouterProvider, componentOf, createRoutes, createRouter } from "../../src/navigation/router";
 import { query, createAsync } from "../../src/navigation/index";
 
 interface Note {

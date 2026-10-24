@@ -121,7 +121,6 @@ export {
 	RouteDef,
 	RouteOptions,
 	RouteDataOptions,
-	RouteComponent,
 	RouteSectionProps,
 	PathOptions,
 	RouteEntry,
@@ -133,7 +132,7 @@ export {
 	path,
 	hrefOf,
 	paramsOf,
-	componentOf,
+	sectionProps,
 	createRouteTree,
 } from "./route";
 export {
@@ -163,6 +162,8 @@ export {
 	RouteConfig,
 	RouteRef,
 	RouteView,
+	RouteComponent,
+	componentOf,
 	Routes,
 	RouterLocation,
 	PreloadArgs,

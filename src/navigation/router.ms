@@ -21,7 +21,6 @@ import {
 	GuardDecision,
 	MatchedRoute,
 	RouteDef,
-	RouteComponent,
 	RouteSectionProps,
 	RouteEntry,
 	RouteMatch,
@@ -34,6 +33,7 @@ import {
 	createRouteTree,
 	hrefOf,
 	path,
+	sectionProps,
 } from "./route";
 import { PathMatch, createMatcher, expandOptionals, normalizePath } from "./routeMatcher";
 import { NavigationChild } from "./children";
@@ -57,6 +57,12 @@ const PERMANENT_REDIRECT: int32 = 308;
 
 export interface LayoutProps {
 	children: NeonNode;
+}
+
+export type RouteComponent = (props: RouteSectionProps<Map<string, string>, unknown>) => NeonNode;
+
+export function componentOf<P, D>(target: RouteDef<P, D>, make: (props: RouteSectionProps<P, D>) => NeonNode): RouteComponent {
+	return (props: RouteSectionProps<Map<string, string>, unknown>): NeonNode => make(sectionProps<P, D>(target, props));
 }
 
 export enum RouteNavigator {
