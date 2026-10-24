@@ -9,7 +9,7 @@ import { Style } from "../render/style";
 import { StackLayout } from "./layout";
 import { StackPresentation } from "./childView";
 import { createContext, useContext } from "../render/context";
-import { refreshKeep } from "../render/refresh";
+when (refresh || hcr) { import { refreshKeep } from "../render/refresh"; }
 import {
 	WebKeySerializer,
 	WebNavigationError,
