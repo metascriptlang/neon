@@ -30,6 +30,9 @@ export interface TextSpan {
 	text: string;
 	style?: Style | null;
 	onPress?: ((e: NeonEvent) => void) | null;
+	// RN virtual text: the run's own touches by host event name ("onTouchStart"…), so a pressable run
+	// holds the touch as a responder before the Text and views around it.
+	onTouch?: ((name: string, e: NeonEvent) => void) | null;
 }
 
 export interface TextMeasure {

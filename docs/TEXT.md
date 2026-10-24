@@ -27,7 +27,12 @@ The code is the truth for everything else: `src/platform/void/host.ms` (`refresh
   - It does that once per update, from a deferred `createEffect` that runs after every render effect of the update.
     A paragraph of one string skips the effect and goes straight to the host.
   - The native host takes spans too (`setSpansOf` in `src/platform/native/host.ms`). A span with `onPress` keeps its
-    own tag by position, and a touch on it bubbles from its Text. The `textSpans` wire format the bridges read is
+    own tag by position, and a touch on it bubbles from its Text.
+  - A pressable span is a press responder of its own, as RN's virtual text is: `TextSpan.onTouch` carries its touches
+    by host event name, and Void and native deliver a touch on the span to it before the Text and the views around
+    it, so a span inside a Pressable presses alone. A nested `<Text onPress>` gets it from `SPAN_HOST`, a data span
+    from `dataSpans` in `src/components/primitives.ms` (`tests/platform/nativeActivation.test.ms`,
+    `voidActivation.test.ms`, `voidInput.test.ms`). The `textSpans` wire format the bridges read is
     unchanged (`tests/platform/nativeParity.test.ms`).
   - Hosts that draw nested text as real nodes keep them: DOM and SSR (`<span>`s, CSS classes, hydration), and the mock
     host. A framework site that builds a label by hand writes its string through `setTextContent`.
@@ -107,7 +112,7 @@ The native hosts refuse every line style but `solid`, and refuse `textDecoration
 Windows draws the family through DirectWrite (an installed family only), and iOS and Android refuse it by name until
 a device lane proves them.
 
-A press over a span with `onPress` fires that span's handler and not its Text's (`clickAt`, `spanAt`): the point's
+A press over a span with `onPress` fires that span's handler and not its Text's (`clickAt`, `spanAt`, the span's `onTouch`): the point's
 grapheme comes from void2d `indexAt` and `xForIndex`, and a point past a line's end hits no span. Like every Void Text,
 a Text that takes presses needs a height until yoga has its measure hook.
 

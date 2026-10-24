@@ -668,7 +668,7 @@ function refreshLabel(n: NativeNode): void {
 	let rich = styledRun(base);
 	for (const span of spans) {
 		refuseLineStyle(span.style);
-		if (span.style !== null || span.onPress !== null) { rich = true; }
+		if (span.style !== null || span.onPress !== null || span.onTouch !== null) { rich = true; }
 	}
 	if (!rich) {
 		let text = "";
@@ -712,7 +712,13 @@ function dropSpanTag(tag: int32): void {
 	spanTagOwner.delete(tag);
 }
 
-// A span with onPress keeps its own tag by position, so the label finds the span under the finger.
+const SPAN_TOUCHES = ["onTouchStart", "onTouchMove", "onTouchEnd", "onTouchCancel"];
+
+function spanTouchRoute(touch: (name: string, e: NeonEvent) => void, name: string): (e: NeonEvent) => void {
+	return (e: NeonEvent): void => { touch(name, e); };
+}
+
+// A span with onPress or touches keeps its own tag by position, so the label finds the span under the finger.
 function deliverSpans(node: HostNode, spans: TextSpan[]): void {
 	const n = node as unknown as NativeNode;
 	if (!n.isText || n.isString) { throw "native host: spans belong on a Text"; }
@@ -726,7 +732,8 @@ function setSpansOf(n: NativeNode, spans: TextSpan[]): void {
 		if (i >= n.spanTags.length) { n.spanTags.push(0); }
 		const had = n.spanTags[i];
 		const press = spans[i].onPress;
-		if (press !== null) {
+		const touch = spans[i].onTouch;
+		if (press !== null || touch !== null) {
 			let tag = had;
 			if (tag === 0) {
 				tag = nextTag;
@@ -736,7 +743,12 @@ function setSpansOf(n: NativeNode, spans: TextSpan[]): void {
 			} else {
 				eventRegistry.remove(tag);
 			}
-			eventRegistry.add(tag, "onPress", press as (e: NeonEvent) => void);
+			if (press !== null) { eventRegistry.add(tag, "onPress", press as (e: NeonEvent) => void); }
+			if (touch !== null) {
+				for (const name of SPAN_TOUCHES) {
+					eventRegistry.addPhases(tag, name, spanTouchRoute(touch as (name: string, e: NeonEvent) => void, name), (e: NeonEvent): void => {});
+				}
+			}
 			pressable = true;
 		} else if (had !== 0) {
 			dropSpanTag(had);

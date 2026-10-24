@@ -5,6 +5,8 @@ import { Accessor } from "../core/signal";
 import { createRenderEffect } from "../core/effect";
 import { Cleanup } from "../core/types";
 
+const SPAN_TOUCHES = ["onTouchStart", "onTouchMove", "onTouchEnd", "onTouchCancel"];
+
 // A host without a paragraph capability lays spans out as nested Texts, kept by position.
 function spanNodes(read: Accessor<TextSpan[]>): NeonNode {
 	return (host: Host, parent: HostNode, before: HostNode | null): void => {
@@ -26,6 +28,13 @@ function spanNodes(read: Accessor<TextSpan[]>): NeonNode {
 						const press = latest[at].onPress;
 						if (press !== null) { (press as (e: NeonEvent) => void)(e); }
 					});
+					for (const name of SPAN_TOUCHES) {
+						host.addEvent(el, name, (e: NeonEvent): void => {
+							if (at >= latest.length) { return; }
+							const touch = latest[at].onTouch;
+							if (touch !== null) { (touch as (name: string, e: NeonEvent) => void)(name, e); }
+						});
+					}
 					host.insertBefore(parent, el, before);
 					shown.push(el);
 					words.push(word);

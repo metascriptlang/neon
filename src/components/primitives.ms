@@ -235,6 +235,71 @@ function touchEvent(name: string, user: ((e: NeonEvent) => void) | null, entry: 
 	};
 }
 
+function spanTouch(entry: ResponderEntry): (name: string, e: NeonEvent) => void {
+	return (name: string, e: NeonEvent): void => {
+		match (name) {
+			"onTouchStart" => { responderTouch(entry, TouchPhase.Start, e); },
+			"onTouchMove" => { responderTouch(entry, TouchPhase.Move, e); },
+			"onTouchEnd" => { responderTouch(entry, TouchPhase.End, e); },
+			"onTouchCancel" => { responderTouch(entry, TouchPhase.Cancel, e); },
+			_ => { throw new Error(`${name} is no touch a span takes`); },
+		}
+	};
+}
+
+// A data span with onPress is a Pressability responder of its own, as the nested Text it stands for is.
+function dataSpans(read: Accessor<TextSpan[]>): NeonNode {
+	return (host: Host, node: HostNode, before: HostNode | null): void => {
+		const parent = parentResponder();
+		const entries: ResponderEntry[] = [];
+		const machines: Pressability[] = [];
+		const routed: TextSpan[] = [];
+		let latest: TextSpan[] = [];
+		onCleanup((): void => {
+			for (let i = 0; i < entries.length; i += 1) {
+				responderUnmounted(entries[i]);
+				machines[i].reset();
+			}
+		});
+		const route = (at: int32): TextSpan => {
+			while (routed.length <= at) {
+				const index = routed.length;
+				const pressability = new Pressability({
+					cancelable: null, hitSlop: null, delayLongPress: null,
+					onPress: (e: NeonEvent): void => {
+						const press = index < latest.length ? latest[index].onPress : null;
+						if (press !== null) { (press as (e: NeonEvent) => void)(e); }
+					},
+					onPressIn: null, onPressOut: null, onLongPress: null, onHoverIn: null, onHoverOut: null,
+				});
+				const entry = new ResponderEntry(pressability.responderHandlers(), parent);
+				entry.host = host;
+				entry.node = node;
+				pressability.attach(host, node);
+				entries.push(entry);
+				machines.push(pressability);
+				routed.push({ text: "", onPress: (e: NeonEvent): void => { pressability.click(e); }, onTouch: spanTouch(entry) });
+			}
+			return routed[at];
+		};
+		const spans = accessor((): TextSpan[] => {
+			latest = read();
+			const out: TextSpan[] = [];
+			for (let i = 0; i < latest.length; i += 1) {
+				const s = latest[i];
+				if (s.onPress === null) {
+					out.push(s);
+					continue;
+				}
+				const r = route(i as int32);
+				out.push({ text: s.text, style: s.style, onPress: r.onPress, onTouch: r.onTouch });
+			}
+			return out;
+		});
+		paragraphChildren(null, spans)(host, node, before);
+	};
+}
+
 export class ViewHandle extends ElementHandle {
 	private host: Host;
 	private mounted: () => boolean;
@@ -364,7 +429,7 @@ export function Text(props: TextProps): NeonNode {
 		const read = widths as Accessor<uint8[]>;
 		attrs.push(dynAttr("cellWidths", (): string | null => cellDigits(read())));
 	}
-	const kids = paragraphChildren(props.children, spans);
+	const kids = spans === null ? paragraphChildren(props.children, null) : dataSpans(spans as Accessor<TextSpan[]>);
 	if (press === null) { return uiParent("Text", primitive("text", props, attrs, [], kids, null, props.ref)); }
 	const pressability = new Pressability({
 		cancelable: null, hitSlop: null, delayLongPress: null,

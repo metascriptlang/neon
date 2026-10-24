@@ -1223,6 +1223,7 @@ export function createVoidHostWith(
 	let touching = false;
 	let pressNode: VoidNode | null = null;
 	let pressSpan: TextSpan | null = null;
+	let touchSpan: TextSpan | null = null;
 	let lastX: float32 = 0.0;
 	let lastY: float32 = 0.0;
 
@@ -1264,6 +1265,14 @@ export function createVoidHostWith(
 
 	// Ion numbers the left button 1; 0 is a pointer with no button, a touch.
 	const primary = (button: int32): boolean => button === 0 || button === 1;
+
+	// RN virtual text: a run with touches of its own hears them before the Text and views around it.
+	const spanTouch = (name: string, ev: NeonEvent): void => {
+		const span = touchSpan;
+		if (span === null) { return; }
+		const touch = (span as TextSpan).onTouch;
+		if (touch !== null) { (touch as (name: string, e: NeonEvent) => void)(name, ev); }
+	};
 
 	const handles = (n: VoidNode | null, names: string[]): boolean => {
 		for (const at of pathFrom(n)) {
@@ -1383,7 +1392,10 @@ export function createVoidHostWith(
 			touching = true;
 			pressNode = spanPress ? under : pressableOn(under);
 			pressSpan = spanPress ? span : null;
-			pointerAt("onTouchStart", target, x, y, touchEvent("touchstart", ev));
+			touchSpan = span !== null && (span as TextSpan).onTouch !== null ? span : null;
+			const touch = touchEvent("touchstart", ev);
+			spanTouch("onTouchStart", touch);
+			pointerAt("onTouchStart", target, x, y, touch);
 		}
 		return takes;
 	};
@@ -1407,7 +1419,11 @@ export function createVoidHostWith(
 		hoverTo(under, x, y);
 		pointerAt("onPointerMove", pointerTarget(x, y), x, y, ev);
 		const held = pointerTarget(x, y);
-		if (touching && held !== null && held === captured) { pointerAt("onTouchMove", held, x, y, touchEvent("touchmove", ev)); }
+		if (touching && held !== null && held === captured) {
+			const touch = touchEvent("touchmove", ev);
+			spanTouch("onTouchMove", touch);
+			pointerAt("onTouchMove", held, x, y, touch);
+		}
 		return takes;
 	};
 
@@ -1429,7 +1445,10 @@ export function createVoidHostWith(
 		if (ends && touching) {
 			touching = false;
 			const h = holder as VoidNode;
-			if (!h.disposed && attached(h)) { pointerAt("onTouchEnd", h, x, y, touchEvent("touchend", ev)); }
+			const touch = touchEvent("touchend", ev);
+			spanTouch("onTouchEnd", touch);
+			touchSpan = null;
+			if (!h.disposed && attached(h)) { pointerAt("onTouchEnd", h, x, y, touch); }
 			pressAt(under, x, y, ev.timeStamp);
 		}
 		return holder !== null || handles(under, PRESS_HANDLERS);
@@ -1449,9 +1468,14 @@ export function createVoidHostWith(
 		if (holder !== null && !(holder as VoidNode).disposed && attached(holder as VoidNode)) {
 			const ev = pointerEvent("pointercancel", x, y, capturedButton, false);
 			pointerAt("onPointerCancel", holder, x, y, ev);
-			if (touching) { pointerAt("onTouchCancel", holder, x, y, touchEvent("touchcancel", ev)); }
+			if (touching) {
+				const touch = touchEvent("touchcancel", ev);
+				spanTouch("onTouchCancel", touch);
+				pointerAt("onTouchCancel", holder, x, y, touch);
+			}
 		}
 		touching = false;
+		touchSpan = null;
 		hoverTo(null, x, y);
 	};
 
