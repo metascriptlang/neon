@@ -25,7 +25,7 @@ when (server) {
 	import { Host, HostNode, NeonNode } from "./hostTypes";
 	import { render } from "./host";
 	import { NeonEvent } from "./event";
-	import { collectCss, registerCss } from "./sheet";
+	import { collectCss, cssIds, registerCss } from "./sheet";
 	import { styleToCss } from "./css";
 	import { Style, StyleValue, emptyStyle, setStyleField } from "./style";
 	import {
@@ -760,8 +760,14 @@ when (server) {
 		return writeRender(n, new SsrWrite(registerCss)).html;
 	}
 
-	function markupOf(n: NeonNode): SsrMarkup {
+	function registered(): Map<string, boolean> {
 		const seen = new Map<string, boolean>();
+		for (const id of cssIds()) { seen.set(id, true); }
+		return seen;
+	}
+
+	function markupOf(n: NeonNode): SsrMarkup {
+		const seen = registered();
 		let css = collectCss();
 		const w = new SsrWrite((id: string, rule: string): void => {
 			if (seen.has(id)) { return; }
@@ -903,7 +909,7 @@ when (server) {
 	}
 
 	class CssBook {
-		seen: Map<string, boolean> = new Map<string, boolean>();
+		seen: Map<string, boolean> = registered();
 		css: string = collectCss();
 
 		add(id: string, rule: string): void {

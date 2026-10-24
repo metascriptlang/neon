@@ -5,6 +5,7 @@ import { createStyles, styleOf } from "../../src/macros/ui/style";
 import { GuardDecision, RouteMatch, redirect } from "../../src/navigation/route";
 import { Routes, createRoutes } from "../../src/navigation/router";
 import { App, RequestEvent, getRequestEvent, htmlDocument, serve } from "../../src/render/serve";
+import { renderToString } from "../../src/render/ssr";
 import { createRoot } from "../../src/core/owner";
 import { Dispose } from "../../src/core/types";
 import { createAsyncMemo } from "../../src/core/memo";
@@ -161,4 +162,12 @@ when (js) {
 		assert width.indexOf("width 390 for /width<") > 0, width;
 		assert tag.indexOf("tag a, b<") > 0, tag;
 	}
+}
+
+test "a page served after a loose renderToString carries each base rule once" {
+	const rulesIn = (body: string): number => body.split(":where(.neon-view)").length - 1;
+	assert rulesIn((await serve(app, "/")).body) === 1, "before";
+	renderToString(<View><Text>loose</Text></View>);
+	const after = (await serve(app, "/")).body;
+	assert rulesIn(after) === 1, after;
 }
