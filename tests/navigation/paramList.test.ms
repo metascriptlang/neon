@@ -183,3 +183,15 @@ test "params stay inside their navigator and getParent reaches the parent typed"
 	flush();
 	assert ref.currentPath() === "Item", ref.currentPath();
 }
+
+test "a stack reset takes routes built by routeOf with each screen's own params" {
+	const ref = createNavigationContainerRef();
+	const root = mount(ref);
+	const home = homeNavigation as Navigation<RootList>;
+	home.reset({
+		routes: [home.routeOf("Home"), home.routeOf("Item", { id: 6, title: "Six" })],
+	});
+	flush();
+	assert visibleText(root).indexOf("item 6 Six") >= 0, visibleText(root);
+	assert ref.getRootState().routes.length === 2, ref.getRootState().routes.length.toString();
+}

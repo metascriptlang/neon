@@ -71,5 +71,11 @@ expect_reject_both tests/macros/tabsUseRouteNameTypoRejected.ms "does not satisf
 expect_reject_both tests/macros/drawerNavigateNameTypoRejected.ms "does not satisfy constraint .* for type parameter 'K' in 'navigate'"
 expect_reject_both tests/macros/drawerNavigateWrongParamTypeRejected.ms "Type 'int32' is not assignable to type 'string'"
 expect_reject_both tests/macros/drawerUseRouteNameTypoRejected.ms "does not satisfy constraint .* for type parameter 'K' in 'useRoute'"
+expect_reject_both tests/macros/stackRouteOfNameTypoRejected.ms "does not satisfy constraint .* for type parameter 'K' in 'routeOf'"
+expect_reject_both tests/macros/stackRouteOfWrongParamTypeRejected.ms "Type 'int32' is not assignable to type 'string'"
+expect_reject_both tests/macros/tabsRouteOfNameTypoRejected.ms "does not satisfy constraint .* for type parameter 'K' in 'routeOf'"
+expect_reject_both tests/macros/tabsRouteOfWrongParamTypeRejected.ms "Type 'int32' is not assignable to type 'string'"
+expect_reject_both tests/macros/drawerRouteOfNameTypoRejected.ms "does not satisfy constraint .* for type parameter 'K' in 'routeOf'"
+expect_reject_both tests/macros/drawerRouteOfWrongParamTypeRejected.ms "Type 'int32' is not assignable to type 'string'"
 expect_reject_both tests/macros/screenNameTypoRejected.ms "Type 'string' is not assignable to type '\"Home\"'"
 exit $fail

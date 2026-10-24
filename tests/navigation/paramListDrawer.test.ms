@@ -89,3 +89,14 @@ test "jumpTo on a drawer carries the same typed params" {
 	flush();
 	assert visibleText(root).indexOf("account 8 Eight") >= 0, visibleText(root);
 }
+
+test "a drawer navigator reset takes routes built by routeOf with each screen's own params" {
+	const root = mount();
+	const home = homeNavigation as Navigation<DrawerList>;
+	home.reset({
+		index: 1,
+		routes: [home.routeOf("Home"), home.routeOf("Account", { id: 4, name: "Four" })],
+	});
+	flush();
+	assert visibleText(root).indexOf("account 4 Four") >= 0, visibleText(root);
+}
