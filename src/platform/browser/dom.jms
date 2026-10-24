@@ -30,9 +30,15 @@ import {
 	webHtmlTag,
 	webRules,
 	domAttrName,
+	BLUR_PREFIX,
+	IMAGE_CLASS,
+	IMAGE_TAG,
+	TILE_PREFIX,
+	blurRule,
+	svgPrefix,
+	tileRule,
 	domAttrValue,
 } from "../../render/web";
-import { BLUR_PREFIX, IMAGE_CLASS, IMAGE_TAG, TILE_PREFIX, blurRule, svgPrefix, tileRule } from "../../render/webEmbed";
 import { publishWindow, publishColorScheme } from "../../render/environment";
 import { publishSafeArea } from "../../render/environment";
 import { publishPageScroll } from "../../api/pageScroll";

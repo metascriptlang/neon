@@ -50,9 +50,15 @@ when (server) {
 		webRules,
 		WebRule,
 		domAttrName,
+		BLUR_PREFIX,
+		IMAGE_CLASS,
+		IMAGE_TAG,
+		TILE_PREFIX,
+		blurRule,
+		svgPrefix,
+		tileRule,
 		domAttrValue,
 	} from "./web";
-	import { BLUR_PREFIX, IMAGE_CLASS, IMAGE_TAG, TILE_PREFIX, blurRule, svgPrefix, tileRule } from "./webEmbed";
 	import { svgMarkup } from "../components/svg/markup";
 	import { parseVisibleContent } from "./visibleContent";
 	import { asServer } from "./environment";
