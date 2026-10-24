@@ -1,5 +1,5 @@
 import { domHost } from "../../src/platform/browser/dom";
-import { createBrowserRoutingHistory, followLinks } from "../../src/platform/browser/routingHistory";
+import { createBrowserRoutingHistory, followLinks, followPreloads } from "../../src/platform/browser/routingHistory";
 import { HostNode } from "../../src/render/hostTypes";
 import { render } from "../../src/render/host";
 import { sleepAsync } from "std/core/promise";
@@ -423,6 +423,67 @@ test "a router in Chrome preloads as initial at open, navigate on a link click a
 		await sleepAsync(100);
 		assert history.read().url === "/docs/a", history.read().url;
 		assert preloads.join(" | ") === "a native | render", preloads.join(" | ");
+	} finally {
+		stop();
+		dispose();
+		router.dispose();
+		mount.remove();
+		history.replace(original);
+	}
+}
+
+function Hovered(): NeonNode {
+	return <nav><A href="/docs/b">B</A><A href="/docs/c">C</A><a href="/docs/d" preload="false">D</a></nav>;
+}
+
+test "followPreloads preloads a link once on hover, on focus, never with preload false, and stops on dispose" {
+	const history = createBrowserRoutingHistory();
+	const original = history.read();
+	history.replace({ url: "/docs/a", state: "" });
+	const routes = createRoutes([
+		{ path: "/docs/a", component: Hovered },
+		{ path: "/docs/:slug", component: PreloadedPage, preload: noteDoc },
+	]);
+	const created = createRouter(routes, history);
+	assert created.ok;
+	if (!created.ok) { return; }
+	const router = created.value;
+	const mount = document.createElement("div");
+	document.body.appendChild(mount);
+	const dispose = render(<RouterProvider router={router} />, domHost(), mount as unknown as HostNode);
+	const stop = followPreloads((url: string): void => router.preload(url));
+	preloads.length = 0;
+	const fire = (type: string, href: string): void => {
+		js("(() => { const a = document.querySelector('a[href=\"" + href + "\"]'); a.dispatchEvent(new MouseEvent('" + type + "', { bubbles: true, composed: true })); return 1; })()");
+	};
+	const focus = (href: string): void => {
+		js("(() => { document.querySelector('a[href=\"" + href + "\"]').dispatchEvent(new FocusEvent('focusin', { bubbles: true, composed: true })); return 1; })()");
+	};
+	try {
+		fire("mousemove", "/docs/b");
+		assert preloads.length === 0, "the hover waits 20 ms: " + preloads.join(" | ");
+		await sleepAsync(60);
+		assert preloads.join(" | ") === "b preload", preloads.join(" | ");
+		assert history.read().url === "/docs/a", history.read().url;
+		fire("mousemove", "/docs/b");
+		await sleepAsync(60);
+		assert preloads.join(" | ") === "b preload", "same link again: " + preloads.join(" | ");
+		fire("mousemove", "/docs/c");
+		await sleepAsync(60);
+		assert preloads.join(" | ") === "b preload | c preload", preloads.join(" | ");
+		preloads.length = 0;
+		focus("/docs/b");
+		assert preloads.join(" | ") === "b preload", "focusin: " + preloads.join(" | ");
+		preloads.length = 0;
+		fire("mousemove", "/docs/d");
+		focus("/docs/d");
+		await sleepAsync(60);
+		assert preloads.length === 0, "preload=false: " + preloads.join(" | ");
+		stop();
+		fire("mousemove", "/docs/b");
+		focus("/docs/c");
+		await sleepAsync(60);
+		assert preloads.length === 0, "after dispose: " + preloads.join(" | ");
 	} finally {
 		stop();
 		dispose();

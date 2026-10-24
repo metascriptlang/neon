@@ -44,7 +44,16 @@ when (js) {
 	}
 
 	extern function sameOriginLink(event: Event): string from
-		"(e => { if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.altKey || e.ctrlKey || e.shiftKey) return ''; const a = e.composedPath().find(n => n instanceof Node && n.nodeName.toUpperCase() === 'A'); if (!a || a.target || !a.href || a.hasAttribute('download') || (a.getAttribute('rel') || '').split(/\\s+/).includes('external')) return ''; const u = new URL(a.href, document.baseURI); return u.origin === location.origin ? u.pathname + u.search + u.hash : ''; })(#)";
+		"(e => { if (e.defaultPrevented || e.button > 0 || e.metaKey || e.altKey || e.ctrlKey || e.shiftKey) return ''; const a = e.composedPath().find(n => n instanceof Node && n.nodeName.toUpperCase() === 'A'); if (!a || a.target || !a.href || a.hasAttribute('download') || (a.getAttribute('rel') || '').split(/\\s+/).includes('external')) return ''; const u = new URL(a.href, document.baseURI); return u.origin === location.origin ? u.pathname + u.search + u.hash : ''; })(#)";
+	extern class Anchor {}
+	extern function eventAnchor(event: Event): Anchor from
+		"(e => e.composedPath().find(n => n instanceof Node && n.nodeName.toUpperCase() === 'A'))(#)";
+	extern function preloadDisabled(anchor: Anchor): boolean from
+		"(a => a.getAttribute('preload') === 'false')(#)";
+	extern function listenPassive(name: string, listener: (event: unknown) => void): void from
+		"window.addEventListener(#, #, { passive: true })";
+	extern function startTimeout(run: () => void, ms: int32): int32 from "setTimeout(#, #)";
+	extern function stopTimeout(handle: int32): void from "clearTimeout(#)";
 	extern function scrollToFragmentOrTop(url: string): void from
 		"(u => { const at = u.indexOf('\\x23'); const el = at < 0 ? null : document.getElementById(decodeURIComponent(u.slice(at + 1))); if (el) el.scrollIntoView(); else window.scrollTo(0, 0); })(#)";
 
@@ -108,5 +117,39 @@ export function followLinks(navigate: (url: string) => boolean): Dispose {
 		return (): void => window.removeEventListener("click", handler, false);
 	} else {
 		throw new Error("routing: following links requires the JavaScript browser host");
+	}
+}
+
+export function followPreloads(preload: (url: string) => void): Dispose {
+	when (js) {
+		let pending = 0;
+		let last: Anchor | null = null;
+		const preloadEvent = (event: unknown): void => {
+			const url = sameOriginLink(event as Event);
+			if (url === "" || preloadDisabled(eventAnchor(event as Event))) { return; }
+			preload(url);
+		};
+		const move = (event: unknown): void => {
+			stopTimeout(pending);
+			const url = sameOriginLink(event as Event);
+			if (url === "") { last = null; return; }
+			const anchor = eventAnchor(event as Event);
+			if (anchor === last) { return; }
+			pending = startTimeout((): void => {
+				last = anchor;
+				if (!preloadDisabled(anchor)) { preload(url); }
+			}, 20);
+		};
+		listenPassive("mousemove", move);
+		listenPassive("focusin", preloadEvent);
+		listenPassive("touchstart", preloadEvent);
+		return (): void => {
+			stopTimeout(pending);
+			window.removeEventListener("mousemove", move, false);
+			window.removeEventListener("focusin", preloadEvent, false);
+			window.removeEventListener("touchstart", preloadEvent, false);
+		};
+	} else {
+		throw new Error("routing: preloading links requires the JavaScript browser host");
 	}
 }
