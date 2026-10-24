@@ -1,5 +1,8 @@
 import { Dispose } from "../../core/types";
 import { RoutingHistory, RoutingHistoryEntry } from "../../navigation/routingHistory";
+import { FormData } from "../../navigation/action";
+
+const ACTION_PREFIX = "https://action/";
 
 when (js) {
 	interface BrowserRoutingState {
@@ -54,6 +57,17 @@ when (js) {
 		"window.addEventListener(#, #, { passive: true })";
 	extern function scrollToFragmentOrTop(url: string): void from
 		"(u => { const at = u.indexOf('\\x23'); const el = at < 0 ? null : document.getElementById(decodeURIComponent(u.slice(at + 1))); if (el) el.scrollIntoView(); else window.scrollTo(0, 0); })(#)";
+
+	extern function submitUrl(event: Event): string from
+		"(e => { if (e.defaultPrevented) return ''; const s = e.submitter; return (s && s.hasAttribute('formaction') ? s.getAttribute('formaction') : e.target.getAttribute('action')) || ''; })(#)";
+	extern function submitMethod(event: Event): string from
+		"(e => e.target.method.toUpperCase())(#)";
+	extern function submitEntries(event: Event, add: (name: string, value: string) => void): void from
+		"((e, add) => { for (const [k, v] of new globalThis.FormData(e.target, e.submitter)) { if (typeof v !== 'string') throw new Error('an action form takes text fields only: ' + k); add(k, v); } })(#, #)";
+	extern function listenDocument(name: string, listener: (event: unknown) => void): void from
+		"document.addEventListener(#, #)";
+	extern function unlistenDocument(name: string, listener: (event: unknown) => void): void from
+		"document.removeEventListener(#, #)";
 
 	function readBrowserEntry(): RoutingHistoryEntry {
 		return {
@@ -149,5 +163,25 @@ export function followPreloads(preload: (url: string) => void): Dispose {
 		};
 	} else {
 		throw new Error("routing: preloading links requires the JavaScript browser host");
+	}
+}
+
+export function followSubmits(submit: (url: string, data: FormData) => boolean): Dispose {
+	when (js) {
+		const handler = (event: unknown): void => {
+			const sent = event as Event;
+			const url = submitUrl(sent);
+			if (url === "") { return; }
+			if (url.startsWith(ACTION_PREFIX) && submitMethod(sent) !== "POST") {
+				throw new Error("Only POST forms are supported for Actions");
+			}
+			const data = new FormData();
+			submitEntries(sent, (name: string, value: string): void => data.append(name, value));
+			if (submit(url, data)) { sent.preventDefault(); }
+		};
+		listenDocument("submit", handler);
+		return (): void => unlistenDocument("submit", handler);
+	} else {
+		throw new Error("routing: following form submits requires the JavaScript browser host");
 	}
 }
