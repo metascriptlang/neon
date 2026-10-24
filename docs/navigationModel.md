@@ -362,6 +362,19 @@ or `query.set`, an arity-0/1/2 overload set in place of a rest tuple, `queryKey(
 in place of `fn.keyFor` and `fn.key`, and the cache is swept on insert in place of an
 interval. A record adopts only for a struct or interface result (`hydrateMemo.ms`).
 
+`action(fn, name)`, `useAction`, `useSubmission` and `useSubmissions` (`src/navigation/action.ms`)
+are the mutation side (`src/data/action.ts`): a call records a `Submission` under the
+action's url `https://action/<name>` (`action.ts:128-150`), settles it, then revalidates
+every query (`action.ts:215-216`, `handleResponse` after a success; an error returns before
+it, `:200`); a null answer clears the submission (`:214`, `:119`). `retry()` re-runs `fn`
+(`:145-149`) and an error also rejects the call (`:121`). Diverges: an action takes one input
+value in place of a rest tuple; the call is `useAction(a)(input)` because a function value
+cannot carry `url` or be an `unknown` key; `result`, `error` and `pending` are methods;
+`useSubmission` is an accessor of the latest submission or null in place of a stub proxy;
+submissions are module state, not per router. `redirect`, `reload`, `json` and the
+`revalidate` option wait on a response type that holds a location, keys and typed data on
+both backends.
+
 ## Provisional choices and remaining limits
 
 - The built-in navigators are compositions of two public models over
