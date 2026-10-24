@@ -15,7 +15,9 @@ import { installNativeAppServices } from "./appServices";
 import { installFrameDriver } from "../../animation/frame";
 import { LayoutAnimationPlan, LayoutPhase, takeLayoutAnimation, runLayoutTween } from "../../animation/layoutAnimation";
 import "../android/library";
-import { pollReload, RELOAD_POLL_MS } from "../reloadPoll";
+when (hcr) {
+	import { pollReload, RELOAD_POLL_MS } from "../reloadPoll";
+}
 import { DevNode, setDevDriver } from "../../devtools/driver";
 
 @passC("-I./");

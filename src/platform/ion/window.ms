@@ -27,7 +27,9 @@ import { installAppServices } from "../../api/services";
 import { installFrameDriver } from "../../animation/frame";
 import { ionCaptureServices } from "./audio";
 import { ionAppServices } from "./appServices";
-import { pollReload, RELOAD_POLL_MS } from "../reloadPoll";
+when (hcr) {
+	import { pollReload, RELOAD_POLL_MS } from "../reloadPoll";
+}
 import { VoidHost, familyFont } from "../void/host";
 import {
 	WindowArea,

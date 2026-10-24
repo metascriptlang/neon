@@ -17,7 +17,9 @@ import {
 	syncTextInput,
 } from "../void/windowHost";
 import { SokolInput, sokolInput, deliverAppEvent, flushKey } from "./input";
-import { pollReload, RELOAD_POLL_MS } from "../reloadPoll";
+when (hcr) {
+	import { pollReload, RELOAD_POLL_MS } from "../reloadPoll";
+}
 import { androidLibrary } from "../../../../ion/src/android";
 
 @include("../../../../void/src/sokol/bridge.h");
