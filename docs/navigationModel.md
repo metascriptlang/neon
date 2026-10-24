@@ -515,7 +515,7 @@ component still pending at `hydrate` fails to claim. `<A preload={false}>` rende
   A screen's codec (`initial`, `parse`, `stringify`) is built with
   `Navigator.params.of("Name", {...})` and passed as `params`, because `<Screen>`
   cannot yet infer its name's type (`name` is `keyof PL`, the rest is not tied to
-  it). A navigate to a name of another navigator bubbles without params; naming it
+  it; `~/metascript/.inbox/compiler/2026-10-24-a-keyof-constrained-type-parameter-inferred-from-an-object-literal-property-widens-to-string.md`). A navigate to a name of another navigator bubbles without params; naming it
   in this navigator's list is what lets it be written (React Navigation's
   composite navigation prop does that through its parent's list).
 - Secondary addresses reserve the `__nav.` query namespace. This makes region
