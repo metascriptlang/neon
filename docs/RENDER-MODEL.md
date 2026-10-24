@@ -521,6 +521,16 @@ then redirect by the response's `Location`) and Astro's Worker entry that maps `
 beside the body, so a document component cannot place it, and the document is a function over
 the finished markup. A component form needs a head slot in the writer.
 
+`serve(app, url, headers)` takes the request headers as a `Map` (optional); `fetchPage` passes the
+Fetch request's. A component of the served tree reads them with `getRequestEvent()`:
+`event.request.url` is the address `serve` received and `event.request.headers.get(name)`
+matches the name in any case, names differing only in case joined with `, ` as Fetch joins them.
+It is `null` outside a served render and on the client. The event is set on the render's root
+owner with `setContext` and read through the caller's owner, Solid's `getRequestEvent` fallback
+(`packages/web/src/server.ts:6448-6470`), never a module global, so two requests in flight in
+one isolate each read their own. Neon has no `AsyncLocalStorage` on C, so a read with no current
+owner is `null`; read the event in a component body or a reactive spot.
+
 ## Emission — mechanics
 
 **Flat tier.** One statement list, temps numbered across the whole subtree (`_r0/_r1/…`
