@@ -356,24 +356,54 @@ settled answer for 5 s or while a reader tracks it (`query.ts:105-111`), and
 On the server a query registers a slot under its key, so the writer emits it as a record
 beside the memo's; on the client a query whose key has a record adopts it once and drops
 it (`query.ts:132-135`, `:173`). A key always carries the JSON brackets of its arguments,
-so it never equals an owner id. Diverges from Solid where Neon has no counterpart: no
-`intent`, preload or `Response` handling (the router owns navigation), no `query.get`
-or `query.set`, an arity-0/1/2 overload set in place of a rest tuple, `queryKey(name, …)`
-in place of `fn.keyFor` and `fn.key`, and the cache is swept on insert in place of an
-interval. A record adopts only for a struct or interface result (`hydrateMemo.ms`).
+so it never equals an owner id. A read takes the router's `intent` as Solid's `getIntent()`
+does (`query.ts:78`, `:104-142`): `"native"` reuses an entry whatever its age, any other
+intent reuses it while a reader holds it or within `PRELOAD_TIMEOUT`, an entry a preload
+made is refreshed when read and dropped after the timeout otherwise, and a `"navigate"`
+read of a refreshed entry bumps its readers. The intent is `Router.intent`, set around a
+route's `preload` and its component's mount (`mountLater`) from the stop's intent and
+around `Router.preload` as `"preload"`; a read outside a router has none. A query that
+throws a redirect while read navigates the router in place (`query.ts:177-195`, `replace`)
+and its promise never settles, where Solid resolves `undefined` into a typed slot; a
+preload read does not follow it; on a request history the router's `response()` carries it
+and the promise rejects with it. Diverges from Solid where Neon has no counterpart: intent
+is not a module global (a read after an `await` has no owner and so no intent), a returned
+`Reply` and `json` are parked (below), no `query.get` or `query.set`, an arity-0/1/2
+overload set in place of a rest tuple, `queryKey(name, …)` in place of `fn.keyFor` and
+`fn.key`, and the cache is swept on insert in place of an interval. A record adopts only
+for a struct or interface result (`hydrateMemo.ms`).
 
 `action(fn, name)`, `useAction`, `useSubmission` and `useSubmissions` (`src/navigation/action.ms`)
-are the mutation side (`src/data/action.ts`): a call records a `Submission` under the
-action's url `https://action/<name>` (`action.ts:111-135`), settles it, then revalidates
-every query (`action.ts:206-210`, `handleResponse` after a success; an error returns before
-it, `:203`); a null answer clears the submission (`:211`, `:105`). `retry()` re-runs `fn`
-(`:128-133`) and an error also rejects the call (`:107`). Diverges: an action takes one input
-value in place of a rest tuple; the call is `useAction(a)(input)` because a function value
-cannot carry `url` or be an `unknown` key; `result`, `error` and `pending` are methods;
-`useSubmission` is an accessor of the latest submission or null in place of a stub proxy;
-submissions are module state, not per router. `redirect`, `reload`, `json` and the
-`revalidate` option wait on a response type that holds a location, keys and typed data on
-both backends.
+are the mutation side (`src/data/action.ts`): a call records a `Submission` on the router
+(`router.submissions`, `routing.ts:519`; the hooks read `useRouter()` and fail loud outside a
+`RouterProvider`) under the action's url `https://action/<name>` (`action.ts:111-135`), settles
+it, then handles the response (`handleResponse`, `:179-215`): a `Location` navigates the
+router, `revalidate` keys invalidate and revalidate only the matching queries and no keys all
+of them, an error that is not a response returns before it. `onComplete` (`:75-79`, `:95-106`)
+takes `{ name, onComplete }` in place of `string | { name?, onComplete? }`; Neon requires the
+name. It receives a settled copy before the live submission settles, and a `retry()` called
+from it supplies the call's answer. A null answer or a redirect clears the submission and
+the call resolves null (Solid resolves `undefined`). `retry()` re-runs `fn` (`:128-133`) and
+an error also rejects the call (`:107`). Diverges: an action takes one input value in place
+of a rest tuple; the call is `useAction(a)(input)` because a function value cannot carry
+`url` or be an `unknown` key; `result`, `error` and `pending` are methods; `useSubmission` is
+an accessor of the latest submission or null in place of a stub proxy.
+
+`redirect(address, status | init)`, `reload(init)` and `notFound()` build one `Reply`
+(`route.ms`, `response.ts:3-36`) that is also the guard decision, so a guard and an action
+return the same `redirect`. `Reply` extends `Error` because only an `Error` or a string
+can be thrown, and `catch` reads it with `instanceof` (a class has runtime identity, an
+interface has none). `redirect` keeps the guard's status 307 (TanStack `redirect.ts`) in
+place of Solid's 302. `revalidate` takes `string[]`, not `string | string[]`. What a
+`Reply` does is read where a failure is caught, so a redirect or reload is thrown
+(`throw redirect("/login")`) from an action or a query; one a function returns, `json(data)`
+with its typed body and `NarrowResponse<T>` (a conditional type with `infer` checks and runs
+on both backends in isolation) are parked on
+`2026-10-24-instanceof-of-a-generic-answer-union-fails-on-c.md`: on C `instanceof` of a
+union holding a generic subclass is false, of a type parameter instantiated with a type that
+has no object member emits invalid C, and a generic `Json<never>` emits a `void` field.
+An absolute `Location` is an error naming the case, because a router opens only the
+addresses of its own routes.
 
 A route's `component` may be `lazy(load)` (`src/render/component.ms`; Solid Router calls
 `component.preload` at `routing.ts:650-681` and `:690-704`, which Neon lacks until the
