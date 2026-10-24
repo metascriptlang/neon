@@ -259,6 +259,23 @@ and the invariants that outlived them were moved to the head of the test that pi
 - **PARKED 2026-10-20 — a store keeps every record it has served until the store is dropped.** Not
   Neon's: std has no `WeakMap`, so `StoreRoot.targets` is a strong `Map`. Design card
   `~/metascript/.inbox/compiler/2026-10-20-design-a-weak-map-keyed-by-object-identity.md`.
+- **PARKED 2026-10-24 — a store setter's or a derive's returned value is dropped.** Not Neon's: Solid 2.0
+  types the callback `(draft: T) => T | void` (`packages/signals/src/store/types.ts:27`), and msc
+  `6b8655024` refuses `T | void` at the declaration, while `T | null` refuses a callback that only
+  writes the draft (`lacks an ending return statement`). The callback stays `(draft) => void`, so
+  `setStore(() => next)`, `createStore(() => next, seed)` and `createProjection(() => next, seed)`
+  compile and ignore `next`. `tests/core/storeDerivedReturn.parked.ms` fails `first` on C. Design card
+  `~/metascript/.inbox/compiler/2026-10-15-void-member-of-a-union-passes-the-checker-and-dies-at-clang.md`.
+- **PARKED 2026-10-24 — a callback array method on a draft or store of records does not compile.** Not
+  Neon's: std's trap steps type the element as the array's `E` (`ProxyGet<E, H>`,
+  `std/core/proxy/index.ms:97`), so a handler whose `get` returns the wrapped `Draft<E>` is refused at
+  `draft.findIndex(…)` (`Type 'Proxy<Todo, DraftTraps<Todo>>' is not assignable to type 'Todo'`, msc
+  `6b8655024`). `tests/core/storeDraftArrayCallback.parked.ms` does not compile. Compiler card pending.
+- **PARKED 2026-10-24 — `snapshot(state.user)` with `T` inferred does not build.** Not Neon's: a proxy
+  member access passed straight to a generic parameter never instantiates the handler's `get` (C:
+  `passing 'Doc' to parameter of incompatible type 'void *'`, msc `6b8655024`); a held local or
+  `snapshot<User>(…)` builds. `tests/core/storeSnapshotArgument.parked.ms` does not compile. Compiler
+  card pending.
 - **PARKED 2026-10-11 — `tests/render/flatList.test.ms` and `tests/components/flutterListsApp.test.ms` do not compile.**
   Not Neon's: an array-destructured local of an arrow passed as a JSX attribute
   (`const [focused, setFocused] = createSignal<boolean>(false)` in a `renderItem`) is refused as
