@@ -375,6 +375,18 @@ submissions are module state, not per router. `redirect`, `reload`, `json` and t
 `revalidate` option wait on a response type that holds a location, keys and typed data on
 both backends.
 
+A route's `component` may be `lazy(load)` (`src/render/component.ms`; Solid Router calls
+`component.preload` at `routing.ts:650-681` and `:690-704`, which Neon lacks until the
+`.preload()` card lands). The router's `component` slot is `() => NeonNode`, which a
+`(props: P) => NeonNode` does not fit, so a no-props lazy route is written as a function
+that returns `createComponent(Lazy, {})`, under a layout that holds the `<Loading>` (the
+router adds none). `tests/render/lazyRoute.test.ms` pins that on the mock host and
+`tests/browser/lazy.test.ms` in Chrome: the module is not fetched until the first navigation
+to the route. Hydration claims the served node only when the module is already loaded
+(`tests/render/lazyHydrate.test.ms`); Solid hands the client a preloaded module per
+hydration id (`client/hydration.ts:1326-1346`) and Neon has no such registry, so a lazy
+component still pending at `hydrate` fails to claim.
+
 ## Provisional choices and remaining limits
 
 - The built-in navigators are compositions of two public models over
