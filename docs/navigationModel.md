@@ -435,7 +435,7 @@ component still pending at `hydrate` fails to claim. `<A preload={false}>` rende
   `createChildren`: `createChildStack` (`childStack.ms`, Decompose `childStack`)
   under the stack, `createChildPages` (`childPages.ms`, Decompose `childPages`)
   under tabs and drawer. A route's key, seed (name and initial params) and active
-  flag are the child state; its `Navigation<P>` is the child instance
+  flag are the child state; its `Navigation<PL>` is the child instance
   (`NavigatorCore.child`). `NavigatorCore` keeps what every navigator shares
   (screens, route keys, `beforeRemove` guards, nested links, state and restore) and
   hands each operation to the `NavigatorModel` its navigator builds: `stackModel`,
@@ -504,8 +504,20 @@ component still pending at `hydrate` fails to claim. `<A preload={false}>` rende
   - With routing on, a nested screen whose linking path is `exact` is refused: each
     level's part joins its parent's.
 - Typed route bindings close over their decoder and typed model setter rather
-  than exposing an untyped global params getter. Legacy navigators retain one
-  `P`; heterogeneous ParamList compatibility is not claimed.
+  than exposing an untyped global params getter. The built-in navigators take
+  React Navigation's per-screen ParamList: `createStackNavigator<PL>()`,
+  `navigation.navigate(name, params?)` typed per screen (`params` required unless
+  `null` is in the screen's entry), `useRoute<PL, "Name">()` for `route.params`
+  and `route.setParams`, `getParent<PL, Q>()` for the parent's list. Each route
+  keeps its params as a `ParamBox<PL[K]>` in one slot (`core.ms`), whose type
+  argument is the identity a read checks, so reading a route as another screen's
+  type stops with `invalid object conversion` instead of reinterpreting memory.
+  A screen's codec (`initial`, `parse`, `stringify`) is built with
+  `Navigator.params.of("Name", {...})` and passed as `params`, because `<Screen>`
+  cannot yet infer its name's type (`name` is `keyof PL`, the rest is not tied to
+  it). A navigate to a name of another navigator bubbles without params; naming it
+  in this navigator's list is what lets it be written (React Navigation's
+  composite navigation prop does that through its parent's list).
 - Secondary addresses reserve the `__nav.` query namespace. This makes region
   ownership explicit without imposing an editor/game hierarchy. Unknown scopes
   are errors rather than ignored links.
