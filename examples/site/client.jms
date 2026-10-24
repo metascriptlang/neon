@@ -1,8 +1,9 @@
 import { HostNode } from "../../src/render/hostTypes";
 import { hydrate } from "../../src/render/host";
 import { domHost } from "../../src/platform/browser/dom";
-import { createBrowserRoutingHistory, followLinks, followPreloads } from "../../src/platform/browser/routingHistory";
+import { createBrowserRoutingHistory, followLinks, followPreloads, followSubmits } from "../../src/platform/browser/routingHistory";
 import { RouterProvider, createRouter } from "../../src/navigation/router";
+import { FormData, submitForm } from "../../src/navigation/index";
 import { routes } from "./site";
 
 extern class Element {}
@@ -15,5 +16,6 @@ if (opened.ok) {
 	hydrate(<RouterProvider router={router} />, domHost(), siteContainer("site") as unknown as HostNode);
 	followLinks((url: string): boolean => router.navigate(url));
 	followPreloads((url: string): void => router.preload(url));
+	followSubmits((url: string, data: FormData): boolean => submitForm(router, url, data));
 	hydrated(1);
 }

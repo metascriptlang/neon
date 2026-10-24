@@ -8,6 +8,8 @@ import { View, Text, Pressable } from "../../src/components/primitives";
 import { createStyles, styleOf } from "../../src/macros/ui/style";
 import { GuardDecision, RouteMatch, notFound, proceed } from "../../src/navigation/route";
 import { A, LayoutProps, Routes, createRoutes, useParams } from "../../src/navigation/router";
+import { FormData, Submission, createAsync, formAction, query, useSubmission } from "../../src/navigation/index";
+import { sleepAsync } from "std/core/promise";
 
 const DOCS: string[] = ["start", "routing"];
 const NOTES: string[] = ["alpha", "beta"];
@@ -36,6 +38,32 @@ when (server) {
 		if (!decoded.ok) { throw new Error("note " + slug + " does not decode: " + decoded.error); }
 		return decoded.value;
 	}
+}
+
+const entries: string[] = [];
+
+struct Entries {
+	text: string;
+}
+
+async function readEntries(): Promise<Entries> {
+	return { text: entries.length === 0 ? "No entries" : entries.join(", ") };
+}
+
+async function addEntry(data: FormData): Promise<string> {
+	await sleepAsync(150);
+	const title = data.get("title") ?? "";
+	entries.push(title);
+	return "Saved " + title;
+}
+
+const entriesOf = query(readEntries, "siteEntries");
+const addEntryAction = formAction(addEntry, "siteAddEntry");
+
+function statusOf(sub: Submission<FormData, string> | null): string {
+	if (sub === null) { return "Nothing sent"; }
+	if (sub.pending()) { return "Saving " + (sub.input.get("title") ?? ""); }
+	return sub.result() ?? "Failed";
 }
 
 const styles = createStyles({
@@ -103,6 +131,29 @@ function Notes(): NeonNode {
 	</View>;
 }
 
+function EntriesBody(): NeonNode {
+	const list = createAsync((): Promise<Entries> => entriesOf());
+	return <p id="entries">{list().text}</p>;
+}
+
+function Guestbook(): NeonNode {
+	const sub = useSubmission(addEntryAction);
+	return <View style={styles.doc}>
+		<Head>
+			<title>Guestbook · Neon site</title>
+		</Head>
+		<h1>Guestbook</h1>
+		<Loading fallback={<p>Loading entries</p>}>
+			<EntriesBody />
+		</Loading>
+		<form action={addEntryAction.url} method="post">
+			<input name="title" />
+			<button type="submit">Add</button>
+		</form>
+		<p id="status">{statusOf(sub())}</p>
+	</View>;
+}
+
 export function NotFound(): NeonNode {
 	return <View>
 		<Head>
@@ -136,6 +187,7 @@ export const routes: Routes = createRoutes([
 		{ path: "/", component: Home },
 		{ path: "/docs/:slug", component: Doc, guard: knownDoc, paths: docPaths },
 		{ path: "/notes/:slug", component: Notes, guard: knownNote },
+		{ path: "/guestbook", component: Guestbook },
 		{ path: "*", status: 404, component: NotFound },
 	] },
 ]);

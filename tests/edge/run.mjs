@@ -128,7 +128,7 @@ async function prerender() {
 	const out = join(here, "out/static");
 	rmSync(out, { recursive: true, force: true });
 	const paths = staticPaths();
-	assert.deepEqual(paths, ["/", "/docs/start", "/docs/routing"]);
+	assert.deepEqual(paths, ["/", "/docs/start", "/docs/routing", "/guestbook"]);
 	for (const path of paths) {
 		const page = await get(site + path);
 		assert.equal(page.status, 200, path);
@@ -288,6 +288,74 @@ async function hydratedNotes() {
 	console.log("PASS: Chrome hydrates the page that holds the async read with no data request and no fallback, and a client navigation to the route still loads its data");
 }
 
+async function guestbook() {
+	const { chromium } = await import(pathToFileURL(playwright).href);
+	const chrome = await chromium.launch({ channel: process.env.NEON_CHROME_CHANNEL ?? "chrome" });
+	try {
+		const page = await chrome.newPage();
+		const errors = [];
+		const sent = [];
+		let documents = 0;
+		page.on("pageerror", (e) => errors.push(String(e)));
+		page.on("request", (r) => {
+			if (r.resourceType() === "document") { documents += 1; }
+			if (r.method() !== "GET" || new URL(r.url()).pathname.startsWith("/api/")) { sent.push(r.method() + " " + new URL(r.url()).pathname); }
+		});
+		await page.addInitScript(() => {
+			globalThis.neonSiteChanged = [];
+			globalThis.neonSiteFallback = 0;
+			globalThis.neonSiteStatus = [];
+			const changes = new MutationObserver((records) => {
+				for (const record of records) {
+					const owner = record.target instanceof Element ? record.target : record.target.parentElement;
+					if (owner === null || owner.closest("#site") === null) { continue; }
+					const status = document.getElementById("status");
+					if (status !== null && status.contains(record.target)) {
+						globalThis.neonSiteStatus.push(status.textContent);
+						continue;
+					}
+					for (const node of [...record.addedNodes, ...record.removedNodes]) {
+						if (node.nodeType === 1) { globalThis.neonSiteChanged.push(node.localName); }
+					}
+					if (record.target.textContent.includes("Loading entries")) { globalThis.neonSiteFallback += 1; }
+				}
+			});
+			document.addEventListener("readystatechange", () => {
+				if (document.readyState === "interactive") { changes.observe(document, { childList: true, subtree: true, characterData: true }); }
+			});
+		});
+		await page.goto(site + "/guestbook");
+		await page.waitForFunction("globalThis.neonSiteHydrated === 1", { timeout: 20000 });
+		await new Promise((wake) => setTimeout(wake, 500));
+		assert.equal(await page.locator("#entries").innerText(), "No entries");
+		assert.equal(await page.locator("#status").innerText(), "Nothing sent");
+		assert.deepEqual(sent, [], "hydrate sent requests: " + sent);
+		assert.deepEqual(await page.evaluate("globalThis.neonSiteChanged"), [], "hydrate added or removed an element of the served page");
+		assert.equal(await page.evaluate("globalThis.neonSiteFallback"), 0, "the page showed the fallback");
+		await page.evaluate("globalThis.neonSiteStatus = []");
+
+		await page.fill("input[name=title]", "milk");
+		await page.getByRole("button", { name: "Add", exact: true }).click();
+		await page.waitForFunction("document.getElementById('status').textContent === 'Saved milk'", { timeout: 20000 });
+		await page.waitForFunction("document.getElementById('entries').textContent === 'milk'", { timeout: 20000 });
+		const states = await page.evaluate("globalThis.neonSiteStatus");
+		assert.ok(states.includes("Saving milk"), "the submission was never shown pending: " + states);
+		assert.ok(states.indexOf("Saving milk") < states.indexOf("Saved milk"), "the result came before the pending state: " + states);
+		assert.deepEqual(sent, [], "the submit left the page: " + sent);
+		assert.equal(documents, 1, "the submit reloaded the page");
+		assert.equal(new URL(page.url()).pathname, "/guestbook");
+
+		await page.fill("input[name=title]", "eggs");
+		await page.getByRole("button", { name: "Add", exact: true }).click();
+		await page.waitForFunction("document.getElementById('entries').textContent === 'milk, eggs'", { timeout: 20000 });
+		assert.equal(documents, 1);
+		assert.deepEqual(errors, []);
+	} finally {
+		await chrome.close();
+	}
+	console.log("PASS: Chrome submits a form bound to an action with no request, shows its pending state then its result, and the query the page reads revalidates");
+}
+
 try {
 	await pages();
 	await routes();
@@ -295,6 +363,7 @@ try {
 	await prerender();
 	await browser();
 	await hydratedNotes();
+	await guestbook();
 } finally {
 	server.kill();
 }
