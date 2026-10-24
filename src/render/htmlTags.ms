@@ -855,11 +855,6 @@ export interface HtmlDialogAttributes {
 	 */
 	open: boolean;
 	/**
-	 * The element's place in the sequential focus order.
-	 * [MDN](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/dialog#tabindex)
-	 */
-	tabindex: never;
-	/**
 	 * Which user actions close the dialog.
 	 * [MDN](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/dialog#closedby)
 	 */
@@ -3347,4 +3342,8 @@ export interface HtmlElements {
 
 @comptime export function hyphenatedAttributeNames(): string[] {
 	return ["accept-charset", "http-equiv", "moz-opaque"];
+}
+
+@comptime export function refusedAttributeNames(): string[] {
+	return ["dialog.tabindex"];
 }
