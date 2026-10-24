@@ -270,12 +270,12 @@ and the invariants that outlived them were moved to the head of the test that pi
   Neon's: std's trap steps type the element as the array's `E` (`ProxyGet<E, H>`,
   `std/core/proxy/index.ms:97`), so a handler whose `get` returns the wrapped `Draft<E>` is refused at
   `draft.findIndex(…)` (`Type 'Proxy<Todo, DraftTraps<Todo>>' is not assignable to type 'Todo'`, msc
-  `6b8655024`). `tests/core/storeDraftArrayCallback.parked.ms` does not compile. Compiler card pending.
+  `6b8655024`). `tests/core/storeDraftArrayCallback.parked.ms` does not compile. Card `~/metascript/.inbox/compiler/2026-10-24-proxy-array-callback-receives-the-raw-element-not-the-wrapped-one.md`.
 - **PARKED 2026-10-24 — `snapshot(state.user)` with `T` inferred does not build.** Not Neon's: a proxy
   member access passed straight to a generic parameter never instantiates the handler's `get` (C:
   `passing 'Doc' to parameter of incompatible type 'void *'`, msc `6b8655024`); a held local or
-  `snapshot<User>(…)` builds. `tests/core/storeSnapshotArgument.parked.ms` does not compile. Compiler
-  card pending.
+  `snapshot<User>(…)` builds. `tests/core/storeSnapshotArgument.parked.ms` does not compile. Card
+  `~/metascript/.inbox/compiler/2026-10-24-generic-call-with-an-inferred-proxy-argument-never-instantiates-get.md`.
 - **PARKED 2026-10-11 — `tests/render/flatList.test.ms` and `tests/components/flutterListsApp.test.ms` do not compile.**
   Not Neon's: an array-destructured local of an arrow passed as a JSX attribute
   (`const [focused, setFocused] = createSignal<boolean>(false)` in a `renderItem`) is refused as
