@@ -13,7 +13,7 @@ export function createComponent<P>(Comp: (props: P) => NeonNode, props: P): Neon
 	};
 }
 
-// Parked on ~/metascript/.inbox/compiler/2026-09-24-default-import-does-not-parse.md and 2026-10-16-promise-or-null-is-never-null-on-c-and-js.md: Solid's `lazy(() => import("./Page"))` reading the default export, and one `Promise | null` slot for the load.
+// Parked on ~/metascript/.inbox/compiler/2026-09-24-default-import-does-not-parse.md, 2026-10-16-promise-or-null-is-never-null-on-c-and-js.md and 2026-10-24-design-a-property-assigned-onto-a-function-value.md: Solid's `lazy(() => import("./Page"))` reading the default export, one `Promise | null` slot for the load, and `.preload()` on the component.
 export function lazy<P>(load: () => Promise<(props: P) => NeonNode>): (props: P) => NeonNode {
 	const loading: Promise<boolean>[] = [];
 	const loaded: ((props: P) => NeonNode)[] = [];
