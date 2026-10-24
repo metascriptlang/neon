@@ -3,7 +3,10 @@ import { el, text, NeonNode } from "../../src/render/node";
 import { Host, HostNode } from "../../src/render/hostTypes";
 import { MockNode, mockHost, render, mockToString } from "../../src/render/host";
 import { lazy, createComponent } from "../../src/render/component";
-import { Loading } from "../../src/macros/ui/flow";
+import { createSignal } from "../../src/core/signal";
+import { flush } from "../../src/core/runtime";
+import { sleepAsync as pause } from "std/core/promise";
+import { Loading, For } from "../../src/macros/ui/flow";
 import { Gate, gated, release } from "../core/asyncClock";
 
 const waiting: NeonNode = el("b", [], [], text("loading"));
@@ -47,6 +50,20 @@ test "a lazy component whose module has loaded mounts at once with no fallback" 
 	const out = mockToString(root as unknown as MockNode);
 	assert out.includes("<p>hello late</p>") && !out.includes("loading"), out;
 	assert loads[0] === 1, "no second load: " + loads[0].toString();
+	dispose();
+}
+
+test "a lazy component inside a For row under Loading mounts when its module settles" {
+	const late = lazy(loadGreeting);
+	const [items, _set] = createSignal<int32[]>([1]);
+	const host = mockHost();
+	const root = host.createElement("root");
+	const shown = (): string => mockToString(root as unknown as MockNode);
+	const app: NeonNode = Loading({ children: <For each={items}>{(i: int32): NeonNode => createComponent(late, { label: "row" })}</For>, fallback: waiting });
+	const dispose = render(app, host, root);
+	let polls: int32 = 0;
+	while (shown().includes("loading") && polls < 200) { await pause(1); flush(); polls += 1; }
+	assert shown().includes("<p>hello row</p>") && !shown().includes("loading"), "row after the load: " + shown();
 	dispose();
 }
 

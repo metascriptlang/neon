@@ -5,6 +5,7 @@
 import { untrack } from "../core/signal";
 import { createAsyncMemo } from "../core/memo";
 import { Host, HostNode, NeonNode } from "./hostTypes";
+import { Show } from "../macros/ui/flow";
 
 export function createComponent<P>(Comp: (props: P) => NeonNode, props: P): NeonNode {
 	return (host: Host, parent: HostNode, before: HostNode | null): void => {
@@ -26,7 +27,9 @@ export function lazy<P>(load: () => Promise<(props: P) => NeonNode>): (props: P)
 		return loading[0];
 	};
 	return (props: P): NeonNode => (host: Host, parent: HostNode, before: HostNode | null): void => {
-		const ready = loaded.length > 0 || createAsyncMemo((prev: boolean | null): Promise<boolean> => start())();
-		if (ready) { createComponent(loaded[0], props)(host, parent, before); }
+		const mount: NeonNode = (h: Host, p: HostNode, b: HostNode | null): void => { createComponent(loaded[0], props)(h, p, b); };
+		if (loaded.length > 0) { mount(host, parent, before); return; }
+		const ready = createAsyncMemo((prev: boolean | null): Promise<boolean> => start());
+		Show({ when: ready, children: mount })(host, parent, before);
 	};
 }
