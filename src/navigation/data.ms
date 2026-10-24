@@ -47,6 +47,7 @@ function sweep(now: float64): void {
 	for (const key of stale) { cache.delete(key); }
 }
 
+// Parked on ~/metascript/.inbox/compiler/2026-10-24-json-stringify-of-a-tuple-is-refused.md: one `JSON.stringify(args)` in place of these per-arity joins.
 export function hashKey(): string {
 	return "[]";
 }
@@ -59,6 +60,7 @@ export function hashKey<A, B>(a: A, b: B): string {
 	return "[" + JSON.stringify<A>(a) + "," + JSON.stringify<B>(b) + "]";
 }
 
+// Parked on ~/metascript/.inbox/compiler/2026-10-24-design-a-property-assigned-onto-a-function-value.md: Solid Router's `getUser.key` and `getUser.keyFor(...args)` on the query itself.
 export function queryKey(name: string): string {
 	return name + hashKey();
 }
@@ -132,6 +134,7 @@ function cached<R>(key: string, run: () => Promise<R>): Promise<R> {
 	return result;
 }
 
+// Parked on ~/metascript/.inbox/compiler/2026-10-24-a-generic-rest-parameter-typed-by-a-tuple-type-parameter-is-refused.md: one `query<A extends unknown[], R>` over any arity in place of these overloads.
 export function query<R>(fn: () => Promise<R>, name: string): () => Promise<R> {
 	checkedName(name);
 	return (): Promise<R> => cached<R>(queryKey(name), fn);
