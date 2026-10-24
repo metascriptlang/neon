@@ -210,11 +210,11 @@ test "text spanning lines is rejoined with single spaces" {
 
 test "text alone on its own line keeps its content" {
 	const withAttr = mounted(element(
-		<p a="1">
+		<p data-a="1">
 			hello
 		</p>
 	));
-	assert mockToString(withAttr) === "<root><p a=\"1\">hello</p></root>", "attributed element keeps text: " + mockToString(withAttr);
+	assert mockToString(withAttr) === "<root><p data-a=\"1\">hello</p></root>", "attributed element keeps text: " + mockToString(withAttr);
 	const noAttr = mounted(element(
 		<p>
 			hello
@@ -252,11 +252,11 @@ test "dynamic attr tracks its signal" {
 
 test "mixed static and dynamic attrs keep source order" {
 	const [x, setX] = createSignal("2");
-	const root = mounted(element(<div a="1" b={x()} c="3"></div>));
-	assert mockToString(root) === "<root><div a=\"1\" b=\"2\" c=\"3\"></div></root>", "source order preserved: " + mockToString(root);
+	const root = mounted(element(<div data-a="1" data-b={x()} data-c="3"></div>));
+	assert mockToString(root) === "<root><div data-a=\"1\" data-b=\"2\" data-c=\"3\"></div></root>", "source order preserved: " + mockToString(root);
 	setX("9");
 	flush();
-	assert mockToString(root) === "<root><div a=\"1\" b=\"9\" c=\"3\"></div></root>", "middle attr updates in place: " + mockToString(root);
+	assert mockToString(root) === "<root><div data-a=\"1\" data-b=\"9\" data-c=\"3\"></div></root>", "middle attr updates in place: " + mockToString(root);
 }
 
 test "the same JSX const consumed twice yields independent trees" {

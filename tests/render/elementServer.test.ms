@@ -53,11 +53,11 @@ test "text spanning lines is rejoined with single spaces" {
 
 test "text alone on its own line keeps its content" {
 	const withAttr = element(
-		<p a="1">
+		<p data-a="1">
 			hello
 		</p>
 	);
-	assert renderToString(withAttr) === "<p a=\"1\">hello</p>", "attributed element keeps text";
+	assert renderToString(withAttr) === "<p data-a=\"1\">hello</p>", "attributed element keeps text";
 	const noAttr = element(
 		<p>
 			hello
@@ -92,10 +92,10 @@ test "dynamic attr tracks its signal" {
 
 test "mixed static and dynamic attrs keep source order" {
 	const [x, setX] = createSignal("2");
-	const node = element(<div a="1" b={x()} c="3"></div>);
-	assert renderToString(node) === "<div a=\"1\" b=\"2\" c=\"3\"></div>", "source order preserved";
+	const node = element(<div data-a="1" data-b={x()} data-c="3"></div>);
+	assert renderToString(node) === "<div data-a=\"1\" data-b=\"2\" data-c=\"3\"></div>", "source order preserved";
 	setX("9");
-	assert renderToString(node) === "<div a=\"1\" b=\"9\" c=\"3\"></div>", "middle attr updates in place";
+	assert renderToString(node) === "<div data-a=\"1\" data-b=\"9\" data-c=\"3\"></div>", "middle attr updates in place";
 }
 
 test "the same JSX const consumed twice yields independent trees" {
