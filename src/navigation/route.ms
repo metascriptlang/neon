@@ -235,7 +235,7 @@ function voided<P>(
 	};
 }
 
-// Parked on card pending: generic-class-field-instantiated-as-void-has-no-member (second sighting beside 2026-10-24-a-closure-capturing-a-generic-parameter-instantiated-as-void-emits-a-void-field.md): one `route<P, D = void>` over a void preload.
+// Parked on ~/metascript/.inbox/compiler/2026-10-24-a-closure-capturing-a-generic-parameter-instantiated-as-void-emits-a-void-field.md (second case, a void generic field): one `route<P, D = void>` over a void preload.
 export function route<P>(pattern: string | null, options: RouteOptions<P>): RouteDef<P, void> {
 	const codec = options.params;
 	const node = routeDef<P>(pattern, codec, options.guard, options.status, options.paths, voided<P>(codec, options.preload), false);
