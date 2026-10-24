@@ -364,10 +364,10 @@ interval. A record adopts only for a struct or interface result (`hydrateMemo.ms
 
 `action(fn, name)`, `useAction`, `useSubmission` and `useSubmissions` (`src/navigation/action.ms`)
 are the mutation side (`src/data/action.ts`): a call records a `Submission` under the
-action's url `https://action/<name>` (`action.ts:128-150`), settles it, then revalidates
-every query (`action.ts:215-216`, `handleResponse` after a success; an error returns before
-it, `:200`); a null answer clears the submission (`:214`, `:119`). `retry()` re-runs `fn`
-(`:145-149`) and an error also rejects the call (`:121`). Diverges: an action takes one input
+action's url `https://action/<name>` (`action.ts:111-135`), settles it, then revalidates
+every query (`action.ts:206-210`, `handleResponse` after a success; an error returns before
+it, `:203`); a null answer clears the submission (`:211`, `:105`). `retry()` re-runs `fn`
+(`:128-133`) and an error also rejects the call (`:107`). Diverges: an action takes one input
 value in place of a rest tuple; the call is `useAction(a)(input)` because a function value
 cannot carry `url` or be an `unknown` key; `result`, `error` and `pending` are methods;
 `useSubmission` is an accessor of the latest submission or null in place of a stub proxy;
