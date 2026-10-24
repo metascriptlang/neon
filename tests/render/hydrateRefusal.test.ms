@@ -1,6 +1,9 @@
-import { NeonNode } from "../../src/render/node";
+import { NeonNode, el, dynText } from "../../src/render/node";
 import { createSignal } from "../../src/core/signal";
-import { render, hydrate, mockHost, mockNode, mockToString, MockNode, HostNode } from "../../src/render/host";
+import { render, hydrate, mockHost, mockNode, mockToString, MockNode, Host, HostNode } from "../../src/render/host";
+import { createAsyncMemo } from "../../src/render/hydrateMemo";
+import { putRecord, clearRecords } from "../../src/render/hydrationRecords";
+import { Gate, release, opened } from "../core/asyncClock";
 import { View, Text } from "../../src/components/primitives";
 import { Show } from "../../src/macros/ui/flow";
 import { flush } from "../../src/core/runtime";
@@ -106,5 +109,40 @@ test "a page with more children in the container throws in debug and is rebuilt 
 	} else {
 		const wrong = rebuilt(root, page(), page());
 		assert wrong === "", wrong;
+	}
+}
+
+interface Note {
+	text: string;
+}
+
+async function loadNote(gate: Gate): Promise<Note> {
+	await opened(gate);
+	return { text: "live" };
+}
+
+test "a page with a record that differs throws in debug, and in release is rebuilt from the server's records" {
+	clearRecords();
+	putRecord("0", JSON.stringify<Note>({ text: "srv" }));
+	const root = served(el("p", [], [], dynText((): string => "srv")));
+	const gate = new Gate();
+	const page = (host: Host, parent: HostNode, before: HostNode | null): void => {
+		const data = createAsyncMemo((p: Note | null): Promise<Note> => loadNote(gate));
+		el("h1", [], [], dynText((): string => data().text))(host, parent, before);
+	};
+	let got = "";
+	when (debug) {
+		got = refusal(page, root);
+	} else {
+		const dispose = hydrate(page, mockHost(), root as unknown as HostNode);
+		got = mockToString(root);
+		dispose();
+	}
+	clearRecords();
+	await release(gate);
+	when (debug) {
+		assert got === "hydrate: the page has no <h1> at child 1 of the container", got;
+	} else {
+		assert got === "<root><h1>srv</h1></root>", got;
 	}
 }

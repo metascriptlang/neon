@@ -8,7 +8,7 @@ import { Host, HostNode, NeonNode, VoidArea, TextMeasure } from "./hostTypes";
 import { NeonEvent, neonEvent, eventType } from "./event";
 import { createRoot } from "../core/owner";
 import { flush, resetErrorHalt } from "../core/runtime";
-import { beginClaim, endClaim } from "./claim";
+import { beginClaim, claimRefusal, endClaim } from "./claim";
 import { Dispose } from "../core/types";
 import { AreaHub, createAreaHub } from "./voidAreaHandle";
 
@@ -38,20 +38,27 @@ export function render(node: NeonNode, host: Host, parent: HostNode, id: string 
 
 export function hydrate(node: NeonNode, host: Host, container: HostNode): Dispose {
 	beginClaim(host, container);
-	let dispose: Dispose;
 	try {
-		dispose = render(node, host, container, "");
-	} catch (error) {
-		endClaim(host, false);
-		throw error;
-	}
-	try {
-		endClaim(host, true);
-	} catch (error) {
+		const dispose = render(node, host, container, "");
+		let refused: string | null = null;
+		try {
+			refused = claimRefusal(host);
+		} catch (error) {
+			dispose();
+			throw error;
+		}
+		if (refused === null) { return dispose; }
 		dispose();
-		throw error;
+		let child = host.firstChild(container);
+		while (child !== null) {
+			host.removeChild(container, child as HostNode);
+			child = host.firstChild(container);
+		}
+		console.error(refused as string);
+		return render(node, host, container, "");
+	} finally {
+		endClaim(host);
 	}
-	return dispose;
 }
 
 // ---- Mock host: in-memory tree for tests/SSR (no browser needed) ----
