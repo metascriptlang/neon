@@ -1122,7 +1122,7 @@ export function createNativeHost(): NativeHost {
 
 function writeProp(n: NativeNode, name: string, value: string): void {
 	if (n.view === null) { return; }
-	if (name === "cellWidth") { throw new Error("cellWidth: the native host has no cell grid; it is a Void-host Text prop"); }
+	if (name === "cellWidth" || name === "cellWidths") { throw new Error(`${name}: the native host has no cell grid; it is a Void-host Text prop`); }
 	if (n.isScroll && name === "maintainVisibleContentPosition") {
 		n.visibleContent = parseVisibleContent(value);
 		return;

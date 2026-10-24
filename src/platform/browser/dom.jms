@@ -1100,7 +1100,7 @@ export function domHost(): Host {
 			(node as unknown as Node).textContent = s;
 		},
 		setAttr: (node: HostNode, name: string, value: string): void => {
-			if (name === "cellWidth") { throw new Error("cellWidth: the browser host has no cell grid; it is a Void-host Text prop"); }
+			if (name === "cellWidth" || name === "cellWidths") { throw new Error(`${name}: the browser host has no cell grid; it is a Void-host Text prop`); }
 			prepareVisibleContent();
 			if (writeMediaAttr(node, name, value)) { return; }
 			const el = node as unknown as Node;

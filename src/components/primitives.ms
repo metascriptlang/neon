@@ -310,6 +310,8 @@ export interface TextProps extends HostProps {
 	selectable?: Accessor<boolean> | null;
 	// Neon's own, for terminals and editors: every grapheme takes this many points, on the Void host only.
 	cellWidth?: Accessor<number> | null;
+	// The grid's widths beside cellWidth: one entry per UTF-8 byte of the text, 1 or 2 where a cell starts and 0 for its other bytes.
+	cellWidths?: Accessor<uint8[]> | null;
 	// The data form of nested Texts, for content that already is data (terminal and editor lines).
 	spans?: Accessor<TextSpan[]> | null;
 	onPress?: ((e: NeonEvent) => void) | null;
@@ -323,13 +325,24 @@ function accessibleText(props: AccessibilityProps): Accessor<string> | null {
 	return accessor((): string => read() ? "true" : "false");
 }
 
+function cellDigits(widths: uint8[]): string {
+	const digits: string[] = [];
+	for (const w of widths) {
+		if (w > 2) { throw new Error(`cellWidths: a grid cell is 1 or 2 wide and 0 after its first byte, not ${w}`); }
+		digits.push(w.toString());
+	}
+	return digits.join("");
+}
+
 export function Text(props: TextProps): NeonNode {
 	const lines = props.numberOfLines;
 	const ellipsize = props.ellipsizeMode;
 	const press = props.onPress;
 	const cell = props.cellWidth;
+	const widths = props.cellWidths;
 	const spans = props.spans;
 	if (spans !== null && props.children !== null) { throw new Error("<Text> takes spans or children, not both"); }
+	if (widths !== null && cell === null) { throw new Error("<Text> cellWidths needs cellWidth"); }
 	if (lines === null && ellipsize === null && props.selectable === null && press === null && cell === null && spans === null) {
 		const accessible = accessibleText(props);
 		return uiParent("Text", element(<text class={props.class} style={props.style} ref={props.ref} accessible={accessible} accessibilityLabel={props.accessibilityLabel} accessibilityHint={props.accessibilityHint} accessibilityRole={props.accessibilityRole} accessibilityState={accessibilityStateAttr(props.accessibilityState)}>{paragraphChildren(props.children, null)}</text>));
@@ -347,6 +360,10 @@ export function Text(props: TextProps): NeonNode {
 	if (cell !== null) {
 		const read = cell as Accessor<number>;
 		attrs.push(dynAttr("cellWidth", (): string | null => read().toString()));
+	}
+	if (widths !== null) {
+		const read = widths as Accessor<uint8[]>;
+		attrs.push(dynAttr("cellWidths", (): string | null => cellDigits(read())));
 	}
 	const evts: VEvent[] = [];
 	if (press !== null) {

@@ -10,7 +10,7 @@ import {
 	setPosition, setSize, setX, setZIndex, setAlpha, setColor, setBackground, clearBackground,
 	setText, text as labelText, setFont, textStyle, setTextStyle, setCursorIndex, setCursorBlinkTime,
 	local, content, scrollTo as scrollNodeTo, setScrollBounds, localToGlobal, globalToLocal,
-	setTextRuns, setMaxWidth, setForceWidth, setBoxStyle, setLayerSlot, order,
+	setTextRuns, setMaxWidth, setForceWidth, setCellWidths, setBoxStyle, setLayerSlot, order,
 } from "../../../../void/src/void2d/node";
 import { TextRun, TextLayout, Align as TextAlign } from "../../../../void/src/void2d/textLayout";
 import { BoxStyle, BoxShadow, uniformRadii, uniformBorders } from "../../../../void/src/void2d/boxStyle";
@@ -66,6 +66,7 @@ export class VoidNode {
 	styledRuns: boolean = false;
 	paraStale: boolean = false;
 	cell: float32 = 0.0;
+	cellWidths: uint8[] = [];
 	spans: TextSpan[] | null = null;
 	boxed: boolean = false;
 
@@ -798,6 +799,7 @@ export function createVoidHostWith(
 		if (root.para === null) {
 			const made = textLabel("");
 			if (root.cell > 0.0) { made.setForceWidth(root.cell); }
+			if (root.cellWidths.length > 0) { made.setCellWidths(root.cellWidths); }
 			root.ref.addChild(made);
 			root.para = made;
 		}
@@ -975,6 +977,16 @@ export function createVoidHostWith(
 				if (!(cell >= 0.0)) { throw new Error(`void host: cellWidth "${value}" is not zero or more points`); }
 				n.cell = cell;
 				if (n.para !== null) { (n.para as NodeRef).setForceWidth(cell); }
+			} else if (name === "cellWidths") {
+				if (!n.isText) { throw new Error("void host: cellWidths belongs on a Text"); }
+				const widths: uint8[] = [];
+				for (let i = 0; i < value.length; i++) {
+					const w = value.charCodeAt(i) - 48;
+					if (w < 0 || w > 2) { throw new Error(`void host: cellWidths "${value}" holds a width that is not 0, 1 or 2`); }
+					widths.push(w as uint8);
+				}
+				n.cellWidths = widths;
+				if (n.para !== null) { (n.para as NodeRef).setCellWidths(widths); }
 			} else if (name === "imeRect") {
 				n.imeBox = parseCaretRect(value);
 				if (focusedNode === n && dirtyListener !== null) { (dirtyListener as () => void)(); }
@@ -995,6 +1007,10 @@ export function createVoidHostWith(
 			else if (name === "cellWidth") {
 				n.cell = 0.0;
 				if (n.para !== null) { (n.para as NodeRef).setForceWidth(0.0); }
+			}
+			else if (name === "cellWidths") {
+				n.cellWidths = [];
+				if (n.para !== null) { (n.para as NodeRef).setCellWidths(n.cellWidths); }
 			}
 		},
 		setStyle: (node: HostNode, style: Style): void => {

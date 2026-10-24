@@ -396,6 +396,32 @@ test "a cellWidth Text narrower than its text stays one line" {
 	assert label.xForIndex(15) === 150.0, "grapheme 15 stays on the first line: x=" + label.xForIndex(15).toString();
 }
 
+test "cellWidths puts a wide grapheme on two cells of the grid, and follows a change" {
+	const vh = host();
+	const [widths, setWidths] = createSignal<uint8[]>([2, 0, 0, 2, 0, 0, 1]);
+	render(element(<View style={{ width: 300 }}><Text cellWidth={16} cellWidths={widths()}>{"\u{4F60}\u{597D}a"}</Text></View>), vh.host, vh.root);
+	vh.layout(300.0, 100.0);
+	const label = paragraph(top(vh).children[0]);
+	label.textWidth();
+	const wide = labelTexts[vh.scene.payloads[label.id.index]].layout.glyphs;
+	assert (wide.length as int32) === 3 && wide[0].x === 0.0 && wide[1].x === 32.0 && wide[2].x === 64.0, "cells 0, 2 and 4: " + wide[1].x.toString() + ", " + wide[2].x.toString();
+	setWidths([1, 0, 0, 1, 0, 0, 1]);
+	flush();
+	label.textWidth();
+	const narrow = labelTexts[vh.scene.payloads[label.id.index]].layout.glyphs;
+	assert narrow[1].x === 16.0 && narrow[2].x === 32.0, "cells 0, 1 and 2: " + narrow[1].x.toString() + ", " + narrow[2].x.toString();
+}
+
+test "cellWidths without cellWidth is refused" {
+	const vh = host();
+	let message = "";
+	try {
+		render(element(<Text cellWidths={[1]}>a</Text>), vh.host, vh.root);
+	} catch (e) { message = e.message; }
+	assert message.indexOf("cellWidths needs cellWidth") >= 0, "cellWidths alone: " + message;
+	resetErrorHalt();
+}
+
 test "spans draw as one paragraph label on the Void host, with no node per span" {
 	const vh = host();
 	const red: Style = { color: "#ff0000", textDecorationLine: "underline" };
