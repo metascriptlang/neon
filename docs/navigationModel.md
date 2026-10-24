@@ -344,6 +344,24 @@ routing, not a running Void world's resource policy. Transitions are a render-la
 choice, outside the navigation model; `createNativeStackNavigator` renders with the
 same JS-driven frames.
 
+## Route data
+
+`query(fn, name)`, `revalidate(key?)` and `createAsync(fn)` (`src/navigation/data.ms`) are
+the read side of Solid Router's route data (`~/projects/solid-router` `d0379e7`,
+`src/data/query.ts`, `src/data/createAsync.ts`); `createAsync` is the async memo of
+`hydrateMemo.ms` under that name, as Solid 2.0 has it. A query keys its calls by
+`name + hashKey(args)` (`query.ts:83`), shares one in-flight promise per key, serves a
+settled answer for 5 s or while a reader tracks it (`query.ts:105-111`), and
+`revalidate` zeroes the matching entries and bumps their readers (`query.ts:41-56`).
+On the server a query registers a slot under its key, so the writer emits it as a record
+beside the memo's; on the client a query whose key has a record adopts it once and drops
+it (`query.ts:132-135`, `:173`). A key always carries the JSON brackets of its arguments,
+so it never equals an owner id. Diverges from Solid where Neon has no counterpart: no
+`intent`, preload or `Response` handling (the router owns navigation), no `query.get`
+or `query.set`, an arity-0/1/2 overload set in place of a rest tuple, `queryKey(name, …)`
+in place of `fn.keyFor` and `fn.key`, and the cache is swept on insert in place of an
+interval. A record adopts only for a struct or interface result (`hydrateMemo.ms`).
+
 ## Provisional choices and remaining limits
 
 - The built-in navigators are compositions of two public models over
