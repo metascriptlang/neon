@@ -4,6 +4,7 @@ import { render, hydrate } from "../../src/render/host";
 import { element } from "../../src/macros/ui/element";
 import { NeonEvent } from "../../src/render/event";
 import { createSignal } from "../../src/core/signal";
+import { flush } from "../../src/core/runtime";
 import { sleepAsync } from "std/core/promise";
 import { Pressable, Text, View, ScrollView } from "../../src/components/primitives";
 import { TouchableOpacity } from "../../src/components/touchable";
@@ -33,20 +34,20 @@ extern function servedActivationMount(): HTMLElement from
 	"(() => { const root=document.createElement('div'); const parent=document.createElement('button'); parent.setAttribute('aria-label','activation-hydrated-parent'); const child=document.createElement('button'); child.setAttribute('aria-label','activation-hydrated-child'); const text=document.createElement('span'); text.textContent='hydrated passive label'; child.appendChild(text); const view=document.createElement('div'); view.setAttribute('aria-label','activation-hydrated-view'); const label=document.createElement('span'); label.textContent='hydrated generic label'; view.appendChild(label); parent.append(child,view); root.appendChild(parent); document.body.appendChild(root); return root; })()";
 
 test "DOM gesture semantic MouseEvent programmatic and empty pointerType activate without feedback" {
-	const [log, setLog] = createSignal("");
+	let log = "";
 	const dispose = render(element(<Pressable accessibilityLabel="activation-semantic"
-		onPressIn={(): void => { setLog(log() + "in;"); }}
-		onPressOut={(): void => { setLog(log() + "out;"); }}
-		onLongPress={(): void => { setLog(log() + "long;"); }} delayLongPress={60}
+		onPressIn={(): void => { log += "in;"; }}
+		onPressOut={(): void => { log += "out;"; }}
+		onLongPress={(): void => { log += "long;"; }} delayLongPress={60}
 		onPress={(e: NeonEvent): void => {
 			assert !e.pointerOrigin, "semantic input has no pointer provenance";
-			setLog(log() + "press;");
+			log += "press;";
 		}} />), domHost(), documentBody());
 	const button = find("activation-semantic");
 	for (const mode of ["programmatic", "mouse", "empty"]) { semantic(button, mode); }
-	assert log() === "press;press;press;", "semantic routes: " + log();
+	assert log === "press;press;press;", "semantic routes: " + log;
 	await sleepAsync(180);
-	assert log() === "press;press;press;", "no feedback or timer was synthesized: " + log();
+	assert log === "press;press;press;", "no feedback or timer was synthesized: " + log;
 	dispose();
 }
 
@@ -194,9 +195,11 @@ test "DOM disabled Touchable child never leaks semantic activation to parent" {
 	childTextClick(child);
 	assert log === "child;", "enabled child";
 	setOff(true);
+	flush();
 	childTextClick(child);
 	assert log === "child;", "disabled child owns click without leaking";
 	setOff(false);
+	flush();
 	childTextClick(child);
 	assert log === "child;child;", "enabled again";
 	assert opacity(child) === "1", "semantic activation has no opacity feedback";

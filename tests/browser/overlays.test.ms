@@ -1,4 +1,5 @@
 import { createSignal } from "../../src/core/signal";
+import { flush } from "../../src/core/runtime";
 import { Dimensions } from "../../src/api/dimensions";
 import { HostNode } from "../../src/render/hostTypes";
 import { ElementHandle } from "../../src/render/measure";
@@ -50,7 +51,9 @@ test "screen overlays use viewport geometry outside a clipped app and retain rea
 		<Snackbar visible={open()} message="Portal snackbar" />
 		<ToastHost />
 	</View>), domHost(), documentBody());
+	flush();
 	Toast.show({ text1: "Portal toast", autoHide: false });
+	flush();
 	const viewport = Dimensions.get("window");
 	const app = roots[0] as unknown as HTMLElement;
 	const dialog = alertNode("Portal dialog");
@@ -69,25 +72,35 @@ test "screen overlays use viewport geometry outside a clipped app and retain rea
 	assert isBody(parent(parent(toast))) && !contains(app, toast);
 	assert near(rect(parent(toast)).bottom, viewport.height - 40);
 	setOpen(false);
+	flush();
 	Toast.hide();
+	flush();
 	assert !hasAlert("Portal dialog") && !hasAlert("Portal sheet") && !hasAlert("Portal snackbar") && !hasAlert("Portal toast");
 	setOpen(true);
+	flush();
 	Toast.show({ text1: "Portal toast", autoHide: false });
+	flush();
 	dispose();
+	flush();
 	assert !hasAlert("Portal dialog") && !hasAlert("Portal sheet") && !hasAlert("Portal snackbar") && !hasAlert("Portal toast");
 	Toast.hide();
+	flush();
 	remove(app);
 }
 
 test "a screen-level Dialog on the body survives hide show and owner cleanup without double removal" {
 	const [open, setOpen] = createSignal(true);
 	const dispose = render(element(<Dialog visible={open()} title="Same-root dialog" />), domHost(), documentBody());
+	flush();
 	assert hasAlert("Same-root dialog");
 	setOpen(false);
+	flush();
 	assert !hasAlert("Same-root dialog");
 	setOpen(true);
+	flush();
 	assert hasAlert("Same-root dialog");
 	dispose();
+	flush();
 	assert !hasAlert("Same-root dialog");
 }
 
@@ -106,12 +119,15 @@ test "screen overlays stay viewport anchored across document scroll and position
 					<Text accessibilityLabel="Generic portal">Generic</Text>
 				</Portal>
 			</View>), domHost(), documentBody());
+			flush();
 			try {
 				scrollPage(200);
 				await sleepAsync(30);
 				assert scrollY() > 100, "document scroll fixture is active before show";
 				setOpen(true);
+				flush();
 				Toast.show({ text1: "Scrolled toast", autoHide: false });
+				flush();
 				for (const offset of [200, 500]) {
 					scrollPage(offset);
 					await sleepAsync(30);
@@ -130,20 +146,27 @@ test "screen overlays stay viewport anchored across document scroll and position
 						"generic Portal must not become a fixed screen layer";
 				}
 				setOpen(false);
+				flush();
 				Toast.hide();
+				flush();
 				assert !hasAlert("Scrolled dialog") && !hasAlert("Scrolled sheet");
 				assert !hasAlert("Scrolled snackbar") && !hasAlert("Scrolled toast");
 				setOpen(true);
+				flush();
 				Toast.show({ text1: "Scrolled toast", autoHide: false });
+				flush();
 			} finally {
 				dispose();
+				flush();
 				Toast.hide();
+				flush();
 			}
 			assert !hasAlert("Scrolled dialog") && !hasAlert("Scrolled sheet");
 			assert !hasAlert("Scrolled snackbar") && !hasAlert("Scrolled toast");
 		}
 	} finally {
 		setBodyCss(css);
+		flush();
 		scrollPage(0);
 	}
 }
@@ -155,18 +178,24 @@ test "explicit Snackbar and Toast user position wins over default screen present
 			style={{ position: override() ? "absolute" : null }} />
 		<ToastHost style={{ position: override() ? "absolute" : null }} />
 	</View>), domHost(), documentBody());
+	flush();
 	try {
 		Toast.show({ text1: "Custom toast", autoHide: false });
+		flush();
 		assert positionOf(alertNode("Custom snackbar")) === "absolute";
 		assert positionOf(parent(alertNode("Custom toast"))) === "absolute";
 		setOverride(false);
+		flush();
 		assert positionOf(alertNode("Custom snackbar")) === "fixed";
 		assert positionOf(parent(alertNode("Custom toast"))) === "fixed";
 		setOverride(true);
+		flush();
 		assert positionOf(alertNode("Custom snackbar")) === "absolute";
 		assert positionOf(parent(alertNode("Custom toast"))) === "absolute";
 	} finally {
 		dispose();
+		flush();
 		Toast.hide();
+		flush();
 	}
 }

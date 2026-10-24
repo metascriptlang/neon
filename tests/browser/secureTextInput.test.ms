@@ -74,8 +74,10 @@ test "Chrome keeps password input usable and nonsecure multiline editable" {
 	handles[0].focus();
 	assert handles[0].isFocused() && js("return document.activeElement === document.querySelector('#secure-controls input');") === "true", "focus via ref";
 	js("const el = document.querySelector('#secure-controls input'); el.value = 'typed'; el.dispatchEvent(new Event('input', { bubbles: true })); el.setSelectionRange(2, 4); el.dispatchEvent(new Event('selectionchange', { bubbles: true })); return 1;");
+	flush();
 	assert value() === "typed" && selection === "2,4", "password input and selection events";
 	setValue("controlled");
+	flush();
 	assert js("return document.querySelector('#secure-controls input').value;") === "controlled", "controlled password update";
 	assert js("return document.querySelector('#secure-controls textarea').value;") === "notes", "nonsecure defaultValue";
 	js("const el = document.querySelector('#secure-controls textarea'); el.value = 'a\\nb'; el.dispatchEvent(new Event('input', { bubbles: true })); return 1;");
@@ -119,9 +121,10 @@ test "Chrome rejects secure entry on a fixed textarea even after multiline becom
 	const mount = mountPoint("secure-fixed-tag");
 	const dispose = render(element(<TextInput multiline={multiline()} secureTextEntry={secure()} />), domHost(), mount as unknown as HostNode);
 	setMultiline(false);
+	flush();
 	assert mount.querySelector("textarea") !== null, "host tag remains textarea";
 	let message = "";
-	try { setSecure(true); } catch (e) { message = e.toString(); }
+	try { setSecure(true); flush(); } catch (e) { message = e.toString(); }
 	resetErrorHalt();
 	assert secureMultilineDiagnostic(message), "fixed-tag rejection: " + message;
 	dispose();
@@ -159,7 +162,9 @@ test "Chrome preserves nonsecure input updates after requested multiline becomes
 	const mount = mountPoint("secure-requested-control");
 	const dispose = render(element(<TextInput multiline={multiline()} secureTextEntry={false} value={value()} />), domHost(), mount as unknown as HostNode);
 	setMultiline(true);
+	flush();
 	setValue("next");
+	flush();
 	assert js("const el = document.querySelector('#secure-requested-control input'); return el.type + ' ' + el.value;") === "text next", "nonsecure fixed host remains usable";
 	dispose();
 }
