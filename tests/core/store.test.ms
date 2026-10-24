@@ -259,6 +259,46 @@ test "an edit under a privatized parent still reaches the reader of a sibling ed
 	assert user.firstName === "John";
 }
 
+test "a draft reads its own writes, and the source is never written at any level" {
+	const source: { a: number, user: User } = { a: 1, user: { firstName: "John", lastName: "Snow" } };
+	const [state, setState] = createStore(source);
+	let inside = "";
+	setState((s) => {
+		s.a = 5;
+		s.user.firstName = "Jon";
+		inside = s.a.toString() + s.user.firstName;
+	});
+	flush();
+	assert inside === "5Jon", "inside: " + inside;
+	assert state.a === 5 && state.user.firstName === "Jon", "store";
+	assert source.a === 1 && source.user.firstName === "John", "source";
+}
+
+interface Leaf { label: string; }
+interface Mid { label: string; leaf: Leaf; }
+interface Tree { label: string; mid: Mid; }
+
+test "three levels written leaf to root in one setter all commit" {
+	const [state, setState] = createStore<Tree>({ label: "root", mid: { label: "mid", leaf: { label: "leaf" } } });
+	setState((s) => {
+		s.mid.leaf.label = "leaf2";
+		s.mid.label = "mid2";
+		s.label = "root2";
+	});
+	flush();
+	assert state.label === "root2" && state.mid.label === "mid2" && state.mid.leaf.label === "leaf2", "tree: " + state.label + " " + state.mid.label + " " + state.mid.leaf.label;
+}
+
+test "a push after a descendant write in one setter keeps both" {
+	const [state, setState] = createStore<Item[]>([{ id: 1, title: "a" }]);
+	setState((s) => {
+		s[0].title = "A";
+		s.push({ id: 2, title: "b" });
+	});
+	flush();
+	assert state.length === 2 && state[0].title === "A" && state[1].id === 2, "rows: " + state.length.toString();
+}
+
 interface Doc { id: number; user: User; tags: string[]; rows: Item[]; }
 
 function newDoc(): Doc {
@@ -315,6 +355,14 @@ test "snapshot of a nested store reads the subtree and tracks only the read of t
 	setState((s) => { s.user = { firstName: "Ann", lastName: "Lee" }; });
 	flush();
 	assert seen.join(",") === "John,Ann", "seen: " + seen.join(",");
+}
+
+test "snapshot of a truncated store array has the new length" {
+	const [cut, setCut] = createStore<string[]>(["a", "b", "c"]);
+	setCut((s) => { s.length = 2; });
+	flush();
+	const snap = snapshot(cut);
+	assert snap.length === 2 && snap.join(",") === "a,b", "snapshot: " + snap.join(",");
 }
 
 test "a row held across a shift is copied at its new index, and the array keeps its length" {
@@ -519,6 +567,33 @@ test "reconcile descends into a nested record: an unchanged leaf's reader does n
 	assert rowRuns === 1, "rows[0].name ran " + rowRuns.toString() + " times";
 }
 
+test "a positional reconcile does not enforce the root's identity" {
+	const [state, setState] = createStore<Row>({ id: 1, name: "a", count: 2 });
+	setState(reconcile<Row>({ id: 9, name: "a", count: 3 }, null));
+	flush();
+	assert state.id === 9 && state.count === 3, "merged: " + state.id.toString();
+}
+
+test "reconcile back to the committed value cancels the draft write, and a changed key wins over it" {
+	const [state, setState] = createStore<Count>({ count: 0, label: "a" });
+	let count: () => number = () => -1;
+	const seen: number[] = [];
+	createRoot((d) => {
+		count = createMemo<number>((): number => state.count);
+		createEffect<number>((p: number | null): number => state.count, (v: number, p: number | null): Cleanup | null => { seen.push(v); return null; });
+	});
+	flush();
+	setState((s) => { s.count = 1; });
+	setState(reconcile<Count>({ count: 0, label: "a" }, null));
+	flush();
+	assert state.count === 0 && count() === 0, "cancelled: " + state.count.toString();
+	assert seen.indexOf(1) === -1, "the cancelled value reached a reader: " + seen.join(",");
+	setState((s) => { s.count = 1; });
+	setState(reconcile<Count>({ count: 5, label: "a" }, null));
+	flush();
+	assert state.count === 5 && count() === 5 && seen.indexOf(1) === -1 && seen[seen.length - 1] === 5, "adopted: " + seen.join(",");
+}
+
 interface Pair2 { first: string; second: string; }
 interface Count { count: number; label: string; }
 
@@ -591,6 +666,23 @@ test "a write through a derived store's setter lasts until the next derive, whic
 	setSource(2);
 	flush();
 	assert state.count === 2, "the next derive: " + state.count.toString();
+}
+
+test "a same-value setter write does not hold against a source change in its flush" {
+	const [source, setSource] = createSignal(0);
+	const [state, setState] = createRoot((d) => {
+		return createStore<Count>((draft) => { draft.count = source(); }, { count: -1, label: "" });
+	});
+	setState((s) => { s.count = 99; });
+	flush();
+	assert state.count === 99, "manual: " + state.count.toString();
+	setSource(1);
+	setState((s) => { s.count = 99; });
+	flush();
+	assert state.count === 1, "the derive wins: " + state.count.toString();
+	setSource(2);
+	flush();
+	assert state.count === 2, "next: " + state.count.toString();
 }
 
 test "a derived store stops deriving when its owner is disposed" {
