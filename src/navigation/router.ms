@@ -1,6 +1,7 @@
 import { Accessor, Signal, accessor, untrack } from "../core/signal";
 import { flush, getOwner } from "../core/runtime";
-import { Dispose } from "../core/types";
+import { Computation, Dispose } from "../core/types";
+import { runWithOwner } from "../core/owner";
 import { mapArray } from "../core/array";
 import { Host, HostNode, NeonNode } from "../render/hostTypes";
 import { createComponent } from "../render/component";
@@ -783,6 +784,8 @@ export class Router {
 	location: Accessor<RouterLocation>;
 	submissions: Signal<SubmissionBase[]> = new Signal<SubmissionBase[]>([]);
 	intent: PreloadIntent | null = null;
+	inPreload: boolean = false;
+	private owner: Computation | null = null;
 	private redirected: Reply | null = null;
 	private root: Level;
 	private current: Signal<Resolved>;
@@ -806,6 +809,7 @@ export class Router {
 	view(): NeonNode {
 		const steer: Steer = {
 			within: (intent: PreloadIntent, run: () => void): void => { this.within(intent, run); },
+			preloading: (intent: PreloadIntent, run: () => void): void => { this.preloading(intent, run); },
 			navigate: (href: string): boolean => this.navigate(href),
 			popToRoot: (stack: ChildStack<Stop, Place>): void => {
 				this.group((): void => { stack.popTo(0); }, false);
@@ -813,7 +817,11 @@ export class Router {
 				if (settled.ok) { this.current.set(settled.value); }
 			},
 		};
-		return levelView(this.routes, this.root, steer, null);
+		const body = levelView(this.routes, this.root, steer, null);
+		return (host: Host, parent: HostNode, before: HostNode | null): void => {
+			this.owner = getOwner();
+			body(host, parent, before);
+		};
 	}
 
 	connect(session: RoutingSession, stop: Dispose | null, group: (change: () => void, visit: boolean) => void): void {
@@ -873,6 +881,16 @@ export class Router {
 		}
 	}
 
+	preloading(intent: PreloadIntent, run: () => void): void {
+		const previous = this.inPreload;
+		this.inPreload = true;
+		try {
+			this.within(intent, run);
+		} finally {
+			this.inPreload = previous;
+		}
+	}
+
 	deliver(reply: Reply, replace: boolean): boolean {
 		if (reply.action !== GuardAction.Redirect) { return false; }
 		if (!this.history.writable) {
@@ -893,7 +911,8 @@ export class Router {
 		if (!found.ok) { return; }
 		const match = found.value;
 		const location: RouterLocation = { pathname: pathnameOf(href), search: match.search, hash: match.hash };
-		this.within("preload", (): void => {
+		const owner = this.owner;
+		const body = (): void => {
 			for (const level of match.chain) {
 				const preload = level.node.preload;
 				if (preload !== null) {
@@ -903,7 +922,8 @@ export class Router {
 					});
 				}
 			}
-		});
+		};
+		this.preloading("preload", (): void => { runWithOwner<number>(owner, (): number => { body(); return 0; }); });
 	}
 
 	go(delta: int32): boolean {
@@ -1037,6 +1057,7 @@ function mountLater(make: () => NeonNode, steer: Steer, intent: PreloadIntent): 
 
 interface Steer {
 	within: (intent: PreloadIntent, run: () => void) => void;
+	preloading: (intent: PreloadIntent, run: () => void) => void;
 	navigate: (href: string) => boolean;
 	popToRoot: (stack: ChildStack<Stop, Place>) => void;
 }
@@ -1126,7 +1147,7 @@ function placeView(routes: Routes, child: NavigationChild<Stop, Place>, steer: S
 	if (preload !== null) {
 		const leaf = leafOf(child);
 		const location: RouterLocation = { pathname: leaf.path, search: leaf.search, hash: leaf.hash };
-		steer.within(stop.intent, (): void => {
+		steer.preloading(stop.intent, (): void => {
 			untrack((): number => {
 				(preload as (args: PreloadArgs<Map<string, string>>) => void)({ params: stop.params, location, intent: stop.intent });
 				return 0;

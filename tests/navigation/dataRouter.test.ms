@@ -41,6 +41,8 @@ const waiting: NeonNode = el("b", [], [], text("loading"));
 const getSigned = query(signedOut, "signed");
 const getStale = query(stale, "stale");
 const getP = query((): Promise<Note> => fetchNote("p"), "p");
+const getP2 = query((): Promise<Note> => fetchNote("p2"), "p2");
+const getEarly = query(signedOut, "early");
 const getQ = query((): Promise<Note> => fetchNote("q"), "q");
 
 function Account(): NeonNode {
@@ -70,6 +72,19 @@ function warm(args: PreloadArgs<Map<string, string>>): void {
 	getP();
 }
 
+function PageP2(): NeonNode {
+	const note = createAsync((): Promise<Note> => getP2());
+	return Loading({ children: el("p", [], [], dynText((): string => note().text)), fallback: waiting });
+}
+
+function warmP2(args: PreloadArgs<Map<string, string>>): void {
+	getP2();
+}
+
+function warmEarly(args: PreloadArgs<Map<string, string>>): void {
+	getEarly();
+}
+
 function warmQ(args: PreloadArgs<Map<string, string>>): void {
 	getQ();
 }
@@ -81,6 +96,8 @@ function opened(history: RoutingHistory): Router {
 		{ path: "/login", component: Login },
 		{ path: "/p", component: PageP, preload: warm },
 		{ path: "/q", component: PageQ, preload: warmQ },
+		{ path: "/p2", component: PageP2, preload: warmP2 },
+		{ path: "/early", component: Home, preload: warmEarly },
 	]);
 	const made = createRouter(routes, history);
 	if (!made.ok) { throw new Error("router: " + made.error.toString()); }
@@ -140,5 +157,35 @@ test "a preload makes an entry that a navigation refetches after the preload tim
 	await sleepAsync(8);
 	flush();
 	assert ran("p") === 2, "a navigation refetches an unread preload after the timeout: " + ran("p").toString();
+	router.dispose();
+}
+
+test "a preload run from outside any owner keeps the router's owner: its entry is preload-made and a redirect there is ignored" {
+	const history = createMemoryRoutingHistory({ url: "/", state: "" });
+	const router = opened(history);
+	const root = mounted(router);
+	const before = ran("signedOut");
+	router.preload("/early");
+	await sleepAsync(8);
+	flush();
+	assert ran("signedOut") === before + 1, "the preload query ran: " + ran("signedOut").toString();
+	assert router.location().pathname === "/", "a redirect in a preload does not navigate: " + router.location().pathname;
+	router.preload("/p2");
+	await sleepAsync(2);
+	assert router.navigate("/p2");
+	await sleepAsync(2600);
+	assert router.navigate("/");
+	flush();
+	assert router.navigate("/p2");
+	await sleepAsync(8);
+	flush();
+	assert router.navigate("/");
+	flush();
+	await sleepAsync(3000);
+	assert router.navigate("/p2");
+	await sleepAsync(8);
+	flush();
+	assert ran("p2") === 1, "a read refreshed the preload-made entry, so it outlived the timeout from its creation: " + ran("p2").toString();
+	assert mockToString(root).includes("<p>p2#1</p>"), mockToString(root);
 	router.dispose();
 }

@@ -128,7 +128,14 @@ async function answered<R>(promise: Promise<R>, router: Router | null): Promise<
 	}
 }
 
+async function quiet<R>(promise: Promise<R>): Promise<void> {
+	try {
+		await promise;
+	} catch (failure) {}
+}
+
 function followed<R>(promise: Promise<R>, router: Router | null, intent: PreloadIntent | null): Promise<R> {
+	if (router !== null && router.inPreload) { quiet<R>(promise); }
 	return intent === "preload" ? promise : answered<R>(promise, router);
 }
 
