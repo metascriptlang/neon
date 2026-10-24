@@ -111,10 +111,13 @@ every target, at React Native's and Flutter's level. Remaining, in order (arc
    size of a JSX module's C.
 2. Host state across a remount: scroll offset, typed text, focus (a `src/render/hostTypes.ms`
    change).
-3. `R` restart, `r` reload and `q` in `msc run --hcr`; a restart-required edit waits for `R`.
+3. Done (recompiler `6db813785`, 2026-10-24): `R` restarts on the last build, `r` rebuilds, `q`
+   quits, and a compile-time restart-required prints `press R to restart`; the hint for a refusal
+   the engine finds at run time waits for the engine-to-msc channel of item 6. An `--hcr` program's
+   stdin is now msc's pipe, so it cannot read the terminal.
 4. A prop added to a props interface reloads without a restart (compiler card, new mechanism).
-5. The browser updates a module whose template reads a new binding without a page reload
-   (compiler `wt/js-instance-modules`).
+5. Done (2026-10-21): the browser applies an edit that adds a generic instance without a page
+   reload (`examples/refreshVite/drive.mjs` S8).
 6. Structured events from the watch build and the refresh runtime for tools and LLMs; then a
    control channel into the running app (UI tree, signal values, input, REPL). The app half is
    built (2026-10-20, `docs/DEVTOOLS.md`): JSON Lines events and a JSON-RPC control channel with
