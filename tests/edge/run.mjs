@@ -88,6 +88,12 @@ async function routes() {
 	assert.equal(slashed.status, 308, "an address ending in a slash is not redirected for good");
 	assert.equal(slashed.headers.get("location"), "/docs/start?utm=1");
 	assert.deepEqual(await get(site + "/"), home, "the home page changed after other requests");
+	assert.match(home.body.slice(0, 60), /^<!doctype html><html>/);
+	assert.equal(slashed.headers.get("content-type"), null, "a redirect carries a body type");
+	const headed = await fetch(site + "/", { method: "HEAD" });
+	assert.deepEqual([headed.status, await headed.text(), headed.headers.get("content-type")], [200, "", "text/html; charset=utf-8"]);
+	const posted = await fetch(site + "/", { method: "POST" });
+	assert.deepEqual([posted.status, posted.headers.get("allow")], [405, "GET, HEAD"]);
 	console.log("PASS: workerd routes each request through its own router, answers a no-match with 404 and a trailing slash with 308");
 }
 
