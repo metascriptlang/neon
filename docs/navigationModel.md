@@ -254,6 +254,22 @@ and `replace` beside them; a route outside the router's tree throws. `useNavigat
 keeps Solid's string form: the value it returns would need a generic function type
 (`<P>(to: ToOptions<P>) => boolean`), which MetaScript does not parse.
 
+A route entry takes `preload`, Solid Router's `RoutePreloadFunc`
+(`~/projects/solid-router` `types.ts:77-84`, `routing.ts:696-705`): it is called with
+`{ params, location, intent }` before the route's component is created, once per mounted
+route and parent before child, so a search-only change does not run it again. A `route<P>`
+entry's `preload` takes `P` through the codec, as `useParams({ from })` does, and a `path`
+entry takes the string map. `intent` is `"initial"` for a route mounted at open or by a
+server render, `"navigate"` for one a link, `useNavigate` or `router.navigate` opened,
+`"native"` for one browser back, forward or `go` opened (`routing.ts:447-507`), and
+`"preload"` for `router.preload(href)`, which runs the preloads along an address and mounts
+nothing (`routing.ts:650-680`). A page a history move mounts again is preloaded again, as
+Solid's remounted route is. Not ported: the return value reaching the component as `props.data`
+(`routing.ts:704-715`), because a component here takes no props, and `<A>` hover, focus and
+touch calling `router.preload` with its 20 ms timer and `preload={false}`
+(`data/events.ts:83-146`), because those listeners belong with `followLinks` in
+`src/platform/browser/routingHistory.ms`.
+
 `src/navigation/router.ms` compiles the tree into one `RouteTree`, and `createRouter`
 makes it one participant of scope `main`. A layout keeps its instance while the routes
 under it change; a page is replaced when its matched path changes and kept when only
@@ -443,8 +459,8 @@ same JS-driven frames.
   and React Navigation's `Link` become one through the binding.
 - Request routing initializes before mounting, on a server as on a client. What a
   server render writes and how `hydrate` takes it over is `docs/RENDER-MODEL.md`.
-- Not in the first version of the layers: data loading per route (Solid `preload`,
-  TanStack `loader`), scroll restoration on client navigation, focus and
+- Not in the first version of the layers: data loading per route (TanStack `loader`;
+  Solid's `preload` is in, without its `data` result), scroll restoration on client navigation, focus and
   announcement after a navigation, and guards that re-run by themselves when sign-in
   state changes (the first version offers an explicit revalidation, as TanStack
   `router.invalidate`).
