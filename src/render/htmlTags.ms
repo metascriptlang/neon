@@ -834,7 +834,7 @@ export interface HtmlModAttributes {
 }
 
 /** Attributes of `<details>` beyond the global ones. */
-export interface HtmlDetailsHtmlAttributesAttributes {
+export interface HtmlDetailsAttributes {
 	/**
 	 * The name of the element, used for form submission or lookup.
 	 * [MDN](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/details#name)
@@ -848,7 +848,7 @@ export interface HtmlDetailsHtmlAttributesAttributes {
 }
 
 /** Attributes of `<dialog>` beyond the global ones. */
-export interface HtmlDialogHtmlAttributesAttributes {
+export interface HtmlDialogAttributes {
 	/**
 	 * Whether the details or dialog is open.
 	 * [MDN](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/dialog#open)
@@ -2825,7 +2825,7 @@ export interface HtmlElements {
 	 * `<details>`: A disclosure widget that shows its content when opened.
 	 * [MDN](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/details)
 	 */
-	details: HtmlDetailsHtmlAttributesAttributes;
+	details: HtmlDetailsAttributes;
 	/**
 	 * `<dfn>`: The term being defined in the surrounding text.
 	 * [MDN](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/dfn)
@@ -2835,7 +2835,7 @@ export interface HtmlElements {
 	 * `<dialog>`: A dialog box or modal window.
 	 * [MDN](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/dialog)
 	 */
-	dialog: HtmlDialogHtmlAttributesAttributes;
+	dialog: HtmlDialogAttributes;
 	/**
 	 * `<div>`: A generic block container with no meaning of its own.
 	 * [MDN](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/div)

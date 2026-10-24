@@ -184,7 +184,7 @@ def jsx_tables():
 def ms_attrs_name(iface):
     if iface == "HTMLAttributes":
         return "HtmlGlobalAttributes"
-    return "Html" + iface.replace("HTMLAttributes", "") + "Attributes"
+    return "Html" + re.sub("(?i)htmlattributes$", "", iface) + "Attributes"
 
 
 def describe(tag, name):
