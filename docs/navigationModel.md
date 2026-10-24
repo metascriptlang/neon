@@ -532,6 +532,12 @@ component still pending at `hydrate` fails to claim. `<A preload={false}>` rende
   it; `~/metascript/.inbox/compiler/2026-10-24-a-keyof-constrained-type-parameter-inferred-from-an-object-literal-property-widens-to-string.md`). A navigate to a name of another navigator bubbles without params; naming it
   in this navigator's list is what lets it be written (React Navigation's
   composite navigation prop does that through its parent's list).
+  Tabs and drawer take the same lists as the stack, `reset` takes routes from
+  `navigation.routeOf(name, params?)` typed per screen on all three, and a screen
+  inside a nested navigator reaches its parent's screens with
+  `getParent<PL, Q>().navigate(name, params)` typed by `Q` (React Navigation's
+  `CompositeNavigationProp`, written by naming the parent's list). The container
+  ref's `navigate(name)` is not typed yet (`WORKAROUND.md` V3).
 - Secondary addresses reserve the `__nav.` query namespace. This makes region
   ownership explicit without imposing an editor/game hierarchy. Unknown scopes
   are errors rather than ignored links.
