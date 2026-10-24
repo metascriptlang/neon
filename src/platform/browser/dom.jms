@@ -45,7 +45,7 @@ import { publishPageScroll } from "../../api/pageScroll";
 import { CssStyle, applyCss, applyCssProp } from "./domCss";
 import { VisibleContentPosition, parseVisibleContent } from "../../render/visibleContent";
 import { installBrowserAppServices } from "./appServices";
-import { isMediaTag, createMediaNode, writeMediaAttr, addMediaEvent, releaseMedia, writeSvgList } from "./domCapabilities";
+import { isMediaTag, createMediaNode, adoptMedia, writeMediaAttr, addMediaEvent, releaseMedia, writeSvgList } from "./domCapabilities";
 
 extern class ClassList {
 	extern add(name: cstring): void;
@@ -1341,11 +1341,9 @@ export function domHost(): Host {
 				el.replaceChild(blank, found);
 				return blank as unknown as HostNode;
 			}
-			if (isMediaTag(tag)) {
-				throw "hydrate: the DOM host cannot take over a <" + tag + "> yet";
-			}
 			if (found.nodeType !== 1 || found.localName !== (tag === "image" ? IMAGE_TAG : webHtmlTag(tag))) { return null; }
 			registerRules(tag);
+			if (isMediaTag(tag)) { return adoptMedia(found as unknown as HostNode, tag); }
 			if (tag === "image") { return adoptImage(found); }
 			if (tag === "svg") { return adoptSvg(found); }
 			if (tag === "scrollview") { return adoptScroll(found); }

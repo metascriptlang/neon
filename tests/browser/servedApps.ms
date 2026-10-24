@@ -5,6 +5,10 @@ import { Switch } from "../../src/components/switch";
 import { ActivityIndicator } from "../../src/components/activityIndicator";
 import { Image } from "../../src/components/image";
 import { Modal } from "../../src/components/modal";
+import { Video, OnLoadData, VideoResizeMode } from "../../src/components/video";
+import { WebView, WebViewMessageEvent, WebViewNavigationEvent } from "../../src/components/webView";
+import { CameraView, CameraType, CameraMountError } from "../../src/components/cameraView";
+import { CLIP_MP4 } from "../../examples/media/clip";
 import { Svg, Circle, G, Defs, LinearGradient, Stop, Rect } from "../../src/components/svg/elements";
 import { Head } from "../../src/render/head";
 import { createStyles, styleOf } from "../../src/macros/ui/style";
@@ -195,4 +199,40 @@ export function modalApp(open: Accessor<boolean>): NeonNode {
 export function modalAtStart(): NeonNode {
 	const [open, _open] = createSignal(true);
 	return modalApp(open);
+}
+
+export const FRAME_PAGE = "<p id=t>frame</p><script>window.ReactNativeWebView.postMessage('ready');</script>";
+export const OTHER_PAGE = "<p id=t>other</p>";
+
+export struct MediaHooks {
+	onVideoLoad: (d: OnLoadData) => void;
+	onVideoEnd: () => void;
+	onMessage: (e: WebViewMessageEvent) => void;
+	onFrameLoad: (e: WebViewNavigationEvent) => void;
+	onCameraReady: () => void;
+	onCameraError: (e: CameraMountError) => void;
+}
+
+export function mediaApp(fit: Accessor<VideoResizeMode>, facing: Accessor<CameraType>, page: Accessor<string>, hooks: MediaHooks): NeonNode {
+	return <View>
+		<Video source={{ uri: CLIP_MP4 }} muted={true} repeat={true} controls={true} resizeMode={fit()} onLoad={hooks.onVideoLoad} onEnd={hooks.onVideoEnd} style={{ width: 160, height: 90 }} />
+		<WebView source={{ html: page() }} onMessage={hooks.onMessage} onLoad={hooks.onFrameLoad} style={{ width: 200, height: 80 }} />
+		<WebView source={{ uri: "about:blank" }} javaScriptEnabled={false} style={{ width: 20, height: 20 }} />
+		<WebView source={{ uri: "about:blank" }} onMessage={hooks.onMessage} style={{ width: 20, height: 20 }} />
+		<CameraView facing={facing()} onCameraReady={hooks.onCameraReady} onMountError={hooks.onCameraError} style={{ width: 160, height: 120 }} />
+	</View>;
+}
+
+export function mediaAtStart(): NeonNode {
+	const [fit, _fit] = createSignal<VideoResizeMode>("cover");
+	const [facing, _facing] = createSignal<CameraType>("front");
+	const [page, _page] = createSignal(FRAME_PAGE);
+	return mediaApp(fit, facing, page, {
+		onVideoLoad: (d: OnLoadData): void => {},
+		onVideoEnd: (): void => {},
+		onMessage: (e: WebViewMessageEvent): void => {},
+		onFrameLoad: (e: WebViewNavigationEvent): void => {},
+		onCameraReady: (): void => {},
+		onCameraError: (e: CameraMountError): void => {},
+	});
 }

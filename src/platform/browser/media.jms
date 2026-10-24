@@ -1,6 +1,17 @@
 import { HostNode } from "../../render/hostTypes";
 import { NeonEvent, neonEvent } from "../../render/event";
 import { registerCss } from "../../render/sheet";
+import {
+	FRAME_SANDBOX,
+	MEDIA_CSS,
+	MEDIA_RULES_ID,
+	VIDEO_CLASS,
+	VIDEO_COVER_CLASS,
+	VIDEO_STRETCH_CLASS,
+	WEBVIEW_CLASS,
+	bridgeScript,
+	frameDocument,
+} from "../../render/web";
 import { MediaElement, registerMediaElement } from "./domCapabilities";
 
 extern class MediaClassList {
@@ -25,6 +36,7 @@ extern class Node {
 	videoHeight: number;
 	currentSrc: string;
 	classList: MediaClassList;
+	extern getAttribute(name: cstring): string | null;
 	extern setAttribute(name: cstring, value: cstring): void;
 	extern removeAttribute(name: cstring): void;
 	extern addEventListener(name: cstring, handler: (e: Event) => void): void;
@@ -44,6 +56,7 @@ extern class window {
 
 extern function queueMicrotask(callback: () => void): void;
 extern function frameSameOrigin(frame: Node): boolean from "((f) => { try { return !!f.contentDocument; } catch (e) { return false; } })(#)";
+extern function frameLoaded(frame: Node): boolean from "((f) => { try { const d = f.contentDocument; if (!d || d.readyState !== 'complete') return false; const h = f.contentWindow.location.href; if (f.hasAttribute('srcdoc')) return h === 'about:srcdoc'; const s = f.getAttribute('src'); return !s || s === 'about:blank' || h !== 'about:blank'; } catch (e) { return false; } })(#)";
 extern function frameLocation(frame: Node): string from "#.contentWindow.location.href";
 extern function frameTitle(frame: Node): string from "(#.contentDocument.title || '')";
 extern function frameEval(frame: Node, script: cstring): void from "#.contentWindow.eval(#)";
@@ -65,26 +78,6 @@ interface MediaRoute {
 	handler: (e: NeonEvent) => void;
 }
 
-const MEDIA_CSS = ".neon-webview{border:0;display:block;background:#ffffff}" +
-	".neon-video{display:block;background:#000000;object-fit:contain}" +
-	".neon-video-cover{object-fit:cover}.neon-video-stretch{object-fit:fill}";
-
-// react-native-webview's page bridge: `window.ReactNativeWebView.postMessage(data)` reaches
-// onMessage, and with `intercept` a link click asks onShouldStartLoadWithRequest first.
-function bridgeScript(intercept: boolean): string {
-	let script = "(function(){window.ReactNativeWebView={postMessage:function(d){parent.postMessage(String(d),'*');}};";
-	if (intercept) {
-		script += "document.addEventListener('click',function(e){var a=e.target&&e.target.closest?e.target.closest('a[href]'):null;" +
-			"if(!a||(a.target&&a.target!=='_self'))return;var h=a.href;if(!h||h.indexOf('javascript:')===0)return;" +
-			"if(a.getAttribute('href').charAt(0)==='#')return;e.preventDefault();parent.postMessage({__neonLoad:h},'*');},true);";
-	}
-	return script + "})();";
-}
-
-function escapeScriptEnd(script: string): string {
-	return script.split("</").join("<\\/");
-}
-
 class MediaState {
 	el: Node;
 	kind: string;
@@ -104,6 +97,8 @@ class MediaState {
 	progressEvery: number = 250;
 	timer: number = -1;
 	paused: boolean = false;
+	adopted: boolean = false;
+	unbridged: boolean = false;
 
 	constructor(el: Node, kind: string) {
 		this.el = el;
@@ -198,19 +193,22 @@ function onFrameLoad(state: MediaState): void {
 
 function writeFrameSource(state: MediaState, value: string): void {
 	const fields = value.split("\x1f");
+	const served = state.adopted;
+	state.adopted = false;
 	if (fields[0] === "html") {
 		state.html = true;
 		state.baseUrl = fields.length > 2 ? fields[2] : "";
 		state.source = state.baseUrl !== "" ? state.baseUrl : "about:blank";
-		const base = state.baseUrl !== "" ? `<base href="${state.baseUrl}">` : "";
-		const html = fields.length > 1 ? fields[1] : "";
+		const doc = frameDocument(fields.length > 1 ? fields[1] : "", state.baseUrl, state.intercept);
+		if (served && state.el.getAttribute("srcdoc") === doc) { return; }
 		state.startLoad(state.source);
-		state.el.srcdoc = `${base}<script>${escapeScriptEnd(bridgeScript(state.intercept))}</script>${html}`;
+		state.el.srcdoc = doc;
 		return;
 	}
 	const url = fields.length > 1 ? fields[1] : "";
 	state.html = false;
 	state.source = url;
+	if (served && state.el.getAttribute("srcdoc") === null && state.el.getAttribute("src") === url) { return; }
 	state.el.removeAttribute("srcdoc");
 	state.startLoad(url);
 	state.el.src = url;
@@ -266,12 +264,16 @@ function writeFrameAttr(state: MediaState, name: string, value: string): boolean
 		return true;
 	}
 	if (name === "javaScriptEnabled") {
-		if (value === "false") { state.el.setAttribute("sandbox", "allow-same-origin allow-forms allow-popups"); }
+		if (value === "false") { state.el.setAttribute("sandbox", FRAME_SANDBOX); }
 		else { state.el.removeAttribute("sandbox"); }
 		return true;
 	}
 	if (name === "interceptLoads") {
 		state.intercept = value === "true";
+		if (state.unbridged) {
+			state.unbridged = false;
+			frameEval(state.el, bridgeScript(state.intercept));
+		}
 		return true;
 	}
 	if (name === "loadDecision") {
@@ -314,7 +316,9 @@ function play(state: MediaState): void {
 function writeVideoAttr(state: MediaState, name: string, value: string): boolean {
 	const el = state.el;
 	if (name === "source") {
-		el.src = value;
+		const served = state.adopted && el.getAttribute("src") === value;
+		state.adopted = false;
+		if (!served) { el.src = value; }
 		if (!state.paused) { play(state); }
 		return true;
 	}
@@ -338,10 +342,10 @@ function writeVideoAttr(state: MediaState, name: string, value: string): boolean
 		return true;
 	}
 	if (name === "resizeMode") {
-		el.classList.remove("neon-video-cover");
-		el.classList.remove("neon-video-stretch");
-		if (value === "cover") { el.classList.add("neon-video-cover"); }
-		if (value === "stretch") { el.classList.add("neon-video-stretch"); }
+		el.classList.remove(VIDEO_COVER_CLASS);
+		el.classList.remove(VIDEO_STRETCH_CLASS);
+		if (value === "cover") { el.classList.add(VIDEO_COVER_CLASS); }
+		if (value === "stretch") { el.classList.add(VIDEO_STRETCH_CLASS); }
 		return true;
 	}
 	if (name === "command") {
@@ -377,27 +381,45 @@ function listenVideo(state: MediaState): void {
 	});
 }
 
-function createMediaNode(tag: string): HostNode {
+function takeMedia(el: Node, tag: string): MediaState {
 	if (!cssDone) {
-		registerCss("neon-media", MEDIA_CSS);
+		registerCss(MEDIA_RULES_ID, MEDIA_CSS);
 		cssDone = true;
 	}
-	const el = document.createElement(tag === "webview" ? "iframe" : "video");
 	const state = new MediaState(el, tag);
 	states.set(el, state);
 	if (tag === "webview") {
-		el.classList.add("neon-webview");
 		el.addEventListener("load", (e: Event): void => { onFrameLoad(state); });
 		if (!listening) {
 			window.addEventListener("message", onWindowMessage);
 			listening = true;
 		}
 	} else {
-		el.classList.add("neon-video");
-		el.setAttribute("playsinline", "");
 		listenVideo(state);
 	}
+	return state;
+}
+
+function createMediaNode(tag: string): HostNode {
+	const el = document.createElement(tag === "webview" ? "iframe" : "video");
+	takeMedia(el, tag);
+	if (tag === "webview") {
+		el.classList.add(WEBVIEW_CLASS);
+	} else {
+		el.classList.add(VIDEO_CLASS);
+		el.setAttribute("playsinline", "");
+	}
 	return el as unknown as HostNode;
+}
+
+function adoptMediaNode(node: HostNode, tag: string): void {
+	const el = node as unknown as Node;
+	const state = takeMedia(el, tag);
+	state.adopted = true;
+	if (tag !== "webview" || !frameLoaded(el)) { return; }
+	state.index = 0;
+	state.length = 1;
+	state.unbridged = el.getAttribute("srcdoc") === null;
 }
 
 function writeMediaAttr(node: HostNode, name: string, value: string): boolean {
@@ -424,6 +446,6 @@ function releaseMedia(node: HostNode): void {
 	states.delete(el);
 }
 
-const mediaElement: MediaElement = { create: createMediaNode, writeAttr: writeMediaAttr, addEvent: addMediaEvent, release: releaseMedia };
+const mediaElement: MediaElement = { create: createMediaNode, adopt: adoptMediaNode, writeAttr: writeMediaAttr, addEvent: addMediaEvent, release: releaseMedia };
 registerMediaElement("webview", mediaElement);
 registerMediaElement("video", mediaElement);

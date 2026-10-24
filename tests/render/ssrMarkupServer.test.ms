@@ -162,3 +162,32 @@ test "SSR writes Svg with the prefix, viewBox and markup the DOM host draws from
 	const twice = renderToString(el("view", [], [], el("svg", [], [], null)));
 	assert twice.indexOf("data-neon-svg=\"neon-svg1\"") >= 0, "the numbering starts again with each render: " + twice;
 }
+
+test "SSR writes Video as the video, classes and attributes the DOM host builds" {
+	const page = renderToMarkup(el("video", [attr("source", "/a.mp4"), attr("muted", "true"), attr("repeat", "true"),
+		attr("controls", "false"), attr("volume", "0.5"), attr("resizeMode", "cover"), attr("command", "pause")], [], null));
+	assert page.html === "<video playsinline=\"\" src=\"/a.mp4\" loop=\"\" class=\"neon-video neon-video-cover\"></video>", page.html;
+	assert page.css.indexOf(".neon-video{display:block") >= 0 && page.css.indexOf(".neon-webview{") >= 0, page.css;
+	const again = renderToString(el("video", [attr("resizeMode", "cover"), attr("resizeMode", "contain")], [], null));
+	assert again === "<video playsinline=\"\" class=\"neon-video\"></video>", again;
+}
+
+test "SSR writes WebView as the iframe whose document is the one the DOM host sets" {
+	const html = renderToString(el("webview", [attr("interceptLoads", "true"), attr("javaScriptEnabled", "false"),
+		attr("source", "html\x1f<p>a</p><script>x</" + "script>\x1fhttps://b.test/")], [], null));
+	assert html.startsWith("<iframe sandbox=\"allow-same-origin allow-forms allow-popups\" srcdoc=\"&lt;base href=&quot;https://b.test/&quot;&gt;&lt;script&gt;(function(){window.ReactNativeWebView="), html;
+	assert html.indexOf("&lt;/script&gt;&lt;p&gt;a&lt;/p&gt;&lt;script&gt;x&lt;/script&gt;\"") > 0 && html.endsWith(" class=\"neon-webview\"></iframe>") && html.indexOf("interceptLoads") < 0, html;
+	const plain = renderToString(el("webview", [attr("source", "html\x1fa"), attr("source", "uri\x1f/x.html")], [], null));
+	assert plain === "<iframe src=\"/x.html\" class=\"neon-webview\"></iframe>", plain;
+	const quiet = renderToString(el("webview", [attr("source", "html\x1fa")], [], null));
+	assert quiet.indexOf("addEventListener") < 0 && quiet.indexOf("ReactNativeWebView") > 0, quiet;
+}
+
+test "SSR writes CameraView as the video the DOM host creates, mirrored when it faces front" {
+	const front = renderToString(el("camera", [attr("facing", "front"), attr("flash", "off"), attr("active", "true"), attr("mirror", "false")], [], null));
+	assert front === "<video playsinline=\"\" muted=\"\" autoplay=\"\" class=\"neon-camera neon-camera-mirror\"></video>", front;
+	const back = renderToString(el("camera", [attr("facing", "front"), attr("facing", "back")], [], null));
+	assert back === "<video playsinline=\"\" muted=\"\" autoplay=\"\" class=\"neon-camera\"></video>", back;
+	const mirrored = renderToString(el("camera", [attr("facing", "back"), attr("mirror", "true")], [], null));
+	assert mirrored.indexOf("neon-camera-mirror") > 0, mirrored;
+}

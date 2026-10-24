@@ -3,6 +3,7 @@ import { NeonEvent } from "../../render/event";
 
 export interface MediaElement {
 	create: (tag: string) => HostNode;
+	adopt: (node: HostNode, tag: string) => void;
 	writeAttr: (node: HostNode, name: string, value: string) => boolean;
 	addEvent: (node: HostNode, type: string, handler: (e: NeonEvent) => void) => boolean;
 	release: (node: HostNode) => void;
@@ -24,6 +25,11 @@ export function isMediaTag(tag: string): boolean {
 
 export function createMediaNode(tag: string): HostNode {
 	return (tags.get(tag) as MediaElement).create(tag);
+}
+
+export function adoptMedia(node: HostNode, tag: string): HostNode {
+	(tags.get(tag) as MediaElement).adopt(node, tag);
+	return node;
 }
 
 export function writeMediaAttr(node: HostNode, name: string, value: string): boolean {

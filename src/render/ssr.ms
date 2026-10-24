@@ -49,6 +49,11 @@ when (server) {
 		webHtmlTag,
 		webRules,
 		WebRule,
+		CAMERA_MIRROR_CLASS,
+		VIDEO_CLASS,
+		VIDEO_COVER_CLASS,
+		VIDEO_STRETCH_CLASS,
+		frameDocument,
 		domAttrName,
 		BLUR_PREFIX,
 		IMAGE_CLASS,
@@ -579,6 +584,25 @@ when (server) {
 		n.body = m.body;
 	}
 
+	function writeFrameSource(n: SsrNode, value: string): void {
+		const fields = value.split("\x1f");
+		if (fields[0] === "html") {
+			const html = fields.length > 1 ? fields[1] : "";
+			const base = fields.length > 2 ? fields[2] : "";
+			upsertAttr(n.names, n.values, "srcdoc", frameDocument(html, base, attrValue(n.names, n.values, "interceptLoads") === "true"));
+			return;
+		}
+		removeAttr(n.names, n.values, "srcdoc");
+		upsertAttr(n.names, n.values, "src", fields.length > 1 ? fields[1] : "");
+	}
+
+	function placeMirror(n: SsrNode): void {
+		n.className = withoutClassPrefix(n.className, CAMERA_MIRROR_CLASS);
+		if (attrValue(n.names, n.values, "facing") === "front" || attrValue(n.names, n.values, "mirror") === "true") {
+			n.className = joinClass(n.className, CAMERA_MIRROR_CLASS);
+		}
+	}
+
 	function writerHost(w: SsrWrite): Host {
 		return {
 			createElement: (tag: string): HostNode => {
@@ -609,7 +633,18 @@ when (server) {
 				const n = writable(node as unknown as SsrNode);
 				if (n.tag === "image" && writeImageAttr(w, n, name, value)) { return; }
 				if (n.tag === "svg" && name === "displayList") { writeSvgList(n, value); return; }
-				if (name !== "numberOfLines") { upsertAttr(n.names, n.values, name, value); return; }
+				if (n.tag === "webview" && name === "source") { writeFrameSource(n, value); return; }
+				if (n.tag === "video" && name === "resizeMode") {
+					n.className = withoutClassPrefix(n.className, VIDEO_CLASS + "-");
+					if (value === "cover") { n.className = joinClass(n.className, VIDEO_COVER_CLASS); }
+					if (value === "stretch") { n.className = joinClass(n.className, VIDEO_STRETCH_CLASS); }
+					return;
+				}
+				if (name !== "numberOfLines") {
+					upsertAttr(n.names, n.values, name, value);
+					if (n.tag === "camera" && (name === "facing" || name === "mirror")) { placeMirror(n); }
+					return;
+				}
 				w.note(TEXT_RULES_ID, TEXT_CSS);
 				if (!clampedLines(value)) { return; }
 				const rule = linesRule(value);

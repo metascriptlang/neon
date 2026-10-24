@@ -10,6 +10,7 @@ import {
 	imagesAtStart,
 	linesApp,
 	marksApp,
+	mediaAtStart,
 	modalAtStart,
 	plainTextareaApp,
 	primitivesApp,
@@ -50,6 +51,7 @@ async function main(): Promise<void> {
 		served("images", imagesAtStart()),
 		served("svg", svgAtStart()),
 		served("modal", modalAtStart()),
+		served("media", mediaAtStart()),
 		JSON.stringify("async") + ":" + JSON.stringify(streamed),
 	];
 	console.log("{" + pages.join(",") + "}");

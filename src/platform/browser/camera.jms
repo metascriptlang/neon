@@ -1,6 +1,7 @@
 import { HostNode } from "../../render/hostTypes";
 import { NeonEvent, neonEvent } from "../../render/event";
 import { registerCss } from "../../render/sheet";
+import { CAMERA_CLASS, CAMERA_CSS, CAMERA_MIRROR_CLASS, CAMERA_RULES_ID } from "../../render/web";
 import { registerMediaElement } from "./domCapabilities";
 
 extern class CameraClassList {
@@ -24,8 +25,6 @@ interface CameraRoute {
 	type: string;
 	handler: (e: NeonEvent) => void;
 }
-
-const CAMERA_CSS = ".neon-camera{display:block;background:#000000;object-fit:cover}.neon-camera-mirror{transform:scaleX(-1)}";
 
 class CameraState {
 	el: HTMLVideoElement;
@@ -81,24 +80,31 @@ function mirrored(state: CameraState): boolean {
 }
 
 function placeMirror(state: CameraState): void {
-	if (mirrored(state)) { state.el.classList.add("neon-camera-mirror"); } else { state.el.classList.remove("neon-camera-mirror"); }
+	if (mirrored(state)) { state.el.classList.add(CAMERA_MIRROR_CLASS); } else { state.el.classList.remove(CAMERA_MIRROR_CLASS); }
+}
+
+function takeCamera(el: HTMLVideoElement): void {
+	if (!cssDone) {
+		registerCss(CAMERA_RULES_ID, CAMERA_CSS);
+		cssDone = true;
+	}
+	const state = new CameraState(el);
+	cameras.set(el as unknown as HostNode, state);
+	restart(state);
 }
 
 function createCameraNode(): HostNode {
-	if (!cssDone) {
-		registerCss("neon-camera", CAMERA_CSS);
-		cssDone = true;
-	}
 	const el = createVideoElement(0);
-	el.classList.add("neon-camera");
+	el.classList.add(CAMERA_CLASS);
 	el.setAttribute("playsinline", "");
 	el.setAttribute("muted", "");
 	el.setAttribute("autoplay", "");
-	const state = new CameraState(el);
-	const node = el as unknown as HostNode;
-	cameras.set(node, state);
-	restart(state);
-	return node;
+	takeCamera(el);
+	return el as unknown as HostNode;
+}
+
+function adoptCameraNode(node: HostNode): void {
+	takeCamera(node as unknown as HTMLVideoElement);
 }
 
 function command(state: CameraState, value: string): void {
@@ -172,6 +178,7 @@ function releaseCamera(node: HostNode): void {
 
 registerMediaElement("camera", {
 	create: (tag: string): HostNode => createCameraNode(),
+	adopt: (node: HostNode, tag: string): void => { adoptCameraNode(node); },
 	writeAttr: writeCameraAttr,
 	addEvent: addCameraEvent,
 	release: releaseCamera,

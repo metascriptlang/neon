@@ -26,6 +26,40 @@ export const TEXTAREA_CSS = `.${TEXTAREA_CLASS}{field-sizing:content;resize:none
 
 export const CONTROL_RULES_ID = "neon-controls";
 
+export const VIDEO_CLASS = "neon-video";
+export const WEBVIEW_CLASS = "neon-webview";
+export const CAMERA_CLASS = "neon-camera";
+export const VIDEO_COVER_CLASS = "neon-video-cover";
+export const VIDEO_STRETCH_CLASS = "neon-video-stretch";
+export const CAMERA_MIRROR_CLASS = "neon-camera-mirror";
+export const MEDIA_RULES_ID = "neon-media";
+export const CAMERA_RULES_ID = "neon-camera";
+
+export const MEDIA_CSS = `.${WEBVIEW_CLASS}{border:0;display:block;background:#ffffff}` +
+	`.${VIDEO_CLASS}{display:block;background:#000000;object-fit:contain}` +
+	`.${VIDEO_COVER_CLASS}{object-fit:cover}.${VIDEO_STRETCH_CLASS}{object-fit:fill}`;
+
+export const CAMERA_CSS = `.${CAMERA_CLASS}{display:block;background:#000000;object-fit:cover}.${CAMERA_MIRROR_CLASS}{transform:scaleX(-1)}`;
+
+export const FRAME_SANDBOX = "allow-same-origin allow-forms allow-popups";
+
+// react-native-webview's page bridge: `window.ReactNativeWebView.postMessage(data)` reaches
+// onMessage, and with `intercept` a link click asks onShouldStartLoadWithRequest first.
+export function bridgeScript(intercept: boolean): string {
+	let script = "(function(){window.ReactNativeWebView={postMessage:function(d){parent.postMessage(String(d),'*');}};";
+	if (intercept) {
+		script += "document.addEventListener('click',function(e){var a=e.target&&e.target.closest?e.target.closest('a[href]'):null;" +
+			"if(!a||(a.target&&a.target!=='_self'))return;var h=a.href;if(!h||h.indexOf('javascript:')===0)return;" +
+			"if(a.getAttribute('href').charAt(0)==='#')return;e.preventDefault();parent.postMessage({__neonLoad:h},'*');},true);";
+	}
+	return script + "})();";
+}
+
+export function frameDocument(html: string, baseUrl: string, intercept: boolean): string {
+	const base = baseUrl !== "" ? `<base href="${baseUrl}">` : "";
+	return `${base}<script>${bridgeScript(intercept).split("</").join("<\\/")}</script>${html}`;
+}
+
 export const CONTROL_CSS = ".neon-activity{box-sizing:border-box;border-radius:50%;border:3px solid currentColor;border-top-color:transparent;animation:neon-activity-spin 0.8s linear infinite;color:#999999}.neon-activity[data-animating=false]{animation:none}.neon-activity[data-animating=false]:not([data-hides=false]){visibility:hidden}@keyframes neon-activity-spin{to{transform:rotate(360deg)}}.neon-image{object-fit:cover}.neon-image[data-resize=contain]{object-fit:contain}.neon-image[data-resize=stretch]{object-fit:fill}.neon-image[data-resize=center]{object-fit:none}.neon-image:not([src]){visibility:hidden}";
 
 export const LINES_CLASS = "neon-lines";
@@ -55,6 +89,8 @@ export function webHtmlTag(tag: string): string {
 		"scrollview" | "activityindicator" => "div",
 		"switch" => "input",
 		"multilinetextinput" => "textarea",
+		"webview" => "iframe",
+		"camera" => "video",
 		_ => htmlTagFor(tag),
 	};
 }
@@ -64,13 +100,18 @@ export function webControlClass(tag: string): string {
 		"scrollview" => SCROLL_CLASS,
 		"activityindicator" => ACTIVITY_CLASS,
 		"multilinetextinput" => TEXTAREA_CLASS,
+		"video" => VIDEO_CLASS,
+		"webview" => WEBVIEW_CLASS,
+		"camera" => CAMERA_CLASS,
 		_ => "",
 	};
 }
 
 export function webFixedAttrs(tag: string): VAttr[] {
-	if (tag !== "switch") { return []; }
-	return [attr("type", "checkbox"), attr("role", "switch")];
+	if (tag === "video") { return [attr("playsinline", "")]; }
+	if (tag === "camera") { return [attr("playsinline", ""), attr("muted", ""), attr("autoplay", "")]; }
+	if (tag === "switch") { return [attr("type", "checkbox"), attr("role", "switch")]; }
+	return [];
 }
 
 export struct ControlAttr {
@@ -107,6 +148,25 @@ export function controlAttr(tag: string, name: string, value: string): ControlAt
 	if (tag === "multilinetextinput" && (name === "value" || name === "defaultValue")) {
 		return droppedAttribute();
 	}
+	if (tag === "video") {
+		return match (name) {
+			"source" => ({ name: "src", value: value, color: "" }),
+			"repeat" => flagAttribute("loop", value),
+			"controls" => flagAttribute("controls", value),
+			"paused" | "muted" | "volume" | "rate" | "progressUpdateInterval" | "resizeMode" | "command" => droppedAttribute(),
+			_ => null,
+		};
+	}
+	if (tag === "webview") {
+		return match (name) {
+			"javaScriptEnabled" => ({ name: "sandbox", value: value === "false" ? FRAME_SANDBOX : null, color: "" }),
+			"source" | "interceptLoads" | "loadDecision" | "command" => droppedAttribute(),
+			_ => null,
+		};
+	}
+	if (tag === "camera" && (name === "facing" || name === "flash" || name === "active" || name === "mirror" || name === "command")) {
+		return droppedAttribute();
+	}
 	return null;
 }
 
@@ -117,6 +177,8 @@ export function webRules(tag: string): WebRule[] {
 		"scrollview" => { rules.push({ id: SCROLL_CLASS, css: SCROLL_CSS }); },
 		"multilinetextinput" => { rules.push({ id: TEXTAREA_CLASS, css: TEXTAREA_CSS }); },
 		"switch" | "activityindicator" => { rules.push({ id: CONTROL_RULES_ID, css: CONTROL_CSS }); },
+		"video" | "webview" => { rules.push({ id: MEDIA_RULES_ID, css: MEDIA_CSS }); },
+		"camera" => { rules.push({ id: CAMERA_RULES_ID, css: CAMERA_CSS }); },
 		_ => {},
 	}
 	return rules;
