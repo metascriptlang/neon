@@ -60,4 +60,9 @@ expect_reject_both tests/macros/componentWriteInMemoRejected.ms "REACTIVE_WRITE_
 expect_reject_both tests/macros/moduleSetterWriteInMemoRejected.ms "REACTIVE_WRITE_IN_OWNED_SCOPE. Writing to reactive state with .setCount. inside a computation of <Count>"
 expect_reject_both tests/macros/moduleSetterWriteInEffectRejected.ms "REACTIVE_WRITE_IN_OWNED_SCOPE. Writing to reactive state with .setCount. inside a computation of <Count>"
 expect_reject_both tests/macros/componentWriteInHoleRejected.ms "REACTIVE_WRITE_IN_OWNED_SCOPE. Writing to reactive state with .setCount. inside a computation of <Count>"
+expect_reject_both tests/macros/navigateNameTypoRejected.ms "does not satisfy constraint .* for type parameter 'K' in 'navigate'"
+expect_reject_both tests/macros/navigateMissingParamsRejected.ms "Too few arguments: expected at least 2, got 1"
+expect_reject_both tests/macros/navigateWrongParamTypeRejected.ms "Type 'int32' is not assignable to type 'string'"
+expect_reject_both tests/macros/navigateParamsToParamlessRejected.ms "Argument type mismatch in 'navigate' arg 1: got { id: string; }, expected null"
+expect_reject_both tests/macros/screenNameTypoRejected.ms "Type 'string' is not assignable to type '\"Home\"'"
 exit $fail
