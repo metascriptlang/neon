@@ -2,7 +2,9 @@
 // createComponent(Counter, props) for a capitalized JSX tag. The body is deferred
 // to mount and runs untracked (probe/componentSemantics.ms proves the semantics).
 
-import { untrack } from "../core/signal";
+import { untrack, createSignal } from "../core/signal";
+import { createRenderEffect } from "../core/effect";
+import { Cleanup } from "../core/types";
 import { createAsyncMemo } from "../core/memo";
 import { Host, HostNode, NeonNode } from "./hostTypes";
 import { Show } from "../macros/ui/flow";
@@ -30,6 +32,8 @@ export function lazy<P>(load: () => Promise<(props: P) => NeonNode>): (props: P)
 		const mount: NeonNode = (h: Host, p: HostNode, b: HostNode | null): void => { createComponent(loaded[0], props)(h, p, b); };
 		if (loaded.length > 0) { mount(host, parent, before); return; }
 		const ready = createAsyncMemo((prev: boolean | null): Promise<boolean> => start());
-		Show({ when: ready, children: mount })(host, parent, before);
+		const [shown, setShown] = createSignal<boolean>(false);
+		createRenderEffect<boolean>((prev: boolean | null): boolean => ready(), (value: boolean): Cleanup | null => { setShown(value); return null; });
+		Show({ when: shown, children: mount })(host, parent, before);
 	};
 }
