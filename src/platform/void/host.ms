@@ -1,7 +1,7 @@
 import { Host, HostNode, NeonNode } from "../../render/host";
 import { Accessor } from "../../core/signal";
 import { flush, getOwner } from "../../core/runtime";
-import { TextSpan, TextMeasure } from "../../render/hostTypes";
+import { TextSpan, TextMeasure, MeasureRect, MeasureError } from "../../render/hostTypes";
 import { spanParagraph, spanText } from "../../render/spanHost";
 import { NeonEvent, neonEvent } from "../../render/event";
 import { AreaKeyMod, AreaLayer, AreaPointerKind, LayerAnchor, setEventMods } from "../../render/voidAreaHandle";
@@ -1178,6 +1178,14 @@ export function createVoidHostWith(
 				ascender: laid.value.ascent as number,
 				descender: laid.value.descent as number,
 			};
+		},
+		measureInWindow: (node: HostNode): Result<MeasureRect, MeasureError> => {
+			const n = node as VoidNode;
+			if (n.disposed || !attached(n)) { return Result.err(MeasureError.NotMounted); }
+			const box = n.ref.content();
+			const from = n.ref.localToGlobal(vec2(0.0, 0.0));
+			const to = n.ref.localToGlobal(vec2(box.w, box.h));
+			return Result.ok({ x: from.x as number, y: from.y as number, width: (to.x - from.x) as number, height: (to.y - from.y) as number });
 		},
 	};
 
