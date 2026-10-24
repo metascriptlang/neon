@@ -1248,11 +1248,12 @@ function comparable(address: string): string {
 	return decoded.ok ? decoded.value : trimmed;
 }
 
-export function A(props: { href: Accessor<string>; children: NeonNode }): NeonNode {
+export function A(props: { href: Accessor<string>; preload?: boolean | null; children: NeonNode }): NeonNode {
 	const location = useRouter("A").location;
 	const href = props.href;
 	const current = accessor((): string | null => {
 		return comparable(href()) === comparable(location().pathname) ? "page" : null;
 	});
-	return <a href={href()} aria-current={current()}>{props.children}</a>;
+	const preload = props.preload;
+	return <a href={href()} aria-current={current()} preload={preload === null || preload === undefined ? null : preload.toString()}>{props.children}</a>;
 }
