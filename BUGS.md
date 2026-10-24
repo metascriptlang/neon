@@ -232,12 +232,6 @@ and the invariants that outlived them were moved to the head of the test that pi
   "the rect follows the signal: 23" (`voidInput.test.ms` imeRect cell) and "after the ops only the pushed row's label
   is new: 0" (the 60-row ForList scroll cell). Not traced to Neon or Void yet.
 
-- **OPEN 2026-10-22 — ten Chrome-lane cases are red on wt/rn-components 4336805c, before the Pressability port.**
-  Measured on a `git archive` export of 4336805c, msc 39bd7c7ee: `tests/browser/overlays.test.ms` (all four
-  screen-overlay cases), `tests/browser/secureTextInput.test.ms` (the four Chrome multiline/secure cases) and
-  `tests/browser/pressableActivation.test.ms` "DOM gesture semantic MouseEvent…" and "DOM disabled Touchable
-  child never leaks…". The Pressability port leaves exactly these red. Not yet traced.
-
 - **PARKED 2026-10-15 — `tests/platform/ionAudio.test.ms` cannot resolve Ion's audio module on this machine.**
   Not Neon's: native `Cannot resolve module '../../../../ion/src/audio'`, because local Ion main `1b3d40c`
   lacks the audio API, which is on Ion origin `a853b2e`. Ion note
