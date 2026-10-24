@@ -184,7 +184,7 @@ test "a navigation issued while a go is in flight writes after the go lands" {
 	session.dispose();
 }
 
-test "a second go while one is in flight is refused by name" {
+test "a go issued while another is in flight runs after it lands, in order" {
 	const registry = new RoutingRegistry("main");
 	let active = "";
 	registry.register(participant(
@@ -199,10 +199,13 @@ test "a second go while one is in flight is refused by name" {
 	const session = connected.value;
 	assert session.navigate("/b", false).ok;
 	assert session.navigate("/c", false).ok;
-	assert session.go(-1, (): void => {});
-	let message = "";
-	try { session.go(-1, (): void => {}); } catch (error) { message = error.message; }
-	assert message.indexOf("go is already in flight") >= 0, message;
+	const landed: string[] = [];
+	assert session.go(-1, (): void => { landed.push(deferred.history.read().url); });
+	assert session.go(-1, (): void => { landed.push(deferred.history.read().url); });
 	deferred.fire();
+	assert landed.join(",") === "/b", landed.join(",");
+	deferred.fire();
+	assert landed.join(",") === "/b,/a", landed.join(",");
+	assert deferred.history.read().url === "/a", deferred.history.read().url;
 	session.dispose();
 }

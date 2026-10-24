@@ -192,7 +192,18 @@ export class RoutingSession {
 
 	go(delta: int32, landed: () => void): boolean {
 		this.checkWritable();
-		if (this.landing !== null) { throw new Error("routing: a go is already in flight"); }
+		if (this.landing !== null) {
+			this.deferred.push((): void => {
+				if (!this.start(delta, landed)) {
+					throw new Error("routing: the history cannot go " + delta.toString() + " entries after the go before it landed");
+				}
+			});
+			return true;
+		}
+		return this.start(delta, landed);
+	}
+
+	private start(delta: int32, landed: () => void): boolean {
 		this.landing = landed;
 		if (this.history.go(delta)) { return true; }
 		this.landing = null;
