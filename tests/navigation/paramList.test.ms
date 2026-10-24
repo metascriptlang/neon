@@ -123,7 +123,7 @@ test "each screen reads the params type its ParamList entry declares" {
 	home.navigate("Item", { id: 3, title: "Three" });
 	flush();
 	assert visibleText(root).indexOf("item 3 Three") >= 0, visibleText(root);
-	// card pending: object-literal-into-a-named-interface-or-null-rest-element, so the params are a variable here
+	// Parked on ~/metascript/.inbox/compiler/2026-10-24-an-object-literal-into-an-optional-element-of-a-conditional-rest-tuple-is-refused.md: a literal here is refused, so the params are a variable
 	const neon: SearchParams = { query: "neon", page: 2 };
 	home.navigate("Search", neon);
 	flush();

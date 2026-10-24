@@ -372,7 +372,7 @@ export interface RouteProp<PL, K extends keyof PL> {
 	key: string;
 	name: string;
 	params: Accessor<PL[K] | null>;
-	// Parked on ~/metascript/.inbox/compiler/2026-10-21-mapped-types-and-partial-are-not-types.md: React Navigation 7 merges `Partial<PL[K]>` here and adds `replaceParams`; this replaces until `Partial` is a type. It sits on the route, not on `navigation`, until JSX infers a generic component's type parameters (card pending: jsx-generic-component-type-inference).
+	// Parked on ~/metascript/.inbox/compiler/2026-10-21-mapped-types-and-partial-are-not-types.md: React Navigation 7 merges `Partial<PL[K]>` here and adds `replaceParams`; this replaces until `Partial` is a type. It sits on the route, not on `navigation`, until a screen's type parameter is inferred from its `name` (~/metascript/.inbox/compiler/2026-10-24-a-keyof-constrained-type-parameter-inferred-from-an-object-literal-property-widens-to-string.md).
 	setParams: (params: PL[K]) => void;
 }
 
