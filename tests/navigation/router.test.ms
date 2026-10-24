@@ -11,7 +11,7 @@ import {
 	createMemoryRoutingHistory,
 	createRequestRoutingHistory,
 } from "../../src/navigation/routingHistory";
-import { GuardDecision, ParamsCodec, RouteMatch, notFound, proceed, redirect, route } from "../../src/navigation/route";
+import { GuardDecision, ParamsCodec, PreloadArgs, RouteMatch, notFound, proceed, redirect, route } from "../../src/navigation/route";
 import { PathMatch } from "../../src/navigation/routeMatcher";
 import {
 	A,
@@ -359,7 +359,7 @@ test "a route tree takes a typed route, whose codec decides the addresses it mat
 	assert router.response().status === 404;
 	router.dispose();
 	const both = failure((): Routes => createRoutes([{ path: "/threads", route: thread, component: Thread }]));
-	assert both === "routing: \"/threads/:id\" takes its path, status, guard and paths from its route", both;
+	assert both === "routing: \"/threads/:id\" takes its path, status, guard, paths and preload from its route", both;
 }
 
 struct ProjectParams {
@@ -519,4 +519,146 @@ test "navigate takes a history delta as Solid's does, and canGoBack follows the 
 	assert mockToString(root) === "<root><div><p>/docs/start|start|</p><h1>doc start</h1></div></root>", mockToString(root);
 	assert seen.join(",") === "false,true,false,true", seen.join(",");
 	stop();
+}
+
+const trace: string[] = [];
+
+function note(entry: string): void {
+	trace.push(entry);
+}
+
+function seen(): string {
+	const text = trace.join(" | ");
+	trace.length = 0;
+	return text;
+}
+
+function PreloadedHome(): NeonNode {
+	note("render home");
+	return <h1>home</h1>;
+}
+
+function PreloadedDoc(): NeonNode {
+	note("render doc");
+	return <h1>{"doc " + (useParams().get("slug") ?? "")}</h1>;
+}
+
+function PreloadedThread(): NeonNode {
+	note("render thread");
+	return <h1>{"thread " + useParams({ from: watched }).id}</h1>;
+}
+
+const watched = route<ThreadParams>("/threads/:id", {
+	params: threadCodec,
+	preload: (args: PreloadArgs<ThreadParams>): void => {
+		note("thread " + args.params.id + " " + args.intent + " " + args.location.pathname);
+	},
+});
+
+function preloadRoutes(): Routes {
+	return createRoutes([
+		{ layout: Shell, children: [
+			{
+				path: "/",
+				component: PreloadedHome,
+				preload: (args: PreloadArgs<Map<string, string>>): void => { note("home " + args.intent); },
+			},
+			{
+				path: "/docs/:slug",
+				component: PreloadedDoc,
+				preload: (args: PreloadArgs<Map<string, string>>): void => {
+					note("doc " + (args.params.get("slug") ?? "") + " " + args.intent + " " + args.location.pathname + " q=" + (args.location.search.get("q") ?? "-"));
+				},
+			},
+			{ route: watched, component: PreloadedThread },
+		] },
+	]);
+}
+
+test "a route's preload runs once before its component, as initial at open and navigate on a link, as Solid's createRouteContext does" {
+	seen();
+	const router = opened(preloadRoutes(), memory("/"));
+	const root = mounted(router);
+	assert seen() === "home initial | render home", "open";
+	assert router.navigate("/docs/start?q=1");
+	flush();
+	assert mockToString(root) === "<root><main><h1>doc start</h1></main></root>", mockToString(root);
+	assert seen() === "doc start navigate /docs/start q=1 | render doc", "navigate";
+	assert router.navigate("/docs/start?q=2");
+	flush();
+	assert seen() === "", "a search change re-ran the preload";
+	assert router.navigate("/docs/other");
+	flush();
+	assert seen() === "doc other navigate /docs/other q=- | render doc", "param change";
+	router.dispose();
+}
+
+test "a typed route's preload takes its params through the codec, as useParams({ from }) does" {
+	seen();
+	const router = opened(preloadRoutes(), memory("/threads/7"));
+	const root = mounted(router);
+	assert seen() === "thread 7 initial /threads/7 | render thread", "open";
+	assert router.navigate({ to: watched, params: { id: "8" } });
+	flush();
+	assert mockToString(root) === "<root><main><h1>thread 8</h1></main></root>", mockToString(root);
+	assert seen() === "thread 8 navigate /threads/8 | render thread", "navigate";
+	router.dispose();
+}
+
+test "a history move preloads the page it shows with the native intent" {
+	seen();
+	const history = memory("/");
+	const router = opened(preloadRoutes(), history);
+	mounted(router);
+	seen();
+	assert router.navigate("/docs/a");
+	flush();
+	seen();
+	assert history.go(-1);
+	flush();
+	const back = seen();
+	assert back === "home native | render home", back;
+	assert history.go(1);
+	flush();
+	assert seen() === "doc a native /docs/a q=- | render doc", "forward";
+	router.dispose();
+}
+
+test "a parent's preload runs before its child's, which runs as the parent renders its children" {
+	seen();
+	const routes = createRoutes([
+		{ path: "/area", layout: Shell, preload: (args: PreloadArgs<Map<string, string>>): void => { note("area " + args.intent + " " + args.location.pathname); }, children: [
+			{ path: "", component: PreloadedHome },
+			{
+				path: ":leaf",
+				component: PreloadedDoc,
+				preload: (args: PreloadArgs<Map<string, string>>): void => { note("leaf " + (args.params.get("leaf") ?? "") + " " + args.intent); },
+			},
+		] },
+	]);
+	const router = opened(routes, memory("/area/x"));
+	mounted(router);
+	assert seen() === "area initial /area/x | leaf x initial | render doc", "open";
+	assert router.navigate("/area/y");
+	flush();
+	assert seen() === "leaf y navigate | render doc", "sibling";
+	router.dispose();
+}
+
+test "preload(href) runs the preloads along an address with the preload intent and mounts nothing" {
+	seen();
+	const router = opened(preloadRoutes(), memory("/"));
+	const root = mounted(router);
+	seen();
+	router.preload("/docs/next?q=9");
+	router.preload("/threads/12");
+	router.preload("/nowhere/at/all");
+	assert seen() === "doc next preload /docs/next q=9 | thread 12 preload /threads/12", "preload";
+	assert mockToString(root) === "<root><main><h1>home</h1></main></root>", mockToString(root);
+	router.dispose();
+}
+
+test "a config naming a preload beside a typed route is refused" {
+	const both = failure((): Routes => createRoutes([{ route: watched, preload: (args: PreloadArgs<Map<string, string>>): void => {}, component: Thread }]));
+	assert both === "routing: \"/threads/:id\" takes its path, status, guard, paths and preload from its route", both;
 }

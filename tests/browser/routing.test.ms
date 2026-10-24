@@ -1,5 +1,5 @@
 import { domHost } from "../../src/platform/browser/dom";
-import { createBrowserRoutingHistory } from "../../src/platform/browser/routingHistory";
+import { createBrowserRoutingHistory, followLinks } from "../../src/platform/browser/routingHistory";
 import { HostNode } from "../../src/render/hostTypes";
 import { render } from "../../src/render/host";
 import { sleepAsync } from "std/core/promise";
@@ -22,6 +22,8 @@ import {
 import { createRoot } from "../../src/core/owner";
 import { flush } from "../../src/core/runtime";
 import { Dispose } from "../../src/core/types";
+import { PreloadArgs } from "../../src/navigation/route";
+import { A, RouterProvider, createRouter, createRoutes } from "../../src/navigation/router";
 import { createRoutingDemo, RoutingDemo } from "../../examples/components/routing";
 
 extern function js(code: cstring): string from "String((0, eval)(#))";
@@ -374,6 +376,58 @@ test "opening a drawer adds a browser entry that browser back closes" {
 		assert app.errors.length === 0, app.errors.length.toString();
 	} finally {
 		unmount(app, mount);
+		history.replace(original);
+	}
+}
+
+const preloads: string[] = [];
+
+function PreloadedPage(): NeonNode {
+	preloads.push("render");
+	return <p>page</p>;
+}
+
+function Links(props: { children: NeonNode }): NeonNode {
+	return <nav><A href="/docs/b">B</A>{props.children}</nav>;
+}
+
+function noteDoc(args: PreloadArgs<Map<string, string>>): void {
+	preloads.push((args.params.get("slug") ?? "") + " " + args.intent);
+}
+
+test "a router in Chrome preloads as initial at open, navigate on a link click and native on browser back" {
+	const history = createBrowserRoutingHistory();
+	const original = history.read();
+	history.replace({ url: "/docs/a", state: "" });
+	const routes = createRoutes([
+		{ layout: Links, children: [{ path: "/docs/:slug", component: PreloadedPage, preload: noteDoc }] },
+	]);
+	const created = createRouter(routes, history);
+	assert created.ok;
+	if (!created.ok) { return; }
+	const router = created.value;
+	const mount = document.createElement("div");
+	document.body.appendChild(mount);
+	preloads.length = 0;
+	const dispose = render(<RouterProvider router={router} />, domHost(), mount as unknown as HostNode);
+	const stop = followLinks((url: string): boolean => router.navigate(url));
+	try {
+		assert preloads.join(" | ") === "a initial | render", preloads.join(" | ");
+		preloads.length = 0;
+		js("document.querySelector('a[href=\"/docs/b\"]').click()");
+		flush();
+		assert history.read().url === "/docs/b", history.read().url;
+		assert preloads.join(" | ") === "b navigate | render", preloads.join(" | ");
+		preloads.length = 0;
+		assert history.go(-1);
+		await sleepAsync(100);
+		assert history.read().url === "/docs/a", history.read().url;
+		assert preloads.join(" | ") === "a native | render", preloads.join(" | ");
+	} finally {
+		stop();
+		dispose();
+		router.dispose();
+		mount.remove();
 		history.replace(original);
 	}
 }
