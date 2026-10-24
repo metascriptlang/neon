@@ -72,7 +72,7 @@ export interface RouteRef {
 export interface RouteConfig {
 	path?: string | null;
 	route?: RouteRef | null;
-	component?: (() => NeonNode) | null;
+	component?: ((props: {}) => NeonNode) | null;
 	layout?: ((props: LayoutProps) => NeonNode) | null;
 	navigator?: RouteNavigator | null;
 	initial?: string | null;
@@ -89,7 +89,7 @@ export interface RouteConfig {
 
 export interface RouteView {
 	node: RouteNode;
-	component: (() => NeonNode) | null;
+	component: ((props: {}) => NeonNode) | null;
 	layout: ((props: LayoutProps) => NeonNode) | null;
 	navigator: RouteNavigator | null;
 	initial: int32;
@@ -1047,10 +1047,10 @@ interface RouteScope {
 const RouterContext = createContext<Router | null>(null);
 const RouteContext = createContext<RouteScope | null>(null);
 
-function mountLater(make: () => NeonNode, steer: Steer, intent: PreloadIntent): NeonNode {
+function mountLater(make: (props: {}) => NeonNode, steer: Steer, intent: PreloadIntent): NeonNode {
 	return (host: Host, parent: HostNode, before: HostNode | null): void => {
 		steer.within(intent, (): void => {
-			untrack((): number => { make()(host, parent, before); return 0; });
+			untrack((): number => { make({})(host, parent, before); return 0; });
 		});
 	};
 }
@@ -1158,7 +1158,7 @@ function placeView(routes: Routes, child: NavigationChild<Stop, Place>, steer: S
 	const layout = found.layout;
 	let body: NeonNode;
 	if (component !== null) {
-		body = mountLater(component as () => NeonNode, steer, stop.intent);
+		body = mountLater(component as (props: {}) => NeonNode, steer, stop.intent);
 	} else {
 		const level = child.instance.level as Level;
 		const inner = levelView(routes, level, steer, scope);
