@@ -62,9 +62,11 @@ Errors: `-32700` a line that is not JSON, `-32600` not an object with a string `
 
 ## Build events and eval
 
-Two halves belong to the compiler, because only `msc` knows them: JSON Lines from the watch session (`build.start`, `build.done`, `build.failed` with diagnostics, `reload`) and `eval`, which compiles a snippet against the running build and runs it in the app. Eval is a new mechanism in the compiler (a module outside the import graph, linked against a live generation and dropped after one call). Both wait on `~/metascript/.inbox/compiler/2026-10-20-run-hcr-events-and-eval.md`; until it lands, `eval` answers `-32601` with that pointer.
+Two halves belong to the compiler, because only `msc` knows them. Build events exist: `msc run --hcr --events=<path|->` writes JSON Lines from the watch session (`build.start`, `build.done`, `build.failed` with diagnostics, `reload` with its kind, modules and reason, `exit`) in the envelope Neon uses, so a tool reads whether an edit built from the compiler's file and whether it reached the screen from the app's. `eval`, which compiles a snippet against the running build and runs it in the app, is a new mechanism in the compiler (a module outside the import graph, linked against a live generation and dropped after one call) and waits on the person's decision in `~/metascript/.inbox/compiler/2026-10-20-run-hcr-events-and-eval.md`; until it lands, `eval` answers `-32601` with that pointer.
 
 ## Measured
+
+2026-10-24, msc `f2debffda`, Windows: `examples/refreshWindow/drive.sh` 18 of 18, the 16 below plus msc's own events: one `build.done` for the first build and each of two edits, one `reload` with `kind:"reloaded"` per edit.
 
 2026-10-21, msc `b1f63337f`, Windows:
 
