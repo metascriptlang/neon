@@ -27,6 +27,7 @@ expect_reject tests/macros/spreadNullHandlerRejected.ms "a nullable onPress hand
 expect_reject tests/macros/spreadNullStyleRejected.ms "a nullable style is not supported yet"
 expect_reject tests/macros/mapIndexRowRejected.ms "a .map row that takes an index is written <For each={xs}>"
 expect_reject tests/macros/mapNamedRowRejected.ms "Argument type mismatch in 'map' arg 0"
+expect_reject_both tests/macros/lazyNoImportRejected.ms "lazy reads its module from a thunk or a function that holds a literal import"
 expect_reject tests/macros/accessorNominal.ms "is not assignable to type 'Accessor<number>'"
 expect_reject tests/macros/emptyLayerRejected.ms "a style layer array needs at least one layer"
 expect_reject tests/macros/refLiteralRejected.ms "arg 1: got string, expected function"
