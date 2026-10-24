@@ -41,6 +41,15 @@ function slotFor<V>(value: V): Slot<V> {
 
 class ChildBase {}
 
+function copyOf<T>(value: T): T {
+	when (isArray<T>()) {
+		return value.slice(0, value.length);
+	} else {
+		const copy: T = { ...value };
+		return copy;
+	}
+}
+
 class StoreRoot {
 	targets: Map<unknown, ChildBase> = new Map<unknown, ChildBase>();
 }
@@ -56,12 +65,17 @@ class Child<V> extends ChildBase {
 
 export class StoreTraps<T> {
 	raw: T;
+	private origin: T;
+	private owned: boolean = false;
+	private privatizeUp: () => void = (): void => {};
+	private adoptUp: (copy: T) => void = (copy: T): void => {};
 	private root: StoreRoot;
 	private slots: Map<string, SlotBase> = new Map<string, SlotBase>();
 	private children: Map<string, ChildBase> = new Map<string, ChildBase>();
 
 	constructor(raw: T, root: StoreRoot) {
 		this.raw = raw;
+		this.origin = raw;
 		this.root = root;
 	}
 
@@ -69,13 +83,13 @@ export class StoreTraps<T> {
 		when (isArray<T>()) {
 			const index = keyOf(key);
 			if (typeof index === "number") {
-				const length = untrack<number>((): number => this.committed(target, "length"));
+				const length = untrack<number>((): number => this.committed("length"));
 				if (index >= length) { throw new Error(`index ${index} is past the end of a store array of length ${length}`); }
 			}
 		}
-		const value = this.committed(target, key);
+		const value = this.committed(key);
 		when (isObject<T[K]>()) {
-			return new Proxy(value, this.child(`${key}`, value));
+			return new Proxy(value, this.child(key, value));
 		} else {
 			return value;
 		}
@@ -85,26 +99,52 @@ export class StoreTraps<T> {
 		return false;
 	}
 
-	child<V>(name: string, value: V): StoreTraps<V> {
-		when (isArray<V>()) {
+	has<K extends keyof T>(target: T, key: K): boolean {
+		return Reflect.has(this.raw, key);
+	}
+
+	child<K extends keyof T>(key: K, value: T[K]): StoreTraps<T[K]> {
+		const name = `${key}`;
+		when (isArray<T[K]>()) {
 			const found = this.children.get(name);
 			if (found !== undefined) {
-				const traps = (found as Child<V>).traps;
-				if (traps.raw === value) { return traps; }
+				const traps = (found as Child<T[K]>).traps;
+				if (traps.raw === value || traps.origin === value) { return traps; }
 			}
-			const traps = new StoreTraps<V>(value, this.root);
-			this.children.set(name, new Child<V>(traps));
+			const traps = this.born(key, value);
+			this.children.set(name, new Child<T[K]>(traps));
 			return traps;
 		} else {
 			const found = this.root.targets.get(value as unknown);
-			if (found !== undefined) { return (found as Child<V>).traps; }
-			const traps = new StoreTraps<V>(value, this.root);
-			this.root.targets.set(value as unknown, new Child<V>(traps));
+			if (found !== undefined) { return (found as Child<T[K]>).traps; }
+			const traps = this.born(key, value);
+			this.root.targets.set(value as unknown, new Child<T[K]>(traps));
 			return traps;
 		}
 	}
 
-	private committed<K extends keyof T>(target: T, key: K): T[K] {
+	private born<K extends keyof T>(key: K, value: T[K]): StoreTraps<T[K]> {
+		const traps = new StoreTraps<T[K]>(value, this.root);
+		traps.privatizeUp = (): void => { this.privatize(); };
+		traps.adoptUp = (copy: T[K]): void => { Reflect.set(this.raw, key, copy); };
+		return traps;
+	}
+
+	privatize(): void {
+		if (this.owned) { return; }
+		this.privatizeUp();
+		const copy = copyOf<T>(this.raw);
+		when (!isArray<T>()) {
+			const found = this.root.targets.get(this.raw as unknown);
+			if (found !== undefined) { this.root.targets.set(copy as unknown, found); }
+		}
+		this.raw = copy;
+		this.owned = true;
+		this.adoptUp(copy);
+	}
+
+	private committed<K extends keyof T>(key: K): T[K] {
+		const target = this.raw;
 		const name = `${key}`;
 		const found = this.slots.get(name);
 		if (found !== undefined) { return (found as Slot<T[K]>).signal.get(); }
@@ -128,14 +168,16 @@ export class StoreTraps<T> {
 		if (found !== undefined) { found.touch(); }
 	}
 
-	write<K extends keyof T>(target: T, key: K, value: T[K]): void {
+	write<K extends keyof T>(key: K, value: T[K]): void {
+		this.privatize();
+		const target = this.raw;
 		when (isArray<T>()) {
 			const index = keyOf(key);
 			const length = Reflect.get(target, "length");
 			if (index === "length" || index === length) {
-				if (index === "length") { this.capture(target, 0); }
+				if (index === "length") { this.capture(0); }
 				Reflect.set(target, key, value);
-				this.restamp(target, length, index === length ? length : Reflect.get(target, "length"));
+				this.restamp(length, index === length ? length : Reflect.get(target, "length"));
 				return;
 			}
 		}
@@ -146,20 +188,24 @@ export class StoreTraps<T> {
 		slot.signal.set(value);
 	}
 
-	remove<K extends keyof T>(target: T, key: K): boolean {
+	remove<K extends keyof T>(key: K): boolean {
 		when (isArray<T>()) {
+			this.privatize();
+			const target = this.raw;
 			const length = Reflect.get(target, "length");
-			this.capture(target, length - 1);
+			this.capture(length - 1);
 			if (!Reflect.deleteProperty(target, key)) { return false; }
-			this.restamp(target, length, length - 1);
+			this.restamp(length, length - 1);
 			return true;
 		} else {
 			return false;
 		}
 	}
 
-	capture(target: T, from: number): void {
+	capture(from: number): void {
 		when (isArray<T>()) {
+			this.privatize();
+			const target = this.raw;
 			this.slotOf(target, "length", target.length);
 			for (let i = from; i < target.length; i += 1) {
 				const name = `${i}`;
@@ -168,8 +214,9 @@ export class StoreTraps<T> {
 		}
 	}
 
-	restamp(target: T, before: number, from: number): void {
+	restamp(before: number, from: number): void {
 		when (isArray<T>()) {
+			const target = this.raw;
 			const after = target.length;
 			const end = before > after ? before : after;
 			for (let i = from; i < end; i += 1) {
@@ -195,9 +242,9 @@ export class DraftTraps<T> {
 	}
 
 	get<K extends keyof T>(target: T, key: K): DraftValue<T[K]> {
-		const value = Reflect.get(target, key);
+		const value = Reflect.get(this.traps.raw, key);
 		when (isObject<T[K]>()) {
-			return new Proxy(value, new DraftTraps(this.traps.child(`${key}`, value)));
+			return new Proxy(value, new DraftTraps(this.traps.child(key, value)));
 		} else {
 			return value;
 		}
@@ -207,20 +254,25 @@ export class DraftTraps<T> {
 		when (debug) {
 			if (writing === 0) { throw new Error("a store draft was written after its setStore call returned"); }
 		}
-		this.traps.write(target, key, value);
+		this.traps.write(key, value);
 		return true;
 	}
 
+	has<K extends keyof T>(target: T, key: K): boolean {
+		return Reflect.has(this.traps.raw, key);
+	}
+
 	deleteProperty<K extends keyof T>(target: T, key: K): boolean {
-		return this.traps.remove(target, key);
+		return this.traps.remove(key);
 	}
 
 	shift(target: T): Element<T> {
 		when (isArray<T>()) {
-			const length = target.length;
-			this.traps.capture(target, 0);
-			const first = target.shift();
-			this.traps.restamp(target, length, 0);
+			this.traps.capture(0);
+			const raw = this.traps.raw;
+			const length = raw.length;
+			const first = raw.shift();
+			this.traps.restamp(length, 0);
 			return first;
 		} else {
 			throw new Error("shift() of a store draft that is not an array");
@@ -229,10 +281,11 @@ export class DraftTraps<T> {
 
 	splice(target: T, start: number, count: number): Element<T>[] {
 		when (isArray<T>()) {
-			const length = target.length;
-			this.traps.capture(target, start);
-			const removed = target.splice(start, count);
-			this.traps.restamp(target, length, start);
+			this.traps.capture(start);
+			const raw = this.traps.raw;
+			const length = raw.length;
+			const removed = raw.splice(start, count);
+			this.traps.restamp(length, start);
 			return removed;
 		} else {
 			throw new Error("splice() of a store draft that is not an array");

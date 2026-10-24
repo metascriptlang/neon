@@ -208,3 +208,53 @@ test "one object under two keys is one store: a write through one re-runs the re
 	flush();
 	assert seen.join(",") === "a,b", "seen: " + seen.join(",");
 }
+
+test "the seed object passed to createStore is never written" {
+	const seed = { a: 1, b: 2 };
+	const [state, setState] = createStore(seed);
+	setState((s) => { s.a = 10; });
+	flush();
+	assert state.a === 10, "store: " + state.a.toString();
+	assert seed.a === 1, "seed: " + seed.a.toString();
+}
+
+test "a nested seed object and a seed array are never written" {
+	const user: User = { firstName: "John", lastName: "Smith" };
+	const rows: Item[] = [{ id: 1, title: "a" }, { id: 2, title: "b" }];
+	const [state, setState] = createStore<{ user: User, rows: Item[] }>({ user, rows });
+	setState((s) => { s.user.firstName = "Jake"; });
+	setState((s) => { s.rows[0].title = "A"; });
+	setState((s) => { s.rows.push({ id: 3, title: "c" }); });
+	setState((s) => { s.rows.shift(); });
+	flush();
+	assert state.user.firstName === "Jake" && state.rows.length === 2 && state.rows[0].title === "b" && state.rows[1].id === 3, "store";
+	assert user.firstName === "John", "seed user: " + user.firstName;
+	assert rows.length === 2 && rows[0].title === "a" && rows[0].id === 1, "seed rows: " + rows.length.toString() + " " + rows[0].title;
+}
+
+test "an object written into a store is not written by a later edit through the store" {
+	const [state, setState] = createStore<{ user: User }>({ user: { firstName: "John", lastName: "Smith" } });
+	const fresh: User = { firstName: "Ann", lastName: "Lee" };
+	setState((s) => { s.user = fresh; });
+	flush();
+	setState((s) => { s.user.firstName = "Bo"; });
+	flush();
+	assert state.user.firstName === "Bo", "store: " + state.user.firstName;
+	assert fresh.firstName === "Ann", "fresh: " + fresh.firstName;
+}
+
+test "an edit under a privatized parent still reaches the reader of a sibling edit" {
+	const user: User = { firstName: "John", lastName: "Smith" };
+	const [state, setState] = createStore<{ user: User, n: number }>({ user, n: 1 });
+	const seen: string[] = [];
+	createRoot((d) => {
+		createEffect<string>((p: string | null): string => state.user.firstName + state.n.toString(), (v: string, p: string | null): Cleanup | null => { seen.push(v); return null; });
+	});
+	flush();
+	setState((s) => { s.n = 2; });
+	flush();
+	setState((s) => { s.user.firstName = "Jake"; });
+	flush();
+	assert seen.join(",") === "John1,John2,Jake2", "seen: " + seen.join(",");
+	assert user.firstName === "John";
+}
