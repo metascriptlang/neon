@@ -4,6 +4,8 @@ import { getOwner, isTracking } from "../core/runtime";
 import { onCleanup } from "../core/cleanup";
 import { createAsyncMemo } from "../render/hydrateMemo";
 import { hasRecord, hasError, readRecord, readError, dropRecord } from "../render/hydrationRecords";
+import { GuardAction, PreloadIntent, Reply, replyOf } from "./route";
+import { Router, routerInScope } from "./router";
 
 when (server) {
 	import { serverContext } from "../core/serverContext";
@@ -25,8 +27,9 @@ class Answer<R> {
 class QueryEntry {
 	at: float64;
 	result: unknown;
-	version: Signal<int32> = new Signal<int32>(0);
+	version: Signal<int32> = new Signal<int32>(0, null, true);
 	readers: int32 = 0;
+	preloaded: boolean = false;
 
 	constructor(at: float64, result: unknown) {
 		this.at = at;
@@ -109,16 +112,45 @@ function follow(entry: QueryEntry): void {
 	entry.version.get();
 }
 
+async function moved<R>(reply: Reply, router: Router | null): Promise<R> {
+	if (router === null) { throw new Error("query: the answer redirects to " + reply.address + ", and no RouterProvider is in scope to follow it"); }
+	if (!router.deliver(reply, true)) { throw reply; }
+	return await new Promise<R>((resolve: (value: R) => void, reject: (reason: Error | string) => void): void => {});
+}
+
+async function answered<R>(promise: Promise<R>, router: Router | null): Promise<R> {
+	try {
+		return await promise;
+	} catch (failure) {
+		const reply = replyOf(failure);
+		if (reply === null || reply.action !== GuardAction.Redirect) { throw failure; }
+		return await moved<R>(reply, router);
+	}
+}
+
+function followed<R>(promise: Promise<R>, router: Router | null, intent: PreloadIntent | null): Promise<R> {
+	return intent === "preload" ? promise : answered<R>(promise, router);
+}
+
+function refreshed(entry: QueryEntry, now: float64, intent: PreloadIntent | null): void {
+	const changed = entry.at !== now;
+	entry.at = now;
+	if (changed && intent === "navigate") { entry.version.set(entry.version.peek() + 1); }
+}
+
 function cached<R>(key: string, run: () => Promise<R>): Promise<R> {
+	const router = routerInScope();
+	const intent = router === null ? null : router.intent;
 	when (server) {
 		const ctx = serverContext();
-		if (ctx !== null) { return serverQuery<R>(ctx, key, run); }
+		if (ctx !== null) { return followed<R>(serverQuery<R>(ctx, key, run), router, intent); }
 	}
 	const now = Date.now();
 	const held = cache.get(key);
-	if (held !== null && held.at !== 0 && (held.readers > 0 || now - held.at < PRELOAD_TIMEOUT)) {
+	if (held !== null && held.at !== 0 && (intent === "native" || held.readers > 0 || now - held.at < PRELOAD_TIMEOUT)) {
 		follow(held);
-		return (held.result as Answer<R>).promise;
+		if (held.preloaded && intent !== "preload") { refreshed(held, now, intent); }
+		return followed<R>((held.result as Answer<R>).promise, router, intent);
 	}
 	const result = hasRecord(key) || hasError(key) ? adopted<R>(key) : run();
 	let entry = held;
@@ -127,11 +159,12 @@ function cached<R>(key: string, run: () => Promise<R>): Promise<R> {
 		entry = new QueryEntry(now, new Answer<R>(result) as unknown);
 		cache.set(key, entry);
 	} else {
-		entry.at = now;
 		entry.result = new Answer<R>(result) as unknown;
+		refreshed(entry, now, intent);
 	}
+	entry.preloaded = intent === "preload";
 	follow(entry);
-	return result;
+	return followed<R>(result, router, intent);
 }
 
 // Parked on ~/metascript/.inbox/compiler/2026-10-24-a-generic-rest-parameter-typed-by-a-tuple-type-parameter-is-refused.md: one `query<A extends unknown[], R>` over any arity in place of these overloads.
