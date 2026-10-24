@@ -499,6 +499,22 @@ gzipped; `siteClient.js` 1 270 KB, 155 KB gzipped. The site before the shorthand
 built by the same msc: 655 KB, 79 KB gzipped, and 1 145 KB, 141 KB gzipped, so the shorthand,
 its matcher and its outlet cost about 14 KB gzipped in each bundle.
 
+### The request handler — `src/render/serve.ms`
+
+`serve(app, url)` opens the router on the request address, renders `RouterProvider` through
+`renderToStream`, and answers `{ status, location, body }`: the router's redirect is a status
+and a location with no body, a route's own status serves its page, and an address no route takes
+is 404 (400 for any other routing error) through `app.notFound`. `app.document` places the
+markup's head, css, html and records; `htmlDocument(root, client)` is the default, with the
+client module script last. On `--target=js`, `fetchPage(app, request)` maps a Fetch `Request` to
+a `Response` (GET and HEAD; any other method is 405 with `allow`), the one call a Worker's
+`fetch` makes for a page. Shape from SolidStart `server/handler.ts` (`createBaseHandler`: render,
+then redirect by the response's `Location`) and Astro's Worker entry that maps `Request` to
+`Response`. Not ported: SolidStart's `StartServer.tsx` document is a component that receives
+`assets`, `scripts` and `children`; Neon's writer sends `Head` content to `SsrMarkup.head`
+beside the body, so a document component cannot place it, and the document is a function over
+the finished markup. A component form needs a head slot in the writer.
+
 ## Emission — mechanics
 
 **Flat tier.** One statement list, temps numbered across the whole subtree (`_r0/_r1/…`
