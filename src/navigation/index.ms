@@ -199,4 +199,4 @@ export {
 } from "./webNavigation";
 export { WebHistory, createWebHistory } from "./webHistory";
 export { hashKey, queryKey, query, revalidate, createAsync } from "./data";
-export { Action, ActionOptions, Submission, action, useAction, useSubmission, useSubmissions } from "./action";
+export { Action, ActionOptions, FormData, Submission, action, formAction, submitForm, useAction, useSubmission, useSubmissions } from "./action";

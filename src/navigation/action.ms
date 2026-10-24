@@ -1,4 +1,6 @@
 import { Accessor, Signal, accessor } from "../core/signal";
+import { getOwner } from "../core/runtime";
+import { onCleanup } from "../core/cleanup";
 import { replyOf } from "./route";
 import { Router, SubmissionBase, useRouter } from "./router";
 import { revalidate } from "./data";
@@ -86,6 +88,64 @@ export class Action<I, R> {
 	}
 }
 
+export class FormData {
+	names: string[] = [];
+	values: string[] = [];
+
+	append(name: string, value: string): void {
+		this.names.push(name);
+		this.values.push(value);
+	}
+
+	has(name: string): boolean {
+		return this.names.includes(name);
+	}
+
+	get(name: string): string | null {
+		const at = this.names.indexOf(name);
+		return at < 0 ? null : this.values[at];
+	}
+
+	getAll(name: string): string[] {
+		const found: string[] = [];
+		for (let at = 0; at < this.names.length; at += 1) {
+			if (this.names[at] === name) { found.push(this.values[at]); }
+		}
+		return found;
+	}
+}
+
+const formRoutes = new Map<string, (router: Router, data: FormData) => void>();
+
+async function unraised<R>(call: Promise<R | null>): Promise<void> {
+	try { await call; } catch (failure) { }
+}
+
+function registered<R>(act: Action<FormData, R>): Action<FormData, R> {
+	const route = (router: Router, data: FormData): void => { unraised<R>(begin<FormData, R>(router, act, data)); };
+	formRoutes.set(act.url, route);
+	if (getOwner() !== null) {
+		onCleanup((): void => { if (formRoutes.get(act.url) === route) { formRoutes.delete(act.url); } });
+	}
+	return act;
+}
+
+export function submitForm(router: Router, url: string, data: FormData): boolean {
+	const route = formRoutes.get(url);
+	if (route === null) { return false; }
+	route(router, data);
+	return true;
+}
+
+// Parked on ~/metascript/.inbox/compiler/2026-10-25-overload-generic-over-more-specific-signature.md: these two are the `action` overloads taking `(input: FormData)`; the generic overload wins the call today.
+export function formAction<R>(fn: (input: FormData) => Promise<R>, name: string): Action<FormData, R> {
+	return registered<R>(new Action<FormData, R>(ACTION_URL + name, fn, null));
+}
+
+export function formAction<R>(fn: (input: FormData) => Promise<R>, options: ActionOptions<FormData, R>): Action<FormData, R> {
+	return registered<R>(new Action<FormData, R>(ACTION_URL + options.name, fn, options.onComplete ?? null));
+}
+
 export function action<I, R>(fn: (input: I) => Promise<R>, name: string): Action<I, R> {
 	return new Action<I, R>(ACTION_URL + name, fn, null);
 }
@@ -135,18 +195,20 @@ async function settle<I, R>(act: Action<I, R>, sub: Submission<I, R>, call: Prom
 	return result.value;
 }
 
+function begin<I, R>(router: Router, act: Action<I, R>, input: I): Promise<R | null> {
+	const sub = new Submission<I, R>(
+		input,
+		act.url,
+		router,
+		(again: Submission<I, R>): Promise<R | null> => settle<I, R>(act, again, act.fn(input)),
+	);
+	router.submissions.set(router.submissions.peek().concat([sub]));
+	return sub.retry();
+}
+
 export function useAction<I, R>(act: Action<I, R>): (input: I) => Promise<R | null> {
 	const router = useRouter("useAction");
-	return (input: I): Promise<R | null> => {
-		const sub = new Submission<I, R>(
-			input,
-			act.url,
-			router,
-			(again: Submission<I, R>): Promise<R | null> => settle<I, R>(act, again, act.fn(input)),
-		);
-		router.submissions.set(router.submissions.peek().concat([sub]));
-		return sub.retry();
-	};
+	return (input: I): Promise<R | null> => begin<I, R>(router, act, input);
 }
 
 function submissionsOf<I, R>(act: Action<I, R>, filter: ((input: I) => boolean) | null, caller: string): Accessor<Submission<I, R>[]> {
