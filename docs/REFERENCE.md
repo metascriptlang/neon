@@ -244,3 +244,13 @@ at `d604b18`); an entry there names it in an **R3F** field.
 - **Don't:** expect R3F's look from an LDR Scene3D without setting `toneMapping={ToneMode.Filmic}`.
 - **Pin:** `tests/render/scene3dLook.test.ms` ("an LDR Scene3D keeps Void's linear curve at exposure 1 and reserves no tone map", "hdr reserves the tone map at mount, defaults to the ACES curve and refuses a change")
 - **Checked:** 2026-10-22, read; decided under the person's delegation for the void-endgame arc (decision D8).
+
+### RD-12 · A page that differs from the tree throws in a debug build and is rebuilt in a release build
+
+- **Verdict:** DIVERGE-INTENTIONAL
+- **Solid:** dom-expressions throws `Hydration Mismatch` in development only; in production `getNextElement` creates the one node whose `_hk` key it did not find and hydration goes on (`~/projects/dom-expressions` at `27a88be`, `packages/dom-expressions/src/client.js:277-283`).
+- **React:** the cursor is positional, as Neon's; a mismatch throws `HydrationMismatchException` and queues an error saying "this tree will be regenerated on the client" (`packages/react-reconciler/src/ReactFiberHydrationContext.js:388-415`), reported through `onRecoverableError` (default `reportGlobalError`, `ReactFiberErrorLogger.js:123`). Svelte does the same for a whole root: `hydrate` catches, clears the target and mounts (`~/projects/svelte` at `6eb720a`, `packages/svelte/src/internal/client/render.js:131-146`).
+- **MS:** `refuse` in `src/render/claim.ms` throws the message in a debug build. In a release build it records the first message on the claim and turns every later host op into a plain create or insert; `hydrate` (`src/render/host.ms`) then disposes that tree, removes the container's children, mounts the tree again with `render` while the claim still serves the page's records, and logs the message with `console.error`. A page that matches pays one `null` check.
+- **Why:** a claim finds a node by position, not by key, so after the first difference nothing says which served node belongs to which later tree node; only the whole root can be rebuilt, as React rebuilds. The claim never throws in a release build, because a throw from inside a region happens during a flush and halts reactivity, which a release build never revives.
+- **Pin:** `tests/render/hydrateRefusal.test.ms` (debug and `--release`, C and JS: a missing node at the top level and in a region, extra children in an element, in a region's element and in the container, a record kept through the rebuild)
+- **Checked:** 2026-10-24, read; measured on C and JS.

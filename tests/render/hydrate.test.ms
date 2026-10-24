@@ -168,20 +168,28 @@ test "regions the page sent empty fill in after hydrate" {
 	assert mockToString(root) === flowsAt(true, [1, 2]), mockToString(root);
 }
 
-test "a tree the page was not rendered from fails and names the place" {
+test "a tree the page was not rendered from fails and names the place in debug, and is rebuilt in release" {
 	const root = served(<View><Text>a</Text><p>b</p></View>);
 	let said = "";
 	try {
 		hydrate(<View><Text>a</Text><h1>b</h1></View>, mockHost(), root as unknown as HostNode);
 	} catch (e) { said = e.toString(); }
-	assert said.indexOf("<h1>") >= 0 && said.indexOf("child 2 of view") >= 0, said;
+	when (debug) {
+		assert said.indexOf("<h1>") >= 0 && said.indexOf("child 2 of view") >= 0, said;
+	} else {
+		assert said === "" && mockToString(root) === mockToString(served(<View><Text>a</Text><h1>b</h1></View>)), said + mockToString(root);
+	}
 
 	const longer = served(<View><Text>a</Text><p>b</p></View>);
 	said = "";
 	try {
 		hydrate(<View><Text>a</Text></View>, mockHost(), longer as unknown as HostNode);
 	} catch (e) { said = e.toString(); }
-	assert said.indexOf("more children") >= 0 && said.indexOf("view") >= 0, said;
+	when (debug) {
+		assert said.indexOf("more children") >= 0 && said.indexOf("view") >= 0, said;
+	} else {
+		assert said === "" && mockToString(longer) === mockToString(served(<View><Text>a</Text></View>)), said + mockToString(longer);
+	}
 }
 
 test "a failed hydrate leaves the host creating nodes again" {
@@ -191,7 +199,11 @@ test "a failed hydrate leaves the host creating nodes again" {
 	try {
 		hydrate(<View><h1>b</h1></View>, h, root as unknown as HostNode);
 	} catch (e) { failed = true; }
-	assert failed, "the mismatch did not fail";
+	when (debug) {
+		assert failed, "the mismatch did not fail";
+	} else {
+		assert !failed && mockToString(root) === "<root><view><h1>b</h1></view></root>", mockToString(root);
+	}
 	const fresh = mockNode("root");
 	render(<View><h1>b</h1></View>, h, fresh as unknown as HostNode);
 	assert mockToString(fresh) === "<root><view><h1>b</h1></view></root>", mockToString(fresh);

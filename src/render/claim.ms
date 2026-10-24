@@ -10,11 +10,18 @@ interface Open {
 	count: number;
 }
 
+interface Unsealed {
+	parent: HostNode;
+	anchor: HostNode;
+}
+
 interface Claim {
 	host: Host;
 	take: (parent: HostNode, after: HostNode | null, tag: string) => HostNode | null;
 	open: Open[];
 	paused: number;
+	refused: string | null;
+	unsealed: Unsealed[];
 	createElement: (tag: string) => HostNode;
 	createText: (s: string) => HostNode;
 	append: (parent: HostNode, child: HostNode) => void;
@@ -66,30 +73,50 @@ function pathOf(c: Claim): string {
 	return s;
 }
 
-function claimNext(c: Claim, tag: string): HostNode {
+function refuse(c: Claim, message: string): void {
+	when (debug) { throw message; } else {
+		if (c.refused === null) {
+			c.refused = message;
+			c.paused += 1;
+			for (let i = c.unsealed.length - 1; i >= 0; i -= 1) { c.append(c.unsealed[i].parent, c.unsealed[i].anchor); }
+		}
+	}
+}
+
+function claimNext(c: Claim, tag: string): HostNode | null {
+	if (c.paused > 0) { return null; }
 	const top = c.open[c.open.length - 1];
 	const node = c.take(top.node, top.last, tag);
 	if (node === null) {
-		throw "hydrate: the page has no " + (tag === "" ? "text" : "<" + tag + ">") + " at child " + (top.count + 1).toString() + " of " + pathOf(c);
+		refuse(c, "hydrate: the page has no " + (tag === "" ? "text" : "<" + tag + ">") + " at child " + (top.count + 1).toString() + " of " + pathOf(c));
+		return null;
 	}
 	top.last = node;
 	top.count += 1;
 	if (tag !== "") { c.open.push({ node: node as HostNode, tag, last: null, count: 0 }); }
-	return node as HostNode;
+	return node;
 }
 
 function leftover(c: Claim, o: Open): boolean {
 	return o.count > 0 && c.host.nextSibling(o.last as HostNode) !== null;
 }
 
-function settle(c: Claim, parent: HostNode, node: HostNode): void {
+function settled(c: Claim, parent: HostNode, node: HostNode): boolean {
+	if (c.paused > 0) { return false; }
 	let top = c.open[c.open.length - 1];
 	if (top.node === node && c.open.length > 1) {
-		if (leftover(c, top)) { throw "hydrate: the page has more children in " + pathOf(c) + " than the tree renders"; }
+		if (leftover(c, top)) {
+			refuse(c, "hydrate: the page has more children in " + pathOf(c) + " than the tree renders");
+			return false;
+		}
 		c.open.pop();
 		top = c.open[c.open.length - 1];
 	}
-	if (top.node !== parent) { throw "hydrate: a node read from " + pathOf(c) + " was placed into another parent"; }
+	if (top.node !== parent) {
+		refuse(c, "hydrate: a node read from " + pathOf(c) + " was placed into another parent");
+		return false;
+	}
+	return true;
 }
 
 export function beginClaim(host: Host, container: HostNode): void {
@@ -101,25 +128,47 @@ export function beginClaim(host: Host, container: HostNode): void {
 		take: take as (parent: HostNode, after: HostNode | null, tag: string) => HostNode | null,
 		open: [{ node: container, tag: "", last: null, count: 0 }],
 		paused: 0,
+		refused: null,
+		unsealed: [],
 		createElement: host.createElement,
 		createText: host.createText,
 		append: host.append,
 		insertBefore: host.insertBefore,
 		cloneNode: host.cloneNode,
 	};
-	host.createElement = (tag: string): HostNode => c.paused > 0 ? c.createElement(tag) : claimNext(c, tag);
-	host.createText = (s: string): HostNode => c.paused > 0 ? c.createText(s) : claimNext(c, "");
+	host.createElement = (tag: string): HostNode => {
+		const node = claimNext(c, tag);
+		return node !== null ? node as HostNode : c.createElement(tag);
+	};
+	host.createText = (s: string): HostNode => {
+		const node = claimNext(c, "");
+		return node !== null ? node as HostNode : c.createText(s);
+	};
 	host.append = (parent: HostNode, child: HostNode): void => {
-		if (c.paused > 0) { c.append(parent, child); } else { settle(c, parent, child); }
+		if (!settled(c, parent, child)) { c.append(parent, child); }
 	};
 	host.insertBefore = (parent: HostNode, node: HostNode, ref: HostNode | null): void => {
-		if (c.paused > 0) { c.insertBefore(parent, node, ref); } else { settle(c, parent, node); }
+		if (!settled(c, parent, node)) { c.insertBefore(parent, node, ref); }
 	};
 	host.cloneNode = null;
 	active = c;
 }
 
-export function endClaim(host: Host, complete: boolean): void {
+export function claimRefusal(host: Host): string | null {
+	const c = active;
+	if (c === null || c.host !== host) { return null; }
+	if (c.refused !== null) { return c.refused; }
+	if (c.open.length > 1) {
+		refuse(c, "hydrate: " + pathOf(c) + " was read from the page but never placed");
+		return c.refused;
+	}
+	const root = c.open[0];
+	const rest = root.last === null ? host.firstChild(root.node) : host.nextSibling(root.last as HostNode);
+	if (rest !== null) { refuse(c, "hydrate: the page has more children in the container than the tree renders"); }
+	return c.refused;
+}
+
+export function endClaim(host: Host): void {
 	const c = active;
 	if (c === null || c.host !== host) { return; }
 	host.createElement = c.createElement;
@@ -128,11 +177,6 @@ export function endClaim(host: Host, complete: boolean): void {
 	host.insertBefore = c.insertBefore;
 	host.cloneNode = c.cloneNode;
 	active = null;
-	if (!complete) { return; }
-	if (c.open.length > 1) { throw "hydrate: " + pathOf(c) + " was read from the page but never placed"; }
-	const root = c.open[0];
-	const rest = root.last === null ? host.firstChild(root.node) : host.nextSibling(root.last as HostNode);
-	if (rest !== null) { throw "hydrate: the page has more children in the container than the tree renders"; }
 }
 
 export function unclaimed(host: Host, mount: () => void): void {
@@ -149,7 +193,11 @@ export function unclaimed(host: Host, mount: () => void): void {
 export function regionAnchor(host: Host, parent: HostNode, before: HostNode | null): HostNode {
 	if (needsStartMarker(parent)) { place(host, parent, host.createText(""), before); }
 	const c = reading(host);
-	if (c !== null) { return c.createText(""); }
+	if (c !== null) {
+		const unsealed = c.createText("");
+		c.unsealed.push({ parent, anchor: unsealed });
+		return unsealed;
+	}
 	const anchor = host.createText("");
 	place(host, parent, anchor, before);
 	return anchor;
@@ -162,9 +210,13 @@ export function regionParent(host: Host, anchor: HostNode, region: string): Host
 }
 
 export function sealRegion(host: Host, parent: HostNode, anchor: HostNode): void {
-	const c = reading(host);
-	if (c === null) { return; }
+	const c = active;
+	if (c === null || c.host !== host) { return; }
+	const at = c.unsealed.findIndex((u: Unsealed): boolean => u.anchor === anchor);
+	if (at < 0) { return; }
 	const served = claimNext(c, "");
+	c.unsealed.splice(at, 1);
+	if (served === null) { return; }
 	c.paused += 1;
 	try {
 		place(host, parent, anchor, served);
