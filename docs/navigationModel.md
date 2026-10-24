@@ -264,8 +264,19 @@ server render, `"navigate"` for one a link, `useNavigate` or `router.navigate` o
 `"native"` for one browser back, forward or `go` opened (`routing.ts:447-507`), and
 `"preload"` for `router.preload(href)`, which runs the preloads along an address and mounts
 nothing (`routing.ts:650-680`). A page a history move mounts again is preloaded again, as
-Solid's remounted route is. Not ported: the return value reaching the component as `props.data`
-(`routing.ts:704-715`), because a component here takes no props. `followPreloads(router.preload)`
+Solid's remounted route is. A route's component receives `{ params, location, data }`, Solid's
+`RouteSectionProps` (`types.ts:84-101`): `data` is what the same preload call returned, once per
+mount (`routing.ts:690-720`, `createRouteContext`). `route<P>` takes a void preload; `route<P, D>`
+takes one that returns `D`, and `componentOf(entry, (props: RouteSectionProps<P, D>) => ...)` gives
+the component `params` as the typed `P` through the codec and `data` as `D`, so a preload that
+returns a `query` promise hands it to `createAsync(() => props.data)` with no second fetch. A
+`path` entry's component gets `params` as the string map and no readable `data`, because its
+`preload` returns nothing. `children` stays on `LayoutProps`: Neon keeps a layout and a page
+apart, where Solid's one component renders an outlet through `props.children`. `location` is the
+address the route mounted with, not live; `useLocation()` is the live one. A generic instantiated
+as `void` does not build on C (a class field of type `D`), so `route` has a void and a data
+overload and a void preload keeps its place. `hrefOf` and `paramsOf` name `D` beside `P`.
+`followPreloads(router.preload)`
 in `src/platform/browser/routingHistory.ms` is `data/events.ts:83-146`: hover waits 20 ms and
 does not repeat on the same link, focus and touch preload at once, and `preload="false"` on the
 anchor skips it; `<A>` takes no `preload` prop, so that attribute is written on a plain `<a>`.
@@ -405,8 +416,9 @@ has no object member emits invalid C, and a generic `Json<never>` emits a `void`
 An absolute `Location` is an error naming the case, because a router opens only the
 addresses of its own routes.
 
-A route's `component` is `(props: {}) => NeonNode`, so `lazy<{}>(load)` fills it directly
-(Solid's `Component<RouteSectionProps>`; a route passes no props here), under a layout that
+A route's `component` is `(props: RouteSectionProps<Map<string, string>, unknown>) => NeonNode`, so
+`lazy<{}>(load)` and a component with no parameter fill it directly (Solid's
+`RouteSectionComponent`, whose `Component<{}>` member is the same case), under a layout that
 holds the `<Loading>` (the router adds none). Solid Router calls `component.preload` at
 `routing.ts:650-681` and `:690-704`, which Neon lacks until the `.preload()` card lands.
 `tests/render/lazyRoute.test.ms` pins it on the mock host and `tests/browser/lazy.test.ms`
