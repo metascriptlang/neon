@@ -3,7 +3,7 @@ import { HostNode, mockNode, mockHost, render, mockToString } from "../../src/re
 import { element } from "../../src/macros/ui/element";
 import { Gate, gated, release } from "../core/asyncClock";
 import { Loading } from "../../src/macros/ui/flow";
-import { lazy, createComponent } from "../../src/render/component";
+import { lazyModule, createComponent } from "../../src/render/component";
 import { createMemoryRoutingHistory } from "../../src/navigation/routingHistory";
 import { RouterProvider, createRoutes, createRouter } from "../../src/navigation/router";
 
@@ -17,7 +17,7 @@ async function loadDocs(): Promise<(props: {}) => NeonNode> {
 	return gated(gate, Docs);
 }
 
-const Docs2 = lazy<{}>(loadDocs);
+const Docs2 = lazyModule<{}>("tests/navigation/routeLazy/docs", loadDocs);
 
 test "a route entry takes a lazy component directly, and mounts it at once once its module has loaded" {
 	const warm = mockNode("warm");

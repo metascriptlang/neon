@@ -4,13 +4,13 @@ import { NeonNode } from "../../src/render/hostTypes";
 import { el, text } from "../../src/render/node";
 import { element } from "../../src/macros/ui/element";
 import { HostNode, MockNode, mockNode, mockHost, render, mockToString } from "../../src/render/host";
-import { lazy } from "../../src/render/component";
+import { lazyModule } from "../../src/render/component";
 import { Loading } from "../../src/macros/ui/flow";
 import { createMemoryRoutingHistory } from "../../src/navigation/routingHistory";
 import { LayoutProps, RouterProvider, createRouter, createRoutes } from "../../src/navigation/router";
 
 const loads = [0];
-const LazyDocs = lazy<{}>(loadDocs);
+const LazyDocs = lazyModule<{}>("tests/render/lazyRoute/docs", loadDocs);
 
 function Docs(props: {}): NeonNode {
 	return el("h1", [], [], text("docs page"));

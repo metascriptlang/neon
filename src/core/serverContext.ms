@@ -74,6 +74,7 @@ export class Fragments {
 
 export class ServerContext {
 	slots: Map<string, ServerSlot> = new Map<string, ServerSlot>();
+	modules: Map<string, string> = new Map<string, string>();
 	started: string[] = [];
 	loops: Promise<void>[] = [];
 	fragments: Fragments = new Fragments();

@@ -2,6 +2,7 @@ import { hydrating } from "./claim";
 
 const values = new Map<string, string>();
 const errors = new Map<string, string>();
+const modules = new Map<string, string>();
 
 when (js) {
 	extern function jsHas(table: cstring, id: cstring): boolean from
@@ -12,6 +13,8 @@ when (js) {
 		"((t, i, v) => { const h = (globalThis._$HY ??= { r: {}, e: {} }); h[t] ??= {}; h[t][i] = v; })(#, #, #)";
 	extern function jsDrop(table: cstring, id: cstring): void from
 		"((t, i) => { const h = globalThis._$HY; if (h !== undefined && h[t] !== undefined) delete h[t][i]; })(#, #)";
+	extern function jsModules(): cstring from
+		"(Object.values((globalThis._$$HY ?? {}).m ?? {}).join(\"\\n\"))";
 	extern function jsClear(): void from "(delete globalThis._$$HY)";
 }
 
@@ -69,6 +72,25 @@ export function putError(id: string, message: string): void {
 	}
 }
 
+export function putModule(id: string, key: string): void {
+	when (js) {
+		jsWrite("m", id, key);
+	} else {
+		modules.set(id, key);
+	}
+}
+
+export function moduleKeys(): string[] {
+	const keys: string[] = [];
+	when (js) {
+		const listed: string = jsModules();
+		for (const key of listed === "" ? [] : listed.split("\n")) { if (!keys.includes(key)) { keys.push(key); } }
+	} else {
+		for (const key of modules.values()) { if (!keys.includes(key)) { keys.push(key); } }
+	}
+	return keys;
+}
+
 export function dropRecord(id: string): void {
 	when (js) {
 		jsDrop("r", id);
@@ -85,6 +107,7 @@ export function clearRecords(): void {
 	} else {
 		values.clear();
 		errors.clear();
+		modules.clear();
 	}
 }
 

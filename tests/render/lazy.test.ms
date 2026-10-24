@@ -2,7 +2,8 @@
 import { el, text, NeonNode } from "../../src/render/node";
 import { Host, HostNode } from "../../src/render/hostTypes";
 import { MockNode, mockHost, render, mockToString } from "../../src/render/host";
-import { lazy, createComponent } from "../../src/render/component";
+import { lazyModule, createComponent } from "../../src/render/component";
+import { lazy } from "../../src/macros/lazy";
 import { createSignal } from "../../src/core/signal";
 import { flush } from "../../src/core/runtime";
 import { sleepAsync as pause } from "std/core/promise";
@@ -22,7 +23,7 @@ async function loadGreeting(): Promise<(props: { label: string }) => NeonNode> {
 	return gated(gate, Greeting);
 }
 
-const Lazy = lazy(loadGreeting);
+const Lazy = lazyModule("tests/render/lazy/greeting", loadGreeting);
 
 test "a lazy component shows the Loading fallback until its load settles, and loads once for two instances" {
 	const host = mockHost();
@@ -54,7 +55,7 @@ test "a lazy component whose module has loaded mounts at once with no fallback" 
 }
 
 test "a lazy component inside a For row under Loading mounts when its module settles" {
-	const late = lazy(loadGreeting);
+	const late = lazyModule("tests/render/lazy/greeting", loadGreeting);
 	const [items, _set] = createSignal<int32[]>([1]);
 	const host = mockHost();
 	const root = host.createElement("root");

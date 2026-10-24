@@ -98,4 +98,5 @@ export {
 } from "./animation/index";
 
 export * from "./navigation/index";
-export { lazy } from "./render/component";
+export { lazy } from "./macros/lazy";
+export { lazyModule, preloadLazy, preloadServedLazy } from "./render/component";

@@ -1,6 +1,6 @@
 import { el, text, NeonNode } from "../../src/render/node";
 import { MockNode, HostNode, mockHost, mockNode, render, hydrate, mockToString } from "../../src/render/host";
-import { lazy, createComponent } from "../../src/render/component";
+import { lazyModule, createComponent } from "../../src/render/component";
 import { Loading } from "../../src/macros/ui/flow";
 import { Gate, gated, release } from "../core/asyncClock";
 
@@ -14,7 +14,7 @@ function shell(Page: (props: { label: string }) => NeonNode): NeonNode {
 
 async function loaded(): Promise<(props: { label: string }) => NeonNode> {
 	const gate = new Gate();
-	const Page = lazy((): Promise<(props: { label: string }) => NeonNode> => gated(gate, Greeting));
+	const Page = lazyModule("tests/render/lazyHydrate/page", (): Promise<(props: { label: string }) => NeonNode> => gated(gate, Greeting));
 	const scratch = mockNode("root");
 	const dispose = render(shell(Page), mockHost(), scratch as unknown as HostNode, "");
 	await release(gate);
