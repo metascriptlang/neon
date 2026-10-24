@@ -150,6 +150,8 @@ export {
 	RouteView,
 	Routes,
 	RouterLocation,
+	PreloadArgs,
+	PreloadIntent,
 	RouterResponse,
 	NavigateOptions,
 	ToOptions,

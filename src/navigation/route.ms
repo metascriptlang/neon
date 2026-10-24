@@ -15,6 +15,20 @@ export interface ParamsCodec<P> {
 	stringify: (params: P) => Map<string, string>;
 }
 
+export type PreloadIntent = "initial" | "navigate" | "native" | "preload";
+
+export interface RouterLocation {
+	pathname: string;
+	search: Map<string, string>;
+	hash: string;
+}
+
+export interface PreloadArgs<P> {
+	params: P;
+	location: RouterLocation;
+	intent: PreloadIntent;
+}
+
 export enum GuardAction {
 	Continue,
 	Redirect,
@@ -46,6 +60,7 @@ export interface RouteNode {
 	accepts: (values: Map<string, string>) => boolean;
 	guard: ((values: Map<string, string>, found: RouteMatch) => GuardDecision) | null;
 	paths: (() => Map<string, string>[]) | null;
+	preload: ((args: PreloadArgs<Map<string, string>>) => void) | null;
 }
 
 export interface RouteDef<P> {
@@ -58,12 +73,14 @@ export interface RouteOptions<P> {
 	guard?: ((params: P, found: RouteMatch) => GuardDecision) | null;
 	status?: int32 | null;
 	paths?: (() => P[]) | null;
+	preload?: ((args: PreloadArgs<P>) => void) | null;
 }
 
 export interface PathOptions {
 	guard?: ((params: Map<string, string>, found: RouteMatch) => GuardDecision) | null;
 	status?: int32 | null;
 	paths?: (() => Map<string, string>[]) | null;
+	preload?: ((args: PreloadArgs<Map<string, string>>) => void) | null;
 }
 
 export interface RouteEntry {
@@ -121,6 +138,19 @@ function typedPaths<P>(codec: ParamsCodec<P>, paths: () => P[]): () => Map<strin
 	};
 }
 
+function typedPreload<P>(
+	codec: ParamsCodec<P>,
+	preload: (args: PreloadArgs<P>) => void,
+): (args: PreloadArgs<Map<string, string>>) => void {
+	return (args: PreloadArgs<Map<string, string>>): void => {
+		const parsed = codec.parse(args.params);
+		if (!parsed.ok) {
+			throw new Error("routing: the params of a matched route no longer parse");
+		}
+		preload({ params: parsed.value, location: args.location, intent: args.intent });
+	};
+}
+
 function routeDef<P>(
 	pattern: string | null,
 	options: RouteOptions<P>,
@@ -129,6 +159,7 @@ function routeDef<P>(
 	const codec = options.params;
 	const guard = options.guard;
 	const paths = options.paths;
+	const preload = options.preload;
 	const node: RouteNode = {
 		pattern,
 		status: options.status ?? 200,
@@ -136,6 +167,7 @@ function routeDef<P>(
 		accepts: (values: Map<string, string>): boolean => codec.parse(values).ok,
 		guard: guard === null ? null : typedGuard<P>(codec, guard),
 		paths: paths === null ? null : typedPaths<P>(codec, paths),
+		preload: preload === null ? null : typedPreload<P>(codec, preload),
 	};
 	return { node, params: codec };
 }
@@ -160,6 +192,7 @@ export function path(
 		guard: options.guard,
 		status: options.status,
 		paths: options.paths,
+		preload: options.preload,
 	}, true);
 }
 

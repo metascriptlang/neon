@@ -23,6 +23,9 @@ import {
 	RouteMatch,
 	RouteNode,
 	RouteTree,
+	PreloadArgs,
+	PreloadIntent,
+	RouterLocation,
 	createRouteTree,
 	hrefOf,
 	path,
@@ -77,6 +80,7 @@ export interface RouteConfig {
 	status?: int32 | null;
 	guard?: ((params: Map<string, string>, found: RouteMatch) => GuardDecision) | null;
 	paths?: (() => Map<string, string>[]) | null;
+	preload?: ((args: PreloadArgs<Map<string, string>>) => void) | null;
 	children?: RouteConfig[] | null;
 }
 
@@ -191,11 +195,11 @@ function compile(configs: RouteConfig[], views: RouteView[], ids: int32[], paren
 			throw new Error("routing: " + labelOf(config) + " has children, so it takes a layout, not a component");
 		}
 		const typed = config.route;
-		if (typed !== null && (config.path !== null || config.status !== null || config.guard !== null || config.paths !== null)) {
-			throw new Error("routing: " + labelOf(config) + " takes its path, status, guard and paths from its route");
+		if (typed !== null && (config.path !== null || config.status !== null || config.guard !== null || config.paths !== null || config.preload !== null)) {
+			throw new Error("routing: " + labelOf(config) + " takes its path, status, guard, paths and preload from its route");
 		}
 		const node = typed === null
-			? path(config.path, { status: config.status, guard: config.guard, paths: config.paths }).node
+			? path(config.path, { status: config.status, guard: config.guard, paths: config.paths, preload: config.preload }).node
 			: (typed as RouteRef).node;
 		const id = views.length as int32;
 		const view: RouteView = {
@@ -228,11 +232,7 @@ export function createRoutes(configs: RouteConfig[]): Routes {
 	return { tree: createRouteTree(entries), views, roots };
 }
 
-export interface RouterLocation {
-	pathname: string;
-	search: Map<string, string>;
-	hash: string;
-}
+export { RouterLocation, PreloadArgs, PreloadIntent } from "./route";
 
 export interface RouterResponse {
 	status: int32;
@@ -312,6 +312,7 @@ interface Stop {
 	params: Map<string, string>;
 	search: Map<string, string>;
 	hash: string;
+	intent: PreloadIntent;
 }
 
 struct StopKey {
@@ -372,6 +373,7 @@ function stopOf(
 	hash: string,
 	seed: string,
 	visit: int32,
+	intent: PreloadIntent,
 ): Stop {
 	const matched = chain[depth];
 	const parent = depth === 0 ? "" : chain[depth - 1].path;
@@ -385,10 +387,11 @@ function stopOf(
 		params: matched.params,
 		search,
 		hash,
+		intent,
 	};
 }
 
-function defaultStop(routes: Routes, id: int32, parent: string): Stop {
+function defaultStop(routes: Routes, id: int32, parent: string, intent: PreloadIntent): Stop {
 	const view = routes.views[id];
 	const none = new Map<string, string>();
 	const built = routes.tree.href(view.node, none, none);
@@ -405,6 +408,7 @@ function defaultStop(routes: Routes, id: int32, parent: string): Stop {
 		params: none,
 		search: none,
 		hash: "",
+		intent,
 	};
 }
 
@@ -452,7 +456,7 @@ function stopSerializer(routes: Routes): WebKeySerializer<Stop> {
 			for (let depth: int32 = 0; depth < chain.length; depth += 1) {
 				if (chain[depth].node !== node) { continue; }
 				const none = new Map<string, string>();
-				return Result.ok(stopOf(routes, chain, depth, none, "", key.seed, key.visit));
+				return Result.ok(stopOf(routes, chain, depth, none, "", key.seed, key.visit, "native"));
 			}
 			return Result.err(WebNavigationError.UndecodableKey);
 		},
@@ -483,14 +487,14 @@ function seedStops(
 	from: Stop,
 	seeding: Seeding,
 ): Stop[] {
-	if (chain === null) { return [defaultStop(routes, defaultChild(routes, owner), parent)]; }
+	if (chain === null) { return [defaultStop(routes, defaultChild(routes, owner), parent, from.intent)]; }
 	const matched = chain as MatchedRoute[];
 	const leaf = depth === matched.length - 1;
 	const seed = leaf ? pathnameOf(from.seed) : from.seed;
-	const target = stopOf(routes, matched, depth, from.search, from.hash, seed, 0);
+	const target = stopOf(routes, matched, depth, from.search, from.hash, seed, 0, from.intent);
 	const initial = owner < 0 || !seeding.cold ? -1 : routes.views[owner].initial;
 	if (initial < 0 || initial === target.route) { return [target]; }
-	return [defaultStop(routes, initial, parent), target];
+	return [defaultStop(routes, initial, parent, from.intent), target];
 }
 
 function createLevel(
@@ -521,7 +525,7 @@ function createLevel(
 				items.push(seedStops(routes, owner, parent, chain, depth, from, seeding)[0]);
 				selectedIndex = i as int32;
 			} else {
-				items.push(defaultStop(routes, id, parent));
+				items.push(defaultStop(routes, id, parent, from.intent));
 			}
 		}
 		const pages = createChildPages<Stop, Place>({ items, selectedIndex }, stopKey, factory);
@@ -642,6 +646,7 @@ interface Target {
 	hash: string;
 	seed: string;
 	replace: boolean;
+	intent: PreloadIntent;
 }
 
 function updated(stop: Stop, target: Target): Stop {
@@ -672,7 +677,7 @@ function walk(routes: Routes, level: Level, target: Target, depth: int32): Walke
 		const page = current.items[at];
 		if (page.path !== routePath) {
 			const items = current.items.slice(0);
-			items[at] = stopOf(routes, chain, depth, target.search, target.hash, seed, 0);
+			items[at] = stopOf(routes, chain, depth, target.search, target.hash, seed, 0, target.intent);
 			level.visit(at);
 			pages.navigate((previous: Pages<Stop>): Pages<Stop> => ({ items, selectedIndex: at }));
 			return Walked.Changed;
@@ -713,12 +718,13 @@ function walk(routes: Routes, level: Level, target: Target, depth: int32): Walke
 		target.hash,
 		seed,
 		freeVisit(stops, route, routePath, skip),
+		target.intent,
 	);
 	if (target.replace) { stack.replaceCurrent(next); } else { stack.push(next); }
 	return Walked.Changed;
 }
 
-function targetOf(resolved: Resolved, replace: boolean): Target {
+function targetOf(resolved: Resolved, replace: boolean, intent: PreloadIntent): Target {
 	const match = resolved.match;
 	return {
 		chain: match.chain,
@@ -726,6 +732,7 @@ function targetOf(resolved: Resolved, replace: boolean): Target {
 		hash: match.hash,
 		seed: pathnameOf(resolved.address),
 		replace,
+		intent,
 	};
 }
 
@@ -801,10 +808,10 @@ export class Router {
 		this.group = group;
 	}
 
-	apply(resolved: Resolved, replace: boolean, visit: boolean = false): Walked {
+	apply(resolved: Resolved, replace: boolean, visit: boolean = false, intent: PreloadIntent = "native"): Walked {
 		let walked = Walked.Unchanged;
 		this.group((): void => {
-			walked = walk(this.routes, this.root, targetOf(resolved, replace), 0);
+			walked = walk(this.routes, this.root, targetOf(resolved, replace, intent), 0);
 			this.current.set(resolved);
 		}, visit);
 		return walked;
@@ -834,12 +841,28 @@ export class Router {
 		const replace = options === null ? false : (options as NavigateOptions).replace ?? false;
 		const resolved = follow(this.routes.tree, href);
 		if (!resolved.ok) { return false; }
-		const walked = this.apply(resolved.value, replace, !replace);
+		const walked = this.apply(resolved.value, replace, !replace, "navigate");
 		const session = this.session;
 		if (walked === Walked.HashOnly && session !== null) {
 			return (session as RoutingSession).sync(replace).ok;
 		}
 		return true;
+	}
+
+	preload(href: string): void {
+		const found = this.routes.tree.match(href);
+		if (!found.ok) { return; }
+		const match = found.value;
+		const location: RouterLocation = { pathname: pathnameOf(href), search: match.search, hash: match.hash };
+		for (const level of match.chain) {
+			const preload = level.node.preload;
+			if (preload !== null) {
+				untrack((): number => {
+					(preload as (args: PreloadArgs<Map<string, string>>) => void)({ params: level.params, location, intent: "preload" });
+					return 0;
+				});
+			}
+		}
 	}
 
 	go(delta: int32): boolean {
@@ -924,6 +947,7 @@ export function createRouter(routes: Routes, history: RoutingHistory): Result<Ro
 		params: none,
 		search: first.match.search,
 		hash: first.match.hash,
+		intent: "initial",
 	};
 	const seeding: Seeding = { cold: true };
 	const root = createLevel(routes, -1, "", first.match.chain, 0, from, seeding);
@@ -1052,6 +1076,15 @@ function placeView(routes: Routes, child: NavigationChild<Stop, Place>, steer: S
 	const stop = untrack((): Stop => child.configuration());
 	const found = routes.views[stop.route];
 	const scope: RouteScope = { params: stop.params, node: found.node, parent };
+	const preload = found.node.preload;
+	if (preload !== null) {
+		const leaf = leafOf(child);
+		const location: RouterLocation = { pathname: leaf.path, search: leaf.search, hash: leaf.hash };
+		untrack((): number => {
+			(preload as (args: PreloadArgs<Map<string, string>>) => void)({ params: stop.params, location, intent: stop.intent });
+			return 0;
+		});
+	}
 	const component = found.component;
 	const layout = found.layout;
 	let body: NeonNode;
