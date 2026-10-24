@@ -316,3 +316,18 @@ test "snapshot of a nested store reads the subtree and tracks only the read of t
 	flush();
 	assert seen.join(",") === "John,Ann", "seen: " + seen.join(",");
 }
+
+test "a row held across a shift is copied at its new index, and the array keeps its length" {
+	const seed: Item[] = [{ id: 1, title: "a" }, { id: 2, title: "b" }];
+	const [todos, setItems] = createStore<Item[]>(seed);
+	const row = todos[1];
+	setItems((t) => { t.shift(); });
+	flush();
+	setItems((t) => { t[0].title = "B"; });
+	flush();
+	assert todos.length === 1, "length: " + todos.length.toString();
+	assert todos[0].title === "B" && row.title === "B", "title: " + todos[0].title;
+	const snap = snapshot(todos);
+	assert snap.length === 1 && snap[0].title === "B", "backing length: " + snap.length.toString();
+	assert seed.length === 2 && seed[0].title === "a" && seed[1].title === "b", "seed";
+}

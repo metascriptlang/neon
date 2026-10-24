@@ -70,7 +70,7 @@ export class StoreTraps<T> {
 	private origin: T;
 	private owned: boolean = false;
 	private privatizeUp: () => void = (): void => {};
-	private adoptUp: (copy: T) => void = (copy: T): void => {};
+	private adoptUp: (old: T, copy: T) => void = (old: T, copy: T): void => {};
 	private root: StoreRoot;
 	private slots: Map<string, SlotBase> = new Map<string, SlotBase>();
 	private children: Map<string, ChildBase> = new Map<string, ChildBase>();
@@ -137,21 +137,36 @@ export class StoreTraps<T> {
 	private born<K extends keyof T>(key: K, value: T[K]): StoreTraps<T[K]> {
 		const traps = new StoreTraps<T[K]>(value, this.root);
 		traps.privatizeUp = (): void => { this.privatize(); };
-		traps.adoptUp = (copy: T[K]): void => { Reflect.set(this.raw, key, copy); };
+		traps.adoptUp = (old: T[K], copy: T[K]): void => { this.replaceChild(key, old, copy); };
 		return traps;
+	}
+
+	private replaceChild<K extends keyof T>(key: K, old: T[K], copy: T[K]): void {
+		const raw = this.raw;
+		when (isArray<T>()) {
+			for (let i = 0; i < raw.length; i += 1) {
+				if (Reflect.get(raw, i) === old) {
+					Reflect.set(raw, i, copy);
+					return;
+				}
+			}
+		} else {
+			if (Reflect.get(raw, key) === old) { Reflect.set(raw, key, copy); }
+		}
 	}
 
 	privatize(): void {
 		if (this.owned) { return; }
 		this.privatizeUp();
-		const copy = copyOf<T>(this.raw);
+		const old = this.raw;
+		const copy = copyOf<T>(old);
 		when (!isArray<T>()) {
 			const found = this.root.targets.get(this.raw as unknown);
 			if (found !== undefined) { this.root.targets.set(copy as unknown, found); }
 		}
 		this.raw = copy;
 		this.owned = true;
-		this.adoptUp(copy);
+		this.adoptUp(old, copy);
 	}
 
 	private committed<K extends keyof T>(key: K): T[K] {
