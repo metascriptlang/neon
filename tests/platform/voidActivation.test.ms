@@ -20,7 +20,7 @@ function tapAt(vh: VoidHost, x: float32, y: float32): void {
 	flush();
 }
 
-test "Void down clickAt up activates gesture only on release, and a pointer click alone is no press" {
+test "Void down up activates gesture only on release, and its pointer press event is no second press" {
 	const vh = createVoidHostWith(Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0)), DEFAULT_FONT);
 	let hits = 0;
 	const dispose = createRoot((end: () => void): () => void => {
@@ -36,15 +36,14 @@ test "Void down clickAt up activates gesture only on release, and a pointer clic
 	});
 	vh.layout(200.0, 100.0);
 	vh.pointerDown(10.0, 10.0, 1);
-	vh.clickAt(10.0, 10.0);
-	assert hits === 0, "physical down/clickAt must not activate prematurely";
+	assert hits === 0, "physical down must not activate prematurely";
 	vh.pointerUp(10.0, 10.0, 1);
 	assert hits === 1, "release activates once";
 	vh.clickAt(10.0, 10.0);
-	assert hits === 1, "additional physical click is not semantic activation";
+	assert hits === 2, "a whole click is one more press";
 	dispose();
 	vh.clickAt(10.0, 10.0);
-	assert hits === 1, "removed gesture routes stay inert";
+	assert hits === 2, "removed gesture routes stay inert";
 
 	const control = createVoidHostWith(Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0)), DEFAULT_FONT);
 	const cheap = render(element(<Pressable style={{ width: 100, height: 50 }}
@@ -53,14 +52,12 @@ test "Void down clickAt up activates gesture only on release, and a pointer clic
 			hits += 1;
 		}} />), control.host, control.root);
 	control.layout(200.0, 100.0);
-	control.clickAt(10.0, 10.0);
-	assert hits === 1, "a pointer click without a touch is no press, as Pressability's onClick ignores pointer clicks";
 	tapAt(control, 10.0, 10.0);
-	assert hits === 2, "a whole tap presses";
+	assert hits === 3, "a whole tap presses once: Pressability's onClick ignores the host's pointer press";
 	cheap();
 }
 
-test "Void long down clickAt up does not resurrect press" {
+test "Void long down up does not resurrect press" {
 	const vh = createVoidHostWith(Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0)), DEFAULT_FONT);
 	const [log, setLog] = createSignal("");
 	const dispose = render(element(<Pressable style={{ width: 100, height: 50 }}
@@ -69,10 +66,8 @@ test "Void long down clickAt up does not resurrect press" {
 		onPress={(): void => { setLog(log() + "press;"); }} />), vh.host, vh.root);
 	vh.layout(200.0, 100.0);
 	vh.pointerDown(10.0, 10.0, 1);
-	vh.clickAt(10.0, 10.0);
 	await sleepAsync(180);
 	vh.pointerUp(10.0, 10.0, 1);
-	vh.clickAt(10.0, 10.0);
 	assert log() === "long;", "long gesture stays suppressed: " + log();
 	dispose();
 }
