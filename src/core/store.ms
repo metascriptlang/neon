@@ -541,3 +541,6 @@ export function createStore<T extends object>(first: T | ((draft: Draft<T>) => v
 	return [new Proxy(value, traps), setterOf<T>(traps)];
 }
 
+export function createProjection<T extends object>(fn: (draft: Draft<T>) => void, seed: T): Store<T> {
+	return new Proxy(seed, deriveStore<T>(seed, fn));
+}

@@ -11,7 +11,7 @@ export { createErrorBoundary, createLoadingBoundary } from "./core/boundary";
 export { mapArray, mapArrayKeyedBy, mapArrayByPosition, repeat } from "./core/array";
 export { createList, List, ListOp, ListQueue } from "./core/list";
 export { Dispose, Cleanup, NotReadyError } from "./core/types";
-export { createStore, snapshot, reconcile, Store, Draft, SetStoreFunction } from "./core/store";
+export { createStore, createProjection, snapshot, reconcile, Store, Draft, SetStoreFunction } from "./core/store";
 
 export { Host, HostNode, NeonNode } from "./render/hostTypes";
 export { render, hydrate } from "./render/host";

@@ -1,10 +1,10 @@
 import { createSignal, untrack } from "../../src/core/signal";
-import { createEffect } from "../../src/core/effect";
+import { createEffect, createRenderEffect } from "../../src/core/effect";
 import { createMemo } from "../../src/core/memo";
 import { createRoot } from "../../src/core/owner";
 import { flush } from "../../src/core/runtime";
 import { Cleanup } from "../../src/core/types";
-import { createStore, snapshot, reconcile } from "../../src/core/store";
+import { createStore, createProjection, snapshot, reconcile } from "../../src/core/store";
 
 interface Todo { id: number; title: string; done: boolean; }
 interface Item { id: number; title: string; }
@@ -617,6 +617,173 @@ test "the seed of a derived store is never written" {
 	setSource(4);
 	flush();
 	assert state.count === 4 && seed.count === 0, "seed: " + seed.count.toString();
+}
+
+test "a projection is a selector: a key's reader runs only when that key changes" {
+	const [source, setSource] = createSignal(0);
+	let previous = -1;
+	const runs = [0, 0, 0];
+	const memos: (() => boolean)[] = [];
+	const dispose = createRoot((d) => {
+		const flags = createProjection<boolean[]>((draft) => {
+			const s = source();
+			if (s !== previous && previous >= 0 && previous < 3) { draft[previous] = false; }
+			if (s >= 0 && s < 3) { draft[s] = true; }
+			previous = s;
+		}, [false, false, false]);
+		for (let i = 0; i < 3; i += 1) {
+			memos.push(createMemo<boolean>((): boolean => { runs[i] += 1; return flags[i]; }));
+		}
+		return d;
+	});
+	assert memos[0]() === true && memos[1]() === false && memos[2]() === false, "first";
+	assert runs.join(",") === "1,1,1", "first runs: " + runs.join(",");
+	setSource(1);
+	flush();
+	assert memos[0]() === false && memos[1]() === true && memos[2]() === false, "after 1";
+	assert runs.join(",") === "2,2,1", "runs after 1: " + runs.join(",");
+	setSource(2);
+	flush();
+	assert memos[1]() === false && memos[2]() === true, "after 2";
+	assert runs.join(",") === "2,3,2", "runs after 2: " + runs.join(",");
+	setSource(-1);
+	flush();
+	assert memos[2]() === false, "after -1";
+	assert runs.join(",") === "2,3,3", "runs after -1: " + runs.join(",");
+	dispose();
+	setSource(0);
+	flush();
+	setSource(1);
+	flush();
+	assert runs.join(",") === "2,3,3", "runs after dispose: " + runs.join(",");
+}
+
+test "a projection does not track the reads it makes through its own draft" {
+	const [bar, setBar] = createSignal("foo");
+	let calls = 0;
+	const projection = createRoot((d) => {
+		return createProjection<Pair2>((draft) => { draft.first = draft.second; draft.second = bar(); calls += 1; }, { first: "foo", second: "bar" });
+	});
+	assert projection.first === "bar" && projection.second === "foo" && calls === 1, "first";
+	setBar("baz");
+	flush();
+	assert projection.first === "foo" && projection.second === "baz" && calls === 2, "second: " + projection.first + " " + projection.second;
+}
+
+test "a projection reads another projection, and re-derives when it changes" {
+	const [x, setX] = createSignal(1);
+	const seen: string[] = [];
+	createRoot((d) => {
+		const a = createProjection<Count>((draft) => { draft.count = x(); }, { count: 0, label: "" });
+		const b = createProjection<Count>((draft) => { draft.count = a.count; }, { count: 0, label: "" });
+		createRenderEffect<number>((p: number | null): number => b.count, (v: number, p: number | null): Cleanup | null => {
+			seen.push(v.toString() + "/" + (p === null ? "none" : p.toString()));
+			return null;
+		});
+	});
+	assert seen.join(",") === "1/none", "created: " + seen.join(",");
+	setX(2);
+	flush();
+	assert seen.join(",") === "1/none,2/1", "seen: " + seen.join(",");
+}
+
+test "a projection selects one of a hundred rows with one reader run per change" {
+	const [source, setSource] = createSignal(-1);
+	let previous = -1;
+	let count = 0;
+	const labels: string[] = [];
+	createRoot((d) => {
+		const selected = createProjection<boolean[]>((draft) => {
+			const s = source();
+			if (previous >= 0 && previous !== s) { draft[previous] = false; }
+			if (s >= 0) { draft[s] = true; }
+			previous = s;
+		}, newFlags(100));
+		for (let i = 0; i < 100; i += 1) {
+			labels.push("");
+			createRenderEffect<boolean>((p: boolean | null): boolean => selected[i], (v: boolean, p: boolean | null): Cleanup | null => {
+				count += 1;
+				labels[i] = v ? "selected" : "no";
+				return null;
+			});
+		}
+	});
+	assert count === 100 && labels[3] === "no", "mount: " + count.toString();
+	count = 0;
+	setSource(3);
+	flush();
+	assert count === 1 && labels[3] === "selected", "select 3: " + count.toString();
+	count = 0;
+	setSource(6);
+	flush();
+	assert count === 2 && labels[3] === "no" && labels[6] === "selected", "select 6: " + count.toString();
+	setSource(-1);
+	flush();
+	assert count === 3 && labels[6] === "no", "clear: " + count.toString();
+	setSource(5);
+	flush();
+	assert count === 4 && labels[5] === "selected", "select 5: " + count.toString();
+}
+
+test "two readers of one projected key each run once per change" {
+	const [source, setSource] = createSignal(-1);
+	let previous = -1;
+	let count = 0;
+	const first: string[] = [];
+	const second: string[] = [];
+	createRoot((d) => {
+		const selected = createProjection<boolean[]>((draft) => {
+			const s = source();
+			if (previous >= 0 && previous !== s) { draft[previous] = false; }
+			if (s >= 0) { draft[s] = true; }
+			previous = s;
+		}, newFlags(100));
+		for (let i = 0; i < 100; i += 1) {
+			first.push("");
+			second.push("");
+			createRenderEffect<boolean>((p: boolean | null): boolean => selected[i], (v: boolean, p: boolean | null): Cleanup | null => {
+				count += 1;
+				first[i] = v ? "selected" : "no";
+				return null;
+			});
+			createRenderEffect<boolean>((p: boolean | null): boolean => selected[i], (v: boolean, p: boolean | null): Cleanup | null => {
+				count += 1;
+				second[i] = v ? "oui" : "non";
+				return null;
+			});
+		}
+	});
+	assert count === 200 && first[3] === "no" && second[3] === "non", "mount: " + count.toString();
+	count = 0;
+	setSource(3);
+	flush();
+	assert count === 2 && first[3] === "selected" && second[3] === "oui", "select 3: " + count.toString();
+	count = 0;
+	setSource(6);
+	flush();
+	assert count === 4 && first[3] === "no" && first[6] === "selected" && second[3] === "non" && second[6] === "oui", "select 6: " + count.toString();
+}
+
+function newFlags(count: number): boolean[] {
+	const flags: boolean[] = [];
+	for (let i = 0; i < count; i += 1) { flags.push(false); }
+	return flags;
+}
+
+test "the seed of a projection is never written" {
+	const [x, setX] = createSignal(1);
+	const seed: Todo[] = [{ id: 1, title: "a", done: false }];
+	const projection = createRoot((d) => {
+		return createProjection<Todo[]>((draft) => {
+			draft[0].title = "t" + x().toString();
+			draft.push({ id: x() + 1, title: "", done: false });
+		}, seed);
+	});
+	assert projection.length === 2 && projection[0].title === "t1", "first";
+	setX(2);
+	flush();
+	assert projection.length === 3 && projection[0].title === "t2" && projection[2].id === 3, "second: " + projection.length.toString();
+	assert seed.length === 1 && seed[0].title === "a", "seed: " + seed.length.toString() + " " + seed[0].title;
 }
 
 test "a splice through the draft removes the rows and re-runs the readers of the moved indexes" {
