@@ -11,18 +11,24 @@ import {
 	createNavigationContainerRef,
 } from "../../src/navigation/index";
 
-const Tab = createBottomTabNavigator<string>();
-const Drawer = createDrawerNavigator<string>();
+interface NavParams {
+	First: null;
+	Second: null;
+	Third: null;
+}
+
+const Tab = createBottomTabNavigator<NavParams>();
+const Drawer = createDrawerNavigator<NavParams>();
 
 let bodies: int32 = 0;
 
 let cleanups: int32 = 0;
 
-function Plain(props: ScreenProps<string>): NeonNode {
+function Plain(props: ScreenProps<NavParams>): NeonNode {
 	return <Text>plain</Text>;
 }
 
-function Counted(props: ScreenProps<string>): NeonNode {
+function Counted(props: ScreenProps<NavParams>): NeonNode {
 	bodies += 1;
 	onCleanup((): void => { cleanups += 1; });
 	return <Text>counted</Text>;

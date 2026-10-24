@@ -18,9 +18,24 @@ import {
 } from "../../src/navigation/index";
 import { clock, findLabel, settle, labelledNow } from "./navHarness";
 
-const Stack = createStackNavigator<string>();
+interface NavParams {
+	Home: null;
+	Detail: null;
+	Sheet: null;
+	Overlay: null;
+	Still: null;
+	One: null;
+	Two: null;
+	Plain: null;
+	Faded: null;
+	Top: null;
+	Deep: null;
+	Main: null;
+}
 
-function Named(props: ScreenProps<string>): NeonNode {
+const Stack = createStackNavigator<NavParams>();
+
+function Named(props: ScreenProps<NavParams>): NeonNode {
 	return <View><Text>{"screen " + props.route.name}</Text></View>;
 }
 
@@ -113,7 +128,7 @@ test "a pop slides the screen out to the right and unmounts it when it is gone" 
 
 let mounts = "";
 
-function Counted(props: ScreenProps<string>): NeonNode {
+function Counted(props: ScreenProps<NavParams>): NeonNode {
 	mounts += props.route.name + ";";
 	return <View><Text>{"screen " + props.route.name}</Text></View>;
 }
@@ -218,7 +233,7 @@ test "a swipe from the left edge drags the screen and pops it past a third of th
 	assert frames(root).length === 1;
 }
 
-const Drawer = createDrawerNavigator<string>();
+const Drawer = createDrawerNavigator<NavParams>();
 
 function panelOf(root: MockNode): MockNode | null {
 	const item = findLabel(root, "Two");
@@ -273,7 +288,7 @@ test "the drawer slides in and out, and a swipe from the edge opens it" {
 	assert panelOf(root) !== null && transformOf(panelOf(root) as MockNode) === "none", "opened by the swipe";
 }
 
-const Tabs = createBottomTabNavigator<string>();
+const Tabs = createBottomTabNavigator<NavParams>();
 
 test "a tab with animation fade fades in when it gains focus; other tabs switch at once" {
 	const ref = createNavigationContainerRef();
@@ -300,9 +315,9 @@ test "a tab with animation fade fades in when it gains focus; other tabs switch 
 	assert styleOf(screens.children[0]).opacity === null, "a plain tab does not fade";
 }
 
-const Inner = createStackNavigator<string>();
+const Inner = createStackNavigator<NavParams>();
 
-function Nested(props: ScreenProps<string>): NeonNode {
+function Nested(props: ScreenProps<NavParams>): NeonNode {
 	return <Inner.Navigator>
 		<Inner.Screen name="Top" component={Named} />
 		<Inner.Screen name="Deep" component={Named} />

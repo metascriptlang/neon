@@ -11,7 +11,7 @@ import {
 } from "../../src/navigation/index";
 
 interface NoParams {
-	unused: string;
+	Home: null;
 }
 
 const Stack = createStackNavigator<NoParams>();

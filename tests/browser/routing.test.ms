@@ -14,6 +14,7 @@ import {
 	RoutingRegistry,
 	RoutingSession,
 	ScreenProps,
+	useRoute,
 	createDrawerNavigator,
 	createNavigationContainerRef,
 	createRoutingSession,
@@ -93,7 +94,12 @@ interface ItemParams {
 	id: string;
 }
 
-const Store = createStackNavigator<ItemParams>();
+interface StoreParams {
+	Catalog: null;
+	Product: ItemParams;
+}
+
+const Store = createStackNavigator<StoreParams>();
 
 const storeLinking: LinkingOptions = {
 	prefixes: [],
@@ -106,14 +112,14 @@ const storeLinking: LinkingOptions = {
 	},
 };
 
-function Catalog(props: ScreenProps<ItemParams>): NeonNode {
+function Catalog(props: ScreenProps<StoreParams>): NeonNode {
 	return <Text>Catalog page</Text>;
 }
 
 let guarded = false;
 
-function Product(props: ScreenProps<ItemParams>): NeonNode {
-	const params = props.route.params;
+function Product(props: ScreenProps<StoreParams>): NeonNode {
+	const params = useRoute<StoreParams, "Product">().params;
 	if (guarded) {
 		props.navigation.addListener("beforeRemove", (e: NavigationEventArg): void => {
 			e.preventDefault();
@@ -132,6 +138,8 @@ function stringifyItem(params: ItemParams): Map<string, string> {
 	return values;
 }
 
+const storeItem = Store.params.of("Product", { parse: parseItem, stringify: stringifyItem });
+
 test "a built-in stack follows browser back and forward through the routing registry" {
 	const history = createBrowserRoutingHistory();
 	const original = history.read();
@@ -146,8 +154,7 @@ test "a built-in stack follows browser back and forward through the routing regi
 		const app = NavigationContainer({
 			children: <Store.Navigator>
 				<Store.Screen name="Catalog" component={Catalog} />
-				<Store.Screen name="Product" component={Product}
-					parseParams={parseItem} stringifyParams={stringifyItem} />
+				<Store.Screen name="Product" component={Product} params={storeItem} />
 			</Store.Navigator>,
 			linking: storeLinking,
 			ref,
@@ -204,8 +211,7 @@ test "a built-in stack on browser history records in-app navigation and follows 
 		const app = NavigationContainer({
 			children: <Store.Navigator>
 				<Store.Screen name="Catalog" component={Catalog} />
-				<Store.Screen name="Product" component={Product}
-					parseParams={parseItem} stringifyParams={stringifyItem} />
+				<Store.Screen name="Product" component={Product} params={storeItem} />
 			</Store.Navigator>,
 			linking: storeLinking,
 			ref,
@@ -305,8 +311,7 @@ test "browser back stays on a stack screen whose beforeRemove prevents it" {
 	guarded = true;
 	const app = mountOnBrowser(<Store.Navigator>
 		<Store.Screen name="Catalog" component={Catalog} />
-		<Store.Screen name="Product" component={Product}
-			parseParams={parseItem} stringifyParams={stringifyItem} />
+		<Store.Screen name="Product" component={Product} params={storeItem} />
 	</Store.Navigator>, storeLinking, ref, mount);
 	try {
 		assert ref.linkTo("/store/product/42");
@@ -325,7 +330,12 @@ test "browser back stays on a stack screen whose beforeRemove prevents it" {
 	}
 }
 
-const Side = createDrawerNavigator<string>();
+interface SideParams {
+	One: null;
+	Two: null;
+}
+
+const Side = createDrawerNavigator<SideParams>();
 
 const sideLinking: LinkingOptions = {
 	prefixes: [],
@@ -333,7 +343,7 @@ const sideLinking: LinkingOptions = {
 	config: { screens: [{ name: "One", path: "one" }, { name: "Two", path: "two" }] },
 };
 
-function Page(props: ScreenProps<string>): NeonNode {
+function Page(props: ScreenProps<SideParams>): NeonNode {
 	return <Text>{"Page " + props.route.name}</Text>;
 }
 

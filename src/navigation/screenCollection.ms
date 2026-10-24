@@ -10,6 +10,7 @@ import {
 	NavigatorCore,
 	ScreenConfig,
 	ScreenOptions,
+	ScreenParams,
 	ScreenProps,
 	mergeOptions,
 	readRegistrationKey,
@@ -21,15 +22,15 @@ export interface ScreenCollector {
 	keys: Context<Accessor<string>[]>;
 }
 
-interface RegisteredScreen<P> {
+interface RegisteredScreen<PL> {
 	marker: MockNode;
-	config: ScreenConfig<P>;
+	config: ScreenConfig<PL>;
 }
 
-export class ScreenCollection<P> {
+export class ScreenCollection<PL> {
 	host: Host;
 	parent: MockNode;
-	entries: RegisteredScreen<P>[] = [];
+	entries: RegisteredScreen<PL>[] = [];
 	version: Signal<int32> = new Signal<int32>(0, null, true);
 
 	constructor() {
@@ -41,9 +42,9 @@ export class ScreenCollection<P> {
 		this.version.set(this.version.peek() + 1);
 	}
 
-	read(): ScreenConfig<P>[] {
+	read(): ScreenConfig<PL>[] {
 		this.version.get();
-		const found: ScreenConfig<P>[] = [];
+		const found: ScreenConfig<PL>[] = [];
 		for (const marker of this.parent.children) {
 			if (marker.tag !== "" || marker.text !== "") {
 				throw new Error("a navigator's children must be Screen elements");
@@ -58,7 +59,7 @@ export class ScreenCollection<P> {
 		return found;
 	}
 
-	add(config: ScreenConfig<P>, parent: HostNode, before: HostNode | null): void {
+	add(config: ScreenConfig<PL>, parent: HostNode, before: HostNode | null): void {
 		for (const entry of this.entries) {
 			if (entry.config.name === config.name) {
 				throw new Error("two screens are named '" + config.name + "'");
@@ -135,32 +136,30 @@ export function groupOf(
 	};
 }
 
-export function collectScreens<P>(
+export function collectScreens<PL>(
 	collector: ScreenCollector,
 	children: NeonNode,
-): ScreenCollection<P> {
-	const collection = new ScreenCollection<P>();
+): ScreenCollection<PL> {
+	const collection = new ScreenCollection<PL>();
 	collector.scope.provider({ value: accessor((): unknown => collection), children })(
 		collection.host, collection.parent as unknown as HostNode, null,
 	);
 	return collection;
 }
 
-export function watchScreens<P>(collection: ScreenCollection<P>, core: NavigatorCore<P>): void {
+export function watchScreens<PL>(collection: ScreenCollection<PL>, core: NavigatorCore<PL>): void {
 	createEffect<int32>(
 		(prev: int32 | null): int32 => { collection.read(); return 0; },
 		(settled: int32, prev: int32 | null): Cleanup | null => { core.reconfigure(collection.read()); return null; },
 	);
 }
 
-export function screenOf<P>(
+export function screenOf<PL>(
 	collector: ScreenCollector,
 	name: string,
-	component: (props: ScreenProps<P>) => NeonNode,
+	component: (props: ScreenProps<PL>) => NeonNode,
 	options: Accessor<ScreenOptions> | null,
-	initialParams: P | null,
-	parseParams: ((values: Map<string, string>) => P) | null,
-	stringifyParams: ((params: P) => Map<string, string>) | null,
+	params: ScreenParams<PL> | null,
 	navigationKey: Accessor<string> | null,
 ): NeonNode {
 	return (host: Host, parent: HostNode, before: HostNode | null): void => {
@@ -168,13 +167,20 @@ export function screenOf<P>(
 		if (current === null) {
 			throw new Error("Screen '" + name + "' must be a child of its Navigator");
 		}
-		const collection = current as ScreenCollection<P>;
+		const collection = current as ScreenCollection<PL>;
 		if (host !== collection.host) {
 			throw new Error("Screen '" + name + "' must be declared inside its Navigator");
 		}
-		const config = new ScreenConfig<P>(name, component, options, initialParams, parseParams);
+		if (params !== null && (params as ScreenParams<PL>).name !== name) {
+			throw new Error(
+				"Screen '" + name + "': its params are declared for '" + (params as ScreenParams<PL>).name + "'",
+			);
+		}
+		const config = params === null
+			? new ScreenConfig<PL>(name, component, options, null, null)
+			: new ScreenConfig<PL>(name, component, options, (params as ScreenParams<PL>).initial, (params as ScreenParams<PL>).parse);
 		config.options = withGroups(useContext(collector.groups), options);
-		config.stringifyParams = stringifyParams;
+		if (params !== null) { config.stringifyParams = (params as ScreenParams<PL>).stringify; }
 		config.navigationKey = withKeys(useContext(collector.keys), navigationKey);
 		collection.add(config, parent, before);
 	};

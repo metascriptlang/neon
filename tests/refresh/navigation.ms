@@ -18,9 +18,15 @@ interface ItemParams {
 	id: int32;
 }
 
-const Stack = createStackNavigator<ItemParams>();
+interface StackParams {
+	Home: null;
+	Detail: ItemParams;
+	About: null;
+}
 
-function Home(props: ScreenProps<ItemParams>): NeonNode {
+const Stack = createStackNavigator<StackParams>();
+
+function Home(props: ScreenProps<StackParams>): NeonNode {
 	const [count, setCount] = createSignal<int32>(0);
 	const navigation = props.navigation;
 	return <View>
@@ -32,8 +38,8 @@ function Home(props: ScreenProps<ItemParams>): NeonNode {
 	</View>;
 }
 
-function Detail(props: ScreenProps<ItemParams>): NeonNode {
-	const route = useRoute<ItemParams>();
+function Detail(props: ScreenProps<StackParams>): NeonNode {
+	const route = useRoute<StackParams, "Detail">();
 	const label = (): string => {
 		const params = route.params();
 		return params === null ? "detail none" : "detail " + params.id.toString();
@@ -41,7 +47,7 @@ function Detail(props: ScreenProps<ItemParams>): NeonNode {
 	return <View><Text>{label()}</Text></View>;
 }
 
-function About(props: ScreenProps<ItemParams>): NeonNode {
+function About(props: ScreenProps<StackParams>): NeonNode {
 	return <View><Text>about</Text></View>;
 }
 

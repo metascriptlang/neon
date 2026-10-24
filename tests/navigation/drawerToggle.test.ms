@@ -11,15 +11,20 @@ import {
 } from "../../src/navigation/index";
 import { findLabel } from "./navHarness";
 
-const Drawer = createDrawerNavigator<string>();
+interface NavParams {
+	Home: null;
+	Other: null;
+}
 
-let leaving: Navigation<string> | null = null;
+const Drawer = createDrawerNavigator<NavParams>();
 
-function Plain(props: ScreenProps<string>): NeonNode {
+let leaving: Navigation<NavParams> | null = null;
+
+function Plain(props: ScreenProps<NavParams>): NeonNode {
 	return <Text>plain</Text>;
 }
 
-function Remembered(props: ScreenProps<string>): NeonNode {
+function Remembered(props: ScreenProps<NavParams>): NeonNode {
 	leaving = props.navigation;
 	return <Text>remembered</Text>;
 }
@@ -34,7 +39,7 @@ test "two drawer toggles in one flush leave the drawer closed" {
 			<Drawer.Screen name="Other" component={Plain} />
 		</Drawer.Navigator>
 	</NavigationContainer>, mockHost(), root as unknown as HostNode);
-	const home = leaving as Navigation<string>;
+	const home = leaving as Navigation<NavParams>;
 	flush((): void => {
 		home.toggleDrawer();
 		home.toggleDrawer();

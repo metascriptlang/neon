@@ -12,7 +12,11 @@ import {
 	ScreenProps,
 } from "../../src/navigation/index";
 
-interface AuthParams { user: string; }
+interface AuthParams {
+	Guest: null;
+	Home: null;
+	Help: null;
+}
 
 let guestDisposed: int32 = 0;
 let homeDisposed: int32 = 0;

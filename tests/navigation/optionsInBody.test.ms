@@ -10,10 +10,14 @@ import {
 } from "../../src/navigation/index";
 import { visibleText } from "./navHarness";
 
-const Tab = createBottomTabNavigator<string>();
-const Stack = createStackNavigator<string>();
+interface NavParams {
+	Only: null;
+}
 
-function Titled(props: ScreenProps<string>): NeonNode {
+const Tab = createBottomTabNavigator<NavParams>();
+const Stack = createStackNavigator<NavParams>();
+
+function Titled(props: ScreenProps<NavParams>): NeonNode {
 	props.navigation.setOptions({ title: "From the body" });
 	return <Text>titled</Text>;
 }
