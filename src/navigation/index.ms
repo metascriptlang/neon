@@ -103,8 +103,11 @@ export {
 	ParamsCodec,
 	GuardAction,
 	GuardDecision,
+	Reply,
+	ReplyInit,
 	proceed,
 	redirect,
+	reload,
 	notFound,
 	RouteNode,
 	RouteDef,
@@ -183,4 +186,4 @@ export {
 } from "./webNavigation";
 export { WebHistory, createWebHistory } from "./webHistory";
 export { hashKey, queryKey, query, revalidate, createAsync } from "./data";
-export { Action, Submission, action, useAction, useSubmission, useSubmissions } from "./action";
+export { Action, ActionOptions, Submission, action, useAction, useSubmission, useSubmissions } from "./action";

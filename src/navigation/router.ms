@@ -1,5 +1,5 @@
 import { Accessor, Signal, accessor, untrack } from "../core/signal";
-import { flush } from "../core/runtime";
+import { flush, getOwner } from "../core/runtime";
 import { Dispose } from "../core/types";
 import { mapArray } from "../core/array";
 import { Host, HostNode, NeonNode } from "../render/hostTypes";
@@ -16,6 +16,7 @@ import {
 } from "./routing";
 import { RoutingHistory, RoutingSession, createRoutingSession } from "./routingHistory";
 import {
+	GuardAction,
 	GuardDecision,
 	MatchedRoute,
 	RouteDef,
@@ -25,6 +26,7 @@ import {
 	RouteTree,
 	PreloadArgs,
 	PreloadIntent,
+	Reply,
 	RouterLocation,
 	createRouteTree,
 	hrefOf,
@@ -767,10 +769,21 @@ struct RouterEntry {
 	document: string;
 }
 
+export class SubmissionBase {
+	url: string;
+
+	constructor(url: string) {
+		this.url = url;
+	}
+}
+
 export class Router {
 	routes: Routes;
 	match: Accessor<RouteMatch>;
 	location: Accessor<RouterLocation>;
+	submissions: Signal<SubmissionBase[]> = new Signal<SubmissionBase[]>([]);
+	intent: PreloadIntent | null = null;
+	private redirected: Reply | null = null;
 	private root: Level;
 	private current: Signal<Resolved>;
 	private history: RoutingHistory;
@@ -792,6 +805,7 @@ export class Router {
 
 	view(): NeonNode {
 		const steer: Steer = {
+			within: (intent: PreloadIntent, run: () => void): void => { this.within(intent, run); },
 			navigate: (href: string): boolean => this.navigate(href),
 			popToRoot: (stack: ChildStack<Stop, Place>): void => {
 				this.group((): void => { stack.popTo(0); }, false);
@@ -849,20 +863,47 @@ export class Router {
 		return true;
 	}
 
+	within(intent: PreloadIntent, run: () => void): void {
+		const previous = this.intent;
+		this.intent = intent;
+		try {
+			run();
+		} finally {
+			this.intent = previous;
+		}
+	}
+
+	deliver(reply: Reply, replace: boolean): boolean {
+		if (reply.action !== GuardAction.Redirect) { return false; }
+		if (!this.history.writable) {
+			this.redirected = reply;
+			return false;
+		}
+		if (!reply.address.startsWith("/")) {
+			throw new Error("routing: a response redirects to \"" + reply.address + "\", and a router opens only the addresses of its own routes");
+		}
+		if (!this.navigate(reply.address, { replace })) {
+			throw new Error("routing: a response redirects to " + reply.address + ", which no route matches");
+		}
+		return true;
+	}
+
 	preload(href: string): void {
 		const found = this.routes.tree.match(href);
 		if (!found.ok) { return; }
 		const match = found.value;
 		const location: RouterLocation = { pathname: pathnameOf(href), search: match.search, hash: match.hash };
-		for (const level of match.chain) {
-			const preload = level.node.preload;
-			if (preload !== null) {
-				untrack((): number => {
-					(preload as (args: PreloadArgs<Map<string, string>>) => void)({ params: level.params, location, intent: "preload" });
-					return 0;
-				});
+		this.within("preload", (): void => {
+			for (const level of match.chain) {
+				const preload = level.node.preload;
+				if (preload !== null) {
+					untrack((): number => {
+						(preload as (args: PreloadArgs<Map<string, string>>) => void)({ params: level.params, location, intent: "preload" });
+						return 0;
+					});
+				}
 			}
-		}
+		});
 	}
 
 	go(delta: int32): boolean {
@@ -876,6 +917,8 @@ export class Router {
 	}
 
 	response(): RouterResponse {
+		const redirected = this.redirected;
+		if (redirected !== null) { return { status: redirected.status, location: redirected.address }; }
 		const resolved = untrack((): Resolved => this.current.get());
 		if (resolved.redirect !== 0) { return { status: resolved.redirect, location: resolved.address }; }
 		return { status: resolved.status, location: null };
@@ -984,13 +1027,16 @@ interface RouteScope {
 const RouterContext = createContext<Router | null>(null);
 const RouteContext = createContext<RouteScope | null>(null);
 
-function mountLater(make: () => NeonNode): NeonNode {
+function mountLater(make: () => NeonNode, steer: Steer, intent: PreloadIntent): NeonNode {
 	return (host: Host, parent: HostNode, before: HostNode | null): void => {
-		untrack((): number => { make()(host, parent, before); return 0; });
+		steer.within(intent, (): void => {
+			untrack((): number => { make()(host, parent, before); return 0; });
+		});
 	};
 }
 
 interface Steer {
+	within: (intent: PreloadIntent, run: () => void) => void;
 	navigate: (href: string) => boolean;
 	popToRoot: (stack: ChildStack<Stop, Place>) => void;
 }
@@ -1080,16 +1126,18 @@ function placeView(routes: Routes, child: NavigationChild<Stop, Place>, steer: S
 	if (preload !== null) {
 		const leaf = leafOf(child);
 		const location: RouterLocation = { pathname: leaf.path, search: leaf.search, hash: leaf.hash };
-		untrack((): number => {
-			(preload as (args: PreloadArgs<Map<string, string>>) => void)({ params: stop.params, location, intent: stop.intent });
-			return 0;
+		steer.within(stop.intent, (): void => {
+			untrack((): number => {
+				(preload as (args: PreloadArgs<Map<string, string>>) => void)({ params: stop.params, location, intent: stop.intent });
+				return 0;
+			});
 		});
 	}
 	const component = found.component;
 	const layout = found.layout;
 	let body: NeonNode;
 	if (component !== null) {
-		body = mountLater(component as () => NeonNode);
+		body = mountLater(component as () => NeonNode, steer, stop.intent);
 	} else {
 		const level = child.instance.level as Level;
 		const inner = levelView(routes, level, steer, scope);
@@ -1114,7 +1162,11 @@ export function RouterProvider(props: { router: Router }): NeonNode {
 	return <RouterContext value={router}>{router.view()}</RouterContext>;
 }
 
-function useRouter(caller: string): Router {
+export function routerInScope(): Router | null {
+	return getOwner() === null ? null : useContext(RouterContext);
+}
+
+export function useRouter(caller: string): Router {
 	const router = useContext(RouterContext);
 	if (router === null) { throw new Error("routing: " + caller + " is called outside a RouterProvider"); }
 	return router as Router;
