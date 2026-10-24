@@ -18,7 +18,7 @@ when (server) {
 	import { renderToStream } from "./ssr";
 	import { RoutingError } from "../navigation/routing";
 	import { createRequestRoutingHistory } from "../navigation/routingHistory";
-	import { Routes, RouterProvider, createRouter } from "../navigation/router";
+	import { RouterProvider, createRouter } from "../navigation/router";
 
 	export function htmlDocument(root: string, client: string): (markup: SsrMarkup) => string {
 		return (markup: SsrMarkup): string => "<!doctype html><html><head><meta charset=\"utf-8\">" + markup.head +

@@ -45,7 +45,7 @@ test "a matched route is a 200 document with head, css, body and client script p
 
 test "a redirect route answers its status and location with no body" {
 	const served = await serve(app, "/old");
-	assert served.status === 301 || served.status === 302 || served.status === 307 || served.status === 308, served.status.toString();
+	assert served.status === 307, served.status.toString();
 	assert served.location === "/" && served.body === "", served.body;
 }
 
