@@ -22,6 +22,7 @@ export { render, bindText, bindAttr, writeAttr, bindStyleAll, bindStyleProp, app
 export { Row, makeRow, rowOf, place, mountAt, moveRow, removeRow, reconcileArrays } from "./render/reconcile";
 export { Host, HostNode, NeonNode } from "./render/hostTypes";
 export { Style, StyleValue, emptyStyle, mergeStyle, layerStyles } from "./render/style";
+export { HtmlElements, HtmlGlobalAttributes } from "./render/htmlTags";
 
 when (js) {
 	export {
