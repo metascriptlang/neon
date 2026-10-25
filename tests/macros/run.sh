@@ -87,4 +87,7 @@ expect_reject_both tests/macros/htmlAttributeLiteralRejected.ms "<button> attrib
 expect_reject_both tests/macros/htmlAttributeTypeRejected.ms "<td> attribute 'colspan' takes number | string, not boolean"
 expect_reject_both tests/macros/htmlAttributeNeverRejected.ms "<dialog> does not take the attribute 'tabindex'"
 expect_reject tests/macros/htmlRefTypeRejected.ms "parameter 'c' takes HTMLDivElement, but the expected function passes it HTMLCanvasElement"
+expect_reject tests/macros/breakpointFieldUnfoldableRejected.ms "field 'width' of a breakpoint block must be a value the compiler can read"
+expect_reject tests/macros/breakpointKeyNotATableRejected.ms "a bracketed \`when\` key names a breakpoint"
+expect_reject tests/macros/breakpointWidthUnfoldableRejected.ms "breakpoint 'wide' must be a number the compiler can read"
 exit $fail
