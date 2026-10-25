@@ -5,8 +5,9 @@ import { getOwner, isServer, asServer } from "../core/runtime";
 import { runWithOwner } from "../core/owner";
 import { NotReadyError } from "../core/types";
 import { Hole, ServerContext, ServerMarks, serverContext, withServerContext } from "../core/serverContext";
-import { Style, StyleValue, setStyleField, emptyStyle } from "./style";
+import { Style, StyleValue, setStyleField, emptyStyle, resolveMedia } from "./style";
 import { Host, HostNode } from "./hostTypes";
+import { useWindowDimensions, windowWidth } from "./environment";
 
 // A dynamic spot re-runs whenever a source signal changes, but a derived expression
 // often maps several source values onto the SAME output ("big"/"small", a formatted
@@ -137,7 +138,11 @@ export function applyStaticStyle(host: Host, node: HostNode, s: Style): void {
 	const id = s.cssId;
 	if (id !== null && setCls !== null) {
 		setCls(node, id as string, s.css === null ? "" : s.css as string);
-	} else { host.setStyle(node, s); }
+	} else if (s.media === null) {
+		host.setStyle(node, s);
+	} else if (isServer()) {
+		host.setStyle(node, resolveMedia(s, useWindowDimensions()().width));
+	} else { followStyleAll(host, node, (): Style => s); }
 }
 
 // One effect re-applying the whole style (reactive variant selection, layered
@@ -158,7 +163,11 @@ function followStyleAll(host: Host, node: HostNode, get: () => Style): void {
 	let classed = false;
 	let inlined = false;
 	createRenderEffect<Style>(
-		(last: Style | null): Style => get(),
+		(last: Style | null): Style => {
+			const s = get();
+			if (s.media === null || (s.cssId !== null && setCls !== null)) { return s; }
+			return resolveMedia(s, windowWidth());
+		},
 		(s: Style, before: Style | null): Cleanup | null => {
 			const id = s.cssId;
 			if (id !== null && setCls !== null) {

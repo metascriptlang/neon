@@ -13,7 +13,9 @@ export interface KeyboardMetrics {
 	height: number;
 }
 
-const [windowWidth, setWindowWidth] = createSignal<number>(0);
+const windowWidthSignal = createSignal<number>(0);
+export const windowWidth = windowWidthSignal[0];
+const setWindowWidth = windowWidthSignal[1];
 const [windowHeight, setWindowHeight] = createSignal<number>(0);
 const [keyboardHeight, setKeyboardHeight] = createSignal<number>(0);
 const [dark, setDark] = createSignal<boolean>(false);
