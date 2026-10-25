@@ -348,3 +348,20 @@ function CallbackSlot(props: { make: () => NeonNode }): NeonNode {
 test "a component-valued ordinary callback prop is not normalized" {
 	assert mockToString(mounted(element(<CallbackSlot make={SlotHeading} />))) === "<root><h1>heading</h1></root>", "callback remains callable";
 }
+
+test "number and boolean attribute values lower to the strings HTML reads" {
+	const [locked, setLocked] = createSignal(true);
+	const [span, setSpan] = createSignal(2);
+	const shown = false;
+	const root = mounted(element(
+		<div tabindex={3} hidden={shown} draggable={shown} spellcheck>
+			<input disabled={locked()} readonly />
+			<td colspan={span()} rowspan={1.5} />
+		</div>
+	));
+	assert mockToString(root) === "<root><div tabindex=\"3\" draggable=\"false\" spellcheck=\"true\"><input disabled=\"\" readonly=\"\"></input><td colspan=\"2\" rowspan=\"1.5\"></td></div></root>", "lowered: " + mockToString(root);
+	setLocked(false);
+	setSpan(4);
+	flush();
+	assert mockToString(root) === "<root><div tabindex=\"3\" draggable=\"false\" spellcheck=\"true\"><input readonly=\"\"></input><td colspan=\"4\" rowspan=\"1.5\"></td></div></root>", "followed: " + mockToString(root);
+}
