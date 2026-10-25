@@ -783,10 +783,10 @@ when (server) {
 	}
 
 	function recordScript(table: string, id: string, text: string): string {
-		return "<script>(self._$HY||(self._$HY={r:{},e:{}}))." + table + "[\"" + scriptLiteral(id) + "\"]=\"" + scriptLiteral(text) + "\"</script>";
+		return "<script>(self._$HY||(self._$HY={r:{},e:{},m:{}}))." + table + "[\"" + scriptLiteral(id) + "\"]=\"" + scriptLiteral(text) + "\"</script>";
 	}
 
-	function recordScripts(ctx: ServerContext, written: Map<string, boolean> | null): string {
+	function recordScripts(ctx: ServerContext, written: Map<string, boolean> | null, listed: Map<string, boolean> | null): string {
 		let out = "";
 		for (const id of recordIds(ctx)) {
 			const slot = ctx.slots.get(id);
@@ -796,6 +796,13 @@ when (server) {
 				written.set(id, true);
 			}
 			out += slot.failure === null ? recordScript("r", id, slot.json) : recordScript("e", id, (slot.failure as Error).message);
+		}
+		for (const [id, key] of ctx.modules) {
+			if (listed !== null) {
+				if (listed.has(id)) { continue; }
+				listed.set(id, true);
+			}
+			out += recordScript("m", id, key);
 		}
 		return out;
 	}
@@ -1011,6 +1018,7 @@ when (server) {
 		sent: int32 = 0;
 		cssSent: int32 = 0;
 		recorded: Map<string, boolean> = new Map<string, boolean>();
+		listed: Map<string, boolean> = new Map<string, boolean>();
 		sink: StreamSink | null = null;
 		consumer: string = "";
 		scripted: boolean = false;
@@ -1040,7 +1048,7 @@ when (server) {
 			const css = this.pass.book.css;
 			const fresh = css.slice(this.cssSent, css.length);
 			this.cssSent = css.length;
-			this.pieces.push(new Piece(id, html, fresh, recordScripts(this.ctx, this.recorded)));
+			this.pieces.push(new Piece(id, html, fresh, recordScripts(this.ctx, this.recorded, this.listed)));
 			this.flush();
 			for (let i = 0; i < this.waitingIds.length; i += 1) {
 				if (!this.placed(this.waitingIds[i])) { continue; }
@@ -1179,7 +1187,7 @@ when (server) {
 				pass.dispose();
 			}
 			if (ctx.failure !== null) { throw ctx.failure; }
-			r.result = { html: html, css: pass.book.css, head: head, records: recordScripts(ctx, null) };
+			r.result = { html: html, css: pass.book.css, head: head, records: recordScripts(ctx, null, null) };
 		} catch (e) {
 			r.failure = e;
 		}
