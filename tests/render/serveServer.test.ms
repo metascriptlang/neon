@@ -99,6 +99,20 @@ test "a document component places the page, and the head content lands before it
 	assert body.endsWith("</main><script type=\"module\" src=\"/site.js\"></script></body></html>"), body;
 }
 
+function LocaleDocument(props: DocumentProps): NeonNode {
+	const event = getRequestEvent();
+	const language = event === null ? null : event.request.headers.get("accept-language");
+	const children = props.children;
+	return <html lang={language === null ? "none" : language}><head></head><body>{children}</body></html>;
+}
+
+test "the document renders inside the request, so it reads the request event" {
+	const headers = new Map<string, string>();
+	headers.set("Accept-Language", "vi");
+	const served = await serve({ routes: routes, notFound: <Text>app not found</Text>, client: "", document: LocaleDocument }, "/", headers);
+	assert served.body.startsWith("<!doctype html><html lang=\"vi\"><head>"), served.body;
+}
+
 function HeadlessDocument(props: DocumentProps): NeonNode {
 	const children = props.children;
 	return <html><body>{children}</body></html>;

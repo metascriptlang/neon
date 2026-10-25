@@ -87,7 +87,10 @@ when (server) {
 			scripts: app.client === "" ? rawHtml(markup.records) : <>{rawHtml(markup.records)}<script type="module" src={app.client} /></>,
 			children: rawHtml(markup.html),
 		};
-		const html = renderToString((host: Host, parent: HostNode, before: HostNode | null): void => { document(props)(host, parent, before); });
+		const html = renderToString((host: Host, parent: HostNode, before: HostNode | null): void => {
+			setContext<RequestEvent | null>(requestEvents, event);
+			document(props)(host, parent, before);
+		});
 		return "<!doctype html>" + injectAssets(markup.head + "<style>" + markup.css + "</style>", html);
 	}
 
