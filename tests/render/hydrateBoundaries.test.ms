@@ -1,5 +1,6 @@
 import { NeonNode, el, text } from "../../src/render/node";
-import { render, hydrate, mockHost, mockNode, mockToString, MockNode, Host, HostNode } from "../../src/render/host";
+import { render, mockHost, mockNode, mockToString, MockNode, Host, HostNode } from "../../src/render/host";
+import { hydrate } from "../../src/render/hydrate";
 import { Errored, Loading } from "../../src/macros/ui/flow";
 import { createAsyncMemo } from "../../src/core/memo";
 import { Accessor } from "../../src/core/signal";

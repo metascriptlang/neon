@@ -1,6 +1,8 @@
 import { el, text, NeonNode } from "../../src/render/node";
-import { MockNode, HostNode, mockHost, mockNode, render, hydrate, mockToString } from "../../src/render/host";
-import { lazyModule, preloadServedLazy, preloadLazy, createComponent } from "../../src/render/component";
+import { MockNode, HostNode, mockHost, mockNode, render, mockToString } from "../../src/render/host";
+import { hydrate } from "../../src/render/hydrate";
+import { createComponent } from "../../src/render/component";
+import { lazyModule, preloadServedLazy, preloadLazy } from "../../src/render/lazy";
 import { putModule, clearRecords } from "../../src/render/hydrationRecords";
 import { Loading } from "../../src/macros/ui/flow";
 import { Gate, gated, release } from "../core/asyncClock";

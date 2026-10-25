@@ -14,7 +14,8 @@ export { Dispose, Cleanup, NotReadyError } from "./core/types";
 export { createStore, createProjection, snapshot, reconcile, Store, Draft, SetStoreFunction } from "./core/store";
 
 export { Host, HostNode, NeonNode } from "./render/hostTypes";
-export { render, hydrate } from "./render/host";
+export { render } from "./render/host";
+export { hydrate } from "./render/hydrate";
 export { renderToString, renderToMarkup, renderToStream, StreamSink, SsrMarkup } from "./render/ssr";
 export { App, RequestEvent, RequestHeaders, Served, ServedRequest, getRequestEvent, htmlDocument, serve } from "./render/serve";
 export { isServer } from "./render/environment";
@@ -99,4 +100,4 @@ export {
 
 export * from "./navigation/index";
 export { lazy } from "./macros/lazy";
-export { lazyModule, preloadLazy, preloadServedLazy } from "./render/component";
+export { lazyModule, preloadLazy, preloadServedLazy } from "./render/lazy";

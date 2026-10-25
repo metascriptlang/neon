@@ -3,7 +3,8 @@ import { HostNode, mockNode, mockHost, render, mockToString } from "../../src/re
 import { element } from "../../src/macros/ui/element";
 import { Gate, gated, release } from "../core/asyncClock";
 import { Loading } from "../../src/macros/ui/flow";
-import { lazyModule, createComponent } from "../../src/render/component";
+import { createComponent } from "../../src/render/component";
+import { lazyModule } from "../../src/render/lazy";
 import { createMemoryRoutingHistory } from "../../src/navigation/routingHistory";
 import { RouterProvider, createRoutes, createRouter } from "../../src/navigation/router";
 

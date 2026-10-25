@@ -4,7 +4,7 @@ import { NeonNode } from "../../src/render/hostTypes";
 import { el, text } from "../../src/render/node";
 import { element } from "../../src/macros/ui/element";
 import { HostNode, MockNode, mockNode, mockHost, render, mockToString } from "../../src/render/host";
-import { lazyModule } from "../../src/render/component";
+import { lazyModule } from "../../src/render/lazy";
 import { Loading } from "../../src/macros/ui/flow";
 import { createMemoryRoutingHistory } from "../../src/navigation/routingHistory";
 import { LayoutProps, RouterProvider, createRouter, createRoutes } from "../../src/navigation/router";

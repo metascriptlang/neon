@@ -1,9 +1,11 @@
 import { NeonNode, el, text, dynText } from "../../src/render/node";
 import { createSignal } from "../../src/core/signal";
-import { render, hydrate, mockHost, mockNode, mockToString, MockNode, Host, HostNode } from "../../src/render/host";
+import { render, mockHost, mockNode, mockToString, MockNode, Host, HostNode } from "../../src/render/host";
+import { hydrate } from "../../src/render/hydrate";
 import { createAsyncMemo } from "../../src/render/hydrateMemo";
 import { putRecord, putModule, clearRecords } from "../../src/render/hydrationRecords";
-import { lazyModule, createComponent } from "../../src/render/component";
+import { createComponent } from "../../src/render/component";
+import { lazyModule } from "../../src/render/lazy";
 import { hydrating } from "../../src/render/claim";
 import { Gate, release, opened } from "../core/asyncClock";
 import { View, Text } from "../../src/components/primitives";

@@ -1,7 +1,8 @@
 import { NeonNode } from "../../src/render/node";
 import { createSignal, Accessor } from "../../src/core/signal";
 import { createUniqueId } from "../../src/core/owner";
-import { render, hydrate, mockHost, mockNode, mockToString, fireEvent, MockNode, Host, HostNode } from "../../src/render/host";
+import { render, mockHost, mockNode, mockToString, fireEvent, MockNode, Host, HostNode } from "../../src/render/host";
+import { hydrate } from "../../src/render/hydrate";
 import { View, Text, Pressable } from "../../src/components/primitives";
 import { Portal } from "../../src/render/portal";
 import { NeonEvent } from "../../src/render/event";

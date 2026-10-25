@@ -1,7 +1,8 @@
 // Solid's server lazy waits for the module before the render settles (packages/solid/src/server/component.ts:269); here the async memo's server slot carries that wait.
 import { sleepAsync } from "std/core/promise";
 import { el, text, NeonNode } from "../../src/render/node";
-import { lazyModule, createComponent } from "../../src/render/component";
+import { createComponent } from "../../src/render/component";
+import { lazyModule } from "../../src/render/lazy";
 import { Loading } from "../../src/macros/ui/flow";
 import { renderToString, renderToStream } from "../../src/render/ssr";
 

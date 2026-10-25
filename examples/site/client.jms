@@ -1,5 +1,5 @@
 import { HostNode } from "../../src/render/hostTypes";
-import { hydrate } from "../../src/render/host";
+import { hydrate } from "../../src/render/hydrate";
 import { domHost } from "../../src/platform/browser/dom";
 import { createBrowserRoutingHistory, followLinks, followPreloads, followSubmits } from "../../src/platform/browser/routingHistory";
 import { RouterProvider, createRouter } from "../../src/navigation/router";

@@ -1,5 +1,6 @@
 import { NeonNode, el, text, dynText } from "../../src/render/node";
-import { render, hydrate, mockHost, mockNode, mockToString, MockNode, Host, HostNode } from "../../src/render/host";
+import { render, mockHost, mockNode, mockToString, MockNode, Host, HostNode } from "../../src/render/host";
+import { hydrate } from "../../src/render/hydrate";
 import { createSignal, Accessor } from "../../src/core/signal";
 import { createAsyncMemo } from "../../src/render/hydrateMemo";
 import { flush } from "../../src/core/runtime";

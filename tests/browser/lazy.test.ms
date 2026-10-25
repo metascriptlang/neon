@@ -2,7 +2,7 @@ import { domHost } from "../../src/platform/browser/dom";
 import { HostNode, NeonNode } from "../../src/render/hostTypes";
 import { render } from "../../src/render/host";
 import { el, text } from "../../src/render/node";
-import { lazyModule } from "../../src/render/component";
+import { lazyModule } from "../../src/render/lazy";
 import { lazy } from "../../src/macros/lazy";
 import { Loading } from "../../src/macros/ui/flow";
 import { flush } from "../../src/core/runtime";

@@ -1,6 +1,7 @@
 import { el, text, NeonNode } from "../../src/render/node";
 import { Host, HostNode } from "../../src/render/hostTypes";
-import { lazyModule, createComponent } from "../../src/render/component";
+import { createComponent } from "../../src/render/component";
+import { lazyModule } from "../../src/render/lazy";
 import { serverContext } from "../../src/core/serverContext";
 import { renderToStream } from "../../src/render/ssr";
 import { Loading } from "../../src/macros/ui/flow";

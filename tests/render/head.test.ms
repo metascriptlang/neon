@@ -1,5 +1,6 @@
 import { createSignal } from "../../src/core/signal";
-import { render, hydrate, mockHost, mockNode, mockToString, MockNode, HostNode } from "../../src/render/host";
+import { render, mockHost, mockNode, mockToString, MockNode, HostNode } from "../../src/render/host";
+import { hydrate } from "../../src/render/hydrate";
 import { View } from "../../src/components/primitives";
 import { Layout, Page } from "./headPages";
 import { flush } from "../../src/core/runtime";

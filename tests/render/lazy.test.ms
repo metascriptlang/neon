@@ -2,7 +2,8 @@
 import { el, text, NeonNode } from "../../src/render/node";
 import { Host, HostNode } from "../../src/render/hostTypes";
 import { MockNode, mockHost, render, mockToString } from "../../src/render/host";
-import { lazyModule, createComponent } from "../../src/render/component";
+import { createComponent } from "../../src/render/component";
+import { lazyModule } from "../../src/render/lazy";
 import { lazy } from "../../src/macros/lazy";
 import { createSignal } from "../../src/core/signal";
 import { flush } from "../../src/core/runtime";

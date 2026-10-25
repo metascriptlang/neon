@@ -1,5 +1,6 @@
 // chrome-args: --use-fake-device-for-media-stream --use-fake-ui-for-media-stream --autoplay-policy=no-user-gesture-required
-import { render, hydrate } from "../../src/render/host";
+import { render } from "../../src/render/host";
+import { hydrate } from "../../src/render/hydrate";
 import { Host, HostNode, NeonNode } from "../../src/render/hostTypes";
 import { createSignal } from "../../src/core/signal";
 import { flush } from "../../src/core/runtime";

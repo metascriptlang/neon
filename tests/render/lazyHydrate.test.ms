@@ -1,6 +1,8 @@
 import { el, text, dynText, NeonNode } from "../../src/render/node";
-import { MockNode, HostNode, mockHost, mockNode, render, hydrate, mockToString } from "../../src/render/host";
-import { lazyModule, createComponent } from "../../src/render/component";
+import { MockNode, HostNode, mockHost, mockNode, render, mockToString } from "../../src/render/host";
+import { hydrate } from "../../src/render/hydrate";
+import { createComponent } from "../../src/render/component";
+import { lazyModule } from "../../src/render/lazy";
 import { putModule, clearRecords } from "../../src/render/hydrationRecords";
 import { hydrating } from "../../src/render/claim";
 import { createSignal } from "../../src/core/signal";

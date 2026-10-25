@@ -1,5 +1,6 @@
 import { el, text, dynText, NeonNode } from "../../src/render/node";
-import { hydrate, mockHost, mockNode, mockToString, MockNode, Host, HostNode, render } from "../../src/render/host";
+import { mockHost, mockNode, mockToString, MockNode, Host, HostNode, render } from "../../src/render/host";
+import { hydrate } from "../../src/render/hydrate";
 import { putRecord, putError, clearRecords } from "../../src/render/hydrationRecords";
 import { Accessor } from "../../src/core/signal";
 import { query, createAsync, queryKey } from "../../src/navigation/index";

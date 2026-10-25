@@ -3,7 +3,8 @@ import { onSettled } from "../../src/core/effect";
 import { createRoot } from "../../src/core/owner";
 import { flush, resetErrorHalt } from "../../src/core/runtime";
 import { Cleanup } from "../../src/core/types";
-import { mockHost, mockNode, render, hydrate, HostNode, MockNode } from "../../src/render/host";
+import { mockHost, mockNode, render, HostNode, MockNode } from "../../src/render/host";
+import { hydrate } from "../../src/render/hydrate";
 import { NeonNode } from "../../src/render/node";
 import { View, TextInput } from "../../src/components/primitives";
 

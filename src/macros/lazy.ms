@@ -1,5 +1,5 @@
 import { Node, NodeKind, define, expansionFile, childCount, childAt, getImpl, bindSym, stringValue } from "std/meta";
-import { lazyModule } from "../render/component";
+import { lazyModule } from "../render/lazy";
 
 export macro lazy(load: Node): Node {
 	function importedIn(n: Node): string {

@@ -1,4 +1,5 @@
-import { hydrate, HostNode } from "../../src/render/host";
+import { HostNode } from "../../src/render/host";
+import { hydrate } from "../../src/render/hydrate";
 import { clearRecords } from "../../src/render/hydrationRecords";
 import { hydrating } from "../../src/render/claim";
 import { flush } from "../../src/core/runtime";

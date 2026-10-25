@@ -1,5 +1,6 @@
 import { NeonNode } from "../../src/render/node";
-import { hydrate, HostNode, Host } from "../../src/render/host";
+import { HostNode, Host } from "../../src/render/host";
+import { hydrate } from "../../src/render/hydrate";
 import { createSignal } from "../../src/core/signal";
 import { createEffect } from "../../src/core/effect";
 import { createRoot } from "../../src/core/owner";

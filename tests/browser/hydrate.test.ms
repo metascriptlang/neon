@@ -1,4 +1,5 @@
-import { render, hydrate } from "../../src/render/host";
+import { render } from "../../src/render/host";
+import { hydrate } from "../../src/render/hydrate";
 import { Host, HostNode, NeonNode } from "../../src/render/hostTypes";
 import { NeonEvent } from "../../src/render/event";
 import { View } from "../../src/components/primitives";
