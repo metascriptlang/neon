@@ -13,9 +13,7 @@ export interface KeyboardMetrics {
 	height: number;
 }
 
-const windowWidthSignal = createSignal<number>(0);
-export const windowWidth = windowWidthSignal[0];
-const setWindowWidth = windowWidthSignal[1];
+const [windowWidth, setWindowWidth] = createSignal<number>(0);
 const [windowHeight, setWindowHeight] = createSignal<number>(0);
 const [keyboardHeight, setKeyboardHeight] = createSignal<number>(0);
 const [dark, setDark] = createSignal<boolean>(false);
@@ -36,6 +34,16 @@ export function useWindowDimensions(): Accessor<WindowDimensions> {
 		}
 	}
 	return accessor((): WindowDimensions => ({ width: windowWidth(), height: windowHeight() }));
+}
+
+when (server) {
+	export function mediaWidth(): number {
+		return useWindowDimensions()().width;
+	}
+} else {
+	export function mediaWidth(): number {
+		return windowWidth();
+	}
 }
 
 export function useColorScheme(): Accessor<ColorScheme> {

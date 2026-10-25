@@ -42,10 +42,6 @@ export function styleOf(s: Style): Style {
 	return s;
 }
 
-export function createBreakpoints<T>(table: T): T {
-	return table;
-}
-
 function isPlatformName(k: string): boolean {
 	return k === "web" || k === "ios" || k === "android" || k === "macos";
 }
@@ -421,17 +417,17 @@ export macro createStyles(node: Node): Node {
 				const bb = bpBlocks[m];
 				const w = bpWidths[m];
 				const whole = Math.floor(w) === w;
+				let blockFields: Node[] = [{ kind: NodeKind.NumberLiteral, line: bb.line, column: bb.column, value: w, isFloat: !whole, intVal: whole ? w as int64 : 0, outOfRangeText: "", isBitPattern: false }];
+				let blockNames: string[] = ["fromWidth"];
+				let blockLocs: SourceLocation[] = [loc0];
+				for (let f = 0; f < bb.properties.length; f += 1) {
+					blockFields.push(bb.properties[f]);
+					blockNames.push(bb.keys[f]);
+					blockLocs.push(bb.keyLocations[f]);
+				}
 				media.push({
 					kind: NodeKind.ObjectLiteral, line: bb.line, column: bb.column,
-					properties: [
-						{ kind: NodeKind.NumberLiteral, line: bb.line, column: bb.column, value: w, isFloat: !whole, intVal: whole ? w as int64 : 0, outOfRangeText: "", isBitPattern: false },
-						{
-							kind: NodeKind.CallExpr, line: bb.line, column: bb.column,
-							callee: { kind: NodeKind.Identifier, line: bb.line, column: bb.column, name: "styleOf" },
-							arguments: [bb],
-						},
-					],
-					keys: ["minWidth", "style"], keyLocations: [loc0, loc0],
+					properties: blockFields, keys: blockNames, keyLocations: blockLocs,
 				});
 			}
 			fields.push({ kind: NodeKind.ArrayLiteral, line: v.line, column: v.column, elements: media });

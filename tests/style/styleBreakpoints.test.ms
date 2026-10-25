@@ -1,7 +1,8 @@
 import { element } from "../../src/macros/ui/element";
 import { el, NeonNode } from "../../src/render/node";
 import { mockHost, mockNode, render, HostNode, MockNode } from "../../src/render/host";
-import { Style, mergeStyle, resolveMedia } from "../../src/render/style";
+import { Style, mergeStyle } from "../../src/render/style";
+import { resolveMedia } from "../../src/render/breakpoints";
 import { publishWindow } from "../../src/render/environment";
 import { createStyles, styleOf } from "../../src/macros/ui/style";
 import { screen } from "./styleBreakpointsTable";
@@ -36,8 +37,8 @@ test "a breakpoint reads as its number" {
 test "the blocks are kept in ascending order whatever the source order" {
 	const m = sheet.sidebar.media;
 	assert m !== null && m.length === 2, "two blocks";
-	assert m[0].minWidth === 900 && m[1].minWidth === 1200, "ascending";
-	assert m[0].style.width === 280 && m[1].style.width === 400, "each block keeps its fields";
+	assert m[0].fromWidth === 900 && m[1].fromWidth === 1200, "ascending";
+	assert m[0].width === 280 && m[1].width === 400, "each block keeps its fields";
 	assert sheet.plain.media === null, "an entry without a breakpoint carries none";
 }
 

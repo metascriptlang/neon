@@ -23,10 +23,7 @@ export type FontStyle = "normal" | "italic";
 export type TextDecorationLine = "none" | "underline" | "line-through" | "underline line-through";
 export type TextDecorationStyle = "solid" | "double" | "dotted" | "dashed" | "wavy";
 
-export interface StyleMedia {
-	minWidth: number;
-	style: Style;
-}
+styleInterfaceBody("block");
 
 styleInterfaceBody(0);
 
@@ -65,29 +62,16 @@ export function layerStyles(layers: Style[]): Style {
 // than absence, so a copy cannot distinguish the two without naming each field.
 mergeStyleBody(0);
 
-export function mergeMedia(base: Style, over: Style): StyleMedia[] | null {
-	const below = base.media;
-	if (below === null) { return over.media; }
-	const out: StyleMedia[] = [];
-	for (const m of below as StyleMedia[]) {
-		const masked = mergeStyle(m.style, over);
-		masked.media = null;
-		out.push({ minWidth: m.minWidth, style: masked });
-	}
-	const above = over.media;
-	if (above !== null) {
-		for (const m of above as StyleMedia[]) { out.push(m); }
-	}
-	return out;
+function noBreakpointTable(base: Style, over: Style): StyleBlock[] {
+	throw new Error("a style carries media blocks but no breakpoint table was loaded: build the table with createBreakpoints from src/render/breakpoints");
 }
 
-export function resolveMedia(s: Style, width: number): Style {
-	const blocks = s.media;
-	if (blocks === null) { return s; }
-	let acc = mergeStyle(emptyStyle(), s);
-	acc.media = null;
-	for (const m of blocks as StyleMedia[]) {
-		if (width >= m.minWidth) { acc = mergeStyle(acc, m.style); }
-	}
-	return acc;
+let layerMedia: (base: Style, over: Style) => StyleBlock[] = noBreakpointTable;
+
+export function installMediaLayering(layer: (base: Style, over: Style) => StyleBlock[]): void {
+	layerMedia = layer;
+}
+
+export function mergeMedia(base: Style, over: Style): StyleBlock[] | null {
+	return base.media === null ? over.media : layerMedia(base, over);
 }

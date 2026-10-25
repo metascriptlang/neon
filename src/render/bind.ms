@@ -5,9 +5,8 @@ import { getOwner, isServer, asServer } from "../core/runtime";
 import { runWithOwner } from "../core/owner";
 import { NotReadyError } from "../core/types";
 import { Hole, ServerContext, ServerMarks, serverContext, withServerContext } from "../core/serverContext";
-import { Style, StyleValue, setStyleField, emptyStyle, resolveMedia } from "./style";
+import { Style, StyleValue, setStyleField, emptyStyle } from "./style";
 import { Host, HostNode } from "./hostTypes";
-import { useWindowDimensions, windowWidth } from "./environment";
 
 // A dynamic spot re-runs whenever a source signal changes, but a derived expression
 // often maps several source values onto the SAME output ("big"/"small", a formatted
@@ -133,6 +132,20 @@ function followStyleProp(host: Host, node: HostNode, own: Style, name: string, g
 	);
 }
 
+function noBreakpointTable(s: Style): Style {
+	throw new Error("a style carries media blocks but no breakpoint table was loaded: build the table with createBreakpoints from src/render/breakpoints");
+}
+
+let mediaResolve: (s: Style) => Style = noBreakpointTable;
+let mediaFollow: (host: Host, node: HostNode, s: Style) => void = (host: Host, node: HostNode, s: Style): void => {
+	host.setStyle(node, mediaResolve(s));
+};
+
+export function installMediaBinding(follow: (host: Host, node: HostNode, s: Style) => void, resolve: (s: Style) => Style): void {
+	mediaFollow = follow;
+	mediaResolve = resolve;
+}
+
 export function applyStaticStyle(host: Host, node: HostNode, s: Style): void {
 	const setCls = host.setStyleClass;
 	const id = s.cssId;
@@ -141,8 +154,8 @@ export function applyStaticStyle(host: Host, node: HostNode, s: Style): void {
 	} else if (s.media === null) {
 		host.setStyle(node, s);
 	} else if (isServer()) {
-		host.setStyle(node, resolveMedia(s, useWindowDimensions()().width));
-	} else { followStyleAll(host, node, (): Style => s); }
+		host.setStyle(node, mediaResolve(s));
+	} else { mediaFollow(host, node, s); }
 }
 
 // One effect re-applying the whole style (reactive variant selection, layered
@@ -166,7 +179,7 @@ function followStyleAll(host: Host, node: HostNode, get: () => Style): void {
 		(last: Style | null): Style => {
 			const s = get();
 			if (s.media === null || (s.cssId !== null && setCls !== null)) { return s; }
-			return resolveMedia(s, windowWidth());
+			return mediaResolve(s);
 		},
 		(s: Style, before: Style | null): Cleanup | null => {
 			const id = s.cssId;

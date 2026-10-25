@@ -11,7 +11,8 @@ import { CameraView, CameraType, CameraMountError } from "../../src/components/c
 import { CLIP_MP4 } from "../../examples/media/clip";
 import { Svg, Circle, G, Defs, LinearGradient, Stop, Rect } from "../../src/components/svg/elements";
 import { Head } from "../../src/render/head";
-import { createStyles, styleOf, createBreakpoints } from "../../src/macros/ui/style";
+import { createStyles, styleOf } from "../../src/macros/ui/style";
+import { createBreakpoints } from "../../src/render/breakpoints";
 import { createSignal, Accessor } from "../../src/core/signal";
 import { el, text } from "../../src/render/node";
 import { createComponent } from "../../src/render/component";

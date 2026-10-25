@@ -1,3 +1,3 @@
-import { createBreakpoints } from "../../src/macros/ui/style";
+import { createBreakpoints } from "../../src/render/breakpoints";
 
 export const screen = createBreakpoints({ wide: 900, xl: 1200 });
