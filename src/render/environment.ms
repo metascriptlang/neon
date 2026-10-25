@@ -18,7 +18,21 @@ const [windowHeight, setWindowHeight] = createSignal<number>(0);
 const [keyboardHeight, setKeyboardHeight] = createSignal<number>(0);
 const [dark, setDark] = createSignal<boolean>(false);
 
+when (server) {
+	import { getOwner } from "../core/runtime";
+	import { createContext, setContext, useContext } from "./context";
+
+	const renderWindow = createContext<WindowDimensions | null>(null);
+}
+
 export function useWindowDimensions(): Accessor<WindowDimensions> {
+	when (server) {
+		const published = getOwner() === null ? null : useContext(renderWindow);
+		if (published !== null) {
+			const size = published as WindowDimensions;
+			return accessor((): WindowDimensions => size);
+		}
+	}
 	return accessor((): WindowDimensions => ({ width: windowWidth(), height: windowHeight() }));
 }
 
@@ -33,6 +47,12 @@ export function useKeyboard(): Accessor<KeyboardMetrics> {
 export { isServer, asServer } from "../core/runtime";
 
 export function publishWindow(width: number, height: number): void {
+	when (server) {
+		if (getOwner() !== null) {
+			setContext<WindowDimensions | null>(renderWindow, { width: width, height: height });
+			return;
+		}
+	}
 	flush((): void => {
 		if (windowWidth() !== width) { setWindowWidth(width); }
 		if (windowHeight() !== height) { setWindowHeight(height); }
