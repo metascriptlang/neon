@@ -6,6 +6,7 @@ import { asyncPage, Note } from "./asyncPage";
 import {
 	clampedApp,
 	docsAtStart,
+	lazyCounterPage,
 	headPageAtStart,
 	imagesAtStart,
 	linesApp,
@@ -34,6 +35,7 @@ async function fromServer(n: int32): Promise<Note> {
 
 async function main(): Promise<void> {
 	const streamed: SsrMarkup = await renderToStream(asyncPage(fromServer));
+	const lazyServed: SsrMarkup = await renderToStream(lazyCounterPage());
 	const pages: string[] = [
 		served("docs", docsAtStart()),
 		served("scroll", scrollApp((e: NeonEvent): void => {})),
@@ -53,6 +55,7 @@ async function main(): Promise<void> {
 		served("modal", modalAtStart()),
 		served("media", mediaAtStart()),
 		JSON.stringify("async") + ":" + JSON.stringify(streamed),
+		JSON.stringify("lazyCounter") + ":" + JSON.stringify(lazyServed),
 	];
 	console.log("{" + pages.join(",") + "}");
 }

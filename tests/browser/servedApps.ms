@@ -13,6 +13,10 @@ import { Svg, Circle, G, Defs, LinearGradient, Stop, Rect } from "../../src/comp
 import { Head } from "../../src/render/head";
 import { createStyles, styleOf } from "../../src/macros/ui/style";
 import { createSignal, Accessor } from "../../src/core/signal";
+import { el, text } from "../../src/render/node";
+import { lazyModule, createComponent } from "../../src/render/component";
+import { lazy } from "../../src/macros/lazy";
+import { Loading } from "../../src/macros/ui/flow";
 
 export const styles = createStyles({ box: { padding: 8 }, label: { color: "#334" } });
 
@@ -235,4 +239,15 @@ export function mediaAtStart(): NeonNode {
 		onCameraReady: (): void => {},
 		onCameraError: (e: CameraMountError): void => {},
 	});
+}
+
+async function loadCounter(): Promise<(props: { label: string }) => NeonNode> {
+	const m = await import("./lazy/counter");
+	return m.Counter;
+}
+
+const LazyCounter = lazy<{ label: string }>(loadCounter);
+
+export function lazyCounterPage(): NeonNode {
+	return el("div", [], [], Loading({ children: createComponent(LazyCounter, { label: "count" }), fallback: el("b", [], [], text("loading")) }));
 }
