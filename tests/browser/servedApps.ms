@@ -11,7 +11,7 @@ import { CameraView, CameraType, CameraMountError } from "../../src/components/c
 import { CLIP_MP4 } from "../../examples/media/clip";
 import { Svg, Circle, G, Defs, LinearGradient, Stop, Rect } from "../../src/components/svg/elements";
 import { Head } from "../../src/render/head";
-import { createStyles, styleOf } from "../../src/macros/ui/style";
+import { createStyles, styleOf, createBreakpoints } from "../../src/macros/ui/style";
 import { createSignal, Accessor } from "../../src/core/signal";
 import { el, text } from "../../src/render/node";
 import { createComponent } from "../../src/render/component";
@@ -20,6 +20,15 @@ import { lazy } from "../../src/macros/lazy";
 import { Loading } from "../../src/macros/ui/flow";
 
 export const styles = createStyles({ box: { padding: 8 }, label: { color: "#334" } });
+
+export const screen = createBreakpoints({ wide: 900 });
+export const columns = createStyles({
+	side: { width: "100%", height: 10, when: { [screen.wide]: { width: 280 } } },
+});
+
+export function breakpointsApp(): NeonNode {
+	return <div id="side" style={columns.side}></div>;
+}
 
 when (js) {
 	export extern function servedPart(name: cstring, part: cstring): string from

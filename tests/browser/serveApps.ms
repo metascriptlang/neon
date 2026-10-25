@@ -4,6 +4,7 @@ import { renderToMarkup, renderToStream, SsrMarkup } from "../../src/render/ssr"
 import { sleepAsync } from "std/core/promise";
 import { asyncPage, Note } from "./asyncPage";
 import {
+	breakpointsApp,
 	clampedApp,
 	docsAtStart,
 	lazyCounterPage,
@@ -54,6 +55,7 @@ async function main(): Promise<void> {
 		served("svg", svgAtStart()),
 		served("modal", modalAtStart()),
 		served("media", mediaAtStart()),
+		served("breakpoints", breakpointsApp()),
 		JSON.stringify("async") + ":" + JSON.stringify(streamed),
 		JSON.stringify("lazyCounter") + ":" + JSON.stringify(lazyServed),
 	];
