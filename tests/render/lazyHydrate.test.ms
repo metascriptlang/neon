@@ -8,7 +8,7 @@ import { hydrating } from "../../src/render/claim";
 import { createSignal } from "../../src/core/signal";
 import { flush } from "../../src/core/runtime";
 import { Loading } from "../../src/macros/ui/flow";
-import { Gate, gated, release } from "../core/asyncClock";
+import { Gate, gated, opened, release } from "../core/asyncClock";
 
 function Greeting(props: { label: string }): NeonNode {
 	return el("p", [], [], text("hello " + props.label));
@@ -94,5 +94,44 @@ test "a hydrate disposed before its lazy module loads never claims the page" {
 	setGreeting("hi");
 	flush();
 	assert mockToString(root) === sent, "nothing mounted: " + mockToString(root);
+	clearRecords();
+}
+
+test "a hydrate disposed before its lazy module loads leaves a later mount into the same container alone" {
+	setGreeting("hello");
+	const root = servedPage();
+	const gate = new Gate();
+	const Page = lazyModule("tests/render/lazyHydrate/remounted", coldLoader(gate));
+	putModule("0", "tests/render/lazyHydrate/remounted");
+	hydrate(shell(Page), mockHost(), root as unknown as HostNode)();
+	clearRecords();
+	root.children = [];
+	const again = render(shell(Page), mockHost(), root as unknown as HostNode, "");
+	const mounted = root.children[0];
+	await release(gate);
+	setGreeting("hi");
+	flush();
+	assert root.children.length === 1 && root.children[0] === mounted, "the later mount keeps the container: " + mockToString(root);
+	assert mockToString(root) === "<root><div><p>hi ssr</p></div></root>", mockToString(root);
+	again();
+}
+
+async function failing(gate: Gate): Promise<(props: { label: string }) => NeonNode> {
+	await opened(gate);
+	throw new Error("chunk 404");
+}
+
+test "a hydrate disposed before its lazy module fails to load renders nothing" {
+	setGreeting("hello");
+	const root = servedPage();
+	const sent = mockToString(root);
+	const served = root.children[0];
+	const gate = new Gate();
+	const Page = lazyModule("tests/render/lazyHydrate/disposedFailed", (): Promise<(props: { label: string }) => NeonNode> => failing(gate));
+	putModule("0", "tests/render/lazyHydrate/disposedFailed");
+	hydrate(shell(Page), mockHost(), root as unknown as HostNode)();
+	await release(gate);
+	flush();
+	assert mockToString(root) === sent && root.children[0] === served, "no fresh render: " + mockToString(root);
 	clearRecords();
 }
